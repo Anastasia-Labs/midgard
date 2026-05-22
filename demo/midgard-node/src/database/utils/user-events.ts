@@ -1,10 +1,12 @@
-import { Database } from "@/services/database.js";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
+
 import {
-  sqlErrorToDatabaseError,
   DatabaseError,
+  logDatabaseError,
+  sqlErrorToDatabaseError,
 } from "@/database/utils/common.js";
+import { Database } from "@/services/database.js";
 
 /**
  * Table adapter for time-indexed user events such as deposits and withdrawals.
@@ -65,7 +67,7 @@ export const insertEntry = (
   }).pipe(
     Effect.withLogSpan(`insertEntry ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(`${tableName} db: insertEntry: ${JSON.stringify(e)}`),
+      logDatabaseError(tableName, "insertEntry", e),
     ),
     sqlErrorToDatabaseError(tableName, "Failed to insert the given UTxO"),
   );
@@ -89,7 +91,7 @@ export const insertEntries = (
   }).pipe(
     Effect.withLogSpan(`insertEntries ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(`${tableName} db: insertEntries: ${JSON.stringify(e)}`),
+      logDatabaseError(tableName, "insertEntries", e),
     ),
     sqlErrorToDatabaseError(tableName, "Failed to insert given UTxOs"),
   );
@@ -117,9 +119,7 @@ export const retrieveTimeBoundEntries = (
   }).pipe(
     Effect.withLogSpan(`retrieveTimeBoundEntries ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(
-        `${tableName} db: retrieveTimeBoundEntries: ${JSON.stringify(e)}`,
-      ),
+      logDatabaseError(tableName, "retrieveTimeBoundEntries", e),
     ),
     sqlErrorToDatabaseError(tableName, "Failed to retrieve all UTxOs"),
   );
@@ -137,7 +137,7 @@ export const retrieveAllEntries = (
   }).pipe(
     Effect.withLogSpan(`retrieveEntries ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(`${tableName} db: retrieveEntries: ${JSON.stringify(e)}`),
+      logDatabaseError(tableName, "retrieveEntries", e),
     ),
     sqlErrorToDatabaseError(tableName, "Failed to retrieve all UTxOs"),
   );
@@ -172,7 +172,7 @@ export const pruneOlderThan = (
   }).pipe(
     Effect.withLogSpan(`pruneOlderThan ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(`${tableName} db: pruneOlderThan: ${JSON.stringify(e)}`),
+      logDatabaseError(tableName, "pruneOlderThan", e),
     ),
     sqlErrorToDatabaseError(tableName, "Failed to prune old user events"),
   );

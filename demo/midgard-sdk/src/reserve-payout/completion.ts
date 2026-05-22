@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@/reserve-payout/primitives.js";
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import {
   type CML,
   type LucidEvolution,
@@ -6,13 +7,13 @@ import {
   type TxSignBuilder,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import type { OutRefLike } from "@/tx-context.js";
-import { formatCauseSummary } from "@/transactions/reserve-payout/diagnostics.js";
-import { ReservePayoutTxError } from "@/transactions/reserve-payout/errors.js";
+
+import { ReservePayoutTxError } from "@/reserve-payout/errors.js";
 import {
   disposableFeeInputCandidates,
   fetchProviderVisibleWalletInputsProgram,
-} from "@/transactions/reserve-payout/inputs.js";
+} from "@/reserve-payout/inputs.js";
+import type { OutRefLike } from "@al-ft/midgard-core/out-ref";
 
 export type BuiltReservePayoutTx<L> = {
   readonly tx: TxSignBuilder;
@@ -48,7 +49,7 @@ export const completeWithTwoPassLayoutProgram = <L>({
       Effect.mapError(
         (cause) =>
           new ReservePayoutTxError({
-            message: `Failed to fetch wallet inputs for ${label} transaction completion: ${formatCauseSummary(cause)}`,
+            message: `Failed to fetch wallet inputs for ${label} transaction completion: ${formatUnknownError(cause)}`,
             cause,
           }),
       ),
@@ -60,13 +61,18 @@ export const completeWithTwoPassLayoutProgram = <L>({
       try: () =>
         SDK.withStubbedProviderEvaluation(lucid, () =>
           makeTx(initialLayout).complete({
-            localUPLCEval: true,
+            // The first pass is only a balanced draft used to discover layout
+            // indices. Its seed redeemers may be invalid until those indices are
+            // derived, so evaluation is routed through the temporary provider
+            // stub below. The final transaction is completed with real local
+            // UPLC evaluation.
+            localUPLCEval: false,
             presetWalletInputs: [...walletInputs],
           }),
         ),
       catch: (cause) =>
         new ReservePayoutTxError({
-          message: `Failed to build ${label} draft transaction with disposable wallet fee inputs: ${formatCauseSummary(cause)}`,
+          message: `Failed to build ${label} draft transaction with disposable wallet fee inputs: ${formatUnknownError(cause)}`,
           cause,
         }),
     });
@@ -87,7 +93,7 @@ export const completeWithTwoPassLayoutProgram = <L>({
         }),
       catch: (cause) =>
         new ReservePayoutTxError({
-          message: `Failed to build final ${label} transaction with real local UPLC evaluation and disposable wallet fee inputs: ${formatCauseSummary(cause)}`,
+          message: `Failed to build final ${label} transaction with real local UPLC evaluation and disposable wallet fee inputs: ${formatUnknownError(cause)}`,
           cause,
         }),
     });

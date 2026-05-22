@@ -5,7 +5,30 @@
  * transaction with explicit change, and submits it through the node's public
  * `/submit` endpoint.
  */
-import { Effect } from "effect";
+import {
+  type CompleteTx,
+  decodeMidgardUtxo,
+  LucidMidgard,
+  type MidgardProvider,
+  type MidgardUtxo,
+} from "@al-ft/lucid-midgard";
+import {
+  addAssets as addAssetMaps,
+  isZeroAssets,
+  normalizeAssets,
+} from "@al-ft/midgard-core/assets";
+import {
+  decodeMidgardAddressBytes,
+  decodeMidgardNativeByteListPreimage,
+  encodeMidgardAddressText,
+  MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+  midgardAddressFromText,
+} from "@al-ft/midgard-core/codec";
+import {
+  type QueuedTx,
+  runPhaseAValidation,
+  runPhaseBValidationWithPatch,
+} from "@al-ft/midgard-validation";
 import {
   type Assets,
   CML,
@@ -13,43 +36,26 @@ import {
   type Network,
   walletFromSeed,
 } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+
 import {
-  decodeMidgardAddressBytes,
-  decodeMidgardNativeByteListPreimage,
-  midgardAddressFromText,
-  encodeMidgardAddressText,
-  MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
-} from "@al-ft/midgard-core/codec";
-import {
-  decodeMidgardUtxo,
-  LucidMidgard,
-  type CompleteTx,
-  type MidgardProvider,
-  type MidgardUtxo,
-} from "@al-ft/lucid-midgard";
+  parseAdditionalAssetSpecs,
+  parseLovelaceAmount,
+} from "@/asset-specs.js";
 import {
   decodeNodeUtxo,
   defaultMidgardNodeEndpoint,
   fetchNodeUtxosByAddress,
   formatJson,
   networkIdFromName,
-  parseNodeEndpoint,
-  walletNetworkFromId,
   type NodeUtxo,
+  parseNodeEndpoint,
   type ResolvedWalletSeedPhrase,
+  walletNetworkFromId,
 } from "@/commands/command-utils.js";
 import * as MempoolDB from "@/database/mempool.js";
 import * as MempoolLedgerDB from "@/database/mempoolLedger.js";
 import * as TxRejectionsDB from "@/database/txRejections.js";
-import {
-  parseAdditionalAssetSpecs,
-  parseLovelaceAmount,
-} from "@/asset-specs.js";
-import {
-  runPhaseAValidation,
-  runPhaseBValidationWithPatch,
-  type QueuedTx,
-} from "@al-ft/midgard-validation";
 import {
   Database as DatabaseService,
   Lucid,
@@ -115,41 +121,6 @@ const parseSubmissionMode = (value: string | undefined): SubmissionMode => {
 };
 
 /**
- * Removes zero-quantity units and coerces asset values to bigint.
- */
-const normalizeAssets = (assets: Readonly<Assets>): Assets => {
-  const normalized: Assets = {};
-  for (const [unit, amount] of Object.entries(assets)) {
-    const quantity = BigInt(amount);
-    if (quantity !== 0n) {
-      normalized[unit] = quantity;
-    }
-  }
-  return normalized;
-};
-
-/**
- * Adds two asset maps together, dropping units whose net quantity is zero.
- */
-const addAssetMaps = (
-  lhs: Readonly<Assets>,
-  rhs: Readonly<Assets>,
-): Readonly<Assets> => {
-  const total: Assets = { ...normalizeAssets(lhs) };
-  for (const [unit, amount] of Object.entries(rhs)) {
-    const quantity = BigInt(amount);
-    if (quantity === 0n) {
-      continue;
-    }
-    total[unit] = (total[unit] ?? 0n) + quantity;
-    if (total[unit] === 0n) {
-      delete total[unit];
-    }
-  }
-  return total;
-};
-
-/**
  * Subtracts one asset map from another, failing if the subtraction would go
  * negative.
  */
@@ -158,11 +129,7 @@ const subtractAssetMaps = (
   rhs: Readonly<Assets>,
 ): Readonly<Assets> => {
   const remaining: Assets = { ...normalizeAssets(lhs) };
-  for (const [unit, amount] of Object.entries(rhs)) {
-    const quantity = BigInt(amount);
-    if (quantity === 0n) {
-      continue;
-    }
+  for (const [unit, quantity] of Object.entries(rhs)) {
     const available = remaining[unit] ?? 0n;
     if (available < quantity) {
       throw new Error(
@@ -188,24 +155,17 @@ const reduceRequiredAssets = (
   contribution: Readonly<Assets>,
 ): Readonly<Assets> => {
   const reduced: Assets = {};
-  for (const [unit, amount] of Object.entries(remaining)) {
-    const missing = BigInt(amount);
+  for (const [unit, missing] of Object.entries(remaining)) {
     if (missing <= 0n) {
       continue;
     }
-    const available = BigInt(contribution[unit] ?? 0n);
+    const available = contribution[unit] ?? 0n;
     if (available < missing) {
       reduced[unit] = missing - available;
     }
   }
   return reduced;
 };
-
-/**
- * Returns whether every required asset has been fully covered.
- */
-const assetsSatisfied = (required: Readonly<Assets>): boolean =>
-  Object.keys(required).length === 0;
 
 /**
  * Orders candidate inputs by how well they cover the currently missing assets.
@@ -225,7 +185,7 @@ const compareAssetsByCoverage = (
       if (unit === "lovelace") {
         continue;
       }
-      const present = BigInt(assets[unit] ?? 0n);
+      const present = assets[unit] ?? 0n;
       if (present > 0n) {
         requiredTokenKinds += 1;
         requiredTokenQuantity += present < amount ? present : amount;
@@ -234,7 +194,7 @@ const compareAssetsByCoverage = (
     return {
       requiredTokenKinds,
       requiredTokenQuantity,
-      lovelace: BigInt(assets.lovelace ?? 0n),
+      lovelace: assets.lovelace ?? 0n,
     };
   };
 
@@ -264,9 +224,6 @@ const toMidgardUtxo = (utxo: NodeUtxo): MidgardUtxo =>
   });
 
 type TransferNetworkName = Network;
-
-const networkNameFromId = (networkId: bigint): TransferNetworkName =>
-  networkId === 1n ? "Mainnet" : "Preprod";
 
 const makeTransferMidgard = async ({
   senderAddress,
@@ -371,21 +328,15 @@ export const parseSubmitL2TransferConfig = ({
   readonly nodeEndpoint?: string;
   readonly submissionMode?: string;
 }): SubmitL2TransferConfig => {
-  const normalizedL2Address = l2Address.trim();
-  if (normalizedL2Address.length === 0) {
-    throw new Error("L2 address must not be empty.");
-  }
-
-  let addressBytes: Buffer;
-  let addressDetails: ReturnType<typeof decodeMidgardAddressBytes>;
+  let addressBytes: ReturnType<typeof midgardAddressFromText>;
   try {
-    addressBytes = midgardAddressFromText(normalizedL2Address);
-    addressDetails = decodeMidgardAddressBytes(addressBytes);
+    addressBytes = midgardAddressFromText(l2Address);
   } catch (cause) {
     throw new Error(
-      `Invalid L2 address "${normalizedL2Address}": ${String(cause)}`,
+      `Invalid L2 address "${l2Address.trim()}": ${String(cause)}`,
     );
   }
+  const addressDetails = decodeMidgardAddressBytes(addressBytes);
 
   return {
     l2Address: encodeMidgardAddressText(addressBytes),
@@ -442,12 +393,12 @@ export const selectTransferInputs = (
     }
     selected.push(utxo);
     remaining = nextRemaining;
-    if (assetsSatisfied(remaining)) {
+    if (isZeroAssets(remaining)) {
       break;
     }
   }
 
-  if (!assetsSatisfied(remaining)) {
+  if (!isZeroAssets(remaining)) {
     throw new Error(
       `Insufficient Midgard L2 funds for requested transfer. Missing ${formatJson(remaining)}.`,
     );
@@ -548,7 +499,7 @@ export const buildTransferTx = async ({
     senderAddress,
     signer,
     utxos: orderedInputs,
-    network: network ?? networkNameFromId(networkId),
+    network: network ?? walletNetworkFromId(networkId),
     networkId,
     minFeeA: 0n,
     minFeeB: 0n,
@@ -608,7 +559,7 @@ export const buildTransferTxWithMinFee = async ({
     senderAddress,
     signer,
     utxos: orderedAvailableUtxos,
-    network: network ?? networkNameFromId(networkId),
+    network: network ?? walletNetworkFromId(networkId),
     networkId,
     minFeeA,
     minFeeB,
@@ -701,7 +652,7 @@ export const submitNativeTransferTx = (
           "Midgard node submit response must contain string txId/status fields.",
         );
       }
-      if (parsed.txId.toLowerCase() !== expectedTxIdHex.toLowerCase()) {
+      if (parsed.txId !== expectedTxIdHex) {
         throw new Error(
           `Midgard node returned mismatched txId ${parsed.txId} (expected ${expectedTxIdHex}).`,
         );

@@ -1,11 +1,12 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect, Ref } from "effect";
-import {
-  serializeStateQueueUTxO,
-  type SerializedStateQueueUTxO,
-} from "@/workers/utils/commit-block-header.js";
+
 import type { Globals } from "@/services/globals.js";
+import {
+  type SerializedStateQueueUTxO,
+  serializeStateQueueUTxO,
+} from "@/workers/utils/commit-block-header.js";
 
 /**
  * Summary of the current on-chain state-queue topology.
@@ -237,35 +238,27 @@ export const fetchStateQueueSnapshotProgram = (
         ],
         { concurrency: "unbounded" },
       );
-    const tailMetadata = yield* nodeEndTimeAndRoots(tail);
+    const { blockEndTimeMs, ...roots } = yield* nodeEndTimeAndRoots(tail);
     const observedAtMs = Date.now();
-    const snapshotId = [
-      reason,
-      outRef(root),
-      outRef(tail),
-      observedAtMs.toString(),
-    ].join(":");
+    const rootOutRef = outRef(root);
+    const tailOutRef = outRef(tail);
+    const snapshotId = [reason, rootOutRef, tailOutRef, observedAtMs].join(":");
     return {
       snapshotId,
       reason,
       observedAtMs,
       topology,
       root: {
-        outRef: outRef(root),
+        outRef: rootOutRef,
         headerHash: rootHeaderHash,
         utxo: rootSerialized,
       },
       tailCommitBase: {
-        outRef: outRef(tail),
+        outRef: tailOutRef,
         headerHash: tailHeaderHash,
         utxo: tailSerialized,
-        blockEndTimeMs: tailMetadata.blockEndTimeMs,
-        roots: {
-          utxosRoot: tailMetadata.utxosRoot,
-          transactionsRoot: tailMetadata.transactionsRoot,
-          depositsRoot: tailMetadata.depositsRoot,
-          withdrawalsRoot: tailMetadata.withdrawalsRoot,
-        },
+        blockEndTimeMs,
+        roots,
       },
     };
   });

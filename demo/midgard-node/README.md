@@ -219,7 +219,7 @@ The main listener exposes a small operator-facing API. Common routes include:
 
 - `/deposit/build` for building unsigned L1 deposit transactions from a
   caller-supplied wallet view,
-- `/submit` for submitting raw Midgard transaction-envelope CBOR with
+- `/submit` for submitting raw Midgard canonical transaction CBOR with
   `Content-Type: application/cbor`,
 - `/utxo` for querying one spendable Midgard mempool-ledger UTxO by raw
   TxOutRef CBOR hex,

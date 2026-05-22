@@ -1,33 +1,23 @@
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
-import { Effect } from "effect";
+
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  CML,
-  Constr,
-  Data,
-  Emulator,
-  Lucid,
-  PROTOCOL_PARAMETERS_DEFAULT,
-  applyDoubleCborEncoding,
-  applyParamsToScript,
-  credentialToAddress,
-  generateEmulatorAccount,
-  getAddressDetails,
-  mintingPolicyToId,
-  scriptHashToCredential,
-  toUnit,
-  validatorToAddress,
-  validatorToScriptHash,
-  type MintingPolicy,
-  type Network,
-  type Script,
-  type SpendingValidator,
-  type UTxO,
-  type WithdrawalValidator,
-} from "@lucid-evolution/lucid";
+  compareOutRefs,
+  computeMidgardNativeTxId,
+  decodeMidgardNativeByteListPreimage,
+  EMPTY_CBOR_LIST,
+  EMPTY_NULL_ROOT,
+  encodeCbor,
+  encodeMidgardNativeTxCompact,
+  findOutRefIndex,
+  materializeMidgardNativeTxFromCanonical,
+  MIDGARD_NATIVE_TX_VERSION,
+  MIDGARD_POSIX_TIME_NONE,
+  type MidgardNativeTxFull,
+  outRefLabel,
+} from "@al-ft/midgard-core";
 import {
   ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX,
   ACTIVE_OPERATORS_ROOT_ASSET_NAME,
@@ -35,74 +25,88 @@ import {
   ActiveOperatorMintRedeemer,
   ActiveOperatorSpendRedeemer,
   AddressData,
+  addressDataFromBech32,
+  type AuthenticatedValidator,
+  buildDoubleSpendFaultProofContracts,
   ConfirmedState,
-  FRAUD_PROOF_CATALOGUE_ASSET_NAME,
-  FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
-  FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   DoubleSpendStep02Datum,
   DoubleSpendStep03Datum,
   DoubleSpendStep04Datum,
+  EMPTY_MERKLE_TREE_ROOT,
+  encodeLinkedListNodeView,
+  FRAUD_PROOF_CATALOGUE_ASSET_NAME,
+  FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
+  FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   FraudProofCatalogueDatum,
+  type FraudProofCatalogueDeploymentInfo,
   FraudProofComputationThreadStepDatum,
+  type FraudProofs,
   FraudProofTokenDatum,
   GENESIS_HEADER_HASH,
   GENESIS_PROTOCOL_VERSION,
-  EMPTY_MERKLE_TREE_ROOT,
-  HUB_ORACLE_ASSET_NAME,
+  getHeaderFromStateQueueDatum,
+  hashBlockHeader,
   Header,
+  HUB_ORACLE_ASSET_NAME,
   HubOracleDatum,
+  incompleteEmulatorCommitBlockHeaderTxProgram,
+  makeHubOracleDatum,
+  type MidgardValidators,
+  type MintingValidator,
+  parseFaultProofBlueprint,
   REGISTERED_OPERATORS_ROOT_ASSET_NAME,
   RegisteredOperatorMintRedeemer,
+  resolveMintPolicyTxInfoRedeemerIndexFromPolicySet,
   SCHEDULER_ASSET_NAME,
-  STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
-  STATE_QUEUE_ROOT_ASSET_NAME,
   SchedulerDatum,
   SchedulerMintRedeemer,
   SchedulerSpendRedeemer,
   ScriptHashSchema,
-  StateQueueRedeemer,
-  addressDataFromBech32,
-  buildDoubleSpendFaultProofContracts,
-  encodeLinkedListNodeView,
-  getHeaderFromStateQueueDatum,
-  hashBlockHeader,
-  incompleteEmulatorCommitBlockHeaderTxProgram,
-  makeHubOracleDatum,
-  parseFaultProofBlueprint,
-  resolveMintPolicyTxInfoRedeemerIndexFromPolicySet,
-  utxoToStateQueueUTxO,
-  type AuthenticatedValidator,
-  type FraudProofCatalogueDeploymentInfo,
-  type FraudProofs,
-  type MidgardValidators,
-  type MintingValidator,
   type SpendingValidator as SdkSpendingValidator,
+  STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
+  STATE_QUEUE_ROOT_ASSET_NAME,
+  StateQueueRedeemer,
+  utxoToStateQueueUTxO,
   type WithdrawalValidator as SdkWithdrawalValidator,
 } from "@al-ft/midgard-sdk";
 import {
-  EMPTY_CBOR_LIST,
-  EMPTY_NULL_ROOT,
-  MIDGARD_NATIVE_TX_VERSION,
-  MIDGARD_POSIX_TIME_NONE,
-  computeMidgardNativeTxId,
-  decodeMidgardNativeByteListPreimage,
-  encodeCbor,
-  encodeMidgardNativeTxCompact,
-  materializeMidgardNativeTxFromCanonical,
-  type MidgardNativeTxFull,
-} from "@al-ft/midgard-core";
+  applyDoubleCborEncoding,
+  applyParamsToScript,
+  CML,
+  Constr,
+  credentialToAddress,
+  Data,
+  Emulator,
+  generateEmulatorAccount,
+  getAddressDetails,
+  Lucid,
+  type MintingPolicy,
+  mintingPolicyToId,
+  type Network,
+  PROTOCOL_PARAMETERS_DEFAULT,
+  type Script,
+  scriptHashToCredential,
+  type SpendingValidator,
+  toUnit,
+  type UTxO,
+  validatorToAddress,
+  validatorToScriptHash,
+  type WithdrawalValidator,
+} from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+import { describe, expect, it } from "vitest";
+
 import {
   nativeTxFromCoreCompact,
-  compareOutRefs,
   parseSpendInputCbors,
   parseSubmitStep01TxInclusion,
   resolveProverSigner,
   submitInit,
+  submitRemoveFraudulentBlock,
   submitStep01,
   submitStep02,
   submitStep03,
   submitStep04,
-  submitRemoveFraudulentBlock,
 } from "../src/index.js";
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
@@ -462,7 +466,7 @@ const encodeCatalogueValue = (scriptHash: string): Buffer =>
   );
 
 const trieRootHex = (trie: Trie): string =>
-  trie.hash === null || trie.hash === undefined
+  trie.hash == null
     ? EMPTY_MERKLE_TREE_ROOT
     : Buffer.from(trie.hash).toString("hex");
 
@@ -471,18 +475,8 @@ const ledgerOrderedIndex = (
   target: UTxO,
   label: string,
 ): bigint => {
-  const sorted = [...candidates].sort((left, right) =>
-    compareOutRefs(
-      { txHash: left.txHash, outputIndex: left.outputIndex },
-      { txHash: right.txHash, outputIndex: right.outputIndex },
-    ),
-  );
-  const index = sorted.findIndex(
-    (candidate) =>
-      candidate.txHash === target.txHash &&
-      candidate.outputIndex === target.outputIndex,
-  );
-  if (index < 0) {
+  const index = findOutRefIndex([...candidates].sort(compareOutRefs), target);
+  if (index === undefined) {
     throw new Error(`Missing ${label} in candidate set`);
   }
   return BigInt(index);
@@ -515,6 +509,21 @@ const firstWalletUtxo = async (
   return utxo;
 };
 
+const expectSingleUtxoWithUnit = async (
+  lucid: Awaited<ReturnType<typeof Lucid>>,
+  address: string,
+  unit: string,
+): Promise<UTxO> => {
+  const utxos = await lucid.utxosAtWithUnit(address, unit);
+  expect(utxos).toHaveLength(1);
+  return utxos[0]!;
+};
+
+const positiveNonAdaAssets = (utxo: UTxO) =>
+  Object.entries(utxo.assets).filter(
+    ([unit, amount]) => unit !== "lovelace" && amount > 0n,
+  );
+
 const SETUP_OUTPUT_INDEX = {
   stateQueueRoot: 2n,
   activeOperatorsRoot: 3n,
@@ -531,11 +540,6 @@ const SCHEDULER_APPOINTMENT_OUTPUT_INDEX = {
 
 const COMMIT_OUTPUT_INDEX = {
   activeOperatorNode: 2n,
-} as const;
-
-const REMOVE_OUTPUT_INDEX = {
-  activeOperatorsRoot: 1n,
-  scheduler: 2n,
 } as const;
 
 const h32 = (byte: string): string => byte.repeat(32);
@@ -1327,6 +1331,10 @@ describe("submit-init emulator smoke", () => {
     const proverLucid = await Lucid(emulator, "Custom");
     funderLucid.selectWallet.fromSeed(funder.seedPhrase);
     proverLucid.selectWallet.fromSeed(prover.seedPhrase);
+    const proverSigner = resolveProverSigner({
+      network,
+      walletSeedPhrase: prover.seedPhrase,
+    });
 
     await registerPhasMembershipRewardAccount(funderLucid, realBlueprint);
     const nonceUtxo = (await funderLucid.wallet().getUtxos())[0];
@@ -1430,10 +1438,7 @@ describe("submit-init emulator smoke", () => {
       blueprint: realBlueprint,
       deploymentInfo,
       network,
-      signer: resolveProverSigner({
-        network,
-        walletSeedPhrase: prover.seedPhrase,
-      }),
+      signer: proverSigner,
       fraudulentBlockOutRef,
       awaitConfirmation: true,
     });
@@ -1444,13 +1449,13 @@ describe("submit-init emulator smoke", () => {
       `${catalogue.categories.doubleSpend.categoryId}${headerHash}`,
     );
 
-    const firstStepUtxos = await proverLucid.utxosAtWithUnit(
+    const firstStepUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
       result.firstStepAddress,
       result.computationThreadUnit,
     );
-    expect(firstStepUtxos).toHaveLength(1);
     const stepDatum = Data.from(
-      firstStepUtxos[0]!.datum!,
+      firstStepUtxo.datum!,
       FraudProofComputationThreadStepDatum,
     );
     const proverPaymentCredential = getAddressDetails(
@@ -1461,23 +1466,18 @@ describe("submit-init emulator smoke", () => {
       fraud_prover: proverPaymentCredential!.hash,
       data: null,
     });
-    expect(firstStepUtxos[0]!.assets[result.computationThreadUnit]).toBe(1n);
-    expect(
-      Object.entries(firstStepUtxos[0]!.assets).filter(
-        ([unit, amount]) => unit !== "lovelace" && amount > 0n,
-      ),
-    ).toEqual([[result.computationThreadUnit, 1n]]);
+    expect(firstStepUtxo.assets[result.computationThreadUnit]).toBe(1n);
+    expect(positiveNonAdaAssets(firstStepUtxo)).toEqual([
+      [result.computationThreadUnit, 1n],
+    ]);
 
     const step01Result = await submitStep01({
       lucid: proverLucid,
       blueprint: realBlueprint,
       deploymentInfo,
       network,
-      signer: resolveProverSigner({
-        network,
-        walletSeedPhrase: prover.seedPhrase,
-      }),
-      threadOutRef: `${firstStepUtxos[0]!.txHash}#${firstStepUtxos[0]!.outputIndex.toString()}`,
+      signer: proverSigner,
+      threadOutRef: outRefLabel(firstStepUtxo),
       stateQueueBlockOutRef: fraudulentBlockOutRef,
       txInclusion: parseSubmitStep01TxInclusion(
         transactionInclusion.tx1.inclusion,
@@ -1493,13 +1493,13 @@ describe("submit-init emulator smoke", () => {
       result.computationThreadUnit,
     );
     expect(remainingFirstStepUtxos).toHaveLength(0);
-    const secondStepUtxos = await proverLucid.utxosAtWithUnit(
+    const secondStepUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
       step01Result.secondStepAddress,
       result.computationThreadUnit,
     );
-    expect(secondStepUtxos).toHaveLength(1);
     const step02Datum = Data.from(
-      secondStepUtxos[0]!.datum!,
+      secondStepUtxo.datum!,
       DoubleSpendStep02Datum,
     );
     expect(step02Datum).toEqual({
@@ -1510,18 +1510,15 @@ describe("submit-init emulator smoke", () => {
           transactionInclusion.tx1.nativeTx.body.spend_inputs_hash,
       },
     });
-    expect(secondStepUtxos[0]!.assets[result.computationThreadUnit]).toBe(1n);
+    expect(secondStepUtxo.assets[result.computationThreadUnit]).toBe(1n);
 
     const step02Result = await submitStep02({
       lucid: proverLucid,
       blueprint: realBlueprint,
       deploymentInfo,
       network,
-      signer: resolveProverSigner({
-        network,
-        walletSeedPhrase: prover.seedPhrase,
-      }),
-      threadOutRef: `${secondStepUtxos[0]!.txHash}#${secondStepUtxos[0]!.outputIndex.toString()}`,
+      signer: proverSigner,
+      threadOutRef: outRefLabel(secondStepUtxo),
       stateQueueBlockOutRef: fraudulentBlockOutRef,
       txInclusion: parseSubmitStep01TxInclusion(
         transactionInclusion.tx2.inclusion,
@@ -1546,15 +1543,12 @@ describe("submit-init emulator smoke", () => {
       result.computationThreadUnit,
     );
     expect(remainingSecondStepUtxos).toHaveLength(0);
-    const thirdStepUtxos = await proverLucid.utxosAtWithUnit(
+    const thirdStepUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
       step02Result.thirdStepAddress,
       result.computationThreadUnit,
     );
-    expect(thirdStepUtxos).toHaveLength(1);
-    const step03Datum = Data.from(
-      thirdStepUtxos[0]!.datum!,
-      DoubleSpendStep03Datum,
-    );
+    const step03Datum = Data.from(thirdStepUtxo.datum!, DoubleSpendStep03Datum);
     expect(step03Datum).toEqual({
       fraud_prover: proverPaymentCredential!.hash,
       data: {
@@ -1564,18 +1558,15 @@ describe("submit-init emulator smoke", () => {
           transactionInclusion.tx2.nativeTx.body.spend_inputs_hash,
       },
     });
-    expect(thirdStepUtxos[0]!.assets[result.computationThreadUnit]).toBe(1n);
+    expect(thirdStepUtxo.assets[result.computationThreadUnit]).toBe(1n);
 
     const step03Result = await submitStep03({
       lucid: proverLucid,
       blueprint: realBlueprint,
       deploymentInfo,
       network,
-      signer: resolveProverSigner({
-        network,
-        walletSeedPhrase: prover.seedPhrase,
-      }),
-      threadOutRef: `${thirdStepUtxos[0]!.txHash}#${thirdStepUtxos[0]!.outputIndex.toString()}`,
+      signer: proverSigner,
+      threadOutRef: outRefLabel(thirdStepUtxo),
       tx1SpendInputCbors: parseSpendInputCbors(
         transactionInclusion.tx1SpendInputCbors,
         "--tx1-inputs",
@@ -1608,13 +1599,13 @@ describe("submit-init emulator smoke", () => {
       result.computationThreadUnit,
     );
     expect(remainingThirdStepUtxos).toHaveLength(0);
-    const fourthStepUtxos = await proverLucid.utxosAtWithUnit(
+    const fourthStepUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
       step03Result.fourthStepAddress,
       result.computationThreadUnit,
     );
-    expect(fourthStepUtxos).toHaveLength(1);
     const step04Datum = Data.from(
-      fourthStepUtxos[0]!.datum!,
+      fourthStepUtxo.datum!,
       DoubleSpendStep04Datum,
     );
     expect(step04Datum).toEqual({
@@ -1627,18 +1618,15 @@ describe("submit-init emulator smoke", () => {
         ),
       },
     });
-    expect(fourthStepUtxos[0]!.assets[result.computationThreadUnit]).toBe(1n);
+    expect(fourthStepUtxo.assets[result.computationThreadUnit]).toBe(1n);
 
     const step04Result = await submitStep04({
       lucid: proverLucid,
       blueprint: realBlueprint,
       deploymentInfo,
       network,
-      signer: resolveProverSigner({
-        network,
-        walletSeedPhrase: prover.seedPhrase,
-      }),
-      threadOutRef: `${fourthStepUtxos[0]!.txHash}#${fourthStepUtxos[0]!.outputIndex.toString()}`,
+      signer: proverSigner,
+      threadOutRef: outRefLabel(fourthStepUtxo),
       tx2SpendInputCbors: parseSpendInputCbors(
         transactionInclusion.tx2SpendInputCbors,
         "--tx2-inputs",
@@ -1678,15 +1666,11 @@ describe("submit-init emulator smoke", () => {
       result.computationThreadUnit,
     );
     expect(remainingFourthStepUtxos).toHaveLength(0);
-    const fraudProofUtxos = await proverLucid.utxosAtWithUnit(
+    const fraudProofUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
       step04Result.fraudProofAddress,
       step04Result.fraudProofUnit,
     );
-    expect(fraudProofUtxos).toHaveLength(1);
-    const fraudProofUtxo = fraudProofUtxos[0];
-    if (fraudProofUtxo === undefined) {
-      throw new Error("Expected fraud-proof token UTxO after step 04");
-    }
     const fraudProofDatum = Data.from(
       fraudProofUtxo.datum!,
       FraudProofTokenDatum,
@@ -1695,11 +1679,9 @@ describe("submit-init emulator smoke", () => {
       fraud_prover: proverPaymentCredential!.hash,
     });
     expect(fraudProofUtxo.assets[step04Result.fraudProofUnit]).toBe(1n);
-    expect(
-      Object.entries(fraudProofUtxo.assets).filter(
-        ([unit, amount]) => unit !== "lovelace" && amount > 0n,
-      ),
-    ).toEqual([[step04Result.fraudProofUnit, 1n]]);
+    expect(positiveNonAdaAssets(fraudProofUtxo)).toEqual([
+      [step04Result.fraudProofUnit, 1n],
+    ]);
 
     const removeNow = BigInt(emulator.now());
     const removeResult = await submitRemoveFraudulentBlock({
@@ -1707,10 +1689,7 @@ describe("submit-init emulator smoke", () => {
       blueprint: realBlueprint,
       deploymentInfo,
       network,
-      signer: resolveProverSigner({
-        network,
-        walletSeedPhrase: prover.seedPhrase,
-      }),
+      signer: proverSigner,
       fraudulentHeaderHash: headerHash,
       awaitConfirmation: true,
       requireReferenceScripts: false,

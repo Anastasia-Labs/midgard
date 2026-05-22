@@ -1,7 +1,27 @@
+import { normalizeHex } from "@al-ft/midgard-core/hex";
+import {
+  compareOutRefs,
+  findOutRefIndex,
+  outRefLabel,
+  type OutRefLike,
+  outRefsEqual,
+  parseOutRefLabel,
+} from "@al-ft/midgard-core/out-ref";
+import {
+  buildDoubleSpendFaultProofContracts,
+  type DoubleSpendFaultProofContracts,
+  type FraudProofCatalogueCategoryDeploymentInfo,
+  MerkleRoot,
+  parseFaultProofBlueprint,
+  Proof,
+  STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
+} from "@al-ft/midgard-sdk";
 import {
   Blockfrost,
   CML,
+  credentialToAddress,
   Data,
+  getAddressDetails,
   Kupmios,
   Lucid,
   type LucidEvolution,
@@ -10,24 +30,14 @@ import {
   type PrivateKey,
   type Script,
   type UTxO,
-  credentialToAddress,
-  getAddressDetails,
   validatorToScriptHash,
   walletFromSeed,
 } from "@lucid-evolution/lucid";
-import {
-  buildDoubleSpendFaultProofContracts,
-  type DoubleSpendFaultProofContracts,
-  type FraudProofCatalogueCategoryDeploymentInfo,
-  MerkleRoot,
-  Proof,
-  STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
-  parseFaultProofBlueprint,
-} from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
+
 import {
-  parseContractDeploymentInfo,
   type ContractDeploymentInfo,
+  parseContractDeploymentInfo,
 } from "./inspect-contracts.js";
 import { aikenSerialisedPlutusDataCbor } from "./plutus-data-cbor.js";
 
@@ -63,11 +73,9 @@ export type ResolvedProverSigner = {
   readonly selectWallet: (lucid: LucidEvolution) => void;
 };
 
-export type ParsedOutRef = {
-  readonly txHash: string;
-  readonly outputIndex: number;
-};
+export type ParsedOutRef = OutRefLike;
 
+export { compareOutRefs, outRefLabel, outRefsEqual };
 export { readJsonFile } from "./json-file.js";
 
 const normalizeNonEmpty = (value: string | undefined): string | undefined => {
@@ -228,9 +236,10 @@ export const resolveProverSigner = (
     );
   }
 
-  const seedEnvName = config.walletSeedPhraseEnv ?? DEFAULT_WALLET_SEED_ENV;
-  const normalizedSeedEnvName = seedEnvName.trim();
-  if (normalizedSeedEnvName.length === 0) {
+  const normalizedSeedEnvName = normalizeNonEmpty(
+    config.walletSeedPhraseEnv ?? DEFAULT_WALLET_SEED_ENV,
+  );
+  if (normalizedSeedEnvName === undefined) {
     throw new Error("Wallet seed phrase env var name must not be empty.");
   }
   const seedFromEnv = normalizeNonEmpty(env[normalizedSeedEnvName]);
@@ -248,54 +257,21 @@ export const resolveProverSigner = (
 };
 
 export const parseOutRef = (value: string, label: string): ParsedOutRef => {
-  const parts = value.trim().toLowerCase().split("#");
-  if (parts.length !== 2) {
+  try {
+    return parseOutRefLabel(value);
+  } catch {
     throw new Error(`${label} must use the format <txHash>#<outputIndex>.`);
   }
-  const [txHash, outputIndexRaw] = parts;
-  if (txHash === undefined || !/^[0-9a-f]{64}$/.test(txHash)) {
-    throw new Error(`${label}.txHash must be a 32-byte hex string.`);
-  }
-  if (outputIndexRaw === undefined || !/^\d+$/.test(outputIndexRaw)) {
-    throw new Error(`${label}.outputIndex must be a non-negative integer.`);
-  }
-  const outputIndex = Number(outputIndexRaw);
-  if (!Number.isSafeInteger(outputIndex) || outputIndex < 0) {
-    throw new Error(`${label}.outputIndex exceeds the safe integer range.`);
-  }
-  return { txHash, outputIndex };
 };
 
-export const outRefLabel = (utxo: UTxO): string =>
-  `${utxo.txHash}#${utxo.outputIndex.toString()}`;
-
-export const parsedOutRefFromUtxo = (utxo: UTxO): ParsedOutRef => ({
-  txHash: utxo.txHash.toLowerCase(),
-  outputIndex: utxo.outputIndex,
-});
-
-export const compareOutRefs = (
-  left: ParsedOutRef,
-  right: ParsedOutRef,
-): number => {
-  const txHashOrder = Buffer.from(left.txHash, "hex").compare(
-    Buffer.from(right.txHash, "hex"),
-  );
-  if (txHashOrder !== 0) {
-    return txHashOrder;
-  }
-  return left.outputIndex - right.outputIndex;
-};
+export const compareUtxoOutRefs = compareOutRefs;
 
 export const referenceInputIndex = (
   sortedReferenceInputs: readonly UTxO[],
   target: UTxO,
 ): bigint => {
-  const index = sortedReferenceInputs.findIndex(
-    (utxo) =>
-      utxo.txHash === target.txHash && utxo.outputIndex === target.outputIndex,
-  );
-  if (index < 0) {
+  const index = findOutRefIndex(sortedReferenceInputs, target);
+  if (index === undefined) {
     throw new Error(`Reference input not found: ${outRefLabel(target)}`);
   }
   return BigInt(index);
@@ -312,7 +288,7 @@ export const requireDeploymentScriptHash = (
   return entry.scriptHash;
 };
 
-const requireMatchingDeploymentScriptHash = ({
+export const requireMatchingScriptHash = ({
   label,
   deployed,
   derived,
@@ -391,19 +367,19 @@ export const resolveDoubleSpendDeploymentContracts = async ({
       fraudProofCataloguePolicyId,
     }),
   );
-  requireMatchingDeploymentScriptHash({
+  requireMatchingScriptHash({
     label: "fraudProofMint policy",
     deployed: deployedFraudProofPolicyId,
     derived: contracts.fraudProof.policyId,
   });
   if (deployedFraudProofSpendHash !== undefined) {
-    requireMatchingDeploymentScriptHash({
+    requireMatchingScriptHash({
       label: "fraudProofSpend script",
       deployed: deployedFraudProofSpendHash,
       derived: contracts.fraudProof.spendingScriptHash,
     });
   }
-  requireMatchingDeploymentScriptHash({
+  requireMatchingScriptHash({
     label: "fraudProofDoubleSpend step-01 script",
     deployed: deployedDoubleSpendHash,
     derived: contracts.doubleSpend.firstStep.spendingScriptHash,
@@ -455,7 +431,7 @@ export const fetchUtxoByOutRef = async ({
   const utxos = await lucid.utxosByOutRef(outRefs);
   if (utxos.length !== 1) {
     throw new Error(
-      `Expected exactly one ${label} at ${outRef.txHash}#${outRef.outputIndex.toString()}, found ${utxos.length.toString()}.`,
+      `Expected exactly one ${label} at ${outRefLabel(outRef)}, found ${utxos.length.toString()}.`,
     );
   }
   return utxos[0]!;
@@ -485,12 +461,16 @@ export const resolveFraudulentHeaderHash = ({
     );
   }
   const derived = candidates[0]!;
-  if (
-    configuredHeaderHash !== undefined &&
-    configuredHeaderHash.toLowerCase() !== derived
-  ) {
+  const configured =
+    configuredHeaderHash === undefined
+      ? undefined
+      : normalizeHex(configuredHeaderHash, {
+          fieldName: "--fraudulent-header-hash",
+          byteLength: 28,
+        });
+  if (configured !== undefined && configured !== derived) {
     throw new Error(
-      `--fraudulent-header-hash mismatch: provided=${configuredHeaderHash}, derived=${derived}.`,
+      `--fraudulent-header-hash mismatch: provided=${configured}, derived=${derived}.`,
     );
   }
   return derived;

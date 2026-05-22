@@ -1,26 +1,27 @@
-import { blake2b } from "@noble/hashes/blake2.js";
-import { CML } from "@lucid-evolution/lucid";
 import {
   computeHash32,
   computeMidgardNativeTxId,
-  decodeMidgardNativeTxFull,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeSingleCbor,
   encodeMidgardNativeTxBodyCompact,
   encodeMidgardNativeTxCompact,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
+import { CML } from "@lucid-evolution/lucid";
+import { blake2b } from "@noble/hashes/blake2.js";
+
 import {
   decodeMidgardUtxo,
   encodeMidgardTxOutput,
   LucidMidgard,
-  outRefToCbor,
-  walletFromPrivateKey,
-  walletFromSeedPhrase,
-  type MidgardWallet,
   type MidgardProvider,
   type MidgardUtxo,
+  type MidgardWallet,
   type OutRef,
+  outRefToCbor,
   type Redeemer,
+  walletFromPrivateKey,
+  walletFromSeedPhrase,
 } from "../../src/index.js";
 
 export const HIGH_CARDINALITY_FIXTURE_NAME =
@@ -38,8 +39,7 @@ export const HIGH_CARDINALITY_COUNTS = {
   totalRedeemers: 13,
 } as const;
 
-export const SIZE_BALANCED_FIXTURE_NAME =
-  "size-balanced-15_5k-v1" as const;
+export const SIZE_BALANCED_FIXTURE_NAME = "size-balanced-15_5k-v1" as const;
 
 export const SIZE_BALANCED_TARGET_FULL_TX_CBOR_BYTES = 15_872;
 export const SIZE_BALANCED_FULL_TX_CBOR_TOLERANCE_BYTES = 256;
@@ -133,7 +133,8 @@ export type SizeBalancedNativeTxFixture = {
   readonly hashes: HighCardinalityNativeTxFixture["hashes"];
 };
 
-const seedPhrase = "test test test test test test test test test test test junk";
+const seedPhrase =
+  "test test test test test test test test test test test junk";
 const baseScriptBytes = Buffer.from("4e4d01000033222220051200120011", "hex");
 
 const fakeProvider: MidgardProvider = {
@@ -202,10 +203,9 @@ const paddedScriptBytes = (
   }
   return Buffer.concat([
     prefix,
-    blake2b(
-      Buffer.from(`${domain}:${index.toString(10)}:padding`, "utf8"),
-      { dkLen: totalBytes - prefix.length },
-    ),
+    blake2b(Buffer.from(`${domain}:${index.toString(10)}:padding`, "utf8"), {
+      dkLen: totalBytes - prefix.length,
+    }),
   ]);
 };
 
@@ -247,7 +247,10 @@ const asArray = (value: unknown, label: string): readonly unknown[] => {
   return value;
 };
 
-const asMap = (value: unknown, label: string): ReadonlyMap<unknown, unknown> => {
+const asMap = (
+  value: unknown,
+  label: string,
+): ReadonlyMap<unknown, unknown> => {
   if (!(value instanceof Map)) {
     throw new Error(`${label} must decode to a map`);
   }
@@ -290,7 +293,7 @@ const walletFromDeterministicPrivateKey = (
 };
 
 const fixtureSizes = (
-  tx: ReturnType<typeof decodeMidgardNativeTxFull>,
+  tx: ReturnType<typeof decodeMidgardNativeTxFullFromCanonicalCbor>,
   compactTxCbor: Uint8Array,
   compactBodyCbor: Uint8Array,
   fullTxCbor: Uint8Array,
@@ -424,8 +427,8 @@ export const buildHighCardinalityNativeTxFixture =
     for (const value of mintedOutputs) {
       builder = builder.pay.ToAddress(walletAddress, value);
     }
-    builder = builder
-      .pay.ToAddress(
+    builder = builder.pay
+      .ToAddress(
         walletAddress,
         { lovelace: 4_000_000n },
         {
@@ -462,7 +465,7 @@ export const buildHighCardinalityNativeTxFixture =
 
     const completed = await builder.complete();
     const signed = await completed.sign(wallet);
-    const tx = decodeMidgardNativeTxFull(signed.txCbor);
+    const tx = decodeMidgardNativeTxFullFromCanonicalCbor(signed.txCbor);
     const compactTxCbor = encodeMidgardNativeTxCompact(tx.compact);
     const compactBodyCbor = encodeMidgardNativeTxBodyCompact(
       tx.compact.transactionBody,
@@ -481,7 +484,9 @@ export const buildHighCardinalityNativeTxFixture =
       "outputs",
     );
     const mint = asMap(decodeSingleCbor(tx.body.mintPreimageCbor), "mint");
-    const redeemers = redeemerPointers(tx.witnessSet.redeemerTxWitsPreimageCbor);
+    const redeemers = redeemerPointers(
+      tx.witnessSet.redeemerTxWitsPreimageCbor,
+    );
 
     if (
       spendInputs.length !== HIGH_CARDINALITY_COUNTS.spendInputs ||
@@ -619,27 +624,21 @@ export const buildSizeBalancedNativeTxFixture =
       SIZE_BALANCED_COUNTS.spendInputs - SIZE_BALANCED_COUNTS.spendRedeemers;
     const inputLovelace = 20_000_000n;
     const pubKeyInputs = Array.from({ length: pubKeyInputCount }, (_, index) =>
-      makeUtxo(
-        makeOutRef(0x01 + index),
-        primaryAddress,
-        { lovelace: inputLovelace },
-      ),
+      makeUtxo(makeOutRef(0x01 + index), primaryAddress, {
+        lovelace: inputLovelace,
+      }),
     );
     const scriptInputs = spendScripts.map((script, index) =>
-      makeUtxo(
-        makeOutRef(0x70 + index),
-        scriptAddress(script.hash),
-        { lovelace: inputLovelace },
-      ),
+      makeUtxo(makeOutRef(0x70 + index), scriptAddress(script.hash), {
+        lovelace: inputLovelace,
+      }),
     );
     const referenceInputUtxos = Array.from(
       { length: SIZE_BALANCED_COUNTS.referenceInputs },
       (_, index) =>
-        makeUtxo(
-          makeOutRef(0xa0 + index),
-          primaryAddress,
-          { lovelace: 2_000_000n },
-        ),
+        makeUtxo(makeOutRef(0xa0 + index), primaryAddress, {
+          lovelace: 2_000_000n,
+        }),
     );
 
     builder = builder.collectFrom(pubKeyInputs);
@@ -742,10 +741,12 @@ export const buildSizeBalancedNativeTxFixture =
       phaseAReport.rejected.length > 0 ||
       !phaseAReport.acceptedTxIds.includes(signed.txIdHex)
     ) {
-      throw new Error("Size-balanced native tx fixture failed Phase A validation");
+      throw new Error(
+        "Size-balanced native tx fixture failed Phase A validation",
+      );
     }
 
-    const tx = decodeMidgardNativeTxFull(signed.txCbor);
+    const tx = decodeMidgardNativeTxFullFromCanonicalCbor(signed.txCbor);
     const compactTxCbor = encodeMidgardNativeTxCompact(tx.compact);
     const compactBodyCbor = encodeMidgardNativeTxBodyCompact(
       tx.compact.transactionBody,
@@ -780,7 +781,9 @@ export const buildSizeBalancedNativeTxFixture =
       decodeSingleCbor(tx.witnessSet.scriptTxWitsPreimageCbor),
       "script witnesses",
     );
-    const redeemers = redeemerPointers(tx.witnessSet.redeemerTxWitsPreimageCbor);
+    const redeemers = redeemerPointers(
+      tx.witnessSet.redeemerTxWitsPreimageCbor,
+    );
 
     const expectedLengths = {
       spendInputs: SIZE_BALANCED_COUNTS.spendInputs,
@@ -812,7 +815,12 @@ export const buildSizeBalancedNativeTxFixture =
       );
     }
 
-    const sizes = fixtureSizes(tx, compactTxCbor, compactBodyCbor, signed.txCbor);
+    const sizes = fixtureSizes(
+      tx,
+      compactTxCbor,
+      compactBodyCbor,
+      signed.txCbor,
+    );
     const lowerBound =
       SIZE_BALANCED_TARGET_FULL_TX_CBOR_BYTES -
       SIZE_BALANCED_FULL_TX_CBOR_TOLERANCE_BYTES;

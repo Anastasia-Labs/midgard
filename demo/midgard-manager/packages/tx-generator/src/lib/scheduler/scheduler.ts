@@ -3,14 +3,10 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import {
-  CML,
-  UTxO,
-  walletFromSeed,
-} from '@lucid-evolution/lucid';
+import { CML, UTxO, walletFromSeed } from '@lucid-evolution/lucid';
 import pLimit from 'p-limit';
 
-import { parseUnknownKeytoBech32PrivateKey } from '../../utils/common.js';
+import { formatError, parseUnknownKeytoBech32PrivateKey } from '../../utils/common.js';
 import { MidgardNodeClient } from '../client/node-client.js';
 import {
   generateMultiOutputTransactions,
@@ -34,7 +30,7 @@ const __dirname = dirname(__filename);
  * Singleton state container for the long-running transaction generator.
  */
 class TxGeneratorState {
-  private static instance: TxGeneratorState;
+  private static readonly instance = new TxGeneratorState();
 
   private _shouldStop = false;
   private _currentPromise: Promise<void> | null = null;
@@ -51,9 +47,6 @@ class TxGeneratorState {
    * Returns the shared generator-state instance.
    */
   static getInstance(): TxGeneratorState {
-    if (!TxGeneratorState.instance) {
-      TxGeneratorState.instance = new TxGeneratorState();
-    }
     return TxGeneratorState.instance;
   }
 
@@ -157,14 +150,13 @@ export const startGenerator = async (
 
   // Create a limiter for concurrent transaction generation
   const concurrencyLimiter = pLimit(fullConfig.concurrency);
-
   // Reset stats
   state.resetStats();
 
+  // Create output directory if needed
   const projectRoot = join(__dirname, '../../../..');
   const outputPath = fullConfig.outputDir ? join(projectRoot, fullConfig.outputDir) : undefined;
 
-  // Create output directory if needed
   if (outputPath) {
     await mkdir(outputPath, { recursive: true });
   }
@@ -198,7 +190,7 @@ export const startGenerator = async (
    * Resolves the wallet address that should own the generated transactions.
    */
   const resolveWalletAddress = async (): Promise<string> => {
-    if (fullConfig.initialUTxO?.address && fullConfig.initialUTxO.address.length > 0) {
+    if (fullConfig.initialUTxO.address.length > 0) {
       return fullConfig.initialUTxO.address;
     }
 
@@ -210,7 +202,9 @@ export const startGenerator = async (
     const networkId = fullConfig.network === 'Mainnet' ? 1 : 0;
     return CML.EnterpriseAddress.new(
       networkId,
-      CML.Credential.new_pub_key(CML.PrivateKey.from_bech32(canonicalWalletPrivateKey).to_public().hash())
+      CML.Credential.new_pub_key(
+        CML.PrivateKey.from_bech32(canonicalWalletPrivateKey).to_public().hash()
+      )
     )
       .to_address()
       .to_bech32();
@@ -297,52 +291,45 @@ export const startGenerator = async (
                 nodeClient,
               });
 
-          if (!txs || !Array.isArray(txs)) {
-            throw new Error('Failed to generate transactions');
-          }
-
           const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
 
-          if (!nodeAvailable && fullConfig.outputDir) {
+          if (!nodeAvailable) {
             await writeGeneratedTransactions(txs, useOneToOne, timestamp, 'Node unavailable');
             state.stats.transactionsGenerated += txs.length;
-          } else {
-            try {
-              const submissionStart = Date.now();
-              let submittedCount = 0;
-              for (const tx of txs) {
-                const result = (await nodeClient.submitTransaction(tx.cborHex)) as {
-                  status?: string;
-                  error?: string;
-                };
+            return txs;
+          }
 
-                // Handle node unavailability gracefully
-                if (result && result.status === 'NODE_UNAVAILABLE') {
-                  await writeGeneratedTransactions(txs, useOneToOne, timestamp, 'Node unavailable');
-                  state.stats.transactionsGenerated += txs.length;
-                  break; // Exit the loop since node is unavailable
-                }
-                if (result && result.status === 'ERROR') {
-                  throw new Error(result.error ?? 'submit failed');
-                }
-                submittedCount++;
+          try {
+            const submissionStart = Date.now();
+            let submittedCount = 0;
+            for (const tx of txs) {
+              const result = (await nodeClient.submitTransaction(tx.cborHex)) as {
+                status?: string;
+                error?: string;
+              };
+
+              if (result && result.status === 'NODE_UNAVAILABLE') {
+                await writeGeneratedTransactions(txs, useOneToOne, timestamp, 'Node unavailable');
+                state.stats.transactionsGenerated += txs.length;
+                return txs;
               }
-              const submissionEnd = Date.now();
-
-              state.stats.transactionsGenerated += txs.length;
-              state.stats.transactionsSubmitted += submittedCount;
-              console.log(
-                `Submitted ${submittedCount}/${txs.length} transactions in ${submissionEnd - submissionStart}ms`
-              );
-            } catch (submitError) {
-              console.error('Failed to submit transactions:', submitError);
-
-              if (fullConfig.outputDir) {
-                await writeGeneratedTransactions(txs, useOneToOne, timestamp, 'Failed submission');
+              if (result && result.status === 'ERROR') {
+                throw new Error(result.error ?? 'submit failed');
               }
-
-              state.stats.transactionsGenerated += txs.length;
+              submittedCount++;
             }
+            const submissionEnd = Date.now();
+
+            state.stats.transactionsGenerated += txs.length;
+            state.stats.transactionsSubmitted += submittedCount;
+            console.log(
+              `Submitted ${submittedCount}/${txs.length} transactions in ${submissionEnd - submissionStart}ms`
+            );
+          } catch (submitError) {
+            console.error('Failed to submit transactions:', submitError);
+
+            await writeGeneratedTransactions(txs, useOneToOne, timestamp, 'Failed submission');
+            state.stats.transactionsGenerated += txs.length;
           }
 
           return txs;
@@ -351,7 +338,7 @@ export const startGenerator = async (
 
       await Promise.all(tasks);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = formatError(error);
       state.stats.lastError = errorMessage;
       console.error('Error in transaction generation loop:', errorMessage);
       throw error;
@@ -387,7 +374,7 @@ export const startGenerator = async (
 
   // Start the generator
   state.currentPromise = runGenerator().catch((error) => {
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorMessage = formatError(error);
     state.stats.lastError = errorMessage;
     console.error('Generator failed:', errorMessage);
     state.currentPromise = null;

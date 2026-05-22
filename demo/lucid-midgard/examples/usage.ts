@@ -1,26 +1,27 @@
 import {
   computeMidgardNativeTxId,
-  decodeMidgardNativeTxFull,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
 import { CML } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { Effect } from "effect";
+
 import {
+  type Address,
   decodeMidgardUtxo,
   encodeMidgardTxOutput,
-  type LucidMidgardError,
   LucidMidgard,
+  type LucidMidgardError,
   makeVKeyWitness,
-  outRefToCbor,
-  walletFromExternalSigner,
-  type Address,
   type MidgardProvider,
   type MidgardUtxo,
   type OutRef,
+  outRefToCbor,
   type Redeemer,
   type SubmitTxResult,
   type TxStatus,
+  walletFromExternalSigner,
 } from "../src/index.js";
 
 const makeOutRef = (byte: number, outputIndex = 0): OutRef => ({
@@ -72,7 +73,8 @@ const memoryProvider = (
   getUtxoByOutRef: async (outRef) =>
     utxos.find(
       (utxo) =>
-        utxo.txHash === outRef.txHash && utxo.outputIndex === outRef.outputIndex,
+        utxo.txHash === outRef.txHash &&
+        utxo.outputIndex === outRef.outputIndex,
     ),
   getProtocolInfo: async () => ({
     apiVersion: 1,
@@ -101,7 +103,9 @@ const memoryProvider = (
   }),
   getCurrentSlot: async () => 0n,
   submitTx: async (txCborHex): Promise<SubmitTxResult> => {
-    const tx = decodeMidgardNativeTxFull(Buffer.from(txCborHex, "hex"));
+    const tx = decodeMidgardNativeTxFullFromCanonicalCbor(
+      Buffer.from(txCborHex, "hex"),
+    );
     return {
       txId: computeMidgardNativeTxId(tx).toString("hex"),
       status: "queued",
@@ -165,8 +169,10 @@ export const providerConvenienceAndStatusStates = async (): Promise<
     { kind: "committed", txId },
   ];
   const midgard = await LucidMidgard.new(
-    memoryProvider([], (requestedTxId) =>
-      statuses.shift() ?? { kind: "committed", txId: requestedTxId },
+    memoryProvider(
+      [],
+      (requestedTxId) =>
+        statuses.shift() ?? { kind: "committed", txId: requestedTxId },
     ),
     { network: "Preview", networkId: 0 },
   );

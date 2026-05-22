@@ -1,12 +1,13 @@
 import "./utils.js";
 
-import { describe, expect, it } from "vitest";
-import { Effect } from "effect";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+import { describe, expect, it } from "vitest";
+
 import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
 import {
-  REFERENCE_SCRIPT_COMMAND_NAMES,
   nodeRuntimeReferenceScriptTargets,
+  REFERENCE_SCRIPT_COMMAND_NAMES,
   referenceScriptTargetsByCommand,
   verifyNodeRuntimeReferenceScriptsProgram,
 } from "@/transactions/reference-scripts.js";

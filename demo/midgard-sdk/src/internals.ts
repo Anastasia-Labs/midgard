@@ -1,4 +1,3 @@
-import { Effect } from "effect";
 import {
   Address,
   Assets as LucidAssets,
@@ -8,6 +7,8 @@ import {
   PolicyId,
   UTxO,
 } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+
 import {
   AssetError,
   DataCoercionError,
@@ -19,8 +20,7 @@ const getSingleAssetApartFromAda = (
   assets: LucidAssets,
 ): Effect.Effect<[PolicyId, string, bigint], AssetError> =>
   Effect.gen(function* () {
-    const flattenedAssets: [string, bigint][] = Object.entries(assets);
-    const woLovelace: [string, bigint][] = flattenedAssets.filter(
+    const woLovelace = Object.entries(assets).filter(
       ([unit, _qty]) => !(unit === "" || unit === "lovelace"),
     );
     if (woLovelace.length === 1) {
@@ -94,7 +94,7 @@ export const getDatumFromUTxO = <TDatum>(
       );
     }
 
-    const datum: TDatum = yield* Effect.try({
+    return yield* Effect.try({
       try: () => Data.from(datumCBOR, schema),
       catch: (e) =>
         new DataCoercionError({
@@ -102,8 +102,6 @@ export const getDatumFromUTxO = <TDatum>(
           cause: e,
         }),
     });
-
-    return datum;
   });
 
 type AuthenticUTxOBase<TDatum> = {
@@ -191,21 +189,10 @@ export const authenticateUTxOs: {
   schema: any,
   extraFields?: (datum: TDatum) => TExtra,
 ) => {
-  if (extraFields === undefined) {
-    const effects: Effect.Effect<
-      AuthenticUTxO<TDatum>,
-      DataCoercionError | UnauthenticUtxoError
-    >[] = utxos.map((utxo) =>
-      authenticateUTxO<TDatum>(utxo, nftPolicy, schema),
-    );
-    return Effect.allSuccesses(effects);
-  }
-
-  const effects: Effect.Effect<
-    AuthenticUTxO<TDatum, TExtra>,
-    DataCoercionError | UnauthenticUtxoError
-  >[] = utxos.map((utxo) =>
-    authenticateUTxO<TDatum, TExtra>(utxo, nftPolicy, schema, extraFields),
+  const effects = utxos.map((utxo) =>
+    extraFields === undefined
+      ? authenticateUTxO<TDatum>(utxo, nftPolicy, schema)
+      : authenticateUTxO<TDatum, TExtra>(utxo, nftPolicy, schema, extraFields),
   );
   return Effect.allSuccesses(effects);
 };

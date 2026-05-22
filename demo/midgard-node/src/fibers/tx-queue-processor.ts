@@ -1,18 +1,18 @@
-import { Duration, Effect, Metric, Queue, Ref, Schedule } from "effect";
-import { MempoolLedgerDB, TxAdmissionsDB } from "@/database/index.js";
-import { SqlClient } from "@effect/sql/SqlClient";
-import { DatabaseError } from "@/database/utils/common.js";
-import { Globals, Lucid, NodeConfig } from "@/services/index.js";
 import {
+  applyUTxOStatePatch,
   QueuedTx,
   QueuedTxPayload,
   RejectCode,
-  RejectCodes,
   RejectedTx,
-  applyUTxOStatePatch,
   runPhaseAValidation,
   runPhaseBValidationWithPatch,
 } from "@al-ft/midgard-validation";
+import { SqlClient } from "@effect/sql/SqlClient";
+import { Duration, Effect, Metric, Queue, Ref, Schedule } from "effect";
+
+import { MempoolLedgerDB, TxAdmissionsDB } from "@/database/index.js";
+import { DatabaseError } from "@/database/utils/common.js";
+import { Globals, Lucid, NodeConfig } from "@/services/index.js";
 
 /**
  * Background validation loop for queued L2 transactions.
@@ -143,7 +143,7 @@ const summarizeRejections = (rejected: readonly RejectedTx[]): string => {
  */
 const isPlutusEvaluationInfrastructureFailure = (cause: unknown): boolean => {
   const message = String(cause);
-  const infrastructurePatterns = [
+  return [
     /configured lucid provider does not support evaluatetx/i,
     /\bfetch failed\b/i,
     /\bnetworkerror\b/i,
@@ -157,8 +157,7 @@ const isPlutusEvaluationInfrastructureFailure = (cause: unknown): boolean => {
     /\brate limit/i,
     /\bservice unavailable\b/i,
     /\btemporar(?:y|ily)\b/i,
-  ];
-  return infrastructurePatterns.some((pattern) => pattern.test(message));
+  ].some((pattern) => pattern.test(message));
 };
 
 /**
@@ -194,23 +193,6 @@ export const classifyPlutusEvaluationFailure = (
       .join(",");
   }
 
-  const scriptFailurePatterns = [
-    /\bscriptwitnessnotvalidatingutxow\b/i,
-    /\bmissingscriptwitnessesutxow\b/i,
-    /\bextraneousscriptwitnessesutxow\b/i,
-    /\bnonoutputsupplimentarydatums\b/i,
-    /\bppviewhashesdontmatch\b/i,
-    /\bmalformedscriptwitnesses\b/i,
-    /\bvalidationtagmismatch\b/i,
-    /\bphase-2 script execution failed\b/i,
-    /\bthe provided plutus code called\b/i,
-    /\bthe machine terminated because of an error\b/i,
-    /\bcekerror\b/i,
-  ];
-  if (scriptFailurePatterns.some((pattern) => pattern.test(message))) {
-    return message;
-  }
-
   return message;
 };
 
@@ -228,28 +210,12 @@ export const repeatScheduledWithCauseLogging = <R>(
  * Normalizes one queued payload into either a validated queue entry or an
  * immediate rejection describing malformed binary fields.
  */
-const admissionToQueuedTx = (
-  admission: TxAdmissionsDB.Entry,
-): QueuedTx | RejectedTx => {
-  if (
-    !Buffer.isBuffer(admission.tx_id) ||
-    !Buffer.isBuffer(admission.tx_envelope_cbor)
-  ) {
-    return {
-      txId: Buffer.alloc(32, 0),
-      code: RejectCodes.CborDeserialization,
-      detail: "Durable admission row missing binary tx fields",
-    };
-  }
-
-  const queuedTx: QueuedTx = {
-    txId: admission.tx_id,
-    txCbor: admission.tx_envelope_cbor,
-    arrivalSeq: admission.arrival_seq,
-    createdAt: admission.first_seen_at,
-  };
-  return queuedTx;
-};
+const admissionToQueuedTx = (admission: TxAdmissionsDB.Entry): QueuedTx => ({
+  txId: admission.tx_id,
+  txCbor: admission.tx_canonical_cbor,
+  arrivalSeq: admission.arrival_seq,
+  createdAt: admission.first_seen_at,
+});
 
 /**
  * Loads and caches the current mempool-ledger pre-state until the version ref
@@ -295,11 +261,7 @@ const selectValidationBatchSize = (
   configuredBatchSize: number,
   queueDepth: number,
 ): number => {
-  const maxBatchSize = clamp(
-    configuredBatchSize,
-    1,
-    Math.max(1, VALIDATION_BATCH_HARD_CAP),
-  );
+  const maxBatchSize = clamp(configuredBatchSize, 1, VALIDATION_BATCH_HARD_CAP);
   const minBatchSize = Math.min(maxBatchSize, VALIDATION_MIN_BATCH);
   if (queueDepth <= 0) {
     return maxBatchSize;
@@ -357,7 +319,6 @@ const txQueueProcessorAction = (
     const { api: lucid } = yield* Lucid;
     yield* Ref.set(globals.HEARTBEAT_TX_QUEUE_PROCESSOR, Date.now());
     const nodeConfig = yield* NodeConfig;
-    const configuredBatchSize = Math.max(1, nodeConfig.VALIDATION_BATCH_SIZE);
     const localFinalizationPending = yield* Ref.get(
       globals.LOCAL_FINALIZATION_PENDING,
     );
@@ -392,18 +353,9 @@ const txQueueProcessorAction = (
       Effect.succeed(Math.max(0, oldestAgeMillis)),
     );
     const batchSize = selectValidationBatchSize(
-      configuredBatchSize,
+      nodeConfig.VALIDATION_BATCH_SIZE,
       totalQueueDepth,
     );
-    const shouldRunBatch = totalQueueDepth > 0;
-
-    if (!shouldRunBatch) {
-      yield* validationBatchSizeGauge(Effect.succeed(durableBacklog));
-      yield* validationWorkerUtilizationGauge(
-        Effect.succeed(totalQueueDepth / batchSize),
-      );
-      return;
-    }
 
     const leaseOwner = `tx-queue-processor:${process.pid}:${Date.now()}`;
     const admittedRows = yield* TxAdmissionsDB.claimBatch({
@@ -426,16 +378,7 @@ const txQueueProcessorAction = (
 
     try {
       const batchStart = Date.now();
-      const queuedTxs: QueuedTx[] = [];
-      const decodeRejected: RejectedTx[] = [];
-      for (const admission of admittedRows) {
-        const decoded = admissionToQueuedTx(admission);
-        if ("arrivalSeq" in decoded) {
-          queuedTxs.push(decoded);
-        } else {
-          decodeRejected.push(decoded);
-        }
-      }
+      const queuedTxs = admittedRows.map(admissionToQueuedTx);
 
       const phaseAStart = Date.now();
       const phaseAConcurrency = selectPhaseAConcurrency(
@@ -477,11 +420,7 @@ const txQueueProcessorAction = (
         Effect.succeed(Duration.millis(Date.now() - phaseBStart)),
       );
 
-      const allRejected = [
-        ...decodeRejected,
-        ...phaseA.rejected,
-        ...phaseB.rejected,
-      ];
+      const allRejected = [...phaseA.rejected, ...phaseB.rejected];
 
       if (allRejected.length > 0) {
         const rejectionInsertStart = Date.now();

@@ -1,4 +1,5 @@
 import { Data } from "@lucid-evolution/lucid";
+
 import { ProofSchema, ScriptHashSchema } from "@/common.js";
 
 export const FraudProofComputationThreadStepDatumSchema = Data.Object({

@@ -1,3 +1,5 @@
+import { Effect, Schedule } from "effect";
+
 import {
   AddressHistoryDB,
   DepositsDB,
@@ -10,7 +12,6 @@ import {
 } from "@/database/retention-policy.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { Database, NodeConfig } from "@/services/index.js";
-import { Effect, pipe, Schedule } from "effect";
 
 /**
  * Periodic pruning for retention-controlled database tables.
@@ -34,16 +35,15 @@ export const retentionSweepAction: Effect.Effect<
     prunedAddressHistory,
     prunedDeposits,
     prunedWithdrawals,
-  ] =
-    yield* Effect.all(
-      [
-        TxRejectionsDB.pruneOlderThan(cutoff),
-        AddressHistoryDB.pruneOlderThan(cutoff),
-        DepositsDB.pruneOlderThan(cutoff),
-        WithdrawalsDB.pruneOlderThan(cutoff),
-      ],
-      { concurrency: "unbounded" },
-    );
+  ] = yield* Effect.all(
+    [
+      TxRejectionsDB.pruneOlderThan(cutoff),
+      AddressHistoryDB.pruneOlderThan(cutoff),
+      DepositsDB.pruneOlderThan(cutoff),
+      WithdrawalsDB.pruneOlderThan(cutoff),
+    ],
+    { concurrency: "unbounded" },
+  );
 
   yield* Effect.logInfo(
     `🧹 Retention sweep done (cutoff=${cutoff.toISOString()}): tx_rejections=${prunedTxRejections}, address_history=${prunedAddressHistory}, deposits_utxos=${prunedDeposits}, withdrawal_utxos=${prunedWithdrawals}`,
@@ -56,15 +56,13 @@ export const retentionSweepAction: Effect.Effect<
 export const retentionSweeperFiber = (
   schedule: Schedule.Schedule<number>,
 ): Effect.Effect<void, never, Database | NodeConfig> =>
-  pipe(
-    Effect.gen(function* () {
-      yield* Effect.logInfo("🧹 Retention sweeper fiber started.");
-      yield* Effect.repeat(
-        retentionSweepAction.pipe(
-          Effect.withSpan("retention-sweeper-fiber"),
-          Effect.catchAllCause(Effect.logWarning),
-        ),
-        schedule,
-      );
-    }),
-  );
+  Effect.gen(function* () {
+    yield* Effect.logInfo("🧹 Retention sweeper fiber started.");
+    yield* Effect.repeat(
+      retentionSweepAction.pipe(
+        Effect.withSpan("retention-sweeper-fiber"),
+        Effect.catchAllCause(Effect.logWarning),
+      ),
+      schedule,
+    );
+  });

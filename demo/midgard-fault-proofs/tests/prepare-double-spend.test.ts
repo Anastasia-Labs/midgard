@@ -1,24 +1,26 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { describe, expect, it } from "vitest";
-import { CML } from "@lucid-evolution/lucid";
+import { join } from "node:path";
+
 import {
-  MIDGARD_NATIVE_TX_VERSION,
-  MIDGARD_POSIX_TIME_NONE,
   computeHash32,
   computeMidgardNativeTxId,
   encodeCbor,
-  encodeMidgardNativeTxFull,
+  encodeMidgardNativeTxCanonical,
   materializeMidgardNativeTxFromCanonical,
+  MIDGARD_NATIVE_TX_VERSION,
+  MIDGARD_POSIX_TIME_NONE,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
+import { CML } from "@lucid-evolution/lucid";
+import { describe, expect, it } from "vitest";
+
 import {
   fetchNodeBlockTransactions,
-  prepareDoubleSpendFromFile,
-  prepareSampleDoubleSpend,
-  prepareDoubleSpendFromTransactions,
   type NodeTransactionPayload,
+  prepareDoubleSpendFromFile,
+  prepareDoubleSpendFromTransactions,
+  prepareSampleDoubleSpend,
 } from "../src/index.js";
 
 const h28 = (byte: string): string => byte.repeat(28);
@@ -68,22 +70,33 @@ const makeNativeTx = (
 
 const payloadFromTx = (tx: MidgardNativeTxFull): NodeTransactionPayload => ({
   nodeTxId: computeMidgardNativeTxId(tx).toString("hex"),
-  txCbor: encodeMidgardNativeTxFull(tx).toString("hex"),
+  txCbor: encodeMidgardNativeTxCanonical(tx).toString("hex"),
 });
+
+const payloadFromInputs = (
+  inputs: readonly Buffer[],
+  fee: bigint,
+): NodeTransactionPayload => payloadFromTx(makeNativeTx(inputs, fee));
+
+const withTempDir = async <A>(run: (dir: string) => Promise<A>): Promise<A> => {
+  const dir = await mkdtemp(join(tmpdir(), "midgard-fault-proof-"));
+  try {
+    return await run(dir);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+};
 
 describe("prepare-double-spend", () => {
   it("loads a block's native txs and prepares submit-step material", async () => {
     const sharedInput = inputCbor(h32("11"), 7n);
-    const tx1 = makeNativeTx([sharedInput, inputCbor(h32("22"), 0n)], 1n);
-    const tx2 = makeNativeTx([inputCbor(h32("33"), 0n), sharedInput], 2n);
-    const tx3 = makeNativeTx([inputCbor(h32("44"), 0n)], 3n);
 
     const output = await prepareDoubleSpendFromTransactions({
       headerHash: h28("aa"),
       transactions: [
-        payloadFromTx(tx1),
-        payloadFromTx(tx2),
-        payloadFromTx(tx3),
+        payloadFromInputs([sharedInput, inputCbor(h32("22"), 0n)], 1n),
+        payloadFromInputs([inputCbor(h32("33"), 0n), sharedInput], 2n),
+        payloadFromInputs([inputCbor(h32("44"), 0n)], 3n),
       ],
     });
 
@@ -115,9 +128,10 @@ describe("prepare-double-spend", () => {
 
   it("honors explicit tx pair selection", async () => {
     const sharedInput = inputCbor(h32("55"), 1n);
-    const tx1Payload = payloadFromTx(makeNativeTx([sharedInput], 1n));
-    const tx2Payload = payloadFromTx(
-      makeNativeTx([inputCbor(h32("66"), 0n), sharedInput], 2n),
+    const tx1Payload = payloadFromInputs([sharedInput], 1n);
+    const tx2Payload = payloadFromInputs(
+      [inputCbor(h32("66"), 0n), sharedInput],
+      2n,
     );
 
     const output = await prepareDoubleSpendFromTransactions({
@@ -137,20 +151,16 @@ describe("prepare-double-spend", () => {
       prepareDoubleSpendFromTransactions({
         headerHash: h28("cc"),
         transactions: [
-          payloadFromTx(makeNativeTx([inputCbor(h32("77"), 0n)], 1n)),
-          payloadFromTx(makeNativeTx([inputCbor(h32("88"), 0n)], 2n)),
+          payloadFromInputs([inputCbor(h32("77"), 0n)], 1n),
+          payloadFromInputs([inputCbor(h32("88"), 0n)], 2n),
         ],
       }),
     ).rejects.toThrow("No double spend found");
   });
 
   it("fetches node block and transaction payloads through public node endpoints", async () => {
-    const tx1Payload = payloadFromTx(
-      makeNativeTx([inputCbor(h32("99"), 0n)], 1n),
-    );
-    const tx2Payload = payloadFromTx(
-      makeNativeTx([inputCbor(h32("aa"), 0n)], 2n),
-    );
+    const tx1Payload = payloadFromInputs([inputCbor(h32("99"), 0n)], 1n);
+    const tx2Payload = payloadFromInputs([inputCbor(h32("aa"), 0n)], 2n);
     const fetchImpl = async (input: string | URL): Promise<Response> => {
       const url = new URL(String(input));
       if (url.pathname === "/block") {
@@ -186,12 +196,12 @@ describe("prepare-double-spend", () => {
   });
 
   it("prepares submit-step material from an explicit transactions file", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "midgard-fault-proof-"));
-    try {
+    await withTempDir(async (dir) => {
       const sharedInput = inputCbor(h32("ab"), 3n);
-      const tx1Payload = payloadFromTx(makeNativeTx([sharedInput], 1n));
-      const tx2Payload = payloadFromTx(
-        makeNativeTx([inputCbor(h32("cd"), 0n), sharedInput], 2n),
+      const tx1Payload = payloadFromInputs([sharedInput], 1n);
+      const tx2Payload = payloadFromInputs(
+        [inputCbor(h32("cd"), 0n), sharedInput],
+        2n,
       );
       const transactionsPath = join(dir, "block-transactions.json");
       await writeFile(
@@ -211,14 +221,11 @@ describe("prepare-double-spend", () => {
       });
       expect(output.files?.tx1InputsPath).toBe(join(dir, "tx1-inputs.json"));
       expect(output.compatibility.canUseSubmitStepCommands).toBe(true);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
+    });
   });
 
   it("writes a deterministic sample double-spend block transaction file", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "midgard-fault-proof-"));
-    try {
+    await withTempDir(async (dir) => {
       const output = await prepareSampleDoubleSpend({
         headerHash: h28("ef"),
         outputDir: dir,
@@ -237,8 +244,6 @@ describe("prepare-double-spend", () => {
       ) as unknown[];
       expect(payloads).toHaveLength(3);
       expect(output.compatibility.canUseSubmitStepCommands).toBe(true);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
+    });
   });
 });

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { computeRetentionCutoff, shouldPruneRetention } from "@/database/retention-policy.js";
+
+import {
+  computeRetentionCutoff,
+  shouldPruneRetention,
+} from "@/database/retention-policy.js";
 
 describe("retention policy", () => {
   it("disables pruning when retentionDays <= 0", () => {

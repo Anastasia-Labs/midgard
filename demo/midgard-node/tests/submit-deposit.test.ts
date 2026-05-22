@@ -1,17 +1,18 @@
-import { describe, expect, it } from "vitest";
 import {
   getProtocolParameters,
   resolveEventInclusionTime,
 } from "@al-ft/midgard-sdk";
-import {
-  parseBuildDepositRequest,
-  parseSubmitDepositConfig,
-} from "@/transactions/submit-deposit.js";
+import { describe, expect, it } from "vitest";
+
 import {
   parseAdditionalAssetSpec,
   parseAdditionalAssetSpecs,
   parseLovelaceAmount,
 } from "@/asset-specs.js";
+import {
+  parseBuildDepositRequest,
+  parseSubmitDepositConfig,
+} from "@/transactions/submit-deposit.js";
 
 const VALID_L2_ADDRESS =
   "addr_test1qrtuk9vwzuyj2ly4fp2e0fdc36xzk7j2n34jeygl9n38yce7qqpmjursw62tm3acwl6z2kw38cxau355ukc9cxqyhk0sjy7d2s";

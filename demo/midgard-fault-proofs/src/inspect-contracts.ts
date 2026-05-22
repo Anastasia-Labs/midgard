@@ -1,21 +1,24 @@
-import { Effect } from "effect";
-import { Network, Data, type Script } from "@lucid-evolution/lucid";
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import {
+  buildDoubleSpendFaultProofContracts,
+  EMPTY_MERKLE_TREE_ROOT,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
-  EMPTY_MERKLE_TREE_ROOT,
   type FraudProofCatalogueCategoryDeploymentInfo,
   type FraudProofCatalogueDeploymentInfo,
+  parseFaultProofBlueprint,
   Proof,
   ScriptHashSchema,
-  buildDoubleSpendFaultProofContracts,
-  parseFaultProofBlueprint,
 } from "@al-ft/midgard-sdk";
+import { Data, Network, type Script } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+
 import {
   parseSafeNonNegativeInteger,
   parseStrictHex,
   readJsonFile,
+  requireRecord,
 } from "./json-file.js";
 
 export type ContractDeploymentInfoEntry = {
@@ -112,33 +115,27 @@ export const parseNetwork = (network: string | undefined): Network => {
 const normalizeHex = (
   value: unknown,
   label: string,
-  byteLength: number,
+  byteLength?: number,
 ): string =>
   parseStrictHex(value, {
     byteCount: byteLength,
     typeError: `${label} must be a hex string`,
-    invalidError: `${label} must be ${byteLength.toString()} bytes of hex`,
-  });
-
-const normalizeVariableHex = (value: unknown, label: string): string =>
-  parseStrictHex(value, {
-    typeError: `${label} must be a hex string`,
-    invalidError: `${label} must be even-length hex`,
+    invalidError:
+      byteLength === undefined
+        ? `${label} must be even-length hex`
+        : `${label} must be ${byteLength.toString()} bytes of hex`,
   });
 
 const parseCatalogueCategoryDeploymentInfo = (
   value: unknown,
   label: string,
 ): FraudProofCatalogueCategoryDeploymentInfo => {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`${label} must be an object`);
-  }
-  const candidate = value as {
+  const candidate = requireRecord(value, label) as {
     readonly categoryId?: unknown;
     readonly scriptHash?: unknown;
     readonly membershipProofCbor?: unknown;
   };
-  const membershipProofCbor = normalizeVariableHex(
+  const membershipProofCbor = normalizeHex(
     candidate.membershipProofCbor,
     `${label}.membershipProofCbor`,
   );
@@ -146,7 +143,7 @@ const parseCatalogueCategoryDeploymentInfo = (
     Data.from(membershipProofCbor, Proof);
   } catch (cause) {
     throw new Error(
-      `${label}.membershipProofCbor is not a valid Proof CBOR: ${String(cause)}`,
+      `${label}.membershipProofCbor is not a valid Proof CBOR: ${formatUnknownError(cause)}`,
     );
   }
   return {
@@ -163,21 +160,14 @@ const parseCatalogueCategoryDeploymentInfo = (
 const parseFraudProofCatalogueDeploymentInfo = (
   value: unknown,
 ): FraudProofCatalogueDeploymentInfo => {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error("fraudProofCatalogue must be an object");
-  }
-  const candidate = value as {
+  const candidate = requireRecord(value, "fraudProofCatalogue") as {
     readonly root?: unknown;
     readonly categories?: unknown;
   };
-  if (
-    typeof candidate.categories !== "object" ||
-    candidate.categories === null ||
-    Array.isArray(candidate.categories)
-  ) {
-    throw new Error("fraudProofCatalogue.categories must be an object");
-  }
-  const rawCategories = candidate.categories as Record<string, unknown>;
+  const rawCategories = requireRecord(
+    candidate.categories,
+    "fraudProofCatalogue.categories",
+  );
   const categories = Object.fromEntries(
     FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((name) => {
       const category = rawCategories[name];
@@ -210,10 +200,7 @@ const parseRefScriptUTxO = (
   if (value === null) {
     return null;
   }
-  if (typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`${label} must be an object or null`);
-  }
-  const candidate = value as {
+  const candidate = requireRecord(value, label) as {
     readonly txHash?: unknown;
     readonly outputIndex?: unknown;
   };
@@ -235,10 +222,7 @@ const parseDeploymentContract = (
   if (value === undefined) {
     return undefined;
   }
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`${label} must be an object`);
-  }
-  const candidate = value as {
+  const candidate = requireRecord(value, label) as {
     readonly type?: unknown;
     readonly cborHex?: unknown;
   };
@@ -252,7 +236,7 @@ const parseDeploymentContract = (
   }
   return {
     type: candidate.type,
-    cborHex: normalizeVariableHex(candidate.cborHex, `${label}.cborHex`),
+    cborHex: normalizeHex(candidate.cborHex, `${label}.cborHex`),
   };
 };
 
@@ -273,7 +257,7 @@ const encodeCatalogueValue = (scriptHash: string): Buffer =>
 
 const trieRootHex = (trie: Trie): string => {
   const hash = trie.hash;
-  if (hash === null || hash === undefined) {
+  if (hash == null) {
     return EMPTY_MERKLE_TREE_ROOT;
   }
   return Buffer.from(hash).toString("hex");
@@ -282,16 +266,11 @@ const trieRootHex = (trie: Trie): string => {
 export const parseContractDeploymentInfo = (
   value: unknown,
 ): ContractDeploymentInfo => {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error("Contract deployment info must be a JSON object");
-  }
+  const rawEntries = requireRecord(value, "Contract deployment info");
 
   const entries: Record<string, ContractDeploymentInfoEntry> = {};
-  for (const [name, entry] of Object.entries(value)) {
-    if (typeof entry !== "object" || entry === null) {
-      throw new Error(`Deployment entry "${name}" must be an object`);
-    }
-    const candidate = entry as {
+  for (const [name, entry] of Object.entries(rawEntries)) {
+    const candidate = requireRecord(entry, `Deployment entry "${name}"`) as {
       readonly scriptHash?: unknown;
       readonly refScriptUTxO?: unknown;
       readonly contract?: unknown;
@@ -336,22 +315,22 @@ const requireDeploymentScriptHash = (
   if (entry === undefined) {
     throw new Error(`Deployment info is missing "${name}"`);
   }
-  return entry.scriptHash.toLowerCase();
+  return entry.scriptHash;
 };
 
 const optionalDeploymentScriptHash = (
   deploymentInfo: ContractDeploymentInfo,
   name: string,
-): string | null => deploymentInfo[name]?.scriptHash.toLowerCase() ?? null;
+): string | null => deploymentInfo[name]?.scriptHash ?? null;
 
 const expectScriptHash = (
   label: string,
   actual: string,
   expected: string,
 ): void => {
-  if (actual.toLowerCase() !== expected.toLowerCase()) {
+  if (actual !== expected) {
     throw new Error(
-      `${label} mismatch: derived=${actual.toLowerCase()} deployment=${expected.toLowerCase()}`,
+      `${label} mismatch: derived=${actual} deployment=${expected}`,
     );
   }
 };
@@ -424,7 +403,7 @@ const inspectFraudProofCatalogue = (
     },
     catch: (cause) =>
       new Error(
-        `Failed to inspect fraud-proof catalogue deployment info: ${String(cause)}`,
+        `Failed to inspect fraud-proof catalogue deployment info: ${formatUnknownError(cause)}`,
       ),
   });
 };

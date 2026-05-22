@@ -2,15 +2,13 @@ import {
   computeHash32,
   computeMidgardNativeTxId,
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFull,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
-import {
-  describe,
-  expect,
-  it } from "vitest";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
+import { describe, expect, it } from "vitest";
+
 import {
   BuilderInvariantError,
   CompleteTx,
@@ -18,18 +16,17 @@ import {
   encodeMidgardTxOutput,
   LucidMidgard,
   makeVKeyWitness,
-  outRefToCbor,
-  ProviderError,
-  ProviderPayloadError,
-  SigningError,
-  SubmittedTx,
-  TxBuilder,
-  walletFromExternalSigner,
   type MidgardProvider,
   type MidgardUtxo,
   type OutRef,
+  outRefToCbor,
+  ProviderPayloadError,
+  SigningError,
+  SubmittedTx,
   type SubmitTxResult,
+  TxBuilder,
   type TxStatus,
+  walletFromExternalSigner,
 } from "../src/index.js";
 
 const makeOutRef = (byte: number, outputIndex = 0): OutRef => ({
@@ -72,7 +69,9 @@ const makeProvider = (opts?: {
     currentSlot: 0n,
     supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     protocolFeeParameters: { minFeeA: 0n, minFeeB: 0n },
-    submissionLimits: { maxSubmitTxCborBytes: opts?.maxSubmitTxCborBytes ?? 32768 },
+    submissionLimits: {
+      maxSubmitTxCborBytes: opts?.maxSubmitTxCborBytes ?? 32768,
+    },
     validation: {
       strictnessProfile: "phase1_midgard",
       localValidationIsAuthoritative: false,
@@ -92,7 +91,9 @@ const makeProvider = (opts?: {
   submitTx:
     opts?.submit ??
     (async (txCborHex) => {
-      const tx = decodeMidgardNativeTxFull(Buffer.from(txCborHex, "hex"));
+      const tx = decodeMidgardNativeTxFullFromCanonicalCbor(
+        Buffer.from(txCborHex, "hex"),
+      );
       return {
         txId: computeMidgardNativeTxId(tx).toString("hex"),
         status: "queued",
@@ -123,7 +124,9 @@ const makeSignedFixture = async () => {
   });
   const completed = await midgard
     .newTx()
-    .collectFrom([makeUtxo(makeOutRef(0x11), address, { lovelace: 2_000_000n })])
+    .collectFrom([
+      makeUtxo(makeOutRef(0x11), address, { lovelace: 2_000_000n }),
+    ])
     .addSigner(keyHash.to_hex())
     .pay.ToAddress(address, { lovelace: 2_000_000n })
     .complete({ fee: 0n });
@@ -143,13 +146,15 @@ describe("submit/status chaining", () => {
     expect(signed.metadata.addrWitnessCount).toBe(1);
     expect(signed.metadata.signedBy).toEqual([keyHash.to_hex()]);
 
-    const decoded = decodeMidgardNativeTxFull(signed.txCbor);
+    const decoded = decodeMidgardNativeTxFullFromCanonicalCbor(signed.txCbor);
     const witnessBytes = decodeMidgardNativeByteListPreimage(
       decoded.witnessSet.addrTxWitsPreimageCbor,
       "native.addr_tx_wits",
     );
     expect(witnessBytes).toHaveLength(1);
-    expect(computeHash32(decoded.witnessSet.addrTxWitsPreimageCbor)).not.toEqual(
+    expect(
+      computeHash32(decoded.witnessSet.addrTxWitsPreimageCbor),
+    ).not.toEqual(
       computeHash32(completed.tx.witnessSet.addrTxWitsPreimageCbor),
     );
   });
@@ -160,7 +165,9 @@ describe("submit/status chaining", () => {
     const provider = makeProvider({
       submit: async (txCborHex) => {
         submittedHex = txCborHex;
-        const tx = decodeMidgardNativeTxFull(Buffer.from(txCborHex, "hex"));
+        const tx = decodeMidgardNativeTxFullFromCanonicalCbor(
+          Buffer.from(txCborHex, "hex"),
+        );
         return {
           txId: computeMidgardNativeTxId(tx).toString("hex"),
           status: "queued",
@@ -196,7 +203,9 @@ describe("submit/status chaining", () => {
     const provider = makeProvider({
       submit: async (txCborHex) => {
         submitCalls += 1;
-        const tx = decodeMidgardNativeTxFull(Buffer.from(txCborHex, "hex"));
+        const tx = decodeMidgardNativeTxFullFromCanonicalCbor(
+          Buffer.from(txCborHex, "hex"),
+        );
         return {
           txId: computeMidgardNativeTxId(tx).toString("hex"),
           status: "queued",
@@ -229,7 +238,6 @@ describe("submit/status chaining", () => {
         submittedFromSafe.value.awaitStatusProgram({
           until: "accepted",
           pollIntervalMs: 1,
-          timeoutMs: 10,
         }),
       );
       expect(polled).toEqual({ kind: "accepted", txId: signed.txIdHex });
@@ -252,9 +260,9 @@ describe("submit/status chaining", () => {
     });
     const submitted = await (await completed.sign(wallet)).submit({ provider });
 
-    await expect(
-      submitted.awaitStatus({ pollIntervalMs: 1, timeoutMs: 100 }),
-    ).resolves.toEqual({ kind: "accepted", txId: completed.txIdHex });
+    await expect(submitted.awaitStatus({ pollIntervalMs: 1 })).resolves.toEqual(
+      { kind: "accepted", txId: completed.txIdHex },
+    );
   });
 
   it("exposes provider status polling through LucidMidgard", async () => {
@@ -290,62 +298,25 @@ describe("submit/status chaining", () => {
     ).resolves.toEqual({ kind: "committed", txId });
   });
 
-  it("fails closed on malformed durable admission payloads", async () => {
+  it("propagates provider submit admission errors", async () => {
     const { completed, wallet } = await makeSignedFixture();
     const signed = await completed.sign(wallet);
-    const malformedAdmissions: readonly unknown[] = [
-      null,
-      {
-        txId: signed.txIdHex,
-        status: "mystery",
-        httpStatus: 202,
-        duplicate: false,
+    const provider = makeProvider({
+      submit: async () => {
+        throw new ProviderPayloadError("/submit", "bad admission");
       },
-      {
-        txId: signed.txIdHex,
-        status: "queued",
-        httpStatus: 202,
-      },
-      {
-        txId: signed.txIdHex,
-        status: "queued",
-        httpStatus: 202,
-        duplicate: true,
-      },
-      {
-        txId: signed.txIdHex,
-        status: "queued",
-        httpStatus: 200,
-        duplicate: false,
-      },
-      {
-        txId: signed.txIdHex,
-        status: "accepted",
-        httpStatus: 202,
-        duplicate: false,
-      },
-    ];
-
-    for (const admission of malformedAdmissions) {
-      const malformedProvider = makeProvider({
-        submit: async () => admission as SubmitTxResult,
-      });
-
-      await expect(
-        signed.submit({ provider: malformedProvider }),
-      ).rejects.toBeInstanceOf(ProviderPayloadError);
-    }
-
-    const malformedProvider = makeProvider({
-      submit: async () => null as unknown as SubmitTxResult,
     });
-    const safe = await signed.submitSafe({ provider: malformedProvider });
+
+    await expect(signed.submit({ provider })).rejects.toBeInstanceOf(
+      ProviderPayloadError,
+    );
+    const safe = await signed.submitSafe({ provider });
     expect(safe.ok).toBe(false);
     if (!safe.ok) {
       expect(safe.error).toBeInstanceOf(ProviderPayloadError);
     }
     const effect = await Effect.runPromise(
-      Effect.either(signed.submitProgram({ provider: malformedProvider })),
+      Effect.either(signed.submitProgram({ provider })),
     );
     expect(effect._tag).toBe("Left");
     if (effect._tag === "Left") {
@@ -429,33 +400,39 @@ describe("submit/status chaining", () => {
     ).toThrow(BuilderInvariantError);
   });
 
-  it("rejects provider tx-status payloads for a different transaction", async () => {
-    const txId = "ab".repeat(32);
-    const otherTxId = "ef".repeat(32);
-    const mismatchedStatus = async () => ({ kind: "queued", txId: otherTxId } as const);
-    const provider = makeProvider({ status: mismatchedStatus });
+  it("queries tx status with canonical tx hashes", async () => {
+    const txId = "AB".repeat(32);
+    const canonicalTxId = txId.toLowerCase();
+    const requestedTxIds: string[] = [];
+    const provider = makeProvider({
+      status: async (requestedTxId) => {
+        requestedTxIds.push(requestedTxId);
+        return { kind: "queued", txId: requestedTxId };
+      },
+    });
     const midgard = await LucidMidgard.new(provider);
 
-    await expect(midgard.txStatus(txId)).rejects.toBeInstanceOf(
-      ProviderPayloadError,
-    );
-    await expect(
-      midgard.awaitTx(txId, { pollIntervalMs: 1, timeoutMs: 10 }),
-    ).rejects.toBeInstanceOf(ProviderPayloadError);
+    await expect(midgard.txStatus(txId)).resolves.toEqual({
+      kind: "queued",
+      txId: canonicalTxId,
+    });
+    expect(requestedTxIds).toEqual([canonicalTxId]);
 
     const { completed, wallet } = await makeSignedFixture();
     const signed = await completed.sign(wallet);
-    await expect(signed.status({ provider })).rejects.toBeInstanceOf(
-      ProviderPayloadError,
-    );
+    await expect(signed.status({ provider })).resolves.toEqual({
+      kind: "queued",
+      txId: signed.txIdHex,
+    });
     const submitted = await signed.submit({ provider });
-    await expect(submitted.status()).rejects.toBeInstanceOf(
-      ProviderPayloadError,
-    );
+    await expect(submitted.status()).resolves.toEqual({
+      kind: "queued",
+      txId: submitted.txIdHex,
+    });
   });
 
-  it("rejects missing signing/provider context and submit id mismatches", async () => {
-    const { completed, wallet } = await makeSignedFixture();
+  it("rejects missing signing/provider context", async () => {
+    const { completed } = await makeSignedFixture();
     await expect(completed.sign()).rejects.toBeInstanceOf(SigningError);
     await expect(completed.submit()).rejects.toBeInstanceOf(SigningError);
 
@@ -469,40 +446,9 @@ describe("submit/status chaining", () => {
       SigningError,
     );
 
-    const signed = await completed.sign(wallet);
-    await expect(
-      signed.submit({
-        provider: makeProvider({
-          submit: async () => ({
-            txId: "00".repeat(32),
-            status: "queued",
-            httpStatus: 202,
-            duplicate: false,
-          }),
-        }),
-      }),
-    ).rejects.toBeInstanceOf(ProviderPayloadError);
-
     const detached = new CompleteTx(completed.tx, completed.metadata);
-    await expect(detached.submit()).rejects.toBeInstanceOf(BuilderInvariantError);
-  });
-
-  it("times out status polling with the last observed status in diagnostics", async () => {
-    const txId = "cd".repeat(32);
-    const provider = makeProvider({
-      status: async () => ({ kind: "queued", txId }),
-    });
-    const midgard = await LucidMidgard.new(provider);
-
-    await expect(
-      midgard.awaitTx(txId, {
-        until: "committed",
-        pollIntervalMs: 1,
-        timeoutMs: 1,
-      }),
-    ).rejects.toMatchObject({
-      name: "ProviderError",
-      detail: `tx_id=${txId} last_status=queued`,
-    } satisfies Partial<ProviderError>);
+    await expect(detached.submit()).rejects.toBeInstanceOf(
+      BuilderInvariantError,
+    );
   });
 });

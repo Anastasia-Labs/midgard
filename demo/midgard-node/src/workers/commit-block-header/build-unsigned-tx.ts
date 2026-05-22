@@ -1,23 +1,19 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  Data as LucidData,
-  toUnit,
-  type TxSignBuilder,
-} from "@lucid-evolution/lucid";
 import { Effect } from "effect";
+
+import type { OperatorWalletView } from "@/operator-wallet-view.js";
 import { Lucid } from "@/services/index.js";
 import {
   handleSignSubmitNoConfirmation,
   type TxSignError,
   type TxSubmitError,
 } from "@/transactions/utils.js";
+import { resolveAlignedCommitEndTime } from "@/workers/utils/commit-end-time.js";
 import {
   fetchRealStateQueueWitnessContext,
   type RealStateQueueWitnessContext,
 } from "@/workers/utils/scheduler-refresh.js";
-import type { OperatorWalletView } from "@/operator-wallet-view.js";
-import { buildDeterministicCommitTxBuilder } from "@/workers/utils/commit-tx-builder.js";
-import { resolveAlignedCommitEndTime } from "@/workers/utils/commit-end-time.js";
+
 import {
   getLatestBlockDatumEndTime,
   hashBlockHeaderLocal,
@@ -25,14 +21,7 @@ import {
 } from "./state-queue.js";
 
 const STATE_QUEUE_HEADER_NODE_LOVELACE = 5_000_000n;
-const ACTIVE_OPERATOR_MATURITY_DURATION_MS = 30n;
 const COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS = 4;
-
-const decodeActiveOperatorDatum = (data: unknown): SDK.ActiveOperatorDatum =>
-  LucidData.castFrom(
-    data as never,
-    SDK.ActiveOperatorDatum as never,
-  ) as SDK.ActiveOperatorDatum;
 
 export type BuiltCommitTx = {
   readonly newHeaderHash: string;
@@ -65,7 +54,6 @@ export const buildUnsignedCommitTx = (
 > =>
   Effect.gen(function* () {
     const lucid = yield* Lucid;
-    const stateQueueAuthValidator = contracts.stateQueue;
     const latestEndTime = Number(
       (yield* getLatestBlockDatumEndTime(latestBlock.datum)).getTime(),
     );
@@ -143,93 +131,17 @@ export const buildUnsignedCommitTx = (
     );
     yield* Effect.logInfo("🔹 Building block commitment transaction...");
 
-    const headerNodeUnit = toUnit(
-      stateQueueAuthValidator.policyId,
-      SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + newHeaderHash,
-    );
-    const commitMintAssets = {
-      [headerNodeUnit]: 1n,
-    };
-    const headerNodeOutputAssets = {
-      lovelace: STATE_QUEUE_HEADER_NODE_LOVELACE,
-      ...commitMintAssets,
-    };
-    const appendedNodeDatum: SDK.LinkedListNodeView = {
-      key: updatedNodeDatum.next,
-      next: "Empty",
-      data: SDK.castHeaderToData(newHeader) as SDK.LinkedListNodeView["data"],
-    };
-    const appendedNodeDatumCbor =
-      SDK.encodeLinkedListNodeView(appendedNodeDatum);
-    const updatedNodeDatumCbor = SDK.encodeLinkedListNodeView(updatedNodeDatum);
-    const updatedActiveOperatorDatumCbor = yield* Effect.try({
-      try: () => {
-        const activeOperatorLinkedListDatum = LucidData.from(
-          witnessContext.activeOperatorInput.datum,
-          SDK.LinkedListDatum,
-        );
-        const activeOperatorNodeView = SDK.linkedListDatumToNodeView(
-          activeOperatorLinkedListDatum,
-          SDK.ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX +
-            witnessContext.operatorKeyHash,
-        );
-        const activeOperatorDatum = decodeActiveOperatorDatum(
-          activeOperatorNodeView.data,
-        );
-        const updatedActiveOperatorNodeDatum: SDK.LinkedListNodeView = {
-          ...activeOperatorNodeView,
-          data: SDK.castActiveOperatorDatumToData({
-            ...activeOperatorDatum,
-            bond_unlock_time:
-              BigInt(alignedEndTime) -
-              1n +
-              ACTIVE_OPERATOR_MATURITY_DURATION_MS,
-          }) as SDK.LinkedListNodeView["data"],
-        };
-        return SDK.encodeLinkedListNodeView(updatedActiveOperatorNodeDatum);
-      },
-      catch: (cause) =>
-        new SDK.StateQueueError({
-          message:
-            "Failed to update active-operator bond-hold datum for commit tx",
-          cause,
-        }),
-    });
-
-    const makeBaseCommitTx = (stateQueueCommitRedeemer: string) =>
-      lucid.api
-        .newTx()
-        .validTo(alignedEndTime)
-        .collectFrom([latestBlock.utxo], stateQueueCommitRedeemer)
-        .pay.ToContract(
-          stateQueueAuthValidator.spendingScriptAddress,
-          {
-            kind: "inline",
-            value: SDK.encodeLinkedListNodeView(appendedNodeDatum),
-          },
-          headerNodeOutputAssets,
-        )
-        .pay.ToContract(
-          stateQueueAuthValidator.spendingScriptAddress,
-          {
-            kind: "inline",
-            value: SDK.encodeLinkedListNodeView(updatedNodeDatum),
-          },
-          latestBlock.utxo.assets,
-        );
-
-    const txBuilder: TxSignBuilder = yield* buildDeterministicCommitTxBuilder({
-      lucid: lucid.api,
-      contracts,
-      latestBlockInput: latestBlock.utxo,
-      witness: witnessContext,
-      headerNodeUnit,
-      appendedNodeDatumCbor,
-      previousHeaderNodeDatumCbor: updatedNodeDatumCbor,
-      updatedActiveOperatorDatumCbor,
-      commitMintAssets,
-      makeBaseCommitTx,
-    });
+    const { tx: txBuilder } =
+      yield* SDK.buildProductionCommitBlockHeaderTxProgram({
+        lucid: lucid.api,
+        contracts,
+        latestBlock,
+        updatedNodeDatum,
+        newHeader,
+        validTo: alignedEndTime,
+        witness: witnessContext,
+        headerNodeLovelace: STATE_QUEUE_HEADER_NODE_LOVELACE,
+      });
 
     const txSize = txBuilder.toCBOR().length / 2;
     yield* Effect.logInfo(`🔹 Transaction built successfully. Size: ${txSize}`);

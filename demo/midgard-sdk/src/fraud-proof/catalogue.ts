@@ -1,11 +1,18 @@
+import {
+  Assets,
+  Data,
+  fromText,
+  LucidEvolution,
+  toUnit,
+  TxBuilder,
+} from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+
 import type {
   AuthenticatedValidator,
   FraudProofs,
   MerkleRoot,
 } from "@/common.js";
-import { Assets, Data, fromText, toUnit } from "@lucid-evolution/lucid";
-import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
 
 export const FRAUD_PROOF_CATALOGUE_ASSET_NAME = fromText(
   "MIDGARD_FRAUD_PROOF_CATALOGUE",
@@ -89,17 +96,16 @@ export const incompleteFraudProofCatalogueInitTxProgram = (
       [toUnit(params.validator.policyId, FRAUD_PROOF_CATALOGUE_ASSET_NAME)]: 1n,
     };
 
-    const datum = Data.to(params.mptRootHash, FraudProofCatalogueDatum);
-
-    const tx = lucid
+    return lucid
       .newTx()
       .mintAssets(assets, Data.to("Init", FraudProofCatalogueMintRedeemer))
       .pay.ToAddressWithData(
         params.validator.spendingScriptAddress,
-        { kind: "inline", value: datum },
+        {
+          kind: "inline",
+          value: Data.to(params.mptRootHash, FraudProofCatalogueDatum),
+        },
         assets,
       )
       .attach.Script(params.validator.mintingScript);
-
-    return tx;
   });

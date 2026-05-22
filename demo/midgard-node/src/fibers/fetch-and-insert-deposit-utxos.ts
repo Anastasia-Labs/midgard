@@ -1,26 +1,26 @@
+import { encodeMidgardTxOutput } from "@al-ft/lucid-midgard";
+import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Effect, Ref } from "effect";
 import {
-  MidgardContracts,
-  Globals,
-  Lucid,
-  Database,
-  NodeConfig,
-} from "@/services/index.js";
-import {
+  type Assets,
+  type Credential,
   credentialToAddress,
   Data as LucidData,
   LucidEvolution,
-  toUnit,
-  type Assets,
-  type Credential,
   type Network,
+  toUnit,
 } from "@lucid-evolution/lucid";
-import { encodeMidgardTxOutput } from "@al-ft/lucid-midgard";
+import { Effect, Ref, Schedule } from "effect";
+
 import { DepositsDB, UserEventsUtils } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
-import { Schedule } from "effect";
-import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
+import {
+  Database,
+  Globals,
+  Lucid,
+  MidgardContracts,
+  NodeConfig,
+} from "@/services/index.js";
 
 /**
  * Background ingestion for deposit UTxOs into the authoritative off-chain
@@ -102,11 +102,17 @@ const depositUTxOToEntry = (
         depositUTxO.datum.event.info.l2_address,
       );
       const l2Datum = depositUTxO.datum.event.info.l2_datum;
-      const output = encodeMidgardTxOutput(l2Address, projectedDepositAssets(depositUTxO, depositPolicyId), {
-        ...(l2Datum === null
-          ? {}
-          : { datum: { kind: "inline" as const, data: LucidData.to(l2Datum) } }),
-      });
+      const output = encodeMidgardTxOutput(
+        l2Address,
+        projectedDepositAssets(depositUTxO, depositPolicyId),
+        {
+          ...(l2Datum === null
+            ? {}
+            : {
+                datum: { kind: "inline" as const, data: LucidData.to(l2Datum) },
+              }),
+        },
+      );
 
       return {
         [UserEventsUtils.Columns.ID]: depositUTxO.idCbor,
@@ -185,7 +191,11 @@ const reconcileVisibleDepositUTxOs = (
     yield* Effect.logInfo(`🏦 ${depositUTxOs.length} deposit UTxOs found.`);
 
     const entries = yield* Effect.forEach(depositUTxOs, (utxo) =>
-      depositUTxOToEntry(utxo, nodeConfig.NETWORK, depositAuthValidator.policyId),
+      depositUTxOToEntry(
+        utxo,
+        nodeConfig.NETWORK,
+        depositAuthValidator.policyId,
+      ),
     );
 
     yield* DepositsDB.insertEntries(entries);

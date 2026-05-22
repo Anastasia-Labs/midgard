@@ -1,10 +1,11 @@
-import { Database } from "@/services/database.js";
-import { Effect } from "effect";
 import { SqlClient } from "@effect/sql";
+import { Effect } from "effect";
+
 import {
   DatabaseError,
   sqlErrorToDatabaseError,
 } from "@/database/utils/common.js";
+import { Database } from "@/services/database.js";
 
 export const tableName = "local_mutation_jobs";
 
@@ -142,7 +143,7 @@ export const countUnfinished: Effect.Effect<bigint, DatabaseError, Database> =
     const rows = yield* sql<{ count: string }>`SELECT COUNT(*)::bigint AS count
       FROM ${sql(tableName)}
       WHERE ${sql(Columns.STATUS)} <> ${Status.Completed}`;
-    return BigInt(rows[0]?.count ?? "0");
+    return BigInt(rows[0].count);
   }).pipe(
     sqlErrorToDatabaseError(
       tableName,

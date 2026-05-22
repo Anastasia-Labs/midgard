@@ -1,16 +1,17 @@
 import { createHash } from "node:crypto";
+
+import { RejectedTx } from "@al-ft/midgard-validation/types";
 import { SqlClient } from "@effect/sql";
-import { SqlError } from "@effect/sql";
 import { Data, Effect } from "effect";
-import { Database } from "@/services/database.js";
+
+import * as MempoolDB from "@/database/mempool.js";
+import * as TxRejectionsDB from "@/database/txRejections.js";
 import {
   DatabaseError,
   sqlErrorToDatabaseError,
 } from "@/database/utils/common.js";
-import * as MempoolDB from "@/database/mempool.js";
-import * as TxRejectionsDB from "@/database/txRejections.js";
+import { Database } from "@/services/database.js";
 import { ProcessedTx } from "@/utils.js";
-import { RejectedTx } from "@al-ft/midgard-validation/types";
 
 export const tableName = "tx_admissions";
 
@@ -27,8 +28,8 @@ export type SubmitSource = "native" | "backfill";
 
 export enum Columns {
   TX_ID = "tx_id",
-  TX_ENVELOPE_CBOR = "tx_envelope_cbor",
-  TX_ENVELOPE_CBOR_SHA256 = "tx_envelope_cbor_sha256",
+  TX_CANONICAL_CBOR = "tx_canonical_cbor",
+  TX_CANONICAL_CBOR_SHA256 = "tx_canonical_cbor_sha256",
   ARRIVAL_SEQ = "arrival_seq",
   STATUS = "status",
   FIRST_SEEN_AT = "first_seen_at",
@@ -48,8 +49,8 @@ export enum Columns {
 
 type RawEntry = {
   readonly [Columns.TX_ID]: Buffer;
-  readonly [Columns.TX_ENVELOPE_CBOR]: Buffer;
-  readonly [Columns.TX_ENVELOPE_CBOR_SHA256]: Buffer;
+  readonly [Columns.TX_CANONICAL_CBOR]: Buffer;
+  readonly [Columns.TX_CANONICAL_CBOR_SHA256]: Buffer;
   readonly [Columns.ARRIVAL_SEQ]: bigint | number | string;
   readonly [Columns.STATUS]: Status;
   readonly [Columns.FIRST_SEEN_AT]: Date;
@@ -107,31 +108,14 @@ const normalizeRow = (row: RawEntry): Entry => ({
 const sha256 = (bytes: Buffer): Buffer =>
   createHash("sha256").update(bytes).digest();
 
-const sameBytes = (left: Buffer, right: Buffer): boolean => left.equals(right);
-
-const normalizeSqlError =
-  <E>(message: string) =>
-  <A, R>(
-    effect: Effect.Effect<A, E | SqlError.SqlError | DatabaseError, R>,
-  ): Effect.Effect<A, E | DatabaseError, R> =>
-    Effect.mapError(effect, (error) =>
-      error instanceof SqlError.SqlError
-        ? new DatabaseError({
-            table: tableName,
-            message,
-            cause: error,
-          })
-        : error,
-    );
-
 export const admit = ({
   txId,
-  txEnvelopeCbor,
+  txCanonicalCbor,
   submitSource,
   maxBacklog,
 }: {
   readonly txId: Buffer;
-  readonly txEnvelopeCbor: Buffer;
+  readonly txCanonicalCbor: Buffer;
   readonly submitSource: Exclude<SubmitSource, "backfill">;
   readonly maxBacklog: number;
 }): Effect.Effect<
@@ -141,7 +125,7 @@ export const admit = ({
 > =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    const txEnvelopeCborSha256 = sha256(txEnvelopeCbor);
+    const txCanonicalCborSha256 = sha256(txCanonicalCbor);
     return yield* sql.withTransaction(
       Effect.gen(function* () {
         const existingRows = yield* sql<RawEntry>`SELECT *
@@ -151,11 +135,10 @@ export const admit = ({
         const existing = existingRows[0];
         if (existing !== undefined) {
           if (
-            !sameBytes(
-              existing[Columns.TX_ENVELOPE_CBOR_SHA256],
-              txEnvelopeCborSha256,
+            !existing[Columns.TX_CANONICAL_CBOR_SHA256].equals(
+              txCanonicalCborSha256,
             ) ||
-            !sameBytes(existing[Columns.TX_ENVELOPE_CBOR], txEnvelopeCbor)
+            !existing[Columns.TX_CANONICAL_CBOR].equals(txCanonicalCbor)
           ) {
             return yield* Effect.fail(
               new TxAdmissionConflictError({
@@ -183,7 +166,7 @@ export const admit = ({
         }>`SELECT COUNT(*)::bigint AS count
           FROM ${sql(tableName)}
           WHERE ${sql(Columns.STATUS)} IN ('queued', 'validating')`;
-        const backlog = toBigInt(backlogRows[0]?.count ?? 0n);
+        const backlog = toBigInt(backlogRows[0].count);
         const max = BigInt(Math.max(0, maxBacklog));
         if (backlog >= max) {
           return yield* Effect.fail(
@@ -198,14 +181,14 @@ export const admit = ({
 
         const inserted = yield* sql<RawEntry>`INSERT INTO ${sql(tableName)} (
             ${sql(Columns.TX_ID)},
-            ${sql(Columns.TX_ENVELOPE_CBOR)},
-            ${sql(Columns.TX_ENVELOPE_CBOR_SHA256)},
+            ${sql(Columns.TX_CANONICAL_CBOR)},
+            ${sql(Columns.TX_CANONICAL_CBOR_SHA256)},
             ${sql(Columns.STATUS)},
             ${sql(Columns.SUBMIT_SOURCE)}
           ) VALUES (
             ${txId},
-            ${txEnvelopeCbor},
-            ${txEnvelopeCborSha256},
+            ${txCanonicalCbor},
+            ${txCanonicalCborSha256},
             'queued',
             ${submitSource}
           )
@@ -216,7 +199,9 @@ export const admit = ({
         };
       }),
     );
-  }).pipe(normalizeSqlError("Failed to durably admit transaction"));
+  }).pipe(
+    sqlErrorToDatabaseError(tableName, "Failed to durably admit transaction"),
+  );
 
 export const requeueExpiredLeases: Effect.Effect<
   number,
@@ -463,7 +448,7 @@ export const countBacklog: Effect.Effect<bigint, DatabaseError, Database> =
       SELECT COUNT(*)::bigint AS count
       FROM ${sql(tableName)}
       WHERE ${sql(Columns.STATUS)} IN ('queued', 'validating')`;
-    return toBigInt(rows[0]?.count ?? 0n);
+    return toBigInt(rows[0].count);
   }).pipe(sqlErrorToDatabaseError(tableName, "Failed to count backlog"));
 
 export const oldestQueuedAgeMs: Effect.Effect<number, DatabaseError, Database> =
@@ -475,8 +460,7 @@ export const oldestQueuedAgeMs: Effect.Effect<number, DatabaseError, Database> =
       )}))), 0) * 1000)::double precision AS age_ms
       FROM ${sql(tableName)}
       WHERE ${sql(Columns.STATUS)} = 'queued'`;
-    const value = rows[0]?.age_ms;
-    return value === undefined ? 0 : Number(value);
+    return Number(rows[0].age_ms);
   }).pipe(
     sqlErrorToDatabaseError(tableName, "Failed to compute oldest queued age"),
   );

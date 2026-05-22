@@ -4,7 +4,7 @@ import { Effect } from 'effect';
 import ora from 'ora-classic';
 
 import { saveConfig } from '../../../config/index.js';
-import { MidgardError } from '../../../utils/errors.js';
+import { formatError, MidgardError } from '../../../utils/errors.js';
 import type { Action } from '../types.js';
 
 /**
@@ -47,7 +47,7 @@ export const configureNodeEndpoint: Action = {
               try {
                 new URL(value);
                 return true;
-              } catch (e) {
+              } catch {
                 return 'Please enter a valid URL (e.g. http://localhost:3000)';
               }
             },
@@ -77,7 +77,7 @@ export const configureNodeEndpoint: Action = {
           ...context.config,
           node: {
             ...context.config.node,
-            endpoint: endpoint,
+            endpoint,
           },
         };
 
@@ -95,7 +95,7 @@ export const configureNodeEndpoint: Action = {
       }
     } catch (error) {
       const errorName = error instanceof Error ? error.name : undefined;
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = formatError(error);
       if (errorName === 'AbortError' || errorMessage === 'AbortPromptError') {
         const abortError = new Error('Operation cancelled');
         abortError.name = 'AbortPromptError';

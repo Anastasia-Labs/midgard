@@ -1,35 +1,36 @@
-import { Effect, Data as EffectData } from "effect";
 import {
+  Address,
+  Assets,
+  credentialToAddress,
+  Data,
+  fromText,
+  LucidEvolution,
+  PolicyId,
+  scriptHashToCredential,
+  toUnit,
+  TxBuilder,
+  UTxO,
+} from "@lucid-evolution/lucid";
+import { Data as EffectData, Effect } from "effect";
+
+import {
+  addressDataFromBech32,
+  AddressSchema,
+  AuthenticatedValidator,
+  Bech32DeserializationError,
   GenericErrorFields,
   LucidError,
-  AddressSchema,
   makeReturn,
-  addressDataFromBech32,
-  Bech32DeserializationError,
   MidgardValidators,
-  AuthenticatedValidator,
   MintingValidator,
   ScriptHashSchema,
   UnspecifiedNetworkError,
 } from "@/common.js";
 import {
-  AuthenticUTxO,
   authenticateUTxOs,
+  AuthenticUTxO,
   fetchSingleAuthenticUTxOProgram,
 } from "@/internals.js";
-import {
-  Address,
-  LucidEvolution,
-  PolicyId,
-  credentialToAddress,
-  fromText,
-  scriptHashToCredential,
-  toUnit,
-  TxBuilder,
-  UTxO,
-  Data,
-  Assets,
-} from "@lucid-evolution/lucid";
 
 export type HubOracleConfig = {
   hubOracleAddress: Address;
@@ -212,6 +213,13 @@ export class HubOracleError extends EffectData.TaggedError(
   "HubOracleError",
 )<GenericErrorFields> {}
 
+/**
+ * Attempts fetching the hub oracle UTxO.
+ *
+ * @param lucid - The `LucidEvolution` API object.
+ * @param config - Configuration values required to know where to look for which NFT.
+ * @returns {UTxO} - The authentic hub oracle UTxO.
+ */
 export const fetchHubOracleUTxOProgram = (
   lucid: LucidEvolution,
   config: HubOracleConfig,
@@ -232,13 +240,6 @@ export const fetchHubOracleUTxOProgram = (
     },
   );
 
-/**
- * Attempts fetching the hub oracle UTxO.
- *
- * @param lucid - The `LucidEvolution` API object.
- * @param config - Configuration values required to know where to look for which NFT.
- * @returns {UTxO} - The authentic hub oracle UTxO.
- */
 export const fetchHubOracleUTxO = (
   lucid: LucidEvolution,
   config: HubOracleConfig,

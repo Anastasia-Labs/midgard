@@ -1,16 +1,17 @@
 import { MIDGARD_SUPPORTED_SCRIPT_LANGUAGES } from "@al-ft/midgard-core/codec";
-import { describe, expect, it } from "vitest";
 import { CML } from "@lucid-evolution/lucid";
+import { describe, expect, it } from "vitest";
+
 import {
   encodeMidgardTxOutput,
+  type MidgardFetch,
   MidgardNodeProvider,
+  type MidgardProtocolInfo,
+  type OutRef,
   outRefToCbor,
   ProviderCapabilityError,
   ProviderPayloadError,
   ProviderTransportError,
-  type MidgardFetch,
-  type MidgardProtocolInfo,
-  type OutRef,
 } from "../src/index.js";
 
 const address =
@@ -71,6 +72,21 @@ const encodedUtxo = (ref: OutRef = outRef) => ({
     lovelace: 2_000_000n,
   }).toString("hex"),
 });
+
+const submitTx = {
+  txHex:
+    "84018c418041804180002020418041804180582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff8341804180418000",
+  txId: "fcc1ff60638b4a94e1316d4510ad07818b87268e9167a10c6b423e5c2f4dc9df",
+};
+
+const submitAdmission = (
+  payload: Record<string, unknown> = {},
+  status = 202,
+): Response =>
+  jsonResponse(
+    { txId: submitTx.txId, status: "queued", duplicate: false, ...payload },
+    status,
+  );
 
 const makeOtherAddress = (): string =>
   CML.EnterpriseAddress.new(
@@ -423,20 +439,12 @@ describe("MidgardNodeProvider", () => {
 
   it("submits new and duplicate transactions with durable admission metadata", async () => {
     const responses = [
-      jsonResponse(
+      submitAdmission({
+        firstSeenAt: "2026-05-01T00:00:00.000Z",
+        lastSeenAt: "2026-05-01T00:00:00.000Z",
+      }),
+      submitAdmission(
         {
-          txId: outRef.txHash,
-          status: "queued",
-          firstSeenAt: "2026-05-01T00:00:00.000Z",
-          lastSeenAt: "2026-05-01T00:00:00.000Z",
-          duplicate: false,
-        },
-        202,
-      ),
-      jsonResponse(
-        {
-          txId: outRef.txHash,
-          status: "queued",
           firstSeenAt: "2026-05-01T00:00:00.000Z",
           lastSeenAt: "2026-05-01T00:00:01.000Z",
           duplicate: true,
@@ -460,17 +468,27 @@ describe("MidgardNodeProvider", () => {
       return responses.shift()!;
     });
 
-    await expect(provider.submitTx("00")).resolves.toMatchObject({
-      txId: outRef.txHash,
+    await expect(provider.submitTx(submitTx.txHex)).resolves.toMatchObject({
+      txId: submitTx.txId,
       httpStatus: 202,
       duplicate: false,
     });
-    await expect(provider.submitTx("00")).resolves.toMatchObject({
-      txId: outRef.txHash,
+    await expect(provider.submitTx(submitTx.txHex)).resolves.toMatchObject({
+      txId: submitTx.txId,
       httpStatus: 200,
       duplicate: true,
     });
-    expect(submittedBodies).toStrictEqual(["00", "00"]);
+    expect(submittedBodies).toStrictEqual([submitTx.txHex, submitTx.txHex]);
+  });
+
+  it("rejects submit responses for a different tx id", async () => {
+    const provider = await makeProvider(async () =>
+      submitAdmission({ txId: "22".repeat(32) }),
+    );
+
+    await expect(provider.submitTx(submitTx.txHex)).rejects.toBeInstanceOf(
+      ProviderPayloadError,
+    );
   });
 
   it("rejects malformed or oversized direct submit payloads before posting", async () => {
@@ -493,6 +511,9 @@ describe("MidgardNodeProvider", () => {
     await expect(provider.submitTx("zz")).rejects.toBeInstanceOf(
       ProviderPayloadError,
     );
+    await expect(provider.submitTx("00")).rejects.toBeInstanceOf(
+      ProviderPayloadError,
+    );
     await expect(
       provider.submitTx(
         "00".repeat(protocolInfo.submissionLimits.maxSubmitTxCborBytes + 1),
@@ -503,76 +524,19 @@ describe("MidgardNodeProvider", () => {
 
   it("rejects malformed durable submit admission metadata", async () => {
     const malformedResponses = [
-      jsonResponse(
-        {
-          txId: "not-a-tx-id",
-          status: "queued",
-          duplicate: false,
-        },
-        202,
-      ),
-      jsonResponse(
-        {
-          txId: outRef.txHash,
-          status: "mystery",
-          duplicate: false,
-        },
-        202,
-      ),
-      jsonResponse(
-        {
-          txId: outRef.txHash,
-          status: "queued",
-        },
-        202,
-      ),
-      jsonResponse(
-        {
-          txId: outRef.txHash,
-          status: "queued",
-          duplicate: true,
-        },
-        202,
-      ),
-      jsonResponse(
-        {
-          txId: outRef.txHash,
-          status: "queued",
-          duplicate: false,
-        },
-        200,
-      ),
-      jsonResponse(
-        {
-          txId: outRef.txHash,
-          status: "accepted",
-          duplicate: false,
-        },
-        202,
-      ),
-      jsonResponse(
-        {
-          txId: outRef.txHash,
-          status: "queued",
-          firstSeenAt: 123,
-          duplicate: false,
-        },
-        202,
-      ),
-      jsonResponse(
-        {
-          txId: outRef.txHash,
-          status: "queued",
-          lastSeenAt: 123,
-          duplicate: false,
-        },
-        202,
-      ),
+      submitAdmission({ txId: "not-a-tx-id" }),
+      submitAdmission({ status: "mystery" }),
+      submitAdmission({ duplicate: undefined }),
+      submitAdmission({ duplicate: true }),
+      submitAdmission({}, 200),
+      submitAdmission({ status: "accepted" }),
+      submitAdmission({ firstSeenAt: 123 }),
+      submitAdmission({ lastSeenAt: 123 }),
     ];
 
     for (const response of malformedResponses) {
       const provider = await makeProvider(async () => response);
-      await expect(provider.submitTx("00")).rejects.toBeInstanceOf(
+      await expect(provider.submitTx(submitTx.txHex)).rejects.toBeInstanceOf(
         ProviderPayloadError,
       );
     }
@@ -582,7 +546,7 @@ describe("MidgardNodeProvider", () => {
     const conflict = await makeProvider(async () =>
       jsonResponse({ error: "E_TX_ID_BYTES_CONFLICT" }, 409),
     );
-    await expect(conflict.submitTx("00")).rejects.toMatchObject({
+    await expect(conflict.submitTx(submitTx.txHex)).rejects.toMatchObject({
       statusCode: 409,
       retryable: false,
     });
@@ -590,7 +554,7 @@ describe("MidgardNodeProvider", () => {
     const backlog = await makeProvider(
       async () => new Response("busy", { status: 503 }),
     );
-    await expect(backlog.submitTx("00")).rejects.toMatchObject({
+    await expect(backlog.submitTx(submitTx.txHex)).rejects.toMatchObject({
       statusCode: 503,
       retryable: true,
     });
@@ -598,7 +562,7 @@ describe("MidgardNodeProvider", () => {
     const transport = await makeProvider(async () => {
       throw new Error("connection reset");
     });
-    await expect(transport.submitTx("00")).rejects.toBeInstanceOf(
+    await expect(transport.submitTx(submitTx.txHex)).rejects.toBeInstanceOf(
       ProviderTransportError,
     );
   });

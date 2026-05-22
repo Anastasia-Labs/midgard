@@ -1,15 +1,21 @@
-import { CML, Data as LucidData, valueToAssets } from "@lucid-evolution/lucid";
-import type { Assets, UTxO } from "@lucid-evolution/lucid";
-import * as SDK from "@al-ft/midgard-sdk";
-import { Effect, Option } from "effect";
-import * as WithdrawalsDB from "@/database/withdrawals.js";
-import { DatabaseError } from "@/database/utils/common.js";
+import {
+  assetUnitParts,
+  LOVELACE_UNIT,
+  normalizeAssets,
+} from "@al-ft/midgard-core/assets";
 import {
   decodeMidgardAddressText,
   decodeMidgardTxOutput,
   encodeMidgardAddressText,
   midgardValueToCmlValue,
 } from "@al-ft/midgard-core/codec";
+import * as SDK from "@al-ft/midgard-sdk";
+import type { Assets, UTxO } from "@lucid-evolution/lucid";
+import { CML, Data as LucidData, valueToAssets } from "@lucid-evolution/lucid";
+import { Effect, Option } from "effect";
+
+import { DatabaseError } from "@/database/utils/common.js";
+import * as WithdrawalsDB from "@/database/withdrawals.js";
 import { verifyWithdrawalSignature } from "@/withdrawal-signature.js";
 
 export type ClassifiedWithdrawal = {
@@ -21,28 +27,12 @@ export type ClassifiedWithdrawal = {
   readonly shouldDeleteLedgerUtxo: boolean;
 };
 
-export const LOVELACE_UNIT = "lovelace";
-const ADA_POLICY_ID = "";
-const ADA_ASSET_NAME = "";
-
-export const normalizeAssets = (assets: Assets): Assets => {
-  const result: Record<string, bigint> = {};
-  for (const [unit, quantity] of Object.entries(assets)) {
-    if (quantity === 0n) {
-      continue;
-    }
-    result[unit] = (result[unit] ?? 0n) + quantity;
-  }
-  return result as Assets;
-};
+export { LOVELACE_UNIT, normalizeAssets };
 
 export const assetsToValue = (assets: Assets): SDK.Value => {
   const outer = new Map<string, Map<string, bigint>>();
   for (const [unit, quantity] of Object.entries(normalizeAssets(assets))) {
-    const policyId =
-      unit === LOVELACE_UNIT ? ADA_POLICY_ID : unit.slice(0, 56).toLowerCase();
-    const assetName =
-      unit === LOVELACE_UNIT ? ADA_ASSET_NAME : unit.slice(56).toLowerCase();
+    const { policyId, assetName } = assetUnitParts(unit);
     const inner = outer.get(policyId) ?? new Map<string, bigint>();
     inner.set(assetName, (inner.get(assetName) ?? 0n) + quantity);
     outer.set(policyId, inner);
@@ -193,8 +183,8 @@ export const classifyWithdrawal = ({
         utxo.address,
       ).paymentCredential;
       if (
-        paymentCredential.hash.toString("hex").toLowerCase() !==
-        entry[WithdrawalsDB.Columns.L2_OWNER].toString("hex").toLowerCase()
+        paymentCredential.hash.toString("hex") !==
+        entry[WithdrawalsDB.Columns.L2_OWNER].toString("hex")
       ) {
         validity = WithdrawalsDB.Validity.IncorrectWithdrawalOwner;
       } else {
@@ -211,7 +201,8 @@ export const classifyWithdrawal = ({
               cause,
             }),
         });
-        const actualValue = assetsToValue(utxo.assets);
+        const actualAssets = normalizeAssets(utxo.assets);
+        const actualValue = assetsToValue(actualAssets);
         const valueMatches = yield* valuesEqual(requestedValue, actualValue);
         if (!valueMatches) {
           validity = WithdrawalsDB.Validity.IncorrectWithdrawalValue;
@@ -219,12 +210,13 @@ export const classifyWithdrawal = ({
             requested_value_cbor:
               entry[WithdrawalsDB.Columns.L2_VALUE].toString("hex"),
             actual_assets: Object.fromEntries(
-              Object.entries(normalizeAssets(utxo.assets)).map(
-                ([unit, quantity]) => [unit, quantity.toString()],
-              ),
+              Object.entries(actualAssets).map(([unit, quantity]) => [
+                unit,
+                quantity.toString(),
+              ]),
             ),
           };
-        } else if (Object.keys(normalizeAssets(utxo.assets)).length > 100) {
+        } else if (Object.keys(actualAssets).length > 100) {
           validity = WithdrawalsDB.Validity.TooManyTokensInWithdrawal;
         } else {
           const withdrawalInfo = yield* decodeWithdrawalInfo(entry);

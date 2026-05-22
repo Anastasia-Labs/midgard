@@ -1,26 +1,35 @@
 import {
+  type Assets,
+  credentialToAddress,
+  Data,
+  fromHex,
+  LucidEvolution,
+  scriptHashToCredential,
+  toUnit,
+  TxSignBuilder,
+  UTxO,
+} from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+
+import {
   AddressData,
   AddressSchema,
-  GenericErrorFields,
+  Bech32DeserializationError,
+  hashHexWithBlake2b,
   HashingError,
   LucidError,
+  makeReturn,
+  MidgardValidators,
   OutputReference,
   POSIXTimeSchema,
   ProofSchema,
-  UnspecifiedNetworkError,
-  makeReturn,
 } from "@/common.js";
-import { AuthenticUTxO, authenticateUTxOs } from "@/internals.js";
 import {
-  buildUserEventMintTransaction,
-  fetchUserEventUTxOsProgram,
-  findInclusionTimeForUserEvent,
-  getNonceInputAndAssetName,
-  encodeUserEventAuthenticateMintRedeemer,
-  UserEventExtraFields,
-  UserEventFetchConfig,
-  userEventWitnessScriptHash,
-} from "./internals.js";
+  fetchHubOracleUTxOProgram,
+  HubOracleError,
+  makeHubOracleDatum,
+} from "@/hub-oracle.js";
+import { authenticateUTxOs, AuthenticUTxO } from "@/internals.js";
 import {
   CardanoDatum,
   CardanoDatumSchema,
@@ -30,18 +39,22 @@ import {
   WithdrawalSignature,
   WithdrawalValiditySchema,
 } from "@/ledger-state.js";
+
 import {
-  Data,
-  fromHex,
-  LucidEvolution,
-  Script,
-  toUnit,
-  TxBuilder,
-  TxSignBuilder,
-  UTxO,
-} from "@lucid-evolution/lucid";
-import { Data as EffectData, Effect } from "effect";
-import { completeTxWithLocalUPLCEvalProgram } from "@/tx-completion.js";
+  buildCompletedUserEventMintTxProgram,
+  buildUserEventWitnessCertificateValidator,
+  encodeUserEventWitnessMintOrBurnRedeemer,
+  fetchUserEventUTxOsProgram,
+  fetchStakeCredentialDepositProgram,
+  outputReferenceToPlutusDataCbor,
+  resolveEventInclusionTime,
+  resolveUserEventValidTo,
+  selectWalletNonceInputProgram,
+  UserEventBuildError,
+  UserEventExtraFields,
+  UserEventFetchConfig,
+  userEventWitnessScriptHash,
+} from "./internals.js";
 
 export const WithdrawalOrderDatumSchema = Data.Object({
   event: WithdrawalEventSchema,
@@ -96,22 +109,17 @@ export type WithdrawalUTxO = AuthenticUTxO<
 export const utxosToWithdrawalUTxOs = (
   utxos: UTxO[],
   nftPolicy: string,
-): Effect.Effect<WithdrawalUTxO[]> => {
-  const calculateExtraFields = (
-    datum: WithdrawalOrderDatum,
-  ): UserEventExtraFields => ({
-    idCbor: Buffer.from(fromHex(Data.to(datum.event.id, OutputReference))),
-    infoCbor: Buffer.from(fromHex(Data.to(datum.event.info, WithdrawalInfo))),
-    inclusionTime: new Date(Number(datum.inclusion_time)),
-  });
-
-  return authenticateUTxOs<WithdrawalOrderDatum, UserEventExtraFields>(
+): Effect.Effect<WithdrawalUTxO[]> =>
+  authenticateUTxOs<WithdrawalOrderDatum, UserEventExtraFields>(
     utxos,
     nftPolicy,
     WithdrawalOrderDatum,
-    calculateExtraFields,
+    (datum) => ({
+      idCbor: Buffer.from(fromHex(Data.to(datum.event.id, OutputReference))),
+      infoCbor: Buffer.from(fromHex(Data.to(datum.event.info, WithdrawalInfo))),
+      inclusionTime: new Date(Number(datum.inclusion_time)),
+    }),
   );
-};
 
 export const fetchWithdrawalUTxOsProgram = (
   lucid: LucidEvolution,
@@ -126,128 +134,221 @@ export const fetchWithdrawalUTxOs = (
   config: UserEventFetchConfig,
 ) => makeReturn(fetchWithdrawalUTxOsProgram(lucid, config));
 
-export type WithdrawalOrderParams = {
-  withdrawalScriptAddress: string;
-  mintingPolicy: Script;
-  policyId: string;
-  nonceUTxO?: UTxO;
-  withdrawalBody: WithdrawalBody;
-  withdrawalSignature: WithdrawalSignature;
-  refundAddress: AddressData;
-  refundDatum?: CardanoDatum;
+export type SubmitWithdrawalReferenceScripts = {
+  readonly withdrawalMinting: UTxO;
 };
 
-/**
- * WithdrawalOrder
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteWithdrawalTxProgram = (
+export type SubmitWithdrawalConfig = {
+  readonly body: WithdrawalBody;
+  readonly signature: WithdrawalSignature;
+  readonly refundAddress: AddressData;
+  readonly refundDatum?: CardanoDatum;
+  readonly lovelace?: bigint;
+  readonly referenceScripts?: SubmitWithdrawalReferenceScripts;
+};
+
+export type WithdrawalBuildMetadata = {
+  readonly withdrawalAddress: string;
+  readonly withdrawalEventIdCbor: string;
+  readonly withdrawalAuthUnit: string;
+  readonly nonceInput: Pick<UTxO, "txHash" | "outputIndex">;
+  readonly validTo: number;
+  readonly inclusionTime: number;
+};
+
+const DEFAULT_WITHDRAWAL_ORDER_LOVELACE = 3_000_000n;
+
+const fetchWithdrawalHubOracleReferenceProgram = (
   lucid: LucidEvolution,
-  params: WithdrawalOrderParams,
+  contracts: MidgardValidators,
+  network: NonNullable<ReturnType<LucidEvolution["config"]>["network"]>,
 ): Effect.Effect<
-  TxBuilder,
-  HashingError | LucidError | UnspecifiedNetworkError
+  UTxO,
+  HubOracleError | LucidError | Bech32DeserializationError | UserEventBuildError
 > =>
   Effect.gen(function* () {
-    const { inputUtxo, assetName } = yield* getNonceInputAndAssetName(
+    const actual = yield* fetchHubOracleUTxOProgram(lucid, {
+      hubOracleAddress: credentialToAddress(
+        network,
+        scriptHashToCredential(contracts.hubOracle.policyId),
+      ),
+      hubOraclePolicyId: contracts.hubOracle.policyId,
+    });
+    const expectedDatum = yield* makeHubOracleDatum(contracts);
+
+    if (
+      actual.datum.withdrawal !== expectedDatum.withdrawal ||
+      JSON.stringify(actual.datum.withdrawal_addr) !==
+        JSON.stringify(expectedDatum.withdrawal_addr)
+    ) {
+      return yield* Effect.fail(
+        new UserEventBuildError({
+          message:
+            "On-chain hub oracle deployment does not match the locally configured withdrawal contract",
+          cause: {
+            expectedPolicyId: expectedDatum.withdrawal,
+            actualPolicyId: actual.datum.withdrawal,
+            expectedAddress: expectedDatum.withdrawal_addr,
+            actualAddress: actual.datum.withdrawal_addr,
+          },
+        }),
+      );
+    }
+
+    return actual.utxo;
+  });
+
+export const buildUnsignedWithdrawalTxWithMetadataProgram = (
+  lucid: LucidEvolution,
+  contracts: MidgardValidators,
+  config: SubmitWithdrawalConfig,
+): Effect.Effect<
+  {
+    readonly tx: TxSignBuilder;
+    readonly metadata: WithdrawalBuildMetadata;
+  },
+  | HubOracleError
+  | LucidError
+  | Bech32DeserializationError
+  | HashingError
+  | UserEventBuildError
+> =>
+  Effect.gen(function* () {
+    const network = lucid.config().network;
+    if (network === undefined) {
+      return yield* Effect.fail(
+        new UserEventBuildError({
+          message:
+            "Cardano network not found while preparing withdrawal transaction",
+          cause: "Lucid network configuration is undefined",
+        }),
+      );
+    }
+
+    const hubOracleRefInput = yield* fetchWithdrawalHubOracleReferenceProgram(
       lucid,
-      "withdrawal",
-      params.nonceUTxO,
+      contracts,
+      network,
     );
 
-    const withdrawalNFT = toUnit(params.policyId, assetName);
+    const nonceInput = yield* selectWalletNonceInputProgram(
+      lucid,
+      "withdrawal",
+    );
+    const withdrawalEventIdCbor = outputReferenceToPlutusDataCbor(nonceInput);
+    const nonceAssetName = yield* hashHexWithBlake2b(
+      withdrawalEventIdCbor,
+      32,
+    );
+    const withdrawalUnit = toUnit(
+      contracts.withdrawal.policyId,
+      nonceAssetName,
+    );
 
-    const inclusionTime = yield* findInclusionTimeForUserEvent(lucid);
+    const witnessScript =
+      buildUserEventWitnessCertificateValidator(nonceAssetName);
+    const witnessScriptHash = userEventWitnessScriptHash(nonceAssetName);
+    const stakeCredentialDeposit = yield* fetchStakeCredentialDepositProgram(
+      lucid,
+      "withdrawal",
+    );
+    const validTo = resolveUserEventValidTo(lucid);
+    const inclusionTime = resolveEventInclusionTime(validTo, network);
 
     const withdrawalOrderDatum: WithdrawalOrderDatum = {
       event: {
         id: {
-          transactionId: inputUtxo.txHash,
-          outputIndex: BigInt(inputUtxo.outputIndex),
+          transactionId: nonceInput.txHash,
+          outputIndex: BigInt(nonceInput.outputIndex),
         },
         info: {
-          body: params.withdrawalBody,
-          signature: params.withdrawalSignature,
+          body: config.body,
+          signature: config.signature,
           validity: "WithdrawalIsValid",
         },
       },
       inclusion_time: BigInt(inclusionTime),
-      witness: userEventWitnessScriptHash(assetName),
-      refund_address: params.refundAddress,
-      refund_datum: params.refundDatum ?? "NoDatum",
+      witness: witnessScriptHash,
+      refund_address: config.refundAddress,
+      refund_datum: config.refundDatum ?? "NoDatum",
     };
     const withdrawalOrderDatumCBOR = Data.to(
       withdrawalOrderDatum,
       WithdrawalOrderDatum,
     );
+    const outputAssets: Assets = {
+      lovelace: config.lovelace ?? DEFAULT_WITHDRAWAL_ORDER_LOVELACE,
+      [withdrawalUnit]: 1n,
+    };
+    const referenceInputs =
+      config.referenceScripts === undefined
+        ? [hubOracleRefInput]
+        : [hubOracleRefInput, config.referenceScripts.withdrawalMinting];
+    const witnessRegistrationRedeemer = encodeUserEventWitnessMintOrBurnRedeemer(
+      contracts.withdrawal.policyId,
+    );
 
-    const tx = buildUserEventMintTransaction({
+    const { tx } = yield* buildCompletedUserEventMintTxProgram({
       lucid,
-      inputUtxo,
-      nft: withdrawalNFT,
-      mintRedeemer: encodeUserEventAuthenticateMintRedeemer({
-        nonceInputIndex: 0n,
-        eventOutputIndex: 0n,
-        hubRefInputIndex: 0n,
-        witnessRegistrationRedeemerIndex: 0n,
-      }),
-      scriptAddress: params.withdrawalScriptAddress,
-      datum: withdrawalOrderDatumCBOR,
-      validTo: inclusionTime,
-      mintingPolicy: params.mintingPolicy,
+      nonceInput,
+      eventUnit: withdrawalUnit,
+      eventAddress: contracts.withdrawal.spendingScriptAddress,
+      eventDatumCbor: withdrawalOrderDatumCBOR,
+      outputAssets,
+      validTo,
+      mintingPolicy: contracts.withdrawal.mintingScript,
+      attachMintingPolicy: config.referenceScripts === undefined,
+      referenceInputs,
+      hubOracleRefInput,
+      witnessScript,
+      witnessRegistrationRedeemer,
+      stakeCredentialDeposit,
+      label: "withdrawal",
     });
-    return tx;
-  }).pipe(
-    Effect.catchAllDefect((defect) => {
-      return Effect.fail(
-        new LucidError({
-          message: "Caught defect from withdrawalTxBuilder",
-          cause: defect,
-        }),
-      );
-    }),
-  );
+
+    return {
+      tx,
+      metadata: {
+        withdrawalAddress: contracts.withdrawal.spendingScriptAddress,
+        withdrawalEventIdCbor,
+        withdrawalAuthUnit: withdrawalUnit,
+        nonceInput,
+        validTo,
+        inclusionTime,
+      },
+    };
+  });
 
 export const unsignedWithdrawalTxProgram = (
   lucid: LucidEvolution,
-  withdrawalParams: WithdrawalOrderParams,
+  contracts: MidgardValidators,
+  config: SubmitWithdrawalConfig,
 ): Effect.Effect<
   TxSignBuilder,
-  HashingError | LucidError | UnspecifiedNetworkError | WithdrawalError
+  | HubOracleError
+  | LucidError
+  | Bech32DeserializationError
+  | HashingError
+  | UserEventBuildError
 > =>
-  Effect.gen(function* () {
-    const commitTx = yield* incompleteWithdrawalTxProgram(
-      lucid,
-      withdrawalParams,
-    );
-    const completedTx: TxSignBuilder = yield* completeTxWithLocalUPLCEvalProgram(
-      commitTx,
-      (e) =>
-        new WithdrawalError({
-          message: `Failed to build the transaction: ${e}`,
-          cause: e,
-        }),
-    );
-    return completedTx;
-  });
+  buildUnsignedWithdrawalTxWithMetadataProgram(lucid, contracts, config).pipe(
+    Effect.map(({ tx }) => tx),
+  );
+
+export const buildUnsignedWithdrawalTxProgram = unsignedWithdrawalTxProgram;
 
 /**
  * Builds completed tx for submitting withdrawal order using the provided
  * `LucidEvolution` instance and a withdrawal order config.
  *
  * @param lucid - The `LucidEvolution` API object.
- * @param withdrawalParams - Parameters required for committing withdrawal orders.
+ * @param contracts - Midgard validator configuration.
+ * @param config - Parameters required for committing withdrawal orders.
  * @returns A promise that resolves to a `TxSignBuilder` instance.
  */
 export const unsignedWithdrawalTx = (
   lucid: LucidEvolution,
-  withdrawalParams: WithdrawalOrderParams,
+  contracts: MidgardValidators,
+  config: SubmitWithdrawalConfig,
 ): Promise<TxSignBuilder> =>
-  makeReturn(unsignedWithdrawalTxProgram(lucid, withdrawalParams)).unsafeRun();
-
-export class WithdrawalError extends EffectData.TaggedError(
-  "WithdrawalError",
-)<GenericErrorFields> {}
+  makeReturn(unsignedWithdrawalTxProgram(lucid, contracts, config)).unsafeRun();

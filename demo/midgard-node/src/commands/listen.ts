@@ -3,16 +3,18 @@
  * This module wires startup invariants, the HTTP server, and background fibers,
  * but should stay free of endpoint logic and other domain-specific details.
  */
-import { InitDB, MutationJobsDB } from "@/database/index.js";
-import {
-  ConfigError,
-  Database,
-  DatabaseInitializationError,
-  Globals,
-  Lucid,
-  MidgardContracts,
-  NodeConfig,
-} from "@/services/index.js";
+import { createServer } from "node:http";
+
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import { QueuedTxPayload } from "@al-ft/midgard-validation";
+import { NodeSdk } from "@effect/opentelemetry";
+import { HttpServer } from "@effect/platform";
+import { NodeHttpServer } from "@effect/platform-node";
+import { PrometheusExporter } from "@opentelemetry/exporter-prometheus";
+import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
+import { Cause, Duration, Effect, Layer, pipe, Queue, Schedule } from "effect";
+
 import { buildListenRouter } from "@/commands/listen-router.js";
 import {
   ensureProtocolInitializedOnStartup,
@@ -20,6 +22,8 @@ import {
   seedLatestLocalBlockBoundaryOnStartup,
 } from "@/commands/listen-startup.js";
 import { shouldRunGenesisOnStartup } from "@/commands/startup-policy.js";
+import { InitDB, MutationJobsDB } from "@/database/index.js";
+import { DatabaseError } from "@/database/utils/common.js";
 import {
   blockCommitmentFiber,
   blockConfirmationFiber,
@@ -34,17 +38,19 @@ import {
   retentionSweeperFiber,
   txQueueProcessorFiber,
 } from "@/fibers/index.js";
-import { QueuedTxPayload } from "@al-ft/midgard-validation";
 import * as Genesis from "@/genesis.js";
-import { NodeSdk } from "@effect/opentelemetry";
-import { PrometheusExporter } from "@opentelemetry/exporter-prometheus";
-import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
-import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
-import { Cause, Duration, Effect, Layer, Queue, Schedule, pipe } from "effect";
-import { HttpServer } from "@effect/platform";
-import { createServer } from "node:http";
-import { NodeHttpServer } from "@effect/platform-node";
-import { DatabaseError } from "@/database/utils/common.js";
+import {
+  ConfigError,
+  Database,
+  DatabaseInitializationError,
+  Globals,
+  Lucid,
+  MidgardContracts,
+  NodeConfig,
+} from "@/services/index.js";
+
+const logStartupFailure = (message: string) => (error: unknown) =>
+  Effect.logError(`${message}: ${formatUnknownError(error)}`);
 
 /**
  * Boots the long-running Midgard node runtime.
@@ -88,11 +94,7 @@ export const runNode = (
       );
     }
     yield* fetchAndInsertDepositUTxOs.pipe(
-      Effect.tapError((e) =>
-        Effect.logError(
-          `Startup deposit catch-up failed: ${JSON.stringify(e)}`,
-        ),
-      ),
+      Effect.tapError(logStartupFailure("Startup deposit catch-up failed")),
       Effect.mapError(
         (e) =>
           new DatabaseInitializationError({
@@ -102,10 +104,8 @@ export const runNode = (
       ),
     );
     yield* projectDepositsToMempoolLedger.pipe(
-      Effect.tapError((e) =>
-        Effect.logError(
-          `Startup deposit projection reconciliation failed: ${JSON.stringify(e)}`,
-        ),
+      Effect.tapError(
+        logStartupFailure("Startup deposit projection reconciliation failed"),
       ),
       Effect.mapError(
         (e) =>
@@ -116,11 +116,7 @@ export const runNode = (
       ),
     );
     yield* fetchAndInsertWithdrawalUTxOs.pipe(
-      Effect.tapError((e) =>
-        Effect.logError(
-          `Startup withdrawal catch-up failed: ${JSON.stringify(e)}`,
-        ),
-      ),
+      Effect.tapError(logStartupFailure("Startup withdrawal catch-up failed")),
       Effect.mapError(
         (e) =>
           new DatabaseInitializationError({

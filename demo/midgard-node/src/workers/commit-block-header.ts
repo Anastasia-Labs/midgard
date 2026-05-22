@@ -3,52 +3,50 @@
  * This module orchestrates MPF root processing, commit transaction
  * assembly, submission, and recovery by composing the smaller worker helpers.
  */
-import { parentPort, workerData } from "worker_threads";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Cause, Data, Effect, Option, Schedule, pipe } from "effect";
-import {
-  WorkerInput,
-  WorkerOutput,
-  deserializeStateQueueUTxO,
-} from "@/workers/utils/commit-block-header.js";
-import {
-  ConfigError,
-  Database,
-  Lucid,
-  MidgardContracts,
-  NodeConfig,
-  DatabaseInitializationError,
-} from "@/services/index.js";
+import { type LucidEvolution, toUnit } from "@lucid-evolution/lucid";
+import { Cause, Data, Effect, Option, pipe, Schedule } from "effect";
+import { parentPort, workerData } from "worker_threads";
+
 import {
   MempoolDB,
   ProcessedMempoolDB,
   TxUtils as TxTable,
 } from "@/database/index.js";
-import { type TxSignError, type TxSubmitError } from "@/transactions/utils.js";
-import { type LucidEvolution, toUnit } from "@lucid-evolution/lucid";
-import {
-  type MidgardMpf,
-  makeMpfs,
-  processMpfs,
-  withMpfRootTransactions,
-} from "@/workers/utils/mpf.js";
+import { DatabaseError } from "@/database/utils/common.js";
 import { Columns as TxColumns } from "@/database/utils/tx.js";
-import {
-  shouldAttemptLocalFinalizationRecovery,
-  shouldDeferCommitSubmission,
-} from "@/workers/utils/commit-block-planner.js";
-import { resolveExplicitCommitCandidateEndTimeMs } from "@/workers/utils/commit-end-time.js";
 import { fetchAndInsertDepositUTxOsForCommitBarrier } from "@/fibers/fetch-and-insert-deposit-utxos.js";
 import { fetchAndInsertWithdrawalUTxOsForCommitBarrier } from "@/fibers/fetch-and-insert-withdrawal-utxos.js";
+import {
+  ConfigError,
+  Database,
+  DatabaseInitializationError,
+  Lucid,
+  MidgardContracts,
+  NodeConfig,
+} from "@/services/index.js";
+import { type TxSignError, type TxSubmitError } from "@/transactions/utils.js";
+import { buildUnsignedCommitTx } from "@/workers/commit-block-header/build-unsigned-tx.js";
+import { fetchLatestCommittedBlockLocal } from "@/workers/commit-block-header/state-queue.js";
 import {
   deferProcessedCommitPayloadUntilConfirmation,
   recoverLocalFinalizationAgainstConfirmedBlock,
   submitDepositOnlyCommit,
   submitTxBackedCommit,
 } from "@/workers/commit-block-header/submission.js";
-import { buildUnsignedCommitTx } from "@/workers/commit-block-header/build-unsigned-tx.js";
-import { fetchLatestCommittedBlockLocal } from "@/workers/commit-block-header/state-queue.js";
-import { DatabaseError } from "@/database/utils/common.js";
+import {
+  deserializeStateQueueUTxO,
+  WorkerInput,
+  WorkerOutput,
+} from "@/workers/utils/commit-block-header.js";
+import { shouldDeferCommitSubmission } from "@/workers/utils/commit-block-planner.js";
+import { resolveExplicitCommitCandidateEndTimeMs } from "@/workers/utils/commit-end-time.js";
+import {
+  makeMpfs,
+  type MidgardMpf,
+  processMpfs,
+  withMpfRootTransactions,
+} from "@/workers/utils/mpf.js";
 
 const EXPLICIT_COMMIT_CONFIRMATION_TIMEOUT_MS = 120_000;
 const EXPLICIT_COMMIT_CONFIRMATION_POLL_INTERVAL_MS = 5_000;
@@ -76,29 +74,27 @@ const establishEndTimeFromTxRequests = (
   mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
 ): Effect.Effect<Option.Option<Date>, DatabaseError, Database> =>
   Effect.gen(function* () {
-    if (mempoolTxs.length <= 0) {
-      yield* Effect.logInfo(
-        "🔹 No transactions were found in MempoolDB, checking ProcessedMempoolDB...",
-      );
-
-      const processedMempoolTxs = yield* ProcessedMempoolDB.retrieve;
-
-      if (processedMempoolTxs.length <= 0) {
-        // No transaction requests are available for inclusion in a block. By
-        // setting `endTime` to `undefined` here, the code below can decide
-        // whether it can stop if no
-        return Option.none();
-      } else {
-        // No new transactions received, but there are uncommitted transactions
-        // in the transactions MPF. So its root must be used to submit a new block, and if
-        // successful, `ProcessedMempoolDB` must be cleared. Following functions
-        // should work fine with 0 mempool txs.
-        return Option.some(processedMempoolTxs[0][TxColumns.TIMESTAMPTZ]);
-      }
-    } else {
+    if (mempoolTxs.length > 0) {
       yield* Effect.logInfo(`🔹 ${mempoolTxs.length} retrieved.`);
       return Option.some(mempoolTxs[0][TxColumns.TIMESTAMPTZ]);
     }
+
+    yield* Effect.logInfo(
+      "🔹 No transactions were found in MempoolDB, checking ProcessedMempoolDB...",
+    );
+    const processedMempoolTxs = yield* ProcessedMempoolDB.retrieve;
+    if (processedMempoolTxs.length <= 0) {
+      // No transaction requests are available for inclusion in a block. By
+      // setting `endTime` to `undefined` here, the code below can decide
+      // whether it can stop if no
+      return Option.none();
+    }
+
+    // No new transactions received, but there are uncommitted transactions
+    // in the transactions MPF. So its root must be used to submit a new block, and if
+    // successful, `ProcessedMempoolDB` must be cleared. Following functions
+    // should work fine with 0 mempool txs.
+    return Option.some(processedMempoolTxs[0][TxColumns.TIMESTAMPTZ]);
   });
 
 const shouldPreserveCommitMpfRoots = (output: WorkerOutput): boolean => {
@@ -334,9 +330,7 @@ const databaseOperationsProgram = (
     if (
       shouldDeferCommitSubmission({
         localFinalizationPending: workerInput.data.localFinalizationPending,
-        hasAvailableConfirmedBlock: workerInput.data.localFinalizationPending
-          ? hasAvailableLocalFinalizationBlock
-          : hasAvailableConfirmedBlock,
+        hasAvailableConfirmedBlock: hasAvailableLocalFinalizationBlock,
       })
     ) {
       yield* Effect.logInfo(
@@ -349,7 +343,7 @@ const databaseOperationsProgram = (
 
     const recoverableLocalFinalizationBlock =
       workerInput.data.localFinalizationPending &&
-      availableLocalFinalizationBlock !== ""
+      hasAvailableLocalFinalizationBlock
         ? availableLocalFinalizationBlock
         : undefined;
     if (recoverableLocalFinalizationBlock !== undefined) {
@@ -361,39 +355,31 @@ const databaseOperationsProgram = (
         transactionsMpf,
         processedMempoolTxs: [],
         mempoolTxHashes: [],
-        includedDepositEventIds: [],
-        includedWithdrawalEventIds: [],
         workerInput,
         sizeOfProcessedTxs: 0,
       });
     }
 
+    const canBuildOnConfirmedBlock =
+      hasAvailableConfirmedBlock && !workerInput.data.localFinalizationPending;
     const processed = yield* processMpfs(
       ledgerMpf,
       transactionsMpf,
       mempoolTxs,
       {
-        currentBlockStartTime:
-          availableConfirmedBlock !== "" &&
-          !workerInput.data.localFinalizationPending
-            ? currentBlockStartTime
-            : undefined,
+        currentBlockStartTime: canBuildOnConfirmedBlock
+          ? currentBlockStartTime
+          : undefined,
         processedOnlyEndTime: processedPendingTxs[0]?.[TxColumns.TIMESTAMPTZ],
-        depositVisibilityBarrierTime:
-          availableConfirmedBlock !== "" &&
-          !workerInput.data.localFinalizationPending
-            ? depositIngestionBarrierTime
-            : undefined,
-        withdrawalVisibilityBarrierTime:
-          availableConfirmedBlock !== "" &&
-          !workerInput.data.localFinalizationPending
-            ? withdrawalIngestionBarrierTime
-            : undefined,
-        depositOnlyEndTime:
-          availableConfirmedBlock !== "" &&
-          !workerInput.data.localFinalizationPending
-            ? userEventOnlyEndTime
-            : undefined,
+        depositVisibilityBarrierTime: canBuildOnConfirmedBlock
+          ? depositIngestionBarrierTime
+          : undefined,
+        withdrawalVisibilityBarrierTime: canBuildOnConfirmedBlock
+          ? withdrawalIngestionBarrierTime
+          : undefined,
+        depositOnlyEndTime: canBuildOnConfirmedBlock
+          ? userEventOnlyEndTime
+          : undefined,
       },
     );
 
@@ -474,32 +460,6 @@ const databaseOperationsProgram = (
       const latestBlock = yield* deserializeStateQueueUTxO(
         availableConfirmedBlock,
       );
-
-      if (
-        shouldAttemptLocalFinalizationRecovery({
-          localFinalizationPending: workerInput.data.localFinalizationPending,
-          hasAvailableConfirmedBlock: hasAvailableLocalFinalizationBlock,
-        })
-      ) {
-        if (!hasAvailableLocalFinalizationBlock) {
-          return {
-            type: "NothingToCommitOutput",
-          } satisfies WorkerOutput;
-        }
-        const recoverableConfirmedBlock = yield* deserializeStateQueueUTxO(
-          availableLocalFinalizationBlock,
-        );
-        return yield* recoverLocalFinalizationAgainstConfirmedBlock({
-          latestBlock: recoverableConfirmedBlock,
-          transactionsMpf,
-          processedMempoolTxs,
-          mempoolTxHashes,
-          includedDepositEventIds,
-          includedWithdrawalEventIds,
-          workerInput,
-          sizeOfProcessedTxs,
-        });
-      }
 
       if (Option.isNone(optEndTime)) {
         // No transaction requests found (neither in `ProcessedMempoolDB`, nor

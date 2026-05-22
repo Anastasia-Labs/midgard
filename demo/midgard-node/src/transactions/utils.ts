@@ -1,18 +1,20 @@
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
+  coreToTxOutput,
+  fromHex,
   LucidEvolution,
   OutRef,
   TxSignBuilder,
   UTxO,
-  coreToTxOutput,
-  fromHex,
 } from "@lucid-evolution/lucid";
 import { Data, Effect, Schedule } from "effect";
+
 import * as BlocksDB from "@/database/blocks.js";
-import { Database } from "@/services/index.js";
 import { ImmutableDB } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
+import { Database } from "@/services/index.js";
 
 /**
  * Shared transaction signing, submission, confirmation, and recovery helpers.
@@ -61,6 +63,15 @@ type OutsideValidityIntervalDetails = {
   readonly currentSlot: number;
 };
 
+const outsideValidityDetails = (
+  invalidBeforeSlot: number,
+  invalidHereafterSlot: number,
+  currentSlot: number,
+): OutsideValidityIntervalDetails | null =>
+  [invalidBeforeSlot, invalidHereafterSlot, currentSlot].every(Number.isFinite)
+    ? { invalidBeforeSlot, invalidHereafterSlot, currentSlot }
+    : null;
+
 /**
  * Extracts slot-boundary details from an `OutsideValidityIntervalUTxO` error.
  */
@@ -70,61 +81,32 @@ export const parseOutsideValidityIntervalDetails = (
   const normalizedMessage = message.replace(/\\"/g, '"');
   const match = OUTSIDE_VALIDITY_INTERVAL_REGEX.exec(normalizedMessage);
   if (match !== null) {
-    const invalidBeforeSlot = Number(match[1]);
-    const invalidHereafterSlot = Number(match[2]);
-    const currentSlot = Number(match[3]);
-    if (
-      !Number.isFinite(invalidBeforeSlot) ||
-      !Number.isFinite(invalidHereafterSlot) ||
-      !Number.isFinite(currentSlot)
-    ) {
-      return null;
-    }
-    return {
-      invalidBeforeSlot,
-      invalidHereafterSlot,
-      currentSlot,
-    };
+    return outsideValidityDetails(
+      Number(match[1]),
+      Number(match[2]),
+      Number(match[3]),
+    );
   }
 
   const emulatorLowerBoundMatch =
     EMULATOR_LOWER_BOUND_OUTSIDE_VALIDITY_REGEX.exec(normalizedMessage);
   if (emulatorLowerBoundMatch === null) {
-    const ogmiosMatch = OGMIOS_OUTSIDE_VALIDITY_INTERVAL_REGEX.exec(
-      normalizedMessage,
-    );
+    const ogmiosMatch =
+      OGMIOS_OUTSIDE_VALIDITY_INTERVAL_REGEX.exec(normalizedMessage);
     if (ogmiosMatch === null) {
       return null;
     }
-    const invalidBeforeSlot = Number(ogmiosMatch[1]);
-    const invalidHereafterSlot = Number(ogmiosMatch[2]);
-    const currentSlot = Number(ogmiosMatch[3]);
-    if (
-      !Number.isFinite(invalidBeforeSlot) ||
-      !Number.isFinite(invalidHereafterSlot) ||
-      !Number.isFinite(currentSlot)
-    ) {
-      return null;
-    }
-    return {
-      invalidBeforeSlot,
-      invalidHereafterSlot,
-      currentSlot,
-    };
+    return outsideValidityDetails(
+      Number(ogmiosMatch[1]),
+      Number(ogmiosMatch[2]),
+      Number(ogmiosMatch[3]),
+    );
   }
-  const invalidBeforeSlot = Number(emulatorLowerBoundMatch[1]);
-  const currentSlot = Number(emulatorLowerBoundMatch[2]);
-  if (
-    !Number.isFinite(invalidBeforeSlot) ||
-    !Number.isFinite(currentSlot)
-  ) {
-    return null;
-  }
-  return {
-    invalidBeforeSlot,
-    invalidHereafterSlot: Number.MAX_SAFE_INTEGER,
-    currentSlot,
-  };
+  return outsideValidityDetails(
+    Number(emulatorLowerBoundMatch[1]),
+    Number.MAX_SAFE_INTEGER,
+    Number(emulatorLowerBoundMatch[2]),
+  );
 };
 
 type SignSubmitContext = {
@@ -208,27 +190,6 @@ export type BlockTxPayload = {
 };
 
 /**
- * Converts an unknown submit failure into a stable log/error string.
- */
-const formatSubmitError = (error: unknown): string => {
-  if (error instanceof Error) {
-    const cause = (error as Error & { cause?: unknown }).cause;
-    if (cause === undefined) {
-      return `${error.name}: ${error.message}`;
-    }
-    return `${error.name}: ${error.message}; cause=${formatSubmitError(cause)}`;
-  }
-  if (typeof error === "string") {
-    return error;
-  }
-  try {
-    return JSON.stringify(error);
-  } catch {
-    return String(error);
-  }
-};
-
-/**
  * Submits a signed transaction with recovery logic for provider races and
  * early-validity-window failures.
  */
@@ -241,7 +202,7 @@ const submitSignedTxWithRecovery = (
   signed.submitProgram().pipe(
     Effect.catchAll((e) =>
       Effect.gen(function* () {
-        const submitError = formatSubmitError(e);
+        const submitError = formatUnknownError(e, { includeCause: true });
         if (isPotentiallyAlreadyIncludedError(submitError)) {
           yield* Effect.logWarning(
             `Tx submit returned an already-included style error for ${txHash}; verifying on-chain confirmation before failing: ${submitError}`,
@@ -269,7 +230,10 @@ const submitSignedTxWithRecovery = (
               }),
             catch: (cause) =>
               new Error(
-                `submit-recovery confirmation check failed for ${txHash}: ${formatSubmitError(cause)}`,
+                `submit-recovery confirmation check failed for ${txHash}: ${formatUnknownError(
+                  cause,
+                  { includeCause: true },
+                )}`,
               ),
           });
           if (!confirmed) {
@@ -300,8 +264,7 @@ const submitSignedTxWithRecovery = (
           const retryWaitSlots = reportedSlotLagExceedsValidityWindow
             ? EARLY_VALIDITY_RETRY_SLOT_BUFFER
             : slotsUntilValid + EARLY_VALIDITY_RETRY_SLOT_BUFFER;
-          const waitMs =
-            retryWaitSlots * SLOT_LENGTH_MS;
+          const waitMs = retryWaitSlots * SLOT_LENGTH_MS;
           yield* Effect.logWarning(
             [
               `Tx ${txHash} submitted before validity interval opened `,
@@ -451,13 +414,17 @@ const signSubmitHelper = (
       ),
       Effect.tapError((e) =>
         Effect.logError(
-          `Tx submission provider error for ${txHash}: ${formatSubmitError(e)}`,
+          `Tx submission provider error for ${txHash}: ${formatUnknownError(e, {
+            includeCause: true,
+          })}`,
         ),
       ),
       Effect.mapError(
         (e) =>
           new TxSubmitError({
-            message: `Failed to submit transaction: ${formatSubmitError(e)}`,
+            message: `Failed to submit transaction: ${formatUnknownError(e, {
+              includeCause: true,
+            })}`,
             cause: e,
             txHash,
           }),

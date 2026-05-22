@@ -1,26 +1,20 @@
-import {
-  MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
-} from "@al-ft/midgard-core/codec";
-import {
-  readFileSync,
-  readdirSync,
-  statSync } from "node:fs";
-import { join,
-  resolve } from "node:path";
-import { describe,
-  expect,
-  it } from "vitest";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join, resolve } from "node:path";
+
+import { MIDGARD_SUPPORTED_SCRIPT_LANGUAGES } from "@al-ft/midgard-core/codec";
 import { Effect } from "effect";
+import { describe, expect, it } from "vitest";
+
 import {
+  type Address,
   BuilderInvariantError,
   decodeMidgardUtxo,
   encodeMidgardTxOutput,
   LucidMidgard,
-  outRefToCbor,
-  type Address,
   type MidgardProvider,
   type MidgardUtxo,
   type OutRef,
+  outRefToCbor,
 } from "../src/index.js";
 
 const productionSources = (directory: string): readonly string[] =>
@@ -96,7 +90,10 @@ const makeProvider = (
     duplicate: false,
   }),
   getTxStatus: async (txId) => ({ kind: "queued", txId }),
-  diagnostics: () => ({ endpoint: "memory://safe", protocolInfoSource: "node" }),
+  diagnostics: () => ({
+    endpoint: "memory://safe",
+    protocolInfoSource: "node",
+  }),
 });
 
 describe("safe and Effect builder APIs", () => {
@@ -201,7 +198,8 @@ describe("safe and Effect builder APIs", () => {
 
   it("does not use unsafe Effect escape hatches in production source", () => {
     const srcDir = resolve(import.meta.dirname, "../src");
-    const forbidden = /Effect\.orDie|unsafeRun|catchAllDefect|catchAllCause|catchCause/;
+    const forbidden =
+      /Effect\.orDie|unsafeRun|catchAllDefect|catchAllCause|catchCause/;
     const offenders = productionSources(srcDir).filter((path) =>
       forbidden.test(readFileSync(path, "utf8")),
     );

@@ -1,5 +1,6 @@
-import { Globals } from "@/services/index.js";
 import { Effect, Metric, Ref } from "effect";
+
+import { Globals } from "@/services/index.js";
 
 /**
  * Background metrics emission for queue-related in-memory node state.
@@ -53,24 +54,30 @@ const unconfirmedSubmittedBlockAgeGauge = Metric.gauge(
 export const emitQueueStateMetrics = Effect.gen(function* () {
   const globals = yield* Globals;
   const blocksInQueue = yield* Ref.get(globals.BLOCKS_IN_QUEUE);
-  const processedCount = yield* Ref.get(globals.PROCESSED_UNSUBMITTED_TXS_COUNT);
+  const processedCount = yield* Ref.get(
+    globals.PROCESSED_UNSUBMITTED_TXS_COUNT,
+  );
   const processedSize = yield* Ref.get(globals.PROCESSED_UNSUBMITTED_TXS_SIZE);
-  const unconfirmedHash = yield* Ref.get(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH);
-  const unconfirmedSince = yield* Ref.get(globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS);
+  const unconfirmedHash = yield* Ref.get(
+    globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
+  );
+  const unconfirmedSince = yield* Ref.get(
+    globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS,
+  );
 
   const hasUnconfirmed = unconfirmedHash !== "";
   const unconfirmedAgeMs =
     hasUnconfirmed && unconfirmedSince > 0 ? Date.now() - unconfirmedSince : 0;
 
-  yield* blocksInQueueGauge(Effect.succeed(BigInt(Math.max(0, blocksInQueue))));
+  yield* blocksInQueueGauge(Effect.succeed(BigInt(blocksInQueue)));
   yield* processedUnsubmittedTxsCountGauge(
-    Effect.succeed(BigInt(Math.max(0, processedCount))),
+    Effect.succeed(BigInt(processedCount)),
   );
   yield* processedUnsubmittedTxsSizeGauge(
-    Effect.succeed(BigInt(Math.max(0, processedSize))),
+    Effect.succeed(BigInt(processedSize)),
   );
-  yield* unconfirmedSubmittedBlockGauge(Effect.succeed(hasUnconfirmed ? 1n : 0n));
-  yield* unconfirmedSubmittedBlockAgeGauge(
-    Effect.succeed(Math.max(0, unconfirmedAgeMs)),
+  yield* unconfirmedSubmittedBlockGauge(
+    Effect.succeed(hasUnconfirmed ? 1n : 0n),
   );
+  yield* unconfirmedSubmittedBlockAgeGauge(Effect.succeed(unconfirmedAgeMs));
 });

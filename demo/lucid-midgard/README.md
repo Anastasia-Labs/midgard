@@ -1,7 +1,7 @@
 # lucid-midgard
 
 Midgard-native L2 transaction builder primitives inspired by lucid-evolution.
-The library builds and signs Midgard native transaction envelope bytes; it does
+The library builds and signs Midgard native canonical transaction bytes; it does
 not build or submit Cardano transactions.
 
 ## Quickstart
@@ -22,11 +22,13 @@ const midgard = await LucidMidgard.new(provider, {
   networkId: 0,
 });
 
-midgard.selectWallet.fromExternalSigner(walletFromExternalSigner({
-  address,
-  keyHash,
-  signBodyHash,
-}));
+midgard.selectWallet.fromExternalSigner(
+  walletFromExternalSigner({
+    address,
+    keyHash,
+    signBodyHash,
+  }),
+);
 
 const tx = await midgard
   .newTx()
@@ -131,7 +133,10 @@ Promise APIs throw structured `LucidMidgardError` subclasses. Safe APIs return
 
 ```ts
 const safe = await tx.submitSafe();
-const program = tx.awaitStatusProgram({ until: "committed", timeoutMs: 30_000 });
+const program = tx.awaitStatusProgram({
+  until: "committed",
+  timeoutMs: 30_000,
+});
 ```
 
 Promise-style callers should catch `LucidMidgardError` subclasses and log
@@ -145,7 +150,7 @@ failures into strings or booleans.
 final validation acceptance. Use `status` or `awaitStatus` to observe `queued`,
 `accepted`, `rejected`, and `committed` states. Rejected status preserves node
 reject codes and details. Provider submission posts the raw Midgard transaction
-envelope CBOR to `/submit` with `Content-Type: application/cbor`.
+canonical transaction CBOR to `/submit` with `Content-Type: application/cbor`.
 
 ## Protected Outputs
 

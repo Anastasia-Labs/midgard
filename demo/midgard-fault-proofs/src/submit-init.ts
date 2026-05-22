@@ -1,27 +1,28 @@
 import {
-  Data,
-  type LucidEvolution,
-  type Network,
-  type Script,
-  credentialToAddress,
-  scriptHashToCredential,
-  toUnit,
-} from "@lucid-evolution/lucid";
-import {
+  buildDoubleSpendFaultProofContracts,
   FRAUD_PROOF_CATALOGUE_ASSET_NAME,
   FraudProofComputationThreadRedeemer,
   FraudProofComputationThreadStepDatum,
   HUB_ORACLE_ASSET_NAME,
-  Proof,
-  buildDoubleSpendFaultProofContracts,
   parseFaultProofBlueprint,
+  Proof,
 } from "@al-ft/midgard-sdk";
+import {
+  credentialToAddress,
+  Data,
+  type LucidEvolution,
+  type Network,
+  type Script,
+  scriptHashToCredential,
+  toUnit,
+} from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+
 import {
   type ContractDeploymentInfo,
   inspectContracts,
   parseContractDeploymentInfo,
 } from "./inspect-contracts.js";
-import { Effect } from "effect";
 import {
   compareOutRefs,
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -31,15 +32,14 @@ import {
   makeLucidForSubmit,
   parseOutRef,
   phasMembershipRewardAddress,
+  type ProverSignerConfig,
   readJsonFile,
   referenceInputIndex,
   requireDeploymentScriptHash,
   requireSingletonUtxo,
+  type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
   resolveProverSigner,
-  type ParsedOutRef,
-  type ProverSignerConfig,
-  type ResolvedProverSigner,
   type SubmitProviderConfig,
 } from "./runtime.js";
 
@@ -84,20 +84,6 @@ const requireFraudProofCatalogue = (deploymentInfo: ContractDeploymentInfo) => {
     );
   }
   return catalogue;
-};
-
-const normalizeHeaderHash = (value: string | undefined): string | undefined => {
-  const normalized = value?.trim().toLowerCase();
-  if (normalized === undefined) {
-    return undefined;
-  }
-  if (normalized.length === 0) {
-    return undefined;
-  }
-  if (!/^[0-9a-f]{56}$/.test(normalized)) {
-    throw new Error("--fraudulent-header-hash must be a 28-byte hex string.");
-  }
-  return normalized;
 };
 
 const encodePhasMembershipRedeemer = ({
@@ -220,7 +206,7 @@ export const submitInit = async ({
   const resolvedHeaderHash = resolveFraudulentHeaderHash({
     stateQueuePolicyId,
     fraudulentBlockUtxo,
-    configuredHeaderHash: normalizeHeaderHash(fraudulentHeaderHash),
+    configuredHeaderHash: fraudulentHeaderHash,
   });
   const computationThreadAssetName = `${doubleSpendCategory.categoryId}${resolvedHeaderHash}`;
   const computationThreadUnit = toUnit(

@@ -1,4 +1,11 @@
 import { describe, expect, it } from "vitest";
+
+import {
+  encodeCborArrayRaw,
+  encodeCborBytes,
+  encodeCborMapRaw,
+  encodeCborUnsigned,
+} from "../src/codec/cbor.js";
 import {
   decodeMidgardAddressBytes,
   decodeMidgardTxOutput,
@@ -7,17 +14,11 @@ import {
   encodeMidgardAddressText,
   encodeMidgardTxOutput,
   encodeMidgardVersionedScript,
-  midgardAddressFromText,
   MIDGARD_PROTECTED_ADDRESS_HEADER_MASK,
-  protectMidgardAddress,
+  midgardAddressFromText,
   type MidgardTxOutput,
+  protectMidgardAddress,
 } from "../src/codec/index.js";
-import {
-  encodeCborArrayRaw,
-  encodeCborBytes,
-  encodeCborMapRaw,
-  encodeCborUnsigned,
-} from "../src/codec/cbor.js";
 
 const unprotectedAddress =
   "addr1q9ynxme7c0tcmmvgk2tjuv63aw7zk9tk6yqkaqd48ulhkyl5f6v47dp5rc7286z5f57339d0c79khw4y3lwxzm8ywkzs02spk6";

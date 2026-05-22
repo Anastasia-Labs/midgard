@@ -1,13 +1,15 @@
-import { describe, expect } from "vitest";
-import { it } from "@effect/vitest";
-import { Effect } from "effect";
 import { dirname, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
-import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
+
+import { it } from "@effect/vitest";
+import { Effect } from "effect";
+import { describe, expect } from "vitest";
+
 import {
   buildContractDeploymentInfoFromContracts,
   defaultContractDeploymentInfoOutputPath,
 } from "@/commands/contract-deployment-info.js";
+import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
 
 describe("contract deployment info", () => {
   it.effect(

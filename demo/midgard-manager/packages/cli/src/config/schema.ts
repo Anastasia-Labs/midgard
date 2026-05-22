@@ -8,7 +8,6 @@ export const configSchema = S.Struct({
   node: S.Struct({
     endpoint: S.String.pipe(S.pattern(/^https?:\/\/.+/)),
   }),
-
   // Transaction generator configuration
   generator: S.Struct({
     enabled: S.Boolean,
@@ -16,7 +15,6 @@ export const configSchema = S.Struct({
     batchSize: S.Number.pipe(S.positive(), S.int()),
     intervalMs: S.Number.pipe(S.positive(), S.int()),
   }),
-
   // Logging configuration
   logging: S.Struct({
     level: S.Literal('debug', 'info', 'warn', 'error'),

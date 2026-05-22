@@ -1,30 +1,28 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { fromHex } from "@lucid-evolution/lucid";
 import { Data, Effect, Option } from "effect";
+
 import {
   DepositsDB,
-  MempoolDB,
   PendingBlockFinalizationsDB,
-  ProcessedMempoolDB,
   TxUtils as TxTable,
   WithdrawalsDB,
 } from "@/database/index.js";
-import { Columns as TxColumns } from "@/database/utils/tx.js";
-import type { Database } from "@/services/index.js";
-import { Lucid } from "@/services/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
-import { TxSignError, TxSubmitError } from "@/transactions/utils.js";
+import { Columns as TxColumns } from "@/database/utils/tx.js";
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import {
   fetchOperatorWalletView,
   isPotentiallyStaleOperatorWalletViewError,
   type OperatorWalletView,
 } from "@/operator-wallet-view.js";
-import { formatUnknownError } from "@/error-format.js";
+import type { Database } from "@/services/index.js";
+import { Lucid } from "@/services/index.js";
+import { TxSignError, TxSubmitError } from "@/transactions/utils.js";
 import type {
   WorkerInput,
   WorkerOutput,
 } from "@/workers/utils/commit-block-header.js";
-import { emptyRootHexProgram, type MidgardMpf } from "@/workers/utils/mpf.js";
 import { selectCommitRoots } from "@/workers/utils/commit-block-planner.js";
 import {
   failedSubmissionProgram,
@@ -32,18 +30,20 @@ import {
   skippedSubmissionProgram,
   successfulLocalFinalizationRecoveryProgram,
 } from "@/workers/utils/commit-submission.js";
+import { emptyRootHexProgram, type MidgardMpf } from "@/workers/utils/mpf.js";
+
+import { buildUnsignedCommitTx } from "./build-unsigned-tx.js";
+import { resolveDepositsRoot, resolveWithdrawalsRoot } from "./event-roots.js";
 import {
   assertLiveTailCommitBase,
   assertPendingJournalCompleteness,
   buildPendingJournalMetadata,
   revalidateStateQueueLease,
 } from "./pending-journal.js";
-import { buildUnsignedCommitTx } from "./build-unsigned-tx.js";
 import {
   getHeaderFromStateQueueDatumLocal,
   hashBlockHeaderLocal,
 } from "./state-queue.js";
-import { resolveDepositsRoot, resolveWithdrawalsRoot } from "./event-roots.js";
 
 const COMMIT_STALE_OPERATOR_WALLET_VIEW_RETRIES = 1;
 
@@ -665,8 +665,6 @@ export const recoverLocalFinalizationAgainstConfirmedBlock = ({
   transactionsMpf,
   processedMempoolTxs,
   mempoolTxHashes,
-  includedDepositEventIds,
-  includedWithdrawalEventIds,
   workerInput,
   sizeOfProcessedTxs,
 }: {
@@ -674,8 +672,6 @@ export const recoverLocalFinalizationAgainstConfirmedBlock = ({
   readonly transactionsMpf: MidgardMpf;
   readonly processedMempoolTxs: readonly TxTable.EntryWithTimeStamp[];
   readonly mempoolTxHashes: Buffer[];
-  readonly includedDepositEventIds: readonly Buffer[];
-  readonly includedWithdrawalEventIds: readonly Buffer[];
   readonly workerInput: WorkerInput;
   readonly sizeOfProcessedTxs: number;
 }): Effect.Effect<WorkerOutput, unknown, Database> =>

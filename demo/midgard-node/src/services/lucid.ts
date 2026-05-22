@@ -1,7 +1,10 @@
-import { Effect, Schedule } from "effect";
-import { ConfigError, NodeConfig } from "./config.js";
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as LE from "@lucid-evolution/lucid";
+import { Effect, Schedule } from "effect";
+
 import { outRefLabel } from "@/tx-context.js";
+
+import { ConfigError, NodeConfig } from "./config.js";
 
 /**
  * Lucid-provider construction and fallback behavior for the Midgard node.
@@ -16,21 +19,8 @@ const KOIOS_BASE_URL_BY_NETWORK: Partial<Record<LE.Network, string>> = {
   Preview: "https://preview.koios.rest/api/v1",
 };
 
-/**
- * Resolves the Koios base URL for a network when a fallback exists.
- */
-const resolveKoiosBaseUrl = (network: LE.Network): string | undefined =>
-  KOIOS_BASE_URL_BY_NETWORK[network];
-
-/**
- * Converts an unknown error into a stable diagnostic string.
- */
-const formatUnknownError = (error: unknown): string => {
-  if (error instanceof Error) {
-    return error.stack ?? error.message;
-  }
-  return String(error);
-};
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Returns whether a Blockfrost failure is worth retrying through a fallback
@@ -42,9 +32,9 @@ const isBlockfrostFallbackEligibleError = (error: unknown): boolean => {
     message.includes("blockfrost") ||
     message.includes("project over limit") ||
     message.includes("usage is over limit") ||
-    message.includes("\"status_code\":402") ||
+    message.includes('"status_code":402') ||
     message.includes("status_code: 402") ||
-    message.includes("\"status_code\":429") ||
+    message.includes('"status_code":429') ||
     message.includes("status_code: 429") ||
     message.includes("too many requests") ||
     message.includes("rate limit") ||
@@ -71,9 +61,9 @@ export const isBlockfrostRateLimitError = (error: unknown): boolean => {
   return (
     message.includes("project over limit") ||
     message.includes("usage is over limit") ||
-    message.includes("\"status_code\":402") ||
+    message.includes('"status_code":402') ||
     message.includes("status_code: 402") ||
-    message.includes("\"status_code\":429") ||
+    message.includes('"status_code":429') ||
     message.includes("status_code: 429") ||
     message.includes("too many requests") ||
     message.includes("rate limit") ||
@@ -340,8 +330,7 @@ const resolveTxUtxoContext = async (
   if (outRefs.length === 0) {
     return [];
   }
-  const fetched = await provider.getUtxosByOutRef(outRefs);
-  return fetched.filter((utxo) => (utxo.assets.lovelace ?? 0n) >= 0n);
+  return provider.getUtxosByOutRef(outRefs);
 };
 
 /**
@@ -354,19 +343,15 @@ const patchBlockfrostEvaluateTx = (provider: LE.Blockfrost): LE.Blockfrost => {
     try {
       return await originalEvaluateTx(tx, additionalUTxOs);
     } catch (originalError) {
-      let resolvedAdditionalUTxOs = additionalUTxOs ?? [];
-      if (resolvedAdditionalUTxOs.length === 0) {
-        try {
-          resolvedAdditionalUTxOs = await resolveTxUtxoContext(provider, tx);
-        } catch {
-          // keep empty list and rethrow original below if fallback cannot run
-        }
-      }
-      if (resolvedAdditionalUTxOs.length === 0) {
-        throw originalError;
-      }
       try {
         const txContextUtxos = await resolveTxUtxoContext(provider, tx);
+        const resolvedAdditionalUTxOs =
+          additionalUTxOs === undefined || additionalUTxOs.length === 0
+            ? txContextUtxos
+            : additionalUTxOs;
+        if (resolvedAdditionalUTxOs.length === 0) {
+          throw originalError;
+        }
         return evaluateTxViaBlockfrostUtxoEndpoint(
           provider,
           tx,
@@ -401,8 +386,11 @@ const patchBlockfrostAwaitTx = (provider: LE.Blockfrost): LE.Blockfrost => {
         },
       ).then((res) => res.json());
       const confirmationPayload = isConfirmed as
-        | { readonly error?: unknown }
-        | { readonly error?: unknown; readonly status_code?: number; readonly message?: string }
+        | {
+            readonly error?: unknown;
+            readonly status_code?: number;
+            readonly message?: string;
+          }
         | null
         | undefined;
       if (
@@ -411,9 +399,7 @@ const patchBlockfrostAwaitTx = (provider: LE.Blockfrost): LE.Blockfrost => {
         typeof confirmationPayload === "object" &&
         !("error" in confirmationPayload)
       ) {
-        await new Promise<void>((resolve) => {
-          setTimeout(() => resolve(), 1_000);
-        });
+        await sleep(1_000);
         return true;
       }
       if (
@@ -443,9 +429,7 @@ const patchBlockfrostAwaitTx = (provider: LE.Blockfrost): LE.Blockfrost => {
           throw new Error(JSON.stringify(confirmationPayload));
         }
       }
-      await new Promise<void>((resolve) => {
-        setTimeout(() => resolve(), checkInterval);
-      });
+      await sleep(checkInterval);
     }
   };
   return provider;
@@ -489,7 +473,10 @@ const patchBlockfrostWithApiKeyFallback = (
 ): LE.Blockfrost => {
   const warnedMethods = new Set<BlockfrostProviderMethodName>();
   const primaryDynamic = primaryProvider as unknown as Record<string, unknown>;
-  const fallbackDynamic = fallbackProvider as unknown as Record<string, unknown>;
+  const fallbackDynamic = fallbackProvider as unknown as Record<
+    string,
+    unknown
+  >;
 
   const wrap = (methodName: BlockfrostProviderMethodName): void => {
     const primaryMethod = primaryDynamic[methodName];
@@ -567,9 +554,7 @@ const awaitTxViaKoios = async (
     if (Array.isArray(body) && body.length > 0) {
       return true;
     }
-    await new Promise<void>((resolve) => {
-      setTimeout(() => resolve(), checkInterval);
-    });
+    await sleep(checkInterval);
   }
   return false;
 };
@@ -582,7 +567,10 @@ const patchBlockfrostWithKoiosFallback = (
   provider: LE.Blockfrost,
   network: LE.Network,
 ): LE.Blockfrost => {
-  const koiosBaseUrl = resolveKoiosBaseUrl(network);
+  /**
+   * Resolves the Koios base URL for a network when a fallback exists.
+   */
+  const koiosBaseUrl = KOIOS_BASE_URL_BY_NETWORK[network];
   if (koiosBaseUrl === undefined) {
     return provider;
   }
@@ -720,10 +708,7 @@ const makeLucid: Effect.Effect<
             withFallbackBlockfrostKey,
             nodeConfig.NETWORK,
           );
-          return LE.Lucid(
-            blockfrostProvider,
-            nodeConfig.NETWORK,
-          );
+          return LE.Lucid(blockfrostProvider, nodeConfig.NETWORK);
       }
     },
     catch: (e) =>
@@ -763,16 +748,17 @@ const makeLucid: Effect.Effect<
         fieldsAndValues: [["NETWORK", nodeConfig.NETWORK]],
       }),
   });
-  if (
-    nodeConfig.L1_REFERENCE_SCRIPT_ADDRESS.trim() !== referenceScriptsAddress
-  ) {
+  if (nodeConfig.L1_REFERENCE_SCRIPT_ADDRESS !== referenceScriptsAddress) {
     return yield* Effect.fail(
       new ConfigError({
         message:
           "Configured L1_REFERENCE_SCRIPT_ADDRESS does not match the address derived from L1_REFERENCE_SCRIPT_SEED_PHRASE",
         cause: "reference-script-address-seed-mismatch",
         fieldsAndValues: [
-          ["L1_REFERENCE_SCRIPT_ADDRESS", nodeConfig.L1_REFERENCE_SCRIPT_ADDRESS],
+          [
+            "L1_REFERENCE_SCRIPT_ADDRESS",
+            nodeConfig.L1_REFERENCE_SCRIPT_ADDRESS,
+          ],
           ["derived_address", referenceScriptsAddress],
         ],
       }),

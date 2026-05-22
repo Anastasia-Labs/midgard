@@ -1,84 +1,34 @@
 /**
  * Deposit submission flow for projecting deposit observations into Midgard
  * state.
- * This module owns the off-chain deposit transaction builder and reuses the
- * shared time and ledger-order helpers extracted during cleanup.
+ * This module owns node/API concerns and delegates production transaction
+ * construction to the SDK user-event builders.
  */
-import { Effect, Data as EffectData } from "effect";
+import { normalizeHex as normalizeCoreHex } from "@al-ft/midgard-core/hex";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  CML,
-  Lucid as makeLucid,
   type Assets,
-  type CertificateValidator,
-  Data as LucidData,
+  getAddressDetails,
+  Lucid as makeLucid,
   type LucidEvolution,
-  type RedeemerBuilder,
-  type TxBuilder,
   type TxSignBuilder,
   type UTxO,
-  coreToTxOutput,
-  credentialToAddress,
-  getAddressDetails,
-  scriptHashToCredential,
-  toUnit,
-  validatorToScriptHash,
 } from "@lucid-evolution/lucid";
+import { Data as EffectData, Effect } from "effect";
+
 import {
   parseAdditionalAssetSpecs,
   parseLovelaceAmount,
 } from "@/asset-specs.js";
-import { slotToUnixTimeForLucidOrEmulatorFallback } from "@/lucid-time.js";
 import {
   handleSignSubmit,
   TxConfirmError,
   TxSignError,
   TxSubmitError,
 } from "@/transactions/utils.js";
-import {
-  getRedeemerPointersInContextOrder,
-  getTxInfoRedeemerIndexes,
-} from "@al-ft/midgard-sdk";
-import {
-  collectSortedInputOutRefs,
-  compareOutRefs,
-  findOutRefIndex,
-} from "@/tx-context.js";
 
-type TxBuilderInternals = {
-  txBuilder: {
-    add_cert: (builder: unknown) => void;
-  };
-  programs: Array<Effect.Effect<void>>;
-};
-
-type InternalTxBuilder = TxBuilder & {
-  rawConfig: () => TxBuilderInternals;
-};
-
-type DepositTxProvider = {
-  getProtocolParameters?: () => Promise<{
-    keyDeposit: bigint;
-  }>;
-};
-
-type DepositDraftLayout = {
-  readonly eventOutputIndex: bigint;
-  readonly witnessRegistrationRedeemerIndex: bigint;
-  readonly hubRefInputIndex: bigint;
-};
-
-export type SubmitDepositReferenceScripts = {
-  readonly depositMinting: UTxO;
-};
-
-export type SubmitDepositConfig = {
-  readonly l2Address: string;
-  readonly l2Datum: string | null;
-  readonly lovelace: bigint;
-  readonly additionalAssets: Readonly<Assets>;
-  readonly referenceScripts?: SubmitDepositReferenceScripts;
-};
+export type SubmitDepositReferenceScripts = SDK.SubmitDepositReferenceScripts;
+export type SubmitDepositConfig = SDK.SubmitDepositConfig;
 
 export type BuildDepositRequest = SubmitDepositConfig & {
   readonly fundingAddress: string;
@@ -89,15 +39,7 @@ export type BuiltUnsignedDepositTx = {
   readonly unsignedTxCbor: string;
 };
 
-export type DepositBuildMetadata = {
-  readonly depositAddress: string;
-  readonly depositEventId: string;
-  readonly depositAssetName: string;
-  readonly depositAuthUnit: string;
-  readonly nonceInput: Pick<UTxO, "txHash" | "outputIndex">;
-  readonly validTo: number;
-  readonly inclusionTime: number;
-};
+export type DepositBuildMetadata = SDK.DepositBuildMetadata;
 
 export type SubmittedDeposit = {
   readonly txHash: string;
@@ -111,227 +53,9 @@ export class SubmitDepositError extends EffectData.TaggedError(
   cause: unknown;
 }> {}
 
-const DEPOSIT_TX_TTL_MS = 60_000;
-const HEX_PATTERN = /^[0-9a-fA-F]*$/;
-const TX_HASH_PATTERN = /^[0-9a-fA-F]{64}$/;
-const DATUM_HASH_PATTERN = /^[0-9a-fA-F]{64}$/;
-const ASSET_UNIT_PATTERN = /^[0-9a-fA-F]{56}(?:[0-9a-fA-F]{0,64})$/;
 const MAX_DEPOSIT_BUILD_FUNDING_UTXOS = 128;
 const MAX_DEPOSIT_BUILD_UTXO_ASSET_ENTRIES = 64;
 const MAX_DEPOSIT_BUILD_ADDITIONAL_ASSETS = 64;
-const DEPOSIT_EVENT_OUTPUT_INDEX = 0n;
-const WITNESS_REGISTRATION_REDEEMER_TX_INFO_INDEX = 1n;
-
-const outputReferenceToPlutusDataCbor = (
-  utxo: Pick<UTxO, "txHash" | "outputIndex">,
-): string =>
-  LucidData.to(
-    {
-      transactionId: utxo.txHash,
-      outputIndex: BigInt(utxo.outputIndex),
-    },
-    SDK.OutputReference,
-  );
-
-const deriveDepositDraftLayout = ({
-  tx,
-  depositAddress,
-  depositUnit,
-  hubOracleRefInput,
-}: {
-  readonly tx: CML.Transaction;
-  readonly depositAddress: string;
-  readonly depositUnit: string;
-  readonly hubOracleRefInput: UTxO;
-}): DepositDraftLayout => {
-  const outputs = tx.body().outputs();
-  let eventOutputIndex: bigint | null = null;
-  for (let index = 0; index < outputs.len(); index += 1) {
-    const output = coreToTxOutput(outputs.get(index));
-    if (
-      output.address === depositAddress &&
-      (output.assets[depositUnit] ?? 0n) === 1n
-    ) {
-      eventOutputIndex = BigInt(index);
-      break;
-    }
-  }
-  if (eventOutputIndex === null) {
-    throw new Error(
-      `Failed to locate deposit event output for unit=${depositUnit} at address=${depositAddress}`,
-    );
-  }
-
-  const pointers = getRedeemerPointersInContextOrder(tx);
-  const certContextIndex = pointers.findIndex(
-    (pointer) => pointer.tag === CML.RedeemerTag.Cert,
-  );
-  if (certContextIndex < 0) {
-    throw new Error("Failed to locate certificate redeemer in deposit draft");
-  }
-  const txInfoIndexes = getTxInfoRedeemerIndexes(pointers);
-  const witnessRegistrationRedeemerIndex = txInfoIndexes[certContextIndex];
-  if (
-    witnessRegistrationRedeemerIndex === undefined ||
-    witnessRegistrationRedeemerIndex < 0
-  ) {
-    throw new Error(
-      "Failed to derive tx-info redeemer index for witness registration",
-    );
-  }
-  const referenceInputs = tx.body().reference_inputs();
-  if (referenceInputs === undefined) {
-    throw new Error("Deposit draft did not include reference inputs");
-  }
-  const hubRefInputIndex = findOutRefIndex(
-    collectSortedInputOutRefs(referenceInputs),
-    hubOracleRefInput,
-  );
-  if (hubRefInputIndex === undefined) {
-    throw new Error("Deposit draft did not include hub-oracle reference input");
-  }
-
-  return {
-    eventOutputIndex,
-    witnessRegistrationRedeemerIndex: BigInt(witnessRegistrationRedeemerIndex),
-    hubRefInputIndex: BigInt(hubRefInputIndex),
-  };
-};
-
-const resolveDepositValidTo = (lucid: LucidEvolution): number => {
-  const targetUnixTime = Date.now() + DEPOSIT_TX_TTL_MS;
-  const slot = lucid.unixTimeToSlot(targetUnixTime);
-  const alignedUnixTime = slotToUnixTimeForLucidOrEmulatorFallback(lucid, slot);
-  if (alignedUnixTime > targetUnixTime) {
-    return alignedUnixTime;
-  }
-  return slotToUnixTimeForLucidOrEmulatorFallback(lucid, slot + 1);
-};
-
-const fetchStakeCredentialDeposit = (
-  lucid: LucidEvolution,
-): Effect.Effect<bigint, SubmitDepositError> =>
-  Effect.tryPromise({
-    try: async () => {
-      const provider = lucid.config().provider as DepositTxProvider;
-      if (typeof provider.getProtocolParameters !== "function") {
-        throw new Error(
-          "Cardano provider does not expose protocol parameters required for certificate deposit",
-        );
-      }
-
-      const protocolParameters = await provider.getProtocolParameters();
-      if (typeof protocolParameters.keyDeposit !== "bigint") {
-        throw new Error(
-          "Provider protocol parameters did not include keyDeposit",
-        );
-      }
-
-      return protocolParameters.keyDeposit;
-    },
-    catch: (cause) =>
-      new SubmitDepositError({
-        message:
-          "Failed to resolve stake credential deposit for deposit transaction",
-        cause,
-      }),
-  });
-
-const addScriptStakeRegistrationCertificate = (
-  tx: TxBuilder,
-  witnessScript: CertificateValidator,
-  witnessRedeemer: string,
-  stakeCredentialDeposit: bigint,
-): TxBuilder => {
-  const rawConfig = (tx as InternalTxBuilder).rawConfig();
-  rawConfig.programs.push(
-    Effect.sync(() => {
-      const witnessScriptHash = validatorToScriptHash(witnessScript);
-      const credential = CML.Credential.new_script(
-        CML.ScriptHash.from_hex(witnessScriptHash),
-      );
-      const certBuilder = CML.SingleCertificateBuilder.new(
-        CML.Certificate.new_reg_cert(credential, stakeCredentialDeposit),
-      );
-      const plutusWitness = CML.PartialPlutusWitness.new(
-        CML.PlutusScriptWitness.new_script(
-          CML.PlutusScript.from_v3(
-            CML.PlutusV3Script.from_cbor_hex(witnessScript.script),
-          ),
-        ),
-        CML.PlutusData.from_cbor_hex(witnessRedeemer),
-      );
-
-      rawConfig.txBuilder.add_cert(
-        certBuilder.plutus_script(plutusWitness, CML.Ed25519KeyHashList.new()),
-      );
-    }),
-  );
-  return tx;
-};
-
-const fetchHubOracleReferenceProgram = (
-  lucid: LucidEvolution,
-  contracts: SDK.MidgardValidators,
-): Effect.Effect<
-  UTxO,
-  | SDK.HubOracleError
-  | SDK.LucidError
-  | SDK.Bech32DeserializationError
-  | SubmitDepositError
-> =>
-  Effect.gen(function* () {
-    const network = lucid.config().network;
-    if (network === undefined) {
-      return yield* Effect.fail(
-        new SubmitDepositError({
-          message:
-            "Cardano network not found while preparing deposit transaction",
-          cause: "Lucid network configuration is undefined",
-        }),
-      );
-    }
-
-    const actual = yield* SDK.fetchHubOracleUTxOProgram(lucid, {
-      hubOracleAddress: credentialToAddress(
-        network,
-        scriptHashToCredential(contracts.hubOracle.policyId),
-      ),
-      hubOraclePolicyId: contracts.hubOracle.policyId,
-    });
-    const expectedDatum = yield* SDK.makeHubOracleDatum(contracts);
-
-    if (
-      actual.datum.deposit !== expectedDatum.deposit ||
-      JSON.stringify(actual.datum.deposit_addr) !==
-        JSON.stringify(expectedDatum.deposit_addr)
-    ) {
-      return yield* Effect.fail(
-        new SubmitDepositError({
-          message:
-            "On-chain hub oracle deployment does not match the locally configured deposit contract",
-          cause: {
-            expectedPolicyId: expectedDatum.deposit,
-            actualPolicyId: actual.datum.deposit,
-            expectedAddress: expectedDatum.deposit_addr,
-            actualAddress: actual.datum.deposit_addr,
-          },
-        }),
-      );
-    }
-
-    return actual.utxo;
-  });
-
-const serializeBuiltUnsignedDepositTx = ({
-  tx,
-}: {
-  readonly tx: TxSignBuilder;
-}): BuiltUnsignedDepositTx => {
-  return {
-    unsignedTxCbor: tx.toCBOR(),
-  };
-};
 
 const buildUnsignedDepositTxWithMetadataProgram = (
   lucid: LucidEvolution,
@@ -348,242 +72,16 @@ const buildUnsignedDepositTxWithMetadataProgram = (
   | SDK.HashingError
   | SubmitDepositError
 > =>
-  Effect.gen(function* () {
-    const network = lucid.config().network;
-    if (network === undefined) {
-      return yield* Effect.fail(
+  SDK.buildUnsignedDepositTxWithMetadataProgram(lucid, contracts, config).pipe(
+    Effect.catchTag("UserEventBuildError", (error) =>
+      Effect.fail(
         new SubmitDepositError({
-          message:
-            "Cardano network not found while preparing deposit transaction",
-          cause: "Lucid network configuration is undefined",
+          message: error.message,
+          cause: error.cause,
         }),
-      );
-    }
-
-    const hubOracleRefInput = yield* fetchHubOracleReferenceProgram(
-      lucid,
-      contracts,
-    );
-
-    const walletUtxos = yield* Effect.tryPromise({
-      try: () => lucid.wallet().getUtxos(),
-      catch: (cause) =>
-        new SDK.LucidError({
-          message: "Failed to fetch wallet UTxOs for deposit submission",
-          cause,
-        }),
-    });
-    const sortedWalletUtxos = [...walletUtxos].sort(compareOutRefs);
-    const nonceInput = sortedWalletUtxos[0];
-    if (nonceInput === undefined) {
-      return yield* Effect.fail(
-        new SubmitDepositError({
-          message: "Failed to build deposit transaction",
-          cause: "No UTxOs found in wallet",
-        }),
-      );
-    }
-
-    const depositEventId = outputReferenceToPlutusDataCbor(nonceInput);
-    const nonceAssetName = yield* SDK.hashHexWithBlake2b(depositEventId, 32);
-    const depositUnit = toUnit(contracts.deposit.policyId, nonceAssetName);
-    if ((config.additionalAssets[depositUnit] ?? 0n) !== 0n) {
-      return yield* Effect.fail(
-        new SubmitDepositError({
-          message:
-            "Additional asset list must not include the deposit authentication NFT unit",
-          cause: depositUnit,
-        }),
-      );
-    }
-
-    const witnessScript =
-      SDK.buildUserEventWitnessCertificateValidator(nonceAssetName);
-    const witnessScriptHash = SDK.userEventWitnessScriptHash(nonceAssetName);
-    const stakeCredentialDeposit = yield* fetchStakeCredentialDeposit(lucid);
-    const validTo = resolveDepositValidTo(lucid);
-    const inclusionTime = SDK.resolveEventInclusionTime(validTo, network);
-    const l2AddressData = yield* SDK.addressDataFromBech32(config.l2Address);
-    const l2DatumData =
-      config.l2Datum === null ? null : LucidData.from(config.l2Datum);
-    const depositDatum = {
-      event: {
-        id: {
-          transactionId: nonceInput.txHash,
-          outputIndex: BigInt(nonceInput.outputIndex),
-        },
-        info: {
-          l2_address: l2AddressData,
-          l2_datum: l2DatumData,
-        },
-      },
-      inclusion_time: BigInt(inclusionTime),
-      witness: witnessScriptHash,
-    } satisfies SDK.DepositDatum;
-    const depositDatumCbor = LucidData.to(depositDatum, SDK.DepositDatum);
-
-    const mkDepositMintRedeemerBuilder = (
-      layout: DepositDraftLayout,
-    ): RedeemerBuilder => ({
-      kind: "selected",
-      inputs: [nonceInput],
-      makeRedeemer: (inputIndices) => {
-        const nonceInputIndex = inputIndices[0];
-        if (nonceInputIndex === undefined || inputIndices.length !== 1) {
-          throw new Error(
-            `Deposit redeemer builder expected exactly one selected nonce input, got ${inputIndices.length.toString()}`,
-          );
-        }
-        return SDK.encodeUserEventAuthenticateMintRedeemer({
-          nonceInputIndex,
-          eventOutputIndex: layout.eventOutputIndex,
-          hubRefInputIndex: layout.hubRefInputIndex,
-          witnessRegistrationRedeemerIndex:
-            layout.witnessRegistrationRedeemerIndex,
-        });
-      },
-    });
-    const witnessRegistrationRedeemer = yield* Effect.try({
-      try: () =>
-        SDK.encodeUserEventWitnessMintOrBurnRedeemer(
-          contracts.deposit.policyId,
-        ),
-      catch: (cause) =>
-        new SubmitDepositError({
-          message:
-            "Failed to encode witness-registration redeemer for deposit transaction",
-          cause: {
-            depositPolicyId: contracts.deposit.policyId,
-            rawCause: cause instanceof Error ? cause.message : String(cause),
-          },
-        }),
-    });
-
-    const outputAssets: Assets = {
-      ...config.additionalAssets,
-      lovelace: config.lovelace,
-      [depositUnit]: 1n,
-    };
-
-    /**
-     * Builds the deposit submission transaction.
-     */
-    const mkDepositTx = (
-      builderLucid: LucidEvolution,
-      layout: DepositDraftLayout,
-    ) => {
-      const referenceInputs =
-        config.referenceScripts === undefined
-          ? [hubOracleRefInput]
-          : [hubOracleRefInput, config.referenceScripts.depositMinting];
-      const tx = builderLucid
-        .newTx()
-        .collectFrom([nonceInput])
-        .readFrom(referenceInputs)
-        .mintAssets({ [depositUnit]: 1n }, mkDepositMintRedeemerBuilder(layout))
-        .pay.ToAddressWithData(
-          contracts.deposit.spendingScriptAddress,
-          {
-            kind: "inline",
-            value: depositDatumCbor,
-          },
-          outputAssets,
-        )
-        .validTo(validTo);
-      return addScriptStakeRegistrationCertificate(
-        config.referenceScripts === undefined
-          ? tx.attach.MintingPolicy(contracts.deposit.mintingScript)
-          : tx,
-        witnessScript,
-        witnessRegistrationRedeemer,
-        stakeCredentialDeposit,
-      );
-    };
-
-    const referenceInputs =
-      config.referenceScripts === undefined
-        ? [hubOracleRefInput]
-        : [hubOracleRefInput, config.referenceScripts.depositMinting];
-    const initialHubRefInputIndex = [...referenceInputs]
-      .sort(compareOutRefs)
-      .findIndex(
-        (utxo) =>
-          utxo.txHash === hubOracleRefInput.txHash &&
-          utxo.outputIndex === hubOracleRefInput.outputIndex,
-      );
-    if (initialHubRefInputIndex < 0) {
-      return yield* Effect.fail(
-        new SubmitDepositError({
-          message: "Failed to derive initial deposit hub reference input index",
-          cause:
-            "hub-oracle reference input missing from deposit reference set",
-        }),
-      );
-    }
-
-    const assumedLayout: DepositDraftLayout = {
-      eventOutputIndex: DEPOSIT_EVENT_OUTPUT_INDEX,
-      witnessRegistrationRedeemerIndex:
-        WITNESS_REGISTRATION_REDEEMER_TX_INFO_INDEX,
-      hubRefInputIndex: BigInt(initialHubRefInputIndex),
-    };
-
-    const tx = yield* Effect.tryPromise({
-      try: () =>
-        mkDepositTx(lucid, assumedLayout).complete({ localUPLCEval: true }),
-      catch: (cause) =>
-        new SubmitDepositError({
-          message: `Failed to build deposit transaction: ${String(cause)}`,
-          cause,
-        }),
-    });
-
-    const resolvedLayout = yield* Effect.try({
-      try: () =>
-        deriveDepositDraftLayout({
-          tx: tx.toTransaction(),
-          depositAddress: contracts.deposit.spendingScriptAddress,
-          depositUnit,
-          hubOracleRefInput,
-        }),
-      catch: (cause) =>
-        new SubmitDepositError({
-          message: "Failed to verify deposit transaction layout",
-          cause,
-        }),
-    });
-
-    if (
-      resolvedLayout.eventOutputIndex !== assumedLayout.eventOutputIndex ||
-      resolvedLayout.witnessRegistrationRedeemerIndex !==
-        assumedLayout.witnessRegistrationRedeemerIndex ||
-      resolvedLayout.hubRefInputIndex !== assumedLayout.hubRefInputIndex
-    ) {
-      return yield* Effect.fail(
-        new SubmitDepositError({
-          message:
-            "Built deposit transaction layout drifted from expected form",
-          cause: {
-            assumedLayout,
-            resolvedLayout,
-          },
-        }),
-      );
-    }
-
-    return {
-      tx,
-      metadata: {
-        depositAddress: contracts.deposit.spendingScriptAddress,
-        depositEventId,
-        depositAssetName: nonceAssetName,
-        depositAuthUnit: depositUnit,
-        nonceInput,
-        validTo,
-        inclusionTime,
-      },
-    };
-  });
+      ),
+    ),
+  );
 
 export const buildUnsignedDepositTxProgram = (
   lucid: LucidEvolution,
@@ -644,9 +142,7 @@ export const buildUnsignedDepositTxFromFundingContextProgram = (
       contracts,
       request,
     );
-    return serializeBuiltUnsignedDepositTx({
-      tx,
-    });
+    return { unsignedTxCbor: tx.toCBOR() };
   });
 
 export const submitDepositWithMetadataProgram = (
@@ -674,16 +170,6 @@ export const submitDepositWithMetadataProgram = (
     return { txHash, metadata };
   });
 
-const normalizeHex = (value: string, field: string): string => {
-  const normalized = value.trim();
-  if (!HEX_PATTERN.test(normalized) || normalized.length % 2 !== 0) {
-    throw new Error(
-      `Invalid ${field}: expected even-length hex, got "${value}".`,
-    );
-  }
-  return normalized.toLowerCase();
-};
-
 type UnknownRecord = Record<string, unknown>;
 
 const asObject = (value: unknown, field: string): UnknownRecord => {
@@ -704,10 +190,7 @@ const parseRequiredString = (value: unknown, field: string): string => {
   return normalized;
 };
 
-const parseOptionalString = (
-  value: unknown,
-  field: string,
-): string | null | undefined => {
+const parseOptionalString = (value: unknown, field: string): string | null => {
   if (value === undefined || value === null) {
     return null;
   }
@@ -720,14 +203,10 @@ const parseOptionalString = (
 
 const parsePositiveIntegerString = (value: string, field: string): bigint => {
   const normalized = value.trim();
-  if (!/^(?:0|[1-9]\d*)$/.test(normalized)) {
+  if (!/^[1-9]\d*$/.test(normalized)) {
     throw new Error(`${field} must be a positive integer string.`);
   }
-  const amount = BigInt(normalized);
-  if (amount <= 0n) {
-    throw new Error(`${field} must be greater than zero.`);
-  }
-  return amount;
+  return BigInt(normalized);
 };
 
 const parseNonNegativeInteger = (value: unknown, field: string): number => {
@@ -777,19 +256,26 @@ const parseAddressString = ({
 
 const normalizeAssetUnit = (value: string, field: string): string => {
   const normalized = value.trim();
-  if (!ASSET_UNIT_PATTERN.test(normalized)) {
+  const assetName = normalizeCoreHex(normalized.slice(56), {
+    fieldName: `${field}.assetName`,
+    allowEmpty: true,
+  });
+  if (assetName.length > 64) {
     throw new Error(
       `${field} must be a Cardano unit string (56 hex policy id plus optional asset-name hex).`,
     );
   }
-  return normalized.toLowerCase();
+  return `${normalizeCoreHex(normalized.slice(0, 56), {
+    fieldName: `${field}.policyId`,
+    byteLength: 28,
+  })}${assetName}`;
 };
 
 const normalizeOptionalHexField = (
   value: unknown,
   field: string,
-  pattern?: RegExp,
-): string | null | undefined => {
+  byteLength?: number,
+): string | null => {
   if (value === undefined || value === null) {
     return null;
   }
@@ -800,13 +286,7 @@ const normalizeOptionalHexField = (
   if (normalized.length === 0) {
     return null;
   }
-  if (pattern !== undefined) {
-    if (!pattern.test(normalized)) {
-      throw new Error(`Invalid ${field}: expected hex, got "${value}".`);
-    }
-    return normalized.toLowerCase();
-  }
-  return normalizeHex(normalized, field);
+  return normalizeCoreHex(normalized, { fieldName: field, byteLength });
 };
 
 const parseFundingAssets = (value: unknown, field: string): Assets => {
@@ -856,23 +336,18 @@ const parseAdditionalAssetsFromRequest = (value: unknown): Readonly<Assets> => {
 
   const assets: Assets = {};
   for (const [index, entry] of value.entries()) {
-    const raw = asObject(entry, `additionalAssets[${index.toString()}]`);
+    const field = `additionalAssets[${index.toString()}]`;
+    const raw = asObject(entry, field);
     const unit = normalizeAssetUnit(
-      parseRequiredString(
-        raw.unit,
-        `additionalAssets[${index.toString()}].unit`,
-      ),
-      `additionalAssets[${index.toString()}].unit`,
+      parseRequiredString(raw.unit, `${field}.unit`),
+      `${field}.unit`,
     );
     if (assets[unit] !== undefined) {
       throw new Error(`Duplicate additional asset "${unit}" provided.`);
     }
     assets[unit] = parsePositiveIntegerString(
-      parseRequiredString(
-        raw.amount,
-        `additionalAssets[${index.toString()}].amount`,
-      ),
-      `additionalAssets[${index.toString()}].amount`,
+      parseRequiredString(raw.amount, `${field}.amount`),
+      `${field}.amount`,
     );
   }
   return assets;
@@ -901,19 +376,15 @@ const parseFundingUtxos = ({
 
   const seenOutRefs = new Set<string>();
   return value.map((entry, index) => {
-    const raw = asObject(entry, `fundingUtxos[${index.toString()}]`);
-    const txHash = parseRequiredString(
-      raw.txHash,
-      `fundingUtxos[${index.toString()}].txHash`,
-    ).toLowerCase();
-    if (!TX_HASH_PATTERN.test(txHash)) {
-      throw new Error(
-        `fundingUtxos[${index.toString()}].txHash must be a 32-byte transaction hash.`,
-      );
-    }
+    const field = `fundingUtxos[${index.toString()}]`;
+    const raw = asObject(entry, field);
+    const txHash = normalizeCoreHex(
+      parseRequiredString(raw.txHash, `${field}.txHash`),
+      { fieldName: `${field}.txHash`, byteLength: 32 },
+    );
     const outputIndex = parseNonNegativeInteger(
       raw.outputIndex,
-      `fundingUtxos[${index.toString()}].outputIndex`,
+      `${field}.outputIndex`,
     );
     const outRefKey = `${txHash}#${outputIndex.toString()}`;
     if (seenOutRefs.has(outRefKey)) {
@@ -923,31 +394,22 @@ const parseFundingUtxos = ({
 
     const utxoAddress = parseAddressString({
       value: raw.address,
-      field: `fundingUtxos[${index.toString()}].address`,
+      field: `${field}.address`,
       expectedNetwork,
     });
     if (utxoAddress !== fundingAddress) {
-      throw new Error(
-        `fundingUtxos[${index.toString()}].address must match fundingAddress.`,
-      );
+      throw new Error(`${field}.address must match fundingAddress.`);
     }
 
     const datumHash = normalizeOptionalHexField(
       raw.datumHash,
-      `fundingUtxos[${index.toString()}].datumHash`,
-      DATUM_HASH_PATTERN,
+      `${field}.datumHash`,
+      32,
     );
-    const datum = normalizeOptionalHexField(
-      raw.datum,
-      `fundingUtxos[${index.toString()}].datum`,
-    );
-    const scriptRef = normalizeOptionalHexField(
-      raw.scriptRef,
-      `fundingUtxos[${index.toString()}].scriptRef`,
-    );
-    if (scriptRef !== null) {
+    const datum = normalizeOptionalHexField(raw.datum, `${field}.datum`);
+    if (parseOptionalString(raw.scriptRef, `${field}.scriptRef`) !== null) {
       throw new Error(
-        `fundingUtxos[${index.toString()}].scriptRef is not supported for deposit build funding inputs.`,
+        `${field}.scriptRef is not supported for deposit build funding inputs.`,
       );
     }
 
@@ -955,10 +417,7 @@ const parseFundingUtxos = ({
       txHash,
       outputIndex,
       address: utxoAddress,
-      assets: parseFundingAssets(
-        raw.assets,
-        `fundingUtxos[${index.toString()}].assets`,
-      ),
+      assets: parseFundingAssets(raw.assets, `${field}.assets`),
       datumHash: datumHash ?? undefined,
       datum: datum ?? undefined,
       scriptRef: undefined,
@@ -973,9 +432,9 @@ const buildSubmitDepositConfig = ({
   additionalAssets,
   expectedNetwork,
 }: {
-  readonly l2Address: string;
-  readonly l2Datum?: string | null;
-  readonly lovelace: string;
+  readonly l2Address: unknown;
+  readonly l2Datum?: unknown;
+  readonly lovelace: unknown;
   readonly additionalAssets: Readonly<Assets>;
   readonly expectedNetwork?: string;
 }): SubmitDepositConfig => {
@@ -984,16 +443,19 @@ const buildSubmitDepositConfig = ({
     field: "l2Address",
     expectedNetwork,
   });
-  const normalizedDatum =
-    l2Datum === undefined || l2Datum === null || l2Datum.trim().length === 0
-      ? null
-      : normalizeHex(l2Datum, "L2 datum");
+  const l2DatumHex = parseOptionalString(l2Datum, "l2Datum");
 
   return {
     l2Address: normalizedL2Address,
-    l2Datum: normalizedDatum,
+    l2Datum:
+      l2DatumHex === null
+        ? null
+        : normalizeCoreHex(l2DatumHex, {
+            fieldName: "L2 datum",
+            allowEmpty: true,
+          }),
     lovelace: parseLovelaceAmount(
-      lovelace,
+      parseRequiredString(lovelace, "lovelace"),
       "Deposit lovelace amount must be greater than zero.",
     ),
     additionalAssets,
@@ -1038,9 +500,9 @@ export const parseBuildDepositRequest = (
 
   return {
     ...buildSubmitDepositConfig({
-      l2Address: parseRequiredString(body.l2Address, "l2Address"),
-      l2Datum: parseOptionalString(body.l2Datum, "l2Datum"),
-      lovelace: parseRequiredString(body.lovelace, "lovelace"),
+      l2Address: body.l2Address,
+      l2Datum: body.l2Datum,
+      lovelace: body.lovelace,
       additionalAssets: parseAdditionalAssetsFromRequest(body.additionalAssets),
       expectedNetwork: options?.expectedNetwork,
     }),

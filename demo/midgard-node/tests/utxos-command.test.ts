@@ -1,24 +1,34 @@
-import { describe, expect, it } from "vitest";
 import { CML } from "@lucid-evolution/lucid";
-import {
-  decodeStoredUtxo,
-  encodeStoredUtxo,
-  requireByOutRefsSelector,
-  parseTxOutRefsRequest,
-  orderStoredUtxosByOutRef,
-  sumAssets,
-} from "@/commands/utxos.js";
+import { Effect } from "effect";
+import { describe, expect, it } from "vitest";
+
 import {
   formatJson,
   parseAddressArgument,
   parseTxOutRefCborHex,
   parseTxOutRefLabel,
 } from "@/commands/command-utils.js";
+import {
+  decodeStoredUtxo,
+  encodeStoredUtxo,
+  orderStoredUtxosByOutRef,
+  parseTxOutRefsRequest,
+  requireByOutRefsSelector,
+  sumAssets,
+} from "@/commands/utxos.js";
+
 import { makeMidgardTxOutput } from "./midgard-output-helpers.js";
-import { Effect } from "effect";
 
 const VALID_ADDRESS =
   "addr_test1qzyem8ex0v9v76q0u52x3t2xmj5rkhjd9rsd44kx3klsut4qga2669x30zsng46mhfrrk4ngylfnnlda7rkfvxq5fywqvurkrs";
+
+const txOutRefCbor = (txHashByte: string, outputIndex: bigint) =>
+  Buffer.from(
+    CML.TransactionInput.new(
+      CML.TransactionHash.from_hex(txHashByte.repeat(32)),
+      outputIndex,
+    ).to_cbor_bytes(),
+  );
 
 describe("utxos command helpers", () => {
   it("normalizes a valid payment address", () => {
@@ -34,8 +44,6 @@ describe("utxos command helpers", () => {
   });
 
   it("decodes stored UTxOs from ledger records", async () => {
-    const txHash = CML.TransactionHash.from_hex("11".repeat(32));
-    const outRef = CML.TransactionInput.new(txHash, 0n);
     const output = makeMidgardTxOutput(
       CML.Address.from_bech32(VALID_ADDRESS),
       CML.Value.from_coin(1_500_000n),
@@ -43,7 +51,7 @@ describe("utxos command helpers", () => {
 
     const utxo = await Effect.runPromise(
       decodeStoredUtxo({
-        outref: Buffer.from(outRef.to_cbor_bytes()),
+        outref: txOutRefCbor("11", 0n),
         output: Buffer.from(output.to_cbor_bytes()),
       }),
     );
@@ -55,18 +63,15 @@ describe("utxos command helpers", () => {
   });
 
   it("parses and canonicalizes txOutRef CBOR hex", () => {
-    const txHash = CML.TransactionHash.from_hex("22".repeat(32));
-    const outRef = CML.TransactionInput.new(txHash, 3n);
+    const outRef = txOutRefCbor("22", 3n);
     expect(
-      parseTxOutRefCborHex(
-        ` ${Buffer.from(outRef.to_cbor_bytes()).toString("hex").toUpperCase()} `,
-      ),
-    ).toEqual(Buffer.from(outRef.to_cbor_bytes()));
+      parseTxOutRefCborHex(` ${outRef.toString("hex").toUpperCase()} `),
+    ).toEqual(outRef);
   });
 
   it("rejects malformed txOutRef CBOR hex", () => {
     expect(() => parseTxOutRefCborHex("zz")).toThrow(
-      "txOutRef must be an even-length hex string.",
+      "txOutRef must be an even-length hex string",
     );
     expect(() => parseTxOutRefCborHex("80")).toThrow(
       "Invalid txOutRef: failed to decode TxOutRef CBOR",
@@ -74,24 +79,19 @@ describe("utxos command helpers", () => {
   });
 
   it("parses textual txOutRefs in txHash#outputIndex form", () => {
-    const expected = Buffer.from(
-      CML.TransactionInput.new(
-        CML.TransactionHash.from_hex("33".repeat(32)),
-        7n,
-      ).to_cbor_bytes(),
-    );
+    const expected = txOutRefCbor("33", 7n);
     expect(parseTxOutRefLabel(` ${"33".repeat(32)}#7 `).cbor).toEqual(expected);
   });
 
   it("rejects malformed textual txOutRefs", () => {
     expect(() => parseTxOutRefLabel("not-an-outref")).toThrow(
-      "txOutRef must use the format <txHash>#<outputIndex>.",
+      "txOutRef: out-ref label must use <txHash>#<outputIndex>",
     );
     expect(() => parseTxOutRefLabel(`${"11".repeat(31)}#0`)).toThrow(
-      "txOutRef.txHash must be a 32-byte hex string.",
+      "txOutRef: txHash must be a 32-byte hex string",
     );
     expect(() => parseTxOutRefLabel(`${"11".repeat(32)}#-1`)).toThrow(
-      "txOutRef.outputIndex must be a non-negative integer.",
+      "txOutRef: out-ref label must use <txHash>#<outputIndex>",
     );
   });
 
@@ -101,18 +101,8 @@ describe("utxos command helpers", () => {
 
     const parsed = parseTxOutRefsRequest([first, second]);
     expect(parsed).toStrictEqual([
-      Buffer.from(
-        CML.TransactionInput.new(
-          CML.TransactionHash.from_hex("33".repeat(32)),
-          0n,
-        ).to_cbor_bytes(),
-      ),
-      Buffer.from(
-        CML.TransactionInput.new(
-          CML.TransactionHash.from_hex("44".repeat(32)),
-          1n,
-        ).to_cbor_bytes(),
-      ),
+      txOutRefCbor("33", 0n),
+      txOutRefCbor("44", 1n),
     ]);
 
     expect(() => parseTxOutRefsRequest([first, first])).toThrow(
@@ -128,18 +118,8 @@ describe("utxos command helpers", () => {
   });
 
   it("orders stored UTxOs by the requested outref list", () => {
-    const first = Buffer.from(
-      CML.TransactionInput.new(
-        CML.TransactionHash.from_hex("55".repeat(32)),
-        0n,
-      ).to_cbor_bytes(),
-    );
-    const second = Buffer.from(
-      CML.TransactionInput.new(
-        CML.TransactionHash.from_hex("66".repeat(32)),
-        1n,
-      ).to_cbor_bytes(),
-    );
+    const first = txOutRefCbor("55", 0n);
+    const second = txOutRefCbor("66", 1n);
 
     const ordered = orderStoredUtxosByOutRef(
       [second, first],

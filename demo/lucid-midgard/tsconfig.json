@@ -11,6 +11,8 @@
     "noEmitOnError": true,
     "noFallthroughCasesInSwitch": true,
     "noImplicitReturns": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "pretty": true,
     "skipLibCheck": true,
     "sourceMap": true,

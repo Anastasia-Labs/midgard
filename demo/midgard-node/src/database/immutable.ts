@@ -1,20 +1,21 @@
+import {
+  computeMidgardNativeTxId,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+} from "@al-ft/midgard-core/codec";
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import { SqlClient, SqlError } from "@effect/sql";
 import { Effect } from "effect";
-import * as Tx from "@/database/utils/tx.js";
+
 import {
   clearTable,
   DatabaseError,
+  logDatabaseError,
   sqlErrorToDatabaseError,
 } from "@/database/utils/common.js";
+import * as Tx from "@/database/utils/tx.js";
 import { Database } from "@/services/database.js";
-import { SqlClient, SqlError } from "@effect/sql";
-import {
-  computeMidgardNativeTxId,
-  decodeMidgardNativeTxFull,
-} from "@al-ft/midgard-core/codec";
 
 export const tableName = "immutable";
-
-const txIdHex = (txId: Buffer): string => txId.toString("hex");
 
 const assertNoConflictingEntries = (
   txs: Tx.Entry[],
@@ -23,7 +24,7 @@ const assertNoConflictingEntries = (
     const sql = yield* SqlClient.SqlClient;
     const txById = new Map<string, Buffer>();
     for (const tx of txs) {
-      const key = txIdHex(tx[Tx.Columns.TX_ID]);
+      const key = tx[Tx.Columns.TX_ID].toString("hex");
       const existing = txById.get(key);
       if (existing !== undefined && !existing.equals(tx[Tx.Columns.TX])) {
         yield* Effect.fail(
@@ -35,21 +36,17 @@ const assertNoConflictingEntries = (
       txById.set(key, tx[Tx.Columns.TX]);
     }
 
-    const txIds = Array.from(txById.keys()).map((key) =>
-      Buffer.from(key, "hex"),
-    );
-    if (txIds.length <= 0) {
-      return;
-    }
-
     const existingRows = yield* sql<
       Pick<Tx.Entry, Tx.Columns.TX_ID | Tx.Columns.TX>
     >`SELECT ${sql(Tx.Columns.TX_ID)}, ${sql(Tx.Columns.TX)} FROM ${sql(
       tableName,
-    )} WHERE ${sql.in(Tx.Columns.TX_ID, txIds)}`;
+    )} WHERE ${sql.in(
+      Tx.Columns.TX_ID,
+      txs.map((tx) => tx[Tx.Columns.TX_ID]),
+    )}`;
 
     for (const row of existingRows) {
-      const key = txIdHex(row[Tx.Columns.TX_ID]);
+      const key = row[Tx.Columns.TX_ID].toString("hex");
       const expected = txById.get(key);
       if (expected !== undefined && !expected.equals(row[Tx.Columns.TX])) {
         yield* Effect.fail(
@@ -70,23 +67,23 @@ const assertNativeTxEntryIdsMatchPayload = (
       const txId = tx[Tx.Columns.TX_ID];
       const txPayload = tx[Tx.Columns.TX];
       try {
-        const decoded = decodeMidgardNativeTxFull(txPayload);
+        const decoded = decodeMidgardNativeTxFullFromCanonicalCbor(txPayload);
         const computedTxId = computeMidgardNativeTxId(decoded);
         if (!computedTxId.equals(txId)) {
           yield* Effect.fail(
             new SqlError.SqlError({
-              cause: `immutable integrity violation: tx_id mismatch at index=${index},stored=${txIdHex(
-                txId,
-              )},computed=${txIdHex(computedTxId)}`,
+              cause: `immutable integrity violation: tx_id mismatch at index=${index},stored=${txId.toString(
+                "hex",
+              )},computed=${computedTxId.toString("hex")}`,
             }),
           );
         }
       } catch (error) {
         yield* Effect.fail(
           new SqlError.SqlError({
-            cause: `immutable integrity violation: invalid Midgard-native tx payload at index=${index},tx_id=${txIdHex(
-              txId,
-            )},error=${error instanceof Error ? error.message : String(error)}`,
+            cause: `immutable integrity violation: invalid Midgard-native tx payload at index=${index},tx_id=${txId.toString(
+              "hex",
+            )},error=${formatUnknownError(error)}`,
           }),
         );
       }
@@ -128,9 +125,6 @@ export const insertTxsValidatedNative = (
   txs: Tx.Entry[],
 ): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
-    if (txs.length <= 0) {
-      return;
-    }
     yield* assertNativeTxEntryIdsMatchPayload(txs).pipe(
       sqlErrorToDatabaseError(
         tableName,
@@ -175,9 +169,7 @@ export const retrieveTxEntriesByHashes = (
   }).pipe(
     Effect.withLogSpan(`retrieveTxEntriesByHashes ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(
-        `${tableName} db: retrieving tx entries error: ${JSON.stringify(e)}`,
-      ),
+      logDatabaseError(tableName, "retrieving tx entries error", e),
     ),
     sqlErrorToDatabaseError(
       tableName,

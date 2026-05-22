@@ -1,11 +1,11 @@
+import { CML, type UTxO, walletFromSeed } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
-import { CML, walletFromSeed, type UTxO } from "@lucid-evolution/lucid";
+
 import {
   applySubmittedTxToOperatorWalletView,
   availableOperatorWalletUtxos,
   isPotentiallyStaleOperatorWalletViewError,
   makeOperatorWalletView,
-  mergeOperatorWalletViews,
   noteConsumedOperatorWalletInputs,
 } from "@/operator-wallet-view.js";
 
@@ -86,7 +86,12 @@ describe("operator-wallet-view", () => {
   it("applies locally submitted wallet spends and same-wallet outputs", () => {
     const wallet = walletFromSeed(TEST_SEED, { network: "Preprod" });
     const other = walletFromSeed(OTHER_TEST_SEED, { network: "Preprod" });
-    const spentInput = makeUtxo("cc".repeat(32), 2, wallet.address, 11_000_000n);
+    const spentInput = makeUtxo(
+      "cc".repeat(32),
+      2,
+      wallet.address,
+      11_000_000n,
+    );
     const untouched = makeUtxo("dd".repeat(32), 3, wallet.address, 4_000_000n);
 
     const initialView = makeOperatorWalletView(wallet.address, [
@@ -109,30 +114,6 @@ describe("operator-wallet-view", () => {
     expect(availableOperatorWalletUtxos(updatedView)).toEqual([
       untouched,
       makeUtxo("ee".repeat(32), 1, wallet.address, 8_000_000n),
-    ]);
-  });
-
-  it("merges wallet views without reintroducing consumed outputs", () => {
-    const wallet = walletFromSeed(TEST_SEED, { network: "Preprod" });
-    const persistent = makeUtxo("11".repeat(32), 0, wallet.address, 9_000_000n);
-    const consumedLater = makeUtxo("22".repeat(32), 1, wallet.address, 6_000_000n);
-    const newOutput = makeUtxo("33".repeat(32), 2, wallet.address, 5_000_000n);
-
-    const previous = makeOperatorWalletView(wallet.address, [
-      persistent,
-      consumedLater,
-    ]);
-    const current = noteConsumedOperatorWalletInputs(
-      makeOperatorWalletView(wallet.address, [newOutput]),
-      [consumedLater],
-    );
-
-    const merged = mergeOperatorWalletViews(current, previous);
-
-    expect(merged.consumedOutRefs).toEqual([`${consumedLater.txHash}#1`]);
-    expect(availableOperatorWalletUtxos(merged)).toEqual([
-      newOutput,
-      persistent,
     ]);
   });
 

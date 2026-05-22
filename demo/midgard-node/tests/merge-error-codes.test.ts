@@ -1,29 +1,29 @@
-import { describe, expect, it } from "vitest";
-import * as SDK from "@al-ft/midgard-sdk";
 import fs from "node:fs";
 import path from "node:path";
+
+import {
+  cardanoTxBytesToMidgardNativeTxCanonicalCbor,
+  computeMidgardNativeTxId,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+} from "@al-ft/midgard-core/codec";
+import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
+import { describe, expect, it } from "vitest";
+
 import { extractStateQueueErrorCode } from "@/commands/listen-response.js";
 import {
   deriveInitialMergeRedeemerSeedIndexes,
   diagnoseMissingBlockTxs,
   preflightDecodeBlockTxs,
 } from "@/transactions/state-queue/merge-to-confirmed-state.js";
-import {
-  cardanoTxBytesToMidgardNativeTxFullBytes,
-  computeMidgardNativeTxId,
-  decodeMidgardNativeTxFull,
-} from "@al-ft/midgard-core/codec";
 
 type TxFixture = {
   readonly cborHex: string;
-  readonly txId: string;
 };
 
-const fixturePath = path.resolve(__dirname, "./txs/txs_0.json");
-const txFixture = (
-  JSON.parse(fs.readFileSync(fixturePath, "utf8")) as readonly TxFixture[]
-)[0];
+const txFixture = JSON.parse(
+  fs.readFileSync(path.resolve(__dirname, "./txs/txs_0.json"), "utf8"),
+)[0] as TxFixture;
 
 describe("merge error code extraction", () => {
   it("prefers error_code from StateQueueError cause payload", () => {
@@ -116,11 +116,11 @@ describe("preflightDecodeBlockTxs", () => {
    * Converts a transaction fixture into a native transaction accepted by the merge tests.
    */
   const toValidNativeTx = () => {
-    const nativeTxCbor = cardanoTxBytesToMidgardNativeTxFullBytes(
+    const nativeTxCbor = cardanoTxBytesToMidgardNativeTxCanonicalCbor(
       Buffer.from(txFixture.cborHex, "hex"),
     );
     const txId = computeMidgardNativeTxId(
-      decodeMidgardNativeTxFull(nativeTxCbor),
+      decodeMidgardNativeTxFullFromCanonicalCbor(nativeTxCbor),
     );
     return { txId, txCbor: nativeTxCbor };
   };
@@ -133,11 +133,10 @@ describe("preflightDecodeBlockTxs", () => {
     const result = Effect.runSync(
       Effect.either(preflightDecodeBlockTxs([malformed])),
     );
-    expect(result._tag).toBe("Left");
-    if (result._tag === "Left") {
-      expect(result.left.reason).toBe("DECODE_FAILED");
-      expect(result.left.txIdHex).toBe(malformed.txId.toString("hex"));
-    }
+    const txIdHex = malformed.txId.toString("hex");
+    expect(result).toHaveProperty("_tag", "Left");
+    expect(result).toHaveProperty("left.reason", "DECODE_FAILED");
+    expect(result).toHaveProperty("left.txIdHex", txIdHex);
   });
 
   it("fails when payload tx_id does not match BlocksDB tx_id", () => {
@@ -154,12 +153,12 @@ describe("preflightDecodeBlockTxs", () => {
         ]),
       ),
     );
-    expect(result._tag).toBe("Left");
-    if (result._tag === "Left") {
-      expect(result.left.reason).toBe("TX_ID_MISMATCH");
-      expect(result.left.txIdHex).toBe(mismatchedTxId.toString("hex"));
-      expect(result.left.decodedTxIdHex).toBe(valid.txId.toString("hex"));
-    }
+    const txIdHex = mismatchedTxId.toString("hex");
+    const decodedTxIdHex = valid.txId.toString("hex");
+    expect(result).toHaveProperty("_tag", "Left");
+    expect(result).toHaveProperty("left.reason", "TX_ID_MISMATCH");
+    expect(result).toHaveProperty("left.txIdHex", txIdHex);
+    expect(result).toHaveProperty("left.decodedTxIdHex", decodedTxIdHex);
   });
 
   it("accepts decodable tx payloads with matching tx_id", () => {

@@ -70,7 +70,6 @@ const mainCommand = Command.make('midgard-manager')
     Command.withSubcommands([
       // Interactive mode
       interactiveCommand,
-
       // Command groups
       nodeCommands,
       txCommands,

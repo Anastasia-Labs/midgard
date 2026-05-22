@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
 import { CML } from "@lucid-evolution/lucid";
+import { describe, expect, it } from "vitest";
+
 import {
   getTxInfoRedeemerIndexes,
   resolveMintPolicyContextIndex,

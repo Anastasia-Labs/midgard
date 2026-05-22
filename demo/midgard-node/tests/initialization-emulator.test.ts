@@ -1,39 +1,37 @@
-import { describe, expect, it, vi } from "vitest";
-import { Effect } from "effect";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
   Data,
   Emulator,
-  Lucid,
-  PROTOCOL_PARAMETERS_DEFAULT,
-  UTxO,
   generateEmulatorAccount,
+  Lucid,
   paymentCredentialOf,
+  PROTOCOL_PARAMETERS_DEFAULT,
   toUnit,
+  UTxO,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
-import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
-import {
-  withRealStateQueueAndOperatorContracts,
-  withRealStateQueueContracts,
-} from "@/services/midgard-contracts.js";
-import {
-  ensureAtomicProtocolInitReferenceScriptsProgram,
-  buildAtomicProtocolInitTxProgram,
-  fetchProtocolDeploymentStatus,
-  fetchHubOracleWitness,
-  isSchedulerInitialized,
-} from "@/transactions/initialization.js";
+import { Effect } from "effect";
+import { describe, expect, it, vi } from "vitest";
+
 import {
   loadPhasMembershipWithdrawalScript,
   phasMembershipRewardAddress,
 } from "@/phas-membership.js";
+import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
+import { withRealStateQueueAndOperatorContracts } from "@/services/midgard-contracts.js";
+import {
+  buildAtomicProtocolInitTxProgram,
+  ensureAtomicProtocolInitReferenceScriptsProgram,
+  fetchHubOracleWitness,
+  fetchProtocolDeploymentStatus,
+  isSchedulerInitialized,
+} from "@/transactions/initialization.js";
+import { verifyNodeRuntimeReferenceScriptsProgram } from "@/transactions/reference-scripts.js";
 import {
   activateOperatorProgram,
   registerOperatorProgram,
 } from "@/transactions/register-active-operator.js";
-import { verifyNodeRuntimeReferenceScriptsProgram } from "@/transactions/reference-scripts.js";
 
 const loadContracts = (oneShotOutRef: {
   txHash: string;
@@ -42,7 +40,7 @@ const loadContracts = (oneShotOutRef: {
   Effect.runPromise(
     Effect.gen(function* () {
       const placeholder = yield* AlwaysSucceedsContract;
-      return yield* withRealStateQueueContracts(
+      return yield* withRealStateQueueAndOperatorContracts(
         "Preprod",
         placeholder,
         oneShotOutRef,
@@ -57,21 +55,6 @@ const EMULATOR_PROTOCOL_PARAMETERS = {
 } as const;
 
 const EMPTY_FRAUD_PROOF_CATALOGUE_ROOT = "00".repeat(32);
-
-const loadOperatorContracts = (oneShotOutRef: {
-  txHash: string;
-  outputIndex: number;
-}) =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const placeholder = yield* AlwaysSucceedsContract;
-      return yield* withRealStateQueueAndOperatorContracts(
-        "Preprod",
-        placeholder,
-        oneShotOutRef,
-      );
-    }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
-  );
 
 const buildAtomicInitializationTx = async (
   lucid: Awaited<ReturnType<typeof Lucid>>,
@@ -495,7 +478,7 @@ describe("initialization emulator", () => {
   it("registers and activates the operator with real operator contracts", async () => {
     const { emulator, lucid, referenceScriptsLucid, nonceUtxo } =
       await initEmulatorLucid();
-    const contracts = await loadOperatorContracts({
+    const contracts = await loadContracts({
       txHash: nonceUtxo.txHash,
       outputIndex: nonceUtxo.outputIndex,
     });

@@ -1,25 +1,26 @@
-import { Effect, Ref } from "effect";
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  MidgardContracts,
-  Lucid,
-  Database,
-  NodeConfig,
-  Globals,
-} from "@/services/index.js";
-import { Columns as LedgerColumns } from "@/database/utils/ledger.js";
-import * as MempoolLedgerDB from "@/database/mempoolLedger.js";
 import { TxSubmitError, UTxO, utxoToCore } from "@lucid-evolution/lucid";
+import { Effect, Ref } from "effect";
+
+import * as MempoolLedgerDB from "@/database/mempoolLedger.js";
 import { DatabaseError } from "@/database/utils/common.js";
+import { Columns as LedgerColumns } from "@/database/utils/ledger.js";
+import {
+  Database,
+  Globals,
+  Lucid,
+  MidgardContracts,
+  NodeConfig,
+} from "@/services/index.js";
+import {
+  buildUnsignedDepositTxProgram,
+  type SubmitDepositError,
+} from "@/transactions/submit-deposit.js";
 import {
   handleSignSubmit,
   TxConfirmError,
   TxSignError,
 } from "@/transactions/utils.js";
-import {
-  buildUnsignedDepositTxProgram,
-  type SubmitDepositError,
-} from "@/transactions/submit-deposit.js";
 
 /**
  * Seeds the local mempool ledger with configured genesis UTxOs on non-mainnet
@@ -92,23 +93,15 @@ const submitGenesisDeposits: Effect.Effect<
     return;
   }
 
-  const l2Address = config.GENESIS_UTXOS[0].address;
+  yield* lucid.switchToOperatorsMainWallet;
 
   // Hard-coded 10 ADA deposit.
-  const depositConfig = {
-    l2Address,
+  const signedTx = yield* buildUnsignedDepositTxProgram(lucid.api, contracts, {
+    l2Address: config.GENESIS_UTXOS[0].address,
     l2Datum: null,
     lovelace: 10_000_000n,
     additionalAssets: {},
-  };
-
-  yield* lucid.switchToOperatorsMainWallet;
-
-  const signedTx = yield* buildUnsignedDepositTxProgram(
-    lucid.api,
-    contracts,
-    depositConfig,
-  );
+  });
   yield* handleSignSubmit(lucid.api, signedTx);
 }).pipe(Effect.tapError(Effect.logInfo));
 
@@ -120,7 +113,6 @@ export const program: Effect.Effect<
   void,
   never,
   MidgardContracts | Database | Lucid | NodeConfig | Globals
-> = Effect.all(
-  [insertGenesisUtxos, submitGenesisDeposits],
-  { concurrency: "unbounded" },
-).pipe(Effect.catchAllCause(Effect.logInfo));
+> = Effect.all([insertGenesisUtxos, submitGenesisDeposits], {
+  concurrency: "unbounded",
+}).pipe(Effect.catchAllCause(Effect.logInfo));

@@ -1,48 +1,51 @@
 #!/usr/bin/env node
 
+import { NodeRuntime } from "@effect/platform-node";
+import { normalizeHex } from "@al-ft/midgard-core/hex";
 import { Command } from "commander";
-import { ENV_VARS_GUIDE, chalk, isHexString } from "@/utils.js";
-import { runNode } from "@/commands/listen.js";
-import { auditBlocksImmutableProgram } from "@/commands/audit-blocks-immutable.js";
-import * as ContractDeploymentInfo from "@/commands/contract-deployment-info.js";
+import dotenv from "dotenv";
+import { Effect, pipe } from "effect";
+
 import * as AddressFromSeed from "@/commands/address-from-seed.js";
-import * as L1UtxosCommand from "@/commands/l1-utxos.js";
-import * as EventSettlementProofCommand from "@/commands/event-settlement-proof.js";
-import * as FetchWithdrawalsOnceCommand from "@/commands/fetch-withdrawals-once.js";
-import * as ReserveInspectionCommand from "@/commands/reserve-inspection.js";
-import * as ReservePayoutCommand from "@/commands/reserve-payout.js";
+import { auditBlocksImmutableProgram } from "@/commands/audit-blocks-immutable.js";
 import {
   DEFAULT_WALLET_SEED_ENV,
   defaultMidgardNodeEndpoint,
   formatJson,
   parseAddressArgument,
-  resolveWalletSeedPhrase,
   type ResolvedWalletSeedPhrase,
+  resolveWalletSeedPhrase,
 } from "@/commands/command-utils.js";
+import * as ContractDeploymentInfo from "@/commands/contract-deployment-info.js";
+import * as EventSettlementProofCommand from "@/commands/event-settlement-proof.js";
+import * as FetchWithdrawalsOnceCommand from "@/commands/fetch-withdrawals-once.js";
+import * as L1UtxosCommand from "@/commands/l1-utxos.js";
+import { runNode } from "@/commands/listen.js";
+import * as ReserveInspectionCommand from "@/commands/reserve-inspection.js";
+import * as ReservePayoutCommand from "@/commands/reserve-payout.js";
 import * as SubmitL2Transfer from "@/commands/submit-l2-transfer.js";
 import * as SubmitWithdrawalCommand from "@/commands/submit-withdrawal.js";
 import * as UtxosCommand from "@/commands/utxos.js";
 import * as WithdrawalStatusCommand from "@/commands/withdrawal-status.js";
-import * as Services from "@/services/index.js";
+import * as MigrationRunner from "@/database/migrations/runner.js";
 import {
   fetchAndInsertDepositUTxOs,
   projectDepositsToMempoolLedger,
 } from "@/fibers/index.js";
-import * as RegisterActiveOperator from "@/transactions/register-active-operator.js";
+import * as Services from "@/services/index.js";
 import * as Initialization from "@/transactions/initialization.js";
 import * as PhasMembershipRegistration from "@/transactions/phas-membership-registration.js";
-import * as SubmitDeposit from "@/transactions/submit-deposit.js";
 import {
   fetchReferenceScriptUtxosProgram,
   referenceScriptByName,
   referenceScriptTargetsByCommand,
 } from "@/transactions/reference-scripts.js";
-import packageJson from "../package.json" with { type: "json" };
-import { Effect, pipe } from "effect";
-import dotenv from "dotenv";
-import { NodeRuntime } from "@effect/platform-node";
-import * as MigrationRunner from "@/database/migrations/runner.js";
+import * as RegisterActiveOperator from "@/transactions/register-active-operator.js";
+import * as SubmitDeposit from "@/transactions/submit-deposit.js";
+import { chalk, ENV_VARS_GUIDE } from "@/utils.js";
 import { commitExplicitBlockHeaderProgram } from "@/workers/commit-block-header.js";
+
+import packageJson from "../package.json" with { type: "json" };
 
 dotenv.config();
 const VERSION = packageJson.version;
@@ -50,10 +53,14 @@ const VERSION = packageJson.version;
 const program = new Command();
 
 const parseMerkleRootOption = (value: unknown, label: string): string => {
-  if (typeof value !== "string" || value.length !== 64 || !isHexString(value)) {
+  if (typeof value !== "string") {
     throw new Error(`${label} must be 32 bytes of hex`);
   }
-  return value.toLowerCase();
+  try {
+    return normalizeHex(value, { byteLength: 32, trim: false });
+  } catch {
+    throw new Error(`${label} must be 32 bytes of hex`);
+  }
 };
 
 const parseOptionalEndTimeMs = (value: unknown): number | undefined => {
@@ -64,11 +71,14 @@ const parseOptionalEndTimeMs = (value: unknown): number | undefined => {
     throw new Error("--end-time-ms must be a non-negative integer");
   }
   const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+  if (!Number.isSafeInteger(parsed)) {
     throw new Error("--end-time-ms must be a safe non-negative integer");
   }
   return parsed;
 };
+
+const errorMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
 
 const provideTxServices = <A, E>(
   effect: Effect.Effect<
@@ -229,8 +239,7 @@ program
         apiKey: options.opts().blockfrostKey,
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error(`l1-utxos: ${message}`);
+      console.error(`l1-utxos: ${errorMessage(error)}`);
       process.exitCode = 1;
       return;
     }
@@ -242,8 +251,7 @@ program
       });
       process.stdout.write(`${formatJson(result)}\n`);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error(`l1-utxos: ${message}`);
+      console.error(`l1-utxos: ${errorMessage(error)}`);
       process.exitCode = 1;
     }
   });
@@ -274,8 +282,7 @@ program
       );
       process.stdout.write(`${address}\n`);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error(`address-from-seed: ${message}`);
+      console.error(`address-from-seed: ${errorMessage(error)}`);
       process.exitCode = 1;
     }
   });
@@ -604,7 +611,7 @@ program
       },
     ) => {
       let depositConfig: SubmitDeposit.SubmitDepositConfig;
-      let walletSeedPhrase: string;
+      let resolvedWalletSeedPhrase: ResolvedWalletSeedPhrase;
       try {
         const { l2Address, l2Datum, lovelace, walletSeedPhraseEnv } = options;
         depositConfig = SubmitDeposit.parseSubmitDepositConfig({
@@ -613,19 +620,11 @@ program
           lovelace,
           assetSpecs,
         });
-        const normalizedSeedPhraseEnv = walletSeedPhraseEnv.trim();
-        if (normalizedSeedPhraseEnv.length === 0) {
-          throw new Error("Wallet seed phrase env var name must not be empty.");
-        }
-        walletSeedPhrase = process.env[normalizedSeedPhraseEnv]?.trim() ?? "";
-        if (walletSeedPhrase.length === 0) {
-          throw new Error(
-            `Environment variable "${normalizedSeedPhraseEnv}" does not contain a wallet seed phrase.`,
-          );
-        }
+        resolvedWalletSeedPhrase = resolveWalletSeedPhrase({
+          walletSeedPhraseEnv,
+        });
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        console.error(`submit-deposit: ${message}`);
+        console.error(`submit-deposit: ${errorMessage(error)}`);
         process.exitCode = 1;
         return;
       }
@@ -635,7 +634,9 @@ program
           const lucidService = yield* Services.Lucid;
           const contracts = yield* Services.MidgardContracts;
           yield* Effect.sync(() =>
-            lucidService.api.selectWallet.fromSeed(walletSeedPhrase),
+            lucidService.api.selectWallet.fromSeed(
+              resolvedWalletSeedPhrase.seedPhrase,
+            ),
           );
           const walletAddress = yield* Effect.tryPromise({
             try: () => lucidService.api.wallet().address(),
@@ -753,8 +754,7 @@ program
           walletSeedPhraseEnv: options.walletSeedPhraseEnv,
         });
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        console.error(`submit-l2-transfer: ${message}`);
+        console.error(`submit-l2-transfer: ${errorMessage(error)}`);
         process.exitCode = 1;
         return;
       }
@@ -783,7 +783,7 @@ program
           ),
           Effect.tapError((error) =>
             Effect.logError(
-              `submit-l2-transfer failed: ${error instanceof Error ? error.message : String(error)}`,
+              `submit-l2-transfer failed: ${errorMessage(error)}`,
             ),
           ),
         ),
@@ -893,8 +893,7 @@ program
     try {
       address = parseAddressArgument(options.opts().address);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error(`utxos: ${message}`);
+      console.error(`utxos: ${errorMessage(error)}`);
       process.exitCode = 1;
       return;
     }
@@ -965,8 +964,7 @@ program
         eventId: opts.eventId,
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error(`resolve-event-settlement-proof: ${message}`);
+      console.error(`resolve-event-settlement-proof: ${errorMessage(error)}`);
       process.exitCode = 1;
       return;
     }
@@ -1101,8 +1099,7 @@ program
         l1TxHash: opts.l1TxHash,
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error(`withdrawal-status: ${message}`);
+      console.error(`withdrawal-status: ${errorMessage(error)}`);
       process.exitCode = 1;
       return;
     }

@@ -1,4 +1,5 @@
 import { blake2b } from "@noble/hashes/blake2.js";
+
 import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
 
 /**

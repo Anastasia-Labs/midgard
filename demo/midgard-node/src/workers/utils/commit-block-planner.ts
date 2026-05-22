@@ -1,12 +1,13 @@
-import { Columns as TxColumns, EntryWithTimeStamp } from "@/database/utils/tx.js";
+import {
+  Columns as TxColumns,
+  EntryWithTimeStamp,
+} from "@/database/utils/tx.js";
 
 export type SuccessfulCommitBatch = {
   readonly txsToInsertImmutable: readonly EntryWithTimeStamp[];
   readonly blockTxHashes: readonly Buffer[];
   readonly clearMempoolTxHashes: readonly Buffer[];
 };
-
-const safeBatchSize = (batchSize: number): number => Math.max(1, batchSize);
 
 export const buildSuccessfulCommitBatches = (
   mempoolTxs: readonly EntryWithTimeStamp[],
@@ -28,7 +29,7 @@ export const buildSuccessfulCommitBatches = (
   }
 
   const batches: SuccessfulCommitBatch[] = [];
-  const step = safeBatchSize(batchSize);
+  const step = Math.max(1, batchSize);
 
   for (let start = 0; start < allTxs.length; start += step) {
     const end = Math.min(start + step, allTxs.length);
@@ -53,7 +54,6 @@ export type CommitRootSelectionInput = {
 };
 
 export const selectCommitRoots = ({
-  hasTxRequests: _hasTxRequests,
   computedUtxoRoot,
   computedTxRoot,
   emptyRoot,

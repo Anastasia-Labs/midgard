@@ -3,10 +3,9 @@
  * This module centralizes current-time resolution and slot-boundary alignment
  * so register/activate flows share the same clock semantics.
  */
-import {
-  type LucidEvolution,
-} from "@lucid-evolution/lucid";
+import { type LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
+
 import { slotToUnixTimeForLucidOrEmulatorFallback } from "@/lucid-time.js";
 import { alignUnixTimeToSlotBoundary } from "@/workers/utils/commit-end-time.js";
 

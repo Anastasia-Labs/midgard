@@ -1,49 +1,25 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import {
+  addAssets,
+  assetsEqual,
+  assetUnitFromParts,
+  assetUnitParts,
+  LOVELACE_UNIT,
+  normalizeAssets,
+  subtractAssetsDelta as subtractAssets,
+} from "@al-ft/midgard-core/assets";
+import * as SDK from "@/reserve-payout/primitives.js";
 import type { Assets, UTxO } from "@lucid-evolution/lucid";
 
-const ADA_POLICY_ID = "";
-const ADA_ASSET_NAME = "";
-export const LOVELACE_UNIT = "lovelace";
-
-export const assetsEqual = (left: Assets, right: Assets): boolean => {
-  const normalizedLeft = normalizeAssets(left);
-  const normalizedRight = normalizeAssets(right);
-  const leftEntries = Object.entries(normalizedLeft).sort(([a], [b]) =>
-    a.localeCompare(b),
-  );
-  const rightEntries = Object.entries(normalizedRight).sort(([a], [b]) =>
-    a.localeCompare(b),
-  );
-  if (leftEntries.length !== rightEntries.length) {
-    return false;
-  }
-  return leftEntries.every(
-    ([unit, quantity], index) =>
-      rightEntries[index]?.[0] === unit &&
-      rightEntries[index]?.[1] === quantity,
-  );
+export {
+  addAssets,
+  assetsEqual,
+  LOVELACE_UNIT,
+  normalizeAssets,
+  subtractAssets,
 };
 
-export const normalizeAssets = (assets: Assets): Assets =>
-  Object.fromEntries(
-    Object.entries(assets).filter(([, quantity]) => quantity !== 0n),
-  ) as Assets;
-
-export const addAssets = (left: Assets, right: Assets): Assets => {
-  const result: Record<string, bigint> = { ...left };
-  for (const [unit, quantity] of Object.entries(right)) {
-    result[unit] = (result[unit] ?? 0n) + quantity;
-  }
-  return normalizeAssets(result as Assets);
-};
-
-const negateAssets = (assets: Assets): Assets =>
-  Object.fromEntries(
-    Object.entries(assets).map(([unit, quantity]) => [unit, -quantity]),
-  ) as Assets;
-
-export const subtractAssets = (left: Assets, right: Assets): Assets =>
-  addAssets(left, negateAssets(right));
+export const hasNonZeroAssetQuantity = (assets: Assets): boolean =>
+  Object.values(assets).some((quantity) => quantity !== 0n);
 
 export const removeAssetUnit = (
   assets: Assets,
@@ -62,13 +38,7 @@ export const removeAssetUnit = (
 export const assetsToValue = (assets: Assets): SDK.Value => {
   const outer = new Map<string, Map<string, bigint>>();
   for (const [unit, quantity] of Object.entries(normalizeAssets(assets))) {
-    if (quantity === 0n) {
-      continue;
-    }
-    const policyId =
-      unit === LOVELACE_UNIT ? ADA_POLICY_ID : unit.slice(0, 56).toLowerCase();
-    const assetName =
-      unit === LOVELACE_UNIT ? ADA_ASSET_NAME : unit.slice(56).toLowerCase();
+    const { policyId, assetName } = assetUnitParts(unit);
     const inner = outer.get(policyId) ?? new Map<string, bigint>();
     inner.set(assetName, (inner.get(assetName) ?? 0n) + quantity);
     outer.set(policyId, inner);
@@ -80,10 +50,7 @@ export const valueToAssets = (value: SDK.Value): Assets => {
   const assets: Record<string, bigint> = {};
   for (const [policyId, inner] of value.entries()) {
     for (const [assetName, quantity] of inner.entries()) {
-      const unit =
-        policyId === ADA_POLICY_ID && assetName === ADA_ASSET_NAME
-          ? LOVELACE_UNIT
-          : `${policyId}${assetName}`;
+      const unit = assetUnitFromParts(policyId, assetName);
       assets[unit] = (assets[unit] ?? 0n) + quantity;
     }
   }
@@ -143,9 +110,3 @@ export const isPureAdaUtxo = (utxo: UTxO): boolean =>
   Object.entries(utxo.assets).every(
     ([unit, quantity]) => unit === LOVELACE_UNIT || quantity === 0n,
   );
-
-export const isPlainPureAdaUtxo = (utxo: UTxO): boolean =>
-  utxo.scriptRef === undefined &&
-  utxo.datum === undefined &&
-  utxo.datumHash === undefined &&
-  isPureAdaUtxo(utxo);

@@ -1,15 +1,15 @@
 import {
-  encodeMidgardNativeTxFull,
+  encodeMidgardNativeTxCanonical,
   materializeMidgardNativeTxFromCanonical,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core/codec";
 
 import {
   addAssets,
+  type Assets,
   isZeroAssets,
   normalizeAssets,
   subtractAssets,
-  type Assets,
 } from "../core/assets.js";
 import {
   BuilderInvariantError,
@@ -22,17 +22,17 @@ import {
   utxoProtectedAddress,
 } from "../core/output.js";
 import type { Address, MidgardUtxo, WalletInputSource } from "../core/types.js";
+import type { BuilderState } from "./context.js";
+import {
+  type CompleteTxMetadata,
+  expectedAddrWitnessKeyHashes,
+} from "./metadata.js";
 import { cloneOutput, cloneUtxo } from "./state.js";
 import {
   buildCanonicalUnsignedTx,
   type ScriptMaterialization,
 } from "./unsigned-tx.js";
 import { estimatedSignedTxByteLength } from "./witness-bundle.js";
-import {
-  expectedAddrWitnessKeyHashes,
-  type CompleteTxMetadata,
-} from "./metadata.js";
-import type { BuilderState } from "./context.js";
 
 export type ResolvedWalletInputs = {
   readonly source: WalletInputSource;
@@ -56,21 +56,20 @@ type MintLike = {
   readonly assets: Assets;
 };
 
-export const mintDeltaAssets = (mints: readonly MintLike[]): Assets => {
-  let total: Assets = {};
-  for (const mint of mints) {
-    total = addAssets(
-      total,
-      Object.fromEntries(
-        Object.entries(mint.assets).map(([assetName, quantity]) => [
-          `${mint.policyId}${assetName}`,
-          quantity,
-        ]),
+export const mintDeltaAssets = (mints: readonly MintLike[]): Assets =>
+  mints.reduce<Assets>(
+    (total, mint) =>
+      addAssets(
+        total,
+        Object.fromEntries(
+          Object.entries(mint.assets).map(([assetName, quantity]) => [
+            `${mint.policyId}${assetName}`,
+            quantity,
+          ]),
+        ),
       ),
-    );
-  }
-  return total;
-};
+    {},
+  );
 
 const splitSignedAssets = (
   assets: Assets,
@@ -90,7 +89,7 @@ const splitSignedAssets = (
 const subtractAssetsFloor = (left: Assets, right: Assets): Assets => {
   const result: Record<string, bigint> = {};
   for (const [unit, amount] of Object.entries(normalizeAssets(left))) {
-    const remaining = amount - BigInt(right[unit] ?? 0n);
+    const remaining = amount - (right[unit] ?? 0n);
     if (remaining > 0n) {
       result[unit] = remaining;
     }
@@ -148,20 +147,8 @@ export const assertBalancedWithoutChange = (
   }
 };
 
-const requiredAssetsWithFee = (outputsTotal: Assets, fee: bigint): Assets =>
-  fee === 0n ? outputsTotal : addAssets(outputsTotal, { lovelace: fee });
-
 const utxoAssets = (inputs: readonly MidgardUtxo[]): Assets =>
   sumAssets(inputs.map(utxoOutputAssets));
-
-const markFeeIncluded = (cause: InsufficientFundsError, fee: bigint): never => {
-  throw new InsufficientFundsError({
-    unit: cause.unit,
-    required: cause.required,
-    available: cause.available,
-    feeIncluded: fee > 0n,
-  });
-};
 
 const subtractAssetsWithFeeContext = (
   left: Assets,
@@ -172,7 +159,7 @@ const subtractAssetsWithFeeContext = (
     return subtractAssets(left, right);
   } catch (cause) {
     if (cause instanceof InsufficientFundsError) {
-      markFeeIncluded(cause, fee);
+      throw new InsufficientFundsError({ ...cause, feeIncluded: fee > 0n });
     }
     throw cause;
   }
@@ -203,7 +190,7 @@ const assetCoverageScore = (
     if (unit === "lovelace") {
       continue;
     }
-    const available = BigInt(assets[unit] ?? 0n);
+    const available = assets[unit] ?? 0n;
     if (available > 0n) {
       tokenKinds += 1;
       tokenQuantity +=
@@ -213,7 +200,7 @@ const assetCoverageScore = (
   return {
     tokenKinds,
     tokenQuantity,
-    lovelace: BigInt(assets.lovelace ?? 0n),
+    lovelace: assets.lovelace ?? 0n,
   };
 };
 
@@ -254,7 +241,6 @@ const selectDeterministicInputs = (
       break;
     }
     selected.push(candidate);
-    selectedLabels.add(outRefLabel(candidate));
   }
 
   if (trySubtractAssets(utxoAssets(selected), required) === undefined) {
@@ -333,7 +319,7 @@ export const buildBalancedCompletion = ({
 
   for (let iteration = 1; iteration <= maxFeeIterations; iteration += 1) {
     const required = subtractAssetsFloor(
-      addAssets(requiredAssetsWithFee(outputsTotal, fee), mint.negative),
+      addAssets(addFeeToAssets(outputsTotal, fee), mint.negative),
       mint.positive,
     );
     selectedInputs = [
@@ -392,7 +378,7 @@ export const buildBalancedCompletion = ({
           referenceInputCount: candidateState.referenceInputs.length,
           outputCount: candidateState.outputs.length,
           requiredSignerCount: candidateState.requiredSigners.length,
-          txByteLength: encodeMidgardNativeTxFull(candidateTx).length,
+          txByteLength: encodeMidgardNativeTxCanonical(candidateTx).length,
           feeIterations: iteration,
           balanced: true,
           changeAddress,

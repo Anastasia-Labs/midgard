@@ -1,8 +1,9 @@
-import type { Network } from "@lucid-evolution/lucid";
 import {
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
+import type { Network } from "@lucid-evolution/lucid";
+
 import {
   BuilderInvariantError,
   ProviderCapabilityError,
@@ -153,10 +154,7 @@ export const stateNetworkId = (state: BuilderState): bigint => {
 const cloneSupportedScriptLanguages = (
   languages: readonly ProtocolScriptLanguage[],
 ): readonly ProtocolScriptLanguage[] =>
-  languages.map((language) => ({
-    name: language.name,
-    tag: language.tag,
-  }));
+  languages.map(({ name, tag }) => ({ name, tag }));
 
 export const cloneProtocolInfo = (
   info: MidgardProtocolInfo,

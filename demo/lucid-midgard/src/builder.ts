@@ -1,152 +1,37 @@
-import { CML, type Network } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import {
+  computeMidgardNativeTxId,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  encodeMidgardAddressText,
+  encodeMidgardNativeTxCanonical,
+  materializeMidgardNativeTxFromCanonical,
+  midgardAddressFromText,
+  type MidgardNativeTxFull,
+} from "@al-ft/midgard-core/codec";
+import { assetsEqual } from "@al-ft/midgard-core/assets";
+import { normalizeHex } from "@al-ft/midgard-core/hex";
 import {
   LedgerColumns,
-  runPhaseAValidation,
-  runPhaseBValidationWithPatch,
   type PhaseAConfig,
   type PhaseAResult,
   type PhaseBConfig,
   type PhaseBResultWithPatch,
   type QueuedTx,
   type RejectedTx,
+  runPhaseAValidation,
+  runPhaseBValidationWithPatch,
 } from "@al-ft/midgard-validation";
-import {
-  computeHash32,
-  computeMidgardNativeTxId,
-  decodeMidgardNativeTxFull,
-  encodeMidgardNativeTxFull,
-  materializeMidgardNativeTxFromCanonical,
-  midgardAddressFromText,
-  encodeMidgardAddressText,
-  verifyMidgardNativeTxFullConsistency,
-  type MidgardNativeTxFull,
-} from "@al-ft/midgard-core/codec";
-import {
-  authoredOutput,
-  decodeMidgardTxOutput,
-  normalizePlutusData,
-  utxoAddress,
-  utxoAssets as utxoOutputAssets,
-  utxoOutRefCbor,
-  utxoOutputCbor,
-  type AuthoredOutput,
-  type OutputOptions,
-  type PlutusDataLike,
-} from "./core/output.js";
-import {
-  assetQuantity,
-  normalizeAssets,
-  type Assets,
-  type AssetUnit,
-  type ValueLike,
-} from "./core/assets.js";
-import {
-  type Address,
-  type BuilderSnapshot,
-  type CompleteOptions,
-  type LocalValidationPreStateSource,
-  type LocalValidationPreState,
-  type LocalValidationReport,
-  type MidgardUtxo,
-  type MidgardResult,
-  type SubmitTxResult,
-  type TxStatus,
-  type WalletInputSource,
-} from "./core/types.js";
-import {
-  BuilderInvariantError,
-  LucidMidgardError,
-  ProviderCapabilityError,
-  ProviderPayloadError,
-  SigningError,
-} from "./core/errors.js";
-import {
-  assertBuilderContextsComposable,
-  buildConfigSnapshot,
-  cloneProviderDiagnostics,
-  cloneProtocolInfo,
-  configNetworkId,
-  readProviderSnapshot,
-} from "./builder/context.js";
-import {
-  assertNoDuplicateStrings,
-  assertUniqueUtxos,
-  cloneOutput,
-  clonePlutusDataLike,
-  cloneRedeemer,
-  cloneScriptSource,
-  cloneScripts,
-  cloneState,
-  cloneUtxo,
-  emptyState,
-  validatorScriptSource,
-} from "./builder/state.js";
-import {
-  attachProviderMetadata,
-  cloneCompleteTxMetadata,
-  expectedAddrWitnessKeyHashes,
-  paymentPubKeyHashFromUtxo,
-  type CompleteTxContext,
-  type CompleteTxMetadata,
-} from "./builder/metadata.js";
-import {
-  assertExpectedAddrWitnesses,
-  decodeFromTxInput,
-  importedTxMetadata,
-  localUtxoAt,
-  localUtxosFromTx,
-  nativeInputOutRefs,
-  type FromTxOptions,
-  type ImportedTxInput,
-} from "./builder/imported-tx.js";
+import { CML, type Network } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+
 import {
   assertBalancedWithoutChange,
   assertNoPresetInputOverlap,
-  buildBalancedCompletion,
-  sumAssets,
   type BalancedCompletionInputs,
+  buildBalancedCompletion,
   type FeePolicy,
   type ResolvedWalletInputs,
+  sumAssets,
 } from "./builder/balancing.js";
-import { buildCanonicalUnsignedTx } from "./builder/unsigned-tx.js";
-import {
-  deriveScriptMaterialization,
-  normalizeMintAssetsForNormalizedPolicy,
-  normalizePolicyId,
-  normalizeScriptHash,
-  normalizeScriptLanguage,
-} from "./builder/script-materialization.js";
-import {
-  normalizeHashHex,
-  normalizeNonNegativeBigInt,
-} from "./builder/normalizers.js";
-import { normalizeTxHash } from "./core/out-ref.js";
-import {
-  addrWitnessKeyHashes,
-  addrWitnessMetadata,
-  applyAddrWitnessesToTx,
-  assertPartialBundleMatchesTx,
-  decodeAddrWitnesses,
-  decodeImportAddrWitnesses,
-  encodePartialWitnessBundle,
-  estimatedSignedTxByteLength,
-  normalizeVKeyWitnessInput,
-  parsePartialWitnessBundle,
-  partialWitnessBundleFromWitnesses,
-  signMidgardNativeTx,
-  type MidgardPartialWitnessBundle,
-  type PartialWitnessBundleInput,
-  type VKeyWitnessInput,
-} from "./builder/witness-bundle.js";
-import {
-  assertSubmitAdmissionMatches,
-  assertSubmitSizeWithinLimit,
-  assertTxStatusMatches,
-  pollTxStatus,
-  resolveProvider,
-  resolveSubmitSizeLimit,
-} from "./builder/status.js";
 import type {
   BuilderContextSnapshot,
   BuilderState,
@@ -157,53 +42,167 @@ import type {
   UtxoOverrideSnapshot,
 } from "./builder/context.js";
 import {
+  assertBuilderContextsComposable,
+  buildConfigSnapshot,
+  cloneProtocolInfo,
+  cloneProviderDiagnostics,
+  configNetworkId,
+  readProviderSnapshot,
+} from "./builder/context.js";
+import {
+  assertExpectedAddrWitnesses,
+  decodeFromTxInput,
+  type FromTxOptions,
+  type ImportedTxInput,
+  importedTxMetadata,
+  localUtxoAt,
+  localUtxosFromTx,
+  nativeInputOutRefs,
+} from "./builder/imported-tx.js";
+import {
+  attachProviderMetadata,
+  cloneCompleteTxMetadata,
+  type CompleteTxContext,
+  type CompleteTxMetadata,
+  expectedAddrWitnessKeyHashes,
+  paymentPubKeyHashFromUtxo,
+} from "./builder/metadata.js";
+import {
+  normalizeHashHex,
+  normalizeNonNegativeBigInt,
+} from "./builder/normalizers.js";
+import {
+  deriveScriptMaterialization,
+  normalizeMintAssetsForNormalizedPolicy,
+  normalizePolicyId,
+  normalizeScriptHash,
+  normalizeScriptLanguage,
+} from "./builder/script-materialization.js";
+import {
+  assertNoDuplicateStrings,
+  assertUniqueUtxos,
+  cloneOutput,
+  clonePlutusDataLike,
+  cloneRedeemer,
+  cloneScripts,
+  cloneScriptSource,
+  cloneState,
+  cloneUtxo,
+  emptyState,
+  validatorScriptSource,
+} from "./builder/state.js";
+import {
+  assertSubmitAdmissionMatches,
+  assertSubmitSizeWithinLimit,
+  assertTxStatusMatches,
+  pollTxStatus,
+  resolveProvider,
+  resolveSubmitSizeLimit,
+} from "./builder/status.js";
+import { buildCanonicalUnsignedTx } from "./builder/unsigned-tx.js";
+import {
+  addrWitnessKeyHashes,
+  addrWitnessMetadata,
+  applyAddrWitnessesToTx,
+  assertPartialBundleMatchesTx,
+  decodeAddrWitnesses,
+  decodeImportAddrWitnesses,
+  encodePartialWitnessBundle,
+  estimatedSignedTxByteLength,
+  type MidgardPartialWitnessBundle,
+  normalizeVKeyWitnessInput,
+  parsePartialWitnessBundle,
+  partialWitnessBundleFromWitnesses,
+  type PartialWitnessBundleInput,
+  signMidgardNativeTx,
+  type VKeyWitnessInput,
+} from "./builder/witness-bundle.js";
+import {
+  assetQuantity,
+  type Assets,
+  type AssetUnit,
+  type ValueLike,
+} from "./core/assets.js";
+import {
+  BuilderInvariantError,
+  LucidMidgardError,
+  ProviderCapabilityError,
+  ProviderPayloadError,
+  SigningError,
+} from "./core/errors.js";
+import {
   compareOutRefs,
   normalizeOutRef,
-  outRefLabel,
+  normalizeTxHash,
   type OutRef,
+  outRefLabel,
 } from "./core/out-ref.js";
+import {
+  type AuthoredOutput,
+  authoredOutput,
+  decodeMidgardTxOutput,
+  normalizePlutusData,
+  type OutputOptions,
+  type PlutusDataLike,
+  utxoAddress,
+  utxoAssets as utxoOutputAssets,
+  utxoOutputCbor,
+  utxoOutRefCbor,
+} from "./core/output.js";
 import type {
   BuilderScriptState,
+  MintAssets,
+  MintingPolicy,
   ObserverValidator,
   Redeemer,
   ScriptSource,
-  TrustedReferenceScriptMetadata,
-  MintAssets,
-  MintingPolicy,
-  SpendInputIntent,
   SpendingValidator,
+  TrustedReferenceScriptMetadata,
 } from "./core/scripts.js";
+import {
+  type Address,
+  type BuilderSnapshot,
+  type CompleteOptions,
+  type LocalValidationPreState,
+  type LocalValidationPreStateSource,
+  type LocalValidationReport,
+  type MidgardResult,
+  type MidgardUtxo,
+  type SubmitTxResult,
+  type TxStatus,
+  type WalletInputSource,
+} from "./core/types.js";
 import type { MidgardProtocolInfo, MidgardProvider } from "./provider.js";
 import {
   assertAddressNetwork,
   assertVKeyWitness,
+  type ExternalBodyHashSigner,
   makeVKeyWitness,
+  type MidgardWallet,
   paymentKeyHashFromAddress,
+  type PrivateKey,
+  type VKeyWitness,
   walletFromExternalSigner,
   walletFromPrivateKey,
   walletFromSeedPhrase,
-  type ExternalBodyHashSigner,
-  type MidgardWallet,
-  type PrivateKey,
-  type VKeyWitness,
 } from "./wallet.js";
 
-export type { CompleteTxMetadata } from "./builder/metadata.js";
-export type { FromTxOptions } from "./builder/imported-tx.js";
 export type {
   LucidMidgardConfig,
   LucidMidgardConfigSnapshot,
   SwitchProviderOptions,
 } from "./builder/context.js";
-export {
-  decodePartialWitnessBundle,
-  encodePartialWitnessBundle,
-  parsePartialWitnessBundle,
-} from "./builder/witness-bundle.js";
+export type { FromTxOptions } from "./builder/imported-tx.js";
+export type { CompleteTxMetadata } from "./builder/metadata.js";
 export type {
   MidgardPartialWitnessBundle,
   PartialWitnessBundleInput,
   VKeyWitnessInput,
+} from "./builder/witness-bundle.js";
+export {
+  decodePartialWitnessBundle,
+  encodePartialWitnessBundle,
+  parsePartialWitnessBundle,
 } from "./builder/witness-bundle.js";
 
 export type TxStatusKind = TxStatus["kind"];
@@ -369,7 +368,7 @@ const completeTxMetadataWithAddrWitnesses = (
   const witnesses = decodeAddrWitnesses(tx.witnessSet.addrTxWitsPreimageCbor);
   return {
     ...metadata,
-    txByteLength: encodeMidgardNativeTxFull(tx).length,
+    txByteLength: encodeMidgardNativeTxCanonical(tx).length,
     ...addrWitnessMetadata(witnesses),
   };
 };
@@ -498,8 +497,7 @@ export class CompleteTx {
     metadata: CompleteTxMetadata,
     context?: CompleteTxContext,
   ) {
-    verifyMidgardNativeTxFullConsistency(tx);
-    this.#txCbor = encodeMidgardNativeTxFull(tx);
+    this.#txCbor = encodeMidgardNativeTxCanonical(tx);
     this.txHex = this.#txCbor.toString("hex");
     this.#txId = computeMidgardNativeTxId(tx);
     this.txIdHex = this.#txId.toString("hex");
@@ -514,7 +512,7 @@ export class CompleteTx {
   }
 
   get tx(): MidgardNativeTxFull {
-    return decodeMidgardNativeTxFull(this.#txCbor);
+    return decodeMidgardNativeTxFullFromCanonicalCbor(this.#txCbor);
   }
 
   get txCbor(): Buffer {
@@ -708,7 +706,7 @@ export class CompleteTx {
       signedTx,
       {
         ...this.#metadata,
-        txByteLength: encodeMidgardNativeTxFull(signedTx).length,
+        txByteLength: encodeMidgardNativeTxCanonical(signedTx).length,
         ...addrWitnessMetadata(signedWitnesses),
       },
       this.#context,
@@ -820,29 +818,18 @@ const partialBundleInputs = (
   Array.isArray(bundles) ? bundles : [bundles];
 
 const completeWitnessSet = (
-  witnesses: readonly VKeyWitness[],
+  actual: readonly string[],
   metadata: CompleteTxMetadata,
 ): boolean => {
-  assertExpectedAddrWitnesses({
-    actual: addrWitnessKeyHashes(witnesses),
-    expected: metadata.expectedAddrWitnessKeyHashes,
-    expectedComplete: metadata.expectedAddrWitnessesComplete,
-    requireComplete: false,
-  });
-  try {
-    assertExpectedAddrWitnesses({
-      actual: addrWitnessKeyHashes(witnesses),
-      expected: metadata.expectedAddrWitnessKeyHashes,
-      expectedComplete: metadata.expectedAddrWitnessesComplete,
-      requireComplete: true,
-    });
-    return true;
-  } catch (cause) {
-    if (cause instanceof SigningError) {
-      return false;
-    }
-    throw cause;
+  const expected = metadata.expectedAddrWitnessKeyHashes;
+  if (
+    expected === undefined ||
+    metadata.expectedAddrWitnessesComplete === false
+  ) {
+    return false;
   }
+  const actualSet = new Set(actual);
+  return expected.every((keyHash) => actualSet.has(keyHash));
 };
 
 const assemblePartialWitnessBundles = (
@@ -873,15 +860,21 @@ const assemblePartialWitnessBundles = (
     assembled.tx,
     metadata,
   );
-  const isComplete = completeWitnessSet(assembled.witnesses, nextMetadata);
-  if (isComplete) {
+  const actual = addrWitnessKeyHashes(assembled.witnesses);
+  assertExpectedAddrWitnesses({
+    actual,
+    expected: nextMetadata.expectedAddrWitnessKeyHashes,
+    expectedComplete: nextMetadata.expectedAddrWitnessesComplete,
+    requireComplete: false,
+  });
+  if (completeWitnessSet(actual, nextMetadata)) {
     return makeCompleteTx(assembled.tx, nextMetadata, context);
   }
   if (options.allowPartial === true) {
     return makePartiallySignedTx(assembled.tx, nextMetadata, context);
   }
   assertExpectedAddrWitnesses({
-    actual: addrWitnessKeyHashes(assembled.witnesses),
+    actual,
     expected: nextMetadata.expectedAddrWitnessKeyHashes,
     expectedComplete: nextMetadata.expectedAddrWitnessesComplete,
     requireComplete: true,
@@ -908,8 +901,7 @@ export class PartiallySignedTx {
         "PartiallySignedTx constructor is internal; use CompleteTx.assemble(..., { allowPartial: true })",
       );
     }
-    verifyMidgardNativeTxFullConsistency(tx);
-    this.#txCbor = encodeMidgardNativeTxFull(tx);
+    this.#txCbor = encodeMidgardNativeTxCanonical(tx);
     this.txHex = this.#txCbor.toString("hex");
     this.#txId = computeMidgardNativeTxId(tx);
     this.txIdHex = this.#txId.toString("hex");
@@ -918,7 +910,7 @@ export class PartiallySignedTx {
   }
 
   get tx(): MidgardNativeTxFull {
-    return decodeMidgardNativeTxFull(this.#txCbor);
+    return decodeMidgardNativeTxFullFromCanonicalCbor(this.#txCbor);
   }
 
   get txCbor(): Buffer {
@@ -1020,9 +1012,8 @@ export class SubmittedTx {
         "SubmittedTx constructor is internal; use CompleteTx.submit()",
       );
     }
-    assertTrustedCompleteTx(tx, "construct SubmittedTx");
     this.#tx = tx;
-    this.#admission = assertSubmitAdmissionMatches(tx.txIdHex, admission);
+    this.#admission = admission;
     this.#provider = provider;
     this.txIdHex = tx.txIdHex;
   }
@@ -1170,33 +1161,25 @@ const assertComposableScriptState = (scripts: BuilderScriptState): void => {
     "Duplicate datum witness",
   );
   assertNoDuplicateStrings(
-    scripts.observers.map((observer) =>
-      normalizeScriptHash(observer.scriptHash, "observer script hash"),
-    ),
+    scripts.observers.map((observer) => observer.scriptHash),
     "Duplicate observer intent",
   );
   assertNoDuplicateStrings(
-    scripts.receiveRedeemers.map((entry) =>
-      normalizeScriptHash(entry.scriptHash, "receive script hash"),
-    ),
+    scripts.receiveRedeemers.map((entry) => entry.scriptHash),
     "Duplicate receive redeemer",
   );
   assertNoDuplicateStrings(
-    scripts.spendRedeemers.map((entry) =>
-      outRefLabel({ txHash: entry.txHash, outputIndex: entry.outputIndex }),
-    ),
+    scripts.spendRedeemers.map(outRefLabel),
     "Duplicate spend redeemer",
   );
   assertNoDuplicateStrings(
-    scripts.referenceScriptMetadata.map((entry) =>
-      outRefLabel({ txHash: entry.txHash, outputIndex: entry.outputIndex }),
-    ),
+    scripts.referenceScriptMetadata.map(outRefLabel),
     "Duplicate trusted reference script metadata",
   );
   assertNoDuplicateStrings(
     scripts.mints
       .filter((mint) => mint.redeemer !== undefined)
-      .map((mint) => normalizePolicyId(mint.policyId)),
+      .map((mint) => mint.policyId),
     "Duplicate mint redeemer for policy",
   );
 };
@@ -1267,18 +1250,6 @@ const composeStates = (states: readonly BuilderState[]): BuilderState => {
   return composed;
 };
 
-const assetsEqual = (
-  left: Record<string, bigint>,
-  right: Record<string, bigint>,
-): boolean => {
-  const leftEntries = Object.entries(normalizeAssets(left));
-  const rightNormalized = normalizeAssets(right);
-  return (
-    leftEntries.length === Object.keys(rightNormalized).length &&
-    leftEntries.every(([unit, amount]) => rightNormalized[unit] === amount)
-  );
-};
-
 const hasDefinedProperty = <K extends PropertyKey>(
   value: object,
   property: K,
@@ -1289,11 +1260,14 @@ const hasDefinedProperty = <K extends PropertyKey>(
 const scriptHex = (
   scriptRef: NonNullable<MidgardUtxo["output"]["scriptRef"]>,
 ): string => {
-  const normalized = scriptRef.script.trim().toLowerCase();
-  if (normalized.length % 2 !== 0 || !/^[0-9a-f]*$/.test(normalized)) {
+  try {
+    return normalizeHex(scriptRef.script, {
+      fieldName: "scriptRef.script",
+      allowEmpty: true,
+    });
+  } catch {
     throw new BuilderInvariantError("UTxO scriptRef script must be hex");
   }
-  return normalized;
 };
 
 const scriptRefsCompatible = (
@@ -1309,32 +1283,14 @@ const scriptRefsCompatible = (
   if (decoded === undefined || decoded === null) {
     return false;
   }
-  if (scriptHex(supplied) !== scriptHex(decoded)) {
-    return false;
-  }
-  return supplied.type === decoded.type;
+  return (
+    scriptHex(supplied) === scriptHex(decoded) && supplied.type === decoded.type
+  );
 };
 
 const normalizeUtxo = (utxo: MidgardUtxo): MidgardUtxo => {
   const normalized = normalizeOutRef(utxo);
-  let outRefCbor: Buffer;
-  try {
-    const input = CML.TransactionInput.from_cbor_bytes(utxoOutRefCbor(utxo));
-    outRefCbor = Buffer.from(input.to_cbor_bytes());
-    const cborTxHash = input.transaction_id().to_hex();
-    const cborOutputIndex = Number(input.index());
-    if (
-      cborTxHash !== normalized.txHash ||
-      cborOutputIndex !== normalized.outputIndex
-    ) {
-      throw new Error("outref CBOR does not match txHash/outputIndex");
-    }
-  } catch (cause) {
-    throw new BuilderInvariantError(
-      "Invalid UTxO outRefCbor",
-      cause instanceof Error ? cause.message : String(cause),
-    );
-  }
+  const outRefCbor = utxoOutRefCbor(utxo);
 
   let decodedOutput: ReturnType<typeof decodeMidgardTxOutput>;
   try {
@@ -1443,28 +1399,34 @@ const cloneUtxoOverrideSnapshot = (
         utxos: snapshot.utxos.map(cloneUtxo),
       };
 
-const normalizeSigner = (signer: string): string => {
-  const trimmed = signer.trim();
-  if (/^[0-9a-fA-F]{56}$/.test(trimmed)) {
-    return trimmed.toLowerCase();
+const normalizeSignerKeyHash = (signer: string): string | undefined => {
+  try {
+    return normalizeHex(signer, {
+      fieldName: "required signer key hash",
+      byteLength: 28,
+    });
+  } catch {
+    return undefined;
   }
-  return paymentKeyHashFromAddress(trimmed);
 };
 
 const normalizeAssetUnit = (unit: AssetUnit): AssetUnit => {
   if (typeof unit !== "string") {
     throw new BuilderInvariantError("Asset unit must be a string");
   }
-  const normalized = unit.trim().toLowerCase();
-  if (normalized === "lovelace") {
+  if (unit.trim().toLowerCase() === "lovelace") {
     return "lovelace";
   }
-  if (
-    normalized.length < 56 ||
-    normalized.length > 120 ||
-    normalized.length % 2 !== 0 ||
-    !/^[0-9a-f]+$/.test(normalized)
-  ) {
+  let normalized: string;
+  try {
+    normalized = normalizeHex(unit, { fieldName: "asset unit" });
+  } catch {
+    throw new BuilderInvariantError(
+      "Asset unit must be lovelace or policy-id plus hex asset-name",
+      unit,
+    );
+  }
+  if (normalized.length < 56 || normalized.length > 120) {
     throw new BuilderInvariantError(
       "Asset unit must be lovelace or policy-id plus hex asset-name",
       unit,
@@ -1516,14 +1478,10 @@ const assertRequestedOutRefsUnique = (
   endpoint: string,
 ): readonly OutRef[] => {
   const normalized = outRefs.map(normalizeOutRef);
-  const labels = new Set<string>();
-  for (const outRef of normalized) {
-    const label = outRefLabel(outRef);
-    if (labels.has(label)) {
-      throw new BuilderInvariantError("Duplicate requested outref", label);
-    }
-    labels.add(label);
-  }
+  assertNoDuplicateStrings(
+    normalized.map(({ txHash, outputIndex }) => `${txHash}#${outputIndex}`),
+    "Duplicate requested outref",
+  );
   if (normalized.length === 0) {
     throw new BuilderInvariantError(
       "OutRef query must include at least one outref",
@@ -1549,10 +1507,14 @@ const orderedUtxosByOutRef = async (
           items.filter((item): item is MidgardUtxo => item !== undefined),
         )
       : await provider.getUtxosByOutRefs(requested);
+  const requestedLabels = requested.map(
+    ({ txHash, outputIndex }) => `${txHash}#${outputIndex}`,
+  );
+  const requestedLabelSet = new Set(requestedLabels);
   const byLabel = new Map<string, MidgardUtxo>();
   for (const utxo of normalizeProviderUtxos(raw, endpoint)) {
     const label = outRefLabel(utxo);
-    if (!requested.some((outRef) => outRefLabel(outRef) === label)) {
+    if (!requestedLabelSet.has(label)) {
       throw new ProviderPayloadError(
         endpoint,
         "Provider returned an unrequested outref",
@@ -1569,8 +1531,7 @@ const orderedUtxosByOutRef = async (
     byLabel.set(label, utxo);
   }
   const ordered: MidgardUtxo[] = [];
-  for (const outRef of requested) {
-    const label = outRefLabel(outRef);
+  for (const label of requestedLabels) {
     const found = byLabel.get(label);
     if (found === undefined) {
       if (missingMode === "error") {
@@ -1603,23 +1564,13 @@ const inlineDatumFromUtxo = (
 ): Buffer => {
   const endpoint = "/datum";
   const normalized = normalizeProviderUtxo(utxo, endpoint);
-  let datumCbor: Buffer;
-  try {
-    const output = decodeMidgardTxOutput(utxoOutputCbor(normalized)).txOutput;
-    if (output.datum === undefined || output.datum === null) {
-      throw new ProviderPayloadError(endpoint, "UTxO does not contain a datum");
-    }
-    datumCbor = Buffer.from(output.datum.cbor, "hex");
-  } catch (cause) {
-    if (cause instanceof ProviderPayloadError) {
-      throw cause;
-    }
-    throw new ProviderPayloadError(
-      endpoint,
-      "UTxO output is not a valid Midgard output",
-      cause instanceof Error ? cause.message : String(cause),
-    );
+  if (
+    normalized.output.datum === undefined ||
+    normalized.output.datum === null
+  ) {
+    throw new ProviderPayloadError(endpoint, "UTxO does not contain a datum");
   }
+  const datumCbor = Buffer.from(normalized.output.datum.cbor, "hex");
   const datum = CML.PlutusData.from_cbor_bytes(datumCbor);
   const expectedHash = datumExpectedHash(options);
   const actualHash = CML.hash_plutus_data(datum).to_hex();
@@ -1744,12 +1695,7 @@ const normalizeTrustedReferenceScriptMetadataList = (
     | readonly TrustedReferenceScriptMetadata[],
 ): readonly TrustedReferenceScriptMetadata[] => {
   const entries = Array.isArray(metadata) ? metadata : [metadata];
-  const normalized = entries.map(normalizeTrustedReferenceScriptMetadata);
-  assertNoDuplicateStrings(
-    normalized.map((entry) => outRefLabel(entry)),
-    "Duplicate trusted reference script metadata",
-  );
-  return normalized;
+  return entries.map(normalizeTrustedReferenceScriptMetadata);
 };
 
 const assertWalletOwnsInputs = async (
@@ -2075,10 +2021,10 @@ export class TxBuilder {
 
   private attachDatum(data: PlutusDataLike, hash?: string): TxBuilder {
     const normalizedData = clonePlutusDataLike(data);
-    const datumHash =
-      hash ??
-      CML.hash_plutus_data(normalizePlutusData(normalizedData)).to_hex();
-    const normalizedHash = normalizeHashHex(datumHash, "datum hash", 32);
+    const normalizedHash =
+      hash === undefined
+        ? CML.hash_plutus_data(normalizePlutusData(normalizedData)).to_hex()
+        : normalizeHashHex(hash, "datum hash", 32);
     if (
       this.state.scripts.datumWitnesses.some(
         (datum) => datum.hash === normalizedHash,
@@ -2110,7 +2056,7 @@ export class TxBuilder {
       ...normalizeTrustedReferenceScriptMetadataList(metadata),
     ];
     assertNoDuplicateStrings(
-      nextMetadata.map((entry) => outRefLabel(entry)),
+      nextMetadata.map(outRefLabel),
       "Duplicate trusted reference script metadata",
     );
     return this.next({
@@ -2178,10 +2124,11 @@ export class TxBuilder {
     if (trustedReferenceScripts.length > 0) {
       const referenceLabels = new Set(normalizedUtxos.map(outRefLabel));
       for (const metadata of trustedReferenceScripts) {
-        if (!referenceLabels.has(outRefLabel(metadata))) {
+        const label = outRefLabel(metadata);
+        if (!referenceLabels.has(label)) {
           throw new BuilderInvariantError(
             "readFrom trusted reference script metadata must match a supplied reference input",
-            outRefLabel(metadata),
+            label,
           );
         }
       }
@@ -2191,7 +2138,7 @@ export class TxBuilder {
       ...trustedReferenceScripts,
     ];
     assertNoDuplicateStrings(
-      nextReferenceScriptMetadata.map((entry) => outRefLabel(entry)),
+      nextReferenceScriptMetadata.map(outRefLabel),
       "Duplicate trusted reference script metadata",
     );
     return this.next({
@@ -2236,9 +2183,7 @@ export class TxBuilder {
     const normalized = normalizeScriptHash(scriptHash, "observer script hash");
     if (
       this.state.scripts.observers.some(
-        (observer) =>
-          normalizeScriptHash(observer.scriptHash, "observer script hash") ===
-          normalized,
+        (observer) => observer.scriptHash === normalized,
       )
     ) {
       throw new BuilderInvariantError("Duplicate observer intent", normalized);
@@ -2262,9 +2207,7 @@ export class TxBuilder {
     const normalized = normalizeScriptHash(scriptHash, "receive script hash");
     if (
       this.state.scripts.receiveRedeemers.some(
-        (entry) =>
-          normalizeScriptHash(entry.scriptHash, "receive script hash") ===
-          normalized,
+        (entry) => entry.scriptHash === normalized,
       )
     ) {
       throw new BuilderInvariantError("Duplicate receive redeemer", normalized);
@@ -2284,10 +2227,17 @@ export class TxBuilder {
   }
 
   addSigner(keyHashOrAddress: string): TxBuilder {
-    if (!/^[0-9a-fA-F]{56}$/.test(keyHashOrAddress.trim())) {
-      assertAddressNetwork(keyHashOrAddress, this.context.config.networkId);
+    const keyHash = normalizeSignerKeyHash(keyHashOrAddress);
+    if (keyHash !== undefined) {
+      return this.addNormalizedSigner(keyHash);
     }
-    const signer = normalizeSigner(keyHashOrAddress);
+    assertAddressNetwork(keyHashOrAddress, this.context.config.networkId);
+    return this.addNormalizedSigner(
+      paymentKeyHashFromAddress(keyHashOrAddress.trim()),
+    );
+  }
+
+  private addNormalizedSigner(signer: string): TxBuilder {
     const requiredSigners = [...this.state.requiredSigners, signer];
     if (new Set(requiredSigners).size !== requiredSigners.length) {
       throw new BuilderInvariantError("Duplicate required signer", signer);
@@ -2296,12 +2246,9 @@ export class TxBuilder {
   }
 
   addSignerKey(keyHash: string): TxBuilder {
-    const normalized = normalizeHashHex(
-      keyHash,
-      "required signer key hash",
-      28,
+    return this.addNormalizedSigner(
+      normalizeHashHex(keyHash, "required signer key hash", 28),
     );
-    return this.addSigner(normalized);
   }
 
   setMinFee(fee: bigint | number): TxBuilder {
@@ -2525,18 +2472,14 @@ export class TxBuilder {
 
   async complete(options: CompleteOptions = {}): Promise<CompleteTx> {
     const state = cloneState(this.state);
-    assertUniqueUtxos(state.spendInputs, state.referenceInputs);
-    assertValidityInterval(state);
     const balanceRequested = shouldBalanceWithWalletDefault(
       options,
       this.context.wallet !== undefined,
     );
-    if (state.spendInputs.length === 0) {
-      if (!balanceRequested) {
-        throw new BuilderInvariantError(
-          "Cannot complete a transaction with no spend inputs",
-        );
-      }
+    if (state.spendInputs.length === 0 && !balanceRequested) {
+      throw new BuilderInvariantError(
+        "Cannot complete a transaction with no spend inputs",
+      );
     }
     if (balanceRequested) {
       return this.completeBalanced(state, options);
@@ -2559,19 +2502,9 @@ export class TxBuilder {
       scriptMaterialization,
     );
     const tx = materializeMidgardNativeTxFromCanonical(canonical);
-    verifyMidgardNativeTxFullConsistency(tx);
-    const txCbor = encodeMidgardNativeTxFull(tx);
+    const txCbor = encodeMidgardNativeTxCanonical(tx);
     const expectedWitnessKeyHashes = expectedAddrWitnessKeyHashes(state);
     const expectedAddrWitnessCount = expectedWitnessKeyHashes.length;
-    if (
-      !computeHash32(tx.body.spendInputsPreimageCbor).equals(
-        tx.compact.transactionBody.spendInputsHash,
-      )
-    ) {
-      throw new BuilderInvariantError(
-        "spend input hash/preimage consistency check failed",
-      );
-    }
 
     return this.finalizeCompleteTx(
       tx,
@@ -2672,8 +2605,6 @@ export class TxBuilder {
 
   async chain(options: CompleteOptions = {}): Promise<ChainResult> {
     const state = cloneState(this.state);
-    assertUniqueUtxos(state.spendInputs, state.referenceInputs);
-    assertValidityInterval(state);
     const balanceRequested = shouldBalanceWithWalletDefault(
       options,
       this.context.wallet !== undefined,
@@ -3106,7 +3037,8 @@ export class LucidMidgard {
     options: FromTxOptions = {},
   ): CompleteTx | PartiallySignedTx {
     const expectedBodyNetworkId = configNetworkId(this.#config);
-    const tx = input instanceof CompleteTx ? input.tx : decodeFromTxInput(input);
+    const tx =
+      input instanceof CompleteTx ? input.tx : decodeFromTxInput(input);
     assertTxNetworkMatchesExpected(
       tx,
       expectedBodyNetworkId,

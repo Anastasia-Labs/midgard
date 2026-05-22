@@ -12,47 +12,48 @@ import {
   TxSignBuilder,
   UTxO,
 } from "@lucid-evolution/lucid";
+import { Data as EffectData, Effect } from "effect";
+
 import {
   ActiveOperatorMintRedeemer,
   ActiveOperatorSpendRedeemer,
 } from "@/active-operators.js";
-import { SchedulerSpendRedeemer } from "@/scheduler.js";
-import { Data as EffectData, Effect } from "effect";
 import {
+  AuthenticatedValidator,
   DataCoercionError,
   GenericErrorFields,
   HashingError,
-  MissingDatumError,
-  UnauthenticUtxoError,
   MerkleRoot,
   MerkleRootSchema,
+  MissingDatumError,
   POSIXTime,
-  AuthenticatedValidator,
+  UnauthenticUtxoError,
   utxosAtByNFTPolicyId,
 } from "@/common.js";
 import { LucidError, makeReturn } from "@/common.js";
 import { getStateToken } from "@/internals.js";
 import {
+  EMPTY_MERKLE_TREE_ROOT,
+  GENESIS_HEADER_HASH,
+  GENESIS_PROTOCOL_VERSION,
+} from "@/ledger-constants.js";
+import {
+  ConfirmedState,
+  getHeaderFromStateQueueDatum,
+  hashBlockHeader,
+  Header,
+  HeaderHashSchema,
+} from "@/ledger-state.js";
+import {
+  encodeLinkedListNodeView,
+  getLinkedListNodeViewFromUTxO,
+  incompleteInitLinkedListTxProgram,
+  LinkedListError,
   LinkedListNodeView,
   NodeKey,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
-  encodeLinkedListNodeView,
-  getLinkedListNodeViewFromUTxO,
-  LinkedListError,
-  incompleteInitLinkedListTxProgram,
 } from "@/linked-list.js";
-import {
-  ConfirmedState,
-  Header,
-  HeaderHashSchema,
-  getHeaderFromStateQueueDatum,
-  hashBlockHeader,
-} from "@/ledger-state.js";
-import {
-  GENESIS_HEADER_HASH,
-  GENESIS_PROTOCOL_VERSION,
-  EMPTY_MERKLE_TREE_ROOT,
-} from "@/ledger-constants.js";
+import { SchedulerSpendRedeemer } from "@/scheduler.js";
 import { completeTxWithLocalUPLCEvalProgram } from "@/tx-completion.js";
 import { dedupeAndSortUtxos } from "@/tx-out-ref-order.js";
 
@@ -179,22 +180,6 @@ export const headerHashFromStateQueueUTxO = (
 export type StateQueueFetchConfig = {
   stateQueueAddress: Address;
   stateQueuePolicyId: PolicyId;
-};
-
-export type StateQueueCommitBlockParams = {
-  anchorUTxO: StateQueueUTxO;
-  updatedAnchorDatum: LinkedListNodeView;
-  newHeader: Header;
-  stateQueueSpendingScript: Script;
-  policyId: PolicyId;
-  stateQueueMintingScript: Script;
-};
-
-export type StateQueueMergeParams = {
-  confirmedUTxO: StateQueueUTxO;
-  firstBlockUTxO: StateQueueUTxO;
-  stateQueueSpendingScript: Script;
-  stateQueueMintingScript: Script;
 };
 
 export type StateQueueInitParams = {
@@ -355,22 +340,22 @@ export const findLinkStateQueueUTxO = (
         cause: `Given link is "Empty"`,
       }),
     );
-  } else {
-    const foundLink = utxos.find(
-      (u: StateQueueUTxO) =>
-        u.datum.key !== "Empty" && u.datum.key.Key.key === link.Key.key,
-    );
-    if (foundLink) {
-      return Effect.succeed(foundLink);
-    } else {
-      return Effect.fail(
-        new LinkedListError({
-          message: errorMessage,
-          cause: `Link not found among given state queue UTxOs`,
-        }),
-      );
-    }
   }
+
+  const foundLink = utxos.find(
+    (u: StateQueueUTxO) =>
+      u.datum.key !== "Empty" && u.datum.key.Key.key === link.Key.key,
+  );
+  if (foundLink) {
+    return Effect.succeed(foundLink);
+  }
+
+  return Effect.fail(
+    new LinkedListError({
+      message: errorMessage,
+      cause: `Link not found among given state queue UTxOs`,
+    }),
+  );
 };
 
 /**
@@ -397,26 +382,25 @@ export const sortStateQueueUTxOs = (
         }),
       ),
     );
-    if (filteredForConfirmedState.length === 1) {
-      const { utxo: confirmedStateUTxO, link: linkToOldestBlock } =
-        filteredForConfirmedState[0];
-      const sorted: StateQueueUTxO[] = [confirmedStateUTxO];
-      let link = linkToOldestBlock;
-      while (link !== "Empty") {
-        const linkUTxO = yield* findLinkStateQueueUTxO(link, stateQueueUTxOs);
-        sorted.push(linkUTxO);
-        link = linkUTxO.datum.next;
-      }
-      return sorted;
-    } else {
-      yield* Effect.fail(
+    if (filteredForConfirmedState.length !== 1) {
+      return yield* Effect.fail(
         new LinkedListError({
           message: `Failed to sort state queue UTxOs`,
           cause: `Confirmed state (root node) not found among state queue UTxOs`,
         }),
       );
-      return [];
     }
+
+    const { utxo: confirmedStateUTxO, link: linkToOldestBlock } =
+      filteredForConfirmedState[0];
+    const sorted: StateQueueUTxO[] = [confirmedStateUTxO];
+    let link = linkToOldestBlock;
+    while (link !== "Empty") {
+      const linkUTxO = yield* findLinkStateQueueUTxO(link, stateQueueUTxOs);
+      sorted.push(linkUTxO);
+      link = linkUTxO.datum.next;
+    }
+    return sorted;
   });
 
 /**
@@ -833,104 +817,6 @@ export const updateLatestBlocksDatumAndGetTheNewHeader = (
     ),
   ).unsafeRun();
 
-/**
- * Builds portions of a tx required for submitting a new block, using the
- * provided `LucidEvolution` instance, fetch config, and required parameters.
- *
- * @param lucid - The `LucidEvolution` API object.
- * @param fetchConfig - Configuration values required to know where to look for which NFT.
- * @param commitParams - Parameters required for committing to state queue.
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteCommitBlockHeaderTxProgram = (
-  lucid: LucidEvolution,
-  config: StateQueueFetchConfig,
-  {
-    anchorUTxO: latestBlock,
-    updatedAnchorDatum: updatedNodeDatum,
-    newHeader,
-    stateQueueSpendingScript,
-    policyId,
-    stateQueueMintingScript,
-  }: StateQueueCommitBlockParams,
-): Effect.Effect<TxBuilder, HashingError> =>
-  Effect.gen(function* () {
-    const newHeaderHash = yield* hashBlockHeader(newHeader);
-    const assets: Assets = {
-      [toUnit(policyId, STATE_QUEUE_NODE_ASSET_NAME_PREFIX + newHeaderHash)]:
-        1n,
-    };
-
-    const newNodeDatum: LinkedListNodeView = {
-      key: updatedNodeDatum.next,
-      next: "Empty",
-      data: Data.castTo(newHeader, Header),
-    };
-
-    // Note that we are not specifying a validity range (TODO?).
-    const tx = lucid
-      .newTx()
-      .collectFrom([latestBlock.utxo], Data.void())
-      .pay.ToContract(
-        config.stateQueueAddress,
-        { kind: "inline", value: encodeLinkedListNodeView(newNodeDatum) },
-        assets,
-      )
-      .pay.ToContract(
-        config.stateQueueAddress,
-        { kind: "inline", value: encodeLinkedListNodeView(updatedNodeDatum) },
-        latestBlock.utxo.assets,
-      )
-      .mintAssets(assets, Data.void())
-      .attach.Script(stateQueueSpendingScript)
-      .attach.Script(stateQueueMintingScript);
-    return tx;
-  });
-
-export const unsignedCommitBlockHeaderTxProgram = (
-  lucid: LucidEvolution,
-  fetchConfig: StateQueueFetchConfig,
-  sqCommitParams: StateQueueCommitBlockParams,
-): Effect.Effect<TxSignBuilder, StateQueueError | HashingError> =>
-  Effect.gen(function* () {
-    const commitTx = yield* incompleteCommitBlockHeaderTxProgram(
-      lucid,
-      fetchConfig,
-      sqCommitParams,
-    );
-    const completedTx: TxSignBuilder = yield* completeTxWithLocalUPLCEvalProgram(
-      commitTx,
-      (e) =>
-        new StateQueueError({
-          message: `Failed to build block header commitment transaction: ${e}`,
-          cause: e,
-        }),
-    );
-    return completedTx;
-  });
-
-/**
- * Builds completed tx for submitting a new block using the provided
- * `LucidEvolution` instance, fetch config, and required parameters.
- *
- * @param lucid - The `LucidEvolution` API object.
- * @param fetchConfig - Configuration values required to know where to look for which NFT.
- * @param sqCommitParams - Parameters required for committing to state queue.
- * @returns A promise that resolves to a `TxSignBuilder` instance.
- */
-export const unsignedCommitBlockHeaderTx = (
-  lucid: LucidEvolution,
-  fetchConfig: StateQueueFetchConfig,
-  sqCommitParams: StateQueueCommitBlockParams,
-): Promise<TxSignBuilder> =>
-  makeReturn(
-    unsignedCommitBlockHeaderTxProgram(
-      lucid,
-      fetchConfig,
-      sqCommitParams,
-    ),
-  ).unsafeRun();
-
 export const fetchUnsortedStateQueueUTxOsProgram = (
   lucid: LucidEvolution,
   config: StateQueueFetchConfig,
@@ -1128,14 +1014,15 @@ export const unsignedInitStateQueueTxProgram = (
       lucid,
       initParams,
     );
-    const completedTx: TxSignBuilder = yield* completeTxWithLocalUPLCEvalProgram(
-      commitTx,
-      (e) =>
-        new LucidError({
-          message: `Failed to build the init state queue transaction: ${e}`,
-          cause: e,
-        }),
-    );
+    const completedTx: TxSignBuilder =
+      yield* completeTxWithLocalUPLCEvalProgram(
+        commitTx,
+        (e) =>
+          new LucidError({
+            message: `Failed to build the init state queue transaction: ${e}`,
+            cause: e,
+          }),
+      );
     return completedTx;
   });
 
@@ -1151,122 +1038,6 @@ export const unsignedInitStateQueueTx = (
   initParams: StateQueueInitParams,
 ): Promise<TxSignBuilder> =>
   makeReturn(unsignedInitStateQueueTxProgram(lucid, initParams)).unsafeRun();
-
-/**
- * Merge
- *
- * @param lucid - The `LucidEvolution` API object.
- * @param fetchConfig - Configuration values required to know where to look for which NFT.
- * @param mergeParams - Parameters needed for building the merge transaction.
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteStateQueueMergeTxProgram = (
-  lucid: LucidEvolution,
-  fetchConfig: StateQueueFetchConfig,
-  {
-    confirmedUTxO,
-    firstBlockUTxO,
-    stateQueueSpendingScript,
-    stateQueueMintingScript,
-  }: StateQueueMergeParams,
-): Effect.Effect<TxBuilder, HashingError | DataCoercionError> =>
-  Effect.gen(function* () {
-    const { data: currentConfirmedState } =
-      yield* getConfirmedStateFromStateQueueDatum(confirmedUTxO.datum);
-    const blockHeader: Header = yield* getHeaderFromStateQueueDatum(
-      firstBlockUTxO.datum,
-    );
-    const headerHash = yield* hashBlockHeader(blockHeader);
-    const newConfirmedState = {
-      ...currentConfirmedState,
-      headerHash,
-      prevHeaderHash: currentConfirmedState.headerHash,
-      utxoRoot: blockHeader.utxosRoot,
-      startTime: currentConfirmedState.endTime,
-      endTime: blockHeader.endTime,
-    };
-    const newConfirmedNodeDatum: LinkedListNodeView = {
-      ...confirmedUTxO.datum,
-      data: Data.castTo(newConfirmedState, ConfirmedState),
-      next: firstBlockUTxO.datum.next,
-    };
-    const assetsToBurn: Assets = {
-      [toUnit(fetchConfig.stateQueuePolicyId, firstBlockUTxO.assetName)]: -1n,
-    };
-    const mergeRedeemer: StateQueueRedeemer = {
-      MergeToConfirmedState: {
-        header_node_key: headerHash,
-        header_node_input_index: 1n,
-        confirmed_state_input_index: 0n,
-        confirmed_state_output_index: 0n,
-        m_settlement_redeemer_index: null,
-        merged_block_transactions_root: blockHeader.transactionsRoot,
-        merged_block_deposits_root: blockHeader.depositsRoot,
-        merged_block_withdrawals_root: blockHeader.withdrawalsRoot,
-      },
-    };
-    const tx = lucid
-      .newTx()
-      .collectFrom(
-        [confirmedUTxO.utxo, firstBlockUTxO.utxo],
-        Data.to(mergeRedeemer, StateQueueRedeemer),
-      )
-      .pay.ToContract(
-        fetchConfig.stateQueueAddress,
-        {
-          kind: "inline",
-          value: encodeLinkedListNodeView(newConfirmedNodeDatum),
-        },
-        confirmedUTxO.utxo.assets,
-      )
-      .mintAssets(assetsToBurn, Data.void())
-      .attach.Script(stateQueueSpendingScript)
-      .attach.Script(stateQueueMintingScript);
-    return tx;
-  });
-
-export const mergeToConfirmedStateProgram = (
-  lucid: LucidEvolution,
-  fetchConfig: StateQueueFetchConfig,
-  mergeParams: StateQueueMergeParams,
-): Effect.Effect<
-  TxSignBuilder,
-  DataCoercionError | LucidError | HashingError
-> =>
-  Effect.gen(function* () {
-    const completedTx = yield* incompleteStateQueueMergeTxProgram(
-      lucid,
-      fetchConfig,
-      mergeParams,
-    );
-    return yield* completeTxWithLocalUPLCEvalProgram(
-      completedTx,
-      (e) =>
-        new LucidError({
-          message:
-            "Failed to finalize the transaction for merging oldest block into confirmed state",
-          cause: e,
-        }),
-    );
-  });
-
-/**
- * Builds completed tx for merging the first block in queue to be merged into
- * the confirmed state.
- *
- * @param lucid - The `LucidEvolution` API object.
- * @param fetchConfig - Configuration values required to know where to look for which NFT.
- * @param mergeParams - Parameters needed for building the merge transaction.
- * @returns A promise that resolves to a `TxSignBuilder` instance.
- */
-export const mergeToConfirmedState = (
-  lucid: LucidEvolution,
-  fetchConfig: StateQueueFetchConfig,
-  mergeParams: StateQueueMergeParams,
-): Promise<TxSignBuilder> =>
-  makeReturn(
-    mergeToConfirmedStateProgram(lucid, fetchConfig, mergeParams),
-  ).unsafeRun();
 
 export class StateQueueError extends EffectData.TaggedError(
   "StateQueueError",

@@ -8,24 +8,26 @@
  * corresponding script hash/policy id, and any matching reference-script UTxO
  * currently published in the dedicated reference-script wallet.
  */
-import { Effect } from "effect";
+import { existsSync } from "node:fs";
+import { mkdir, rename, writeFile } from "node:fs/promises";
+import { dirname, resolve as resolvePath } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import * as SDK from "@al-ft/midgard-sdk";
 import {
   type Script,
   type UTxO,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
-import * as SDK from "@al-ft/midgard-sdk";
-import { dirname, resolve as resolvePath } from "node:path";
-import { existsSync } from "node:fs";
-import { mkdir, rename, writeFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
-import { Lucid, MidgardContracts } from "@/services/index.js";
-import { compareOutRefs } from "@/tx-context.js";
+import { Effect } from "effect";
+
 import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
+import { Lucid, MidgardContracts } from "@/services/index.js";
 import {
   buildFraudProofCatalogueDeploymentInfo,
   fraudProofsToIndexedValidators,
 } from "@/transactions/initialization.js";
+import { compareOutRefs } from "@/tx-context.js";
 
 export type ContractDeploymentInfoRefScriptUTxO = {
   readonly txHash: string;
@@ -160,10 +162,9 @@ const fetchReferenceScriptWalletUtxos = Effect.gen(function* () {
         `Failed to resolve reference-script wallet address: ${String(cause)}`,
       ),
   });
-  const cachedWalletUtxos = yield* Effect.tryPromise({
-    try: () => referenceScriptsLucid.wallet().getUtxos(),
-    catch: () => [] as readonly UTxO[],
-  }).pipe(Effect.catchAll(() => Effect.succeed([] as readonly UTxO[])));
+  const cachedWalletUtxos = yield* Effect.tryPromise(() =>
+    referenceScriptsLucid.wallet().getUtxos(),
+  ).pipe(Effect.catchAll(() => Effect.succeed([] as readonly UTxO[])));
   const liveWalletUtxos = yield* Effect.tryPromise({
     try: () => referenceScriptsLucid.utxosAt(walletAddress),
     catch: (cause) =>
@@ -186,16 +187,12 @@ const buildReferenceScriptOutRefMap = (
     if (utxo.scriptRef == null) {
       continue;
     }
-    try {
-      const scriptHash = validatorToScriptHash(utxo.scriptRef);
-      if (!byScriptHash.has(scriptHash)) {
-        byScriptHash.set(scriptHash, {
-          txHash: utxo.txHash,
-          outputIndex: utxo.outputIndex,
-        });
-      }
-    } catch {
-      continue;
+    const scriptHash = validatorToScriptHash(utxo.scriptRef);
+    if (!byScriptHash.has(scriptHash)) {
+      byScriptHash.set(scriptHash, {
+        txHash: utxo.txHash,
+        outputIndex: utxo.outputIndex,
+      });
     }
   }
   return byScriptHash;

@@ -7,7 +7,8 @@ import ora from 'ora-classic';
 
 import { saveConfig } from '../../../config/index.js';
 import { getWallet, listWallets } from '../../../config/wallets.js';
-import { MidgardError } from '../../../utils/errors.js';
+import { formatError, MidgardError } from '../../../utils/errors.js';
+import { getTransactionTypeDescription } from '../../../utils/tx-generator.js';
 import type { Action } from '../types.js';
 
 /**
@@ -22,18 +23,6 @@ import type { Action } from '../types.js';
  * Maps the generator's transaction-type discriminator to operator-facing help
  * text used in summaries and menus.
  */
-function getTypeDescription(type: string): string {
-  switch (type) {
-    case 'one-to-one':
-      return 'Simple single-output transactions';
-    case 'multi-output':
-      return 'Complex multi-recipient transactions';
-    case 'mixed':
-      return 'Combination of simple and complex transactions';
-    default:
-      return 'Unknown transaction type';
-  }
-}
 
 /**
  * Interactive action that walks the user through a full generator
@@ -67,6 +56,7 @@ export const configureTxGenerator: Action = {
       process.once('SIGINT', parentAbortHandler);
 
       try {
+        // Add parameter definition guide at the top
         console.log(chalk.bold.green('\n📝 Transaction Generator Configuration\n'));
         console.log(
           chalk.dim(
@@ -74,7 +64,6 @@ export const configureTxGenerator: Action = {
           )
         );
 
-        // Add parameter definition guide at the top
         console.log(chalk.bold('\n📋 Parameter Definitions:\n'));
 
         const parameterDefinitions = [
@@ -250,7 +239,6 @@ export const configureTxGenerator: Action = {
           });
         }
 
-        // Generate test wallet
         console.log(chalk.bold('\n▶ Wallet Setup'));
         console.log(chalk.dim('Generating a test wallet for transaction signing...'));
 
@@ -279,7 +267,11 @@ export const configureTxGenerator: Action = {
 
           const summaryTable = [
             ['Setting', 'Value', 'Description'],
-            ['Type', txConfig.transactionType, getTypeDescription(txConfig.transactionType)],
+            [
+              'Type',
+              txConfig.transactionType,
+              getTransactionTypeDescription(txConfig.transactionType),
+            ],
             txConfig.transactionType === 'mixed'
               ? [
                   'Ratio',
@@ -364,11 +356,11 @@ export const configureTxGenerator: Action = {
             };
           } catch (error) {
             spinner.fail('Failed to start transaction generator');
-            throw new Error(`Failed to start transaction generator: ${error}`);
+            throw new Error(`Failed to start transaction generator: ${formatError(error)}`);
           }
         } catch (error) {
           spinner.fail('Failed to generate test wallet');
-          throw new Error(`Failed to generate test wallet: ${error}`);
+          throw new Error(`Failed to generate test wallet: ${formatError(error)}`);
         }
       } finally {
         // Clean up our SIGINT handler
@@ -381,7 +373,9 @@ export const configureTxGenerator: Action = {
           message: 'Operation cancelled',
         };
       }
-      throw MidgardError.transaction(`Failed to configure transaction generator: ${error}`);
+      throw MidgardError.transaction(
+        `Failed to configure transaction generator: ${formatError(error)}`
+      );
     }
   },
 };
@@ -418,8 +412,8 @@ export const toggleTxGenerator: Action = {
       process.once('SIGINT', parentAbortHandler);
 
       try {
-        // Display current status with more detail
         if (context.config.generator.enabled) {
+          // Display current status with more detail
           console.log(chalk.green.bold('✓ Transaction generator is currently ENABLED'));
           console.log(chalk.dim('The generator is running with the following configuration:'));
           console.log(chalk.dim(`• Batch Size: ${context.config.generator.batchSize}`));
@@ -618,7 +612,7 @@ export const toggleTxGenerator: Action = {
             };
           } catch (error) {
             spinner.fail('Failed to start transaction generator');
-            throw new Error(`Failed to start transaction generator: ${error}`);
+            throw new Error(`Failed to start transaction generator: ${formatError(error)}`);
           }
         }
       } finally {
@@ -635,7 +629,7 @@ export const toggleTxGenerator: Action = {
         abortError.name = 'AbortPromptError';
         throw abortError;
       }
-      throw MidgardError.config(`Failed to toggle transaction generator: ${error}`);
+      throw MidgardError.config(`Failed to toggle transaction generator: ${formatError(error)}`);
     }
   },
 };

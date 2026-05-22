@@ -1,5 +1,4 @@
-import { getGeneratorStatus } from '@midgard-manager/tx-generator';
-import { MidgardNodeClient } from '@midgard-manager/tx-generator';
+import { getGeneratorStatus, MidgardNodeClient } from '@midgard-manager/tx-generator';
 import chalk from 'chalk';
 
 import type { MidgardConfig } from '../config/schema.js';
@@ -16,7 +15,6 @@ type StatusConfig = Pick<MidgardConfig, 'node' | 'generator'>;
 export function displayHeader(title?: string) {
   // Clear the terminal screen
   process.stdout.write('\x1Bc');
-
   // Display the Midgard logo with the title if provided
   displayLogo({
     headerText: title,
@@ -33,22 +31,14 @@ export async function displayStatus(config: StatusConfig) {
   // Get the actual running status of the transaction generator
   const generatorStatus = getGeneratorStatus();
   const isRunning = generatorStatus.running;
-
-  // Check if the node is available with a very short timeout
   const nodeClient = new MidgardNodeClient({
     baseUrl: config.node.endpoint,
   });
-
+  // Check if the node is available with a very short timeout
   // Check node availability with shorter timeout
-  let nodeConnected = false;
-  try {
-    // Use a quick timeout of 500ms for better UI responsiveness
-    const timeoutMs = 500;
-    nodeConnected = await nodeClient.isAvailable(timeoutMs);
-  } catch (error) {
-    // On errors, assume disconnected
-    nodeConnected = false;
-  }
+  // Use a quick timeout of 500ms for better UI responsiveness
+  // On errors, assume disconnected
+  const nodeConnected = await nodeClient.isAvailable(500);
 
   // Minimalist left-aligned border style
   console.log('\n┌─ NODE');
@@ -76,8 +66,8 @@ export async function displayStatus(config: StatusConfig) {
     );
     console.log(`│  Interval: ${config.generator.intervalMs}ms`);
 
-    // Only show statistics if running
     if (isRunning) {
+      // Only show statistics if running
       console.log('│');
       console.log(`│  ${chalk.dim('Transactions')}`);
       console.log(`│  Generated: ${generatorStatus.transactionsGenerated}`);

@@ -4,7 +4,14 @@
  * merge, and lifecycle code can account for locally submitted transactions
  * without relying on a provider to reflect those spends immediately.
  */
-import { CML, coreToTxOutput, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import {
+  CML,
+  coreToTxOutput,
+  type LucidEvolution,
+  type UTxO,
+} from "@lucid-evolution/lucid";
+
 import { dedupeByOutRef, outRefLabel, type OutRefLike } from "@/tx-context.js";
 
 export type OperatorWalletView = {
@@ -57,7 +64,7 @@ export const availableOperatorWalletUtxos = (
   view: OperatorWalletView,
 ): readonly UTxO[] => {
   const consumedOutRefs = toConsumedSet(view);
-  return dedupeByOutRef(view.knownUtxos).filter(
+  return view.knownUtxos.filter(
     (utxo) => !consumedOutRefs.has(outRefLabel(utxo)),
   );
 };
@@ -83,9 +90,9 @@ export const extractWalletOutputsFromSubmittedTx = (
       outputIndex,
       address: txOutput.address,
       assets: txOutput.assets,
-      datumHash: txOutput.datumHash ?? undefined,
-      datum: txOutput.datum ?? undefined,
-      scriptRef: txOutput.scriptRef ?? undefined,
+      datumHash: txOutput.datumHash,
+      datum: txOutput.datum,
+      scriptRef: txOutput.scriptRef,
     });
   }
   return matching;
@@ -116,13 +123,11 @@ export const noteProducedOperatorWalletOutputs = (
   producedOutputs: readonly UTxO[],
 ): OperatorWalletView => {
   const consumedOutRefs = toConsumedSet(view);
-  const knownUtxos = dedupeByOutRef([
-    ...view.knownUtxos,
-    ...producedOutputs,
-  ]).filter((utxo) => !consumedOutRefs.has(outRefLabel(utxo)));
   return {
     ...view,
-    knownUtxos,
+    knownUtxos: dedupeByOutRef([...view.knownUtxos, ...producedOutputs]).filter(
+      (utxo) => !consumedOutRefs.has(outRefLabel(utxo)),
+    ),
   };
 };
 
@@ -151,50 +156,13 @@ export const applySubmittedTxToOperatorWalletView = (
 };
 
 /**
- * Merges a freshly-fetched wallet view with a prior overlay that may already
- * know about local submissions.
- */
-export const mergeOperatorWalletViews = (
-  current: OperatorWalletView,
-  previous?: OperatorWalletView,
-): OperatorWalletView => {
-  if (previous === undefined) {
-    return current;
-  }
-  const consumedOutRefs = [
-    ...new Set([...previous.consumedOutRefs, ...current.consumedOutRefs]),
-  ];
-  const consumedSet = new Set(consumedOutRefs);
-  const knownUtxos = dedupeByOutRef([
-    ...current.knownUtxos,
-    ...previous.knownUtxos,
-  ]).filter((utxo) => !consumedSet.has(outRefLabel(utxo)));
-  return {
-    walletAddress: current.walletAddress,
-    knownUtxos,
-    consumedOutRefs,
-  };
-};
-
-/**
  * Heuristically detects errors that likely mean the local wallet overlay has
  * gone stale relative to the provider.
  */
 export const isPotentiallyStaleOperatorWalletViewError = (
   cause: unknown,
 ): boolean => {
-  const message =
-    cause instanceof Error
-      ? `${cause.name}: ${cause.message}`
-      : typeof cause === "string"
-        ? cause
-        : (() => {
-            try {
-              return JSON.stringify(cause);
-            } catch {
-              return String(cause);
-            }
-          })();
+  const message = formatUnknownError(cause);
   return STALE_OPERATOR_WALLET_VIEW_ERROR_PATTERNS.some((pattern) =>
     message.includes(pattern),
   );

@@ -1,22 +1,21 @@
-import {
-  describe,
-  expect,
-  it } from "vitest";
 import { CML } from "@lucid-evolution/lucid";
+import { describe, expect, it } from "vitest";
+
 import {
   addressNetworkId,
   assertAddressNetwork,
   assertVKeyWitness,
+  BuilderInvariantError,
   makeVKeyWitness,
+  SigningError,
   verifyVKeyWitness,
   walletFromExternalSigner,
   walletFromPrivateKey,
   walletFromSeedPhrase,
-  BuilderInvariantError,
-  SigningError,
 } from "../src/index.js";
 
-const seedPhrase = "test test test test test test test test test test test junk";
+const seedPhrase =
+  "test test test test test test test test test test test junk";
 const expectedPreviewAddress =
   "addr_test1qq4jrrcfzylccwgqu3su865es52jkf7yzrdu9cw3z84nycnn3zz9lvqj7vs95tej896xkekzkufhpuk64ja7pga2g8ksdf8km4";
 const bodyHash = Buffer.from("11".repeat(32), "hex");

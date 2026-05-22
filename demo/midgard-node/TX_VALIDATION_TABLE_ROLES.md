@@ -54,20 +54,20 @@ The migration runner creates `schema_migrations` and
 
 ## Table Map
 
-| Table | Primary role |
-| --- | --- |
-| `blocks` | Local index from submitted state-queue header hash to included L2 tx ids. |
-| `processed_mempool` | Durable holding area for tx payloads already incorporated into the mempool MPT while waiting for a later submit/finalization path. |
-| `mempool_tx_deltas` | Per-tx spent/produced delta cache used to build MPT roots from accepted mempool txs. |
-| `tx_rejections` | Durable rejection evidence for validation, malformed preprocessing, and tx-status responses. |
-| `deposit_ingestion_cursor` | Intended durable stable-L1 deposit scan cursor. Currently schema and adapter exist, but production ingestion does not use it. |
-| `pending_block_finalizations` | Single-active journal for submitted or potentially submitted block finalization and recovery. |
-| `pending_block_finalization_deposits` | Ordered deposit-event membership for a pending block journal. |
-| `pending_block_finalization_txs` | Ordered tx-id membership for a pending block journal. |
-| `tx_admissions` | Durable `/submit` admission queue and validation state ledger. |
-| `local_mutation_jobs` | Durable record of local side-effect jobs that must not be silently lost after L1 submission or merge. |
-| `schema_migrations` | Ledger of successfully applied schema migrations. |
-| `schema_migration_events` | Audit trail of migration attempts and outcomes. |
+| Table                                 | Primary role                                                                                                                       |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `blocks`                              | Local index from submitted state-queue header hash to included L2 tx ids.                                                          |
+| `processed_mempool`                   | Durable holding area for tx payloads already incorporated into the mempool MPT while waiting for a later submit/finalization path. |
+| `mempool_tx_deltas`                   | Per-tx spent/produced delta cache used to build MPT roots from accepted mempool txs.                                               |
+| `tx_rejections`                       | Durable rejection evidence for validation, malformed preprocessing, and tx-status responses.                                       |
+| `deposit_ingestion_cursor`            | Intended durable stable-L1 deposit scan cursor. Currently schema and adapter exist, but production ingestion does not use it.      |
+| `pending_block_finalizations`         | Single-active journal for submitted or potentially submitted block finalization and recovery.                                      |
+| `pending_block_finalization_deposits` | Ordered deposit-event membership for a pending block journal.                                                                      |
+| `pending_block_finalization_txs`      | Ordered tx-id membership for a pending block journal.                                                                              |
+| `tx_admissions`                       | Durable `/submit` admission queue and validation state ledger.                                                                     |
+| `local_mutation_jobs`                 | Durable record of local side-effect jobs that must not be silently lost after L1 submission or merge.                              |
+| `schema_migrations`                   | Ledger of successfully applied schema migrations.                                                                                  |
+| `schema_migration_events`             | Audit trail of migration attempts and outcomes.                                                                                    |
 
 ## `blocks`
 
@@ -802,8 +802,8 @@ Migration 2 creates enum `tx_admission_status` and table `tx_admissions`
 Columns:
 
 - `tx_id BYTEA PRIMARY KEY CHECK (octet_length(tx_id) = 32)`
-- `tx_envelope_cbor BYTEA NOT NULL`
-- `tx_envelope_cbor_sha256 BYTEA NOT NULL`
+- `tx_canonical_cbor BYTEA NOT NULL`
+- `tx_canonical_cbor_sha256 BYTEA NOT NULL`
 - `arrival_seq BIGSERIAL UNIQUE NOT NULL`
 - `status tx_admission_status NOT NULL`
 - `first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`

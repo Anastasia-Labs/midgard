@@ -1,12 +1,12 @@
-import { CML } from "@lucid-evolution/lucid";
+import { encodeMidgardTxOutput } from "@al-ft/lucid-midgard";
 import {
   decodeMidgardTxOutput as decodeCoreMidgardTxOutput,
   encodeMidgardTxOutput as encodeCoreMidgardTxOutput,
   hashMidgardVersionedScript,
-  protectMidgardAddress,
   type MidgardTxOutput,
+  protectMidgardAddress,
 } from "@al-ft/midgard-core/codec";
-import { encodeMidgardTxOutput } from "@al-ft/lucid-midgard";
+import { CML } from "@lucid-evolution/lucid";
 
 export type TestMidgardTxOutput = MidgardTxOutput & {
   readonly to_cbor_bytes: () => Buffer;

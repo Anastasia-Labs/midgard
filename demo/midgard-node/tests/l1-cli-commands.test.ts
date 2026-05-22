@@ -1,16 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
+
 import {
   deriveAddressFromSeedPhrase,
   inferNetworkFromBlockfrostApiUrl,
   parseSeedPhraseArgument,
   resolveBlockfrostApiUrl,
 } from "@/commands/address-from-seed.js";
+import { formatJson } from "@/commands/command-utils.js";
 import {
   fetchAllBlockfrostAddressUtxos,
   parseBlockfrostAddressUtxoPage,
   resolveBlockfrostConfig,
 } from "@/commands/l1-utxos.js";
-import { formatJson } from "@/commands/command-utils.js";
 
 const VALID_ADDRESS =
   "addr_test1qzyem8ex0v9v76q0u52x3t2xmj5rkhjd9rsd44kx3klsut4qga2669x30zsng46mhfrrk4ngylfnnlda7rkfvxq5fywqvurkrs";
@@ -64,9 +65,7 @@ describe("l1-utxos command helpers", () => {
       assetUnit,
       "lovelace",
     ]);
-    expect(
-      parsed,
-    ).toEqual([
+    expect(parsed).toEqual([
       {
         txHash: "11".repeat(32),
         outputIndex: 1,

@@ -1,15 +1,17 @@
-import { Database } from "@/services/database.js";
+import * as SDK from "@al-ft/midgard-sdk";
+import { SqlClient } from "@effect/sql";
+import { CML, Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
+
 import {
+  clearTable,
   DatabaseError,
+  logDatabaseError,
   sqlErrorToDatabaseError,
 } from "@/database/utils/common.js";
-import * as SDK from "@al-ft/midgard-sdk";
-import { CML, Data as LucidData } from "@lucid-evolution/lucid";
-import { SqlClient } from "@effect/sql";
-import * as UserEvents from "@/database/utils/user-events.js";
 import * as Ledger from "@/database/utils/ledger.js";
-import { clearTable } from "@/database/utils/common.js";
+import * as UserEvents from "@/database/utils/user-events.js";
+import { Database } from "@/services/database.js";
 
 export const tableName = "deposits_utxos";
 
@@ -159,7 +161,7 @@ export const insertEntries = (
   }).pipe(
     Effect.withLogSpan(`insertEntries ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(`${tableName} db: insertEntries: ${JSON.stringify(e)}`),
+      logDatabaseError(tableName, "insertEntries", e),
     ),
     sqlErrorToDatabaseError(tableName, "Failed to insert given deposit UTxOs"),
   );
@@ -186,10 +188,7 @@ export const retrieveByEventId = (
     const rows = yield* sql<Entry>`SELECT * FROM ${sql(tableName)}
       WHERE ${sql(Columns.ID)} = ${eventId}
       LIMIT 1`;
-    if (rows.length <= 0) {
-      return Option.none();
-    }
-    return Option.some(rows[0]!);
+    return rows.length === 0 ? Option.none() : Option.some(rows[0]!);
   }).pipe(
     Effect.withLogSpan(`retrieveByEventId ${tableName}`),
     sqlErrorToDatabaseError(
@@ -305,12 +304,7 @@ export const retrievePendingHeaderEntriesUpTo = (
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     return yield* sql<Entry>`SELECT * FROM ${sql(tableName)}
-      WHERE ${sql(Columns.STATUS)} IN (
-            ${Status.Awaiting},
-            ${Status.Projected},
-            ${Status.Consumed}
-          )
-        AND ${sql(Columns.PROJECTED_HEADER_HASH)} IS NULL
+      WHERE ${sql(Columns.PROJECTED_HEADER_HASH)} IS NULL
         AND ${sql(Columns.INCLUSION_TIME)} <= ${endTime}
       ORDER BY ${sql(Columns.INCLUSION_TIME)} ASC, ${sql(Columns.ID)} ASC`;
   }).pipe(
@@ -344,16 +338,13 @@ export const markAwaitingAsProjected = (
       return;
     }
     const sql = yield* SqlClient.SqlClient;
-    const uniqueIds = Array.from(
-      new Set(ids.map((id) => id.toString("hex"))),
-    ).map((hex) => Buffer.from(hex, "hex"));
     const rows = yield* sql<Entry>`UPDATE ${sql(tableName)}
       SET ${sql(Columns.STATUS)} = ${Status.Projected}
-      WHERE ${sql(Columns.ID)} IN ${sql.in(uniqueIds)}
+      WHERE ${sql(Columns.ID)} IN ${sql.in(ids)}
         AND ${sql(Columns.STATUS)} = ${Status.Awaiting}
         AND ${sql(Columns.PROJECTED_HEADER_HASH)} IS NULL
       RETURNING *`;
-    if (rows.length === uniqueIds.length) {
+    if (rows.length === ids.length) {
       return;
     }
 
@@ -364,15 +355,15 @@ export const markAwaitingAsProjected = (
     }>`SELECT ${sql(Columns.ID)}, ${sql(Columns.STATUS)}, ${sql(
       Columns.PROJECTED_HEADER_HASH,
     )} FROM ${sql(tableName)}
-      WHERE ${sql(Columns.ID)} IN ${sql.in(uniqueIds)}`;
+      WHERE ${sql(Columns.ID)} IN ${sql.in(ids)}`;
 
-    if (currentRows.length !== uniqueIds.length) {
+    if (currentRows.length !== ids.length) {
       return yield* Effect.fail(
         new DatabaseError({
           table: tableName,
           message:
             "Failed to mark awaiting deposits as projected because at least one row no longer exists",
-          cause: `requested=${uniqueIds.length},found=${currentRows.length}`,
+          cause: `requested=${ids.length},found=${currentRows.length}`,
         }),
       );
     }
@@ -396,9 +387,7 @@ export const markAwaitingAsProjected = (
             table: tableName,
             message:
               "Failed to mark awaiting deposits as projected because at least one row is already assigned to a header",
-            cause: `event_id=${row[Columns.ID].toString("hex")},projected_header_hash=${projectedHeaderHash.toString(
-              "hex",
-            )}`,
+            cause: `event_id=${row[Columns.ID].toString("hex")},projected_header_hash=${projectedHeaderHash.toString("hex")}`,
           }),
         );
       }
@@ -421,9 +410,6 @@ export const markProjectedByEventIds = (
     }
 
     const sql = yield* SqlClient.SqlClient;
-    const uniqueIds = Array.from(
-      new Set(ids.map((id) => id.toString("hex"))),
-    ).map((hex) => Buffer.from(hex, "hex"));
 
     const existing = yield* sql<{
       [Columns.ID]: Buffer;
@@ -432,12 +418,12 @@ export const markProjectedByEventIds = (
     }>`SELECT ${sql(Columns.ID)}, ${sql(
       Columns.PROJECTED_HEADER_HASH,
     )}, ${sql(Columns.STATUS)} FROM ${sql(tableName)}
-      WHERE ${sql(Columns.ID)} IN ${sql.in(uniqueIds)}`;
+      WHERE ${sql(Columns.ID)} IN ${sql.in(ids)}`;
 
     const existingById = new Map(
       existing.map((row) => [row[Columns.ID].toString("hex"), row] as const),
     );
-    for (const id of uniqueIds) {
+    for (const id of ids) {
       const key = id.toString("hex");
       const row = existingById.get(key);
       if (row === undefined) {
@@ -483,7 +469,7 @@ export const markProjectedByEventIds = (
 
     yield* sql`UPDATE ${sql(tableName)}
       SET ${sql(Columns.PROJECTED_HEADER_HASH)} = ${projectedHeaderHash}
-      WHERE ${sql(Columns.ID)} IN ${sql.in(uniqueIds)}
+      WHERE ${sql(Columns.ID)} IN ${sql.in(ids)}
         AND ${sql(Columns.PROJECTED_HEADER_HASH)} IS NULL`;
   }).pipe(
     Effect.withLogSpan(`markProjectedByEventIds ${tableName}`),
@@ -503,21 +489,18 @@ export const clearProjectedHeaderAssignmentByEventIds = (
     }
 
     const sql = yield* SqlClient.SqlClient;
-    const uniqueIds = Array.from(
-      new Set(ids.map((id) => id.toString("hex"))),
-    ).map((hex) => Buffer.from(hex, "hex"));
 
     const existing = yield* sql<{
       [Columns.ID]: Buffer;
       [Columns.PROJECTED_HEADER_HASH]: Buffer | null;
     }>`SELECT ${sql(Columns.ID)}, ${sql(Columns.PROJECTED_HEADER_HASH)}
       FROM ${sql(tableName)}
-      WHERE ${sql(Columns.ID)} IN ${sql.in(uniqueIds)}`;
+      WHERE ${sql(Columns.ID)} IN ${sql.in(ids)}`;
 
     const existingById = new Map(
       existing.map((row) => [row[Columns.ID].toString("hex"), row] as const),
     );
-    for (const id of uniqueIds) {
+    for (const id of ids) {
       const key = id.toString("hex");
       const row = existingById.get(key);
       if (row === undefined) {
@@ -550,7 +533,7 @@ export const clearProjectedHeaderAssignmentByEventIds = (
 
     yield* sql`UPDATE ${sql(tableName)}
       SET ${sql(Columns.PROJECTED_HEADER_HASH)} = NULL
-      WHERE ${sql(Columns.ID)} IN ${sql.in(uniqueIds)}
+      WHERE ${sql(Columns.ID)} IN ${sql.in(ids)}
         AND ${sql(Columns.PROJECTED_HEADER_HASH)} = ${projectedHeaderHash}`;
   }).pipe(
     Effect.withLogSpan(`clearProjectedHeaderAssignmentByEventIds ${tableName}`),
@@ -568,12 +551,9 @@ export const markConsumedByEventIds = (
       return;
     }
     const sql = yield* SqlClient.SqlClient;
-    const uniqueIds = Array.from(
-      new Set(ids.map((id) => id.toString("hex"))),
-    ).map((hex) => Buffer.from(hex, "hex"));
     yield* sql`UPDATE ${sql(tableName)}
       SET ${sql(Columns.STATUS)} = ${Status.Consumed}
-      WHERE ${sql(Columns.ID)} IN ${sql.in(uniqueIds)}
+      WHERE ${sql(Columns.ID)} IN ${sql.in(ids)}
         AND ${sql(Columns.STATUS)} IN (${Status.Projected}, ${Status.Consumed})`;
   }).pipe(
     Effect.withLogSpan(`markConsumedByEventIds ${tableName}`),

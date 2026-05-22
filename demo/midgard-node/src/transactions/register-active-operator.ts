@@ -7,49 +7,17 @@ import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
   Constr as LucidConstr,
+  credentialToAddress,
   Data as LucidData,
   LucidEvolution,
-  type RedeemerBuilder,
-  UTxO,
-  credentialToAddress,
   paymentCredentialOf,
   scriptHashToCredential,
   toUnit,
+  UTxO,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
+
 import { Lucid, MidgardContracts, NodeConfig } from "@/services/index.js";
-import {
-  TxConfirmError,
-  TxSignError,
-  TxSubmitError,
-  handleSignSubmit,
-} from "@/transactions/utils.js";
-import { compareOutRefs } from "@/tx-context.js";
-import {
-  alignedUnixTimeStrictlyAfter,
-} from "@/workers/utils/commit-end-time.js";
-import {
-  alignUnixTimeMsToSlotBoundary,
-  currentTimeMsForLucidOrEmulatorFallback,
-  resolveCurrentTimeMs,
-} from "@/transactions/register-active-operator/clock.js";
-import {
-  type ActivateRedeemerLayout,
-  activeAppendAnchorWitness,
-  type NodeWithDatum,
-  type RegisterRedeemerLayout,
-  activateLayoutToLogString,
-  activateLayoutsEqual,
-  deriveActivateRedeemerLayout,
-  deriveRegisterRedeemerLayout,
-  getAssetNameByPolicy,
-  nodeKeyEquals,
-  orderedNotMemberWitness,
-  registerLayoutToLogString,
-  registerLayoutsEqual,
-  resolveInitialActivateRedeemerLayout,
-  resolveInitialRegisterRedeemerLayout,
-} from "@/transactions/register-active-operator/lifecycle-layout.js";
 import {
   referenceScriptTargetsByCommand,
   resolveReferenceScriptTargetsProgram,
@@ -57,11 +25,41 @@ import {
   selectWalletFundingUtxos,
   utxoOutRefKey,
 } from "@/transactions/reference-scripts.js";
+import {
+  alignUnixTimeMsToSlotBoundary,
+  currentTimeMsForLucidOrEmulatorFallback,
+  resolveCurrentTimeMs,
+} from "@/transactions/register-active-operator/clock.js";
+import {
+  activateLayoutsEqual,
+  activateLayoutToLogString,
+  type ActivateRedeemerLayout,
+  activeAppendAnchorWitness,
+  deriveActivateRedeemerLayout,
+  deriveRegisterRedeemerLayout,
+  getAssetNameByPolicy,
+  nodeKeyEquals,
+  type NodeWithDatum,
+  orderedNotMemberWitness,
+  registerLayoutsEqual,
+  registerLayoutToLogString,
+  type RegisterRedeemerLayout,
+  resolveInitialActivateRedeemerLayout,
+  resolveInitialRegisterRedeemerLayout,
+} from "@al-ft/midgard-sdk";
+import {
+  handleSignSubmit,
+  TxConfirmError,
+  TxSignError,
+  TxSubmitError,
+} from "@/transactions/utils.js";
+import { compareOutRefs } from "@/tx-context.js";
+import { alignedUnixTimeStrictlyAfter } from "@/workers/utils/commit-end-time.js";
+export type { ReferenceScriptCommandName } from "@/transactions/reference-scripts.js";
 export {
   deployReferenceScriptCommandProgram,
   REFERENCE_SCRIPT_COMMAND_NAMES,
 } from "@/transactions/reference-scripts.js";
-export type { ReferenceScriptCommandName } from "@/transactions/reference-scripts.js";
 
 const REGISTERED_ACTIVATION_DELAY_MS = 30n;
 const ACTIVATION_VALIDITY_WINDOW_MS = 120_000n;
@@ -72,15 +70,10 @@ const NODE_SET_FETCH_RETRY_DELAY = "2 seconds";
 const HUB_ORACLE_FETCH_MAX_RETRIES = 6;
 const HUB_ORACLE_FETCH_RETRY_DELAY = "1 second";
 const ACTIVATION_WALLET_FUNDING_TARGET_LOVELACE = 25_000_000n;
-const ACTIVE_OPERATOR_LIST_STATE_TRANSITION_REDEEMER = LucidData.to(
-  "ListStateTransition",
-  SDK.ActiveOperatorSpendRedeemer,
-);
 const REGISTERED_OPERATOR_DATUM_AIKEN_SCHEMA = LucidData.Object({
   operator: LucidData.Bytes({ minLength: 28, maxLength: 28 }),
   bond_unlock_time: LucidData.Nullable(LucidData.Integer()),
 });
-const ACTIVATION_SELECTED_REGISTERED_INPUTS_COUNT = 2;
 
 type ActivationTxHashes = {
   readonly registerTxHash: string | null;
@@ -144,17 +137,6 @@ const summarizeOnChainScriptFailure = (cause: unknown): string | null => {
     .filter((value): value is string => value !== null)
     .join(",");
 };
-
-const encodeActiveOperatorDatumValue = (
-  bondUnlockTime: bigint | null,
-): unknown =>
-  SDK.castActiveOperatorDatumToData({
-    bond_unlock_time: bondUnlockTime,
-    inactivity_strikes: 0n,
-  });
-
-const encodeLinkedListNodeView = (nodeView: SDK.LinkedListNodeView): string =>
-  SDK.encodeLinkedListNodeView(nodeView);
 
 const decodeOptionalBigIntValue = (
   value: unknown,
@@ -245,12 +227,6 @@ const nodeKeyToPosixTime = (key: SDK.NodeKey): bigint | undefined => {
   return key.Key.key.length === 0 ? 0n : BigInt(`0x${key.Key.key}`);
 };
 
-const encodeRegisteredOperatorDatumValue = (operatorKeyHash: string) =>
-  SDK.castRegisteredOperatorDatumToData({
-    operator: operatorKeyHash,
-    bond_unlock_time: null,
-  });
-
 const decodeRegisteredOperatorDatumValue = (
   value: unknown,
 ): SDK.RegisteredOperatorDatum | undefined => {
@@ -300,65 +276,6 @@ const summarizeNodeSetForDiagnostics = (
     data: datum.data,
     registeredDatum: decodeRegisteredOperatorDatumValue(datum.data) ?? null,
   }));
-
-const mkRegisteredActivateRedeemer = ({
-  operatorKeyHash,
-  layout,
-}: {
-  readonly operatorKeyHash: string;
-  readonly layout: ActivateRedeemerLayout;
-}): string => {
-  return LucidData.to(
-    {
-      ActivateOperator: {
-        activating_operator: operatorKeyHash,
-        anchor_element_input_index:
-          layout.registeredOperatorsAnchorNodeInputIndex,
-        removed_node_input_index:
-          layout.registeredOperatorsRemovedNodeInputIndex,
-        anchor_element_output_index:
-          layout.registeredOperatorsAnchorNodeOutputIndex,
-        hub_oracle_ref_input_index: layout.hubOracleRefInputIndex,
-        retired_operators_element_ref_input_index:
-          layout.retiredOperatorRefInputIndex,
-        active_operators_redeemer_index: layout.activeOperatorsRedeemerIndex,
-      },
-    },
-    SDK.RegisteredOperatorMintRedeemer,
-  );
-};
-
-const mkRegisteredActivateRedeemerBuilder = ({
-  operatorKeyHash,
-  layout,
-  registeredNode,
-  registeredAnchor,
-}: {
-  readonly operatorKeyHash: string;
-  readonly layout: ActivateRedeemerLayout;
-  readonly registeredNode: UTxO;
-  readonly registeredAnchor: UTxO;
-}): RedeemerBuilder => ({
-  kind: "selected",
-  inputs: [registeredNode, registeredAnchor],
-  makeRedeemer: (inputIndices) => {
-    if (inputIndices.length !== ACTIVATION_SELECTED_REGISTERED_INPUTS_COUNT) {
-      throw new Error(
-        `Activation redeemer builder expected ${ACTIVATION_SELECTED_REGISTERED_INPUTS_COUNT.toString()} registered inputs, got ${inputIndices.length.toString()}`,
-      );
-    }
-    const removedNodeInputIndex = inputIndices[0]!;
-    const anchorNodeInputIndex = inputIndices[1]!;
-    return mkRegisteredActivateRedeemer({
-      operatorKeyHash,
-      layout: {
-        ...layout,
-        registeredOperatorsRemovedNodeInputIndex: removedNodeInputIndex,
-        registeredOperatorsAnchorNodeInputIndex: anchorNodeInputIndex,
-      },
-    });
-  },
-});
 
 const completeWithLocalEvaluation = async <A>(
   build: (options: { localUPLCEval: boolean }) => Promise<A>,
@@ -801,56 +718,27 @@ const operatorLifecycleProgram = (
           | TxSubmitError
           | null = null;
         for (const deregisterLayout of deregisterLayouts) {
-          const deregisterRedeemer = LucidData.to(
-            {
-              DeregisterOperator: {
-                deregistering_operator: operatorKeyHash,
-                removed_node_input_index:
-                  deregisterLayout.removedNodeInputIndex,
-                anchor_element_input_index:
-                  deregisterLayout.anchorNodeInputIndex,
-                anchor_element_output_index: 0n,
-              },
-            },
-            SDK.RegisteredOperatorMintRedeemer,
-          );
           const deregisterUnsignedTxResult = yield* Effect.either(
             Effect.tryPromise({
               try: () =>
                 completeWithLocalEvaluation((options) =>
-                  lucid
-                    .newTx()
-                    .collectFrom(
-                      [
-                        existingRegisteredNode.utxo,
-                        existingRegisteredAnchor.utxo,
-                      ],
-                      LucidData.void(),
-                    )
-                    .readFrom(
-                      registeredOperatorScriptRefs.map(({ utxo }) => utxo),
-                    )
-                    .mintAssets(
-                      { [registeredNodeUnit]: -1n },
-                      deregisterRedeemer,
-                    )
-                    .pay.ToContract(
-                      contracts.registeredOperators.spendingScriptAddress,
-                      {
-                        kind: "inline",
-                        value: encodeLinkedListNodeView(
-                          updatedRegisteredAnchorDatumAfterDeregister,
-                        ),
-                      },
-                      existingRegisteredAnchor.utxo.assets,
-                    )
-                    .addSignerKey(operatorKeyHash)
-                    .complete({
-                      ...options,
-                      presetWalletInputs: [
-                        ...spendableWalletUtxosForDeregister,
-                      ],
-                    }),
+                  SDK.buildDeregisterRegisteredOperatorTx(
+                    {
+                      lucid,
+                      contracts,
+                      operatorKeyHash,
+                      registeredOperatorScriptRefs,
+                      registeredNode: existingRegisteredNode,
+                      registeredAnchor: existingRegisteredAnchor,
+                      registeredNodeUnit,
+                      updatedRegisteredAnchorDatum:
+                        updatedRegisteredAnchorDatumAfterDeregister,
+                    },
+                    deregisterLayout,
+                  ).complete({
+                    ...options,
+                    presetWalletInputs: [...spendableWalletUtxosForDeregister],
+                  }),
                 ),
               catch: (cause) =>
                 new SDK.LucidError({
@@ -1032,7 +920,7 @@ const operatorLifecycleProgram = (
       const prependedNodeDatum: SDK.LinkedListNodeView = {
         key: { Key: { key: registrationNodeKey } },
         next: registeredRootNode.datum.next,
-        data: encodeRegisteredOperatorDatumValue(
+        data: SDK.encodeRegisteredOperatorDatumValue(
           operatorKeyHash,
         ) as SDK.LinkedListNodeView["data"],
       };
@@ -1083,57 +971,23 @@ const operatorLifecycleProgram = (
       /**
        * Builds the registration transaction for an active operator.
        */
-      const mkRegisterTx = (layout: RegisterRedeemerLayout) => {
-        const registerRedeemer = LucidData.to(
-          {
-            RegisterOperator: {
-              registering_operator: operatorKeyHash,
-              root_input_index: layout.rootInputIndex,
-              root_output_index: layout.anchorNodeOutputIndex,
-              registered_node_output_index: layout.prependedNodeOutputIndex,
-              hub_oracle_ref_input_index: layout.hubOracleRefInputIndex,
-              active_operators_element_ref_input_index:
-                layout.activeOperatorRefInputIndex,
-              operator_origin: {
-                NewOperator: {
-                  retired_operators_element_ref_input_index:
-                    layout.retiredOperatorRefInputIndex,
-                },
-              },
-            },
-          },
-          SDK.RegisteredOperatorMintRedeemer,
-        );
-        let tx = lucid
-          .newTx()
-          .collectFrom([registeredRootNode.utxo], LucidData.void())
-          .readFrom([
-            ...registeredOperatorScriptRefs.map(({ utxo }) => utxo),
-            hubOracleRefInput,
-            activeNotMemberWitness.utxo,
-            retiredNotMemberWitness.utxo,
-          ])
-          .mintAssets(registerMintAssets, registerRedeemer)
-          .pay.ToContract(
-            contracts.registeredOperators.spendingScriptAddress,
-            {
-              kind: "inline",
-              value: encodeLinkedListNodeView(prependedNodeDatum),
-            },
-            prependedNodeAssets,
-          )
-          .pay.ToContract(
-            contracts.registeredOperators.spendingScriptAddress,
-            {
-              kind: "inline",
-              value: encodeLinkedListNodeView(updatedRegisteredRootDatum),
-            },
-            registeredRootNode.utxo.assets,
-          )
-          .addSignerKey(operatorKeyHash);
-        tx = tx.validTo(Number(registerValidTo));
-        return tx;
+      const registerTxConfig: SDK.RegisterOperatorTxConfig = {
+        lucid,
+        contracts,
+        operatorKeyHash,
+        registeredOperatorScriptRefs,
+        hubOracleRefInput,
+        activeNotMemberWitness,
+        retiredNotMemberWitness,
+        registeredRootNode,
+        registerMintAssets,
+        prependedNodeDatum,
+        prependedNodeAssets,
+        updatedRegisteredRootDatum,
+        registerValidTo,
       };
+      const mkRegisterTx = (layout: RegisterRedeemerLayout) =>
+        SDK.buildRegisterOperatorTx(registerTxConfig, layout);
 
       const layoutDerivationParams = {
         hubOracleRefInput,
@@ -1183,7 +1037,7 @@ const operatorLifecycleProgram = (
           `retired=${retiredNotMemberWitness.utxo.txHash}#${retiredNotMemberWitness.utxo.outputIndex.toString()}:${retiredNotMemberWitness.assetName}`,
           `valid_to=${registerValidTo.toString()}`,
           `registration_time=${registrationTime.toString()}`,
-          `prepended_node_datum=${encodeLinkedListNodeView(prependedNodeDatum)}`,
+          `prepended_node_datum=${SDK.encodeLinkedListNodeView(prependedNodeDatum)}`,
         ].join(" "),
       );
       let registerUnsignedTx = yield* Effect.tryPromise({
@@ -1470,97 +1324,30 @@ const operatorLifecycleProgram = (
       options: { readonly resolveRegisteredRedeemerWithBuilder?: boolean } = {},
     ) => {
       const { validFrom, validTo } = resolveActivationValidityWindow();
-      const activatedNodeDatum: SDK.LinkedListNodeView = {
-        key: { Key: { key: operatorKeyHash } },
-        next: activeAppendAnchor.datum.next,
-        data: encodeActiveOperatorDatumValue(
-          null,
-        ) as SDK.LinkedListNodeView["data"],
-      };
-      const updatedActiveAnchorDatum: SDK.LinkedListNodeView = {
-        ...activeAppendAnchor.datum,
-        next: { Key: { key: operatorKeyHash } },
-      };
-      const registeredActivateRedeemer =
-        options.resolveRegisteredRedeemerWithBuilder === true
-          ? mkRegisteredActivateRedeemerBuilder({
-              operatorKeyHash,
-              layout,
-              registeredNode: registeredNode.utxo,
-              registeredAnchor: registeredAnchor.utxo,
-            })
-          : mkRegisteredActivateRedeemer({
-              operatorKeyHash,
-              layout,
-            });
-      const activeActivateRedeemer = LucidData.to(
+      return SDK.buildActivateOperatorTx(
         {
-          ActivateOperator: {
-            new_active_operator_key: operatorKeyHash,
-            new_active_operator_bond_unlock_time: null,
-            active_operator_anchor_element_input_index:
-              layout.activeOperatorsAnchorNodeInputIndex,
-            active_operator_anchor_element_output_index:
-              layout.activeOperatorsAnchorNodeOutputIndex,
-            active_operator_inserted_node_output_index:
-              layout.activeOperatorsInsertedNodeOutputIndex,
-            registered_operators_redeemer_index:
-              layout.registeredOperatorsRedeemerIndex,
-          },
-        },
-        SDK.ActiveOperatorMintRedeemer,
-      );
-
-      let tx = lucid
-        .newTx()
-        .validFrom(Number(validFrom))
-        .collectFrom([...activationFundingInputs])
-        .collectFrom(
-          [registeredNode.utxo, registeredAnchor.utxo],
-          LucidData.void(),
-        )
-        .collectFrom(
-          [activeAppendAnchor.utxo],
-          ACTIVE_OPERATOR_LIST_STATE_TRANSITION_REDEEMER,
-        )
-        .readFrom([
-          ...registeredOperatorScriptRefs.map(({ utxo }) => utxo),
-          ...activeOperatorScriptRefs.map(({ utxo }) => utxo),
+          lucid,
+          contracts,
+          operatorKeyHash,
+          registeredOperatorScriptRefs,
+          activeOperatorScriptRefs,
           hubOracleRefInput,
-          retiredNotMemberWitnessForActivate.utxo,
-        ])
-        .mintAssets({ [registeredNodeUnit]: -1n }, registeredActivateRedeemer)
-        .mintAssets({ [activeNodeUnit]: 1n }, activeActivateRedeemer);
-      if (validTo !== undefined) {
-        tx = tx.validTo(Number(validTo));
-      }
-
-      return tx.pay
-        .ToContract(
-          contracts.activeOperators.spendingScriptAddress,
-          {
-            kind: "inline",
-            value: encodeLinkedListNodeView(activatedNodeDatum),
-          },
+          retiredNotMemberWitness: retiredNotMemberWitnessForActivate,
+          registeredNode,
+          registeredAnchor,
+          activeAppendAnchor,
+          activationFundingInputs,
+          validFrom,
+          validTo,
+          registeredNodeUnit,
+          activeNodeUnit,
           transferredOperatorAssets,
-        )
-        .pay.ToContract(
-          contracts.activeOperators.spendingScriptAddress,
-          {
-            kind: "inline",
-            value: encodeLinkedListNodeView(updatedActiveAnchorDatum),
-          },
-          activeAppendAnchor.utxo.assets,
-        )
-        .pay.ToContract(
-          contracts.registeredOperators.spendingScriptAddress,
-          {
-            kind: "inline",
-            value: encodeLinkedListNodeView(updatedRegisteredAnchorDatum),
-          },
-          registeredAnchor.utxo.assets,
-        )
-        .addSignerKey(operatorKeyHash);
+          updatedRegisteredAnchorDatum,
+          resolveRegisteredRedeemerWithBuilder:
+            options.resolveRegisteredRedeemerWithBuilder,
+        },
+        layout,
+      );
     };
 
     const activateLayoutParams = {

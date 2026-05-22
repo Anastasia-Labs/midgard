@@ -4,43 +4,50 @@
  * commit transaction is submitted, recovered, deferred, or finalized locally.
  */
 import * as SDK from "@al-ft/midgard-sdk";
+import { SqlClient } from "@effect/sql";
+import { fromHex } from "@lucid-evolution/lucid";
 import { Effect, Option, Schedule } from "effect";
+
 import {
   BlocksDB,
   DepositsDB,
   ImmutableDB,
-  MempoolLedgerDB,
   MempoolDB,
+  MempoolLedgerDB,
   MutationJobsDB,
   PendingBlockFinalizationsDB,
   ProcessedMempoolDB,
   TxUtils as TxTable,
   WithdrawalsDB,
 } from "@/database/index.js";
-import { Columns as TxColumns } from "@/database/utils/tx.js";
 import {
   DatabaseError,
   sqlErrorToDatabaseError,
 } from "@/database/utils/common.js";
-import { formatUnknownError } from "@/error-format.js";
-import { Lucid, type Database } from "@/services/index.js";
-import { SqlClient } from "@effect/sql";
+import { Columns as TxColumns } from "@/database/utils/tx.js";
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import { type Database, Lucid } from "@/services/index.js";
 import type { TxSubmitError } from "@/transactions/utils.js";
 import { batchProgram } from "@/utils.js";
-import {
-  buildSuccessfulCommitBatches,
-  type SuccessfulCommitBatch,
-} from "@/workers/utils/commit-block-planner.js";
 import type {
   WorkerInput,
   WorkerOutput,
 } from "@/workers/utils/commit-block-header.js";
+import {
+  buildSuccessfulCommitBatches,
+  type SuccessfulCommitBatch,
+} from "@/workers/utils/commit-block-planner.js";
 import type { MidgardMpf, MpfError } from "@/workers/utils/mpf.js";
-import { fromHex } from "@lucid-evolution/lucid";
 
 const BATCH_SIZE = 100;
 const SKIPPED_SUBMISSION_TRANSFER_RETRIES = 2;
 const SKIPPED_SUBMISSION_TRANSFER_INITIAL_BACKOFF = "250 millis";
+
+const uniqueBuffersByHex = (buffers: readonly Buffer[]): readonly Buffer[] => [
+  ...new Map(
+    buffers.map((buffer) => [buffer.toString("hex"), buffer] as const),
+  ).values(),
+];
 
 const localBlockFinalizationJobId = (headerHash: string): string =>
   `local_block_finalization:${headerHash}`;
@@ -90,19 +97,15 @@ const applyFinalizedWithdrawalLedgerEffects = (
     if (includedWithdrawalEventIds.length <= 0) {
       return;
     }
-    const uniqueEventIdHexes = Array.from(
-      new Set(includedWithdrawalEventIds.map((id) => id.toString("hex"))),
-    );
-    const withdrawals = yield* WithdrawalsDB.retrieveByEventIds(
-      uniqueEventIdHexes.map((hex) => Buffer.from(hex, "hex")),
-    );
-    if (withdrawals.length !== uniqueEventIdHexes.length) {
+    const uniqueEventIds = uniqueBuffersByHex(includedWithdrawalEventIds);
+    const withdrawals = yield* WithdrawalsDB.retrieveByEventIds(uniqueEventIds);
+    if (withdrawals.length !== uniqueEventIds.length) {
       return yield* Effect.fail(
         new DatabaseError({
           table: WithdrawalsDB.tableName,
           message:
             "Failed to apply finalized withdrawal ledger effects because at least one withdrawal row is missing",
-          cause: `requested=${uniqueEventIdHexes.length},found=${withdrawals.length}`,
+          cause: `requested=${uniqueEventIds.length},found=${withdrawals.length}`,
         }),
       );
     }
@@ -145,13 +148,9 @@ export const finalizeCommittedBlockLocally = (
       Database
     > =>
       Effect.gen(function* () {
-        const candidateHashes = Array.from(
-          new Set(
-            candidateBatches
-              .flatMap((batch) => batch.blockTxHashes)
-              .map((hash) => hash.toString("hex")),
-          ),
-        ).map((hex) => Buffer.from(hex, "hex"));
+        const candidateHashes = uniqueBuffersByHex(
+          candidateBatches.flatMap((batch) => batch.blockTxHashes),
+        );
 
         if (candidateHashes.length <= 0) {
           return candidateBatches;

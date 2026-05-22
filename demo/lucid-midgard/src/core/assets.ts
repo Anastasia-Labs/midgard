@@ -1,28 +1,24 @@
+import { type Assets, normalizeAssets } from "@al-ft/midgard-core/assets";
 import {
-  CML,
   assetsToValue as lucidAssetsToValue,
+  CML,
   valueToAssets as lucidValueToAssets,
 } from "@lucid-evolution/lucid";
+
 import { InsufficientFundsError } from "./errors.js";
 
-export type AssetUnit = "lovelace" | string;
-export type Assets = Readonly<Record<AssetUnit, bigint>>;
+export type { Assets, AssetUnit } from "@al-ft/midgard-core/assets";
+export {
+  addAssets,
+  assetQuantity,
+  isZeroAssets,
+  normalizeAssets,
+} from "@al-ft/midgard-core/assets";
 export type CmlValue = InstanceType<typeof CML.Value>;
 export type ValueLike = Assets | CmlValue | bigint;
 
 const isCmlValue = (value: ValueLike): value is CmlValue =>
-  typeof value === "object" && value instanceof CML.Value;
-
-export const normalizeAssets = (assets: Assets): Assets => {
-  const normalized: Record<string, bigint> = {};
-  for (const [unit, amount] of Object.entries(assets)) {
-    const quantity = BigInt(amount);
-    if (quantity !== 0n) {
-      normalized[unit] = quantity;
-    }
-  }
-  return normalized;
-};
+  value instanceof CML.Value;
 
 export const assertNonNegativeAssets = (
   assets: Assets,
@@ -41,21 +37,6 @@ export const assertNonNegativeAssets = (
   return normalized;
 };
 
-export const addAssets = (left: Assets, right: Assets): Assets => {
-  const result: Record<string, bigint> = { ...normalizeAssets(left) };
-  for (const [unit, amount] of Object.entries(right)) {
-    const quantity = BigInt(amount);
-    if (quantity === 0n) {
-      continue;
-    }
-    result[unit] = (result[unit] ?? 0n) + quantity;
-    if (result[unit] === 0n) {
-      delete result[unit];
-    }
-  }
-  return result;
-};
-
 export const subtractAssets = (left: Assets, right: Assets): Assets => {
   const result: Record<string, bigint> = {
     ...assertNonNegativeAssets(left, "left"),
@@ -63,19 +44,15 @@ export const subtractAssets = (left: Assets, right: Assets): Assets => {
   for (const [unit, amount] of Object.entries(
     assertNonNegativeAssets(right, "right"),
   )) {
-    const quantity = BigInt(amount);
-    if (quantity === 0n) {
-      continue;
-    }
     const available = result[unit] ?? 0n;
-    if (available < quantity) {
+    if (available < amount) {
       throw new InsufficientFundsError({
         unit,
-        required: quantity,
+        required: amount,
         available,
       });
     }
-    const next = available - quantity;
+    const next = available - amount;
     if (next === 0n) {
       delete result[unit];
     } else {
@@ -84,12 +61,6 @@ export const subtractAssets = (left: Assets, right: Assets): Assets => {
   }
   return result;
 };
-
-export const assetQuantity = (assets: Assets, unit: AssetUnit): bigint =>
-  BigInt(assets[unit] ?? 0n);
-
-export const isZeroAssets = (assets: Assets): boolean =>
-  Object.keys(normalizeAssets(assets)).length === 0;
 
 export const cmlValueToAssets = (value: CmlValue): Assets =>
   normalizeAssets(lucidValueToAssets(value) as Assets);

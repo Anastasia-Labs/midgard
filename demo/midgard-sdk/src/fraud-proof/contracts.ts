@@ -1,21 +1,22 @@
 import {
   Address,
+  applyParamsToScript,
   Data,
   MintingPolicy,
+  mintingPolicyToId,
   Network,
   SpendingValidator as LucidSpendingValidator,
-  applyParamsToScript,
-  mintingPolicyToId,
   validatorToAddress,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
+
 import {
   AddressData,
+  addressDataFromBech32,
   AuthenticatedValidator,
   MintingValidator,
   SpendingValidator,
-  addressDataFromBech32,
 } from "@/common.js";
 
 export type FaultProofBlueprintValidator = {
@@ -150,9 +151,7 @@ const makeAuthenticatedValidator = (
   ...makeMintingPolicy(mintingScriptCBOR),
 });
 
-const asAddressDataParam = (
-  address: Address,
-): Effect.Effect<Data, Error> =>
+const asAddressDataParam = (address: Address): Effect.Effect<Data, Error> =>
   addressDataFromBech32(address).pipe(
     Effect.map((addressData) => Data.from(Data.to(addressData, AddressData))),
     Effect.mapError(
@@ -205,10 +204,16 @@ export const buildDoubleSpendFaultProofContracts = ({
         makeAuthenticatedValidator(
           network,
           applyParamsToScript(
-            getCompiledScript(blueprint, FAULT_PROOF_SHARED_TITLES.fraudProofMint),
+            getCompiledScript(
+              blueprint,
+              FAULT_PROOF_SHARED_TITLES.fraudProofMint,
+            ),
             [computationThread.policyId],
           ),
-          getCompiledScript(blueprint, FAULT_PROOF_SHARED_TITLES.fraudProofSpend),
+          getCompiledScript(
+            blueprint,
+            FAULT_PROOF_SHARED_TITLES.fraudProofSpend,
+          ),
         ),
     );
 

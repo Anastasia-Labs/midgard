@@ -1,12 +1,13 @@
-import { beforeAll, describe, expect, it } from "vitest";
-import { Effect } from "effect";
+import * as SDK from "@al-ft/midgard-sdk";
 import {
   LucidEvolution,
   paymentCredentialOf,
   toUnit,
 } from "@lucid-evolution/lucid";
-import * as SDK from "@al-ft/midgard-sdk";
 import dotenv from "dotenv";
+import { Effect } from "effect";
+import { beforeAll, describe, expect, it } from "vitest";
+
 import * as Services from "@/services/index.js";
 import {
   activateOperatorProgram,
@@ -147,82 +148,74 @@ describePreprod("operator lifecycle preprod blockfrost", () => {
     }
   });
 
-  it(
-    "runs register-only then activate-only with the main operator wallet",
-    async () => {
-      await Effect.runPromise(runtime.switchToMainWallet);
-      const initialState = await readOperatorNodeState(
+  it("runs register-only then activate-only with the main operator wallet", async () => {
+    await Effect.runPromise(runtime.switchToMainWallet);
+    const initialState = await readOperatorNodeState(
+      runtime.lucid,
+      runtime.contracts,
+    );
+
+    const registerResult = await Effect.runPromise(
+      registerOperatorProgram(
         runtime.lucid,
         runtime.contracts,
-      );
+        runtime.requiredBondLovelace,
+        runtime.referenceScriptsLucid,
+      ),
+    );
+    expectHashOrNull(registerResult.registerTxHash, "registerTxHash");
 
-      const registerResult = await Effect.runPromise(
-        registerOperatorProgram(
-          runtime.lucid,
-          runtime.contracts,
-          runtime.requiredBondLovelace,
-          runtime.referenceScriptsLucid,
-        ),
-      );
-      expectHashOrNull(registerResult.registerTxHash, "registerTxHash");
-
-      const activateResult = await Effect.runPromise(
-        activateOperatorProgram(
-          runtime.lucid,
-          runtime.contracts,
-          runtime.requiredBondLovelace,
-          runtime.referenceScriptsLucid,
-        ),
-      );
-      expectHashOrNull(activateResult.activateTxHash, "activateTxHash");
-
-      const finalState = await readOperatorNodeState(
+    const activateResult = await Effect.runPromise(
+      activateOperatorProgram(
         runtime.lucid,
         runtime.contracts,
-      );
-      expect(finalState.operatorKeyHash).toEqual(initialState.operatorKeyHash);
-      expect(finalState.activeCount).toBeGreaterThan(0);
-      expect(finalState.registeredCount).toEqual(0);
-    },
-    1_200_000,
-  );
+        runtime.requiredBondLovelace,
+        runtime.referenceScriptsLucid,
+      ),
+    );
+    expectHashOrNull(activateResult.activateTxHash, "activateTxHash");
 
-  it(
-    "runs register-only then deregister-only with the merge operator wallet",
-    async () => {
-      await Effect.runPromise(runtime.switchToMergeWallet);
-      const initialState = await readOperatorNodeState(
+    const finalState = await readOperatorNodeState(
+      runtime.lucid,
+      runtime.contracts,
+    );
+    expect(finalState.operatorKeyHash).toEqual(initialState.operatorKeyHash);
+    expect(finalState.activeCount).toBeGreaterThan(0);
+    expect(finalState.registeredCount).toEqual(0);
+  }, 1_200_000);
+
+  it("runs register-only then deregister-only with the merge operator wallet", async () => {
+    await Effect.runPromise(runtime.switchToMergeWallet);
+    const initialState = await readOperatorNodeState(
+      runtime.lucid,
+      runtime.contracts,
+    );
+
+    const registerResult = await Effect.runPromise(
+      registerOperatorProgram(
         runtime.lucid,
         runtime.contracts,
-      );
+        runtime.requiredBondLovelace,
+        runtime.referenceScriptsLucid,
+      ),
+    );
+    expectHashOrNull(registerResult.registerTxHash, "registerTxHash");
 
-      const registerResult = await Effect.runPromise(
-        registerOperatorProgram(
-          runtime.lucid,
-          runtime.contracts,
-          runtime.requiredBondLovelace,
-          runtime.referenceScriptsLucid,
-        ),
-      );
-      expectHashOrNull(registerResult.registerTxHash, "registerTxHash");
-
-      const deregisterResult = await Effect.runPromise(
-        deregisterOperatorProgram(
-          runtime.lucid,
-          runtime.contracts,
-          runtime.requiredBondLovelace,
-          runtime.referenceScriptsLucid,
-        ),
-      );
-      expectHashOrNull(deregisterResult.deregisterTxHash, "deregisterTxHash");
-
-      const finalState = await readOperatorNodeState(
+    const deregisterResult = await Effect.runPromise(
+      deregisterOperatorProgram(
         runtime.lucid,
         runtime.contracts,
-      );
-      expect(finalState.operatorKeyHash).toEqual(initialState.operatorKeyHash);
-      expect(finalState.registeredCount).toEqual(0);
-    },
-    1_200_000,
-  );
+        runtime.requiredBondLovelace,
+        runtime.referenceScriptsLucid,
+      ),
+    );
+    expectHashOrNull(deregisterResult.deregisterTxHash, "deregisterTxHash");
+
+    const finalState = await readOperatorNodeState(
+      runtime.lucid,
+      runtime.contracts,
+    );
+    expect(finalState.operatorKeyHash).toEqual(initialState.operatorKeyHash);
+    expect(finalState.registeredCount).toEqual(0);
+  }, 1_200_000);
 });

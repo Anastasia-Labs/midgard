@@ -1,6 +1,7 @@
 import { encodeCbor } from "./cbor.js";
 import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
 import { ensureHashMatch } from "./hash.js";
+import type { MidgardNativeTxFull } from "./native.js";
 import {
   deriveNativeTxBodyCompact,
   encodeNativeTxBodyCompactValue,
@@ -10,7 +11,6 @@ import {
   deriveNativeTxWitnessSetCompact,
   encodeNativeTxWitnessSetCompactValue,
 } from "./native-witness.js";
-import type { MidgardNativeTxFull } from "./native.js";
 
 const schemaMismatch = (message: string, detail: string): never => {
   throw new MidgardTxCodecError(

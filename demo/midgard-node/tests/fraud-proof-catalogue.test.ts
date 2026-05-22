@@ -1,13 +1,14 @@
-import { describe, expect } from "vitest";
 import { it } from "@effect/vitest";
 import { Effect } from "effect";
+import { describe, expect } from "vitest";
+
+import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
 import {
   buildFraudProofCatalogueDeploymentInfo,
-  uint32ToFraudProofID,
   createFraudProofCatalogueMpf,
   fraudProofsToIndexedValidators,
+  uint32ToFraudProofID,
 } from "@/transactions/initialization.js";
-import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
 
 describe("Fraud Proof Catalogue Root", () => {
   it.effect(

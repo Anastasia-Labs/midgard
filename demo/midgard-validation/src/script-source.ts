@@ -2,6 +2,7 @@ import {
   decodeMidgardVersionedScript,
   hashMidgardVersionedScript,
   type MidgardNativeScript,
+  type MidgardVersionedScript,
 } from "@al-ft/midgard-core/codec";
 
 export type LocalScriptVersion = "NativeCardano" | "PlutusV3" | "MidgardV1";
@@ -21,12 +22,11 @@ export type ResolvedScriptSource = {
   readonly source: ScriptSource;
 };
 
-export const decodeScriptSource = (
-  bytes: Uint8Array,
+export const scriptSourceFromVersionedScript = (
+  script: MidgardVersionedScript,
   origin: ScriptSource["origin"],
   sourceId: string,
 ): ScriptSource => {
-  const script = decodeMidgardVersionedScript(bytes);
   const scriptHash = hashMidgardVersionedScript(script);
   if (script.language === "NativeCardano") {
     return {
@@ -46,6 +46,17 @@ export const decodeScriptSource = (
     scriptHash,
   };
 };
+
+export const decodeScriptSource = (
+  bytes: Uint8Array,
+  origin: ScriptSource["origin"],
+  sourceId: string,
+): ScriptSource =>
+  scriptSourceFromVersionedScript(
+    decodeMidgardVersionedScript(bytes),
+    origin,
+    sourceId,
+  );
 
 export const resolveScriptSource = (
   scriptHash: string,

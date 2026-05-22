@@ -105,15 +105,6 @@ operations are submitted.
 
 For transaction finalization in this repository:
 
-- Never set `.complete({ localUPLCEval: false })`.
+- Never set `.complete({ localUPLCEval: false })`, always use `.complete({ localUPLCEval: true })`.
 - Always set local UPLC evaluation to `true`.
-- Treat `.complete({ localUPLCEval: true })` as the required default for correctness, determinism, and production-grade validation behavior.
 
-## Cardano Script Context Ordering (SDK / Tx Building)
-
-For Plutus/Aiken redeemer indexing and script-context alignment, follow ledger ordering semantics exactly:
-
-- Transaction `inputs` in script context are ordered lexicographically by `TxOutRef` (`txHash`, then `outputIndex`).
-- Transaction `reference_inputs` in script context are ordered lexicographically by `TxOutRef` (`txHash`, then `outputIndex`).
-- Redeemer indices for spending/reference-input driven logic must be derived from those lexicographic orders.
-- Transaction `outputs` in script context are **not** re-ordered lexicographically by the ledger; output order is preserved exactly as authored in the transaction body.

@@ -1,14 +1,10 @@
-import { encode } from "cborg";
-import { CML, walletFromSeed } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
-import { describe, expect, it } from "vitest";
 import {
-  MIDGARD_NATIVE_TX_VERSION,
-  MIDGARD_POSIX_TIME_NONE,
   computeHash32,
   computeMidgardNativeTxId,
   deriveMidgardNativeTxCompact,
-  encodeMidgardNativeTxFull,
+  encodeMidgardNativeTxCanonical,
+  MIDGARD_NATIVE_TX_VERSION,
+  MIDGARD_POSIX_TIME_NONE,
   type MidgardNativeTxBodyCanonical,
   type MidgardNativeTxFull,
   type MidgardNativeTxWitnessSetCanonical,
@@ -20,6 +16,11 @@ import {
   runPhaseAValidation,
   runPhaseBValidationWithPatch,
 } from "@al-ft/midgard-validation";
+import { CML, walletFromSeed } from "@lucid-evolution/lucid";
+import { encode } from "cborg";
+import { Effect } from "effect";
+import { describe, expect, it } from "vitest";
+
 import { makeMidgardTxOutput } from "./midgard-output-helpers.js";
 
 /**
@@ -61,7 +62,6 @@ const signerHash = (() => {
 })();
 const EMPTY_CBOR_LIST = Buffer.from([0x80]);
 const EMPTY_CBOR_NULL = Buffer.from([0xf6]);
-const EMPTY_LIST_ROOT = computeHash32(EMPTY_CBOR_LIST);
 const EMPTY_NULL_ROOT = computeHash32(EMPTY_CBOR_NULL);
 
 const encodeByteList = (items: readonly Uint8Array[]): Buffer =>
@@ -112,7 +112,6 @@ const makeNativeTx = ({
 };
 
 const makeCandidate = ({
-  txByte,
   arrivalSeq,
   spent,
   referenceInputs = [],
@@ -120,7 +119,6 @@ const makeCandidate = ({
   validityIntervalStart,
   validityIntervalEnd,
 }: {
-  readonly txByte: number;
   readonly arrivalSeq: bigint;
   readonly spent: readonly Buffer[];
   readonly referenceInputs?: readonly Buffer[];
@@ -137,7 +135,7 @@ const makeCandidate = ({
     validityIntervalEnd,
   });
   const txId = computeMidgardNativeTxId(tx);
-  const txCbor = encodeMidgardNativeTxFull(tx);
+  const txCbor = encodeMidgardNativeTxCanonical(tx);
   const producedOutRef = outRefFromHash(txId.toString("hex"), 0n);
   return {
     txId,
@@ -180,7 +178,7 @@ describe("validation parallelization", () => {
         spent: [spent],
         outputs: [makeOutput(testAddress, 10n)],
       });
-      const nativeTxBytes = encodeMidgardNativeTxFull(nativeTx);
+      const nativeTxBytes = encodeMidgardNativeTxCanonical(nativeTx);
       return {
         txId: computeMidgardNativeTxId(nativeTx),
         txCbor: nativeTxBytes,
@@ -232,18 +230,15 @@ describe("validation parallelization", () => {
     ]);
 
     const txA = makeCandidate({
-      txByte: 0xa1,
       arrivalSeq: 0n,
       spent: [spentX],
     });
     const txB = makeCandidate({
-      txByte: 0xb1,
       arrivalSeq: 1n,
       spent: [spentX],
       referenceInputs: [spentZ],
     });
     const txC = makeCandidate({
-      txByte: 0xc1,
       arrivalSeq: 2n,
       spent: [spentZ],
     });
@@ -273,13 +268,11 @@ describe("validation parallelization", () => {
     ]);
 
     const expired = makeCandidate({
-      txByte: 0xd1,
       arrivalSeq: 0n,
       spent: [spent],
       validityIntervalEnd: 119n,
     });
     const active = makeCandidate({
-      txByte: 0xd2,
       arrivalSeq: 1n,
       spent: [spent],
       validityIntervalStart: 120n,

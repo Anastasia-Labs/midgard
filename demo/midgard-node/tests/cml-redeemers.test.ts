@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { CML } from "@lucid-evolution/lucid";
 import { getTxInfoRedeemerIndexes } from "@al-ft/midgard-sdk";
+import { CML } from "@lucid-evolution/lucid";
+import { describe, expect, it } from "vitest";
 
 describe("cml redeemer pointer ordering", () => {
   it("maps context-order redeemers into Aiken tx.redeemers order by purpose then pointer index", () => {

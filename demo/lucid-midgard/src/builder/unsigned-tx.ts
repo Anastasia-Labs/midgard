@@ -1,21 +1,22 @@
 import {
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
+  encodeCbor,
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  encodeCbor,
   type MidgardNativeTxCanonical,
 } from "@al-ft/midgard-core/codec";
+import { hexToBytes } from "@al-ft/midgard-core/hex";
 
+import type { Assets } from "../core/assets.js";
 import { compareOutRefs } from "../core/out-ref.js";
 import {
+  type AuthoredOutput,
   encodeMidgardTxOutput,
   utxoOutRefCbor,
-  type AuthoredOutput,
 } from "../core/output.js";
-import type { Assets } from "../core/assets.js";
 import type { MidgardUtxo } from "../core/types.js";
-import { stateNetworkId, type BuilderState } from "./context.js";
+import { type BuilderState, stateNetworkId } from "./context.js";
 
 export type ScriptMaterialization = {
   readonly requiredObserversPreimageCbor: Buffer;
@@ -33,11 +34,9 @@ const sortedInputCbors = (inputs: readonly MidgardUtxo[]): Buffer[] =>
   [...inputs].sort(compareOutRefs).map((input) => utxoOutRefCbor(input));
 
 const sortedRequiredSignerCbors = (signers: readonly string[]): Buffer[] =>
-  [...signers]
-    .sort((left, right) =>
-      Buffer.from(left, "hex").compare(Buffer.from(right, "hex")),
-    )
-    .map((signer) => Buffer.from(signer, "hex"));
+  signers
+    .map((signer) => hexToBytes(signer, { fieldName: "requiredSigner" }))
+    .sort(Buffer.compare);
 
 const outputCbors = (outputs: readonly AuthoredOutput[]): Buffer[] =>
   outputs.map((output) =>

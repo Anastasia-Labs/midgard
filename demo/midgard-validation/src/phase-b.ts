@@ -1,58 +1,52 @@
-import { CML } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
-import { LedgerColumns, type LedgerEntry } from "./ledger.js";
 import {
   computeScriptIntegrityHashForLanguages,
   decodeMidgardAddressBytes,
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeMint,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeMidgardTxOutput,
-  decodeMidgardNativeTxFull,
   decodeMidgardVersionedScriptListPreimage,
   deriveMidgardNativeTxWitnessSetCompact,
-  encodeMidgardVersionedScript,
-  verifyMidgardNativeScript,
-  midgardValueToCmlValue,
-  type MidgardNativeTxFull,
   type MidgardNativeScript,
+  type MidgardNativeTxFull,
   type MidgardTxOutput,
+  midgardValueToCmlValue,
   type ScriptLanguageName,
+  verifyMidgardNativeScript,
 } from "@al-ft/midgard-core/codec";
-import {
-  asArray,
-  asBytes,
-  asMap,
-  decodeSingleCbor,
-} from "@al-ft/midgard-core/codec/cbor";
-import {
-  PhaseAAccepted,
-  PhaseBConfig,
-  PhaseBResult,
-  RejectedTx,
-  RejectCodes,
-} from "./types.js";
+import { CML } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+
+import { LedgerColumns, type LedgerEntry } from "./ledger.js";
+import { evaluateScriptWithHarmonic } from "./local-script-eval.js";
 import {
   decodeMidgardRedeemers,
   findRedeemerByPointer,
   MidgardRedeemerPointer,
+  midgardRedeemerPointerKey,
   MidgardRedeemerTag,
   MidgardScriptPurpose,
-  midgardRedeemerPointerKey,
 } from "./midgard-redeemers.js";
-import { evaluateScriptWithHarmonic } from "./local-script-eval.js";
-import {
-  decodeScriptSource,
-  resolveScriptSource,
-  ResolvedScriptSource,
-  ScriptSource,
-} from "./script-source.js";
 import {
   buildMidgardV1ScriptContext,
   buildPlutusV3ScriptContext,
-  ScriptMintValue,
   ScriptContextView,
+  ScriptMintValue,
 } from "./script-context.js";
-import { compareTxOutRefHex } from "./tx-out-ref.js";
+import {
+  ResolvedScriptSource,
+  resolveScriptSource,
+  ScriptSource,
+  scriptSourceFromVersionedScript,
+} from "./script-source.js";
+import { sortTxOutRefHexes } from "./tx-out-ref.js";
+import {
+  PhaseAAccepted,
+  PhaseBConfig,
+  PhaseBResult,
+  RejectCodes,
+  RejectedTx,
+} from "./types.js";
 
 type UTxOState = Map<string, Buffer>;
 type PreState = readonly LedgerEntry[] | UTxOState;
@@ -62,7 +56,6 @@ type CandidateNode = {
   readonly candidate: PhaseAAccepted;
   readonly spentOutRefs: Set<string>;
   readonly referenceOutRefs: Set<string>;
-  readonly producedOutRefs: Set<string>;
   readonly parents: Set<number>;
   readonly children: Set<number>;
 };
@@ -205,8 +198,8 @@ const decodeReferenceInputNativeScripts = (
       continue;
     }
 
-    const source = decodeScriptSource(
-      encodeMidgardVersionedScript(scriptRef),
+    const source = scriptSourceFromVersionedScript(
+      scriptRef,
       "reference",
       referenceOutRefHex,
     );
@@ -226,55 +219,28 @@ const conflict = (left: CandidateNode, right: CandidateNode): boolean =>
   hasIntersection(left.spentOutRefs, right.referenceOutRefs) ||
   hasIntersection(right.spentOutRefs, left.referenceOutRefs);
 
-const asSigned = (value: unknown, fieldName: string): bigint => {
-  if (typeof value === "bigint") {
-    return value;
-  }
-  if (typeof value === "number" && Number.isInteger(value)) {
-    return BigInt(value);
-  }
-  throw new Error(`${fieldName} must be an integer`);
-};
-
-const decodeMintValueData = (preimageCbor: Uint8Array): ScriptMintValue => {
-  const decoded = decodeSingleCbor(preimageCbor);
-  if (Array.isArray(decoded)) {
-    const empty = asArray(decoded, "native.mint");
-    if (empty.length === 0) {
-      return new Map();
-    }
-    throw new Error(
-      "Midgard mint preimage must be an empty array or a CBOR map",
-    );
-  }
-
-  const policies = asMap(decoded, "native.mint");
-  if (policies.size === 0) {
-    throw new Error("Midgard mint map cannot be empty");
-  }
-
+const mintValueData = (
+  decodedMint: ReturnType<typeof decodeMidgardNativeMint>,
+): ScriptMintValue => {
   const result = new Map<string, Map<string, bigint>>();
-  for (const [policyBytesValue, assetsValue] of policies.entries()) {
-    const policyBytes = asBytes(policyBytesValue, "native.mint.policy");
-    if (policyBytes.length !== 28) {
-      throw new Error("Mint policy id must be 28 bytes");
-    }
+  if (decodedMint === undefined) {
+    return result;
+  }
 
-    const assetsMap = asMap(assetsValue, "native.mint.assets");
-    if (assetsMap.size === 0) {
-      throw new Error("Mint policy asset map cannot be empty");
+  const policyIds = decodedMint.mint.keys();
+  for (let i = 0; i < policyIds.len(); i += 1) {
+    const policyId = policyIds.get(i);
+    const assetQuantities = decodedMint.mint.get_assets(policyId)!;
+    const assets = assetQuantities.keys();
+    const assetMap = new Map<string, bigint>();
+    for (let j = 0; j < assets.len(); j += 1) {
+      const assetName = assets.get(j);
+      assetMap.set(
+        Buffer.from(assetName.to_raw_bytes()).toString("hex"),
+        assetQuantities.get(assetName)!,
+      );
     }
-
-    const assets = new Map<string, bigint>();
-    for (const [assetNameValue, quantityValue] of assetsMap.entries()) {
-      const assetName = asBytes(assetNameValue, "native.mint.asset_name");
-      const quantity = asSigned(quantityValue, "native.mint.quantity");
-      if (quantity === 0n) {
-        throw new Error("Mint quantity cannot be zero");
-      }
-      assets.set(assetName.toString("hex"), quantity);
-    }
-    result.set(policyBytes.toString("hex"), assets);
+    result.set(policyId.to_hex(), assetMap);
   }
 
   return result;
@@ -302,11 +268,7 @@ const collectInlineScriptSources = (
     "native.script_tx_wits",
   );
   return scripts.map((script, index) =>
-    decodeScriptSource(
-      encodeMidgardVersionedScript(script),
-      "inline",
-      `script_wit:${index}`,
-    ),
+    scriptSourceFromVersionedScript(script, "inline", `script_wit:${index}`),
   );
 };
 
@@ -324,8 +286,8 @@ const collectReferenceScriptSources = (
     const scriptRef = output.script_ref;
     if (scriptRef !== undefined) {
       sources.push(
-        decodeScriptSource(
-          encodeMidgardVersionedScript(scriptRef),
+        scriptSourceFromVersionedScript(
+          scriptRef,
           "reference",
           referenceOutRefHex,
         ),
@@ -390,10 +352,8 @@ const discoverLocalScriptExecutions = (
     seenRedeemerPointers.add(key);
   }
 
-  const sortedSpent = [...node.spentOutRefs].sort(compareTxOutRefHex);
-  const sortedReferenceInputs = [...node.referenceOutRefs].sort(
-    compareTxOutRefHex,
-  );
+  const sortedSpent = sortTxOutRefHexes(node.spentOutRefs);
+  const sortedReferenceInputs = sortTxOutRefHexes(node.referenceOutRefs);
   const resolvedInputs: {
     readonly outRefHex: string;
     readonly output: MidgardTxOutput;
@@ -473,9 +433,9 @@ const discoverLocalScriptExecutions = (
     }
   }
 
-  const mintValue = decodeMintValueData(nativeTx.body.mintPreimageCbor);
   const decodedMint = decodeMidgardNativeMint(nativeTx.body.mintPreimageCbor);
-  const mintPolicies = decodedMint?.policyIds ?? [];
+  const mintValue = mintValueData(decodedMint);
+  const mintPolicies = candidate.mintPolicyHashes;
   for (let index = 0; index < mintPolicies.length; index += 1) {
     const policyId = mintPolicies[index];
     const result = addExecution(
@@ -580,7 +540,7 @@ const runLocalScriptEvaluation = (
   enforceScriptBudget: boolean,
 ): LocalScriptValidationResult => {
   const candidate = node.candidate;
-  const nativeTx = decodeMidgardNativeTxFull(candidate.txCbor);
+  const nativeTx = decodeMidgardNativeTxFullFromCanonicalCbor(candidate.txCbor);
   const inlineSources = collectInlineScriptSources(nativeTx);
   const referenceSources = collectReferenceScriptSources(node, stateValue);
   const sources = [...inlineSources, ...referenceSources];
@@ -615,14 +575,7 @@ const runLocalScriptEvaluation = (
     if (execution.resolved.version !== "NativeCardano") {
       continue;
     }
-    const nativeScript = execution.resolved.source.nativeScript;
-    if (nativeScript === undefined) {
-      return {
-        kind: "rejected",
-        code: RejectCodes.InvalidFieldType,
-        detail: `native script source missing script body for ${execution.purpose.kind} ${execution.purpose.scriptHash}`,
-      };
-    }
+    const nativeScript = execution.resolved.source.nativeScript!;
     if (
       !verifyMidgardNativeScript(nativeScript, {
         validityIntervalStart: candidate.validityIntervalStart,
@@ -660,22 +613,11 @@ const runLocalScriptEvaluation = (
     };
   }
 
-  if (nonNativeExecutions.length === 0) {
-    return { kind: "accepted" };
-  }
-
   for (const execution of nonNativeExecutions) {
     const redeemer = findRedeemerByPointer(
       discovered.contextView.redeemers.map((entry) => entry.redeemer),
       execution.pointer,
-    );
-    if (redeemer === undefined) {
-      return {
-        kind: "rejected",
-        code: RejectCodes.MissingRequiredWitness,
-        detail: `missing redeemer for ${execution.purpose.kind} ${execution.purpose.scriptHash}`,
-      };
-    }
+    )!;
 
     if (
       execution.resolved.version === "PlutusV3" &&
@@ -733,26 +675,14 @@ const buildConflictBuckets = (
   const buckets: CandidateNode[][] = [];
 
   for (const node of readyNodes) {
-    let placed = false;
-
-    for (const bucket of buckets) {
-      let hasConflict = false;
-      for (const bucketNode of bucket) {
-        if (conflict(node, bucketNode)) {
-          hasConflict = true;
-          break;
-        }
-      }
-
-      if (!hasConflict) {
-        bucket.push(node);
-        placed = true;
-        break;
-      }
-    }
-
-    if (!placed) {
+    const bucket = buckets.find(
+      (candidateBucket) =>
+        !candidateBucket.some((bucketNode) => conflict(node, bucketNode)),
+    );
+    if (bucket === undefined) {
       buckets.push([node]);
+    } else {
+      bucket.push(node);
     }
   }
 
@@ -780,12 +710,6 @@ const buildNodes = (
     const referenceOutRefs = new Set(
       candidate.referenceInputs.map((outRef) => outRef.toString("hex")),
     );
-    const producedOutRefs = new Set(
-      candidate.processedTx.produced.map((produced) =>
-        produced[LedgerColumns.OUTREF].toString("hex"),
-      ),
-    );
-
     const parents = new Set<number>();
     for (const spentOutRef of spentOutRefs) {
       const parent = producerByOutRef.get(spentOutRef);
@@ -805,7 +729,6 @@ const buildNodes = (
       candidate,
       spentOutRefs,
       referenceOutRefs,
-      producedOutRefs,
       parents,
       children: new Set<number>(),
     });
@@ -830,11 +753,7 @@ const findCycleNodes = (nodes: readonly CandidateNode[]): Set<number> => {
   let visited = 0;
 
   while (queue.length > 0) {
-    const index = queue.shift();
-    if (index === undefined) {
-      continue;
-    }
-
+    const index = queue.shift()!;
     visited += 1;
     for (const child of nodes[index].children) {
       const next = (indegree.get(child) ?? 0) - 1;
@@ -896,12 +815,6 @@ const validateCandidateAgainstState = (
     const inputValues: InstanceType<typeof CML.Value>[] = [];
 
     for (const referenceOutRefHex of node.referenceOutRefs) {
-      if (node.spentOutRefs.has(referenceOutRefHex)) {
-        return fail(
-          RejectCodes.InputNotFound,
-          `reference input is also spent by tx: ${referenceOutRefHex}`,
-        );
-      }
       if (stateValue(referenceOutRefHex) === undefined) {
         return fail(
           RejectCodes.InputNotFound,
@@ -1073,11 +986,7 @@ const cascadeRejectDescendants = (
   const queue = [...nodes[rejectedRoot].children];
 
   while (queue.length > 0) {
-    const child = queue.shift();
-    if (child === undefined) {
-      continue;
-    }
-
+    const child = queue.shift()!;
     if (statusByIndex[child] !== "pending") {
       continue;
     }
@@ -1188,17 +1097,9 @@ export const runPhaseBValidationWithPatch = (
           },
         );
 
-        const decisionsByIndex = new Map<number, CandidateDecision>();
         for (const decision of decisions) {
-          decisionsByIndex.set(decision.index, decision);
-        }
-
-        for (const node of pendingBucket) {
-          const decision = decisionsByIndex.get(node.index);
-          if (
-            decision === undefined ||
-            statusByIndex[node.index] !== "pending"
-          ) {
+          const node = nodes[decision.index];
+          if (statusByIndex[node.index] !== "pending") {
             continue;
           }
 

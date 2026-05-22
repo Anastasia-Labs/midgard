@@ -1,4 +1,3 @@
-import { CML, Constr, Data } from "@lucid-evolution/lucid";
 import {
   asArray,
   asBigInt,
@@ -6,6 +5,8 @@ import {
   decodeSingleCbor,
   encodeCbor,
 } from "@al-ft/midgard-core/codec/cbor";
+import { CML, Constr, Data } from "@lucid-evolution/lucid";
+
 import { txOutRefData } from "./tx-out-ref.js";
 
 export const MidgardRedeemerTag = {
@@ -30,8 +31,7 @@ export type DecodedMidgardRedeemer = MidgardRedeemerPointer & {
 
 export const midgardRedeemerPointerKey = (
   pointer: MidgardRedeemerPointer,
-): string =>
-  `${pointer.tag}:${pointer.index.toString(10)}`;
+): string => `${pointer.tag}:${pointer.index.toString(10)}`;
 
 const ensureSupportedTag = (tag: number, fieldName: string): void => {
   if (
@@ -129,21 +129,19 @@ export const decodeMidgardRedeemers = (
   }
 
   const map = asMap(decoded, "redeemers");
-  const result: DecodedMidgardRedeemer[] = [];
-  let index = 0;
-  for (const [key, value] of map.entries()) {
-    result.push(decodeRedeemerMapEntry(key, value, `redeemers[${index}]`));
-    index += 1;
-  }
-  return result;
+  return Array.from(map.entries(), ([key, value], index) =>
+    decodeRedeemerMapEntry(key, value, `redeemers[${index}]`),
+  );
 };
 
 export const findRedeemerByPointer = (
   redeemers: readonly DecodedMidgardRedeemer[],
   pointer: MidgardRedeemerPointer,
 ): DecodedMidgardRedeemer | undefined => {
-  const key = midgardRedeemerPointerKey(pointer);
-  return redeemers.find((redeemer) => midgardRedeemerPointerKey(redeemer) === key);
+  return redeemers.find(
+    (redeemer) =>
+      redeemer.tag === pointer.tag && redeemer.index === pointer.index,
+  );
 };
 
 export const redeemerDataFromCborHex = (cborHex: string): unknown =>

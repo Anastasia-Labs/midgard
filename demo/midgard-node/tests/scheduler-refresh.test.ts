@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
-import type { UTxO } from "@lucid-evolution/lucid";
 import type * as SDK from "@al-ft/midgard-sdk";
+import type { UTxO } from "@lucid-evolution/lucid";
+import { describe, expect, it } from "vitest";
+
 import {
   encodeSchedulerDatumForChain,
   type NodeUtxoWithDatum,
@@ -129,10 +130,16 @@ describe("scheduler refresh witness selection", () => {
     const referenceInputs = [activeTail.utxo, activeRoot.utxo];
 
     expect(
-      resolveReferenceInputIndexFromLedgerOrder(activeTail.utxo, referenceInputs),
+      resolveReferenceInputIndexFromLedgerOrder(
+        activeTail.utxo,
+        referenceInputs,
+      ),
     ).toBe(1n);
     expect(
-      resolveReferenceInputIndexFromLedgerOrder(activeRoot.utxo, referenceInputs),
+      resolveReferenceInputIndexFromLedgerOrder(
+        activeRoot.utxo,
+        referenceInputs,
+      ),
     ).toBe(0n);
   });
 

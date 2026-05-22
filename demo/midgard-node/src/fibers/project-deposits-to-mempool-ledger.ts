@@ -1,9 +1,12 @@
-import { Database, Globals } from "@/services/index.js";
-import { DepositsDB, MempoolLedgerDB } from "@/database/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
-import { sqlErrorToDatabaseError } from "@/database/utils/common.js";
 import { SqlClient } from "@effect/sql";
 import { Effect, Ref, Schedule } from "effect";
+
+import { DepositsDB, MempoolLedgerDB } from "@/database/index.js";
+import {
+  DatabaseError,
+  sqlErrorToDatabaseError,
+} from "@/database/utils/common.js";
+import { Database, Globals } from "@/services/index.js";
 
 const sameProjectedDepositEntry = (
   expected: MempoolLedgerDB.DepositEntry,
@@ -40,21 +43,25 @@ const reconcileAlreadyProjectedDeposits = Effect.gen(function* () {
   const existingBySourceEventId = new Map(
     existing
       .filter(
-        (entry): entry is MempoolLedgerDB.EntryWithTimeStamp & {
+        (
+          entry,
+        ): entry is MempoolLedgerDB.EntryWithTimeStamp & {
           readonly source_event_id: Buffer;
         } => entry[MempoolLedgerDB.Columns.SOURCE_EVENT_ID] !== null,
       )
-      .map((entry) => [
-        entry[MempoolLedgerDB.Columns.SOURCE_EVENT_ID].toString("hex"),
-        entry,
-      ] as const),
+      .map(
+        (entry) =>
+          [
+            entry[MempoolLedgerDB.Columns.SOURCE_EVENT_ID].toString("hex"),
+            entry,
+          ] as const,
+      ),
   );
 
   const missingEntries: MempoolLedgerDB.DepositEntry[] = [];
   for (const entry of mempoolEntries) {
-    const sourceEventIdHex = entry[
-      MempoolLedgerDB.Columns.SOURCE_EVENT_ID
-    ].toString("hex");
+    const sourceEventIdHex =
+      entry[MempoolLedgerDB.Columns.SOURCE_EVENT_ID].toString("hex");
     const existingEntry = existingBySourceEventId.get(sourceEventIdHex);
     if (existingEntry === undefined) {
       missingEntries.push(entry);

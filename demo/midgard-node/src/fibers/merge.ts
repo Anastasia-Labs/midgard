@@ -1,25 +1,26 @@
+import * as SDK from "@al-ft/midgard-sdk";
+import { Effect, Ref, Schedule } from "effect";
+
+import { StateQueueMutationLeasesDB } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import {
+  Database,
+  Globals,
   Lucid,
   MidgardContracts,
-  Globals,
   NodeConfig,
 } from "@/services/index.js";
+import {
+  fetchStateQueueSnapshotProgram,
+  refreshStateQueueGlobalsFromSnapshot,
+  type StateQueueSnapshot,
+} from "@/services/state-queue-topology.js";
 import { buildAndSubmitMergeTx } from "@/transactions/state-queue/merge-to-confirmed-state.js";
-import { StateQueueMutationLeasesDB } from "@/database/index.js";
 import {
   TxConfirmError,
   TxSignError,
   TxSubmitError,
 } from "@/transactions/utils.js";
-import * as SDK from "@al-ft/midgard-sdk";
-import { Effect, pipe, Ref, Schedule } from "effect";
-import { Database } from "@/services/index.js";
-import {
-  fetchStateQueueSnapshotProgram,
-  type StateQueueSnapshot,
-  refreshStateQueueGlobalsFromSnapshot,
-} from "@/services/state-queue-topology.js";
 
 /**
  * Background merge flow for confirmed state-queue blocks.
@@ -114,15 +115,10 @@ export const mergeAction = (
           }
           yield* lucid.switchToOperatorsMergingWallet;
           yield* StateQueueMutationLeasesDB.revalidate(leaseToken);
-          yield* buildAndSubmitMergeTx(
-            lucid.api,
-            fetchConfig,
-            contracts,
-            {
-              bypassQueueLengthGuard: force,
-              referenceScriptsAddress: lucid.referenceScriptsAddress,
-            },
-          );
+          yield* buildAndSubmitMergeTx(lucid.api, fetchConfig, contracts, {
+            bypassQueueLengthGuard: force,
+            referenceScriptsAddress: lucid.referenceScriptsAddress,
+          });
           const snapshot = yield* fetchStateQueueSnapshotProgram(
             lucid.api,
             stateQueueAuthValidator,
@@ -163,13 +159,11 @@ export const mergeFiber = (
   never,
   Lucid | MidgardContracts | Database | Globals | NodeConfig
 > =>
-  pipe(
-    Effect.gen(function* () {
-      yield* Effect.logInfo("🟠 Merge fiber started.");
-      const action = mergeAction().pipe(
-        Effect.withSpan("merge-confirmed-state-fiber"),
-        Effect.catchAllCause(Effect.logWarning),
-      );
-      yield* Effect.repeat(action, schedule);
-    }),
-  );
+  Effect.gen(function* () {
+    yield* Effect.logInfo("🟠 Merge fiber started.");
+    const action = mergeAction().pipe(
+      Effect.withSpan("merge-confirmed-state-fiber"),
+      Effect.catchAllCause(Effect.logWarning),
+    );
+    yield* Effect.repeat(action, schedule);
+  });

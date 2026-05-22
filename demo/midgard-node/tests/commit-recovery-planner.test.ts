@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
+
 import {
-  shouldDeferCommitSubmission,
-  shouldAttemptLocalFinalizationRecovery,
   rootsMatchConfirmedHeader,
+  shouldAttemptLocalFinalizationRecovery,
+  shouldDeferCommitSubmission,
 } from "@/workers/utils/commit-block-planner.js";
 
 describe("commit recovery planner", () => {

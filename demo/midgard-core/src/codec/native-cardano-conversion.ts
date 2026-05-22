@@ -1,16 +1,17 @@
 import { CML } from "@lucid-evolution/lucid";
+
 import { encodeCbor } from "./cbor.js";
 import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
 import { ensureHash32 } from "./hash.js";
+import { type MidgardNativeTxCanonical } from "./native.js";
+import { EMPTY_NULL_ROOT } from "./native-constants.js";
 import { decodeMidgardNativeScript } from "./native-script.js";
 import { encodeMidgardTxOutput, type MidgardTxOutput } from "./output.js";
+import { type MidgardValue } from "./value.js";
 import {
   encodeMidgardVersionedScriptListPreimage,
   type MidgardVersionedScript,
 } from "./versioned-script.js";
-import { type MidgardValue } from "./value.js";
-import { type MidgardNativeTxCanonical } from "./native.js";
-import { EMPTY_NULL_ROOT } from "./native-constants.js";
 
 export type CardanoToMidgardNativeConstants = {
   readonly nativeTxVersion: bigint;
@@ -363,9 +364,8 @@ const withdrawalsToRequiredObserversPreimageCbor = (
     const scriptHash = rewardAddr.payment().as_script();
     if (scriptHash === undefined) {
       failLossyConversion("withdrawals");
-      continue;
     }
-    observers.push(Buffer.from(scriptHash.to_raw_bytes()));
+    observers.push(Buffer.from(scriptHash!.to_raw_bytes()));
   }
   return encodeCbor(observers);
 };
@@ -424,11 +424,6 @@ const assertCardanoTxConvertibleToNative = (
 
   if (hasAnyCmlEntries(txBody.certs())) {
     failLossyConversion("certificates");
-  }
-
-  const withdrawals = txBody.withdrawals();
-  if (withdrawals !== undefined) {
-    withdrawalsToRequiredObserversPreimageCbor(withdrawals);
   }
 
   if (hasAnyCmlEntries(txBody.collateral_inputs())) {
@@ -531,16 +526,13 @@ export const cardanoTxBytesToMidgardNativeTxCanonical = (
         scriptDataHash === undefined
           ? Buffer.from(EMPTY_NULL_ROOT)
           : ensureHash32(
-              Buffer.from(scriptDataHash.to_raw_bytes()),
+              scriptDataHash.to_raw_bytes(),
               "script_integrity_hash",
             ),
       auxiliaryDataHash:
         auxDataHash === undefined
           ? Buffer.from(EMPTY_NULL_ROOT)
-          : ensureHash32(
-              Buffer.from(auxDataHash.to_raw_bytes()),
-              "auxiliary_data_hash",
-            ),
+          : ensureHash32(auxDataHash.to_raw_bytes(), "auxiliary_data_hash"),
       networkId: encodedNetworkId,
     },
     witnessSet: {

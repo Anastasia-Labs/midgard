@@ -1,21 +1,20 @@
+import type { Assets } from "../core/assets.js";
+import {
+  outputAddressPaymentKeyHash,
+  outputAddressProtected,
+  utxoAddress,
+} from "../core/output.js";
 import type {
   Address,
   LocalValidationReport,
   MidgardUtxo,
   WalletInputSource,
 } from "../core/types.js";
-import type { Assets } from "../core/assets.js";
-import {
-  decodeMidgardTxOutput,
-  outputAddressPaymentKeyHash,
-  outputAddressProtected,
-  utxoOutputCbor,
-} from "../core/output.js";
 import type { MidgardProvider, ProviderDiagnostics } from "../provider.js";
 import type { MidgardWallet } from "../wallet.js";
 import {
-  cloneProviderDiagnostics,
   type BuilderState,
+  cloneProviderDiagnostics,
   type ProviderSnapshot,
 } from "./context.js";
 
@@ -104,10 +103,7 @@ export const attachProviderMetadata = (
 
 export const paymentPubKeyHashFromUtxo = (
   utxo: MidgardUtxo,
-): string | undefined =>
-  outputAddressPaymentKeyHash(
-    decodeMidgardTxOutput(utxoOutputCbor(utxo)).address,
-  );
+): string | undefined => outputAddressPaymentKeyHash(utxoAddress(utxo));
 
 export const expectedAddrWitnessKeyHashes = (
   state: BuilderState,

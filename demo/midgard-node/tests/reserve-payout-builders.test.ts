@@ -1,35 +1,36 @@
-import { describe, expect, it } from "vitest";
-import { Effect } from "effect";
+import * as SDK from "@al-ft/midgard-sdk";
 import {
+  type Assets,
   CML,
+  credentialToAddress,
   Data,
   Emulator,
-  Lucid as makeLucid,
-  PROTOCOL_PARAMETERS_DEFAULT,
-  credentialToAddress,
+  type EmulatorAccount,
   generateEmulatorAccount,
+  Lucid as makeLucid,
+  type LucidEvolution,
+  PROTOCOL_PARAMETERS_DEFAULT,
+  type Script,
   scriptHashToCredential,
   toUnit,
-  type Assets,
-  type EmulatorAccount,
-  type LucidEvolution,
-  type Script,
   type TxSignBuilder,
   type UTxO,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+import { describe, expect, it } from "vitest";
+
+import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
+import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
+import { withRealStateQueueAndOperatorContracts } from "@/services/midgard-contracts.js";
 import {
   __reservePayoutTest,
-  buildAddReserveFundsToPayoutTxProgram,
   buildAbsorbConfirmedDepositToReserveTxProgram,
+  buildAddReserveFundsToPayoutTxProgram,
   buildConcludePayoutTxProgram,
   buildInitializePayoutTxProgram,
   buildRefundInvalidWithdrawalTxProgram,
 } from "@/transactions/reserve-payout.js";
-import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
-import { withRealStateQueueAndOperatorContracts } from "@/services/midgard-contracts.js";
-import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
-import * as SDK from "@al-ft/midgard-sdk";
 
 const mkUtxo = (
   txHashByte: string,
@@ -55,6 +56,18 @@ const EMULATOR_PROTOCOL_PARAMETERS = {
 
 const hashHexBlake2b256 = (hex: string): Promise<string> =>
   Effect.runPromise(SDK.hashHexWithBlake2b(hex, 32));
+
+const expectLeft = <E, A>(
+  result:
+    | { readonly _tag: "Left"; readonly left: E }
+    | { readonly _tag: "Right"; readonly right: A },
+): E => {
+  expect(result._tag).toBe("Left");
+  if (result._tag !== "Left") {
+    throw new Error("Expected Left");
+  }
+  return result.left;
+};
 
 const singletonMembershipRoot = async (
   keyCbor: string,
@@ -1117,10 +1130,7 @@ describe("reserve/payout transaction builder primitives", () => {
       ),
     );
 
-    expect(result._tag).toBe("Left");
-    if (result._tag === "Left") {
-      expect(result.left.message).toContain("overlaps");
-    }
+    expect(expectLeft(result).message).toContain("overlaps");
   });
 
   it("rejects explicit fee inputs that carry non-ADA assets", async () => {
@@ -1138,10 +1148,7 @@ describe("reserve/payout transaction builder primitives", () => {
       ),
     );
 
-    expect(result._tag).toBe("Left");
-    if (result._tag === "Left") {
-      expect(result.left.message).toContain("pure ADA");
-    }
+    expect(expectLeft(result).message).toContain("pure ADA");
   });
 
   it("rejects explicit fee inputs that carry reference scripts", async () => {
@@ -1159,10 +1166,7 @@ describe("reserve/payout transaction builder primitives", () => {
       ),
     );
 
-    expect(result._tag).toBe("Left");
-    if (result._tag === "Left") {
-      expect(result.left.message).toContain("reference script");
-    }
+    expect(expectLeft(result).message).toContain("reference script");
   });
 
   it("rejects explicit fee inputs that carry datum payloads", async () => {
@@ -1180,10 +1184,7 @@ describe("reserve/payout transaction builder primitives", () => {
       ),
     );
 
-    expect(inlineDatumResult._tag).toBe("Left");
-    if (inlineDatumResult._tag === "Left") {
-      expect(inlineDatumResult.left.message).toContain("inline datum");
-    }
+    expect(expectLeft(inlineDatumResult).message).toContain("inline datum");
 
     const datumHashFeeInput = {
       ...mkUtxo("32", 0),
@@ -1199,10 +1200,7 @@ describe("reserve/payout transaction builder primitives", () => {
       ),
     );
 
-    expect(datumHashResult._tag).toBe("Left");
-    if (datumHashResult._tag === "Left") {
-      expect(datumHashResult.left.message).toContain("datum hash");
-    }
+    expect(expectLeft(datumHashResult).message).toContain("datum hash");
   });
 
   it("rejects explicit fee inputs that do not belong to the selected wallet", async () => {
@@ -1222,10 +1220,7 @@ describe("reserve/payout transaction builder primitives", () => {
       ),
     );
 
-    expect(result._tag).toBe("Left");
-    if (result._tag === "Left") {
-      expect(result.left.message).toContain("selected wallet");
-    }
+    expect(expectLeft(result).message).toContain("selected wallet");
   });
 
   it("filters unsafe wallet UTxOs out of automatic fee and completion candidates", async () => {
@@ -1317,11 +1312,9 @@ describe("reserve/payout transaction builder primitives", () => {
       ),
     );
 
-    expect(result._tag).toBe("Left");
-    if (result._tag === "Left") {
-      expect(String(result.left.cause)).toContain("withdrawal minting");
-      expect(String(result.left.cause)).toContain("addr_test1reference");
-    }
+    const left = expectLeft(result);
+    expect(String(left.cause)).toContain("withdrawal minting");
+    expect(String(left.cause)).toContain("addr_test1reference");
   });
 
   it("validates explicit hub oracle reference inputs before builder assembly", async () => {
@@ -1345,12 +1338,10 @@ describe("reserve/payout transaction builder primitives", () => {
       ),
     );
 
-    expect(result._tag).toBe("Left");
-    if (result._tag === "Left") {
-      expect(result.left.message).toContain("not authenticated");
-      expect(result.left.cause).toMatchObject({
-        hubOracleRefInput: `${"60".repeat(32)}#0`,
-      });
-    }
+    const left = expectLeft(result);
+    expect(left.message).toContain("not authenticated");
+    expect(left.cause).toMatchObject({
+      hubOracleRefInput: `${"60".repeat(32)}#0`,
+    });
   });
 });

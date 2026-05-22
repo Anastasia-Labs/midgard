@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 
-const HEX_PATTERN = /^[0-9a-f]*$/;
+import { normalizeHex } from "@al-ft/midgard-core/hex";
+
 const SIGNED_INTEGER_PATTERN = /^-?\d+$/;
 const UNSIGNED_INTEGER_PATTERN = /^\d+$/;
 const MAX_SAFE_INTEGER_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
@@ -60,19 +61,15 @@ export const parseStrictHex = (
   if (typeof value !== "string") {
     throw new Error(options.typeError);
   }
-
-  const normalized =
-    options.trim === true ? value.trim().toLowerCase() : value.toLowerCase();
-  const expectedLength =
-    options.byteCount === undefined ? undefined : options.byteCount * 2;
-  if (
-    !HEX_PATTERN.test(normalized) ||
-    normalized.length % 2 !== 0 ||
-    (expectedLength !== undefined && normalized.length !== expectedLength)
-  ) {
+  try {
+    return normalizeHex(value, {
+      allowEmpty: true,
+      byteLength: options.byteCount,
+      trim: options.trim === true,
+    });
+  } catch {
     throw new Error(options.invalidError);
   }
-  return normalized;
 };
 
 const isOutOfBounds = (value: bigint, bounds: IntegerBounds): boolean =>

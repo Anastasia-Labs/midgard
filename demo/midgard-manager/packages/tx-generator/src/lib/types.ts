@@ -24,25 +24,20 @@ export interface TransactionGeneratorConfig {
   nodeRetryAttempts?: number;
   nodeRetryDelay?: number;
   nodeEnableLogs?: boolean;
-
   // Network settings
   network: Network;
   initialUTxO: UTxO;
-
   // Wallet settings
   walletSeedOrPrivateKey: string;
-
   // Transaction settings
   transactionType: TransactionType;
   oneToOneRatio?: number;
-
   // Batch settings
   batchSize: number;
   interval: number;
   concurrency: number;
-  autoStopAfterBatch?: boolean;
-
   // Output settings
+  autoStopAfterBatch?: boolean;
   outputDir?: string;
 }
 
@@ -55,7 +50,6 @@ export const DEFAULT_CONFIG: TransactionGeneratorConfig = {
   nodeRetryAttempts: 3,
   nodeRetryDelay: 1000,
   nodeEnableLogs: true,
-
   // Network defaults
   network: 'Preview' as Network,
   initialUTxO: {
@@ -67,21 +61,17 @@ export const DEFAULT_CONFIG: TransactionGeneratorConfig = {
     datumHash: null,
     scriptRef: null,
   },
-
   // Wallet defaults - must be provided
   walletSeedOrPrivateKey: '',
-
   // Transaction defaults
   transactionType: 'mixed',
   oneToOneRatio: 70,
-
   // Batch defaults
   batchSize: 10,
   interval: 5,
   concurrency: 5,
-  autoStopAfterBatch: false,
-
   // Output defaults
+  autoStopAfterBatch: false,
   outputDir: 'generated-transactions',
 };
 
@@ -114,8 +104,11 @@ export const validateGeneratorConfig = (config: TransactionGeneratorConfig): voi
   if (!config.nodeEndpoint.startsWith('http')) {
     throw new Error('Node endpoint must start with http:// or https://');
   }
-  if (config.nodeRetryAttempts !== undefined && config.nodeRetryAttempts < 0) {
-    throw new Error('Node retry attempts must be non-negative');
+  if (
+    config.nodeRetryAttempts !== undefined &&
+    (!Number.isSafeInteger(config.nodeRetryAttempts) || config.nodeRetryAttempts < 1)
+  ) {
+    throw new Error('Node retry attempts must be a positive integer');
   }
   if (config.nodeRetryDelay !== undefined && config.nodeRetryDelay < 0) {
     throw new Error('Node retry delay must be non-negative');
@@ -127,10 +120,11 @@ export const validateGeneratorConfig = (config: TransactionGeneratorConfig): voi
   }
 
   // Transaction validation
-  if (config.oneToOneRatio !== undefined) {
-    if (config.oneToOneRatio < 0 || config.oneToOneRatio > 100) {
-      throw new Error('One-to-one ratio must be between 0 and 100');
-    }
+  if (
+    config.oneToOneRatio !== undefined &&
+    (config.oneToOneRatio < 0 || config.oneToOneRatio > 100)
+  ) {
+    throw new Error('One-to-one ratio must be between 0 and 100');
   }
 
   // Batch validation

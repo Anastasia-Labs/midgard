@@ -1,14 +1,15 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import { Effect, Ref, Schedule } from "effect";
 import { Data, LucidEvolution } from "@lucid-evolution/lucid";
+import { Effect, Ref, Schedule } from "effect";
+
+import { WithdrawalsDB } from "@/database/index.js";
+import { DatabaseError } from "@/database/utils/common.js";
 import {
   Database,
   Globals,
   Lucid,
   MidgardContracts,
 } from "@/services/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
-import { WithdrawalsDB } from "@/database/index.js";
 
 /**
  * Fetches the currently visible withdrawal UTxO set.

@@ -1,19 +1,19 @@
-import { describe, expect, it } from "vitest";
-import { Effect } from "effect";
-import { performance } from "node:perf_hooks";
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { performance } from "node:perf_hooks";
+
 import {
-  cardanoTxBytesToMidgardNativeTxFullBytes,
-  computeHash32,
+  cardanoTxBytesToMidgardNativeTxCanonicalCbor,
   computeMidgardNativeTxId,
-  decodeMidgardNativeTxFull,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
   deriveMidgardNativeTxCompact,
-  encodeMidgardNativeTxFull,
+  encodeMidgardNativeTxCanonical,
 } from "@al-ft/midgard-core/codec";
 import { QueuedTx, runPhaseAValidation } from "@al-ft/midgard-validation";
+import { Effect } from "effect";
+import { describe, expect, it } from "vitest";
 
 type TxFixture = {
   readonly cborHex: string;
@@ -78,7 +78,6 @@ const outputPath = path.resolve(
   "./output/native-phase-a-benchmark.json",
 );
 const EMPTY_CBOR_LIST = Buffer.from([0x80]);
-const EMPTY_LIST_ROOT = computeHash32(EMPTY_CBOR_LIST);
 
 const quantile = (values: readonly number[], q: number): number => {
   const sorted = [...values].sort((a, b) => a - b);
@@ -193,11 +192,11 @@ describe("native tx phase-A benchmark", () => {
       .slice(0, TX_LIMIT)
       .map((tx) => Buffer.from(tx.cborHex, "hex"));
 
-    const nativeFullBytes = txBytes.map((bytes) =>
-      cardanoTxBytesToMidgardNativeTxFullBytes(bytes),
+    const nativeCanonicalCbors = txBytes.map((bytes) =>
+      cardanoTxBytesToMidgardNativeTxCanonicalCbor(bytes),
     );
-    const normalizedNative = nativeFullBytes.map((bytes) => {
-      const converted = decodeMidgardNativeTxFull(bytes);
+    const normalizedNative = nativeCanonicalCbors.map((bytes) => {
+      const converted = decodeMidgardNativeTxFullFromCanonicalCbor(bytes);
       const normalized = {
         version: converted.version,
         validity: "TxIsValid" as const,
@@ -224,7 +223,7 @@ describe("native tx phase-A benchmark", () => {
     const nativeExpectedNetworkId = EXPECTED_NETWORK_ID;
     const nativeQueued: QueuedTx[] = normalizedNative.map((tx, i) => ({
       txId: computeMidgardNativeTxId(tx),
-      txCbor: encodeMidgardNativeTxFull(tx),
+      txCbor: encodeMidgardNativeTxCanonical(tx),
       arrivalSeq: BigInt(i),
       createdAt: new Date(0),
     }));

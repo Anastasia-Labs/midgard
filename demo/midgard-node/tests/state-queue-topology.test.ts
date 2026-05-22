@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
 import type * as SDK from "@al-ft/midgard-sdk";
+import { describe, expect, it } from "vitest";
+
 import { summarizeStateQueueTopology } from "@/services/state-queue-topology.js";
 
 const mkNode = (
@@ -30,10 +31,7 @@ describe("state queue topology", () => {
   });
 
   it("accepts a single-node queue as healthy", () => {
-    const topology = summarizeStateQueueTopology(
-      1,
-      [mkNode("Empty", "Empty")],
-    );
+    const topology = summarizeStateQueueTopology(1, [mkNode("Empty", "Empty")]);
     expect(topology.initialized).toBe(true);
     expect(topology.healthy).toBe(true);
     expect(topology.rootCount).toBe(1);
@@ -42,20 +40,20 @@ describe("state queue topology", () => {
   });
 
   it("flags duplicate roots/tails as unhealthy", () => {
-    const topology = summarizeStateQueueTopology(
-      2,
-      [mkNode("Empty", "Empty"), mkNode("Empty", "Empty")],
-    );
+    const topology = summarizeStateQueueTopology(2, [
+      mkNode("Empty", "Empty"),
+      mkNode("Empty", "Empty"),
+    ]);
     expect(topology.initialized).toBe(true);
     expect(topology.healthy).toBe(false);
     expect(topology.reason).toContain("root");
   });
 
   it("flags non-decodable policy UTxOs", () => {
-    const topology = summarizeStateQueueTopology(
-      3,
-      [mkNode("Empty", "Empty"), mkNode({ Key: { key: "11".repeat(28) } }, "Empty")],
-    );
+    const topology = summarizeStateQueueTopology(3, [
+      mkNode("Empty", "Empty"),
+      mkNode({ Key: { key: "11".repeat(28) } }, "Empty"),
+    ]);
     expect(topology.invalidNodeCount).toBe(1);
     expect(topology.healthy).toBe(false);
     expect(topology.reason).toContain("non-decodable");

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import { MIGRATIONS } from "@/database/migrations/index.js";
 import {
   MigrationError,

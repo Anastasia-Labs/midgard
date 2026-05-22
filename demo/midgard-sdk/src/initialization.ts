@@ -1,7 +1,6 @@
-import { Effect } from "effect";
 import {
-  Data,
   credentialToAddress,
+  Data,
   LucidEvolution,
   makeReturn,
   scriptHashToCredential,
@@ -9,30 +8,34 @@ import {
   TxBuilder,
   UTxO,
 } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+
+import {
+  ACTIVE_OPERATORS_ROOT_ASSET_NAME,
+  ActiveOperatorMintRedeemer,
+} from "@/active-operators.js";
 import {
   Bech32DeserializationError,
   MidgardValidators,
   UnspecifiedNetworkError,
 } from "@/common.js";
 import {
-  HubOracleDatum,
+  FRAUD_PROOF_CATALOGUE_ASSET_NAME,
+  FraudProofCatalogueDatum,
+  FraudProofCatalogueMintRedeemer,
+} from "@/fraud-proof/catalogue.js";
+import {
   HUB_ORACLE_ASSET_NAME,
+  HubOracleDatum,
   makeHubOracleDatum,
 } from "@/hub-oracle.js";
 import {
-  INITIAL_SCHEDULER_DATUM,
-  SchedulerDatum,
-  SCHEDULER_ASSET_NAME,
-  SchedulerMintRedeemer,
-} from "@/scheduler.js";
-import {
-  STATE_QUEUE_ROOT_ASSET_NAME,
-  StateQueueRedeemer,
-} from "@/state-queue.js";
-import {
-  ACTIVE_OPERATORS_ROOT_ASSET_NAME,
-  ActiveOperatorMintRedeemer,
-} from "@/active-operators.js";
+  EMPTY_MERKLE_TREE_ROOT,
+  GENESIS_HEADER_HASH,
+  GENESIS_PROTOCOL_VERSION,
+} from "@/ledger-constants.js";
+import { castConfirmedStateToData, ConfirmedState } from "@/ledger-state.js";
+import { encodeLinkedListNodeView, LinkedListNodeView } from "@/linked-list.js";
 import {
   REGISTERED_OPERATORS_ROOT_ASSET_NAME,
   RegisteredOperatorMintRedeemer,
@@ -42,17 +45,15 @@ import {
   RetiredOperatorMintRedeemer,
 } from "@/retired-operators.js";
 import {
-  FRAUD_PROOF_CATALOGUE_ASSET_NAME,
-  FraudProofCatalogueDatum,
-  FraudProofCatalogueMintRedeemer,
-} from "@/fraud-proof/catalogue.js";
-import { castConfirmedStateToData, ConfirmedState } from "@/ledger-state.js";
+  INITIAL_SCHEDULER_DATUM,
+  SCHEDULER_ASSET_NAME,
+  SchedulerDatum,
+  SchedulerMintRedeemer,
+} from "@/scheduler.js";
 import {
-  GENESIS_HEADER_HASH,
-  GENESIS_PROTOCOL_VERSION,
-  EMPTY_MERKLE_TREE_ROOT,
-} from "@/ledger-constants.js";
-import { encodeLinkedListNodeView, LinkedListNodeView } from "@/linked-list.js";
+  STATE_QUEUE_ROOT_ASSET_NAME,
+  StateQueueRedeemer,
+} from "@/state-queue.js";
 
 export const ATOMIC_INIT_OUTPUT_INDEXES = {
   hubOracle: 0n,
@@ -94,6 +95,13 @@ const encodeLinkedListRootDatum = (
     data: rootData,
   });
 
+/**
+ * Builds the unsigned transaction builder for initializing all Midgard contracts.
+ *
+ * @param lucid - The `LucidEvolution` API object.
+ * @param initParams - Parameters for initializing all Midgard contracts.
+ * @returns A promise that resolves to a `TxBuilder` instance.
+ */
 export const incompleteInitializationTxProgram = (
   lucid: LucidEvolution,
   params: InitializationParams,
@@ -294,13 +302,6 @@ export const incompleteInitializationTxProgram = (
       .attach.Script(midgardValidators.fraudProofCatalogue.mintingScript);
   });
 
-/**
- * Builds the unsigned transaction builder for initializing all Midgard contracts.
- *
- * @param lucid - The `LucidEvolution` API object.
- * @param initParams - Parameters for initializing all Midgard contracts.
- * @returns A promise that resolves to a `TxBuilder` instance.
- */
 export const unsignedInitializationTx = (
   lucid: LucidEvolution,
   initParams: InitializationParams,

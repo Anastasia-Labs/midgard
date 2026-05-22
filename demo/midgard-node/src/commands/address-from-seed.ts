@@ -4,11 +4,7 @@ import { type Network, walletFromSeed } from "@lucid-evolution/lucid";
  * Normalizes a seed phrase for deterministic CLI handling.
  */
 export const parseSeedPhraseArgument = (seedPhrase: string): string => {
-  const normalized = seedPhrase
-    .trim()
-    .split(/\s+/)
-    .filter((word) => word.length > 0)
-    .join(" ");
+  const normalized = seedPhrase.trim().replace(/\s+/g, " ");
   if (normalized.length === 0) {
     throw new Error("Seed phrase must not be empty.");
   }
@@ -50,11 +46,9 @@ export const inferNetworkFromBlockfrostApiUrl = (
   blockfrostApiUrl: string,
 ): Network => {
   const normalized = blockfrostApiUrl.toLowerCase();
-  const matchedNetworks = [
-    normalized.includes("mainnet") ? "Mainnet" : null,
-    normalized.includes("preprod") ? "Preprod" : null,
-    normalized.includes("preview") ? "Preview" : null,
-  ].filter((network): network is Network => network !== null);
+  const matchedNetworks = (["Mainnet", "Preprod", "Preview"] as const).filter(
+    (network) => normalized.includes(network.toLowerCase()),
+  );
 
   if (matchedNetworks.length !== 1) {
     throw new Error(

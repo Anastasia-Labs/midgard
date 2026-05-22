@@ -1,12 +1,14 @@
-import { Database } from "@/services/database.js";
+import { randomUUID } from "node:crypto";
+
 import { SqlClient } from "@effect/sql";
 import { Duration, Effect, Fiber } from "effect";
-import { randomUUID } from "node:crypto";
+
 import {
   DatabaseError,
   sqlErrorToDatabaseError,
 } from "@/database/utils/common.js";
-import { formatUnknownError } from "@/error-format.js";
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import { Database } from "@/services/database.js";
 
 export const tableName = "state_queue_mutation_leases";
 
@@ -121,9 +123,7 @@ export const retrieveActive = (): Effect.Effect<
     ),
   );
 
-export const describeActiveLease = (
-  activeLease: Entry | undefined,
-): string =>
+export const describeActiveLease = (activeLease: Entry | undefined): string =>
   activeLease === undefined
     ? "active_lease=none"
     : `active_holder=${activeLease[Columns.HOLDER]},active_token=${
@@ -371,7 +371,9 @@ export const tryWithLease = <A, E, R>(
         }),
       ),
       Effect.ensuring(
-        Fiber.interrupt(keepAliveFiber).pipe(Effect.catchAll(() => Effect.void)),
+        Fiber.interrupt(keepAliveFiber).pipe(
+          Effect.catchAll(() => Effect.void),
+        ),
       ),
     );
   });

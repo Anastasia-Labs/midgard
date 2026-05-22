@@ -1,12 +1,18 @@
 import {
-  AuthenticatedValidator,
-  POSIXTimeSchema,
-  LucidError,
-} from "@/common.js";
-import { AuthenticUTxO, authenticateUTxOs } from "@/internals.js";
-import { Data, UTxO, fromText } from "@lucid-evolution/lucid";
-import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
+  Data,
+  fromText,
+  LucidEvolution,
+  TxBuilder,
+} from "@lucid-evolution/lucid";
 import { Effect } from "effect";
+
+import {
+  AuthenticatedValidator,
+  LucidError,
+  POSIXTimeSchema,
+} from "@/common.js";
+import { authenticateUTxOs, AuthenticUTxO } from "@/internals.js";
+
 import { incompleteInitLinkedListTxProgram } from "./linked-list.js";
 
 export const RETIRED_OPERATORS_ROOT_ASSET_NAME = fromText(
@@ -97,7 +103,7 @@ export const fetchRetiredOperatorUTxOs = (
   lucid: LucidEvolution,
 ): Effect.Effect<RetiredOperatorUTxO[], LucidError> =>
   Effect.gen(function* () {
-    const allUtxos: UTxO[] = yield* Effect.tryPromise({
+    const allUtxos = yield* Effect.tryPromise({
       try: () => lucid.utxosAt(params.retiredOperatorAddress),
       catch: (err) =>
         new LucidError({
@@ -111,13 +117,11 @@ export const fetchRetiredOperatorUTxOs = (
         cause: "No UTxOs found in Retired Operators Contract address",
       });
     }
-    const retiredOperatorUTxOs: RetiredOperatorUTxO[] =
-      yield* authenticateUTxOs<RetiredOperatorDatum>(
-        allUtxos,
-        params.retiredOperatorPolicyId,
-        RetiredOperatorDatum,
-      );
-    return retiredOperatorUTxOs;
+    return yield* authenticateUTxOs<RetiredOperatorDatum>(
+      allUtxos,
+      params.retiredOperatorPolicyId,
+      RetiredOperatorDatum,
+    );
   });
 
 /**
@@ -131,17 +135,13 @@ export const incompleteRetiredOperatorInitTxProgram = (
   lucid: LucidEvolution,
   params: RetiredOperatorInitParams,
 ): Effect.Effect<TxBuilder> =>
-  Effect.gen(function* () {
-    const rootData = "";
-
-    return yield* incompleteInitLinkedListTxProgram(lucid, {
-      validator: params.validator,
-      rootAssetName: RETIRED_OPERATORS_ROOT_ASSET_NAME,
-      data: rootData,
-      redeemer: Data.to(
-        { Init: { output_index: params.outputIndex ?? 0n } },
-        RetiredOperatorMintRedeemer,
-      ),
-      lovelace: params.lovelace,
-    });
+  incompleteInitLinkedListTxProgram(lucid, {
+    validator: params.validator,
+    rootAssetName: RETIRED_OPERATORS_ROOT_ASSET_NAME,
+    data: "",
+    redeemer: Data.to(
+      { Init: { output_index: params.outputIndex ?? 0n } },
+      RetiredOperatorMintRedeemer,
+    ),
+    lovelace: params.lovelace,
   });

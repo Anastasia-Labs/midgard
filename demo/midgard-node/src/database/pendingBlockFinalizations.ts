@@ -1,15 +1,17 @@
-import { Database } from "@/services/database.js";
+import { createHash } from "node:crypto";
+
 import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
-import { createHash } from "node:crypto";
+
+import * as DepositsDB from "@/database/deposits.js";
 import {
   clearTable,
   DatabaseError,
   sqlErrorToDatabaseError,
 } from "@/database/utils/common.js";
-import * as DepositsDB from "@/database/deposits.js";
-import * as WithdrawalsDB from "@/database/withdrawals.js";
 import * as TxTable from "@/database/utils/tx.js";
+import * as WithdrawalsDB from "@/database/withdrawals.js";
+import { Database } from "@/services/database.js";
 
 export const tableName = "pending_block_finalizations";
 const depositsTableName = "pending_block_finalization_deposits";
@@ -140,17 +142,12 @@ export type PrepareInput = {
   readonly blockEndTime: Date;
   readonly depositEventIds: readonly Buffer[];
   readonly depositEntries: readonly DepositsDB.Entry[];
-  readonly withdrawalEventIds?: readonly Buffer[];
-  readonly withdrawalEntries?: readonly WithdrawalsDB.Entry[];
+  readonly withdrawalEventIds: readonly Buffer[];
+  readonly withdrawalEntries: readonly WithdrawalsDB.Entry[];
   readonly mempoolTxIds: readonly Buffer[];
   readonly mempoolTxs: readonly TxTable.EntryWithTimeStamp[];
   readonly mempoolTxSourceTable: string;
 };
-
-const uniqueBuffers = (values: readonly Buffer[]): readonly Buffer[] =>
-  Array.from(new Set(values.map((value) => value.toString("hex")))).map((hex) =>
-    Buffer.from(hex, "hex"),
-  );
 
 const sha256 = (payload: Buffer): Buffer =>
   createHash("sha256").update(payload).digest();
@@ -256,10 +253,9 @@ const retrieveMembers = (
   headerHash: Buffer,
 ): Effect.Effect<readonly MemberRecord[], never, never> =>
   Effect.gen(function* () {
-    const rows = yield* sql<MemberRecord>`SELECT * FROM ${sql(memberTableName)}
+    return yield* sql<MemberRecord>`SELECT * FROM ${sql(memberTableName)}
       WHERE ${sql(MemberColumns.HEADER_HASH)} = ${headerHash}
       ORDER BY ${sql(MemberColumns.ORDINAL)} ASC`;
-    return rows;
   }).pipe(Effect.orDie);
 
 const retrieveRecord = (
@@ -267,14 +263,15 @@ const retrieveRecord = (
   row: Row,
 ): Effect.Effect<Record, never, never> =>
   Effect.gen(function* () {
-    const [depositEventIds, withdrawalEventIds, mempoolTxIds] = yield* Effect.all(
-      [
-        retrieveMembers(sql, depositsTableName, row[Columns.HEADER_HASH]),
-        retrieveMembers(sql, withdrawalsTableName, row[Columns.HEADER_HASH]),
-        retrieveMembers(sql, txsTableName, row[Columns.HEADER_HASH]),
-      ],
-      { concurrency: "unbounded" },
-    );
+    const [depositEventIds, withdrawalEventIds, mempoolTxIds] =
+      yield* Effect.all(
+        [
+          retrieveMembers(sql, depositsTableName, row[Columns.HEADER_HASH]),
+          retrieveMembers(sql, withdrawalsTableName, row[Columns.HEADER_HASH]),
+          retrieveMembers(sql, txsTableName, row[Columns.HEADER_HASH]),
+        ],
+        { concurrency: "unbounded" },
+      );
     return {
       ...row,
       depositEventIds: depositEventIds.map(
@@ -283,7 +280,9 @@ const retrieveRecord = (
       withdrawalEventIds: withdrawalEventIds.map(
         (member) => member[MemberColumns.MEMBER_ID],
       ),
-      mempoolTxIds: mempoolTxIds.map((member) => member[MemberColumns.MEMBER_ID]),
+      mempoolTxIds: mempoolTxIds.map(
+        (member) => member[MemberColumns.MEMBER_ID],
+      ),
       depositMembers: depositEventIds,
       withdrawalMembers: withdrawalEventIds,
       txMembers: mempoolTxIds,
@@ -301,10 +300,9 @@ export const retrieveActive = (): Effect.Effect<
       WHERE ${sql(Columns.STATUS)} IN ${sql.in(ACTIVE_STATUSES)}
       ORDER BY ${sql(Columns.CREATED_AT)} ASC
       LIMIT 1`;
-    if (rows.length <= 0) {
-      return Option.none();
-    }
-    return Option.some(yield* retrieveRecord(sql, rows[0]!));
+    return rows.length === 0
+      ? Option.none()
+      : Option.some(yield* retrieveRecord(sql, rows[0]!));
   }).pipe(
     Effect.withLogSpan(`retrieveActive ${tableName}`),
     sqlErrorToDatabaseError(
@@ -321,10 +319,9 @@ export const retrieveByHeaderHash = (
     const rows = yield* sql<Row>`SELECT * FROM ${sql(tableName)}
       WHERE ${sql(Columns.HEADER_HASH)} = ${headerHash}
       LIMIT 1`;
-    if (rows.length <= 0) {
-      return Option.none();
-    }
-    return Option.some(yield* retrieveRecord(sql, rows[0]!));
+    return rows.length === 0
+      ? Option.none()
+      : Option.some(yield* retrieveRecord(sql, rows[0]!));
   }).pipe(
     Effect.withLogSpan(`retrieveByHeaderHash ${tableName}`),
     sqlErrorToDatabaseError(
@@ -338,34 +335,29 @@ export const preparePendingSubmission = (
 ): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    const depositEventIds = uniqueBuffers(input.depositEventIds);
-    const withdrawalEventIds = uniqueBuffers(input.withdrawalEventIds ?? []);
-    const mempoolTxIds = uniqueBuffers(input.mempoolTxIds);
     yield* assertSameIdSet(
       tableName,
       "deposit",
-      depositEventIds,
+      input.depositEventIds,
       input.depositEntries.map((entry) => entry[DepositsDB.Columns.ID]),
     );
     yield* assertSameIdSet(
       tableName,
       "withdrawal",
-      withdrawalEventIds,
-      (input.withdrawalEntries ?? []).map(
-        (entry) => entry[WithdrawalsDB.Columns.ID],
-      ),
+      input.withdrawalEventIds,
+      input.withdrawalEntries.map((entry) => entry[WithdrawalsDB.Columns.ID]),
     );
     yield* assertSameIdSet(
       tableName,
       "mempool tx",
-      mempoolTxIds,
+      input.mempoolTxIds,
       input.mempoolTxs.map((entry) => entry[TxTable.Columns.TX_ID]),
     );
     const depositMembers = input.depositEntries.map((entry, ordinal) =>
       depositMemberEntry(input.headerHash, entry, ordinal),
     );
     const withdrawalMembers = yield* Effect.forEach(
-      input.withdrawalEntries ?? [],
+      input.withdrawalEntries,
       (entry, ordinal) =>
         withdrawalMemberEntry(input.headerHash, entry, ordinal),
     );
@@ -410,8 +402,7 @@ export const preparePendingSubmission = (
             input.metadata.stateQueueLeaseToken,
           [Columns.BASE_SNAPSHOT_ID]: input.metadata.baseSnapshotId,
           [Columns.BASE_TAIL_OUT_REF]: input.metadata.baseTailOutRef,
-          [Columns.BASE_TAIL_HEADER_HASH]:
-            input.metadata.baseTailHeaderHash,
+          [Columns.BASE_TAIL_HEADER_HASH]: input.metadata.baseTailHeaderHash,
           [Columns.BASE_TAIL_DATUM_CBOR]: input.metadata.baseTailDatumCbor,
           [Columns.BASE_UTXOS_ROOT]: input.metadata.baseRoots.utxosRoot,
           [Columns.BASE_TRANSACTIONS_ROOT]:
@@ -421,8 +412,7 @@ export const preparePendingSubmission = (
             input.metadata.baseRoots.withdrawalsRoot,
           [Columns.BLOCK_START_TIME]: input.metadata.blockStartTime,
           [Columns.BLOCK_END_TIME]: input.blockEndTime,
-          [Columns.EXPECTED_UTXOS_ROOT]:
-            input.metadata.expectedRoots.utxosRoot,
+          [Columns.EXPECTED_UTXOS_ROOT]: input.metadata.expectedRoots.utxosRoot,
           [Columns.EXPECTED_TRANSACTIONS_ROOT]:
             input.metadata.expectedRoots.transactionsRoot,
           [Columns.EXPECTED_DEPOSITS_ROOT]:
@@ -443,9 +433,7 @@ export const preparePendingSubmission = (
           )}`;
         }
         if (txMembers.length > 0) {
-          yield* sql`INSERT INTO ${sql(txsTableName)} ${sql.insert(
-            txMembers,
-          )}`;
+          yield* sql`INSERT INTO ${sql(txsTableName)} ${sql.insert(txMembers)}`;
         }
       }),
     );
@@ -672,25 +660,16 @@ export const assertActiveJournalPayloadsComplete: Effect.Effect<
     return;
   }
   const record = active.value;
-  const incompleteTxMember = record.txMembers.find(
-    (member) =>
-      member[MemberColumns.PAYLOAD_CBOR].length <= 0 ||
-      member[MemberColumns.PAYLOAD_SHA256].length !== 32,
-  );
-  const incompleteDepositMember = record.depositMembers.find(
-    (member) =>
-      member[MemberColumns.PAYLOAD_CBOR].length <= 0 ||
-      member[MemberColumns.PAYLOAD_SHA256].length !== 32,
-  );
-  const incompleteWithdrawalMember = record.withdrawalMembers.find(
-    (member) =>
-      member[MemberColumns.PAYLOAD_CBOR].length <= 0 ||
-      member[MemberColumns.PAYLOAD_SHA256].length !== 32,
-  );
+  const hasIncompletePayload = (members: readonly MemberRecord[]): boolean =>
+    members.some(
+      (member) =>
+        member[MemberColumns.PAYLOAD_CBOR].length <= 0 ||
+        member[MemberColumns.PAYLOAD_SHA256].length !== 32,
+    );
   if (
-    incompleteTxMember !== undefined ||
-    incompleteDepositMember !== undefined ||
-    incompleteWithdrawalMember !== undefined
+    [record.txMembers, record.depositMembers, record.withdrawalMembers].some(
+      hasIncompletePayload,
+    )
   ) {
     return yield* Effect.fail(
       new DatabaseError({
@@ -701,9 +680,7 @@ export const assertActiveJournalPayloadsComplete: Effect.Effect<
       }),
     );
   }
-}).pipe(
-  Effect.withLogSpan(`assertActiveJournalPayloadsComplete ${tableName}`),
-);
+}).pipe(Effect.withLogSpan(`assertActiveJournalPayloadsComplete ${tableName}`));
 
 export const clear = Effect.all(
   [

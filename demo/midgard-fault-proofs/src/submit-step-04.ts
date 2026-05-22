@@ -1,48 +1,50 @@
 import {
-  CML,
-  Data,
-  coreToTxOutput,
-  toUnit,
-  type LucidEvolution,
-  type Network,
-  type RedeemerBuilder,
-  type TxBuilder,
-  type UTxO,
-} from "@lucid-evolution/lucid";
-import {
   DoubleSpendStep04Datum,
   DoubleSpendStep04SpendRedeemer,
   FraudProofComputationThreadRedeemer,
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
+  type MidgardTxInput,
   resolveMintPolicyRedeemerTxInfoIndex,
   resolveMintPolicyTxInfoRedeemerIndexFromPolicySet,
-  type MidgardTxInput,
 } from "@al-ft/midgard-sdk";
+import {
+  CML,
+  coreToTxOutput,
+  Data,
+  type LucidEvolution,
+  type Network,
+  type RedeemerBuilder,
+  toUnit,
+  type TxBuilder,
+  type UTxO,
+} from "@lucid-evolution/lucid";
+
+import { parseDoubleSpentInputIndex } from "./double-spend-inputs.js";
 import {
   compareOutRefs,
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
   makeLucidForSubmit,
   outRefLabel,
+  outRefsEqual,
   parseOutRef,
   readJsonFile,
   resolveDoubleSpendDeploymentContracts,
-  resolveProverSigner,
   type ResolvedProverSigner,
+  resolveProverSigner,
   type SubmitProviderConfig,
 } from "./runtime.js";
-import {
-  requireComputationThreadToken,
-  selectFeeInput,
-} from "./submit-step-01.js";
-import { hashSpendInputCbors, parseSpendInputCbors } from "./submit-step-03.js";
-import { parseDoubleSpentInputIndex } from "./double-spend-inputs.js";
 import {
   ensureSpendInputsReferenceWitness,
   excludeUtxo,
   spendInputsWitnessFromCbors,
 } from "./spend-input-witness.js";
+import {
+  requireComputationThreadToken,
+  selectFeeInput,
+} from "./submit-step-01.js";
+import { hashSpendInputCbors, parseSpendInputCbors } from "./submit-step-03.js";
 
 const STEP_04_INITIAL_OUTPUT_INDEX = 0n;
 const STEP_04_SCRIPT_SPEND_REDEEMER_COUNT = 1;
@@ -141,10 +143,8 @@ const findInputIndex = (tx: CML.Transaction, target: UTxO): bigint => {
       outputIndex: Number(input.index()),
     };
   }).sort(compareOutRefs);
-  const inputIndex = orderedInputs.findIndex(
-    (input) =>
-      input.txHash === target.txHash &&
-      input.outputIndex === target.outputIndex,
+  const inputIndex = orderedInputs.findIndex((input) =>
+    outRefsEqual(input, target),
   );
   if (inputIndex < 0) {
     throw new Error(`Draft transaction does not spend ${outRefLabel(target)}.`);

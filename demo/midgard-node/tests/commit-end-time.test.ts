@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest";
 import {
   Emulator,
-  Lucid,
   generateEmulatorAccount,
+  Lucid,
 } from "@lucid-evolution/lucid";
+import { describe, expect, it } from "vitest";
+
 import {
   EXPLICIT_COMMIT_DEFAULT_CANDIDATE_FUTURE_BUFFER_MS,
   resolveAlignedCommitEndTime,
@@ -42,12 +43,15 @@ describe("commit end-time resolver", () => {
     const zeroTime = provider.time - provider.slot * 1000;
     const latestEndTime = zeroTime + provider.slot * 1000;
 
-    const { alignedCandidateEndTime, minimumMonotonicEndTime, resolvedEndTime } =
-      resolveAlignedCommitEndTime({
-        lucid,
-        latestEndTime,
-        candidateEndTime: latestEndTime - 5_000,
-      });
+    const {
+      alignedCandidateEndTime,
+      minimumMonotonicEndTime,
+      resolvedEndTime,
+    } = resolveAlignedCommitEndTime({
+      lucid,
+      latestEndTime,
+      candidateEndTime: latestEndTime - 5_000,
+    });
 
     expect(alignedCandidateEndTime).toBeLessThanOrEqual(latestEndTime);
     expect(minimumMonotonicEndTime).toBeGreaterThan(latestEndTime);
@@ -65,12 +69,15 @@ describe("commit end-time resolver", () => {
     const latestEndTime = zeroTime + provider.slot * 1000;
     const candidateEndTime = latestEndTime + 2_500;
 
-    const { alignedCandidateEndTime, minimumMonotonicEndTime, resolvedEndTime } =
-      resolveAlignedCommitEndTime({
-        lucid,
-        latestEndTime,
-        candidateEndTime,
-      });
+    const {
+      alignedCandidateEndTime,
+      minimumMonotonicEndTime,
+      resolvedEndTime,
+    } = resolveAlignedCommitEndTime({
+      lucid,
+      latestEndTime,
+      candidateEndTime,
+    });
 
     expect(alignedCandidateEndTime).toBe(latestEndTime + 2_000);
     expect(minimumMonotonicEndTime).toBeGreaterThan(latestEndTime);

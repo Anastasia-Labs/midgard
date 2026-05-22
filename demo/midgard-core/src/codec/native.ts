@@ -1,4 +1,6 @@
 import { CML } from "@lucid-evolution/lucid";
+
+import { decodeMidgardAddressBytes } from "./address.js";
 import {
   asArray,
   asBytes,
@@ -8,20 +10,6 @@ import {
 } from "./cbor.js";
 import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
 import { computeHash32, ensureHash32, type Hash32 } from "./hash.js";
-import { decodeMidgardTxOutput } from "./output.js";
-import { decodeMidgardAddressBytes } from "./address.js";
-import {
-  decodeMidgardVersionedScriptListPreimage,
-  type MidgardVersionedScript,
-} from "./versioned-script.js";
-import { midgardValueToCmlValue, type MidgardValue } from "./value.js";
-import { cardanoTxBytesToMidgardNativeTxCanonical } from "./native-cardano-conversion.js";
-import {
-  EMPTY_NULL_ROOT,
-  MIDGARD_NATIVE_NETWORK_ID_NONE,
-  MIDGARD_NATIVE_TX_VERSION,
-  MIDGARD_POSIX_TIME_NONE,
-} from "./native-constants.js";
 import {
   decodeNativeTxBodyCanonicalCbor,
   decodeNativeTxBodyCanonicalValue,
@@ -33,7 +21,22 @@ import {
   encodeNativeTxBodyCompactCbor,
   encodeNativeTxBodyCompactValue,
 } from "./native-body.js";
+import { cardanoTxBytesToMidgardNativeTxCanonical } from "./native-cardano-conversion.js";
 import { verifyNativeTxFullConsistency } from "./native-consistency.js";
+import {
+  EMPTY_NULL_ROOT,
+  MIDGARD_NATIVE_NETWORK_ID_NONE,
+  MIDGARD_NATIVE_TX_VERSION,
+  MIDGARD_POSIX_TIME_NONE,
+} from "./native-constants.js";
+import {
+  asFixedArray,
+  asSigned,
+  decodeValidityCode,
+  decodeVersion,
+  encodeValidityCode,
+  type MidgardTxValidity,
+} from "./native-validation.js";
 import {
   decodeNativeTxWitnessPreimagesCbor,
   decodeNativeTxWitnessSetCanonicalValue,
@@ -43,14 +46,12 @@ import {
   encodeNativeTxWitnessSetCanonicalValue,
   encodeNativeTxWitnessSetCompactCbor,
 } from "./native-witness.js";
+import { decodeMidgardTxOutput } from "./output.js";
+import { midgardValueToCmlValue } from "./value.js";
 import {
-  asFixedArray,
-  asSigned,
-  decodeValidityCode,
-  decodeVersion,
-  encodeValidityCode,
-  type MidgardTxValidity,
-} from "./native-validation.js";
+  decodeMidgardVersionedScriptListPreimage,
+  type MidgardVersionedScript,
+} from "./versioned-script.js";
 export {
   EMPTY_CBOR_LIST,
   EMPTY_CBOR_NULL,
@@ -60,8 +61,8 @@ export {
   MIDGARD_POSIX_TIME_NONE,
 } from "./native-constants.js";
 export {
-  MidgardTxValidityCodes,
   type MidgardTxValidity,
+  MidgardTxValidityCodes,
 } from "./native-validation.js";
 
 export type MidgardNativeTxCompact = {
@@ -289,29 +290,33 @@ export const decodeMidgardNativeTxWitnessPreimages = (
 ): MidgardNativeTxWitnessSetCanonical =>
   decodeNativeTxWitnessPreimagesCbor(bytes);
 
-export const encodeMidgardNativeTxFull = (
-  tx: MidgardNativeTxFull,
+const hasDerivedCompact = (
+  tx: MidgardNativeTxCanonical | MidgardNativeTxFull,
+): tx is MidgardNativeTxFull => "compact" in tx;
+
+export const encodeMidgardNativeTxCanonical = (
+  tx: MidgardNativeTxCanonical | MidgardNativeTxFull,
   options: MidgardNativeCodecOptions = {},
 ): Buffer => {
-  if (options.enforceConsistency !== false) {
+  if (options.enforceConsistency !== false && hasDerivedCompact(tx)) {
     verifyMidgardNativeTxFullConsistency(tx);
   }
+  const version = decodeVersion(tx.version, "transaction.version");
   return encodeCbor([
-    decodeVersion(tx.version, "transaction.version"),
+    version,
     encodeNativeTxBodyCanonicalValue(tx.body),
-    encodeNativeTxWitnessSetCanonicalValue(tx.version, tx.witnessSet),
+    encodeNativeTxWitnessSetCanonicalValue(version, tx.witnessSet),
     encodeValidityCode(tx.validity),
   ]);
 };
 
-export const decodeMidgardNativeTxFull = (
+export const decodeMidgardNativeTxCanonical = (
   bytes: Uint8Array,
-  options: MidgardNativeCodecOptions = {},
-): MidgardNativeTxFull => {
+): MidgardNativeTxCanonical => {
   const decoded = decodeSingleCbor(bytes);
   const v = asFixedArray(decoded, 4, "transaction");
   const version = decodeVersion(v[0], "transaction[0]");
-  const canonical: MidgardNativeTxCanonical = {
+  return {
     version,
     body: decodeNativeTxBodyCanonicalValue(v[1], "transaction[1]"),
     witnessSet: decodeNativeTxWitnessSetCanonicalValue(
@@ -321,7 +326,15 @@ export const decodeMidgardNativeTxFull = (
     ),
     validity: decodeValidityCode(v[3], "transaction[3]"),
   };
-  const tx = materializeMidgardNativeTxFromCanonical(canonical);
+};
+
+export const decodeMidgardNativeTxFullFromCanonicalCbor = (
+  bytes: Uint8Array,
+  options: MidgardNativeCodecOptions = {},
+): MidgardNativeTxFull => {
+  const tx = materializeMidgardNativeTxFromCanonical(
+    decodeMidgardNativeTxCanonical(bytes),
+  );
   if (options.enforceConsistency !== false) {
     verifyMidgardNativeTxFullConsistency(tx);
   }
@@ -343,9 +356,7 @@ export const decodeMidgardNativeByteListPreimage = (
 ): Buffer[] => {
   const decoded = decodeSingleCbor(preimageCbor);
   const arr = asArray(decoded, fieldName);
-  return arr.map((item, index) =>
-    Buffer.from(asBytes(item, `${fieldName}[${index}]`)),
-  );
+  return arr.map((item, index) => asBytes(item, `${fieldName}[${index}]`));
 };
 
 export const cardanoTxBytesToMidgardNativeTxFull = (
@@ -359,11 +370,15 @@ export const cardanoTxBytesToMidgardNativeTxFull = (
   return materializeMidgardNativeTxFromCanonical(canonical);
 };
 
-export const cardanoTxBytesToMidgardNativeTxFullBytes = (
+export const cardanoTxBytesToMidgardNativeTxCanonicalCbor = (
   cardanoTxBytes: Uint8Array,
 ): Buffer =>
-  encodeMidgardNativeTxFull(
-    cardanoTxBytesToMidgardNativeTxFull(cardanoTxBytes),
+  encodeMidgardNativeTxCanonical(
+    cardanoTxBytesToMidgardNativeTxCanonical(cardanoTxBytes, {
+      nativeTxVersion: MIDGARD_NATIVE_TX_VERSION,
+      posixTimeNone: MIDGARD_POSIX_TIME_NONE,
+      networkIdNone: MIDGARD_NATIVE_NETWORK_ID_NONE,
+    }),
   );
 
 const decodeNativeCredentialObserver = (
@@ -588,9 +603,6 @@ const decodeNativeScriptsToCardano = (
     preimageCbor,
     "native.script_tx_wits",
   );
-  if (scripts.length === 0) {
-    return {};
-  }
   const nativeScripts = CML.NativeScriptList.new();
   const plutusV3Scripts = CML.PlutusV3ScriptList.new();
   for (let i = 0; i < scripts.length; i++) {

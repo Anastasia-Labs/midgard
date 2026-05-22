@@ -1,47 +1,36 @@
-import { describe, expect, it } from "vitest";
-import fs from "node:fs";
-import path from "node:path";
-import { encode } from "cborg";
-import { CML } from "@lucid-evolution/lucid";
 import {
-  MIDGARD_NATIVE_NETWORK_ID_NONE,
-  MIDGARD_NATIVE_TX_VERSION,
-  MIDGARD_POSIX_TIME_NONE,
-  cardanoTxBytesToMidgardNativeTxFullBytes,
+  cardanoTxBytesToMidgardNativeTxCanonicalCbor,
   computeHash32,
   computeMidgardNativeTxId,
   decodeMidgardNativeTxBodyCompact,
   decodeMidgardNativeTxCompact,
-  decodeMidgardNativeTxFull,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeMidgardNativeTxWitnessSetCompact,
   deriveMidgardNativeTxBodyCompact,
   deriveMidgardNativeTxCompact,
   deriveMidgardNativeTxWitnessSetCompact,
   encodeMidgardNativeTxBodyCompact,
   encodeMidgardNativeTxCompact,
-  encodeMidgardNativeTxFull,
+  encodeMidgardNativeTxCanonical,
   encodeMidgardNativeTxWitnessSetCompact,
   encodeMidgardVersionedScriptListPreimage,
-  midgardNativeTxFullToCardanoTxEncoding,
+  MIDGARD_NATIVE_NETWORK_ID_NONE,
+  MIDGARD_NATIVE_TX_VERSION,
+  MIDGARD_POSIX_TIME_NONE,
   type MidgardNativeTxBodyCanonical,
   type MidgardNativeTxFull,
+  midgardNativeTxFullToCardanoTxEncoding,
   type MidgardNativeTxWitnessSetCanonical,
   verifyMidgardNativeTxFullConsistency,
 } from "@al-ft/midgard-core/codec";
+import { CML } from "@lucid-evolution/lucid";
+import { encode } from "cborg";
+import { describe, expect, it } from "vitest";
+
 import {
   makeCardanoTxOutput,
   makeMidgardTxOutput,
 } from "./midgard-output-helpers.js";
-
-type TxFixture = {
-  readonly cborHex: string;
-  readonly txId: string;
-};
-
-const fixturePath = path.resolve(__dirname, "./txs/txs_0.json");
-const txFixtures = JSON.parse(
-  fs.readFileSync(fixturePath, "utf8"),
-) as readonly TxFixture[];
 
 const mkHash = (tag: string): Buffer => computeHash32(Buffer.from(tag, "utf8"));
 
@@ -149,8 +138,9 @@ describe("midgard native tx codec - strict roundtrip", () => {
       decodeMidgardNativeTxCompact(encodeMidgardNativeTxCompact(full.compact)),
     ).toEqual(full.compact);
 
-    const encodedFull = encodeMidgardNativeTxFull(full);
-    const decodedFull = decodeMidgardNativeTxFull(encodedFull);
+    const encodedCanonical = encodeMidgardNativeTxCanonical(full);
+    const decodedFull =
+      decodeMidgardNativeTxFullFromCanonicalCbor(encodedCanonical);
     expect(decodedFull).toEqual(full);
   });
 
@@ -198,7 +188,7 @@ describe("midgard native tx codec - consistency checks", () => {
 
     tampered.compact.transactionBody.outputsHash[0] ^= 0xff;
 
-    expect(() => encodeMidgardNativeTxFull(tampered)).toThrow();
+    expect(() => encodeMidgardNativeTxCanonical(tampered)).toThrow();
   });
 
   it("rejects inconsistent body hash/preimage pairs", () => {
@@ -213,7 +203,7 @@ describe("midgard native tx codec - consistency checks", () => {
 
     tampered.body.outputsPreimageCbor[0] ^= 0xff;
 
-    expect(() => encodeMidgardNativeTxFull(tampered)).toThrow();
+    expect(() => encodeMidgardNativeTxCanonical(tampered)).toThrow();
   });
 
   it("accepts when explicit consistency verification passes", () => {
@@ -231,7 +221,7 @@ describe("midgard native tx codec - consistency checks", () => {
       },
     };
 
-    expect(() => encodeMidgardNativeTxFull(tampered)).toThrow(
+    expect(() => encodeMidgardNativeTxCanonical(tampered)).toThrow(
       /transaction_full.version must match transaction_compact.version/i,
     );
   });
@@ -242,9 +232,10 @@ describe("midgard native tx codec - cardano compatibility bridge", () => {
 
   it("converts Cardano tx fixtures into Midgard native full tx bytes", () => {
     for (const cardanoTx of sampleTxBytes) {
-      const nativeFullBytes =
-        cardanoTxBytesToMidgardNativeTxFullBytes(cardanoTx);
-      const decoded = decodeMidgardNativeTxFull(nativeFullBytes);
+      const nativeCanonicalCbor =
+        cardanoTxBytesToMidgardNativeTxCanonicalCbor(cardanoTx);
+      const decoded =
+        decodeMidgardNativeTxFullFromCanonicalCbor(nativeCanonicalCbor);
       const cardanoDecoded = CML.Transaction.from_cbor_bytes(cardanoTx);
       const networkId = cardanoDecoded.body().network_id();
       const expectedNetworkId =
@@ -272,10 +263,11 @@ describe("midgard native tx codec - cardano compatibility bridge", () => {
       parsed.auxiliary_data(),
     );
 
-    const nativeFullBytes = cardanoTxBytesToMidgardNativeTxFullBytes(
+    const nativeCanonicalCbor = cardanoTxBytesToMidgardNativeTxCanonicalCbor(
       Buffer.from(mutated.to_cbor_bytes()),
     );
-    const decoded = decodeMidgardNativeTxFull(nativeFullBytes);
+    const decoded =
+      decodeMidgardNativeTxFullFromCanonicalCbor(nativeCanonicalCbor);
     const emptyList = Buffer.from("80", "hex");
 
     expect(decoded.body.mintPreimageCbor).toEqual(emptyList);
@@ -302,10 +294,11 @@ describe("midgard native tx codec - cardano compatibility bridge", () => {
       parsed.auxiliary_data(),
     );
 
-    const nativeFullBytes = cardanoTxBytesToMidgardNativeTxFullBytes(
+    const nativeCanonicalCbor = cardanoTxBytesToMidgardNativeTxCanonicalCbor(
       Buffer.from(mutated.to_cbor_bytes()),
     );
-    const decoded = decodeMidgardNativeTxFull(nativeFullBytes);
+    const decoded =
+      decodeMidgardNativeTxFullFromCanonicalCbor(nativeCanonicalCbor);
     const expectedMintPreimage = Buffer.from(
       encode(
         new Map([
@@ -341,10 +334,11 @@ describe("midgard native tx codec - cardano compatibility bridge", () => {
       parsed.auxiliary_data(),
     );
 
-    const nativeFullBytes = cardanoTxBytesToMidgardNativeTxFullBytes(
+    const nativeCanonicalCbor = cardanoTxBytesToMidgardNativeTxCanonicalCbor(
       Buffer.from(mutated.to_cbor_bytes()),
     );
-    const decoded = decodeMidgardNativeTxFull(nativeFullBytes);
+    const decoded =
+      decodeMidgardNativeTxFullFromCanonicalCbor(nativeCanonicalCbor);
 
     expect(decoded.body.requiredObserversPreimageCbor).toEqual(
       encodeByteList([Buffer.from(scriptHash.to_raw_bytes())]),
@@ -386,10 +380,11 @@ describe("midgard native tx codec - cardano compatibility bridge", () => {
       parsed.auxiliary_data(),
     );
 
-    const nativeFullBytes = cardanoTxBytesToMidgardNativeTxFullBytes(
+    const nativeCanonicalCbor = cardanoTxBytesToMidgardNativeTxCanonicalCbor(
       Buffer.from(mutated.to_cbor_bytes()),
     );
-    const decoded = decodeMidgardNativeTxFull(nativeFullBytes);
+    const decoded =
+      decodeMidgardNativeTxFullFromCanonicalCbor(nativeCanonicalCbor);
 
     expect(decoded.body.scriptIntegrityHash).toEqual(scriptDataHash);
     expect(decoded.body.auxiliaryDataHash).toEqual(auxiliaryDataHash);
@@ -422,7 +417,7 @@ describe("midgard native tx codec - cardano compatibility bridge", () => {
     );
 
     expect(() =>
-      cardanoTxBytesToMidgardNativeTxFullBytes(
+      cardanoTxBytesToMidgardNativeTxCanonicalCbor(
         Buffer.from(mutated.to_cbor_bytes()),
       ),
     ).toThrow(/Plutus datum witnesses/i);
@@ -445,7 +440,7 @@ describe("midgard native tx codec - cardano compatibility bridge", () => {
     );
 
     expect(() =>
-      cardanoTxBytesToMidgardNativeTxFullBytes(
+      cardanoTxBytesToMidgardNativeTxCanonicalCbor(
         Buffer.from(mutated.to_cbor_bytes()),
       ),
     ).toThrow();
@@ -453,8 +448,8 @@ describe("midgard native tx codec - cardano compatibility bridge", () => {
 
   it("re-encodes supported Midgard-native transactions into Cardano tx CBOR", () => {
     const cardanoTx = sampleTxBytes[0];
-    const nativeTx = decodeMidgardNativeTxFull(
-      cardanoTxBytesToMidgardNativeTxFullBytes(cardanoTx),
+    const nativeTx = decodeMidgardNativeTxFullFromCanonicalCbor(
+      cardanoTxBytesToMidgardNativeTxCanonicalCbor(cardanoTx),
     );
 
     const reEncoded = midgardNativeTxFullToCardanoTxEncoding(nativeTx);
@@ -463,8 +458,8 @@ describe("midgard native tx codec - cardano compatibility bridge", () => {
   });
 
   it("can omit vkey witnesses for eval-only Cardano export", () => {
-    const full = decodeMidgardNativeTxFull(
-      cardanoTxBytesToMidgardNativeTxFullBytes(sampleTxBytes[0]),
+    const full = decodeMidgardNativeTxFullFromCanonicalCbor(
+      cardanoTxBytesToMidgardNativeTxCanonicalCbor(sampleTxBytes[0]),
     );
     const signer = CML.PrivateKey.generate_ed25519();
     const vkeyWitness = Buffer.from(
@@ -559,8 +554,8 @@ describe("midgard native tx codec - cardano compatibility bridge", () => {
   });
 
   it("maps non-success Midgard validity states to Cardano script-invalid txs", () => {
-    const full = decodeMidgardNativeTxFull(
-      cardanoTxBytesToMidgardNativeTxFullBytes(sampleTxBytes[0]),
+    const full = decodeMidgardNativeTxFullFromCanonicalCbor(
+      cardanoTxBytesToMidgardNativeTxCanonicalCbor(sampleTxBytes[0]),
     );
     const invalid: MidgardNativeTxFull = {
       ...full,
@@ -580,8 +575,8 @@ describe("midgard native tx codec - cardano compatibility bridge", () => {
   });
 
   it("preserves mint, script integrity hash, auxiliary data hash, and redeemers", () => {
-    const full = decodeMidgardNativeTxFull(
-      cardanoTxBytesToMidgardNativeTxFullBytes(sampleTxBytes[0]),
+    const full = decodeMidgardNativeTxFullFromCanonicalCbor(
+      cardanoTxBytesToMidgardNativeTxCanonicalCbor(sampleTxBytes[0]),
     );
     const policyId = Buffer.from("33".repeat(28), "hex");
     const assetName = Buffer.from("aa", "hex");

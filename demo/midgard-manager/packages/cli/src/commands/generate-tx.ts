@@ -10,6 +10,8 @@ import { fileURLToPath } from 'url';
 import { getWallet } from '../config/wallets.js';
 import { listWallets } from '../config/wallets.js';
 import { displayStatus } from '../utils/display.js';
+import { formatError } from '../utils/errors.js';
+import { getTransactionTypeDescription } from '../utils/tx-generator.js';
 
 /**
  * Transaction-generator commands for the manager CLI.
@@ -108,10 +110,10 @@ export const generateTxCommand = Command.make(
                 return;
               }
 
-              // Interactive configuration
               const spinner = ora('Preparing interactive setup...').start();
               spinner.succeed('Interactive setup ready');
 
+              // Interactive configuration
               console.log(chalk.blue.bold('\n📝 Transaction Generator Configuration\n'));
               console.log(
                 chalk.dim(
@@ -267,7 +269,11 @@ export const generateTxCommand = Command.make(
 
               const summaryTable = [
                 ['Setting', 'Value', 'Description'],
-                ['Type', config.transactionType, getTypeDescription(config.transactionType)],
+                [
+                  'Type',
+                  config.transactionType,
+                  getTransactionTypeDescription(config.transactionType),
+                ],
                 config.transactionType === 'mixed'
                   ? [
                       'Ratio',
@@ -309,13 +315,7 @@ export const generateTxCommand = Command.make(
 
               console.log(chalk.green('\nStarting transaction generator...'));
             } catch (error) {
-              console.error(
-                chalk.red(
-                  `Error setting up interactive mode: ${
-                    error instanceof Error ? error.message : String(error)
-                  }`
-                )
-              );
+              console.error(chalk.red(`Error setting up interactive mode: ${formatError(error)}`));
               return;
             }
           } else {
@@ -334,9 +334,9 @@ export const generateTxCommand = Command.make(
             return;
           }
 
-          // Start the generator with wallet configuration
           startSpinner = ora('Starting transaction generator...').start();
 
+          // Start the generator with wallet configuration
           await startGenerator({
             transactionType: config.transactionType,
             oneToOneRatio: config.oneToOneRatio,
@@ -384,9 +384,7 @@ export const generateTxCommand = Command.make(
           });
         } catch (error) {
           startSpinner?.fail('Failed to start transaction generator');
-          console.error(
-            chalk.red(`Error: ${error instanceof Error ? error.message : String(error)}`)
-          );
+          console.error(chalk.red(`Error: ${formatError(error)}`));
 
           if (error instanceof Error && error.message.includes('connection')) {
             console.log(chalk.yellow('\nTroubleshooting:'));
@@ -413,9 +411,7 @@ export const stopTxCommand = Command.make('stop-tx', {}, () => {
         spinner.succeed('Transaction generator stopped');
       } catch (error) {
         spinner.fail('Failed to stop transaction generator');
-        console.error(
-          chalk.red(`Error: ${error instanceof Error ? error.message : String(error)}`)
-        );
+        console.error(chalk.red(`Error: ${formatError(error)}`));
       }
     })
   );
@@ -437,11 +433,11 @@ export const txStatusCommand = Command.make('tx-status', {}, () => {
         const MONOREPO_ROOT = join(__dirname, '../../../../../..');
         const PROJECT_ROOT = join(MONOREPO_ROOT, 'demo/midgard-manager');
 
-        // Load configurations from project's config directory
         const CONFIG_DIR = join(PROJECT_ROOT, 'config');
         const settingsPath = join(CONFIG_DIR, 'settings.json');
         const nodeConfigPath = join(CONFIG_DIR, 'node.json');
 
+        // Load configurations from project's config directory
         // Load node config
         let nodeConfig = { endpoint: 'http://localhost:3000' };
         try {
@@ -456,15 +452,10 @@ export const txStatusCommand = Command.make('tx-status', {}, () => {
           }
         } catch (error) {
           console.warn(
-            chalk.green.dim(
-              `Warning: Could not load node config: ${
-                error instanceof Error ? error.message : String(error)
-              }`
-            )
+            chalk.green.dim(`Warning: Could not load node config: ${formatError(error)}`)
           );
         }
 
-        // Load generator config from settings.json
         let generatorConfig = {
           enabled: true,
           maxConcurrent: 10,
@@ -472,6 +463,7 @@ export const txStatusCommand = Command.make('tx-status', {}, () => {
           intervalMs: 1000,
         };
         try {
+          // Load generator config from settings.json
           const configExists = await fs
             .access(settingsPath)
             .then(() => true)
@@ -486,11 +478,7 @@ export const txStatusCommand = Command.make('tx-status', {}, () => {
           }
         } catch (error) {
           console.warn(
-            chalk.green.dim(
-              `Warning: Could not load generator config: ${
-                error instanceof Error ? error.message : String(error)
-              }`
-            )
+            chalk.green.dim(`Warning: Could not load generator config: ${formatError(error)}`)
           );
         }
 
@@ -514,26 +502,8 @@ export const txStatusCommand = Command.make('tx-status', {}, () => {
         console.log(chalk.dim('• Refresh status: midgard-manager tx-status'));
       } catch (error) {
         spinner.fail('Failed to retrieve status');
-        console.error(
-          chalk.red(`Error: ${error instanceof Error ? error.message : String(error)}`)
-        );
+        console.error(chalk.red(`Error: ${formatError(error)}`));
       }
     })
   );
 }).pipe(Command.withDescription('Show the status of the transaction generator'));
-
-/**
- * Maps generator transaction types to short operator-facing descriptions.
- */
-function getTypeDescription(type: string): string {
-  switch (type) {
-    case 'one-to-one':
-      return 'Simple single-output transactions';
-    case 'multi-output':
-      return 'Complex multi-recipient transactions';
-    case 'mixed':
-      return 'Combination of simple and complex transactions';
-    default:
-      return 'Unknown transaction type';
-  }
-}

@@ -193,7 +193,7 @@ export const decodeMidgardAddressBytes = (
     fail("Unsupported Midgard address network id", networkId.toString());
   }
 
-  const isBase = addressType >= 0 && addressType <= 3;
+  const isBase = addressType <= 3;
   const isEnterprise = addressType === 6 || addressType === 7;
   if (!isBase && !isEnterprise) {
     fail("Unsupported Midgard address family", addressType.toString());
@@ -270,15 +270,13 @@ export const isProtectedMidgardAddress = (address: Uint8Array): boolean =>
   decodeMidgardAddressBytes(address).protected;
 
 export const unprotectMidgardAddress = (address: Uint8Array): Buffer => {
-  decodeMidgardAddressBytes(address);
-  const bytes = Buffer.from(address);
+  const bytes = encodeMidgardAddressBytes(address);
   bytes[0] &= ~MIDGARD_PROTECTED_ADDRESS_HEADER_MASK;
   return bytes;
 };
 
 export const protectMidgardAddress = (address: Uint8Array): Buffer => {
-  decodeMidgardAddressBytes(address);
-  const bytes = Buffer.from(address);
+  const bytes = encodeMidgardAddressBytes(address);
   bytes[0] |= MIDGARD_PROTECTED_ADDRESS_HEADER_MASK;
   return bytes;
 };

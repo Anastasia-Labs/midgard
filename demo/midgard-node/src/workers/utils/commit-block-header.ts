@@ -1,11 +1,6 @@
-import { Effect } from "effect";
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  CML,
-  UTxO,
-  coreToUtxo,
-  utxoToCore,
-} from "@lucid-evolution/lucid";
+import { CML, coreToUtxo, UTxO, utxoToCore } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
 
 export type WorkerInput = {
   data: {

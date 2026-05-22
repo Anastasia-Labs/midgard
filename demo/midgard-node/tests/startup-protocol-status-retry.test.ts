@@ -1,9 +1,8 @@
-import { describe, expect, it } from "vitest";
-import { Effect } from "effect";
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  fetchProtocolDeploymentStatusWithStartupRetry,
-} from "@/commands/listen-startup.js";
+import { Effect } from "effect";
+import { describe, expect, it } from "vitest";
+
+import { fetchProtocolDeploymentStatusWithStartupRetry } from "@/commands/listen-startup.js";
 import type { ProtocolDeploymentStatus } from "@/transactions/initialization.js";
 
 const completeStatus = {

@@ -2,12 +2,14 @@ import type {
   ScriptLanguageName,
   ScriptLanguageTag,
 } from "@al-ft/midgard-core/codec";
+
 import type {
   Address,
   MidgardProtocolParameters,
   MidgardUtxo,
   OutRef,
   SubmitTxResult,
+  TxHash,
   TxStatus,
 } from "../core/index.js";
 
@@ -56,8 +58,8 @@ export type MidgardProvider = {
   getProtocolInfo(): Promise<MidgardProtocolInfo>;
   getProtocolParameters(): Promise<MidgardProtocolParameters>;
   getCurrentSlot(): Promise<bigint>;
-  submitTx(txCborHex: string): Promise<SubmitTxResult>;
-  getTxStatus(txId: string): Promise<TxStatus>;
+  submitTx(txCanonicalCborHex: string): Promise<SubmitTxResult>;
+  getTxStatus(txId: TxHash): Promise<TxStatus>;
   diagnostics(): ProviderDiagnostics;
 };
 

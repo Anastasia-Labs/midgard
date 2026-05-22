@@ -7,8 +7,8 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { formatUnknownError } from "@/error-format.js";
-import { compareOutRefs, outRefLabel } from "@/tx-context.js";
+
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
 import {
   handleSignSubmit,
@@ -16,6 +16,7 @@ import {
   TxSignError,
   TxSubmitError,
 } from "@/transactions/utils.js";
+import { compareOutRefs, outRefLabel } from "@/tx-context.js";
 
 export type ReferenceScriptTarget = {
   readonly name: string;

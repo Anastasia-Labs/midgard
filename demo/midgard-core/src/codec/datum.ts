@@ -26,8 +26,15 @@ type PlutusData =
   | { readonly kind: "integer"; readonly value: bigint }
   | { readonly kind: "bytes"; readonly value: Buffer }
   | { readonly kind: "list"; readonly items: readonly PlutusData[] }
-  | { readonly kind: "map"; readonly entries: readonly (readonly [PlutusData, PlutusData])[] }
-  | { readonly kind: "constructor"; readonly alternative: bigint; readonly fields: readonly PlutusData[] };
+  | {
+      readonly kind: "map";
+      readonly entries: readonly (readonly [PlutusData, PlutusData])[];
+    }
+  | {
+      readonly kind: "constructor";
+      readonly alternative: bigint;
+      readonly fields: readonly PlutusData[];
+    };
 
 const fail = (message: string, detail?: string): never => {
   throw new MidgardTxCodecError(
@@ -59,10 +66,10 @@ const encodePlutusData = (data: PlutusData): Buffer => {
     case "list":
       return encodeCborArrayRaw(data.items.map(encodePlutusData));
     case "map": {
-      const entries = data.entries.map(([key, value]) => [
-        encodePlutusData(key),
-        encodePlutusData(value),
-      ] as const);
+      const entries = data.entries.map(
+        ([key, value]) =>
+          [encodePlutusData(key), encodePlutusData(value)] as const,
+      );
       entries.sort(([left], [right]) => compareCborKeyBytes(left, right));
       return encodeCborMapRaw(entries);
     }
@@ -95,11 +102,17 @@ const decodePlutusDataAt = (
     case 0:
     case 1: {
       const int = readCborInteger(bytes, offset, "datum.integer");
-      return { data: { kind: "integer", value: int.value }, nextOffset: int.nextOffset };
+      return {
+        data: { kind: "integer", value: int.value },
+        nextOffset: int.nextOffset,
+      };
     }
     case 2: {
       const value = readCborBytes(bytes, offset, "datum.bytes");
-      return { data: { kind: "bytes", value: value.value }, nextOffset: value.nextOffset };
+      return {
+        data: { kind: "bytes", value: value.value },
+        nextOffset: value.nextOffset,
+      };
     }
     case 4: {
       const header = readCborArrayHeader(bytes, offset, "datum.list");
@@ -122,10 +135,11 @@ const decodePlutusDataAt = (
         const keyStart = cursor;
         const key = decodePlutusDataAt(bytes, cursor);
         const keyBytes = Buffer.from(bytes.subarray(keyStart, key.nextOffset));
-        if (seen.has(keyBytes.toString("hex"))) {
+        const keyHex = keyBytes.toString("hex");
+        if (seen.has(keyHex)) {
           fail("Duplicate PlutusData map key", `index=${i}`);
         }
-        seen.add(keyBytes.toString("hex"));
+        seen.add(keyHex);
         if (
           previousKey !== undefined &&
           compareCborKeyBytes(previousKey, keyBytes) > 0
@@ -143,12 +157,24 @@ const decodePlutusDataAt = (
       const tag = readCborTag(bytes, offset, "datum.constructor_tag");
       const alternative = constrTagToAlternative(tag.value);
       if (alternative === undefined) {
-        const general = readCborArrayHeader(bytes, tag.nextOffset, "datum.constructor");
+        const general = readCborArrayHeader(
+          bytes,
+          tag.nextOffset,
+          "datum.constructor",
+        );
         if (general.length !== 2) {
           fail("General PlutusData constructor must be [alternative, fields]");
         }
-        const alt = readCborUnsigned(bytes, general.nextOffset, "datum.constructor.alternative");
-        const fieldsHeader = readCborArrayHeader(bytes, alt.nextOffset, "datum.constructor.fields");
+        const alt = readCborUnsigned(
+          bytes,
+          general.nextOffset,
+          "datum.constructor.alternative",
+        );
+        const fieldsHeader = readCborArrayHeader(
+          bytes,
+          alt.nextOffset,
+          "datum.constructor.fields",
+        );
         let cursor = fieldsHeader.nextOffset;
         const fields: PlutusData[] = [];
         for (let i = 0; i < fieldsHeader.length; i += 1) {
@@ -165,7 +191,11 @@ const decodePlutusDataAt = (
           nextOffset: cursor,
         };
       }
-      const fieldsHeader = readCborArrayHeader(bytes, tag.nextOffset, "datum.constructor.fields");
+      const fieldsHeader = readCborArrayHeader(
+        bytes,
+        tag.nextOffset,
+        "datum.constructor.fields",
+      );
       let cursor = fieldsHeader.nextOffset;
       const fields: PlutusData[] = [];
       for (let i = 0; i < fieldsHeader.length; i += 1) {

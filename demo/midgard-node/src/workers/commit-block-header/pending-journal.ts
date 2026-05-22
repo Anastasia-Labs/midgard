@@ -1,16 +1,18 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { fromHex } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
+
 import {
   PendingBlockFinalizationsDB,
   StateQueueMutationLeasesDB,
 } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
-import { Lucid, type Database } from "@/services/index.js";
+import { type Database, Lucid } from "@/services/index.js";
 import {
   serializeStateQueueUTxO,
   type WorkerInput,
 } from "@/workers/utils/commit-block-header.js";
+
 import {
   fetchLatestCommittedBlockLocal,
   stateQueueBaseHeaderHash,
@@ -41,16 +43,13 @@ export const buildPendingJournalMetadata = ({
       yield* requireStateQueueLeaseToken(workerInput);
     const serializedBase = yield* serializeStateQueueUTxO(latestBlock);
     const baseHeaderHash = yield* stateQueueBaseHeaderHash(latestBlock);
-    const fallbackSnapshotId = [
-      "worker",
-      stateQueueOutRef(latestBlock),
-      workerInput.data.currentBlockStartTimeMs.toString(),
-      blockEndTimeMs.toString(),
-    ].join(":");
+    const baseTailOutRef = stateQueueOutRef(latestBlock);
     return {
       stateQueueLeaseToken,
-      baseSnapshotId: workerInput.data.baseSnapshotId ?? fallbackSnapshotId,
-      baseTailOutRef: stateQueueOutRef(latestBlock),
+      baseSnapshotId:
+        workerInput.data.baseSnapshotId ??
+        `worker:${baseTailOutRef}:${workerInput.data.currentBlockStartTimeMs}:${blockEndTimeMs}`,
+      baseTailOutRef,
       baseTailHeaderHash: Buffer.from(fromHex(baseHeaderHash)),
       baseTailDatumCbor: serializedBase.datum,
       baseRoots: expectedRoots,

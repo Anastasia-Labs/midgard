@@ -33,9 +33,5 @@ export class MidgardError extends Data.TaggedError('MidgardError')<{
 /**
  * Extracts a human-readable error string from unknown thrown values.
  */
-export const formatError = (error: unknown): string => {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
-};
+export const formatError = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);

@@ -24,9 +24,6 @@ const DUMMY_REDEEMER_EX_UNITS = {
   steps: 1_000_000,
 } as const;
 
-const compareHex = (left: string, right: string): number =>
-  Buffer.from(left, "hex").compare(Buffer.from(right, "hex"));
-
 const txInfoRedeemerPurposeRank = (tag: number): number => {
   switch (tag) {
     case CML.RedeemerTag.Spend:
@@ -121,15 +118,10 @@ export const getTxInfoRedeemerIndexes = (
     return left.contextIndex - right.contextIndex;
   });
 
-  const txInfoIndexes = Array<number>(pointers.length).fill(-1);
-  for (
-    let txInfoIndex = 0;
-    txInfoIndex < inTxInfoOrder.length;
-    txInfoIndex += 1
-  ) {
-    const { contextIndex } = inTxInfoOrder[txInfoIndex]!;
+  const txInfoIndexes: number[] = [];
+  inTxInfoOrder.forEach(({ contextIndex }, txInfoIndex) => {
     txInfoIndexes[contextIndex] = txInfoIndex;
-  }
+  });
   return txInfoIndexes;
 };
 
@@ -190,12 +182,7 @@ export const resolveRedeemerTxInfoIndex = ({
   if (contextIndex < 0) {
     throw new Error(`Redeemer pointer not found for ${label}.`);
   }
-  const txInfoIndexes = getTxInfoRedeemerIndexes(pointers);
-  const txInfoIndex = txInfoIndexes[contextIndex];
-  if (txInfoIndex === undefined || txInfoIndex < 0) {
-    throw new Error(`Failed to derive tx-info redeemer index for ${label}.`);
-  }
-  return BigInt(txInfoIndex);
+  return BigInt(getTxInfoRedeemerIndexes(pointers)[contextIndex]);
 };
 
 export const resolveMintPolicyContextIndex = ({
@@ -205,11 +192,7 @@ export const resolveMintPolicyContextIndex = ({
   readonly policyIds: readonly string[];
   readonly targetPolicyId: string;
 }): bigint => {
-  const normalizedTarget = targetPolicyId.toLowerCase();
-  const sortedPolicyIds = [
-    ...new Set(policyIds.map((policyId) => policyId.toLowerCase())),
-  ].sort(compareHex);
-  const index = sortedPolicyIds.indexOf(normalizedTarget);
+  const index = [...new Set(policyIds)].sort().indexOf(targetPolicyId);
   if (index < 0) {
     throw new Error(`Mint policy ${targetPolicyId} missing from policy set.`);
   }

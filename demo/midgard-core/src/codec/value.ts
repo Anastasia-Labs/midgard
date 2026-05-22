@@ -1,4 +1,6 @@
 import { CML } from "@lucid-evolution/lucid";
+
+import { hexToBytes } from "../hex.js";
 import {
   assertCanonicalCborRoundTrip,
   compareBytes,
@@ -32,33 +34,26 @@ const fail = (message: string, detail?: string): never => {
   );
 };
 
-const normalizeHex = (value: string, fieldName: string): Buffer => {
-  const normalized = value.trim().toLowerCase();
-  if (normalized.length % 2 !== 0 || !/^[0-9a-f]*$/.test(normalized)) {
-    fail(`${fieldName} must be hex`, value);
+const parseValueHex = (value: string, fieldName: string): Buffer => {
+  try {
+    return hexToBytes(value, { fieldName, allowEmpty: true });
+  } catch {
+    return fail(`${fieldName} must be hex`, value);
   }
-  return Buffer.from(normalized, "hex");
 };
 
 export const encodeMidgardValue = (value: MidgardValue): Buffer => {
-  if (value.lovelace < 0n) {
-    fail("Midgard value lovelace must be non-negative");
-  }
-
   const policyEntries = [...value.assets.entries()].map(
     ([policyHex, assets]) => {
-      const policy = normalizeHex(policyHex, "value.policy_id");
+      const policy = parseValueHex(policyHex, "value.policy_id");
       if (policy.length !== POLICY_ID_LENGTH) {
         fail("Value policy id must be 28 bytes", policyHex);
       }
       const assetEntries = [...assets.entries()].flatMap(
         ([assetNameHex, quantity]) => {
-          const assetName = normalizeHex(assetNameHex, "value.asset_name");
+          const assetName = parseValueHex(assetNameHex, "value.asset_name");
           if (assetName.length > MAX_ASSET_NAME_LENGTH) {
             fail("Value asset name must be at most 32 bytes", assetNameHex);
-          }
-          if (quantity < 0n) {
-            fail("Value asset quantity must be non-negative", assetNameHex);
           }
           if (quantity === 0n) {
             return [];

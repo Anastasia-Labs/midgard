@@ -1,21 +1,19 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import { Data as LucidData, toUnit, type Assets } from "@lucid-evolution/lucid";
+import { type Assets, Data as LucidData, toUnit } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
-import * as WithdrawalsDB from "@/database/withdrawals.js";
+
+import { parseEventId, parseHexBytes } from "@/commands/command-utils.js";
+import { addressDataToBech32 } from "@/commands/withdrawal-utils.js";
 import { DatabaseError } from "@/database/utils/common.js";
+import * as WithdrawalsDB from "@/database/withdrawals.js";
 import {
   Database,
   Lucid,
   MidgardContracts,
   NodeConfig,
 } from "@/services/index.js";
-import {
-  formatJson,
-  parseEventId,
-  parseHexBytes,
-} from "@/commands/command-utils.js";
-import { addressDataToBech32 } from "@/commands/withdrawal-utils.js";
 import { valueToAssets } from "@/transactions/reserve-payout.js";
+import { outRefLabel } from "@/tx-context.js";
 
 export type WithdrawalStatusLookup = {
   readonly eventId?: Buffer;
@@ -76,11 +74,6 @@ const requireSingle = (
   }
   return Effect.succeed(rows[0]!);
 };
-
-const outRef = (utxo: {
-  readonly txHash: string;
-  readonly outputIndex: number;
-}): string => `${utxo.txHash}#${utxo.outputIndex.toString()}`;
 
 export const withdrawalStatusProgram = (
   lookup: WithdrawalStatusLookup,
@@ -167,7 +160,11 @@ export const withdrawalStatusProgram = (
 
     return {
       eventId: entry[WithdrawalsDB.Columns.ID].toString("hex"),
-      withdrawalL1OutRef: `${entry[WithdrawalsDB.Columns.WITHDRAWAL_L1_TX_HASH].toString("hex")}#${entry[WithdrawalsDB.Columns.WITHDRAWAL_L1_OUTPUT_INDEX].toString()}`,
+      withdrawalL1OutRef: outRefLabel({
+        txHash:
+          entry[WithdrawalsDB.Columns.WITHDRAWAL_L1_TX_HASH].toString("hex"),
+        outputIndex: entry[WithdrawalsDB.Columns.WITHDRAWAL_L1_OUTPUT_INDEX],
+      }),
       inclusionTime: entry[WithdrawalsDB.Columns.INCLUSION_TIME].toISOString(),
       l2OutRef: `${l2OutRef.transactionId}#${l2OutRef.outputIndex.toString()}`,
       l2Owner: entry[WithdrawalsDB.Columns.L2_OWNER].toString("hex"),
@@ -179,7 +176,7 @@ export const withdrawalStatusProgram = (
       status: entry[WithdrawalsDB.Columns.STATUS],
       projectedHeaderHash,
       settlementOutRef:
-        settlementUtxos.length === 1 ? outRef(settlementUtxos[0]!) : null,
+        settlementUtxos.length === 1 ? outRefLabel(settlementUtxos[0]!) : null,
       settlementUtxoCount: settlementUtxos.length,
       validity: entry[WithdrawalsDB.Columns.VALIDITY],
       validityDetail: entry[WithdrawalsDB.Columns.VALIDITY_DETAIL],

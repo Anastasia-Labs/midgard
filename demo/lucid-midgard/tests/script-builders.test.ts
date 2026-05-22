@@ -1,25 +1,26 @@
 import {
   computeHash32,
   computeScriptIntegrityHashForLanguages,
-  decodeMidgardNativeTxFull,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeSingleCbor,
   deriveMidgardNativeTxWitnessSetCompact,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
-import { describe, expect, it } from "vitest";
-import { blake2b } from "@noble/hashes/blake2.js";
 import { CML } from "@lucid-evolution/lucid";
+import { blake2b } from "@noble/hashes/blake2.js";
+import { describe, expect, it } from "vitest";
+
 import {
   BuilderInvariantError,
   decodeMidgardUtxo,
   encodeMidgardTxOutput,
   LucidMidgard,
-  outRefToCbor,
   type MidgardProvider,
   type MidgardUtxo,
   type OutRef,
+  outRefToCbor,
   type Redeemer,
 } from "../src/index.js";
 
@@ -144,7 +145,7 @@ describe("script and redeemer builders", () => {
       )
       .pay.ToAddress(pubkeyAddress, { lovelace: 3_000_000n })
       .complete();
-    const tx = decodeMidgardNativeTxFull(completed.txCbor);
+    const tx = decodeMidgardNativeTxFullFromCanonicalCbor(completed.txCbor);
 
     expect(redeemerPointers(tx.witnessSet.redeemerTxWitsPreimageCbor)).toEqual([
       "0:0",
@@ -181,7 +182,7 @@ describe("script and redeemer builders", () => {
       .observe(hash, redeemer(8n))
       .pay.ToAddress(pubkeyAddress, { lovelace: 2_000_000n, [unit]: 5n })
       .complete();
-    const tx = decodeMidgardNativeTxFull(completed.txCbor);
+    const tx = decodeMidgardNativeTxFullFromCanonicalCbor(completed.txCbor);
 
     expect(redeemerPointers(tx.witnessSet.redeemerTxWitsPreimageCbor)).toEqual([
       "1:0",
@@ -216,7 +217,7 @@ describe("script and redeemer builders", () => {
       .observe(plutusHash, redeemer(7n))
       .pay.ToAddress(pubkeyAddress, { lovelace: 2_000_000n })
       .complete();
-    const tx = decodeMidgardNativeTxFull(completed.txCbor);
+    const tx = decodeMidgardNativeTxFullFromCanonicalCbor(completed.txCbor);
     const requiredObservers = (
       decodeSingleCbor(tx.body.requiredObserversPreimageCbor) as Uint8Array[]
     ).map((hash) => Buffer.from(hash).toString("hex"));
@@ -299,7 +300,7 @@ describe("script and redeemer builders", () => {
       .observe(hash, redeemer(10n))
       .pay.ToAddress(pubkeyAddress, { lovelace: 2_000_000n })
       .complete();
-    const tx = decodeMidgardNativeTxFull(completed.txCbor);
+    const tx = decodeMidgardNativeTxFullFromCanonicalCbor(completed.txCbor);
 
     expect(tx.body.scriptIntegrityHash).toEqual(
       computeScriptIntegrityHashForLanguages(
@@ -364,7 +365,7 @@ describe("script and redeemer builders", () => {
       )
       .pay.ToAddress(pubkeyAddress, { lovelace: 2_000_000n })
       .complete();
-    const tx = decodeMidgardNativeTxFull(completed.txCbor);
+    const tx = decodeMidgardNativeTxFullFromCanonicalCbor(completed.txCbor);
 
     expect(tx.witnessSet.scriptTxWitsPreimageCbor).toEqual(EMPTY_CBOR_LIST);
     expect(redeemerPointers(tx.witnessSet.redeemerTxWitsPreimageCbor)).toEqual([
@@ -410,7 +411,7 @@ describe("script and redeemer builders", () => {
       )
       .pay.ToAddress(pubkeyAddress, { lovelace: 2_000_000n })
       .complete();
-    const tx = decodeMidgardNativeTxFull(completed.txCbor);
+    const tx = decodeMidgardNativeTxFullFromCanonicalCbor(completed.txCbor);
 
     expect(tx.witnessSet.scriptTxWitsPreimageCbor).toEqual(EMPTY_CBOR_LIST);
     expect(tx.body.scriptIntegrityHash).toEqual(
@@ -617,7 +618,7 @@ describe("script and redeemer builders", () => {
       .receiveRedeemer(hash, redeemer(99n))
       .pay.ToProtectedAddress(scriptAddress(hash), { lovelace: 2_000_000n })
       .complete();
-    const tx = decodeMidgardNativeTxFull(completed.txCbor);
+    const tx = decodeMidgardNativeTxFullFromCanonicalCbor(completed.txCbor);
 
     expect(redeemerPointers(tx.witnessSet.redeemerTxWitsPreimageCbor)).toEqual([
       "6:0",
@@ -750,7 +751,7 @@ describe("script and redeemer builders", () => {
       ])
       .pay.ToAddress(pubkeyAddress, { lovelace: 1_000_000n })
       .complete();
-    const tx = decodeMidgardNativeTxFull(completed.txCbor);
+    const tx = decodeMidgardNativeTxFullFromCanonicalCbor(completed.txCbor);
 
     expect(tx.body.scriptIntegrityHash).toEqual(EMPTY_NULL_ROOT);
     expect(tx.witnessSet.redeemerTxWitsPreimageCbor).toEqual(EMPTY_CBOR_LIST);

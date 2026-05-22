@@ -1,47 +1,47 @@
 import {
+  DoubleSpendStep02Datum,
+  DoubleSpendStep02SpendRedeemer,
+  DoubleSpendStep03Datum,
+  getHeaderFromStateQueueDatum,
+  getLinkedListNodeViewFromUTxO,
+  HUB_ORACLE_ASSET_NAME,
+} from "@al-ft/midgard-sdk";
+import {
+  credentialToAddress,
   Data,
   type LucidEvolution,
   type Network,
   type Script,
-  type UTxO,
-  credentialToAddress,
   scriptHashToCredential,
   toUnit,
+  type UTxO,
 } from "@lucid-evolution/lucid";
-import {
-  DoubleSpendStep02Datum,
-  DoubleSpendStep02SpendRedeemer,
-  DoubleSpendStep03Datum,
-  HUB_ORACLE_ASSET_NAME,
-  getHeaderFromStateQueueDatum,
-  getLinkedListNodeViewFromUTxO,
-} from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
+
 import {
-  compareOutRefs,
+  compareUtxoOutRefs,
   DEFAULT_CONFIRMATION_POLL_MS,
   encodeRawPhasMembershipProofRedeemer,
   fetchUtxoByOutRef,
   getCompiledScript,
   makeLucidForSubmit,
   outRefLabel,
-  parsedOutRefFromUtxo,
   parseOutRef,
   phasMembershipRewardAddress,
   readJsonFile,
   referenceInputIndex,
   requireSingletonUtxo,
   resolveDoubleSpendDeploymentContracts,
+  type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
   resolveProverSigner,
-  type ResolvedProverSigner,
   type SubmitProviderConfig,
 } from "./runtime.js";
 import {
-  PHAS_MEMBERSHIP_WITHDRAW_TITLE,
-  PHAS_WITHDRAW_REDEEMER_INDEX,
   inputIndex,
   parseSubmitStep01TxInclusion,
+  PHAS_MEMBERSHIP_WITHDRAW_TITLE,
+  PHAS_WITHDRAW_REDEEMER_INDEX,
   requireComputationThreadToken,
   requireNativeTxMatchesCompactCbor,
   selectFeeInput,
@@ -211,8 +211,7 @@ export const submitStep02 = async ({
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
   const sortedReferenceInputs = [hubOracleUtxo, stateQueueBlockUtxo].sort(
-    (left, right) =>
-      compareOutRefs(parsedOutRefFromUtxo(left), parsedOutRefFromUtxo(right)),
+    compareUtxoOutRefs,
   );
   const spendInputIndex = inputIndex(threadUtxo, feeInput);
   const phasMembershipScript: Script = {

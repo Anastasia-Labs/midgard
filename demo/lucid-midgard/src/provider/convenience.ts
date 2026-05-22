@@ -1,13 +1,13 @@
+import { ProviderPayloadError } from "../core/errors.js";
 import type {
   MidgardProtocolParameters,
   MidgardUtxo,
   OutRef,
 } from "../core/index.js";
-import { ProviderPayloadError } from "../core/errors.js";
-import { normalizeOutRef, outRefLabel } from "../core/out-ref.js";
+import { outRefLabel } from "../core/out-ref.js";
 import { utxoAddress } from "../core/output.js";
-import type { MidgardProtocolInfo } from "./types.js";
 import { cloneSupportedScriptLanguages } from "./payload.js";
+import type { MidgardProtocolInfo } from "./types.js";
 
 export const knownNetworkId = (network: string): bigint => {
   switch (network) {
@@ -62,11 +62,7 @@ export const requireUtxoByOutRef = (
   requestedOutRef: OutRef,
   endpoint: string,
 ): MidgardUtxo => {
-  const normalized = normalizeOutRef(requestedOutRef);
-  if (
-    utxo.txHash !== normalized.txHash ||
-    utxo.outputIndex !== normalized.outputIndex
-  ) {
+  if (outRefLabel(utxo) !== outRefLabel(requestedOutRef)) {
     throw new ProviderPayloadError(
       endpoint,
       "GET /utxo returned a different outref than requested",
@@ -79,9 +75,7 @@ export const requestedOutRefLabels = (
   outRefs: readonly OutRef[],
   endpoint: string,
 ): ReadonlySet<string> => {
-  const requestedLabels = new Set(
-    outRefs.map((outRef) => outRefLabel(outRef)),
-  );
+  const requestedLabels = new Set(outRefs.map((outRef) => outRefLabel(outRef)));
   if (requestedLabels.size !== outRefs.length) {
     throw new ProviderPayloadError(endpoint, "duplicate requested outref");
   }

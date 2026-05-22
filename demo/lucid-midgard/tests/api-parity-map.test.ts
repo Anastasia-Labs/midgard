@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+
 import { describe, expect, it } from "vitest";
 
 const parityMapPath = fileURLToPath(
@@ -221,7 +222,7 @@ describe("API parity map", () => {
 
   it("documents the non-Cardano semantics that callers must migrate around", () => {
     expect(markdown).toContain("computeMidgardNativeTxId(nativeTx)");
-    expect(markdown).toContain("Midgard native transaction envelope bytes");
+    expect(markdown).toContain("Midgard native canonical transaction bytes");
     expect(markdown).toContain("durable admission metadata");
     expect(markdown).toContain("complete({ localValidation");
     expect(markdown).toContain("GET /protocol-info");

@@ -1,9 +1,10 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, validatorToScriptHash } from "@lucid-evolution/lucid";
+import { describe, expect, it } from "vitest";
 
 type BlueprintConstructor = {
   readonly title: string;
@@ -61,8 +62,11 @@ const address: SDK.AddressData = {
 const value: SDK.Value = new Map([["", new Map([["", 1n]])]]);
 const proof: SDK.Proof = [];
 
-const roundTrip = <T>(value: T, schema: T): T =>
+const roundTrip = <T>(value: T, schema: unknown): T =>
   Data.from(Data.to(value as any, schema as any), schema as any) as T;
+
+const expectRoundTrip = <T>(value: T, schema: unknown): void =>
+  expect(roundTrip(value, schema)).toEqual(value);
 
 describe("SDK canonical ABI fixtures", () => {
   it("tracks canonical Aiken datum and redeemer field names", () => {
@@ -170,15 +174,11 @@ describe("SDK canonical ABI fixtures", () => {
   });
 
   it("encodes scheduler, hub-oracle, state-queue, and operator redeemers", () => {
-    expect(roundTrip("NoActiveOperators", SDK.SchedulerDatum)).toEqual(
-      "NoActiveOperators",
+    expectRoundTrip("NoActiveOperators", SDK.SchedulerDatum);
+    expectRoundTrip(
+      { ActiveOperator: { operator: h28, start_time: 10n } },
+      SDK.SchedulerDatum,
     );
-    expect(
-      roundTrip(
-        { ActiveOperator: { operator: h28, start_time: 10n } },
-        SDK.SchedulerDatum,
-      ),
-    ).toEqual({ ActiveOperator: { operator: h28, start_time: 10n } });
 
     const hubOracleDatum: SDK.HubOracleDatum = {
       registered_operators: h28,
@@ -237,9 +237,7 @@ describe("SDK canonical ABI fixtures", () => {
       "reserve_observer",
     ]);
 
-    expect(
-      roundTrip({ Init: { output_index: 2n } }, SDK.StateQueueRedeemer),
-    ).toEqual({ Init: { output_index: 2n } });
+    expectRoundTrip({ Init: { output_index: 2n } }, SDK.StateQueueRedeemer);
     expect(
       roundTrip(
         {
@@ -353,7 +351,7 @@ describe("SDK canonical ABI fixtures", () => {
       inclusion_time: 123n,
       witness: h28,
     };
-    expect(roundTrip(depositDatum, SDK.DepositDatum)).toEqual(depositDatum);
+    expectRoundTrip(depositDatum, SDK.DepositDatum);
     expect(
       roundTrip(
         {
@@ -405,9 +403,7 @@ describe("SDK canonical ABI fixtures", () => {
       refund_address: address,
       refund_datum: "NoDatum",
     };
-    expect(roundTrip(withdrawalDatum, SDK.WithdrawalOrderDatum)).toEqual(
-      withdrawalDatum,
-    );
+    expectRoundTrip(withdrawalDatum, SDK.WithdrawalOrderDatum);
     expect(
       roundTrip(
         {
@@ -430,9 +426,7 @@ describe("SDK canonical ABI fixtures", () => {
         SDK.WithdrawalSpendRedeemer,
       ),
     ).toMatchObject({ purpose: { Refund: expect.any(Object) } });
-    expect(roundTrip("UnpayableWithdrawalValue", SDK.WithdrawalValidity)).toBe(
-      "UnpayableWithdrawalValue",
-    );
+    expectRoundTrip("UnpayableWithdrawalValue", SDK.WithdrawalValidity);
 
     expect(
       roundTrip(
@@ -458,7 +452,7 @@ describe("SDK canonical ABI fixtures", () => {
         SDK.SettlementMintRedeemer,
       ),
     ).toMatchObject({ Spawn: { settlement_id: h28 } });
-    expect(roundTrip("Init", SDK.FraudProofCatalogueMintRedeemer)).toBe("Init");
+    expectRoundTrip("Init", SDK.FraudProofCatalogueMintRedeemer);
   });
 
   it("encodes reserve and datum-based payout fixtures", () => {
@@ -467,113 +461,67 @@ describe("SDK canonical ABI fixtures", () => {
       l1_address: address,
       l1_datum: "NoDatum",
     };
-    expect(roundTrip(payoutDatum, SDK.PayoutDatum)).toEqual(payoutDatum);
+    expectRoundTrip(payoutDatum, SDK.PayoutDatum);
 
-    expect(
-      roundTrip(
-        {
-          MintPayout: {
-            withdrawal_utxo_out_ref: { transactionId: h32, outputIndex: 0n },
-            withdrawal_input_index: 1n,
-            withdrawal_spend_redeemer_index: 2n,
-            hub_ref_input_index: 3n,
-          },
-        },
-        SDK.PayoutMintRedeemer,
-      ),
-    ).toEqual({
-      MintPayout: {
-        withdrawal_utxo_out_ref: { transactionId: h32, outputIndex: 0n },
-        withdrawal_input_index: 1n,
-        withdrawal_spend_redeemer_index: 2n,
-        hub_ref_input_index: 3n,
-      },
-    });
-
-    expect(
-      roundTrip(
-        {
-          BurnPayout: {
-            payout_input_index: 0n,
-            payout_asset_name: h32,
-            payout_spend_redeemer_index: 1n,
-            hub_ref_input_index: 2n,
-          },
-        },
-        SDK.PayoutMintRedeemer,
-      ),
-    ).toEqual({
-      BurnPayout: {
-        payout_input_index: 0n,
-        payout_asset_name: h32,
-        payout_spend_redeemer_index: 1n,
-        hub_ref_input_index: 2n,
-      },
-    });
-
-    expect(
-      roundTrip(
-        {
-          AddFunds: {
-            payout_input_index: 0n,
-            payout_output_index: 1n,
-            reserve_input_index: 2n,
-            reserve_change_output_index: null,
-            reserve_spend_redeemer_index: 3n,
-            payout_spend_redeemer_index: 4n,
-            hub_ref_input_index: 5n,
-          },
-        },
-        SDK.PayoutSpendRedeemer,
-      ),
-    ).toEqual({
-      AddFunds: {
-        payout_input_index: 0n,
-        payout_output_index: 1n,
-        reserve_input_index: 2n,
-        reserve_change_output_index: null,
-        reserve_spend_redeemer_index: 3n,
-        payout_spend_redeemer_index: 4n,
-        hub_ref_input_index: 5n,
-      },
-    });
-
-    expect(
-      roundTrip(
-        {
-          ConcludeWithdrawal: {
-            payout_input_index: 0n,
-            l1_output_index: 1n,
-            burn_redeemer_index: 2n,
-            hub_ref_input_index: 3n,
-          },
-        },
-        SDK.PayoutSpendRedeemer,
-      ),
-    ).toEqual({
-      ConcludeWithdrawal: {
-        payout_input_index: 0n,
-        l1_output_index: 1n,
-        burn_redeemer_index: 2n,
-        hub_ref_input_index: 3n,
-      },
-    });
-
-    expect(
-      roundTrip(
-        {
-          reserve_input_index: 0n,
-          payout_input_index: 1n,
-          payout_spend_redeemer_index: 2n,
+    expectRoundTrip(
+      {
+        MintPayout: {
+          withdrawal_utxo_out_ref: { transactionId: h32, outputIndex: 0n },
+          withdrawal_input_index: 1n,
+          withdrawal_spend_redeemer_index: 2n,
           hub_ref_input_index: 3n,
         },
-        SDK.ReserveSpendRedeemer,
-      ),
-    ).toEqual({
-      reserve_input_index: 0n,
-      payout_input_index: 1n,
-      payout_spend_redeemer_index: 2n,
-      hub_ref_input_index: 3n,
-    });
+      },
+      SDK.PayoutMintRedeemer,
+    );
+
+    expectRoundTrip(
+      {
+        BurnPayout: {
+          payout_input_index: 0n,
+          payout_asset_name: h32,
+          payout_spend_redeemer_index: 1n,
+          hub_ref_input_index: 2n,
+        },
+      },
+      SDK.PayoutMintRedeemer,
+    );
+
+    expectRoundTrip(
+      {
+        AddFunds: {
+          payout_input_index: 0n,
+          payout_output_index: 1n,
+          reserve_input_index: 2n,
+          reserve_change_output_index: null,
+          reserve_spend_redeemer_index: 3n,
+          payout_spend_redeemer_index: 4n,
+          hub_ref_input_index: 5n,
+        },
+      },
+      SDK.PayoutSpendRedeemer,
+    );
+
+    expectRoundTrip(
+      {
+        ConcludeWithdrawal: {
+          payout_input_index: 0n,
+          l1_output_index: 1n,
+          burn_redeemer_index: 2n,
+          hub_ref_input_index: 3n,
+        },
+      },
+      SDK.PayoutSpendRedeemer,
+    );
+
+    expectRoundTrip(
+      {
+        reserve_input_index: 0n,
+        payout_input_index: 1n,
+        payout_spend_redeemer_index: 2n,
+        hub_ref_input_index: 3n,
+      },
+      SDK.ReserveSpendRedeemer,
+    );
   });
 });

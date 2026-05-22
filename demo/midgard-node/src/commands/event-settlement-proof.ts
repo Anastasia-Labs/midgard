@@ -1,16 +1,18 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData, toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { Data as EffectData, Effect, Option } from "effect";
+
+import { parseEventId } from "@/commands/command-utils.js";
 import * as DepositsDB from "@/database/deposits.js";
-import * as WithdrawalsDB from "@/database/withdrawals.js";
 import { DatabaseError } from "@/database/utils/common.js";
+import * as WithdrawalsDB from "@/database/withdrawals.js";
 import { Database, Lucid, MidgardContracts } from "@/services/index.js";
+import { outRefLabel } from "@/tx-context.js";
 import {
   keyValuePhasProof,
   keyValuePhasRoot,
   MpfError,
 } from "@/workers/utils/mpf.js";
-import { parseEventId } from "@/commands/command-utils.js";
 
 export type EventKind = "deposit" | "withdrawal";
 
@@ -272,7 +274,7 @@ export const serializeEventSettlementProofResolution = (
   kind: resolution.kind,
   eventId: resolution.eventId,
   headerHash: resolution.headerHash,
-  settlementOutRef: `${resolution.settlementRefInput.txHash}#${resolution.settlementRefInput.outputIndex.toString()}`,
+  settlementOutRef: outRefLabel(resolution.settlementRefInput),
   root: resolution.root,
   proofCbor: resolution.proofCbor,
   status: resolution.status,

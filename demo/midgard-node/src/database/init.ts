@@ -1,6 +1,8 @@
-import * as MigrationRunner from "@/database/migrations/runner.js";
 import { Effect } from "effect";
+
+import * as MigrationRunner from "@/database/migrations/runner.js";
 import { Database } from "@/services/index.js";
+
 import { DatabaseError } from "./utils/common.js";
 
 /**

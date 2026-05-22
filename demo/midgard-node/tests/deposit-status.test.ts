@@ -1,11 +1,12 @@
-import { describe, expect, it } from "vitest";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
-import * as DepositsDB from "@/database/deposits.js";
+import { describe, expect, it } from "vitest";
+
 import {
   encodeDepositStatus,
   parseDepositStatusLookup,
 } from "@/commands/deposit-status.js";
+import * as DepositsDB from "@/database/deposits.js";
 
 const makeDepositEntry = (
   overrides: Partial<DepositsDB.Entry> = {},

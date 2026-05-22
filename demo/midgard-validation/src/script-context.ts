@@ -1,15 +1,16 @@
-import { Constr, Data } from "@lucid-evolution/lucid";
 import {
   decodeMidgardAddressBytes,
   hashMidgardVersionedScript,
   type MidgardCredential,
   type MidgardTxOutput,
 } from "@al-ft/midgard-core/codec";
+import { Constr, Data } from "@lucid-evolution/lucid";
+
 import {
   cardanoScriptPurposeData,
   DecodedMidgardRedeemer,
-  midgardScriptPurposeData,
   MidgardScriptPurpose,
+  midgardScriptPurposeData,
   redeemerDataFromCborHex,
 } from "./midgard-redeemers.js";
 import { txOutRefData } from "./tx-out-ref.js";
@@ -82,19 +83,15 @@ const valueData = (
   return result;
 };
 
+const compareEntryKeys = (
+  [left]: readonly [string, unknown],
+  [right]: readonly [string, unknown],
+): number => (left < right ? -1 : left > right ? 1 : 0);
+
 const mintData = (mint: ScriptMintValue): Map<string, Map<string, bigint>> => {
   const result = new Map<string, Map<string, bigint>>();
-  for (const [policyId, assets] of [...mint.entries()].sort(([left], [right]) =>
-    left.localeCompare(right),
-  )) {
-    result.set(
-      policyId,
-      new Map(
-        [...assets.entries()].sort(([left], [right]) =>
-          left.localeCompare(right),
-        ),
-      ),
-    );
+  for (const [policyId, assets] of [...mint.entries()].sort(compareEntryKeys)) {
+    result.set(policyId, new Map([...assets.entries()].sort(compareEntryKeys)));
   }
   return result;
 };
@@ -165,9 +162,7 @@ const withdrawalsData = (
   observers: ScriptContextView["observers"],
 ): Map<Constr<unknown>, bigint> =>
   new Map(
-    [...observers]
-      .sort((left, right) => left.localeCompare(right))
-      .map((observer) => [new Constr(1, [observer]), 0n]),
+    [...observers].sort().map((observer) => [new Constr(1, [observer]), 0n]),
   );
 
 const baseTxInfoData = (

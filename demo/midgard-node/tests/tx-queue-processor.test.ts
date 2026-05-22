@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
 import { Effect, Ref, Schedule } from "effect";
+import { describe, expect, it } from "vitest";
+
 import {
   classifyPlutusEvaluationFailure,
   repeatScheduledWithCauseLogging,
@@ -7,7 +8,9 @@ import {
 
 describe("tx queue processor plutus evaluation failure classification", () => {
   it("treats infrastructure/network failures as retryable", () => {
-    expect(classifyPlutusEvaluationFailure(new Error("fetch failed"))).toBeNull();
+    expect(
+      classifyPlutusEvaluationFailure(new Error("fetch failed")),
+    ).toBeNull();
     expect(
       classifyPlutusEvaluationFailure(
         new Error("Configured Lucid provider does not support evaluateTx"),

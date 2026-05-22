@@ -6,19 +6,20 @@ import ora from 'ora-classic';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
-/**
- * Monorepo-relative paths for the CLI's persisted node configuration.
- */
+import { formatError } from '../utils/errors.js';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const MONOREPO_ROOT = join(__dirname, '../../../../../..');
 const PROJECT_ROOT = join(MONOREPO_ROOT, 'demo/midgard-manager');
 
+/**
+ * Monorepo-relative paths for the CLI's persisted node configuration.
+ */
 const CONFIG_DIR = join(PROJECT_ROOT, 'config');
 const NODE_CONFIG_PATH = join(CONFIG_DIR, 'node.json');
-
-const errorMessage = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error);
+const NODE_STATUS_TIMEOUT_MS = 5000;
+const HTTP_ENDPOINT_PATTERN = /^https?:\/\//;
 
 const isAbortError = (error: unknown): boolean =>
   error instanceof Error && error.name === 'AbortError';
@@ -27,6 +28,32 @@ const isAbortError = (error: unknown): boolean =>
  * CLI command that probes the configured Midgard node and prints a status
  * summary.
  */
+const fetchNodeStatus = async (endpoint: string): Promise<Response> => {
+  const controller = new AbortController();
+  // Set a timeout for the request
+  const timeoutId = setTimeout(() => controller.abort(), NODE_STATUS_TIMEOUT_MS);
+
+  try {
+    return fetch(`${endpoint}/api/status`, { signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
+
+const printTroubleshooting = (endpoint: string): void => {
+  // Troubleshooting tips
+  console.log(chalk.yellow('\nTroubleshooting:'));
+  console.log(chalk.gray('• Check that the Midgard node is running'));
+  console.log(chalk.gray(`• Verify the node endpoint: ${endpoint}`));
+  console.log(chalk.gray('• Check network connectivity'));
+  console.log(chalk.gray('• Try configuring a different endpoint:'));
+  console.log(chalk.gray(`  $ midgard-manager configure-node --endpoint <url>`));
+  console.log(chalk.gray('\nCommon endpoint configurations:'));
+  console.log(chalk.gray('• Local development: http://localhost:3000'));
+  console.log(chalk.gray('• Docker container: http://localhost:8080'));
+  console.log(chalk.gray('• Remote node: https://api.your-server.com'));
+};
+
 export const nodeStatusCommand = Command.make(
   'node-status',
   {
@@ -41,17 +68,7 @@ export const nodeStatusCommand = Command.make(
 
         try {
           // Try to fetch the node status
-          const statusEndpoint = `${endpoint}/api/status`;
-          const controller = new AbortController();
-
-          // Set a timeout for the request
-          const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-          const response = await fetch(statusEndpoint, {
-            signal: controller.signal,
-          });
-          clearTimeout(timeoutId);
-
+          const response = await fetchNodeStatus(endpoint);
           if (!response.ok) {
             throw new Error(`HTTP error: ${response.status}`);
           }
@@ -83,20 +100,10 @@ export const nodeStatusCommand = Command.make(
           if (isAbortError(error)) {
             console.error(chalk.red('Connection timed out'));
           } else {
-            console.error(chalk.red(`Error: ${errorMessage(error)}`));
+            console.error(chalk.red(`Error: ${formatError(error)}`));
           }
 
-          // Troubleshooting tips
-          console.log(chalk.yellow('\nTroubleshooting:'));
-          console.log(chalk.gray('• Check that the Midgard node is running'));
-          console.log(chalk.gray(`• Verify the node endpoint: ${endpoint}`));
-          console.log(chalk.gray('• Check network connectivity'));
-          console.log(chalk.gray('• Try configuring a different endpoint:'));
-          console.log(chalk.gray(`  $ midgard-manager configure-node --endpoint <url>`));
-          console.log(chalk.gray('\nCommon endpoint configurations:'));
-          console.log(chalk.gray('• Local development: http://localhost:3000'));
-          console.log(chalk.gray('• Docker container: http://localhost:8080'));
-          console.log(chalk.gray('• Remote node: https://api.your-server.com'));
+          printTroubleshooting(endpoint);
         }
       })
     );
@@ -125,19 +132,19 @@ export const configureNodeCommand = Command.make(
           endpoint,
         };
 
-        // Interactive mode
         if (interactive) {
+          // Interactive mode
           const { input, confirm } = await import('@inquirer/prompts');
 
           nodeConfig.endpoint = await input({
             message: 'Enter Midgard node endpoint URL:',
             default: endpoint,
             validate: (value) =>
-              /^https?:\/\//.test(value) || 'Must be a valid URL starting with http:// or https://',
+              HTTP_ENDPOINT_PATTERN.test(value) ||
+              'Must be a valid URL starting with http:// or https://',
           });
 
           // Advanced settings could be added here
-
           // Confirm settings
           console.log(chalk.yellow.bold('\nConfiguration Summary:'));
           console.log(chalk.yellow(`• Node Endpoint: ${nodeConfig.endpoint}`));
@@ -154,7 +161,7 @@ export const configureNodeCommand = Command.make(
         }
 
         // Validate endpoint format
-        if (!/^https?:\/\//.test(nodeConfig.endpoint)) {
+        if (!HTTP_ENDPOINT_PATTERN.test(nodeConfig.endpoint)) {
           console.error(
             chalk.red('❌ Invalid endpoint format. URL must start with http:// or https://')
           );
@@ -166,32 +173,23 @@ export const configureNodeCommand = Command.make(
         try {
           // Ensure directory exists
           await fs.mkdir(CONFIG_DIR, { recursive: true });
-
           // Save configuration
           await fs.writeFile(NODE_CONFIG_PATH, JSON.stringify(nodeConfig, null, 2));
 
           spinner.succeed('Node configuration saved');
 
-          // Test connection
           console.log(chalk.gray('Testing connection to node...'));
 
           try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-            const response = await fetch(`${nodeConfig.endpoint}/api/status`, {
-              signal: controller.signal,
-            });
-
-            clearTimeout(timeoutId);
-
+            // Test connection
+            const response = await fetchNodeStatus(nodeConfig.endpoint);
             if (response.ok) {
               console.log(chalk.green('✓ Successfully connected to node'));
             } else {
               console.log(chalk.yellow(`⚠️ Node responded with status: ${response.status}`));
             }
           } catch (error) {
-            console.log(chalk.yellow(`⚠️ Could not connect to node: ${errorMessage(error)}`));
+            console.log(chalk.yellow(`⚠️ Could not connect to node: ${formatError(error)}`));
           }
 
           console.log();
@@ -199,7 +197,7 @@ export const configureNodeCommand = Command.make(
           console.log(chalk.gray(`$ midgard-manager node-status`));
         } catch (error) {
           spinner.fail('Failed to save configuration');
-          console.error(chalk.red(`Error: ${errorMessage(error)}`));
+          console.error(chalk.red(`Error: ${formatError(error)}`));
         }
       })
     );

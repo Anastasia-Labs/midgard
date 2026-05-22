@@ -1,11 +1,14 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import {
+  type Assets,
   Data as LucidData,
   toUnit,
-  type Assets,
   type UTxO,
 } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
+
+import { parseEventId } from "@/commands/command-utils.js";
+import { addressDataToBech32 } from "@/commands/withdrawal-utils.js";
 import * as WithdrawalsDB from "@/database/withdrawals.js";
 import {
   Database,
@@ -13,9 +16,12 @@ import {
   MidgardContracts,
   NodeConfig,
 } from "@/services/index.js";
-import { parseEventId } from "@/commands/command-utils.js";
-import { addressDataToBech32 } from "@/commands/withdrawal-utils.js";
-import { valueToAssets } from "@/transactions/reserve-payout.js";
+import {
+  addAssets,
+  assetsEqual,
+  subtractAssets,
+  valueToAssets,
+} from "@al-ft/midgard-sdk";
 
 type ReserveUtxoSummary = {
   readonly outRef: string;
@@ -54,50 +60,6 @@ export type PayoutStatusResult = {
 const outRef = (utxo: UTxO): string =>
   `${utxo.txHash}#${utxo.outputIndex.toString()}`;
 
-const normalizeAssets = (assets: Readonly<Assets>): Assets => {
-  const normalized: Record<string, bigint> = {};
-  for (const [unit, quantity] of Object.entries(assets)) {
-    if (quantity !== 0n) {
-      normalized[unit] = quantity;
-    }
-  }
-  return normalized as Assets;
-};
-
-const sumAssets = (utxos: readonly UTxO[]): Assets => {
-  const totals: Record<string, bigint> = {};
-  for (const utxo of utxos) {
-    for (const [unit, quantity] of Object.entries(utxo.assets)) {
-      totals[unit] = (totals[unit] ?? 0n) + quantity;
-    }
-  }
-  return normalizeAssets(totals as Assets);
-};
-
-const subtractAssets = (
-  left: Readonly<Assets>,
-  right: Readonly<Assets>,
-): Assets => {
-  const result: Record<string, bigint> = { ...left };
-  for (const [unit, quantity] of Object.entries(right)) {
-    result[unit] = (result[unit] ?? 0n) - quantity;
-  }
-  return normalizeAssets(result as Assets);
-};
-
-const assetsEqual = (
-  left: Readonly<Assets>,
-  right: Readonly<Assets>,
-): boolean => {
-  const units = new Set([...Object.keys(left), ...Object.keys(right)]);
-  for (const unit of units) {
-    if ((left[unit] ?? 0n) !== (right[unit] ?? 0n)) {
-      return false;
-    }
-  }
-  return true;
-};
-
 const decodePayoutDatum = (payout: UTxO): SDK.PayoutDatum => {
   if (payout.datum == null) {
     throw new Error(`Payout UTxO ${outRef(payout)} has no inline datum.`);
@@ -106,14 +68,9 @@ const decodePayoutDatum = (payout: UTxO): SDK.PayoutDatum => {
 };
 
 const assertReserveUtxoShape = (utxo: UTxO): void => {
-  if (utxo.datum != null) {
+  if (utxo.datum != null || utxo.scriptRef !== undefined) {
     throw new Error(
-      `Reserve UTxO ${outRef(utxo)} has unexpected inline datum.`,
-    );
-  }
-  if (utxo.scriptRef !== undefined) {
-    throw new Error(
-      `Reserve UTxO ${outRef(utxo)} has unexpected reference script.`,
+      `Reserve UTxO ${outRef(utxo)} has unexpected datum or reference script.`,
     );
   }
 };
@@ -139,7 +96,10 @@ export const reserveUtxosProgram: Effect.Effect<
   return {
     reserveAddress: contracts.reserve.spendingScriptAddress,
     utxoCount: utxos.length,
-    totals: sumAssets(utxos),
+    totals: utxos.reduce<Assets>(
+      (totals, utxo) => addAssets(totals, utxo.assets),
+      {},
+    ),
     utxos: utxos.map((utxo) => ({
       outRef: outRef(utxo),
       assets: utxo.assets,
@@ -186,15 +146,17 @@ export const payoutStatusProgram = (
         }),
     });
     if (payoutUtxos.length === 0) {
-      const withdrawalOutRef = {
-        txHash:
-          entry[WithdrawalsDB.Columns.WITHDRAWAL_L1_TX_HASH].toString("hex"),
-        outputIndex: entry[WithdrawalsDB.Columns.WITHDRAWAL_L1_OUTPUT_INDEX],
-      };
+      const withdrawalOutRef = [
+        {
+          txHash:
+            entry[WithdrawalsDB.Columns.WITHDRAWAL_L1_TX_HASH].toString("hex"),
+          outputIndex: entry[WithdrawalsDB.Columns.WITHDRAWAL_L1_OUTPUT_INDEX],
+        },
+      ];
       const withdrawalOrderUtxos = yield* Effect.tryPromise({
         try: async () => {
           try {
-            return await lucid.utxosByOutRef([withdrawalOutRef]);
+            return await lucid.utxosByOutRef(withdrawalOutRef);
           } catch (cause) {
             const message =
               cause instanceof Error ? cause.message : String(cause);
@@ -250,10 +212,7 @@ export const payoutStatusProgram = (
     const payout = payoutUtxos[0]!;
     const datum = decodePayoutDatum(payout);
     const targetAssets = valueToAssets(datum.l2_value);
-    const currentAssets = normalizeAssets({
-      ...payout.assets,
-      [payoutUnit]: (payout.assets[payoutUnit] ?? 0n) - 1n,
-    });
+    const currentAssets = subtractAssets(payout.assets, { [payoutUnit]: 1n });
     const remainingAssets = subtractAssets(targetAssets, currentAssets);
     const phase = assetsEqual(currentAssets, targetAssets)
       ? "funded"

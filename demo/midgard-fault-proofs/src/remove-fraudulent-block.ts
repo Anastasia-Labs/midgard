@@ -1,69 +1,72 @@
 import {
-  CML,
-  Data,
-  coreToTxOutput,
-  credentialToAddress,
-  scriptHashToCredential,
-  toUnit,
-  validatorToAddress,
-  validatorToScriptHash,
-  type LucidEvolution,
-  type Network,
-  type Script,
-  type SpendingValidator,
-  type TxSignBuilder,
-  type UTxO,
-} from "@lucid-evolution/lucid";
-import {
   ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX,
   ACTIVE_OPERATORS_ROOT_ASSET_NAME,
-  FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
-  FraudProofTokenDatum,
-  HUB_ORACLE_ASSET_NAME,
-  REGISTERED_OPERATORS_ROOT_ASSET_NAME,
-  SCHEDULER_ASSET_NAME,
-  STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
-  STATE_QUEUE_ROOT_ASSET_NAME,
-  SchedulerDatum,
+  type ActiveOperatorMintRedeemer as ActiveOperatorMintRedeemerData,
   buildDoubleSpendFaultProofContracts,
   encodeLinkedListNodeView,
+  FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
+  FraudProofTokenDatum,
   getHeaderFromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
   getRedeemerPointersInContextOrder,
   hashBlockHeader,
+  HUB_ORACLE_ASSET_NAME,
   incompleteRemoveLastFraudulentBlockHeaderTxProgram,
+  type LinkedListNodeView,
   parseFaultProofBlueprint,
+  REGISTERED_OPERATORS_ROOT_ASSET_NAME,
   resolveMintPolicyRedeemerTxInfoIndex,
   resolveMintPolicyTxInfoRedeemerIndexFromPolicySet,
   resolveRedeemerTxInfoIndex,
-  utxoToStateQueueUTxO,
-  type ActiveOperatorMintRedeemer as ActiveOperatorMintRedeemerData,
-  type LinkedListNodeView,
+  SCHEDULER_ASSET_NAME,
+  SchedulerDatum,
   type SchedulerSpendRedeemer as SchedulerSpendRedeemerData,
+  STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
+  STATE_QUEUE_ROOT_ASSET_NAME,
   type StateQueueRemoveReferenceScriptUTxOs,
+  utxoToStateQueueUTxO,
 } from "@al-ft/midgard-sdk";
-import { Effect } from "effect";
 import {
-  parseContractDeploymentInfo,
+  CML,
+  coreToTxOutput,
+  credentialToAddress,
+  Data,
+  type LucidEvolution,
+  type Network,
+  type Script,
+  scriptHashToCredential,
+  type SpendingValidator,
+  toUnit,
+  type TxSignBuilder,
+  type UTxO,
+  validatorToAddress,
+  validatorToScriptHash,
+} from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+
+import {
   type ContractDeploymentInfo,
+  parseContractDeploymentInfo,
 } from "./inspect-contracts.js";
+import { parseHex } from "./json-file.js";
 import {
   compareOutRefs,
+  compareUtxoOutRefs,
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
   makeLucidForSubmit,
   outRefLabel,
-  parsedOutRefFromUtxo,
+  outRefsEqual,
+  type ParsedOutRef,
   readJsonFile,
   requireDeploymentScriptHash,
+  requireMatchingScriptHash,
   requireSingletonUtxo,
-  resolveProverSigner,
-  type ParsedOutRef,
   type ResolvedProverSigner,
+  resolveProverSigner,
   type SubmitProviderConfig,
 } from "./runtime.js";
-import { requireMatchingScriptHash, selectFeeInput } from "./submit-step-01.js";
-import { parseHex } from "./json-file.js";
+import { selectFeeInput } from "./submit-step-01.js";
 
 const STATE_QUEUE_ANCHOR_OUTPUT_INDEX = 0n;
 const ACTIVE_OPERATORS_ANCHOR_OUTPUT_INDEX = 1n;
@@ -71,12 +74,15 @@ const SCHEDULER_OUTPUT_INDEX = 2n;
 const DEFAULT_REMOVE_VALIDITY_WINDOW_MS = 300_000n;
 const DEFAULT_REMOVE_VALIDITY_BACKDATE_MS = 120_000n;
 
-type ReferenceScriptName =
-  | "stateQueueSpend"
-  | "stateQueueMint"
-  | "activeOperatorsSpend"
-  | "activeOperatorsMint"
-  | "schedulerSpend";
+const REFERENCE_SCRIPT_NAMES = [
+  "stateQueueSpend",
+  "stateQueueMint",
+  "activeOperatorsSpend",
+  "activeOperatorsMint",
+  "schedulerSpend",
+] as const;
+
+type ReferenceScriptName = (typeof REFERENCE_SCRIPT_NAMES)[number];
 
 type DeploymentScriptName = ReferenceScriptName | "registeredOperatorsSpend";
 
@@ -198,9 +204,7 @@ export type SubmitRemoveFraudulentBlockResult = {
 };
 
 const sortUtxosByLedgerOrder = (utxos: readonly UTxO[]): readonly UTxO[] =>
-  [...utxos].sort((left, right) =>
-    compareOutRefs(parsedOutRefFromUtxo(left), parsedOutRefFromUtxo(right)),
-  );
+  [...utxos].sort(compareUtxoOutRefs);
 
 const dedupeUtxos = (utxos: readonly UTxO[]): readonly UTxO[] => [
   ...new Map(utxos.map((utxo) => [outRefLabel(utxo), utxo])).values(),
@@ -213,7 +217,7 @@ const orderedIndex = (
 ): bigint => {
   const sorted = sortUtxosByLedgerOrder(utxos);
   const targetLabel = outRefLabel(target);
-  const index = sorted.findIndex((utxo) => outRefLabel(utxo) === targetLabel);
+  const index = sorted.findIndex((utxo) => outRefsEqual(utxo, target));
   if (index < 0) {
     throw new Error(`Missing ${label} ${targetLabel} in transaction layout.`);
   }
@@ -243,11 +247,8 @@ const findCmlInputIndex = (
   target: UTxO,
   label: string,
 ): bigint => {
-  const targetRef = parsedOutRefFromUtxo(target);
-  const index = cmlInputs(tx, "inputs").findIndex(
-    (candidate) =>
-      candidate.txHash === targetRef.txHash &&
-      candidate.outputIndex === targetRef.outputIndex,
+  const index = cmlInputs(tx, "inputs").findIndex((candidate) =>
+    outRefsEqual(candidate, target),
   );
   if (index < 0) {
     throw new Error(
@@ -262,11 +263,8 @@ const findCmlReferenceInputIndex = (
   target: UTxO,
   label: string,
 ): bigint => {
-  const targetRef = parsedOutRefFromUtxo(target);
-  const index = cmlInputs(tx, "referenceInputs").findIndex(
-    (candidate) =>
-      candidate.txHash === targetRef.txHash &&
-      candidate.outputIndex === targetRef.outputIndex,
+  const index = cmlInputs(tx, "referenceInputs").findIndex((candidate) =>
+    outRefsEqual(candidate, target),
   );
   if (index < 0) {
     throw new Error(
@@ -347,12 +345,7 @@ const layoutToJson = (
 const sameLayout = (
   left: RemoveFraudulentBlockLayout,
   right: RemoveFraudulentBlockLayout,
-): boolean =>
-  [...new Set([...Object.keys(left), ...Object.keys(right)])].every(
-    (key) =>
-      left[key as keyof RemoveFraudulentBlockLayout] ===
-      right[key as keyof RemoveFraudulentBlockLayout],
-  );
+): boolean => REMOVE_LAYOUT_KEYS.every((key) => left[key] === right[key]);
 
 const requireDeploymentScript = (
   deploymentInfo: ContractDeploymentInfo,
@@ -558,15 +551,7 @@ const resolveReferenceScripts = async ({
     activeOperatorsMint,
     schedulerSpend,
   ] = await Promise.all(
-    (
-      [
-        "stateQueueSpend",
-        "stateQueueMint",
-        "activeOperatorsSpend",
-        "activeOperatorsMint",
-        "schedulerSpend",
-      ] as const
-    ).map((name) =>
+    REFERENCE_SCRIPT_NAMES.map((name) =>
       requireDeploymentReferenceScript({ lucid, deploymentInfo, name }),
     ),
   );
@@ -581,28 +566,13 @@ const resolveReferenceScripts = async ({
 
 const referenceScriptOutRefs = (
   referenceScripts: StateQueueRemoveReferenceScriptUTxOs | undefined,
-): Readonly<Record<ReferenceScriptName, string | null>> => ({
-  stateQueueSpend:
-    referenceScripts?.stateQueueSpend === undefined
-      ? null
-      : outRefLabel(referenceScripts.stateQueueSpend),
-  stateQueueMint:
-    referenceScripts?.stateQueueMint === undefined
-      ? null
-      : outRefLabel(referenceScripts.stateQueueMint),
-  activeOperatorsSpend:
-    referenceScripts?.activeOperatorsSpend === undefined
-      ? null
-      : outRefLabel(referenceScripts.activeOperatorsSpend),
-  activeOperatorsMint:
-    referenceScripts?.activeOperatorsMint === undefined
-      ? null
-      : outRefLabel(referenceScripts.activeOperatorsMint),
-  schedulerSpend:
-    referenceScripts?.schedulerSpend === undefined
-      ? null
-      : outRefLabel(referenceScripts.schedulerSpend),
-});
+): Readonly<Record<ReferenceScriptName, string | null>> =>
+  Object.fromEntries(
+    REFERENCE_SCRIPT_NAMES.map((name) => {
+      const utxo = referenceScripts?.[name];
+      return [name, utxo === undefined ? null : outRefLabel(utxo)] as const;
+    }),
+  ) as Readonly<Record<ReferenceScriptName, string | null>>;
 
 type SchedulerDatumValue =
   | "NoActiveOperators"
@@ -1344,10 +1314,7 @@ export const submitRemoveFraudulentBlock = async ({
                 layout.schedulerRedeemerTxInfoIndex,
                 "schedulerRedeemerTxInfoIndex",
               ),
-              removing_operators_anchor_element_key:
-                activeOperatorAnchorKey === null
-                  ? null
-                  : activeOperatorAnchorKey,
+              removing_operators_anchor_element_key: activeOperatorAnchorKey,
               removing_operator_is_the_last_member:
                 schedulerPlan.removedNodeIsLast,
             },
@@ -1419,17 +1386,13 @@ export const submitRemoveFraudulentBlock = async ({
     if (schedulerPlan.kind === "inactive") {
       return undefined;
     }
-    const nextScheduledOperator =
-      schedulerPlan.kind === "goToAnchor"
-        ? schedulerPlan.newOperator
-        : schedulerPlan.newOperator;
     const datum =
-      nextScheduledOperator === undefined
+      schedulerPlan.newOperator === undefined
         ? Data.to("NoActiveOperators", SchedulerDatum)
         : Data.to(
             {
               ActiveOperator: {
-                operator: nextScheduledOperator,
+                operator: schedulerPlan.newOperator,
                 start_time: txValidTo,
               },
             },

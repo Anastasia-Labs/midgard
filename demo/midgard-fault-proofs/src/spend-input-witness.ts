@@ -1,19 +1,21 @@
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import { type MidgardTxInput, MidgardTxInputList } from "@al-ft/midgard-sdk";
 import {
   CML,
-  Data,
   coreToTxOutput,
+  Data,
   type LucidEvolution,
   type ProtocolParameters,
   type UTxO,
 } from "@lucid-evolution/lucid";
-import { MidgardTxInputList, type MidgardTxInput } from "@al-ft/midgard-sdk";
-import { selectFeeInput } from "./submit-step-01.js";
+
 import {
-  compareOutRefs,
+  compareUtxoOutRefs,
   DEFAULT_CONFIRMATION_POLL_MS,
   outRefLabel,
-  parsedOutRefFromUtxo,
+  outRefsEqual,
 } from "./runtime.js";
+import { selectFeeInput } from "./submit-step-01.js";
 
 const MIN_ADA_STABILIZATION_LIMIT = 8;
 
@@ -31,16 +33,10 @@ export type EnsuredSpendInputsReferenceWitness = {
   readonly spentFeeInput?: UTxO;
 };
 
-const sameUtxo = (left: UTxO, right: UTxO): boolean =>
-  left.txHash === right.txHash && left.outputIndex === right.outputIndex;
-
 const onlyLovelace = (utxo: UTxO): boolean =>
   Object.entries(utxo.assets).every(
     ([unit, amount]) => unit === "lovelace" || amount <= 0n,
   );
-
-const compareUtxos = (left: UTxO, right: UTxO): number =>
-  compareOutRefs(parsedOutRefFromUtxo(left), parsedOutRefFromUtxo(right));
 
 export const resolveProtocolParameters = async (
   lucid: LucidEvolution,
@@ -106,7 +102,7 @@ const requireCanonicalInputCbor = (
     input = CML.TransactionInput.from_cbor_bytes(inputCbor);
   } catch (cause) {
     throw new Error(
-      `${label} is not valid Cardano TxOutRef CBOR: ${String(cause)}`,
+      `${label} is not valid Cardano TxOutRef CBOR: ${formatUnknownError(cause)}`,
     );
   }
   const canonical = Buffer.from(input.to_cbor_bytes());
@@ -215,7 +211,7 @@ export const ensureSpendInputsReferenceWitness = async ({
         (utxo.assets.lovelace ?? 0n) >= witnessOutputLovelace &&
         utxo.scriptRef === undefined,
     )
-    .sort(compareUtxos)[0];
+    .sort(compareUtxoOutRefs)[0];
   if (existing !== undefined) {
     return {
       utxo: existing,
@@ -289,4 +285,4 @@ export const ensureSpendInputsReferenceWitness = async ({
 export const excludeUtxo = (
   utxos: readonly UTxO[],
   excluded: UTxO,
-): readonly UTxO[] => utxos.filter((utxo) => !sameUtxo(utxo, excluded));
+): readonly UTxO[] => utxos.filter((utxo) => !outRefsEqual(utxo, excluded));

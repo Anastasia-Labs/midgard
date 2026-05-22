@@ -3,15 +3,18 @@
  * This module keeps ledger-context input/reference-input ordering rules in one
  * place so workers and transaction builders do not reimplement them.
  */
+import {
+  compareOutRefs as compareCoreOutRefs,
+  findOutRefIndex as findCoreOutRefIndex,
+  outRefLabel as coreOutRefLabel,
+  type OutRefLike,
+} from "@al-ft/midgard-core/out-ref";
 import { CML, coreToTxOutput } from "@lucid-evolution/lucid";
 
 /**
  * Lightweight transaction-output reference shape used for ordering/indexing.
  */
-export type OutRefLike = {
-  readonly txHash: string;
-  readonly outputIndex: number;
-};
+export type { OutRefLike };
 
 /**
  * Transaction output paired with its authored output index.
@@ -24,21 +27,12 @@ export type IndexedTxOutput = ReturnType<typeof coreToTxOutput> & {
  * Canonical ledger ordering for inputs and reference inputs: lexicographic by
  * TxOutRef (`txHash`, then `outputIndex`).
  */
-export const compareOutRefs = (a: OutRefLike, b: OutRefLike): number => {
-  const txHashComparison = Buffer.from(a.txHash, "hex").compare(
-    Buffer.from(b.txHash, "hex"),
-  );
-  if (txHashComparison !== 0) {
-    return txHashComparison;
-  }
-  return a.outputIndex - b.outputIndex;
-};
+export const compareOutRefs = compareCoreOutRefs;
 
 /**
  * Formats an outref as `txHash#outputIndex`.
  */
-export const outRefLabel = (outRef: OutRefLike): string =>
-  `${outRef.txHash}#${outRef.outputIndex.toString()}`;
+export const outRefLabel = coreOutRefLabel;
 
 /**
  * Removes duplicate outrefs while preserving first-seen order.
@@ -94,18 +88,7 @@ export const collectIndexedOutputs = (
 export const findOutRefIndex = (
   orderedOutRefs: readonly OutRefLike[],
   target: OutRefLike,
-): number | undefined => {
-  for (let index = 0; index < orderedOutRefs.length; index += 1) {
-    const candidate = orderedOutRefs[index]!;
-    if (
-      candidate.txHash === target.txHash &&
-      candidate.outputIndex === target.outputIndex
-    ) {
-      return index;
-    }
-  }
-  return undefined;
-};
+): number | undefined => findCoreOutRefIndex(orderedOutRefs, target);
 
 /**
  * Finds the index of an outref in an ordered list or throws if absent.

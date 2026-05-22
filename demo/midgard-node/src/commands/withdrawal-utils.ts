@@ -1,10 +1,11 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  Data as LucidData,
-  credentialToAddress,
   type Credential,
+  credentialToAddress,
+  Data as LucidData,
   type Network,
 } from "@lucid-evolution/lucid";
+
 import { parseHexBytes, parseTxOutRefLabel } from "@/commands/command-utils.js";
 
 export const parseWithdrawalTxOutRefLabel = (

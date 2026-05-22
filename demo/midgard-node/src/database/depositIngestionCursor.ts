@@ -1,11 +1,12 @@
-import { Database } from "@/services/database.js";
 import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
+
 import {
+  clearTable,
   DatabaseError,
   sqlErrorToDatabaseError,
-  clearTable,
 } from "@/database/utils/common.js";
+import { Database } from "@/services/database.js";
 
 export const tableName = "deposit_ingestion_cursor";
 export const DEFAULT_CURSOR_NAME = "stable_l1_deposits";

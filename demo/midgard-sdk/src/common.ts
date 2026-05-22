@@ -1,22 +1,20 @@
 import {
-  Data,
-  getAddressDetails,
-  Script,
-  ScriptHash,
-} from "@lucid-evolution/lucid";
-import { Array as EffectArray, Effect, Option } from "effect";
-import {
   Address,
   Credential,
+  Data,
+  fromHex,
+  getAddressDetails,
   LucidEvolution,
   PolicyId,
-  UTxO,
-  fromHex,
+  Script,
+  ScriptHash,
   toHex,
+  UTxO,
 } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
+import { Effect } from "effect";
+
 import { ActiveOperatorUTxO } from "./active-operators.js";
-import { RetiredOperatorUTxO } from "./retired-operators.js";
 import {
   Bech32DeserializationError,
   HashingError,
@@ -24,21 +22,17 @@ import {
   UnauthenticUtxoError,
 } from "./errors.js";
 import { getStateToken } from "./internals.js";
+import { RetiredOperatorUTxO } from "./retired-operators.js";
 
 export * from "./errors.js";
 
-export const makeReturn = <A, E>(program: Effect.Effect<A, E>) => {
-  return {
-    unsafeRun: () => Effect.runPromise(program),
-    safeRun: () => Effect.runPromise(Effect.either(program)),
-    program: () => program,
-  };
-};
+export const makeReturn = <A, E>(program: Effect.Effect<A, E>) => ({
+  unsafeRun: () => Effect.runPromise(program),
+  safeRun: () => Effect.runPromise(Effect.either(program)),
+  program: () => program,
+});
 
-export const isHexString = (str: string): boolean => {
-  const hexRegex = /^[0-9A-Fa-f]+$/;
-  return hexRegex.test(str);
-};
+export const isHexString = (str: string): boolean => /^[0-9A-Fa-f]+$/.test(str);
 
 /**
  * `StateUTxO` would probably be a better name, but it'd be confusing next to
@@ -92,8 +86,7 @@ export const utxosAtByNFTPolicyId = (
         );
       });
 
-    const authenticUTxOs = yield* Effect.allSuccesses(nftEffects);
-    return authenticUTxOs;
+    return yield* Effect.allSuccesses(nftEffects);
   }).pipe(
     Effect.catchAllDefect(
       (d) =>
@@ -110,20 +103,7 @@ export const hashHexWithBlake2b = (
 ): Effect.Effect<string, HashingError> => {
   const functionName = digestByteLength === 28 ? "Blake2b224" : "Blake2b256";
   const errorMessage = `Failed to hash using ${functionName} function`;
-  if (isHexString(msg)) {
-    try {
-      return Effect.succeed(
-        toHex(blake2b(fromHex(msg), { dkLen: digestByteLength })),
-      );
-    } catch (e) {
-      return Effect.fail(
-        new HashingError({
-          message: errorMessage,
-          cause: e,
-        }),
-      );
-    }
-  } else {
+  if (!isHexString(msg)) {
     return Effect.fail(
       new HashingError({
         message: errorMessage,
@@ -131,15 +111,22 @@ export const hashHexWithBlake2b = (
       }),
     );
   }
-};
 
-export const bufferToHex = (buf: Buffer): string => {
   try {
-    return buf.toString("hex");
-  } catch (_) {
-    return "<no hex for undefined>";
+    return Effect.succeed(
+      toHex(blake2b(fromHex(msg), { dkLen: digestByteLength })),
+    );
+  } catch (e) {
+    return Effect.fail(
+      new HashingError({
+        message: errorMessage,
+        cause: e,
+      }),
+    );
   }
 };
+
+export const bufferToHex = (buf: Buffer): string => buf.toString("hex");
 
 export const H32Schema = Data.Bytes({ minLength: 32, maxLength: 32 });
 export type H32 = Data.Static<typeof H32Schema>;
@@ -362,20 +349,18 @@ export const findOperatorByPKH = (
   | (RetiredOperatorUTxO & { isActive: false }),
   LucidError
 > => {
-  const activeOperatorMatch = EffectArray.findFirst(activeOperators, (utxo) =>
+  const activeOperatorMatch = activeOperators.find((utxo) =>
     utxo.assetName.endsWith(operatorPKH),
   );
-
-  if (Option.isSome(activeOperatorMatch)) {
-    return Effect.succeed({ ...activeOperatorMatch.value, isActive: true });
+  if (activeOperatorMatch !== undefined) {
+    return Effect.succeed({ ...activeOperatorMatch, isActive: true });
   }
 
-  const retiredOperatorMatch = EffectArray.findFirst(retiredOperators, (utxo) =>
+  const retiredOperatorMatch = retiredOperators.find((utxo) =>
     utxo.assetName.endsWith(operatorPKH),
   );
-
-  if (Option.isSome(retiredOperatorMatch)) {
-    return Effect.succeed({ ...retiredOperatorMatch.value, isActive: false });
+  if (retiredOperatorMatch !== undefined) {
+    return Effect.succeed({ ...retiredOperatorMatch, isActive: false });
   }
 
   return Effect.fail(

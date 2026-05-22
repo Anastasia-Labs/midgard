@@ -1,4 +1,3 @@
-import { CML } from "@lucid-evolution/lucid";
 import {
   asArray,
   asBytes,
@@ -7,10 +6,12 @@ import {
   decodeSingleCbor,
   deriveMidgardNativeTxCompact,
   encodeCbor,
-  encodeMidgardNativeTxFull,
-  verifyMidgardNativeTxFullConsistency,
+  encodeMidgardNativeTxCanonical,
   type MidgardNativeTxFull,
+  verifyMidgardNativeTxFullConsistency,
 } from "@al-ft/midgard-core/codec";
+import { hexToBytes } from "@al-ft/midgard-core/hex";
+import { CML } from "@lucid-evolution/lucid";
 
 import { BuilderInvariantError, SigningError } from "../core/errors.js";
 import {
@@ -50,30 +51,11 @@ export const nonEmptyBytesFromHex = (
   hex: string,
   fieldName: string,
 ): Buffer => {
-  const normalized = hex.trim().toLowerCase();
-  if (
-    normalized.length === 0 ||
-    normalized.length % 2 !== 0 ||
-    !/^[0-9a-f]+$/.test(normalized)
-  ) {
+  try {
+    return hexToBytes(hex, { fieldName });
+  } catch {
     throw new BuilderInvariantError(`${fieldName} must be hex`, hex);
   }
-  return Buffer.from(normalized, "hex");
-};
-
-const strictBytesFromHex = (
-  hex: string,
-  fieldName: string,
-  expectedBytes?: 28 | 32,
-): Buffer => {
-  const bytes = nonEmptyBytesFromHex(hex, fieldName);
-  if (expectedBytes !== undefined && bytes.length !== expectedBytes) {
-    throw new BuilderInvariantError(
-      `${fieldName} must be a ${expectedBytes.toString()}-byte hex string`,
-      hex,
-    );
-  }
-  return bytes;
 };
 
 const decodeCanonicalVKeyWitness = (
@@ -233,11 +215,12 @@ export const decodeImportAddrWitnesses = (
       cause instanceof Error ? cause.message : String(cause),
     );
   }
+  const bodyHash = computeMidgardNativeTxId(tx);
   const byKeyHash = new Map<string, Buffer>();
   for (const witness of witnesses) {
-    assertVKeyWitness(computeMidgardNativeTxId(tx), witness);
-    const keyHash = witness.vkey().hash().to_hex();
-    const bytes = Buffer.from(witness.to_cbor_bytes());
+    assertVKeyWitness(bodyHash, witness);
+    const keyHash = witnessKeyHash(witness);
+    const bytes = witnessCborBytes(witness);
     const existing = byKeyHash.get(keyHash);
     if (existing !== undefined) {
       throw new SigningError(
@@ -303,7 +286,7 @@ const normalizePartialWitnessBundle = (
     throw new SigningError("Partial witness bundle must contain witnesses");
   }
   const witnesses = canonicalizeAddrWitnesses(
-    strictBytesFromHex(bodyHash, "partial bundle bodyHash", 32),
+    Buffer.from(bodyHash, "hex"),
     bundle.witnesses.map((witnessHex, index) =>
       decodeCanonicalVKeyWitness(
         partialBundleHexBytes(
@@ -314,9 +297,7 @@ const normalizePartialWitnessBundle = (
       ),
     ),
   );
-  const signerKeyHashes = witnesses.map((witness) =>
-    witness.vkey().hash().to_hex(),
-  );
+  const signerKeyHashes = witnesses.map(witnessKeyHash);
   const declaredSignerKeyHashes = bundle.signerKeyHashes.map((keyHash, index) =>
     partialBundleHexString(
       keyHash,
@@ -341,7 +322,7 @@ const normalizePartialWitnessBundle = (
     txId,
     bodyHash,
     witnesses: witnesses.map((witness) =>
-      Buffer.from(witness.to_cbor_bytes()).toString("hex"),
+      witnessCborBytes(witness).toString("hex"),
     ),
     signerKeyHashes,
   };
@@ -356,38 +337,44 @@ export const partialWitnessBundleFromWitnesses = (
   if (canonical.length === 0) {
     throw new SigningError("Partial witness bundle must contain witnesses");
   }
+  const midgardNativeTxVersion = Number(tx.version);
+  if (
+    !Number.isSafeInteger(midgardNativeTxVersion) ||
+    midgardNativeTxVersion <= 0
+  ) {
+    throw new SigningError("Invalid partial witness bundle tx version");
+  }
   const txId = bodyHash.toString("hex");
-  return normalizePartialWitnessBundle({
+  return {
     kind: PARTIAL_WITNESS_BUNDLE_KIND,
     version: PARTIAL_WITNESS_BUNDLE_VERSION,
-    midgardNativeTxVersion: Number(tx.version),
+    midgardNativeTxVersion,
     txId,
     bodyHash: txId,
     witnesses: canonical.map((witness) =>
-      Buffer.from(witness.to_cbor_bytes()).toString("hex"),
+      witnessCborBytes(witness).toString("hex"),
     ),
-    signerKeyHashes: canonical.map((witness) => witness.vkey().hash().to_hex()),
-  });
+    signerKeyHashes: canonical.map(witnessKeyHash),
+  };
 };
 
-export const encodePartialWitnessBundle = (
-  bundle: MidgardPartialWitnessBundle,
-): Buffer => {
-  const normalized = normalizePartialWitnessBundle(bundle);
-  return encodeCbor([
+const encodeNormalizedPartialWitnessBundle = (
+  normalized: MidgardPartialWitnessBundle,
+): Buffer =>
+  encodeCbor([
     normalized.kind,
     normalized.version,
     normalized.midgardNativeTxVersion,
-    strictBytesFromHex(normalized.txId, "partial bundle txId", 32),
-    strictBytesFromHex(normalized.bodyHash, "partial bundle bodyHash", 32),
-    normalized.witnesses.map((witness) =>
-      nonEmptyBytesFromHex(witness, "partial bundle witness"),
-    ),
-    normalized.signerKeyHashes.map((keyHash) =>
-      strictBytesFromHex(keyHash, "partial bundle signerKeyHash", 28),
-    ),
+    Buffer.from(normalized.txId, "hex"),
+    Buffer.from(normalized.bodyHash, "hex"),
+    normalized.witnesses.map((witness) => Buffer.from(witness, "hex")),
+    normalized.signerKeyHashes.map((keyHash) => Buffer.from(keyHash, "hex")),
   ]);
-};
+
+export const encodePartialWitnessBundle = (
+  bundle: MidgardPartialWitnessBundle,
+): Buffer =>
+  encodeNormalizedPartialWitnessBundle(normalizePartialWitnessBundle(bundle));
 
 const assertPartialBundleNumber = (
   value: unknown,
@@ -407,15 +394,12 @@ const partialBundleHexBytes = (
   if (typeof value !== "string") {
     throw new SigningError(`${fieldName} must be hex`);
   }
-  const normalized = value.trim().toLowerCase();
-  if (
-    normalized.length === 0 ||
-    normalized.length % 2 !== 0 ||
-    !/^[0-9a-f]+$/.test(normalized)
-  ) {
+  let bytes: Buffer;
+  try {
+    bytes = hexToBytes(value, { fieldName });
+  } catch {
     throw new SigningError(`${fieldName} must be hex`);
   }
-  const bytes = Buffer.from(normalized, "hex");
   if (expectedBytes !== undefined && bytes.length !== expectedBytes) {
     throw new SigningError(
       `${fieldName} must be a ${expectedBytes.toString()}-byte hex string`,
@@ -482,7 +466,7 @@ export const decodePartialWitnessBundle = (
     witnesses: witnessBytes,
     signerKeyHashes,
   });
-  if (!encodePartialWitnessBundle(normalized).equals(bytes)) {
+  if (!encodeNormalizedPartialWitnessBundle(normalized).equals(bytes)) {
     throw new SigningError("Partial witness bundle CBOR is not canonical");
   }
   return normalized;
@@ -577,6 +561,6 @@ export const estimatedSignedTxByteLength = (
   tx: MidgardNativeTxFull,
   expectedWitnessCount: number,
 ): number =>
-  encodeMidgardNativeTxFull(
+  encodeMidgardNativeTxCanonical(
     withEstimatedAddrWitnesses(tx, expectedWitnessCount),
   ).length;

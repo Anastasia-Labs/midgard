@@ -1,17 +1,18 @@
 import {
+  Data,
+  fromText,
+  LucidEvolution,
+  TxBuilder,
+} from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+
+import {
   AuthenticatedValidator,
   LucidError,
   POSIXTimeSchema,
 } from "@/common.js";
-import { AuthenticUTxO, authenticateUTxOs } from "@/internals.js";
-import {
-  LucidEvolution,
-  TxBuilder,
-  UTxO,
-  Data,
-  fromText,
-} from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import { authenticateUTxOs, AuthenticUTxO } from "@/internals.js";
+
 import { incompleteInitLinkedListTxProgram } from "./linked-list.js";
 
 export const ACTIVE_OPERATORS_ROOT_ASSET_NAME = fromText(
@@ -184,7 +185,7 @@ export const fetchActiveOperatorUTxOs = (
   lucid: LucidEvolution,
 ): Effect.Effect<ActiveOperatorUTxO[], LucidError> =>
   Effect.gen(function* () {
-    const allUtxos: UTxO[] = yield* Effect.tryPromise({
+    const allUtxos = yield* Effect.tryPromise({
       try: () => lucid.utxosAt(params.activeOperatorAddress),
       catch: (err) =>
         new LucidError({
@@ -198,13 +199,11 @@ export const fetchActiveOperatorUTxOs = (
         cause: "No UTxOs found in Active Operators Contract address",
       });
     }
-    const activeOperatorUTxOs: ActiveOperatorUTxO[] =
-      yield* authenticateUTxOs<ActiveOperatorDatum>(
-        allUtxos,
-        params.activeOperatorPolicyId,
-        ActiveOperatorDatum,
-      );
-    return activeOperatorUTxOs;
+    return yield* authenticateUTxOs<ActiveOperatorDatum>(
+      allUtxos,
+      params.activeOperatorPolicyId,
+      ActiveOperatorDatum,
+    );
   });
 
 /**
@@ -218,17 +217,13 @@ export const incompleteActiveOperatorInitTxProgram = (
   lucid: LucidEvolution,
   params: ActiveOperatorInitParams,
 ): Effect.Effect<TxBuilder, never> =>
-  Effect.gen(function* () {
-    const rootData = "";
-
-    return yield* incompleteInitLinkedListTxProgram(lucid, {
-      validator: params.validator,
-      rootAssetName: ACTIVE_OPERATORS_ROOT_ASSET_NAME,
-      data: rootData,
-      redeemer: Data.to(
-        { Init: { output_index: params.outputIndex ?? 0n } },
-        ActiveOperatorMintRedeemer,
-      ),
-      lovelace: params.lovelace,
-    });
+  incompleteInitLinkedListTxProgram(lucid, {
+    validator: params.validator,
+    rootAssetName: ACTIVE_OPERATORS_ROOT_ASSET_NAME,
+    data: "",
+    redeemer: Data.to(
+      { Init: { output_index: params.outputIndex ?? 0n } },
+      ActiveOperatorMintRedeemer,
+    ),
+    lovelace: params.lovelace,
   });

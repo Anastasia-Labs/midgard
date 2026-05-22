@@ -65,9 +65,6 @@ export const encodeMidgardNativeScript = (
         encodeCborArrayRaw(script.scripts.map(encodeMidgardNativeScript)),
       ]);
     case "atLeast":
-      if (script.required < 0n) {
-        fail("Native script atLeast required count must be non-negative");
-      }
       return encodeCborArrayRaw([
         encodeCborUnsigned(3n),
         encodeCborUnsigned(script.required),
@@ -104,19 +101,30 @@ const decodeNativeScriptAt = (
       if (header.length !== 2) {
         fail("Native sig script must have 2 fields");
       }
-      const keyHash = readCborBytes(bytes, cursor, "native_script.sig.key_hash");
+      const keyHash = readCborBytes(
+        bytes,
+        cursor,
+        "native_script.sig.key_hash",
+      );
       cursor = keyHash.nextOffset;
       if (keyHash.value.length !== KEY_HASH_LENGTH) {
         fail("Native script key hash must be 28 bytes");
       }
-      return { script: { type: "sig", keyHash: keyHash.value }, nextOffset: cursor };
+      return {
+        script: { type: "sig", keyHash: keyHash.value },
+        nextOffset: cursor,
+      };
     }
     case 1n:
     case 2n: {
       if (header.length !== 2) {
         fail("Native all/any script must have 2 fields");
       }
-      const children = readCborArrayHeader(bytes, cursor, "native_script.children");
+      const children = readCborArrayHeader(
+        bytes,
+        cursor,
+        "native_script.children",
+      );
       cursor = children.nextOffset;
       const scripts: MidgardNativeScript[] = [];
       for (let i = 0; i < children.length; i += 1) {
@@ -133,9 +141,17 @@ const decodeNativeScriptAt = (
       if (header.length !== 3) {
         fail("Native atLeast script must have 3 fields");
       }
-      const required = readCborUnsigned(bytes, cursor, "native_script.atLeast.required");
+      const required = readCborUnsigned(
+        bytes,
+        cursor,
+        "native_script.atLeast.required",
+      );
       cursor = required.nextOffset;
-      const children = readCborArrayHeader(bytes, cursor, "native_script.atLeast.children");
+      const children = readCborArrayHeader(
+        bytes,
+        cursor,
+        "native_script.atLeast.children",
+      );
       cursor = children.nextOffset;
       const scripts: MidgardNativeScript[] = [];
       for (let i = 0; i < children.length; i += 1) {
@@ -156,7 +172,10 @@ const decodeNativeScriptAt = (
       const slot = readCborUnsigned(bytes, cursor, "native_script.slot");
       cursor = slot.nextOffset;
       return {
-        script: { type: tag.value === 4n ? "after" : "before", slot: slot.value },
+        script: {
+          type: tag.value === 4n ? "after" : "before",
+          slot: slot.value,
+        },
         nextOffset: cursor,
       };
     }

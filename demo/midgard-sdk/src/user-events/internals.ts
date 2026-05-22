@@ -1,40 +1,84 @@
 import {
-  HashingError,
-  hashHexWithBlake2b,
-  LucidError,
-  POSIXTime,
-  UnspecifiedNetworkError,
-} from "@/common.js";
-import { Effect } from "effect";
+  compareOutRefs,
+  findOutRefIndex,
+  type OutRefLike,
+} from "@al-ft/midgard-core/out-ref";
 import {
   Address,
+  applyDoubleCborEncoding,
   Assets,
-  CML,
   CertificateValidator,
+  CML,
+  coreToTxOutput,
   Data,
   LucidEvolution,
   MintingPolicy,
+  type Network,
+  type RedeemerBuilder,
+  slotToUnixTime,
   PolicyId,
   TxBuilder,
+  type TxSignBuilder,
   UTxO,
-  applyDoubleCborEncoding,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
+import { Data as EffectData, Effect } from "effect";
+
+import {
+  GenericErrorFields,
+  hashHexWithBlake2b,
+  HashingError,
+  LucidError,
+  OutputReference,
+  POSIXTime,
+  UnspecifiedNetworkError,
+} from "@/common.js";
+import {
+  getRedeemerPointersInContextOrder,
+  getTxInfoRedeemerIndexes,
+} from "@/cardano-redeemers.js";
 import { getProtocolParameters } from "@/protocol-parameters.js";
 
-const eventIInclusionTimeInBounds = (
+type TxBuilderInternals = {
+  txBuilder: {
+    add_cert: (builder: unknown) => void;
+  };
+  programs: Array<Effect.Effect<void>>;
+};
+
+type InternalTxBuilder = TxBuilder & {
+  rawConfig: () => TxBuilderInternals;
+};
+
+type UserEventTxProvider = {
+  getProtocolParameters?: () => Promise<{
+    keyDeposit: bigint;
+  }>;
+};
+
+export type UserEventDraftLayout = {
+  readonly eventOutputIndex: bigint;
+  readonly witnessRegistrationRedeemerIndex: bigint;
+  readonly hubRefInputIndex: bigint;
+};
+
+export class UserEventBuildError extends EffectData.TaggedError(
+  "UserEventBuildError",
+)<GenericErrorFields> {}
+
+const USER_EVENT_TX_TTL_MS = 60_000;
+const USER_EVENT_OUTPUT_INDEX = 0n;
+const WITNESS_REGISTRATION_REDEEMER_TX_INFO_INDEX = 1n;
+
+const eventInclusionTimeInBounds = (
   inclusionTime: bigint,
   inclusionTimeLowerBound?: POSIXTime,
   inclusionTimeUpperBound?: POSIXTime,
-): boolean => {
-  const biggerThanLower =
-    inclusionTimeLowerBound === undefined ||
-    inclusionTimeLowerBound <= inclusionTime;
-  const smallerThanUpper =
-    inclusionTimeUpperBound === undefined ||
-    inclusionTime < inclusionTimeUpperBound;
-  return biggerThanLower && smallerThanUpper;
-};
+): boolean =>
+  (inclusionTimeLowerBound === undefined ||
+    inclusionTimeLowerBound <= inclusionTime) &&
+  (inclusionTimeUpperBound === undefined ||
+    inclusionTime < inclusionTimeUpperBound);
 
 export type UserEventFetchConfig = {
   eventAddress: Address;
@@ -61,14 +105,13 @@ export const fetchUserEventUTxOsProgram = <
     });
     const eventUTxOs = yield* conversionFunction(allUTxOs);
 
-    const validEventUTxOs = eventUTxOs.filter((utxo) =>
-      eventIInclusionTimeInBounds(
+    return eventUTxOs.filter((utxo) =>
+      eventInclusionTimeInBounds(
         utxo.datum.inclusion_time,
         config.inclusionTimeLowerBound,
         config.inclusionTimeUpperBound,
       ),
     );
-    return validEventUTxOs;
   });
 
 export const UserEventMintRedeemerSchema = Data.Enum([
@@ -227,6 +270,386 @@ export const buildUserEventMintTransaction = (
     .attach.MintingPolicy(mintingPolicy);
 };
 
+const collectSortedInputOutRefs = (
+  inputs: CML.TransactionInputList,
+): readonly OutRefLike[] =>
+  [...Array(inputs.len()).keys()]
+    .map((index) => {
+      const input = inputs.get(index);
+      return {
+        txHash: input.transaction_id().to_hex(),
+        outputIndex: Number(input.index()),
+      };
+    })
+    .sort(compareOutRefs);
+
+const resolveOutRefIndexFromSet = (
+  target: OutRefLike,
+  outRefs: readonly OutRefLike[],
+): bigint => {
+  const index = findOutRefIndex([...outRefs].sort(compareOutRefs), target);
+  if (index === undefined) {
+    throw new Error("Hub-oracle reference input is missing from reference set");
+  }
+  return BigInt(index);
+};
+
+export const outputReferenceToPlutusDataCbor = (
+  utxo: Pick<UTxO, "txHash" | "outputIndex">,
+): string =>
+  Data.to(
+    {
+      transactionId: utxo.txHash,
+      outputIndex: BigInt(utxo.outputIndex),
+    },
+    OutputReference,
+  );
+
+export const slotToUnixTimeForLucid = (
+  lucid: LucidEvolution,
+  slot: number,
+): number | undefined => {
+  const network = lucid.config().network;
+  if (network === undefined) {
+    return undefined;
+  }
+  if (network === "Custom") {
+    const provider = lucid.config().provider as {
+      time?: number;
+      slot?: number;
+    };
+    if (
+      typeof provider.time !== "number" ||
+      typeof provider.slot !== "number"
+    ) {
+      return undefined;
+    }
+    const slotLength = 1000;
+    const zeroTime = provider.time - provider.slot * slotLength;
+    return zeroTime + slot * slotLength;
+  }
+  return slotToUnixTime(network as Exclude<Network, "Custom">, slot);
+};
+
+export const slotToUnixTimeForLucidOrEmulatorFallback = (
+  lucid: LucidEvolution,
+  slot: number,
+): number => slotToUnixTimeForLucid(lucid, slot) ?? slot * 1000;
+
+export const resolveUserEventValidTo = (
+  lucid: LucidEvolution,
+  ttlMs = USER_EVENT_TX_TTL_MS,
+): number => {
+  const targetUnixTime = Date.now() + ttlMs;
+  const slot = lucid.unixTimeToSlot(targetUnixTime);
+  const alignedUnixTime = slotToUnixTimeForLucidOrEmulatorFallback(lucid, slot);
+  return alignedUnixTime > targetUnixTime
+    ? alignedUnixTime
+    : slotToUnixTimeForLucidOrEmulatorFallback(lucid, slot + 1);
+};
+
+export const fetchSortedWalletUtxosProgram = (
+  lucid: LucidEvolution,
+  label: string,
+): Effect.Effect<readonly UTxO[], LucidError> =>
+  Effect.tryPromise({
+    try: async () => [...(await lucid.wallet().getUtxos())].sort(compareOutRefs),
+    catch: (cause) =>
+      new LucidError({
+        message: `Failed to fetch wallet UTxOs for ${label} submission`,
+        cause,
+      }),
+  });
+
+export const selectWalletNonceInputProgram = (
+  lucid: LucidEvolution,
+  label: string,
+): Effect.Effect<UTxO, LucidError | UserEventBuildError> =>
+  fetchSortedWalletUtxosProgram(lucid, label).pipe(
+    Effect.andThen((utxos) => {
+      const nonceInput = utxos[0];
+      return nonceInput === undefined
+        ? Effect.fail(
+            new UserEventBuildError({
+              message: `Failed to build ${label} transaction`,
+              cause: "No UTxOs found in wallet",
+            }),
+          )
+        : Effect.succeed(nonceInput);
+    }),
+  );
+
+export const fetchStakeCredentialDepositProgram = (
+  lucid: LucidEvolution,
+  label: string,
+): Effect.Effect<bigint, UserEventBuildError> =>
+  Effect.tryPromise({
+    try: async () => {
+      const provider = lucid.config().provider as UserEventTxProvider;
+      if (typeof provider.getProtocolParameters !== "function") {
+        throw new Error(
+          "Cardano provider does not expose protocol parameters required for certificate deposit",
+        );
+      }
+
+      const { keyDeposit } = await provider.getProtocolParameters();
+      if (typeof keyDeposit !== "bigint") {
+        throw new Error(
+          "Provider protocol parameters did not include keyDeposit",
+        );
+      }
+
+      return keyDeposit;
+    },
+    catch: (cause) =>
+      new UserEventBuildError({
+        message: `Failed to resolve stake credential deposit for ${label} transaction`,
+        cause,
+      }),
+  });
+
+const addScriptStakeRegistrationCertificate = (
+  tx: TxBuilder,
+  witnessScript: CertificateValidator,
+  witnessRedeemer: string,
+  stakeCredentialDeposit: bigint,
+): TxBuilder => {
+  const rawConfig = (tx as InternalTxBuilder).rawConfig();
+  rawConfig.programs.push(
+    Effect.sync(() => {
+      const witnessScriptHash = validatorToScriptHash(witnessScript);
+      const credential = CML.Credential.new_script(
+        CML.ScriptHash.from_hex(witnessScriptHash),
+      );
+      const certBuilder = CML.SingleCertificateBuilder.new(
+        CML.Certificate.new_reg_cert(credential, stakeCredentialDeposit),
+      );
+      const plutusWitness = CML.PartialPlutusWitness.new(
+        CML.PlutusScriptWitness.new_script(
+          CML.PlutusScript.from_v3(
+            CML.PlutusV3Script.from_cbor_hex(witnessScript.script),
+          ),
+        ),
+        CML.PlutusData.from_cbor_hex(witnessRedeemer),
+      );
+
+      rawConfig.txBuilder.add_cert(
+        certBuilder.plutus_script(plutusWitness, CML.Ed25519KeyHashList.new()),
+      );
+    }),
+  );
+  return tx;
+};
+
+const deriveUserEventDraftLayout = ({
+  tx,
+  eventAddress,
+  eventUnit,
+  hubOracleRefInput,
+  label,
+}: {
+  readonly tx: CML.Transaction;
+  readonly eventAddress: string;
+  readonly eventUnit: string;
+  readonly hubOracleRefInput: UTxO;
+  readonly label: string;
+}): UserEventDraftLayout => {
+  const outputs = tx.body().outputs();
+  let eventOutputIndex: bigint | null = null;
+  for (let index = 0; index < outputs.len(); index += 1) {
+    const output = coreToTxOutput(outputs.get(index));
+    if (
+      output.address === eventAddress &&
+      (output.assets[eventUnit] ?? 0n) === 1n
+    ) {
+      eventOutputIndex = BigInt(index);
+      break;
+    }
+  }
+  if (eventOutputIndex === null) {
+    throw new Error(
+      `Failed to locate ${label} event output for unit=${eventUnit} at address=${eventAddress}`,
+    );
+  }
+
+  const pointers = getRedeemerPointersInContextOrder(tx);
+  const certContextIndex = pointers.findIndex(
+    (pointer) => pointer.tag === CML.RedeemerTag.Cert,
+  );
+  if (certContextIndex < 0) {
+    throw new Error(`Failed to locate certificate redeemer in ${label} draft`);
+  }
+
+  const witnessRegistrationRedeemerIndex =
+    getTxInfoRedeemerIndexes(pointers)[certContextIndex];
+  if (witnessRegistrationRedeemerIndex === undefined) {
+    throw new Error(
+      `Failed to resolve certificate redeemer index in ${label} draft`,
+    );
+  }
+
+  const referenceInputs = tx.body().reference_inputs();
+  if (referenceInputs === undefined) {
+    throw new Error(`${label} draft did not include reference inputs`);
+  }
+  const hubRefInputIndex = findOutRefIndex(
+    collectSortedInputOutRefs(referenceInputs),
+    hubOracleRefInput,
+  );
+  if (hubRefInputIndex === undefined) {
+    throw new Error(`${label} draft did not include hub-oracle reference input`);
+  }
+
+  return {
+    eventOutputIndex,
+    witnessRegistrationRedeemerIndex: BigInt(
+      witnessRegistrationRedeemerIndex,
+    ),
+    hubRefInputIndex: BigInt(hubRefInputIndex),
+  };
+};
+
+export type BuildCompletedUserEventMintTxParams = {
+  readonly lucid: LucidEvolution;
+  readonly nonceInput: UTxO;
+  readonly eventUnit: string;
+  readonly eventAddress: string;
+  readonly eventDatumCbor: string;
+  readonly outputAssets: Assets;
+  readonly validTo: number;
+  readonly mintingPolicy: MintingPolicy;
+  readonly attachMintingPolicy: boolean;
+  readonly referenceInputs: readonly UTxO[];
+  readonly hubOracleRefInput: UTxO;
+  readonly witnessScript: CertificateValidator;
+  readonly witnessRegistrationRedeemer: string;
+  readonly stakeCredentialDeposit: bigint;
+  readonly label: string;
+};
+
+export const buildCompletedUserEventMintTxProgram = (
+  params: BuildCompletedUserEventMintTxParams,
+): Effect.Effect<
+  {
+    readonly tx: TxSignBuilder;
+    readonly layout: UserEventDraftLayout;
+  },
+  UserEventBuildError
+> =>
+  Effect.gen(function* () {
+    const assumedLayout = yield* Effect.try({
+      try: () => ({
+        eventOutputIndex: USER_EVENT_OUTPUT_INDEX,
+        witnessRegistrationRedeemerIndex:
+          WITNESS_REGISTRATION_REDEEMER_TX_INFO_INDEX,
+        hubRefInputIndex: resolveOutRefIndexFromSet(
+          params.hubOracleRefInput,
+          params.referenceInputs,
+        ),
+      }),
+      catch: (cause) =>
+        new UserEventBuildError({
+          message: `Failed to resolve ${params.label} transaction layout`,
+          cause,
+        }),
+    });
+
+    const makeMintRedeemerBuilder = (
+      layout: UserEventDraftLayout,
+    ): RedeemerBuilder => ({
+      kind: "selected",
+      inputs: [params.nonceInput],
+      makeRedeemer: (inputIndices) => {
+        const nonceInputIndex = inputIndices[0];
+        if (nonceInputIndex === undefined || inputIndices.length !== 1) {
+          throw new Error(
+            `${params.label} redeemer builder expected exactly one selected nonce input, got ${inputIndices.length.toString()}`,
+          );
+        }
+        return encodeUserEventAuthenticateMintRedeemer({
+          nonceInputIndex,
+          eventOutputIndex: layout.eventOutputIndex,
+          hubRefInputIndex: layout.hubRefInputIndex,
+          witnessRegistrationRedeemerIndex:
+            layout.witnessRegistrationRedeemerIndex,
+        });
+      },
+    });
+
+    const buildTx = (layout: UserEventDraftLayout) => {
+      const tx = params.lucid
+        .newTx()
+        .collectFrom([params.nonceInput])
+        .readFrom([...params.referenceInputs])
+        .mintAssets(
+          { [params.eventUnit]: 1n },
+          makeMintRedeemerBuilder(layout),
+        )
+        .pay.ToAddressWithData(
+          params.eventAddress,
+          {
+            kind: "inline",
+            value: params.eventDatumCbor,
+          },
+          params.outputAssets,
+        )
+        .validTo(params.validTo);
+
+      return addScriptStakeRegistrationCertificate(
+        params.attachMintingPolicy
+          ? tx.attach.MintingPolicy(params.mintingPolicy)
+          : tx,
+        params.witnessScript,
+        params.witnessRegistrationRedeemer,
+        params.stakeCredentialDeposit,
+      );
+    };
+
+    const tx = yield* Effect.tryPromise({
+      try: () => buildTx(assumedLayout).complete({ localUPLCEval: true }),
+      catch: (cause) =>
+        new UserEventBuildError({
+          message: `Failed to build ${params.label} transaction: ${String(cause)}`,
+          cause,
+        }),
+    });
+
+    const resolvedLayout = yield* Effect.try({
+      try: () =>
+        deriveUserEventDraftLayout({
+          tx: tx.toTransaction(),
+          eventAddress: params.eventAddress,
+          eventUnit: params.eventUnit,
+          hubOracleRefInput: params.hubOracleRefInput,
+          label: params.label,
+        }),
+      catch: (cause) =>
+        new UserEventBuildError({
+          message: `Failed to verify ${params.label} transaction layout`,
+          cause,
+        }),
+    });
+
+    if (
+      resolvedLayout.eventOutputIndex !== assumedLayout.eventOutputIndex ||
+      resolvedLayout.witnessRegistrationRedeemerIndex !==
+        assumedLayout.witnessRegistrationRedeemerIndex ||
+      resolvedLayout.hubRefInputIndex !== assumedLayout.hubRefInputIndex
+    ) {
+      return yield* Effect.fail(
+        new UserEventBuildError({
+          message: `Built ${params.label} transaction layout drifted from expected form`,
+          cause: {
+            assumedLayout,
+            resolvedLayout,
+          },
+        }),
+      );
+    }
+
+    return { tx, layout: resolvedLayout };
+  });
+
 export const findInclusionTimeForUserEvent = (
   lucid: LucidEvolution,
 ): Effect.Effect<number, UnspecifiedNetworkError> =>
@@ -266,14 +689,14 @@ export const getNonceInputAndAssetName = (
         }),
     }).pipe(
       Effect.andThen((utxos) => {
-        if (utxos.length <= 0) {
+        if (utxos.length === 0) {
           return new LucidError({
             message: `Failed to build the ${eventName} transaction`,
             cause: "No UTxOs found in wallet",
           });
-        } else {
-          return Effect.succeed(utxos[0]);
         }
+
+        return Effect.succeed(utxos[0]);
       }),
     );
     const inputUtxo = utxo ?? (yield* nonceUTxOEffect);

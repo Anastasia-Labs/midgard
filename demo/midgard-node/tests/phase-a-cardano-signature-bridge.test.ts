@@ -1,33 +1,22 @@
-import fs from "node:fs";
-import path from "node:path";
-import { describe, expect, it } from "vitest";
-import { CML } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
 import {
-  cardanoTxBytesToMidgardNativeTxFullBytes,
+  cardanoTxBytesToMidgardNativeTxCanonicalCbor,
   computeMidgardNativeTxId,
-  decodeMidgardNativeTxFull,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
 } from "@al-ft/midgard-core/codec";
 import {
+  type QueuedTx,
   RejectCodes,
   runPhaseAValidation,
   runPhaseBValidationWithPatch,
-  type QueuedTx,
 } from "@al-ft/midgard-validation";
+import { CML } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+import { describe, expect, it } from "vitest";
+
 import {
   makeCardanoTxOutput,
   makeMidgardTxOutput,
 } from "./midgard-output-helpers.js";
-
-type TxFixture = {
-  readonly cborHex: string;
-  readonly txId: string;
-};
-
-const fixturePath = path.resolve(__dirname, "./txs/txs_0.json");
-const txFixtures = JSON.parse(
-  fs.readFileSync(fixturePath, "utf8"),
-) as readonly TxFixture[];
 
 const phaseAConfig = {
   expectedNetworkId: 0n,
@@ -84,8 +73,9 @@ describe("phase-a converted fixture signature bridge", () => {
     const cardanoBytes = Buffer.from(
       CML.Transaction.new(body, witnessSet, true, undefined).to_cbor_bytes(),
     );
-    const nativeBytes = cardanoTxBytesToMidgardNativeTxFullBytes(cardanoBytes);
-    const nativeTx = decodeMidgardNativeTxFull(nativeBytes);
+    const nativeBytes =
+      cardanoTxBytesToMidgardNativeTxCanonicalCbor(cardanoBytes);
+    const nativeTx = decodeMidgardNativeTxFullFromCanonicalCbor(nativeBytes);
     const txId = computeMidgardNativeTxId(nativeTx);
     const queued: QueuedTx = {
       txId,
@@ -142,10 +132,11 @@ describe("phase-a converted fixture signature bridge", () => {
       true,
       undefined,
     );
-    const unsignedNativeBytes = cardanoTxBytesToMidgardNativeTxFullBytes(
+    const unsignedNativeBytes = cardanoTxBytesToMidgardNativeTxCanonicalCbor(
       Buffer.from(unsignedCardanoTx.to_cbor_bytes()),
     );
-    const nativeTx = decodeMidgardNativeTxFull(unsignedNativeBytes);
+    const nativeTx =
+      decodeMidgardNativeTxFullFromCanonicalCbor(unsignedNativeBytes);
     const vkeyWitnesses = CML.VkeywitnessList.new();
     vkeyWitnesses.add(
       CML.make_vkey_witness(
@@ -159,10 +150,10 @@ describe("phase-a converted fixture signature bridge", () => {
     witnessSet.set_native_scripts(nativeScripts);
 
     const cardanoTx = CML.Transaction.new(body, witnessSet, true, undefined);
-    const nativeBytes = cardanoTxBytesToMidgardNativeTxFullBytes(
+    const nativeBytes = cardanoTxBytesToMidgardNativeTxCanonicalCbor(
       Buffer.from(cardanoTx.to_cbor_bytes()),
     );
-    const converted = decodeMidgardNativeTxFull(nativeBytes);
+    const converted = decodeMidgardNativeTxFullFromCanonicalCbor(nativeBytes);
     const txId = computeMidgardNativeTxId(converted);
 
     const queued: QueuedTx = {

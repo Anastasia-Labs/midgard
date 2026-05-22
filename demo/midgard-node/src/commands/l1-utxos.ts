@@ -1,6 +1,9 @@
+import { normalizeTxHash } from "@al-ft/midgard-core/out-ref";
+import type { Assets } from "@lucid-evolution/lucid";
+
+import { resolveBlockfrostApiUrl } from "@/commands/address-from-seed.js";
 import { parseAddressArgument } from "@/commands/command-utils.js";
 import { compareOutRefs } from "@/tx-context.js";
-import type { Assets } from "@lucid-evolution/lucid";
 
 export type BlockfrostAmount = {
   readonly unit: string;
@@ -74,33 +77,21 @@ export const resolveBlockfrostConfig = (input?: {
   readonly apiKey: string;
 } => {
   const env = input?.env ?? process.env;
-  const rawApiUrl =
-    input?.apiUrl?.trim() ?? env.L1_BLOCKFROST_API_URL?.trim() ?? "";
+  const apiUrl = resolveBlockfrostApiUrl({
+    blockfrostApiUrl: input?.apiUrl,
+    env,
+  });
   const rawApiKey =
     input?.apiKey?.trim() ?? env.L1_BLOCKFROST_KEY?.trim() ?? "";
 
-  if (rawApiUrl.length === 0) {
-    throw new Error(
-      "Blockfrost API URL is required. Pass --blockfrost-api-url or set L1_BLOCKFROST_API_URL.",
-    );
-  }
   if (rawApiKey.length === 0) {
     throw new Error(
       "Blockfrost API key is required. Pass --blockfrost-key or set L1_BLOCKFROST_KEY.",
     );
   }
 
-  let parsed: URL;
-  try {
-    parsed = new URL(rawApiUrl);
-  } catch (cause) {
-    throw new Error(
-      `Invalid Blockfrost API URL "${rawApiUrl}": ${String(cause)}`,
-    );
-  }
-
   return {
-    apiUrl: parsed.toString().replace(/\/+$/, ""),
+    apiUrl,
     apiKey: rawApiKey,
   };
 };
@@ -160,27 +151,22 @@ export const parseBlockfrostAddressUtxo = (
   }
 
   const candidate = entry as Record<string, unknown>;
-  if (
-    typeof candidate.tx_hash !== "string" ||
-    !/^[0-9a-f]{64}$/i.test(candidate.tx_hash)
-  ) {
-    throw new Error(
-      `Blockfrost UTxO entry[${index.toString()}].tx_hash must be a 32-byte hex string.`,
-    );
+  const fieldName = `Blockfrost UTxO entry[${index.toString()}]`;
+  if (typeof candidate.tx_hash !== "string") {
+    throw new Error(`${fieldName}.tx_hash must be a 32-byte hex string.`);
   }
+  const txHash = normalizeTxHash(candidate.tx_hash, `${fieldName}.tx_hash`);
   if (
     typeof candidate.output_index !== "number" ||
     !Number.isInteger(candidate.output_index) ||
     candidate.output_index < 0
   ) {
     throw new Error(
-      `Blockfrost UTxO entry[${index.toString()}].output_index must be a non-negative integer.`,
+      `${fieldName}.output_index must be a non-negative integer.`,
     );
   }
   if (!Array.isArray(candidate.amount)) {
-    throw new Error(
-      `Blockfrost UTxO entry[${index.toString()}].amount must be an array.`,
-    );
+    throw new Error(`${fieldName}.amount must be an array.`);
   }
 
   const amount = candidate.amount.map((item, amountIndex) =>
@@ -194,7 +180,7 @@ export const parseBlockfrostAddressUtxo = (
       : null;
 
   return {
-    txHash: candidate.tx_hash.toLowerCase(),
+    txHash,
     outputIndex: candidate.output_index,
     assets: parseBlockfrostAssets(amount),
     block: typeof candidate.block === "string" ? candidate.block : null,

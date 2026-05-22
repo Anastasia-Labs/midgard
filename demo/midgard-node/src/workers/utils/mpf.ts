@@ -1,33 +1,36 @@
 import { Proof, Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
-import { Data, Effect, Option } from "effect";
+import { encodeMidgardTxOutput } from "@al-ft/lucid-midgard";
+import {
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  encodeMidgardNativeTxCompact,
+} from "@al-ft/midgard-core/codec";
+import { normalizeHex } from "@al-ft/midgard-core/hex";
+import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
-import { CML } from "@lucid-evolution/lucid";
 import type { UTxO } from "@lucid-evolution/lucid";
+import { CML } from "@lucid-evolution/lucid";
+import { Data, Effect, Option } from "effect";
+import * as FS from "fs";
 import { Level } from "level";
-import { Database, NodeConfig } from "@/services/index.js";
-import * as Tx from "@/database/utils/tx.js";
-import * as Ledger from "@/database/utils/ledger.js";
-import * as MempoolTxDeltasDB from "@/database/mempoolTxDeltas.js";
-import * as TxRejectionsDB from "@/database/txRejections.js";
+
+import * as DepositsDB from "@/database/deposits.js";
 import * as MempoolDB from "@/database/mempool.js";
 import * as MempoolLedgerDB from "@/database/mempoolLedger.js";
-import * as DepositsDB from "@/database/deposits.js";
-import * as WithdrawalsDB from "@/database/withdrawals.js";
-import { FileSystemError, findSpentAndProducedUTxOs } from "@/utils.js";
-import * as FS from "fs";
-import * as SDK from "@al-ft/midgard-sdk";
-import { encodeMidgardTxOutput } from "@al-ft/lucid-midgard";
+import * as MempoolTxDeltasDB from "@/database/mempoolTxDeltas.js";
+import * as TxRejectionsDB from "@/database/txRejections.js";
 import {
   DatabaseError,
   sqlErrorToDatabaseError,
 } from "@/database/utils/common.js";
+import * as Ledger from "@/database/utils/ledger.js";
+import * as Tx from "@/database/utils/tx.js";
+import * as WithdrawalsDB from "@/database/withdrawals.js";
+import { Database, NodeConfig } from "@/services/index.js";
+import { FileSystemError, findSpentAndProducedUTxOs } from "@/utils.js";
+
 import {
-  decodeMidgardNativeTxFull,
-  encodeMidgardNativeTxCompact,
-} from "@al-ft/midgard-core/codec";
-import {
-  classifyWithdrawal,
   type ClassifiedWithdrawal,
+  classifyWithdrawal,
 } from "./mpf/withdrawal-classification.js";
 
 export { keyValuePhasProof, keyValuePhasRoot } from "./mpf/phas.js";
@@ -53,8 +56,15 @@ type LevelBatchOp =
     }
   | { readonly type: "del"; readonly key: string };
 
-const normalizeStoredRootHex = (rootHex: string): string =>
-  rootHex === MPF_INTERNAL_NULL_ROOT_HEX ? MPF_EMPTY_ROOT_HEX : rootHex;
+const normalizeRootMarkerHex = (rootHex: string, fieldName: string): string =>
+  normalizeHex(rootHex, { fieldName, byteLength: 32 });
+
+const normalizeStoredRootHex = (rootHex: string): string => {
+  const normalized = normalizeRootMarkerHex(rootHex, "MPF root marker");
+  return normalized === MPF_INTERNAL_NULL_ROOT_HEX
+    ? MPF_EMPTY_ROOT_HEX
+    : normalized;
+};
 
 const parseStoredRootHex = (rootHex: unknown): Buffer => {
   if (rootHex === undefined) {
@@ -63,15 +73,16 @@ const parseStoredRootHex = (rootHex: unknown): Buffer => {
   if (typeof rootHex !== "string") {
     throw new Error("Persisted MPF root marker is not a string");
   }
-  if (!/^[0-9a-fA-F]{64}$/.test(rootHex)) {
-    throw new Error("Persisted MPF root marker is not a 32-byte hex root");
-  }
-  if (rootHex === MPF_INTERNAL_NULL_ROOT_HEX) {
+  const normalized = normalizeRootMarkerHex(
+    rootHex,
+    "Persisted MPF root marker",
+  );
+  if (normalized === MPF_INTERNAL_NULL_ROOT_HEX) {
     throw new Error(
       "Persisted MPF root marker uses the library internal null root instead of the canonical Midgard empty root",
     );
   }
-  return Buffer.from(rootHex, "hex");
+  return Buffer.from(normalized, "hex");
 };
 
 const applyPendingBatch = (
@@ -86,9 +97,9 @@ const applyPendingBatch = (
     return op.type === "put" ? op.value : undefined;
   }, value);
 
-const encodeTransactionRootValue = (txEnvelopeCbor: Buffer): Buffer =>
+const encodeTransactionRootValue = (txCanonicalCbor: Buffer): Buffer =>
   encodeMidgardNativeTxCompact(
-    decodeMidgardNativeTxFull(txEnvelopeCbor).compact,
+    decodeMidgardNativeTxFullFromCanonicalCbor(txCanonicalCbor).compact,
   );
 
 export const COMMIT_REJECT_CODE_DECODE_FAILED = "E_COMMIT_CBOR_DESERIALIZATION";
@@ -217,12 +228,11 @@ export const utxoToInsertBatchOp = (
           cause: e,
         }),
     });
-    const op: MpfBatchOp = {
+    return {
       type: "insert",
       key: Buffer.from(input.to_cbor_bytes()),
       value: output,
     };
-    return op;
   });
 
 export const deleteMpfStore = (
@@ -442,33 +452,34 @@ export const resolveIncludedDepositEntriesForWindow = ({
             currentBlockStartTime.getTime() <
             entry[DepositsDB.Columns.INCLUSION_TIME].getTime(),
         );
-        let normalizedCurrentWindowEntries: readonly DepositsDB.Entry[] = [];
-        if (currentWindowEntries.length > 0) {
-          const awaitingEntries = currentWindowEntries.filter(
-            (entry) =>
-              entry[DepositsDB.Columns.STATUS] === DepositsDB.Status.Awaiting,
-          );
-          if (awaitingEntries.length > 0) {
-            const mempoolEntries = yield* Effect.forEach(
-              awaitingEntries,
-              DepositsDB.toMempoolLedgerEntry,
-            );
-            yield* MempoolLedgerDB.reconcileDepositEntries(mempoolEntries);
-            yield* DepositsDB.markAwaitingAsProjected(
-              awaitingEntries.map((entry) => entry[DepositsDB.Columns.ID]),
-            );
-          }
+        if (currentWindowEntries.length <= 0) {
+          return replayableOverdueEntries;
+        }
 
-          normalizedCurrentWindowEntries = currentWindowEntries.map((entry) =>
+        const awaitingEntries = currentWindowEntries.filter(
+          (entry) =>
+            entry[DepositsDB.Columns.STATUS] === DepositsDB.Status.Awaiting,
+        );
+        if (awaitingEntries.length > 0) {
+          const mempoolEntries = yield* Effect.forEach(
+            awaitingEntries,
+            DepositsDB.toMempoolLedgerEntry,
+          );
+          yield* MempoolLedgerDB.reconcileDepositEntries(mempoolEntries);
+          yield* DepositsDB.markAwaitingAsProjected(
+            awaitingEntries.map((entry) => entry[DepositsDB.Columns.ID]),
+          );
+        }
+
+        const normalizedCurrentWindowEntries = currentWindowEntries.map(
+          (entry) =>
             entry[DepositsDB.Columns.STATUS] === DepositsDB.Status.Awaiting
               ? {
                   ...entry,
                   [DepositsDB.Columns.STATUS]: DepositsDB.Status.Projected,
                 }
               : entry,
-          );
-        }
-
+        );
         return [...replayableOverdueEntries, ...normalizedCurrentWindowEntries];
       }),
     );
@@ -741,47 +752,32 @@ export const processMpfs = (
         ),
       );
 
-      const classifiedByEventId = new Map(
-        classifiedWithdrawals.map(
-          (classified) =>
-            [
-              classified.entry[WithdrawalsDB.Columns.ID].toString("hex"),
-              classified,
-            ] as const,
-        ),
-      );
-      includedWithdrawalEntries = includedWithdrawalEntries.map((entry) => {
-        const classified = classifiedByEventId.get(
-          entry[WithdrawalsDB.Columns.ID].toString("hex"),
-        );
-        return classified === undefined
-          ? entry
-          : {
-              ...entry,
-              [WithdrawalsDB.Columns.SETTLEMENT_EVENT_INFO]:
-                classified.settlementEventInfo,
-              [WithdrawalsDB.Columns.VALIDITY]: classified.validity,
-              [WithdrawalsDB.Columns.VALIDITY_DETAIL]:
-                classified.validityDetail,
-              [WithdrawalsDB.Columns.STATUS]:
-                entry[WithdrawalsDB.Columns.STATUS] ===
-                WithdrawalsDB.Status.Awaiting
-                  ? WithdrawalsDB.Status.Projected
-                  : entry[WithdrawalsDB.Columns.STATUS],
-            };
-      });
+      includedWithdrawalEntries = classifiedWithdrawals.map((classified) => ({
+        ...classified.entry,
+        [WithdrawalsDB.Columns.SETTLEMENT_EVENT_INFO]:
+          classified.settlementEventInfo,
+        [WithdrawalsDB.Columns.VALIDITY]: classified.validity,
+        [WithdrawalsDB.Columns.VALIDITY_DETAIL]: classified.validityDetail,
+        [WithdrawalsDB.Columns.STATUS]:
+          classified.entry[WithdrawalsDB.Columns.STATUS] ===
+          WithdrawalsDB.Status.Awaiting
+            ? WithdrawalsDB.Status.Projected
+            : classified.entry[WithdrawalsDB.Columns.STATUS],
+      }));
     }
 
-    const withdrawalLedgerDeleteOps: MpfBatchOp[] = classifiedWithdrawals
-      .filter((classified) => classified.shouldDeleteLedgerUtxo)
-      .map((classified) => ({
+    const validWithdrawalClassifications = classifiedWithdrawals.filter(
+      (classified) => classified.shouldDeleteLedgerUtxo,
+    );
+    const withdrawalLedgerDeleteOps: MpfBatchOp[] =
+      validWithdrawalClassifications.map((classified) => ({
         type: "delete" as const,
         key: classified.ledgerOutRef,
       }));
     const withdrawnOutRefHexes = new Set(
-      classifiedWithdrawals
-        .filter((classified) => classified.shouldDeleteLedgerUtxo)
-        .map((classified) => classified.ledgerOutRef.toString("hex")),
+      validWithdrawalClassifications.map((classified) =>
+        classified.ledgerOutRef.toString("hex"),
+      ),
     );
 
     const orderedDecodedMempoolTxs =
@@ -838,14 +834,12 @@ export const processMpfs = (
       yield* Effect.logInfo(
         `🔹 Applying ${depositLedgerEntries.length} projected deposit UTxO(s) to the block pre-state.`,
       );
-      yield* Effect.sync(() =>
-        ledgerOps.unshift(
-          ...depositLedgerEntries.map((entry) => ({
-            type: "insert" as const,
-            key: entry[Ledger.Columns.OUTREF],
-            value: entry[Ledger.Columns.OUTPUT],
-          })),
-        ),
+      ledgerOps.unshift(
+        ...depositLedgerEntries.map((entry) => ({
+          type: "insert" as const,
+          key: entry[Ledger.Columns.OUTREF],
+          value: entry[Ledger.Columns.OUTPUT],
+        })),
       );
     }
 
@@ -1079,10 +1073,7 @@ class MidgardMpfRootViewStore extends Store {
 
   async del(key: unknown) {
     const storageKey = this.storageKey(key);
-    if (storageKey !== ROOT_KEY) {
-      return;
-    }
-    if (!this.persistRootMarker) {
+    if (storageKey !== ROOT_KEY || !this.persistRootMarker) {
       return;
     }
     const op: LevelBatchOp = { type: "del", key: storageKey };
@@ -1251,7 +1242,7 @@ export class MidgardMpf {
         JSON_LEVEL_ENCODING_OPTS,
       );
       yield* Effect.tryPromise({
-        try: () => level?.open() ?? Promise.resolve(),
+        try: () => level.open(),
         catch: (e) => MpfError.create(trieName, e),
       });
       const root = yield* readPersistedRoot(level);
@@ -1259,7 +1250,7 @@ export class MidgardMpf {
         trieName,
         level,
         root,
-        persistRootMarker: level !== undefined,
+        persistRootMarker: true,
       });
     });
   }
@@ -1365,16 +1356,7 @@ export class MidgardMpf {
   }
 
   public root(): Effect.Effect<Buffer, MpfError> {
-    const hash = this.trie.hash;
-    return Effect.gen(this, function* () {
-      if (hash === null || hash === undefined) {
-        return Buffer.from(MPF_EMPTY_ROOT);
-      }
-      if (!Buffer.isBuffer(hash)) {
-        return Buffer.from(hash);
-      }
-      return Buffer.from(hash);
-    });
+    return Effect.succeed(Buffer.from(this.trie.hash ?? MPF_EMPTY_ROOT));
   }
 
   public rootHex(): Effect.Effect<string, MpfError> {
@@ -1527,13 +1509,10 @@ export class MidgardMpf {
 }
 
 const readPersistedRoot = (
-  level: Level<string, MpfStoredValue> | undefined,
+  level: Level<string, MpfStoredValue>,
 ): Effect.Effect<Buffer, MpfError> =>
   Effect.tryPromise({
     try: async () => {
-      if (level === undefined) {
-        return MPF_EMPTY_ROOT;
-      }
       const rootHex = await level.get(ROOT_KEY, JSON_LEVEL_ENCODING_OPTS);
       return parseStoredRootHex(rootHex);
     },

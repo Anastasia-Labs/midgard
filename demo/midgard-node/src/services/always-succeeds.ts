@@ -1,5 +1,4 @@
-import { Effect, pipe } from "effect";
-import * as scripts from "../../blueprints/always-succeeds/plutus.json" with { type: "json" };
+import * as SDK from "@al-ft/midgard-sdk";
 import {
   applyDoubleCborEncoding,
   MintingPolicy,
@@ -10,8 +9,10 @@ import {
   validatorToScriptHash,
   WithdrawalValidator,
 } from "@lucid-evolution/lucid";
-import * as SDK from "@al-ft/midgard-sdk";
+import { Effect, pipe } from "effect";
 import { NoSuchElementException } from "effect/Cause";
+
+import * as scripts from "../../blueprints/always-succeeds/plutus.json" with { type: "json" };
 
 /**
  * Always-succeeds contract loader used for local development and testing.
@@ -150,16 +151,9 @@ const makeAuthenticatedValidator = (
   network: Network,
 ): Effect.Effect<SDK.AuthenticatedValidator, NoSuchElementException> =>
   Effect.gen(function* () {
-    const spendingValidator = yield* makeSpendingValidator(
-      "midgard",
-      baseName,
-      network,
-    );
-    const mintingValidator = yield* makeMintingValidator("midgard", baseName);
-
     return {
-      ...spendingValidator,
-      ...mintingValidator,
+      ...(yield* makeSpendingValidator("midgard", baseName, network)),
+      ...(yield* makeMintingValidator("midgard", baseName)),
     };
   }).pipe(
     Effect.tapError((_e) =>

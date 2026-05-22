@@ -1,10 +1,12 @@
-import { Database } from "@/services/database.js";
 import { SqlClient, SqlError } from "@effect/sql";
 import { Effect } from "effect";
+
 import {
   DatabaseError,
+  logDatabaseError,
   sqlErrorToDatabaseError,
 } from "@/database/utils/common.js";
+import { Database } from "@/services/database.js";
 
 /**
  * Table adapter for transaction-by-id storage.
@@ -107,9 +109,7 @@ export const retrieveValue = (
   }).pipe(
     Effect.withLogSpan(`retrieve value ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(
-        `${tableName} db: retrieving value error: ${JSON.stringify(e)}`,
-      ),
+      logDatabaseError(tableName, "retrieving value error", e),
     ),
     sqlErrorToDatabaseError(
       tableName,
@@ -138,9 +138,7 @@ export const retrieveValues = (
   }).pipe(
     Effect.withLogSpan(`retrieve values ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(
-        `${tableName} db: retrieving values error: ${JSON.stringify(e)}`,
-      ),
+      logDatabaseError(tableName, "retrieving values error", e),
     ),
     sqlErrorToDatabaseError(
       tableName,
@@ -165,7 +163,7 @@ export const insertEntry = (
   }).pipe(
     Effect.withLogSpan(`insertTX ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(`${tableName} db: insertTX: ${JSON.stringify(e)}`),
+      logDatabaseError(tableName, "insertTX", e),
     ),
     sqlErrorToDatabaseError(
       tableName,
@@ -193,7 +191,7 @@ export const insertEntries = (
   }).pipe(
     Effect.withLogSpan(`insertTXs ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(`${tableName} db: insertTXs: ${JSON.stringify(e)}`),
+      logDatabaseError(tableName, "insertTXs", e),
     ),
     sqlErrorToDatabaseError(
       tableName,
@@ -216,7 +214,7 @@ export const retrieveAllEntries = (
   }).pipe(
     Effect.withLogSpan(`retrieve ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(`${tableName} db: retrieve: ${JSON.stringify(e)}`),
+      logDatabaseError(tableName, "retrieve", e),
     ),
     sqlErrorToDatabaseError(tableName, "Failed to retrieve the whole table"),
   );
@@ -238,7 +236,7 @@ export const pruneOlderThan = (
   }).pipe(
     Effect.withLogSpan(`pruneOlderThan ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(`${tableName} db: pruneOlderThan: ${JSON.stringify(e)}`),
+      logDatabaseError(tableName, "pruneOlderThan", e),
     ),
     sqlErrorToDatabaseError(tableName, "Failed to prune old transactions"),
   );

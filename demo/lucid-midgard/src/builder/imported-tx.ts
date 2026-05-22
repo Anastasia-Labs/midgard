@@ -1,12 +1,14 @@
-import { CML } from "@lucid-evolution/lucid";
 import {
   computeMidgardNativeTxId,
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFull,
-  encodeMidgardNativeTxFull,
-  verifyMidgardNativeTxFullConsistency,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  encodeMidgardNativeTxCanonical,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core/codec";
+import { CML } from "@lucid-evolution/lucid";
+
+import { BuilderInvariantError, SigningError } from "../core/errors.js";
+import { compareOutRefs, type OutRef, outRefLabel } from "../core/out-ref.js";
 import {
   decodeMidgardTxOutput,
   decodeMidgardUtxo,
@@ -15,20 +17,12 @@ import {
   utxoAddress,
   utxoOutRefCbor,
 } from "../core/output.js";
-import { BuilderInvariantError, SigningError } from "../core/errors.js";
-import {
-  compareOutRefs,
-  normalizeOutRef,
-  outRefLabel,
-  type OutRef,
-} from "../core/out-ref.js";
 import type { MidgardUtxo } from "../core/types.js";
 import { assertAddressNetwork } from "../wallet.js";
 import {
-  paymentPubKeyHashFromUtxo,
   type CompleteTxMetadata,
+  paymentPubKeyHashFromUtxo,
 } from "./metadata.js";
-import { normalizeHashHex } from "./normalizers.js";
 import { cloneUtxo } from "./state.js";
 import {
   addrWitnessKeyHashes,
@@ -88,10 +82,14 @@ const outRefFromCbor = (inputCbor: Uint8Array, fieldName: string): OutRef => {
     if (!Buffer.from(input.to_cbor_bytes()).equals(Buffer.from(inputCbor))) {
       throw new Error("input CBOR is not canonical");
     }
-    return normalizeOutRef({
+    const outputIndex = Number(input.index());
+    if (!Number.isSafeInteger(outputIndex) || outputIndex < 0) {
+      throw new Error("input output index exceeds safe integer range");
+    }
+    return {
       txHash: input.transaction_id().to_hex(),
-      outputIndex: Number(input.index()),
-    });
+      outputIndex,
+    };
   } catch (cause) {
     throw new BuilderInvariantError(
       `Invalid ${fieldName} input CBOR`,
@@ -104,11 +102,9 @@ const decodeOrderedInputOutRefs = (
   preimageCbor: Uint8Array,
   fieldName: string,
 ): readonly OutRef[] => {
-  const refs = decodeMidgardNativeByteListPreimage(
-    preimageCbor,
-    fieldName,
-  ).map((inputCbor, index) =>
-    outRefFromCbor(inputCbor, `${fieldName}[${index.toString()}]`),
+  const refs = decodeMidgardNativeByteListPreimage(preimageCbor, fieldName).map(
+    (inputCbor, index) =>
+      outRefFromCbor(inputCbor, `${fieldName}[${index.toString()}]`),
   );
   const seen = new Map<string, number>();
   let previous: OutRef | undefined;
@@ -162,8 +158,7 @@ const validatedNativeInputs = (
 
 export const nativeInputOutRefs = (
   tx: MidgardNativeTxFull,
-): readonly OutRef[] =>
-  validatedNativeInputs(tx).spendInputRefs;
+): readonly OutRef[] => validatedNativeInputs(tx).spendInputRefs;
 
 const nativeOutputBytes = (tx: MidgardNativeTxFull): readonly Buffer[] =>
   decodeMidgardNativeByteListPreimage(
@@ -199,13 +194,15 @@ const requiredSignerKeyHashesFromTx = (
   decodeMidgardNativeByteListPreimage(
     tx.body.requiredSignersPreimageCbor,
     "native.required_signers",
-  ).map((bytes, index) =>
-    normalizeHashHex(
-      bytes.toString("hex"),
-      `native.required_signers[${index.toString()}]`,
-      28,
-    ),
-  );
+  ).map((bytes, index) => {
+    if (bytes.length !== 28) {
+      throw new BuilderInvariantError(
+        `native.required_signers[${index.toString()}] must be a 28-byte hex string`,
+        bytes.toString("hex"),
+      );
+    }
+    return bytes.toString("hex");
+  });
 
 const protectedOutputKeyHashesFromTx = (
   outputs: readonly ValidatedNativeOutput[],
@@ -344,17 +341,17 @@ const canonicalImportedTxFromBytes = (
 ): MidgardNativeTxFull => {
   let tx: MidgardNativeTxFull;
   try {
-    tx = decodeMidgardNativeTxFull(bytes);
+    tx = decodeMidgardNativeTxFullFromCanonicalCbor(bytes);
   } catch (cause) {
     throw new BuilderInvariantError(
-      "fromTx accepts only Midgard native transaction envelope bytes",
+      "fromTx accepts only Midgard native canonical transaction bytes",
       cause instanceof Error ? cause.message : String(cause),
     );
   }
-  const canonical = encodeMidgardNativeTxFull(tx);
+  const canonical = encodeMidgardNativeTxCanonical(tx);
   if (!canonical.equals(Buffer.from(bytes))) {
     throw new BuilderInvariantError(
-      "fromTx requires canonical Midgard native transaction envelope bytes",
+      "fromTx requires canonical Midgard native transaction bytes",
     );
   }
   return tx;
@@ -364,8 +361,9 @@ const canonicalImportedTxFromObject = (
   tx: MidgardNativeTxFull,
 ): MidgardNativeTxFull => {
   try {
-    verifyMidgardNativeTxFullConsistency(tx);
-    return decodeMidgardNativeTxFull(encodeMidgardNativeTxFull(tx));
+    return decodeMidgardNativeTxFullFromCanonicalCbor(
+      encodeMidgardNativeTxCanonical(tx),
+    );
   } catch (cause) {
     throw new BuilderInvariantError(
       "fromTx received an invalid Midgard native full transaction object",
@@ -444,7 +442,7 @@ export const importedTxMetadata = (
     expectedComplete: expected.complete,
     requireComplete: witnesses.length > 0 && expected.complete,
   });
-  const txBytes = encodeMidgardNativeTxFull(tx);
+  const txBytes = encodeMidgardNativeTxCanonical(tx);
   return {
     fee: tx.body.fee,
     inputCount: inputs.spendInputRefs.length,

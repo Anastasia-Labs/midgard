@@ -1,22 +1,24 @@
 #!/usr/bin/env node
 
+import { formatUnknownError } from "@al-ft/midgard-core";
+
 import {
   inspectContractsFromFiles,
   parseNetwork,
 } from "./inspect-contracts.js";
-import { submitInitFromFiles } from "./submit-init.js";
-import { type ProviderKind } from "./runtime.js";
-import { submitStep01FromFiles } from "./submit-step-01.js";
-import { submitStep02FromFiles } from "./submit-step-02.js";
-import { submitStep03FromFiles } from "./submit-step-03.js";
-import { submitStep04FromFiles } from "./submit-step-04.js";
-import { submitRemoveFraudulentBlockFromFiles } from "./remove-fraudulent-block.js";
+import { stringifyJson } from "./json-file.js";
 import {
   prepareDoubleSpendFromFile,
   prepareDoubleSpendFromNode,
   prepareSampleDoubleSpend,
 } from "./prepare-double-spend.js";
-import { stringifyJson } from "./json-file.js";
+import { submitRemoveFraudulentBlockFromFiles } from "./remove-fraudulent-block.js";
+import { type ProviderKind } from "./runtime.js";
+import { submitInitFromFiles } from "./submit-init.js";
+import { submitStep01FromFiles } from "./submit-step-01.js";
+import { submitStep02FromFiles } from "./submit-step-02.js";
+import { submitStep03FromFiles } from "./submit-step-03.js";
+import { submitStep04FromFiles } from "./submit-step-04.js";
 
 type ParsedArgs = {
   readonly command: string | undefined;
@@ -530,7 +532,6 @@ const main = async (): Promise<void> => {
 };
 
 main().catch((error: unknown) => {
-  const message = error instanceof Error ? error.message : String(error);
-  process.stderr.write(`midgard-fault-proofs: ${message}\n`);
+  process.stderr.write(`midgard-fault-proofs: ${formatUnknownError(error)}\n`);
   process.exitCode = 1;
 });

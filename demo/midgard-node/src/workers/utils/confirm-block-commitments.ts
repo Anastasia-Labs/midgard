@@ -1,6 +1,7 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { type LucidEvolution, TxHash } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
+
 import { SerializedStateQueueUTxO } from "./commit-block-header.js";
 
 export type PendingBlockConfirmation = {
@@ -86,7 +87,9 @@ export const resolveStateQueueBlockEndTimeMs = (
 ): Effect.Effect<number, SDK.DataCoercionError> =>
   Effect.gen(function* () {
     if (block.datum.key === "Empty") {
-      const { data } = yield* SDK.getConfirmedStateFromStateQueueDatum(block.datum);
+      const { data } = yield* SDK.getConfirmedStateFromStateQueueDatum(
+        block.datum,
+      );
       return Number(data.endTime);
     }
     const header = yield* SDK.getHeaderFromStateQueueDatum(block.datum);

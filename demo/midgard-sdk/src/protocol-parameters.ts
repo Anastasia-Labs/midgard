@@ -1,4 +1,5 @@
 import { Network } from "@lucid-evolution/lucid";
+
 import { PosixTimeDuration } from "@/common.js";
 
 export const SHIFT_DURATION_MS = 60n * 60n * 1000n;

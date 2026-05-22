@@ -1,11 +1,13 @@
 import { createHash } from "node:crypto";
+
 import * as SDK from "@al-ft/midgard-sdk";
-import { Data as LucidData, type Address } from "@lucid-evolution/lucid";
+import { type Address, Data as LucidData } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+import { expect } from "vitest";
+
 import * as LedgerUtils from "@/database/utils/ledger.js";
 import { NodeConfig } from "@/services/config.js";
 import { Database } from "@/services/database.js";
-import { Effect } from "effect";
-import { expect } from "vitest";
 
 const explicitPostgresDb =
   process.env.POSTGRES_DB !== undefined && process.env.POSTGRES_DB !== "";

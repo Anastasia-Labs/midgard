@@ -1,7 +1,7 @@
-import { Constr, Data, fromHex } from "@lucid-evolution/lucid";
-import { Application, parseUPLC, UPLCConst } from "@harmoniclabs/uplc";
-import { CEKConst, Machine } from "@harmoniclabs/plutus-machine";
 import { dataFromCbor } from "@harmoniclabs/plutus-data";
+import { CEKConst, Machine } from "@harmoniclabs/plutus-machine";
+import { Application, parseUPLC, UPLCConst } from "@harmoniclabs/uplc";
+import { Constr, Data, fromHex } from "@lucid-evolution/lucid";
 
 export type LocalScriptEvalResult =
   | {

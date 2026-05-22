@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
+import { describe, expect, it } from "vitest";
+
 import {
   slotToUnixTimeForLucid,
   slotToUnixTimeForLucidOrEmulatorFallback,

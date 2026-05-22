@@ -7,38 +7,8 @@ import {
   TxBuilder,
   TxSignBuilder,
 } from "@lucid-evolution/lucid";
-import {
-  AssetError,
-  AuthenticatedValidator,
-  DataCoercionError,
-  GenericErrorFields,
-  HashingError,
-  LucidError,
-  makeReturn,
-  MerkleRootSchema,
-  POSIXTimeSchema,
-  Proof,
-  ProofSchema,
-  VerificationKeyHashSchema,
-  findOperatorByPKH,
-  UnspecifiedNetworkError,
-} from "@/common.js";
-import { AuthenticUTxO } from "@/internals.js";
 import { Data as EffectData, Effect } from "effect";
-import { fetchHubOracleUTxOProgram, HubOracleError } from "@/hub-oracle.js";
-import { fetchSchedulerUTxOProgram, SchedulerError } from "@/scheduler.js";
-import { completeTxWithLocalUPLCEvalProgram } from "@/tx-completion.js";
-import { DepositUTxO, utxosToDepositUTxOs } from "./user-events/deposit.js";
-import { TxOrderUTxO, utxosToTxOrderUTxOs } from "./user-events/tx-order.js";
-import {
-  utxosToWithdrawalUTxOs,
-  WithdrawalUTxO,
-} from "./user-events/withdrawal.js";
-import {
-  MidgardTxValiditySchema,
-  WithdrawalValiditySchema,
-} from "@/ledger-state.js";
-import { getProtocolParameters } from "@/protocol-parameters.js";
+
 import {
   ActiveOperatorDatum,
   ActiveOperatorSpendRedeemer,
@@ -47,10 +17,42 @@ import {
   fetchActiveOperatorUTxOs,
 } from "@/active-operators.js";
 import {
-  RetiredOperatorUTxO,
+  AssetError,
+  AuthenticatedValidator,
+  DataCoercionError,
+  findOperatorByPKH,
+  GenericErrorFields,
+  HashingError,
+  LucidError,
+  makeReturn,
+  MerkleRootSchema,
+  POSIXTimeSchema,
+  Proof,
+  ProofSchema,
+  UnspecifiedNetworkError,
+  VerificationKeyHashSchema,
+} from "@/common.js";
+import { fetchHubOracleUTxOProgram, HubOracleError } from "@/hub-oracle.js";
+import { AuthenticUTxO } from "@/internals.js";
+import {
+  MidgardTxValiditySchema,
+  WithdrawalValiditySchema,
+} from "@/ledger-state.js";
+import { getProtocolParameters } from "@/protocol-parameters.js";
+import {
   FetchRetiredOperatorParams,
   fetchRetiredOperatorUTxOs,
+  RetiredOperatorUTxO,
 } from "@/retired-operators.js";
+import { fetchSchedulerUTxOProgram, SchedulerError } from "@/scheduler.js";
+import { completeTxWithLocalUPLCEvalProgram } from "@/tx-completion.js";
+
+import { DepositUTxO, utxosToDepositUTxOs } from "./user-events/deposit.js";
+import { TxOrderUTxO, utxosToTxOrderUTxOs } from "./user-events/tx-order.js";
+import {
+  utxosToWithdrawalUTxOs,
+  WithdrawalUTxO,
+} from "./user-events/withdrawal.js";
 
 export const ResolutionClaimSchema = Data.Object({
   resolution_time: POSIXTimeSchema,
@@ -361,14 +363,15 @@ export const unsignedAttachResolutionClaimTxProgram = (
     const composedTx = attachResolutionClaimTx.compose(
       updateBondHoldNewSettlementTx,
     );
-    const completedTx: TxSignBuilder = yield* completeTxWithLocalUPLCEvalProgram(
-      composedTx,
-      (e) =>
-        new SettlementError({
-          message: `Failed to build the transaction: ${e}`,
-          cause: e,
-        }),
-    );
+    const completedTx: TxSignBuilder =
+      yield* completeTxWithLocalUPLCEvalProgram(
+        composedTx,
+        (e) =>
+          new SettlementError({
+            message: `Failed to build the transaction: ${e}`,
+            cause: e,
+          }),
+      );
     return completedTx;
   });
 
@@ -707,14 +710,15 @@ export const unsignedDisproveResolutionClaimTxProgram = (
     const composedTx = disproveResolutionClaimTx.compose(
       removeOperatorBadSettlementTx,
     );
-    const completedTx: TxSignBuilder = yield* completeTxWithLocalUPLCEvalProgram(
-      composedTx,
-      (e) =>
-        new SettlementError({
-          message: `Failed to build the transaction: ${e}`,
-          cause: e,
-        }),
-    );
+    const completedTx: TxSignBuilder =
+      yield* completeTxWithLocalUPLCEvalProgram(
+        composedTx,
+        (e) =>
+          new SettlementError({
+            message: `Failed to build the transaction: ${e}`,
+            cause: e,
+          }),
+      );
     return completedTx;
   });
 
@@ -832,14 +836,15 @@ export const unsignedResolveSettlementTxProgram = (
       lucid,
       params,
     );
-    const completedTx: TxSignBuilder = yield* completeTxWithLocalUPLCEvalProgram(
-      resolveSettlementTx,
-      (e) =>
-        new SettlementError({
-          message: `Failed to build the transaction: ${e}`,
-          cause: e,
-        }),
-    );
+    const completedTx: TxSignBuilder =
+      yield* completeTxWithLocalUPLCEvalProgram(
+        resolveSettlementTx,
+        (e) =>
+          new SettlementError({
+            message: `Failed to build the transaction: ${e}`,
+            cause: e,
+          }),
+      );
     return completedTx;
   });
 

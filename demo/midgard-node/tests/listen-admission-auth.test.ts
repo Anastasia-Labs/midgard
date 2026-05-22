@@ -1,32 +1,19 @@
-import fs from "node:fs";
-import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { cardanoTxBytesToMidgardNativeTxCanonicalCbor } from "@al-ft/midgard-core/codec";
+import type { QueuedTxPayload } from "@al-ft/midgard-validation";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect, Queue } from "effect";
+import { describe, expect, it } from "vitest";
+
 import { buildListenRouter } from "@/commands/listen-router.js";
-import type { QueuedTxPayload } from "@al-ft/midgard-validation";
 import {
   ADMIN_ROUTE_PATHS,
   authorizeAdminRoute,
   isAdminRoutePath,
-  normalizeSubmitTxEnvelopeCborToNative,
-  validateSubmitTxEnvelopeCbor,
+  normalizeSubmitTxCanonicalCborToNative,
+  validateSubmitTxCanonicalCbor,
 } from "@/commands/listen-utils.js";
-import {
-  cardanoTxBytesToMidgardNativeTxFullBytes,
-  decodeMidgardNativeTxFull,
-} from "@al-ft/midgard-core/codec";
+
 import { makeCardanoTxOutput } from "./midgard-output-helpers.js";
-
-type TxFixture = {
-  readonly cborHex: string;
-  readonly txId: string;
-};
-
-const fixturePath = path.resolve(__dirname, "./txs/txs_0.json");
-const txFixtures = JSON.parse(
-  fs.readFileSync(fixturePath, "utf8"),
-) as readonly TxFixture[];
 
 const makeCardanoSignedMapOutputTxBytes = (): Buffer => {
   const signerKey = CML.PrivateKey.generate_ed25519();
@@ -56,42 +43,35 @@ const makeCardanoSignedMapOutputTxBytes = (): Buffer => {
   );
 };
 
+const expectUnauthorized = (
+  result: ReturnType<typeof authorizeAdminRoute>,
+  status: 401 | 403,
+) => expect(result).toMatchObject({ authorized: false, status });
+
 describe("listen admin auth helpers", () => {
   it("detects admin route paths", () => {
-    expect(isAdminRoutePath("/init")).toBe(true);
-    expect(isAdminRoutePath("/commit")).toBe(true);
-    expect(isAdminRoutePath("/stateQueue")).toBe(true);
-    expect(isAdminRoutePath("/logBlocksDB")).toBe(true);
-    expect(isAdminRoutePath("/logGlobals")).toBe(true);
-    expect(isAdminRoutePath("/tx")).toBe(false);
-    expect(isAdminRoutePath("/deposit/build")).toBe(false);
-    expect(isAdminRoutePath("/submit")).toBe(false);
+    for (const path of [
+      "/init",
+      "/commit",
+      "/stateQueue",
+      "/logBlocksDB",
+      "/logGlobals",
+    ]) {
+      expect(isAdminRoutePath(path), path).toBe(true);
+    }
+    for (const path of ["/tx", "/deposit/build", "/submit"]) {
+      expect(isAdminRoutePath(path), path).toBe(false);
+    }
     expect(ADMIN_ROUTE_PATHS.size).toBeGreaterThan(0);
   });
 
   it("requires admin key to be configured", () => {
-    const result = authorizeAdminRoute("", undefined);
-    expect(result.authorized).toBe(false);
-    if (result.authorized) {
-      throw new Error("expected unauthorized result");
-    }
-    expect(result.status).toBe(403);
+    expectUnauthorized(authorizeAdminRoute("", undefined), 403);
   });
 
   it("rejects missing or invalid admin key", () => {
-    const missing = authorizeAdminRoute("secret", undefined);
-    expect(missing.authorized).toBe(false);
-    if (missing.authorized) {
-      throw new Error("expected unauthorized result");
-    }
-    expect(missing.status).toBe(401);
-
-    const wrong = authorizeAdminRoute("secret", "wrong");
-    expect(wrong.authorized).toBe(false);
-    if (wrong.authorized) {
-      throw new Error("expected unauthorized result");
-    }
-    expect(wrong.status).toBe(401);
+    expectUnauthorized(authorizeAdminRoute("secret", undefined), 401);
+    expectUnauthorized(authorizeAdminRoute("secret", "wrong"), 401);
   });
 
   it("accepts matching admin key", () => {
@@ -101,40 +81,33 @@ describe("listen admin auth helpers", () => {
 });
 
 describe("submit admission helpers", () => {
-  it("rejects empty and oversized raw tx envelope payloads", () => {
-    const empty = validateSubmitTxEnvelopeCbor(Buffer.alloc(0), 4);
-    expect(empty.ok).toBe(false);
-    if (empty.ok) {
-      throw new Error("expected invalid result");
-    }
-    expect(empty.status).toBe(400);
-
-    const oversized = validateSubmitTxEnvelopeCbor(Buffer.alloc(6), 5);
-    expect(oversized.ok).toBe(false);
-    if (oversized.ok) {
-      throw new Error("expected invalid result");
-    }
-    expect(oversized.status).toBe(413);
+  it("rejects empty and oversized raw canonical tx payloads", () => {
+    expect(validateSubmitTxCanonicalCbor(Buffer.alloc(0), 4)).toMatchObject({
+      ok: false,
+      status: 400,
+    });
+    expect(validateSubmitTxCanonicalCbor(Buffer.alloc(6), 5)).toMatchObject({
+      ok: false,
+      status: 413,
+    });
   });
 
   it("accepts valid tx payload and returns byte length", () => {
-    const accepted = validateSubmitTxEnvelopeCbor(Buffer.alloc(5), 5);
-    expect(accepted.ok).toBe(true);
-    if (!accepted.ok) {
-      throw new Error("expected accepted result");
-    }
-    expect(accepted.byteLength).toBe(5);
+    expect(validateSubmitTxCanonicalCbor(Buffer.alloc(5), 5)).toMatchObject({
+      ok: true,
+      byteLength: 5,
+    });
   });
 
   it("rejects ordinary Cardano-signed tx bytes at ingress", () => {
     const cardanoBytes = makeCardanoSignedMapOutputTxBytes();
-    const normalized = normalizeSubmitTxEnvelopeCborToNative(cardanoBytes);
-    expect(normalized.ok).toBe(false);
-    if (normalized.ok) {
-      throw new Error("expected invalid Cardano ingress");
-    }
-    expect(normalized.error).toBe("Invalid transaction envelope CBOR payload");
-    expect(normalized.detail).toContain("native envelope decode failed");
+    expect(normalizeSubmitTxCanonicalCborToNative(cardanoBytes)).toMatchObject({
+      ok: false,
+      error: "Invalid canonical transaction CBOR payload",
+      detail: expect.stringContaining(
+        "canonical native transaction decode failed",
+      ),
+    });
   });
 
   it("rejects Cardano tx bytes even when they are structurally convertible", () => {
@@ -176,40 +149,41 @@ describe("submit admission helpers", () => {
     witnessSet.set_native_scripts(nativeScripts);
 
     const cardanoTx = CML.Transaction.new(body, witnessSet, true, undefined);
-    const normalized = normalizeSubmitTxEnvelopeCborToNative(
-      Buffer.from(cardanoTx.to_cbor_bytes()),
-    );
-
-    expect(normalized.ok).toBe(false);
-    if (normalized.ok) {
-      throw new Error("expected invalid Cardano ingress");
-    }
-    expect(normalized.error).toBe("Invalid transaction envelope CBOR payload");
-    expect(normalized.detail).toContain("native envelope decode failed");
+    expect(
+      normalizeSubmitTxCanonicalCborToNative(
+        Buffer.from(cardanoTx.to_cbor_bytes()),
+      ),
+    ).toMatchObject({
+      ok: false,
+      error: "Invalid canonical transaction CBOR payload",
+      detail: expect.stringContaining(
+        "canonical native transaction decode failed",
+      ),
+    });
   });
 
   it("keeps native tx bytes unchanged when payload is already Midgard-native", () => {
     const cardanoBytes = makeCardanoSignedMapOutputTxBytes();
-    const nativeBytes = cardanoTxBytesToMidgardNativeTxFullBytes(cardanoBytes);
-    const normalized = normalizeSubmitTxEnvelopeCborToNative(nativeBytes);
-    expect(normalized.ok).toBe(true);
-    if (!normalized.ok) {
-      throw new Error("expected normalized tx");
-    }
-    expect(normalized.source).toBe("native");
-    expect(normalized.txEnvelopeCbor.equals(nativeBytes)).toBe(true);
+    const nativeBytes =
+      cardanoTxBytesToMidgardNativeTxCanonicalCbor(cardanoBytes);
+    const normalized = normalizeSubmitTxCanonicalCborToNative(nativeBytes);
+    expect(normalized).toMatchObject({
+      ok: true,
+      source: "native",
+    });
+    expect(
+      normalized.ok && normalized.txCanonicalCbor.equals(nativeBytes),
+    ).toBe(true);
     expect(normalized).not.toHaveProperty("txBodyHashForWitnesses");
   });
 
   it("returns an invalid payload result for bytes that are neither native nor convertible Cardano", () => {
-    const normalized = normalizeSubmitTxEnvelopeCborToNative(
-      Buffer.from("ffff", "hex"),
-    );
-    expect(normalized.ok).toBe(false);
-    if (normalized.ok) {
-      throw new Error("expected invalid payload result");
-    }
-    expect(normalized.error).toBe("Invalid transaction envelope CBOR payload");
+    expect(
+      normalizeSubmitTxCanonicalCborToNative(Buffer.from("ffff", "hex")),
+    ).toMatchObject({
+      ok: false,
+      error: "Invalid canonical transaction CBOR payload",
+    });
   });
 
   it("constructs the listen router with the extended utxo routes", async () => {

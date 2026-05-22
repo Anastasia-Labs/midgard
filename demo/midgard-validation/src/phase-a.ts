@@ -1,33 +1,34 @@
-import { CML } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
-import { LedgerColumns, type LedgerEntry } from "./ledger.js";
 import {
-  EMPTY_CBOR_LIST,
-  EMPTY_NULL_ROOT,
-  MidgardTxCodecError,
-  MIDGARD_NATIVE_NETWORK_ID_NONE,
-  MIDGARD_POSIX_TIME_NONE,
   computeMidgardNativeTxId,
-  decodeMidgardNativeMint,
   decodeMidgardNativeByteListPreimage,
+  decodeMidgardNativeMint,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeMidgardTxOutput,
   decodeMidgardVersionedScriptListPreimage,
-  decodeMidgardNativeTxFull,
+  EMPTY_CBOR_LIST,
+  EMPTY_NULL_ROOT,
   encodeMidgardAddressText,
   hashMidgardVersionedScript,
+  MIDGARD_NATIVE_NETWORK_ID_NONE,
+  MIDGARD_POSIX_TIME_NONE,
+  MidgardTxCodecError,
   midgardValueToCmlValue,
   verifyMidgardNativeScript,
 } from "@al-ft/midgard-core/codec";
+import { CML } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+
+import { LedgerColumns, type LedgerEntry } from "./ledger.js";
+import { decodeMidgardRedeemers } from "./midgard-redeemers.js";
 import {
   PhaseAAccepted,
   PhaseAConfig,
   PhaseAResult,
   QueuedTx,
   RejectCode,
-  RejectedTx,
   RejectCodes,
+  RejectedTx,
 } from "./types.js";
-import { decodeMidgardRedeemers } from "./midgard-redeemers.js";
 
 const reject = (
   txId: Buffer,
@@ -242,49 +243,31 @@ const decodeNativeRequiredObservers = (
     const seenObservers = new Set<string>();
     for (let i = 0; i < observerBytes.length; i++) {
       const observer = observerBytes[i];
+      let observerHex: string;
       if (observer.length === 28) {
-        const observerHex = observer.toString("hex");
-        if (seenObservers.has(observerHex)) {
+        observerHex = observer.toString("hex");
+      } else {
+        let credential: InstanceType<typeof CML.Credential>;
+        try {
+          credential = CML.Credential.from_cbor_bytes(observer);
+        } catch (e) {
           return reject(
             txId,
             RejectCodes.InvalidFieldType,
-            `duplicate required observer ${observerHex}`,
+            `required observer at index ${i} must be a 28-byte script hash or a CBOR-encoded script credential: ${String(e)}`,
           );
         }
-        seenObservers.add(observerHex);
-        observers.push(observerHex);
-        continue;
+
+        if (credential.kind() !== CML.CredentialKind.Script) {
+          return reject(
+            txId,
+            RejectCodes.InvalidFieldType,
+            `required observer at index ${i} must be a script credential`,
+          );
+        }
+        observerHex = credential.as_script()!.to_hex();
       }
 
-      let credential: InstanceType<typeof CML.Credential>;
-      try {
-        credential = CML.Credential.from_cbor_bytes(observer);
-      } catch (e) {
-        return reject(
-          txId,
-          RejectCodes.InvalidFieldType,
-          `required observer at index ${i} must be a 28-byte script hash or a CBOR-encoded script credential: ${String(e)}`,
-        );
-      }
-
-      if (credential.kind() !== CML.CredentialKind.Script) {
-        return reject(
-          txId,
-          RejectCodes.InvalidFieldType,
-          `required observer at index ${i} must be a script credential`,
-        );
-      }
-
-      const scriptHash = credential.as_script();
-      if (scriptHash === undefined) {
-        return reject(
-          txId,
-          RejectCodes.InvalidFieldType,
-          `required observer at index ${i} failed to decode script hash`,
-        );
-      }
-
-      const observerHex = scriptHash.to_hex();
       if (seenObservers.has(observerHex)) {
         return reject(
           txId,
@@ -309,9 +292,9 @@ const validateNativeOne = (
   queuedTx: QueuedTx,
   config: PhaseAConfig,
 ): PhaseAAccepted | RejectedTx => {
-  let nativeTx: ReturnType<typeof decodeMidgardNativeTxFull>;
+  let nativeTx: ReturnType<typeof decodeMidgardNativeTxFullFromCanonicalCbor>;
   try {
-    nativeTx = decodeMidgardNativeTxFull(queuedTx.txCbor);
+    nativeTx = decodeMidgardNativeTxFullFromCanonicalCbor(queuedTx.txCbor);
   } catch (e) {
     if (e instanceof MidgardTxCodecError) {
       const detail =
@@ -443,13 +426,6 @@ const validateNativeOne = (
     try {
       const output = decodeMidgardTxOutput(outputCbor);
       const amount = midgardValueToCmlValue(output.value);
-      if (output.value.lovelace < 0n) {
-        return reject(
-          queuedTx.txId,
-          RejectCodes.InvalidOutput,
-          `negative coin in output ${i}`,
-        );
-      }
       outputSum = outputSum.checked_add(amount);
       produced.push({
         [LedgerColumns.TX_ID]: queuedTx.txId,
@@ -539,14 +515,6 @@ const validateNativeOne = (
     );
   }
 
-  if (requiredSigners.length > 0 && witnessKeyHashes.length === 0) {
-    return reject(
-      queuedTx.txId,
-      RejectCodes.MissingRequiredWitness,
-      "missing vkey witnesses",
-    );
-  }
-
   for (const requiredSigner of requiredSigners) {
     if (!witnessSignerSet.has(requiredSigner)) {
       return reject(
@@ -584,11 +552,7 @@ const validateNativeOne = (
     queuedTx.txId,
     nativeTx.witnessSet.redeemerTxWitsPreimageCbor,
   );
-  if (
-    typeof hasRedeemerWitnesses === "object" &&
-    hasRedeemerWitnesses !== null &&
-    "code" in hasRedeemerWitnesses
-  ) {
+  if (typeof hasRedeemerWitnesses !== "boolean") {
     return hasRedeemerWitnesses;
   }
 

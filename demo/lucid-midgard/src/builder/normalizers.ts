@@ -1,3 +1,5 @@
+import { normalizeHex } from "@al-ft/midgard-core/hex";
+
 import { BuilderInvariantError } from "../core/errors.js";
 
 export const normalizeNonNegativeBigInt = (
@@ -19,12 +21,12 @@ export const normalizeHashHex = (
   fieldName: string,
   bytes: 28 | 32,
 ): string => {
-  const normalized = value.trim().toLowerCase();
-  if (normalized.length !== bytes * 2 || !/^[0-9a-f]+$/.test(normalized)) {
+  try {
+    return normalizeHex(value, { fieldName, byteLength: bytes });
+  } catch {
     throw new BuilderInvariantError(
       `${fieldName} must be a ${bytes.toString()}-byte hex string`,
       value,
     );
   }
-  return normalized;
 };

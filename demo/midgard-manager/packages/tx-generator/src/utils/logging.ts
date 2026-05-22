@@ -15,7 +15,7 @@ export interface TransactionLogEntry {
  * In-memory log sink for recently submitted or failed transactions.
  */
 class TransactionLogger {
-  private static instance: TransactionLogger;
+  private static readonly instance = new TransactionLogger();
   private logs: TransactionLogEntry[] = [];
   private maxLogEntries = 100; // Limit the number of entries to prevent memory bloat
 
@@ -25,9 +25,6 @@ class TransactionLogger {
    * Returns the shared transaction logger instance.
    */
   static getInstance(): TransactionLogger {
-    if (!TransactionLogger.instance) {
-      TransactionLogger.instance = new TransactionLogger();
-    }
     return TransactionLogger.instance;
   }
 

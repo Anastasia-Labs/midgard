@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
-import { encodeProtocolInfo } from "@/commands/protocol-info.js";
 import { MIDGARD_SUPPORTED_SCRIPT_LANGUAGES } from "@al-ft/midgard-core/codec";
+import { describe, expect, it } from "vitest";
+
+import { encodeProtocolInfo } from "@/commands/protocol-info.js";
 
 const nodeConfig = {
   NETWORK: "Preview",

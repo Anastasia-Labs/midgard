@@ -1,10 +1,13 @@
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { fileURLToPath } from "node:url";
+
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
+import { describe, expect, it } from "vitest";
+
 import {
+  buildDoubleSpendFaultProofContracts,
   DoubleSpendStep01Datum,
   DoubleSpendStep01SpendRedeemer,
   DoubleSpendStep02Datum,
@@ -16,8 +19,8 @@ import {
   FraudProofComputationThreadRedeemer,
   FraudProofTokenMintRedeemer,
   MidgardTxInputList,
-  buildDoubleSpendFaultProofContracts,
   parseFaultProofBlueprint,
+  type Proof,
 } from "../src/index.js";
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
@@ -30,7 +33,7 @@ const h28 = "22".repeat(28);
 const h28b = "33".repeat(28);
 const h28c = "44".repeat(28);
 
-const proof = [];
+const proof: Proof = [];
 const nativeTxCompactCbor = "840182005820" + "55".repeat(32) + "00";
 const spendInputs = [
   { tx_id: "aa".repeat(32), output_index: 0n },
@@ -48,8 +51,8 @@ const txInclusionArgs = {
   inclusion_proof_script_withdraw_redeemer_index: 3n,
 };
 
-const roundTrip = <A>(value: A, schema: unknown): A =>
-  Data.from(Data.to(value, schema as never), schema as never) as A;
+const roundTrip = <A>(value: A, schema: Parameters<typeof Data.to>[1]): A =>
+  Data.from(Data.to(value, schema), schema) as A;
 
 describe("fault-proof ABI", () => {
   it("round-trips computation-thread mint redeemers", () => {
@@ -94,10 +97,7 @@ describe("fault-proof ABI", () => {
 
   it("round-trips double-spend step datums and redeemers", () => {
     expect(
-      roundTrip(
-        { fraud_prover: h28, data: null },
-        DoubleSpendStep01Datum,
-      ),
+      roundTrip({ fraud_prover: h28, data: null }, DoubleSpendStep01Datum),
     ).toEqual({ fraud_prover: h28, data: null });
     expect(
       roundTrip(
@@ -129,9 +129,7 @@ describe("fault-proof ABI", () => {
       },
     };
     expect(roundTrip(step03Datum, DoubleSpendStep03Datum)).toEqual(step03Datum);
-    expect(
-      roundTrip(spendInputs, MidgardTxInputList),
-    ).toEqual(spendInputs);
+    expect(roundTrip(spendInputs, MidgardTxInputList)).toEqual(spendInputs);
 
     expect(
       roundTrip(
@@ -195,8 +193,14 @@ describe("double-spend fault-proof contract builder", () => {
       }),
     );
 
-    expect(contracts.doubleSpend.firstStep).toBe(contracts.doubleSpend.steps[0]);
+    expect(contracts.doubleSpend.firstStep).toBe(
+      contracts.doubleSpend.steps[0],
+    );
     expect(contracts.doubleSpend.steps).toHaveLength(4);
-    expect(new Set(contracts.doubleSpend.steps.map((step) => step.spendingScriptHash)).size).toBe(4);
+    expect(
+      new Set(
+        contracts.doubleSpend.steps.map((step) => step.spendingScriptHash),
+      ).size,
+    ).toBe(4);
   });
 });

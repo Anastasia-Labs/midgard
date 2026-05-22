@@ -1,19 +1,16 @@
-import { describe, expect, it } from "vitest";
-import { Effect } from "effect";
-import { performance } from "node:perf_hooks";
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
-import * as LedgerUtils from "@/database/utils/ledger.js";
+
 import {
-  cardanoTxBytesToMidgardNativeTxFullBytes,
-  computeHash32,
+  cardanoTxBytesToMidgardNativeTxCanonicalCbor,
   computeMidgardNativeTxId,
-  decodeMidgardNativeTxFull,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
   deriveMidgardNativeTxCompact,
-  encodeMidgardNativeTxFull,
+  encodeMidgardNativeTxCanonical,
 } from "@al-ft/midgard-core/codec";
 import {
   PhaseAAccepted,
@@ -21,6 +18,10 @@ import {
   runPhaseAValidation,
   runPhaseBValidationWithPatch,
 } from "@al-ft/midgard-validation";
+import { Effect } from "effect";
+import { describe, expect, it } from "vitest";
+
+import * as LedgerUtils from "@/database/utils/ledger.js";
 
 type InitialLedgerEntryFixture = {
   txIdHex: string;
@@ -131,7 +132,6 @@ const OUTPUT_JSON_PATH = fileURLToPath(
   new URL("./output/validation-benchmark.json", import.meta.url),
 );
 const EMPTY_CBOR_LIST = Buffer.from([0x80]);
-const EMPTY_LIST_ROOT = computeHash32(EMPTY_CBOR_LIST);
 
 const phaseAConfig = {
   expectedNetworkId: EXPECTED_NETWORK_ID,
@@ -215,8 +215,10 @@ const buildQueuedBlock = (
     `Tx fixture has ${txFixture.transactions.length} txs, but benchmark size ${size} was requested.`,
   );
   return txFixture.transactions.slice(0, size).map((tx, index) => {
-    const converted = decodeMidgardNativeTxFull(
-      cardanoTxBytesToMidgardNativeTxFullBytes(Buffer.from(tx.cborHex, "hex")),
+    const converted = decodeMidgardNativeTxFullFromCanonicalCbor(
+      cardanoTxBytesToMidgardNativeTxCanonicalCbor(
+        Buffer.from(tx.cborHex, "hex"),
+      ),
     );
     const normalized = {
       version: converted.version,
@@ -240,7 +242,7 @@ const buildQueuedBlock = (
         "TxIsValid",
       ),
     };
-    const nativeTxBytes = encodeMidgardNativeTxFull(txForQueue);
+    const nativeTxBytes = encodeMidgardNativeTxCanonical(txForQueue);
     const nativeTxId = computeMidgardNativeTxId(txForQueue);
     return {
       txId: nativeTxId,

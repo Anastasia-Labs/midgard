@@ -14,6 +14,8 @@
   "scripts": {
     "clean": "rimraf dist",
     "build": "tsup src/index.ts src/bin.ts --format esm --dts --clean",
+    "lint": "eslint . --max-warnings=0",
+    "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
@@ -30,7 +32,7 @@
     "@al-ft/midgard-core": "workspace:*",
     "@al-ft/midgard-sdk": "workspace:*",
     "@harmoniclabs/cbor": "1.6.6",
-    "@lucid-evolution/lucid": "0.4.30",
+    "@lucid-evolution/lucid": "0.4.31",
     "effect": "^3.14.22"
   },
   "devDependencies": {

@@ -1,6 +1,7 @@
 import { TxHash } from "@lucid-evolution/lucid";
-import { SerializedStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
 import { Effect, Ref } from "effect";
+
+import { SerializedStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
 
 /**
  * Process-wide mutable references shared between long-running fibers.
@@ -14,70 +15,67 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
     const now = Date.now();
 
     // In-memory state queue length.
-    const BLOCKS_IN_QUEUE: Ref.Ref<number> = yield* Ref.make(0);
+    const BLOCKS_IN_QUEUE = yield* Ref.make<number>(0);
 
     // Latest moment the in-memory state queue length was synchronized with
     // on-chain state.
-    const LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH: Ref.Ref<number> =
-      yield* Ref.make(0);
+    const LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH = yield* Ref.make<number>(0);
 
     // Needed for development to prevent other actions triggering while spending
     // all UTxOs at state queue.
-    const RESET_IN_PROGRESS: Ref.Ref<boolean> = yield* Ref.make(false);
+    const RESET_IN_PROGRESS = yield* Ref.make<boolean>(false);
 
     // Prevents overlapping commitment workers (periodic + manual trigger).
-    const COMMIT_WORKER_ACTIVE: Ref.Ref<boolean> = yield* Ref.make(false);
+    const COMMIT_WORKER_ACTIVE = yield* Ref.make<boolean>(false);
 
     // The state queue UTxO confirmed by the confirmation worker, unused for
-    // block commitment. Using `as` since it seems to be the only way to satisfy
-    // the compiler (TODO?).
-    const AVAILABLE_CONFIRMED_BLOCK: Ref.Ref<"" | SerializedStateQueueUTxO> =
-      yield* Ref.make("" as "" | SerializedStateQueueUTxO);
+    // block commitment.
+    const AVAILABLE_CONFIRMED_BLOCK = yield* Ref.make<
+      "" | SerializedStateQueueUTxO
+    >("");
 
     // The specific confirmed state_queue block whose roots must be used for
     // local finalization recovery when a submission succeeded on-chain but the
     // node crashed or failed during local persistence.
-    const AVAILABLE_LOCAL_FINALIZATION_BLOCK: Ref.Ref<
+    const AVAILABLE_LOCAL_FINALIZATION_BLOCK = yield* Ref.make<
       "" | SerializedStateQueueUTxO
-    > = yield* Ref.make("" as "" | SerializedStateQueueUTxO);
+    >("");
 
     // Accumulator for the number of processed mempool transactions (only used
     // in metrics)
-    const PROCESSED_UNSUBMITTED_TXS_COUNT: Ref.Ref<number> = yield* Ref.make(0);
+    const PROCESSED_UNSUBMITTED_TXS_COUNT = yield* Ref.make<number>(0);
 
     // Accumulator for the total size of L2 transactions submitted in a state
     // queue block.
-    const PROCESSED_UNSUBMITTED_TXS_SIZE: Ref.Ref<number> = yield* Ref.make(0);
+    const PROCESSED_UNSUBMITTED_TXS_SIZE = yield* Ref.make<number>(0);
 
-    // TODO?: We might be able to avoid `as` here.
-    const UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH: Ref.Ref<"" | TxHash> =
-      yield* Ref.make("" as "" | TxHash);
-    const UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS: Ref.Ref<number> =
-      yield* Ref.make(0);
+    const UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH = yield* Ref.make<"" | TxHash>(
+      "",
+    );
+    const UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS = yield* Ref.make<number>(0);
 
-    const LATEST_DEPOSIT_FETCH_TIME: Ref.Ref<number> = yield* Ref.make(0);
+    const LATEST_DEPOSIT_FETCH_TIME = yield* Ref.make<number>(0);
 
     // The end time of the latest block the node has locally accepted as the
     // pre-state boundary for the next block (confirmed on startup, then
     // advanced optimistically on successful submissions).
-    const LATEST_LOCAL_BLOCK_END_TIME_MS: Ref.Ref<number> =
-      yield* Ref.make(0);
+    const LATEST_LOCAL_BLOCK_END_TIME_MS = yield* Ref.make<number>(0);
 
     // Monotonic version used to invalidate the tx-queue processor's cached
     // UTxO state whenever another fiber mutates mempool_ledger directly.
-    const MEMPOOL_LEDGER_VERSION: Ref.Ref<number> = yield* Ref.make(0);
+    const MEMPOOL_LEDGER_VERSION = yield* Ref.make<number>(0);
 
     // Indicates that on-chain block submission succeeded but local persistence
     // failed and must be retried against the confirmed block.
-    const LOCAL_FINALIZATION_PENDING: Ref.Ref<boolean> = yield* Ref.make(false);
+    const LOCAL_FINALIZATION_PENDING = yield* Ref.make<boolean>(false);
 
     // Worker liveness signals used by readiness checks.
-    const HEARTBEAT_BLOCK_COMMITMENT: Ref.Ref<number> = yield* Ref.make(now);
-    const HEARTBEAT_BLOCK_CONFIRMATION: Ref.Ref<number> = yield* Ref.make(now);
-    const HEARTBEAT_MERGE: Ref.Ref<number> = yield* Ref.make(now);
-    const HEARTBEAT_DEPOSIT_FETCH: Ref.Ref<number> = yield* Ref.make(now);
-    const HEARTBEAT_WITHDRAWAL_FETCH: Ref.Ref<number> = yield* Ref.make(now);
-    const HEARTBEAT_TX_QUEUE_PROCESSOR: Ref.Ref<number> = yield* Ref.make(now);
+    const HEARTBEAT_BLOCK_COMMITMENT = yield* Ref.make<number>(now);
+    const HEARTBEAT_BLOCK_CONFIRMATION = yield* Ref.make<number>(now);
+    const HEARTBEAT_MERGE = yield* Ref.make<number>(now);
+    const HEARTBEAT_DEPOSIT_FETCH = yield* Ref.make<number>(now);
+    const HEARTBEAT_WITHDRAWAL_FETCH = yield* Ref.make<number>(now);
+    const HEARTBEAT_TX_QUEUE_PROCESSOR = yield* Ref.make<number>(now);
 
     return {
       BLOCKS_IN_QUEUE,

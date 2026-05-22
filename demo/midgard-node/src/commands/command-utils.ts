@@ -1,21 +1,23 @@
 import {
-  CML,
-  Data as LucidData,
-  getAddressDetails,
-  type Assets,
-  type Network,
-  type UTxO,
-  valueToAssets,
-  walletFromSeed,
-} from "@lucid-evolution/lucid";
-import * as SDK from "@al-ft/midgard-sdk";
-import {
   decodeMidgardTxOutput,
   encodeMidgardAddressText,
   midgardAddressFromText,
   midgardValueToCmlValue,
 } from "@al-ft/midgard-core/codec";
-import { isHexString } from "@/utils.js";
+import { hexToBytes } from "@al-ft/midgard-core/hex";
+import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
+import * as SDK from "@al-ft/midgard-sdk";
+import {
+  type Assets,
+  CML,
+  Data as LucidData,
+  getAddressDetails,
+  type Network,
+  type UTxO,
+  valueToAssets,
+  walletFromSeed,
+} from "@lucid-evolution/lucid";
+
 import type { OutRefLike } from "@/tx-context.js";
 
 const DEFAULT_MIDGARD_NODE_PORT = "3000";
@@ -88,15 +90,10 @@ export const parseNodeEndpoint = (value: string): string => {
 };
 
 export const parseAddressArgument = (address: string): string => {
-  const normalized = address.trim();
-  if (normalized.length === 0) {
-    throw new Error("Address must not be empty.");
-  }
-
   try {
-    return encodeMidgardAddressText(midgardAddressFromText(normalized));
+    return encodeMidgardAddressText(midgardAddressFromText(address));
   } catch (cause) {
-    throw new Error(`Invalid address "${normalized}": ${String(cause)}`);
+    throw new Error(`Invalid address "${address.trim()}": ${String(cause)}`);
   }
 };
 
@@ -104,9 +101,9 @@ export const defaultMidgardNodeEndpoint = (
   env: NodeJS.ProcessEnv = process.env,
 ): string =>
   parseNodeEndpoint(
-    env.MIDGARD_NODE_URL?.trim() ??
-      env.ACTIVITY_SUBMIT_ENDPOINT?.trim() ??
-      env.STRESS_SUBMIT_ENDPOINT?.trim() ??
+    env.MIDGARD_NODE_URL ??
+      env.ACTIVITY_SUBMIT_ENDPOINT ??
+      env.STRESS_SUBMIT_ENDPOINT ??
       `http://127.0.0.1:${env.PORT?.trim() || DEFAULT_MIDGARD_NODE_PORT}`,
   );
 
@@ -125,20 +122,7 @@ export const parseHexBytes = (
   if (typeof value !== "string") {
     throw new Error(`${fieldName} must be a hex string.`);
   }
-  const normalized = value.trim().toLowerCase();
-  if (normalized.length === 0) {
-    throw new Error(`${fieldName} must not be empty.`);
-  }
-  if (normalized.length % 2 !== 0 || !isHexString(normalized)) {
-    throw new Error(`${fieldName} must be an even-length hex string.`);
-  }
-  const bytes = Buffer.from(normalized, "hex");
-  if (expectedLength !== undefined && bytes.length !== expectedLength) {
-    throw new Error(
-      `${fieldName} must be ${expectedLength.toString()} bytes, got ${bytes.length.toString()}.`,
-    );
-  }
-  return bytes;
+  return hexToBytes(value, { fieldName, byteLength: expectedLength });
 };
 
 export const parseTxOutRefLabel = (
@@ -148,32 +132,19 @@ export const parseTxOutRefLabel = (
   if (typeof value !== "string") {
     throw new Error(`${fieldName} must be a string.`);
   }
-  const normalized = value.trim().toLowerCase();
-  if (normalized.length === 0) {
-    throw new Error(`${fieldName} must not be empty.`);
-  }
-  const parts = normalized.split("#");
-  if (parts.length !== 2) {
-    throw new Error(`${fieldName} must use the format <txHash>#<outputIndex>.`);
-  }
-  const [txHash, outputIndexRaw] = parts;
-  if (txHash === undefined || txHash.length !== 64 || !isHexString(txHash)) {
-    throw new Error(`${fieldName}.txHash must be a 32-byte hex string.`);
-  }
-  if (outputIndexRaw === undefined || !/^\d+$/.test(outputIndexRaw)) {
-    throw new Error(`${fieldName}.outputIndex must be a non-negative integer.`);
-  }
-  const outputIndex = Number(outputIndexRaw);
-  if (!Number.isSafeInteger(outputIndex) || outputIndex < 0) {
-    throw new Error(`${fieldName}.outputIndex exceeds the safe integer range.`);
+  let parsed: OutRefLike;
+  try {
+    parsed = parseOutRefLabel(value);
+  } catch (cause) {
+    const detail = cause instanceof Error ? cause.message : String(cause);
+    throw new Error(`${fieldName}: ${detail}`);
   }
   const input = CML.TransactionInput.new(
-    CML.TransactionHash.from_hex(txHash),
-    BigInt(outputIndex),
+    CML.TransactionHash.from_hex(parsed.txHash),
+    BigInt(parsed.outputIndex),
   );
   return {
-    txHash,
-    outputIndex,
+    ...parsed,
     cbor: Buffer.from(input.to_cbor_bytes()),
   };
 };

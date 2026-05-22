@@ -1,22 +1,13 @@
-import { describe, expect, it } from "vitest";
-import { Effect } from "effect";
-import * as SDK from "@al-ft/midgard-sdk";
-import { CML, Data, walletFromSeed } from "@lucid-evolution/lucid";
 import {
-  midgardAddressFromText,
   encodeMidgardAddressText,
+  midgardAddressFromText,
   protectMidgardAddress,
 } from "@al-ft/midgard-core/codec";
-import { assetsToValue } from "@/transactions/reserve-payout.js";
-import {
-  publicKeyHashFromWithdrawalSignature,
-  signWithdrawalBody,
-  verifyWithdrawalSignature,
-} from "@/withdrawal-signature.js";
-import {
-  parseCardanoDatum,
-  parseWithdrawalTxOutRefLabel,
-} from "@/commands/withdrawal-utils.js";
+import * as SDK from "@al-ft/midgard-sdk";
+import { CML, Data, walletFromSeed } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+import { describe, expect, it } from "vitest";
+
 import {
   parseEventId,
   resolveWalletSeedPhrase,
@@ -25,16 +16,24 @@ import {
   __submitWithdrawalTest,
   withdrawalEventIdFromBuildMetadata,
 } from "@/commands/submit-withdrawal.js";
+import {
+  parseCardanoDatum,
+  parseWithdrawalTxOutRefLabel,
+} from "@/commands/withdrawal-utils.js";
+import { assetsToValue } from "@/transactions/reserve-payout.js";
+import {
+  publicKeyHashFromWithdrawalSignature,
+  signWithdrawalBody,
+  verifyWithdrawalSignature,
+} from "@/withdrawal-signature.js";
 
 const seedPhrase =
   "test test test test test test test test test test test junk";
+const wallet = walletFromSeed(seedPhrase, { network: "Preprod" });
+const privateKey = CML.PrivateKey.from_bech32(wallet.paymentKey);
+const keyHash = privateKey.to_public().hash().to_hex();
 
 const makeWithdrawalBody = async (): Promise<SDK.WithdrawalBody> => {
-  const wallet = walletFromSeed(seedPhrase, { network: "Preprod" });
-  const keyHash = CML.PrivateKey.from_bech32(wallet.paymentKey)
-    .to_public()
-    .hash()
-    .to_hex();
   const l1Address = await Effect.runPromise(
     SDK.addressDataFromBech32(wallet.address),
   );
@@ -54,9 +53,6 @@ const makeWithdrawalBody = async (): Promise<SDK.WithdrawalBody> => {
 describe("withdrawal signature utilities", () => {
   it("signs and verifies a withdrawal body", async () => {
     const body = await makeWithdrawalBody();
-    const privateKey = CML.PrivateKey.from_bech32(
-      walletFromSeed(seedPhrase, { network: "Preprod" }).paymentKey,
-    );
     const signature = signWithdrawalBody(privateKey, body);
     expect(publicKeyHashFromWithdrawalSignature(signature)).toEqual(
       body.l2_owner,
@@ -69,9 +65,6 @@ describe("withdrawal signature utilities", () => {
 
   it("rejects tampered withdrawal bodies and wrong owners", async () => {
     const body = await makeWithdrawalBody();
-    const privateKey = CML.PrivateKey.from_bech32(
-      walletFromSeed(seedPhrase, { network: "Preprod" }).paymentKey,
-    );
     const signature = signWithdrawalBody(privateKey, body);
     const tampered: SDK.WithdrawalBody = {
       ...body,
@@ -103,9 +96,6 @@ describe("withdrawal signature utilities", () => {
       valid: false,
       reason: "malformed_public_key",
     });
-    const privateKey = CML.PrivateKey.from_bech32(
-      walletFromSeed(seedPhrase, { network: "Preprod" }).paymentKey,
-    );
     const [publicKey] = signWithdrawalBody(privateKey, body);
     expect(
       verifyWithdrawalSignature(body, [publicKey, "bb"], body.l2_owner),
@@ -118,11 +108,6 @@ describe("withdrawal signature utilities", () => {
 
 describe("withdrawal CLI parsers", () => {
   it("extracts selected protected L2 UTxO owners with the Midgard address codec", () => {
-    const wallet = walletFromSeed(seedPhrase, { network: "Preprod" });
-    const keyHash = CML.PrivateKey.from_bech32(wallet.paymentKey)
-      .to_public()
-      .hash()
-      .to_hex();
     const protectedAddress = encodeMidgardAddressText(
       protectMidgardAddress(midgardAddressFromText(wallet.address)),
     );
@@ -202,7 +187,7 @@ describe("withdrawal CLI parsers", () => {
     const datum = parseCardanoDatum("d87980");
     expect(datum).toHaveProperty("InlineDatum");
     expect(() => parseCardanoDatum("d8798")).toThrow(
-      "datum must be an even-length hex string.",
+      "datum must be an even-length hex string",
     );
   });
 

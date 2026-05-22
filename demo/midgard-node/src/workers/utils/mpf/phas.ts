@@ -1,7 +1,9 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { aikenSerialisedPlutusDataCbor } from "@/utils/plutus-data-cbor.js";
+
+import { aikenSerialisedPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
+
 import { MidgardMpf, MpfError } from "../mpf.js";
 
 const toPhasTrieItem = (keyCbor: Buffer, valueCbor: Buffer) => ({

@@ -1,16 +1,19 @@
-import {
-  Data,
-  type LucidEvolution,
-  type Network,
-  type UTxO,
-} from "@lucid-evolution/lucid";
+import { computeHash32, encodeCbor } from "@al-ft/midgard-core";
 import {
   DoubleSpendStep03Datum,
   DoubleSpendStep03SpendRedeemer,
   DoubleSpendStep04Datum,
   type MidgardTxInput,
 } from "@al-ft/midgard-sdk";
-import { computeHash32, encodeCbor } from "@al-ft/midgard-core";
+import {
+  Data,
+  type LucidEvolution,
+  type Network,
+  type UTxO,
+} from "@lucid-evolution/lucid";
+
+import { parseDoubleSpentInputIndex } from "./double-spend-inputs.js";
+import { parseHex } from "./json-file.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
@@ -19,22 +22,20 @@ import {
   parseOutRef,
   readJsonFile,
   resolveDoubleSpendDeploymentContracts,
-  resolveProverSigner,
   type ResolvedProverSigner,
+  resolveProverSigner,
   type SubmitProviderConfig,
 } from "./runtime.js";
-import {
-  inputIndex,
-  requireComputationThreadToken,
-  selectFeeInput,
-} from "./submit-step-01.js";
-import { parseHex } from "./json-file.js";
 import {
   ensureSpendInputsReferenceWitness,
   excludeUtxo,
   spendInputsWitnessFromCbors,
 } from "./spend-input-witness.js";
-import { parseDoubleSpentInputIndex } from "./double-spend-inputs.js";
+import {
+  inputIndex,
+  requireComputationThreadToken,
+  selectFeeInput,
+} from "./submit-step-01.js";
 
 const STEP_03_OUTPUT_INDEX = 0n;
 

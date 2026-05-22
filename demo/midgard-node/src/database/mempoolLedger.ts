@@ -1,13 +1,15 @@
-import { Database } from "@/services/database.js";
 import { SqlClient } from "@effect/sql";
-import { Effect } from "effect";
 import { Address } from "@lucid-evolution/lucid";
-import * as Ledger from "@/database/utils/ledger.js";
+import { Effect } from "effect";
+
 import {
   clearTable,
   DatabaseError,
+  logDatabaseError,
   sqlErrorToDatabaseError,
 } from "@/database/utils/common.js";
+import * as Ledger from "@/database/utils/ledger.js";
+import { Database } from "@/services/database.js";
 
 export const tableName = "mempool_ledger";
 
@@ -38,16 +40,14 @@ export type DepositEntry = EntryNoTimeStamp & {
   [Columns.SOURCE_EVENT_ID]: Buffer;
 };
 
-const normalizeEntry = (
-  entry: Ledger.Entry | Entry,
-): EntryNoTimeStamp => ({
+const normalizeEntry = (entry: Ledger.Entry | Entry): EntryNoTimeStamp => ({
   [Columns.TX_ID]: entry[Ledger.Columns.TX_ID],
   [Columns.OUTREF]: entry[Ledger.Columns.OUTREF],
   [Columns.OUTPUT]: entry[Ledger.Columns.OUTPUT],
   [Columns.ADDRESS]: entry[Ledger.Columns.ADDRESS],
   [Columns.SOURCE_EVENT_ID]:
     Columns.SOURCE_EVENT_ID in entry
-      ? entry[Columns.SOURCE_EVENT_ID] ?? null
+      ? (entry[Columns.SOURCE_EVENT_ID] ?? null)
       : null,
 });
 
@@ -103,7 +103,7 @@ export const insert = (
   }).pipe(
     Effect.withLogSpan(`insertEntries ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(`${tableName} db: insertEntries: ${JSON.stringify(e)}`),
+      logDatabaseError(tableName, "insertEntries", e),
     ),
     sqlErrorToDatabaseError(tableName, "Failed to insert given UTxOs"),
   );
@@ -195,7 +195,7 @@ export const retrieve: Effect.Effect<
 }).pipe(
   Effect.withLogSpan(`retrieveEntries ${tableName}`),
   Effect.tapErrorTag("SqlError", (e) =>
-    Effect.logError(`${tableName} db: retrieveEntries: ${JSON.stringify(e)}`),
+    logDatabaseError(tableName, "retrieveEntries", e),
   ),
   sqlErrorToDatabaseError(tableName, "Failed to retrieve the whole ledger"),
 );
@@ -212,9 +212,7 @@ export const retrieveByAddress = (
   }).pipe(
     Effect.withLogSpan(`retrieveEntriesWithAddress ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(
-        `${tableName} db: retrieveEntriesWithAddress: ${JSON.stringify(e)}`,
-      ),
+      logDatabaseError(tableName, "retrieveEntriesWithAddress", e),
     ),
     sqlErrorToDatabaseError(
       tableName,
@@ -236,9 +234,7 @@ export const retrieveByTxOutRefs = (
   }).pipe(
     Effect.withLogSpan(`retrieveEntriesByOutRefs ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(
-        `${tableName} db: retrieveEntriesByOutRefs: ${JSON.stringify(e)}`,
-      ),
+      logDatabaseError(tableName, "retrieveEntriesByOutRefs", e),
     ),
     sqlErrorToDatabaseError(
       tableName,
@@ -260,9 +256,7 @@ export const retrieveBySourceEventIds = (
   }).pipe(
     Effect.withLogSpan(`retrieveEntriesBySourceEventIds ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(
-        `${tableName} db: retrieveEntriesBySourceEventIds: ${JSON.stringify(e)}`,
-      ),
+      logDatabaseError(tableName, "retrieveEntriesBySourceEventIds", e),
     ),
     sqlErrorToDatabaseError(
       tableName,

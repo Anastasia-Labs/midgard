@@ -1,19 +1,22 @@
-import { Database } from "@/services/database.js";
-import * as Tx from "@/database/utils/tx.js";
+import { SqlClient } from "@effect/sql";
+import { Effect } from "effect";
+
+import * as AddressHistoryDB from "@/database/addressHistory.js";
 import {
   clearTable,
-  sqlErrorToDatabaseError,
   DatabaseError,
+  logDatabaseError,
   retrieveNumberOfEntries,
+  sqlErrorToDatabaseError,
 } from "@/database/utils/common.js";
+import * as Ledger from "@/database/utils/ledger.js";
+import * as Tx from "@/database/utils/tx.js";
+import { Database } from "@/services/database.js";
+import { ProcessedTx } from "@/utils.js";
+
+import * as DepositsDB from "./deposits.js";
 import * as MempoolLedgerDB from "./mempoolLedger.js";
 import * as MempoolTxDeltasDB from "./mempoolTxDeltas.js";
-import * as DepositsDB from "./deposits.js";
-import { Effect } from "effect";
-import { SqlClient } from "@effect/sql";
-import * as AddressHistoryDB from "@/database/addressHistory.js";
-import { ProcessedTx } from "@/utils.js";
-import * as Ledger from "@/database/utils/ledger.js";
 
 export const tableName = "mempool";
 
@@ -52,9 +55,7 @@ export const insert = (
     );
   }).pipe(
     Effect.withLogSpan(`insert ${tableName}`),
-    Effect.tapError((e) =>
-      Effect.logError(`${tableName} db: insert: ${JSON.stringify(e)}`),
-    ),
+    Effect.tapError((e) => logDatabaseError(tableName, "insert", e)),
     sqlErrorToDatabaseError(tableName, "Failed to insert mempool transaction"),
   );
 
@@ -75,15 +76,8 @@ export const insertMultiple = (
         // Insert the tx itself in `MempoolDB`.
         yield* Tx.insertEntries(tableName, txEntries);
 
-        const initAcc: { allProduced: Ledger.Entry[]; allSpent: Buffer[] } = {
-          allProduced: [],
-          allSpent: [],
-        };
-        const { allProduced, allSpent } = processedTxs.reduce((acc, v) => {
-          acc.allProduced.push(...v.produced);
-          acc.allSpent.push(...v.spent);
-          return acc;
-        }, initAcc);
+        const allProduced = processedTxs.flatMap((tx) => tx.produced);
+        const allSpent = processedTxs.flatMap((tx) => tx.spent);
 
         // Insert produced UTxOs in `MempoolLedgerDB`.
         yield* MempoolLedgerDB.insert(allProduced);
@@ -98,7 +92,7 @@ export const insertMultiple = (
     );
   }).pipe(
     Effect.withLogSpan(`insert ${tableName}`),
-    Effect.tapError((e) => Effect.logError(`${tableName} db: insert: ${e}`)),
+    Effect.tapError((e) => logDatabaseError(tableName, "insert", e)),
     sqlErrorToDatabaseError(tableName, "Failed to insert mempool transactions"),
   );
 
@@ -127,7 +121,7 @@ export const retrieve: Effect.Effect<
 }).pipe(
   Effect.withLogSpan(`retrieve ${tableName}`),
   Effect.tapErrorTag("SqlError", (e) =>
-    Effect.logError(`${tableName} db: retrieve: ${JSON.stringify(e)}`),
+    logDatabaseError(tableName, "retrieve", e),
   ),
   sqlErrorToDatabaseError(tableName, "Failed to retrieve given transactions"),
 );

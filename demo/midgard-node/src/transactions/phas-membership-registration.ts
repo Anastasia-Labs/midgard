@@ -1,10 +1,12 @@
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  validatorToScriptHash,
   type LucidEvolution,
   type TxSignBuilder,
+  validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
+
 import {
   loadPhasMembershipWithdrawalScript,
   phasMembershipRewardAddress,
@@ -30,28 +32,11 @@ export type PhasMembershipRewardRegistrationResult = {
     }
 );
 
-const formatUnknownError = (error: unknown): string => {
-  if (error instanceof Error) {
-    const cause = (error as Error & { cause?: unknown }).cause;
-    return cause === undefined
-      ? `${error.name}: ${error.message}`
-      : `${error.name}: ${error.message}; cause=${formatUnknownError(cause)}`;
-  }
-  if (typeof error === "string") {
-    return error;
-  }
-  try {
-    return JSON.stringify(error);
-  } catch {
-    return String(error);
-  }
-};
-
 const isAlreadyRegisteredError = (
   error: TxSubmitError,
   scriptHash: string,
 ): boolean => {
-  const message = formatUnknownError(error);
+  const message = formatUnknownError(error, { includeCause: true });
   return (
     message.includes("StakeKeyRegisteredDELEG") && message.includes(scriptHash)
   );

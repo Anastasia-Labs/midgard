@@ -1,9 +1,9 @@
-import { describe, expect, it } from "vitest";
-import { Data } from "@lucid-evolution/lucid";
 import {
-  SchedulerDatum,
   normalizeRootIndefiniteArrayEncoding,
+  SchedulerDatum,
 } from "@al-ft/midgard-sdk";
+import { Data } from "@lucid-evolution/lucid";
+import { describe, expect, it } from "vitest";
 
 describe("normalizeRootIndefiniteArrayEncoding", () => {
   it("rewrites a root indefinite array to a definite array", () => {

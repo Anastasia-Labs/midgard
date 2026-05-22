@@ -1,24 +1,26 @@
-import { CML } from "@lucid-evolution/lucid";
 import {
-  MIDGARD_PROTECTED_ADDRESS_HEADER_MASK,
   decodeMidgardAddressBytes,
   decodeMidgardNativeScript,
   decodeMidgardTxOutput as decodeCoreMidgardTxOutput,
   encodeMidgardAddressText,
   encodeMidgardTxOutput as encodeCoreMidgardTxOutput,
   isProtectedMidgardAddress,
+  MIDGARD_PROTECTED_ADDRESS_HEADER_MASK,
   midgardAddressFromText,
-  protectMidgardAddress,
   type MidgardDatum as CoreMidgardDatum,
   type MidgardTxOutput as CoreMidgardTxOutput,
   type MidgardValue as CoreMidgardValue,
   type MidgardVersionedScript,
+  protectMidgardAddress,
 } from "@al-ft/midgard-core/codec";
+import { hexToBytes } from "@al-ft/midgard-core/hex";
+import { CML } from "@lucid-evolution/lucid";
+
 import {
   assertNonNegativeAssets,
+  type Assets,
   normalizeAssets,
   normalizeValueLike,
-  type Assets,
   type ValueLike,
 } from "./assets.js";
 import { BuilderInvariantError } from "./errors.js";
@@ -73,11 +75,11 @@ export type DecodedMidgardOutput = {
 };
 
 const fromHex = (hex: string, fieldName: string): Buffer => {
-  const normalized = hex.trim().toLowerCase();
-  if (normalized.length % 2 !== 0 || !/^[0-9a-f]*$/.test(normalized)) {
+  try {
+    return hexToBytes(hex, { fieldName, allowEmpty: true });
+  } catch {
     throw new BuilderInvariantError(`${fieldName} must be hex`, hex);
   }
-  return Buffer.from(normalized, "hex");
 };
 
 const addressBytesForOutput = (
@@ -126,14 +128,12 @@ const cmlScriptToMidgardVersionedScript = (
       nativeScript: decoded.script,
     };
   }
-  if (script.as_plutus_v1() !== undefined) {
+  if (
+    script.as_plutus_v1() !== undefined ||
+    script.as_plutus_v2() !== undefined
+  ) {
     throw new BuilderInvariantError(
-      "Midgard script references do not support PlutusV1",
-    );
-  }
-  if (script.as_plutus_v2() !== undefined) {
-    throw new BuilderInvariantError(
-      "Midgard script references do not support PlutusV2",
+      "Midgard script references do not support PlutusV1 or PlutusV2",
     );
   }
   const plutusV3 = script.as_plutus_v3();
@@ -160,9 +160,8 @@ const midgardScriptToVersionedScript = (
       };
     }
     case "PlutusV3":
-      return { language: "PlutusV3", scriptBytes: bytes };
     case "MidgardV1":
-      return { language: "MidgardV1", scriptBytes: bytes };
+      return { language: scriptRef.type, scriptBytes: bytes };
   }
 };
 
@@ -190,13 +189,9 @@ const midgardScriptFromCore = (
         script: Buffer.from(script.scriptBytes).toString("hex"),
       };
     case "PlutusV3":
-      return {
-        type: "PlutusV3",
-        script: Buffer.from(script.scriptBytes).toString("hex"),
-      };
     case "MidgardV1":
       return {
-        type: "MidgardV1",
+        type: script.language,
         script: Buffer.from(script.scriptBytes).toString("hex"),
       };
   }
@@ -262,10 +257,9 @@ const assetsToMidgardValue = (value: ValueLike): CoreMidgardValue => {
     "output.assets",
   );
   const assets = new Map<string, Map<string, bigint>>();
-  const lovelace = BigInt(normalized.lovelace ?? 0n);
-  for (const [unit, quantityLike] of Object.entries(normalized)) {
-    const quantity = BigInt(quantityLike);
-    if (unit === "lovelace" || quantity === 0n) {
+  const lovelace = normalized.lovelace ?? 0n;
+  for (const [unit, quantity] of Object.entries(normalized)) {
+    if (unit === "lovelace") {
       continue;
     }
     const unitBytes = fromHex(unit, "asset unit");
@@ -277,10 +271,7 @@ const assetsToMidgardValue = (value: ValueLike): CoreMidgardValue => {
     }
     const policyId = unit.slice(0, 56);
     const assetName = unit.slice(56);
-    if (fromHex(policyId, "asset policy id").length !== 28) {
-      throw new BuilderInvariantError("Asset policy id must be 28 bytes", unit);
-    }
-    if (fromHex(assetName, "asset name").length > 32) {
+    if (unitBytes.length - 28 > 32) {
       throw new BuilderInvariantError(
         "Asset name must be at most 32 bytes",
         unit,
@@ -458,54 +449,73 @@ export const outRefToCbor = (outRef: OutRef): Buffer => {
   );
 };
 
-const assertOutRefCborMatches = (
-  outRef: OutRef,
+const decodeOutRefCbor = (
   outRefCbor: Uint8Array,
-): void => {
-  const normalizedOutRef = normalizeOutRef(outRef);
-  const decodedInput = CML.TransactionInput.from_cbor_bytes(outRefCbor);
-  const decodedIndex = decodedInput.index();
-  if (decodedIndex > BigInt(Number.MAX_SAFE_INTEGER)) {
-    throw new Error(
-      `output index exceeds JavaScript safe integer range: ${decodedIndex.toString()}`,
-    );
-  }
-  const decodedOutRef = normalizeOutRef({
-    txHash: decodedInput.transaction_id().to_hex(),
-    outputIndex: Number(decodedIndex),
-  });
-  if (
-    decodedOutRef.txHash !== normalizedOutRef.txHash ||
-    decodedOutRef.outputIndex !== normalizedOutRef.outputIndex
-  ) {
-    throw new Error("CBOR does not match txHash/outputIndex");
-  }
-};
-
-export const decodeMidgardUtxo = ({
-  outRef,
-  outRefCbor,
-  outputCbor,
-}: {
-  readonly outRef: Pick<MidgardUtxo, "txHash" | "outputIndex">;
-  readonly outRefCbor: Uint8Array;
-  readonly outputCbor: Uint8Array;
-}): MidgardUtxo => {
-  const normalizedOutRef = normalizeOutRef(outRef);
+): { readonly outRef: OutRef; readonly cbor: Buffer } => {
   try {
-    assertOutRefCborMatches(normalizedOutRef, outRefCbor);
+    const decodedInput = CML.TransactionInput.from_cbor_bytes(outRefCbor);
+    const decodedIndex = decodedInput.index();
+    if (decodedIndex > BigInt(Number.MAX_SAFE_INTEGER)) {
+      throw new Error(
+        `output index exceeds JavaScript safe integer range: ${decodedIndex.toString()}`,
+      );
+    }
+    return {
+      outRef: normalizeOutRef({
+        txHash: decodedInput.transaction_id().to_hex(),
+        outputIndex: Number(decodedIndex),
+      }),
+      cbor: Buffer.from(decodedInput.to_cbor_bytes()),
+    };
   } catch (cause) {
     throw new BuilderInvariantError(
       "Invalid UTxO outRefCbor",
       cause instanceof Error ? cause.message : String(cause),
     );
   }
+};
+
+const verifiedOutRefCbor = (outRef: OutRef, outRefCbor: Uint8Array): Buffer => {
+  const decoded = decodeOutRefCbor(outRefCbor);
+  if (
+    decoded.outRef.txHash !== outRef.txHash ||
+    decoded.outRef.outputIndex !== outRef.outputIndex
+  ) {
+    throw new BuilderInvariantError(
+      "Invalid UTxO outRefCbor",
+      "CBOR does not match txHash/outputIndex",
+    );
+  }
+  return decoded.cbor;
+};
+
+const providedOutRefCbor = (
+  outRef: OutRef,
+  outRefCbor: Uint8Array,
+): { readonly outRef: OutRef; readonly cbor: Buffer } => ({
+  outRef,
+  cbor: verifiedOutRefCbor(outRef, outRefCbor),
+});
+
+export const decodeMidgardUtxo = ({
+  outRef,
+  outRefCbor,
+  outputCbor,
+}: {
+  readonly outRef?: Pick<MidgardUtxo, "txHash" | "outputIndex">;
+  readonly outRefCbor: Uint8Array;
+  readonly outputCbor: Uint8Array;
+}): MidgardUtxo => {
+  const decodedOutRef =
+    outRef === undefined
+      ? decodeOutRefCbor(outRefCbor)
+      : providedOutRefCbor(normalizeOutRef(outRef), outRefCbor);
   const decoded = decodeMidgardTxOutput(outputCbor);
   return {
-    ...normalizedOutRef,
+    ...decodedOutRef.outRef,
     output: decoded.txOutput,
     cbor: {
-      outRef: Buffer.from(outRefCbor),
+      outRef: decodedOutRef.cbor,
       output: Buffer.from(outputCbor),
     },
   };
@@ -521,15 +531,7 @@ export const utxoOutRefCbor = (utxo: OutRefCborInput): Buffer => {
   if (utxo.cbor?.outRef === undefined) {
     return outRefToCbor(utxo);
   }
-  try {
-    assertOutRefCborMatches(utxo, utxo.cbor.outRef);
-  } catch (cause) {
-    throw new BuilderInvariantError(
-      "Invalid UTxO outRefCbor",
-      cause instanceof Error ? cause.message : String(cause),
-    );
-  }
-  return Buffer.from(utxo.cbor.outRef);
+  return verifiedOutRefCbor(normalizeOutRef(utxo), utxo.cbor.outRef);
 };
 
 export const utxoOutputCbor = (utxo: MidgardUtxo): Buffer =>

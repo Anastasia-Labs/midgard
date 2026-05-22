@@ -1,4 +1,5 @@
 import { Data } from "@lucid-evolution/lucid";
+
 import { H32Schema, ProofSchema } from "@/common.js";
 
 export const NativeTxBodyCompactSchema = Data.Object({
@@ -15,9 +16,7 @@ export const NativeTxBodyCompactSchema = Data.Object({
   auxiliary_data_hash: H32Schema,
   network_id: Data.Integer(),
 });
-export type NativeTxBodyCompact = Data.Static<
-  typeof NativeTxBodyCompactSchema
->;
+export type NativeTxBodyCompact = Data.Static<typeof NativeTxBodyCompactSchema>;
 export const NativeTxBodyCompact =
   NativeTxBodyCompactSchema as unknown as NativeTxBodyCompact;
 
@@ -35,8 +34,7 @@ export const MidgardTxInputSchema = Data.Object({
   output_index: Data.Integer(),
 });
 export type MidgardTxInput = Data.Static<typeof MidgardTxInputSchema>;
-export const MidgardTxInput =
-  MidgardTxInputSchema as unknown as MidgardTxInput;
+export const MidgardTxInput = MidgardTxInputSchema as unknown as MidgardTxInput;
 
 export const MidgardTxInputListSchema = Data.Array(MidgardTxInputSchema);
 export type MidgardTxInputList = Data.Static<typeof MidgardTxInputListSchema>;

@@ -1,22 +1,20 @@
-import * as SDK from "@al-ft/midgard-sdk";
-import { CML, Data, type Assets, type UTxO } from "@lucid-evolution/lucid";
+import * as SDK from "@/reserve-payout/primitives.js";
+import { type Assets, CML, Data, type UTxO } from "@lucid-evolution/lucid";
+
+import {
+  assetsEqual,
+  hasNonZeroAssetQuantity,
+} from "@/reserve-payout/assets.js";
 import {
   collectIndexedOutputs,
   collectSortedInputOutRefs,
+  type IndexedTxOutput,
+} from "@/tx-out-ref-order.js";
+import {
   compareOutRefs,
   findOutRefIndex,
   outRefLabel,
-  type IndexedTxOutput,
-} from "@/tx-context.js";
-import {
-  assetsEqual,
-  normalizeAssets,
-} from "@/transactions/reserve-payout/assets.js";
-
-type RedeemerPointerLike = {
-  readonly tag: number;
-  readonly index: bigint;
-};
+} from "@al-ft/midgard-core/out-ref";
 
 export type AbsorbDepositLayout = {
   readonly depositInputIndex: bigint;
@@ -68,105 +66,24 @@ export type RefundWithdrawalLayout = {
   readonly inclusionProofWithdrawalRedeemerIndex: bigint;
 };
 
-const txInfoPurposeRank = (tag: number): number => {
-  switch (tag) {
-    case CML.RedeemerTag.Spend:
-      return 0;
-    case CML.RedeemerTag.Mint:
-      return 1;
-    case CML.RedeemerTag.Cert:
-      return 2;
-    case CML.RedeemerTag.Reward:
-      return 3;
-    case CML.RedeemerTag.Voting:
-      return 4;
-    case CML.RedeemerTag.Proposing:
-      return 5;
-    default:
-      return Number.MAX_SAFE_INTEGER;
-  }
-};
-
-const samePointer = (
-  left: RedeemerPointerLike,
-  right: RedeemerPointerLike,
-): boolean => left.tag === right.tag && left.index === right.index;
-
 const expectedTxInfoIndex = (
-  pointers: readonly RedeemerPointerLike[],
-  target: RedeemerPointerLike,
-): bigint => {
-  const contextIndex = pointers.findIndex((pointer) =>
-    samePointer(pointer, target),
-  );
-  if (contextIndex < 0) {
-    throw new Error(
-      `Expected redeemer pointer missing: tag=${target.tag.toString()},index=${target.index.toString()}`,
-    );
-  }
-  const ordered = pointers
-    .map((pointer, index) => ({ pointer, index }))
-    .sort((left, right) => {
-      const rankLeft = txInfoPurposeRank(left.pointer.tag);
-      const rankRight = txInfoPurposeRank(right.pointer.tag);
-      if (rankLeft !== rankRight) {
-        return rankLeft - rankRight;
-      }
-      if (left.pointer.index !== right.pointer.index) {
-        return left.pointer.index < right.pointer.index ? -1 : 1;
-      }
-      return left.index - right.index;
-    });
-  const txInfoIndex = ordered.findIndex(
-    (entry) => entry.index === contextIndex,
-  );
-  if (txInfoIndex < 0) {
-    throw new Error("Failed to derive expected tx-info redeemer index");
-  }
-  return BigInt(txInfoIndex);
-};
+  pointers: readonly SDK.RedeemerPointer[],
+  target: SDK.RedeemerPointer,
+): bigint => SDK.resolveRedeemerTxInfoIndex({ pointers, target });
 
 const actualTxInfoIndex = (
   tx: CML.Transaction,
-  target: RedeemerPointerLike,
-): bigint => {
-  const pointers = SDK.getRedeemerPointersInContextOrder(tx);
-  const contextIndex = pointers.findIndex((pointer) =>
-    samePointer(pointer, target),
-  );
-  if (contextIndex < 0) {
-    throw new Error(
-      `Transaction missing redeemer pointer tag=${target.tag.toString()},index=${target.index.toString()}`,
-    );
-  }
-  const txInfoIndexes = SDK.getTxInfoRedeemerIndexes(pointers);
-  const txInfoIndex = txInfoIndexes[contextIndex];
-  if (txInfoIndex === undefined || txInfoIndex < 0) {
-    throw new Error(
-      `Transaction missing tx-info index for redeemer pointer tag=${target.tag.toString()},index=${target.index.toString()}`,
-    );
-  }
-  return BigInt(txInfoIndex);
-};
-
-const comparePolicyIds = (left: string, right: string): number =>
-  Buffer.from(left, "hex").compare(Buffer.from(right, "hex"));
+  target: SDK.RedeemerPointer,
+): bigint =>
+  SDK.resolveRedeemerTxInfoIndex({
+    pointers: SDK.getRedeemerPointersInContextOrder(tx),
+    target,
+  });
 
 const mintPointerIndex = (
   policyIds: readonly string[],
   targetPolicyId: string,
-): bigint => {
-  const sorted = [
-    ...new Set(policyIds.map((policy) => policy.toLowerCase())),
-  ].sort(comparePolicyIds);
-  const index = sorted.indexOf(targetPolicyId.toLowerCase());
-  if (index < 0) {
-    throw new Error(
-      `Mint policy ${targetPolicyId} missing from mint policy set`,
-    );
-  }
-  return BigInt(index);
-};
+): bigint => SDK.resolveMintPolicyContextIndex({ policyIds, targetPolicyId });
 
 const requireReferenceInputIndex = (
   tx: CML.Transaction,
@@ -247,71 +164,14 @@ export const settlementDatumFromInput = (
   ) as SDK.SettlementDatum;
 };
 
-export const sameAbsorbDepositLayout = (
-  left: AbsorbDepositLayout,
-  right: AbsorbDepositLayout,
-): boolean =>
-  left.depositInputIndex === right.depositInputIndex &&
-  left.reserveOutputIndex === right.reserveOutputIndex &&
-  left.hubRefInputIndex === right.hubRefInputIndex &&
-  left.settlementRefInputIndex === right.settlementRefInputIndex &&
-  left.burnRedeemerIndex === right.burnRedeemerIndex &&
-  left.witnessUnregistrationRedeemerIndex ===
-    right.witnessUnregistrationRedeemerIndex &&
-  left.inclusionProofWithdrawalRedeemerIndex ===
-    right.inclusionProofWithdrawalRedeemerIndex;
+const sameLayout = <L extends object>(left: L, right: L): boolean =>
+  Object.entries(left).every(([key, value]) => right[key as keyof L] === value);
 
-export const sameInitializePayoutLayout = (
-  left: InitializePayoutLayout,
-  right: InitializePayoutLayout,
-): boolean =>
-  left.withdrawalInputIndex === right.withdrawalInputIndex &&
-  left.payoutOutputIndex === right.payoutOutputIndex &&
-  left.hubRefInputIndex === right.hubRefInputIndex &&
-  left.settlementRefInputIndex === right.settlementRefInputIndex &&
-  left.withdrawalBurnRedeemerIndex === right.withdrawalBurnRedeemerIndex &&
-  left.payoutMintRedeemerIndex === right.payoutMintRedeemerIndex &&
-  left.withdrawalSpendRedeemerIndex === right.withdrawalSpendRedeemerIndex &&
-  left.witnessUnregistrationRedeemerIndex ===
-    right.witnessUnregistrationRedeemerIndex &&
-  left.inclusionProofWithdrawalRedeemerIndex ===
-    right.inclusionProofWithdrawalRedeemerIndex;
-
-export const sameAddReserveFundsLayout = (
-  left: AddReserveFundsLayout,
-  right: AddReserveFundsLayout,
-): boolean =>
-  left.payoutInputIndex === right.payoutInputIndex &&
-  left.reserveInputIndex === right.reserveInputIndex &&
-  left.payoutOutputIndex === right.payoutOutputIndex &&
-  left.reserveChangeOutputIndex === right.reserveChangeOutputIndex &&
-  left.payoutSpendRedeemerIndex === right.payoutSpendRedeemerIndex &&
-  left.reserveSpendRedeemerIndex === right.reserveSpendRedeemerIndex &&
-  left.hubRefInputIndex === right.hubRefInputIndex;
-
-export const sameConcludePayoutLayout = (
-  left: ConcludePayoutLayout,
-  right: ConcludePayoutLayout,
-): boolean =>
-  left.payoutInputIndex === right.payoutInputIndex &&
-  left.l1OutputIndex === right.l1OutputIndex &&
-  left.payoutSpendRedeemerIndex === right.payoutSpendRedeemerIndex &&
-  left.burnRedeemerIndex === right.burnRedeemerIndex &&
-  left.hubRefInputIndex === right.hubRefInputIndex;
-
-export const sameRefundWithdrawalLayout = (
-  left: RefundWithdrawalLayout,
-  right: RefundWithdrawalLayout,
-): boolean =>
-  left.withdrawalInputIndex === right.withdrawalInputIndex &&
-  left.refundOutputIndex === right.refundOutputIndex &&
-  left.hubRefInputIndex === right.hubRefInputIndex &&
-  left.settlementRefInputIndex === right.settlementRefInputIndex &&
-  left.burnRedeemerIndex === right.burnRedeemerIndex &&
-  left.witnessUnregistrationRedeemerIndex ===
-    right.witnessUnregistrationRedeemerIndex &&
-  left.inclusionProofWithdrawalRedeemerIndex ===
-    right.inclusionProofWithdrawalRedeemerIndex;
+export const sameAbsorbDepositLayout = sameLayout<AbsorbDepositLayout>;
+export const sameInitializePayoutLayout = sameLayout<InitializePayoutLayout>;
+export const sameAddReserveFundsLayout = sameLayout<AddReserveFundsLayout>;
+export const sameConcludePayoutLayout = sameLayout<ConcludePayoutLayout>;
+export const sameRefundWithdrawalLayout = sameLayout<RefundWithdrawalLayout>;
 
 export const initialAbsorbDepositLayout = ({
   inputs,
@@ -328,7 +188,7 @@ export const initialAbsorbDepositLayout = ({
 }): AbsorbDepositLayout => {
   const orderedInputs = [...inputs].sort(compareOutRefs);
   const orderedRefs = [...referenceInputs].sort(compareOutRefs);
-  const pointers: RedeemerPointerLike[] = [
+  const pointers: SDK.RedeemerPointer[] = [
     {
       tag: CML.RedeemerTag.Spend,
       index: BigInt(findOutRefIndex(orderedInputs, deposit.utxo) ?? -1),
@@ -436,7 +296,7 @@ export const initialInitializePayoutLayout = ({
     [withdrawalPolicyId, payoutPolicyId],
     payoutPolicyId,
   );
-  const pointers: RedeemerPointerLike[] = [
+  const pointers: SDK.RedeemerPointer[] = [
     { tag: CML.RedeemerTag.Spend, index: withdrawalInputIndex },
     { tag: CML.RedeemerTag.Mint, index: withdrawalMintPointerIndex },
     { tag: CML.RedeemerTag.Mint, index: payoutMintPointerIndex },
@@ -566,10 +426,9 @@ export const initialAddReserveFundsLayout = ({
     payoutInputIndex,
     reserveInputIndex,
     payoutOutputIndex: 0n,
-    reserveChangeOutputIndex:
-      Object.keys(normalizeAssets(reserveChangeAssets)).length === 0
-        ? null
-        : 1n,
+    reserveChangeOutputIndex: hasNonZeroAssetQuantity(reserveChangeAssets)
+      ? 1n
+      : null,
     payoutSpendRedeemerIndex: expectedTxInfoIndex(pointers, payoutPointer),
     reserveSpendRedeemerIndex: expectedTxInfoIndex(pointers, reservePointer),
     hubRefInputIndex: BigInt(
@@ -610,19 +469,17 @@ export const deriveAddReserveFundsLayout = ({
       assetsEqual(output.assets, payoutOutputAssets),
     `updated payout output at ${payoutAddress}`,
   );
-  const normalizedReserveChange = normalizeAssets(reserveChangeAssets);
-  const reserveChangeOutput =
-    Object.keys(normalizedReserveChange).length === 0
-      ? undefined
-      : requireOutput(
-          tx,
-          (output) =>
-            output.address === reserveAddress &&
-            outputHasNoDatum(output) &&
-            output.scriptRef === undefined &&
-            assetsEqual(output.assets, normalizedReserveChange),
-          `reserve change output at ${reserveAddress}`,
-        );
+  const reserveChangeOutput = !hasNonZeroAssetQuantity(reserveChangeAssets)
+    ? undefined
+    : requireOutput(
+        tx,
+        (output) =>
+          output.address === reserveAddress &&
+          outputHasNoDatum(output) &&
+          output.scriptRef === undefined &&
+          assetsEqual(output.assets, reserveChangeAssets),
+        `reserve change output at ${reserveAddress}`,
+      );
   return {
     payoutInputIndex,
     reserveInputIndex,
@@ -731,7 +588,7 @@ export const initialRefundWithdrawalLayout = ({
   const withdrawalInputIndex = BigInt(
     findOutRefIndex(orderedInputs, withdrawal.utxo) ?? -1,
   );
-  const pointers: RedeemerPointerLike[] = [
+  const pointers: SDK.RedeemerPointer[] = [
     { tag: CML.RedeemerTag.Spend, index: withdrawalInputIndex },
     { tag: CML.RedeemerTag.Mint, index: 0n },
     { tag: CML.RedeemerTag.Cert, index: 0n },

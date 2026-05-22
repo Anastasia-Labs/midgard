@@ -1,12 +1,13 @@
-import { CML, walletFromSeed, type Network } from "@lucid-evolution/lucid";
-import type { Address } from "./core/types.js";
-import { BuilderInvariantError, SigningError } from "./core/errors.js";
 import {
   decodeMidgardAddressBytes,
   ensureHash32,
-  midgardAddressFromText,
   type Hash32,
+  midgardAddressFromText,
 } from "@al-ft/midgard-core/codec";
+import { CML, type Network, walletFromSeed } from "@lucid-evolution/lucid";
+
+import { BuilderInvariantError, SigningError } from "./core/errors.js";
+import type { Address } from "./core/types.js";
 
 export type VKeyWitness = InstanceType<typeof CML.Vkeywitness>;
 export type PrivateKey = InstanceType<typeof CML.PrivateKey>;
@@ -40,43 +41,26 @@ const validateNetworkId = (networkId: number): number => {
   return networkId;
 };
 
-export const addressNetworkId = (address: Address): number => {
-  try {
-    return decodeMidgardAddressBytes(midgardAddressFromText(address)).networkId;
-  } catch (cause) {
-    throw new BuilderInvariantError(
-      "Invalid wallet address",
-      cause instanceof Error ? cause.message : String(cause),
-    );
-  }
-};
-
-export const paymentKeyHashFromAddress = (address: Address): string => {
-  let decoded: ReturnType<typeof decodeMidgardAddressBytes>;
-  try {
-    decoded = decodeMidgardAddressBytes(midgardAddressFromText(address));
-  } catch (cause) {
-    throw new BuilderInvariantError(
-      "Invalid wallet address",
-      cause instanceof Error ? cause.message : String(cause),
-    );
-  }
-  if (decoded.paymentCredential.kind !== "PubKey") {
-    throw new BuilderInvariantError(
-      "Wallet address must use a public-key payment credential",
-    );
-  }
-  return decoded.paymentCredential.hash.toString("hex");
-};
-
-export const assertAddressNetwork = (
+const decodeWalletAddress = (
   address: Address,
+): ReturnType<typeof decodeMidgardAddressBytes> => {
+  try {
+    return decodeMidgardAddressBytes(midgardAddressFromText(address));
+  } catch (cause) {
+    throw new BuilderInvariantError(
+      "Invalid wallet address",
+      cause instanceof Error ? cause.message : String(cause),
+    );
+  }
+};
+
+const assertNetworkId = (
+  actual: number,
   expectedNetworkId: number | undefined,
 ): void => {
   if (expectedNetworkId === undefined) {
     return;
   }
-  const actual = addressNetworkId(address);
   const expected = validateNetworkId(expectedNetworkId);
   if (actual !== expected) {
     throw new BuilderInvariantError(
@@ -86,16 +70,44 @@ export const assertAddressNetwork = (
   }
 };
 
+const paymentKeyHashFromDecodedAddress = (
+  decoded: ReturnType<typeof decodeMidgardAddressBytes>,
+): string => {
+  if (decoded.paymentCredential.kind !== "PubKey") {
+    throw new BuilderInvariantError(
+      "Wallet address must use a public-key payment credential",
+    );
+  }
+  return decoded.paymentCredential.hash.toString("hex");
+};
+
+export const addressNetworkId = (address: Address): number =>
+  decodeWalletAddress(address).networkId;
+
+export const paymentKeyHashFromAddress = (
+  address: Address,
+  expectedNetworkId?: number,
+): string => {
+  const decoded = decodeWalletAddress(address);
+  assertNetworkId(decoded.networkId, expectedNetworkId);
+  return paymentKeyHashFromDecodedAddress(decoded);
+};
+
+export const assertAddressNetwork = (
+  address: Address,
+  expectedNetworkId: number | undefined,
+): void => assertNetworkId(addressNetworkId(address), expectedNetworkId);
+
 const normalizeBodyHash = (bodyHash: Uint8Array): Hash32 =>
   ensureHash32(bodyHash, "body_hash");
 
 export const verifyVKeyWitness = (
   bodyHash: Uint8Array,
   witness: VKeyWitness,
-): boolean => {
-  const normalizedBodyHash = normalizeBodyHash(bodyHash);
-  return witness.vkey().verify(normalizedBodyHash, witness.ed25519_signature());
-};
+): boolean =>
+  witness
+    .vkey()
+    .verify(normalizeBodyHash(bodyHash), witness.ed25519_signature());
 
 export const assertVKeyWitness = (
   bodyHash: Uint8Array,
@@ -127,8 +139,9 @@ const keyHashOfPrivateKey = (privateKey: PrivateKey): string =>
 const assertAddressMatchesKeyHash = (
   address: Address,
   keyHash: string,
+  expectedNetworkId?: number,
 ): void => {
-  const addressKeyHash = paymentKeyHashFromAddress(address);
+  const addressKeyHash = paymentKeyHashFromAddress(address, expectedNetworkId);
   if (addressKeyHash !== keyHash) {
     throw new BuilderInvariantError(
       "Wallet address does not match signing key",
@@ -166,8 +179,7 @@ export const walletFromPrivateKey = (
       ? CML.PrivateKey.from_bech32(privateKey)
       : privateKey;
   const keyHash = keyHashOfPrivateKey(parsedPrivateKey);
-  assertAddressNetwork(address, options.expectedNetworkId);
-  assertAddressMatchesKeyHash(address, keyHash);
+  assertAddressMatchesKeyHash(address, keyHash, options.expectedNetworkId);
   return {
     address: async () => address,
     keyHash: async () => keyHash,
@@ -188,8 +200,11 @@ export const walletFromSeedPhrase = (
   });
   const privateKey = CML.PrivateKey.from_bech32(wallet.paymentKey);
   const keyHash = keyHashOfPrivateKey(privateKey);
-  assertAddressNetwork(wallet.address, options.expectedNetworkId);
-  assertAddressMatchesKeyHash(wallet.address, keyHash);
+  assertAddressMatchesKeyHash(
+    wallet.address,
+    keyHash,
+    options.expectedNetworkId,
+  );
   return {
     address: async () => wallet.address,
     ...(wallet.rewardAddress === null
@@ -210,8 +225,10 @@ const resolveExternalIdentity = async (
       typeof signer.address === "function"
         ? await signer.address()
         : signer.address;
-    assertAddressNetwork(address, options.expectedNetworkId);
-    addressKeyHash = paymentKeyHashFromAddress(address);
+    addressKeyHash = paymentKeyHashFromAddress(
+      address,
+      options.expectedNetworkId,
+    );
   }
 
   let declaredKeyHash: string | undefined;

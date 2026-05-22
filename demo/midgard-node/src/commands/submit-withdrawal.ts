@@ -1,18 +1,11 @@
+import { decodeMidgardAddressText } from "@al-ft/midgard-core/codec";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
-import { assetsToValue } from "@/transactions/reserve-payout.js";
-import * as SubmitWithdrawalTx from "@/transactions/submit-withdrawal.js";
-import { decodeMidgardAddressText } from "@al-ft/midgard-core/codec";
-import {
-  fetchReferenceScriptUtxosProgram,
-  referenceScriptByName,
-  referenceScriptTargetsByCommand,
-} from "@/transactions/reference-scripts.js";
+
 import {
   defaultMidgardNodeEndpoint,
   deriveWalletInfo,
   fetchNodeUtxosByOutRefs,
-  formatJson,
   lucidUtxoFromNodeUtxo,
   parseNodeEndpoint,
   resolveWalletSeedPhrase,
@@ -22,6 +15,13 @@ import {
   parseWithdrawalTxOutRefLabel,
 } from "@/commands/withdrawal-utils.js";
 import { Lucid, MidgardContracts, NodeConfig } from "@/services/index.js";
+import {
+  fetchReferenceScriptUtxosProgram,
+  referenceScriptByName,
+  referenceScriptTargetsByCommand,
+} from "@/transactions/reference-scripts.js";
+import { assetsToValue } from "@/transactions/reserve-payout.js";
+import * as SubmitWithdrawalTx from "@/transactions/submit-withdrawal.js";
 import { signWithdrawalBody } from "@/withdrawal-signature.js";
 
 export type SubmitWithdrawalCliConfig = {
@@ -56,13 +56,14 @@ export type SubmitWithdrawalCliResult = {
 const parseOptionalPositiveLovelace = (
   value: string | undefined,
 ): bigint | undefined => {
-  if (value === undefined || value.trim().length === 0) {
+  const normalized = value?.trim() ?? "";
+  if (normalized.length === 0) {
     return undefined;
   }
-  if (!/^\d+$/.test(value.trim())) {
+  if (!/^\d+$/.test(normalized)) {
     throw new Error("--order-lovelace must be a positive integer.");
   }
-  const parsed = BigInt(value.trim());
+  const parsed = BigInt(normalized);
   if (parsed <= 0n) {
     throw new Error("--order-lovelace must be greater than zero.");
   }
@@ -133,7 +134,7 @@ export const submitWithdrawalCommandProgram = ({
       );
     }
     const selectedOwner = selectedUtxoPaymentKeyHash(selected.address);
-    if (selectedOwner.toLowerCase() !== wallet.paymentKeyHash.toLowerCase()) {
+    if (selectedOwner !== wallet.paymentKeyHash) {
       return yield* Effect.fail(
         new Error(
           `Selected L2 UTxO is owned by ${selectedOwner}, not withdrawal signer ${wallet.paymentKeyHash}.`,

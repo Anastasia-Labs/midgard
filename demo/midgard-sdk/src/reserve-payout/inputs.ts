@@ -1,15 +1,14 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@/reserve-payout/primitives.js";
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { compareOutRefs, outRefLabel, type OutRefLike } from "@/tx-context.js";
+
+import { isPureAdaUtxo } from "@/reserve-payout/assets.js";
+import { fail, ReservePayoutTxError } from "@/reserve-payout/errors.js";
 import {
-  isPlainPureAdaUtxo,
-  isPureAdaUtxo,
-} from "@/transactions/reserve-payout/assets.js";
-import {
-  fail,
-  ReservePayoutTxError,
-} from "@/transactions/reserve-payout/errors.js";
+  compareOutRefs,
+  outRefLabel,
+  type OutRefLike,
+} from "@al-ft/midgard-core/out-ref";
 
 type ProviderLedgerEntry = {
   readonly utxo?: UTxO;
@@ -27,57 +26,46 @@ type FeeInputRejection = {
 };
 
 const feeInputRejection = (utxo: UTxO): FeeInputRejection | undefined => {
+  const feeInput = outRefLabel(utxo);
   if (utxo.scriptRef !== undefined) {
     return {
       message:
         "Explicit fee input for reserve/payout transaction must not carry a reference script",
-      cause: {
-        feeInput: outRefLabel(utxo),
-      },
+      cause: { feeInput },
     };
   }
   if (utxo.datum !== undefined) {
     return {
       message:
         "Explicit fee input for reserve/payout transaction must not carry an inline datum",
-      cause: {
-        feeInput: outRefLabel(utxo),
-      },
+      cause: { feeInput },
     };
   }
   if (utxo.datumHash !== undefined) {
     return {
       message:
         "Explicit fee input for reserve/payout transaction must not carry a datum hash",
-      cause: {
-        feeInput: outRefLabel(utxo),
-      },
+      cause: { feeInput },
     };
   }
   if (!isPureAdaUtxo(utxo)) {
     return {
       message:
         "Explicit fee input for reserve/payout transaction must be pure ADA",
-      cause: {
-        feeInput: outRefLabel(utxo),
-        assets: utxo.assets,
-      },
+      cause: { feeInput, assets: utxo.assets },
     };
   }
   if ((utxo.assets.lovelace ?? 0n) <= 0n) {
     return {
       message: "Explicit fee input for reserve/payout transaction has no ADA",
-      cause: {
-        feeInput: outRefLabel(utxo),
-        assets: utxo.assets,
-      },
+      cause: { feeInput, assets: utxo.assets },
     };
   }
   return undefined;
 };
 
 export const isDisposableFeeInputUtxo = (utxo: UTxO): boolean =>
-  feeInputRejection(utxo) === undefined && isPlainPureAdaUtxo(utxo);
+  feeInputRejection(utxo) === undefined;
 
 export const disposableFeeInputCandidates = (
   utxos: readonly UTxO[],
@@ -136,17 +124,14 @@ export const fetchProviderVisibleWalletInputsProgram = (
       ...Object.values(provider.mempool ?? {}),
     ];
     if (visibleProviderEntries.length > 0) {
-      return visibleProviderEntries.flatMap((entry) => {
-        if (
-          entry === undefined ||
-          entry.spent === true ||
-          entry.utxo === undefined ||
-          entry.utxo.address !== walletAddress
-        ) {
-          return [];
-        }
-        return [entry.utxo];
-      });
+      return visibleProviderEntries.flatMap((entry) =>
+        entry === undefined ||
+        entry.spent === true ||
+        entry.utxo === undefined ||
+        entry.utxo.address !== walletAddress
+          ? []
+          : [entry.utxo],
+      );
     }
     const walletUtxos = yield* Effect.tryPromise({
       try: () => lucid.utxosAt(walletAddress),

@@ -1,18 +1,19 @@
-import { CML } from "@lucid-evolution/lucid";
 import {
   computeHash32,
   computeScriptIntegrityHashForLanguages,
+  EMPTY_CBOR_LIST,
+  EMPTY_NULL_ROOT,
   encodeCbor,
   encodeMidgardVersionedScript,
   encodeMidgardVersionedScriptListPreimage,
-  EMPTY_CBOR_LIST,
-  EMPTY_NULL_ROOT,
   hashMidgardVersionedScript,
   type MidgardVersionedScript,
   type ScriptLanguageName,
 } from "@al-ft/midgard-core/codec";
+import { hexToBytes, normalizeHex } from "@al-ft/midgard-core/hex";
+import { CML } from "@lucid-evolution/lucid";
 
-import { normalizeAssets, type Assets } from "../core/assets.js";
+import { type Assets, normalizeAssets } from "../core/assets.js";
 import { BuilderInvariantError } from "../core/errors.js";
 import { compareOutRefs, outRefLabel } from "../core/out-ref.js";
 import {
@@ -21,6 +22,7 @@ import {
   normalizeScriptRef,
   outputAddressPaymentScriptHash,
   outputAddressProtected,
+  utxoAddress,
   utxoOutputCbor,
 } from "../core/output.js";
 import type {
@@ -34,10 +36,7 @@ import type {
 import type { MidgardScript, MidgardUtxo } from "../core/types.js";
 import { mintDeltaAssets } from "./balancing.js";
 import type { BuilderState } from "./context.js";
-import {
-  normalizeHashHex,
-  normalizeNonNegativeBigInt,
-} from "./normalizers.js";
+import { normalizeHashHex, normalizeNonNegativeBigInt } from "./normalizers.js";
 import { cloneRedeemer } from "./state.js";
 import {
   encodeByteListPreimage,
@@ -77,21 +76,19 @@ const RedeemerTags = {
 const compareCanonicalStrings = (left: string, right: string): number =>
   left < right ? -1 : left > right ? 1 : 0;
 
-const bytesFromHex = (value: string, fieldName: string): Buffer => {
-  const normalized = value.trim().toLowerCase();
-  if (normalized.length % 2 !== 0 || !/^[0-9a-f]*$/.test(normalized)) {
-    throw new BuilderInvariantError(`${fieldName} must be hex`, value);
-  }
-  return Buffer.from(normalized, "hex");
-};
-
 const bytesFromBytesLike = (
   value: Uint8Array | string,
   fieldName: string,
-): Buffer =>
-  typeof value === "string"
-    ? bytesFromHex(value, fieldName)
-    : Buffer.from(value);
+): Buffer => {
+  if (typeof value !== "string") {
+    return Buffer.from(value);
+  }
+  try {
+    return hexToBytes(value, { fieldName, allowEmpty: true });
+  } catch {
+    throw new BuilderInvariantError(`${fieldName} must be hex`, value);
+  }
+};
 
 export const normalizeScriptHash = (
   hash: string,
@@ -127,10 +124,15 @@ const normalizeMintAssetName = (policyId: string, unit: string): string => {
     normalized.length >= 56 && normalized.startsWith(policyId)
       ? normalized.slice(56)
       : normalized;
-  if (assetName.length % 2 !== 0 || !/^[0-9a-f]*$/.test(assetName)) {
+  try {
+    return normalizeHex(assetName, {
+      fieldName: "mint asset name",
+      allowEmpty: true,
+      trim: false,
+    });
+  } catch {
     throw new BuilderInvariantError("Mint asset names must be hex", unit);
   }
-  return assetName;
 };
 
 export const normalizeMintAssetsForNormalizedPolicy = (
@@ -419,7 +421,7 @@ const effectiveMints = (
   const byPolicy = new Map<string, Map<string, bigint>>();
   const redeemers = new Map<string, Redeemer>();
   for (const mint of mints) {
-    const policyId = normalizePolicyId(mint.policyId);
+    const policyId = mint.policyId;
     if (mint.redeemer !== undefined) {
       if (redeemers.has(policyId)) {
         throw new BuilderInvariantError(
@@ -429,12 +431,8 @@ const effectiveMints = (
       }
       redeemers.set(policyId, cloneRedeemer(mint.redeemer));
     }
-    const assets = normalizeMintAssetsForNormalizedPolicy(
-      policyId,
-      mint.assets,
-    );
     const policyAssets = byPolicy.get(policyId) ?? new Map<string, bigint>();
-    for (const [assetName, quantity] of Object.entries(assets)) {
+    for (const [assetName, quantity] of Object.entries(mint.assets)) {
       const next = (policyAssets.get(assetName) ?? 0n) + quantity;
       if (next === 0n) {
         policyAssets.delete(assetName);
@@ -490,13 +488,7 @@ const requiredObserversPreimageCbor = (
   observers.length === 0
     ? Buffer.from(EMPTY_CBOR_LIST)
     : encodeByteListPreimage(
-        [
-          ...new Set(
-            observers.map((observer) =>
-              normalizeScriptHash(observer.scriptHash, "observer script hash"),
-            ),
-          ),
-        ]
+        [...new Set(observers.map(({ scriptHash }) => scriptHash))]
           .sort()
           .map((hash) => Buffer.from(hash, "hex")),
       );
@@ -543,19 +535,13 @@ const assertAllRedeemerIntentsConsumed = (
     if (observer.redeemer === undefined) {
       continue;
     }
-    const key = redeemerIntentKey(
-      "observe",
-      normalizeScriptHash(observer.scriptHash, "observer script hash"),
-    );
+    const key = redeemerIntentKey("observe", observer.scriptHash);
     if (!consumed.has(key)) {
       throw new BuilderInvariantError("Unconsumed observer redeemer", key);
     }
   }
   for (const receive of state.scripts.receiveRedeemers) {
-    const key = redeemerIntentKey(
-      "receive",
-      normalizeScriptHash(receive.scriptHash, "receive script hash"),
-    );
+    const key = redeemerIntentKey("receive", receive.scriptHash);
     if (!consumed.has(key)) {
       throw new BuilderInvariantError("Unconsumed receive redeemer", key);
     }
@@ -583,9 +569,7 @@ const findObserverRedeemer = (
   scriptHash: string,
 ): Redeemer | undefined =>
   state.scripts.observers.find(
-    (observer) =>
-      normalizeScriptHash(observer.scriptHash, "observer script hash") ===
-      scriptHash,
+    ({ scriptHash: candidate }) => candidate === scriptHash,
   )?.redeemer;
 
 const findReceiveRedeemer = (
@@ -593,15 +577,11 @@ const findReceiveRedeemer = (
   scriptHash: string,
 ): Redeemer | undefined =>
   state.scripts.receiveRedeemers.find(
-    (entry) =>
-      normalizeScriptHash(entry.scriptHash, "receive script hash") ===
-      scriptHash,
+    ({ scriptHash: candidate }) => candidate === scriptHash,
   )?.redeemer;
 
 const paymentScriptHashFromUtxo = (utxo: MidgardUtxo): string | undefined =>
-  outputAddressPaymentScriptHash(
-    decodeMidgardTxOutput(utxoOutputCbor(utxo)).address,
-  );
+  outputAddressPaymentScriptHash(utxoAddress(utxo));
 
 const addRequiredExecution = ({
   scriptHash,
@@ -751,11 +731,7 @@ export const deriveScriptMaterialization = (
   }
 
   const observers = [
-    ...new Set(
-      state.scripts.observers.map((observer) =>
-        normalizeScriptHash(observer.scriptHash, "observer script hash"),
-      ),
-    ),
+    ...new Set(state.scripts.observers.map(({ scriptHash }) => scriptHash)),
   ].sort();
   for (let index = 0; index < observers.length; index += 1) {
     const observer = observers[index]!;

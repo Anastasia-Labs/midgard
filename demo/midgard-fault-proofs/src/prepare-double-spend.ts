@@ -1,32 +1,38 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
-import { CML } from "@lucid-evolution/lucid";
+import {
+  computeMidgardNativeTxId,
+  decodeMidgardNativeByteListPreimage,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  EMPTY_CBOR_LIST,
+  EMPTY_NULL_ROOT,
+  encodeCbor,
+  encodeMidgardNativeTxCanonical,
+  encodeMidgardNativeTxCompact,
+  formatUnknownError,
+  materializeMidgardNativeTxFromCanonical,
+  MIDGARD_NATIVE_TX_VERSION,
+  MIDGARD_POSIX_TIME_NONE,
+  type MidgardNativeTxFull,
+} from "@al-ft/midgard-core";
 import {
   EMPTY_MERKLE_TREE_ROOT,
   type NativeTxCompact as NativeTxCompactData,
   type OutputReference as OutputReferenceData,
 } from "@al-ft/midgard-sdk";
+import { CML } from "@lucid-evolution/lucid";
+
 import {
-  EMPTY_CBOR_LIST,
-  EMPTY_NULL_ROOT,
-  MIDGARD_NATIVE_TX_VERSION,
-  MIDGARD_POSIX_TIME_NONE,
-  computeMidgardNativeTxId,
-  decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFull,
-  encodeCbor,
-  encodeMidgardNativeTxFull,
-  encodeMidgardNativeTxCompact,
-  materializeMidgardNativeTxFromCanonical,
-  type MidgardNativeTxFull,
-} from "@al-ft/midgard-core";
-import { parseHex, parseJsonText, stringifyJson } from "./json-file.js";
+  parseHex,
+  parseJsonText,
+  requireRecord,
+  stringifyJson,
+} from "./json-file.js";
 import { nativeTxFromCoreCompact } from "./submit-step-01.js";
 
 type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>;
-
-type JsonObject = Record<string, unknown>;
 
 export type PrepareDoubleSpendCliConfig = {
   readonly midgardNodeUrl: string;
@@ -129,9 +135,6 @@ const normalizeNodeUrl = (url: string): string => {
   return trimmed.replace(/\/+$/, "");
 };
 
-const isJsonObject = (value: unknown): value is JsonObject =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
 const readJson = async (
   response: Response,
   label: string,
@@ -139,7 +142,8 @@ const readJson = async (
   const text = await response.text();
   return parseJsonText(
     text,
-    (cause) => `${label} did not return valid JSON: ${String(cause)}`,
+    (cause) =>
+      `${label} did not return valid JSON: ${formatUnknownError(cause)}`,
   );
 };
 
@@ -164,13 +168,16 @@ const fetchBlockTxIds = async ({
   readonly nodeUrl: string;
   readonly headerHash: string;
 }): Promise<readonly string[]> => {
-  const json = await fetchJson(
-    fetchImpl,
-    `${nodeUrl}/block?header_hash=${encodeURIComponent(headerHash)}`,
-    "GET /block",
+  const json = requireRecord(
+    await fetchJson(
+      fetchImpl,
+      `${nodeUrl}/block?header_hash=${encodeURIComponent(headerHash)}`,
+      "GET /block",
+    ),
+    "GET /block response",
   );
-  if (!isJsonObject(json) || !Array.isArray(json.hashes)) {
-    throw new Error('GET /block response must be an object with "hashes".');
+  if (!Array.isArray(json.hashes)) {
+    throw new Error("GET /block response.hashes must be an array.");
   }
   return json.hashes.map((value, index) =>
     parseHex(value, `GET /block.hashes[${index.toString()}]`, 32),
@@ -186,14 +193,14 @@ const fetchTxCbor = async ({
   readonly nodeUrl: string;
   readonly txId: string;
 }): Promise<string> => {
-  const json = await fetchJson(
-    fetchImpl,
-    `${nodeUrl}/tx?tx_hash=${encodeURIComponent(txId)}`,
-    `GET /tx ${txId}`,
+  const json = requireRecord(
+    await fetchJson(
+      fetchImpl,
+      `${nodeUrl}/tx?tx_hash=${encodeURIComponent(txId)}`,
+      `GET /tx ${txId}`,
+    ),
+    "GET /tx response",
   );
-  if (!isJsonObject(json)) {
-    throw new Error("GET /tx response must be a JSON object.");
-  }
   return parseHex(json.tx, "GET /tx.tx");
 };
 
@@ -205,16 +212,17 @@ const parseNodeTransactionPayloads = (
     throw new Error(`${label} must be an array of transaction payloads.`);
   }
   return value.map((entry, index) => {
-    if (!isJsonObject(entry)) {
-      throw new Error(`${label}[${index.toString()}] must be an object.`);
-    }
+    const candidate = requireRecord(entry, `${label}[${index.toString()}]`);
     return {
       nodeTxId: parseHex(
-        entry.nodeTxId,
+        candidate.nodeTxId,
         `${label}[${index.toString()}].nodeTxId`,
         32,
       ),
-      txCbor: parseHex(entry.txCbor, `${label}[${index.toString()}].txCbor`),
+      txCbor: parseHex(
+        candidate.txCbor,
+        `${label}[${index.toString()}].txCbor`,
+      ),
     };
   });
 };
@@ -225,7 +233,7 @@ export const readNodeTransactionPayloadsFile = async (
   const text = await readFile(path, "utf8");
   const json = parseJsonText(
     text,
-    (cause) => `Failed to parse ${path} as JSON: ${String(cause)}`,
+    (cause) => `Failed to parse ${path} as JSON: ${formatUnknownError(cause)}`,
   );
   return parseNodeTransactionPayloads(json, path);
 };
@@ -298,7 +306,7 @@ const payloadFromNativeTx = (
   tx: MidgardNativeTxFull,
 ): NodeTransactionPayload => ({
   nodeTxId: computeMidgardNativeTxId(tx).toString("hex"),
-  txCbor: encodeMidgardNativeTxFull(tx).toString("hex"),
+  txCbor: encodeMidgardNativeTxCanonical(tx).toString("hex"),
 });
 
 export const makeSampleDoubleSpendTransactions =
@@ -329,7 +337,7 @@ const outputReferenceFromNativeInput = (
     input = CML.TransactionInput.from_cbor_bytes(bytes);
   } catch (cause) {
     throw new Error(
-      `${label} is not a valid Cardano TxOutRef CBOR: ${String(cause)}`,
+      `${label} is not a valid Cardano TxOutRef CBOR: ${formatUnknownError(cause)}`,
     );
   }
   const outputIndex = input.index();
@@ -364,10 +372,12 @@ const decodeTransactionMaterial = async (
   const txCbor = parseHex(payload.txCbor, `tx ${nodeTxId} CBOR`);
   let nativeTx: MidgardNativeTxFull;
   try {
-    nativeTx = decodeMidgardNativeTxFull(Buffer.from(txCbor, "hex"));
+    nativeTx = decodeMidgardNativeTxFullFromCanonicalCbor(
+      Buffer.from(txCbor, "hex"),
+    );
   } catch (cause) {
     throw new Error(
-      `Failed to decode native Midgard tx ${nodeTxId}: ${String(cause)}`,
+      `Failed to decode native Midgard tx ${nodeTxId}: ${formatUnknownError(cause)}`,
     );
   }
   const computedNodeTxId = computeMidgardNativeTxId(nativeTx).toString("hex");
@@ -399,11 +409,6 @@ const decodeTransactionMaterial = async (
 
 const outputReferenceKey = (outRef: OutputReferenceData): string =>
   `${outRef.transactionId}#${outRef.outputIndex.toString()}`;
-
-const sameNodeTx = (
-  left: DecodedTransactionMaterial,
-  right: DecodedTransactionMaterial,
-): boolean => left.nodeTxId === right.nodeTxId;
 
 const resolveDoubleSpendPair = ({
   transactions,
@@ -473,7 +478,7 @@ const resolveDoubleSpendPair = ({
         firstSpendByInput.set(key, { tx, input, inputIndex });
         continue;
       }
-      if (sameNodeTx(first.tx, tx)) {
+      if (first.tx.nodeTxId === tx.nodeTxId) {
         continue;
       }
       return {
@@ -511,7 +516,7 @@ const buildTrieView = async (
   );
   return {
     root:
-      trie.hash === null || trie.hash === undefined
+      trie.hash == null
         ? EMPTY_MERKLE_TREE_ROOT
         : Buffer.from(trie.hash).toString("hex"),
     proofCborByKeyHex: new Map(proofEntries),
@@ -539,22 +544,20 @@ const prepareTx = ({
   readonly tx: DecodedTransactionMaterial;
   readonly doubleSpentInputIndex: number;
   readonly proofCbor: string;
-}): PreparedDoubleSpendTx => {
-  return {
-    nodeTxId: tx.nodeTxId,
+}): PreparedDoubleSpendTx => ({
+  nodeTxId: tx.nodeTxId,
+  nativeTx: tx.nativeTxCompact,
+  nativeTxCompactCbor: tx.nativeCompactCbor,
+  txInclusion: {
+    nativeTxId: tx.nodeTxId,
     nativeTx: tx.nativeTxCompact,
     nativeTxCompactCbor: tx.nativeCompactCbor,
-    txInclusion: {
-      nativeTxId: tx.nodeTxId,
-      nativeTx: tx.nativeTxCompact,
-      nativeTxCompactCbor: tx.nativeCompactCbor,
-      txMembershipProofCbor: proofCbor,
-    },
-    inputs: tx.inputs,
-    spendInputCbors: tx.spendInputCbors,
-    doubleSpentInputIndex,
-  };
-};
+    txMembershipProofCbor: proofCbor,
+  },
+  inputs: tx.inputs,
+  spendInputCbors: tx.spendInputCbors,
+  doubleSpentInputIndex,
+});
 
 const compatibilityReasons = ({
   nativeRoot,
@@ -722,12 +725,13 @@ export const prepareDoubleSpendFromTransactions = async ({
 export const prepareDoubleSpendFromNode = async (
   config: PrepareDoubleSpendCliConfig,
 ): Promise<PreparedDoubleSpendOutput> => {
+  const headerHash = parseHex(config.headerHash, "--header-hash", 28);
   const transactions = await fetchNodeBlockTransactions({
     midgardNodeUrl: config.midgardNodeUrl,
-    headerHash: parseHex(config.headerHash, "--header-hash", 28),
+    headerHash,
   });
   return await prepareDoubleSpendFromTransactions({
-    headerHash: config.headerHash,
+    headerHash,
     transactions,
     expectedTransactionsRoot: config.expectedTransactionsRoot,
     tx1Id: config.tx1Id,

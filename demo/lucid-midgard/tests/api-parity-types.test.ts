@@ -1,20 +1,20 @@
 import { describe, expect, it } from "vitest";
+
 import type {
   CompleteTx,
   LucidMidgard,
   MidgardNodeProvider,
   MidgardProvider,
+  MintingPolicy,
   ObserverValidator,
   PartiallySignedTx,
   ReadFromOptions,
   SpendingValidator,
-  MintingPolicy,
   SubmittedTx,
   TrustedReferenceScriptMetadata,
   TxBuilder,
   TxPartialSignBuilder,
 } from "../src/index.js";
-
 // These imports are intentionally negative type guards. If lucid-midgard starts
 // exporting Cardano/Lucid provider adapters, these @ts-expect-error comments
 // become unused and typecheck fails.
@@ -218,6 +218,22 @@ type _ProviderSupported = [
   Expect<HasKey<MidgardProvider, "getTxStatus">>,
   Expect<HasKey<MidgardProvider, "diagnostics">>,
 ];
+
+void (null as unknown as [
+  _TopLevelSupported,
+  _BuilderSupported,
+  _CompleteTxSupported,
+  _PartialSignSupported,
+  _PartiallySignedTxSupported,
+  _SubmittedTxSupported,
+  _SelectWalletSupported,
+  _AttachSupported,
+  _ProviderSupported,
+]);
+void _spendingValidator;
+void _mintingPolicy;
+void _noPlutusV2Observer;
+void _readFromOptions;
 
 declare const midgard: LucidMidgard;
 declare const builder: TxBuilder;

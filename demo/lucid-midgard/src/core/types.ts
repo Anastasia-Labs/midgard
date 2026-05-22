@@ -1,9 +1,10 @@
-import type { Assets } from "./assets.js";
-import type { AuthoredOutput } from "./output.js";
-import type { OutRef } from "./out-ref.js";
-import type { BuilderScriptState } from "./scripts.js";
 import type { LedgerEntry } from "@al-ft/midgard-validation";
+
 import type { ProtocolScriptLanguage } from "../provider.js";
+import type { Assets } from "./assets.js";
+import type { OutRef } from "./out-ref.js";
+import type { AuthoredOutput } from "./output.js";
+import type { BuilderScriptState } from "./scripts.js";
 
 export type Address = string;
 export type TxHash = string;
@@ -17,13 +18,11 @@ export type MidgardOutRef = OutRef & {
   readonly txHash: TxHash;
 };
 
-export type MidgardDatum =
-  | {
-      /** Inline-only PlutusData CBOR hex. Midgard rejects datum hashes. */
-      readonly kind: "inline";
-      readonly cbor: Datum;
-    }
-  | null;
+export type MidgardDatum = {
+  /** Inline-only PlutusData CBOR hex. Midgard rejects datum hashes. */
+  readonly kind: "inline";
+  readonly cbor: Datum;
+} | null;
 
 /** Builder/provider-facing script reference metadata. */
 export type MidgardScript =
@@ -163,8 +162,7 @@ const SUBMIT_ADMISSION_STATUS_SET: ReadonlySet<string> = new Set(
 
 export const isSubmitAdmissionStatus = (
   status: string,
-): status is SubmitAdmissionStatus =>
-  SUBMIT_ADMISSION_STATUS_SET.has(status);
+): status is SubmitAdmissionStatus => SUBMIT_ADMISSION_STATUS_SET.has(status);
 
 export type SubmitTxResult = {
   readonly txId: string;

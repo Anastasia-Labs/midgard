@@ -1,4 +1,4 @@
-import { isSubmitAdmissionStatus } from "../core/types.js";
+import type { AwaitTxOptions, TxStatusKind } from "../builder.js";
 import {
   BuilderInvariantError,
   ProviderError,
@@ -10,8 +10,8 @@ import type {
   SubmitTxResult,
   TxStatus,
 } from "../core/types.js";
+import { isSubmitAdmissionStatus } from "../core/types.js";
 import type { MidgardProvider } from "../provider.js";
-import type { AwaitTxOptions, TxStatusKind } from "../builder.js";
 import { validateProtocolInfo } from "./context.js";
 
 type SubmitContext = {
@@ -47,6 +47,23 @@ const normalizeProviderTxIdHex = (txId: string, endpoint: string): string => {
       txId,
     );
   }
+};
+
+const positiveSafeInteger = (
+  value: number | undefined,
+  fieldName: string,
+  defaultValue: number,
+): number => {
+  if (value === undefined) {
+    return defaultValue;
+  }
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new BuilderInvariantError(
+      `${fieldName} must be a positive safe integer`,
+      `${fieldName}=${String(value)}`,
+    );
+  }
+  return value;
 };
 
 export const assertSubmitSizeWithinLimit = (
@@ -107,22 +124,18 @@ export const assertTxStatusMatches = (
       status,
     );
   }
-  const rawStatus = status as { readonly kind?: unknown };
-  if (
-    typeof rawStatus.kind !== "string" ||
-    !TX_STATUS_KINDS.has(rawStatus.kind)
-  ) {
+  const raw = status as Record<string, unknown>;
+  if (typeof raw.kind !== "string" || !TX_STATUS_KINDS.has(raw.kind)) {
     throw new ProviderPayloadError(
       "/tx-status",
       "Provider returned unsupported transaction status",
-      String(rawStatus.kind),
+      String(raw.kind),
     );
   }
   if (
-    rawStatus.kind === "rejected" &&
-    (typeof (status as { readonly code?: unknown }).code !== "string" ||
-      ((status as { readonly detail?: unknown }).detail !== null &&
-        typeof (status as { readonly detail?: unknown }).detail !== "string"))
+    raw.kind === "rejected" &&
+    (typeof raw.code !== "string" ||
+      (raw.detail !== null && typeof raw.detail !== "string"))
   ) {
     throw new ProviderPayloadError(
       "/tx-status",
@@ -154,14 +167,7 @@ export const assertSubmitAdmissionMatches = (
       admission,
     );
   }
-  const raw = admission as {
-    readonly txId?: unknown;
-    readonly status?: unknown;
-    readonly httpStatus?: unknown;
-    readonly firstSeenAt?: unknown;
-    readonly lastSeenAt?: unknown;
-    readonly duplicate?: unknown;
-  };
+  const raw = admission as Record<string, unknown>;
   if (typeof raw.txId !== "string") {
     throw new ProviderPayloadError(
       "/submit",
@@ -227,32 +233,9 @@ export const assertSubmitAdmissionMatches = (
       "HTTP 202 submit admission must start queued",
     );
   }
-  return {
-    ...admission,
-    txId: normalizedActual,
-    status: raw.status,
-    httpStatus: raw.httpStatus,
-    firstSeenAt: raw.firstSeenAt,
-    lastSeenAt: raw.lastSeenAt,
-    duplicate: raw.duplicate,
-  };
-};
-
-const normalizePositiveSafeInteger = (
-  value: number | undefined,
-  fieldName: string,
-  defaultValue: number,
-): number => {
-  if (value === undefined) {
-    return defaultValue;
-  }
-  if (!Number.isSafeInteger(value) || value <= 0) {
-    throw new BuilderInvariantError(
-      `${fieldName} must be a positive safe integer`,
-      `${fieldName}=${String(value)}`,
-    );
-  }
-  return value;
+  return raw.txId === normalizedActual
+    ? admission
+    : { ...admission, txId: normalizedActual };
 };
 
 const normalizeAwaitTargets = (
@@ -271,17 +254,19 @@ const normalizeAwaitTargets = (
   return new Set(targets);
 };
 
+const pollingAbortReason = (signal: AbortSignal | undefined): string =>
+  signal?.reason === undefined
+    ? "aborted"
+    : signal.reason instanceof Error
+      ? signal.reason.message
+      : String(signal.reason);
+
 const throwIfPollingAborted = (signal: AbortSignal | undefined): void => {
   if (signal?.aborted) {
     throw new ProviderError({
       endpoint: "/tx-status",
       message: "Transaction status polling aborted",
-      detail:
-        signal.reason === undefined
-          ? "aborted"
-          : signal.reason instanceof Error
-            ? signal.reason.message
-            : String(signal.reason),
+      detail: pollingAbortReason(signal),
       retryable: false,
     });
   }
@@ -293,21 +278,14 @@ const waitForPollInterval = (
 ): Promise<void> =>
   new Promise((resolve, reject) => {
     throwIfPollingAborted(signal);
-    let timeout: ReturnType<typeof setTimeout> | undefined;
+    let timeout: ReturnType<typeof setTimeout>;
     const onAbort = () => {
-      if (timeout !== undefined) {
-        clearTimeout(timeout);
-      }
+      clearTimeout(timeout);
       reject(
         new ProviderError({
           endpoint: "/tx-status",
           message: "Transaction status polling aborted",
-          detail:
-            signal?.reason === undefined
-              ? "aborted"
-              : signal.reason instanceof Error
-                ? signal.reason.message
-                : String(signal.reason),
+          detail: pollingAbortReason(signal),
           retryable: false,
         }),
       );
@@ -337,12 +315,12 @@ export const pollTxStatus = async (
 ): Promise<TxStatus> => {
   const normalizedTxId = normalizeTxHash(txId);
   const targets = normalizeAwaitTargets(options.until);
-  const pollIntervalMs = normalizePositiveSafeInteger(
+  const pollIntervalMs = positiveSafeInteger(
     options.pollIntervalMs,
     "pollIntervalMs",
     DEFAULT_POLL_INTERVAL_MS,
   );
-  const timeoutMs = normalizePositiveSafeInteger(
+  const timeoutMs = positiveSafeInteger(
     options.timeoutMs,
     "timeoutMs",
     DEFAULT_AWAIT_TIMEOUT_MS,

@@ -1,33 +1,35 @@
 import {
-  Data,
-  type LucidEvolution,
-  type Network,
-  type Script,
-  type UTxO,
-  credentialToAddress,
-  scriptHashToCredential,
-  toUnit,
-} from "@lucid-evolution/lucid";
+  computeMidgardNativeTxId,
+  decodeMidgardNativeTxCompact,
+  encodeMidgardNativeTxCompact,
+  formatUnknownError,
+  type MidgardNativeTxCompact as CoreNativeTxCompact,
+  MidgardTxValidityCodes,
+  normalizeHex,
+} from "@al-ft/midgard-core";
 import {
   DoubleSpendStep01SpendRedeemer,
   DoubleSpendStep02Datum,
   FraudProofComputationThreadStepDatum,
-  HUB_ORACLE_ASSET_NAME,
-  NativeTxCompact,
-  Proof,
-  STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
   getHeaderFromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
+  HUB_ORACLE_ASSET_NAME,
+  NativeTxCompact,
   type NativeTxCompact as NativeTxCompactData,
+  Proof,
 } from "@al-ft/midgard-sdk";
 import {
-  MidgardTxValidityCodes,
-  computeMidgardNativeTxId,
-  decodeMidgardNativeTxCompact,
-  encodeMidgardNativeTxCompact,
-  type MidgardNativeTxCompact as CoreNativeTxCompact,
-} from "@al-ft/midgard-core";
+  credentialToAddress,
+  Data,
+  type LucidEvolution,
+  type Network,
+  type Script,
+  scriptHashToCredential,
+  toUnit,
+  type UTxO,
+} from "@lucid-evolution/lucid";
 import { Effect } from "effect";
+
 import {
   parseHex,
   parseInteger,
@@ -35,23 +37,23 @@ import {
   requireRecord,
 } from "./json-file.js";
 import {
-  compareOutRefs,
+  compareUtxoOutRefs,
   DEFAULT_CONFIRMATION_POLL_MS,
   encodeRawPhasMembershipProofRedeemer,
   fetchUtxoByOutRef,
   getCompiledScript,
   makeLucidForSubmit,
   outRefLabel,
-  parsedOutRefFromUtxo,
+  outRefsEqual,
   parseOutRef,
   phasMembershipRewardAddress,
   readJsonFile,
   referenceInputIndex,
   requireSingletonUtxo,
   resolveDoubleSpendDeploymentContracts,
+  type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
   resolveProverSigner,
-  type ResolvedProverSigner,
   type SubmitProviderConfig,
 } from "./runtime.js";
 
@@ -235,7 +237,7 @@ export const requireNativeTxMatchesCompactCbor = (
     );
   } catch (cause) {
     throw new Error(
-      `--tx-inclusion.nativeTxCompactCbor is not a valid native compact transaction: ${String(cause)}`,
+      `--tx-inclusion.nativeTxCompactCbor is not a valid native compact transaction: ${formatUnknownError(cause)}`,
     );
   }
   const canonicalCbor = encodeMidgardNativeTxCompact(decoded).toString("hex");
@@ -303,12 +305,11 @@ export const requireComputationThreadToken = ({
     );
   }
   const assetName = unit.slice(computationThreadPolicyId.length);
-  const fraudulentHeaderHash = unit.slice(expectedPrefix.length);
-  if (!/^[0-9a-f]{56}$/.test(fraudulentHeaderHash)) {
-    throw new Error(
-      `Computation-thread asset name ${assetName} does not end with a 28-byte fraudulent header hash.`,
-    );
-  }
+  const fraudulentHeaderHash = normalizeHex(unit.slice(expectedPrefix.length), {
+    fieldName: `Computation-thread asset name ${assetName} suffix`,
+    byteLength: 28,
+    trim: false,
+  });
   return { unit, assetName, fraudulentHeaderHash };
 };
 
@@ -356,10 +357,7 @@ export const selectFeeInput = (walletUtxos: readonly UTxO[]): UTxO => {
       if (rightLovelace < leftLovelace) {
         return -1;
       }
-      return compareOutRefs(
-        parsedOutRefFromUtxo(left),
-        parsedOutRefFromUtxo(right),
-      );
+      return compareUtxoOutRefs(left, right);
     });
   const feeInput = candidates[0];
   if (feeInput === undefined) {
@@ -371,34 +369,12 @@ export const selectFeeInput = (walletUtxos: readonly UTxO[]): UTxO => {
 };
 
 export const inputIndex = (threadUtxo: UTxO, feeInput: UTxO): bigint => {
-  const ordered = [threadUtxo, feeInput].sort((left, right) =>
-    compareOutRefs(parsedOutRefFromUtxo(left), parsedOutRefFromUtxo(right)),
-  );
-  const index = ordered.findIndex(
-    (utxo) =>
-      utxo.txHash === threadUtxo.txHash &&
-      utxo.outputIndex === threadUtxo.outputIndex,
-  );
+  const ordered = [threadUtxo, feeInput].sort(compareUtxoOutRefs);
+  const index = ordered.findIndex((utxo) => outRefsEqual(utxo, threadUtxo));
   if (index < 0) {
     throw new Error(`Thread input not found after input ordering.`);
   }
   return BigInt(index);
-};
-
-export const requireMatchingScriptHash = ({
-  label,
-  deployed,
-  derived,
-}: {
-  readonly label: string;
-  readonly deployed: string;
-  readonly derived: string;
-}): void => {
-  if (deployed !== derived) {
-    throw new Error(
-      `${label} mismatch: deployment=${deployed}, derived=${derived}.`,
-    );
-  }
 };
 
 export const submitStep01 = async ({
@@ -492,8 +468,7 @@ export const submitStep01 = async ({
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
   const sortedReferenceInputs = [hubOracleUtxo, stateQueueBlockUtxo].sort(
-    (left, right) =>
-      compareOutRefs(parsedOutRefFromUtxo(left), parsedOutRefFromUtxo(right)),
+    compareUtxoOutRefs,
   );
   const spendInputIndex = inputIndex(threadUtxo, feeInput);
   const phasMembershipScript: Script = {

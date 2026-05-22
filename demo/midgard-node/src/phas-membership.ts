@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
 import {
   CML,
   type Network,
@@ -18,10 +19,9 @@ const blueprintCandidates = [
 
 export const loadPhasMembershipWithdrawalScript = (): Script => {
   const configured = process.env.MIDGARD_REAL_BLUEPRINT_PATH?.trim();
-  const blueprintPath =
-    configured && configured.length > 0
-      ? configured
-      : blueprintCandidates.find((candidate) => existsSync(candidate));
+  const blueprintPath = configured
+    ? configured
+    : blueprintCandidates.find((candidate) => existsSync(candidate));
   if (blueprintPath === undefined) {
     throw new Error(
       `Failed to locate Aiken blueprint for PHAS membership validator. Looked in: ${blueprintCandidates.join(", ")}`,
@@ -34,7 +34,7 @@ export const loadPhasMembershipWithdrawalScript = (): Script => {
     }[];
   };
   const validator = blueprint.validators?.find(
-    (candidate) => candidate.title === "phas.membership.withdraw",
+    ({ title }) => title === "phas.membership.withdraw",
   );
   if (
     typeof validator?.compiledCode !== "string" ||
@@ -48,8 +48,6 @@ export const loadPhasMembershipWithdrawalScript = (): Script => {
   };
 };
 
-const networkId = (network: Network): number => (network === "Mainnet" ? 1 : 0);
-
 export const phasMembershipStakeCredential = (
   script: Script = loadPhasMembershipWithdrawalScript(),
 ): CML.Credential =>
@@ -62,7 +60,7 @@ export const phasMembershipRewardAddress = (
   script: Script = loadPhasMembershipWithdrawalScript(),
 ): string =>
   CML.RewardAddress.new(
-    networkId(network),
+    network === "Mainnet" ? 1 : 0,
     phasMembershipStakeCredential(script),
   )
     .to_address()

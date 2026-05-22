@@ -9,6 +9,8 @@ import {
   TxBuilder,
   UTxO,
 } from "@lucid-evolution/lucid";
+import { Data as EffectData, Effect } from "effect";
+
 import {
   AuthenticatedValidator,
   GenericErrorFields,
@@ -20,7 +22,6 @@ import {
   AuthenticUTxO,
   fetchSingleAuthenticUTxOProgram,
 } from "@/internals.js";
-import { Effect, Data as EffectData } from "effect";
 
 export const SCHEDULER_ASSET_NAME = fromText("MIDGARD_SCHEDULER");
 
@@ -101,8 +102,9 @@ export const AdvancingApproachSchema = Data.Enum([
       active_operators_spend_redeemer_index: Data.Integer(),
       state_queue_ref_input_index: Data.Integer(),
       hub_oracle_ref_input_index: Data.Integer(),
-      m_active_operators_last_node_ref_input_index:
-        Data.Nullable(Data.Integer()),
+      m_active_operators_last_node_ref_input_index: Data.Nullable(
+        Data.Integer(),
+      ),
       registered_element_ref_input_index: Data.Integer(),
       neglected_user_event: NeglectedUserEventSchema,
     }),
@@ -116,8 +118,9 @@ export const AdvancingApproachSchema = Data.Enum([
   Data.Object({
     RewindDueToOperatorRemoval: Data.Object({
       active_operators_mint_redeemer_index: Data.Integer(),
-      m_active_operators_last_node_ref_input_index:
-        Data.Nullable(Data.Integer()),
+      m_active_operators_last_node_ref_input_index: Data.Nullable(
+        Data.Integer(),
+      ),
       removal_reason: OperatorRemovalReasonSchema,
       registered_element_ref_input_index: Data.Integer(),
     }),
@@ -206,24 +209,19 @@ export const incompleteSchedulerInitTxProgram = (
   const assets: Assets = {
     [toUnit(params.validator.policyId, SCHEDULER_ASSET_NAME)]: 1n,
   };
-  const outputAssets: Assets = {
-    lovelace: params.lovelace ?? DEFAULT_SCHEDULER_INIT_LOVELACE,
-    ...assets,
-  };
-  const initialDatum: SchedulerDatum = params.datum ?? INITIAL_SCHEDULER_DATUM;
-
-  const redeemer = Data.to("Init", SchedulerMintRedeemer);
-
   return lucid
     .newTx()
-    .mintAssets(assets, redeemer)
+    .mintAssets(assets, Data.to("Init", SchedulerMintRedeemer))
     .pay.ToContract(
       params.validator.spendingScriptAddress,
       {
         kind: "inline",
-        value: Data.to(initialDatum, SchedulerDatum),
+        value: Data.to(params.datum ?? INITIAL_SCHEDULER_DATUM, SchedulerDatum),
       },
-      outputAssets,
+      {
+        lovelace: params.lovelace ?? DEFAULT_SCHEDULER_INIT_LOVELACE,
+        ...assets,
+      },
     )
     .attach.Script(params.validator.mintingScript);
 };

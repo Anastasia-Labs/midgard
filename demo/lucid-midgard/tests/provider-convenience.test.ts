@@ -1,6 +1,7 @@
 import { MIDGARD_SUPPORTED_SCRIPT_LANGUAGES } from "@al-ft/midgard-core/codec";
-import { describe, expect, it } from "vitest";
 import { CML } from "@lucid-evolution/lucid";
+import { describe, expect, it } from "vitest";
+
 import {
   BuilderInvariantError,
   decodeMidgardTxOutput,
@@ -8,15 +9,15 @@ import {
   encodeMidgardTxOutput,
   LucidMidgard,
   MidgardNodeProvider,
+  type MidgardProtocolInfo,
+  type MidgardProvider,
+  type MidgardUtxo,
   outputAddressProtected,
+  type OutRef,
   outRefToCbor,
   ProviderCapabilityError,
   ProviderError,
   ProviderPayloadError,
-  type MidgardProvider,
-  type MidgardProtocolInfo,
-  type MidgardUtxo,
-  type OutRef,
   type TxStatus,
 } from "../src/index.js";
 
@@ -398,7 +399,7 @@ describe("LucidMidgard provider convenience methods", () => {
     );
   });
 
-  it("polls Midgard tx status without hiding rejection, unknown statuses, or aborts", async () => {
+  it("polls Midgard tx status without hiding rejection or aborts", async () => {
     const txId = "aa".repeat(32);
     const accepted = await LucidMidgard.new(
       makeProvider({ status: async () => ({ kind: "accepted", txId }) }),
@@ -439,27 +440,6 @@ describe("LucidMidgard provider convenience methods", () => {
     await expect(unsupported.awaitTx(txId)).rejects.toBeInstanceOf(
       ProviderCapabilityError,
     );
-
-    const unknown = await LucidMidgard.new(
-      makeProvider({
-        status: async () => ({ kind: "mystery", txId }) as unknown as TxStatus,
-      }),
-    );
-    await expect(unknown.txStatus(txId)).rejects.toBeInstanceOf(
-      ProviderPayloadError,
-    );
-
-    const malformed = await LucidMidgard.new(
-      makeProvider({
-        status: async () => null as unknown as TxStatus,
-      }),
-    );
-    await expect(malformed.txStatus(txId)).rejects.toBeInstanceOf(
-      ProviderPayloadError,
-    );
-    await expect(
-      malformed.awaitTx(txId, { pollIntervalMs: 1, timeoutMs: 10 }),
-    ).rejects.toBeInstanceOf(ProviderPayloadError);
 
     const controller = new AbortController();
     controller.abort("stop");

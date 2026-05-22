@@ -1,6 +1,7 @@
-import type { CML } from "@lucid-evolution/lucid";
 import type { ScriptLanguageName } from "@al-ft/midgard-core/codec";
-import type { AssetUnit, Assets } from "./assets.js";
+import type { CML } from "@lucid-evolution/lucid";
+
+import type { Assets, AssetUnit } from "./assets.js";
 import type { OutRef } from "./out-ref.js";
 import type { PlutusDataLike, ScriptRefLike } from "./output.js";
 
@@ -33,7 +34,10 @@ export type ScriptSource =
   | {
       readonly kind: "native";
       readonly language: "NativeCardano";
-      readonly script: InstanceType<typeof CML.NativeScript> | Uint8Array | string;
+      readonly script:
+        | InstanceType<typeof CML.NativeScript>
+        | Uint8Array
+        | string;
     }
   | {
       readonly kind: "plutus-v3";

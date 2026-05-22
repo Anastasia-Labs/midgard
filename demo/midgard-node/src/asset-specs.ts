@@ -4,11 +4,10 @@
  * surfaces can reuse the same validation rules without importing heavier
  * transaction-builder modules.
  */
+import { normalizeHex as normalizeCoreHex } from "@al-ft/midgard-core/hex";
 import { type Assets } from "@lucid-evolution/lucid";
 
 const LOVELACE_INTEGER_PATTERN = /^(?:0|[1-9]\d*)$/;
-const HEX_PATTERN = /^[0-9a-fA-F]*$/;
-const POLICY_ID_PATTERN = /^[0-9a-fA-F]{56}$/;
 
 /**
  * Parses a CLI lovelace amount and enforces a strictly positive integer value.
@@ -29,17 +28,6 @@ export const parseLovelaceAmount = (
     throw new Error(zeroAmountMessage);
   }
   return lovelace;
-};
-
-/**
- * Normalizes a user-supplied hex field and enforces even-length hex encoding.
- */
-const normalizeHex = (value: string, field: string): string => {
-  const normalized = value.trim();
-  if (!HEX_PATTERN.test(normalized) || normalized.length % 2 !== 0) {
-    throw new Error(`Invalid ${field}: expected even-length hex, got "${value}".`);
-  }
-  return normalized.toLowerCase();
 };
 
 /**
@@ -70,13 +58,15 @@ export const parseAdditionalAssetSpec = (
 
   const policyId = assetId.slice(0, dotIndex).trim();
   const assetName = assetId.slice(dotIndex + 1).trim();
-  if (!POLICY_ID_PATTERN.test(policyId)) {
-    throw new Error(
-      `Invalid policy ID in asset spec "${spec}". Expected 56 hex characters.`,
-    );
-  }
+  const normalizedPolicyId = normalizeCoreHex(policyId, {
+    fieldName: "policy ID",
+    byteLength: 28,
+  });
 
-  const normalizedAssetName = normalizeHex(assetName, "asset name");
+  const normalizedAssetName = normalizeCoreHex(assetName, {
+    fieldName: "asset name",
+    allowEmpty: true,
+  });
   if (normalizedAssetName.length > 64) {
     throw new Error(
       `Invalid asset name in asset spec "${spec}". Cardano asset names must be at most 32 bytes.`,
@@ -95,10 +85,7 @@ export const parseAdditionalAssetSpec = (
     );
   }
 
-  return {
-    unit: `${policyId.toLowerCase()}${normalizedAssetName}`,
-    amount,
-  };
+  return { unit: `${normalizedPolicyId}${normalizedAssetName}`, amount };
 };
 
 /**

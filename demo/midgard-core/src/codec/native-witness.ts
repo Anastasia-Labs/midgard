@@ -1,15 +1,11 @@
-import {
-  asBytes,
-  decodeSingleCbor,
-  encodeCbor,
-} from "./cbor.js";
+import { asBytes, decodeSingleCbor, encodeCbor } from "./cbor.js";
 import { computeHash32, ensureHash32, type Hash32 } from "./hash.js";
-import { MIDGARD_NATIVE_TX_VERSION } from "./native-constants.js";
-import { asFixedArray } from "./native-validation.js";
 import type {
   MidgardNativeTxWitnessSetCanonical,
   MidgardNativeTxWitnessSetCompact,
 } from "./native.js";
+import { MIDGARD_NATIVE_TX_VERSION } from "./native-constants.js";
+import { asFixedArray } from "./native-validation.js";
 
 type NativeTxWitnessSetCompactValue = readonly [Hash32, Hash32, Hash32];
 type NativeTxWitnessSetCanonicalValue = readonly [Buffer, Buffer, Buffer];
@@ -30,7 +26,7 @@ const bytesItem = (
   value: readonly unknown[],
   index: number,
   fieldName: string,
-): Buffer => Buffer.from(asBytes(value[index], itemField(fieldName, index)));
+): Buffer => asBytes(value[index], itemField(fieldName, index));
 
 export const encodeNativeTxWitnessSetCompactValue = (
   witnessSet: MidgardNativeTxWitnessSetCompact,
@@ -108,7 +104,8 @@ export const decodeNativeTxWitnessSetCompactCbor = (
 export const encodeNativeTxWitnessPreimagesCbor = (
   witnessSet: MidgardNativeTxWitnessSetCanonical,
   version = MIDGARD_NATIVE_TX_VERSION,
-): Buffer => encodeCbor(encodeNativeTxWitnessSetCanonicalValue(version, witnessSet));
+): Buffer =>
+  encodeCbor(encodeNativeTxWitnessSetCanonicalValue(version, witnessSet));
 
 export const decodeNativeTxWitnessPreimagesCbor = (
   bytes: Uint8Array,

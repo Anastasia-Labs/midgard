@@ -1,11 +1,13 @@
-import { AuthenticatedValidator, POSIXTimeSchema } from "@/common.js";
 import {
   Data,
+  fromText,
   LucidEvolution,
   TxBuilder,
-  fromText,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
+
+import { AuthenticatedValidator, POSIXTimeSchema } from "@/common.js";
+
 import { incompleteInitLinkedListTxProgram } from "./linked-list.js";
 
 export const REGISTERED_OPERATORS_ROOT_ASSET_NAME = fromText(
@@ -135,17 +137,13 @@ export const incompleteRegisteredOperatorInitTxProgram = (
   lucid: LucidEvolution,
   params: RegisteredOperatorInitParams,
 ): Effect.Effect<TxBuilder, never> =>
-  Effect.gen(function* () {
-    const rootData = "";
-
-    return yield* incompleteInitLinkedListTxProgram(lucid, {
-      validator: params.validator,
-      rootAssetName: REGISTERED_OPERATORS_ROOT_ASSET_NAME,
-      data: rootData,
-      redeemer: Data.to(
-        { Init: { output_index: params.outputIndex ?? 0n } },
-        RegisteredOperatorMintRedeemer,
-      ),
-      lovelace: params.lovelace,
-    });
+  incompleteInitLinkedListTxProgram(lucid, {
+    validator: params.validator,
+    rootAssetName: REGISTERED_OPERATORS_ROOT_ASSET_NAME,
+    data: "",
+    redeemer: Data.to(
+      { Init: { output_index: params.outputIndex ?? 0n } },
+      RegisteredOperatorMintRedeemer,
+    ),
+    lovelace: params.lovelace,
   });

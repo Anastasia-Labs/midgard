@@ -1,21 +1,27 @@
-import { Database, Globals, Lucid, MidgardContracts } from "@/services/index.js";
+import * as SDK from "@al-ft/midgard-sdk";
+import { Duration, Effect, Metric, Ref, Schedule } from "effect";
+import { Worker } from "worker_threads";
+
 import { StateQueueMutationLeasesDB } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
-import { Duration, Effect, Ref, Schedule } from "effect";
-import * as SDK from "@al-ft/midgard-sdk";
-import { WorkerError } from "@/workers/utils/common.js";
 import {
-  WorkerInput,
-  WorkerOutput,
-} from "@/workers/utils/commit-block-header.js";
-import { Metric } from "effect";
-import { Worker } from "worker_threads";
-import { emitQueueStateMetrics } from "./queue-metrics.js";
-import { resolveWorkerEntry } from "./resolve-worker-entry.js";
+  Database,
+  Globals,
+  Lucid,
+  MidgardContracts,
+} from "@/services/index.js";
 import {
   fetchStateQueueSnapshotProgram,
   refreshStateQueueGlobalsFromSnapshot,
 } from "@/services/state-queue-topology.js";
+import {
+  WorkerInput,
+  WorkerOutput,
+} from "@/workers/utils/commit-block-header.js";
+import { WorkerError } from "@/workers/utils/common.js";
+
+import { emitQueueStateMetrics } from "./queue-metrics.js";
+import { resolveWorkerEntry } from "./resolve-worker-entry.js";
 
 /**
  * Background block-commitment loop that packages processed L2 transactions into
@@ -296,40 +302,39 @@ export const blockCommitmentAction: Effect.Effect<
   | SDK.CborSerializationError
   | DatabaseError,
   Globals | Lucid | MidgardContracts | Database
-> =
-  Effect.gen(function* () {
-    const globals = yield* Globals;
-    yield* Ref.set(globals.HEARTBEAT_BLOCK_COMMITMENT, Date.now());
-    const RESET_IN_PROGRESS = yield* Ref.get(globals.RESET_IN_PROGRESS);
-    if (!RESET_IN_PROGRESS) {
-      const acquired = yield* Ref.modify(
-        globals.COMMIT_WORKER_ACTIVE,
-        (active) => (active ? [false, true] : [true, true]),
+> = Effect.gen(function* () {
+  const globals = yield* Globals;
+  yield* Ref.set(globals.HEARTBEAT_BLOCK_COMMITMENT, Date.now());
+  const RESET_IN_PROGRESS = yield* Ref.get(globals.RESET_IN_PROGRESS);
+  if (!RESET_IN_PROGRESS) {
+    const acquired = yield* Ref.modify(
+      globals.COMMIT_WORKER_ACTIVE,
+      (active) => (active ? [false, true] : [true, true]),
+    );
+    if (!acquired) {
+      yield* Effect.logInfo(
+        "🔹 Skipping block commitment trigger because a worker is already active.",
       );
-      if (!acquired) {
-        yield* Effect.logInfo(
-          "🔹 Skipping block commitment trigger because a worker is already active.",
-        );
-        return;
-      }
-
-      yield* Effect.logInfo("🔹 New block commitment process started.");
-      const leaseResult = yield* StateQueueMutationLeasesDB.tryWithLease(
-        "block_commitment",
-        (leaseToken) =>
-          buildAndSubmitCommitmentBlockAction(leaseToken).pipe(
-            Effect.withSpan("buildAndSubmitCommitmentBlockAction"),
-          ),
-      ).pipe(Effect.ensuring(Ref.set(globals.COMMIT_WORKER_ACTIVE, false)));
-      if (leaseResult._tag === "Busy") {
-        yield* Effect.logInfo(
-          `🔹 Skipping block commitment trigger because the state-queue mutation lease is busy (${StateQueueMutationLeasesDB.describeActiveLease(
-            leaseResult.activeLease,
-          )}).`,
-        );
-      }
+      return;
     }
-  });
+
+    yield* Effect.logInfo("🔹 New block commitment process started.");
+    const leaseResult = yield* StateQueueMutationLeasesDB.tryWithLease(
+      "block_commitment",
+      (leaseToken) =>
+        buildAndSubmitCommitmentBlockAction(leaseToken).pipe(
+          Effect.withSpan("buildAndSubmitCommitmentBlockAction"),
+        ),
+    ).pipe(Effect.ensuring(Ref.set(globals.COMMIT_WORKER_ACTIVE, false)));
+    if (leaseResult._tag === "Busy") {
+      yield* Effect.logInfo(
+        `🔹 Skipping block commitment trigger because the state-queue mutation lease is busy (${StateQueueMutationLeasesDB.describeActiveLease(
+          leaseResult.activeLease,
+        )}).`,
+      );
+    }
+  }
+});
 
 /**
  * Fiber wrapper that repeats block-commitment work on the provided schedule.

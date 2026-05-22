@@ -19,8 +19,8 @@ CREATE TYPE tx_admission_status AS ENUM (
 
 CREATE TABLE tx_admissions (
   tx_id BYTEA PRIMARY KEY CHECK (octet_length(tx_id) = 32),
-  tx_envelope_cbor BYTEA NOT NULL CHECK (octet_length(tx_envelope_cbor) > 0),
-  tx_envelope_cbor_sha256 BYTEA NOT NULL CHECK (octet_length(tx_envelope_cbor_sha256) = 32),
+  tx_canonical_cbor BYTEA NOT NULL CHECK (octet_length(tx_canonical_cbor) > 0),
+  tx_canonical_cbor_sha256 BYTEA NOT NULL CHECK (octet_length(tx_canonical_cbor_sha256) = 32),
   arrival_seq BIGSERIAL UNIQUE NOT NULL,
   status tx_admission_status NOT NULL,
   first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

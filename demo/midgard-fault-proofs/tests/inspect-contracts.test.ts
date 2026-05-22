@@ -1,19 +1,21 @@
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import { describe, expect, it } from "vitest";
-import { Effect } from "effect";
+import { fileURLToPath } from "node:url";
+
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
-import { Data } from "@lucid-evolution/lucid";
 import {
+  buildDoubleSpendFaultProofContracts,
   EMPTY_MERKLE_TREE_ROOT,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   type FraudProofCatalogueDeploymentInfo,
-  ScriptHashSchema,
-  buildDoubleSpendFaultProofContracts,
   parseFaultProofBlueprint,
+  ScriptHashSchema,
 } from "@al-ft/midgard-sdk";
+import { Data } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+import { describe, expect, it } from "vitest";
+
 import { inspectContracts } from "../src/index.js";
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
@@ -48,9 +50,12 @@ const encodeCatalogueValue = (scriptHash: string): Buffer =>
   );
 
 const trieRootHex = (trie: Trie): string =>
-  trie.hash === null || trie.hash === undefined
+  trie.hash == null
     ? EMPTY_MERKLE_TREE_ROOT
     : Buffer.from(trie.hash).toString("hex");
+
+const readBlueprintJson = (): unknown =>
+  JSON.parse(readFileSync(blueprintPath, "utf8")) as unknown;
 
 const buildCatalogueFixture = async (
   doubleSpendScriptHash: string,
@@ -96,42 +101,51 @@ const buildCatalogueFixture = async (
   };
 };
 
+const buildInspectionFixture = async () => {
+  const blueprintJson = readBlueprintJson();
+  const contracts = await Effect.runPromise(
+    buildDoubleSpendFaultProofContracts({
+      blueprint: parseFaultProofBlueprint(blueprintJson),
+      network: "Preprod",
+      hubOraclePolicyId: h28,
+      fraudProofCataloguePolicyId: h28b,
+    }),
+  );
+  const fraudProofCatalogue = await buildCatalogueFixture(
+    contracts.doubleSpend.firstStep.spendingScriptHash,
+  );
+  return { blueprintJson, contracts, fraudProofCatalogue };
+};
+
+const deploymentInfoFor = (
+  {
+    contracts,
+    fraudProofCatalogue,
+  }: Awaited<ReturnType<typeof buildInspectionFixture>>,
+  doubleSpendScriptHash = contracts.doubleSpend.firstStep.spendingScriptHash,
+) => ({
+  hubOracleMint: { scriptHash: h28 },
+  fraudProofCatalogueMint: {
+    scriptHash: h28b,
+    fraudProofCatalogue,
+  },
+  fraudProofMint: { scriptHash: contracts.fraudProof.policyId },
+  fraudProofSpend: {
+    scriptHash: contracts.fraudProof.spendingScriptHash,
+  },
+  fraudProofDoubleSpend: { scriptHash: doubleSpendScriptHash },
+});
+
 describe("inspect-contracts", () => {
   it("emits stable double-spend contract inspection JSON with catalogue readiness", async () => {
-    const blueprintJson = JSON.parse(
-      readFileSync(blueprintPath, "utf8"),
-    ) as unknown;
-    const blueprint = parseFaultProofBlueprint(blueprintJson);
-    const contracts = await Effect.runPromise(
-      buildDoubleSpendFaultProofContracts({
-        blueprint,
-        network: "Preprod",
-        hubOraclePolicyId: h28,
-        fraudProofCataloguePolicyId: h28b,
-      }),
-    );
-    const fraudProofCatalogue = await buildCatalogueFixture(
-      contracts.doubleSpend.firstStep.spendingScriptHash,
-    );
+    const fixture = await buildInspectionFixture();
+    const { blueprintJson, contracts, fraudProofCatalogue } = fixture;
 
     const output = await Effect.runPromise(
       inspectContracts({
         blueprint: blueprintJson,
         network: "Preprod",
-        deploymentInfo: {
-          hubOracleMint: { scriptHash: h28 },
-          fraudProofCatalogueMint: {
-            scriptHash: h28b,
-            fraudProofCatalogue,
-          },
-          fraudProofMint: { scriptHash: contracts.fraudProof.policyId },
-          fraudProofSpend: {
-            scriptHash: contracts.fraudProof.spendingScriptHash,
-          },
-          fraudProofDoubleSpend: {
-            scriptHash: contracts.doubleSpend.firstStep.spendingScriptHash,
-          },
-        },
+        deploymentInfo: deploymentInfoFor(fixture),
       }),
     );
 
@@ -166,50 +180,25 @@ describe("inspect-contracts", () => {
   });
 
   it("marks catalogue init as not ready when deployment still points at the placeholder", async () => {
-    const blueprintJson = JSON.parse(
-      readFileSync(blueprintPath, "utf8"),
-    ) as unknown;
-    const blueprint = parseFaultProofBlueprint(blueprintJson);
-    const contracts = await Effect.runPromise(
-      buildDoubleSpendFaultProofContracts({
-        blueprint,
-        network: "Preprod",
-        hubOraclePolicyId: h28,
-        fraudProofCataloguePolicyId: h28b,
-      }),
-    );
-    const fraudProofCatalogue = await buildCatalogueFixture(
-      contracts.doubleSpend.firstStep.spendingScriptHash,
-    );
+    const fixture = await buildInspectionFixture();
 
     const output = await Effect.runPromise(
       inspectContracts({
-        blueprint: blueprintJson,
+        blueprint: fixture.blueprintJson,
         network: "Preprod",
-        deploymentInfo: {
-          hubOracleMint: { scriptHash: h28 },
-          fraudProofCatalogueMint: {
-            scriptHash: h28b,
-            fraudProofCatalogue,
-          },
-          fraudProofMint: { scriptHash: contracts.fraudProof.policyId },
-          fraudProofSpend: {
-            scriptHash: contracts.fraudProof.spendingScriptHash,
-          },
-          fraudProofDoubleSpend: { scriptHash: placeholderDoubleSpend },
-        },
+        deploymentInfo: deploymentInfoFor(fixture, placeholderDoubleSpend),
       }),
     );
 
-    expect(output.doubleSpend.deploymentDoubleSpendMatchesFirstStep).toBe(false);
+    expect(output.doubleSpend.deploymentDoubleSpendMatchesFirstStep).toBe(
+      false,
+    );
     expect(output.fraudProofCatalogue.rootMatchesDerived).toBe(true);
     expect(output.fraudProofCatalogue.initReady).toBe(false);
   });
 
   it("rejects deployment info with a mismatched fraud-proof policy", async () => {
-    const blueprintJson = JSON.parse(
-      readFileSync(blueprintPath, "utf8"),
-    ) as unknown;
+    const blueprintJson = readBlueprintJson();
     await expect(
       Effect.runPromise(
         inspectContracts({

@@ -1,6 +1,6 @@
+import * as SDK from "@al-ft/midgard-sdk";
 import { Network, UTxO, walletFromSeed } from "@lucid-evolution/lucid";
 import { Config, Context, Data, Effect, Layer } from "effect";
-import * as SDK from "@al-ft/midgard-sdk";
 
 /**
  * Configuration loading for the Midgard node process.
@@ -137,9 +137,7 @@ const makeConfig = Effect.gen(function* () {
     },
   ).address;
   const referenceScriptAddress =
-    configuredReferenceScriptAddress.trim().length > 0
-      ? configuredReferenceScriptAddress.trim()
-      : derivedReferenceScriptAddress;
+    configuredReferenceScriptAddress.trim() || derivedReferenceScriptAddress;
   const port = yield* Config.integer("PORT").pipe(Config.withDefault(3000));
   const waitBetweenBlockCommitment = yield* Config.integer(
     "WAIT_BETWEEN_BLOCK_COMMITMENT",
@@ -286,21 +284,22 @@ const makeConfig = Effect.gen(function* () {
   );
   const transactionsMpfDbPath = yield* Config.string(
     "TRANSACTIONS_MPF_DB_PATH",
-  ).pipe(
-    Config.withDefault("midgard-transactions-mpf-db"),
-  );
+  ).pipe(Config.withDefault("midgard-transactions-mpf-db"));
   const seedA = yield* Config.string("TESTNET_GENESIS_WALLET_SEED_PHRASE_A");
   const seedB = yield* Config.string("TESTNET_GENESIS_WALLET_SEED_PHRASE_B");
   const seedC = yield* Config.string("TESTNET_GENESIS_WALLET_SEED_PHRASE_C");
+  const addressA = walletFromSeed(seedA, { network }).address;
+  const addressB = walletFromSeed(seedB, { network }).address;
+  const addressC = walletFromSeed(seedC, { network }).address;
 
   const genesisUtxos: UTxO[] = [
     {
       txHash:
         "bb217abaca60fc0ca68c1555eca6a96d2478547818ae76ce6836133f3cc546e0",
       outputIndex: 1,
-      address: walletFromSeed(seedA, { network }).address,
+      address: addressA,
       assets: {
-        lovelace: BigInt("4027026465"),
+        lovelace: 4_027_026_465n,
         // "25561d09e55d60b64525b9cdb3cfbec23c94c0634320fec2eaddde584c616365436f696e33":
         //   BigInt("10000"),
       },
@@ -309,9 +308,9 @@ const makeConfig = Effect.gen(function* () {
       txHash:
         "c7c0973c6bbf1a04a9f306da7814b4fa564db649bf48b0bd93c273bd03143547",
       outputIndex: 0,
-      address: walletFromSeed(seedA, { network }).address,
+      address: addressA,
       assets: {
-        lovelace: BigInt("3289566"),
+        lovelace: 3_289_566n,
         // "5c677ba4dd295d9286e0e22786fea9ed735a6ae9c07e7a45ae4d95c84372696d696e616c50756e6b73204c6f6f74":
         //   BigInt("1"),
       },
@@ -320,36 +319,36 @@ const makeConfig = Effect.gen(function* () {
       txHash:
         "d1a25b8e9c3b985d9d2f0a5f2e6ca7efa1c43b10f2c0b61f29e4a2cd8142b09e",
       outputIndex: 0,
-      address: walletFromSeed(seedB, { network }).address,
+      address: addressB,
       assets: {
-        lovelace: BigInt("200"),
+        lovelace: 200n,
       },
     },
     {
       txHash:
         "ea0f3c47bf18b02e9deb4e3a1239d8b263d765c4f7a3d12a9f62e8775e8c6141",
       outputIndex: 1,
-      address: walletFromSeed(seedB, { network }).address,
+      address: addressB,
       assets: {
-        lovelace: BigInt("1500"),
+        lovelace: 1_500n,
       },
     },
     {
       txHash:
         "f40b9f6a507af50aad4ccf6c15157b6d05c7affe23ec55cf4109cc2549c97a37",
       outputIndex: 2,
-      address: walletFromSeed(seedB, { network }).address,
+      address: addressB,
       assets: {
-        lovelace: BigInt("125243"),
+        lovelace: 125_243n,
       },
     },
     {
       txHash:
         "8e32d18c07cba2b65577bc829a9875e2fc3cdb554d5b0abbb3d4e3a71a3e3e3d",
       outputIndex: 0,
-      address: walletFromSeed(seedC, { network }).address,
+      address: addressC,
       assets: {
-        lovelace: BigInt("300"),
+        lovelace: 300n,
         // "25561d09e55d60b64525b9cdb3cfbec23c94c0634320fec2eaddde584c616365436f696e33":
         //   BigInt("15"),
       },

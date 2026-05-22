@@ -1,15 +1,16 @@
-import { describe, expect, it } from "vitest";
-import { Effect } from "effect";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   Emulator,
-  Lucid,
-  PROTOCOL_PARAMETERS_DEFAULT,
-  UTxO,
   generateEmulatorAccount,
+  Lucid,
   paymentCredentialOf,
+  PROTOCOL_PARAMETERS_DEFAULT,
   toUnit,
+  UTxO,
 } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+import { describe, expect, it } from "vitest";
+
 import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
 import { withRealStateQueueAndOperatorContracts } from "@/services/midgard-contracts.js";
 import {
@@ -273,8 +274,12 @@ const fetchRegisteredOperatorNodes = async (
       if (!unit.startsWith(contracts.registeredOperators.policyId)) {
         return false;
       }
-      const assetName = unit.slice(contracts.registeredOperators.policyId.length);
-      return assetName.startsWith(SDK.REGISTERED_OPERATOR_NODE_ASSET_NAME_PREFIX);
+      const assetName = unit.slice(
+        contracts.registeredOperators.policyId.length,
+      );
+      return assetName.startsWith(
+        SDK.REGISTERED_OPERATOR_NODE_ASSET_NAME_PREFIX,
+      );
     }),
   );
 };
@@ -284,68 +289,67 @@ const advanceEmulatorPastRegistrationDelay = (emulator: Emulator): void => {
 };
 
 describe("operator lifecycle emulator", () => {
-  it(
-    "refreshes the dedicated reference-script wallet from provider state after external replenishment",
-    async () => {
-      const operator = generateEmulatorAccount({
-        lovelace: 200_000_000n,
-      });
-      const referenceScripts = generateEmulatorAccount({
-        lovelace: 0n,
-      });
-      const emulator = new Emulator(
-        [operator, referenceScripts],
-        EMULATOR_PROTOCOL_PARAMETERS,
-      );
-      const fundingLucid = await Lucid(emulator, "Custom");
-      fundingLucid.selectWallet.fromSeed(operator.seedPhrase);
-      const referenceScriptsLucid = await Lucid(emulator, "Custom");
-      referenceScriptsLucid.selectWallet.fromSeed(referenceScripts.seedPhrase);
+  it("refreshes the dedicated reference-script wallet from provider state after external replenishment", async () => {
+    const operator = generateEmulatorAccount({
+      lovelace: 200_000_000n,
+    });
+    const referenceScripts = generateEmulatorAccount({
+      lovelace: 0n,
+    });
+    const emulator = new Emulator(
+      [operator, referenceScripts],
+      EMULATOR_PROTOCOL_PARAMETERS,
+    );
+    const fundingLucid = await Lucid(emulator, "Custom");
+    fundingLucid.selectWallet.fromSeed(operator.seedPhrase);
+    const referenceScriptsLucid = await Lucid(emulator, "Custom");
+    referenceScriptsLucid.selectWallet.fromSeed(referenceScripts.seedPhrase);
 
-      const oneShotNonce = (await fundingLucid.wallet().getUtxos())[0];
-      if (!oneShotNonce) {
-        throw new Error("Expected at least one operator wallet UTxO in emulator");
-      }
-      const contracts = await loadOperatorContracts({
-        txHash: oneShotNonce.txHash,
-        outputIndex: oneShotNonce.outputIndex,
-      });
+    const oneShotNonce = (await fundingLucid.wallet().getUtxos())[0];
+    if (!oneShotNonce) {
+      throw new Error("Expected at least one operator wallet UTxO in emulator");
+    }
+    const contracts = await loadOperatorContracts({
+      txHash: oneShotNonce.txHash,
+      outputIndex: oneShotNonce.outputIndex,
+    });
 
-      referenceScriptsLucid.overrideUTxOs([]);
-      const staleReferenceWalletUtxos =
-        await referenceScriptsLucid.wallet().getUtxos();
-      const stalePlainBalance = staleReferenceWalletUtxos
-        .filter((utxo) => utxo.scriptRef === undefined)
-        .reduce((total, utxo) => total + (utxo.assets.lovelace ?? 0n), 0n);
-      expect(stalePlainBalance).toEqual(0n);
+    referenceScriptsLucid.overrideUTxOs([]);
+    const staleReferenceWalletUtxos = await referenceScriptsLucid
+      .wallet()
+      .getUtxos();
+    const stalePlainBalance = staleReferenceWalletUtxos
+      .filter((utxo) => utxo.scriptRef === undefined)
+      .reduce((total, utxo) => total + (utxo.assets.lovelace ?? 0n), 0n);
+    expect(stalePlainBalance).toEqual(0n);
 
-      const published = await Effect.runPromise(
-        deployReferenceScriptCommandProgram(
-          referenceScriptsLucid,
-          contracts,
-          "active-operators",
-          fundingLucid,
-        ),
-      );
-      expect(published).toHaveLength(2);
+    const published = await Effect.runPromise(
+      deployReferenceScriptCommandProgram(
+        referenceScriptsLucid,
+        contracts,
+        "active-operators",
+        fundingLucid,
+      ),
+    );
+    expect(published).toHaveLength(2);
 
-      const referenceScriptAddress =
-        await referenceScriptsLucid.wallet().address();
-      const liveReferenceWalletUtxos =
-        await referenceScriptsLucid.utxosAt(referenceScriptAddress);
-      const liveReferenceScriptCount = liveReferenceWalletUtxos.filter(
-        (utxo) => utxo.scriptRef !== undefined,
-      ).length;
-      const livePlainBalance = liveReferenceWalletUtxos
-        .filter((utxo) => utxo.scriptRef === undefined)
-        .reduce((total, utxo) => total + (utxo.assets.lovelace ?? 0n), 0n);
+    const referenceScriptAddress = await referenceScriptsLucid
+      .wallet()
+      .address();
+    const liveReferenceWalletUtxos = await referenceScriptsLucid.utxosAt(
+      referenceScriptAddress,
+    );
+    const liveReferenceScriptCount = liveReferenceWalletUtxos.filter(
+      (utxo) => utxo.scriptRef !== undefined,
+    ).length;
+    const livePlainBalance = liveReferenceWalletUtxos
+      .filter((utxo) => utxo.scriptRef === undefined)
+      .reduce((total, utxo) => total + (utxo.assets.lovelace ?? 0n), 0n);
 
-      expect(liveReferenceScriptCount).toBeGreaterThanOrEqual(2);
-      expect(livePlainBalance).toBeGreaterThan(0n);
-      expect(await referenceScriptsLucid.wallet().getUtxos()).not.toEqual([]);
-    },
-    240_000,
-  );
+    expect(liveReferenceScriptCount).toBeGreaterThanOrEqual(2);
+    expect(livePlainBalance).toBeGreaterThan(0n);
+    expect(await referenceScriptsLucid.wallet().getUtxos()).not.toEqual([]);
+  }, 240_000);
 
   it("runs register-only then activate-only using offchain lifecycle programs", async () => {
     const {
@@ -358,7 +362,12 @@ describe("operator lifecycle emulator", () => {
     } = await initOperatorLifecycleFixture();
 
     const registerResult = await Effect.runPromise(
-      registerOperatorProgram(lucid, contracts, 5_000_000n, referenceScriptsLucid),
+      registerOperatorProgram(
+        lucid,
+        contracts,
+        5_000_000n,
+        referenceScriptsLucid,
+      ),
     );
     expect(registerResult.registerTxHash).toHaveLength(64);
 
@@ -376,7 +385,12 @@ describe("operator lifecycle emulator", () => {
 
     advanceEmulatorPastRegistrationDelay(emulator);
     const activateResult = await Effect.runPromise(
-      activateOperatorProgram(lucid, contracts, 5_000_000n, referenceScriptsLucid),
+      activateOperatorProgram(
+        lucid,
+        contracts,
+        5_000_000n,
+        referenceScriptsLucid,
+      ),
     );
     expect(activateResult.activateTxHash).toHaveLength(64);
 
@@ -389,11 +403,16 @@ describe("operator lifecycle emulator", () => {
   });
 
   it("runs deregister-only after register-only and removes registered node", async () => {
-    const { lucid, referenceScriptsLucid, contracts, operatorKeyHash } =
+    const { lucid, referenceScriptsLucid, contracts } =
       await initOperatorLifecycleFixture();
 
     const registerResult = await Effect.runPromise(
-      registerOperatorProgram(lucid, contracts, 5_000_000n, referenceScriptsLucid),
+      registerOperatorProgram(
+        lucid,
+        contracts,
+        5_000_000n,
+        referenceScriptsLucid,
+      ),
     );
     expect(registerResult.registerTxHash).toHaveLength(64);
 
@@ -413,10 +432,8 @@ describe("operator lifecycle emulator", () => {
     );
     expect(deregisterResult.deregisterTxHash).toHaveLength(64);
 
-    const registeredNodeUtxosAfterDeregister = await fetchRegisteredOperatorNodes(
-      lucid,
-      contracts,
-    );
+    const registeredNodeUtxosAfterDeregister =
+      await fetchRegisteredOperatorNodes(lucid, contracts);
     expect(registeredNodeUtxosAfterDeregister.length).toEqual(0);
   });
 
@@ -436,9 +453,127 @@ describe("operator lifecycle emulator", () => {
     ).rejects.toThrow();
   });
 
-  it(
-    "runs register-only then activate-only with fragmented wallet UTxOs to stress coin selection",
-    async () => {
+  it("runs register-only then activate-only with fragmented wallet UTxOs to stress coin selection", async () => {
+    const {
+      emulator,
+      lucid,
+      referenceScriptsLucid,
+      contracts,
+      activeNodeUnit,
+      operatorKeyHash,
+    } = await initOperatorLifecycleFixture();
+
+    await fragmentOperatorWalletUtxos(lucid, {
+      outputs: 20,
+      lovelacePerOutput: 3_000_000n,
+    });
+    const walletUtxosBeforeRegister = await lucid.wallet().getUtxos();
+    expect(walletUtxosBeforeRegister.length).toBeGreaterThanOrEqual(12);
+
+    const registerResult = await Effect.runPromise(
+      registerOperatorProgram(
+        lucid,
+        contracts,
+        5_000_000n,
+        referenceScriptsLucid,
+      ),
+    );
+    expect(registerResult.registerTxHash).toHaveLength(64);
+
+    await fragmentOperatorWalletUtxos(lucid, {
+      outputs: 24,
+      lovelacePerOutput: 2_500_000n,
+    });
+    const walletUtxosBeforeActivate = await lucid.wallet().getUtxos();
+    expect(walletUtxosBeforeActivate.length).toBeGreaterThanOrEqual(14);
+
+    advanceEmulatorPastRegistrationDelay(emulator);
+    const activateResult = await Effect.runPromise(
+      activateOperatorProgram(
+        lucid,
+        contracts,
+        5_000_000n,
+        referenceScriptsLucid,
+      ),
+    );
+    expect(activateResult.activateTxHash).toHaveLength(64);
+
+    await assertOperatorActivatedState({
+      lucid,
+      contracts,
+      activeNodeUnit,
+      operatorKeyHash,
+    });
+  }, 240_000);
+
+  it("runs register-only then activate-only with fragmented wallet UTxOs to stress automatic coin selection", async () => {
+    const {
+      emulator,
+      lucid,
+      referenceScriptsLucid,
+      contracts,
+      activeNodeUnit,
+      operatorKeyHash,
+    } = await initOperatorLifecycleFixture();
+
+    await fragmentOperatorWalletUtxos(lucid, {
+      outputs: 28,
+      lovelacePerOutput: 2_500_000n,
+    });
+    const walletUtxosBeforeOnboarding = await lucid.wallet().getUtxos();
+    expect(walletUtxosBeforeOnboarding.length).toBeGreaterThanOrEqual(16);
+
+    const registerResult = await Effect.runPromise(
+      registerOperatorProgram(
+        lucid,
+        contracts,
+        5_000_000n,
+        referenceScriptsLucid,
+      ),
+    );
+    expect(registerResult.registerTxHash).toHaveLength(64);
+    advanceEmulatorPastRegistrationDelay(emulator);
+    const activateResult = await Effect.runPromise(
+      activateOperatorProgram(
+        lucid,
+        contracts,
+        5_000_000n,
+        referenceScriptsLucid,
+      ),
+    );
+    expect(activateResult.activateTxHash).toHaveLength(64);
+
+    await assertOperatorActivatedState({
+      lucid,
+      contracts,
+      activeNodeUnit,
+      operatorKeyHash,
+    });
+  }, 240_000);
+
+  it("runs register-only then activate-only across varied fragmentation profiles", async () => {
+    const profiles = [
+      {
+        registerOutputs: 18,
+        registerLovelacePerOutput: 2_200_000n,
+        activateOutputs: 26,
+        activateLovelacePerOutput: 1_900_000n,
+      },
+      {
+        registerOutputs: 24,
+        registerLovelacePerOutput: 1_900_000n,
+        activateOutputs: 16,
+        activateLovelacePerOutput: 3_000_000n,
+      },
+      {
+        registerOutputs: 12,
+        registerLovelacePerOutput: 4_000_000n,
+        activateOutputs: 32,
+        activateLovelacePerOutput: 1_600_000n,
+      },
+    ] as const;
+
+    for (const profile of profiles) {
       const {
         emulator,
         lucid,
@@ -449,11 +584,13 @@ describe("operator lifecycle emulator", () => {
       } = await initOperatorLifecycleFixture();
 
       await fragmentOperatorWalletUtxos(lucid, {
-        outputs: 20,
-        lovelacePerOutput: 3_000_000n,
+        outputs: profile.registerOutputs,
+        lovelacePerOutput: profile.registerLovelacePerOutput,
       });
       const walletUtxosBeforeRegister = await lucid.wallet().getUtxos();
-      expect(walletUtxosBeforeRegister.length).toBeGreaterThanOrEqual(12);
+      expect(walletUtxosBeforeRegister.length).toBeGreaterThanOrEqual(
+        Math.max(8, Math.floor(profile.registerOutputs / 3)),
+      );
 
       const registerResult = await Effect.runPromise(
         registerOperatorProgram(
@@ -466,11 +603,13 @@ describe("operator lifecycle emulator", () => {
       expect(registerResult.registerTxHash).toHaveLength(64);
 
       await fragmentOperatorWalletUtxos(lucid, {
-        outputs: 24,
-        lovelacePerOutput: 2_500_000n,
+        outputs: profile.activateOutputs,
+        lovelacePerOutput: profile.activateLovelacePerOutput,
       });
       const walletUtxosBeforeActivate = await lucid.wallet().getUtxos();
-      expect(walletUtxosBeforeActivate.length).toBeGreaterThanOrEqual(14);
+      expect(walletUtxosBeforeActivate.length).toBeGreaterThanOrEqual(
+        Math.max(8, Math.floor(profile.activateOutputs / 3)),
+      );
 
       advanceEmulatorPastRegistrationDelay(emulator);
       const activateResult = await Effect.runPromise(
@@ -489,13 +628,17 @@ describe("operator lifecycle emulator", () => {
         activeNodeUnit,
         operatorKeyHash,
       });
-    },
-    240_000,
-  );
+    }
+  }, 360_000);
 
-  it(
-    "runs register-only then activate-only with fragmented wallet UTxOs to stress automatic coin selection",
-    async () => {
+  it("runs repeated onboarding with aggressive UTxO churn to stress auto coin selection", async () => {
+    const churnProfiles = [
+      { outputs: 14, lovelacePerOutput: 2_100_000n },
+      { outputs: 20, lovelacePerOutput: 1_800_000n },
+      { outputs: 10, lovelacePerOutput: 3_300_000n },
+    ] as const;
+
+    for (const profile of churnProfiles) {
       const {
         emulator,
         lucid,
@@ -506,11 +649,17 @@ describe("operator lifecycle emulator", () => {
       } = await initOperatorLifecycleFixture();
 
       await fragmentOperatorWalletUtxos(lucid, {
-        outputs: 28,
-        lovelacePerOutput: 2_500_000n,
+        outputs: profile.outputs,
+        lovelacePerOutput: profile.lovelacePerOutput,
+      });
+      await fragmentOperatorWalletUtxos(lucid, {
+        outputs: profile.outputs + 6,
+        lovelacePerOutput: profile.lovelacePerOutput - 200_000n,
       });
       const walletUtxosBeforeOnboarding = await lucid.wallet().getUtxos();
-      expect(walletUtxosBeforeOnboarding.length).toBeGreaterThanOrEqual(16);
+      expect(walletUtxosBeforeOnboarding.length).toBeGreaterThanOrEqual(
+        Math.max(8, Math.floor((profile.outputs + 6) / 2)),
+      );
 
       const registerResult = await Effect.runPromise(
         registerOperatorProgram(
@@ -538,160 +687,60 @@ describe("operator lifecycle emulator", () => {
         activeNodeUnit,
         operatorKeyHash,
       });
-    },
-    240_000,
-  );
+    }
+  }, 360_000);
 
-  it(
-    "runs register-only then activate-only across varied fragmentation profiles",
-    async () => {
-      const profiles = [
-        {
-          registerOutputs: 18,
-          registerLovelacePerOutput: 2_200_000n,
-          activateOutputs: 26,
-          activateLovelacePerOutput: 1_900_000n,
-        },
-        {
-          registerOutputs: 24,
-          registerLovelacePerOutput: 1_900_000n,
-          activateOutputs: 16,
-          activateLovelacePerOutput: 3_000_000n,
-        },
-        {
-          registerOutputs: 12,
-          registerLovelacePerOutput: 4_000_000n,
-          activateOutputs: 32,
-          activateLovelacePerOutput: 1_600_000n,
-        },
-      ] as const;
+  it("runs register-only then activate-only after deterministic wallet churn to stress auto coin selection index drift", async () => {
+    const {
+      emulator,
+      lucid,
+      referenceScriptsLucid,
+      contracts,
+      activeNodeUnit,
+      operatorKeyHash,
+    } = await initOperatorLifecycleFixture();
 
-      for (const profile of profiles) {
-        const {
-          emulator,
-          lucid,
-          referenceScriptsLucid,
-          contracts,
-          activeNodeUnit,
-          operatorKeyHash,
-        } = await initOperatorLifecycleFixture();
+    await churnOperatorWalletUtxos(lucid, { seed: 0xa11ce, rounds: 2 });
 
-        await fragmentOperatorWalletUtxos(lucid, {
-          outputs: profile.registerOutputs,
-          lovelacePerOutput: profile.registerLovelacePerOutput,
-        });
-        const walletUtxosBeforeRegister = await lucid.wallet().getUtxos();
-        expect(walletUtxosBeforeRegister.length).toBeGreaterThanOrEqual(
-          Math.max(8, Math.floor(profile.registerOutputs / 3)),
-        );
+    const registerResult = await Effect.runPromise(
+      registerOperatorProgram(
+        lucid,
+        contracts,
+        5_000_000n,
+        referenceScriptsLucid,
+      ),
+    );
+    expect(registerResult.registerTxHash).toHaveLength(64);
 
-        const registerResult = await Effect.runPromise(
-          registerOperatorProgram(
-            lucid,
-            contracts,
-            5_000_000n,
-            referenceScriptsLucid,
-          ),
-        );
-        expect(registerResult.registerTxHash).toHaveLength(64);
+    await churnOperatorWalletUtxos(lucid, { seed: 0xb0b, rounds: 2 });
 
-        await fragmentOperatorWalletUtxos(lucid, {
-          outputs: profile.activateOutputs,
-          lovelacePerOutput: profile.activateLovelacePerOutput,
-        });
-        const walletUtxosBeforeActivate = await lucid.wallet().getUtxos();
-        expect(walletUtxosBeforeActivate.length).toBeGreaterThanOrEqual(
-          Math.max(8, Math.floor(profile.activateOutputs / 3)),
-        );
+    advanceEmulatorPastRegistrationDelay(emulator);
+    const activateResult = await Effect.runPromise(
+      activateOperatorProgram(
+        lucid,
+        contracts,
+        5_000_000n,
+        referenceScriptsLucid,
+      ),
+    );
+    expect(activateResult.activateTxHash).toHaveLength(64);
 
-        advanceEmulatorPastRegistrationDelay(emulator);
-        const activateResult = await Effect.runPromise(
-          activateOperatorProgram(
-            lucid,
-            contracts,
-            5_000_000n,
-            referenceScriptsLucid,
-          ),
-        );
-        expect(activateResult.activateTxHash).toHaveLength(64);
+    await assertOperatorActivatedState({
+      lucid,
+      contracts,
+      activeNodeUnit,
+      operatorKeyHash,
+    });
+  }, 420_000);
 
-        await assertOperatorActivatedState({
-          lucid,
-          contracts,
-          activeNodeUnit,
-          operatorKeyHash,
-        });
-      }
-    },
-    360_000,
-  );
+  it("runs register-only then activate-only across deterministic churn profiles to reproduce coin-selection drift", async () => {
+    const churnProfiles = [
+      { seed: 0x101, rounds: 2 },
+      { seed: 0x202, rounds: 2 },
+      { seed: 0x303, rounds: 2 },
+    ] as const;
 
-  it(
-    "runs repeated onboarding with aggressive UTxO churn to stress auto coin selection",
-    async () => {
-      const churnProfiles = [
-        { outputs: 14, lovelacePerOutput: 2_100_000n },
-        { outputs: 20, lovelacePerOutput: 1_800_000n },
-        { outputs: 10, lovelacePerOutput: 3_300_000n },
-      ] as const;
-
-      for (const profile of churnProfiles) {
-        const {
-          emulator,
-          lucid,
-          referenceScriptsLucid,
-          contracts,
-          activeNodeUnit,
-          operatorKeyHash,
-        } = await initOperatorLifecycleFixture();
-
-        await fragmentOperatorWalletUtxos(lucid, {
-          outputs: profile.outputs,
-          lovelacePerOutput: profile.lovelacePerOutput,
-        });
-        await fragmentOperatorWalletUtxos(lucid, {
-          outputs: profile.outputs + 6,
-          lovelacePerOutput: profile.lovelacePerOutput - 200_000n,
-        });
-        const walletUtxosBeforeOnboarding = await lucid.wallet().getUtxos();
-        expect(walletUtxosBeforeOnboarding.length).toBeGreaterThanOrEqual(
-          Math.max(8, Math.floor((profile.outputs + 6) / 2)),
-        );
-
-        const registerResult = await Effect.runPromise(
-          registerOperatorProgram(
-            lucid,
-            contracts,
-            5_000_000n,
-            referenceScriptsLucid,
-          ),
-        );
-        expect(registerResult.registerTxHash).toHaveLength(64);
-        advanceEmulatorPastRegistrationDelay(emulator);
-        const activateResult = await Effect.runPromise(
-          activateOperatorProgram(
-            lucid,
-            contracts,
-            5_000_000n,
-            referenceScriptsLucid,
-          ),
-        );
-        expect(activateResult.activateTxHash).toHaveLength(64);
-
-        await assertOperatorActivatedState({
-          lucid,
-          contracts,
-          activeNodeUnit,
-          operatorKeyHash,
-        });
-      }
-    },
-    360_000,
-  );
-
-  it(
-    "runs register-only then activate-only after deterministic wallet churn to stress auto coin selection index drift",
-    async () => {
+    for (const profile of churnProfiles) {
       const {
         emulator,
         lucid,
@@ -701,7 +750,10 @@ describe("operator lifecycle emulator", () => {
         operatorKeyHash,
       } = await initOperatorLifecycleFixture();
 
-      await churnOperatorWalletUtxos(lucid, { seed: 0xa11ce, rounds: 2 });
+      await churnOperatorWalletUtxos(lucid, {
+        seed: profile.seed,
+        rounds: profile.rounds,
+      });
 
       const registerResult = await Effect.runPromise(
         registerOperatorProgram(
@@ -712,9 +764,6 @@ describe("operator lifecycle emulator", () => {
         ),
       );
       expect(registerResult.registerTxHash).toHaveLength(64);
-
-      await churnOperatorWalletUtxos(lucid, { seed: 0xb0b, rounds: 2 });
-
       advanceEmulatorPastRegistrationDelay(emulator);
       const activateResult = await Effect.runPromise(
         activateOperatorProgram(
@@ -732,62 +781,6 @@ describe("operator lifecycle emulator", () => {
         activeNodeUnit,
         operatorKeyHash,
       });
-    },
-    420_000,
-  );
-
-  it(
-    "runs register-only then activate-only across deterministic churn profiles to reproduce coin-selection drift",
-    async () => {
-      const churnProfiles = [
-        { seed: 0x101, rounds: 2 },
-        { seed: 0x202, rounds: 2 },
-        { seed: 0x303, rounds: 2 },
-      ] as const;
-
-      for (const profile of churnProfiles) {
-        const {
-          emulator,
-          lucid,
-          referenceScriptsLucid,
-          contracts,
-          activeNodeUnit,
-          operatorKeyHash,
-        } = await initOperatorLifecycleFixture();
-
-        await churnOperatorWalletUtxos(lucid, {
-          seed: profile.seed,
-          rounds: profile.rounds,
-        });
-
-        const registerResult = await Effect.runPromise(
-          registerOperatorProgram(
-            lucid,
-            contracts,
-            5_000_000n,
-            referenceScriptsLucid,
-          ),
-        );
-        expect(registerResult.registerTxHash).toHaveLength(64);
-        advanceEmulatorPastRegistrationDelay(emulator);
-        const activateResult = await Effect.runPromise(
-          activateOperatorProgram(
-            lucid,
-            contracts,
-            5_000_000n,
-            referenceScriptsLucid,
-          ),
-        );
-        expect(activateResult.activateTxHash).toHaveLength(64);
-
-        await assertOperatorActivatedState({
-          lucid,
-          contracts,
-          activeNodeUnit,
-          operatorKeyHash,
-        });
-      }
-    },
-    420_000,
-  );
+    }
+  }, 420_000);
 });

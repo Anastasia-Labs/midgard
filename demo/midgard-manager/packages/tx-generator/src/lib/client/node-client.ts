@@ -2,6 +2,7 @@ import { decodeMidgardTxOutput } from '@al-ft/lucid-midgard';
 import { CML, UTxO } from '@lucid-evolution/lucid';
 import { Effect } from 'effect';
 
+import { formatError } from '../../utils/common.js';
 import { logFailedTransaction, logSubmittedTransaction } from '../../utils/logging.js';
 import { MidgardNodeConfig, TRANSACTION_CONSTANTS } from '../types.js';
 
@@ -25,6 +26,9 @@ export class MidgardNodeClient {
   constructor(config: MidgardNodeConfig) {
     this.baseUrl = config.baseUrl;
     this.retryAttempts = config.retryAttempts ?? TRANSACTION_CONSTANTS.NODE_DEFAULTS.RETRY_ATTEMPTS;
+    if (!Number.isSafeInteger(this.retryAttempts) || this.retryAttempts < 1) {
+      throw new Error('Node retry attempts must be a positive integer');
+    }
     this.retryDelay = config.retryDelay ?? TRANSACTION_CONSTANTS.NODE_DEFAULTS.RETRY_DELAY;
     this.enableLogs = config.enableLogs ?? true;
   }
@@ -48,9 +52,7 @@ export class MidgardNodeClient {
         outputIndex,
         address: output.address,
         assets: output.assets,
-        ...(output.datum === undefined || output.datum === null
-          ? {}
-          : { datum: output.datum.cbor }),
+        ...(output.datum == null ? {} : { datum: output.datum.cbor }),
       };
     } catch {
       return undefined;
@@ -66,41 +68,20 @@ export class MidgardNodeClient {
   async isAvailable(
     timeoutMs: number = TRANSACTION_CONSTANTS.NODE_DEFAULTS.AVAILABILITY_TIMEOUT
   ): Promise<boolean> {
+    const controller = new AbortController();
+    const timeoutId = timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : undefined;
+
     try {
-      // Create an AbortController to allow for timeouts
-      const controller = new AbortController();
-      const signal = controller.signal;
-
-      // Set a timeout if provided
-      let timeoutId: NodeJS.Timeout | undefined;
-      if (timeoutMs) {
-        timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-      }
-
-      try {
-        // Try to fetch a dummy transaction status - if the node is up, it will return 404
-        // If the node is down, it will throw a connection error
-        const response = await fetch(`${this.baseUrl}/tx?tx_hash=${'0'.repeat(64)}`, { signal });
-
-        // Clear timeout
-        if (timeoutId) clearTimeout(timeoutId);
-
-        // Any HTTP response means the node is reachable; status code semantics
-        // can vary depending on DB/bootstrap state.
-        return response.status >= 100;
-      } catch (error) {
-        // Clear timeout to prevent memory leaks
-        if (timeoutId) clearTimeout(timeoutId);
-
-        // Check if this was a timeout abort or a different error
-        if (error instanceof DOMException && error.name === 'AbortError') {
-          return false;
-        }
-
-        throw error; // Re-throw other errors to be caught by the outer try/catch
-      }
-    } catch (error) {
+      const response = await fetch(`${this.baseUrl}/tx?tx_hash=${'0'.repeat(64)}`, {
+        signal: controller.signal,
+      });
+      // Any HTTP response means the node is reachable; status code semantics
+      // can vary depending on DB/bootstrap state.
+      return response.status >= 100;
+    } catch {
       return false;
+    } finally {
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
     }
   }
 
@@ -120,62 +101,57 @@ export class MidgardNodeClient {
           };
         }
 
-        let attempts = 0;
-        // while (attempts < this.retryAttempts) {
-        try {
-          const response = await fetch(`${this.baseUrl}/submit`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ tx_cbor: cborHex }),
-            signal,
-          });
+        for (let attempt = 1; ; attempt++) {
+          try {
+            const response = await fetch(`${this.baseUrl}/submit`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ tx_cbor: cborHex }),
+              signal,
+            });
 
-          if (!response.ok) {
-            const error = await response
-              .json()
-              .catch(() => ({ error: `Unexpected status: ${response.status}` }));
-            throw new Error(error.error || error.message || `Unexpected status: ${response.status}`);
-          }
-
-          const result = await response.json();
-
-          // Log the successful transaction submission
-          if (this.enableLogs && result && result.txId) {
-            logSubmittedTransaction(result.txId, txType);
-          }
-
-          // For successful submissions, return the raw result
-          return result;
-        } catch (error) {
-          attempts++;
-          if (attempts === this.retryAttempts) {
-            // Log the failed transaction if we've exhausted all attempts
-            if (this.enableLogs) {
-              const errorMsg = error instanceof Error ? error.message : String(error);
-              logFailedTransaction('unknown', txType, errorMsg);
+            if (!response.ok) {
+              const error = await response
+                .json()
+                .catch(() => ({ error: `Unexpected status: ${response.status}` }));
+              throw new Error(
+                error.error || error.message || `Unexpected status: ${response.status}`
+              );
             }
-            throw error; // Let the Effect.catchAll handle it
+
+            const result = await response.json();
+            // Log the successful transaction submission
+            if (this.enableLogs && result && result.txId) {
+              logSubmittedTransaction(result.txId, txType);
+            }
+            // For successful submissions, return the raw result
+            return result;
+          } catch (error) {
+            if (attempt >= this.retryAttempts) {
+              // Log the failed transaction if we've exhausted all attempts
+              if (this.enableLogs) {
+                logFailedTransaction('unknown', txType, formatError(error));
+              }
+              throw error; // Let the Effect.catchAll handle it
+            }
+            await new Promise((resolve) => setTimeout(resolve, this.retryDelay));
           }
-          await new Promise((resolve) => setTimeout(resolve, this.retryDelay));
         }
-        // }
-        throw new Error('All retry attempts failed');
       })()
     ).pipe(
       // Handle errors by converting them to our status format
       Effect.catchAll((error) =>
         Effect.succeed(
-          error instanceof TypeError ||
-            (error instanceof Error && error.message === 'Node is not available')
+          error instanceof TypeError
             ? {
                 status: 'NODE_UNAVAILABLE',
                 message: 'Node is not available - transaction will be stored locally',
               }
             : {
                 status: 'ERROR',
-                error: error instanceof Error ? error.message : String(error),
+                error: formatError(error),
               }
         )
       ),
@@ -203,7 +179,7 @@ export class MidgardNodeClient {
         if (error instanceof Error) {
           return { _tag: 'ValidationError', error: error.message };
         }
-        return { _tag: 'UnknownError', error: String(error) };
+        return { _tag: 'UnknownError', error: formatError(error) };
       },
     });
   }

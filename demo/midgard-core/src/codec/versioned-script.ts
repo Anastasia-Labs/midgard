@@ -1,4 +1,5 @@
 import { blake2b } from "@noble/hashes/blake2.js";
+
 import {
   assertCanonicalCborRoundTrip,
   encodeCborArrayRaw,
@@ -7,6 +8,7 @@ import {
   readCborArrayHeader,
   readCborBytes,
   readCborUnsigned,
+  skipCborItem,
 } from "./cbor.js";
 import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
 import {
@@ -66,8 +68,16 @@ export const decodeMidgardVersionedScript = (
   if (header.length !== 2) {
     fail("MidgardVersionedScript must be [language_tag, script_bytes]");
   }
-  const tag = readCborUnsigned(bytes, header.nextOffset, "versioned_script.tag");
-  const payload = readCborBytes(bytes, tag.nextOffset, "versioned_script.bytes");
+  const tag = readCborUnsigned(
+    bytes,
+    header.nextOffset,
+    "versioned_script.tag",
+  );
+  const payload = readCborBytes(
+    bytes,
+    tag.nextOffset,
+    "versioned_script.bytes",
+  );
   if (payload.nextOffset !== bytes.length) {
     throw new MidgardTxCodecError(
       MidgardTxCodecErrorCodes.CborDecode,
@@ -91,7 +101,10 @@ export const decodeMidgardVersionedScript = (
     if (tag.value === MidgardVersionedScriptTags.MidgardV1) {
       return { language: "MidgardV1", scriptBytes: payload.value };
     }
-    return fail("Unsupported Midgard versioned script tag", tag.value.toString());
+    return fail(
+      "Unsupported Midgard versioned script tag",
+      tag.value.toString(),
+    );
   })();
 
   assertCanonicalCborRoundTrip(
@@ -130,24 +143,12 @@ export const decodeMidgardVersionedScriptListPreimage = (
   let cursor = header.nextOffset;
   const scripts: MidgardVersionedScript[] = [];
   for (let i = 0; i < header.length; i += 1) {
-    const start = cursor;
-    const itemHeader = readCborArrayHeader(bytes, cursor, `${fieldName}[${i}]`);
-    cursor = itemHeader.nextOffset;
-    for (let j = 0; j < itemHeader.length; j += 1) {
-      const spanStart = cursor;
-      if (j === 0) {
-        cursor = readCborUnsigned(bytes, cursor, `${fieldName}[${i}].tag`).nextOffset;
-      } else if (j === 1) {
-        cursor = readCborBytes(bytes, cursor, `${fieldName}[${i}].bytes`).nextOffset;
-      } else {
-        fail("MidgardVersionedScript must have exactly 2 fields", `${fieldName}[${i}]`);
-      }
-      if (cursor <= spanStart) {
-        fail("Invalid versioned script cursor progress", `${fieldName}[${i}]`);
-      }
-    }
-    const script = decodeMidgardVersionedScript(bytes.subarray(start, cursor));
+    const span = skipCborItem(bytes, cursor);
+    const script = decodeMidgardVersionedScript(
+      bytes.subarray(span.start, span.end),
+    );
     scripts.push(script);
+    cursor = span.end;
   }
   if (cursor !== bytes.length) {
     throw new MidgardTxCodecError(

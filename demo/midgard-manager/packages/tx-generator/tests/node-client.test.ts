@@ -134,12 +134,17 @@ describe('MidgardNodeClient', () => {
     expect(String((result as { error?: unknown }).error)).toContain('error');
   });
 
-  it('should preserve single-submit failure behavior when retry attempts exceed one', async () => {
+  it('should retry submit failures up to the configured attempt count', async () => {
     mockFetch
       .mockResolvedValueOnce({
         status: 404,
       })
-      .mockRejectedValueOnce(new Error('first submit failure'));
+      .mockRejectedValueOnce(new Error('first submit failure'))
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ txId: 'retried_tx_id' }),
+      });
 
     const client = new MidgardNodeClient({
       baseUrl: 'http://localhost:3000',
@@ -149,12 +154,19 @@ describe('MidgardNodeClient', () => {
     });
 
     const result = await client.submitTransaction('test_cbor_hex');
-    expect(result).toEqual(
-      expect.objectContaining({
-        status: 'ERROR',
-      })
-    );
-    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(result).toEqual({ txId: 'retried_tx_id' });
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+  });
+
+  it('should reject zero retry attempts instead of relying on retry-loop fallthrough', () => {
+    expect(
+      () =>
+        new MidgardNodeClient({
+          baseUrl: 'http://localhost:3000',
+          retryAttempts: 0,
+        })
+    ).toThrow('Node retry attempts must be a positive integer');
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
   it('should decode spendable utxos from node response', async () => {
@@ -186,9 +198,7 @@ describe('MidgardNodeClient', () => {
       retryDelay: 10,
     });
 
-    const utxos = await client.getSpendableUtxos(
-      address
-    );
+    const utxos = await client.getSpendableUtxos(address);
     expect(utxos).toHaveLength(1);
     expect(utxos[0].txHash).toBe('11'.repeat(32));
     expect(utxos[0].outputIndex).toBe(0);

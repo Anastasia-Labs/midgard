@@ -1,24 +1,35 @@
 import "./utils.js";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { Effect } from "effect";
-import { SqlClient } from "@effect/sql";
-import {
-  CML,
-  assetsToValue,
-  valueToAssets,
-  walletFromSeed,
-} from "@lucid-evolution/lucid";
 import {
   computeMidgardNativeTxId,
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFull,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeMidgardTxOutput,
-  midgardAddressFromText,
   encodeMidgardAddressText,
+  midgardAddressFromText,
   midgardValueToCmlValue,
   protectMidgardAddress,
 } from "@al-ft/midgard-core/codec";
+import {
+  type QueuedTx,
+  runPhaseAValidation,
+  runPhaseBValidationWithPatch,
+} from "@al-ft/midgard-validation";
+import { SqlClient } from "@effect/sql";
+import {
+  assetsToValue,
+  CML,
+  valueToAssets,
+  walletFromSeed,
+} from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import {
+  DEFAULT_WALLET_SEED_ENV,
+  type NodeUtxo,
+  resolveWalletSeedPhrase,
+} from "@/commands/command-utils.js";
 import {
   buildTransferTx,
   buildTransferTxWithMinFee,
@@ -26,19 +37,10 @@ import {
   selectTransferInputs,
   submitL2TransferProgram,
 } from "@/commands/submit-l2-transfer.js";
-import {
-  DEFAULT_WALLET_SEED_ENV,
-  resolveWalletSeedPhrase,
-  type NodeUtxo,
-} from "@/commands/command-utils.js";
-import {
-  runPhaseAValidation,
-  runPhaseBValidationWithPatch,
-  type QueuedTx,
-} from "@al-ft/midgard-validation";
-import { makeMidgardTxOutput } from "./midgard-output-helpers.js";
 import { NodeConfig } from "@/services/config.js";
 import { Lucid as LucidService } from "@/services/lucid.js";
+
+import { makeMidgardTxOutput } from "./midgard-output-helpers.js";
 
 const TEST_SEED =
   "cupboard digital guitar diesel critic will afford salon game dolphin phrase baby dad urban machine barely rack acoustic blood vote misery enemy salute depart";
@@ -224,7 +226,7 @@ describe("submit-l2-transfer tx building", () => {
       lovelace: 3_500_000n,
     });
 
-    const nativeTx = decodeMidgardNativeTxFull(built.txCbor);
+    const nativeTx = decodeMidgardNativeTxFullFromCanonicalCbor(built.txCbor);
     const spendInputs = decodeMidgardNativeByteListPreimage(
       nativeTx.body.spendInputsPreimageCbor,
     ).map((bytes) => {
@@ -424,7 +426,7 @@ describe("submit-l2-transfer program", () => {
           init?.body instanceof Uint8Array
             ? Buffer.from(init.body)
             : Buffer.from(await new Response(init?.body).arrayBuffer());
-        const built = decodeMidgardNativeTxFull(body);
+        const built = decodeMidgardNativeTxFullFromCanonicalCbor(body);
         expectedTxId = computeMidgardNativeTxId(built).toString("hex");
         return {
           ok: true,

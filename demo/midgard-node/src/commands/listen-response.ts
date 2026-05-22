@@ -4,25 +4,12 @@
  * their own failure formatting and status-code behavior.
  */
 import * as SDK from "@al-ft/midgard-sdk";
-import { Effect } from "effect";
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { HttpServerResponse } from "@effect/platform";
 import type { HttpBodyError } from "@effect/platform/HttpBody";
+import { Effect } from "effect";
 
 const MERGE_ERROR_CODE_PATTERN = /^(E_MERGE_[A-Z0-9_]+):/;
-
-/**
- * Converts arbitrary error causes into a stable loggable string.
- */
-const stringifyErrorCause = (cause: unknown): string => {
-  if (typeof cause === "string") {
-    return cause;
-  }
-  try {
-    return JSON.stringify(cause);
-  } catch {
-    return `${cause}`;
-  }
-};
 
 /**
  * Extracts a structured merge/state-queue error code when present.
@@ -70,7 +57,7 @@ export const handleStateQueueGetFailure = (
 ) =>
   Effect.gen(function* () {
     const errorCode = extractStateQueueErrorCode(e);
-    const cause = stringifyErrorCause(e.cause);
+    const cause = formatUnknownError(e.cause);
     yield* Effect.logInfo(
       `GET /${endpoint} - state queue failure: message=${e.message},code=${errorCode ?? "unknown"},cause=${cause}`,
     );

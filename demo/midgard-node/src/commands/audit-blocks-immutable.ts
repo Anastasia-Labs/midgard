@@ -1,11 +1,12 @@
-import { Effect } from "effect";
-import { BlocksDB, ImmutableDB, TxUtils } from "@/database/index.js";
-import { Database } from "@/services/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
 import {
   computeMidgardNativeTxId,
-  decodeMidgardNativeTxFull,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
 } from "@al-ft/midgard-core/codec";
+import { Effect } from "effect";
+
+import { BlocksDB, ImmutableDB, TxUtils } from "@/database/index.js";
+import { DatabaseError } from "@/database/utils/common.js";
+import { Database } from "@/services/index.js";
 
 /**
  * Types of linkage/data-integrity issues the immutable audit can report.
@@ -119,7 +120,7 @@ export const auditBlocksImmutableProgram = (
         continue;
       }
       try {
-        const decoded = decodeMidgardNativeTxFull(txPayload);
+        const decoded = decodeMidgardNativeTxFullFromCanonicalCbor(txPayload);
         const computedTxIdHex =
           computeMidgardNativeTxId(decoded).toString("hex");
         if (computedTxIdHex !== txIdHex) {

@@ -1,39 +1,44 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  Data as LucidData,
   type Assets,
+  Data as LucidData,
   toUnit,
   type UTxO,
 } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
-import {
-  fetchReferenceScriptUtxosProgram,
-  referenceScriptByName,
-  type ReferenceScriptTarget,
-} from "@/transactions/reference-scripts.js";
-import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
-import {
-  submitAbsorbConfirmedDepositToReserveProgram,
-  submitAddReserveFundsToPayoutProgram,
-  submitConcludePayoutProgram,
-  submitInitializePayoutProgram,
-  type ReservePayoutReferenceScripts,
-  valueToAssets,
-} from "@/transactions/reserve-payout.js";
+import { Effect, Option } from "effect";
+
+import { formatJson, parseEventId } from "@/commands/command-utils.js";
 import {
   type EventSettlementProofResolution,
   resolveEventSettlementProofProgram,
 } from "@/commands/event-settlement-proof.js";
-import { formatJson, parseEventId } from "@/commands/command-utils.js";
 import { addressDataToBech32 } from "@/commands/withdrawal-utils.js";
+import * as WithdrawalsDB from "@/database/withdrawals.js";
+import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
 import {
   Database,
   Lucid,
   MidgardContracts,
   NodeConfig,
 } from "@/services/index.js";
-import * as WithdrawalsDB from "@/database/withdrawals.js";
-import { Option } from "effect";
+import {
+  fetchReferenceScriptUtxosProgram,
+  type ReferenceScriptTarget,
+} from "@/transactions/reference-scripts.js";
+import {
+  type ReservePayoutReferenceScripts,
+  submitAbsorbConfirmedDepositToReserveProgram,
+  submitAddReserveFundsToPayoutProgram,
+  submitConcludePayoutProgram,
+  submitInitializePayoutProgram,
+} from "@/transactions/reserve-payout.js";
+import {
+  assetsEqual,
+  mergeReferenceScripts,
+  removeAssetUnit,
+  subtractAssets,
+  valueToAssets,
+} from "@al-ft/midgard-sdk";
 
 export type EventIdConfig = {
   readonly eventId: string;
@@ -45,43 +50,9 @@ export type PayoutCommandResult = {
   readonly details: Record<string, unknown>;
 };
 
-const normalizeAssets = (assets: Readonly<Assets>): Assets => {
-  const normalized: Record<string, bigint> = {};
-  for (const [unit, quantity] of Object.entries(assets)) {
-    if (quantity !== 0n) {
-      normalized[unit] = quantity;
-    }
-  }
-  return normalized as Assets;
-};
-
-const subtractAssets = (
-  left: Readonly<Assets>,
-  right: Readonly<Assets>,
-): Assets => {
-  const result: Record<string, bigint> = { ...left };
-  for (const [unit, quantity] of Object.entries(right)) {
-    result[unit] = (result[unit] ?? 0n) - quantity;
-  }
-  return normalizeAssets(result as Assets);
-};
-
-const assetsEqual = (
-  left: Readonly<Assets>,
-  right: Readonly<Assets>,
-): boolean => {
-  const leftNormalized = normalizeAssets(left);
-  const rightNormalized = normalizeAssets(right);
-  const units = new Set([
-    ...Object.keys(leftNormalized),
-    ...Object.keys(rightNormalized),
-  ]);
-  for (const unit of units) {
-    if ((leftNormalized[unit] ?? 0n) !== (rightNormalized[unit] ?? 0n)) {
-      return false;
-    }
-  }
-  return true;
+type PayoutByWithdrawalEvent = {
+  readonly payout: UTxO;
+  readonly payoutUnit: string;
 };
 
 const contributesToNeed = (
@@ -105,44 +76,7 @@ const fetchReferenceScripts = (
       lucidService.referenceScriptsAddress,
       targets,
     );
-    const byName = (name: string): UTxO =>
-      referenceScriptByName(resolved, name);
-    return {
-      depositMinting: resolved.some((entry) => entry.name === "deposit minting")
-        ? byName("deposit minting")
-        : undefined,
-      depositSpending: resolved.some(
-        (entry) => entry.name === "deposit spending",
-      )
-        ? byName("deposit spending")
-        : undefined,
-      withdrawalMinting: resolved.some(
-        (entry) => entry.name === "withdrawal minting",
-      )
-        ? byName("withdrawal minting")
-        : undefined,
-      withdrawalSpending: resolved.some(
-        (entry) => entry.name === "withdrawal spending",
-      )
-        ? byName("withdrawal spending")
-        : undefined,
-      membershipProofWithdrawal: resolved.some(
-        (entry) => entry.name === "membership proof withdrawal",
-      )
-        ? byName("membership proof withdrawal")
-        : undefined,
-      reserveSpending: resolved.some(
-        (entry) => entry.name === "reserve spending",
-      )
-        ? byName("reserve spending")
-        : undefined,
-      payoutSpending: resolved.some((entry) => entry.name === "payout spending")
-        ? byName("payout spending")
-        : undefined,
-      payoutMinting: resolved.some((entry) => entry.name === "payout minting")
-        ? byName("payout minting")
-        : undefined,
-    };
+    return mergeReferenceScripts(undefined, resolved);
   });
 
 const fetchDepositUtxoByEventId = (
@@ -199,22 +133,17 @@ const fetchWithdrawalUtxoByEventId = (
     return match;
   });
 
-const requireDepositResolution = (
+const requireResolution = <Kind extends EventSettlementProofResolution["kind"]>(
   resolution: EventSettlementProofResolution,
-): Extract<EventSettlementProofResolution, { readonly kind: "deposit" }> => {
-  if (resolution.kind !== "deposit") {
-    throw new Error("Expected deposit event settlement proof resolution.");
+  kind: Kind,
+): Extract<EventSettlementProofResolution, { readonly kind: Kind }> => {
+  if (resolution.kind !== kind) {
+    throw new Error(`Expected ${kind} event settlement proof resolution.`);
   }
-  return resolution;
-};
-
-const requireWithdrawalResolution = (
-  resolution: EventSettlementProofResolution,
-): Extract<EventSettlementProofResolution, { readonly kind: "withdrawal" }> => {
-  if (resolution.kind !== "withdrawal") {
-    throw new Error("Expected withdrawal event settlement proof resolution.");
-  }
-  return resolution;
+  return resolution as Extract<
+    EventSettlementProofResolution,
+    { readonly kind: Kind }
+  >;
 };
 
 export const absorbConfirmedDepositToReserveProgram = (
@@ -229,11 +158,12 @@ export const absorbConfirmedDepositToReserveProgram = (
     const lucidService = yield* Lucid;
     const contracts = yield* MidgardContracts;
     yield* lucidService.switchToOperatorsMainWallet;
-    const resolution = requireDepositResolution(
+    const resolution = requireResolution(
       yield* resolveEventSettlementProofProgram({
         kind: "deposit",
         eventId,
       }),
+      "deposit",
     );
     const deposit = yield* fetchDepositUtxoByEventId(eventId);
     const membershipProofWithdrawal = {
@@ -281,11 +211,12 @@ export const initializePayoutProgram = (
     const lucidService = yield* Lucid;
     const contracts = yield* MidgardContracts;
     yield* lucidService.switchToOperatorsMainWallet;
-    const resolution = requireWithdrawalResolution(
+    const resolution = requireResolution(
       yield* resolveEventSettlementProofProgram({
         kind: "withdrawal",
         eventId,
       }),
+      "withdrawal",
     );
     if (resolution.validity !== "WithdrawalIsValid") {
       return yield* Effect.fail(
@@ -356,7 +287,7 @@ const payoutUnitFromWithdrawalEventId = (
 const fetchPayoutByWithdrawalEvent = (
   eventId: Buffer,
 ): Effect.Effect<
-  UTxO,
+  PayoutByWithdrawalEvent,
   SDK.LucidError | Error,
   Database | Lucid | MidgardContracts
 > =>
@@ -386,7 +317,7 @@ const fetchPayoutByWithdrawalEvent = (
         ),
       );
     }
-    return matches[0]!;
+    return { payout: matches[0]!, payoutUnit };
   });
 
 const decodePayoutDatum = (payout: UTxO): SDK.PayoutDatum => {
@@ -408,23 +339,10 @@ export const addReserveFundsToPayoutProgram = (
     const lucidService = yield* Lucid;
     const contracts = yield* MidgardContracts;
     yield* lucidService.switchToOperatorsMainWallet;
-    const payout = yield* fetchPayoutByWithdrawalEvent(eventId);
+    const { payout, payoutUnit } = yield* fetchPayoutByWithdrawalEvent(eventId);
     const payoutDatum = decodePayoutDatum(payout);
-    const payoutUnit = Object.keys(payout.assets).find(
-      (unit) =>
-        unit.startsWith(contracts.payout.policyId) &&
-        payout.assets[unit] === 1n,
-    );
-    if (payoutUnit === undefined) {
-      return yield* Effect.fail(
-        new Error("Payout UTxO is missing payout NFT."),
-      );
-    }
     const targetAssets = valueToAssets(payoutDatum.l2_value);
-    const currentAssets = normalizeAssets({
-      ...payout.assets,
-      [payoutUnit]: (payout.assets[payoutUnit] ?? 0n) - 1n,
-    });
+    const currentAssets = removeAssetUnit(payout.assets, payoutUnit, 1n);
     const remaining = subtractAssets(targetAssets, currentAssets);
     const reserveUtxos = yield* Effect.tryPromise({
       try: () =>
@@ -484,23 +402,10 @@ export const concludePayoutProgram = (
     const contracts = yield* MidgardContracts;
     const nodeConfig = yield* NodeConfig;
     yield* lucidService.switchToOperatorsMainWallet;
-    const payout = yield* fetchPayoutByWithdrawalEvent(eventId);
+    const { payout, payoutUnit } = yield* fetchPayoutByWithdrawalEvent(eventId);
     const payoutDatum = decodePayoutDatum(payout);
-    const payoutUnit = Object.keys(payout.assets).find(
-      (unit) =>
-        unit.startsWith(contracts.payout.policyId) &&
-        payout.assets[unit] === 1n,
-    );
-    if (payoutUnit === undefined) {
-      return yield* Effect.fail(
-        new Error("Payout UTxO is missing payout NFT."),
-      );
-    }
     const targetAssets = valueToAssets(payoutDatum.l2_value);
-    const currentAssets = normalizeAssets({
-      ...payout.assets,
-      [payoutUnit]: (payout.assets[payoutUnit] ?? 0n) - 1n,
-    });
+    const currentAssets = removeAssetUnit(payout.assets, payoutUnit, 1n);
     if (!assetsEqual(currentAssets, targetAssets)) {
       return yield* Effect.fail(
         new Error(

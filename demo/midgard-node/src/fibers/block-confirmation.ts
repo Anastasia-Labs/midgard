@@ -1,3 +1,7 @@
+import * as SDK from "@al-ft/midgard-sdk";
+import { Data, Effect, Option, Ref, Schedule } from "effect";
+import { Worker } from "worker_threads";
+
 import {
   DepositsDB,
   PendingBlockFinalizationsDB,
@@ -5,15 +9,13 @@ import {
 } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { Database, Globals } from "@/services/index.js";
-import { Data, Effect, Option, Ref, Schedule } from "effect";
-import { Worker } from "worker_threads";
-import * as SDK from "@al-ft/midgard-sdk";
+import { deserializeStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
+import { WorkerError } from "@/workers/utils/common.js";
 import {
   WorkerInput as BlockConfirmationWorkerInput,
   WorkerOutput as BlockConfirmationWorkerOutput,
 } from "@/workers/utils/confirm-block-commitments.js";
-import { WorkerError } from "@/workers/utils/common.js";
-import { deserializeStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
+
 import { emitQueueStateMetrics } from "./queue-metrics.js";
 import { resolveWorkerEntry } from "./resolve-worker-entry.js";
 
@@ -84,16 +86,12 @@ const pendingRecordRequiresLocalFinalizationRecovery = (
     record.depositEventIds.length > 0 ||
     record.withdrawalEventIds.length > 0 ||
     record.mempoolTxIds.length > 0;
-  if (
+  return (
     status === PendingBlockFinalizationsDB.Status.PendingSubmission ||
     status ===
-      PendingBlockFinalizationsDB.Status.SubmittedLocalFinalizationPending
-  ) {
-    return true;
-  }
-  return (
-    hasLocalPayloadMembers &&
-    status === PendingBlockFinalizationsDB.Status.ObservedWaitingStability
+      PendingBlockFinalizationsDB.Status.SubmittedLocalFinalizationPending ||
+    (hasLocalPayloadMembers &&
+      status === PendingBlockFinalizationsDB.Status.ObservedWaitingStability)
   );
 };
 

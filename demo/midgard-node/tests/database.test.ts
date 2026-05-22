@@ -1,43 +1,48 @@
-import { describe, expect, beforeAll } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { toHex } from "@lucid-evolution/lucid";
-import { it } from "@effect/vitest";
-import { Duration, Effect, Fiber, TestClock } from "effect";
-import { SqlClient } from "@effect/sql";
-import { Database } from "../src/services/database.js";
-import { Globals } from "../src/services/globals.js";
-import { NodeConfig } from "../src/services/config.js";
-import * as MigrationRunner from "../src/database/migrations/runner.js";
-import {
-  // Block
-  BlocksDB,
 
+import {
+  cardanoTxBytesToMidgardNativeTxCanonicalCbor,
+  computeMidgardNativeTxId,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+} from "@al-ft/midgard-core/codec";
+import { SqlClient } from "@effect/sql";
+import { it } from "@effect/vitest";
+import { toHex } from "@lucid-evolution/lucid";
+import { Duration, Effect, Fiber, TestClock } from "effect";
+import { beforeAll, describe, expect } from "vitest";
+
+import {
+  DepositStatusCommandError,
+  resolveDepositStatusProgram,
+} from "../src/commands/deposit-status.js";
+import {
   // Address history
   AddressHistoryDB,
-
-  // Tx
-  ImmutableDB,
-  ProcessedMempoolDB,
-  MempoolDB,
-
-  // Ledger
-  LatestLedgerDB,
-  MempoolLedgerDB,
-  ConfirmedLedgerDB,
-  DepositsDB,
-  DepositIngestionCursorDB,
-  PendingBlockFinalizationsDB,
-  MutationJobsDB,
-  TxAdmissionsDB,
-  StateQueueMutationLeasesDB,
-
+  // Block
+  BlocksDB,
   // Utils
   CommonUtils,
-  TxUtils,
+  ConfirmedLedgerDB,
+  DepositIngestionCursorDB,
+  DepositsDB,
+  // Tx
+  ImmutableDB,
+  // Ledger
+  LatestLedgerDB,
   LedgerUtils,
+  MempoolDB,
+  MempoolLedgerDB,
+  MutationJobsDB,
+  PendingBlockFinalizationsDB,
+  ProcessedMempoolDB,
+  StateQueueMutationLeasesDB,
+  TxAdmissionsDB,
+  TxUtils,
 } from "../src/database/index.js";
+import * as MigrationRunner from "../src/database/migrations/runner.js";
 import { projectDepositsToMempoolLedger } from "../src/fibers/project-deposits-to-mempool-ledger.js";
+import { Globals } from "../src/services/globals.js";
 import { ProcessedTx } from "../src/utils.js";
 import { resolveIncludedDepositEntriesForWindow } from "../src/workers/utils/mpf.js";
 import {
@@ -47,15 +52,6 @@ import {
   expectLedgerUtxos,
   provideDatabaseLayers,
 } from "./utils.js";
-import {
-  cardanoTxBytesToMidgardNativeTxFullBytes,
-  computeMidgardNativeTxId,
-  decodeMidgardNativeTxFull,
-} from "@al-ft/midgard-core/codec";
-import {
-  DepositStatusCommandError,
-  resolveDepositStatusProgram,
-} from "../src/commands/deposit-status.js";
 
 const flushAll = Effect.gen(function* () {
   yield* Effect.all(
@@ -1390,10 +1386,12 @@ const firstFixture = (
 )[0];
 
 const makeValidNativeImmutableEntry = (): TxUtils.Entry => {
-  const nativeTx = cardanoTxBytesToMidgardNativeTxFullBytes(
+  const nativeTx = cardanoTxBytesToMidgardNativeTxCanonicalCbor(
     Buffer.from(firstFixture.cborHex, "hex"),
   );
-  const txId = computeMidgardNativeTxId(decodeMidgardNativeTxFull(nativeTx));
+  const txId = computeMidgardNativeTxId(
+    decodeMidgardNativeTxFullFromCanonicalCbor(nativeTx),
+  );
   return {
     [TxUtils.Columns.TX_ID]: txId,
     [TxUtils.Columns.TX]: nativeTx,

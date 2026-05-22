@@ -1,28 +1,37 @@
-import { CML } from "@lucid-evolution/lucid";
 import {
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
-  encodeMidgardAddressText,
-  midgardAddressFromText,
-  scriptLanguageTagToName,
   type ScriptLanguageName,
   type ScriptLanguageTag,
+  scriptLanguageTagToName,
 } from "@al-ft/midgard-core/codec";
+import { hexToBytes } from "@al-ft/midgard-core/hex";
+
+import { ProviderPayloadError } from "../core/errors.js";
 import {
   decodeMidgardUtxo,
   isSubmitAdmissionStatus,
-  outRefToCbor,
-  type Address,
   type MidgardUtxo,
   type OutRef,
+  outRefToCbor,
   type SubmitTxResult,
   type TxStatus,
 } from "../core/index.js";
-import { ProviderPayloadError } from "../core/errors.js";
 import { normalizeTxHash } from "../core/out-ref.js";
 import type { MidgardProtocolInfo, ProtocolScriptLanguage } from "./types.js";
 
 export const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+
+const requireObject = (
+  value: unknown,
+  fieldName: string,
+  endpoint: string,
+): Record<string, unknown> => {
+  if (!isObject(value)) {
+    throw new ProviderPayloadError(endpoint, `${fieldName} must be an object`);
+  }
+  return value;
+};
 
 const requireString = (
   value: unknown,
@@ -58,6 +67,20 @@ const requireNonNegativeSafeInteger = (
     throw new ProviderPayloadError(
       endpoint,
       `${fieldName} must be a non-negative safe integer`,
+    );
+  }
+  return value;
+};
+
+const requireNonNegativeBigInt = (
+  value: unknown,
+  fieldName: string,
+  endpoint: string,
+): bigint => {
+  if (typeof value !== "bigint" || value < 0n) {
+    throw new ProviderPayloadError(
+      endpoint,
+      `${fieldName} must be a non-negative bigint`,
     );
   }
   return value;
@@ -99,19 +122,18 @@ const validateSupportedScriptLanguages = (
     throw new ProviderPayloadError(endpoint, `${fieldName} must be an array`);
   }
   const normalized = languages.map((raw, index) => {
-    if (!isObject(raw)) {
-      throw new ProviderPayloadError(
-        endpoint,
-        `${fieldName}[${index.toString()}] must be an object`,
-      );
-    }
+    const language = requireObject(
+      raw,
+      `${fieldName}[${index.toString()}]`,
+      endpoint,
+    );
     const name = requireString(
-      raw.name,
+      language.name,
       `${fieldName}[${index.toString()}].name`,
       endpoint,
     );
     const tag = requireNonNegativeSafeInteger(
-      raw.tag,
+      language.tag,
       `${fieldName}[${index.toString()}].tag`,
       endpoint,
     );
@@ -155,33 +177,30 @@ const validateSupportedScriptLanguages = (
 };
 
 const fromHex = (hex: string, fieldName: string, endpoint: string): Buffer => {
-  const normalized = hex.trim().toLowerCase();
-  if (normalized.length === 0 || normalized.length % 2 !== 0) {
+  try {
+    return hexToBytes(hex, { fieldName });
+  } catch {
     throw new ProviderPayloadError(endpoint, `${fieldName} must be hex`);
   }
-  if (!/^[0-9a-f]+$/.test(normalized)) {
-    throw new ProviderPayloadError(endpoint, `${fieldName} must be hex`);
-  }
-  return Buffer.from(normalized, "hex");
 };
 
-export const normalizeSubmitTxEnvelopeCborHex = (
-  txEnvelopeCborHex: string,
+export const parseSubmitTxCanonicalCbor = (
+  txCanonicalCborHex: string,
   endpoint: string,
   maxSubmitTxCborBytes?: number,
-): string => {
-  const bytes = fromHex(txEnvelopeCborHex, "tx_envelope_cbor", endpoint);
+): Buffer => {
+  const bytes = fromHex(txCanonicalCborHex, "tx_canonical_cbor", endpoint);
   if (
     maxSubmitTxCborBytes !== undefined &&
     bytes.length > maxSubmitTxCborBytes
   ) {
     throw new ProviderPayloadError(
       endpoint,
-      "tx_envelope_cbor exceeds protocol submit size limit",
+      "tx_canonical_cbor exceeds protocol submit size limit",
       `size=${bytes.length.toString()} max=${maxSubmitTxCborBytes.toString()}`,
     );
   }
-  return bytes.toString("hex");
+  return bytes;
 };
 
 export const normalizeTxIdHex = (txId: string, endpoint: string): string => {
@@ -195,21 +214,6 @@ export const normalizeTxIdHex = (txId: string, endpoint: string): string => {
   }
 };
 
-export const normalizeAddressForUtxoQuery = (
-  address: Address,
-  endpoint: string,
-): string => {
-  try {
-    return encodeMidgardAddressText(midgardAddressFromText(address));
-  } catch (cause) {
-    throw new ProviderPayloadError(
-      endpoint,
-      "address must be a valid Midgard bech32 address",
-      cause instanceof Error ? cause.message : String(cause),
-    );
-  }
-};
-
 export const txOutRefCborHex = (outRef: OutRef): string =>
   outRefToCbor(outRef).toString("hex");
 
@@ -217,49 +221,26 @@ export const decodeEncodedUtxo = (
   raw: unknown,
   endpoint: string,
 ): MidgardUtxo => {
-  if (!isObject(raw)) {
-    throw new ProviderPayloadError(endpoint, "UTxO entry must be an object");
-  }
+  const utxo = requireObject(raw, "UTxO entry", endpoint);
   const outRefCbor = fromHex(
-    requireString(raw.outref, "utxo.outref", endpoint),
+    requireString(utxo.outref, "utxo.outref", endpoint),
     "utxo.outref",
     endpoint,
   );
   const outputCbor = fromHex(
-    requireString(raw.outputCbor, "utxo.outputCbor", endpoint),
+    requireString(utxo.outputCbor, "utxo.outputCbor", endpoint),
     "utxo.outputCbor",
     endpoint,
   );
-  let input: InstanceType<typeof CML.TransactionInput>;
-  try {
-    input = CML.TransactionInput.from_cbor_bytes(outRefCbor);
-  } catch (cause) {
-    throw new ProviderPayloadError(
-      endpoint,
-      "utxo.outref is not canonical TxOutRef CBOR",
-      cause instanceof Error ? cause.message : String(cause),
-    );
-  }
-  const outputIndex = Number(input.index());
-  if (!Number.isSafeInteger(outputIndex)) {
-    throw new ProviderPayloadError(
-      endpoint,
-      "utxo.outref output index exceeds safe integer range",
-    );
-  }
   try {
     return decodeMidgardUtxo({
-      outRef: {
-        txHash: input.transaction_id().to_hex(),
-        outputIndex,
-      },
       outRefCbor,
       outputCbor,
     });
   } catch (cause) {
     throw new ProviderPayloadError(
       endpoint,
-      "utxo.outputCbor is not valid Midgard output CBOR",
+      "UTxO entry contains invalid Midgard CBOR",
       cause instanceof Error ? cause.message : String(cause),
     );
   }
@@ -293,27 +274,18 @@ export const parseProtocolInfo = (
   payload: unknown,
   endpoint: string,
 ): MidgardProtocolInfo => {
-  if (!isObject(payload)) {
-    throw new ProviderPayloadError(endpoint, "protocol-info must be an object");
-  }
-  const protocolFeeParameters = payload.protocolFeeParameters;
-  const submissionLimits = payload.submissionLimits;
-  const validation = payload.validation;
-  if (!isObject(protocolFeeParameters)) {
-    throw new ProviderPayloadError(
-      endpoint,
-      "protocolFeeParameters must be an object",
-    );
-  }
-  if (!isObject(submissionLimits)) {
-    throw new ProviderPayloadError(
-      endpoint,
-      "submissionLimits must be an object",
-    );
-  }
-  if (!isObject(validation)) {
-    throw new ProviderPayloadError(endpoint, "validation must be an object");
-  }
+  const info = requireObject(payload, "protocol-info", endpoint);
+  const protocolFeeParameters = requireObject(
+    info.protocolFeeParameters,
+    "protocolFeeParameters",
+    endpoint,
+  );
+  const submissionLimits = requireObject(
+    info.submissionLimits,
+    "submissionLimits",
+    endpoint,
+  );
+  const validation = requireObject(info.validation, "validation", endpoint);
   if (validation.localValidationIsAuthoritative !== false) {
     throw new ProviderPayloadError(
       endpoint,
@@ -321,20 +293,20 @@ export const parseProtocolInfo = (
     );
   }
   return {
-    apiVersion: requireNumber(payload.apiVersion, "apiVersion", endpoint),
-    network: requireString(payload.network, "network", endpoint),
+    apiVersion: requireNumber(info.apiVersion, "apiVersion", endpoint),
+    network: requireString(info.network, "network", endpoint),
     midgardNativeTxVersion: requireNumber(
-      payload.midgardNativeTxVersion,
+      info.midgardNativeTxVersion,
       "midgardNativeTxVersion",
       endpoint,
     ),
     currentSlot: parseNonNegativeBigInt(
-      payload.currentSlot,
+      info.currentSlot,
       "currentSlot",
       endpoint,
     ),
     supportedScriptLanguages: validateSupportedScriptLanguages(
-      payload.supportedScriptLanguages,
+      info.supportedScriptLanguages,
       endpoint,
     ),
     protocolFeeParameters: {
@@ -371,100 +343,82 @@ export const validateFallbackProtocolInfo = (
   protocolInfo: MidgardProtocolInfo,
   endpoint: string,
 ): MidgardProtocolInfo => {
-  if (!isObject(protocolInfo)) {
-    throw new ProviderPayloadError(
-      endpoint,
-      "fallback protocolInfo must be an object",
-    );
-  }
-  if (
-    typeof protocolInfo.apiVersion !== "number" ||
-    !Number.isSafeInteger(protocolInfo.apiVersion) ||
-    protocolInfo.apiVersion <= 0
-  ) {
-    throw new ProviderPayloadError(
-      endpoint,
-      "fallback apiVersion must be a positive safe integer",
-    );
-  }
-  if (typeof protocolInfo.network !== "string") {
-    throw new ProviderPayloadError(endpoint, "fallback network must be string");
-  }
-  if (
-    typeof protocolInfo.midgardNativeTxVersion !== "number" ||
-    !Number.isSafeInteger(protocolInfo.midgardNativeTxVersion) ||
-    protocolInfo.midgardNativeTxVersion <= 0
-  ) {
-    throw new ProviderPayloadError(
-      endpoint,
-      "fallback midgardNativeTxVersion must be a positive safe integer",
-    );
-  }
-  if (
-    typeof protocolInfo.currentSlot !== "bigint" ||
-    protocolInfo.currentSlot < 0n
-  ) {
-    throw new ProviderPayloadError(
-      endpoint,
-      "fallback currentSlot must be a non-negative bigint",
-    );
-  }
+  const fallback = requireObject(
+    protocolInfo,
+    "fallback protocolInfo",
+    endpoint,
+  );
+  const protocolFeeParameters = requireObject(
+    fallback.protocolFeeParameters,
+    "fallback protocolFeeParameters",
+    endpoint,
+  );
+  const submissionLimits = requireObject(
+    fallback.submissionLimits,
+    "fallback submissionLimits",
+    endpoint,
+  );
+  const validation = requireObject(
+    fallback.validation,
+    "fallback validation",
+    endpoint,
+  );
   const supportedScriptLanguages = validateSupportedScriptLanguages(
-    protocolInfo.supportedScriptLanguages,
+    fallback.supportedScriptLanguages,
     endpoint,
     "fallback supportedScriptLanguages",
   );
-  if (!isObject(protocolInfo.protocolFeeParameters)) {
-    throw new ProviderPayloadError(
-      endpoint,
-      "fallback protocolFeeParameters must be an object",
-    );
-  }
-  if (
-    typeof protocolInfo.protocolFeeParameters.minFeeA !== "bigint" ||
-    protocolInfo.protocolFeeParameters.minFeeA < 0n ||
-    typeof protocolInfo.protocolFeeParameters.minFeeB !== "bigint" ||
-    protocolInfo.protocolFeeParameters.minFeeB < 0n
-  ) {
-    throw new ProviderPayloadError(
-      endpoint,
-      "fallback fee parameters must be non-negative bigints",
-    );
-  }
-  if (!isObject(protocolInfo.submissionLimits)) {
-    throw new ProviderPayloadError(
-      endpoint,
-      "fallback submissionLimits must be an object",
-    );
-  }
-  if (
-    typeof protocolInfo.submissionLimits.maxSubmitTxCborBytes !== "number" ||
-    !Number.isSafeInteger(protocolInfo.submissionLimits.maxSubmitTxCborBytes) ||
-    protocolInfo.submissionLimits.maxSubmitTxCborBytes <= 0
-  ) {
-    throw new ProviderPayloadError(
-      endpoint,
-      "fallback maxSubmitTxCborBytes must be a positive safe integer",
-    );
-  }
-  if (!isObject(protocolInfo.validation)) {
-    throw new ProviderPayloadError(
-      endpoint,
-      "fallback validation must be an object",
-    );
-  }
-  if (
-    typeof protocolInfo.validation.strictnessProfile !== "string" ||
-    protocolInfo.validation.localValidationIsAuthoritative !== false
-  ) {
+  if (validation.localValidationIsAuthoritative !== false) {
     throw new ProviderPayloadError(
       endpoint,
       "fallback validation facts are invalid",
     );
   }
   return {
-    ...protocolInfo,
+    apiVersion: requireNumber(
+      fallback.apiVersion,
+      "fallback apiVersion",
+      endpoint,
+    ),
+    network: requireString(fallback.network, "fallback network", endpoint),
+    midgardNativeTxVersion: requireNumber(
+      fallback.midgardNativeTxVersion,
+      "fallback midgardNativeTxVersion",
+      endpoint,
+    ),
+    currentSlot: requireNonNegativeBigInt(
+      fallback.currentSlot,
+      "fallback currentSlot",
+      endpoint,
+    ),
     supportedScriptLanguages,
+    protocolFeeParameters: {
+      minFeeA: requireNonNegativeBigInt(
+        protocolFeeParameters.minFeeA,
+        "fallback protocolFeeParameters.minFeeA",
+        endpoint,
+      ),
+      minFeeB: requireNonNegativeBigInt(
+        protocolFeeParameters.minFeeB,
+        "fallback protocolFeeParameters.minFeeB",
+        endpoint,
+      ),
+    },
+    submissionLimits: {
+      maxSubmitTxCborBytes: requireNumber(
+        submissionLimits.maxSubmitTxCborBytes,
+        "fallback submissionLimits.maxSubmitTxCborBytes",
+        endpoint,
+      ),
+    },
+    validation: {
+      strictnessProfile: requireString(
+        validation.strictnessProfile,
+        "fallback validation.strictnessProfile",
+        endpoint,
+      ),
+      localValidationIsAuthoritative: false,
+    },
   };
 };
 
@@ -473,17 +427,14 @@ export const parseSubmitTxResult = (
   httpStatus: 200 | 202,
   endpoint: string,
 ): SubmitTxResult => {
-  if (!isObject(payload)) {
-    throw new ProviderPayloadError(endpoint, "submit response must be object");
-  }
-  const duplicate =
-    typeof payload.duplicate === "boolean" ? payload.duplicate : undefined;
-  if (duplicate === undefined) {
+  const response = requireObject(payload, "submit response", endpoint);
+  if (typeof response.duplicate !== "boolean") {
     throw new ProviderPayloadError(
       endpoint,
       "submit response must contain duplicate boolean",
     );
   }
+  const duplicate = response.duplicate;
   if (httpStatus === 202 && duplicate) {
     throw new ProviderPayloadError(
       endpoint,
@@ -496,7 +447,7 @@ export const parseSubmitTxResult = (
       "duplicate submit admission must be marked duplicate",
     );
   }
-  const status = requireString(payload.status, "status", endpoint);
+  const status = requireString(response.status, "status", endpoint);
   if (!isSubmitAdmissionStatus(status)) {
     throw new ProviderPayloadError(
       endpoint,
@@ -511,8 +462,8 @@ export const parseSubmitTxResult = (
     );
   }
   if (
-    payload.firstSeenAt !== undefined &&
-    typeof payload.firstSeenAt !== "string"
+    response.firstSeenAt !== undefined &&
+    typeof response.firstSeenAt !== "string"
   ) {
     throw new ProviderPayloadError(
       endpoint,
@@ -520,8 +471,8 @@ export const parseSubmitTxResult = (
     );
   }
   if (
-    payload.lastSeenAt !== undefined &&
-    typeof payload.lastSeenAt !== "string"
+    response.lastSeenAt !== undefined &&
+    typeof response.lastSeenAt !== "string"
   ) {
     throw new ProviderPayloadError(
       endpoint,
@@ -529,26 +480,21 @@ export const parseSubmitTxResult = (
     );
   }
   return {
-    txId: normalizeTxIdHex(
-      requireString(payload.txId, "txId", endpoint),
-      endpoint,
-    ),
+    txId: requireString(response.txId, "txId", endpoint),
     status,
     httpStatus,
-    firstSeenAt: payload.firstSeenAt,
-    lastSeenAt: payload.lastSeenAt,
+    firstSeenAt: response.firstSeenAt,
+    lastSeenAt: response.lastSeenAt,
     duplicate,
   };
 };
 
 export const parseTxStatus = (payload: unknown, endpoint: string): TxStatus => {
-  if (!isObject(payload)) {
-    throw new ProviderPayloadError(endpoint, "tx-status must be an object");
-  }
-  const txId = requireString(payload.txId, "txId", endpoint);
-  const status = requireString(payload.status, "status", endpoint);
+  const response = requireObject(payload, "tx-status", endpoint);
+  const txId = requireString(response.txId, "txId", endpoint);
+  const status = requireString(response.status, "status", endpoint);
   if (status === "rejected") {
-    const timestamps = payload.timestamps;
+    const timestamps = response.timestamps;
     const createdAt = isObject(timestamps)
       ? typeof timestamps.createdAt === "string"
         ? timestamps.createdAt
@@ -557,9 +503,11 @@ export const parseTxStatus = (payload: unknown, endpoint: string): TxStatus => {
     return {
       kind: "rejected",
       txId,
-      code: requireString(payload.reasonCode, "reasonCode", endpoint),
+      code: requireString(response.reasonCode, "reasonCode", endpoint),
       detail:
-        typeof payload.reasonDetail === "string" ? payload.reasonDetail : null,
+        typeof response.reasonDetail === "string"
+          ? response.reasonDetail
+          : null,
       createdAt,
     };
   }

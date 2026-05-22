@@ -1,15 +1,16 @@
 import { SqlClient, SqlError } from "@effect/sql";
 import { Data, Effect } from "effect";
-import { Database } from "@/services/database.js";
+
 import {
   APPLICATION_INDEX_NAMES,
   APPLICATION_TABLE_NAMES,
   EXPECTED_SCHEMA_VERSION,
-  MIGRATION_MANIFEST_HASH,
-  MIGRATIONS,
   Migration,
+  MIGRATION_MANIFEST_HASH,
   migrationByVersion,
+  MIGRATIONS,
 } from "@/database/migrations/index.js";
+import { Database } from "@/services/database.js";
 
 const MIGRATION_ADVISORY_LOCK_KEY = 0x4d494447415244n; // "MIDGARD"
 

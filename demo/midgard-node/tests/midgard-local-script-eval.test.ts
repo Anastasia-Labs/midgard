@@ -1,8 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { encode } from "cborg";
 import fs from "node:fs";
 import path from "node:path";
-import { CML, Constr, Data } from "@lucid-evolution/lucid";
+
 import {
   decodeMidgardAddressBytes,
   decodeMidgardTxOutput,
@@ -11,24 +9,28 @@ import {
   hashMidgardVersionedScript,
   ScriptLanguageTags,
 } from "@al-ft/midgard-core/codec";
+import { txOutRefData } from "@al-ft/midgard-validation";
+import { evaluateScriptWithHarmonic } from "@al-ft/midgard-validation/local-script-eval";
+import {
+  decodeMidgardRedeemers,
+  MidgardRedeemerTag,
+  midgardScriptPurposeData,
+} from "@al-ft/midgard-validation/midgard-redeemers";
+import {
+  buildMidgardV1ScriptContext,
+  buildPlutusV3ScriptContext,
+} from "@al-ft/midgard-validation/script-context";
+import { decodeScriptSource } from "@al-ft/midgard-validation/script-source";
+import { CML, Constr, Data } from "@lucid-evolution/lucid";
+import { encode } from "cborg";
+import { describe, expect, it } from "vitest";
+
 import {
   hashMidgardV1Script,
   hashPlutusV3Script,
   makeMidgardTxOutput,
   protectOutputAddressBytes,
 } from "./midgard-output-helpers.js";
-import {
-  decodeMidgardRedeemers,
-  MidgardRedeemerTag,
-  midgardScriptPurposeData,
-} from "@al-ft/midgard-validation/midgard-redeemers";
-import { txOutRefData } from "@al-ft/midgard-validation";
-import { decodeScriptSource } from "@al-ft/midgard-validation/script-source";
-import {
-  buildMidgardV1ScriptContext,
-  buildPlutusV3ScriptContext,
-} from "@al-ft/midgard-validation/script-context";
-import { evaluateScriptWithHarmonic } from "@al-ft/midgard-validation/local-script-eval";
 
 type BlueprintValidator = {
   readonly title: string;

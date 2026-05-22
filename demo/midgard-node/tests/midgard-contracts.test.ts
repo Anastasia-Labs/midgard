@@ -1,7 +1,8 @@
-import { describe, expect } from "vitest";
 import { it } from "@effect/vitest";
-import { Effect } from "effect";
 import { mintingPolicyToId } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+import { describe, expect } from "vitest";
+
 import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
 import {
   REAL_ACTIVE_OPERATORS_SCRIPT_TITLES,

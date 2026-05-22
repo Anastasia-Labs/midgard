@@ -1,5 +1,5 @@
-import * as Ledger from "@/database/utils/ledger.js";
 import { clearTable } from "@/database/utils/common.js";
+import * as Ledger from "@/database/utils/ledger.js";
 
 export const tableName = "latest_ledger";
 

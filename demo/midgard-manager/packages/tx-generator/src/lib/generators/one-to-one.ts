@@ -45,7 +45,6 @@ export interface OneToOneTransactionConfig {
  * chance to release native resources.
  */
 const GC_PAUSE_INTERVAL = TRANSACTION_CONSTANTS.GC_PAUSE_INTERVAL.ONE_TO_ONE;
-
 /**
  * Minimum lovelace value the generator is willing to place in an output.
  */
@@ -81,8 +80,8 @@ const validateConfig = (config: OneToOneTransactionConfig): void => {
  * Fees and protocol-cost coefficients are zeroed so the generator can focus on
  * shape and sequencing rather than realistic fee accounting.
  */
-const initializeLucid = async (emulator: Emulator, network: Network): Promise<LucidEvolution> => {
-  return await Lucid(emulator, network, {
+const initializeLucid = (emulator: Emulator, network: Network): Promise<LucidEvolution> =>
+  Lucid(emulator, network, {
     presetProtocolParameters: {
       ...PROTOCOL_PARAMETERS_DEFAULT,
       minFeeA: 0,
@@ -92,7 +91,6 @@ const initializeLucid = async (emulator: Emulator, network: Network): Promise<Lu
       coinsPerUtxoByte: 0n,
     },
   });
-};
 
 /**
  * Generate simple one-to-one transactions for testing.
@@ -128,55 +126,46 @@ export const generateOneToOneTransactions = async (
   const lucid = await initializeLucid(emulator, network);
   lucid.selectWallet.fromAddress(initialUTxO.address, [initialUTxO]);
 
-  // Generate mock transactions
   const transactions: SerializedMidgardTransaction[] = [];
 
-  try {
-    // Generate transactions directly from the provided initial UTxO so the
-    // first generated tx can be applied to the current node ledger state.
-    for (let i = 0; i < txsCount; i++) {
-      const txBuilder = lucid.newTx();
+  // Generate mock transactions
+  // Generate transactions directly from the provided initial UTxO so the
+  // first generated tx can be applied to the current node ledger state.
+  for (let i = 0; i < txsCount; i++) {
+    const txBuilder = lucid.newTx();
+    const [newWalletUTxOs, , txSignBuilder] = await txBuilder.pay
+      .ToAddress(initialUTxO.address, initialUTxO.assets)
+      .chain();
+    const txSigned = await txSignBuilder.sign.withPrivateKey(walletSeedOrPrivateKey).complete();
+    // Create serialized transaction in Midgard format
+    const txHash = txSigned.toHash();
+    const tx: SerializedMidgardTransaction = {
+      cborHex: txSigned.toCBOR(),
+      description: `One-to-One Self Transfer ()`,
+      txId: txHash,
+      type: 'Midgard L2 User Transaction',
+    };
 
-      const [newWalletUTxOs, , txSignBuilder] = await txBuilder.pay
-        .ToAddress(initialUTxO.address, initialUTxO.assets)
-        .chain();
+    // Add to transactions array
+    transactions.push(tx);
 
-      const txSigned = await txSignBuilder.sign.withPrivateKey(walletSeedOrPrivateKey).complete();
-
-      // Create serialized transaction in Midgard format
-      const txHash = txSigned.toHash();
-      const tx: SerializedMidgardTransaction = {
-        cborHex: txSigned.toCBOR(),
-        description: `One-to-One Self Transfer ()`,
-        txId: txHash,
-        type: 'Midgard L2 User Transaction',
-      };
-
-      // Add to transactions array
-      transactions.push(tx);
-
-      // Write to test output if writable provided
-      if (writable) {
-        await waitWritable(writable);
-        writable.write(JSON.stringify([tx], null, 2) + '\n');
-      }
-
-      // Update wallet state for next transaction
-      lucid.overrideUTxOs(newWalletUTxOs);
-
-      // Cleanup resources
-      txBuilder.rawConfig().txBuilder.free();
-      txSignBuilder.toTransaction().free();
-      txSigned.toTransaction().free();
-
-      // Periodic GC pause to prevent memory pressure
-      if (i % GC_PAUSE_INTERVAL === 0) {
-        await new Promise<void>((resolve) => setTimeout(() => resolve(), 100));
-      }
+    // Write to test output if writable provided
+    if (writable) {
+      await waitWritable(writable);
+      writable.write(JSON.stringify([tx], null, 2) + '\n');
     }
-  } catch (error) {
-    console.error('Error generating transactions:', error);
-    throw error;
+
+    // Update wallet state for next transaction
+    lucid.overrideUTxOs(newWalletUTxOs);
+    // Cleanup resources
+    txBuilder.rawConfig().txBuilder.free();
+    txSignBuilder.toTransaction().free();
+    txSigned.toTransaction().free();
+
+    // Periodic GC pause to prevent memory pressure
+    if (i % GC_PAUSE_INTERVAL === 0) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 100));
+    }
   }
 
   return transactions;

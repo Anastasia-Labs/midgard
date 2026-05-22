@@ -1,27 +1,25 @@
 import {
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFull,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
-import {
-  describe,
-  expect,
-  it } from "vitest";
 import { CML } from "@lucid-evolution/lucid";
+import { describe, expect, it } from "vitest";
+
 import {
   BuilderInvariantError,
   decodeMidgardUtxo,
   encodeMidgardTxOutput,
   LucidMidgard,
   makeVKeyWitness,
+  type MidgardProtocolInfo,
+  type MidgardProvider,
+  type MidgardUtxo,
+  type OutRef,
   outRefToCbor,
   ProviderCapabilityError,
   ProviderPayloadError,
   walletFromExternalSigner,
-  type MidgardProvider,
-  type MidgardProtocolInfo,
-  type MidgardUtxo,
-  type OutRef,
 } from "../src/index.js";
 
 const makeOutRef = (byte: number, outputIndex = 0): OutRef => ({
@@ -98,7 +96,9 @@ const makeProvider = (opts: {
   return {
     getUtxos: async (address) => {
       opts.onGetUtxos?.();
-      return (opts.utxos ?? []).filter((utxo) => utxo.output.address === address);
+      return (opts.utxos ?? []).filter(
+        (utxo) => utxo.output.address === address,
+      );
     },
     getUtxoByOutRef: async () => undefined,
     getProtocolInfo: async () => {
@@ -141,7 +141,7 @@ const makeProvider = (opts: {
 
 const inputLabels = (txHex: string): readonly string[] =>
   decodeMidgardNativeByteListPreimage(
-    decodeMidgardNativeTxFull(Buffer.from(txHex, "hex")).body
+    decodeMidgardNativeTxFullFromCanonicalCbor(Buffer.from(txHex, "hex")).body
       .spendInputsPreimageCbor,
   ).map((bytes) => {
     const input = CML.TransactionInput.from_cbor_bytes(bytes);
@@ -185,8 +185,9 @@ describe("provider switching and wallet input overrides", () => {
     expect(after.currentSlot).toBe(20n);
     expect(after.providerDiagnostics.endpoint).toBe("memory://second");
     expect(() => {
-      (after as { protocolFeeParameters: { minFeeB: bigint } })
-        .protocolFeeParameters.minFeeB = 9n;
+      (
+        after as { protocolFeeParameters: { minFeeB: bigint } }
+      ).protocolFeeParameters.minFeeB = 9n;
     }).toThrow(TypeError);
   });
 
@@ -215,7 +216,9 @@ describe("provider switching and wallet input overrides", () => {
     await expect(midgard.switchProvider(mainnet)).rejects.toBeInstanceOf(
       ProviderCapabilityError,
     );
-    expect(midgard.config().providerDiagnostics.endpoint).toBe("memory://first");
+    expect(midgard.config().providerDiagnostics.endpoint).toBe(
+      "memory://first",
+    );
 
     await expect(midgard.switchProvider(wrongVersion)).rejects.toBeInstanceOf(
       ProviderCapabilityError,
@@ -299,7 +302,9 @@ describe("provider switching and wallet input overrides", () => {
     await expect(midgard.switchProvider(missingSource)).rejects.toBeInstanceOf(
       ProviderPayloadError,
     );
-    expect(midgard.config().providerDiagnostics.endpoint).toBe("memory://first");
+    expect(midgard.config().providerDiagnostics.endpoint).toBe(
+      "memory://first",
+    );
 
     await expect(
       midgard.switchProvider(missingFallbackReason),
@@ -502,7 +507,7 @@ describe("provider switching and wallet input overrides", () => {
         .newTx()
         .collectFrom([input])
         .pay.ToAddress(wallet.address, { lovelace: 1_000_000n })
-      .complete({ presetWalletInputs: [input] }),
+        .complete({ presetWalletInputs: [input] }),
     ).rejects.toThrow(/duplicates/);
   });
 

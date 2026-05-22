@@ -194,7 +194,7 @@ semantics are not Cardano semantics:
   signs `computeMidgardNativeTxId(nativeTx)`, which is also the Midgard
   tx id.
 - Serialization: Lucid emits Cardano transaction CBOR. `lucid-midgard` emits
-  Midgard native transaction envelope bytes and must not submit Cardano CBOR on
+  Midgard native canonical transaction bytes and must not submit Cardano CBOR on
   the normal path.
 - Submission: Lucid-style submit returns a hash for a Cardano provider submit.
   Midgard submit returns durable admission metadata first; `accepted`,

@@ -3,6 +3,39 @@
  * This module groups endpoint handlers and access control in one place while
  * delegating startup checks and response shaping to narrower modules.
  */
+import * as SDK from "@al-ft/midgard-sdk";
+import { hexToBytes } from "@al-ft/midgard-core/hex";
+import { QueuedTxPayload } from "@al-ft/midgard-validation";
+import {
+  HttpRouter,
+  HttpServerRequest,
+  HttpServerResponse,
+} from "@effect/platform";
+import type { HttpBodyError } from "@effect/platform/HttpBody";
+import { ParsedSearchParams } from "@effect/platform/HttpServerRequest";
+import { SqlClient } from "@effect/sql/SqlClient";
+import { toHex } from "@lucid-evolution/lucid";
+import { Cause, Duration, Effect, Metric, Queue, Ref } from "effect";
+
+import {
+  parseAddressArgument,
+  parseTxOutRefCborHex,
+} from "@/commands/command-utils.js";
+import * as DepositStatusCommand from "@/commands/deposit-status.js";
+import {
+  failWith500,
+  handleStateQueueGetFailure,
+} from "@/commands/listen-response.js";
+import {
+  authorizeAdminRoute,
+  isAdminRoutePath,
+  normalizeSubmitTxCanonicalCborToNative,
+  validateSubmitTxCanonicalCbor,
+} from "@/commands/listen-utils.js";
+import * as ProtocolInfoCommand from "@/commands/protocol-info.js";
+import { evaluateReadiness } from "@/commands/readiness.js";
+import { resolveTxStatus } from "@/commands/tx-status.js";
+import * as UtxosCommand from "@/commands/utxos.js";
 import {
   AddressHistoryDB,
   BlocksDB,
@@ -14,6 +47,8 @@ import {
   TxAdmissionsDB,
   TxRejectionsDB,
 } from "@/database/index.js";
+import { blockCommitmentAction, mergeAction } from "@/fibers/index.js";
+import * as Genesis from "@/genesis.js";
 import { Database } from "@/services/index.js";
 import {
   Globals,
@@ -21,52 +56,18 @@ import {
   MidgardContracts,
   NodeConfig,
 } from "@/services/index.js";
-import { isHexString } from "@/utils.js";
-import { QueuedTxPayload } from "@al-ft/midgard-validation";
 import {
-  authorizeAdminRoute,
-  isAdminRoutePath,
-  normalizeSubmitTxEnvelopeCborToNative,
-  validateSubmitTxEnvelopeCbor,
-} from "@/commands/listen-utils.js";
-import { evaluateReadiness } from "@/commands/readiness.js";
-import {
-  failWith500,
-  handleStateQueueGetFailure,
-} from "@/commands/listen-response.js";
-import * as DepositStatusCommand from "@/commands/deposit-status.js";
-import * as ProtocolInfoCommand from "@/commands/protocol-info.js";
-import { resolveTxStatus } from "@/commands/tx-status.js";
-import * as UtxosCommand from "@/commands/utxos.js";
-import {
-  parseAddressArgument,
-  parseTxOutRefCborHex,
-} from "@/commands/command-utils.js";
-import * as SubmitDeposit from "@/transactions/submit-deposit.js";
+  fetchStateQueueTopologyProgram,
+  formatStateQueueTopology,
+} from "@/services/state-queue-topology.js";
+import * as Initialization from "@/transactions/initialization.js";
 import {
   fetchReferenceScriptUtxosProgram,
   referenceScriptByName,
   referenceScriptTargetsByCommand,
 } from "@/transactions/reference-scripts.js";
-import { fromHex, toHex } from "@lucid-evolution/lucid";
-import * as SDK from "@al-ft/midgard-sdk";
-import { Cause, Duration, Effect, Metric, Queue, Ref } from "effect";
-import {
-  HttpRouter,
-  HttpServerRequest,
-  HttpServerResponse,
-} from "@effect/platform";
-import type { HttpBodyError } from "@effect/platform/HttpBody";
-import { ParsedSearchParams } from "@effect/platform/HttpServerRequest";
-import { SqlClient } from "@effect/sql/SqlClient";
-import { blockCommitmentAction, mergeAction } from "@/fibers/index.js";
+import * as SubmitDeposit from "@/transactions/submit-deposit.js";
 import { SerializedStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
-import * as Initialization from "@/transactions/initialization.js";
-import * as Genesis from "@/genesis.js";
-import {
-  fetchStateQueueTopologyProgram,
-  formatStateQueueTopology,
-} from "@/services/state-queue-topology.js";
 
 const TX_ENDPOINT: string = "tx";
 const ADDRESS_HISTORY_ENDPOINT: string = "txs";
@@ -108,6 +109,20 @@ const submitQueueOfferFailureCounter = Metric.counter(
 
 const isApplicationCbor = (contentType: string | undefined): boolean =>
   contentType?.split(";")[0]?.trim().toLowerCase() === "application/cbor";
+
+const parseFixedHexParam = (
+  value: unknown,
+  byteLength: number,
+): Buffer | null => {
+  if (typeof value !== "string") {
+    return null;
+  }
+  try {
+    return hexToBytes(value, { byteLength, trim: false });
+  } catch {
+    return null;
+  }
+};
 
 /**
  * Wraps a route handler with admin-key authorization when the path belongs to
@@ -151,11 +166,8 @@ const withAdminAccess = <E, R>(
 const getTxHandler = Effect.gen(function* () {
   const params = yield* ParsedSearchParams;
   const txHashParam = params["tx_hash"];
-  if (
-    typeof txHashParam !== "string" ||
-    !isHexString(txHashParam) ||
-    txHashParam.length !== 64
-  ) {
+  const txHashBytes = parseFixedHexParam(txHashParam, 32);
+  if (txHashBytes === null) {
     yield* Effect.logInfo(
       `GET /${TX_ENDPOINT} - Invalid transaction hash: ${txHashParam}`,
     );
@@ -164,7 +176,6 @@ const getTxHandler = Effect.gen(function* () {
       { status: 404 },
     );
   }
-  const txHashBytes = Buffer.from(fromHex(txHashParam));
   yield* Effect.logInfo("txHashBytes", txHashBytes);
   const foundCbor: Buffer = yield* MempoolDB.retrieveTxCborByHash(
     txHashBytes,
@@ -219,12 +230,7 @@ const getUtxosHandler = Effect.gen(function* () {
     const address = parseAddressArgument(addr);
 
     const utxosWithAddress = yield* MempoolLedgerDB.retrieveByAddress(address);
-    const response = UtxosCommand.encodeStoredUtxos(
-      utxosWithAddress.map((entry) => ({
-        outref: entry.outref,
-        output: entry.output,
-      })),
-    );
+    const response = UtxosCommand.encodeStoredUtxos(utxosWithAddress);
 
     yield* Effect.logInfo(`Found ${response.length} UTxOs for ${addr}`);
     return yield* HttpServerResponse.json({
@@ -357,18 +363,14 @@ const postUtxosByTxOutRefsHandler = Effect.gen(function* () {
 const getTxStatusHandler = Effect.gen(function* () {
   const params = yield* ParsedSearchParams;
   const txHashParam = params["tx_hash"];
-  if (
-    typeof txHashParam !== "string" ||
-    !isHexString(txHashParam) ||
-    txHashParam.length !== 64
-  ) {
+  const txHashBytes = parseFixedHexParam(txHashParam, 32);
+  if (txHashBytes === null) {
     return yield* HttpServerResponse.json(
       { error: `Invalid transaction hash: ${txHashParam}` },
       { status: 400 },
     );
   }
 
-  const txHashBytes = Buffer.from(fromHex(txHashParam));
   const globals = yield* Globals;
   const rejected = yield* TxRejectionsDB.retrieveByTxId(txHashBytes);
   const admission = yield* TxAdmissionsDB.getByTxId(txHashBytes);
@@ -379,7 +381,7 @@ const getTxStatusHandler = Effect.gen(function* () {
   ]);
 
   const resolved = resolveTxStatus({
-    txIdHex: txHashParam,
+    txIdHex: txHashParam as string,
     rejection:
       rejected.length > 0
         ? {
@@ -604,11 +606,8 @@ const getBlockHandler = Effect.gen(function* () {
     `GET /block - Request received for header_hash: ${hdrHash}`,
   );
 
-  if (
-    typeof hdrHash !== "string" ||
-    !isHexString(hdrHash) ||
-    hdrHash.length !== 56
-  ) {
+  const headerHash = parseFixedHexParam(hdrHash, 28);
+  if (headerHash === null) {
     yield* Effect.logInfo(
       `GET /${BLOCK_ENDPOINT} - Invalid block hash: ${hdrHash}`,
     );
@@ -617,9 +616,7 @@ const getBlockHandler = Effect.gen(function* () {
       { status: 400 },
     );
   }
-  const hashes = yield* BlocksDB.retrieveTxHashesByHeaderHash(
-    Buffer.from(fromHex(hdrHash)),
-  );
+  const hashes = yield* BlocksDB.retrieveTxHashesByHeaderHash(headerHash);
   yield* Effect.logInfo(
     `GET /${BLOCK_ENDPOINT} - Found ${hashes.length} txs for block: ${hdrHash}`,
   );
@@ -1056,10 +1053,7 @@ const postDepositBuildHandler = Effect.gen(function* () {
  * `POST /submit`: validates, normalizes, and enqueues a submitted L2
  * transaction.
  */
-const postSubmitHandler = (
-  _txQueue: Queue.Enqueue<QueuedTxPayload>,
-  withMonitoring?: boolean,
-) =>
+const postSubmitHandler = (withMonitoring?: boolean) =>
   Effect.gen(function* () {
     const startedAt = withMonitoring === true ? Date.now() : 0;
     const recordLatency = () =>
@@ -1080,7 +1074,7 @@ const postSubmitHandler = (
         return yield* HttpServerResponse.json(
           {
             error:
-              "Request body must be raw Midgard transaction envelope CBOR with Content-Type application/cbor",
+              "Request body must be raw Midgard canonical transaction CBOR with Content-Type application/cbor",
           },
           { status: 415 },
         );
@@ -1093,12 +1087,12 @@ const postSubmitHandler = (
         );
         yield* recordLatency();
         return yield* HttpServerResponse.json(
-          { error: "Invalid transaction envelope CBOR payload" },
+          { error: "Invalid canonical transaction CBOR payload" },
           { status: 400 },
         );
       }
 
-      const validation = validateSubmitTxEnvelopeCbor(
+      const validation = validateSubmitTxCanonicalCbor(
         new Uint8Array(bodyBytes.right),
         nodeConfig.MAX_SUBMIT_TX_CBOR_BYTES,
       );
@@ -1111,8 +1105,8 @@ const postSubmitHandler = (
         );
       }
 
-      const normalized = normalizeSubmitTxEnvelopeCborToNative(
-        validation.txEnvelopeCbor,
+      const normalized = normalizeSubmitTxCanonicalCborToNative(
+        validation.txCanonicalCbor,
       );
       if (!normalized.ok) {
         yield* Effect.logInfo(`▫️ ${normalized.error}`);
@@ -1124,21 +1118,9 @@ const postSubmitHandler = (
         );
       }
 
-      if (
-        normalized.txEnvelopeCbor.length > nodeConfig.MAX_SUBMIT_TX_CBOR_BYTES
-      ) {
-        yield* recordLatency();
-        return yield* HttpServerResponse.json(
-          {
-            error: `Transaction envelope CBOR exceeds max size (${normalized.txEnvelopeCbor.length} > ${nodeConfig.MAX_SUBMIT_TX_CBOR_BYTES})`,
-          },
-          { status: 413 },
-        );
-      }
-
       const admitted = yield* TxAdmissionsDB.admit({
         txId: normalized.txId,
-        txEnvelopeCbor: normalized.txEnvelopeCbor,
+        txCanonicalCbor: normalized.txCanonicalCbor,
         submitSource: normalized.source,
         maxBacklog: nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG,
       });
@@ -1255,10 +1237,7 @@ export const buildListenRouter = (
       ),
       HttpRouter.post(`/${UTXOS_ENDPOINT}`, postUtxosByTxOutRefsHandler),
       HttpRouter.post(`/${DEPOSIT_BUILD_ENDPOINT}`, postDepositBuildHandler),
-      HttpRouter.post(
-        `/${SUBMIT_ENDPOINT}`,
-        postSubmitHandler(txQueue, withMonitoring),
-      ),
+      HttpRouter.post(`/${SUBMIT_ENDPOINT}`, postSubmitHandler(withMonitoring)),
     )
     .pipe(
       Effect.catchAllCause((cause) =>

@@ -1,14 +1,20 @@
-import { describe, expect, it } from "vitest";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
-import {
+import { describe, expect, it } from "vitest";
+
+const {
   DEFAULT_STATE_QUEUE_COMMIT_LAYOUT,
   deriveStateQueueCommitLayout,
   encodeActiveOperatorCommitRedeemer,
   encodeStateQueueCommitRedeemer,
   makeActiveOperatorCommitRedeemer,
   makeStateQueueCommitRedeemer,
-} from "@/workers/utils/commit-redeemers.js";
+} = SDK;
+
+const ref = (byte: string, outputIndex: number) => ({
+  txHash: byte.repeat(32),
+  outputIndex,
+});
 
 describe("commit redeemer shapes", () => {
   it("builds state_queue CommitBlockHeader with expected index layout", () => {
@@ -67,26 +73,11 @@ describe("commit redeemer shapes", () => {
   });
 
   it("derives dynamic input/redeemer indexes from out-ref ordering", () => {
-    const latest = {
-      txHash: "bb".repeat(32),
-      outputIndex: 1,
-    };
-    const active = {
-      txHash: "bb".repeat(32),
-      outputIndex: 3,
-    };
-    const fee = {
-      txHash: "aa".repeat(32),
-      outputIndex: 0,
-    };
-    const schedulerRef = {
-      txHash: "cc".repeat(32),
-      outputIndex: 1,
-    };
-    const hubOracleRef = {
-      txHash: "aa".repeat(32),
-      outputIndex: 9,
-    };
+    const latest = ref("bb", 1);
+    const active = ref("bb", 3);
+    const fee = ref("aa", 0);
+    const schedulerRef = ref("cc", 1);
+    const hubOracleRef = ref("aa", 9);
     const layout = deriveStateQueueCommitLayout({
       latestBlockInput: latest,
       activeOperatorInput: active,
@@ -94,35 +85,22 @@ describe("commit redeemer shapes", () => {
       hubOracleRefInput: hubOracleRef,
       txInputs: [latest, active, fee],
     });
-    expect(layout.latestBlockInputIndex).toEqual(1n);
-    expect(layout.activeOperatorsInputIndex).toEqual(2n);
-    expect(layout.stateQueueSpendRedeemerIndex).toEqual(0n);
-    expect(layout.activeOperatorsRedeemerIndex).toEqual(1n);
-    expect(layout.schedulerRefInputIndex).toEqual(1n);
-    expect(layout.hubOracleRefInputIndex).toEqual(0n);
+    expect(layout).toMatchObject({
+      latestBlockInputIndex: 1n,
+      activeOperatorsInputIndex: 2n,
+      stateQueueSpendRedeemerIndex: 0n,
+      activeOperatorsRedeemerIndex: 1n,
+      schedulerRefInputIndex: 1n,
+      hubOracleRefInputIndex: 0n,
+    });
   });
 
   it("derives active-operators redeemer index as 0 when active input sorts before latest block input", () => {
-    const latest = {
-      txHash: "bb".repeat(32),
-      outputIndex: 1,
-    };
-    const active = {
-      txHash: "aa".repeat(32),
-      outputIndex: 9,
-    };
-    const fee = {
-      txHash: "aa".repeat(32),
-      outputIndex: 0,
-    };
-    const schedulerRef = {
-      txHash: "aa".repeat(32),
-      outputIndex: 4,
-    };
-    const hubOracleRef = {
-      txHash: "ff".repeat(32),
-      outputIndex: 0,
-    };
+    const latest = ref("bb", 1);
+    const active = ref("aa", 9);
+    const fee = ref("aa", 0);
+    const schedulerRef = ref("aa", 4);
+    const hubOracleRef = ref("ff", 0);
 
     const layout = deriveStateQueueCommitLayout({
       latestBlockInput: latest,
@@ -132,12 +110,14 @@ describe("commit redeemer shapes", () => {
       txInputs: [latest, fee, active],
     });
 
-    expect(layout.latestBlockInputIndex).toEqual(2n);
-    expect(layout.activeOperatorsInputIndex).toEqual(1n);
-    expect(layout.stateQueueSpendRedeemerIndex).toEqual(1n);
-    expect(layout.activeOperatorsRedeemerIndex).toEqual(0n);
-    expect(layout.schedulerRefInputIndex).toEqual(0n);
-    expect(layout.hubOracleRefInputIndex).toEqual(1n);
+    expect(layout).toMatchObject({
+      latestBlockInputIndex: 2n,
+      activeOperatorsInputIndex: 1n,
+      stateQueueSpendRedeemerIndex: 1n,
+      activeOperatorsRedeemerIndex: 0n,
+      schedulerRefInputIndex: 0n,
+      hubOracleRefInputIndex: 1n,
+    });
 
     const operator = "33".repeat(28);
     const stateQueueRedeemer = makeStateQueueCommitRedeemer(operator, layout);
@@ -158,26 +138,11 @@ describe("commit redeemer shapes", () => {
   });
 
   it("derives input ordering with same tx hash using output index ordering", () => {
-    const latest = {
-      txHash: "cc".repeat(32),
-      outputIndex: 2,
-    };
-    const active = {
-      txHash: "cc".repeat(32),
-      outputIndex: 1,
-    };
-    const fee = {
-      txHash: "bb".repeat(32),
-      outputIndex: 0,
-    };
-    const schedulerRef = {
-      txHash: "cc".repeat(32),
-      outputIndex: 5,
-    };
-    const hubOracleRef = {
-      txHash: "cc".repeat(32),
-      outputIndex: 4,
-    };
+    const latest = ref("cc", 2);
+    const active = ref("cc", 1);
+    const fee = ref("bb", 0);
+    const schedulerRef = ref("cc", 5);
+    const hubOracleRef = ref("cc", 4);
 
     const layout = deriveStateQueueCommitLayout({
       latestBlockInput: latest,
@@ -187,35 +152,22 @@ describe("commit redeemer shapes", () => {
       txInputs: [latest, active, fee],
     });
 
-    expect(layout.latestBlockInputIndex).toEqual(2n);
-    expect(layout.activeOperatorsInputIndex).toEqual(1n);
-    expect(layout.stateQueueSpendRedeemerIndex).toEqual(1n);
-    expect(layout.activeOperatorsRedeemerIndex).toEqual(0n);
-    expect(layout.schedulerRefInputIndex).toEqual(1n);
-    expect(layout.hubOracleRefInputIndex).toEqual(0n);
+    expect(layout).toMatchObject({
+      latestBlockInputIndex: 2n,
+      activeOperatorsInputIndex: 1n,
+      stateQueueSpendRedeemerIndex: 1n,
+      activeOperatorsRedeemerIndex: 0n,
+      schedulerRefInputIndex: 1n,
+      hubOracleRefInputIndex: 0n,
+    });
   });
 
   it("throws when active operator input is missing from tx inputs", () => {
-    const latest = {
-      txHash: "dd".repeat(32),
-      outputIndex: 0,
-    };
-    const active = {
-      txHash: "ee".repeat(32),
-      outputIndex: 1,
-    };
-    const fee = {
-      txHash: "ff".repeat(32),
-      outputIndex: 2,
-    };
-    const schedulerRef = {
-      txHash: "11".repeat(32),
-      outputIndex: 0,
-    };
-    const hubOracleRef = {
-      txHash: "22".repeat(32),
-      outputIndex: 0,
-    };
+    const latest = ref("dd", 0);
+    const active = ref("ee", 1);
+    const fee = ref("ff", 2);
+    const schedulerRef = ref("11", 0);
+    const hubOracleRef = ref("22", 0);
 
     expect(() =>
       deriveStateQueueCommitLayout({

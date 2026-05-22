@@ -1,13 +1,4 @@
 import {
-  AuthenticatedValidator,
-  DataCoercionError,
-  GenericErrorFields,
-  LucidError,
-  MissingDatumError,
-} from "@/common.js";
-import { Data as EffectData, Effect } from "effect";
-import { completeTxWithLocalUPLCEvalProgram } from "@/tx-completion.js";
-import {
   Assets,
   Data,
   fromText,
@@ -18,6 +9,16 @@ import {
   TxSignBuilder,
   UTxO,
 } from "@lucid-evolution/lucid";
+import { Data as EffectData, Effect } from "effect";
+
+import {
+  AuthenticatedValidator,
+  DataCoercionError,
+  GenericErrorFields,
+  LucidError,
+  MissingDatumError,
+} from "@/common.js";
+import { completeTxWithLocalUPLCEvalProgram } from "@/tx-completion.js";
 
 export const NODE_ASSET_NAME = fromText("Node");
 export const STATE_QUEUE_NODE_ASSET_NAME_PREFIX = fromText("MBLC");
@@ -71,9 +72,7 @@ export const LinkedListNodeViewSchema = Data.Object({
   next: NodeKeySchema,
   data: Data.Any(),
 });
-export type LinkedListNodeView = Data.Static<
-  typeof LinkedListNodeViewSchema
->;
+export type LinkedListNodeView = Data.Static<typeof LinkedListNodeViewSchema>;
 export const LinkedListNodeView =
   LinkedListNodeViewSchema as unknown as LinkedListNodeView;
 
@@ -84,7 +83,7 @@ const extractSingletonAssetName = (assets: Assets): string => {
       `Expected exactly one non-ADA linked-list authentication asset, found ${nonAdaUnits.length}`,
     );
   }
-  return nonAdaUnits[0]!.slice(56);
+  return nonAdaUnits[0].slice(56);
 };
 
 const assetNameToNodeKey = (assetName: string): NodeKey => {
@@ -93,10 +92,7 @@ const assetNameToNodeKey = (assetName: string): NodeKey => {
   );
   return {
     Key: {
-      key:
-        prefix === undefined
-          ? assetName
-          : assetName.slice(prefix.length),
+      key: prefix === undefined ? assetName : assetName.slice(prefix.length),
     },
   };
 };
@@ -159,28 +155,28 @@ export const encodeLinkedListNodeView = (
 export const getLinkedListNodeViewFromUTxO = (
   nodeUTxO: UTxO,
 ): Effect.Effect<LinkedListNodeView, DataCoercionError | MissingDatumError> => {
-  const datumCBOR = nodeUTxO.datum;
-  if (datumCBOR) {
-    try {
-      const linkedListDatum = Data.from(datumCBOR, LinkedListDatum);
-      const assetName = extractSingletonAssetName(nodeUTxO.assets);
-      return Effect.succeed(
-        linkedListDatumToNodeView(linkedListDatum, assetName),
-      );
-    } catch (e) {
-      return Effect.fail(
-        new DataCoercionError({
-          message:
-            "Could not derive linked-list node view from provided UTxO datum",
-          cause: e,
-        }),
-      );
-    }
-  } else {
+  if (!nodeUTxO.datum) {
     return Effect.fail(
       new MissingDatumError({
         message: "Provided UTxO was expected to carry an inline datum",
         cause: `No datum found in ${nodeUTxO.txHash}.${nodeUTxO.outputIndex}`,
+      }),
+    );
+  }
+
+  try {
+    return Effect.succeed(
+      linkedListDatumToNodeView(
+        Data.from(nodeUTxO.datum, LinkedListDatum),
+        extractSingletonAssetName(nodeUTxO.assets),
+      ),
+    );
+  } catch (e) {
+    return Effect.fail(
+      new DataCoercionError({
+        message:
+          "Could not derive linked-list node view from provided UTxO datum",
+        cause: e,
       }),
     );
   }
@@ -218,21 +214,23 @@ export const incompleteInitLinkedListTxProgram = (
       link: null,
     };
 
-    const encodedDatum = Data.to<LinkedListDatum>(nodeDatum, LinkedListDatum);
-    const tx = lucid
+    return lucid
       .newTx()
       .mintAssets(assets, params.redeemer)
       .pay.ToAddressWithData(
         params.validator.spendingScriptAddress,
-        { kind: "inline", value: encodedDatum },
         {
-          ...(params.lovelace === undefined ? {} : { lovelace: params.lovelace }),
+          kind: "inline",
+          value: Data.to<LinkedListDatum>(nodeDatum, LinkedListDatum),
+        },
+        {
+          ...(params.lovelace === undefined
+            ? {}
+            : { lovelace: params.lovelace }),
           ...assets,
         },
       )
       .attach.Script(params.validator.mintingScript);
-
-    return tx;
   });
 
 export const unsignedLinkedListTxProgram = (
@@ -240,19 +238,14 @@ export const unsignedLinkedListTxProgram = (
   initParams: LinkedListInitParams,
 ): Effect.Effect<TxSignBuilder, LucidError> =>
   Effect.gen(function* () {
-    const commitTx = yield* incompleteInitLinkedListTxProgram(
-      lucid,
-      initParams,
-    );
-    const completedTx: TxSignBuilder = yield* completeTxWithLocalUPLCEvalProgram(
-      commitTx,
+    return yield* completeTxWithLocalUPLCEvalProgram(
+      yield* incompleteInitLinkedListTxProgram(lucid, initParams),
       (e) =>
         new LucidError({
           message: `Failed to build the linked list initialization transaction: ${e}`,
           cause: e,
         }),
     );
-    return completedTx;
   });
 
 /**

@@ -1,45 +1,47 @@
-import { describe, expect, it } from "vitest";
-import { encode } from "cborg";
 import fs from "node:fs";
 import path from "node:path";
-import { CML, Constr, Data } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+
 import {
+  computeHash32,
+  computeMidgardNativeTxId,
+  computeScriptIntegrityHashForLanguages,
+  decodeMidgardNativeScript,
+  deriveMidgardNativeTxBodyCompact,
+  deriveMidgardNativeTxCompact,
+  encodeMidgardNativeTxBodyCompact,
+  encodeMidgardNativeTxCanonical,
+  encodeMidgardVersionedScriptListPreimage,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  computeScriptIntegrityHashForLanguages,
-  computeHash32,
-  computeMidgardNativeTxId,
-  deriveMidgardNativeTxBodyCompact,
-  deriveMidgardNativeTxCompact,
-  encodeCborArrayRaw,
-  encodeMidgardNativeTxBodyCompact,
-  encodeMidgardNativeTxFull,
-  decodeMidgardNativeScript,
-  encodeMidgardVersionedScriptListPreimage,
-  ScriptLanguageTags,
-  type ScriptLanguageName,
   type MidgardNativeTxBodyCanonical,
   type MidgardNativeTxFull,
   type MidgardNativeTxWitnessSetCanonical,
   type MidgardVersionedScript,
+  type ScriptLanguageName,
+  ScriptLanguageTags,
 } from "@al-ft/midgard-core/codec";
-import { findSpentAndProducedUTxOs, breakDownTx } from "@/utils.js";
 import {
+  type QueuedTx,
   RejectCodes,
   runPhaseAValidation,
   runPhaseBValidationWithPatch,
   txOutRefData,
-  type QueuedTx,
 } from "@al-ft/midgard-validation";
+import { MidgardRedeemerTag } from "@al-ft/midgard-validation/midgard-redeemers";
+import { CML, Constr, Data } from "@lucid-evolution/lucid";
+import { encode } from "cborg";
+import { Effect } from "effect";
+import { describe, expect, it } from "vitest";
+
+import { breakDownTx, findSpentAndProducedUTxOs } from "@/utils.js";
+
 import {
-  makeMidgardTxOutput,
-  protectOutputAddressBytes,
   hashMidgardV1Script,
   hashPlutusV3Script,
+  makeMidgardTxOutput,
+  protectOutputAddressBytes,
 } from "./midgard-output-helpers.js";
-import { MidgardRedeemerTag } from "@al-ft/midgard-validation/midgard-redeemers";
 
 const EMPTY_CBOR_LIST = Buffer.from([0x80]);
 const EMPTY_CBOR_NULL = Buffer.from([0xf6]);
@@ -107,9 +109,6 @@ const MIDGARD_V1_RECEIVE_GUARD_SCRIPT_HEX = loadAlwaysSucceedsCompiledCode(
 );
 const MIDGARD_V1_OBSERVE_GUARD_SCRIPT_HEX = loadAlwaysSucceedsCompiledCode(
   "midgard.midgard_v1_observe_guard.else",
-);
-const MIDGARD_V1_ALWAYS_FAIL_SCRIPT_HEX = loadAlwaysSucceedsCompiledCode(
-  "midgard.midgard_v1_always_fail.else",
 );
 const MIDGARD_V1_CONTEXT_PROBE_SCRIPT_HEX = loadAlwaysSucceedsCompiledCode(
   "midgard.midgard_v1_context_probe.else",
@@ -633,7 +632,7 @@ const buildNativeTx = (opts?: {
     witnessSet,
   };
 
-  const txCbor = encodeMidgardNativeTxFull(tx);
+  const txCbor = encodeMidgardNativeTxCanonical(tx);
   const txId = computeMidgardNativeTxId(tx);
 
   return {
@@ -687,7 +686,7 @@ const attachComputedScriptIntegrityHash = (
     ...fixture,
     tx,
     txId: computeMidgardNativeTxId(tx),
-    txCbor: encodeMidgardNativeTxFull(tx),
+    txCbor: encodeMidgardNativeTxCanonical(tx),
   };
 };
 
@@ -923,7 +922,7 @@ describe("native transaction integration", () => {
       ),
     };
     const txId = computeMidgardNativeTxId(fullTx);
-    const txCbor = encodeMidgardNativeTxFull(fullTx);
+    const txCbor = encodeMidgardNativeTxCanonical(fullTx);
 
     const result = await Effect.runPromise(
       runPhaseAValidation([mkQueued(txId, txCbor)], phaseAConfig),
@@ -1063,7 +1062,7 @@ describe("native transaction integration", () => {
       ),
     };
     const txId = computeMidgardNativeTxId(fullTx);
-    const txCbor = encodeMidgardNativeTxFull(fullTx);
+    const txCbor = encodeMidgardNativeTxCanonical(fullTx);
 
     const result = await Effect.runPromise(
       runPhaseAValidation([mkQueued(txId, txCbor)], phaseAConfig),
@@ -1931,7 +1930,7 @@ describe("native transaction integration", () => {
       ),
     };
     const txId = computeMidgardNativeTxId(tx);
-    const txCbor = encodeMidgardNativeTxFull(tx);
+    const txCbor = encodeMidgardNativeTxCanonical(tx);
     const { inputOutRef, referenceInputOutRef } = withScriptDataHash;
 
     const preState = new Map<string, Buffer>([
@@ -2397,7 +2396,7 @@ describe("native transaction integration", () => {
         tx.version,
       );
     const txId = computeMidgardNativeTxId(tx);
-    const txCbor = encodeMidgardNativeTxFull(tx);
+    const txCbor = encodeMidgardNativeTxCanonical(tx);
     const { inputOutRef, referenceInputOutRef } = withScriptDataHash;
 
     const preState = new Map<string, Buffer>([
@@ -3897,7 +3896,7 @@ describe("native transaction integration", () => {
     (tx as { compact: typeof tx.compact }).compact =
       deriveMidgardNativeTxCompact(tx.body, tx.witnessSet, "TxIsValid");
     const txId = computeMidgardNativeTxId(tx);
-    const txCbor = encodeMidgardNativeTxFull(tx);
+    const txCbor = encodeMidgardNativeTxCanonical(tx);
 
     const result = await Effect.runPromise(
       runPhaseAValidation([mkQueued(txId, txCbor)], phaseAConfig),
@@ -3923,7 +3922,7 @@ describe("native transaction integration", () => {
     (tx as { compact: typeof tx.compact }).compact =
       deriveMidgardNativeTxCompact(tx.body, tx.witnessSet, "TxIsValid");
     const txId = computeMidgardNativeTxId(tx);
-    const txCbor = encodeMidgardNativeTxFull(tx);
+    const txCbor = encodeMidgardNativeTxCanonical(tx);
 
     const result = await Effect.runPromise(
       runPhaseAValidation([mkQueued(txId, txCbor)], phaseAConfig),

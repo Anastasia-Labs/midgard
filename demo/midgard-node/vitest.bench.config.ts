@@ -1,6 +1,7 @@
-import { defineConfig } from "vitest/config";
 import fs from "node:fs";
+
 import path from "path";
+import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   plugins: [

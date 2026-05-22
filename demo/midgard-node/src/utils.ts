@@ -1,15 +1,16 @@
-import { CML } from "@lucid-evolution/lucid";
-import * as chalk_ from "chalk";
-import { Data, Effect, pipe } from "effect";
-import * as Ledger from "@/database/utils/ledger.js";
-import * as SDK from "@al-ft/midgard-sdk";
 import {
   computeMidgardNativeTxId,
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFull,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeMidgardTxOutput,
   encodeMidgardAddressText,
 } from "@al-ft/midgard-core/codec";
+import * as SDK from "@al-ft/midgard-sdk";
+import { CML } from "@lucid-evolution/lucid";
+import * as chalk_ from "chalk";
+import { Data, Effect, pipe } from "effect";
+
+import * as Ledger from "@/database/utils/ledger.js";
 
 export type ProcessedTx = {
   txId: Buffer;
@@ -20,11 +21,6 @@ export type ProcessedTx = {
 
 export const chalk = new chalk_.Chalk();
 
-export const isHexString = (str: string): boolean => {
-  const hexRegex = /^[0-9A-Fa-f]+$/;
-  return hexRegex.test(str);
-};
-
 export const findSpentAndProducedUTxOs = (
   txCBOR: Buffer,
   txHash?: Buffer,
@@ -34,7 +30,7 @@ export const findSpentAndProducedUTxOs = (
 > =>
   Effect.gen(function* () {
     const nativeTx = yield* Effect.try({
-      try: () => decodeMidgardNativeTxFull(txCBOR),
+      try: () => decodeMidgardNativeTxFullFromCanonicalCbor(txCBOR),
       catch: (e) =>
         new SDK.CmlUnexpectedError({
           message: `Failed to decode Midgard-native tx payload`,
@@ -103,7 +99,7 @@ export const breakDownTx = (
 ): Effect.Effect<ProcessedTx, SDK.CmlDeserializationError> =>
   Effect.gen(function* () {
     const nativeTx = yield* Effect.try({
-      try: () => decodeMidgardNativeTxFull(txCbor),
+      try: () => decodeMidgardNativeTxFullFromCanonicalCbor(txCbor),
       catch: (e) =>
         new SDK.CmlDeserializationError({
           message: `Failed to deserialize Midgard-native transaction`,

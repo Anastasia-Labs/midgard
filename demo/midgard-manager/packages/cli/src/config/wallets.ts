@@ -1,8 +1,9 @@
 import { mkdir, readFile, writeFile } from 'fs/promises';
-import { join } from 'path';
-import { dirname } from 'path';
+import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 /**
  * Filesystem-backed wallet storage used by the manager CLI.
  *
@@ -15,8 +16,6 @@ import { fileURLToPath } from 'url';
  * Resolve the manager package root from the compiled module location so wallet
  * storage works regardless of the current working directory.
  */
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
 const PROJECT_ROOT = join(__dirname, '../../../..'); // Simplified path to project root
 const CONFIG_DIR = join(PROJECT_ROOT, 'config/wallets');
 const WALLET_CONFIG_PATH = join(CONFIG_DIR, 'default.json');
@@ -118,7 +117,7 @@ export const removeWallet = async (name: string): Promise<void> => {
  */
 export const getWallet = async (name: string): Promise<WalletConfig[string] | null> => {
   const wallets = await loadWallets();
-  return wallets[name] || null;
+  return wallets[name] ?? null;
 };
 
 /**

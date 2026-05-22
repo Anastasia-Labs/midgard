@@ -8,21 +8,19 @@ import {
   TxSignBuilder,
   UTxO,
 } from "@lucid-evolution/lucid";
-import {
-  GenericErrorFields,
-  makeReturn,
-  ProofSchema,
-} from "@/common.js";
-import { AuthenticUTxO, authenticateUTxOs } from "@/internals.js";
+import { Data as EffectData, Effect } from "effect";
+
+import { GenericErrorFields, makeReturn, ProofSchema } from "@/common.js";
 import {
   AddressData,
   AddressSchema,
   H32,
-  POSIXTimeSchema,
   HashingError,
   LucidError,
+  POSIXTimeSchema,
   UnspecifiedNetworkError,
 } from "@/common.js";
+import { authenticateUTxOs, AuthenticUTxO } from "@/internals.js";
 import {
   CardanoDatum,
   CardanoDatumSchema,
@@ -30,18 +28,18 @@ import {
   MidgardTxValiditySchema,
   TxOrderEventSchema,
 } from "@/ledger-state.js";
+import { completeTxWithLocalUPLCEvalProgram } from "@/tx-completion.js";
+
 import {
   buildUserEventMintTransaction,
+  encodeUserEventAuthenticateMintRedeemer,
   fetchUserEventUTxOsProgram,
   findInclusionTimeForUserEvent,
   getNonceInputAndAssetName,
-  encodeUserEventAuthenticateMintRedeemer,
   UserEventExtraFields,
   UserEventFetchConfig,
   userEventWitnessScriptHash,
 } from "./internals.js";
-import { Data as EffectData, Effect } from "effect";
-import { completeTxWithLocalUPLCEvalProgram } from "@/tx-completion.js";
 
 export const TxOrderDatumSchema = Data.Object({
   event: TxOrderEventSchema,
@@ -76,20 +74,17 @@ export type TxOrderUTxO = AuthenticUTxO<TxOrderDatum, UserEventExtraFields>;
 export const utxosToTxOrderUTxOs = (
   utxos: UTxO[],
   nftPolicy: string,
-): Effect.Effect<TxOrderUTxO[]> => {
-  const calculateExtraFields = (datum: TxOrderDatum): UserEventExtraFields => ({
-    idCbor: Buffer.from(fromHex(Data.to(datum.event.id, H32))),
-    infoCbor: Buffer.from(fromHex(Data.to(datum.event.tx, MidgardTxCompact))),
-    inclusionTime: new Date(Number(datum.inclusion_time)),
-  });
-
-  return authenticateUTxOs<TxOrderDatum, UserEventExtraFields>(
+): Effect.Effect<TxOrderUTxO[]> =>
+  authenticateUTxOs<TxOrderDatum, UserEventExtraFields>(
     utxos,
     nftPolicy,
     TxOrderDatum,
-    calculateExtraFields,
+    (datum) => ({
+      idCbor: Buffer.from(fromHex(Data.to(datum.event.id, H32))),
+      infoCbor: Buffer.from(fromHex(Data.to(datum.event.tx, MidgardTxCompact))),
+      inclusionTime: new Date(Number(datum.inclusion_time)),
+    }),
   );
-};
 
 export const fetchTxOrderUTxOsProgram = (
   lucid: LucidEvolution,
@@ -151,7 +146,7 @@ export const incompleteTxOrderTxProgram = (
     };
     const txOrderDatumCBOR = Data.to(txOrderDatum, TxOrderDatum);
 
-    const tx = buildUserEventMintTransaction({
+    return buildUserEventMintTransaction({
       lucid,
       inputUtxo,
       nft: txOrderNFT,
@@ -166,7 +161,6 @@ export const incompleteTxOrderTxProgram = (
       validTo: inclusionTime,
       mintingPolicy: params.mintingPolicy,
     });
-    return tx;
   }).pipe(
     Effect.catchAllDefect((defect) => {
       return Effect.fail(
@@ -187,7 +181,7 @@ export const unsignedTxOrderTxProgram = (
 > =>
   Effect.gen(function* () {
     const commitTx = yield* incompleteTxOrderTxProgram(lucid, depositParams);
-    const completedTx: TxSignBuilder = yield* completeTxWithLocalUPLCEvalProgram(
+    return yield* completeTxWithLocalUPLCEvalProgram(
       commitTx,
       (e) =>
         new TxOrderError({
@@ -195,7 +189,6 @@ export const unsignedTxOrderTxProgram = (
           cause: e,
         }),
     );
-    return completedTx;
   });
 
 /**

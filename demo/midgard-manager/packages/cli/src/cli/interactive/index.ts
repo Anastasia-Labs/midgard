@@ -112,7 +112,7 @@ class ManualCommandImpl {
     if (this._abortController) {
       try {
         this._abortController.abort();
-      } catch (e) {
+      } catch {
         // Ignore errors on cleanup
       }
     }
@@ -181,17 +181,17 @@ class ManualCommandImpl {
             });
             this._isPromptActive = false;
 
-            // Only show spinner for config refresh
             const configSpinner = ora({
               text: 'Refreshing configuration...',
               color: 'green',
             }).start();
+            // Only show spinner for config refresh
             this._config = await Effect.runPromise(loadConfig);
             configSpinner.succeed('Configuration updated');
 
             displaySuccess(result.message);
-            displayContinuePrompt();
             // Wait for user to press a key before continuing
+            displayContinuePrompt();
             await waitForKeypress();
           } catch (error) {
             this._isPromptActive = false;
@@ -203,8 +203,8 @@ class ManualCommandImpl {
             } else {
               displayError('Error executing action', error);
             }
-            displayContinuePrompt();
             // Wait for user to press a key before continuing
+            displayContinuePrompt();
             await waitForKeypress();
           }
         }

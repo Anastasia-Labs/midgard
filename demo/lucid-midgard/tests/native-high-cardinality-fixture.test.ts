@@ -1,22 +1,24 @@
-import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { describe, expect, it } from "vitest";
+
 import {
   buildHighCardinalityNativeTxFixture,
   buildSizeBalancedNativeTxFixture,
   HIGH_CARDINALITY_COUNTS,
+  type HighCardinalityNativeTxFixture,
+  renderHighCardinalityAikenTest,
+  renderSizeBalancedAikenTest,
   SIZE_BALANCED_COUNTS,
   SIZE_BALANCED_FEE,
   SIZE_BALANCED_FULL_TX_CBOR_TOLERANCE_BYTES,
   SIZE_BALANCED_MAX_FEE,
   SIZE_BALANCED_MAX_LIST_LENGTH,
   SIZE_BALANCED_TARGET_FULL_TX_CBOR_BYTES,
-  renderHighCardinalityAikenTest,
-  renderSizeBalancedAikenTest,
-  stableFixtureJson,
-  type HighCardinalityNativeTxFixture,
   type SizeBalancedNativeTxFixture,
+  stableFixtureJson,
 } from "./fixtures/native-high-cardinality.js";
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
@@ -97,8 +99,7 @@ describe("native high-cardinality conformance fixture", () => {
     );
     expect(
       Math.abs(
-        fixture.sizes.fullTxCborBytes -
-          SIZE_BALANCED_TARGET_FULL_TX_CBOR_BYTES,
+        fixture.sizes.fullTxCborBytes - SIZE_BALANCED_TARGET_FULL_TX_CBOR_BYTES,
       ),
     ).toBeLessThanOrEqual(SIZE_BALANCED_FULL_TX_CBOR_TOLERANCE_BYTES);
     for (const count of Object.values(fixture.counts)) {

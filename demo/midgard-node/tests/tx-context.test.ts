@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import { compareOutRefs, resolveOutRefIndexFromSet } from "@/tx-context.js";
 
 describe("tx context ordering", () => {

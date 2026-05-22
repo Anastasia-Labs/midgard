@@ -1,11 +1,12 @@
-import { Database } from "@/services/database.js";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
+
 import {
   clearTable,
   DatabaseError,
   sqlErrorToDatabaseError,
 } from "@/database/utils/common.js";
+import { Database } from "@/services/database.js";
 
 export const tableName = "tx_rejections";
 

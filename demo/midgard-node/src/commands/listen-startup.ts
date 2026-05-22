@@ -3,6 +3,12 @@
  * This module isolates safety checks that must run before serving traffic from
  * the steady-state wiring in the main listen entrypoint.
  */
+import * as SDK from "@al-ft/midgard-sdk";
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import { Duration, Effect, Option, Ref } from "effect";
+
+import * as ContractDeploymentInfo from "@/commands/contract-deployment-info.js";
+import { shouldRunGenesisOnStartup } from "@/commands/startup-policy.js";
 import { PendingBlockFinalizationsDB } from "@/database/index.js";
 import {
   Globals,
@@ -15,15 +21,11 @@ import {
   formatStateQueueTopology,
   refreshStateQueueGlobalsFromSnapshot,
 } from "@/services/state-queue-topology.js";
-import { shouldRunGenesisOnStartup } from "@/commands/startup-policy.js";
-import * as ContractDeploymentInfo from "@/commands/contract-deployment-info.js";
 import * as Initialization from "@/transactions/initialization.js";
 import {
   ensureNodeRuntimeReferenceScriptsProgram,
   verifyNodeRuntimeReferenceScriptsProgram,
 } from "@/transactions/reference-scripts.js";
-import * as SDK from "@al-ft/midgard-sdk";
-import { Duration, Effect, Option, Ref } from "effect";
 import { deserializeStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
 
 type CanonicalCommittedHeader = {
@@ -133,21 +135,10 @@ const writeStartupContractDeploymentInfo = Effect.gen(function* () {
 }).pipe(
   Effect.catchAll((error) =>
     Effect.logError(
-      `Failed to write startup contract deployment info: ${JSON.stringify(error)}`,
+      `Failed to write startup contract deployment info: ${formatUnknownError(error)}`,
     ),
   ),
 );
-
-const describeStartupError = (error: unknown): string => {
-  if (error instanceof Error) {
-    return `${error.name}: ${error.message}`;
-  }
-  try {
-    return JSON.stringify(error) ?? String(error);
-  } catch {
-    return String(error);
-  }
-};
 
 const isRetryableProtocolStatusError = (error: SDK.LucidError): boolean =>
   error.message.startsWith("Failed to fetch ") ||
@@ -185,7 +176,7 @@ export const fetchProtocolDeploymentStatusWithStartupRetry = (
       }
       if (attempt < maxAttempts) {
         yield* Effect.logWarning(
-          `Startup protocol deployment status query failed (attempt ${attempt.toString()}/${maxAttempts.toString()}); retrying in ${retryDelayMs.toString()}ms. cause=${describeStartupError(lastError)}`,
+          `Startup protocol deployment status query failed (attempt ${attempt.toString()}/${maxAttempts.toString()}); retrying in ${retryDelayMs.toString()}ms. cause=${formatUnknownError(lastError)}`,
         );
         if (retryDelayMs > 0) {
           yield* Effect.sleep(Duration.millis(retryDelayMs));
@@ -197,7 +188,7 @@ export const fetchProtocolDeploymentStatusWithStartupRetry = (
       new SDK.LucidError({
         message:
           "Startup protocol deployment status query failed after bounded retries",
-        cause: `attempts=${maxAttempts.toString()},last_cause=${describeStartupError(lastError)}`,
+        cause: `attempts=${maxAttempts.toString()},last_cause=${formatUnknownError(lastError)}`,
       }),
     );
   });
@@ -241,13 +232,12 @@ export const ensureProtocolInitializedOnStartup = Effect.gen(function* () {
   });
   const lucid = yield* Lucid;
   const contracts = yield* MidgardContracts;
-  const deploymentStatus =
-    yield* fetchProtocolDeploymentStatusWithStartupRetry(
-      () => Initialization.fetchProtocolDeploymentStatus(lucid.api, contracts),
-      {
-        maxAttempts: nodeConfig.STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS,
-        retryDelayMs: nodeConfig.STARTUP_PROTOCOL_STATUS_QUERY_RETRY_DELAY_MS,
-      },
+  const deploymentStatus = yield* fetchProtocolDeploymentStatusWithStartupRetry(
+    () => Initialization.fetchProtocolDeploymentStatus(lucid.api, contracts),
+    {
+      maxAttempts: nodeConfig.STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS,
+      retryDelayMs: nodeConfig.STARTUP_PROTOCOL_STATUS_QUERY_RETRY_DELAY_MS,
+    },
   );
   const details = formatStateQueueTopology(deploymentStatus.stateQueueTopology);
 
@@ -301,7 +291,7 @@ export const ensureProtocolInitializedOnStartup = Effect.gen(function* () {
 }).pipe(
   Effect.tapError((e) =>
     Effect.logError(
-      `Startup protocol initialization failed: ${JSON.stringify(e)}`,
+      `Startup protocol initialization failed: ${formatUnknownError(e)}`,
     ),
   ),
   Effect.orDie,
@@ -390,7 +380,7 @@ export const seedLatestLocalBlockBoundaryOnStartup = Effect.gen(function* () {
 }).pipe(
   Effect.tapError((e) =>
     Effect.logError(
-      `Failed to seed latest local block boundary on startup: ${JSON.stringify(e)}`,
+      `Failed to seed latest local block boundary on startup: ${formatUnknownError(e)}`,
     ),
   ),
   Effect.orDie,
@@ -441,7 +431,7 @@ export const hydratePendingBlockFinalizationOnStartup = Effect.gen(
 ).pipe(
   Effect.tapError((error) =>
     Effect.logError(
-      `Failed to hydrate pending block-finalization journal on startup: ${JSON.stringify(error)}`,
+      `Failed to hydrate pending block-finalization journal on startup: ${formatUnknownError(error)}`,
     ),
   ),
   Effect.orDie,

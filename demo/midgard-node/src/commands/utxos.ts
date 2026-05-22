@@ -1,23 +1,21 @@
-import * as MempoolLedgerDB from "@/database/mempoolLedger.js";
-import { DatabaseError } from "@/database/utils/common.js";
-import { Database } from "@/services/database.js";
 import {
   decodeMidgardTxOutput,
   encodeMidgardAddressText,
   midgardValueToCmlValue,
 } from "@al-ft/midgard-core/codec";
-import { compareOutRefs } from "@/tx-context.js";
 import {
-  parseAddressArgument,
-  parseTxOutRefLabel,
-} from "@/commands/command-utils.js";
-import {
-  CML,
-  valueToAssets,
   type Assets,
+  CML,
   type UTxO,
+  valueToAssets,
 } from "@lucid-evolution/lucid";
 import { Data as EffectData, Effect } from "effect";
+
+import { parseTxOutRefLabel } from "@/commands/command-utils.js";
+import * as MempoolLedgerDB from "@/database/mempoolLedger.js";
+import { DatabaseError } from "@/database/utils/common.js";
+import { Database } from "@/services/database.js";
+import { compareOutRefs } from "@/tx-context.js";
 
 /**
  * Tagged error for the `utxos` command path.
@@ -184,12 +182,7 @@ export const utxosProgram = (
 > =>
   Effect.gen(function* () {
     const entries = yield* MempoolLedgerDB.retrieveByAddress(address);
-    const decoded = yield* Effect.forEach(entries, (entry) =>
-      decodeStoredUtxo({
-        outref: entry.outref,
-        output: entry.output,
-      }),
-    );
+    const decoded = yield* Effect.forEach(entries, decodeStoredUtxo);
     const utxos = [...decoded].sort(compareOutRefs);
 
     return {
@@ -212,11 +205,5 @@ export const utxosByTxOutRefsProgram = (
       return [];
     }
     const entries = yield* MempoolLedgerDB.retrieveByTxOutRefs(txOutRefs);
-    return orderStoredUtxosByOutRef(
-      txOutRefs,
-      entries.map((entry) => ({
-        outref: entry.outref,
-        output: entry.output,
-      })),
-    );
+    return orderStoredUtxosByOutRef(txOutRefs, entries);
   });

@@ -1,26 +1,42 @@
 import "./utils.js";
 
 import { randomUUID } from "node:crypto";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { Effect, Ref } from "effect";
+
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
+  coreToTxOutput,
   Data,
   Emulator,
-  Lucid as makeLucid,
-  PROTOCOL_PARAMETERS_DEFAULT,
-  coreToTxOutput,
   generateEmulatorAccount,
-  paymentCredentialOf,
-  toUnit,
-  walletFromSeed,
+  Lucid as makeLucid,
   type LucidEvolution,
+  paymentCredentialOf,
+  PROTOCOL_PARAMETERS_DEFAULT,
+  toUnit,
   type TxSignBuilder,
   type UTxO,
+  walletFromSeed,
 } from "@lucid-evolution/lucid";
-import { utxosProgram } from "@/commands/utxos.js";
+import { Effect, Ref } from "effect";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { resolveEventSettlementProofProgram } from "@/commands/event-settlement-proof.js";
+import { fetchWithdrawalsOnceProgram } from "@/commands/fetch-withdrawals-once.js";
 import { seedLatestLocalBlockBoundaryOnStartup } from "@/commands/listen-startup.js";
+import {
+  payoutStatusProgram,
+  reserveUtxosProgram,
+} from "@/commands/reserve-inspection.js";
+import {
+  absorbConfirmedDepositToReserveProgram,
+  addReserveFundsToPayoutProgram,
+  concludePayoutProgram,
+  initializePayoutProgram,
+} from "@/commands/reserve-payout.js";
+import { withdrawalEventIdFromBuildMetadata } from "@/commands/submit-withdrawal.js";
+import { utxosProgram } from "@/commands/utxos.js";
+import { withdrawalStatusProgram } from "@/commands/withdrawal-status.js";
 import {
   AddressHistoryDB,
   BlocksDB,
@@ -43,6 +59,7 @@ import {
 } from "@/database/index.js";
 import { buildBlockConfirmationAction } from "@/fibers/block-confirmation.js";
 import { mergeAction } from "@/fibers/merge.js";
+import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
 import {
   Database,
   Globals,
@@ -50,7 +67,6 @@ import {
   MidgardContracts,
   NodeConfig,
 } from "@/services/index.js";
-import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
 import { withRealStateQueueAndOperatorContracts } from "@/services/midgard-contracts.js";
 import {
   type AtomicProtocolInitReferenceScripts,
@@ -58,50 +74,36 @@ import {
   createFraudProofCatalogueMpf,
   fraudProofsToIndexedValidators,
 } from "@/transactions/initialization.js";
+import { ensurePhasMembershipRewardAccountRegisteredProgram } from "@/transactions/phas-membership-registration.js";
 import {
   activateOperatorProgram,
   deployReferenceScriptCommandProgram,
   registerOperatorProgram,
 } from "@/transactions/register-active-operator.js";
-import {
-  type SubmitDepositReferenceScripts,
-  buildUnsignedDepositTxFromFundingContextProgram,
-  buildUnsignedDepositTxProgram,
-} from "@/transactions/submit-deposit.js";
-import {
-  type SubmitWithdrawalReferenceScripts,
-  buildUnsignedWithdrawalTxWithMetadataProgram,
-} from "@/transactions/submit-withdrawal.js";
-import { ensurePhasMembershipRewardAccountRegisteredProgram } from "@/transactions/phas-membership-registration.js";
-import { signWithdrawalBody } from "@/withdrawal-signature.js";
-import { withdrawalEventIdFromBuildMetadata } from "@/commands/submit-withdrawal.js";
 import { assetsToValue } from "@/transactions/reserve-payout.js";
 import {
-  absorbConfirmedDepositToReserveProgram,
-  addReserveFundsToPayoutProgram,
-  concludePayoutProgram,
-  initializePayoutProgram,
-} from "@/commands/reserve-payout.js";
+  buildUnsignedDepositTxFromFundingContextProgram,
+  buildUnsignedDepositTxProgram,
+  type SubmitDepositReferenceScripts,
+} from "@/transactions/submit-deposit.js";
 import {
-  payoutStatusProgram,
-  reserveUtxosProgram,
-} from "@/commands/reserve-inspection.js";
-import { resolveEventSettlementProofProgram } from "@/commands/event-settlement-proof.js";
-import { fetchWithdrawalsOnceProgram } from "@/commands/fetch-withdrawals-once.js";
-import { withdrawalStatusProgram } from "@/commands/withdrawal-status.js";
+  buildUnsignedWithdrawalTxWithMetadataProgram,
+  type SubmitWithdrawalReferenceScripts,
+} from "@/transactions/submit-withdrawal.js";
+import { collectSortedInputOutRefs, outRefLabel } from "@/tx-context.js";
+import { signWithdrawalBody } from "@/withdrawal-signature.js";
 import { runCommitBlockHeaderWorkerProgram } from "@/workers/commit-block-header.js";
 import { runConfirmBlockCommitmentsWorkerProgram } from "@/workers/confirm-block-commitments.js";
 import {
   serializeStateQueueUTxO,
   type WorkerInput as CommitWorkerInput,
 } from "@/workers/utils/commit-block-header.js";
+import { WorkerError } from "@/workers/utils/common.js";
 import {
   type WorkerInput as ConfirmationWorkerInput,
   type WorkerOutput as ConfirmationWorkerOutput,
 } from "@/workers/utils/confirm-block-commitments.js";
-import { WorkerError } from "@/workers/utils/common.js";
 import { deleteMpfStore, keyValuePhasRoot } from "@/workers/utils/mpf.js";
-import { collectSortedInputOutRefs, outRefLabel } from "@/tx-context.js";
 
 const EMULATOR_PROTOCOL_PARAMETERS = {
   ...PROTOCOL_PARAMETERS_DEFAULT,
@@ -114,9 +116,6 @@ const EMULATOR_PROTOCOL_PARAMETERS = {
 
 const REQUIRED_BOND_LOVELACE = BigInt(
   process.env.OPERATOR_REQUIRED_BOND_LOVELACE ?? "5000000",
-);
-const SLASHING_PENALTY_LOVELACE = BigInt(
-  process.env.OPERATOR_SLASHING_PENALTY_LOVELACE ?? "200000",
 );
 const REGISTRATION_ACTIVATION_DELAY_SLOTS = 180;
 // This harness exercises the real initialization, deposit submission, deposit
@@ -168,10 +167,6 @@ const loadContracts = (oneShotOutRef: {
         "Preprod",
         placeholder,
         oneShotOutRef,
-        {
-          requiredBondLovelace: REQUIRED_BOND_LOVELACE,
-          slashingPenaltyLovelace: SLASHING_PENALTY_LOVELACE,
-        },
       );
     }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
   );

@@ -1,6 +1,6 @@
+import { encodeMidgardAddressBytes, type MidgardAddress } from "./address.js";
 import {
   assertCanonicalCborRoundTrip,
-  compareCborKeyBytes,
   encodeCborBytes,
   encodeCborMapRaw,
   encodeCborUnsigned,
@@ -9,10 +9,6 @@ import {
   readCborUnsigned,
   skipCborItem,
 } from "./cbor.js";
-import {
-  encodeMidgardAddressBytes,
-  type MidgardAddress,
-} from "./address.js";
 import {
   decodeMidgardDatum,
   encodeMidgardDatum,
@@ -78,7 +74,6 @@ export const encodeMidgardTxOutput = (output: MidgardTxOutput): Buffer => {
       encodeMidgardVersionedScript(output.script_ref),
     ]);
   }
-  entries.sort(([left], [right]) => compareCborKeyBytes(left, right));
   return encodeCborMapRaw(entries);
 };
 

@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
+
+import {
+  Columns as TxColumns,
+  EntryWithTimeStamp,
+} from "@/database/utils/tx.js";
 import {
   buildSuccessfulCommitBatches,
   selectCommitRoots,
 } from "@/workers/utils/commit-block-planner.js";
-import { Columns as TxColumns, EntryWithTimeStamp } from "@/database/utils/tx.js";
 
 const mkTxEntry = (seed: number): EntryWithTimeStamp => ({
   [TxColumns.TX_ID]: Buffer.from(seed.toString(16).padStart(64, "0"), "hex"),
@@ -16,9 +20,13 @@ describe("commit block planner", () => {
     const processed = [mkTxEntry(1), mkTxEntry(2), mkTxEntry(3)];
     const batches = buildSuccessfulCommitBatches([], [], processed, 2);
 
-    const txIds = batches.flatMap((b) => b.blockTxHashes).map((b) => b.toString("hex"));
+    const txIds = batches
+      .flatMap((b) => b.blockTxHashes)
+      .map((b) => b.toString("hex"));
     expect(txIds).toStrictEqual(processed.map((p) => p.tx_id.toString("hex")));
-    expect(batches.every((b) => b.clearMempoolTxHashes.length === 0)).toBe(true);
+    expect(batches.every((b) => b.clearMempoolTxHashes.length === 0)).toBe(
+      true,
+    );
   });
 
   it("includes both mempool and processed txs in block insertion batches", () => {
@@ -26,9 +34,16 @@ describe("commit block planner", () => {
     const mempoolHashes = mempool.map((m) => m.tx_id);
     const processed = [mkTxEntry(12), mkTxEntry(13)];
 
-    const batches = buildSuccessfulCommitBatches(mempool, mempoolHashes, processed, 2);
+    const batches = buildSuccessfulCommitBatches(
+      mempool,
+      mempoolHashes,
+      processed,
+      2,
+    );
 
-    const txIds = batches.flatMap((b) => b.blockTxHashes).map((b) => b.toString("hex"));
+    const txIds = batches
+      .flatMap((b) => b.blockTxHashes)
+      .map((b) => b.toString("hex"));
     expect(txIds).toStrictEqual([
       ...mempoolHashes.map((h) => h.toString("hex")),
       ...processed.map((p) => p.tx_id.toString("hex")),

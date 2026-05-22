@@ -1,8 +1,9 @@
-import { Data, Duration, Effect, Layer, Redacted } from "effect";
-import { PgClient } from "@effect/sql-pg";
-import { SqlClient } from "@effect/sql";
-import { ConfigError, NodeConfig } from "@/services/config.js";
 import * as SDK from "@al-ft/midgard-sdk";
+import { SqlClient } from "@effect/sql";
+import { PgClient } from "@effect/sql-pg";
+import { Data, Duration, Effect, Layer, Redacted } from "effect";
+
+import { ConfigError, NodeConfig } from "@/services/config.js";
 
 /**
  * Database service wiring for the Midgard node.

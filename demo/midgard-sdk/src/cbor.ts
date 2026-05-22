@@ -1,4 +1,5 @@
 import { fromHex, toHex } from "@lucid-evolution/lucid";
+
 import { CborDeserializationError } from "./errors.js";
 
 type CborHeader = {
@@ -16,7 +17,7 @@ const readByte = (bytes: Uint8Array, offset: number): number => {
       cause: `Unexpected end of CBOR at byte ${offset}`,
     });
   }
-  return bytes[offset]!;
+  return bytes[offset];
 };
 
 const readUint = (
@@ -33,7 +34,7 @@ const readUint = (
 
   let value = 0n;
   for (let i = 0; i < width; i += 1) {
-    value = (value << 8n) | BigInt(bytes[offset + i]!);
+    value = (value << 8n) | BigInt(bytes[offset + i]);
   }
   if (value > BigInt(Number.MAX_SAFE_INTEGER)) {
     throw new CborDeserializationError({
@@ -63,19 +64,43 @@ const readHeader = (bytes: Uint8Array, offset: number): CborHeader => {
   switch (additionalInfo) {
     case 24: {
       const { value, nextOffset } = readUint(bytes, next, 1);
-      return { majorType, additionalInfo, isIndefinite: false, value, nextOffset };
+      return {
+        majorType,
+        additionalInfo,
+        isIndefinite: false,
+        value,
+        nextOffset,
+      };
     }
     case 25: {
       const { value, nextOffset } = readUint(bytes, next, 2);
-      return { majorType, additionalInfo, isIndefinite: false, value, nextOffset };
+      return {
+        majorType,
+        additionalInfo,
+        isIndefinite: false,
+        value,
+        nextOffset,
+      };
     }
     case 26: {
       const { value, nextOffset } = readUint(bytes, next, 4);
-      return { majorType, additionalInfo, isIndefinite: false, value, nextOffset };
+      return {
+        majorType,
+        additionalInfo,
+        isIndefinite: false,
+        value,
+        nextOffset,
+      };
     }
     case 27: {
       const { value, nextOffset } = readUint(bytes, next, 8);
-      return { majorType, additionalInfo, isIndefinite: false, value, nextOffset };
+      return {
+        majorType,
+        additionalInfo,
+        isIndefinite: false,
+        value,
+        nextOffset,
+      };
     }
     case 31:
       return {
@@ -121,7 +146,10 @@ const skipIndefiniteByteOrTextString = (
     }
 
     const chunkHeader = readHeader(bytes, cursor);
-    if (chunkHeader.majorType !== expectedMajorType || chunkHeader.isIndefinite) {
+    if (
+      chunkHeader.majorType !== expectedMajorType ||
+      chunkHeader.isIndefinite
+    ) {
       throw new CborDeserializationError({
         message: "Failed to normalize root CBOR array encoding",
         cause: `Invalid CBOR chunk inside indefinite string at byte ${cursor}`,
@@ -145,7 +173,11 @@ const skipItem = (bytes: Uint8Array, offset: number): number => {
     case 2:
     case 3:
       return header.isIndefinite
-        ? skipIndefiniteByteOrTextString(bytes, header.nextOffset, header.majorType)
+        ? skipIndefiniteByteOrTextString(
+            bytes,
+            header.nextOffset,
+            header.majorType,
+          )
         : skipDefiniteByteOrTextString(
             bytes,
             header.nextOffset,

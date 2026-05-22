@@ -1,12 +1,11 @@
 import {
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFull,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
-import {
-  describe,
-  expect,
-  it } from "vitest";
+import { CML, valueToAssets } from "@lucid-evolution/lucid";
+import { describe, expect, it } from "vitest";
+
 import {
   BuilderInvariantError,
   decodeMidgardUtxo,
@@ -14,13 +13,12 @@ import {
   InsufficientFundsError,
   LucidMidgard,
   makeVKeyWitness,
-  outRefToCbor,
-  walletFromExternalSigner,
   type MidgardProvider,
   type MidgardUtxo,
   type OutRef,
+  outRefToCbor,
+  walletFromExternalSigner,
 } from "../src/index.js";
-import { CML, valueToAssets } from "@lucid-evolution/lucid";
 
 const address =
   "addr_test1qq4jrrcfzylccwgqu3su865es52jkf7yzrdu9cw3z84nycnn3zz9lvqj7vs95tej896xkekzkufhpuk64ja7pga2g8ksdf8km4";
@@ -145,13 +143,7 @@ describe("TxBuilder balancing and fees", () => {
     const fixture = walletFixture();
     const midgard = await LucidMidgard.new(
       makeProvider(
-        [
-          makeUtxo(
-            makeOutRef(0x12),
-            { lovelace: 5_000_000n },
-            fixture.address,
-          ),
-        ],
+        [makeUtxo(makeOutRef(0x12), { lovelace: 5_000_000n }, fixture.address)],
         { minFeeA: 1n, minFeeB: 0n },
       ),
       { network: "Preview", networkId: 0 },
@@ -191,7 +183,7 @@ describe("TxBuilder balancing and fees", () => {
       .newTx()
       .pay.ToAddress(address, { lovelace: 2_000_000n, [unit]: 4n })
       .complete({ changeAddress: address, feePolicy: "provider" });
-    const tx = decodeMidgardNativeTxFull(completed.txCbor);
+    const tx = decodeMidgardNativeTxFullFromCanonicalCbor(completed.txCbor);
     const outputs = decodeMidgardNativeByteListPreimage(
       tx.body.outputsPreimageCbor,
     );
@@ -209,10 +201,10 @@ describe("TxBuilder balancing and fees", () => {
 
   it("does not create a change output for exact-spend completion", async () => {
     const midgard = await LucidMidgard.new(
-      makeProvider(
-        [makeUtxo(makeOutRef(0x11), { lovelace: 1_200_000n })],
-        { minFeeA: 0n, minFeeB: 200_000n },
-      ),
+      makeProvider([makeUtxo(makeOutRef(0x11), { lovelace: 1_200_000n })], {
+        minFeeA: 0n,
+        minFeeB: 200_000n,
+      }),
       { network: "Preview", networkId: 0 },
     );
 
@@ -245,10 +237,10 @@ describe("TxBuilder balancing and fees", () => {
 
   it("marks insufficient lovelace errors as fee-inclusive after convergence", async () => {
     const midgard = await LucidMidgard.new(
-      makeProvider(
-        [makeUtxo(makeOutRef(0x11), { lovelace: 1_100_000n })],
-        { minFeeA: 0n, minFeeB: 200_000n },
-      ),
+      makeProvider([makeUtxo(makeOutRef(0x11), { lovelace: 1_100_000n })], {
+        minFeeA: 0n,
+        minFeeB: 200_000n,
+      }),
     );
 
     await expect(
@@ -297,10 +289,10 @@ describe("TxBuilder balancing and fees", () => {
 
   it("uses provider balancing by default when a wallet is selected", async () => {
     const midgard = await LucidMidgard.new(
-      makeProvider(
-        [makeUtxo(makeOutRef(0x11), { lovelace: 2_000_000n })],
-        { minFeeA: 0n, minFeeB: 200_000n },
-      ),
+      makeProvider([makeUtxo(makeOutRef(0x11), { lovelace: 2_000_000n })], {
+        minFeeA: 0n,
+        minFeeB: 200_000n,
+      }),
       { network: "Preview", networkId: 0 },
     );
     midgard.selectWallet.fromExternalSigner(walletForAddress());
@@ -332,13 +324,13 @@ describe("TxBuilder balancing and fees", () => {
       .newTx()
       .pay.ToAddress(address, { lovelace: 1_000_000n, [unit]: 1n })
       .complete({ changeAddress: address, feePolicy: "provider" });
-    const tx = decodeMidgardNativeTxFull(completed.txCbor);
+    const tx = decodeMidgardNativeTxFullFromCanonicalCbor(completed.txCbor);
     const inputs = decodeMidgardNativeByteListPreimage(
       tx.body.spendInputsPreimageCbor,
     ).map((bytes) => CML.TransactionInput.from_cbor_bytes(bytes));
 
-    expect(
-      inputs.map((input) => input.transaction_id().to_hex()),
-    ).toEqual(["ff".repeat(32)]);
+    expect(inputs.map((input) => input.transaction_id().to_hex())).toEqual([
+      "ff".repeat(32),
+    ]);
   });
 });

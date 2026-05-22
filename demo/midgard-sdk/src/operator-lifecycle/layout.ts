@@ -3,23 +3,21 @@
  * This module is the canonical bridge between balanced draft transactions and
  * the ledger-ordered witness, redeemer, and policy-output layout they imply.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import { compareHex } from "@al-ft/midgard-core/hex";
+import * as SDK from "@/operator-lifecycle/primitives.js";
 import {
   CML,
+  coreToTxOutput,
   Data as LucidData,
   type UTxO,
-  coreToTxOutput,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
+
 import {
   collectSortedInputOutRefs,
   findOutRefIndex,
   resolveOutRefIndexFromSet,
-} from "@/tx-context.js";
-import {
-  getRedeemerPointersInContextOrder,
-  getTxInfoRedeemerIndexes,
-} from "@al-ft/midgard-sdk";
+} from "@/tx-out-ref-order.js";
 
 export type ReferenceScriptPublication = {
   readonly name: string;
@@ -57,8 +55,8 @@ export type ActivateRedeemerLayout = {
 /**
  * Lexicographically compares two hex strings by byte value.
  */
-const compareHex = (left: string, right: string): number =>
-  Buffer.from(left, "hex").compare(Buffer.from(right, "hex"));
+const compareHash28 = (left: string, right: string): number =>
+  compareHex(left, right, { byteLength: 28 });
 
 /**
  * Returns whether an asset unit belongs to the given policy and has positive
@@ -103,16 +101,12 @@ const resolveMintRedeemerTxInfoIndex = ({
   readonly targetPolicyId: string;
   readonly policyIds: readonly string[];
   readonly spendRedeemerCount: number;
-}): bigint => {
-  const sortedPolicyIds = [...policyIds].sort(compareHex);
-  const targetPolicyContextIndex = sortedPolicyIds.indexOf(targetPolicyId);
-  if (targetPolicyContextIndex < 0) {
-    throw new Error(
-      `Failed to resolve mint redeemer index for policy ${targetPolicyId}`,
-    );
-  }
-  return BigInt(spendRedeemerCount + targetPolicyContextIndex);
-};
+}): bigint =>
+  SDK.resolveMintPolicyTxInfoRedeemerIndexFromPolicySet({
+    policyIds,
+    targetPolicyId,
+    precedingSpendRedeemerCount: spendRedeemerCount,
+  });
 
 /**
  * Resolves the canonical reference-input index of a specific UTxO.
@@ -174,16 +168,10 @@ export const findNodeOutputIndexByUnit = (
 /**
  * Compares two register-layout derivations for exact equality.
  */
-export const registerLayoutsEqual = (
-  left: RegisterRedeemerLayout,
-  right: RegisterRedeemerLayout,
-): boolean =>
-  left.rootInputIndex === right.rootInputIndex &&
-  left.hubOracleRefInputIndex === right.hubOracleRefInputIndex &&
-  left.activeOperatorRefInputIndex === right.activeOperatorRefInputIndex &&
-  left.retiredOperatorRefInputIndex === right.retiredOperatorRefInputIndex &&
-  left.prependedNodeOutputIndex === right.prependedNodeOutputIndex &&
-  left.anchorNodeOutputIndex === right.anchorNodeOutputIndex;
+const layoutsEqual = <L extends object>(left: L, right: L): boolean =>
+  Object.entries(left).every(([key, value]) => right[key as keyof L] === value);
+
+export const registerLayoutsEqual = layoutsEqual<RegisterRedeemerLayout>;
 
 /**
  * Formats a register-layout derivation for logs.
@@ -196,27 +184,7 @@ export const registerLayoutToLogString = (
 /**
  * Compares two activate-layout derivations for exact equality.
  */
-export const activateLayoutsEqual = (
-  left: ActivateRedeemerLayout,
-  right: ActivateRedeemerLayout,
-): boolean =>
-  left.hubOracleRefInputIndex === right.hubOracleRefInputIndex &&
-  left.retiredOperatorRefInputIndex === right.retiredOperatorRefInputIndex &&
-  left.registeredOperatorsRedeemerIndex ===
-    right.registeredOperatorsRedeemerIndex &&
-  left.activeOperatorsRedeemerIndex === right.activeOperatorsRedeemerIndex &&
-  left.registeredOperatorsRemovedNodeInputIndex ===
-    right.registeredOperatorsRemovedNodeInputIndex &&
-  left.registeredOperatorsAnchorNodeInputIndex ===
-    right.registeredOperatorsAnchorNodeInputIndex &&
-  left.registeredOperatorsAnchorNodeOutputIndex ===
-    right.registeredOperatorsAnchorNodeOutputIndex &&
-  left.activeOperatorsAnchorNodeInputIndex ===
-    right.activeOperatorsAnchorNodeInputIndex &&
-  left.activeOperatorsInsertedNodeOutputIndex ===
-    right.activeOperatorsInsertedNodeOutputIndex &&
-  left.activeOperatorsAnchorNodeOutputIndex ===
-    right.activeOperatorsAnchorNodeOutputIndex;
+export const activateLayoutsEqual = layoutsEqual<ActivateRedeemerLayout>;
 
 /**
  * Formats an activate-layout derivation for logs.
@@ -436,56 +404,22 @@ const resolveMintRedeemerIndexForPolicy = (
   draftTx: CML.Transaction,
   contracts: SDK.MidgardValidators,
   targetPolicyId: string,
-): Effect.Effect<number, SDK.StateQueueError> =>
-  Effect.gen(function* () {
-    const pointers = getRedeemerPointersInContextOrder(draftTx);
-    const txInfoRedeemerIndexes = getTxInfoRedeemerIndexes(pointers);
-    const mintPolicyIds = [
-      contracts.registeredOperators.policyId,
-      contracts.activeOperators.policyId,
-    ].sort(compareHex);
-    const targetMintContextIndex = BigInt(
-      mintPolicyIds.indexOf(targetPolicyId),
-    );
-    const targetMintRedeemerContextIndex = pointers.findIndex(
-      (pointer) =>
-        pointer.tag === CML.RedeemerTag.Mint &&
-        pointer.index === targetMintContextIndex,
-    );
-    if (targetMintRedeemerContextIndex < 0) {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message: "Failed to locate mint redeemer index in balanced draft tx",
-          cause: JSON.stringify(
-            pointers.map((pointer) => ({
-              tag: pointer.tag,
-              index: pointer.index.toString(),
-            })),
-          ),
-        }),
-      );
-    }
-    const targetMintRedeemerTxInfoIndex =
-      txInfoRedeemerIndexes[targetMintRedeemerContextIndex] ?? -1;
-    if (targetMintRedeemerTxInfoIndex < 0) {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message:
-            "Failed to map mint redeemer from context order to tx-info order",
-          cause: JSON.stringify({
-            targetPolicyId,
-            targetMintRedeemerContextIndex,
-            txInfoRedeemerIndexes,
-            pointers: pointers.map((pointer, contextIndex) => ({
-              contextIndex,
-              tag: pointer.tag,
-              index: pointer.index.toString(),
-            })),
-          }),
-        }),
-      );
-    }
-    return targetMintRedeemerTxInfoIndex;
+): Effect.Effect<bigint, SDK.StateQueueError> =>
+  Effect.try({
+    try: () =>
+      SDK.resolveMintPolicyRedeemerTxInfoIndex({
+        tx: draftTx,
+        policyIds: [
+          contracts.registeredOperators.policyId,
+          contracts.activeOperators.policyId,
+        ],
+        targetPolicyId,
+      }),
+    catch: (cause) =>
+      new SDK.StateQueueError({
+        message: "Failed to resolve mint redeemer index in balanced draft tx",
+        cause,
+      }),
   });
 
 /**
@@ -715,10 +649,8 @@ export const deriveActivateRedeemerLayout = (
     return {
       hubOracleRefInputIndex,
       retiredOperatorRefInputIndex,
-      registeredOperatorsRedeemerIndex: BigInt(
-        registeredOperatorsRedeemerIndex,
-      ),
-      activeOperatorsRedeemerIndex: BigInt(activeOperatorsRedeemerIndex),
+      registeredOperatorsRedeemerIndex,
+      activeOperatorsRedeemerIndex,
       registeredOperatorsRemovedNodeInputIndex: registeredNodeInputPosition,
       registeredOperatorsAnchorNodeInputIndex: registeredAnchorInputPosition,
       registeredOperatorsAnchorNodeOutputIndex,
@@ -836,9 +768,9 @@ export const orderedNotMemberWitness = (
   keyHash: string,
 ): boolean => {
   const lowerBoundSatisfied =
-    node.key === "Empty" || compareHex(node.key.Key.key, keyHash) < 0;
+    node.key === "Empty" || compareHash28(node.key.Key.key, keyHash) < 0;
   const upperBoundSatisfied =
-    node.next === "Empty" || compareHex(keyHash, node.next.Key.key) < 0;
+    node.next === "Empty" || compareHash28(keyHash, node.next.Key.key) < 0;
   return lowerBoundSatisfied && upperBoundSatisfied;
 };
 
@@ -851,7 +783,7 @@ export const activeAppendAnchorWitness = (
   keyHash: string,
 ): boolean =>
   node.next === "Empty" &&
-  (node.key === "Empty" || compareHex(node.key.Key.key, keyHash) < 0);
+  (node.key === "Empty" || compareHash28(node.key.Key.key, keyHash) < 0);
 
 /**
  * Extracts the unique asset name minted under a given policy from an asset map.

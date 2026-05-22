@@ -1,71 +1,74 @@
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  CML,
-  Data,
-  Emulator,
-  Lucid,
-  PROTOCOL_PARAMETERS_DEFAULT,
-  applyDoubleCborEncoding,
-  applyParamsToScript,
-  credentialToAddress,
-  generateEmulatorAccount,
-  getAddressDetails,
-  mintingPolicyToId,
-  scriptHashToCredential,
-  toUnit,
-  validatorToAddress,
-  validatorToScriptHash,
-  type MintingPolicy,
-  type Network,
-  type SpendingValidator,
-  type UTxO,
-} from "@lucid-evolution/lucid";
-import {
+  compareOutRefs,
+  computeMidgardNativeTxId,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
-  MIDGARD_NATIVE_TX_VERSION,
-  MIDGARD_POSIX_TIME_NONE,
-  computeMidgardNativeTxId,
   encodeCbor,
   encodeMidgardNativeTxCompact,
+  findOutRefIndex,
   materializeMidgardNativeTxFromCanonical,
+  MIDGARD_NATIVE_TX_VERSION,
+  MIDGARD_POSIX_TIME_NONE,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
+import {
+  applyDoubleCborEncoding,
+  applyParamsToScript,
+  CML,
+  credentialToAddress,
+  Data,
+  Emulator,
+  generateEmulatorAccount,
+  getAddressDetails,
+  Lucid,
+  type MintingPolicy,
+  mintingPolicyToId,
+  type Network,
+  PROTOCOL_PARAMETERS_DEFAULT,
+  scriptHashToCredential,
+  type SpendingValidator,
+  toUnit,
+  type UTxO,
+  validatorToAddress,
+  validatorToScriptHash,
+} from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
+
 import {
   ACTIVE_OPERATORS_ROOT_ASSET_NAME,
   ActiveOperatorSpendRedeemer,
   AddressData,
+  addressDataFromBech32,
+  type AuthenticatedValidator,
   ConfirmedState,
+  EMPTY_MERKLE_TREE_ROOT,
+  encodeLinkedListNodeView,
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   FraudProofTokenDatum,
   GENESIS_HEADER_HASH,
   GENESIS_PROTOCOL_VERSION,
-  EMPTY_MERKLE_TREE_ROOT,
-  HUB_ORACLE_ASSET_NAME,
-  RETIRED_OPERATORS_ROOT_ASSET_NAME,
-  SCHEDULER_ASSET_NAME,
-  STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
-  STATE_QUEUE_ROOT_ASSET_NAME,
-  SchedulerDatum,
-  StateQueueRedeemer,
-  addressDataFromBech32,
-  encodeLinkedListNodeView,
   getHeaderFromStateQueueDatum,
   hashBlockHeader,
+  type Header as HeaderType,
   headerHashFromStateQueueUTxO,
+  HUB_ORACLE_ASSET_NAME,
   incompleteEmulatorCommitBlockHeaderTxProgram,
   incompleteRemoveLastFraudulentBlockHeaderTxProgram,
-  utxoToStateQueueUTxO,
-  type AuthenticatedValidator,
-  type Header as HeaderType,
+  RETIRED_OPERATORS_ROOT_ASSET_NAME,
+  SCHEDULER_ASSET_NAME,
+  SchedulerDatum,
   type SpendingValidator as SdkSpendingValidator,
+  STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
+  STATE_QUEUE_ROOT_ASSET_NAME,
+  StateQueueRedeemer,
+  utxoToStateQueueUTxO,
 } from "../src/index.js";
-import { compareUtxoOutRefs } from "../src/tx-out-ref-order.js";
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(moduleDir, "../../..");
@@ -216,22 +219,18 @@ const buildTestContracts = async (
   };
 };
 
-const roundTrip = <A>(value: A, schema: unknown): A =>
-  Data.from(Data.to(value, schema as never), schema as never) as A;
+type LucidDataSchema = Parameters<typeof Data.to>[1];
+
+const roundTrip = <A>(value: A, schema: LucidDataSchema): A =>
+  Data.from(Data.to(value, schema), schema) as A;
 
 const ledgerOrderedIndex = (
   candidates: readonly UTxO[],
   target: UTxO,
-  label: string,
 ): bigint => {
-  const sorted = [...candidates].sort(compareUtxoOutRefs);
-  const index = sorted.findIndex(
-    (candidate) =>
-      candidate.txHash === target.txHash &&
-      candidate.outputIndex === target.outputIndex,
-  );
-  if (index < 0) {
-    throw new Error(`Missing ${label} in candidate set`);
+  const index = findOutRefIndex([...candidates].sort(compareOutRefs), target);
+  if (index === undefined) {
+    throw new Error("Missing UTxO in candidate set");
   }
   return BigInt(index);
 };
@@ -366,7 +365,11 @@ const submitSetupTx = async ({
     protocolVersion: GENESIS_PROTOCOL_VERSION,
   };
   const rootNodeDatum = (data: unknown): string =>
-    encodeLinkedListNodeView({ key: "Empty", next: "Empty", data });
+    encodeLinkedListNodeView({
+      key: "Empty",
+      next: "Empty",
+      data: data as never,
+    });
 
   const unsigned = await lucid
     .newTx()
@@ -633,22 +636,18 @@ describe("state-queue emulator builders", () => {
     const latestBlockInputIndex = ledgerOrderedIndex(
       commitScriptInputs,
       setup.stateQueueRoot,
-      "state-queue root input",
     );
     const activeOperatorInputIndex = ledgerOrderedIndex(
       commitScriptInputs,
       setup.activeOperatorInput,
-      "active-operator input",
     );
     const stateQueueSpendRedeemerIndex = ledgerOrderedIndex(
       commitScriptInputs,
       setup.stateQueueRoot,
-      "state-queue spend redeemer",
     );
     const activeOperatorSpendRedeemerIndex = ledgerOrderedIndex(
       commitScriptInputs,
       setup.activeOperatorInput,
-      "active-operator spend redeemer",
     );
     const activeOperatorRedeemer: ActiveOperatorSpendRedeemer = {
       UpdateBondHoldNewState: {
@@ -746,7 +745,6 @@ describe("state-queue emulator builders", () => {
         fraudProofRefInputIndex: ledgerOrderedIndex(
           removeRefs,
           setup.fraudProof,
-          "fraud-proof reference input",
         ),
         slashing: {
           kind: "operatorAlreadySlashed",
@@ -754,24 +752,20 @@ describe("state-queue emulator builders", () => {
           activeOperatorsElementRefInputIndex: ledgerOrderedIndex(
             removeRefs,
             setup.activeOperatorsRoot,
-            "active-operators not-member reference input",
           ),
           retiredOperatorsElementRefInput: setup.retiredOperatorsRoot,
           retiredOperatorsElementRefInputIndex: ledgerOrderedIndex(
             removeRefs,
             setup.retiredOperatorsRoot,
-            "retired-operators not-member reference input",
           ),
         },
         anchorElementInputIndex: ledgerOrderedIndex(
           removeInputs,
           continuedRoot.utxo,
-          "state-queue anchor input",
         ),
         fraudulentNodeInputIndex: ledgerOrderedIndex(
           removeInputs,
           committedBlock.utxo,
-          "fraudulent block input",
         ),
         stateQueueSpendingScript: contracts.stateQueue.spendingScript,
         stateQueueMintingScript: contracts.stateQueue.mintingScript,

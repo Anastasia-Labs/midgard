@@ -2,25 +2,26 @@ import {
   computeHash32,
   computeMidgardNativeTxId,
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFull,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
   deriveMidgardNativeTxWitnessSetCompact,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
-  MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   MIDGARD_POSIX_TIME_NONE,
+  MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
-import { describe, expect, it } from "vitest";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
+import { describe, expect, it } from "vitest";
+
 import {
   BuilderInvariantError,
   decodeMidgardUtxo,
   encodeMidgardTxOutput,
   LucidMidgard,
-  outRefToCbor,
   type MidgardProvider,
   type MidgardUtxo,
   type OutRef,
+  outRefToCbor,
 } from "../src/index.js";
 
 const address =
@@ -125,7 +126,9 @@ describe("TxBuilder finalization", () => {
       .pay.ToProtectedAddress(address, { lovelace: 2_000_000n })
       .complete();
 
-    const decoded = decodeMidgardNativeTxFull(completed.txCbor);
+    const decoded = decodeMidgardNativeTxFullFromCanonicalCbor(
+      completed.txCbor,
+    );
     expect(completed.txId).toEqual(computeMidgardNativeTxId(decoded));
     expect(completed.toHash()).toBe(completed.txIdHex);
     expect(completed.toCBOR()).toBe(completed.txHex);
@@ -166,7 +169,7 @@ describe("TxBuilder finalization", () => {
       .collectFrom([makeUtxo(makeOutRef(0x11), { lovelace: 1_000_000n })])
       .pay.ToAddress(address, { lovelace: 1_000_000n })
       .complete();
-    const tx = decodeMidgardNativeTxFull(completed.txCbor);
+    const tx = decodeMidgardNativeTxFullFromCanonicalCbor(completed.txCbor);
     const witnessCompact = deriveMidgardNativeTxWitnessSetCompact(
       tx.witnessSet,
     );
@@ -212,7 +215,7 @@ describe("TxBuilder finalization", () => {
       .pay.ToAddress(address, { lovelace: 1_000_000n })
       .pay.ToProtectedAddress(address, { lovelace: 2_000_000n })
       .complete();
-    const tx = decodeMidgardNativeTxFull(completed.txCbor);
+    const tx = decodeMidgardNativeTxFullFromCanonicalCbor(completed.txCbor);
 
     const spendInputs = decodeMidgardNativeByteListPreimage(
       tx.body.spendInputsPreimageCbor,
@@ -442,7 +445,7 @@ describe("TxBuilder finalization", () => {
     const tx = completed.tx;
     tx.body.outputsPreimageCbor[0] ^= 0xff;
     expect(completed.tx.body.outputsPreimageCbor.toString("hex")).toBe(
-      decodeMidgardNativeTxFull(
+      decodeMidgardNativeTxFullFromCanonicalCbor(
         Buffer.from(completed.txHex, "hex"),
       ).body.outputsPreimageCbor.toString("hex"),
     );

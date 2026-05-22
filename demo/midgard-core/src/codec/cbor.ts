@@ -1,4 +1,5 @@
 import { decodeFirst, encode, rfc8949EncodeOptions } from "cborg";
+
 import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
 
 export type CborReadOptions = {
@@ -40,7 +41,10 @@ export const compareCborKeyBytes = (
 
 const ensureSafeLength = (value: bigint, offset: number): number => {
   if (value > BigInt(Number.MAX_SAFE_INTEGER)) {
-    throw err("CBOR length exceeds JavaScript safe integer range", `offset=${offset}`);
+    throw err(
+      "CBOR length exceeds JavaScript safe integer range",
+      `offset=${offset}`,
+    );
   }
   return Number(value);
 };
@@ -79,7 +83,10 @@ const readArgument = (
   const byteLength =
     additional === 24 ? 1 : additional === 25 ? 2 : additional === 26 ? 4 : 8;
   if (offset + 1 + byteLength > bytes.length) {
-    throw err("Unexpected end of CBOR while reading argument", `offset=${offset}`);
+    throw err(
+      "Unexpected end of CBOR while reading argument",
+      `offset=${offset}`,
+    );
   }
 
   let value = 0n;
@@ -93,7 +100,10 @@ const readArgument = (
     (additional === 26 && value <= 0xffffn) ||
     (additional === 27 && value <= 0xffffffffn)
   ) {
-    throw err("Non-minimal CBOR integer or length encoding", `offset=${offset}`);
+    throw err(
+      "Non-minimal CBOR integer or length encoding",
+      `offset=${offset}`,
+    );
   }
 
   return {
@@ -239,7 +249,10 @@ export const skipCborItem = (
           previousKey !== undefined &&
           compareCborKeyBytes(previousKey, keyBytes) > 0
         ) {
-          throw err("Non-canonical CBOR map key ordering", `offset=${key.start}`);
+          throw err(
+            "Non-canonical CBOR map key ordering",
+            `offset=${key.start}`,
+          );
         }
         previousKey = keyBytes;
         cursor = skipCborItem(bytes, key.end, options).end;
@@ -248,7 +261,10 @@ export const skipCborItem = (
     }
     case 6:
       if (options.allowTags !== true) {
-        throw err("CBOR tags are not valid in this Midgard codec", `offset=${offset}`);
+        throw err(
+          "CBOR tags are not valid in this Midgard codec",
+          `offset=${offset}`,
+        );
       }
       return {
         start,
@@ -256,13 +272,20 @@ export const skipCborItem = (
         major: header.major,
       };
     case 7: {
-      if (header.additional === 20 || header.additional === 21 || header.additional === 22) {
+      if (
+        header.additional === 20 ||
+        header.additional === 21 ||
+        header.additional === 22
+      ) {
         return { start, end: header.nextOffset, major: header.major };
       }
       if (header.additional === 23) {
         throw err("CBOR undefined is not valid", `offset=${offset}`);
       }
-      throw err("CBOR simple values and floats are not valid", `offset=${offset}`);
+      throw err(
+        "CBOR simple values and floats are not valid",
+        `offset=${offset}`,
+      );
     }
     default:
       throw err("Unsupported CBOR major type", `offset=${offset}`);
@@ -290,10 +313,7 @@ export const decodeSingleCbor = (
 ): unknown => {
   try {
     assertCanonicalCbor(bytes, "cbor", options);
-    const [value, remainder] = decodeFirst(bytes, DECODER_OPTIONS);
-    if (remainder.length !== 0) {
-      throw err("Trailing bytes after CBOR value");
-    }
+    const [value] = decodeFirst(bytes, DECODER_OPTIONS);
     return value;
   } catch (e) {
     if (e instanceof MidgardTxCodecError) {
@@ -328,10 +348,7 @@ export const assertCanonicalCborRoundTrip = <T>(
   const encoded = encodeDecoded(decoded);
   // Callers keep field-specific trailing-byte checks before this byte comparison.
   if (!encoded.equals(Buffer.from(original))) {
-    throw new MidgardTxCodecError(
-      MidgardTxCodecErrorCodes.CborDecode,
-      message,
-    );
+    throw new MidgardTxCodecError(MidgardTxCodecErrorCodes.CborDecode, message);
   }
   return encoded;
 };
@@ -378,9 +395,7 @@ export const encodeCborInteger = (value: bigint): Buffer =>
 export const encodeCborBytes = (value: Uint8Array): Buffer =>
   Buffer.concat([encodeArgument(2, BigInt(value.length)), Buffer.from(value)]);
 
-export const encodeCborArrayRaw = (
-  items: readonly Uint8Array[],
-): Buffer =>
+export const encodeCborArrayRaw = (items: readonly Uint8Array[]): Buffer =>
   Buffer.concat([
     encodeArgument(4, BigInt(items.length)),
     ...items.map((item) => Buffer.from(item)),
@@ -391,7 +406,10 @@ export const encodeCborMapRaw = (
 ): Buffer =>
   Buffer.concat([
     encodeArgument(5, BigInt(entries.length)),
-    ...entries.flatMap(([key, value]) => [Buffer.from(key), Buffer.from(value)]),
+    ...entries.flatMap(([key, value]) => [
+      Buffer.from(key),
+      Buffer.from(value),
+    ]),
   ]);
 
 export const encodeCborTagRaw = (tag: bigint, value: Uint8Array): Buffer =>

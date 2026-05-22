@@ -1,6 +1,7 @@
 import {
   computeMidgardNativeTxId,
-  decodeMidgardNativeTxFull,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  encodeMidgardNativeTxCanonical,
 } from "@al-ft/midgard-core/codec";
 
 /**
@@ -65,12 +66,12 @@ export const authorizeAdminRoute = (
 };
 
 /**
- * Validation result for a submitted transaction envelope CBOR payload.
+ * Validation result for a submitted canonical transaction CBOR payload.
  */
 export type SubmitTxValidation =
   | {
       readonly ok: true;
-      readonly txEnvelopeCbor: Buffer;
+      readonly txCanonicalCbor: Buffer;
       readonly byteLength: number;
     }
   | {
@@ -80,46 +81,45 @@ export type SubmitTxValidation =
     };
 
 /**
- * Validates maximum size and non-emptiness for a submitted tx envelope.
+ * Validates maximum size and non-emptiness for a submitted canonical tx.
  */
-export const validateSubmitTxEnvelopeCbor = (
-  txEnvelopeCbor: Uint8Array,
+export const validateSubmitTxCanonicalCbor = (
+  txCanonicalCbor: Uint8Array,
   maxTxBytes: number,
 ): SubmitTxValidation => {
-  if (txEnvelopeCbor.length === 0) {
+  if (txCanonicalCbor.length === 0) {
     return {
       ok: false,
       status: 400,
-      error: "Invalid transaction envelope CBOR payload",
+      error: "Invalid canonical transaction CBOR payload",
     };
   }
 
-  const byteLength = txEnvelopeCbor.length;
-  const maxAllowed = Math.max(1, maxTxBytes);
-  if (byteLength > maxAllowed) {
+  const byteLength = txCanonicalCbor.length;
+  if (byteLength > maxTxBytes) {
     return {
       ok: false,
       status: 413,
-      error: `Transaction envelope CBOR exceeds max size (${byteLength} > ${maxAllowed})`,
+      error: `Canonical transaction CBOR exceeds max size (${byteLength} > ${maxTxBytes})`,
     };
   }
 
   return {
     ok: true,
-    txEnvelopeCbor: Buffer.from(txEnvelopeCbor),
+    txCanonicalCbor: Buffer.from(txCanonicalCbor),
     byteLength,
   };
 };
 
 /**
- * Normalized result of accepting Midgard-native transaction-envelope CBOR.
+ * Normalized result of accepting Midgard-native canonical transaction CBOR.
  */
 export type NormalizedSubmitTx =
   | {
       readonly ok: true;
       readonly txId: Buffer;
       readonly txIdHex: string;
-      readonly txEnvelopeCbor: Buffer;
+      readonly txCanonicalCbor: Buffer;
       readonly source: "native";
     }
   | {
@@ -129,28 +129,30 @@ export type NormalizedSubmitTx =
     };
 
 /**
- * Normalizes a submitted tx payload into Midgard-native bytes, rejecting
- * non-envelope payloads and deriving the canonical tx id.
+ * Normalizes a submitted tx payload into canonical Midgard-native bytes and
+ * derives the canonical tx id from the materialized compact form.
  */
-export const normalizeSubmitTxEnvelopeCborToNative = (
-  txEnvelopeCbor: Uint8Array,
+export const normalizeSubmitTxCanonicalCborToNative = (
+  txCanonicalCbor: Uint8Array,
 ): NormalizedSubmitTx => {
-  const submittedTxEnvelopeCbor = Buffer.from(txEnvelopeCbor);
+  const submittedTxCanonicalCbor = Buffer.from(txCanonicalCbor);
   try {
-    const nativeTx = decodeMidgardNativeTxFull(submittedTxEnvelopeCbor);
+    const nativeTx = decodeMidgardNativeTxFullFromCanonicalCbor(
+      submittedTxCanonicalCbor,
+    );
     const txId = computeMidgardNativeTxId(nativeTx);
     return {
       ok: true,
       txId,
       txIdHex: txId.toString("hex"),
-      txEnvelopeCbor: submittedTxEnvelopeCbor,
+      txCanonicalCbor: encodeMidgardNativeTxCanonical(nativeTx),
       source: "native",
     };
   } catch (nativeDecodeError) {
     return {
       ok: false,
-      error: "Invalid transaction envelope CBOR payload",
-      detail: `native envelope decode failed: ${String(nativeDecodeError)}`,
+      error: "Invalid canonical transaction CBOR payload",
+      detail: `canonical native transaction decode failed: ${String(nativeDecodeError)}`,
     };
   }
 };

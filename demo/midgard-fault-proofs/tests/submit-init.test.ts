@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
-import { CML, walletFromSeed, type UTxO } from "@lucid-evolution/lucid";
 import { STATE_QUEUE_NODE_ASSET_NAME_PREFIX } from "@al-ft/midgard-sdk";
+import { CML, type UTxO, walletFromSeed } from "@lucid-evolution/lucid";
+import { describe, expect, it } from "vitest";
+
 import {
   resolveFraudulentHeaderHash,
   resolveProverSigner,

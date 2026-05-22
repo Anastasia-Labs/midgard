@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import { resolveTxStatus } from "@/commands/tx-status.js";
 
 describe("resolveTxStatus", () => {

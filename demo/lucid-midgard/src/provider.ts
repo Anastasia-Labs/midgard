@@ -1,3 +1,15 @@
+import {
+  computeMidgardNativeTxId,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  encodeMidgardNativeTxCanonical,
+  midgardAddressFromText,
+} from "@al-ft/midgard-core/codec";
+
+import {
+  ProviderCapabilityError,
+  ProviderHttpError,
+  ProviderPayloadError,
+} from "./core/errors.js";
 import type {
   Address,
   MidgardProtocolParameters,
@@ -6,11 +18,6 @@ import type {
   SubmitTxResult,
   TxStatus,
 } from "./core/index.js";
-import {
-  ProviderCapabilityError,
-  ProviderHttpError,
-  ProviderPayloadError,
-} from "./core/errors.js";
 import { normalizeOutRef } from "./core/out-ref.js";
 import {
   protocolInfoToParameters,
@@ -25,8 +32,7 @@ import {
 } from "./provider/diagnostics.js";
 import {
   isObject,
-  normalizeAddressForUtxoQuery,
-  normalizeSubmitTxEnvelopeCborHex,
+  parseSubmitTxCanonicalCbor,
   normalizeTxIdHex,
   parseProtocolInfo,
   parseSubmitTxResult,
@@ -61,6 +67,51 @@ export type {
 const midgardNodeProviderConstructorToken = Symbol(
   "MidgardNodeProvider.constructor",
 );
+
+const normalizeAddressForUtxoQuery = (
+  address: Address,
+  endpoint: string,
+): Address => {
+  try {
+    const normalized = address.trim();
+    midgardAddressFromText(normalized);
+    return normalized;
+  } catch (cause) {
+    throw new ProviderPayloadError(
+      endpoint,
+      "address must be a canonical Midgard address",
+      cause instanceof Error ? cause.message : String(cause),
+    );
+  }
+};
+
+const submittedTxCanonicalCbor = (
+  txCanonicalCborHex: string,
+  endpoint: string,
+  maxSubmitTxCborBytes: number,
+): { readonly txCanonicalCbor: Buffer; readonly txId: string } => {
+  const txCanonicalCbor = parseSubmitTxCanonicalCbor(
+    txCanonicalCborHex,
+    endpoint,
+    maxSubmitTxCborBytes,
+  );
+  try {
+    const tx = decodeMidgardNativeTxFullFromCanonicalCbor(txCanonicalCbor);
+    if (!encodeMidgardNativeTxCanonical(tx).equals(txCanonicalCbor)) {
+      throw new Error("transaction CBOR is not canonical");
+    }
+    return {
+      txCanonicalCbor,
+      txId: computeMidgardNativeTxId(tx).toString("hex"),
+    };
+  } catch (cause) {
+    throw new ProviderPayloadError(
+      endpoint,
+      "tx_canonical_cbor must be a canonical Midgard native transaction",
+      cause instanceof Error ? cause.message : String(cause),
+    );
+  }
+};
 
 export class MidgardNodeProvider implements MidgardProvider {
   readonly endpoint: string;
@@ -177,12 +228,12 @@ export class MidgardNodeProvider implements MidgardProvider {
 
   async getUtxoByOutRef(outRef: OutRef): Promise<MidgardUtxo | undefined> {
     const endpoint = "/utxo";
-    const normalized = normalizeOutRef(outRef);
+    const requestedOutRef = normalizeOutRef(outRef);
     const { response, payload } = await this.transport.requestJson(
       endpoint,
       undefined,
       {
-        txOutRef: txOutRefCborHex(normalized),
+        txOutRef: txOutRefCborHex(requestedOutRef),
       },
     );
     if (response.status === 404) {
@@ -198,7 +249,7 @@ export class MidgardNodeProvider implements MidgardProvider {
     }
     return requireUtxoByOutRef(
       parseUtxoResponse(payload, endpoint),
-      normalized,
+      requestedOutRef,
       endpoint,
     );
   }
@@ -238,18 +289,18 @@ export class MidgardNodeProvider implements MidgardProvider {
     );
   }
 
-  async submitTx(txCborHex: string): Promise<SubmitTxResult> {
+  async submitTx(txCanonicalCborHex: string): Promise<SubmitTxResult> {
     const endpoint = "/submit";
     const protocolInfo = await this.getProtocolInfo();
-    const normalizedTxEnvelopeCborHex = normalizeSubmitTxEnvelopeCborHex(
-      txCborHex,
+    const submittedTx = submittedTxCanonicalCbor(
+      txCanonicalCborHex,
       endpoint,
       protocolInfo.submissionLimits.maxSubmitTxCborBytes,
     );
     const { response, payload } = await this.transport.requestJson(endpoint, {
       method: "POST",
       headers: { "content-type": "application/cbor" },
-      body: Buffer.from(normalizedTxEnvelopeCborHex, "hex"),
+      body: submittedTx.txCanonicalCbor,
     });
     if (response.status !== 200 && response.status !== 202) {
       const message = isObject(payload)
@@ -265,7 +316,15 @@ export class MidgardNodeProvider implements MidgardProvider {
         retryable: response.status === 503 || response.status >= 500,
       });
     }
-    return parseSubmitTxResult(payload, response.status, endpoint);
+    const admission = parseSubmitTxResult(payload, response.status, endpoint);
+    if (admission.txId !== submittedTx.txId) {
+      throw new ProviderPayloadError(
+        endpoint,
+        "POST /submit returned a different tx id than the submitted tx",
+        `expected=${submittedTx.txId} actual=${admission.txId}`,
+      );
+    }
+    return admission;
   }
 
   async getTxStatus(txId: string): Promise<TxStatus> {
@@ -278,45 +337,29 @@ export class MidgardNodeProvider implements MidgardProvider {
         tx_hash: requestedTxId,
       },
     );
-    if (
+    const hasNotFoundStatus =
       response.status === 404 &&
       isObject(payload) &&
-      payload.status === "not_found"
-    ) {
+      payload.status === "not_found";
+    if (response.ok || hasNotFoundStatus) {
       const status = parseTxStatus(payload, endpoint);
       if (status.txId !== requestedTxId) {
         throw new ProviderPayloadError(
           endpoint,
           "GET /tx-status returned a different tx id than requested",
+          `expected=${requestedTxId} actual=${status.txId}`,
         );
       }
       return status;
     }
-    if (!response.ok) {
-      if (
-        response.status === 404 ||
-        response.status === 405 ||
-        response.status === 501
-      ) {
-        throw new ProviderCapabilityError(
-          endpoint,
-          "GET /tx-status unavailable",
-        );
-      }
-      throw new ProviderHttpError({
-        endpoint,
-        statusCode: response.status,
-        message: "GET /tx-status failed",
-        detail: JSON.stringify(payload ?? null),
-      });
+    if ([404, 405, 501].includes(response.status)) {
+      throw new ProviderCapabilityError(endpoint, "GET /tx-status unavailable");
     }
-    const status = parseTxStatus(payload, endpoint);
-    if (status.txId !== requestedTxId) {
-      throw new ProviderPayloadError(
-        endpoint,
-        "GET /tx-status returned a different tx id than requested",
-      );
-    }
-    return status;
+    throw new ProviderHttpError({
+      endpoint,
+      statusCode: response.status,
+      message: "GET /tx-status failed",
+      detail: JSON.stringify(payload ?? null),
+    });
   }
 }

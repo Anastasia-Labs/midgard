@@ -1,17 +1,18 @@
 import { Data } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+
 import {
   AddressSchema,
   DataCoercionError,
   H32Schema,
+  hashHexWithBlake2b,
   HashingError,
   MerkleRootSchema,
   OutputReferenceSchema,
   POSIXTimeSchema,
   PubKeyHashSchema,
   ValueSchema,
-  hashHexWithBlake2b,
 } from "@/common.js";
-import { Effect } from "effect";
 
 export const HeaderHashSchema = Data.Bytes({ minLength: 28, maxLength: 28 });
 export type HeaderHash = Data.Static<typeof HeaderHashSchema>;

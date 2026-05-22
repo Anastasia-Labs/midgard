@@ -1,18 +1,20 @@
-import { Database } from "@/services/database.js";
-import { SqlClient } from "@effect/sql";
-import { Effect } from "effect";
 import {
   asArray,
   asBytes,
   decodeSingleCbor,
   encodeCbor,
 } from "@al-ft/midgard-core/codec";
+import { SqlClient } from "@effect/sql";
+import { Effect } from "effect";
+
 import {
-  DatabaseError,
   clearTable,
+  DatabaseError,
+  logDatabaseError,
   sqlErrorToDatabaseError,
 } from "@/database/utils/common.js";
 import * as Ledger from "@/database/utils/ledger.js";
+import { Database } from "@/services/database.js";
 
 export const tableName = "mempool_tx_deltas";
 
@@ -43,9 +45,7 @@ const decodeSpentCbor = (bytes: Uint8Array): Buffer[] => {
   return arr.map((item, index) => asBytes(item, `spent_cbor[${index}]`));
 };
 
-const encodeProducedCbor = (
-  produced: readonly Ledger.MinimalEntry[],
-): Buffer =>
+const encodeProducedCbor = (produced: readonly Ledger.MinimalEntry[]): Buffer =>
   encodeCbor(
     produced.map((entry) => [
       Buffer.from(entry[Ledger.Columns.OUTREF]),
@@ -64,14 +64,8 @@ const decodeProducedCbor = (
       throw new Error(`produced_cbor[${index}] must be [outref, output]`);
     }
     return {
-      [Ledger.Columns.OUTREF]: asBytes(
-        pair[0],
-        `produced_cbor[${index}][0]`,
-      ),
-      [Ledger.Columns.OUTPUT]: asBytes(
-        pair[1],
-        `produced_cbor[${index}][1]`,
-      ),
+      [Ledger.Columns.OUTREF]: asBytes(pair[0], `produced_cbor[${index}][0]`),
+      [Ledger.Columns.OUTPUT]: asBytes(pair[1], `produced_cbor[${index}][1]`),
     };
   });
 };
@@ -119,7 +113,7 @@ export const upsertMany = (
   }).pipe(
     Effect.withLogSpan(`upsertMany ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(`${tableName} db: upsertMany: ${JSON.stringify(e)}`),
+      logDatabaseError(tableName, "upsertMany", e),
     ),
     sqlErrorToDatabaseError(tableName, "Failed to upsert tx deltas"),
   );
@@ -148,15 +142,13 @@ export const retrieveByTxIds = (
         }),
     });
 
-    const result = new Map<string, TxDelta>();
-    for (const decoded of decodedRows) {
-      result.set(decoded.txId.toString("hex"), decoded);
-    }
-    return result;
+    return new Map(
+      decodedRows.map((decoded) => [decoded.txId.toString("hex"), decoded]),
+    );
   }).pipe(
     Effect.withLogSpan(`retrieveByTxIds ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(`${tableName} db: retrieveByTxIds: ${JSON.stringify(e)}`),
+      logDatabaseError(tableName, "retrieveByTxIds", e),
     ),
     sqlErrorToDatabaseError(tableName, "Failed to retrieve tx deltas"),
   );
@@ -175,7 +167,7 @@ export const clearTxs = (
   }).pipe(
     Effect.withLogSpan(`clearTxs ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(`${tableName} db: clearTxs: ${JSON.stringify(e)}`),
+      logDatabaseError(tableName, "clearTxs", e),
     ),
     sqlErrorToDatabaseError(tableName, "Failed to clear tx deltas"),
   );

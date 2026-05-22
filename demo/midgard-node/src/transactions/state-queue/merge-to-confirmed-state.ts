@@ -16,63 +16,49 @@
  * 5. Build and submit the merge transaction.
  */
 
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import * as SDK from "@al-ft/midgard-sdk";
+import { SqlClient } from "@effect/sql";
+import {
+  Address,
+  credentialToAddress,
+  LucidEvolution,
+  scriptHashToCredential,
+  toUnit,
+} from "@lucid-evolution/lucid";
+import { Duration, Effect, Metric, Ref } from "effect";
+
 import {
   BlocksDB,
   ConfirmedLedgerDB,
   MutationJobsDB,
 } from "@/database/index.js";
-import * as SDK from "@al-ft/midgard-sdk";
-import {
-  Address,
-  CML,
-  Data,
-  LucidEvolution,
-  RedeemerBuilder,
-  TxSignBuilder,
-  UTxO,
-  credentialToAddress,
-  scriptHashToCredential,
-  toUnit,
-} from "@lucid-evolution/lucid";
-import { Duration, Effect, Metric, Ref } from "effect";
-import {
-  BlockTxPayload,
-  TxConfirmError,
-  fetchFirstBlockTxs,
-  handleSignSubmit,
-  TxSubmitError,
-  TxSignError,
-} from "@/transactions/utils.js";
-import { alignedUnixTimeStrictlyAfter } from "@/workers/utils/commit-end-time.js";
-import { Entry as LedgerEntry } from "@/database/utils/ledger.js";
 import {
   DatabaseError,
   sqlErrorToDatabaseError,
 } from "@/database/utils/common.js";
-import { breakDownTx } from "@/utils.js";
-import { Database, Globals, NodeConfig } from "@/services/index.js";
-import { SqlClient } from "@effect/sql";
+import { Entry as LedgerEntry } from "@/database/utils/ledger.js";
 import { emitQueueStateMetrics } from "@/fibers/queue-metrics.js";
-import {
-  findRedeemerDataCbor,
-  getRedeemerPointersInContextOrder,
-  getTxInfoRedeemerIndexes,
-} from "@al-ft/midgard-sdk";
 import {
   availableOperatorWalletUtxos,
   fetchOperatorWalletView,
 } from "@/operator-wallet-view.js";
-import {
-  collectIndexedOutputs,
-  collectSortedInputOutRefs,
-  compareOutRefs,
-  findOutRefIndex,
-  outRefLabel,
-} from "@/tx-context.js";
+import { Database, Globals, NodeConfig } from "@/services/index.js";
 import {
   fetchReferenceScriptUtxosProgram,
   referenceScriptByName,
 } from "@/transactions/reference-scripts.js";
+import {
+  BlockTxPayload,
+  fetchFirstBlockTxs,
+  handleSignSubmit,
+  TxConfirmError,
+  TxSignError,
+  TxSubmitError,
+} from "@/transactions/utils.js";
+import { outRefLabel } from "@/tx-context.js";
+import { breakDownTx } from "@/utils.js";
+import { alignedUnixTimeStrictlyAfter } from "@/workers/utils/commit-end-time.js";
 
 const mergeBlockCounter = Metric.counter("merge_block_count", {
   description: "A counter for tracking merged blocks",
@@ -124,7 +110,6 @@ const mergeDurationTimer = Metric.timer(
 const MAX_LIFE_OF_LOCAL_SYNC: number = 1_800_000;
 
 const DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING: number = 8;
-const MIN_SETTLEMENT_OUTPUT_LOVELACE = 5_000_000n;
 const STATE_QUEUE_MATURITY_DURATION_MS = 30;
 // Add buffer after maturity boundary to absorb provider slot/time drift and
 // avoid invalid-before rejections right at the boundary.
@@ -160,47 +145,6 @@ export const diagnoseMissingBlockTxs = (
 type MergeOptions = {
   readonly bypassQueueLengthGuard?: boolean;
   readonly referenceScriptsAddress?: string;
-};
-
-const formatUnknownError = (error: unknown): string => {
-  if (error instanceof Error) {
-    const maybeCause = (error as Error & { cause?: unknown }).cause;
-    if (maybeCause === undefined) {
-      return `${error.name}: ${error.message}`;
-    }
-    const causeMessage =
-      typeof maybeCause === "string"
-        ? maybeCause
-        : (() => {
-            try {
-              return JSON.stringify(maybeCause);
-            } catch {
-              return `${maybeCause}`;
-            }
-          })();
-    return `${error.name}: ${error.message}; cause=${causeMessage}`;
-  }
-  if (typeof error === "object" && error !== null && "message" in error) {
-    const message = String((error as { readonly message: unknown }).message);
-    const maybeCause = (error as { readonly cause?: unknown }).cause;
-    if (maybeCause === undefined) {
-      return message;
-    }
-    const causeMessage =
-      maybeCause instanceof Error
-        ? `${maybeCause.name}: ${maybeCause.message}`
-        : typeof maybeCause === "string"
-          ? maybeCause
-          : (() => {
-              try {
-                return JSON.stringify(maybeCause);
-              } catch {
-                return `${maybeCause}`;
-              }
-            })();
-    return `${message}; cause=${causeMessage}`;
-  }
-  return `${error}`;
 };
 
 const makeJsonSafe = (value: unknown): unknown => {
@@ -299,122 +243,8 @@ export const preflightDecodeBlockTxs = (
     { concurrency: "unbounded" },
   );
 
-type InitialMergeRedeemerSeedIndexes = {
-  readonly stateQueueMintPointerIndex: number;
-  readonly settlementMintPointerIndex: number;
-  readonly stateQueueRedeemerIndex: number;
-  readonly settlementRedeemerIndex: number;
-};
-
-const comparePolicyIds = (a: string, b: string): number =>
-  Buffer.from(a, "hex").compare(Buffer.from(b, "hex"));
-
-const MERGE_SCRIPT_SPEND_REDEEMER_COUNT = 2;
-
-// The initial merge redeemers only seed the CML draft used to discover the
-// final layout. They still use ledger ordering so the draft has the same mint
-// pointer shape as the final transaction.
-export const deriveInitialMergeRedeemerSeedIndexes = ({
-  stateQueuePolicyId,
-  settlementPolicyId,
-}: {
-  readonly stateQueuePolicyId: string;
-  readonly settlementPolicyId: string;
-}): InitialMergeRedeemerSeedIndexes => {
-  const normalizedStateQueuePolicyId = stateQueuePolicyId.toLowerCase();
-  const normalizedSettlementPolicyId = settlementPolicyId.toLowerCase();
-  const mintPolicyOrder = [
-    normalizedStateQueuePolicyId,
-    normalizedSettlementPolicyId,
-  ].sort(comparePolicyIds);
-  const stateQueueMintPointerIndex = mintPolicyOrder.indexOf(
-    normalizedStateQueuePolicyId,
-  );
-  const settlementMintPointerIndex = mintPolicyOrder.indexOf(
-    normalizedSettlementPolicyId,
-  );
-  if (stateQueueMintPointerIndex < 0 || settlementMintPointerIndex < 0) {
-    throw new Error(
-      `Failed to derive merge mint-pointer indexes (stateQueue=${stateQueueMintPointerIndex}, settlement=${settlementMintPointerIndex})`,
-    );
-  }
-  return {
-    stateQueueMintPointerIndex,
-    settlementMintPointerIndex,
-    stateQueueRedeemerIndex:
-      MERGE_SCRIPT_SPEND_REDEEMER_COUNT + stateQueueMintPointerIndex,
-    settlementRedeemerIndex:
-      MERGE_SCRIPT_SPEND_REDEEMER_COUNT + settlementMintPointerIndex,
-  };
-};
-
-const selectFeeInput = (
-  walletUtxos: readonly UTxO[],
-): Effect.Effect<UTxO, SDK.StateQueueError> =>
-  Effect.gen(function* () {
-    const pureAdaUtxos = walletUtxos.filter((utxo) =>
-      Object.entries(utxo.assets).every(
-        ([unit, amount]) => unit === "lovelace" || amount <= 0n,
-      ),
-    );
-    if (pureAdaUtxos.length === 0) {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message: "Failed to select fee input for merge transaction",
-          cause: "operator wallet has no pure-ADA UTxO",
-        }),
-      );
-    }
-    const sorted = [...pureAdaUtxos].sort((a, b) => {
-      const lovelaceA = a.assets.lovelace ?? 0n;
-      const lovelaceB = b.assets.lovelace ?? 0n;
-      if (lovelaceA === lovelaceB) {
-        return compareOutRefs(a, b);
-      }
-      return lovelaceA > lovelaceB ? -1 : 1;
-    });
-    return sorted[0];
-  });
-
-const SettlementResolutionClaimSchema = Data.Object({
-  resolution_time: Data.Integer(),
-  operator: Data.Bytes(),
-});
-type SettlementResolutionClaim = Data.Static<
-  typeof SettlementResolutionClaimSchema
->;
-const SettlementResolutionClaim =
-  SettlementResolutionClaimSchema as unknown as SettlementResolutionClaim;
-
-const SettlementDatumSchema = Data.Object({
-  deposits_root: SDK.MerkleRootSchema,
-  withdrawals_root: SDK.MerkleRootSchema,
-  transactions_root: SDK.MerkleRootSchema,
-  resolution_claim: Data.Nullable(SettlementResolutionClaimSchema),
-});
-type SettlementDatum = Data.Static<typeof SettlementDatumSchema>;
-const SettlementDatum = SettlementDatumSchema as unknown as SettlementDatum;
-
-const SettlementMintRedeemerSchema = Data.Enum([
-  Data.Object({
-    Spawn: Data.Object({
-      settlement_id: Data.Bytes(),
-      output_index: Data.Integer(),
-      state_queue_merge_redeemer_index: Data.Integer(),
-      hub_ref_input_index: Data.Integer(),
-    }),
-  }),
-  Data.Object({
-    Remove: Data.Object({
-      settlement_id: Data.Bytes(),
-      input_index: Data.Integer(),
-      spend_redeemer_index: Data.Integer(),
-    }),
-  }),
-]);
-type SettlementMintRedeemer = Data.Static<typeof SettlementMintRedeemerSchema>;
-const SettlementMintRedeemer =
-  SettlementMintRedeemerSchema as unknown as SettlementMintRedeemer;
+export const deriveInitialMergeRedeemerSeedIndexes =
+  SDK.deriveInitialMergeRedeemerSeedIndexes;
 
 const getStateQueueLength = (
   lucid: LucidEvolution,
@@ -506,9 +336,6 @@ export const buildAndSubmitMergeTx = (
         currentStateQueueLength < minQueueLengthForMerging) ||
       resetInProgress
     ) {
-      // yield* Effect.logInfo(
-      //   "🔸 There are too few blocks in queue.
-      // );
       return;
     }
 
@@ -616,44 +443,6 @@ export const buildAndSubmitMergeTx = (
         return;
       }
 
-      const { data: confirmedStateData } =
-        yield* SDK.getConfirmedStateFromStateQueueDatum(confirmedUTxO.datum);
-      const updatedConfirmedState: SDK.ConfirmedState = {
-        headerHash: headerNodeKey,
-        prevHeaderHash: confirmedStateData.headerHash,
-        utxoRoot: blockHeader.utxosRoot,
-        startTime: confirmedStateData.startTime,
-        endTime: blockHeader.endTime,
-        protocolVersion: blockHeader.protocolVersion,
-      };
-      const updatedConfirmedNodeDatum: SDK.LinkedListNodeView = {
-        ...confirmedUTxO.datum,
-        data: SDK.castConfirmedStateToData(
-          updatedConfirmedState,
-        ) as SDK.LinkedListNodeView["data"],
-        next: firstBlockUTxO.datum.next,
-      };
-
-      const stateQueueAssetsToBurn = {
-        [toUnit(fetchConfig.stateQueuePolicyId, firstBlockUTxO.assetName)]: -1n,
-      };
-      const settlementUnit = toUnit(
-        contracts.settlement.policyId,
-        headerNodeKey,
-      );
-      const settlementAssetsToMint = {
-        [settlementUnit]: 1n,
-      };
-      const settlementOutputAssets = {
-        lovelace: MIN_SETTLEMENT_OUTPUT_LOVELACE,
-        ...settlementAssetsToMint,
-      };
-      const settlementOutputDatum: SettlementDatum = {
-        deposits_root: blockHeader.depositsRoot,
-        withdrawals_root: blockHeader.withdrawalsRoot,
-        transactions_root: blockHeader.transactionsRoot,
-        resolution_claim: null,
-      };
       yield* Effect.logInfo(
         `🔸 Merge policies: state_queue=${fetchConfig.stateQueuePolicyId},settlement=${contracts.settlement.policyId},state_queue_script_has_settlement_param=${contracts.stateQueue.mintingScriptCBOR.includes(contracts.settlement.policyId)}`,
       );
@@ -694,6 +483,7 @@ export const buildAndSubmitMergeTx = (
         );
       }
       const hubOracleRefInput = hubOracleWitnessUtxos[0];
+
       const resolvedReferenceScripts =
         options?.referenceScriptsAddress === undefined
           ? []
@@ -715,39 +505,23 @@ export const buildAndSubmitMergeTx = (
                 },
               ],
             );
-      const stateQueueSpendingScriptRef =
+      const referenceScripts: SDK.StateQueueMergeReferenceScripts | undefined =
         options?.referenceScriptsAddress === undefined
           ? undefined
-          : referenceScriptByName(
-              resolvedReferenceScripts,
-              "state-queue spending",
-            );
-      const stateQueueMintingScriptRef =
-        options?.referenceScriptsAddress === undefined
-          ? undefined
-          : referenceScriptByName(
-              resolvedReferenceScripts,
-              "state-queue minting",
-            );
-      const settlementMintingScriptRef =
-        options?.referenceScriptsAddress === undefined
-          ? undefined
-          : referenceScriptByName(
-              resolvedReferenceScripts,
-              "settlement minting",
-            );
-      const mergeReferenceInputs = [
-        hubOracleRefInput,
-        ...(stateQueueSpendingScriptRef === undefined
-          ? []
-          : [stateQueueSpendingScriptRef]),
-        ...(stateQueueMintingScriptRef === undefined
-          ? []
-          : [stateQueueMintingScriptRef]),
-        ...(settlementMintingScriptRef === undefined
-          ? []
-          : [settlementMintingScriptRef]),
-      ];
+          : {
+              stateQueueSpending: referenceScriptByName(
+                resolvedReferenceScripts,
+                "state-queue spending",
+              ),
+              stateQueueMinting: referenceScriptByName(
+                resolvedReferenceScripts,
+                "state-queue minting",
+              ),
+              settlementMinting: referenceScriptByName(
+                resolvedReferenceScripts,
+                "settlement minting",
+              ),
+            };
 
       const operatorWalletView = yield* Effect.tryPromise({
         try: () => fetchOperatorWalletView(lucid),
@@ -757,851 +531,26 @@ export const buildAndSubmitMergeTx = (
             cause,
           }),
       });
-      const feeInput = yield* selectFeeInput(
+      const feeInput = yield* SDK.selectPureAdaFeeInput(
         availableOperatorWalletUtxos(operatorWalletView),
       );
       yield* Effect.logInfo(
         `🔸 Using fee input ${outRefLabel(feeInput)} (lovelace=${(feeInput.assets.lovelace ?? 0n).toString()}, known_wallet_utxos=${operatorWalletView.knownUtxos.length.toString()}) for merge tx.`,
       );
 
-      const encodedConfirmedNodeDatum = yield* Effect.try({
-        try: () => SDK.encodeLinkedListNodeView(updatedConfirmedNodeDatum),
-        catch: (cause) =>
-          new SDK.StateQueueError({
-            message:
-              "Failed to encode updated confirmed-state node datum for merge transaction",
-            cause,
-          }),
-      });
-      const encodedSettlementDatum = yield* Effect.try({
-        try: () => Data.to(settlementOutputDatum, SettlementDatum),
-        catch: (cause) =>
-          new SDK.StateQueueError({
-            message:
-              "Failed to encode settlement output datum for merge transaction",
-            cause,
-          }),
-      });
-      type MergeRedeemerLayout = {
-        readonly headerNodeInputIndex: number;
-        readonly confirmedStateInputIndex: number;
-        readonly confirmedStateOutputIndex: number;
-        readonly settlementOutputIndex: number;
-        readonly stateQueueRedeemerIndex: number;
-        readonly settlementRedeemerIndex: number;
-        readonly hubOracleRefInputIndex: number;
-      };
-      type MergeLayoutDerivation = {
-        readonly layout: MergeRedeemerLayout;
-        readonly diagnostics: unknown;
-      };
-
-      const makeStateQueueMergeRedeemer = (
-        layout: MergeRedeemerLayout,
-      ): SDK.StateQueueRedeemer => ({
-        MergeToConfirmedState: {
-          header_node_key: headerNodeKey,
-          header_node_input_index: BigInt(layout.headerNodeInputIndex),
-          confirmed_state_input_index: BigInt(layout.confirmedStateInputIndex),
-          confirmed_state_output_index: BigInt(
-            layout.confirmedStateOutputIndex,
-          ),
-          m_settlement_redeemer_index: BigInt(layout.settlementRedeemerIndex),
-          merged_block_transactions_root: blockHeader.transactionsRoot,
-          merged_block_deposits_root: blockHeader.depositsRoot,
-          merged_block_withdrawals_root: blockHeader.withdrawalsRoot,
-        },
-      });
-      const makeSettlementSpawnRedeemer = (
-        layout: MergeRedeemerLayout,
-      ): SettlementMintRedeemer => ({
-        Spawn: {
-          settlement_id: headerNodeKey,
-          output_index: BigInt(layout.settlementOutputIndex),
-          state_queue_merge_redeemer_index: BigInt(
-            layout.stateQueueRedeemerIndex,
-          ),
-          hub_ref_input_index: BigInt(layout.hubOracleRefInputIndex),
-        },
-      });
-      const encodeStateQueueMergeRedeemer = (
-        layout: MergeRedeemerLayout,
-      ): Effect.Effect<string, SDK.StateQueueError> =>
-        Effect.try({
-          try: () =>
-            Data.to(
-              makeStateQueueMergeRedeemer(layout),
-              SDK.StateQueueRedeemer,
-            ),
-          catch: (cause) =>
-            new SDK.StateQueueError({
-              message:
-                "Failed to encode state_queue merge redeemer for merge transaction",
-              cause,
-            }),
-        });
-      const encodeSettlementSpawnRedeemer = (
-        layout: MergeRedeemerLayout,
-      ): Effect.Effect<string, SDK.StateQueueError> =>
-        Effect.try({
-          try: () =>
-            Data.to(makeSettlementSpawnRedeemer(layout), SettlementMintRedeemer),
-          catch: (cause) =>
-            new SDK.StateQueueError({
-              message:
-                "Failed to encode settlement spawn redeemer for merge transaction",
-              cause,
-            }),
-        });
-      const encodeMergeRedeemers = (
-        layout: MergeRedeemerLayout,
-      ): Effect.Effect<
-        {
-          readonly encodedStateQueueMergeRedeemer: string;
-          readonly encodedSettlementSpawnRedeemer: string;
-        },
-        SDK.StateQueueError
-      > =>
-        Effect.gen(function* () {
-          const encodedStateQueueMergeRedeemer =
-            yield* encodeStateQueueMergeRedeemer(layout);
-          const encodedSettlementSpawnRedeemer =
-            yield* encodeSettlementSpawnRedeemer(layout);
-          return {
-            encodedStateQueueMergeRedeemer,
-            encodedSettlementSpawnRedeemer,
-          };
-        });
-      const makeStateQueueMergeRedeemerBuilder = (
-        layout: MergeRedeemerLayout,
-      ): RedeemerBuilder => ({
-        kind: "selected",
-        inputs: [firstBlockUTxO.utxo, confirmedUTxO.utxo],
-        makeRedeemer: (inputIndices) => {
-          const headerNodeInputIndex = inputIndices[0];
-          const confirmedStateInputIndex = inputIndices[1];
-          if (
-            headerNodeInputIndex === undefined ||
-            confirmedStateInputIndex === undefined ||
-            inputIndices.length !== 2
-          ) {
-            throw new Error(
-              `Merge state_queue redeemer builder expected header and confirmed-state input indices, got ${inputIndices.length.toString()}`,
-            );
-          }
-          return Data.to(
-            makeStateQueueMergeRedeemer({
-              ...layout,
-              headerNodeInputIndex: Number(headerNodeInputIndex),
-              confirmedStateInputIndex: Number(confirmedStateInputIndex),
-            }),
-            SDK.StateQueueRedeemer,
-          );
-        },
-      });
-
-      const makeMergeTx = (
-        encodedStateQueueMergeRedeemer: string | RedeemerBuilder,
-        encodedSettlementSpawnRedeemer: string | RedeemerBuilder,
-      ) =>
-        lucid
-          .newTx()
-          .validFrom(mergeMaturityValidFromUnixTime)
-          .collectFrom([confirmedUTxO.utxo, firstBlockUTxO.utxo], Data.void())
-          .collectFrom([feeInput])
-          .readFrom(mergeReferenceInputs)
-          .pay.ToContract(
-            fetchConfig.stateQueueAddress,
-            {
-              kind: "inline",
-              value: encodedConfirmedNodeDatum,
-            },
-            confirmedUTxO.utxo.assets,
-          )
-          .pay.ToContract(
-            contracts.settlement.spendingScriptAddress,
-            {
-              kind: "inline",
-              value: encodedSettlementDatum,
-            },
-            settlementOutputAssets,
-          )
-          .mintAssets(stateQueueAssetsToBurn, encodedStateQueueMergeRedeemer)
-          .mintAssets(settlementAssetsToMint, encodedSettlementSpawnRedeemer);
-
-      const makeMergeTxWithScripts = (
-        encodedStateQueueMergeRedeemer: string | RedeemerBuilder,
-        encodedSettlementSpawnRedeemer: string | RedeemerBuilder,
-      ) => {
-        const tx = makeMergeTx(
-          encodedStateQueueMergeRedeemer,
-          encodedSettlementSpawnRedeemer,
-        );
-        const withStateQueueSpendingScript =
-          stateQueueSpendingScriptRef === undefined
-            ? tx.attach.Script(contracts.stateQueue.spendingScript)
-            : tx;
-        const withStateQueueMintingScript =
-          stateQueueMintingScriptRef === undefined
-            ? withStateQueueSpendingScript.attach.Script(
-                contracts.stateQueue.mintingScript,
-              )
-            : withStateQueueSpendingScript;
-        return settlementMintingScriptRef === undefined
-          ? withStateQueueMintingScript.attach.Script(
-              contracts.settlement.mintingScript,
-            )
-          : withStateQueueMintingScript;
-      };
-      type UnevaluatedDraftBuilder = ReturnType<
-        typeof makeMergeTxWithScripts
-      > & {
-        readonly config: () => Promise<unknown>;
-        readonly rawConfig: () => {
-          readonly txBuilder: {
-            readonly build_for_evaluation: (
-              fee: number,
-              changeAddress: ReturnType<typeof CML.Address.from_bech32>,
-            ) => {
-              readonly draft_tx: () => CML.Transaction;
-            };
-          };
-        };
-      };
-      const buildUnevaluatedDraftTx = async (
-        encodedStateQueueMergeRedeemer: string,
-        encodedSettlementSpawnRedeemer: string,
-      ): Promise<CML.Transaction> => {
-        const tx = makeMergeTxWithScripts(
-          encodedStateQueueMergeRedeemer,
-          encodedSettlementSpawnRedeemer,
-        ) as UnevaluatedDraftBuilder;
-        await tx.config();
-        const walletAddress = await lucid.wallet().address();
-        return tx
-          .rawConfig()
-          .txBuilder.build_for_evaluation(
-            0,
-            CML.Address.from_bech32(walletAddress),
-          )
-          .draft_tx();
-      };
-      const deriveMergeLayoutFromTx = (
-        tx: CML.Transaction,
-        seedLayout: MergeRedeemerLayout,
-      ): MergeLayoutDerivation => {
-        const txBody = tx.body();
-        const inputList = collectSortedInputOutRefs(txBody.inputs());
-        const referenceInputList = txBody.reference_inputs();
-        if (referenceInputList === undefined) {
-          throw new Error("Merge tx did not include reference inputs");
-        }
-        const sortedReferenceInputList =
-          collectSortedInputOutRefs(referenceInputList);
-        const headerInput = findOutRefIndex(inputList, firstBlockUTxO.utxo);
-        const confirmedInput = findOutRefIndex(inputList, confirmedUTxO.utxo);
-        const hubOracleRefInputIndex = findOutRefIndex(
-          sortedReferenceInputList,
+      const builtMerge =
+        yield* SDK.buildProductionMergeToConfirmedStateTxProgram({
+          lucid,
+          fetchConfig,
+          contracts,
+          confirmedUTxO,
+          firstBlockUTxO,
+          validFrom: mergeMaturityValidFromUnixTime,
+          feeInput,
           hubOracleRefInput,
-        );
-        if (
-          headerInput === undefined ||
-          confirmedInput === undefined ||
-          hubOracleRefInputIndex === undefined
-        ) {
-          throw new Error(
-            `Merge tx missing expected input index mapping (header=${headerInput},confirmed=${confirmedInput},hub_ref=${hubOracleRefInputIndex})`,
-          );
-        }
-        const indexedOutputs = collectIndexedOutputs(txBody.outputs());
-        const confirmedOutput = indexedOutputs.find(
-          (output) =>
-            output.address === fetchConfig.stateQueueAddress &&
-            output.datum === encodedConfirmedNodeDatum,
-        );
-        const settlementOutput = indexedOutputs.find(
-          (output) =>
-            output.address === contracts.settlement.spendingScriptAddress &&
-            output.datum === encodedSettlementDatum &&
-            (output.assets[settlementUnit] ?? 0n) === 1n,
-        );
-        if (confirmedOutput === undefined || settlementOutput === undefined) {
-          throw new Error(
-            `Merge tx missing expected outputs (confirmed=${confirmedOutput?.index ?? "missing"},settlement=${settlementOutput?.index ?? "missing"})`,
-          );
-        }
-        const redeemerPointers = getRedeemerPointersInContextOrder(tx);
-        const txInfoRedeemerIndexes =
-          getTxInfoRedeemerIndexes(redeemerPointers);
-        const stateQueueRedeemerContextIndex = redeemerPointers.findIndex(
-          (pointer) =>
-            pointer.tag === CML.RedeemerTag.Mint &&
-            pointer.index === BigInt(stateQueueMintPointerIndex),
-        );
-        const settlementRedeemerContextIndex = redeemerPointers.findIndex(
-          (pointer) =>
-            pointer.tag === CML.RedeemerTag.Mint &&
-            pointer.index === BigInt(settlementMintPointerIndex),
-        );
-        if (
-          stateQueueRedeemerContextIndex < 0 ||
-          settlementRedeemerContextIndex < 0
-        ) {
-          throw new Error(
-            `Merge tx missing expected mint redeemers (state_queue_context=${stateQueueRedeemerContextIndex},settlement_context=${settlementRedeemerContextIndex})`,
-          );
-        }
-        const stateQueueRedeemerPointer =
-          redeemerPointers[stateQueueRedeemerContextIndex];
-        const settlementRedeemerPointer =
-          redeemerPointers[settlementRedeemerContextIndex];
-        const stateQueueRedeemerIndex =
-          txInfoRedeemerIndexes[stateQueueRedeemerContextIndex];
-        const settlementRedeemerIndex =
-          txInfoRedeemerIndexes[settlementRedeemerContextIndex];
-        if (
-          stateQueueRedeemerIndex === undefined ||
-          stateQueueRedeemerIndex < 0 ||
-          settlementRedeemerIndex === undefined ||
-          settlementRedeemerIndex < 0
-        ) {
-          throw new Error(
-            `Merge tx missing tx-info redeemer indexes (state_queue=${stateQueueRedeemerIndex},settlement=${settlementRedeemerIndex})`,
-          );
-        }
-        const stateQueueRedeemerCbor = findRedeemerDataCbor(
-          tx,
-          stateQueueRedeemerPointer,
-        );
-        const settlementRedeemerCbor = findRedeemerDataCbor(
-          tx,
-          settlementRedeemerPointer,
-        );
-        return {
-          layout: {
-            headerNodeInputIndex: headerInput,
-            confirmedStateInputIndex: confirmedInput,
-            confirmedStateOutputIndex: confirmedOutput.index,
-            settlementOutputIndex: settlementOutput.index,
-            stateQueueRedeemerIndex,
-            settlementRedeemerIndex,
-            hubOracleRefInputIndex,
-          },
-          diagnostics: {
-            initialLayout: seedLayout,
-            redeemerPointersContextOrder: redeemerPointers.map(
-              (pointer, index) =>
-                `${index}:${pointer.tag.toString()}:${pointer.index.toString()}`,
-            ),
-            redeemerPointersTxInfoOrder: redeemerPointers
-              .map((pointer, contextIndex) => ({
-                pointer,
-                contextIndex,
-                txInfoIndex: txInfoRedeemerIndexes[contextIndex] ?? -1,
-              }))
-              .sort((a, b) => a.txInfoIndex - b.txInfoIndex)
-              .map(
-                ({ pointer, contextIndex, txInfoIndex }) =>
-                  `${txInfoIndex}:${pointer.tag.toString()}:${pointer.index.toString()}(context=${contextIndex})`,
-              ),
-            stateQueueRedeemerTxInfoIndex: stateQueueRedeemerIndex,
-            settlementRedeemerTxInfoIndex: settlementRedeemerIndex,
-            stateQueueRedeemerPointer:
-              stateQueueRedeemerPointer === undefined
-                ? "missing"
-                : `${stateQueueRedeemerPointer.tag.toString()}:${stateQueueRedeemerPointer.index.toString()}`,
-            settlementRedeemerPointer:
-              settlementRedeemerPointer === undefined
-                ? "missing"
-                : `${settlementRedeemerPointer.tag.toString()}:${settlementRedeemerPointer.index.toString()}`,
-            stateQueueRedeemerCbor: stateQueueRedeemerCbor ?? "missing",
-            settlementRedeemerCbor: settlementRedeemerCbor ?? "missing",
-            stateQueueRedeemerShape:
-              stateQueueRedeemerCbor === undefined
-                ? "missing"
-                : (() => {
-                    try {
-                      return Data.from(
-                        stateQueueRedeemerCbor,
-                        SDK.StateQueueRedeemer,
-                      );
-                    } catch {
-                      return `decode-failed:${stateQueueRedeemerCbor}`;
-                    }
-                  })(),
-            settlementRedeemerShape:
-              settlementRedeemerCbor === undefined
-                ? "missing"
-                : (() => {
-                    try {
-                      return Data.from(
-                        settlementRedeemerCbor,
-                        SettlementMintRedeemer,
-                      );
-                    } catch {
-                      return `decode-failed:${settlementRedeemerCbor}`;
-                    }
-                  })(),
-          },
-        };
-      };
-
-      const initialRedeemerSeedIndexes = yield* Effect.try({
-        try: () =>
-          deriveInitialMergeRedeemerSeedIndexes({
-            stateQueuePolicyId: fetchConfig.stateQueuePolicyId,
-            settlementPolicyId: contracts.settlement.policyId,
-          }),
-        catch: (cause) =>
-          new SDK.StateQueueError({
-            message: "Failed to derive initial merge redeemer seed indexes",
-            cause,
-          }),
-      });
-      const {
-        stateQueueMintPointerIndex,
-        settlementMintPointerIndex,
-        stateQueueRedeemerIndex: initialStateQueueRedeemerIndex,
-        settlementRedeemerIndex: initialSettlementRedeemerIndex,
-      } = initialRedeemerSeedIndexes;
-      const initialHubOracleRefInputIndex = findOutRefIndex(
-        [...mergeReferenceInputs].sort(compareOutRefs),
-        hubOracleRefInput,
-      );
-      if (initialHubOracleRefInputIndex === undefined) {
-        return yield* Effect.fail(
-          new SDK.StateQueueError({
-            message:
-              "Failed to derive initial merge hub-oracle reference index",
-            cause:
-              "hub-oracle reference input missing from merge reference set",
-          }),
-        );
-      }
-      const initialLayout: MergeRedeemerLayout = {
-        headerNodeInputIndex: 0,
-        confirmedStateInputIndex: 1,
-        confirmedStateOutputIndex: 0,
-        settlementOutputIndex: 1,
-        stateQueueRedeemerIndex: initialStateQueueRedeemerIndex,
-        settlementRedeemerIndex: initialSettlementRedeemerIndex,
-        hubOracleRefInputIndex: initialHubOracleRefInputIndex,
-      };
-      const derivedLayoutResult = yield* Effect.either(
-        Effect.tryPromise({
-          try: async () => {
-            const initialEncodedRedeemers = await Effect.runPromise(
-              encodeMergeRedeemers(initialLayout),
-            );
-            const draftTx = await buildUnevaluatedDraftTx(
-              initialEncodedRedeemers.encodedStateQueueMergeRedeemer,
-              initialEncodedRedeemers.encodedSettlementSpawnRedeemer,
-            );
-            return deriveMergeLayoutFromTx(draftTx, initialLayout);
-          },
-          catch: (cause) =>
-            new SDK.StateQueueError({
-              message: `Failed to derive merge redeemer layout from balanced draft tx: ${formatUnknownError(cause)}`,
-              cause,
-            }),
-        }),
-      );
-
-      if (derivedLayoutResult._tag === "Left") {
-        const layoutDerivationCause = formatUnknownError(
-          derivedLayoutResult.left,
-        );
-        return yield* failMergeWithCode(
-          "E_MERGE_LAYOUT_DERIVATION_FAILED",
-          `Failed to derive merge redeemer layout from balanced draft tx: ${layoutDerivationCause}`,
-          {
-            cause: layoutDerivationCause,
-            initialLayout,
-          },
-        );
-      }
-      const finalLayout = derivedLayoutResult.right.layout;
-      yield* Effect.logDebug(
-        `🔸 Draft merge redeemer diagnostics: ${JSON.stringify(
-          derivedLayoutResult.right.diagnostics,
-          (_key, value) =>
-            typeof value === "bigint" ? value.toString() : value,
-        )}`,
-      );
-      yield* Effect.logInfo(
-        `🔸 Merge redeemer layout: header_input=${finalLayout.headerNodeInputIndex},confirmed_input=${finalLayout.confirmedStateInputIndex},confirmed_output=${finalLayout.confirmedStateOutputIndex},settlement_output=${finalLayout.settlementOutputIndex},hub_ref_input=${finalLayout.hubOracleRefInputIndex},state_queue_redeemer_index=${finalLayout.stateQueueRedeemerIndex},settlement_redeemer_index=${finalLayout.settlementRedeemerIndex}`,
-      );
-      const finalEncodedRedeemers = yield* encodeMergeRedeemers(finalLayout);
-      const finalStateQueueMergeRedeemerBuilder =
-        makeStateQueueMergeRedeemerBuilder(finalLayout);
-      const decodedRedeemersEither = yield* Effect.either(
-        Effect.try({
-          try: () => ({
-            stateQueue: Data.from(
-              finalEncodedRedeemers.encodedStateQueueMergeRedeemer,
-              SDK.StateQueueRedeemer,
-            ) as SDK.StateQueueRedeemer,
-            settlement: Data.from(
-              finalEncodedRedeemers.encodedSettlementSpawnRedeemer,
-              SettlementMintRedeemer,
-            ) as SettlementMintRedeemer,
-          }),
-          catch: (cause) => cause,
-        }),
-      );
-      if (decodedRedeemersEither._tag === "Left") {
-        return yield* failMergeWithCode(
-          "E_MERGE_REDEEMER_INDEX_MISMATCH",
-          "Failed to decode merge redeemers for invariant checks",
-          {
-            cause: formatUnknownError(decodedRedeemersEither.left),
-            layout: finalLayout,
-          },
-        );
-      }
-      const decodedStateQueueRedeemer = decodedRedeemersEither.right.stateQueue;
-      const decodedSettlementRedeemer = decodedRedeemersEither.right.settlement;
-      const redeemerInvariantMismatches: string[] = [];
-      type DecodedStateQueueMerge = Extract<
-        SDK.StateQueueRedeemer,
-        { MergeToConfirmedState: unknown }
-      >["MergeToConfirmedState"];
-      let decodedStateQueueMerge: DecodedStateQueueMerge | undefined;
-      if (!("MergeToConfirmedState" in decodedStateQueueRedeemer)) {
-        redeemerInvariantMismatches.push(
-          `state_queue variant mismatch: expected=MergeToConfirmedState,got=${Object.keys(decodedStateQueueRedeemer).join("|") || "unknown"}`,
-        );
-      } else {
-        decodedStateQueueMerge =
-          decodedStateQueueRedeemer.MergeToConfirmedState;
-      }
-      type DecodedSettlementSpawn = Extract<
-        SettlementMintRedeemer,
-        { Spawn: unknown }
-      >["Spawn"];
-      let decodedSettlementSpawn: DecodedSettlementSpawn | undefined;
-      if (!("Spawn" in decodedSettlementRedeemer)) {
-        redeemerInvariantMismatches.push(
-          `settlement variant mismatch: expected=Spawn,got=${Object.keys(decodedSettlementRedeemer).join("|") || "unknown"}`,
-        );
-      } else {
-        decodedSettlementSpawn = decodedSettlementRedeemer.Spawn;
-      }
-      if (decodedStateQueueMerge !== undefined) {
-        if (decodedStateQueueMerge.header_node_key !== headerNodeKey) {
-          redeemerInvariantMismatches.push(
-            `state_queue.header_node_key mismatch: expected=${headerNodeKey},got=${decodedStateQueueMerge.header_node_key}`,
-          );
-        }
-        if (
-          decodedStateQueueMerge.header_node_input_index !==
-          BigInt(finalLayout.headerNodeInputIndex)
-        ) {
-          redeemerInvariantMismatches.push(
-            `state_queue.header_node_input_index mismatch: expected=${finalLayout.headerNodeInputIndex},got=${decodedStateQueueMerge.header_node_input_index.toString()}`,
-          );
-        }
-        if (
-          decodedStateQueueMerge.confirmed_state_input_index !==
-          BigInt(finalLayout.confirmedStateInputIndex)
-        ) {
-          redeemerInvariantMismatches.push(
-            `state_queue.confirmed_state_input_index mismatch: expected=${finalLayout.confirmedStateInputIndex},got=${decodedStateQueueMerge.confirmed_state_input_index.toString()}`,
-          );
-        }
-        if (
-          decodedStateQueueMerge.confirmed_state_output_index !==
-          BigInt(finalLayout.confirmedStateOutputIndex)
-        ) {
-          redeemerInvariantMismatches.push(
-            `state_queue.confirmed_state_output_index mismatch: expected=${finalLayout.confirmedStateOutputIndex},got=${decodedStateQueueMerge.confirmed_state_output_index.toString()}`,
-          );
-        }
-        if (
-          decodedStateQueueMerge.m_settlement_redeemer_index !==
-          BigInt(finalLayout.settlementRedeemerIndex)
-        ) {
-          redeemerInvariantMismatches.push(
-            `state_queue.m_settlement_redeemer_index mismatch: expected=${finalLayout.settlementRedeemerIndex},got=${decodedStateQueueMerge.m_settlement_redeemer_index?.toString() ?? "null"}`,
-          );
-        }
-        if (
-          decodedStateQueueMerge.merged_block_transactions_root !==
-          blockHeader.transactionsRoot
-        ) {
-          redeemerInvariantMismatches.push(
-            `state_queue.merged_block_transactions_root mismatch: expected=${blockHeader.transactionsRoot},got=${decodedStateQueueMerge.merged_block_transactions_root}`,
-          );
-        }
-        if (
-          decodedStateQueueMerge.merged_block_deposits_root !==
-          blockHeader.depositsRoot
-        ) {
-          redeemerInvariantMismatches.push(
-            `state_queue.merged_block_deposits_root mismatch: expected=${blockHeader.depositsRoot},got=${decodedStateQueueMerge.merged_block_deposits_root}`,
-          );
-        }
-        if (
-          decodedStateQueueMerge.merged_block_withdrawals_root !==
-          blockHeader.withdrawalsRoot
-        ) {
-          redeemerInvariantMismatches.push(
-            `state_queue.merged_block_withdrawals_root mismatch: expected=${blockHeader.withdrawalsRoot},got=${decodedStateQueueMerge.merged_block_withdrawals_root}`,
-          );
-        }
-      }
-      if (decodedSettlementSpawn !== undefined) {
-        if (decodedSettlementSpawn.settlement_id !== headerNodeKey) {
-          redeemerInvariantMismatches.push(
-            `settlement.settlement_id mismatch: expected=${headerNodeKey},got=${decodedSettlementSpawn.settlement_id}`,
-          );
-        }
-        if (
-          decodedSettlementSpawn.output_index !==
-          BigInt(finalLayout.settlementOutputIndex)
-        ) {
-          redeemerInvariantMismatches.push(
-            `settlement.output_index mismatch: expected=${finalLayout.settlementOutputIndex},got=${decodedSettlementSpawn.output_index.toString()}`,
-          );
-        }
-        if (
-          decodedSettlementSpawn.state_queue_merge_redeemer_index !==
-          BigInt(finalLayout.stateQueueRedeemerIndex)
-        ) {
-          redeemerInvariantMismatches.push(
-            `settlement.state_queue_merge_redeemer_index mismatch: expected=${finalLayout.stateQueueRedeemerIndex},got=${decodedSettlementSpawn.state_queue_merge_redeemer_index.toString()}`,
-          );
-        }
-        if (
-          decodedSettlementSpawn.hub_ref_input_index !==
-          BigInt(finalLayout.hubOracleRefInputIndex)
-        ) {
-          redeemerInvariantMismatches.push(
-            `settlement.hub_ref_input_index mismatch: expected=${finalLayout.hubOracleRefInputIndex},got=${decodedSettlementSpawn.hub_ref_input_index.toString()}`,
-          );
-        }
-      }
-      if (
-        decodedStateQueueMerge !== undefined &&
-        decodedSettlementSpawn !== undefined &&
-        decodedStateQueueMerge.header_node_key !==
-          decodedSettlementSpawn.settlement_id
-      ) {
-        redeemerInvariantMismatches.push(
-          `cross-check mismatch: state_queue.header_node_key=${decodedStateQueueMerge.header_node_key},settlement.settlement_id=${decodedSettlementSpawn.settlement_id}`,
-        );
-      }
-      if (redeemerInvariantMismatches.length > 0) {
-        return yield* failMergeWithCode(
-          "E_MERGE_REDEEMER_INDEX_MISMATCH",
-          "Failed merge redeemer invariant checks",
-          {
-            mismatches: redeemerInvariantMismatches,
-            layout: finalLayout,
-          },
-        );
-      }
-
-      const remoteEvalResult = yield* Effect.either(
-        Effect.tryPromise({
-          try: () =>
-            makeMergeTxWithScripts(
-              finalStateQueueMergeRedeemerBuilder,
-              finalEncodedRedeemers.encodedSettlementSpawnRedeemer,
-            ).complete({
-              localUPLCEval: true,
-            }),
-          catch: (cause) =>
-            new SDK.StateQueueError({
-              message:
-                "Failed to finalize the transaction for merging oldest block into confirmed state",
-              cause,
-            }),
-        }),
-      );
-      if (remoteEvalResult._tag === "Left") {
-        const localEvalDiagnostic = yield* Effect.either(
-          Effect.tryPromise({
-            try: () =>
-              makeMergeTxWithScripts(
-                finalStateQueueMergeRedeemerBuilder,
-                finalEncodedRedeemers.encodedSettlementSpawnRedeemer,
-              ).complete({
-                localUPLCEval: true,
-              }),
-            catch: (cause) =>
-              new SDK.StateQueueError({
-                message:
-                  "Local UPLC evaluation diagnostic failed for merge transaction",
-                cause,
-              }),
-          }),
-        );
-        const localDiagnosticMessage =
-          localEvalDiagnostic._tag === "Left"
-            ? formatUnknownError(localEvalDiagnostic.left)
-            : "local UPLC eval unexpectedly succeeded";
-        const mergeEvalFailureDetails = {
-          remote: formatUnknownError(remoteEvalResult.left),
-          local: localDiagnosticMessage,
-          layout: finalLayout,
-          draftDiagnostics: derivedLayoutResult.right.diagnostics,
-        };
-        yield* Effect.logWarning(
-          `🔸 Merge UPLC eval diagnostics: ${JSON.stringify(
-            mergeEvalFailureDetails,
-            (_key, value) =>
-              typeof value === "bigint" ? value.toString() : value,
-          )}`,
-        );
-        return yield* failMergeWithCode(
-          "E_MERGE_UPLC_EVAL_FAILED",
-          "Failed to finalize the transaction for merging oldest block into confirmed state",
-          mergeEvalFailureDetails,
-        );
-      }
-      const txBuilder: TxSignBuilder = remoteEvalResult.right;
-      const finalTxLayoutCheck = yield* Effect.either(
-        Effect.try({
-          try: () => {
-            const finalTx = txBuilder.toTransaction();
-            const actualLayout = deriveMergeLayoutFromTx(finalTx, finalLayout);
-            const pointers = getRedeemerPointersInContextOrder(finalTx);
-            const stateQueuePointerIndex = pointers.findIndex(
-              (pointer) =>
-                pointer.tag === CML.RedeemerTag.Mint &&
-                pointer.index === BigInt(stateQueueMintPointerIndex),
-            );
-            const settlementPointerIndex = pointers.findIndex(
-              (pointer) =>
-                pointer.tag === CML.RedeemerTag.Mint &&
-                pointer.index === BigInt(settlementMintPointerIndex),
-            );
-            const stateQueueRedeemerCbor = findRedeemerDataCbor(
-              finalTx,
-              pointers[stateQueuePointerIndex],
-            );
-            const settlementRedeemerCbor = findRedeemerDataCbor(
-              finalTx,
-              pointers[settlementPointerIndex],
-            );
-            if (
-              stateQueuePointerIndex < 0 ||
-              settlementPointerIndex < 0 ||
-              stateQueueRedeemerCbor === undefined ||
-              settlementRedeemerCbor === undefined
-            ) {
-              throw new Error(
-                `Final merge tx missing expected redeemers (state_queue_pointer=${stateQueuePointerIndex},settlement_pointer=${settlementPointerIndex})`,
-              );
-            }
-            const decodedStateQueue = Data.from(
-              stateQueueRedeemerCbor,
-              SDK.StateQueueRedeemer,
-            ) as SDK.StateQueueRedeemer;
-            const decodedSettlement = Data.from(
-              settlementRedeemerCbor,
-              SettlementMintRedeemer,
-            ) as SettlementMintRedeemer;
-            if (!("MergeToConfirmedState" in decodedStateQueue)) {
-              throw new Error(
-                `Final state_queue redeemer variant mismatch: ${Object.keys(decodedStateQueue).join("|")}`,
-              );
-            }
-            if (!("Spawn" in decodedSettlement)) {
-              throw new Error(
-                `Final settlement redeemer variant mismatch: ${Object.keys(decodedSettlement).join("|")}`,
-              );
-            }
-            const stateQueueMerge = decodedStateQueue.MergeToConfirmedState;
-            const settlementSpawn = decodedSettlement.Spawn;
-            const actual = actualLayout.layout;
-            const mismatches: string[] = [];
-            if (
-              stateQueueMerge.header_node_input_index !==
-              BigInt(actual.headerNodeInputIndex)
-            ) {
-              mismatches.push(
-                `state_queue.header_node_input_index expected=${actual.headerNodeInputIndex},got=${stateQueueMerge.header_node_input_index.toString()}`,
-              );
-            }
-            if (
-              stateQueueMerge.confirmed_state_input_index !==
-              BigInt(actual.confirmedStateInputIndex)
-            ) {
-              mismatches.push(
-                `state_queue.confirmed_state_input_index expected=${actual.confirmedStateInputIndex},got=${stateQueueMerge.confirmed_state_input_index.toString()}`,
-              );
-            }
-            if (
-              stateQueueMerge.confirmed_state_output_index !==
-              BigInt(actual.confirmedStateOutputIndex)
-            ) {
-              mismatches.push(
-                `state_queue.confirmed_state_output_index expected=${actual.confirmedStateOutputIndex},got=${stateQueueMerge.confirmed_state_output_index.toString()}`,
-              );
-            }
-            if (
-              stateQueueMerge.m_settlement_redeemer_index !==
-              BigInt(actual.settlementRedeemerIndex)
-            ) {
-              mismatches.push(
-                `state_queue.m_settlement_redeemer_index expected=${actual.settlementRedeemerIndex},got=${stateQueueMerge.m_settlement_redeemer_index?.toString() ?? "null"}`,
-              );
-            }
-            if (
-              settlementSpawn.output_index !== BigInt(actual.settlementOutputIndex)
-            ) {
-              mismatches.push(
-                `settlement.output_index expected=${actual.settlementOutputIndex},got=${settlementSpawn.output_index.toString()}`,
-              );
-            }
-            if (
-              settlementSpawn.state_queue_merge_redeemer_index !==
-              BigInt(actual.stateQueueRedeemerIndex)
-            ) {
-              mismatches.push(
-                `settlement.state_queue_merge_redeemer_index expected=${actual.stateQueueRedeemerIndex},got=${settlementSpawn.state_queue_merge_redeemer_index.toString()}`,
-              );
-            }
-            if (
-              settlementSpawn.hub_ref_input_index !==
-              BigInt(actual.hubOracleRefInputIndex)
-            ) {
-              mismatches.push(
-                `settlement.hub_ref_input_index expected=${actual.hubOracleRefInputIndex},got=${settlementSpawn.hub_ref_input_index.toString()}`,
-              );
-            }
-            if (mismatches.length > 0) {
-              throw new Error(
-                JSON.stringify({
-                  mismatches,
-                  draftLayout: finalLayout,
-                  actualLayout: actual,
-                  diagnostics: actualLayout.diagnostics,
-                }),
-              );
-            }
-            return actualLayout;
-          },
-          catch: (cause) =>
-            new SDK.StateQueueError({
-              message:
-                "Failed to verify final balanced merge transaction layout",
-              cause,
-            }),
-        }),
-      );
-      if (finalTxLayoutCheck._tag === "Left") {
-        return yield* failMergeWithCode(
-          "E_MERGE_REDEEMER_INDEX_MISMATCH",
-          "Failed final merge transaction redeemer-layout verification",
-          {
-            cause: formatUnknownError(finalTxLayoutCheck.left),
-            draftLayout: finalLayout,
-          },
-        );
-      }
+          referenceScripts,
+        }).pipe(Effect.tapError(() => Metric.increment(mergeFailureCounter)));
+      const txBuilder = builtMerge.tx;
 
       // Submit the transaction
       /**
@@ -1675,9 +624,7 @@ export const buildAndSubmitMergeTx = (
               for (let i = 0; i < preflightProducedUTxOs.length; i += bs) {
                 yield* ConfirmedLedgerDB.insertMultiple(
                   preflightProducedUTxOs.slice(i, i + bs),
-                )
-                  // .map((u) => utxoToOutRefAndCBORArray(u)),
-                  .pipe(Effect.withSpan(`confirmed-ledger-insert-${i}`));
+                ).pipe(Effect.withSpan(`confirmed-ledger-insert-${i}`));
               }
               yield* Effect.logInfo("🔸 Clear block from BlocksDB...");
               yield* BlocksDB.clearBlock(headerHash).pipe(
