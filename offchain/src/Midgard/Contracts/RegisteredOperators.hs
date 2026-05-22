@@ -20,7 +20,6 @@ import Convex.BuildTx (
   findIndexReference,
   findIndexSpending,
   mintPlutus,
-  mintPlutusRefWithRedeemerFn,
   payToScriptInlineDatum,
   setMinAdaDepositAll,
   spendPlutusInlineDatum,
@@ -30,6 +29,7 @@ import Convex.Class (
   MonadUtxoQuery,
   utxosByPaymentCredential,
  )
+import Convex.PlutusLedger.V1 (transPubKeyHash)
 import Convex.Utils (utcTimeToPosixTime)
 import Convex.Utxos (toTxOut)
 import PlutusLedgerApi.V3 (POSIXTime)
@@ -48,8 +48,7 @@ import Midgard.Contracts.Utils (
   findUTxOWithAsset,
   findUTxOWithLink,
   inlineDatumFromUTxO,
-  nextOutIx,
-  pubKeyHashFromCardano,
+  mintPlutusRefWithRedeemerFinal,
   slotToEndUTCTime,
  )
 import Midgard.ScriptUtils (
@@ -94,16 +93,21 @@ initRegisteredOperators
     , registeredOperatorsPolicy
     }
   MidgardRefScripts {registeredOperatorsPolicyRef} = do
-    let C.PolicyId policyId = mintingPolicyId registeredOperatorsPolicy
+    let policyId = mintingPolicyId registeredOperatorsPolicy
     addReference registeredOperatorsPolicyRef
     -- The registered operators token should be minted.
-    mintPlutusRefWithRedeemerFn
+    mintPlutusRefWithRedeemerFinal
       registeredOperatorsPolicyRef
       (plutusVersion registeredOperatorsPolicy)
       policyId
-      (\txBody -> RegisteredOperators.Init {outputIndex = toInteger $ nextOutIx txBody})
       RegisteredOperators.rootAssetName
       1
+      $ \txBody ->
+        RegisteredOperators.Init
+          { outputIndex =
+              toInteger $
+                findOutputIndexWithAsset policyId RegisteredOperators.rootAssetName txBody
+          }
     -- And sent to the registered operators validator.
     let datum :: RegisteredOperators.Datum =
           LinkedList.Element
@@ -115,10 +119,12 @@ initRegisteredOperators
       (validatorHash registeredOperatorsValidator)
       datum
       C.NoStakeAddress
-      (assetValue policyId RegisteredOperators.rootAssetName 1)
+      (assetValue (C.unPolicyId policyId) RegisteredOperators.rootAssetName 1)
 
 {- | Register an operator.
 Returns the transaction as well as the earliest possible activation time for said operator.
+Note: Two operators cannot be registered in the same slot, otherwise it will violate the linked list's strictly
+descending activation time constraint.
 -}
 registerOperator ::
   forall era m.
@@ -147,7 +153,7 @@ registerOperator
     (currentSlot, _, _) <- querySlotNo
     -- 5 minute grace period.
     -- Note: The upper bound ends _before_ the beginning of this slot. i.e end time of last slot.
-    let validityUpperBoundExclusive = C.SlotNo $ C.unSlotNo currentSlot + 300
+    let validityUpperBoundExclusive = currentSlot + 300
     validityUpperBoundPosixExclusive <- slotToEndUTCTime $ validityUpperBoundExclusive - 1
     let activationTime = utcTimeToPosixTime $ addUTCTime registrationDuration validityUpperBoundPosixExclusive
     let newNodeAsset =
@@ -165,9 +171,8 @@ registerOperator
         C.PaymentCredentialByScript $
           validatorHash registeredOperatorsValidator
     -- Note: Technically, this is meant to be inserted by descending activation time order.
-    -- In many cases, that is the same as prepending because the newest node should have the latest
-    -- activation time. So we prepend here.
-    -- But for a more robust method, we should explicitly find the node with the highest activation time.
+    -- The anchor element will always be root as root points to the highest activation time node.
+    -- Said node position will be replaced with the new node (effectively a prepend).
     (rootRegistryTxIn, (rootRegistryUtxoAnyEra, _)) <-
       maybe (throwError "No registry root found") pure $
         findUTxOWithAsset registryUtxos $
@@ -242,7 +247,7 @@ registerOperator
               { elementData =
                   LinkedList.Node
                     RegisteredOperators.NodeData
-                      { operator = pubKeyHashFromCardano operatorPkh
+                      { operator = transPubKeyHash operatorPkh
                       }
               , elementLink = rootOriginalLink
               }
@@ -254,36 +259,35 @@ registerOperator
         C.NoStakeAddress
         (assetValue policyId newNodeAsset 1 <> C.lovelaceToValue operatorRequiredBond)
       -- Mint the token for the new registering node.
-      mintPlutusRefWithRedeemerFn
+      mintPlutusRefWithRedeemerFinal
         registeredOperatorsPolicyRef
         (plutusVersion registeredOperatorsPolicy)
-        policyId
-        ( \txBody ->
-            RegisteredOperators.RegisterOperator
-              { registeringOperator = pubKeyHashFromCardano operatorPkh
-              , rootInputIndex =
-                  toInteger $
-                    findIndexSpending rootRegistryTxIn txBody
-              , rootOutputIndex =
-                  toInteger $
-                    findOutputIndexWithAsset
-                      (mintingPolicyId registeredOperatorsPolicy)
-                      RegisteredOperators.rootAssetName
-                      txBody
-              , registeredNodeOutputIndex =
-                  toInteger $
-                    findOutputIndexWithAsset (mintingPolicyId registeredOperatorsPolicy) newNodeAsset txBody
-              , hubOracleRefInputIndex = toInteger $ findIndexReference hubOracleTxIn txBody
-              , activeOperatorsElementRefInputIndex =
-                  toInteger $
-                    findIndexReference activeOperatorsNonMemberWitness txBody
-              , retiredOperatorsElementRefInputIndex =
-                  toInteger $
-                    findIndexReference retiredOperatorsNonMemberWitness txBody
-              }
-        )
+        (C.PolicyId policyId)
         newNodeAsset
         1
+        $ \txBody ->
+          RegisteredOperators.RegisterOperator
+            { registeringOperator = transPubKeyHash operatorPkh
+            , rootInputIndex =
+                toInteger $
+                  findIndexSpending rootRegistryTxIn txBody
+            , rootOutputIndex =
+                toInteger $
+                  findOutputIndexWithAsset
+                    (mintingPolicyId registeredOperatorsPolicy)
+                    RegisteredOperators.rootAssetName
+                    txBody
+            , registeredNodeOutputIndex =
+                toInteger $
+                  findOutputIndexWithAsset (mintingPolicyId registeredOperatorsPolicy) newNodeAsset txBody
+            , hubOracleRefInputIndex = toInteger $ findIndexReference hubOracleTxIn txBody
+            , activeOperatorsElementRefInputIndex =
+                toInteger $
+                  findIndexReference activeOperatorsNonMemberWitness txBody
+            , retiredOperatorsElementRefInputIndex =
+                toInteger $
+                  findIndexReference retiredOperatorsNonMemberWitness txBody
+            }
       addBtx $ \txBody ->
         txBody
           { C.txValidityLowerBound = C.TxValidityLowerBound (C.allegraBasedEra @era) currentSlot

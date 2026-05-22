@@ -3,17 +3,18 @@ module Midgard.Contracts.Utils (
   nextOutIx,
   slotToBeginUTCTime,
   slotToEndUTCTime,
-  utcTimeToSlotUnsafe,
+  utcTimeToEnclosingSlot,
   findOutputIndexWithAsset,
   findMintRedeemerIndex,
   findUTxOWithAsset,
   inlineDatumFromUTxO,
   findUTxONonMembership,
+  findFinalUTxONode,
   findUTxOWithLink,
   listAssetNameFromUTxO,
-  pubKeyHashFromCardano,
   findUTxOWithNodeData,
   mintPlutusRefWithRedeemerFinal,
+  spendPlutusInlineDatumWithRedeemerFinal,
 ) where
 
 import Control.Monad.Except (MonadError (throwError))
@@ -21,7 +22,7 @@ import Control.Monad.Reader (MonadReader (ask), MonadTrans (lift), ReaderT)
 import Data.ByteString (ByteString)
 import Data.List (elemIndex, find, findIndex, sort)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (isJust)
+import Data.Maybe (isJust, isNothing)
 import Data.Time.Clock (NominalDiffTime, UTCTime, addUTCTime)
 import GHC.IsList (toList)
 
@@ -29,14 +30,13 @@ import Cardano.Api qualified as C
 import Control.Lens (
   view,
  )
-import Convex.BuildTx (MonadBuildTx, addMintWithTxBody, buildRefScriptWitness)
+import Convex.BuildTx (MonadBuildTx, addInputWithTxBody, addMintWithTxBody, buildRefScriptWitness, buildScriptWitness)
 import Convex.CardanoApi.Lenses qualified as L
 import Convex.Class (MonadBlockchain (queryEraHistory, querySystemStart))
 import Convex.Scripts (fromHashableScriptData)
 import Convex.Utils qualified as Convex
 import Convex.Utxos (UtxoSet (UtxoSet))
-import PlutusLedgerApi.Common (BuiltinData, FromData, ToData, fromBuiltin, toBuiltin)
-import PlutusLedgerApi.Data.V3 (PubKeyHash (PubKeyHash))
+import PlutusLedgerApi.Common (BuiltinData, FromData, ToData, fromBuiltin)
 
 import Midgard.Types.LinkedList (NodeKey (NodeKey), nodeKey, nodeKeyToAssetName)
 import Midgard.Types.LinkedList qualified as LinkedList
@@ -59,12 +59,12 @@ slotToEndUTCTime slotNo = addUTCTime (-oneMs) <$> slotToBeginUTCTime (slotNo + 1
     oneMs :: NominalDiffTime
     oneMs = 0.001
 
--- | Convert UTC to slot (unsafe horizon extension), returning only the slot number.
-utcTimeToSlotUnsafe :: (MonadError String m, MonadBlockchain era m) => UTCTime -> m C.SlotNo
-utcTimeToSlotUnsafe time = do
+-- | Convert UTC time to its enclosing slot.
+utcTimeToEnclosingSlot :: (MonadError String m, MonadBlockchain era m) => UTCTime -> m C.SlotNo
+utcTimeToEnclosingSlot time = do
   eraHistory <- queryEraHistory
   systemStart <- querySystemStart
-  (\(slotNo, _, _) -> slotNo) <$> either throwError pure (Convex.utcTimeToSlotUnsafe eraHistory systemStart time)
+  (\(slotNo, _, _) -> slotNo) <$> either throwError pure (Convex.utcTimeToSlot eraHistory systemStart time)
 
 -- | Find the index of the first tx output that contains the given asset.
 findOutputIndexWithAsset :: C.PolicyId -> C.AssetName -> C.TxBodyContent C.BuildTx era -> Int
@@ -188,8 +188,16 @@ findUTxOWithLink (UtxoSet utxoMap) targetKey = do
               Nothing -> False
               Just (NodeKey linkKey) -> fromBuiltin linkKey == targetKey
 
-pubKeyHashFromCardano :: C.Hash C.PaymentKey -> PubKeyHash
-pubKeyHashFromCardano = PubKeyHash . toBuiltin . C.serialiseToRawBytes
+-- | From the given UTxO set, find the authentic linked-list node with no outgoing link.
+findFinalUTxONode :: UtxoSet ctx a -> ReaderT LinkedListInfo Maybe (C.TxIn, (C.InAnyCardanoEra (C.TxOut ctx), a))
+findFinalUTxONode (UtxoSet utxoMap) = do
+  LinkedListInfo {ownerPolicyId} <- ask
+  let targetUtxos = Map.toList utxoMap
+  lift . flip find targetUtxos $ \(_, (C.InAnyCardanoEra _ utxo, _)) ->
+    let isAuthentic = isJust $ listAssetNameFromUTxO ownerPolicyId utxo
+     in case inlineDatumFromUTxO @(LinkedList.Element BuiltinData BuiltinData) utxo of
+          Nothing -> False
+          Just LinkedList.Element {elementLink} -> isAuthentic && isNothing elementLink
 
 -- Find the linked list node asset name contained within the value.
 listAssetNameFromUTxO :: C.PolicyId -> C.TxOut ctx era -> Maybe C.AssetName
@@ -214,3 +222,16 @@ mintPlutusRefWithRedeemerFinal ::
 mintPlutusRefWithRedeemerFinal refIn scriptVersion policyId assetName quantity redeemerF =
   addMintWithTxBody policyId assetName quantity $
     buildRefScriptWitness refIn scriptVersion C.NoScriptDatumForMint . redeemerF
+
+-- | Like 'addInputWithTxBody' but tailored towards easy usage with inline datum script spending.
+spendPlutusInlineDatumWithRedeemerFinal ::
+  (MonadBuildTx era m, ToData b, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang) =>
+  C.PlutusScript lang ->
+  C.TxIn ->
+  (C.TxBodyContent C.BuildTx era -> b) ->
+  m ()
+spendPlutusInlineDatumWithRedeemerFinal plutusScript txIn redeemerF =
+  addInputWithTxBody txIn $
+    C.ScriptWitness C.ScriptWitnessForSpending
+      . buildScriptWitness plutusScript C.InlineScriptDatum
+      . redeemerF
