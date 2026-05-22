@@ -43,12 +43,12 @@ import {
 import { DepositInfo, WithdrawalInfo } from "./events";
 
 import {
-  Transaction,
-  TransactionPartial,
-  writeTransactionStatic,
-  writeTransactionDynamic,
-  readTransactionStatic,
-  readTransactionDynamic,
+  MidgardNativeTxCanonical,
+  MidgardNativeTxCanonicalPartial,
+  writeMidgardNativeTxCanonicalStatic,
+  writeMidgardNativeTxCanonicalDynamic,
+  readMidgardNativeTxCanonicalStatic,
+  readMidgardNativeTxCanonicalDynamic,
 } from "./transaction";
 
 // ===========================================================================
@@ -153,7 +153,7 @@ export function decodeHeader(bytes: Uint8Array): Header {
 // ===========================================================================
 
 export type UtxoMap = Array<[OutputReference, TransactionOutput]>;
-export type TransactionMap = Array<[TransactionId, Transaction]>;
+export type TransactionMap = Array<[TransactionId, MidgardNativeTxCanonical]>;
 export type DepositMap = Array<[OutputReference, DepositInfo]>;
 export type WithdrawalMap = Array<[OutputReference, WithdrawalInfo]>;
 
@@ -171,7 +171,7 @@ interface UtxoPartial {
 }
 interface TxPartial {
   k: TransactionId;
-  v: TransactionPartial;
+  v: MidgardNativeTxCanonicalPartial;
 }
 interface DepositPartial {
   outerKey: OutputReference;
@@ -230,24 +230,24 @@ function writeTransactionsStatic(w: Writer, map: TransactionMap): void {
   writeU64(w, map.length);
   for (const [k, v] of map) {
     writeHash32Static(w, k);
-    writeTransactionStatic(w, v);
+    writeMidgardNativeTxCanonicalStatic(w, v);
   }
 }
 function writeTransactionsDynamic(w: Writer, map: TransactionMap): void {
-  for (const [, v] of map) writeTransactionDynamic(w, v);
+  for (const [, v] of map) writeMidgardNativeTxCanonicalDynamic(w, v);
 }
 function readTransactionsStatic(r: Reader): TxPartial[] {
   const len = readU64(r);
   const ps: TxPartial[] = [];
   for (let i = 0; i < len; i++) {
     const k = readHash32Static(r);
-    const v = readTransactionStatic(r);
+    const v = readMidgardNativeTxCanonicalStatic(r);
     ps.push({ k, v });
   }
   return ps;
 }
 function readTransactionsDynamic(r: Reader, ps: TxPartial[]): TransactionMap {
-  return ps.map(({ k, v }) => [k, readTransactionDynamic(r, v)]);
+  return ps.map(({ k, v }) => [k, readMidgardNativeTxCanonicalDynamic(r, v)]);
 }
 
 // ---- deposits -------------------------------------------------------------
