@@ -110,6 +110,7 @@ library
     Midgard.Types.ActiveOperators
     Midgard.Types.HubOracle
     Midgard.Types.LinkedList
+    Midgard.Types.OperatorDirectory
     Midgard.Types.RegisteredOperators
     Midgard.Types.RetiredOperators
 

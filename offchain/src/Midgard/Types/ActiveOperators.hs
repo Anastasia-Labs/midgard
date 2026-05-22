@@ -2,6 +2,7 @@
 
 module Midgard.Types.ActiveOperators (
   NodeData (..),
+  OperatorRemovalSchedulerSync (..),
   Datum,
   SpendRedeemer (..),
   MintRedeemer (..),
@@ -22,6 +23,7 @@ import PlutusTx.Blueprint.TH (makeIsDataSchemaIndexed)
 import Ply (PlyArg)
 
 import Midgard.Types.LinkedList qualified as LinkedList
+import Midgard.Types.OperatorDirectory (SlashingArguments)
 
 rootAssetName :: C.AssetName
 rootAssetName = C.UnsafeAssetName $ BS8.pack "MIDGARD_ACTIVE_OPERATORS"
@@ -32,8 +34,9 @@ nodeAssetNamePrefix = BS8.pack "MACT"
 nodeAssetNamePrefixLen :: Int
 nodeAssetNamePrefixLen = BS8.length nodeAssetNamePrefix
 
-newtype NodeData = NodeData
+data NodeData = NodeData
   { bondUnlockTime :: Maybe POSIXTime
+  , inactivityStrikes :: Integer
   }
   deriving stock (Eq, Show, Generic)
   deriving anyclass (HasBlueprintDefinition)
@@ -49,19 +52,29 @@ type Datum = LinkedList.Element BuiltinByteString NodeData
 data SpendRedeemer
   = ListStateTransition
   | UpdateBondHoldNewState
-      { activeNodeInputIndex :: Integer
+      { activeOperator :: PubKeyHash
+      , activeNodeInputIndex :: Integer
       , activeNodeOutputIndex :: Integer
       , hubOracleRefInputIndex :: Integer
-      , stateQueueInputIndex :: Integer
-      , stateQueueRedeemerIndex :: Integer
+      , stateQueueMintRedeemerIndex :: Integer
       }
   | UpdateBondHoldNewSettlement
-      { activeNodeInputIndex :: Integer
+      { activeOperator :: PubKeyHash
+      , activeNodeInputIndex :: Integer
       , activeNodeOutputIndex :: Integer
       , hubOracleRefInputIndex :: Integer
       , settlementInputIndex :: Integer
       , settlementRedeemerIndex :: Integer
-      , newBondUnlockTime :: POSIXTime
+      , resolutionTime :: POSIXTime
+      }
+  | StrikeForInactivity
+      { activeNodeInputIndex :: Integer
+      , activeNodeOutputIndex :: Integer
+      , operator :: PubKeyHash
+      , activeNodeLink :: Maybe LinkedList.NodeKey
+      , schedulerInputIndex :: Integer
+      , schedulerRedeemerIndex :: Integer
+      , hubOracleRefInputIndex :: Integer
       }
   deriving stock (Eq, Show, Generic)
   deriving anyclass (HasBlueprintDefinition)
@@ -71,10 +84,31 @@ $( makeIsDataSchemaIndexed
      [ ('ListStateTransition, 0)
      , ('UpdateBondHoldNewState, 1)
      , ('UpdateBondHoldNewSettlement, 2)
+     , ('StrikeForInactivity, 3)
      ]
  )
 
 instance PlyArg SpendRedeemer
+
+data OperatorRemovalSchedulerSync
+  = ShowOperatorIsInactive
+      { schedulerRefInputIndex :: Integer
+      }
+  | ShowSchedulerIsAdvancing
+      { schedulerInputIndex :: Integer
+      , schedulerRedeemerIndex :: Integer
+      , removingOperatorsAnchorElementKey :: Maybe LinkedList.NodeKey
+      , removingOperatorIsTheLastMember :: Bool
+      }
+  deriving stock (Eq, Show, Generic)
+  deriving anyclass (HasBlueprintDefinition)
+
+$( makeIsDataSchemaIndexed
+     ''OperatorRemovalSchedulerSync
+     [ ('ShowOperatorIsInactive, 0)
+     , ('ShowSchedulerIsAdvancing, 1)
+     ]
+ )
 
 -- Mint redeemer
 
@@ -87,30 +121,21 @@ data MintRedeemer
       , activeOperatorAnchorElementOutputIndex :: Integer
       , activeOperatorInsertedNodeOutputIndex :: Integer
       , registeredOperatorsRedeemerIndex :: Integer
-      }
-  | RemoveOperatorBadState
-      { slashedActiveOperatorKey :: PubKeyHash
-      , hubOracleRefInputIndex :: Integer
-      , activeOperatorAnchorElementInputIndex :: Integer
-      , activeOperatorSlashedNodeInputIndex :: Integer
-      , activeOperatorAnchorElementOutputIndex :: Integer
-      , stateQueueRedeemerIndex :: Integer
-      }
-  | RemoveOperatorBadSettlement
-      { slashedActiveOperatorKey :: PubKeyHash
-      , hubOracleRefInputIndex :: Integer
-      , activeOperatorAnchorElementInputIndex :: Integer
-      , activeOperatorSlashedNodeInputIndex :: Integer
-      , activeOperatorAnchorElementOutputIndex :: Integer
-      , settlementInputIndex :: Integer
-      , settlementRedeemerIndex :: Integer
+      , activeOperatorsSetWasEmpty :: Bool
       }
   | RetireOperator
       { activeOperatorKey :: PubKeyHash
+      , hubOracleRefInputIndex :: Integer
       , activeOperatorAnchorElementInputIndex :: Integer
       , activeOperatorRemovedNodeInputIndex :: Integer
       , activeOperatorAnchorElementOutputIndex :: Integer
       , retiredOperatorsRedeemerIndex :: Integer
+      , penalizeForInactivity :: Bool
+      , operatorRemovalSchedulerSync :: OperatorRemovalSchedulerSync
+      }
+  | SlashOperator
+      { slashingArguments :: SlashingArguments
+      , operatorRemovalSchedulerSync :: OperatorRemovalSchedulerSync
       }
   deriving stock (Eq, Show, Generic)
   deriving anyclass (HasBlueprintDefinition)
@@ -120,9 +145,8 @@ $( makeIsDataSchemaIndexed
      [ ('Init, 0)
      , ('Deinit, 1)
      , ('ActivateOperator, 2)
-     , ('RemoveOperatorBadState, 3)
-     , ('RemoveOperatorBadSettlement, 4)
-     , ('RetireOperator, 5)
+     , ('RetireOperator, 3)
+     , ('SlashOperator, 4)
      ]
  )
 

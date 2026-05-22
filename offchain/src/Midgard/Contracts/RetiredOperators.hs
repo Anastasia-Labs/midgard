@@ -235,6 +235,8 @@ retireOperator
         $ \txBody ->
           ActiveOperators.RetireOperator
             { activeOperatorKey = pubKeyHashFromCardano operatorPkh
+            , hubOracleRefInputIndex =
+                toInteger $ findIndexReference hubOracleTxIn txBody
             , activeOperatorAnchorElementInputIndex =
                 toInteger $ findIndexSpending anchorActiveTxIn txBody
             , activeOperatorRemovedNodeInputIndex =
@@ -243,6 +245,9 @@ retireOperator
                 toInteger $ findOutputIndexWithAsset activePolicyId activeAnchorAssetName txBody
             , retiredOperatorsRedeemerIndex =
                 toInteger $ findMintRedeemerIndex allPolicies txBody retiredPolicyId
+            , penalizeForInactivity = False
+            , -- TODO: This requires implementation of scheduler.
+              operatorRemovalSchedulerSync = ActiveOperators.ShowOperatorIsInactive 0
             }
       -- Mint the retired-operator NFT for the newly inserted node.
       mintPlutusRefWithRedeemerFinal
