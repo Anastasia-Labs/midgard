@@ -1,6 +1,6 @@
 /**
  * Canonical fuel-vm-style binary codec primitives for the Midgard native tx
- * envelope. Carried over from midgard-ts/src/codec.ts.
+ * envelope and proof-critical preimages.
  *
  * Encoding rules:
  *   - Fixed-size ("static") fields are written first, then variable-size
@@ -8,10 +8,6 @@
  *   - All fields are 8-byte (64-bit) aligned; integers are big-endian.
  *   - A variable-length blob writes its length (u64) in the static section and
  *     its bytes (plus tail padding) in the dynamic section.
- *
- * This replaces the previous CBOR envelope encoding. Note: the proof-critical
- * preimage fields remain opaque CBOR blobs — only the surrounding tx / body /
- * witness-set structure is binary-encoded.
  */
 
 import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
@@ -134,9 +130,45 @@ export const writeBigI64 = (w: BinaryWriter, n: bigint): void => {
 export const readBigI64 = (r: BinaryReader): bigint =>
   r.read(8).readBigInt64BE(0);
 
+/** u16 big-endian, padded to 8 bytes (6 zero bytes + 2 data bytes). */
+export const writeU16 = (w: BinaryWriter, n: number): void => {
+  if (!Number.isInteger(n) || n < 0 || n > 0xffff) {
+    fail("u16 value out of range", String(n));
+  }
+  const buf = Buffer.alloc(8);
+  buf.writeUInt16BE(n, 6);
+  w.write(buf);
+};
+
+export const readU16 = (r: BinaryReader): number => r.read(8).readUInt16BE(6);
+
 // ---------------------------------------------------------------------------
-// Fixed 32-byte hash
+// Fixed-size byte arrays (raw bytes followed by tail alignment padding)
 // ---------------------------------------------------------------------------
+
+export const writeFixedBytes = (w: BinaryWriter, bytes: Uint8Array): void => {
+  w.write(bytes);
+  w.writeZeros(alignmentBytes(bytes.length));
+};
+
+export const readFixedBytes = (r: BinaryReader, len: number): Buffer => {
+  const bytes = r.read(len);
+  r.skip(alignmentBytes(len));
+  return bytes;
+};
+
+// ---------------------------------------------------------------------------
+// Fixed 28-byte hash (Hash28: padded to 32) and 32-byte hash (no padding)
+// ---------------------------------------------------------------------------
+
+export const writeHash28 = (w: BinaryWriter, h: Uint8Array): void => {
+  if (h.length !== 28) {
+    fail("hash28 must be 28 bytes", `length=${h.length}`);
+  }
+  writeFixedBytes(w, h);
+};
+
+export const readHash28 = (r: BinaryReader): Buffer => readFixedBytes(r, 28);
 
 export const writeHash32 = (w: BinaryWriter, h: Uint8Array): void => {
   if (h.length !== 32) {

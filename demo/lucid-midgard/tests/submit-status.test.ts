@@ -1,7 +1,7 @@
 import {
   computeHash32,
   computeMidgardNativeTxId,
-  decodeMidgardNativeByteListPreimage,
+  decodeMidgardNativeAddrWitsPreimageAsCbor,
   decodeMidgardNativeTxFull,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
@@ -144,13 +144,13 @@ describe("submit/status chaining", () => {
     expect(signed.metadata.signedBy).toEqual([keyHash.to_hex()]);
 
     const decoded = decodeMidgardNativeTxFull(signed.txCbor);
-    const witnessBytes = decodeMidgardNativeByteListPreimage(
-      decoded.witnessSet.addrTxWitsPreimageCbor,
+    const witnessBytes = decodeMidgardNativeAddrWitsPreimageAsCbor(
+      decoded.witnessSet.addrTxWitsPreimage,
       "native.addr_tx_wits",
     );
     expect(witnessBytes).toHaveLength(1);
-    expect(computeHash32(decoded.witnessSet.addrTxWitsPreimageCbor)).not.toEqual(
-      computeHash32(completed.tx.witnessSet.addrTxWitsPreimageCbor),
+    expect(computeHash32(decoded.witnessSet.addrTxWitsPreimage)).not.toEqual(
+      computeHash32(completed.tx.witnessSet.addrTxWitsPreimage),
     );
   });
 

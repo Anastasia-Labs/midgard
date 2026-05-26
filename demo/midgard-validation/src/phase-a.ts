@@ -2,7 +2,7 @@ import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { LedgerColumns, type LedgerEntry } from "./ledger.js";
 import {
-  EMPTY_CBOR_LIST,
+  EMPTY_PREIMAGE_LIST,
   EMPTY_NULL_ROOT,
   MidgardTxCodecError,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
@@ -10,9 +10,13 @@ import {
   computeMidgardNativeTxId,
   decodeMidgardNativeMint,
   decodeMidgardNativeByteListPreimage,
+  decodeMidgardNativeHash28ListPreimage,
+  decodeMidgardNativeInputsPreimageAsCbor,
   decodeMidgardTxOutput,
+  decodeMidgardVKeyWitnessListPreimage,
   decodeMidgardVersionedScriptListPreimage,
   decodeMidgardNativeTxFull,
+  encodeCanonicalOutRefCbor,
   encodeMidgardAddressText,
   hashMidgardVersionedScript,
   midgardValueToCmlValue,
@@ -48,10 +52,7 @@ const decodeOutRefListFromPreimage = (
   fieldName: string,
 ): Buffer[] | RejectedTx => {
   try {
-    const raw = decodeMidgardNativeByteListPreimage(preimageCbor, fieldName);
-    return raw.map((bytes) =>
-      Buffer.from(CML.TransactionInput.from_cbor_bytes(bytes).to_cbor_bytes()),
-    );
+    return decodeMidgardNativeInputsPreimageAsCbor(preimageCbor, fieldName);
   } catch (e) {
     return reject(
       txId,
@@ -78,7 +79,7 @@ const decodeNativeWitnesses = (
   preimageCbor: Uint8Array,
 ): NativeWitnessVerification | RejectedTx => {
   try {
-    const witnessBytes = decodeMidgardNativeByteListPreimage(
+    const rawWitnesses = decodeMidgardVKeyWitnessListPreimage(
       preimageCbor,
       "native.addr_tx_wits",
     );
@@ -87,8 +88,12 @@ const decodeNativeWitnesses = (
     const witnessKeyHashes: string[] = [];
     const witnesses: InstanceType<typeof CML.Vkeywitness>[] = [];
 
-    for (let i = 0; i < witnessBytes.length; i++) {
-      const witness = CML.Vkeywitness.from_cbor_bytes(witnessBytes[i]);
+    for (let i = 0; i < rawWitnesses.length; i++) {
+      const raw = rawWitnesses[i];
+      const witness = CML.Vkeywitness.new(
+        CML.PublicKey.from_bytes(raw.vkey),
+        CML.Ed25519Signature.from_raw_bytes(raw.signature),
+      );
       witnesses.push(witness);
       const signer = witness.vkey().hash();
       const signerHex = signer.to_hex();
@@ -183,7 +188,7 @@ const decodeNativeRedeemerWitnesses = (
   txId: Buffer,
   preimageCbor: Uint8Array,
 ): boolean | RejectedTx => {
-  if (Buffer.from(preimageCbor).equals(EMPTY_CBOR_LIST)) {
+  if (Buffer.from(preimageCbor).equals(EMPTY_PREIMAGE_LIST)) {
     return false;
   }
   try {
@@ -203,7 +208,7 @@ const decodeNativeRequiredSigners = (
   preimageCbor: Uint8Array,
 ): string[] | RejectedTx => {
   try {
-    const signerBytes = decodeMidgardNativeByteListPreimage(
+    const signerBytes = decodeMidgardNativeHash28ListPreimage(
       preimageCbor,
       "native.required_signers",
     );
@@ -234,57 +239,14 @@ const decodeNativeRequiredObservers = (
   preimageCbor: Uint8Array,
 ): string[] | RejectedTx => {
   try {
-    const observerBytes = decodeMidgardNativeByteListPreimage(
+    const observerBytes = decodeMidgardNativeHash28ListPreimage(
       preimageCbor,
       "native.required_observers",
     );
     const observers: string[] = [];
     const seenObservers = new Set<string>();
     for (let i = 0; i < observerBytes.length; i++) {
-      const observer = observerBytes[i];
-      if (observer.length === 28) {
-        const observerHex = observer.toString("hex");
-        if (seenObservers.has(observerHex)) {
-          return reject(
-            txId,
-            RejectCodes.InvalidFieldType,
-            `duplicate required observer ${observerHex}`,
-          );
-        }
-        seenObservers.add(observerHex);
-        observers.push(observerHex);
-        continue;
-      }
-
-      let credential: InstanceType<typeof CML.Credential>;
-      try {
-        credential = CML.Credential.from_cbor_bytes(observer);
-      } catch (e) {
-        return reject(
-          txId,
-          RejectCodes.InvalidFieldType,
-          `required observer at index ${i} must be a 28-byte script hash or a CBOR-encoded script credential: ${String(e)}`,
-        );
-      }
-
-      if (credential.kind() !== CML.CredentialKind.Script) {
-        return reject(
-          txId,
-          RejectCodes.InvalidFieldType,
-          `required observer at index ${i} must be a script credential`,
-        );
-      }
-
-      const scriptHash = credential.as_script();
-      if (scriptHash === undefined) {
-        return reject(
-          txId,
-          RejectCodes.InvalidFieldType,
-          `required observer at index ${i} failed to decode script hash`,
-        );
-      }
-
-      const observerHex = scriptHash.to_hex();
+      const observerHex = observerBytes[i].toString("hex");
       if (seenObservers.has(observerHex)) {
         return reject(
           txId,
@@ -368,7 +330,7 @@ const validateNativeOne = (
 
   const spent = decodeOutRefListFromPreimage(
     queuedTx.txId,
-    nativeTx.body.spendInputsPreimageCbor,
+    nativeTx.body.spendInputsPreimage,
     "native.spend_inputs",
   );
   if ("code" in spent) {
@@ -388,7 +350,7 @@ const validateNativeOne = (
 
   const referenceInputs = decodeOutRefListFromPreimage(
     queuedTx.txId,
-    nativeTx.body.referenceInputsPreimageCbor,
+    nativeTx.body.referenceInputsPreimage,
     "native.reference_inputs",
   );
   if ("code" in referenceInputs) {
@@ -420,7 +382,7 @@ const validateNativeOne = (
   const outputBytes = (() => {
     try {
       return decodeMidgardNativeByteListPreimage(
-        nativeTx.body.outputsPreimageCbor,
+        nativeTx.body.outputsPreimage,
         "native.outputs",
       );
     } catch (e) {
@@ -435,7 +397,6 @@ const validateNativeOne = (
     return outputBytes;
   }
 
-  const txHash = CML.TransactionHash.from_raw_bytes(queuedTx.txId);
   let outputSum = CML.Value.zero();
   const produced: LedgerEntry[] = [];
   for (let i = 0; i < outputBytes.length; i++) {
@@ -453,9 +414,7 @@ const validateNativeOne = (
       outputSum = outputSum.checked_add(amount);
       produced.push({
         [LedgerColumns.TX_ID]: queuedTx.txId,
-        [LedgerColumns.OUTREF]: Buffer.from(
-          CML.TransactionInput.new(txHash, BigInt(i)).to_cbor_bytes(),
-        ),
+        [LedgerColumns.OUTREF]: encodeCanonicalOutRefCbor(queuedTx.txId, i),
         [LedgerColumns.OUTPUT]: outputCbor,
         [LedgerColumns.ADDRESS]: encodeMidgardAddressText(output.address),
       });
@@ -498,7 +457,7 @@ const validateNativeOne = (
 
   const witnessVerificationResult = decodeNativeWitnesses(
     queuedTx.txId,
-    nativeTx.witnessSet.addrTxWitsPreimageCbor,
+    nativeTx.witnessSet.addrTxWitsPreimage,
   );
   if ("code" in witnessVerificationResult) {
     return witnessVerificationResult;
@@ -507,7 +466,7 @@ const validateNativeOne = (
 
   const requiredSigners = decodeNativeRequiredSigners(
     queuedTx.txId,
-    nativeTx.body.requiredSignersPreimageCbor,
+    nativeTx.body.requiredSignersPreimage,
   );
   if ("code" in requiredSigners) {
     return requiredSigners;
@@ -515,7 +474,7 @@ const validateNativeOne = (
 
   const requiredObserverHashes = decodeNativeRequiredObservers(
     queuedTx.txId,
-    nativeTx.body.requiredObserversPreimageCbor,
+    nativeTx.body.requiredObserversPreimage,
   );
   if ("code" in requiredObserverHashes) {
     return requiredObserverHashes;
@@ -525,7 +484,7 @@ const validateNativeOne = (
   let mintedValue = CML.Value.zero();
   let burnedValue = CML.Value.zero();
   try {
-    const decodedMint = decodeMidgardNativeMint(nativeTx.body.mintPreimageCbor);
+    const decodedMint = decodeMidgardNativeMint(nativeTx.body.mintPreimage);
     if (decodedMint !== undefined) {
       mintPolicyHashes = decodedMint.policyIds;
       mintedValue = decodedMint.mintedValue;
@@ -570,7 +529,7 @@ const validateNativeOne = (
 
   const scriptWitnessesResult = decodeAndClassifyScriptWitnesses(
     queuedTx.txId,
-    nativeTx.witnessSet.scriptTxWitsPreimageCbor,
+    nativeTx.witnessSet.scriptTxWitsPreimage,
     validityIntervalStart,
     validityIntervalEnd,
     witnessSignerSet,
@@ -582,7 +541,7 @@ const validateNativeOne = (
 
   const hasRedeemerWitnesses = decodeNativeRedeemerWitnesses(
     queuedTx.txId,
-    nativeTx.witnessSet.redeemerTxWitsPreimageCbor,
+    nativeTx.witnessSet.redeemerTxWitsPreimage,
   );
   if (
     typeof hasRedeemerWitnesses === "object" &&

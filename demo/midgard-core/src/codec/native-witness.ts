@@ -42,18 +42,18 @@ export const writeNativeTxWitnessSetCanonicalStatic = (
   w: BinaryWriter,
   witnessSet: MidgardNativeTxWitnessSetCanonical,
 ): void => {
-  writeVarBytesStatic(w, witnessSet.addrTxWitsPreimageCbor);
-  writeVarBytesStatic(w, witnessSet.scriptTxWitsPreimageCbor);
-  writeVarBytesStatic(w, witnessSet.redeemerTxWitsPreimageCbor);
+  writeVarBytesStatic(w, witnessSet.addrTxWitsPreimage);
+  writeVarBytesStatic(w, witnessSet.scriptTxWitsPreimage);
+  writeVarBytesStatic(w, witnessSet.redeemerTxWitsPreimage);
 };
 
 export const writeNativeTxWitnessSetCanonicalDynamic = (
   w: BinaryWriter,
   witnessSet: MidgardNativeTxWitnessSetCanonical,
 ): void => {
-  writeVarBytesDynamic(w, witnessSet.addrTxWitsPreimageCbor);
-  writeVarBytesDynamic(w, witnessSet.scriptTxWitsPreimageCbor);
-  writeVarBytesDynamic(w, witnessSet.redeemerTxWitsPreimageCbor);
+  writeVarBytesDynamic(w, witnessSet.addrTxWitsPreimage);
+  writeVarBytesDynamic(w, witnessSet.scriptTxWitsPreimage);
+  writeVarBytesDynamic(w, witnessSet.redeemerTxWitsPreimage);
 };
 
 export const readNativeTxWitnessSetCanonicalStatic = (
@@ -69,13 +69,13 @@ export const readNativeTxWitnessSetCanonicalDynamic = (
   r: BinaryReader,
   p: NativeTxWitnessSetCanonicalPartial,
 ): MidgardNativeTxWitnessSetCanonical => {
-  const addrTxWitsPreimageCbor = readVarBytesDynamic(r, p.addrLen);
-  const scriptTxWitsPreimageCbor = readVarBytesDynamic(r, p.scriptLen);
-  const redeemerTxWitsPreimageCbor = readVarBytesDynamic(r, p.redeemerLen);
+  const addrTxWitsPreimage = readVarBytesDynamic(r, p.addrLen);
+  const scriptTxWitsPreimage = readVarBytesDynamic(r, p.scriptLen);
+  const redeemerTxWitsPreimage = readVarBytesDynamic(r, p.redeemerLen);
   return {
-    addrTxWitsPreimageCbor,
-    scriptTxWitsPreimageCbor,
-    redeemerTxWitsPreimageCbor,
+    addrTxWitsPreimage,
+    scriptTxWitsPreimage,
+    redeemerTxWitsPreimage,
   };
 };
 
@@ -172,7 +172,7 @@ export const decodeNativeTxWitnessSetCompact = (
 export const deriveNativeTxWitnessSetCompact = (
   witnessSet: MidgardNativeTxWitnessSetCanonical,
 ): MidgardNativeTxWitnessSetCompact => ({
-  addrTxWitsHash: computeHash32(witnessSet.addrTxWitsPreimageCbor),
-  scriptTxWitsHash: computeHash32(witnessSet.scriptTxWitsPreimageCbor),
-  redeemerTxWitsHash: computeHash32(witnessSet.redeemerTxWitsPreimageCbor),
+  addrTxWitsHash: computeHash32(witnessSet.addrTxWitsPreimage),
+  scriptTxWitsHash: computeHash32(witnessSet.scriptTxWitsPreimage),
+  redeemerTxWitsHash: computeHash32(witnessSet.redeemerTxWitsPreimage),
 });

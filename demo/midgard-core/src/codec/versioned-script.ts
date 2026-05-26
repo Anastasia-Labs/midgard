@@ -14,6 +14,10 @@ import {
   encodeMidgardNativeScript,
   type MidgardNativeScript,
 } from "./native-script.js";
+import {
+  decodeMidgardBytesListPreimage,
+  encodeMidgardBytesListPreimage,
+} from "./native-preimage.js";
 
 export const MidgardVersionedScriptTags = {
   NativeCardano: 0n,
@@ -118,49 +122,21 @@ export const hashMidgardVersionedScript = (
     ),
   ).toString("hex");
 
+/**
+ * Preimage = binary-framed list (u64 len + per-entry length-prefixed bytes)
+ * of per-script CBOR encodings. The outer list is binary; each entry is one
+ * `encodeMidgardVersionedScript` CBOR blob (Midgard's per-script schema is
+ * unchanged).
+ */
 export const encodeMidgardVersionedScriptListPreimage = (
   scripts: readonly MidgardVersionedScript[],
-): Buffer => encodeCborArrayRaw(scripts.map(encodeMidgardVersionedScript));
+): Buffer =>
+  encodeMidgardBytesListPreimage(scripts.map(encodeMidgardVersionedScript));
 
 export const decodeMidgardVersionedScriptListPreimage = (
   bytes: Uint8Array,
   fieldName = "script_tx_wits",
 ): readonly MidgardVersionedScript[] => {
-  const header = readCborArrayHeader(bytes, 0, fieldName);
-  let cursor = header.nextOffset;
-  const scripts: MidgardVersionedScript[] = [];
-  for (let i = 0; i < header.length; i += 1) {
-    const start = cursor;
-    const itemHeader = readCborArrayHeader(bytes, cursor, `${fieldName}[${i}]`);
-    cursor = itemHeader.nextOffset;
-    for (let j = 0; j < itemHeader.length; j += 1) {
-      const spanStart = cursor;
-      if (j === 0) {
-        cursor = readCborUnsigned(bytes, cursor, `${fieldName}[${i}].tag`).nextOffset;
-      } else if (j === 1) {
-        cursor = readCborBytes(bytes, cursor, `${fieldName}[${i}].bytes`).nextOffset;
-      } else {
-        fail("MidgardVersionedScript must have exactly 2 fields", `${fieldName}[${i}]`);
-      }
-      if (cursor <= spanStart) {
-        fail("Invalid versioned script cursor progress", `${fieldName}[${i}]`);
-      }
-    }
-    const script = decodeMidgardVersionedScript(bytes.subarray(start, cursor));
-    scripts.push(script);
-  }
-  if (cursor !== bytes.length) {
-    throw new MidgardTxCodecError(
-      MidgardTxCodecErrorCodes.CborDecode,
-      `${fieldName} has trailing bytes`,
-      `offset=${cursor}`,
-    );
-  }
-  assertCanonicalCborRoundTrip(
-    bytes,
-    scripts,
-    encodeMidgardVersionedScriptListPreimage,
-    `${fieldName} is not canonical`,
-  );
-  return scripts;
+  const entries = decodeMidgardBytesListPreimage(bytes, fieldName);
+  return entries.map((entry) => decodeMidgardVersionedScript(entry));
 };

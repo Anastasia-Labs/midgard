@@ -1,5 +1,5 @@
 import {
-  decodeMidgardNativeByteListPreimage,
+  decodeMidgardNativeInputsPreimageAsCbor,
   decodeMidgardNativeTxFull,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
@@ -140,9 +140,9 @@ const makeProvider = (opts: {
 };
 
 const inputLabels = (txHex: string): readonly string[] =>
-  decodeMidgardNativeByteListPreimage(
+  decodeMidgardNativeInputsPreimageAsCbor(
     decodeMidgardNativeTxFull(Buffer.from(txHex, "hex")).body
-      .spendInputsPreimageCbor,
+      .spendInputsPreimage,
   ).map((bytes) => {
     const input = CML.TransactionInput.from_cbor_bytes(bytes);
     return `${input.transaction_id().to_hex()}#${input.index().toString()}`;

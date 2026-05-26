@@ -12,6 +12,7 @@ import {
 import {
   computeMidgardNativeTxId,
   decodeMidgardNativeByteListPreimage,
+  decodeMidgardNativeInputsPreimageAsCbor,
   decodeMidgardNativeTxFull,
   decodeMidgardTxOutput,
   midgardAddressFromText,
@@ -225,8 +226,8 @@ describe("submit-l2-transfer tx building", () => {
     });
 
     const nativeTx = decodeMidgardNativeTxFull(built.txCbor);
-    const spendInputs = decodeMidgardNativeByteListPreimage(
-      nativeTx.body.spendInputsPreimageCbor,
+    const spendInputs = decodeMidgardNativeInputsPreimageAsCbor(
+      nativeTx.body.spendInputsPreimage,
     ).map((bytes) => {
       const input = CML.TransactionInput.from_cbor_bytes(bytes);
       return `${input.transaction_id().to_hex()}#${input.index().toString()}`;
@@ -237,7 +238,7 @@ describe("submit-l2-transfer tx building", () => {
     ]);
 
     const outputs = decodeMidgardNativeByteListPreimage(
-      nativeTx.body.outputsPreimageCbor,
+      nativeTx.body.outputsPreimage,
     ).map((bytes) => {
       expect(bytes[0] >> 5).toBe(5);
       const output = decodeMidgardTxOutput(bytes);

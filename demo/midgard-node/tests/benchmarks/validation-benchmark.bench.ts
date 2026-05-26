@@ -14,6 +14,7 @@ import {
   decodeMidgardNativeTxFull,
   deriveMidgardNativeTxCompact,
   encodeMidgardNativeTxFull,
+  EMPTY_PREIMAGE_LIST,
 } from "@al-ft/midgard-core/codec";
 import {
   PhaseAAccepted,
@@ -130,8 +131,7 @@ const TX_SEQUENCE_FIXTURE_PATH = fileURLToPath(
 const OUTPUT_JSON_PATH = fileURLToPath(
   new URL("./output/validation-benchmark.json", import.meta.url),
 );
-const EMPTY_CBOR_LIST = Buffer.from([0x80]);
-const EMPTY_LIST_ROOT = computeHash32(EMPTY_CBOR_LIST);
+const EMPTY_LIST_ROOT = computeHash32(EMPTY_PREIMAGE_LIST);
 
 const phaseAConfig = {
   expectedNetworkId: EXPECTED_NETWORK_ID,
@@ -223,13 +223,13 @@ const buildQueuedBlock = (
       validity: "TxIsValid" as const,
       body: {
         ...converted.body,
-        requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
+        requiredSignersPreimage: EMPTY_PREIMAGE_LIST,
       },
       witnessSet: {
         ...converted.witnessSet,
-        addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-        scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-        redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+        addrTxWitsPreimage: EMPTY_PREIMAGE_LIST,
+        scriptTxWitsPreimage: EMPTY_PREIMAGE_LIST,
+        redeemerTxWitsPreimage: EMPTY_PREIMAGE_LIST,
       },
     };
     const txForQueue = {

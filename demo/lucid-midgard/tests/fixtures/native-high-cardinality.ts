@@ -3,7 +3,12 @@ import { CML } from "@lucid-evolution/lucid";
 import {
   computeHash32,
   computeMidgardNativeTxId,
+  decodeMidgardBytesListPreimage,
+  decodeMidgardHash28ListPreimage,
+  decodeMidgardMintPreimage,
   decodeMidgardNativeTxFull,
+  decodeMidgardOutputReferenceListPreimage,
+  decodeMidgardVKeyWitnessListPreimage,
   decodeSingleCbor,
   encodeMidgardNativeTxBodyCompact,
   encodeMidgardNativeTxCompact,
@@ -41,8 +46,11 @@ export const HIGH_CARDINALITY_COUNTS = {
 export const SIZE_BALANCED_FIXTURE_NAME =
   "size-balanced-15_5k-v1" as const;
 
-export const SIZE_BALANCED_TARGET_FULL_TX_CBOR_BYTES = 15_872;
-export const SIZE_BALANCED_FULL_TX_CBOR_TOLERANCE_BYTES = 256;
+// Binary preimage encoding inflates the tx envelope vs the previous CBOR
+// format (padding + length prefixes on Hash28 / OutputRef / VKeyWitness lists),
+// so the target was retuned for the new layout.
+export const SIZE_BALANCED_TARGET_FULL_TX_CBOR_BYTES = 18_816;
+export const SIZE_BALANCED_FULL_TX_CBOR_TOLERANCE_BYTES = 384;
 export const SIZE_BALANCED_MAX_LIST_LENGTH = 255;
 export const SIZE_BALANCED_MAX_FEE = 10_000_000n;
 export const SIZE_BALANCED_FEE = 5_000_000n;
@@ -300,15 +308,15 @@ const fixtureSizes = (
   compactBodyCborBytes: compactBodyCbor.length,
   fee: tx.body.fee.toString(10),
   preimages: {
-    spendInputs: tx.body.spendInputsPreimageCbor.length,
-    referenceInputs: tx.body.referenceInputsPreimageCbor.length,
-    outputs: tx.body.outputsPreimageCbor.length,
-    requiredObservers: tx.body.requiredObserversPreimageCbor.length,
-    requiredSigners: tx.body.requiredSignersPreimageCbor.length,
-    mint: tx.body.mintPreimageCbor.length,
-    addrTxWits: tx.witnessSet.addrTxWitsPreimageCbor.length,
-    scriptTxWits: tx.witnessSet.scriptTxWitsPreimageCbor.length,
-    redeemerTxWits: tx.witnessSet.redeemerTxWitsPreimageCbor.length,
+    spendInputs: tx.body.spendInputsPreimage.length,
+    referenceInputs: tx.body.referenceInputsPreimage.length,
+    outputs: tx.body.outputsPreimage.length,
+    requiredObservers: tx.body.requiredObserversPreimage.length,
+    requiredSigners: tx.body.requiredSignersPreimage.length,
+    mint: tx.body.mintPreimage.length,
+    addrTxWits: tx.witnessSet.addrTxWitsPreimage.length,
+    scriptTxWits: tx.witnessSet.scriptTxWitsPreimage.length,
+    redeemerTxWits: tx.witnessSet.redeemerTxWitsPreimage.length,
   },
 });
 
@@ -468,27 +476,27 @@ export const buildHighCardinalityNativeTxFixture =
       tx.compact.transactionBody,
     );
 
-    const spendInputs = asArray(
-      decodeSingleCbor(tx.body.spendInputsPreimageCbor),
+    const spendInputs = decodeMidgardOutputReferenceListPreimage(
+      tx.body.spendInputsPreimage,
       "spend inputs",
     );
-    const decodedReferenceInputs = asArray(
-      decodeSingleCbor(tx.body.referenceInputsPreimageCbor),
+    const decodedReferenceInputs = decodeMidgardOutputReferenceListPreimage(
+      tx.body.referenceInputsPreimage,
       "reference inputs",
     );
-    const outputs = asArray(
-      decodeSingleCbor(tx.body.outputsPreimageCbor),
+    const outputs = decodeMidgardBytesListPreimage(
+      tx.body.outputsPreimage,
       "outputs",
     );
-    const mint = asMap(decodeSingleCbor(tx.body.mintPreimageCbor), "mint");
-    const redeemers = redeemerPointers(tx.witnessSet.redeemerTxWitsPreimageCbor);
+    const mint = decodeMidgardMintPreimage(tx.body.mintPreimage, "mint");
+    const redeemers = redeemerPointers(tx.witnessSet.redeemerTxWitsPreimage);
 
     if (
       spendInputs.length !== HIGH_CARDINALITY_COUNTS.spendInputs ||
       decodedReferenceInputs.length !==
         HIGH_CARDINALITY_COUNTS.referenceInputs ||
       outputs.length !== HIGH_CARDINALITY_COUNTS.outputs ||
-      mint.size !== HIGH_CARDINALITY_COUNTS.mintPolicies ||
+      mint.length !== HIGH_CARDINALITY_COUNTS.mintPolicies ||
       redeemers.length !== HIGH_CARDINALITY_COUNTS.totalRedeemers
     ) {
       throw new Error("High-cardinality native tx fixture shape drifted");
@@ -502,20 +510,18 @@ export const buildHighCardinalityNativeTxFixture =
       compactBodyCborHex: hex(compactBodyCbor),
       counts: HIGH_CARDINALITY_COUNTS,
       sizes: fixtureSizes(tx, compactTxCbor, compactBodyCbor, signed.txCbor),
-      mintPolicyIdsInTxInfoOrder: [...mint.keys()].map((policy) =>
-        hex(policy as Uint8Array),
-      ),
+      mintPolicyIdsInTxInfoOrder: mint.map((policy) => hex(policy.policyId)),
       redeemerPointers: redeemers,
       preimages: {
-        spendInputsCborHex: hex(tx.body.spendInputsPreimageCbor),
-        referenceInputsCborHex: hex(tx.body.referenceInputsPreimageCbor),
-        outputsCborHex: hex(tx.body.outputsPreimageCbor),
-        requiredObserversCborHex: hex(tx.body.requiredObserversPreimageCbor),
-        requiredSignersCborHex: hex(tx.body.requiredSignersPreimageCbor),
-        mintCborHex: hex(tx.body.mintPreimageCbor),
-        addrTxWitsCborHex: hex(tx.witnessSet.addrTxWitsPreimageCbor),
-        scriptTxWitsCborHex: hex(tx.witnessSet.scriptTxWitsPreimageCbor),
-        redeemerTxWitsCborHex: hex(tx.witnessSet.redeemerTxWitsPreimageCbor),
+        spendInputsCborHex: hex(tx.body.spendInputsPreimage),
+        referenceInputsCborHex: hex(tx.body.referenceInputsPreimage),
+        outputsCborHex: hex(tx.body.outputsPreimage),
+        requiredObserversCborHex: hex(tx.body.requiredObserversPreimage),
+        requiredSignersCborHex: hex(tx.body.requiredSignersPreimage),
+        mintCborHex: hex(tx.body.mintPreimage),
+        addrTxWitsCborHex: hex(tx.witnessSet.addrTxWitsPreimage),
+        scriptTxWitsCborHex: hex(tx.witnessSet.scriptTxWitsPreimage),
+        redeemerTxWitsCborHex: hex(tx.witnessSet.redeemerTxWitsPreimage),
       },
       hashes: {
         spendInputsHashHex: hex(tx.compact.transactionBody.spendInputsHash),
@@ -531,13 +537,13 @@ export const buildHighCardinalityNativeTxFixture =
         ),
         mintHashHex: hex(tx.compact.transactionBody.mintHash),
         addrTxWitsHashHex: hex(
-          computeHash32(tx.witnessSet.addrTxWitsPreimageCbor),
+          computeHash32(tx.witnessSet.addrTxWitsPreimage),
         ),
         scriptTxWitsHashHex: hex(
-          computeHash32(tx.witnessSet.scriptTxWitsPreimageCbor),
+          computeHash32(tx.witnessSet.scriptTxWitsPreimage),
         ),
         redeemerTxWitsHashHex: hex(
-          computeHash32(tx.witnessSet.redeemerTxWitsPreimageCbor),
+          computeHash32(tx.witnessSet.redeemerTxWitsPreimage),
         ),
         witnessSetHashHex: hex(tx.compact.transactionWitnessSetHash),
       },
@@ -751,36 +757,36 @@ export const buildSizeBalancedNativeTxFixture =
       tx.compact.transactionBody,
     );
 
-    const spendInputs = asArray(
-      decodeSingleCbor(tx.body.spendInputsPreimageCbor),
+    const spendInputs = decodeMidgardOutputReferenceListPreimage(
+      tx.body.spendInputsPreimage,
       "spend inputs",
     );
-    const decodedReferenceInputs = asArray(
-      decodeSingleCbor(tx.body.referenceInputsPreimageCbor),
+    const decodedReferenceInputs = decodeMidgardOutputReferenceListPreimage(
+      tx.body.referenceInputsPreimage,
       "reference inputs",
     );
-    const outputs = asArray(
-      decodeSingleCbor(tx.body.outputsPreimageCbor),
+    const outputs = decodeMidgardBytesListPreimage(
+      tx.body.outputsPreimage,
       "outputs",
     );
-    const requiredObservers = asArray(
-      decodeSingleCbor(tx.body.requiredObserversPreimageCbor),
+    const requiredObservers = decodeMidgardHash28ListPreimage(
+      tx.body.requiredObserversPreimage,
       "required observers",
     );
-    const requiredSigners = asArray(
-      decodeSingleCbor(tx.body.requiredSignersPreimageCbor),
+    const requiredSigners = decodeMidgardHash28ListPreimage(
+      tx.body.requiredSignersPreimage,
       "required signers",
     );
-    const mint = asMap(decodeSingleCbor(tx.body.mintPreimageCbor), "mint");
-    const addrTxWits = asArray(
-      decodeSingleCbor(tx.witnessSet.addrTxWitsPreimageCbor),
+    const mint = decodeMidgardMintPreimage(tx.body.mintPreimage, "mint");
+    const addrTxWits = decodeMidgardVKeyWitnessListPreimage(
+      tx.witnessSet.addrTxWitsPreimage,
       "addr witnesses",
     );
-    const scriptTxWits = asArray(
-      decodeSingleCbor(tx.witnessSet.scriptTxWitsPreimageCbor),
+    const scriptTxWits = decodeMidgardBytesListPreimage(
+      tx.witnessSet.scriptTxWitsPreimage,
       "script witnesses",
     );
-    const redeemers = redeemerPointers(tx.witnessSet.redeemerTxWitsPreimageCbor);
+    const redeemers = redeemerPointers(tx.witnessSet.redeemerTxWitsPreimage);
 
     const expectedLengths = {
       spendInputs: SIZE_BALANCED_COUNTS.spendInputs,
@@ -799,7 +805,7 @@ export const buildSizeBalancedNativeTxFixture =
       outputs: outputs.length,
       requiredObservers: requiredObservers.length,
       requiredSigners: requiredSigners.length,
-      mintPolicies: mint.size,
+      mintPolicies: mint.length,
       addrWitnesses: addrTxWits.length,
       scriptWitnesses: scriptTxWits.length,
       totalRedeemers: redeemers.length,
@@ -848,20 +854,18 @@ export const buildSizeBalancedNativeTxFixture =
       maxListLength: SIZE_BALANCED_MAX_LIST_LENGTH,
       maxFee: SIZE_BALANCED_MAX_FEE.toString(10),
       sizes,
-      mintPolicyIdsInTxInfoOrder: [...mint.keys()].map((policy) =>
-        hex(policy as Uint8Array),
-      ),
+      mintPolicyIdsInTxInfoOrder: mint.map((policy) => hex(policy.policyId)),
       redeemerPointers: redeemers,
       preimages: {
-        spendInputsCborHex: hex(tx.body.spendInputsPreimageCbor),
-        referenceInputsCborHex: hex(tx.body.referenceInputsPreimageCbor),
-        outputsCborHex: hex(tx.body.outputsPreimageCbor),
-        requiredObserversCborHex: hex(tx.body.requiredObserversPreimageCbor),
-        requiredSignersCborHex: hex(tx.body.requiredSignersPreimageCbor),
-        mintCborHex: hex(tx.body.mintPreimageCbor),
-        addrTxWitsCborHex: hex(tx.witnessSet.addrTxWitsPreimageCbor),
-        scriptTxWitsCborHex: hex(tx.witnessSet.scriptTxWitsPreimageCbor),
-        redeemerTxWitsCborHex: hex(tx.witnessSet.redeemerTxWitsPreimageCbor),
+        spendInputsCborHex: hex(tx.body.spendInputsPreimage),
+        referenceInputsCborHex: hex(tx.body.referenceInputsPreimage),
+        outputsCborHex: hex(tx.body.outputsPreimage),
+        requiredObserversCborHex: hex(tx.body.requiredObserversPreimage),
+        requiredSignersCborHex: hex(tx.body.requiredSignersPreimage),
+        mintCborHex: hex(tx.body.mintPreimage),
+        addrTxWitsCborHex: hex(tx.witnessSet.addrTxWitsPreimage),
+        scriptTxWitsCborHex: hex(tx.witnessSet.scriptTxWitsPreimage),
+        redeemerTxWitsCborHex: hex(tx.witnessSet.redeemerTxWitsPreimage),
       },
       hashes: {
         spendInputsHashHex: hex(tx.compact.transactionBody.spendInputsHash),
@@ -877,13 +881,13 @@ export const buildSizeBalancedNativeTxFixture =
         ),
         mintHashHex: hex(tx.compact.transactionBody.mintHash),
         addrTxWitsHashHex: hex(
-          computeHash32(tx.witnessSet.addrTxWitsPreimageCbor),
+          computeHash32(tx.witnessSet.addrTxWitsPreimage),
         ),
         scriptTxWitsHashHex: hex(
-          computeHash32(tx.witnessSet.scriptTxWitsPreimageCbor),
+          computeHash32(tx.witnessSet.scriptTxWitsPreimage),
         ),
         redeemerTxWitsHashHex: hex(
-          computeHash32(tx.witnessSet.redeemerTxWitsPreimageCbor),
+          computeHash32(tx.witnessSet.redeemerTxWitsPreimage),
         ),
         witnessSetHashHex: hex(tx.compact.transactionWitnessSetHash),
       },

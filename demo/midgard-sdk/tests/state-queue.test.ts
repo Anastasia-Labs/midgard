@@ -24,7 +24,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 import {
-  EMPTY_CBOR_LIST,
+  EMPTY_PREIMAGE_LIST,
   EMPTY_NULL_ROOT,
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
@@ -257,12 +257,12 @@ const makeNativeTx = (
     version: MIDGARD_NATIVE_TX_VERSION,
     validity: "TxIsValid",
     body: {
-      spendInputsPreimageCbor: encodeCbor(spendInputCbors),
-      referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
-      outputsPreimageCbor: EMPTY_CBOR_LIST,
-      requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
-      requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
-      mintPreimageCbor: EMPTY_CBOR_LIST,
+      spendInputsPreimage: encodeCbor(spendInputCbors),
+      referenceInputsPreimage: EMPTY_PREIMAGE_LIST,
+      outputsPreimage: EMPTY_PREIMAGE_LIST,
+      requiredObserversPreimage: EMPTY_PREIMAGE_LIST,
+      requiredSignersPreimage: EMPTY_PREIMAGE_LIST,
+      mintPreimage: EMPTY_PREIMAGE_LIST,
       scriptIntegrityHash: EMPTY_NULL_ROOT,
       auxiliaryDataHash: EMPTY_NULL_ROOT,
       fee,
@@ -271,9 +271,9 @@ const makeNativeTx = (
       networkId: 0n,
     },
     witnessSet: {
-      addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-      scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-      redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+      addrTxWitsPreimage: EMPTY_PREIMAGE_LIST,
+      scriptTxWitsPreimage: EMPTY_PREIMAGE_LIST,
+      redeemerTxWitsPreimage: EMPTY_PREIMAGE_LIST,
     },
   });
 

@@ -2,9 +2,10 @@ import {
   computeHash32,
   computeMidgardNativeTxId,
   decodeMidgardNativeByteListPreimage,
+  decodeMidgardNativeInputsPreimageAsCbor,
   decodeMidgardNativeTxFull,
   deriveMidgardNativeTxWitnessSetCompact,
-  EMPTY_CBOR_LIST,
+  EMPTY_PREIMAGE_LIST,
   EMPTY_NULL_ROOT,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   MIDGARD_POSIX_TIME_NONE,
@@ -172,27 +173,27 @@ describe("TxBuilder finalization", () => {
     );
 
     expect(tx.compact.transactionBody.spendInputsHash).toEqual(
-      computeHash32(tx.body.spendInputsPreimageCbor),
+      computeHash32(tx.body.spendInputsPreimage),
     );
     expect(tx.compact.transactionBody.referenceInputsHash).toEqual(
-      computeHash32(EMPTY_CBOR_LIST),
+      computeHash32(EMPTY_PREIMAGE_LIST),
     );
     expect(tx.compact.transactionBody.requiredObserversHash).toEqual(
-      computeHash32(EMPTY_CBOR_LIST),
+      computeHash32(EMPTY_PREIMAGE_LIST),
     );
     expect(tx.compact.transactionBody.mintHash).toEqual(
-      computeHash32(EMPTY_CBOR_LIST),
+      computeHash32(EMPTY_PREIMAGE_LIST),
     );
     expect(tx.body.scriptIntegrityHash).toEqual(EMPTY_NULL_ROOT);
     expect(tx.body.auxiliaryDataHash).toEqual(EMPTY_NULL_ROOT);
     expect(witnessCompact.addrTxWitsHash).toEqual(
-      computeHash32(EMPTY_CBOR_LIST),
+      computeHash32(EMPTY_PREIMAGE_LIST),
     );
     expect(witnessCompact.scriptTxWitsHash).toEqual(
-      computeHash32(EMPTY_CBOR_LIST),
+      computeHash32(EMPTY_PREIMAGE_LIST),
     );
     expect(witnessCompact.redeemerTxWitsHash).toEqual(
-      computeHash32(EMPTY_CBOR_LIST),
+      computeHash32(EMPTY_PREIMAGE_LIST),
     );
     expect(tx.body.validityIntervalStart).toBe(MIDGARD_POSIX_TIME_NONE);
     expect(tx.body.validityIntervalEnd).toBe(MIDGARD_POSIX_TIME_NONE);
@@ -214,8 +215,8 @@ describe("TxBuilder finalization", () => {
       .complete();
     const tx = decodeMidgardNativeTxFull(completed.txCbor);
 
-    const spendInputs = decodeMidgardNativeByteListPreimage(
-      tx.body.spendInputsPreimageCbor,
+    const spendInputs = decodeMidgardNativeInputsPreimageAsCbor(
+      tx.body.spendInputsPreimage,
     ).map((bytes) => CML.TransactionInput.from_cbor_bytes(bytes));
     expect(
       spendInputs.map(
@@ -225,7 +226,7 @@ describe("TxBuilder finalization", () => {
     ).toEqual([`${"11".repeat(32)}#0`, `${"22".repeat(32)}#1`]);
 
     const outputs = decodeMidgardNativeByteListPreimage(
-      tx.body.outputsPreimageCbor,
+      tx.body.outputsPreimage,
     );
     expect(outputs).toHaveLength(2);
     expect(
@@ -440,11 +441,11 @@ describe("TxBuilder finalization", () => {
     expect(completed.txCbor.toString("hex")).toBe(completed.txHex);
 
     const tx = completed.tx;
-    tx.body.outputsPreimageCbor[0] ^= 0xff;
-    expect(completed.tx.body.outputsPreimageCbor.toString("hex")).toBe(
+    tx.body.outputsPreimage[0] ^= 0xff;
+    expect(completed.tx.body.outputsPreimage.toString("hex")).toBe(
       decodeMidgardNativeTxFull(
         Buffer.from(completed.txHex, "hex"),
-      ).body.outputsPreimageCbor.toString("hex"),
+      ).body.outputsPreimage.toString("hex"),
     );
   });
 });

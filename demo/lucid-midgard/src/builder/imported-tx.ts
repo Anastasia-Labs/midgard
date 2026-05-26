@@ -2,6 +2,8 @@ import { CML } from "@lucid-evolution/lucid";
 import {
   computeMidgardNativeTxId,
   decodeMidgardNativeByteListPreimage,
+  decodeMidgardNativeHash28ListPreimage,
+  decodeMidgardNativeInputsPreimageAsCbor,
   decodeMidgardNativeTxFull,
   encodeMidgardNativeTxFull,
   verifyMidgardNativeTxFullConsistency,
@@ -104,7 +106,7 @@ const decodeOrderedInputOutRefs = (
   preimageCbor: Uint8Array,
   fieldName: string,
 ): readonly OutRef[] => {
-  const refs = decodeMidgardNativeByteListPreimage(
+  const refs = decodeMidgardNativeInputsPreimageAsCbor(
     preimageCbor,
     fieldName,
   ).map((inputCbor, index) =>
@@ -137,11 +139,11 @@ const validatedNativeInputs = (
   tx: MidgardNativeTxFull,
 ): ValidatedNativeInputs => {
   const spendInputRefs = decodeOrderedInputOutRefs(
-    tx.body.spendInputsPreimageCbor,
+    tx.body.spendInputsPreimage,
     "native.spend_inputs",
   );
   const referenceInputRefs = decodeOrderedInputOutRefs(
-    tx.body.referenceInputsPreimageCbor,
+    tx.body.referenceInputsPreimage,
     "native.reference_inputs",
   );
   const spendLabels = new Map(
@@ -167,7 +169,7 @@ export const nativeInputOutRefs = (
 
 const nativeOutputBytes = (tx: MidgardNativeTxFull): readonly Buffer[] =>
   decodeMidgardNativeByteListPreimage(
-    tx.body.outputsPreimageCbor,
+    tx.body.outputsPreimage,
     "native.outputs",
   );
 
@@ -196,8 +198,8 @@ const validatedNativeOutputs = (
 const requiredSignerKeyHashesFromTx = (
   tx: MidgardNativeTxFull,
 ): readonly string[] =>
-  decodeMidgardNativeByteListPreimage(
-    tx.body.requiredSignersPreimageCbor,
+  decodeMidgardNativeHash28ListPreimage(
+    tx.body.requiredSignersPreimage,
     "native.required_signers",
   ).map((bytes, index) =>
     normalizeHashHex(

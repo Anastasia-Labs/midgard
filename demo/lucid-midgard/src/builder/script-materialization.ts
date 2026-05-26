@@ -3,11 +3,15 @@ import {
   computeHash32,
   computeScriptIntegrityHashForLanguages,
   encodeCbor,
+  encodeMidgardHash28ListPreimage,
+  encodeMidgardMintPreimage,
   encodeMidgardVersionedScript,
   encodeMidgardVersionedScriptListPreimage,
-  EMPTY_CBOR_LIST,
+  EMPTY_PREIMAGE_LIST,
   EMPTY_NULL_ROOT,
   hashMidgardVersionedScript,
+  type MidgardMintAsset,
+  type MidgardMintPolicy,
   type MidgardVersionedScript,
   type ScriptLanguageName,
 } from "@al-ft/midgard-core/codec";
@@ -39,10 +43,7 @@ import {
   normalizeNonNegativeBigInt,
 } from "./normalizers.js";
 import { cloneRedeemer } from "./state.js";
-import {
-  encodeByteListPreimage,
-  type ScriptMaterialization,
-} from "./unsigned-tx.js";
+import { type ScriptMaterialization } from "./unsigned-tx.js";
 
 type KnownScriptSource = {
   readonly sourceId: string;
@@ -469,27 +470,28 @@ const effectiveMints = (
     }));
 };
 
-const mintPreimageCbor = (mints: readonly EffectiveMint[]): Buffer => {
+const mintPreimage = (mints: readonly EffectiveMint[]): Buffer => {
   if (mints.length === 0) {
-    return Buffer.from(EMPTY_CBOR_LIST);
+    return Buffer.from(EMPTY_PREIMAGE_LIST);
   }
-  const cborMap = new Map<Buffer, Map<Buffer, bigint>>();
-  for (const { policyId, assets } of mints) {
-    const assetMap = new Map<Buffer, bigint>();
-    for (const [assetName, quantity] of Object.entries(assets)) {
-      assetMap.set(Buffer.from(assetName, "hex"), quantity);
-    }
-    cborMap.set(Buffer.from(policyId, "hex"), assetMap);
-  }
-  return encodeCbor(cborMap);
+  const policies: MidgardMintPolicy[] = mints.map(({ policyId, assets }) => {
+    const assetEntries: MidgardMintAsset[] = Object.entries(assets).map(
+      ([assetName, quantity]) => ({
+        name: Buffer.from(assetName, "hex"),
+        amount: quantity,
+      }),
+    );
+    return { policyId: Buffer.from(policyId, "hex"), assets: assetEntries };
+  });
+  return encodeMidgardMintPreimage(policies);
 };
 
-const requiredObserversPreimageCbor = (
+const requiredObserversPreimage = (
   observers: readonly ObserverIntent[],
 ): Buffer =>
   observers.length === 0
-    ? Buffer.from(EMPTY_CBOR_LIST)
-    : encodeByteListPreimage(
+    ? Buffer.from(EMPTY_PREIMAGE_LIST)
+    : encodeMidgardHash28ListPreimage(
         [
           ...new Set(
             observers.map((observer) =>
@@ -499,6 +501,7 @@ const requiredObserversPreimageCbor = (
         ]
           .sort()
           .map((hash) => Buffer.from(hash, "hex")),
+        "required_observers",
       );
 
 const pointerKey = (pointer: RedeemerPointer): string =>
@@ -656,7 +659,7 @@ const addRequiredExecution = ({
 
 const encodeRedeemers = (redeemers: readonly DerivedRedeemer[]): Buffer => {
   if (redeemers.length === 0) {
-    return Buffer.from(EMPTY_CBOR_LIST);
+    return Buffer.from(EMPTY_PREIMAGE_LIST);
   }
   const seen = new Set<string>();
   const entries = [...redeemers].sort((left, right) => {
@@ -821,15 +824,15 @@ export const deriveScriptMaterialization = (
     }
   }
 
-  const redeemerTxWitsPreimageCbor = encodeRedeemers(redeemers);
-  const redeemerTxWitsHash = computeHash32(redeemerTxWitsPreimageCbor);
+  const redeemerTxWitsPreimage = encodeRedeemers(redeemers);
+  const redeemerTxWitsHash = computeHash32(redeemerTxWitsPreimage);
   const requiredLanguages = [...languages].sort();
   return {
-    requiredObserversPreimageCbor: requiredObserversPreimageCbor(
+    requiredObserversPreimage: requiredObserversPreimage(
       state.scripts.observers,
     ),
-    mintPreimageCbor: mintPreimageCbor(effective),
-    scriptTxWitsPreimageCbor: encodeMidgardVersionedScriptListPreimage(
+    mintPreimage: mintPreimage(effective),
+    scriptTxWitsPreimage: encodeMidgardVersionedScriptListPreimage(
       sources
         .filter((source) => source.inline)
         .map((known) => {
@@ -841,7 +844,7 @@ export const deriveScriptMaterialization = (
           return known.witnessScript;
         }),
     ),
-    redeemerTxWitsPreimageCbor,
+    redeemerTxWitsPreimage,
     scriptIntegrityHash:
       requiredLanguages.length === 0
         ? Buffer.from(EMPTY_NULL_ROOT)

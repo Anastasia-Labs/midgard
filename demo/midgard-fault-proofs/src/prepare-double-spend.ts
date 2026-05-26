@@ -8,18 +8,20 @@ import {
   type OutputReference as OutputReferenceData,
 } from "@al-ft/midgard-sdk";
 import {
-  EMPTY_CBOR_LIST,
+  EMPTY_PREIMAGE_LIST,
   EMPTY_NULL_ROOT,
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
   computeMidgardNativeTxId,
-  decodeMidgardNativeByteListPreimage,
+  decodeMidgardNativeInputsPreimageAsCbor,
   decodeMidgardNativeTxFull,
   encodeCbor,
   encodeMidgardNativeTxFull,
   encodeMidgardNativeTxCompact,
+  encodeMidgardOutputReferenceListPreimage,
   materializeMidgardNativeTxFromCanonical,
   type MidgardNativeTxFull,
+  type MidgardOutputReference,
 } from "@al-ft/midgard-core";
 import { parseHex, parseJsonText, stringifyJson } from "./json-file.js";
 import { nativeTxFromCoreCompact } from "./submit-step-01.js";
@@ -255,36 +257,36 @@ export const fetchNodeBlockTransactions = async ({
 const bytesHex = (bytes: Uint8Array): string =>
   Buffer.from(bytes).toString("hex");
 
-const transactionInputCbor = (txHash: string, outputIndex: bigint): Buffer =>
-  Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(txHash),
-      outputIndex,
-    ).to_cbor_bytes(),
-  );
+const transactionInputRef = (
+  txHash: string,
+  outputIndex: bigint,
+): MidgardOutputReference => ({
+  txId: Buffer.from(txHash, "hex"),
+  index: Number(outputIndex),
+});
 
 const sampleNativeTx = (
-  inputs: readonly Buffer[],
+  inputs: readonly MidgardOutputReference[],
   fee: bigint,
 ): MidgardNativeTxFull => {
   const body = {
-    spendInputsPreimageCbor: encodeCbor(inputs),
-    referenceInputsPreimageCbor: Buffer.from(EMPTY_CBOR_LIST),
-    outputsPreimageCbor: Buffer.from(EMPTY_CBOR_LIST),
+    spendInputsPreimage: encodeMidgardOutputReferenceListPreimage(inputs),
+    referenceInputsPreimage: Buffer.from(EMPTY_PREIMAGE_LIST),
+    outputsPreimage: Buffer.from(EMPTY_PREIMAGE_LIST),
     fee,
     validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
     validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
-    requiredObserversPreimageCbor: Buffer.from(EMPTY_CBOR_LIST),
-    requiredSignersPreimageCbor: Buffer.from(EMPTY_CBOR_LIST),
-    mintPreimageCbor: Buffer.from(EMPTY_CBOR_LIST),
+    requiredObserversPreimage: Buffer.from(EMPTY_PREIMAGE_LIST),
+    requiredSignersPreimage: Buffer.from(EMPTY_PREIMAGE_LIST),
+    mintPreimage: Buffer.from(EMPTY_PREIMAGE_LIST),
     scriptIntegrityHash: Buffer.from(EMPTY_NULL_ROOT),
     auxiliaryDataHash: Buffer.from(EMPTY_NULL_ROOT),
     networkId: 0n,
   };
   const witnessSet = {
-    addrTxWitsPreimageCbor: Buffer.from(EMPTY_CBOR_LIST),
-    scriptTxWitsPreimageCbor: Buffer.from(EMPTY_CBOR_LIST),
-    redeemerTxWitsPreimageCbor: Buffer.from(EMPTY_CBOR_LIST),
+    addrTxWitsPreimage: Buffer.from(EMPTY_PREIMAGE_LIST),
+    scriptTxWitsPreimage: Buffer.from(EMPTY_PREIMAGE_LIST),
+    redeemerTxWitsPreimage: Buffer.from(EMPTY_PREIMAGE_LIST),
   };
   return materializeMidgardNativeTxFromCanonical({
     version: MIDGARD_NATIVE_TX_VERSION,
@@ -303,16 +305,16 @@ const payloadFromNativeTx = (
 
 export const makeSampleDoubleSpendTransactions =
   (): readonly NodeTransactionPayload[] => {
-    const sharedInput = transactionInputCbor("11".repeat(32), 7n);
+    const sharedInput = transactionInputRef("11".repeat(32), 7n);
     const tx1 = sampleNativeTx(
-      [sharedInput, transactionInputCbor("22".repeat(32), 0n)],
+      [sharedInput, transactionInputRef("22".repeat(32), 0n)],
       1n,
     );
     const tx2 = sampleNativeTx(
-      [transactionInputCbor("33".repeat(32), 0n), sharedInput],
+      [transactionInputRef("33".repeat(32), 0n), sharedInput],
       2n,
     );
-    const tx3 = sampleNativeTx([transactionInputCbor("44".repeat(32), 0n)], 3n);
+    const tx3 = sampleNativeTx([transactionInputRef("44".repeat(32), 0n)], 3n);
     return [
       payloadFromNativeTx(tx1),
       payloadFromNativeTx(tx2),
@@ -346,7 +348,7 @@ const decodeNativeInputPreimage = (
   preimageCbor: Uint8Array,
   label: string,
 ): readonly OutputReferenceData[] =>
-  decodeMidgardNativeByteListPreimage(preimageCbor, label).map(
+  decodeMidgardNativeInputsPreimageAsCbor(preimageCbor, label).map(
     (bytes: Buffer, index: number) =>
       outputReferenceFromNativeInput(bytes, `${label}[${index.toString()}]`),
   );
@@ -355,7 +357,7 @@ const decodeNativeInputCbors = (
   preimageCbor: Uint8Array,
   label: string,
 ): readonly string[] =>
-  decodeMidgardNativeByteListPreimage(preimageCbor, label).map(bytesHex);
+  decodeMidgardNativeInputsPreimageAsCbor(preimageCbor, label).map(bytesHex);
 
 const decodeTransactionMaterial = async (
   payload: NodeTransactionPayload,
@@ -377,11 +379,11 @@ const decodeTransactionMaterial = async (
     );
   }
   const inputs = decodeNativeInputPreimage(
-    nativeTx.body.spendInputsPreimageCbor,
+    nativeTx.body.spendInputsPreimage,
     `tx ${nodeTxId} spend_inputs`,
   );
   const spendInputCbors = decodeNativeInputCbors(
-    nativeTx.body.spendInputsPreimageCbor,
+    nativeTx.body.spendInputsPreimage,
     `tx ${nodeTxId} spend_inputs`,
   );
   return {

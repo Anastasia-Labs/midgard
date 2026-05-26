@@ -66,7 +66,7 @@ services:
       test: ["CMD-SHELL", "test -S /ipc/node.socket"]
       interval: 15s
       timeout: 5s
-      retries: 40
+      retries: 400
       start_period: 20s
     ports:
       - "${CARDANO_NODE_EKG_PORT:-12788}:12788"
@@ -94,7 +94,7 @@ services:
       test: ["CMD-SHELL", "/bin/ogmios health-check"]
       interval: 15s
       timeout: 5s
-      retries: 20
+      retries: 200
       start_period: 10s
     restart: always
     networks:
@@ -132,7 +132,7 @@ services:
         ]
       interval: 15s
       timeout: 10s
-      retries: 20
+      retries: 200
       start_period: 20s
     volumes:
       - ./cardano/kupo:/db

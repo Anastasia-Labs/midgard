@@ -1,5 +1,6 @@
 import {
   decodeMidgardNativeByteListPreimage,
+  decodeMidgardNativeInputsPreimageAsCbor,
   deriveMidgardNativeTxCompact,
   encodeCbor,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
@@ -209,12 +210,12 @@ describe("fromTx, compose, and local chaining", () => {
       CML.TransactionHash.from_raw_bytes(Buffer.from("99".repeat(32), "hex")),
       privateKey,
     );
-    const addrTxWitsPreimageCbor = encodeCbor([
+    const addrTxWitsPreimage = encodeCbor([
       Buffer.from(staleWitness.to_cbor_bytes()),
     ]);
     const witnessSet = {
       ...completed.tx.witnessSet,
-      addrTxWitsPreimageCbor,
+      addrTxWitsPreimage,
     };
     const staleTx: MidgardNativeTxFull = {
       ...completed.tx,
@@ -345,7 +346,7 @@ describe("fromTx, compose, and local chaining", () => {
       .pay.ToProtectedAddress(otherAddress, { lovelace: 2_000_000n })
       .chain({ fee: 0n });
     const outputBytes = decodeMidgardNativeByteListPreimage(
-      completed.tx.body.outputsPreimageCbor,
+      completed.tx.body.outputsPreimage,
       "native.outputs",
     );
 
@@ -388,8 +389,8 @@ describe("fromTx, compose, and local chaining", () => {
       .collectFrom([derivedOutputs[0]!])
       .pay.ToAddress(walletAddress, { lovelace: 2_000_000n })
       .complete({ fee: 0n });
-    const dependentInput = decodeMidgardNativeByteListPreimage(
-      dependent.tx.body.spendInputsPreimageCbor,
+    const dependentInput = decodeMidgardNativeInputsPreimageAsCbor(
+      dependent.tx.body.spendInputsPreimage,
       "native.spend_inputs",
     )[0]!;
     expect(

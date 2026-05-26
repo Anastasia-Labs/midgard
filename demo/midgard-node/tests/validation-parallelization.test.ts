@@ -1,17 +1,20 @@
-import { encode } from "cborg";
 import { CML, walletFromSeed } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 import {
+  EMPTY_PREIMAGE_LIST,
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
   computeHash32,
   computeMidgardNativeTxId,
   deriveMidgardNativeTxCompact,
+  encodeMidgardBytesListPreimage,
   encodeMidgardNativeTxFull,
+  encodeMidgardOutputReferenceListPreimage,
   type MidgardNativeTxBodyCanonical,
   type MidgardNativeTxFull,
   type MidgardNativeTxWitnessSetCanonical,
+  type MidgardOutputReference,
 } from "@al-ft/midgard-core/codec";
 import {
   PhaseAAccepted,
@@ -59,13 +62,20 @@ const signerHash = (() => {
   }
   return signer;
 })();
-const EMPTY_CBOR_LIST = Buffer.from([0x80]);
 const EMPTY_CBOR_NULL = Buffer.from([0xf6]);
-const EMPTY_LIST_ROOT = computeHash32(EMPTY_CBOR_LIST);
+const EMPTY_LIST_ROOT = computeHash32(EMPTY_PREIMAGE_LIST);
 const EMPTY_NULL_ROOT = computeHash32(EMPTY_CBOR_NULL);
 
-const encodeByteList = (items: readonly Uint8Array[]): Buffer =>
-  Buffer.from(encode(items.map((item) => Buffer.from(item))));
+const cborTxInputToRef = (cbor: Buffer): MidgardOutputReference => {
+  const input = CML.TransactionInput.from_cbor_bytes(cbor);
+  return {
+    txId: Buffer.from(input.transaction_id().to_raw_bytes()),
+    index: Number(input.index()),
+  };
+};
+
+const encodeInputList = (items: readonly Buffer[]): Buffer =>
+  encodeMidgardOutputReferenceListPreimage(items.map(cborTxInputToRef));
 
 const makeNativeTx = ({
   spent,
@@ -80,27 +90,27 @@ const makeNativeTx = ({
   readonly validityIntervalStart?: bigint;
   readonly validityIntervalEnd?: bigint;
 }): MidgardNativeTxFull => {
-  const spendInputsPreimageCbor = encodeByteList(spent);
-  const referenceInputsPreimageCbor = encodeByteList(referenceInputs);
-  const outputsPreimageCbor = encodeByteList(outputs);
+  const spendInputsPreimage = encodeInputList(spent);
+  const referenceInputsPreimage = encodeInputList(referenceInputs);
+  const outputsPreimage = encodeMidgardBytesListPreimage(outputs);
   const body: MidgardNativeTxBodyCanonical = {
-    spendInputsPreimageCbor,
-    referenceInputsPreimageCbor,
-    outputsPreimageCbor,
+    spendInputsPreimage,
+    referenceInputsPreimage,
+    outputsPreimage,
     fee: 0n,
     validityIntervalStart: validityIntervalStart ?? MIDGARD_POSIX_TIME_NONE,
     validityIntervalEnd: validityIntervalEnd ?? MIDGARD_POSIX_TIME_NONE,
-    requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
-    requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
-    mintPreimageCbor: EMPTY_CBOR_LIST,
+    requiredObserversPreimage: EMPTY_PREIMAGE_LIST,
+    requiredSignersPreimage: EMPTY_PREIMAGE_LIST,
+    mintPreimage: EMPTY_PREIMAGE_LIST,
     scriptIntegrityHash: EMPTY_NULL_ROOT,
     auxiliaryDataHash: EMPTY_NULL_ROOT,
     networkId: 0n,
   };
   const witnessSet: MidgardNativeTxWitnessSetCanonical = {
-    addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-    scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-    redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+    addrTxWitsPreimage: EMPTY_PREIMAGE_LIST,
+    scriptTxWitsPreimage: EMPTY_PREIMAGE_LIST,
+    redeemerTxWitsPreimage: EMPTY_PREIMAGE_LIST,
   };
   return {
     version: MIDGARD_NATIVE_TX_VERSION,

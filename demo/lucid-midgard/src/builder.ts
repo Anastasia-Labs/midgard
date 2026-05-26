@@ -366,7 +366,7 @@ const completeTxMetadataWithAddrWitnesses = (
   tx: MidgardNativeTxFull,
   metadata: CompleteTxMetadata,
 ): CompleteTxMetadata => {
-  const witnesses = decodeAddrWitnesses(tx.witnessSet.addrTxWitsPreimageCbor);
+  const witnesses = decodeAddrWitnesses(tx.witnessSet.addrTxWitsPreimage);
   return {
     ...metadata,
     txByteLength: encodeMidgardNativeTxFull(tx).length,
@@ -575,7 +575,7 @@ export class CompleteTx {
     assertTrustedCompleteTx(this, "export partial witnesses");
     return partialWitnessBundleFromWitnesses(
       this.tx,
-      decodeAddrWitnesses(this.tx.witnessSet.addrTxWitsPreimageCbor),
+      decodeAddrWitnesses(this.tx.witnessSet.addrTxWitsPreimage),
     );
   }
 
@@ -696,7 +696,7 @@ export class CompleteTx {
     }
     const signedTx = await signMidgardNativeTx(this.tx, signer);
     const signedWitnesses = decodeAddrWitnesses(
-      signedTx.witnessSet.addrTxWitsPreimageCbor,
+      signedTx.witnessSet.addrTxWitsPreimage,
     );
     assertExpectedAddrWitnesses({
       actual: addrWitnessKeyHashes(signedWitnesses),
@@ -982,7 +982,7 @@ export class PartiallySignedTx {
   toPartialWitnessBundle(): MidgardPartialWitnessBundle {
     return partialWitnessBundleFromWitnesses(
       this.tx,
-      decodeAddrWitnesses(this.tx.witnessSet.addrTxWitsPreimageCbor),
+      decodeAddrWitnesses(this.tx.witnessSet.addrTxWitsPreimage),
     );
   }
 
@@ -2564,7 +2564,7 @@ export class TxBuilder {
     const expectedWitnessKeyHashes = expectedAddrWitnessKeyHashes(state);
     const expectedAddrWitnessCount = expectedWitnessKeyHashes.length;
     if (
-      !computeHash32(tx.body.spendInputsPreimageCbor).equals(
+      !computeHash32(tx.body.spendInputsPreimage).equals(
         tx.compact.transactionBody.spendInputsHash,
       )
     ) {

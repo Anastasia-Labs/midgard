@@ -1,6 +1,6 @@
 import {
   computeMidgardNativeTxId,
-  decodeMidgardNativeByteListPreimage,
+  decodeMidgardNativeAddrWitsPreimageAsCbor,
   decodeMidgardNativeTxFull,
   encodeCbor,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
@@ -131,8 +131,8 @@ const makeFixture = async () => {
 };
 
 const witnessCount = (tx: CompleteTx | PartiallySignedTx): number =>
-  decodeMidgardNativeByteListPreimage(
-    tx.tx.witnessSet.addrTxWitsPreimageCbor,
+  decodeMidgardNativeAddrWitsPreimageAsCbor(
+    tx.tx.witnessSet.addrTxWitsPreimage,
     "native.addr_tx_wits",
   ).length;
 

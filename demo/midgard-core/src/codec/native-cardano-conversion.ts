@@ -1,5 +1,4 @@
 import { CML } from "@lucid-evolution/lucid";
-import { encodeCbor } from "./cbor.js";
 import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
 import { ensureHash32 } from "./hash.js";
 import { decodeMidgardNativeScript } from "./native-script.js";
@@ -11,6 +10,19 @@ import {
 import { type MidgardValue } from "./value.js";
 import { type MidgardNativeTxCanonical } from "./native.js";
 import { EMPTY_NULL_ROOT } from "./native-constants.js";
+import {
+  EMPTY_PREIMAGE_LIST,
+  encodeMidgardBytesListPreimage,
+  encodeMidgardHash28ListPreimage,
+  encodeMidgardMintPreimage,
+  encodeMidgardOutputReferenceListPreimage,
+  encodeMidgardVKeyWitnessListPreimage,
+  type MidgardMint,
+  type MidgardMintAsset,
+  type MidgardMintPolicy,
+  type MidgardOutputReference,
+  type MidgardVKeyWitness,
+} from "./native-preimage.js";
 
 export type CardanoToMidgardNativeConstants = {
   readonly nativeTxVersion: bigint;
@@ -37,43 +49,6 @@ type CmlCollectionLike = {
   get(index: number): unknown;
 };
 
-type CmlMintLike = {
-  policy_count(): number;
-  keys(): CmlCollectionLike;
-  get_assets(
-    scriptHash: InstanceType<typeof CML.ScriptHash>,
-  ): InstanceType<typeof CML.MapAssetNameToNonZeroInt64> | undefined;
-};
-
-const asCmlCallable = (
-  value: unknown,
-  methodName: "to_cbor_bytes" | "to_raw_bytes",
-): (() => Uint8Array) | undefined => {
-  if (typeof value !== "object" || value === null) {
-    return undefined;
-  }
-  const method = (value as Record<string, unknown>)[methodName];
-  if (typeof method !== "function") {
-    return undefined;
-  }
-  return (method as () => Uint8Array).bind(value);
-};
-
-const cmlObjectToBytes = (value: unknown, fieldName: string): Buffer => {
-  const toCbor = asCmlCallable(value, "to_cbor_bytes");
-  if (toCbor !== undefined) {
-    return Buffer.from(toCbor());
-  }
-  const toRaw = asCmlCallable(value, "to_raw_bytes");
-  if (toRaw !== undefined) {
-    return Buffer.from(toRaw());
-  }
-  throw new MidgardTxCodecError(
-    MidgardTxCodecErrorCodes.SchemaMismatch,
-    `Cannot serialize CML value in ${fieldName}`,
-  );
-};
-
 const asCollectionLike = (value: unknown): CmlCollectionLike | undefined => {
   if (typeof value !== "object" || value === null) {
     return undefined;
@@ -86,29 +61,87 @@ const asCollectionLike = (value: unknown): CmlCollectionLike | undefined => {
   return undefined;
 };
 
-const asMintLike = (value: unknown): CmlMintLike | undefined => {
-  if (typeof value !== "object" || value === null) {
-    return undefined;
-  }
-  const maybePolicyCount = (value as Record<string, unknown>).policy_count;
-  if (typeof maybePolicyCount !== "function") {
-    return undefined;
-  }
-  return value as CmlMintLike;
-};
-
-const cmlCollectionToPreimageCbor = (
+/** Build a binary `OutputReference[]` preimage from a CML input list. */
+const cmlInputsToBinaryPreimage = (
   collection: CmlCollectionLike | undefined,
   fieldName: string,
 ): Buffer => {
   if (collection === undefined) {
-    return encodeCbor([]);
+    return Buffer.from(EMPTY_PREIMAGE_LIST);
   }
-  const entries: Buffer[] = [];
+  const refs: MidgardOutputReference[] = [];
   for (let i = 0; i < collection.len(); i++) {
-    entries.push(cmlObjectToBytes(collection.get(i), `${fieldName}[${i}]`));
+    const item = collection.get(i);
+    if (!(item instanceof CML.TransactionInput)) {
+      throw new MidgardTxCodecError(
+        MidgardTxCodecErrorCodes.SchemaMismatch,
+        `Unexpected input in ${fieldName}[${i}]`,
+      );
+    }
+    const idx = item.index();
+    if (idx > 0xffffn) {
+      throw new MidgardTxCodecError(
+        MidgardTxCodecErrorCodes.InvalidFieldType,
+        `${fieldName}[${i}].index exceeds u16`,
+        idx.toString(10),
+      );
+    }
+    refs.push({
+      txId: Buffer.from(item.transaction_id().to_raw_bytes()),
+      index: Number(idx),
+    });
   }
-  return encodeCbor(entries);
+  return encodeMidgardOutputReferenceListPreimage(refs);
+};
+
+/** Build a binary `Hash28[]` preimage from a CML key-hash list. */
+const cmlKeyHashesToBinaryPreimage = (
+  collection: CmlCollectionLike | undefined,
+  fieldName: string,
+): Buffer => {
+  if (collection === undefined) {
+    return Buffer.from(EMPTY_PREIMAGE_LIST);
+  }
+  const hashes: Buffer[] = [];
+  for (let i = 0; i < collection.len(); i++) {
+    const item = collection.get(i);
+    if (
+      !(item instanceof CML.Ed25519KeyHash) &&
+      !(item instanceof CML.ScriptHash)
+    ) {
+      throw new MidgardTxCodecError(
+        MidgardTxCodecErrorCodes.SchemaMismatch,
+        `Unexpected hash28 entry in ${fieldName}[${i}]`,
+      );
+    }
+    hashes.push(Buffer.from(item.to_raw_bytes()));
+  }
+  return encodeMidgardHash28ListPreimage(hashes, fieldName);
+};
+
+/** Build a binary VKey-witness list preimage from a CML vkeywitnesses list. */
+const cmlVkeyWitnessesToBinaryPreimage = (
+  collection: CmlCollectionLike | undefined,
+  fieldName: string,
+): Buffer => {
+  if (collection === undefined) {
+    return Buffer.from(EMPTY_PREIMAGE_LIST);
+  }
+  const witnesses: MidgardVKeyWitness[] = [];
+  for (let i = 0; i < collection.len(); i++) {
+    const item = collection.get(i);
+    if (!(item instanceof CML.Vkeywitness)) {
+      throw new MidgardTxCodecError(
+        MidgardTxCodecErrorCodes.SchemaMismatch,
+        `Unexpected vkey witness in ${fieldName}[${i}]`,
+      );
+    }
+    witnesses.push({
+      vkey: Buffer.from(item.vkey().to_raw_bytes()),
+      signature: Buffer.from(item.ed25519_signature().to_raw_bytes()),
+    });
+  }
+  return encodeMidgardVKeyWitnessListPreimage(witnesses);
 };
 
 const cmlValueToMidgardValue = (
@@ -227,11 +260,16 @@ const cmlOutputToMidgardOutputBytes = (
   return encodeMidgardTxOutput(midgardOutput);
 };
 
-const cmlOutputsToNativePreimageCbor = (
+/**
+ * Outputs preimage: binary-framed list of per-output CBOR `encodeMidgardTxOutput`
+ * bytes. The outer list is binary; inner output bytes stay CBOR (Midgard's
+ * output map schema is unchanged).
+ */
+const cmlOutputsToBinaryPreimage = (
   collection: CmlCollectionLike | undefined,
 ): Buffer => {
   if (collection === undefined) {
-    return encodeCbor([]);
+    return Buffer.from(EMPTY_PREIMAGE_LIST);
   }
   const entries: Buffer[] = [];
   for (let i = 0; i < collection.len(); i += 1) {
@@ -246,18 +284,17 @@ const cmlOutputsToNativePreimageCbor = (
       cmlOutputToMidgardOutputBytes(output, `transaction_body.outputs[${i}]`),
     );
   }
-  return encodeCbor(entries);
+  return encodeMidgardBytesListPreimage(entries);
 };
 
-const cmlMintToPreimageCbor = (
-  mint: CmlMintLike,
+const cmlMintToBinaryPreimage = (
+  mint: InstanceType<typeof CML.Mint> | undefined,
   fieldName: string,
 ): Buffer => {
-  if (mint.policy_count() === 0) {
-    return encodeCbor([]);
+  if (mint === undefined || mint.policy_count() === 0) {
+    return Buffer.from(EMPTY_PREIMAGE_LIST);
   }
-
-  const policies = new Map<Buffer, Map<Buffer, bigint>>();
+  const policies: MidgardMintPolicy[] = [];
   const policyIds = mint.keys();
   for (let i = 0; i < policyIds.len(); i++) {
     const policyId = policyIds.get(i);
@@ -274,8 +311,7 @@ const cmlMintToPreimageCbor = (
         `Missing assets for policy in ${fieldName}[${i}]`,
       );
     }
-
-    const encodedAssets = new Map<Buffer, bigint>();
+    const encodedAssets: MidgardMintAsset[] = [];
     const assetNames = assets.keys();
     for (let j = 0; j < assetNames.len(); j++) {
       const assetName = assetNames.get(j);
@@ -292,38 +328,31 @@ const cmlMintToPreimageCbor = (
           `Missing quantity for asset in ${fieldName}[${i}][${j}]`,
         );
       }
-      encodedAssets.set(
-        Buffer.from(assetName.to_raw_bytes()),
-        BigInt(quantity.toString(10)),
-      );
+      encodedAssets.push({
+        name: Buffer.from(assetName.to_raw_bytes()),
+        amount: BigInt(quantity.toString(10)),
+      });
     }
-
-    policies.set(Buffer.from(policyId.to_raw_bytes()), encodedAssets);
+    policies.push({
+      policyId: Buffer.from(policyId.to_raw_bytes()),
+      assets: encodedAssets,
+    });
   }
-
-  return encodeCbor(policies);
+  return encodeMidgardMintPreimage(policies);
 };
 
-const cmlAnyToPreimageCbor = (value: unknown, fieldName: string): Buffer => {
-  if (value === undefined) {
-    return encodeCbor([]);
+/**
+ * Cardano redeemers stored verbatim — opaque CBOR blob. When there are no
+ * redeemers the preimage is the canonical empty sentinel (`EMPTY_PREIMAGE_LIST`)
+ * so callers can use a single "empty" representation across all preimages.
+ */
+const cmlRedeemersToBinaryPreimage = (
+  redeemers: InstanceType<typeof CML.Redeemers> | undefined,
+): Buffer => {
+  if (redeemers === undefined) {
+    return Buffer.from(EMPTY_PREIMAGE_LIST);
   }
-  const mint = asMintLike(value);
-  if (mint !== undefined) {
-    return cmlMintToPreimageCbor(mint, fieldName);
-  }
-  const toCbor = asCmlCallable(value, "to_cbor_bytes");
-  if (toCbor !== undefined) {
-    return Buffer.from(toCbor());
-  }
-  const collection = asCollectionLike(value);
-  if (collection !== undefined) {
-    return cmlCollectionToPreimageCbor(collection, fieldName);
-  }
-  throw new MidgardTxCodecError(
-    MidgardTxCodecErrorCodes.SchemaMismatch,
-    `Cannot serialize CML container in ${fieldName}`,
-  );
+  return Buffer.from(redeemers.to_cbor_bytes());
 };
 
 const failLossyConversion = (fieldName: string): never => {
@@ -339,11 +368,11 @@ const hasAnyCmlEntries = (value: unknown): boolean => {
   return collection !== undefined && collection.len() > 0;
 };
 
-const withdrawalsToRequiredObserversPreimageCbor = (
+const withdrawalsToRequiredObserversBinaryPreimage = (
   withdrawals: InstanceType<typeof CML.MapRewardAccountToCoin> | undefined,
 ): Buffer => {
   if (withdrawals === undefined) {
-    return encodeCbor([]);
+    return Buffer.from(EMPTY_PREIMAGE_LIST);
   }
   const keys = withdrawals.keys();
   const observers: Buffer[] = [];
@@ -367,10 +396,10 @@ const withdrawalsToRequiredObserversPreimageCbor = (
     }
     observers.push(Buffer.from(scriptHash.to_raw_bytes()));
   }
-  return encodeCbor(observers);
+  return encodeMidgardHash28ListPreimage(observers, "required_observers");
 };
 
-const scriptWitnessesToPreimageCbor = (
+const scriptWitnessesToBinaryPreimage = (
   txWitnessSet: InstanceType<typeof CML.TransactionWitnessSet>,
 ): Buffer => {
   const scripts: MidgardVersionedScript[] = [];
@@ -428,7 +457,7 @@ const assertCardanoTxConvertibleToNative = (
 
   const withdrawals = txBody.withdrawals();
   if (withdrawals !== undefined) {
-    withdrawalsToRequiredObserversPreimageCbor(withdrawals);
+    withdrawalsToRequiredObserversBinaryPreimage(withdrawals);
   }
 
   if (hasAnyCmlEntries(txBody.collateral_inputs())) {
@@ -475,36 +504,36 @@ export const cardanoTxBytesToMidgardNativeTxCanonical = (
   const txWitnessSet = tx.witness_set();
   const txOutputs = txBody.outputs();
 
-  const spendInputsPreimageCbor = cmlCollectionToPreimageCbor(
+  const spendInputsPreimage = cmlInputsToBinaryPreimage(
     asCollectionLike(txBody.inputs()),
     "transaction_body.inputs",
   );
-  const referenceInputsPreimageCbor = cmlCollectionToPreimageCbor(
+  const referenceInputsPreimage = cmlInputsToBinaryPreimage(
     asCollectionLike(txBody.reference_inputs()),
     "transaction_body.reference_inputs",
   );
-  const outputsPreimageCbor = cmlOutputsToNativePreimageCbor(
+  const outputsPreimage = cmlOutputsToBinaryPreimage(
     asCollectionLike(txOutputs),
   );
-  const requiredObserversPreimageCbor =
-    withdrawalsToRequiredObserversPreimageCbor(txBody.withdrawals());
-  const requiredSignersPreimageCbor = cmlCollectionToPreimageCbor(
+  const requiredObserversPreimage = withdrawalsToRequiredObserversBinaryPreimage(
+    txBody.withdrawals(),
+  );
+  const requiredSignersPreimage = cmlKeyHashesToBinaryPreimage(
     asCollectionLike(txBody.required_signers()),
     "transaction_body.required_signers",
   );
-  const mintPreimageCbor = cmlAnyToPreimageCbor(
+  const mintPreimage = cmlMintToBinaryPreimage(
     txBody.mint(),
     "transaction_body.mint",
   );
 
-  const addrTxWitsPreimageCbor = cmlCollectionToPreimageCbor(
+  const addrTxWitsPreimage = cmlVkeyWitnessesToBinaryPreimage(
     asCollectionLike(txWitnessSet.vkeywitnesses()),
     "transaction_witness_set.vkeywitnesses",
   );
-  const scriptTxWitsPreimageCbor = scriptWitnessesToPreimageCbor(txWitnessSet);
-  const redeemerTxWitsPreimageCbor = cmlAnyToPreimageCbor(
+  const scriptTxWitsPreimage = scriptWitnessesToBinaryPreimage(txWitnessSet);
+  const redeemerTxWitsPreimage = cmlRedeemersToBinaryPreimage(
     txWitnessSet.redeemers(),
-    "transaction_witness_set.redeemers",
   );
 
   const scriptDataHash = txBody.script_data_hash();
@@ -517,16 +546,16 @@ export const cardanoTxBytesToMidgardNativeTxCanonical = (
     version: constants.nativeTxVersion,
     validity: tx.is_valid() ? "TxIsValid" : "FailedScript",
     body: {
-      spendInputsPreimageCbor,
-      referenceInputsPreimageCbor,
-      outputsPreimageCbor,
+      spendInputsPreimage,
+      referenceInputsPreimage,
+      outputsPreimage,
       fee: txBody.fee(),
       validityIntervalStart:
         txBody.validity_interval_start() ?? constants.posixTimeNone,
       validityIntervalEnd: txBody.ttl() ?? constants.posixTimeNone,
-      requiredObserversPreimageCbor,
-      requiredSignersPreimageCbor,
-      mintPreimageCbor,
+      requiredObserversPreimage,
+      requiredSignersPreimage,
+      mintPreimage,
       scriptIntegrityHash:
         scriptDataHash === undefined
           ? Buffer.from(EMPTY_NULL_ROOT)
@@ -544,9 +573,9 @@ export const cardanoTxBytesToMidgardNativeTxCanonical = (
       networkId: encodedNetworkId,
     },
     witnessSet: {
-      addrTxWitsPreimageCbor,
-      scriptTxWitsPreimageCbor,
-      redeemerTxWitsPreimageCbor,
+      addrTxWitsPreimage,
+      scriptTxWitsPreimage,
+      redeemerTxWitsPreimage,
     },
   };
 };

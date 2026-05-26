@@ -80,16 +80,20 @@ import {
   type WithdrawalValidator as SdkWithdrawalValidator,
 } from "@al-ft/midgard-sdk";
 import {
-  EMPTY_CBOR_LIST,
+  EMPTY_PREIMAGE_LIST,
   EMPTY_NULL_ROOT,
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
   computeMidgardNativeTxId,
   decodeMidgardNativeByteListPreimage,
-  encodeCbor,
+  decodeMidgardNativeInputsPreimageAsCbor,
+  encodeMidgardBytesListPreimage,
   encodeMidgardNativeTxCompact,
+  encodeMidgardOutputReferenceListPreimage,
+  encodeMidgardVKeyWitnessListPreimage,
   materializeMidgardNativeTxFromCanonical,
   type MidgardNativeTxFull,
+  type MidgardOutputReference,
 } from "@al-ft/midgard-core";
 import {
   nativeTxFromCoreCompact,
@@ -562,27 +566,26 @@ const tx2InputsPreimage: readonly TestOutputReference[] = [
   tx1InputsPreimage[1]!,
 ];
 
-const outputReferenceCbor = (outRef: TestOutputReference): Buffer =>
-  Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(outRef.transactionId),
-      outRef.outputIndex,
-    ).to_cbor_bytes(),
-  );
-
 const midgardTxInput = (outRef: TestOutputReference) => ({
   tx_id: outRef.transactionId,
   output_index: outRef.outputIndex,
 });
 
+const toMidgardOutputReference = (
+  outRef: TestOutputReference,
+): MidgardOutputReference => ({
+  txId: Buffer.from(outRef.transactionId, "hex"),
+  index: Number(outRef.outputIndex),
+});
+
 const makeNativeTx = ({
-  spendInputCbors,
+  spendInputs,
   fee,
   referenceByte,
   outputByte,
   witnessByte,
 }: {
-  readonly spendInputCbors: readonly Buffer[];
+  readonly spendInputs: readonly TestOutputReference[];
   readonly fee: bigint;
   readonly referenceByte: string;
   readonly outputByte: string;
@@ -592,14 +595,18 @@ const makeNativeTx = ({
     version: MIDGARD_NATIVE_TX_VERSION,
     validity: "TxIsValid",
     body: {
-      spendInputsPreimageCbor: encodeCbor(spendInputCbors),
-      referenceInputsPreimageCbor: encodeCbor([
-        Buffer.from(h32(referenceByte), "hex"),
+      spendInputsPreimage: encodeMidgardOutputReferenceListPreimage(
+        spendInputs.map(toMidgardOutputReference),
+      ),
+      referenceInputsPreimage: encodeMidgardOutputReferenceListPreimage([
+        { txId: Buffer.from(h32(referenceByte), "hex"), index: 0 },
       ]),
-      outputsPreimageCbor: encodeCbor([Buffer.from(h32(outputByte), "hex")]),
-      requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
-      requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
-      mintPreimageCbor: EMPTY_CBOR_LIST,
+      outputsPreimage: encodeMidgardBytesListPreimage([
+        Buffer.from(h32(outputByte), "hex"),
+      ]),
+      requiredObserversPreimage: EMPTY_PREIMAGE_LIST,
+      requiredSignersPreimage: EMPTY_PREIMAGE_LIST,
+      mintPreimage: EMPTY_PREIMAGE_LIST,
       scriptIntegrityHash: EMPTY_NULL_ROOT,
       auxiliaryDataHash: EMPTY_NULL_ROOT,
       fee,
@@ -608,11 +615,14 @@ const makeNativeTx = ({
       networkId: 0n,
     },
     witnessSet: {
-      addrTxWitsPreimageCbor: encodeCbor([
-        Buffer.from(h32(witnessByte), "hex"),
+      addrTxWitsPreimage: encodeMidgardVKeyWitnessListPreimage([
+        {
+          vkey: Buffer.from(h32(witnessByte), "hex"),
+          signature: Buffer.alloc(64, Number.parseInt(witnessByte, 16) & 0xff),
+        },
       ]),
-      scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-      redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+      scriptTxWitsPreimage: EMPTY_PREIMAGE_LIST,
+      redeemerTxWitsPreimage: EMPTY_PREIMAGE_LIST,
     },
   });
 
@@ -627,8 +637,8 @@ const compactTxEntry = (
 const decodeSpendInputCbors = (
   nativeTx: MidgardNativeTxFull,
 ): readonly string[] =>
-  decodeMidgardNativeByteListPreimage(
-    nativeTx.body.spendInputsPreimageCbor,
+  decodeMidgardNativeInputsPreimageAsCbor(
+    nativeTx.body.spendInputsPreimage,
     "test.spend_inputs",
   ).map((bytes) => Buffer.from(bytes).toString("hex"));
 
@@ -642,14 +652,14 @@ const buildTransactionInclusionFixture = async (): Promise<{
   readonly tx2SpendInputCbors: readonly string[];
 }> => {
   const tx1Native = makeNativeTx({
-    spendInputCbors: tx1InputsPreimage.map(outputReferenceCbor),
+    spendInputs: tx1InputsPreimage,
     fee: 0n,
     referenceByte: "13",
     outputByte: "14",
     witnessByte: "20",
   });
   const tx2Native = makeNativeTx({
-    spendInputCbors: tx2InputsPreimage.map(outputReferenceCbor),
+    spendInputs: tx2InputsPreimage,
     fee: 1n,
     referenceByte: "23",
     outputByte: "24",

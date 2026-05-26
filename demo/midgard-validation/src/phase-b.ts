@@ -19,12 +19,6 @@ import {
   type ScriptLanguageName,
 } from "@al-ft/midgard-core/codec";
 import {
-  asArray,
-  asBytes,
-  asMap,
-  decodeSingleCbor,
-} from "@al-ft/midgard-core/codec/cbor";
-import {
   PhaseAAccepted,
   PhaseBConfig,
   PhaseBResult,
@@ -226,57 +220,34 @@ const conflict = (left: CandidateNode, right: CandidateNode): boolean =>
   hasIntersection(left.spentOutRefs, right.referenceOutRefs) ||
   hasIntersection(right.spentOutRefs, left.referenceOutRefs);
 
-const asSigned = (value: unknown, fieldName: string): bigint => {
-  if (typeof value === "bigint") {
-    return value;
+const decodeMintValueData = (preimage: Uint8Array): ScriptMintValue => {
+  const decoded = decodeMidgardNativeMint(preimage);
+  if (decoded === undefined) {
+    return new Map();
   }
-  if (typeof value === "number" && Number.isInteger(value)) {
-    return BigInt(value);
-  }
-  throw new Error(`${fieldName} must be an integer`);
-};
-
-const decodeMintValueData = (preimageCbor: Uint8Array): ScriptMintValue => {
-  const decoded = decodeSingleCbor(preimageCbor);
-  if (Array.isArray(decoded)) {
-    const empty = asArray(decoded, "native.mint");
-    if (empty.length === 0) {
-      return new Map();
-    }
-    throw new Error(
-      "Midgard mint preimage must be an empty array or a CBOR map",
-    );
-  }
-
-  const policies = asMap(decoded, "native.mint");
-  if (policies.size === 0) {
-    throw new Error("Midgard mint map cannot be empty");
-  }
-
   const result = new Map<string, Map<string, bigint>>();
-  for (const [policyBytesValue, assetsValue] of policies.entries()) {
-    const policyBytes = asBytes(policyBytesValue, "native.mint.policy");
-    if (policyBytes.length !== 28) {
-      throw new Error("Mint policy id must be 28 bytes");
-    }
-
-    const assetsMap = asMap(assetsValue, "native.mint.assets");
-    if (assetsMap.size === 0) {
-      throw new Error("Mint policy asset map cannot be empty");
-    }
-
+  const mint = decoded.mint;
+  const policyKeys = mint.keys();
+  for (let i = 0; i < policyKeys.len(); i++) {
+    const policyHash = policyKeys.get(i);
+    const assetsMap = mint.get_assets(policyHash);
+    if (assetsMap === undefined) continue;
     const assets = new Map<string, bigint>();
-    for (const [assetNameValue, quantityValue] of assetsMap.entries()) {
-      const assetName = asBytes(assetNameValue, "native.mint.asset_name");
-      const quantity = asSigned(quantityValue, "native.mint.quantity");
+    const assetKeys = assetsMap.keys();
+    for (let j = 0; j < assetKeys.len(); j++) {
+      const assetName = assetKeys.get(j);
+      const quantity = assetsMap.get(assetName);
+      if (quantity === undefined) continue;
       if (quantity === 0n) {
         throw new Error("Mint quantity cannot be zero");
       }
-      assets.set(assetName.toString("hex"), quantity);
+      assets.set(
+        Buffer.from(assetName.to_raw_bytes()).toString("hex"),
+        quantity,
+      );
     }
-    result.set(policyBytes.toString("hex"), assets);
+    result.set(policyHash.to_hex(), assets);
   }
-
   return result;
 };
 
@@ -298,7 +269,7 @@ const collectInlineScriptSources = (
   nativeTx: MidgardNativeTxFull,
 ): readonly ScriptSource[] => {
   const scripts = decodeMidgardVersionedScriptListPreimage(
-    nativeTx.witnessSet.scriptTxWitsPreimageCbor,
+    nativeTx.witnessSet.scriptTxWitsPreimage,
     "native.script_tx_wits",
   );
   return scripts.map((script, index) =>
@@ -375,7 +346,7 @@ const discoverLocalScriptExecutions = (
     } => {
   const candidate = node.candidate;
   const redeemers = decodeMidgardRedeemers(
-    nativeTx.witnessSet.redeemerTxWitsPreimageCbor,
+    nativeTx.witnessSet.redeemerTxWitsPreimage,
   );
   const seenRedeemerPointers = new Set<string>();
   for (const redeemer of redeemers) {
@@ -473,8 +444,8 @@ const discoverLocalScriptExecutions = (
     }
   }
 
-  const mintValue = decodeMintValueData(nativeTx.body.mintPreimageCbor);
-  const decodedMint = decodeMidgardNativeMint(nativeTx.body.mintPreimageCbor);
+  const mintValue = decodeMintValueData(nativeTx.body.mintPreimage);
+  const decodedMint = decodeMidgardNativeMint(nativeTx.body.mintPreimage);
   const mintPolicies = decodedMint?.policyIds ?? [];
   for (let index = 0; index < mintPolicies.length; index += 1) {
     const policyId = mintPolicies[index];
@@ -500,7 +471,7 @@ const discoverLocalScriptExecutions = (
   }
 
   const outputBytes = decodeMidgardNativeByteListPreimage(
-    nativeTx.body.outputsPreimageCbor,
+    nativeTx.body.outputsPreimage,
     "native.outputs",
   );
   const outputs = outputBytes.map((bytes) => decodeMidgardTxOutput(bytes));

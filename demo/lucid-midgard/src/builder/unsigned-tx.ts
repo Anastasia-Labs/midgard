@@ -1,16 +1,18 @@
 import {
-  EMPTY_CBOR_LIST,
+  EMPTY_PREIMAGE_LIST,
   EMPTY_NULL_ROOT,
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  encodeCbor,
+  encodeMidgardBytesListPreimage,
+  encodeMidgardHash28ListPreimage,
+  encodeMidgardOutputReferenceListPreimage,
   type MidgardNativeTxCanonical,
+  type MidgardOutputReference,
 } from "@al-ft/midgard-core/codec";
 
 import { compareOutRefs } from "../core/out-ref.js";
 import {
   encodeMidgardTxOutput,
-  utxoOutRefCbor,
   type AuthoredOutput,
 } from "../core/output.js";
 import type { Assets } from "../core/assets.js";
@@ -18,21 +20,26 @@ import type { MidgardUtxo } from "../core/types.js";
 import { stateNetworkId, type BuilderState } from "./context.js";
 
 export type ScriptMaterialization = {
-  readonly requiredObserversPreimageCbor: Buffer;
-  readonly mintPreimageCbor: Buffer;
-  readonly scriptTxWitsPreimageCbor: Buffer;
-  readonly redeemerTxWitsPreimageCbor: Buffer;
+  readonly requiredObserversPreimage: Buffer;
+  readonly mintPreimage: Buffer;
+  readonly scriptTxWitsPreimage: Buffer;
+  readonly redeemerTxWitsPreimage: Buffer;
   readonly scriptIntegrityHash: Buffer;
   readonly mintDelta: Assets;
 };
 
-export const encodeByteListPreimage = (items: readonly Uint8Array[]): Buffer =>
-  encodeCbor(items.map((item) => Buffer.from(item)));
+/** Re-export for callers that build outputs/scripts preimages from CBOR bytes. */
+export const encodeByteListPreimage = encodeMidgardBytesListPreimage;
 
-const sortedInputCbors = (inputs: readonly MidgardUtxo[]): Buffer[] =>
-  [...inputs].sort(compareOutRefs).map((input) => utxoOutRefCbor(input));
+const sortedInputOutRefs = (
+  inputs: readonly MidgardUtxo[],
+): MidgardOutputReference[] =>
+  [...inputs].sort(compareOutRefs).map((input) => ({
+    txId: Buffer.from(input.txHash, "hex"),
+    index: input.outputIndex,
+  }));
 
-const sortedRequiredSignerCbors = (signers: readonly string[]): Buffer[] =>
+const sortedRequiredSignerHashes = (signers: readonly string[]): Buffer[] =>
   [...signers]
     .sort((left, right) =>
       Buffer.from(left, "hex").compare(Buffer.from(right, "hex")),
@@ -56,31 +63,32 @@ export const buildCanonicalUnsignedTx = (
   version: MIDGARD_NATIVE_TX_VERSION,
   validity: "TxIsValid",
   body: {
-    spendInputsPreimageCbor: encodeByteListPreimage(
-      sortedInputCbors(state.spendInputs),
+    spendInputsPreimage: encodeMidgardOutputReferenceListPreimage(
+      sortedInputOutRefs(state.spendInputs),
     ),
-    referenceInputsPreimageCbor: encodeByteListPreimage(
-      sortedInputCbors(state.referenceInputs),
+    referenceInputsPreimage: encodeMidgardOutputReferenceListPreimage(
+      sortedInputOutRefs(state.referenceInputs),
     ),
-    outputsPreimageCbor: encodeByteListPreimage(outputCbors(state.outputs)),
+    outputsPreimage: encodeMidgardBytesListPreimage(outputCbors(state.outputs)),
     fee,
     validityIntervalStart:
       state.validityIntervalStart ?? MIDGARD_POSIX_TIME_NONE,
     validityIntervalEnd: state.validityIntervalEnd ?? MIDGARD_POSIX_TIME_NONE,
-    requiredObserversPreimageCbor:
-      scriptMaterialization.requiredObserversPreimageCbor,
-    requiredSignersPreimageCbor: encodeByteListPreimage(
-      sortedRequiredSignerCbors(state.requiredSigners),
+    requiredObserversPreimage:
+      scriptMaterialization.requiredObserversPreimage,
+    requiredSignersPreimage: encodeMidgardHash28ListPreimage(
+      sortedRequiredSignerHashes(state.requiredSigners),
+      "required_signers",
     ),
-    mintPreimageCbor: scriptMaterialization.mintPreimageCbor,
+    mintPreimage: scriptMaterialization.mintPreimage,
     scriptIntegrityHash: scriptMaterialization.scriptIntegrityHash,
     auxiliaryDataHash: Buffer.from(EMPTY_NULL_ROOT),
     networkId: stateNetworkId(state),
   },
   witnessSet: {
-    addrTxWitsPreimageCbor: Buffer.from(EMPTY_CBOR_LIST),
-    scriptTxWitsPreimageCbor: scriptMaterialization.scriptTxWitsPreimageCbor,
-    redeemerTxWitsPreimageCbor:
-      scriptMaterialization.redeemerTxWitsPreimageCbor,
+    addrTxWitsPreimage: Buffer.from(EMPTY_PREIMAGE_LIST),
+    scriptTxWitsPreimage: scriptMaterialization.scriptTxWitsPreimage,
+    redeemerTxWitsPreimage:
+      scriptMaterialization.redeemerTxWitsPreimage,
   },
 });

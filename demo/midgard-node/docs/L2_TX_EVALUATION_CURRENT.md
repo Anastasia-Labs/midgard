@@ -582,7 +582,7 @@ Duplicate redeemer pointers are rejected in Phase B before local evaluation
 
 For script contexts, spent and reference inputs are sorted lexicographically by
 `TxOutRef` (`phase-b.ts:245-259`, `phase-b.ts:453-456`). Outputs are decoded
-from `outputsPreimageCbor` in authored order and preserved in that order in the
+from `outputsPreimage` in authored order and preserved in that order in the
 context (`phase-b.ts:572-576`, `script-context.ts:217-238`).
 
 ## Final Validation Output

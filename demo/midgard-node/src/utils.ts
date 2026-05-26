@@ -6,6 +6,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import {
   computeMidgardNativeTxId,
   decodeMidgardNativeByteListPreimage,
+  decodeMidgardNativeInputsPreimageAsCbor,
   decodeMidgardNativeTxFull,
   decodeMidgardTxOutput,
   encodeMidgardAddressText,
@@ -44,8 +45,8 @@ export const findSpentAndProducedUTxOs = (
 
     const nativeSpent = yield* Effect.try({
       try: () =>
-        decodeMidgardNativeByteListPreimage(
-          nativeTx.body.spendInputsPreimageCbor,
+        decodeMidgardNativeInputsPreimageAsCbor(
+          nativeTx.body.spendInputsPreimage,
           "native.spend_inputs",
         ),
       catch: (e) =>
@@ -58,7 +59,7 @@ export const findSpentAndProducedUTxOs = (
     const nativeOutputs = yield* Effect.try({
       try: () =>
         decodeMidgardNativeByteListPreimage(
-          nativeTx.body.outputsPreimageCbor,
+          nativeTx.body.outputsPreimage,
           "native.outputs",
         ),
       catch: (e) =>
@@ -115,8 +116,8 @@ export const breakDownTx = (
     const txHash = CML.TransactionHash.from_raw_bytes(txHashBytes);
     const spent = yield* Effect.try({
       try: () =>
-        decodeMidgardNativeByteListPreimage(
-          nativeTx.body.spendInputsPreimageCbor,
+        decodeMidgardNativeInputsPreimageAsCbor(
+          nativeTx.body.spendInputsPreimage,
           "native.spend_inputs",
         ).map((outRef) =>
           Buffer.from(
@@ -132,7 +133,7 @@ export const breakDownTx = (
     const outputBytes = yield* Effect.try({
       try: () =>
         decodeMidgardNativeByteListPreimage(
-          nativeTx.body.outputsPreimageCbor,
+          nativeTx.body.outputsPreimage,
           "native.outputs",
         ),
       catch: (e) =>

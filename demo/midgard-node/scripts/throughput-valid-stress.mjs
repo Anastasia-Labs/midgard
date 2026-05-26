@@ -37,7 +37,7 @@ const MIDGARD_NETWORK_ID_PREPROD = 0n;
 const TX_IS_VALID_CODE = 0n;
 const HASH32_LEN = 32;
 
-const EMPTY_CBOR_LIST = Buffer.from([0x80]);
+const EMPTY_PREIMAGE_LIST = Buffer.from([0x80]);
 const EMPTY_CBOR_NULL = Buffer.from([0xf6]);
 
 const __filename = fileURLToPath(import.meta.url);
@@ -742,28 +742,28 @@ const buildNativeSignedSplitWithFee = ({
     ),
   );
 
-  const spendInputsPreimageCbor = encodeByteListPreimage([spendOutRefCbor]);
-  const referenceInputsPreimageCbor = EMPTY_CBOR_LIST;
-  const outputsPreimageCbor = encodeByteListPreimage(outputs);
-  const requiredObserversPreimageCbor = EMPTY_CBOR_LIST;
-  const requiredSignersPreimageCbor = encodeByteListPreimage([
+  const spendInputsPreimage = encodeByteListPreimage([spendOutRefCbor]);
+  const referenceInputsPreimage = EMPTY_PREIMAGE_LIST;
+  const outputsPreimage = encodeByteListPreimage(outputs);
+  const requiredObserversPreimage = EMPTY_PREIMAGE_LIST;
+  const requiredSignersPreimage = encodeByteListPreimage([
     Buffer.from(signer.to_public().hash().to_raw_bytes()),
   ]);
-  const mintPreimageCbor = EMPTY_CBOR_LIST;
+  const mintPreimage = EMPTY_PREIMAGE_LIST;
 
   const scriptIntegrityHash = hash32(EMPTY_CBOR_NULL);
   const auxiliaryDataHash = hash32(EMPTY_CBOR_NULL);
 
   const bodyCompact = [
-    hash32(spendInputsPreimageCbor),
-    hash32(referenceInputsPreimageCbor),
-    hash32(outputsPreimageCbor),
+    hash32(spendInputsPreimage),
+    hash32(referenceInputsPreimage),
+    hash32(outputsPreimage),
     fee,
     MIDGARD_POSIX_TIME_NONE,
     MIDGARD_POSIX_TIME_NONE,
-    hash32(requiredObserversPreimageCbor),
-    hash32(requiredSignersPreimageCbor),
-    hash32(mintPreimageCbor),
+    hash32(requiredObserversPreimage),
+    hash32(requiredSignersPreimage),
+    hash32(mintPreimage),
     scriptIntegrityHash,
     auxiliaryDataHash,
     MIDGARD_NETWORK_ID_PREPROD,
@@ -775,16 +775,16 @@ const buildNativeSignedSplitWithFee = ({
     signer,
   );
 
-  const addrTxWitsPreimageCbor = encodeByteListPreimage([
+  const addrTxWitsPreimage = encodeByteListPreimage([
     Buffer.from(witness.to_cbor_bytes()),
   ]);
-  const scriptTxWitsPreimageCbor = EMPTY_CBOR_LIST;
-  const redeemerTxWitsPreimageCbor = EMPTY_CBOR_LIST;
+  const scriptTxWitsPreimage = EMPTY_PREIMAGE_LIST;
+  const redeemerTxWitsPreimage = EMPTY_PREIMAGE_LIST;
 
   const witnessCompact = [
-    hash32(addrTxWitsPreimageCbor),
-    hash32(scriptTxWitsPreimageCbor),
-    hash32(redeemerTxWitsPreimageCbor),
+    hash32(addrTxWitsPreimage),
+    hash32(scriptTxWitsPreimage),
+    hash32(redeemerTxWitsPreimage),
   ];
 
   const compact = [
@@ -796,20 +796,20 @@ const buildNativeSignedSplitWithFee = ({
 
   const bodyFull = [
     bodyCompact[0],
-    spendInputsPreimageCbor,
+    spendInputsPreimage,
     bodyCompact[1],
-    referenceInputsPreimageCbor,
+    referenceInputsPreimage,
     bodyCompact[2],
-    outputsPreimageCbor,
+    outputsPreimage,
     bodyCompact[3],
     bodyCompact[4],
     bodyCompact[5],
     bodyCompact[6],
-    requiredObserversPreimageCbor,
+    requiredObserversPreimage,
     bodyCompact[7],
-    requiredSignersPreimageCbor,
+    requiredSignersPreimage,
     bodyCompact[8],
-    mintPreimageCbor,
+    mintPreimage,
     bodyCompact[9],
     bodyCompact[10],
     bodyCompact[11],
@@ -817,11 +817,11 @@ const buildNativeSignedSplitWithFee = ({
 
   const witnessFull = [
     witnessCompact[0],
-    addrTxWitsPreimageCbor,
+    addrTxWitsPreimage,
     witnessCompact[1],
-    scriptTxWitsPreimageCbor,
+    scriptTxWitsPreimage,
     witnessCompact[2],
-    redeemerTxWitsPreimageCbor,
+    redeemerTxWitsPreimage,
   ];
 
   const txCbor = encodeCbor([
@@ -883,28 +883,28 @@ const buildNativeSignedOneToOneWithFee = ({
   signer,
   fee,
 }) => {
-  const spendInputsPreimageCbor = encodeByteListPreimage([spendOutRefCbor]);
-  const referenceInputsPreimageCbor = EMPTY_CBOR_LIST;
-  const outputsPreimageCbor = encodeByteListPreimage([outputCbor]);
-  const requiredObserversPreimageCbor = EMPTY_CBOR_LIST;
-  const requiredSignersPreimageCbor = encodeByteListPreimage([
+  const spendInputsPreimage = encodeByteListPreimage([spendOutRefCbor]);
+  const referenceInputsPreimage = EMPTY_PREIMAGE_LIST;
+  const outputsPreimage = encodeByteListPreimage([outputCbor]);
+  const requiredObserversPreimage = EMPTY_PREIMAGE_LIST;
+  const requiredSignersPreimage = encodeByteListPreimage([
     Buffer.from(signer.to_public().hash().to_raw_bytes()),
   ]);
-  const mintPreimageCbor = EMPTY_CBOR_LIST;
+  const mintPreimage = EMPTY_PREIMAGE_LIST;
 
   const scriptIntegrityHash = hash32(EMPTY_CBOR_NULL);
   const auxiliaryDataHash = hash32(EMPTY_CBOR_NULL);
 
   const bodyCompact = [
-    hash32(spendInputsPreimageCbor),
-    hash32(referenceInputsPreimageCbor),
-    hash32(outputsPreimageCbor),
+    hash32(spendInputsPreimage),
+    hash32(referenceInputsPreimage),
+    hash32(outputsPreimage),
     fee,
     MIDGARD_POSIX_TIME_NONE,
     MIDGARD_POSIX_TIME_NONE,
-    hash32(requiredObserversPreimageCbor),
-    hash32(requiredSignersPreimageCbor),
-    hash32(mintPreimageCbor),
+    hash32(requiredObserversPreimage),
+    hash32(requiredSignersPreimage),
+    hash32(mintPreimage),
     scriptIntegrityHash,
     auxiliaryDataHash,
     MIDGARD_NETWORK_ID_PREPROD,
@@ -916,16 +916,16 @@ const buildNativeSignedOneToOneWithFee = ({
     signer,
   );
 
-  const addrTxWitsPreimageCbor = encodeByteListPreimage([
+  const addrTxWitsPreimage = encodeByteListPreimage([
     Buffer.from(witness.to_cbor_bytes()),
   ]);
-  const scriptTxWitsPreimageCbor = EMPTY_CBOR_LIST;
-  const redeemerTxWitsPreimageCbor = EMPTY_CBOR_LIST;
+  const scriptTxWitsPreimage = EMPTY_PREIMAGE_LIST;
+  const redeemerTxWitsPreimage = EMPTY_PREIMAGE_LIST;
 
   const witnessCompact = [
-    hash32(addrTxWitsPreimageCbor),
-    hash32(scriptTxWitsPreimageCbor),
-    hash32(redeemerTxWitsPreimageCbor),
+    hash32(addrTxWitsPreimage),
+    hash32(scriptTxWitsPreimage),
+    hash32(redeemerTxWitsPreimage),
   ];
 
   const compact = [
@@ -937,20 +937,20 @@ const buildNativeSignedOneToOneWithFee = ({
 
   const bodyFull = [
     bodyCompact[0],
-    spendInputsPreimageCbor,
+    spendInputsPreimage,
     bodyCompact[1],
-    referenceInputsPreimageCbor,
+    referenceInputsPreimage,
     bodyCompact[2],
-    outputsPreimageCbor,
+    outputsPreimage,
     bodyCompact[3],
     bodyCompact[4],
     bodyCompact[5],
     bodyCompact[6],
-    requiredObserversPreimageCbor,
+    requiredObserversPreimage,
     bodyCompact[7],
-    requiredSignersPreimageCbor,
+    requiredSignersPreimage,
     bodyCompact[8],
-    mintPreimageCbor,
+    mintPreimage,
     bodyCompact[9],
     bodyCompact[10],
     bodyCompact[11],
@@ -958,11 +958,11 @@ const buildNativeSignedOneToOneWithFee = ({
 
   const witnessFull = [
     witnessCompact[0],
-    addrTxWitsPreimageCbor,
+    addrTxWitsPreimage,
     witnessCompact[1],
-    scriptTxWitsPreimageCbor,
+    scriptTxWitsPreimage,
     witnessCompact[2],
-    redeemerTxWitsPreimageCbor,
+    redeemerTxWitsPreimage,
   ];
 
   const txCbor = encodeCbor([

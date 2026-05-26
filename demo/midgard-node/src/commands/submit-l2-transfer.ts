@@ -15,7 +15,7 @@ import {
 } from "@lucid-evolution/lucid";
 import {
   decodeMidgardAddressBytes,
-  decodeMidgardNativeByteListPreimage,
+  decodeMidgardNativeInputsPreimageAsCbor,
   midgardAddressFromText,
   encodeMidgardAddressText,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
@@ -463,8 +463,8 @@ const selectedInputsFromCompletedTx = (
   const byLabel = new Map(
     availableUtxos.map((utxo) => [outRefLabel(utxo), utxo]),
   );
-  return decodeMidgardNativeByteListPreimage(
-    completed.tx.body.spendInputsPreimageCbor,
+  return decodeMidgardNativeInputsPreimageAsCbor(
+    completed.tx.body.spendInputsPreimage,
   ).map((bytes) => {
     const input = CML.TransactionInput.from_cbor_bytes(bytes);
     const label = `${input.transaction_id().to_hex()}#${input.index().toString()}`;

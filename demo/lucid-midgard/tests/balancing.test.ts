@@ -1,5 +1,6 @@
 import {
   decodeMidgardNativeByteListPreimage,
+  decodeMidgardNativeInputsPreimageAsCbor,
   decodeMidgardNativeTxFull,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
@@ -193,7 +194,7 @@ describe("TxBuilder balancing and fees", () => {
       .complete({ changeAddress: address, feePolicy: "provider" });
     const tx = decodeMidgardNativeTxFull(completed.txCbor);
     const outputs = decodeMidgardNativeByteListPreimage(
-      tx.body.outputsPreimageCbor,
+      tx.body.outputsPreimage,
     );
 
     expect(outputs).toHaveLength(2);
@@ -333,8 +334,8 @@ describe("TxBuilder balancing and fees", () => {
       .pay.ToAddress(address, { lovelace: 1_000_000n, [unit]: 1n })
       .complete({ changeAddress: address, feePolicy: "provider" });
     const tx = decodeMidgardNativeTxFull(completed.txCbor);
-    const inputs = decodeMidgardNativeByteListPreimage(
-      tx.body.spendInputsPreimageCbor,
+    const inputs = decodeMidgardNativeInputsPreimageAsCbor(
+      tx.body.spendInputsPreimage,
     ).map((bytes) => CML.TransactionInput.from_cbor_bytes(bytes));
 
     expect(

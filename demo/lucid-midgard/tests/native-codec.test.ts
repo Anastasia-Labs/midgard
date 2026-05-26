@@ -6,7 +6,7 @@ import {
   materializeMidgardNativeTxFromCanonical,
   computeHash32,
   computeMidgardNativeTxId,
-  EMPTY_CBOR_LIST,
+  EMPTY_PREIMAGE_LIST,
   EMPTY_CBOR_NULL,
   EMPTY_NULL_ROOT,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
@@ -23,23 +23,23 @@ const makeCanonical = (): MidgardNativeTxCanonical => ({
   version: MIDGARD_NATIVE_TX_VERSION,
   validity: "TxIsValid",
   body: {
-    spendInputsPreimageCbor: EMPTY_CBOR_LIST,
-    referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
-    outputsPreimageCbor: EMPTY_CBOR_LIST,
+    spendInputsPreimage: EMPTY_PREIMAGE_LIST,
+    referenceInputsPreimage: EMPTY_PREIMAGE_LIST,
+    outputsPreimage: EMPTY_PREIMAGE_LIST,
     fee: 0n,
     validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
     validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
-    requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
-    requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
-    mintPreimageCbor: EMPTY_CBOR_LIST,
+    requiredObserversPreimage: EMPTY_PREIMAGE_LIST,
+    requiredSignersPreimage: EMPTY_PREIMAGE_LIST,
+    mintPreimage: EMPTY_PREIMAGE_LIST,
     scriptIntegrityHash: EMPTY_NULL_ROOT,
     auxiliaryDataHash: EMPTY_NULL_ROOT,
     networkId: MIDGARD_NATIVE_NETWORK_ID_NONE,
   },
   witnessSet: {
-    addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-    scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-    redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+    addrTxWitsPreimage: EMPTY_PREIMAGE_LIST,
+    scriptTxWitsPreimage: EMPTY_PREIMAGE_LIST,
+    redeemerTxWitsPreimage: EMPTY_PREIMAGE_LIST,
   },
 });
 
@@ -70,7 +70,7 @@ describe("Midgard native v1 codec", () => {
       tx.compact.transactionWitnessSetHash,
     );
     expect(decoded.compact.transactionBody.mintHash).toEqual(
-      computeHash32(EMPTY_CBOR_LIST),
+      computeHash32(EMPTY_PREIMAGE_LIST),
     );
   });
 

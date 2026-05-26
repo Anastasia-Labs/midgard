@@ -118,9 +118,21 @@ const decodeRedeemerMapEntry = (
   };
 };
 
+const isEmptyPreimageRedeemers = (bytes: Uint8Array): boolean => {
+  if (bytes.length === 0) return true;
+  if (bytes.length !== 8) return false;
+  for (let i = 0; i < 8; i++) {
+    if (bytes[i] !== 0) return false;
+  }
+  return true;
+};
+
 export const decodeMidgardRedeemers = (
   preimageCbor: Uint8Array,
 ): readonly DecodedMidgardRedeemer[] => {
+  if (isEmptyPreimageRedeemers(preimageCbor)) {
+    return [];
+  }
   const decoded = decodeSingleCbor(preimageCbor);
   if (Array.isArray(decoded)) {
     return decoded.map((item, index) =>

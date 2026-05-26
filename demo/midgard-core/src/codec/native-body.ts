@@ -60,9 +60,9 @@ export const writeNativeTxBodyCanonicalStatic = (
   w: BinaryWriter,
   body: MidgardNativeTxBodyCanonical,
 ): void => {
-  writeVarBytesStatic(w, body.spendInputsPreimageCbor);
-  writeVarBytesStatic(w, body.referenceInputsPreimageCbor);
-  writeVarBytesStatic(w, body.outputsPreimageCbor);
+  writeVarBytesStatic(w, body.spendInputsPreimage);
+  writeVarBytesStatic(w, body.referenceInputsPreimage);
+  writeVarBytesStatic(w, body.outputsPreimage);
   writeBigU64(w, asUnsigned(body.fee, "transaction_body.fee"));
   writeBigI64(
     w,
@@ -78,9 +78,9 @@ export const writeNativeTxBodyCanonicalStatic = (
       "transaction_body.validity_interval_end",
     ),
   );
-  writeVarBytesStatic(w, body.requiredObserversPreimageCbor);
-  writeVarBytesStatic(w, body.requiredSignersPreimageCbor);
-  writeVarBytesStatic(w, body.mintPreimageCbor);
+  writeVarBytesStatic(w, body.requiredObserversPreimage);
+  writeVarBytesStatic(w, body.requiredSignersPreimage);
+  writeVarBytesStatic(w, body.mintPreimage);
   writeHash32(
     w,
     ensureHash32(
@@ -102,12 +102,12 @@ export const writeNativeTxBodyCanonicalDynamic = (
   w: BinaryWriter,
   body: MidgardNativeTxBodyCanonical,
 ): void => {
-  writeVarBytesDynamic(w, body.spendInputsPreimageCbor);
-  writeVarBytesDynamic(w, body.referenceInputsPreimageCbor);
-  writeVarBytesDynamic(w, body.outputsPreimageCbor);
-  writeVarBytesDynamic(w, body.requiredObserversPreimageCbor);
-  writeVarBytesDynamic(w, body.requiredSignersPreimageCbor);
-  writeVarBytesDynamic(w, body.mintPreimageCbor);
+  writeVarBytesDynamic(w, body.spendInputsPreimage);
+  writeVarBytesDynamic(w, body.referenceInputsPreimage);
+  writeVarBytesDynamic(w, body.outputsPreimage);
+  writeVarBytesDynamic(w, body.requiredObserversPreimage);
+  writeVarBytesDynamic(w, body.requiredSignersPreimage);
+  writeVarBytesDynamic(w, body.mintPreimage);
 };
 
 export const readNativeTxBodyCanonicalStatic = (
@@ -151,31 +151,31 @@ export const readNativeTxBodyCanonicalDynamic = (
   r: BinaryReader,
   p: NativeTxBodyCanonicalPartial,
 ): MidgardNativeTxBodyCanonical => {
-  const spendInputsPreimageCbor = readVarBytesDynamic(r, p.spendInputsLen);
-  const referenceInputsPreimageCbor = readVarBytesDynamic(
+  const spendInputsPreimage = readVarBytesDynamic(r, p.spendInputsLen);
+  const referenceInputsPreimage = readVarBytesDynamic(
     r,
     p.referenceInputsLen,
   );
-  const outputsPreimageCbor = readVarBytesDynamic(r, p.outputsLen);
-  const requiredObserversPreimageCbor = readVarBytesDynamic(
+  const outputsPreimage = readVarBytesDynamic(r, p.outputsLen);
+  const requiredObserversPreimage = readVarBytesDynamic(
     r,
     p.requiredObserversLen,
   );
-  const requiredSignersPreimageCbor = readVarBytesDynamic(
+  const requiredSignersPreimage = readVarBytesDynamic(
     r,
     p.requiredSignersLen,
   );
-  const mintPreimageCbor = readVarBytesDynamic(r, p.mintLen);
+  const mintPreimage = readVarBytesDynamic(r, p.mintLen);
   return {
-    spendInputsPreimageCbor,
-    referenceInputsPreimageCbor,
-    outputsPreimageCbor,
+    spendInputsPreimage,
+    referenceInputsPreimage,
+    outputsPreimage,
     fee: p.fee,
     validityIntervalStart: p.validityIntervalStart,
     validityIntervalEnd: p.validityIntervalEnd,
-    requiredObserversPreimageCbor,
-    requiredSignersPreimageCbor,
-    mintPreimageCbor,
+    requiredObserversPreimage,
+    requiredSignersPreimage,
+    mintPreimage,
     scriptIntegrityHash: p.scriptIntegrityHash,
     auxiliaryDataHash: p.auxiliaryDataHash,
     networkId: p.networkId,
@@ -361,15 +361,15 @@ export const decodeNativeTxBodyCompact = (
 export const deriveNativeTxBodyCompact = (
   body: MidgardNativeTxBodyCanonical,
 ): MidgardNativeTxBodyCompact => ({
-  spendInputsHash: computeHash32(body.spendInputsPreimageCbor),
-  referenceInputsHash: computeHash32(body.referenceInputsPreimageCbor),
-  outputsHash: computeHash32(body.outputsPreimageCbor),
+  spendInputsHash: computeHash32(body.spendInputsPreimage),
+  referenceInputsHash: computeHash32(body.referenceInputsPreimage),
+  outputsHash: computeHash32(body.outputsPreimage),
   fee: body.fee,
   validityIntervalStart: body.validityIntervalStart,
   validityIntervalEnd: body.validityIntervalEnd,
-  requiredObserversHash: computeHash32(body.requiredObserversPreimageCbor),
-  requiredSignersHash: computeHash32(body.requiredSignersPreimageCbor),
-  mintHash: computeHash32(body.mintPreimageCbor),
+  requiredObserversHash: computeHash32(body.requiredObserversPreimage),
+  requiredSignersHash: computeHash32(body.requiredSignersPreimage),
+  mintHash: computeHash32(body.mintPreimage),
   scriptIntegrityHash: body.scriptIntegrityHash,
   auxiliaryDataHash: body.auxiliaryDataHash,
   networkId: body.networkId,

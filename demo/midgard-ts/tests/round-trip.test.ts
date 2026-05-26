@@ -249,15 +249,15 @@ describe("MidgardNativeTxBodyCompact", () => {
 
 describe("MidgardNativeTxBodyCanonical", () => {
   const baseBody = (): MidgardNativeTxBodyCanonical => ({
-    spendInputsPreimageCbor: bytesSeq(20),
-    referenceInputsPreimageCbor: new Uint8Array(0),
-    outputsPreimageCbor: bytesSeq(40),
+    spendInputsPreimage: bytesSeq(20),
+    referenceInputsPreimage: new Uint8Array(0),
+    outputsPreimage: bytesSeq(40),
     fee: 170_000n,
     validityIntervalStart: -1n,
     validityIntervalEnd: -1n,
-    requiredObserversPreimageCbor: new Uint8Array(0),
-    requiredSignersPreimageCbor: new Uint8Array(0),
-    mintPreimageCbor: new Uint8Array(0),
+    requiredObserversPreimage: new Uint8Array(0),
+    requiredSignersPreimage: new Uint8Array(0),
+    mintPreimage: new Uint8Array(0),
     scriptIntegrityHash: bytes(32, 0),
     auxiliaryDataHash: bytes(32, 0),
     networkId: 255n,
@@ -276,10 +276,10 @@ describe("MidgardNativeTxBodyCanonical", () => {
       decodeMidgardNativeTxBodyCanonical,
       {
         ...baseBody(),
-        referenceInputsPreimageCbor: bytesSeq(13),
-        requiredObserversPreimageCbor: bytesSeq(7),
-        requiredSignersPreimageCbor: bytesSeq(56),
-        mintPreimageCbor: bytesSeq(33),
+        referenceInputsPreimage: bytesSeq(13),
+        requiredObserversPreimage: bytesSeq(7),
+        requiredSignersPreimage: bytesSeq(56),
+        mintPreimage: bytesSeq(33),
       },
     ));
 
@@ -302,10 +302,10 @@ describe("MidgardNativeTxBodyCanonical", () => {
     const d = decodeMidgardNativeTxBodyCanonical(
       encodeMidgardNativeTxBodyCanonical({
         ...baseBody(),
-        outputsPreimageCbor: blob,
+        outputsPreimage: blob,
       }),
     );
-    expect(d.outputsPreimageCbor).toEqual(blob);
+    expect(d.outputsPreimage).toEqual(blob);
   });
 });
 
@@ -319,9 +319,9 @@ describe("MidgardNativeTxWitnessSetCanonical", () => {
       encodeMidgardNativeTxWitnessSetCanonical,
       decodeMidgardNativeTxWitnessSetCanonical,
       {
-        addrTxWitsPreimageCbor: new Uint8Array(0),
-        scriptTxWitsPreimageCbor: new Uint8Array(0),
-        redeemerTxWitsPreimageCbor: new Uint8Array(0),
+        addrTxWitsPreimage: new Uint8Array(0),
+        scriptTxWitsPreimage: new Uint8Array(0),
+        redeemerTxWitsPreimage: new Uint8Array(0),
       },
     ));
 
@@ -330,9 +330,9 @@ describe("MidgardNativeTxWitnessSetCanonical", () => {
       encodeMidgardNativeTxWitnessSetCanonical,
       decodeMidgardNativeTxWitnessSetCanonical,
       {
-        addrTxWitsPreimageCbor: bytesSeq(96),
-        scriptTxWitsPreimageCbor: bytesSeq(11),
-        redeemerTxWitsPreimageCbor: bytesSeq(20),
+        addrTxWitsPreimage: bytesSeq(96),
+        scriptTxWitsPreimage: bytesSeq(11),
+        redeemerTxWitsPreimage: bytesSeq(20),
       },
     ));
 });
@@ -599,23 +599,23 @@ describe("MidgardNativeTxCanonical", () => {
     version: MIDGARD_NATIVE_TX_VERSION,
     validity,
     body: {
-      spendInputsPreimageCbor: bytesSeq(20),
-      referenceInputsPreimageCbor: new Uint8Array(0),
-      outputsPreimageCbor: bytesSeq(40),
+      spendInputsPreimage: bytesSeq(20),
+      referenceInputsPreimage: new Uint8Array(0),
+      outputsPreimage: bytesSeq(40),
       fee: 170_000n,
       validityIntervalStart: -1n,
       validityIntervalEnd: -1n,
-      requiredObserversPreimageCbor: new Uint8Array(0),
-      requiredSignersPreimageCbor: new Uint8Array(0),
-      mintPreimageCbor: new Uint8Array(0),
+      requiredObserversPreimage: new Uint8Array(0),
+      requiredSignersPreimage: new Uint8Array(0),
+      mintPreimage: new Uint8Array(0),
       scriptIntegrityHash: bytes(32, 0),
       auxiliaryDataHash: bytes(32, 0),
       networkId: 255n,
     },
     witnessSet: {
-      addrTxWitsPreimageCbor: new Uint8Array(0),
-      scriptTxWitsPreimageCbor: new Uint8Array(0),
-      redeemerTxWitsPreimageCbor: new Uint8Array(0),
+      addrTxWitsPreimage: new Uint8Array(0),
+      scriptTxWitsPreimage: new Uint8Array(0),
+      redeemerTxWitsPreimage: new Uint8Array(0),
     },
   });
 
@@ -639,9 +639,9 @@ describe("MidgardNativeTxCanonical", () => {
     const tx: MidgardNativeTxCanonical = {
       ...mkTx(),
       witnessSet: {
-        addrTxWitsPreimageCbor: bytesSeq(96),
-        scriptTxWitsPreimageCbor: bytesSeq(50),
-        redeemerTxWitsPreimageCbor: bytesSeq(20),
+        addrTxWitsPreimage: bytesSeq(96),
+        scriptTxWitsPreimage: bytesSeq(50),
+        redeemerTxWitsPreimage: bytesSeq(20),
       },
     };
     assertRoundTrip(
@@ -659,10 +659,10 @@ describe("MidgardNativeTxCanonical", () => {
         ...base.body,
         validityIntervalStart: 500n,
         validityIntervalEnd: 1_500n,
-        referenceInputsPreimageCbor: bytesSeq(15),
-        requiredObserversPreimageCbor: bytesSeq(7),
-        requiredSignersPreimageCbor: bytesSeq(28),
-        mintPreimageCbor: bytesSeq(33),
+        referenceInputsPreimage: bytesSeq(15),
+        requiredObserversPreimage: bytesSeq(7),
+        requiredSignersPreimage: bytesSeq(28),
+        mintPreimage: bytesSeq(33),
         scriptIntegrityHash: bytes(32, 0xab),
         auxiliaryDataHash: bytes(32, 0xcd),
         networkId: 1n,
@@ -755,23 +755,23 @@ describe("Block", () => {
       version: MIDGARD_NATIVE_TX_VERSION,
       validity: "TxIsValid",
       body: {
-        spendInputsPreimageCbor: bytesSeq(20),
-        referenceInputsPreimageCbor: new Uint8Array(0),
-        outputsPreimageCbor: bytesSeq(40),
+        spendInputsPreimage: bytesSeq(20),
+        referenceInputsPreimage: new Uint8Array(0),
+        outputsPreimage: bytesSeq(40),
         fee: 170_000n,
         validityIntervalStart: -1n,
         validityIntervalEnd: -1n,
-        requiredObserversPreimageCbor: new Uint8Array(0),
-        requiredSignersPreimageCbor: new Uint8Array(0),
-        mintPreimageCbor: new Uint8Array(0),
+        requiredObserversPreimage: new Uint8Array(0),
+        requiredSignersPreimage: new Uint8Array(0),
+        mintPreimage: new Uint8Array(0),
         scriptIntegrityHash: bytes(32, 0),
         auxiliaryDataHash: bytes(32, 0),
         networkId: 255n,
       },
       witnessSet: {
-        addrTxWitsPreimageCbor: bytesSeq(96),
-        scriptTxWitsPreimageCbor: new Uint8Array(0),
-        redeemerTxWitsPreimageCbor: new Uint8Array(0),
+        addrTxWitsPreimage: bytesSeq(96),
+        scriptTxWitsPreimage: new Uint8Array(0),
+        redeemerTxWitsPreimage: new Uint8Array(0),
       },
     };
     const b: Block = {

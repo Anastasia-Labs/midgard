@@ -41,7 +41,7 @@ import {
 } from "./midgard-output-helpers.js";
 import { MidgardRedeemerTag } from "@al-ft/midgard-validation/midgard-redeemers";
 
-const EMPTY_CBOR_LIST = Buffer.from([0x80]);
+const EMPTY_PREIMAGE_LIST = Buffer.from([0x80]);
 const EMPTY_CBOR_NULL = Buffer.from([0xf6]);
 const EMPTY_REDEEMER_DATA = Buffer.from(Data.to(new Constr(0, [])), "hex");
 
@@ -503,12 +503,12 @@ const makeEmptyMintPolicyAssetsPreimage = (policyId: Uint8Array): Buffer =>
   Buffer.from(encode(new Map([[Buffer.from(policyId), new Map()]])));
 
 const buildNativeTx = (opts?: {
-  readonly redeemerTxWitsPreimageCbor?: Buffer;
+  readonly redeemerTxWitsPreimage?: Buffer;
   readonly requiredObserverItems?: readonly Uint8Array[];
   readonly scriptWitnessItems?: readonly ScriptWitnessItem[];
   readonly witnessMode?: "none" | "valid" | "invalid";
   readonly witnessSignerPrivateKey?: InstanceType<typeof CML.PrivateKey>;
-  readonly mintPreimageCbor?: Buffer;
+  readonly mintPreimage?: Buffer;
   readonly networkId?: bigint;
   readonly outputCount?: number;
   readonly outputCbors?: readonly Buffer[];
@@ -542,10 +542,10 @@ const buildNativeTx = (opts?: {
       : Array.from({ length: outputCount }, () => Buffer.from(defaultOutput));
   const outputCbor = outputCbors[0];
 
-  const spendInputsPreimageCbor = encodeByteList(spendInputs);
-  const referenceInputsPreimageCbor = encodeByteList(referenceInputs);
-  const outputsPreimageCbor = encodeByteList(outputCbors);
-  const requiredObserversPreimageCbor = encodeByteList(
+  const spendInputsPreimage = encodeByteList(spendInputs);
+  const referenceInputsPreimage = encodeByteList(referenceInputs);
+  const outputsPreimage = encodeByteList(outputCbors);
+  const requiredObserversPreimage = encodeByteList(
     opts?.requiredObserverItems ?? [],
   );
   const witnessMode = opts?.witnessMode ?? "none";
@@ -553,25 +553,25 @@ const buildNativeTx = (opts?: {
     witnessMode === "none"
       ? undefined
       : (opts?.witnessSignerPrivateKey ?? CML.PrivateKey.generate_ed25519());
-  const requiredSignersPreimageCbor =
+  const requiredSignersPreimage =
     witnessSignerPrivateKey === undefined
-      ? EMPTY_CBOR_LIST
+      ? EMPTY_PREIMAGE_LIST
       : encodeByteList([
           Buffer.from(
             witnessSignerPrivateKey.to_public().hash().to_raw_bytes(),
           ),
         ]);
-  const mintPreimageCbor = opts?.mintPreimageCbor ?? EMPTY_CBOR_LIST;
+  const mintPreimage = opts?.mintPreimage ?? EMPTY_PREIMAGE_LIST;
 
-  const scriptTxWitsPreimageCbor =
+  const scriptTxWitsPreimage =
     opts?.scriptWitnessItems === undefined
-      ? EMPTY_CBOR_LIST
+      ? EMPTY_PREIMAGE_LIST
       : encodeMidgardVersionedScriptListPreimage(
           opts.scriptWitnessItems.map(scriptWitnessItemToVersioned),
         );
-  const redeemerTxWitsPreimageCbor =
-    opts?.redeemerTxWitsPreimageCbor ?? EMPTY_CBOR_LIST;
-  const redeemerTxWitsHash = computeHash32(redeemerTxWitsPreimageCbor);
+  const redeemerTxWitsPreimage =
+    opts?.redeemerTxWitsPreimage ?? EMPTY_PREIMAGE_LIST;
+  const redeemerTxWitsHash = computeHash32(redeemerTxWitsPreimage);
   const scriptIntegrityHash =
     opts?.scriptIntegrityHash ??
     (opts?.scriptLanguages !== undefined
@@ -583,15 +583,15 @@ const buildNativeTx = (opts?: {
   const version = opts?.version ?? MIDGARD_NATIVE_TX_VERSION;
 
   const body: MidgardNativeTxBodyCanonical = {
-    spendInputsPreimageCbor,
-    referenceInputsPreimageCbor,
-    outputsPreimageCbor,
+    spendInputsPreimage,
+    referenceInputsPreimage,
+    outputsPreimage,
     fee: 0n,
     validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
     validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
-    requiredObserversPreimageCbor,
-    requiredSignersPreimageCbor,
-    mintPreimageCbor,
+    requiredObserversPreimage,
+    requiredSignersPreimage,
+    mintPreimage,
     scriptIntegrityHash,
     auxiliaryDataHash: computeHash32(EMPTY_CBOR_NULL),
     networkId: opts?.networkId ?? 0n,
@@ -602,9 +602,9 @@ const buildNativeTx = (opts?: {
   );
   const signedBodyHash =
     witnessMode === "invalid" ? Buffer.alloc(32, 0x7f) : bodyHash;
-  const addrTxWitsPreimageCbor =
+  const addrTxWitsPreimage =
     witnessSignerPrivateKey === undefined
-      ? EMPTY_CBOR_LIST
+      ? EMPTY_PREIMAGE_LIST
       : encodeByteList([
           Buffer.from(
             CML.make_vkey_witness(
@@ -615,9 +615,9 @@ const buildNativeTx = (opts?: {
         ]);
 
   const witnessSet: MidgardNativeTxWitnessSetCanonical = {
-    addrTxWitsPreimageCbor,
-    scriptTxWitsPreimageCbor,
-    redeemerTxWitsPreimageCbor,
+    addrTxWitsPreimage,
+    scriptTxWitsPreimage,
+    redeemerTxWitsPreimage,
   };
 
   const tx: MidgardNativeTxFull = {
@@ -664,7 +664,7 @@ const attachComputedScriptIntegrityHash = (
   });
 
   const scriptIntegrityHash = computeScriptIntegrityHashForLanguages(
-    computeHash32(fixture.tx.witnessSet.redeemerTxWitsPreimageCbor),
+    computeHash32(fixture.tx.witnessSet.redeemerTxWitsPreimage),
     languages,
   );
 
@@ -763,7 +763,7 @@ const runMidgardV1ContextProbeScenario = async (opts?: {
   const base = buildNativeTx({
     spendInputOutRefs: [pubkeySpendOutRef, scriptSpendOutRef],
     referenceInputOutRefs: [secondReferenceOutRef, firstReferenceOutRef],
-    mintPreimageCbor: makeMintPreimage([
+    mintPreimage: makeMintPreimage([
       { policyId: mintPolicyId, assetName: assetName, quantity: 1n },
     ]),
     scriptWitnessItems: [
@@ -772,7 +772,7 @@ const runMidgardV1ContextProbeScenario = async (opts?: {
       makeRawUplcWitness(MIDGARD_V1_OBSERVE_GUARD_SCRIPT_HEX),
       makeRawUplcWitness(MIDGARD_V1_RECEIVE_GUARD_SCRIPT_HEX),
     ],
-    redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+    redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
       {
         tag: MidgardRedeemerTag.Spend,
         index: 0n,
@@ -957,7 +957,7 @@ describe("native transaction integration", () => {
     const datum = makePlutusIntegerData(42n);
     const { txId, txCbor, inputOutRef, referenceInputOutRef } = buildNativeTx({
       scriptWitnessItems: [Buffer.from(wrappedPlutusScript.to_cbor_bytes())],
-      redeemerTxWitsPreimageCbor: redeemerBytes,
+      redeemerTxWitsPreimage: redeemerBytes,
       scriptLanguages: ["PlutusV3"],
     });
 
@@ -999,7 +999,7 @@ describe("native transaction integration", () => {
       networkId: MIDGARD_NATIVE_NETWORK_ID_NONE,
       requiredObserverItems: [observerScriptHash],
       scriptWitnessItems: [Buffer.from(wrappedPlutusScript.to_cbor_bytes())],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         { tag: CML.RedeemerTag.Spend, index: 0n },
       ]),
       scriptIntegrityHash: Buffer.from("71".repeat(32), "hex"),
@@ -1042,7 +1042,7 @@ describe("native transaction integration", () => {
 
   it("rejects duplicate reference inputs in phase A", async () => {
     const base = buildNativeTx();
-    const duplicatedReferenceInputsPreimageCbor = encodeByteList([
+    const duplicatedReferenceInputsPreimage = encodeByteList([
       base.referenceInputOutRef,
       base.referenceInputOutRef,
     ]);
@@ -1050,7 +1050,7 @@ describe("native transaction integration", () => {
       ...base.tx,
       body: {
         ...base.tx.body,
-        referenceInputsPreimageCbor: duplicatedReferenceInputsPreimageCbor,
+        referenceInputsPreimage: duplicatedReferenceInputsPreimage,
       },
     };
     const fullTx: MidgardNativeTxFull = {
@@ -1121,7 +1121,7 @@ describe("native transaction integration", () => {
     );
     const scriptHash = Buffer.from(script.hash().to_raw_bytes());
     const assetName = Buffer.from("61", "hex");
-    const mintPreimageCbor = makeMintPreimage([
+    const mintPreimage = makeMintPreimage([
       { policyId: scriptHash, assetName: assetName, quantity: 1n },
     ]);
     const mintedOutput = makeValueOutput(
@@ -1130,7 +1130,7 @@ describe("native transaction integration", () => {
     );
     const { txId, txCbor, inputOutRef, referenceInputOutRef } = buildNativeTx({
       requiredObserverItems: [scriptHash],
-      mintPreimageCbor,
+      mintPreimage,
       scriptWitnessItems: [
         Buffer.from(CML.Script.new_native(script).to_cbor_bytes()),
       ],
@@ -1392,7 +1392,7 @@ describe("native transaction integration", () => {
     );
     const policyId = Buffer.from(mintScript.hash().to_raw_bytes());
     const assetName = Buffer.from("01", "hex");
-    const mintPreimageCbor = makeMintPreimage([
+    const mintPreimage = makeMintPreimage([
       { policyId: policyId, assetName: assetName, quantity: 1n },
     ]);
     const mintedOutput = makeValueOutput(
@@ -1400,7 +1400,7 @@ describe("native transaction integration", () => {
       makeSingleAssetValue(3_000_000n, policyId, assetName, 1n),
     );
     const { txId, txCbor, inputOutRef, referenceInputOutRef } = buildNativeTx({
-      mintPreimageCbor,
+      mintPreimage,
       scriptWitnessItems: [
         Buffer.from(CML.Script.new_native(mintScript).to_cbor_bytes()),
       ],
@@ -1440,7 +1440,7 @@ describe("native transaction integration", () => {
     );
     const policyId = Buffer.from(mintScript.hash().to_raw_bytes());
     const assetName = Buffer.from("02", "hex");
-    const mintPreimageCbor = makeMintPreimage([
+    const mintPreimage = makeMintPreimage([
       { policyId: policyId, assetName: assetName, quantity: 1n },
     ]);
     const mintedOutput = makeValueOutput(
@@ -1448,7 +1448,7 @@ describe("native transaction integration", () => {
       makeSingleAssetValue(3_000_000n, policyId, assetName, 1n),
     );
     const { txId, txCbor, inputOutRef, referenceInputOutRef } = buildNativeTx({
-      mintPreimageCbor,
+      mintPreimage,
       witnessMode: "valid",
       witnessSignerPrivateKey: signerKey,
       outputCbors: [mintedOutput],
@@ -1496,7 +1496,7 @@ describe("native transaction integration", () => {
     );
     const inlineAssetName = Buffer.from("0a", "hex");
     const referenceAssetName = Buffer.from("0b", "hex");
-    const mintPreimageCbor = makeMintPreimage([
+    const mintPreimage = makeMintPreimage([
       {
         policyId: inlinePolicyId,
         assetName: inlineAssetName,
@@ -1524,7 +1524,7 @@ describe("native transaction integration", () => {
       ]),
     );
     const { txId, txCbor, inputOutRef, referenceInputOutRef } = buildNativeTx({
-      mintPreimageCbor,
+      mintPreimage,
       scriptWitnessItems: [
         Buffer.from(CML.Script.new_native(inlineScript).to_cbor_bytes()),
       ],
@@ -1566,7 +1566,7 @@ describe("native transaction integration", () => {
     const signerKey = CML.PrivateKey.generate_ed25519();
     const policyId = Buffer.from("55".repeat(28), "hex");
     const assetName = Buffer.from("03", "hex");
-    const mintPreimageCbor = makeMintPreimage([
+    const mintPreimage = makeMintPreimage([
       { policyId: policyId, assetName: assetName, quantity: 1n },
     ]);
     const mintedOutput = makeValueOutput(
@@ -1574,7 +1574,7 @@ describe("native transaction integration", () => {
       makeSingleAssetValue(3_000_000n, policyId, assetName, 1n),
     );
     const { txId, txCbor, inputOutRef, referenceInputOutRef } = buildNativeTx({
-      mintPreimageCbor,
+      mintPreimage,
       witnessMode: "valid",
       witnessSignerPrivateKey: signerKey,
       outputCbors: [mintedOutput],
@@ -1609,7 +1609,7 @@ describe("native transaction integration", () => {
     );
     const policyId = Buffer.from(mintScript.hash().to_raw_bytes());
     const assetName = Buffer.from("04", "hex");
-    const mintPreimageCbor = makeMintPreimage([
+    const mintPreimage = makeMintPreimage([
       { policyId: policyId, assetName: assetName, quantity: 1n },
     ]);
     const mintedOutput = makeValueOutput(
@@ -1617,7 +1617,7 @@ describe("native transaction integration", () => {
       makeSingleAssetValue(3_000_000n, policyId, assetName, 1n),
     );
     const { txId, txCbor, inputOutRef, referenceInputOutRef } = buildNativeTx({
-      mintPreimageCbor,
+      mintPreimage,
       witnessMode: "valid",
       witnessSignerPrivateKey: spendSignerKey,
       outputCbors: [mintedOutput],
@@ -1651,7 +1651,7 @@ describe("native transaction integration", () => {
 
   it("rejects malformed native mint preimages", async () => {
     const signerKey = CML.PrivateKey.generate_ed25519();
-    const malformedMintPreimageCbor = makeMintPreimage([
+    const malformedMintPreimage = makeMintPreimage([
       {
         policyId: Buffer.alloc(27, 0x11),
         assetName: Buffer.from("05", "hex"),
@@ -1659,7 +1659,7 @@ describe("native transaction integration", () => {
       },
     ]);
     const { txId, txCbor } = buildNativeTx({
-      mintPreimageCbor: malformedMintPreimageCbor,
+      mintPreimage: malformedMintPreimage,
       witnessMode: "valid",
       witnessSignerPrivateKey: signerKey,
     });
@@ -1676,7 +1676,7 @@ describe("native transaction integration", () => {
   it("rejects empty top-level mint maps instead of treating them as no mint", async () => {
     const signerKey = CML.PrivateKey.generate_ed25519();
     const { txId, txCbor } = buildNativeTx({
-      mintPreimageCbor: makeEmptyMintMapPreimage(),
+      mintPreimage: makeEmptyMintMapPreimage(),
       witnessMode: "valid",
       witnessSignerPrivateKey: signerKey,
     });
@@ -1697,7 +1697,7 @@ describe("native transaction integration", () => {
     const signerKey = CML.PrivateKey.generate_ed25519();
     const policyId = Buffer.from("66".repeat(28), "hex");
     const { txId, txCbor } = buildNativeTx({
-      mintPreimageCbor: makeEmptyMintPolicyAssetsPreimage(policyId),
+      mintPreimage: makeEmptyMintPolicyAssetsPreimage(policyId),
       witnessMode: "valid",
       witnessSignerPrivateKey: signerKey,
     });
@@ -1721,11 +1721,11 @@ describe("native transaction integration", () => {
     );
     const policyId = Buffer.from(mintScript.hash().to_raw_bytes());
     const assetName = Buffer.from("06", "hex");
-    const mintPreimageCbor = makeMintPreimage([
+    const mintPreimage = makeMintPreimage([
       { policyId: policyId, assetName: assetName, quantity: 1n },
     ]);
     const { txId, txCbor, inputOutRef, referenceInputOutRef } = buildNativeTx({
-      mintPreimageCbor,
+      mintPreimage,
       scriptWitnessItems: [
         Buffer.from(CML.Script.new_native(mintScript).to_cbor_bytes()),
       ],
@@ -1761,7 +1761,7 @@ describe("native transaction integration", () => {
     );
     const policyId = Buffer.from(burnScript.hash().to_raw_bytes());
     const assetName = Buffer.from("07", "hex");
-    const burnPreimageCbor = makeMintPreimage([
+    const burnPreimage = makeMintPreimage([
       { policyId: policyId, assetName: assetName, quantity: -1n },
     ]);
     const inputValue = makeSingleAssetValue(
@@ -1771,7 +1771,7 @@ describe("native transaction integration", () => {
       1n,
     );
     const { txId, txCbor, inputOutRef, referenceInputOutRef } = buildNativeTx({
-      mintPreimageCbor: burnPreimageCbor,
+      mintPreimage: burnPreimage,
       scriptWitnessItems: [
         Buffer.from(CML.Script.new_native(burnScript).to_cbor_bytes()),
       ],
@@ -1810,7 +1810,7 @@ describe("native transaction integration", () => {
     const datum = makePlutusIntegerData(99n);
     const { txId, txCbor, inputOutRef, referenceInputOutRef } = buildNativeTx({
       scriptWitnessItems: [Buffer.from(plutusScriptRef.to_cbor_bytes())],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         { tag: CML.RedeemerTag.Spend, index: 0n },
       ]),
       scriptLanguages: ["PlutusV3"],
@@ -1844,7 +1844,7 @@ describe("native transaction integration", () => {
     const plutusScriptRef = CML.Script.new_plutus_v3(plutusScript);
     const policyId = Buffer.from(plutusScriptRef.hash().to_raw_bytes());
     const assetName = Buffer.from("08", "hex");
-    const mintPreimageCbor = makeMintPreimage([
+    const mintPreimage = makeMintPreimage([
       { policyId: policyId, assetName: assetName, quantity: 1n },
     ]);
     const mintedOutput = makeValueOutput(
@@ -1852,9 +1852,9 @@ describe("native transaction integration", () => {
       makeSingleAssetValue(3_000_000n, policyId, assetName, 1n),
     );
     const { txId, txCbor, inputOutRef, referenceInputOutRef } = buildNativeTx({
-      mintPreimageCbor,
+      mintPreimage,
       scriptWitnessItems: [Buffer.from(plutusScriptRef.to_cbor_bytes())],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         { tag: CML.RedeemerTag.Spend, index: 0n },
         { tag: CML.RedeemerTag.Mint, index: 0n },
       ]),
@@ -1893,7 +1893,7 @@ describe("native transaction integration", () => {
     );
     const base = buildNativeTx({
       scriptWitnessItems: [Buffer.from(withdrawScript.to_cbor_bytes())],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         { tag: CML.RedeemerTag.Reward, index: 0n },
       ]),
       requiredObserverItems: [
@@ -1918,7 +1918,7 @@ describe("native transaction integration", () => {
     ]);
     const witnessSet: MidgardNativeTxWitnessSetCanonical = {
       ...withScriptDataHash.tx.witnessSet,
-      addrTxWitsPreimageCbor: resignedWitnesses,
+      addrTxWitsPreimage: resignedWitnesses,
     };
     const tx: MidgardNativeTxFull = {
       ...withScriptDataHash.tx,
@@ -1960,7 +1960,7 @@ describe("native transaction integration", () => {
     const plutusScriptRef = CML.Script.new_plutus_v3(plutusScript);
     const scriptHash = plutusScriptRef.hash();
     const { txId, txCbor, inputOutRef, referenceInputOutRef } = buildNativeTx({
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         { tag: CML.RedeemerTag.Spend, index: 0n },
       ]),
       scriptLanguages: ["PlutusV3"],
@@ -1996,7 +1996,7 @@ describe("native transaction integration", () => {
     const scriptHash = plutusScriptRef.hash();
     const { txId, txCbor, inputOutRef, referenceInputOutRef } = buildNativeTx({
       scriptWitnessItems: [Buffer.from(plutusScriptRef.to_cbor_bytes())],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         { tag: CML.RedeemerTag.Spend, index: 0n },
       ]),
       scriptLanguages: ["PlutusV3"],
@@ -2028,7 +2028,7 @@ describe("native transaction integration", () => {
     const scriptHash = plutusScriptRef.hash();
     const { txId, txCbor, inputOutRef, referenceInputOutRef } = buildNativeTx({
       scriptWitnessItems: [Buffer.from(plutusScriptRef.to_cbor_bytes())],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         { tag: CML.RedeemerTag.Spend, index: 0n },
       ]),
       scriptLanguages: ["PlutusV3"],
@@ -2059,7 +2059,7 @@ describe("native transaction integration", () => {
     const datum = makePlutusIntegerData(99n);
     const base = buildNativeTx({
       scriptWitnessItems: [Buffer.from(spendScript.to_cbor_bytes())],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         { tag: CML.RedeemerTag.Spend, index: 0n },
       ]),
       outputCbors: [makeOutput(TEST_ADDRESS, 4_000_000n)],
@@ -2095,7 +2095,7 @@ describe("native transaction integration", () => {
     const datum = makePlutusIntegerData(99n);
     const base = buildNativeTx({
       scriptWitnessItems: [Buffer.from(spendScript.to_cbor_bytes())],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         { tag: CML.RedeemerTag.Spend, index: 0n },
       ]),
     });
@@ -2129,7 +2129,7 @@ describe("native transaction integration", () => {
     const datum = makePlutusIntegerData(99n);
     const base = buildNativeTx({
       scriptWitnessItems: [Buffer.from(spendScript.to_cbor_bytes())],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         {
           tag: CML.RedeemerTag.Spend,
           index: 0n,
@@ -2169,7 +2169,7 @@ describe("native transaction integration", () => {
     const datum = makePlutusIntegerData(99n);
     const base = buildNativeTx({
       scriptWitnessItems: [Buffer.from(spendScript.to_cbor_bytes())],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         {
           tag: CML.RedeemerTag.Spend,
           index: 0n,
@@ -2209,7 +2209,7 @@ describe("native transaction integration", () => {
     const datum = makePlutusIntegerData(99n);
     const base = buildNativeTx({
       scriptWitnessItems: [Buffer.from(spendScript.to_cbor_bytes())],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         { tag: CML.RedeemerTag.Spend, index: 0n },
       ]),
     });
@@ -2245,7 +2245,7 @@ describe("native transaction integration", () => {
     const datum = makePlutusIntegerData(1n);
     const base = buildNativeTx({
       scriptWitnessItems: [Buffer.from(spendScript.to_cbor_bytes())],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         {
           tag: CML.RedeemerTag.Spend,
           index: 0n,
@@ -2285,7 +2285,7 @@ describe("native transaction integration", () => {
     const datum = makePlutusIntegerData(9n);
     const base = buildNativeTx({
       scriptWitnessItems: [Buffer.from(spendScript.to_cbor_bytes())],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         { tag: CML.RedeemerTag.Spend, index: 0n },
       ]),
     });
@@ -2325,7 +2325,7 @@ describe("native transaction integration", () => {
     const datum = makePlutusIntegerData(9n);
     const base = buildNativeTx({
       scriptWitnessItems: [Buffer.from(spendScript.to_cbor_bytes())],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         { tag: CML.RedeemerTag.Spend, index: 0n },
       ]),
       outputCbors: [
@@ -2371,7 +2371,7 @@ describe("native transaction integration", () => {
     const datum = makePlutusIntegerData(3n);
     const base = buildNativeTx({
       scriptWitnessItems: [Buffer.from(spendScript.to_cbor_bytes())],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         { tag: CML.RedeemerTag.Spend, index: 0n },
       ]),
     });
@@ -2429,7 +2429,7 @@ describe("native transaction integration", () => {
     );
     const base = buildNativeTx({
       scriptWitnessItems: [Buffer.from(spendScript.to_cbor_bytes())],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         { tag: CML.RedeemerTag.Spend, index: 0n },
       ]),
       scriptLanguages: ["MidgardV1"],
@@ -2468,7 +2468,7 @@ describe("native transaction integration", () => {
     );
     const base = buildNativeTx({
       scriptWitnessItems: [Buffer.from(spendScript.to_cbor_bytes())],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         { tag: CML.RedeemerTag.Spend, index: 0n },
       ]),
       scriptLanguages: ["PlutusV3", "MidgardV1"],
@@ -2509,7 +2509,7 @@ describe("native transaction integration", () => {
     const datum = makePlutusIntegerData(5n);
     const base = buildNativeTx({
       scriptWitnessItems: [Buffer.from(spendScript.to_cbor_bytes())],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         { tag: CML.RedeemerTag.Spend, index: 1n },
       ]),
     });
@@ -2544,7 +2544,7 @@ describe("native transaction integration", () => {
     const scriptHash = spendScript.hash();
     const base = buildNativeTx({
       scriptWitnessItems: [Buffer.from(spendScript.to_cbor_bytes())],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         { tag: CML.RedeemerTag.Spend, index: 0n },
         { tag: CML.RedeemerTag.Spend, index: 0n },
       ]),
@@ -2578,7 +2578,7 @@ describe("native transaction integration", () => {
     const datum = makePlutusIntegerData(6n);
     const base = buildNativeTx({
       scriptWitnessItems: [Buffer.from(spendScript.to_cbor_bytes())],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         { tag: CML.RedeemerTag.Mint, index: 0n },
       ]),
     });
@@ -2613,7 +2613,7 @@ describe("native transaction integration", () => {
     const scriptHash = spendScript.hash();
     const datum = makePlutusIntegerData(101n);
     const base = buildNativeTx({
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         { tag: CML.RedeemerTag.Spend, index: 0n },
       ]),
     });
@@ -2651,7 +2651,7 @@ describe("native transaction integration", () => {
     const scriptHash = spendScript.hash();
     const datum = makePlutusIntegerData(102n);
     const base = buildNativeTx({
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         { tag: CML.RedeemerTag.Spend, index: 0n },
       ]),
     });
@@ -2726,11 +2726,11 @@ describe("native transaction integration", () => {
       makeSingleAssetValue(3_000_000n, policyId, assetName, 1n),
     );
     const base = buildNativeTx({
-      mintPreimageCbor: makeMintPreimage([
+      mintPreimage: makeMintPreimage([
         { policyId: policyId, assetName: assetName, quantity: 1n },
       ]),
       scriptWitnessItems: uniqueScriptWitnessItems([spendScript, mintScript]),
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         { tag: CML.RedeemerTag.Spend, index: 0n },
         { tag: CML.RedeemerTag.Mint, index: 0n },
       ]),
@@ -2771,7 +2771,7 @@ describe("native transaction integration", () => {
         spendScript,
         withdrawScript,
       ]),
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         { tag: CML.RedeemerTag.Spend, index: 0n },
         { tag: CML.RedeemerTag.Reward, index: 0n },
       ]),
@@ -2810,7 +2810,7 @@ describe("native transaction integration", () => {
     const datum = makePlutusIntegerData(7n);
     const base = buildNativeTx({
       scriptWitnessItems: [Buffer.from(spendScript.to_cbor_bytes())],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         {
           tag: CML.RedeemerTag.Spend,
           index: 0n,
@@ -2866,7 +2866,7 @@ describe("native transaction integration", () => {
     const base = buildNativeTx({
       spendInputOutRefs: [pubkeySpendOutRef, scriptSpendOutRef],
       referenceInputOutRefs: [secondReferenceOutRef, firstReferenceOutRef],
-      mintPreimageCbor: makeMintPreimage([
+      mintPreimage: makeMintPreimage([
         { policyId: policyId, assetName: assetName, quantity: 1n },
       ]),
       scriptWitnessItems: uniqueScriptWitnessItems([
@@ -2874,7 +2874,7 @@ describe("native transaction integration", () => {
         mintScript,
         observerScript,
       ]),
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         {
           tag: CML.RedeemerTag.Spend,
           index: 0n,
@@ -2955,7 +2955,7 @@ describe("native transaction integration", () => {
     const base = buildNativeTx({
       spendInputOutRefs: [pubkeySpendOutRef, scriptSpendOutRef],
       referenceInputOutRefs: [secondReferenceOutRef, firstReferenceOutRef],
-      mintPreimageCbor: makeMintPreimage([
+      mintPreimage: makeMintPreimage([
         { policyId: policyId, assetName: assetName, quantity: 1n },
       ]),
       scriptWitnessItems: uniqueScriptWitnessItems([
@@ -2963,7 +2963,7 @@ describe("native transaction integration", () => {
         mintScript,
         observerScript,
       ]),
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         {
           tag: CML.RedeemerTag.Spend,
           index: 0n,
@@ -3119,7 +3119,7 @@ describe("native transaction integration", () => {
       scriptWitnessItems: [
         makeRawUplcWitness(MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX),
       ],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         {
           tag: MidgardRedeemerTag.Spend,
           index: 0n,
@@ -3164,7 +3164,7 @@ describe("native transaction integration", () => {
       scriptWitnessItems: [
         makeRawUplcWitness(MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX),
       ],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         {
           tag: MidgardRedeemerTag.Spend,
           index: 0n,
@@ -3208,7 +3208,7 @@ describe("native transaction integration", () => {
       scriptWitnessItems: [
         makeRawUplcWitness(MIDGARD_V1_RECEIVE_GUARD_SCRIPT_HEX),
       ],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         {
           tag: MidgardRedeemerTag.Receiving,
           index: 0n,
@@ -3256,7 +3256,7 @@ describe("native transaction integration", () => {
     );
     const base = buildNativeTx({
       scriptWitnessItems: [Buffer.from(receiveScript.to_cbor_bytes())],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         {
           tag: MidgardRedeemerTag.Receiving,
           index: 0n,
@@ -3305,7 +3305,7 @@ describe("native transaction integration", () => {
       scriptWitnessItems: [
         makeRawUplcWitness(MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX),
       ],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         {
           tag: MidgardRedeemerTag.Spend,
           index: 0n,
@@ -3350,7 +3350,7 @@ describe("native transaction integration", () => {
       MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX,
     );
     const base = buildNativeTx({
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         {
           tag: MidgardRedeemerTag.Spend,
           index: 0n,
@@ -3398,7 +3398,7 @@ describe("native transaction integration", () => {
       scriptWitnessItems: [
         makeRawUplcWitness(MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX),
       ],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         {
           tag: MidgardRedeemerTag.Spend,
           index: 0n,
@@ -3431,7 +3431,7 @@ describe("native transaction integration", () => {
       scriptWitnessItems: [
         makeRawUplcWitness(MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX),
       ],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         {
           tag: MidgardRedeemerTag.Spend,
           index: 0n,
@@ -3479,7 +3479,7 @@ describe("native transaction integration", () => {
       scriptWitnessItems: [
         makeRawUplcWitness(MIDGARD_V1_SPEND_OUT_REF_GUARD_SCRIPT_HEX),
       ],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         {
           tag: MidgardRedeemerTag.Spend,
           index: 0n,
@@ -3524,7 +3524,7 @@ describe("native transaction integration", () => {
       scriptWitnessItems: [
         makeRawUplcWitness(MIDGARD_V1_SPEND_OUT_REF_GUARD_SCRIPT_HEX),
       ],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         {
           tag: MidgardRedeemerTag.Spend,
           index: 0n,
@@ -3565,14 +3565,14 @@ describe("native transaction integration", () => {
     const policyId = Buffer.from(mintScript.hash().to_raw_bytes());
     const assetName = Buffer.from("0e", "hex");
     const base = buildNativeTx({
-      mintPreimageCbor: makeMintPreimage([
+      mintPreimage: makeMintPreimage([
         { policyId: policyId, assetName: assetName, quantity: 1n },
       ]),
       scriptWitnessItems: [
         makeRawUplcWitness(MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX),
         Buffer.from(mintScript.to_cbor_bytes()),
       ],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         {
           tag: MidgardRedeemerTag.Spend,
           index: 0n,
@@ -3623,7 +3623,7 @@ describe("native transaction integration", () => {
         Buffer.from(spendScript.to_cbor_bytes()),
         makeRawUplcWitness(MIDGARD_V1_RECEIVE_GUARD_SCRIPT_HEX),
       ],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         {
           tag: CML.RedeemerTag.Spend,
           index: 0n,
@@ -3678,7 +3678,7 @@ describe("native transaction integration", () => {
         Buffer.from(spendScript.to_cbor_bytes()),
         makeRawUplcWitness(MIDGARD_V1_RECEIVE_GUARD_SCRIPT_HEX),
       ],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         {
           tag: CML.RedeemerTag.Spend,
           index: 0n,
@@ -3730,14 +3730,14 @@ describe("native transaction integration", () => {
     const policyId = Buffer.from(mintScript.hash().to_raw_bytes());
     const assetName = Buffer.from("0f", "hex");
     const base = buildNativeTx({
-      mintPreimageCbor: makeMintPreimage([
+      mintPreimage: makeMintPreimage([
         { policyId: policyId, assetName: assetName, quantity: 1n },
       ]),
       scriptWitnessItems: [
         makeRawUplcWitness(MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX),
         Buffer.from(mintScript.to_cbor_bytes()),
       ],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         {
           tag: MidgardRedeemerTag.Spend,
           index: 0n,
@@ -3791,7 +3791,7 @@ describe("native transaction integration", () => {
         makeRawUplcWitness(scriptHex),
         Buffer.from(makeTypedPlutusV3Witness(scriptHex).to_cbor_bytes()),
       ],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         { tag: CML.RedeemerTag.Spend, index: 0n },
         { tag: CML.RedeemerTag.Spend, index: 1n },
       ]),
@@ -3837,7 +3837,7 @@ describe("native transaction integration", () => {
     const secondOutRef = makeOutRef(0x20, 0n);
     const base = buildNativeTx({
       spendInputOutRefs: [secondOutRef, firstOutRef],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+      redeemerTxWitsPreimage: makeLegacyRedeemersCbor([
         { tag: CML.RedeemerTag.Spend, index: 0n },
         { tag: CML.RedeemerTag.Spend, index: 1n },
       ]),
@@ -3884,14 +3884,14 @@ describe("native transaction integration", () => {
 
   it("rejects malformed native required observer preimages", async () => {
     const base = buildNativeTx();
-    const malformedRequiredObserversPreimageCbor = encodeByteList([
+    const malformedRequiredObserversPreimage = encodeByteList([
       Buffer.from("01", "hex"),
     ]);
     const tx: MidgardNativeTxFull = {
       ...base.tx,
       body: {
         ...base.tx.body,
-        requiredObserversPreimageCbor: malformedRequiredObserversPreimageCbor,
+        requiredObserversPreimage: malformedRequiredObserversPreimage,
       },
     };
     (tx as { compact: typeof tx.compact }).compact =
@@ -3910,14 +3910,14 @@ describe("native transaction integration", () => {
 
   it("rejects malformed native required signer preimages", async () => {
     const base = buildNativeTx();
-    const malformedRequiredSignersPreimageCbor = encodeByteList([
+    const malformedRequiredSignersPreimage = encodeByteList([
       Buffer.alloc(27, 0x11),
     ]);
     const tx: MidgardNativeTxFull = {
       ...base.tx,
       body: {
         ...base.tx.body,
-        requiredSignersPreimageCbor: malformedRequiredSignersPreimageCbor,
+        requiredSignersPreimage: malformedRequiredSignersPreimage,
       },
     };
     (tx as { compact: typeof tx.compact }).compact =

@@ -2,9 +2,10 @@ import {
   computeHash32,
   computeScriptIntegrityHashForLanguages,
   decodeMidgardNativeTxFull,
+  decodeMidgardHash28ListPreimage,
   decodeSingleCbor,
   deriveMidgardNativeTxWitnessSetCompact,
-  EMPTY_CBOR_LIST,
+  EMPTY_PREIMAGE_LIST,
   EMPTY_NULL_ROOT,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
@@ -146,7 +147,7 @@ describe("script and redeemer builders", () => {
       .complete();
     const tx = decodeMidgardNativeTxFull(completed.txCbor);
 
-    expect(redeemerPointers(tx.witnessSet.redeemerTxWitsPreimageCbor)).toEqual([
+    expect(redeemerPointers(tx.witnessSet.redeemerTxWitsPreimage)).toEqual([
       "0:0",
       "0:1",
     ]);
@@ -183,12 +184,12 @@ describe("script and redeemer builders", () => {
       .complete();
     const tx = decodeMidgardNativeTxFull(completed.txCbor);
 
-    expect(redeemerPointers(tx.witnessSet.redeemerTxWitsPreimageCbor)).toEqual([
+    expect(redeemerPointers(tx.witnessSet.redeemerTxWitsPreimage)).toEqual([
       "1:0",
       "3:0",
     ]);
-    expect(tx.body.mintPreimageCbor).not.toEqual(EMPTY_CBOR_LIST);
-    expect(tx.body.requiredObserversPreimageCbor).not.toEqual(EMPTY_CBOR_LIST);
+    expect(tx.body.mintPreimage).not.toEqual(EMPTY_PREIMAGE_LIST);
+    expect(tx.body.requiredObserversPreimage).not.toEqual(EMPTY_PREIMAGE_LIST);
   });
 
   it("attaches typed PlutusV3 and MidgardV1 observer validators explicitly", async () => {
@@ -217,12 +218,13 @@ describe("script and redeemer builders", () => {
       .pay.ToAddress(pubkeyAddress, { lovelace: 2_000_000n })
       .complete();
     const tx = decodeMidgardNativeTxFull(completed.txCbor);
-    const requiredObservers = (
-      decodeSingleCbor(tx.body.requiredObserversPreimageCbor) as Uint8Array[]
-    ).map((hash) => Buffer.from(hash).toString("hex"));
+    const requiredObservers = decodeMidgardHash28ListPreimage(
+      tx.body.requiredObserversPreimage,
+      "required_observers",
+    ).map((hash) => hash.toString("hex"));
 
     expect(requiredObservers).toEqual([midgardHash, plutusHash].sort());
-    expect(redeemerPointers(tx.witnessSet.redeemerTxWitsPreimageCbor)).toEqual([
+    expect(redeemerPointers(tx.witnessSet.redeemerTxWitsPreimage)).toEqual([
       "3:0",
       "3:1",
     ]);
@@ -366,8 +368,8 @@ describe("script and redeemer builders", () => {
       .complete();
     const tx = decodeMidgardNativeTxFull(completed.txCbor);
 
-    expect(tx.witnessSet.scriptTxWitsPreimageCbor).toEqual(EMPTY_CBOR_LIST);
-    expect(redeemerPointers(tx.witnessSet.redeemerTxWitsPreimageCbor)).toEqual([
+    expect(tx.witnessSet.scriptTxWitsPreimage).toEqual(EMPTY_PREIMAGE_LIST);
+    expect(redeemerPointers(tx.witnessSet.redeemerTxWitsPreimage)).toEqual([
       "0:0",
     ]);
     expect(tx.body.scriptIntegrityHash).toEqual(
@@ -412,7 +414,7 @@ describe("script and redeemer builders", () => {
       .complete();
     const tx = decodeMidgardNativeTxFull(completed.txCbor);
 
-    expect(tx.witnessSet.scriptTxWitsPreimageCbor).toEqual(EMPTY_CBOR_LIST);
+    expect(tx.witnessSet.scriptTxWitsPreimage).toEqual(EMPTY_PREIMAGE_LIST);
     expect(tx.body.scriptIntegrityHash).toEqual(
       computeScriptIntegrityHashForLanguages(
         deriveMidgardNativeTxWitnessSetCompact(tx.witnessSet)
@@ -619,7 +621,7 @@ describe("script and redeemer builders", () => {
       .complete();
     const tx = decodeMidgardNativeTxFull(completed.txCbor);
 
-    expect(redeemerPointers(tx.witnessSet.redeemerTxWitsPreimageCbor)).toEqual([
+    expect(redeemerPointers(tx.witnessSet.redeemerTxWitsPreimage)).toEqual([
       "6:0",
     ]);
     expect(tx.body.scriptIntegrityHash).toEqual(
@@ -753,7 +755,7 @@ describe("script and redeemer builders", () => {
     const tx = decodeMidgardNativeTxFull(completed.txCbor);
 
     expect(tx.body.scriptIntegrityHash).toEqual(EMPTY_NULL_ROOT);
-    expect(tx.witnessSet.redeemerTxWitsPreimageCbor).toEqual(EMPTY_CBOR_LIST);
+    expect(tx.witnessSet.redeemerTxWitsPreimage).toEqual(EMPTY_PREIMAGE_LIST);
   });
 
   it("rejects unused native script witnesses instead of building node-invalid bytes", async () => {

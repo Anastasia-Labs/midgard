@@ -10,8 +10,13 @@
  *
  * The native tx format does NOT embed Cardano tx body/witness structures.
  * Variable-size, proof-critical body and witness fields are carried as opaque
- * CBOR preimage byte blobs in the canonical (full) representation, and as
+ * binary preimage byte blobs in the canonical (full) representation, and as
  * 32-byte blake2b hashes of those preimages in the compact representation.
+ * Each preimage is itself binary-encoded — see midgard-core's
+ * `native-preimage.ts` for the per-field layouts (OutputReference list for
+ * inputs, Hash28 list for signers/observers, Mint multiasset, VKeyWitness
+ * list for addr_tx_wits, and a length-prefixed bytes list for the per-output
+ * and per-script CBOR blobs).
  *
  * Encoding uses the fuel-vm-style static/dynamic split (see ../codec):
  *   - Fixed-size fields and the u64 lengths of variable fields go in the
@@ -102,19 +107,19 @@ function readValidity(r: Reader): MidgardTxValidity {
 // fuel:  fuel-types/src/canonical.rs:71 — trait Serialize (static/dynamic split)
 //
 // All twelve fields are mandatory. The six variable proof-critical fields are
-// opaque CBOR preimage byte blobs; scriptIntegrityHash and auxiliaryDataHash
+// opaque binary preimage byte blobs; scriptIntegrityHash and auxiliaryDataHash
 // are fixed 32-byte hashes carried directly.
 //
 // Static:
-//   spendInputsPreimageCbor:       len u64
-//   referenceInputsPreimageCbor:   len u64
-//   outputsPreimageCbor:           len u64
+//   spendInputsPreimage:       len u64
+//   referenceInputsPreimage:   len u64
+//   outputsPreimage:           len u64
 //   fee:                          u64
 //   validityIntervalStart:        i64
 //   validityIntervalEnd:          i64
-//   requiredObserversPreimageCbor: len u64
-//   requiredSignersPreimageCbor:   len u64
-//   mintPreimageCbor:              len u64
+//   requiredObserversPreimage: len u64
+//   requiredSignersPreimage:   len u64
+//   mintPreimage:              len u64
 //   scriptIntegrityHash:          Hash32 (32)
 //   auxiliaryDataHash:            Hash32 (32)
 //   networkId:                    u64
@@ -124,17 +129,17 @@ function readValidity(r: Reader): MidgardTxValidity {
 // ===========================================================================
 
 export interface MidgardNativeTxBodyCanonical {
-  spendInputsPreimageCbor: Uint8Array;
-  referenceInputsPreimageCbor: Uint8Array;
-  outputsPreimageCbor: Uint8Array;
+  spendInputsPreimage: Uint8Array;
+  referenceInputsPreimage: Uint8Array;
+  outputsPreimage: Uint8Array;
   fee: bigint;
   /** POSIX time; -1 means "unbounded". */
   validityIntervalStart: bigint;
   /** POSIX time; -1 means "unbounded". */
   validityIntervalEnd: bigint;
-  requiredObserversPreimageCbor: Uint8Array;
-  requiredSignersPreimageCbor: Uint8Array;
-  mintPreimageCbor: Uint8Array;
+  requiredObserversPreimage: Uint8Array;
+  requiredSignersPreimage: Uint8Array;
+  mintPreimage: Uint8Array;
   scriptIntegrityHash: Hash32;
   auxiliaryDataHash: Hash32;
   /** Cardano network id; 255 means "none". */
@@ -164,15 +169,15 @@ function writeBodyCanonicalStatic(
   w: Writer,
   b: MidgardNativeTxBodyCanonical,
 ): void {
-  writeVarBytesStatic(w, b.spendInputsPreimageCbor);
-  writeVarBytesStatic(w, b.referenceInputsPreimageCbor);
-  writeVarBytesStatic(w, b.outputsPreimageCbor);
+  writeVarBytesStatic(w, b.spendInputsPreimage);
+  writeVarBytesStatic(w, b.referenceInputsPreimage);
+  writeVarBytesStatic(w, b.outputsPreimage);
   writeBigU64(w, b.fee);
   writeBigI64(w, b.validityIntervalStart);
   writeBigI64(w, b.validityIntervalEnd);
-  writeVarBytesStatic(w, b.requiredObserversPreimageCbor);
-  writeVarBytesStatic(w, b.requiredSignersPreimageCbor);
-  writeVarBytesStatic(w, b.mintPreimageCbor);
+  writeVarBytesStatic(w, b.requiredObserversPreimage);
+  writeVarBytesStatic(w, b.requiredSignersPreimage);
+  writeVarBytesStatic(w, b.mintPreimage);
   writeHash32Static(w, b.scriptIntegrityHash);
   writeHash32Static(w, b.auxiliaryDataHash);
   writeBigU64(w, b.networkId);
@@ -184,12 +189,12 @@ function writeBodyCanonicalDynamic(
   w: Writer,
   b: MidgardNativeTxBodyCanonical,
 ): void {
-  writeVarBytesDynamic(w, b.spendInputsPreimageCbor);
-  writeVarBytesDynamic(w, b.referenceInputsPreimageCbor);
-  writeVarBytesDynamic(w, b.outputsPreimageCbor);
-  writeVarBytesDynamic(w, b.requiredObserversPreimageCbor);
-  writeVarBytesDynamic(w, b.requiredSignersPreimageCbor);
-  writeVarBytesDynamic(w, b.mintPreimageCbor);
+  writeVarBytesDynamic(w, b.spendInputsPreimage);
+  writeVarBytesDynamic(w, b.referenceInputsPreimage);
+  writeVarBytesDynamic(w, b.outputsPreimage);
+  writeVarBytesDynamic(w, b.requiredObserversPreimage);
+  writeVarBytesDynamic(w, b.requiredSignersPreimage);
+  writeVarBytesDynamic(w, b.mintPreimage);
 }
 
 // fuel: fuel-types/src/canonical.rs:167 — Deserialize::decode_static
@@ -231,31 +236,31 @@ function readBodyCanonicalDynamic(
   r: Reader,
   p: MidgardNativeTxBodyCanonicalPartial,
 ): MidgardNativeTxBodyCanonical {
-  const spendInputsPreimageCbor = readVarBytesDynamic(r, p.spendInputsLen);
-  const referenceInputsPreimageCbor = readVarBytesDynamic(
+  const spendInputsPreimage = readVarBytesDynamic(r, p.spendInputsLen);
+  const referenceInputsPreimage = readVarBytesDynamic(
     r,
     p.referenceInputsLen,
   );
-  const outputsPreimageCbor = readVarBytesDynamic(r, p.outputsLen);
-  const requiredObserversPreimageCbor = readVarBytesDynamic(
+  const outputsPreimage = readVarBytesDynamic(r, p.outputsLen);
+  const requiredObserversPreimage = readVarBytesDynamic(
     r,
     p.requiredObserversLen,
   );
-  const requiredSignersPreimageCbor = readVarBytesDynamic(
+  const requiredSignersPreimage = readVarBytesDynamic(
     r,
     p.requiredSignersLen,
   );
-  const mintPreimageCbor = readVarBytesDynamic(r, p.mintLen);
+  const mintPreimage = readVarBytesDynamic(r, p.mintLen);
   return {
-    spendInputsPreimageCbor,
-    referenceInputsPreimageCbor,
-    outputsPreimageCbor,
+    spendInputsPreimage,
+    referenceInputsPreimage,
+    outputsPreimage,
     fee: p.fee,
     validityIntervalStart: p.validityIntervalStart,
     validityIntervalEnd: p.validityIntervalEnd,
-    requiredObserversPreimageCbor,
-    requiredSignersPreimageCbor,
-    mintPreimageCbor,
+    requiredObserversPreimage,
+    requiredSignersPreimage,
+    mintPreimage,
     scriptIntegrityHash: p.scriptIntegrityHash,
     auxiliaryDataHash: p.auxiliaryDataHash,
     networkId: p.networkId,
@@ -389,16 +394,16 @@ export function decodeMidgardNativeTxBodyCompact(
 // cddl:  codec.cddl:98 — midgard_tx_witness_set_full_v1
 // fuel:  fuel-types/src/canonical.rs:71 — trait Serialize
 //
-// Three mandatory opaque CBOR preimage byte blobs.
+// Three mandatory opaque binary preimage byte blobs.
 //
 // Static:  addr / script / redeemer preimage lengths (u64 each)
 // Dynamic: addr / script / redeemer bytes (+ alignment padding)
 // ===========================================================================
 
 export interface MidgardNativeTxWitnessSetCanonical {
-  addrTxWitsPreimageCbor: Uint8Array;
-  scriptTxWitsPreimageCbor: Uint8Array;
-  redeemerTxWitsPreimageCbor: Uint8Array;
+  addrTxWitsPreimage: Uint8Array;
+  scriptTxWitsPreimage: Uint8Array;
+  redeemerTxWitsPreimage: Uint8Array;
 }
 
 // Partial state captured by the static decode phase: the three blob lengths.
@@ -413,9 +418,9 @@ function writeWitnessSetCanonicalStatic(
   w: Writer,
   ws: MidgardNativeTxWitnessSetCanonical,
 ): void {
-  writeVarBytesStatic(w, ws.addrTxWitsPreimageCbor);
-  writeVarBytesStatic(w, ws.scriptTxWitsPreimageCbor);
-  writeVarBytesStatic(w, ws.redeemerTxWitsPreimageCbor);
+  writeVarBytesStatic(w, ws.addrTxWitsPreimage);
+  writeVarBytesStatic(w, ws.scriptTxWitsPreimage);
+  writeVarBytesStatic(w, ws.redeemerTxWitsPreimage);
 }
 
 // fuel: fuel-types/src/canonical.rs:309 — Vec<u8>::encode_dynamic (bytes + tail pad)
@@ -423,9 +428,9 @@ function writeWitnessSetCanonicalDynamic(
   w: Writer,
   ws: MidgardNativeTxWitnessSetCanonical,
 ): void {
-  writeVarBytesDynamic(w, ws.addrTxWitsPreimageCbor);
-  writeVarBytesDynamic(w, ws.scriptTxWitsPreimageCbor);
-  writeVarBytesDynamic(w, ws.redeemerTxWitsPreimageCbor);
+  writeVarBytesDynamic(w, ws.addrTxWitsPreimage);
+  writeVarBytesDynamic(w, ws.scriptTxWitsPreimage);
+  writeVarBytesDynamic(w, ws.redeemerTxWitsPreimage);
 }
 
 // fuel: fuel-types/src/canonical.rs:332 — Vec<u8>::decode_static (reads lens)
@@ -443,13 +448,13 @@ function readWitnessSetCanonicalDynamic(
   r: Reader,
   p: MidgardNativeTxWitnessSetCanonicalPartial,
 ): MidgardNativeTxWitnessSetCanonical {
-  const addrTxWitsPreimageCbor = readVarBytesDynamic(r, p.addrLen);
-  const scriptTxWitsPreimageCbor = readVarBytesDynamic(r, p.scriptLen);
-  const redeemerTxWitsPreimageCbor = readVarBytesDynamic(r, p.redeemerLen);
+  const addrTxWitsPreimage = readVarBytesDynamic(r, p.addrLen);
+  const scriptTxWitsPreimage = readVarBytesDynamic(r, p.scriptLen);
+  const redeemerTxWitsPreimage = readVarBytesDynamic(r, p.redeemerLen);
   return {
-    addrTxWitsPreimageCbor,
-    scriptTxWitsPreimageCbor,
-    redeemerTxWitsPreimageCbor,
+    addrTxWitsPreimage,
+    scriptTxWitsPreimage,
+    redeemerTxWitsPreimage,
   };
 }
 
