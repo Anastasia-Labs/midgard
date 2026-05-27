@@ -11,15 +11,6 @@
 
 import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
 
-export const ALIGN = 8;
-
-export const alignmentBytes = (len: number): number => {
-  const mod = len % ALIGN;
-  return mod === 0 ? 0 : ALIGN - mod;
-};
-
-export const alignedSize = (len: number): number => len + alignmentBytes(len);
-
 export class BinaryWriter {
   private readonly chunks: Uint8Array[] = [];
 
@@ -31,10 +22,6 @@ export class BinaryWriter {
 
   pushByte(b: number): void {
     this.chunks.push(new Uint8Array([b & 0xff]));
-  }
-
-  writeZeros(n: number): void {
-    if (n > 0) this.chunks.push(new Uint8Array(n));
   }
 
   toBytes(): Buffer {
@@ -98,10 +85,91 @@ export class BinaryReader {
 }
 
 // ---------------------------------------------------------------------------
-// u64 (bigint) — full 8 byte big-endian.
+// Integer encoding (Phase 2 size reduction): LEB128 varint for unsigned,
+// ZigZag + LEB128 for signed. The function names below still read like
+// fixed-width types because callers think of them as "the u64/i64/u16
+// field" — only the wire format is variable-length now.
+//
+// Unsigned LEB128:
+//   - 7 bits payload per byte, MSB is the continuation flag.
+//   - 0 → 1 byte. Values < 128 → 1 byte. < 2^14 → 2 bytes. ... < 2^63 → 9.
+//
+// Signed: ZigZag-encode (n << 1) ^ (n >> 63), then LEB128 the result.
 // ---------------------------------------------------------------------------
 
 const U64_MAX = (1n << 64n) - 1n;
+const I64_MIN = -(1n << 63n);
+const I64_MAX = (1n << 63n) - 1n;
+const MAX_SAFE = BigInt(Number.MAX_SAFE_INTEGER);
+// Max bytes for a u64 LEB128 = ceil(64 / 7) = 10. Cap reads at 10 so a
+// malformed input can't loop forever.
+const MAX_VARUINT_BYTES = 10;
+
+const writeVarUintBigint = (w: BinaryWriter, n: bigint): void => {
+  // Fast path: values fitting in a u32 (the vast majority — lengths,
+  // indexes, fees in ada-only txs, small counts) skip BigInt arithmetic.
+  // Allocate the output buffer at its exact size to avoid both
+  // intermediate arrays and aliasing through any shared scratch.
+  if (n <= 0xffffffffn) {
+    let value = Number(n);
+    // Compute byte count first so we can allocate exactly.
+    let probe = value;
+    let len = 1;
+    while (probe >= 0x80) {
+      len += 1;
+      probe >>>= 7;
+    }
+    const out = new Uint8Array(len);
+    for (let i = 0; i < len - 1; i += 1) {
+      out[i] = (value & 0x7f) | 0x80;
+      value >>>= 7;
+    }
+    out[len - 1] = value;
+    w.write(out);
+    return;
+  }
+  // Slow path: full u64 range. Few real fields hit this (only big lovelace
+  // / asset quantities), so the cost is acceptable.
+  let value = n;
+  let probe = value;
+  let len = 1;
+  while (probe >= 0x80n) {
+    len += 1;
+    probe >>= 7n;
+  }
+  const out = new Uint8Array(len);
+  for (let i = 0; i < len - 1; i += 1) {
+    out[i] = Number((value & 0x7fn) | 0x80n);
+    value >>= 7n;
+  }
+  out[len - 1] = Number(value);
+  w.write(out);
+};
+
+const readVarUintBigint = (r: BinaryReader): bigint => {
+  let result = 0n;
+  let shift = 0n;
+  for (let i = 0; i < MAX_VARUINT_BYTES; i += 1) {
+    const byte = r.read(1)[0];
+    result |= BigInt(byte & 0x7f) << shift;
+    if ((byte & 0x80) === 0) {
+      if (result > U64_MAX) {
+        throw new MidgardTxCodecError(
+          MidgardTxCodecErrorCodes.InvalidFieldType,
+          "varuint > u64",
+          result.toString(10),
+        );
+      }
+      return result;
+    }
+    shift += 7n;
+  }
+  throw new MidgardTxCodecError(
+    MidgardTxCodecErrorCodes.InvalidFieldType,
+    "varuint did not terminate within 10 bytes",
+    "",
+  );
+};
 
 export const writeBigU64 = (w: BinaryWriter, n: bigint): void => {
   if (n < 0n || n > U64_MAX) {
@@ -111,20 +179,10 @@ export const writeBigU64 = (w: BinaryWriter, n: bigint): void => {
       n.toString(10),
     );
   }
-  const buf = Buffer.alloc(8);
-  buf.writeBigUInt64BE(n, 0);
-  w.write(buf);
+  writeVarUintBigint(w, n);
 };
 
-export const readBigU64 = (r: BinaryReader): bigint =>
-  r.read(8).readBigUInt64BE(0);
-
-// ---------------------------------------------------------------------------
-// i64 (bigint) — two's complement big-endian.
-// ---------------------------------------------------------------------------
-
-const I64_MIN = -(1n << 63n);
-const I64_MAX = (1n << 63n) - 1n;
+export const readBigU64 = (r: BinaryReader): bigint => readVarUintBigint(r);
 
 export const writeBigI64 = (w: BinaryWriter, n: bigint): void => {
   if (n < I64_MIN || n > I64_MAX) {
@@ -134,19 +192,16 @@ export const writeBigI64 = (w: BinaryWriter, n: bigint): void => {
       n.toString(10),
     );
   }
-  const buf = Buffer.alloc(8);
-  buf.writeBigInt64BE(n, 0);
-  w.write(buf);
+  // ZigZag: (n << 1) ^ (n >> 63). For bigint, `n >> 63` is arithmetic.
+  const zigzag = (n << 1n) ^ (n >> 63n);
+  writeVarUintBigint(w, zigzag);
 };
 
-export const readBigI64 = (r: BinaryReader): bigint =>
-  r.read(8).readBigInt64BE(0);
-
-// ---------------------------------------------------------------------------
-// u64 as number — convenience for indices/lengths (assumed < 2^53).
-// ---------------------------------------------------------------------------
-
-const MAX_SAFE = BigInt(Number.MAX_SAFE_INTEGER);
+export const readBigI64 = (r: BinaryReader): bigint => {
+  const zigzag = readVarUintBigint(r);
+  // Inverse ZigZag: (n >>> 1) ^ -(n & 1)
+  return (zigzag >> 1n) ^ -(zigzag & 1n);
+};
 
 export const writeU64 = (w: BinaryWriter, n: number): void => {
   if (!Number.isInteger(n) || n < 0) {
@@ -156,11 +211,11 @@ export const writeU64 = (w: BinaryWriter, n: number): void => {
       String(n),
     );
   }
-  writeBigU64(w, BigInt(n));
+  writeVarUintBigint(w, BigInt(n));
 };
 
 export const readU64 = (r: BinaryReader): number => {
-  const big = readBigU64(r);
+  const big = readVarUintBigint(r);
   if (big > MAX_SAFE) {
     throw new MidgardTxCodecError(
       MidgardTxCodecErrorCodes.InvalidFieldType,
@@ -172,7 +227,7 @@ export const readU64 = (r: BinaryReader): number => {
 };
 
 // ---------------------------------------------------------------------------
-// u16 — 6 zero bytes + 2 data bytes = 8 total.
+// u16 — varint (Phase 2). Most indexes are < 128 → 1 byte.
 // ---------------------------------------------------------------------------
 
 export const writeU16 = (w: BinaryWriter, n: number): void => {
@@ -183,30 +238,30 @@ export const writeU16 = (w: BinaryWriter, n: number): void => {
       String(n),
     );
   }
-  w.writeZeros(6);
-  const buf = Buffer.alloc(2);
-  buf.writeUInt16BE(n, 0);
-  w.write(buf);
+  writeVarUintBigint(w, BigInt(n));
 };
 
 export const readU16 = (r: BinaryReader): number => {
-  r.skip(6);
-  return r.read(2).readUInt16BE(0);
+  const big = readVarUintBigint(r);
+  if (big > 0xffffn) {
+    throw new MidgardTxCodecError(
+      MidgardTxCodecErrorCodes.InvalidFieldType,
+      "u16 out of range",
+      big.toString(10),
+    );
+  }
+  return Number(big);
 };
 
 // ---------------------------------------------------------------------------
-// u8 / bool — padded to 8 bytes.
+// u8 / bool — single byte.
 // ---------------------------------------------------------------------------
 
 export const writeU8 = (w: BinaryWriter, n: number): void => {
-  w.writeZeros(7);
   w.pushByte(n);
 };
 
-export const readU8 = (r: BinaryReader): number => {
-  r.skip(7);
-  return r.read(1)[0];
-};
+export const readU8 = (r: BinaryReader): number => r.read(1)[0];
 
 export const writeBool = (w: BinaryWriter, b: boolean): void =>
   writeU8(w, b ? 1 : 0);
@@ -214,23 +269,19 @@ export const writeBool = (w: BinaryWriter, b: boolean): void =>
 export const readBool = (r: BinaryReader): boolean => readU8(r) !== 0;
 
 // ---------------------------------------------------------------------------
-// Fixed-size byte arrays (e.g. Hash28/32, VKey, Signature).
+// Fixed-size byte arrays (e.g. Hash28/32, VKey, Signature). No padding.
 // ---------------------------------------------------------------------------
 
 export const writeFixedBytes = (w: BinaryWriter, bytes: Uint8Array): void => {
   w.write(bytes);
-  w.writeZeros(alignmentBytes(bytes.length));
 };
 
-export const readFixedBytes = (r: BinaryReader, len: number): Buffer => {
-  const bytes = r.read(len);
-  r.skip(alignmentBytes(len));
-  return bytes;
-};
+export const readFixedBytes = (r: BinaryReader, len: number): Buffer =>
+  r.read(len);
 
 // ---------------------------------------------------------------------------
 // Variable-length byte blobs (Address, AssetName, opaque Plutus payloads).
-// Static = u64 length. Dynamic = bytes + alignment padding.
+// Static = u64 length. Dynamic = raw bytes (no padding).
 // ---------------------------------------------------------------------------
 
 export const writeVarBytesStatic = (w: BinaryWriter, bytes: Uint8Array): void =>
@@ -238,16 +289,12 @@ export const writeVarBytesStatic = (w: BinaryWriter, bytes: Uint8Array): void =>
 
 export const writeVarBytesDynamic = (w: BinaryWriter, bytes: Uint8Array): void => {
   w.write(bytes);
-  w.writeZeros(alignmentBytes(bytes.length));
 };
 
 export const readVarBytesLen = (r: BinaryReader): number => readU64(r);
 
-export const readVarBytesDynamic = (r: BinaryReader, len: number): Buffer => {
-  const bytes = r.read(len);
-  r.skip(alignmentBytes(len));
-  return bytes;
-};
+export const readVarBytesDynamic = (r: BinaryReader, len: number): Buffer =>
+  r.read(len);
 
 /** Encode a single variable-length byte blob (length + bytes + pad). */
 export const writeVarBytes = (w: BinaryWriter, bytes: Uint8Array): void => {

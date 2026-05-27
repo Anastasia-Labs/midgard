@@ -2,13 +2,16 @@ import { encodeMidgardAddressBytes, type MidgardAddress } from "./address.js";
 import {
   BinaryReader,
   BinaryWriter,
-  readBool,
+  readU64,
+  readU8,
   readVarBytesDynamic,
   readVarBytesLen,
-  writeBool,
+  writeU64,
+  writeU8,
   writeVarBytesDynamic,
   writeVarBytesStatic,
 } from "./binary.js";
+import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
 import {
   decodeMidgardDatum,
   encodeMidgardDatum,
@@ -41,21 +44,25 @@ export type MidgardTxOutput = {
 };
 
 /**
- * Binary `transaction_output` encoding (mirrors staging midgard-ts adapted to
- * keep MidgardDatum/MidgardVersionedScript wrappers).
+ * Binary `transaction_output` encoding.
  *
  * Layout:
  *   Static:
- *     address_len  (u64)
+ *     address_len   (varuint)
  *     value.static
- *     datum_present (u64)        + datum_len (u64) if present
- *     script_ref_present (u64)   + versioned_script.static if present
+ *     presence_mask (u8 — bit 0 = datum, bit 1 = script_ref)
+ *     datum_len     (varuint)            if datum present
+ *     versioned_script.static            if script_ref present
  *   Dynamic:
- *     address bytes + pad
+ *     address bytes
  *     value.dynamic
- *     datum bytes + pad        (if present, opaque Plutus CBOR)
+ *     datum bytes              (if present, opaque Plutus CBOR)
  *     versioned_script.dynamic (if present, opaque inner script bytes)
  */
+
+const PRESENCE_DATUM = 0b01;
+const PRESENCE_SCRIPT_REF = 0b10;
+const PRESENCE_RESERVED_MASK = ~(PRESENCE_DATUM | PRESENCE_SCRIPT_REF) & 0xff;
 
 type OutputPartial = {
   readonly addrLen: number;
@@ -73,17 +80,15 @@ export const writeMidgardTxOutputStatic = (
   const address = encodeMidgardAddressBytes(output.address);
   writeVarBytesStatic(w, address);
   writeMidgardValueStatic(w, output.value);
+  const presence =
+    (output.datum !== undefined ? PRESENCE_DATUM : 0) |
+    (output.script_ref !== undefined ? PRESENCE_SCRIPT_REF : 0);
+  writeU8(w, presence);
   if (output.datum !== undefined) {
-    writeBool(w, true);
     writeVarBytesStatic(w, encodeMidgardDatum(output.datum));
-  } else {
-    writeBool(w, false);
   }
   if (output.script_ref !== undefined) {
-    writeBool(w, true);
     writeMidgardVersionedScriptStatic(w, output.script_ref);
-  } else {
-    writeBool(w, false);
   }
 };
 
@@ -105,12 +110,20 @@ export const writeMidgardTxOutputDynamic = (
 export const readMidgardTxOutputStatic = (r: BinaryReader): OutputPartial => {
   const addrLen = readVarBytesLen(r);
   const valuePartial = readMidgardValueStatic(r);
-  const datumPresent = readBool(r);
-  const datumLen = datumPresent ? readVarBytesLen(r) : undefined;
-  const scriptRefPresent = readBool(r);
-  const scriptRefPartial = scriptRefPresent
-    ? readMidgardVersionedScriptStatic(r)
-    : undefined;
+  const presence = readU8(r);
+  if ((presence & PRESENCE_RESERVED_MASK) !== 0) {
+    throw new MidgardTxCodecError(
+      MidgardTxCodecErrorCodes.InvalidFieldType,
+      "transaction_output: presence mask has reserved bits set",
+      presence.toString(2),
+    );
+  }
+  const datumLen =
+    (presence & PRESENCE_DATUM) !== 0 ? readVarBytesLen(r) : undefined;
+  const scriptRefPartial =
+    (presence & PRESENCE_SCRIPT_REF) !== 0
+      ? readMidgardVersionedScriptStatic(r)
+      : undefined;
   return { addrLen, valuePartial, datumLen, scriptRefPartial };
 };
 
@@ -161,10 +174,7 @@ export const writeMidgardTxOutputListStatic = (
   w: BinaryWriter,
   outputs: readonly MidgardTxOutput[],
 ): void => {
-  // length first
-  const lengthBuf = Buffer.alloc(8);
-  lengthBuf.writeBigUInt64BE(BigInt(outputs.length), 0);
-  w.write(lengthBuf);
+  writeU64(w, outputs.length);
   for (const o of outputs) writeMidgardTxOutputStatic(w, o);
 };
 
@@ -178,8 +188,7 @@ export const writeMidgardTxOutputListDynamic = (
 export const readMidgardTxOutputListStatic = (
   r: BinaryReader,
 ): OutputPartial[] => {
-  const lenBuf = r.read(8);
-  const len = Number(lenBuf.readBigUInt64BE(0));
+  const len = readU64(r);
   const partials: OutputPartial[] = [];
   for (let i = 0; i < len; i += 1) {
     partials.push(readMidgardTxOutputStatic(r));
