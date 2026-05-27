@@ -1,6 +1,6 @@
 import {
   computeMidgardNativeTxId,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardNativeTxFullFromCanonicalBinary,
   encodeMidgardNativeTxCanonical,
   midgardAddressFromText,
 } from "@al-ft/midgard-core/codec";
@@ -96,7 +96,7 @@ const submittedTxCanonicalCbor = (
     maxSubmitTxCborBytes,
   );
   try {
-    const tx = decodeMidgardNativeTxFullFromCanonicalCbor(txCanonicalCbor);
+    const tx = decodeMidgardNativeTxFullFromCanonicalBinary(txCanonicalCbor);
     if (!encodeMidgardNativeTxCanonical(tx).equals(txCanonicalCbor)) {
       throw new Error("transaction CBOR is not canonical");
     }

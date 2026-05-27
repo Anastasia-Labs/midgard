@@ -2,12 +2,12 @@ import {
   asArray,
   asBytes,
   computeMidgardNativeTxId,
-  decodeMidgardNativeByteListPreimage,
   decodeSingleCbor,
   deriveMidgardNativeTxCompact,
   encodeCbor,
   encodeMidgardNativeTxCanonical,
   type MidgardNativeTxFull,
+  type VKeyWitness as CoreVKeyWitness,
   verifyMidgardNativeTxFullConsistency,
 } from "@al-ft/midgard-core/codec";
 import { hexToBytes } from "@al-ft/midgard-core/hex";
@@ -83,15 +83,33 @@ const decodeCanonicalVKeyWitness = (
   }
 };
 
+const coreVKeyWitnessToCml = (
+  witness: CoreVKeyWitness,
+  fieldName: string,
+): VKeyWitness => {
+  try {
+    return CML.Vkeywitness.new(
+      CML.PublicKey.from_bytes(witness.vkey),
+      CML.Ed25519Signature.from_raw_bytes(witness.signature),
+    );
+  } catch (cause) {
+    throw new SigningError(
+      `Invalid ${fieldName}`,
+      cause instanceof Error ? cause.message : String(cause),
+    );
+  }
+};
+
+const cmlVKeyWitnessToCore = (witness: VKeyWitness): CoreVKeyWitness => ({
+  vkey: Buffer.from(witness.vkey().to_raw_bytes()),
+  signature: Buffer.from(witness.ed25519_signature().to_raw_bytes()),
+});
+
 export const decodeAddrWitnesses = (
-  preimageCbor: Uint8Array,
+  witnesses: readonly CoreVKeyWitness[],
 ): readonly VKeyWitness[] =>
-  decodeMidgardNativeByteListPreimage(preimageCbor, "native.addr_tx_wits").map(
-    (witnessBytes, index) =>
-      decodeCanonicalVKeyWitness(
-        witnessBytes,
-        `native.addr_tx_wits[${index.toString()}]`,
-      ),
+  witnesses.map((w, i) =>
+    coreVKeyWitnessToCml(w, `native.addr_tx_wits[${i.toString()}]`),
   );
 
 export const addrWitnessMetadata = (
@@ -170,8 +188,10 @@ const uniqueAddrWitnesses = (
     .map(([, witness]) => witness);
 };
 
-const encodeAddrWitnesses = (witnesses: readonly VKeyWitness[]): Buffer =>
-  encodeCbor(uniqueAddrWitnesses(witnesses).map(witnessCborBytes));
+const encodeAddrWitnesses = (
+  witnesses: readonly VKeyWitness[],
+): readonly CoreVKeyWitness[] =>
+  uniqueAddrWitnesses(witnesses).map(cmlVKeyWitnessToCore);
 
 export const applyAddrWitnessesToTx = (
   tx: MidgardNativeTxFull,
@@ -182,12 +202,12 @@ export const applyAddrWitnessesToTx = (
 } => {
   const bodyHash = computeMidgardNativeTxId(tx);
   const merged = canonicalizeAddrWitnesses(bodyHash, [
-    ...decodeAddrWitnesses(tx.witnessSet.addrTxWitsPreimageCbor),
+    ...decodeAddrWitnesses(tx.witnessSet.addrTxWits),
     ...witnesses,
   ]);
   const witnessSet = {
     ...tx.witnessSet,
-    addrTxWitsPreimageCbor: encodeAddrWitnesses(merged),
+    addrTxWits: encodeAddrWitnesses(merged),
   };
   const signedTx: MidgardNativeTxFull = {
     ...tx,
@@ -208,7 +228,7 @@ export const decodeImportAddrWitnesses = (
 ): readonly VKeyWitness[] => {
   let witnesses: readonly VKeyWitness[];
   try {
-    witnesses = decodeAddrWitnesses(tx.witnessSet.addrTxWitsPreimageCbor);
+    witnesses = decodeAddrWitnesses(tx.witnessSet.addrTxWits);
   } catch (cause) {
     throw new SigningError(
       "Invalid address witness preimage",
@@ -526,7 +546,7 @@ export const withEstimatedAddrWitnesses = (
   if (expectedWitnessCount === 0) {
     return tx;
   }
-  const witnesses = decodeAddrWitnesses(tx.witnessSet.addrTxWitsPreimageCbor);
+  const witnesses = decodeAddrWitnesses(tx.witnessSet.addrTxWits);
   if (witnesses.length >= expectedWitnessCount) {
     return tx;
   }
@@ -541,7 +561,7 @@ export const withEstimatedAddrWitnesses = (
   }
   const witnessSet = {
     ...tx.witnessSet,
-    addrTxWitsPreimageCbor: encodeAddrWitnesses(estimatedWitnesses),
+    addrTxWits: encodeAddrWitnesses(estimatedWitnesses),
   };
   const estimatedTx: MidgardNativeTxFull = {
     ...tx,

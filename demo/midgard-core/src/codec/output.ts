@@ -1,28 +1,31 @@
 import { encodeMidgardAddressBytes, type MidgardAddress } from "./address.js";
 import {
-  assertCanonicalCborRoundTrip,
-  encodeCborBytes,
-  encodeCborMapRaw,
-  encodeCborUnsigned,
-  readCborBytes,
-  readCborMapHeader,
-  readCborUnsigned,
-  skipCborItem,
-} from "./cbor.js";
+  BinaryReader,
+  BinaryWriter,
+  readBool,
+  readVarBytesDynamic,
+  readVarBytesLen,
+  writeBool,
+  writeVarBytesDynamic,
+  writeVarBytesStatic,
+} from "./binary.js";
 import {
   decodeMidgardDatum,
   encodeMidgardDatum,
   type MidgardDatum,
 } from "./datum.js";
-import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
 import {
-  decodeMidgardValue,
-  encodeMidgardValue,
+  readMidgardValueDynamic,
+  readMidgardValueStatic,
+  writeMidgardValueDynamic,
+  writeMidgardValueStatic,
   type MidgardValue,
 } from "./value.js";
 import {
-  decodeMidgardVersionedScript,
-  encodeMidgardVersionedScript,
+  readMidgardVersionedScriptDynamic,
+  readMidgardVersionedScriptStatic,
+  writeMidgardVersionedScriptDynamic,
+  writeMidgardVersionedScriptStatic,
   type MidgardVersionedScript,
 } from "./versioned-script.js";
 
@@ -37,123 +40,181 @@ export type MidgardTxOutput = {
   readonly script_ref?: MidgardVersionedScript;
 };
 
-const fail = (message: string, detail?: string): never => {
-  throw new MidgardTxCodecError(
-    MidgardTxCodecErrorCodes.InvalidFieldType,
-    message,
-    detail,
-  );
+/**
+ * Binary `transaction_output` encoding (mirrors staging midgard-ts adapted to
+ * keep MidgardDatum/MidgardVersionedScript wrappers).
+ *
+ * Layout:
+ *   Static:
+ *     address_len  (u64)
+ *     value.static
+ *     datum_present (u64)        + datum_len (u64) if present
+ *     script_ref_present (u64)   + versioned_script.static if present
+ *   Dynamic:
+ *     address bytes + pad
+ *     value.dynamic
+ *     datum bytes + pad        (if present, opaque Plutus CBOR)
+ *     versioned_script.dynamic (if present, opaque inner script bytes)
+ */
+
+type OutputPartial = {
+  readonly addrLen: number;
+  readonly valuePartial: ReturnType<typeof readMidgardValueStatic>;
+  readonly datumLen: number | undefined;
+  readonly scriptRefPartial:
+    | ReturnType<typeof readMidgardVersionedScriptStatic>
+    | undefined;
 };
 
-const readRawValue = (
-  bytes: Uint8Array,
-  offset: number,
-): { readonly raw: Buffer; readonly nextOffset: number } => {
-  const span = skipCborItem(bytes, offset);
-  return {
-    raw: Buffer.from(bytes.subarray(span.start, span.end)),
-    nextOffset: span.end,
-  };
-};
-
-export const encodeMidgardTxOutput = (output: MidgardTxOutput): Buffer => {
+export const writeMidgardTxOutputStatic = (
+  w: BinaryWriter,
+  output: MidgardTxOutput,
+): void => {
   const address = encodeMidgardAddressBytes(output.address);
-  const entries: (readonly [Buffer, Buffer])[] = [
-    [encodeCborUnsigned(0n), encodeCborBytes(address)],
-    [encodeCborUnsigned(1n), encodeMidgardValue(output.value)],
-  ];
+  writeVarBytesStatic(w, address);
+  writeMidgardValueStatic(w, output.value);
   if (output.datum !== undefined) {
-    entries.push([
-      encodeCborUnsigned(2n),
-      encodeCborBytes(encodeMidgardDatum(output.datum)),
-    ]);
+    writeBool(w, true);
+    writeVarBytesStatic(w, encodeMidgardDatum(output.datum));
+  } else {
+    writeBool(w, false);
   }
   if (output.script_ref !== undefined) {
-    entries.push([
-      encodeCborUnsigned(3n),
-      encodeMidgardVersionedScript(output.script_ref),
-    ]);
+    writeBool(w, true);
+    writeMidgardVersionedScriptStatic(w, output.script_ref);
+  } else {
+    writeBool(w, false);
   }
-  return encodeCborMapRaw(entries);
 };
 
-export const decodeMidgardTxOutput = (bytes: Uint8Array): MidgardTxOutput => {
-  const header = readCborMapHeader(bytes, 0, "output");
-  let cursor = header.nextOffset;
-  let address: Buffer | undefined;
-  let value: MidgardValue | undefined;
-  let datum: MidgardDatum | undefined;
-  let scriptRef: MidgardVersionedScript | undefined;
-  let previousKey: bigint | undefined;
+export const writeMidgardTxOutputDynamic = (
+  w: BinaryWriter,
+  output: MidgardTxOutput,
+): void => {
+  const address = encodeMidgardAddressBytes(output.address);
+  writeVarBytesDynamic(w, address);
+  writeMidgardValueDynamic(w, output.value);
+  if (output.datum !== undefined) {
+    writeVarBytesDynamic(w, encodeMidgardDatum(output.datum));
+  }
+  if (output.script_ref !== undefined) {
+    writeMidgardVersionedScriptDynamic(w, output.script_ref);
+  }
+};
 
-  for (let i = 0; i < header.length; i += 1) {
-    const key = readCborUnsigned(bytes, cursor, "output.key");
-    cursor = key.nextOffset;
-    if (previousKey !== undefined && key.value <= previousKey) {
-      fail("Output map keys must be unique and sorted", key.value.toString());
-    }
-    previousKey = key.value;
-    switch (key.value) {
-      case 0n: {
-        const decodedAddress = readCborBytes(bytes, cursor, "output.address");
-        cursor = decodedAddress.nextOffset;
-        address = encodeMidgardAddressBytes(decodedAddress.value);
-        break;
-      }
-      case 1n: {
-        const raw = readRawValue(bytes, cursor);
-        cursor = raw.nextOffset;
-        value = decodeMidgardValue(raw.raw);
-        break;
-      }
-      case 2n: {
-        const rawDatum = readCborBytes(bytes, cursor, "output.datum");
-        cursor = rawDatum.nextOffset;
-        datum = decodeMidgardDatum(rawDatum.value);
-        break;
-      }
-      case 3n: {
-        const raw = readRawValue(bytes, cursor);
-        cursor = raw.nextOffset;
-        scriptRef = decodeMidgardVersionedScript(raw.raw);
-        break;
-      }
-      default:
-        fail("Unknown Midgard output field", key.value.toString());
-    }
-  }
+export const readMidgardTxOutputStatic = (r: BinaryReader): OutputPartial => {
+  const addrLen = readVarBytesLen(r);
+  const valuePartial = readMidgardValueStatic(r);
+  const datumPresent = readBool(r);
+  const datumLen = datumPresent ? readVarBytesLen(r) : undefined;
+  const scriptRefPresent = readBool(r);
+  const scriptRefPartial = scriptRefPresent
+    ? readMidgardVersionedScriptStatic(r)
+    : undefined;
+  return { addrLen, valuePartial, datumLen, scriptRefPartial };
+};
 
-  if (cursor !== bytes.length) {
-    throw new MidgardTxCodecError(
-      MidgardTxCodecErrorCodes.CborDecode,
-      "Trailing bytes after Midgard output",
-      `offset=${cursor}`,
-    );
-  }
-  if (address === undefined) {
-    throw new MidgardTxCodecError(
-      MidgardTxCodecErrorCodes.MissingRequiredField,
-      "Midgard output missing address key 0",
-    );
-  }
-  if (value === undefined) {
-    throw new MidgardTxCodecError(
-      MidgardTxCodecErrorCodes.MissingRequiredField,
-      "Midgard output missing value key 1",
-    );
-  }
-
-  const output: MidgardTxOutput = {
+export const readMidgardTxOutputDynamic = (
+  r: BinaryReader,
+  partial: OutputPartial,
+): MidgardTxOutput => {
+  const addressBytes = readVarBytesDynamic(r, partial.addrLen);
+  const address = encodeMidgardAddressBytes(addressBytes);
+  const value = readMidgardValueDynamic(r, partial.valuePartial);
+  const datum =
+    partial.datumLen === undefined
+      ? undefined
+      : decodeMidgardDatum(readVarBytesDynamic(r, partial.datumLen));
+  const scriptRef =
+    partial.scriptRefPartial === undefined
+      ? undefined
+      : readMidgardVersionedScriptDynamic(r, partial.scriptRefPartial);
+  return {
     address,
     value,
     ...(datum === undefined ? {} : { datum }),
     ...(scriptRef === undefined ? {} : { script_ref: scriptRef }),
   };
-  assertCanonicalCborRoundTrip(
-    bytes,
-    output,
-    encodeMidgardTxOutput,
-    "Midgard output CBOR is not canonical",
-  );
+};
+
+export const encodeMidgardTxOutput = (output: MidgardTxOutput): Buffer => {
+  const sw = new BinaryWriter();
+  writeMidgardTxOutputStatic(sw, output);
+  const dw = new BinaryWriter();
+  writeMidgardTxOutputDynamic(dw, output);
+  return Buffer.concat([sw.toBytes(), dw.toBytes()]);
+};
+
+export const decodeMidgardTxOutput = (bytes: Uint8Array): MidgardTxOutput => {
+  const r = new BinaryReader(bytes);
+  const partial = readMidgardTxOutputStatic(r);
+  const output = readMidgardTxOutputDynamic(r, partial);
+  r.expectEnd("transaction_output");
   return output;
+};
+
+// ---------------------------------------------------------------------------
+// Vec<MidgardTxOutput> — len (u64) + n × output_static, then n × output_dynamic
+// ---------------------------------------------------------------------------
+
+export const writeMidgardTxOutputListStatic = (
+  w: BinaryWriter,
+  outputs: readonly MidgardTxOutput[],
+): void => {
+  // length first
+  const lengthBuf = Buffer.alloc(8);
+  lengthBuf.writeBigUInt64BE(BigInt(outputs.length), 0);
+  w.write(lengthBuf);
+  for (const o of outputs) writeMidgardTxOutputStatic(w, o);
+};
+
+export const writeMidgardTxOutputListDynamic = (
+  w: BinaryWriter,
+  outputs: readonly MidgardTxOutput[],
+): void => {
+  for (const o of outputs) writeMidgardTxOutputDynamic(w, o);
+};
+
+export const readMidgardTxOutputListStatic = (
+  r: BinaryReader,
+): OutputPartial[] => {
+  const lenBuf = r.read(8);
+  const len = Number(lenBuf.readBigUInt64BE(0));
+  const partials: OutputPartial[] = [];
+  for (let i = 0; i < len; i += 1) {
+    partials.push(readMidgardTxOutputStatic(r));
+  }
+  return partials;
+};
+
+export const readMidgardTxOutputListDynamic = (
+  r: BinaryReader,
+  partials: readonly OutputPartial[],
+): MidgardTxOutput[] => {
+  const out: MidgardTxOutput[] = [];
+  for (const p of partials) {
+    out.push(readMidgardTxOutputDynamic(r, p));
+  }
+  return out;
+};
+
+export const encodeMidgardTxOutputList = (
+  outputs: readonly MidgardTxOutput[],
+): Buffer => {
+  const sw = new BinaryWriter();
+  writeMidgardTxOutputListStatic(sw, outputs);
+  const dw = new BinaryWriter();
+  writeMidgardTxOutputListDynamic(dw, outputs);
+  return Buffer.concat([sw.toBytes(), dw.toBytes()]);
+};
+
+export const decodeMidgardTxOutputList = (
+  bytes: Uint8Array,
+  fieldName = "transaction_output_list",
+): MidgardTxOutput[] => {
+  const r = new BinaryReader(bytes);
+  const partials = readMidgardTxOutputListStatic(r);
+  const outs = readMidgardTxOutputListDynamic(r, partials);
+  r.expectEnd(fieldName);
+  return outs;
 };

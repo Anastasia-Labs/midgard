@@ -1,9 +1,8 @@
 import {
   computeMidgardNativeTxId,
-  decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
-  decodeMidgardTxOutput,
+  decodeMidgardNativeTxFullFromCanonicalBinary,
   encodeMidgardAddressText,
+  encodeMidgardTxOutput,
 } from "@al-ft/midgard-core/codec";
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML } from "@lucid-evolution/lucid";
@@ -21,6 +20,16 @@ export type ProcessedTx = {
 
 export const chalk = new chalk_.Chalk();
 
+const outRefToCanonicalCbor = (
+  ref: { readonly txId: Buffer; readonly index: number },
+): Buffer =>
+  Buffer.from(
+    CML.TransactionInput.new(
+      CML.TransactionHash.from_raw_bytes(ref.txId),
+      BigInt(ref.index),
+    ).to_cbor_bytes(),
+  );
+
 export const findSpentAndProducedUTxOs = (
   txCBOR: Buffer,
   txHash?: Buffer,
@@ -30,7 +39,7 @@ export const findSpentAndProducedUTxOs = (
 > =>
   Effect.gen(function* () {
     const nativeTx = yield* Effect.try({
-      try: () => decodeMidgardNativeTxFullFromCanonicalCbor(txCBOR),
+      try: () => decodeMidgardNativeTxFullFromCanonicalBinary(txCBOR),
       catch: (e) =>
         new SDK.CmlUnexpectedError({
           message: `Failed to decode Midgard-native tx payload`,
@@ -38,39 +47,8 @@ export const findSpentAndProducedUTxOs = (
         }),
     });
 
-    const nativeSpent = yield* Effect.try({
-      try: () =>
-        decodeMidgardNativeByteListPreimage(
-          nativeTx.body.spendInputsPreimageCbor,
-          "native.spend_inputs",
-        ),
-      catch: (e) =>
-        new SDK.CmlUnexpectedError({
-          message: `Failed to decode native spend inputs`,
-          cause: e,
-        }),
-    });
-
-    const nativeOutputs = yield* Effect.try({
-      try: () =>
-        decodeMidgardNativeByteListPreimage(
-          nativeTx.body.outputsPreimageCbor,
-          "native.outputs",
-        ),
-      catch: (e) =>
-        new SDK.CmlUnexpectedError({
-          message: `Failed to decode native outputs`,
-          cause: e,
-        }),
-    });
-
     const spent = yield* Effect.try({
-      try: () =>
-        nativeSpent.map((outRef) =>
-          Buffer.from(
-            CML.TransactionInput.from_cbor_bytes(outRef).to_cbor_bytes(),
-          ),
-        ),
+      try: () => nativeTx.body.spendInputs.map(outRefToCanonicalCbor),
       catch: (e) =>
         new SDK.CmlUnexpectedError({
           message: `An error occurred on native input CBOR serialization`,
@@ -82,13 +60,12 @@ export const findSpentAndProducedUTxOs = (
     const finalTxHash =
       txHash === undefined ? computeMidgardNativeTxId(nativeTx) : txHash;
     const txHashObj = CML.TransactionHash.from_raw_bytes(finalTxHash);
-    for (let i = 0; i < nativeOutputs.length; i++) {
-      const output = nativeOutputs[i];
+    for (let i = 0; i < nativeTx.body.outputs.length; i++) {
       produced.push({
         [Ledger.Columns.OUTREF]: Buffer.from(
           CML.TransactionInput.new(txHashObj, BigInt(i)).to_cbor_bytes(),
         ),
-        [Ledger.Columns.OUTPUT]: Buffer.from(output),
+        [Ledger.Columns.OUTPUT]: encodeMidgardTxOutput(nativeTx.body.outputs[i]),
       });
     }
     return { spent, produced };
@@ -99,7 +76,7 @@ export const breakDownTx = (
 ): Effect.Effect<ProcessedTx, SDK.CmlDeserializationError> =>
   Effect.gen(function* () {
     const nativeTx = yield* Effect.try({
-      try: () => decodeMidgardNativeTxFullFromCanonicalCbor(txCbor),
+      try: () => decodeMidgardNativeTxFullFromCanonicalBinary(txCbor),
       catch: (e) =>
         new SDK.CmlDeserializationError({
           message: `Failed to deserialize Midgard-native transaction`,
@@ -109,43 +86,16 @@ export const breakDownTx = (
 
     const txHashBytes = computeMidgardNativeTxId(nativeTx);
     const txHash = CML.TransactionHash.from_raw_bytes(txHashBytes);
-    const spent = yield* Effect.try({
-      try: () =>
-        decodeMidgardNativeByteListPreimage(
-          nativeTx.body.spendInputsPreimageCbor,
-          "native.spend_inputs",
-        ).map((outRef) =>
-          Buffer.from(
-            CML.TransactionInput.from_cbor_bytes(outRef).to_cbor_bytes(),
-          ),
-        ),
-      catch: (e) =>
-        new SDK.CmlDeserializationError({
-          message: `Failed to decode native spend inputs`,
-          cause: e,
-        }),
-    });
-    const outputBytes = yield* Effect.try({
-      try: () =>
-        decodeMidgardNativeByteListPreimage(
-          nativeTx.body.outputsPreimageCbor,
-          "native.outputs",
-        ),
-      catch: (e) =>
-        new SDK.CmlDeserializationError({
-          message: `Failed to decode native outputs`,
-          cause: e,
-        }),
-    });
+    const spent = nativeTx.body.spendInputs.map(outRefToCanonicalCbor);
     const produced: Ledger.Entry[] = [];
-    for (let i = 0; i < outputBytes.length; i++) {
-      const output = decodeMidgardTxOutput(outputBytes[i]);
+    for (let i = 0; i < nativeTx.body.outputs.length; i++) {
+      const output = nativeTx.body.outputs[i];
       produced.push({
         [Ledger.Columns.TX_ID]: txHashBytes,
         [Ledger.Columns.OUTREF]: Buffer.from(
           CML.TransactionInput.new(txHash, BigInt(i)).to_cbor_bytes(),
         ),
-        [Ledger.Columns.OUTPUT]: Buffer.from(outputBytes[i]),
+        [Ledger.Columns.OUTPUT]: encodeMidgardTxOutput(output),
         [Ledger.Columns.ADDRESS]: encodeMidgardAddressText(output.address),
       });
     }
@@ -193,16 +143,16 @@ export const batchProgram = <A, E, C>(
 export const ENV_VARS_GUIDE = `
 Make sure you first have set the environment variable for your seed phrase:
 
-\u0009${chalk.bold("SEED_PHRASE")}\u0009 Your wallet's seed phrase
+	${chalk.bold("SEED_PHRASE")}	 Your wallet's seed phrase
 
 Depending on which provider you'll be using, other environment variables may also be needed:
 
 Blockfrost or Maestro:
-\u0009${chalk.bold("API_KEY")}    \u0009 Your provider's API key
+	${chalk.bold("API_KEY")}    	 Your provider's API key
 
 Kupmios:
-\u0009${chalk.bold("KUPO_URL")}   \u0009 URL of your Kupo instance
-\u0009${chalk.bold("OGMIOS_URL")} \u0009 URL of your Ogmios instance
+	${chalk.bold("KUPO_URL")}   	 URL of your Kupo instance
+	${chalk.bold("OGMIOS_URL")} 	 URL of your Ogmios instance
 `;
 
 export class FileSystemError extends Data.TaggedError(

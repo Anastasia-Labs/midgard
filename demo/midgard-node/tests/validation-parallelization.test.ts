@@ -1,13 +1,16 @@
 import {
-  computeHash32,
   computeMidgardNativeTxId,
   deriveMidgardNativeTxCompact,
+  EMPTY_NULL_ROOT,
   encodeMidgardNativeTxCanonical,
+  encodeMidgardTxOutput,
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
   type MidgardNativeTxBodyCanonical,
   type MidgardNativeTxFull,
   type MidgardNativeTxWitnessSetCanonical,
+  type MidgardTxOutput,
+  type OutputReference,
 } from "@al-ft/midgard-core/codec";
 import {
   PhaseAAccepted,
@@ -17,7 +20,6 @@ import {
   runPhaseBValidationWithPatch,
 } from "@al-ft/midgard-validation";
 import { CML, walletFromSeed } from "@lucid-evolution/lucid";
-import { encode } from "cborg";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -28,20 +30,23 @@ import { makeMidgardTxOutput } from "./midgard-output-helpers.js";
  */
 const hex32 = (byte: number) => byte.toString(16).padStart(2, "0").repeat(32);
 
-const outRefFromHash = (txHashHex: string, index: bigint): Buffer =>
+const outRefFromHash = (txHashHex: string, index: number): OutputReference => ({
+  txId: Buffer.from(txHashHex, "hex"),
+  index,
+});
+
+const outRefCanonicalCbor = (ref: OutputReference): Buffer =>
   Buffer.from(
     CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(txHashHex),
-      index,
+      CML.TransactionHash.from_raw_bytes(ref.txId),
+      BigInt(ref.index),
     ).to_cbor_bytes(),
   );
 
-const makeOutput = (address: string, lovelace: bigint): Buffer =>
-  Buffer.from(
-    makeMidgardTxOutput(
-      CML.Address.from_bech32(address),
-      CML.Value.from_coin(lovelace),
-    ).to_cbor_bytes(),
+const makeOutput = (address: string, lovelace: bigint): MidgardTxOutput =>
+  makeMidgardTxOutput(
+    CML.Address.from_bech32(address),
+    CML.Value.from_coin(lovelace),
   );
 
 const testAddress = walletFromSeed(
@@ -60,12 +65,6 @@ const signerHash = (() => {
   }
   return signer;
 })();
-const EMPTY_CBOR_LIST = Buffer.from([0x80]);
-const EMPTY_CBOR_NULL = Buffer.from([0xf6]);
-const EMPTY_NULL_ROOT = computeHash32(EMPTY_CBOR_NULL);
-
-const encodeByteList = (items: readonly Uint8Array[]): Buffer =>
-  Buffer.from(encode(items.map((item) => Buffer.from(item))));
 
 const makeNativeTx = ({
   spent,
@@ -74,33 +73,30 @@ const makeNativeTx = ({
   validityIntervalStart,
   validityIntervalEnd,
 }: {
-  readonly spent: readonly Buffer[];
-  readonly referenceInputs?: readonly Buffer[];
-  readonly outputs: readonly Buffer[];
+  readonly spent: readonly OutputReference[];
+  readonly referenceInputs?: readonly OutputReference[];
+  readonly outputs: readonly MidgardTxOutput[];
   readonly validityIntervalStart?: bigint;
   readonly validityIntervalEnd?: bigint;
 }): MidgardNativeTxFull => {
-  const spendInputsPreimageCbor = encodeByteList(spent);
-  const referenceInputsPreimageCbor = encodeByteList(referenceInputs);
-  const outputsPreimageCbor = encodeByteList(outputs);
   const body: MidgardNativeTxBodyCanonical = {
-    spendInputsPreimageCbor,
-    referenceInputsPreimageCbor,
-    outputsPreimageCbor,
+    spendInputs: spent,
+    referenceInputs,
+    outputs,
     fee: 0n,
     validityIntervalStart: validityIntervalStart ?? MIDGARD_POSIX_TIME_NONE,
     validityIntervalEnd: validityIntervalEnd ?? MIDGARD_POSIX_TIME_NONE,
-    requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
-    requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
-    mintPreimageCbor: EMPTY_CBOR_LIST,
+    requiredObservers: [],
+    requiredSigners: [],
+    mint: new Map(),
     scriptIntegrityHash: EMPTY_NULL_ROOT,
     auxiliaryDataHash: EMPTY_NULL_ROOT,
     networkId: 0n,
   };
   const witnessSet: MidgardNativeTxWitnessSetCanonical = {
-    addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-    scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-    redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+    addrTxWits: [],
+    scriptTxWits: [],
+    redeemerTxWits: Buffer.alloc(0),
   };
   return {
     version: MIDGARD_NATIVE_TX_VERSION,
@@ -120,8 +116,8 @@ const makeCandidate = ({
   validityIntervalEnd,
 }: {
   readonly arrivalSeq: bigint;
-  readonly spent: readonly Buffer[];
-  readonly referenceInputs?: readonly Buffer[];
+  readonly spent: readonly OutputReference[];
+  readonly referenceInputs?: readonly OutputReference[];
   readonly inputLovelace?: bigint;
   readonly validityIntervalStart?: bigint;
   readonly validityIntervalEnd?: bigint;
@@ -136,7 +132,7 @@ const makeCandidate = ({
   });
   const txId = computeMidgardNativeTxId(tx);
   const txCbor = encodeMidgardNativeTxCanonical(tx);
-  const producedOutRef = outRefFromHash(txId.toString("hex"), 0n);
+  const producedOutRef = outRefCanonicalCbor(outRefFromHash(txId.toString("hex"), 0));
   return {
     txId,
     txCbor,
@@ -144,7 +140,7 @@ const makeCandidate = ({
     fee: 0n,
     validityIntervalStart,
     validityIntervalEnd,
-    referenceInputs,
+    referenceInputs: referenceInputs.map(outRefCanonicalCbor),
     outputSum: CML.Value.from_coin(inputLovelace),
     witnessKeyHashes: [signerHash],
     requiredObserverHashes: [],
@@ -157,12 +153,12 @@ const makeCandidate = ({
     processedTx: {
       txId,
       txCbor,
-      spent: [...spent],
+      spent: spent.map(outRefCanonicalCbor),
       produced: [
         {
           tx_id: txId,
           outref: producedOutRef,
-          output,
+          output: encodeMidgardTxOutput(output),
           address: testAddress,
         },
       ],
@@ -173,7 +169,7 @@ const makeCandidate = ({
 describe("validation parallelization", () => {
   it("keeps phase-A verdicts and order stable across concurrency levels", async () => {
     const queued: QueuedTx[] = Array.from({ length: 64 }, (_, index) => {
-      const spent = outRefFromHash(hex32(index + 1), 0n);
+      const spent = outRefFromHash(hex32(index + 1), 0);
       const nativeTx = makeNativeTx({
         spent: [spent],
         outputs: [makeOutput(testAddress, 10n)],
@@ -222,11 +218,17 @@ describe("validation parallelization", () => {
   });
 
   it("does not accept conflicting txs across parallel phase-B buckets", async () => {
-    const spentX = outRefFromHash(hex32(0x01), 0n);
-    const spentZ = outRefFromHash(hex32(0x02), 0n);
+    const spentX = outRefFromHash(hex32(0x01), 0);
+    const spentZ = outRefFromHash(hex32(0x02), 0);
     const preState = new Map<string, Buffer>([
-      [spentX.toString("hex"), makeOutput(testAddress, 10n)],
-      [spentZ.toString("hex"), makeOutput(testAddress, 10n)],
+      [
+        outRefCanonicalCbor(spentX).toString("hex"),
+        encodeMidgardTxOutput(makeOutput(testAddress, 10n)),
+      ],
+      [
+        outRefCanonicalCbor(spentZ).toString("hex"),
+        encodeMidgardTxOutput(makeOutput(testAddress, 10n)),
+      ],
     ]);
 
     const txA = makeCandidate({
@@ -262,9 +264,12 @@ describe("validation parallelization", () => {
   });
 
   it("evaluates validity intervals against the current Cardano slot number", async () => {
-    const spent = outRefFromHash(hex32(0x03), 0n);
+    const spent = outRefFromHash(hex32(0x03), 0);
     const preState = new Map<string, Buffer>([
-      [spent.toString("hex"), makeOutput(testAddress, 10n)],
+      [
+        outRefCanonicalCbor(spent).toString("hex"),
+        encodeMidgardTxOutput(makeOutput(testAddress, 10n)),
+      ],
     ]);
 
     const expired = makeCandidate({

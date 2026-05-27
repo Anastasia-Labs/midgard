@@ -121,6 +121,9 @@ const decodeRedeemerMapEntry = (
 export const decodeMidgardRedeemers = (
   preimageCbor: Uint8Array,
 ): readonly DecodedMidgardRedeemer[] => {
+  if (preimageCbor.length === 0) {
+    return [];
+  }
   const decoded = decodeSingleCbor(preimageCbor);
   if (Array.isArray(decoded)) {
     return decoded.map((item, index) =>

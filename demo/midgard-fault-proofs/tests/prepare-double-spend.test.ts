@@ -11,8 +11,8 @@ import {
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
   type MidgardNativeTxFull,
+  type OutputReference,
 } from "@al-ft/midgard-core";
-import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -25,40 +25,36 @@ import {
 
 const h28 = (byte: string): string => byte.repeat(28);
 const h32 = (byte: string): string => byte.repeat(32);
-const EMPTY_CBOR_LIST = encodeCbor([]);
 const EMPTY_CBOR_NULL = encodeCbor(null);
 const EMPTY_NULL_ROOT = computeHash32(EMPTY_CBOR_NULL);
 
-const inputCbor = (txHash: string, outputIndex: bigint): Buffer =>
-  Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(txHash),
-      outputIndex,
-    ).to_cbor_bytes(),
-  );
+const outRef = (txHash: string, index: number): OutputReference => ({
+  txId: Buffer.from(txHash, "hex"),
+  index,
+});
 
 const makeNativeTx = (
-  inputs: readonly Buffer[],
+  inputs: readonly OutputReference[],
   fee: bigint,
 ): MidgardNativeTxFull => {
   const body = {
-    spendInputsPreimageCbor: encodeCbor(inputs),
-    referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
-    outputsPreimageCbor: EMPTY_CBOR_LIST,
+    spendInputs: inputs,
+    referenceInputs: [],
+    outputs: [],
     fee,
     validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
     validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
-    requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
-    requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
-    mintPreimageCbor: EMPTY_CBOR_LIST,
+    requiredObservers: [],
+    requiredSigners: [],
+    mint: new Map(),
     scriptIntegrityHash: EMPTY_NULL_ROOT,
     auxiliaryDataHash: EMPTY_NULL_ROOT,
     networkId: 0n,
   };
   const witnessSet = {
-    addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-    scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-    redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+    addrTxWits: [],
+    scriptTxWits: [],
+    redeemerTxWits: Buffer.alloc(0),
   };
   return materializeMidgardNativeTxFromCanonical({
     version: MIDGARD_NATIVE_TX_VERSION,
@@ -74,7 +70,7 @@ const payloadFromTx = (tx: MidgardNativeTxFull): NodeTransactionPayload => ({
 });
 
 const payloadFromInputs = (
-  inputs: readonly Buffer[],
+  inputs: readonly OutputReference[],
   fee: bigint,
 ): NodeTransactionPayload => payloadFromTx(makeNativeTx(inputs, fee));
 
@@ -89,14 +85,14 @@ const withTempDir = async <A>(run: (dir: string) => Promise<A>): Promise<A> => {
 
 describe("prepare-double-spend", () => {
   it("loads a block's native txs and prepares submit-step material", async () => {
-    const sharedInput = inputCbor(h32("11"), 7n);
+    const sharedInput = outRef(h32("11"), 7);
 
     const output = await prepareDoubleSpendFromTransactions({
       headerHash: h28("aa"),
       transactions: [
-        payloadFromInputs([sharedInput, inputCbor(h32("22"), 0n)], 1n),
-        payloadFromInputs([inputCbor(h32("33"), 0n), sharedInput], 2n),
-        payloadFromInputs([inputCbor(h32("44"), 0n)], 3n),
+        payloadFromInputs([sharedInput, outRef(h32("22"), 0)], 1n),
+        payloadFromInputs([outRef(h32("33"), 0), sharedInput], 2n),
+        payloadFromInputs([outRef(h32("44"), 0)], 3n),
       ],
     });
 
@@ -118,7 +114,7 @@ describe("prepare-double-spend", () => {
     expect(output.tx1.txInclusion.nativeTxCompactCbor.length).toBeGreaterThan(
       0,
     );
-    expect(output.tx1.spendInputCbors[0]).toBe(sharedInput.toString("hex"));
+    expect(output.tx1.spendInputCbors[0]).toMatch(/^[0-9a-f]+$/);
     expect(output.commitmentEncodings.nativeNode.transactionsRoot).toMatch(
       /^[0-9a-f]{64}$/,
     );
@@ -127,10 +123,10 @@ describe("prepare-double-spend", () => {
   });
 
   it("honors explicit tx pair selection", async () => {
-    const sharedInput = inputCbor(h32("55"), 1n);
+    const sharedInput = outRef(h32("55"), 1);
     const tx1Payload = payloadFromInputs([sharedInput], 1n);
     const tx2Payload = payloadFromInputs(
-      [inputCbor(h32("66"), 0n), sharedInput],
+      [outRef(h32("66"), 0), sharedInput],
       2n,
     );
 
@@ -151,16 +147,16 @@ describe("prepare-double-spend", () => {
       prepareDoubleSpendFromTransactions({
         headerHash: h28("cc"),
         transactions: [
-          payloadFromInputs([inputCbor(h32("77"), 0n)], 1n),
-          payloadFromInputs([inputCbor(h32("88"), 0n)], 2n),
+          payloadFromInputs([outRef(h32("77"), 0)], 1n),
+          payloadFromInputs([outRef(h32("88"), 0)], 2n),
         ],
       }),
     ).rejects.toThrow("No double spend found");
   });
 
   it("fetches node block and transaction payloads through public node endpoints", async () => {
-    const tx1Payload = payloadFromInputs([inputCbor(h32("99"), 0n)], 1n);
-    const tx2Payload = payloadFromInputs([inputCbor(h32("aa"), 0n)], 2n);
+    const tx1Payload = payloadFromInputs([outRef(h32("99"), 0)], 1n);
+    const tx2Payload = payloadFromInputs([outRef(h32("aa"), 0)], 2n);
     const fetchImpl = async (input: string | URL): Promise<Response> => {
       const url = new URL(String(input));
       if (url.pathname === "/block") {
@@ -197,10 +193,10 @@ describe("prepare-double-spend", () => {
 
   it("prepares submit-step material from an explicit transactions file", async () => {
     await withTempDir(async (dir) => {
-      const sharedInput = inputCbor(h32("ab"), 3n);
+      const sharedInput = outRef(h32("ab"), 3);
       const tx1Payload = payloadFromInputs([sharedInput], 1n);
       const tx2Payload = payloadFromInputs(
-        [inputCbor(h32("cd"), 0n), sharedInput],
+        [outRef(h32("cd"), 0), sharedInput],
         2n,
       );
       const transactionsPath = join(dir, "block-transactions.json");

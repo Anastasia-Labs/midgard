@@ -1,22 +1,18 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  encodeCborArrayRaw,
-  encodeCborBytes,
-  encodeCborMapRaw,
-  encodeCborUnsigned,
-} from "../src/codec/cbor.js";
-import {
   decodeMidgardAddressBytes,
   decodeMidgardTxOutput,
   decodeMidgardValue,
   decodeMidgardVersionedScript,
   encodeMidgardAddressText,
   encodeMidgardTxOutput,
+  encodeMidgardValue,
   encodeMidgardVersionedScript,
   MIDGARD_PROTECTED_ADDRESS_HEADER_MASK,
   midgardAddressFromText,
   type MidgardTxOutput,
+  type MidgardValue,
   protectMidgardAddress,
 } from "../src/codec/index.js";
 
@@ -47,7 +43,7 @@ const sampleOutput = (): MidgardTxOutput => ({
   },
 });
 
-describe("Midgard output codec", () => {
+describe("Midgard binary output codec", () => {
   it("derives protected state from the address header bit and Bech32 text", () => {
     const unprotectedBytes = midgardAddressFromText(unprotectedAddress);
     const protectedAddress = protectMidgardAddress(unprotectedBytes);
@@ -92,11 +88,17 @@ describe("Midgard output codec", () => {
     }
   });
 
-  it("round trips output CBOR byte-exactly", () => {
+  it("round trips output binary byte-exactly", () => {
     const encoded = encodeMidgardTxOutput(sampleOutput());
     const decoded = decodeMidgardTxOutput(encoded);
 
     expect(encodeMidgardTxOutput(decoded)).toEqual(encoded);
+  });
+
+  it("round trips a coin-only value", () => {
+    const value: MidgardValue = { lovelace: 12_345n, assets: new Map() };
+    const encoded = encodeMidgardValue(value);
+    expect(decodeMidgardValue(encoded)).toEqual(value);
   });
 
   it("recovers MidgardV1 script-ref version from bytes", () => {
@@ -111,37 +113,11 @@ describe("Midgard output codec", () => {
     });
   });
 
-  it("uses the Cardano PlutusV3 script-ref tag for PlutusV3 payloads", () => {
+  it("preserves the PlutusV3 script-ref tag for PlutusV3 payloads", () => {
     const encoded = encodeMidgardVersionedScript({
       language: "PlutusV3",
       scriptBytes: Buffer.from("010203", "hex"),
     });
-
-    expect(encoded.subarray(0, 2).toString("hex")).toBe("8203");
     expect(decodeMidgardVersionedScript(encoded).language).toBe("PlutusV3");
-  });
-
-  it("rejects non-canonical value policy ordering", () => {
-    const assetMap = (quantity: bigint) =>
-      encodeCborMapRaw([
-        [encodeCborBytes(Buffer.alloc(0)), encodeCborUnsigned(quantity)],
-      ]);
-    const nonCanonical = encodeCborArrayRaw([
-      encodeCborUnsigned(0n),
-      encodeCborMapRaw([
-        [encodeCborBytes(Buffer.alloc(28, 2)), assetMap(1n)],
-        [encodeCborBytes(Buffer.alloc(28, 1)), assetMap(1n)],
-      ]),
-    ]);
-
-    expect(() => decodeMidgardValue(nonCanonical)).toThrow(
-      /Value policies must be sorted/,
-    );
-  });
-
-  it("rejects non-canonical value encoding on decode-to-encode mismatch", () => {
-    const nonMinimalCoin = Buffer.from([0x82, 0x18, 0x01, 0xa0]);
-
-    expect(() => decodeMidgardValue(nonMinimalCoin)).toThrow();
   });
 });

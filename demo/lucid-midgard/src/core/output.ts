@@ -68,7 +68,7 @@ export type AuthoredOutput = {
 };
 
 export type DecodedMidgardOutput = {
-  readonly outputCbor: Buffer;
+  readonly outputBytes: Buffer;
   readonly address: Address;
   readonly assets: Assets;
   readonly txOutput: MidgardTxOutput;
@@ -369,6 +369,19 @@ const encodeAuthoredMidgardTxOutput = (
       : { script_ref: normalizeScriptRef(options.scriptRef) }),
   });
 
+export const authoredOutputToCore = (
+  output: AuthoredOutput,
+): CoreMidgardTxOutput => ({
+  address: addressBytesForOutput(output.address, output.kind),
+  value: assetsToMidgardValue(output.assets),
+  ...(output.datum === undefined
+    ? {}
+    : { datum: authoredDatumToCore(output.datum) }),
+  ...(output.scriptRef === undefined
+    ? {}
+    : { script_ref: normalizeScriptRef(output.scriptRef) }),
+});
+
 const isMidgardTxOutput = (value: unknown): value is MidgardTxOutput =>
   typeof value === "object" &&
   value !== null &&
@@ -396,12 +409,24 @@ export function encodeMidgardTxOutput(
 }
 
 export const decodeMidgardTxOutput = (
-  outputCbor: Uint8Array,
+  outputBytes: Uint8Array,
 ): DecodedMidgardOutput => {
-  const coreOutput = decodeCoreMidgardTxOutput(outputCbor);
+  const coreOutput = decodeCoreMidgardTxOutput(outputBytes);
   const txOutput = publicOutputFromCore(coreOutput);
   return {
-    outputCbor: Buffer.from(outputCbor),
+    outputBytes: Buffer.from(outputBytes),
+    address: txOutput.address,
+    assets: txOutput.assets,
+    txOutput,
+  };
+};
+
+export const decodeMidgardTxOutputFromCore = (
+  coreOutput: CoreMidgardTxOutput,
+): DecodedMidgardOutput => {
+  const txOutput = publicOutputFromCore(coreOutput);
+  return {
+    outputBytes: encodeCoreMidgardTxOutput(coreOutput),
     address: txOutput.address,
     assets: txOutput.assets,
     txOutput,

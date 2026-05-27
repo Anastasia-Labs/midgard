@@ -1,12 +1,12 @@
 import {
   computeHash32,
   computeScriptIntegrityHashForLanguages,
-  EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
   encodeMidgardVersionedScript,
-  encodeMidgardVersionedScriptListPreimage,
+  encodeRedeemerTxWitsBinary,
   hashMidgardVersionedScript,
+  type MidgardMint,
   type MidgardVersionedScript,
   type ScriptLanguageName,
 } from "@al-ft/midgard-core/codec";
@@ -38,10 +38,7 @@ import { mintDeltaAssets } from "./balancing.js";
 import type { BuilderState } from "./context.js";
 import { normalizeHashHex, normalizeNonNegativeBigInt } from "./normalizers.js";
 import { cloneRedeemer } from "./state.js";
-import {
-  encodeByteListPreimage,
-  type ScriptMaterialization,
-} from "./unsigned-tx.js";
+import { type ScriptMaterialization } from "./unsigned-tx.js";
 
 type KnownScriptSource = {
   readonly sourceId: string;
@@ -467,31 +464,25 @@ const effectiveMints = (
     }));
 };
 
-const mintPreimageCbor = (mints: readonly EffectiveMint[]): Buffer => {
-  if (mints.length === 0) {
-    return Buffer.from(EMPTY_CBOR_LIST);
-  }
-  const cborMap = new Map<Buffer, Map<Buffer, bigint>>();
+const mintTyped = (mints: readonly EffectiveMint[]): MidgardMint => {
+  const out = new Map<string, Map<string, bigint>>();
   for (const { policyId, assets } of mints) {
-    const assetMap = new Map<Buffer, bigint>();
+    const inner = new Map<string, bigint>();
     for (const [assetName, quantity] of Object.entries(assets)) {
-      assetMap.set(Buffer.from(assetName, "hex"), quantity);
+      if (quantity === 0n) continue;
+      inner.set(assetName, quantity);
     }
-    cborMap.set(Buffer.from(policyId, "hex"), assetMap);
+    if (inner.size > 0) out.set(policyId, inner);
   }
-  return encodeCbor(cborMap);
+  return out;
 };
 
-const requiredObserversPreimageCbor = (
+const requiredObserversTyped = (
   observers: readonly ObserverIntent[],
-): Buffer =>
-  observers.length === 0
-    ? Buffer.from(EMPTY_CBOR_LIST)
-    : encodeByteListPreimage(
-        [...new Set(observers.map(({ scriptHash }) => scriptHash))]
-          .sort()
-          .map((hash) => Buffer.from(hash, "hex")),
-      );
+): Buffer[] =>
+  [...new Set(observers.map(({ scriptHash }) => scriptHash))]
+    .sort()
+    .map((hash) => Buffer.from(hash, "hex"));
 
 const pointerKey = (pointer: RedeemerPointer): string =>
   `${pointer.tag.toString()}:${pointer.index.toString(10)}`;
@@ -636,7 +627,7 @@ const addRequiredExecution = ({
 
 const encodeRedeemers = (redeemers: readonly DerivedRedeemer[]): Buffer => {
   if (redeemers.length === 0) {
-    return Buffer.from(EMPTY_CBOR_LIST);
+    return Buffer.alloc(0);
   }
   const seen = new Set<string>();
   const entries = [...redeemers].sort((left, right) => {
@@ -797,27 +788,30 @@ export const deriveScriptMaterialization = (
     }
   }
 
-  const redeemerTxWitsPreimageCbor = encodeRedeemers(redeemers);
-  const redeemerTxWitsHash = computeHash32(redeemerTxWitsPreimageCbor);
+  const redeemerTxWits = encodeRedeemers(redeemers);
+  const redeemerTxWitsHash = computeHash32(
+    encodeRedeemerTxWitsBinary({
+      addrTxWits: [],
+      scriptTxWits: [],
+      redeemerTxWits,
+    }),
+  );
   const requiredLanguages = [...languages].sort();
+  const scriptTxWits: MidgardVersionedScript[] = sources
+    .filter((source) => source.inline)
+    .map((known) => {
+      if (known.witnessScript === undefined) {
+        throw new BuilderInvariantError(
+          "Inline script source missing witness bytes",
+        );
+      }
+      return known.witnessScript;
+    });
   return {
-    requiredObserversPreimageCbor: requiredObserversPreimageCbor(
-      state.scripts.observers,
-    ),
-    mintPreimageCbor: mintPreimageCbor(effective),
-    scriptTxWitsPreimageCbor: encodeMidgardVersionedScriptListPreimage(
-      sources
-        .filter((source) => source.inline)
-        .map((known) => {
-          if (known.witnessScript === undefined) {
-            throw new BuilderInvariantError(
-              "Inline script source missing witness bytes",
-            );
-          }
-          return known.witnessScript;
-        }),
-    ),
-    redeemerTxWitsPreimageCbor,
+    requiredObservers: requiredObserversTyped(state.scripts.observers),
+    mint: mintTyped(effective),
+    scriptTxWits,
+    redeemerTxWits,
     scriptIntegrityHash:
       requiredLanguages.length === 0
         ? Buffer.from(EMPTY_NULL_ROOT)

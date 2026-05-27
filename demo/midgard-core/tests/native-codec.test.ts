@@ -4,11 +4,8 @@ import {
   computeHash32,
   computeMidgardNativeTxId,
   decodeMidgardNativeTxCanonical,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
-  EMPTY_CBOR_LIST,
-  EMPTY_CBOR_NULL,
+  decodeMidgardNativeTxFullFromCanonicalBinary,
   EMPTY_NULL_ROOT,
-  encodeCbor,
   encodeMidgardNativeTxBodyCompact,
   encodeMidgardNativeTxCanonical,
   materializeMidgardNativeTxFromCanonical,
@@ -24,71 +21,40 @@ const makeCanonical = (): MidgardNativeTxCanonical => ({
   version: MIDGARD_NATIVE_TX_VERSION,
   validity: "TxIsValid",
   body: {
-    spendInputsPreimageCbor: EMPTY_CBOR_LIST,
-    referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
-    outputsPreimageCbor: EMPTY_CBOR_LIST,
+    spendInputs: [],
+    referenceInputs: [],
+    outputs: [],
     fee: 0n,
     validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
     validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
-    requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
-    requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
-    mintPreimageCbor: EMPTY_CBOR_LIST,
+    requiredObservers: [],
+    requiredSigners: [],
+    mint: new Map(),
     scriptIntegrityHash: EMPTY_NULL_ROOT,
     auxiliaryDataHash: EMPTY_NULL_ROOT,
     networkId: MIDGARD_NATIVE_NETWORK_ID_NONE,
   },
   witnessSet: {
-    addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-    scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-    redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+    addrTxWits: [],
+    scriptTxWits: [],
+    redeemerTxWits: Buffer.alloc(0),
   },
 });
 
-const compactValue = (tx: MidgardNativeTxFull): readonly unknown[] => [
-  tx.compact.version,
-  computeMidgardNativeTxId(tx),
-  tx.compact.transactionWitnessSetHash,
-  0n,
-];
-
-const bodyFullValue = (tx: MidgardNativeTxFull): readonly unknown[] => [
-  tx.compact.transactionBody.spendInputsHash,
-  tx.body.spendInputsPreimageCbor,
-  tx.compact.transactionBody.referenceInputsHash,
-  tx.body.referenceInputsPreimageCbor,
-  tx.compact.transactionBody.outputsHash,
-  tx.body.outputsPreimageCbor,
-  tx.body.fee,
-  tx.body.validityIntervalStart,
-  tx.body.validityIntervalEnd,
-  tx.compact.transactionBody.requiredObserversHash,
-  tx.body.requiredObserversPreimageCbor,
-  tx.compact.transactionBody.requiredSignersHash,
-  tx.body.requiredSignersPreimageCbor,
-  tx.compact.transactionBody.mintHash,
-  tx.body.mintPreimageCbor,
-  tx.body.scriptIntegrityHash,
-  tx.body.auxiliaryDataHash,
-  tx.body.networkId,
-];
-
-describe("Midgard native v1 codec", () => {
-  it("round trips canonical transaction CBOR into a materialized full transaction", () => {
+describe("Midgard native v1 binary codec", () => {
+  it("round trips canonical transaction binary into a materialized full transaction", () => {
     const tx = materializeMidgardNativeTxFromCanonical(makeCanonical());
     const encoded = encodeMidgardNativeTxCanonical(tx);
-    const decoded = decodeMidgardNativeTxFullFromCanonicalCbor(encoded);
+    const decoded = decodeMidgardNativeTxFullFromCanonicalBinary(encoded);
 
     expect(decoded.version).toBe(MIDGARD_NATIVE_TX_VERSION);
     expect(decoded.compact.transactionBody).toEqual(tx.compact.transactionBody);
     expect(decoded.compact.transactionWitnessSetHash).toEqual(
       tx.compact.transactionWitnessSetHash,
     );
-    expect(decoded.compact.transactionBody.mintHash).toEqual(
-      computeHash32(EMPTY_CBOR_LIST),
-    );
   });
 
-  it("decodes canonical transaction CBOR without deriving compact fields", () => {
+  it("decodes canonical transaction binary without deriving compact fields", () => {
     const canonical = makeCanonical();
     const decoded = decodeMidgardNativeTxCanonical(
       encodeMidgardNativeTxCanonical(canonical),
@@ -105,28 +71,6 @@ describe("Midgard native v1 codec", () => {
       computeHash32(
         encodeMidgardNativeTxBodyCompact(tx.compact.transactionBody),
       ),
-    );
-  });
-
-  it("rejects the old embedded-compact transaction format", () => {
-    const tx = materializeMidgardNativeTxFromCanonical(makeCanonical());
-    const legacyWitnessSet = [
-      tx.compact.transactionWitnessSetHash,
-      tx.witnessSet.addrTxWitsPreimageCbor,
-      tx.compact.transactionWitnessSetHash,
-      tx.witnessSet.scriptTxWitsPreimageCbor,
-      tx.compact.transactionWitnessSetHash,
-      tx.witnessSet.redeemerTxWitsPreimageCbor,
-    ];
-    const encoded = encodeCbor([
-      MIDGARD_NATIVE_TX_VERSION,
-      compactValue(tx),
-      bodyFullValue(tx),
-      legacyWitnessSet,
-    ]);
-
-    expect(() => decodeMidgardNativeTxFullFromCanonicalCbor(encoded)).toThrow(
-      /transaction\[1\] must have exactly 12 elements/,
     );
   });
 
@@ -148,16 +92,16 @@ describe("Midgard native v1 codec", () => {
     );
   });
 
-  it("rejects trailing CBOR bytes", () => {
+  it("rejects trailing bytes after canonical envelope", () => {
     const encoded = encodeMidgardNativeTxCanonical(
       materializeMidgardNativeTxFromCanonical(makeCanonical()),
     );
 
     expect(() =>
-      decodeMidgardNativeTxFullFromCanonicalCbor(
-        Buffer.concat([encoded, EMPTY_CBOR_NULL]),
+      decodeMidgardNativeTxFullFromCanonicalBinary(
+        Buffer.concat([encoded, Buffer.alloc(8)]),
       ),
-    ).toThrow(/cbor has trailing bytes/);
+    ).toThrow(/Trailing bytes after transaction/);
   });
 
   it("matches Cardano before timelock boundary semantics", () => {
