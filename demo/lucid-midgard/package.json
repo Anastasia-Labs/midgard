@@ -21,6 +21,8 @@
     "prebuild": "pnpm --dir ../midgard-validation run build",
     "build": "tsup src/index.ts --format esm,cjs --dts --clean",
     "fixtures:native": "tsup scripts/generate-native-tx-aiken-fixtures.ts --format esm --out-dir .tmp/native-fixtures --clean && node .tmp/native-fixtures/generate-native-tx-aiken-fixtures.js",
+    "cbor-tx-to-binary": "tsup --config scripts/cbor-tx-to-binary.tsup.ts && CBOR_TX_TO_BINARY_RUN=1 node .tmp/cbor-bin/cbor-tx-to-binary.js",
+    "binary-tx-to-cbor": "tsup --config scripts/binary-tx-to-cbor.tsup.ts && BINARY_TX_TO_CBOR_RUN=1 node .tmp/cbor-bin/binary-tx-to-cbor.js",
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",
@@ -46,6 +48,7 @@
   "devDependencies": {
     "@lucid-evolution/lucid": "0.4.31",
     "@types/node": "^22.17.0",
+    "cborg": "^4.5.8",
     "rimraf": "^6.0.1",
     "tsup": "^8.4.0",
     "typescript": "^5.7.3",

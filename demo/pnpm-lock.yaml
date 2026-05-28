@@ -45,6 +45,9 @@ importers:
       '@types/node':
         specifier: ^22.17.0
         version: 22.19.17
+      cborg:
+        specifier: ^4.5.8
+        version: 4.5.8
       rimraf:
         specifier: ^6.0.1
         version: 6.1.3
