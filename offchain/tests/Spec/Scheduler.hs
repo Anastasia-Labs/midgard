@@ -65,14 +65,14 @@ tests ms =
         -- Note: It doesn't matter who submits the transaction as long as the shift has ended
         -- for the existing one.
         void $ balanceAndSubmit' operatorWallet1 txBody TrailingChange []
-        Scheduler.Datum {operator = firstOperator} <- currentSchedulerDatum ms
+        Scheduler.ActiveOperator {operator = firstOperator} <- currentSchedulerDatum ms
         -- Advance to the next shift.
         setPOSIXTime nextShiftStartTime
         nextSlot
 
         (txBody, nextShiftStartTime) <- withExceptT TxBuildingError $ scheduleNextOperator False ms
         void $ balanceAndSubmit' operatorWallet2 txBody TrailingChange []
-        Scheduler.Datum {operator = secondOperator} <- currentSchedulerDatum ms
+        Scheduler.ActiveOperator {operator = secondOperator} <- currentSchedulerDatum ms
 
         unless (firstOperator /= secondOperator) $
           throwError $
@@ -83,7 +83,7 @@ tests ms =
 
         (txBody, _) <- withExceptT TxBuildingError $ scheduleNextOperator False ms
         void $ balanceAndSubmit' operatorWallet1 txBody TrailingChange []
-        Scheduler.Datum {operator = thirdOperator} <- currentSchedulerDatum ms
+        Scheduler.ActiveOperator {operator = thirdOperator} <- currentSchedulerDatum ms
 
         -- This time we should have rewinded back to the first operator since there's only two operators.
         unless (firstOperator == thirdOperator) $
@@ -98,14 +98,14 @@ tests ms =
         -- Note: It doesn't matter who submits the transaction as long as the shift has ended
         -- for the existing one.
         void $ balanceAndSubmit' operatorWallet1 txBody TrailingChange []
-        Scheduler.Datum {operator = firstOperator} <- currentSchedulerDatum ms
+        Scheduler.ActiveOperator {operator = firstOperator} <- currentSchedulerDatum ms
         -- Advance to the next shift.
         setPOSIXTime nextShiftStartTime
         nextSlot
 
         (txBody, nextShiftStartTime) <- withExceptT TxBuildingError $ scheduleNextOperator False ms
         void $ balanceAndSubmit' operatorWallet2 txBody TrailingChange []
-        Scheduler.Datum {operator = secondOperator} <- currentSchedulerDatum ms
+        Scheduler.ActiveOperator {operator = secondOperator} <- currentSchedulerDatum ms
 
         unless (firstOperator /= secondOperator) $
           throwError $
@@ -123,7 +123,7 @@ tests ms =
 
         (txBody, _) <- withExceptT TxBuildingError $ scheduleNextOperator False ms
         void $ balanceAndSubmit' operatorWallet1 txBody TrailingChange []
-        Scheduler.Datum {operator = thirdOperator} <- currentSchedulerDatum ms
+        Scheduler.ActiveOperator {operator = thirdOperator} <- currentSchedulerDatum ms
 
         -- This time we should have rewinded back to the first operator since there's only two operators.
         unless (firstOperator == thirdOperator) $

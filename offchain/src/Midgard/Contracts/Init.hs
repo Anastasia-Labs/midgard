@@ -1,7 +1,6 @@
 module Midgard.Contracts.Init (publishMidgardMintingPolicy, initProtocol) where
 
 import Control.Monad.Except (MonadError)
-import Data.Time.Clock.POSIX (utcTimeToPOSIXSeconds)
 
 import Cardano.Api qualified as C
 import Convex.BuildTx (
@@ -13,8 +12,7 @@ import Convex.BuildTx (
   payToScriptInlineDatum,
   setMinAdaDepositAll,
  )
-import Convex.Class (MonadBlockchain (queryNetworkId, queryProtocolParameters, querySlotNo))
-import Convex.PlutusLedger.V1 (transPOSIXTime)
+import Convex.Class (MonadBlockchain (queryNetworkId, queryProtocolParameters))
 import PlutusLedgerApi.V1 (ScriptHash (ScriptHash), currencySymbol, scriptHashAddress, toBuiltin)
 import Ply (
   PlutusVersion (PlutusV3),
@@ -27,7 +25,6 @@ import Midgard.Contracts.ActiveOperators (initActiveOperators)
 import Midgard.Contracts.RegisteredOperators (initRegisteredOperators)
 import Midgard.Contracts.RetiredOperators (initRetiredOperators)
 import Midgard.Contracts.Scheduler (initScheduler)
-import Midgard.Contracts.Utils (slotToBeginUTCTime)
 import Midgard.ScriptUtils (mintingPolicyId, policyIdBytes, scriptHashBytes, toMintingPolicy, validatorHash)
 import Midgard.Scripts (
   MidgardRefScripts (..),
@@ -56,8 +53,6 @@ initProtocol
     do
       netId <- queryNetworkId
       params <- queryProtocolParameters
-      (currentSlot, _, _) <- querySlotNo
-      currentTime <- utcTimeToPOSIXSeconds <$> slotToBeginUTCTime currentSlot
       pure . execBuildTx $ do
         -- The hub oracle is required for all initializations.
         -- TODO (chase): The real hub oracle must be parameterized by a nonce UTxO.
@@ -100,7 +95,7 @@ initProtocol
         initRegisteredOperators netId scripts refScripts
         initActiveOperators netId scripts refScripts
         initRetiredOperators netId scripts refScripts
-        initScheduler netId (transPOSIXTime currentTime) scripts
+        initScheduler netId scripts
         setMinAdaDepositAll params
     where
       scriptCurrencySymbol = currencySymbol . policyIdBytes . mintingPolicyId

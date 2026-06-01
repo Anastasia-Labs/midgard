@@ -1,4 +1,4 @@
-module Midgard.Contracts.Scheduler (initScheduler, scheduleNextOperator) where
+module Midgard.Contracts.Scheduler (initScheduler, scheduleNextOperator, currentScheduleInfo) where
 
 import Control.Monad (guard, when)
 import Control.Monad.Except (MonadError (throwError))
@@ -7,7 +7,7 @@ import Control.Monad.Trans (MonadTrans (lift))
 import Control.Monad.Trans.Maybe (MaybeT (runMaybeT))
 import Data.ByteString qualified as BS
 import Data.Foldable (traverse_)
-import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
+import Data.Time.Clock.POSIX (posixSecondsToUTCTime, utcTimeToPOSIXSeconds)
 
 import Cardano.Api qualified as C
 import Convex.BuildTx (
@@ -44,6 +44,7 @@ import Midgard.Contracts.Utils (
   findUTxOWithLink,
   inlineDatumFromUTxO,
   listAssetNameFromUTxO,
+  slotToEndUTCTime,
   spendPlutusInlineDatumWithRedeemerFinal,
   utcTimeToEnclosingSlot,
  )
@@ -70,24 +71,17 @@ initScheduler ::
   , C.IsBabbageBasedEra era
   ) =>
   C.NetworkId ->
-  POSIXTime ->
   MidgardScripts ->
   m ()
 initScheduler
   netId
-  startTime
   MidgardScripts {schedulerValidator, schedulerPolicy} = do
     let C.PolicyId policyId = mintingPolicyId schedulerPolicy
     -- The scheduler token should be minted.
     mintPlutus (toMintingPolicy schedulerPolicy) Scheduler.Init Scheduler.assetName 1
     -- And sent to the scheduler validator.
     let datum :: Scheduler.Datum
-        datum =
-          Scheduler.Datum
-            { -- Starts with an invalid pub key hash. The aim is to replace it after the shift end time.
-              operator = PubKeyHash $ PlutusTx.toBuiltin BS.empty
-            , startTime = startTime
-            }
+        datum = Scheduler.NoActiveOperators
     payToScriptInlineDatum
       netId
       (validatorHash schedulerValidator)
@@ -344,6 +338,37 @@ constructAdvanceOrRewind
                 , activeNodeRefInputIndex = toInteger $ findIndexReference predecessorActiveNodeTxIn txBody
                 }
         pure (assetNameToActiveOperatorKey activeNodeAssetName, [], mkRedeemer, Nothing)
+
+-- | Obtain the currently scheduled operator PKH and the next shift start time as per the scheduler TxIn.
+currentScheduleInfo ::
+  forall era m.
+  ( MonadError String m
+  , MonadBlockchain era m
+  , MonadUtxoQuery m
+  , C.HasScriptLanguageInEra C.PlutusScriptV3 era
+  , C.IsBabbageBasedEra era
+  ) =>
+  MidgardScripts ->
+  m (C.TxIn, Maybe (PubKeyHash, POSIXTime))
+currentScheduleInfo MidgardScripts {schedulerValidator, schedulerPolicy} = do
+  schedulerUtxos <-
+    utxosByPaymentCredential $
+      C.PaymentCredentialByScript $
+        validatorHash schedulerValidator
+  (schedulerTxIn, (schedulerUtxoAnyEra, _)) <-
+    maybe (throwError "No scheduler state found") pure $
+      findUTxOWithAsset schedulerUtxos $
+        C.AssetId (mintingPolicyId schedulerPolicy) Scheduler.assetName
+  let schedulerTxOut = toTxOut @era schedulerUtxoAnyEra
+  -- Obtain the current operator and shift info.
+  schedulerDatum <-
+    maybe (throwError "Invalid scheduler datum") pure $
+      inlineDatumFromUTxO @Scheduler.Datum schedulerTxOut
+  pure . (schedulerTxIn,) $ case schedulerDatum of
+    Scheduler.NoActiveOperators -> Nothing
+    Scheduler.ActiveOperator {startTime = currentStartTime, operator = currentOperator} ->
+      let nextShiftStartTime = unTransPOSIXTime currentStartTime + shiftDuration
+       in Just (currentOperator, transPOSIXTime nextShiftStartTime)
 
 assetNameToActiveOperatorKey :: C.AssetName -> BuiltinByteString
 assetNameToActiveOperatorKey =
