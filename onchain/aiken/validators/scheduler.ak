@@ -19,13 +19,13 @@ use midgard/operator_directory
 use midgard/operator_directory/active_operators
 use midgard/operator_directory/registered_operators
 use midgard/scheduler.{
-  ActiveOperator, AppointFirstOperator, SchedDatum, Deinit, GoToNextDueToEndOfShift,
+  ActiveOperator, AppointFirstOperator, Deinit, GoToNextDueToEndOfShift,
   GoToNextDueToOperatorRemoval, GoToNextDueToSkippedOperator, Init, MintRedeemer,
   NeglectedDeposit, NeglectedTxOrder, NeglectedUserEvent, NeglectedWithdrawal,
   NoActiveOperators, NoNeglectedUserEvent, OperatorRemovalReason,
   OperatorRetirement, OperatorSlashing, RewindDueToEndOfShift,
-  RewindDueToOperatorRemoval, RewindDueToSkippedOperator, SpendRedeemer,
-  asset_name, shift_end_time,
+  RewindDueToOperatorRemoval, RewindDueToSkippedOperator, SchedDatum,
+  SpendRedeemer, asset_name, shift_end_time,
 }
 use midgard/state_queue
 use midgard/user_events
