@@ -1,8 +1,11 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module Midgard.Types.Scheduler (
+  AdvancingApproach (..),
   Datum (..),
   MintRedeemer (..),
+  NeglectedUserEvent (..),
+  OperatorRemovalReason (..),
   SpendRedeemer (..),
   assetName,
 ) where
@@ -20,16 +23,19 @@ import Ply (PlyArg)
 assetName :: C.AssetName
 assetName = C.UnsafeAssetName $ BS8.pack "MIDGARD_SCHEDULER"
 
-data Datum = Datum
-  { operator :: PubKeyHash
-  , startTime :: POSIXTime
-  }
+data Datum
+  = NoActiveOperators
+  | ActiveOperator
+      { operator :: PubKeyHash
+      , startTime :: POSIXTime
+      }
   deriving stock (Eq, Show, Generic)
   deriving anyclass (HasBlueprintDefinition)
 
 $( makeIsDataSchemaIndexed
      ''Datum
-     [ ('Datum, 0)
+     [ ('NoActiveOperators, 0)
+     , ('ActiveOperator, 1)
      ]
  )
 
@@ -48,26 +54,109 @@ $( makeIsDataSchemaIndexed
 
 instance PlyArg MintRedeemer
 
-data SpendRedeemer
-  = Advance
-      { schedulerInputIndex :: Integer
-      , schedulerOutputIndex :: Integer
-      , activeNodeRefInputIndex :: Integer
+data OperatorRemovalReason
+  = OperatorRetirement
+  | OperatorSlashing
+  deriving stock (Eq, Show, Generic)
+  deriving anyclass (HasBlueprintDefinition)
+
+$( makeIsDataSchemaIndexed
+     ''OperatorRemovalReason
+     [ ('OperatorRetirement, 0)
+     , ('OperatorSlashing, 1)
+     ]
+ )
+
+data NeglectedUserEvent
+  = NoNeglectedUserEvent
+  | NeglectedDeposit
+      { depositRefInputIndex :: Integer
       }
-  | Rewind
-      { schedulerInputIndex :: Integer
-      , schedulerOutputIndex :: Integer
-      , activeNodeRefInputIndex :: Integer
-      , activeRootRefInputIndex :: Integer
+  | NeglectedWithdrawal
+      { withdrawalRefInputIndex :: Integer
+      }
+  | NeglectedTxOrder
+      { txOrderRefInputIndex :: Integer
+      }
+  deriving stock (Eq, Show, Generic)
+  deriving anyclass (HasBlueprintDefinition)
+
+$( makeIsDataSchemaIndexed
+     ''NeglectedUserEvent
+     [ ('NoNeglectedUserEvent, 0)
+     , ('NeglectedDeposit, 1)
+     , ('NeglectedWithdrawal, 2)
+     , ('NeglectedTxOrder, 3)
+     ]
+ )
+
+data AdvancingApproach
+  = GoToNextDueToEndOfShift
+      { newShiftsOperatorNodeRefInputIndex :: Integer
+      }
+  | RewindDueToEndOfShift
+      { activeOperatorsRootRefInputIndex :: Integer
+      , activeOperatorsLastNodeRefInputIndex :: Integer
+      , registeredElementRefInputIndex :: Integer
+      }
+  | GoToNextDueToSkippedOperator
+      { newShiftsOperatorNodeRefInputIndex :: Integer
+      , skippedOperatorNodeInputIndex :: Integer
+      , activeOperatorsSpendRedeemerIndex :: Integer
+      , stateQueueRefInputIndex :: Integer
+      , hubOracleRefInputIndex :: Integer
+      , neglectedUserEvent :: NeglectedUserEvent
+      }
+  | RewindDueToSkippedOperator
+      { activeOperatorsRootRefInputIndex :: Integer
+      , skippedOperatorNodeInputIndex :: Integer
+      , activeOperatorsSpendRedeemerIndex :: Integer
+      , stateQueueRefInputIndex :: Integer
+      , hubOracleRefInputIndex :: Integer
+      , mActiveOperatorsLastNodeRefInputIndex :: Maybe Integer
+      , registeredElementRefInputIndex :: Integer
+      , neglectedUserEvent :: NeglectedUserEvent
+      }
+  | GoToNextDueToOperatorRemoval
+      { activeOperatorsMintRedeemerIndex :: Integer
+      , removalReason :: OperatorRemovalReason
+      }
+  | RewindDueToOperatorRemoval
+      { activeOperatorsMintRedeemerIndex :: Integer
+      , mActiveOperatorsLastNodeRefInputIndex :: Maybe Integer
+      , removalReason :: OperatorRemovalReason
+      , registeredElementRefInputIndex :: Integer
+      }
+  | AppointFirstOperator
+      { newShiftsOperatorNodeRefInputIndex :: Integer
       , registeredElementRefInputIndex :: Integer
       }
   deriving stock (Eq, Show, Generic)
   deriving anyclass (HasBlueprintDefinition)
 
 $( makeIsDataSchemaIndexed
+     ''AdvancingApproach
+     [ ('GoToNextDueToEndOfShift, 0)
+     , ('RewindDueToEndOfShift, 1)
+     , ('GoToNextDueToSkippedOperator, 2)
+     , ('RewindDueToSkippedOperator, 3)
+     , ('GoToNextDueToOperatorRemoval, 4)
+     , ('RewindDueToOperatorRemoval, 5)
+     , ('AppointFirstOperator, 6)
+     ]
+ )
+
+data SpendRedeemer = SpendRedeemer
+  { schedulerInputIndex :: Integer
+  , schedulerOutputIndex :: Integer
+  , advancingApproach :: AdvancingApproach
+  }
+  deriving stock (Eq, Show, Generic)
+  deriving anyclass (HasBlueprintDefinition)
+
+$( makeIsDataSchemaIndexed
      ''SpendRedeemer
-     [ ('Advance, 0)
-     , ('Rewind, 1)
+     [ ('SpendRedeemer, 0)
      ]
  )
 
