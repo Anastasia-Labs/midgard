@@ -33,7 +33,10 @@ const TX_CONFIRMATION_RETRIES = 1;
 const TX_CONFIRMATION_POLL_INTERVAL_MS = 5_000;
 const SUBMIT_RECOVERY_AWAIT_TIMEOUT_MS = 90_000;
 const SUBMIT_RECOVERY_POLL_INTERVAL_MS = 5_000;
-const EARLY_VALIDITY_RETRY_MAX_ATTEMPTS = 6;
+// Budget must outlast brief L1 tip stalls: with a typical ~2-slot lag each
+// retry waits (slotsUntilValid + buffer) ≈ 4s, so 15 attempts gives ~60s of
+// headroom — comfortably past the ~34s tip stalls observed on the devnet.
+const EARLY_VALIDITY_RETRY_MAX_ATTEMPTS = 15;
 const EARLY_VALIDITY_RETRY_SLOT_BUFFER = 2;
 const SLOT_LENGTH_MS = 1_000;
 
