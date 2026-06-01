@@ -19,7 +19,6 @@ import {
 } from "@al-ft/midgard-core/assets";
 import {
   decodeMidgardAddressBytes,
-  decodeMidgardNativeByteListPreimage,
   encodeMidgardAddressText,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   midgardAddressFromText,
@@ -414,11 +413,8 @@ const selectedInputsFromCompletedTx = (
   const byLabel = new Map(
     availableUtxos.map((utxo) => [outRefLabel(utxo), utxo]),
   );
-  return decodeMidgardNativeByteListPreimage(
-    completed.tx.body.spendInputsPreimageCbor,
-  ).map((bytes) => {
-    const input = CML.TransactionInput.from_cbor_bytes(bytes);
-    const label = `${input.transaction_id().to_hex()}#${input.index().toString()}`;
+  return completed.tx.body.spendInputs.map((ref) => {
+    const label = `${ref.txId.toString("hex")}#${ref.index.toString()}`;
     const utxo = byLabel.get(label);
     if (utxo === undefined) {
       throw new Error(`Built transfer selected unknown input ${label}.`);

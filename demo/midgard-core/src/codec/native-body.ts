@@ -1,196 +1,315 @@
-import { asBytes, decodeSingleCbor, encodeCbor } from "./cbor.js";
+/**
+ * Binary encoding for the MidgardNativeTx body (canonical + compact).
+ *
+ * Layout (canonical):
+ *   Static:
+ *     spend_inputs:      u64 len + n × outref_static (40 bytes each)
+ *     reference_inputs:  u64 len + n × outref_static
+ *     outputs:           u64 len + n × output.static
+ *     fee:               u64
+ *     validity_start:    i64
+ *     validity_end:      i64
+ *     required_observers: u64 len + n × var-bytes static (u64 len each)
+ *     required_signers:  u64 len + n × hash28
+ *     mint.static
+ *     script_integrity_hash (32)
+ *     auxiliary_data_hash   (32)
+ *     network_id (u64)
+ *   Dynamic:
+ *     outputs[*].dynamic
+ *     required_observers[*] bytes + pad
+ *     mint.dynamic
+ *
+ * Compact form is fully static (12 fields, no dynamic section).
+ */
+
+import {
+  BinaryReader,
+  BinaryWriter,
+  readBigI64,
+  readBigU64,
+  writeBigI64,
+  writeBigU64,
+} from "./binary.js";
+import {
+  readBytesListDynamic,
+  readBytesListStatic,
+  readHash28ListStatic,
+  readHash32,
+  readOutputReferenceListStatic,
+  writeBytesListDynamic,
+  writeBytesListStatic,
+  writeHash28ListStatic,
+  writeHash32,
+  writeOutputReferenceListStatic,
+  type OutputReference,
+  type Hash28,
+} from "./binary-types.js";
 import { computeHash32, ensureHash32, type Hash32 } from "./hash.js";
 import type {
   MidgardNativeTxBodyCanonical,
   MidgardNativeTxBodyCompact,
 } from "./native.js";
-import { asFixedArray, asSigned, asUnsigned } from "./native-validation.js";
+import {
+  readMidgardTxOutputListDynamic,
+  readMidgardTxOutputListStatic,
+  writeMidgardTxOutputListDynamic,
+  writeMidgardTxOutputListStatic,
+  type MidgardTxOutput,
+} from "./output.js";
+import {
+  encodeMidgardMint,
+  readMidgardMintDynamic,
+  readMidgardMintStatic,
+  writeMidgardMintDynamic,
+  writeMidgardMintStatic,
+} from "./value.js";
 
-type NativeTxBodyCompactValue = readonly [
-  Hash32,
-  Hash32,
-  Hash32,
-  bigint,
-  bigint,
-  bigint,
-  Hash32,
-  Hash32,
-  Hash32,
-  Hash32,
-  Hash32,
-  bigint,
-];
+// ===========================================================================
+// Canonical body (binary)
+// ===========================================================================
 
-type NativeTxBodyCanonicalValue = readonly [
-  Buffer,
-  Buffer,
-  Buffer,
-  bigint,
-  bigint,
-  bigint,
-  Buffer,
-  Buffer,
-  Buffer,
-  Hash32,
-  Hash32,
-  bigint,
-];
-
-const itemField = (fieldName: string, index: number): string =>
-  `${fieldName}[${index}]`;
-
-const hashItem = (
-  value: readonly unknown[],
-  index: number,
-  fieldName: string,
-): Hash32 => {
-  const field = itemField(fieldName, index);
-  return ensureHash32(asBytes(value[index], field), field);
-};
-
-const bytesItem = (
-  value: readonly unknown[],
-  index: number,
-  fieldName: string,
-): Buffer => asBytes(value[index], itemField(fieldName, index));
-
-export const encodeNativeTxBodyCompactValue = (
-  body: MidgardNativeTxBodyCompact,
-): NativeTxBodyCompactValue => [
-  ensureHash32(
-    body.spendInputsHash,
-    "transaction_body_compact.spend_inputs_hash",
-  ),
-  ensureHash32(
-    body.referenceInputsHash,
-    "transaction_body_compact.reference_inputs_hash",
-  ),
-  ensureHash32(body.outputsHash, "transaction_body_compact.outputs_hash"),
-  asUnsigned(body.fee, "transaction_body_compact.fee"),
-  asSigned(
-    body.validityIntervalStart,
-    "transaction_body_compact.validity_interval_start",
-  ),
-  asSigned(
-    body.validityIntervalEnd,
-    "transaction_body_compact.validity_interval_end",
-  ),
-  ensureHash32(
-    body.requiredObserversHash,
-    "transaction_body_compact.required_observers_hash",
-  ),
-  ensureHash32(
-    body.requiredSignersHash,
-    "transaction_body_compact.required_signers_hash",
-  ),
-  ensureHash32(body.mintHash, "transaction_body_compact.mint_hash"),
-  ensureHash32(
-    body.scriptIntegrityHash,
-    "transaction_body_compact.script_integrity_hash",
-  ),
-  ensureHash32(
-    body.auxiliaryDataHash,
-    "transaction_body_compact.auxiliary_data_hash",
-  ),
-  asUnsigned(body.networkId, "transaction_body_compact.network_id"),
-];
-
-export const decodeNativeTxBodyCompactValue = (
-  value: unknown,
-  fieldName: string,
-): MidgardNativeTxBodyCompact => {
-  const v = asFixedArray(value, 12, fieldName);
-  return {
-    spendInputsHash: hashItem(v, 0, fieldName),
-    referenceInputsHash: hashItem(v, 1, fieldName),
-    outputsHash: hashItem(v, 2, fieldName),
-    fee: asUnsigned(v[3], `${fieldName}[3]`),
-    validityIntervalStart: asSigned(v[4], `${fieldName}[4]`),
-    validityIntervalEnd: asSigned(v[5], `${fieldName}[5]`),
-    requiredObserversHash: hashItem(v, 6, fieldName),
-    requiredSignersHash: hashItem(v, 7, fieldName),
-    mintHash: hashItem(v, 8, fieldName),
-    scriptIntegrityHash: hashItem(v, 9, fieldName),
-    auxiliaryDataHash: hashItem(v, 10, fieldName),
-    networkId: asUnsigned(v[11], `${fieldName}[11]`),
-  };
-};
-
-export const encodeNativeTxBodyCanonicalValue = (
+export const writeNativeTxBodyCanonicalStatic = (
+  w: BinaryWriter,
   body: MidgardNativeTxBodyCanonical,
-): NativeTxBodyCanonicalValue => [
-  Buffer.from(body.spendInputsPreimageCbor),
-  Buffer.from(body.referenceInputsPreimageCbor),
-  Buffer.from(body.outputsPreimageCbor),
-  asUnsigned(body.fee, "transaction_body.fee"),
-  asSigned(
-    body.validityIntervalStart,
-    "transaction_body.validity_interval_start",
-  ),
-  asSigned(body.validityIntervalEnd, "transaction_body.validity_interval_end"),
-  Buffer.from(body.requiredObserversPreimageCbor),
-  Buffer.from(body.requiredSignersPreimageCbor),
-  Buffer.from(body.mintPreimageCbor),
-  ensureHash32(
-    body.scriptIntegrityHash,
-    "transaction_body.script_integrity_hash",
-  ),
-  ensureHash32(body.auxiliaryDataHash, "transaction_body.auxiliary_data_hash"),
-  asUnsigned(body.networkId, "transaction_body.network_id"),
-];
+): void => {
+  writeOutputReferenceListStatic(w, body.spendInputs);
+  writeOutputReferenceListStatic(w, body.referenceInputs);
+  writeMidgardTxOutputListStatic(w, body.outputs);
+  writeBigU64(w, body.fee);
+  writeBigI64(w, body.validityIntervalStart);
+  writeBigI64(w, body.validityIntervalEnd);
+  writeBytesListStatic(w, body.requiredObservers);
+  writeHash28ListStatic(w, body.requiredSigners);
+  writeMidgardMintStatic(w, body.mint);
+  writeHash32(w, body.scriptIntegrityHash);
+  writeHash32(w, body.auxiliaryDataHash);
+  writeBigU64(w, body.networkId);
+};
 
-export const decodeNativeTxBodyCanonicalValue = (
-  value: unknown,
-  fieldName: string,
-): MidgardNativeTxBodyCanonical => {
-  const v = asFixedArray(value, 12, fieldName);
+export const writeNativeTxBodyCanonicalDynamic = (
+  w: BinaryWriter,
+  body: MidgardNativeTxBodyCanonical,
+): void => {
+  writeMidgardTxOutputListDynamic(w, body.outputs);
+  writeBytesListDynamic(w, body.requiredObservers);
+  writeMidgardMintDynamic(w, body.mint);
+};
+
+type BodyPartial = {
+  readonly spendInputs: OutputReference[];
+  readonly referenceInputs: OutputReference[];
+  readonly outputPartials: ReturnType<typeof readMidgardTxOutputListStatic>;
+  readonly fee: bigint;
+  readonly validityIntervalStart: bigint;
+  readonly validityIntervalEnd: bigint;
+  readonly observerLengths: readonly number[];
+  readonly requiredSigners: Hash28[];
+  readonly mintPartial: ReturnType<typeof readMidgardMintStatic>;
+  readonly scriptIntegrityHash: Hash32;
+  readonly auxiliaryDataHash: Hash32;
+  readonly networkId: bigint;
+};
+
+export const readNativeTxBodyCanonicalStatic = (
+  r: BinaryReader,
+): BodyPartial => {
+  const spendInputs = readOutputReferenceListStatic(r);
+  const referenceInputs = readOutputReferenceListStatic(r);
+  const outputPartials = readMidgardTxOutputListStatic(r);
+  const fee = readBigU64(r);
+  const validityIntervalStart = readBigI64(r);
+  const validityIntervalEnd = readBigI64(r);
+  const { lengths: observerLengths } = readBytesListStatic(r);
+  const requiredSigners = readHash28ListStatic(r);
+  const mintPartial = readMidgardMintStatic(r);
+  const scriptIntegrityHash = readHash32(r);
+  const auxiliaryDataHash = readHash32(r);
+  const networkId = readBigU64(r);
   return {
-    spendInputsPreimageCbor: bytesItem(v, 0, fieldName),
-    referenceInputsPreimageCbor: bytesItem(v, 1, fieldName),
-    outputsPreimageCbor: bytesItem(v, 2, fieldName),
-    fee: asUnsigned(v[3], `${fieldName}[3]`),
-    validityIntervalStart: asSigned(v[4], `${fieldName}[4]`),
-    validityIntervalEnd: asSigned(v[5], `${fieldName}[5]`),
-    requiredObserversPreimageCbor: bytesItem(v, 6, fieldName),
-    requiredSignersPreimageCbor: bytesItem(v, 7, fieldName),
-    mintPreimageCbor: bytesItem(v, 8, fieldName),
-    scriptIntegrityHash: hashItem(v, 9, fieldName),
-    auxiliaryDataHash: hashItem(v, 10, fieldName),
-    networkId: asUnsigned(v[11], `${fieldName}[11]`),
+    spendInputs,
+    referenceInputs,
+    outputPartials,
+    fee,
+    validityIntervalStart,
+    validityIntervalEnd,
+    observerLengths,
+    requiredSigners,
+    mintPartial,
+    scriptIntegrityHash,
+    auxiliaryDataHash,
+    networkId,
   };
+};
+
+export const readNativeTxBodyCanonicalDynamic = (
+  r: BinaryReader,
+  partial: BodyPartial,
+): MidgardNativeTxBodyCanonical => {
+  const outputs = readMidgardTxOutputListDynamic(r, partial.outputPartials);
+  const requiredObservers = readBytesListDynamic(r, partial.observerLengths);
+  const mint = readMidgardMintDynamic(r, partial.mintPartial.partial);
+  return {
+    spendInputs: partial.spendInputs,
+    referenceInputs: partial.referenceInputs,
+    outputs,
+    fee: partial.fee,
+    validityIntervalStart: partial.validityIntervalStart,
+    validityIntervalEnd: partial.validityIntervalEnd,
+    requiredObservers,
+    requiredSigners: partial.requiredSigners,
+    mint,
+    scriptIntegrityHash: partial.scriptIntegrityHash,
+    auxiliaryDataHash: partial.auxiliaryDataHash,
+    networkId: partial.networkId,
+  };
+};
+
+export const encodeNativeTxBodyCanonical = (
+  body: MidgardNativeTxBodyCanonical,
+): Buffer => {
+  const sw = new BinaryWriter();
+  writeNativeTxBodyCanonicalStatic(sw, body);
+  const dw = new BinaryWriter();
+  writeNativeTxBodyCanonicalDynamic(dw, body);
+  return Buffer.concat([sw.toBytes(), dw.toBytes()]);
+};
+
+export const decodeNativeTxBodyCanonical = (
+  bytes: Uint8Array,
+): MidgardNativeTxBodyCanonical => {
+  const r = new BinaryReader(bytes);
+  const partial = readNativeTxBodyCanonicalStatic(r);
+  const body = readNativeTxBodyCanonicalDynamic(r, partial);
+  r.expectEnd("transaction_body");
+  return body;
+};
+
+// ===========================================================================
+// Compact body (binary, fully static — 12 fields)
+// ===========================================================================
+
+export const writeNativeTxBodyCompactStatic = (
+  w: BinaryWriter,
+  body: MidgardNativeTxBodyCompact,
+): void => {
+  writeHash32(w, body.spendInputsHash);
+  writeHash32(w, body.referenceInputsHash);
+  writeHash32(w, body.outputsHash);
+  writeBigU64(w, body.fee);
+  writeBigI64(w, body.validityIntervalStart);
+  writeBigI64(w, body.validityIntervalEnd);
+  writeHash32(w, body.requiredObserversHash);
+  writeHash32(w, body.requiredSignersHash);
+  writeHash32(w, body.mintHash);
+  writeHash32(w, body.scriptIntegrityHash);
+  writeHash32(w, body.auxiliaryDataHash);
+  writeBigU64(w, body.networkId);
+};
+
+export const readNativeTxBodyCompactStatic = (
+  r: BinaryReader,
+): MidgardNativeTxBodyCompact => ({
+  spendInputsHash: readHash32(r),
+  referenceInputsHash: readHash32(r),
+  outputsHash: readHash32(r),
+  fee: readBigU64(r),
+  validityIntervalStart: readBigI64(r),
+  validityIntervalEnd: readBigI64(r),
+  requiredObserversHash: readHash32(r),
+  requiredSignersHash: readHash32(r),
+  mintHash: readHash32(r),
+  scriptIntegrityHash: readHash32(r),
+  auxiliaryDataHash: readHash32(r),
+  networkId: readBigU64(r),
+});
+
+export const encodeNativeTxBodyCompact = (
+  body: MidgardNativeTxBodyCompact,
+): Buffer => {
+  const w = new BinaryWriter();
+  writeNativeTxBodyCompactStatic(w, body);
+  return w.toBytes();
+};
+
+export const decodeNativeTxBodyCompact = (
+  bytes: Uint8Array,
+): MidgardNativeTxBodyCompact => {
+  const r = new BinaryReader(bytes);
+  const body = readNativeTxBodyCompactStatic(r);
+  r.expectEnd("transaction_body_compact");
+  return body;
+};
+
+// ===========================================================================
+// Derivation: per-field hashes from typed preimages.
+// ===========================================================================
+
+const writeBytesListAll = (list: readonly Uint8Array[]): Buffer => {
+  const sw = new BinaryWriter();
+  writeBytesListStatic(sw, list);
+  const dw = new BinaryWriter();
+  writeBytesListDynamic(dw, list);
+  return Buffer.concat([sw.toBytes(), dw.toBytes()]);
+};
+
+const writeOutputRefListAll = (
+  list: readonly OutputReference[],
+): Buffer => {
+  const w = new BinaryWriter();
+  writeOutputReferenceListStatic(w, list);
+  return w.toBytes();
+};
+
+const writeOutputsAll = (outputs: readonly MidgardTxOutput[]): Buffer => {
+  const sw = new BinaryWriter();
+  writeMidgardTxOutputListStatic(sw, outputs);
+  const dw = new BinaryWriter();
+  writeMidgardTxOutputListDynamic(dw, outputs);
+  return Buffer.concat([sw.toBytes(), dw.toBytes()]);
+};
+
+const writeHash28ListAll = (list: readonly Hash28[]): Buffer => {
+  const w = new BinaryWriter();
+  writeHash28ListStatic(w, list);
+  return w.toBytes();
 };
 
 export const deriveNativeTxBodyCompact = (
   body: MidgardNativeTxBodyCanonical,
 ): MidgardNativeTxBodyCompact => ({
-  spendInputsHash: computeHash32(body.spendInputsPreimageCbor),
-  referenceInputsHash: computeHash32(body.referenceInputsPreimageCbor),
-  outputsHash: computeHash32(body.outputsPreimageCbor),
+  spendInputsHash: computeHash32(writeOutputRefListAll(body.spendInputs)),
+  referenceInputsHash: computeHash32(writeOutputRefListAll(body.referenceInputs)),
+  outputsHash: computeHash32(writeOutputsAll(body.outputs)),
   fee: body.fee,
   validityIntervalStart: body.validityIntervalStart,
   validityIntervalEnd: body.validityIntervalEnd,
-  requiredObserversHash: computeHash32(body.requiredObserversPreimageCbor),
-  requiredSignersHash: computeHash32(body.requiredSignersPreimageCbor),
-  mintHash: computeHash32(body.mintPreimageCbor),
-  scriptIntegrityHash: body.scriptIntegrityHash,
-  auxiliaryDataHash: body.auxiliaryDataHash,
+  requiredObserversHash: computeHash32(writeBytesListAll(body.requiredObservers)),
+  requiredSignersHash: computeHash32(writeHash28ListAll(body.requiredSigners)),
+  mintHash: computeHash32(encodeMidgardMint(body.mint)),
+  scriptIntegrityHash: ensureHash32(
+    body.scriptIntegrityHash,
+    "transaction_body.script_integrity_hash",
+  ),
+  auxiliaryDataHash: ensureHash32(
+    body.auxiliaryDataHash,
+    "transaction_body.auxiliary_data_hash",
+  ),
   networkId: body.networkId,
 });
 
-export const encodeNativeTxBodyCompactCbor = (
-  body: MidgardNativeTxBodyCompact,
-): Buffer => encodeCbor(encodeNativeTxBodyCompactValue(body));
-
-export const decodeNativeTxBodyCompactCbor = (
-  bytes: Uint8Array,
-): MidgardNativeTxBodyCompact =>
-  decodeNativeTxBodyCompactValue(decodeSingleCbor(bytes), "transaction_body");
-
-export const encodeNativeTxBodyCanonicalCbor = (
-  body: MidgardNativeTxBodyCanonical,
-): Buffer => encodeCbor(encodeNativeTxBodyCanonicalValue(body));
-
-export const decodeNativeTxBodyCanonicalCbor = (
-  bytes: Uint8Array,
-): MidgardNativeTxBodyCanonical =>
-  decodeNativeTxBodyCanonicalValue(decodeSingleCbor(bytes), "transaction_body");
+// Re-exports for the field-level encoders (used by phase-a / phase-b /
+// midgard-node which previously hashed the preimage CBOR directly).
+export const encodeSpendInputsBinary = (
+  inputs: readonly OutputReference[],
+): Buffer => writeOutputRefListAll(inputs);
+export const encodeReferenceInputsBinary = encodeSpendInputsBinary;
+export const encodeOutputsBinary = (
+  outputs: readonly MidgardTxOutput[],
+): Buffer => writeOutputsAll(outputs);
+export const encodeRequiredObserversBinary = (
+  list: readonly Uint8Array[],
+): Buffer => writeBytesListAll(list);
+export const encodeRequiredSignersBinary = (
+  list: readonly Hash28[],
+): Buffer => writeHash28ListAll(list);

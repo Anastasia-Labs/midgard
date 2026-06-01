@@ -6,9 +6,9 @@ import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 
 import {
-  cardanoTxBytesToMidgardNativeTxCanonicalCbor,
+  cardanoTxBytesToMidgardNativeTxCanonicalBinary,
   computeMidgardNativeTxId,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardNativeTxFullFromCanonicalBinary,
   deriveMidgardNativeTxCompact,
   encodeMidgardNativeTxCanonical,
 } from "@al-ft/midgard-core/codec";
@@ -131,8 +131,6 @@ const TX_SEQUENCE_FIXTURE_PATH = fileURLToPath(
 const OUTPUT_JSON_PATH = fileURLToPath(
   new URL("./output/validation-benchmark.json", import.meta.url),
 );
-const EMPTY_CBOR_LIST = Buffer.from([0x80]);
-
 const phaseAConfig = {
   expectedNetworkId: EXPECTED_NETWORK_ID,
   minFeeA: MIN_FEE_A,
@@ -215,8 +213,8 @@ const buildQueuedBlock = (
     `Tx fixture has ${txFixture.transactions.length} txs, but benchmark size ${size} was requested.`,
   );
   return txFixture.transactions.slice(0, size).map((tx, index) => {
-    const converted = decodeMidgardNativeTxFullFromCanonicalCbor(
-      cardanoTxBytesToMidgardNativeTxCanonicalCbor(
+    const converted = decodeMidgardNativeTxFullFromCanonicalBinary(
+      cardanoTxBytesToMidgardNativeTxCanonicalBinary(
         Buffer.from(tx.cborHex, "hex"),
       ),
     );
@@ -225,13 +223,13 @@ const buildQueuedBlock = (
       validity: "TxIsValid" as const,
       body: {
         ...converted.body,
-        requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
+        requiredSigners: [],
       },
       witnessSet: {
         ...converted.witnessSet,
-        addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-        scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-        redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+        addrTxWits: [],
+        scriptTxWits: [],
+        redeemerTxWits: Buffer.alloc(0),
       },
     };
     const txForQueue = {

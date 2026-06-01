@@ -1,6 +1,6 @@
 import {
   computeMidgardNativeTxId,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardNativeTxFullFromCanonicalBinary,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
 import { CML } from "@lucid-evolution/lucid";
@@ -103,7 +103,7 @@ const memoryProvider = (
   }),
   getCurrentSlot: async () => 0n,
   submitTx: async (txCborHex): Promise<SubmitTxResult> => {
-    const tx = decodeMidgardNativeTxFullFromCanonicalCbor(
+    const tx = decodeMidgardNativeTxFullFromCanonicalBinary(
       Buffer.from(txCborHex, "hex"),
     );
     return {

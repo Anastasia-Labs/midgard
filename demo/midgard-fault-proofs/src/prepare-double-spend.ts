@@ -4,11 +4,8 @@ import { join } from "node:path";
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
   computeMidgardNativeTxId,
-  decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
-  EMPTY_CBOR_LIST,
+  decodeMidgardNativeTxFullFromCanonicalBinary,
   EMPTY_NULL_ROOT,
-  encodeCbor,
   encodeMidgardNativeTxCanonical,
   encodeMidgardNativeTxCompact,
   formatUnknownError,
@@ -16,6 +13,7 @@ import {
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
   type MidgardNativeTxFull,
+  type OutputReference,
 } from "@al-ft/midgard-core";
 import {
   EMPTY_MERKLE_TREE_ROOT,
@@ -260,39 +258,33 @@ export const fetchNodeBlockTransactions = async ({
   );
 };
 
-const bytesHex = (bytes: Uint8Array): string =>
-  Buffer.from(bytes).toString("hex");
-
-const transactionInputCbor = (txHash: string, outputIndex: bigint): Buffer =>
-  Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(txHash),
-      outputIndex,
-    ).to_cbor_bytes(),
-  );
+const sampleOutRef = (txHash: string, outputIndex: number): OutputReference => ({
+  txId: Buffer.from(txHash, "hex"),
+  index: outputIndex,
+});
 
 const sampleNativeTx = (
-  inputs: readonly Buffer[],
+  inputs: readonly OutputReference[],
   fee: bigint,
 ): MidgardNativeTxFull => {
   const body = {
-    spendInputsPreimageCbor: encodeCbor(inputs),
-    referenceInputsPreimageCbor: Buffer.from(EMPTY_CBOR_LIST),
-    outputsPreimageCbor: Buffer.from(EMPTY_CBOR_LIST),
+    spendInputs: inputs,
+    referenceInputs: [],
+    outputs: [],
     fee,
     validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
     validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
-    requiredObserversPreimageCbor: Buffer.from(EMPTY_CBOR_LIST),
-    requiredSignersPreimageCbor: Buffer.from(EMPTY_CBOR_LIST),
-    mintPreimageCbor: Buffer.from(EMPTY_CBOR_LIST),
+    requiredObservers: [],
+    requiredSigners: [],
+    mint: new Map(),
     scriptIntegrityHash: Buffer.from(EMPTY_NULL_ROOT),
     auxiliaryDataHash: Buffer.from(EMPTY_NULL_ROOT),
     networkId: 0n,
   };
   const witnessSet = {
-    addrTxWitsPreimageCbor: Buffer.from(EMPTY_CBOR_LIST),
-    scriptTxWitsPreimageCbor: Buffer.from(EMPTY_CBOR_LIST),
-    redeemerTxWitsPreimageCbor: Buffer.from(EMPTY_CBOR_LIST),
+    addrTxWits: [],
+    scriptTxWits: [],
+    redeemerTxWits: Buffer.alloc(0),
   };
   return materializeMidgardNativeTxFromCanonical({
     version: MIDGARD_NATIVE_TX_VERSION,
@@ -311,16 +303,16 @@ const payloadFromNativeTx = (
 
 export const makeSampleDoubleSpendTransactions =
   (): readonly NodeTransactionPayload[] => {
-    const sharedInput = transactionInputCbor("11".repeat(32), 7n);
+    const sharedInput = sampleOutRef("11".repeat(32), 7);
     const tx1 = sampleNativeTx(
-      [sharedInput, transactionInputCbor("22".repeat(32), 0n)],
+      [sharedInput, sampleOutRef("22".repeat(32), 0)],
       1n,
     );
     const tx2 = sampleNativeTx(
-      [transactionInputCbor("33".repeat(32), 0n), sharedInput],
+      [sampleOutRef("33".repeat(32), 0), sharedInput],
       2n,
     );
-    const tx3 = sampleNativeTx([transactionInputCbor("44".repeat(32), 0n)], 3n);
+    const tx3 = sampleNativeTx([sampleOutRef("44".repeat(32), 0)], 3n);
     return [
       payloadFromNativeTx(tx1),
       payloadFromNativeTx(tx2),
@@ -328,42 +320,22 @@ export const makeSampleDoubleSpendTransactions =
     ];
   };
 
-const outputReferenceFromNativeInput = (
-  bytes: Uint8Array,
-  label: string,
-): OutputReferenceData => {
-  let input: InstanceType<typeof CML.TransactionInput>;
-  try {
-    input = CML.TransactionInput.from_cbor_bytes(bytes);
-  } catch (cause) {
-    throw new Error(
-      `${label} is not a valid Cardano TxOutRef CBOR: ${formatUnknownError(cause)}`,
-    );
-  }
-  const outputIndex = input.index();
-  if (outputIndex < 0n) {
-    throw new Error(`${label}.outputIndex must be non-negative.`);
-  }
-  return {
-    transactionId: input.transaction_id().to_hex(),
-    outputIndex,
-  };
-};
+const outputReferenceFromTyped = (
+  outRef: OutputReference,
+): OutputReferenceData => ({
+  transactionId: outRef.txId.toString("hex"),
+  outputIndex: BigInt(outRef.index),
+});
 
-const decodeNativeInputPreimage = (
-  preimageCbor: Uint8Array,
-  label: string,
-): readonly OutputReferenceData[] =>
-  decodeMidgardNativeByteListPreimage(preimageCbor, label).map(
-    (bytes: Buffer, index: number) =>
-      outputReferenceFromNativeInput(bytes, `${label}[${index.toString()}]`),
-  );
-
-const decodeNativeInputCbors = (
-  preimageCbor: Uint8Array,
-  label: string,
-): readonly string[] =>
-  decodeMidgardNativeByteListPreimage(preimageCbor, label).map(bytesHex);
+const outputReferenceToCardanoInputCborHex = (
+  outRef: OutputReference,
+): string =>
+  Buffer.from(
+    CML.TransactionInput.new(
+      CML.TransactionHash.from_raw_bytes(outRef.txId),
+      BigInt(outRef.index),
+    ).to_cbor_bytes(),
+  ).toString("hex");
 
 const decodeTransactionMaterial = async (
   payload: NodeTransactionPayload,
@@ -372,7 +344,7 @@ const decodeTransactionMaterial = async (
   const txCbor = parseHex(payload.txCbor, `tx ${nodeTxId} CBOR`);
   let nativeTx: MidgardNativeTxFull;
   try {
-    nativeTx = decodeMidgardNativeTxFullFromCanonicalCbor(
+    nativeTx = decodeMidgardNativeTxFullFromCanonicalBinary(
       Buffer.from(txCbor, "hex"),
     );
   } catch (cause) {
@@ -386,13 +358,9 @@ const decodeTransactionMaterial = async (
       `Node tx id mismatch: listed=${nodeTxId}, computed=${computedNodeTxId}.`,
     );
   }
-  const inputs = decodeNativeInputPreimage(
-    nativeTx.body.spendInputsPreimageCbor,
-    `tx ${nodeTxId} spend_inputs`,
-  );
-  const spendInputCbors = decodeNativeInputCbors(
-    nativeTx.body.spendInputsPreimageCbor,
-    `tx ${nodeTxId} spend_inputs`,
+  const inputs = nativeTx.body.spendInputs.map(outputReferenceFromTyped);
+  const spendInputCbors = nativeTx.body.spendInputs.map(
+    outputReferenceToCardanoInputCborHex,
   );
   return {
     nodeTxId,

@@ -8,7 +8,10 @@ import {
   type TxSignError,
   type TxSubmitError,
 } from "@/transactions/utils.js";
-import { resolveAlignedCommitEndTime } from "@/workers/utils/commit-end-time.js";
+import {
+  isCommitEndTimeStillSubmittable,
+  resolveAlignedCommitEndTime,
+} from "@/workers/utils/commit-end-time.js";
 import {
   fetchRealStateQueueWitnessContext,
   type RealStateQueueWitnessContext,
@@ -81,15 +84,23 @@ export const buildUnsignedCommitTx = (
         witnessContext?.operatorWalletView ?? initialOperatorWalletView,
         lucid.referenceScriptsAddress,
       );
-      const refreshedCommitWindow = resolveCommitWindow();
-      if (refreshedCommitWindow.resolvedEndTime === witnessEndTime) {
-        commitWindow = refreshedCommitWindow;
+      // The scheduler witness we just built is aligned with `witnessEndTime`.
+      // Reuse that end-time as long as it is still far enough in the future to
+      // submit. Re-resolving here and requiring an exact match would never
+      // converge: `resolveCommitWindow` floors the end-time at
+      // `now + COMMIT_VALIDITY_FUTURE_BUFFER_MS`, so the value advances with the
+      // wall clock on every (multi-second) witness fetch.
+      if (isCommitEndTimeStillSubmittable(witnessEndTime)) {
         commitWindowStabilized = true;
         break;
       }
+      // The witness fetch consumed enough of the future buffer that the chosen
+      // end-time is no longer safely submittable; re-resolve against the
+      // current clock and rebuild the witness for the advanced window.
+      const refreshedCommitWindow = resolveCommitWindow();
       stabilizationAttempts += 1;
       yield* Effect.logWarning(
-        `Commit end-time advanced while preparing scheduler-aligned witness context; rebuilding with refreshed window (previous=${commitWindow.resolvedEndTime}, next=${refreshedCommitWindow.resolvedEndTime}, candidate=${refreshedCommitWindow.alignedCandidateEndTime}, latestEnd=${latestEndTime}, attempt=${stabilizationAttempts}/${COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS}).`,
+        `Commit end-time fell below the minimum submission buffer while preparing scheduler-aligned witness context; rebuilding with refreshed window (previous=${witnessEndTime}, next=${refreshedCommitWindow.resolvedEndTime}, candidate=${refreshedCommitWindow.alignedCandidateEndTime}, latestEnd=${latestEndTime}, attempt=${stabilizationAttempts}/${COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS}).`,
       );
       commitWindow = refreshedCommitWindow;
     }

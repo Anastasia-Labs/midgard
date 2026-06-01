@@ -1,7 +1,7 @@
 import { Proof, Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { encodeMidgardTxOutput } from "@al-ft/lucid-midgard";
 import {
-  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardNativeTxFullFromCanonicalBinary,
   encodeMidgardNativeTxCompact,
 } from "@al-ft/midgard-core/codec";
 import { normalizeHex } from "@al-ft/midgard-core/hex";
@@ -99,7 +99,7 @@ const applyPendingBatch = (
 
 const encodeTransactionRootValue = (txCanonicalCbor: Buffer): Buffer =>
   encodeMidgardNativeTxCompact(
-    decodeMidgardNativeTxFullFromCanonicalCbor(txCanonicalCbor).compact,
+    decodeMidgardNativeTxFullFromCanonicalBinary(txCanonicalCbor).compact,
   );
 
 export const COMMIT_REJECT_CODE_DECODE_FAILED = "E_COMMIT_CBOR_DESERIALIZATION";

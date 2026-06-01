@@ -1,3 +1,4 @@
+import { encodeMidgardTxOutput } from "@al-ft/lucid-midgard";
 import * as SDK from "@al-ft/midgard-sdk";
 import { TxSubmitError, UTxO, utxoToCore } from "@lucid-evolution/lucid";
 import { Effect, Ref } from "effect";
@@ -44,7 +45,7 @@ const insertGenesisUtxos: Effect.Effect<
     return {
       [LedgerColumns.TX_ID]: Buffer.from(utxo.txHash, "hex"),
       [LedgerColumns.OUTREF]: Buffer.from(core.input().to_cbor_bytes()),
-      [LedgerColumns.OUTPUT]: Buffer.from(core.output().to_cbor_bytes()),
+      [LedgerColumns.OUTPUT]: encodeMidgardTxOutput(utxo.address, utxo.assets),
       [LedgerColumns.ADDRESS]: utxo.address,
     };
   });

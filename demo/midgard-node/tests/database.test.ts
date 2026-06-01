@@ -2,9 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 
 import {
-  cardanoTxBytesToMidgardNativeTxCanonicalCbor,
+  cardanoTxBytesToMidgardNativeTxCanonicalBinary,
   computeMidgardNativeTxId,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardNativeTxFullFromCanonicalBinary,
 } from "@al-ft/midgard-core/codec";
 import { SqlClient } from "@effect/sql";
 import { it } from "@effect/vitest";
@@ -1386,11 +1386,11 @@ const firstFixture = (
 )[0];
 
 const makeValidNativeImmutableEntry = (): TxUtils.Entry => {
-  const nativeTx = cardanoTxBytesToMidgardNativeTxCanonicalCbor(
+  const nativeTx = cardanoTxBytesToMidgardNativeTxCanonicalBinary(
     Buffer.from(firstFixture.cborHex, "hex"),
   );
   const txId = computeMidgardNativeTxId(
-    decodeMidgardNativeTxFullFromCanonicalCbor(nativeTx),
+    decodeMidgardNativeTxFullFromCanonicalBinary(nativeTx),
   );
   return {
     [TxUtils.Columns.TX_ID]: txId,

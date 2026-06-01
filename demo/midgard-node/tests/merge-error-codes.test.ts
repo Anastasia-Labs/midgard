@@ -2,9 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 
 import {
-  cardanoTxBytesToMidgardNativeTxCanonicalCbor,
+  cardanoTxBytesToMidgardNativeTxCanonicalBinary,
   computeMidgardNativeTxId,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardNativeTxFullFromCanonicalBinary,
 } from "@al-ft/midgard-core/codec";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
@@ -116,11 +116,11 @@ describe("preflightDecodeBlockTxs", () => {
    * Converts a transaction fixture into a native transaction accepted by the merge tests.
    */
   const toValidNativeTx = () => {
-    const nativeTxCbor = cardanoTxBytesToMidgardNativeTxCanonicalCbor(
+    const nativeTxCbor = cardanoTxBytesToMidgardNativeTxCanonicalBinary(
       Buffer.from(txFixture.cborHex, "hex"),
     );
     const txId = computeMidgardNativeTxId(
-      decodeMidgardNativeTxFullFromCanonicalCbor(nativeTxCbor),
+      decodeMidgardNativeTxFullFromCanonicalBinary(nativeTxCbor),
     );
     return { txId, txCbor: nativeTxCbor };
   };

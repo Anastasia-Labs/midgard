@@ -1,6 +1,6 @@
 import {
   computeMidgardNativeTxId,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardNativeTxFullFromCanonicalBinary,
   encodeMidgardAddressText,
   encodeMidgardNativeTxCanonical,
   materializeMidgardNativeTxFromCanonical,
@@ -365,7 +365,7 @@ const completeTxMetadataWithAddrWitnesses = (
   tx: MidgardNativeTxFull,
   metadata: CompleteTxMetadata,
 ): CompleteTxMetadata => {
-  const witnesses = decodeAddrWitnesses(tx.witnessSet.addrTxWitsPreimageCbor);
+  const witnesses = decodeAddrWitnesses(tx.witnessSet.addrTxWits);
   return {
     ...metadata,
     txByteLength: encodeMidgardNativeTxCanonical(tx).length,
@@ -512,7 +512,7 @@ export class CompleteTx {
   }
 
   get tx(): MidgardNativeTxFull {
-    return decodeMidgardNativeTxFullFromCanonicalCbor(this.#txCbor);
+    return decodeMidgardNativeTxFullFromCanonicalBinary(this.#txCbor);
   }
 
   get txCbor(): Buffer {
@@ -573,7 +573,7 @@ export class CompleteTx {
     assertTrustedCompleteTx(this, "export partial witnesses");
     return partialWitnessBundleFromWitnesses(
       this.tx,
-      decodeAddrWitnesses(this.tx.witnessSet.addrTxWitsPreimageCbor),
+      decodeAddrWitnesses(this.tx.witnessSet.addrTxWits),
     );
   }
 
@@ -694,7 +694,7 @@ export class CompleteTx {
     }
     const signedTx = await signMidgardNativeTx(this.tx, signer);
     const signedWitnesses = decodeAddrWitnesses(
-      signedTx.witnessSet.addrTxWitsPreimageCbor,
+      signedTx.witnessSet.addrTxWits,
     );
     assertExpectedAddrWitnesses({
       actual: addrWitnessKeyHashes(signedWitnesses),
@@ -910,7 +910,7 @@ export class PartiallySignedTx {
   }
 
   get tx(): MidgardNativeTxFull {
-    return decodeMidgardNativeTxFullFromCanonicalCbor(this.#txCbor);
+    return decodeMidgardNativeTxFullFromCanonicalBinary(this.#txCbor);
   }
 
   get txCbor(): Buffer {
@@ -974,7 +974,7 @@ export class PartiallySignedTx {
   toPartialWitnessBundle(): MidgardPartialWitnessBundle {
     return partialWitnessBundleFromWitnesses(
       this.tx,
-      decodeAddrWitnesses(this.tx.witnessSet.addrTxWitsPreimageCbor),
+      decodeAddrWitnesses(this.tx.witnessSet.addrTxWits),
     );
   }
 
@@ -1338,7 +1338,7 @@ const normalizeUtxo = (utxo: MidgardUtxo): MidgardUtxo => {
     },
     cbor: {
       outRef: outRefCbor,
-      output: Buffer.from(decodedOutput.outputCbor),
+      output: Buffer.from(decodedOutput.outputBytes),
     },
   };
 };

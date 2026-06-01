@@ -1,7 +1,6 @@
 import {
   computeMidgardNativeTxId,
-  decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardNativeTxFullFromCanonicalBinary,
   encodeCbor,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
@@ -78,7 +77,7 @@ const makeProvider = (opts?: {
   }),
   getCurrentSlot: async () => 0n,
   submitTx: async (txCborHex) => {
-    const tx = decodeMidgardNativeTxFullFromCanonicalCbor(
+    const tx = decodeMidgardNativeTxFullFromCanonicalBinary(
       Buffer.from(txCborHex, "hex"),
     );
     return {
@@ -131,10 +130,7 @@ const makeFixture = async () => {
 };
 
 const witnessCount = (tx: CompleteTx | PartiallySignedTx): number =>
-  decodeMidgardNativeByteListPreimage(
-    tx.tx.witnessSet.addrTxWitsPreimageCbor,
-    "native.addr_tx_wits",
-  ).length;
+  tx.tx.witnessSet.addrTxWits.length;
 
 const expectComplete = (tx: CompleteTx | PartiallySignedTx): CompleteTx => {
   expect(tx).toBeInstanceOf(CompleteTx);
