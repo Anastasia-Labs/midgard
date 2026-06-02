@@ -13,7 +13,10 @@ import {
 } from "@/common.js";
 import { authenticateUTxOs, AuthenticUTxO } from "@/internals.js";
 
-import { incompleteInitLinkedListTxProgram } from "./linked-list.js";
+import {
+  ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX,
+  incompleteInitLinkedListTxProgram,
+} from "./linked-list.js";
 
 export const ACTIVE_OPERATORS_ROOT_ASSET_NAME = fromText(
   "MIDGARD_ACTIVE_OPERATORS",
@@ -168,7 +171,6 @@ export const castActiveOperatorDatumToData = (
 
 export type ActiveOperatorInitParams = {
   validator: AuthenticatedValidator;
-  outputIndex?: bigint;
   lovelace?: bigint;
 };
 
@@ -206,6 +208,22 @@ export const fetchActiveOperatorUTxOs = (
     );
   });
 
+export const requireActiveOperatorUTxO = (
+  utxos: readonly ActiveOperatorUTxO[],
+  operatorKeyHash: string,
+): Effect.Effect<ActiveOperatorUTxO, LucidError> => {
+  const assetName = ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX + operatorKeyHash;
+  const match = utxos.find((utxo) => utxo.assetName === assetName);
+  return match === undefined
+    ? Effect.fail(
+        new LucidError({
+          message: `No Active Operator UTxO with key "${operatorKeyHash}" found`,
+          cause: `Expected active operator asset name ${assetName}`,
+        }),
+      )
+    : Effect.succeed(match);
+};
+
 /**
  * Init
  *
@@ -221,9 +239,10 @@ export const incompleteActiveOperatorInitTxProgram = (
     validator: params.validator,
     rootAssetName: ACTIVE_OPERATORS_ROOT_ASSET_NAME,
     data: "",
-    redeemer: Data.to(
-      { Init: { output_index: params.outputIndex ?? 0n } },
-      ActiveOperatorMintRedeemer,
-    ),
+    redeemer: (outputIndex) =>
+      Data.to(
+        { Init: { output_index: outputIndex } },
+        ActiveOperatorMintRedeemer,
+      ),
     lovelace: params.lovelace,
   });

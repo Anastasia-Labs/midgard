@@ -12,7 +12,6 @@ import { describe, expect, it } from "vitest";
 
 import { extractStateQueueErrorCode } from "@/commands/listen-response.js";
 import {
-  deriveInitialMergeRedeemerSeedIndexes,
   diagnoseMissingBlockTxs,
   preflightDecodeBlockTxs,
 } from "@/transactions/state-queue/merge-to-confirmed-state.js";
@@ -74,40 +73,6 @@ describe("diagnoseMissingBlockTxs", () => {
 
   it("accepts complete tx linkage", () => {
     expect(diagnoseMissingBlockTxs(5, 5)).toBeUndefined();
-  });
-});
-
-describe("deriveInitialMergeRedeemerSeedIndexes", () => {
-  it("seeds mint cross-references after merge spend redeemers", () => {
-    expect(
-      deriveInitialMergeRedeemerSeedIndexes({
-        stateQueuePolicyId:
-          "16c3c3dafc78c76d61685b0cc0696d6f22d164c9b5f8c7f0ddcdf91f",
-        settlementPolicyId:
-          "c886bf04eeaac04dd5aa28cc3865b0b94cc44fc49e7fa486fd795c8d",
-      }),
-    ).toEqual({
-      stateQueueMintPointerIndex: 0,
-      settlementMintPointerIndex: 1,
-      stateQueueRedeemerIndex: 2,
-      settlementRedeemerIndex: 3,
-    });
-  });
-
-  it("tracks sorted mint-policy pointer order with a spend-redeemer prefix", () => {
-    expect(
-      deriveInitialMergeRedeemerSeedIndexes({
-        stateQueuePolicyId:
-          "ff86bf04eeaac04dd5aa28cc3865b0b94cc44fc49e7fa486fd795c8d",
-        settlementPolicyId:
-          "01c3c3dafc78c76d61685b0cc0696d6f22d164c9b5f8c7f0ddcdf91f",
-      }),
-    ).toEqual({
-      stateQueueMintPointerIndex: 1,
-      settlementMintPointerIndex: 0,
-      stateQueueRedeemerIndex: 3,
-      settlementRedeemerIndex: 2,
-    });
   });
 });
 

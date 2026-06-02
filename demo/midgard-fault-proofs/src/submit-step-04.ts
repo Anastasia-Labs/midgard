@@ -5,29 +5,30 @@ import {
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
   type MidgardTxInput,
-  resolveMintPolicyRedeemerTxInfoIndex,
-  resolveMintPolicyTxInfoRedeemerIndexFromPolicySet,
+  requireInputIndex,
+  requireMintRedeemerIndex,
+  requireOwnMintPurpose,
+  requireOwnSpendPurpose,
+  requireReferenceInputIndex,
+  requireUniqueOutputIndex,
 } from "@al-ft/midgard-sdk";
 import {
-  CML,
-  coreToTxOutput,
+  type BuildTxWithRedeemer,
   Data,
   type LucidEvolution,
   type Network,
-  type RedeemerBuilder,
   toUnit,
   type TxBuilder,
+  type TxOutput,
   type UTxO,
 } from "@lucid-evolution/lucid";
 
 import { parseDoubleSpentInputIndex } from "./double-spend-inputs.js";
 import {
-  compareOutRefs,
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
   makeLucidForSubmit,
   outRefLabel,
-  outRefsEqual,
   parseOutRef,
   readJsonFile,
   resolveDoubleSpendDeploymentContracts,
@@ -45,9 +46,7 @@ import {
   selectFeeInput,
 } from "./submit-step-01.js";
 import { hashSpendInputCbors, parseSpendInputCbors } from "./submit-step-03.js";
-
-const STEP_04_INITIAL_OUTPUT_INDEX = 0n;
-const STEP_04_SCRIPT_SPEND_REDEEMER_COUNT = 1;
+import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
 
 export type SubmitStep04CliConfig = SubmitProviderConfig & {
   readonly blueprintPath: string;
@@ -96,15 +95,18 @@ type Step04DatumWithState = DoubleSpendStep04Datum & {
   readonly data: NonNullable<DoubleSpendStep04Datum["data"]>;
 };
 
-type Step04RedeemerLayout = {
+type Step04ResolvedLayout = {
+  readonly inputIndex: bigint;
   readonly outputIndex: bigint;
+  readonly tx2SpendInputsRefInputIndex: bigint;
   readonly computationThreadMintRedeemerIndex: bigint;
   readonly fraudProofMintRedeemerIndex: bigint;
 };
 
-type Step04ResolvedLayout = Step04RedeemerLayout & {
-  readonly inputIndex: bigint;
-};
+type Step04SpendLayout = Omit<
+  Step04ResolvedLayout,
+  "computationThreadMintRedeemerIndex"
+>;
 
 const requireStep04Datum = ({
   threadUtxo,
@@ -134,115 +136,135 @@ const sameMidgardTxInput = (
 ): boolean =>
   left.tx_id === right.tx_id && left.output_index === right.output_index;
 
-const findInputIndex = (tx: CML.Transaction, target: UTxO): bigint => {
-  const inputs = tx.body().inputs();
-  const orderedInputs = Array.from({ length: inputs.len() }, (_, index) => {
-    const input = inputs.get(index);
-    return {
-      txHash: input.transaction_id().to_hex(),
-      outputIndex: Number(input.index()),
-    };
-  }).sort(compareOutRefs);
-  const inputIndex = orderedInputs.findIndex((input) =>
-    outRefsEqual(input, target),
-  );
-  if (inputIndex < 0) {
-    throw new Error(`Draft transaction does not spend ${outRefLabel(target)}.`);
-  }
-  return BigInt(inputIndex);
-};
-
-const findFraudProofOutputIndex = ({
-  tx,
+const fraudProofOutputPredicate = ({
   fraudProofAddress,
   fraudProofUnit,
   fraudProofDatum,
 }: {
-  readonly tx: CML.Transaction;
   readonly fraudProofAddress: string;
   readonly fraudProofUnit: string;
   readonly fraudProofDatum: string;
-}): bigint => {
-  const outputs = tx.body().outputs();
-  const matches: number[] = [];
-  for (let index = 0; index < outputs.len(); index += 1) {
-    const output = coreToTxOutput(outputs.get(index));
-    if (
-      output.address === fraudProofAddress &&
-      output.datum === fraudProofDatum &&
-      (output.assets[fraudProofUnit] ?? 0n) === 1n
-    ) {
-      matches.push(index);
-    }
-  }
-  if (matches.length !== 1) {
-    throw new Error(
-      `Draft transaction must contain exactly one fraud-proof output for ${fraudProofUnit}; found ${matches.length.toString()}.`,
-    );
-  }
-  return BigInt(matches[0]!);
-};
+}): ((output: TxOutput) => boolean) =>
+  outputWithDatumAndUnitPredicate({
+    address: fraudProofAddress,
+    datum: fraudProofDatum,
+    unit: fraudProofUnit,
+  });
 
 const makeStep04SpendRedeemer = ({
-  outputIndex,
-  fraudProofMintRedeemerIndex,
-  tx2SpendInputsRefInputIndex,
+  threadUtxo,
+  fraudProofAddress,
+  fraudProofPolicyId,
+  fraudProofUnit,
+  fraudProofDatum,
+  tx2SpendInputsReferenceInput,
   doubleSpentInputIndex,
+  onLayout,
 }: {
-  readonly outputIndex: bigint;
-  readonly fraudProofMintRedeemerIndex: bigint;
-  readonly tx2SpendInputsRefInputIndex: bigint;
+  readonly threadUtxo: UTxO;
+  readonly fraudProofAddress: string;
+  readonly fraudProofPolicyId: string;
+  readonly fraudProofUnit: string;
+  readonly fraudProofDatum: string;
+  readonly tx2SpendInputsReferenceInput: UTxO;
   readonly doubleSpentInputIndex: bigint;
-}): RedeemerBuilder => ({
-  kind: "self",
-  makeRedeemer: (inputIndex) =>
-    Data.to(
+  readonly onLayout: (layout: Step04SpendLayout) => void;
+}): BuildTxWithRedeemer =>
+  ((ctx) => {
+    requireOwnSpendPurpose(ctx, threadUtxo, "step 04 computation thread");
+    const layout: Step04SpendLayout = {
+      inputIndex: requireInputIndex(
+        ctx,
+        threadUtxo,
+        "step 04 computation thread",
+      ),
+      outputIndex: requireUniqueOutputIndex(
+        ctx.outputs,
+        fraudProofOutputPredicate({
+          fraudProofAddress,
+          fraudProofUnit,
+          fraudProofDatum,
+        }),
+        "step 04 fraud-proof",
+      ),
+      fraudProofMintRedeemerIndex: requireMintRedeemerIndex(
+        ctx,
+        fraudProofPolicyId,
+        "step 04 fraud-proof",
+      ),
+      tx2SpendInputsRefInputIndex: requireReferenceInputIndex(
+        ctx,
+        tx2SpendInputsReferenceInput,
+        "step 04 tx2 spend-input witness",
+      ),
+    };
+    onLayout(layout);
+    return Data.to(
       {
         Continue: [
           {
-            input_index: inputIndex,
-            output_index: outputIndex,
-            fraud_proof_mint_redeemer_index: fraudProofMintRedeemerIndex,
-            tx2_spend_inputs_ref_input_index: tx2SpendInputsRefInputIndex,
+            input_index: layout.inputIndex,
+            output_index: layout.outputIndex,
+            fraud_proof_mint_redeemer_index: layout.fraudProofMintRedeemerIndex,
+            tx2_spend_inputs_ref_input_index:
+              layout.tx2SpendInputsRefInputIndex,
             double_spent_input_index: doubleSpentInputIndex,
           },
         ],
       },
       DoubleSpendStep04SpendRedeemer,
-    ),
-});
+    );
+  }) satisfies BuildTxWithRedeemer;
 
 const makeFraudProofMintRedeemer = ({
-  threadUtxo,
+  fraudProofPolicyId,
+  computationThreadPolicyId,
   computationThreadAssetName,
-  computationThreadMintRedeemerIndex,
+  onComputationThreadMintRedeemerIndex,
 }: {
-  readonly threadUtxo: UTxO;
+  readonly fraudProofPolicyId: string;
+  readonly computationThreadPolicyId: string;
   readonly computationThreadAssetName: string;
-  readonly computationThreadMintRedeemerIndex: bigint;
-}): RedeemerBuilder => ({
-  kind: "selected",
-  inputs: [threadUtxo],
-  makeRedeemer: () =>
-    Data.to(
+  readonly onComputationThreadMintRedeemerIndex: (index: bigint) => void;
+}): BuildTxWithRedeemer =>
+  ((ctx) => {
+    requireOwnMintPurpose(ctx, fraudProofPolicyId, "step 04 fraud-proof mint");
+    const computationThreadMintRedeemerIndex = requireMintRedeemerIndex(
+      ctx,
+      computationThreadPolicyId,
+      "step 04 computation-thread burn",
+    );
+    onComputationThreadMintRedeemerIndex(computationThreadMintRedeemerIndex);
+    return Data.to(
       {
         computation_thread_token_asset_name: computationThreadAssetName,
         computation_thread_mint_redeemer_index:
           computationThreadMintRedeemerIndex,
       },
       FraudProofTokenMintRedeemer,
-    ),
-});
+    );
+  }) satisfies BuildTxWithRedeemer;
 
-const makeComputationThreadSuccessRedeemer = (
-  computationThreadAssetName: string,
-): string =>
-  Data.to(
-    {
-      Success: { burning_token_asset_name: computationThreadAssetName },
-    },
-    FraudProofComputationThreadRedeemer,
-  );
+const makeComputationThreadSuccessRedeemer = ({
+  computationThreadPolicyId,
+  computationThreadAssetName,
+}: {
+  readonly computationThreadPolicyId: string;
+  readonly computationThreadAssetName: string;
+}): BuildTxWithRedeemer =>
+  ((ctx) => {
+    requireOwnMintPurpose(
+      ctx,
+      computationThreadPolicyId,
+      "step 04 computation-thread burn",
+    );
+    return Data.to(
+      {
+        Success: { burning_token_asset_name: computationThreadAssetName },
+      },
+      FraudProofComputationThreadRedeemer,
+    );
+  }) satisfies BuildTxWithRedeemer;
 
 export const submitStep04 = async ({
   lucid,
@@ -332,8 +354,6 @@ export const submitStep04 = async ({
       awaitConfirmation,
     });
   const referenceInputs = [tx2SpendInputsReferenceWitness.utxo];
-  // This transaction adds exactly one reference input: the spend-input witness.
-  const tx2SpendInputsRefInputIndex = 0n;
   const walletUtxosWithoutWitness = excludeUtxo(
     await lucid.wallet().getUtxos(),
     tx2SpendInputsReferenceWitness.utxo,
@@ -358,41 +378,32 @@ export const submitStep04 = async ({
     lovelace: threadUtxo.assets.lovelace ?? 0n,
     [fraudProofUnit]: 1n,
   };
-  const mintPolicyIds = [
-    contracts.computationThread.policyId,
-    contracts.fraudProof.policyId,
-  ];
+  let spendLayout: Step04SpendLayout | undefined;
+  let computationThreadMintRedeemerIndex: bigint | undefined;
   const computationThreadSuccessRedeemer = makeComputationThreadSuccessRedeemer(
-    threadToken.assetName,
+    {
+      computationThreadPolicyId: contracts.computationThread.policyId,
+      computationThreadAssetName: threadToken.assetName,
+    },
   );
 
-  const initialLayout: Step04RedeemerLayout = {
-    outputIndex: STEP_04_INITIAL_OUTPUT_INDEX,
-    computationThreadMintRedeemerIndex:
-      resolveMintPolicyTxInfoRedeemerIndexFromPolicySet({
-        policyIds: mintPolicyIds,
-        targetPolicyId: contracts.computationThread.policyId,
-        precedingSpendRedeemerCount: STEP_04_SCRIPT_SPEND_REDEEMER_COUNT,
-      }),
-    fraudProofMintRedeemerIndex:
-      resolveMintPolicyTxInfoRedeemerIndexFromPolicySet({
-        policyIds: mintPolicyIds,
-        targetPolicyId: contracts.fraudProof.policyId,
-        precedingSpendRedeemerCount: STEP_04_SCRIPT_SPEND_REDEEMER_COUNT,
-      }),
-  };
-
-  const makeStep04Tx = (layout: Step04RedeemerLayout): TxBuilder =>
+  const makeStep04Tx = (): TxBuilder =>
     lucid
       .newTx()
       .collectFrom([feeInput])
       .collectFrom(
         [threadUtxo],
         makeStep04SpendRedeemer({
-          outputIndex: layout.outputIndex,
-          fraudProofMintRedeemerIndex: layout.fraudProofMintRedeemerIndex,
-          tx2SpendInputsRefInputIndex,
+          threadUtxo,
+          fraudProofAddress: contracts.fraudProof.spendingScriptAddress,
+          fraudProofPolicyId: contracts.fraudProof.policyId,
+          fraudProofUnit,
+          fraudProofDatum,
+          tx2SpendInputsReferenceInput: tx2SpendInputsReferenceWitness.utxo,
           doubleSpentInputIndex,
+          onLayout: (layout) => {
+            spendLayout = layout;
+          },
         }),
       )
       .readFrom(referenceInputs)
@@ -400,10 +411,12 @@ export const submitStep04 = async ({
       .mintAssets(
         { [fraudProofUnit]: 1n },
         makeFraudProofMintRedeemer({
-          threadUtxo,
+          fraudProofPolicyId: contracts.fraudProof.policyId,
+          computationThreadPolicyId: contracts.computationThread.policyId,
           computationThreadAssetName: threadToken.assetName,
-          computationThreadMintRedeemerIndex:
-            layout.computationThreadMintRedeemerIndex,
+          onComputationThreadMintRedeemerIndex: (index) => {
+            computationThreadMintRedeemerIndex = index;
+          },
         }),
       )
       .pay.ToContract(
@@ -416,33 +429,17 @@ export const submitStep04 = async ({
       .attach.MintingPolicy(contracts.computationThread.mintingScript)
       .attach.MintingPolicy(contracts.fraudProof.mintingScript);
 
-  const draft = await makeStep04Tx(initialLayout).complete({
-    localUPLCEval: true,
-  });
-  const draftTx = draft.toTransaction();
+  const unsigned = await makeStep04Tx().complete({ localUPLCEval: true });
+  if (
+    spendLayout === undefined ||
+    computationThreadMintRedeemerIndex === undefined
+  ) {
+    throw new Error("BuildTxWithRedeemer did not resolve step 04 layout.");
+  }
   const resolvedLayout: Step04ResolvedLayout = {
-    inputIndex: findInputIndex(draftTx, threadUtxo),
-    outputIndex: findFraudProofOutputIndex({
-      tx: draftTx,
-      fraudProofAddress: contracts.fraudProof.spendingScriptAddress,
-      fraudProofUnit,
-      fraudProofDatum,
-    }),
-    computationThreadMintRedeemerIndex: resolveMintPolicyRedeemerTxInfoIndex({
-      tx: draftTx,
-      policyIds: mintPolicyIds,
-      targetPolicyId: contracts.computationThread.policyId,
-    }),
-    fraudProofMintRedeemerIndex: resolveMintPolicyRedeemerTxInfoIndex({
-      tx: draftTx,
-      policyIds: mintPolicyIds,
-      targetPolicyId: contracts.fraudProof.policyId,
-    }),
+    ...spendLayout,
+    computationThreadMintRedeemerIndex,
   };
-
-  const unsigned = await makeStep04Tx(resolvedLayout).complete({
-    localUPLCEval: true,
-  });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();
   if (awaitConfirmation) {
@@ -471,7 +468,9 @@ export const submitStep04 = async ({
     doubleSpentInputCbor,
     tx2SpendInputsWitnessOutRef: tx2SpendInputsReferenceWitness.outRef,
     tx2SpendInputsWitnessCreated: tx2SpendInputsReferenceWitness.created,
-    tx2SpendInputsRefInputIndex: Number(tx2SpendInputsRefInputIndex),
+    tx2SpendInputsRefInputIndex: Number(
+      resolvedLayout.tx2SpendInputsRefInputIndex,
+    ),
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
     computationThreadMintRedeemerIndex: Number(

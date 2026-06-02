@@ -671,8 +671,9 @@ fn validate_operator_inactivity_and_get_its_link(
             end_time
           }
           Some(_) -> {
-            expect ledger_state.Header { end_time, .. } =
+            expect state_queue.StateQueueNode { header, .. } =
               confirmed_state_or_header_data
+            let ledger_state.Header { end_time, .. } = header
             end_time
           }
         }

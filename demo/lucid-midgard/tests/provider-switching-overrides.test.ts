@@ -28,7 +28,7 @@ const makeOutRef = (byte: number, outputIndex = 0): OutRef => ({
 });
 
 const addressFromKeyHash = (
-  keyHash: InstanceType<typeof CML.Ed25519KeyHash>,
+  keyHash: CML.Ed25519KeyHash,
   networkId = 0,
 ): string =>
   CML.EnterpriseAddress.new(networkId, CML.Credential.new_pub_key(keyHash))

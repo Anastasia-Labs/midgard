@@ -332,7 +332,7 @@ const outputReferenceFromNativeInput = (
   bytes: Uint8Array,
   label: string,
 ): OutputReferenceData => {
-  let input: InstanceType<typeof CML.TransactionInput>;
+  let input: CML.TransactionInput;
   try {
     input = CML.TransactionInput.from_cbor_bytes(bytes);
   } catch (cause) {

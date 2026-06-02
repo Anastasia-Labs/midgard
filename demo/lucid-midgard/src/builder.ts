@@ -1112,7 +1112,7 @@ export type PayApi = {
 export type AttachApi = {
   readonly Script: (source: ScriptSource) => TxBuilder;
   readonly NativeScript: (
-    script: InstanceType<typeof CML.NativeScript> | Uint8Array | string,
+    script: CML.NativeScript | Uint8Array | string,
   ) => TxBuilder;
   readonly SpendingValidator: (validator: SpendingValidator) => TxBuilder;
   readonly MintingPolicy: (policy: MintingPolicy) => TxBuilder;

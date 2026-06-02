@@ -65,8 +65,8 @@ const decodeOutRefListFromPreimage = (
 type NativeWitnessVerification = {
   readonly witnessKeyHashes: readonly string[];
   readonly witnessSignerSet: ReadonlySet<string>;
-  readonly witnessSigners: InstanceType<typeof CML.Ed25519KeyHashList>;
-  readonly witnesses: readonly InstanceType<typeof CML.Vkeywitness>[];
+  readonly witnessSigners: CML.Ed25519KeyHashList;
+  readonly witnesses: readonly CML.Vkeywitness[];
 };
 
 type DecodedScriptWitnesses = {
@@ -86,7 +86,7 @@ const decodeNativeWitnesses = (
     const witnessSigners = CML.Ed25519KeyHashList.new();
     const witnessSignerSet = new Set<string>();
     const witnessKeyHashes: string[] = [];
-    const witnesses: InstanceType<typeof CML.Vkeywitness>[] = [];
+    const witnesses: CML.Vkeywitness[] = [];
 
     for (let i = 0; i < witnessBytes.length; i++) {
       const witness = CML.Vkeywitness.from_cbor_bytes(witnessBytes[i]);
@@ -118,7 +118,7 @@ const decodeNativeWitnesses = (
 const verifyNativeWitnessSignatures = (
   txId: Buffer,
   txBodyHash: Uint8Array,
-  witnesses: readonly InstanceType<typeof CML.Vkeywitness>[],
+  witnesses: readonly CML.Vkeywitness[],
 ): RejectedTx | null => {
   for (let i = 0; i < witnesses.length; i++) {
     const witness = witnesses[i];
@@ -247,7 +247,7 @@ const decodeNativeRequiredObservers = (
       if (observer.length === 28) {
         observerHex = observer.toString("hex");
       } else {
-        let credential: InstanceType<typeof CML.Credential>;
+        let credential: CML.Credential;
         try {
           credential = CML.Credential.from_cbor_bytes(observer);
         } catch (e) {

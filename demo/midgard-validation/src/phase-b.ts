@@ -144,8 +144,8 @@ const reject = (
 });
 
 const sumValues = (
-  values: readonly InstanceType<typeof CML.Value>[],
-): InstanceType<typeof CML.Value> => {
+  values: readonly CML.Value[],
+): CML.Value => {
   let sum = CML.Value.zero();
   for (const value of values) {
     sum = sum.checked_add(value);
@@ -812,7 +812,7 @@ const validateCandidateAgainstState = (
       );
     }
 
-    const inputValues: InstanceType<typeof CML.Value>[] = [];
+    const inputValues: CML.Value[] = [];
 
     for (const referenceOutRefHex of node.referenceOutRefs) {
       if (stateValue(referenceOutRefHex) === undefined) {

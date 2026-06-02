@@ -1,3 +1,5 @@
+import { CML } from "@lucid-evolution/lucid";
+
 type CborNode =
   | { readonly kind: "uint"; readonly value: bigint }
   | { readonly kind: "nint"; readonly value: bigint }
@@ -230,3 +232,6 @@ export const aikenSerialisedPlutusDataCbor = (cbor: string): string => {
   }
   return encodeCborNodeWithDefiniteMaps(parsed.node).toString("hex");
 };
+
+export const canonicalPlutusDataCbor = (cbor: string): string =>
+  CML.PlutusData.from_cbor_hex(cbor).to_canonical_cbor_hex();

@@ -61,12 +61,12 @@ export type PhaseAAccepted = {
   readonly validityIntervalStart?: bigint;
   readonly validityIntervalEnd?: bigint;
   readonly referenceInputs: readonly Buffer[];
-  readonly outputSum: InstanceType<typeof CML.Value>;
+  readonly outputSum: CML.Value;
   readonly witnessKeyHashes: readonly string[];
   readonly requiredObserverHashes: readonly string[];
   readonly mintPolicyHashes: readonly string[];
-  readonly mintedValue: InstanceType<typeof CML.Value>;
-  readonly burnedValue: InstanceType<typeof CML.Value>;
+  readonly mintedValue: CML.Value;
+  readonly burnedValue: CML.Value;
   readonly nativeScriptHashes: readonly string[];
   readonly plutusScriptHashes: readonly string[];
   readonly requiresPlutusEvaluation: boolean;

@@ -30,8 +30,8 @@ const TEST_ADDRESS =
   "addr_test1wzylc3gg4h37gt69yx057gkn4egefs5t9rsycmryecpsenswtdp58";
 
 const makePubKeyOutput = (
-  keyHash: InstanceType<typeof CML.Ed25519KeyHash>,
-  value: InstanceType<typeof CML.Value>,
+  keyHash: CML.Ed25519KeyHash,
+  value: CML.Value,
 ): Buffer =>
   Buffer.from(
     makeMidgardTxOutput(

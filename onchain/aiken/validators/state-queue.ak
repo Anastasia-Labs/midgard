@@ -4,9 +4,10 @@ use aiken/crypto
 use aiken_design_patterns/linked_list
 use cardano/address.{Address}
 use cardano/assets.{Lovelace, PolicyId, quantity_of}
-use cardano/transaction.{Mint, OutputReference, Transaction}
+use cardano/transaction.{Input, Mint, OutputReference, Transaction}
 use env
 use midgard/common/utils
+use midgard/da_attestation_types as da_attestation
 use midgard/fraud_proof
 use midgard/hub_oracle as hub
 use midgard/ledger_state.{
@@ -19,23 +20,108 @@ use midgard/operator_directory/retired_operators
 use midgard/scheduler
 use midgard/settlement
 use midgard/state_queue.{
-  CommitBlockHeader, Deinit, Init, MergeToConfirmedState, MintRedeemer,
-  OperatorAlreadySlashed, RemoveFraudulentBlockHeader,
-  RemoveFraudulentBlocksLink, RemoveLastFraudulentBlock, SlashActiveOperator,
-  SlashRetiredOperator, confirmed_state_asset_name, finalize_linked_list,
+  AttachDaAttestation, CommitBlockHeader, Deinit, Init, LinkedListMutation,
+  MergeToConfirmedState, MintRedeemer, OperatorAlreadySlashed,
+  RemoveFraudulentBlockHeader, RemoveFraudulentBlocksLink,
+  RemoveLastFraudulentBlock, SlashActiveOperator, SlashRetiredOperator,
+  SpendRedeemer, StateQueueNode, confirmed_state_asset_name,
+  finalize_linked_list, no_da_attestation,
 }
 
-validator spend(state_queue_mint_script_hash: ByteArray) {
+fn input_at_index_is(
+  inputs: List<Input>,
+  input_index: Int,
+  own_ref: OutputReference,
+) -> Bool {
+  expect Some(Input { output_reference, .. }) = inputs |> list.at(input_index)
+  output_reference == own_ref
+}
+
+fn input_is_authorized_by_mint_redeemer(
+  mint_redeemer: MintRedeemer,
+  inputs: List<Input>,
+  own_ref: OutputReference,
+) -> Bool {
+  when mint_redeemer is {
+    Init { .. } -> False
+    Deinit { input_index } -> input_at_index_is(inputs, input_index, own_ref)
+    CommitBlockHeader { latest_block_input_index, .. } ->
+      input_at_index_is(inputs, latest_block_input_index, own_ref)
+    MergeToConfirmedState {
+      header_node_input_index,
+      confirmed_state_input_index,
+      ..
+    } -> or {
+        input_at_index_is(inputs, header_node_input_index, own_ref),
+        input_at_index_is(inputs, confirmed_state_input_index, own_ref),
+      }
+    RemoveFraudulentBlockHeader {
+      fraudulent_node_input_index,
+      block_removal_approach,
+      ..
+    } -> or {
+        input_at_index_is(inputs, fraudulent_node_input_index, own_ref),
+        when block_removal_approach is {
+          RemoveFraudulentBlocksLink { removed_block_input_index, .. } ->
+            input_at_index_is(inputs, removed_block_input_index, own_ref)
+          RemoveLastFraudulentBlock { anchor_element_input_index, .. } ->
+            input_at_index_is(inputs, anchor_element_input_index, own_ref)
+        },
+      }
+  }
+}
+
+validator spend(
+  state_queue_mint_script_hash: ByteArray,
+  da_attestation_policy_id: PolicyId,
+) {
   spend(
     _datum: Option<Data>,
-    _redeemer: Data,
-    _own_ref: OutputReference,
+    redeemer: SpendRedeemer,
+    own_ref: OutputReference,
     tx: Transaction,
   ) {
-    linked_list.spend_for_adding_or_removing_an_element(
-      state_queue_mint_script_hash,
-      tx.mint,
-    )
+    when redeemer is {
+      LinkedListMutation { state_queue_mint_redeemer_index } -> {
+        let mint_redeemer_data =
+          tx.redeemers
+            |> utils.get_redeemer_at(
+                Mint(state_queue_mint_script_hash),
+                state_queue_mint_redeemer_index,
+              )
+        expect mint_redeemer: MintRedeemer = mint_redeemer_data
+        expect
+          input_is_authorized_by_mint_redeemer(
+            mint_redeemer,
+            tx.inputs,
+            own_ref,
+          )
+        linked_list.spend_for_adding_or_removing_an_element(
+          state_queue_mint_script_hash,
+          tx.mint,
+        )
+      }
+      AttachDaAttestation {
+        state_queue_input_index,
+        da_attestation_mint_redeemer_index,
+      } -> {
+        expect Some(Input { output_reference, .. }) =
+          tx.inputs |> list.at(state_queue_input_index)
+        expect output_reference == own_ref
+
+        let mint_redeemer_data =
+          tx.redeemers
+            |> utils.get_redeemer_at(
+                Mint(da_attestation_policy_id),
+                da_attestation_mint_redeemer_index,
+              )
+        expect da_attestation.ApplyToStateQueue {
+          state_queue_input_index: redeemer_state_queue_input_index,
+          ..
+        }: da_attestation.MintRedeemer = mint_redeemer_data
+        redeemer_state_queue_input_index == state_queue_input_index
+      }
+    }
   }
 
   else(_) {
@@ -51,6 +137,7 @@ validator mint(
   scheduler_script_hash: PolicyId,
   fraud_proof_script_hash: PolicyId,
   settlement_script_hash: PolicyId,
+  da_attestation_policy_id: PolicyId,
 ) {
   mint(redeemer: MintRedeemer, own_policy_id: PolicyId, self: Transaction) {
     when redeemer is {
@@ -175,14 +262,18 @@ validator mint(
               mint,
             )
 
+          expect StateQueueNode { header: output_header, da_attestation } =
+            output_header_data
+          expect da_attestation == no_da_attestation
+
           // 4. The new block in state queue must have the hash of the header as
           //    its linked list key.
           let output_header_hash =
-            crypto.blake2b_224(builtin.serialise_data(output_header_data))
+            crypto.blake2b_224(builtin.serialise_data(output_header))
           expect output_header_key == output_header_hash
 
           // 5. New element's data must be `Header` with a valid time range.
-          expect Header {
+          let Header {
             prev_utxos_root: output_prev_utxos_root,
             start_time: output_start_time,
             end_time: output_end_time,
@@ -190,7 +281,7 @@ validator mint(
             operator_vkey: output_operator_vkey,
             protocol_version: output_protocol_version,
             ..
-          } = output_header_data
+          } = output_header
           expect output_start_time < output_end_time
 
           // 6. The operator pub key hash from the redeemer must match the one
@@ -233,8 +324,9 @@ validator mint(
             Some(header_hash) -> {
               // 10a. New block must properly carry over data from previous
               //      block.
-              expect Header { utxos_root, end_time, protocol_version, .. } =
-                anchor_data
+              expect StateQueueNode { header: anchor_header, .. } = anchor_data
+              let Header { utxos_root, end_time, protocol_version, .. } =
+                anchor_header
               expect output_prev_header_hash == header_hash
               expect output_prev_utxos_root == utxos_root
               expect output_start_time == end_time
@@ -313,7 +405,11 @@ validator mint(
           //    `header_node_input_index`.
           expect input_header_node_key == header_node_key
 
-          expect Header {
+          expect StateQueueNode { header: input_header, da_attestation } =
+            input_header_node_data
+          expect da_attestation == da_attestation_policy_id
+
+          let Header {
             utxos_root: input_header_utxos_root,
             end_time: input_header_end_time,
             protocol_version: input_header_protocol_version,
@@ -321,7 +417,7 @@ validator mint(
             deposits_root: input_header_deposits_root,
             withdrawals_root: input_header_withdrawals_root,
             ..
-          } = input_header_node_data
+          } = input_header
 
           // 4. Correctness of redeemer arguments must be guaranteed for other
           //    contracts to use.
@@ -549,7 +645,9 @@ validator mint(
                 )
               expect
                 Some(fraudulent_blocks_header_hash) == m_fraudulent_header_hash
-              expect Header { operator_vkey, .. } = removed_node_header_data
+              expect StateQueueNode { header: removed_node_header, .. } =
+                removed_node_header_data
+              let Header { operator_vkey, .. } = removed_node_header
               operator_vkey == fraudulent_operator
             }
             RemoveLastFraudulentBlock {
@@ -578,7 +676,9 @@ validator mint(
                   mint,
                 )
               expect fraudulent_blocks_header_hash == removed_node_header_hash
-              expect Header { operator_vkey, .. } = removed_node_header_data
+              expect StateQueueNode { header: removed_node_header, .. } =
+                removed_node_header_data
+              let Header { operator_vkey, .. } = removed_node_header
               expect operator_vkey == fraudulent_operator
               removed_node_link == None
             }

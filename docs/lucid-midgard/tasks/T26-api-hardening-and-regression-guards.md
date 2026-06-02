@@ -3,14 +3,13 @@
 ## Scope
 
 Add regression guards that keep the public `lucid-midgard` API aligned with
-Midgard-native transaction semantics after the parity, provider, observer,
-signing, compose, chain, safe, Effect, submitted, and documentation work lands.
+Midgard-native transaction semantics after the provider, observer, signing,
+compose, chain, safe, Effect, submitted, and documentation work lands.
 
 This task is about preventing drift, not adding new feature behavior.
 
 ## Dependencies
 
-- T13 API parity map.
 - T14 provider switching and overrides.
 - T15 provider convenience methods.
 - T16 observer validator surface.
@@ -29,7 +28,7 @@ This task is about preventing drift, not adding new feature behavior.
 ## Deliverables
 
 - Public API snapshot or type-level export guard.
-- Type tests for parity-map supported and unsupported API entries.
+- Type tests for supported and unsupported API entries.
 - Type tests for staged transaction objects and safe/Effect APIs.
 - Golden or fixture tests for compose determinism.
 - Golden or fixture tests for local output derivation from tx id, output index,

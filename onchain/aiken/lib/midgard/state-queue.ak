@@ -3,7 +3,7 @@ use aiken/crypto.{VerificationKeyHash}
 use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
 use cardano/assets.{AssetName, PolicyId}
-use cardano/transaction.{Input}
+use cardano/transaction.{Input, Output}
 use midgard/ledger_state.{
   ConfirmedState, DepositsRoot, Header, HeaderHash, MidgardTxsRoot,
   WithdrawalsRoot,
@@ -23,8 +23,23 @@ pub const block_asset_name_prefix: AssetName = "MBLC"
 pub const block_asset_name_prefix_length: Int =
   bytearray.length(block_asset_name_prefix)
 
+pub const no_da_attestation: ByteArray = ""
+
+pub type StateQueueNode {
+  header: Header,
+  da_attestation: ByteArray,
+}
+
 pub type Datum =
-  linked_list.Element<ConfirmedState, Header>
+  linked_list.Element<ConfirmedState, StateQueueNode>
+
+pub type SpendRedeemer {
+  LinkedListMutation { state_queue_mint_redeemer_index: Int }
+  AttachDaAttestation {
+    state_queue_input_index: Int,
+    da_attestation_mint_redeemer_index: Int,
+  }
+}
 
 pub type SlashingApproach {
   SlashActiveOperator { active_operators_redeemer_index: Int }
@@ -111,6 +126,22 @@ pub fn get_block_datum(
   state_queue_node_ref_input_index: Int,
   return: fn(Header, HeaderHash) -> result,
 ) -> result {
+  get_state_queue_node(
+    reference_inputs,
+    state_queue_policy,
+    state_queue_node_ref_input_index,
+    fn(state_queue_node, header_hash) {
+      return(state_queue_node.header, header_hash)
+    },
+  )
+}
+
+pub fn get_state_queue_node(
+  reference_inputs: List<Input>,
+  state_queue_policy: ByteArray,
+  state_queue_node_ref_input_index: Int,
+  return: fn(StateQueueNode, HeaderHash) -> result,
+) -> result {
   expect Some(Input { output, .. }) =
     reference_inputs |> list.at(state_queue_node_ref_input_index)
   let linked_list_eval = {
@@ -121,8 +152,8 @@ pub fn get_block_datum(
       _state_queue_element_link,
     <- linked_list.get_element_info(output)
     expect Some(header_hash) = m_state_queue_element_key
-    expect coerced_header: Header = state_queue_element_data
-    return(coerced_header, header_hash)
+    expect state_queue_node: StateQueueNode = state_queue_element_data
+    return(state_queue_node, header_hash)
   }
   linked_list_eval
     |> linked_list.run_element_with(
@@ -131,6 +162,70 @@ pub fn get_block_datum(
         block_asset_name_prefix,
         block_asset_name_prefix_length,
       )
+}
+
+fn get_node_info(
+  output: Output,
+  state_queue_policy: PolicyId,
+  return: fn(Int, HeaderHash, StateQueueNode, linked_list.Link) -> result,
+) -> result {
+  let linked_list_eval = {
+    let
+      lovelace,
+      m_header_hash,
+      data,
+      link,
+    <- linked_list.get_element_info(output)
+    expect Some(header_hash) = m_header_hash
+    expect state_queue_node: StateQueueNode = data
+    return(lovelace, header_hash, state_queue_node, link)
+  }
+  linked_list_eval
+    |> linked_list.run_element_with(
+        state_queue_policy,
+        confirmed_state_asset_name,
+        block_asset_name_prefix,
+        block_asset_name_prefix_length,
+      )
+}
+
+pub fn validate_da_attestation_attachment(
+  inputs: List<Input>,
+  outputs: List<Output>,
+  state_queue_policy: PolicyId,
+  state_queue_input_index: Int,
+  state_queue_output_index: Int,
+  expected_header_hash: HeaderHash,
+  da_attestation_policy_id: PolicyId,
+) -> Bool {
+  expect Some(Input { output: input_output, .. }) =
+    inputs |> list.at(state_queue_input_index)
+  expect Some(output) = outputs |> list.at(state_queue_output_index)
+  let Output { address: input_address, .. } = input_output
+  let Output { address: output_address, .. } = output
+  expect input_address == output_address
+
+  let
+    input_lovelace,
+    input_header_hash,
+    input_block,
+    input_link,
+  <- get_node_info(input_output, state_queue_policy)
+  let
+    output_lovelace,
+    output_header_hash,
+    output_block,
+    output_link,
+  <- get_node_info(output, state_queue_policy)
+
+  expect input_header_hash == expected_header_hash
+  expect output_header_hash == expected_header_hash
+  expect output_lovelace >= input_lovelace
+  expect output_link == input_link
+  expect input_block.da_attestation == no_da_attestation
+  expect output_block.header == input_block.header
+  expect output_block.da_attestation == da_attestation_policy_id
+  True
 }
 
 pub fn get_prev_header_hash_of_node(

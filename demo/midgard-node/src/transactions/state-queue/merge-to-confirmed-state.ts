@@ -243,9 +243,6 @@ export const preflightDecodeBlockTxs = (
     { concurrency: "unbounded" },
   );
 
-export const deriveInitialMergeRedeemerSeedIndexes =
-  SDK.deriveInitialMergeRedeemerSeedIndexes;
-
 const getStateQueueLength = (
   lucid: LucidEvolution,
   stateQueueAddress: Address,

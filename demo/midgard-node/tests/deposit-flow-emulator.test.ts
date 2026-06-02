@@ -90,7 +90,7 @@ import {
   buildUnsignedWithdrawalTxWithMetadataProgram,
   type SubmitWithdrawalReferenceScripts,
 } from "@/transactions/submit-withdrawal.js";
-import { collectSortedInputOutRefs, outRefLabel } from "@/tx-context.js";
+import { outRefLabel } from "@/tx-context.js";
 import { signWithdrawalBody } from "@/withdrawal-signature.js";
 import { runCommitBlockHeaderWorkerProgram } from "@/workers/commit-block-header.js";
 import { runConfirmBlockCommitmentsWorkerProgram } from "@/workers/confirm-block-commitments.js";
@@ -104,6 +104,7 @@ import {
   type WorkerOutput as ConfirmationWorkerOutput,
 } from "@/workers/utils/confirm-block-commitments.js";
 import { deleteMpfStore, keyValuePhasRoot } from "@/workers/utils/mpf.js";
+import { collectSortedInputOutRefs } from "./helpers/tx-inspection.js";
 
 const EMULATOR_PROTOCOL_PARAMETERS = {
   ...PROTOCOL_PARAMETERS_DEFAULT,
@@ -437,7 +438,7 @@ const extractDraftDepositWitnessHash = ({
   tx,
   depositAddress,
 }: {
-  readonly tx: InstanceType<typeof CML.Transaction>;
+  readonly tx: CML.Transaction;
   readonly depositAddress: string;
 }): string => {
   const outputs = tx.body().outputs();
@@ -467,7 +468,7 @@ const extractDraftWithdrawalWitnessHash = ({
   tx,
   withdrawalAddress,
 }: {
-  readonly tx: InstanceType<typeof CML.Transaction>;
+  readonly tx: CML.Transaction;
   readonly withdrawalAddress: string;
 }): string => {
   const outputs = tx.body().outputs();
@@ -498,7 +499,7 @@ const extractDraftDepositOutput = ({
   depositAddress,
   depositPolicyId,
 }: {
-  readonly tx: InstanceType<typeof CML.Transaction>;
+  readonly tx: CML.Transaction;
   readonly depositAddress: string;
   readonly depositPolicyId: string;
 }) => {

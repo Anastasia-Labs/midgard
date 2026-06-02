@@ -6,8 +6,13 @@ import {
   HUB_ORACLE_ASSET_NAME,
   parseFaultProofBlueprint,
   Proof,
+  requireOwnMintPurpose,
+  requireReferenceInputIndex,
+  requireUniqueOutputIndex,
+  requireWithdrawalRedeemerIndex,
 } from "@al-ft/midgard-sdk";
 import {
+  type BuildTxWithRedeemer,
   credentialToAddress,
   Data,
   type LucidEvolution,
@@ -24,7 +29,6 @@ import {
   parseContractDeploymentInfo,
 } from "./inspect-contracts.js";
 import {
-  compareOutRefs,
   DEFAULT_CONFIRMATION_POLL_MS,
   encodePhasMembershipProofRedeemer,
   fetchUtxoByOutRef,
@@ -34,7 +38,6 @@ import {
   phasMembershipRewardAddress,
   type ProverSignerConfig,
   readJsonFile,
-  referenceInputIndex,
   requireDeploymentScriptHash,
   requireSingletonUtxo,
   type ResolvedProverSigner,
@@ -42,10 +45,9 @@ import {
   resolveProverSigner,
   type SubmitProviderConfig,
 } from "./runtime.js";
+import { computationThreadOutputPredicate } from "./tx-layout.js";
 
 const PHAS_MEMBERSHIP_WITHDRAW_TITLE = "phas.membership.withdraw";
-const FIRST_STEP_OUTPUT_INDEX = 0n;
-const PHAS_WITHDRAW_REDEEMER_INDEX = 0n;
 
 type LucidDataSchema = Parameters<typeof Data.to>[1];
 
@@ -213,22 +215,82 @@ export const submitInit = async ({
     contracts.computationThread.policyId,
     computationThreadAssetName,
   );
-  const sortedReferenceInputs = [
-    catalogueUtxo,
-    hubOracleUtxo,
-    fraudulentBlockUtxo,
-  ].sort(compareOutRefs);
+  const referenceInputs = [catalogueUtxo, hubOracleUtxo, fraudulentBlockUtxo];
   const phasMembershipScript: Script = {
     type: "PlutusV3",
     script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
   };
+  const phasRewardAddress = phasMembershipRewardAddress(
+    network,
+    phasMembershipScript,
+  );
+  const firstStepDatum = Data.to(
+    {
+      fraud_prover: signer.paymentKeyHash,
+      data: null,
+    },
+    FraudProofComputationThreadStepDatum,
+  );
+  const firstStepOutputMatches = computationThreadOutputPredicate({
+    address: contracts.doubleSpend.firstStep.spendingScriptAddress,
+    datum: firstStepDatum,
+    unit: computationThreadUnit,
+  });
+  let firstStepOutputIndex: bigint | undefined;
+  const computationThreadMintRedeemer = ((ctx) => {
+    requireOwnMintPurpose(
+      ctx,
+      contracts.computationThread.policyId,
+      "double-spend init computation-thread mint",
+    );
+    const outputIndex = requireUniqueOutputIndex(
+      ctx.outputs,
+      firstStepOutputMatches,
+      "double-spend init first step",
+    );
+    firstStepOutputIndex = outputIndex;
+    return Data.to(
+      {
+        Init: {
+          first_step_output_index: outputIndex,
+          fraud_category_id: doubleSpendCategory.categoryId,
+          fraud_category: inspection.doubleSpend.categoryFirstStepHash,
+          fraud_category_membership_proof: Data.from(
+            doubleSpendCategory.membershipProofCbor,
+            Proof,
+          ),
+          fraud_proof_catalogue_ref_input_index: requireReferenceInputIndex(
+            ctx,
+            catalogueUtxo,
+            "double-spend init fraud-proof catalogue",
+          ),
+          inclusion_proof_script_redeemer_index: requireWithdrawalRedeemerIndex(
+            ctx,
+            phasRewardAddress,
+            "double-spend init PHAS membership",
+          ),
+          hub_oracle_ref_input_index: requireReferenceInputIndex(
+            ctx,
+            hubOracleUtxo,
+            "double-spend init hub oracle",
+          ),
+          fraudulent_block_ref_input_index: requireReferenceInputIndex(
+            ctx,
+            fraudulentBlockUtxo,
+            "double-spend init fraudulent block",
+          ),
+        },
+      },
+      FraudProofComputationThreadRedeemer,
+    );
+  }) satisfies BuildTxWithRedeemer;
 
   signer.selectWallet(lucid);
   const tx = lucid
     .newTx()
-    .readFrom(sortedReferenceInputs)
+    .readFrom(referenceInputs)
     .withdraw(
-      phasMembershipRewardAddress(network, phasMembershipScript),
+      phasRewardAddress,
       0n,
       encodePhasMembershipRedeemer({
         root: catalogue.root,
@@ -237,47 +299,12 @@ export const submitInit = async ({
         membershipProofCbor: doubleSpendCategory.membershipProofCbor,
       }),
     )
-    .mintAssets(
-      { [computationThreadUnit]: 1n },
-      Data.to(
-        {
-          Init: {
-            first_step_output_index: FIRST_STEP_OUTPUT_INDEX,
-            fraud_category_id: doubleSpendCategory.categoryId,
-            fraud_category: inspection.doubleSpend.categoryFirstStepHash,
-            fraud_category_membership_proof: Data.from(
-              doubleSpendCategory.membershipProofCbor,
-              Proof,
-            ),
-            fraud_proof_catalogue_ref_input_index: referenceInputIndex(
-              sortedReferenceInputs,
-              catalogueUtxo,
-            ),
-            inclusion_proof_script_redeemer_index: PHAS_WITHDRAW_REDEEMER_INDEX,
-            hub_oracle_ref_input_index: referenceInputIndex(
-              sortedReferenceInputs,
-              hubOracleUtxo,
-            ),
-            fraudulent_block_ref_input_index: referenceInputIndex(
-              sortedReferenceInputs,
-              fraudulentBlockUtxo,
-            ),
-          },
-        },
-        FraudProofComputationThreadRedeemer,
-      ),
-    )
+    .mintAssets({ [computationThreadUnit]: 1n }, computationThreadMintRedeemer)
     .pay.ToContract(
       contracts.doubleSpend.firstStep.spendingScriptAddress,
       {
         kind: "inline",
-        value: Data.to(
-          {
-            fraud_prover: signer.paymentKeyHash,
-            data: null,
-          },
-          FraudProofComputationThreadStepDatum,
-        ),
+        value: firstStepDatum,
       },
       { [computationThreadUnit]: 1n },
     )
@@ -286,6 +313,9 @@ export const submitInit = async ({
     .attach.WithdrawalValidator(phasMembershipScript);
 
   const unsigned = await tx.complete({ localUPLCEval: true });
+  if (firstStepOutputIndex === undefined) {
+    throw new Error("BuildTxWithRedeemer did not resolve init output index.");
+  }
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();
   if (awaitConfirmation) {
@@ -303,7 +333,7 @@ export const submitInit = async ({
     computationThreadAssetName,
     computationThreadUnit,
     firstStepAddress: contracts.doubleSpend.firstStep.spendingScriptAddress,
-    firstStepOutputIndex: Number(FIRST_STEP_OUTPUT_INDEX),
+    firstStepOutputIndex: Number(firstStepOutputIndex),
     fraudCategoryId: doubleSpendCategory.categoryId,
     fraudCategory: inspection.doubleSpend.categoryFirstStepHash,
     fraudProofCatalogueRoot: catalogue.root,

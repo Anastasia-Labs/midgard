@@ -4,13 +4,11 @@ import { fileURLToPath } from "node:url";
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  compareOutRefs,
   computeMidgardNativeTxId,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
   encodeMidgardNativeTxCompact,
-  findOutRefIndex,
   materializeMidgardNativeTxFromCanonical,
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
@@ -26,6 +24,7 @@ import {
   generateEmulatorAccount,
   getAddressDetails,
   Lucid,
+  type BuildTxWithRedeemer,
   type MintingPolicy,
   mintingPolicyToId,
   type Network,
@@ -59,14 +58,20 @@ import {
   headerHashFromStateQueueUTxO,
   HUB_ORACLE_ASSET_NAME,
   incompleteEmulatorCommitBlockHeaderTxProgram,
+  incompleteRemoveFraudulentBlocksLinkTxProgram,
   incompleteRemoveLastFraudulentBlockHeaderTxProgram,
   RETIRED_OPERATORS_ROOT_ASSET_NAME,
+  requireInputIndex,
+  requireReferenceInputIndex,
+  requireSpendRedeemerIndex,
+  requireUniqueOutputIndex,
   SCHEDULER_ASSET_NAME,
   SchedulerDatum,
   type SpendingValidator as SdkSpendingValidator,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
   STATE_QUEUE_ROOT_ASSET_NAME,
   StateQueueRedeemer,
+  type StateQueueUTxO,
   utxoToStateQueueUTxO,
 } from "../src/index.js";
 
@@ -224,17 +229,6 @@ type LucidDataSchema = Parameters<typeof Data.to>[1];
 const roundTrip = <A>(value: A, schema: LucidDataSchema): A =>
   Data.from(Data.to(value, schema), schema) as A;
 
-const ledgerOrderedIndex = (
-  candidates: readonly UTxO[],
-  target: UTxO,
-): bigint => {
-  const index = findOutRefIndex([...candidates].sort(compareOutRefs), target);
-  if (index === undefined) {
-    throw new Error("Missing UTxO in candidate set");
-  }
-  return BigInt(index);
-};
-
 const trieRootHex = (trie: Trie): string =>
   trie.hash === null || trie.hash === undefined
     ? EMPTY_MERKLE_TREE_ROOT
@@ -323,6 +317,7 @@ const submitSetupTx = async ({
   readonly initValidTo: bigint;
   readonly fraudulentHeaderHash: string;
 }): Promise<{
+  readonly hubOracle: UTxO;
   readonly stateQueueRoot: UTxO;
   readonly scheduler: UTxO;
   readonly activeOperatorsRoot: UTxO;
@@ -455,6 +450,13 @@ const submitSetupTx = async ({
     contracts.stateQueue.spendingScriptAddress,
     Object.keys(stateQueueAssets)[0]!,
   );
+  const [hubOracle] = await lucid.utxosAtWithUnit(
+    credentialToAddress(
+      network,
+      scriptHashToCredential(contracts.hubOracle.policyId),
+    ),
+    Object.keys(hubOracleAssets)[0]!,
+  );
   const [scheduler] = await lucid.utxosAtWithUnit(
     contracts.scheduler.spendingScriptAddress,
     Object.keys(schedulerAssets)[0]!,
@@ -476,6 +478,7 @@ const submitSetupTx = async ({
   ).find(isOnlyLovelace);
 
   if (
+    hubOracle === undefined ||
     stateQueueRoot === undefined ||
     scheduler === undefined ||
     activeOperatorsRoot === undefined ||
@@ -487,12 +490,148 @@ const submitSetupTx = async ({
   }
 
   return {
+    hubOracle,
     stateQueueRoot,
     scheduler,
     activeOperatorsRoot,
     retiredOperatorsRoot,
     activeOperatorInput,
     fraudProof,
+  };
+};
+
+const makeCommitActiveOperatorRedeemer = ({
+  contracts,
+  operator,
+  activeOperatorInput,
+  stateQueueInput,
+  hubOracle,
+  continuedActiveOperatorDatum,
+}: {
+  readonly contracts: StateQueueTestContracts;
+  readonly operator: string;
+  readonly activeOperatorInput: UTxO;
+  readonly stateQueueInput: UTxO;
+  readonly hubOracle: UTxO;
+  readonly continuedActiveOperatorDatum: string;
+}): BuildTxWithRedeemer =>
+  ((ctx) =>
+    Data.to(
+      {
+        UpdateBondHoldNewState: {
+          active_operator: operator,
+          active_node_input_index: requireInputIndex(
+            ctx,
+            activeOperatorInput,
+            "emulator commit active-operator input",
+          ),
+          active_node_output_index: requireUniqueOutputIndex(
+            ctx.outputs,
+            (output) =>
+              output.address ===
+                contracts.activeOperators.spendingScriptAddress &&
+              output.datum === continuedActiveOperatorDatum,
+            "emulator commit active-operator output",
+          ),
+          hub_oracle_ref_input_index: requireReferenceInputIndex(
+            ctx,
+            hubOracle,
+            "emulator commit hub oracle",
+          ),
+          state_queue_input_index: requireInputIndex(
+            ctx,
+            stateQueueInput,
+            "emulator commit state queue",
+          ),
+          state_queue_redeemer_index: requireSpendRedeemerIndex(
+            ctx,
+            stateQueueInput,
+            "emulator commit state queue",
+          ),
+        },
+      } satisfies ActiveOperatorSpendRedeemer,
+      ActiveOperatorSpendRedeemer,
+    )) satisfies BuildTxWithRedeemer;
+
+const submitCommitHeaderTx = async ({
+  lucid,
+  contracts,
+  anchor,
+  header,
+  operator,
+  scheduler,
+  hubOracle,
+  activeOperatorInput,
+}: {
+  readonly lucid: Awaited<ReturnType<typeof Lucid>>;
+  readonly contracts: StateQueueTestContracts;
+  readonly anchor: StateQueueUTxO;
+  readonly header: HeaderType;
+  readonly operator: string;
+  readonly scheduler: UTxO;
+  readonly hubOracle: UTxO;
+  readonly activeOperatorInput: UTxO;
+}): Promise<{
+  readonly block: StateQueueUTxO;
+  readonly activeOperatorInput: UTxO;
+}> => {
+  const continuedActiveOperatorDatum = Data.void();
+  const commitTx = await Effect.runPromise(
+    incompleteEmulatorCommitBlockHeaderTxProgram(
+      lucid,
+      {
+        stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
+        stateQueuePolicyId: contracts.stateQueue.policyId,
+      },
+      {
+        anchorUTxO: anchor,
+        newHeader: header,
+        schedulerRefInput: scheduler,
+        additionalRefInputs: [hubOracle],
+        activeOperatorInput,
+        activeOperatorSpendRedeemer: makeCommitActiveOperatorRedeemer({
+          contracts,
+          operator,
+          activeOperatorInput,
+          stateQueueInput: anchor.utxo,
+          hubOracle,
+          continuedActiveOperatorDatum,
+        }),
+        activeOperatorSpendingScript: contracts.activeOperators.spendingScript,
+        continuedActiveOperatorOutput: {
+          address: contracts.activeOperators.spendingScriptAddress,
+          datum: continuedActiveOperatorDatum,
+          assets: activeOperatorInput.assets,
+        },
+        stateQueueSpendingScript: contracts.stateQueue.spendingScript,
+        stateQueueMintingScript: contracts.stateQueue.mintingScript,
+      },
+    ),
+  );
+  const commitUnsigned = await commitTx.complete({ localUPLCEval: true });
+  const commitSigned = await commitUnsigned.sign.withWallet().complete();
+  await lucid.awaitTx(await commitSigned.submit());
+
+  const headerHash = await Effect.runPromise(hashBlockHeader(header));
+  const blockUnit = toUnit(
+    contracts.stateQueue.policyId,
+    STATE_QUEUE_NODE_ASSET_NAME_PREFIX + headerHash,
+  );
+  const [blockUtxo] = await lucid.utxosAtWithUnit(
+    contracts.stateQueue.spendingScriptAddress,
+    blockUnit,
+  );
+  const nextActiveOperatorInput = (
+    await lucid.utxosAt(contracts.activeOperators.spendingScriptAddress)
+  ).find(isOnlyLovelace);
+  if (blockUtxo === undefined || nextActiveOperatorInput === undefined) {
+    throw new Error("Commit transaction did not produce expected UTxOs");
+  }
+  return {
+    block: await Effect.runPromise(
+      utxoToStateQueueUTxO(blockUtxo, contracts.stateQueue.policyId),
+    ),
+    activeOperatorInput: nextActiveOperatorInput,
   };
 };
 
@@ -629,64 +768,16 @@ describe("state-queue emulator builders", () => {
     const stateQueueRoot = await Effect.runPromise(
       utxoToStateQueueUTxO(setup.stateQueueRoot, contracts.stateQueue.policyId),
     );
-    const commitScriptInputs = [
-      setup.stateQueueRoot,
-      setup.activeOperatorInput,
-    ];
-    const latestBlockInputIndex = ledgerOrderedIndex(
-      commitScriptInputs,
-      setup.stateQueueRoot,
-    );
-    const activeOperatorInputIndex = ledgerOrderedIndex(
-      commitScriptInputs,
-      setup.activeOperatorInput,
-    );
-    const stateQueueSpendRedeemerIndex = ledgerOrderedIndex(
-      commitScriptInputs,
-      setup.stateQueueRoot,
-    );
-    const activeOperatorSpendRedeemerIndex = ledgerOrderedIndex(
-      commitScriptInputs,
-      setup.activeOperatorInput,
-    );
-    const activeOperatorRedeemer: ActiveOperatorSpendRedeemer = {
-      UpdateBondHoldNewState: {
-        active_operator: operator,
-        active_node_input_index: activeOperatorInputIndex,
-        active_node_output_index: 0n,
-        hub_oracle_ref_input_index: 0n,
-        state_queue_input_index: latestBlockInputIndex,
-        state_queue_redeemer_index: stateQueueSpendRedeemerIndex,
-      },
-    };
-    const commitTx = await Effect.runPromise(
-      incompleteEmulatorCommitBlockHeaderTxProgram(
-        lucid,
-        {
-          stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
-          stateQueuePolicyId: contracts.stateQueue.policyId,
-        },
-        {
-          anchorUTxO: stateQueueRoot,
-          newHeader: header,
-          schedulerRefInput: setup.scheduler,
-          schedulerRefInputIndex: 0n,
-          activeOperatorInput: setup.activeOperatorInput,
-          activeOperatorInputIndex,
-          activeOperatorSpendRedeemer: activeOperatorRedeemer,
-          activeOperatorSpendRedeemerTxInfoIndex:
-            activeOperatorSpendRedeemerIndex,
-          activeOperatorSpendingScript:
-            contracts.activeOperators.spendingScript,
-          stateQueueSpendingScript: contracts.stateQueue.spendingScript,
-          stateQueueMintingScript: contracts.stateQueue.mintingScript,
-          latestBlockInputIndex,
-        },
-      ),
-    );
-    const commitUnsigned = await commitTx.complete({ localUPLCEval: true });
-    const commitSigned = await commitUnsigned.sign.withWallet().complete();
-    await lucid.awaitTx(await commitSigned.submit());
+    const commit = await submitCommitHeaderTx({
+      lucid,
+      contracts,
+      anchor: stateQueueRoot,
+      header,
+      operator,
+      scheduler: setup.scheduler,
+      hubOracle: setup.hubOracle,
+      activeOperatorInput: setup.activeOperatorInput,
+    });
 
     const blockUnit = toUnit(
       contracts.stateQueue.policyId,
@@ -696,22 +787,16 @@ describe("state-queue emulator builders", () => {
       contracts.stateQueue.policyId,
       STATE_QUEUE_ROOT_ASSET_NAME,
     );
-    const [committedBlockUtxo] = await lucid.utxosAtWithUnit(
-      contracts.stateQueue.spendingScriptAddress,
-      blockUnit,
-    );
     const [continuedRootUtxo] = await lucid.utxosAtWithUnit(
       contracts.stateQueue.spendingScriptAddress,
       rootUnit,
     );
-    if (committedBlockUtxo === undefined || continuedRootUtxo === undefined) {
+    if (continuedRootUtxo === undefined) {
       throw new Error(
-        "Commit transaction did not produce the expected queue nodes",
+        "Commit transaction did not preserve the state-queue root",
       );
     }
-    const committedBlock = await Effect.runPromise(
-      utxoToStateQueueUTxO(committedBlockUtxo, contracts.stateQueue.policyId),
-    );
+    const committedBlock = commit.block;
     const continuedRoot = await Effect.runPromise(
       utxoToStateQueueUTxO(continuedRootUtxo, contracts.stateQueue.policyId),
     );
@@ -724,12 +809,6 @@ describe("state-queue emulator builders", () => {
     ).resolves.toBe(headerHash);
     expect(continuedRoot.datum.next).toEqual({ Key: { key: headerHash } });
 
-    const removeInputs = [continuedRoot.utxo, committedBlock.utxo];
-    const removeRefs = [
-      setup.fraudProof,
-      setup.activeOperatorsRoot,
-      setup.retiredOperatorsRoot,
-    ];
     const removeTx = incompleteRemoveLastFraudulentBlockHeaderTxProgram(
       lucid,
       {
@@ -742,31 +821,11 @@ describe("state-queue emulator builders", () => {
         fraudulentOperator: operator,
         fraudulentBlocksHeaderHash: headerHash,
         fraudProofRefInput: setup.fraudProof,
-        fraudProofRefInputIndex: ledgerOrderedIndex(
-          removeRefs,
-          setup.fraudProof,
-        ),
         slashing: {
           kind: "operatorAlreadySlashed",
           activeOperatorsElementRefInput: setup.activeOperatorsRoot,
-          activeOperatorsElementRefInputIndex: ledgerOrderedIndex(
-            removeRefs,
-            setup.activeOperatorsRoot,
-          ),
           retiredOperatorsElementRefInput: setup.retiredOperatorsRoot,
-          retiredOperatorsElementRefInputIndex: ledgerOrderedIndex(
-            removeRefs,
-            setup.retiredOperatorsRoot,
-          ),
         },
-        anchorElementInputIndex: ledgerOrderedIndex(
-          removeInputs,
-          continuedRoot.utxo,
-        ),
-        fraudulentNodeInputIndex: ledgerOrderedIndex(
-          removeInputs,
-          committedBlock.utxo,
-        ),
         stateQueueSpendingScript: contracts.stateQueue.spendingScript,
         stateQueueMintingScript: contracts.stateQueue.mintingScript,
       },
@@ -794,5 +853,159 @@ describe("state-queue emulator builders", () => {
       utxoToStateQueueUTxO(finalRootUtxo, contracts.stateQueue.policyId),
     );
     expect(finalRoot.datum.next).toBe("Empty");
+  });
+
+  it("removes the immediate successor of a fraud-proved non-tail block", async () => {
+    const realBlueprint = readBlueprint(realBlueprintPath);
+    const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
+    const funder = generateEmulatorAccount({ lovelace: 60_000_000_000n });
+    const emulator = new Emulator([funder], EMULATOR_PROTOCOL_PARAMETERS);
+    const lucid = await Lucid(emulator, "Custom");
+    lucid.selectWallet.fromSeed(funder.seedPhrase);
+
+    const contracts = await buildTestContracts(realBlueprint, alwaysBlueprint);
+    const funderAddress = await lucid.wallet().address();
+    const paymentCredential =
+      getAddressDetails(funderAddress).paymentCredential;
+    if (paymentCredential === undefined || paymentCredential.type !== "Key") {
+      throw new Error("Expected emulator wallet to expose a payment key hash");
+    }
+    const operator = paymentCredential.hash;
+    const initValidFrom = BigInt(emulator.now());
+    const initValidTo = initValidFrom + 10_000n;
+    const genesisTime = initValidTo - 1n;
+    const firstHeader: HeaderType = {
+      prevUtxosRoot: EMPTY_MERKLE_TREE_ROOT,
+      utxosRoot: EMPTY_MERKLE_TREE_ROOT,
+      transactionsRoot: await buildTransactionsRoot(),
+      depositsRoot: EMPTY_MERKLE_TREE_ROOT,
+      withdrawalsRoot: EMPTY_MERKLE_TREE_ROOT,
+      startTime: genesisTime,
+      endTime: genesisTime + 1_000n,
+      prevHeaderHash: GENESIS_HEADER_HASH,
+      operatorVkey: operator,
+      protocolVersion: GENESIS_PROTOCOL_VERSION,
+    };
+    const firstHeaderHash = await Effect.runPromise(
+      hashBlockHeader(firstHeader),
+    );
+    const nonceUtxo = (await lucid.wallet().getUtxos())[0];
+    if (nonceUtxo === undefined) {
+      throw new Error("Expected wallet to expose a setup nonce UTxO");
+    }
+    const setup = await submitSetupTx({
+      lucid,
+      contracts,
+      nonceUtxo,
+      operator,
+      schedulerStartTime: genesisTime,
+      stateQueueGenesisTime: genesisTime,
+      initValidFrom,
+      initValidTo,
+      fraudulentHeaderHash: firstHeaderHash,
+    });
+    const stateQueueRoot = await Effect.runPromise(
+      utxoToStateQueueUTxO(setup.stateQueueRoot, contracts.stateQueue.policyId),
+    );
+    const firstCommit = await submitCommitHeaderTx({
+      lucid,
+      contracts,
+      anchor: stateQueueRoot,
+      header: firstHeader,
+      operator,
+      scheduler: setup.scheduler,
+      hubOracle: setup.hubOracle,
+      activeOperatorInput: setup.activeOperatorInput,
+    });
+    const secondHeader: HeaderType = {
+      ...firstHeader,
+      prevUtxosRoot: firstHeader.utxosRoot,
+      startTime: firstHeader.endTime,
+      endTime: firstHeader.endTime + 1_000n,
+      prevHeaderHash: firstHeaderHash,
+    };
+    const secondHeaderHash = await Effect.runPromise(
+      hashBlockHeader(secondHeader),
+    );
+    const secondCommit = await submitCommitHeaderTx({
+      lucid,
+      contracts,
+      anchor: firstCommit.block,
+      header: secondHeader,
+      operator,
+      scheduler: setup.scheduler,
+      hubOracle: setup.hubOracle,
+      activeOperatorInput: firstCommit.activeOperatorInput,
+    });
+
+    const firstBlockUnit = toUnit(
+      contracts.stateQueue.policyId,
+      STATE_QUEUE_NODE_ASSET_NAME_PREFIX + firstHeaderHash,
+    );
+    const secondBlockUnit = toUnit(
+      contracts.stateQueue.policyId,
+      STATE_QUEUE_NODE_ASSET_NAME_PREFIX + secondHeaderHash,
+    );
+    const [continuedFirstBlockUtxo] = await lucid.utxosAtWithUnit(
+      contracts.stateQueue.spendingScriptAddress,
+      firstBlockUnit,
+    );
+    if (continuedFirstBlockUtxo === undefined) {
+      throw new Error("Second commit did not preserve the first block");
+    }
+    const continuedFirstBlock = await Effect.runPromise(
+      utxoToStateQueueUTxO(
+        continuedFirstBlockUtxo,
+        contracts.stateQueue.policyId,
+      ),
+    );
+    expect(continuedFirstBlock.datum.next).toEqual({
+      Key: { key: secondHeaderHash },
+    });
+
+    const removeSuccessorTx = incompleteRemoveFraudulentBlocksLinkTxProgram(
+      lucid,
+      {
+        stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
+        stateQueuePolicyId: contracts.stateQueue.policyId,
+      },
+      {
+        fraudulentBlockUTxO: continuedFirstBlock,
+        removedBlockUTxO: secondCommit.block,
+        fraudulentOperator: operator,
+        fraudulentBlocksHeaderHash: firstHeaderHash,
+        fraudProofRefInput: setup.fraudProof,
+        slashing: {
+          kind: "operatorAlreadySlashed",
+          activeOperatorsElementRefInput: setup.activeOperatorsRoot,
+          retiredOperatorsElementRefInput: setup.retiredOperatorsRoot,
+        },
+        stateQueueSpendingScript: contracts.stateQueue.spendingScript,
+        stateQueueMintingScript: contracts.stateQueue.mintingScript,
+      },
+    );
+    const removeUnsigned = await removeSuccessorTx.complete({
+      localUPLCEval: true,
+    });
+    const removeSigned = await removeUnsigned.sign.withWallet().complete();
+    await lucid.awaitTx(await removeSigned.submit());
+
+    await expect(
+      lucid.utxosAtWithUnit(
+        contracts.stateQueue.spendingScriptAddress,
+        secondBlockUnit,
+      ),
+    ).resolves.toHaveLength(0);
+    const [finalFirstBlockUtxo] = await lucid.utxosAtWithUnit(
+      contracts.stateQueue.spendingScriptAddress,
+      firstBlockUnit,
+    );
+    if (finalFirstBlockUtxo === undefined) {
+      throw new Error("Successor removal did not preserve the first block");
+    }
+    const finalFirstBlock = await Effect.runPromise(
+      utxoToStateQueueUTxO(finalFirstBlockUtxo, contracts.stateQueue.policyId),
+    );
+    expect(finalFirstBlock.datum.next).toBe("Empty");
   });
 });

@@ -55,16 +55,6 @@ import {
   StateQueueRedeemer,
 } from "@/state-queue.js";
 
-export const ATOMIC_INIT_OUTPUT_INDEXES = {
-  hubOracle: 0n,
-  scheduler: 1n,
-  stateQueue: 2n,
-  registeredOperators: 3n,
-  activeOperators: 4n,
-  retiredOperators: 5n,
-  fraudProofCatalogue: 6n,
-} as const;
-
 export type AtomicProtocolInitReferenceScripts = {
   readonly hubOracleMinting: UTxO;
   readonly schedulerMinting: UTxO;
@@ -94,6 +84,14 @@ const encodeLinkedListRootDatum = (
     next: "Empty",
     data: rootData,
   });
+
+// Atomic initialization appends protocol root outputs in a fixed order before
+// wallet change, and each Init validator independently verifies its output.
+const encodeInitOutputRedeemer = <T>(
+  outputIndex: bigint,
+  schema: T,
+): string =>
+  Data.to({ Init: { output_index: outputIndex } } as never, schema as never);
 
 /**
  * Builds the unsigned transaction builder for initializing all Midgard contracts.
@@ -133,42 +131,42 @@ export const incompleteInitializationTxProgram = (
       protocolVersion: GENESIS_PROTOCOL_VERSION,
     };
 
-    const hubOracleAssets = {
-      [toUnit(midgardValidators.hubOracle.policyId, HUB_ORACLE_ASSET_NAME)]: 1n,
-    };
-    const schedulerAssets = {
-      [toUnit(midgardValidators.scheduler.policyId, SCHEDULER_ASSET_NAME)]: 1n,
-    };
-    const stateQueueAssets = {
-      [toUnit(
-        midgardValidators.stateQueue.policyId,
-        STATE_QUEUE_ROOT_ASSET_NAME,
-      )]: 1n,
-    };
-    const registeredOperatorsAssets = {
-      [toUnit(
-        midgardValidators.registeredOperators.policyId,
-        REGISTERED_OPERATORS_ROOT_ASSET_NAME,
-      )]: 1n,
-    };
-    const activeOperatorsAssets = {
-      [toUnit(
-        midgardValidators.activeOperators.policyId,
-        ACTIVE_OPERATORS_ROOT_ASSET_NAME,
-      )]: 1n,
-    };
-    const retiredOperatorsAssets = {
-      [toUnit(
-        midgardValidators.retiredOperators.policyId,
-        RETIRED_OPERATORS_ROOT_ASSET_NAME,
-      )]: 1n,
-    };
-    const fraudProofCatalogueAssets = {
-      [toUnit(
-        midgardValidators.fraudProofCatalogue.policyId,
-        FRAUD_PROOF_CATALOGUE_ASSET_NAME,
-      )]: 1n,
-    };
+    const hubOracleUnit = toUnit(
+      midgardValidators.hubOracle.policyId,
+      HUB_ORACLE_ASSET_NAME,
+    );
+    const schedulerUnit = toUnit(
+      midgardValidators.scheduler.policyId,
+      SCHEDULER_ASSET_NAME,
+    );
+    const stateQueueUnit = toUnit(
+      midgardValidators.stateQueue.policyId,
+      STATE_QUEUE_ROOT_ASSET_NAME,
+    );
+    const registeredOperatorsUnit = toUnit(
+      midgardValidators.registeredOperators.policyId,
+      REGISTERED_OPERATORS_ROOT_ASSET_NAME,
+    );
+    const activeOperatorsUnit = toUnit(
+      midgardValidators.activeOperators.policyId,
+      ACTIVE_OPERATORS_ROOT_ASSET_NAME,
+    );
+    const retiredOperatorsUnit = toUnit(
+      midgardValidators.retiredOperators.policyId,
+      RETIRED_OPERATORS_ROOT_ASSET_NAME,
+    );
+    const fraudProofCatalogueUnit = toUnit(
+      midgardValidators.fraudProofCatalogue.policyId,
+      FRAUD_PROOF_CATALOGUE_ASSET_NAME,
+    );
+
+    const hubOracleAssets = { [hubOracleUnit]: 1n };
+    const schedulerAssets = { [schedulerUnit]: 1n };
+    const stateQueueAssets = { [stateQueueUnit]: 1n };
+    const registeredOperatorsAssets = { [registeredOperatorsUnit]: 1n };
+    const activeOperatorsAssets = { [activeOperatorsUnit]: 1n };
+    const retiredOperatorsAssets = { [retiredOperatorsUnit]: 1n };
+    const fraudProofCatalogueAssets = { [fraudProofCatalogueUnit]: 1n };
 
     const tx = lucid
       .newTx()
@@ -195,14 +193,7 @@ export const incompleteInitializationTxProgram = (
       )
       .mintAssets(
         stateQueueAssets,
-        Data.to(
-          {
-            Init: {
-              output_index: ATOMIC_INIT_OUTPUT_INDEXES.stateQueue,
-            },
-          },
-          StateQueueRedeemer,
-        ),
+        encodeInitOutputRedeemer(2n, StateQueueRedeemer),
       )
       .pay.ToContract(
         midgardValidators.stateQueue.spendingScriptAddress,
@@ -218,14 +209,7 @@ export const incompleteInitializationTxProgram = (
       )
       .mintAssets(
         registeredOperatorsAssets,
-        Data.to(
-          {
-            Init: {
-              output_index: ATOMIC_INIT_OUTPUT_INDEXES.registeredOperators,
-            },
-          },
-          RegisteredOperatorMintRedeemer,
-        ),
+        encodeInitOutputRedeemer(3n, RegisteredOperatorMintRedeemer),
       )
       .pay.ToContract(
         midgardValidators.registeredOperators.spendingScriptAddress,
@@ -234,14 +218,7 @@ export const incompleteInitializationTxProgram = (
       )
       .mintAssets(
         activeOperatorsAssets,
-        Data.to(
-          {
-            Init: {
-              output_index: ATOMIC_INIT_OUTPUT_INDEXES.activeOperators,
-            },
-          },
-          ActiveOperatorMintRedeemer,
-        ),
+        encodeInitOutputRedeemer(4n, ActiveOperatorMintRedeemer),
       )
       .pay.ToContract(
         midgardValidators.activeOperators.spendingScriptAddress,
@@ -250,14 +227,7 @@ export const incompleteInitializationTxProgram = (
       )
       .mintAssets(
         retiredOperatorsAssets,
-        Data.to(
-          {
-            Init: {
-              output_index: ATOMIC_INIT_OUTPUT_INDEXES.retiredOperators,
-            },
-          },
-          RetiredOperatorMintRedeemer,
-        ),
+        encodeInitOutputRedeemer(5n, RetiredOperatorMintRedeemer),
       )
       .pay.ToContract(
         midgardValidators.retiredOperators.spendingScriptAddress,

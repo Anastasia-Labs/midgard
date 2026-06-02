@@ -122,7 +122,6 @@ export const RegisteredOperatorMintRedeemer =
 
 export type RegisteredOperatorInitParams = {
   validator: AuthenticatedValidator;
-  outputIndex?: bigint;
   lovelace?: bigint;
 };
 
@@ -141,9 +140,10 @@ export const incompleteRegisteredOperatorInitTxProgram = (
     validator: params.validator,
     rootAssetName: REGISTERED_OPERATORS_ROOT_ASSET_NAME,
     data: "",
-    redeemer: Data.to(
-      { Init: { output_index: params.outputIndex ?? 0n } },
-      RegisteredOperatorMintRedeemer,
-    ),
+    redeemer: (outputIndex) =>
+      Data.to(
+        { Init: { output_index: outputIndex } },
+        RegisteredOperatorMintRedeemer,
+      ),
     lovelace: params.lovelace,
   });

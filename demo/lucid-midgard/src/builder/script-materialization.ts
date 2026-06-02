@@ -171,8 +171,8 @@ const redeemerDataBytes = (redeemer: Redeemer): Buffer =>
   Buffer.from(normalizePlutusData(redeemer.data).to_cbor_bytes());
 
 const nativeScriptFromLike = (
-  script: InstanceType<typeof CML.NativeScript> | Uint8Array | string,
-): InstanceType<typeof CML.NativeScript> =>
+  script: CML.NativeScript | Uint8Array | string,
+): CML.NativeScript =>
   script instanceof CML.NativeScript
     ? script
     : CML.NativeScript.from_cbor_bytes(
@@ -180,7 +180,7 @@ const nativeScriptFromLike = (
       );
 
 const knownNativeScriptSource = (
-  script: InstanceType<typeof CML.NativeScript> | Uint8Array | string,
+  script: CML.NativeScript | Uint8Array | string,
   sourceId: string,
   inline: boolean,
 ): KnownScriptSource => {
@@ -195,7 +195,7 @@ const knownNativeScriptSource = (
 };
 
 const knownPlutusScriptFromCml = (
-  script: InstanceType<typeof CML.Script>,
+  script: CML.Script,
   sourceId: string,
   inline: boolean,
 ): KnownScriptSource => {

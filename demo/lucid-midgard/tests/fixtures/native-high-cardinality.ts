@@ -225,7 +225,7 @@ const makeUtxo = (
   ref: OutRef,
   address: string,
   assets: Readonly<Record<string, bigint>>,
-  options: { readonly scriptRef?: InstanceType<typeof CML.Script> } = {},
+  options: { readonly scriptRef?: CML.Script } = {},
 ): MidgardUtxo =>
   decodeMidgardUtxo({
     outRef: ref,
@@ -271,7 +271,7 @@ const makeAssetName = (prefix: number, index: number): string =>
 const deterministicPrivateKey = (
   domain: string,
   index: number,
-): InstanceType<typeof CML.PrivateKey> =>
+): CML.PrivateKey =>
   CML.PrivateKey.from_normal_bytes(
     blake2b(Buffer.from(`${domain}:${index.toString(10)}`, "utf8"), {
       dkLen: 32,

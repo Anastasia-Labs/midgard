@@ -86,7 +86,6 @@ export const RetiredOperatorMintRedeemer =
 
 export type RetiredOperatorInitParams = {
   validator: AuthenticatedValidator;
-  outputIndex?: bigint;
   lovelace?: bigint;
 };
 
@@ -139,9 +138,10 @@ export const incompleteRetiredOperatorInitTxProgram = (
     validator: params.validator,
     rootAssetName: RETIRED_OPERATORS_ROOT_ASSET_NAME,
     data: "",
-    redeemer: Data.to(
-      { Init: { output_index: params.outputIndex ?? 0n } },
-      RetiredOperatorMintRedeemer,
-    ),
+    redeemer: (outputIndex) =>
+      Data.to(
+        { Init: { output_index: outputIndex } },
+        RetiredOperatorMintRedeemer,
+      ),
     lovelace: params.lovelace,
   });

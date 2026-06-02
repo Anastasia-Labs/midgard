@@ -1,11 +1,13 @@
 import {
   Data as LucidData,
+  type BuildTxWithRedeemer,
   type Assets,
   type LucidEvolution,
-  type RedeemerBuilder,
   type TxBuilder,
+  type TxOutput,
   type UTxO,
 } from "@lucid-evolution/lucid";
+import { canonicalPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 
 import * as SDK from "@/operator-lifecycle/primitives.js";
 import {
@@ -14,10 +16,15 @@ import {
   type ReferenceScriptPublication,
   type RegisterRedeemerLayout,
 } from "@/operator-lifecycle/layout.js";
+import {
+  requireInputIndex,
+  requireMintRedeemerIndex,
+  requireOwnMintPurpose,
+  requireReferenceInputIndex,
+  requireUniqueOutputIndex,
+} from "@/tx-context-redeemer.js";
 
 export * from "@/operator-lifecycle/layout.js";
-
-const ACTIVATION_SELECTED_REGISTERED_INPUTS_COUNT = 2;
 
 const ACTIVE_OPERATOR_LIST_STATE_TRANSITION_REDEEMER = LucidData.to(
   "ListStateTransition",
@@ -35,6 +42,47 @@ const encodeActiveOperatorDatumValue = (
 const encodeLinkedListNodeView = (nodeView: SDK.LinkedListNodeView): string =>
   SDK.encodeLinkedListNodeView(nodeView);
 
+const outputDatumCborMatches = (
+  output: Pick<TxOutput, "datum">,
+  datumCbor: string,
+): boolean =>
+  output.datum != null &&
+  canonicalPlutusDataCbor(output.datum) === canonicalPlutusDataCbor(datumCbor);
+
+const outputMatches = ({
+  output,
+  address,
+  datum,
+  unit,
+}: {
+  readonly output: TxOutput;
+  readonly address: string;
+  readonly datum: string;
+  readonly unit: string;
+}): boolean =>
+  output.address === address &&
+  outputDatumCborMatches(output, datum) &&
+  (output.assets[unit] ?? 0n) === 1n;
+
+const requirePolicyNftUnit = (
+  assets: Assets,
+  policyId: string,
+  label: string,
+): string => {
+  const units = Object.entries(assets)
+    .filter(
+      ([unit, quantity]) =>
+        unit !== "lovelace" && unit.startsWith(policyId) && quantity === 1n,
+    )
+    .map(([unit]) => unit);
+  if (units.length !== 1) {
+    throw new Error(
+      `${label} expected exactly one ${policyId} NFT unit, got ${units.length.toString()}`,
+    );
+  }
+  return units[0]!;
+};
+
 export const encodeRegisteredOperatorDatumValue = (
   operatorKeyHash: string,
 ): unknown =>
@@ -43,7 +91,7 @@ export const encodeRegisteredOperatorDatumValue = (
     bond_unlock_time: null,
   });
 
-export const registeredActivateRedeemer = ({
+const registeredActivateRedeemer = ({
   operatorKeyHash,
   layout,
 }: {
@@ -69,36 +117,6 @@ export const registeredActivateRedeemer = ({
     SDK.RegisteredOperatorMintRedeemer,
   );
 
-const registeredActivateRedeemerBuilder = ({
-  operatorKeyHash,
-  layout,
-  registeredNode,
-  registeredAnchor,
-}: {
-  readonly operatorKeyHash: string;
-  readonly layout: ActivateRedeemerLayout;
-  readonly registeredNode: UTxO;
-  readonly registeredAnchor: UTxO;
-}): RedeemerBuilder => ({
-  kind: "selected",
-  inputs: [registeredNode, registeredAnchor],
-  makeRedeemer: (inputIndices) => {
-    if (inputIndices.length !== ACTIVATION_SELECTED_REGISTERED_INPUTS_COUNT) {
-      throw new Error(
-        `Activation redeemer builder expected ${ACTIVATION_SELECTED_REGISTERED_INPUTS_COUNT.toString()} registered inputs, got ${inputIndices.length.toString()}`,
-      );
-    }
-    return registeredActivateRedeemer({
-      operatorKeyHash,
-      layout: {
-        ...layout,
-        registeredOperatorsRemovedNodeInputIndex: inputIndices[0]!,
-        registeredOperatorsAnchorNodeInputIndex: inputIndices[1]!,
-      },
-    });
-  },
-});
-
 export type RegisterOperatorTxConfig = {
   readonly lucid: LucidEvolution;
   readonly contracts: SDK.MidgardValidators;
@@ -113,32 +131,115 @@ export type RegisterOperatorTxConfig = {
   readonly prependedNodeAssets: Assets;
   readonly updatedRegisteredRootDatum: SDK.LinkedListNodeView;
   readonly registerValidTo: bigint;
+  readonly onLayout?: (layout: RegisterRedeemerLayout) => void;
 };
+
+const deriveRegisterLayoutFromContext = ({
+  config,
+  ctx,
+  prependedNodeDatumCbor,
+  updatedRegisteredRootDatumCbor,
+}: {
+  readonly config: RegisterOperatorTxConfig;
+  readonly ctx: Parameters<BuildTxWithRedeemer>[0];
+  readonly prependedNodeDatumCbor: string;
+  readonly updatedRegisteredRootDatumCbor: string;
+}): RegisterRedeemerLayout => ({
+  rootInputIndex: requireInputIndex(
+    ctx,
+    config.registeredRootNode.utxo,
+    "registered-operator register root",
+  ),
+  hubOracleRefInputIndex: requireReferenceInputIndex(
+    ctx,
+    config.hubOracleRefInput,
+    "registered-operator register hub oracle",
+  ),
+  activeOperatorRefInputIndex: requireReferenceInputIndex(
+    ctx,
+    config.activeNotMemberWitness.utxo,
+    "registered-operator register active witness",
+  ),
+  retiredOperatorRefInputIndex: requireReferenceInputIndex(
+    ctx,
+    config.retiredNotMemberWitness.utxo,
+    "registered-operator register retired witness",
+  ),
+  prependedNodeOutputIndex: requireUniqueOutputIndex(
+    ctx.outputs,
+    (output) =>
+      outputMatches({
+        output,
+        address: config.contracts.registeredOperators.spendingScriptAddress,
+        datum: prependedNodeDatumCbor,
+        unit: requirePolicyNftUnit(
+          config.prependedNodeAssets,
+          config.contracts.registeredOperators.policyId,
+          "registered-operator register prepended node assets",
+        ),
+      }),
+    "registered-operator register prepended node",
+  ),
+  anchorNodeOutputIndex: requireUniqueOutputIndex(
+    ctx.outputs,
+    (output) =>
+      outputMatches({
+        output,
+        address: config.contracts.registeredOperators.spendingScriptAddress,
+        datum: updatedRegisteredRootDatumCbor,
+        unit: requirePolicyNftUnit(
+          config.registeredRootNode.utxo.assets,
+          config.contracts.registeredOperators.policyId,
+          "registered-operator register root assets",
+        ),
+      }),
+    "registered-operator register updated root",
+  ),
+});
 
 export const buildRegisterOperatorTx = (
   config: RegisterOperatorTxConfig,
-  layout: RegisterRedeemerLayout,
 ): TxBuilder => {
-  const registerRedeemer = LucidData.to(
-    {
-      RegisterOperator: {
-        registering_operator: config.operatorKeyHash,
-        root_input_index: layout.rootInputIndex,
-        root_output_index: layout.anchorNodeOutputIndex,
-        registered_node_output_index: layout.prependedNodeOutputIndex,
-        hub_oracle_ref_input_index: layout.hubOracleRefInputIndex,
-        active_operators_element_ref_input_index:
-          layout.activeOperatorRefInputIndex,
-        operator_origin: {
-          NewOperator: {
-            retired_operators_element_ref_input_index:
-              layout.retiredOperatorRefInputIndex,
+  const prependedNodeDatumCbor = encodeLinkedListNodeView(
+    config.prependedNodeDatum,
+  );
+  const updatedRegisteredRootDatumCbor = encodeLinkedListNodeView(
+    config.updatedRegisteredRootDatum,
+  );
+  const registerRedeemer = ((ctx) => {
+    requireOwnMintPurpose(
+      ctx,
+      config.contracts.registeredOperators.policyId,
+      "registered-operator register mint",
+    );
+    const layout = deriveRegisterLayoutFromContext({
+      config,
+      ctx,
+      prependedNodeDatumCbor,
+      updatedRegisteredRootDatumCbor,
+    });
+    config.onLayout?.(layout);
+    return LucidData.to(
+      {
+        RegisterOperator: {
+          registering_operator: config.operatorKeyHash,
+          root_input_index: layout.rootInputIndex,
+          root_output_index: layout.anchorNodeOutputIndex,
+          registered_node_output_index: layout.prependedNodeOutputIndex,
+          hub_oracle_ref_input_index: layout.hubOracleRefInputIndex,
+          active_operators_element_ref_input_index:
+            layout.activeOperatorRefInputIndex,
+          operator_origin: {
+            NewOperator: {
+              retired_operators_element_ref_input_index:
+                layout.retiredOperatorRefInputIndex,
+            },
           },
         },
       },
-    },
-    SDK.RegisteredOperatorMintRedeemer,
-  );
+      SDK.RegisteredOperatorMintRedeemer,
+    );
+  }) satisfies BuildTxWithRedeemer;
   return config.lucid
     .newTx()
     .collectFrom([config.registeredRootNode.utxo], LucidData.void())
@@ -153,7 +254,7 @@ export const buildRegisterOperatorTx = (
       config.contracts.registeredOperators.spendingScriptAddress,
       {
         kind: "inline",
-        value: encodeLinkedListNodeView(config.prependedNodeDatum),
+        value: prependedNodeDatumCbor,
       },
       config.prependedNodeAssets,
     )
@@ -161,7 +262,7 @@ export const buildRegisterOperatorTx = (
       config.contracts.registeredOperators.spendingScriptAddress,
       {
         kind: "inline",
-        value: encodeLinkedListNodeView(config.updatedRegisteredRootDatum),
+        value: updatedRegisteredRootDatumCbor,
       },
       config.registeredRootNode.utxo.assets,
     )
@@ -187,12 +288,102 @@ export type ActivateOperatorTxConfig = {
   readonly activeNodeUnit: string;
   readonly transferredOperatorAssets: Assets;
   readonly updatedRegisteredAnchorDatum: SDK.LinkedListNodeView;
-  readonly resolveRegisteredRedeemerWithBuilder?: boolean;
+  readonly onLayout?: (layout: ActivateRedeemerLayout) => void;
 };
+
+const deriveActivateLayoutFromContext = ({
+  config,
+  ctx,
+  activatedNodeDatumCbor,
+  updatedActiveAnchorDatumCbor,
+  updatedRegisteredAnchorDatumCbor,
+}: {
+  readonly config: ActivateOperatorTxConfig;
+  readonly ctx: Parameters<BuildTxWithRedeemer>[0];
+  readonly activatedNodeDatumCbor: string;
+  readonly updatedActiveAnchorDatumCbor: string;
+  readonly updatedRegisteredAnchorDatumCbor: string;
+}): ActivateRedeemerLayout => ({
+  hubOracleRefInputIndex: requireReferenceInputIndex(
+    ctx,
+    config.hubOracleRefInput,
+    "operator activation hub oracle",
+  ),
+  retiredOperatorRefInputIndex: requireReferenceInputIndex(
+    ctx,
+    config.retiredNotMemberWitness.utxo,
+    "operator activation retired witness",
+  ),
+  registeredOperatorsRedeemerIndex: requireMintRedeemerIndex(
+    ctx,
+    config.contracts.registeredOperators.policyId,
+    "operator activation registered mint",
+  ),
+  activeOperatorsRedeemerIndex: requireMintRedeemerIndex(
+    ctx,
+    config.contracts.activeOperators.policyId,
+    "operator activation active mint",
+  ),
+  registeredOperatorsRemovedNodeInputIndex: requireInputIndex(
+    ctx,
+    config.registeredNode.utxo,
+    "operator activation registered node",
+  ),
+  registeredOperatorsAnchorNodeInputIndex: requireInputIndex(
+    ctx,
+    config.registeredAnchor.utxo,
+    "operator activation registered anchor",
+  ),
+  registeredOperatorsAnchorNodeOutputIndex: requireUniqueOutputIndex(
+    ctx.outputs,
+    (output) =>
+      outputMatches({
+        output,
+        address: config.contracts.registeredOperators.spendingScriptAddress,
+        datum: updatedRegisteredAnchorDatumCbor,
+        unit: requirePolicyNftUnit(
+          config.registeredAnchor.utxo.assets,
+          config.contracts.registeredOperators.policyId,
+          "operator activation registered anchor assets",
+        ),
+      }),
+    "operator activation updated registered anchor",
+  ),
+  activeOperatorsAnchorNodeInputIndex: requireInputIndex(
+    ctx,
+    config.activeAppendAnchor.utxo,
+    "operator activation active anchor",
+  ),
+  activeOperatorsInsertedNodeOutputIndex: requireUniqueOutputIndex(
+    ctx.outputs,
+    (output) =>
+      outputMatches({
+        output,
+        address: config.contracts.activeOperators.spendingScriptAddress,
+        datum: activatedNodeDatumCbor,
+        unit: config.activeNodeUnit,
+      }),
+    "operator activation inserted active node",
+  ),
+  activeOperatorsAnchorNodeOutputIndex: requireUniqueOutputIndex(
+    ctx.outputs,
+    (output) =>
+      outputMatches({
+        output,
+        address: config.contracts.activeOperators.spendingScriptAddress,
+        datum: updatedActiveAnchorDatumCbor,
+        unit: requirePolicyNftUnit(
+          config.activeAppendAnchor.utxo.assets,
+          config.contracts.activeOperators.policyId,
+          "operator activation active anchor assets",
+        ),
+      }),
+    "operator activation updated active anchor",
+  ),
+});
 
 export const buildActivateOperatorTx = (
   config: ActivateOperatorTxConfig,
-  layout: ActivateRedeemerLayout,
 ): TxBuilder => {
   const activatedNodeDatum: SDK.LinkedListNodeView = {
     key: { Key: { key: config.operatorKeyHash } },
@@ -205,35 +396,62 @@ export const buildActivateOperatorTx = (
     ...config.activeAppendAnchor.datum,
     next: { Key: { key: config.operatorKeyHash } },
   };
-  const registeredRedeemer =
-    config.resolveRegisteredRedeemerWithBuilder === true
-      ? registeredActivateRedeemerBuilder({
-          operatorKeyHash: config.operatorKeyHash,
-          layout,
-          registeredNode: config.registeredNode.utxo,
-          registeredAnchor: config.registeredAnchor.utxo,
-        })
-      : registeredActivateRedeemer({
-          operatorKeyHash: config.operatorKeyHash,
-          layout,
-        });
-  const activeRedeemer = LucidData.to(
-    {
-      ActivateOperator: {
-        new_active_operator_key: config.operatorKeyHash,
-        new_active_operator_bond_unlock_time: null,
-        active_operator_anchor_element_input_index:
-          layout.activeOperatorsAnchorNodeInputIndex,
-        active_operator_anchor_element_output_index:
-          layout.activeOperatorsAnchorNodeOutputIndex,
-        active_operator_inserted_node_output_index:
-          layout.activeOperatorsInsertedNodeOutputIndex,
-        registered_operators_redeemer_index:
-          layout.registeredOperatorsRedeemerIndex,
-      },
-    },
-    SDK.ActiveOperatorMintRedeemer,
+  const activatedNodeDatumCbor = encodeLinkedListNodeView(activatedNodeDatum);
+  const updatedActiveAnchorDatumCbor = encodeLinkedListNodeView(
+    updatedActiveAnchorDatum,
   );
+  const updatedRegisteredAnchorDatumCbor = encodeLinkedListNodeView(
+    config.updatedRegisteredAnchorDatum,
+  );
+  const layoutFromContext = (
+    ctx: Parameters<BuildTxWithRedeemer>[0],
+  ): ActivateRedeemerLayout => {
+    const layout = deriveActivateLayoutFromContext({
+      config,
+      ctx,
+      activatedNodeDatumCbor,
+      updatedActiveAnchorDatumCbor,
+      updatedRegisteredAnchorDatumCbor,
+    });
+    config.onLayout?.(layout);
+    return layout;
+  };
+  const registeredRedeemer = ((ctx) => {
+    requireOwnMintPurpose(
+      ctx,
+      config.contracts.registeredOperators.policyId,
+      "operator activation registered mint",
+    );
+    return registeredActivateRedeemer({
+      operatorKeyHash: config.operatorKeyHash,
+      layout: layoutFromContext(ctx),
+    });
+  }) satisfies BuildTxWithRedeemer;
+  const activeRedeemer = ((ctx) => {
+    requireOwnMintPurpose(
+      ctx,
+      config.contracts.activeOperators.policyId,
+      "operator activation active mint",
+    );
+    const layout = layoutFromContext(ctx);
+    return LucidData.to(
+      {
+        ActivateOperator: {
+          new_active_operator_key: config.operatorKeyHash,
+          new_active_operator_bond_unlock_time: null,
+          active_operator_anchor_element_input_index:
+            layout.activeOperatorsAnchorNodeInputIndex,
+          active_operator_anchor_element_output_index:
+            layout.activeOperatorsAnchorNodeOutputIndex,
+          active_operator_inserted_node_output_index:
+            layout.activeOperatorsInsertedNodeOutputIndex,
+          registered_operators_redeemer_index:
+            layout.registeredOperatorsRedeemerIndex,
+        },
+      },
+      SDK.ActiveOperatorMintRedeemer,
+    );
+  }) satisfies BuildTxWithRedeemer;
 
   let tx = config.lucid
     .newTx()
@@ -264,7 +482,7 @@ export const buildActivateOperatorTx = (
       config.contracts.activeOperators.spendingScriptAddress,
       {
         kind: "inline",
-        value: encodeLinkedListNodeView(activatedNodeDatum),
+        value: activatedNodeDatumCbor,
       },
       config.transferredOperatorAssets,
     )
@@ -272,7 +490,7 @@ export const buildActivateOperatorTx = (
       config.contracts.activeOperators.spendingScriptAddress,
       {
         kind: "inline",
-        value: encodeLinkedListNodeView(updatedActiveAnchorDatum),
+        value: updatedActiveAnchorDatumCbor,
       },
       config.activeAppendAnchor.utxo.assets,
     )
@@ -280,16 +498,11 @@ export const buildActivateOperatorTx = (
       config.contracts.registeredOperators.spendingScriptAddress,
       {
         kind: "inline",
-        value: encodeLinkedListNodeView(config.updatedRegisteredAnchorDatum),
+        value: updatedRegisteredAnchorDatumCbor,
       },
       config.registeredAnchor.utxo.assets,
     )
     .addSignerKey(config.operatorKeyHash);
-};
-
-export type DeregisterRegisteredOperatorLayout = {
-  readonly removedNodeInputIndex: bigint;
-  readonly anchorNodeInputIndex: bigint;
 };
 
 export type DeregisterRegisteredOperatorTxConfig = {
@@ -305,19 +518,52 @@ export type DeregisterRegisteredOperatorTxConfig = {
 
 export const buildDeregisterRegisteredOperatorTx = (
   config: DeregisterRegisteredOperatorTxConfig,
-  layout: DeregisterRegisteredOperatorLayout,
 ): TxBuilder => {
-  const redeemer = LucidData.to(
-    {
-      DeregisterOperator: {
-        deregistering_operator: config.operatorKeyHash,
-        removed_node_input_index: layout.removedNodeInputIndex,
-        anchor_element_input_index: layout.anchorNodeInputIndex,
-        anchor_element_output_index: 0n,
-      },
-    },
-    SDK.RegisteredOperatorMintRedeemer,
+  const updatedRegisteredAnchorDatumCbor = encodeLinkedListNodeView(
+    config.updatedRegisteredAnchorDatum,
   );
+  const registeredAnchorNodeUnit = requirePolicyNftUnit(
+    config.registeredAnchor.utxo.assets,
+    config.contracts.registeredOperators.policyId,
+    "deregister registered anchor",
+  );
+  const redeemer = ((ctx) => {
+    requireOwnMintPurpose(
+      ctx,
+      config.contracts.registeredOperators.policyId,
+      "deregister registered operator",
+    );
+    return LucidData.to(
+      {
+        DeregisterOperator: {
+          deregistering_operator: config.operatorKeyHash,
+          removed_node_input_index: requireInputIndex(
+            ctx,
+            config.registeredNode.utxo,
+            "deregister registered node",
+          ),
+          anchor_element_input_index: requireInputIndex(
+            ctx,
+            config.registeredAnchor.utxo,
+            "deregister registered anchor",
+          ),
+          anchor_element_output_index: requireUniqueOutputIndex(
+            ctx.outputs,
+            (output) =>
+              outputMatches({
+                output,
+                address:
+                  config.contracts.registeredOperators.spendingScriptAddress,
+                datum: updatedRegisteredAnchorDatumCbor,
+                unit: registeredAnchorNodeUnit,
+              }),
+            "deregister registered anchor",
+          ),
+        },
+      },
+      SDK.RegisteredOperatorMintRedeemer,
+    );
+  }) satisfies BuildTxWithRedeemer;
   return config.lucid
     .newTx()
     .collectFrom(
@@ -330,7 +576,7 @@ export const buildDeregisterRegisteredOperatorTx = (
       config.contracts.registeredOperators.spendingScriptAddress,
       {
         kind: "inline",
-        value: encodeLinkedListNodeView(config.updatedRegisteredAnchorDatum),
+        value: updatedRegisteredAnchorDatumCbor,
       },
       config.registeredAnchor.utxo.assets,
     )

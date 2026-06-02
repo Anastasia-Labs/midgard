@@ -1,4 +1,5 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import { canonicalPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import { type MidgardTxInput, MidgardTxInputList } from "@al-ft/midgard-sdk";
 import {
   CML,
@@ -59,7 +60,7 @@ const inlineDatumOutput = ({
   readonly address: string;
   readonly datum: string;
   readonly lovelace: bigint;
-}): InstanceType<typeof CML.TransactionOutput> =>
+}): CML.TransactionOutput =>
   CML.TransactionOutput.new(
     CML.Address.from_bech32(address),
     CML.Value.from_coin(lovelace),
@@ -95,8 +96,8 @@ export const minimumLovelaceForInlineDatumOutput = ({
 const requireCanonicalInputCbor = (
   inputCborHex: string,
   label: string,
-): InstanceType<typeof CML.TransactionInput> => {
-  let input: InstanceType<typeof CML.TransactionInput>;
+): CML.TransactionInput => {
+  let input: CML.TransactionInput;
   const inputCbor = Buffer.from(inputCborHex, "hex");
   try {
     input = CML.TransactionInput.from_cbor_bytes(inputCbor);
@@ -148,11 +149,16 @@ const findSpendInputsWitnessOutputIndex = ({
   readonly address: string;
   readonly datum: string;
 }): bigint => {
+  const expectedDatum = canonicalPlutusDataCbor(datum);
   const outputs = tx.body().outputs();
   const matches: number[] = [];
   for (let index = 0; index < outputs.len(); index += 1) {
     const output = coreToTxOutput(outputs.get(index));
-    if (output.address === address && output.datum === datum) {
+    if (
+      output.address === address &&
+      output.datum != null &&
+      canonicalPlutusDataCbor(output.datum) === expectedDatum
+    ) {
       matches.push(index);
     }
   }
@@ -203,10 +209,12 @@ export const ensureSpendInputsReferenceWitness = async ({
     datum: witness.datum,
     coinsPerUtxoByte: protocolParameters.coinsPerUtxoByte,
   });
+  const witnessDatum = canonicalPlutusDataCbor(witness.datum);
   const existing = (await lucid.utxosAt(address))
     .filter(
       (utxo) =>
-        utxo.datum === witness.datum &&
+        utxo.datum != null &&
+        canonicalPlutusDataCbor(utxo.datum) === witnessDatum &&
         onlyLovelace(utxo) &&
         (utxo.assets.lovelace ?? 0n) >= witnessOutputLovelace &&
         utxo.scriptRef === undefined,
@@ -223,7 +231,7 @@ export const ensureSpendInputsReferenceWitness = async ({
 
   const walletUtxos = await lucid.wallet().getUtxos();
   const feeInput = selectFeeInput(walletUtxos);
-  const draft = await lucid
+  const unsigned = await lucid
     .newTx()
     .collectFrom([feeInput])
     .pay.ToAddressWithData(
@@ -234,11 +242,11 @@ export const ensureSpendInputsReferenceWitness = async ({
     .addSignerKey(paymentKeyHash)
     .complete({ localUPLCEval: true });
   const outputIndex = findSpendInputsWitnessOutputIndex({
-    tx: draft.toTransaction(),
+    tx: unsigned.toTransaction(),
     address,
     datum: witness.datum,
   });
-  const signed = await draft.sign.withWallet().complete();
+  const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();
   const provisional = makeCreatedWitnessUtxo({
     txHash,

@@ -11,10 +11,8 @@ switching must target Midgard L2 node APIs only. Overrides must be explicit,
 diagnosable, and scoped to local builder behavior; they must never be silently
 treated as authoritative node state.
 
-Compatibility note: `@lucid-evolution/lucid` `0.4.30` exposes
-`switchProvider(provider)` and `overrideUTxOs(utxos)` over Cardano providers and
-Cardano UTxOs. `lucid-midgard` may keep similar names, but the accepted provider
-and UTxO types are Midgard-native.
+`lucid-midgard` may keep Lucid-style provider and UTxO override names, but the
+accepted provider and UTxO types are Midgard-native.
 
 ## Dependencies
 
@@ -23,7 +21,6 @@ and UTxO types are Midgard-native.
 - T06 builder fluent API.
 - T08 balancing and fees.
 - T10 local validation.
-- T13 API parity map.
 - Architecture docs `03`, `04`, `05`, and `08`.
 
 ## Deliverables
@@ -52,8 +49,7 @@ and UTxO types are Midgard-native.
 - Override generation and snapshot tracking. Builders capture override state at
   `newTx()` time; clearing or replacing overrides cannot change an in-flight
   completion.
-- Completion-level preset wallet inputs, adapted from Lucid `0.4.30`
-  `presetWalletInputs`, with Midgard-native diagnostics.
+- Completion-level preset wallet inputs with Midgard-native diagnostics.
 - Structured diagnostics showing whether wallet inputs came from:
   - provider state
   - instance-level override

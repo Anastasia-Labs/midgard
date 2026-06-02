@@ -23,7 +23,6 @@ builder with Midgard names.
 - [08 Submission and Observability](./08-submission-and-observability.md)
 - [09 Testing and Conformance](./09-testing-and-conformance.md)
 - [10 Subagent Orchestration](./10-subagent-orchestration.md)
-- [11 API Parity Map](./11-api-parity-map.md)
 
 ## Task Documents
 
@@ -39,7 +38,6 @@ builder with Midgard names.
 - [T10 Local Validation](./tasks/T10-local-validation.md)
 - [T11 Submit, Status, and Chain](./tasks/T11-submit-status-chain.md)
 - [T12 Migration and Assurance](./tasks/T12-migration-and-assurance.md)
-- [T13 API Parity Map](./tasks/T13-api-parity-map.md)
 - [T14 Provider Switching and Overrides](./tasks/T14-provider-switching-and-overrides.md)
 - [T15 Provider Convenience Methods](./tasks/T15-provider-convenience-methods.md)
 - [T16 Observer Validator Surface](./tasks/T16-observer-validator-surface.md)

@@ -12,7 +12,7 @@ builder completion, local output chaining, submission, and status polling:
 `submitProgram`, `statusSafe`, `statusProgram`, `awaitStatusSafe`, and
 `awaitStatusProgram`. Safe and Effect variants for signing, provider reads, and
 standalone local validation remain planned follow-up work and are still marked
-planned in the API parity map.
+planned in focused follow-up tasks.
 
 Promise APIs may remain for ergonomics, but production-grade call paths should
 have an auditable way to receive structured errors as values.

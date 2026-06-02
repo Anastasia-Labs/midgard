@@ -1,7 +1,6 @@
 import { normalizeHex } from "@al-ft/midgard-core/hex";
 import {
   compareOutRefs,
-  findOutRefIndex,
   outRefLabel,
   type OutRefLike,
   outRefsEqual,
@@ -265,17 +264,6 @@ export const parseOutRef = (value: string, label: string): ParsedOutRef => {
 };
 
 export const compareUtxoOutRefs = compareOutRefs;
-
-export const referenceInputIndex = (
-  sortedReferenceInputs: readonly UTxO[],
-  target: UTxO,
-): bigint => {
-  const index = findOutRefIndex(sortedReferenceInputs, target);
-  if (index === undefined) {
-    throw new Error(`Reference input not found: ${outRefLabel(target)}`);
-  }
-  return BigInt(index);
-};
 
 export const requireDeploymentScriptHash = (
   deploymentInfo: ContractDeploymentInfo,

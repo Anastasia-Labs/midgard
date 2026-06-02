@@ -1,5 +1,4 @@
 export * from "./active-operators.js";
-export * from "./cardano-redeemers.js";
 export * from "./cbor.js";
 export * from "./common.js";
 export * from "./escape-hatch.js";
@@ -20,4 +19,5 @@ export * from "./scheduler.js";
 export * from "./settlement.js";
 export * from "./state-queue-production.js";
 export * from "./state-queue.js";
+export * from "./tx-context-redeemer.js";
 export * from "./user-events/index.js";

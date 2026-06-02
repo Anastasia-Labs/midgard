@@ -1,9 +1,5 @@
 export type { MidgardValidators } from "@/common.js";
 export {
-  resolveMintPolicyRedeemerTxInfoIndex,
-  resolveMintPolicyTxInfoRedeemerIndexFromPolicySet,
-} from "@/cardano-redeemers.js";
-export {
   ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX,
   encodeLinkedListNodeView,
   LinkedListDatum,

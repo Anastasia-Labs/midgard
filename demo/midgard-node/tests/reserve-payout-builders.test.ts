@@ -1,7 +1,9 @@
 import * as SDK from "@al-ft/midgard-sdk";
+import { compareOutRefs } from "@al-ft/midgard-core/out-ref";
 import {
   type Assets,
   CML,
+  coreToTxOutput,
   credentialToAddress,
   Data,
   Emulator,
@@ -31,6 +33,13 @@ import {
   buildInitializePayoutTxProgram,
   buildRefundInvalidWithdrawalTxProgram,
 } from "@/transactions/reserve-payout.js";
+import {
+  findRedeemerDataCbor,
+  getRedeemerPointersInContextOrder,
+  resolveMintPolicyContextIndex,
+  resolveRedeemerTxInfoIndex,
+  type RedeemerPointer,
+} from "./helpers/redeemer-inspection.js";
 
 const mkUtxo = (
   txHashByte: string,
@@ -57,6 +66,9 @@ const EMULATOR_PROTOCOL_PARAMETERS = {
 const hashHexBlake2b256 = (hex: string): Promise<string> =>
   Effect.runPromise(SDK.hashHexWithBlake2b(hex, 32));
 
+const canonicalDatumCbor = (cbor: string): string =>
+  CML.PlutusData.from_cbor_hex(cbor).to_canonical_cbor_hex();
+
 const expectLeft = <E, A>(
   result:
     | { readonly _tag: "Left"; readonly left: E }
@@ -73,12 +85,9 @@ const singletonMembershipRoot = async (
   keyCbor: string,
   valueCbor: string,
 ): Promise<string> => {
-  const keyBytes = __reservePayoutTest.aikenSerialisedPlutusDataCbor(keyCbor);
-  const valueBytes =
-    __reservePayoutTest.aikenSerialisedPlutusDataCbor(valueCbor);
   const [keyHash, valueHash] = await Promise.all([
-    hashHexBlake2b256(keyBytes),
-    hashHexBlake2b256(valueBytes),
+    hashHexBlake2b256(keyCbor),
+    hashHexBlake2b256(valueCbor),
   ]);
   return hashHexBlake2b256(`ff${keyHash}${valueHash}`);
 };
@@ -128,6 +137,26 @@ const findReferenceScriptUtxo = (
   return utxo;
 };
 
+const findReferenceScriptUtxoBefore = (
+  utxos: readonly UTxO[],
+  script: Script,
+  later: UTxO,
+): UTxO => {
+  const expectedHash = validatorToScriptHash(script);
+  const utxo = utxos.find(
+    (candidate) =>
+      candidate.scriptRef != null &&
+      validatorToScriptHash(candidate.scriptRef) === expectedHash &&
+      compareOutRefs(candidate, later) < 0,
+  );
+  if (utxo === undefined) {
+    throw new Error(
+      `Missing reference script UTxO for ${expectedHash} that sorts before ${later.txHash}#${later.outputIndex.toString()}`,
+    );
+  }
+  return utxo;
+};
+
 const findPureAdaUtxo = (utxos: readonly UTxO[], lovelace: bigint): UTxO => {
   const utxo = utxos.find(
     (candidate) =>
@@ -162,6 +191,129 @@ const submitWithWallet = async (tx: TxSignBuilder): Promise<string> => {
       },
     );
   }
+};
+
+const decodeRedeemer = <T>(
+  tx: CML.Transaction,
+  pointer: RedeemerPointer,
+  schema: unknown,
+): T => {
+  const cbor = findRedeemerDataCbor(tx, pointer);
+  if (cbor === undefined) {
+    throw new Error(
+      `Missing redeemer tag=${pointer.tag.toString()} index=${pointer.index.toString()}`,
+    );
+  }
+  return Data.from(cbor, schema as never) as T;
+};
+
+const mintPointer = (
+  policyIds: readonly string[],
+  targetPolicyId: string,
+): RedeemerPointer => ({
+  tag: CML.RedeemerTag.Mint,
+  index: resolveMintPolicyContextIndex({ policyIds, targetPolicyId }),
+});
+
+type CmlInputSet = {
+  len(): number;
+  get(index: number): CML.TransactionInput;
+};
+
+const requireTxInputIndex = (
+  inputs: CmlInputSet | undefined,
+  target: Pick<UTxO, "txHash" | "outputIndex">,
+  label: string,
+): bigint => {
+  if (inputs === undefined) {
+    throw new Error(`${label} inputs are missing from final tx`);
+  }
+  const outRefs = Array.from({ length: inputs.len() }, (_, index) => {
+    const input = inputs.get(index);
+    return {
+      txHash: input.transaction_id().to_hex(),
+      outputIndex: Number(input.index()),
+    };
+  }).sort(compareOutRefs);
+  for (let index = 0; index < outRefs.length; index += 1) {
+    const input = outRefs[index]!;
+    if (
+      input.txHash === target.txHash &&
+      input.outputIndex === target.outputIndex
+    ) {
+      return BigInt(index);
+    }
+  }
+  throw new Error(
+    `${label} input ${target.txHash}#${target.outputIndex.toString()} is missing from final tx`,
+  );
+};
+
+const requireEventOutputIndex = (
+  tx: CML.Transaction,
+  eventAddress: string,
+  eventUnit: string,
+): bigint => {
+  const outputs = tx.body().outputs();
+  for (let index = 0; index < outputs.len(); index += 1) {
+    const output = coreToTxOutput(outputs.get(index));
+    if (
+      output.address === eventAddress &&
+      output.datum != null &&
+      output.assets[eventUnit] === 1n
+    ) {
+      return BigInt(index);
+    }
+  }
+  throw new Error(`Missing event output for ${eventUnit} at ${eventAddress}`);
+};
+
+const expectAuthenticateMintRedeemerLayout = ({
+  tx,
+  policyId,
+  eventAddress,
+  eventUnit,
+  nonceInput,
+  hubOracleRefInput,
+}: {
+  readonly tx: TxSignBuilder;
+  readonly policyId: string;
+  readonly eventAddress: string;
+  readonly eventUnit: string;
+  readonly nonceInput: Pick<UTxO, "txHash" | "outputIndex">;
+  readonly hubOracleRefInput: UTxO;
+}): void => {
+  const transaction = tx.toTransaction();
+  const redeemer = decodeRedeemer<SDK.UserEventMintRedeemer>(
+    transaction,
+    mintPointer([policyId], policyId),
+    SDK.UserEventMintRedeemer,
+  );
+  if (!("AuthenticateEvent" in redeemer)) {
+    throw new Error("Expected AuthenticateEvent mint redeemer");
+  }
+
+  const hubRefInputIndex = requireTxInputIndex(
+    transaction.body().reference_inputs(),
+    hubOracleRefInput,
+    "hub oracle reference",
+  );
+  expect(hubRefInputIndex).toBeGreaterThan(0n);
+  expect(redeemer.AuthenticateEvent.nonce_input_index).toBe(
+    requireTxInputIndex(transaction.body().inputs(), nonceInput, "nonce"),
+  );
+  expect(redeemer.AuthenticateEvent.event_output_index).toBe(
+    requireEventOutputIndex(transaction, eventAddress, eventUnit),
+  );
+  expect(redeemer.AuthenticateEvent.hub_ref_input_index).toBe(
+    hubRefInputIndex,
+  );
+  expect(redeemer.AuthenticateEvent.witness_registration_redeemer_index).toBe(
+    resolveRedeemerTxInfoIndex({
+      pointers: getRedeemerPointersInContextOrder(transaction),
+      target: { tag: CML.RedeemerTag.Cert, index: 0n },
+    }),
+  );
 };
 
 const scriptRewardAddress = (script: Script): string => {
@@ -310,7 +462,7 @@ const makeReservePayoutBuilderFixture = async () => {
       makeSeededScriptAccount({
         address: contracts.payout.spendingScriptAddress,
         assets: { lovelace: 3_000_000n, [payoutUnit]: 1n },
-        inlineDatum: payoutDatumCbor,
+        inlineDatum: canonicalDatumCbor(payoutDatumCbor),
       }),
       makeSeededScriptAccount({
         address: contracts.reserve.spendingScriptAddress,
@@ -364,6 +516,84 @@ const makeReservePayoutBuilderFixture = async () => {
       ),
     },
     reserveInput,
+  };
+};
+
+const makeUserEventBuilderFixture = async () => {
+  const operator = generateEmulatorAccount({
+    lovelace: 30_000_000_000n,
+  });
+  const referenceHosts = Array.from({ length: 24 }, () =>
+    generateEmulatorAccount({
+      lovelace: 2_000_000n,
+    }),
+  );
+  const beneficiary = generateEmulatorAccount({
+    lovelace: 2_000_000n,
+  });
+  const contracts = await loadRealContracts({
+    txHash: "00".repeat(32),
+    outputIndex: 0,
+  });
+  const hubUnit = toUnit(
+    contracts.hubOracle.policyId,
+    SDK.HUB_ORACLE_ASSET_NAME,
+  );
+  const hubDatum = await Effect.runPromise(SDK.makeHubOracleDatum(contracts));
+  const hubOracleAddress = credentialToAddress(
+    "Custom",
+    scriptHashToCredential(contracts.hubOracle.policyId),
+  );
+  const emulator = new Emulator(
+    [
+      operator,
+      ...referenceHosts,
+      beneficiary,
+      ...referenceHosts.flatMap((host) => [
+        makeSeededScriptAccount({
+          address: host.address,
+          assets: { lovelace: 3_000_000n },
+          scriptRef: contracts.deposit.mintingScript,
+        }),
+        makeSeededScriptAccount({
+          address: host.address,
+          assets: { lovelace: 3_000_000n },
+          scriptRef: contracts.withdrawal.mintingScript,
+        }),
+      ]),
+      makeSeededScriptAccount({
+        address: hubOracleAddress,
+        assets: { lovelace: 3_000_000n, [hubUnit]: 1n },
+        inlineDatum: Data.to(hubDatum, SDK.HubOracleDatum),
+      }),
+    ],
+    EMULATOR_PROTOCOL_PARAMETERS,
+  );
+  const lucid = await makeLucid(emulator, "Custom");
+  lucid.selectWallet.fromSeed(operator.seedPhrase);
+
+  const hubOracleRefInput = findUtxoWithUnit(
+    await lucid.utxosAt(hubOracleAddress),
+    hubUnit,
+  );
+  const referenceUtxos = (
+    await Promise.all(referenceHosts.map((host) => lucid.utxosAt(host.address)))
+  ).flat();
+  return {
+    beneficiary,
+    contracts,
+    depositMintingReference: findReferenceScriptUtxoBefore(
+      referenceUtxos,
+      contracts.deposit.mintingScript,
+      hubOracleRefInput,
+    ),
+    hubOracleRefInput,
+    lucid,
+    withdrawalMintingReference: findReferenceScriptUtxoBefore(
+      referenceUtxos,
+      contracts.withdrawal.mintingScript,
+      hubOracleRefInput,
+    ),
   };
 };
 
@@ -661,6 +891,223 @@ const makeReserveLifecycleBuilderFixture = async ({
   };
 };
 
+const expectAbsorbRedeemerLayout = (
+  built: SDK.BuiltReservePayoutTx<{
+    readonly depositInputIndex: bigint;
+    readonly reserveOutputIndex: bigint;
+    readonly hubRefInputIndex: bigint;
+    readonly settlementRefInputIndex: bigint;
+    readonly burnRedeemerIndex: bigint;
+    readonly inclusionProofWithdrawalRedeemerIndex: bigint;
+  }>,
+): void => {
+  const redeemer = decodeRedeemer<SDK.DepositSpendRedeemer>(
+    built.tx.toTransaction(),
+    { tag: CML.RedeemerTag.Spend, index: built.layout.depositInputIndex },
+    SDK.DepositSpendRedeemer,
+  );
+  expect(redeemer.input_index).toBe(built.layout.depositInputIndex);
+  expect(redeemer.output_index).toBe(built.layout.reserveOutputIndex);
+  expect(redeemer.hub_ref_input_index).toBe(built.layout.hubRefInputIndex);
+  expect(redeemer.settlement_ref_input_index).toBe(
+    built.layout.settlementRefInputIndex,
+  );
+  expect(redeemer.mint_redeemer_index).toBe(built.layout.burnRedeemerIndex);
+  expect(redeemer.inclusion_proof_script_withdraw_redeemer_index).toBe(
+    built.layout.inclusionProofWithdrawalRedeemerIndex,
+  );
+};
+
+const expectInitializeRedeemerLayout = (
+  built: SDK.BuiltReservePayoutTx<{
+    readonly withdrawalInputIndex: bigint;
+    readonly payoutOutputIndex: bigint;
+    readonly hubRefInputIndex: bigint;
+    readonly settlementRefInputIndex: bigint;
+    readonly withdrawalBurnRedeemerIndex: bigint;
+    readonly payoutMintRedeemerIndex: bigint;
+    readonly withdrawalSpendRedeemerIndex: bigint;
+    readonly inclusionProofWithdrawalRedeemerIndex: bigint;
+  }>,
+  contracts: SDK.MidgardValidators,
+): void => {
+  const tx = built.tx.toTransaction();
+  const withdrawalSpend = decodeRedeemer<SDK.WithdrawalSpendRedeemer>(
+    tx,
+    { tag: CML.RedeemerTag.Spend, index: built.layout.withdrawalInputIndex },
+    SDK.WithdrawalSpendRedeemer,
+  );
+  expect(withdrawalSpend.input_index).toBe(built.layout.withdrawalInputIndex);
+  expect(withdrawalSpend.output_index).toBe(built.layout.payoutOutputIndex);
+  expect(withdrawalSpend.hub_ref_input_index).toBe(
+    built.layout.hubRefInputIndex,
+  );
+  expect(withdrawalSpend.settlement_ref_input_index).toBe(
+    built.layout.settlementRefInputIndex,
+  );
+  expect(withdrawalSpend.burn_redeemer_index).toBe(
+    built.layout.withdrawalBurnRedeemerIndex,
+  );
+  expect(withdrawalSpend.payout_mint_redeemer_index).toBe(
+    built.layout.payoutMintRedeemerIndex,
+  );
+  expect(withdrawalSpend.inclusion_proof_script_withdraw_redeemer_index).toBe(
+    built.layout.inclusionProofWithdrawalRedeemerIndex,
+  );
+  expect(withdrawalSpend.purpose).toBe("InitializePayout");
+
+  const payoutMint = decodeRedeemer<SDK.PayoutMintRedeemer>(
+    tx,
+    mintPointer(
+      [contracts.withdrawal.policyId, contracts.payout.policyId],
+      contracts.payout.policyId,
+    ),
+    SDK.PayoutMintRedeemer,
+  );
+  if (!("MintPayout" in payoutMint)) {
+    throw new Error("Expected MintPayout redeemer");
+  }
+  expect(payoutMint.MintPayout.withdrawal_input_index).toBe(
+    built.layout.withdrawalInputIndex,
+  );
+  expect(payoutMint.MintPayout.withdrawal_spend_redeemer_index).toBe(
+    built.layout.withdrawalSpendRedeemerIndex,
+  );
+  expect(payoutMint.MintPayout.hub_ref_input_index).toBe(
+    built.layout.hubRefInputIndex,
+  );
+};
+
+const expectAddFundsRedeemerLayout = (
+  built: SDK.BuiltReservePayoutTx<{
+    readonly payoutInputIndex: bigint;
+    readonly reserveInputIndex: bigint;
+    readonly payoutOutputIndex: bigint;
+    readonly reserveChangeOutputIndex: bigint | null;
+    readonly payoutSpendRedeemerIndex: bigint;
+    readonly reserveSpendRedeemerIndex: bigint;
+    readonly hubRefInputIndex: bigint;
+  }>,
+): void => {
+  const tx = built.tx.toTransaction();
+  const payoutSpend = decodeRedeemer<SDK.PayoutSpendRedeemer>(
+    tx,
+    { tag: CML.RedeemerTag.Spend, index: built.layout.payoutInputIndex },
+    SDK.PayoutSpendRedeemer,
+  );
+  if (!("AddFunds" in payoutSpend)) {
+    throw new Error("Expected AddFunds payout redeemer");
+  }
+  expect(payoutSpend.AddFunds.payout_input_index).toBe(
+    built.layout.payoutInputIndex,
+  );
+  expect(payoutSpend.AddFunds.payout_output_index).toBe(
+    built.layout.payoutOutputIndex,
+  );
+  expect(payoutSpend.AddFunds.reserve_input_index).toBe(
+    built.layout.reserveInputIndex,
+  );
+  expect(payoutSpend.AddFunds.reserve_change_output_index).toBe(
+    built.layout.reserveChangeOutputIndex,
+  );
+  expect(payoutSpend.AddFunds.reserve_spend_redeemer_index).toBe(
+    built.layout.reserveSpendRedeemerIndex,
+  );
+  expect(payoutSpend.AddFunds.payout_spend_redeemer_index).toBe(
+    built.layout.payoutSpendRedeemerIndex,
+  );
+  expect(payoutSpend.AddFunds.hub_ref_input_index).toBe(
+    built.layout.hubRefInputIndex,
+  );
+
+  const reserveSpend = decodeRedeemer<any>(
+    tx,
+    { tag: CML.RedeemerTag.Spend, index: built.layout.reserveInputIndex },
+    SDK.ReserveSpendRedeemer,
+  );
+  const reserveSpendBody = reserveSpend.Spend ?? reserveSpend;
+  expect(reserveSpendBody.reserve_input_index).toBe(
+    built.layout.reserveInputIndex,
+  );
+  expect(reserveSpendBody.payout_input_index).toBe(
+    built.layout.payoutInputIndex,
+  );
+  expect(reserveSpendBody.payout_spend_redeemer_index).toBe(
+    built.layout.payoutSpendRedeemerIndex,
+  );
+  expect(reserveSpendBody.hub_ref_input_index).toBe(
+    built.layout.hubRefInputIndex,
+  );
+};
+
+const expectConcludeRedeemerLayout = (
+  built: SDK.BuiltReservePayoutTx<{
+    readonly payoutInputIndex: bigint;
+    readonly l1OutputIndex: bigint;
+    readonly payoutSpendRedeemerIndex: bigint;
+    readonly burnRedeemerIndex: bigint;
+    readonly hubRefInputIndex: bigint;
+  }>,
+): void => {
+  const tx = built.tx.toTransaction();
+  const payoutSpend = decodeRedeemer<SDK.PayoutSpendRedeemer>(
+    tx,
+    { tag: CML.RedeemerTag.Spend, index: built.layout.payoutInputIndex },
+    SDK.PayoutSpendRedeemer,
+  );
+  if (!("ConcludeWithdrawal" in payoutSpend)) {
+    throw new Error("Expected ConcludeWithdrawal payout redeemer");
+  }
+  expect(payoutSpend.ConcludeWithdrawal.payout_input_index).toBe(
+    built.layout.payoutInputIndex,
+  );
+  expect(payoutSpend.ConcludeWithdrawal.l1_output_index).toBe(
+    built.layout.l1OutputIndex,
+  );
+  expect(payoutSpend.ConcludeWithdrawal.burn_redeemer_index).toBe(
+    built.layout.burnRedeemerIndex,
+  );
+  expect(payoutSpend.ConcludeWithdrawal.hub_ref_input_index).toBe(
+    built.layout.hubRefInputIndex,
+  );
+};
+
+const expectRefundRedeemerLayout = (
+  built: SDK.BuiltReservePayoutTx<{
+    readonly withdrawalInputIndex: bigint;
+    readonly refundOutputIndex: bigint;
+    readonly hubRefInputIndex: bigint;
+    readonly settlementRefInputIndex: bigint;
+    readonly burnRedeemerIndex: bigint;
+    readonly inclusionProofWithdrawalRedeemerIndex: bigint;
+  }>,
+  validityOverride: SDK.WithdrawalValidity,
+): void => {
+  const withdrawalSpend = decodeRedeemer<SDK.WithdrawalSpendRedeemer>(
+    built.tx.toTransaction(),
+    { tag: CML.RedeemerTag.Spend, index: built.layout.withdrawalInputIndex },
+    SDK.WithdrawalSpendRedeemer,
+  );
+  expect(withdrawalSpend.input_index).toBe(built.layout.withdrawalInputIndex);
+  expect(withdrawalSpend.output_index).toBe(built.layout.refundOutputIndex);
+  expect(withdrawalSpend.hub_ref_input_index).toBe(
+    built.layout.hubRefInputIndex,
+  );
+  expect(withdrawalSpend.settlement_ref_input_index).toBe(
+    built.layout.settlementRefInputIndex,
+  );
+  expect(withdrawalSpend.burn_redeemer_index).toBe(
+    built.layout.burnRedeemerIndex,
+  );
+  expect(withdrawalSpend.payout_mint_redeemer_index).toBe(0n);
+  expect(withdrawalSpend.inclusion_proof_script_withdraw_redeemer_index).toBe(
+    built.layout.inclusionProofWithdrawalRedeemerIndex,
+  );
+  expect(withdrawalSpend.purpose).toEqual({
+    Refund: { validity_override: validityOverride },
+  });
+};
+
 describe("reserve/payout transaction builder primitives", () => {
   it("round-trips canonical SDK Value maps through Lucid assets", () => {
     const assets: Assets = {
@@ -694,102 +1141,6 @@ describe("reserve/payout transaction builder primitives", () => {
     expect(__reservePayoutTest.aikenSerialisedPlutusDataCbor(valueCbor)).toBe(
       "a140a1401a002dc6c0",
     );
-  });
-
-  it("derives AddFunds ledger indexes and tx-info redeemer indexes from TxOutRef order", () => {
-    const reserveInput = mkUtxo("10", 0);
-    const payoutInput = mkUtxo("80", 0);
-    const feeInput = mkUtxo("f0", 0);
-    const hubRef = mkUtxo("40", 0);
-
-    const layout = __reservePayoutTest.initialAddReserveFundsLayout({
-      inputs: [payoutInput, feeInput, reserveInput],
-      referenceInputs: [hubRef],
-      payoutInput,
-      reserveInput,
-      hubOracleRefInput: hubRef,
-      reserveChangeAssets: { lovelace: 1_000_000n },
-    });
-
-    expect(layout.reserveInputIndex).toBe(0n);
-    expect(layout.payoutInputIndex).toBe(1n);
-    expect(layout.payoutOutputIndex).toBe(0n);
-    expect(layout.reserveChangeOutputIndex).toBe(1n);
-    expect(layout.reserveSpendRedeemerIndex).toBe(0n);
-    expect(layout.payoutSpendRedeemerIndex).toBe(1n);
-    expect(layout.hubRefInputIndex).toBe(0n);
-  });
-
-  it("derives ConcludeWithdrawal spend and burn redeemer tx-info indexes", () => {
-    const payoutInput = mkUtxo("80", 0);
-    const feeInput = mkUtxo("10", 0);
-    const hubRef = mkUtxo("40", 0);
-
-    const layout = __reservePayoutTest.initialConcludePayoutLayout({
-      inputs: [payoutInput, feeInput],
-      referenceInputs: [hubRef],
-      payoutInput,
-      hubOracleRefInput: hubRef,
-    });
-
-    expect(layout.payoutInputIndex).toBe(1n);
-    expect(layout.l1OutputIndex).toBe(0n);
-    expect(layout.payoutSpendRedeemerIndex).toBe(0n);
-    expect(layout.burnRedeemerIndex).toBe(1n);
-    expect(layout.hubRefInputIndex).toBe(0n);
-  });
-
-  it("derives absorption, initialization, and refund layouts in ledger order", () => {
-    const protocolInput = mkUtxo("10", 0);
-    const feeInput = mkUtxo("f0", 0);
-    const hubRef = mkUtxo("20", 0);
-    const settlementRef = mkUtxo("70", 0);
-    const withdrawalPolicyId = "55".repeat(28);
-    const payoutPolicyId = "44".repeat(28);
-
-    const absorptionLayout = __reservePayoutTest.initialAbsorbDepositLayout({
-      inputs: [feeInput, protocolInput],
-      referenceInputs: [settlementRef, hubRef],
-      deposit: { utxo: protocolInput } as SDK.DepositUTxO,
-      hubOracleRefInput: hubRef,
-      settlementRefInput: settlementRef,
-    });
-    expect(absorptionLayout.depositInputIndex).toBe(0n);
-    expect(absorptionLayout.hubRefInputIndex).toBe(0n);
-    expect(absorptionLayout.settlementRefInputIndex).toBe(1n);
-    expect(absorptionLayout.burnRedeemerIndex).toBe(1n);
-    expect(absorptionLayout.witnessUnregistrationRedeemerIndex).toBe(2n);
-    expect(absorptionLayout.inclusionProofWithdrawalRedeemerIndex).toBe(3n);
-
-    const initializationLayout =
-      __reservePayoutTest.initialInitializePayoutLayout({
-        inputs: [feeInput, protocolInput],
-        referenceInputs: [settlementRef, hubRef],
-        withdrawal: { utxo: protocolInput } as SDK.WithdrawalUTxO,
-        hubOracleRefInput: hubRef,
-        settlementRefInput: settlementRef,
-        withdrawalPolicyId,
-        payoutPolicyId,
-      });
-    expect(initializationLayout.withdrawalInputIndex).toBe(0n);
-    expect(initializationLayout.payoutMintRedeemerIndex).toBe(1n);
-    expect(initializationLayout.withdrawalBurnRedeemerIndex).toBe(2n);
-    expect(initializationLayout.witnessUnregistrationRedeemerIndex).toBe(3n);
-    expect(initializationLayout.inclusionProofWithdrawalRedeemerIndex).toBe(4n);
-
-    const refundLayout = __reservePayoutTest.initialRefundWithdrawalLayout({
-      inputs: [feeInput, protocolInput],
-      referenceInputs: [settlementRef, hubRef],
-      withdrawal: { utxo: protocolInput } as SDK.WithdrawalUTxO,
-      hubOracleRefInput: hubRef,
-      settlementRefInput: settlementRef,
-    });
-    expect(refundLayout.withdrawalInputIndex).toBe(0n);
-    expect(refundLayout.hubRefInputIndex).toBe(0n);
-    expect(refundLayout.settlementRefInputIndex).toBe(1n);
-    expect(refundLayout.burnRedeemerIndex).toBe(1n);
-    expect(refundLayout.witnessUnregistrationRedeemerIndex).toBe(2n);
-    expect(refundLayout.inclusionProofWithdrawalRedeemerIndex).toBe(3n);
   });
 
   it("models a full reserve-funded withdrawal lifecycle with exact accounting", () => {
@@ -851,6 +1202,81 @@ describe("reserve/payout transaction builder primitives", () => {
     ).toBe(true);
   });
 
+  it("builds deposit authenticate mint redeemers from the final tx layout", async () => {
+    const {
+      beneficiary,
+      contracts,
+      depositMintingReference,
+      hubOracleRefInput,
+      lucid,
+    } = await makeUserEventBuilderFixture();
+
+    const built = await Effect.runPromise(
+      SDK.buildUnsignedDepositTxWithMetadataProgram(lucid, contracts, {
+        additionalAssets: {},
+        l2Address: beneficiary.address,
+        l2Datum: null,
+        lovelace: 5_000_000n,
+        referenceScripts: {
+          depositMinting: depositMintingReference,
+        },
+      }),
+    );
+
+    expectAuthenticateMintRedeemerLayout({
+      tx: built.tx,
+      policyId: contracts.deposit.policyId,
+      eventAddress: built.metadata.depositAddress,
+      eventUnit: built.metadata.depositAuthUnit,
+      nonceInput: built.metadata.nonceInput,
+      hubOracleRefInput,
+    });
+  });
+
+  it("builds withdrawal authenticate mint redeemers from the final tx layout", async () => {
+    const {
+      beneficiary,
+      contracts,
+      hubOracleRefInput,
+      lucid,
+      withdrawalMintingReference,
+    } = await makeUserEventBuilderFixture();
+    const refundAddress = await Effect.runPromise(
+      SDK.addressDataFromBech32(beneficiary.address),
+    );
+
+    const built = await Effect.runPromise(
+      SDK.buildUnsignedWithdrawalTxWithMetadataProgram(lucid, contracts, {
+        body: {
+          l2_outref: {
+            transactionId: "33".repeat(32),
+            outputIndex: 0n,
+          },
+          l2_owner: "44".repeat(28),
+          l2_value: __reservePayoutTest.assetsToValue({
+            lovelace: 7_000_000n,
+          }),
+          l1_address: refundAddress,
+          l1_datum: "NoDatum",
+        },
+        refundAddress,
+        referenceScripts: {
+          withdrawalMinting: withdrawalMintingReference,
+        },
+        signature: ["01", "02"],
+      }),
+    );
+
+    expectAuthenticateMintRedeemerLayout({
+      tx: built.tx,
+      policyId: contracts.withdrawal.policyId,
+      eventAddress: built.metadata.withdrawalAddress,
+      eventUnit: built.metadata.withdrawalAuthUnit,
+      nonceInput: built.metadata.nonceInput,
+      hubOracleRefInput,
+    });
+  });
+
   it("builds, locally evaluates, and submits reserve funding plus payout conclusion", async () => {
     const {
       contracts,
@@ -874,6 +1300,7 @@ describe("reserve/payout transaction builder primitives", () => {
       }),
     );
     expect(addFunds.layout.reserveChangeOutputIndex).not.toBeNull();
+    expectAddFundsRedeemerLayout(addFunds);
     await lucid.awaitTx(await submitWithWallet(addFunds.tx));
 
     const fundedPayout = findUtxoWithUnit(
@@ -896,6 +1323,7 @@ describe("reserve/payout transaction builder primitives", () => {
       }),
     );
     expect(conclude.layout.l1OutputIndex).toBe(0n);
+    expectConcludeRedeemerLayout(conclude);
     await lucid.awaitTx(await submitWithWallet(conclude.tx));
 
     expect(
@@ -940,6 +1368,7 @@ describe("reserve/payout transaction builder primitives", () => {
       }),
     );
     expect(absorb.layout.reserveOutputIndex).toBeGreaterThanOrEqual(0n);
+    expectAbsorbRedeemerLayout(absorb);
     await lucid.awaitTx(await submitWithWallet(absorb.tx));
     expect(
       (await lucid.utxosAt(contracts.deposit.spendingScriptAddress)).some(
@@ -970,6 +1399,7 @@ describe("reserve/payout transaction builder primitives", () => {
       }),
     );
     expect(initialize.layout.payoutOutputIndex).toBeGreaterThanOrEqual(0n);
+    expectInitializeRedeemerLayout(initialize, contracts);
     await lucid.awaitTx(await submitWithWallet(initialize.tx));
 
     const initializedPayout = findUtxoWithUnit(
@@ -988,6 +1418,7 @@ describe("reserve/payout transaction builder primitives", () => {
       }),
     );
     expect(addFunds.layout.reserveChangeOutputIndex).not.toBeNull();
+    expectAddFundsRedeemerLayout(addFunds);
     await lucid.awaitTx(await submitWithWallet(addFunds.tx));
 
     const fundedPayout = findUtxoWithUnit(
@@ -1012,6 +1443,7 @@ describe("reserve/payout transaction builder primitives", () => {
       }),
     );
     expect(conclude.layout.l1OutputIndex).toBe(0n);
+    expectConcludeRedeemerLayout(conclude);
     await lucid.awaitTx(await submitWithWallet(conclude.tx));
 
     expect(
@@ -1059,6 +1491,7 @@ describe("reserve/payout transaction builder primitives", () => {
       }),
     );
     expect(absorb.layout.reserveOutputIndex).toBeGreaterThanOrEqual(0n);
+    expectAbsorbRedeemerLayout(absorb);
 
     const initialize = await Effect.runPromise(
       buildInitializePayoutTxProgram(lucid, contracts, {
@@ -1072,6 +1505,7 @@ describe("reserve/payout transaction builder primitives", () => {
       }),
     );
     expect(initialize.layout.payoutOutputIndex).toBeGreaterThanOrEqual(0n);
+    expectInitializeRedeemerLayout(initialize, contracts);
   });
 
   it("builds and submits the invalid-withdrawal refund path", async () => {
@@ -1104,6 +1538,7 @@ describe("reserve/payout transaction builder primitives", () => {
       }),
     );
     expect(refund.layout.refundOutputIndex).toBe(0n);
+    expectRefundRedeemerLayout(refund, "UnpayableWithdrawalValue");
     await lucid.awaitTx(await submitWithWallet(refund.tx));
 
     expect(

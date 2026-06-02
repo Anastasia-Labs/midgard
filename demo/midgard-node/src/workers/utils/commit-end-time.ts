@@ -8,9 +8,9 @@ import {
 export const EXPLICIT_COMMIT_DEFAULT_CANDIDATE_FUTURE_BUFFER_MS =
   5 * 60 * 1000;
 
-// Commit construction may include scheduler refresh + layout retries, which can
-// exceed one minute under provider latency; keep a safety margin without
-// pushing header end-times too far into the future.
+// Commit construction may include a scheduler refresh, which can exceed one
+// minute under provider latency; keep a safety margin without pushing header
+// end-times too far into the future.
 const COMMIT_VALIDITY_FUTURE_BUFFER_MS = 120_000;
 
 export const alignUnixTimeToSlotBoundary = (

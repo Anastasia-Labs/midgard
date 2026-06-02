@@ -22,7 +22,7 @@ const bodyHash = Buffer.from("11".repeat(32), "hex");
 const otherHash = Buffer.from("22".repeat(32), "hex");
 
 const enterpriseAddressFor = (
-  privateKey: InstanceType<typeof CML.PrivateKey>,
+  privateKey: CML.PrivateKey,
 ): string =>
   CML.EnterpriseAddress.new(
     0,

@@ -36,12 +36,12 @@ import type {
 export { MIDGARD_PROTECTED_ADDRESS_HEADER_MASK };
 
 export type PlutusDataLike =
-  | InstanceType<typeof CML.PlutusData>
+  | CML.PlutusData
   | Uint8Array
   | string;
 
 export type ScriptRefLike =
-  | InstanceType<typeof CML.Script>
+  | CML.Script
   | Uint8Array
   | string
   | MidgardScript;
@@ -83,7 +83,7 @@ const fromHex = (hex: string, fieldName: string): Buffer => {
 };
 
 const addressBytesForOutput = (
-  address: Address | InstanceType<typeof CML.Address>,
+  address: Address | CML.Address,
   kind: OutputKind = "ordinary",
 ): Buffer => {
   const bytes =
@@ -100,7 +100,7 @@ const outputKindFromAddress = (address: Address): OutputKind =>
 
 export const normalizePlutusData = (
   data: PlutusDataLike,
-): InstanceType<typeof CML.PlutusData> => {
+): CML.PlutusData => {
   if (data instanceof CML.PlutusData) {
     return data;
   }
@@ -117,7 +117,7 @@ const isMidgardScript = (script: ScriptRefLike): script is MidgardScript =>
   "script" in script;
 
 const cmlScriptToMidgardVersionedScript = (
-  script: InstanceType<typeof CML.Script>,
+  script: CML.Script,
 ): MidgardVersionedScript => {
   const native = script.as_native();
   if (native !== undefined) {
@@ -322,7 +322,7 @@ const publicOutputFromCore = (
 });
 
 export const makeMidgardTxOutput = (
-  address: Address | InstanceType<typeof CML.Address>,
+  address: Address | CML.Address,
   value: ValueLike,
   options: OutputOptions = {},
 ): MidgardTxOutput => {
@@ -354,7 +354,7 @@ export const protectMidgardOutputCbor = (outputCbor: Uint8Array): Buffer => {
 };
 
 const encodeAuthoredMidgardTxOutput = (
-  address: Address | InstanceType<typeof CML.Address>,
+  address: Address | CML.Address,
   value: ValueLike,
   options: OutputOptions = {},
 ): Buffer =>
@@ -377,12 +377,12 @@ const isMidgardTxOutput = (value: unknown): value is MidgardTxOutput =>
 
 export function encodeMidgardTxOutput(output: MidgardTxOutput): Buffer;
 export function encodeMidgardTxOutput(
-  address: Address | InstanceType<typeof CML.Address>,
+  address: Address | CML.Address,
   value: ValueLike,
   options?: OutputOptions,
 ): Buffer;
 export function encodeMidgardTxOutput(
-  addressOrOutput: Address | InstanceType<typeof CML.Address> | MidgardTxOutput,
+  addressOrOutput: Address | CML.Address | MidgardTxOutput,
   value?: ValueLike,
   options: OutputOptions = {},
 ): Buffer {

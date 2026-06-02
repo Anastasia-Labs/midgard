@@ -1,7 +1,5 @@
-import * as SDK from "@/reserve-payout/primitives.js";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import {
-  type CML,
   type LucidEvolution,
   type TxBuilder,
   type TxSignBuilder,
@@ -23,21 +21,17 @@ export type BuiltReservePayoutTx<L> = {
 type CompleteWithLayoutParams<L> = {
   readonly label: string;
   readonly lucid: LucidEvolution;
-  readonly initialLayout: L;
   readonly walletInputExclusions?: readonly OutRefLike[];
-  readonly makeTx: (layout: L) => TxBuilder;
-  readonly deriveLayout: (tx: CML.Transaction) => L;
-  readonly sameLayout: (left: L, right: L) => boolean;
+  readonly makeTx: () => TxBuilder;
+  readonly resolveLayout: () => L;
 };
 
-export const completeWithTwoPassLayoutProgram = <L>({
+export const completeWithFinalLayoutProgram = <L>({
   label,
   lucid,
-  initialLayout,
   walletInputExclusions = [],
   makeTx,
-  deriveLayout,
-  sameLayout,
+  resolveLayout,
 }: CompleteWithLayoutParams<L>): Effect.Effect<
   BuiltReservePayoutTx<L>,
   ReservePayoutTxError
@@ -57,37 +51,9 @@ export const completeWithTwoPassLayoutProgram = <L>({
         disposableFeeInputCandidates(utxos, walletInputExclusions),
       ),
     );
-    const draft = yield* Effect.tryPromise({
-      try: () =>
-        SDK.withStubbedProviderEvaluation(lucid, () =>
-          makeTx(initialLayout).complete({
-            // The first pass is only a balanced draft used to discover layout
-            // indices. Its seed redeemers may be invalid until those indices are
-            // derived, so evaluation is routed through the temporary provider
-            // stub below. The final transaction is completed with real local
-            // UPLC evaluation.
-            localUPLCEval: false,
-            presetWalletInputs: [...walletInputs],
-          }),
-        ),
-      catch: (cause) =>
-        new ReservePayoutTxError({
-          message: `Failed to build ${label} draft transaction with disposable wallet fee inputs: ${formatUnknownError(cause)}`,
-          cause,
-        }),
-    });
-    const resolvedLayout = yield* Effect.try({
-      try: () => deriveLayout(draft.toTransaction()),
-      catch: (cause) =>
-        new ReservePayoutTxError({
-          message: `Failed to derive ${label} layout from balanced draft transaction`,
-          cause,
-        }),
-    });
-
     const final = yield* Effect.tryPromise({
       try: () =>
-        makeTx(resolvedLayout).complete({
+        makeTx().complete({
           localUPLCEval: true,
           presetWalletInputs: [...walletInputs],
         }),
@@ -98,30 +64,17 @@ export const completeWithTwoPassLayoutProgram = <L>({
         }),
     });
 
-    const finalLayout = yield* Effect.try({
-      try: () => deriveLayout(final.toTransaction()),
+    const layout = yield* Effect.try({
+      try: resolveLayout,
       catch: (cause) =>
         new ReservePayoutTxError({
-          message: `Failed to derive ${label} layout from final transaction`,
+          message: `Failed to resolve ${label} layout from BuildTxWithRedeemer`,
           cause,
         }),
     });
 
-    if (!sameLayout(resolvedLayout, finalLayout)) {
-      return yield* Effect.fail(
-        new ReservePayoutTxError({
-          message: `${label} transaction layout was unstable`,
-          cause: {
-            initialLayout,
-            resolvedLayout,
-            finalLayout,
-          },
-        }),
-      );
-    }
-
     return {
       tx: final,
-      layout: finalLayout,
+      layout,
     };
   });

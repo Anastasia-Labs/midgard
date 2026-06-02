@@ -2,13 +2,6 @@ export { Bech32DeserializationError, LucidError } from "@/common.js";
 export { MerkleRoot, OutputReference, Proof, Value } from "@/common.js";
 export type { AddressData, CredentialD, MidgardValidators } from "@/common.js";
 export {
-  getRedeemerPointersInContextOrder,
-  resolveMintPolicyContextIndex,
-  resolveRedeemerTxInfoIndex,
-  withStubbedProviderEvaluation,
-} from "@/cardano-redeemers.js";
-export type { RedeemerPointer } from "@/cardano-redeemers.js";
-export {
   CardanoDatum,
   DepositInfo,
   WithdrawalInfo,

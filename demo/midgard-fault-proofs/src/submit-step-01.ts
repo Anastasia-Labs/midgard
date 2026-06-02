@@ -17,8 +17,14 @@ import {
   NativeTxCompact,
   type NativeTxCompact as NativeTxCompactData,
   Proof,
+  requireInputIndex,
+  requireOwnSpendPurpose,
+  requireReferenceInputIndex,
+  requireUniqueOutputIndex,
+  requireWithdrawalRedeemerIndex,
 } from "@al-ft/midgard-sdk";
 import {
+  type BuildTxWithRedeemer,
   credentialToAddress,
   Data,
   type LucidEvolution,
@@ -44,11 +50,9 @@ import {
   getCompiledScript,
   makeLucidForSubmit,
   outRefLabel,
-  outRefsEqual,
   parseOutRef,
   phasMembershipRewardAddress,
   readJsonFile,
-  referenceInputIndex,
   requireSingletonUtxo,
   resolveDoubleSpendDeploymentContracts,
   type ResolvedProverSigner,
@@ -56,10 +60,9 @@ import {
   resolveProverSigner,
   type SubmitProviderConfig,
 } from "./runtime.js";
+import { computationThreadOutputPredicate } from "./tx-layout.js";
 
 export const PHAS_MEMBERSHIP_WITHDRAW_TITLE = "phas.membership.withdraw";
-const STEP_01_OUTPUT_INDEX = 0n;
-export const PHAS_WITHDRAW_REDEEMER_INDEX = 0n;
 export const MIN_FEE_INPUT_LOVELACE = 10_000_000n;
 
 export type SubmitStep01CliConfig = SubmitProviderConfig & {
@@ -103,6 +106,13 @@ export type SubmitStep01Result = {
   readonly hubOracleRefInputIndex: number;
   readonly stateQueueNodeRefInputIndex: number;
   readonly awaitedConfirmation: boolean;
+};
+
+type Step01Layout = {
+  readonly inputIndex: bigint;
+  readonly outputIndex: bigint;
+  readonly hubOracleRefInputIndex: bigint;
+  readonly stateQueueNodeRefInputIndex: bigint;
 };
 
 const bytesHex = (bytes: Uint8Array): string =>
@@ -368,15 +378,6 @@ export const selectFeeInput = (walletUtxos: readonly UTxO[]): UTxO => {
   return feeInput;
 };
 
-export const inputIndex = (threadUtxo: UTxO, feeInput: UTxO): bigint => {
-  const ordered = [threadUtxo, feeInput].sort(compareUtxoOutRefs);
-  const index = ordered.findIndex((utxo) => outRefsEqual(utxo, threadUtxo));
-  if (index < 0) {
-    throw new Error(`Thread input not found after input ordering.`);
-  }
-  return BigInt(index);
-};
-
 export const submitStep01 = async ({
   lucid,
   blueprint,
@@ -467,36 +468,14 @@ export const submitStep01 = async ({
 
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
-  const sortedReferenceInputs = [hubOracleUtxo, stateQueueBlockUtxo].sort(
-    compareUtxoOutRefs,
-  );
-  const spendInputIndex = inputIndex(threadUtxo, feeInput);
+  const referenceInputs = [hubOracleUtxo, stateQueueBlockUtxo];
   const phasMembershipScript: Script = {
     type: "PlutusV3",
     script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
   };
-  const continueArgs = {
-    input_index: spendInputIndex,
-    output_index: STEP_01_OUTPUT_INDEX,
-    hub_ref_input_index: referenceInputIndex(
-      sortedReferenceInputs,
-      hubOracleUtxo,
-    ),
-    state_queue_node_ref_input_index: referenceInputIndex(
-      sortedReferenceInputs,
-      stateQueueBlockUtxo,
-    ),
-    native_tx_id: txInclusion.nativeTxId,
-    native_tx_compact_cbor: txInclusion.nativeTxCompactCbor,
-    tx_membership_proof: txInclusion.txMembershipProof,
-    inclusion_proof_script_withdraw_redeemer_index:
-      PHAS_WITHDRAW_REDEEMER_INDEX,
-  };
-  const redeemer = Data.to(
-    {
-      Continue: [continueArgs],
-    },
-    DoubleSpendStep01SpendRedeemer,
+  const phasRewardAddress = phasMembershipRewardAddress(
+    network,
+    phasMembershipScript,
   );
   const step02Datum = Data.to(
     {
@@ -509,6 +488,57 @@ export const submitStep01 = async ({
     },
     DoubleSpendStep02Datum,
   );
+  const step02OutputMatches = computationThreadOutputPredicate({
+    address: contracts.doubleSpend.steps[1].spendingScriptAddress,
+    datum: step02Datum,
+    unit: threadToken.unit,
+  });
+  let resolvedLayout: Step01Layout | undefined;
+  const redeemer = ((ctx) => {
+    requireOwnSpendPurpose(ctx, threadUtxo, "double-spend step 01");
+    const layout: Step01Layout = {
+      inputIndex: requireInputIndex(ctx, threadUtxo, "double-spend step 01"),
+      outputIndex: requireUniqueOutputIndex(
+        ctx.outputs,
+        step02OutputMatches,
+        "double-spend step 01 output",
+      ),
+      hubOracleRefInputIndex: requireReferenceInputIndex(
+        ctx,
+        hubOracleUtxo,
+        "double-spend step 01 hub oracle",
+      ),
+      stateQueueNodeRefInputIndex: requireReferenceInputIndex(
+        ctx,
+        stateQueueBlockUtxo,
+        "double-spend step 01 state-queue node",
+      ),
+    };
+    resolvedLayout = layout;
+    return Data.to(
+      {
+        Continue: [
+          {
+            input_index: layout.inputIndex,
+            output_index: layout.outputIndex,
+            hub_ref_input_index: layout.hubOracleRefInputIndex,
+            state_queue_node_ref_input_index:
+              layout.stateQueueNodeRefInputIndex,
+            native_tx_id: txInclusion.nativeTxId,
+            native_tx_compact_cbor: txInclusion.nativeTxCompactCbor,
+            tx_membership_proof: txInclusion.txMembershipProof,
+            inclusion_proof_script_withdraw_redeemer_index:
+              requireWithdrawalRedeemerIndex(
+                ctx,
+                phasRewardAddress,
+                "double-spend step 01 PHAS membership",
+              ),
+          },
+        ],
+      },
+      DoubleSpendStep01SpendRedeemer,
+    );
+  }) satisfies BuildTxWithRedeemer;
   const threadAssets = {
     lovelace: threadUtxo.assets.lovelace ?? 0n,
     [threadToken.unit]: 1n,
@@ -518,9 +548,9 @@ export const submitStep01 = async ({
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], redeemer)
-    .readFrom(sortedReferenceInputs)
+    .readFrom(referenceInputs)
     .withdraw(
-      phasMembershipRewardAddress(network, phasMembershipScript),
+      phasRewardAddress,
       0n,
       encodeRawPhasMembershipProofRedeemer({
         root: header.transactionsRoot,
@@ -542,6 +572,9 @@ export const submitStep01 = async ({
     .attach.WithdrawalValidator(phasMembershipScript);
 
   const unsigned = await tx.complete({ localUPLCEval: true });
+  if (resolvedLayout === undefined) {
+    throw new Error("BuildTxWithRedeemer did not resolve step 01 layout.");
+  }
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();
   if (awaitConfirmation) {
@@ -554,7 +587,7 @@ export const submitStep01 = async ({
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
     threadOutRef,
-    nextThreadOutRef: `${txHash}#${STEP_01_OUTPUT_INDEX.toString()}`,
+    nextThreadOutRef: `${txHash}#${resolvedLayout.outputIndex.toString()}`,
     stateQueueBlockOutRef,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
     computationThreadPolicyId: contracts.computationThread.policyId,
@@ -563,13 +596,11 @@ export const submitStep01 = async ({
     firstStepAddress: contracts.doubleSpend.steps[0].spendingScriptAddress,
     secondStepAddress: contracts.doubleSpend.steps[1].spendingScriptAddress,
     nativeTxId: txInclusion.nativeTxId,
-    inputIndex: Number(spendInputIndex),
-    outputIndex: Number(STEP_01_OUTPUT_INDEX),
-    hubOracleRefInputIndex: Number(
-      referenceInputIndex(sortedReferenceInputs, hubOracleUtxo),
-    ),
+    inputIndex: Number(resolvedLayout.inputIndex),
+    outputIndex: Number(resolvedLayout.outputIndex),
+    hubOracleRefInputIndex: Number(resolvedLayout.hubOracleRefInputIndex),
     stateQueueNodeRefInputIndex: Number(
-      referenceInputIndex(sortedReferenceInputs, stateQueueBlockUtxo),
+      resolvedLayout.stateQueueNodeRefInputIndex,
     ),
     awaitedConfirmation: awaitConfirmation,
   };

@@ -24,7 +24,7 @@ const address =
   "addr_test1qq4jrrcfzylccwgqu3su865es52jkf7yzrdu9cw3z84nycnn3zz9lvqj7vs95tej896xkekzkufhpuk64ja7pga2g8ksdf8km4";
 
 const addressFromKeyHash = (
-  keyHash: InstanceType<typeof CML.Ed25519KeyHash>,
+  keyHash: CML.Ed25519KeyHash,
 ): string =>
   CML.EnterpriseAddress.new(0, CML.Credential.new_pub_key(keyHash))
     .to_address()

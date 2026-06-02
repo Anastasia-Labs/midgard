@@ -20,15 +20,15 @@
     "lint:fix": "eslint . --fix"
   },
   "dependencies": {
-    "@lucid-evolution/lucid": "0.4.31",
+    "@lucid-evolution/lucid": "0.5.2",
     "chalk": "^4.1.2",
     "commander": "^11.1.0",
     "effect": "^3.13.4",
     "p-limit": "^5.0.0"
   },
   "devDependencies": {
-    "@types/node": "^20.11.0",
     "@types/commander": "^2.12.2",
+    "@types/node": "^20.11.0",
     "@typescript-eslint/eslint-plugin": "^7.1.0",
     "@typescript-eslint/parser": "^7.1.0",
     "eslint": "^8.56.0",

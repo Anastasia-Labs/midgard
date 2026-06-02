@@ -384,7 +384,7 @@ export const cardanoTxBytesToMidgardNativeTxCanonicalCbor = (
 const decodeNativeCredentialObserver = (
   observerBytes: Uint8Array,
   fieldName: string,
-): InstanceType<typeof CML.Credential> => {
+): CML.Credential => {
   if (observerBytes.length === 28) {
     return CML.Credential.new_script(
       CML.ScriptHash.from_raw_bytes(observerBytes),
@@ -408,7 +408,7 @@ const decodeNativeCredentialObserver = (
 const toCardanoNetworkId = (
   networkId: bigint,
   fieldName: string,
-): InstanceType<typeof CML.NetworkId> | undefined => {
+): CML.NetworkId | undefined => {
   if (networkId === MIDGARD_NATIVE_NETWORK_ID_NONE) {
     return undefined;
   }
@@ -427,7 +427,7 @@ const toCardanoNetworkId = (
 
 const decodeNativeRequiredSignersToCardano = (
   preimageCbor: Uint8Array,
-): InstanceType<typeof CML.Ed25519KeyHashList> => {
+): CML.Ed25519KeyHashList => {
   const signerBytes = decodeMidgardNativeByteListPreimage(
     preimageCbor,
     "native.required_signers",
@@ -449,8 +449,8 @@ const decodeNativeRequiredSignersToCardano = (
 
 const decodeNativeObserversToWithdrawals = (
   preimageCbor: Uint8Array,
-  networkId: InstanceType<typeof CML.NetworkId> | undefined,
-): InstanceType<typeof CML.MapRewardAccountToCoin> | undefined => {
+  networkId: CML.NetworkId | undefined,
+): CML.MapRewardAccountToCoin | undefined => {
   const observerBytes = decodeMidgardNativeByteListPreimage(
     preimageCbor,
     "native.required_observers",
@@ -482,7 +482,7 @@ const decodeNativeObserversToWithdrawals = (
 const decodeNativeInputsToCardano = (
   preimageCbor: Uint8Array,
   fieldName: string,
-): InstanceType<typeof CML.TransactionInputList> => {
+): CML.TransactionInputList => {
   const inputBytes = decodeMidgardNativeByteListPreimage(
     preimageCbor,
     fieldName,
@@ -497,7 +497,7 @@ const decodeNativeInputsToCardano = (
 const midgardVersionedScriptToCardano = (
   script: MidgardVersionedScript,
   fieldName: string,
-): InstanceType<typeof CML.Script> => {
+): CML.Script => {
   switch (script.language) {
     case "NativeCardano":
       return CML.Script.new_native(
@@ -519,7 +519,7 @@ const midgardVersionedScriptToCardano = (
 const midgardOutputBytesToCardano = (
   outputBytes: Uint8Array,
   fieldName: string,
-): InstanceType<typeof CML.TransactionOutput> => {
+): CML.TransactionOutput => {
   const decoded = decodeMidgardTxOutput(outputBytes);
   const address = decodeMidgardAddressBytes(decoded.address);
   if (address.protected) {
@@ -553,7 +553,7 @@ const midgardOutputBytesToCardano = (
 
 const decodeNativeOutputsToCardano = (
   preimageCbor: Uint8Array,
-): InstanceType<typeof CML.TransactionOutputList> => {
+): CML.TransactionOutputList => {
   const outputBytes = decodeMidgardNativeByteListPreimage(
     preimageCbor,
     "native.outputs",
@@ -569,7 +569,7 @@ const decodeNativeOutputsToCardano = (
 
 const decodeNativeAddrWitnessesToCardano = (
   preimageCbor: Uint8Array,
-): InstanceType<typeof CML.VkeywitnessList> | undefined => {
+): CML.VkeywitnessList | undefined => {
   const witnessBytes = decodeMidgardNativeByteListPreimage(
     preimageCbor,
     "native.addr_tx_wits",
@@ -585,15 +585,15 @@ const decodeNativeAddrWitnessesToCardano = (
 };
 
 type DecodedCardanoScripts = {
-  readonly nativeScripts?: InstanceType<typeof CML.NativeScriptList>;
-  readonly plutusV3Scripts?: InstanceType<typeof CML.PlutusV3ScriptList>;
+  readonly nativeScripts?: CML.NativeScriptList;
+  readonly plutusV3Scripts?: CML.PlutusV3ScriptList;
 };
 
 export type DecodedMidgardNativeMint = {
-  readonly mint: InstanceType<typeof CML.Mint>;
+  readonly mint: CML.Mint;
   readonly policyIds: readonly string[];
-  readonly mintedValue: InstanceType<typeof CML.Value>;
-  readonly burnedValue: InstanceType<typeof CML.Value>;
+  readonly mintedValue: CML.Value;
+  readonly burnedValue: CML.Value;
 };
 
 const decodeNativeScriptsToCardano = (
@@ -631,8 +631,8 @@ const decodeNativeScriptsToCardano = (
 };
 
 const valueFromMultiasset = (
-  multiasset: InstanceType<typeof CML.MultiAsset>,
-): InstanceType<typeof CML.Value> =>
+  multiasset: CML.MultiAsset,
+): CML.Value =>
   multiasset.policy_count() === 0
     ? CML.Value.zero()
     : CML.Value.new(0n, multiasset);
@@ -711,7 +711,7 @@ export const decodeMidgardNativeMint = (
 
 const decodeNativeRedeemersToCardano = (
   preimageCbor: Uint8Array,
-): InstanceType<typeof CML.Redeemers> | undefined => {
+): CML.Redeemers | undefined => {
   const decoded = decodeSingleCbor(preimageCbor);
   if (Array.isArray(decoded) && decoded.length === 0) {
     return undefined;

@@ -5,6 +5,7 @@
  */
 import * as SDK from "@al-ft/midgard-sdk";
 import {
+  type BuildTxWithRedeemer,
   credentialToAddress,
   Data as LucidData,
   type LucidEvolution,
@@ -33,11 +34,7 @@ import {
   type TxSignError,
   type TxSubmitError,
 } from "@/transactions/utils.js";
-import {
-  compareOutRefs,
-  outRefLabel,
-  resolveOutRefIndexFromSet,
-} from "@/tx-context.js";
+import { compareOutRefs, outRefLabel } from "@/tx-context.js";
 import { alignUnixTimeToSlotBoundary } from "@/workers/utils/commit-end-time.js";
 
 export type NodeUtxoWithDatum = {
@@ -428,16 +425,6 @@ const awaitSubmittedSchedulerTx = (
     }
   });
 
-export const resolveReferenceInputIndexFromLedgerOrder = (
-  target: UTxO,
-  referenceInputs: readonly UTxO[],
-): bigint => resolveOutRefIndexFromSet(target, referenceInputs);
-
-const resolveInputIndexFromLedgerOrder = (
-  target: UTxO,
-  inputs: readonly UTxO[],
-): bigint => resolveOutRefIndexFromSet(target, inputs);
-
 const getOperatorKeyHash = (
   lucid: LucidEvolution,
 ): Effect.Effect<string, SDK.StateQueueError> =>
@@ -771,67 +758,89 @@ const ensureSchedulerAlignedForCommit = (
     const feeInput = yield* selectFeeInput(
       availableOperatorWalletUtxos(flowOperatorWalletView),
     );
-    const schedulerInputIndex = resolveInputIndexFromLedgerOrder(
-      schedulerRefInput,
-      [feeInput, schedulerRefInput],
-    );
-    const schedulerSpendRedeemer: CanonicalSchedulerSpendRedeemer =
-      selection.kind === "Advance"
-        ? {
-            scheduler_input_index: schedulerInputIndex,
-            scheduler_output_index: 0n,
-            advancing_approach: {
-              GoToNextDueToEndOfShift: {
-                new_shifts_operator_node_ref_input_index:
-                  resolveReferenceInputIndexFromLedgerOrder(
-                    selection.activeNode.utxo,
-                    referenceInputs,
-                  ),
-              },
-            },
-          }
-        : selection.kind === "AppointFirst"
+    const schedulerSpendRedeemer = ((ctx) => {
+      SDK.requireOwnSpendPurpose(ctx, schedulerRefInput, "scheduler refresh");
+      const schedulerInputIndex = SDK.requireInputIndex(
+        ctx,
+        schedulerRefInput,
+        "scheduler refresh",
+      );
+      const schedulerOutputIndex = SDK.requireUniqueOutputIndex(
+        ctx.outputs,
+        (output) =>
+          output.address === contracts.scheduler.spendingScriptAddress &&
+          output.datum === refreshedSchedulerDatumCbor &&
+          (output.assets[schedulerWitnessUnit] ?? 0n) === 1n,
+        "scheduler refresh",
+      );
+      const redeemer: CanonicalSchedulerSpendRedeemer =
+        selection.kind === "Advance"
           ? {
               scheduler_input_index: schedulerInputIndex,
-              scheduler_output_index: 0n,
+              scheduler_output_index: schedulerOutputIndex,
               advancing_approach: {
-                AppointFirstOperator: {
+                GoToNextDueToEndOfShift: {
                   new_shifts_operator_node_ref_input_index:
-                    resolveReferenceInputIndexFromLedgerOrder(
+                    SDK.requireReferenceInputIndex(
+                      ctx,
                       selection.activeNode.utxo,
-                      referenceInputs,
-                    ),
-                  registered_element_ref_input_index:
-                    resolveReferenceInputIndexFromLedgerOrder(
-                      selection.registeredWitnessNode.utxo,
-                      referenceInputs,
+                      "scheduler refresh active node",
                     ),
                 },
               },
             }
-          : {
-              scheduler_input_index: schedulerInputIndex,
-              scheduler_output_index: 0n,
-              advancing_approach: {
-                RewindDueToEndOfShift: {
-                  active_operators_root_ref_input_index:
-                    resolveReferenceInputIndexFromLedgerOrder(
-                      selection.activeRootNode.utxo,
-                      referenceInputs,
-                    ),
-                  active_operators_last_node_ref_input_index:
-                    resolveReferenceInputIndexFromLedgerOrder(
-                      selection.activeNode.utxo,
-                      referenceInputs,
-                    ),
-                  registered_element_ref_input_index:
-                    resolveReferenceInputIndexFromLedgerOrder(
-                      selection.registeredWitnessNode.utxo,
-                      referenceInputs,
-                    ),
+          : selection.kind === "AppointFirst"
+            ? {
+                scheduler_input_index: schedulerInputIndex,
+                scheduler_output_index: schedulerOutputIndex,
+                advancing_approach: {
+                  AppointFirstOperator: {
+                    new_shifts_operator_node_ref_input_index:
+                      SDK.requireReferenceInputIndex(
+                        ctx,
+                        selection.activeNode.utxo,
+                        "scheduler refresh active node",
+                      ),
+                    registered_element_ref_input_index:
+                      SDK.requireReferenceInputIndex(
+                        ctx,
+                        selection.registeredWitnessNode.utxo,
+                        "scheduler refresh registered witness",
+                      ),
+                  },
                 },
-              },
-            };
+              }
+            : {
+                scheduler_input_index: schedulerInputIndex,
+                scheduler_output_index: schedulerOutputIndex,
+                advancing_approach: {
+                  RewindDueToEndOfShift: {
+                    active_operators_root_ref_input_index:
+                      SDK.requireReferenceInputIndex(
+                        ctx,
+                        selection.activeRootNode.utxo,
+                        "scheduler refresh active root",
+                      ),
+                    active_operators_last_node_ref_input_index:
+                      SDK.requireReferenceInputIndex(
+                        ctx,
+                        selection.activeNode.utxo,
+                        "scheduler refresh active tail",
+                      ),
+                    registered_element_ref_input_index:
+                      SDK.requireReferenceInputIndex(
+                        ctx,
+                        selection.registeredWitnessNode.utxo,
+                        "scheduler refresh registered witness",
+                      ),
+                  },
+                },
+              };
+      return LucidData.to(
+        redeemer as never,
+        SDK.SchedulerSpendRedeemer as never,
+      );
+    }) satisfies BuildTxWithRedeemer;
     yield* Effect.logInfo(
       `🔹 Refreshing scheduler witness datum for commit window via ${selection.kind} (from=${describeSchedulerDatum(schedulerDatum)} to=${describeSchedulerDatum(refreshedSchedulerDatum)}, validTo=${validTo.toString()}).`,
     );
@@ -846,13 +855,7 @@ const ensureSchedulerAlignedForCommit = (
         .validTo(Number(validTo))
         .collectFrom([feeInput])
         .readFrom(referenceInputs)
-        .collectFrom(
-          [schedulerRefInput],
-          LucidData.to(
-            schedulerSpendRedeemer as never,
-            SDK.SchedulerSpendRedeemer as never,
-          ),
-        )
+        .collectFrom([schedulerRefInput], schedulerSpendRedeemer)
         .pay.ToContract(
           contracts.scheduler.spendingScriptAddress,
           {

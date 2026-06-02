@@ -119,7 +119,7 @@ const PLUTUS_V3_CONTEXT_PROBE_SCRIPT_HEX = loadAlwaysSucceedsCompiledCode(
 
 const makeAlwaysSucceedsScript = (
   compiledCode: string,
-): InstanceType<typeof CML.Script> =>
+): CML.Script =>
   CML.Script.new_plutus_v3(
     CML.PlutusV3Script.from_raw_bytes(Buffer.from(compiledCode, "hex")),
   );
@@ -132,7 +132,7 @@ const makeRawUplcWitness = (scriptHex: string): MidgardVersionedScript => ({
 });
 
 const cmlScriptToScriptWitness = (
-  script: InstanceType<typeof CML.Script>,
+  script: CML.Script,
 ): MidgardVersionedScript => {
   const native = script.as_native();
   if (native !== undefined) {
@@ -183,7 +183,7 @@ const scriptWitnessItemToVersioned = (
 
 const makeTypedPlutusV3Witness = (
   scriptHex: string,
-): InstanceType<typeof CML.Script> =>
+): CML.Script =>
   CML.Script.new_plutus_v3(
     CML.PlutusV3Script.from_raw_bytes(Buffer.from(scriptHex, "hex")),
   );
@@ -195,7 +195,7 @@ const plutusV3Hash = (scriptHex: string): string =>
   hashPlutusV3Script(Buffer.from(scriptHex, "hex"));
 
 const uniqueScriptWitnessItems = (
-  scripts: readonly InstanceType<typeof CML.Script>[],
+  scripts: readonly CML.Script[],
 ): readonly MidgardVersionedScript[] =>
   Array.from(
     new Map(
@@ -228,13 +228,13 @@ const makeOutput = (address: string, lovelace: bigint): Buffer =>
   );
 
 const makePubKeyOutput = (
-  keyHash: InstanceType<typeof CML.Ed25519KeyHash>,
+  keyHash: CML.Ed25519KeyHash,
   lovelace: bigint,
 ): Buffer => makePubKeyValueOutput(keyHash, CML.Value.from_coin(lovelace));
 
 const makePubKeyValueOutput = (
-  keyHash: InstanceType<typeof CML.Ed25519KeyHash>,
-  value: InstanceType<typeof CML.Value>,
+  keyHash: CML.Ed25519KeyHash,
+  value: CML.Value,
 ): Buffer =>
   Buffer.from(
     makeMidgardTxOutput(
@@ -251,7 +251,7 @@ const makeSingleAssetValue = (
   policyId: Uint8Array,
   assetName: Uint8Array,
   quantity: bigint,
-): InstanceType<typeof CML.Value> => {
+): CML.Value => {
   const assets = CML.MapAssetNameToCoin.new();
   assets.insert(CML.AssetName.from_raw_bytes(assetName), quantity);
   const multiasset = CML.MultiAsset.new();
@@ -266,7 +266,7 @@ const makeMultiAssetValue = (
     readonly assetName: Uint8Array;
     readonly quantity: bigint;
   }[],
-): InstanceType<typeof CML.Value> => {
+): CML.Value => {
   const multiasset = CML.MultiAsset.new();
   for (const entry of entries) {
     const policy = CML.ScriptHash.from_raw_bytes(entry.policyId);
@@ -283,7 +283,7 @@ const makeMultiAssetValue = (
 
 const makeValueOutput = (
   address: string,
-  value: InstanceType<typeof CML.Value>,
+  value: CML.Value,
 ): Buffer =>
   Buffer.from(
     makeMidgardTxOutput(
@@ -293,11 +293,11 @@ const makeValueOutput = (
   );
 
 const makeScriptOutput = (
-  scriptHash: InstanceType<typeof CML.ScriptHash>,
+  scriptHash: CML.ScriptHash,
   lovelace: bigint,
   opts?: {
-    readonly datum?: InstanceType<typeof CML.PlutusData>;
-    readonly scriptRef?: InstanceType<typeof CML.Script>;
+    readonly datum?: CML.PlutusData;
+    readonly scriptRef?: CML.Script;
   },
 ): Buffer =>
   Buffer.from(
@@ -315,10 +315,10 @@ const makeScriptOutput = (
   );
 
 const makeDatumHashScriptOutput = (
-  scriptHash: InstanceType<typeof CML.ScriptHash>,
+  scriptHash: CML.ScriptHash,
   lovelace: bigint,
-  datumHash: InstanceType<typeof CML.DatumHash>,
-  scriptRef?: InstanceType<typeof CML.Script>,
+  datumHash: CML.DatumHash,
+  scriptRef?: CML.Script,
 ): Buffer => {
   const output = CML.ConwayFormatTxOut.new(
     CML.EnterpriseAddress.new(
@@ -337,21 +337,21 @@ const makeDatumHashScriptOutput = (
 };
 
 const makeProtectedScriptOutput = (
-  scriptHash: InstanceType<typeof CML.ScriptHash>,
+  scriptHash: CML.ScriptHash,
   lovelace: bigint,
   opts?: {
-    readonly datum?: InstanceType<typeof CML.PlutusData>;
-    readonly scriptRef?: InstanceType<typeof CML.Script>;
+    readonly datum?: CML.PlutusData;
+    readonly scriptRef?: CML.Script;
   },
 ): Buffer =>
   protectOutputAddressBytes(makeScriptOutput(scriptHash, lovelace, opts));
 
 const makeScriptValueOutput = (
-  scriptHash: InstanceType<typeof CML.ScriptHash>,
-  value: InstanceType<typeof CML.Value>,
+  scriptHash: CML.ScriptHash,
+  value: CML.Value,
   opts?: {
-    readonly datum?: InstanceType<typeof CML.PlutusData>;
-    readonly scriptRef?: InstanceType<typeof CML.Script>;
+    readonly datum?: CML.PlutusData;
+    readonly scriptRef?: CML.Script;
   },
 ): Buffer =>
   Buffer.from(
@@ -369,11 +369,11 @@ const makeScriptValueOutput = (
   );
 
 const makeProtectedScriptValueOutput = (
-  scriptHash: InstanceType<typeof CML.ScriptHash>,
-  value: InstanceType<typeof CML.Value>,
+  scriptHash: CML.ScriptHash,
+  value: CML.Value,
   opts?: {
-    readonly datum?: InstanceType<typeof CML.PlutusData>;
-    readonly scriptRef?: InstanceType<typeof CML.Script>;
+    readonly datum?: CML.PlutusData;
+    readonly scriptRef?: CML.Script;
   },
 ): Buffer =>
   protectOutputAddressBytes(makeScriptValueOutput(scriptHash, value, opts));
@@ -474,7 +474,7 @@ const makeMidgardV1ContextProbeRedeemer = (opts: {
 
 const makePlutusIntegerData = (
   value: bigint,
-): InstanceType<typeof CML.PlutusData> =>
+): CML.PlutusData =>
   CML.PlutusData.new_integer(CML.BigInteger.from_str(value.toString(10)));
 
 const makeMintPreimage = (
@@ -506,7 +506,7 @@ const buildNativeTx = (opts?: {
   readonly requiredObserverItems?: readonly Uint8Array[];
   readonly scriptWitnessItems?: readonly ScriptWitnessItem[];
   readonly witnessMode?: "none" | "valid" | "invalid";
-  readonly witnessSignerPrivateKey?: InstanceType<typeof CML.PrivateKey>;
+  readonly witnessSignerPrivateKey?: CML.PrivateKey;
   readonly mintPreimageCbor?: Buffer;
   readonly networkId?: bigint;
   readonly outputCount?: number;

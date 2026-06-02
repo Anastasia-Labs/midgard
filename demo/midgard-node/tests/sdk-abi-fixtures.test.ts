@@ -324,25 +324,6 @@ describe("SDK canonical ABI fixtures", () => {
         SDK.UserEventWitnessPublishRedeemer,
       ),
     ).toEqual({ MintOrBurn: { targetPolicy: h28 } });
-    expect(
-      Data.from(
-        SDK.encodeUserEventAuthenticateMintRedeemer({
-          nonceInputIndex: 0n,
-          eventOutputIndex: 1n,
-          hubRefInputIndex: 0n,
-          witnessRegistrationRedeemerIndex: 2n,
-        }),
-        SDK.UserEventMintRedeemer,
-      ),
-    ).toEqual({
-      AuthenticateEvent: {
-        nonce_input_index: 0n,
-        event_output_index: 1n,
-        hub_ref_input_index: 0n,
-        witness_registration_redeemer_index: 2n,
-      },
-    });
-
     const depositDatum: SDK.DepositDatum = {
       event: {
         id: { transactionId: h32, outputIndex: 0n },

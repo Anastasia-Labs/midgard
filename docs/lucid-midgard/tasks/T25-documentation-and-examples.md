@@ -12,7 +12,6 @@ compatibility.
 
 ## Dependencies
 
-- T13 API parity map.
 - T14 provider switching and overrides.
 - T15 provider convenience methods.
 - T16 observer validator surface.

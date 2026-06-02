@@ -5,7 +5,6 @@
  */
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  CML,
   Constr as LucidConstr,
   credentialToAddress,
   Data as LucidData,
@@ -31,21 +30,13 @@ import {
   resolveCurrentTimeMs,
 } from "@/transactions/register-active-operator/clock.js";
 import {
-  activateLayoutsEqual,
   activateLayoutToLogString,
-  type ActivateRedeemerLayout,
   activeAppendAnchorWitness,
-  deriveActivateRedeemerLayout,
-  deriveRegisterRedeemerLayout,
   getAssetNameByPolicy,
   nodeKeyEquals,
   type NodeWithDatum,
   orderedNotMemberWitness,
-  registerLayoutsEqual,
   registerLayoutToLogString,
-  type RegisterRedeemerLayout,
-  resolveInitialActivateRedeemerLayout,
-  resolveInitialRegisterRedeemerLayout,
 } from "@al-ft/midgard-sdk";
 import {
   handleSignSubmit,
@@ -99,20 +90,6 @@ type OperatorLifecycleMode =
   | "register-only"
   | "activate-only"
   | "deregister-only";
-
-type UnevaluatedDraftBuilder = {
-  readonly config: () => Promise<unknown>;
-  readonly rawConfig: () => {
-    readonly txBuilder: {
-      readonly build_for_evaluation: (
-        fee: number,
-        changeAddress: ReturnType<typeof CML.Address.from_bech32>,
-      ) => {
-        readonly draft_tx: () => CML.Transaction;
-      };
-    };
-  };
-};
 
 const summarizeOnChainScriptFailure = (cause: unknown): string | null => {
   const message = String(cause);
@@ -276,24 +253,6 @@ const summarizeNodeSetForDiagnostics = (
     data: datum.data,
     registeredDatum: decodeRegisteredOperatorDatumValue(datum.data) ?? null,
   }));
-
-const completeWithLocalEvaluation = async <A>(
-  build: (options: { localUPLCEval: boolean }) => Promise<A>,
-): Promise<A> => {
-  return await build({ localUPLCEval: true });
-};
-
-const buildUnevaluatedDraftTx = async (
-  lucid: LucidEvolution,
-  tx: UnevaluatedDraftBuilder,
-): Promise<CML.Transaction> => {
-  await tx.config();
-  const walletAddress = await lucid.wallet().address();
-  return tx
-    .rawConfig()
-    .txBuilder.build_for_evaluation(0, CML.Address.from_bech32(walletAddress))
-    .draft_tx();
-};
 
 const getOperatorKeyHash = (
   lucid: LucidEvolution,
@@ -562,8 +521,8 @@ const operatorLifecycleProgram = (
       );
     }
     // `activate-only` must reuse the same published active/registered reference
-    // scripts that `register-only` established, otherwise later balancing can
-    // introduce a different reference-input layout than the draft indexed.
+    // scripts that `register-only` established, otherwise activation can build
+    // against a different reference-input layout than registration prepared.
     const operatorReferenceTargets = [
       ...referenceScriptTargetsByCommand(contracts)["registered-operators"],
       ...referenceScriptTargetsByCommand(contracts)["active-operators"],
@@ -695,10 +654,6 @@ const operatorLifecycleProgram = (
             ...existingRegisteredAnchor.datum,
             next: existingRegisteredNode.datum.next,
           };
-        const deregisterLayouts = [
-          { removedNodeInputIndex: 0n, anchorNodeInputIndex: 1n },
-          { removedNodeInputIndex: 1n, anchorNodeInputIndex: 0n },
-        ] as const;
         const spendableWalletUtxosForDeregister =
           yield* resolveSpendableWalletUtxos(lucid, lifecycleScriptRefOutRefs);
         if (spendableWalletUtxosForDeregister.length === 0) {
@@ -710,70 +665,36 @@ const operatorLifecycleProgram = (
             }),
           );
         }
-        let deregistered = false;
-        let lastDeregisterFailure:
-          | SDK.LucidError
-          | TxConfirmError
-          | TxSignError
-          | TxSubmitError
-          | null = null;
-        for (const deregisterLayout of deregisterLayouts) {
-          const deregisterUnsignedTxResult = yield* Effect.either(
-            Effect.tryPromise({
-              try: () =>
-                completeWithLocalEvaluation((options) =>
-                  SDK.buildDeregisterRegisteredOperatorTx(
-                    {
-                      lucid,
-                      contracts,
-                      operatorKeyHash,
-                      registeredOperatorScriptRefs,
-                      registeredNode: existingRegisteredNode,
-                      registeredAnchor: existingRegisteredAnchor,
-                      registeredNodeUnit,
-                      updatedRegisteredAnchorDatum:
-                        updatedRegisteredAnchorDatumAfterDeregister,
-                    },
-                    deregisterLayout,
-                  ).complete({
-                    ...options,
-                    presetWalletInputs: [...spendableWalletUtxosForDeregister],
-                  }),
-                ),
-              catch: (cause) =>
-                new SDK.LucidError({
-                  message:
-                    "Failed to build operator deregistration transaction during operator lifecycle flow",
-                  cause,
-                }),
+        const deregisterUnsignedTx = yield* Effect.tryPromise({
+          try: () =>
+            SDK.buildDeregisterRegisteredOperatorTx({
+              lucid,
+              contracts,
+              operatorKeyHash,
+              registeredOperatorScriptRefs,
+              registeredNode: existingRegisteredNode,
+              registeredAnchor: existingRegisteredAnchor,
+              registeredNodeUnit,
+              updatedRegisteredAnchorDatum:
+                updatedRegisteredAnchorDatumAfterDeregister,
+            }).complete({
+              localUPLCEval: true,
+              presetWalletInputs: [...spendableWalletUtxosForDeregister],
             }),
-          );
-          if (deregisterUnsignedTxResult._tag === "Left") {
-            lastDeregisterFailure = deregisterUnsignedTxResult.left;
-            continue;
-          }
-          const deregisterSubmitResult = yield* Effect.either(
-            handleSignSubmit(lucid, deregisterUnsignedTxResult.right),
-          );
-          if (deregisterSubmitResult._tag === "Right") {
-            deregistered = true;
-            deregisterTxHash = deregisterSubmitResult.right;
-            break;
-          }
-          lastDeregisterFailure = deregisterSubmitResult.left;
-        }
-        if (!deregistered) {
-          if (lastDeregisterFailure !== null) {
-            return yield* Effect.fail(lastDeregisterFailure);
-          }
-          return yield* Effect.fail(
-            new SDK.StateQueueError({
+          catch: (cause) =>
+            new SDK.LucidError({
               message:
-                "Failed to execute operator deregistration transaction in lifecycle flow",
-              cause: operatorKeyHash,
+                "Failed to build operator deregistration transaction during operator lifecycle flow",
+              cause,
             }),
-          );
+        });
+        const deregisterSubmitResult = yield* Effect.either(
+          handleSignSubmit(lucid, deregisterUnsignedTx),
+        );
+        if (deregisterSubmitResult._tag === "Left") {
+          return yield* Effect.fail(deregisterSubmitResult.left);
         }
+        deregisterTxHash = deregisterSubmitResult.right;
         let registrationCleared = false;
         for (
           let attempt = 0;
@@ -936,10 +857,6 @@ const operatorLifecycleProgram = (
       const registerMintAssets = {
         [registeredNodeUnit]: 1n,
       };
-      const registeredRootNodeUnit = toUnit(
-        contracts.registeredOperators.policyId,
-        registeredRootNode.assetName,
-      );
       const spendableWalletUtxosForRegister =
         yield* resolveSpendableWalletUtxos(lucid, lifecycleScriptRefOutRefs);
       if (spendableWalletUtxosForRegister.length === 0) {
@@ -971,6 +888,7 @@ const operatorLifecycleProgram = (
       /**
        * Builds the registration transaction for an active operator.
        */
+      let registerLayout: SDK.RegisterRedeemerLayout | undefined;
       const registerTxConfig: SDK.RegisterOperatorTxConfig = {
         lucid,
         contracts,
@@ -985,50 +903,15 @@ const operatorLifecycleProgram = (
         prependedNodeAssets,
         updatedRegisteredRootDatum,
         registerValidTo,
+        onLayout: (layout) => {
+          registerLayout = layout;
+        },
       };
-      const mkRegisterTx = (layout: RegisterRedeemerLayout) =>
-        SDK.buildRegisterOperatorTx(registerTxConfig, layout);
+      const mkRegisterTx = () =>
+        SDK.buildRegisterOperatorTx(registerTxConfig).collectFrom([
+          ...registerFundingInputs,
+        ]);
 
-      const layoutDerivationParams = {
-        hubOracleRefInput,
-        activeNotMemberWitness,
-        retiredNotMemberWitness,
-        registeredRootNode,
-        registeredOperatorsPolicyId: contracts.registeredOperators.policyId,
-        registeredOperatorsAddress:
-          contracts.registeredOperators.spendingScriptAddress,
-        registeredNodeUnit,
-        registeredRootNodeUnit,
-      } as const;
-      const draftRegisterLayout = resolveInitialRegisterRedeemerLayout({
-        registeredOperatorScriptRefs,
-        hubOracleRefInput,
-        activeNotMemberWitness,
-        retiredNotMemberWitness,
-        registeredRootNode,
-        fundingInputs: registerFundingInputs,
-      });
-      const draftRegisterUnsignedTx = yield* Effect.tryPromise({
-        try: () =>
-          buildUnevaluatedDraftTx(
-            lucid,
-            mkRegisterTx(draftRegisterLayout).collectFrom([
-              ...registerFundingInputs,
-            ]) as UnevaluatedDraftBuilder,
-          ),
-        catch: (cause) =>
-          new SDK.LucidError({
-            message: `Failed to build draft operator registration transaction: ${String(cause)}`,
-            cause,
-          }),
-      });
-      let registerLayout = yield* deriveRegisterRedeemerLayout(
-        draftRegisterUnsignedTx,
-        layoutDerivationParams,
-      );
-      yield* Effect.logInfo(
-        `Resolved register redeemer layout: ${registerLayoutToLogString(registerLayout)}`,
-      );
       yield* Effect.logInfo(
         [
           "Register witnesses:",
@@ -1040,66 +923,29 @@ const operatorLifecycleProgram = (
           `prepended_node_datum=${SDK.encodeLinkedListNodeView(prependedNodeDatum)}`,
         ].join(" "),
       );
-      let registerUnsignedTx = yield* Effect.tryPromise({
+      const registerUnsignedTx = yield* Effect.tryPromise({
         try: () =>
-          completeWithLocalEvaluation((options) =>
-            mkRegisterTx(registerLayout).complete({
-              ...options,
-              presetWalletInputs: [...registerFundingInputs],
-            }),
-          ),
+          mkRegisterTx().complete({
+            localUPLCEval: true,
+            presetWalletInputs: [...registerFundingInputs],
+          }),
         catch: (cause) =>
           new SDK.LucidError({
             message: [
-              "Failed to build operator registration transaction with resolved redeemer layout.",
+              "Failed to build operator registration transaction with final redeemer context.",
               `cause=${String(cause)}`,
-              `layout=${registerLayoutToLogString(registerLayout)}`,
             ].join(" "),
             cause,
           }),
       });
-      for (let iteration = 0; iteration < 2; iteration += 1) {
-        const derivedSubmitLayout = yield* deriveRegisterRedeemerLayout(
-          registerUnsignedTx.toTransaction(),
-          layoutDerivationParams,
+      if (registerLayout === undefined) {
+        return yield* Effect.fail(
+          new SDK.StateQueueError({
+            message:
+              "BuildTxWithRedeemer did not resolve operator register layout",
+            cause: operatorKeyHash,
+          }),
         );
-        if (registerLayoutsEqual(registerLayout, derivedSubmitLayout)) {
-          break;
-        }
-        if (iteration === 1) {
-          return yield* Effect.fail(
-            new SDK.StateQueueError({
-              message:
-                "Register transaction layout did not converge after deterministic rebuild",
-              cause: JSON.stringify({
-                authoredLayout: registerLayoutToLogString(registerLayout),
-                derivedLayout: registerLayoutToLogString(derivedSubmitLayout),
-              }),
-            }),
-          );
-        }
-        yield* Effect.logWarning(
-          [
-            "Register layout drift detected after balancing; rebuilding with tx-derived indexes.",
-            `authored=${registerLayoutToLogString(registerLayout)}`,
-            `derived=${registerLayoutToLogString(derivedSubmitLayout)}`,
-          ].join(" "),
-        );
-        registerLayout = derivedSubmitLayout;
-        registerUnsignedTx = yield* Effect.tryPromise({
-          try: () =>
-            completeWithLocalEvaluation((options) =>
-              mkRegisterTx(registerLayout).complete({
-                ...options,
-                presetWalletInputs: [...registerFundingInputs],
-              }),
-            ),
-          catch: (cause) =>
-            new SDK.LucidError({
-              message: `Failed to rebuild operator registration transaction with tx-derived redeemer layout: ${String(cause)}`,
-              cause,
-            }),
-        });
       }
       yield* Effect.logInfo(
         `Using register redeemer layout: ${registerLayoutToLogString(registerLayout)}`,
@@ -1266,14 +1112,6 @@ const operatorLifecycleProgram = (
       contracts.activeOperators.policyId,
       SDK.ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX + operatorKeyHash,
     );
-    const activeAnchorNodeUnit = toUnit(
-      contracts.activeOperators.policyId,
-      activeAppendAnchor.assetName,
-    );
-    const registeredAnchorNodeUnit = toUnit(
-      contracts.registeredOperators.policyId,
-      registeredAnchor.assetName,
-    );
     const transferredOperatorAssets = {
       ...registeredNode.utxo.assets,
       [registeredNodeUnit]: 0n,
@@ -1319,149 +1157,56 @@ const operatorLifecycleProgram = (
     /**
      * Builds the activation transaction for a registered operator.
      */
-    const mkActivateTx = (
-      layout: ActivateRedeemerLayout,
-      options: { readonly resolveRegisteredRedeemerWithBuilder?: boolean } = {},
-    ) => {
+    let activateLayout: SDK.ActivateRedeemerLayout | undefined;
+    const mkActivateTx = () => {
       const { validFrom, validTo } = resolveActivationValidityWindow();
-      return SDK.buildActivateOperatorTx(
-        {
-          lucid,
-          contracts,
-          operatorKeyHash,
-          registeredOperatorScriptRefs,
-          activeOperatorScriptRefs,
-          hubOracleRefInput,
-          retiredNotMemberWitness: retiredNotMemberWitnessForActivate,
-          registeredNode,
-          registeredAnchor,
-          activeAppendAnchor,
-          activationFundingInputs,
-          validFrom,
-          validTo,
-          registeredNodeUnit,
-          activeNodeUnit,
-          transferredOperatorAssets,
-          updatedRegisteredAnchorDatum,
-          resolveRegisteredRedeemerWithBuilder:
-            options.resolveRegisteredRedeemerWithBuilder,
+      return SDK.buildActivateOperatorTx({
+        lucid,
+        contracts,
+        operatorKeyHash,
+        registeredOperatorScriptRefs,
+        activeOperatorScriptRefs,
+        hubOracleRefInput,
+        retiredNotMemberWitness: retiredNotMemberWitnessForActivate,
+        registeredNode,
+        registeredAnchor,
+        activeAppendAnchor,
+        activationFundingInputs,
+        validFrom,
+        validTo,
+        registeredNodeUnit,
+        activeNodeUnit,
+        transferredOperatorAssets,
+        updatedRegisteredAnchorDatum,
+        onLayout: (layout) => {
+          activateLayout = layout;
         },
-        layout,
-      );
+      });
     };
 
-    const activateLayoutParams = {
-      hubOracleRefInput,
-      retiredNotMemberWitnessForActivate,
-      operatorKeyHash,
-      registeredNode,
-      registeredAnchor,
-      activeAppendAnchor,
-      registeredOperatorsPolicyId: contracts.registeredOperators.policyId,
-      registeredOperatorsAddress:
-        contracts.registeredOperators.spendingScriptAddress,
-      registeredAnchorNodeUnit,
-      activeOperatorsPolicyId: contracts.activeOperators.policyId,
-      activeOperatorsAddress: contracts.activeOperators.spendingScriptAddress,
-      activeNodeUnit,
-      activeAnchorNodeUnit,
-      contracts,
-    } as const;
-    let activateLayout = resolveInitialActivateRedeemerLayout({
-      registeredOperatorScriptRefs,
-      activeOperatorScriptRefs,
-      hubOracleRefInput,
-      retiredNotMemberWitnessForActivate,
-      registeredNode,
-      registeredAnchor,
-      activeAppendAnchor,
-      contracts,
-      fundingInputs: activationFundingInputs,
-    });
-    const activationDraft = yield* Effect.tryPromise({
+    const activationUnsignedTx = yield* Effect.tryPromise({
       try: () =>
-        buildUnevaluatedDraftTx(
-          lucid,
-          mkActivateTx(activateLayout) as UnevaluatedDraftBuilder,
+        mkActivateTx().complete(
+          activationCompleteOptions({ localUPLCEval: true }),
         ),
       catch: (cause) =>
         new SDK.LucidError({
-          message: `Failed to build activation draft transaction: ${String(cause)}`,
+          message: `Failed to build activation transaction with final redeemer context: ${String(cause)}`,
           cause,
         }),
     });
-    const derivedDraftLayout = yield* deriveActivateRedeemerLayout(
-      activationDraft,
-      activateLayoutParams,
-    );
-    if (!activateLayoutsEqual(activateLayout, derivedDraftLayout)) {
-      yield* Effect.logWarning(
-        [
-          "Activation draft layout differed from initial indexes; using tx-derived activation layout.",
-          `initial=${activateLayoutToLogString(activateLayout)}`,
-          `derived=${activateLayoutToLogString(derivedDraftLayout)}`,
-        ].join(" "),
+    if (activateLayout === undefined) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message:
+            "BuildTxWithRedeemer did not resolve operator activate layout",
+          cause: operatorKeyHash,
+        }),
       );
-      activateLayout = derivedDraftLayout;
     }
     yield* Effect.logInfo(
-      `Resolved activate redeemer layout: ${activateLayoutToLogString(activateLayout)}`,
+      `Using activate redeemer layout: ${activateLayoutToLogString(activateLayout)}`,
     );
-    let activationUnsignedTx = yield* Effect.tryPromise({
-      try: () =>
-        completeWithLocalEvaluation((options) =>
-          mkActivateTx(activateLayout, {
-            resolveRegisteredRedeemerWithBuilder: true,
-          }).complete(activationCompleteOptions(options)),
-        ),
-      catch: (cause) =>
-        new SDK.LucidError({
-          message: `Failed to build activation transaction: ${String(cause)}`,
-          cause,
-        }),
-    });
-    for (let iteration = 0; iteration < 2; iteration += 1) {
-      const derivedSubmitLayout = yield* deriveActivateRedeemerLayout(
-        activationUnsignedTx.toTransaction(),
-        activateLayoutParams,
-      );
-      if (activateLayoutsEqual(activateLayout, derivedSubmitLayout)) {
-        break;
-      }
-      if (iteration === 1) {
-        return yield* Effect.fail(
-          new SDK.StateQueueError({
-            message:
-              "Activation transaction layout did not converge after deterministic rebuild",
-            cause: JSON.stringify({
-              authoredLayout: activateLayoutToLogString(activateLayout),
-              derivedLayout: activateLayoutToLogString(derivedSubmitLayout),
-            }),
-          }),
-        );
-      }
-      yield* Effect.logWarning(
-        [
-          "Activation layout drift detected after balancing; rebuilding with tx-derived indexes.",
-          `authored=${activateLayoutToLogString(activateLayout)}`,
-          `derived=${activateLayoutToLogString(derivedSubmitLayout)}`,
-        ].join(" "),
-      );
-      activateLayout = derivedSubmitLayout;
-      activationUnsignedTx = yield* Effect.tryPromise({
-        try: () =>
-          completeWithLocalEvaluation((options) =>
-            mkActivateTx(activateLayout, {
-              resolveRegisteredRedeemerWithBuilder: true,
-            }).complete(activationCompleteOptions(options)),
-          ),
-        catch: (cause) =>
-          new SDK.LucidError({
-            message: `Failed to rebuild activation transaction with tx-derived layout: ${String(cause)}`,
-            cause,
-          }),
-      });
-    }
     const activateSubmitResult = yield* Effect.either(
       handleSignSubmit(lucid, activationUnsignedTx),
     );

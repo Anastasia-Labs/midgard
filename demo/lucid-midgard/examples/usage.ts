@@ -30,7 +30,7 @@ const makeOutRef = (byte: number, outputIndex = 0): OutRef => ({
 });
 
 const addressFromPrivateKey = (
-  privateKey: InstanceType<typeof CML.PrivateKey>,
+  privateKey: CML.PrivateKey,
 ): Address =>
   CML.EnterpriseAddress.new(
     0,

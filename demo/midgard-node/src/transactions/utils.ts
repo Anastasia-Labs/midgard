@@ -199,7 +199,7 @@ const submitSignedTxWithRecovery = (
   txHash: string,
   attempt: number = 0,
 ): Effect.Effect<void, unknown> =>
-  signed.submitProgram().pipe(
+  signed.submitProgram({ canonical: true }).pipe(
     Effect.catchAll((e) =>
       Effect.gen(function* () {
         const submitError = formatUnknownError(e, { includeCause: true });
@@ -400,7 +400,7 @@ const signSubmitHelper = (
         ),
       );
     const signed = yield* signedProgram;
-    const signedTxCbor = signed.toCBOR();
+    const signedTxCbor = signed.toCBOR({ canonical: true });
     yield* Effect.logInfo(
       `✍  Signed tx prepared: txHash=${txHash}, cborBytes=${signedTxCbor.length / 2}`,
     );

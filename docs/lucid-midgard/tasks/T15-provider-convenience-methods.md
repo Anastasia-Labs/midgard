@@ -9,11 +9,8 @@ Convenience methods must query Midgard state through `MidgardProvider` and
 `MidgardNodeProvider`. They must not read Cardano L1 state, and they must not
 introduce Blockfrost, Maestro, or Kupmios adapters.
 
-Compatibility note: `@lucid-evolution/lucid` `0.4.30` exposes convenience
-methods such as `utxosAt`, `utxosAtWithUnit`, `utxoByUnit`, `utxosByOutRef`,
-`delegationAt`, `awaitTx`, `datumOf`, and `metadataOf`. `lucid-midgard` should
-keep the useful read/query ergonomics where Midgard has equivalent semantics and
-explicitly omit Cardano-only methods.
+`lucid-midgard` should keep useful Lucid-style read/query ergonomics where
+Midgard has equivalent semantics and explicitly omit Cardano-only methods.
 
 ## Dependencies
 
@@ -21,7 +18,6 @@ explicitly omit Cardano-only methods.
 - T06 builder fluent API.
 - T10 local validation.
 - T11 submit, status, and chain.
-- T13 API parity map.
 - T14 provider switching and overrides.
 - Architecture docs `04`, `07`, and `08`.
 
@@ -49,8 +45,8 @@ explicitly omit Cardano-only methods.
   unsupported unit indexes, ambiguous `utxoByUnit` results, missing datums,
   datum hash mismatches, unavailable status endpoints, unknown status values,
   and wrong-tx-id provider status responses.
-- Documentation showing which Lucid `0.4.30` query methods are supported,
-  adapted, or intentionally omitted.
+- Documentation showing which query methods are supported, adapted, or
+  intentionally omitted.
 - Explicit omission of:
   - `delegationAt`
   - Cardano reward/delegation queries

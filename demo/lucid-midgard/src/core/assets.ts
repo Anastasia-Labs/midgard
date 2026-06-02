@@ -14,7 +14,7 @@ export {
   isZeroAssets,
   normalizeAssets,
 } from "@al-ft/midgard-core/assets";
-export type CmlValue = InstanceType<typeof CML.Value>;
+export type CmlValue = CML.Value;
 export type ValueLike = Assets | CmlValue | bigint;
 
 const isCmlValue = (value: ValueLike): value is CmlValue =>

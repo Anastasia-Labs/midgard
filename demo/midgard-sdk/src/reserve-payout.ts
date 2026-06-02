@@ -1,7 +1,7 @@
 import * as SDK from "@/reserve-payout/primitives.js";
 import {
   type Assets,
-  CML,
+  type BuildTxWithRedeemer,
   type Credential,
   credentialToAddress,
   Data,
@@ -9,14 +9,15 @@ import {
   type Network,
   type OutputDatum,
   type Script,
+  type TxOutput,
   scriptHashToCredential,
   toUnit,
   type TxBuilder,
   type UTxO,
-  validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { scriptRewardAddress } from "@/cardano-addresses.js";
 import {
   addAssets,
   assertAssetsNonNegative,
@@ -31,7 +32,7 @@ import {
 } from "@/reserve-payout/assets.js";
 import {
   type BuiltReservePayoutTx,
-  completeWithTwoPassLayoutProgram,
+  completeWithFinalLayoutProgram,
 } from "@/reserve-payout/completion.js";
 import { formatLayout } from "@/reserve-payout/diagnostics.js";
 import { fail, ReservePayoutTxError } from "@/reserve-payout/errors.js";
@@ -44,23 +45,8 @@ import {
   type AbsorbDepositLayout,
   type AddReserveFundsLayout,
   type ConcludePayoutLayout,
-  deriveAbsorbDepositLayout,
-  deriveAddReserveFundsLayout,
-  deriveConcludePayoutLayout,
-  deriveInitializePayoutLayout,
-  deriveRefundWithdrawalLayout,
-  initialAbsorbDepositLayout,
-  initialAddReserveFundsLayout,
-  initialConcludePayoutLayout,
-  initialInitializePayoutLayout,
   type InitializePayoutLayout,
-  initialRefundWithdrawalLayout,
   type RefundWithdrawalLayout,
-  sameAbsorbDepositLayout,
-  sameAddReserveFundsLayout,
-  sameConcludePayoutLayout,
-  sameInitializePayoutLayout,
-  sameRefundWithdrawalLayout,
   settlementDatumFromInput,
 } from "@/reserve-payout/layout.js";
 import {
@@ -70,8 +56,23 @@ import {
   type ReservePayoutReferenceScripts,
   resolveReferenceScriptsProgram,
 } from "@/reserve-payout/references.js";
+import {
+  requireInputIndex,
+  requireMintRedeemerIndex,
+  requireOwnMintPurpose,
+  requireOwnRedeemerIndex,
+  requireOwnSpendPurpose,
+  requireReferenceInputIndex,
+  requireSinglePublishRedeemerIndex,
+  requireSpendRedeemerIndex,
+  requireUniqueOutputIndex,
+  requireWithdrawalRedeemerIndex,
+} from "@/tx-context-redeemer.js";
 import { outRefLabel } from "@al-ft/midgard-core/out-ref";
-import { aikenSerialisedPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
+import {
+  aikenSerialisedPlutusDataCbor,
+  canonicalPlutusDataCbor,
+} from "@al-ft/midgard-core/plutus-data-cbor";
 
 export {
   addAssets,
@@ -148,17 +149,6 @@ const requireNetwork = (
     }
     return network;
   });
-
-const networkId = (network: Network): number => (network === "Mainnet" ? 1 : 0);
-
-const scriptRewardAddress = (network: Network, script: Script): string => {
-  const credential = CML.Credential.new_script(
-    CML.ScriptHash.from_hex(validatorToScriptHash(script)),
-  );
-  return CML.RewardAddress.new(networkId(network), credential)
-    .to_address()
-    .to_bech32();
-};
 
 const credentialFromAddressData = (credential: SDK.CredentialD): Credential => {
   if ("PublicKeyCredential" in credential) {
@@ -316,10 +306,8 @@ const encodeMembershipProofWithdrawalRedeemer = (
   proof: SDK.Proof,
 ): string => {
   const rootData = Data.from(Data.to(root, SDK.MerkleRoot));
-  const keyData = encodeHexBytesData(aikenSerialisedPlutusDataCbor(keyCbor));
-  const valueData = encodeHexBytesData(
-    aikenSerialisedPlutusDataCbor(valueCbor),
-  );
+  const keyData = encodeHexBytesData(keyCbor);
+  const valueData = encodeHexBytesData(valueCbor);
   const proofData = Data.from(Data.to(proof, SDK.Proof));
   return Data.to(
     [rootData, keyData, valueData, proofData] as any,
@@ -355,6 +343,87 @@ const applyMembershipProofWithdrawal = (
     witness.amount ?? 0n,
     redeemer,
   );
+
+const outputHasNoDatum = (output: TxOutput): boolean =>
+  output.datum == null && output.datumHash == null;
+
+const outputDatumMatches = (
+  output: TxOutput,
+  datum: SDK.CardanoDatum,
+): boolean => {
+  if (datum === "NoDatum") {
+    return outputHasNoDatum(output);
+  }
+  if ("DatumHash" in datum) {
+    return output.datumHash === datum.DatumHash.hash && output.datum == null;
+  }
+  return outputDatumCborMatches(
+    output,
+    Data.to(datum.InlineDatum.data as any, Data.Any() as any),
+  );
+};
+
+const outputDatumCborMatches = (output: TxOutput, datumCbor: string): boolean =>
+  output.datum != null &&
+  canonicalPlutusDataCbor(output.datum) === canonicalPlutusDataCbor(datumCbor);
+
+const reserveOutputIndex = (
+  outputs: readonly TxOutput[],
+  reserveAddress: string,
+  reserveAssets: Assets,
+  label: string,
+): bigint =>
+  requireUniqueOutputIndex(
+    outputs,
+    (output) =>
+      output.address === reserveAddress &&
+      outputHasNoDatum(output) &&
+      output.scriptRef === undefined &&
+      assetsEqual(output.assets, reserveAssets),
+    label,
+  );
+
+const outputWithDatumIndex = (
+  outputs: readonly TxOutput[],
+  address: string,
+  datumCbor: string,
+  assets: Assets,
+  label: string,
+): bigint => {
+  return requireUniqueOutputIndex(
+    outputs,
+    (output) =>
+      output.address === address &&
+      outputDatumCborMatches(output, datumCbor) &&
+      output.scriptRef === undefined &&
+      assetsEqual(output.assets, assets),
+    label,
+  );
+};
+
+const outputWithCardanoDatumIndex = (
+  outputs: readonly TxOutput[],
+  address: string,
+  datum: SDK.CardanoDatum,
+  assets: Assets,
+  label: string,
+): bigint =>
+  requireUniqueOutputIndex(
+    outputs,
+    (output) =>
+      output.address === address &&
+      outputDatumMatches(output, datum) &&
+      output.scriptRef === undefined &&
+      assetsEqual(output.assets, assets),
+    label,
+  );
+
+const requireResolvedLayout = <L>(layout: L | undefined, label: string): L => {
+  if (layout === undefined) {
+    throw new Error(`BuildTxWithRedeemer did not resolve ${label} layout.`);
+  }
+  return layout;
+};
 
 export const buildAbsorbConfirmedDepositToReserveTxProgram = (
   lucid: LucidEvolution,
@@ -408,8 +477,8 @@ export const buildAbsorbConfirmedDepositToReserveTxProgram = (
     const settlementDatum = settlementDatumFromInput(config.settlementRefInput);
     const membershipRedeemer = encodeMembershipProofWithdrawalRedeemer(
       settlementDatum.deposits_root,
-      Data.to(config.deposit.datum.event.id, SDK.OutputReference),
-      Data.to(config.deposit.datum.event.info, SDK.DepositInfo),
+      config.deposit.idCbor.toString("hex"),
+      config.deposit.infoCbor.toString("hex"),
       config.membershipProof,
     );
     const witnessRedeemer = SDK.encodeUserEventWitnessMintOrBurnRedeemer(
@@ -436,43 +505,105 @@ export const buildAbsorbConfirmedDepositToReserveTxProgram = (
       refs.depositWitnessCertificate,
       refs.membershipProofWithdrawal,
     ]);
-    const initialLayout = initialAbsorbDepositLayout({
-      inputs: txInputs,
-      referenceInputs: txReferenceInputs,
-      deposit: config.deposit,
-      hubOracleRefInput,
-      settlementRefInput: config.settlementRefInput,
-    });
-    const makeTx = (layout: AbsorbDepositLayout): TxBuilder => {
-      const depositSpendRedeemer: SDK.DepositSpendRedeemer = {
-        input_index: layout.depositInputIndex,
-        output_index: layout.reserveOutputIndex,
-        hub_ref_input_index: layout.hubRefInputIndex,
-        settlement_ref_input_index: layout.settlementRefInputIndex,
-        mint_redeemer_index: layout.burnRedeemerIndex,
-        membership_proof: config.membershipProof,
-        inclusion_proof_script_withdraw_redeemer_index:
-          layout.inclusionProofWithdrawalRedeemerIndex,
+    const membershipRewardAddress = scriptRewardAddress(
+      network,
+      config.membershipProofWithdrawal.script,
+    );
+    type AbsorbSpendLayout = Omit<
+      AbsorbDepositLayout,
+      "witnessUnregistrationRedeemerIndex"
+    >;
+    let absorbSpendLayout: AbsorbSpendLayout | undefined;
+    let witnessUnregistrationRedeemerIndex: bigint | undefined;
+    const depositSpendRedeemer = ((ctx) => {
+      requireOwnSpendPurpose(ctx, config.deposit.utxo, "deposit absorption");
+      const layout: AbsorbSpendLayout = {
+        depositInputIndex: requireInputIndex(
+          ctx,
+          config.deposit.utxo,
+          "deposit absorption",
+        ),
+        reserveOutputIndex: reserveOutputIndex(
+          ctx.outputs,
+          contracts.reserve.spendingScriptAddress,
+          reserveAssets,
+          "reserve absorption",
+        ),
+        hubRefInputIndex: requireReferenceInputIndex(
+          ctx,
+          hubOracleRefInput,
+          "deposit absorption hub oracle",
+        ),
+        settlementRefInputIndex: requireReferenceInputIndex(
+          ctx,
+          config.settlementRefInput,
+          "deposit absorption settlement",
+        ),
+        burnRedeemerIndex: requireMintRedeemerIndex(
+          ctx,
+          contracts.deposit.policyId,
+          "deposit burn",
+        ),
+        inclusionProofWithdrawalRedeemerIndex: requireWithdrawalRedeemerIndex(
+          ctx,
+          membershipRewardAddress,
+          "deposit membership proof",
+        ),
       };
-      const depositBurnRedeemer: SDK.UserEventMintRedeemer = {
-        BurnEventNFT: {
-          nonce_asset_name: config.deposit.assetName,
-          witness_unregistration_redeemer_index:
-            layout.witnessUnregistrationRedeemerIndex,
-        },
-      };
-      let tx = lucid
-        .newTx()
-        .collectFrom(
-          [config.deposit.utxo],
-          Data.to(depositSpendRedeemer, SDK.DepositSpendRedeemer),
-        )
+      absorbSpendLayout = layout;
+      return Data.to(
+        {
+          input_index: layout.depositInputIndex,
+          output_index: layout.reserveOutputIndex,
+          hub_ref_input_index: layout.hubRefInputIndex,
+          settlement_ref_input_index: layout.settlementRefInputIndex,
+          mint_redeemer_index: layout.burnRedeemerIndex,
+          membership_proof: config.membershipProof,
+          inclusion_proof_script_withdraw_redeemer_index:
+            layout.inclusionProofWithdrawalRedeemerIndex,
+        } satisfies SDK.DepositSpendRedeemer,
+        SDK.DepositSpendRedeemer,
+      );
+    }) satisfies BuildTxWithRedeemer;
+    const depositBurnRedeemer = ((ctx) => {
+      requireOwnMintPurpose(ctx, contracts.deposit.policyId, "deposit burn");
+      witnessUnregistrationRedeemerIndex = requireSinglePublishRedeemerIndex(
+        ctx,
+        "deposit witness unregistration",
+      );
+      return Data.to(
+        {
+          BurnEventNFT: {
+            nonce_asset_name: config.deposit.assetName,
+            witness_unregistration_redeemer_index:
+              witnessUnregistrationRedeemerIndex,
+          },
+        } satisfies SDK.UserEventMintRedeemer,
+        SDK.UserEventMintRedeemer,
+      );
+    }) satisfies BuildTxWithRedeemer;
+    const makeTx = (): TxBuilder => {
+      let tx = lucid.newTx().readFrom([...txReferenceInputs]);
+      tx = attachIfMissing(
+        tx,
+        contracts.deposit.spendingScript,
+        refs.depositSpending,
+      );
+      tx = attachIfMissing(
+        tx,
+        contracts.deposit.mintingScript,
+        refs.depositMinting,
+      );
+      tx = attachIfMissing(tx, witnessScript, refs.depositWitnessCertificate);
+      tx = attachIfMissing(
+        tx,
+        config.membershipProofWithdrawal.script,
+        refs.membershipProofWithdrawal,
+      );
+      tx = tx
+        .collectFrom([config.deposit.utxo], depositSpendRedeemer)
         .collectFrom([feeInput])
-        .readFrom([...txReferenceInputs])
-        .mintAssets(
-          { [depositUnit]: -1n },
-          Data.to(depositBurnRedeemer, SDK.UserEventMintRedeemer),
-        )
+        .mintAssets({ [depositUnit]: -1n }, depositBurnRedeemer)
         .pay.ToAddress(contracts.reserve.spendingScriptAddress, reserveAssets);
       tx = applyEventWitnessUnregistration(
         tx,
@@ -488,35 +619,20 @@ export const buildAbsorbConfirmedDepositToReserveTxProgram = (
         membershipRedeemer,
         refs.membershipProofWithdrawal,
       );
-      tx = attachIfMissing(
-        tx,
-        contracts.deposit.spendingScript,
-        refs.depositSpending,
-      );
-      tx = attachIfMissing(
-        tx,
-        contracts.deposit.mintingScript,
-        refs.depositMinting,
-      );
       return tx;
     };
-    return yield* completeWithTwoPassLayoutProgram({
+    return yield* completeWithFinalLayoutProgram({
       label: "deposit absorption",
       lucid,
-      initialLayout,
       walletInputExclusions: [...txInputs, ...txReferenceInputs],
       makeTx,
-      deriveLayout: (tx) =>
-        deriveAbsorbDepositLayout({
-          tx,
-          deposit: config.deposit,
-          depositUnit,
-          reserveAddress: contracts.reserve.spendingScriptAddress,
-          reserveAssets,
-          hubOracleRefInput,
-          settlementRefInput: config.settlementRefInput,
-        }),
-      sameLayout: sameAbsorbDepositLayout,
+      resolveLayout: () => ({
+        ...requireResolvedLayout(absorbSpendLayout, "deposit absorption"),
+        witnessUnregistrationRedeemerIndex: requireResolvedLayout(
+          witnessUnregistrationRedeemerIndex,
+          "deposit witness unregistration",
+        ),
+      }),
     }).pipe(
       Effect.mapError((cause) =>
         cause instanceof ReservePayoutTxError
@@ -614,8 +730,8 @@ export const buildInitializePayoutTxProgram = (
     const settlementDatum = settlementDatumFromInput(config.settlementRefInput);
     const membershipRedeemer = encodeMembershipProofWithdrawalRedeemer(
       settlementDatum.withdrawals_root,
-      Data.to(config.withdrawal.datum.event.id, SDK.OutputReference),
-      Data.to(config.withdrawal.datum.event.info, SDK.WithdrawalInfo),
+      config.withdrawal.idCbor.toString("hex"),
+      config.withdrawal.infoCbor.toString("hex"),
       config.membershipProof,
     );
     const witnessRedeemer = SDK.encodeUserEventWitnessMintOrBurnRedeemer(
@@ -646,62 +762,162 @@ export const buildInitializePayoutTxProgram = (
       refs.withdrawalWitnessCertificate,
       refs.membershipProofWithdrawal,
     ]);
-    const initialLayout = initialInitializePayoutLayout({
-      inputs: txInputs,
-      referenceInputs: txReferenceInputs,
-      withdrawal: config.withdrawal,
-      hubOracleRefInput,
-      settlementRefInput: config.settlementRefInput,
-      withdrawalPolicyId: contracts.withdrawal.policyId,
-      payoutPolicyId: contracts.payout.policyId,
-    });
-    const makeTx = (layout: InitializePayoutLayout): TxBuilder => {
-      const withdrawalSpendRedeemer: SDK.WithdrawalSpendRedeemer = {
-        input_index: layout.withdrawalInputIndex,
-        output_index: layout.payoutOutputIndex,
-        hub_ref_input_index: layout.hubRefInputIndex,
-        settlement_ref_input_index: layout.settlementRefInputIndex,
-        burn_redeemer_index: layout.withdrawalBurnRedeemerIndex,
-        payout_mint_redeemer_index: layout.payoutMintRedeemerIndex,
-        membership_proof: config.membershipProof,
-        inclusion_proof_script_withdraw_redeemer_index:
-          layout.inclusionProofWithdrawalRedeemerIndex,
-        purpose: "InitializePayout",
+    const membershipRewardAddress = scriptRewardAddress(
+      network,
+      config.membershipProofWithdrawal.script,
+    );
+    type InitializeSpendLayout = Omit<
+      InitializePayoutLayout,
+      "withdrawalSpendRedeemerIndex" | "witnessUnregistrationRedeemerIndex"
+    >;
+    let initializeSpendLayout: InitializeSpendLayout | undefined;
+    let withdrawalSpendRedeemerIndex: bigint | undefined;
+    let witnessUnregistrationRedeemerIndex: bigint | undefined;
+    const withdrawalSpendRedeemer = ((ctx) => {
+      requireOwnSpendPurpose(
+        ctx,
+        config.withdrawal.utxo,
+        "payout initialization",
+      );
+      const layout: InitializeSpendLayout = {
+        withdrawalInputIndex: requireInputIndex(
+          ctx,
+          config.withdrawal.utxo,
+          "payout initialization",
+        ),
+        payoutOutputIndex: outputWithDatumIndex(
+          ctx.outputs,
+          contracts.payout.spendingScriptAddress,
+          payoutDatumCbor,
+          payoutAssets,
+          "payout initialization",
+        ),
+        hubRefInputIndex: requireReferenceInputIndex(
+          ctx,
+          hubOracleRefInput,
+          "payout initialization hub oracle",
+        ),
+        settlementRefInputIndex: requireReferenceInputIndex(
+          ctx,
+          config.settlementRefInput,
+          "payout initialization settlement",
+        ),
+        withdrawalBurnRedeemerIndex: requireMintRedeemerIndex(
+          ctx,
+          contracts.withdrawal.policyId,
+          "withdrawal burn",
+        ),
+        payoutMintRedeemerIndex: requireMintRedeemerIndex(
+          ctx,
+          contracts.payout.policyId,
+          "payout mint",
+        ),
+        inclusionProofWithdrawalRedeemerIndex: requireWithdrawalRedeemerIndex(
+          ctx,
+          membershipRewardAddress,
+          "withdrawal membership proof",
+        ),
       };
-      const withdrawalBurnRedeemer: SDK.UserEventMintRedeemer = {
-        BurnEventNFT: {
-          nonce_asset_name: config.withdrawal.assetName,
-          witness_unregistration_redeemer_index:
-            layout.witnessUnregistrationRedeemerIndex,
-        },
-      };
-      const payoutMintRedeemer: SDK.PayoutMintRedeemer = {
-        MintPayout: {
-          withdrawal_utxo_out_ref: {
-            transactionId: config.withdrawal.utxo.txHash,
-            outputIndex: BigInt(config.withdrawal.utxo.outputIndex),
-          },
-          withdrawal_input_index: layout.withdrawalInputIndex,
-          withdrawal_spend_redeemer_index: layout.withdrawalSpendRedeemerIndex,
+      initializeSpendLayout = layout;
+      return Data.to(
+        {
+          input_index: layout.withdrawalInputIndex,
+          output_index: layout.payoutOutputIndex,
           hub_ref_input_index: layout.hubRefInputIndex,
-        },
-      };
-      let tx = lucid
-        .newTx()
-        .collectFrom(
-          [config.withdrawal.utxo],
-          Data.to(withdrawalSpendRedeemer, SDK.WithdrawalSpendRedeemer),
-        )
+          settlement_ref_input_index: layout.settlementRefInputIndex,
+          burn_redeemer_index: layout.withdrawalBurnRedeemerIndex,
+          payout_mint_redeemer_index: layout.payoutMintRedeemerIndex,
+          membership_proof: config.membershipProof,
+          inclusion_proof_script_withdraw_redeemer_index:
+            layout.inclusionProofWithdrawalRedeemerIndex,
+          purpose: "InitializePayout",
+        } satisfies SDK.WithdrawalSpendRedeemer,
+        SDK.WithdrawalSpendRedeemer,
+      );
+    }) satisfies BuildTxWithRedeemer;
+    const withdrawalBurnRedeemer = ((ctx) => {
+      requireOwnMintPurpose(
+        ctx,
+        contracts.withdrawal.policyId,
+        "withdrawal burn",
+      );
+      witnessUnregistrationRedeemerIndex = requireSinglePublishRedeemerIndex(
+        ctx,
+        "withdrawal witness unregistration",
+      );
+      return Data.to(
+        {
+          BurnEventNFT: {
+            nonce_asset_name: config.withdrawal.assetName,
+            witness_unregistration_redeemer_index:
+              witnessUnregistrationRedeemerIndex,
+          },
+        } satisfies SDK.UserEventMintRedeemer,
+        SDK.UserEventMintRedeemer,
+      );
+    }) satisfies BuildTxWithRedeemer;
+    const payoutMintRedeemer = ((ctx) => {
+      requireOwnMintPurpose(ctx, contracts.payout.policyId, "payout mint");
+      withdrawalSpendRedeemerIndex = requireSpendRedeemerIndex(
+        ctx,
+        config.withdrawal.utxo,
+        "payout mint withdrawal",
+      );
+      return Data.to(
+        {
+          MintPayout: {
+            withdrawal_utxo_out_ref: {
+              transactionId: config.withdrawal.utxo.txHash,
+              outputIndex: BigInt(config.withdrawal.utxo.outputIndex),
+            },
+            withdrawal_input_index: requireInputIndex(
+              ctx,
+              config.withdrawal.utxo,
+              "payout mint withdrawal",
+            ),
+            withdrawal_spend_redeemer_index: withdrawalSpendRedeemerIndex,
+            hub_ref_input_index: requireReferenceInputIndex(
+              ctx,
+              hubOracleRefInput,
+              "payout mint hub oracle",
+            ),
+          },
+        } satisfies SDK.PayoutMintRedeemer,
+        SDK.PayoutMintRedeemer,
+      );
+    }) satisfies BuildTxWithRedeemer;
+    const makeTx = (): TxBuilder => {
+      let tx = lucid.newTx().readFrom([...txReferenceInputs]);
+      tx = attachIfMissing(
+        tx,
+        contracts.withdrawal.spendingScript,
+        refs.withdrawalSpending,
+      );
+      tx = attachIfMissing(
+        tx,
+        contracts.withdrawal.mintingScript,
+        refs.withdrawalMinting,
+      );
+      tx = attachIfMissing(
+        tx,
+        contracts.payout.mintingScript,
+        refs.payoutMinting,
+      );
+      tx = attachIfMissing(
+        tx,
+        witnessScript,
+        refs.withdrawalWitnessCertificate,
+      );
+      tx = attachIfMissing(
+        tx,
+        config.membershipProofWithdrawal.script,
+        refs.membershipProofWithdrawal,
+      );
+      tx = tx
+        .collectFrom([config.withdrawal.utxo], withdrawalSpendRedeemer)
         .collectFrom([feeInput])
-        .readFrom([...txReferenceInputs])
-        .mintAssets(
-          { [withdrawalUnit]: -1n },
-          Data.to(withdrawalBurnRedeemer, SDK.UserEventMintRedeemer),
-        )
-        .mintAssets(
-          { [payoutUnit]: 1n },
-          Data.to(payoutMintRedeemer, SDK.PayoutMintRedeemer),
-        )
+        .mintAssets({ [withdrawalUnit]: -1n }, withdrawalBurnRedeemer)
+        .mintAssets({ [payoutUnit]: 1n }, payoutMintRedeemer)
         .pay.ToAddressWithData(
           contracts.payout.spendingScriptAddress,
           { kind: "inline", value: payoutDatumCbor },
@@ -721,42 +937,27 @@ export const buildInitializePayoutTxProgram = (
         membershipRedeemer,
         refs.membershipProofWithdrawal,
       );
-      tx = attachIfMissing(
-        tx,
-        contracts.withdrawal.spendingScript,
-        refs.withdrawalSpending,
-      );
-      tx = attachIfMissing(
-        tx,
-        contracts.withdrawal.mintingScript,
-        refs.withdrawalMinting,
-      );
-      tx = attachIfMissing(
-        tx,
-        contracts.payout.mintingScript,
-        refs.payoutMinting,
-      );
       return tx;
     };
-    return yield* completeWithTwoPassLayoutProgram({
+    return yield* completeWithFinalLayoutProgram({
       label: "payout initialization",
       lucid,
-      initialLayout,
       walletInputExclusions: [...txInputs, ...txReferenceInputs],
       makeTx,
-      deriveLayout: (tx) =>
-        deriveInitializePayoutLayout({
-          tx,
-          withdrawal: config.withdrawal,
-          payoutAddress: contracts.payout.spendingScriptAddress,
-          payoutAssets,
-          payoutDatumCbor,
-          hubOracleRefInput,
-          settlementRefInput: config.settlementRefInput,
-          withdrawalPolicyId: contracts.withdrawal.policyId,
-          payoutPolicyId: contracts.payout.policyId,
-        }),
-      sameLayout: sameInitializePayoutLayout,
+      resolveLayout: () => ({
+        ...requireResolvedLayout(
+          initializeSpendLayout,
+          "payout initialization",
+        ),
+        withdrawalSpendRedeemerIndex: requireResolvedLayout(
+          withdrawalSpendRedeemerIndex,
+          "payout initialization withdrawal spend redeemer",
+        ),
+        witnessUnregistrationRedeemerIndex: requireResolvedLayout(
+          witnessUnregistrationRedeemerIndex,
+          "payout initialization witness unregistration",
+        ),
+      }),
     });
   }).pipe(
     Effect.tap((built) =>
@@ -878,44 +1079,116 @@ export const buildAddReserveFundsToPayoutTxProgram = (
       refs.reserveSpending,
       refs.payoutSpending,
     ]);
-    const initialLayout = initialAddReserveFundsLayout({
-      inputs: txInputs,
-      referenceInputs: txReferenceInputs,
-      payoutInput: config.payoutInput,
-      reserveInput: config.reserveInput,
-      hubOracleRefInput,
-      reserveChangeAssets,
-    });
-    const makeTx = (layout: AddReserveFundsLayout): TxBuilder => {
-      const payoutSpendRedeemer: SDK.PayoutSpendRedeemer = {
-        AddFunds: {
-          payout_input_index: layout.payoutInputIndex,
-          payout_output_index: layout.payoutOutputIndex,
-          reserve_input_index: layout.reserveInputIndex,
-          reserve_change_output_index: layout.reserveChangeOutputIndex,
-          reserve_spend_redeemer_index: layout.reserveSpendRedeemerIndex,
-          payout_spend_redeemer_index: layout.payoutSpendRedeemerIndex,
-          hub_ref_input_index: layout.hubRefInputIndex,
-        },
+    const reserveChangeOutputIndex = (outputs: readonly TxOutput[]) =>
+      hasNonZeroAssetQuantity(reserveChangeAssets)
+        ? reserveOutputIndex(
+            outputs,
+            contracts.reserve.spendingScriptAddress,
+            reserveChangeAssets,
+            "reserve change",
+          )
+        : null;
+    let addReserveFundsLayout: AddReserveFundsLayout | undefined;
+    const payoutSpendRedeemer = ((ctx) => {
+      requireOwnSpendPurpose(ctx, config.payoutInput, "reserve funding payout");
+      const layout: AddReserveFundsLayout = {
+        payoutInputIndex: requireInputIndex(
+          ctx,
+          config.payoutInput,
+          "reserve funding payout",
+        ),
+        payoutOutputIndex: outputWithDatumIndex(
+          ctx.outputs,
+          contracts.payout.spendingScriptAddress,
+          payoutDatumCbor,
+          payoutOutputAssets,
+          "updated payout",
+        ),
+        reserveInputIndex: requireInputIndex(
+          ctx,
+          config.reserveInput,
+          "reserve funding reserve",
+        ),
+        reserveChangeOutputIndex: reserveChangeOutputIndex(ctx.outputs),
+        reserveSpendRedeemerIndex: requireSpendRedeemerIndex(
+          ctx,
+          config.reserveInput,
+          "reserve funding reserve",
+        ),
+        payoutSpendRedeemerIndex: requireOwnRedeemerIndex(
+          ctx,
+          "reserve funding payout",
+        ),
+        hubRefInputIndex: requireReferenceInputIndex(
+          ctx,
+          hubOracleRefInput,
+          "reserve funding hub oracle",
+        ),
       };
-      const reserveSpendRedeemer: SDK.ReserveSpendRedeemer = {
-        reserve_input_index: layout.reserveInputIndex,
-        payout_input_index: layout.payoutInputIndex,
-        payout_spend_redeemer_index: layout.payoutSpendRedeemerIndex,
-        hub_ref_input_index: layout.hubRefInputIndex,
-      };
-      let tx = lucid
-        .newTx()
-        .collectFrom(
-          [config.payoutInput],
-          Data.to(payoutSpendRedeemer, SDK.PayoutSpendRedeemer),
-        )
-        .collectFrom(
-          [config.reserveInput],
-          Data.to(reserveSpendRedeemer, SDK.ReserveSpendRedeemer),
-        )
+      addReserveFundsLayout = layout;
+      return Data.to(
+        {
+          AddFunds: {
+            payout_input_index: layout.payoutInputIndex,
+            payout_output_index: layout.payoutOutputIndex,
+            reserve_input_index: layout.reserveInputIndex,
+            reserve_change_output_index: layout.reserveChangeOutputIndex,
+            reserve_spend_redeemer_index: layout.reserveSpendRedeemerIndex,
+            payout_spend_redeemer_index: layout.payoutSpendRedeemerIndex,
+            hub_ref_input_index: layout.hubRefInputIndex,
+          },
+        } satisfies SDK.PayoutSpendRedeemer,
+        SDK.PayoutSpendRedeemer,
+      );
+    }) satisfies BuildTxWithRedeemer;
+    const reserveSpendRedeemer = ((ctx) => {
+      requireOwnSpendPurpose(
+        ctx,
+        config.reserveInput,
+        "reserve funding reserve",
+      );
+      return Data.to(
+        {
+          reserve_input_index: requireInputIndex(
+            ctx,
+            config.reserveInput,
+            "reserve funding reserve",
+          ),
+          payout_input_index: requireInputIndex(
+            ctx,
+            config.payoutInput,
+            "reserve funding payout",
+          ),
+          payout_spend_redeemer_index: requireSpendRedeemerIndex(
+            ctx,
+            config.payoutInput,
+            "reserve funding payout",
+          ),
+          hub_ref_input_index: requireReferenceInputIndex(
+            ctx,
+            hubOracleRefInput,
+            "reserve funding hub oracle",
+          ),
+        } satisfies SDK.ReserveSpendRedeemer,
+        SDK.ReserveSpendRedeemer,
+      );
+    }) satisfies BuildTxWithRedeemer;
+    const makeTx = (): TxBuilder => {
+      let tx = lucid.newTx().readFrom([...txReferenceInputs]);
+      tx = attachIfMissing(
+        tx,
+        contracts.payout.spendingScript,
+        refs.payoutSpending,
+      );
+      tx = attachIfMissing(
+        tx,
+        contracts.reserve.spendingScript,
+        refs.reserveSpending,
+      );
+      tx = tx
+        .collectFrom([config.payoutInput], payoutSpendRedeemer)
+        .collectFrom([config.reserveInput], reserveSpendRedeemer)
         .collectFrom([feeInput])
-        .readFrom([...txReferenceInputs])
         .pay.ToAddressWithData(
           contracts.payout.spendingScriptAddress,
           { kind: "inline", value: payoutDatumCbor },
@@ -927,37 +1200,15 @@ export const buildAddReserveFundsToPayoutTxProgram = (
           reserveChangeAssets,
         );
       }
-      tx = attachIfMissing(
-        tx,
-        contracts.payout.spendingScript,
-        refs.payoutSpending,
-      );
-      tx = attachIfMissing(
-        tx,
-        contracts.reserve.spendingScript,
-        refs.reserveSpending,
-      );
       return tx;
     };
-    return yield* completeWithTwoPassLayoutProgram({
+    return yield* completeWithFinalLayoutProgram({
       label: "reserve funding",
       lucid,
-      initialLayout,
       walletInputExclusions: [...txInputs, ...txReferenceInputs],
       makeTx,
-      deriveLayout: (tx) =>
-        deriveAddReserveFundsLayout({
-          tx,
-          payoutInput: config.payoutInput,
-          reserveInput: config.reserveInput,
-          payoutAddress: contracts.payout.spendingScriptAddress,
-          payoutOutputAssets,
-          payoutDatumCbor,
-          reserveAddress: contracts.reserve.spendingScriptAddress,
-          reserveChangeAssets,
-          hubOracleRefInput,
-        }),
-      sameLayout: sameAddReserveFundsLayout,
+      resolveLayout: () =>
+        requireResolvedLayout(addReserveFundsLayout, "reserve funding"),
     });
   }).pipe(
     Effect.tap((built) =>
@@ -1031,47 +1282,78 @@ export const buildConcludePayoutTxProgram = (
       refs.payoutSpending,
       refs.payoutMinting,
     ]);
-    const initialLayout = initialConcludePayoutLayout({
-      inputs: txInputs,
-      referenceInputs: txReferenceInputs,
-      payoutInput: config.payoutInput,
-      hubOracleRefInput,
-    });
-    const makeTx = (layout: ConcludePayoutLayout): TxBuilder => {
-      const payoutSpendRedeemer: SDK.PayoutSpendRedeemer = {
-        ConcludeWithdrawal: {
-          payout_input_index: layout.payoutInputIndex,
-          l1_output_index: layout.l1OutputIndex,
-          burn_redeemer_index: layout.burnRedeemerIndex,
-          hub_ref_input_index: layout.hubRefInputIndex,
-        },
+    let concludePayoutLayout: ConcludePayoutLayout | undefined;
+    const payoutSpendRedeemer = ((ctx) => {
+      requireOwnSpendPurpose(ctx, config.payoutInput, "payout conclusion");
+      const layout: ConcludePayoutLayout = {
+        payoutInputIndex: requireInputIndex(
+          ctx,
+          config.payoutInput,
+          "payout conclusion",
+        ),
+        l1OutputIndex: outputWithCardanoDatumIndex(
+          ctx.outputs,
+          l1Address,
+          payoutDatum.l1_datum,
+          l1Assets,
+          "payout destination",
+        ),
+        payoutSpendRedeemerIndex: requireOwnRedeemerIndex(
+          ctx,
+          "payout conclusion",
+        ),
+        burnRedeemerIndex: requireMintRedeemerIndex(
+          ctx,
+          contracts.payout.policyId,
+          "payout burn",
+        ),
+        hubRefInputIndex: requireReferenceInputIndex(
+          ctx,
+          hubOracleRefInput,
+          "payout conclusion hub oracle",
+        ),
       };
-      const payoutBurnRedeemer: SDK.PayoutMintRedeemer = {
-        BurnPayout: {
-          payout_input_index: layout.payoutInputIndex,
-          payout_asset_name: payoutAssetName,
-          payout_spend_redeemer_index: layout.payoutSpendRedeemerIndex,
-          hub_ref_input_index: layout.hubRefInputIndex,
-        },
-      };
-      let tx = lucid
-        .newTx()
-        .collectFrom(
-          [config.payoutInput],
-          Data.to(payoutSpendRedeemer, SDK.PayoutSpendRedeemer),
-        )
-        .collectFrom([feeInput])
-        .readFrom([...txReferenceInputs])
-        .mintAssets(
-          { [payoutUnit]: -1n },
-          Data.to(payoutBurnRedeemer, SDK.PayoutMintRedeemer),
-        );
-      tx = payToAddressWithCardanoDatum(
-        tx,
-        l1Address,
-        payoutDatum.l1_datum,
-        l1Assets,
+      concludePayoutLayout = layout;
+      return Data.to(
+        {
+          ConcludeWithdrawal: {
+            payout_input_index: layout.payoutInputIndex,
+            l1_output_index: layout.l1OutputIndex,
+            burn_redeemer_index: layout.burnRedeemerIndex,
+            hub_ref_input_index: layout.hubRefInputIndex,
+          },
+        } satisfies SDK.PayoutSpendRedeemer,
+        SDK.PayoutSpendRedeemer,
       );
+    }) satisfies BuildTxWithRedeemer;
+    const payoutBurnRedeemer = ((ctx) => {
+      requireOwnMintPurpose(ctx, contracts.payout.policyId, "payout burn");
+      return Data.to(
+        {
+          BurnPayout: {
+            payout_input_index: requireInputIndex(
+              ctx,
+              config.payoutInput,
+              "payout burn",
+            ),
+            payout_asset_name: payoutAssetName,
+            payout_spend_redeemer_index: requireSpendRedeemerIndex(
+              ctx,
+              config.payoutInput,
+              "payout burn",
+            ),
+            hub_ref_input_index: requireReferenceInputIndex(
+              ctx,
+              hubOracleRefInput,
+              "payout burn hub oracle",
+            ),
+          },
+        } satisfies SDK.PayoutMintRedeemer,
+        SDK.PayoutMintRedeemer,
+      );
+    }) satisfies BuildTxWithRedeemer;
+    const makeTx = (): TxBuilder => {
+      let tx = lucid.newTx().readFrom([...txReferenceInputs]);
       tx = attachIfMissing(
         tx,
         contracts.payout.spendingScript,
@@ -1082,24 +1364,25 @@ export const buildConcludePayoutTxProgram = (
         contracts.payout.mintingScript,
         refs.payoutMinting,
       );
+      tx = tx
+        .collectFrom([config.payoutInput], payoutSpendRedeemer)
+        .collectFrom([feeInput])
+        .mintAssets({ [payoutUnit]: -1n }, payoutBurnRedeemer);
+      tx = payToAddressWithCardanoDatum(
+        tx,
+        l1Address,
+        payoutDatum.l1_datum,
+        l1Assets,
+      );
       return tx;
     };
-    return yield* completeWithTwoPassLayoutProgram({
+    return yield* completeWithFinalLayoutProgram({
       label: "payout conclusion",
       lucid,
-      initialLayout,
       walletInputExclusions: [...txInputs, ...txReferenceInputs],
       makeTx,
-      deriveLayout: (tx) =>
-        deriveConcludePayoutLayout({
-          tx,
-          payoutInput: config.payoutInput,
-          l1Address,
-          l1Datum: payoutDatum.l1_datum,
-          l1Assets,
-          hubOracleRefInput,
-        }),
-      sameLayout: sameConcludePayoutLayout,
+      resolveLayout: () =>
+        requireResolvedLayout(concludePayoutLayout, "payout conclusion"),
     });
   }).pipe(
     Effect.tap((built) =>
@@ -1203,49 +1486,120 @@ export const buildRefundInvalidWithdrawalTxProgram = (
       refs.withdrawalWitnessCertificate,
       refs.membershipProofWithdrawal,
     ]);
-    const initialLayout = initialRefundWithdrawalLayout({
-      inputs: txInputs,
-      referenceInputs: txReferenceInputs,
-      withdrawal: config.withdrawal,
-      hubOracleRefInput,
-      settlementRefInput: config.settlementRefInput,
-    });
-    const makeTx = (layout: RefundWithdrawalLayout): TxBuilder => {
-      const withdrawalSpendRedeemer: SDK.WithdrawalSpendRedeemer = {
-        input_index: layout.withdrawalInputIndex,
-        output_index: layout.refundOutputIndex,
-        hub_ref_input_index: layout.hubRefInputIndex,
-        settlement_ref_input_index: layout.settlementRefInputIndex,
-        burn_redeemer_index: layout.burnRedeemerIndex,
-        payout_mint_redeemer_index: 0n,
-        membership_proof: config.membershipProof,
-        inclusion_proof_script_withdraw_redeemer_index:
-          layout.inclusionProofWithdrawalRedeemerIndex,
-        purpose: {
-          Refund: {
-            validity_override: config.validityOverride,
+    const membershipRewardAddress = scriptRewardAddress(
+      network,
+      config.membershipProofWithdrawal.script,
+    );
+    type RefundSpendLayout = Omit<
+      RefundWithdrawalLayout,
+      "witnessUnregistrationRedeemerIndex"
+    >;
+    let refundSpendLayout: RefundSpendLayout | undefined;
+    let witnessUnregistrationRedeemerIndex: bigint | undefined;
+    const withdrawalSpendRedeemer = ((ctx) => {
+      requireOwnSpendPurpose(ctx, config.withdrawal.utxo, "withdrawal refund");
+      const layout: RefundSpendLayout = {
+        withdrawalInputIndex: requireInputIndex(
+          ctx,
+          config.withdrawal.utxo,
+          "withdrawal refund",
+        ),
+        refundOutputIndex: outputWithCardanoDatumIndex(
+          ctx.outputs,
+          refundAddress,
+          config.withdrawal.datum.refund_datum,
+          refundAssets,
+          "withdrawal refund",
+        ),
+        hubRefInputIndex: requireReferenceInputIndex(
+          ctx,
+          hubOracleRefInput,
+          "withdrawal refund hub oracle",
+        ),
+        settlementRefInputIndex: requireReferenceInputIndex(
+          ctx,
+          config.settlementRefInput,
+          "withdrawal refund settlement",
+        ),
+        burnRedeemerIndex: requireMintRedeemerIndex(
+          ctx,
+          contracts.withdrawal.policyId,
+          "withdrawal refund burn",
+        ),
+        inclusionProofWithdrawalRedeemerIndex: requireWithdrawalRedeemerIndex(
+          ctx,
+          membershipRewardAddress,
+          "withdrawal refund membership proof",
+        ),
+      };
+      refundSpendLayout = layout;
+      return Data.to(
+        {
+          input_index: layout.withdrawalInputIndex,
+          output_index: layout.refundOutputIndex,
+          hub_ref_input_index: layout.hubRefInputIndex,
+          settlement_ref_input_index: layout.settlementRefInputIndex,
+          burn_redeemer_index: layout.burnRedeemerIndex,
+          payout_mint_redeemer_index: 0n,
+          membership_proof: config.membershipProof,
+          inclusion_proof_script_withdraw_redeemer_index:
+            layout.inclusionProofWithdrawalRedeemerIndex,
+          purpose: {
+            Refund: {
+              validity_override: config.validityOverride,
+            },
           },
-        },
-      };
-      const withdrawalBurnRedeemer: SDK.UserEventMintRedeemer = {
-        BurnEventNFT: {
-          nonce_asset_name: config.withdrawal.assetName,
-          witness_unregistration_redeemer_index:
-            layout.witnessUnregistrationRedeemerIndex,
-        },
-      };
-      let tx = lucid
-        .newTx()
-        .collectFrom(
-          [config.withdrawal.utxo],
-          Data.to(withdrawalSpendRedeemer, SDK.WithdrawalSpendRedeemer),
-        )
+        } satisfies SDK.WithdrawalSpendRedeemer,
+        SDK.WithdrawalSpendRedeemer,
+      );
+    }) satisfies BuildTxWithRedeemer;
+    const withdrawalBurnRedeemer = ((ctx) => {
+      requireOwnMintPurpose(
+        ctx,
+        contracts.withdrawal.policyId,
+        "withdrawal refund burn",
+      );
+      witnessUnregistrationRedeemerIndex = requireSinglePublishRedeemerIndex(
+        ctx,
+        "withdrawal refund witness unregistration",
+      );
+      return Data.to(
+        {
+          BurnEventNFT: {
+            nonce_asset_name: config.withdrawal.assetName,
+            witness_unregistration_redeemer_index:
+              witnessUnregistrationRedeemerIndex,
+          },
+        } satisfies SDK.UserEventMintRedeemer,
+        SDK.UserEventMintRedeemer,
+      );
+    }) satisfies BuildTxWithRedeemer;
+    const makeTx = (): TxBuilder => {
+      let tx = lucid.newTx().readFrom([...txReferenceInputs]);
+      tx = attachIfMissing(
+        tx,
+        contracts.withdrawal.spendingScript,
+        refs.withdrawalSpending,
+      );
+      tx = attachIfMissing(
+        tx,
+        contracts.withdrawal.mintingScript,
+        refs.withdrawalMinting,
+      );
+      tx = attachIfMissing(
+        tx,
+        witnessScript,
+        refs.withdrawalWitnessCertificate,
+      );
+      tx = attachIfMissing(
+        tx,
+        config.membershipProofWithdrawal.script,
+        refs.membershipProofWithdrawal,
+      );
+      tx = tx
+        .collectFrom([config.withdrawal.utxo], withdrawalSpendRedeemer)
         .collectFrom([feeInput])
-        .readFrom([...txReferenceInputs])
-        .mintAssets(
-          { [withdrawalUnit]: -1n },
-          Data.to(withdrawalBurnRedeemer, SDK.UserEventMintRedeemer),
-        );
+        .mintAssets({ [withdrawalUnit]: -1n }, withdrawalBurnRedeemer);
       tx = payToAddressWithCardanoDatum(
         tx,
         refundAddress,
@@ -1266,35 +1620,23 @@ export const buildRefundInvalidWithdrawalTxProgram = (
         membershipRedeemer,
         refs.membershipProofWithdrawal,
       );
-      tx = attachIfMissing(
-        tx,
-        contracts.withdrawal.spendingScript,
-        refs.withdrawalSpending,
-      );
-      tx = attachIfMissing(
-        tx,
-        contracts.withdrawal.mintingScript,
-        refs.withdrawalMinting,
-      );
       return tx;
     };
-    return yield* completeWithTwoPassLayoutProgram({
+    return yield* completeWithFinalLayoutProgram({
       label: "invalid withdrawal refund",
       lucid,
-      initialLayout,
       walletInputExclusions: [...txInputs, ...txReferenceInputs],
       makeTx,
-      deriveLayout: (tx) =>
-        deriveRefundWithdrawalLayout({
-          tx,
-          withdrawal: config.withdrawal,
-          refundAddress,
-          refundDatum: config.withdrawal.datum.refund_datum,
-          refundAssets,
-          hubOracleRefInput,
-          settlementRefInput: config.settlementRefInput,
-        }),
-      sameLayout: sameRefundWithdrawalLayout,
+      resolveLayout: () => ({
+        ...requireResolvedLayout(
+          refundSpendLayout,
+          "invalid withdrawal refund",
+        ),
+        witnessUnregistrationRedeemerIndex: requireResolvedLayout(
+          witnessUnregistrationRedeemerIndex,
+          "invalid withdrawal refund witness unregistration",
+        ),
+      }),
     });
   }).pipe(
     Effect.tap((built) =>
@@ -1310,17 +1652,10 @@ export const __reservePayoutTest = {
   assetsEqual,
   encodeMembershipProofWithdrawalRedeemer,
   disposableFeeInputCandidates,
-  initialAbsorbDepositLayout,
-  initialAddReserveFundsLayout,
-  initialConcludePayoutLayout,
-  initialInitializePayoutLayout,
-  initialRefundWithdrawalLayout,
   aikenSerialisedPlutusDataCbor,
   minPositiveAssets,
   removeAssetUnit,
   selectFeeInputProgram,
-  sameAddReserveFundsLayout,
-  sameConcludePayoutLayout,
   subtractAssets,
   valueToAssets,
 };

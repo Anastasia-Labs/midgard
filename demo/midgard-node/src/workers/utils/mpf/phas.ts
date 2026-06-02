@@ -2,19 +2,11 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { aikenSerialisedPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
-
 import { MidgardMpf, MpfError } from "../mpf.js";
 
 const toPhasTrieItem = (keyCbor: Buffer, valueCbor: Buffer) => ({
-  key: Buffer.from(
-    aikenSerialisedPlutusDataCbor(keyCbor.toString("hex")),
-    "hex",
-  ),
-  value: Buffer.from(
-    aikenSerialisedPlutusDataCbor(valueCbor.toString("hex")),
-    "hex",
-  ),
+  key: Buffer.from(keyCbor),
+  value: Buffer.from(valueCbor),
 });
 
 export const keyValuePhasRoot = (
@@ -81,9 +73,7 @@ export const keyValuePhasProof = (
         };
       }),
     );
-    const proof = yield* mpf.prove(
-      Buffer.from(aikenSerialisedPlutusDataCbor(key.toString("hex")), "hex"),
-    );
+    const proof = yield* mpf.prove(key);
     return yield* Effect.try({
       try: () =>
         LucidData.from(

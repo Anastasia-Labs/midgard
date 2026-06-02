@@ -11,7 +11,6 @@ withdrawals, opaque compatibility shims, or generic Lucid validators.
 - T03 core types.
 - T06 builder fluent API.
 - T09 script and redeemer builders.
-- T13 API parity map.
 - Architecture docs `01`, `06`, and `09`.
 
 ## Deliverables

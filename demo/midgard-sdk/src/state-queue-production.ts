@@ -1,20 +1,15 @@
 import { assetsEqual } from "@al-ft/midgard-core/assets";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import { compareOutRefs, outRefLabel } from "@al-ft/midgard-core/out-ref";
 import {
-  compareOutRefs,
-  findOutRefIndex,
-  outRefLabel,
-  type OutRefLike,
-} from "@al-ft/midgard-core/out-ref";
-import {
-  CML,
   Data,
   type Assets,
+  type BuildTxWithRedeemer,
   type LucidEvolution,
-  type RedeemerBuilder,
   type Script,
   toUnit,
   type TxBuilder,
+  type TxOutput,
   type TxSignBuilder,
   type UTxO,
 } from "@lucid-evolution/lucid";
@@ -25,14 +20,6 @@ import {
   ActiveOperatorSpendRedeemer,
   castActiveOperatorDatumToData,
 } from "@/active-operators.js";
-import {
-  findRedeemerDataCbor,
-  getRedeemerPointersInContextOrder,
-  getTxInfoRedeemerIndexes,
-  resolveMintPolicyContextIndex,
-  resolveRedeemerTxInfoIndex,
-  withStubbedProviderEvaluation,
-} from "@/cardano-redeemers.js";
 import type {
   DataCoercionError,
   HashingError,
@@ -68,16 +55,17 @@ import {
   type StateQueueUTxO,
 } from "@/state-queue.js";
 import {
-  collectIndexedOutputs,
-  collectSortedInputOutRefs,
-  requireOutRefIndex,
-  resolveOutRefIndexFromSet,
-} from "@/tx-out-ref-order.js";
+  requireInputIndex as requireContextInputIndex,
+  requireMintRedeemerIndex as requireContextMintRedeemerIndex,
+  requireOwnMintPurpose,
+  requireReferenceInputIndex as requireContextReferenceInputIndex,
+  requireSpendRedeemerIndex as requireContextSpendRedeemerIndex,
+} from "@/tx-context-redeemer.js";
+import { canonicalPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 
 const STATE_QUEUE_HEADER_NODE_LOVELACE = 5_000_000n;
 const ACTIVE_OPERATOR_MATURITY_DURATION_MS = 30n;
 const MIN_SETTLEMENT_OUTPUT_LOVELACE = 5_000_000n;
-const MERGE_SCRIPT_SPEND_REDEEMER_COUNT = 2;
 
 export type OperatorWalletViewLike = {
   readonly knownUtxos: readonly UTxO[];
@@ -96,7 +84,7 @@ export type StateQueueCommitWitnessContext = {
   readonly operatorWalletView: OperatorWalletViewLike;
 };
 
-export type StateQueueCommitLayout = {
+type StateQueueCommitLayout = {
   readonly schedulerRefInputIndex: bigint;
   readonly latestBlockInputIndex: bigint;
   readonly newBlockOutputIndex: bigint;
@@ -107,18 +95,6 @@ export type StateQueueCommitLayout = {
   readonly hubOracleRefInputIndex: bigint;
   readonly stateQueueSpendRedeemerIndex: bigint;
 };
-
-export const DEFAULT_STATE_QUEUE_COMMIT_LAYOUT: StateQueueCommitLayout = {
-  schedulerRefInputIndex: 0n,
-  latestBlockInputIndex: 0n,
-  newBlockOutputIndex: 0n,
-  continuedLatestBlockOutputIndex: 1n,
-  activeOperatorsInputIndex: 1n,
-  activeOperatorsRedeemerIndex: 1n,
-  activeOperatorOutputIndex: 2n,
-  hubOracleRefInputIndex: 0n,
-  stateQueueSpendRedeemerIndex: 0n,
-} as const;
 
 type StateQueueCommitRedeemer = {
   readonly CommitBlockHeader: {
@@ -201,82 +177,9 @@ const decodeActiveOperatorDatum = (data: unknown): ActiveOperatorDatum =>
     ActiveOperatorDatum as never,
   ) as ActiveOperatorDatum;
 
-export const deriveStateQueueCommitLayout = ({
-  latestBlockInput,
-  activeOperatorInput,
-  schedulerRefInput,
-  hubOracleRefInput,
-  txReferenceInputs,
-  txInputs,
-}: {
-  readonly latestBlockInput: OutRefLike;
-  readonly activeOperatorInput: OutRefLike;
-  readonly schedulerRefInput?: OutRefLike;
-  readonly hubOracleRefInput?: OutRefLike;
-  readonly txReferenceInputs?: readonly OutRefLike[];
-  readonly txInputs: readonly OutRefLike[];
-}): StateQueueCommitLayout => {
-  const sortedInputs = [...txInputs].sort(compareOutRefs);
-  const latestBlockInputIndex = findOutRefIndex(sortedInputs, latestBlockInput);
-  if (latestBlockInputIndex === undefined) {
-    throw new Error(
-      `Latest state-queue input ${outRefLabel(latestBlockInput)} missing from tx input set`,
-    );
-  }
-  const activeOperatorsInputIndex = findOutRefIndex(
-    sortedInputs,
-    activeOperatorInput,
-  );
-  if (activeOperatorsInputIndex === undefined) {
-    throw new Error(
-      `Active operator input ${outRefLabel(activeOperatorInput)} missing from tx input set`,
-    );
-  }
-
-  const stateQueueSpendRedeemerIndex =
-    compareOutRefs(latestBlockInput, activeOperatorInput) < 0 ? 0n : 1n;
-  const activeOperatorsRedeemerIndex =
-    compareOutRefs(activeOperatorInput, latestBlockInput) < 0 ? 0n : 1n;
-
-  if (schedulerRefInput === undefined && hubOracleRefInput === undefined) {
-    return {
-      ...DEFAULT_STATE_QUEUE_COMMIT_LAYOUT,
-      latestBlockInputIndex: BigInt(latestBlockInputIndex),
-      activeOperatorsInputIndex: BigInt(activeOperatorsInputIndex),
-      stateQueueSpendRedeemerIndex,
-      activeOperatorsRedeemerIndex,
-    };
-  }
-  if (schedulerRefInput === undefined || hubOracleRefInput === undefined) {
-    throw new Error(
-      "State queue commit layout requires both scheduler and hub-oracle reference inputs when deriving non-default reference indices",
-    );
-  }
-
-  const referenceInputs = txReferenceInputs ?? [
-    schedulerRefInput,
-    hubOracleRefInput,
-  ];
-  return {
-    ...DEFAULT_STATE_QUEUE_COMMIT_LAYOUT,
-    schedulerRefInputIndex: resolveOutRefIndexFromSet(
-      schedulerRefInput,
-      referenceInputs,
-    ),
-    latestBlockInputIndex: BigInt(latestBlockInputIndex),
-    activeOperatorsInputIndex: BigInt(activeOperatorsInputIndex),
-    hubOracleRefInputIndex: resolveOutRefIndexFromSet(
-      hubOracleRefInput,
-      referenceInputs,
-    ),
-    stateQueueSpendRedeemerIndex,
-    activeOperatorsRedeemerIndex,
-  };
-};
-
-export const makeStateQueueCommitRedeemer = (
+const makeStateQueueCommitRedeemer = (
   operatorKeyHash: string,
-  layout: StateQueueCommitLayout = DEFAULT_STATE_QUEUE_COMMIT_LAYOUT,
+  layout: StateQueueCommitLayout,
 ): StateQueueCommitRedeemer => ({
   CommitBlockHeader: {
     latest_block_input_index: layout.latestBlockInputIndex,
@@ -289,9 +192,9 @@ export const makeStateQueueCommitRedeemer = (
   },
 });
 
-export const makeActiveOperatorCommitRedeemer = (
+const makeActiveOperatorCommitRedeemer = (
   operatorKeyHash: string,
-  layout: StateQueueCommitLayout = DEFAULT_STATE_QUEUE_COMMIT_LAYOUT,
+  layout: StateQueueCommitLayout,
 ): ActiveOperatorCommitRedeemer => ({
   UpdateBondHoldNewState: {
     active_operator: operatorKeyHash,
@@ -303,18 +206,18 @@ export const makeActiveOperatorCommitRedeemer = (
   },
 });
 
-export const encodeStateQueueCommitRedeemer = (
+const encodeStateQueueCommitRedeemer = (
   operatorKeyHash: string,
-  layout: StateQueueCommitLayout = DEFAULT_STATE_QUEUE_COMMIT_LAYOUT,
+  layout: StateQueueCommitLayout,
 ): string =>
   Data.to(
     makeStateQueueCommitRedeemer(operatorKeyHash, layout) as never,
     StateQueueRedeemer as never,
   );
 
-export const encodeActiveOperatorCommitRedeemer = (
+const encodeActiveOperatorCommitRedeemer = (
   operatorKeyHash: string,
-  layout: StateQueueCommitLayout = DEFAULT_STATE_QUEUE_COMMIT_LAYOUT,
+  layout: StateQueueCommitLayout,
 ): string =>
   Data.to(
     makeActiveOperatorCommitRedeemer(operatorKeyHash, layout) as never,
@@ -362,13 +265,36 @@ const formatCommitLayout = (layout: CommitLayoutLike): string =>
     ({ key, label }) => `${label}=${layout[key].toString()}`,
   ).join(",");
 
-const commitLayoutsEqual = (
-  left: StateQueueCommitLayout,
-  right: StateQueueCommitLayout,
-): boolean => COMMIT_LAYOUT_FIELDS.every(({ key }) => left[key] === right[key]);
+const outputDatumCborMatches = (
+  output: Pick<TxOutput, "datum">,
+  datumCbor: string,
+): boolean =>
+  output.datum != null &&
+  canonicalPlutusDataCbor(output.datum) === canonicalPlutusDataCbor(datumCbor);
 
-export const deriveCommitLayoutFromDraftTx = ({
-  tx,
+const requireUniqueContextOutputIndex = (
+  outputs: readonly TxOutput[],
+  predicate: (output: TxOutput) => boolean,
+  label: string,
+): bigint => {
+  let foundIndex: bigint | undefined;
+  for (let index = 0; index < outputs.length; index += 1) {
+    if (!predicate(outputs[index]!)) {
+      continue;
+    }
+    if (foundIndex !== undefined) {
+      throw new Error(`${label} output selector matched multiple outputs`);
+    }
+    foundIndex = BigInt(index);
+  }
+  if (foundIndex === undefined) {
+    throw new Error(`${label} output is missing from final tx outputs`);
+  }
+  return foundIndex;
+};
+
+const deriveCommitLayoutFromRedeemerContext = ({
+  ctx,
   latestBlockInput,
   schedulerRefInput,
   hubOracleRefInput,
@@ -378,7 +304,7 @@ export const deriveCommitLayoutFromDraftTx = ({
   headerNodeDatum,
   previousHeaderNodeDatum,
 }: {
-  readonly tx: CML.Transaction;
+  readonly ctx: Parameters<BuildTxWithRedeemer>[0];
   readonly latestBlockInput: UTxO;
   readonly schedulerRefInput: UTxO;
   readonly hubOracleRefInput: UTxO;
@@ -388,117 +314,65 @@ export const deriveCommitLayoutFromDraftTx = ({
   readonly headerNodeDatum: string;
   readonly previousHeaderNodeDatum: string;
 }): StateQueueCommitLayout => {
-  const txBody = tx.body();
-  const inputList = collectSortedInputOutRefs(txBody.inputs());
-  const referenceInputListRaw = txBody.reference_inputs();
-  const indexedOutputs = collectIndexedOutputs(txBody.outputs());
-
-  const latestBlockInputIndex = requireOutRefIndex(inputList, latestBlockInput);
-  const activeOperatorsInputIndex = requireOutRefIndex(
-    inputList,
+  const latestBlockInputIndex = requireContextInputIndex(
+    ctx,
+    latestBlockInput,
+    "state-queue commit latest block",
+  );
+  const activeOperatorsInputIndex = requireContextInputIndex(
+    ctx,
     activeOperatorInput,
+    "state-queue commit active operator",
   );
-  if (referenceInputListRaw === undefined) {
-    throw new Error(
-      "Balanced draft tx body did not include reference inputs for scheduler witness",
-    );
-  }
-  const referenceInputList = collectSortedInputOutRefs(referenceInputListRaw);
-  const schedulerRefInputIndex = requireOutRefIndex(
-    referenceInputList,
-    schedulerRefInput,
-  );
-  const hubOracleRefInputIndex = requireOutRefIndex(
-    referenceInputList,
-    hubOracleRefInput,
-  );
-
-  const headerNodeOutputCandidates = indexedOutputs.filter(
-    (output) =>
-      output.address === stateQueueAddress &&
-      output.datum === headerNodeDatum &&
-      (output.assets[headerNodeUnit] ?? 0n) === 1n,
-  );
-  if (headerNodeOutputCandidates.length !== 1) {
-    throw new Error(
-      `Expected exactly one header-node output at ${stateQueueAddress} with datum ${headerNodeDatum.slice(0, 24)}..., found ${headerNodeOutputCandidates.length}`,
-    );
-  }
-
-  const previousHeaderOutputCandidates = indexedOutputs.filter(
-    (output) =>
-      output.address === stateQueueAddress &&
-      output.datum === previousHeaderNodeDatum,
-  );
-  if (previousHeaderOutputCandidates.length !== 1) {
-    throw new Error(
-      `Expected exactly one previous-header output at ${stateQueueAddress} with datum ${previousHeaderNodeDatum.slice(0, 24)}..., found ${previousHeaderOutputCandidates.length}`,
-    );
-  }
-
-  const activeNodeOutputCandidates = indexedOutputs.filter(
-    (output) =>
-      output.address === activeOperatorInput.address &&
-      assetsEqual(output.assets, activeOperatorInput.assets),
-  );
-  if (activeNodeOutputCandidates.length !== 1) {
-    throw new Error(
-      `Expected exactly one active-operator output at ${activeOperatorInput.address} with unchanged assets, found ${activeNodeOutputCandidates.length}`,
-    );
-  }
-
-  const redeemerPointers = getRedeemerPointersInContextOrder(tx);
   return {
-    schedulerRefInputIndex,
-    latestBlockInputIndex,
-    activeOperatorsInputIndex,
-    newBlockOutputIndex: BigInt(headerNodeOutputCandidates[0]!.index),
-    continuedLatestBlockOutputIndex: BigInt(
-      previousHeaderOutputCandidates[0]!.index,
+    schedulerRefInputIndex: requireContextReferenceInputIndex(
+      ctx,
+      schedulerRefInput,
+      "state-queue commit scheduler",
     ),
-    activeOperatorsRedeemerIndex: resolveRedeemerTxInfoIndex({
-      pointers: redeemerPointers,
-      target: { tag: CML.RedeemerTag.Spend, index: activeOperatorsInputIndex },
-      label: `active-operator spend redeemer for input index ${activeOperatorsInputIndex.toString()}`,
-    }),
-    activeOperatorOutputIndex: BigInt(activeNodeOutputCandidates[0]!.index),
-    hubOracleRefInputIndex,
-    stateQueueSpendRedeemerIndex: resolveRedeemerTxInfoIndex({
-      pointers: redeemerPointers,
-      target: { tag: CML.RedeemerTag.Spend, index: latestBlockInputIndex },
-      label: `state-queue spend redeemer for input index ${latestBlockInputIndex.toString()}`,
-    }),
+    latestBlockInputIndex,
+    newBlockOutputIndex: requireUniqueContextOutputIndex(
+      ctx.outputs,
+      (output) =>
+        output.address === stateQueueAddress &&
+        outputDatumCborMatches(output, headerNodeDatum) &&
+        (output.assets[headerNodeUnit] ?? 0n) === 1n,
+      "state-queue commit new header",
+    ),
+    continuedLatestBlockOutputIndex: requireUniqueContextOutputIndex(
+      ctx.outputs,
+      (output) =>
+        output.address === stateQueueAddress &&
+        outputDatumCborMatches(output, previousHeaderNodeDatum),
+      "state-queue commit continued latest header",
+    ),
+    activeOperatorsInputIndex,
+    activeOperatorsRedeemerIndex: requireContextSpendRedeemerIndex(
+      ctx,
+      activeOperatorInput,
+      "state-queue commit active operator",
+    ),
+    activeOperatorOutputIndex: requireUniqueContextOutputIndex(
+      ctx.outputs,
+      (output) =>
+        output.address === activeOperatorInput.address &&
+        assetsEqual(output.assets, activeOperatorInput.assets),
+      "state-queue commit active operator",
+    ),
+    hubOracleRefInputIndex: requireContextReferenceInputIndex(
+      ctx,
+      hubOracleRefInput,
+      "state-queue commit hub oracle",
+    ),
+    stateQueueSpendRedeemerIndex: requireContextSpendRedeemerIndex(
+      ctx,
+      latestBlockInput,
+      "state-queue commit latest block",
+    ),
   };
 };
 
-const completeCommitTxForLayout = ({
-  makeCommitTxForLayout,
-  layout,
-  label,
-}: {
-  readonly makeCommitTxForLayout: (
-    commitLayout: StateQueueCommitLayout,
-  ) => TxBuilder;
-  readonly layout: StateQueueCommitLayout;
-  readonly label: "derived" | "tx-derived";
-}): Effect.Effect<TxSignBuilder, StateQueueError> => {
-  const verb = label === "derived" ? "build" : "rebuild";
-  const layoutLabel =
-    label === "derived" ? "derived layout" : "tx-derived layout";
-  return Effect.tryPromise({
-    try: () => makeCommitTxForLayout(layout).complete({ localUPLCEval: true }),
-    catch: (cause) =>
-      new StateQueueError({
-        message: `Failed to ${verb} block header commitment transaction with ${layoutLabel} (${formatCommitLayout(
-          layout,
-        )}): ${formatUnknownError(cause)}`,
-        cause,
-      }),
-  });
-};
-
 export type DeterministicCommitTxBuilderInput = {
-  readonly lucid: LucidEvolution;
   readonly contracts: MidgardValidators;
   readonly latestBlockInput: UTxO;
   readonly witness: StateQueueCommitWitnessContext;
@@ -507,11 +381,12 @@ export type DeterministicCommitTxBuilderInput = {
   readonly previousHeaderNodeDatumCbor: string;
   readonly updatedActiveOperatorDatumCbor: string;
   readonly commitMintAssets: Readonly<Record<string, bigint>>;
-  readonly makeBaseCommitTx: (stateQueueCommitRedeemer: string) => TxBuilder;
+  readonly makeBaseCommitTx: (
+    stateQueueCommitRedeemer: BuildTxWithRedeemer,
+  ) => TxBuilder;
 };
 
 export const buildDeterministicCommitTxBuilder = ({
-  lucid,
   contracts,
   latestBlockInput,
   witness,
@@ -547,20 +422,47 @@ export const buildDeterministicCommitTxBuilder = ({
         : [witness.stateQueueMintingScriptRef]),
     ];
 
-    const makeCommitTxForLayout = (commitLayout: StateQueueCommitLayout) => {
-      const stateQueueCommitRedeemer = encodeStateQueueCommitRedeemer(
+    let commitLayout: StateQueueCommitLayout | undefined;
+    const layoutFromContext = (
+      ctx: Parameters<BuildTxWithRedeemer>[0],
+    ): StateQueueCommitLayout => {
+      const layout = deriveCommitLayoutFromRedeemerContext({
+        ctx,
+        latestBlockInput,
+        schedulerRefInput: witness.schedulerRefInput,
+        hubOracleRefInput: witness.hubOracleRefInput,
+        activeOperatorInput: witness.activeOperatorInput,
+        stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
+        headerNodeUnit,
+        headerNodeDatum: appendedNodeDatumCbor,
+        previousHeaderNodeDatum: previousHeaderNodeDatumCbor,
+      });
+      commitLayout = layout;
+      return layout;
+    };
+    const stateQueueCommitSpendRedeemer = ((ctx) =>
+      encodeStateQueueCommitRedeemer(
         witness.operatorKeyHash,
-        commitLayout,
-      );
-      const tx = makeBaseCommitTx(stateQueueCommitRedeemer)
+        layoutFromContext(ctx),
+      )) satisfies BuildTxWithRedeemer;
+    const stateQueueCommitMintRedeemer = ((ctx) =>
+      encodeStateQueueCommitRedeemer(
+        witness.operatorKeyHash,
+        layoutFromContext(ctx),
+      )) satisfies BuildTxWithRedeemer;
+    const activeOperatorCommitRedeemer = ((ctx) =>
+      encodeActiveOperatorCommitRedeemer(
+        witness.operatorKeyHash,
+        layoutFromContext(ctx),
+      )) satisfies BuildTxWithRedeemer;
+
+    const makeCommitTx = () => {
+      const tx = makeBaseCommitTx(stateQueueCommitSpendRedeemer)
         .collectFrom([feeInput])
         .readFrom(referenceInputs)
         .collectFrom(
           [witness.activeOperatorInput],
-          encodeActiveOperatorCommitRedeemer(
-            witness.operatorKeyHash,
-            commitLayout,
-          ),
+          activeOperatorCommitRedeemer,
         )
         .pay.ToContract(
           witness.activeOperatorInput.address,
@@ -571,7 +473,7 @@ export const buildDeterministicCommitTxBuilder = ({
           witness.activeOperatorInput.assets,
         )
         .addSignerKey(witness.operatorKeyHash)
-        .mintAssets(commitMintAssets, stateQueueCommitRedeemer);
+        .mintAssets(commitMintAssets, stateQueueCommitMintRedeemer);
       const withActiveOperatorsScript =
         witness.activeOperatorsSpendingScriptRef === undefined
           ? tx.attach.Script(witness.activeOperatorsSpendingScript)
@@ -589,91 +491,28 @@ export const buildDeterministicCommitTxBuilder = ({
         : withStateQueueSpendingScript;
     };
 
-    const seedLayout = deriveStateQueueCommitLayout({
-      latestBlockInput,
-      activeOperatorInput: witness.activeOperatorInput,
-      schedulerRefInput: witness.schedulerRefInput,
-      hubOracleRefInput: witness.hubOracleRefInput,
-      txReferenceInputs: referenceInputs,
-      txInputs: [latestBlockInput, witness.activeOperatorInput, feeInput],
-    });
-    const commitLayout = yield* Effect.tryPromise({
-      try: async () => {
-        const [, , draftSignBuilder] = await withStubbedProviderEvaluation(
-          lucid,
-          () =>
-            makeCommitTxForLayout(seedLayout).chain({
-              localUPLCEval: true,
-            }),
-        );
-        return deriveCommitLayoutFromDraftTx({
-          tx: draftSignBuilder.toTransaction(),
-          latestBlockInput,
-          schedulerRefInput: witness.schedulerRefInput,
-          hubOracleRefInput: witness.hubOracleRefInput,
-          activeOperatorInput: witness.activeOperatorInput,
-          stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
-          headerNodeUnit,
-          headerNodeDatum: appendedNodeDatumCbor,
-          previousHeaderNodeDatum: previousHeaderNodeDatumCbor,
-        });
-      },
+    const builtCommitTx = yield* Effect.tryPromise({
+      try: () => makeCommitTx().complete({ localUPLCEval: true }),
       catch: (cause) =>
         new StateQueueError({
-          message: `Failed to derive deterministic commit redeemer layout from balanced draft tx: ${formatUnknownError(
+          message: `Failed to build block header commitment transaction with final redeemer context: ${formatUnknownError(
             cause,
           )}`,
           cause,
         }),
     });
+    if (commitLayout === undefined) {
+      return yield* Effect.fail(
+        new StateQueueError({
+          message:
+            "BuildTxWithRedeemer did not resolve state-queue commit layout",
+          cause: "missing BuildTxWithRedeemer commit layout callback",
+        }),
+      );
+    }
     yield* Effect.logInfo(
       `🔹 Using commit redeemer layout: ${formatCommitLayout(commitLayout)}`,
     );
-
-    let stableCommitLayout = commitLayout;
-    let builtCommitTx = yield* completeCommitTxForLayout({
-      makeCommitTxForLayout,
-      layout: stableCommitLayout,
-      label: "derived",
-    });
-    for (let iteration = 0; iteration < 2; iteration += 1) {
-      const derivedSubmitLayout = deriveCommitLayoutFromDraftTx({
-        tx: builtCommitTx.toTransaction(),
-        latestBlockInput,
-        schedulerRefInput: witness.schedulerRefInput,
-        hubOracleRefInput: witness.hubOracleRefInput,
-        activeOperatorInput: witness.activeOperatorInput,
-        stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
-        headerNodeUnit,
-        headerNodeDatum: appendedNodeDatumCbor,
-        previousHeaderNodeDatum: previousHeaderNodeDatumCbor,
-      });
-      if (commitLayoutsEqual(stableCommitLayout, derivedSubmitLayout)) {
-        return builtCommitTx;
-      }
-      if (iteration === 1) {
-        return yield* Effect.fail(
-          new StateQueueError({
-            message:
-              "Commit transaction layout did not converge after deterministic rebuild",
-            cause: `authored=${formatCommitLayout(stableCommitLayout)}; derived=${formatCommitLayout(
-              derivedSubmitLayout,
-            )}`,
-          }),
-        );
-      }
-      yield* Effect.logWarning(
-        `Commit layout drift detected after balancing; rebuilding with tx-derived indexes. authored=${formatCommitLayout(stableCommitLayout)} derived=${formatCommitLayout(
-          derivedSubmitLayout,
-        )}`,
-      );
-      stableCommitLayout = derivedSubmitLayout;
-      builtCommitTx = yield* completeCommitTxForLayout({
-        makeCommitTxForLayout,
-        layout: stableCommitLayout,
-        label: "tx-derived",
-      });
-    }
 
     return builtCommitTx;
   });
@@ -757,7 +596,7 @@ export const buildProductionCommitBlockHeaderTxProgram = ({
         }),
     });
 
-    const makeBaseCommitTx = (stateQueueCommitRedeemer: string) =>
+    const makeBaseCommitTx = (stateQueueCommitRedeemer: BuildTxWithRedeemer) =>
       lucid
         .newTx()
         .validTo(validTo)
@@ -780,7 +619,6 @@ export const buildProductionCommitBlockHeaderTxProgram = ({
         );
 
     const tx = yield* buildDeterministicCommitTxBuilder({
-      lucid,
       contracts,
       latestBlockInput: latestBlock.utxo,
       witness,
@@ -794,43 +632,6 @@ export const buildProductionCommitBlockHeaderTxProgram = ({
 
     return { tx, newHeaderHash };
   });
-
-export type InitialMergeRedeemerSeedIndexes = {
-  readonly stateQueueMintPointerIndex: number;
-  readonly settlementMintPointerIndex: number;
-  readonly stateQueueRedeemerIndex: number;
-  readonly settlementRedeemerIndex: number;
-};
-
-export const deriveInitialMergeRedeemerSeedIndexes = ({
-  stateQueuePolicyId,
-  settlementPolicyId,
-}: {
-  readonly stateQueuePolicyId: string;
-  readonly settlementPolicyId: string;
-}): InitialMergeRedeemerSeedIndexes => {
-  const policyIds = [stateQueuePolicyId, settlementPolicyId] as const;
-  const stateQueueMintPointerIndex = Number(
-    resolveMintPolicyContextIndex({
-      policyIds,
-      targetPolicyId: stateQueuePolicyId,
-    }),
-  );
-  const settlementMintPointerIndex = Number(
-    resolveMintPolicyContextIndex({
-      policyIds,
-      targetPolicyId: settlementPolicyId,
-    }),
-  );
-  return {
-    stateQueueMintPointerIndex,
-    settlementMintPointerIndex,
-    stateQueueRedeemerIndex:
-      MERGE_SCRIPT_SPEND_REDEEMER_COUNT + stateQueueMintPointerIndex,
-    settlementRedeemerIndex:
-      MERGE_SCRIPT_SPEND_REDEEMER_COUNT + settlementMintPointerIndex,
-  };
-};
 
 export type StateQueueMergeReferenceScripts = {
   readonly stateQueueSpending?: UTxO;
@@ -861,9 +662,11 @@ export type MergeRedeemerLayout = {
   readonly hubOracleRefInputIndex: number;
 };
 
-type MergeLayoutDerivation = {
-  readonly layout: MergeRedeemerLayout;
-  readonly diagnostics: unknown;
+export type MergeLayoutDiagnostics = {
+  readonly stateQueueRedeemerTxInfoIndex: number;
+  readonly settlementRedeemerTxInfoIndex: number;
+  readonly stateQueueRedeemerCbor: string;
+  readonly settlementRedeemerCbor: string;
 };
 
 export type ProductionMergeToConfirmedStateResult = {
@@ -871,7 +674,7 @@ export type ProductionMergeToConfirmedStateResult = {
   readonly headerNodeKey: string;
   readonly blockHeader: Header;
   readonly layout: MergeRedeemerLayout;
-  readonly diagnostics: unknown;
+  readonly diagnostics: MergeLayoutDiagnostics;
 };
 
 const makeJsonSafe = (value: unknown): unknown => {
@@ -935,200 +738,87 @@ const makeSettlementSpawnRedeemer = ({
   },
 });
 
-const encodeMergeRedeemers = ({
-  layout,
-  headerNodeKey,
-  blockHeader,
-}: {
-  readonly layout: MergeRedeemerLayout;
-  readonly headerNodeKey: string;
-  readonly blockHeader: Header;
-}): {
-  readonly stateQueue: string;
-  readonly settlement: string;
-} => ({
-  stateQueue: Data.to(
-    makeStateQueueMergeRedeemer({ layout, headerNodeKey, blockHeader }),
-    StateQueueRedeemer,
-  ),
-  settlement: Data.to(
-    makeSettlementSpawnRedeemer({ layout, headerNodeKey }),
-    SettlementMintRedeemer,
-  ),
-});
-
-const makeStateQueueMergeRedeemerBuilder = ({
-  layout,
-  confirmedUTxO,
-  firstBlockUTxO,
-  headerNodeKey,
-  blockHeader,
-}: {
-  readonly layout: MergeRedeemerLayout;
-  readonly confirmedUTxO: StateQueueUTxO;
-  readonly firstBlockUTxO: StateQueueUTxO;
-  readonly headerNodeKey: string;
-  readonly blockHeader: Header;
-}): RedeemerBuilder => ({
-  kind: "selected",
-  inputs: [firstBlockUTxO.utxo, confirmedUTxO.utxo],
-  makeRedeemer: (inputIndices) => {
-    const headerNodeInputIndex = inputIndices[0];
-    const confirmedStateInputIndex = inputIndices[1];
-    if (
-      headerNodeInputIndex === undefined ||
-      confirmedStateInputIndex === undefined ||
-      inputIndices.length !== 2
-    ) {
-      throw new Error(
-        `Merge state_queue redeemer builder expected header and confirmed-state input indices, got ${inputIndices.length.toString()}`,
-      );
-    }
-    return Data.to(
-      makeStateQueueMergeRedeemer({
-        layout: {
-          ...layout,
-          headerNodeInputIndex: Number(headerNodeInputIndex),
-          confirmedStateInputIndex: Number(confirmedStateInputIndex),
-        },
-        headerNodeKey,
-        blockHeader,
-      }),
-      StateQueueRedeemer,
-    );
-  },
-});
-
-const deriveMergeLayoutFromTx = ({
-  tx,
-  seedLayout,
+const deriveMergeLayoutFromRedeemerContext = ({
+  ctx,
   confirmedUTxO,
   firstBlockUTxO,
   hubOracleRefInput,
+  stateQueuePolicyId,
   stateQueueAddress,
   encodedConfirmedNodeDatum,
+  settlementPolicyId,
   settlementAddress,
   encodedSettlementDatum,
-  settlementUnit,
-  stateQueueMintPointerIndex,
-  settlementMintPointerIndex,
+  settlementOutputAssets,
 }: {
-  readonly tx: CML.Transaction;
-  readonly seedLayout: MergeRedeemerLayout;
+  readonly ctx: Parameters<BuildTxWithRedeemer>[0];
   readonly confirmedUTxO: StateQueueUTxO;
   readonly firstBlockUTxO: StateQueueUTxO;
   readonly hubOracleRefInput: UTxO;
+  readonly stateQueuePolicyId: string;
   readonly stateQueueAddress: string;
   readonly encodedConfirmedNodeDatum: string;
+  readonly settlementPolicyId: string;
   readonly settlementAddress: string;
   readonly encodedSettlementDatum: string;
-  readonly settlementUnit: string;
-  readonly stateQueueMintPointerIndex: number;
-  readonly settlementMintPointerIndex: number;
-}): MergeLayoutDerivation => {
-  const txBody = tx.body();
-  const inputList = collectSortedInputOutRefs(txBody.inputs());
-  const referenceInputList = txBody.reference_inputs();
-  if (referenceInputList === undefined) {
-    throw new Error("Merge tx did not include reference inputs");
-  }
-  const sortedReferenceInputList =
-    collectSortedInputOutRefs(referenceInputList);
-  const headerInput = findOutRefIndex(inputList, firstBlockUTxO.utxo);
-  const confirmedInput = findOutRefIndex(inputList, confirmedUTxO.utxo);
-  const hubOracleRefInputIndex = findOutRefIndex(
-    sortedReferenceInputList,
-    hubOracleRefInput,
-  );
-  if (
-    headerInput === undefined ||
-    confirmedInput === undefined ||
-    hubOracleRefInputIndex === undefined
-  ) {
-    throw new Error(
-      `Merge tx missing expected input index mapping (header=${headerInput},confirmed=${confirmedInput},hub_ref=${hubOracleRefInputIndex})`,
-    );
-  }
-
-  const indexedOutputs = collectIndexedOutputs(txBody.outputs());
-  const confirmedOutput = indexedOutputs.find(
-    (output) =>
-      output.address === stateQueueAddress &&
-      output.datum === encodedConfirmedNodeDatum,
-  );
-  const settlementOutput = indexedOutputs.find(
-    (output) =>
-      output.address === settlementAddress &&
-      output.datum === encodedSettlementDatum &&
-      (output.assets[settlementUnit] ?? 0n) === 1n,
-  );
-  if (confirmedOutput === undefined || settlementOutput === undefined) {
-    throw new Error(
-      `Merge tx missing expected outputs (confirmed=${confirmedOutput?.index ?? "missing"},settlement=${settlementOutput?.index ?? "missing"})`,
-    );
-  }
-
-  const redeemerPointers = getRedeemerPointersInContextOrder(tx);
-  const txInfoRedeemerIndexes = getTxInfoRedeemerIndexes(redeemerPointers);
-  const stateQueueRedeemerPointer = {
-    tag: CML.RedeemerTag.Mint,
-    index: BigInt(stateQueueMintPointerIndex),
-  };
-  const settlementRedeemerPointer = {
-    tag: CML.RedeemerTag.Mint,
-    index: BigInt(settlementMintPointerIndex),
-  };
-  const stateQueueRedeemerIndex = Number(
-    resolveRedeemerTxInfoIndex({
-      pointers: redeemerPointers,
-      target: stateQueueRedeemerPointer,
-      label: "state_queue merge mint redeemer",
-    }),
-  );
-  const settlementRedeemerIndex = Number(
-    resolveRedeemerTxInfoIndex({
-      pointers: redeemerPointers,
-      target: settlementRedeemerPointer,
-      label: "settlement spawn mint redeemer",
-    }),
-  );
-
-  return {
-    layout: {
-      headerNodeInputIndex: headerInput,
-      confirmedStateInputIndex: confirmedInput,
-      confirmedStateOutputIndex: confirmedOutput.index,
-      settlementOutputIndex: settlementOutput.index,
-      stateQueueRedeemerIndex,
-      settlementRedeemerIndex,
-      hubOracleRefInputIndex,
-    },
-    diagnostics: {
-      initialLayout: seedLayout,
-      redeemerPointersContextOrder: redeemerPointers.map(
-        (pointer, index) =>
-          `${index}:${pointer.tag.toString()}:${pointer.index.toString()}`,
-      ),
-      redeemerPointersTxInfoOrder: redeemerPointers
-        .map((pointer, contextIndex) => ({
-          pointer,
-          contextIndex,
-          txInfoIndex: txInfoRedeemerIndexes[contextIndex]!,
-        }))
-        .sort((a, b) => a.txInfoIndex - b.txInfoIndex)
-        .map(
-          ({ pointer, contextIndex, txInfoIndex }) =>
-            `${txInfoIndex}:${pointer.tag.toString()}:${pointer.index.toString()}(context=${contextIndex})`,
-        ),
-      stateQueueRedeemerTxInfoIndex: stateQueueRedeemerIndex,
-      settlementRedeemerTxInfoIndex: settlementRedeemerIndex,
-      stateQueueRedeemerCbor:
-        findRedeemerDataCbor(tx, stateQueueRedeemerPointer) ?? "missing",
-      settlementRedeemerCbor:
-        findRedeemerDataCbor(tx, settlementRedeemerPointer) ?? "missing",
-    },
-  };
-};
+  readonly settlementOutputAssets: Assets;
+}): MergeRedeemerLayout => ({
+  headerNodeInputIndex: Number(
+    requireContextInputIndex(
+      ctx,
+      firstBlockUTxO.utxo,
+      "state-queue merge header node",
+    ),
+  ),
+  confirmedStateInputIndex: Number(
+    requireContextInputIndex(
+      ctx,
+      confirmedUTxO.utxo,
+      "state-queue merge confirmed state",
+    ),
+  ),
+  confirmedStateOutputIndex: Number(
+    requireUniqueContextOutputIndex(
+      ctx.outputs,
+      (output) =>
+        output.address === stateQueueAddress &&
+        outputDatumCborMatches(output, encodedConfirmedNodeDatum) &&
+        assetsEqual(output.assets, confirmedUTxO.utxo.assets),
+      "state-queue merge confirmed state",
+    ),
+  ),
+  settlementOutputIndex: Number(
+    requireUniqueContextOutputIndex(
+      ctx.outputs,
+      (output) =>
+        output.address === settlementAddress &&
+        outputDatumCborMatches(output, encodedSettlementDatum) &&
+        assetsEqual(output.assets, settlementOutputAssets),
+      "state-queue merge settlement",
+    ),
+  ),
+  stateQueueRedeemerIndex: Number(
+    requireContextMintRedeemerIndex(
+      ctx,
+      stateQueuePolicyId,
+      "state-queue merge state_queue mint",
+    ),
+  ),
+  settlementRedeemerIndex: Number(
+    requireContextMintRedeemerIndex(
+      ctx,
+      settlementPolicyId,
+      "state-queue merge settlement mint",
+    ),
+  ),
+  hubOracleRefInputIndex: Number(
+    requireContextReferenceInputIndex(
+      ctx,
+      hubOracleRefInput,
+      "state-queue merge hub oracle",
+    ),
+  ),
+});
 
 const assertMergeRedeemerInvariants = ({
   layout,
@@ -1322,8 +1012,8 @@ export const buildProductionMergeToConfirmedStateTxProgram = ({
     ];
 
     const makeMergeTx = (
-      encodedStateQueueMergeRedeemer: string | RedeemerBuilder,
-      encodedSettlementSpawnRedeemer: string | RedeemerBuilder,
+      encodedStateQueueMergeRedeemer: BuildTxWithRedeemer,
+      encodedSettlementSpawnRedeemer: BuildTxWithRedeemer,
     ) =>
       lucid
         .newTx()
@@ -1345,8 +1035,8 @@ export const buildProductionMergeToConfirmedStateTxProgram = ({
         .mintAssets(settlementAssetsToMint, encodedSettlementSpawnRedeemer);
 
     const makeMergeTxWithScripts = (
-      encodedStateQueueMergeRedeemer: string | RedeemerBuilder,
-      encodedSettlementSpawnRedeemer: string | RedeemerBuilder,
+      encodedStateQueueMergeRedeemer: BuildTxWithRedeemer,
+      encodedSettlementSpawnRedeemer: BuildTxWithRedeemer,
     ) => {
       const tx = makeMergeTx(
         encodedStateQueueMergeRedeemer,
@@ -1369,219 +1059,128 @@ export const buildProductionMergeToConfirmedStateTxProgram = ({
         : withStateQueueMintingScript;
     };
 
-    type UnevaluatedDraftBuilder = ReturnType<typeof makeMergeTxWithScripts> & {
-      readonly config: () => Promise<unknown>;
-      readonly rawConfig: () => {
-        readonly txBuilder: {
-          readonly build_for_evaluation: (
-            fee: number,
-            changeAddress: ReturnType<typeof CML.Address.from_bech32>,
-          ) => {
-            readonly draft_tx: () => CML.Transaction;
-          };
-        };
-      };
+    let mergeLayout: MergeRedeemerLayout | undefined;
+    let stateQueueRedeemerCbor: string | undefined;
+    let settlementRedeemerCbor: string | undefined;
+    const layoutFromContext = (
+      ctx: Parameters<BuildTxWithRedeemer>[0],
+    ): MergeRedeemerLayout => {
+      const layout = deriveMergeLayoutFromRedeemerContext({
+        ctx,
+        confirmedUTxO,
+        firstBlockUTxO,
+        hubOracleRefInput,
+        stateQueuePolicyId: fetchConfig.stateQueuePolicyId,
+        stateQueueAddress: fetchConfig.stateQueueAddress,
+        encodedConfirmedNodeDatum,
+        settlementPolicyId: contracts.settlement.policyId,
+        settlementAddress: contracts.settlement.spendingScriptAddress,
+        encodedSettlementDatum,
+        settlementOutputAssets,
+      });
+      mergeLayout = layout;
+      return layout;
     };
-    const buildUnevaluatedDraftTx = async (
-      encodedStateQueueMergeRedeemer: string,
-      encodedSettlementSpawnRedeemer: string,
-    ): Promise<CML.Transaction> => {
-      const tx = makeMergeTxWithScripts(
-        encodedStateQueueMergeRedeemer,
-        encodedSettlementSpawnRedeemer,
-      ) as UnevaluatedDraftBuilder;
-      await tx.config();
-      const walletAddress = await lucid.wallet().address();
-      return tx
-        .rawConfig()
-        .txBuilder.build_for_evaluation(
-          0,
-          CML.Address.from_bech32(walletAddress),
-        )
-        .draft_tx();
-    };
-
-    const seedIndexes = deriveInitialMergeRedeemerSeedIndexes({
-      stateQueuePolicyId: fetchConfig.stateQueuePolicyId,
-      settlementPolicyId: contracts.settlement.policyId,
-    });
-    const initialHubOracleRefInputIndex = findOutRefIndex(
-      [...mergeReferenceInputs].sort(compareOutRefs),
-      hubOracleRefInput,
-    );
-    if (initialHubOracleRefInputIndex === undefined) {
-      return yield* Effect.fail(
-        new StateQueueError({
-          message: "Failed to derive initial merge hub-oracle reference index",
-          cause: "hub-oracle reference input missing from merge reference set",
-        }),
+    const stateQueueMergeRedeemer = ((ctx) => {
+      requireOwnMintPurpose(
+        ctx,
+        fetchConfig.stateQueuePolicyId,
+        "state-queue merge state_queue mint",
       );
-    }
-    const initialLayout: MergeRedeemerLayout = {
-      headerNodeInputIndex: 0,
-      confirmedStateInputIndex: 1,
-      confirmedStateOutputIndex: 0,
-      settlementOutputIndex: 1,
-      stateQueueRedeemerIndex: seedIndexes.stateQueueRedeemerIndex,
-      settlementRedeemerIndex: seedIndexes.settlementRedeemerIndex,
-      hubOracleRefInputIndex: initialHubOracleRefInputIndex,
-    };
-    const derivedLayout = yield* Effect.tryPromise({
-      try: async () => {
-        const encoded = encodeMergeRedeemers({
-          layout: initialLayout,
+      const redeemer = Data.to(
+        makeStateQueueMergeRedeemer({
+          layout: layoutFromContext(ctx),
           headerNodeKey,
           blockHeader,
-        });
-        const draftTx = await buildUnevaluatedDraftTx(
-          encoded.stateQueue,
-          encoded.settlement,
-        );
-        return deriveMergeLayoutFromTx({
-          tx: draftTx,
-          seedLayout: initialLayout,
-          confirmedUTxO,
-          firstBlockUTxO,
-          hubOracleRefInput,
-          stateQueueAddress: fetchConfig.stateQueueAddress,
-          encodedConfirmedNodeDatum,
-          settlementAddress: contracts.settlement.spendingScriptAddress,
-          encodedSettlementDatum,
-          settlementUnit,
-          stateQueueMintPointerIndex: seedIndexes.stateQueueMintPointerIndex,
-          settlementMintPointerIndex: seedIndexes.settlementMintPointerIndex,
-        });
-      },
-      catch: (cause) =>
-        mergeStateQueueError(
-          "E_MERGE_LAYOUT_DERIVATION_FAILED",
-          `Failed to derive merge redeemer layout from balanced draft tx: ${formatUnknownError(cause)}`,
-          { cause: formatUnknownError(cause), initialLayout },
-        ),
-    });
-    const finalLayout = derivedLayout.layout;
-    yield* Effect.logInfo(
-      `🔸 Merge redeemer layout: header_input=${finalLayout.headerNodeInputIndex},confirmed_input=${finalLayout.confirmedStateInputIndex},confirmed_output=${finalLayout.confirmedStateOutputIndex},settlement_output=${finalLayout.settlementOutputIndex},hub_ref_input=${finalLayout.hubOracleRefInputIndex},state_queue_redeemer_index=${finalLayout.stateQueueRedeemerIndex},settlement_redeemer_index=${finalLayout.settlementRedeemerIndex}`,
-    );
-
-    const finalEncodedRedeemers = encodeMergeRedeemers({
-      layout: finalLayout,
-      headerNodeKey,
-      blockHeader,
-    });
-    yield* Effect.try({
-      try: () =>
-        assertMergeRedeemerInvariants({
-          layout: finalLayout,
-          headerNodeKey,
-          blockHeader,
-          encodedStateQueueMergeRedeemer: finalEncodedRedeemers.stateQueue,
-          encodedSettlementSpawnRedeemer: finalEncodedRedeemers.settlement,
         }),
-      catch: (cause) =>
-        mergeStateQueueError(
-          "E_MERGE_REDEEMER_INDEX_MISMATCH",
-          "Failed merge redeemer invariant checks",
-          { cause: formatUnknownError(cause), layout: finalLayout },
-        ),
-    });
+        StateQueueRedeemer,
+      );
+      stateQueueRedeemerCbor = redeemer;
+      return redeemer;
+    }) satisfies BuildTxWithRedeemer;
+    const settlementSpawnRedeemer = ((ctx) => {
+      requireOwnMintPurpose(
+        ctx,
+        contracts.settlement.policyId,
+        "state-queue merge settlement mint",
+      );
+      const redeemer = Data.to(
+        makeSettlementSpawnRedeemer({
+          layout: layoutFromContext(ctx),
+          headerNodeKey,
+        }),
+        SettlementMintRedeemer,
+      );
+      settlementRedeemerCbor = redeemer;
+      return redeemer;
+    }) satisfies BuildTxWithRedeemer;
 
-    const stateQueueRedeemerBuilder = makeStateQueueMergeRedeemerBuilder({
-      layout: finalLayout,
-      confirmedUTxO,
-      firstBlockUTxO,
-      headerNodeKey,
-      blockHeader,
-    });
     const txBuilder = yield* Effect.tryPromise({
       try: () =>
         makeMergeTxWithScripts(
-          stateQueueRedeemerBuilder,
-          finalEncodedRedeemers.settlement,
+          stateQueueMergeRedeemer,
+          settlementSpawnRedeemer,
         ).complete({ localUPLCEval: true }),
       catch: (cause) =>
         mergeStateQueueError(
           "E_MERGE_UPLC_EVAL_FAILED",
           "Failed to finalize the transaction for merging oldest block into confirmed state",
-          {
-            remote: formatUnknownError(cause),
-            layout: finalLayout,
-            draftDiagnostics: derivedLayout.diagnostics,
-          },
+          { remote: formatUnknownError(cause) },
         ),
     });
-
-    const finalLayoutCheck = yield* Effect.try({
-      try: () =>
-        deriveMergeLayoutFromTx({
-          tx: txBuilder.toTransaction(),
-          seedLayout: finalLayout,
-          confirmedUTxO,
-          firstBlockUTxO,
-          hubOracleRefInput,
-          stateQueueAddress: fetchConfig.stateQueueAddress,
-          encodedConfirmedNodeDatum,
-          settlementAddress: contracts.settlement.spendingScriptAddress,
-          encodedSettlementDatum,
-          settlementUnit,
-          stateQueueMintPointerIndex: seedIndexes.stateQueueMintPointerIndex,
-          settlementMintPointerIndex: seedIndexes.settlementMintPointerIndex,
-        }),
-      catch: (cause) =>
-        mergeStateQueueError(
-          "E_MERGE_REDEEMER_INDEX_MISMATCH",
-          "Failed final merge transaction redeemer-layout verification",
-          { cause: formatUnknownError(cause), draftLayout: finalLayout },
-        ),
-    });
-    const actualLayout = finalLayoutCheck.layout;
-    const mismatches = [
-      actualLayout.headerNodeInputIndex === finalLayout.headerNodeInputIndex
-        ? undefined
-        : "headerNodeInputIndex",
-      actualLayout.confirmedStateInputIndex ===
-      finalLayout.confirmedStateInputIndex
-        ? undefined
-        : "confirmedStateInputIndex",
-      actualLayout.confirmedStateOutputIndex ===
-      finalLayout.confirmedStateOutputIndex
-        ? undefined
-        : "confirmedStateOutputIndex",
-      actualLayout.settlementOutputIndex === finalLayout.settlementOutputIndex
-        ? undefined
-        : "settlementOutputIndex",
-      actualLayout.stateQueueRedeemerIndex ===
-      finalLayout.stateQueueRedeemerIndex
-        ? undefined
-        : "stateQueueRedeemerIndex",
-      actualLayout.settlementRedeemerIndex ===
-      finalLayout.settlementRedeemerIndex
-        ? undefined
-        : "settlementRedeemerIndex",
-      actualLayout.hubOracleRefInputIndex === finalLayout.hubOracleRefInputIndex
-        ? undefined
-        : "hubOracleRefInputIndex",
-    ].filter((field): field is string => field !== undefined);
-    if (mismatches.length > 0) {
+    if (
+      mergeLayout === undefined ||
+      stateQueueRedeemerCbor === undefined ||
+      settlementRedeemerCbor === undefined
+    ) {
       return yield* Effect.fail(
         mergeStateQueueError(
           "E_MERGE_REDEEMER_INDEX_MISMATCH",
-          "Final merge transaction layout drifted after balancing",
+          "BuildTxWithRedeemer did not resolve final merge redeemer layout",
           {
-            mismatches,
-            expected: finalLayout,
-            actual: actualLayout,
-            diagnostics: finalLayoutCheck.diagnostics,
+            mergeLayoutResolved: mergeLayout !== undefined,
+            stateQueueRedeemerResolved: stateQueueRedeemerCbor !== undefined,
+            settlementRedeemerResolved: settlementRedeemerCbor !== undefined,
           },
         ),
       );
     }
+    const resolvedMergeLayout = mergeLayout;
+    const resolvedStateQueueRedeemerCbor = stateQueueRedeemerCbor;
+    const resolvedSettlementRedeemerCbor = settlementRedeemerCbor;
+    const diagnostics: MergeLayoutDiagnostics = {
+      stateQueueRedeemerTxInfoIndex:
+        resolvedMergeLayout.stateQueueRedeemerIndex,
+      settlementRedeemerTxInfoIndex:
+        resolvedMergeLayout.settlementRedeemerIndex,
+      stateQueueRedeemerCbor: resolvedStateQueueRedeemerCbor,
+      settlementRedeemerCbor: resolvedSettlementRedeemerCbor,
+    };
+    yield* Effect.logInfo(
+      `🔸 Merge redeemer layout: header_input=${resolvedMergeLayout.headerNodeInputIndex},confirmed_input=${resolvedMergeLayout.confirmedStateInputIndex},confirmed_output=${resolvedMergeLayout.confirmedStateOutputIndex},settlement_output=${resolvedMergeLayout.settlementOutputIndex},hub_ref_input=${resolvedMergeLayout.hubOracleRefInputIndex},state_queue_redeemer_index=${resolvedMergeLayout.stateQueueRedeemerIndex},settlement_redeemer_index=${resolvedMergeLayout.settlementRedeemerIndex}`,
+    );
+    yield* Effect.try({
+      try: () =>
+        assertMergeRedeemerInvariants({
+          layout: resolvedMergeLayout,
+          headerNodeKey,
+          blockHeader,
+          encodedStateQueueMergeRedeemer: resolvedStateQueueRedeemerCbor,
+          encodedSettlementSpawnRedeemer: resolvedSettlementRedeemerCbor,
+        }),
+      catch: (cause) =>
+        mergeStateQueueError(
+          "E_MERGE_REDEEMER_INDEX_MISMATCH",
+          "Failed final merge redeemer invariant checks",
+          { cause: formatUnknownError(cause), layout: resolvedMergeLayout },
+        ),
+    });
 
     return {
       tx: txBuilder,
       headerNodeKey,
       blockHeader,
-      layout: finalLayout,
-      diagnostics: derivedLayout.diagnostics,
+      layout: resolvedMergeLayout,
+      diagnostics,
     };
   });

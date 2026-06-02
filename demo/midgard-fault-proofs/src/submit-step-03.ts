@@ -4,8 +4,13 @@ import {
   DoubleSpendStep03SpendRedeemer,
   DoubleSpendStep04Datum,
   type MidgardTxInput,
+  requireInputIndex,
+  requireOwnSpendPurpose,
+  requireReferenceInputIndex,
+  requireUniqueOutputIndex,
 } from "@al-ft/midgard-sdk";
 import {
+  type BuildTxWithRedeemer,
   Data,
   type LucidEvolution,
   type Network,
@@ -32,12 +37,10 @@ import {
   spendInputsWitnessFromCbors,
 } from "./spend-input-witness.js";
 import {
-  inputIndex,
   requireComputationThreadToken,
   selectFeeInput,
 } from "./submit-step-01.js";
-
-const STEP_03_OUTPUT_INDEX = 0n;
+import { computationThreadOutputPredicate } from "./tx-layout.js";
 
 export type SubmitStep03CliConfig = SubmitProviderConfig & {
   readonly blueprintPath: string;
@@ -76,6 +79,12 @@ export type SubmitStep03Result = {
   readonly inputIndex: number;
   readonly outputIndex: number;
   readonly awaitedConfirmation: boolean;
+};
+
+type Step03Layout = {
+  readonly inputIndex: bigint;
+  readonly outputIndex: bigint;
+  readonly tx1SpendInputsRefInputIndex: bigint;
 };
 
 export const parseSpendInputCbors = (
@@ -203,8 +212,6 @@ export const submitStep03 = async ({
       awaitConfirmation,
     });
   const referenceInputs = [tx1SpendInputsReferenceWitness.utxo];
-  // This transaction adds exactly one reference input: the spend-input witness.
-  const tx1SpendInputsRefInputIndex = 0n;
   const walletUtxosWithoutWitness = excludeUtxo(
     await lucid.wallet().getUtxos(),
     tx1SpendInputsReferenceWitness.utxo,
@@ -217,20 +224,6 @@ export const submitStep03 = async ({
           tx1SpendInputsReferenceWitness.spentFeeInput,
         );
   const feeInput = selectFeeInput(feeCandidates);
-  const spendInputIndex = inputIndex(threadUtxo, feeInput);
-  const redeemer = Data.to(
-    {
-      Continue: [
-        {
-          input_index: spendInputIndex,
-          output_index: STEP_03_OUTPUT_INDEX,
-          tx1_spend_inputs_ref_input_index: tx1SpendInputsRefInputIndex,
-          double_spent_input_index: doubleSpentInputIndex,
-        },
-      ],
-    },
-    DoubleSpendStep03SpendRedeemer,
-  );
   const step04Datum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
@@ -242,6 +235,43 @@ export const submitStep03 = async ({
     },
     DoubleSpendStep04Datum,
   );
+  const step04OutputMatches = computationThreadOutputPredicate({
+    address: contracts.doubleSpend.steps[3].spendingScriptAddress,
+    datum: step04Datum,
+    unit: threadToken.unit,
+  });
+  let resolvedLayout: Step03Layout | undefined;
+  const redeemer = ((ctx) => {
+    requireOwnSpendPurpose(ctx, threadUtxo, "double-spend step 03");
+    const layout: Step03Layout = {
+      inputIndex: requireInputIndex(ctx, threadUtxo, "double-spend step 03"),
+      outputIndex: requireUniqueOutputIndex(
+        ctx.outputs,
+        step04OutputMatches,
+        "double-spend step 03 output",
+      ),
+      tx1SpendInputsRefInputIndex: requireReferenceInputIndex(
+        ctx,
+        tx1SpendInputsReferenceWitness.utxo,
+        "double-spend step 03 tx1 spend-input witness",
+      ),
+    };
+    resolvedLayout = layout;
+    return Data.to(
+      {
+        Continue: [
+          {
+            input_index: layout.inputIndex,
+            output_index: layout.outputIndex,
+            tx1_spend_inputs_ref_input_index:
+              layout.tx1SpendInputsRefInputIndex,
+            double_spent_input_index: doubleSpentInputIndex,
+          },
+        ],
+      },
+      DoubleSpendStep03SpendRedeemer,
+    );
+  }) satisfies BuildTxWithRedeemer;
   const threadAssets = {
     lovelace: threadUtxo.assets.lovelace ?? 0n,
     [threadToken.unit]: 1n,
@@ -264,6 +294,9 @@ export const submitStep03 = async ({
     .attach.SpendingValidator(contracts.doubleSpend.steps[2].spendingScript);
 
   const unsigned = await tx.complete({ localUPLCEval: true });
+  if (resolvedLayout === undefined) {
+    throw new Error("BuildTxWithRedeemer did not resolve step 03 layout.");
+  }
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();
   if (awaitConfirmation) {
@@ -276,7 +309,7 @@ export const submitStep03 = async ({
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
     threadOutRef,
-    nextThreadOutRef: `${txHash}#${STEP_03_OUTPUT_INDEX.toString()}`,
+    nextThreadOutRef: `${txHash}#${resolvedLayout.outputIndex.toString()}`,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
     computationThreadPolicyId: contracts.computationThread.policyId,
     computationThreadAssetName: threadToken.assetName,
@@ -290,9 +323,11 @@ export const submitStep03 = async ({
     doubleSpentInputCbor,
     tx1SpendInputsWitnessOutRef: tx1SpendInputsReferenceWitness.outRef,
     tx1SpendInputsWitnessCreated: tx1SpendInputsReferenceWitness.created,
-    tx1SpendInputsRefInputIndex: Number(tx1SpendInputsRefInputIndex),
-    inputIndex: Number(spendInputIndex),
-    outputIndex: Number(STEP_03_OUTPUT_INDEX),
+    tx1SpendInputsRefInputIndex: Number(
+      resolvedLayout.tx1SpendInputsRefInputIndex,
+    ),
+    inputIndex: Number(resolvedLayout.inputIndex),
+    outputIndex: Number(resolvedLayout.outputIndex),
     awaitedConfirmation: awaitConfirmation,
   };
 };

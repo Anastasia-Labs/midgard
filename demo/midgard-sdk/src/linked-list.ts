@@ -1,5 +1,6 @@
 import {
   Assets,
+  type BuildTxWithRedeemer,
   Data,
   fromText,
   LucidEvolution,
@@ -19,6 +20,7 @@ import {
   MissingDatumError,
 } from "@/common.js";
 import { completeTxWithLocalUPLCEvalProgram } from "@/tx-completion.js";
+import { requireUniqueOutputIndex } from "@/tx-context-redeemer.js";
 
 export const NODE_ASSET_NAME = fromText("Node");
 export const STATE_QUEUE_NODE_ASSET_NAME_PREFIX = fromText("MBLC");
@@ -190,7 +192,7 @@ export type LinkedListInitParams = {
   validator: AuthenticatedValidator;
   rootAssetName: string;
   data?: Data;
-  redeemer: string;
+  redeemer: (outputIndex: bigint) => string;
   lovelace?: bigint;
 };
 
@@ -199,9 +201,8 @@ export const incompleteInitLinkedListTxProgram = (
   params: LinkedListInitParams,
 ): Effect.Effect<TxBuilder> =>
   Effect.gen(function* () {
-    const assets: Assets = {
-      [toUnit(params.validator.policyId, params.rootAssetName)]: 1n,
-    };
+    const rootUnit = toUnit(params.validator.policyId, params.rootAssetName);
+    const assets: Assets = { [rootUnit]: 1n };
 
     const rootData = params.data ?? Data.to([]);
 
@@ -214,9 +215,20 @@ export const incompleteInitLinkedListTxProgram = (
       link: null,
     };
 
+    const redeemer = ((ctx) =>
+      params.redeemer(
+        requireUniqueOutputIndex(
+          ctx.outputs,
+          (output) =>
+            output.address === params.validator.spendingScriptAddress &&
+            (output.assets[rootUnit] ?? 0n) === 1n,
+          "linked-list init root",
+        ),
+      )) satisfies BuildTxWithRedeemer;
+
     return lucid
       .newTx()
-      .mintAssets(assets, params.redeemer)
+      .mintAssets(assets, redeemer)
       .pay.ToAddressWithData(
         params.validator.spendingScriptAddress,
         {

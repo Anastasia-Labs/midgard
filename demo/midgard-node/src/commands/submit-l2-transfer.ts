@@ -224,6 +224,15 @@ const toMidgardUtxo = (utxo: NodeUtxo): MidgardUtxo =>
   });
 
 type TransferNetworkName = Network;
+type PrivateKeyInput = ReturnType<typeof CML.PrivateKey.from_bech32> | string;
+
+const privateKeyHash = (privateKey: PrivateKeyInput): string => {
+  const parsed =
+    typeof privateKey === "string"
+      ? CML.PrivateKey.from_bech32(privateKey)
+      : privateKey;
+  return parsed.to_public().hash().to_hex();
+};
 
 const makeTransferMidgard = async ({
   senderAddress,
@@ -235,7 +244,7 @@ const makeTransferMidgard = async ({
   minFeeB,
 }: {
   readonly senderAddress: string;
-  readonly signer: ReturnType<typeof CML.PrivateKey.from_bech32>;
+  readonly signer: PrivateKeyInput;
   readonly utxos: readonly NodeUtxo[];
   readonly network: TransferNetworkName;
   readonly networkId: bigint;
@@ -474,7 +483,7 @@ export const buildTransferTx = async ({
 }: {
   readonly senderAddress: string;
   readonly destinationAddress: string;
-  readonly signer: ReturnType<typeof CML.PrivateKey.from_bech32>;
+  readonly signer: PrivateKeyInput;
   readonly selectedInputs: readonly NodeUtxo[];
   readonly requestedAssets: Readonly<Assets>;
   readonly network?: TransferNetworkName;
@@ -507,7 +516,7 @@ export const buildTransferTx = async ({
   let txBuilder = midgard
     .newTx()
     .collectFrom(orderedInputs.map(toMidgardUtxo))
-    .addSigner(signer.to_public().hash().to_hex())
+    .addSigner(privateKeyHash(signer))
     .pay.ToAddress(destinationAddress, requestedAssets);
   if (Object.keys(changeAssets).length > 0) {
     txBuilder = txBuilder.pay.ToAddress(senderAddress, changeAssets);
@@ -543,7 +552,7 @@ export const buildTransferTxWithMinFee = async ({
 }: {
   readonly senderAddress: string;
   readonly destinationAddress: string;
-  readonly signer: ReturnType<typeof CML.PrivateKey.from_bech32>;
+  readonly signer: PrivateKeyInput;
   readonly availableUtxos: readonly NodeUtxo[];
   readonly requestedAssets: Readonly<Assets>;
   readonly network?: TransferNetworkName;
@@ -814,13 +823,12 @@ export const submitL2TransferProgram = ({
       );
     }
 
-    const signer = CML.PrivateKey.from_bech32(wallet.paymentKey);
     const built = yield* Effect.tryPromise({
       try: () =>
         buildTransferTxWithMinFee({
           senderAddress,
           destinationAddress: config.l2Address,
-          signer,
+          signer: wallet.paymentKey,
           availableUtxos,
           requestedAssets,
           network: nodeConfig.NETWORK,

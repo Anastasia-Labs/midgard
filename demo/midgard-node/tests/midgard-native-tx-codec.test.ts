@@ -39,7 +39,7 @@ const encodeByteList = (items: readonly Uint8Array[]): Buffer =>
 
 const makePlutusIntegerData = (
   value: bigint,
-): InstanceType<typeof CML.PlutusData> =>
+): CML.PlutusData =>
   CML.PlutusData.new_integer(CML.BigInteger.from_str(value.toString(10)));
 
 const makeConvertibleCardanoTxBytes = (): Buffer => {

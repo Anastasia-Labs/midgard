@@ -21,7 +21,7 @@ export type CardanoToMidgardNativeConstants = {
 
 const parseCardanoTx = (
   txBytes: Uint8Array,
-): InstanceType<typeof CML.Transaction> => {
+): CML.Transaction => {
   try {
     return CML.Transaction.from_cbor_bytes(txBytes);
   } catch (e) {
@@ -42,8 +42,8 @@ type CmlMintLike = {
   policy_count(): number;
   keys(): CmlCollectionLike;
   get_assets(
-    scriptHash: InstanceType<typeof CML.ScriptHash>,
-  ): InstanceType<typeof CML.MapAssetNameToNonZeroInt64> | undefined;
+    scriptHash: CML.ScriptHash,
+  ): CML.MapAssetNameToNonZeroInt64 | undefined;
 };
 
 const asCmlCallable = (
@@ -113,7 +113,7 @@ const cmlCollectionToPreimageCbor = (
 };
 
 const cmlValueToMidgardValue = (
-  value: InstanceType<typeof CML.Value>,
+  value: CML.Value,
 ): MidgardValue => {
   const policies = new Map<string, Map<string, bigint>>();
   const multiasset = value.multi_asset();
@@ -149,7 +149,7 @@ const cmlValueToMidgardValue = (
 };
 
 const cmlScriptToMidgardVersionedScript = (
-  script: InstanceType<typeof CML.Script>,
+  script: CML.Script,
   fieldName: string,
 ): MidgardVersionedScript => {
   const native = script.as_native();
@@ -192,7 +192,7 @@ const cmlScriptToMidgardVersionedScript = (
 };
 
 const cmlOutputToMidgardOutputBytes = (
-  output: InstanceType<typeof CML.TransactionOutput>,
+  output: CML.TransactionOutput,
   fieldName: string,
 ): Buffer => {
   const datum = output.datum();
@@ -341,7 +341,7 @@ const hasAnyCmlEntries = (value: unknown): boolean => {
 };
 
 const withdrawalsToRequiredObserversPreimageCbor = (
-  withdrawals: InstanceType<typeof CML.MapRewardAccountToCoin> | undefined,
+  withdrawals: CML.MapRewardAccountToCoin | undefined,
 ): Buffer => {
   if (withdrawals === undefined) {
     return encodeCbor([]);
@@ -371,7 +371,7 @@ const withdrawalsToRequiredObserversPreimageCbor = (
 };
 
 const scriptWitnessesToPreimageCbor = (
-  txWitnessSet: InstanceType<typeof CML.TransactionWitnessSet>,
+  txWitnessSet: CML.TransactionWitnessSet,
 ): Buffer => {
   const scripts: MidgardVersionedScript[] = [];
 
@@ -413,7 +413,7 @@ const scriptWitnessesToPreimageCbor = (
 };
 
 const assertCardanoTxConvertibleToNative = (
-  tx: InstanceType<typeof CML.Transaction>,
+  tx: CML.Transaction,
 ): void => {
   const txBody = tx.body();
   const txWitnessSet = tx.witness_set();

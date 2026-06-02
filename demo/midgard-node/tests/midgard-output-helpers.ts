@@ -13,8 +13,8 @@ export type TestMidgardTxOutput = MidgardTxOutput & {
 };
 
 const datumOptionToPlutusData = (
-  datum?: InstanceType<typeof CML.DatumOption>,
-): InstanceType<typeof CML.PlutusData> | undefined => {
+  datum?: CML.DatumOption,
+): CML.PlutusData | undefined => {
   if (datum === undefined) {
     return undefined;
   }
@@ -26,11 +26,11 @@ const datumOptionToPlutusData = (
 };
 
 export const makeCardanoTxOutput = (
-  address: InstanceType<typeof CML.Address>,
-  value: InstanceType<typeof CML.Value>,
-  datum?: InstanceType<typeof CML.DatumOption>,
-  scriptRef?: InstanceType<typeof CML.Script>,
-): InstanceType<typeof CML.TransactionOutput> => {
+  address: CML.Address,
+  value: CML.Value,
+  datum?: CML.DatumOption,
+  scriptRef?: CML.Script,
+): CML.TransactionOutput => {
   const output = CML.ConwayFormatTxOut.new(address, value);
   if (datum !== undefined) {
     output.set_datum_option(datum);
@@ -42,10 +42,10 @@ export const makeCardanoTxOutput = (
 };
 
 export const makeMidgardTxOutput = (
-  address: InstanceType<typeof CML.Address> | string,
-  value: InstanceType<typeof CML.Value>,
-  datum?: InstanceType<typeof CML.DatumOption>,
-  scriptRef?: InstanceType<typeof CML.Script>,
+  address: CML.Address | string,
+  value: CML.Value,
+  datum?: CML.DatumOption,
+  scriptRef?: CML.Script,
 ): TestMidgardTxOutput => {
   const cbor = encodeMidgardTxOutput(address, value, {
     datum: datumOptionToPlutusData(datum),

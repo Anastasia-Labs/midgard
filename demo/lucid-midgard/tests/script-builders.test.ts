@@ -80,7 +80,7 @@ const makeUtxo = (
   ref: OutRef,
   address: string,
   assets: Readonly<Record<string, bigint>>,
-  options: { readonly scriptRef?: InstanceType<typeof CML.Script> } = {},
+  options: { readonly scriptRef?: CML.Script } = {},
 ): MidgardUtxo =>
   decodeMidgardUtxo({
     outRef: ref,

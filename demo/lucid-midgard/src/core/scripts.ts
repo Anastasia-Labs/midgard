@@ -35,7 +35,7 @@ export type ScriptSource =
       readonly kind: "native";
       readonly language: "NativeCardano";
       readonly script:
-        | InstanceType<typeof CML.NativeScript>
+        | CML.NativeScript
         | Uint8Array
         | string;
     }
