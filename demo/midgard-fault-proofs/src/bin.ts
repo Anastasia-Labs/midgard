@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 
+import { realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
 import { formatUnknownError } from "@al-ft/midgard-core";
 
 import {
@@ -20,7 +23,7 @@ import { submitStep02FromFiles } from "./submit-step-02.js";
 import { submitStep03FromFiles } from "./submit-step-03.js";
 import { submitStep04FromFiles } from "./submit-step-04.js";
 
-type ParsedArgs = {
+export type ParsedArgs = {
   readonly command: string | undefined;
   readonly blueprintPath: string | undefined;
   readonly deploymentInfoPath: string | undefined;
@@ -43,6 +46,9 @@ type ParsedArgs = {
   readonly tx2InputsPath: string | undefined;
   readonly doubleSpentInputIndex: string | undefined;
   readonly midgardNodeUrl: string | undefined;
+  readonly midgardNodeAdminKey: string | undefined;
+  readonly midgardNodeAdminKeyEnv: string | undefined;
+  readonly stateQueueLeaseTtlMs: string | undefined;
   readonly transactionsPath: string | undefined;
   readonly sampleDoubleSpend: boolean;
   readonly headerHash: string | undefined;
@@ -62,10 +68,10 @@ const usage = `Usage:
   midgard-fault-proofs submit-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-step-03 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --tx1-inputs <raw-input-cbor-list.json> --double-spent-input-index <n> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-step-04 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --tx2-inputs <raw-input-cbor-list.json> --double-spent-input-index <n> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
-  midgard-fault-proofs remove-fraudulent-block --blueprint <path> --deployment-info <path> --fraudulent-header-hash <hex> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs remove-fraudulent-block --blueprint <path> --deployment-info <path> --fraudulent-header-hash <hex> [--midgard-node-url <url> --midgard-node-admin-key <key> | --midgard-node-admin-key-env <envVar>] [--state-queue-lease-ttl-ms <n>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
 `;
 
-const parseArgs = (argv: readonly string[]): ParsedArgs => {
+export const parseArgs = (argv: readonly string[]): ParsedArgs => {
   const [, , command, ...rest] = argv;
   if (command === "--help" || command === "-h") {
     console.log(usage);
@@ -92,6 +98,9 @@ const parseArgs = (argv: readonly string[]): ParsedArgs => {
   let tx2InputsPath: string | undefined;
   let doubleSpentInputIndex: string | undefined;
   let midgardNodeUrl: string | undefined;
+  let midgardNodeAdminKey: string | undefined;
+  let midgardNodeAdminKeyEnv: string | undefined;
+  let stateQueueLeaseTtlMs: string | undefined;
   let transactionsPath: string | undefined;
   let sampleDoubleSpend = false;
   let headerHash: string | undefined;
@@ -175,6 +184,15 @@ const parseArgs = (argv: readonly string[]): ParsedArgs => {
       case "--midgard-node-url":
         midgardNodeUrl = rest[++index];
         break;
+      case "--midgard-node-admin-key":
+        midgardNodeAdminKey = rest[++index];
+        break;
+      case "--midgard-node-admin-key-env":
+        midgardNodeAdminKeyEnv = rest[++index];
+        break;
+      case "--state-queue-lease-ttl-ms":
+        stateQueueLeaseTtlMs = rest[++index];
+        break;
       case "--transactions-file":
         transactionsPath = rest[++index];
         break;
@@ -234,6 +252,9 @@ const parseArgs = (argv: readonly string[]): ParsedArgs => {
     tx2InputsPath,
     doubleSpentInputIndex,
     midgardNodeUrl,
+    midgardNodeAdminKey,
+    midgardNodeAdminKeyEnv,
+    stateQueueLeaseTtlMs,
     transactionsPath,
     sampleDoubleSpend,
     headerHash,
@@ -246,11 +267,65 @@ const parseArgs = (argv: readonly string[]): ParsedArgs => {
   };
 };
 
+export const buildRemoveFraudulentBlockCliConfig = (args: ParsedArgs) => {
+  if (args.blueprintPath === undefined) {
+    throw new Error(`Missing required --blueprint <path>.\n${usage}`);
+  }
+  if (args.deploymentInfoPath === undefined) {
+    throw new Error(`Missing required --deployment-info <path>.\n${usage}`);
+  }
+  if (args.fraudulentHeaderHash === undefined) {
+    throw new Error(
+      `Missing required --fraudulent-header-hash <hex>.\n${usage}`,
+    );
+  }
+  return {
+    blueprintPath: args.blueprintPath,
+    deploymentInfoPath: args.deploymentInfoPath,
+    network: parseNetwork(args.network),
+    provider: args.provider,
+    blockfrostApiUrl: args.blockfrostApiUrl,
+    blockfrostKey: args.blockfrostKey,
+    kupoUrl: args.kupoUrl,
+    ogmiosUrl: args.ogmiosUrl,
+    walletSeedPhrase: args.walletSeedPhrase,
+    walletSeedPhraseEnv: args.walletSeedPhraseEnv,
+    walletPrivateKey: args.walletPrivateKey,
+    walletPrivateKeyEnv: args.walletPrivateKeyEnv,
+    fraudulentHeaderHash: args.fraudulentHeaderHash,
+    awaitConfirmation: args.awaitConfirmation,
+    midgardNodeUrl: args.midgardNodeUrl,
+    midgardNodeAdminKey: args.midgardNodeAdminKey,
+    midgardNodeAdminKeyEnv: args.midgardNodeAdminKeyEnv,
+    stateQueueLeaseTtlMs:
+      args.stateQueueLeaseTtlMs === undefined
+        ? undefined
+        : Number(args.stateQueueLeaseTtlMs),
+  };
+};
+
 const writeJson = (value: unknown): void => {
   process.stdout.write(stringifyJson(value));
 };
 
-const main = async (): Promise<void> => {
+export const isCliEntrypoint = ({
+  moduleUrl,
+  argvPath,
+}: {
+  readonly moduleUrl: string;
+  readonly argvPath: string | undefined;
+}): boolean => {
+  if (argvPath === undefined) {
+    return false;
+  }
+  try {
+    return realpathSync(fileURLToPath(moduleUrl)) === realpathSync(argvPath);
+  } catch {
+    return false;
+  }
+};
+
+export const main = async (): Promise<void> => {
   const args = parseArgs(process.argv);
   if (
     args.command !== "prepare-double-spend" &&
@@ -496,27 +571,9 @@ const main = async (): Promise<void> => {
   }
 
   if (args.command === "remove-fraudulent-block") {
-    if (args.fraudulentHeaderHash === undefined) {
-      throw new Error(
-        `Missing required --fraudulent-header-hash <hex>.\n${usage}`,
-      );
-    }
-    const output = await submitRemoveFraudulentBlockFromFiles({
-      blueprintPath: args.blueprintPath,
-      deploymentInfoPath: args.deploymentInfoPath,
-      network: parseNetwork(args.network),
-      provider: args.provider,
-      blockfrostApiUrl: args.blockfrostApiUrl,
-      blockfrostKey: args.blockfrostKey,
-      kupoUrl: args.kupoUrl,
-      ogmiosUrl: args.ogmiosUrl,
-      walletSeedPhrase: args.walletSeedPhrase,
-      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
-      walletPrivateKey: args.walletPrivateKey,
-      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
-      fraudulentHeaderHash: args.fraudulentHeaderHash,
-      awaitConfirmation: args.awaitConfirmation,
-    });
+    const output = await submitRemoveFraudulentBlockFromFiles(
+      buildRemoveFraudulentBlockCliConfig(args),
+    );
 
     writeJson(output);
     return;
@@ -531,7 +588,11 @@ const main = async (): Promise<void> => {
   writeJson(output);
 };
 
-main().catch((error: unknown) => {
-  process.stderr.write(`midgard-fault-proofs: ${formatUnknownError(error)}\n`);
-  process.exitCode = 1;
-});
+if (isCliEntrypoint({ moduleUrl: import.meta.url, argvPath: process.argv[1] })) {
+  main().catch((error: unknown) => {
+    process.stderr.write(
+      `midgard-fault-proofs: ${formatUnknownError(error)}\n`,
+    );
+    process.exitCode = 1;
+  });
+}

@@ -54,6 +54,7 @@ describe("listen admin auth helpers", () => {
       "/init",
       "/commit",
       "/stateQueue",
+      "/stateQueueMutationLease",
       "/logBlocksDB",
       "/logGlobals",
     ]) {
