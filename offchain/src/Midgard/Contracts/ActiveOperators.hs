@@ -27,7 +27,7 @@ import Convex.Class (
   utxosByPaymentCredential,
  )
 import Convex.PlutusLedger.V1 (transPubKeyHash)
-import Convex.Utxos (toTxOut)
+import Convex.Utxos (UtxoSet (_utxos), toTxOut)
 import PlutusLedgerApi.V3 (PubKeyHash (PubKeyHash))
 
 import Midgard.Constants (hubOracleAssetName, hubOracleMintingPolicyId, hubOracleScriptHash, operatorRequiredBond)
@@ -58,7 +58,7 @@ import Midgard.Scripts (
   ),
  )
 import Midgard.Types.ActiveOperators qualified as ActiveOperators
-import Midgard.Types.LinkedList (isRootData, nodeKeyFromAssetName')
+import Midgard.Types.LinkedList (nodeKeyFromAssetName')
 import Midgard.Types.LinkedList qualified as LinkedList
 import Midgard.Types.RegisteredOperators qualified as RegisteredOperators
 import Midgard.Types.RetiredOperators qualified as RetiredOperators
@@ -309,7 +309,8 @@ activateOperator
             , registeredOperatorsRedeemerIndex =
                 toInteger $
                   findMintRedeemerIndex allPolicies txBody (mintingPolicyId registeredOperatorsPolicy)
-            , activeOperatorsSetWasEmpty = isRootData $ LinkedList.elementData activeOperatorsAnchorDatum
+            , -- Empty means the active operators list only has the root element!
+              activeOperatorsSetWasEmpty = length (_utxos activeOperatorsUtxos) == 1
             }
       -- Enforce activation to happen at/after validity lower bound.
       addBtx $ \txBody ->
