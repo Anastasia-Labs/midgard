@@ -1,8 +1,11 @@
 module Midgard.Contracts.RetiredOperators (initRetiredOperators, retireOperator) where
 
-import Cardano.Api qualified as C
+import Control.Monad (when)
 import Control.Monad.Except (MonadError (throwError))
 import Control.Monad.Reader (runReaderT)
+import Data.Coerce (coerce)
+
+import Cardano.Api qualified as C
 import Convex.BuildTx (
   MonadBuildTx,
   TxBuilder,
@@ -18,11 +21,12 @@ import Convex.BuildTx (
   spendPlutusInlineDatum,
  )
 import Convex.Class (MonadBlockchain (queryNetworkId, queryProtocolParameters), MonadUtxoQuery, utxosByPaymentCredential)
+import Convex.PlutusLedger.V1 (transPubKeyHash)
 import Convex.Utxos (toTxOut)
-import Data.Coerce (coerce)
 import PlutusLedgerApi.V3 (PubKeyHash (PubKeyHash))
 
 import Midgard.Constants (hubOracleAssetName, hubOracleMintingPolicyId, hubOracleScriptHash, operatorRequiredBond)
+import Midgard.Contracts.Scheduler (currentScheduleInfo)
 import Midgard.Contracts.Utils (
   LinkedListInfo (..),
   findMintRedeemerIndex,
@@ -34,7 +38,6 @@ import Midgard.Contracts.Utils (
   listAssetNameFromUTxO,
   mintPlutusRefWithRedeemerFinal,
   nextOutIx,
-  pubKeyHashFromCardano,
  )
 import Midgard.ScriptUtils (mintingPolicyId, mintingPolicyId', plutusVersion, toValidator, validatorHash)
 import Midgard.Scripts (
@@ -87,6 +90,10 @@ initRetiredOperators
       C.NoStakeAddress
       (assetValue policyId RetiredOperators.rootAssetName 1)
 
+{- | Retire an operator, assuming they are not the currently scheduled operator.
+Note: This function does not support retiring currently active operator under any scenario, even if scheduler
+is advancing in conjunction
+-}
 retireOperator ::
   forall era m.
   ( MonadError String m
@@ -97,7 +104,7 @@ retireOperator ::
   ) =>
   MidgardScripts -> MidgardRefScripts -> C.Hash C.PaymentKey -> m (TxBuilder era)
 retireOperator
-  MidgardScripts
+  ms@MidgardScripts
     { activeOperatorsValidator
     , activeOperatorsPolicy
     , retiredOperatorsValidator
@@ -119,7 +126,10 @@ retireOperator
       maybe (throwError "No hub oracle found") pure $
         findUTxOWithAsset hubOracleUtxos $
           C.AssetId hubOracleMintingPolicyId hubOracleAssetName
-    activeOperatorsUtxos <- utxosByPaymentCredential $ C.PaymentCredentialByScript $ validatorHash activeOperatorsValidator
+    activeOperatorsUtxos <-
+      utxosByPaymentCredential $
+        C.PaymentCredentialByScript $
+          validatorHash activeOperatorsValidator
     (removalActiveTxIn, (removalActiveUtxoAnyEra, _)) <-
       maybe (throwError "No active operator found") pure $
         findUTxOWithAsset activeOperatorsUtxos $
@@ -134,7 +144,10 @@ retireOperator
             , nodeAssetNamePrefix = ActiveOperators.nodeAssetNamePrefix
             }
         $ findUTxOWithLink activeOperatorsUtxos operatorPkhBytes
-    retiredOperatorsUtxos <- utxosByPaymentCredential $ C.PaymentCredentialByScript $ validatorHash retiredOperatorsValidator
+    retiredOperatorsUtxos <-
+      utxosByPaymentCredential $
+        C.PaymentCredentialByScript $
+          validatorHash retiredOperatorsValidator
     (retiredAnchorTxIn, (retiredAnchorUtxoAnyEra, _)) <-
       maybe (throwError "No insertion point found in retired operators set") pure
         . flip
@@ -164,7 +177,7 @@ retireOperator
     let updatedActiveAnchorDatum =
           anchorActiveDatum {LinkedList.elementLink = LinkedList.elementLink removalActiveDatum}
         updatedRetiredAnchorDatum =
-          retiredAnchorDatum {LinkedList.elementLink = Just . coerce $ pubKeyHashFromCardano operatorPkh}
+          retiredAnchorDatum {LinkedList.elementLink = Just . coerce $ transPubKeyHash operatorPkh}
         retiredOperatorDatum :: RetiredOperators.Datum
         retiredOperatorDatum =
           LinkedList.Element
@@ -177,11 +190,16 @@ retireOperator
     retiredAnchorAssetName <-
       maybe (throwError "Linked list asset not found for retired operator anchor utxo") pure $
         listAssetNameFromUTxO retiredPolicyId retiredAnchorTxOut
+    (schedulerTxIn, currentScheduleInfo) <- currentScheduleInfo ms
+    when (elem (transPubKeyHash operatorPkh) $ fst <$> currentScheduleInfo) $
+      throwError "Retiring of currently scheduled operator not allowed"
     pure . execBuildTx $ do
       -- Must be signed by the retiring operator.
       addRequiredSignature operatorPkh
-      -- Must witness the hub oracle so the retired-operators mint policy can
-      -- recover the active-operators policy ID from protocol state.
+      -- Need to witness the scheduler UTxO to ensure currently schedule operator is not retiring.
+      addReference schedulerTxIn
+      -- Must witness the hub oracle so the retired-operators mint policy can recover the active-operators policy ID
+      -- from protocol state.
       addReference hubOracleTxIn
       -- Both mints use reference scripts.
       addReference activeOperatorsPolicyRef
@@ -196,8 +214,7 @@ retireOperator
         anchorActiveTxIn
         (toValidator activeOperatorsValidator)
         ActiveOperators.ListStateTransition
-      -- Reproduce the active-set anchor with its link updated to bypass the
-      -- removed node.
+      -- Reproduce the active-set anchor with its link updated to bypass the removed node.
       payToScriptInlineDatum
         netId
         (validatorHash activeOperatorsValidator)
@@ -209,16 +226,15 @@ retireOperator
         retiredAnchorTxIn
         (toValidator retiredOperatorsValidator)
         ()
-      -- Reproduce the retired-set anchor so it now points at the inserted
-      -- retired operator node.
+      -- Reproduce the retired-set anchor so it now points at the inserted retired operator node.
       payToScriptInlineDatum
         netId
         (validatorHash retiredOperatorsValidator)
         updatedRetiredAnchorDatum
         C.NoStakeAddress
         (txOutValue retiredAnchorTxOut)
-      -- Insert the retired operator node, preserving the operator bond and the
-      -- bond unlock time captured from the active-set node.
+      -- Insert the retired operator node, preserving the operator bond and the bond unlock time captured from the
+      -- active-set node.
       payToScriptInlineDatum
         netId
         (validatorHash retiredOperatorsValidator)
@@ -234,7 +250,7 @@ retireOperator
         (-1)
         $ \txBody ->
           ActiveOperators.RetireOperator
-            { activeOperatorKey = pubKeyHashFromCardano operatorPkh
+            { activeOperatorKey = transPubKeyHash operatorPkh
             , hubOracleRefInputIndex =
                 toInteger $ findIndexReference hubOracleTxIn txBody
             , activeOperatorAnchorElementInputIndex =
@@ -246,8 +262,10 @@ retireOperator
             , retiredOperatorsRedeemerIndex =
                 toInteger $ findMintRedeemerIndex allPolicies txBody retiredPolicyId
             , penalizeForInactivity = False
-            , -- TODO: This requires implementation of scheduler.
-              operatorRemovalSchedulerSync = ActiveOperators.ShowOperatorIsInactive 0
+            , operatorRemovalSchedulerSync =
+                ActiveOperators.ShowOperatorIsInactive
+                  . toInteger
+                  $ findIndexReference schedulerTxIn txBody
             }
       -- Mint the retired-operator NFT for the newly inserted node.
       mintPlutusRefWithRedeemerFinal
@@ -258,7 +276,7 @@ retireOperator
         1
         $ \txBody ->
           RetiredOperators.RetireOperator
-            { newRetiredOperatorKey = pubKeyHashFromCardano operatorPkh
+            { newRetiredOperatorKey = transPubKeyHash operatorPkh
             , bondUnlockTime
             , hubOracleRefInputIndex = toInteger $ findIndexReference hubOracleTxIn txBody
             , retiredOperatorAnchorElementInputIndex =

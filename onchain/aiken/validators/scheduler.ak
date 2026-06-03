@@ -19,13 +19,13 @@ use midgard/operator_directory
 use midgard/operator_directory/active_operators
 use midgard/operator_directory/registered_operators
 use midgard/scheduler.{
-  ActiveOperator, AppointFirstOperator, Datum, Deinit, GoToNextDueToEndOfShift,
+  ActiveOperator, AppointFirstOperator, Deinit, GoToNextDueToEndOfShift,
   GoToNextDueToOperatorRemoval, GoToNextDueToSkippedOperator, Init, MintRedeemer,
   NeglectedDeposit, NeglectedTxOrder, NeglectedUserEvent, NeglectedWithdrawal,
   NoActiveOperators, NoNeglectedUserEvent, OperatorRemovalReason,
   OperatorRetirement, OperatorSlashing, RewindDueToEndOfShift,
-  RewindDueToOperatorRemoval, RewindDueToSkippedOperator, SpendRedeemer,
-  asset_name, shift_end_time,
+  RewindDueToOperatorRemoval, RewindDueToSkippedOperator, SchedDatum,
+  SpendRedeemer, asset_name, shift_end_time,
 }
 use midgard/state_queue
 use midgard/user_events
@@ -73,7 +73,7 @@ validator spend(
   hub_oracle_script_hash: PolicyId,
 ) {
   spend(
-    m_datum: Option<Datum>,
+    m_datum: Option<SchedDatum>,
     redeemer: SpendRedeemer,
     own_out_ref: OutputReference,
     self: Transaction,
@@ -522,7 +522,7 @@ validator spend(
 }
 
 fn validate_active_datums_and_get_info(
-  input_datum: Datum,
+  input_datum: SchedDatum,
   output_datum_data: Data,
   return: fn(VerificationKeyHash, VerificationKeyHash, PosixTime, PosixTime) ->
     result,
@@ -548,7 +548,7 @@ fn validate_active_datums_and_get_info(
 }
 
 fn validate_end_of_shift_and_get_operators(
-  input_datum: Datum,
+  input_datum: SchedDatum,
   output_datum_data: Data,
   validity_range: ValidityRange,
   extra_signatories: List<VerificationKeyHash>,

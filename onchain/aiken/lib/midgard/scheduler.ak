@@ -6,7 +6,7 @@ use midgard/common/utils
 
 pub const asset_name = "MIDGARD_SCHEDULER"
 
-pub type Datum {
+pub type SchedDatum {
   NoActiveOperators
   ActiveOperator { operator: VerificationKeyHash, start_time: PosixTime }
 }
@@ -88,8 +88,8 @@ pub fn get_datum(
   reference_inputs: List<Input>,
   scheduler_policy_id: ScriptHash,
   scheduler_ref_input_index: Int,
-) -> Datum {
-  expect scheduler_datum: Datum =
+) -> SchedDatum {
+  expect scheduler_datum: SchedDatum =
     utils.get_authentic_input_datum_with_nft_at(
       reference_inputs,
       scheduler_policy_id,

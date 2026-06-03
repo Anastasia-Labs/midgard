@@ -29,6 +29,7 @@ source-repository-package
   subdir:
     src/base
     src/coin-selection
+    src/devnet
     src/mockchain
     src/node-client
     src/optics

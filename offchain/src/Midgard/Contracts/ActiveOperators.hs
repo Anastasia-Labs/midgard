@@ -27,7 +27,7 @@ import Convex.Class (
   utxosByPaymentCredential,
  )
 import Convex.PlutusLedger.V1 (transPubKeyHash)
-import Convex.Utxos (toTxOut)
+import Convex.Utxos (UtxoSet (_utxos), toTxOut)
 import PlutusLedgerApi.V3 (PubKeyHash (PubKeyHash))
 
 import Midgard.Constants (hubOracleAssetName, hubOracleMintingPolicyId, hubOracleScriptHash, operatorRequiredBond)
@@ -43,7 +43,6 @@ import Midgard.Contracts.Utils (
   listAssetNameFromUTxO,
   mintPlutusRefWithRedeemerFinal,
   nextOutIx,
-  pubKeyHashFromCardano,
  )
 import Midgard.ScriptUtils (mintingPolicyId, mintingPolicyId', plutusVersion, toValidator, validatorHash)
 import Midgard.Scripts (
@@ -59,7 +58,7 @@ import Midgard.Scripts (
   ),
  )
 import Midgard.Types.ActiveOperators qualified as ActiveOperators
-import Midgard.Types.LinkedList (isRootData, nodeKeyFromAssetName')
+import Midgard.Types.LinkedList (nodeKeyFromAssetName')
 import Midgard.Types.LinkedList qualified as LinkedList
 import Midgard.Types.RegisteredOperators qualified as RegisteredOperators
 import Midgard.Types.RetiredOperators qualified as RetiredOperators
@@ -213,7 +212,7 @@ activateOperator
         -- Active operators anchor node should link to the newly added operator node.
         updatedActiveOperatorsAnchorDatum =
           activeOperatorsAnchorDatum
-            { LinkedList.elementLink = Just . coerce $ pubKeyHashFromCardano operatorPkh
+            { LinkedList.elementLink = Just . coerce $ transPubKeyHash operatorPkh
             }
         -- New active operator node should link to the anchor.
         activeOperatorDatum :: ActiveOperators.Datum
@@ -279,7 +278,7 @@ activateOperator
         (-1)
         $ \txBody ->
           RegisteredOperators.ActivateOperator
-            { activatingOperator = pubKeyHashFromCardano operatorPkh
+            { activatingOperator = transPubKeyHash operatorPkh
             , anchorElementInputIndex = toInteger $ findIndexSpending anchorRegistryTxIn txBody
             , removedNodeInputIndex = toInteger $ findIndexSpending removalRegistryTxIn txBody
             , anchorElementOutputIndex =
@@ -300,7 +299,7 @@ activateOperator
         1
         $ \txBody ->
           ActiveOperators.ActivateOperator
-            { newActiveOperatorKey = pubKeyHashFromCardano operatorPkh
+            { newActiveOperatorKey = transPubKeyHash operatorPkh
             , activeOperatorAnchorElementInputIndex =
                 toInteger $ findIndexSpending activeOperatorsAnchorTxIn txBody
             , activeOperatorAnchorElementOutputIndex =
@@ -310,7 +309,8 @@ activateOperator
             , registeredOperatorsRedeemerIndex =
                 toInteger $
                   findMintRedeemerIndex allPolicies txBody (mintingPolicyId registeredOperatorsPolicy)
-            , activeOperatorsSetWasEmpty = isRootData $ LinkedList.elementData activeOperatorsAnchorDatum
+            , -- Empty means the active operators list only has the root element!
+              activeOperatorsSetWasEmpty = length (_utxos activeOperatorsUtxos) == 1
             }
       -- Enforce activation to happen at/after validity lower bound.
       addBtx $ \txBody ->

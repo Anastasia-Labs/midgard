@@ -1,5 +1,7 @@
 module Midgard.Contracts.Init (publishMidgardMintingPolicy, initProtocol) where
 
+import Control.Monad.Except (MonadError)
+
 import Cardano.Api qualified as C
 import Convex.BuildTx (
   TxBuilder,
@@ -22,6 +24,7 @@ import Midgard.Constants (hubOracleAssetName, hubOracleMintingScript, hubOracleS
 import Midgard.Contracts.ActiveOperators (initActiveOperators)
 import Midgard.Contracts.RegisteredOperators (initRegisteredOperators)
 import Midgard.Contracts.RetiredOperators (initRetiredOperators)
+import Midgard.Contracts.Scheduler (initScheduler)
 import Midgard.ScriptUtils (mintingPolicyId, policyIdBytes, scriptHashBytes, toMintingPolicy, validatorHash)
 import Midgard.Scripts (
   MidgardRefScripts (..),
@@ -31,7 +34,7 @@ import Midgard.Types.HubOracle qualified as HubOracle
 
 initProtocol ::
   forall m.
-  (MonadBlockchain C.ConwayEra m) =>
+  (MonadError String m, MonadBlockchain C.ConwayEra m) =>
   MidgardScripts ->
   MidgardRefScripts ->
   m (TxBuilder C.ConwayEra)
@@ -40,9 +43,11 @@ initProtocol
     { retiredOperatorsPolicy
     , registeredOperatorsPolicy
     , activeOperatorsPolicy
+    , schedulerPolicy
     , registeredOperatorsValidator
     , activeOperatorsValidator
     , retiredOperatorsValidator
+    , schedulerValidator
     }
   refScripts =
     do
@@ -55,12 +60,12 @@ initProtocol
         payToScriptInlineDatum
           netId
           hubOracleScriptHash
+          -- TODO (chase): Update some of the dummy values as needed.
           HubOracle.Datum
             { retiredOperators = scriptCurrencySymbol retiredOperatorsPolicy
             , activeOperators = scriptCurrencySymbol activeOperatorsPolicy
             , registeredOperators = scriptCurrencySymbol registeredOperatorsPolicy
-            , -- TODO (chase): Fill in these dummy values.
-              scheduler = scriptCurrencySymbol registeredOperatorsPolicy
+            , scheduler = scriptCurrencySymbol schedulerPolicy
             , stateQueue = scriptCurrencySymbol registeredOperatorsPolicy
             , fraudProofCatalogue = scriptCurrencySymbol registeredOperatorsPolicy
             , fraudProof = scriptCurrencySymbol registeredOperatorsPolicy
@@ -72,8 +77,7 @@ initProtocol
             , registeredOperatorsAddr = scriptHashAddress (scriptHash registeredOperatorsValidator)
             , activeOperatorsAddr = scriptHashAddress (scriptHash activeOperatorsValidator)
             , retiredOperatorsAddr = scriptHashAddress (scriptHash retiredOperatorsValidator)
-            , -- TODO (chase): Fill in these dummy values.
-              schedulerAddr = scriptHashAddress (scriptHash registeredOperatorsValidator)
+            , schedulerAddr = scriptHashAddress (scriptHash schedulerValidator)
             , stateQueueAddr = scriptHashAddress (scriptHash registeredOperatorsValidator)
             , fraudProofCatalogueAddr = scriptHashAddress (scriptHash registeredOperatorsValidator)
             , fraudProofAddr = scriptHashAddress (scriptHash registeredOperatorsValidator)
@@ -91,6 +95,7 @@ initProtocol
         initRegisteredOperators netId scripts refScripts
         initActiveOperators netId scripts refScripts
         initRetiredOperators netId scripts refScripts
+        initScheduler netId scripts
         setMinAdaDepositAll params
     where
       scriptCurrencySymbol = currencySymbol . policyIdBytes . mintingPolicyId
