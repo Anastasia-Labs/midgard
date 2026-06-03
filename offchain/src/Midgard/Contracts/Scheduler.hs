@@ -234,6 +234,7 @@ appointFirstOperator
     where
       txOutValue (C.TxOut _ val _ _) = C.txOutValueToValue val
 
+-- | Non-first operator case. Either advance or rewind the scheduler assuming the current shift has ended.
 advanceOrRewindScheduler ::
   forall era m.
   ( MonadError String m
