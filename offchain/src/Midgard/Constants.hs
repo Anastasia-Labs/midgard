@@ -39,9 +39,9 @@ hubOracleMintingPolicyId = C.PolicyId . C.hashScript $ C.PlutusScript C.plutusSc
 hubOracleAssetName :: C.AssetName
 hubOracleAssetName = C.UnsafeAssetName $ BS8.pack "MIDGARD_HUB_ORACLE"
 
--- | Mimicking aiken. 30 milliseconds.
+-- | Mimicking aiken testnet. An hour.
 shiftDuration :: NominalDiffTime
-shiftDuration = 0.030
+shiftDuration = 60 * 60
 
 -- | Mimicking aiken.
 operatorRequiredBond :: C.Lovelace
