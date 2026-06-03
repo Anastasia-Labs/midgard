@@ -1,6 +1,6 @@
 module Midgard.Contracts.Scheduler (initScheduler, scheduleNextOperator, currentScheduleInfo) where
 
-import Control.Monad (guard, when)
+import Control.Monad (guard)
 import Control.Monad.Except (MonadError (throwError))
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Trans (MonadTrans (lift))
@@ -15,7 +15,6 @@ import Convex.BuildTx (
   TxBuilder,
   addBtx,
   addReference,
-  addRequiredSignature,
   assetValue,
   execBuildTx,
   findIndexReference,
@@ -29,9 +28,9 @@ import Convex.Class (
   MonadUtxoQuery,
   utxosByPaymentCredential,
  )
-import Convex.PlutusLedger.V1 (transPOSIXTime, unTransPOSIXTime, unTransPubKeyHash)
+import Convex.PlutusLedger.V1 (transPOSIXTime, unTransPOSIXTime)
 import Convex.Utxos (toTxOut)
-import PlutusLedgerApi.Common (BuiltinByteString, fromBuiltin, toBuiltin)
+import PlutusLedgerApi.Common (BuiltinByteString, toBuiltin)
 import PlutusLedgerApi.V3 (POSIXTime, PubKeyHash (PubKeyHash, getPubKeyHash))
 import PlutusTx.Builtins qualified as PlutusTx
 
@@ -89,9 +88,8 @@ initScheduler
       C.NoStakeAddress
       (assetValue policyId Scheduler.assetName 1)
 
-{- | Set the scheduler to designate the next operator, either before or after the current operator's shift end time.
-In the first case, existing shift operator must sign the transaction.
-Note: This will either 'Advance' or 'Rewind' depending on the current operator position.
+{- | Set the scheduler to designate the next operator. This requires the current shift to come to an end.
+Note: This will either go to the next operator or rewind depending on the current operator position.
 -}
 scheduleNextOperator ::
   forall era m.
@@ -101,20 +99,13 @@ scheduleNextOperator ::
   , C.HasScriptLanguageInEra C.PlutusScriptV3 era
   , C.IsBabbageBasedEra era
   ) =>
-  Bool ->
   MidgardScripts ->
   m (TxBuilder era, POSIXTime)
 scheduleNextOperator
-  isBeforeShiftEnd
   ms@MidgardScripts
     { schedulerValidator
     , schedulerPolicy
-    , activeOperatorsValidator
-    , activeOperatorsPolicy
     } = do
-    params <- queryProtocolParameters
-    netId <- queryNetworkId
-    (currentSlot, _, _) <- querySlotNo
     -- Find the scheduler UTxO. There should be only one.
     schedulerUtxos <-
       utxosByPaymentCredential $
@@ -129,7 +120,145 @@ scheduleNextOperator
     schedulerDatum <-
       maybe (throwError "Invalid scheduler datum") pure $
         inlineDatumFromUTxO @Scheduler.Datum schedulerTxOut
-    let Scheduler.Datum {operator = currentOperator, startTime = currentStartTime} = schedulerDatum
+    case schedulerDatum of
+      Scheduler.NoActiveOperators -> appointFirstOperator ms (schedulerTxIn, schedulerTxOut)
+      Scheduler.ActiveOperator {operator = currentOperator, startTime = currentStartTime} -> advanceOrRewindScheduler ms (schedulerTxIn, schedulerTxOut) currentOperator currentStartTime
+
+{- | Appoint the very first operator into the scheduler.
+This will pick the last operator node in the active operators set.
+-}
+appointFirstOperator ::
+  forall era m ctx.
+  ( MonadError String m
+  , MonadBlockchain era m
+  , MonadUtxoQuery m
+  , C.HasScriptLanguageInEra C.PlutusScriptV3 era
+  , C.IsBabbageBasedEra era
+  ) =>
+  MidgardScripts -> (C.TxIn, C.TxOut ctx era) -> m (TxBuilder era, POSIXTime)
+appointFirstOperator
+  MidgardScripts
+    { activeOperatorsValidator
+    , activeOperatorsPolicy
+    , registeredOperatorsValidator
+    , registeredOperatorsPolicy
+    , schedulerValidator
+    , schedulerPolicy
+    }
+  (schedulerTxIn, schedulerTxOut) = do
+    params <- queryProtocolParameters
+    netId <- queryNetworkId
+    (currentSlot, _, _) <- querySlotNo
+    -- The final node in the active operator set should be the first operator.
+    activeOperatorsUtxos <-
+      utxosByPaymentCredential $
+        C.PaymentCredentialByScript $
+          validatorHash activeOperatorsValidator
+    (finalActiveOperatorTxIn, (finalActiveOperatorUtxoAnyEra, _)) <-
+      maybe
+        (throwError "Final active operator node not found")
+        pure
+        . flip
+          runReaderT
+          LinkedListInfo
+            { ownerPolicyId = mintingPolicyId activeOperatorsPolicy
+            , rootAssetName = ActiveOperators.rootAssetName
+            , nodeAssetNamePrefix = ActiveOperators.nodeAssetNamePrefix
+            }
+        $ findFinalUTxONode activeOperatorsUtxos
+    nextOperator <-
+      maybe (throwError "Active operator asset not found for final node") (pure . assetNameToActiveOperatorKey)
+        . listAssetNameFromUTxO (mintingPolicyId activeOperatorsPolicy)
+        $ toTxOut @era finalActiveOperatorUtxoAnyEra
+    -- Must witness the registered operators set to ensure no operator is waiting to be activated.
+    registeredOperatorsUtxos <-
+      utxosByPaymentCredential $
+        C.PaymentCredentialByScript $
+          validatorHash registeredOperatorsValidator
+    (finalRegisteredOperatorTxIn, _) <-
+      maybe
+        (throwError "Final registered operator node not found")
+        pure
+        . flip
+          runReaderT
+          LinkedListInfo
+            { ownerPolicyId = mintingPolicyId registeredOperatorsPolicy
+            , rootAssetName = RegisteredOperators.rootAssetName
+            , nodeAssetNamePrefix = RegisteredOperators.nodeAssetNamePrefix
+            }
+        $ findFinalUTxONode registeredOperatorsUtxos
+    -- In 4 minutes. Note: Must be less than env.max_validity_range.
+    -- Note: Validity upper bound slot is exclusive when specified in Cardano.Api.
+    -- i.e The inclusive upper bound is the second _before_ this slot begins.
+    let validityUpperBoundExclusive = currentSlot + (4 * 60)
+    nextShiftStartTime <- transPOSIXTime . utcTimeToPOSIXSeconds <$> slotToEndUTCTime (validityUpperBoundExclusive - 1)
+    pure . (,nextShiftStartTime) . execBuildTx $ do
+      addReference finalActiveOperatorTxIn
+      addReference finalRegisteredOperatorTxIn
+      spendPlutusInlineDatumWithRedeemerFinal
+        (toValidator schedulerValidator)
+        schedulerTxIn
+        ( \txBody ->
+            Scheduler.SpendRedeemer
+              { schedulerInputIndex = toInteger $ findIndexSpending schedulerTxIn txBody
+              , schedulerOutputIndex =
+                  toInteger $
+                    findOutputIndexWithAsset
+                      (mintingPolicyId schedulerPolicy)
+                      Scheduler.assetName
+                      txBody
+              , advancingApproach =
+                  Scheduler.AppointFirstOperator
+                    { newShiftsOperatorNodeRefInputIndex = toInteger $ findIndexReference finalActiveOperatorTxIn txBody
+                    , registeredElementRefInputIndex = toInteger $ findIndexReference finalRegisteredOperatorTxIn txBody
+                    }
+              }
+        )
+      payToScriptInlineDatum
+        netId
+        (validatorHash schedulerValidator)
+        Scheduler.ActiveOperator
+          { operator = PubKeyHash nextOperator
+          , startTime = nextShiftStartTime
+          }
+        C.NoStakeAddress
+        (txOutValue schedulerTxOut)
+      -- Short validity range based on the shift start time.
+      addBtx $ \txBody ->
+        txBody
+          { C.txValidityUpperBound =
+              C.TxValidityUpperBound (C.shelleyBasedEra @era) $ Just validityUpperBoundExclusive
+          , C.txValidityLowerBound = C.TxValidityLowerBound (C.allegraBasedEra @era) currentSlot
+          }
+      setMinAdaDepositAll params
+    where
+      txOutValue (C.TxOut _ val _ _) = C.txOutValueToValue val
+
+advanceOrRewindScheduler ::
+  forall era m.
+  ( MonadError String m
+  , MonadBlockchain era m
+  , MonadUtxoQuery m
+  , C.HasScriptLanguageInEra C.PlutusScriptV3 era
+  , C.IsBabbageBasedEra era
+  ) =>
+  MidgardScripts ->
+  (C.TxIn, C.TxOut C.CtxUTxO era) ->
+  PubKeyHash ->
+  POSIXTime ->
+  m (TxBuilder era, POSIXTime)
+advanceOrRewindScheduler
+  ms@MidgardScripts
+    { schedulerValidator
+    , schedulerPolicy
+    , activeOperatorsValidator
+    , activeOperatorsPolicy
+    }
+  (schedulerTxIn, schedulerTxOut)
+  currentOperator
+  currentStartTime = do
+    params <- queryProtocolParameters
+    netId <- queryNetworkId
     -- Find the next operator in schedule. This should be the previous node in the active operators linked list.
     activeOperatorsUtxos <-
       utxosByPaymentCredential $
@@ -141,25 +270,22 @@ scheduleNextOperator
             , rootAssetName = ActiveOperators.rootAssetName
             , nodeAssetNamePrefix = ActiveOperators.nodeAssetNamePrefix
             }
-        currentOperatorBytes = fromBuiltin $ getPubKeyHash currentOperator
-    -- If currentOperator is empty bytestring, it's a placeholder. Find the last node and set it as operator.
-    -- Otherwise, find the _previous_ node of the current operator.
-    let finderF = if BS.null currentOperatorBytes then findFinalUTxONode else flip findUTxOWithLink currentOperatorBytes
+        currentOperatorBytes = PlutusTx.fromBuiltin $ getPubKeyHash currentOperator
     (predecessorActiveNodeTxIn, (predecessorActiveNodeUtxoAnyEra, _)) <-
       maybe
         (throwError "Previous active operator node not found")
         pure
         . flip runReaderT activeOperatorsListInfo
-        $ finderF activeOperatorsUtxos
+        $ findUTxOWithLink activeOperatorsUtxos currentOperatorBytes
     let predecessorActiveNodeTxOut = toTxOut @era predecessorActiveNodeUtxoAnyEra
     -- Figure out the next shift starting slot so it can be set in the validity range.
     let nextShiftStartTime = unTransPOSIXTime currentStartTime + shiftDuration
     nextShiftStartSlot <- utcTimeToEnclosingSlot . posixSecondsToUTCTime $ nextShiftStartTime
     -- Decide whether to advance or rewind and obtain the information necessary for the chosen path.
-    (nextOperator, additionalRefs, mkRedeemer, validityUpperBoundM) <-
-      constructAdvanceOrRewind ms schedulerTxIn predecessorActiveNodeTxIn predecessorActiveNodeTxOut
+    (nextOperator, additionalRefs, mkApproach, validityUpperBoundM) <-
+      constructAdvanceOrRewind ms predecessorActiveNodeTxIn predecessorActiveNodeTxOut
     let nextSchedulerDatum =
-          Scheduler.Datum
+          Scheduler.ActiveOperator
             { operator = PubKeyHash nextOperator
             , startTime = transPOSIXTime nextShiftStartTime
             }
@@ -171,19 +297,25 @@ scheduleNextOperator
       spendPlutusInlineDatumWithRedeemerFinal
         (toValidator schedulerValidator)
         schedulerTxIn
-        mkRedeemer
+        ( \txBody ->
+            Scheduler.SpendRedeemer
+              { schedulerInputIndex = toInteger $ findIndexSpending schedulerTxIn txBody
+              , schedulerOutputIndex =
+                  toInteger $
+                    findOutputIndexWithAsset
+                      (mintingPolicyId schedulerPolicy)
+                      Scheduler.assetName
+                      txBody
+              , advancingApproach = mkApproach txBody
+              }
+        )
       payToScriptInlineDatum
         netId
         (validatorHash schedulerValidator)
         nextSchedulerDatum
         C.NoStakeAddress
         (txOutValue schedulerTxOut)
-      -- If a shift is ending prematurely, the existing operator must sign off.
-      when isBeforeShiftEnd $ do
-        -- Assumption: Current operator is valid if we're passed isBeforeShiftEnd = rue.
-        currentOperatorC <- either (error . show) pure $ unTransPubKeyHash currentOperator
-        addRequiredSignature currentOperatorC
-      addBtx $ setValidityBasedOnShift currentSlot nextShiftStartSlot
+      addBtx $ setValidityBasedOnShift nextShiftStartSlot
       addBtx $ updateValidityUpperBoundIfNeeded validityUpperBoundM
       setMinAdaDepositAll params
     where
@@ -201,22 +333,11 @@ scheduleNextOperator
           txBody {C.txValidityUpperBound = C.TxValidityUpperBound era $ Just upperSlot}
 
       -- Set the validity based on whether or nor we're advancing after a shift end or before.
-      setValidityBasedOnShift currentSlot nextShiftStartSlot txBody
-        | isBeforeShiftEnd =
-            txBody
-              { C.txValidityUpperBound =
-                  C.TxValidityUpperBound (C.shelleyBasedEra @era) . Just
-                  -- Either 5 minutes into the future, or just before next shift start, whichever is earlier.
-                  $
-                    min (currentSlot + 300) (nextShiftStartSlot - 1)
-              , -- Must have a lower bound too since it needs to be a closed range.
-                C.txValidityLowerBound = C.TxValidityLowerBound (C.allegraBasedEra @era) currentSlot
-              }
-        | otherwise =
-            txBody
-              { -- Shift start slot must be strictly in the past.
-                C.txValidityLowerBound = C.TxValidityLowerBound (C.allegraBasedEra @era) $ nextShiftStartSlot + 1
-              }
+      setValidityBasedOnShift nextShiftStartSlot txBody =
+        txBody
+          { -- Shift start slot must be strictly in the past.
+            C.txValidityLowerBound = C.TxValidityLowerBound (C.allegraBasedEra @era) $ nextShiftStartSlot + 1
+          }
 
 {- | Decide whether we need to 'Advance' or 'Rewind' based on what the previous node is, and yield all necessary
 structures to perform the right operation.
@@ -231,23 +352,20 @@ constructAdvanceOrRewind ::
   ) =>
   MidgardScripts ->
   C.TxIn ->
-  C.TxIn ->
   C.TxOut ctx era ->
   m
     ( BuiltinByteString
     , [C.TxIn]
-    , C.TxBodyContent C.BuildTx era -> Scheduler.SpendRedeemer
+    , C.TxBodyContent C.BuildTx era -> Scheduler.AdvancingApproach
     , Maybe C.SlotNo
     )
 constructAdvanceOrRewind
   MidgardScripts
-    { schedulerPolicy
-    , activeOperatorsValidator
+    { activeOperatorsValidator
     , activeOperatorsPolicy
     , registeredOperatorsValidator
     , registeredOperatorsPolicy
     }
-  schedulerTxIn
   predecessorActiveNodeTxIn
   predecessorActiveNodeTxOut = do
     activeNodeAssetName <-
@@ -311,31 +429,17 @@ constructAdvanceOrRewind
                   nodeKeyFromAssetName RegisteredOperators.nodeAssetNamePrefixLen finalRegisteredOperatorAssetName
           lift $ utcTimeToEnclosingSlot (posixSecondsToUTCTime $ unTransPOSIXTime earliestOperatorActivationTime)
         let mkRedeemer txBody =
-              Scheduler.Rewind
-                { schedulerInputIndex = toInteger $ findIndexSpending schedulerTxIn txBody
-                , schedulerOutputIndex =
-                    toInteger $
-                      findOutputIndexWithAsset
-                        (mintingPolicyId schedulerPolicy)
-                        Scheduler.assetName
-                        txBody
-                , activeNodeRefInputIndex = toInteger $ findIndexReference finalActiveOperatorTxIn txBody
-                , activeRootRefInputIndex = toInteger $ findIndexReference predecessorActiveNodeTxIn txBody
+              Scheduler.RewindDueToEndOfShift
+                { activeOperatorsRootRefInputIndex = toInteger $ findIndexReference predecessorActiveNodeTxIn txBody
+                , activeOperatorsLastNodeRefInputIndex = toInteger $ findIndexReference finalActiveOperatorTxIn txBody
                 , registeredElementRefInputIndex = toInteger $ findIndexReference finalRegisteredOperatorTxIn txBody
                 }
         pure (nextOperator, [finalActiveOperatorTxIn, finalRegisteredOperatorTxIn], mkRedeemer, validityUpperBound)
       else do
         -- Advance case.
         let mkRedeemer txBody =
-              Scheduler.Advance
-                { schedulerInputIndex = toInteger $ findIndexSpending schedulerTxIn txBody
-                , schedulerOutputIndex =
-                    toInteger $
-                      findOutputIndexWithAsset
-                        (mintingPolicyId schedulerPolicy)
-                        Scheduler.assetName
-                        txBody
-                , activeNodeRefInputIndex = toInteger $ findIndexReference predecessorActiveNodeTxIn txBody
+              Scheduler.GoToNextDueToEndOfShift
+                { newShiftsOperatorNodeRefInputIndex = toInteger $ findIndexReference predecessorActiveNodeTxIn txBody
                 }
         pure (assetNameToActiveOperatorKey activeNodeAssetName, [], mkRedeemer, Nothing)
 
