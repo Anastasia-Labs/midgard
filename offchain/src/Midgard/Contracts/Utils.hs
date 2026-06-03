@@ -39,7 +39,6 @@ import Convex.Utils qualified as Convex
 import Convex.Utxos (UtxoSet (UtxoSet))
 import PlutusLedgerApi.Common (BuiltinData, FromData, ToData, fromBuiltin)
 
-import Midgard.ScriptUtils (mintingPolicyId')
 import Midgard.Types.LinkedList (NodeKey (NodeKey), nodeKey, nodeKeyToAssetName)
 import Midgard.Types.LinkedList qualified as LinkedList
 
