@@ -49,7 +49,6 @@ validator spend(
         active_node_input_index,
         active_node_output_index,
         hub_oracle_ref_input_index,
-        state_queue_input_index: _state_queue_input_index,
         state_queue_redeemer_index,
       } -> {
         let Transaction {

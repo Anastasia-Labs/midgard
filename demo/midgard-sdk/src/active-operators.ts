@@ -79,7 +79,6 @@ export const ActiveOperatorSpendRedeemerSchema = Data.Enum([
       active_node_input_index: Data.Integer(),
       active_node_output_index: Data.Integer(),
       hub_oracle_ref_input_index: Data.Integer(),
-      state_queue_input_index: Data.Integer(),
       state_queue_redeemer_index: Data.Integer(),
     }),
   }),

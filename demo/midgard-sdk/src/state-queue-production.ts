@@ -90,7 +90,6 @@ export type StateQueueCommitWitnessContext = {
 
 type StateQueueCommitLayout = {
   readonly schedulerRefInputIndex: bigint;
-  readonly latestBlockInputIndex: bigint;
   readonly newBlockOutputIndex: bigint;
   readonly continuedLatestBlockOutputIndex: bigint;
   readonly activeOperatorsInputIndex: bigint;
@@ -117,7 +116,6 @@ type ActiveOperatorCommitRedeemer = {
     readonly active_node_input_index: bigint;
     readonly active_node_output_index: bigint;
     readonly hub_oracle_ref_input_index: bigint;
-    readonly state_queue_input_index: bigint;
     readonly state_queue_redeemer_index: bigint;
   };
 };
@@ -203,7 +201,6 @@ const makeActiveOperatorCommitRedeemer = (
     active_node_input_index: layout.activeOperatorsInputIndex,
     active_node_output_index: layout.activeOperatorOutputIndex,
     hub_oracle_ref_input_index: layout.hubOracleRefInputIndex,
-    state_queue_input_index: layout.latestBlockInputIndex,
     state_queue_redeemer_index: layout.stateQueueMintRedeemerIndex,
   },
 });
@@ -231,7 +228,6 @@ const encodeStateQueueLinkedListMutationSpendRedeemer = (): string =>
 
 type CommitLayoutLike = {
   readonly schedulerRefInputIndex: bigint;
-  readonly latestBlockInputIndex: bigint;
   readonly activeOperatorsInputIndex: bigint;
   readonly activeOperatorsRedeemerIndex: bigint;
   readonly stateQueueMintRedeemerIndex: bigint;
@@ -243,7 +239,6 @@ type CommitLayoutLike = {
 
 const COMMIT_LAYOUT_FIELDS = [
   { key: "schedulerRefInputIndex", label: "scheduler_ref_input_index" },
-  { key: "latestBlockInputIndex", label: "latest_block_input" },
   { key: "activeOperatorsInputIndex", label: "active_operators_input_index" },
   {
     key: "activeOperatorsRedeemerIndex",
@@ -300,7 +295,6 @@ const requireUniqueContextOutputIndex = (
 
 const deriveCommitLayoutFromRedeemerContext = ({
   ctx,
-  latestBlockInput,
   schedulerRefInput,
   hubOracleRefInput,
   activeOperatorInput,
@@ -311,7 +305,6 @@ const deriveCommitLayoutFromRedeemerContext = ({
   previousHeaderNodeDatum,
 }: {
   readonly ctx: Parameters<BuildTxWithRedeemer>[0];
-  readonly latestBlockInput: UTxO;
   readonly schedulerRefInput: UTxO;
   readonly hubOracleRefInput: UTxO;
   readonly activeOperatorInput: UTxO;
@@ -321,11 +314,6 @@ const deriveCommitLayoutFromRedeemerContext = ({
   readonly headerNodeDatum: string;
   readonly previousHeaderNodeDatum: string;
 }): StateQueueCommitLayout => {
-  const latestBlockInputIndex = requireContextInputIndex(
-    ctx,
-    latestBlockInput,
-    "state-queue commit latest block",
-  );
   const activeOperatorsInputIndex = requireContextInputIndex(
     ctx,
     activeOperatorInput,
@@ -337,7 +325,6 @@ const deriveCommitLayoutFromRedeemerContext = ({
       schedulerRefInput,
       "state-queue commit scheduler",
     ),
-    latestBlockInputIndex,
     newBlockOutputIndex: requireUniqueContextOutputIndex(
       ctx.outputs,
       (output) =>
@@ -381,7 +368,6 @@ const deriveCommitLayoutFromRedeemerContext = ({
 
 export type DeterministicCommitTxBuilderInput = {
   readonly contracts: MidgardValidators;
-  readonly latestBlockInput: UTxO;
   readonly witness: StateQueueCommitWitnessContext;
   readonly headerNodeUnit: string;
   readonly appendedNodeDatumCbor: string;
@@ -395,7 +381,6 @@ export type DeterministicCommitTxBuilderInput = {
 
 export const buildDeterministicCommitTxBuilder = ({
   contracts,
-  latestBlockInput,
   witness,
   headerNodeUnit,
   appendedNodeDatumCbor,
@@ -435,7 +420,6 @@ export const buildDeterministicCommitTxBuilder = ({
     ): StateQueueCommitLayout => {
       const layout = deriveCommitLayoutFromRedeemerContext({
         ctx,
-        latestBlockInput,
         schedulerRefInput: witness.schedulerRefInput,
         hubOracleRefInput: witness.hubOracleRefInput,
         activeOperatorInput: witness.activeOperatorInput,
@@ -628,7 +612,6 @@ export const buildProductionCommitBlockHeaderTxProgram = ({
 
     const tx = yield* buildDeterministicCommitTxBuilder({
       contracts,
-      latestBlockInput: latestBlock.utxo,
       witness,
       headerNodeUnit,
       appendedNodeDatumCbor,
@@ -748,7 +731,6 @@ const makeSettlementSpawnRedeemer = ({
 const deriveMergeLayoutFromRedeemerContext = ({
   ctx,
   confirmedUTxO,
-  firstBlockUTxO: _firstBlockUTxO,
   hubOracleRefInput,
   stateQueuePolicyId,
   stateQueueAddress,
@@ -760,7 +742,6 @@ const deriveMergeLayoutFromRedeemerContext = ({
 }: {
   readonly ctx: Parameters<BuildTxWithRedeemer>[0];
   readonly confirmedUTxO: StateQueueUTxO;
-  readonly firstBlockUTxO: StateQueueUTxO;
   readonly hubOracleRefInput: UTxO;
   readonly stateQueuePolicyId: string;
   readonly stateQueueAddress: string;
@@ -1072,7 +1053,6 @@ export const buildProductionMergeToConfirmedStateTxProgram = ({
       const layout = deriveMergeLayoutFromRedeemerContext({
         ctx,
         confirmedUTxO,
-        firstBlockUTxO,
         hubOracleRefInput,
         stateQueuePolicyId: fetchConfig.stateQueuePolicyId,
         stateQueueAddress: fetchConfig.stateQueueAddress,

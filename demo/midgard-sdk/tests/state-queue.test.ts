@@ -509,14 +509,12 @@ const makeCommitActiveOperatorRedeemer = ({
   contracts,
   operator,
   activeOperatorInput,
-  stateQueueInput,
   hubOracle,
   continuedActiveOperatorDatum,
 }: {
   readonly contracts: StateQueueTestContracts;
   readonly operator: string;
   readonly activeOperatorInput: UTxO;
-  readonly stateQueueInput: UTxO;
   readonly hubOracle: UTxO;
   readonly continuedActiveOperatorDatum: string;
 }): BuildTxWithRedeemer =>
@@ -542,11 +540,6 @@ const makeCommitActiveOperatorRedeemer = ({
             ctx,
             hubOracle,
             "emulator commit hub oracle",
-          ),
-          state_queue_input_index: requireInputIndex(
-            ctx,
-            stateQueueInput,
-            "emulator commit state queue",
           ),
           state_queue_redeemer_index: requireMintRedeemerIndex(
             ctx,
@@ -598,7 +591,6 @@ const submitCommitHeaderTx = async ({
           contracts,
           operator,
           activeOperatorInput,
-          stateQueueInput: anchor.utxo,
           hubOracle,
           continuedActiveOperatorDatum,
         }),
