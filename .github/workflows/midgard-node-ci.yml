@@ -69,6 +69,8 @@ jobs:
           cache-dependency-path: demo/pnpm-lock.yaml
       - name: Install dependencies
         run: pnpm --dir demo install --frozen-lockfile
+      - name: Build lucid-midgard workspace deps
+        run: pnpm --dir demo/midgard-validation run build
       - name: Typecheck lucid-midgard
         run: pnpm --dir demo/lucid-midgard run typecheck
       - name: Test lucid-midgard
