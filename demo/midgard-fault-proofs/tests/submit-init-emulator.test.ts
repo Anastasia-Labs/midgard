@@ -131,7 +131,7 @@ const alwaysSucceedsBlueprintPath = resolve(
 const network: Network = "Preprod";
 const EMULATOR_PROTOCOL_PARAMETERS = {
   ...PROTOCOL_PARAMETERS_DEFAULT,
-  maxTxSize: 131_072,
+  maxTxSize: 65_536,
   maxCollateralInputs: 3,
 } as const;
 
