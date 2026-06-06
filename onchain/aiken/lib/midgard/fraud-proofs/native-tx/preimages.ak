@@ -10,9 +10,8 @@ use midgard/fraud_proofs/native_tx/codec.{
 }
 use midgard/fraud_proofs/native_tx/components.{
   decode_midgard_address_witness_cbor, decode_midgard_redeemer_witness_at,
-  decode_midgard_redeemer_witness_data, decode_midgard_tx_input_cbor,
-  decode_midgard_tx_output_cbor, decode_midgard_versioned_script_at,
-  decode_midgard_versioned_script_data, encode_midgard_address_witness,
+  decode_midgard_tx_input_cbor, decode_midgard_tx_output_cbor,
+  decode_midgard_versioned_script_at, encode_midgard_address_witness,
   encode_midgard_redeemer_witness, encode_midgard_tx_input,
   encode_midgard_tx_output, encode_midgard_versioned_script,
 }

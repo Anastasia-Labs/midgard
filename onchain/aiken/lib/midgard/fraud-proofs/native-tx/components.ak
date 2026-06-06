@@ -5,7 +5,7 @@ use aiken/primitive/bytearray
 use midgard/fraud_proofs/native_tx/codec.{
   byte_at, decode_definite_bytes_at, decode_definite_map_header_at,
   decode_uint_at, encode_definite_bytes, encode_definite_map_header, expect_byte,
-  expect_deserialise, expect_h28, expect_h32, slice_len,
+  expect_h28, expect_h32, slice_len,
 }
 use midgard/fraud_proofs/native_tx/types.{
   CertRedeemer, MidgardAddress, MidgardAddressWitness, MidgardCredential,
@@ -213,7 +213,7 @@ fn expect_asset_unit(unit: ByteArray) -> ByteArray {
   unit
 }
 
-fn asset_unit_from_policy_asset(
+pub fn asset_unit_from_policy_asset(
   policy_id: ByteArray,
   asset_name: ByteArray,
 ) -> ByteArray {
@@ -586,7 +586,7 @@ pub fn encode_midgard_tx_output(output: MidgardTxOutput) -> ByteArray {
   }
 }
 
-fn decode_midgard_tx_output_data(data: Data) -> MidgardTxOutput {
+pub fn decode_midgard_tx_output_data(data: Data) -> MidgardTxOutput {
   let entries = builtin.un_map_data(data)
   let output =
     when entries is {
