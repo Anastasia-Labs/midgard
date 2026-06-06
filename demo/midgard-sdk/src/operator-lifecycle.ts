@@ -10,6 +10,7 @@ import {
 import { canonicalPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 
 import * as SDK from "@/operator-lifecycle/primitives.js";
+import { outputReferenceFromUTxO } from "@/common.js";
 import {
   type ActivateRedeemerLayout,
   type NodeWithDatum,
@@ -17,7 +18,6 @@ import {
   type RegisterRedeemerLayout,
 } from "@/operator-lifecycle/layout.js";
 import {
-  requireInputIndex,
   requireMintRedeemerIndex,
   requireOwnMintPurpose,
   requireReferenceInputIndex,
@@ -102,10 +102,8 @@ const registeredActivateRedeemer = ({
     {
       ActivateOperator: {
         activating_operator: operatorKeyHash,
-        anchor_element_input_index:
-          layout.registeredOperatorsAnchorNodeInputIndex,
-        removed_node_input_index:
-          layout.registeredOperatorsRemovedNodeInputIndex,
+        anchor_element_input_outref:
+          layout.registeredOperatorsAnchorNodeInputOutRef,
         anchor_element_output_index:
           layout.registeredOperatorsAnchorNodeOutputIndex,
         hub_oracle_ref_input_index: layout.hubOracleRefInputIndex,
@@ -145,11 +143,6 @@ const deriveRegisterLayoutFromContext = ({
   readonly prependedNodeDatumCbor: string;
   readonly updatedRegisteredRootDatumCbor: string;
 }): RegisterRedeemerLayout => ({
-  rootInputIndex: requireInputIndex(
-    ctx,
-    config.registeredRootNode.utxo,
-    "registered-operator register root",
-  ),
   hubOracleRefInputIndex: requireReferenceInputIndex(
     ctx,
     config.hubOracleRefInput,
@@ -223,7 +216,6 @@ export const buildRegisterOperatorTx = (
       {
         RegisterOperator: {
           registering_operator: config.operatorKeyHash,
-          root_input_index: layout.rootInputIndex,
           root_output_index: layout.anchorNodeOutputIndex,
           registered_node_output_index: layout.prependedNodeOutputIndex,
           hub_oracle_ref_input_index: layout.hubOracleRefInputIndex,
@@ -324,15 +316,8 @@ const deriveActivateLayoutFromContext = ({
     config.contracts.activeOperators.policyId,
     "operator activation active mint",
   ),
-  registeredOperatorsRemovedNodeInputIndex: requireInputIndex(
-    ctx,
-    config.registeredNode.utxo,
-    "operator activation registered node",
-  ),
-  registeredOperatorsAnchorNodeInputIndex: requireInputIndex(
-    ctx,
+  registeredOperatorsAnchorNodeInputOutRef: outputReferenceFromUTxO(
     config.registeredAnchor.utxo,
-    "operator activation registered anchor",
   ),
   registeredOperatorsAnchorNodeOutputIndex: requireUniqueOutputIndex(
     ctx.outputs,
@@ -348,11 +333,6 @@ const deriveActivateLayoutFromContext = ({
         ),
       }),
     "operator activation updated registered anchor",
-  ),
-  activeOperatorsAnchorNodeInputIndex: requireInputIndex(
-    ctx,
-    config.activeAppendAnchor.utxo,
-    "operator activation active anchor",
   ),
   activeOperatorsInsertedNodeOutputIndex: requireUniqueOutputIndex(
     ctx.outputs,
@@ -439,8 +419,6 @@ export const buildActivateOperatorTx = (
         ActivateOperator: {
           new_active_operator_key: config.operatorKeyHash,
           new_active_operator_bond_unlock_time: null,
-          active_operator_anchor_element_input_index:
-            layout.activeOperatorsAnchorNodeInputIndex,
           active_operator_anchor_element_output_index:
             layout.activeOperatorsAnchorNodeOutputIndex,
           active_operator_inserted_node_output_index:
@@ -537,15 +515,8 @@ export const buildDeregisterRegisteredOperatorTx = (
       {
         DeregisterOperator: {
           deregistering_operator: config.operatorKeyHash,
-          removed_node_input_index: requireInputIndex(
-            ctx,
-            config.registeredNode.utxo,
-            "deregister registered node",
-          ),
-          anchor_element_input_index: requireInputIndex(
-            ctx,
+          anchor_element_input_outref: outputReferenceFromUTxO(
             config.registeredAnchor.utxo,
-            "deregister registered anchor",
           ),
           anchor_element_output_index: requireUniqueOutputIndex(
             ctx.outputs,

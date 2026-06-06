@@ -24,14 +24,17 @@ import type {
   DataCoercionError,
   HashingError,
   MidgardValidators,
+  OutputReference,
 } from "@/common.js";
+import { outputReferenceFromUTxO } from "@/common.js";
 import {
   castConfirmedStateToData,
-  castHeaderToData,
+  castStateQueueNodeToData,
   type ConfirmedState,
   getHeaderFromStateQueueDatum,
   type Header,
   hashBlockHeader,
+  NO_DA_ATTESTATION,
 } from "@/ledger-state.js";
 import {
   encodeLinkedListNodeView,
@@ -52,6 +55,7 @@ import {
   StateQueueRedeemer,
   type StateQueueFetchConfig,
   type StateQueueRedeemer as StateQueueRedeemerType,
+  StateQueueSpendRedeemer,
   type StateQueueUTxO,
 } from "@/state-queue.js";
 import {
@@ -93,12 +97,11 @@ type StateQueueCommitLayout = {
   readonly activeOperatorsRedeemerIndex: bigint;
   readonly activeOperatorOutputIndex: bigint;
   readonly hubOracleRefInputIndex: bigint;
-  readonly stateQueueSpendRedeemerIndex: bigint;
+  readonly stateQueueMintRedeemerIndex: bigint;
 };
 
 type StateQueueCommitRedeemer = {
   readonly CommitBlockHeader: {
-    readonly latest_block_input_index: bigint;
     readonly new_block_output_index: bigint;
     readonly continued_latest_block_output_index: bigint;
     readonly operator: string;
@@ -182,7 +185,6 @@ const makeStateQueueCommitRedeemer = (
   layout: StateQueueCommitLayout,
 ): StateQueueCommitRedeemer => ({
   CommitBlockHeader: {
-    latest_block_input_index: layout.latestBlockInputIndex,
     new_block_output_index: layout.newBlockOutputIndex,
     continued_latest_block_output_index: layout.continuedLatestBlockOutputIndex,
     operator: operatorKeyHash,
@@ -202,7 +204,7 @@ const makeActiveOperatorCommitRedeemer = (
     active_node_output_index: layout.activeOperatorOutputIndex,
     hub_oracle_ref_input_index: layout.hubOracleRefInputIndex,
     state_queue_input_index: layout.latestBlockInputIndex,
-    state_queue_redeemer_index: layout.stateQueueSpendRedeemerIndex,
+    state_queue_redeemer_index: layout.stateQueueMintRedeemerIndex,
   },
 });
 
@@ -224,12 +226,15 @@ const encodeActiveOperatorCommitRedeemer = (
     ActiveOperatorSpendRedeemer as never,
   );
 
+const encodeStateQueueLinkedListMutationSpendRedeemer = (): string =>
+  Data.to("LinkedListMutation" as never, StateQueueSpendRedeemer as never);
+
 type CommitLayoutLike = {
   readonly schedulerRefInputIndex: bigint;
   readonly latestBlockInputIndex: bigint;
   readonly activeOperatorsInputIndex: bigint;
   readonly activeOperatorsRedeemerIndex: bigint;
-  readonly stateQueueSpendRedeemerIndex: bigint;
+  readonly stateQueueMintRedeemerIndex: bigint;
   readonly newBlockOutputIndex: bigint;
   readonly continuedLatestBlockOutputIndex: bigint;
   readonly activeOperatorOutputIndex: bigint;
@@ -238,15 +243,15 @@ type CommitLayoutLike = {
 
 const COMMIT_LAYOUT_FIELDS = [
   { key: "schedulerRefInputIndex", label: "scheduler_ref_input_index" },
-  { key: "latestBlockInputIndex", label: "latest_block_input_index" },
+  { key: "latestBlockInputIndex", label: "latest_block_input" },
   { key: "activeOperatorsInputIndex", label: "active_operators_input_index" },
   {
     key: "activeOperatorsRedeemerIndex",
     label: "active_operators_redeemer_index",
   },
   {
-    key: "stateQueueSpendRedeemerIndex",
-    label: "state_queue_spend_redeemer_index",
+    key: "stateQueueMintRedeemerIndex",
+    label: "state_queue_mint_redeemer_index",
   },
   { key: "newBlockOutputIndex", label: "new_block_output_index" },
   {
@@ -300,6 +305,7 @@ const deriveCommitLayoutFromRedeemerContext = ({
   hubOracleRefInput,
   activeOperatorInput,
   stateQueueAddress,
+  stateQueuePolicyId,
   headerNodeUnit,
   headerNodeDatum,
   previousHeaderNodeDatum,
@@ -310,6 +316,7 @@ const deriveCommitLayoutFromRedeemerContext = ({
   readonly hubOracleRefInput: UTxO;
   readonly activeOperatorInput: UTxO;
   readonly stateQueueAddress: string;
+  readonly stateQueuePolicyId: string;
   readonly headerNodeUnit: string;
   readonly headerNodeDatum: string;
   readonly previousHeaderNodeDatum: string;
@@ -364,10 +371,10 @@ const deriveCommitLayoutFromRedeemerContext = ({
       hubOracleRefInput,
       "state-queue commit hub oracle",
     ),
-    stateQueueSpendRedeemerIndex: requireContextSpendRedeemerIndex(
+    stateQueueMintRedeemerIndex: requireContextMintRedeemerIndex(
       ctx,
-      latestBlockInput,
-      "state-queue commit latest block",
+      stateQueuePolicyId,
+      "state-queue commit mint",
     ),
   };
 };
@@ -433,6 +440,7 @@ export const buildDeterministicCommitTxBuilder = ({
         hubOracleRefInput: witness.hubOracleRefInput,
         activeOperatorInput: witness.activeOperatorInput,
         stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
+        stateQueuePolicyId: contracts.stateQueue.policyId,
         headerNodeUnit,
         headerNodeDatum: appendedNodeDatumCbor,
         previousHeaderNodeDatum: previousHeaderNodeDatumCbor,
@@ -440,11 +448,8 @@ export const buildDeterministicCommitTxBuilder = ({
       commitLayout = layout;
       return layout;
     };
-    const stateQueueCommitSpendRedeemer = ((ctx) =>
-      encodeStateQueueCommitRedeemer(
-        witness.operatorKeyHash,
-        layoutFromContext(ctx),
-      )) satisfies BuildTxWithRedeemer;
+    const stateQueueCommitSpendRedeemer = (() =>
+      encodeStateQueueLinkedListMutationSpendRedeemer()) satisfies BuildTxWithRedeemer;
     const stateQueueCommitMintRedeemer = ((ctx) =>
       encodeStateQueueCommitRedeemer(
         witness.operatorKeyHash,
@@ -562,7 +567,10 @@ export const buildProductionCommitBlockHeaderTxProgram = ({
     const appendedNodeDatum: LinkedListNodeView = {
       key: updatedNodeDatum.next,
       next: "Empty",
-      data: castHeaderToData(newHeader) as LinkedListNodeView["data"],
+      data: castStateQueueNodeToData({
+        header: newHeader,
+        da_attestation: NO_DA_ATTESTATION,
+      }) as LinkedListNodeView["data"],
     };
     const appendedNodeDatumCbor = encodeLinkedListNodeView(appendedNodeDatum);
     const updatedNodeDatumCbor = encodeLinkedListNodeView(updatedNodeDatum);
@@ -653,8 +661,6 @@ export type ProductionMergeToConfirmedStateParams = {
 };
 
 export type MergeRedeemerLayout = {
-  readonly headerNodeInputIndex: number;
-  readonly confirmedStateInputIndex: number;
   readonly confirmedStateOutputIndex: number;
   readonly settlementOutputIndex: number;
   readonly stateQueueRedeemerIndex: number;
@@ -706,15 +712,16 @@ const makeStateQueueMergeRedeemer = ({
   layout,
   headerNodeKey,
   blockHeader,
+  confirmedStateInputOutRef,
 }: {
   readonly layout: MergeRedeemerLayout;
   readonly headerNodeKey: string;
   readonly blockHeader: Header;
+  readonly confirmedStateInputOutRef: OutputReference;
 }): StateQueueRedeemerType => ({
   MergeToConfirmedState: {
     header_node_key: headerNodeKey,
-    header_node_input_index: BigInt(layout.headerNodeInputIndex),
-    confirmed_state_input_index: BigInt(layout.confirmedStateInputIndex),
+    confirmed_state_input_outref: confirmedStateInputOutRef,
     confirmed_state_output_index: BigInt(layout.confirmedStateOutputIndex),
     m_settlement_redeemer_index: BigInt(layout.settlementRedeemerIndex),
     merged_block_transactions_root: blockHeader.transactionsRoot,
@@ -741,7 +748,7 @@ const makeSettlementSpawnRedeemer = ({
 const deriveMergeLayoutFromRedeemerContext = ({
   ctx,
   confirmedUTxO,
-  firstBlockUTxO,
+  firstBlockUTxO: _firstBlockUTxO,
   hubOracleRefInput,
   stateQueuePolicyId,
   stateQueueAddress,
@@ -763,20 +770,6 @@ const deriveMergeLayoutFromRedeemerContext = ({
   readonly encodedSettlementDatum: string;
   readonly settlementOutputAssets: Assets;
 }): MergeRedeemerLayout => ({
-  headerNodeInputIndex: Number(
-    requireContextInputIndex(
-      ctx,
-      firstBlockUTxO.utxo,
-      "state-queue merge header node",
-    ),
-  ),
-  confirmedStateInputIndex: Number(
-    requireContextInputIndex(
-      ctx,
-      confirmedUTxO.utxo,
-      "state-queue merge confirmed state",
-    ),
-  ),
   confirmedStateOutputIndex: Number(
     requireUniqueContextOutputIndex(
       ctx.outputs,
@@ -824,12 +817,14 @@ const assertMergeRedeemerInvariants = ({
   layout,
   headerNodeKey,
   blockHeader,
+  confirmedStateInputOutRef,
   encodedStateQueueMergeRedeemer,
   encodedSettlementSpawnRedeemer,
 }: {
   readonly layout: MergeRedeemerLayout;
   readonly headerNodeKey: string;
   readonly blockHeader: Header;
+  readonly confirmedStateInputOutRef: OutputReference;
   readonly encodedStateQueueMergeRedeemer: string;
   readonly encodedSettlementSpawnRedeemer: string;
 }): void => {
@@ -843,7 +838,11 @@ const assertMergeRedeemerInvariants = ({
   ) as SettlementMintRedeemerType;
   const mismatches: string[] = [];
 
-  if (!("MergeToConfirmedState" in decodedStateQueue)) {
+  if (
+    typeof decodedStateQueue !== "object" ||
+    decodedStateQueue === null ||
+    !("MergeToConfirmedState" in decodedStateQueue)
+  ) {
     mismatches.push("state_queue variant mismatch");
   } else {
     const stateQueueMerge = decodedStateQueue.MergeToConfirmedState;
@@ -851,16 +850,18 @@ const assertMergeRedeemerInvariants = ({
       mismatches.push("state_queue.header_node_key mismatch");
     }
     if (
-      stateQueueMerge.header_node_input_index !==
-      BigInt(layout.headerNodeInputIndex)
+      stateQueueMerge.confirmed_state_input_outref.transactionId !==
+      confirmedStateInputOutRef.transactionId
     ) {
-      mismatches.push("state_queue.header_node_input_index mismatch");
+      mismatches.push("state_queue.confirmed_state_input_outref tx mismatch");
     }
     if (
-      stateQueueMerge.confirmed_state_input_index !==
-      BigInt(layout.confirmedStateInputIndex)
+      stateQueueMerge.confirmed_state_input_outref.outputIndex !==
+      confirmedStateInputOutRef.outputIndex
     ) {
-      mismatches.push("state_queue.confirmed_state_input_index mismatch");
+      mismatches.push(
+        "state_queue.confirmed_state_input_outref index mismatch",
+      );
     }
     if (
       stateQueueMerge.confirmed_state_output_index !==
@@ -1018,7 +1019,10 @@ export const buildProductionMergeToConfirmedStateTxProgram = ({
       lucid
         .newTx()
         .validFrom(validFrom)
-        .collectFrom([confirmedUTxO.utxo, firstBlockUTxO.utxo], Data.void())
+        .collectFrom(
+          [confirmedUTxO.utxo, firstBlockUTxO.utxo],
+          encodeStateQueueLinkedListMutationSpendRedeemer(),
+        )
         .collectFrom([feeInput])
         .readFrom(mergeReferenceInputs)
         .pay.ToContract(
@@ -1092,6 +1096,9 @@ export const buildProductionMergeToConfirmedStateTxProgram = ({
           layout: layoutFromContext(ctx),
           headerNodeKey,
           blockHeader,
+          confirmedStateInputOutRef: outputReferenceFromUTxO(
+            confirmedUTxO.utxo,
+          ),
         }),
         StateQueueRedeemer,
       );
@@ -1157,7 +1164,7 @@ export const buildProductionMergeToConfirmedStateTxProgram = ({
       settlementRedeemerCbor: resolvedSettlementRedeemerCbor,
     };
     yield* Effect.logInfo(
-      `🔸 Merge redeemer layout: header_input=${resolvedMergeLayout.headerNodeInputIndex},confirmed_input=${resolvedMergeLayout.confirmedStateInputIndex},confirmed_output=${resolvedMergeLayout.confirmedStateOutputIndex},settlement_output=${resolvedMergeLayout.settlementOutputIndex},hub_ref_input=${resolvedMergeLayout.hubOracleRefInputIndex},state_queue_redeemer_index=${resolvedMergeLayout.stateQueueRedeemerIndex},settlement_redeemer_index=${resolvedMergeLayout.settlementRedeemerIndex}`,
+      `🔸 Merge redeemer layout: confirmed_output=${resolvedMergeLayout.confirmedStateOutputIndex},settlement_output=${resolvedMergeLayout.settlementOutputIndex},hub_ref_input=${resolvedMergeLayout.hubOracleRefInputIndex},state_queue_redeemer_index=${resolvedMergeLayout.stateQueueRedeemerIndex},settlement_redeemer_index=${resolvedMergeLayout.settlementRedeemerIndex}`,
     );
     yield* Effect.try({
       try: () =>
@@ -1165,6 +1172,9 @@ export const buildProductionMergeToConfirmedStateTxProgram = ({
           layout: resolvedMergeLayout,
           headerNodeKey,
           blockHeader,
+          confirmedStateInputOutRef: outputReferenceFromUTxO(
+            confirmedUTxO.utxo,
+          ),
           encodedStateQueueMergeRedeemer: resolvedStateQueueRedeemerCbor,
           encodedSettlementSpawnRedeemer: resolvedSettlementRedeemerCbor,
         }),

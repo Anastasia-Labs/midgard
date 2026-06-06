@@ -189,6 +189,13 @@ export type OutputReference = Data.Static<typeof OutputReferenceSchema>;
 export const OutputReference =
   OutputReferenceSchema as unknown as OutputReference;
 
+export const outputReferenceFromUTxO = (
+  utxo: Pick<UTxO, "txHash" | "outputIndex">,
+): OutputReference => ({
+  transactionId: utxo.txHash,
+  outputIndex: BigInt(utxo.outputIndex),
+});
+
 export const AssetsSchema = Data.Object({
   policyId: Data.Bytes(),
   assetName: Data.Bytes(),

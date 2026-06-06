@@ -6,7 +6,11 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { AuthenticatedValidator, POSIXTimeSchema } from "@/common.js";
+import {
+  AuthenticatedValidator,
+  OutputReferenceSchema,
+  POSIXTimeSchema,
+} from "@/common.js";
 
 import { incompleteInitLinkedListTxProgram } from "./linked-list.js";
 
@@ -63,15 +67,10 @@ export const RegisteredOperatorMintRedeemerSchema = Data.Enum([
       output_index: Data.Integer(),
     }),
   }),
-  Data.Object({
-    Deinit: Data.Object({
-      input_index: Data.Integer(),
-    }),
-  }),
+  Data.Literal("Deinit"),
   Data.Object({
     RegisterOperator: Data.Object({
       registering_operator: Data.Bytes({ minLength: 28, maxLength: 28 }),
-      root_input_index: Data.Integer(),
       root_output_index: Data.Integer(),
       registered_node_output_index: Data.Integer(),
       hub_oracle_ref_input_index: Data.Integer(),
@@ -82,8 +81,7 @@ export const RegisteredOperatorMintRedeemerSchema = Data.Enum([
   Data.Object({
     ActivateOperator: Data.Object({
       activating_operator: Data.Bytes({ minLength: 28, maxLength: 28 }),
-      anchor_element_input_index: Data.Integer(),
-      removed_node_input_index: Data.Integer(),
+      anchor_element_input_outref: OutputReferenceSchema,
       anchor_element_output_index: Data.Integer(),
       hub_oracle_ref_input_index: Data.Integer(),
       retired_operators_element_ref_input_index: Data.Integer(),
@@ -93,16 +91,14 @@ export const RegisteredOperatorMintRedeemerSchema = Data.Enum([
   Data.Object({
     DeregisterOperator: Data.Object({
       deregistering_operator: Data.Bytes({ minLength: 28, maxLength: 28 }),
-      anchor_element_input_index: Data.Integer(),
-      removed_node_input_index: Data.Integer(),
+      anchor_element_input_outref: OutputReferenceSchema,
       anchor_element_output_index: Data.Integer(),
     }),
   }),
   Data.Object({
     SlashDuplicateOperator: Data.Object({
       duplicate_operator: Data.Bytes({ minLength: 28, maxLength: 28 }),
-      anchor_element_input_index: Data.Integer(),
-      removed_node_input_index: Data.Integer(),
+      anchor_element_input_outref: OutputReferenceSchema,
       anchor_element_output_index: Data.Integer(),
       duplicate_node_ref_input_index: Data.Integer(),
       duplicate_operator_status: DuplicateOperatorStatusSchema,
