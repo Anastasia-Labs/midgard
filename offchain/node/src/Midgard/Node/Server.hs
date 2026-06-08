@@ -91,6 +91,13 @@ readinessHandler :: AppM ReadyResponse
 readinessHandler = do
   env <- AppM (asks id)
   migrationFiles <- liftIO Migrations.listSqlMigrations
+  -- For now readiness means:
+  --   1. we can still find the shared SQL migration files,
+  --   2. the DB responds to a trivial query when configured, and
+  --   3. schema verification succeeds when configured.
+  --
+  -- Later this endpoint should also include worker heartbeats and queue depth
+  -- checks like the TypeScript node.
   dbHealthy <- liftIO $
     case env.dbPool of
       Nothing -> pure True
@@ -128,6 +135,7 @@ protocolInfoHandler = do
 
 placeholderQueryHandler :: Text -> Maybe Text -> AppM Aeson.Value
 placeholderQueryHandler endpoint maybeArgument =
+  -- Keep the route surface available while we port handlers incrementally.
   pure $
     Aeson.object
       [ "endpoint" Aeson..= endpoint

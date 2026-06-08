@@ -29,6 +29,9 @@ import Midgard.Node.Migrations qualified as Migrations
 import System.FilePath (takeBaseName)
 import Text.Read (readMaybe)
 
+-- Runtime representation of the TypeScript-owned SQL migrations.
+-- We intentionally do not duplicate the schema in Haskell types yet; the SQL
+-- files remain the source of truth for both implementations.
 data Migration = Migration
   { version :: Int
   , name :: Text
@@ -64,6 +67,8 @@ data MigrationError
 
 instance Exception MigrationError
 
+-- These are copied from the TypeScript migration manifest and let `verify`
+-- assert not just the version ledger but also the concrete application shape.
 applicationTableNames :: [Text]
 applicationTableNames =
   [ "address_history"
@@ -126,6 +131,8 @@ loadMigrations = do
   paths <- Migrations.listSqlMigrations
   sortOn (.version) <$> traverse loadMigration paths
 
+-- Infer version and logical name from filenames like
+-- `0003_local_mutation_jobs.sql`.
 loadMigration :: FilePath -> IO Migration
 loadMigration migrationPath = do
   sqlBytes <- LBS.readFile migrationPath
@@ -154,6 +161,9 @@ sha256Hex =
 
 ensureMetadataTables :: Pool SqlBackend -> IO ()
 ensureMetadataTables pool = do
+  -- Keep metadata schema intentionally small for the first pass.
+  -- We can add richer audit/event payloads once the basic migration flow has
+  -- been proven against a real YugaByte deployment.
   runDB pool $
     rawExecute
       "CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY CHECK (version > 0), name TEXT NOT NULL, checksum_sha256 TEXT NOT NULL, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())"
@@ -211,6 +221,8 @@ recordMigrationEvent pool maybeMigration eventType =
 applyMigration :: Pool SqlBackend -> Migration -> IO ()
 applyMigration pool migration = do
   recordMigrationEvent pool (Just migration) "started"
+  -- Each SQL file is executed as-is so the DB behavior stays aligned with the
+  -- TypeScript node's schema assumptions.
   runDB pool $ rawExecute migration.sql []
   runDB pool $
     rawExecute
@@ -248,6 +260,8 @@ migrateDatabase pool = do
   validateAppliedMigrations expected applied
   let appliedVersions = map (.version) applied
       pending = filter (\migration -> migration.version `notElem` appliedVersions) expected
+  -- We deliberately do not auto-repair or rewrite already-applied migrations:
+  -- drift should fail loudly so we notice incompatible schema history.
   forM_ pending (applyMigration pool)
 
 verifyDatabase :: Pool SqlBackend -> IO MigrationStatus

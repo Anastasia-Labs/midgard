@@ -7,6 +7,10 @@ main :: IO ()
 main = do
   args <- getArgs
   let defaultConfigPath = "node/config/midgard-node.example.yaml"
+  -- Keep the CLI intentionally small for now:
+  --   serve   - run the HTTP server
+  --   migrate - apply pending SQL migrations
+  --   verify  - assert that the DB matches the schema this binary expects
   case args of
     [] -> App.runServe defaultConfigPath
     ["serve"] -> App.runServe defaultConfigPath
