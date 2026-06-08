@@ -1,0 +1,17 @@
+api:
+  port: 3000
+
+database: null
+
+logLevel: info
+
+midgard:
+  network: preprod
+  adminApiKey: null
+
+contracts:
+  midgardEnvFile: null
+  deploymentInfoFile: null
+
+features:
+  enableMutatingEndpoints: false

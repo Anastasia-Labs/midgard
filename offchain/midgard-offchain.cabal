@@ -121,10 +121,47 @@ library
 
   hs-source-dirs:  src
   build-depends:
+    , aeson
     , cardano-ledger-core
     , lens
     , plutus-core
     , time
+    , yaml
+
+executable midgard-node
+  import:         lang, dependencies
+  main-is:        Main.hs
+  hs-source-dirs: node/app
+  build-depends:  midgard-node-lib
+
+library midgard-node-lib
+  import:          lang, dependencies
+  hs-source-dirs:  node/src
+  exposed-modules:
+    Midgard.Node.API
+    Midgard.Node.App
+    Midgard.Node.Config
+    Midgard.Node.DB.Pool
+    Midgard.Node.Env
+    Midgard.Node.Migrations
+    Midgard.Node.Server
+
+  build-depends:
+    , aeson
+    , directory
+    , filepath
+    , midgard-offchain
+    , monad-logger
+    , persistent
+    , persistent-postgresql
+    , postgresql-simple
+    , resource-pool
+    , servant
+    , servant-server
+    , unliftio-core
+    , wai
+    , warp
+    , yaml
 
 test-suite mockchain-tests
   import:         lang, dependencies
