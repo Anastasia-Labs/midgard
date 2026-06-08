@@ -141,6 +141,8 @@ library midgard-node-lib
     Midgard.Node.API
     Midgard.Node.App
     Midgard.Node.Config
+    Midgard.Node.DB.Health
+    Midgard.Node.DB.Migration
     Midgard.Node.DB.Pool
     Midgard.Node.Env
     Midgard.Node.Migrations
@@ -148,6 +150,7 @@ library midgard-node-lib
 
   build-depends:
     , aeson
+    , cryptohash-sha256
     , directory
     , filepath
     , midgard-offchain

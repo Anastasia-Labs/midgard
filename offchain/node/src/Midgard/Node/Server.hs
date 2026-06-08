@@ -1,5 +1,6 @@
 module Midgard.Node.Server (mkApplication) where
 
+import Control.Exception (SomeException, try)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader (ReaderT, asks, runReaderT)
 import Data.Aeson qualified as Aeson
@@ -17,6 +18,8 @@ import Midgard.Node.API (
   UtxoLookupRequest (..),
  )
 import Midgard.Node.Config qualified as Config
+import Midgard.Node.DB.Health qualified as DB.Health
+import Midgard.Node.DB.Migration qualified as DB.Migration
 import Midgard.Node.Env (NodeEnv (..))
 import Midgard.Node.Migrations qualified as Migrations
 import Network.Wai (Application)
@@ -88,14 +91,26 @@ readinessHandler :: AppM ReadyResponse
 readinessHandler = do
   env <- AppM (asks id)
   migrationFiles <- liftIO Migrations.listSqlMigrations
-  let schemaReady = not (null migrationFiles)
-      reasons =
-        if schemaReady
-          then []
-          else ["sql_migrations_missing"]
+  dbHealthy <- liftIO $
+    case env.dbPool of
+      Nothing -> pure True
+      Just pool -> DB.Health.ping pool
+  schemaReady <- liftIO $
+    case env.dbPool of
+      Nothing -> pure (not (null migrationFiles))
+      Just pool -> do
+        result <- try (DB.Migration.verifyDatabase pool)
+        pure $
+          case result of
+            Left (_ :: SomeException) -> False
+            Right status -> status.compatible
+  let reasons =
+        ["sql_migrations_missing" | null migrationFiles]
+          <> ["db_unhealthy" | not dbHealthy]
+          <> ["schema_incompatible" | not schemaReady]
   pure
     ReadyResponse
-      { ready = schemaReady
+      { ready = dbHealthy && schemaReady
       , reasons
       , dbConfigured = maybe False (const True) env.config.database
       , schemaSource = env.migrationDirectory
