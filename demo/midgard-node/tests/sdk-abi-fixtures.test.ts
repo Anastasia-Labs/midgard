@@ -55,6 +55,10 @@ const fields = (ctor: BlueprintConstructor): readonly string[] =>
 const h28 = "11".repeat(28);
 const h32 = "22".repeat(32);
 const h64 = "33".repeat(64);
+const outputReference: SDK.OutputReference = {
+  transactionId: h32,
+  outputIndex: 0n,
+};
 const address: SDK.AddressData = {
   paymentCredential: { PublicKeyCredential: [h28] },
   stakeCredential: null,
@@ -88,8 +92,7 @@ describe("SDK canonical ABI fixtures", () => {
       ),
     ).toEqual([
       "header_node_key",
-      "header_node_input_index",
-      "confirmed_state_input_index",
+      "confirmed_state_input_outref",
       "confirmed_state_output_index",
       "m_settlement_redeemer_index",
       "merged_block_transactions_root",
@@ -238,11 +241,11 @@ describe("SDK canonical ABI fixtures", () => {
     ]);
 
     expectRoundTrip({ Init: { output_index: 2n } }, SDK.StateQueueRedeemer);
+    expectRoundTrip("LinkedListMutation", SDK.StateQueueSpendRedeemer);
     expect(
       roundTrip(
         {
           CommitBlockHeader: {
-            latest_block_input_index: 0n,
             new_block_output_index: 1n,
             continued_latest_block_output_index: 2n,
             operator: h28,
@@ -259,8 +262,7 @@ describe("SDK canonical ABI fixtures", () => {
         {
           MergeToConfirmedState: {
             header_node_key: h28,
-            header_node_input_index: 1n,
-            confirmed_state_input_index: 0n,
+            confirmed_state_input_outref: outputReference,
             confirmed_state_output_index: 0n,
             m_settlement_redeemer_index: 2n,
             merged_block_transactions_root: h32,
@@ -277,7 +279,6 @@ describe("SDK canonical ABI fixtures", () => {
         {
           RegisterOperator: {
             registering_operator: h28,
-            root_input_index: 0n,
             root_output_index: 0n,
             registered_node_output_index: 1n,
             hub_oracle_ref_input_index: 0n,
@@ -296,7 +297,6 @@ describe("SDK canonical ABI fixtures", () => {
           ActivateOperator: {
             new_active_operator_key: h28,
             new_active_operator_bond_unlock_time: null,
-            active_operator_anchor_element_input_index: 0n,
             active_operator_anchor_element_output_index: 0n,
             active_operator_inserted_node_output_index: 1n,
             registered_operators_redeemer_index: 2n,

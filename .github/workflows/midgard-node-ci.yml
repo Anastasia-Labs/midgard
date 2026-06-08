@@ -9,6 +9,7 @@ on:
       - "demo/midgard-sdk/**"
       - "demo/midgard-core/**"
       - "demo/midgard-validation/**"
+      - "onchain/aiken/**"
       - "demo/pnpm-lock.yaml"
       - "demo/pnpm-workspace.yaml"
       - ".github/workflows/midgard-node-ci.yml"
@@ -19,6 +20,7 @@ on:
       - "demo/midgard-sdk/**"
       - "demo/midgard-core/**"
       - "demo/midgard-validation/**"
+      - "onchain/aiken/**"
       - "demo/pnpm-lock.yaml"
       - "demo/pnpm-workspace.yaml"
       - ".github/workflows/midgard-node-ci.yml"
@@ -51,6 +53,7 @@ jobs:
       NETWORK: Preprod
       RUN_GENESIS_ON_STARTUP: "false"
       POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: 5432
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: midgard
@@ -59,6 +62,9 @@ jobs:
       TESTNET_GENESIS_WALLET_SEED_PHRASE_C: "cactus chalk grit reopen true slight whale sand law sibling silver fringe cement twist process bracket history leopard churn federal coral three hockey fossil"
     steps:
       - uses: actions/checkout@v4
+      - uses: aiken-lang/setup-aiken@v1.0.3
+        with:
+          version: v1.1.21
       - uses: pnpm/action-setup@v4
         with:
           version: 9
@@ -69,9 +75,16 @@ jobs:
           cache-dependency-path: demo/pnpm-lock.yaml
       - name: Install dependencies
         run: pnpm --dir demo install --frozen-lockfile
+      - name: Build testnet Aiken blueprint
+        working-directory: onchain/aiken
+        run: aiken build --env testnet
+      - name: Build lucid-midgard
+        run: pnpm --dir demo/lucid-midgard run build
       - name: Typecheck lucid-midgard
         run: pnpm --dir demo/lucid-midgard run typecheck
       - name: Test lucid-midgard
         run: pnpm --dir demo/lucid-midgard test
+      - name: Build midgard-sdk
+        run: pnpm --dir demo/midgard-sdk run build
       - name: Test Midgard node
         run: pnpm --dir demo/midgard-node test

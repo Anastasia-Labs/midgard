@@ -62,8 +62,8 @@ import {
   incompleteRemoveLastFraudulentBlockHeaderTxProgram,
   RETIRED_OPERATORS_ROOT_ASSET_NAME,
   requireInputIndex,
+  requireMintRedeemerIndex,
   requireReferenceInputIndex,
-  requireSpendRedeemerIndex,
   requireUniqueOutputIndex,
   SCHEDULER_ASSET_NAME,
   SchedulerDatum,
@@ -71,6 +71,7 @@ import {
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
   STATE_QUEUE_ROOT_ASSET_NAME,
   StateQueueRedeemer,
+  StateQueueSpendRedeemer,
   type StateQueueUTxO,
   utxoToStateQueueUTxO,
 } from "../src/index.js";
@@ -83,6 +84,10 @@ const alwaysSucceedsBlueprintPath = resolve(
   "demo/midgard-node/blueprints/always-succeeds/plutus.json",
 );
 const network: Network = "Preprod";
+const outputReference = {
+  transactionId: "44".repeat(32),
+  outputIndex: 0n,
+};
 const EMULATOR_PROTOCOL_PARAMETERS = {
   ...PROTOCOL_PARAMETERS_DEFAULT,
   maxTxSize: 65_536,
@@ -504,14 +509,12 @@ const makeCommitActiveOperatorRedeemer = ({
   contracts,
   operator,
   activeOperatorInput,
-  stateQueueInput,
   hubOracle,
   continuedActiveOperatorDatum,
 }: {
   readonly contracts: StateQueueTestContracts;
   readonly operator: string;
   readonly activeOperatorInput: UTxO;
-  readonly stateQueueInput: UTxO;
   readonly hubOracle: UTxO;
   readonly continuedActiveOperatorDatum: string;
 }): BuildTxWithRedeemer =>
@@ -538,15 +541,10 @@ const makeCommitActiveOperatorRedeemer = ({
             hubOracle,
             "emulator commit hub oracle",
           ),
-          state_queue_input_index: requireInputIndex(
+          state_queue_redeemer_index: requireMintRedeemerIndex(
             ctx,
-            stateQueueInput,
-            "emulator commit state queue",
-          ),
-          state_queue_redeemer_index: requireSpendRedeemerIndex(
-            ctx,
-            stateQueueInput,
-            "emulator commit state queue",
+            contracts.stateQueue.policyId,
+            "emulator commit state queue mint",
           ),
         },
       } satisfies ActiveOperatorSpendRedeemer,
@@ -593,7 +591,6 @@ const submitCommitHeaderTx = async ({
           contracts,
           operator,
           activeOperatorInput,
-          stateQueueInput: anchor.utxo,
           hubOracle,
           continuedActiveOperatorDatum,
         }),
@@ -641,7 +638,6 @@ describe("state-queue ABI", () => {
       roundTrip(
         {
           CommitBlockHeader: {
-            latest_block_input_index: 0n,
             new_block_output_index: 1n,
             continued_latest_block_output_index: 2n,
             operator: "11".repeat(28),
@@ -655,6 +651,9 @@ describe("state-queue ABI", () => {
     ).toMatchObject({
       CommitBlockHeader: { active_operators_redeemer_index: 5n },
     });
+    expect(roundTrip("LinkedListMutation", StateQueueSpendRedeemer)).toBe(
+      "LinkedListMutation",
+    );
 
     const removeRedeemer = {
       RemoveFraudulentBlockHeader: {
@@ -666,11 +665,10 @@ describe("state-queue ABI", () => {
             retired_operators_element_ref_input_index: 1n,
           },
         },
-        fraudulent_node_input_index: 2n,
         fraud_proof_ref_input_index: 3n,
         block_removal_approach: {
           RemoveLastFraudulentBlock: {
-            anchor_element_input_index: 4n,
+            anchor_element_input_outref: outputReference,
             anchor_element_output_index: 5n,
           },
         },
@@ -692,8 +690,8 @@ describe("state-queue ABI", () => {
             },
             block_removal_approach: {
               RemoveFraudulentBlocksLink: {
+                fraudulent_node_input_outref: outputReference,
                 fraudulent_node_output_index: 7n,
-                removed_block_input_index: 8n,
               },
             },
           },

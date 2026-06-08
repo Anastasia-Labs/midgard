@@ -5,7 +5,7 @@ use aiken/primitive/bytearray
 use midgard/fraud_proofs/native_tx/codec.{
   decode_definite_array_header_at, decode_definite_bytes_at, decode_int_at,
   decode_uint_at, encode_definite_bytes, encode_native_byte_list,
-  expect_deserialise, expect_preimage_hash, validity_from_code, validity_to_code,
+  expect_preimage_hash, validity_from_code, validity_to_code,
 }
 use midgard/fraud_proofs/native_tx/compact.{
   encode_native_tx_body_compact, encode_native_tx_compact,
@@ -202,7 +202,9 @@ pub fn encode_midgard_transaction(tx: MidgardTransaction) -> ByteArray {
     |> bytearray.concat(cbor.serialise(tx.validity |> validity_to_code))
 }
 
-fn decode_midgard_transaction_body_data(data: Data) -> MidgardTransactionBody {
+pub fn decode_midgard_transaction_body_data(
+  data: Data,
+) -> MidgardTransactionBody {
   expect [
     inputs_preimage_cbor_data, reference_inputs_preimage_cbor_data,
     outputs_preimage_cbor_data, fee_data, validity_interval_start_data,
@@ -239,7 +241,7 @@ fn decode_midgard_transaction_body_data(data: Data) -> MidgardTransactionBody {
   }
 }
 
-fn decode_midgard_transaction_witness_set_data(
+pub fn decode_midgard_transaction_witness_set_data(
   data: Data,
 ) -> MidgardTransactionWitnessSet {
   expect [

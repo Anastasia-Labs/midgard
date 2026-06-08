@@ -9,6 +9,7 @@ import { Effect } from "effect";
 import {
   AuthenticatedValidator,
   LucidError,
+  OutputReferenceSchema,
   POSIXTimeSchema,
 } from "@/common.js";
 import { authenticateUTxOs, AuthenticUTxO } from "@/internals.js";
@@ -41,8 +42,7 @@ export const SlashingReason = SlashingReasonSchema as unknown as SlashingReason;
 export const SlashingArgumentsSchema = Data.Object({
   slashed_operator: Data.Bytes({ minLength: 28, maxLength: 28 }),
   hub_oracle_ref_input_index: Data.Integer(),
-  slashed_operator_anchor_element_input_index: Data.Integer(),
-  slashed_operator_node_input_index: Data.Integer(),
+  slashed_operator_anchor_element_input_outref: OutputReferenceSchema,
   slashed_operator_anchor_element_output_index: Data.Integer(),
   slashing_reason: SlashingReasonSchema,
 });
@@ -79,7 +79,6 @@ export const ActiveOperatorSpendRedeemerSchema = Data.Enum([
       active_node_input_index: Data.Integer(),
       active_node_output_index: Data.Integer(),
       hub_oracle_ref_input_index: Data.Integer(),
-      state_queue_input_index: Data.Integer(),
       state_queue_redeemer_index: Data.Integer(),
     }),
   }),
@@ -118,16 +117,11 @@ export const ActiveOperatorMintRedeemerSchema = Data.Enum([
       output_index: Data.Integer(),
     }),
   }),
-  Data.Object({
-    Deinit: Data.Object({
-      input_index: Data.Integer(),
-    }),
-  }),
+  Data.Literal("Deinit"),
   Data.Object({
     ActivateOperator: Data.Object({
       new_active_operator_key: Data.Bytes({ minLength: 28, maxLength: 28 }),
       new_active_operator_bond_unlock_time: Data.Nullable(POSIXTimeSchema),
-      active_operator_anchor_element_input_index: Data.Integer(),
       active_operator_anchor_element_output_index: Data.Integer(),
       active_operator_inserted_node_output_index: Data.Integer(),
       registered_operators_redeemer_index: Data.Integer(),
@@ -137,8 +131,7 @@ export const ActiveOperatorMintRedeemerSchema = Data.Enum([
     RetireOperator: Data.Object({
       active_operator_key: Data.Bytes({ minLength: 28, maxLength: 28 }),
       hub_oracle_ref_input_index: Data.Integer(),
-      active_operator_anchor_element_input_index: Data.Integer(),
-      active_operator_removed_node_input_index: Data.Integer(),
+      active_operator_anchor_element_input_outref: OutputReferenceSchema,
       active_operator_anchor_element_output_index: Data.Integer(),
       retired_operators_redeemer_index: Data.Integer(),
       penalize_for_inactivity: Data.Boolean(),

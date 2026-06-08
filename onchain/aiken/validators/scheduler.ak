@@ -652,6 +652,7 @@ fn validate_operator_inactivity_and_get_its_link(
   expect
     {
       let
+        _state_queue_address,
         _state_queue_lovelace,
         m_header_hash,
         confirmed_state_or_header_data,
@@ -777,6 +778,7 @@ fn validate_root_is_reached(
 
   {
     let
+      _active_root_address,
       _active_root_lovelace,
       m_active_root_key,
       _active_root_data,
@@ -809,6 +811,7 @@ fn validate_operator_is_the_last_active_node(
 
   {
     let
+      _active_node_address,
       _active_node_lovelace,
       m_active_node_key,
       _active_node_data,
@@ -844,6 +847,7 @@ fn validate_new_shifts_node_is_next(
   // previous operator.
   {
     let
+      _active_node_address,
       _active_node_lovelace,
       m_active_node_key,
       _active_node_data,
@@ -955,6 +959,7 @@ fn validate_no_registered_operators_can_activate(
 
   {
     let
+      _registered_element_address,
       _registered_element_lovelace,
       m_registered_element_key,
       _registered_element_data,

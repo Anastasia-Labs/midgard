@@ -3,6 +3,7 @@
  */
 import { compareHex } from "@al-ft/midgard-core/hex";
 import * as SDK from "@/operator-lifecycle/primitives.js";
+import type { OutputReference } from "@/common.js";
 import { type UTxO } from "@lucid-evolution/lucid";
 
 export type ReferenceScriptPublication = {
@@ -17,7 +18,6 @@ export type NodeWithDatum = {
 };
 
 export type RegisterRedeemerLayout = {
-  readonly rootInputIndex: bigint;
   readonly hubOracleRefInputIndex: bigint;
   readonly activeOperatorRefInputIndex: bigint;
   readonly retiredOperatorRefInputIndex: bigint;
@@ -30,10 +30,8 @@ export type ActivateRedeemerLayout = {
   readonly retiredOperatorRefInputIndex: bigint;
   readonly registeredOperatorsRedeemerIndex: bigint;
   readonly activeOperatorsRedeemerIndex: bigint;
-  readonly registeredOperatorsRemovedNodeInputIndex: bigint;
-  readonly registeredOperatorsAnchorNodeInputIndex: bigint;
+  readonly registeredOperatorsAnchorNodeInputOutRef: OutputReference;
   readonly registeredOperatorsAnchorNodeOutputIndex: bigint;
-  readonly activeOperatorsAnchorNodeInputIndex: bigint;
   readonly activeOperatorsInsertedNodeOutputIndex: bigint;
   readonly activeOperatorsAnchorNodeOutputIndex: bigint;
 };
@@ -57,7 +55,7 @@ const isPolicyAsset = (unit: string, quantity: bigint, policyId: string) =>
 export const registerLayoutToLogString = (
   layout: RegisterRedeemerLayout,
 ): string =>
-  `root_in=${layout.rootInputIndex.toString()},hub_ref=${layout.hubOracleRefInputIndex.toString()},active_ref=${layout.activeOperatorRefInputIndex.toString()},retired_ref=${layout.retiredOperatorRefInputIndex.toString()},prepended_out=${layout.prependedNodeOutputIndex.toString()},anchor_out=${layout.anchorNodeOutputIndex.toString()}`;
+  `hub_ref=${layout.hubOracleRefInputIndex.toString()},active_ref=${layout.activeOperatorRefInputIndex.toString()},retired_ref=${layout.retiredOperatorRefInputIndex.toString()},prepended_out=${layout.prependedNodeOutputIndex.toString()},anchor_out=${layout.anchorNodeOutputIndex.toString()}`;
 
 /**
  * Formats an activate-layout derivation for logs.
@@ -70,10 +68,8 @@ export const activateLayoutToLogString = (
     `retired_ref=${layout.retiredOperatorRefInputIndex.toString()}`,
     `registered_redeemer=${layout.registeredOperatorsRedeemerIndex.toString()}`,
     `active_redeemer=${layout.activeOperatorsRedeemerIndex.toString()}`,
-    `registered_removed_in=${layout.registeredOperatorsRemovedNodeInputIndex.toString()}`,
-    `registered_anchor_in=${layout.registeredOperatorsAnchorNodeInputIndex.toString()}`,
+    `registered_anchor_outref=${layout.registeredOperatorsAnchorNodeInputOutRef.transactionId}#${layout.registeredOperatorsAnchorNodeInputOutRef.outputIndex.toString()}`,
     `registered_anchor_out=${layout.registeredOperatorsAnchorNodeOutputIndex.toString()}`,
-    `active_anchor_in=${layout.activeOperatorsAnchorNodeInputIndex.toString()}`,
     `active_inserted_out=${layout.activeOperatorsInsertedNodeOutputIndex.toString()}`,
     `active_anchor_out=${layout.activeOperatorsAnchorNodeOutputIndex.toString()}`,
   ].join(",");

@@ -52,6 +52,7 @@ import {
   HubOracleDatum,
   incompleteEmulatorCommitBlockHeaderTxProgram,
   makeHubOracleDatum,
+  outputReferenceFromUTxO,
   type MidgardValidators,
   type MintingValidator,
   parseFaultProofBlueprint,
@@ -63,7 +64,6 @@ import {
   requireReferenceInputIndex,
   requireMintRedeemerIndex,
   requireOwnMintPurpose,
-  requireSpendRedeemerIndex,
   requireUniqueOutputIndex,
   SCHEDULER_ASSET_NAME,
   SchedulerDatum,
@@ -1085,7 +1085,6 @@ const submitSetupTx = async ({
         ActivateOperator: {
           new_active_operator_key: header.operatorVkey,
           new_active_operator_bond_unlock_time: null,
-          active_operator_anchor_element_input_index: 0n,
           active_operator_anchor_element_output_index:
             ACTIVE_OPERATOR_ACTIVATION_OUTPUT_INDEX.root,
           active_operator_inserted_node_output_index:
@@ -1110,8 +1109,9 @@ const submitSetupTx = async ({
       {
         ActivateOperator: {
           activating_operator: header.operatorVkey,
-          anchor_element_input_index: 0n,
-          removed_node_input_index: 0n,
+          anchor_element_input_outref: outputReferenceFromUTxO(
+            initialActiveOperatorsRoot,
+          ),
           anchor_element_output_index:
             ACTIVE_OPERATOR_ACTIVATION_OUTPUT_INDEX.root,
           hub_oracle_ref_input_index: 0n,
@@ -1326,10 +1326,10 @@ const submitSetupTx = async ({
             stateQueueRoot.utxo,
             "commit state-queue root input",
           ),
-          state_queue_redeemer_index: requireSpendRedeemerIndex(
+          state_queue_redeemer_index: requireMintRedeemerIndex(
             ctx,
-            stateQueueRoot.utxo,
-            "commit state-queue spend redeemer",
+            contracts.stateQueue.policyId,
+            "commit state-queue mint redeemer",
           ),
         },
       } satisfies ActiveOperatorSpendRedeemer,
@@ -1501,10 +1501,10 @@ const submitSuccessorBlockTx = async ({
             anchorBlock.utxo,
             "successor commit state-queue anchor input",
           ),
-          state_queue_redeemer_index: requireSpendRedeemerIndex(
+          state_queue_redeemer_index: requireMintRedeemerIndex(
             ctx,
-            anchorBlock.utxo,
-            "successor commit state-queue spend redeemer",
+            contracts.stateQueue.policyId,
+            "successor commit state-queue mint redeemer",
           ),
         },
       } satisfies ActiveOperatorSpendRedeemer,

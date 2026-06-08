@@ -3,6 +3,7 @@ use aiken/crypto.{VerificationKeyHash}
 use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
 use cardano/assets.{AssetName, PolicyId}
+use cardano/transaction.{OutputReference}
 use midgard/common/types.{PosixTime}
 use midgard/operator_directory.{SlashingArguments}
 
@@ -41,10 +42,9 @@ pub type OperatorOrigin {
 
 pub type MintRedeemer {
   Init { output_index: Int }
-  Deinit { input_index: Int }
+  Deinit
   RegisterOperator {
     registering_operator: VerificationKeyHash,
-    root_input_index: Int,
     root_output_index: Int,
     registered_node_output_index: Int,
     hub_oracle_ref_input_index: Int,
@@ -53,8 +53,7 @@ pub type MintRedeemer {
   }
   ActivateOperator {
     activating_operator: VerificationKeyHash,
-    anchor_element_input_index: Int,
-    removed_node_input_index: Int,
+    anchor_element_input_outref: OutputReference,
     anchor_element_output_index: Int,
     hub_oracle_ref_input_index: Int,
     retired_operators_element_ref_input_index: Int,
@@ -62,14 +61,12 @@ pub type MintRedeemer {
   }
   DeregisterOperator {
     deregistering_operator: VerificationKeyHash,
-    anchor_element_input_index: Int,
-    removed_node_input_index: Int,
+    anchor_element_input_outref: OutputReference,
     anchor_element_output_index: Int,
   }
   SlashDuplicateOperator {
     duplicate_operator: VerificationKeyHash,
-    anchor_element_input_index: Int,
-    removed_node_input_index: Int,
+    anchor_element_input_outref: OutputReference,
     anchor_element_output_index: Int,
     duplicate_node_ref_input_index: Int,
     duplicate_operator_status: DuplicateOperatorStatus,
@@ -88,11 +85,11 @@ pub fn node_key_to_activation_time(node_key: ByteArray) -> PosixTime {
 }
 
 pub fn finalize_linked_list(
-  eval: linked_list.Eval,
+  eval: linked_list.ElementEval<Bool>,
   nft_policy_id: PolicyId,
 ) -> Bool {
   eval
-    |> linked_list.run_eval_with(
+    |> linked_list.run_element_with(
         nft_policy_id,
         root_asset_name,
         node_asset_name_prefix,

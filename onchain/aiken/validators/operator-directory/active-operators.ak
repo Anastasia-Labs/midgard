@@ -49,7 +49,6 @@ validator spend(
         active_node_input_index,
         active_node_output_index,
         hub_oracle_ref_input_index,
-        state_queue_input_index,
         state_queue_redeemer_index,
       } -> {
         let Transaction {
@@ -83,20 +82,18 @@ validator spend(
             validity_range,
           )
 
-        // 2. Transaction must spend a UTxO from state queue with the Commit
-        //    Block Header redeemer. The operator's signature should be
+        // 2. State queue's minting script must be invoked with the
+        //    CommitBlockHeader redeemer. The operator's signature should be
         //    validated there.
         expect state_queue.CommitBlockHeader {
           operator: state_queue_redeemer_operator,
           ..
         } =
-          utils.get_spending_redeemer_data_at(
-            hub_datum.state_queue_addr,
-            state_queue_input_index,
-            state_queue_redeemer_index,
-            inputs,
-            redeemers,
-          )
+          redeemers
+            |> utils.get_redeemer_at(
+                expected_purpose: Mint(hub_datum.state_queue),
+                redeemer_index: state_queue_redeemer_index,
+              )
 
         // 3. The operator specified in state queue's redeemer must match the
         //    key of the spending active operator node.
@@ -235,6 +232,7 @@ validator spend(
         // 3. Spending and reproducing the linked list node must be proper.
         {
           let
+            _active_node_address,
             lovelace_change,
             m_operator,
             active_node_input_data,
@@ -275,17 +273,18 @@ validator spend(
             }
           expect active_node_output_data == expected_output_node_data
 
-          // 8. The new strikes count must not exceed the maximum allowed. This
-          //    is there to cover one specific edge case: If the appointed
-          //    operator is the only member of the active operators set,
-          //    inactivity causes the scheduler to rewind back to the same
-          //    operator. Allowing this to happen indefinitely, gives an
-          //    attacker the opportunity to constantly spend the operator's node
-          //    UTxO and prevent the retirement transaction to go through.
+          // 8. The new strikes count must not exceed the maximum allowed.
+          //    This is there to cover one specific edge case: If the
+          //    appointed operator is the only member of the active operators
+          //    set, inactivity causes the scheduler to rewind back to the
+          //    same operator. Allowing this to happen indefinitely, gives an
+          //    attacker the opportunity to constantly spend the operator's
+          //    node UTxO and prevent the retirement transaction to go
+          //    through.
           //
           //    With this check in place, the operator's UTxO cannot be spent
-          //    for strikes any further, and the node will be free for transfer
-          //    to the retired set.
+          //    for strikes any further, and the node will be free for
+          //    transfer to the retired set.
           expect new_inactivity_strikes <= max_inactivity_strikes
 
           // Done.
@@ -316,18 +315,11 @@ validator mint(
           output_index,
           self,
         )
-      Deinit { input_index } ->
-        deinit(
-          hub_oracle_script_hash,
-          own_policy_id,
-          root_asset_name,
-          input_index,
-          self,
-        )
+      Deinit ->
+        deinit(hub_oracle_script_hash, own_policy_id, root_asset_name, self)
       ActivateOperator {
         new_active_operator_key,
         new_active_operator_bond_unlock_time,
-        active_operator_anchor_element_input_index,
         active_operator_anchor_element_output_index,
         active_operator_inserted_node_output_index,
         registered_operators_redeemer_index,
@@ -351,7 +343,6 @@ validator mint(
                 } = registered_operators_redeemer_data
                 (activating_operator, False)
               },
-              active_operator_anchor_element_input_index,
               active_operator_anchor_element_output_index,
               active_operator_inserted_node_output_index,
               inputs,
@@ -377,8 +368,7 @@ validator mint(
       RetireOperator {
         active_operator_key,
         hub_oracle_ref_input_index,
-        active_operator_anchor_element_input_index,
-        active_operator_removed_node_input_index,
+        active_operator_anchor_element_input_outref,
         active_operator_anchor_element_output_index,
         retired_operators_redeemer_index,
         penalize_for_inactivity,
@@ -416,32 +406,30 @@ validator mint(
             hub_oracle_ref_input_index,
           )
 
-        // 3. Specified inputs and output for removal of the active operator's
-        //    node from the linked list must exist at their indices.
-        expect Some(active_operator_anchor_element_input) =
-          inputs |> list.at(active_operator_anchor_element_input_index)
-        expect Some(active_operator_removed_node_input) =
-          inputs |> list.at(active_operator_removed_node_input_index)
+        // 3. Specified output for removal of the active operator's node from
+        //    the linked list must exist at its index.
         expect Some(active_operator_anchor_element_output) =
           outputs |> list.at(active_operator_anchor_element_output_index)
 
         // 4. Linked list's removal logic must be valid for the specified
-        //    inputs and output.
+        //    anchor outref and output.
         {
           let
+            _anchor_input,
             anchor_lovelace_change,
             m_anchor_key,
             _anchor_data,
+            _active_operator_removed_node_input,
             _active_operator_lovelace,
             active_operator_node_key,
             active_operator_node_data,
             active_operator_node_link,
           <-
             linked_list.remove(
-              active_operator_anchor_element_input,
-              active_operator_removed_node_input,
-              active_operator_anchor_element_output,
-              mint,
+              anchor_input_outref: active_operator_anchor_element_input_outref,
+              continued_anchor_element_output: active_operator_anchor_element_output,
+              inputs: inputs,
+              tx_mint: mint,
             )
 
           // 5. Anchor element's ADA must be preserved.
@@ -472,14 +460,14 @@ validator mint(
 
           // 8. The `bond_unlock_time` redeemer argument from the retired
           //    operators directory must match the removing node's datum. This
-          //    allows the minting of the retired operator's node to be able to
-          //    rely on its correctness.
+          //    allows the minting of the retired operator's node to be able
+          //    to rely on its correctness.
           expect
             removing_nodes_bond_unlock_time == retired_operators_redeemer_bond_unlock_time
 
           if penalize_for_inactivity {
-            // 9a. Since retired operators minting script relies on the penalty
-            //     flag here, its correctness must be verified.
+            // 9a. Since retired operators minting script relies on the
+            //     penalty flag here, its correctness must be verified.
             expect inactivity_strikes >= max_inactivity_strikes
 
             // 10a. With enough strikes, anyone can partially slash the
@@ -576,6 +564,7 @@ fn spend_for_updating_bond_unlock_time(
   //    reproduced without affecting the linked list structure.
   {
     let
+      _active_node_address,
       lovelace_change,
       m_operator,
       active_node_input_data,

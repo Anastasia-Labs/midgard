@@ -14,7 +14,9 @@ import {
   HUB_ORACLE_ASSET_NAME,
   incompleteRemoveFraudulentBlocksLinkTxProgram,
   incompleteRemoveLastFraudulentBlockHeaderTxProgram,
+  outputReferenceFromUTxO,
   type LinkedListNodeView,
+  type OutputReference,
   parseFaultProofBlueprint,
   REGISTERED_OPERATORS_ROOT_ASSET_NAME,
   RETIRED_OPERATOR_NODE_ASSET_NAME_PREFIX,
@@ -124,16 +126,13 @@ type RemoveFraudulentBlockContracts = {
 };
 
 type RemoveFraudulentBlockLayout = {
-  readonly fraudulentNodeInputIndex: bigint;
   readonly fraudProofRefInputIndex: bigint;
   readonly stateQueueRedeemerTxInfoIndex: bigint;
   readonly activeOperatorsRedeemerTxInfoIndex?: bigint;
   readonly retiredOperatorsRedeemerTxInfoIndex?: bigint;
   readonly activeOperatorsElementRefInputIndex?: bigint;
   readonly retiredOperatorsElementRefInputIndex?: bigint;
-  readonly anchorElementInputIndex?: bigint;
   readonly anchorElementOutputIndex?: bigint;
-  readonly removedBlockInputIndex?: bigint;
   readonly fraudulentNodeOutputIndex?: bigint;
 };
 
@@ -141,8 +140,7 @@ type OperatorSlashingLayout = {
   readonly activeOperatorsRedeemerTxInfoIndex?: bigint;
   readonly retiredOperatorsRedeemerTxInfoIndex?: bigint;
   readonly stateQueueRedeemerTxInfoIndex: bigint;
-  readonly operatorDirectoryAnchorInputIndex: bigint;
-  readonly operatorDirectoryNodeInputIndex: bigint;
+  readonly operatorDirectoryAnchorInputOutRef: OutputReference;
   readonly operatorDirectoryAnchorOutputIndex: bigint;
   readonly schedulerRefInputIndex?: bigint;
   readonly schedulerInputIndex?: bigint;
@@ -154,16 +152,13 @@ type OperatorSlashingLayout = {
 };
 
 const REMOVE_LAYOUT_KEYS = [
-  "fraudulentNodeInputIndex",
   "fraudProofRefInputIndex",
   "stateQueueRedeemerTxInfoIndex",
   "activeOperatorsRedeemerTxInfoIndex",
   "retiredOperatorsRedeemerTxInfoIndex",
   "activeOperatorsElementRefInputIndex",
   "retiredOperatorsElementRefInputIndex",
-  "anchorElementInputIndex",
   "anchorElementOutputIndex",
-  "removedBlockInputIndex",
   "fraudulentNodeOutputIndex",
 ] as const satisfies readonly (keyof RemoveFraudulentBlockLayout)[];
 
@@ -1211,10 +1206,8 @@ const makeActiveOperatorsMintRedeemerFromPlan =
         slashing_arguments: {
           slashed_operator: operator,
           hub_oracle_ref_input_index: layout.hubOracleRefInputIndex,
-          slashed_operator_anchor_element_input_index:
-            layout.operatorDirectoryAnchorInputIndex,
-          slashed_operator_node_input_index:
-            layout.operatorDirectoryNodeInputIndex,
+          slashed_operator_anchor_element_input_outref:
+            layout.operatorDirectoryAnchorInputOutRef,
           slashed_operator_anchor_element_output_index:
             layout.operatorDirectoryAnchorOutputIndex,
           slashing_reason: {
@@ -1236,10 +1229,8 @@ const makeRetiredOperatorsMintRedeemerFromPlan =
         {
           slashed_operator: operator,
           hub_oracle_ref_input_index: layout.hubOracleRefInputIndex,
-          slashed_operator_anchor_element_input_index:
-            layout.operatorDirectoryAnchorInputIndex,
-          slashed_operator_node_input_index:
-            layout.operatorDirectoryNodeInputIndex,
+          slashed_operator_anchor_element_input_outref:
+            layout.operatorDirectoryAnchorInputOutRef,
           slashed_operator_anchor_element_output_index:
             layout.operatorDirectoryAnchorOutputIndex,
           slashing_reason: {
@@ -1683,7 +1674,6 @@ const deriveOperatorSlashingLayoutFromRedeemerContext = ({
 }): OperatorSlashingLayout => {
   const {
     operatorDirectoryAnchor,
-    operatorDirectoryNode,
     hubOracle,
     operatorDirectoryAnchorUnit,
     slashedOperatorDirectory,
@@ -1711,15 +1701,8 @@ const deriveOperatorSlashingLayoutFromRedeemerContext = ({
       contracts.stateQueuePolicyId,
       "state-queue remove fraudulent block",
     ),
-    operatorDirectoryAnchorInputIndex: requireInputIndex(
-      ctx,
+    operatorDirectoryAnchorInputOutRef: outputReferenceFromUTxO(
       operatorDirectoryAnchor,
-      `${slashingDirectoryLabel} anchor input`,
-    ),
-    operatorDirectoryNodeInputIndex: requireInputIndex(
-      ctx,
-      operatorDirectoryNode,
-      `${slashingDirectoryLabel} node input`,
     ),
     operatorDirectoryAnchorOutputIndex: requireOutputIndexByUnit({
       outputs: ctx.outputs,
@@ -1908,11 +1891,6 @@ const makeStateQueueRemoveMintRedeemer = ({
     const { slashingApproach, layout: slashingLayout } =
       resolveStateQueueSlashingApproach({ ctx, slashing, contracts });
     const fraudulentNodeInput = kind === "remove-successor" ? anchor : removed;
-    const fraudulentNodeInputIndex = requireInputIndex(
-      ctx,
-      fraudulentNodeInput.utxo,
-      "remove-fraudulent-block fraudulent state-queue node",
-    );
     const fraudProofRefInputIndex = requireReferenceInputIndex(
       ctx,
       fraudProofRefInput,
@@ -1923,7 +1901,6 @@ const makeStateQueueRemoveMintRedeemer = ({
       anchor.assetName,
     );
     const commonLayout = {
-      fraudulentNodeInputIndex,
       fraudProofRefInputIndex,
       stateQueueRedeemerTxInfoIndex,
       ...slashingLayout,
@@ -1932,16 +1909,10 @@ const makeStateQueueRemoveMintRedeemer = ({
       fraudulent_operator: fraudulentOperator,
       fraudulent_blocks_header_hash: fraudulentBlocksHeaderHash,
       slashing_approach: slashingApproach,
-      fraudulent_node_input_index: fraudulentNodeInputIndex,
       fraud_proof_ref_input_index: fraudProofRefInputIndex,
     };
 
     if (kind === "remove-successor") {
-      const removedBlockInputIndex = requireInputIndex(
-        ctx,
-        removed.utxo,
-        "remove-fraudulent-block removed successor",
-      );
       const fraudulentNodeOutputIndex = requireOutputIndexByUnit({
         outputs: ctx.outputs,
         address: contracts.stateQueueAddress,
@@ -1950,7 +1921,6 @@ const makeStateQueueRemoveMintRedeemer = ({
       });
       onLayout({
         ...commonLayout,
-        removedBlockInputIndex,
         fraudulentNodeOutputIndex,
       });
       return Data.to(
@@ -1959,8 +1929,10 @@ const makeStateQueueRemoveMintRedeemer = ({
             ...commonRedeemer,
             block_removal_approach: {
               RemoveFraudulentBlocksLink: {
+                fraudulent_node_input_outref: outputReferenceFromUTxO(
+                  fraudulentNodeInput.utxo,
+                ),
                 fraudulent_node_output_index: fraudulentNodeOutputIndex,
-                removed_block_input_index: removedBlockInputIndex,
               },
             },
           },
@@ -1969,11 +1941,6 @@ const makeStateQueueRemoveMintRedeemer = ({
       );
     }
 
-    const anchorElementInputIndex = requireInputIndex(
-      ctx,
-      anchor.utxo,
-      "remove-fraudulent-block predecessor anchor",
-    );
     const anchorElementOutputIndex = requireOutputIndexByUnit({
       outputs: ctx.outputs,
       address: contracts.stateQueueAddress,
@@ -1982,7 +1949,6 @@ const makeStateQueueRemoveMintRedeemer = ({
     });
     onLayout({
       ...commonLayout,
-      anchorElementInputIndex,
       anchorElementOutputIndex,
     });
     return Data.to(
@@ -1991,7 +1957,7 @@ const makeStateQueueRemoveMintRedeemer = ({
           ...commonRedeemer,
           block_removal_approach: {
             RemoveLastFraudulentBlock: {
-              anchor_element_input_index: anchorElementInputIndex,
+              anchor_element_input_outref: outputReferenceFromUTxO(anchor.utxo),
               anchor_element_output_index: anchorElementOutputIndex,
             },
           },

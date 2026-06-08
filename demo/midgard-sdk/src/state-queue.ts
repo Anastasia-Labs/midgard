@@ -26,6 +26,8 @@ import {
   MerkleRoot,
   MerkleRootSchema,
   MissingDatumError,
+  OutputReferenceSchema,
+  outputReferenceFromUTxO,
   POSIXTime,
   UnauthenticUtxoError,
   utxosAtByNFTPolicyId,
@@ -38,11 +40,13 @@ import {
   GENESIS_PROTOCOL_VERSION,
 } from "@/ledger-constants.js";
 import {
+  castStateQueueNodeToData,
   ConfirmedState,
   getHeaderFromStateQueueDatum,
   hashBlockHeader,
   Header,
   HeaderHashSchema,
+  NO_DA_ATTESTATION,
 } from "@/ledger-state.js";
 import {
   encodeLinkedListNodeView,
@@ -102,14 +106,14 @@ export const SlashingApproach =
 export const BlockRemovalApproachSchema = Data.Enum([
   Data.Object({
     RemoveLastFraudulentBlock: Data.Object({
-      anchor_element_input_index: Data.Integer(),
+      anchor_element_input_outref: OutputReferenceSchema,
       anchor_element_output_index: Data.Integer(),
     }),
   }),
   Data.Object({
     RemoveFraudulentBlocksLink: Data.Object({
+      fraudulent_node_input_outref: OutputReferenceSchema,
       fraudulent_node_output_index: Data.Integer(),
-      removed_block_input_index: Data.Integer(),
     }),
   }),
 ]);
@@ -125,14 +129,9 @@ export const StateQueueRedeemerSchema = Data.Enum([
       output_index: Data.Integer(),
     }),
   }),
-  Data.Object({
-    Deinit: Data.Object({
-      input_index: Data.Integer(),
-    }),
-  }),
+  Data.Literal("Deinit"),
   Data.Object({
     CommitBlockHeader: Data.Object({
-      latest_block_input_index: Data.Integer(),
       new_block_output_index: Data.Integer(),
       continued_latest_block_output_index: Data.Integer(),
       operator: Data.Bytes({ minLength: 28, maxLength: 28 }),
@@ -144,8 +143,7 @@ export const StateQueueRedeemerSchema = Data.Enum([
   Data.Object({
     MergeToConfirmedState: Data.Object({
       header_node_key: Data.Bytes(),
-      header_node_input_index: Data.Integer(),
-      confirmed_state_input_index: Data.Integer(),
+      confirmed_state_input_outref: OutputReferenceSchema,
       confirmed_state_output_index: Data.Integer(),
       m_settlement_redeemer_index: Data.Nullable(Data.Integer()),
       merged_block_transactions_root: MerkleRootSchema,
@@ -158,7 +156,6 @@ export const StateQueueRedeemerSchema = Data.Enum([
       fraudulent_operator: Data.Bytes({ minLength: 28, maxLength: 28 }),
       fraudulent_blocks_header_hash: HeaderHashSchema,
       slashing_approach: SlashingApproachSchema,
-      fraudulent_node_input_index: Data.Integer(),
       fraud_proof_ref_input_index: Data.Integer(),
       block_removal_approach: BlockRemovalApproachSchema,
     }),
@@ -167,6 +164,26 @@ export const StateQueueRedeemerSchema = Data.Enum([
 export type StateQueueRedeemer = Data.Static<typeof StateQueueRedeemerSchema>;
 export const StateQueueRedeemer =
   StateQueueRedeemerSchema as unknown as StateQueueRedeemer;
+
+export const StateQueueSpendRedeemerSchema = Data.Enum([
+  Data.Literal("LinkedListMutation"),
+  Data.Object({
+    AttachDaAttestation: Data.Object({
+      state_queue_input_index: Data.Integer(),
+      da_attestation_mint_redeemer_index: Data.Integer(),
+    }),
+  }),
+]);
+export type StateQueueSpendRedeemer = Data.Static<
+  typeof StateQueueSpendRedeemerSchema
+>;
+export const StateQueueSpendRedeemer =
+  StateQueueSpendRedeemerSchema as unknown as StateQueueSpendRedeemer;
+
+const STATE_QUEUE_LINKED_LIST_MUTATION_REDEEMER = Data.to(
+  "LinkedListMutation" as never,
+  StateQueueSpendRedeemer as never,
+);
 
 export type StateQueueUTxO = {
   utxo: UTxO;
@@ -712,7 +729,10 @@ const buildStateQueueRemovalTx = (
     tx = tx.collectFrom([...additionalInputs]);
   }
   tx = tx
-    .collectFrom([...params.collectedStateQueueInputs], Data.void())
+    .collectFrom(
+      [...params.collectedStateQueueInputs],
+      STATE_QUEUE_LINKED_LIST_MUTATION_REDEEMER,
+    )
     .readFrom(referenceInputs)
     .pay.ToContract(
       stateQueueAddress,
@@ -754,7 +774,10 @@ export const incompleteEmulatorCommitBlockHeaderTxProgram = (
     const newBlockDatum: LinkedListNodeView = {
       key: { Key: { key: newHeaderHash } },
       next: "Empty",
-      data: Data.castTo(params.newHeader, Header),
+      data: castStateQueueNodeToData({
+        header: params.newHeader,
+        da_attestation: NO_DA_ATTESTATION,
+      }) as LinkedListNodeView["data"],
     };
     const newBlockDatumCbor = encodeLinkedListNodeView(newBlockDatum);
     const continuedAnchorDatumCbor =
@@ -767,11 +790,6 @@ export const incompleteEmulatorCommitBlockHeaderTxProgram = (
       Data.to(
         {
           CommitBlockHeader: {
-            latest_block_input_index: requireInputIndex(
-              ctx,
-              params.anchorUTxO.utxo,
-              "emulator state-queue commit latest block",
-            ),
             new_block_output_index: requireUniqueOutputIndex(
               ctx.outputs,
               (output) =>
@@ -817,7 +835,10 @@ export const incompleteEmulatorCommitBlockHeaderTxProgram = (
       tx = tx.collectFrom([...additionalInputs]);
     }
     tx = tx
-      .collectFrom([params.anchorUTxO.utxo], stateQueueCommitRedeemer)
+      .collectFrom(
+        [params.anchorUTxO.utxo],
+        STATE_QUEUE_LINKED_LIST_MUTATION_REDEEMER,
+      )
       .collectFrom(
         [params.activeOperatorInput],
         encodeActiveOperatorSpendRedeemer(params.activeOperatorSpendRedeemer),
@@ -909,11 +930,6 @@ export const incompleteRemoveLastFraudulentBlockHeaderTxProgram = (
             ctx,
             params.slashing,
           ),
-          fraudulent_node_input_index: requireInputIndex(
-            ctx,
-            params.fraudulentBlockUTxO.utxo,
-            "emulator state-queue remove fraudulent block",
-          ),
           fraud_proof_ref_input_index: requireReferenceInputIndex(
             ctx,
             params.fraudProofRefInput,
@@ -921,10 +937,8 @@ export const incompleteRemoveLastFraudulentBlockHeaderTxProgram = (
           ),
           block_removal_approach: {
             RemoveLastFraudulentBlock: {
-              anchor_element_input_index: requireInputIndex(
-                ctx,
+              anchor_element_input_outref: outputReferenceFromUTxO(
                 params.anchorUTxO.utxo,
-                "emulator state-queue remove anchor",
               ),
               anchor_element_output_index: requireUniqueOutputIndex(
                 ctx.outputs,
@@ -1018,11 +1032,6 @@ export const incompleteRemoveFraudulentBlocksLinkTxProgram = (
             ctx,
             params.slashing,
           ),
-          fraudulent_node_input_index: requireInputIndex(
-            ctx,
-            params.fraudulentBlockUTxO.utxo,
-            "state-queue remove fraud-proved block",
-          ),
           fraud_proof_ref_input_index: requireReferenceInputIndex(
             ctx,
             params.fraudProofRefInput,
@@ -1030,6 +1039,9 @@ export const incompleteRemoveFraudulentBlocksLinkTxProgram = (
           ),
           block_removal_approach: {
             RemoveFraudulentBlocksLink: {
+              fraudulent_node_input_outref: outputReferenceFromUTxO(
+                params.fraudulentBlockUTxO.utxo,
+              ),
               fraudulent_node_output_index: requireUniqueOutputIndex(
                 ctx.outputs,
                 (output) =>
@@ -1040,11 +1052,6 @@ export const incompleteRemoveFraudulentBlocksLinkTxProgram = (
                   ) &&
                   (output.assets[continuedFraudulentNodeUnit] ?? 0n) === 1n,
                 "state-queue remove continued fraud-proved block",
-              ),
-              removed_block_input_index: requireInputIndex(
-                ctx,
-                params.removedBlockUTxO.utxo,
-                "state-queue remove successor block",
               ),
             },
           },

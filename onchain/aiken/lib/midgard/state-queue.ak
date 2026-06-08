@@ -3,7 +3,7 @@ use aiken/crypto.{VerificationKeyHash}
 use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
 use cardano/assets.{AssetName, PolicyId}
-use cardano/transaction.{Input, Output}
+use cardano/transaction.{Input, Output, OutputReference}
 use midgard/ledger_state.{
   ConfirmedState, DepositsRoot, Header, HeaderHash, MidgardTxsRoot,
   WithdrawalsRoot,
@@ -34,7 +34,7 @@ pub type Datum =
   linked_list.Element<ConfirmedState, StateQueueNode>
 
 pub type SpendRedeemer {
-  LinkedListMutation { state_queue_mint_redeemer_index: Int }
+  LinkedListMutation
   AttachDaAttestation {
     state_queue_input_index: Int,
     da_attestation_mint_redeemer_index: Int,
@@ -52,20 +52,19 @@ pub type SlashingApproach {
 
 pub type BlockRemovalApproach {
   RemoveLastFraudulentBlock {
-    anchor_element_input_index: Int,
+    anchor_element_input_outref: OutputReference,
     anchor_element_output_index: Int,
   }
   RemoveFraudulentBlocksLink {
+    fraudulent_node_input_outref: OutputReference,
     fraudulent_node_output_index: Int,
-    removed_block_input_index: Int,
   }
 }
 
 pub type MintRedeemer {
   Init { output_index: Int }
-  Deinit { input_index: Int }
+  Deinit
   CommitBlockHeader {
-    latest_block_input_index: Int,
     new_block_output_index: Int,
     continued_latest_block_output_index: Int,
     operator: VerificationKeyHash,
@@ -75,8 +74,7 @@ pub type MintRedeemer {
   }
   MergeToConfirmedState {
     header_node_key: ByteArray,
-    header_node_input_index: Int,
-    confirmed_state_input_index: Int,
+    confirmed_state_input_outref: OutputReference,
     confirmed_state_output_index: Int,
     m_settlement_redeemer_index: Option<Int>,
     merged_block_transactions_root: MidgardTxsRoot,
@@ -87,7 +85,6 @@ pub type MintRedeemer {
     fraudulent_operator: VerificationKeyHash,
     fraudulent_blocks_header_hash: HeaderHash,
     slashing_approach: SlashingApproach,
-    fraudulent_node_input_index: Int,
     fraud_proof_ref_input_index: Int,
     block_removal_approach: BlockRemovalApproach,
   }
@@ -102,6 +99,7 @@ pub fn get_confirmed_state(
     reference_inputs |> list.at(state_queue_node_ref_input_index)
   let linked_list_eval = {
     let
+      _state_queue_element_address,
       _state_queue_element_lovelace,
       m_state_queue_element_key,
       state_queue_element_data,
@@ -146,6 +144,7 @@ pub fn get_state_queue_node(
     reference_inputs |> list.at(state_queue_node_ref_input_index)
   let linked_list_eval = {
     let
+      _state_queue_element_address,
       _state_queue_element_lovelace,
       m_state_queue_element_key,
       state_queue_element_data,
@@ -171,6 +170,7 @@ fn get_node_info(
 ) -> result {
   let linked_list_eval = {
     let
+      _address,
       lovelace,
       m_header_hash,
       data,
@@ -249,11 +249,11 @@ pub fn get_prev_header_hash_of_node(
 }
 
 pub fn finalize_linked_list(
-  eval: linked_list.Eval,
+  eval: linked_list.ElementEval<Bool>,
   state_queue_policy: PolicyId,
 ) -> Bool {
   eval
-    |> linked_list.run_eval_with(
+    |> linked_list.run_element_with(
         state_queue_policy,
         confirmed_state_asset_name,
         block_asset_name_prefix,

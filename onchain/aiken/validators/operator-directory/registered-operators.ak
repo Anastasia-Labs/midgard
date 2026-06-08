@@ -57,17 +57,10 @@ validator mint(
           output_index,
           self,
         )
-      Deinit { input_index } ->
-        deinit(
-          hub_oracle_script_hash,
-          own_policy_id,
-          root_asset_name,
-          input_index,
-          self,
-        )
+      Deinit ->
+        deinit(hub_oracle_script_hash, own_policy_id, root_asset_name, self)
       RegisterOperator {
         registering_operator,
-        root_input_index,
         root_output_index,
         registered_node_output_index,
         hub_oracle_ref_input_index,
@@ -110,9 +103,7 @@ validator mint(
                 active_operators_mint_script_hash,
               )
 
-        // 4. Linked list prepend input and outputs must exist at specified
-        //    indices.
-        expect Some(root_input) = inputs |> list.at(root_input_index)
+        // 4. Linked list prepend outputs must exist at specified indices.
         expect Some(root_output) = outputs |> list.at(root_output_index)
         expect Some(registered_node_output) =
           outputs |> list.at(registered_node_output_index)
@@ -129,6 +120,7 @@ validator mint(
         //          unnecessarily longer.
         {
           let
+            _anchor_input,
             _anchor_lovelace_change,
             _m_anchor_key,
             _anchor_data,
@@ -138,10 +130,10 @@ validator mint(
             _registered_node_link,
           <-
             linked_list.insert_descending(
-              root_input,
-              root_output,
-              registered_node_output,
-              mint,
+              continued_anchor_element_output: root_output,
+              new_node_output: registered_node_output,
+              inputs: inputs,
+              tx_mint: mint,
             )
 
           // 6. The Lovelace in the registered node must equal the
@@ -156,15 +148,15 @@ validator mint(
               validity_range,
             )
 
-          // 8. The key of registered node must match the big-endian encoding of
-          //    `activation_time`
+          // 8. The key of registered node must match the big-endian encoding
+          //    of `activation_time`
           expect
             registered_node_key == activation_time_to_node_key(activation_time)
 
           when operator_origin is {
             ReturningOperator { retired_operators_redeemer_index } -> {
-              // 9a. `ReregisterOperator` redeemer of the retired operators set
-              //     must be invoked with a matching operator key.
+              // 9a. `ReregisterOperator` redeemer of the retired operators
+              //     set must be invoked with a matching operator key.
               expect retired_operators.ReregisterOperator {
                 retired_operator_key,
                 retired_operator_bond_unlock_time,
@@ -220,8 +212,7 @@ validator mint(
       }
       ActivateOperator {
         activating_operator,
-        anchor_element_input_index,
-        removed_node_input_index,
+        anchor_element_input_outref,
         anchor_element_output_index,
         hub_oracle_ref_input_index,
         retired_operators_element_ref_input_index,
@@ -282,8 +273,7 @@ validator mint(
           remove_operator_and_get_node_key_and_bond_unlock_time(
             own_policy_id,
             activating_operator,
-            anchor_element_input_index,
-            removed_node_input_index,
+            anchor_element_input_outref,
             anchor_element_output_index,
             inputs,
             outputs,
@@ -304,8 +294,7 @@ validator mint(
       }
       DeregisterOperator {
         deregistering_operator,
-        anchor_element_input_index,
-        removed_node_input_index,
+        anchor_element_input_outref,
         anchor_element_output_index,
       } -> {
         let Transaction { inputs, outputs, mint, extra_signatories, .. } = self
@@ -322,8 +311,7 @@ validator mint(
           remove_operator_and_get_node_key_and_bond_unlock_time(
             own_policy_id,
             deregistering_operator,
-            anchor_element_input_index,
-            removed_node_input_index,
+            anchor_element_input_outref,
             anchor_element_output_index,
             inputs,
             outputs,
@@ -344,8 +332,7 @@ validator mint(
       }
       SlashDuplicateOperator {
         duplicate_operator,
-        anchor_element_input_index,
-        removed_node_input_index,
+        anchor_element_input_outref,
         anchor_element_output_index,
         duplicate_node_ref_input_index,
         duplicate_operator_status,
@@ -367,8 +354,7 @@ validator mint(
           remove_operator_and_get_node_key_and_bond_unlock_time(
             own_policy_id,
             duplicate_operator,
-            anchor_element_input_index,
-            removed_node_input_index,
+            anchor_element_input_outref,
             anchor_element_output_index,
             inputs,
             outputs,
@@ -388,6 +374,7 @@ validator mint(
             //     set with an operator key that matches the removed operator.
             {
               let
+                _node_address,
                 _node_lovelace,
                 _m_key,
                 node_data,
@@ -415,6 +402,7 @@ validator mint(
             //     set, with a key that matches the removed node.
             {
               let
+                _node_address,
                 _node_lovelace,
                 m_key,
                 _node_data,
@@ -435,6 +423,7 @@ validator mint(
             //     set, with a key that matches the removed node.
             {
               let
+                _node_address,
                 _node_lovelace,
                 m_key,
                 _node_data,
@@ -490,19 +479,14 @@ validator mint(
 fn remove_operator_and_get_node_key_and_bond_unlock_time(
   own_policy_id: PolicyId,
   removed_operator: VerificationKeyHash,
-  anchor_element_input_index: Int,
-  removed_node_input_index: Int,
+  anchor_element_input_outref: OutputReference,
   anchor_element_output_index: Int,
   inputs: List<Input>,
   outputs: List<Output>,
   mint: Value,
   custom_validator: fn(linked_list.NodeKey, Option<PosixTime>) -> Bool,
 ) -> Bool {
-  // 1. Linked list inputs and output for removal must exist at specified
-  //    indices.
-  expect Some(anchor_element_input) =
-    inputs |> list.at(anchor_element_input_index)
-  expect Some(removed_node_input) = inputs |> list.at(removed_node_input_index)
+  // 1. Linked list output for removal must exist at specified index.
   expect Some(anchor_element_output) =
     outputs |> list.at(anchor_element_output_index)
 
@@ -510,19 +494,21 @@ fn remove_operator_and_get_node_key_and_bond_unlock_time(
   //    valid.
   {
     let
+      _anchor_input,
       anchor_lovelace_change,
       _m_anchor_key,
       _anchor_data,
+      _removed_node_input,
       _removed_node_lovelace,
       removed_node_key,
       removed_node_data,
       _removed_node_link,
     <-
       linked_list.remove(
-        anchor_element_input,
-        removed_node_input,
-        anchor_element_output,
-        mint,
+        anchor_input_outref: anchor_element_input_outref,
+        continued_anchor_element_output: anchor_element_output,
+        inputs: inputs,
+        tx_mint: mint,
       )
 
     // 3. ADA bond of the anchor node (or min required ADA if anchor is root)

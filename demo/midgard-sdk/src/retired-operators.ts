@@ -9,6 +9,7 @@ import { Effect } from "effect";
 import {
   AuthenticatedValidator,
   LucidError,
+  OutputReferenceSchema,
   POSIXTimeSchema,
 } from "@/common.js";
 import { authenticateUTxOs, AuthenticUTxO } from "@/internals.js";
@@ -37,17 +38,12 @@ export const RetiredOperatorMintRedeemerSchema = Data.Enum([
       output_index: Data.Integer(),
     }),
   }),
-  Data.Object({
-    Deinit: Data.Object({
-      input_index: Data.Integer(),
-    }),
-  }),
+  Data.Literal("Deinit"),
   Data.Object({
     RetireOperator: Data.Object({
       new_retired_operator_key: Data.Bytes({ minLength: 28, maxLength: 28 }),
       bond_unlock_time: Data.Nullable(POSIXTimeSchema),
       hub_oracle_ref_input_index: Data.Integer(),
-      retired_operator_anchor_element_input_index: Data.Integer(),
       retired_operator_anchor_element_output_index: Data.Integer(),
       retired_operator_inserted_node_output_index: Data.Integer(),
       active_operators_redeemer_index: Data.Integer(),
@@ -58,8 +54,7 @@ export const RetiredOperatorMintRedeemerSchema = Data.Enum([
       retired_operator_key: Data.Bytes({ minLength: 28, maxLength: 28 }),
       retired_operator_bond_unlock_time: Data.Nullable(POSIXTimeSchema),
       hub_oracle_ref_input_index: Data.Integer(),
-      retired_operator_anchor_element_input_index: Data.Integer(),
-      retired_operator_removed_node_input_index: Data.Integer(),
+      retired_operator_anchor_element_input_outref: OutputReferenceSchema,
       retired_operator_anchor_element_output_index: Data.Integer(),
       registered_operators_redeemer_index: Data.Integer(),
     }),
@@ -67,8 +62,7 @@ export const RetiredOperatorMintRedeemerSchema = Data.Enum([
   Data.Object({
     RecoverOperatorBond: Data.Object({
       retired_operator_key: Data.Bytes({ minLength: 28, maxLength: 28 }),
-      retired_operator_anchor_element_input_index: Data.Integer(),
-      retired_operator_removed_node_input_index: Data.Integer(),
+      retired_operator_anchor_element_input_outref: OutputReferenceSchema,
       retired_operator_anchor_element_output_index: Data.Integer(),
     }),
   }),
