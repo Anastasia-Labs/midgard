@@ -3,17 +3,18 @@ use aiken/crypto.{VerificationKeyHash}
 use aiken/interval
 use aiken_design_patterns/linked_list
 use cardano/assets.{PolicyId}
-use cardano/transaction.{OutputReference, Redeemer, Transaction}
+use cardano/transaction.{Mint, OutputReference, Redeemer, Transaction}
 use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/operator_directory.{
   deinit, init, slash_fraudulent_operator_and_get_info,
-  validate_transferred_operator_insertion,
+  validate_operator_transfer_and_get_inserted_data,
 }
 use midgard/operator_directory/active_operators
+use midgard/operator_directory/registered_operators
 use midgard/operator_directory/retired_operators.{
-  Deinit, Init, MintRedeemer, NodeData, RecoverOperatorBond, RetireOperator,
-  SlashOperator, finalize_linked_list, root_asset_name,
+  Deinit, Init, MintRedeemer, NodeData, RecoverOperatorBond, ReregisterOperator,
+  RetireOperator, SlashOperator, finalize_linked_list, root_asset_name,
 }
 
 validator spend(retired_operators_mint_script_hash: PolicyId) {
@@ -75,12 +76,8 @@ validator mint(hub_oracle_script_hash: PolicyId) {
 
         // 2. Generic validations for operator transfer must pass.
         {
-          let
-            inserted_node_data,
-            _m_retired_operator_anchor_key,
-            _inserted_retired_operator_link,
-          <-
-            validate_transferred_operator_insertion(
+          let inserted_node_data <-
+            validate_operator_transfer_and_get_inserted_data(
               new_retired_operator_key,
               hub_datum.active_operators,
               active_operators_redeemer_index,
@@ -107,6 +104,97 @@ validator mint(hub_oracle_script_hash: PolicyId) {
           //    `active_operators.RetireOperator` redeemer.
           let expected_inserted_node_data: Data = NodeData { bond_unlock_time }
           expect inserted_node_data == expected_inserted_node_data
+
+          // Done.
+          True
+        }
+          |> finalize_linked_list(own_policy_id)
+      }
+      ReregisterOperator {
+        retired_operator_key,
+        retired_operator_bond_unlock_time,
+        hub_oracle_ref_input_index,
+        retired_operator_anchor_element_input_index,
+        retired_operator_removed_node_input_index,
+        retired_operator_anchor_element_output_index,
+        registered_operators_redeemer_index,
+      } -> {
+        let Transaction {
+          inputs,
+          outputs,
+          reference_inputs,
+          mint,
+          redeemers,
+          ..
+        } = self
+
+        // 1. Transaction must refer to hub oracle's authentic UTxO.
+        let hub.Datum {
+          registered_operators: registered_operators_mint_script_hash,
+          ..
+        } =
+          hub.get_datum(
+            reference_inputs,
+            hub_oracle_script_hash,
+            hub_oracle_ref_input_index,
+          )
+
+        // 2. `RegisterOperator` redeemer of the registered operators set must
+        //    be invoked with the `ReturningOperator` flag. Let
+        //    `registering_operator` be PKH of the operator node key retrieved
+        //    from the redeemer.
+        expect registered_operators.RegisterOperator {
+          registering_operator,
+          operator_origin: registered_operators.ReturningOperator { .. },
+          ..
+        } =
+          redeemers
+            |> utils.get_redeemer_at(
+                expected_purpose: Mint(registered_operators_mint_script_hash),
+                redeemer_index: registered_operators_redeemer_index,
+              )
+
+        // 3. `registering_operator` key must match the `retired_operator_key`
+        //    redeemer argument here.
+        expect registering_operator == retired_operator_key
+
+        expect Some(retired_operator_anchor_element_input) =
+          inputs |> list.at(retired_operator_anchor_element_input_index)
+        expect Some(retired_operator_removed_node_input) =
+          inputs |> list.at(retired_operator_removed_node_input_index)
+        expect Some(retired_operator_anchor_element_output) =
+          outputs |> list.at(retired_operator_anchor_element_output_index)
+
+        // 4. The re-registering operator node must be removed from the retired
+        //    operators set.
+        {
+          let
+            anchor_lovelace_change,
+            _m_anchor_key,
+            _anchor_data,
+            _retired_operator_lovelace,
+            retired_operator_node_key,
+            retired_operator_node_data,
+            _retired_operator_node_link,
+          <-
+            linked_list.remove(
+              retired_operator_anchor_element_input,
+              retired_operator_removed_node_input,
+              retired_operator_anchor_element_output,
+              mint,
+            )
+
+          // 5. ADA bond of the anchor element must be preserved.
+          expect anchor_lovelace_change >= 0
+
+          // 6. The removing node's key must match the re-registering operator's
+          //    key.
+          expect retired_operator_key == retired_operator_node_key
+
+          // 7. Correctness of the redeemer argument must be validated for the
+          //    registered operators script to use.
+          expect NodeData { bond_unlock_time } = retired_operator_node_data
+          expect retired_operator_bond_unlock_time == bond_unlock_time
 
           // Done.
           True
@@ -169,25 +257,22 @@ validator mint(hub_oracle_script_hash: PolicyId) {
           // 6. The retirement of the operator must be mature. In other words,
           //    lower bound of the transaction must be later than retired
           //    operator's commitment time.
-          expect NodeData { bond_unlock_time } = retired_operator_node_data
-          when bond_unlock_time is {
-            None -> True
-            Some(bond_unlock_time) -> {
-              expect
-                validity_range |> interval.is_entirely_after(bond_unlock_time)
+          expect NodeData{bond_unlock_time: Some(bond_unlock_time)} =
+            retired_operator_node_data
+          expect validity_range |> interval.is_entirely_after(bond_unlock_time)
 
-              // Done.
-              True
-            }
-          }
+          // Done.
+          True
         }
           |> finalize_linked_list(own_policy_id)
       }
       SlashOperator { slashing_arguments } ->
         {
           let
-            _slashed_operator_from_redeemer,
+            slashed_operator_from_redeemer,
             _m_anchor_key,
+            slashed_operator_node_key,
+            _slashed_operator_node_data,
             _slashed_operator_node_link,
             _hub_datum,
             _inputs,
@@ -199,6 +284,10 @@ validator mint(hub_oracle_script_hash: PolicyId) {
               slashing_arguments,
               self,
             )
+
+          // 1. The operator key specified in the redeemer must match the node
+          //    key of the removed node.
+          expect slashed_operator_node_key == slashed_operator_from_redeemer
 
           // Done.
           True

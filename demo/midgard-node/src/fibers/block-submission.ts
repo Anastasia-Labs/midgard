@@ -1,13 +1,8 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { DatabaseError, NotFoundError } from "@/database/utils/common.js";
-import {
-  AlwaysSucceedsContract,
-  Database,
-  Lucid,
-  NodeConfig,
-} from "@/services/index.js";
+import { Database, Globals, Lucid } from "@/services/index.js";
 import { TxSignError, TxSubmitError } from "@/transactions/utils.js";
-import { Effect, Option, Schedule } from "effect";
+import { Effect, Option, Ref, Schedule } from "effect";
 import {
   DepositsDB,
   LatestLedgerDB,
@@ -20,8 +15,11 @@ import {
   BlocksTxsDB,
   WithdrawalsDB,
   AddressHistoryDB,
+  PendingBlockFinalizationsDB,
 } from "@/database/index.js";
 import { batchProgram, breakDownTx, ProcessedTx } from "@/utils.js";
+import { formatUnknownError } from "@/error-format.js";
+import { isPotentiallyStaleOperatorWalletViewError } from "@/operator-wallet-view.js";
 
 // For database operations.
 const BATCH_SIZE = 100;
@@ -134,13 +132,13 @@ const processTxRequestsProgram = (txRequests: readonly Tx.Entry[]) =>
  * Add produced ledger entries and corresponding address history entries for
  * the deposit events.
  */
-const processDepositsProgram = (deposits: readonly UserEvents.Entry[]) =>
+const processDepositsProgram = (deposits: readonly DepositsDB.Entry[]) =>
   Effect.gen(function* () {
     const depositLedgerEntries: Ledger.Entry[] = [];
     const depositAddressHistoryEntries: AddressHistoryDB.Entry[] = [];
     yield* Effect.forEach(deposits, (deposit) =>
       Effect.gen(function* () {
-        const ledgerEntry = yield* DepositsDB.entryToLedgerEntry(deposit);
+        const ledgerEntry = yield* DepositsDB.toLedgerEntry(deposit);
         const addressHistoryEntry = yield* AddressHistoryDB.depositEntryToEntry(
           deposit,
           AddressHistoryDB.Status.SUBMITTED,
@@ -180,7 +178,7 @@ const processEventsForLedgerApplication = (
   | SDK.DataCoercionError
   | DatabaseError
   | NotFoundError,
-  NodeConfig | Database | AlwaysSucceedsContract
+  Database
 > =>
   Effect.gen(function* () {
     const blockEvents = yield* BlocksDB.retrieveEvents(startDate, endDate);
@@ -231,108 +229,203 @@ const processEventsForLedgerApplication = (
     };
   });
 
+/**
+ * Phase 1 of block submission. Posts the pre-built and signed L1 commit tx to
+ * the Cardano node and updates the journal/gates. Mempool, ledger, and address
+ * history are NOT mutated here — local finalization is deferred until
+ * confirmation in `finalizeConfirmedBlock` so that an expired or otherwise
+ * unincluded tx leaves no local divergence to roll back.
+ */
 const submitEarliestBlock = Effect.gen(function* () {
+  const globals = yield* Globals;
+  const unconfirmedSubmittedTxHash = yield* Ref.get(
+    globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
+  );
+  if (unconfirmedSubmittedTxHash !== "") {
+    yield* Effect.logInfo(
+      "🔗 Skipping block submission; an earlier submission is awaiting confirmation.",
+    );
+    return;
+  }
   const optUnsubmittedBlock = yield* BlocksDB.retrieveEarliestUnsubmittedEntry;
   yield* Option.match(optUnsubmittedBlock, {
     onNone: () => Effect.logInfo("No unsubmitted blocks in queue."),
     onSome: (blockEntry) =>
       Effect.gen(function* () {
+        const headerHash = blockEntry[BlocksDB.Columns.HEADER_HASH];
+        const blockEndTime = blockEntry[BlocksDB.Columns.EVENT_END_TIME];
+        yield* PendingBlockFinalizationsDB.preparePendingSubmission({
+          headerHash,
+          blockEndTime,
+          depositEventIds: [],
+          mempoolTxIds: [],
+        });
         yield* Effect.logInfo("🔗 ✉️  Submitting block commitment...");
-        const txHash = yield* submitSignedTxCBOR(
-          blockEntry[BlocksDB.Columns.L1_CBOR],
+        const submissionResult = yield* Effect.either(
+          submitSignedTxCBOR(blockEntry[BlocksDB.Columns.L1_CBOR]),
         );
-        yield* Effect.logInfo(`🔗 🚀 Block commitment submitted: ${txHash}`);
-
-        const {
-          txRequests,
-          allProducedLedgerEntries,
-          allSpentOutRefs,
-          mempoolTxHashes,
-          allAddressHistoryEntries,
-        } = yield* processEventsForLedgerApplication(
-          blockEntry[BlocksDB.Columns.EVENT_START_TIME],
-          blockEntry[BlocksDB.Columns.EVENT_END_TIME],
-        );
-
-        const addToLedgerProgram = batchProgram(
-          BATCH_SIZE,
-          allProducedLedgerEntries.length,
-          "Insert new entries to LatestLedgerDB",
-          (startIndex, endIndex) =>
-            LatestLedgerDB.insertMultiple(
-              allProducedLedgerEntries.slice(startIndex, endIndex),
-            ),
-        );
-
-        const removeFromLedgerProgram = batchProgram(
-          BATCH_SIZE,
-          allSpentOutRefs.length,
-          "Remove spent outrefs from LatestLedgerDB",
-          (startIndex, endIndex) =>
-            LatestLedgerDB.clearUTxOs(
-              allSpentOutRefs.slice(startIndex, endIndex),
-            ),
-        );
-
-        // Note that this does NOT have unbounded concurrency. We first want to
-        // add any new UTxOs before deleting the spent ones, as some
-        // transactions could have spent UTxOs produced by other transactions.
-        const updateLatestLedgerDBProgram = Effect.all([
-          addToLedgerProgram,
-          removeFromLedgerProgram,
-        ]);
-
-        const transferMempoolTxsProgram = batchProgram(
-          BATCH_SIZE,
-          txRequests.length,
-          "Transfer of MempoolDB entries to ImmutableDB and BlocksTxsDB",
-          (startIndex, endIndex) => {
-            const txsBatch = txRequests.slice(startIndex, endIndex);
-            const txHashesBatch = mempoolTxHashes.slice(startIndex, endIndex);
-            return Effect.all(
-              [
-                MempoolDB.clearTxs(txHashesBatch),
-                ImmutableDB.insertTxs(txsBatch),
-                BlocksTxsDB.insert(
-                  blockEntry[BlocksDB.Columns.HEADER_HASH],
-                  txHashesBatch,
-                ),
-              ],
-              { concurrency: "unbounded" },
+        if (submissionResult._tag === "Left") {
+          const error = submissionResult.left;
+          if (
+            error instanceof TxSubmitError &&
+            isPotentiallyStaleOperatorWalletViewError(error)
+          ) {
+            // The pre-built commit tx references a wallet input the chain no
+            // longer has (e.g. a fee/collateral UTxO consumed by a sibling tx
+            // the provider hasn't reflected yet). Resubmitting the same bytes
+            // can never succeed, so drop the block: an unsubmitted block has no
+            // local state to roll back beyond its (idempotent) MempoolLedgerDB
+            // delta, and removing the row makes the commit worker rebuild it on
+            // top of the real chain tip with fresh inputs.
+            yield* PendingBlockFinalizationsDB.markAbandoned(headerHash).pipe(
+              Effect.catchAll(() => Effect.void),
             );
-          },
+            yield* BlocksDB.deleteByBlocks([headerHash]);
+            yield* Ref.update(globals.BLOCKS_IN_QUEUE, (n) =>
+              Math.max(0, n - 1),
+            );
+            yield* Effect.logWarning(
+              `🔗 ⚠️  Discarding unsubmittable block ${headerHash.toString("hex")} (stale wallet input); it will be rebuilt: ${formatUnknownError(error)}`,
+            );
+            return;
+          }
+          return yield* Effect.fail(error);
+        }
+        const txHash = submissionResult.right;
+        yield* Effect.logInfo(`🔗 🚀 Block commitment submitted: ${txHash}`);
+        yield* PendingBlockFinalizationsDB.markSubmitted(
+          headerHash,
+          Buffer.from(txHash, "hex"),
         );
-
-        const addToAddressHistoryProgram = batchProgram(
-          BATCH_SIZE,
-          allAddressHistoryEntries.length,
-          "Insert AddressHistoryDB entries for all events",
-          (startIndex, endIndex) =>
-            AddressHistoryDB.upsertEntries(
-              allAddressHistoryEntries.slice(startIndex, endIndex),
-            ),
+        yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH, txHash);
+        yield* Ref.set(
+          globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS,
+          Date.now(),
         );
-
-        yield* Effect.all(
-          [
-            updateLatestLedgerDBProgram,
-            transferMempoolTxsProgram,
-            addToAddressHistoryProgram,
-            BlocksDB.setStatusOfEntry(blockEntry, BlocksDB.Status.SUBMITTED),
-          ],
-          { concurrency: "unbounded" },
-        );
+        yield* Ref.set(globals.AVAILABLE_CONFIRMED_BLOCK, "");
       }),
   });
 });
 
-export const blockSubmissionFiber = (
-  schedule: Schedule.Schedule<number>,
+/**
+ * Phase 2 of block submission. Called by the confirmation fiber after the
+ * pending block is observed in the canonical state queue. Mutates local DBs
+ * (mempool clear, ledger update, address history, BlocksTxsDB / ImmutableDB
+ * transfer, BlocksDB status) and marks the journal as locally finalized.
+ *
+ * Idempotent for already-finalized blocks: if the BlocksDB row is missing
+ * (e.g., already finalized in a previous run) this is a no-op.
+ */
+export const finalizeConfirmedBlock = (
+  headerHash: Buffer,
 ): Effect.Effect<
   void,
-  never,
-  NodeConfig | Database | Lucid | AlwaysSucceedsContract
+  | SDK.CmlDeserializationError
+  | SDK.DataCoercionError
+  | DatabaseError
+  | NotFoundError,
+  Database
 > =>
+  Effect.gen(function* () {
+    const optBlockEntry = yield* BlocksDB.retrieveByHeaderHash(headerHash);
+    yield* Option.match(optBlockEntry, {
+      onNone: () =>
+        Effect.logInfo(
+          `🔗 finalizeConfirmedBlock: BlocksDB row already absent for ${headerHash.toString(
+            "hex",
+          )} (treating as already finalized).`,
+        ),
+      onSome: (blockEntry) =>
+        Effect.gen(function* () {
+          const {
+            txRequests,
+            allProducedLedgerEntries,
+            allSpentOutRefs,
+            mempoolTxHashes,
+            allAddressHistoryEntries,
+          } = yield* processEventsForLedgerApplication(
+            blockEntry[BlocksDB.Columns.EVENT_START_TIME],
+            blockEntry[BlocksDB.Columns.EVENT_END_TIME],
+          );
+
+          const addToLedgerProgram = batchProgram(
+            BATCH_SIZE,
+            allProducedLedgerEntries.length,
+            "Insert new entries to LatestLedgerDB",
+            (startIndex, endIndex) =>
+              LatestLedgerDB.insertMultiple(
+                allProducedLedgerEntries.slice(startIndex, endIndex),
+              ),
+          );
+
+          const removeFromLedgerProgram = batchProgram(
+            BATCH_SIZE,
+            allSpentOutRefs.length,
+            "Remove spent outrefs from LatestLedgerDB",
+            (startIndex, endIndex) =>
+              LatestLedgerDB.clearUTxOs(
+                allSpentOutRefs.slice(startIndex, endIndex),
+              ),
+          );
+
+          // Note that this does NOT have unbounded concurrency. We first want
+          // to add any new UTxOs before deleting the spent ones, as some
+          // transactions could have spent UTxOs produced by other transactions.
+          const updateLatestLedgerDBProgram = Effect.all([
+            addToLedgerProgram,
+            removeFromLedgerProgram,
+          ]);
+
+          const transferMempoolTxsProgram = batchProgram(
+            BATCH_SIZE,
+            txRequests.length,
+            "Transfer of MempoolDB entries to ImmutableDB and BlocksTxsDB",
+            (startIndex, endIndex) => {
+              const txsBatch = txRequests.slice(startIndex, endIndex);
+              const txHashesBatch = mempoolTxHashes.slice(startIndex, endIndex);
+              return Effect.all(
+                [
+                  MempoolDB.clearTxs(txHashesBatch),
+                  ImmutableDB.insertTxs(txsBatch),
+                  BlocksTxsDB.insert(
+                    blockEntry[BlocksDB.Columns.HEADER_HASH],
+                    txHashesBatch,
+                  ),
+                ],
+                { concurrency: "unbounded" },
+              );
+            },
+          );
+
+          const addToAddressHistoryProgram = batchProgram(
+            BATCH_SIZE,
+            allAddressHistoryEntries.length,
+            "Insert AddressHistoryDB entries for all events",
+            (startIndex, endIndex) =>
+              AddressHistoryDB.upsertEntries(
+                allAddressHistoryEntries.slice(startIndex, endIndex),
+              ),
+          );
+
+          yield* Effect.all(
+            [
+              updateLatestLedgerDBProgram,
+              transferMempoolTxsProgram,
+              addToAddressHistoryProgram,
+              BlocksDB.setStatusOfEntry(blockEntry, BlocksDB.Status.SUBMITTED),
+            ],
+            { concurrency: "unbounded" },
+          );
+          yield* PendingBlockFinalizationsDB.markLocalFinalizationComplete(
+            headerHash,
+          );
+        }),
+    });
+  });
+
+export const blockSubmissionFiber = (
+  schedule: Schedule.Schedule<number>,
+): Effect.Effect<void, never, Database | Globals | Lucid> =>
   Effect.gen(function* () {
     yield* Effect.logInfo("🔗 Block submission fiber started.");
     const action = submitEarliestBlock.pipe(

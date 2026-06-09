@@ -1,0 +1,143 @@
+services:
+  midgard-node:
+    environment:
+      L1_PROVIDER: Kupmios
+      L1_OGMIOS_KEY: http://cardano-node-ogmios:1337
+      L1_KUPO_KEY: http://kupo:1442
+    depends_on:
+      postgres:
+        condition: service_healthy
+      cardano-node-ogmios:
+        condition: service_healthy
+      kupo:
+        condition: service_healthy
+
+  mithril-bootstrap:
+    image: ghcr.io/input-output-hk/mithril-client:${MITHRIL_CLIENT_IMAGE_TAG:-latest}
+    entrypoint:
+      - /bin/sh
+      - /bootstrap/bootstrap-kupmios-mithril.sh
+    environment:
+      NETWORK: ${NETWORK}
+      CARDANO_NODE_IMAGE_TAG: ${CARDANO_NODE_IMAGE_TAG:-10.7.1}
+      MITHRIL_AGGREGATOR_ENDPOINT: ${MITHRIL_AGGREGATOR_ENDPOINT:-}
+      MITHRIL_GENESIS_VERIFICATION_KEY_URL: ${MITHRIL_GENESIS_VERIFICATION_KEY_URL:-}
+      MITHRIL_ANCILLARY_VERIFICATION_KEY_URL: ${MITHRIL_ANCILLARY_VERIFICATION_KEY_URL:-}
+      MITHRIL_SNAPSHOT_DIGEST: ${MITHRIL_SNAPSHOT_DIGEST:-latest}
+    volumes:
+      - ./cardano:/data
+      - ./scripts/bootstrap-kupmios-mithril.sh:/bootstrap/bootstrap-kupmios-mithril.sh:ro
+    restart: "no"
+    networks:
+      midgard_net:
+
+  kupo-bootstrap:
+    image: ghcr.io/input-output-hk/mithril-client:${MITHRIL_CLIENT_IMAGE_TAG:-latest}
+    entrypoint:
+      - /bin/sh
+      - /bootstrap/bootstrap-kupo-snapshot.sh
+    environment:
+      NETWORK: ${NETWORK}
+      KUPO_SNAPSHOT_RELEASE_TAG: ${KUPO_SNAPSHOT_RELEASE_TAG:-v2.8}
+      KUPO_SNAPSHOT_URL: ${KUPO_SNAPSHOT_URL:-}
+      KUPO_SNAPSHOT_MD5: ${KUPO_SNAPSHOT_MD5:-}
+    volumes:
+      - ./cardano:/data
+      - ./scripts/bootstrap-kupo-snapshot.sh:/bootstrap/bootstrap-kupo-snapshot.sh:ro
+    restart: "no"
+    networks:
+      midgard_net:
+
+  cardano-node:
+    image: ghcr.io/intersectmbo/cardano-node:${CARDANO_NODE_IMAGE_TAG:-10.7.1}
+    entrypoint:
+      - /bin/sh
+      - /bootstrap/run-cardano-node.sh
+    environment:
+      NETWORK: ${NETWORK}
+    depends_on:
+      mithril-bootstrap:
+        condition: service_completed_successfully
+    volumes:
+      - ./cardano/db:/data/db
+      - ./cardano/ipc:/ipc
+      - ./scripts/run-cardano-node.sh:/bootstrap/run-cardano-node.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "test -S /ipc/node.socket"]
+      interval: 15s
+      timeout: 5s
+      retries: 40
+      start_period: 20s
+    ports:
+      - "${CARDANO_NODE_EKG_PORT:-12788}:12788"
+      - "${CARDANO_NODE_PROM_PORT:-12798}:12798"
+    restart: always
+    networks:
+      midgard_net:
+
+  cardano-node-ogmios:
+    image: cardanosolutions/ogmios:${OGMIOS_IMAGE_TAG:-latest}
+    entrypoint:
+      - /bin/sh
+      - /bootstrap/run-ogmios.sh
+    environment:
+      NETWORK: ${NETWORK}
+    depends_on:
+      cardano-node:
+        condition: service_healthy
+    volumes:
+      - ./cardano/ipc:/ipc
+      - ./scripts/run-ogmios.sh:/bootstrap/run-ogmios.sh:ro
+    ports:
+      - "${OGMIOS_PORT:-1337}:1337"
+    healthcheck:
+      test: ["CMD-SHELL", "/bin/ogmios health-check"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    restart: always
+    networks:
+      midgard_net:
+
+  kupo:
+    image: cardanosolutions/kupo:${KUPO_IMAGE_TAG:-v2.9.0}
+    command:
+      - --ogmios-host
+      - cardano-node-ogmios
+      - --ogmios-port
+      - "1337"
+      - --host
+      - 0.0.0.0
+      - --port
+      - "1442"
+      - --workdir
+      - /db
+      - --since
+      - origin
+      - --match
+      - "*"
+      - --prune-utxo
+      - --defer-db-indexes
+    depends_on:
+      cardano-node-ogmios:
+        condition: service_healthy
+      kupo-bootstrap:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -S -q -O /dev/null http://127.0.0.1:1442/health 2>&1 | grep -Eq 'HTTP/[0-9.]+ 200'",
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 2000
+      start_period: 20s
+    volumes:
+      - ./cardano/kupo:/db
+    ports:
+      - "${KUPO_PORT:-1442}:1442"
+    restart: always
+    networks:
+      midgard_net:

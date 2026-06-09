@@ -1,5 +1,6 @@
 use aiken/builtin
 use aiken/cbor
+use aiken/collection/dict
 use aiken/collection/list
 use aiken/crypto.{ScriptHash, blake2b_256}
 use aiken_design_patterns/parameter_validation
@@ -9,7 +10,7 @@ use cardano/transaction.{
   Datum as CardanoDatum, InlineDatum, Input, Output, OutputReference, Redeemer,
   ScriptPurpose, Transaction, ValidityRange,
 }
-use env
+use env.{plutus_version, user_events_witness_script_prefix}
 use midgard/common/types.{PosixTime}
 use midgard/common/utils
 use midgard/hub_oracle as hub
@@ -137,8 +138,8 @@ fn authenticate_new_event(
   // transaction.
   let expected_witness_script_hash =
     parameter_validation.apply_prehashed_param(
-      version: env.plutus_version,
-      prefix: env.user_events_witness_script_prefix,
+      version: plutus_version,
+      prefix: user_events_witness_script_prefix,
       param: nonce,
     )
 
@@ -206,13 +207,18 @@ fn validate_event_nft_burn(
 ) -> Bool {
   let expected_witness_script_hash =
     parameter_validation.apply_prehashed_param(
-      version: env.plutus_version,
-      prefix: env.user_events_witness_script_prefix,
+      version: plutus_version,
+      prefix: user_events_witness_script_prefix,
       param: nonce_asset_name,
     )
 
-  // 1. The specified NFT must be burnt.
-  expect assets.quantity_of(mint, own_policy, nonce_asset_name) == -1
+  // 1. The specified NFT must be burnt, and it must be the only mint/burn
+  //    under this event policy.
+  expect [Pair(burned_asset_name, -1)] =
+    mint
+      |> assets.tokens(own_policy)
+      |> dict.to_pairs
+  expect burned_asset_name == nonce_asset_name
 
   // 2. Witness staking script corresponding to the NFT must be getting
   //    unregistered.

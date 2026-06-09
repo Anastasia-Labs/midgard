@@ -100,6 +100,9 @@ export const buildAndSubmitCommitmentBlockAction = () =>
     switch (workerOutput.type) {
       case "SuccessfulCommitmentOutput": {
         yield* Ref.update(globals.BLOCKS_IN_QUEUE, (n) => n + 1);
+        // Clear the confirmation gate: the just-built block must be
+        // submitted and confirmed on L1 before the next commit may fire.
+        yield* Ref.set(globals.AVAILABLE_CONFIRMED_BLOCK, "");
 
         yield* blockCommitmentUserEventsCountGauge(
           Effect.succeed(
@@ -141,13 +144,42 @@ export const buildAndSubmitCommitmentBlockAction = () =>
 export const blockCommitmentAction: Effect.Effect<void, WorkerError, Globals> =
   Effect.gen(function* () {
     const globals = yield* Globals;
+    yield* Ref.set(globals.HEARTBEAT_BLOCK_COMMITMENT, Date.now());
     const RESET_IN_PROGRESS = yield* Ref.get(globals.RESET_IN_PROGRESS);
-    if (!RESET_IN_PROGRESS) {
-      yield* Effect.logInfo("🔹 New block commitment process started.");
-      yield* buildAndSubmitCommitmentBlockAction().pipe(
-        Effect.withSpan("buildAndSubmitCommitmentBlockAction"),
-      );
+    if (RESET_IN_PROGRESS) {
+      return;
     }
+
+    const acquired = yield* Ref.modify(
+      globals.COMMIT_WORKER_ACTIVE,
+      (active) => (active ? [false, true] : [true, true]),
+    );
+    if (!acquired) {
+      yield* Effect.logInfo(
+        "🔹 Skipping block commitment trigger because a worker is already active.",
+      );
+      return;
+    }
+
+    const availableConfirmedBlock = yield* Ref.get(
+      globals.AVAILABLE_CONFIRMED_BLOCK,
+    );
+    const unconfirmedSubmittedTxHash = yield* Ref.get(
+      globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
+    );
+    if (availableConfirmedBlock === "" || unconfirmedSubmittedTxHash !== "") {
+      yield* Effect.logInfo(
+        "🔹 Skipping block commitment trigger; awaiting prior block confirmation.",
+      );
+      yield* Ref.set(globals.COMMIT_WORKER_ACTIVE, false);
+      return;
+    }
+
+    yield* Effect.logInfo("🔹 New block commitment process started.");
+    yield* buildAndSubmitCommitmentBlockAction().pipe(
+      Effect.withSpan("buildAndSubmitCommitmentBlockAction"),
+      Effect.ensuring(Ref.set(globals.COMMIT_WORKER_ACTIVE, false)),
+    );
   });
 
 export const blockCommitmentFiber = (

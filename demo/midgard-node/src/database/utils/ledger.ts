@@ -98,6 +98,26 @@ export const insertEntries = (
     sqlErrorToDatabaseError(tableName, "Failed to insert given UTxOs"),
   );
 
+export const upsertEntries = (
+  tableName: string,
+  entries: Entry[] | readonly Entry[],
+): Effect.Effect<void, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    yield* Effect.logDebug(`${tableName} db: attempt to upsert Ledger UTxOs`);
+    const sql = yield* SqlClient.SqlClient;
+    if (entries.length <= 0) {
+      yield* Effect.logDebug("No entries provided, skipping insertion.");
+      return;
+    }
+    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(entries)} ON CONFLICT (${sql(Columns.OUTREF)}) DO NOTHING`;
+  }).pipe(
+    Effect.withLogSpan(`upsertEntries ${tableName}`),
+    Effect.tapErrorTag("SqlError", (e) =>
+      Effect.logError(`${tableName} db: upsertEntries: ${JSON.stringify(e)}`),
+    ),
+    sqlErrorToDatabaseError(tableName, "Failed to upsert given UTxOs"),
+  );
+
 export const retrieveByOutRef = (
   tableName: string,
   outRef: Buffer,

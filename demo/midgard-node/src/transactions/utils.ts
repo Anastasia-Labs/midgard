@@ -1,9 +1,11 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import {
+  CML,
   LucidEvolution,
   OutRef,
   TxSignBuilder,
   UTxO,
+  coreToTxOutput,
   fromHex,
 } from "@lucid-evolution/lucid";
 import { Data, Effect, Schedule } from "effect";
@@ -18,6 +20,80 @@ const INIT_RETRY_AFTER_MILLIS = 2_000;
 
 const PAUSE_DURATION = "5 seconds";
 
+type SignSubmitContext = {
+  readonly txHash: string;
+  readonly signedTxCbor: string;
+  readonly walletAddress: string;
+};
+
+/**
+ * Formats an outref into a stable map key.
+ */
+const outRefToKey = (txHash: string, outputIndex: number): string =>
+  `${txHash}#${outputIndex.toString()}`;
+
+/**
+ * Reconciles Lucid's local wallet view after a confirmed transaction.
+ *
+ * Removes spent inputs and adds new wallet outputs locally, so subsequent
+ * transactions don't collide with already-spent UTxOs before the provider
+ * refreshes.
+ */
+const reconcileWalletUtxosFromSignedTx = (
+  lucid: LucidEvolution,
+  submission: SignSubmitContext,
+): Effect.Effect<void, never> =>
+  Effect.gen(function* () {
+    const wallet = lucid.wallet() as {
+      getUtxos: () => Promise<UTxO[]>;
+      overrideUTxOs?: (utxos: UTxO[]) => void;
+    };
+    if (typeof wallet.overrideUTxOs !== "function") {
+      return;
+    }
+    const tx = CML.Transaction.from_cbor_hex(submission.signedTxCbor);
+    const txInputs = tx.body().inputs();
+    const spentOutRefs = new Set<string>();
+    for (let index = 0; index < txInputs.len(); index += 1) {
+      const input = txInputs.get(index);
+      spentOutRefs.add(
+        outRefToKey(input.transaction_id().to_hex(), Number(input.index())),
+      );
+    }
+    const walletUtxos = yield* Effect.tryPromise({
+      try: () => wallet.getUtxos(),
+      catch: () => [] as UTxO[],
+    });
+    const filteredWalletUtxos = walletUtxos.filter(
+      (utxo) => !spentOutRefs.has(outRefToKey(utxo.txHash, utxo.outputIndex)),
+    );
+    const txOutputs = tx.body().outputs();
+    const localWalletOutputs: UTxO[] = [];
+    for (let outputIndex = 0; outputIndex < txOutputs.len(); outputIndex += 1) {
+      const output = coreToTxOutput(txOutputs.get(outputIndex));
+      if (output.address !== submission.walletAddress) {
+        continue;
+      }
+      localWalletOutputs.push({
+        txHash: submission.txHash,
+        outputIndex,
+        address: output.address,
+        assets: output.assets,
+        datumHash: output.datumHash ?? undefined,
+        datum: output.datum ?? undefined,
+        scriptRef: output.scriptRef ?? undefined,
+      });
+    }
+    const reconciled = new Map<string, UTxO>();
+    for (const utxo of filteredWalletUtxos) {
+      reconciled.set(outRefToKey(utxo.txHash, utxo.outputIndex), utxo);
+    }
+    for (const utxo of localWalletOutputs) {
+      reconciled.set(outRefToKey(utxo.txHash, utxo.outputIndex), utxo);
+    }
+    wallet.overrideUTxOs(Array.from(reconciled.values()));
+  }).pipe(Effect.catchAll(() => Effect.void));
+
 /**
  * Handle the signing and submission of a transaction.
  *
@@ -30,7 +106,8 @@ export const handleSignSubmit = (
   signBuilder: TxSignBuilder,
 ): Effect.Effect<string, TxSignError | TxSubmitError | TxConfirmError> =>
   Effect.gen(function* () {
-    const txHash = yield* signSubmitHelper(lucid, signBuilder);
+    const submission = yield* signSubmitHelper(lucid, signBuilder);
+    const txHash = submission.txHash;
     yield* Effect.logInfo(`⏳ Confirming Transaction...`);
     yield* Effect.tryPromise({
       try: () => lucid.awaitTx(txHash, 10_000),
@@ -41,6 +118,7 @@ export const handleSignSubmit = (
           cause: e,
         }),
     });
+    yield* reconcileWalletUtxosFromSignedTx(lucid, submission);
     yield* Effect.logInfo(`🎉 Transaction confirmed: ${txHash}`);
     yield* Effect.logInfo(`⌛ Pausing for ${PAUSE_DURATION}...`);
     yield* Effect.sleep(PAUSE_DURATION);
@@ -65,8 +143,8 @@ export const handleSignSubmitNoConfirmation = (
   signBuilder: TxSignBuilder,
 ): Effect.Effect<string, TxSignError | TxSubmitError> =>
   Effect.gen(function* () {
-    const txHash = yield* signSubmitHelper(lucid, signBuilder);
-    return txHash;
+    const submission = yield* signSubmitHelper(lucid, signBuilder);
+    return submission.txHash;
   }).pipe(
     Effect.tapErrorTag("TxSignError", (e) =>
       Effect.logError(`TxSignError: ${e}`),
@@ -76,7 +154,7 @@ export const handleSignSubmitNoConfirmation = (
 const signSubmitHelper = (
   lucid: LucidEvolution,
   signBuilder: TxSignBuilder,
-): Effect.Effect<string, TxSubmitError | TxSignError> =>
+): Effect.Effect<SignSubmitContext, TxSubmitError | TxSignError> =>
   Effect.gen(function* () {
     const walletAddr = yield* Effect.tryPromise(() =>
       lucid.wallet().address(),
@@ -98,8 +176,9 @@ const signSubmitHelper = (
         ),
       );
     const signed = yield* signedProgram;
+    const signedTxCbor = signed.toCBOR();
     yield* Effect.logInfo(`Signed tx CBOR is:
-${signed.toCBOR()}
+${signedTxCbor}
 `);
     yield* Effect.logInfo("✉️  Submitting transaction...");
     yield* signed.submitProgram().pipe(
@@ -120,7 +199,7 @@ ${signed.toCBOR()}
       ),
     );
     yield* Effect.logInfo(`🚀 Transaction submitted: ${txHash}`);
-    return txHash;
+    return { txHash, signedTxCbor, walletAddress: walletAddr };
   });
 
 /**
