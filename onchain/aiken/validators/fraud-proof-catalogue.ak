@@ -168,7 +168,7 @@ validator mint(
           fn(
             _fraud_proof_lovelace,
             inner_root_fraud_proof_key,
-            fraud_proof_data,
+            fraud_proof_data: Data,
             first_child_link,
             fraud_proof_ref_script,
           ) {
