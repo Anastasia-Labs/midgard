@@ -58,8 +58,8 @@ type HealthAPI =
 
 type QueryAPI =
   "protocol-info" :> Get '[JSON] ProtocolInfoResponse
-    :<|> "tx" :> QueryParam "txId" Text :> Get '[JSON] Value
-    :<|> "tx-status" :> QueryParam "txId" Text :> Get '[JSON] Value
+    :<|> "tx" :> QueryParam "tx_hash" Text :> Get '[JSON] Value
+    :<|> "tx-status" :> QueryParam "tx_hash" Text :> Get '[JSON] Value
     :<|> "deposit-status" :> QueryParam "eventId" Text :> QueryParam "l1TxHash" Text :> Get '[JSON] Value
     :<|> "txs" :> QueryParam "address" Text :> Get '[JSON] Value
     :<|> "utxo" :> QueryParam "txOutRef" Text :> Get '[JSON] Value

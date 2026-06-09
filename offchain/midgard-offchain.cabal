@@ -141,9 +141,15 @@ library midgard-node-lib
     Midgard.Node.API
     Midgard.Node.App
     Midgard.Node.Config
+    Midgard.Node.DB.AddressHistory
+    Midgard.Node.DB.Blocks
     Midgard.Node.DB.Health
+    Midgard.Node.DB.Hex
+    Midgard.Node.DB.MempoolLedger
     Midgard.Node.DB.Migration
     Midgard.Node.DB.Pool
+    Midgard.Node.DB.Transactions
+    Midgard.Node.DB.Types
     Midgard.Node.Env
     Midgard.Node.Migrations
     Midgard.Node.Server
@@ -185,3 +191,19 @@ test-suite mockchain-tests
     , tasty
     , tasty-hunit
     , tasty-quickcheck
+
+test-suite node-db-tests
+  import:         lang, dependencies
+  type:           exitcode-stdio-1.0
+  main-is:        Spec.hs
+  hs-source-dirs: node/tests
+  other-modules:  Spec.Node.DB
+  build-depends:
+    , directory
+    , midgard-node-lib
+    , monad-logger
+    , persistent
+    , persistent-sqlite
+    , resource-pool
+    , tasty
+    , tasty-hunit
