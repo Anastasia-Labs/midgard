@@ -4,15 +4,24 @@ module Midgard.Node.API (
   AdminAPI,
   TxAPI,
   MidgardNodeAPI,
-  UtxoLookupRequest (..),
-  HealthResponse (..),
-  ReadyResponse (..),
-  ProtocolInfoResponse (..),
 ) where
 
-import Data.Aeson (FromJSON, ToJSON, Value)
+import Data.Aeson (Value)
 import Data.Text (Text)
-import GHC.Generics (Generic)
+import Midgard.Node.API.Types (
+  BlockResponse,
+  DepositStatusResponse,
+  HealthResponse,
+  PlaceholderResponse,
+  PlaceholderWithRequestResponse,
+  ProtocolInfoResponse,
+  ReadyResponse,
+  TxResponse,
+  TxStatusResponse,
+  TxsResponse,
+  UtxoResponse,
+  UtxosResponse,
+ )
 import Servant.API (
   Get,
   JSON,
@@ -23,60 +32,31 @@ import Servant.API (
   type (:>),
  )
 
-data UtxoLookupRequest = UtxoLookupRequest
-  { txOutRefs :: [Text]
-  }
-  deriving stock (Eq, Generic, Show)
-  deriving anyclass (FromJSON, ToJSON)
-
-data HealthResponse = HealthResponse
-  { status :: Text
-  }
-  deriving stock (Eq, Generic, Show)
-  deriving anyclass (ToJSON)
-
-data ReadyResponse = ReadyResponse
-  { ready :: Bool
-  , reasons :: [Text]
-  , dbConfigured :: Bool
-  , schemaSource :: FilePath
-  }
-  deriving stock (Eq, Generic, Show)
-  deriving anyclass (ToJSON)
-
-data ProtocolInfoResponse = ProtocolInfoResponse
-  { network :: Text
-  , mutatingEndpointsEnabled :: Bool
-  , migrationDirectory :: FilePath
-  }
-  deriving stock (Eq, Generic, Show)
-  deriving anyclass (ToJSON)
-
 type HealthAPI =
   "healthz" :> Get '[JSON] HealthResponse
     :<|> "readyz" :> Get '[JSON] ReadyResponse
 
 type QueryAPI =
   "protocol-info" :> Get '[JSON] ProtocolInfoResponse
-    :<|> "tx" :> QueryParam "tx_hash" Text :> Get '[JSON] Value
-    :<|> "tx-status" :> QueryParam "tx_hash" Text :> Get '[JSON] Value
-    :<|> "deposit-status" :> QueryParam "eventId" Text :> QueryParam "l1TxHash" Text :> Get '[JSON] Value
-    :<|> "txs" :> QueryParam "address" Text :> Get '[JSON] Value
-    :<|> "utxo" :> QueryParam "txOutRef" Text :> Get '[JSON] Value
-    :<|> "utxos" :> QueryParam "address" Text :> Get '[JSON] Value
-    :<|> "utxos" :> ReqBody '[JSON] UtxoLookupRequest :> Post '[JSON] Value
-    :<|> "block" :> QueryParam "headerHash" Text :> Get '[JSON] Value
+    :<|> "tx" :> QueryParam "tx_hash" Text :> Get '[JSON] TxResponse
+    :<|> "tx-status" :> QueryParam "tx_hash" Text :> Get '[JSON] TxStatusResponse
+    :<|> "deposit-status" :> QueryParam "eventId" Text :> QueryParam "cardanoTxHash" Text :> Get '[JSON] DepositStatusResponse
+    :<|> "txs" :> QueryParam "address" Text :> Get '[JSON] TxsResponse
+    :<|> "utxo" :> QueryParam "txOutRef" Text :> Get '[JSON] UtxoResponse
+    :<|> "utxos" :> QueryParam "address" Text :> Get '[JSON] UtxosResponse
+    :<|> "utxos" :> QueryParam "by-outrefs" Text :> ReqBody '[JSON] [Text] :> Post '[JSON] UtxosResponse
+    :<|> "block" :> QueryParam "header_hash" Text :> Get '[JSON] BlockResponse
 
 type AdminAPI =
-  "init" :> Get '[JSON] Value
-    :<|> "commit" :> Get '[JSON] Value
-    :<|> "merge" :> Get '[JSON] Value
-    :<|> "stateQueue" :> Get '[JSON] Value
-    :<|> "logBlocksDB" :> Get '[JSON] Value
-    :<|> "logGlobals" :> Get '[JSON] Value
+  "init" :> Get '[JSON] PlaceholderResponse
+    :<|> "commit" :> Get '[JSON] PlaceholderResponse
+    :<|> "merge" :> Get '[JSON] PlaceholderResponse
+    :<|> "stateQueue" :> Get '[JSON] PlaceholderResponse
+    :<|> "logBlocksDB" :> Get '[JSON] PlaceholderResponse
+    :<|> "logGlobals" :> Get '[JSON] PlaceholderResponse
 
 type TxAPI =
-  "deposit" :> "build" :> ReqBody '[JSON] Value :> Post '[JSON] Value
-    :<|> "submit" :> ReqBody '[JSON] Value :> Post '[JSON] Value
+  "deposit" :> "build" :> ReqBody '[JSON] Value :> Post '[JSON] PlaceholderWithRequestResponse
+    :<|> "submit" :> ReqBody '[JSON] Value :> Post '[JSON] PlaceholderWithRequestResponse
 
 type MidgardNodeAPI = HealthAPI :<|> QueryAPI :<|> AdminAPI :<|> TxAPI

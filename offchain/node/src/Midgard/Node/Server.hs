@@ -9,29 +9,46 @@ import Data.ByteString.Lazy qualified as LBS
 import Data.Pool (Pool)
 import Data.Proxy (Proxy (..))
 import Data.Text (Text)
-import Data.Text.Encoding qualified as Text
+import Data.Text qualified as Text
+import Data.Text.Encoding qualified as TE
 import Database.Persist.Postgresql (SqlBackend)
 import Midgard.Node.API (
   AdminAPI,
   HealthAPI,
-  HealthResponse (..),
   MidgardNodeAPI,
-  ProtocolInfoResponse (..),
   QueryAPI,
-  ReadyResponse (..),
   TxAPI,
-  UtxoLookupRequest (..),
+ )
+import Midgard.Node.API.Types (
+  BlockResponse (..),
+  DepositStatusResponse (..),
+  EncodedStoredUtxo (..),
+  HealthResponse (..),
+  PlaceholderResponse (..),
+  PlaceholderWithRequestResponse (..),
+  ProtocolInfoResponse (..),
+  ReadyResponse (..),
+  TxResponse (..),
+  TxStatusResponse (..),
+  TxStatusTimestamps (..),
+  TxsResponse (..),
+  UtxoResponse (..),
+  UtxosResponse (..),
  )
 import Midgard.Node.Config qualified as Config
 import Midgard.Node.DB.AddressHistory qualified as DB.AddressHistory
 import Midgard.Node.DB.Blocks qualified as DB.Blocks
+import Midgard.Node.DB.Deposits qualified as DB.Deposits
 import Midgard.Node.DB.Health qualified as DB.Health
 import Midgard.Node.DB.Hex qualified as DB.Hex
 import Midgard.Node.DB.MempoolLedger qualified as DB.MempoolLedger
 import Midgard.Node.DB.Migration qualified as DB.Migration
 import Midgard.Node.DB.Transactions qualified as DB.Transactions
+import Midgard.Node.DB.TxStatus qualified as DB.TxStatus
+import Midgard.Node.DB.Types qualified as DB.Types
 import Midgard.Node.Env (NodeEnv (..))
 import Midgard.Node.Migrations qualified as Migrations
+import Midgard.Node.TxOutRef qualified as TxOutRef
 import Network.Wai (Application)
 import Servant (
   Handler,
@@ -39,6 +56,7 @@ import Servant (
   ServerT,
   err400,
   err404,
+  err409,
   err500,
   hoistServer,
   serve,
@@ -76,12 +94,12 @@ queryServer :: ServerT QueryAPI AppM
 queryServer =
   protocolInfoHandler
     :<|> getTxHandler
-    :<|> placeholderQueryHandler "tx-status"
-    :<|> placeholderDepositStatusHandler
+    :<|> getTxStatusHandler
+    :<|> getDepositStatusHandler
     :<|> getTxsHandler
     :<|> getUtxoHandler
     :<|> getUtxosHandler
-    :<|> placeholderUtxosPostHandler
+    :<|> postUtxosByOutRefsHandler
     :<|> getBlockHandler
 
 adminServer :: ServerT AdminAPI AppM
@@ -156,12 +174,12 @@ requireDbPool = do
 
 serverErrorWith :: ServerError -> Text -> ServerError
 serverErrorWith template message =
-  template {errBody = LBS.fromStrict (Text.encodeUtf8 ("{\"error\":\"" <> message <> "\"}"))}
+  template {errBody = LBS.fromStrict (TE.encodeUtf8 ("{\"error\":\"" <> message <> "\"}"))}
 
 jsonError :: ServerError -> Text -> AppM a
 jsonError template message = throwError (serverErrorWith template message)
 
-getTxHandler :: Maybe Text -> AppM Aeson.Value
+getTxHandler :: Maybe Text -> AppM TxResponse
 getTxHandler maybeTxHash = do
   txHashText <- maybe (jsonError err404 "Invalid transaction hash: null") pure maybeTxHash
   txHash <-
@@ -172,13 +190,9 @@ getTxHandler maybeTxHash = do
   found <- liftIO (DB.Transactions.lookupTxCborByHash pool txHash)
   case found of
     Nothing -> jsonError err404 ("Invalid transaction hash or transaction not found: " <> txHashText)
-    Just txCbor ->
-      pure $
-        Aeson.object
-          [ "tx" Aeson..= DB.Hex.encodeHex txCbor
-          ]
+    Just txCbor -> pure (TxResponse (DB.Hex.encodeHex txCbor))
 
-getBlockHandler :: Maybe Text -> AppM Aeson.Value
+getBlockHandler :: Maybe Text -> AppM BlockResponse
 getBlockHandler maybeHeaderHash = do
   headerHashText <- maybe (jsonError err400 "Invalid block hash: null") pure maybeHeaderHash
   headerHash <-
@@ -187,12 +201,9 @@ getBlockHandler maybeHeaderHash = do
       Right value -> pure value
   pool <- requireDbPool
   hashes <- liftIO (DB.Blocks.lookupBlockTxHashes pool headerHash)
-  pure $
-    Aeson.object
-      [ "hashes" Aeson..= map DB.Hex.encodeHex hashes
-      ]
+  pure (BlockResponse (map DB.Hex.encodeHex hashes))
 
-getUtxoHandler :: Maybe Text -> AppM Aeson.Value
+getUtxoHandler :: Maybe Text -> AppM UtxoResponse
 getUtxoHandler maybeOutRef = do
   outRefText <- maybe (jsonError err400 "Invalid txOutRef: null") pure maybeOutRef
   outRef <-
@@ -203,86 +214,183 @@ getUtxoHandler maybeOutRef = do
   found <- liftIO (DB.MempoolLedger.lookupUtxoByOutRef pool outRef)
   case found of
     Nothing -> jsonError err404 ("UTxO not found for txOutRef " <> outRefText)
-    Just utxo ->
-      pure $
-        Aeson.object
-          [ "utxo"
-              Aeson..= Aeson.object
-                [ "outref" Aeson..= DB.Hex.encodeHex utxo.outref
-                , "outputCbor" Aeson..= DB.Hex.encodeHex utxo.outputCbor
-                ]
-          ]
+    Just utxo -> pure (UtxoResponse (encodeStoredUtxo utxo))
 
-getUtxosHandler :: Maybe Text -> AppM Aeson.Value
+getUtxosHandler :: Maybe Text -> AppM UtxosResponse
 getUtxosHandler maybeAddress = do
   address <- maybe (jsonError err400 "Invalid address: null") pure maybeAddress
   pool <- requireDbPool
   utxos <- liftIO (DB.MempoolLedger.lookupUtxosByAddress pool address)
-  pure $
-    Aeson.object
-      [ "utxos"
-          Aeson..= map
-            ( \utxo ->
-                Aeson.object
-                  [ "outref" Aeson..= DB.Hex.encodeHex utxo.outref
-                  , "outputCbor" Aeson..= DB.Hex.encodeHex utxo.outputCbor
-                  ]
-            )
-            utxos
-      ]
+  pure (UtxosResponse (map encodeStoredUtxo utxos))
 
-getTxsHandler :: Maybe Text -> AppM Aeson.Value
+getTxsHandler :: Maybe Text -> AppM TxsResponse
 getTxsHandler maybeAddress = do
   address <- maybe (jsonError err400 "Invalid address: null") pure maybeAddress
   pool <- requireDbPool
   txs <- liftIO (DB.AddressHistory.lookupAddressTxs pool address)
-  pure $
-    Aeson.object
-      [ "txs" Aeson..= map DB.Hex.encodeHex txs
-      ]
+  pure (TxsResponse (map DB.Hex.encodeHex txs))
 
-placeholderQueryHandler :: Text -> Maybe Text -> AppM Aeson.Value
-placeholderQueryHandler endpoint maybeArgument =
-  -- Keep the route surface available while we port handlers incrementally.
-  pure $
-    Aeson.object
-      [ "endpoint" Aeson..= endpoint
-      , "status" Aeson..= ("not_implemented" :: Text)
-      , "argument" Aeson..= maybeArgument
-      ]
+encodeStoredUtxo :: DB.MempoolLedger.StoredUtxo -> EncodedStoredUtxo
+encodeStoredUtxo utxo =
+  EncodedStoredUtxo
+    { outref = DB.Hex.encodeHex utxo.outref
+    , outputCbor = DB.Hex.encodeHex utxo.outputCbor
+    }
 
-placeholderDepositStatusHandler :: Maybe Text -> Maybe Text -> AppM Aeson.Value
-placeholderDepositStatusHandler eventId l1TxHash =
-  pure $
-    Aeson.object
-      [ "endpoint" Aeson..= ("deposit-status" :: Text)
-      , "status" Aeson..= ("not_implemented" :: Text)
-      , "eventId" Aeson..= eventId
-      , "l1TxHash" Aeson..= l1TxHash
-      ]
+getTxStatusHandler :: Maybe Text -> AppM TxStatusResponse
+getTxStatusHandler maybeTxHash = do
+  txHashText <- maybe (jsonError err400 "Invalid transaction hash: null") pure maybeTxHash
+  txHash <-
+    case DB.Hex.decodeTxHashHex txHashText of
+      Left _ -> jsonError err400 ("Invalid transaction hash: " <> txHashText)
+      Right value -> pure value
+  pool <- requireDbPool
+  facts <- liftIO (DB.TxStatus.lookupTxStatusFacts pool txHash)
+  let (status, response) = encodeTxStatus txHashText facts
+  if status == "not_found"
+    then jsonError err404 ("Transaction status not found for " <> txHashText)
+    else pure response
 
-placeholderUtxosPostHandler :: UtxoLookupRequest -> AppM Aeson.Value
-placeholderUtxosPostHandler request =
-  pure $
-    Aeson.object
-      [ "endpoint" Aeson..= ("utxos" :: Text)
-      , "status" Aeson..= ("not_implemented" :: Text)
-      , "txOutRefs" Aeson..= request.txOutRefs
-      ]
+encodeTxStatus :: Text -> DB.TxStatus.TxStatusFacts -> (Text, TxStatusResponse)
+encodeTxStatus txId facts
+  | facts.inImmutable =
+      simpleTxStatus "committed"
+  | facts.inProcessedMempool =
+      simpleTxStatus "pending_commit"
+  | facts.inMempool =
+      simpleTxStatus "accepted"
+  | Just rejection <- facts.rejection =
+      ( "rejected"
+      , TxStatusResponse
+          { txId
+          , status = "rejected"
+          , reasonCode = Just rejection.rejectCode
+          , reasonDetail = rejection.rejectDetail
+          , timestamps = Just (TxStatusTimestamps rejection.createdAt)
+          }
+      )
+  | Just admission <- facts.admissionStatus
+  , admission.status == "validating" =
+      simpleTxStatus "validating"
+  | Just admission <- facts.admissionStatus
+  , admission.status == "queued" =
+      simpleTxStatus "queued"
+  | otherwise =
+      simpleTxStatus "not_found"
+  where
+    simpleTxStatus status =
+      ( status
+      , TxStatusResponse
+          { txId
+          , status
+          , reasonCode = Nothing
+          , reasonDetail = Nothing
+          , timestamps = Nothing
+          }
+      )
 
-placeholderJsonBodyHandler :: Text -> Aeson.Value -> AppM Aeson.Value
+getDepositStatusHandler :: Maybe Text -> Maybe Text -> AppM DepositStatusResponse
+getDepositStatusHandler maybeEventId maybeCardanoTxHash = do
+  case (maybeEventId, maybeCardanoTxHash) of
+    (Nothing, Nothing) ->
+      jsonError err400 "GET /deposit-status requires `eventId` or `cardanoTxHash`."
+    _ -> do
+      eventId <- traverse parseEventId maybeEventId
+      cardanoTxHash <- traverse parseCardanoTxHash maybeCardanoTxHash
+      pool <- requireDbPool
+      byEventId <- traverse (liftIO . DB.Deposits.lookupDepositByEventId pool) eventId
+      resolveDepositStatus pool maybeEventId maybeCardanoTxHash byEventId cardanoTxHash
+  where
+    parseEventId value =
+      case DB.Hex.decodeTxOutRefHex value of
+        Left _ -> jsonError err400 ("Invalid eventId: " <> value)
+        Right parsed -> pure parsed
+    parseCardanoTxHash value =
+      case DB.Hex.decodeTxHashHex value of
+        Left _ -> jsonError err400 ("Invalid cardanoTxHash: " <> value)
+        Right parsed -> pure parsed
+
+resolveDepositStatus ::
+  Pool SqlBackend ->
+  Maybe Text ->
+  Maybe Text ->
+  Maybe (Maybe DB.Deposits.DepositStatus) ->
+  Maybe DB.Types.TxHash ->
+  AppM DepositStatusResponse
+resolveDepositStatus pool maybeEventId maybeCardanoTxHash byEventId maybeCardanoTxHashBytes =
+  case (byEventId, maybeCardanoTxHashBytes) of
+    (Just Nothing, _) ->
+      jsonError err404 ("Deposit not found for eventId " <> maybe "" id maybeEventId)
+    (Just (Just deposit), Just cardanoTxHash)
+      | deposit.cardanoTxHash /= DB.Types.unTxHash cardanoTxHash ->
+          jsonError err409 "Provided eventId and cardanoTxHash do not refer to the same deposit."
+      | otherwise ->
+          pure (encodeDepositStatus deposit)
+    (Just (Just deposit), Nothing) ->
+      pure (encodeDepositStatus deposit)
+    (Nothing, Just cardanoTxHash) -> do
+      matches <- liftIO (DB.Deposits.lookupDepositsByCardanoTxHash pool cardanoTxHash)
+      case matches of
+        [] -> jsonError err404 ("Deposit not found for cardanoTxHash " <> maybe "" id maybeCardanoTxHash)
+        [deposit] -> pure (encodeDepositStatus deposit)
+        _ -> jsonError err409 "Multiple deposits found for the provided cardanoTxHash; query by eventId to disambiguate."
+    (Nothing, Nothing) ->
+      jsonError err400 "GET /deposit-status requires `eventId` or `cardanoTxHash`."
+
+encodeDepositStatus :: DB.Deposits.DepositStatus -> DepositStatusResponse
+encodeDepositStatus deposit =
+  DepositStatusResponse
+    { eventId = DB.Hex.encodeHex deposit.eventId
+    , eventInfo = DB.Hex.encodeHex deposit.eventInfo
+    , inclusionTime = deposit.inclusionTime
+    , cardanoTxHash = DB.Hex.encodeHex deposit.cardanoTxHash
+    , ledgerTxId = DB.Hex.encodeHex deposit.ledgerTxId
+    , ledgerOutput = DB.Hex.encodeHex deposit.ledgerOutput
+    , ledgerAddress = deposit.ledgerAddress
+    , projectedHeaderHash = fmap DB.Hex.encodeHex deposit.projectedHeaderHash
+    , status = deposit.status
+    }
+
+postUtxosByOutRefsHandler :: Maybe Text -> [Text] -> AppM UtxosResponse
+postUtxosByOutRefsHandler maybeSelector txOutRefLabels = do
+  case maybeSelector of
+    Nothing -> jsonError err400 "POST /utxos requires the `?by-outrefs` query selector."
+    Just _ -> pure ()
+  txOutRefs <- parseRequestedOutRefs txOutRefLabels
+  pool <- requireDbPool
+  utxos <- liftIO (DB.MempoolLedger.lookupUtxosByOutRefs pool txOutRefs)
+  pure (UtxosResponse (map encodeStoredUtxo utxos))
+
+parseRequestedOutRefs :: [Text] -> AppM [DB.Types.TxOutRefCbor]
+parseRequestedOutRefs labels =
+  go mempty [] (zip [0 :: Int ..] labels)
+  where
+    go _seen acc [] = pure (reverse acc)
+    go seen acc ((index, label) : rest) =
+      case TxOutRef.parseTxOutRefLabel label of
+        Left err -> jsonError err400 ("txOutRefs[" <> showText index <> "]: " <> err)
+        Right outRef
+          | DB.Types.unTxOutRefCbor outRef `elem` seen ->
+              jsonError err400 ("Duplicate txOutRef provided at txOutRefs[" <> showText index <> "].")
+          | otherwise ->
+              go (DB.Types.unTxOutRefCbor outRef : seen) (outRef : acc) rest
+
+showText :: (Show a) => a -> Text
+showText = Text.pack . show
+
+placeholderJsonBodyHandler :: Text -> Aeson.Value -> AppM PlaceholderWithRequestResponse
 placeholderJsonBodyHandler endpoint body =
-  pure $
-    Aeson.object
-      [ "endpoint" Aeson..= endpoint
-      , "status" Aeson..= ("not_implemented" :: Text)
-      , "request" Aeson..= body
-      ]
+  pure
+    PlaceholderWithRequestResponse
+      { endpoint
+      , status = "not_implemented"
+      , request = body
+      }
 
-notImplementedHandler :: Text -> AppM Aeson.Value
+notImplementedHandler :: Text -> AppM PlaceholderResponse
 notImplementedHandler endpoint =
-  pure $
-    Aeson.object
-      [ "endpoint" Aeson..= endpoint
-      , "status" Aeson..= ("not_implemented" :: Text)
-      ]
+  pure
+    PlaceholderResponse
+      { endpoint
+      , status = "not_implemented"
+      }

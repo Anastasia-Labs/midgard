@@ -139,6 +139,7 @@ library midgard-node-lib
   hs-source-dirs:  node/src
   exposed-modules:
     Midgard.Node.API
+    Midgard.Node.API.Types
     Midgard.Node.App
     Midgard.Node.Config
     Midgard.Node.DB.AddressHistory
@@ -155,6 +156,7 @@ library midgard-node-lib
     Midgard.Node.Env
     Midgard.Node.Migrations
     Midgard.Node.Server
+    Midgard.Node.TxOutRef
 
   build-depends:
     , aeson
