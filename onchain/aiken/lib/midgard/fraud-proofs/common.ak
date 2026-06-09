@@ -546,7 +546,7 @@ pub fn verify_tx_in_state_queue_node(
   expect
     state_queue_node_key == bytearray.drop(
       computation_thread_token_asset_name,
-      fraud_proof_catalogue.id_byte_count,
+      fraud_proof_catalogue.fraud_proof_id_byte_count,
     )
 
   // 4. Specified transaction must be proven to be included in the referenced
@@ -597,7 +597,7 @@ pub fn verify_native_tx_in_state_queue_node(
   expect
     state_queue_node_key == bytearray.drop(
       computation_thread_token_asset_name,
-      fraud_proof_catalogue.id_byte_count,
+      fraud_proof_catalogue.fraud_proof_id_byte_count,
     )
 
   expect

@@ -17,7 +17,8 @@ pub type MintRedeemer {
 pub fn asset_name_to_header_hash(
   fraud_proof_asset_name: AssetName,
 ) -> HeaderHash {
-  fraud_proof_asset_name |> bytearray.drop(fraud_proof_catalogue.id_byte_count)
+  fraud_proof_asset_name
+    |> bytearray.drop(fraud_proof_catalogue.fraud_proof_id_byte_count)
 }
 
 pub fn get_proven_fraudulent_blocks_header_hash(
