@@ -7,11 +7,17 @@ import Data.ByteString qualified as ByteString
 import Data.Pool (Pool, destroyAllResources)
 import Data.Text (Text)
 import Data.Text qualified as Text
+import Data.Time (UTCTime (..), fromGregorian, secondsToDiffTime)
 import Data.Word (Word8)
-import Database.Persist.Sql (PersistValue (PersistByteString, PersistText), SqlBackend, rawExecute)
+import Database.Persist.Sql (PersistValue (PersistByteString, PersistNull, PersistText, PersistUTCTime), SqlBackend, rawExecute)
 import Database.Persist.Sqlite (createSqlitePool, runSqlPool)
 import Midgard.Node.DB.AddressHistory (lookupAddressTxs)
 import Midgard.Node.DB.Blocks (lookupBlockTxHashes)
+import Midgard.Node.DB.Deposits (
+  DepositStatus (..),
+  lookupDepositByEventId,
+  lookupDepositsByCardanoTxHash,
+ )
 import Midgard.Node.DB.Hex qualified as DB.Hex
 import Midgard.Node.DB.MempoolLedger (
   StoredUtxo (..),
@@ -20,7 +26,9 @@ import Midgard.Node.DB.MempoolLedger (
   lookupUtxosByOutRefs,
  )
 import Midgard.Node.DB.Transactions (lookupTxCborByHash)
+import Midgard.Node.DB.TxStatus (TxAdmissionStatus (..), TxRejection (..), TxStatusFacts (..), lookupTxStatusFacts)
 import Midgard.Node.DB.Types qualified as DB.Types
+import Midgard.Node.TxOutRef qualified as TxOutRef
 import System.Directory (getTemporaryDirectory, removeFile)
 import System.IO (hClose, openTempFile)
 import Test.Tasty (TestTree, testGroup)
@@ -108,6 +116,54 @@ tests =
         assertBool "header hash hex should decode" (either (const False) (const True) (DB.Hex.decodeHeaderHashHex (hexText (headerHashBlob 31))))
         assertBool "short tx hash hex should be rejected" (either (const True) (const False) (DB.Hex.decodeTxHashHex (hexText (blob 32))))
         assertBool "32-byte block hash hex should be rejected as header hash" (either (const True) (const False) (DB.Hex.decodeHeaderHashHex (hexText (txHashBlob 33))))
+    , testCase "lookupTxStatusFacts combines admission, rejection, and tx lifecycle rows" $
+        withTestPool $ \pool -> do
+          let txHash = testTxHash 34
+              rejectedAt = testTime 10
+          seedTxAdmissionRow pool (DB.Types.unTxHash txHash) "queued"
+          seedTxRejectionRow pool (DB.Types.unTxHash txHash) "invalid_witness" (Just "bad signature") rejectedAt
+          seedProcessedMempoolRow pool (DB.Types.unTxHash txHash) (blob 35)
+          actual <- lookupTxStatusFacts pool txHash
+          actual
+            @?= TxStatusFacts
+              { admissionStatus = Just (TxAdmissionStatus "queued")
+              , rejection = Just (TxRejection "invalid_witness" (Just "bad signature") rejectedAt)
+              , inImmutable = False
+              , inMempool = False
+              , inProcessedMempool = True
+              }
+    , testCase "lookupTxStatusFacts reports committed txs from immutable" $
+        withTestPool $ \pool -> do
+          let txHash = testTxHash 36
+          seedImmutableRow pool (DB.Types.unTxHash txHash) (blob 37)
+          actual <- lookupTxStatusFacts pool txHash
+          actual.inImmutable @?= True
+    , testCase "deposit status can be found by event id and Cardano tx hash" $
+        withTestPool $ \pool -> do
+          let eventId = testTxOutRef 38
+              cardanoTxHash = testTxHash 39
+              expected =
+                DepositStatus
+                  { eventId = DB.Types.unTxOutRefCbor eventId
+                  , eventInfo = blob 40
+                  , inclusionTime = testTime 41
+                  , cardanoTxHash = DB.Types.unTxHash cardanoTxHash
+                  , ledgerTxId = txHashBlob 42
+                  , ledgerOutput = blob 43
+                  , ledgerAddress = "addr_test1vr4l7q0midgard"
+                  , projectedHeaderHash = Just (headerHashBlob 44)
+                  , status = "projected"
+                  }
+          seedDepositRow pool expected
+          byEventId <- lookupDepositByEventId pool eventId
+          byTxHash <- lookupDepositsByCardanoTxHash pool cardanoTxHash
+          byEventId @?= Just expected
+          byTxHash @?= [expected]
+    , testCase "parseTxOutRefLabel produces Cardano transaction-input CBOR" $ do
+        let txHash = testTxHash 45
+            label = DB.Hex.encodeHex (DB.Types.unTxHash txHash) <> "#24"
+            expected = ByteString.pack [0x82, 0x58, 0x20] <> DB.Types.unTxHash txHash <> ByteString.pack [0x18, 0x18]
+        fmap DB.Types.unTxOutRefCbor (TxOutRef.parseTxOutRefLabel label) @?= Right expected
     ]
 
 withTestPool :: (Pool SqlBackend -> IO a) -> IO a
@@ -138,6 +194,10 @@ initialiseSchema pool =
       rawExecute "CREATE TABLE blocks (header_hash BLOB NOT NULL, tx_id BLOB NOT NULL)" []
       rawExecute "CREATE TABLE mempool_ledger (outref BLOB PRIMARY KEY, output BLOB NOT NULL, address TEXT NOT NULL)" []
       rawExecute "CREATE TABLE address_history (address TEXT NOT NULL, tx_id BLOB NOT NULL)" []
+      rawExecute "CREATE TABLE processed_mempool (tx_id BLOB PRIMARY KEY, tx BLOB NOT NULL)" []
+      rawExecute "CREATE TABLE tx_admissions (tx_id BLOB PRIMARY KEY, status TEXT NOT NULL)" []
+      rawExecute "CREATE TABLE tx_rejections (tx_id BLOB NOT NULL, reject_code TEXT NOT NULL, reject_detail TEXT, created_at TIMESTAMP NOT NULL)" []
+      rawExecute "CREATE TABLE deposits_utxos (event_id BLOB PRIMARY KEY, event_info BLOB NOT NULL, inclusion_time TIMESTAMP NOT NULL, deposit_l1_tx_hash BLOB NOT NULL, ledger_tx_id BLOB NOT NULL, ledger_output BLOB NOT NULL, ledger_address TEXT NOT NULL, projected_header_hash BLOB, status TEXT NOT NULL)" []
 
 seedMempoolRow :: Pool SqlBackend -> ByteString -> ByteString -> IO ()
 seedMempoolRow pool txHash tx =
@@ -166,11 +226,49 @@ seedAddressHistoryRow pool address txHash =
     (rawExecute "INSERT INTO address_history (address, tx_id) VALUES (?, ?)" [toPersistText address, toPersistBlob txHash])
     pool
 
+seedProcessedMempoolRow :: Pool SqlBackend -> ByteString -> ByteString -> IO ()
+seedProcessedMempoolRow pool txHash tx =
+  runSqlPool (rawExecute "INSERT INTO processed_mempool (tx_id, tx) VALUES (?, ?)" [toPersistBlob txHash, toPersistBlob tx]) pool
+
+seedTxAdmissionRow :: Pool SqlBackend -> ByteString -> Text -> IO ()
+seedTxAdmissionRow pool txHash status =
+  runSqlPool (rawExecute "INSERT INTO tx_admissions (tx_id, status) VALUES (?, ?)" [toPersistBlob txHash, toPersistText status]) pool
+
+seedTxRejectionRow :: Pool SqlBackend -> ByteString -> Text -> Maybe Text -> UTCTime -> IO ()
+seedTxRejectionRow pool txHash rejectCode rejectDetail createdAt =
+  runSqlPool
+    ( rawExecute
+        "INSERT INTO tx_rejections (tx_id, reject_code, reject_detail, created_at) VALUES (?, ?, ?, ?)"
+        [toPersistBlob txHash, toPersistText rejectCode, maybe PersistNull toPersistText rejectDetail, toPersistTime createdAt]
+    )
+    pool
+
+seedDepositRow :: Pool SqlBackend -> DepositStatus -> IO ()
+seedDepositRow pool deposit =
+  runSqlPool
+    ( rawExecute
+        "INSERT INTO deposits_utxos (event_id, event_info, inclusion_time, deposit_l1_tx_hash, ledger_tx_id, ledger_output, ledger_address, projected_header_hash, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        [ toPersistBlob deposit.eventId
+        , toPersistBlob deposit.eventInfo
+        , toPersistTime deposit.inclusionTime
+        , toPersistBlob deposit.cardanoTxHash
+        , toPersistBlob deposit.ledgerTxId
+        , toPersistBlob deposit.ledgerOutput
+        , toPersistText deposit.ledgerAddress
+        , maybe PersistNull toPersistBlob deposit.projectedHeaderHash
+        , toPersistText deposit.status
+        ]
+    )
+    pool
+
 toPersistBlob :: ByteString -> PersistValue
 toPersistBlob = PersistByteString
 
 toPersistText :: Text -> PersistValue
 toPersistText = PersistText
+
+toPersistTime :: UTCTime -> PersistValue
+toPersistTime = PersistUTCTime
 
 blob :: Word8 -> ByteString
 blob byte = ByteString.pack [byte, byte + 1, byte + 2]
@@ -202,6 +300,10 @@ testTxOutRef byte =
 
 hexText :: ByteString -> Text
 hexText = DB.Hex.encodeHex
+
+testTime :: Integer -> UTCTime
+testTime seconds =
+  UTCTime (fromGregorian 2026 6 9) (secondsToDiffTime seconds)
 
 freshDbPath :: IO FilePath
 freshDbPath = do

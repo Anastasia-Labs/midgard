@@ -143,12 +143,14 @@ library midgard-node-lib
     Midgard.Node.Config
     Midgard.Node.DB.AddressHistory
     Midgard.Node.DB.Blocks
+    Midgard.Node.DB.Deposits
     Midgard.Node.DB.Health
     Midgard.Node.DB.Hex
     Midgard.Node.DB.MempoolLedger
     Midgard.Node.DB.Migration
     Midgard.Node.DB.Pool
     Midgard.Node.DB.Transactions
+    Midgard.Node.DB.TxStatus
     Midgard.Node.DB.Types
     Midgard.Node.Env
     Midgard.Node.Migrations
@@ -167,6 +169,7 @@ library midgard-node-lib
     , resource-pool
     , servant
     , servant-server
+    , time
     , unliftio-core
     , wai
     , warp
@@ -207,3 +210,4 @@ test-suite node-db-tests
     , resource-pool
     , tasty
     , tasty-hunit
+    , time
