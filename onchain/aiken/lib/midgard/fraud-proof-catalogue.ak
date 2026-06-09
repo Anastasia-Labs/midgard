@@ -26,7 +26,7 @@ pub type IsLocked =
 /// Catalogue elements do not carry payload data; fraud-proof steps carry their
 /// script through the output's reference-script slot.
 pub type Metadata {
-  StepCount(Int)
+  step_count: Int,
 }
 
 pub type Datum =
@@ -40,12 +40,12 @@ pub type SpendRedeemer {
 pub type MintRedeemer {
   Init { output_index: Int }
   AddFraudProof {
-    fraud_proof_id: Int,
+    fraud_proof_key: ByteArray,
     step_output_count: Int,
     m_root_ref_input_index: Option<Int>,
   }
   AddFraudProofStep {
-    fraud_proof_id: Int,
+    fraud_proof_key: ByteArray,
     step_id: Int,
     continued_anchor_output_index: Int,
     step_output_index: Int,

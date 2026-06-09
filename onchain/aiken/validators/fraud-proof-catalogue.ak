@@ -9,9 +9,9 @@ use cardano/transaction.{OutputReference, Transaction}
 use midgard/common/utils.{get_singleton_asset_with_policy, has_signed}
 use midgard/fraud_proof_catalogue.{
   AddFraudProof, AddFraudProofStep, Datum, Init, ListStateTransition,
-  LockCatalogue, Metadata, MintRedeemer, SpendRedeemer, StepCount,
-  finalize_linked_list, finalize_linked_list_root, first_step_id,
-  fraud_proof_id_byte_count, fraud_proof_key, fraud_proof_step_key,
+  LockCatalogue, Metadata, MintRedeemer, SpendRedeemer, finalize_linked_list,
+  finalize_linked_list_root, first_step_id, fraud_proof_id_byte_count,
+  fraud_proof_step_key,
 }
 use midgard/hub_oracle as hub
 
@@ -69,15 +69,8 @@ validator spend(
                 // Done.
                 True
               },
-              fn(
-                _inner_root_key,
-                _inner_root_data,
-                _continued_inner_root_data,
-                _inner_root_child_link,
-              ) {
-                False
-              },
-              fn(_node_key, _node_data, _continued_node_data) { False },
+              fn(_, _, _, _) { False },
+              fn(_, _, _) { False },
             )
 
           // Done.
@@ -137,7 +130,7 @@ validator mint(
           |> finalize_linked_list_root(own_policy_id)
       }
       AddFraudProof {
-        fraud_proof_id,
+        fraud_proof_key,
         step_output_count,
         m_root_ref_input_index,
       } -> {
@@ -153,42 +146,43 @@ validator mint(
         // 1. Catalogue operations must be authorized by genesis admin.
         expect genesis_admin |> has_signed(extra_signatories)
 
-        // 2. The first transaction output must be the continued outer-list
-        //    anchor output.
+        // 2. Redeemer fraud proof key must match canonical key length.
+        expect bytearray.length(fraud_proof_key) == fraud_proof_id_byte_count
+
+        // 3. The first transaction output must be the continued outer-list
+        //    anchor output. Composability is not a concern here.
         let continued_anchor_output = builtin.head_list(outputs)
 
         let outputs_after_anchor = builtin.tail_list(outputs)
 
-        // 3. The first output after the continued anchor must be the new
+        // 4. The first output after the continued anchor must be the new
         //    inner-root output.
         let fraud_proof_output = builtin.head_list(outputs_after_anchor)
 
         let step_outputs_tail = builtin.tail_list(outputs_after_anchor)
 
-        let step_outputs = step_outputs_tail |> list.take(step_output_count)
+        let step_outputs =
+          step_outputs_tail |> list.expect_take(step_output_count)
 
-        let expected_fraud_proof_key = fraud_proof_key(fraud_proof_id)
         let prepare_state =
           fn(
             _fraud_proof_lovelace,
-            fraud_proof_key,
-            fraud_proof_data: Data,
+            inner_root_fraud_proof_key,
+            fraud_proof_data,
             first_child_link,
             fraud_proof_ref_script,
           ) {
-            // 4. Produced inner root key must match the encoded fraud proof ID.
-            expect fraud_proof_key == expected_fraud_proof_key
+            // 5. Produced inner root key must match redeemer fraud proof key.
+            expect inner_root_fraud_proof_key == fraud_proof_key
 
-            expect metadata: Metadata = fraud_proof_data
+            // 6. Produced inner root data must declare the final step count.
+            expect Metadata { step_count: total_step_count } = fraud_proof_data
 
-            // 5. Produced inner root data must declare the final step count.
-            let StepCount(total_step_count) = metadata
-
-            // 6. Initial step batch cannot exceed the declared final step
+            // 7. Initial step batch cannot exceed the declared final step
             //    count.
             expect step_output_count <= total_step_count
 
-            // 7. AddFraudProof must include at least one produced step node.
+            // 8. AddFraudProof must include at least one produced step node.
             expect Some(first_child_key) = first_child_link
 
             let first_child_step_id =
@@ -196,7 +190,7 @@ validator mint(
                 |> bytearray.drop(fraud_proof_id_byte_count)
                 |> bytearray.to_int_big_endian
 
-            // 8. A partial initial batch must leave earlier steps to be
+            // 9. A partial initial batch must leave earlier steps to be
             //    prepended later.
             expect
               if total_step_count > step_output_count {
@@ -205,7 +199,7 @@ validator mint(
                 first_child_step_id == first_step_id
               }
 
-            // 9. Fraud proof inner roots must not carry reference scripts.
+            // 10. Fraud proof inner roots must not carry reference scripts.
             expect fraud_proof_ref_script == None
 
             total_step_count
@@ -226,37 +220,31 @@ validator mint(
                 |> bytearray.drop(fraud_proof_id_byte_count)
                 |> bytearray.to_int_big_endian
 
-            // 10. Each produced step node key must be proof key followed by
-            //    the encoded step ID.
+            // 11. Each produced step node key must be proof key followed by the
+            //     encoded step ID.
             expect
-              node_key == fraud_proof_step_key(
-                expected_fraud_proof_key,
-                current_step_id,
-              )
+              node_key == fraud_proof_step_key(fraud_proof_key, current_step_id)
 
-            // 11. Step node links must increment by one and end at the
-            //     declared final step.
-            when node_link is {
-              Some(next_node_key) -> {
-                expect
+            // 12. Step node links must increment by one and end at the declared
+            //     final step.
+            expect
+              when node_link is {
+                Some(next_node_key) ->
                   next_node_key == fraud_proof_step_key(
-                    expected_fraud_proof_key,
+                    fraud_proof_key,
                     current_step_id + 1,
                   )
+                None -> current_step_id == total_step_count - 1
               }
-              None -> {
-                expect current_step_id == total_step_count - 1
-              }
-            }
 
-            // 12. Produced step nodes must carry their step reference script.
+            // 13. Produced step nodes must carry their step reference script.
             expect Some(_node_ref_script_hash) = node_ref_script
 
             total_step_count
           }
 
-        // 13. AddFraudProof must insert a complete inner list whose inner root
-        //    is inserted into the outer list in ascending order.
+        // 14. AddFraudProof must insert an inner list whose inner root is
+        //     inserted into the outer list in ascending order.
         {
           let
             _anchor_input,
@@ -279,15 +267,15 @@ validator mint(
               node_validator: node_validator,
             )
 
-          // 14. The continued outer-list anchor must preserve its data.
+          // 15. The continued outer-list anchor must preserve its data.
           expect anchor_data == continued_anchor_data
 
-          // 15. No non-structural same-policy asset changes are allowed.
+          // 16. No non-structural same-policy asset changes are allowed.
           expect dict.is_empty(other_list_assets)
 
           when m_anchor_key is {
             Some(_) ->
-              // 16a. If the spent anchor is not root, the root UTxO must be
+              // 17a. If the spent anchor is not root, the root UTxO must be
               //      provided in the reference inputs.
               {
                 expect Some(root_ref_input_index) = m_root_ref_input_index
@@ -301,20 +289,16 @@ validator mint(
                   _root_ref_script,
                 <- nll.get_root_element_info(root_input.output)
 
-                expect is_locked: Bool = root_data
-
-                // 17a. The fraud proof list must not be locked.
-                expect False = is_locked
+                // 18a. The fraud proof list must not be locked.
+                expect False = root_data
 
                 // Done.
                 True
               }
                 |> finalize_linked_list_root(own_policy_id)
             None -> {
-              expect is_locked: Bool = anchor_data
-
-              // 16b. The fraud proof list must not be locked.
-              expect False = is_locked
+              // 17b. The fraud proof list must not be locked.
+              expect False = anchor_data
 
               // Done.
               True
@@ -324,7 +308,7 @@ validator mint(
           |> finalize_linked_list(own_policy_id)
       }
       AddFraudProofStep {
-        fraud_proof_id,
+        fraud_proof_key,
         step_id,
         continued_anchor_output_index,
         step_output_index,
@@ -334,8 +318,8 @@ validator mint(
         // 1. Catalogue operations must be authorized by genesis admin.
         expect genesis_admin |> has_signed(extra_signatories)
 
-        // 2. Step IDs must be at or after the first step.
-        expect step_id >= first_step_id
+        // 2. Redeemer fraud proof key must match canonical key length.
+        expect bytearray.length(fraud_proof_key) == fraud_proof_id_byte_count
 
         // 3. Redeemer anchor output index must point to the continued inner
         //    list anchor output.
@@ -344,8 +328,6 @@ validator mint(
 
         // 4. Redeemer step output index must point to the new step node output.
         let step_output = outputs |> list.expect_at(step_output_index)
-
-        let expected_fraud_proof_key = fraud_proof_key(fraud_proof_id)
 
         // 5. AddFraudProofStep must insert one step node into the requested
         //    fraud proof's inner list in ascending order.
@@ -376,52 +358,39 @@ validator mint(
                 continued_anchor_data,
                 old_first_child_link,
               ) {
-                // 6a. An inner-root anchor must match the requested fraud
-                //     proof key.
-                expect anchor_key == expected_fraud_proof_key
+                // 6. An inner-root anchor must match the requested fraud proof
+                //    key.
+                expect anchor_key == fraud_proof_key
 
-                expect metadata: Metadata = anchor_data
-
-                // 7a. Inner-root data must declare the final step count.
-                let StepCount(total_step_count) = metadata
-
-                // 8a. The child being prepended to must remain below the
-                //     declared final step count.
-                expect step_id + 1 < total_step_count
-
-                // 9a. A continued inner-root anchor must preserve its data.
+                // 7. A continued inner-root anchor must preserve its data.
                 expect anchor_data == continued_anchor_data
 
-                // 10a. Step addition must prepend before an existing first
-                //     child.
+                // 8. Step addition must prepend before an existing first
+                //    child.
                 expect Some(old_first_child_key) = old_first_child_link
 
-                // 11a. New step key must be exactly one less than the child it
-                //      prepends to.
+                // 9. New step key must be exactly one less than the child it
+                //     prepends to.
                 expect
                   old_first_child_key == fraud_proof_step_key(
-                    expected_fraud_proof_key,
+                    fraud_proof_key,
                     step_id + 1,
                   )
 
                 // Done.
                 True
               },
-              fn(_anchor_key, _anchor_data, _continued_anchor_data) {
-                // 6b. Node anchors cannot prepend fraud proof steps.
-                fail
-              },
+              fn(_, _, _) { False },
             )
 
-          // 11. Produced step node must carry its step reference script.
+          // 10. Produced step node must carry its step reference script.
           expect Some(_node_ref_script_hash) = node_ref_script
 
-          // 12. Produced step node key must match proof key followed by
-          //     the encoded step ID.
-          expect
-            node_key == fraud_proof_step_key(expected_fraud_proof_key, step_id)
+          // 11. Produced step node key must match proof key followed by the
+          //     encoded step ID.
+          expect node_key == fraud_proof_step_key(fraud_proof_key, step_id)
 
-          // 13. No non-structural same-policy asset changes are allowed.
+          // 12. No non-structural same-policy asset changes are allowed.
           expect dict.is_empty(other_list_assets)
 
           // Done.
