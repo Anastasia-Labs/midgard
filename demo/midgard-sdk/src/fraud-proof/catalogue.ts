@@ -157,13 +157,6 @@ export type FraudProofCatalogueStepOutput = {
   readonly lovelace: bigint;
 };
 
-export type FraudProofCatalogueInitParams = {
-  readonly validator: AuthenticatedValidator;
-  readonly genesisAdmin: string;
-  readonly rootLovelace: bigint;
-  readonly referenceScripts?: FraudProofCatalogueReferenceScripts;
-};
-
 export type FraudProofCatalogueAddFraudProofParams = {
   readonly validator: AuthenticatedValidator;
   readonly genesisAdmin: string;
@@ -393,54 +386,6 @@ const isRootDatum = (
 const isInnerRootDatum = (
   datum: FraudProofCatalogueDatum,
 ): datum is FraudProofCatalogueInnerRootDatum => "InnerRoot" in datum.data;
-
-/**
- * Init.
- */
-export const incompleteFraudProofCatalogueInitTxProgram = (
-  lucid: LucidEvolution,
-  params: FraudProofCatalogueInitParams,
-): Effect.Effect<TxBuilder, never> =>
-  Effect.gen(function* () {
-    const rootUnit = fraudProofCatalogueRootUnit(params.validator);
-    const assets: Assets = {
-      lovelace: params.rootLovelace,
-      [rootUnit]: 1n,
-    };
-    const datum = fraudProofCatalogueRootDatum(false, null);
-
-    const tx = lucid
-      .newTx()
-      .mintAssets({ [rootUnit]: 1n }, ((ctx) =>
-        Data.to(
-          {
-            Init: {
-              output_index: requireUniqueOutputIndex(
-                ctx.outputs,
-                (output) => (output.assets[rootUnit] ?? 0n) === 1n,
-                "fraud-proof catalogue root",
-              ),
-            },
-          },
-          FraudProofCatalogueMintRedeemer,
-        )) satisfies BuildTxWithRedeemer)
-      .pay.ToContract(
-        params.validator.spendingScriptAddress,
-        {
-          kind: "inline",
-          value: encodeFraudProofCatalogueDatum(datum),
-        },
-        assets,
-      )
-      .addSignerKey(params.genesisAdmin);
-
-    return applyCatalogueScripts(
-      tx,
-      params.validator,
-      params.referenceScripts,
-      { minting: true },
-    );
-  });
 
 /**
  * AddFraudProof.
