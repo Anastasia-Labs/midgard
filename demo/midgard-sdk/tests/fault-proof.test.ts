@@ -7,7 +7,7 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  buildDoubleSpendFaultProofContracts,
+  buildFaultProofContracts,
   DoubleSpendStep01Datum,
   DoubleSpendStep01SpendRedeemer,
   DoubleSpendStep02Datum,
@@ -16,6 +16,7 @@ import {
   DoubleSpendStep03SpendRedeemer,
   DoubleSpendStep04Datum,
   DoubleSpendStep04SpendRedeemer,
+  FRAUD_PROOF_STEP_TITLES,
   FraudProofComputationThreadRedeemer,
   FraudProofTokenMintRedeemer,
   MidgardTxInputList,
@@ -181,14 +182,14 @@ describe("fault-proof ABI", () => {
   });
 });
 
-describe("double-spend fault-proof contract builder", () => {
-  it("builds four distinct ordered validators from the Aiken blueprint", async () => {
+describe("fault-proof contract builder", () => {
+  it("builds implemented fraud-proof step chains from the Aiken blueprint", async () => {
     const blueprint = parseFaultProofBlueprint(
       JSON.parse(readFileSync(blueprintPath, "utf8")) as unknown,
     );
 
     const contracts = await Effect.runPromise(
-      buildDoubleSpendFaultProofContracts({
+      buildFaultProofContracts({
         blueprint,
         network: "Preprod",
         hubOraclePolicyId: h28b,
@@ -196,14 +197,18 @@ describe("double-spend fault-proof contract builder", () => {
       }),
     );
 
-    expect(contracts.doubleSpend.firstStep).toBe(
-      contracts.doubleSpend.steps[0],
-    );
-    expect(contracts.doubleSpend.steps).toHaveLength(4);
-    expect(
-      new Set(
-        contracts.doubleSpend.steps.map((step) => step.spendingScriptHash),
-      ).size,
-    ).toBe(4);
+    const fraudProofCategoryNames = Object.keys(
+      FRAUD_PROOF_STEP_TITLES,
+    ) as (keyof typeof FRAUD_PROOF_STEP_TITLES)[];
+    for (const categoryName of fraudProofCategoryNames) {
+      const chain = contracts.fraudProofs[categoryName];
+      expect(chain.firstStep).toBe(chain.steps[0]);
+      expect(chain.steps).toHaveLength(
+        FRAUD_PROOF_STEP_TITLES[categoryName].length,
+      );
+      expect(
+        new Set(chain.steps.map((step) => step.spendingScriptHash)).size,
+      ).toBe(chain.steps.length);
+    }
   });
 });
