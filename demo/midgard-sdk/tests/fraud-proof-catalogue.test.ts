@@ -141,7 +141,10 @@ describe("fraud-proof catalogue pure helpers", () => {
 
   it("round-trips catalogue root datums", () => {
     const unlockedRoot = roundTripDatum(
-      fraudProofCatalogueRootDatum(false, null),
+      fraudProofCatalogueRootDatum({
+        isLocked: false,
+        link: null,
+      }),
     );
     if (!("Root" in unlockedRoot.data)) {
       throw new Error("Expected root datum");
@@ -152,7 +155,10 @@ describe("fraud-proof catalogue pure helpers", () => {
     expect(unlockedRoot.link).toBeNull();
 
     const lockedRoot = roundTripDatum(
-      fraudProofCatalogueRootDatum(true, FRAUD_PROOF_1_KEY),
+      fraudProofCatalogueRootDatum({
+        isLocked: true,
+        link: FRAUD_PROOF_1_KEY,
+      }),
     );
     if (!("Root" in lockedRoot.data)) {
       throw new Error("Expected root datum");

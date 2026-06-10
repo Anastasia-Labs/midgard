@@ -20,9 +20,10 @@ import {
   UnspecifiedNetworkError,
 } from "@/common.js";
 import {
-  FRAUD_PROOF_CATALOGUE_ASSET_NAME,
-  FraudProofCatalogueDatum,
+  encodeFraudProofCatalogueDatum,
   FraudProofCatalogueMintRedeemer,
+  fraudProofCatalogueRootDatum,
+  fraudProofCatalogueRootUnit,
 } from "@/fraud-proof/catalogue.js";
 import {
   HUB_ORACLE_ASSET_NAME,
@@ -67,7 +68,6 @@ export type AtomicProtocolInitReferenceScripts = {
 
 export type InitializationParams = {
   midgardValidators: MidgardValidators;
-  fraudProofCatalogueMerkleRoot: string;
   oneShotNonceUTxO: UTxO;
   validityRange: {
     readonly validFrom: bigint;
@@ -155,9 +155,8 @@ export const incompleteInitializationTxProgram = (
       midgardValidators.retiredOperators.policyId,
       RETIRED_OPERATORS_ROOT_ASSET_NAME,
     );
-    const fraudProofCatalogueUnit = toUnit(
-      midgardValidators.fraudProofCatalogue.policyId,
-      FRAUD_PROOF_CATALOGUE_ASSET_NAME,
+    const fraudProofCatalogueUnit = fraudProofCatalogueRootUnit(
+      midgardValidators.fraudProofCatalogue,
     );
 
     const hubOracleAssets = { [hubOracleUnit]: 1n };
@@ -236,15 +235,17 @@ export const incompleteInitializationTxProgram = (
       )
       .mintAssets(
         fraudProofCatalogueAssets,
-        Data.to("Init", FraudProofCatalogueMintRedeemer),
+        encodeInitOutputRedeemer(6n, FraudProofCatalogueMintRedeemer),
       )
-      .pay.ToAddressWithData(
+      .pay.ToContract(
         midgardValidators.fraudProofCatalogue.spendingScriptAddress,
         {
           kind: "inline",
-          value: Data.to(
-            params.fraudProofCatalogueMerkleRoot,
-            FraudProofCatalogueDatum,
+          value: encodeFraudProofCatalogueDatum(
+            fraudProofCatalogueRootDatum({
+              isLocked: false,
+              link: null,
+            }),
           ),
         },
         fraudProofCatalogueAssets,

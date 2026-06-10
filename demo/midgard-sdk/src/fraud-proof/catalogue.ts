@@ -256,10 +256,15 @@ export const fraudProofCatalogueMetadata = (
   step_count: integerToBigInt(stepCount, "fraud proof step count"),
 });
 
-export const fraudProofCatalogueRootDatum = (
-  isLocked: boolean,
-  link: string | null,
-): FraudProofCatalogueDatum =>
+export type FraudProofCatalogueRootDatumParams = {
+  readonly isLocked: boolean;
+  readonly link: string | null;
+};
+
+export const fraudProofCatalogueRootDatum = ({
+  isLocked,
+  link,
+}: FraudProofCatalogueRootDatumParams): FraudProofCatalogueDatum =>
   nestedLinkedListRootDatum(
     Data.castTo(isLocked, FraudProofCatalogueIsLocked) as Data,
     link,
@@ -627,10 +632,10 @@ export const incompleteFraudProofCatalogueLockTxProgram = (
     }
 
     const rootUnit = fraudProofCatalogueRootUnit(params.validator);
-    const continuedRootDatum = fraudProofCatalogueRootDatum(
-      true,
-      rootDatum.link,
-    );
+    const continuedRootDatum = fraudProofCatalogueRootDatum({
+      isLocked: true,
+      link: rootDatum.link,
+    });
 
     const tx = lucid
       .newTx()
