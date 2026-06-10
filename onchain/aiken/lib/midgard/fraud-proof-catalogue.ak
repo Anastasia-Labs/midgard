@@ -40,19 +40,19 @@ pub type SpendRedeemer {
 pub type MintRedeemer {
   Init { output_index: Int }
   AddFraudProof {
-    fraud_proof_key: ByteArray,
+    fraud_proof_id: Int,
     step_output_count: Int,
     m_root_ref_input_index: Option<Int>,
   }
   AddFraudProofStep {
-    fraud_proof_key: ByteArray,
+    fraud_proof_id: Int,
     step_id: Int,
     continued_anchor_output_index: Int,
     step_output_index: Int,
   }
 }
 
-pub fn fraud_proof_key(fraud_proof_id: Int) -> ByteArray {
+pub fn fraud_proof_key_from_id(fraud_proof_id: Int) -> ByteArray {
   bytearray.from_int_big_endian(fraud_proof_id, fraud_proof_id_byte_count)
 }
 
