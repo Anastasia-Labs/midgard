@@ -216,15 +216,6 @@ export const REAL_FRAUD_PROOF_CATALOGUE_SCRIPT_TITLES = {
   spend: "fraud_proof_catalogue.spend.else",
 } as const;
 
-export const REAL_COMPUTATION_THREAD_SCRIPT_TITLES = {
-  mint: "computation_thread.mint.mint",
-} as const;
-
-export const REAL_FRAUD_PROOF_SCRIPT_TITLES = {
-  mint: "fraud_proof.mint.mint",
-  spend: "fraud_proof.spend.else",
-} as const;
-
 /**
  * One-shot outref used to parameterize the real hub-oracle policy.
  */
@@ -399,80 +390,6 @@ const buildRealFraudProofCatalogueValidator = (
     REAL_FRAUD_PROOF_CATALOGUE_SCRIPT_TITLES,
     [contracts.hubOracle.policyId],
   );
-
-const buildRealComputationThreadValidator = (
-  contracts: SDK.MidgardValidators,
-): Effect.Effect<SDK.MintingValidator, Error> =>
-  Effect.gen(function* () {
-    const blueprint = yield* loadRealBlueprint();
-    const mintBase = yield* getCompiledScript(
-      blueprint,
-      REAL_COMPUTATION_THREAD_SCRIPT_TITLES.mint,
-    );
-    return makeMintingPolicy(
-      applyParamsToScript(mintBase, [
-        contracts.fraudProofCatalogue.policyId,
-        contracts.hubOracle.policyId,
-      ]),
-    );
-  });
-
-const buildRealFraudProofValidator = (
-  network: Network,
-  computationThread: SDK.MintingValidator,
-): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
-  buildRealAuthenticatedValidator(network, REAL_FRAUD_PROOF_SCRIPT_TITLES, [
-    computationThread.policyId,
-  ]);
-
-const expectDerivedScriptHash = (
-  label: string,
-  expected: string,
-  actual: string,
-): Effect.Effect<void, Error> =>
-  expected === actual
-    ? Effect.void
-    : Effect.fail(
-        new Error(
-          `${label} mismatch while deriving real double-spend fault-proof contracts: expected=${expected}, actual=${actual}`,
-        ),
-      );
-
-const buildRealDoubleSpendFirstStepValidator = (
-  network: Network,
-  contracts: SDK.MidgardValidators,
-  computationThread: SDK.MintingValidator,
-  fraudProof: SDK.AuthenticatedValidator,
-): Effect.Effect<SDK.SpendingValidator, Error> =>
-  Effect.gen(function* () {
-    const blueprint = SDK.parseFaultProofBlueprint(yield* loadRealBlueprint());
-    const doubleSpendContracts = yield* SDK.buildDoubleSpendFaultProofContracts(
-      {
-        blueprint,
-        network,
-        hubOraclePolicyId: contracts.hubOracle.policyId,
-        fraudProofCataloguePolicyId: contracts.fraudProofCatalogue.policyId,
-      },
-    );
-
-    yield* expectDerivedScriptHash(
-      "computation-thread policy",
-      computationThread.policyId,
-      doubleSpendContracts.computationThread.policyId,
-    );
-    yield* expectDerivedScriptHash(
-      "fraud-proof policy",
-      fraudProof.policyId,
-      doubleSpendContracts.fraudProof.policyId,
-    );
-    yield* expectDerivedScriptHash(
-      "fraud-proof spend",
-      fraudProof.spendingScriptHash,
-      doubleSpendContracts.fraudProof.spendingScriptHash,
-    );
-
-    return doubleSpendContracts.doubleSpend.firstStep;
-  });
 
 /**
  * Builds the real state-queue authenticated validator.
@@ -704,27 +621,17 @@ export const withRealStateQueueAndOperatorContracts = (
       fraudProofCatalogue: realFraudProofCatalogue,
     };
 
-    const realComputationThread = yield* buildRealComputationThreadValidator(
-      withRealFraudProofCatalogue,
-    );
-    const realFraudProof = yield* buildRealFraudProofValidator(
+    const realFaultProofs = yield* SDK.buildFaultProofContracts({
+      blueprint: SDK.parseFaultProofBlueprint(yield* loadRealBlueprint()),
       network,
-      realComputationThread,
-    );
-    const realDoubleSpendFirstStep =
-      yield* buildRealDoubleSpendFirstStepValidator(
-        network,
-        withRealFraudProofCatalogue,
-        realComputationThread,
-        realFraudProof,
-      );
+      hubOraclePolicyId: withRealFraudProofCatalogue.hubOracle.policyId,
+      fraudProofCataloguePolicyId:
+        withRealFraudProofCatalogue.fraudProofCatalogue.policyId,
+    });
     const withRealFraudProof: SDK.MidgardValidators = {
       ...withRealFraudProofCatalogue,
-      fraudProof: realFraudProof,
-      fraudProofs: {
-        ...withRealFraudProofCatalogue.fraudProofs,
-        doubleSpend: realDoubleSpendFirstStep,
-      },
+      fraudProof: realFaultProofs.fraudProof,
+      fraudProofs: realFaultProofs.fraudProofs,
     };
 
     const realRetiredOperators = yield* buildRealRetiredOperatorsValidator(
@@ -848,7 +755,7 @@ const makeMidgardContracts = Effect.gen(function* () {
     oneShotOutRef,
   );
   yield* Effect.logInfo(
-    "🔐 Contract source selected: state_queue=real, hub_oracle=real, deposit=real, tx_order=real, withdrawal=real, settlement=real, reserve=real, payout=real, registered_operators=real, active_operators=real, retired_operators=real, scheduler=real, fraud_proofs.double_spend=real",
+    "🔐 Contract source selected: state_queue=real, hub_oracle=real, deposit=real, tx_order=real, withdrawal=real, settlement=real, reserve=real, payout=real, registered_operators=real, active_operators=real, retired_operators=real, scheduler=real, fraud_proofs=real",
   );
   return resolvedContracts;
 }).pipe(Effect.orDie);

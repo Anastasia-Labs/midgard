@@ -181,6 +181,13 @@ const makeMintOnlyAuthenticatedValidator = (
     };
   });
 
+const makeFraudProofChain = (
+  firstStep: SDK.SpendingValidator,
+): SDK.FraudProofChain => ({
+  firstStep,
+  steps: [firstStep],
+});
+
 /**
  * Resolves the full always-succeeds validator set used by test environments.
  */
@@ -240,10 +247,10 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
     const invalidRange = yield* mkFP("invalid_range");
 
     const fraudProofs: SDK.FraudProofs = {
-      doubleSpend,
-      nonExistentInput,
-      nonExistentInputNoIndex,
-      invalidRange,
+      doubleSpend: makeFraudProofChain(doubleSpend),
+      nonExistentInput: makeFraudProofChain(nonExistentInput),
+      nonExistentInputNoIndex: makeFraudProofChain(nonExistentInputNoIndex),
+      invalidRange: makeFraudProofChain(invalidRange),
     };
 
     return {
