@@ -4,9 +4,7 @@ use aiken_design_patterns/linked_list/nested as nll
 use cardano/assets.{AssetName, PolicyId}
 use midgard/common/types.{Empty}
 
-pub const asset_name: AssetName = "MIDGARD_FRAUD_PROOF_CATALOGUE"
-
-pub const root_key: AssetName = asset_name
+pub const root_key: AssetName = "MIDGARD_FRAUD_PROOF_CATALOGUE"
 
 pub const node_key_prefix: ByteArray = "MFPC"
 
