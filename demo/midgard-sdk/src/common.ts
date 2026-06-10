@@ -153,13 +153,16 @@ export type WithdrawalValidator = {
 
 export type AuthenticatedValidator = SpendingValidator & MintingValidator;
 
-// TODO: We'll need a more elaborate design to allow multiple steps for each
-//       proof.
+export type FraudProofChain = {
+  readonly firstStep: SpendingValidator;
+  readonly steps: readonly [SpendingValidator, ...SpendingValidator[]];
+};
+
 export type FraudProofs = {
-  doubleSpend: SpendingValidator;
-  nonExistentInput: SpendingValidator;
-  nonExistentInputNoIndex: SpendingValidator;
-  invalidRange: SpendingValidator;
+  doubleSpend: FraudProofChain;
+  nonExistentInput: FraudProofChain;
+  nonExistentInputNoIndex: FraudProofChain;
+  invalidRange: FraudProofChain;
 };
 
 export type MidgardValidators = {

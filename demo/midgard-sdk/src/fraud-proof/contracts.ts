@@ -15,6 +15,7 @@ import {
   AddressData,
   addressDataFromBech32,
   AuthenticatedValidator,
+  FraudProofChain,
   MintingValidator,
   SpendingValidator,
 } from "@/common.js";
@@ -40,11 +41,6 @@ export const FAULT_PROOF_SHARED_TITLES = {
   fraudProofMint: "fraud_proof.mint.mint",
   fraudProofSpend: "fraud_proof.spend.else",
 } as const;
-
-export type FraudProofChain = {
-  readonly firstStep: SpendingValidator;
-  readonly steps: readonly [SpendingValidator, ...SpendingValidator[]];
-};
 
 export type DoubleSpendFaultProofContracts = {
   readonly computationThread: MintingValidator;
