@@ -61,18 +61,21 @@ describe("fault-proof ABI", () => {
         {
           Init: {
             first_step_output_index: 0n,
-            fraud_category_id: "00000000",
-            fraud_category: h28,
-            fraud_category_membership_proof: proof,
             fraud_proof_catalogue_ref_input_index: 1n,
-            inclusion_proof_script_redeemer_index: 2n,
-            hub_oracle_ref_input_index: 3n,
-            fraudulent_block_ref_input_index: 4n,
+            hub_oracle_ref_input_index: 2n,
+            fraudulent_block_ref_input_index: 3n,
           },
         },
         FraudProofComputationThreadRedeemer,
       ),
-    ).toMatchObject({ Init: { fraud_category: h28 } });
+    ).toEqual({
+      Init: {
+        first_step_output_index: 0n,
+        fraud_proof_catalogue_ref_input_index: 1n,
+        hub_oracle_ref_input_index: 2n,
+        fraudulent_block_ref_input_index: 3n,
+      },
+    });
     expect(
       roundTrip(
         { Success: { burning_token_asset_name: "abcd" } },

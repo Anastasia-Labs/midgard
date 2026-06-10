@@ -1,7 +1,5 @@
 import { Data } from "@lucid-evolution/lucid";
 
-import { ProofSchema, ScriptHashSchema } from "@/common.js";
-
 export const FraudProofComputationThreadStepDatumSchema = Data.Object({
   fraud_prover: Data.Bytes({ minLength: 28, maxLength: 28 }),
   data: Data.Nullable(Data.Any()),
@@ -16,11 +14,7 @@ export const FraudProofComputationThreadRedeemerSchema = Data.Enum([
   Data.Object({
     Init: Data.Object({
       first_step_output_index: Data.Integer(),
-      fraud_category_id: Data.Bytes(),
-      fraud_category: ScriptHashSchema,
-      fraud_category_membership_proof: ProofSchema,
       fraud_proof_catalogue_ref_input_index: Data.Integer(),
-      inclusion_proof_script_redeemer_index: Data.Integer(),
       hub_oracle_ref_input_index: Data.Integer(),
       fraudulent_block_ref_input_index: Data.Integer(),
     }),
