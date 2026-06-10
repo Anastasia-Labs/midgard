@@ -1,6 +1,6 @@
 import {
   computeMidgardNativeTxId,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardNativeTxFullFromCanonicalBinary,
   encodeMidgardAddressText,
   encodeMidgardNativeTxCanonical,
   materializeMidgardNativeTxFromCanonical,
@@ -365,7 +365,7 @@ const completeTxMetadataWithAddrWitnesses = (
   tx: MidgardNativeTxFull,
   metadata: CompleteTxMetadata,
 ): CompleteTxMetadata => {
-  const witnesses = decodeAddrWitnesses(tx.witnessSet.addrTxWitsPreimageCbor);
+  const witnesses = decodeAddrWitnesses(tx.witnessSet.addrTxWits);
   return {
     ...metadata,
     txByteLength: encodeMidgardNativeTxCanonical(tx).length,
@@ -512,7 +512,7 @@ export class CompleteTx {
   }
 
   get tx(): MidgardNativeTxFull {
-    return decodeMidgardNativeTxFullFromCanonicalCbor(this.#txCbor);
+    return decodeMidgardNativeTxFullFromCanonicalBinary(this.#txCbor);
   }
 
   get txCbor(): Buffer {
@@ -573,7 +573,7 @@ export class CompleteTx {
     assertTrustedCompleteTx(this, "export partial witnesses");
     return partialWitnessBundleFromWitnesses(
       this.tx,
-      decodeAddrWitnesses(this.tx.witnessSet.addrTxWitsPreimageCbor),
+      decodeAddrWitnesses(this.tx.witnessSet.addrTxWits),
     );
   }
 
@@ -693,9 +693,7 @@ export class CompleteTx {
       throw new SigningError("No Midgard wallet available for signing");
     }
     const signedTx = await signMidgardNativeTx(this.tx, signer);
-    const signedWitnesses = decodeAddrWitnesses(
-      signedTx.witnessSet.addrTxWitsPreimageCbor,
-    );
+    const signedWitnesses = decodeAddrWitnesses(signedTx.witnessSet.addrTxWits);
     assertExpectedAddrWitnesses({
       actual: addrWitnessKeyHashes(signedWitnesses),
       expected: this.#metadata.expectedAddrWitnessKeyHashes,
@@ -910,7 +908,7 @@ export class PartiallySignedTx {
   }
 
   get tx(): MidgardNativeTxFull {
-    return decodeMidgardNativeTxFullFromCanonicalCbor(this.#txCbor);
+    return decodeMidgardNativeTxFullFromCanonicalBinary(this.#txCbor);
   }
 
   get txCbor(): Buffer {
@@ -974,7 +972,7 @@ export class PartiallySignedTx {
   toPartialWitnessBundle(): MidgardPartialWitnessBundle {
     return partialWitnessBundleFromWitnesses(
       this.tx,
-      decodeAddrWitnesses(this.tx.witnessSet.addrTxWitsPreimageCbor),
+      decodeAddrWitnesses(this.tx.witnessSet.addrTxWits),
     );
   }
 
@@ -1112,7 +1110,7 @@ export type PayApi = {
 export type AttachApi = {
   readonly Script: (source: ScriptSource) => TxBuilder;
   readonly NativeScript: (
-    script: InstanceType<typeof CML.NativeScript> | Uint8Array | string,
+    script: CML.NativeScript | Uint8Array | string,
   ) => TxBuilder;
   readonly SpendingValidator: (validator: SpendingValidator) => TxBuilder;
   readonly MintingPolicy: (policy: MintingPolicy) => TxBuilder;
@@ -1338,7 +1336,7 @@ const normalizeUtxo = (utxo: MidgardUtxo): MidgardUtxo => {
     },
     cbor: {
       outRef: outRefCbor,
-      output: Buffer.from(decodedOutput.outputCbor),
+      output: Buffer.from(decodedOutput.outputBytes),
     },
   };
 };

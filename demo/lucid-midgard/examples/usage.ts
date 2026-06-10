@@ -1,6 +1,6 @@
 import {
   computeMidgardNativeTxId,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardNativeTxFullFromCanonicalBinary,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
 import { CML } from "@lucid-evolution/lucid";
@@ -29,9 +29,7 @@ const makeOutRef = (byte: number, outputIndex = 0): OutRef => ({
   outputIndex,
 });
 
-const addressFromPrivateKey = (
-  privateKey: InstanceType<typeof CML.PrivateKey>,
-): Address =>
+const addressFromPrivateKey = (privateKey: CML.PrivateKey): Address =>
   CML.EnterpriseAddress.new(
     0,
     CML.Credential.new_pub_key(privateKey.to_public().hash()),
@@ -103,7 +101,7 @@ const memoryProvider = (
   }),
   getCurrentSlot: async () => 0n,
   submitTx: async (txCborHex): Promise<SubmitTxResult> => {
-    const tx = decodeMidgardNativeTxFullFromCanonicalCbor(
+    const tx = decodeMidgardNativeTxFullFromCanonicalBinary(
       Buffer.from(txCborHex, "hex"),
     );
     return {

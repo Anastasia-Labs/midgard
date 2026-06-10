@@ -1,6 +1,6 @@
 import {
   computeMidgardNativeTxId,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardNativeTxFullFromCanonicalBinary,
 } from "@al-ft/midgard-core/codec";
 import { Effect } from "effect";
 
@@ -120,7 +120,7 @@ export const auditBlocksImmutableProgram = (
         continue;
       }
       try {
-        const decoded = decodeMidgardNativeTxFullFromCanonicalCbor(txPayload);
+        const decoded = decodeMidgardNativeTxFullFromCanonicalBinary(txPayload);
         const computedTxIdHex =
           computeMidgardNativeTxId(decoded).toString("hex");
         if (computedTxIdHex !== txIdHex) {

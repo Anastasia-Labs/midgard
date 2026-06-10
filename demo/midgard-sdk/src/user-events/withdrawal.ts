@@ -45,7 +45,6 @@ import {
   buildUserEventWitnessCertificateValidator,
   encodeUserEventWitnessMintOrBurnRedeemer,
   fetchUserEventUTxOsProgram,
-  fetchStakeCredentialDepositProgram,
   outputReferenceToPlutusDataCbor,
   resolveEventInclusionTime,
   resolveUserEventValidTo,
@@ -248,10 +247,6 @@ export const buildUnsignedWithdrawalTxWithMetadataProgram = (
     const witnessScript =
       buildUserEventWitnessCertificateValidator(nonceAssetName);
     const witnessScriptHash = userEventWitnessScriptHash(nonceAssetName);
-    const stakeCredentialDeposit = yield* fetchStakeCredentialDepositProgram(
-      lucid,
-      "withdrawal",
-    );
     const validTo = resolveUserEventValidTo(lucid);
     const inclusionTime = resolveEventInclusionTime(validTo, network);
 
@@ -302,7 +297,6 @@ export const buildUnsignedWithdrawalTxWithMetadataProgram = (
       hubOracleRefInput,
       witnessScript,
       witnessRegistrationRedeemer,
-      stakeCredentialDeposit,
       label: "withdrawal",
     });
 

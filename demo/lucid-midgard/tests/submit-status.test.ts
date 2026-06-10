@@ -1,8 +1,8 @@
 import {
   computeHash32,
   computeMidgardNativeTxId,
-  decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardNativeTxFullFromCanonicalBinary,
+  encodeAddrTxWitsBinary,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
 import { CML } from "@lucid-evolution/lucid";
@@ -34,9 +34,7 @@ const makeOutRef = (byte: number, outputIndex = 0): OutRef => ({
   outputIndex,
 });
 
-const addressFromKeyHash = (
-  keyHash: InstanceType<typeof CML.Ed25519KeyHash>,
-): string =>
+const addressFromKeyHash = (keyHash: CML.Ed25519KeyHash): string =>
   CML.EnterpriseAddress.new(0, CML.Credential.new_pub_key(keyHash))
     .to_address()
     .to_bech32();
@@ -91,7 +89,7 @@ const makeProvider = (opts?: {
   submitTx:
     opts?.submit ??
     (async (txCborHex) => {
-      const tx = decodeMidgardNativeTxFullFromCanonicalCbor(
+      const tx = decodeMidgardNativeTxFullFromCanonicalBinary(
         Buffer.from(txCborHex, "hex"),
       );
       return {
@@ -146,16 +144,12 @@ describe("submit/status chaining", () => {
     expect(signed.metadata.addrWitnessCount).toBe(1);
     expect(signed.metadata.signedBy).toEqual([keyHash.to_hex()]);
 
-    const decoded = decodeMidgardNativeTxFullFromCanonicalCbor(signed.txCbor);
-    const witnessBytes = decodeMidgardNativeByteListPreimage(
-      decoded.witnessSet.addrTxWitsPreimageCbor,
-      "native.addr_tx_wits",
-    );
-    expect(witnessBytes).toHaveLength(1);
+    const decoded = decodeMidgardNativeTxFullFromCanonicalBinary(signed.txCbor);
+    expect(decoded.witnessSet.addrTxWits).toHaveLength(1);
     expect(
-      computeHash32(decoded.witnessSet.addrTxWitsPreimageCbor),
+      computeHash32(encodeAddrTxWitsBinary(decoded.witnessSet)),
     ).not.toEqual(
-      computeHash32(completed.tx.witnessSet.addrTxWitsPreimageCbor),
+      computeHash32(encodeAddrTxWitsBinary(completed.tx.witnessSet)),
     );
   });
 
@@ -165,7 +159,7 @@ describe("submit/status chaining", () => {
     const provider = makeProvider({
       submit: async (txCborHex) => {
         submittedHex = txCborHex;
-        const tx = decodeMidgardNativeTxFullFromCanonicalCbor(
+        const tx = decodeMidgardNativeTxFullFromCanonicalBinary(
           Buffer.from(txCborHex, "hex"),
         );
         return {
@@ -203,7 +197,7 @@ describe("submit/status chaining", () => {
     const provider = makeProvider({
       submit: async (txCborHex) => {
         submitCalls += 1;
-        const tx = decodeMidgardNativeTxFullFromCanonicalCbor(
+        const tx = decodeMidgardNativeTxFullFromCanonicalBinary(
           Buffer.from(txCborHex, "hex"),
         );
         return {

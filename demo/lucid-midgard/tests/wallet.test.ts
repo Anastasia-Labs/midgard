@@ -21,9 +21,7 @@ const expectedPreviewAddress =
 const bodyHash = Buffer.from("11".repeat(32), "hex");
 const otherHash = Buffer.from("22".repeat(32), "hex");
 
-const enterpriseAddressFor = (
-  privateKey: InstanceType<typeof CML.PrivateKey>,
-): string =>
+const enterpriseAddressFor = (privateKey: CML.PrivateKey): string =>
   CML.EnterpriseAddress.new(
     0,
     CML.Credential.new_pub_key(privateKey.to_public().hash()),

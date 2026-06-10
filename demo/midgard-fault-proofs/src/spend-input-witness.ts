@@ -59,7 +59,7 @@ const inlineDatumOutput = ({
   readonly address: string;
   readonly datum: string;
   readonly lovelace: bigint;
-}): InstanceType<typeof CML.TransactionOutput> =>
+}): CML.TransactionOutput =>
   CML.TransactionOutput.new(
     CML.Address.from_bech32(address),
     CML.Value.from_coin(lovelace),
@@ -95,8 +95,8 @@ export const minimumLovelaceForInlineDatumOutput = ({
 const requireCanonicalInputCbor = (
   inputCborHex: string,
   label: string,
-): InstanceType<typeof CML.TransactionInput> => {
-  let input: InstanceType<typeof CML.TransactionInput>;
+): CML.TransactionInput => {
+  let input: CML.TransactionInput;
   const inputCbor = Buffer.from(inputCborHex, "hex");
   try {
     input = CML.TransactionInput.from_cbor_bytes(inputCbor);

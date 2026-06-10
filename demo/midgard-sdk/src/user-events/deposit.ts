@@ -36,7 +36,6 @@ import {
   buildUserEventWitnessCertificateValidator,
   encodeUserEventWitnessMintOrBurnRedeemer,
   fetchUserEventUTxOsProgram,
-  fetchStakeCredentialDepositProgram,
   outputReferenceToPlutusDataCbor,
   resolveEventInclusionTime,
   resolveUserEventValidTo,
@@ -214,10 +213,6 @@ export const buildUnsignedDepositTxWithMetadataProgram = (
     const witnessScript =
       buildUserEventWitnessCertificateValidator(nonceAssetName);
     const witnessScriptHash = userEventWitnessScriptHash(nonceAssetName);
-    const stakeCredentialDeposit = yield* fetchStakeCredentialDepositProgram(
-      lucid,
-      "deposit",
-    );
     const validTo = resolveUserEventValidTo(lucid);
     const inclusionTime = resolveEventInclusionTime(validTo, network);
     const l2AddressData = yield* addressDataFromBech32(config.l2Address);
@@ -266,7 +261,6 @@ export const buildUnsignedDepositTxWithMetadataProgram = (
       hubOracleRefInput,
       witnessScript,
       witnessRegistrationRedeemer,
-      stakeCredentialDeposit,
       label: "deposit",
     });
 

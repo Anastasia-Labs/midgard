@@ -1,11 +1,9 @@
 import {
   computeScriptIntegrityHashForLanguages,
   decodeMidgardAddressBytes,
-  decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeMint,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardNativeTxFullFromCanonicalBinary,
   decodeMidgardTxOutput,
-  decodeMidgardVersionedScriptListPreimage,
   deriveMidgardNativeTxWitnessSetCompact,
   type MidgardNativeScript,
   type MidgardNativeTxFull,
@@ -143,9 +141,7 @@ const reject = (
   detail,
 });
 
-const sumValues = (
-  values: readonly InstanceType<typeof CML.Value>[],
-): InstanceType<typeof CML.Value> => {
+const sumValues = (values: readonly CML.Value[]): CML.Value => {
   let sum = CML.Value.zero();
   for (const value of values) {
     sum = sum.checked_add(value);
@@ -262,15 +258,10 @@ type LocalScriptValidationResult =
 
 const collectInlineScriptSources = (
   nativeTx: MidgardNativeTxFull,
-): readonly ScriptSource[] => {
-  const scripts = decodeMidgardVersionedScriptListPreimage(
-    nativeTx.witnessSet.scriptTxWitsPreimageCbor,
-    "native.script_tx_wits",
-  );
-  return scripts.map((script, index) =>
+): readonly ScriptSource[] =>
+  nativeTx.witnessSet.scriptTxWits.map((script, index) =>
     scriptSourceFromVersionedScript(script, "inline", `script_wit:${index}`),
   );
-};
 
 const collectReferenceScriptSources = (
   node: CandidateNode,
@@ -336,9 +327,7 @@ const discoverLocalScriptExecutions = (
       readonly contextView: ScriptContextView;
     } => {
   const candidate = node.candidate;
-  const redeemers = decodeMidgardRedeemers(
-    nativeTx.witnessSet.redeemerTxWitsPreimageCbor,
-  );
+  const redeemers = decodeMidgardRedeemers(nativeTx.witnessSet.redeemerTxWits);
   const seenRedeemerPointers = new Set<string>();
   for (const redeemer of redeemers) {
     const key = midgardRedeemerPointerKey(redeemer);
@@ -433,7 +422,7 @@ const discoverLocalScriptExecutions = (
     }
   }
 
-  const decodedMint = decodeMidgardNativeMint(nativeTx.body.mintPreimageCbor);
+  const decodedMint = decodeMidgardNativeMint(nativeTx.body.mint);
   const mintValue = mintValueData(decodedMint);
   const mintPolicies = candidate.mintPolicyHashes;
   for (let index = 0; index < mintPolicies.length; index += 1) {
@@ -459,11 +448,7 @@ const discoverLocalScriptExecutions = (
     }
   }
 
-  const outputBytes = decodeMidgardNativeByteListPreimage(
-    nativeTx.body.outputsPreimageCbor,
-    "native.outputs",
-  );
-  const outputs = outputBytes.map((bytes) => decodeMidgardTxOutput(bytes));
+  const outputs = nativeTx.body.outputs;
   const protectedReceivingHashes = new Set<string>();
   for (let index = 0; index < outputs.length; index += 1) {
     const output = outputs[index];
@@ -540,7 +525,9 @@ const runLocalScriptEvaluation = (
   enforceScriptBudget: boolean,
 ): LocalScriptValidationResult => {
   const candidate = node.candidate;
-  const nativeTx = decodeMidgardNativeTxFullFromCanonicalCbor(candidate.txCbor);
+  const nativeTx = decodeMidgardNativeTxFullFromCanonicalBinary(
+    candidate.txCbor,
+  );
   const inlineSources = collectInlineScriptSources(nativeTx);
   const referenceSources = collectReferenceScriptSources(node, stateValue);
   const sources = [...inlineSources, ...referenceSources];
@@ -812,7 +799,7 @@ const validateCandidateAgainstState = (
       );
     }
 
-    const inputValues: InstanceType<typeof CML.Value>[] = [];
+    const inputValues: CML.Value[] = [];
 
     for (const referenceOutRefHex of node.referenceOutRefs) {
       if (stateValue(referenceOutRefHex) === undefined) {

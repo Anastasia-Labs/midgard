@@ -1,7 +1,8 @@
 import {
-  decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardNativeTxFullFromCanonicalBinary,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+  midgardValueToCmlValue,
+  type MidgardTxOutput,
 } from "@al-ft/midgard-core/codec";
 import { CML, valueToAssets } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
@@ -23,9 +24,7 @@ import {
 const address =
   "addr_test1qq4jrrcfzylccwgqu3su865es52jkf7yzrdu9cw3z84nycnn3zz9lvqj7vs95tej896xkekzkufhpuk64ja7pga2g8ksdf8km4";
 
-const addressFromKeyHash = (
-  keyHash: InstanceType<typeof CML.Ed25519KeyHash>,
-): string =>
+const addressFromKeyHash = (keyHash: CML.Ed25519KeyHash): string =>
   CML.EnterpriseAddress.new(0, CML.Credential.new_pub_key(keyHash))
     .to_address()
     .to_bech32();
@@ -84,10 +83,8 @@ const makeProvider = (
   }),
 });
 
-const decodedOutputAssets = (outputBytes: Uint8Array) =>
-  valueToAssets(
-    CML.TransactionOutput.from_cbor_bytes(outputBytes).amount(),
-  ) as Record<string, bigint>;
+const decodedOutputAssets = (output: MidgardTxOutput) =>
+  valueToAssets(midgardValueToCmlValue(output.value)) as Record<string, bigint>;
 
 const walletForAddress = () => {
   const privateKey = CML.PrivateKey.generate_ed25519();
@@ -183,13 +180,11 @@ describe("TxBuilder balancing and fees", () => {
       .newTx()
       .pay.ToAddress(address, { lovelace: 2_000_000n, [unit]: 4n })
       .complete({ changeAddress: address, feePolicy: "provider" });
-    const tx = decodeMidgardNativeTxFullFromCanonicalCbor(completed.txCbor);
-    const outputs = decodeMidgardNativeByteListPreimage(
-      tx.body.outputsPreimageCbor,
-    );
+    const tx = decodeMidgardNativeTxFullFromCanonicalBinary(completed.txCbor);
+    const outputs = tx.body.outputs;
 
     expect(outputs).toHaveLength(2);
-    expect(decodedOutputAssets(outputs[1] ?? Buffer.alloc(0))).toEqual({
+    expect(decodedOutputAssets(outputs[1]!)).toEqual({
       lovelace: 2_800_000n,
       [unit]: 6n,
     });
@@ -324,12 +319,8 @@ describe("TxBuilder balancing and fees", () => {
       .newTx()
       .pay.ToAddress(address, { lovelace: 1_000_000n, [unit]: 1n })
       .complete({ changeAddress: address, feePolicy: "provider" });
-    const tx = decodeMidgardNativeTxFullFromCanonicalCbor(completed.txCbor);
-    const inputs = decodeMidgardNativeByteListPreimage(
-      tx.body.spendInputsPreimageCbor,
-    ).map((bytes) => CML.TransactionInput.from_cbor_bytes(bytes));
-
-    expect(inputs.map((input) => input.transaction_id().to_hex())).toEqual([
+    const tx = decodeMidgardNativeTxFullFromCanonicalBinary(completed.txCbor);
+    expect(tx.body.spendInputs.map((ref) => ref.txId.toString("hex"))).toEqual([
       "ff".repeat(32),
     ]);
   });

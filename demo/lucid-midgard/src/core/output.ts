@@ -35,16 +35,9 @@ import type {
 
 export { MIDGARD_PROTECTED_ADDRESS_HEADER_MASK };
 
-export type PlutusDataLike =
-  | InstanceType<typeof CML.PlutusData>
-  | Uint8Array
-  | string;
+export type PlutusDataLike = CML.PlutusData | Uint8Array | string;
 
-export type ScriptRefLike =
-  | InstanceType<typeof CML.Script>
-  | Uint8Array
-  | string
-  | MidgardScript;
+export type ScriptRefLike = CML.Script | Uint8Array | string | MidgardScript;
 
 export type OutputDatum =
   | { readonly kind: "none" }
@@ -68,7 +61,7 @@ export type AuthoredOutput = {
 };
 
 export type DecodedMidgardOutput = {
-  readonly outputCbor: Buffer;
+  readonly outputBytes: Buffer;
   readonly address: Address;
   readonly assets: Assets;
   readonly txOutput: MidgardTxOutput;
@@ -83,7 +76,7 @@ const fromHex = (hex: string, fieldName: string): Buffer => {
 };
 
 const addressBytesForOutput = (
-  address: Address | InstanceType<typeof CML.Address>,
+  address: Address | CML.Address,
   kind: OutputKind = "ordinary",
 ): Buffer => {
   const bytes =
@@ -98,9 +91,7 @@ const outputKindFromAddress = (address: Address): OutputKind =>
     ? "protected"
     : "ordinary";
 
-export const normalizePlutusData = (
-  data: PlutusDataLike,
-): InstanceType<typeof CML.PlutusData> => {
+export const normalizePlutusData = (data: PlutusDataLike): CML.PlutusData => {
   if (data instanceof CML.PlutusData) {
     return data;
   }
@@ -117,7 +108,7 @@ const isMidgardScript = (script: ScriptRefLike): script is MidgardScript =>
   "script" in script;
 
 const cmlScriptToMidgardVersionedScript = (
-  script: InstanceType<typeof CML.Script>,
+  script: CML.Script,
 ): MidgardVersionedScript => {
   const native = script.as_native();
   if (native !== undefined) {
@@ -322,7 +313,7 @@ const publicOutputFromCore = (
 });
 
 export const makeMidgardTxOutput = (
-  address: Address | InstanceType<typeof CML.Address>,
+  address: Address | CML.Address,
   value: ValueLike,
   options: OutputOptions = {},
 ): MidgardTxOutput => {
@@ -354,7 +345,7 @@ export const protectMidgardOutputCbor = (outputCbor: Uint8Array): Buffer => {
 };
 
 const encodeAuthoredMidgardTxOutput = (
-  address: Address | InstanceType<typeof CML.Address>,
+  address: Address | CML.Address,
   value: ValueLike,
   options: OutputOptions = {},
 ): Buffer =>
@@ -369,6 +360,19 @@ const encodeAuthoredMidgardTxOutput = (
       : { script_ref: normalizeScriptRef(options.scriptRef) }),
   });
 
+export const authoredOutputToCore = (
+  output: AuthoredOutput,
+): CoreMidgardTxOutput => ({
+  address: addressBytesForOutput(output.address, output.kind),
+  value: assetsToMidgardValue(output.assets),
+  ...(output.datum === undefined
+    ? {}
+    : { datum: authoredDatumToCore(output.datum) }),
+  ...(output.scriptRef === undefined
+    ? {}
+    : { script_ref: normalizeScriptRef(output.scriptRef) }),
+});
+
 const isMidgardTxOutput = (value: unknown): value is MidgardTxOutput =>
   typeof value === "object" &&
   value !== null &&
@@ -377,12 +381,12 @@ const isMidgardTxOutput = (value: unknown): value is MidgardTxOutput =>
 
 export function encodeMidgardTxOutput(output: MidgardTxOutput): Buffer;
 export function encodeMidgardTxOutput(
-  address: Address | InstanceType<typeof CML.Address>,
+  address: Address | CML.Address,
   value: ValueLike,
   options?: OutputOptions,
 ): Buffer;
 export function encodeMidgardTxOutput(
-  addressOrOutput: Address | InstanceType<typeof CML.Address> | MidgardTxOutput,
+  addressOrOutput: Address | CML.Address | MidgardTxOutput,
   value?: ValueLike,
   options: OutputOptions = {},
 ): Buffer {
@@ -396,12 +400,24 @@ export function encodeMidgardTxOutput(
 }
 
 export const decodeMidgardTxOutput = (
-  outputCbor: Uint8Array,
+  outputBytes: Uint8Array,
 ): DecodedMidgardOutput => {
-  const coreOutput = decodeCoreMidgardTxOutput(outputCbor);
+  const coreOutput = decodeCoreMidgardTxOutput(outputBytes);
   const txOutput = publicOutputFromCore(coreOutput);
   return {
-    outputCbor: Buffer.from(outputCbor),
+    outputBytes: Buffer.from(outputBytes),
+    address: txOutput.address,
+    assets: txOutput.assets,
+    txOutput,
+  };
+};
+
+export const decodeMidgardTxOutputFromCore = (
+  coreOutput: CoreMidgardTxOutput,
+): DecodedMidgardOutput => {
+  const txOutput = publicOutputFromCore(coreOutput);
+  return {
+    outputBytes: encodeCoreMidgardTxOutput(coreOutput),
     address: txOutput.address,
     assets: txOutput.assets,
     txOutput,

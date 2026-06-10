@@ -20,6 +20,7 @@ import {
   TxBuilder,
   type TxSignBuilder,
   UTxO,
+  validatorToRewardAddress,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import { Data as EffectData, Effect } from "effect";
@@ -38,17 +39,6 @@ import {
   getTxInfoRedeemerIndexes,
 } from "@/cardano-redeemers.js";
 import { getProtocolParameters } from "@/protocol-parameters.js";
-
-type TxBuilderInternals = {
-  txBuilder: {
-    add_cert: (builder: unknown) => void;
-  };
-  programs: Array<Effect.Effect<void>>;
-};
-
-type InternalTxBuilder = TxBuilder & {
-  rawConfig: () => TxBuilderInternals;
-};
 
 type UserEventTxProvider = {
   getProtocolParameters?: () => Promise<{
@@ -408,37 +398,25 @@ export const fetchStakeCredentialDepositProgram = (
       }),
   });
 
+// Registers the witness stake credential through lucid's public TxBuilder API
+// so the certificate (and its plutus redeemer) becomes a first-class builder
+// action. The earlier approach hand-pushed the certificate into
+// `rawConfig().programs` / `rawConfig().txBuilder`, which lucid 0.4.x executed
+// during `complete()` but lucid 0.5.x silently drops (it replays only
+// `actions` into a fresh builder). Dropping the certificate left the deposit
+// mint validator's `witness_redeemer_index` pointing at a missing redeemer,
+// crashing the on-chain `expect Some(... list.at(...))`. The certificate's
+// `keyDeposit` is sourced from lucid's protocol parameters by `register.Stake`.
 const addScriptStakeRegistrationCertificate = (
   tx: TxBuilder,
+  network: Network,
   witnessScript: CertificateValidator,
   witnessRedeemer: string,
-  stakeCredentialDeposit: bigint,
 ): TxBuilder => {
-  const rawConfig = (tx as InternalTxBuilder).rawConfig();
-  rawConfig.programs.push(
-    Effect.sync(() => {
-      const witnessScriptHash = validatorToScriptHash(witnessScript);
-      const credential = CML.Credential.new_script(
-        CML.ScriptHash.from_hex(witnessScriptHash),
-      );
-      const certBuilder = CML.SingleCertificateBuilder.new(
-        CML.Certificate.new_reg_cert(credential, stakeCredentialDeposit),
-      );
-      const plutusWitness = CML.PartialPlutusWitness.new(
-        CML.PlutusScriptWitness.new_script(
-          CML.PlutusScript.from_v3(
-            CML.PlutusV3Script.from_cbor_hex(witnessScript.script),
-          ),
-        ),
-        CML.PlutusData.from_cbor_hex(witnessRedeemer),
-      );
-
-      rawConfig.txBuilder.add_cert(
-        certBuilder.plutus_script(plutusWitness, CML.Ed25519KeyHashList.new()),
-      );
-    }),
-  );
-  return tx;
+  const witnessRewardAddress = validatorToRewardAddress(network, witnessScript);
+  return tx.attach
+    .CertificateValidator(witnessScript)
+    .register.Stake(witnessRewardAddress, witnessRedeemer);
 };
 
 const deriveUserEventDraftLayout = ({
@@ -523,7 +501,6 @@ export type BuildCompletedUserEventMintTxParams = {
   readonly hubOracleRefInput: UTxO;
   readonly witnessScript: CertificateValidator;
   readonly witnessRegistrationRedeemer: string;
-  readonly stakeCredentialDeposit: bigint;
   readonly label: string;
 };
 
@@ -577,6 +554,12 @@ export const buildCompletedUserEventMintTxProgram = (
     });
 
     const buildTx = (layout: UserEventDraftLayout) => {
+      const network = params.lucid.config().network;
+      if (network === undefined) {
+        throw new Error(
+          `Cannot build ${params.label} transaction: lucid network is undefined`,
+        );
+      }
       const tx = params.lucid
         .newTx()
         .collectFrom([params.nonceInput])
@@ -599,9 +582,9 @@ export const buildCompletedUserEventMintTxProgram = (
         params.attachMintingPolicy
           ? tx.attach.MintingPolicy(params.mintingPolicy)
           : tx,
+        network,
         params.witnessScript,
         params.witnessRegistrationRedeemer,
-        params.stakeCredentialDeposit,
       );
     };
 

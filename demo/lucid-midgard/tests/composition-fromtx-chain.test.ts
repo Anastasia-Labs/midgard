@@ -1,7 +1,6 @@
 import {
-  decodeMidgardNativeByteListPreimage,
   deriveMidgardNativeTxCompact,
-  encodeCbor,
+  encodeMidgardTxOutput as encodeCoreMidgardTxOutput,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core/codec";
@@ -74,9 +73,7 @@ const makeOutRef = (byte: number, outputIndex = 0): OutRef => ({
   outputIndex,
 });
 
-const enterpriseAddressFor = (
-  privateKey: InstanceType<typeof CML.PrivateKey>,
-): Address =>
+const enterpriseAddressFor = (privateKey: CML.PrivateKey): Address =>
   CML.EnterpriseAddress.new(
     0,
     CML.Credential.new_pub_key(privateKey.to_public().hash()),
@@ -210,12 +207,16 @@ describe("fromTx, compose, and local chaining", () => {
       CML.TransactionHash.from_raw_bytes(Buffer.from("99".repeat(32), "hex")),
       privateKey,
     );
-    const addrTxWitsPreimageCbor = encodeCbor([
-      Buffer.from(staleWitness.to_cbor_bytes()),
-    ]);
     const witnessSet = {
       ...completed.tx.witnessSet,
-      addrTxWitsPreimageCbor,
+      addrTxWits: [
+        {
+          vkey: Buffer.from(staleWitness.vkey().to_raw_bytes()),
+          signature: Buffer.from(
+            staleWitness.ed25519_signature().to_raw_bytes(),
+          ),
+        },
+      ],
     };
     const staleTx: MidgardNativeTxFull = {
       ...completed.tx,
@@ -345,9 +346,8 @@ describe("fromTx, compose, and local chaining", () => {
       .newTx()
       .pay.ToProtectedAddress(otherAddress, { lovelace: 2_000_000n })
       .chain({ fee: 0n });
-    const outputBytes = decodeMidgardNativeByteListPreimage(
-      completed.tx.body.outputsPreimageCbor,
-      "native.outputs",
+    const outputBytes = completed.tx.body.outputs.map((output) =>
+      encodeCoreMidgardTxOutput(output),
     );
 
     expect(
@@ -389,15 +389,8 @@ describe("fromTx, compose, and local chaining", () => {
       .collectFrom([derivedOutputs[0]!])
       .pay.ToAddress(walletAddress, { lovelace: 2_000_000n })
       .complete({ fee: 0n });
-    const dependentInput = decodeMidgardNativeByteListPreimage(
-      dependent.tx.body.spendInputsPreimageCbor,
-      "native.spend_inputs",
-    )[0]!;
-    expect(
-      CML.TransactionInput.from_cbor_bytes(dependentInput)
-        .transaction_id()
-        .to_hex(),
-    ).toBe(completed.txIdHex);
+    const dependentInput = dependent.tx.body.spendInputs[0]!;
+    expect(dependentInput.txId.toString("hex")).toBe(completed.txIdHex);
 
     await midgard.switchProvider(makeProvider("memory://compose-b"));
     expect(() =>

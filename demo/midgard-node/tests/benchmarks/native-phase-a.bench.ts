@@ -5,9 +5,9 @@ import path from "node:path";
 import { performance } from "node:perf_hooks";
 
 import {
-  cardanoTxBytesToMidgardNativeTxCanonicalCbor,
+  cardanoTxBytesToMidgardNativeTxCanonicalBinary,
   computeMidgardNativeTxId,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardNativeTxFullFromCanonicalBinary,
   deriveMidgardNativeTxCompact,
   encodeMidgardNativeTxCanonical,
 } from "@al-ft/midgard-core/codec";
@@ -77,7 +77,6 @@ const outputPath = path.resolve(
   __dirname,
   "./output/native-phase-a-benchmark.json",
 );
-const EMPTY_CBOR_LIST = Buffer.from([0x80]);
 
 const quantile = (values: readonly number[], q: number): number => {
   const sorted = [...values].sort((a, b) => a - b);
@@ -193,22 +192,22 @@ describe("native tx phase-A benchmark", () => {
       .map((tx) => Buffer.from(tx.cborHex, "hex"));
 
     const nativeCanonicalCbors = txBytes.map((bytes) =>
-      cardanoTxBytesToMidgardNativeTxCanonicalCbor(bytes),
+      cardanoTxBytesToMidgardNativeTxCanonicalBinary(bytes),
     );
     const normalizedNative = nativeCanonicalCbors.map((bytes) => {
-      const converted = decodeMidgardNativeTxFullFromCanonicalCbor(bytes);
+      const converted = decodeMidgardNativeTxFullFromCanonicalBinary(bytes);
       const normalized = {
         version: converted.version,
         validity: "TxIsValid" as const,
         body: {
           ...converted.body,
-          requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
+          requiredSigners: [],
         },
         witnessSet: {
           ...converted.witnessSet,
-          addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-          scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-          redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+          addrTxWits: [],
+          scriptTxWits: [],
+          redeemerTxWits: Buffer.alloc(0),
         },
       };
       return {

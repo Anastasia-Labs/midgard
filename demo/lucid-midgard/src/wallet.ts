@@ -9,8 +9,8 @@ import { CML, type Network, walletFromSeed } from "@lucid-evolution/lucid";
 import { BuilderInvariantError, SigningError } from "./core/errors.js";
 import type { Address } from "./core/types.js";
 
-export type VKeyWitness = InstanceType<typeof CML.Vkeywitness>;
-export type PrivateKey = InstanceType<typeof CML.PrivateKey>;
+export type VKeyWitness = CML.Vkeywitness;
+export type PrivateKey = CML.PrivateKey;
 
 export type ExternalBodyHashSigner = {
   readonly address?: (() => Promise<Address> | Address) | Address;

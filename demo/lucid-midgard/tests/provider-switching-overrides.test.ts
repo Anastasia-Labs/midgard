@@ -1,6 +1,5 @@
 import {
-  decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardNativeTxFullFromCanonicalBinary,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
 import { CML } from "@lucid-evolution/lucid";
@@ -28,7 +27,7 @@ const makeOutRef = (byte: number, outputIndex = 0): OutRef => ({
 });
 
 const addressFromKeyHash = (
-  keyHash: InstanceType<typeof CML.Ed25519KeyHash>,
+  keyHash: CML.Ed25519KeyHash,
   networkId = 0,
 ): string =>
   CML.EnterpriseAddress.new(networkId, CML.Credential.new_pub_key(keyHash))
@@ -140,13 +139,11 @@ const makeProvider = (opts: {
 };
 
 const inputLabels = (txHex: string): readonly string[] =>
-  decodeMidgardNativeByteListPreimage(
-    decodeMidgardNativeTxFullFromCanonicalCbor(Buffer.from(txHex, "hex")).body
-      .spendInputsPreimageCbor,
-  ).map((bytes) => {
-    const input = CML.TransactionInput.from_cbor_bytes(bytes);
-    return `${input.transaction_id().to_hex()}#${input.index().toString()}`;
-  });
+  decodeMidgardNativeTxFullFromCanonicalBinary(
+    Buffer.from(txHex, "hex"),
+  ).body.spendInputs.map(
+    (ref) => `${ref.txId.toString("hex")}#${ref.index.toString()}`,
+  );
 
 const deferred = (): {
   readonly promise: Promise<void>;

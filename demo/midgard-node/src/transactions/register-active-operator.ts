@@ -101,8 +101,11 @@ type OperatorLifecycleMode =
   | "deregister-only";
 
 type UnevaluatedDraftBuilder = {
-  readonly config: () => Promise<unknown>;
-  readonly rawConfig: () => {
+  // lucid 0.5.x: `config()` replays the queued actions into a freshly cloned
+  // CML tx builder and returns that clone. The original `rawConfig()` builder
+  // is left empty, so the populated builder must be read from this return value
+  // (reading `rawConfig().txBuilder` yields zero inputs/outputs).
+  readonly config: () => Promise<{
     readonly txBuilder: {
       readonly build_for_evaluation: (
         fee: number,
@@ -111,7 +114,7 @@ type UnevaluatedDraftBuilder = {
         readonly draft_tx: () => CML.Transaction;
       };
     };
-  };
+  }>;
 };
 
 const summarizeOnChainScriptFailure = (cause: unknown): string | null => {
@@ -287,11 +290,10 @@ const buildUnevaluatedDraftTx = async (
   lucid: LucidEvolution,
   tx: UnevaluatedDraftBuilder,
 ): Promise<CML.Transaction> => {
-  await tx.config();
+  const replayConfig = await tx.config();
   const walletAddress = await lucid.wallet().address();
-  return tx
-    .rawConfig()
-    .txBuilder.build_for_evaluation(0, CML.Address.from_bech32(walletAddress))
+  return replayConfig.txBuilder
+    .build_for_evaluation(0, CML.Address.from_bech32(walletAddress))
     .draft_tx();
 };
 

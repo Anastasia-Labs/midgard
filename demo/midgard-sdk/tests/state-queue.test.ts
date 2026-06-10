@@ -6,20 +6,18 @@ import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
   compareOutRefs,
   computeMidgardNativeTxId,
-  EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
-  encodeCbor,
   encodeMidgardNativeTxCompact,
   findOutRefIndex,
   materializeMidgardNativeTxFromCanonical,
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
   type MidgardNativeTxFull,
+  type OutputReference,
 } from "@al-ft/midgard-core";
 import {
   applyDoubleCborEncoding,
   applyParamsToScript,
-  CML,
   credentialToAddress,
   Data,
   Emulator,
@@ -240,28 +238,25 @@ const trieRootHex = (trie: Trie): string =>
     ? EMPTY_MERKLE_TREE_ROOT
     : Buffer.from(trie.hash).toString("hex");
 
-const outputReferenceCbor = (txHash: string, outputIndex: bigint): Buffer =>
-  Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(txHash),
-      outputIndex,
-    ).to_cbor_bytes(),
-  );
+const outputReference = (txHash: string, outputIndex: number): OutputReference => ({
+  txId: Buffer.from(txHash, "hex"),
+  index: outputIndex,
+});
 
 const makeNativeTx = (
-  spendInputCbors: readonly Buffer[],
+  spendInputs: readonly OutputReference[],
   fee: bigint,
 ): MidgardNativeTxFull =>
   materializeMidgardNativeTxFromCanonical({
     version: MIDGARD_NATIVE_TX_VERSION,
     validity: "TxIsValid",
     body: {
-      spendInputsPreimageCbor: encodeCbor(spendInputCbors),
-      referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
-      outputsPreimageCbor: EMPTY_CBOR_LIST,
-      requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
-      requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
-      mintPreimageCbor: EMPTY_CBOR_LIST,
+      spendInputs,
+      referenceInputs: [],
+      outputs: [],
+      requiredObservers: [],
+      requiredSigners: [],
+      mint: new Map(),
       scriptIntegrityHash: EMPTY_NULL_ROOT,
       auxiliaryDataHash: EMPTY_NULL_ROOT,
       fee,
@@ -270,19 +265,19 @@ const makeNativeTx = (
       networkId: 0n,
     },
     witnessSet: {
-      addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-      scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-      redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+      addrTxWits: [],
+      scriptTxWits: [],
+      redeemerTxWits: Buffer.alloc(0),
     },
   });
 
 const buildTransactionsRoot = async (): Promise<string> => {
   const tx1 = makeNativeTx(
-    [outputReferenceCbor(h32("11"), 0n), outputReferenceCbor(h32("22"), 1n)],
+    [outputReference(h32("11"), 0), outputReference(h32("22"), 1)],
     1n,
   );
   const tx2 = makeNativeTx(
-    [outputReferenceCbor(h32("33"), 0n), outputReferenceCbor(h32("44"), 2n)],
+    [outputReference(h32("33"), 0), outputReference(h32("44"), 2)],
     2n,
   );
   const store = new Store(undefined);

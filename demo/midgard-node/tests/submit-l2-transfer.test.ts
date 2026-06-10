@@ -2,9 +2,7 @@ import "./utils.js";
 
 import {
   computeMidgardNativeTxId,
-  decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
-  decodeMidgardTxOutput,
+  decodeMidgardNativeTxFullFromCanonicalBinary,
   encodeMidgardAddressText,
   midgardAddressFromText,
   midgardValueToCmlValue,
@@ -226,28 +224,19 @@ describe("submit-l2-transfer tx building", () => {
       lovelace: 3_500_000n,
     });
 
-    const nativeTx = decodeMidgardNativeTxFullFromCanonicalCbor(built.txCbor);
-    const spendInputs = decodeMidgardNativeByteListPreimage(
-      nativeTx.body.spendInputsPreimageCbor,
-    ).map((bytes) => {
-      const input = CML.TransactionInput.from_cbor_bytes(bytes);
-      return `${input.transaction_id().to_hex()}#${input.index().toString()}`;
-    });
+    const nativeTx = decodeMidgardNativeTxFullFromCanonicalBinary(built.txCbor);
+    const spendInputs = nativeTx.body.spendInputs.map(
+      (ref) => `${ref.txId.toString("hex")}#${ref.index.toString()}`,
+    );
     expect(spendInputs).toEqual([
       `${"11".repeat(32)}#0`,
       `${"22".repeat(32)}#1`,
     ]);
 
-    const outputs = decodeMidgardNativeByteListPreimage(
-      nativeTx.body.outputsPreimageCbor,
-    ).map((bytes) => {
-      expect(bytes[0] >> 5).toBe(5);
-      const output = decodeMidgardTxOutput(bytes);
-      return {
-        address: encodeMidgardAddressText(output.address),
-        assets: valueToAssets(midgardValueToCmlValue(output.value)),
-      };
-    });
+    const outputs = nativeTx.body.outputs.map((output) => ({
+      address: encodeMidgardAddressText(output.address),
+      assets: valueToAssets(midgardValueToCmlValue(output.value)),
+    }));
     expect(outputs).toHaveLength(2);
     expect(outputs[0]).toEqual({
       address: destination.address,
@@ -426,7 +415,7 @@ describe("submit-l2-transfer program", () => {
           init?.body instanceof Uint8Array
             ? Buffer.from(init.body)
             : Buffer.from(await new Response(init?.body).arrayBuffer());
-        const built = decodeMidgardNativeTxFullFromCanonicalCbor(body);
+        const built = decodeMidgardNativeTxFullFromCanonicalBinary(body);
         expectedTxId = computeMidgardNativeTxId(built).toString("hex");
         return {
           ok: true,

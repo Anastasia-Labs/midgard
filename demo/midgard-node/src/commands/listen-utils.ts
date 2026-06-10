@@ -1,6 +1,6 @@
 import {
   computeMidgardNativeTxId,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardNativeTxFullFromCanonicalBinary,
   encodeMidgardNativeTxCanonical,
 } from "@al-ft/midgard-core/codec";
 
@@ -137,7 +137,7 @@ export const normalizeSubmitTxCanonicalCborToNative = (
 ): NormalizedSubmitTx => {
   const submittedTxCanonicalCbor = Buffer.from(txCanonicalCbor);
   try {
-    const nativeTx = decodeMidgardNativeTxFullFromCanonicalCbor(
+    const nativeTx = decodeMidgardNativeTxFullFromCanonicalBinary(
       submittedTxCanonicalCbor,
     );
     const txId = computeMidgardNativeTxId(nativeTx);

@@ -111,6 +111,18 @@ const EMULATOR_PROTOCOL_PARAMETERS = {
     process.env.MIDGARD_EMULATOR_MAX_TX_SIZE ??
       PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
   ),
+  maxValSize: Number(
+    process.env.MIDGARD_EMULATOR_MAX_VAL_SIZE ??
+      PROTOCOL_PARAMETERS_DEFAULT.maxValSize,
+  ),
+  maxTxExMem: BigInt(
+    process.env.MIDGARD_EMULATOR_MAX_TX_EX_MEM ??
+      PROTOCOL_PARAMETERS_DEFAULT.maxTxExMem,
+  ),
+  maxTxExSteps: BigInt(
+    process.env.MIDGARD_EMULATOR_MAX_TX_EX_STEPS ??
+      PROTOCOL_PARAMETERS_DEFAULT.maxTxExSteps,
+  ),
   maxCollateralInputs: 3,
 } as const;
 
@@ -437,7 +449,7 @@ const extractDraftDepositWitnessHash = ({
   tx,
   depositAddress,
 }: {
-  readonly tx: InstanceType<typeof CML.Transaction>;
+  readonly tx: CML.Transaction;
   readonly depositAddress: string;
 }): string => {
   const outputs = tx.body().outputs();
@@ -467,7 +479,7 @@ const extractDraftWithdrawalWitnessHash = ({
   tx,
   withdrawalAddress,
 }: {
-  readonly tx: InstanceType<typeof CML.Transaction>;
+  readonly tx: CML.Transaction;
   readonly withdrawalAddress: string;
 }): string => {
   const outputs = tx.body().outputs();
@@ -498,7 +510,7 @@ const extractDraftDepositOutput = ({
   depositAddress,
   depositPolicyId,
 }: {
-  readonly tx: InstanceType<typeof CML.Transaction>;
+  readonly tx: CML.Transaction;
   readonly depositAddress: string;
   readonly depositPolicyId: string;
 }) => {
