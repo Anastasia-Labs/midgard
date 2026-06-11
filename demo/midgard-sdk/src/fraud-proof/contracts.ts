@@ -15,8 +15,8 @@ import {
   AddressData,
   addressDataFromBech32,
   AuthenticatedValidator,
-  FraudProofChain,
-  FraudProofs,
+  FaultProofChain,
+  FaultProofs,
   MintingValidator,
   SpendingValidator,
 } from "@/common.js";
@@ -30,7 +30,7 @@ export type FaultProofBlueprint = {
   readonly validators: readonly FaultProofBlueprintValidator[];
 };
 
-export const FRAUD_PROOF_STEP_TITLES = {
+export const FAULT_PROOF_STEP_TITLES = {
   doubleSpend: [
     "fraud_proofs/double_spend/step_01.main.spend",
     "fraud_proofs/double_spend/step_02.main.spend",
@@ -61,7 +61,7 @@ export const FAULT_PROOF_SHARED_TITLES = {
   fraudProofSpend: "fraud_proof.spend.else",
 } as const;
 
-type FourStepFraudProofChain = FraudProofChain & {
+type FourStepFaultProofChain = FaultProofChain & {
   readonly steps: readonly [
     SpendingValidator,
     SpendingValidator,
@@ -70,27 +70,27 @@ type FourStepFraudProofChain = FraudProofChain & {
   ];
 };
 
-type TwoStepFraudProofChain = FraudProofChain & {
+type TwoStepFaultProofChain = FaultProofChain & {
   readonly steps: readonly [SpendingValidator, SpendingValidator];
 };
 
-export type ImplementedFraudProofs = FraudProofs & {
-  readonly doubleSpend: FourStepFraudProofChain;
-  readonly nonExistentInput: FourStepFraudProofChain;
-  readonly nonExistentInputNoIndex: FourStepFraudProofChain;
-  readonly invalidRange: TwoStepFraudProofChain;
+export type ImplementedFaultProofs = FaultProofs & {
+  readonly doubleSpend: FourStepFaultProofChain;
+  readonly nonExistentInput: FourStepFaultProofChain;
+  readonly nonExistentInputNoIndex: FourStepFaultProofChain;
+  readonly invalidRange: TwoStepFaultProofChain;
 };
 
 export type FaultProofContracts = {
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
-  readonly fraudProofs: ImplementedFraudProofs;
+  readonly faultProofs: ImplementedFaultProofs;
 };
 
 export type DoubleSpendFaultProofContracts = {
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
-  readonly doubleSpend: FourStepFraudProofChain;
+  readonly doubleSpend: FourStepFaultProofChain;
 };
 
 export type BuildFaultProofContractsParams = {
@@ -194,7 +194,7 @@ const asAddressDataParam = (address: Address): Effect.Effect<Data, Error> =>
     Effect.mapError(
       (cause) =>
         new Error(
-          `Failed to encode fraud proof token address parameter: ${cause.message}`,
+          `Failed to encode fault-proof token address parameter: ${cause.message}`,
         ),
     ),
   );
@@ -222,16 +222,16 @@ type FaultProofBuildContext = {
   readonly fraudProofTokenAddressData: Data;
 };
 
-const fraudProofChain = <
+const faultProofChain = <
   Steps extends readonly [SpendingValidator, ...SpendingValidator[]],
 >(
   steps: Steps,
-): FraudProofChain & { readonly steps: Steps } => ({
+): FaultProofChain & { readonly steps: Steps } => ({
   firstStep: steps[0],
   steps,
 });
 
-const buildFraudProofStep = (
+const buildFaultProofStep = (
   context: FaultProofBuildContext,
   label: string,
   title: string,
@@ -244,40 +244,40 @@ const buildFraudProofStep = (
     ),
   );
 
-const buildDoubleSpendFraudProofChain = (
+const buildDoubleSpendFaultProofChain = (
   context: FaultProofBuildContext,
-): Effect.Effect<FourStepFraudProofChain, Error> =>
+): Effect.Effect<FourStepFaultProofChain, Error> =>
   Effect.gen(function* () {
-    const step04 = yield* buildFraudProofStep(
+    const step04 = yield* buildFaultProofStep(
       context,
       "double-spend step 04",
-      FRAUD_PROOF_STEP_TITLES.doubleSpend[3],
+      FAULT_PROOF_STEP_TITLES.doubleSpend[3],
       [
         context.computationThreadPolicyId,
         context.fraudProofPolicyId,
         context.fraudProofTokenAddressData,
       ],
     );
-    const step03 = yield* buildFraudProofStep(
+    const step03 = yield* buildFaultProofStep(
       context,
       "double-spend step 03",
-      FRAUD_PROOF_STEP_TITLES.doubleSpend[2],
+      FAULT_PROOF_STEP_TITLES.doubleSpend[2],
       [step04.spendingScriptHash, context.computationThreadPolicyId],
     );
-    const step02 = yield* buildFraudProofStep(
+    const step02 = yield* buildFaultProofStep(
       context,
       "double-spend step 02",
-      FRAUD_PROOF_STEP_TITLES.doubleSpend[1],
+      FAULT_PROOF_STEP_TITLES.doubleSpend[1],
       [
         step03.spendingScriptHash,
         context.computationThreadPolicyId,
         context.hubOraclePolicyId,
       ],
     );
-    const step01 = yield* buildFraudProofStep(
+    const step01 = yield* buildFaultProofStep(
       context,
       "double-spend step 01",
-      FRAUD_PROOF_STEP_TITLES.doubleSpend[0],
+      FAULT_PROOF_STEP_TITLES.doubleSpend[0],
       [
         step02.spendingScriptHash,
         context.computationThreadPolicyId,
@@ -285,39 +285,39 @@ const buildDoubleSpendFraudProofChain = (
       ],
     );
 
-    return fraudProofChain([step01, step02, step03, step04]);
+    return faultProofChain([step01, step02, step03, step04]);
   });
 
-const buildNonExistentInputFraudProofChain = (
+const buildNonExistentInputFaultProofChain = (
   context: FaultProofBuildContext,
-): Effect.Effect<FourStepFraudProofChain, Error> =>
+): Effect.Effect<FourStepFaultProofChain, Error> =>
   Effect.gen(function* () {
-    const step04 = yield* buildFraudProofStep(
+    const step04 = yield* buildFaultProofStep(
       context,
       "non-existent-input step 04",
-      FRAUD_PROOF_STEP_TITLES.nonExistentInput[3],
+      FAULT_PROOF_STEP_TITLES.nonExistentInput[3],
       [
         context.fraudProofPolicyId,
         context.fraudProofTokenAddressData,
         context.computationThreadPolicyId,
       ],
     );
-    const step03 = yield* buildFraudProofStep(
+    const step03 = yield* buildFaultProofStep(
       context,
       "non-existent-input step 03",
-      FRAUD_PROOF_STEP_TITLES.nonExistentInput[2],
+      FAULT_PROOF_STEP_TITLES.nonExistentInput[2],
       [step04.spendingScriptHash, context.computationThreadPolicyId],
     );
-    const step02 = yield* buildFraudProofStep(
+    const step02 = yield* buildFaultProofStep(
       context,
       "non-existent-input step 02",
-      FRAUD_PROOF_STEP_TITLES.nonExistentInput[1],
+      FAULT_PROOF_STEP_TITLES.nonExistentInput[1],
       [step03.spendingScriptHash, context.computationThreadPolicyId],
     );
-    const step01 = yield* buildFraudProofStep(
+    const step01 = yield* buildFaultProofStep(
       context,
       "non-existent-input step 01",
-      FRAUD_PROOF_STEP_TITLES.nonExistentInput[0],
+      FAULT_PROOF_STEP_TITLES.nonExistentInput[0],
       [
         step02.spendingScriptHash,
         context.computationThreadPolicyId,
@@ -325,43 +325,43 @@ const buildNonExistentInputFraudProofChain = (
       ],
     );
 
-    return fraudProofChain([step01, step02, step03, step04]);
+    return faultProofChain([step01, step02, step03, step04]);
   });
 
-const buildNonExistentInputNoIndexFraudProofChain = (
+const buildNonExistentInputNoIndexFaultProofChain = (
   context: FaultProofBuildContext,
-): Effect.Effect<FourStepFraudProofChain, Error> =>
+): Effect.Effect<FourStepFaultProofChain, Error> =>
   Effect.gen(function* () {
-    const step04 = yield* buildFraudProofStep(
+    const step04 = yield* buildFaultProofStep(
       context,
       "non-existent-input-no-index step 04",
-      FRAUD_PROOF_STEP_TITLES.nonExistentInputNoIndex[3],
+      FAULT_PROOF_STEP_TITLES.nonExistentInputNoIndex[3],
       [
         context.computationThreadPolicyId,
         context.fraudProofPolicyId,
         context.fraudProofTokenAddressData,
       ],
     );
-    const step03 = yield* buildFraudProofStep(
+    const step03 = yield* buildFaultProofStep(
       context,
       "non-existent-input-no-index step 03",
-      FRAUD_PROOF_STEP_TITLES.nonExistentInputNoIndex[2],
+      FAULT_PROOF_STEP_TITLES.nonExistentInputNoIndex[2],
       [
         step04.spendingScriptHash,
         context.computationThreadPolicyId,
         context.hubOraclePolicyId,
       ],
     );
-    const step02 = yield* buildFraudProofStep(
+    const step02 = yield* buildFaultProofStep(
       context,
       "non-existent-input-no-index step 02",
-      FRAUD_PROOF_STEP_TITLES.nonExistentInputNoIndex[1],
+      FAULT_PROOF_STEP_TITLES.nonExistentInputNoIndex[1],
       [step03.spendingScriptHash, context.computationThreadPolicyId],
     );
-    const step01 = yield* buildFraudProofStep(
+    const step01 = yield* buildFaultProofStep(
       context,
       "non-existent-input-no-index step 01",
-      FRAUD_PROOF_STEP_TITLES.nonExistentInputNoIndex[0],
+      FAULT_PROOF_STEP_TITLES.nonExistentInputNoIndex[0],
       [
         step02.spendingScriptHash,
         context.computationThreadPolicyId,
@@ -369,27 +369,27 @@ const buildNonExistentInputNoIndexFraudProofChain = (
       ],
     );
 
-    return fraudProofChain([step01, step02, step03, step04]);
+    return faultProofChain([step01, step02, step03, step04]);
   });
 
-const buildInvalidRangeFraudProofChain = (
+const buildInvalidRangeFaultProofChain = (
   context: FaultProofBuildContext,
-): Effect.Effect<TwoStepFraudProofChain, Error> =>
+): Effect.Effect<TwoStepFaultProofChain, Error> =>
   Effect.gen(function* () {
-    const step02 = yield* buildFraudProofStep(
+    const step02 = yield* buildFaultProofStep(
       context,
       "invalid-range step 02",
-      FRAUD_PROOF_STEP_TITLES.invalidRange[1],
+      FAULT_PROOF_STEP_TITLES.invalidRange[1],
       [
         context.fraudProofPolicyId,
         context.fraudProofTokenAddressData,
         context.computationThreadPolicyId,
       ],
     );
-    const step01 = yield* buildFraudProofStep(
+    const step01 = yield* buildFaultProofStep(
       context,
       "invalid-range step 01",
-      FRAUD_PROOF_STEP_TITLES.invalidRange[0],
+      FAULT_PROOF_STEP_TITLES.invalidRange[0],
       [
         step02.spendingScriptHash,
         context.computationThreadPolicyId,
@@ -397,7 +397,7 @@ const buildInvalidRangeFraudProofChain = (
       ],
     );
 
-    return fraudProofChain([step01, step02]);
+    return faultProofChain([step01, step02]);
   });
 
 export const buildFaultProofContracts = ({
@@ -422,7 +422,7 @@ export const buildFaultProofContracts = ({
     );
 
     const fraudProof = yield* tryBuild(
-      "Failed to build fraud-proof token validator",
+      "Failed to build fault-proof token validator",
       () =>
         makeAuthenticatedValidator(
           network,
@@ -451,17 +451,17 @@ export const buildFaultProofContracts = ({
       fraudProofPolicyId: fraudProof.policyId,
       fraudProofTokenAddressData,
     };
-    const doubleSpend = yield* buildDoubleSpendFraudProofChain(context);
+    const doubleSpend = yield* buildDoubleSpendFaultProofChain(context);
     const nonExistentInput =
-      yield* buildNonExistentInputFraudProofChain(context);
+      yield* buildNonExistentInputFaultProofChain(context);
     const nonExistentInputNoIndex =
-      yield* buildNonExistentInputNoIndexFraudProofChain(context);
-    const invalidRange = yield* buildInvalidRangeFraudProofChain(context);
+      yield* buildNonExistentInputNoIndexFaultProofChain(context);
+    const invalidRange = yield* buildInvalidRangeFaultProofChain(context);
 
     return {
       computationThread,
       fraudProof,
-      fraudProofs: {
+      faultProofs: {
         doubleSpend,
         nonExistentInput,
         nonExistentInputNoIndex,
@@ -474,9 +474,9 @@ export const buildDoubleSpendFaultProofContracts = (
   params: BuildDoubleSpendFaultProofContractsParams,
 ): Effect.Effect<DoubleSpendFaultProofContracts, Error> =>
   buildFaultProofContracts(params).pipe(
-    Effect.map(({ computationThread, fraudProof, fraudProofs }) => ({
+    Effect.map(({ computationThread, fraudProof, faultProofs }) => ({
       computationThread,
       fraudProof,
-      doubleSpend: fraudProofs.doubleSpend,
+      doubleSpend: faultProofs.doubleSpend,
     })),
   );

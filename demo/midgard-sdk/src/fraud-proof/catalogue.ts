@@ -12,7 +12,7 @@ import { Effect } from "effect";
 
 import type {
   AuthenticatedValidator,
-  FraudProofs,
+  FaultProofs,
   SpendingValidator,
 } from "@/common.js";
 import {
@@ -48,7 +48,7 @@ export const FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER = [
   "nonExistentInput",
   "nonExistentInputNoIndex",
   "invalidRange",
-] as const satisfies readonly (keyof FraudProofs)[];
+] as const satisfies readonly (keyof FaultProofs)[];
 
 export type FraudProofCatalogueCategoryName =
   (typeof FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER)[number];

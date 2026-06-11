@@ -118,19 +118,19 @@ describe("midgard contracts registry", () => {
       expect(resolved.reserve.withdrawalScriptCBOR).not.toEqual(
         placeholderContracts.reserve.withdrawalScriptCBOR,
       );
-      const fraudProofCategoryNames = Object.keys(
-        SDK.FRAUD_PROOF_STEP_TITLES,
-      ) as (keyof typeof SDK.FRAUD_PROOF_STEP_TITLES)[];
-      for (const categoryName of fraudProofCategoryNames) {
-        const resolvedFraudProof = resolved.fraudProofs[categoryName];
-        const placeholderFraudProof =
-          placeholderContracts.fraudProofs[categoryName];
-        expect(resolvedFraudProof.firstStep.spendingScriptCBOR).not.toEqual(
-          placeholderFraudProof.firstStep.spendingScriptCBOR,
+      const faultProofCategoryNames = Object.keys(
+        SDK.FAULT_PROOF_STEP_TITLES,
+      ) as (keyof typeof SDK.FAULT_PROOF_STEP_TITLES)[];
+      for (const categoryName of faultProofCategoryNames) {
+        const resolvedFaultProof = resolved.faultProofs[categoryName];
+        const placeholderFaultProof =
+          placeholderContracts.faultProofs[categoryName];
+        expect(resolvedFaultProof.firstStep.spendingScriptCBOR).not.toEqual(
+          placeholderFaultProof.firstStep.spendingScriptCBOR,
         );
-        expect(resolvedFraudProof.firstStep).toBe(resolvedFraudProof.steps[0]);
-        expect(resolvedFraudProof.steps).toHaveLength(
-          SDK.FRAUD_PROOF_STEP_TITLES[categoryName].length,
+        expect(resolvedFaultProof.firstStep).toBe(resolvedFaultProof.steps[0]);
+        expect(resolvedFaultProof.steps).toHaveLength(
+          SDK.FAULT_PROOF_STEP_TITLES[categoryName].length,
         );
       }
     }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),

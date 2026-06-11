@@ -181,9 +181,9 @@ const makeMintOnlyAuthenticatedValidator = (
     };
   });
 
-const makeFraudProofChain = (
+const makeFaultProofChain = (
   firstStep: SDK.SpendingValidator,
-): SDK.FraudProofChain => ({
+): SDK.FaultProofChain => ({
   firstStep,
   steps: [firstStep],
 });
@@ -200,7 +200,7 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
     const mkAuthVal = (contract: string) =>
       makeAuthenticatedValidator(contract, NETWORK);
     /**
-     * Builds the always-succeeds fraud-proof validator reference.
+     * Builds the always-succeeds fault-proof validator reference.
      */
     const mkFP = (fp: string) =>
       makeSpendingValidator("fraud_proofs", fp, NETWORK);
@@ -240,17 +240,17 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       ...reserveWithdawalValidator,
     };
 
-    // Fraud Proofs
+    // Fault Proofs
     const doubleSpend = yield* mkFP("double_spend");
     const nonExistentInput = yield* mkFP("non_existent_input");
     const nonExistentInputNoIndex = yield* mkFP("non_existent_input_no_index");
     const invalidRange = yield* mkFP("invalid_range");
 
-    const fraudProofs: SDK.FraudProofs = {
-      doubleSpend: makeFraudProofChain(doubleSpend),
-      nonExistentInput: makeFraudProofChain(nonExistentInput),
-      nonExistentInputNoIndex: makeFraudProofChain(nonExistentInputNoIndex),
-      invalidRange: makeFraudProofChain(invalidRange),
+    const faultProofs: SDK.FaultProofs = {
+      doubleSpend: makeFaultProofChain(doubleSpend),
+      nonExistentInput: makeFaultProofChain(nonExistentInput),
+      nonExistentInputNoIndex: makeFaultProofChain(nonExistentInputNoIndex),
+      invalidRange: makeFaultProofChain(invalidRange),
     };
 
     return {
@@ -269,7 +269,7 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       settlement,
       reserve,
       payout,
-      fraudProofs,
+      faultProofs,
     };
   }).pipe(Effect.orDie);
 

@@ -153,16 +153,16 @@ export type WithdrawalValidator = {
 
 export type AuthenticatedValidator = SpendingValidator & MintingValidator;
 
-export type FraudProofChain = {
+export type FaultProofChain = {
   readonly firstStep: SpendingValidator;
   readonly steps: readonly [SpendingValidator, ...SpendingValidator[]];
 };
 
-export type FraudProofs = {
-  doubleSpend: FraudProofChain;
-  nonExistentInput: FraudProofChain;
-  nonExistentInputNoIndex: FraudProofChain;
-  invalidRange: FraudProofChain;
+export type FaultProofs = {
+  doubleSpend: FaultProofChain;
+  nonExistentInput: FaultProofChain;
+  nonExistentInputNoIndex: FaultProofChain;
+  invalidRange: FaultProofChain;
 };
 
 export type MidgardValidators = {
@@ -181,7 +181,7 @@ export type MidgardValidators = {
   settlement: AuthenticatedValidator;
   reserve: SpendingValidator & WithdrawalValidator;
   payout: AuthenticatedValidator;
-  fraudProofs: FraudProofs;
+  faultProofs: FaultProofs;
 };
 
 export const OutputReferenceSchema = Data.Object({

@@ -16,7 +16,7 @@ import {
   DoubleSpendStep03SpendRedeemer,
   DoubleSpendStep04Datum,
   DoubleSpendStep04SpendRedeemer,
-  FRAUD_PROOF_STEP_TITLES,
+  FAULT_PROOF_STEP_TITLES,
   FraudProofComputationThreadRedeemer,
   FraudProofTokenMintRedeemer,
   MidgardTxInputList,
@@ -91,7 +91,7 @@ describe("fault-proof ABI", () => {
     ).toEqual({ BurnForCancellation: { burning_token_asset_name: "abcd" } });
   });
 
-  it("round-trips fraud-proof token mint redeemer", () => {
+  it("round-trips fault-proof token mint redeemer", () => {
     const redeemer = {
       computation_thread_token_asset_name: "00000000" + h28,
       computation_thread_mint_redeemer_index: 1n,
@@ -183,7 +183,7 @@ describe("fault-proof ABI", () => {
 });
 
 describe("fault-proof contract builder", () => {
-  it("builds implemented fraud-proof step chains from the Aiken blueprint", async () => {
+  it("builds implemented fault-proof step chains from the Aiken blueprint", async () => {
     const blueprint = parseFaultProofBlueprint(
       JSON.parse(readFileSync(blueprintPath, "utf8")) as unknown,
     );
@@ -197,14 +197,14 @@ describe("fault-proof contract builder", () => {
       }),
     );
 
-    const fraudProofCategoryNames = Object.keys(
-      FRAUD_PROOF_STEP_TITLES,
-    ) as (keyof typeof FRAUD_PROOF_STEP_TITLES)[];
-    for (const categoryName of fraudProofCategoryNames) {
-      const chain = contracts.fraudProofs[categoryName];
+    const faultProofCategoryNames = Object.keys(
+      FAULT_PROOF_STEP_TITLES,
+    ) as (keyof typeof FAULT_PROOF_STEP_TITLES)[];
+    for (const categoryName of faultProofCategoryNames) {
+      const chain = contracts.faultProofs[categoryName];
       expect(chain.firstStep).toBe(chain.steps[0]);
       expect(chain.steps).toHaveLength(
-        FRAUD_PROOF_STEP_TITLES[categoryName].length,
+        FAULT_PROOF_STEP_TITLES[categoryName].length,
       );
       expect(
         new Set(chain.steps.map((step) => step.spendingScriptHash)).size,

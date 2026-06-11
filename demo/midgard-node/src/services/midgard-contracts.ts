@@ -628,18 +628,18 @@ export const withRealStateQueueAndOperatorContracts = (
       fraudProofCataloguePolicyId:
         withRealFraudProofCatalogue.fraudProofCatalogue.policyId,
     });
-    const withRealFraudProof: SDK.MidgardValidators = {
+    const withRealFaultProof: SDK.MidgardValidators = {
       ...withRealFraudProofCatalogue,
       fraudProof: realFaultProofs.fraudProof,
-      fraudProofs: realFaultProofs.fraudProofs,
+      faultProofs: realFaultProofs.faultProofs,
     };
 
     const realRetiredOperators = yield* buildRealRetiredOperatorsValidator(
       network,
-      withRealFraudProof,
+      withRealFaultProof,
     );
     const withRealRetiredOperators: SDK.MidgardValidators = {
-      ...withRealFraudProof,
+      ...withRealFaultProof,
       retiredOperators: realRetiredOperators,
     };
 
