@@ -168,6 +168,7 @@ const loadContracts = (oneShotOutRef: {
         "Preprod",
         placeholder,
         oneShotOutRef,
+        { referenceScriptAuth: placeholder.referenceScriptAuth },
       );
     }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
   );
@@ -197,6 +198,7 @@ const publishDepositFlowReferenceScripts = async ({
       referenceScriptsLucid,
       contracts,
       "node-runtime",
+      contracts.referenceScriptAuth,
       operatorLucid,
     ),
   );
@@ -213,6 +215,7 @@ const publishDepositFlowReferenceScripts = async ({
   };
   return {
     init: {
+      daParamsGovernorMinting: requireRef("da-params-governor minting"),
       hubOracleMinting: requireRef("hub-oracle minting"),
       schedulerMinting: requireRef("scheduler minting"),
       stateQueueMinting: requireRef("state-queue minting"),
@@ -286,6 +289,7 @@ const makeFixture = async (): Promise<EmulatorFixture> => {
 const initializeProtocol = async ({
   emulator,
   operatorLucid,
+  operatorAccount,
   referenceScriptsLucid,
   contracts,
   referenceScripts,
@@ -293,6 +297,7 @@ const initializeProtocol = async ({
   EmulatorFixture,
   | "emulator"
   | "operatorLucid"
+  | "operatorAccount"
   | "referenceScriptsLucid"
   | "contracts"
   | "referenceScripts"
@@ -322,6 +327,8 @@ const initializeProtocol = async ({
       {
         HUB_ORACLE_ONE_SHOT_TX_HASH: nonceUtxo.txHash,
         HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: nonceUtxo.outputIndex,
+        L1_OPERATOR_SEED_PHRASE: operatorAccount.seedPhrase,
+        NETWORK: "Preprod",
       },
       fraudProofCatalogueRoot,
       undefined,

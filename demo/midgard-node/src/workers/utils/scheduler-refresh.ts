@@ -758,6 +758,7 @@ const ensureSchedulerAlignedForCommit = (
     const feeInput = yield* selectFeeInput(
       availableOperatorWalletUtxos(flowOperatorWalletView),
     );
+    let schedulerSpendRedeemerCbor: string | undefined;
     const schedulerSpendRedeemer = ((ctx) => {
       SDK.requireOwnSpendPurpose(ctx, schedulerRefInput, "scheduler refresh");
       const schedulerInputIndex = SDK.requireInputIndex(
@@ -836,10 +837,12 @@ const ensureSchedulerAlignedForCommit = (
                   },
                 },
               };
-      return LucidData.to(
+      const redeemerCbor = LucidData.to(
         redeemer as never,
         SDK.SchedulerSpendRedeemer as never,
       );
+      schedulerSpendRedeemerCbor = redeemerCbor;
+      return redeemerCbor;
     }) satisfies BuildTxWithRedeemer;
     yield* Effect.logInfo(
       `🔹 Refreshing scheduler witness datum for commit window via ${selection.kind} (from=${describeSchedulerDatum(schedulerDatum)} to=${describeSchedulerDatum(refreshedSchedulerDatum)}, validTo=${validTo.toString()}).`,
@@ -848,14 +851,16 @@ const ensureSchedulerAlignedForCommit = (
     /**
      * Builds the scheduler-refresh transaction.
      */
-    const mkSchedulerRefreshTx = () =>
+    const mkSchedulerRefreshTx = (
+      spendRedeemer: BuildTxWithRedeemer | string,
+    ) =>
       lucid
         .newTx()
         .validFrom(Number(validFrom))
         .validTo(Number(validTo))
         .collectFrom([feeInput])
         .readFrom(referenceInputs)
-        .collectFrom([schedulerRefInput], schedulerSpendRedeemer)
+        .collectFrom([schedulerRefInput], spendRedeemer)
         .pay.ToContract(
           contracts.scheduler.spendingScriptAddress,
           {
@@ -865,19 +870,47 @@ const ensureSchedulerAlignedForCommit = (
           schedulerRefInput.assets,
         )
         .addSignerKey(operatorKeyHash);
-    const mkSchedulerRefreshTxWithScript = () =>
+    const mkSchedulerRefreshTxWithScript = (
+      spendRedeemer: BuildTxWithRedeemer | string,
+    ) =>
       schedulerSpendingScriptRef === undefined
-        ? mkSchedulerRefreshTx().attach.Script(
+        ? mkSchedulerRefreshTx(spendRedeemer).attach.Script(
             contracts.scheduler.spendingScript,
           )
-        : mkSchedulerRefreshTx();
+        : mkSchedulerRefreshTx(spendRedeemer);
 
-    const refreshTx = yield* Effect.tryPromise({
+    yield* Effect.tryPromise({
       try: () =>
-        mkSchedulerRefreshTxWithScript().complete({ localUPLCEval: true }),
+        mkSchedulerRefreshTxWithScript(schedulerSpendRedeemer).complete({
+          localUPLCEval: true,
+        }),
       catch: (cause) =>
         new SDK.StateQueueError({
           message: `Failed to build scheduler refresh tx: ${cause}`,
+          cause,
+        }),
+    });
+    if (schedulerSpendRedeemerCbor === undefined) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message:
+            "BuildTxWithRedeemer did not resolve scheduler refresh redeemer",
+          cause: "missing scheduler refresh redeemer callback",
+        }),
+      );
+    }
+    const resolvedSchedulerSpendRedeemerCbor = schedulerSpendRedeemerCbor;
+
+    const refreshTx = yield* Effect.tryPromise({
+      try: () =>
+        mkSchedulerRefreshTxWithScript(
+          resolvedSchedulerSpendRedeemerCbor,
+        ).complete({
+          localUPLCEval: true,
+        }),
+      catch: (cause) =>
+        new SDK.StateQueueError({
+          message: `Failed to rebuild scheduler refresh tx: ${cause}`,
           cause,
         }),
     });
@@ -986,6 +1019,7 @@ export const fetchRealStateQueueWitnessContext = (
                 script: contracts.stateQueue.mintingScript,
               },
             ],
+            contracts.referenceScriptAuth,
           );
     const optionalReferenceScript = (name: string): UTxO | undefined =>
       referenceScriptsAddress === undefined

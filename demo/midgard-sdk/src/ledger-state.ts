@@ -41,15 +41,26 @@ export const StateQueueNodeSchema = Data.Object({
 });
 export type StateQueueNode = Data.Static<typeof StateQueueNodeSchema>;
 export const StateQueueNode = StateQueueNodeSchema as unknown as StateQueueNode;
-export const castStateQueueNodeToData = (
-  node: StateQueueNode,
-): unknown => Data.castTo(node, StateQueueNode);
+export const castStateQueueNodeToData = (node: StateQueueNode): unknown =>
+  Data.castTo(node, StateQueueNode);
 
 export const getHeaderFromStateQueueDatum = (nodeDatum: {
   readonly data: Parameters<typeof Data.castFrom>[0];
 }): Effect.Effect<Header, DataCoercionError> =>
   Effect.try({
     try: () => Data.castFrom(nodeDatum.data, StateQueueNode).header,
+    catch: (cause) =>
+      new DataCoercionError({
+        message: "Failed coercing block's datum data to `StateQueueNode`",
+        cause,
+      }),
+  });
+
+export const getStateQueueNodeFromStateQueueDatum = (nodeDatum: {
+  readonly data: Parameters<typeof Data.castFrom>[0];
+}): Effect.Effect<StateQueueNode, DataCoercionError> =>
+  Effect.try({
+    try: () => Data.castFrom(nodeDatum.data, StateQueueNode),
     catch: (cause) =>
       new DataCoercionError({
         message: "Failed coercing block's datum data to `StateQueueNode`",

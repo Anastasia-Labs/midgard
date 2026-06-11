@@ -22,6 +22,7 @@ import {
 
 const STATE_QUEUE_HEADER_NODE_LOVELACE = 5_000_000n;
 const COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS = 4;
+const COMMIT_MIN_REMAINING_SUBMIT_MS = 90_000;
 
 export type BuiltCommitTx = {
   readonly newHeaderHash: string;
@@ -62,11 +63,13 @@ export const buildUnsignedCommitTx = (
     // operator wallet before any scheduler refresh or witness lookup that
     // depends on wallet address or spendable operator inputs.
     yield* lucid.switchToOperatorsMainWallet;
+    let commitWindowResolutionNow = Date.now();
     const resolveCommitWindow = () =>
       resolveAlignedCommitEndTime({
         lucid: lucid.api,
         latestEndTime,
         candidateEndTime: endDate.getTime(),
+        nowMs: commitWindowResolutionNow,
       });
     let commitWindow = resolveCommitWindow();
     let witnessContext: RealStateQueueWitnessContext | undefined;
@@ -81,6 +84,17 @@ export const buildUnsignedCommitTx = (
         witnessContext?.operatorWalletView ?? initialOperatorWalletView,
         lucid.referenceScriptsAddress,
       );
+      const remainingSubmitMs = witnessEndTime - Date.now();
+      if (remainingSubmitMs < COMMIT_MIN_REMAINING_SUBMIT_MS) {
+        stabilizationAttempts += 1;
+        commitWindowResolutionNow = Date.now();
+        const refreshedCommitWindow = resolveCommitWindow();
+        yield* Effect.logWarning(
+          `Commit end-time is too close after witness assembly; rebuilding with refreshed window (previous=${commitWindow.resolvedEndTime}, next=${refreshedCommitWindow.resolvedEndTime}, remaining_ms=${remainingSubmitMs.toString()}, min_remaining_ms=${COMMIT_MIN_REMAINING_SUBMIT_MS.toString()}, attempt=${stabilizationAttempts}/${COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS}).`,
+        );
+        commitWindow = refreshedCommitWindow;
+        continue;
+      }
       const refreshedCommitWindow = resolveCommitWindow();
       if (refreshedCommitWindow.resolvedEndTime === witnessEndTime) {
         commitWindow = refreshedCommitWindow;

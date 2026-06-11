@@ -129,6 +129,7 @@ export type RegisterOperatorTxConfig = {
   readonly prependedNodeAssets: Assets;
   readonly updatedRegisteredRootDatum: SDK.LinkedListNodeView;
   readonly registerValidTo: bigint;
+  readonly layout?: RegisterRedeemerLayout;
   readonly onLayout?: (layout: RegisterRedeemerLayout) => void;
 };
 
@@ -199,20 +200,8 @@ export const buildRegisterOperatorTx = (
   const updatedRegisteredRootDatumCbor = encodeLinkedListNodeView(
     config.updatedRegisteredRootDatum,
   );
-  const registerRedeemer = ((ctx) => {
-    requireOwnMintPurpose(
-      ctx,
-      config.contracts.registeredOperators.policyId,
-      "registered-operator register mint",
-    );
-    const layout = deriveRegisterLayoutFromContext({
-      config,
-      ctx,
-      prependedNodeDatumCbor,
-      updatedRegisteredRootDatumCbor,
-    });
-    config.onLayout?.(layout);
-    return LucidData.to(
+  const encodeRegisterRedeemer = (layout: RegisterRedeemerLayout): string =>
+    LucidData.to(
       {
         RegisterOperator: {
           registering_operator: config.operatorKeyHash,
@@ -231,7 +220,27 @@ export const buildRegisterOperatorTx = (
       },
       SDK.RegisteredOperatorMintRedeemer,
     );
-  }) satisfies BuildTxWithRedeemer;
+  const registerRedeemer =
+    config.layout === undefined
+      ? (((ctx) => {
+          requireOwnMintPurpose(
+            ctx,
+            config.contracts.registeredOperators.policyId,
+            "registered-operator register mint",
+          );
+          const layout = deriveRegisterLayoutFromContext({
+            config,
+            ctx,
+            prependedNodeDatumCbor,
+            updatedRegisteredRootDatumCbor,
+          });
+          config.onLayout?.(layout);
+          return encodeRegisterRedeemer(layout);
+        }) satisfies BuildTxWithRedeemer)
+      : encodeRegisterRedeemer(config.layout);
+  if (config.layout !== undefined) {
+    config.onLayout?.(config.layout);
+  }
   return config.lucid
     .newTx()
     .collectFrom([config.registeredRootNode.utxo], LucidData.void())
@@ -280,6 +289,7 @@ export type ActivateOperatorTxConfig = {
   readonly activeNodeUnit: string;
   readonly transferredOperatorAssets: Assets;
   readonly updatedRegisteredAnchorDatum: SDK.LinkedListNodeView;
+  readonly layout?: ActivateRedeemerLayout;
   readonly onLayout?: (layout: ActivateRedeemerLayout) => void;
 };
 
@@ -386,6 +396,9 @@ export const buildActivateOperatorTx = (
   const layoutFromContext = (
     ctx: Parameters<BuildTxWithRedeemer>[0],
   ): ActivateRedeemerLayout => {
+    if (config.layout !== undefined) {
+      return config.layout;
+    }
     const layout = deriveActivateLayoutFromContext({
       config,
       ctx,
@@ -396,25 +409,8 @@ export const buildActivateOperatorTx = (
     config.onLayout?.(layout);
     return layout;
   };
-  const registeredRedeemer = ((ctx) => {
-    requireOwnMintPurpose(
-      ctx,
-      config.contracts.registeredOperators.policyId,
-      "operator activation registered mint",
-    );
-    return registeredActivateRedeemer({
-      operatorKeyHash: config.operatorKeyHash,
-      layout: layoutFromContext(ctx),
-    });
-  }) satisfies BuildTxWithRedeemer;
-  const activeRedeemer = ((ctx) => {
-    requireOwnMintPurpose(
-      ctx,
-      config.contracts.activeOperators.policyId,
-      "operator activation active mint",
-    );
-    const layout = layoutFromContext(ctx);
-    return LucidData.to(
+  const encodeActiveRedeemer = (layout: ActivateRedeemerLayout): string =>
+    LucidData.to(
       {
         ActivateOperator: {
           new_active_operator_key: config.operatorKeyHash,
@@ -429,7 +425,37 @@ export const buildActivateOperatorTx = (
       },
       SDK.ActiveOperatorMintRedeemer,
     );
-  }) satisfies BuildTxWithRedeemer;
+  const registeredRedeemer =
+    config.layout === undefined
+      ? (((ctx) => {
+          requireOwnMintPurpose(
+            ctx,
+            config.contracts.registeredOperators.policyId,
+            "operator activation registered mint",
+          );
+          return registeredActivateRedeemer({
+            operatorKeyHash: config.operatorKeyHash,
+            layout: layoutFromContext(ctx),
+          });
+        }) satisfies BuildTxWithRedeemer)
+      : registeredActivateRedeemer({
+          operatorKeyHash: config.operatorKeyHash,
+          layout: config.layout,
+        });
+  const activeRedeemer =
+    config.layout === undefined
+      ? (((ctx) => {
+          requireOwnMintPurpose(
+            ctx,
+            config.contracts.activeOperators.policyId,
+            "operator activation active mint",
+          );
+          return encodeActiveRedeemer(layoutFromContext(ctx));
+        }) satisfies BuildTxWithRedeemer)
+      : encodeActiveRedeemer(config.layout);
+  if (config.layout !== undefined) {
+    config.onLayout?.(config.layout);
+  }
 
   let tx = config.lucid
     .newTx()

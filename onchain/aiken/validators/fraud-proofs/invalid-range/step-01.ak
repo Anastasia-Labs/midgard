@@ -9,11 +9,37 @@ use aiken/crypto.{ScriptHash}
 use aiken_design_patterns/validity_range_normalization as vrn
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
+use midgard/common/constants.{posix_time_none}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{TxBodyProvided, cancel, pass_tx_to_next_step}
+use midgard/fraud_proofs/common.{cancel, pass_native_tx_to_next_step}
 use midgard/fraud_proofs/invalid_range/step_01.{Datum, SpendRedeemer}
 use midgard/fraud_proofs/invalid_range/step_02
+use midgard/fraud_proofs/native_tx/types.{NativeTxBodyCompact}
 use midgard/ledger_state.{Header}
+
+fn normalize_native_validity_range(
+  body: NativeTxBodyCompact,
+) -> vrn.NormalizedTimeRange {
+  let NativeTxBodyCompact {
+    validity_interval_start: lower,
+    validity_interval_end: exclusive_upper,
+    ..
+  } = body
+
+  when (lower == posix_time_none, exclusive_upper == posix_time_none) is {
+    (True, True) -> vrn.Always
+    (True, False) -> vrn.FromNegInf { upper: exclusive_upper - 1 }
+    (False, True) -> vrn.ToPosInf { lower }
+    (False, False) -> {
+      let upper = exclusive_upper - 1
+      if lower > upper {
+        vrn.InvalidRange
+      } else {
+        vrn.ClosedRange { lower, upper }
+      }
+    }
+  }
+}
 
 validator main(
   step_02_validator_script_hash: ScriptHash,
@@ -43,15 +69,14 @@ validator main(
           _own_script_hash,
           _computation_thread_token_asset_name,
           _fraud_prover,
-          _m_input_state_data,
+          m_input_state_data,
           output_script_hash,
           output_state_data,
           header,
           _bad_tx_id,
-          _bad_tx,
-          tx_field_preimage,
+          bad_tx_view,
         <-
-          pass_tx_to_next_step(
+          pass_native_tx_to_next_step(
             computation_thread_token_policy_id,
             hub_oracle,
             datum,
@@ -60,8 +85,7 @@ validator main(
             tx,
           )
 
-        // 2. Bad transaction's body must be provided.
-        expect TxBodyProvided(bad_tx_body) = tx_field_preimage
+        expect None = m_input_state_data
 
         let Header {
           start_time: block_valid_from,
@@ -70,9 +94,9 @@ validator main(
         } = header
 
         let bad_tx_normalized_validity_range =
-          vrn.normalize_time_range(bad_tx_body.validity_interval)
+          normalize_native_validity_range(bad_tx_view.tx_compact.body)
 
-        // 3. The UTxO must be produced at next step's script hash with validity
+        // 2. The UTxO must be produced at next step's script hash with validity
         //    range of the bad tx, and block's time range provided.
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data =
@@ -92,4 +116,38 @@ validator main(
   else(_) {
     fail
   }
+}
+
+fn test_native_body(lower: Int, exclusive_upper: Int) -> NativeTxBodyCompact {
+  NativeTxBodyCompact {
+    spend_inputs_hash: "",
+    reference_inputs_hash: "",
+    outputs_hash: "",
+    fee: 0,
+    validity_interval_start: lower,
+    validity_interval_end: exclusive_upper,
+    required_observers_hash: "",
+    required_signers_hash: "",
+    mint_hash: "",
+    script_integrity_hash: "",
+    auxiliary_data_hash: "",
+    network_id: 0,
+  }
+}
+
+test normalize_native_validity_range_preserves_one_tick_interval() {
+  normalize_native_validity_range(test_native_body(10, 11)) == vrn.ClosedRange {
+    lower: 10,
+    upper: 10,
+  }
+}
+
+test normalize_native_validity_range_rejects_empty_interval() {
+  normalize_native_validity_range(test_native_body(10, 10)) == vrn.InvalidRange
+}
+
+test normalize_native_validity_range_detects_unbounded_interval() {
+  normalize_native_validity_range(
+    test_native_body(posix_time_none, posix_time_none),
+  ) == vrn.Always
 }

@@ -1,10 +1,11 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import {
-  buildDoubleSpendFaultProofContracts,
+  buildFaultProofContracts,
   EMPTY_MERKLE_TREE_ROOT,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
+  type FraudProofCatalogueCategoryName,
   type FraudProofCatalogueCategoryDeploymentInfo,
   type FraudProofCatalogueDeploymentInfo,
   parseFaultProofBlueprint,
@@ -65,13 +66,8 @@ export type InspectContractsOutput = {
     readonly derivedRoot: string | null;
     readonly rootMatchesDerived: boolean | null;
     readonly initReady: boolean;
-    readonly doubleSpend: {
-      readonly categoryId: string | null;
-      readonly scriptHash: string | null;
-      readonly scriptHashMatchesFirstStep: boolean | null;
-      readonly membershipProofCbor: string | null;
-      readonly membershipProofMatchesDerived: boolean | null;
-    };
+    readonly doubleSpend: InspectContractsCatalogueCategoryOutput;
+    readonly invalidRange: InspectContractsCatalogueCategoryOutput;
   };
   readonly doubleSpend: {
     readonly categoryFirstStepHash: string;
@@ -84,12 +80,46 @@ export type InspectContractsOutput = {
       InspectContractsStepOutput,
     ];
   };
+  readonly invalidRange: {
+    readonly categoryFirstStepHash: string;
+    readonly deploymentInvalidRangeScriptHash: string | null;
+    readonly deploymentInvalidRangeMatchesFirstStep: boolean | null;
+    readonly steps: readonly [
+      InspectContractsStepOutput,
+      InspectContractsStepOutput,
+    ];
+  };
 };
 
 export type InspectContractsStepOutput = {
   readonly name: "step01" | "step02" | "step03" | "step04";
   readonly scriptHash: string;
   readonly address: string;
+};
+
+export type InspectContractsCatalogueCategoryOutput = {
+  readonly categoryId: string | null;
+  readonly expectedCategoryId: string | null;
+  readonly categoryIdMatchesExpected: boolean | null;
+  readonly scriptHash: string | null;
+  readonly scriptHashMatchesFirstStep: boolean | null;
+  readonly membershipProofCbor: string | null;
+  readonly membershipProofMatchesDerived: boolean | null;
+  readonly ready: boolean;
+};
+
+export type ImplementedFraudProofCategoryName = "doubleSpend" | "invalidRange";
+
+export const expectedFraudProofCategoryId = (
+  name: FraudProofCatalogueCategoryName,
+): string => {
+  const index = FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.indexOf(name);
+  if (index < 0) {
+    throw new Error(`Unknown fraud-proof catalogue category "${name}"`);
+  }
+  const bytes = Buffer.alloc(FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT);
+  bytes.writeUInt32BE(index);
+  return bytes.toString("hex");
 };
 
 export const DEFAULT_FAULT_PROOF_NETWORK: Network = "Preprod";
@@ -168,19 +198,31 @@ const parseFraudProofCatalogueDeploymentInfo = (
     candidate.categories,
     "fraudProofCatalogue.categories",
   );
+  const seenCategoryIds = new Map<string, FraudProofCatalogueCategoryName>();
   const categories = Object.fromEntries(
     FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((name) => {
       const category = rawCategories[name];
       if (category === undefined) {
         throw new Error(`fraudProofCatalogue.categories.${name} is missing`);
       }
-      return [
-        name,
-        parseCatalogueCategoryDeploymentInfo(
-          category,
-          `fraudProofCatalogue.categories.${name}`,
-        ),
-      ];
+      const parsedCategory = parseCatalogueCategoryDeploymentInfo(
+        category,
+        `fraudProofCatalogue.categories.${name}`,
+      );
+      const previousCategory = seenCategoryIds.get(parsedCategory.categoryId);
+      if (previousCategory !== undefined) {
+        throw new Error(
+          `fraudProofCatalogue.categories.${name}.categoryId duplicates fraudProofCatalogue.categories.${previousCategory}.categoryId`,
+        );
+      }
+      seenCategoryIds.set(parsedCategory.categoryId, name);
+      const expectedCategoryId = expectedFraudProofCategoryId(name);
+      if (parsedCategory.categoryId !== expectedCategoryId) {
+        throw new Error(
+          `fraudProofCatalogue.categories.${name}.categoryId must be ${expectedCategoryId}, got ${parsedCategory.categoryId}`,
+        );
+      }
+      return [name, parsedCategory];
     }),
   ) as FraudProofCatalogueDeploymentInfo["categories"];
 
@@ -266,7 +308,16 @@ const trieRootHex = (trie: Trie): string => {
 export const parseContractDeploymentInfo = (
   value: unknown,
 ): ContractDeploymentInfo => {
-  const rawEntries = requireRecord(value, "Contract deployment info");
+  const manifest = requireRecord(value, "Contract deployment info");
+  if (manifest.referenceScriptAuthPolicy === undefined) {
+    throw new Error(
+      "Contract deployment info is missing referenceScriptAuthPolicy.",
+    );
+  }
+  const rawEntries = requireRecord(
+    manifest.contracts,
+    "Contract deployment info.contracts",
+  );
 
   const entries: Record<string, ContractDeploymentInfoEntry> = {};
   for (const [name, entry] of Object.entries(rawEntries)) {
@@ -335,10 +386,138 @@ const expectScriptHash = (
   }
 };
 
+const emptyCatalogueCategoryInspection =
+  (): InspectContractsCatalogueCategoryOutput => ({
+    categoryId: null,
+    scriptHash: null,
+    scriptHashMatchesFirstStep: null,
+    membershipProofCbor: null,
+    membershipProofMatchesDerived: null,
+    expectedCategoryId: null,
+    categoryIdMatchesExpected: null,
+    ready: false,
+  });
+
+export type FraudProofCatalogueCategoryReadiness = {
+  readonly category: FraudProofCatalogueCategoryDeploymentInfo;
+  readonly expectedCategoryId: string;
+  readonly categoryIdMatchesExpected: boolean;
+  readonly scriptHashMatchesFirstStep: boolean;
+  readonly membershipProofMatchesDerived: boolean;
+  readonly ready: boolean;
+};
+
+export const inspectFraudProofCatalogueCategoryReadiness = async ({
+  catalogue,
+  categoryName,
+  expectedFirstStepHash,
+  deploymentMatchesFirstStep,
+}: {
+  readonly catalogue: FraudProofCatalogueDeploymentInfo;
+  readonly categoryName: ImplementedFraudProofCategoryName;
+  readonly expectedFirstStepHash: string;
+  readonly deploymentMatchesFirstStep: boolean | null;
+}): Promise<{
+  readonly derivedRoot: string;
+  readonly rootMatchesDerived: boolean;
+  readonly categoryReadiness: FraudProofCatalogueCategoryReadiness;
+}> => {
+  const store = new Store(undefined);
+  await store.ready();
+  const trie = new Trie(store);
+  for (const currentCategoryName of FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
+    const currentCategory = catalogue.categories[currentCategoryName];
+    await trie.insert(
+      encodeCatalogueKey(currentCategory.categoryId),
+      encodeCatalogueValue(currentCategory.scriptHash),
+    );
+  }
+
+  const derivedRoot = trieRootHex(trie);
+  const rootMatchesDerived = catalogue.root === derivedRoot;
+  const category = catalogue.categories[categoryName];
+  const proof = await trie.prove(encodeCatalogueKey(category.categoryId));
+  const derivedProofCbor = proof.toCBOR().toString("hex");
+  const expectedCategoryId = expectedFraudProofCategoryId(categoryName);
+  const categoryIdMatchesExpected = category.categoryId === expectedCategoryId;
+  const scriptHashMatchesFirstStep =
+    category.scriptHash === expectedFirstStepHash;
+  const membershipProofMatchesDerived =
+    category.membershipProofCbor === derivedProofCbor;
+
+  return {
+    derivedRoot,
+    rootMatchesDerived,
+    categoryReadiness: {
+      category,
+      expectedCategoryId,
+      categoryIdMatchesExpected,
+      scriptHashMatchesFirstStep,
+      membershipProofMatchesDerived,
+      ready:
+        deploymentMatchesFirstStep === true &&
+        rootMatchesDerived &&
+        categoryIdMatchesExpected &&
+        scriptHashMatchesFirstStep &&
+        membershipProofMatchesDerived,
+    },
+  };
+};
+
+export const assertFraudProofCatalogueCategoryReady = async ({
+  catalogue,
+  categoryName,
+  expectedFirstStepHash,
+  deploymentMatchesFirstStep,
+}: {
+  readonly catalogue: FraudProofCatalogueDeploymentInfo;
+  readonly categoryName: ImplementedFraudProofCategoryName;
+  readonly expectedFirstStepHash: string;
+  readonly deploymentMatchesFirstStep: boolean | null;
+}): Promise<FraudProofCatalogueCategoryDeploymentInfo> => {
+  const { rootMatchesDerived, categoryReadiness } =
+    await inspectFraudProofCatalogueCategoryReadiness({
+      catalogue,
+      categoryName,
+      expectedFirstStepHash,
+      deploymentMatchesFirstStep,
+    });
+  if (!rootMatchesDerived) {
+    throw new Error(
+      `Fraud-proof catalogue root mismatch: deployment=${catalogue.root}, derived from categories differs.`,
+    );
+  }
+  if (!categoryReadiness.categoryIdMatchesExpected) {
+    throw new Error(
+      `fraudProofCatalogue.categories.${categoryName}.categoryId must be ${categoryReadiness.expectedCategoryId}, got ${categoryReadiness.category.categoryId}`,
+    );
+  }
+  if (!categoryReadiness.scriptHashMatchesFirstStep) {
+    throw new Error(
+      `fraudProofCatalogue.categories.${categoryName}.scriptHash mismatch: deployment=${categoryReadiness.category.scriptHash}, derived=${expectedFirstStepHash}.`,
+    );
+  }
+  if (!categoryReadiness.membershipProofMatchesDerived) {
+    throw new Error(
+      `fraudProofCatalogue.categories.${categoryName}.membershipProofCbor does not match the derived catalogue proof.`,
+    );
+  }
+  if (!categoryReadiness.ready) {
+    throw new Error(
+      `Fraud-proof catalogue category ${categoryName} is not ready for Init.`,
+    );
+  }
+  return categoryReadiness.category;
+};
+
 const inspectFraudProofCatalogue = (
   catalogue: FraudProofCatalogueDeploymentInfo | undefined,
-  expectedDoubleSpendFirstStepHash: string,
-  deploymentDoubleSpendMatchesFirstStep: boolean | null,
+  expectedFirstStepHashes: Readonly<
+    Record<ImplementedFraudProofCategoryName, string>
+  >,
+  deploymentMatchesFirstStep: Readonly<
+    Record<ImplementedFraudProofCategoryName, boolean | null>
+  >,
 ): Effect.Effect<InspectContractsOutput["fraudProofCatalogue"], Error> => {
   if (catalogue === undefined) {
     return Effect.succeed({
@@ -346,13 +525,8 @@ const inspectFraudProofCatalogue = (
       derivedRoot: null,
       rootMatchesDerived: null,
       initReady: false,
-      doubleSpend: {
-        categoryId: null,
-        scriptHash: null,
-        scriptHashMatchesFirstStep: null,
-        membershipProofCbor: null,
-        membershipProofMatchesDerived: null,
-      },
+      doubleSpend: emptyCatalogueCategoryInspection(),
+      invalidRange: emptyCatalogueCategoryInspection(),
     });
   }
 
@@ -370,35 +544,53 @@ const inspectFraudProofCatalogue = (
       }
 
       const derivedRoot = trieRootHex(trie);
-      const doubleSpend = catalogue.categories.doubleSpend;
-      const doubleSpendProof = await trie.prove(
-        encodeCatalogueKey(doubleSpend.categoryId),
-      );
-      const derivedDoubleSpendProofCbor = doubleSpendProof
-        .toCBOR()
-        .toString("hex");
-      const scriptHashMatchesFirstStep =
-        doubleSpend.scriptHash === expectedDoubleSpendFirstStepHash;
       const rootMatchesDerived = catalogue.root === derivedRoot;
-      const membershipProofMatchesDerived =
-        doubleSpend.membershipProofCbor === derivedDoubleSpendProofCbor;
+      const inspectCategory = async (
+        name: ImplementedFraudProofCategoryName,
+      ): Promise<InspectContractsCatalogueCategoryOutput> => {
+        const category = catalogue.categories[name];
+        const expectedCategoryId = expectedFraudProofCategoryId(name);
+        const proof = await trie.prove(encodeCatalogueKey(category.categoryId));
+        const derivedProofCbor = proof.toCBOR().toString("hex");
+        const categoryIdMatchesExpected =
+          category.categoryId === expectedCategoryId;
+        const scriptHashMatchesFirstStep =
+          category.scriptHash === expectedFirstStepHashes[name];
+        const membershipProofMatchesDerived =
+          category.membershipProofCbor === derivedProofCbor;
+        return {
+          categoryId: category.categoryId,
+          expectedCategoryId,
+          categoryIdMatchesExpected,
+          scriptHash: category.scriptHash,
+          scriptHashMatchesFirstStep,
+          membershipProofCbor: category.membershipProofCbor,
+          membershipProofMatchesDerived,
+          ready:
+            deploymentMatchesFirstStep[name] === true &&
+            rootMatchesDerived &&
+            categoryIdMatchesExpected &&
+            scriptHashMatchesFirstStep &&
+            membershipProofMatchesDerived,
+        };
+      };
+
+      const doubleSpend = await inspectCategory("doubleSpend");
+      const invalidRange = await inspectCategory("invalidRange");
+      const implementedCategories: readonly ImplementedFraudProofCategoryName[] =
+        ["doubleSpend", "invalidRange"];
+      const implementedCategoriesReady = implementedCategories.every((name) => {
+        const category = name === "doubleSpend" ? doubleSpend : invalidRange;
+        return category.ready;
+      });
 
       return {
         root: catalogue.root,
         derivedRoot,
         rootMatchesDerived,
-        initReady:
-          deploymentDoubleSpendMatchesFirstStep === true &&
-          scriptHashMatchesFirstStep &&
-          rootMatchesDerived &&
-          membershipProofMatchesDerived,
-        doubleSpend: {
-          categoryId: doubleSpend.categoryId,
-          scriptHash: doubleSpend.scriptHash,
-          scriptHashMatchesFirstStep,
-          membershipProofCbor: doubleSpend.membershipProofCbor,
-          membershipProofMatchesDerived,
-        },
+        initReady: rootMatchesDerived && implementedCategoriesReady,
+        doubleSpend,
+        invalidRange,
       };
     },
     catch: (cause) =>
@@ -437,10 +629,14 @@ export const inspectContracts = ({
       parsedDeploymentInfo,
       "fraudProofDoubleSpend",
     );
+    const deploymentInvalidRangeScriptHash = optionalDeploymentScriptHash(
+      parsedDeploymentInfo,
+      "fraudProofInvalidRange",
+    );
     const deployedFraudProofCatalogue =
       parsedDeploymentInfo.fraudProofCatalogueMint?.fraudProofCatalogue;
 
-    const contracts = yield* buildDoubleSpendFaultProofContracts({
+    const contracts = yield* buildFaultProofContracts({
       blueprint: parsedBlueprint,
       network,
       hubOraclePolicyId,
@@ -475,14 +671,27 @@ export const inspectContracts = ({
     ];
     const categoryFirstStepHash =
       contracts.doubleSpend.firstStep.spendingScriptHash;
+    const invalidRangeCategoryFirstStepHash =
+      contracts.invalidRange.firstStep.spendingScriptHash;
     const deploymentDoubleSpendMatchesFirstStep =
       deploymentDoubleSpendScriptHash === null
         ? null
         : deploymentDoubleSpendScriptHash === categoryFirstStepHash;
+    const deploymentInvalidRangeMatchesFirstStep =
+      deploymentInvalidRangeScriptHash === null
+        ? null
+        : deploymentInvalidRangeScriptHash ===
+          invalidRangeCategoryFirstStepHash;
     const fraudProofCatalogue = yield* inspectFraudProofCatalogue(
       deployedFraudProofCatalogue,
-      categoryFirstStepHash,
-      deploymentDoubleSpendMatchesFirstStep,
+      {
+        doubleSpend: categoryFirstStepHash,
+        invalidRange: invalidRangeCategoryFirstStepHash,
+      },
+      {
+        doubleSpend: deploymentDoubleSpendMatchesFirstStep,
+        invalidRange: deploymentInvalidRangeMatchesFirstStep,
+      },
     );
 
     return {
@@ -501,6 +710,15 @@ export const inspectContracts = ({
         deploymentDoubleSpendScriptHash,
         deploymentDoubleSpendMatchesFirstStep,
         steps,
+      },
+      invalidRange: {
+        categoryFirstStepHash: invalidRangeCategoryFirstStepHash,
+        deploymentInvalidRangeScriptHash,
+        deploymentInvalidRangeMatchesFirstStep,
+        steps: [
+          stepOutput("step01", contracts.invalidRange.steps[0]),
+          stepOutput("step02", contracts.invalidRange.steps[1]),
+        ],
       },
     };
   });

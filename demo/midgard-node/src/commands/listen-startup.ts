@@ -202,7 +202,9 @@ const ensureNodeRuntimeReferenceScriptsOnStartup = (shouldBootstrap: boolean) =>
       const publications = yield* ensureNodeRuntimeReferenceScriptsProgram(
         lucid.referenceScriptsApi,
         contracts,
+        contracts.referenceScriptAuth,
         lucid.api,
+        lucid.referenceScriptsAddress,
       );
       yield* Effect.logInfo(
         `Startup node-runtime reference-script preflight completed: count=${publications.length.toString()},address=${lucid.referenceScriptsAddress}`,
@@ -213,6 +215,7 @@ const ensureNodeRuntimeReferenceScriptsOnStartup = (shouldBootstrap: boolean) =>
       lucid.api,
       lucid.referenceScriptsAddress,
       contracts,
+      contracts.referenceScriptAuth,
     );
     yield* Effect.logInfo(
       `Startup node-runtime reference-script verification completed: count=${publications.length.toString()},address=${lucid.referenceScriptsAddress}`,

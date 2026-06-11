@@ -1,6 +1,7 @@
 export * from "./active-operators.js";
 export * from "./cbor.js";
 export * from "./common.js";
+export * from "./da-attestation.js";
 export * from "./escape-hatch.js";
 export * from "./fraud-proof/index.js";
 export * from "./hub-oracle.js";

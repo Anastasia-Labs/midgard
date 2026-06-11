@@ -25,6 +25,7 @@ type NodeConfigDep = {
   L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: string;
   L1_REFERENCE_SCRIPT_SEED_PHRASE: string;
   L1_REFERENCE_SCRIPT_ADDRESS: string;
+  L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS: string;
   NETWORK: Network;
   PROTOCOL_PARAMETERS: SDK.ProtocolParameters;
   PORT: number;
@@ -138,6 +139,9 @@ const makeConfig = Effect.gen(function* () {
   ).address;
   const referenceScriptAddress =
     configuredReferenceScriptAddress.trim() || derivedReferenceScriptAddress;
+  const referenceScriptDeployAddress = yield* Config.string(
+    "L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS",
+  ).pipe(Config.withDefault(referenceScriptAddress));
   const port = yield* Config.integer("PORT").pipe(Config.withDefault(3000));
   const waitBetweenBlockCommitment = yield* Config.integer(
     "WAIT_BETWEEN_BLOCK_COMMITMENT",
@@ -366,6 +370,7 @@ const makeConfig = Effect.gen(function* () {
     L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: operatorSeedPhraseForMergeTx,
     L1_REFERENCE_SCRIPT_SEED_PHRASE: referenceScriptSeedPhrase,
     L1_REFERENCE_SCRIPT_ADDRESS: referenceScriptAddress,
+    L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS: referenceScriptDeployAddress,
     NETWORK: network,
     PROTOCOL_PARAMETERS: SDK.getProtocolParameters(network),
     PORT: port,

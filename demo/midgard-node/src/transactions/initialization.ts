@@ -1,14 +1,17 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import {
+  CML,
   credentialToAddress,
   Data as LucidData,
   LucidEvolution,
+  type Network,
   scriptHashToCredential,
   toUnit,
   type TxBuilder,
   type TxSignBuilder,
   UTxO,
   validatorToScriptHash,
+  walletFromSeed,
 } from "@lucid-evolution/lucid";
 import { Effect, Schedule } from "effect";
 
@@ -172,6 +175,10 @@ const requireReferenceScriptPublication = (
 export const atomicProtocolInitReferenceScriptsFromPublications = (
   publications: readonly ReferenceScriptPublicationLike[],
 ): AtomicProtocolInitReferenceScripts => ({
+  daParamsGovernorMinting: requireReferenceScriptPublication(
+    publications,
+    "da-params-governor minting",
+  ),
   hubOracleMinting: requireReferenceScriptPublication(
     publications,
     "hub-oracle minting",
@@ -202,10 +209,29 @@ export const atomicProtocolInitReferenceScriptsFromPublications = (
   ),
 });
 
+const deriveOperatorDaParams = (
+  operatorSeedPhrase: string,
+  network: Network,
+): Effect.Effect<SDK.DaParamsDatum, SDK.HashingError> =>
+  Effect.gen(function* () {
+    const wallet = walletFromSeed(operatorSeedPhrase, { network });
+    const privateKey = CML.PrivateKey.from_bech32(wallet.paymentKey);
+    const publicKey = privateKey.to_public();
+    const committee = Buffer.from(publicKey.to_raw_bytes()).toString("hex");
+    return {
+      committee,
+      committee_signers_hash: yield* SDK.hashHexWithBlake2b(committee, 32),
+      da_threshold: 1n,
+      owners: [publicKey.hash().to_hex()],
+      update_threshold: 1n,
+    };
+  });
+
 export const ensureAtomicProtocolInitReferenceScriptsProgram = (
   referenceScriptsLucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
   fundingLucid: LucidEvolution = referenceScriptsLucid,
+  referenceScriptsAddress?: string,
 ): Effect.Effect<
   AtomicProtocolInitReferenceScripts,
   | SDK.StateQueueError
@@ -217,7 +243,9 @@ export const ensureAtomicProtocolInitReferenceScriptsProgram = (
   ensureNodeRuntimeReferenceScriptsProgram(
     referenceScriptsLucid,
     contracts,
+    contracts.referenceScriptAuth,
     fundingLucid,
+    referenceScriptsAddress,
   ).pipe(Effect.map(atomicProtocolInitReferenceScriptsFromPublications));
 
 /**
@@ -314,6 +342,28 @@ export const isSchedulerInitialized = (
   });
 
 /**
+ * Returns whether the canonical DA params UTxO is already present on-chain.
+ */
+export const isDaParamsInitialized = (
+  lucid: LucidEvolution,
+  daParamsGovernor: SDK.AuthenticatedValidator,
+): Effect.Effect<boolean, SDK.LucidError> =>
+  Effect.tryPromise({
+    try: async () => {
+      const daParamsUtxos = await lucid.utxosAtWithUnit(
+        daParamsGovernor.spendingScriptAddress,
+        SDK.daParamsUnit(daParamsGovernor),
+      );
+      return daParamsUtxos.length > 0;
+    },
+    catch: (cause) =>
+      new SDK.LucidError({
+        message: "Failed to query DA params initialization state",
+        cause,
+      }),
+  });
+
+/**
  * Resolves the configured one-shot hub-oracle nonce UTxO from the operator
  * wallet.
  */
@@ -322,6 +372,8 @@ export const fetchConfiguredNonceUtxo = (
   nodeConfig: {
     HUB_ORACLE_ONE_SHOT_TX_HASH: string;
     HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: number;
+    L1_OPERATOR_SEED_PHRASE: string;
+    NETWORK: Network;
   },
 ): Effect.Effect<UTxO, SDK.LucidError> =>
   Effect.gen(function* () {
@@ -441,6 +493,7 @@ const makePartialProtocolDeploymentError = (
 export type ProtocolDeploymentStatus = {
   readonly hubOracleWitness: UTxO | null;
   readonly stateQueueTopology: StateQueueTopology;
+  readonly daParamsInitialized: boolean;
   readonly schedulerInitialized: boolean;
   readonly registeredOperatorsInitialized: boolean;
   readonly activeOperatorsInitialized: boolean;
@@ -465,6 +518,10 @@ export const fetchProtocolDeploymentStatus = (
     const stateQueueTopology = yield* fetchStateQueueTopologyProgram(
       lucid,
       contracts.stateQueue,
+    );
+    const daParamsInitialized = yield* isDaParamsInitialized(
+      lucid,
+      contracts.daParamsGovernor,
     );
     const schedulerInitialized = yield* isSchedulerInitialized(
       lucid,
@@ -503,6 +560,7 @@ export const fetchProtocolDeploymentStatus = (
     };
     const missingComponents = [
       ...(hubOracleWitness === null ? ["hub-oracle"] : []),
+      ...(!daParamsInitialized ? ["da-params"] : []),
       ...(!stateQueueTopology.initialized ? ["state-queue"] : []),
       ...(!schedulerInitialized ? ["scheduler"] : []),
       ...(!registeredOperatorsInitialized ? ["registered-operators"] : []),
@@ -512,6 +570,7 @@ export const fetchProtocolDeploymentStatus = (
     ] as const;
     const complete =
       hubOracleWitness !== null &&
+      daParamsInitialized &&
       stateQueueTopology.initialized &&
       stateQueueTopology.healthy &&
       schedulerInitialized &&
@@ -521,6 +580,7 @@ export const fetchProtocolDeploymentStatus = (
       fraudProofCatalogueInitialized;
     const empty =
       hubOracleWitness === null &&
+      !daParamsInitialized &&
       !stateQueueTopology.initialized &&
       !schedulerInitialized &&
       !registeredOperatorsInitialized &&
@@ -531,6 +591,7 @@ export const fetchProtocolDeploymentStatus = (
     return {
       hubOracleWitness,
       stateQueueTopology,
+      daParamsInitialized,
       schedulerInitialized,
       registeredOperatorsInitialized,
       activeOperatorsInitialized,
@@ -575,20 +636,30 @@ export const buildAtomicProtocolInitTxProgram = (
   nodeConfig: {
     HUB_ORACLE_ONE_SHOT_TX_HASH: string;
     HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: number;
+    L1_OPERATOR_SEED_PHRASE: string;
+    NETWORK: Network;
   },
   fraudProofCatalogueMerkleRoot: string,
   validTo?: bigint,
   referenceScripts?: AtomicProtocolInitReferenceScripts,
 ): Effect.Effect<
   TxBuilder,
-  SDK.LucidError | SDK.Bech32DeserializationError | SDK.UnspecifiedNetworkError
+  | SDK.LucidError
+  | SDK.Bech32DeserializationError
+  | SDK.UnspecifiedNetworkError
+  | SDK.HashingError
 > =>
   Effect.gen(function* () {
     const validityRange = resolveDeploymentValidityBounds(lucid, validTo);
     const nonceUtxo = yield* fetchConfiguredNonceUtxo(lucid, nodeConfig);
+    const daParams = yield* deriveOperatorDaParams(
+      nodeConfig.L1_OPERATOR_SEED_PHRASE,
+      nodeConfig.NETWORK,
+    );
     return yield* SDK.incompleteInitializationTxProgram(lucid, {
       midgardValidators: contracts,
       fraudProofCatalogueMerkleRoot,
+      daParams,
       oneShotNonceUTxO: nonceUtxo,
       validityRange,
       referenceScripts,
@@ -637,6 +708,7 @@ export const program: Effect.Effect<
       lucidService.referenceScriptsApi,
       contracts,
       lucid,
+      lucidService.referenceScriptsAddress,
     );
   const initDeadline = resolveDefaultDeploymentDeadline(lucid);
   const txHash = yield* completeAndSubmit(

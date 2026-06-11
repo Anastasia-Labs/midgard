@@ -1,3 +1,5 @@
+use aiken/builtin
+use aiken/crypto.{blake2b_256}
 use aiken/fuzz
 use aiken/primitive/bytearray
 use cardano/address
@@ -8,8 +10,10 @@ use cardano/transaction.{
 use cardano/transaction as tx
 use da_attestation.{validate_add_signatures}
 use midgard/da_attestation_types.{
-  DaAttestationDatum, attestation_asset_name_prefix,
-  signature_witness_byte_count, verification_key_byte_count,
+  DaAttestationDatum, DaParamsDatum, attestation_asset_name_prefix,
+  attested_signer_bitmap_byte_count, da_params_asset_name,
+  empty_attested_signer_bitmap, signature_witness_byte_count,
+  verification_key_byte_count,
 }
 use midgard/ledger_state.{HeaderHash}
 
@@ -31,9 +35,18 @@ type CapacityFixture {
 const capacity_da_policy: PolicyId =
   #"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
+const capacity_da_params_policy: PolicyId =
+  #"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
 const capacity_ref: OutputReference =
   OutputReference {
     transaction_id: #"2222222222222222222222222222222222222222222222222222222222222222",
+    output_index: 0,
+  }
+
+const capacity_da_params_ref: OutputReference =
+  OutputReference {
+    transaction_id: #"3333333333333333333333333333333333333333333333333333333333333333",
     output_index: 0,
   }
 
@@ -245,6 +258,18 @@ fn slice_len(bytes: ByteArray, offset: Int, length: Int) -> ByteArray {
   }
 }
 
+fn capacity_committee_signers(signature_count: Int) -> ByteArray {
+  slice_len(
+    capacity_remaining_signers,
+    0,
+    signature_count * verification_key_byte_count,
+  )
+}
+
+fn capacity_committee_hash(signature_count: Int) -> ByteArray {
+  blake2b_256(capacity_committee_signers(signature_count))
+}
+
 fn capacity_attestation_asset() -> AssetName {
   attestation_asset_name_prefix |> bytearray.concat(capacity_header_hash)
 }
@@ -254,26 +279,81 @@ fn capacity_value() -> Value {
     |> assets.add(capacity_da_policy, capacity_attestation_asset(), 1)
 }
 
+fn capacity_da_params_value() -> Value {
+  assets.from_lovelace(2_000_000)
+    |> assets.add(capacity_da_params_policy, da_params_asset_name, 1)
+}
+
+fn capacity_da_params_datum(signature_count: Int) -> DaParamsDatum {
+  DaParamsDatum {
+    committee: capacity_committee_signers(signature_count),
+    committee_signers_hash: capacity_committee_hash(signature_count),
+    da_threshold: signature_count,
+    owners: [],
+    update_threshold: 1,
+  }
+}
+
+fn capacity_da_params_input(signature_count: Int) -> Input {
+  Input {
+    output_reference: capacity_da_params_ref,
+    output: Output {
+      address: address.from_script(capacity_da_params_policy),
+      value: capacity_da_params_value(),
+      datum: InlineDatum(capacity_da_params_datum(signature_count)),
+      reference_script: None,
+    },
+  }
+}
+
 fn capacity_input_datum(signature_count: Int) -> DaAttestationDatum {
   expect signature_count > 0
   expect signature_count <= capacity_fixture_signature_count
   DaAttestationDatum {
     header_hash: capacity_header_hash,
     da_threshold: signature_count,
-    remaining_signers: slice_len(
-      capacity_remaining_signers,
-      0,
-      signature_count * verification_key_byte_count,
-    ),
+    committee_signers_hash: capacity_committee_hash(signature_count),
+    attested_signers: empty_attested_signer_bitmap,
     attestation_count: 0,
   }
+}
+
+fn prefix_attested_bitmap_byte(signature_count: Int, byte_index: Int) -> Int {
+  let full_byte_count = signature_count / 8
+  if byte_index < full_byte_count {
+    255
+  } else if byte_index == full_byte_count {
+    bytearray.at(#[0, 128, 192, 224, 240, 248, 252, 254], signature_count % 8)
+  } else {
+    0
+  }
+}
+
+fn prefix_attested_bitmap_from(
+  signature_count: Int,
+  byte_index: Int,
+) -> ByteArray {
+  if byte_index == attested_signer_bitmap_byte_count {
+    #""
+  } else {
+    prefix_attested_bitmap_from(signature_count, byte_index + 1)
+      |> builtin.cons_bytearray(
+          prefix_attested_bitmap_byte(signature_count, byte_index),
+          _,
+        )
+  }
+}
+
+fn prefix_attested_bitmap(signature_count: Int) -> ByteArray {
+  prefix_attested_bitmap_from(signature_count, 0)
 }
 
 fn capacity_output_datum(signature_count: Int) -> DaAttestationDatum {
   DaAttestationDatum {
     header_hash: capacity_header_hash,
     da_threshold: signature_count,
-    remaining_signers: #"",
+    committee_signers_hash: capacity_committee_hash(signature_count),
+    attested_signers: prefix_attested_bitmap(signature_count),
     attestation_count: signature_count,
   }
 }
@@ -303,6 +383,7 @@ fn capacity_tx(signature_count: Int) -> Transaction {
   Transaction {
     ..tx.placeholder,
     inputs: [capacity_input(signature_count)],
+    reference_inputs: [capacity_da_params_input(signature_count)],
     outputs: [capacity_output(signature_count)],
   }
 }
@@ -319,8 +400,84 @@ fn capacity_fixture(signature_count: Int) -> CapacityFixture {
   }
 }
 
+fn capacity_signature_witness(signer_index: Int) -> ByteArray {
+  slice_len(
+    capacity_signatures,
+    signer_index * signature_witness_byte_count,
+    signature_witness_byte_count,
+  )
+}
+
+fn prefix_capacity_signatures() -> ByteArray {
+  capacity_signature_witness(0)
+    |> bytearray.concat(capacity_signature_witness(1))
+}
+
+fn sparse_capacity_signatures() -> ByteArray {
+  capacity_signature_witness(0)
+    |> bytearray.concat(capacity_signature_witness(2))
+}
+
+fn partial_capacity_output(attested_signers: ByteArray) -> Output {
+  Output {
+    address: address.from_script(capacity_da_policy),
+    value: capacity_value(),
+    datum: InlineDatum(
+      DaAttestationDatum {
+        header_hash: capacity_header_hash,
+        da_threshold: 3,
+        committee_signers_hash: capacity_committee_hash(3),
+        attested_signers,
+        attestation_count: 2,
+      },
+    ),
+    reference_script: None,
+  }
+}
+
+fn partial_capacity_tx(output: Output) -> Transaction {
+  Transaction {
+    ..tx.placeholder,
+    inputs: [capacity_input(3)],
+    reference_inputs: [capacity_da_params_input(3)],
+    outputs: [output],
+  }
+}
+
+fn prefix_capacity_fixture() -> CapacityFixture {
+  CapacityFixture {
+    input_datum: capacity_input_datum(3),
+    signatures: prefix_capacity_signatures(),
+    tx: partial_capacity_tx(
+      partial_capacity_output(
+        #"c000000000000000000000000000000000000000000000000000000000000000",
+      ),
+    ),
+  }
+}
+
+fn sparse_capacity_fixture() -> CapacityFixture {
+  CapacityFixture {
+    input_datum: capacity_input_datum(3),
+    signatures: sparse_capacity_signatures(),
+    tx: partial_capacity_tx(
+      partial_capacity_output(
+        #"a000000000000000000000000000000000000000000000000000000000000000",
+      ),
+    ),
+  }
+}
+
 fn sample_132_capacity_fixture(_size: Int) -> Fuzzer<CapacityFixture> {
   fuzz.constant(capacity_fixture(regression_signature_count))
+}
+
+fn sample_prefix_capacity_fixture(_size: Int) -> Fuzzer<CapacityFixture> {
+  fuzz.constant(prefix_capacity_fixture())
+}
+
+fn sample_sparse_capacity_fixture(_size: Int) -> Fuzzer<CapacityFixture> {
+  fuzz.constant(sparse_capacity_fixture())
 }
 
 fn sample_capacity_curve_fixture(size: Int) -> Fuzzer<CapacityFixture> {
@@ -329,15 +486,43 @@ fn sample_capacity_curve_fixture(size: Int) -> Fuzzer<CapacityFixture> {
 
 fn validate_capacity_add_signatures(fixture: CapacityFixture) -> Bool {
   let CapacityFixture { input_datum, signatures, tx } = fixture
-  validate_add_signatures(Some(input_datum), 0, signatures, capacity_ref, tx)
+  validate_add_signatures(
+    Some(input_datum),
+    0,
+    capacity_da_params_policy,
+    0,
+    signatures,
+    capacity_ref,
+    tx,
+  )
 }
 
 test da_attestation_add_132_signatures_regression() {
   validate_capacity_add_signatures(capacity_fixture(regression_signature_count))
 }
 
+test da_attestation_add_prefix_signatures_regression() {
+  validate_capacity_add_signatures(prefix_capacity_fixture())
+}
+
+test da_attestation_add_sparse_signatures_regression() {
+  validate_capacity_add_signatures(sparse_capacity_fixture())
+}
+
 bench da_attestation_add_132_signatures_bench(
   fixture: CapacityFixture via sample_132_capacity_fixture,
+) {
+  validate_capacity_add_signatures(fixture)
+}
+
+bench da_attestation_add_prefix_signatures_bench(
+  fixture: CapacityFixture via sample_prefix_capacity_fixture,
+) {
+  validate_capacity_add_signatures(fixture)
+}
+
+bench da_attestation_add_sparse_signatures_bench(
+  fixture: CapacityFixture via sample_sparse_capacity_fixture,
 ) {
   validate_capacity_add_signatures(fixture)
 }

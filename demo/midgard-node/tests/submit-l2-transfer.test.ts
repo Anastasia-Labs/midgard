@@ -96,6 +96,7 @@ const mockLucidService = LucidService.make({
   } as never,
   operatorMainAddress: "",
   operatorMergeAddress: "",
+  referenceScriptsWalletAddress: "",
   referenceScriptsAddress: "",
   switchToOperatorsMainWallet: Effect.succeed(undefined),
   switchToOperatorsMergingWallet: Effect.succeed(undefined),

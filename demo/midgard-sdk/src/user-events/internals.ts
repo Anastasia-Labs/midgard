@@ -301,49 +301,63 @@ type UserEventMintRedeemerParams = Pick<
   "eventUnit" | "hubOracleRefInput" | "label" | "nonceInput"
 >;
 
-const makeUserEventMintRedeemer =
-  (params: UserEventMintRedeemerParams): BuildTxWithRedeemer =>
-  (ctx) => {
-    requireOwnMintPurpose(ctx, fromUnit(params.eventUnit).policyId, params.label);
+type UserEventMintRedeemerLayout = UserEventAuthenticateMintRedeemerParams;
 
-    return encodeUserEventAuthenticateMintRedeemer({
-      nonceInputIndex: requireInputIndex(ctx, params.nonceInput, params.label),
-      eventOutputIndex: requireUniqueOutputIndex(
-        ctx.outputs,
-        (output) => (output.assets[params.eventUnit] ?? 0n) === 1n,
-        `${params.label} event`,
-      ),
-      hubRefInputIndex: requireReferenceInputIndex(
-        ctx,
-        params.hubOracleRefInput,
-        params.label,
-      ),
-      witnessRegistrationRedeemerIndex: requireSinglePublishRedeemerIndex(
-        ctx,
-        params.label,
-      ),
-    });
+const deriveUserEventMintRedeemerLayout = (
+  params: UserEventMintRedeemerParams,
+  ctx: Parameters<BuildTxWithRedeemer>[0],
+): UserEventMintRedeemerLayout => {
+  requireOwnMintPurpose(ctx, fromUnit(params.eventUnit).policyId, params.label);
+
+  return {
+    nonceInputIndex: requireInputIndex(ctx, params.nonceInput, params.label),
+    eventOutputIndex: requireUniqueOutputIndex(
+      ctx.outputs,
+      (output) => (output.assets[params.eventUnit] ?? 0n) === 1n,
+      `${params.label} event`,
+    ),
+    hubRefInputIndex: requireReferenceInputIndex(
+      ctx,
+      params.hubOracleRefInput,
+      params.label,
+    ),
+    witnessRegistrationRedeemerIndex: requireSinglePublishRedeemerIndex(
+      ctx,
+      params.label,
+    ),
+  };
+};
+
+const makeUserEventMintRedeemer =
+  (
+    params: UserEventMintRedeemerParams,
+    onLayout?: (layout: UserEventMintRedeemerLayout) => void,
+  ): BuildTxWithRedeemer =>
+  (ctx) => {
+    const layout = deriveUserEventMintRedeemerLayout(params, ctx);
+    onLayout?.(layout);
+    return encodeUserEventAuthenticateMintRedeemer(layout);
   };
 
 export const buildCompletedUserEventMintTxProgram = (
   params: BuildCompletedUserEventMintTxParams,
 ): Effect.Effect<TxSignBuilder, UserEventBuildError> =>
   Effect.tryPromise({
-    try: () => {
-      const baseTx = params.lucid
-        .newTx()
-        .collectFrom([params.nonceInput])
-        .readFrom([...params.referenceInputs]);
-      const txWithMintWitness = params.attachMintingPolicy
-        ? baseTx.attach.MintingPolicy(params.mintingPolicy)
-        : baseTx;
+    try: async () => {
+      const buildTx = (
+        mintRedeemer: BuildTxWithRedeemer | string,
+      ): ReturnType<LucidEvolution["newTx"]> => {
+        const baseTx = params.lucid
+          .newTx()
+          .collectFrom([params.nonceInput])
+          .readFrom([...params.referenceInputs]);
+        const txWithMintWitness = params.attachMintingPolicy
+          ? baseTx.attach.MintingPolicy(params.mintingPolicy)
+          : baseTx;
 
-      return txWithMintWitness
+        return txWithMintWitness
         .attach.CertificateValidator(params.witnessScript)
-        .mintAssets(
-          { [params.eventUnit]: 1n },
-          makeUserEventMintRedeemer(params),
-        )
+        .mintAssets({ [params.eventUnit]: 1n }, mintRedeemer)
         .pay.ToAddressWithData(
           params.eventAddress,
           {
@@ -356,8 +370,23 @@ export const buildCompletedUserEventMintTxProgram = (
         .register.Stake(
           scriptRewardAddress(params.network, params.witnessScript),
           params.witnessRegistrationRedeemer,
-        )
-        .complete({ localUPLCEval: true });
+        );
+      };
+
+      let resolvedLayout: UserEventMintRedeemerLayout | undefined;
+      await buildTx(
+        makeUserEventMintRedeemer(params, (layout) => {
+          resolvedLayout = layout;
+        }),
+      ).complete({ localUPLCEval: true });
+      if (resolvedLayout === undefined) {
+        throw new Error(
+          `Failed to resolve ${params.label} mint redeemer context`,
+        );
+      }
+      return buildTx(
+        encodeUserEventAuthenticateMintRedeemer(resolvedLayout),
+      ).complete({ localUPLCEval: true });
     },
     catch: (cause) =>
       new UserEventBuildError({

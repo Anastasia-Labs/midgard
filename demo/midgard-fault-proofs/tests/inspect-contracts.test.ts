@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  buildDoubleSpendFaultProofContracts,
+  buildFaultProofContracts,
   EMPTY_MERKLE_TREE_ROOT,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
@@ -25,11 +25,17 @@ const blueprintPath = resolve(repoRoot, "onchain/aiken/plutus.json");
 const h28 = "11".repeat(28);
 const h28b = "22".repeat(28);
 const placeholderDoubleSpend = "00".repeat(28);
+const placeholderInvalidRange = "01".repeat(28);
 const categoryIdSchema = Data.Bytes({
   minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   maxLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
 });
 type LucidDataSchema = Parameters<typeof Data.to>[1];
+
+const deploymentManifest = (contracts: Record<string, unknown>) => ({
+  referenceScriptAuthPolicy: {},
+  contracts,
+});
 
 const categoryId = (index: number): string => {
   const buf = Buffer.alloc(FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT);
@@ -58,7 +64,7 @@ const readBlueprintJson = (): unknown =>
   JSON.parse(readFileSync(blueprintPath, "utf8")) as unknown;
 
 const buildCatalogueFixture = async (
-  doubleSpendScriptHash: string,
+  scriptHashes: Partial<Record<string, string>>,
 ): Promise<FraudProofCatalogueDeploymentInfo> => {
   const categories = Object.fromEntries(
     FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((name, index) => [
@@ -66,9 +72,8 @@ const buildCatalogueFixture = async (
       {
         categoryId: categoryId(index),
         scriptHash:
-          name === "doubleSpend"
-            ? doubleSpendScriptHash
-            : `${(index + 3).toString(16).padStart(2, "0")}`.repeat(28),
+          scriptHashes[name] ??
+          `${(index + 3).toString(16).padStart(2, "0")}`.repeat(28),
         membershipProofCbor: "",
       },
     ]),
@@ -104,16 +109,17 @@ const buildCatalogueFixture = async (
 const buildInspectionFixture = async () => {
   const blueprintJson = readBlueprintJson();
   const contracts = await Effect.runPromise(
-    buildDoubleSpendFaultProofContracts({
+    buildFaultProofContracts({
       blueprint: parseFaultProofBlueprint(blueprintJson),
       network: "Preprod",
       hubOraclePolicyId: h28,
       fraudProofCataloguePolicyId: h28b,
     }),
   );
-  const fraudProofCatalogue = await buildCatalogueFixture(
-    contracts.doubleSpend.firstStep.spendingScriptHash,
-  );
+  const fraudProofCatalogue = await buildCatalogueFixture({
+    doubleSpend: contracts.doubleSpend.firstStep.spendingScriptHash,
+    invalidRange: contracts.invalidRange.firstStep.spendingScriptHash,
+  });
   return { blueprintJson, contracts, fraudProofCatalogue };
 };
 
@@ -123,17 +129,22 @@ const deploymentInfoFor = (
     fraudProofCatalogue,
   }: Awaited<ReturnType<typeof buildInspectionFixture>>,
   doubleSpendScriptHash = contracts.doubleSpend.firstStep.spendingScriptHash,
+  invalidRangeScriptHash = contracts.invalidRange.firstStep.spendingScriptHash,
 ) => ({
-  hubOracleMint: { scriptHash: h28 },
-  fraudProofCatalogueMint: {
-    scriptHash: h28b,
-    fraudProofCatalogue,
+  referenceScriptAuthPolicy: {},
+  contracts: {
+    hubOracleMint: { scriptHash: h28 },
+    fraudProofCatalogueMint: {
+      scriptHash: h28b,
+      fraudProofCatalogue,
+    },
+    fraudProofMint: { scriptHash: contracts.fraudProof.policyId },
+    fraudProofSpend: {
+      scriptHash: contracts.fraudProof.spendingScriptHash,
+    },
+    fraudProofDoubleSpend: { scriptHash: doubleSpendScriptHash },
+    fraudProofInvalidRange: { scriptHash: invalidRangeScriptHash },
   },
-  fraudProofMint: { scriptHash: contracts.fraudProof.policyId },
-  fraudProofSpend: {
-    scriptHash: contracts.fraudProof.spendingScriptHash,
-  },
-  fraudProofDoubleSpend: { scriptHash: doubleSpendScriptHash },
 });
 
 describe("inspect-contracts", () => {
@@ -167,15 +178,49 @@ describe("inspect-contracts", () => {
       contracts.doubleSpend.firstStep.spendingScriptHash,
     );
     expect(output.doubleSpend.deploymentDoubleSpendMatchesFirstStep).toBe(true);
+    expect(output.invalidRange.categoryFirstStepHash).toBe(
+      contracts.invalidRange.firstStep.spendingScriptHash,
+    );
+    expect(output.invalidRange.steps.map((step) => step.name)).toEqual([
+      "step01",
+      "step02",
+    ]);
+    expect(output.invalidRange.deploymentInvalidRangeScriptHash).toBe(
+      contracts.invalidRange.firstStep.spendingScriptHash,
+    );
+    expect(output.invalidRange.deploymentInvalidRangeMatchesFirstStep).toBe(
+      true,
+    );
     expect(output.fraudProofCatalogue.root).toBe(fraudProofCatalogue.root);
     expect(output.fraudProofCatalogue.rootMatchesDerived).toBe(true);
     expect(output.fraudProofCatalogue.doubleSpend.categoryId).toBe("00000000");
+    expect(output.fraudProofCatalogue.doubleSpend.expectedCategoryId).toBe(
+      "00000000",
+    );
+    expect(
+      output.fraudProofCatalogue.doubleSpend.categoryIdMatchesExpected,
+    ).toBe(true);
     expect(
       output.fraudProofCatalogue.doubleSpend.scriptHashMatchesFirstStep,
     ).toBe(true);
     expect(
       output.fraudProofCatalogue.doubleSpend.membershipProofMatchesDerived,
     ).toBe(true);
+    expect(output.fraudProofCatalogue.doubleSpend.ready).toBe(true);
+    expect(output.fraudProofCatalogue.invalidRange.categoryId).toBe("00000003");
+    expect(output.fraudProofCatalogue.invalidRange.expectedCategoryId).toBe(
+      "00000003",
+    );
+    expect(
+      output.fraudProofCatalogue.invalidRange.categoryIdMatchesExpected,
+    ).toBe(true);
+    expect(
+      output.fraudProofCatalogue.invalidRange.scriptHashMatchesFirstStep,
+    ).toBe(true);
+    expect(
+      output.fraudProofCatalogue.invalidRange.membershipProofMatchesDerived,
+    ).toBe(true);
+    expect(output.fraudProofCatalogue.invalidRange.ready).toBe(true);
     expect(output.fraudProofCatalogue.initReady).toBe(true);
   });
 
@@ -193,6 +238,8 @@ describe("inspect-contracts", () => {
     expect(output.doubleSpend.deploymentDoubleSpendMatchesFirstStep).toBe(
       false,
     );
+    expect(output.fraudProofCatalogue.doubleSpend.ready).toBe(false);
+    expect(output.fraudProofCatalogue.invalidRange.ready).toBe(true);
     expect(output.fraudProofCatalogue.rootMatchesDerived).toBe(true);
     expect(output.fraudProofCatalogue.initReady).toBe(false);
   });
@@ -204,14 +251,129 @@ describe("inspect-contracts", () => {
         inspectContracts({
           blueprint: blueprintJson,
           network: "Preprod",
-          deploymentInfo: {
+          deploymentInfo: deploymentManifest({
             hubOracleMint: { scriptHash: h28 },
             fraudProofCatalogueMint: { scriptHash: h28b },
             fraudProofMint: { scriptHash: "33".repeat(28) },
             fraudProofSpend: { scriptHash: "44".repeat(28) },
-          },
+            fraudProofDoubleSpend: { scriptHash: "55".repeat(28) },
+            fraudProofInvalidRange: { scriptHash: "66".repeat(28) },
+          }),
         }),
       ),
     ).rejects.toThrow("fraudProofMint.scriptHash mismatch");
+  });
+
+  it("rejects the legacy flat deployment-info shape", async () => {
+    const fixture = await buildInspectionFixture();
+    await expect(
+      Effect.runPromise(
+        inspectContracts({
+          blueprint: fixture.blueprintJson,
+          network: "Preprod",
+          deploymentInfo: deploymentInfoFor(fixture).contracts,
+        }),
+      ),
+    ).rejects.toThrow(
+      "Contract deployment info is missing referenceScriptAuthPolicy.",
+    );
+  });
+
+  it("marks catalogue init as not ready when invalid-range deployment is stale", async () => {
+    const fixture = await buildInspectionFixture();
+
+    const output = await Effect.runPromise(
+      inspectContracts({
+        blueprint: fixture.blueprintJson,
+        network: "Preprod",
+        deploymentInfo: deploymentInfoFor(
+          fixture,
+          fixture.contracts.doubleSpend.firstStep.spendingScriptHash,
+          placeholderInvalidRange,
+        ),
+      }),
+    );
+
+    expect(output.doubleSpend.deploymentDoubleSpendMatchesFirstStep).toBe(true);
+    expect(output.invalidRange.deploymentInvalidRangeMatchesFirstStep).toBe(
+      false,
+    );
+    expect(output.fraudProofCatalogue.doubleSpend.ready).toBe(true);
+    expect(output.fraudProofCatalogue.invalidRange.ready).toBe(false);
+    expect(output.fraudProofCatalogue.rootMatchesDerived).toBe(true);
+    expect(output.fraudProofCatalogue.initReady).toBe(false);
+  });
+
+  it("rejects deployment info with non-canonical fraud-proof category IDs", async () => {
+    const fixture = await buildInspectionFixture();
+    const deploymentInfo = deploymentInfoFor(fixture);
+    const invalidCatalogue: FraudProofCatalogueDeploymentInfo = {
+      ...fixture.fraudProofCatalogue,
+      categories: {
+        ...fixture.fraudProofCatalogue.categories,
+        invalidRange: {
+          ...fixture.fraudProofCatalogue.categories.invalidRange,
+          categoryId: "ffffffff",
+        },
+      },
+    };
+
+    await expect(
+      Effect.runPromise(
+        inspectContracts({
+          blueprint: fixture.blueprintJson,
+          network: "Preprod",
+          deploymentInfo: {
+            ...deploymentInfo,
+            contracts: {
+              ...deploymentInfo.contracts,
+              fraudProofCatalogueMint: {
+                ...deploymentInfo.contracts.fraudProofCatalogueMint,
+                fraudProofCatalogue: invalidCatalogue,
+              },
+            },
+          },
+        }),
+      ),
+    ).rejects.toThrow(
+      "fraudProofCatalogue.categories.invalidRange.categoryId must be 00000003",
+    );
+  });
+
+  it("rejects deployment info with duplicated fraud-proof category IDs", async () => {
+    const fixture = await buildInspectionFixture();
+    const deploymentInfo = deploymentInfoFor(fixture);
+    const invalidCatalogue: FraudProofCatalogueDeploymentInfo = {
+      ...fixture.fraudProofCatalogue,
+      categories: {
+        ...fixture.fraudProofCatalogue.categories,
+        invalidRange: {
+          ...fixture.fraudProofCatalogue.categories.invalidRange,
+          categoryId:
+            fixture.fraudProofCatalogue.categories.doubleSpend.categoryId,
+        },
+      },
+    };
+
+    await expect(
+      Effect.runPromise(
+        inspectContracts({
+          blueprint: fixture.blueprintJson,
+          network: "Preprod",
+          deploymentInfo: {
+            ...deploymentInfo,
+            contracts: {
+              ...deploymentInfo.contracts,
+              fraudProofCatalogueMint: {
+                ...deploymentInfo.contracts.fraudProofCatalogueMint,
+                fraudProofCatalogue: invalidCatalogue,
+              },
+            },
+          },
+        }),
+      ),
+    ).rejects.toThrow(
+      "fraudProofCatalogue.categories.invalidRange.categoryId duplicates",
+    );
   });
 });

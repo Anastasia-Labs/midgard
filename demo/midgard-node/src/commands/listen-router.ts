@@ -1215,6 +1215,7 @@ const postDepositBuildHandler = Effect.gen(function* () {
     lucid.api,
     lucid.referenceScriptsAddress,
     referenceScriptTargetsByCommand(contracts).deposit,
+    contracts.referenceScriptAuth,
   ).pipe(
     Effect.map((resolved) => ({
       depositMinting: referenceScriptByName(resolved, "deposit minting"),

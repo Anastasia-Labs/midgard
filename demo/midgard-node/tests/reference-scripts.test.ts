@@ -1,10 +1,11 @@
 import "./utils.js";
 
-import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
+import { type LucidEvolution, toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
+import { referenceScriptAuthTokenName } from "@/deployment/reference-script-auth.js";
 import {
   nodeRuntimeReferenceScriptTargets,
   REFERENCE_SCRIPT_COMMAND_NAMES,
@@ -30,7 +31,12 @@ describe("node-runtime reference-script registry", () => {
     const names = targets.map(({ name }) => name);
 
     expect(new Set(names).size).toEqual(names.length);
+    expect(names).toContain("reference-script-auth minting");
     expect(names).toContain("hub-oracle minting");
+    expect(names).toContain("da-params-governor spending");
+    expect(names).toContain("da-params-governor minting");
+    expect(names).toContain("da-attestation spending");
+    expect(names).toContain("da-attestation minting");
     expect(names).toContain("scheduler spending");
     expect(names).toContain("scheduler minting");
     expect(names).toContain("state-queue spending");
@@ -110,6 +116,7 @@ describe("node-runtime reference-script registry", () => {
       }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
     );
     const targets = nodeRuntimeReferenceScriptTargets(contracts);
+    const authPolicy = contracts.referenceScriptAuth;
     const lucidWithReferences = {
       utxosAt: async () =>
         targets.map(
@@ -117,7 +124,13 @@ describe("node-runtime reference-script registry", () => {
             txHash: index.toString(16).padStart(64, "0"),
             outputIndex: index,
             address: REFERENCE_SCRIPT_ADDRESS,
-            assets: { lovelace: 4_000_000n },
+            assets: {
+              lovelace: 4_000_000n,
+              [toUnit(
+                authPolicy.policyId,
+                referenceScriptAuthTokenName(target.name),
+              )]: 1n,
+            },
             scriptRef: target.script,
           }),
         ),
@@ -128,6 +141,7 @@ describe("node-runtime reference-script registry", () => {
         lucidWithReferences,
         REFERENCE_SCRIPT_ADDRESS,
         contracts,
+        authPolicy,
       ),
     );
 
@@ -152,6 +166,7 @@ describe("node-runtime reference-script registry", () => {
           emptyLucid,
           REFERENCE_SCRIPT_ADDRESS,
           contracts,
+          contracts.referenceScriptAuth,
         ),
       ),
     );
@@ -163,6 +178,46 @@ describe("node-runtime reference-script registry", () => {
       );
       expect(String(result.left.cause)).toContain("reserve spending");
       expect(String(result.left.cause)).toContain("payout minting");
+    }
+  });
+
+  it("rejects a complete script-ref set without auth role tokens", async () => {
+    const contracts = await Effect.runPromise(
+      Effect.gen(function* () {
+        return yield* AlwaysSucceedsContract;
+      }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
+    );
+    const targets = nodeRuntimeReferenceScriptTargets(contracts);
+    const lucidWithBareReferences = {
+      utxosAt: async () =>
+        targets.map(
+          (target, index): UTxO => ({
+            txHash: index.toString(16).padStart(64, "0"),
+            outputIndex: index,
+            address: REFERENCE_SCRIPT_ADDRESS,
+            assets: { lovelace: 4_000_000n },
+            scriptRef: target.script,
+          }),
+        ),
+    } as unknown as LucidEvolution;
+
+    const result = await Effect.runPromise(
+      Effect.either(
+        verifyNodeRuntimeReferenceScriptsProgram(
+          lucidWithBareReferences,
+          REFERENCE_SCRIPT_ADDRESS,
+          contracts,
+          contracts.referenceScriptAuth,
+        ),
+      ),
+    );
+
+    expect(result._tag).toEqual("Left");
+    if (result._tag === "Left") {
+      expect(result.left.message).toEqual(
+        "Missing node-runtime reference scripts",
+      );
+      expect(String(result.left.cause)).toContain("hub-oracle minting");
     }
   });
 });

@@ -648,6 +648,7 @@ const makeLucid: Effect.Effect<
     referenceScriptsApi: LE.LucidEvolution;
     operatorMainAddress: string;
     operatorMergeAddress: string;
+    referenceScriptsWalletAddress: string;
     referenceScriptsAddress: string;
     switchToOperatorsMainWallet: Effect.Effect<void>;
     switchToOperatorsMergingWallet: Effect.Effect<void>;
@@ -739,7 +740,7 @@ const makeLucid: Effect.Effect<
     ),
   );
   yield* switchToReferenceScriptWallet;
-  const referenceScriptsAddress = yield* Effect.tryPromise({
+  const referenceScriptsWalletAddress = yield* Effect.tryPromise({
     try: () => referenceScriptsApi.wallet().address(),
     catch: (e) =>
       new ConfigError({
@@ -748,7 +749,7 @@ const makeLucid: Effect.Effect<
         fieldsAndValues: [["NETWORK", nodeConfig.NETWORK]],
       }),
   });
-  if (nodeConfig.L1_REFERENCE_SCRIPT_ADDRESS !== referenceScriptsAddress) {
+  if (nodeConfig.L1_REFERENCE_SCRIPT_ADDRESS !== referenceScriptsWalletAddress) {
     return yield* Effect.fail(
       new ConfigError({
         message:
@@ -759,16 +760,17 @@ const makeLucid: Effect.Effect<
             "L1_REFERENCE_SCRIPT_ADDRESS",
             nodeConfig.L1_REFERENCE_SCRIPT_ADDRESS,
           ],
-          ["derived_address", referenceScriptsAddress],
+          ["derived_address", referenceScriptsWalletAddress],
         ],
       }),
     );
   }
+  const referenceScriptsAddress = nodeConfig.L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS;
   const distinctOperationalWallets = new Map<string, string[]>();
   for (const [role, address] of [
     ["operator-main", operatorMainAddress],
     ["operator-merge", operatorMergeAddress],
-    ["reference-scripts", referenceScriptsAddress],
+    ["reference-scripts", referenceScriptsWalletAddress],
   ] as const) {
     const existingRoles = distinctOperationalWallets.get(address) ?? [];
     distinctOperationalWallets.set(address, [...existingRoles, role]);
@@ -785,7 +787,7 @@ const makeLucid: Effect.Effect<
         fieldsAndValues: [
           ["L1_OPERATOR_ADDRESS", operatorMainAddress],
           ["L1_OPERATOR_MERGE_ADDRESS", operatorMergeAddress],
-          ["L1_REFERENCE_SCRIPT_ADDRESS", referenceScriptsAddress],
+          ["L1_REFERENCE_SCRIPT_ADDRESS", referenceScriptsWalletAddress],
         ],
       }),
     );
@@ -796,6 +798,7 @@ const makeLucid: Effect.Effect<
     referenceScriptsApi,
     operatorMainAddress,
     operatorMergeAddress,
+    referenceScriptsWalletAddress,
     referenceScriptsAddress,
     switchToOperatorsMainWallet: Effect.sync(() =>
       lucid.selectWallet.fromSeed(nodeConfig.L1_OPERATOR_SEED_PHRASE),

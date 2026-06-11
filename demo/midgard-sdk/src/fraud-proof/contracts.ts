@@ -35,6 +35,11 @@ export const DOUBLE_SPEND_FAULT_PROOF_TITLES = {
   step04: "fraud_proofs/double_spend/step_04.main.spend",
 } as const;
 
+export const INVALID_RANGE_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/invalid_range/step_01.main.spend",
+  step02: "fraud_proofs/invalid_range/step_02.main.spend",
+} as const;
+
 export const FAULT_PROOF_SHARED_TITLES = {
   computationThreadMint: "computation_thread.mint.mint",
   fraudProofMint: "fraud_proof.mint.mint",
@@ -59,12 +64,39 @@ export type DoubleSpendFaultProofContracts = {
   };
 };
 
-export type BuildDoubleSpendFaultProofContractsParams = {
+export type InvalidRangeFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly invalidRange: FraudProofChain & {
+    readonly steps: readonly [SpendingValidator, SpendingValidator];
+  };
+};
+
+export type FaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly doubleSpend: DoubleSpendFaultProofContracts["doubleSpend"];
+  readonly invalidRange: InvalidRangeFaultProofContracts["invalidRange"];
+};
+
+type SharedFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fraudProofTokenAddressData: Data;
+};
+
+export type BuildFaultProofContractsParams = {
   readonly blueprint: FaultProofBlueprint;
   readonly network: Network;
   readonly hubOraclePolicyId: string;
   readonly fraudProofCataloguePolicyId: string;
 };
+
+export type BuildDoubleSpendFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+
+export type BuildInvalidRangeFaultProofContractsParams =
+  BuildFaultProofContractsParams;
 
 export const parseFaultProofBlueprint = (
   value: unknown,
@@ -174,13 +206,13 @@ const tryBuild = <A>(
       ),
   });
 
-export const buildDoubleSpendFaultProofContracts = ({
+const buildSharedFaultProofContracts = ({
   blueprint,
   network,
   hubOraclePolicyId,
   fraudProofCataloguePolicyId,
-}: BuildDoubleSpendFaultProofContractsParams): Effect.Effect<
-  DoubleSpendFaultProofContracts,
+}: BuildFaultProofContractsParams): Effect.Effect<
+  SharedFaultProofContracts,
   Error
 > =>
   Effect.gen(function* () {
@@ -221,6 +253,29 @@ export const buildDoubleSpendFaultProofContracts = ({
       fraudProof.spendingScriptAddress,
     );
 
+    return {
+      computationThread,
+      fraudProof,
+      fraudProofTokenAddressData,
+    };
+  });
+
+const buildDoubleSpendChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+}: {
+  readonly blueprint: FaultProofBlueprint;
+  readonly network: Network;
+  readonly hubOraclePolicyId: string;
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fraudProofTokenAddressData: Data;
+}): Effect.Effect<DoubleSpendFaultProofContracts["doubleSpend"], Error> =>
+  Effect.gen(function* () {
     const step04 = yield* tryBuild("Failed to build double-spend step 04", () =>
       makeSpendingValidator(
         network,
@@ -274,11 +329,121 @@ export const buildDoubleSpendFaultProofContracts = ({
     );
 
     return {
-      computationThread,
-      fraudProof,
-      doubleSpend: {
-        firstStep: step01,
-        steps: [step01, step02, step03, step04],
-      },
+      firstStep: step01,
+      steps: [step01, step02, step03, step04],
+    };
+  });
+
+const buildInvalidRangeChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+}: {
+  readonly blueprint: FaultProofBlueprint;
+  readonly network: Network;
+  readonly hubOraclePolicyId: string;
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fraudProofTokenAddressData: Data;
+}): Effect.Effect<InvalidRangeFaultProofContracts["invalidRange"], Error> =>
+  Effect.gen(function* () {
+    const invalidRangeStep02 = yield* tryBuild(
+      "Failed to build invalid-range step 02",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(
+            getCompiledScript(
+              blueprint,
+              INVALID_RANGE_FAULT_PROOF_TITLES.step02,
+            ),
+            [
+              fraudProof.policyId,
+              fraudProofTokenAddressData,
+              computationThread.policyId,
+            ],
+          ),
+        ),
+    );
+
+    const invalidRangeStep01 = yield* tryBuild(
+      "Failed to build invalid-range step 01",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(
+            getCompiledScript(
+              blueprint,
+              INVALID_RANGE_FAULT_PROOF_TITLES.step01,
+            ),
+            [
+              invalidRangeStep02.spendingScriptHash,
+              computationThread.policyId,
+              hubOraclePolicyId,
+            ],
+          ),
+      ),
+    );
+
+    return {
+      firstStep: invalidRangeStep01,
+      steps: [invalidRangeStep01, invalidRangeStep02],
+    };
+  });
+
+export const buildFaultProofContracts = (
+  params: BuildFaultProofContractsParams,
+): Effect.Effect<FaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const doubleSpend = yield* buildDoubleSpendChain({
+      ...params,
+      ...shared,
+    });
+    const invalidRange = yield* buildInvalidRangeChain({
+      ...params,
+      ...shared,
+    });
+
+    return {
+      computationThread: shared.computationThread,
+      fraudProof: shared.fraudProof,
+      doubleSpend,
+      invalidRange,
+    };
+  });
+
+export const buildDoubleSpendFaultProofContracts = (
+  params: BuildDoubleSpendFaultProofContractsParams,
+): Effect.Effect<DoubleSpendFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const doubleSpend = yield* buildDoubleSpendChain({
+      ...params,
+      ...shared,
+    });
+    return {
+      computationThread: shared.computationThread,
+      fraudProof: shared.fraudProof,
+      doubleSpend,
+    };
+  });
+
+export const buildInvalidRangeFaultProofContracts = (
+  params: BuildInvalidRangeFaultProofContractsParams,
+): Effect.Effect<InvalidRangeFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const invalidRange = yield* buildInvalidRangeChain({
+      ...params,
+      ...shared,
+    });
+    return {
+      computationThread: shared.computationThread,
+      fraudProof: shared.fraudProof,
+      invalidRange,
     };
   });

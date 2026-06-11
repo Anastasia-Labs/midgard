@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { NodeRuntime } from "@effect/platform-node";
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { normalizeHex } from "@al-ft/midgard-core/hex";
 import { Command } from "commander";
 import dotenv from "dotenv";
@@ -33,6 +34,11 @@ import {
   projectDepositsToMempoolLedger,
 } from "@/fibers/index.js";
 import * as Services from "@/services/index.js";
+import {
+  createReferenceScriptAuthPolicy,
+  referenceScriptAuthPolicyDeploymentInfo,
+} from "@/deployment/reference-script-auth.js";
+import * as DaAttestation from "@/transactions/da-attestation.js";
 import * as Initialization from "@/transactions/initialization.js";
 import * as PhasMembershipRegistration from "@/transactions/phas-membership-registration.js";
 import {
@@ -63,6 +69,16 @@ const parseMerkleRootOption = (value: unknown, label: string): string => {
   }
 };
 
+const parseOptionalHeaderHashOption = (value: unknown): string | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== "string") {
+    throw new Error("--header-hash must be 28 bytes of hex");
+  }
+  return normalizeHex(value, { byteLength: 28, trim: false });
+};
+
 const parseOptionalEndTimeMs = (value: unknown): number | undefined => {
   if (value === undefined) {
     return undefined;
@@ -91,6 +107,20 @@ const provideTxServices = <A, E>(
     effect,
     Effect.provide(Services.NodeConfig.layer),
     Effect.provide(Services.MidgardContracts.Default),
+    Effect.provide(Services.Lucid.Default),
+  );
+
+const provideReferenceScriptDeploymentServices = <A, E>(
+  effect: Effect.Effect<
+    A,
+    E,
+    Services.NodeConfig | Services.Lucid | Services.AlwaysSucceedsContract
+  >,
+): Effect.Effect<A, E | Services.ConfigError, never> =>
+  pipe(
+    effect,
+    Effect.provide(Services.NodeConfig.layer),
+    Effect.provide(Services.AlwaysSucceedsContract.Default),
     Effect.provide(Services.Lucid.Default),
   );
 
@@ -476,19 +506,77 @@ for (const commandName of RegisterActiveOperator.REFERENCE_SCRIPT_COMMAND_NAMES)
   program
     .command(`deploy-reference-script-${commandName}`)
     .description(`Publish reference scripts for ${commandName}`)
-    .action(async () => {
-      const mainEffect = provideTxServices(
+    .option(
+      "--contract-deployment-info-output <path>",
+      "Optional override path for the contract deployment info JSON written after reference-script deployment completes",
+    )
+    .action(async (_args, options) => {
+      const { contractDeploymentInfoOutput } = options.opts();
+      const mainEffect = provideReferenceScriptDeploymentServices(
         Effect.gen(function* () {
+          const nodeConfig = yield* Services.NodeConfig;
           const lucidService = yield* Services.Lucid;
-          const contracts = yield* Services.MidgardContracts;
           yield* lucidService.switchToOperatorsMainWallet;
           yield* lucidService.switchToReferenceScriptWallet;
-          return yield* RegisterActiveOperator.deployReferenceScriptCommandProgram(
+          const authPolicy = createReferenceScriptAuthPolicy(
             lucidService.referenceScriptsApi,
-            contracts,
-            commandName,
-            lucidService.api,
           );
+          const baseContracts = yield* Services.AlwaysSucceedsContract;
+          const contracts =
+            yield* Services.withRealStateQueueAndOperatorContracts(
+              nodeConfig.NETWORK,
+              baseContracts,
+              {
+                txHash: nodeConfig.HUB_ORACLE_ONE_SHOT_TX_HASH,
+                outputIndex: nodeConfig.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX,
+              },
+              {
+                referenceScriptAuth: authPolicy,
+              },
+            );
+          const published =
+            yield* RegisterActiveOperator.deployReferenceScriptCommandProgram(
+              lucidService.referenceScriptsApi,
+              contracts,
+              commandName,
+              contracts.referenceScriptAuth,
+              lucidService.api,
+              lucidService.referenceScriptsAddress,
+            );
+          const liveReferenceScriptUtxos = yield* Effect.tryPromise({
+            try: () =>
+              lucidService.referenceScriptsApi.utxosAt(
+                lucidService.referenceScriptsAddress,
+              ),
+            catch: (cause) =>
+              new Error(
+                `Failed to fetch published reference-script UTxOs at ${lucidService.referenceScriptsAddress}: ${formatUnknownError(
+                  cause,
+                )}`,
+              ),
+          });
+          const deploymentInfo =
+            yield* ContractDeploymentInfo.buildContractDeploymentInfoProgram(
+              contracts,
+              [
+                ...liveReferenceScriptUtxos,
+                ...published.map(({ utxo }) => utxo),
+              ],
+              referenceScriptAuthPolicyDeploymentInfo(authPolicy),
+            );
+          const manifestOutputPath =
+            typeof contractDeploymentInfoOutput === "string"
+              ? contractDeploymentInfoOutput
+              : ContractDeploymentInfo.defaultContractDeploymentInfoOutputPath();
+          const manifestPath =
+            yield* ContractDeploymentInfo.writeContractDeploymentInfoFileProgram(
+              manifestOutputPath,
+              deploymentInfo,
+            );
+          yield* Effect.logInfo(
+            `reference-script deployment info written: ${manifestPath}`,
+          );
+          return published;
         }).pipe(
           Effect.tap((published) =>
             Effect.logInfo(
@@ -574,6 +662,38 @@ program
       ),
     );
 
+      NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    });
+
+program
+  .command("attest-state-queue-once")
+  .description(
+    "Mint, threshold-sign, and attach DA attestations for queued state_queue headers",
+  )
+  .option(
+    "--header-hash <hex>",
+    "Optional 28-byte state_queue header hash to attest; defaults to all unattested queued headers",
+  )
+  .action(async (_args, options) => {
+    let headerHash: string | undefined;
+    try {
+      headerHash = parseOptionalHeaderHashOption(options.opts().headerHash);
+    } catch (error) {
+      console.error(`attest-state-queue-once: ${errorMessage(error)}`);
+      process.exitCode = 1;
+      return;
+    }
+
+    const mainEffect = provideTxServices(
+      DaAttestation.attestStateQueueOnceProgram({ headerHash }).pipe(
+        Effect.tap((results) =>
+          Effect.sync(() => {
+            process.stdout.write(`${formatJson(results)}\n`);
+          }),
+        ),
+      ),
+    );
+
     NodeRuntime.runMain(mainEffect, { teardown: undefined });
   });
 
@@ -653,7 +773,8 @@ program
               walletAddress,
               operatorMainAddress: lucidService.operatorMainAddress,
               operatorMergeAddress: lucidService.operatorMergeAddress,
-              referenceScriptsAddress: lucidService.referenceScriptsAddress,
+              referenceScriptsAddress:
+                lucidService.referenceScriptsWalletAddress,
             }),
           );
           const depositReferenceScripts =
@@ -661,6 +782,7 @@ program
               lucidService.api,
               lucidService.referenceScriptsAddress,
               referenceScriptTargetsByCommand(contracts).deposit,
+              contracts.referenceScriptAuth,
             ).pipe(
               Effect.map((resolved) => ({
                 depositMinting: referenceScriptByName(
@@ -771,7 +893,8 @@ program
                 walletAddress,
                 operatorMainAddress: lucidService.operatorMainAddress,
                 operatorMergeAddress: lucidService.operatorMergeAddress,
-                referenceScriptsAddress: lucidService.referenceScriptsAddress,
+                referenceScriptsAddress:
+                  lucidService.referenceScriptsWalletAddress,
               }),
           });
           return result;
@@ -861,7 +984,8 @@ program
               walletAddress,
               operatorMainAddress: lucidService.operatorMainAddress,
               operatorMergeAddress: lucidService.operatorMergeAddress,
-              referenceScriptsAddress: lucidService.referenceScriptsAddress,
+              referenceScriptsAddress:
+                lucidService.referenceScriptsWalletAddress,
             }),
         });
       }).pipe(

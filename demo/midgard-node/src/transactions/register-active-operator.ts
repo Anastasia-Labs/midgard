@@ -472,6 +472,7 @@ const operatorLifecycleProgram = (
   requiredBondLovelace: bigint,
   mode: OperatorLifecycleMode,
   referenceScriptsLucid: LucidEvolution = lucid,
+  referenceScriptsAddress?: string,
 ): Effect.Effect<
   OperatorLifecycleTxHashes,
   | SDK.StateQueueError
@@ -533,11 +534,15 @@ const operatorLifecycleProgram = (
             referenceScriptsLucid,
             "registered-operators",
             referenceScriptTargetsByCommand(contracts)["registered-operators"],
+            contracts.referenceScriptAuth,
+            referenceScriptsAddress,
           )
         : yield* resolveReferenceScriptTargetsProgram(
             referenceScriptsLucid,
             "operator lifecycle",
             operatorReferenceTargets,
+            contracts.referenceScriptAuth,
+            referenceScriptsAddress,
           );
     const registeredOperatorScriptRefs = operatorReferenceScriptRefs.filter(
       ({ name }) => name.startsWith("registered-operators "),
@@ -889,7 +894,7 @@ const operatorLifecycleProgram = (
        * Builds the registration transaction for an active operator.
        */
       let registerLayout: SDK.RegisterRedeemerLayout | undefined;
-      const registerTxConfig: SDK.RegisterOperatorTxConfig = {
+      const registerTxConfigBase = {
         lucid,
         contracts,
         operatorKeyHash,
@@ -903,14 +908,15 @@ const operatorLifecycleProgram = (
         prependedNodeAssets,
         updatedRegisteredRootDatum,
         registerValidTo,
-        onLayout: (layout) => {
-          registerLayout = layout;
-        },
       };
-      const mkRegisterTx = () =>
-        SDK.buildRegisterOperatorTx(registerTxConfig).collectFrom([
-          ...registerFundingInputs,
-        ]);
+      const mkRegisterTx = (layout?: SDK.RegisterRedeemerLayout) =>
+        SDK.buildRegisterOperatorTx({
+          ...registerTxConfigBase,
+          layout,
+          onLayout: (resolvedLayout) => {
+            registerLayout = resolvedLayout;
+          },
+        }).collectFrom([...registerFundingInputs]);
 
       yield* Effect.logInfo(
         [
@@ -923,7 +929,7 @@ const operatorLifecycleProgram = (
           `prepended_node_datum=${SDK.encodeLinkedListNodeView(prependedNodeDatum)}`,
         ].join(" "),
       );
-      const registerUnsignedTx = yield* Effect.tryPromise({
+      yield* Effect.tryPromise({
         try: () =>
           mkRegisterTx().complete({
             localUPLCEval: true,
@@ -947,9 +953,25 @@ const operatorLifecycleProgram = (
           }),
         );
       }
+      const resolvedRegisterLayout = registerLayout;
       yield* Effect.logInfo(
-        `Using register redeemer layout: ${registerLayoutToLogString(registerLayout)}`,
+        `Using register redeemer layout: ${registerLayoutToLogString(resolvedRegisterLayout)}`,
       );
+      const registerUnsignedTx = yield* Effect.tryPromise({
+        try: () =>
+          mkRegisterTx(resolvedRegisterLayout).complete({
+            localUPLCEval: true,
+            presetWalletInputs: [...registerFundingInputs],
+          }),
+        catch: (cause) =>
+          new SDK.LucidError({
+            message: [
+              "Failed to rebuild operator registration transaction with resolved redeemer context.",
+              `cause=${String(cause)}`,
+            ].join(" "),
+            cause,
+          }),
+      });
       registerTxHash = yield* handleSignSubmit(lucid, registerUnsignedTx);
       let refreshedRegisteredNodeSet = false;
       for (
@@ -1158,7 +1180,7 @@ const operatorLifecycleProgram = (
      * Builds the activation transaction for a registered operator.
      */
     let activateLayout: SDK.ActivateRedeemerLayout | undefined;
-    const mkActivateTx = () => {
+    const mkActivateTx = (layout?: SDK.ActivateRedeemerLayout) => {
       const { validFrom, validTo } = resolveActivationValidityWindow();
       return SDK.buildActivateOperatorTx({
         lucid,
@@ -1178,13 +1200,14 @@ const operatorLifecycleProgram = (
         activeNodeUnit,
         transferredOperatorAssets,
         updatedRegisteredAnchorDatum,
+        layout,
         onLayout: (layout) => {
           activateLayout = layout;
         },
       });
     };
 
-    const activationUnsignedTx = yield* Effect.tryPromise({
+    yield* Effect.tryPromise({
       try: () =>
         mkActivateTx().complete(
           activationCompleteOptions({ localUPLCEval: true }),
@@ -1204,9 +1227,21 @@ const operatorLifecycleProgram = (
         }),
       );
     }
+    const resolvedActivateLayout = activateLayout;
     yield* Effect.logInfo(
-      `Using activate redeemer layout: ${activateLayoutToLogString(activateLayout)}`,
+      `Using activate redeemer layout: ${activateLayoutToLogString(resolvedActivateLayout)}`,
     );
+    const activationUnsignedTx = yield* Effect.tryPromise({
+      try: () =>
+        mkActivateTx(resolvedActivateLayout).complete(
+          activationCompleteOptions({ localUPLCEval: true }),
+        ),
+      catch: (cause) =>
+        new SDK.LucidError({
+          message: `Failed to rebuild activation transaction with resolved redeemer context: ${String(cause)}`,
+          cause,
+        }),
+    });
     const activateSubmitResult = yield* Effect.either(
       handleSignSubmit(lucid, activationUnsignedTx),
     );
@@ -1235,6 +1270,7 @@ export const registerAndActivateOperatorProgram = (
   contracts: SDK.MidgardValidators,
   requiredBondLovelace: bigint,
   referenceScriptsLucid?: LucidEvolution,
+  referenceScriptsAddress?: string,
 ): Effect.Effect<
   ActivationTxHashes,
   | SDK.StateQueueError
@@ -1249,6 +1285,7 @@ export const registerAndActivateOperatorProgram = (
     requiredBondLovelace,
     "register-and-activate",
     referenceScriptsLucid,
+    referenceScriptsAddress,
   ).pipe(
     Effect.andThen(({ registerTxHash, activateTxHash }) =>
       toActivationResult({
@@ -1263,6 +1300,7 @@ export const registerOperatorProgram = (
   contracts: SDK.MidgardValidators,
   requiredBondLovelace: bigint,
   referenceScriptsLucid?: LucidEvolution,
+  referenceScriptsAddress?: string,
 ): Effect.Effect<
   RegistrationTxHashes,
   | SDK.StateQueueError
@@ -1277,6 +1315,7 @@ export const registerOperatorProgram = (
     requiredBondLovelace,
     "register-only",
     referenceScriptsLucid,
+    referenceScriptsAddress,
   ).pipe(
     Effect.map(({ registerTxHash }) => ({
       registerTxHash,
@@ -1288,6 +1327,7 @@ export const activateOperatorProgram = (
   contracts: SDK.MidgardValidators,
   requiredBondLovelace: bigint,
   referenceScriptsLucid?: LucidEvolution,
+  referenceScriptsAddress?: string,
 ): Effect.Effect<
   ActivationTxHashes,
   | SDK.StateQueueError
@@ -1302,6 +1342,7 @@ export const activateOperatorProgram = (
     requiredBondLovelace,
     "activate-only",
     referenceScriptsLucid,
+    referenceScriptsAddress,
   ).pipe(
     Effect.map(({ registerTxHash, activateTxHash }) => ({
       registerTxHash,
@@ -1314,6 +1355,7 @@ export const deregisterOperatorProgram = (
   contracts: SDK.MidgardValidators,
   requiredBondLovelace: bigint,
   referenceScriptsLucid?: LucidEvolution,
+  referenceScriptsAddress?: string,
 ): Effect.Effect<
   DeregistrationTxHashes,
   | SDK.StateQueueError
@@ -1328,6 +1370,7 @@ export const deregisterOperatorProgram = (
     requiredBondLovelace,
     "deregister-only",
     referenceScriptsLucid,
+    referenceScriptsAddress,
   ).pipe(
     Effect.map(({ deregisterTxHash }) => ({
       deregisterTxHash,
@@ -1344,5 +1387,6 @@ export const program = Effect.gen(function* () {
     contracts,
     nodeConfig.OPERATOR_REQUIRED_BOND_LOVELACE,
     lucidService.referenceScriptsApi,
+    lucidService.referenceScriptsAddress,
   );
 });
