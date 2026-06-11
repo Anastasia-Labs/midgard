@@ -5,6 +5,7 @@ use aiken_design_patterns/linked_list
 use cardano/assets.{AssetName, PolicyId}
 use cardano/transaction.{OutputReference}
 use midgard/common/types.{PosixTime}
+use midgard/operator_directory
 
 /// TODO: Refer to state queue's library module.
 pub const root_asset_name: AssetName = "MIDGARD_REGISTERED_OPERATORS"
