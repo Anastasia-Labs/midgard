@@ -4,16 +4,21 @@ module Midgard.Types.LinkedList (
   NodeKey (..),
   Element (..),
   ElementData (..),
+  isRootData,
   nodeKeyToAssetName,
   nodeKey,
   getNodeKey,
   nodeKeyFromAssetName,
   nodeKeyFromAssetName',
+  nodeKeyToPOSIXTime,
+  nodeKeyFromPOSIXTime,
+  nodeKeyFromPOSIXTime',
 ) where
 
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.Typeable (Typeable)
+import GHC.ByteOrder (ByteOrder (BigEndian))
 import GHC.Generics (Generic)
 
 import Cardano.Api qualified as C
@@ -22,9 +27,8 @@ import PlutusLedgerApi.Common (
   FromData,
   ToData,
   UnsafeFromData,
-  fromBuiltin,
-  toBuiltin,
  )
+import PlutusLedgerApi.V3 (POSIXTime (POSIXTime, getPOSIXTime))
 import PlutusTx (makeIsDataIndexed)
 import PlutusTx.Blueprint (
   HasBlueprintDefinition (Unroll),
@@ -36,30 +40,40 @@ import PlutusTx.Blueprint (
   emptyBytesSchema,
   emptySchemaInfo,
  )
+import PlutusTx.Builtins qualified as PlutusTx
 
 import Ply (PlyArg)
 
 newtype NodeKey = NodeKey BuiltinByteString
-  deriving stock (Show)
+  deriving stock (Eq, Show)
   deriving newtype (ToData, FromData, UnsafeFromData)
 
 nodeKey :: ByteString -> NodeKey
-nodeKey = NodeKey . toBuiltin
+nodeKey = NodeKey . PlutusTx.toBuiltin
 
 getNodeKey :: NodeKey -> ByteString
-getNodeKey (NodeKey bbs) = fromBuiltin bbs
+getNodeKey (NodeKey bbs) = PlutusTx.fromBuiltin bbs
 
 -- | Produce a linked list asset name by prepending the prefix.
 nodeKeyToAssetName :: ByteString -> NodeKey -> C.AssetName
-nodeKeyToAssetName prefix (NodeKey plutusBs) = C.UnsafeAssetName $ prefix <> fromBuiltin plutusBs
+nodeKeyToAssetName prefix (NodeKey plutusBs) = C.UnsafeAssetName $ prefix <> PlutusTx.fromBuiltin plutusBs
 
 -- | Obtain the key from a linked list asset name by dropping the prefix.
 nodeKeyFromAssetName :: Int -> C.AssetName -> NodeKey
-nodeKeyFromAssetName prefixLen = NodeKey . toBuiltin . nodeKeyFromAssetName' prefixLen
+nodeKeyFromAssetName prefixLen = NodeKey . PlutusTx.toBuiltin . nodeKeyFromAssetName' prefixLen
 
 -- | Obtain the key from a linked list asset name by dropping the prefix (in raw bytestring form).
 nodeKeyFromAssetName' :: Int -> C.AssetName -> ByteString
 nodeKeyFromAssetName' prefixLen (C.UnsafeAssetName assetName) = BS.drop prefixLen assetName
+
+nodeKeyFromPOSIXTime :: POSIXTime -> NodeKey
+nodeKeyFromPOSIXTime = NodeKey . PlutusTx.integerToByteString BigEndian 0 . getPOSIXTime
+
+nodeKeyFromPOSIXTime' :: POSIXTime -> ByteString
+nodeKeyFromPOSIXTime' = getNodeKey . nodeKeyFromPOSIXTime
+
+nodeKeyToPOSIXTime :: NodeKey -> POSIXTime
+nodeKeyToPOSIXTime (NodeKey bs) = POSIXTime $ PlutusTx.byteStringToInteger BigEndian bs
 
 instance HasBlueprintSchema NodeKey referenedTypes where
   schema = SchemaBytes emptySchemaInfo {title = Just "NodeKey"} emptyBytesSchema
@@ -71,6 +85,10 @@ instance PlyArg NodeKey
 
 data ElementData rootData nodeData = Root rootData | Node nodeData
   deriving stock (Eq, Show, Generic)
+
+isRootData :: ElementData rootData nodeData -> Bool
+isRootData (Root _) = True
+isRootData _ = False
 
 $( makeIsDataIndexed
      ''ElementData

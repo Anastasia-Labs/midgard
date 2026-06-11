@@ -12,6 +12,7 @@ import PlutusTx.Blueprint (HasBlueprintDefinition, definitionRef)
 import PlutusTx.Blueprint.TH (makeIsDataSchemaIndexed)
 
 import Midgard.Types.LinkedList qualified as LinkedList
+import Midgard.Types.OperatorDirectory (SlashingArguments)
 import PlutusLedgerApi.Common
 import Ply (PlyArg)
 
@@ -56,22 +57,8 @@ data MintRedeemer
       , retiredOperatorRemovedNodeInputIndex :: Integer
       , retiredOperatorAnchorElementOutputIndex :: Integer
       }
-  | RemoveOperatorBadState
-      { slashedRetiredOperatorKey :: PubKeyHash
-      , hubOracleRefInputIndex :: Integer
-      , retiredOperatorAnchorElementInputIndex :: Integer
-      , retiredOperatorSlashedNodeInputIndex :: Integer
-      , retiredOperatorAnchorElementOutputIndex :: Integer
-      , stateQueueRedeemerIndex :: Integer
-      }
-  | RemoveOperatorBadSettlement
-      { slashedRetiredOperatorKey :: PubKeyHash
-      , hubOracleRefInputIndex :: Integer
-      , retiredOperatorAnchorElementInputIndex :: Integer
-      , retiredOperatorSlashedNodeInputIndex :: Integer
-      , retiredOperatorAnchorElementOutputIndex :: Integer
-      , settlementInputIndex :: Integer
-      , settlementRedeemerIndex :: Integer
+  | SlashOperator
+      { slashingArguments :: SlashingArguments
       }
   deriving stock (Eq, Show, Generic)
   deriving anyclass (HasBlueprintDefinition)
@@ -82,8 +69,7 @@ $( makeIsDataSchemaIndexed
      , ('Deinit, 1)
      , ('RetireOperator, 2)
      , ('RecoverOperatorBond, 3)
-     , ('RemoveOperatorBadState, 4)
-     , ('RemoveOperatorBadSettlement, 5)
+     , ('SlashOperator, 4)
      ]
  )
 
