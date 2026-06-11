@@ -136,7 +136,7 @@ pub fn validate_transferred_operator_insertion(
     linked_list.Link,
   ) ->
     Bool,
-) -> linked_list.Eval {
+) -> linked_list.ElementEval<Bool> {
   // 1. The minting redeemer of the origin operators list must be invoked.
   let origin_list_redeemer_data =
     redeemers
@@ -287,20 +287,24 @@ pub fn slash_fraudulent_operator_and_get_info(
   // 4. ADA of anchor element must be preserved.
   expect anchor_lovelace_change >= 0
 
+  // 5. The slashed operator key indicated in the redeemer must match the key
+  //    of the removed node.
+  expect slashed_operator_node_key == slashed_operator
+
   expect
     if slashed_operator_node_lovelace < env.required_bond {
-      // 5a. If the operator is partially slashed, the portion already sent to the
-      //     Cardano treasury doesn't need to be deposited again (since partial
-      //     slashing is entirely paid as tx fee).
+      // 6a. If the operator is partially slashed, the portion already sent to
+      //     the Cardano treasury doesn't need to be deposited again (since
+      //     partial slashing is entirely paid as tx fee).
       fee >= env.slashing_penalty - env.inactivity_slashing_penalty
     } else {
-      // 5b. Slashing penalty must be paid to the Cardano treasury via the
+      // 6b. Slashing penalty must be paid to the Cardano treasury via the
       //     transaction fee. Fraud prover is assumed to be the signer of the
       //     transaction, and therefore will receive the remaining bond.
       fee >= env.slashing_penalty
     }
 
-  // 6. Given custom validations must pass.
+  // 7. Given custom validations must pass.
   expect
     further_validations(
       slashed_operator,
@@ -314,7 +318,7 @@ pub fn slash_fraudulent_operator_and_get_info(
 
   when slashing_reason is {
     SlashOperatorForBadState { state_queue_redeemer_index } -> {
-      // 7a. State queue minting script must be invoked via the
+      // 8a. State queue minting script must be invoked via the
       //     `RemoveFraudulentBlockHeader` redeemer, and the operator specified
       //     there must agree with the `slashed_operator` redeemer argument
       //     here.
@@ -333,7 +337,7 @@ pub fn slash_fraudulent_operator_and_get_info(
       settlement_input_index,
       settlement_redeemer_index,
     } -> {
-      // 7b. A settlement UTxO must be getting spent via the
+      // 8b. A settlement UTxO must be getting spent via the
       //     `DisproveResolutionClaim` redeemer.
       expect settlement.DisproveResolutionClaim { operator, .. } =
         utils.get_spending_redeemer_data_at(

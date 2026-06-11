@@ -183,7 +183,7 @@ pub type TxOrderId =
 
 pub type TxOrderEvent {
   id: TxOrderId,
-  tx: MidgardTx,
+  tx: MidgardTxCompact,
 }
 
 // ## Transaction
@@ -225,61 +225,6 @@ pub type MidgardTxValidity {
   FailedScript
   FeeTooLow
   UnbalancedTx
-}
-
-pub fn midgard_tx_body_to_compact(body: MidgardTxBody) -> MidgardTxBodyCompact {
-  let MidgardTxBody {
-    spend_inputs,
-    reference_inputs,
-    outputs,
-    fee,
-    validity_interval,
-    required_observers,
-    required_signer_hashes,
-    mint,
-    script_integrity_hash,
-    auxiliary_data_hash,
-    network_id,
-  } = body
-  MidgardTxBodyCompact {
-    spend_inputs: spend_inputs |> utils.serialise_and_hash_32,
-    reference_inputs: reference_inputs |> utils.serialise_and_hash_32,
-    outputs: outputs |> utils.serialise_and_hash_32,
-    fee,
-    validity_interval,
-    required_observers: required_observers |> utils.serialise_and_hash_32,
-    required_signer_hashes: required_signer_hashes
-      |> utils.serialise_and_hash_32,
-    mint: mint |> utils.serialise_and_hash_32,
-    script_integrity_hash,
-    auxiliary_data_hash,
-    network_id,
-  }
-}
-
-pub fn midgard_tx_wits_to_compact(
-  wits: MidgardTxWitnessSet,
-) -> MidgardTxWitnessSetCompact {
-  let MidgardTxWitnessSet { addr_tx_wits, script_tx_wits, redeemer_tx_wits } =
-    wits
-  MidgardTxWitnessSetCompact {
-    addr_tx_wits: addr_tx_wits |> utils.serialise_and_hash_32,
-    script_tx_wits: script_tx_wits |> utils.serialise_and_hash_32,
-    redeemer_tx_wits: redeemer_tx_wits |> utils.serialise_and_hash_32,
-  }
-}
-
-pub fn midgard_tx_to_compact(tx: MidgardTx) -> MidgardTxCompact {
-  let MidgardTx { body, wits, validity } = tx
-  MidgardTxCompact {
-    body: body |> midgard_tx_body_to_compact,
-    wits: wits |> midgard_tx_wits_to_compact |> utils.serialise_and_hash_32,
-    validity,
-  }
-}
-
-pub fn midgard_full_tx_to_id(tx: MidgardTx) -> MidgardTxId {
-  tx.body |> midgard_tx_body_to_compact |> utils.serialise_and_hash_32
 }
 
 // ### Transaction body

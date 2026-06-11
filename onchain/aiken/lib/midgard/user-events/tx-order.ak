@@ -57,21 +57,3 @@ pub fn get_datum(
   expect tx_order_datum: Datum = tx_order_datum_data
   tx_order_datum
 }
-
-pub fn get_datum(
-  reference_inputs: List<Input>,
-  tx_order_policy_id: PolicyId,
-  tx_order_input_index: Int,
-) -> Datum {
-  expect Input {
-    output: Output { datum: InlineDatum(tx_order_datum_data), .. },
-    ..
-  } =
-    utils.get_authentic_input_with_policy_at(
-      reference_inputs,
-      tx_order_policy_id,
-      tx_order_input_index,
-    )
-  expect tx_order_datum: Datum = tx_order_datum_data
-  tx_order_datum
-}
