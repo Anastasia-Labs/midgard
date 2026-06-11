@@ -23,7 +23,7 @@ use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, pass_tx_to_next_step}
+use midgard/fraud_proofs/common.{cancel, pass_native_tx_to_next_step}
 use midgard/fraud_proofs/double_spend/step_01.{Datum, SpendRedeemer}
 use midgard/fraud_proofs/double_spend/step_02
 
@@ -55,15 +55,14 @@ validator main(
           _own_script_hash,
           _computation_thread_token_asset_name,
           _fraud_prover,
-          _m_input_state_data,
+          m_input_state_data,
           output_script_hash,
           output_state_data,
           _header,
           bad_tx_id,
-          bad_tx,
-          _provided_witness_set_preimage,
+          bad_tx_view,
         <-
-          pass_tx_to_next_step(
+          pass_native_tx_to_next_step(
             computation_thread_token_policy_id,
             hub_oracle,
             datum,
@@ -72,14 +71,16 @@ validator main(
             tx,
           )
 
+        expect None = m_input_state_data
+
         // 2. The UTxO must be produced at next step's script hash with the
-        //    verified first bad transaction ID and its inputs hash in the `data`
-        //    field of its `StepDatum`.
+        //    verified first bad transaction ID and native spend-input hash in
+        //    the `data` field of its `StepDatum`.
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data =
           step_02.State {
             verified_tx1_id: bad_tx_id,
-            verified_tx1_inputs_hash: bad_tx.body.spend_inputs,
+            verified_tx1_spend_inputs_hash: bad_tx_view.tx_compact.body.spend_inputs_hash,
           }
         expect output_state_data == expected_output_state
 

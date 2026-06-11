@@ -1,15 +1,13 @@
-import { Writable } from 'node:stream';
-
 import { Assets, CML, Data, walletFromSeed } from '@lucid-evolution/lucid';
 
 /**
- * Core utility functions for Midgard transaction generation
+ * Core utility helpers shared across tx-generator modules.
  */
 
 type SerializedAssets = Record<string, string>;
 
 /**
- * Serializes assets to string format
+ * Serializes bigint asset quantities into JSON-safe string values.
  */
 export const serializeAssets = (assets: Assets): SerializedAssets => {
   return Object.fromEntries(
@@ -18,56 +16,46 @@ export const serializeAssets = (assets: Assets): SerializedAssets => {
 };
 
 /**
- * Parses a key into bech32 private key format
+ * Normalizes either a mnemonic phrase or an already-encoded key into a bech32
+ * private key.
  */
 export const parseUnknownKeytoBech32PrivateKey = (unknownKey: unknown): string => {
   if (typeof unknownKey !== 'string')
     throw new Error('Expected a string value for the private key');
 
-  if (unknownKey.trim().includes(' ')) {
-    const wallet = walletFromSeed(unknownKey.trim(), {
+  const key = unknownKey.trim();
+  if (key.includes(' ')) {
+    const wallet = walletFromSeed(key, {
       accountIndex: 0,
       addressType: 'Base',
     });
     return wallet.paymentKey;
-  } else {
-    try {
-      const paymentKey = CML.PrivateKey.from_normal_bytes(
-        Buffer.from(unknownKey.substring(4), 'hex')
-      );
-      return paymentKey.to_bech32();
-    } catch {
-      const paymentKey = CML.PrivateKey.from_bech32(unknownKey.trim());
-      return paymentKey.to_bech32();
-    }
+  }
+
+  try {
+    return CML.PrivateKey.from_normal_bytes(Buffer.from(key.substring(4), 'hex')).to_bech32();
+  } catch {
+    return CML.PrivateKey.from_bech32(key).to_bech32();
   }
 };
 
 /**
- * Gets public key hash from private key
+ * Derives the payment public-key hash from a bech32 private key.
  */
-export const getPublicKeyHashFromPrivateKey = (privateKey: string): string => {
-  return CML.PrivateKey.from_bech32(privateKey).to_public().hash().to_hex();
-};
+export const getPublicKeyHashFromPrivateKey = (privateKey: string): string =>
+  CML.PrivateKey.from_bech32(privateKey).to_public().hash().to_hex();
 
 /**
- * Gets CBOR hex representation of private key
+ * Encodes a private key as the CBOR hex format expected by some test tooling.
  */
-export const getPrivateKeyCborHex = (privateKey: string): string => {
-  return Data.to(
-    Buffer.from(CML.PrivateKey.from_bech32(privateKey).to_raw_bytes()).toString('hex')
-  );
-};
+export const getPrivateKeyCborHex = (privateKey: string): string =>
+  Data.to(Buffer.from(CML.PrivateKey.from_bech32(privateKey).to_raw_bytes()).toString('hex'));
+
+export const formatError = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
 
 /**
- * Wait for writable stream to be ready
+ * Resolves once a writable stream can accept more data.
  */
-export const waitWritable = (writable: NodeJS.WritableStream): Promise<void> => {
-  return new Promise((resolve) => {
-    if (writable.writable) {
-      resolve();
-    } else {
-      writable.once('drain', resolve);
-    }
-  });
-};
+export const waitWritable = (writable: NodeJS.WritableStream): Promise<void> =>
+  new Promise((resolve) => (writable.writable ? resolve() : writable.once('drain', resolve)));

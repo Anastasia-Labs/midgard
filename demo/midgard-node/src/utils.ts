@@ -1,9 +1,16 @@
-import { parentPort, workerData } from "worker_threads";
+import {
+  computeMidgardNativeTxId,
+  decodeMidgardNativeByteListPreimage,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardTxOutput,
+  encodeMidgardAddressText,
+} from "@al-ft/midgard-core/codec";
+import * as SDK from "@al-ft/midgard-sdk";
 import { CML } from "@lucid-evolution/lucid";
 import * as chalk_ from "chalk";
 import { Data, Effect, pipe } from "effect";
+
 import * as Ledger from "@/database/utils/ledger.js";
-import * as SDK from "@al-ft/midgard-sdk";
 
 export type ProcessedTx = {
   txId: Buffer;
@@ -12,37 +19,9 @@ export type ProcessedTx = {
   produced: Ledger.Entry[];
 };
 
-// For some reason importing these directly into the new confirmation worker
-// failed. This is probably a temporary workaround.
-export const reexportedParentPort = parentPort;
-export const reexportedWorkerData = workerData;
-
 export const chalk = new chalk_.Chalk();
 
-export type ProviderName = "Blockfrost" | "Koios" | "Kupmios" | "Maestro";
-
-export const logSuccess = (msg: string) => {
-  Effect.runSync(Effect.logInfo(`🎉 ${msg}`));
-};
-
-export const logWarning = (msg: string) => {
-  Effect.runSync(Effect.logWarning(`⚠️  ${msg}`));
-};
-
-export const logAbort = (msg: string) => {
-  Effect.runSync(Effect.logError(msg));
-};
-
-export const logInfo = (msg: string) => {
-  Effect.runSync(Effect.logInfo(`ℹ️  ${msg}`));
-};
-
-export const isHexString = (str: string): boolean => {
-  const hexRegex = /^[0-9A-Fa-f]+$/;
-  return hexRegex.test(str);
-};
-
-export const breakDownTxMinimally = (
+export const findSpentAndProducedUTxOs = (
   txCBOR: Buffer,
   txHash?: Buffer,
 ): Effect.Effect<
@@ -50,84 +29,131 @@ export const breakDownTxMinimally = (
   SDK.CmlUnexpectedError
 > =>
   Effect.gen(function* () {
-    const spent: Buffer[] = [];
+    const nativeTx = yield* Effect.try({
+      try: () => decodeMidgardNativeTxFullFromCanonicalCbor(txCBOR),
+      catch: (e) =>
+        new SDK.CmlUnexpectedError({
+          message: `Failed to decode Midgard-native tx payload`,
+          cause: e,
+        }),
+    });
+
+    const nativeSpent = yield* Effect.try({
+      try: () =>
+        decodeMidgardNativeByteListPreimage(
+          nativeTx.body.spendInputsPreimageCbor,
+          "native.spend_inputs",
+        ),
+      catch: (e) =>
+        new SDK.CmlUnexpectedError({
+          message: `Failed to decode native spend inputs`,
+          cause: e,
+        }),
+    });
+
+    const nativeOutputs = yield* Effect.try({
+      try: () =>
+        decodeMidgardNativeByteListPreimage(
+          nativeTx.body.outputsPreimageCbor,
+          "native.outputs",
+        ),
+      catch: (e) =>
+        new SDK.CmlUnexpectedError({
+          message: `Failed to decode native outputs`,
+          cause: e,
+        }),
+    });
+
+    const spent = yield* Effect.try({
+      try: () =>
+        nativeSpent.map((outRef) =>
+          Buffer.from(
+            CML.TransactionInput.from_cbor_bytes(outRef).to_cbor_bytes(),
+          ),
+        ),
+      catch: (e) =>
+        new SDK.CmlUnexpectedError({
+          message: `An error occurred on native input CBOR serialization`,
+          cause: e,
+        }),
+    });
+
     const produced: Ledger.MinimalEntry[] = [];
-    const tx = CML.Transaction.from_cbor_bytes(txCBOR);
-    const txBody = tx.body();
-    const inputs = txBody.inputs();
-    const outputs = txBody.outputs();
-    const inputsCount = inputs.len();
-    const outputsCount = outputs.len();
-    for (let i = 0; i < inputsCount; i++) {
-      yield* Effect.try({
-        try: () => spent.push(Buffer.from(inputs.get(i).to_cbor_bytes())),
-        catch: (e) =>
-          new SDK.CmlUnexpectedError({
-            message: `An error occurred on input CBOR serialization`,
-            cause: e,
-          }),
-      });
-    }
     const finalTxHash =
-      txHash === undefined
-        ? CML.hash_transaction(txBody).to_raw_bytes()
-        : txHash;
-    for (let i = 0; i < outputsCount; i++) {
+      txHash === undefined ? computeMidgardNativeTxId(nativeTx) : txHash;
+    const txHashObj = CML.TransactionHash.from_raw_bytes(finalTxHash);
+    for (let i = 0; i < nativeOutputs.length; i++) {
+      const output = nativeOutputs[i];
       produced.push({
-        [Ledger.Columns.OUTREF]: Buffer.from(finalTxHash),
-        [Ledger.Columns.OUTPUT]: Buffer.from(outputs.get(i).to_cbor_bytes()),
+        [Ledger.Columns.OUTREF]: Buffer.from(
+          CML.TransactionInput.new(txHashObj, BigInt(i)).to_cbor_bytes(),
+        ),
+        [Ledger.Columns.OUTPUT]: Buffer.from(output),
       });
     }
     return { spent, produced };
   });
 
-/**
- * Given a transaction CBOR bytes, this function breaks it down into its spent
- * outrefs and produced outputs (as ledger entries).
- *
- * @param txCbor - Uint8Array of the CBOR encoded transaction itself (expected to be deserializable to a CML.Transaction).
- * @returns An effect that can be reduced to a `ProcessedTx`.
- */
 export const breakDownTx = (
   txCbor: Uint8Array,
 ): Effect.Effect<ProcessedTx, SDK.CmlDeserializationError> =>
   Effect.gen(function* () {
-    const deserializedTx = yield* Effect.try({
-      try: () => CML.Transaction.from_cbor_bytes(txCbor),
+    const nativeTx = yield* Effect.try({
+      try: () => decodeMidgardNativeTxFullFromCanonicalCbor(txCbor),
       catch: (e) =>
         new SDK.CmlDeserializationError({
-          message: `Failed to deserialize transaction: ${txCbor}`,
+          message: `Failed to deserialize Midgard-native transaction`,
           cause: e,
         }),
     });
-    const txBody = deserializedTx.body();
-    const txHash = CML.hash_transaction(txBody);
-    const txHashBytes = Buffer.from(txHash.to_raw_bytes());
-    const inputs = txBody.inputs();
-    const inputsCount = inputs.len();
-    const spent: Buffer[] = [];
-    for (let i = 0; i < inputsCount; i++) {
-      spent.push(Buffer.from(inputs.get(i).to_cbor_bytes()));
-    }
-    const outputs = txBody.outputs();
-    const outputsCount = outputs.len();
+
+    const txHashBytes = computeMidgardNativeTxId(nativeTx);
+    const txHash = CML.TransactionHash.from_raw_bytes(txHashBytes);
+    const spent = yield* Effect.try({
+      try: () =>
+        decodeMidgardNativeByteListPreimage(
+          nativeTx.body.spendInputsPreimageCbor,
+          "native.spend_inputs",
+        ).map((outRef) =>
+          Buffer.from(
+            CML.TransactionInput.from_cbor_bytes(outRef).to_cbor_bytes(),
+          ),
+        ),
+      catch: (e) =>
+        new SDK.CmlDeserializationError({
+          message: `Failed to decode native spend inputs`,
+          cause: e,
+        }),
+    });
+    const outputBytes = yield* Effect.try({
+      try: () =>
+        decodeMidgardNativeByteListPreimage(
+          nativeTx.body.outputsPreimageCbor,
+          "native.outputs",
+        ),
+      catch: (e) =>
+        new SDK.CmlDeserializationError({
+          message: `Failed to decode native outputs`,
+          cause: e,
+        }),
+    });
     const produced: Ledger.Entry[] = [];
-    for (let i = 0; i < outputsCount; i++) {
-      const output = outputs.get(i);
+    for (let i = 0; i < outputBytes.length; i++) {
+      const output = decodeMidgardTxOutput(outputBytes[i]);
       produced.push({
         [Ledger.Columns.TX_ID]: txHashBytes,
         [Ledger.Columns.OUTREF]: Buffer.from(
           CML.TransactionInput.new(txHash, BigInt(i)).to_cbor_bytes(),
         ),
-        [Ledger.Columns.OUTPUT]: Buffer.from(output.to_cbor_bytes()),
-        [Ledger.Columns.ADDRESS]: output.address().to_bech32(),
+        [Ledger.Columns.OUTPUT]: Buffer.from(outputBytes[i]),
+        [Ledger.Columns.ADDRESS]: encodeMidgardAddressText(output.address),
       });
     }
     return {
       txId: txHashBytes,
       txCbor: Buffer.from(txCbor),
-      spent: spent,
-      produced: produced,
+      spent,
+      produced,
     };
   });
 
@@ -163,22 +189,6 @@ export const batchProgram = <A, E, C>(
     { concurrency: concurrencyOverride ?? "unbounded" },
   );
 };
-
-export const trivialTransactionFromCMLUnspentOutput = (
-  transactionUnspentOutput: CML.TransactionUnspentOutput,
-): Effect.Effect<CML.Transaction, never, never> =>
-  Effect.gen(function* () {
-    const inputs = CML.TransactionInputList.new();
-    const outputs = CML.TransactionOutputList.new();
-    outputs.add(transactionUnspentOutput.output());
-    const fee = 0n;
-
-    const transactionBody = CML.TransactionBody.new(inputs, outputs, fee);
-    const witnessSet = CML.TransactionWitnessSet.new();
-
-    const transaction = CML.Transaction.new(transactionBody, witnessSet, true);
-    return transaction;
-  });
 
 export const ENV_VARS_GUIDE = `
 Make sure you first have set the environment variable for your seed phrase:

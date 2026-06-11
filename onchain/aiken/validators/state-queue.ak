@@ -4,9 +4,10 @@ use aiken/crypto
 use aiken_design_patterns/linked_list
 use cardano/address.{Address}
 use cardano/assets.{Lovelace, PolicyId, quantity_of}
-use cardano/transaction.{Mint, OutputReference, Transaction}
+use cardano/transaction.{Input, Mint, OutputReference, Transaction}
 use env
 use midgard/common/utils
+use midgard/da_attestation_types as da_attestation
 use midgard/fraud_proof
 use midgard/hub_oracle as hub
 use midgard/ledger_state.{
@@ -19,23 +20,51 @@ use midgard/operator_directory/retired_operators
 use midgard/scheduler
 use midgard/settlement
 use midgard/state_queue.{
-  CommitBlockHeader, Deinit, Init, MergeToConfirmedState, MintRedeemer,
-  OperatorAlreadySlashed, RemoveFraudulentBlockHeader,
-  RemoveFraudulentBlocksLink, RemoveLastFraudulentBlock, SlashActiveOperator,
-  SlashRetiredOperator, confirmed_state_asset_name, finalize_linked_list,
+  AttachDaAttestation, CommitBlockHeader, Deinit, Init, LinkedListMutation,
+  MergeToConfirmedState, MintRedeemer, OperatorAlreadySlashed,
+  RemoveFraudulentBlockHeader, RemoveFraudulentBlocksLink,
+  RemoveLastFraudulentBlock, SlashActiveOperator, SlashRetiredOperator,
+  SpendRedeemer, StateQueueNode, confirmed_state_asset_name,
+  finalize_linked_list, no_da_attestation,
 }
 
-validator spend(state_queue_mint_script_hash: ByteArray) {
+validator spend(
+  state_queue_mint_script_hash: ByteArray,
+  da_attestation_policy_id: PolicyId,
+) {
   spend(
     _datum: Option<Data>,
-    _redeemer: Data,
-    _own_ref: OutputReference,
+    redeemer: SpendRedeemer,
+    own_ref: OutputReference,
     tx: Transaction,
   ) {
-    linked_list.spend_for_adding_or_removing_an_element(
-      state_queue_mint_script_hash,
-      tx.mint,
-    )
+    when redeemer is {
+      LinkedListMutation ->
+        linked_list.spend_for_adding_or_removing_an_element(
+          state_queue_mint_script_hash,
+          tx.mint,
+        )
+      AttachDaAttestation {
+        state_queue_input_index,
+        da_attestation_mint_redeemer_index,
+      } -> {
+        expect Some(Input { output_reference, .. }) =
+          tx.inputs |> list.at(state_queue_input_index)
+        expect output_reference == own_ref
+
+        let mint_redeemer_data =
+          tx.redeemers
+            |> utils.get_redeemer_at(
+                Mint(da_attestation_policy_id),
+                da_attestation_mint_redeemer_index,
+              )
+        expect da_attestation.ApplyToStateQueue {
+          state_queue_input_index: redeemer_state_queue_input_index,
+          ..
+        }: da_attestation.MintRedeemer = mint_redeemer_data
+        redeemer_state_queue_input_index == state_queue_input_index
+      }
+    }
   }
 
   else(_) {
@@ -51,6 +80,7 @@ validator mint(
   scheduler_script_hash: PolicyId,
   fraud_proof_script_hash: PolicyId,
   settlement_script_hash: PolicyId,
+  da_attestation_policy_id: PolicyId,
 ) {
   mint(redeemer: MintRedeemer, own_policy_id: PolicyId, self: Transaction) {
     when redeemer is {
@@ -88,7 +118,7 @@ validator mint(
             ) == 1,
             produced_element_output: root_output,
             tx_mint: mint,
-            root_validator: fn(_root_lovelace: Lovelace, root_data: Data) -> Bool {
+            root_validator: fn(_, _root_lovelace: Lovelace, root_data: Data) -> Bool {
               root_data == expected_root_data
             },
           )
@@ -100,22 +130,19 @@ validator mint(
         // Done.
         True
       }
-      Deinit { input_index } -> {
+      Deinit -> {
         let Transaction { inputs, mint, .. } = self
 
-        // 1. An input must exist at specified index.
-        expect Some(own_input) = inputs |> list.at(input_index)
-
-        // 2. Hub oracle NFT must be getting burnt.
+        // 1. Hub oracle NFT must be getting burnt.
         expect quantity_of(mint, hub_oracle_script_hash, hub.asset_name) == -1
 
-        // 3. Linked list de-initialization must be valid. No other validations
+        // 2. Linked list de-initialization must be valid. No other validations
         //    required.
         expect
           linked_list.deinit(
-            root_input: own_input,
+            inputs: inputs,
             tx_mint: mint,
-            root_validator: fn(_, _) -> Bool { True },
+            root_validator: fn(_, _, _) -> Bool { True },
           )
             |> linked_list.run_root_with(
                 own_policy_id,
@@ -126,7 +153,6 @@ validator mint(
         True
       }
       CommitBlockHeader {
-        latest_block_input_index,
         new_block_output_index,
         continued_latest_block_output_index,
         operator,
@@ -150,17 +176,16 @@ validator mint(
         // 2. The transaction must be signed by `operator`.
         expect operator |> utils.has_signed(extra_signatories)
 
-        expect Some(anchor_element_input) =
-          inputs |> list.at(latest_block_input_index)
         expect Some(continued_anchor_element_output) =
           outputs |> list.at(continued_latest_block_output_index)
         expect Some(new_block_output) =
           outputs |> list.at(new_block_output_index)
 
-        // 3. Indicated inputs and output must properly adhere to unordered
-        //    linked list append requirements.
+        // 3. Indicated outputs must properly adhere to unordered linked list
+        //    append requirements.
         {
           let
+            _anchor_input,
             _anchor_lovelace_change,
             m_anchor_key,
             anchor_data,
@@ -169,20 +194,24 @@ validator mint(
             output_header_data,
           <-
             linked_list.append_unordered(
-              anchor_element_input,
-              continued_anchor_element_output,
-              new_block_output,
-              mint,
+              continued_anchor_element_output: continued_anchor_element_output,
+              new_node_output: new_block_output,
+              inputs: inputs,
+              tx_mint: mint,
             )
 
-          // 4. The new block in state queue must have the hash of the header as
-          //    its linked list key.
+          expect StateQueueNode { header: output_header, da_attestation } =
+            output_header_data
+          expect da_attestation == no_da_attestation
+
+          // 4. The new block in state queue must have the hash of the header
+          //    as its linked list key.
           let output_header_hash =
-            crypto.blake2b_224(builtin.serialise_data(output_header_data))
+            crypto.blake2b_224(builtin.serialise_data(output_header))
           expect output_header_key == output_header_hash
 
           // 5. New element's data must be `Header` with a valid time range.
-          expect Header {
+          let Header {
             prev_utxos_root: output_prev_utxos_root,
             start_time: output_start_time,
             end_time: output_end_time,
@@ -190,7 +219,7 @@ validator mint(
             operator_vkey: output_operator_vkey,
             protocol_version: output_protocol_version,
             ..
-          } = output_header_data
+          } = output_header
           expect output_start_time < output_end_time
 
           // 6. The operator pub key hash from the redeemer must match the one
@@ -233,8 +262,9 @@ validator mint(
             Some(header_hash) -> {
               // 10a. New block must properly carry over data from previous
               //      block.
-              expect Header { utxos_root, end_time, protocol_version, .. } =
-                anchor_data
+              expect StateQueueNode { header: anchor_header, .. } = anchor_data
+              let Header { utxos_root, end_time, protocol_version, .. } =
+                anchor_header
               expect output_prev_header_hash == header_hash
               expect output_prev_utxos_root == utxos_root
               expect output_start_time == end_time
@@ -267,8 +297,7 @@ validator mint(
       }
       MergeToConfirmedState {
         header_node_key,
-        header_node_input_index,
-        confirmed_state_input_index,
+        confirmed_state_input_outref,
         confirmed_state_output_index,
         m_settlement_redeemer_index,
         merged_block_transactions_root,
@@ -278,23 +307,20 @@ validator mint(
         let Transaction { inputs, outputs, mint, redeemers, validity_range, .. } =
           self
 
-        // 1. Inputs and output of linked list must exist in the specified
-        //    indices.
-        expect Some(confirmed_state_input) =
-          inputs |> list.at(confirmed_state_input_index)
-        expect Some(header_node_input) =
-          inputs |> list.at(header_node_input_index)
+        // 1. Output of linked list must exist in the specified index.
         expect Some(continued_confirmed_state_output) =
           outputs |> list.at(confirmed_state_output_index)
 
-        // 2. Specified inputs and output must properly adhere to the fold
+        // 2. Specified root input outref and output must properly adhere to the fold
         //    logic of the linked list.
         //
         //    TODO: We are not caring about the min ADA in the folding block.
         {
           let
+            _confirmed_state_input,
             _confirmed_state_lovelace_change,
             input_confirmed_state_data,
+            _input_header_node,
             _input_header_lovelace,
             input_header_node_key,
             input_header_node_data,
@@ -302,18 +328,21 @@ validator mint(
             output_confirmed_state_data,
           <-
             linked_list.fold_from_root(
-              confirmed_state_input,
-              header_node_input,
-              continued_confirmed_state_output,
-              mint,
+              anchor_root_input_outref: confirmed_state_input_outref,
+              continued_anchor_root_output: continued_confirmed_state_output,
+              inputs: inputs,
+              tx_mint: mint,
             )
 
           // 3. The key of the header node specified in the redeemer must
-          //    properly associate with the input picked using
-          //    `header_node_input_index`.
+          //    properly associate with the folded input.
           expect input_header_node_key == header_node_key
 
-          expect Header {
+          expect StateQueueNode { header: input_header, da_attestation } =
+            input_header_node_data
+          expect da_attestation == da_attestation_policy_id
+
+          let Header {
             utxos_root: input_header_utxos_root,
             end_time: input_header_end_time,
             protocol_version: input_header_protocol_version,
@@ -321,7 +350,7 @@ validator mint(
             deposits_root: input_header_deposits_root,
             withdrawals_root: input_header_withdrawals_root,
             ..
-          } = input_header_node_data
+          } = input_header
 
           // 4. Correctness of redeemer arguments must be guaranteed for other
           //    contracts to use.
@@ -415,7 +444,6 @@ validator mint(
         fraudulent_operator,
         fraudulent_blocks_header_hash,
         slashing_approach,
-        fraudulent_node_input_index,
         fraud_proof_ref_input_index,
         block_removal_approach,
       } -> {
@@ -509,17 +537,14 @@ validator mint(
               }
           }
 
-        expect Some(fraudulent_node_input) =
-          inputs |> list.at(fraudulent_node_input_index)
-
         // Remove fraudulent block or its link from the state queue:
         // 3. Let `block_removal_approach` be a redeemer argument that specifies
         //    whether the fraudulent block itself can be removed:
         expect
           when block_removal_approach is {
             RemoveFraudulentBlocksLink {
+              fraudulent_node_input_outref,
               fraudulent_node_output_index,
-              removed_block_input_index,
             } -> {
               // 4a. If the fraudulent block has a link, its successor node must
               //     be removed first.
@@ -528,57 +553,61 @@ validator mint(
               //     > The successor node is also considered fraudulent because
               //     > of getting appended to a fraudulent block, so it does not
               //     > need to have an associated fraud proof token.
-              expect Some(removed_block_input) =
-                inputs |> list.at(removed_block_input_index)
               expect Some(fraudulent_node_output) =
                 outputs |> list.at(fraudulent_node_output_index)
               let
+                _fraudulent_header_input,
                 _fraudulent_header_lovelace_change,
                 m_fraudulent_header_hash,
                 _fraudulent_header_data,
+                _removed_block_input,
                 _removed_node_lovelace,
                 _removed_node_header_hash,
                 removed_node_header_data,
                 _removed_node_link,
               <-
                 linked_list.remove(
-                  fraudulent_node_input,
-                  removed_block_input,
-                  fraudulent_node_output,
-                  mint,
+                  anchor_input_outref: fraudulent_node_input_outref,
+                  continued_anchor_element_output: fraudulent_node_output,
+                  inputs: inputs,
+                  tx_mint: mint,
                 )
               expect
                 Some(fraudulent_blocks_header_hash) == m_fraudulent_header_hash
-              expect Header { operator_vkey, .. } = removed_node_header_data
+              expect StateQueueNode { header: removed_node_header, .. } =
+                removed_node_header_data
+              let Header { operator_vkey, .. } = removed_node_header
               operator_vkey == fraudulent_operator
             }
             RemoveLastFraudulentBlock {
-              anchor_element_input_index,
+              anchor_element_input_outref,
               anchor_element_output_index,
             } -> {
               // 4b. If the fraudulent block has no links, it can be removed
               //     from the very end of the state queue.
-              expect Some(anchor_element_input) =
-                inputs |> list.at(anchor_element_input_index)
               expect Some(anchor_element_output) =
                 outputs |> list.at(anchor_element_output_index)
               let
+                _anchor_input,
                 _anchor_lovelace_change,
                 _m_anchor_key,
                 _anchor_data,
+                _removed_node_input,
                 _removed_node_lovelace,
                 removed_node_header_hash,
                 removed_node_header_data,
                 removed_node_link,
               <-
                 linked_list.remove(
-                  anchor_element_input,
-                  fraudulent_node_input,
-                  anchor_element_output,
-                  mint,
+                  anchor_input_outref: anchor_element_input_outref,
+                  continued_anchor_element_output: anchor_element_output,
+                  inputs: inputs,
+                  tx_mint: mint,
                 )
               expect fraudulent_blocks_header_hash == removed_node_header_hash
-              expect Header { operator_vkey, .. } = removed_node_header_data
+              expect StateQueueNode { header: removed_node_header, .. } =
+                removed_node_header_data
+              let Header { operator_vkey, .. } = removed_node_header
               expect operator_vkey == fraudulent_operator
               removed_node_link == None
             }

@@ -1,12 +1,13 @@
 import * as S from '@effect/schema/Schema';
 
-// Schema for our configuration
+/**
+ * Runtime schema for the manager CLI configuration file.
+ */
 export const configSchema = S.Struct({
   // Node configuration
   node: S.Struct({
     endpoint: S.String.pipe(S.pattern(/^https?:\/\/.+/)),
   }),
-
   // Transaction generator configuration
   generator: S.Struct({
     enabled: S.Boolean,
@@ -14,7 +15,6 @@ export const configSchema = S.Struct({
     batchSize: S.Number.pipe(S.positive(), S.int()),
     intervalMs: S.Number.pipe(S.positive(), S.int()),
   }),
-
   // Logging configuration
   logging: S.Struct({
     level: S.Literal('debug', 'info', 'warn', 'error'),
@@ -22,10 +22,14 @@ export const configSchema = S.Struct({
   }),
 });
 
-// Export type
+/**
+ * TypeScript view of the validated CLI configuration.
+ */
 export type MidgardConfig = S.Schema.Type<typeof configSchema>;
 
-// Default configuration
+/**
+ * Default configuration written on first startup.
+ */
 export const defaultConfig: MidgardConfig = {
   node: {
     endpoint: 'http://localhost:3000',
@@ -42,7 +46,9 @@ export const defaultConfig: MidgardConfig = {
   },
 };
 
-// Configuration errors
+/**
+ * Simple configuration error used by non-Effect call sites.
+ */
 export class ConfigError {
   readonly _tag = 'ConfigError';
   constructor(

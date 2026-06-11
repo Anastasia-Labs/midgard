@@ -1,23 +1,19 @@
-import * as Ledger from "@/database/utils/ledger.js";
 import { clearTable } from "@/database/utils/common.js";
+import * as Ledger from "@/database/utils/ledger.js";
 
 export const tableName = "latest_ledger";
 
-export const insertMultiple = (
-  entries: Ledger.Entry[] | readonly Ledger.Entry[],
-) => Ledger.insertEntries(tableName, entries);
-
-export const retrieveByOutRef = (outRef: Buffer) =>
-  Ledger.retrieveByOutRef(tableName, outRef);
-
-export const retrieveEntries = (outRefs: Buffer[]) =>
-  Ledger.retrieveByOutRefs(tableName, outRefs);
+/**
+ * Inserts multiple latest-ledger entries.
+ */
+export const insertMultiple = (entries: Ledger.Entry[]) =>
+  Ledger.insertEntries(tableName, entries);
 
 export const retrieve = Ledger.retrieveAllEntries(tableName);
 
-export const retrieveNoTimeStamps =
-  Ledger.retrieveAllEntriesNoTimeStamps(tableName);
-
+/**
+ * Deletes latest-ledger entries for the supplied UTxO references.
+ */
 export const clearUTxOs = (refs: Buffer[]) =>
   Ledger.delEntries(tableName, refs);
 

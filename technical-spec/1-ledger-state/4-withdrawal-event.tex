@@ -34,12 +34,13 @@ A withdrawal event in a Midgard block acknowledges that a user has created an L1
             \T{l1\_datum} : & \T{CardanoDatum}
         \end{array} \right\}\\
     \T{WithdrawalValidity} \coloneq\;& \T{WithdrawalIsValid} \\
-                               \mid\;& \T{NonExistentWithdrawalUtxo} \\
-                               \mid\;& \T{SpentWithdrawalUtxo} \\
-                               \mid\;& \T{IncorrectWithdrawalOwner} \\
-                               \mid\;& \T{IncorrectWithdrawalValue} \\
-                               \mid\;& \T{IncorrectWithdrawalSignature} \\
-                               \mid\;& \T{TooManyTokensInWithdrawal}
+	                               \mid\;& \T{NonExistentWithdrawalUtxo} \\
+	                               \mid\;& \T{SpentWithdrawalUtxo} \\
+	                               \mid\;& \T{IncorrectWithdrawalOwner} \\
+	                               \mid\;& \T{IncorrectWithdrawalValue} \\
+	                               \mid\;& \T{IncorrectWithdrawalSignature} \\
+	                               \mid\;& \T{TooManyTokensInWithdrawal} \\
+	                               \mid\;& \T{UnpayableWithdrawalValue}
 \end{align*}
 \endgroup
 
@@ -47,6 +48,10 @@ The \code{WithdrawalId} of a withdrawal event corresponds to one of the inputs s
 This key is needed to identify the L1 withdrawal utxo, ensure that withdrawal events are unique, and detect when an operator has fabricated a withdrawal event without the corresponding withdrawal request existing in the L1 ledger.
 
 If a withdrawal event is permitted by Midgard's ledger rules to be included in a block, its effect is to remove the output at output-reference \code{l2\_outref} from the block's utxo set.
+
+A withdrawal event must not be tagged as \code{WithdrawalIsValid} unless \code{l2\_value} can be paid exactly to \code{l1\_address} with \code{l1\_datum} as a valid Cardano L1 transaction output.
+In particular, the exact \code{l2\_value} must satisfy the L1 output's minimum-ADA and token-bundle constraints without adding reserve funds or any other top-up.
+If exact payment is not possible, the withdrawal must be tagged as \code{UnpayableWithdrawalValue} and follow the invalid-withdrawal refund path.
 
 Suppose the block containing the withdrawal event is confirmed, with the withdrawal event tagged as valid.
 The L1 withdrawal request utxo will be sent to the \code{payout} contract, after which it can be gradually funded from the reserve.

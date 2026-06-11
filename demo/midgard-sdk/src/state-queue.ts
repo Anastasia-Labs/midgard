@@ -1,7 +1,11 @@
+import { canonicalPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
   Address,
   Assets,
+  type BuildTxWithRedeemer,
   Data,
+  fromUnit,
+  fromText,
   LucidEvolution,
   paymentCredentialOf,
   PolicyId,
@@ -11,64 +15,149 @@ import {
   TxSignBuilder,
   UTxO,
 } from "@lucid-evolution/lucid";
-import { ActiveOperatorUpdateCommitmentTimeParams } from "@/active-operators.js";
 import { Data as EffectData, Effect } from "effect";
+
+import { ActiveOperatorSpendRedeemer } from "@/active-operators.js";
 import {
+  AuthenticatedValidator,
   DataCoercionError,
   GenericErrorFields,
   HashingError,
-  MissingDatumError,
-  UnauthenticUtxoError,
   MerkleRoot,
+  MerkleRootSchema,
+  MissingDatumError,
   OutputReferenceSchema,
+  outputReferenceFromUTxO,
   POSIXTime,
-  POSIXTimeSchema,
-  hashHexWithBlake2b224,
-  AuthenticatedValidator,
+  UnauthenticUtxoError,
   utxosAtByNFTPolicyId,
 } from "@/common.js";
 import { LucidError, makeReturn } from "@/common.js";
 import { getStateToken } from "@/internals.js";
 import {
-  NodeDatum,
-  NodeDatumSchema,
-  NODE_ASSET_NAME,
-  NodeKey,
-  getNodeDatumFromUTxO,
-  LinkedListError,
+  EMPTY_MERKLE_TREE_ROOT,
+  GENESIS_HEADER_HASH,
+  GENESIS_PROTOCOL_VERSION,
+} from "@/ledger-constants.js";
+import {
+  castStateQueueNodeToData,
+  ConfirmedState,
+  getHeaderFromStateQueueDatum,
+  hashBlockHeader,
+  Header,
+  HeaderHashSchema,
+  NO_DA_ATTESTATION,
+} from "@/ledger-state.js";
+import {
+  encodeLinkedListNodeView,
+  getLinkedListNodeViewFromUTxO,
   incompleteInitLinkedListTxProgram,
+  LinkedListError,
+  LinkedListNodeView,
+  NodeKey,
+  STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
 } from "@/linked-list.js";
-import { ConfirmedState, Header } from "@/ledger-state.js";
+import { completeTxWithLocalUPLCEvalProgram } from "@/tx-completion.js";
+import {
+  requireInputIndex,
+  requireMintRedeemerIndex,
+  requireOwnMintPurpose,
+  requireReferenceInputIndex,
+  requireSpendRedeemerIndex,
+  requireUniqueOutputIndex,
+} from "@/tx-context-redeemer.js";
+import { dedupeAndSortUtxos } from "@/tx-out-ref-order.js";
 
-export const GENESIS_HEADER_HASH = "00".repeat(28);
-export const GENESIS_UTXO_ROOT = "00".repeat(32);
-export const GENESIS_PROTOCOL_VERSION = 0n;
+export const STATE_QUEUE_ROOT_ASSET_NAME = fromText("MIDGARD_CONFIRMED_STATE");
 
-export const StateQueueConfigSchema = Data.Object({
-  initUTxO: OutputReferenceSchema,
-  refundWaitingPeriod: POSIXTimeSchema,
-});
-export type StateQueueConfig = Data.Static<typeof StateQueueConfigSchema>;
-export const StateQueueConfig =
-  StateQueueConfigSchema as unknown as StateQueueConfig;
+type ActiveOperatorSpendTxRedeemer =
+  | "ListStateTransition"
+  | BuildTxWithRedeemer;
 
-export const StateQueueRedeemerSchema = Data.Enum([
-  Data.Literal("Init"),
-  Data.Literal("Deinit"),
+const encodeActiveOperatorSpendRedeemer = (
+  redeemer: ActiveOperatorSpendTxRedeemer,
+): string | BuildTxWithRedeemer =>
+  typeof redeemer === "function"
+    ? redeemer
+    : Data.to(redeemer as never, ActiveOperatorSpendRedeemer as never);
+
+export const SlashingApproachSchema = Data.Enum([
   Data.Object({
-    CommitBlockHeader: Data.Object({
-      operator: Data.Bytes(),
-      scheduler_ref_input_index: Data.Integer(),
-      active_node_input_index: Data.Integer(),
-      header_node_output_index: Data.Integer(),
-      previous_header_node_output_index: Data.Integer(),
+    SlashActiveOperator: Data.Object({
       active_operators_redeemer_index: Data.Integer(),
     }),
   }),
-  Data.Literal("MergeToConfirmedState"),
+  Data.Object({
+    SlashRetiredOperator: Data.Object({
+      retired_operators_redeemer_index: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    OperatorAlreadySlashed: Data.Object({
+      active_operators_element_ref_input_index: Data.Integer(),
+      retired_operators_element_ref_input_index: Data.Integer(),
+    }),
+  }),
+]);
+export type SlashingApproach = Data.Static<typeof SlashingApproachSchema>;
+export const SlashingApproach =
+  SlashingApproachSchema as unknown as SlashingApproach;
+
+export const BlockRemovalApproachSchema = Data.Enum([
+  Data.Object({
+    RemoveLastFraudulentBlock: Data.Object({
+      anchor_element_input_outref: OutputReferenceSchema,
+      anchor_element_output_index: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    RemoveFraudulentBlocksLink: Data.Object({
+      fraudulent_node_input_outref: OutputReferenceSchema,
+      fraudulent_node_output_index: Data.Integer(),
+    }),
+  }),
+]);
+export type BlockRemovalApproach = Data.Static<
+  typeof BlockRemovalApproachSchema
+>;
+export const BlockRemovalApproach =
+  BlockRemovalApproachSchema as unknown as BlockRemovalApproach;
+
+export const StateQueueRedeemerSchema = Data.Enum([
+  Data.Object({
+    Init: Data.Object({
+      output_index: Data.Integer(),
+    }),
+  }),
+  Data.Literal("Deinit"),
+  Data.Object({
+    CommitBlockHeader: Data.Object({
+      new_block_output_index: Data.Integer(),
+      continued_latest_block_output_index: Data.Integer(),
+      operator: Data.Bytes({ minLength: 28, maxLength: 28 }),
+      scheduler_ref_input_index: Data.Integer(),
+      active_operators_input_index: Data.Integer(),
+      active_operators_redeemer_index: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    MergeToConfirmedState: Data.Object({
+      header_node_key: Data.Bytes(),
+      confirmed_state_input_outref: OutputReferenceSchema,
+      confirmed_state_output_index: Data.Integer(),
+      m_settlement_redeemer_index: Data.Nullable(Data.Integer()),
+      merged_block_transactions_root: MerkleRootSchema,
+      merged_block_deposits_root: MerkleRootSchema,
+      merged_block_withdrawals_root: MerkleRootSchema,
+    }),
+  }),
   Data.Object({
     RemoveFraudulentBlockHeader: Data.Object({
-      fraudulentOperator: Data.Bytes(),
+      fraudulent_operator: Data.Bytes({ minLength: 28, maxLength: 28 }),
+      fraudulent_blocks_header_hash: HeaderHashSchema,
+      slashing_approach: SlashingApproachSchema,
+      fraud_proof_ref_input_index: Data.Integer(),
+      block_removal_approach: BlockRemovalApproachSchema,
     }),
   }),
 ]);
@@ -76,12 +165,29 @@ export type StateQueueRedeemer = Data.Static<typeof StateQueueRedeemerSchema>;
 export const StateQueueRedeemer =
   StateQueueRedeemerSchema as unknown as StateQueueRedeemer;
 
-export type StateQueueDatum = Data.Static<typeof NodeDatumSchema>;
-export const StateQueueDatum = NodeDatumSchema as unknown as StateQueueDatum;
+export const StateQueueSpendRedeemerSchema = Data.Enum([
+  Data.Literal("LinkedListMutation"),
+  Data.Object({
+    AttachDaAttestation: Data.Object({
+      state_queue_input_index: Data.Integer(),
+      da_attestation_mint_redeemer_index: Data.Integer(),
+    }),
+  }),
+]);
+export type StateQueueSpendRedeemer = Data.Static<
+  typeof StateQueueSpendRedeemerSchema
+>;
+export const StateQueueSpendRedeemer =
+  StateQueueSpendRedeemerSchema as unknown as StateQueueSpendRedeemer;
+
+const STATE_QUEUE_LINKED_LIST_MUTATION_REDEEMER = Data.to(
+  "LinkedListMutation" as never,
+  StateQueueSpendRedeemer as never,
+);
 
 export type StateQueueUTxO = {
   utxo: UTxO;
-  datum: StateQueueDatum;
+  datum: LinkedListNodeView;
   assetName: string;
 };
 
@@ -90,8 +196,8 @@ export type StateQueueUTxO = {
  *
  * If the UTxO is the confirmed state node (`datum.key === "Empty"`), it
  * returns `confirmedState.headerHash` extracted from datum.
- * Otherwise, it unsafely drops the first 4 bytes from `assetName` and returns
- * the suffix as the header hash.
+ * Otherwise, it drops the canonical state-queue block prefix from `assetName`
+ * and returns the suffix as the header hash.
  */
 export const headerHashFromStateQueueUTxO = (
   stateQueueUTxO: StateQueueUTxO,
@@ -100,37 +206,162 @@ export const headerHashFromStateQueueUTxO = (
     ? getConfirmedStateFromStateQueueDatum(stateQueueUTxO.datum).pipe(
         Effect.andThen(({ data }) => data.headerHash),
       )
-    : Effect.succeed(stateQueueUTxO.assetName.slice(NODE_ASSET_NAME.length));
+    : Effect.succeed(
+        stateQueueUTxO.assetName.slice(
+          STATE_QUEUE_NODE_ASSET_NAME_PREFIX.length,
+        ),
+      );
 
 export type StateQueueFetchConfig = {
   stateQueueAddress: Address;
   stateQueuePolicyId: PolicyId;
 };
 
-export type StateQueueCommitBlockParams = {
-  anchorUTxO: StateQueueUTxO;
-  updatedAnchorDatum: StateQueueDatum;
-  newHeader: Header;
-  stateQueueSpendingScript: Script;
-  policyId: PolicyId;
-  stateQueueMintingScript: Script;
-};
-
-export type StateQueueMergeParams = {
-  confirmedUTxO: StateQueueUTxO;
-  firstBlockUTxO: StateQueueUTxO;
-  stateQueueSpendingScript: Script;
-  stateQueueMintingScript: Script;
-};
-
 export type StateQueueInitParams = {
   validator: AuthenticatedValidator;
   genesisTime: POSIXTime; // Just pass the time, not the full state
+  lovelace?: bigint;
 };
 
-export type StateQueueDeinitParams = {};
+/**
+ * Emulator/test helper for exercising the real state_queue CommitBlockHeader
+ * mint redeemer. Final input, output, reference-input, and paired spend redeemer
+ * indexes are resolved from Lucid's `BuildTxWithRedeemer` context after
+ * balancing. This helper validates the state-queue side of the commit path;
+ * callers still need the paired active-operators spend to be protocol-valid
+ * outside focused tests.
+ */
+export type EmulatorStateQueueCommitBlockHeaderParams = {
+  anchorUTxO: StateQueueUTxO;
+  newHeader: Header;
+  additionalInputs?: readonly UTxO[];
+  validFrom?: bigint;
+  validTo?: bigint;
+  schedulerRefInput: UTxO;
+  additionalRefInputs?: readonly UTxO[];
+  activeOperatorInput: UTxO;
+  activeOperatorSpendRedeemer: ActiveOperatorSpendTxRedeemer;
+  activeOperatorSpendingScript: Script;
+  continuedActiveOperatorOutput?: {
+    readonly address: Address;
+    readonly datum: string;
+    readonly assets: Assets;
+  };
+  stateQueueSpendingScript: Script;
+  stateQueueMintingScript: Script;
+};
 
-export type StateQueueRemoveBlockParams = {};
+type AlreadySlashedRemoveParams = {
+  readonly kind: "operatorAlreadySlashed";
+  readonly activeOperatorsElementRefInput: UTxO;
+  readonly retiredOperatorsElementRefInput: UTxO;
+};
+
+type SlashActiveOperatorRemoveParams = {
+  readonly kind: "slashActiveOperator";
+  /**
+   * Supports the active-operators `SlashOperator` mint path. For full
+   * active-operator validation, provide the anchor/node inputs, continued
+   * anchor output, hub-oracle reference input, and scheduler sync data
+   * required by the slashing redeemer.
+   */
+  readonly activeOperatorsAssetsToBurn: Assets;
+  readonly activeOperatorsMintRedeemer: BuildTxWithRedeemer;
+  readonly activeOperatorsMintingScript: Script;
+  readonly activeOperatorInputs: readonly UTxO[];
+  readonly activeOperatorSpendingScript?: Script;
+  readonly activeOperatorSpendRedeemer?: ActiveOperatorSpendTxRedeemer;
+  readonly continuedActiveOperatorAnchorOutput?: {
+    readonly address: Address;
+    readonly datum: string;
+    readonly assets: Assets;
+  };
+  readonly schedulerSpend?: {
+    readonly input: UTxO;
+    readonly redeemer: BuildTxWithRedeemer;
+    readonly script: Script;
+    readonly continuedOutput: {
+      readonly address: Address;
+      readonly datum: string;
+      readonly assets: Assets;
+    };
+  };
+};
+
+type SlashRetiredOperatorRemoveParams = {
+  readonly kind: "slashRetiredOperator";
+  readonly retiredOperatorsAssetsToBurn: Assets;
+  readonly retiredOperatorsMintRedeemer: BuildTxWithRedeemer;
+  readonly retiredOperatorsMintingScript: Script;
+  readonly retiredOperatorInputs: readonly UTxO[];
+  readonly retiredOperatorSpendingScript?: Script;
+  readonly retiredOperatorSpendRedeemer?: string | BuildTxWithRedeemer;
+  readonly continuedRetiredOperatorAnchorOutput?: {
+    readonly address: Address;
+    readonly datum: string;
+    readonly assets: Assets;
+  };
+};
+
+export type EmulatorStateQueueRemoveSlashingParams =
+  | AlreadySlashedRemoveParams
+  | SlashActiveOperatorRemoveParams
+  | SlashRetiredOperatorRemoveParams;
+
+/**
+ * Emulator/test helper for RemoveFraudulentBlockHeader +
+ * RemoveLastFraudulentBlock. Final layout-sensitive indexes are resolved from
+ * Lucid's `BuildTxWithRedeemer` context after balancing.
+ */
+type EmulatorStateQueueRemoveLastFraudulentBlockHeaderCommonParams = {
+  anchorUTxO: StateQueueUTxO;
+  fraudulentBlockUTxO: StateQueueUTxO;
+  additionalInputs?: readonly UTxO[];
+  validFrom?: bigint;
+  validTo?: bigint;
+  fraudulentOperator: string;
+  fraudulentBlocksHeaderHash?: string;
+  fraudProofRefInput: UTxO;
+  additionalRefInputs?: readonly UTxO[];
+  stateQueueSpendingScript: Script;
+  stateQueueMintingScript: Script;
+  referenceScripts?: StateQueueRemoveReferenceScriptUTxOs;
+  slashing: EmulatorStateQueueRemoveSlashingParams;
+  stateQueueMintRedeemer?: BuildTxWithRedeemer;
+};
+
+export type EmulatorStateQueueRemoveLastFraudulentBlockHeaderParams =
+  EmulatorStateQueueRemoveLastFraudulentBlockHeaderCommonParams;
+
+type EmulatorStateQueueRemoveFraudulentBlocksLinkParams = {
+  fraudulentBlockUTxO: StateQueueUTxO;
+  removedBlockUTxO: StateQueueUTxO;
+  additionalInputs?: readonly UTxO[];
+  validFrom?: bigint;
+  validTo?: bigint;
+  fraudulentOperator: string;
+  fraudulentBlocksHeaderHash: string;
+  fraudProofRefInput: UTxO;
+  additionalRefInputs?: readonly UTxO[];
+  stateQueueSpendingScript: Script;
+  stateQueueMintingScript: Script;
+  referenceScripts?: StateQueueRemoveReferenceScriptUTxOs;
+  slashing: EmulatorStateQueueRemoveSlashingParams;
+  stateQueueMintRedeemer?: BuildTxWithRedeemer;
+};
+
+export type EmulatorStateQueueRemoveFraudulentBlocksLinkHeaderParams =
+  EmulatorStateQueueRemoveFraudulentBlocksLinkParams;
+
+export type StateQueueRemoveReferenceScriptUTxOs = {
+  readonly stateQueueSpend?: UTxO;
+  readonly stateQueueMint?: UTxO;
+  readonly activeOperatorsSpend?: UTxO;
+  readonly activeOperatorsMint?: UTxO;
+  readonly retiredOperatorsSpend?: UTxO;
+  readonly retiredOperatorsMint?: UTxO;
+  readonly schedulerSpend?: UTxO;
+};
 
 /**
  * Validates correctness of datum, and having a single NFT.
@@ -143,7 +374,7 @@ export const utxoToStateQueueUTxO = (
   DataCoercionError | MissingDatumError | UnauthenticUtxoError
 > =>
   Effect.gen(function* () {
-    const datum = yield* getNodeDatumFromUTxO(utxo);
+    const datum = yield* getLinkedListNodeViewFromUTxO(utxo);
     const [sym, assetName] = yield* getStateToken(utxo.assets);
     if (sym !== nftPolicy) {
       yield* Effect.fail(
@@ -179,22 +410,22 @@ export const findLinkStateQueueUTxO = (
         cause: `Given link is "Empty"`,
       }),
     );
-  } else {
-    const foundLink = utxos.find(
-      (u: StateQueueUTxO) =>
-        u.datum.key !== "Empty" && u.datum.key.Key.key === link.Key.key,
-    );
-    if (foundLink) {
-      return Effect.succeed(foundLink);
-    } else {
-      return Effect.fail(
-        new LinkedListError({
-          message: errorMessage,
-          cause: `Link not found among given state queue UTxOs`,
-        }),
-      );
-    }
   }
+
+  const foundLink = utxos.find(
+    (u: StateQueueUTxO) =>
+      u.datum.key !== "Empty" && u.datum.key.Key.key === link.Key.key,
+  );
+  if (foundLink) {
+    return Effect.succeed(foundLink);
+  }
+
+  return Effect.fail(
+    new LinkedListError({
+      message: errorMessage,
+      cause: `Link not found among given state queue UTxOs`,
+    }),
+  );
 };
 
 /**
@@ -221,26 +452,25 @@ export const sortStateQueueUTxOs = (
         }),
       ),
     );
-    if (filteredForConfirmedState.length === 1) {
-      const { utxo: confirmedStateUTxO, link: linkToOldestBlock } =
-        filteredForConfirmedState[0];
-      const sorted: StateQueueUTxO[] = [confirmedStateUTxO];
-      let link = linkToOldestBlock;
-      while (link !== "Empty") {
-        const linkUTxO = yield* findLinkStateQueueUTxO(link, stateQueueUTxOs);
-        sorted.push(linkUTxO);
-        link = linkUTxO.datum.next;
-      }
-      return sorted;
-    } else {
-      yield* Effect.fail(
+    if (filteredForConfirmedState.length !== 1) {
+      return yield* Effect.fail(
         new LinkedListError({
           message: `Failed to sort state queue UTxOs`,
           cause: `Confirmed state (root node) not found among state queue UTxOs`,
         }),
       );
-      return [];
     }
+
+    const { utxo: confirmedStateUTxO, link: linkToOldestBlock } =
+      filteredForConfirmedState[0];
+    const sorted: StateQueueUTxO[] = [confirmedStateUTxO];
+    let link = linkToOldestBlock;
+    while (link !== "Empty") {
+      const linkUTxO = yield* findLinkStateQueueUTxO(link, stateQueueUTxOs);
+      sorted.push(linkUTxO);
+      link = linkUTxO.datum.next;
+    }
+    return sorted;
   });
 
 /**
@@ -249,7 +479,7 @@ export const sortStateQueueUTxOs = (
  * a `ConfirmedState`.
  */
 export const getConfirmedStateFromStateQueueDatum = (
-  nodeDatum: StateQueueDatum,
+  nodeDatum: LinkedListNodeView,
 ): Effect.Effect<
   { data: ConfirmedState; link: NodeKey },
   DataCoercionError
@@ -279,27 +509,581 @@ export const getConfirmedStateFromStateQueueDatum = (
   }
 };
 
-// TODO: this function is from ledger-state, mb it should be moved from here
-export const getHeaderFromStateQueueDatum = (
-  nodeDatum: StateQueueDatum,
-): Effect.Effect<Header, DataCoercionError> =>
+const outputDatumCborMatches = (
+  output: { readonly datum?: string | null },
+  datumCbor: string,
+): boolean =>
+  output.datum != null &&
+  canonicalPlutusDataCbor(output.datum) === canonicalPlutusDataCbor(datumCbor);
+
+const requireSingleNonAdaPolicyId = (
+  assets: Assets,
+  label: string,
+): PolicyId => {
+  const policyIds = new Set(
+    Object.entries(assets)
+      .filter(([unit, quantity]) => unit !== "lovelace" && quantity !== 0n)
+      .map(([unit]) => fromUnit(unit).policyId),
+  );
+  if (policyIds.size !== 1) {
+    throw new Error(
+      `${label} expected exactly one non-ADA policy, got ${policyIds.size.toString()}`,
+    );
+  }
+  return [...policyIds][0]!;
+};
+
+const resolveRemoveSlashingApproach = (
+  ctx: Parameters<BuildTxWithRedeemer>[0],
+  slashing: EmulatorStateQueueRemoveSlashingParams,
+): SlashingApproach => {
+  switch (slashing.kind) {
+    case "operatorAlreadySlashed":
+      return {
+        OperatorAlreadySlashed: {
+          active_operators_element_ref_input_index: requireReferenceInputIndex(
+            ctx,
+            slashing.activeOperatorsElementRefInput,
+            "state-queue remove active-operators slashed witness",
+          ),
+          retired_operators_element_ref_input_index: requireReferenceInputIndex(
+            ctx,
+            slashing.retiredOperatorsElementRefInput,
+            "state-queue remove retired-operators slashed witness",
+          ),
+        },
+      };
+    case "slashActiveOperator":
+      return {
+        SlashActiveOperator: {
+          active_operators_redeemer_index: requireMintRedeemerIndex(
+            ctx,
+            requireSingleNonAdaPolicyId(
+              slashing.activeOperatorsAssetsToBurn,
+              "state-queue remove active-operators burn",
+            ),
+            "state-queue remove active-operators burn",
+          ),
+        },
+      };
+    case "slashRetiredOperator":
+      return {
+        SlashRetiredOperator: {
+          retired_operators_redeemer_index: requireMintRedeemerIndex(
+            ctx,
+            requireSingleNonAdaPolicyId(
+              slashing.retiredOperatorsAssetsToBurn,
+              "state-queue remove retired-operators burn",
+            ),
+            "state-queue remove retired-operators burn",
+          ),
+        },
+      };
+  }
+};
+
+const removeSlashingReferenceInputs = (
+  slashing: EmulatorStateQueueRemoveSlashingParams,
+): readonly UTxO[] =>
+  slashing.kind === "operatorAlreadySlashed"
+    ? [
+        slashing.activeOperatorsElementRefInput,
+        slashing.retiredOperatorsElementRefInput,
+      ]
+    : [];
+
+const collectRemoveSlashingInputs = (
+  tx: TxBuilder,
+  slashing: EmulatorStateQueueRemoveSlashingParams,
+  referenceScripts: StateQueueRemoveReferenceScriptUTxOs | undefined,
+): TxBuilder => {
+  if (slashing.kind === "operatorAlreadySlashed") {
+    return tx;
+  }
+
+  if (slashing.kind === "slashActiveOperator") {
+    let updated = tx
+      .collectFrom(
+        [...slashing.activeOperatorInputs],
+        encodeActiveOperatorSpendRedeemer(
+          slashing.activeOperatorSpendRedeemer ?? "ListStateTransition",
+        ),
+      )
+      .mintAssets(
+        slashing.activeOperatorsAssetsToBurn,
+        slashing.activeOperatorsMintRedeemer,
+      );
+    if (referenceScripts?.activeOperatorsMint === undefined) {
+      updated = updated.attach.Script(slashing.activeOperatorsMintingScript);
+    }
+    if (slashing.continuedActiveOperatorAnchorOutput !== undefined) {
+      updated = updated.pay.ToContract(
+        slashing.continuedActiveOperatorAnchorOutput.address,
+        {
+          kind: "inline",
+          value: slashing.continuedActiveOperatorAnchorOutput.datum,
+        },
+        slashing.continuedActiveOperatorAnchorOutput.assets,
+      );
+    }
+    if (slashing.schedulerSpend !== undefined) {
+      updated = updated.pay
+        .ToContract(
+          slashing.schedulerSpend.continuedOutput.address,
+          {
+            kind: "inline",
+            value: slashing.schedulerSpend.continuedOutput.datum,
+          },
+          slashing.schedulerSpend.continuedOutput.assets,
+        )
+        .collectFrom(
+          [slashing.schedulerSpend.input],
+          slashing.schedulerSpend.redeemer,
+        );
+      if (referenceScripts?.schedulerSpend === undefined) {
+        updated = updated.attach.Script(slashing.schedulerSpend.script);
+      }
+    }
+    if (
+      slashing.activeOperatorSpendingScript !== undefined &&
+      referenceScripts?.activeOperatorsSpend === undefined
+    ) {
+      updated = updated.attach.Script(slashing.activeOperatorSpendingScript);
+    }
+    return updated;
+  }
+
+  let updated = tx
+    .collectFrom(
+      [...slashing.retiredOperatorInputs],
+      slashing.retiredOperatorSpendRedeemer ?? Data.void(),
+    )
+    .mintAssets(
+      slashing.retiredOperatorsAssetsToBurn,
+      slashing.retiredOperatorsMintRedeemer,
+    );
+  if (referenceScripts?.retiredOperatorsMint === undefined) {
+    updated = updated.attach.Script(slashing.retiredOperatorsMintingScript);
+  }
+  if (slashing.continuedRetiredOperatorAnchorOutput !== undefined) {
+    updated = updated.pay.ToContract(
+      slashing.continuedRetiredOperatorAnchorOutput.address,
+      {
+        kind: "inline",
+        value: slashing.continuedRetiredOperatorAnchorOutput.datum,
+      },
+      slashing.continuedRetiredOperatorAnchorOutput.assets,
+    );
+  }
+  if (
+    slashing.retiredOperatorSpendingScript !== undefined &&
+    referenceScripts?.retiredOperatorsSpend === undefined
+  ) {
+    updated = updated.attach.Script(slashing.retiredOperatorSpendingScript);
+  }
+  return updated;
+};
+
+type StateQueueRemovalTxAssemblyParams = {
+  readonly collectedStateQueueInputs: readonly UTxO[];
+  readonly continuedOutput: {
+    readonly datum: string;
+    readonly assets: Assets;
+  };
+  readonly assetsToBurn: Assets;
+  readonly stateQueueMintRedeemer: BuildTxWithRedeemer;
+  readonly additionalInputs?: readonly UTxO[];
+  readonly validFrom?: bigint;
+  readonly validTo?: bigint;
+  readonly fraudProofRefInput: UTxO;
+  readonly additionalRefInputs?: readonly UTxO[];
+  readonly stateQueueSpendingScript: Script;
+  readonly stateQueueMintingScript: Script;
+  readonly referenceScripts?: StateQueueRemoveReferenceScriptUTxOs;
+  readonly slashing: EmulatorStateQueueRemoveSlashingParams;
+};
+
+const buildStateQueueRemovalTx = (
+  lucid: LucidEvolution,
+  stateQueueAddress: Address,
+  params: StateQueueRemovalTxAssemblyParams,
+): TxBuilder => {
+  const additionalInputs = params.additionalInputs ?? [];
+  const referenceScriptInputs = Object.values(
+    params.referenceScripts ?? {},
+  ).filter((utxo): utxo is UTxO => utxo !== undefined);
+  const referenceInputs = dedupeAndSortUtxos([
+    params.fraudProofRefInput,
+    ...(params.additionalRefInputs ?? []),
+    ...removeSlashingReferenceInputs(params.slashing),
+    ...referenceScriptInputs,
+  ]);
+  let tx = lucid.newTx();
+  if (params.validFrom !== undefined) {
+    tx = tx.validFrom(Number(params.validFrom));
+  }
+  if (params.validTo !== undefined) {
+    tx = tx.validTo(Number(params.validTo));
+  }
+  if (additionalInputs.length > 0) {
+    tx = tx.collectFrom([...additionalInputs]);
+  }
+  tx = tx
+    .collectFrom(
+      [...params.collectedStateQueueInputs],
+      STATE_QUEUE_LINKED_LIST_MUTATION_REDEEMER,
+    )
+    .readFrom(referenceInputs)
+    .pay.ToContract(
+      stateQueueAddress,
+      { kind: "inline", value: params.continuedOutput.datum },
+      params.continuedOutput.assets,
+    )
+    .mintAssets(params.assetsToBurn, params.stateQueueMintRedeemer);
+
+  if (params.referenceScripts?.stateQueueSpend === undefined) {
+    tx = tx.attach.Script(params.stateQueueSpendingScript);
+  }
+  if (params.referenceScripts?.stateQueueMint === undefined) {
+    tx = tx.attach.Script(params.stateQueueMintingScript);
+  }
+
+  return collectRemoveSlashingInputs(
+    tx,
+    params.slashing,
+    params.referenceScripts,
+  );
+};
+
+export const incompleteEmulatorCommitBlockHeaderTxProgram = (
+  lucid: LucidEvolution,
+  config: StateQueueFetchConfig,
+  params: EmulatorStateQueueCommitBlockHeaderParams,
+): Effect.Effect<TxBuilder, HashingError> =>
   Effect.gen(function* () {
-    const header: Header = yield* Effect.try({
-      try: () => Data.castFrom(nodeDatum.data, Header),
-      catch: (e) =>
-        new DataCoercionError({
-          message: "Failed coercing block's datum data to `Header`",
-          cause: e,
-        }),
-    });
-    return header;
+    const newHeaderHash = yield* hashBlockHeader(params.newHeader);
+    const newBlockAssetName =
+      STATE_QUEUE_NODE_ASSET_NAME_PREFIX + newHeaderHash;
+    const newBlockAssets: Assets = {
+      [toUnit(config.stateQueuePolicyId, newBlockAssetName)]: 1n,
+    };
+    const continuedAnchorDatum: LinkedListNodeView = {
+      ...params.anchorUTxO.datum,
+      next: { Key: { key: newHeaderHash } },
+    };
+    const newBlockDatum: LinkedListNodeView = {
+      key: { Key: { key: newHeaderHash } },
+      next: "Empty",
+      data: castStateQueueNodeToData({
+        header: params.newHeader,
+        da_attestation: NO_DA_ATTESTATION,
+      }) as LinkedListNodeView["data"],
+    };
+    const newBlockDatumCbor = encodeLinkedListNodeView(newBlockDatum);
+    const continuedAnchorDatumCbor =
+      encodeLinkedListNodeView(continuedAnchorDatum);
+    const continuedAnchorUnit = toUnit(
+      config.stateQueuePolicyId,
+      params.anchorUTxO.assetName,
+    );
+    const stateQueueCommitRedeemer = ((ctx) =>
+      Data.to(
+        {
+          CommitBlockHeader: {
+            new_block_output_index: requireUniqueOutputIndex(
+              ctx.outputs,
+              (output) =>
+                output.address === config.stateQueueAddress &&
+                outputDatumCborMatches(output, newBlockDatumCbor) &&
+                (output.assets[
+                  toUnit(config.stateQueuePolicyId, newBlockAssetName)
+                ] ?? 0n) === 1n,
+              "emulator state-queue commit new block",
+            ),
+            continued_latest_block_output_index: requireUniqueOutputIndex(
+              ctx.outputs,
+              (output) =>
+                output.address === config.stateQueueAddress &&
+                outputDatumCborMatches(output, continuedAnchorDatumCbor) &&
+                (output.assets[continuedAnchorUnit] ?? 0n) === 1n,
+              "emulator state-queue commit continued latest block",
+            ),
+            operator: params.newHeader.operatorVkey,
+            scheduler_ref_input_index: requireReferenceInputIndex(
+              ctx,
+              params.schedulerRefInput,
+              "emulator state-queue commit scheduler",
+            ),
+            active_operators_input_index: requireInputIndex(
+              ctx,
+              params.activeOperatorInput,
+              "emulator state-queue commit active operator",
+            ),
+            active_operators_redeemer_index: requireSpendRedeemerIndex(
+              ctx,
+              params.activeOperatorInput,
+              "emulator state-queue commit active operator",
+            ),
+          },
+        } satisfies StateQueueRedeemer,
+        StateQueueRedeemer,
+      )) satisfies BuildTxWithRedeemer;
+
+    const additionalInputs = params.additionalInputs ?? [];
+    let tx = lucid.newTx();
+    if (additionalInputs.length > 0) {
+      tx = tx.collectFrom([...additionalInputs]);
+    }
+    tx = tx
+      .collectFrom(
+        [params.anchorUTxO.utxo],
+        STATE_QUEUE_LINKED_LIST_MUTATION_REDEEMER,
+      )
+      .collectFrom(
+        [params.activeOperatorInput],
+        encodeActiveOperatorSpendRedeemer(params.activeOperatorSpendRedeemer),
+      )
+      .readFrom([
+        ...(params.additionalRefInputs ?? []),
+        params.schedulerRefInput,
+      ])
+      .pay.ToContract(
+        config.stateQueueAddress,
+        { kind: "inline", value: newBlockDatumCbor },
+        newBlockAssets,
+      )
+      .pay.ToContract(
+        config.stateQueueAddress,
+        {
+          kind: "inline",
+          value: continuedAnchorDatumCbor,
+        },
+        params.anchorUTxO.utxo.assets,
+      )
+      .mintAssets(newBlockAssets, stateQueueCommitRedeemer)
+      .addSignerKey(params.newHeader.operatorVkey)
+      .attach.Script(params.stateQueueSpendingScript)
+      .attach.Script(params.stateQueueMintingScript)
+      .attach.Script(params.activeOperatorSpendingScript);
+
+    if (params.validFrom !== undefined) {
+      tx = tx.validFrom(Number(params.validFrom));
+    }
+    if (params.validTo !== undefined) {
+      tx = tx.validTo(Number(params.validTo));
+    }
+    if (params.continuedActiveOperatorOutput !== undefined) {
+      tx = tx.pay.ToContract(
+        params.continuedActiveOperatorOutput.address,
+        {
+          kind: "inline",
+          value: params.continuedActiveOperatorOutput.datum,
+        },
+        params.continuedActiveOperatorOutput.assets,
+      );
+    }
+
+    return tx;
   });
 
-// TODO: this function is from ledger-state, mb it should be moved from here
-export const hashBlockHeader = (
-  header: Header,
-): Effect.Effect<string, HashingError> =>
-  hashHexWithBlake2b224(Data.to(header, Header));
+/**
+ * Production-shaped RemoveFraudulentBlockHeader + RemoveLastFraudulentBlock
+ * builder. Reference-script UTxOs are read as ordinary reference inputs; when
+ * one is absent the matching inline script is attached for test/emulator flows.
+ */
+export const incompleteRemoveLastFraudulentBlockHeaderTxProgram = (
+  lucid: LucidEvolution,
+  config: StateQueueFetchConfig,
+  params: EmulatorStateQueueRemoveLastFraudulentBlockHeaderParams,
+): TxBuilder => {
+  const fraudulentBlocksHeaderHash =
+    params.fraudulentBlocksHeaderHash ??
+    params.fraudulentBlockUTxO.assetName.slice(
+      STATE_QUEUE_NODE_ASSET_NAME_PREFIX.length,
+    );
+  const assetsToBurn: Assets = {
+    [toUnit(config.stateQueuePolicyId, params.fraudulentBlockUTxO.assetName)]:
+      -1n,
+  };
+  const continuedAnchorDatum: LinkedListNodeView = {
+    ...params.anchorUTxO.datum,
+    next: "Empty",
+  };
+  const continuedAnchorDatumCbor =
+    encodeLinkedListNodeView(continuedAnchorDatum);
+  const continuedAnchorUnit = toUnit(
+    config.stateQueuePolicyId,
+    params.anchorUTxO.assetName,
+  );
+  const defaultStateQueueMintRedeemer = ((ctx) => {
+    requireOwnMintPurpose(
+      ctx,
+      config.stateQueuePolicyId,
+      "emulator state-queue remove burn",
+    );
+    return Data.to(
+      {
+        RemoveFraudulentBlockHeader: {
+          fraudulent_operator: params.fraudulentOperator,
+          fraudulent_blocks_header_hash: fraudulentBlocksHeaderHash,
+          slashing_approach: resolveRemoveSlashingApproach(
+            ctx,
+            params.slashing,
+          ),
+          fraud_proof_ref_input_index: requireReferenceInputIndex(
+            ctx,
+            params.fraudProofRefInput,
+            "emulator state-queue remove fraud proof",
+          ),
+          block_removal_approach: {
+            RemoveLastFraudulentBlock: {
+              anchor_element_input_outref: outputReferenceFromUTxO(
+                params.anchorUTxO.utxo,
+              ),
+              anchor_element_output_index: requireUniqueOutputIndex(
+                ctx.outputs,
+                (output) =>
+                  output.address === config.stateQueueAddress &&
+                  outputDatumCborMatches(output, continuedAnchorDatumCbor) &&
+                  (output.assets[continuedAnchorUnit] ?? 0n) === 1n,
+                "emulator state-queue remove continued anchor",
+              ),
+            },
+          },
+        },
+      } satisfies StateQueueRedeemer,
+      StateQueueRedeemer,
+    );
+  }) satisfies BuildTxWithRedeemer;
+
+  return buildStateQueueRemovalTx(lucid, config.stateQueueAddress, {
+    collectedStateQueueInputs: [
+      params.anchorUTxO.utxo,
+      params.fraudulentBlockUTxO.utxo,
+    ],
+    continuedOutput: {
+      datum: continuedAnchorDatumCbor,
+      assets: params.anchorUTxO.utxo.assets,
+    },
+    assetsToBurn,
+    stateQueueMintRedeemer:
+      params.stateQueueMintRedeemer ?? defaultStateQueueMintRedeemer,
+    additionalInputs: params.additionalInputs,
+    validFrom: params.validFrom,
+    validTo: params.validTo,
+    fraudProofRefInput: params.fraudProofRefInput,
+    additionalRefInputs: params.additionalRefInputs,
+    stateQueueSpendingScript: params.stateQueueSpendingScript,
+    stateQueueMintingScript: params.stateQueueMintingScript,
+    referenceScripts: params.referenceScripts,
+    slashing: params.slashing,
+  });
+};
+
+/**
+ * Production-shaped RemoveFraudulentBlockHeader +
+ * RemoveFraudulentBlocksLink builder. This removes the immediate successor of
+ * a fraud-proved state-queue block and preserves the fraud-proved block with
+ * its successor link spliced forward.
+ */
+export const incompleteRemoveFraudulentBlocksLinkTxProgram = (
+  lucid: LucidEvolution,
+  config: StateQueueFetchConfig,
+  params: EmulatorStateQueueRemoveFraudulentBlocksLinkHeaderParams,
+): TxBuilder => {
+  const removedBlockHash = params.removedBlockUTxO.assetName.slice(
+    STATE_QUEUE_NODE_ASSET_NAME_PREFIX.length,
+  );
+  if (
+    params.fraudulentBlockUTxO.datum.next === "Empty" ||
+    params.fraudulentBlockUTxO.datum.next.Key.key !== removedBlockHash
+  ) {
+    throw new Error(
+      "RemoveFraudulentBlocksLink requires the removed block to be the immediate successor of the fraud-proved block.",
+    );
+  }
+
+  const assetsToBurn: Assets = {
+    [toUnit(config.stateQueuePolicyId, params.removedBlockUTxO.assetName)]: -1n,
+  };
+  const continuedFraudulentNodeDatum: LinkedListNodeView = {
+    ...params.fraudulentBlockUTxO.datum,
+    next: params.removedBlockUTxO.datum.next,
+  };
+  const continuedFraudulentNodeDatumCbor = encodeLinkedListNodeView(
+    continuedFraudulentNodeDatum,
+  );
+  const continuedFraudulentNodeUnit = toUnit(
+    config.stateQueuePolicyId,
+    params.fraudulentBlockUTxO.assetName,
+  );
+  const defaultStateQueueMintRedeemer = ((ctx) => {
+    requireOwnMintPurpose(
+      ctx,
+      config.stateQueuePolicyId,
+      "state-queue remove fraudulent successor burn",
+    );
+    return Data.to(
+      {
+        RemoveFraudulentBlockHeader: {
+          fraudulent_operator: params.fraudulentOperator,
+          fraudulent_blocks_header_hash: params.fraudulentBlocksHeaderHash,
+          slashing_approach: resolveRemoveSlashingApproach(
+            ctx,
+            params.slashing,
+          ),
+          fraud_proof_ref_input_index: requireReferenceInputIndex(
+            ctx,
+            params.fraudProofRefInput,
+            "state-queue remove fraud proof",
+          ),
+          block_removal_approach: {
+            RemoveFraudulentBlocksLink: {
+              fraudulent_node_input_outref: outputReferenceFromUTxO(
+                params.fraudulentBlockUTxO.utxo,
+              ),
+              fraudulent_node_output_index: requireUniqueOutputIndex(
+                ctx.outputs,
+                (output) =>
+                  output.address === config.stateQueueAddress &&
+                  outputDatumCborMatches(
+                    output,
+                    continuedFraudulentNodeDatumCbor,
+                  ) &&
+                  (output.assets[continuedFraudulentNodeUnit] ?? 0n) === 1n,
+                "state-queue remove continued fraud-proved block",
+              ),
+            },
+          },
+        },
+      } satisfies StateQueueRedeemer,
+      StateQueueRedeemer,
+    );
+  }) satisfies BuildTxWithRedeemer;
+
+  return buildStateQueueRemovalTx(lucid, config.stateQueueAddress, {
+    collectedStateQueueInputs: [
+      params.fraudulentBlockUTxO.utxo,
+      params.removedBlockUTxO.utxo,
+    ],
+    continuedOutput: {
+      datum: continuedFraudulentNodeDatumCbor,
+      assets: params.fraudulentBlockUTxO.utxo.assets,
+    },
+    assetsToBurn,
+    stateQueueMintRedeemer:
+      params.stateQueueMintRedeemer ?? defaultStateQueueMintRedeemer,
+    additionalInputs: params.additionalInputs,
+    validFrom: params.validFrom,
+    validTo: params.validTo,
+    fraudProofRefInput: params.fraudProofRefInput,
+    additionalRefInputs: params.additionalRefInputs,
+    stateQueueSpendingScript: params.stateQueueSpendingScript,
+    stateQueueMintingScript: params.stateQueueMintingScript,
+    referenceScripts: params.referenceScripts,
+    slashing: params.slashing,
+  });
+};
 
 /**
  * Given the latest block in state queue, along with the required tree roots,
@@ -316,14 +1100,14 @@ export const hashBlockHeader = (
  */
 export const updateLatestBlocksDatumAndGetTheNewHeaderProgram = (
   lucid: LucidEvolution,
-  latestBlocksDatum: StateQueueDatum,
+  latestBlocksDatum: LinkedListNodeView,
   newUTxOsRoot: MerkleRoot,
   transactionsRoot: MerkleRoot,
   depositsRoot: MerkleRoot,
   withdrawalsRoot: MerkleRoot,
   endTime: POSIXTime,
 ): Effect.Effect<
-  { nodeDatum: StateQueueDatum; header: Header },
+  { nodeDatum: LinkedListNodeView; header: Header },
   DataCoercionError | LucidError | HashingError
 > =>
   Effect.gen(function* () {
@@ -379,16 +1163,7 @@ export const updateLatestBlocksDatumAndGetTheNewHeaderProgram = (
           ...latestBlocksDatum,
           next: { Key: { key: newHeaderHash } },
         },
-        header: {
-          ...latestHeader,
-          prevUtxosRoot: latestHeader.utxosRoot,
-          utxosRoot: newUTxOsRoot,
-          transactionsRoot,
-          startTime: latestHeader.endTime,
-          endTime,
-          prevHeaderHash,
-          operatorVkey: pubKeyHash,
-        },
+        header: newHeader,
       };
     }
   });
@@ -408,13 +1183,13 @@ export const updateLatestBlocksDatumAndGetTheNewHeaderProgram = (
  */
 export const updateLatestBlocksDatumAndGetTheNewHeader = (
   lucid: LucidEvolution,
-  latestBlocksDatum: StateQueueDatum,
+  latestBlocksDatum: LinkedListNodeView,
   newUTxOsRoot: MerkleRoot,
   transactionsRoot: MerkleRoot,
   depositsRoot: MerkleRoot,
   withdrawalsRoot: MerkleRoot,
   endTime: POSIXTime,
-): Promise<{ nodeDatum: StateQueueDatum; header: Header }> =>
+): Promise<{ nodeDatum: LinkedListNodeView; header: Header }> =>
   makeReturn(
     updateLatestBlocksDatumAndGetTheNewHeaderProgram(
       lucid,
@@ -424,112 +1199,6 @@ export const updateLatestBlocksDatumAndGetTheNewHeader = (
       depositsRoot,
       withdrawalsRoot,
       endTime,
-    ),
-  ).unsafeRun();
-
-/**
- * Builds portions of a tx required for submitting a new block, using the
- * provided `LucidEvolution` instance, fetch config, and required parameters.
- *
- * @param lucid - The `LucidEvolution` API object.
- * @param fetchConfig - Configuration values required to know where to look for which NFT.
- * @param commitParams - Parameters required for committing to state queue.
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteCommitBlockHeaderTxProgram = (
-  lucid: LucidEvolution,
-  config: StateQueueFetchConfig,
-  {
-    anchorUTxO: latestBlock,
-    updatedAnchorDatum: updatedNodeDatum,
-    newHeader,
-    stateQueueSpendingScript,
-    policyId,
-    stateQueueMintingScript,
-  }: StateQueueCommitBlockParams,
-): Effect.Effect<TxBuilder, HashingError> =>
-  Effect.gen(function* () {
-    const newHeaderHash = yield* hashBlockHeader(newHeader);
-    const assets: Assets = {
-      [toUnit(policyId, NODE_ASSET_NAME + newHeaderHash)]: 1n,
-    };
-
-    const newNodeDatum: StateQueueDatum = {
-      key: updatedNodeDatum.next,
-      next: "Empty",
-      data: Data.castTo(newHeader, Header),
-    };
-
-    // Note that we are not specifying a validity range (TODO?).
-    const tx = lucid
-      .newTx()
-      .collectFrom([latestBlock.utxo], Data.void())
-      .pay.ToContract(
-        config.stateQueueAddress,
-        { kind: "inline", value: Data.to(newNodeDatum, StateQueueDatum) },
-        assets,
-      )
-      .pay.ToContract(
-        config.stateQueueAddress,
-        { kind: "inline", value: Data.to(updatedNodeDatum, StateQueueDatum) },
-        latestBlock.utxo.assets,
-      )
-      .mintAssets(assets, Data.void())
-      .attach.Script(stateQueueSpendingScript)
-      .attach.Script(stateQueueMintingScript);
-    return tx;
-  });
-
-export const unsignedCommitBlockHeaderTxProgram = (
-  lucid: LucidEvolution,
-  fetchConfig: StateQueueFetchConfig,
-  sqCommitParams: StateQueueCommitBlockParams,
-  aoUpdateParams: ActiveOperatorUpdateCommitmentTimeParams,
-): Effect.Effect<TxSignBuilder, StateQueueError | HashingError> =>
-  Effect.gen(function* () {
-    const commitTx = yield* incompleteCommitBlockHeaderTxProgram(
-      lucid,
-      fetchConfig,
-      sqCommitParams,
-    );
-    const completedTx: TxSignBuilder = yield* Effect.tryPromise({
-      try: () =>
-        commitTx
-          // .compose(
-          //   ActiveOperators.updateCommitmentTimeTxBuilder(lucid, aoUpdateParams)
-          // )
-          .complete({ localUPLCEval: false }),
-      catch: (e) =>
-        new StateQueueError({
-          message: `Failed to build block header commitment transaction: ${e}`,
-          cause: e,
-        }),
-    });
-    return completedTx;
-  });
-
-/**
- * Builds completed tx for submitting a new block using the provided
- * `LucidEvolution` instance, fetch config, and required parameters.
- *
- * @param lucid - The `LucidEvolution` API object.
- * @param fetchConfig - Configuration values required to know where to look for which NFT.
- * @param sqCommitParams - Parameters required for committing to state queue.
- * @param aoUpdateParams - Parameters required for updating the active operator's commitment time.
- * @returns A promise that resolves to a `TxSignBuilder` instance.
- */
-export const unsignedCommitBlockHeaderTx = (
-  lucid: LucidEvolution,
-  fetchConfig: StateQueueFetchConfig,
-  sqCommitParams: StateQueueCommitBlockParams,
-  aoUpdateParams: ActiveOperatorUpdateCommitmentTimeParams,
-): Promise<TxSignBuilder> =>
-  makeReturn(
-    unsignedCommitBlockHeaderTxProgram(
-      lucid,
-      fetchConfig,
-      sqCommitParams,
-      aoUpdateParams,
     ),
   ).unsafeRun();
 
@@ -580,7 +1249,7 @@ export const fetchConfirmedStateAndItsLinkProgram = (
   lucid: LucidEvolution,
   config: StateQueueFetchConfig,
 ): Effect.Effect<
-  { confirmed: StateQueueUTxO; link?: StateQueueUTxO },
+  { confirmed: StateQueueUTxO; link: StateQueueUTxO },
   StateQueueError | LucidError | LinkedListError
 > =>
   Effect.gen(function* () {
@@ -703,7 +1372,7 @@ export const incompleteInitStateQueueTxProgram = (
     const stateQueueData: ConfirmedState = {
       headerHash: GENESIS_HEADER_HASH,
       prevHeaderHash: GENESIS_HEADER_HASH,
-      utxoRoot: GENESIS_UTXO_ROOT,
+      utxoRoot: EMPTY_MERKLE_TREE_ROOT,
       startTime: params.genesisTime,
       endTime: params.genesisTime,
       protocolVersion: GENESIS_PROTOCOL_VERSION,
@@ -711,8 +1380,11 @@ export const incompleteInitStateQueueTxProgram = (
 
     return yield* incompleteInitLinkedListTxProgram(lucid, {
       validator: params.validator,
+      rootAssetName: STATE_QUEUE_ROOT_ASSET_NAME,
       data: Data.castTo(stateQueueData, ConfirmedState),
-      redeemer: Data.to("Init", StateQueueRedeemer),
+      redeemer: (outputIndex) =>
+        Data.to({ Init: { output_index: outputIndex } }, StateQueueRedeemer),
+      lovelace: params.lovelace,
     });
   });
 
@@ -725,14 +1397,15 @@ export const unsignedInitStateQueueTxProgram = (
       lucid,
       initParams,
     );
-    const completedTx: TxSignBuilder = yield* Effect.tryPromise({
-      try: () => commitTx.complete({ localUPLCEval: false }),
-      catch: (e) =>
-        new LucidError({
-          message: `Failed to build the init state queue transaction: ${e}`,
-          cause: e,
-        }),
-    });
+    const completedTx: TxSignBuilder =
+      yield* completeTxWithLocalUPLCEvalProgram(
+        commitTx,
+        (e) =>
+          new LucidError({
+            message: `Failed to build the init state queue transaction: ${e}`,
+            cause: e,
+          }),
+      );
     return completedTx;
   });
 
@@ -748,141 +1421,6 @@ export const unsignedInitStateQueueTx = (
   initParams: StateQueueInitParams,
 ): Promise<TxSignBuilder> =>
   makeReturn(unsignedInitStateQueueTxProgram(lucid, initParams)).unsafeRun();
-
-/**
- * Deinit
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteDeinitStateQueueTxProgram = (
-  lucid: LucidEvolution,
-  params: StateQueueDeinitParams,
-): TxBuilder => {
-  const tx = lucid.newTx();
-  return tx;
-};
-
-/**
- * Remove a block
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteRemoveBlockStateQueueTxProgram = (
-  lucid: LucidEvolution,
-  params: StateQueueRemoveBlockParams,
-): TxBuilder => {
-  const tx = lucid.newTx();
-  return tx;
-};
-
-/**
- * Merge
- *
- * @param lucid - The `LucidEvolution` API object.
- * @param fetchConfig - Configuration values required to know where to look for which NFT.
- * @param mergeParams - Parameters needed for building the merge transaction.
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteStateQueueMergeTxProgram = (
-  lucid: LucidEvolution,
-  fetchConfig: StateQueueFetchConfig,
-  {
-    confirmedUTxO,
-    firstBlockUTxO,
-    stateQueueSpendingScript,
-    stateQueueMintingScript,
-  }: StateQueueMergeParams,
-): Effect.Effect<TxBuilder, HashingError | DataCoercionError> =>
-  Effect.gen(function* () {
-    const { data: currentConfirmedState } =
-      yield* getConfirmedStateFromStateQueueDatum(confirmedUTxO.datum);
-    const blockHeader: Header = yield* getHeaderFromStateQueueDatum(
-      firstBlockUTxO.datum,
-    );
-    const headerHash = yield* hashBlockHeader(blockHeader);
-    const newConfirmedState = {
-      ...currentConfirmedState,
-      headerHash,
-      prevHeaderHash: currentConfirmedState.headerHash,
-      utxoRoot: blockHeader.utxosRoot,
-      startTime: currentConfirmedState.endTime,
-      endTime: blockHeader.endTime,
-    };
-    const newConfirmedNodeDatum: NodeDatum = {
-      ...confirmedUTxO.datum,
-      data: Data.castTo(newConfirmedState, ConfirmedState),
-      next: firstBlockUTxO.datum.next,
-    };
-    const assetsToBurn: Assets = {
-      [toUnit(fetchConfig.stateQueuePolicyId, firstBlockUTxO.assetName)]: -1n,
-    };
-    const tx = lucid
-      .newTx()
-      .collectFrom(
-        [confirmedUTxO.utxo, firstBlockUTxO.utxo],
-        Data.to("MergeToConfirmedState", StateQueueRedeemer),
-      )
-      .pay.ToContract(
-        fetchConfig.stateQueueAddress,
-        {
-          kind: "inline",
-          value: Data.to(newConfirmedNodeDatum, NodeDatum),
-        },
-        confirmedUTxO.utxo.assets,
-      )
-      .mintAssets(assetsToBurn, Data.void())
-      .attach.Script(stateQueueSpendingScript)
-      .attach.Script(stateQueueMintingScript);
-    return tx;
-  });
-
-export const mergeToConfirmedStateProgram = (
-  lucid: LucidEvolution,
-  fetchConfig: StateQueueFetchConfig,
-  mergeParams: StateQueueMergeParams,
-): Effect.Effect<
-  TxSignBuilder,
-  DataCoercionError | LucidError | HashingError
-> =>
-  Effect.gen(function* () {
-    const completedTx = yield* incompleteStateQueueMergeTxProgram(
-      lucid,
-      fetchConfig,
-      mergeParams,
-    );
-    return yield* completedTx.completeProgram().pipe(
-      Effect.mapError(
-        (e) =>
-          new LucidError({
-            message:
-              "Failed to finalize the transaction for merging oldest block into confirmed state",
-            cause: e,
-          }),
-      ),
-    );
-  });
-
-/**
- * Builds completed tx for merging the first block in queue to be merged into
- * the confirmed state.
- *
- * @param lucid - The `LucidEvolution` API object.
- * @param fetchConfig - Configuration values required to know where to look for which NFT.
- * @param mergeParams - Parameters needed for building the merge transaction.
- * @returns A promise that resolves to a `TxSignBuilder` instance.
- */
-export const mergeToConfirmedState = (
-  lucid: LucidEvolution,
-  fetchConfig: StateQueueFetchConfig,
-  mergeParams: StateQueueMergeParams,
-): Promise<TxSignBuilder> =>
-  makeReturn(
-    mergeToConfirmedStateProgram(lucid, fetchConfig, mergeParams),
-  ).unsafeRun();
 
 export class StateQueueError extends EffectData.TaggedError(
   "StateQueueError",

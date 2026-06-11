@@ -2,7 +2,7 @@ use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, pass_tx_to_next_step}
+use midgard/fraud_proofs/common.{TxWitsProvided, cancel, pass_tx_to_next_step}
 use midgard/fraud_proofs/invalid_signature/step_01.{Datum, SpendRedeemer}
 use midgard/fraud_proofs/invalid_signature/step_02
 
@@ -40,7 +40,7 @@ validator main(
           _header,
           bad_tx_id,
           _bad_tx,
-          provided_witness_set_preimage,
+          bad_tx_field_preimage,
         <-
           pass_tx_to_next_step(
             computation_thread_token_policy_id,
@@ -53,7 +53,7 @@ validator main(
 
         // 2. The provided preimage must be that of the bad transaction's
         //    witness set.
-        expect Some(bad_tx_wits) = provided_witness_set_preimage
+        expect TxWitsProvided(bad_tx_wits) = bad_tx_field_preimage
 
         // 3. The UTxO must be produced at next step's script hash with the bad
         //    transaction's ID (i.e. hash of the compact body) and address

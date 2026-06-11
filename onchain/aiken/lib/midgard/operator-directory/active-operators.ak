@@ -2,6 +2,7 @@ use aiken/crypto.{VerificationKeyHash}
 use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
 use cardano/assets.{AssetName, PolicyId}
+use cardano/transaction.{OutputReference}
 use midgard/common/types.{PosixTime}
 use midgard/operator_directory.{SlashingArguments}
 
@@ -34,7 +35,7 @@ pub type SpendRedeemer {
     active_node_input_index: Int,
     active_node_output_index: Int,
     hub_oracle_ref_input_index: Int,
-    state_queue_mint_redeemer_index: Int,
+    state_queue_redeemer_index: Int,
   }
   UpdateBondHoldNewSettlement {
     active_operator: VerificationKeyHash,
@@ -71,17 +72,14 @@ pub type MintRedeemer {
   Deinit { input_index: Int }
   ActivateOperator {
     new_active_operator_key: VerificationKeyHash,
-    active_operator_anchor_element_input_index: Int,
     active_operator_anchor_element_output_index: Int,
     active_operator_inserted_node_output_index: Int,
     registered_operators_redeemer_index: Int,
-    active_operators_set_was_empty: Bool,
   }
   RetireOperator {
     active_operator_key: VerificationKeyHash,
     hub_oracle_ref_input_index: Int,
-    active_operator_anchor_element_input_index: Int,
-    active_operator_removed_node_input_index: Int,
+    active_operator_anchor_element_input_outref: OutputReference,
     active_operator_anchor_element_output_index: Int,
     retired_operators_redeemer_index: Int,
     penalize_for_inactivity: Bool,
@@ -94,11 +92,11 @@ pub type MintRedeemer {
 }
 
 pub fn finalize_linked_list(
-  eval: linked_list.Eval,
+  eval: linked_list.ElementEval<Bool>,
   nft_policy_id: PolicyId,
 ) -> Bool {
   eval
-    |> linked_list.run_eval_with(
+    |> linked_list.run_element_with(
         nft_policy_id,
         root_asset_name,
         node_asset_name_prefix,

@@ -18,15 +18,16 @@
     "test:watch": "vitest --mode=test"
   },
   "dependencies": {
-    "@lucid-evolution/lucid": "^0.4.20",
+    "@al-ft/lucid-midgard": "file:../../../lucid-midgard",
+    "@lucid-evolution/lucid": "0.5.2",
     "chalk": "^4.1.2",
     "commander": "^11.1.0",
     "effect": "^3.11.10",
     "p-limit": "^5.0.0"
   },
   "devDependencies": {
-    "@types/node": "^20.11.0",
     "@types/commander": "^2.12.2",
+    "@types/node": "^20.11.0",
     "eslint": "^8.56.0",
     "typescript": "^5.3.3",
     "vite-tsconfig-paths": "^4.3.1",

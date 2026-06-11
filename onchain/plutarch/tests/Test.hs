@@ -24,25 +24,33 @@ import Testing.Crypto qualified as Crypto
 import Testing.MembershipValidator qualified as MembershipValidator
 import Testing.MerklePatriciaForestry qualified as MPF
 
+-- | Generates an arbitrary bytestring for property tests.
+-- | Generates arbitrary byte strings for Merkle helper property tests.
 genByteString :: Gen BS.ByteString
 genByteString = do
   len <- choose (0, 100) -- You can choose the length range you prefer
   bytes <- vectorOf len (arbitrary :: Gen Word8)
   return $ BS.pack bytes
+-- | Generates exactly four bytestring leaves for Merkle-tree tests.
 
+-- | Generates four leaves for the fixed-width Merkle property.
 genFourBytearrays :: Gen [BS.ByteString]
 genFourBytearrays = vectorOf 4 arbitrary
 
 instance Arbitrary BS.ByteString where
+-- | Runs the module's entrypoint.
   arbitrary = genByteString
 
+-- | Runs the Plutarch test suite.
 main :: IO ()
 main = defaultMain tests
 
+-- | Checks that the four-leaf Merkle helper reconstructs the expected root.
 merkle_4_test :: Property
 merkle_4_test = forAll genFourBytearrays $ \nodes ->
   plift $ pmerkle_4_test # (pconstant @(PBuiltinList PByteString) nodes)
 
+-- | Plutarch term backing the four-leaf Merkle helper property.
 pmerkle_4_test :: ClosedTerm (PBuiltinList PByteString :--> PBool)
 pmerkle_4_test = plam $ \nodes -> P.do
   a <- plet $ phead # nodes
@@ -56,23 +64,28 @@ pmerkle_4_test = plam $ \nodes -> P.do
 
   pand'List
     [ pmerkle_4 # 0 # a # (pcombine # c # d) # b #== root
+-- | Exercises null-hash combination behavior in the trie helpers.
     , pmerkle_4 # 1 # b # (pcombine # c # d) # a #== root
     , pmerkle_4 # 2 # c # (pcombine # a # b) # d #== root
     , pmerkle_4 # 3 # d # (pcombine # a # b) # c #== root
     ]
 
+-- | Verifies the expected null-hash composition ladder.
 combineNullHash :: Term s PBool
 combineNullHash =
+-- | Checks trie suffix examples against the expected outputs.
   pand'List
     [ pcombine # pnull_hash # pnull_hash #== pnull_hash_2
     , pcombine # pnull_hash_2 # pnull_hash_2 #== pnull_hash_4
     , pcombine # pnull_hash_4 # pnull_hash_4 #== pnull_hash_8
     ]
 
+-- | Exercises suffix extraction against fixed examples.
 examplesSuffix :: Term s PBool
 examplesSuffix =
   pand'List
     [ (psuffix # phexByteStr "abcd456789" # 0 #== phexByteStr "ffabcd456789")
+-- | Checks trie nibble-list examples against the expected outputs.
     , (psuffix # phexByteStr "abcd456789" # 1 #== phexByteStr "000bcd456789")
     , (psuffix # phexByteStr "abcd456789" # 2 #== phexByteStr "ffcd456789")
     , (psuffix # phexByteStr "abcd456789" # 4 #== phexByteStr "ff456789")
@@ -80,8 +93,10 @@ examplesSuffix =
     , (psuffix # phexByteStr "abcd456789" # 10 #== phexByteStr "ff")
     ]
 
+-- | Exercises nibble slice extraction against fixed examples.
 examplesNibbles :: Term s PBool
 examplesNibbles =
+-- | Checks single-nibble helpers against the expected outputs.
   pand'List
     [ (pnibbles # phexByteStr "0123456789" # 2 # 2 #== pconstant (BS.pack []))
     , (pnibbles # phexByteStr "0123456789" # 2 # 3 #== pconstant (BS.pack [2]))
@@ -89,7 +104,9 @@ examplesNibbles =
     , (pnibbles # phexByteStr "0123456789" # 3 # 6 #== pconstant (BS.pack [3, 4, 5]))
     , (pnibbles # phexByteStr "0123456789" # 1 # 7 #== pconstant (BS.pack [1, 2, 3, 4, 5, 6]))
     ]
+-- | Collects the tests defined in this module.
 
+-- | Exercises single-nibble extraction against fixed examples.
 examplesNibble :: Term s PBool
 examplesNibble =
   pand'List
@@ -97,6 +114,7 @@ examplesNibble =
     , pnibble # phexByteStr "ab" # 1 #== 11
     ]
 
+-- | Aggregates the helper, crypto, trie, and membership tests.
 tests :: TestTree
 tests =
   testGroup

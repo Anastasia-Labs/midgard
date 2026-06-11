@@ -1,12 +1,14 @@
-import { describe, expect } from "vitest";
 import { it } from "@effect/vitest";
 import { Effect } from "effect";
-import {
-  uint32ToFraudProofID,
-  createFraudProofCatalogueMpt,
-  fraudProofsToIndexedValidators,
-} from "@/transactions/initialization.js";
+import { describe, expect } from "vitest";
+
 import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
+import {
+  buildFraudProofCatalogueDeploymentInfo,
+  createFraudProofCatalogueMpf,
+  fraudProofsToIndexedValidators,
+  uint32ToFraudProofID,
+} from "@/transactions/initialization.js";
 
 describe("Fraud Proof Catalogue Root", () => {
   it.effect(
@@ -19,11 +21,14 @@ describe("Fraud Proof Catalogue Root", () => {
 
         const indexedFraudProofs = fraudProofsToIndexedValidators(fraudProofs);
 
-        const fraudProofsMPT =
-          yield* createFraudProofCatalogueMpt(indexedFraudProofs);
+        const fraudProofsMPF =
+          yield* createFraudProofCatalogueMpf(indexedFraudProofs);
+        const deploymentInfo =
+          yield* buildFraudProofCatalogueDeploymentInfo(indexedFraudProofs);
 
-        const rootHash = yield* fraudProofsMPT.getRootHex();
+        const rootHash = yield* fraudProofsMPF.rootHex();
         console.log(`Fraud Proofs Merkle Root: ${rootHash}`);
+        expect(deploymentInfo.root).toBe(rootHash);
 
         const indicesToCheck = [
           0,
@@ -33,13 +38,14 @@ describe("Fraud Proof Catalogue Root", () => {
         ];
 
         for (const i of indicesToCheck) {
-          const retrievedValue = yield* Effect.tryPromise(() =>
-            fraudProofsMPT.trie.get(uint32ToFraudProofID(i)),
+          const [categoryId, fraudProof, categoryName] = indexedFraudProofs[i];
+          const category = deploymentInfo.categories[categoryName];
+          expect(category.categoryId).toBe(categoryId.toString("hex"));
+          expect(category.categoryId).toBe(
+            uint32ToFraudProofID(i).toString("hex"),
           );
-          const expectedHash = indexedFraudProofs[i][1].spendingScriptHash;
-          expect(Buffer.from(retrievedValue!).toString("hex")).toBe(
-            expectedHash,
-          );
+          expect(category.scriptHash).toBe(fraudProof.spendingScriptHash);
+          expect(category.membershipProofCbor.length).toBeGreaterThan(0);
         }
       }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
   );

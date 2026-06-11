@@ -1,71 +1,71 @@
-import { Effect, Data as EffectData } from "effect";
 import {
+  Address,
+  Assets,
+  credentialToAddress,
+  Data,
+  fromText,
+  LucidEvolution,
+  PolicyId,
+  scriptHashToCredential,
+  toUnit,
+  TxBuilder,
+  UTxO,
+} from "@lucid-evolution/lucid";
+import { Data as EffectData, Effect } from "effect";
+
+import {
+  addressDataFromBech32,
+  AddressSchema,
+  AuthenticatedValidator,
+  Bech32DeserializationError,
   GenericErrorFields,
   LucidError,
-  AddressSchema,
-  PolicyIdSchema,
   makeReturn,
-  addressDataFromBech32,
-  Bech32DeserializationError,
   MidgardValidators,
-  AuthenticatedValidator,
+  MintingValidator,
   ScriptHashSchema,
   UnspecifiedNetworkError,
 } from "@/common.js";
 import {
-  AuthenticUTxO,
   authenticateUTxOs,
+  AuthenticUTxO,
   fetchSingleAuthenticUTxOProgram,
 } from "@/internals.js";
-import {
-  Address,
-  LucidEvolution,
-  PolicyId,
-  fromText,
-  toUnit,
-  TxBuilder,
-  UTxO,
-  Data,
-  Assets,
-} from "@lucid-evolution/lucid";
 
 export type HubOracleConfig = {
   hubOracleAddress: Address;
   hubOraclePolicyId: PolicyId;
 };
 
-export const HUB_ORACLE_ASSET_NAME = fromText("Hub Oracle");
-
-// TODO: This should ideally come from Aiken env directory.
-export const hubOracleAssetName = "";
+export const HUB_ORACLE_ASSET_NAME = fromText("MIDGARD_HUB_ORACLE");
 
 export const HubOracleDatumSchema = Data.Object({
-  registeredOperators: PolicyIdSchema,
-  activeOperators: PolicyIdSchema,
-  retiredOperators: PolicyIdSchema,
-  scheduler: PolicyIdSchema,
-  stateQueue: PolicyIdSchema,
-  fraudProofCatalogue: PolicyIdSchema,
-  fraudProof: PolicyIdSchema,
-  deposit: PolicyIdSchema,
-  withdrawal: PolicyIdSchema,
-  txOrder: PolicyIdSchema,
-  settlement: PolicyIdSchema,
-  payout: PolicyIdSchema,
-  registeredOperatorsAddr: AddressSchema,
-  activeOperatorsAddr: AddressSchema,
-  retiredOperatorsAddr: AddressSchema,
-  schedulerAddr: AddressSchema,
-  stateQueueAddr: AddressSchema,
-  fraudProofCatalogueAddr: AddressSchema,
-  fraudProofAddr: AddressSchema,
-  depositAddr: AddressSchema,
-  withdrawalAddr: AddressSchema,
-  txOrderAddr: AddressSchema,
-  settlementAddr: AddressSchema,
-  payoutAddr: AddressSchema,
-  reserveAddr: AddressSchema,
-  reserveObserver: ScriptHashSchema,
+  registered_operators: ScriptHashSchema,
+  active_operators: ScriptHashSchema,
+  retired_operators: ScriptHashSchema,
+  scheduler: ScriptHashSchema,
+  state_queue: ScriptHashSchema,
+  fraud_proof_catalogue: ScriptHashSchema,
+  fraud_proof: ScriptHashSchema,
+  deposit: ScriptHashSchema,
+  withdrawal: ScriptHashSchema,
+  tx_order: ScriptHashSchema,
+  settlement: ScriptHashSchema,
+  payout: ScriptHashSchema,
+  registered_operators_addr: AddressSchema,
+  active_operators_addr: AddressSchema,
+  retired_operators_addr: AddressSchema,
+  scheduler_addr: AddressSchema,
+  state_queue_addr: AddressSchema,
+  fraud_proof_catalogue_addr: AddressSchema,
+  fraud_proof_addr: AddressSchema,
+  deposit_addr: AddressSchema,
+  withdrawal_addr: AddressSchema,
+  tx_order_addr: AddressSchema,
+  settlement_addr: AddressSchema,
+  reserve_addr: AddressSchema,
+  payout_addr: AddressSchema,
+  reserve_observer: ScriptHashSchema,
 });
 export type HubOracleDatum = Data.Static<typeof HubOracleDatumSchema>;
 export const HubOracleDatum = HubOracleDatumSchema as unknown as HubOracleDatum;
@@ -82,8 +82,9 @@ export const utxosToHubOracleUTxOs = (
  * Parameters for the init transaction.
  */
 export type HubOracleInitParams = {
-  hubOracleValidator: AuthenticatedValidator;
+  hubOracleMintValidator: MintingValidator;
   validators: HubOracleValidators;
+  oneShotNonceUTxO: UTxO;
 };
 
 export type HubOracleValidators = Omit<
@@ -133,32 +134,32 @@ export const makeHubOracleDatum = (
     );
 
     return {
-      registeredOperators: validators.registeredOperators.policyId,
-      activeOperators: validators.activeOperators.policyId,
-      retiredOperators: validators.retiredOperators.policyId,
+      registered_operators: validators.registeredOperators.policyId,
+      active_operators: validators.activeOperators.policyId,
+      retired_operators: validators.retiredOperators.policyId,
       scheduler: validators.scheduler.policyId,
-      stateQueue: validators.stateQueue.policyId,
-      fraudProofCatalogue: validators.fraudProofCatalogue.policyId,
-      fraudProof: validators.fraudProof.policyId,
+      state_queue: validators.stateQueue.policyId,
+      fraud_proof_catalogue: validators.fraudProofCatalogue.policyId,
+      fraud_proof: validators.fraudProof.policyId,
       deposit: validators.deposit.policyId,
       withdrawal: validators.withdrawal.policyId,
-      txOrder: validators.txOrder.policyId,
+      tx_order: validators.txOrder.policyId,
       settlement: validators.settlement.policyId,
       payout: validators.payout.policyId,
-      registeredOperatorsAddr,
-      activeOperatorsAddr,
-      retiredOperatorsAddr,
-      schedulerAddr,
-      stateQueueAddr,
-      fraudProofCatalogueAddr,
-      fraudProofAddr,
-      depositAddr,
-      withdrawalAddr,
-      txOrderAddr,
-      settlementAddr,
-      payoutAddr,
-      reserveAddr,
-      reserveObserver: validators.reserve.withdrawalScriptHash,
+      registered_operators_addr: registeredOperatorsAddr,
+      active_operators_addr: activeOperatorsAddr,
+      retired_operators_addr: retiredOperatorsAddr,
+      scheduler_addr: schedulerAddr,
+      state_queue_addr: stateQueueAddr,
+      fraud_proof_catalogue_addr: fraudProofCatalogueAddr,
+      fraud_proof_addr: fraudProofAddr,
+      deposit_addr: depositAddr,
+      withdrawal_addr: withdrawalAddr,
+      tx_order_addr: txOrderAddr,
+      settlement_addr: settlementAddr,
+      reserve_addr: reserveAddr,
+      payout_addr: payoutAddr,
+      reserve_observer: validators.reserve.withdrawalScriptHash,
     };
   });
 
@@ -183,18 +184,23 @@ export const incompleteHubOracleInitTxProgram = (
       const encodedDatum = Data.to<HubOracleDatum>(datum, HubOracleDatum);
 
       const assets: Assets = {
-        [toUnit(params.hubOracleValidator.policyId, HUB_ORACLE_ASSET_NAME)]: 1n,
+        [toUnit(params.hubOracleMintValidator.policyId, HUB_ORACLE_ASSET_NAME)]:
+          1n,
       };
 
       return lucid
         .newTx()
+        .collectFrom([params.oneShotNonceUTxO])
         .mintAssets(assets, Data.void())
         .pay.ToAddressWithData(
-          params.hubOracleValidator.spendingScriptAddress,
+          credentialToAddress(
+            network,
+            scriptHashToCredential(params.hubOracleMintValidator.policyId),
+          ),
           { kind: "inline", value: encodedDatum },
           assets,
         )
-        .attach.MintingPolicy(params.hubOracleValidator.mintingScript);
+        .attach.MintingPolicy(params.hubOracleMintValidator.mintingScript);
     } else {
       return yield* new UnspecifiedNetworkError({
         message: "",
@@ -207,6 +213,13 @@ export class HubOracleError extends EffectData.TaggedError(
   "HubOracleError",
 )<GenericErrorFields> {}
 
+/**
+ * Attempts fetching the hub oracle UTxO.
+ *
+ * @param lucid - The `LucidEvolution` API object.
+ * @param config - Configuration values required to know where to look for which NFT.
+ * @returns {UTxO} - The authentic hub oracle UTxO.
+ */
 export const fetchHubOracleUTxOProgram = (
   lucid: LucidEvolution,
   config: HubOracleConfig,
@@ -227,13 +240,6 @@ export const fetchHubOracleUTxOProgram = (
     },
   );
 
-/**
- * Attempts fetching the hub oracle UTxO.
- *
- * @param lucid - The `LucidEvolution` API object.
- * @param config - Configuration values required to know where to look for which NFT.
- * @returns {UTxO} - The authentic hub oracle UTxO.
- */
 export const fetchHubOracleUTxO = (
   lucid: LucidEvolution,
   config: HubOracleConfig,

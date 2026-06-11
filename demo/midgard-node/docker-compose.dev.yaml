@@ -1,10 +1,10 @@
 services:
   midgard-node:
     build:
-      context: .
+      context: ..
       additional_contexts:
-        - sdk=../midgard-sdk
-      dockerfile: ./Dockerfile
+        - onchain=../../onchain/aiken
+      dockerfile: midgard-node/Dockerfile
     env_file:
       - .env
     labels:
@@ -18,9 +18,33 @@ services:
       - "3000:3000" # api server
     volumes:
       - ./db:/app/db
+      - ./deploymentInfo:/app/deploymentInfo
     depends_on:
       postgres:
         condition: service_healthy
+      midgard-node-migrate:
+        condition: service_completed_successfully
+    networks:
+      midgard_net:
+
+  midgard-node-migrate:
+    build:
+      context: ..
+      additional_contexts:
+        - onchain=../../onchain/aiken
+      dockerfile: midgard-node/Dockerfile
+    env_file:
+      - .env
+    command:
+      - node
+      - ./dist/index.js
+      - db:migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      midgard_net:
 
   postgres:
     image: postgres:15-alpine
@@ -33,11 +57,16 @@ services:
       - postgres-data:/var/lib/postgresql/data/pgdata
     ports:
       - "5433:5432"
+    networks:
+      midgard_net:
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB -h 127.0.0.1 -p 5432"]
       interval: 2s
       timeout: 3s
       retries: 30
+
+networks:
+  midgard_net:
 
 volumes:
   postgres-data:

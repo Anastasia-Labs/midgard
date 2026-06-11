@@ -1,48 +1,84 @@
 import {
-  CML,
+  type Assets,
+  credentialToAddress,
   Data,
   fromHex,
   LucidEvolution,
-  Script,
+  scriptHashToCredential,
   toUnit,
-  TxBuilder,
   TxSignBuilder,
   UTxO,
 } from "@lucid-evolution/lucid";
-import { GenericErrorFields, makeReturn, OutputReference } from "@/common.js";
-import { AuthenticUTxO, authenticateUTxOs } from "@/internals.js";
+import { Effect } from "effect";
+
 import {
   AddressData,
   AddressSchema,
-  POSIXTimeSchema,
+  Bech32DeserializationError,
+  H32,
+  hashHexWithBlake2b,
   HashingError,
   LucidError,
-  UnspecifiedNetworkError,
+  makeReturn,
+  MidgardValidators,
+  POSIXTimeSchema,
+  ProofSchema,
 } from "@/common.js";
-import { TxOrderEventSchema } from "@/ledger-state.js";
 import {
-  buildUserEventMintTransaction,
+  fetchHubOracleUTxOProgram,
+  HubOracleError,
+  makeHubOracleDatum,
+} from "@/hub-oracle.js";
+import { authenticateUTxOs, AuthenticUTxO } from "@/internals.js";
+import {
+  CardanoDatum,
+  CardanoDatumSchema,
+  MidgardTxCompact,
+  MidgardTxValiditySchema,
+  TxOrderEventSchema,
+} from "@/ledger-state.js";
+
+import {
+  buildCompletedUserEventMintTxProgram,
+  buildUserEventWitnessCertificateValidator,
+  encodeUserEventWitnessMintOrBurnRedeemer,
   fetchUserEventUTxOsProgram,
-  findInclusionTimeForUserEvent,
-  getNonceInputAndAssetName,
+  outputReferenceToPlutusDataCbor,
+  resolveEventInclusionTime,
+  resolveUserEventValidTo,
+  selectWalletNonceInputProgram,
+  UserEventBuildError,
   UserEventExtraFields,
   UserEventFetchConfig,
-  UserEventMintRedeemer,
+  userEventWitnessScriptHash,
 } from "./internals.js";
-import { Data as EffectData, Effect } from "effect";
 
 export const TxOrderDatumSchema = Data.Object({
   event: TxOrderEventSchema,
-  inclusionTime: POSIXTimeSchema,
-  refundAddress: AddressSchema,
-  refundDatum: Data.Nullable(Data.Any()),
+  inclusion_time: POSIXTimeSchema,
+  witness: Data.Bytes({ minLength: 28, maxLength: 28 }),
+  refund_address: AddressSchema,
+  refund_datum: CardanoDatumSchema,
 });
 export type TxOrderDatum = Data.Static<typeof TxOrderDatumSchema>;
 export const TxOrderDatum = TxOrderDatumSchema as unknown as TxOrderDatum;
+export const TxOrderSpendRedeemerSchema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  hub_ref_input_index: Data.Integer(),
+  settlement_ref_input_index: Data.Integer(),
+  burn_redeemer_index: Data.Integer(),
+  membership_proof: ProofSchema,
+  inclusion_proof_script_withdraw_redeemer_index: Data.Integer(),
+  validity_override: MidgardTxValiditySchema,
+});
+export type TxOrderSpendRedeemer = Data.Static<
+  typeof TxOrderSpendRedeemerSchema
+>;
+export const TxOrderSpendRedeemer =
+  TxOrderSpendRedeemerSchema as unknown as TxOrderSpendRedeemer;
 
 export type TxOrderUTxO = AuthenticUTxO<TxOrderDatum, UserEventExtraFields>;
-
-export type TxOrderFetchConfig = UserEventFetchConfig;
 
 /**
  * Silently drops invalid UTxOs.
@@ -50,24 +86,21 @@ export type TxOrderFetchConfig = UserEventFetchConfig;
 export const utxosToTxOrderUTxOs = (
   utxos: UTxO[],
   nftPolicy: string,
-): Effect.Effect<TxOrderUTxO[]> => {
-  const calculateExtraFields = (datum: TxOrderDatum): UserEventExtraFields => ({
-    idCbor: Buffer.from(fromHex(Data.to(datum.event.id, OutputReference))),
-    infoCbor: Buffer.from(fromHex(datum.event.tx)),
-    inclusionTime: new Date(Number(datum.inclusionTime)),
-  });
-
-  return authenticateUTxOs<TxOrderDatum, UserEventExtraFields>(
+): Effect.Effect<TxOrderUTxO[]> =>
+  authenticateUTxOs<TxOrderDatum, UserEventExtraFields>(
     utxos,
     nftPolicy,
     TxOrderDatum,
-    calculateExtraFields,
+    (datum) => ({
+      idCbor: Buffer.from(fromHex(Data.to(datum.event.id, H32))),
+      infoCbor: Buffer.from(fromHex(Data.to(datum.event.tx, MidgardTxCompact))),
+      inclusionTime: new Date(Number(datum.inclusion_time)),
+    }),
   );
-};
 
 export const fetchTxOrderUTxOsProgram = (
   lucid: LucidEvolution,
-  config: TxOrderFetchConfig,
+  config: UserEventFetchConfig,
 ): Effect.Effect<TxOrderUTxO[], LucidError> =>
   fetchUserEventUTxOsProgram(lucid, config, (utxos: UTxO[]) =>
     utxosToTxOrderUTxOs(utxos, config.eventPolicyId),
@@ -75,78 +108,171 @@ export const fetchTxOrderUTxOsProgram = (
 
 export const fetchTxOrderUTxOs = (
   lucid: LucidEvolution,
-  config: TxOrderFetchConfig,
+  config: UserEventFetchConfig,
 ) => makeReturn(fetchTxOrderUTxOsProgram(lucid, config));
 
-export type TxOrderParams = {
-  txOrderScriptAddress: string;
-  mintingPolicy: Script;
-  policyId: string;
-  nonceUTxO?: UTxO;
-  cardanoTx: CML.Transaction; // temporary until midgard tx conversion is done
-  refundAddress: AddressData;
-  refundDatum?: Data;
+export type SubmitTxOrderReferenceScripts = {
+  readonly txOrderMinting: UTxO;
 };
 
-/**
- * TransactionOrder
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteTxOrderTxProgram = (
+export type SubmitTxOrderConfig = {
+  readonly txId: H32;
+  readonly tx: MidgardTxCompact;
+  readonly refundAddress: AddressData;
+  readonly refundDatum?: CardanoDatum;
+  readonly lovelace?: bigint;
+  readonly referenceScripts?: SubmitTxOrderReferenceScripts;
+};
+
+export type TxOrderBuildMetadata = {
+  readonly txOrderAddress: string;
+  readonly txOrderId: H32;
+  readonly authNonceCbor: string;
+  readonly txOrderAuthUnit: string;
+  readonly nonceInput: Pick<UTxO, "txHash" | "outputIndex">;
+  readonly validTo: number;
+  readonly inclusionTime: number;
+};
+
+const DEFAULT_TX_ORDER_LOVELACE = 3_000_000n;
+
+const fetchTxOrderHubOracleReferenceProgram = (
   lucid: LucidEvolution,
-  params: TxOrderParams,
+  contracts: MidgardValidators,
+  network: NonNullable<ReturnType<LucidEvolution["config"]>["network"]>,
 ): Effect.Effect<
-  TxBuilder,
-  HashingError | LucidError | UnspecifiedNetworkError
+  UTxO,
+  HubOracleError | LucidError | Bech32DeserializationError | UserEventBuildError
 > =>
   Effect.gen(function* () {
-    const { inputUtxo, assetName } = yield* getNonceInputAndAssetName(
-      lucid,
-      "tx order",
-      params.nonceUTxO,
-    );
-    const txOrderNFT = toUnit(params.policyId, assetName);
+    const actual = yield* fetchHubOracleUTxOProgram(lucid, {
+      hubOracleAddress: credentialToAddress(
+        network,
+        scriptHashToCredential(contracts.hubOracle.policyId),
+      ),
+      hubOraclePolicyId: contracts.hubOracle.policyId,
+    });
+    const expectedDatum = yield* makeHubOracleDatum(contracts);
 
-    const inclusionTime = yield* findInclusionTimeForUserEvent(lucid);
+    if (
+      actual.datum.tx_order !== expectedDatum.tx_order ||
+      JSON.stringify(actual.datum.tx_order_addr) !==
+        JSON.stringify(expectedDatum.tx_order_addr)
+    ) {
+      return yield* Effect.fail(
+        new UserEventBuildError({
+          message:
+            "On-chain hub oracle deployment does not match the locally configured tx-order contract",
+          cause: {
+            expectedPolicyId: expectedDatum.tx_order,
+            actualPolicyId: actual.datum.tx_order,
+            expectedAddress: expectedDatum.tx_order_addr,
+            actualAddress: actual.datum.tx_order_addr,
+          },
+        }),
+      );
+    }
+
+    return actual.utxo;
+  });
+
+export const buildUnsignedTxOrderTxWithMetadataProgram = (
+  lucid: LucidEvolution,
+  contracts: MidgardValidators,
+  config: SubmitTxOrderConfig,
+): Effect.Effect<
+  {
+    readonly tx: TxSignBuilder;
+    readonly metadata: TxOrderBuildMetadata;
+  },
+  | HubOracleError
+  | LucidError
+  | Bech32DeserializationError
+  | HashingError
+  | UserEventBuildError
+> =>
+  Effect.gen(function* () {
+    const network = lucid.config().network;
+    if (network === undefined) {
+      return yield* Effect.fail(
+        new UserEventBuildError({
+          message:
+            "Cardano network not found while preparing tx-order transaction",
+          cause: "Lucid network configuration is undefined",
+        }),
+      );
+    }
+
+    const hubOracleRefInput = yield* fetchTxOrderHubOracleReferenceProgram(
+      lucid,
+      contracts,
+      network,
+    );
+
+    const nonceInput = yield* selectWalletNonceInputProgram(lucid, "tx order");
+    const authNonceCbor = outputReferenceToPlutusDataCbor(nonceInput);
+    const nonceAssetName = yield* hashHexWithBlake2b(authNonceCbor, 32);
+    const txOrderUnit = toUnit(contracts.txOrder.policyId, nonceAssetName);
+
+    const witnessScript =
+      buildUserEventWitnessCertificateValidator(nonceAssetName);
+    const witnessScriptHash = userEventWitnessScriptHash(nonceAssetName);
+    const validTo = resolveUserEventValidTo(lucid);
+    const inclusionTime = resolveEventInclusionTime(validTo, network);
 
     const txOrderDatum: TxOrderDatum = {
       event: {
-        id: {
-          txHash: { hash: inputUtxo.txHash },
-          outputIndex: BigInt(inputUtxo.outputIndex),
-        },
-        tx: params.cardanoTx.to_cbor_hex(),
+        id: config.txId,
+        tx: config.tx,
       },
-      inclusionTime: BigInt(inclusionTime),
-      refundAddress: params.refundAddress,
-      refundDatum: params.refundDatum ?? null,
+      inclusion_time: BigInt(inclusionTime),
+      witness: witnessScriptHash,
+      refund_address: config.refundAddress,
+      refund_datum: config.refundDatum ?? "NoDatum",
     };
     const txOrderDatumCBOR = Data.to(txOrderDatum, TxOrderDatum);
+    const outputAssets: Assets = {
+      lovelace: config.lovelace ?? DEFAULT_TX_ORDER_LOVELACE,
+      [txOrderUnit]: 1n,
+    };
+    const referenceInputs =
+      config.referenceScripts === undefined
+        ? [hubOracleRefInput]
+        : [hubOracleRefInput, config.referenceScripts.txOrderMinting];
+    const witnessRegistrationRedeemer = encodeUserEventWitnessMintOrBurnRedeemer(
+      contracts.txOrder.policyId,
+    );
 
-    const mintRedeemer: UserEventMintRedeemer = {
-      AuthenticateEvent: {
-        nonceInputIndex: 0n,
-        eventOutputIndex: 0n,
-        hubRefInputIndex: 0n,
-        witnessRegistrationRedeemerIndex: 0n,
+    const tx = yield* buildCompletedUserEventMintTxProgram({
+      lucid,
+      network,
+      nonceInput,
+      eventUnit: txOrderUnit,
+      eventAddress: contracts.txOrder.spendingScriptAddress,
+      eventDatumCbor: txOrderDatumCBOR,
+      outputAssets,
+      validTo,
+      mintingPolicy: contracts.txOrder.mintingScript,
+      attachMintingPolicy: config.referenceScripts === undefined,
+      referenceInputs,
+      hubOracleRefInput,
+      witnessScript,
+      witnessRegistrationRedeemer,
+      label: "tx order",
+    });
+
+    return {
+      tx,
+      metadata: {
+        txOrderAddress: contracts.txOrder.spendingScriptAddress,
+        txOrderId: config.txId,
+        authNonceCbor,
+        txOrderAuthUnit: txOrderUnit,
+        nonceInput,
+        validTo,
+        inclusionTime,
       },
     };
-    const mintRedeemerCBOR = Data.to(mintRedeemer, UserEventMintRedeemer);
-
-    const tx = buildUserEventMintTransaction({
-      lucid,
-      inputUtxo,
-      nft: txOrderNFT,
-      mintRedeemer: mintRedeemerCBOR,
-      scriptAddress: params.txOrderScriptAddress,
-      datum: txOrderDatumCBOR,
-      validTo: inclusionTime,
-      mintingPolicy: params.mintingPolicy,
-    });
-    return tx;
   }).pipe(
     Effect.catchAllDefect((defect) => {
       return Effect.fail(
@@ -160,38 +286,36 @@ export const incompleteTxOrderTxProgram = (
 
 export const unsignedTxOrderTxProgram = (
   lucid: LucidEvolution,
-  depositParams: TxOrderParams,
+  contracts: MidgardValidators,
+  config: SubmitTxOrderConfig,
 ): Effect.Effect<
   TxSignBuilder,
-  HashingError | LucidError | UnspecifiedNetworkError | TxOrderError
+  | HubOracleError
+  | LucidError
+  | Bech32DeserializationError
+  | HashingError
+  | UserEventBuildError
 > =>
-  Effect.gen(function* () {
-    const commitTx = yield* incompleteTxOrderTxProgram(lucid, depositParams);
-    const completedTx: TxSignBuilder = yield* Effect.tryPromise({
-      try: () => commitTx.complete({ localUPLCEval: false }),
-      catch: (e) =>
-        new TxOrderError({
-          message: `Failed to build the transaction: ${e}`,
-          cause: e,
-        }),
-    });
-    return completedTx;
-  });
+  buildUnsignedTxOrderTxWithMetadataProgram(lucid, contracts, config).pipe(
+    Effect.map(({ tx }) => tx),
+  );
+
+export const buildUnsignedTxOrderTxProgram = unsignedTxOrderTxProgram;
 
 /**
  * Builds completed tx for submitting tx order using the provided
  * `LucidEvolution` instance and a tx order config.
  *
  * @param lucid - The `LucidEvolution` API object.
+ * @param contracts - Midgard validator configuration.
  * @param txOrderParams - Parameters required for commiting tx orders.
  * @returns A promise that resolves to a `TxSignBuilder` instance.
  */
 export const unsignedTxOrderTx = (
   lucid: LucidEvolution,
-  txOrderParams: TxOrderParams,
+  contracts: MidgardValidators,
+  txOrderParams: SubmitTxOrderConfig,
 ): Promise<TxSignBuilder> =>
-  makeReturn(unsignedTxOrderTxProgram(lucid, txOrderParams)).unsafeRun();
-
-export class TxOrderError extends EffectData.TaggedError(
-  "TxOrderError",
-)<GenericErrorFields> {}
+  makeReturn(
+    unsignedTxOrderTxProgram(lucid, contracts, txOrderParams),
+  ).unsafeRun();

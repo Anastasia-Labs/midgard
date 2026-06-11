@@ -1,9 +1,13 @@
 import { Data } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+
 import {
   AddressSchema,
+  DataCoercionError,
   H32Schema,
+  hashHexWithBlake2b,
+  HashingError,
   MerkleRootSchema,
-  MidgardAddressSchema,
   OutputReferenceSchema,
   POSIXTimeSchema,
   PubKeyHashSchema,
@@ -29,6 +33,35 @@ export const HeaderSchema = Data.Object({
 export type Header = Data.Static<typeof HeaderSchema>;
 export const Header = HeaderSchema as unknown as Header;
 
+export const NO_DA_ATTESTATION = "";
+
+export const StateQueueNodeSchema = Data.Object({
+  header: HeaderSchema,
+  da_attestation: Data.Bytes(),
+});
+export type StateQueueNode = Data.Static<typeof StateQueueNodeSchema>;
+export const StateQueueNode = StateQueueNodeSchema as unknown as StateQueueNode;
+export const castStateQueueNodeToData = (
+  node: StateQueueNode,
+): unknown => Data.castTo(node, StateQueueNode);
+
+export const getHeaderFromStateQueueDatum = (nodeDatum: {
+  readonly data: Parameters<typeof Data.castFrom>[0];
+}): Effect.Effect<Header, DataCoercionError> =>
+  Effect.try({
+    try: () => Data.castFrom(nodeDatum.data, StateQueueNode).header,
+    catch: (cause) =>
+      new DataCoercionError({
+        message: "Failed coercing block's datum data to `StateQueueNode`",
+        cause,
+      }),
+  });
+
+export const hashBlockHeader = (
+  header: Header,
+): Effect.Effect<string, HashingError> =>
+  hashHexWithBlake2b(Data.to(header, Header), 28);
+
 export const ConfirmedStateSchema = Data.Object({
   headerHash: HeaderHashSchema,
   prevHeaderHash: HeaderHashSchema,
@@ -39,6 +72,9 @@ export const ConfirmedStateSchema = Data.Object({
 });
 export type ConfirmedState = Data.Static<typeof ConfirmedStateSchema>;
 export const ConfirmedState = ConfirmedStateSchema as unknown as ConfirmedState;
+export const castConfirmedStateToData = (
+  confirmedState: ConfirmedState,
+): unknown => Data.castTo(confirmedState, ConfirmedState);
 
 export const CardanoDatumSchema = Data.Enum([
   Data.Literal("NoDatum"),
@@ -57,8 +93,8 @@ export type CardanoDatum = Data.Static<typeof CardanoDatumSchema>;
 export const CardanoDatum = CardanoDatumSchema as unknown as CardanoDatum;
 
 export const DepositInfoSchema = Data.Object({
-  l2Address: MidgardAddressSchema,
-  l2Datum: Data.Nullable(Data.Bytes()),
+  l2_address: AddressSchema,
+  l2_datum: Data.Nullable(Data.Any()),
 });
 export type DepositInfo = Data.Static<typeof DepositInfoSchema>;
 export const DepositInfo = DepositInfoSchema as unknown as DepositInfo;
@@ -70,19 +106,6 @@ export const DepositEventSchema = Data.Object({
 export type DepositEvent = Data.Static<typeof DepositEventSchema>;
 export const DepositEvent = DepositEventSchema as unknown as DepositEvent;
 
-// Changed from hashes of body and witness set to full tx representation
-// to enable tx order processing in node. Otherwise it is impossible to
-// get utxos from tx orders.
-export const MidgardTxCompactSchema = Data.Object({
-  tx: Data.Bytes(),
-  is_valid: Data.Boolean(),
-});
-export type MidgardTxCompact = Data.Static<typeof MidgardTxCompactSchema>;
-export const MidgardTxCompact =
-  MidgardTxCompactSchema as unknown as MidgardTxCompact;
-
-// This is currently unused. We assume the bytes stored under `tx` of tx order
-// events can be deserialized to a `CML.Transaction`.
 export const MidgardTxValiditySchema = Data.Enum([
   Data.Literal("TxIsValid"),
   Data.Literal("NonExistentInputUtxo"),
@@ -94,13 +117,6 @@ export const MidgardTxValiditySchema = Data.Enum([
 export type MidgardTxValidity = Data.Static<typeof MidgardTxValiditySchema>;
 export const MidgardTxValidity =
   MidgardTxValiditySchema as unknown as MidgardTxValidity;
-
-export const TxOrderEventSchema = Data.Object({
-  id: OutputReferenceSchema,
-  tx: Data.Bytes(),
-});
-export type TxOrderEvent = Data.Static<typeof TxOrderEventSchema>;
-export const TxOrderEvent = TxOrderEventSchema as unknown as TxOrderEvent;
 
 export const MidgardNetworkIdSchema = Data.Enum([
   Data.Literal("Mainnet"),
@@ -121,9 +137,25 @@ export type MidgardTxWitnessSetCompact = Data.Static<
 export const MidgardTxWitnessSetCompact =
   MidgardTxWitnessSetCompactSchema as unknown as MidgardTxWitnessSetCompact;
 
+export const IntervalBoundTypeSchema = Data.Enum([
+  Data.Literal("NegativeInfinity"),
+  Data.Object({ Finite: Data.Tuple([Data.Integer()]) }),
+  Data.Literal("PositiveInfinity"),
+]);
+export type IntervalBoundType = Data.Static<typeof IntervalBoundTypeSchema>;
+export const IntervalBoundType =
+  IntervalBoundTypeSchema as unknown as IntervalBoundType;
+
+export const IntervalBoundSchema = Data.Object({
+  bound_type: IntervalBoundTypeSchema,
+  is_inclusive: Data.Boolean(),
+});
+export type IntervalBound = Data.Static<typeof IntervalBoundSchema>;
+export const IntervalBound = IntervalBoundSchema as unknown as IntervalBound;
+
 export const ValidityRangeSchema = Data.Object({
-  lower_bound: Data.Nullable(Data.Integer()),
-  upper_bound: Data.Nullable(Data.Integer()),
+  lower_bound: IntervalBoundSchema,
+  upper_bound: IntervalBoundSchema,
 });
 export type ValidityRange = Data.Static<typeof ValidityRangeSchema>;
 export const ValidityRange = ValidityRangeSchema as unknown as ValidityRange;
@@ -147,6 +179,22 @@ export type MidgardTxBodyCompact = Data.Static<
 export const MidgardTxBodyCompact =
   MidgardTxBodyCompactSchema as unknown as MidgardTxBodyCompact;
 
+export const MidgardTxCompactSchema = Data.Object({
+  body: MidgardTxBodyCompactSchema,
+  wits: H32Schema,
+  validity: MidgardTxValiditySchema,
+});
+export type MidgardTxCompact = Data.Static<typeof MidgardTxCompactSchema>;
+export const MidgardTxCompact =
+  MidgardTxCompactSchema as unknown as MidgardTxCompact;
+
+export const TxOrderEventSchema = Data.Object({
+  id: H32Schema,
+  tx: MidgardTxCompactSchema,
+});
+export type TxOrderEvent = Data.Static<typeof TxOrderEventSchema>;
+export const TxOrderEvent = TxOrderEventSchema as unknown as TxOrderEvent;
+
 export const WithdrawalBodySchema = Data.Object({
   l2_outref: OutputReferenceSchema,
   l2_owner: Data.Bytes({ minLength: 28, maxLength: 28 }),
@@ -157,7 +205,10 @@ export const WithdrawalBodySchema = Data.Object({
 export type WithdrawalBody = Data.Static<typeof WithdrawalBodySchema>;
 export const WithdrawalBody = WithdrawalBodySchema as unknown as WithdrawalBody;
 
-export const WithdrawalSignatureSchema = Data.Map(Data.Bytes(), Data.Bytes());
+export const WithdrawalSignatureSchema = Data.Tuple([
+  Data.Bytes(),
+  Data.Bytes(),
+]);
 export type WithdrawalSignature = Data.Static<typeof WithdrawalSignatureSchema>;
 export const WithdrawalSignature =
   WithdrawalSignatureSchema as unknown as WithdrawalSignature;
@@ -165,11 +216,16 @@ export const WithdrawalSignature =
 export const WithdrawalValiditySchema = Data.Enum([
   Data.Literal("WithdrawalIsValid"),
   Data.Literal("NonExistentWithdrawalUtxo"),
-  Data.Literal("SpentWithdrawalUtxo"),
+  Data.Object({
+    SpentWithdrawalUtxo: Data.Object({
+      l2_tx_id: Data.Bytes(),
+    }),
+  }),
   Data.Literal("IncorrectWithdrawalOwner"),
   Data.Literal("IncorrectWithdrawalValue"),
   Data.Literal("IncorrectWithdrawalSignature"),
   Data.Literal("TooManyTokensInWithdrawal"),
+  Data.Literal("UnpayableWithdrawalValue"),
 ]);
 export type WithdrawalValidity = Data.Static<typeof WithdrawalValiditySchema>;
 export const WithdrawalValidity =

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Midgard TypeScript Cleanup"
+  short_description: "Safely remove redundant Midgard TypeScript checks."
+  default_prompt: "Use $midgard-typescript-cleanup to scan a bounded Midgard TypeScript scope for redundant checks or defensive code without weakening production L2 correctness."

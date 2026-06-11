@@ -1,7 +1,20 @@
-import { defineConfig } from "vitest/config";
+import fs from "node:fs";
+
 import path from "path";
+import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  plugins: [
+    {
+      name: "raw-sql-loader",
+      load(id) {
+        if (!id.endsWith(".sql")) {
+          return null;
+        }
+        return `export default ${JSON.stringify(fs.readFileSync(id, "utf8"))};`;
+      },
+    },
+  ],
   test: {
     pool: "forks",
     reporters: [["default", { summary: false }]],

@@ -32,7 +32,7 @@ pub const new_shift_inactivity_grace_period: PosixTimeDuration = 5 * 60 * 1000
 
 pub const max_inactivity_strikes: Int = 5
 
-pub const max_validity_range_length: PosixTimeDuration = 5 * 60 * 1000
+pub const max_validity_range_length: PosixTimeDuration = 8 * 60 * 1000
 
 pub const empty: Empty = ""
 
@@ -43,7 +43,8 @@ pub const empty_list_hash: H32<List<Data>> = [] |> cbor.serialise |> blake2b_256
 pub const empty_merkle_tree_root =
   #"0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8"
 
-pub const plutarch_phas_validator_hash: ScriptHash = #""
+pub const plutarch_phas_validator_hash: ScriptHash =
+  #"46df0027fc0af07197924dc07f1c27ac6b15eb2bd6efc7a73b0dbb4d"
 
 pub const plutarch_pexcludes_validator_hash: ScriptHash = #""
 

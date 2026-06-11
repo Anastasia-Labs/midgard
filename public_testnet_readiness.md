@@ -1,0 +1,613 @@
+# Public Testnet Readiness Checklist
+
+Last reviewed: 2026-05-27
+
+Scope: this checklist reviews the current Midgard repository state for an externally reachable public testnet deployment. It treats Midgard as a production-grade L2, so "public testnet ready" includes adversarial safety, deterministic deployment identity, restart/recovery behavior, public client ergonomics, monitoring, and explicit runbooks. It is stricter than "the local happy path works."
+
+Review method: repository-wide source review plus delegated subsystem reviews covering node operations, submission/admission, deposits and withdrawals, reserve/payout, contracts/deployment, fault proofs, SDK/provider behavior, and CI/acceptance coverage.
+
+## Executive Decision
+
+Current decision: no-go for an open public testnet.
+
+- [ ] Launch gate: public testnet is ready as an unqualified public endpoint.
+- [x] The core happy-path L2 pipeline is materially implemented: node startup, schema migrations, protocol initialization, operator registration/activation, `/submit`, admission/validation, mempool processing, deposit projection, block commitment, confirmation, merge, reserve/payout builders, and SDK/provider primitives.
+- [ ] Public readiness blockers remain: fraud-proof/proof-data availability, deterministic deployment fingerprinting, ingress/ops hardening, full public acceptance gates, restart/recovery acceptance, and withdrawal/payout surface hardening.
+- [ ] Public messaging must not claim full fraud-proof readiness until the proof families and proof bundle/data availability surfaces below are complete.
+
+## Core Feature Matrix
+
+| Area | Status | Readiness judgement |
+| --- | --- | --- |
+| Native transaction submit/admission | Mostly implemented | `/submit` accepts canonical Midgard-native CBOR and durable admission exists. Needs concurrency cap hardening and public DoS controls. |
+| Phase A/B validation | Mostly implemented | Shared validation is broad and used by node admission. Needs public adversarial fixture coverage tied to proof generation. |
+| Deposits | Mostly implemented | SDK/node builders and projection flow exist. Public `/deposit/build` needs richer metadata and runbook hardening. |
+| Withdrawals | Partial | SDK and CLI paths exist. Public build/submit surface and node submit helper usage need cleanup before public exposure. |
+| Reserve/payout | Partial | Builders and CLI flows exist. Invalid-withdrawal refund path and public operator runbooks need wiring/acceptance. |
+| Commit/confirm/merge | Mostly implemented | State queue, pending finalization journal, leases, and merge worker exist. Needs restart/recovery acceptance and stronger crash-boundary tests. |
+| Operator lifecycle | Partial | Register/activate builders and tests exist. Public CLI/API/runbook coverage for status, register, activate, deactivate/deregister, and monitoring is incomplete. |
+| Fraud proofs | Not public-testnet ready | Tooling and first flows exist, but proof family completeness, proof bundle persistence, data availability, and preprod end-to-end challenge acceptance are blockers. |
+| Contract deployment | Partial | Atomic init and real blueprint loading exist. Need deterministic manifest/fingerprint enforcement and realistic public-testnet parameters. |
+| Node operations | Partial | Docker, migrations, readiness, metrics, and logs exist. Defaults and compose exposure are not public-hardened. |
+| SDK/provider | Partial | Provider submit and protocol-info parsing are good. Packaging, abort/timeout behavior, and public docs need hardening. |
+| CI/acceptance | Not sufficient | Existing CI is useful but does not gate the full workspace, clean public deploy, restart recovery, or fraud-proof challenge flow. |
+
+## Launch Blockers
+
+- [ ] Define and enforce a deployment fingerprint.
+  - Acceptance: every node stores and verifies a manifest containing network id, one-shot out-ref, contract script hashes, reference-script out-refs, fraud-proof catalogue root, Aiken compiler version, `aiken.lock` hash, blueprint hash, protocol parameter hash, Cardano era/protocol version, and relevant runtime config hash.
+  - Acceptance: startup fails closed when local durable state belongs to a different deployment fingerprint.
+  - Evidence: `demo/midgard-node/src/commands/contract-deployment-info.ts` writes useful contract information, but the manifest is not a complete deployment identity and startup writes it best-effort.
+
+- [ ] Complete the public fraud-proof/proof-data-availability milestone.
+  - Acceptance: at least the intended public-testnet fraud-proof family is fully end-to-end on preprod from invalid block fixture to computation thread steps to fraudulent block removal.
+  - Acceptance: proof bundles persist schema versions, payload hashes, root role, member count, membership/non-membership/deletion witnesses, and all inputs needed by public challengers.
+  - Acceptance: public endpoints or documented data exports allow an external watcher to reconstruct and submit the proof without privileged local DB access.
+  - Evidence: `demo/midgard-node/docs/PREPROD_DOUBLE_SPEND_FAULT_PROOF_GAP_REPORT.md` documents that the double-spend proof path was not yet complete end-to-end and lists broader proof-family gaps.
+
+- [ ] Harden public ingress and operational exposure.
+  - Acceptance: public API is behind TLS and rate limiting; admin endpoints are not internet-exposed; Prometheus, Loki, Grafana, cAdvisor, Tempo, Postgres, Ogmios, Kupo, and Cardano node ports are internal-only or authenticated.
+  - Acceptance: `ADMIN_API_KEY` is mandatory for any admin route in public profiles, with a boot-time failure for unsafe public config.
+  - Evidence: `demo/midgard-node/docker-compose.yaml` exposes multiple operational ports and enables anonymous Grafana admin access; this is acceptable for local/demo, not public.
+
+- [ ] Define and enforce L1 finality, rollback, and provider-consistency policy.
+  - Acceptance: protocol-affecting L1 observations do not finalize local state from first provider visibility alone.
+  - Acceptance: every finalized L1 observation records chain point, provider source, observed depth, and finality threshold.
+  - Acceptance: rollback before threshold quarantines pending local state; rollback after local finalization is treated as an incident with an explicit recovery path.
+
+- [ ] Define public key custody and admin authority model.
+  - Acceptance: operator, merge, reference-script, admin, provider, and release-signing keys have separate owners, rotation/revocation procedures, least-privilege balances, and an explicit hot-signing versus external-signer decision.
+  - Acceptance: state-changing admin operations use attributable, replay-protected identities rather than a single static shared header.
+
+- [ ] Close operator liveness, Sybil, and incentive gaps for the chosen participation model.
+  - Acceptance: public testnet either supports permissionless operators with arbitrary ordered activation, inactivity/slash enforcement, duplicate removal, rewards, and key-compromise recovery, or clearly declares a curated-operator model with matching controls.
+
+- [ ] Add a clean public-testnet acceptance gate.
+  - Acceptance: a single documented command sequence starts from clean local state and a fresh on-chain deploy, registers/activates an operator, builds and projects a deposit, submits L2 transfers, commits, confirms, merges, processes withdrawal/reserve/payout, restarts the node, and verifies final DB/chain/API state.
+  - Acceptance: the gate records tx hashes, state queue state, balances, health/readiness responses, logs, and DB verification artifacts.
+  - Acceptance: it never combines wiped local state with an old on-chain deployment.
+
+- [ ] Align CI with the public gate.
+  - Acceptance: CI runs frozen install, builds, typechecks, and tests the relevant workspace packages, including `midgard-core`, `lucid-midgard`, `midgard-sdk`, `midgard-validation`, `midgard-node`, and `midgard-fault-proofs`.
+  - Acceptance: Aiken CI uses the same compiler version required by `onchain/aiken/aiken.toml`.
+  - Evidence: `.github/workflows/midgard-node-ci.yml` currently gates a subset of packages/tests, and `.github/workflows/aiken-ci.yml` uses a different Aiken version than the project file.
+
+- [ ] Remove public-testnet placeholder economics and demo parameters.
+  - Acceptance: public-testnet protocol constants explicitly document registration duration, maturity duration, bond, slash penalty, prover reward, reserve/outbox parameters, and any intentionally zero-valued testnet choices.
+  - Acceptance: public-testnet config is isolated from local/demo constants.
+  - Evidence: `onchain/aiken/env/testnet.ak` and `onchain/aiken/lib/midgard/protocol-parameters.ak` contain placeholder or zero economics with TODOs.
+
+- [ ] Add public release, support, and data-retention posture.
+  - Acceptance: public artifacts have signed provenance/SBOMs, public packages are published through a real release channel, SECURITY.md exists, user-facing support/status surfaces exist, and retention/deletion policy is documented without weakening auditability or fraud-proof reconstruction.
+
+## Implementation Waves
+
+### Wave 0: Public Launch Boundary
+
+- [ ] Decide the first public-testnet security claim.
+  - Acceptance: the public announcement, README, operator docs, and challenger docs use the same language for supported proof families, unsupported features, challenge window assumptions, and operator trust assumptions.
+- [ ] Decide the public API surface.
+  - Acceptance: every public route is listed as public, admin, or internal; only public routes are internet-routable in the public compose/deployment profile.
+- [ ] Decide whether public testnet is "operator-run public endpoint" or "permissionless operator participation."
+  - Acceptance: operator registration/activation/deregistration docs and access control match the chosen model.
+- [ ] Publish a public-testnet threat model and SECURITY.md.
+- [ ] Decide whether escape hatch, settlement resolution claims, tx-order, script-bearing L2 txs, and unsupported proof families are enabled or explicitly excluded.
+
+### Wave 1: Fail-Closed Deployment Identity
+
+- [ ] Add a deployment manifest generator and verifier.
+- [ ] Persist the deployment fingerprint in Postgres and MPF/local state metadata.
+- [ ] Make listener startup fail before serving when the fingerprint is missing or mismatched.
+- [ ] Align Aiken compiler pinning and artifact rebuild checks.
+- [ ] Split local/demo env templates from public-testnet env templates.
+
+### Wave 2: Public Ingress And Runtime Safety
+
+- [ ] Add a public compose/profile or deployment manifest that exposes only the intended API through ingress.
+- [ ] Add node container healthchecks, stop grace periods, and graceful shutdown.
+- [ ] Add provider/indexer freshness readiness.
+- [ ] Add app/proxy rate limits and admission backpressure tests.
+- [ ] Add alert rules and retention policy for public operations.
+- [ ] Replace static admin header auth with scoped, attributable, replay-protected admin identities.
+- [ ] Add pagination/result-size limits for every public read endpoint.
+
+### Wave 3: Transaction Pipeline Recovery Evidence
+
+- [ ] Add crash-boundary tests for durable admission, validation leases, mempool insertion, commit submission, pending finalization, MPF reset, confirmation recovery, and merge.
+- [ ] Make every silent `ON CONFLICT DO NOTHING` transition either exact-count checked or same-payload reconciled.
+- [ ] Make durable admission backlog caps concurrency-safe.
+- [ ] Add public metrics for validation rejection reasons and recovery states.
+- [ ] Add L1 finality/reorg tests for all protocol-affecting L1 tx observations.
+- [ ] Make deposit/withdrawal ingestion chain-point anchored and rollback-aware.
+
+### Wave 4: User And Operator Lifecycle Completeness
+
+- [ ] Return deposit metadata needed by public clients.
+- [ ] Harden withdrawal submission through the shared production L1 submit helper.
+- [ ] Wire invalid-withdrawal refund command/API if the public lifecycle includes invalid withdrawal handling.
+- [ ] Document and test deposit -> L2 submit -> withdrawal -> merge -> reserve/payout end to end.
+- [ ] Add explicit operator lifecycle commands/status docs for register, activate, deactivate/deregister, and bond/slash state.
+- [ ] Implement exact withdrawal payability classification and invalid-withdrawal refund routing.
+- [ ] Implement or explicitly exclude settlement resolution-claim flows.
+- [ ] Add operator funding/faucet, inactivity enforcement, duplicate-operator handling, reward/slash, and key-rotation runbooks.
+
+### Wave 5: Challenger And Fraud-Proof Milestone
+
+- [ ] Define the first public fraud-proof milestone and prove it end to end on preprod.
+- [ ] Persist typed proof bundles and public DA artifacts.
+- [ ] Add proof bundle APIs or artifact export commands.
+- [ ] Add watcher/challenger runbook and adversarial fixtures.
+- [ ] Add a closed proof-family coverage matrix before claiming broad fraud-proof security.
+
+### Wave 6: SDK/Public Client Release
+
+- [ ] Fix `@al-ft/midgard-sdk` package exports for ESM/CJS/types.
+- [ ] Curate public versus internal SDK exports.
+- [ ] Add provider timeout/abort support.
+- [ ] Add public testnet examples and status/error contract docs.
+- [ ] Add package provenance and version pinning docs.
+
+### Wave 7: Release, Support, And Public Operations
+
+- [ ] Pin release inputs by immutable digest or commit SHA.
+- [ ] Generate SBOMs, vulnerability/license scan reports, and signed attestations.
+- [ ] Publish JS packages from CI through the chosen registry.
+- [ ] Add public status/explorer, incident communications, support correlation IDs, and user-safe diagnostic export.
+- [ ] Define public data retention/deletion policy and disaster recovery RPO/RTO.
+
+## Source Evidence Index
+
+These are the main code-backed reasons for the no-go decision. They should be kept current as items are fixed.
+
+| Evidence | Readiness impact |
+| --- | --- |
+| `demo/midgard-node/docker-compose.yaml` exposes API, metrics, Postgres, Prometheus, Loki, cAdvisor, Grafana, and Tempo host ports; Grafana anonymous role is Admin. | Public profile must hide or authenticate internal services before public launch. |
+| `demo/midgard-node/docker-compose.kupmios.yaml` defaults Mithril, Ogmios, and Kupo images/snapshots to `latest` and exposes provider ports. | Public deployment must pin images/digests and restrict provider ports. |
+| `demo/midgard-node/.env.example` contains blank `ADMIN_API_KEY`, default Postgres credentials, `latest` image tags, retention `0`, and test/demo seed phrases. | Public env template must reject demo/default secrets and unsafe retention. |
+| `demo/midgard-node/src/services/config.ts` defaults min fees to `0`, admin key to empty, hub-oracle one-shot index to `-1`, Postgres credentials to `postgres`, and MPF paths to relative local paths. | Public strict mode must require explicit production values and durable absolute paths. |
+| `demo/midgard-node/src/commands/listen-router.ts` readiness checks worker heartbeat timestamps and a hub-oracle query but not provider tip freshness, Kupo coverage, deployment fingerprint, or first successful worker loop. | `/readyz` is useful but not sufficient for public traffic routing. |
+| `demo/midgard-node/src/commands/listen-router.ts` keeps `/init`, `/commit`, `/merge`, `/stateQueue`, `/logBlocksDB`, and `/logGlobals` as HTTP admin routes. | Admin routes must be private/authenticated and not exposed via public ingress. |
+| `demo/midgard-node/src/database/txAdmissions.ts` checks backlog with `COUNT(*)` before insert inside the transaction. | Concurrent public submissions can overshoot the configured cap unless admission is globally serialized or otherwise bounded. |
+| `demo/midgard-node/src/workers/utils/commit-submission.ts` finalizes DB state and then resets the transactions MPF root outside the SQL transaction. | Recovery may be valid, but public readiness needs explicit crash-boundary tests and alerts. |
+| `demo/midgard-node/src/workers/utils/commit-submission.ts` transfers skipped submissions by inserting processed mempool rows and then clearing mempool rows in separate steps. | Crash-boundary behavior must be tested or made atomic to avoid ambiguous duplicate material. |
+| `.github/workflows/aiken-ci.yml` uses Aiken `v1.1.19`; `onchain/aiken/aiken.toml` requires `v1.1.21`. | Contract CI is not proving the same compiler artifact used by the repo. |
+| `.github/workflows/midgard-node-ci.yml` only typechecks/tests a subset and does not run full workspace builds, node typecheck, fault-proof checks, or clean deploy acceptance. | CI is not yet a public-testnet release gate. |
+| `onchain/aiken/env/testnet.ak` has zero bond/slash/reward values, zero outbox identifiers, and empty delegated Plutarch hashes. | Public-testnet parameters and delegated validators need explicit, reviewed values. |
+| `onchain/aiken/lib/midgard/protocol-parameters.ak` still says realistic parameters are TODO. | Public parameter review is a blocker. |
+| `demo/midgard-node/docs/PREPROD_DOUBLE_SPEND_FAULT_PROOF_GAP_REPORT.md` states double-spend proof is not valid end to end on preprod and lists minimum milestone criteria. | Fraud-proof readiness is not yet public-testnet ready. |
+| `demo/midgard-node/docs/FAULT_PROOF_DECISION_RECOMMENDATIONS.md` requires a closed ledger-rule proof matrix and public DA/proof bundle guardrails. | Public security claims must be narrowed or the proof matrix must be completed. |
+| `demo/midgard-node/src/database/pendingBlockFinalizations.ts` persists pending block payloads/hashes but not full typed proof-bundle schemas, member counts, root roles, and proof witness material. | External challengers need public proof data, not privileged mutable local reconstruction. |
+| `demo/midgard-fault-proofs/package.json` describes the package as manual tooling. | Public challenger infrastructure is not yet autonomous or watcher-grade. |
+| `demo/midgard-sdk/package.json` lacks an `exports` map while building ESM and CJS under `"type": "module"`. | Public CJS consumers can resolve the wrong entrypoint. |
+| `demo/lucid-midgard/src/provider/transport.ts` calls fetch without managed timeout/abort support. | Public clients can hang on provider calls despite `awaitTx` accepting a signal at a higher layer. |
+| `demo/midgard-node/src/transactions/utils.ts` treats `lucid.awaitTx` success as confirmation, and block confirmation advances local state when state-queue UTxO is observed. | Public readiness needs explicit L1 finality/depth and rollback policy. |
+| Deposit and withdrawal DB rows store event tx hashes/output indexes but not observed block hash, slot, depth, or provider source. | User-event ingestion is not rollback-aware enough for public operation. |
+| `demo/midgard-node/src/services/lucid.ts` has Blockfrost fallback and Koios fallback behavior without a same-tip launch gate. | State decisions can mix provider views unless consistency checks are added. |
+| User-event builders and commit window selection use local `Date.now()` for validity windows. | Public readiness needs a chain-time authority and clock-skew policy. |
+| Node config and Lucid service derive long-running operator/merge/reference wallets from seed phrases. | Public readiness needs a clear signer boundary and key-custody model. |
+| CLI commands accept seed phrases directly as command-line arguments. | Public/operator workflows must avoid secrets in shell history, process args, and logs. |
+| Admin routes use one static `x-midgard-admin-key`, and mutation routes such as `/init`, `/commit`, and `/merge` are GET endpoints. | Public admin control needs attributable identities, rotation, replay protection, and POST/idempotency semantics. |
+| Public read endpoints include unbounded address-history, UTxO, and block transaction queries. | Public APIs need pagination, result caps, and query cost budgets. |
+| No `SECURITY.md` or visible vulnerability disclosure process exists. | Public testnet needs a security reporting and active-exploitation escalation process. |
+| `demo/midgard-node/Dockerfile` uses `node:22`, CI uses `ubuntu-latest`/tagged actions, and no SBOM/signing scan exists. | Public release artifacts are not yet supply-chain hardened. |
+| SDK/node docs still describe local tarball packing and manual lockfile SHA updates. | Public packages need a real registry release channel and post-publish smoke tests. |
+| Operator activation currently only appends after the active tail in some paths. | Permissionless operator participation is not robust for arbitrary keys unless curated participation is declared. |
+| On-chain scheduler/inactivity/slashing capabilities are not fully wired as operator services. | Public liveness needs watchdog/takeover/slashing flows, not only happy-path scheduling. |
+| Active-operator comments document a duplicate active/retired scheduler-lock edge case. | Public readiness needs duplicate-operator/Sybil cleanup or explicit exclusion. |
+| Escape hatch is specified, but real runtime/validators do not appear wired for public deployment. | Public limitations must state whether escape hatch liveness recovery is supported. |
+| Settlement resolution-claim disprove/slashing builders are incomplete. | Settlement claim lifecycle must be completed or excluded from public scope. |
+| Withdrawal classification lacks exact Cardano L1 payability/min-ADA evidence. | Valid withdrawals may be marked payable before the L1 output is actually constructible. |
+| Logs include raw tx CBOR and full user query values in public route paths. | Public logging needs privacy-safe redaction and retention/deletion policy. |
+
+## Deployment And Contracts
+
+- [ ] Pin and verify the exact Aiken compiler version in CI, local docs, and build scripts.
+- [ ] Publish a reproducible contract build artifact bundle.
+  - Acceptance: bundle includes blueprint, script CBOR/hashes, source commit, `aiken.lock`, compiler version, and a machine-verifiable hash.
+- [ ] Define a canonical script catalogue generated from `plutus.json`.
+  - Acceptance: every public-testnet validator is classified as `deployed`, `excluded`, or `internal/test-only`; unclassified blueprint validators fail CI.
+  - Acceptance: each catalogue row includes title, purpose, raw blueprint hash, applied parameters, final script hash/policy id, and reference-script requirement.
+- [ ] Require a signed deployment manifest for public testnet.
+  - Acceptance: operators can compare the deployed hub oracle, state queue, scheduler, operator lists, reserve, payout, and fraud-proof catalogue against the manifest.
+- [ ] Make contract deployment info fail-closed for public profiles.
+  - Acceptance: startup refuses to serve if it cannot write/read/verify the deployment manifest in public-testnet mode.
+- [ ] Record the full parameterization graph in the deployment manifest.
+  - Acceptance: each script entry includes blueprint title, un-applied compiled-code hash, ordered applied params as typed JSON/Data CBOR, final script CBOR hash, final script hash, and dependency links.
+- [ ] Make fraud-proof catalogue membership match deployed proof chains.
+  - Acceptance: each included category maps to a complete ordered chain with all step hashes, parameter links, membership proof CBOR, and reference-script requirements.
+- [ ] Replace default or placeholder public-testnet protocol parameters with explicit public-testnet values.
+- [ ] Fail public-testnet builds on empty delegated script hashes and placeholder outbox values.
+  - Acceptance: public env validation fails if any reachable delegated validator hash, outbox policy/address, or required protocol asset is empty/zero unless an explicit disabled-feature manifest entry proves it is unreachable.
+- [ ] Document and test the full redeploy/reset procedure.
+  - Acceptance: the runbook states that local DB/MPF resets require a fresh on-chain redeploy, and the acceptance script enforces this.
+- [ ] Verify reference scripts at startup against the manifest, not only against expected script hashes discovered at runtime.
+- [ ] Replace scattered reference-script target lists with a registry keyed by manifest entries.
+  - Acceptance: one canonical registry declares every script's reference-script requirement per flow: init, operator lifecycle, state queue, deposits, withdrawals, payout/reserve, settlement, and each proof category.
+- [ ] Make reference-script UTxO identity non-null for public-required scripts.
+  - Acceptance: public manifest rejects null refs for required scripts and records ref address, out-ref, script hash, script CBOR hash, lovelace, publisher tx hash, and verification timestamp.
+- [ ] Add a public-testnet contract parameter review record.
+  - Acceptance: each public parameter has a rationale and a rollback/redeploy impact note.
+
+## Node Configuration And Startup
+
+- [ ] Create a separate public compose/deployment profile.
+  - Acceptance: `docker compose -f docker-compose.public-testnet.yaml config` exposes only the intended public ingress port; Postgres, metrics, logs, tracing, Ogmios, Kupo, and Cardano node ports have no host bindings.
+- [ ] Remove Docker socket and host filesystem mounts from the public observability profile.
+  - Acceptance: public observability either omits those collectors or uses a hardened collector setup without Docker socket access.
+- [ ] Add a `PUBLIC_TESTNET_PROFILE` or equivalent strict mode.
+  - Acceptance: strict mode rejects blank admin keys, demo seeds, default Postgres credentials, `latest` image tags, exposed internal services, zero/placeholder economics unless explicitly allowlisted, and missing deployment fingerprint.
+- [ ] Move public secrets out of `.env`/`env_file` and prove they are not logged.
+  - Acceptance: public profile uses Docker secrets or mounted secret files; startup redacts seed/API/DB/admin values; tests assert config errors never include secret material.
+- [ ] Make unsafe defaults impossible in public mode.
+  - Acceptance: node fails before binding HTTP if required public settings are missing.
+- [ ] Verify Kupo/Ogmios/Cardano tip freshness in readiness.
+  - Acceptance: `/readyz` reports provider tip age, Kupo coverage, Ogmios connection, and Cardano node sync health.
+- [ ] Add deployment-fingerprint checks to readiness.
+- [ ] Add active state-queue mutation lease visibility to readiness.
+- [ ] Ensure worker heartbeat readiness cannot pass before each required worker has completed at least one successful iteration.
+- [ ] Add node container healthcheck and operational health policy.
+  - Acceptance: container restart/liveness uses `/healthz`, ingress/load balancer readiness uses `/readyz`, and the runbook states not to restart solely on temporary provider/readiness failures.
+- [ ] Add graceful shutdown handling.
+  - Acceptance: the node stops admission/commit/merge loops cleanly, releases renewable leases, flushes logs/metrics, and leaves no orphaned local mutation job.
+- [ ] Implement shutdown admission drain semantics.
+  - Acceptance: on SIGTERM, node immediately returns non-ready, stops accepting `/submit`, lets in-flight handlers finish or times out, cancels periodic loops, closes metrics/DB/MPF resources, and exits within the configured stop grace period.
+- [ ] Document resource sizing for public testnet.
+  - Acceptance: CPU, memory, disk, DB, Cardano node, Kupo, Ogmios, and retention requirements are stated with minimum and recommended values.
+- [ ] Pin Docker image tags and Mithril snapshot policy.
+  - Acceptance: no public profile uses `latest` for node dependencies.
+- [ ] Increase log retention and audit retention for public deployments.
+- [ ] Enforce reset/redeploy coupling with a machine-readable local genesis marker.
+  - Acceptance: first successful deploy writes `{network, oneShotOutRef, policyIds, manifestHash, schemaVersion}` into Postgres and MPF metadata; missing or mismatched marker fails closed unless an explicit redeploy command creates a new marker from a fresh on-chain deployment.
+
+## API, Ingress, And Security
+
+- [ ] Define one authoritative public route/action map.
+  - Acceptance: every lifecycle action is classified as public HTTP, public CLI, operator-only CLI, admin HTTP, or internal-only; tests assert the route graph matches that contract.
+- [ ] Put `/submit`, `/deposit/build`, status, and UTxO APIs behind documented rate limits.
+- [ ] Enforce request body size and content-type limits at the proxy and application layer.
+- [ ] Add per-IP and global admission backpressure behavior.
+  - Acceptance: load tests show bounded memory and durable-admission DB growth under spam.
+- [ ] Keep admin routes private or strongly authenticated.
+  - Acceptance: `/init`, `/commit`, `/merge`, `/stateQueue`, `/logBlocksDB`, and `/logGlobals` are not publicly reachable.
+- [ ] Add CORS policy for public clients.
+- [ ] Add structured error response contracts for all public endpoints.
+- [ ] Add timeout/abort handling for long public requests.
+- [ ] Document retry semantics for `202`, `200`, `409`, `413`, `415`, `422`, `429`, `503`, and provider failures.
+- [ ] Add abuse monitoring for admission rejects, duplicate submissions, bad CBOR, oversized requests, and validation failures.
+- [ ] Remove operator-seed defaults from public user commands.
+  - Acceptance: public user commands never default to operator or reference-script wallets; command startup fails if a user command resolves to an operational wallet.
+
+## Security, Threat Model, And Key Custody
+
+- [ ] Publish a public-testnet threat model.
+  - Acceptance: threat model covers off-chain runtime, public APIs, operator key compromise, admin compromise, L1 provider compromise/rate limits, submission spam, read amplification, public mempool behavior, operational DoS, and incident-response assumptions.
+- [ ] Add `SECURITY.md`.
+  - Acceptance: document includes public-testnet scope, reporting contact, encryption/PGP option, acknowledgement/fix timelines, safe-harbor language, known exclusions, and emergency contact path for active exploitation.
+- [ ] Define public-testnet key custody requirements.
+  - Acceptance: operator, merge, reference-script, admin, provider, and release keys have separate owners, rotation plans, least-privilege balances, signer isolation, and an explicit hot in-process signing versus external/HSM/manual-signing decision.
+- [ ] Remove or hard-disable command-line seed phrase arguments from public-testnet/operator workflows.
+  - Acceptance: public workflows use secret files, environment variable names, stdin no-echo, or external signers; secrets never appear in shell history, process args, logs, or runbooks.
+- [ ] Replace public-testnet admin auth with scoped, attributable admin identities.
+  - Acceptance: admin requests are signed or mTLS-authenticated with key ids, rotation/revocation, replay protection, and audit subject.
+  - Acceptance: state-changing admin routes use `POST` with idempotency/replay controls, not `GET`.
+- [ ] Add query cost controls to public read APIs.
+  - Acceptance: `/txs`, `/utxos`, `/block`, batch out-ref lookups, and status/explorer APIs have pagination, maximum result counts, maximum response bytes, stable cursors, and DB/memory/bandwidth tests for large accounts and blocks.
+
+## L1 Finality, Rollbacks, And Provider Consistency
+
+- [ ] Define and enforce an L1 finality policy for every protocol-affecting L1 transaction.
+  - Acceptance: commit, merge, deposit, withdrawal, reserve/payout, scheduler, operator lifecycle, proof, and initialization flows do not locally finalize from first provider visibility alone.
+  - Acceptance: each finalized L1 observation records tx hash, block hash, slot, block number if available, provider source, observed depth, and finality threshold.
+  - Acceptance: reorg below the threshold leaves local state pending or quarantined; reorg after local finalization is detected as an incident and has an explicit recovery runbook.
+  - Acceptance: public-testnet config states finality depth/settlement assumptions and tests cover rollback before and after the threshold.
+- [ ] Make deposit and withdrawal ingestion rollback-aware.
+  - Acceptance: every ingested L1 event records block hash, slot, provider/indexer source, and observed depth.
+  - Acceptance: commit-time event barriers only accept events visible through a stable indexed tip, not merely present in the current UTxO query.
+  - Acceptance: if a previously ingested but unfinalized event disappears or moves due to rollback/indexer correction, the node invalidates or quarantines it before projection/finalization.
+  - Acceptance: tests simulate event appearance, rollback disappearance, reappearance at a different chain point, and conflicting same-event payloads.
+- [ ] Add provider consistency gates for public-testnet L1 reads and confirmations.
+  - Acceptance: protocol decisions never mix Blockfrost, Koios, Kupo, Ogmios, or Cardano-node data unless sources are proven to describe the same network and compatible chain point.
+  - Acceptance: fallback providers are allowed only for explicitly classified read-only diagnostics or after same-tip validation; state-changing decisions fail closed on inconsistent provider views.
+  - Acceptance: Kupo/Ogmios readiness includes network id, era, tip hash/slot, Kupo indexed-through point, Ogmios node tip, and maximum allowed drift.
+  - Acceptance: logs/DB records include provider source for each L1 observation used to finalize or project protocol state.
+- [ ] Define a public-testnet slot/time authority and clock-skew policy.
+  - Acceptance: public chain-window construction uses provider/Cardano-node chain time as the authority, with local wall clock only after bounded skew validation.
+  - Acceptance: startup/readiness fails or degrades when local clock skew exceeds the configured bound or when slot/time conversion is unavailable for the active network.
+  - Acceptance: deposit, withdrawal, scheduler, operator lifecycle, commit, and merge validity windows share one audited slot/time conversion module.
+  - Acceptance: tests cover clock skew, stale provider slot, epoch boundary, validity upper-bound inclusivity, and Custom/emulator fallback isolation from public profiles.
+- [ ] Centralize L1 fee and collateral input policy for all public-testnet protocol transactions.
+  - Acceptance: commit, merge, scheduler, operator lifecycle, initialization, deposit, withdrawal, reserve, payout, and proof tx builders use one policy for fee and collateral inputs.
+  - Acceptance: selected fee/collateral UTxOs are pure ADA, owned by the intended wallet, not protocol state, not reference-script UTxOs, not datum-bearing, not already locally consumed, and above configured min ADA thresholds.
+  - Acceptance: builders verify collateral inputs, collateral return, total collateral, max collateral inputs, fee funding, and min-UTxO behavior after final balancing.
+  - Acceptance: operator runbooks and readiness expose fee/collateral wallet balances, fragmentation state, refill thresholds, and failure recovery.
+
+## Submission, Admission, And Validation
+
+- [x] `/submit` accepts canonical Midgard-native transaction CBOR rather than the full canonical+compact envelope.
+- [x] The provider computes the submitted tx id locally and checks the node response tx id.
+- [x] Durable admission records tx id, canonical bytes, payload hash, and status transitions.
+- [ ] Close the durable-admission backlog race.
+  - Acceptance: concurrent inserts cannot exceed the configured max pending backlog beyond a documented bounded tolerance.
+- [ ] Make canonical tx payload conflict checks strict across all DB paths.
+  - Acceptance: duplicate ids with different bytes are rejected consistently wherever tx rows are inserted or replayed.
+- [ ] Add public validation rejection metrics by reason.
+- [ ] Add adversarial validation fixtures tied to proof categories.
+  - Acceptance: invalid transactions rejected by Phase A/B have corresponding proof data expectations where public challenge support is claimed.
+- [ ] Confirm validation uses only deterministic data available to public verifiers.
+- [ ] Document which validation failures are permanent versus retryable infrastructure failures.
+- [ ] Add stress gates for admission processor restart during validation batch claims.
+- [ ] Add mixed-batch crash recovery tests.
+  - Acceptance: if the process dies after rejections persist but before accepted txs persist, rejected txs remain terminal, accepted candidates are retried or accepted exactly once, and no spent input is resurrected.
+
+## Deposits
+
+- [x] SDK/node deposit builders exist and use hub-oracle/reference-script aware construction.
+- [x] Deposit projection and deposit catch-up workers exist.
+- [ ] Return public deposit metadata from `/deposit/build`.
+  - Acceptance: response includes deposit event id, nonce out-ref/unit, auth unit, valid-to, expected event unit, expected settlement/inclusion timing, and unsigned tx CBOR.
+- [ ] Add public docs for wallet funding, nonce selection, validity interval, and retry behavior.
+- [ ] Add acceptance coverage for duplicate deposit submission, late deposit, malformed event datum, and insufficient funding UTxOs.
+- [ ] Add monitoring for deposit-fetch lag, projection lag, projected/confirmed divergence, and consumed deposit conflicts.
+- [ ] Define how external users discover deposit status without internal DB access.
+- [ ] Ensure public deposit commands do not default to operator wallets.
+  - Acceptance: deposit CLI examples use user-provided seed/env names and never operational wallet env vars as defaults.
+
+## Withdrawals, Reserve, And Payout
+
+- [ ] Centralize withdrawal submit/finalization through the production submit helper.
+  - Acceptance: withdrawal L1 submission uses the same recovery, local UPLC evaluation, script-data hash repair, timeout, and confirmation behavior as other production L1 submissions.
+  - Evidence: `demo/midgard-node/src/transactions/submit-withdrawal.ts` contains a direct sign/complete/submit path that should be reconciled with the shared production transaction submission path.
+- [ ] Provide a public withdrawal build/status surface if withdrawals are intended for public users through node APIs.
+- [ ] Add withdrawal external-wallet build parity or explicitly reject it as unsupported.
+  - Acceptance: either `/withdrawal/build` returns unsigned CBOR plus event metadata for external signing, or public docs state withdrawals require local CLI custody and are not a wallet API.
+- [ ] Decide and document whether users submit withdrawal orders through L2 `/submit`, L1 CLI/API, or both.
+- [ ] Wire invalid-withdrawal refund into node CLI/API if it is part of the public lifecycle.
+- [ ] Add end-to-end reserve/payout acceptance.
+  - Acceptance: deposit reserve absorption, payout initialization, adding reserve funds, payout conclusion, and withdrawal finality are verified from clean deployment.
+- [ ] Add payout liveness monitoring.
+  - Acceptance: stuck payout, insufficient reserve liquidity, expired withdrawal, and invalid withdrawal states are visible.
+- [ ] Add operator runbook for reserve funding, payout batching, fee funding, and failure recovery.
+- [ ] Document user-visible withdrawal latency and maturity assumptions.
+- [ ] Turn reserve/payout inspection into an operational contract.
+  - Acceptance: payout status exposes phase, reserve shortfall, next required operator action, and alertable metrics.
+- [ ] Make settlement proof resolution externally consumable or explicitly operator-local.
+  - Acceptance: public users/operators can verify deposit/withdrawal inclusion from documented API/artifacts, or the runbook states proof resolution requires privileged node DB access.
+- [ ] Decide the tx-order public status and enforce it in exports/docs.
+  - Acceptance: tx-order is either documented as unsupported/internal and removed from public examples, or node gets full build/fetch/status/settlement/payout lifecycle coverage for it.
+
+## Operator Onboarding, Liveness, And Incentives
+
+- [ ] Make operator activation match the chosen public participation model.
+  - Acceptance: if permissionless, activation can insert any eligible operator key into the active set at the correct ordered anchor, not only append after the current tail.
+  - Acceptance: tests cover activation into empty, head, middle, and tail active-set positions, plus stale-anchor retry behavior.
+  - Acceptance: if curated, registration/activation is explicitly gated by an allowlist or approval mechanism instead of accidental key-order constraints.
+- [ ] Define public-testnet operator funding and faucet policy.
+  - Acceptance: docs/tooling state minimum ADA for bond, registration, activation, scheduler refresh, commits, merges, reference scripts, collateral, and recovery transactions.
+  - Acceptance: public faucet or manual funding flow prevents one actor from cheaply creating many operators while still allowing legitimate onboarding.
+  - Acceptance: onboarding preflight fails with actionable per-wallet shortfall diagnostics before submitting any lifecycle transaction.
+- [ ] Implement public-testnet missed-commitment enforcement.
+  - Acceptance: an operator/watchdog can detect missed commitments and neglected deposits/withdrawals/tx-orders, build skipped-operator scheduler transactions, increment inactivity strikes, and continue block production.
+  - Acceptance: tests cover no-event inactivity, neglected user event inactivity, single-operator strike limit, multi-operator takeover, and partial-slash retirement.
+  - Acceptance: metrics expose current operator, shift age, missed commitment age, strike count, next eligible takeover time, and last successful takeover tx.
+- [ ] Close duplicate-operator Sybil and scheduler-lock paths.
+  - Acceptance: duplicate registration/activation/retirement states are impossible or slashable from every operator set combination.
+  - Acceptance: an automated duplicate sweeper or public transaction builder can remove duplicates before they affect scheduler liveness.
+  - Acceptance: tests prove duplicate registered/active/retired combinations cannot permanently block scheduler advance, rewind, retirement, or inactivity slashing.
+- [ ] Make bond slashing and prover rewards explicit and testable.
+  - Acceptance: public parameters define required bond, slashing penalty, inactivity penalty, and prover reward with non-placeholder values or a signed zero-economics rationale.
+  - Acceptance: slashing transactions have deterministic value-flow checks or a documented prover-controlled reward construction that external challengers can verify.
+  - Acceptance: tests cover active, retired, registered, duplicate, bad-state, bad-settlement, and partially inactivity-slashed operators.
+- [ ] Define operator key rotation and compromise response.
+  - Acceptance: either implement safe rotate/rekey lifecycle preserving bond holds and scheduler correctness, or document that rotation requires retire, wait for bond unlock, recover, and re-register.
+  - Acceptance: compromised active/current operator runbook states how to stop signing, prevent unsafe commits, preserve audit state, and recover or slash as appropriate.
+  - Acceptance: tests cover rotation or explicit no-rotation behavior while bond holds, pending shifts, pending commitments, and retired status exist.
+
+## Commit, Confirmation, Merge, And Recovery
+
+- [x] Commit, confirmation, pending finalization journal, local finalization recovery, and merge workers exist.
+- [x] State-queue mutation leases exist to prevent overlapping mutation workers.
+- [ ] Add crash-boundary acceptance tests.
+  - Acceptance: restart at each boundary leaves no duplicate committed blocks, no lost mempool transactions, no unbounded local finalization pending state, and no MPF/DB divergence.
+- [ ] Make split DB/MPF boundaries explicitly tested.
+  - Acceptance: transaction-root MPF reset/replay after DB commit is deterministic and verified by recovery tests.
+- [ ] Add exact-count checks for every DB transition that moves canonical tx payloads between mempool, processed, latest, and confirmed tables.
+- [ ] Add commit crash test for "submitted on-chain, not yet marked submitted."
+  - Acceptance: restart resolves the canonical header by header hash, does not build a competing block on the same base, and eventually finalizes or abandons deterministically.
+- [ ] Add submit-recovery parity for deposit-only/user-event-only commits.
+  - Acceptance: if a deposit-only commit submit errors after reaching L1, recovery finds the header and preserves the pending journal instead of abandoning a canonical block.
+- [ ] Make confirmed-pending observation atomic or explicitly recoverable.
+  - Acceptance: crash after deposit/withdrawal projection assignment but before pending journal status update is replay-safe and produces the same final status.
+- [ ] Add merge crash test for "merge tx confirmed, local merge job not started."
+  - Acceptance: restart detects on-chain queue advancement and reconciles confirmed ledger/blocks without manual DB edits.
+- [ ] Add merge crash test for "local merge DB transaction committed, job not completed."
+  - Acceptance: recovery can prove whether job effects are complete and either mark complete or safely replay.
+- [ ] Add public metrics and alerts for unresolved block submission age, local finalization pending age, merge failure count, and state queue length.
+- [ ] Expand `/readyz` with concrete recovery-state diagnostics.
+  - Acceptance: readiness includes pending-finalization status/header/age, active lease holder/expiry, local mutation job ids/ages, processed-mempool depth, mempool/processed overlap count, and BlocksDB-to-ImmutableDB missing payload count.
+- [ ] Document manual recovery procedures for pending finalizations, mutation leases, stuck scheduler refresh, and failed merge.
+- [ ] Require restart acceptance with persistent Postgres and MPF state before public launch.
+- [ ] Add a runbook for intentionally abandoned commits and how public watchers should interpret them.
+
+## Fraud Proofs And Proof Data Availability
+
+- [ ] Add consensus feature gates tied to the public fraud-proof coverage matrix.
+  - Acceptance: every transaction feature admitted by public testnet consensus maps to a supported proof family; uncovered features such as script-bearing transactions, mint/burn, observers, redeemers, reference scripts, or withdrawal categories are rejected or explicitly disabled by config/manifest until their proof coverage is complete.
+- [ ] Bind public DA to committed headers or an L1-visible commitment.
+  - Acceptance: every public-testnet block header or state-queue append has a verifiable DA commitment covering full tx payloads, opened field preimages, proof bundle metadata, and transition/proof member counts.
+- [ ] Define the public-testnet fraud-proof scope explicitly.
+  - Acceptance: docs say exactly which proof families are supported on public testnet and which are not.
+- [ ] Complete the double-spend proof path end-to-end on preprod if it is the first public fraud-proof milestone.
+  - Acceptance: generate invalid block, publish proof data, submit init/steps/conclusion, mint proof token, remove fraudulent block, and verify operator/slashing effects where applicable.
+- [ ] Implement proof bundle persistence independent of transient node internals.
+  - Acceptance: challengers can reconstruct proof transactions from committed public data and the bundle schema.
+- [ ] Define a versioned proof-bundle schema.
+  - Acceptance: `ProofBundleV1` includes header hash, root role, root schema version, root, member count, canonical key/value CBOR, membership proof CBOR, optional non-membership/deletion proof, opened field preimages, source payload hash, and verifier ABI version.
+- [ ] Add public proof bundle APIs or artifact exports.
+- [ ] Publish proof-bundle retrieval APIs, not just `/block` and `/tx`.
+  - Acceptance: external challengers can fetch block proof bundles, tx root members, proof families, hashes, pagination, and retention guarantees through stable schemas.
+- [ ] Add watcher/challenger runbook.
+  - Acceptance: an external party can detect an invalid block, fetch data, build the proof, submit transactions, and observe final resolution.
+- [ ] Add watcher/challenger daemon flow.
+  - Acceptance: a public challenger can run one process that watches state-queue headers, fetches DA/proof bundles, detects supported invalidity, simulates proof txs, submits steps with retry/resume, and records final resolution.
+- [ ] Remove or isolate compatibility flags in public fault-proof tooling.
+  - Acceptance: no public flow relies on `allowIncompatibleOutput` or old-layout compatibility assumptions.
+- [ ] Make proof-family support machine-readable and enforced.
+  - Acceptance: `/protocol-info` or `/proof-families` returns each validation rule/reject code with `supported | disabled | unsupported`, proof family id, script hashes, DA requirements, and public-testnet status.
+- [ ] Add adversarial fixtures for every claimed proof family.
+- [ ] Add public adversarial fixtures that use real validators, not always-succeeds scaffolding.
+  - Acceptance: gated emulator/preprod fixtures create invalid committed headers with real deployed validators, publish the same proof bundles an external challenger sees, and prove challenge success plus valid-block non-challenge failure.
+- [ ] Add negative tests proving valid blocks cannot be challenged by supported proof paths.
+- [ ] Add proof transaction size/budget gates.
+- [ ] Add readiness metric for proof-data publication lag.
+- [ ] Persist and expose transaction-root proofs at commit time.
+  - Acceptance: node stores and serves the exact membership proof for each committed tx root member as committed, with root recomputation checks after restart.
+- [ ] Add challenger resume/state model.
+  - Acceptance: challenger state stores proof attempt id, current thread UTxO, submitted tx hashes, confirmation status, next action, and safe retry semantics after process restart.
+
+## Protocol Scope Gaps
+
+- [ ] Implement or explicitly exclude the escape hatch from public testnet scope.
+  - Acceptance: either real escape-hatch mint/spend validators, initialization, trigger transaction, reduced-bond registration semantics, grace/penalty handling, CLI/runbook, and tests exist; or public-testnet docs and manifest mark escape hatch unsupported and explain liveness assumptions when operators stop committing.
+- [ ] Complete the settlement resolution-claim lifecycle or mark settlement resolution claims unsupported.
+  - Acceptance: public/operator flows can attach resolution claims, disprove fraudulent claims with deposit/withdrawal/tx-order membership evidence, slash the claimant using canonical protocol economics, remove matured settlements, and recover after restart.
+  - Acceptance: tests cover valid claim maturity, false-claim slashing, and no-slash valid claims.
+- [ ] Implement withdrawal exact-payability classification.
+  - Acceptance: classification simulates/validates the exact Cardano L1 payout output for `l2_value`, `l1_address`, and `l1_datum`.
+  - Acceptance: unpayable values are tagged `UnpayableWithdrawalValue`, routed to invalid-withdrawal refund, persisted with diagnostic evidence, and covered by tests for min-ADA, token-bundle, datum, address, and multi-asset edge cases.
+
+## SDK And Client Readiness
+
+- [ ] Add a stable public exports map for `@al-ft/midgard-sdk`.
+  - Acceptance: ESM and CJS consumers resolve the intended entrypoints and types.
+- [ ] Add SDK package smoke tests against packed tarballs.
+  - Acceptance: `import`, `require`, and TypeScript `moduleResolution: nodenext` smoke tests pass against the packed package.
+- [ ] Add an SDK public API snapshot gate.
+  - Acceptance: CI fails on accidental new/removed top-level SDK exports and verifies no test/internal names leak.
+- [ ] Remove test-only or internal exports from public SDK surfaces, or move them under explicitly named internal paths.
+- [ ] Add strict diagnostic modes where SDK currently drops invalid UTxOs or proceeds with partial wallet state.
+- [ ] Add timeout/abort support to provider requests.
+  - Acceptance: `awaitTx` and all nested status/protocol calls can be cancelled cleanly.
+- [ ] Add transport timeout tests.
+  - Acceptance: tests cover hung fetch, body read hang/failure, timeout classification, and user abort for protocol-info, UTxO, submit, and tx-status requests.
+- [ ] Document protocol-info fallback as non-default and unsafe for normal public use.
+- [ ] Publish stable provider error contracts.
+  - Acceptance: docs define every public `ProviderError.code`, retryability rule, and expected node error JSON for 400/409/413/415/422/429/503/5xx.
+- [ ] Document and test tx status semantics.
+  - Acceptance: docs include a state machine/table, terminal versus non-terminal states, default `awaitTx` targets, and recommended handling for `pending_commit` and `awaiting_local_recovery`.
+- [ ] Add browser/client examples for submit, deposit, withdrawal, status, and retry behavior.
+- [ ] Replace in-memory-only examples with public endpoint examples.
+  - Acceptance: runnable examples cover real node endpoint setup, submit/status polling, abort/timeout, safe error handling, and package install from the public testnet release channel.
+- [ ] Add typed error classes and examples for common public failures.
+- [ ] Publish package provenance/versioning policy for public testnet SDK builds.
+
+## Observability And Operations
+
+- [ ] Add alerting rules.
+  - Acceptance: alerts cover `/readyz` failure, stale workers, admission backlog depth/age, provider lag, DB saturation, disk pressure, local finalization pending, unresolved block submission, merge failures, deposit/withdrawal lag, proof-data lag, and public error-rate spikes.
+- [ ] Disable anonymous admin access for Grafana in public profiles.
+- [ ] Keep Loki/Tempo/Prometheus internal or authenticated.
+- [ ] Increase log retention and preserve audit trails for tx admission, validation decisions, commits, merges, withdrawals, payouts, and admin actions.
+- [ ] Define log redaction policy for seeds, keys, API keys, wallet addresses where appropriate, and provider credentials.
+- [ ] Add dashboards for operator health, queue health, L1 provider health, deposits, withdrawals, fraud-proof readiness, and DB state.
+- [ ] Add incident runbooks for provider outage, DB outage, invalid block detection, stuck state queue, stuck payout, and redeploy/reset.
+- [ ] Add backup/restore procedure and drill for Postgres plus MPF/local state.
+
+## CI, Tests, And Acceptance Gates
+
+- [ ] Expand CI to run full workspace checks for public-testnet relevant packages.
+  - Acceptance: `pnpm --dir demo install --frozen-lockfile`, builds, typechecks, and tests are run for core, SDK, lucid-midgard, validation, node, and fault proofs.
+- [ ] Align Aiken compiler versions across `aiken.toml`, CI, docs, and local scripts.
+- [ ] Add a Docker compose smoke gate.
+  - Acceptance: migration service exits successfully, node starts, `/healthz` and `/readyz` pass, and unsafe public ports are not exposed in public profile.
+- [ ] Add clean public-testnet e2e acceptance.
+  - Acceptance: fresh on-chain deployment plus clean local state completes the full user/operator lifecycle without manual DB edits.
+- [ ] Add persistent-state restart acceptance.
+  - Acceptance: restart after deposit projection, after mempool admission, after commit submission, after confirmation, during merge, and during payout is safe and deterministic.
+- [ ] Add fraud-proof public milestone acceptance.
+- [ ] Add load/stress thresholds.
+  - Acceptance: admission spam, valid tx throughput, invalid tx throughput, provider rate limiting, DB connection saturation, and API latency have pass/fail thresholds.
+- [ ] Add release artifact verification.
+  - Acceptance: public images/packages are built from a tagged commit and their hashes are recorded.
+
+## Release Engineering And Supply Chain
+
+- [ ] Pin all public-testnet release inputs by immutable digest or commit SHA.
+  - Acceptance: GitHub Actions, container base images, CI service images, compose images, and release build actions use commit SHAs or image digests.
+  - Acceptance: CI fails on `ubuntu-latest`, action tags, mutable image tags, or unpinned release inputs in public release workflows.
+- [ ] Generate and gate SBOMs for every public artifact.
+  - Acceptance: public container images, npm packages, and contract artifact bundles produce CycloneDX/SPDX SBOMs.
+  - Acceptance: CI scans SBOMs and images for vulnerabilities and license policy violations; releases fail on untriaged critical/high findings or prohibited licenses.
+- [ ] Sign and attest all public-testnet artifacts.
+  - Acceptance: container images are signed by digest, npm packages use registry provenance, contract bundles have signed in-toto/SLSA provenance, and operators can verify artifact digest, source commit, builder identity, dependency lock hash, and build command before deployment.
+- [ ] Define the public package release channel.
+  - Acceptance: all public JS packages are versioned together or by an explicit dependency graph, published from CI to the chosen registry, include `publishConfig` and provenance, replace local tarball install docs, and have post-publish smoke tests installing by registry version.
+- [ ] Enforce release dependency specifier hygiene.
+  - Acceptance: CI fails public-testnet release builds on `latest`, local `file:` dependencies, unapproved semver ranges in runtime dependencies, unresolved `workspace:*` in packed packages, or lockfiles not regenerated by the approved package manager/version.
+
+## Public Data, Support, And Compliance
+
+- [ ] Publish a public data retention and deletion policy.
+  - Acceptance: classify on-chain data, L2 canonical tx data, public index rows, logs, support records, and backups as immutable/public, operationally retained, or deletable.
+  - Acceptance: policy states that on-chain/public DA data cannot be deleted; off-chain log/support deletion or anonymization must not corrupt auditability, fraud-proof reconstruction, or state recovery.
+- [ ] Define public status retention guarantees.
+  - Acceptance: `/submit`, `/tx-status`, `/deposit-status`, withdrawal status, and explorer APIs document minimum retention, terminal-state retention, pruned/expired responses, `retainedUntil`, and support escalation windows.
+  - Acceptance: retention applies consistently across DB tables, logs, and backups; pruning never removes data still needed for recovery, fraud proofs, payouts, or user support.
+- [ ] Make public logging privacy-safe and deletion-aware.
+  - Acceptance: remove raw tx CBOR/body logging from public routes; hash or truncate user addresses/query values unless explicitly needed.
+  - Acceptance: automated log redaction tests cover tx CBOR, addresses, request bodies, provider responses, and support IDs.
+  - Acceptance: public Loki/log storage has retention, deletion/legal-hold procedure, and access audit logs.
+- [ ] Add a public support workflow.
+  - Acceptance: every public API response includes a stable request/correlation id.
+  - Acceptance: user docs say exactly which identifiers to provide for submit/deposit/withdrawal/payout issues.
+  - Acceptance: operators have a safe diagnostic export that redacts private material while including tx id, deposit/withdrawal event id, block/header, request id, status history, and relevant log spans.
+  - Acceptance: support severity, ownership, escalation, and response targets are documented.
+- [ ] Launch a public status/explorer and incident communications surface.
+  - Acceptance: public users can view network health, current limitations, degraded components, latest confirmed/merged block, tx/deposit/withdrawal status, payout status, known incidents, maintenance windows, and post-incident updates without Grafana/admin access.
+  - Acceptance: incident templates define severity, user impact, mitigation, rollback/redeploy status, and resolution criteria.
+- [ ] Define public-testnet disaster recovery objectives and game days.
+  - Acceptance: document RPO/RTO, PITR/WAL archiving, encrypted offsite backups, restore into a fresh host, MPF/Postgres/deployment-manifest consistency checks, provider/indexer rebuild procedure, operator key custody recovery, and failover decision tree.
+  - Acceptance: runbook states the exact point where recovery must stop and perform a clean on-chain redeploy/reset instead of restoring local state.
+
+## Documentation And Runbooks
+
+- [ ] Publish a public-testnet operator runbook.
+  - Acceptance: setup, config, deploy, register, activate, monitor, commit/merge behavior, restart, backup, upgrade, reset/redeploy, and incident recovery are covered.
+- [ ] Publish a public-testnet user runbook.
+  - Acceptance: connect wallet, get protocol info, build/submit deposit, submit L2 transaction, check status, withdraw, and understand failure/retry modes.
+- [ ] Publish a challenger/watcher runbook.
+  - Acceptance: observe blocks, fetch proof data, run proof tooling, submit proof steps, remove fraudulent block, and monitor outcome.
+- [ ] Publish API documentation.
+  - Acceptance: endpoint request/response schemas, error codes, idempotency, retry semantics, rate limits, and auth boundaries are specified.
+- [ ] Publish deployment manifest and contract verification instructions.
+- [ ] Document public-testnet limitations.
+  - Acceptance: any intentionally unsupported proof families, economics, payout modes, or API surfaces are stated plainly.
+- [ ] Document upgrade procedure and compatibility policy.
+  - Acceptance: since pre-launch legacy support is not a goal, upgrades should favor explicit redeploy/migration plans over hidden compatibility shims.
+
+## Go / No-Go Checklist
+
+Public testnet can move to go only when all of the following are complete:
+
+- [ ] A clean public-testnet deployment manifest exists and startup verifies it fail-closed.
+- [ ] Public ingress is hardened and internal observability/admin surfaces are not internet-exposed.
+- [ ] L1 finality, rollback, provider consistency, and clock-skew policies are implemented and tested.
+- [ ] Key custody, admin authorization, seed handling, and vulnerability disclosure are production-ready.
+- [ ] Operator onboarding, funding, activation, inactivity enforcement, duplicate handling, slashing/rewards, and key-compromise response match the chosen participation model.
+- [ ] The full clean deployment acceptance test passes and produces artifacts.
+- [ ] Persistent-state restart/recovery acceptance passes.
+- [ ] Fraud-proof/proof-data-availability scope is implemented, tested, and documented.
+- [ ] Escape hatch, settlement resolution claims, tx-order, withdrawal exact-payability, and other protocol-scope gaps are either implemented or explicitly excluded from public scope.
+- [ ] Public SDK/provider packages resolve correctly and have documented examples.
+- [ ] Withdrawal/reserve/payout public lifecycle is wired, tested, and documented.
+- [ ] CI gates the package, contract, and acceptance checks relevant to public testnet.
+- [ ] Release artifacts are pinned, scanned, signed, attested, and published through the selected public channel.
+- [ ] Monitoring dashboards and alerts are installed and exercised.
+- [ ] Public status/explorer, incident communications, support workflow, retention/deletion policy, and disaster recovery objectives are in place.
+- [ ] Operator, user, and challenger runbooks are published.
+- [ ] Public-testnet limitations are explicit and do not misrepresent security guarantees.
+
+## Current Answer To "Do We Have All Core Features Implemented?"
+
+No, not for a public testnet definition that includes adversarial safety and public operation. The core honest-path L2 transaction pipeline is largely present, and that is a strong base. The missing pieces are not cosmetic: public testnet readiness requires proof data availability, at least one fully exercised fraud-proof challenge path, deterministic deployment identity, hardened public ingress, restart/recovery evidence, and complete public lifecycle docs/tools for deposits, withdrawals, reserve/payout, operators, and challengers.
+
+For a controlled private preprod demonstration, the repo appears much closer: the node can initialize, accept canonical transactions, project deposits, commit blocks, confirm/merge state, and exercise reserve/payout flows when run with the expected local/preprod setup. That should not be presented as public testnet readiness until the blocker checklist above is closed.

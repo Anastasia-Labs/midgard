@@ -1,25 +1,20 @@
 import {
-  AddressDetails,
-  credentialToAddress,
-  Data,
-  getAddressDetails,
-  Network,
-  Script,
-  ScriptHash,
-} from "@lucid-evolution/lucid";
-import { Array as EffectArray, Effect, Option } from "effect";
-import {
   Address,
   Credential,
+  Data,
+  fromHex,
+  getAddressDetails,
   LucidEvolution,
   PolicyId,
-  UTxO,
-  fromHex,
+  Script,
+  ScriptHash,
   toHex,
+  UTxO,
 } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
+import { Effect } from "effect";
+
 import { ActiveOperatorUTxO } from "./active-operators.js";
-import { RetiredOperatorUTxO } from "./retired-operators.js";
 import {
   Bech32DeserializationError,
   HashingError,
@@ -27,21 +22,17 @@ import {
   UnauthenticUtxoError,
 } from "./errors.js";
 import { getStateToken } from "./internals.js";
+import { RetiredOperatorUTxO } from "./retired-operators.js";
 
 export * from "./errors.js";
 
-export const makeReturn = <A, E>(program: Effect.Effect<A, E>) => {
-  return {
-    unsafeRun: () => Effect.runPromise(program),
-    safeRun: () => Effect.runPromise(Effect.either(program)),
-    program: () => program,
-  };
-};
+export const makeReturn = <A, E>(program: Effect.Effect<A, E>) => ({
+  unsafeRun: () => Effect.runPromise(program),
+  safeRun: () => Effect.runPromise(Effect.either(program)),
+  program: () => program,
+});
 
-export const isHexString = (str: string): boolean => {
-  const hexRegex = /^[0-9A-Fa-f]+$/;
-  return hexRegex.test(str);
-};
+export const isHexString = (str: string): boolean => /^[0-9A-Fa-f]+$/.test(str);
 
 /**
  * `StateUTxO` would probably be a better name, but it'd be confusing next to
@@ -95,8 +86,7 @@ export const utxosAtByNFTPolicyId = (
         );
       });
 
-    const authenticUTxOs = yield* Effect.allSuccesses(nftEffects);
-    return authenticUTxOs;
+    return yield* Effect.allSuccesses(nftEffects);
   }).pipe(
     Effect.catchAllDefect(
       (d) =>
@@ -107,24 +97,13 @@ export const utxosAtByNFTPolicyId = (
     ),
   );
 
-const blake2bHelper = (
+export const hashHexWithBlake2b = (
   msg: string,
-  dkLen: number,
-  functionName: string,
+  digestByteLength: 28 | 32,
 ): Effect.Effect<string, HashingError> => {
+  const functionName = digestByteLength === 28 ? "Blake2b224" : "Blake2b256";
   const errorMessage = `Failed to hash using ${functionName} function`;
-  if (isHexString(msg)) {
-    try {
-      return Effect.succeed(toHex(blake2b(fromHex(msg), { dkLen })));
-    } catch (e) {
-      return Effect.fail(
-        new HashingError({
-          message: errorMessage,
-          cause: e,
-        }),
-      );
-    }
-  } else {
+  if (!isHexString(msg)) {
     return Effect.fail(
       new HashingError({
         message: errorMessage,
@@ -132,87 +111,26 @@ const blake2bHelper = (
       }),
     );
   }
-};
 
-export const hashHexWithBlake2b224 = (
-  msg: string,
-): Effect.Effect<string, HashingError> => blake2bHelper(msg, 28, "Blake2b224");
-
-export const hashHexWithBlake2b256 = (
-  msg: string,
-): Effect.Effect<string, HashingError> => blake2bHelper(msg, 32, "Blake2b256");
-
-export const bufferToHex = (buf: Buffer): string => {
   try {
-    return buf.toString("hex");
-  } catch (_) {
-    return "<no hex for undefined>";
+    return Effect.succeed(
+      toHex(blake2b(fromHex(msg), { dkLen: digestByteLength })),
+    );
+  } catch (e) {
+    return Effect.fail(
+      new HashingError({
+        message: errorMessage,
+        cause: e,
+      }),
+    );
   }
 };
+
+export const bufferToHex = (buf: Buffer): string => buf.toString("hex");
 
 export const H32Schema = Data.Bytes({ minLength: 32, maxLength: 32 });
 export type H32 = Data.Static<typeof H32Schema>;
 export const H32 = H32Schema as unknown as H32;
-
-/**
- * Assumes the given Bech32 string is that of a Cardano address (TODO).
- */
-export const midgardAddressFromBech32 = (
-  bechStr: string,
-): Effect.Effect<MidgardAddress, Bech32DeserializationError> =>
-  Effect.gen(function* () {
-    const addressDetails: AddressDetails = yield* Effect.try({
-      try: () => getAddressDetails(bechStr),
-      catch: (e) =>
-        new Bech32DeserializationError({
-          message: `Failed to break down ${bechStr} to its details.`,
-          cause: e,
-        }),
-    });
-    const cred = addressDetails.paymentCredential;
-    if (cred === undefined) {
-      return yield* new Bech32DeserializationError({
-        message: `Failed extracting the payment credential from ${bechStr}.`,
-        cause: "Unknown cause.",
-      });
-    } else {
-      if (cred.type === "Key") {
-        const midgardAddress: MidgardAddress = {
-          PublicKeyCredential: [cred.hash],
-        };
-        return midgardAddress;
-      } else {
-        const midgardAddress: MidgardAddress = {
-          ScriptCredential: [cred.hash],
-        };
-        return midgardAddress;
-      }
-    }
-  });
-
-/**
- * Taking Cardano `Network` as the first argument is temporary (TODO).
- */
-export const midgardAddressToBech32 = (
-  network: Network,
-  addr: MidgardAddress,
-): string => {
-  if ("PublicKeyCredential" in addr) {
-    const [pubKeyHex] = addr.PublicKeyCredential;
-    const cred: Credential = {
-      type: "Key",
-      hash: pubKeyHex,
-    };
-    return credentialToAddress(network, cred);
-  } else {
-    const [scriptHashHex] = addr.ScriptCredential;
-    const cred: Credential = {
-      type: "Script",
-      hash: scriptHashHex,
-    };
-    return credentialToAddress(network, cred);
-  }
-};
 
 export type MintingValidator = {
   mintingScriptCBOR: string;
@@ -264,12 +182,19 @@ export type MidgardValidators = {
 };
 
 export const OutputReferenceSchema = Data.Object({
-  txHash: Data.Object({ hash: Data.Bytes({ minLength: 32, maxLength: 32 }) }),
+  transactionId: Data.Bytes({ minLength: 32, maxLength: 32 }),
   outputIndex: Data.Integer(),
 });
 export type OutputReference = Data.Static<typeof OutputReferenceSchema>;
 export const OutputReference =
   OutputReferenceSchema as unknown as OutputReference;
+
+export const outputReferenceFromUTxO = (
+  utxo: Pick<UTxO, "txHash" | "outputIndex">,
+): OutputReference => ({
+  transactionId: utxo.txHash,
+  outputIndex: BigInt(utxo.outputIndex),
+});
 
 export const AssetsSchema = Data.Object({
   policyId: Data.Bytes(),
@@ -278,9 +203,10 @@ export const AssetsSchema = Data.Object({
 export type Assets = Data.Static<typeof AssetsSchema>;
 export const Assets = AssetsSchema as unknown as Assets;
 
-export const ValueSchema = Data.Object({
-  inner: Data.Map(Data.Bytes(), Data.Map(Data.Bytes(), Data.Integer())),
-});
+export const ValueSchema = Data.Map(
+  Data.Bytes(),
+  Data.Map(Data.Bytes(), Data.Integer()),
+);
 export type Value = Data.Static<typeof ValueSchema>;
 export const Value = ValueSchema as unknown as Value;
 
@@ -301,8 +227,6 @@ export const VerificationKeyHashSchema = Data.Bytes({
 export const PubKeyHashSchema = Data.Bytes({ minLength: 28, maxLength: 28 });
 
 export const ScriptHashSchema = Data.Bytes({ minLength: 28, maxLength: 28 });
-
-export const PolicyIdSchema = ScriptHashSchema;
 
 export const MerkleRootSchema = Data.Bytes({ minLength: 32, maxLength: 32 });
 export type MerkleRoot = Data.Static<typeof MerkleRootSchema>;
@@ -377,10 +301,6 @@ export const ProofSchema = Data.Array(ProofStepSchema);
 export type Proof = Data.Static<typeof ProofSchema>;
 export const Proof = ProofSchema as unknown as Proof;
 
-export const MidgardAddressSchema = CredentialSchema;
-export type MidgardAddress = CredentialD;
-export const MidgardAddress = MidgardAddressSchema as unknown as MidgardAddress;
-
 /**
  * TODO: Note that this function does not support pointer addresses.
  */
@@ -436,22 +356,18 @@ export const findOperatorByPKH = (
   | (RetiredOperatorUTxO & { isActive: false }),
   LucidError
 > => {
-  const activeOperatorMatch = EffectArray.findFirst(
-    activeOperators,
-    (utxo) => utxo.datum.key === operatorPKH,
+  const activeOperatorMatch = activeOperators.find((utxo) =>
+    utxo.assetName.endsWith(operatorPKH),
   );
-
-  if (Option.isSome(activeOperatorMatch)) {
-    return Effect.succeed({ ...activeOperatorMatch.value, isActive: true });
+  if (activeOperatorMatch !== undefined) {
+    return Effect.succeed({ ...activeOperatorMatch, isActive: true });
   }
 
-  const retiredOperatorMatch = EffectArray.findFirst(
-    retiredOperators,
-    (utxo) => utxo.datum.key === operatorPKH,
+  const retiredOperatorMatch = retiredOperators.find((utxo) =>
+    utxo.assetName.endsWith(operatorPKH),
   );
-
-  if (Option.isSome(retiredOperatorMatch)) {
-    return Effect.succeed({ ...retiredOperatorMatch.value, isActive: false });
+  if (retiredOperatorMatch !== undefined) {
+    return Effect.succeed({ ...retiredOperatorMatch, isActive: false });
   }
 
   return Effect.fail(

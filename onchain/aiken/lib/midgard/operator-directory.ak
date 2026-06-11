@@ -4,7 +4,7 @@ use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
 use cardano/assets.{AssetName, PolicyId, Value}
 use cardano/transaction.{
-  Input, Mint, Output, Redeemer, ScriptPurpose, Transaction,
+  Input, Mint, Output, OutputReference, Redeemer, ScriptPurpose, Transaction,
 }
 use env
 use midgard/common/types.{Empty}
@@ -24,8 +24,7 @@ pub type SlashingReason {
 pub type SlashingArguments {
   slashed_operator: VerificationKeyHash,
   hub_oracle_ref_input_index: Int,
-  slashed_operator_anchor_element_input_index: Int,
-  slashed_operator_node_input_index: Int,
+  slashed_operator_anchor_element_input_outref: OutputReference,
   slashed_operator_anchor_element_output_index: Int,
   slashing_reason: SlashingReason,
 }
@@ -55,7 +54,7 @@ pub fn init(
     ) == 1,
     produced_element_output: root_output,
     tx_mint: mint,
-    root_validator: fn(_, root_data: Data) -> Bool {
+    root_validator: fn(_, _, root_data: Data) -> Bool {
       root_data == env.empty_data
     },
   )
@@ -66,23 +65,19 @@ pub fn deinit(
   hub_oracle_script_hash: PolicyId,
   directory_policy_id: PolicyId,
   root_asset_name: AssetName,
-  input_index: Int,
   tx: Transaction,
 ) -> Bool {
   let Transaction { inputs, mint, .. } = tx
 
-  // 1. An input must exist at specified index.
-  expect Some(own_input) = inputs |> list.at(input_index)
-
-  // 2. Hub oracle NFT must be getting burnt.
+  // 1. Hub oracle NFT must be getting burnt.
   expect assets.quantity_of(mint, hub_oracle_script_hash, hub.asset_name) == -1
 
-  // 3. Linked list de-initialization must be valid. No other validations
+  // 2. Linked list de-initialization must be valid. No other validations
   //    required.
   linked_list.deinit(
-    root_input: own_input,
+    inputs: inputs,
     tx_mint: mint,
-    root_validator: fn(_, _) -> Bool { True },
+    root_validator: fn(_, _, _) -> Bool { True },
   )
     |> linked_list.run_root_with(directory_policy_id, root_asset_name)
 }
@@ -93,10 +88,11 @@ pub fn operator_is_not_a_member(
   operator: VerificationKeyHash,
   reference_inputs: List<Input>,
   element_ref_input_index: Int,
-) -> linked_list.Eval {
+) -> linked_list.ElementEval<Bool> {
   expect Some(element_input) =
     reference_inputs |> list.at(element_ref_input_index)
   let
+    _element_address,
     _element_lovelace,
     m_smaller_key,
     _element_data,
@@ -128,7 +124,6 @@ pub fn validate_transferred_operator_insertion(
   origin_list_redeemer_index: Int,
   origin_list_redeemer_to_operator_and_penalty_flag: fn(Data) ->
     (VerificationKeyHash, Bool),
-  target_list_anchor_element_input_index: Int,
   target_list_anchor_element_output_index: Int,
   target_list_inserted_node_output_index: Int,
   inputs: List<Input>,
@@ -157,9 +152,7 @@ pub fn validate_transferred_operator_insertion(
   //    extracted from the origin list's redeemer.
   expect operator == operator_from_origin_list_redeemer
 
-  // 3. Specified input and outpus related to the linked list must exist.
-  expect Some(target_list_anchor_element_input) =
-    inputs |> list.at(target_list_anchor_element_input_index)
+  // 3. Specified outputs related to the linked list must exist.
   expect Some(target_list_anchor_element_output) =
     outputs |> list.at(target_list_anchor_element_output_index)
   expect Some(target_list_inserted_node) =
@@ -167,6 +160,7 @@ pub fn validate_transferred_operator_insertion(
 
   // 4. Ordered insertion in the linked list must be proper.
   let
+    _anchor_input,
     anchor_lovelace_change,
     m_anchor_key,
     _anchor_data,
@@ -176,10 +170,10 @@ pub fn validate_transferred_operator_insertion(
     inserted_node_link,
   <-
     linked_list.insert_ascending(
-      target_list_anchor_element_input,
-      target_list_anchor_element_output,
-      target_list_inserted_node,
-      mint,
+      continued_anchor_element_output: target_list_anchor_element_output,
+      new_node_output: target_list_inserted_node,
+      inputs: inputs,
+      tx_mint: mint,
     )
 
   // 5. ADA of anchor element must be preserved.
@@ -237,12 +231,11 @@ pub fn slash_fraudulent_operator_and_get_info(
     Pairs<ScriptPurpose, Redeemer>,
   ) ->
     Bool,
-) -> linked_list.Eval {
+) -> linked_list.ElementEval<Bool> {
   let SlashingArguments {
     slashed_operator,
     hub_oracle_ref_input_index,
-    slashed_operator_anchor_element_input_index,
-    slashed_operator_node_input_index,
+    slashed_operator_anchor_element_input_outref,
     slashed_operator_anchor_element_output_index,
     slashing_reason,
   } = slashing_arguments
@@ -266,54 +259,48 @@ pub fn slash_fraudulent_operator_and_get_info(
       hub_oracle_ref_input_index,
     )
 
-  // 2. Specified inputs and output for removal of the slashed operator's node
-  //    from the linked list must exist at their indices.
-  expect Some(slashed_operator_anchor_element_input) =
-    inputs |> list.at(slashed_operator_anchor_element_input_index)
-  expect Some(slashed_operator_node_input) =
-    inputs |> list.at(slashed_operator_node_input_index)
+  // 2. Specified output for removal of the slashed operator's node from the
+  //    linked list must exist at its index.
   expect Some(slashed_operator_anchor_element_output) =
     outputs |> list.at(slashed_operator_anchor_element_output_index)
 
   // 3. Linked list's removal logic must be valid for the specified inputs and
   //    output.
   let
+    _anchor_input,
     anchor_lovelace_change,
     m_anchor_key,
     _anchor_data,
+    _slashed_operator_node_input,
     slashed_operator_node_lovelace,
     slashed_operator_node_key,
     _slashed_operator_node_data,
     slashed_operator_node_link,
   <-
     linked_list.remove(
-      slashed_operator_anchor_element_input,
-      slashed_operator_node_input,
-      slashed_operator_anchor_element_output,
-      mint,
+      anchor_input_outref: slashed_operator_anchor_element_input_outref,
+      continued_anchor_element_output: slashed_operator_anchor_element_output,
+      inputs: inputs,
+      tx_mint: mint,
     )
 
   // 4. ADA of anchor element must be preserved.
   expect anchor_lovelace_change >= 0
 
-  // 5. The slashed operator key indicated in the redeemer must match the key
-  //    of the removed node.
-  expect slashed_operator_node_key == slashed_operator
-
   expect
     if slashed_operator_node_lovelace < env.required_bond {
-      // 6a. If the operator is partially slashed, the portion already sent to
-      //     the Cardano treasury doesn't need to be deposited again (since
-      //     partial slashing is entirely paid as tx fee).
+      // 5a. If the operator is partially slashed, the portion already sent to the
+      //     Cardano treasury doesn't need to be deposited again (since partial
+      //     slashing is entirely paid as tx fee).
       fee >= env.slashing_penalty - env.inactivity_slashing_penalty
     } else {
-      // 6b. Slashing penalty must be paid to the Cardano treasury via the
+      // 5b. Slashing penalty must be paid to the Cardano treasury via the
       //     transaction fee. Fraud prover is assumed to be the signer of the
       //     transaction, and therefore will receive the remaining bond.
       fee >= env.slashing_penalty
     }
 
-  // 7. Given custom validations must pass.
+  // 6. Given custom validations must pass.
   expect
     further_validations(
       slashed_operator,
@@ -327,7 +314,7 @@ pub fn slash_fraudulent_operator_and_get_info(
 
   when slashing_reason is {
     SlashOperatorForBadState { state_queue_redeemer_index } -> {
-      // 8a. State queue minting script must be invoked via the
+      // 7a. State queue minting script must be invoked via the
       //     `RemoveFraudulentBlockHeader` redeemer, and the operator specified
       //     there must agree with the `slashed_operator` redeemer argument
       //     here.
@@ -346,7 +333,7 @@ pub fn slash_fraudulent_operator_and_get_info(
       settlement_input_index,
       settlement_redeemer_index,
     } -> {
-      // 8b. A settlement UTxO must be getting spent via the
+      // 7b. A settlement UTxO must be getting spent via the
       //     `DisproveResolutionClaim` redeemer.
       expect settlement.DisproveResolutionClaim { operator, .. } =
         utils.get_spending_redeemer_data_at(

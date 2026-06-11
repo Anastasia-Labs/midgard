@@ -49,7 +49,7 @@ validator spend(
         active_node_input_index,
         active_node_output_index,
         hub_oracle_ref_input_index,
-        state_queue_mint_redeemer_index,
+        state_queue_redeemer_index,
       } -> {
         let Transaction {
           inputs,
@@ -105,8 +105,8 @@ validator spend(
         } =
           redeemers
             |> utils.get_redeemer_at(
-                Mint(hub_datum.state_queue),
-                state_queue_mint_redeemer_index,
+                expected_purpose: Mint(hub_datum.state_queue),
+                redeemer_index: state_queue_redeemer_index,
               )
 
         // 4. The operator specified in state queue's redeemer must match the
@@ -260,6 +260,7 @@ validator spend(
         // 3. Spending and reproducing the linked list node must be proper.
         {
           let
+            _active_node_address,
             lovelace_change,
             m_operator,
             active_node_input_data,
@@ -341,17 +342,10 @@ validator mint(
           output_index,
           self,
         )
-      Deinit { input_index } ->
-        deinit(
-          hub_oracle_script_hash,
-          own_policy_id,
-          root_asset_name,
-          input_index,
-          self,
-        )
+      Deinit ->
+        deinit(hub_oracle_script_hash, own_policy_id, root_asset_name, self)
       ActivateOperator {
         new_active_operator_key,
-        active_operator_anchor_element_input_index,
         active_operator_anchor_element_output_index,
         active_operator_inserted_node_output_index,
         registered_operators_redeemer_index,
@@ -380,7 +374,6 @@ validator mint(
                 } = registered_operators_redeemer_data
                 (activating_operator, False)
               },
-              active_operator_anchor_element_input_index,
               active_operator_anchor_element_output_index,
               active_operator_inserted_node_output_index,
               inputs,
@@ -410,8 +403,7 @@ validator mint(
       RetireOperator {
         active_operator_key,
         hub_oracle_ref_input_index,
-        active_operator_anchor_element_input_index,
-        active_operator_removed_node_input_index,
+        active_operator_anchor_element_input_outref,
         active_operator_anchor_element_output_index,
         retired_operators_redeemer_index,
         penalize_for_inactivity,
@@ -449,32 +441,30 @@ validator mint(
             hub_oracle_ref_input_index,
           )
 
-        // 3. Specified inputs and output for removal of the active operator's
-        //    node from the linked list must exist at their indices.
-        expect Some(active_operator_anchor_element_input) =
-          inputs |> list.at(active_operator_anchor_element_input_index)
-        expect Some(active_operator_removed_node_input) =
-          inputs |> list.at(active_operator_removed_node_input_index)
+        // 3. Specified output for removal of the active operator's node from
+        //    the linked list must exist at its index.
         expect Some(active_operator_anchor_element_output) =
           outputs |> list.at(active_operator_anchor_element_output_index)
 
         // 4. Linked list's removal logic must be valid for the specified
-        //    inputs and output.
+        //    anchor outref and output.
         {
           let
+            _anchor_input,
             anchor_lovelace_change,
             m_anchor_key,
             _anchor_data,
+            _active_operator_removed_node_input,
             _active_operator_lovelace,
             active_operator_node_key,
             active_operator_node_data,
             active_operator_node_link,
           <-
             linked_list.remove(
-              active_operator_anchor_element_input,
-              active_operator_removed_node_input,
-              active_operator_anchor_element_output,
-              mint,
+              anchor_input_outref: active_operator_anchor_element_input_outref,
+              continued_anchor_element_output: active_operator_anchor_element_output,
+              inputs: inputs,
+              tx_mint: mint,
             )
 
           // 5. Anchor element's ADA must be preserved.
@@ -597,6 +587,7 @@ fn spend_for_updating_bond_unlock_time(
   //    reproduced without affecting the linked list structure.
   {
     let
+      _active_node_address,
       lovelace_change,
       m_operator,
       active_node_input_data,

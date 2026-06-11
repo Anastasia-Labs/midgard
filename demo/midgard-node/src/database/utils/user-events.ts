@@ -1,27 +1,34 @@
-import { Database } from "@/services/database.js";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
-import {
-  sqlErrorToDatabaseError,
-  DatabaseError,
-} from "@/database/utils/common.js";
 
+import {
+  DatabaseError,
+  logDatabaseError,
+  sqlErrorToDatabaseError,
+} from "@/database/utils/common.js";
+import { Database } from "@/services/database.js";
+
+/**
+ * Table adapter for time-indexed user events such as deposits and withdrawals.
+ *
+ * Event ids stay unique, while the inclusion timestamp lets callers query the
+ * exact event slice relevant to a block or settlement window.
+ */
 export enum Columns {
   ID = "event_id",
   INFO = "event_info",
-  ASSET_NAME = "asset_name",
-  L1_UTXO_CBOR = "l1_utxo_cbor",
   INCLUSION_TIME = "inclusion_time",
 }
 
 export type Entry = {
   [Columns.ID]: Buffer;
   [Columns.INFO]: Buffer;
-  [Columns.ASSET_NAME]: string;
-  [Columns.L1_UTXO_CBOR]: Buffer;
   [Columns.INCLUSION_TIME]: Date;
 };
 
+/**
+ * Creates the user-event table and its inclusion-time index.
+ */
 export const createTable = (
   tableName: string,
 ): Effect.Effect<void, DatabaseError, Database> =>
@@ -32,11 +39,12 @@ export const createTable = (
         yield* sql`CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
         ${sql(Columns.ID)} BYTEA NOT NULL,
         ${sql(Columns.INFO)} BYTEA NOT NULL,
-        ${sql(Columns.ASSET_NAME)} TEXT NOT NULL,
-        ${sql(Columns.L1_UTXO_CBOR)} BYTEA NOT NULL,
         ${sql(Columns.INCLUSION_TIME)} TIMESTAMPTZ NOT NULL,
         PRIMARY KEY (${sql(Columns.ID)})
       );`;
+        yield* sql`CREATE INDEX IF NOT EXISTS ${sql(
+          `idx_${tableName}_${Columns.INCLUSION_TIME}`,
+        )} ON ${sql(tableName)} (${sql(Columns.INCLUSION_TIME)});`;
       }),
     );
   }).pipe(
@@ -44,6 +52,9 @@ export const createTable = (
     sqlErrorToDatabaseError(tableName, "Failed to create the table"),
   );
 
+/**
+ * Inserts one user event and ignores duplicate event ids.
+ */
 export const insertEntry = (
   tableName: string,
   entry: Entry,
@@ -51,18 +62,19 @@ export const insertEntry = (
   Effect.gen(function* () {
     yield* Effect.logDebug(`${tableName} db: attempt to insert UTxO`);
     const sql = yield* SqlClient.SqlClient;
-    // The proirity goes to the oldest entry
-    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(
-      entry,
-    )} ON CONFLICT DO NOTHING`;
+    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(entry)}
+      ON CONFLICT (${sql(Columns.ID)}) DO NOTHING`;
   }).pipe(
     Effect.withLogSpan(`insertEntry ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(`${tableName} db: insertEntry: ${JSON.stringify(e)}`),
+      logDatabaseError(tableName, "insertEntry", e),
     ),
     sqlErrorToDatabaseError(tableName, "Failed to insert the given UTxO"),
   );
 
+/**
+ * Bulk-inserts user events, returning early when the batch is empty.
+ */
 export const insertEntries = (
   tableName: string,
   entries: Entry[],
@@ -74,17 +86,22 @@ export const insertEntries = (
       yield* Effect.logDebug("No entries provided, skipping insertion.");
       return;
     }
-    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(
-      entries,
-    )} ON CONFLICT DO NOTHING`;
+    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(entries)}
+      ON CONFLICT (${sql(Columns.ID)}) DO NOTHING`;
   }).pipe(
     Effect.withLogSpan(`insertEntries ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(`${tableName} db: insertEntries: ${JSON.stringify(e)}`),
+      logDatabaseError(tableName, "insertEntries", e),
     ),
     sqlErrorToDatabaseError(tableName, "Failed to insert given UTxOs"),
   );
 
+/**
+ * Returns every event with `startTime < inclusion_time <= endTime`.
+ *
+ * The half-open interval matches the usual block-window handling in the node
+ * so adjacent windows do not double-count a boundary event.
+ */
 export const retrieveTimeBoundEntries = (
   tableName: string,
   startTime: Date,
@@ -97,20 +114,19 @@ export const retrieveTimeBoundEntries = (
     const sql = yield* SqlClient.SqlClient;
     const result = yield* sql<Entry>`SELECT * FROM ${sql(
       tableName,
-    )} WHERE ${startTime} <= ${sql(Columns.INCLUSION_TIME)}
-    AND ${sql(Columns.INCLUSION_TIME)} < ${endTime}
-    ORDER BY ${sql(Columns.INCLUSION_TIME)} ASC`;
+    )} WHERE ${startTime} < ${sql(Columns.INCLUSION_TIME)} AND ${sql(Columns.INCLUSION_TIME)} <= ${endTime}`;
     return result;
   }).pipe(
     Effect.withLogSpan(`retrieveTimeBoundEntries ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(
-        `${tableName} db: retrieveTimeBoundEntries: ${JSON.stringify(e)}`,
-      ),
+      logDatabaseError(tableName, "retrieveTimeBoundEntries", e),
     ),
     sqlErrorToDatabaseError(tableName, "Failed to retrieve all UTxOs"),
   );
 
+/**
+ * Returns the entire user-event table without applying any time filtering.
+ */
 export const retrieveAllEntries = (
   tableName: string,
 ): Effect.Effect<readonly Entry[], DatabaseError, Database> =>
@@ -121,11 +137,14 @@ export const retrieveAllEntries = (
   }).pipe(
     Effect.withLogSpan(`retrieveEntries ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(`${tableName} db: retrieveEntries: ${JSON.stringify(e)}`),
+      logDatabaseError(tableName, "retrieveEntries", e),
     ),
     sqlErrorToDatabaseError(tableName, "Failed to retrieve all UTxOs"),
   );
 
+/**
+ * Deletes the user events identified by the given event ids.
+ */
 export const delEntries = (
   tableName: string,
   ids: Buffer[],
@@ -136,3 +155,24 @@ export const delEntries = (
       Columns.ID,
     )} IN ${sql.in(ids)}`;
   }).pipe(sqlErrorToDatabaseError(tableName, "Failed to delete given UTxOs"));
+
+/**
+ * Deletes events older than `cutoff` and returns how many rows were pruned.
+ */
+export const pruneOlderThan = (
+  tableName: string,
+  cutoff: Date,
+): Effect.Effect<number, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const deleted = yield* sql`DELETE FROM ${sql(tableName)}
+      WHERE ${sql(Columns.INCLUSION_TIME)} < ${cutoff}
+      RETURNING ${sql(Columns.ID)}`;
+    return deleted.length;
+  }).pipe(
+    Effect.withLogSpan(`pruneOlderThan ${tableName}`),
+    Effect.tapErrorTag("SqlError", (e) =>
+      logDatabaseError(tableName, "pruneOlderThan", e),
+    ),
+    sqlErrorToDatabaseError(tableName, "Failed to prune old user events"),
+  );

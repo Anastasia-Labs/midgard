@@ -5,7 +5,7 @@ import { Effect, pipe } from 'effect';
 import ora from 'ora-classic';
 
 import { loadConfig } from '../../config/index.js';
-import type { MidgardConfig } from '../../types/config.js';
+import type { MidgardConfig } from '../../config/schema.js';
 import {
   displayContinuePrompt,
   displayError,
@@ -18,12 +18,18 @@ import { waitForKeypress } from '../../utils/input.js';
 import { sleep } from '../../utils/sleep.js';
 import { menu } from './menu.js';
 
+/**
+ * Synthetic "back" option inserted into each action menu.
+ */
 const BACK_OPTION = {
   name: `${chalk.dim('←')} ${chalk.green('Back to main menu')}`,
   value: '__back',
   description: '',
 };
 
+/**
+ * Interactive command entrypoint for the manager CLI.
+ */
 export const interactiveCommand = Command.make('interactive', {}, () => {
   return pipe(
     Effect.tryPromise(async () => {
@@ -61,6 +67,9 @@ export const interactiveCommand = Command.make('interactive', {}, () => {
   );
 });
 
+/**
+ * Stateful controller for the interactive menu loop.
+ */
 class ManualCommandImpl {
   private _config: MidgardConfig;
   private _abortController: AbortController;
@@ -103,14 +112,17 @@ class ManualCommandImpl {
     if (this._abortController) {
       try {
         this._abortController.abort();
-      } catch (e) {
+      } catch {
         // Ignore errors on cleanup
       }
     }
   }
 
+  /**
+   * Runs the top-level interactive loop until the process exits.
+   */
   async loop() {
-    while (true) {
+    for (;;) {
       try {
         displayHeader('Main Menu');
         await displayStatus(this._config);
@@ -132,7 +144,7 @@ class ManualCommandImpl {
         const sectionMenu = menu.sections.find((s) => s.name === section);
         if (!sectionMenu) continue;
 
-        while (true) {
+        for (;;) {
           displayHeader(`${sectionMenu.name}`);
           displayKeyboardHints();
 
@@ -169,17 +181,17 @@ class ManualCommandImpl {
             });
             this._isPromptActive = false;
 
-            // Only show spinner for config refresh
             const configSpinner = ora({
               text: 'Refreshing configuration...',
               color: 'green',
             }).start();
+            // Only show spinner for config refresh
             this._config = await Effect.runPromise(loadConfig);
             configSpinner.succeed('Configuration updated');
 
             displaySuccess(result.message);
-            displayContinuePrompt();
             // Wait for user to press a key before continuing
+            displayContinuePrompt();
             await waitForKeypress();
           } catch (error) {
             this._isPromptActive = false;
@@ -191,8 +203,8 @@ class ManualCommandImpl {
             } else {
               displayError('Error executing action', error);
             }
-            displayContinuePrompt();
             // Wait for user to press a key before continuing
+            displayContinuePrompt();
             await waitForKeypress();
           }
         }

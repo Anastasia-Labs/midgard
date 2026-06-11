@@ -10,7 +10,7 @@ use aiken_design_patterns/validity_range_normalization as vrn
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, pass_tx_to_next_step}
+use midgard/fraud_proofs/common.{TxBodyProvided, cancel, pass_tx_to_next_step}
 use midgard/fraud_proofs/invalid_range/step_01.{Datum, SpendRedeemer}
 use midgard/fraud_proofs/invalid_range/step_02
 use midgard/ledger_state.{Header}
@@ -48,8 +48,8 @@ validator main(
           output_state_data,
           header,
           _bad_tx_id,
-          bad_tx,
-          _provided_witness_set_preimage,
+          _bad_tx,
+          tx_field_preimage,
         <-
           pass_tx_to_next_step(
             computation_thread_token_policy_id,
@@ -60,6 +60,9 @@ validator main(
             tx,
           )
 
+        // 2. Bad transaction's body must be provided.
+        expect TxBodyProvided(bad_tx_body) = tx_field_preimage
+
         let Header {
           start_time: block_valid_from,
           end_time: block_valid_to,
@@ -67,9 +70,9 @@ validator main(
         } = header
 
         let bad_tx_normalized_validity_range =
-          vrn.normalize_time_range(bad_tx.body.validity_interval)
+          vrn.normalize_time_range(bad_tx_body.validity_interval)
 
-        // 2. The UTxO must be produced at next step's script hash with validity
+        // 3. The UTxO must be produced at next step's script hash with validity
         //    range of the bad tx, and block's time range provided.
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data =

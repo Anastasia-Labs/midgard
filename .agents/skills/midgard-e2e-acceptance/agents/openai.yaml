@@ -1,0 +1,4 @@
+interface:
+  display_name: "Midgard E2E Acceptance"
+  short_description: "Run clean Midgard node acceptance checks."
+  default_prompt: "Use $midgard-e2e-acceptance to run the fresh-deployment Midgard node acceptance check."

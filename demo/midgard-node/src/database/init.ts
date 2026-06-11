@@ -1,47 +1,25 @@
 import { Effect } from "effect";
-import { SqlClient } from "@effect/sql";
-import {
-  AddressHistoryDB,
-  BlocksDB,
-  BlocksTxsDB,
-  ConfirmedLedgerDB,
-  ImmutableDB,
-  LatestLedgerDB,
-  MempoolDB,
-  MempoolLedgerDB,
-  DepositsDB,
-  TxOrdersDB,
-  WithdrawalsDB,
-  Tx,
-  Ledger,
-  UserEvents,
-} from "./index.js";
-import { Database, NodeConfig } from "@/services/index.js";
-import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 
-export const program: Effect.Effect<
-  void,
-  DatabaseError,
-  Database | NodeConfig
-> = Effect.gen(function* () {
-  const sql = yield* SqlClient.SqlClient;
-  // yield* sql`SET default_transaction_read_only TO 'off'`;
-  yield* sql`SET client_min_messages = 'error'`;
-  yield* sql`SET default_transaction_isolation TO 'serializable'`;
+import * as MigrationRunner from "@/database/migrations/runner.js";
+import { Database } from "@/services/index.js";
 
-  yield* AddressHistoryDB.createTable;
-  yield* BlocksDB.createTable;
-  yield* BlocksTxsDB.createTable;
-  yield* Ledger.createTable(ConfirmedLedgerDB.tableName);
-  yield* Ledger.createTable(LatestLedgerDB.tableName);
-  yield* Ledger.createTable(MempoolLedgerDB.tableName);
-  yield* Tx.createTable(ImmutableDB.tableName);
-  yield* Tx.createTable(MempoolDB.tableName);
-  yield* UserEvents.createTable(DepositsDB.tableName);
-  yield* UserEvents.createTable(TxOrdersDB.tableName);
-  yield* UserEvents.createTable(WithdrawalsDB.tableName);
+import { DatabaseError } from "./utils/common.js";
 
-  yield* Effect.logInfo("PostgreSQL database initialized Successfully.");
-}).pipe(
-  sqlErrorToDatabaseError("all tables", "Failed to initialize the tables"),
-);
+/**
+ * Startup schema gate for the long-running node.
+ *
+ * Production startup must not create, alter, or repair application tables. The
+ * node only verifies that explicit migrations have already brought the database
+ * to the exact schema version supported by this binary.
+ */
+export const program: Effect.Effect<void, DatabaseError, Database> =
+  MigrationRunner.assertCompatible.pipe(
+    Effect.mapError(
+      (error) =>
+        new DatabaseError({
+          message: `Database schema is not compatible: ${error.message}`,
+          cause: error,
+          table: "<schema_migrations>",
+        }),
+    ),
+  );

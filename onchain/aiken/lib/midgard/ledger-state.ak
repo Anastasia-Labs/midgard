@@ -162,6 +162,7 @@ pub type WithdrawalValidity {
   IncorrectWithdrawalValue
   IncorrectWithdrawalSignature
   TooManyTokensInWithdrawal
+  UnpayableWithdrawalValue
 }
 
 pub type WithdrawalInfo {
@@ -178,7 +179,7 @@ pub type WithdrawalEvent {
 // ### Transaction order event
 
 pub type TxOrderId =
-  OutputReference
+  MidgardTxId
 
 pub type TxOrderEvent {
   id: TxOrderId,
@@ -188,16 +189,15 @@ pub type TxOrderEvent {
 // ## Transaction
 
 /// > [!NOTE]
-/// > This is the hash of the compact body.
+/// > This is the hash of the compact transaction body. The transaction root
+/// > maps this id to MidgardTxCompact, which carries the compact body inline.
 pub type MidgardTxId =
   H32<MidgardTxBodyCompact>
 
 pub type MidgardTxWitsHash =
   H32<MidgardTxWitnessSetCompact>
 
-/// Midgard transaction. It includes both the full version and compact versions
-/// of body and witness set.
-/// TODO: This is a draft. Might need further tweaks.
+/// Midgard transaction.
 pub type MidgardTx {
   body: MidgardTxBody,
   wits: MidgardTxWitnessSet,
@@ -205,7 +205,7 @@ pub type MidgardTx {
 }
 
 pub type MidgardTxs =
-  Dict<MidgardTxId, MidgardTx>
+  Dict<MidgardTxId, MidgardTxCompact>
 
 pub type MidgardTxsRoot =
   MerkleRoot<MidgardTxId, MidgardTxCompact>
@@ -401,6 +401,62 @@ pub type MidgardTxWitnessSetCompact {
   addr_tx_wits: AddressWitsHash,
   script_tx_wits: MidgardScriptWitsHash,
   redeemer_tx_wits: RedeemersHash,
+}
+
+pub fn midgard_tx_body_to_compact(body: MidgardTxBody) -> MidgardTxBodyCompact {
+  let MidgardTxBody {
+    spend_inputs,
+    reference_inputs,
+    outputs,
+    fee,
+    validity_interval,
+    required_observers,
+    required_signer_hashes,
+    mint,
+    script_integrity_hash,
+    auxiliary_data_hash,
+    network_id,
+  } = body
+  MidgardTxBodyCompact {
+    spend_inputs: spend_inputs |> utils.serialise_and_hash_32,
+    reference_inputs: reference_inputs |> utils.serialise_and_hash_32,
+    outputs: outputs |> utils.serialise_and_hash_32,
+    fee,
+    validity_interval,
+    required_observers: required_observers |> utils.serialise_and_hash_32,
+    required_signer_hashes: required_signer_hashes
+      |> utils.serialise_and_hash_32,
+    mint: mint |> utils.serialise_and_hash_32,
+    script_integrity_hash,
+    auxiliary_data_hash,
+    network_id,
+  }
+}
+
+pub fn midgard_tx_wits_to_compact(
+  wits: MidgardTxWitnessSet,
+) -> MidgardTxWitnessSetCompact {
+  let MidgardTxWitnessSet { addr_tx_wits, script_tx_wits, redeemer_tx_wits } =
+    wits
+  MidgardTxWitnessSetCompact {
+    addr_tx_wits: addr_tx_wits |> utils.serialise_and_hash_32,
+    script_tx_wits: script_tx_wits |> utils.serialise_and_hash_32,
+    redeemer_tx_wits: redeemer_tx_wits |> utils.serialise_and_hash_32,
+  }
+}
+
+pub fn midgard_tx_to_compact(tx: MidgardTx) -> MidgardTxCompact {
+  let MidgardTx { body, wits, validity } = tx
+  let body_compact = body |> midgard_tx_body_to_compact
+  MidgardTxCompact {
+    body: body_compact,
+    wits: wits |> midgard_tx_wits_to_compact |> utils.serialise_and_hash_32,
+    validity,
+  }
+}
+
+pub fn midgard_full_tx_to_id(tx: MidgardTx) -> MidgardTxId {
+  tx.body |> midgard_tx_body_to_compact |> utils.serialise_and_hash_32
 }
 
 /// Midgard script -- either timelock (native) or Plutus (V3).

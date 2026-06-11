@@ -45,19 +45,12 @@ validator mint(hub_oracle_script_hash: PolicyId) {
           output_index,
           self,
         )
-      Deinit { input_index } ->
-        deinit(
-          hub_oracle_script_hash,
-          own_policy_id,
-          root_asset_name,
-          input_index,
-          self,
-        )
+      Deinit ->
+        deinit(hub_oracle_script_hash, own_policy_id, root_asset_name, self)
       RetireOperator {
         new_retired_operator_key,
         bond_unlock_time,
         hub_oracle_ref_input_index,
-        retired_operator_anchor_element_input_index,
         retired_operator_anchor_element_output_index,
         retired_operator_inserted_node_output_index,
         active_operators_redeemer_index,
@@ -92,7 +85,6 @@ validator mint(hub_oracle_script_hash: PolicyId) {
                 } = active_operators_redeemer_data
                 (active_operator_key, penalize_for_inactivity)
               },
-              retired_operator_anchor_element_input_index,
               retired_operator_anchor_element_output_index,
               retired_operator_inserted_node_output_index,
               inputs,
@@ -115,8 +107,7 @@ validator mint(hub_oracle_script_hash: PolicyId) {
       }
       RecoverOperatorBond {
         retired_operator_key,
-        retired_operator_anchor_element_input_index,
-        retired_operator_removed_node_input_index,
+        retired_operator_anchor_element_input_outref,
         retired_operator_anchor_element_output_index,
       } -> {
         let Transaction {
@@ -132,12 +123,8 @@ validator mint(hub_oracle_script_hash: PolicyId) {
         //    destination of the ADA bond is approved.
         expect retired_operator_key |> utils.has_signed(extra_signatories)
 
-        // 2. Specified inputs and output for removal of the retired operator's
-        //    node from the linked list must exist at their indices.
-        expect Some(retired_operator_anchor_element_input) =
-          inputs |> list.at(retired_operator_anchor_element_input_index)
-        expect Some(retired_operator_removed_node_input) =
-          inputs |> list.at(retired_operator_removed_node_input_index)
+        // 2. Specified output for removal of the retired operator's node from
+        //    the linked list must exist at its index.
         expect Some(retired_operator_anchor_element_output) =
           outputs |> list.at(retired_operator_anchor_element_output_index)
 
@@ -145,19 +132,21 @@ validator mint(hub_oracle_script_hash: PolicyId) {
         //    must be valid.
         {
           let
+            _anchor_input,
             anchor_lovelace_change,
             _m_anchor_key,
             _anchor_data,
+            _retired_operator_removed_node_input,
             _retired_operator_lovelace,
             retired_operator_node_key,
             retired_operator_node_data,
             _retired_operator_node_link,
           <-
             linked_list.remove(
-              retired_operator_anchor_element_input,
-              retired_operator_removed_node_input,
-              retired_operator_anchor_element_output,
-              mint,
+              anchor_input_outref: retired_operator_anchor_element_input_outref,
+              continued_anchor_element_output: retired_operator_anchor_element_output,
+              inputs: inputs,
+              tx_mint: mint,
             )
 
           // 4. ADA of the removing node's anchor element must be preserved.

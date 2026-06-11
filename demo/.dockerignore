@@ -1,0 +1,13 @@
+**/node_modules
+**/dist
+**/coverage
+**/*.tgz
+**/*.log
+
+midgard-manager
+midgard-node/.env
+midgard-node/.env.*
+midgard-node/cardano
+midgard-node/db
+midgard-node/deploymentInfo
+midgard-node/tempo-data

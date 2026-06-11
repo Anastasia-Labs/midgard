@@ -53,6 +53,7 @@ By contrast, its \code{Settlement} never overwrites that of the previous block.
 Instead, the \code{Settlement} spins into a separate settlement utxo that users and operators can reference to process deposits, withdrawal and transaction orders.
 
 The current operator can optimistically attach a resolution claim to any settlement utxo, indicating that all deposits, withdrawals, and transaction orders in the datum have been processed and that the utxo can be spent at the given resolution time.
+For valid withdrawals, processed means the withdrawal order utxo has been transformed into an authenticated payout accumulator; reserve funding and payout completion are then enforced by the payout token and payout validator rather than by settlement resolution.
 The resolution time is set to the claim's attachment time, shifted forward by Midgard's \code{maturity\_duration} protocol parameter, in order to provide an opportunity fraud proofs to be verified on L1 that disprove the operator's claim that the settlement is resolved.
 The operator is slashed if their claim is disproved; otherwise, starting from the resolution time, the operator can spend the settlement utxo and recover its min-ADA and some fees for processing the deposits/withdrawals/transactions.
 
