@@ -2,9 +2,11 @@ use aiken/crypto.{ScriptHash}
 use aiken_design_patterns/singular_utxo_indexer
 use cardano/assets.{PolicyId}
 use cardano/transaction.{Input, Mint, Output, OutputReference, Transaction}
-use midgard/common/utils.{plutarch_phas}
+use midgard/common/utils
+use midgard/fraud_proofs/native_tx/types.{
+  MidgardTransaction, TxIsValid, native_tx_version,
+}
 use midgard/hub_oracle as hub
-use midgard/ledger_state
 use midgard/settlement
 use midgard/user_events
 use midgard/user_events/tx_order.{
@@ -106,7 +108,7 @@ validator spend(hub_oracle: ScriptHash) {
     //    with the validity provided via the redeemer.
     let
       tx_body_hash,
-      overridden_tx_order_compact_tx,
+      overridden_tx_order_compact_tx_cbor,
     <-
       set_tx_validity_and_get_compact_info(
         tx_order_event_data: tx_order_event,
@@ -116,10 +118,10 @@ validator spend(hub_oracle: ScriptHash) {
     // 7. The referenced settlement UTxO's tx_order tree must contain the
     //    subject tx_order event.
     expect
-      plutarch_phas(
+      utils.plutarch_phas_raw(
         merkle_root: transactions_root,
-        key: tx_body_hash,
-        value: overridden_tx_order_compact_tx,
+        key_bytes: tx_body_hash,
+        value_bytes: overridden_tx_order_compact_tx_cbor,
         membership_proof: membership_proof,
         redeemers: redeemers,
         withdraw_redeemer_index: inclusion_proof_script_withdraw_redeemer_index,
@@ -171,8 +173,9 @@ validator mint(hub_oracle: ScriptHash) {
 
     // 3. Tx order must be marked as valid. Only operators can inject invalid tx
     //    orders in the tree.
-    expect ledger_state.MidgardTx { validity: ledger_state.TxIsValid, .. } =
-      midgard_tx_data
+    expect midgard_tx: MidgardTransaction = midgard_tx_data
+    expect midgard_tx.version == native_tx_version
+    expect midgard_tx.validity == TxIsValid
 
     // Done.
     True

@@ -28,6 +28,7 @@ use cardano/transaction.{
 use env
 use midgard/common/types.{H28, H32, MerkleRoot, PosixTime, ValuePairs}
 use midgard/common/utils
+use midgard/fraud_proofs/native_tx/types as native_tx
 
 // # Ledger state types
 
@@ -179,12 +180,12 @@ pub type WithdrawalEvent {
 // ### Transaction order event
 
 pub type TxOrderId =
-  MidgardTxId
+  OutputReference
 
-/// TODO: Align with the final encoding scheme.
+/// TODO: This might need re-alignment.
 pub type TxOrderEvent {
   id: TxOrderId,
-  tx: MidgardTx,
+  tx: native_tx.MidgardTransaction,
 }
 
 // ## Transaction

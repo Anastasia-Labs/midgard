@@ -4,6 +4,7 @@ use cardano/assets.{AssetName, PolicyId}
 use cardano/transaction.{InlineDatum, Input, Output, Redeemer, ScriptPurpose}
 use midgard/common/types.{PosixTime, Proof}
 use midgard/common/utils
+use midgard/fraud_proofs/native_tx/types as native_tx
 use midgard/ledger_state
 use midgard/user_events/tx_order
 
@@ -48,7 +49,7 @@ pub type SpendRedeemer {
 pub type EventType {
   Deposit
   Withdrawal { validity_override: ledger_state.WithdrawalValidity }
-  TxOrder { validity_override: ledger_state.MidgardTxValidity }
+  TxOrder { validity_override: native_tx.MidgardTxValidity }
 }
 
 pub type MintRedeemer {
@@ -217,7 +218,7 @@ pub fn valid_event_inclusion(
       expect tx_order_datum: tx_order.Datum = tx_order_datum_data
       let
         tx_body_hash,
-        overridden_tx_order_compact_tx,
+        overridden_tx_order_compact_tx_cbor,
       <-
         tx_order.set_tx_validity_and_get_compact_info(
           tx_order_event_data: tx_order_datum.event,
@@ -227,10 +228,10 @@ pub fn valid_event_inclusion(
       // 2. A valid membership proof must be provided, proving that
       //    `unprocessed_tx_order` with overridden `validity` is a member of the
       //    transactions tree in the settlement utxo.
-      utils.plutarch_phas(
+      utils.plutarch_phas_raw(
         merkle_root: transactions_root,
-        key: tx_body_hash,
-        value: overridden_tx_order_compact_tx,
+        key_bytes: tx_body_hash,
+        value_bytes: overridden_tx_order_compact_tx_cbor,
         membership_proof: membership_proof,
         redeemers: redeemers,
         withdraw_redeemer_index: inclusion_proof_script_withdraw_redeemer_index,
