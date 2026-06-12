@@ -19,6 +19,7 @@ pub type SpendRedeemer {
   validity_override: ledger_state.MidgardTxValidity,
 }
 
+/// TODO: Align with the final encoding scheme.
 pub fn set_tx_validity_and_get_compact_info(
   tx_order_event_data: Data<TxOrderEvent>,
   validity_override: ledger_state.MidgardTxValidity,

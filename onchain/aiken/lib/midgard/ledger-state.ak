@@ -181,9 +181,10 @@ pub type WithdrawalEvent {
 pub type TxOrderId =
   MidgardTxId
 
+/// TODO: Align with the final encoding scheme.
 pub type TxOrderEvent {
   id: TxOrderId,
-  tx: MidgardTxCompact,
+  tx: MidgardTx,
 }
 
 // ## Transaction
