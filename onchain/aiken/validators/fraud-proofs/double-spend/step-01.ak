@@ -2,24 +2,29 @@
 ////
 //// Proves 2 unique transactions exist such that both spend the same UTxO.
 ////
-//// First step's contract is responsible for verifying inclusion of the two
-//// transactions in a Midgard block, and passing them to the second step's
-//// contract.
+//// First step's contract is responsible for verifying inclusion of the first
+//// transaction in a Midgard block, and passing it to the second step's
+//// contract. The second step verifies inclusion of the second transaction.
 ////
-//// This is meant to take place in two transactions:
+//// This is meant to take place in four transactions:
 //// 1. First transaction spends the initialized fraud proof UTxO (which has no
-////    `data`) and reproduces the UTxO at own address with `data` containing
-////    the first verified bad transaction's body.
-//// 2. Second transaction spends the UTxO produced in the first transaction,
-////    and produces the UTxO at the next step's script address with `data`
-////    containing both verified bad transactions' bodies.
+////    `data`) and reproduces the UTxO at the next step's script address with
+////    `data` containing the first verified bad transaction's ID and inputs
+////    hash.
+//// 2. Second transaction spends the UTxO produced in the first transaction and
+////    produces the UTxO at the next step's script address with `data`
+////    containing both verified bad transactions' inputs hashes.
+//// 3. Third transaction provides the first bad transaction's inputs preimage and
+////    carries the double-spent output reference to the next step.
+//// 4. Fourth transaction provides the second bad transaction's inputs preimage
+////    and finalizes the fraud proof.
 
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, pass_tx_to_next_step}
-use midgard/fraud_proofs/double_spend/step_01.{Datum, SpendRedeemer, State}
+use midgard/fraud_proofs/double_spend/step_01.{Datum, SpendRedeemer}
 use midgard/fraud_proofs/double_spend/step_02
 
 validator main(
@@ -47,16 +52,16 @@ validator main(
         // 1. Generic validations for passing the provided bad tx to the next
         //    step must pass.
         let
-          own_script_hash,
+          _own_script_hash,
           _computation_thread_token_asset_name,
           _fraud_prover,
-          m_input_state_data,
+          _m_input_state_data,
           output_script_hash,
           output_state_data,
           _header,
           bad_tx_id,
-          _bad_tx,
-          bad_tx_body,
+          bad_tx,
+          _provided_witness_set_preimage,
         <-
           pass_tx_to_next_step(
             computation_thread_token_policy_id,
@@ -67,42 +72,19 @@ validator main(
             tx,
           )
 
-        when m_input_state_data is {
-          None -> {
-            // 2a. The UTxO must be produced at own script hash with the
-            //     verified first bad transaction ID and its inputs included in
-            //     the `data` field of its `StepDatum`.
-            expect output_script_hash == own_script_hash
-            let expected_output_state: Data =
-              State {
-                verified_tx1_id: bad_tx_id,
-                verified_tx1_inputs_root: bad_tx_body.spend_inputs,
-              }
-            expect output_state_data == expected_output_state
-
-            // Done.
-            True
+        // 2. The UTxO must be produced at next step's script hash with the
+        //    verified first bad transaction ID and its inputs hash in the `data`
+        //    field of its `StepDatum`.
+        expect output_script_hash == step_02_validator_script_hash
+        let expected_output_state: Data =
+          step_02.State {
+            verified_tx1_id: bad_tx_id,
+            verified_tx1_inputs_hash: bad_tx.body.spend_inputs,
           }
-          Some(step_1_state) -> {
-            // 2b. The UTxO must be produced at next step's script hash with the
-            //     verified bad transactions' inputs included in its datum.
-            expect output_script_hash == step_02_validator_script_hash
-            let State { verified_tx1_id, verified_tx1_inputs_root } =
-              step_1_state
-            let expected_output_state: Data =
-              step_02.State {
-                verified_tx1_inputs_root,
-                verified_tx2_inputs_root: bad_tx_body.spend_inputs,
-              }
-            expect output_state_data == expected_output_state
+        expect output_state_data == expected_output_state
 
-            // 3b. The two transactions must be different.
-            expect verified_tx1_id != bad_tx_id
-
-            // Done.
-            True
-          }
-        }
+        // Done.
+        True
       }
     }
   }

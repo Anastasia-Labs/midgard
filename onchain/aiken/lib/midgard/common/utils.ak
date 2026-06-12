@@ -420,14 +420,22 @@ pub fn authenticate_input_output_and_get_output_datum_data(
   output_datum_data
 }
 
-// Verify a 32-byte hash (Blake2b-256)
-pub fn verify_hash_32(data: Data, data_hash: H32<Data>) -> Bool {
-  blake2b_256(cbor.serialise(data)) == data_hash
+pub fn serialise_and_hash_28(data: Data) -> H28<Data> {
+  data |> cbor.serialise |> blake2b_224
+}
+
+pub fn serialise_and_hash_32(data: Data) -> H32<Data> {
+  data |> cbor.serialise |> blake2b_256
 }
 
 // Verify a 28-byte hash (Blake2b-224)
 pub fn verify_hash_28(data: Data, data_hash: H28<Data>) -> Bool {
-  blake2b_224(cbor.serialise(data)) == data_hash
+  serialise_and_hash_28(data) == data_hash
+}
+
+// Verify a 32-byte hash (Blake2b-256)
+pub fn verify_hash_32(data: Data, data_hash: H32<Data>) -> Bool {
+  serialise_and_hash_32(data) == data_hash
 }
 
 /// Given a value, an NFT, and a `ValuePairs` (structured identical to `Value`,
@@ -587,9 +595,9 @@ pub fn get_inline_datum_and_spending_redeemer_data_at(
 /// > [!WARNING]
 /// > This function can only be used **once within a given transaction**.
 pub fn plutarch_phas(
-  merkle_root: MerkleRoot,
-  key: Data,
-  value: Data,
+  merkle_root: MerkleRoot<key, value>,
+  key: Data<key>,
+  value: Data<value>,
   membership_proof: Proof,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
   withdraw_redeemer_index: Int,
@@ -623,8 +631,8 @@ pub fn plutarch_phas(
 /// > [!WARNING]
 /// > This function can only be used **once within a given transaction**.
 pub fn plutarch_pexcludes(
-  merkle_root: MerkleRoot,
-  key: Data,
+  merkle_root: MerkleRoot<key, value>,
+  key: Data<key>,
   non_membership_proof: Proof,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
   withdraw_redeemer_index: Int,
@@ -652,13 +660,13 @@ pub fn plutarch_pexcludes(
 }
 
 pub fn plutarch_pdelete(
-  merkle_root_before_delete: MerkleRoot,
-  key: Data,
-  value: Data,
+  merkle_root_before_delete: MerkleRoot<key, value>,
+  key: Data<key>,
+  value: Data<value>,
   membership_proof: Proof,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
   withdraw_redeemer_index: Int,
-) -> MerkleRoot {
+) -> MerkleRoot<key, value> {
   let proof_data: Data = membership_proof
   let function_input: List<Data> =
     [builtin.b_data(merkle_root_before_delete), key, value, proof_data]

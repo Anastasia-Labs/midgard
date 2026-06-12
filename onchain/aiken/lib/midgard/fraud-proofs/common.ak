@@ -1,4 +1,3 @@
-use aiken/builtin
 use aiken/collection/list
 use aiken/crypto.{ScriptHash, VerificationKeyHash}
 use aiken/primitive/bytearray
@@ -12,7 +11,7 @@ use cardano/transaction.{
 use midgard/common/types.{Proof}
 use midgard/common/utils.{
   get_redeemer_at, get_single_asset_from_value_apart_from_ada, has_signed,
-  plutarch_phas, verify_hash_32,
+  plutarch_phas, serialise_and_hash_32, verify_hash_32,
 }
 use midgard/computation_thread as ct
 use midgard/fraud_proof
@@ -20,6 +19,7 @@ use midgard/fraud_proof_catalogue
 use midgard/hub_oracle as hub
 use midgard/ledger_state.{
   Header, MidgardTxBodyCompact, MidgardTxCompact, MidgardTxId,
+  MidgardTxWitnessSetCompact,
 }
 use midgard/state_queue
 
@@ -28,13 +28,17 @@ pub type TxInclusionArgs {
   output_index: Int,
   hub_ref_input_index: Int,
   state_queue_node_ref_input_index: Int,
-  tx_id: MidgardTxId,
   tx: MidgardTxCompact,
-  tx_body: MidgardTxBodyCompact,
+  provided_witness_set_preimage: Option<MidgardTxWitnessSetCompact>,
   tx_membership_proof: Proof,
   inclusion_proof_script_withdraw_redeemer_index: Int,
 }
 
+/// > [!NOTE]
+/// > This function uses `plutarch_phas` under the hood, which is a helper that
+/// > cannot be used more than once within a given transaction. So if a
+/// > validator utilizes this function, it should not use `plutarch_phas`
+/// > alongside it.
 pub fn pass_tx_to_next_step(
   computation_thread_token_policy_id: PolicyId,
   hub_oracle: ScriptHash,
@@ -52,7 +56,7 @@ pub fn pass_tx_to_next_step(
     Header,
     MidgardTxId,
     MidgardTxCompact,
-    MidgardTxBodyCompact,
+    Option<MidgardTxWitnessSetCompact>,
   ) ->
     Bool,
 ) -> Bool {
@@ -61,9 +65,8 @@ pub fn pass_tx_to_next_step(
     output_index,
     hub_ref_input_index,
     state_queue_node_ref_input_index,
-    tx_id,
     tx,
-    tx_body,
+    provided_witness_set_preimage,
     tx_membership_proof,
     inclusion_proof_script_withdraw_redeemer_index,
   } = tx_inclusion_args
@@ -91,13 +94,15 @@ pub fn pass_tx_to_next_step(
       outputs,
     )
 
-  // 2. The provided transaction must be valid, and must be included in
-  //    the specified state queue node.
-  let header =
-    verify_tx_in_state_queue_node_and_get_header(
-      tx_id,
+  // 2. The provided transaction must be valid, and must be included in the
+  //    specified state queue node.
+  let
+    tx_id,
+    header,
+  <-
+    verify_tx_in_state_queue_node(
       tx,
-      tx_body,
+      provided_witness_set_preimage,
       tx_membership_proof,
       computation_thread_token_asset_name,
       hub_oracle,
@@ -120,7 +125,7 @@ pub fn pass_tx_to_next_step(
       header,
       tx_id,
       tx,
-      tx_body,
+      provided_witness_set_preimage,
     )
 
   // Done.
@@ -326,7 +331,7 @@ pub fn finalize(
       1,
     )
 
-  // 4. Fraud prover must be presreved, with no additional `data`.
+  // 4. Fraud prover must be preserved, with no additional `data`.
   let expected_output_datum_data: Data = fraud_proof.Datum { fraud_prover }
   expect output_datum_data == expected_output_datum_data
 
@@ -357,34 +362,42 @@ pub fn finalize(
   )
 }
 
-pub fn verify_tx_and_its_body(
-  tx_id: MidgardTxId,
-  tx: MidgardTxCompact,
-  tx_body: MidgardTxBodyCompact,
+pub fn verify_tx_body(
+  tx_body_compact_preimage: MidgardTxBodyCompact,
+  tx_body_hash: MidgardTxId,
 ) -> Bool {
-  let tx_data: Data = tx
-  and {
-    verify_hash_32(data: tx_data, data_hash: tx_id),
-    verify_hash_32(data: tx_body, data_hash: tx.body),
-  }
+  verify_hash_32(tx_body_compact_preimage, tx_body_hash)
 }
 
-pub fn verify_tx_in_state_queue_node_and_get_header(
-  tx_id: MidgardTxId,
+pub fn verify_tx_in_state_queue_node(
   tx: MidgardTxCompact,
-  tx_body: MidgardTxBodyCompact,
+  provided_witness_set_preimage: Option<MidgardTxWitnessSetCompact>,
   tx_membership_proof: Proof,
   computation_thread_token_asset_name: AssetName,
-  hub_oracle: PolicyId,
+  hub_oracle: ScriptHash,
   hub_ref_input_index: Int,
   state_queue_node_ref_input_index: Int,
   inclusion_proof_script_withdraw_redeemer_index: Int,
   reference_inputs: List<Input>,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
-) -> Header {
-  // 1. Verify authenticity of the provided tx and its body against its ID, and
-  //    body hash.
-  expect verify_tx_and_its_body(tx_id, tx, tx_body)
+  return: fn(MidgardTxId, Header) -> result,
+) -> result {
+  let MidgardTxCompact {
+    body: midgard_tx_compact_body,
+    wits: midgard_tx_wits_hash,
+    ..
+  } = tx
+
+  let tx_id = midgard_tx_compact_body |> serialise_and_hash_32
+
+  // 1. If the preimage of the compact witness set is provided, validate it
+  //    against the given compact Midgard transaction.
+  expect
+    when provided_witness_set_preimage is {
+      Some(tx_wits) ->
+        verify_hash_32(data: tx_wits, data_hash: midgard_tx_wits_hash)
+      None -> True
+    }
 
   // 2. Hub oracle must be provided as a reference input.
   let hub.Datum { state_queue: state_queue_policy, .. } =
@@ -411,19 +424,18 @@ pub fn verify_tx_in_state_queue_node_and_get_header(
 
   // 4. Specified transaction must be proven to be included in the referenced
   //    state queue node.
-  let tx_data: Data = tx
   expect
     plutarch_phas(
       merkle_root: state_queue_datum.transactions_root,
-      key: builtin.b_data(tx_id),
-      value: tx_data,
+      key: tx_id,
+      value: tx,
       membership_proof: tx_membership_proof,
       redeemers: redeemers,
       withdraw_redeemer_index: inclusion_proof_script_withdraw_redeemer_index,
     )
 
-  // Done. Return the block header.
-  state_queue_datum
+  // Done. Return tx ID and block header.
+  return(tx_id, state_queue_datum)
 }
 
 pub fn validate_output_to_fraud_prover(
@@ -436,7 +448,7 @@ pub fn validate_output_to_fraud_prover(
   }
 }
 
-// Internal Helpers
+// ## Internal Helpers
 
 /// Validates authenticity of the input at `input_index` (i.e. that it comes
 /// from a script, and that it carries only a computation thread token), and

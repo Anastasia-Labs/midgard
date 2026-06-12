@@ -1,14 +1,15 @@
 use aiken/crypto.{ScriptHash, VerificationKeyHash}
 use cardano/assets.{AssetName, PolicyId}
 use cardano/transaction.{InlineDatum, Input, Output, Redeemer, ScriptPurpose}
-use midgard/common/types.{MerkleRoot, PosixTime, Proof}
+use midgard/common/types.{PosixTime, Proof}
 use midgard/common/utils
 use midgard/ledger_state
+use midgard/user_events/tx_order
 
 pub type Datum {
-  deposits_root: MerkleRoot,
-  withdrawals_root: MerkleRoot,
-  transactions_root: MerkleRoot,
+  deposits_root: ledger_state.DepositsRoot,
+  withdrawals_root: ledger_state.WithdrawalsRoot,
+  transactions_root: ledger_state.MidgardTxsRoot,
   resolution_claim: Option<ResolutionClaim>,
 }
 
@@ -88,9 +89,9 @@ pub fn valid_event_inclusion(
   deposit_script_hash: ScriptHash,
   withdrawal_script_hash: ScriptHash,
   tx_order_script_hash: ScriptHash,
-  deposits_root: MerkleRoot,
-  withdrawals_root: MerkleRoot,
-  transactions_root: MerkleRoot,
+  deposits_root: ledger_state.DepositsRoot,
+  withdrawals_root: ledger_state.WithdrawalsRoot,
+  transactions_root: ledger_state.MidgardTxsRoot,
   membership_proof: Proof,
   unresolved_event_asset_name: AssetName,
   unresolved_event_ref_input_index: Int,
@@ -181,25 +182,24 @@ pub fn valid_event_inclusion(
           unresolved_event_ref_input_index,
         )
 
-      let Pair(tx_order_key, tx_order_tx_data) =
-        ledger_state.unsafe_event_to_key_value_pair(tx_order_datum_data)
-
       // `validity` of `unprocessed_tx_order` must be set via the redeemer.
-      expect tx_order_tx: ledger_state.MidgardTxCompact = tx_order_tx_data
-      //
-      let overridden_tx_order_tx: Data =
-        ledger_state.MidgardTxCompact {
-          ..tx_order_tx,
-          validity: validity_override,
-        }
+      expect tx_order_datum: tx_order.Datum = tx_order_datum_data
+      let
+        tx_body_hash,
+        overridden_tx_order_compact_tx,
+      <-
+        tx_order.set_tx_validity_and_get_compact_info(
+          tx_order_event_data: tx_order_datum.event,
+          validity_override: validity_override,
+        )
 
       // 2. A valid membership proof must be provided, proving that
       //    `unprocessed_tx_order` with overridden `validity` is a member of the
       //    transactions tree in the settlement utxo.
       utils.plutarch_phas(
         merkle_root: transactions_root,
-        key: tx_order_key,
-        value: overridden_tx_order_tx,
+        key: tx_body_hash,
+        value: overridden_tx_order_compact_tx,
         membership_proof: membership_proof,
         redeemers: redeemers,
         withdraw_redeemer_index: inclusion_proof_script_withdraw_redeemer_index,

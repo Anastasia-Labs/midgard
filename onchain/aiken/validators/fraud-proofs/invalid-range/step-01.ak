@@ -48,8 +48,8 @@ validator main(
           output_state_data,
           header,
           _bad_tx_id,
-          _bad_tx,
-          bad_tx_body,
+          bad_tx,
+          _provided_witness_set_preimage,
         <-
           pass_tx_to_next_step(
             computation_thread_token_policy_id,
@@ -67,7 +67,7 @@ validator main(
         } = header
 
         let bad_tx_normalized_validity_range =
-          vrn.normalize_time_range(bad_tx_body.validity_interval)
+          vrn.normalize_time_range(bad_tx.body.validity_interval)
 
         // 2. The UTxO must be produced at next step's script hash with validity
         //    range of the bad tx, and block's time range provided.

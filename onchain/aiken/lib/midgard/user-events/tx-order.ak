@@ -2,7 +2,7 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{InlineDatum, Input, Output}
 use midgard/common/types.{Proof}
 use midgard/common/utils
-use midgard/ledger_state.{MidgardTxValidity, TxOrderEvent}
+use midgard/ledger_state.{TxOrderEvent}
 use midgard/user_events
 
 pub type Datum =
@@ -16,7 +16,28 @@ pub type SpendRedeemer {
   burn_redeemer_index: Int,
   membership_proof: Proof,
   inclusion_proof_script_withdraw_redeemer_index: Int,
-  validity_override: MidgardTxValidity,
+  validity_override: ledger_state.MidgardTxValidity,
+}
+
+pub fn set_tx_validity_and_get_compact_info(
+  tx_order_event_data: Data<TxOrderEvent>,
+  validity_override: ledger_state.MidgardTxValidity,
+  return: fn(ledger_state.MidgardTxId, ledger_state.MidgardTxCompact) -> result,
+) -> result {
+  let Pair(_tx_order_event_id, tx_order_event_tx_data) =
+    ledger_state.unsafe_event_to_key_value_pair(tx_order_event_data)
+
+  expect tx_order_event_tx: ledger_state.MidgardTx = tx_order_event_tx_data
+
+  let init_compact_tx = tx_order_event_tx |> ledger_state.midgard_tx_to_compact
+  let tx_id = init_compact_tx.body |> utils.serialise_and_hash_32
+
+  let overridden_tx_order_compact_tx =
+    ledger_state.MidgardTxCompact {
+      ..init_compact_tx,
+      validity: validity_override,
+    }
+  return(tx_id, overridden_tx_order_compact_tx)
 }
 
 pub fn get_datum(
