@@ -88,7 +88,6 @@ export const encodeRegisteredOperatorDatumValue = (
 ): unknown =>
   SDK.castRegisteredOperatorDatumToData({
     operator: operatorKeyHash,
-    bond_unlock_time: null,
   });
 
 const registeredActivateRedeemer = ({
@@ -221,12 +220,8 @@ export const buildRegisterOperatorTx = (
           hub_oracle_ref_input_index: layout.hubOracleRefInputIndex,
           active_operators_element_ref_input_index:
             layout.activeOperatorRefInputIndex,
-          operator_origin: {
-            NewOperator: {
-              retired_operators_element_ref_input_index:
-                layout.retiredOperatorRefInputIndex,
-            },
-          },
+          retired_operators_element_ref_input_index:
+            layout.retiredOperatorRefInputIndex,
         },
       },
       SDK.RegisteredOperatorMintRedeemer,
@@ -418,13 +413,15 @@ export const buildActivateOperatorTx = (
       {
         ActivateOperator: {
           new_active_operator_key: config.operatorKeyHash,
-          new_active_operator_bond_unlock_time: null,
           active_operator_anchor_element_output_index:
             layout.activeOperatorsAnchorNodeOutputIndex,
           active_operator_inserted_node_output_index:
             layout.activeOperatorsInsertedNodeOutputIndex,
           registered_operators_redeemer_index:
             layout.registeredOperatorsRedeemerIndex,
+          active_operators_set_was_empty:
+            config.activeAppendAnchor.datum.key === "Empty" &&
+            config.activeAppendAnchor.datum.next === "Empty",
         },
       },
       SDK.ActiveOperatorMintRedeemer,

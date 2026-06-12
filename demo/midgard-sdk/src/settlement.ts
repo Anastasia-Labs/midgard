@@ -366,7 +366,11 @@ export const incompleteUpdateBondHoldNewSettlementTxProgram = (
 
     const updatedDatum: ActiveOperatorDatum = {
       ...activeOperatorsInputUtxo.datum,
-      bond_unlock_time: params.newBondUnlockTime,
+      bond_unlock_time:
+        activeOperatorsInputUtxo.datum.bond_unlock_time === null ||
+        params.newBondUnlockTime > activeOperatorsInputUtxo.datum.bond_unlock_time
+          ? params.newBondUnlockTime
+          : activeOperatorsInputUtxo.datum.bond_unlock_time,
     };
     const updatedDatumCBOR = Data.to(updatedDatum, ActiveOperatorDatum);
 
@@ -419,7 +423,7 @@ export const incompleteUpdateBondHoldNewSettlementTxProgram = (
               params.settlementUTxO.utxo,
               "update bond hold new settlement settlement",
             ),
-            new_bond_unlock_time: params.newBondUnlockTime,
+            resolution_time: params.newBondUnlockTime,
           },
         } satisfies ActiveOperatorSpendRedeemer,
         ActiveOperatorSpendRedeemer,

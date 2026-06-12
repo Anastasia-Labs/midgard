@@ -63,7 +63,6 @@ const HUB_ORACLE_FETCH_RETRY_DELAY = "1 second";
 const ACTIVATION_WALLET_FUNDING_TARGET_LOVELACE = 25_000_000n;
 const REGISTERED_OPERATOR_DATUM_AIKEN_SCHEMA = LucidData.Object({
   operator: LucidData.Bytes({ minLength: 28, maxLength: 28 }),
-  bond_unlock_time: LucidData.Nullable(LucidData.Integer()),
 });
 
 type ActivationTxHashes = {
@@ -113,36 +112,6 @@ const summarizeOnChainScriptFailure = (cause: unknown): string | null => {
   ]
     .filter((value): value is string => value !== null)
     .join(",");
-};
-
-const decodeOptionalBigIntValue = (
-  value: unknown,
-): bigint | null | undefined => {
-  if (value === null || value === "None") {
-    return null;
-  }
-  if (typeof value === "bigint") {
-    return value;
-  }
-  if (typeof value === "number" && Number.isInteger(value)) {
-    return BigInt(value);
-  }
-  if (
-    typeof value === "object" &&
-    value !== null &&
-    "Some" in value &&
-    Array.isArray(value.Some) &&
-    value.Some.length === 1
-  ) {
-    const someValue = value.Some[0];
-    if (typeof someValue === "bigint") {
-      return someValue;
-    }
-    if (typeof someValue === "number" && Number.isInteger(someValue)) {
-      return BigInt(someValue);
-    }
-  }
-  return undefined;
 };
 
 const describeUnknownValue = (value: unknown): string => {
@@ -211,10 +180,6 @@ const decodeRegisteredOperatorDatumValue = (
     if ("operator" in value && typeof value.operator === "string") {
       return {
         operator: value.operator,
-        bond_unlock_time:
-          "bond_unlock_time" in value
-            ? (decodeOptionalBigIntValue(value.bond_unlock_time) ?? null)
-            : null,
       };
     }
   }

@@ -75,10 +75,10 @@ const expectRoundTrip = <T>(value: T, schema: unknown): void =>
 describe("SDK canonical ABI fixtures", () => {
   it("tracks canonical Aiken datum and redeemer field names", () => {
     expect(
-      fields(constructor("midgard/scheduler/Datum", "ActiveOperator")),
+      fields(constructor("midgard/scheduler/SchedDatum", "ActiveOperator")),
     ).toEqual(["operator", "start_time"]);
     expect(
-      constructor("midgard/scheduler/Datum", "NoActiveOperators").index,
+      constructor("midgard/scheduler/SchedDatum", "NoActiveOperators").index,
     ).toBe(0);
     expect(
       fields(constructor("midgard/ledger_state/DepositInfo", "DepositInfo")),
@@ -283,9 +283,7 @@ describe("SDK canonical ABI fixtures", () => {
             registered_node_output_index: 1n,
             hub_oracle_ref_input_index: 0n,
             active_operators_element_ref_input_index: 1n,
-            operator_origin: {
-              NewOperator: { retired_operators_element_ref_input_index: 2n },
-            },
+            retired_operators_element_ref_input_index: 2n,
           },
         },
         SDK.RegisteredOperatorMintRedeemer,
@@ -296,10 +294,10 @@ describe("SDK canonical ABI fixtures", () => {
         {
           ActivateOperator: {
             new_active_operator_key: h28,
-            new_active_operator_bond_unlock_time: null,
             active_operator_anchor_element_output_index: 0n,
             active_operator_inserted_node_output_index: 1n,
             registered_operators_redeemer_index: 2n,
+            active_operators_set_was_empty: true,
           },
         },
         SDK.ActiveOperatorMintRedeemer,
@@ -309,9 +307,11 @@ describe("SDK canonical ABI fixtures", () => {
 
   it("encodes user-event witness, user-event spend, settlement, and fraud-proof fixtures", () => {
     const aikenWitnessPrefix = readFileSync(
-      path.join(repoRoot, "onchain/aiken/lib/midgard/user-events/witness.ak"),
+      path.join(repoRoot, "onchain/aiken/env/default.ak"),
       "utf8",
-    ).match(/pub const witness_script_prefix: ByteArray =\n  #"([^"]+)"/)?.[1];
+    ).match(
+      /pub const user_events_witness_script_prefix: ByteArray =\n  #"([^"]+)"/,
+    )?.[1];
     expect(SDK.USER_EVENT_WITNESS_SCRIPT_PREFIX).toBe(aikenWitnessPrefix);
 
     const witnessValidator = SDK.buildUserEventWitnessCertificateValidator(h32);
