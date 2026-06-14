@@ -138,8 +138,9 @@ export const buildAndSubmitMergeTx = (
     yield* Effect.logInfo(
       "🔸 Fetching confirmed state and the first block in queue from L1...",
     );
-    const { confirmed: confirmedUTxO, link: firstBlockUTxO } =
-      yield* SDK.fetchConfirmedStateAndItsLinkProgram(lucid, fetchConfig);
+    const { root: confirmedUTxO, nodes: blockUTxOs } =
+      yield* SDK.fetchSortedStateQueueUTxOsProgram(lucid, fetchConfig);
+    const firstBlockUTxO = blockUTxOs[0];
     if (firstBlockUTxO) {
       yield* Effect.logInfo(
         `🔸 First block found: ${firstBlockUTxO.utxo.txHash}#${firstBlockUTxO.utxo.outputIndex}`,
