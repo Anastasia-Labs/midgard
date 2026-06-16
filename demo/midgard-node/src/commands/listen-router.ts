@@ -3,8 +3,8 @@
  * This module groups endpoint handlers and access control in one place while
  * delegating startup checks and response shaping to narrower modules.
  */
-import * as SDK from "@al-ft/midgard-sdk";
 import { hexToBytes } from "@al-ft/midgard-core/hex";
+import * as SDK from "@al-ft/midgard-sdk";
 import { QueuedTxPayload } from "@al-ft/midgard-validation";
 import {
   HttpRouter,
@@ -19,6 +19,7 @@ import { Cause, Duration, Effect, Metric, Queue, Ref } from "effect";
 
 import {
   parseAddressArgument,
+  parseHexBytes,
   parseTxOutRefCborHex,
 } from "@/commands/command-utils.js";
 import * as DepositStatusCommand from "@/commands/deposit-status.js";
@@ -68,6 +69,7 @@ import {
 } from "@/transactions/reference-scripts.js";
 import * as SubmitDeposit from "@/transactions/submit-deposit.js";
 import { SerializedStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
+import { buildLedgerNonMembershipProof } from "@/workers/utils/mpf/ledger-non-membership.js";
 
 const TX_ENDPOINT: string = "tx";
 const ADDRESS_HISTORY_ENDPOINT: string = "txs";
@@ -75,6 +77,7 @@ const MERGE_ENDPOINT: string = "merge";
 const UTXO_ENDPOINT: string = "utxo";
 const UTXOS_ENDPOINT: string = "utxos";
 const BLOCK_ENDPOINT: string = "block";
+const LEDGER_NON_MEMBERSHIP_ENDPOINT: string = "ledger-non-membership";
 const INIT_ENDPOINT: string = "init";
 const COMMIT_ENDPOINT: string = "commit";
 const SUBMIT_ENDPOINT: string = "submit";
@@ -296,6 +299,73 @@ const getUtxoHandler = Effect.gen(function* () {
       e.cause,
       `db failure with table ${e.table}`,
     ),
+  ),
+);
+
+/**
+ * `GET /ledger-non-membership`: returns a ledger non-membership (exclusion)
+ * proof for a `TransactionInput` CBOR key against a historical prev-utxos root
+ * the node has committed. This lets the non-existent-input fault-proof prover
+ * build step-03 over a non-empty ledger (i.e. a chain that already has blocks),
+ * not just an empty genesis. Query params: `prev_utxos_root` (32-byte hex, the
+ * disputed block header's `prevUtxosRoot`) and `input` (the raw TxOutRef CBOR
+ * hex of the missing input).
+ */
+const getLedgerNonMembershipHandler = Effect.gen(function* () {
+  const params = yield* ParsedSearchParams;
+
+  let prevUtxosRoot: string;
+  try {
+    prevUtxosRoot = parseHexBytes(
+      params["prev_utxos_root"],
+      "prev_utxos_root",
+      32,
+    ).toString("hex");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    yield* Effect.logInfo(
+      `GET /${LEDGER_NON_MEMBERSHIP_ENDPOINT} - invalid prev_utxos_root: ${message}`,
+    );
+    return yield* HttpServerResponse.json({ error: message }, { status: 400 });
+  }
+
+  let input: string;
+  try {
+    input = parseTxOutRefCborHex(params["input"], "input").toString("hex");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    yield* Effect.logInfo(
+      `GET /${LEDGER_NON_MEMBERSHIP_ENDPOINT} - invalid input: ${message}`,
+    );
+    return yield* HttpServerResponse.json({ error: message }, { status: 400 });
+  }
+
+  const nodeConfig = yield* NodeConfig;
+  const result = yield* buildLedgerNonMembershipProof({
+    ledgerDbPath: nodeConfig.LEDGER_MPF_DB_PATH,
+    prevUtxosRoot,
+    inputCbor: input,
+  });
+
+  return yield* HttpServerResponse.json({
+    prevUtxosRoot: result.prevUtxosRoot,
+    input: result.input,
+    proofCbor: result.proofCbor,
+  });
+}).pipe(
+  Effect.catchTag("LedgerInputPresentError", (e) =>
+    HttpServerResponse.json(
+      {
+        error: `Input ${e.inputCbor} is present in the prev-utxos ledger at root ${e.root}; it is an existing input, so there is no non-existent-input fraud to prove.`,
+      },
+      { status: 409 },
+    ),
+  ),
+  Effect.catchTag("HttpBodyError", (e) =>
+    failWith500("GET", LEDGER_NON_MEMBERSHIP_ENDPOINT, e),
+  ),
+  Effect.catchTag("MpfError", (e) =>
+    failWith500("GET", LEDGER_NON_MEMBERSHIP_ENDPOINT, e.cause, e.message),
   ),
 );
 
@@ -1211,6 +1281,10 @@ export const buildListenRouter = (
       HttpRouter.get(`/${UTXO_ENDPOINT}`, getUtxoHandler),
       HttpRouter.get(`/${UTXOS_ENDPOINT}`, getUtxosHandler),
       HttpRouter.get(`/${BLOCK_ENDPOINT}`, getBlockHandler),
+      HttpRouter.get(
+        `/${LEDGER_NON_MEMBERSHIP_ENDPOINT}`,
+        getLedgerNonMembershipHandler,
+      ),
       HttpRouter.get(
         `/${INIT_ENDPOINT}`,
         withAdminAccess(INIT_ENDPOINT, getInitHandler),

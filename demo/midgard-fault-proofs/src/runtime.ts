@@ -9,9 +9,11 @@ import {
 } from "@al-ft/midgard-core/out-ref";
 import {
   buildDoubleSpendFaultProofContracts,
+  buildNonExistentInputFaultProofContracts,
   type DoubleSpendFaultProofContracts,
   type FraudProofCatalogueCategoryDeploymentInfo,
   MerkleRoot,
+  type NonExistentInputFaultProofContracts,
   parseFaultProofBlueprint,
   Proof,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
@@ -395,6 +397,97 @@ export const resolveDoubleSpendDeploymentContracts = async ({
   };
 };
 
+export type ResolvedNonExistentInputDeploymentContracts = {
+  readonly deploymentInfo: ContractDeploymentInfo;
+  readonly nonExistentInputCategory: FraudProofCatalogueCategoryDeploymentInfo;
+  readonly stateQueuePolicyId: string | undefined;
+  readonly fraudProofCataloguePolicyId: string;
+  readonly hubOraclePolicyId: string;
+  readonly contracts: NonExistentInputFaultProofContracts;
+};
+
+export const resolveNonExistentInputDeploymentContracts = async ({
+  blueprint,
+  deploymentInfo,
+  network,
+  requireStateQueueMint = false,
+  requireFraudProofSpend = false,
+}: {
+  readonly blueprint: unknown;
+  readonly deploymentInfo: unknown;
+  readonly network: Network;
+  readonly requireStateQueueMint?: boolean;
+  readonly requireFraudProofSpend?: boolean;
+}): Promise<ResolvedNonExistentInputDeploymentContracts> => {
+  const parsedDeploymentInfo = parseContractDeploymentInfo(deploymentInfo);
+  const catalogue =
+    parsedDeploymentInfo.fraudProofCatalogueMint?.fraudProofCatalogue;
+  const nonExistentInputCategory = catalogue?.categories.nonExistentInput;
+  if (nonExistentInputCategory === undefined) {
+    throw new Error(
+      "Deployment info is missing fraudProofCatalogueMint.fraudProofCatalogue.categories.nonExistentInput.",
+    );
+  }
+
+  const stateQueuePolicyId = requireStateQueueMint
+    ? requireDeploymentScriptHash(parsedDeploymentInfo, "stateQueueMint")
+    : undefined;
+  const fraudProofCataloguePolicyId = requireDeploymentScriptHash(
+    parsedDeploymentInfo,
+    "fraudProofCatalogueMint",
+  );
+  const hubOraclePolicyId = requireDeploymentScriptHash(
+    parsedDeploymentInfo,
+    "hubOracleMint",
+  );
+  const deployedFraudProofPolicyId = requireDeploymentScriptHash(
+    parsedDeploymentInfo,
+    "fraudProofMint",
+  );
+  const deployedFraudProofSpendHash = requireFraudProofSpend
+    ? requireDeploymentScriptHash(parsedDeploymentInfo, "fraudProofSpend")
+    : undefined;
+  const deployedFirstStepHash = requireDeploymentScriptHash(
+    parsedDeploymentInfo,
+    "fraudProofNonExistentInput",
+  );
+
+  const contracts = await Effect.runPromise(
+    buildNonExistentInputFaultProofContracts({
+      blueprint: parseFaultProofBlueprint(blueprint),
+      network,
+      hubOraclePolicyId,
+      fraudProofCataloguePolicyId,
+    }),
+  );
+  requireMatchingScriptHash({
+    label: "fraudProofMint policy",
+    deployed: deployedFraudProofPolicyId,
+    derived: contracts.fraudProof.policyId,
+  });
+  if (deployedFraudProofSpendHash !== undefined) {
+    requireMatchingScriptHash({
+      label: "fraudProofSpend script",
+      deployed: deployedFraudProofSpendHash,
+      derived: contracts.fraudProof.spendingScriptHash,
+    });
+  }
+  requireMatchingScriptHash({
+    label: "fraudProofNonExistentInput step-01 script",
+    deployed: deployedFirstStepHash,
+    derived: contracts.nonExistentInput.firstStep.spendingScriptHash,
+  });
+
+  return {
+    deploymentInfo: parsedDeploymentInfo,
+    nonExistentInputCategory,
+    stateQueuePolicyId,
+    fraudProofCataloguePolicyId,
+    hubOraclePolicyId,
+    contracts,
+  };
+};
+
 export const requireSingletonUtxo = async ({
   lucid,
   address,
@@ -531,6 +624,61 @@ export const encodePhasMembershipProofRedeemer = ({
   );
   return Data.to(
     [rootData, keyData, valueData, proofData],
+    Data.Array(Data.Any()) as unknown as LucidDataSchema,
+  );
+};
+
+export const encodePexcludesProofRedeemer = ({
+  root,
+  keyCbor,
+  nonMembershipProofCbor,
+}: {
+  readonly root: string;
+  readonly keyCbor: string;
+  readonly nonMembershipProofCbor: string;
+}): string => {
+  const proof = Data.from(nonMembershipProofCbor, Proof);
+  const rootData = Data.from(Data.to(root, MerkleRoot));
+  const keyData = Data.from(
+    Data.to(
+      aikenSerialisedPlutusDataCbor(keyCbor),
+      Data.Bytes() as unknown as LucidDataSchema,
+    ),
+  );
+  const proofData = Data.from(
+    Data.to(proof, Proof as unknown as LucidDataSchema),
+  );
+  return Data.to(
+    [rootData, keyData, proofData],
+    Data.Array(Data.Any()) as unknown as LucidDataSchema,
+  );
+};
+
+/**
+ * Raw-bytes variant of {@link encodePexcludesProofRedeemer}, for non-membership
+ * over a trie keyed by the node's native byte encoding (the ledger trie keyed by
+ * Cardano `TransactionInput` CBOR, or the transactions trie keyed by the raw
+ * 32-byte native tx id) rather than by PlutusData-serialised keys.
+ */
+export const encodeRawPexcludesProofRedeemer = ({
+  root,
+  keyBytes,
+  nonMembershipProofCbor,
+}: {
+  readonly root: string;
+  readonly keyBytes: string;
+  readonly nonMembershipProofCbor: string;
+}): string => {
+  const proof = Data.from(nonMembershipProofCbor, Proof);
+  const rootData = Data.from(Data.to(root, MerkleRoot));
+  const keyData = Data.from(
+    Data.to(keyBytes, Data.Bytes() as unknown as LucidDataSchema),
+  );
+  const proofData = Data.from(
+    Data.to(proof, Proof as unknown as LucidDataSchema),
+  );
+  return Data.to(
+    [rootData, keyData, proofData],
     Data.Array(Data.Any()) as unknown as LucidDataSchema,
   );
 };

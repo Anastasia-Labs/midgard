@@ -4,6 +4,7 @@ use cardano/transaction.{OutputReference, Transaction}
 use midgard/common/utils
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
+use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_input}
 use midgard/fraud_proofs/no_input/step_03.{Args, Datum, SpendRedeemer, State}
 use midgard/fraud_proofs/no_input/step_04
 
@@ -57,16 +58,18 @@ validator main(
           )
 
         expect Some(State {
-          missing_output_reference,
+          missing_input,
           blocks_prev_utxos_root,
           blocks_transactions_root,
         }) = m_input_state_data
 
         // 2. Target input must be absent from the verified block's prev ledger.
+        //    The ledger trie is keyed by the node's native `TransactionInput`
+        //    CBOR, so the non-membership key is `encode_midgard_tx_input`.
         expect
-          utils.plutarch_pexcludes(
+          utils.plutarch_pexcludes_raw(
             merkle_root: blocks_prev_utxos_root,
-            key: missing_output_reference,
+            key_bytes: encode_midgard_tx_input(missing_input),
             non_membership_proof: non_membership_proof_in_ledger,
             redeemers: redeemers,
             withdraw_redeemer_index: non_membership_proof_script_redeemer_index,
@@ -77,7 +80,7 @@ validator main(
         expect output_script_hash == step_04_validator_script_hash
         let expected_output_state: Data =
           step_04.State {
-            missing_input_tx_id: missing_output_reference.transaction_id,
+            missing_input_tx_id: missing_input.tx_id,
             blocks_transactions_root,
           }
         expect output_state_data == expected_output_state

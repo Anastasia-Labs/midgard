@@ -296,6 +296,7 @@ const databaseOperationsProgram = (
   MidgardContracts | Database | Lucid | NodeConfig
 > =>
   Effect.gen(function* () {
+    const nodeConfig = yield* NodeConfig;
     const mempoolTxs = yield* MempoolDB.retrieve;
     const currentBlockStartTime = new Date(
       workerInput.data.currentBlockStartTimeMs,
@@ -380,6 +381,7 @@ const databaseOperationsProgram = (
         depositOnlyEndTime: canBuildOnConfirmedBlock
           ? userEventOnlyEndTime
           : undefined,
+        tolerateMissingLedgerDeletes: nodeConfig.SKIP_TX_VALIDATION,
       },
     );
 

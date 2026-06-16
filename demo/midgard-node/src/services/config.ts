@@ -44,6 +44,7 @@ type NodeConfigDep = {
   MIN_FEE_A: bigint;
   MIN_FEE_B: bigint;
   RUN_GENESIS_ON_STARTUP: boolean;
+  SKIP_TX_VALIDATION: boolean;
   ADMIN_API_KEY: string;
   MAX_SUBMIT_QUEUE_SIZE: number;
   MAX_DURABLE_ADMISSION_BACKLOG: number;
@@ -186,6 +187,16 @@ const makeConfig = Effect.gen(function* () {
   const runGenesisOnStartup = yield* Config.string(
     "RUN_GENESIS_ON_STARTUP",
   ).pipe(
+    Config.withDefault("false"),
+    Config.map((value) => value.trim().toLowerCase() === "true"),
+  );
+  // Testing-only escape hatch. When true, the tx-queue processor skips phase-A
+  // and phase-B validation and admits queued txs straight into the mempool, and
+  // the block builder tolerates ledger deletes of inputs that are absent from
+  // the prev-utxos set. This is what lets an operator commit a deliberately
+  // faulty block (e.g. one spending a non-existent input) so the fraud proof
+  // can later be exercised on-chain. Never enable on a real deployment.
+  const skipTxValidation = yield* Config.string("SKIP_TX_VALIDATION").pipe(
     Config.withDefault("false"),
     Config.map((value) => value.trim().toLowerCase() === "true"),
   );
@@ -384,6 +395,7 @@ const makeConfig = Effect.gen(function* () {
     MIN_FEE_A: minFeeA,
     MIN_FEE_B: minFeeB,
     RUN_GENESIS_ON_STARTUP: runGenesisOnStartup,
+    SKIP_TX_VALIDATION: skipTxValidation,
     ADMIN_API_KEY: adminApiKey,
     MAX_SUBMIT_QUEUE_SIZE: maxSubmitQueueSize,
     MAX_DURABLE_ADMISSION_BACKLOG: maxDurableAdmissionBacklog,
@@ -418,7 +430,11 @@ const makeConfig = Effect.gen(function* () {
     POSTGRES_USER: postgresUser,
     LEDGER_MPF_DB_PATH: ledgerMpfDbPath,
     TRANSACTIONS_MPF_DB_PATH: transactionsMpfDbPath,
-    GENESIS_UTXOS: network === "Mainnet" ? [] : genesisUtxos,
+    // In fault-proof drill mode the L2 ledger starts empty so the first block's
+    // prev-utxos root is the empty MPF root, which lets the non-existent-input
+    // proof build a trivial ledger non-membership proof for the phantom input.
+    GENESIS_UTXOS:
+      network === "Mainnet" || skipTxValidation ? [] : genesisUtxos,
   };
 }).pipe(Effect.orDie);
 

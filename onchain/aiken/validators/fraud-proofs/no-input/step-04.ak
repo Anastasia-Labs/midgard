@@ -64,10 +64,11 @@ validator main(
           m_input_state_data
 
         // 2. The missing input must not have been produced in the same block.
+        //    The transactions trie is keyed by the raw 32-byte native tx id.
         expect
-          utils.plutarch_pexcludes(
+          utils.plutarch_pexcludes_raw(
             merkle_root: blocks_transactions_root,
-            key: missing_input_tx_id,
+            key_bytes: missing_input_tx_id,
             non_membership_proof: non_membership_proof_in_txs,
             redeemers: redeemers,
             withdraw_redeemer_index: non_membership_proof_script_redeemer_index,

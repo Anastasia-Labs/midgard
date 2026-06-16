@@ -64,10 +64,17 @@ export const resolveAlignedCommitEndTime = ({
   lucid,
   latestEndTime,
   candidateEndTime,
+  nowMs = Date.now(),
 }: {
   readonly lucid: LucidEvolution;
   readonly latestEndTime: number;
   readonly candidateEndTime: number;
+  // Wall-clock reference for the future-buffer floor. Callers that resolve the
+  // window repeatedly (e.g. the commit-window stabilization loop) must pass a
+  // single snapshot so the floor does not advance between iterations; otherwise
+  // on short-slot networks (preprod: 1s) provider latency pushes the floor past
+  // the witnessed end time every attempt and stabilization can never converge.
+  readonly nowMs?: number;
 }): {
   readonly alignedCandidateEndTime: number;
   readonly minimumMonotonicEndTime: number;
@@ -83,7 +90,7 @@ export const resolveAlignedCommitEndTime = ({
   );
   const minimumCurrentTimeEndTime = alignedUnixTimeStrictlyAfter(
     lucid,
-    Date.now() + COMMIT_VALIDITY_FUTURE_BUFFER_MS,
+    nowMs + COMMIT_VALIDITY_FUTURE_BUFFER_MS,
   );
   return {
     alignedCandidateEndTime,

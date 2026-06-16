@@ -62,11 +62,19 @@ export const buildUnsignedCommitTx = (
     // operator wallet before any scheduler refresh or witness lookup that
     // depends on wallet address or spendable operator inputs.
     yield* lucid.switchToOperatorsMainWallet;
+    // Snapshot the wall clock once for the whole stabilization loop. The commit
+    // window's future-buffer floor is derived from this reference, so resolving
+    // the window repeatedly is deterministic and the witnessed end time stays
+    // valid even when each witness-context fetch costs several seconds (e.g.
+    // Blockfrost preprod, where 1-second slots would otherwise advance the floor
+    // on every attempt and prevent the loop from ever converging).
+    const commitWindowNowMs = Date.now();
     const resolveCommitWindow = () =>
       resolveAlignedCommitEndTime({
         lucid: lucid.api,
         latestEndTime,
         candidateEndTime: endDate.getTime(),
+        nowMs: commitWindowNowMs,
       });
     let commitWindow = resolveCommitWindow();
     let witnessContext: RealStateQueueWitnessContext | undefined;

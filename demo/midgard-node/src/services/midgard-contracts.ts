@@ -475,6 +475,48 @@ const buildRealDoubleSpendFirstStepValidator = (
   });
 
 /**
+ * Builds the real non-existent-input fault-proof first-step (step-01) spending
+ * validator, mirroring {@link buildRealDoubleSpendFirstStepValidator}. The
+ * native no-input proof shares the computation-thread and fraud-proof policies
+ * with double-spend, so we re-derive them here and assert they agree before
+ * returning the real step-01 validator the fraud-proof catalogue must commit to.
+ */
+const buildRealNonExistentInputFirstStepValidator = (
+  network: Network,
+  contracts: SDK.MidgardValidators,
+  computationThread: SDK.MintingValidator,
+  fraudProof: SDK.AuthenticatedValidator,
+): Effect.Effect<SDK.SpendingValidator, Error> =>
+  Effect.gen(function* () {
+    const blueprint = SDK.parseFaultProofBlueprint(yield* loadRealBlueprint());
+    const nonExistentInputContracts =
+      yield* SDK.buildNonExistentInputFaultProofContracts({
+        blueprint,
+        network,
+        hubOraclePolicyId: contracts.hubOracle.policyId,
+        fraudProofCataloguePolicyId: contracts.fraudProofCatalogue.policyId,
+      });
+
+    yield* expectDerivedScriptHash(
+      "computation-thread policy",
+      computationThread.policyId,
+      nonExistentInputContracts.computationThread.policyId,
+    );
+    yield* expectDerivedScriptHash(
+      "fraud-proof policy",
+      fraudProof.policyId,
+      nonExistentInputContracts.fraudProof.policyId,
+    );
+    yield* expectDerivedScriptHash(
+      "fraud-proof spend",
+      fraudProof.spendingScriptHash,
+      nonExistentInputContracts.fraudProof.spendingScriptHash,
+    );
+
+    return nonExistentInputContracts.nonExistentInput.firstStep;
+  });
+
+/**
  * Builds the real state-queue authenticated validator.
  */
 const buildRealStateQueueValidator = (
@@ -718,12 +760,24 @@ export const withRealStateQueueAndOperatorContracts = (
         realComputationThread,
         realFraudProof,
       );
+    const realNonExistentInputFirstStep =
+      yield* buildRealNonExistentInputFirstStepValidator(
+        network,
+        withRealFraudProofCatalogue,
+        realComputationThread,
+        realFraudProof,
+      );
     const withRealFraudProof: SDK.MidgardValidators = {
       ...withRealFraudProofCatalogue,
       fraudProof: realFraudProof,
       fraudProofs: {
         ...withRealFraudProofCatalogue.fraudProofs,
         doubleSpend: realDoubleSpendFirstStep,
+        // Real indexed non-existent-input proof (blueprint `no_input/*`). The
+        // separate no-index variant (`input_no_idx/*`, catalogue category
+        // `nonExistentInputNoIndex`) has no real builder yet, so it stays the
+        // inherited placeholder.
+        nonExistentInput: realNonExistentInputFirstStep,
       },
     };
 

@@ -1,6 +1,7 @@
 use midgard/computation_thread as ct
+use midgard/fraud_proofs/native_tx/types.{MidgardTxInput}
 use midgard/ledger_state.{
-  MidgardInputs, MidgardInputsHash, MidgardLedgerRoot, MidgardTxsRoot,
+  MidgardInputsHash, MidgardLedgerRoot, MidgardTxsRoot,
 }
 
 pub type State {
@@ -15,7 +16,7 @@ pub type Datum =
 pub type Args {
   input_index: Int,
   output_index: Int,
-  inputs_preimage: MidgardInputs,
+  inputs_preimage: List<MidgardTxInput>,
   bad_input_index: Int,
 }
 

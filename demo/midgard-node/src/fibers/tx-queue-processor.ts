@@ -3,6 +3,7 @@ import {
   QueuedTx,
   QueuedTxPayload,
   RejectCode,
+  RejectCodes,
   RejectedTx,
   runPhaseAValidation,
   runPhaseBValidationWithPatch,
@@ -13,6 +14,7 @@ import { Duration, Effect, Metric, Queue, Ref, Schedule } from "effect";
 import { MempoolLedgerDB, TxAdmissionsDB } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { Globals, Lucid, NodeConfig } from "@/services/index.js";
+import { breakDownTx, ProcessedTx } from "@/utils.js";
 
 /**
  * Background validation loop for queued L2 transactions.
@@ -379,6 +381,58 @@ const txQueueProcessorAction = (
     try {
       const batchStart = Date.now();
       const queuedTxs = admittedRows.map(admissionToQueuedTx);
+
+      if (nodeConfig.SKIP_TX_VALIDATION) {
+        // Fault-proof testing path: admit every queued tx into the mempool
+        // without phase-A/phase-B validation so that deliberately invalid txs
+        // (e.g. one spending a non-existent input) can be committed in a block.
+        // Only the structural decode has to succeed; everything else is skipped.
+        yield* Effect.logWarning(
+          `⚠️ SKIP_TX_VALIDATION enabled — admitting ${queuedTxs.length} queued tx(s) into the mempool WITHOUT validation.`,
+        );
+        const bypassAccepted: ProcessedTx[] = [];
+        const bypassRejected: RejectedTx[] = [];
+        for (const queuedTx of queuedTxs) {
+          const decoded = yield* breakDownTx(queuedTx.txCbor).pipe(
+            Effect.either,
+          );
+          if (decoded._tag === "Left") {
+            bypassRejected.push({
+              txId: queuedTx.txId,
+              code: RejectCodes.CborDeserialization,
+              detail: decoded.left.message,
+            });
+          } else {
+            bypassAccepted.push(decoded.right);
+          }
+        }
+        if (bypassRejected.length > 0) {
+          yield* TxAdmissionsDB.markRejected({
+            rows: admittedRows,
+            leaseOwner,
+            rejectedTxs: bypassRejected,
+          });
+          yield* Metric.incrementBy(
+            validationRejectCounter,
+            BigInt(bypassRejected.length),
+          );
+        }
+        if (bypassAccepted.length > 0) {
+          yield* TxAdmissionsDB.markAccepted({
+            rows: admittedRows,
+            leaseOwner,
+            processedTxs: bypassAccepted,
+          });
+          yield* Metric.incrementBy(
+            validationAcceptCounter,
+            BigInt(bypassAccepted.length),
+          );
+        }
+        yield* Effect.logInfo(
+          `tx-queue validation bypassed: admitted=${bypassAccepted.length}, malformed=${bypassRejected.length}`,
+        );
+        return;
+      }
 
       const phaseAStart = Date.now();
       const phaseAConcurrency = selectPhaseAConcurrency(

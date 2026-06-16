@@ -1,0 +1,67 @@
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+import {
+  CML,
+  type Network,
+  type Script,
+  validatorToScriptHash,
+} from "@lucid-evolution/lucid";
+
+const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+const blueprintCandidates = [
+  path.resolve(moduleDir, "../../../onchain/aiken/plutus.json"),
+  path.resolve(moduleDir, "../../../../onchain/aiken/plutus.json"),
+  path.resolve(process.cwd(), "../../onchain/aiken/plutus.json"),
+  path.resolve(process.cwd(), "onchain/aiken/plutus.json"),
+] as const;
+
+export const loadPexcludesExclusionWithdrawalScript = (): Script => {
+  const configured = process.env.MIDGARD_REAL_BLUEPRINT_PATH?.trim();
+  const blueprintPath = configured
+    ? configured
+    : blueprintCandidates.find((candidate) => existsSync(candidate));
+  if (blueprintPath === undefined) {
+    throw new Error(
+      `Failed to locate Aiken blueprint for pexcludes exclusion validator. Looked in: ${blueprintCandidates.join(", ")}`,
+    );
+  }
+  const blueprint = JSON.parse(readFileSync(blueprintPath, "utf8")) as {
+    readonly validators?: readonly {
+      readonly title?: unknown;
+      readonly compiledCode?: unknown;
+    }[];
+  };
+  const validator = blueprint.validators?.find(
+    ({ title }) => title === "pexcludes.exclusion.withdraw",
+  );
+  if (
+    typeof validator?.compiledCode !== "string" ||
+    validator.compiledCode.length === 0
+  ) {
+    throw new Error(`Missing pexcludes.exclusion.withdraw in ${blueprintPath}`);
+  }
+  return {
+    type: "PlutusV3",
+    script: validator.compiledCode,
+  };
+};
+
+export const pexcludesExclusionStakeCredential = (
+  script: Script = loadPexcludesExclusionWithdrawalScript(),
+): CML.Credential =>
+  CML.Credential.new_script(
+    CML.ScriptHash.from_hex(validatorToScriptHash(script)),
+  );
+
+export const pexcludesExclusionRewardAddress = (
+  network: Network,
+  script: Script = loadPexcludesExclusionWithdrawalScript(),
+): string =>
+  CML.RewardAddress.new(
+    network === "Mainnet" ? 1 : 0,
+    pexcludesExclusionStakeCredential(script),
+  )
+    .to_address()
+    .to_bech32();

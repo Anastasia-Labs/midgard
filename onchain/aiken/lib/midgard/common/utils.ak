@@ -684,6 +684,40 @@ pub fn plutarch_pexcludes(
   True
 }
 
+/// Raw-bytes variant of `plutarch_pexcludes`, for fault proofs whose merkle
+/// tree is keyed by the node's native byte encoding (e.g. the ledger trie keyed
+/// by Cardano `TransactionInput` CBOR, or the transactions trie keyed by the
+/// raw 32-byte native tx id) rather than by PlutusData `cbor.serialise(key)`.
+///
+/// > [!WARNING]
+/// > This function can only be used **once within a given transaction**.
+pub fn plutarch_pexcludes_raw(
+  merkle_root: ByteArray,
+  key_bytes: ByteArray,
+  non_membership_proof: Proof,
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+  withdraw_redeemer_index: Int,
+) -> Bool {
+  expect _withdraw_redeemer_index = withdraw_redeemer_index
+  let pexcludes_validator_redeemer =
+    get_unique_withdraw_redeemer(
+      redeemers,
+      env.plutarch_pexcludes_validator_hash,
+    )
+  expect [redeemer_root_data,
+    redeemer_key_data,
+    redeemer_proof_data, ..] =
+    builtin.un_list_data(pexcludes_validator_redeemer)
+
+  let proof_data: Data = non_membership_proof
+
+  expect redeemer_root_data == builtin.b_data(merkle_root)
+  expect redeemer_key_data == builtin.b_data(key_bytes)
+  expect redeemer_proof_data == proof_data
+
+  True
+}
+
 fn get_unique_withdraw_redeemer(
   redeemers: Pairs<ScriptPurpose, Redeemer>,
   withdraw_script_hash: ScriptHash,

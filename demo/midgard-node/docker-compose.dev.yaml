@@ -19,6 +19,8 @@ services:
     volumes:
       - ./db:/app/db
       - ./deploymentInfo:/app/deploymentInfo
+      - ledger-mpf-data:/app/midgard-ledger-mpf-db
+      - transactions-mpf-data:/app/midgard-transactions-mpf-db
     depends_on:
       postgres:
         condition: service_healthy
@@ -60,7 +62,11 @@ services:
     networks:
       midgard_net:
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB -h 127.0.0.1 -p 5432"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB -h 127.0.0.1 -p 5432",
+        ]
       interval: 2s
       timeout: 3s
       retries: 30
@@ -70,4 +76,8 @@ networks:
 
 volumes:
   postgres-data:
+    driver: local
+  ledger-mpf-data:
+    driver: local
+  transactions-mpf-data:
     driver: local

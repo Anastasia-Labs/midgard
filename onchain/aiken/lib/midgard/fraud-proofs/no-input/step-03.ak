@@ -1,10 +1,10 @@
-use cardano/transaction.{OutputReference}
 use midgard/common/types.{Proof}
 use midgard/computation_thread as ct
+use midgard/fraud_proofs/native_tx/types.{MidgardTxInput} as native_tx_types
 use midgard/ledger_state.{MidgardLedgerRoot, MidgardTxsRoot}
 
 pub type State {
-  missing_output_reference: OutputReference,
+  missing_input: MidgardTxInput,
   blocks_prev_utxos_root: MidgardLedgerRoot,
   blocks_transactions_root: MidgardTxsRoot,
 }

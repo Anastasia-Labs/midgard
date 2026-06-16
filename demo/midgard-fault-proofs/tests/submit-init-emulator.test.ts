@@ -28,6 +28,7 @@ import {
   addressDataFromBech32,
   type AuthenticatedValidator,
   buildDoubleSpendFaultProofContracts,
+  buildNonExistentInputFaultProofContracts,
   ConfirmedState,
   DoubleSpendStep02Datum,
   DoubleSpendStep03Datum,
@@ -53,6 +54,9 @@ import {
   makeHubOracleDatum,
   type MidgardValidators,
   type MintingValidator,
+  NonExistentInputStep02Datum,
+  NonExistentInputStep03Datum,
+  NonExistentInputStep04Datum,
   parseFaultProofBlueprint,
   REGISTERED_OPERATORS_ROOT_ASSET_NAME,
   RegisteredOperatorMintRedeemer,
@@ -97,7 +101,15 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
+  buildMembershipProof,
+  buildNonMembershipProof,
+  computeTrieRoot,
   nativeTxFromCoreCompact,
+  neSubmitInit,
+  neSubmitStep01,
+  neSubmitStep02,
+  neSubmitStep03,
+  neSubmitStep04,
   parseSpendInputCbors,
   parseSubmitStep01TxInclusion,
   resolveProverSigner,
@@ -369,6 +381,14 @@ const buildMinimalFaultProofContracts = async (
       fraudProofCataloguePolicyId: fraudProofCatalogue.policyId,
     }),
   );
+  const nonExistentInputContracts = await Effect.runPromise(
+    buildNonExistentInputFaultProofContracts({
+      blueprint: parseFaultProofBlueprint(realBlueprint),
+      network,
+      hubOraclePolicyId: hubOracle.policyId,
+      fraudProofCataloguePolicyId: fraudProofCatalogue.policyId,
+    }),
+  );
   const activeOperatorsAddressData = await Effect.runPromise(
     addressDataFromBech32(
       withActiveOperators.activeOperators.spendingScriptAddress,
@@ -437,6 +457,7 @@ const buildMinimalFaultProofContracts = async (
     fraudProofs: {
       ...withActiveOperators.fraudProofs,
       doubleSpend: doubleSpendContracts.doubleSpend.firstStep,
+      nonExistentInput: nonExistentInputContracts.nonExistentInput.firstStep,
     },
   };
 };
@@ -772,8 +793,9 @@ const makeHeader = (
   operatorVkey: string,
   now: number,
   transactionsRoot = EMPTY_MERKLE_TREE_ROOT,
+  prevUtxosRoot = EMPTY_MERKLE_TREE_ROOT,
 ): Header => ({
-  prevUtxosRoot: EMPTY_MERKLE_TREE_ROOT,
+  prevUtxosRoot,
   utxosRoot: EMPTY_MERKLE_TREE_ROOT,
   transactionsRoot,
   depositsRoot: EMPTY_MERKLE_TREE_ROOT,
@@ -1734,5 +1756,306 @@ describe("submit-init emulator smoke", () => {
       utxoToStateQueueUTxO(finalRootUtxo, contracts.stateQueue.policyId),
     );
     expect(finalRoot.datum.next).toBe("Empty");
+  }, 120_000);
+
+  it("mints the fraud-proof token for a non-existent-input fault proof", async () => {
+    const realBlueprint = readBlueprint(realBlueprintPath);
+    const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
+    const funder = generateEmulatorAccount({ lovelace: 40_000_000_000n });
+    const prover = generateEmulatorAccount({ lovelace: 20_000_000_000n });
+    const emulator = new Emulator(
+      [funder, prover],
+      EMULATOR_PROTOCOL_PARAMETERS,
+    );
+    const funderLucid = await Lucid(emulator, "Custom");
+    const proverLucid = await Lucid(emulator, "Custom");
+    funderLucid.selectWallet.fromSeed(funder.seedPhrase);
+    proverLucid.selectWallet.fromSeed(prover.seedPhrase);
+    const proverSigner = resolveProverSigner({
+      network,
+      walletSeedPhrase: prover.seedPhrase,
+    });
+
+    await registerPhasMembershipRewardAccount(funderLucid, realBlueprint);
+    // Steps 03/04 withdraw from the pexcludes exclusion validator, so its reward
+    // account must be registered too.
+    const pexcludesScript: Script = {
+      type: "PlutusV3",
+      script: getCompiledScript(realBlueprint, "pexcludes.exclusion.withdraw"),
+    };
+    {
+      const unsigned = await funderLucid
+        .newTx()
+        .register.Stake(phasMembershipRewardAddress(pexcludesScript))
+        .complete({ localUPLCEval: true });
+      const signed = await unsigned.sign.withWallet().complete();
+      await funderLucid.awaitTx(await signed.submit());
+    }
+    const nonceUtxo = (await funderLucid.wallet().getUtxos())[0];
+    if (nonceUtxo === undefined) {
+      throw new Error("Expected funder wallet to expose a nonce UTxO");
+    }
+
+    const contracts = await buildMinimalFaultProofContracts(
+      realBlueprint,
+      alwaysBlueprint,
+      nonceUtxo,
+    );
+    const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
+
+    // --- Non-existent-input fixture --------------------------------------
+    // A bad transaction that spends an input produced by a transaction that
+    // does not exist in the block (so it is absent from both the prev-utxos
+    // ledger and the block's transaction set).
+    const missingOutRef = { transactionId: h32("de"), outputIndex: 0n };
+    const missingInputCbor = outputReferenceCbor(missingOutRef);
+    // A bad transaction whose single spend input is the non-existent UTxO,
+    // committed by the node's native transaction root (same encoding as the
+    // double-spend fixture above).
+    const badNativeTx = makeNativeTx({
+      spendInputCbors: [missingInputCbor],
+      fee: 0n,
+      referenceByte: "11",
+      outputByte: "12",
+      witnessByte: "18",
+    });
+    const badNativeTxId = computeMidgardNativeTxId(badNativeTx).toString("hex");
+    const badNativeTxCompactCbor = encodeMidgardNativeTxCompact(
+      badNativeTx.compact,
+    ).toString("hex");
+    const badNativeTxCompact = nativeTxFromCoreCompact(badNativeTx.compact);
+
+    // Transactions trie committed by the node: keyed by the raw 32-byte native
+    // tx id, valued by the native compact-tx CBOR.
+    const txEntries = [
+      {
+        key: Buffer.from(badNativeTxId, "hex"),
+        value: encodeMidgardNativeTxCompact(badNativeTx.compact),
+      },
+    ];
+    const transactionsRoot = await computeTrieRoot(txEntries);
+    const txMembershipProofCbor = await buildMembershipProof(
+      txEntries,
+      Buffer.from(badNativeTxId, "hex"),
+    );
+
+    // The committed block's prev-ledger root is the genesis (empty) utxo root,
+    // so the missing input is proven absent against the empty ledger trie. The
+    // ledger trie is keyed by the Cardano `TransactionInput` CBOR, and the
+    // transactions trie by the raw 32-byte tx id.
+    const prevUtxosRoot = EMPTY_MERKLE_TREE_ROOT;
+    const ledgerNonMembershipProof = await buildNonMembershipProof(
+      [],
+      missingInputCbor,
+    );
+    const txsNonMembershipProof = await buildNonMembershipProof(
+      txEntries,
+      Buffer.from(missingOutRef.transactionId, "hex"),
+    );
+    const spendInputCbors = [missingInputCbor.toString("hex")];
+
+    const headerStartTime =
+      alignUnixTimeToEmulatorSlotBoundary(
+        funderLucid,
+        emulator.now() + 120_000,
+      ) - 1;
+    const funderAddress = await funderLucid.wallet().address();
+    const funderPaymentCredential =
+      getAddressDetails(funderAddress).paymentCredential;
+    if (
+      funderPaymentCredential === undefined ||
+      funderPaymentCredential.type !== "Key"
+    ) {
+      throw new Error("Expected funder wallet to expose a payment key hash");
+    }
+    const setup = await submitSetupTx({
+      lucid: funderLucid,
+      contracts,
+      nonceUtxo,
+      catalogue,
+      header: makeHeader(
+        funderPaymentCredential.hash,
+        headerStartTime,
+        transactionsRoot,
+        prevUtxosRoot,
+      ),
+    });
+    const { fraudulentBlockOutRef } = setup;
+
+    const deploymentEntry = (scriptHash: string, script: Script) => ({
+      scriptHash,
+      refScriptUTxO: null,
+      contract: { type: script.type, cborHex: script.script },
+    });
+    const deploymentInfo = {
+      hubOracleMint: { scriptHash: contracts.hubOracle.policyId },
+      fraudProofCatalogueMint: {
+        scriptHash: contracts.fraudProofCatalogue.policyId,
+        fraudProofCatalogue: catalogue,
+      },
+      fraudProofCatalogueSpend: {
+        scriptHash: contracts.fraudProofCatalogue.spendingScriptHash,
+      },
+      fraudProofMint: { scriptHash: contracts.fraudProof.policyId },
+      fraudProofSpend: { scriptHash: contracts.fraudProof.spendingScriptHash },
+      fraudProofNonExistentInput: {
+        scriptHash: contracts.fraudProofs.nonExistentInput.spendingScriptHash,
+      },
+      stateQueueMint: deploymentEntry(
+        contracts.stateQueue.policyId,
+        contracts.stateQueue.mintingScript,
+      ),
+      stateQueueSpend: deploymentEntry(
+        contracts.stateQueue.spendingScriptHash,
+        contracts.stateQueue.spendingScript,
+      ),
+    };
+
+    const proverPaymentCredential = getAddressDetails(
+      await proverLucid.wallet().address(),
+    ).paymentCredential;
+
+    const initResult = await neSubmitInit({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: proverSigner,
+      fraudulentBlockOutRef,
+      awaitConfirmation: true,
+    });
+    expect(initResult.txHash).toHaveLength(64);
+    expect(initResult.computationThreadAssetName).toBe(
+      `${catalogue.categories.nonExistentInput.categoryId}${initResult.fraudulentHeaderHash}`,
+    );
+
+    const firstStepUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
+      initResult.firstStepAddress,
+      initResult.computationThreadUnit,
+    );
+
+    const step01Result = await neSubmitStep01({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: proverSigner,
+      threadOutRef: outRefLabel(firstStepUtxo),
+      stateQueueBlockOutRef: fraudulentBlockOutRef,
+      txInclusion: parseSubmitStep01TxInclusion({
+        nativeTxId: badNativeTxId,
+        nativeTx: badNativeTxCompact,
+        nativeTxCompactCbor: badNativeTxCompactCbor,
+        txMembershipProofCbor,
+      }),
+      awaitConfirmation: true,
+    });
+    expect(step01Result.nativeTxId).toBe(badNativeTxId);
+    expect(step01Result.badTxInputsHash).toBe(
+      badNativeTxCompact.body.spend_inputs_hash,
+    );
+
+    const secondStepUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
+      step01Result.secondStepAddress,
+      initResult.computationThreadUnit,
+    );
+    expect(
+      Data.from(secondStepUtxo.datum!, NonExistentInputStep02Datum).data,
+    ).toEqual({
+      bad_tx_inputs_hash: badNativeTxCompact.body.spend_inputs_hash,
+      blocks_prev_utxos_root: prevUtxosRoot,
+      blocks_transactions_root: transactionsRoot,
+    });
+
+    const step02Result = await neSubmitStep02({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: proverSigner,
+      threadOutRef: outRefLabel(secondStepUtxo),
+      spendInputCbors,
+      badInputIndex: 0n,
+      awaitConfirmation: true,
+    });
+    expect(step02Result.missingInput).toEqual({
+      tx_id: missingOutRef.transactionId,
+      output_index: missingOutRef.outputIndex,
+    });
+
+    const thirdStepUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
+      step02Result.thirdStepAddress,
+      initResult.computationThreadUnit,
+    );
+    expect(
+      Data.from(thirdStepUtxo.datum!, NonExistentInputStep03Datum).data,
+    ).toEqual({
+      missing_input: {
+        tx_id: missingOutRef.transactionId,
+        output_index: missingOutRef.outputIndex,
+      },
+      blocks_prev_utxos_root: prevUtxosRoot,
+      blocks_transactions_root: transactionsRoot,
+    });
+
+    const step03Result = await neSubmitStep03({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: proverSigner,
+      threadOutRef: outRefLabel(thirdStepUtxo),
+      nonMembershipProofCbor: ledgerNonMembershipProof,
+      awaitConfirmation: true,
+    });
+    expect(step03Result.missingInputTxId).toBe(missingOutRef.transactionId);
+
+    const fourthStepUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
+      step03Result.fourthStepAddress,
+      initResult.computationThreadUnit,
+    );
+    expect(
+      Data.from(fourthStepUtxo.datum!, NonExistentInputStep04Datum).data,
+    ).toEqual({
+      missing_input_tx_id: missingOutRef.transactionId,
+      blocks_transactions_root: transactionsRoot,
+    });
+
+    const step04Result = await neSubmitStep04({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: proverSigner,
+      threadOutRef: outRefLabel(fourthStepUtxo),
+      nonMembershipProofCbor: txsNonMembershipProof,
+      awaitConfirmation: true,
+    });
+    expect(step04Result.fraudProofMintRedeemerIndex).not.toBe(
+      step04Result.computationThreadMintRedeemerIndex,
+    );
+
+    const remainingFourthStepUtxos = await proverLucid.utxosAtWithUnit(
+      step03Result.fourthStepAddress,
+      initResult.computationThreadUnit,
+    );
+    expect(remainingFourthStepUtxos).toHaveLength(0);
+
+    const fraudProofUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
+      step04Result.fraudProofAddress,
+      step04Result.fraudProofUnit,
+    );
+    expect(Data.from(fraudProofUtxo.datum!, FraudProofTokenDatum)).toEqual({
+      fraud_prover: proverPaymentCredential!.hash,
+    });
+    expect(fraudProofUtxo.assets[step04Result.fraudProofUnit]).toBe(1n);
+    expect(positiveNonAdaAssets(fraudProofUtxo)).toEqual([
+      [step04Result.fraudProofUnit, 1n],
+    ]);
   }, 120_000);
 });

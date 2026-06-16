@@ -254,6 +254,11 @@ export type ProcessMpfsConfig = {
   readonly depositOnlyEndTime?: Date;
   readonly depositVisibilityBarrierTime?: Date;
   readonly withdrawalVisibilityBarrierTime?: Date;
+  // Fault-proof testing only (SKIP_TX_VALIDATION). When true, a mempool tx that
+  // spends an input absent from the prev-utxos set has its ledger delete skipped
+  // instead of aborting the whole block commit, so a deliberately faulty block
+  // (e.g. spending a non-existent input) can be committed and later disputed.
+  readonly tolerateMissingLedgerDeletes?: boolean;
 };
 
 export type DecodedMempoolTxForCommit = {
@@ -783,6 +788,11 @@ export const processMpfs = (
     const orderedDecodedMempoolTxs =
       yield* orderDecodedMempoolTxsForLedgerApplication(decodedMempoolTxs);
 
+    // Tracks outrefs produced by earlier txs in this same block so that, when
+    // tolerating missing ledger deletes, a delete of an in-block-produced outref
+    // is still treated as present (and kept) rather than skipped.
+    const producedInBatchOutRefHexes = new Set<string>();
+
     yield* Effect.forEach(orderedDecodedMempoolTxs, (decoded) =>
       Effect.gen(function* () {
         const txHashHex = decoded.txHash.toString("hex");
@@ -809,10 +819,22 @@ export const processMpfs = (
         mempoolTxHashes.push(decoded.txHash);
         processedMempoolTxs.push(decoded.entry);
         sizeOfProcessedTxs += decoded.txCbor.length;
-        const deleteOps: MpfBatchOp[] = decoded.spent.map((outRef) => ({
-          type: "delete",
-          key: outRef,
-        }));
+        const deleteOps: MpfBatchOp[] = [];
+        for (const outRef of decoded.spent) {
+          if (config?.tolerateMissingLedgerDeletes === true) {
+            const outRefHex = outRef.toString("hex");
+            const presentInBatch = producedInBatchOutRefHexes.has(outRefHex);
+            const presentInLedger =
+              presentInBatch || Option.isSome(yield* ledgerMpf.get(outRef));
+            if (!presentInLedger) {
+              yield* Effect.logWarning(
+                `⚠️ SKIP_TX_VALIDATION: tx ${txHashHex} spends ledger outref ${outRefHex} that is absent from the prev-utxos set; skipping its ledger delete so the faulty block can still be committed.`,
+              );
+              continue;
+            }
+          }
+          deleteOps.push({ type: "delete", key: outRef });
+        }
         const insertOps: MpfBatchOp[] = decoded.produced.map(
           (le: Ledger.MinimalEntry) => ({
             type: "insert",
@@ -820,6 +842,11 @@ export const processMpfs = (
             value: le[Ledger.Columns.OUTPUT],
           }),
         );
+        for (const le of decoded.produced) {
+          producedInBatchOutRefHexes.add(
+            le[Ledger.Columns.OUTREF].toString("hex"),
+          );
+        }
         transactionOps.push({
           type: "insert",
           key: decoded.txHash,
@@ -969,6 +996,12 @@ class MidgardMpfRootViewStore extends Store {
   private readonly level?: Level<string, MpfStoredValue>;
   private readonly memory?: Map<string, MpfStoredValue>;
   private readonly persistRootMarker: boolean;
+  // Overlay mode: reads fall through to `level`, but every write (node inserts,
+  // batch flushes) lands in the in-memory `memory` map instead of `level`. This
+  // lets us reconstruct a historical root and build a proof on top of it without
+  // ever mutating the persisted ledger store (used by the ledger
+  // non-membership proof endpoint).
+  private readonly writeToMemory: boolean;
   private currentRoot: Buffer;
   private batchOps: LevelBatchOp[] | undefined;
 
@@ -977,17 +1010,20 @@ class MidgardMpfRootViewStore extends Store {
     memory,
     root,
     persistRootMarker,
+    writeToMemory = false,
   }: {
     readonly level?: Level<string, MpfStoredValue>;
     readonly memory?: Map<string, MpfStoredValue>;
     readonly root: Buffer;
     readonly persistRootMarker: boolean;
+    readonly writeToMemory?: boolean;
   }) {
     super(undefined);
     this.level = level;
     this.memory = memory;
     this.currentRoot = Buffer.from(root);
     this.persistRootMarker = persistRootMarker;
+    this.writeToMemory = writeToMemory;
   }
 
   async ready() {
@@ -1012,7 +1048,7 @@ class MidgardMpfRootViewStore extends Store {
     this.batchOps = undefined;
     try {
       if (ops.length > 0) {
-        if (this.level !== undefined) {
+        if (this.level !== undefined && !this.writeToMemory) {
           await this.level.batch(ops, JSON_LEVEL_ENCODING_OPTS);
         } else {
           for (const op of ops) {
@@ -1036,10 +1072,19 @@ class MidgardMpfRootViewStore extends Store {
       return deserialise(key, this.currentRoot.toString("hex"), this);
     }
     const storageKey = this.storageKey(key);
-    const storedValue =
-      this.level === undefined
-        ? this.memory!.get(storageKey)
-        : await this.level.get(storageKey, JSON_LEVEL_ENCODING_OPTS);
+    let storedValue: MpfStoredValue | undefined;
+    if (this.writeToMemory) {
+      // Overlay reads: memory first (nodes inserted while building the proof),
+      // then fall through to the persisted level for the historical nodes.
+      storedValue = this.memory!.get(storageKey);
+      if (storedValue === undefined && this.level !== undefined) {
+        storedValue = await this.level.get(storageKey, JSON_LEVEL_ENCODING_OPTS);
+      }
+    } else if (this.level === undefined) {
+      storedValue = this.memory!.get(storageKey);
+    } else {
+      storedValue = await this.level.get(storageKey, JSON_LEVEL_ENCODING_OPTS);
+    }
     const value = applyPendingBatch(storageKey, storedValue, this.batchOps);
     return deserialise(key, value, this);
   }
@@ -1064,7 +1109,7 @@ class MidgardMpfRootViewStore extends Store {
     };
     if (this.batchOps !== undefined) {
       this.batchOps.push(op);
-    } else if (this.level !== undefined) {
+    } else if (this.level !== undefined && !this.writeToMemory) {
       await this.level.put(op.key, op.value, JSON_LEVEL_ENCODING_OPTS);
     } else {
       this.memory!.set(op.key, op.value);
@@ -1330,19 +1375,23 @@ export class MidgardMpf {
     level,
     memory,
     persistRootMarker,
+    writeToMemory = false,
   }: {
     readonly trieName: string;
     readonly root: Buffer;
     readonly level?: Level<string, MpfStoredValue>;
     readonly memory?: Map<string, MpfStoredValue>;
     readonly persistRootMarker: boolean;
+    readonly writeToMemory?: boolean;
   }): Effect.Effect<MidgardMpf, MpfError> {
     return Effect.gen(function* () {
+      const overlayMemory = writeToMemory ? (memory ?? new Map()) : memory;
       const store = new MidgardMpfRootViewStore({
         level,
-        memory,
+        memory: overlayMemory,
         root,
         persistRootMarker,
+        writeToMemory,
       });
       const trie = yield* Effect.tryPromise({
         try: async () =>
@@ -1351,7 +1400,46 @@ export class MidgardMpf {
             : await Trie.load(store),
         catch: (e) => MpfError.create(trieName, e),
       });
-      return new MidgardMpf({ trie, trieName, store, level, memory });
+      return new MidgardMpf({
+        trie,
+        trieName,
+        store,
+        level,
+        memory: overlayMemory,
+      });
+    });
+  }
+
+  /**
+   * Opens the persisted MPF store at `levelDBFilePath` and reconstructs the trie
+   * at an arbitrary historical `root`. Because the store never deletes node
+   * entries (only the root marker is mutated), any root the node has ever
+   * committed remains reconstructable. The returned handle is in overlay mode,
+   * so building a proof on it (insert + prove) leaves the persisted store
+   * untouched. Caller must `close()` it.
+   */
+  public static loadReadOnlyOverlay(
+    trieName: string,
+    levelDBFilePath: string,
+    root: Buffer,
+  ): Effect.Effect<MidgardMpf, MpfError> {
+    return Effect.gen(function* () {
+      const level = new Level<string, MpfStoredValue>(
+        levelDBFilePath,
+        JSON_LEVEL_ENCODING_OPTS,
+      );
+      yield* Effect.tryPromise({
+        try: () => level.open(),
+        catch: (e) => MpfError.create(trieName, e),
+      });
+      return yield* MidgardMpf.loadFromRootView({
+        trieName,
+        root,
+        level,
+        memory: new Map(),
+        persistRootMarker: false,
+        writeToMemory: true,
+      });
     });
   }
 
@@ -1441,6 +1529,40 @@ export class MidgardMpf {
         aiken: proof.toAiken(),
       })),
     );
+  }
+
+  /**
+   * Builds a non-membership (exclusion) proof for `absentKey`. The MPF library
+   * only proves present keys, so insert the key with an empty value, prove it,
+   * and return that proof: verifying it in exclusion mode reconstructs the
+   * original (key-absent) root — exactly what the on-chain `pexcludes`
+   * validator checks. Returns `present: true` (and no proof) when the key is in
+   * fact present at the current root, which means the input is not missing.
+   *
+   * Intended for an overlay-mode handle (see `loadReadOnlyOverlay`) so the
+   * inserted key never touches the persisted store.
+   */
+  public proveNonMembership(
+    absentKey: Buffer,
+  ): Effect.Effect<
+    | { readonly present: true }
+    | { readonly present: false; readonly proofCbor: Buffer },
+    MpfError
+  > {
+    return Effect.gen(this, function* () {
+      // `get` walks the trie and throws on an empty one, so only probe a
+      // non-empty trie; an empty ledger trivially excludes every key.
+      const isEmpty = yield* this.rootIsEmpty();
+      if (!isEmpty) {
+        const existing = yield* this.get(absentKey);
+        if (Option.isSome(existing)) {
+          return { present: true } as const;
+        }
+      }
+      yield* this.insert(absentKey, Buffer.from(""));
+      const proof = yield* this.prove(absentKey);
+      return { present: false, proofCbor: proof.cbor } as const;
+    });
   }
 
   public verify(

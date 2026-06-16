@@ -35,6 +35,13 @@ export const DOUBLE_SPEND_FAULT_PROOF_TITLES = {
   step04: "fraud_proofs/double_spend/step_04.main.spend",
 } as const;
 
+export const NON_EXISTENT_INPUT_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/no_input/step_01.main.spend",
+  step02: "fraud_proofs/no_input/step_02.main.spend",
+  step03: "fraud_proofs/no_input/step_03.main.spend",
+  step04: "fraud_proofs/no_input/step_04.main.spend",
+} as const;
+
 export const FAULT_PROOF_SHARED_TITLES = {
   computationThreadMint: "computation_thread.mint.mint",
   fraudProofMint: "fraud_proof.mint.mint",
@@ -46,17 +53,25 @@ export type FraudProofChain = {
   readonly steps: readonly [SpendingValidator, ...SpendingValidator[]];
 };
 
+export type FourStepFraudProofChain = FraudProofChain & {
+  readonly steps: readonly [
+    SpendingValidator,
+    SpendingValidator,
+    SpendingValidator,
+    SpendingValidator,
+  ];
+};
+
 export type DoubleSpendFaultProofContracts = {
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
-  readonly doubleSpend: FraudProofChain & {
-    readonly steps: readonly [
-      SpendingValidator,
-      SpendingValidator,
-      SpendingValidator,
-      SpendingValidator,
-    ];
-  };
+  readonly doubleSpend: FourStepFraudProofChain;
+};
+
+export type NonExistentInputFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly nonExistentInput: FourStepFraudProofChain;
 };
 
 export type BuildDoubleSpendFaultProofContractsParams = {
@@ -65,6 +80,9 @@ export type BuildDoubleSpendFaultProofContractsParams = {
   readonly hubOraclePolicyId: string;
   readonly fraudProofCataloguePolicyId: string;
 };
+
+export type BuildNonExistentInputFaultProofContractsParams =
+  BuildDoubleSpendFaultProofContractsParams;
 
 export const parseFaultProofBlueprint = (
   value: unknown,
@@ -174,13 +192,24 @@ const tryBuild = <A>(
       ),
   });
 
-export const buildDoubleSpendFaultProofContracts = ({
+/**
+ * The computation-thread minting policy and the fraud-proof token validator are
+ * shared across every fault-proof category, so both builders derive them the
+ * same way before applying their category-specific step chain.
+ */
+type SharedFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fraudProofTokenAddressData: Data;
+};
+
+const buildSharedFaultProofContracts = ({
   blueprint,
   network,
   hubOraclePolicyId,
   fraudProofCataloguePolicyId,
 }: BuildDoubleSpendFaultProofContractsParams): Effect.Effect<
-  DoubleSpendFaultProofContracts,
+  SharedFaultProofContracts,
   Error
 > =>
   Effect.gen(function* () {
@@ -220,6 +249,17 @@ export const buildDoubleSpendFaultProofContracts = ({
     const fraudProofTokenAddressData = yield* asAddressDataParam(
       fraudProof.spendingScriptAddress,
     );
+
+    return { computationThread, fraudProof, fraudProofTokenAddressData };
+  });
+
+export const buildDoubleSpendFaultProofContracts = (
+  params: BuildDoubleSpendFaultProofContractsParams,
+): Effect.Effect<DoubleSpendFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const { blueprint, network, hubOraclePolicyId } = params;
+    const { computationThread, fraudProof, fraudProofTokenAddressData } =
+      yield* buildSharedFaultProofContracts(params);
 
     const step04 = yield* tryBuild("Failed to build double-spend step 04", () =>
       makeSpendingValidator(
@@ -277,6 +317,100 @@ export const buildDoubleSpendFaultProofContracts = ({
       computationThread,
       fraudProof,
       doubleSpend: {
+        firstStep: step01,
+        steps: [step01, step02, step03, step04],
+      },
+    };
+  });
+
+export const buildNonExistentInputFaultProofContracts = (
+  params: BuildNonExistentInputFaultProofContractsParams,
+): Effect.Effect<NonExistentInputFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const { blueprint, network, hubOraclePolicyId } = params;
+    const { computationThread, fraudProof, fraudProofTokenAddressData } =
+      yield* buildSharedFaultProofContracts(params);
+
+    const step04 = yield* tryBuild(
+      "Failed to build non-existent-input step 04",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(
+            getCompiledScript(
+              blueprint,
+              NON_EXISTENT_INPUT_FAULT_PROOF_TITLES.step04,
+            ),
+            // step_04(fraud_proof_token_policy_id, fraud_proof_token_address,
+            //         computation_thread_token_policy_id)
+            [
+              fraudProof.policyId,
+              fraudProofTokenAddressData,
+              computationThread.policyId,
+            ],
+          ),
+        ),
+    );
+
+    const step03 = yield* tryBuild(
+      "Failed to build non-existent-input step 03",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(
+            getCompiledScript(
+              blueprint,
+              NON_EXISTENT_INPUT_FAULT_PROOF_TITLES.step03,
+            ),
+            // step_03(step_04_validator_script_hash,
+            //         computation_thread_token_policy_id)
+            [step04.spendingScriptHash, computationThread.policyId],
+          ),
+        ),
+    );
+
+    const step02 = yield* tryBuild(
+      "Failed to build non-existent-input step 02",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(
+            getCompiledScript(
+              blueprint,
+              NON_EXISTENT_INPUT_FAULT_PROOF_TITLES.step02,
+            ),
+            // step_02(step_03_validator_script_hash,
+            //         computation_thread_token_policy_id)
+            [step03.spendingScriptHash, computationThread.policyId],
+          ),
+        ),
+    );
+
+    const step01 = yield* tryBuild(
+      "Failed to build non-existent-input step 01",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(
+            getCompiledScript(
+              blueprint,
+              NON_EXISTENT_INPUT_FAULT_PROOF_TITLES.step01,
+            ),
+            // step_01(step_02_validator_script_hash,
+            //         computation_thread_token_policy_id, hub_oracle)
+            [
+              step02.spendingScriptHash,
+              computationThread.policyId,
+              hubOraclePolicyId,
+            ],
+          ),
+        ),
+    );
+
+    return {
+      computationThread,
+      fraudProof,
+      nonExistentInput: {
         firstStep: step01,
         steps: [step01, step02, step03, step04],
       },

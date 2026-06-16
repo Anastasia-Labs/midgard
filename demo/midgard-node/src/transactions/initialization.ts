@@ -24,6 +24,7 @@ import {
   fetchStateQueueTopologyProgram,
   type StateQueueTopology,
 } from "@/services/state-queue-topology.js";
+import { ensurePexcludesExclusionRewardAccountRegisteredProgram } from "@/transactions/pexcludes-exclusion-registration.js";
 import { ensurePhasMembershipRewardAccountRegisteredProgram } from "@/transactions/phas-membership-registration.js";
 import { ensureNodeRuntimeReferenceScriptsProgram } from "@/transactions/reference-scripts.js";
 import {
@@ -659,6 +660,11 @@ export const program: Effect.Effect<
     yield* ensurePhasMembershipRewardAccountRegisteredProgram(lucid);
   yield* Effect.logInfo(
     `PHAS membership reward-account registration status: status=${phasRegistration.status},scriptHash=${phasRegistration.scriptHash},rewardAddress=${phasRegistration.rewardAddress},txHash=${phasRegistration.txHash ?? "already-registered"}`,
+  );
+  const pexcludesRegistration =
+    yield* ensurePexcludesExclusionRewardAccountRegisteredProgram(lucid);
+  yield* Effect.logInfo(
+    `pexcludes exclusion reward-account registration status: status=${pexcludesRegistration.status},scriptHash=${pexcludesRegistration.scriptHash},rewardAddress=${pexcludesRegistration.rewardAddress},txHash=${pexcludesRegistration.txHash ?? "already-registered"}`,
   );
   return txHash;
 });

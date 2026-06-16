@@ -76,7 +76,7 @@ pub const plutarch_phas_validator_hash: ScriptHash =
   #"46df0027fc0af07197924dc07f1c27ac6b15eb2bd6efc7a73b0dbb4d"
 
 pub const plutarch_pexcludes_validator_hash: ScriptHash =
-  #"daa1fd7f054b1d4736eb9fa610b423b09ef81683eb1201f0f1f2591d"
+  #"5a06db38b22c52ca7d1789f16c1819da03b15171efe245ef18ad7af6"
 
 pub const plutarch_pdelete_validator_hash: ScriptHash = #""
 

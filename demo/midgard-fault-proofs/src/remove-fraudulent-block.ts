@@ -103,8 +103,15 @@ type RemoveFraudulentBlockContracts = {
   readonly registeredOperatorsAddress: string;
   readonly fraudProofPolicyId: string;
   readonly fraudProofAddress: string;
-  readonly doubleSpendCategoryId: string;
+  readonly fraudProofCategoryId: string;
 };
+
+/**
+ * Fraud-proof categories that mint a removable fraud-proof token. The fraud
+ * proof policy and spend address are shared across categories; only the
+ * catalogue category id (and thus the token's asset name) differs.
+ */
+export type RemovableFraudCategory = "doubleSpend" | "nonExistentInput";
 
 type RemoveFraudulentBlockLayout = {
   readonly anchorElementInputIndex: bigint;
@@ -179,6 +186,7 @@ export type RemoveFraudulentBlockCliConfig = SubmitProviderConfig & {
   readonly walletPrivateKey?: string;
   readonly walletPrivateKeyEnv?: string;
   readonly fraudulentHeaderHash: string;
+  readonly fraudCategory?: RemovableFraudCategory;
   readonly awaitConfirmation?: boolean;
 };
 
@@ -376,7 +384,9 @@ const buildRemovalContracts = async ({
   blueprint,
   deploymentInfo,
   network,
+  fraudCategory,
 }: {
+  readonly fraudCategory: RemovableFraudCategory;
   readonly blueprint: unknown;
   readonly deploymentInfo: ContractDeploymentInfo;
   readonly network: Network;
@@ -407,14 +417,20 @@ const buildRemovalContracts = async ({
     deployed: requireDeploymentScriptHash(deploymentInfo, "fraudProofSpend"),
     derived: doubleSpendContracts.fraudProof.spendingScriptHash,
   });
-  requireMatchingScriptHash({
-    label: "fraudProofDoubleSpend step-01 script",
-    deployed: requireDeploymentScriptHash(
-      deploymentInfo,
-      "fraudProofDoubleSpend",
-    ),
-    derived: doubleSpendContracts.doubleSpend.firstStep.spendingScriptHash,
-  });
+  if (fraudCategory === "doubleSpend") {
+    // The fraud-proof policy/spend are shared across categories, so we only
+    // sanity-check the first-step hash for double-spend (the non-existent-input
+    // first step is verified by the ne-submit-* commands when the token is
+    // minted, and removal only needs the shared fraud-proof token).
+    requireMatchingScriptHash({
+      label: "fraudProofDoubleSpend step-01 script",
+      deployed: requireDeploymentScriptHash(
+        deploymentInfo,
+        "fraudProofDoubleSpend",
+      ),
+      derived: doubleSpendContracts.doubleSpend.firstStep.spendingScriptHash,
+    });
+  }
 
   const stateQueueSpendingScript = requireDeploymentScript(
     deploymentInfo,
@@ -484,12 +500,13 @@ const buildRemovalContracts = async ({
     ),
     fraudProofPolicyId: doubleSpendContracts.fraudProof.policyId,
     fraudProofAddress: doubleSpendContracts.fraudProof.spendingScriptAddress,
-    doubleSpendCategoryId:
-      deploymentInfo.fraudProofCatalogueMint?.fraudProofCatalogue?.categories
-        .doubleSpend.categoryId ??
+    fraudProofCategoryId:
+      deploymentInfo.fraudProofCatalogueMint?.fraudProofCatalogue?.categories[
+        fraudCategory
+      ]?.categoryId ??
       (() => {
         throw new Error(
-          "Deployment info is missing fraudProofCatalogueMint.fraudProofCatalogue.categories.doubleSpend.",
+          `Deployment info is missing fraudProofCatalogueMint.fraudProofCatalogue.categories.${fraudCategory}.`,
         );
       })(),
   };
@@ -1049,6 +1066,7 @@ export const submitRemoveFraudulentBlock = async ({
   network,
   signer,
   fraudulentHeaderHash,
+  fraudCategory = "doubleSpend",
   awaitConfirmation = true,
   requireReferenceScripts = true,
   validFrom,
@@ -1060,6 +1078,7 @@ export const submitRemoveFraudulentBlock = async ({
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
   readonly fraudulentHeaderHash: string;
+  readonly fraudCategory?: RemovableFraudCategory;
   readonly awaitConfirmation?: boolean;
   readonly requireReferenceScripts?: boolean;
   readonly validFrom?: bigint;
@@ -1075,12 +1094,13 @@ export const submitRemoveFraudulentBlock = async ({
     blueprint,
     deploymentInfo: parsedDeploymentInfo,
     network,
+    fraudCategory,
   });
   if (
-    contracts.doubleSpendCategoryId.length !==
+    contracts.fraudProofCategoryId.length !==
     FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT * 2
   ) {
-    throw new Error("Double-spend fraud-proof category id has invalid length.");
+    throw new Error("Fraud-proof category id has invalid length.");
   }
 
   const referenceScripts = await resolveReferenceScripts({
@@ -1098,7 +1118,7 @@ export const submitRemoveFraudulentBlock = async ({
     contracts.stateQueuePolicyId,
     STATE_QUEUE_ROOT_ASSET_NAME,
   );
-  const fraudProofAssetName = contracts.doubleSpendCategoryId + headerHash;
+  const fraudProofAssetName = contracts.fraudProofCategoryId + headerHash;
   const fraudProofUnit = toUnit(
     contracts.fraudProofPolicyId,
     fraudProofAssetName,
@@ -1541,6 +1561,7 @@ export const submitRemoveFraudulentBlockFromFiles = async (
     network: config.network,
     signer,
     fraudulentHeaderHash: config.fraudulentHeaderHash,
+    fraudCategory: config.fraudCategory,
     awaitConfirmation: config.awaitConfirmation,
     requireReferenceScripts: true,
   });
