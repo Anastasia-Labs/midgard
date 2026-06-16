@@ -6,6 +6,7 @@ use aiken/crypto.{
   ScriptHash, VerificationKey, VerificationKeyHash, blake2b_224, blake2b_256,
 }
 use aiken/interval.{Finite, Interval, NegativeInfinity, PositiveInfinity}
+use aiken/primitive/bytearray
 use aiken_design_patterns/merkelized_validator
 use aiken_design_patterns/validity_range_normalization as vrn
 use cardano/address.{Address, Script}
@@ -71,6 +72,19 @@ pub fn validate_mint(
   mints_policy == [Pair(expected_minting_name, expected_minting_amt)]
 }
 
+pub fn bytearray_slice(
+  bytes: ByteArray,
+  offset: Int,
+  byte_count: Int,
+) -> ByteArray {
+  bytearray.slice(bytes, offset, offset + byte_count - 1)
+}
+
+pub fn expect_script_hash(address: Address) -> PolicyId {
+  expect Script(script_hash) = address.payment_credential
+  script_hash
+}
+
 pub fn safe_list_last(elems: List<a>) -> a {
   expect Some(last_elem) = list.last(elems)
   last_elem
@@ -119,7 +133,15 @@ pub fn has_signed(
   signer: VerificationKeyHash,
   extra_signatories: List<VerificationKeyHash>,
 ) -> Bool {
-  extra_signatories |> list.has(signer)
+  when extra_signatories is {
+    [] -> False
+    [current, ..rest] ->
+      if current == signer {
+        True
+      } else {
+        has_signed(signer, rest)
+      }
+  }
 }
 
 /// Expects a single token to be present in the given `Value`, and returns it as

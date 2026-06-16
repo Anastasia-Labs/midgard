@@ -1,4 +1,3 @@
-use aiken/collection/dict
 use aiken/crypto.{VerificationKeyHash}
 use aiken/primitive/bytearray
 use cardano/address.{Address, Script}
@@ -6,13 +5,10 @@ use cardano/assets.{PolicyId, Value}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
 }
+use midgard/common/utils
 use midgard/da_params_governor.{
   Datum, asset_name, max_indexed_signer_count, verification_key_byte_count,
   verification_key_hash_byte_count,
-}
-
-fn bytearray_slice(bytes: ByteArray, offset: Int, byte_count: Int) -> ByteArray {
-  bytearray.slice(bytes, offset, offset + byte_count - 1)
 }
 
 fn sorted_unique_packed_len_at_most(
@@ -23,7 +19,7 @@ fn sorted_unique_packed_len_at_most(
   expect max > 0
   let keys_len = bytearray.length(keys)
   expect keys_len >= byte_count
-  let first = bytearray_slice(keys, 0, byte_count)
+  let first = utils.bytearray_slice(keys, 0, byte_count)
   sorted_unique_packed_len_from(
     keys,
     byte_count,
@@ -48,7 +44,7 @@ fn sorted_unique_packed_len_from(
     len
   } else {
     expect offset + byte_count <= keys_len
-    let key = bytearray_slice(keys, offset, byte_count)
+    let key = utils.bytearray_slice(keys, offset, byte_count)
     expect bytearray.compare(prev, key) == Less
     let next_len = len + 1
     expect next_len <= max
@@ -225,18 +221,6 @@ fn value_not_drained(input_value: Value, output_value: Value) -> Bool {
   )
 }
 
-fn has_key(keys: List<VerificationKeyHash>, key: VerificationKeyHash) -> Bool {
-  when keys is {
-    [] -> False
-    [current, ..rest] ->
-      if current == key {
-        True
-      } else {
-        has_key(rest, key)
-      }
-  }
-}
-
 fn owner_quorum_met(
   owners: List<VerificationKeyHash>,
   signers: List<VerificationKeyHash>,
@@ -250,7 +234,7 @@ fn owner_quorum_met(
       [] -> False
       [owner, ..rest] -> {
         let next_count =
-          if has_key(signers, owner) {
+          if utils.has_signed(owner, signers) {
             count + 1
           } else {
             count
@@ -268,12 +252,7 @@ validator main(
 ) {
   mint(_redeemer: Data, policy_id: PolicyId, tx: Transaction) {
     // 1. Exactly one data availability params NFT must be minted.
-    expect [Pair(minted_asset_name, minted_quantity)] =
-      tx.mint
-        |> assets.tokens(policy_id)
-        |> dict.to_pairs
-    expect minted_asset_name == asset_name
-    expect minted_quantity == 1
+    expect utils.validate_mint(tx.mint, policy_id, asset_name, 1)
 
     // 2. The configured initialization UTxO must be consumed.
     expect has_input_ref(tx.inputs, init_ref)

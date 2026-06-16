@@ -1,4 +1,3 @@
-use aiken/collection/dict
 use aiken/collection/list
 use aiken/primitive/bytearray
 use cardano/address.{Script}
@@ -9,8 +8,7 @@ use cardano/transaction.{
 use midgard/common/utils
 use midgard/da_attestation.{
   AddSignatures, ApplyToStateQueue, BurnForStateQueue, Datum, Init, MintRedeemer,
-  SpendRedeemer, asset_name, bytearray_slice, expect_script_hash,
-  output_at_index, validate_add_signatures,
+  SpendRedeemer, asset_name, validate_add_signatures,
 }
 use midgard/da_params_governor as da_params_governor
 use midgard/state_queue
@@ -20,7 +18,11 @@ fn sorted_unique_vkey_len_at_most(keys: ByteArray, max: Int) -> Int {
   let keys_len = bytearray.length(keys)
   expect keys_len >= da_params_governor.verification_key_byte_count
   let first =
-    bytearray_slice(keys, 0, da_params_governor.verification_key_byte_count)
+    utils.bytearray_slice(
+      keys,
+      0,
+      da_params_governor.verification_key_byte_count,
+    )
   sorted_unique_vkey_len_from(
     keys,
     da_params_governor.verification_key_byte_count,
@@ -44,7 +46,7 @@ fn sorted_unique_vkey_len_from(
   } else {
     expect offset + da_params_governor.verification_key_byte_count <= keys_len
     let key =
-      bytearray_slice(
+      utils.bytearray_slice(
         keys,
         offset,
         da_params_governor.verification_key_byte_count,
@@ -153,8 +155,8 @@ validator main(da_params_policy_id: PolicyId, state_queue_policy_id: PolicyId) {
           value: attestation_value,
           datum: InlineDatum(attestation_datum_data),
           reference_script: None,
-        } = outputs |> output_at_index(output_index)
-        expect expect_script_hash(attestation_address) == own_policy_id
+        } = outputs |> list.expect_at(output_index)
+        expect utils.expect_script_hash(attestation_address) == own_policy_id
 
         // 4. The output datum must initialize attestation for the expected
         //    header with the current params committee and threshold.
@@ -177,12 +179,7 @@ validator main(da_params_policy_id: PolicyId, state_queue_policy_id: PolicyId) {
           )
 
         // 6. Exactly one header-specific attestation NFT must be minted.
-        expect [Pair(minted_asset_name, minted_quantity)] =
-          mint
-            |> assets.tokens(own_policy_id)
-            |> dict.to_pairs
-        expect minted_asset_name == attestation_asset
-        expect minted_quantity == 1
+        expect utils.validate_mint(mint, own_policy_id, attestation_asset, 1)
 
         True
       }
@@ -201,7 +198,7 @@ validator main(da_params_policy_id: PolicyId, state_queue_policy_id: PolicyId) {
           },
           ..
         } = inputs |> list.expect_at(da_attestation_input_index)
-        expect expect_script_hash(attestation_address) == own_policy_id
+        expect utils.expect_script_hash(attestation_address) == own_policy_id
 
         expect attestation_datum: Datum = attestation_datum_data
         let Datum {
@@ -222,12 +219,7 @@ validator main(da_params_policy_id: PolicyId, state_queue_policy_id: PolicyId) {
         expect attestation_count >= attestation_da_threshold
 
         // 3. The header-specific attestation NFT must be burnt.
-        expect [Pair(minted_asset_name, minted_quantity)] =
-          mint
-            |> assets.tokens(own_policy_id)
-            |> dict.to_pairs
-        expect minted_asset_name == attestation_asset
-        expect minted_quantity == -1
+        expect utils.validate_mint(mint, own_policy_id, attestation_asset, -1)
 
         // 4. The state queue node must attach this attestation to the same
         //    header.
@@ -259,7 +251,7 @@ validator main(da_params_policy_id: PolicyId, state_queue_policy_id: PolicyId) {
         // 1. The attestation spend must correspond to this policy.
         let Output { address: input_address, .. } =
           inputs |> resolve_input(own_ref)
-        let own_policy_id = expect_script_hash(input_address)
+        let own_policy_id = utils.expect_script_hash(input_address)
 
         // 2. The matching mint redeemer must burn this attestation for state
         //    queue attachment.

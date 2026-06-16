@@ -1,11 +1,11 @@
 use aiken/collection/list
 use aiken/crypto.{verify_ed25519_signature}
 use aiken/primitive/bytearray
-use cardano/address.{Address, Script}
-use cardano/assets.{AssetName, PolicyId}
+use cardano/assets.{AssetName}
 use cardano/transaction.{
   InlineDatum, Output, OutputReference, Transaction, resolve_input,
 }
+use midgard/common/utils
 use midgard/da_params_governor as da_params_governor
 use midgard/ledger_state.{HeaderHash}
 
@@ -53,23 +53,6 @@ pub fn asset_name(header_hash: HeaderHash) -> AssetName {
   asset_name_prefix |> bytearray.concat(header_hash)
 }
 
-pub fn bytearray_slice(
-  bytes: ByteArray,
-  offset: Int,
-  byte_count: Int,
-) -> ByteArray {
-  bytearray.slice(bytes, offset, offset + byte_count - 1)
-}
-
-pub fn output_at_index(outputs: List<Output>, output_index: Int) -> Output {
-  outputs |> list.expect_at(output_index)
-}
-
-pub fn expect_script_hash(address: Address) -> PolicyId {
-  expect Script(script_hash) = address.payment_credential
-  script_hash
-}
-
 fn attestation_message(header_hash: HeaderHash) -> ByteArray {
   bytearray.from_string(@"MidgardDAAttestationV1")
     |> bytearray.concat(header_hash)
@@ -110,7 +93,7 @@ fn verify_indexed_signatures(
       if copied_byte_count == 0 {
         True
       } else {
-        bytearray_slice(input_remaining, input_cursor, copied_byte_count) == bytearray_slice(
+        utils.bytearray_slice(input_remaining, input_cursor, copied_byte_count) == utils.bytearray_slice(
           output_remaining,
           output_cursor,
           copied_byte_count,
@@ -118,13 +101,17 @@ fn verify_indexed_signatures(
       }
 
     let verification_key =
-      bytearray_slice(
+      utils.bytearray_slice(
         input_remaining,
         signer_offset,
         da_params_governor.verification_key_byte_count,
       )
     let signature =
-      bytearray_slice(signatures, signature_cursor + 1, signature_byte_count)
+      utils.bytearray_slice(
+        signatures,
+        signature_cursor + 1,
+        signature_byte_count,
+      )
     expect verify_ed25519_signature(verification_key, message, signature)
 
     verify_indexed_signatures(
@@ -166,7 +153,7 @@ pub fn validate_add_signatures(
   expect input_datum_data == expected_input_datum_data
 
   // 3. The script input must carry the exact header-specific attestation NFT.
-  let own_policy_id = expect_script_hash(input_address)
+  let own_policy_id = utils.expect_script_hash(input_address)
   let Datum {
     header_hash: input_header_hash,
     da_threshold: input_da_threshold,
@@ -182,7 +169,7 @@ pub fn validate_add_signatures(
     value: output_value,
     datum: InlineDatum(output_datum_data),
     reference_script: None,
-  } = outputs |> output_at_index(output_index)
+  } = outputs |> list.expect_at(output_index)
   expect output_address == input_address
   expect output_value == input_value
 
