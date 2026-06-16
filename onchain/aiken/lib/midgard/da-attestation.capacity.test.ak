@@ -6,11 +6,10 @@ use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
 }
 use cardano/transaction as tx
-use da_attestation.{validate_add_signatures}
-use midgard/da_attestation_types.{
-  DaAttestationDatum, attestation_asset_name_prefix,
-  signature_witness_byte_count, verification_key_byte_count,
+use midgard/da_attestation.{
+  Datum, asset_name, signature_witness_byte_count, validate_add_signatures,
 }
+use midgard/da_params_governor.{verification_key_byte_count}
 use midgard/ledger_state.{HeaderHash}
 
 // Deterministic Ed25519 fixture for DA signature capacity regression.
@@ -21,11 +20,7 @@ const capacity_fixture_signature_count: Int = 256
 const regression_signature_count: Int = 132
 
 type CapacityFixture {
-  CapacityFixture {
-    input_datum: DaAttestationDatum,
-    signatures: ByteArray,
-    tx: Transaction,
-  }
+  CapacityFixture { input_datum: Datum, signatures: ByteArray, tx: Transaction }
 }
 
 const capacity_da_policy: PolicyId =
@@ -246,7 +241,7 @@ fn slice_len(bytes: ByteArray, offset: Int, length: Int) -> ByteArray {
 }
 
 fn capacity_attestation_asset() -> AssetName {
-  attestation_asset_name_prefix |> bytearray.concat(capacity_header_hash)
+  asset_name(capacity_header_hash)
 }
 
 fn capacity_value() -> Value {
@@ -254,10 +249,10 @@ fn capacity_value() -> Value {
     |> assets.add(capacity_da_policy, capacity_attestation_asset(), 1)
 }
 
-fn capacity_input_datum(signature_count: Int) -> DaAttestationDatum {
+fn capacity_input_datum(signature_count: Int) -> Datum {
   expect signature_count > 0
   expect signature_count <= capacity_fixture_signature_count
-  DaAttestationDatum {
+  Datum {
     header_hash: capacity_header_hash,
     da_threshold: signature_count,
     remaining_signers: slice_len(
@@ -269,8 +264,8 @@ fn capacity_input_datum(signature_count: Int) -> DaAttestationDatum {
   }
 }
 
-fn capacity_output_datum(signature_count: Int) -> DaAttestationDatum {
-  DaAttestationDatum {
+fn capacity_output_datum(signature_count: Int) -> Datum {
+  Datum {
     header_hash: capacity_header_hash,
     da_threshold: signature_count,
     remaining_signers: #"",

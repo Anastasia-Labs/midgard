@@ -6,12 +6,10 @@ use cardano/assets.{PolicyId, Value}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
 }
-use midgard/da_attestation_types.{
-  DaParamsDatum, da_params_asset_name, max_indexed_signer_count,
-  verification_key_byte_count,
+use midgard/da_params_governor.{
+  Datum, asset_name, max_indexed_signer_count, verification_key_byte_count,
+  verification_key_hash_byte_count,
 }
-
-const verification_key_hash_byte_count: Int = 28
 
 fn bytearray_slice(bytes: ByteArray, offset: Int, byte_count: Int) -> ByteArray {
   bytearray.slice(bytes, offset, offset + byte_count - 1)
@@ -96,14 +94,18 @@ fn sorted_unique_len_from(
 }
 
 fn valid_datum(
-  datum: DaParamsDatum,
+  datum: Datum,
   max_committee_size: Int,
   max_owner_count: Int,
 ) -> Bool {
+  // 1. Validator parameters must define positive bounded committee and owner
+  //    limits.
   expect max_committee_size > 0
   expect max_committee_size <= max_indexed_signer_count
   expect max_owner_count > 0
 
+  // 2. The data availability threshold must be positive and satisfiable by
+  //    the sorted unique committee.
   expect datum.da_threshold > 0
   let committee_len =
     sorted_unique_packed_len_at_most(
@@ -113,6 +115,8 @@ fn valid_datum(
     )
   expect datum.da_threshold <= committee_len
 
+  // 3. The update threshold must be positive and satisfiable by the sorted
+  //    unique owner set.
   expect datum.update_threshold > 0
   let owner_len =
     sorted_unique_len_at_most(
@@ -160,8 +164,7 @@ fn only_output_with_nft(
       output
     }
     [output, ..rest] -> {
-      let quantity =
-        assets.quantity_of(output.value, policy_id, da_params_asset_name)
+      let quantity = assets.quantity_of(output.value, policy_id, asset_name)
 
       if quantity == 0 {
         only_output_with_nft(rest, policy_id, found)
@@ -179,7 +182,7 @@ fn params_output_datum_at_script(
   policy_id: PolicyId,
   max_committee_size: Int,
   max_owner_count: Int,
-) -> DaParamsDatum {
+) -> Datum {
   expect Output {
     address,
     datum: InlineDatum(datum_data),
@@ -188,7 +191,7 @@ fn params_output_datum_at_script(
   } = output
   expect Script(output_script_hash) = address.payment_credential
   expect output_script_hash == policy_id
-  expect datum: DaParamsDatum = datum_data
+  expect datum: Datum = datum_data
   expect valid_datum(datum, max_committee_size, max_owner_count)
   datum
 }
@@ -198,7 +201,7 @@ fn params_output_datum_at_address(
   address: Address,
   max_committee_size: Int,
   max_owner_count: Int,
-) -> DaParamsDatum {
+) -> Datum {
   expect Output {
     address: output_address,
     datum: InlineDatum(datum_data),
@@ -206,7 +209,7 @@ fn params_output_datum_at_address(
     ..
   } = output
   expect output_address == address
-  expect datum: DaParamsDatum = datum_data
+  expect datum: Datum = datum_data
   expect valid_datum(datum, max_committee_size, max_owner_count)
   datum
 }
@@ -256,21 +259,25 @@ fn owner_quorum_met(
   }
 }
 
-validator da_params_governor(
+validator main(
   init_ref: OutputReference,
   max_committee_size: Int,
   max_owner_count: Int,
 ) {
   mint(_redeemer: Data, policy_id: PolicyId, tx: Transaction) {
-    expect [Pair(asset_name, minted_quantity)] =
+    // 1. Exactly one data availability params NFT must be minted.
+    expect [Pair(minted_asset_name, minted_quantity)] =
       tx.mint
         |> assets.tokens(policy_id)
         |> dict.to_pairs
-    expect asset_name == da_params_asset_name
+    expect minted_asset_name == asset_name
     expect minted_quantity == 1
 
+    // 2. The configured initialization UTxO must be consumed.
     expect has_input_ref(tx.inputs, init_ref)
 
+    // 3. The minted NFT must appear in exactly one valid params output at this
+    //    script.
     expect _output_datum =
       tx.outputs
         |> only_output_with_nft(policy_id, None)
@@ -284,14 +291,18 @@ validator da_params_governor(
   }
 
   spend(
-    datum: Option<DaParamsDatum>,
+    datum: Option<Datum>,
     _redeemer: Data,
     own_ref: OutputReference,
     tx: Transaction,
   ) {
+    // 1. The spent datum must be present and valid before governance checks are
+    //    evaluated against it.
     expect Some(input_datum) = datum
     expect valid_datum(input_datum, max_committee_size, max_owner_count)
 
+    // 2. The script input must match the supplied datum and carry the params
+    //    NFT.
     let own_input = input_at_ref(tx.inputs, own_ref)
     expect Output {
       address: input_address,
@@ -302,8 +313,9 @@ validator da_params_governor(
     let expected_input_datum_data: Data = input_datum
     expect input_datum_data == expected_input_datum_data
     expect Script(policy_id) = input_address.payment_credential
-    expect assets.quantity_of(input_value, policy_id, da_params_asset_name) == 1
+    expect assets.quantity_of(input_value, policy_id, asset_name) == 1
 
+    // 3. Enough current owners must have signed the update transaction.
     expect
       owner_quorum_met(
         input_datum.owners,
@@ -314,6 +326,8 @@ validator da_params_governor(
 
     let continued_output = tx.outputs |> only_output_with_nft(policy_id, None)
 
+    // 4. The continued params NFT must stay at the same address with a valid
+    //    datum.
     expect _continued_datum =
       continued_output
         |> params_output_datum_at_address(
@@ -321,6 +335,7 @@ validator da_params_governor(
             max_committee_size,
             max_owner_count,
           )
+    // 5. The params UTxO value must not be drained while updating the datum.
     expect value_not_drained(input_value, continued_output.value)
 
     True

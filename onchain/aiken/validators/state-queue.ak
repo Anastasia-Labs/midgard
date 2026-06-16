@@ -7,7 +7,7 @@ use cardano/assets.{Lovelace, PolicyId, quantity_of}
 use cardano/transaction.{Input, Mint, OutputReference, Transaction}
 use env
 use midgard/common/utils
-use midgard/da_attestation_types as da_attestation
+use midgard/da_attestation as da_attestation
 use midgard/fraud_proof
 use midgard/hub_oracle as hub
 use midgard/ledger_state.{

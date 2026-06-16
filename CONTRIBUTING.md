@@ -18,7 +18,8 @@
     - Avoid acronyms as much as possible. Use them only for qualified imports or
       "temporary" variables (e.g. inside the body of a small anonymous
       function). In general, try to be as explicit as possible. The goal is to
-      keep the code easy to read.
+      keep the code easy to read. Common and "obvious" abbreviations such as
+      `tx`, `outref`, etc. are fine.
     - Only use `kebab-case` for filenames.
     - For type and data constructors, use `PascalCase`. Avoid using `_` in them.
       If you find yourself needing to have a prefix/postfix, consider breaking
