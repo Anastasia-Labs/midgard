@@ -98,6 +98,8 @@ fn valid_datum(
   max_committee_size: Int,
   max_owner_count: Int,
 ) -> Bool {
+  let Datum { committee, da_threshold, owners, update_threshold } = datum
+
   // 1. Validator parameters must define positive bounded committee and owner
   //    limits.
   expect max_committee_size > 0
@@ -106,25 +108,25 @@ fn valid_datum(
 
   // 2. The data availability threshold must be positive and satisfiable by
   //    the sorted unique committee.
-  expect datum.da_threshold > 0
+  expect da_threshold > 0
   let committee_len =
     sorted_unique_packed_len_at_most(
-      datum.committee,
+      committee,
       max_committee_size,
       verification_key_byte_count,
     )
-  expect datum.da_threshold <= committee_len
+  expect da_threshold <= committee_len
 
   // 3. The update threshold must be positive and satisfiable by the sorted
   //    unique owner set.
-  expect datum.update_threshold > 0
+  expect update_threshold > 0
   let owner_len =
     sorted_unique_len_at_most(
-      datum.owners,
+      owners,
       max_owner_count,
       verification_key_hash_byte_count,
     )
-  expect datum.update_threshold <= owner_len
+  expect update_threshold <= owner_len
 
   True
 }
@@ -316,13 +318,8 @@ validator main(
     expect assets.quantity_of(input_value, policy_id, asset_name) == 1
 
     // 3. Enough current owners must have signed the update transaction.
-    expect
-      owner_quorum_met(
-        input_datum.owners,
-        tx.extra_signatories,
-        input_datum.update_threshold,
-        0,
-      )
+    let Datum { owners, update_threshold, .. } = input_datum
+    expect owner_quorum_met(owners, tx.extra_signatories, update_threshold, 0)
 
     let continued_output = tx.outputs |> only_output_with_nft(policy_id, None)
 

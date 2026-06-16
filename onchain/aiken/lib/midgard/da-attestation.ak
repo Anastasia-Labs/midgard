@@ -167,7 +167,13 @@ pub fn validate_add_signatures(
 
   // 3. The script input must carry the exact header-specific attestation NFT.
   let own_policy_id = expect_script_hash(input_address)
-  let attestation_asset = asset_name(input_datum.header_hash)
+  let Datum {
+    header_hash: input_header_hash,
+    da_threshold: input_da_threshold,
+    remaining_signers: input_remaining_signers,
+    attestation_count: input_attestation_count,
+  } = input_datum
+  let attestation_asset = asset_name(input_header_hash)
   expect assets.has_nft_strict(input_value, own_policy_id, attestation_asset)
 
   // 4. The continued output must preserve address and value exactly.
@@ -180,23 +186,22 @@ pub fn validate_add_signatures(
   expect output_address == input_address
   expect output_value == input_value
 
-  // 5. The continued datum must preserve header and threshold.
+  // 5. The output remaining signer set feeds signature verification.
   expect output_datum: Datum = output_datum_data
-  expect output_datum.header_hash == input_datum.header_hash
-  expect output_datum.da_threshold == input_datum.da_threshold
+  let Datum { remaining_signers: output_remaining_signers, .. } = output_datum
 
   // 6. The supplied signatures must remove exactly the signed committee slots.
   let verified_count =
     verify_indexed_signatures(
       signatures,
-      attestation_message(input_datum.header_hash),
-      input_datum.remaining_signers,
-      output_datum.remaining_signers,
+      attestation_message(input_header_hash),
+      input_remaining_signers,
+      output_remaining_signers,
       0,
       0,
       0,
       0,
-      bytearray.length(input_datum.remaining_signers),
+      bytearray.length(input_remaining_signers),
       bytearray.length(signatures),
       0,
     )
@@ -205,8 +210,16 @@ pub fn validate_add_signatures(
   //    increase by exactly the verified count.
   expect verified_count > 0
 
-  expect
-    output_datum.attestation_count == input_datum.attestation_count + verified_count
+  // 8. The continued datum must preserve the stable fields and update only the
+  //    signer set and attestation count according to verified signatures.
+  let expected_output_datum_data: Data =
+    Datum {
+      header_hash: input_header_hash,
+      da_threshold: input_da_threshold,
+      remaining_signers: output_remaining_signers,
+      attestation_count: input_attestation_count + verified_count,
+    }
+  expect output_datum_data == expected_output_datum_data
 
   True
 }

@@ -2,7 +2,7 @@ use aiken/collection/dict
 use aiken/collection/list
 use aiken/primitive/bytearray
 use cardano/address.{Script}
-use cardano/assets.{AssetName, PolicyId}
+use cardano/assets.{PolicyId}
 use cardano/transaction.{
   InlineDatum, Input, Mint, Output, OutputReference, Transaction, resolve_input,
 }
@@ -13,7 +13,6 @@ use midgard/da_attestation.{
   output_at_index, validate_add_signatures,
 }
 use midgard/da_params_governor as da_params_governor
-use midgard/ledger_state.{HeaderHash}
 use midgard/state_queue
 
 fn sorted_unique_vkey_len_at_most(keys: ByteArray, max: Int) -> Int {
@@ -64,29 +63,13 @@ fn sorted_unique_vkey_len_from(
   }
 }
 
-fn validate_committee(datum: da_params_governor.Datum) -> Bool {
-  // 1. The data availability threshold must be positive.
-  expect datum.da_threshold > 0
-
-  // 2. The committee must be a sorted unique packed set with enough members to
-  //    satisfy the threshold.
-  let committee_len =
-    sorted_unique_vkey_len_at_most(
-      datum.committee,
-      da_params_governor.max_indexed_signer_count,
-    )
-  expect datum.da_threshold <= committee_len
-
-  True
-}
-
 fn get_da_params(
   reference_inputs: List<Input>,
   da_params_policy_id: PolicyId,
   da_params_ref_input_index: Int,
 ) -> da_params_governor.Datum {
   // 1. The referenced params input must exist and expose an inline datum.
-  expect Some(Input {
+  expect Input {
     output: Output {
       address,
       value,
@@ -94,7 +77,7 @@ fn get_da_params(
       reference_script: None,
     },
     ..
-  }) = reference_inputs |> list.at(da_params_ref_input_index)
+  } = reference_inputs |> list.expect_at(da_params_ref_input_index)
 
   // 2. The params input must be locked by the expected governor policy.
   expect Script(params_script_hash) = address.payment_credential
@@ -110,69 +93,20 @@ fn get_da_params(
 
   // 4. The inline datum must be a params datum with a valid committee.
   expect datum: da_params_governor.Datum = datum_data
-  expect validate_committee(datum)
-  datum
-}
+  let da_params_governor.Datum { committee, da_threshold, .. } = datum
 
-fn expect_script_hash_from_output(output: Output) -> PolicyId {
-  let Output { address, .. } = output
-  expect_script_hash(address)
-}
+  // 5. The data availability threshold must be positive.
+  expect da_threshold > 0
 
-fn validate_init_output(
-  output: Output,
-  own_policy_id: PolicyId,
-  params: da_params_governor.Datum,
-  expected_header_hash: HeaderHash,
-) -> AssetName {
-  // 1. The attestation output must be locked by this policy with an inline
-  //    datum and no reference script.
-  expect Output {
-    address,
-    value,
-    datum: InlineDatum(datum_data),
-    reference_script: None,
-  } = output
-  expect expect_script_hash(address) == own_policy_id
+  // 6. The committee must be a sorted unique packed set with enough members to
+  //    satisfy the threshold.
+  let committee_len =
+    sorted_unique_vkey_len_at_most(
+      committee,
+      da_params_governor.max_indexed_signer_count,
+    )
+  expect da_threshold <= committee_len
 
-  // 2. The output datum must initialize attestation for the expected header
-  //    with the current params committee and threshold.
-  expect datum: Datum = datum_data
-  expect datum.header_hash == expected_header_hash
-  expect datum.da_threshold == params.da_threshold
-  expect datum.remaining_signers == params.committee
-  expect datum.attestation_count == 0
-
-  // 3. The output must carry the exact header-specific attestation NFT.
-  let attestation_asset_name = asset_name(datum.header_hash)
-  expect assets.has_nft_strict(value, own_policy_id, attestation_asset_name)
-
-  attestation_asset_name
-}
-
-fn get_attestation_input_datum(
-  inputs: List<Input>,
-  input_index: Int,
-  own_policy_id: PolicyId,
-) -> Datum {
-  // 1. The attestation input must exist and expose an inline datum.
-  expect Some(Input {
-    output: Output {
-      address,
-      value,
-      datum: InlineDatum(datum_data),
-      reference_script: None,
-    },
-    ..
-  }) = inputs |> list.at(input_index)
-
-  // 2. The attestation input must be locked by this policy.
-  expect expect_script_hash(address) == own_policy_id
-
-  // 3. The input must carry the header-specific attestation NFT.
-  expect datum: Datum = datum_data
-  let attestation_asset = asset_name(datum.header_hash)
-  expect assets.has_nft_strict(value, own_policy_id, attestation_asset)
   datum
 }
 
@@ -187,7 +121,11 @@ validator main(da_params_policy_id: PolicyId, state_queue_policy_id: PolicyId) {
         state_queue_ref_input_index,
       } -> {
         // 1. The referenced data availability params must be authentic.
-        let params =
+        let da_params_governor.Datum {
+          committee: params_committee,
+          da_threshold: params_da_threshold,
+          ..
+        } =
           get_da_params(
             reference_inputs,
             da_params_policy_id,
@@ -208,14 +146,37 @@ validator main(da_params_policy_id: PolicyId, state_queue_policy_id: PolicyId) {
             },
           )
 
-        // 3. The output at the indicated index must initialize the attestation
-        //    for that header and params committee.
-        let attestation_asset =
-          outputs
-            |> output_at_index(output_index)
-            |> validate_init_output(own_policy_id, params, expected_header_hash)
+        // 3. The attestation output must be locked by this policy with an
+        //    inline datum and no reference script.
+        expect Output {
+          address: attestation_address,
+          value: attestation_value,
+          datum: InlineDatum(attestation_datum_data),
+          reference_script: None,
+        } = outputs |> output_at_index(output_index)
+        expect expect_script_hash(attestation_address) == own_policy_id
 
-        // 4. Exactly one header-specific attestation NFT must be minted.
+        // 4. The output datum must initialize attestation for the expected
+        //    header with the current params committee and threshold.
+        let expected_attestation_datum_data: Data =
+          Datum {
+            header_hash: expected_header_hash,
+            da_threshold: params_da_threshold,
+            remaining_signers: params_committee,
+            attestation_count: 0,
+          }
+        expect attestation_datum_data == expected_attestation_datum_data
+
+        // 5. The output must carry the exact header-specific attestation NFT.
+        let attestation_asset = asset_name(expected_header_hash)
+        expect
+          assets.has_nft_strict(
+            attestation_value,
+            own_policy_id,
+            attestation_asset,
+          )
+
+        // 6. Exactly one header-specific attestation NFT must be minted.
         expect [Pair(minted_asset_name, minted_quantity)] =
           mint
             |> assets.tokens(own_policy_id)
@@ -231,19 +192,36 @@ validator main(da_params_policy_id: PolicyId, state_queue_policy_id: PolicyId) {
         state_queue_output_index,
       } -> {
         // 1. The attestation input must be authentic for this policy.
-        let attestation_datum =
-          get_attestation_input_datum(
-            inputs,
-            da_attestation_input_index,
+        expect Input {
+          output: Output {
+            address: attestation_address,
+            value: attestation_value,
+            datum: InlineDatum(attestation_datum_data),
+            reference_script: None,
+          },
+          ..
+        } = inputs |> list.expect_at(da_attestation_input_index)
+        expect expect_script_hash(attestation_address) == own_policy_id
+
+        expect attestation_datum: Datum = attestation_datum_data
+        let Datum {
+          header_hash: attestation_header_hash,
+          da_threshold: attestation_da_threshold,
+          attestation_count,
+          ..
+        } = attestation_datum
+        let attestation_asset = asset_name(attestation_header_hash)
+        expect
+          assets.has_nft_strict(
+            attestation_value,
             own_policy_id,
+            attestation_asset,
           )
 
         // 2. The attestation threshold must have been met.
-        expect
-          attestation_datum.attestation_count >= attestation_datum.da_threshold
+        expect attestation_count >= attestation_da_threshold
 
         // 3. The header-specific attestation NFT must be burnt.
-        let attestation_asset = asset_name(attestation_datum.header_hash)
         expect [Pair(minted_asset_name, minted_quantity)] =
           mint
             |> assets.tokens(own_policy_id)
@@ -259,7 +237,7 @@ validator main(da_params_policy_id: PolicyId, state_queue_policy_id: PolicyId) {
           state_queue_policy_id,
           state_queue_input_index,
           state_queue_output_index,
-          attestation_datum.header_hash,
+          attestation_header_hash,
           own_policy_id,
         )
       }
@@ -279,23 +257,22 @@ validator main(da_params_policy_id: PolicyId, state_queue_policy_id: PolicyId) {
         validate_add_signatures(datum, output_index, signatures, own_ref, tx)
       BurnForStateQueue { mint_redeemer_index } -> {
         // 1. The attestation spend must correspond to this policy.
-        let own_policy_id =
-          inputs
-            |> resolve_input(own_ref)
-            |> expect_script_hash_from_output
+        let Output { address: input_address, .. } =
+          inputs |> resolve_input(own_ref)
+        let own_policy_id = expect_script_hash(input_address)
 
         // 2. The matching mint redeemer must burn this attestation for state
         //    queue attachment.
         let mint_redeemer_data =
           redeemers
             |> utils.get_redeemer_at(Mint(own_policy_id), mint_redeemer_index)
-        expect ApplyToStateQueue { da_attestation_input_index, .. }: MintRedeemer =
+        expect ApplyToStateQueue { da_attestation_input_index, .. } =
           mint_redeemer_data
 
         // 3. The mint redeemer's attestation input index must point to this
         //    spent UTxO.
-        expect Some(Input { output_reference, .. }) =
-          inputs |> list.at(da_attestation_input_index)
+        let Input { output_reference, .. } =
+          inputs |> list.expect_at(da_attestation_input_index)
         expect output_reference == own_ref
 
         True
