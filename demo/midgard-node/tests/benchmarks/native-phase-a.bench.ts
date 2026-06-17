@@ -138,7 +138,7 @@ const runPhaseAOnce = async (
     }),
   );
   const acceptedById = new Set(
-    result.accepted.map((tx) => tx.txId.toString("hex")),
+    result.accepted.map((tx) => tx.ledgerTx.txId.toString("hex")),
   );
   const rejectedCodeById = new Map(
     result.rejected.map((tx) => [tx.txId.toString("hex"), tx.code]),

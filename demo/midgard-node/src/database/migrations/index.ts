@@ -6,6 +6,7 @@ import localMutationJobsSql from "./sql/0003_local_mutation_jobs.sql";
 import withdrawalEventsSql from "./sql/0004_withdrawal_events.sql";
 import pendingFinalizationJournalPayloadsSql from "./sql/0005_pending_finalization_journal_payloads.sql";
 import stateQueueMutationLeasesSql from "./sql/0006_state_queue_mutation_leases.sql";
+import daPayloadsSql from "./sql/0007_da_payloads.sql";
 
 export type Migration = {
   readonly version: number;
@@ -61,6 +62,13 @@ export const MIGRATIONS: readonly Migration[] = [
     sql: stateQueueMutationLeasesSql,
     transactional: true,
   },
+  {
+    version: 7,
+    name: "da_payloads",
+    checksumSha256: sha256Hex(daPayloadsSql),
+    sql: daPayloadsSql,
+    transactional: true,
+  },
 ] as const;
 
 export const EXPECTED_SCHEMA_VERSION =
@@ -94,6 +102,7 @@ export const APPLICATION_TABLE_NAMES = [
   "tx_admissions",
   "local_mutation_jobs",
   "state_queue_mutation_leases",
+  "da_payloads",
 ] as const;
 
 export const APPLICATION_INDEX_NAMES = [
@@ -126,6 +135,7 @@ export const APPLICATION_INDEX_NAMES = [
   "idx_local_mutation_jobs_status_updated",
   "uniq_state_queue_mutation_leases_active_scope",
   "idx_state_queue_mutation_leases_status_updated",
+  "idx_da_payloads_created_at",
 ] as const;
 
 export const migrationByVersion = new Map(

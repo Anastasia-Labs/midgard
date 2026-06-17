@@ -35,16 +35,9 @@ import type {
 
 export { MIDGARD_PROTECTED_ADDRESS_HEADER_MASK };
 
-export type PlutusDataLike =
-  | CML.PlutusData
-  | Uint8Array
-  | string;
+export type PlutusDataLike = CML.PlutusData | Uint8Array | string;
 
-export type ScriptRefLike =
-  | CML.Script
-  | Uint8Array
-  | string
-  | MidgardScript;
+export type ScriptRefLike = CML.Script | Uint8Array | string | MidgardScript;
 
 export type OutputDatum =
   | { readonly kind: "none" }
@@ -74,6 +67,38 @@ export type DecodedMidgardOutput = {
   readonly txOutput: MidgardTxOutput;
 };
 
+const isCmlPlutusDataLike = (
+  data: unknown,
+): data is { readonly to_cbor_bytes: () => Uint8Array } =>
+  typeof data === "object" &&
+  data !== null &&
+  typeof (data as { readonly as_integer?: unknown }).as_integer ===
+    "function" &&
+  typeof (data as { readonly to_cbor_bytes?: unknown }).to_cbor_bytes ===
+    "function";
+
+const isCmlScriptLike = (script: unknown): script is CML.Script =>
+  typeof script === "object" &&
+  script !== null &&
+  typeof (script as { readonly as_native?: unknown }).as_native ===
+    "function" &&
+  typeof (script as { readonly as_plutus_v3?: unknown }).as_plutus_v3 ===
+    "function" &&
+  typeof (script as { readonly to_cbor_bytes?: unknown }).to_cbor_bytes ===
+    "function";
+
+const isOutputDatumOption = (datum: unknown): datum is OutputDatum => {
+  if (
+    typeof datum !== "object" ||
+    datum === null ||
+    datum instanceof Uint8Array
+  ) {
+    return false;
+  }
+  const kind = (datum as { readonly kind?: unknown }).kind;
+  return kind === "none" || kind === "inline" || kind === "hash";
+};
+
 const fromHex = (hex: string, fieldName: string): Buffer => {
   try {
     return hexToBytes(hex, { fieldName, allowEmpty: true });
@@ -98,11 +123,12 @@ const outputKindFromAddress = (address: Address): OutputKind =>
     ? "protected"
     : "ordinary";
 
-export const normalizePlutusData = (
-  data: PlutusDataLike,
-): CML.PlutusData => {
+export const normalizePlutusData = (data: PlutusDataLike): CML.PlutusData => {
   if (data instanceof CML.PlutusData) {
     return data;
+  }
+  if (isCmlPlutusDataLike(data)) {
+    return CML.PlutusData.from_cbor_bytes(data.to_cbor_bytes());
   }
   const bytes = typeof data === "string" ? fromHex(data, "datum") : data;
   return CML.PlutusData.from_cbor_bytes(bytes);
@@ -168,7 +194,7 @@ const midgardScriptToVersionedScript = (
 export const normalizeScriptRef = (
   scriptRef: ScriptRefLike,
 ): MidgardVersionedScript => {
-  if (scriptRef instanceof CML.Script) {
+  if (scriptRef instanceof CML.Script || isCmlScriptLike(scriptRef)) {
     return cmlScriptToMidgardVersionedScript(scriptRef);
   }
   if (isMidgardScript(scriptRef)) {
@@ -203,12 +229,7 @@ const normalizeOutputDatum = (
   if (datum === undefined) {
     return undefined;
   }
-  if (
-    typeof datum === "object" &&
-    !(datum instanceof Uint8Array) &&
-    !(datum instanceof CML.PlutusData) &&
-    "kind" in datum
-  ) {
+  if (isOutputDatumOption(datum)) {
     return datum;
   }
   return { kind: "inline", data: datum };

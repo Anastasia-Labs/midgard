@@ -47,6 +47,14 @@ const DEFAULT_REAL_BLUEPRINT_CANDIDATES = [
   path.resolve(process.cwd(), "../../onchain/aiken/plutus.json"),
   path.resolve(process.cwd(), "onchain/aiken/plutus.json"),
 ] as const;
+const DEFAULT_CONTRACT_DEPLOYMENT_INFO_CANDIDATES = [
+  path.resolve(moduleDir, "../../deploymentInfo/contract-deployment-info.json"),
+  path.resolve(process.cwd(), "deploymentInfo/contract-deployment-info.json"),
+  path.resolve(
+    process.cwd(),
+    "demo/midgard-node/deploymentInfo/contract-deployment-info.json",
+  ),
+] as const;
 
 /**
  * Cached real blueprint loaded from either `MIDGARD_REAL_BLUEPRINT_PATH` or
@@ -116,12 +124,110 @@ const loadRealBlueprint = (): Effect.Effect<Blueprint, Error> =>
       new Error(`Failed to load real blueprint: ${formatUnknownError(cause)}`),
   });
 
+const resolveDefaultContractDeploymentInfoPath = (): string => {
+  for (const candidate of new Set(DEFAULT_CONTRACT_DEPLOYMENT_INFO_CANDIDATES)) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  throw new Error(
+    `Failed to locate contract deployment info. Looked in: ${DEFAULT_CONTRACT_DEPLOYMENT_INFO_CANDIDATES.join(", ")}`,
+  );
+};
+
+const loadReferenceScriptAuthValidator = (): Effect.Effect<
+  SDK.MintingValidator,
+  Error
+> =>
+  Effect.try({
+    try: () => {
+      const configuredPath =
+        process.env.MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH?.trim();
+      const deploymentInfoPath = configuredPath
+        ? configuredPath
+        : resolveDefaultContractDeploymentInfoPath();
+      const parsed = JSON.parse(
+        readFileSync(deploymentInfoPath, "utf8"),
+      ) as unknown;
+      const referenceScriptAuthPolicy =
+        typeof parsed === "object" &&
+        parsed !== null &&
+        typeof (
+          parsed as {
+            referenceScriptAuthPolicy?: {
+              policyId?: unknown;
+              nativeScript?: { cborHex?: unknown; type?: unknown };
+            };
+          }
+        ).referenceScriptAuthPolicy === "object"
+          ? (
+              parsed as {
+                referenceScriptAuthPolicy: {
+                  policyId?: unknown;
+                  nativeScript?: { cborHex?: unknown; type?: unknown };
+                };
+              }
+            ).referenceScriptAuthPolicy
+          : undefined;
+      const policyId =
+        typeof referenceScriptAuthPolicy?.policyId === "string"
+          ? referenceScriptAuthPolicy.policyId
+          : "";
+      const cborHex =
+        referenceScriptAuthPolicy?.nativeScript?.type === "Native" &&
+        typeof referenceScriptAuthPolicy.nativeScript.cborHex === "string"
+          ? referenceScriptAuthPolicy.nativeScript.cborHex
+          : "";
+      if (!/^[0-9a-fA-F]{56}$/.test(policyId)) {
+        throw new Error(
+          `Deployment info at "${deploymentInfoPath}" does not contain a valid referenceScriptAuthPolicy.policyId`,
+        );
+      }
+      if (!/^[0-9a-fA-F]+$/.test(cborHex)) {
+        throw new Error(
+          `Deployment info at "${deploymentInfoPath}" does not contain a valid referenceScriptAuthPolicy.nativeScript.cborHex`,
+        );
+      }
+      const mintingScript: MintingPolicy = {
+        type: "Native",
+        script: cborHex,
+      };
+      const derivedPolicyId = mintingPolicyToId(mintingScript);
+      if (derivedPolicyId !== policyId.toLowerCase()) {
+        throw new Error(
+          `referenceScriptAuthPolicy policy id mismatch: configured=${policyId}, derived=${derivedPolicyId}`,
+        );
+      }
+      return {
+        mintingScriptCBOR: cborHex,
+        mintingScript,
+        policyId: derivedPolicyId,
+      };
+    },
+    catch: (cause) =>
+      new Error(
+        `Failed to load reference-script auth policy id from deployment info: ${formatUnknownError(
+          cause,
+        )}`,
+      ),
+  });
+
 /**
  * Blueprint titles for the real state-queue scripts.
  */
 export const REAL_STATE_QUEUE_SCRIPT_TITLES = {
   mint: "state_queue.mint.mint",
   spend: "state_queue.spend.spend",
+} as const;
+
+export const REAL_DA_PARAMS_GOVERNOR_SCRIPT_TITLES = {
+  mint: "da_params_governor.da_params_governor.mint",
+  spend: "da_params_governor.da_params_governor.spend",
+} as const;
+
+export const REAL_DA_ATTESTATION_SCRIPT_TITLES = {
+  mint: "da_attestation.da_attestation.mint",
+  spend: "da_attestation.da_attestation.spend",
 } as const;
 
 /**
@@ -231,6 +337,13 @@ export const REAL_FRAUD_PROOF_SCRIPT_TITLES = {
 export type HubOracleOneShotOutRef = {
   readonly txHash: string;
   readonly outputIndex: number;
+};
+
+export type RealContractDeploymentParameters = {
+  readonly referenceScriptAuth: SDK.MintingValidator;
+  readonly daParamsGovernorInitOutRef?: HubOracleOneShotOutRef;
+  readonly daParamsMaxCommitteeSize?: number;
+  readonly daParamsMaxOwnerCount?: number;
 };
 
 type ScriptParams = Data[];
@@ -425,6 +538,42 @@ const buildRealFraudProofValidator = (
     computationThread.policyId,
   ]);
 
+const outputReferenceParam = (outRef: HubOracleOneShotOutRef): Constr<Data> =>
+  new Constr(0, [outRef.txHash, BigInt(outRef.outputIndex)]);
+
+const buildRealDaParamsGovernorValidator = (
+  network: Network,
+  initOutRef: HubOracleOneShotOutRef,
+  maxCommitteeSize: number,
+  maxOwnerCount: number,
+): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
+  buildRealAuthenticatedValidator(
+    network,
+    REAL_DA_PARAMS_GOVERNOR_SCRIPT_TITLES,
+    [
+      outputReferenceParam(initOutRef),
+      BigInt(maxCommitteeSize),
+      BigInt(maxOwnerCount),
+    ],
+    () => [
+      outputReferenceParam(initOutRef),
+      BigInt(maxCommitteeSize),
+      BigInt(maxOwnerCount),
+    ],
+  );
+
+const buildRealDaAttestationValidator = (
+  network: Network,
+  contracts: SDK.MidgardValidators,
+  referenceScriptAuthPolicyId: string,
+): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
+  buildRealAuthenticatedValidator(
+    network,
+    REAL_DA_ATTESTATION_SCRIPT_TITLES,
+    [contracts.daParamsGovernor.policyId, referenceScriptAuthPolicyId],
+    () => [contracts.daParamsGovernor.policyId, referenceScriptAuthPolicyId],
+  );
+
 const expectDerivedScriptHash = (
   label: string,
   expected: string,
@@ -505,8 +654,9 @@ const buildRealStateQueueValidator = (
         contracts.scheduler.policyId,
         contracts.fraudProof.policyId,
         contracts.settlement.policyId,
+        contracts.daAttestation.policyId,
       ],
-      (policyId) => [policyId],
+      (policyId) => [policyId, contracts.daAttestation.policyId],
     );
   });
 
@@ -681,11 +831,20 @@ export const withRealStateQueueAndOperatorContracts = (
   network: Network,
   baseContracts: SDK.MidgardValidators,
   hubOracleOneShotOutRef: HubOracleOneShotOutRef,
+  deploymentParameters: RealContractDeploymentParameters,
 ): Effect.Effect<SDK.MidgardValidators, Error> =>
   Effect.gen(function* () {
     const normalizedOneShotOutRef = yield* normalizeHubOracleOneShotOutRef(
       hubOracleOneShotOutRef,
     );
+    const daParamsGovernorInitOutRef = yield* normalizeHubOracleOneShotOutRef(
+      deploymentParameters.daParamsGovernorInitOutRef ??
+        normalizedOneShotOutRef,
+    );
+    const daParamsMaxCommitteeSize =
+      deploymentParameters.daParamsMaxCommitteeSize ?? 256;
+    const daParamsMaxOwnerCount =
+      deploymentParameters.daParamsMaxOwnerCount ?? 16;
 
     const realHubOracle = yield* buildRealHubOracleValidator(
       network,
@@ -694,6 +853,7 @@ export const withRealStateQueueAndOperatorContracts = (
     );
     const withRealHubOracle: SDK.MidgardValidators = {
       ...baseContracts,
+      referenceScriptAuth: deploymentParameters.referenceScriptAuth,
       hubOracle: realHubOracle,
     };
 
@@ -800,13 +960,34 @@ export const withRealStateQueueAndOperatorContracts = (
       settlement: realSettlement,
     };
 
+    const realDaParamsGovernor = yield* buildRealDaParamsGovernorValidator(
+      network,
+      daParamsGovernorInitOutRef,
+      daParamsMaxCommitteeSize,
+      daParamsMaxOwnerCount,
+    );
+    const withRealDaParamsGovernor: SDK.MidgardValidators = {
+      ...withRealSettlement,
+      daParamsGovernor: realDaParamsGovernor,
+    };
+
+    const realDaAttestation = yield* buildRealDaAttestationValidator(
+      network,
+      withRealDaParamsGovernor,
+      deploymentParameters.referenceScriptAuth.policyId,
+    );
+    const withRealDaAttestation: SDK.MidgardValidators = {
+      ...withRealDaParamsGovernor,
+      daAttestation: realDaAttestation,
+    };
+
     const realStateQueue = yield* buildRealStateQueueValidator(
       network,
-      withRealSettlement,
+      withRealDaAttestation,
     );
 
     const withRealStateQueue: SDK.MidgardValidators = {
-      ...withRealSettlement,
+      ...withRealDaAttestation,
       stateQueue: realStateQueue,
     };
 
@@ -842,13 +1023,17 @@ const makeMidgardContracts = Effect.gen(function* () {
     txHash: nodeConfig.HUB_ORACLE_ONE_SHOT_TX_HASH,
     outputIndex: nodeConfig.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX,
   };
+  const referenceScriptAuth = yield* loadReferenceScriptAuthValidator();
   const resolvedContracts = yield* withRealStateQueueAndOperatorContracts(
     nodeConfig.NETWORK,
     baseContracts,
     oneShotOutRef,
+    {
+      referenceScriptAuth,
+    },
   );
   yield* Effect.logInfo(
-    "🔐 Contract source selected: state_queue=real, hub_oracle=real, deposit=real, tx_order=real, withdrawal=real, settlement=real, reserve=real, payout=real, registered_operators=real, active_operators=real, retired_operators=real, scheduler=real, fraud_proofs.double_spend=real",
+    "🔐 Contract source selected: state_queue=real, da_attestation=real, da_params_governor=real, hub_oracle=real, deposit=real, tx_order=real, withdrawal=real, settlement=real, reserve=real, payout=real, registered_operators=real, active_operators=real, retired_operators=real, scheduler=real, fraud_proofs.double_spend=real",
   );
   return resolvedContracts;
 }).pipe(Effect.orDie);

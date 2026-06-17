@@ -163,7 +163,10 @@ export type FraudProofs = {
 };
 
 export type MidgardValidators = {
+  referenceScriptAuth: MintingValidator;
   hubOracle: AuthenticatedValidator;
+  daParamsGovernor: AuthenticatedValidator;
+  daAttestation: AuthenticatedValidator;
   stateQueue: AuthenticatedValidator;
   scheduler: AuthenticatedValidator;
   registeredOperators: AuthenticatedValidator;

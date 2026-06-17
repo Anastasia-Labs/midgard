@@ -1,10 +1,10 @@
 # Public Testnet Readiness Checklist
 
-Last reviewed: 2026-05-27
+Last reviewed: 2026-06-13
 
 Scope: this checklist reviews the current Midgard repository state for an externally reachable public testnet deployment. It treats Midgard as a production-grade L2, so "public testnet ready" includes adversarial safety, deterministic deployment identity, restart/recovery behavior, public client ergonomics, monitoring, and explicit runbooks. It is stricter than "the local happy path works."
 
-Review method: repository-wide source review plus delegated subsystem reviews covering node operations, submission/admission, deposits and withdrawals, reserve/payout, contracts/deployment, fault proofs, SDK/provider behavior, and CI/acceptance coverage.
+Review method: repository-wide source review against the current worktree plus targeted verification of node operations, submission/admission, deposits and withdrawals, reserve/payout, contracts/deployment, data availability, fault proofs, SDK/provider behavior, and CI/acceptance coverage.
 
 ## Executive Decision
 
@@ -12,7 +12,7 @@ Current decision: no-go for an open public testnet.
 
 - [ ] Launch gate: public testnet is ready as an unqualified public endpoint.
 - [x] The core happy-path L2 pipeline is materially implemented: node startup, schema migrations, protocol initialization, operator registration/activation, `/submit`, admission/validation, mempool processing, deposit projection, block commitment, confirmation, merge, reserve/payout builders, and SDK/provider primitives.
-- [ ] Public readiness blockers remain: fraud-proof/proof-data availability, deterministic deployment fingerprinting, ingress/ops hardening, full public acceptance gates, restart/recovery acceptance, and withdrawal/payout surface hardening.
+- [ ] Public readiness blockers remain: public fraud-proof/data-availability completion, deterministic deployment fingerprinting, ingress/ops hardening, full public acceptance gates, restart/recovery acceptance, and withdrawal/payout surface hardening.
 - [ ] Public messaging must not claim full fraud-proof readiness until the proof families and proof bundle/data availability surfaces below are complete.
 
 ## Core Feature Matrix
@@ -24,12 +24,12 @@ Current decision: no-go for an open public testnet.
 | Deposits | Mostly implemented | SDK/node builders and projection flow exist. Public `/deposit/build` needs richer metadata and runbook hardening. |
 | Withdrawals | Partial | SDK and CLI paths exist. Public build/submit surface and node submit helper usage need cleanup before public exposure. |
 | Reserve/payout | Partial | Builders and CLI flows exist. Invalid-withdrawal refund path and public operator runbooks need wiring/acceptance. |
-| Commit/confirm/merge | Mostly implemented | State queue, pending finalization journal, leases, and merge worker exist. Needs restart/recovery acceptance and stronger crash-boundary tests. |
+| Commit/confirm/merge | Mostly implemented | State queue, pending finalization journal, leases, DA-attestation-gated merge, and merge worker exist. Needs restart/recovery acceptance and stronger crash-boundary tests. |
 | Operator lifecycle | Partial | Register/activate builders and tests exist. Public CLI/API/runbook coverage for status, register, activate, deactivate/deregister, and monitoring is incomplete. |
-| Fraud proofs | Not public-testnet ready | Tooling and first flows exist, but proof family completeness, proof bundle persistence, data availability, and preprod end-to-end challenge acceptance are blockers. |
+| Fraud proofs and DA | Partial, not public-testnet ready | Tooling, DA attestation transactions, merge gating, and `DaPayloadV1` node persistence/endpoints exist. Proof family completeness, typed proof-bundle witnesses, public DA committee/storage behavior, and preprod end-to-end challenge acceptance remain blockers. |
 | Contract deployment | Partial | Atomic init and real blueprint loading exist. Need deterministic manifest/fingerprint enforcement and realistic public-testnet parameters. |
-| Node operations | Partial | Docker, migrations, readiness, metrics, and logs exist. Defaults and compose exposure are not public-hardened. |
-| SDK/provider | Partial | Provider submit and protocol-info parsing are good. Packaging, abort/timeout behavior, and public docs need hardening. |
+| Node operations | Partial | Docker, migrations, readiness, DA payload retention guards, metrics, and logs exist. Defaults and compose exposure are not public-hardened. |
+| SDK/provider | Partial | Provider submit, protocol-info parsing, and `DaPayloadV1` codecs exist. Packaging, abort/timeout behavior, and public docs need hardening. |
 | CI/acceptance | Not sufficient | Existing CI is useful but does not gate the full workspace, clean public deploy, restart recovery, or fraud-proof challenge flow. |
 
 ## Launch Blockers
@@ -43,7 +43,8 @@ Current decision: no-go for an open public testnet.
   - Acceptance: at least the intended public-testnet fraud-proof family is fully end-to-end on preprod from invalid block fixture to computation thread steps to fraudulent block removal.
   - Acceptance: proof bundles persist schema versions, payload hashes, root role, member count, membership/non-membership/deletion witnesses, and all inputs needed by public challengers.
   - Acceptance: public endpoints or documented data exports allow an external watcher to reconstruct and submit the proof without privileged local DB access.
-  - Evidence: `demo/midgard-node/docs/PREPROD_DOUBLE_SPEND_FAULT_PROOF_GAP_REPORT.md` documents that the double-spend proof path was not yet complete end-to-end and lists broader proof-family gaps.
+  - Evidence: `demo/midgard-node/src/database/daPayloads.ts`, `demo/midgard-node/src/workers/commit-block-header/da-payload.ts`, `demo/midgard-node/src/commands/listen-router.ts`, and `demo/midgard-node/docs/DA_PAYLOAD_V1.md` now provide a versioned node-produced block-body DA payload keyed by header hash, but not typed proof witnesses, public committee storage/signing, or challenger-grade proof bundle retrieval.
+  - Evidence: `demo/midgard-node/docs/PREPROD_DOUBLE_SPEND_FAULT_PROOF_GAP_REPORT.md` still documents that the double-spend proof path was not yet complete end-to-end and lists broader proof-family gaps.
 
 - [ ] Harden public ingress and operational exposure.
   - Acceptance: public API is behind TLS and rate limiting; admin endpoints are not internet-exposed; Prometheus, Loki, Grafana, cAdvisor, Tempo, Postgres, Ogmios, Kupo, and Cardano node ports are internal-only or authenticated.
@@ -70,7 +71,7 @@ Current decision: no-go for an open public testnet.
 - [ ] Align CI with the public gate.
   - Acceptance: CI runs frozen install, builds, typechecks, and tests the relevant workspace packages, including `midgard-core`, `lucid-midgard`, `midgard-sdk`, `midgard-validation`, `midgard-node`, and `midgard-fault-proofs`.
   - Acceptance: Aiken CI uses the same compiler version required by `onchain/aiken/aiken.toml`.
-  - Evidence: `.github/workflows/midgard-node-ci.yml` currently gates a subset of packages/tests, and `.github/workflows/aiken-ci.yml` uses a different Aiken version than the project file.
+  - Evidence: `.github/workflows/aiken-ci.yml` and `.github/workflows/midgard-node-ci.yml` now use Aiken `v1.1.21`, matching `onchain/aiken/aiken.toml`. `.github/workflows/midgard-node-ci.yml` still gates only a subset of package builds/tests and no clean public deployment or fraud-proof acceptance.
 
 - [ ] Remove public-testnet placeholder economics and demo parameters.
   - Acceptance: public-testnet protocol constants explicitly document registration duration, maturity duration, bond, slash penalty, prover reward, reserve/outbox parameters, and any intentionally zero-valued testnet choices.
@@ -135,6 +136,7 @@ Current decision: no-go for an open public testnet.
 
 - [ ] Define the first public fraud-proof milestone and prove it end to end on preprod.
 - [ ] Persist typed proof bundles and public DA artifacts.
+- [x] Persist and serve canonical `DaPayloadV1` block-body payloads for locally finalized blocks.
 - [ ] Add proof bundle APIs or artifact export commands.
 - [ ] Add watcher/challenger runbook and adversarial fixtures.
 - [ ] Add a closed proof-family coverage matrix before claiming broad fraud-proof security.
@@ -163,20 +165,22 @@ These are the main code-backed reasons for the no-go decision. They should be ke
 | --- | --- |
 | `demo/midgard-node/docker-compose.yaml` exposes API, metrics, Postgres, Prometheus, Loki, cAdvisor, Grafana, and Tempo host ports; Grafana anonymous role is Admin. | Public profile must hide or authenticate internal services before public launch. |
 | `demo/midgard-node/docker-compose.kupmios.yaml` defaults Mithril, Ogmios, and Kupo images/snapshots to `latest` and exposes provider ports. | Public deployment must pin images/digests and restrict provider ports. |
-| `demo/midgard-node/.env.example` contains blank `ADMIN_API_KEY`, default Postgres credentials, `latest` image tags, retention `0`, and test/demo seed phrases. | Public env template must reject demo/default secrets and unsafe retention. |
+| `demo/midgard-node/.env.example` contains blank `ADMIN_API_KEY`, default Postgres credentials, `latest` image tags, retention `0`, and test/demo seed phrases. Positive retention below the DA minimum now fails config, but there is still no separate public env profile or public retention policy. | Public env template must reject demo/default secrets and document retention/DA availability choices explicitly. |
 | `demo/midgard-node/src/services/config.ts` defaults min fees to `0`, admin key to empty, hub-oracle one-shot index to `-1`, Postgres credentials to `postgres`, and MPF paths to relative local paths. | Public strict mode must require explicit production values and durable absolute paths. |
-| `demo/midgard-node/src/commands/listen-router.ts` readiness checks worker heartbeat timestamps and a hub-oracle query but not provider tip freshness, Kupo coverage, deployment fingerprint, or first successful worker loop. | `/readyz` is useful but not sufficient for public traffic routing. |
-| `demo/midgard-node/src/commands/listen-router.ts` keeps `/init`, `/commit`, `/merge`, `/stateQueue`, `/logBlocksDB`, and `/logGlobals` as HTTP admin routes. | Admin routes must be private/authenticated and not exposed via public ingress. |
+| `demo/midgard-node/src/commands/listen-router.ts` readiness checks worker heartbeat timestamps, DB health, durable-admission backlog/age, unresolved submissions, unfinished local mutation jobs, and a hub-oracle query, but not provider tip freshness, Kupo coverage, deployment fingerprint, state-queue lease detail, or first successful worker loop. | `/readyz` is useful but not sufficient for public traffic routing. |
+| `demo/midgard-node/src/commands/listen-router.ts` keeps `/init`, `/commit`, `/merge`, `/stateQueue`, `/stateQueueMutationLease`, `/logBlocksDB`, and `/logGlobals` as HTTP admin routes. | Admin routes must be private/authenticated and not exposed via public ingress. |
 | `demo/midgard-node/src/database/txAdmissions.ts` checks backlog with `COUNT(*)` before insert inside the transaction. | Concurrent public submissions can overshoot the configured cap unless admission is globally serialized or otherwise bounded. |
 | `demo/midgard-node/src/workers/utils/commit-submission.ts` finalizes DB state and then resets the transactions MPF root outside the SQL transaction. | Recovery may be valid, but public readiness needs explicit crash-boundary tests and alerts. |
 | `demo/midgard-node/src/workers/utils/commit-submission.ts` transfers skipped submissions by inserting processed mempool rows and then clearing mempool rows in separate steps. | Crash-boundary behavior must be tested or made atomic to avoid ambiguous duplicate material. |
-| `.github/workflows/aiken-ci.yml` uses Aiken `v1.1.19`; `onchain/aiken/aiken.toml` requires `v1.1.21`. | Contract CI is not proving the same compiler artifact used by the repo. |
-| `.github/workflows/midgard-node-ci.yml` only typechecks/tests a subset and does not run full workspace builds, node typecheck, fault-proof checks, or clean deploy acceptance. | CI is not yet a public-testnet release gate. |
-| `onchain/aiken/env/testnet.ak` has zero bond/slash/reward values, zero outbox identifiers, and empty delegated Plutarch hashes. | Public-testnet parameters and delegated validators need explicit, reviewed values. |
+| `.github/workflows/aiken-ci.yml` and `.github/workflows/midgard-node-ci.yml` use Aiken `v1.1.21`, matching `onchain/aiken/aiken.toml`, but the workflows still use mutable runner/action references. | Compiler-version alignment is fixed, but release CI is not yet supply-chain pinned. |
+| `.github/workflows/midgard-node-ci.yml` only builds/typechecks/tests a subset and does not run full workspace builds, node typecheck, fault-proof checks, or clean deploy acceptance. | CI is not yet a public-testnet release gate. |
+| `onchain/aiken/env/testnet.ak` has zero bond/slash/reward values, zero outbox identifiers, and partially empty delegated Plutarch hashes: PHAS is set, while pexcludes and pdelete are empty. | Public-testnet parameters and delegated validators need explicit, reviewed values. |
 | `onchain/aiken/lib/midgard/protocol-parameters.ak` still says realistic parameters are TODO. | Public parameter review is a blocker. |
 | `demo/midgard-node/docs/PREPROD_DOUBLE_SPEND_FAULT_PROOF_GAP_REPORT.md` states double-spend proof is not valid end to end on preprod and lists minimum milestone criteria. | Fraud-proof readiness is not yet public-testnet ready. |
 | `demo/midgard-node/docs/FAULT_PROOF_DECISION_RECOMMENDATIONS.md` requires a closed ledger-rule proof matrix and public DA/proof bundle guardrails. | Public security claims must be narrowed or the proof matrix must be completed. |
-| `demo/midgard-node/src/database/pendingBlockFinalizations.ts` persists pending block payloads/hashes but not full typed proof-bundle schemas, member counts, root roles, and proof witness material. | External challengers need public proof data, not privileged mutable local reconstruction. |
+| `demo/midgard-node/src/database/pendingBlockFinalizations.ts` persists pending block payload members and `demo/midgard-node/src/database/daPayloads.ts` persists canonical `DaPayloadV1` payload CBOR plus roots, but neither stores full typed proof-bundle schemas, root roles, membership/non-membership/deletion witnesses, opened field preimages, or verifier ABI versions. | External challengers need proof witnesses and stable schemas, not only node-local block-body payloads. |
+| `demo/midgard-node/docs/DA_PAYLOAD_V1.md` states the node produces canonical `DaPayloadV1` objects while DA committee storage, validation, serving, and signing are outside the node contract. | The DA payload surface is a useful primitive, not a completed public DA subsystem. |
+| `demo/midgard-node/src/transactions/da-attestation.ts` can mint/sign/apply DA attestations for state-queue headers, and `demo/midgard-node/src/transactions/state-queue/merge-to-confirmed-state.ts` skips merge until the queued block carries the expected DA attestation policy id. | Merge is gated on DA attestation, but public committee operation, payload retrieval guarantees, and watcher/challenger integration remain undefined. |
 | `demo/midgard-fault-proofs/package.json` describes the package as manual tooling. | Public challenger infrastructure is not yet autonomous or watcher-grade. |
 | `demo/midgard-sdk/package.json` lacks an `exports` map while building ESM and CJS under `"type": "module"`. | Public CJS consumers can resolve the wrong entrypoint. |
 | `demo/lucid-midgard/src/provider/transport.ts` calls fetch without managed timeout/abort support. | Public clients can hang on provider calls despite `awaitTx` accepting a signal at a higher layer. |
@@ -202,6 +206,7 @@ These are the main code-backed reasons for the no-go decision. They should be ke
 ## Deployment And Contracts
 
 - [ ] Pin and verify the exact Aiken compiler version in CI, local docs, and build scripts.
+  - Evidence: primary CI workflows now use `v1.1.21`, matching `onchain/aiken/aiken.toml`; local install docs and reproducible artifact verification still need enforcement.
 - [ ] Publish a reproducible contract build artifact bundle.
   - Acceptance: bundle includes blueprint, script CBOR/hashes, source commit, `aiken.lock`, compiler version, and a machine-verifiable hash.
 - [ ] Define a canonical script catalogue generated from `plutus.json`.
@@ -258,6 +263,8 @@ These are the main code-backed reasons for the no-go decision. They should be ke
 - [ ] Increase log retention and audit retention for public deployments.
 - [ ] Enforce reset/redeploy coupling with a machine-readable local genesis marker.
   - Acceptance: first successful deploy writes `{network, oneShotOutRef, policyIds, manifestHash, schemaVersion}` into Postgres and MPF metadata; missing or mismatched marker fails closed unless an explicit redeploy command creates a new marker from a fresh on-chain deployment.
+- [x] Reject positive retention windows shorter than the current DA payload availability minimum.
+  - Evidence: `demo/midgard-node/src/database/retention-policy.ts` requires `RETENTION_DAYS=0` or at least 8 days, and config loading applies that validator.
 
 ## API, Ingress, And Security
 
@@ -268,7 +275,7 @@ These are the main code-backed reasons for the no-go decision. They should be ke
 - [ ] Add per-IP and global admission backpressure behavior.
   - Acceptance: load tests show bounded memory and durable-admission DB growth under spam.
 - [ ] Keep admin routes private or strongly authenticated.
-  - Acceptance: `/init`, `/commit`, `/merge`, `/stateQueue`, `/logBlocksDB`, and `/logGlobals` are not publicly reachable.
+  - Acceptance: `/init`, `/commit`, `/merge`, `/stateQueue`, `/stateQueueMutationLease`, `/logBlocksDB`, and `/logGlobals` are not publicly reachable.
 - [ ] Add CORS policy for public clients.
 - [ ] Add structured error response contracts for all public endpoints.
 - [ ] Add timeout/abort handling for long public requests.
@@ -406,6 +413,8 @@ These are the main code-backed reasons for the no-go decision. They should be ke
 
 - [x] Commit, confirmation, pending finalization journal, local finalization recovery, and merge workers exist.
 - [x] State-queue mutation leases exist to prevent overlapping mutation workers.
+- [x] Locally finalized blocks persist canonical DA payload records keyed by header hash.
+  - Evidence: local finalization builds `DaPayloadV1`, recomputes committed roots, and upserts `da_payloads` before marking the pending finalization complete.
 - [ ] Add crash-boundary acceptance tests.
   - Acceptance: restart at each boundary leaves no duplicate committed blocks, no lost mempool transactions, no unbounded local finalization pending state, and no MPF/DB divergence.
 - [ ] Make split DB/MPF boundaries explicitly tested.
@@ -432,8 +441,11 @@ These are the main code-backed reasons for the no-go decision. They should be ke
 
 - [ ] Add consensus feature gates tied to the public fraud-proof coverage matrix.
   - Acceptance: every transaction feature admitted by public testnet consensus maps to a supported proof family; uncovered features such as script-bearing transactions, mint/burn, observers, redeemers, reference scripts, or withdrawal categories are rejected or explicitly disabled by config/manifest until their proof coverage is complete.
-- [ ] Bind public DA to committed headers or an L1-visible commitment.
-  - Acceptance: every public-testnet block header or state-queue append has a verifiable DA commitment covering full tx payloads, opened field preimages, proof bundle metadata, and transition/proof member counts.
+- [x] Define and expose the current node-produced DA payload shape.
+  - Evidence: `DaPayloadV1` includes header hash plus sorted UTxO, transaction, deposit, and withdrawal body entries; the node serves CBOR at `/da/payload` and metadata at `/da/payload/metadata`.
+- [ ] Bind public DA to committed headers, L1-visible attestations, and public retrieval guarantees.
+  - Acceptance: every public-testnet block header or state-queue append has a verifiable DA commitment or attestation covering full tx payloads, opened field preimages, proof bundle metadata, and transition/proof member counts.
+  - Acceptance: the public DA committee/storage layer validates the node-produced payload, signs or otherwise attests the exact header/payload relationship, and serves it independently of the producer node.
 - [ ] Define the public-testnet fraud-proof scope explicitly.
   - Acceptance: docs say exactly which proof families are supported on public testnet and which are not.
 - [ ] Complete the double-spend proof path end-to-end on preprod if it is the first public fraud-proof milestone.
@@ -443,8 +455,8 @@ These are the main code-backed reasons for the no-go decision. They should be ke
 - [ ] Define a versioned proof-bundle schema.
   - Acceptance: `ProofBundleV1` includes header hash, root role, root schema version, root, member count, canonical key/value CBOR, membership proof CBOR, optional non-membership/deletion proof, opened field preimages, source payload hash, and verifier ABI version.
 - [ ] Add public proof bundle APIs or artifact exports.
-- [ ] Publish proof-bundle retrieval APIs, not just `/block` and `/tx`.
-  - Acceptance: external challengers can fetch block proof bundles, tx root members, proof families, hashes, pagination, and retention guarantees through stable schemas.
+- [ ] Publish proof-bundle retrieval APIs beyond `/block`, `/tx`, and raw `DaPayloadV1`.
+  - Acceptance: external challengers can fetch block proof bundles, tx root members, membership witnesses, proof families, hashes, pagination, and retention guarantees through stable schemas.
 - [ ] Add watcher/challenger runbook.
   - Acceptance: an external party can detect an invalid block, fetch data, build the proof, submit transactions, and observe final resolution.
 - [ ] Add watcher/challenger daemon flow.
@@ -516,7 +528,9 @@ These are the main code-backed reasons for the no-go decision. They should be ke
 
 - [ ] Expand CI to run full workspace checks for public-testnet relevant packages.
   - Acceptance: `pnpm --dir demo install --frozen-lockfile`, builds, typechecks, and tests are run for core, SDK, lucid-midgard, validation, node, and fault proofs.
-- [ ] Align Aiken compiler versions across `aiken.toml`, CI, docs, and local scripts.
+- [x] Align Aiken compiler versions for the primary contract project, CI workflows, and real checked-in blueprint.
+  - Evidence: `onchain/aiken/aiken.toml`, `.github/workflows/aiken-ci.yml`, `.github/workflows/midgard-node-ci.yml`, and `demo/midgard-node/blueprints/real/plutus.json` all reflect Aiken `v1.1.21`.
+- [ ] Document and enforce local Aiken install/version checks and artifact rebuild checks outside CI.
 - [ ] Add a Docker compose smoke gate.
   - Acceptance: migration service exits successfully, node starts, `/healthz` and `/readyz` pass, and unsafe public ports are not exposed in public profile.
 - [ ] Add clean public-testnet e2e acceptance.

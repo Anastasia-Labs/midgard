@@ -2,7 +2,6 @@ import {
   type Assets,
   credentialToAddress,
   Data,
-  fromHex,
   LucidEvolution,
   scriptHashToCredential,
   toUnit,
@@ -20,7 +19,6 @@ import {
   LucidError,
   makeReturn,
   MidgardValidators,
-  OutputReference,
   POSIXTimeSchema,
   ProofSchema,
 } from "@/common.js";
@@ -35,7 +33,6 @@ import {
   CardanoDatumSchema,
   WithdrawalBody,
   WithdrawalEventSchema,
-  WithdrawalInfo,
   WithdrawalSignature,
   WithdrawalValiditySchema,
 } from "@/ledger-state.js";
@@ -50,6 +47,7 @@ import {
   resolveUserEventValidTo,
   selectWalletNonceInputProgram,
   UserEventBuildError,
+  userEventCborFieldsFromInlineDatum,
   UserEventExtraFields,
   UserEventFetchConfig,
   userEventWitnessScriptHash,
@@ -113,9 +111,8 @@ export const utxosToWithdrawalUTxOs = (
     utxos,
     nftPolicy,
     WithdrawalOrderDatum,
-    (datum) => ({
-      idCbor: Buffer.from(fromHex(Data.to(datum.event.id, OutputReference))),
-      infoCbor: Buffer.from(fromHex(Data.to(datum.event.info, WithdrawalInfo))),
+    (datum, utxo) => ({
+      ...userEventCborFieldsFromInlineDatum(utxo),
       inclusionTime: new Date(Number(datum.inclusion_time)),
     }),
   );
@@ -235,10 +232,7 @@ export const buildUnsignedWithdrawalTxWithMetadataProgram = (
       "withdrawal",
     );
     const withdrawalEventIdCbor = outputReferenceToPlutusDataCbor(nonceInput);
-    const nonceAssetName = yield* hashHexWithBlake2b(
-      withdrawalEventIdCbor,
-      32,
-    );
+    const nonceAssetName = yield* hashHexWithBlake2b(withdrawalEventIdCbor, 32);
     const withdrawalUnit = toUnit(
       contracts.withdrawal.policyId,
       nonceAssetName,
@@ -279,9 +273,8 @@ export const buildUnsignedWithdrawalTxWithMetadataProgram = (
       config.referenceScripts === undefined
         ? [hubOracleRefInput]
         : [hubOracleRefInput, config.referenceScripts.withdrawalMinting];
-    const witnessRegistrationRedeemer = encodeUserEventWitnessMintOrBurnRedeemer(
-      contracts.withdrawal.policyId,
-    );
+    const witnessRegistrationRedeemer =
+      encodeUserEventWitnessMintOrBurnRedeemer(contracts.withdrawal.policyId);
 
     const tx = yield* buildCompletedUserEventMintTxProgram({
       lucid,

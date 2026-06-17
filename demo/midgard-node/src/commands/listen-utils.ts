@@ -1,8 +1,4 @@
-import {
-  computeMidgardNativeTxId,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
-  encodeMidgardNativeTxCanonical,
-} from "@al-ft/midgard-core/codec";
+import { decodeMidgardSubmittedTxFromCanonicalCbor } from "@al-ft/midgard-validation";
 
 /**
  * Paths that require explicit admin-key authorization.
@@ -138,15 +134,15 @@ export const normalizeSubmitTxCanonicalCborToNative = (
 ): NormalizedSubmitTx => {
   const submittedTxCanonicalCbor = Buffer.from(txCanonicalCbor);
   try {
-    const nativeTx = decodeMidgardNativeTxFullFromCanonicalCbor(
+    const submittedTx = decodeMidgardSubmittedTxFromCanonicalCbor(
       submittedTxCanonicalCbor,
     );
-    const txId = computeMidgardNativeTxId(nativeTx);
+    const txId = submittedTx.ledgerTx.txId;
     return {
       ok: true,
       txId,
       txIdHex: txId.toString("hex"),
-      txCanonicalCbor: encodeMidgardNativeTxCanonical(nativeTx),
+      txCanonicalCbor: submittedTx.txCbor,
       source: "native",
     };
   } catch (nativeDecodeError) {

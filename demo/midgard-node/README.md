@@ -198,11 +198,18 @@ pnpm listen
 ## Key Entry Points
 
 - `pnpm listen`: build and start the HTTP server plus background fibers.
+- `node dist/index.js prepare-hub-oracle-one-shot-nonce`: create a fresh marked
+  operator-wallet UTxO and print the `HUB_ORACLE_ONE_SHOT_*` values needed for a
+  clean protocol deployment.
+- `node dist/index.js deploy-reference-script-node-runtime`: generate the
+  reference-script auth timelock policy, publish the node-runtime reference
+  scripts with role tokens, and write the deployment-info manifest.
 - `pnpm init`: initialize hub-oracle, state-queue, operator roots, and
   scheduler state.
 - `node dist/index.js export-contract-deployment-info --out <path>`: write a
-  JSON manifest describing the currently configured validator bundle and any
-  published reference-script UTxOs visible in the reference-script wallet.
+  JSON manifest describing the currently configured validator bundle,
+  generated reference-script auth policy, and any published reference-script
+  UTxOs visible at the configured reference-script deploy address.
 - `node dist/index.js submit-deposit`: build and submit an L1 deposit into the
   Midgard deposit contract for a target L2 address.
 - `pnpm submit:l2-transfer`: build and submit a Midgard-native user transfer.
@@ -334,8 +341,23 @@ The response includes:
 
 ## Export Contract Deployment Info
 
-Write a manifest of the currently configured validator bundle, keyed by explicit
-script names such as `depositMint` and `depositSpend`.
+Write a manifest of the currently configured validator bundle. Contract entries
+are keyed by explicit script names such as `depositMint` and `depositSpend`.
+
+For a new deployment, publish reference scripts first; this generates the
+reference-script auth policy used to parameterize DA attestation:
+
+```sh
+node dist/index.js prepare-hub-oracle-one-shot-nonce
+```
+
+Copy the printed `HUB_ORACLE_ONE_SHOT_TX_HASH` and
+`HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX` into the deployment environment before
+publishing reference scripts or running `init`.
+
+```sh
+node dist/index.js deploy-reference-script-node-runtime
+```
 
 ```sh
 cd midgard-node
@@ -348,16 +370,48 @@ Each entry has the shape:
 
 ```json
 {
-  "depositMint": {
-    "refScriptUTxO": null,
-    "contract": {
-      "type": "PlutusV3",
-      "cborHex": "..."
+  "referenceScriptAuthPolicy": {
+    "policyId": "...",
+    "nativeScript": {
+      "type": "Native",
+      "cborHex": "...",
+      "expiresAtSlot": 0,
+      "expiresAtUnixTime": 0,
+      "timelockDurationMs": 7200000
     },
-    "scriptHash": "..."
+    "tokenNames": {
+      "state-queue minting": "StateQueueMint"
+    },
+    "postTimelockAudit": {
+      "required": true,
+      "rule": "..."
+    }
+  },
+  "contracts": {
+    "depositMint": {
+      "refScriptUTxO": null,
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "..."
+      },
+      "scriptHash": "..."
+    }
   }
 }
 ```
+
+Reference scripts are currently published to `L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS`,
+which defaults to the separate reference-script wallet address
+`L1_REFERENCE_SCRIPT_ADDRESS` so stale test deployments can reclaim ADA. Before
+production, set `L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS` to the intended
+non-spendable reference-script address and deploy fresh reference scripts.
+
+Reference-script deployment creates a two-hour timelock native minting policy
+and mints one role token into each published reference-script UTxO. The policy
+metadata is written to `referenceScriptAuthPolicy` in the manifest. After the
+timelock expires, the deployment must be audited before production use: for
+every token name listed in `referenceScriptAuthPolicy.tokenNames`, exactly one
+token under `referenceScriptAuthPolicy.policyId` must exist.
 
 `init` now always writes the manifest. By default it goes to the repository root
 at `deploymentInfo/contract-deployment-info.json`. If you want to override that

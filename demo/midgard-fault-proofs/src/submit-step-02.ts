@@ -190,7 +190,8 @@ export const submitStep02 = async ({
   const threadToken = requireComputationThreadToken({
     utxo: threadUtxo,
     computationThreadPolicyId: contracts.computationThread.policyId,
-    doubleSpendCategoryId: doubleSpendCategory.categoryId,
+    categoryId: doubleSpendCategory.categoryId,
+    categoryLabel: "double-spend",
   });
   const inputDatum = requireStep02Datum({ threadUtxo, signer });
   const stateQueueHeaderHash = resolveFraudulentHeaderHash({

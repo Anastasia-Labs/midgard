@@ -1,10 +1,8 @@
 import {
-  buildDoubleSpendFaultProofContracts,
   FRAUD_PROOF_CATALOGUE_ASSET_NAME,
   FraudProofComputationThreadRedeemer,
   FraudProofComputationThreadStepDatum,
   HUB_ORACLE_ASSET_NAME,
-  parseFaultProofBlueprint,
   Proof,
   requireOwnMintPurpose,
   requireReferenceInputIndex,
@@ -21,11 +19,9 @@ import {
   scriptHashToCredential,
   toUnit,
 } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
 
 import {
   type ContractDeploymentInfo,
-  inspectContracts,
   parseContractDeploymentInfo,
 } from "./inspect-contracts.js";
 import {
@@ -40,8 +36,10 @@ import {
   readJsonFile,
   requireDeploymentScriptHash,
   requireSingletonUtxo,
+  resolveDoubleSpendDeploymentContracts,
   type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
+  resolveInvalidRangeDeploymentContracts,
   resolveProverSigner,
   type SubmitProviderConfig,
 } from "./runtime.js";
@@ -55,10 +53,13 @@ export type SubmitInitCliConfig = SubmitProviderConfig &
   ProverSignerConfig & {
     readonly blueprintPath: string;
     readonly deploymentInfoPath: string;
+    readonly fraudCategory?: SubmitInitFraudCategory;
     readonly fraudulentBlockOutRef: string;
     readonly fraudulentHeaderHash?: string;
     readonly awaitConfirmation?: boolean;
   };
+
+export type SubmitInitFraudCategory = "doubleSpend" | "invalidRange";
 
 export type SubmitInitResult = {
   readonly txHash: string;
@@ -73,6 +74,7 @@ export type SubmitInitResult = {
   readonly firstStepAddress: string;
   readonly firstStepOutputIndex: number;
   readonly fraudCategoryId: string;
+  readonly fraudCategoryName: SubmitInitFraudCategory;
   readonly fraudCategory: string;
   readonly fraudProofCatalogueRoot: string;
   readonly awaitedConfirmation: boolean;
@@ -87,6 +89,9 @@ const requireFraudProofCatalogue = (deploymentInfo: ContractDeploymentInfo) => {
   }
   return catalogue;
 };
+
+const fraudCategoryLabel = (category: SubmitInitFraudCategory): string =>
+  category === "doubleSpend" ? "double-spend" : "invalid-range";
 
 const encodePhasMembershipRedeemer = ({
   root,
@@ -121,6 +126,7 @@ export const submitInit = async ({
   deploymentInfo,
   network,
   signer,
+  fraudCategory = "doubleSpend",
   fraudulentBlockOutRef,
   fraudulentHeaderHash,
   awaitConfirmation = true,
@@ -130,26 +136,54 @@ export const submitInit = async ({
   readonly deploymentInfo: unknown;
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
+  readonly fraudCategory?: SubmitInitFraudCategory;
   readonly fraudulentBlockOutRef: string;
   readonly fraudulentHeaderHash?: string;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitInitResult> => {
   const parsedDeploymentInfo = parseContractDeploymentInfo(deploymentInfo);
-  const inspection = await Effect.runPromise(
-    inspectContracts({ blueprint, deploymentInfo, network }),
-  );
-  if (!inspection.fraudProofCatalogue.initReady) {
-    throw new Error(
-      "Fraud-proof catalogue is not ready for double-spend Init; run inspect-contracts and redeploy/export deployment info with the real double-spend first step.",
-    );
-  }
-
   const catalogue = requireFraudProofCatalogue(parsedDeploymentInfo);
-  const doubleSpendCategory = catalogue.categories.doubleSpend;
-  const stateQueuePolicyId = requireDeploymentScriptHash(
-    parsedDeploymentInfo,
-    "stateQueueMint",
-  );
+  let category: (typeof catalogue.categories)[SubmitInitFraudCategory];
+  let stateQueuePolicyId: string;
+  let computationThreadPolicyId: string;
+  let computationThreadMintingScript: Script;
+  let firstStepAddress: string;
+  let firstStepHash: string;
+  if (fraudCategory === "doubleSpend") {
+    const resolvedDeployment = await resolveDoubleSpendDeploymentContracts({
+      blueprint,
+      deploymentInfo,
+      network,
+      requireStateQueueMint: true,
+    });
+    category = resolvedDeployment.doubleSpendCategory;
+    stateQueuePolicyId = resolvedDeployment.stateQueuePolicyId!;
+    computationThreadPolicyId =
+      resolvedDeployment.contracts.computationThread.policyId;
+    computationThreadMintingScript =
+      resolvedDeployment.contracts.computationThread.mintingScript;
+    firstStepAddress =
+      resolvedDeployment.contracts.doubleSpend.firstStep.spendingScriptAddress;
+    firstStepHash =
+      resolvedDeployment.contracts.doubleSpend.firstStep.spendingScriptHash;
+  } else {
+    const resolvedDeployment = await resolveInvalidRangeDeploymentContracts({
+      blueprint,
+      deploymentInfo,
+      network,
+      requireStateQueueMint: true,
+    });
+    category = resolvedDeployment.invalidRangeCategory;
+    stateQueuePolicyId = resolvedDeployment.stateQueuePolicyId!;
+    computationThreadPolicyId =
+      resolvedDeployment.contracts.computationThread.policyId;
+    computationThreadMintingScript =
+      resolvedDeployment.contracts.computationThread.mintingScript;
+    firstStepAddress =
+      resolvedDeployment.contracts.invalidRange.firstStep.spendingScriptAddress;
+    firstStepHash =
+      resolvedDeployment.contracts.invalidRange.firstStep.spendingScriptHash;
+  }
   const fraudProofCataloguePolicyId = requireDeploymentScriptHash(
     parsedDeploymentInfo,
     "fraudProofCatalogueMint",
@@ -162,15 +196,11 @@ export const submitInit = async ({
     parsedDeploymentInfo,
     "hubOracleMint",
   );
-
-  const contracts = await Effect.runPromise(
-    buildDoubleSpendFaultProofContracts({
-      blueprint: parseFaultProofBlueprint(blueprint),
-      network,
-      hubOraclePolicyId,
-      fraudProofCataloguePolicyId,
-    }),
-  );
+  if (firstStepHash !== category.scriptHash) {
+    throw new Error(
+      `${fraudCategoryLabel(fraudCategory)} first-step script hash mismatch: catalogue=${category.scriptHash}, derived=${firstStepHash}.`,
+    );
+  }
   const parsedFraudulentBlockOutRef = parseOutRef(
     fraudulentBlockOutRef,
     "--fraudulent-block-out-ref",
@@ -210,9 +240,9 @@ export const submitInit = async ({
     fraudulentBlockUtxo,
     configuredHeaderHash: fraudulentHeaderHash,
   });
-  const computationThreadAssetName = `${doubleSpendCategory.categoryId}${resolvedHeaderHash}`;
+  const computationThreadAssetName = `${category.categoryId}${resolvedHeaderHash}`;
   const computationThreadUnit = toUnit(
-    contracts.computationThread.policyId,
+    computationThreadPolicyId,
     computationThreadAssetName,
   );
   const referenceInputs = [catalogueUtxo, hubOracleUtxo, fraudulentBlockUtxo];
@@ -232,7 +262,7 @@ export const submitInit = async ({
     FraudProofComputationThreadStepDatum,
   );
   const firstStepOutputMatches = computationThreadOutputPredicate({
-    address: contracts.doubleSpend.firstStep.spendingScriptAddress,
+    address: firstStepAddress,
     datum: firstStepDatum,
     unit: computationThreadUnit,
   });
@@ -240,44 +270,44 @@ export const submitInit = async ({
   const computationThreadMintRedeemer = ((ctx) => {
     requireOwnMintPurpose(
       ctx,
-      contracts.computationThread.policyId,
-      "double-spend init computation-thread mint",
+      computationThreadPolicyId,
+      `${fraudCategoryLabel(fraudCategory)} init computation-thread mint`,
     );
     const outputIndex = requireUniqueOutputIndex(
       ctx.outputs,
       firstStepOutputMatches,
-      "double-spend init first step",
+      `${fraudCategoryLabel(fraudCategory)} init first step`,
     );
     firstStepOutputIndex = outputIndex;
     return Data.to(
       {
         Init: {
           first_step_output_index: outputIndex,
-          fraud_category_id: doubleSpendCategory.categoryId,
-          fraud_category: inspection.doubleSpend.categoryFirstStepHash,
+          fraud_category_id: category.categoryId,
+          fraud_category: firstStepHash,
           fraud_category_membership_proof: Data.from(
-            doubleSpendCategory.membershipProofCbor,
+            category.membershipProofCbor,
             Proof,
           ),
           fraud_proof_catalogue_ref_input_index: requireReferenceInputIndex(
             ctx,
             catalogueUtxo,
-            "double-spend init fraud-proof catalogue",
+            `${fraudCategoryLabel(fraudCategory)} init fraud-proof catalogue`,
           ),
           inclusion_proof_script_redeemer_index: requireWithdrawalRedeemerIndex(
-            ctx,
-            phasRewardAddress,
-            "double-spend init PHAS membership",
-          ),
+              ctx,
+              phasRewardAddress,
+              `${fraudCategoryLabel(fraudCategory)} init PHAS membership`,
+            ),
           hub_oracle_ref_input_index: requireReferenceInputIndex(
             ctx,
             hubOracleUtxo,
-            "double-spend init hub oracle",
+            `${fraudCategoryLabel(fraudCategory)} init hub oracle`,
           ),
           fraudulent_block_ref_input_index: requireReferenceInputIndex(
             ctx,
             fraudulentBlockUtxo,
-            "double-spend init fraudulent block",
+            `${fraudCategoryLabel(fraudCategory)} init fraudulent block`,
           ),
         },
       },
@@ -294,14 +324,14 @@ export const submitInit = async ({
       0n,
       encodePhasMembershipRedeemer({
         root: catalogue.root,
-        categoryId: doubleSpendCategory.categoryId,
-        categoryScriptHash: doubleSpendCategory.scriptHash,
-        membershipProofCbor: doubleSpendCategory.membershipProofCbor,
+        categoryId: category.categoryId,
+        categoryScriptHash: category.scriptHash,
+        membershipProofCbor: category.membershipProofCbor,
       }),
     )
     .mintAssets({ [computationThreadUnit]: 1n }, computationThreadMintRedeemer)
     .pay.ToContract(
-      contracts.doubleSpend.firstStep.spendingScriptAddress,
+      firstStepAddress,
       {
         kind: "inline",
         value: firstStepDatum,
@@ -309,7 +339,7 @@ export const submitInit = async ({
       { [computationThreadUnit]: 1n },
     )
     .addSignerKey(signer.paymentKeyHash)
-    .attach.MintingPolicy(contracts.computationThread.mintingScript)
+    .attach.MintingPolicy(computationThreadMintingScript)
     .attach.WithdrawalValidator(phasMembershipScript);
 
   const unsigned = await tx.complete({ localUPLCEval: true });
@@ -329,13 +359,14 @@ export const submitInit = async ({
     fraudProver: signer.paymentKeyHash,
     fraudulentBlockOutRef,
     fraudulentHeaderHash: resolvedHeaderHash,
-    computationThreadPolicyId: contracts.computationThread.policyId,
+    computationThreadPolicyId,
     computationThreadAssetName,
     computationThreadUnit,
-    firstStepAddress: contracts.doubleSpend.firstStep.spendingScriptAddress,
+    firstStepAddress,
     firstStepOutputIndex: Number(firstStepOutputIndex),
-    fraudCategoryId: doubleSpendCategory.categoryId,
-    fraudCategory: inspection.doubleSpend.categoryFirstStepHash,
+    fraudCategoryId: category.categoryId,
+    fraudCategoryName: fraudCategory,
+    fraudCategory: firstStepHash,
     fraudProofCatalogueRoot: catalogue.root,
     awaitedConfirmation: awaitConfirmation,
   };
@@ -356,6 +387,7 @@ export const submitInitFromFiles = async (
     deploymentInfo,
     network: config.network,
     signer,
+    fraudCategory: config.fraudCategory,
     fraudulentBlockOutRef: config.fraudulentBlockOutRef,
     fraudulentHeaderHash: config.fraudulentHeaderHash,
     awaitConfirmation: config.awaitConfirmation,

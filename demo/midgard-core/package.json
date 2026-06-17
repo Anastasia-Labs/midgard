@@ -118,7 +118,7 @@
   "author": "Anastasia Labs",
   "license": "ISC",
   "dependencies": {
-    "@lucid-evolution/lucid": "0.5.2",
+    "@lucid-evolution/lucid": "0.5.5",
     "@noble/hashes": "^2.0.1",
     "cborg": "^4.5.8"
   },

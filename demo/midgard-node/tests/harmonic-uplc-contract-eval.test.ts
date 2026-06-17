@@ -78,6 +78,7 @@ const loadRealContracts = () =>
         "Preprod",
         placeholderContracts,
         oneShotOutRef,
+        { referenceScriptAuth: placeholderContracts.referenceScriptAuth },
       );
     }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
   );

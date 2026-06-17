@@ -1,0 +1,234 @@
+import { computeHash32 } from "@al-ft/midgard-core/codec";
+import { Effect } from "effect";
+import { describe, expect, it } from "vitest";
+
+import { LedgerColumns, RejectCodes, runPhaseAValidation } from "../src/index.js";
+import type { PhaseAValidatedTx, RejectCode, RejectedTx } from "../src/types.js";
+import {
+  EMPTY_CBOR_NULL,
+  encodeByteList,
+  encodeRecomputedNativeTx,
+  makeNativeTx,
+  makeOutput,
+  makeQueued,
+  nativeScriptWitness,
+  outRefFromByte,
+} from "./validation-fixtures.js";
+
+const phaseAConfig = {
+  expectedNetworkId: 0n,
+  minFeeA: 0n,
+  minFeeB: 0n,
+  concurrency: 1,
+  strictnessProfile: "phase-a-unit",
+};
+
+const runPhaseA = (
+  queued: Parameters<typeof runPhaseAValidation>[0],
+  config = phaseAConfig,
+) => Effect.runPromise(runPhaseAValidation(queued, config));
+
+const queuedNativeTx = (
+  fixture: Pick<ReturnType<typeof makeNativeTx>, "txId" | "txCbor">,
+) => makeQueued(fixture.txId, fixture.txCbor);
+
+const expectSinglePhaseAAcceptance = async (
+  fixture: Pick<ReturnType<typeof makeNativeTx>, "txId" | "txCbor">,
+): Promise<PhaseAValidatedTx> => {
+  const result = await runPhaseA([queuedNativeTx(fixture)]);
+  expect(result.rejected).toHaveLength(0);
+  expect(result.accepted).toHaveLength(1);
+  return result.accepted[0];
+};
+
+const expectSinglePhaseARejection = async (
+  fixture: Pick<ReturnType<typeof makeNativeTx>, "txId" | "txCbor">,
+  expectedCode: RejectCode,
+  config = phaseAConfig,
+): Promise<RejectedTx> => {
+  const result = await runPhaseA([queuedNativeTx(fixture)], config);
+  expect(result.accepted).toHaveLength(0);
+  expect(result.rejected).toHaveLength(1);
+  expect(result.rejected[0].code).toBe(expectedCode);
+  return result.rejected[0];
+};
+
+describe("phase A validation", () => {
+  it("accepts canonical native transactions", async () => {
+    const fixture = makeNativeTx();
+
+    const accepted = await expectSinglePhaseAAcceptance(fixture);
+
+    expect(accepted.ledgerTx.txId.equals(fixture.txId)).toBe(true);
+    expect(accepted.submission.txCbor.equals(fixture.txCbor)).toBe(true);
+  });
+
+  it("materializes Phase B candidate metadata from accepted native transaction CBOR", async () => {
+    const spent = outRefFromByte(0x01);
+    const referenceInput = outRefFromByte(0x02, 1n);
+    const output = makeOutput(8n);
+    const fixture = makeNativeTx({
+      spendInputs: [spent],
+      referenceInputs: [referenceInput],
+      outputs: [output],
+      fee: 2n,
+      validityIntervalStart: 10n,
+      validityIntervalEnd: 20n,
+      networkId: 0n,
+    });
+
+    const accepted = await expectSinglePhaseAAcceptance(fixture);
+
+    expect(accepted.graph.spentOutRefHexes).toEqual([spent.toString("hex")]);
+    expect(accepted.graph.referenceOutRefHexes).toEqual([
+      referenceInput.toString("hex"),
+    ]);
+    expect(accepted.ledgerTx.fee).toBe(2n);
+    expect(accepted.derived.outputSum.lovelace).toBe(8n);
+    expect(
+      accepted.graph.produced.map((entry) =>
+        entry[LedgerColumns.OUTPUT].toString("hex"),
+      ),
+    ).toEqual([output.toString("hex")]);
+  });
+
+  it("rejects malformed canonical CBOR before admission", async () => {
+    const result = await runPhaseA([
+      makeQueued(Buffer.alloc(32, 0xaa), Buffer.from("80", "hex")),
+    ]);
+
+    expect(result.accepted).toHaveLength(0);
+    expect(result.rejected).toHaveLength(1);
+    expect(result.rejected[0].code).toBe(RejectCodes.CborDeserialization);
+  });
+
+  it("rejects queue/native transaction id mismatches", async () => {
+    const fixture = makeNativeTx();
+    const result = await runPhaseA([
+      makeQueued(Buffer.alloc(32, 0xbb), fixture.txCbor),
+    ]);
+
+    expect(result.accepted).toHaveLength(0);
+    expect(result.rejected).toHaveLength(1);
+    expect(result.rejected[0].code).toBe(RejectCodes.TxHashMismatch);
+  });
+
+  it("rejects native validity values other than TxIsValid", async () => {
+    const fixture = makeNativeTx({ validity: "InvalidSignature" });
+    await expectSinglePhaseARejection(
+      fixture,
+      RejectCodes.IsValidFalseForbidden,
+    );
+  });
+
+  it("rejects non-empty auxiliary data hashes", async () => {
+    const fixture = makeNativeTx({
+      auxiliaryDataHash: computeHash32(Buffer.from("auxiliary-data")),
+    });
+    await expectSinglePhaseARejection(fixture, RejectCodes.AuxDataForbidden);
+  });
+
+  it("rejects explicit Cardano network ids that do not match configuration", async () => {
+    const fixture = makeNativeTx({ networkId: 1n });
+    await expectSinglePhaseARejection(fixture, RejectCodes.NetworkIdMismatch);
+  });
+
+  it("rejects transactions below the configured minimum fee", async () => {
+    const fixture = makeNativeTx({ fee: 0n });
+    await expectSinglePhaseARejection(fixture, RejectCodes.MinFee, {
+      ...phaseAConfig,
+      minFeeB: 1n,
+    });
+  });
+
+  it("rejects empty native spend inputs", async () => {
+    const fixture = makeNativeTx({ spendInputs: [] });
+    await expectSinglePhaseARejection(fixture, RejectCodes.EmptyInputs);
+  });
+
+  it("rejects duplicate spend inputs and spend/reference overlap", async () => {
+    const duplicated = outRefFromByte(0x03);
+    const duplicateSpend = makeNativeTx({
+      spendInputs: [duplicated, duplicated],
+    });
+    const overlappingReference = makeNativeTx({
+      spendInputs: [duplicated],
+      referenceInputs: [duplicated],
+    });
+
+    const result = await runPhaseA([
+      makeQueued(duplicateSpend.txId, duplicateSpend.txCbor),
+      makeQueued(overlappingReference.txId, overlappingReference.txCbor),
+    ]);
+
+    expect(result.accepted).toHaveLength(0);
+    expect(result.rejected.map((rejection) => rejection.code)).toEqual([
+      RejectCodes.DuplicateInputInTx,
+      RejectCodes.DuplicateInputInTx,
+    ]);
+  });
+
+  it("rejects malformed native output bytes", async () => {
+    const fixture = makeNativeTx({ outputs: [Buffer.from("ff", "hex")] });
+    await expectSinglePhaseARejection(fixture, RejectCodes.InvalidOutput);
+  });
+
+  it("rejects invalid validity interval bounds", async () => {
+    const fixture = makeNativeTx({
+      validityIntervalStart: 20n,
+      validityIntervalEnd: 10n,
+    });
+    await expectSinglePhaseARejection(
+      fixture,
+      RejectCodes.InvalidValidityIntervalFormat,
+    );
+  });
+
+  it("rejects malformed required signer preimages", async () => {
+    const fixture = makeNativeTx({
+      requiredSignerItems: [Buffer.alloc(27, 0x04)],
+    });
+    await expectSinglePhaseARejection(fixture, RejectCodes.InvalidFieldType);
+  });
+
+  it("rejects missing required native key witnesses", async () => {
+    const fixture = makeNativeTx({
+      requiredSignerItems: [Buffer.alloc(28, 0x05)],
+    });
+    await expectSinglePhaseARejection(
+      fixture,
+      RejectCodes.MissingRequiredWitness,
+    );
+  });
+
+  it("rejects invalid native key witness signatures", async () => {
+    const fixture = makeNativeTx({ invalidVkeyWitness: true });
+    await expectSinglePhaseARejection(fixture, RejectCodes.InvalidSignature);
+  });
+
+  it("rejects native script witnesses that fail their signer policy", async () => {
+    const fixture = makeNativeTx({
+      scriptWitnesses: [
+        nativeScriptWitness({
+          type: "sig",
+          keyHash: Buffer.alloc(28, 0x06),
+        }),
+      ],
+    });
+    await expectSinglePhaseARejection(fixture, RejectCodes.NativeScriptInvalid);
+  });
+
+  it("rejects malformed redeemer witness preimages as invalid field data", async () => {
+    const base = makeNativeTx();
+    const fixture = encodeRecomputedNativeTx({
+      ...base.tx,
+      witnessSet: {
+        ...base.tx.witnessSet,
+        redeemerTxWitsPreimageCbor: encodeByteList([
+          Buffer.from(EMPTY_CBOR_NULL),
+        ]),
+      },
+    });
+    await expectSinglePhaseARejection(fixture, RejectCodes.InvalidFieldType);
+  });
+});

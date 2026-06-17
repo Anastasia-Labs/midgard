@@ -13,7 +13,7 @@ import {
   encodeMidgardNativeTxCanonical,
 } from "@al-ft/midgard-core/codec";
 import {
-  PhaseAAccepted,
+  PhaseAValidatedTx,
   QueuedTx,
   runPhaseAValidation,
   runPhaseBValidationWithPatch,
@@ -260,7 +260,7 @@ const runPhaseA = (queued: readonly QueuedTx[]) =>
   Effect.runPromise(runPhaseAValidation(queued, phaseAConfig));
 
 const runPhaseB = async (
-  accepted: readonly PhaseAAccepted[],
+  accepted: readonly PhaseAValidatedTx[],
   preState: readonly LedgerUtils.Entry[],
 ) => {
   const { accepted: phaseBAccepted, rejected } = await Effect.runPromise(

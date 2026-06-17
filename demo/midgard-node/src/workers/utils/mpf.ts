@@ -1,11 +1,9 @@
 import { Proof, Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { encodeMidgardTxOutput } from "@al-ft/lucid-midgard";
-import {
-  decodeMidgardNativeTxFullFromCanonicalCbor,
-  encodeMidgardNativeTxCompact,
-} from "@al-ft/midgard-core/codec";
+import { encodeMidgardNativeTxCompact } from "@al-ft/midgard-core/codec";
 import { normalizeHex } from "@al-ft/midgard-core/hex";
 import * as SDK from "@al-ft/midgard-sdk";
+import { decodeMidgardTxCommitmentsFromCanonicalCbor } from "@al-ft/midgard-validation";
 import { SqlClient } from "@effect/sql";
 import type { UTxO } from "@lucid-evolution/lucid";
 import { CML } from "@lucid-evolution/lucid";
@@ -45,6 +43,8 @@ const MPF_INTERNAL_NULL_ROOT_HEX = "00".repeat(32);
 export type MpfBatchOp =
   | { readonly type: "insert"; readonly key: Buffer; readonly value: Buffer }
   | { readonly type: "delete"; readonly key: Buffer };
+
+type MpfInsertBatchOp = Extract<MpfBatchOp, { readonly type: "insert" }>;
 
 type MpfStoredValue = string | Record<string, unknown>;
 
@@ -99,7 +99,8 @@ const applyPendingBatch = (
 
 const encodeTransactionRootValue = (txCanonicalCbor: Buffer): Buffer =>
   encodeMidgardNativeTxCompact(
-    decodeMidgardNativeTxFullFromCanonicalCbor(txCanonicalCbor).compact,
+    decodeMidgardTxCommitmentsFromCanonicalCbor(txCanonicalCbor)
+      .transactionCompact,
   );
 
 export const COMMIT_REJECT_CODE_DECODE_FAILED = "E_COMMIT_CBOR_DESERIALIZATION";
@@ -163,8 +164,8 @@ export const resolveTxDeltaForCommit = (
 
 export const makeMpfs: Effect.Effect<
   { ledgerMpf: MidgardMpf; transactionsMpf: MidgardMpf },
-  MpfError,
-  NodeConfig
+  DatabaseError | MpfError,
+  Database | NodeConfig
 > = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
   const transactionsMpf = yield* MidgardMpf.create(
@@ -180,13 +181,27 @@ export const makeMpfs: Effect.Effect<
     yield* Effect.logInfo(
       "🔹 No previous ledger MPF root found - inserting genesis utxos",
     );
-    const ops: MpfBatchOp[] = yield* Effect.forEach(
+    const genesisEntries = yield* Effect.forEach(
       nodeConfig.GENESIS_UTXOS,
       (u: UTxO) =>
         utxoToInsertBatchOp(u).pipe(
           Effect.mapError((e) => MpfError.rootBuild("ledger genesis", e)),
+          Effect.map((op) => ({
+            op,
+            ledgerEntry: {
+              [MempoolLedgerDB.Columns.TX_ID]: Buffer.from(u.txHash, "hex"),
+              [MempoolLedgerDB.Columns.OUTREF]: op.key,
+              [MempoolLedgerDB.Columns.OUTPUT]: op.value,
+              [MempoolLedgerDB.Columns.ADDRESS]: u.address,
+              [MempoolLedgerDB.Columns.SOURCE_EVENT_ID]: null,
+            } satisfies MempoolLedgerDB.EntryNoTimeStamp,
+          })),
         ),
     );
+    yield* MempoolLedgerDB.insert(
+      genesisEntries.map(({ ledgerEntry }) => ledgerEntry),
+    );
+    const ops = genesisEntries.map(({ op }) => op);
     yield* ledgerMpf.applyBatch(ops);
     const rootAfterGenesis = yield* ledgerMpf.rootHex();
     yield* Effect.logInfo(
@@ -201,7 +216,7 @@ export const makeMpfs: Effect.Effect<
 
 export const utxoToInsertBatchOp = (
   utxo: UTxO,
-): Effect.Effect<MpfBatchOp, SDK.CmlDeserializationError> =>
+): Effect.Effect<MpfInsertBatchOp, SDK.CmlDeserializationError> =>
   Effect.gen(function* () {
     const input = yield* Effect.try({
       try: () =>

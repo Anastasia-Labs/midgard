@@ -3,6 +3,7 @@
  * This module owns the database and MPF transitions that happen after a
  * commit transaction is submitted, recovered, deferred, or finalized locally.
  */
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { fromHex } from "@lucid-evolution/lucid";
@@ -10,6 +11,7 @@ import { Effect, Option, Schedule } from "effect";
 
 import {
   BlocksDB,
+  DaPayloadsDB,
   DepositsDB,
   ImmutableDB,
   MempoolDB,
@@ -25,10 +27,10 @@ import {
   sqlErrorToDatabaseError,
 } from "@/database/utils/common.js";
 import { Columns as TxColumns } from "@/database/utils/tx.js";
-import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { type Database, Lucid } from "@/services/index.js";
 import type { TxSubmitError } from "@/transactions/utils.js";
 import { batchProgram } from "@/utils.js";
+import { buildDaPayloadInsert } from "@/workers/commit-block-header/da-payload.js";
 import type {
   WorkerInput,
   WorkerOutput,
@@ -137,6 +139,7 @@ export const finalizeCommittedBlockLocally = (
   options: {
     readonly processedMempoolTxsOverride?: readonly TxTable.EntryWithTimeStamp[];
     readonly useAmbientProcessedMempool?: boolean;
+    readonly daPayloadRecord?: PendingBlockFinalizationsDB.Record;
   } = {},
 ): Effect.Effect<void, DatabaseError | MpfError, Database> =>
   Effect.gen(function* () {
@@ -245,6 +248,14 @@ export const finalizeCommittedBlockLocally = (
           yield* applyFinalizedWithdrawalLedgerEffects(
             includedWithdrawalEventIds,
           );
+          if (options.daPayloadRecord !== undefined) {
+            const utxos = yield* MempoolLedgerDB.retrieve;
+            const daPayload = yield* buildDaPayloadInsert({
+              record: options.daPayloadRecord,
+              utxos,
+            });
+            yield* DaPayloadsDB.upsertAvailable(daPayload);
+          }
         }),
       )
       .pipe(
@@ -353,6 +364,7 @@ export const successfulLocalFinalizationRecoveryProgram = (
           {
             processedMempoolTxsOverride: journalProcessedMempoolTxs,
             useAmbientProcessedMempool: false,
+            daPayloadRecord: record,
           },
         );
         yield* WithdrawalsDB.markFinalizedByEventIds(

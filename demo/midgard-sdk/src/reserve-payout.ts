@@ -1,4 +1,8 @@
-import * as SDK from "@/reserve-payout/primitives.js";
+import { outRefLabel } from "@al-ft/midgard-core/out-ref";
+import {
+  aikenSerialisedPlutusDataCbor,
+  canonicalPlutusDataCbor,
+} from "@al-ft/midgard-core/plutus-data-cbor";
 import {
   type Assets,
   type BuildTxWithRedeemer,
@@ -9,10 +13,10 @@ import {
   type Network,
   type OutputDatum,
   type Script,
-  type TxOutput,
   scriptHashToCredential,
   toUnit,
   type TxBuilder,
+  type TxOutput,
   type UTxO,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -49,6 +53,7 @@ import {
   type RefundWithdrawalLayout,
   settlementDatumFromInput,
 } from "@/reserve-payout/layout.js";
+import * as SDK from "@/reserve-payout/primitives.js";
 import {
   attachIfMissing,
   mergeReferenceScripts,
@@ -68,24 +73,19 @@ import {
   requireUniqueOutputIndex,
   requireWithdrawalRedeemerIndex,
 } from "@/tx-context-redeemer.js";
-import { outRefLabel } from "@al-ft/midgard-core/out-ref";
-import {
-  aikenSerialisedPlutusDataCbor,
-  canonicalPlutusDataCbor,
-} from "@al-ft/midgard-core/plutus-data-cbor";
 
 export {
   addAssets,
-  assetsToValue,
   assetsEqual,
+  assetsToValue,
   removeAssetUnit,
   subtractAssets,
   valueToAssets,
 } from "@/reserve-payout/assets.js";
 export type { BuiltReservePayoutTx } from "@/reserve-payout/completion.js";
 export { ReservePayoutTxError } from "@/reserve-payout/errors.js";
-export { mergeReferenceScripts } from "@/reserve-payout/references.js";
 export type { ReservePayoutReferenceScripts } from "@/reserve-payout/references.js";
+export { mergeReferenceScripts } from "@/reserve-payout/references.js";
 
 export type MembershipProofWithdrawalWitness = {
   readonly script: Script;
@@ -1456,8 +1456,10 @@ export const buildRefundInvalidWithdrawalTxProgram = (
     };
     const membershipRedeemer = encodeMembershipProofWithdrawalRedeemer(
       settlementDatum.withdrawals_root,
-      Data.to(config.withdrawal.datum.event.id, SDK.OutputReference),
-      Data.to(overriddenWithdrawalInfo, SDK.WithdrawalInfo),
+      config.withdrawal.idCbor.toString("hex"),
+      aikenSerialisedPlutusDataCbor(
+        Data.to(overriddenWithdrawalInfo, SDK.WithdrawalInfo),
+      ),
       config.membershipProof,
     );
     const witnessRedeemer = SDK.encodeUserEventWitnessMintOrBurnRedeemer(

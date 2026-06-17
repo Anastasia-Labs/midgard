@@ -157,6 +157,7 @@ export const submitWithdrawalCommandProgram = ({
       lucidService.api,
       lucidService.referenceScriptsAddress,
       referenceScriptTargetsByCommand(contracts).withdrawal,
+      contracts.referenceScriptAuth,
     ).pipe(
       Effect.map((resolved) => ({
         withdrawalMinting: referenceScriptByName(

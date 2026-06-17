@@ -1,7 +1,4 @@
-import {
-  computeMidgardNativeTxId,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
-} from "@al-ft/midgard-core/codec";
+import { computeMidgardTxIdFromCanonicalCbor } from "@al-ft/midgard-validation";
 import { Effect } from "effect";
 
 import { BlocksDB, ImmutableDB, TxUtils } from "@/database/index.js";
@@ -120,9 +117,8 @@ export const auditBlocksImmutableProgram = (
         continue;
       }
       try {
-        const decoded = decodeMidgardNativeTxFullFromCanonicalCbor(txPayload);
         const computedTxIdHex =
-          computeMidgardNativeTxId(decoded).toString("hex");
+          computeMidgardTxIdFromCanonicalCbor(txPayload).toString("hex");
         if (computedTxIdHex !== txIdHex) {
           issues.push({
             kind: "TX_ID_MISMATCH",

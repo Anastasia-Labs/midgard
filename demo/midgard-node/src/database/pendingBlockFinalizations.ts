@@ -4,6 +4,7 @@ import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
 
 import * as DepositsDB from "@/database/deposits.js";
+import * as DaPayloadsDB from "@/database/daPayloads.js";
 import {
   clearTable,
   DatabaseError,
@@ -327,6 +328,52 @@ export const retrieveByHeaderHash = (
     sqlErrorToDatabaseError(
       tableName,
       "Failed to retrieve pending-finalization record by header hash",
+    ),
+  );
+
+export const retrieveFinalizedMissingDaPayloads = ({
+  headerHash,
+  limit = 100,
+}: {
+  readonly headerHash?: Buffer;
+  readonly limit?: number;
+} = {}): Effect.Effect<readonly Record[], DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const safeLimit = Math.max(1, Math.floor(limit));
+    const sql = yield* SqlClient.SqlClient;
+    const rows =
+      headerHash === undefined
+        ? yield* sql<Row>`SELECT ${sql(tableName)}.* FROM ${sql(tableName)}
+            LEFT JOIN ${sql(DaPayloadsDB.tableName)}
+              ON ${sql(DaPayloadsDB.tableName)}.${sql(
+                DaPayloadsDB.Columns.HEADER_HASH,
+              )} = ${sql(tableName)}.${sql(Columns.HEADER_HASH)}
+            WHERE ${sql(tableName)}.${sql(Columns.STATUS)} = ${Status.Finalized}
+              AND ${sql(DaPayloadsDB.tableName)}.${sql(
+                DaPayloadsDB.Columns.HEADER_HASH,
+              )} IS NULL
+            ORDER BY ${sql(tableName)}.${sql(Columns.CREATED_AT)} ASC
+            LIMIT ${safeLimit}`
+        : yield* sql<Row>`SELECT ${sql(tableName)}.* FROM ${sql(tableName)}
+            LEFT JOIN ${sql(DaPayloadsDB.tableName)}
+              ON ${sql(DaPayloadsDB.tableName)}.${sql(
+                DaPayloadsDB.Columns.HEADER_HASH,
+              )} = ${sql(tableName)}.${sql(Columns.HEADER_HASH)}
+            WHERE ${sql(tableName)}.${sql(Columns.STATUS)} = ${Status.Finalized}
+              AND ${sql(DaPayloadsDB.tableName)}.${sql(
+                DaPayloadsDB.Columns.HEADER_HASH,
+              )} IS NULL
+              AND ${sql(tableName)}.${sql(Columns.HEADER_HASH)} = ${headerHash}
+            ORDER BY ${sql(tableName)}.${sql(Columns.CREATED_AT)} ASC
+            LIMIT ${safeLimit}`;
+    return yield* Effect.forEach(rows, (row) => retrieveRecord(sql, row), {
+      concurrency: 1,
+    });
+  }).pipe(
+    Effect.withLogSpan(`retrieveFinalizedMissingDaPayloads ${tableName}`),
+    sqlErrorToDatabaseError(
+      tableName,
+      "Failed to retrieve finalized journals missing DA payloads",
     ),
   );
 

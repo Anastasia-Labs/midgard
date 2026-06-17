@@ -176,7 +176,8 @@ export const submitStep03 = async ({
   const threadToken = requireComputationThreadToken({
     utxo: threadUtxo,
     computationThreadPolicyId: contracts.computationThread.policyId,
-    doubleSpendCategoryId: doubleSpendCategory.categoryId,
+    categoryId: doubleSpendCategory.categoryId,
+    categoryLabel: "double-spend",
   });
   const inputDatum = requireStep03Datum({ threadUtxo, signer });
   const tx1SpendInputsHash = hashSpendInputCbors(tx1SpendInputCbors);

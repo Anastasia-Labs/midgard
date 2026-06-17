@@ -19,7 +19,7 @@ services:
       - /bootstrap/bootstrap-kupmios-mithril.sh
     environment:
       NETWORK: ${NETWORK}
-      CARDANO_NODE_IMAGE_TAG: ${CARDANO_NODE_IMAGE_TAG:-10.6.2}
+      CARDANO_NODE_IMAGE_TAG: ${CARDANO_NODE_IMAGE_TAG:-11.0.1}
       MITHRIL_AGGREGATOR_ENDPOINT: ${MITHRIL_AGGREGATOR_ENDPOINT:-}
       MITHRIL_GENESIS_VERIFICATION_KEY_URL: ${MITHRIL_GENESIS_VERIFICATION_KEY_URL:-}
       MITHRIL_ANCILLARY_VERIFICATION_KEY_URL: ${MITHRIL_ANCILLARY_VERIFICATION_KEY_URL:-}
@@ -49,7 +49,7 @@ services:
       midgard_net:
 
   cardano-node:
-    image: ghcr.io/intersectmbo/cardano-node:${CARDANO_NODE_IMAGE_TAG:-10.6.2}
+    image: ghcr.io/intersectmbo/cardano-node:${CARDANO_NODE_IMAGE_TAG:-11.0.1}
     entrypoint:
       - /bin/sh
       - /bootstrap/run-cardano-node.sh

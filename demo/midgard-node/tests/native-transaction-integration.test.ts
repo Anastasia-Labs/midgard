@@ -22,6 +22,7 @@ import {
   ScriptLanguageTags,
 } from "@al-ft/midgard-core/codec";
 import {
+  plutusDataToCborHex,
   type QueuedTx,
   RejectCodes,
   runPhaseAValidation,
@@ -117,9 +118,7 @@ const PLUTUS_V3_CONTEXT_PROBE_SCRIPT_HEX = loadAlwaysSucceedsCompiledCode(
   "midgard.plutus_v3_context_probe.else",
 );
 
-const makeAlwaysSucceedsScript = (
-  compiledCode: string,
-): CML.Script =>
+const makeAlwaysSucceedsScript = (compiledCode: string): CML.Script =>
   CML.Script.new_plutus_v3(
     CML.PlutusV3Script.from_raw_bytes(Buffer.from(compiledCode, "hex")),
   );
@@ -181,9 +180,7 @@ const scriptWitnessItemToVersioned = (
   }
 };
 
-const makeTypedPlutusV3Witness = (
-  scriptHex: string,
-): CML.Script =>
+const makeTypedPlutusV3Witness = (scriptHex: string): CML.Script =>
   CML.Script.new_plutus_v3(
     CML.PlutusV3Script.from_raw_bytes(Buffer.from(scriptHex, "hex")),
   );
@@ -281,10 +278,7 @@ const makeMultiAssetValue = (
   return CML.Value.new(lovelace, multiasset);
 };
 
-const makeValueOutput = (
-  address: string,
-  value: CML.Value,
-): Buffer =>
+const makeValueOutput = (address: string, value: CML.Value): Buffer =>
   Buffer.from(
     makeMidgardTxOutput(
       CML.Address.from_bech32(address),
@@ -401,7 +395,7 @@ const makeLegacyRedeemersCbor = (
   );
 
 const makePlutusDataBytes = (value: unknown): Buffer =>
-  Buffer.from(Data.to(value as any), "hex");
+  Buffer.from(plutusDataToCborHex(value), "hex");
 
 const makeOutRefDataBytes = (outRef: Buffer): Buffer =>
   makePlutusDataBytes(txOutRefData(outRef.toString("hex")));
@@ -472,9 +466,7 @@ const makeMidgardV1ContextProbeRedeemer = (opts: {
     ]),
   );
 
-const makePlutusIntegerData = (
-  value: bigint,
-): CML.PlutusData =>
+const makePlutusIntegerData = (value: bigint): CML.PlutusData =>
   CML.PlutusData.new_integer(CML.BigInteger.from_str(value.toString(10)));
 
 const makeMintPreimage = (
@@ -871,13 +863,14 @@ describe("native transaction integration", () => {
     expect(result.rejected).toHaveLength(0);
     expect(result.accepted).toHaveLength(1);
     const accepted = result.accepted[0];
-    expect(accepted.txId.equals(txId)).toBe(true);
-    expect(accepted.processedTx.spent).toHaveLength(1);
-    expect(accepted.processedTx.spent[0].equals(inputOutRef)).toBe(true);
-    expect(accepted.processedTx.produced).toHaveLength(1);
-    expect(accepted.witnessKeyHashes).toStrictEqual([]);
-    expect(accepted.nativeScriptHashes).toStrictEqual([]);
-    expect(accepted.outputSum.coin()).toBe(3_000_000n);
+    expect(accepted.ledgerTx.txId.equals(txId)).toBe(true);
+    expect(accepted.graph.spentOutRefHexes).toStrictEqual([
+      inputOutRef.toString("hex"),
+    ]);
+    expect(accepted.graph.produced).toHaveLength(1);
+    expect(accepted.derived.witnessKeyHashHexes).toStrictEqual([]);
+    expect(accepted.derived.nativeScriptHashHexes).toStrictEqual([]);
+    expect(accepted.derived.outputSum.lovelace).toBe(3_000_000n);
   });
 
   it("accepts required signer when native witness signature is valid", async () => {
@@ -888,7 +881,7 @@ describe("native transaction integration", () => {
 
     expect(result.rejected).toHaveLength(0);
     expect(result.accepted).toHaveLength(1);
-    expect(result.accepted[0].witnessKeyHashes.length).toBe(1);
+    expect(result.accepted[0].derived.witnessKeyHashHexes.length).toBe(1);
   });
 
   it("accepts native txs when network id is omitted via sentinel", async () => {
@@ -975,8 +968,8 @@ describe("native transaction integration", () => {
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
-    expect(phaseA.accepted[0].requiresPlutusEvaluation).toBe(true);
-    expect(phaseA.accepted[0].plutusScriptHashes).toHaveLength(1);
+    expect(phaseA.accepted[0].derived.requiresScriptEvaluation).toBe(true);
+    expect(phaseA.accepted[0].derived.plutusScriptHashHexes).toHaveLength(1);
     expect(phaseB.accepted).toHaveLength(0);
     expect(phaseB.rejected).toHaveLength(1);
     expect(phaseB.rejected[0].code).toBe(RejectCodes.PlutusScriptInvalid);
@@ -1106,7 +1099,7 @@ describe("native transaction integration", () => {
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
-    expect(phaseA.accepted[0].requiredObserverHashes).toStrictEqual([
+    expect(phaseA.accepted[0].derived.requiredObserverHashHexes).toStrictEqual([
       observerScriptHash.toString("hex"),
     ]);
     expect(phaseB.rejected).toHaveLength(0);
@@ -1153,10 +1146,10 @@ describe("native transaction integration", () => {
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
-    expect(phaseA.accepted[0].requiredObserverHashes).toStrictEqual([
+    expect(phaseA.accepted[0].derived.requiredObserverHashHexes).toStrictEqual([
       scriptHash.toString("hex"),
     ]);
-    expect(phaseA.accepted[0].mintPolicyHashes).toStrictEqual([
+    expect(phaseA.accepted[0].derived.mintPolicyHashHexes).toStrictEqual([
       scriptHash.toString("hex"),
     ]);
     expect(phaseB.rejected).toHaveLength(0);
@@ -1423,11 +1416,14 @@ describe("native transaction integration", () => {
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
-    expect(phaseA.accepted[0].mintPolicyHashes).toStrictEqual([
+    expect(phaseA.accepted[0].derived.mintPolicyHashHexes).toStrictEqual([
       policyId.toString("hex"),
     ]);
-    expect(phaseA.accepted[0].mintedValue.has_multiassets()).toBe(true);
-    expect(phaseA.accepted[0].burnedValue.is_zero()).toBe(true);
+    expect(
+      phaseA.accepted[0].derived.mintDelta.assets
+        .get(policyId.toString("hex"))
+        ?.get(assetName.toString("hex")),
+    ).toBe(1n);
     expect(phaseB.rejected).toHaveLength(0);
     expect(phaseB.accepted).toHaveLength(1);
   });
@@ -1552,7 +1548,7 @@ describe("native transaction integration", () => {
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
-    expect(phaseA.accepted[0].mintPolicyHashes).toStrictEqual(
+    expect(phaseA.accepted[0].derived.mintPolicyHashHexes).toStrictEqual(
       [inlinePolicyId.toString("hex"), referencePolicyId.toString("hex")].sort(
         (a, b) => a.localeCompare(b),
       ),
@@ -1794,8 +1790,11 @@ describe("native transaction integration", () => {
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
-    expect(phaseA.accepted[0].mintedValue.is_zero()).toBe(true);
-    expect(phaseA.accepted[0].burnedValue.has_multiassets()).toBe(true);
+    expect(
+      phaseA.accepted[0].derived.mintDelta.assets
+        .get(policyId.toString("hex"))
+        ?.get(assetName.toString("hex")),
+    ).toBe(-1n);
     expect(phaseB.rejected).toHaveLength(0);
     expect(phaseB.accepted).toHaveLength(1);
   });
@@ -1830,7 +1829,7 @@ describe("native transaction integration", () => {
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
-    expect(phaseA.accepted[0].requiresPlutusEvaluation).toBe(true);
+    expect(phaseA.accepted[0].derived.requiresScriptEvaluation).toBe(true);
     expect(phaseB.accepted).toHaveLength(0);
     expect(phaseB.rejected).toHaveLength(1);
     expect(phaseB.rejected[0].code).toBe(RejectCodes.PlutusScriptInvalid);
@@ -1876,10 +1875,10 @@ describe("native transaction integration", () => {
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
-    expect(phaseA.accepted[0].mintPolicyHashes).toStrictEqual([
+    expect(phaseA.accepted[0].derived.mintPolicyHashHexes).toStrictEqual([
       policyId.toString("hex"),
     ]);
-    expect(phaseA.accepted[0].requiresPlutusEvaluation).toBe(true);
+    expect(phaseA.accepted[0].derived.requiresScriptEvaluation).toBe(true);
     expect(phaseB.accepted).toHaveLength(0);
     expect(phaseB.rejected).toHaveLength(1);
     expect(phaseB.rejected[0].code).toBe(RejectCodes.PlutusScriptInvalid);
@@ -2835,7 +2834,7 @@ describe("native transaction integration", () => {
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
-    expect(phaseA.accepted[0].requiresPlutusEvaluation).toBe(true);
+    expect(phaseA.accepted[0].derived.requiresScriptEvaluation).toBe(true);
     expect(phaseB.rejected).toHaveLength(0);
     expect(phaseB.accepted).toHaveLength(1);
   });
@@ -3149,7 +3148,7 @@ describe("native transaction integration", () => {
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
-    expect(phaseA.accepted[0].requiresPlutusEvaluation).toBe(true);
+    expect(phaseA.accepted[0].derived.requiresScriptEvaluation).toBe(true);
     expect(plutusV3Hash(MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX)).not.toBe(
       scriptHash,
     );

@@ -33,6 +33,8 @@ describe("fault-proof CLI argument parsing", () => {
       "ws://ogmios.test",
       "--wallet-seed-phrase-env",
       "PROVER_WALLET",
+      "--fraud-category",
+      "invalidRange",
       "--midgard-node-url",
       "http://midgard-node.test/",
       "--midgard-node-admin-key-env",
@@ -53,11 +55,67 @@ describe("fault-proof CLI argument parsing", () => {
       kupoUrl: "http://kupo.test",
       ogmiosUrl: "ws://ogmios.test",
       walletSeedPhraseEnv: "PROVER_WALLET",
+      fraudCategory: "invalidRange",
       midgardNodeUrl: "http://midgard-node.test/",
       midgardNodeAdminKeyEnv: "NODE_ADMIN_KEY",
       stateQueueLeaseTtlMs: 45000,
       awaitConfirmation: false,
     });
+  });
+
+  it("parses invalid-range prepare and init category arguments", () => {
+    const prepare = parseArgs([
+      "node",
+      "midgard-fault-proofs",
+      "prepare-invalid-range",
+      "--transactions-file",
+      "block-transactions.json",
+      "--header-hash",
+      "33".repeat(28),
+      "--block-valid-from",
+      "1000",
+      "--block-valid-to",
+      "2000",
+      "--tx-id",
+      "44".repeat(32),
+    ]);
+
+    expect(prepare).toMatchObject({
+      command: "prepare-invalid-range",
+      transactionsPath: "block-transactions.json",
+      headerHash: "33".repeat(28),
+      blockValidFrom: "1000",
+      blockValidTo: "2000",
+      txId: "44".repeat(32),
+    });
+
+    const init = parseArgs([
+      "node",
+      "midgard-fault-proofs",
+      "submit-init",
+      "--blueprint",
+      "plutus.json",
+      "--deployment-info",
+      "deployment.json",
+      "--fraudulent-block-out-ref",
+      `${"55".repeat(32)}#0`,
+      "--fraud-category",
+      "invalidRange",
+    ]);
+
+    expect(init.fraudCategory).toBe("invalidRange");
+  });
+
+  it("rejects unknown fault-proof categories", () => {
+    expect(() =>
+      parseArgs([
+        "node",
+        "midgard-fault-proofs",
+        "submit-init",
+        "--fraud-category",
+        "invalid-range",
+      ]),
+    ).toThrow('--fraud-category must be either "doubleSpend" or "invalidRange"');
   });
 
   it("passes a direct midgard node admin key through only for removal", () => {

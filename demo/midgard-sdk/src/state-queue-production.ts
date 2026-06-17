@@ -298,8 +298,8 @@ const deriveCommitLayoutFromRedeemerContext = ({
   schedulerRefInput,
   hubOracleRefInput,
   activeOperatorInput,
-  stateQueueAddress,
   stateQueuePolicyId,
+  stateQueueAddress,
   headerNodeUnit,
   headerNodeDatum,
   previousHeaderNodeDatum,
@@ -308,8 +308,8 @@ const deriveCommitLayoutFromRedeemerContext = ({
   readonly schedulerRefInput: UTxO;
   readonly hubOracleRefInput: UTxO;
   readonly activeOperatorInput: UTxO;
-  readonly stateQueueAddress: string;
   readonly stateQueuePolicyId: string;
+  readonly stateQueueAddress: string;
   readonly headerNodeUnit: string;
   readonly headerNodeDatum: string;
   readonly previousHeaderNodeDatum: string;
@@ -375,7 +375,7 @@ export type DeterministicCommitTxBuilderInput = {
   readonly updatedActiveOperatorDatumCbor: string;
   readonly commitMintAssets: Readonly<Record<string, bigint>>;
   readonly makeBaseCommitTx: (
-    stateQueueCommitRedeemer: BuildTxWithRedeemer,
+    stateQueueCommitSpendRedeemer: BuildTxWithRedeemer | string,
   ) => TxBuilder;
 };
 
@@ -588,7 +588,9 @@ export const buildProductionCommitBlockHeaderTxProgram = ({
         }),
     });
 
-    const makeBaseCommitTx = (stateQueueCommitRedeemer: BuildTxWithRedeemer) =>
+    const makeBaseCommitTx = (
+      stateQueueCommitRedeemer: BuildTxWithRedeemer | string,
+    ) =>
       lucid
         .newTx()
         .validTo(validTo)
@@ -994,8 +996,8 @@ export const buildProductionMergeToConfirmedStateTxProgram = ({
     ];
 
     const makeMergeTx = (
-      encodedStateQueueMergeRedeemer: BuildTxWithRedeemer,
-      encodedSettlementSpawnRedeemer: BuildTxWithRedeemer,
+      encodedStateQueueMergeRedeemer: BuildTxWithRedeemer | string,
+      encodedSettlementSpawnRedeemer: BuildTxWithRedeemer | string,
     ) =>
       lucid
         .newTx()
@@ -1020,8 +1022,8 @@ export const buildProductionMergeToConfirmedStateTxProgram = ({
         .mintAssets(settlementAssetsToMint, encodedSettlementSpawnRedeemer);
 
     const makeMergeTxWithScripts = (
-      encodedStateQueueMergeRedeemer: BuildTxWithRedeemer,
-      encodedSettlementSpawnRedeemer: BuildTxWithRedeemer,
+      encodedStateQueueMergeRedeemer: BuildTxWithRedeemer | string,
+      encodedSettlementSpawnRedeemer: BuildTxWithRedeemer | string,
     ) => {
       const tx = makeMergeTx(
         encodedStateQueueMergeRedeemer,

@@ -1,26 +1,22 @@
 import {
   computeScriptIntegrityHashForLanguages,
   decodeMidgardAddressBytes,
-  decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeMint,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeMidgardTxOutput,
-  decodeMidgardVersionedScriptListPreimage,
-  deriveMidgardNativeTxWitnessSetCompact,
   type MidgardNativeScript,
-  type MidgardNativeTxFull,
   type MidgardTxOutput,
-  midgardValueToCmlValue,
+  type MidgardValue,
   type ScriptLanguageName,
   verifyMidgardNativeScript,
 } from "@al-ft/midgard-core/codec";
-import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import { LedgerColumns, type LedgerEntry } from "./ledger.js";
+import type {
+  MidgardLedgerOutput,
+  MidgardLedgerTx,
+} from "./ledger-tx/types.js";
 import { evaluateScriptWithHarmonic } from "./local-script-eval.js";
 import {
-  decodeMidgardRedeemers,
   findRedeemerByPointer,
   MidgardRedeemerPointer,
   midgardRedeemerPointerKey,
@@ -31,7 +27,6 @@ import {
   buildMidgardV1ScriptContext,
   buildPlutusV3ScriptContext,
   ScriptContextView,
-  ScriptMintValue,
 } from "./script-context.js";
 import {
   ResolvedScriptSource,
@@ -41,19 +36,26 @@ import {
 } from "./script-source.js";
 import { sortTxOutRefHexes } from "./tx-out-ref.js";
 import {
-  PhaseAAccepted,
+  PhaseAValidatedTx,
   PhaseBConfig,
   PhaseBResult,
   RejectCodes,
   RejectedTx,
 } from "./types.js";
+import {
+  describeValueDelta,
+  isZeroValueDelta,
+  mintDeltaToScriptMintValue,
+  sumMidgardValues,
+  valuePreservationDelta,
+} from "./value-accounting.js";
 
 type UTxOState = Map<string, Buffer>;
 type PreState = readonly LedgerEntry[] | UTxOState;
 
 type CandidateNode = {
   readonly index: number;
-  readonly candidate: PhaseAAccepted;
+  readonly candidate: PhaseAValidatedTx;
   readonly spentOutRefs: Set<string>;
   readonly referenceOutRefs: Set<string>;
   readonly parents: Set<number>;
@@ -143,16 +145,6 @@ const reject = (
   detail,
 });
 
-const sumValues = (
-  values: readonly CML.Value[],
-): CML.Value => {
-  let sum = CML.Value.zero();
-  for (const value of values) {
-    sum = sum.checked_add(value);
-  }
-  return sum;
-};
-
 const hasIntersection = (left: Set<string>, right: Set<string>): boolean => {
   const smaller = left.size <= right.size ? left : right;
   const larger = left.size <= right.size ? right : left;
@@ -187,7 +179,7 @@ const decodeReferenceInputNativeScripts = (
       output = decodeMidgardTxOutput(referenceOutput);
     } catch (e) {
       return reject(
-        node.candidate.txId,
+        node.candidate.ledgerTx.txId,
         RejectCodes.InvalidOutput,
         `failed to decode reference input output ${referenceOutRefHex}: ${String(e)}`,
       );
@@ -219,33 +211,6 @@ const conflict = (left: CandidateNode, right: CandidateNode): boolean =>
   hasIntersection(left.spentOutRefs, right.referenceOutRefs) ||
   hasIntersection(right.spentOutRefs, left.referenceOutRefs);
 
-const mintValueData = (
-  decodedMint: ReturnType<typeof decodeMidgardNativeMint>,
-): ScriptMintValue => {
-  const result = new Map<string, Map<string, bigint>>();
-  if (decodedMint === undefined) {
-    return result;
-  }
-
-  const policyIds = decodedMint.mint.keys();
-  for (let i = 0; i < policyIds.len(); i += 1) {
-    const policyId = policyIds.get(i);
-    const assetQuantities = decodedMint.mint.get_assets(policyId)!;
-    const assets = assetQuantities.keys();
-    const assetMap = new Map<string, bigint>();
-    for (let j = 0; j < assets.len(); j += 1) {
-      const assetName = assets.get(j);
-      assetMap.set(
-        Buffer.from(assetName.to_raw_bytes()).toString("hex"),
-        assetQuantities.get(assetName)!,
-      );
-    }
-    result.set(policyId.to_hex(), assetMap);
-  }
-
-  return result;
-};
-
 type RequiredScriptExecution = {
   readonly purpose: MidgardScriptPurpose;
   readonly pointer: MidgardRedeemerPointer;
@@ -260,17 +225,25 @@ type LocalScriptValidationResult =
       readonly detail: string;
     };
 
+const ledgerOutputToTxOutput = (
+  output: MidgardLedgerOutput,
+): MidgardTxOutput => ({
+  address: output.address,
+  value: output.value,
+  ...(output.datum === undefined ? {} : { datum: output.datum }),
+  ...(output.scriptRef === undefined ? {} : { script_ref: output.scriptRef }),
+});
+
 const collectInlineScriptSources = (
-  nativeTx: MidgardNativeTxFull,
-): readonly ScriptSource[] => {
-  const scripts = decodeMidgardVersionedScriptListPreimage(
-    nativeTx.witnessSet.scriptTxWitsPreimageCbor,
-    "native.script_tx_wits",
+  ledgerTx: MidgardLedgerTx,
+): readonly ScriptSource[] =>
+  ledgerTx.scriptWitnesses.map((witness) =>
+    scriptSourceFromVersionedScript(
+      witness.script,
+      "inline",
+      `script_wit:${witness.index}`,
+    ),
   );
-  return scripts.map((script, index) =>
-    scriptSourceFromVersionedScript(script, "inline", `script_wit:${index}`),
-  );
-};
 
 const collectReferenceScriptSources = (
   node: CandidateNode,
@@ -324,7 +297,6 @@ const requiredScriptLanguages = (
 
 const discoverLocalScriptExecutions = (
   node: CandidateNode,
-  nativeTx: MidgardNativeTxFull,
   stateValue: (outRefHex: string) => Buffer | undefined,
   sources: readonly ScriptSource[],
   witnessKeyHashes: ReadonlySet<string>,
@@ -336,9 +308,8 @@ const discoverLocalScriptExecutions = (
       readonly contextView: ScriptContextView;
     } => {
   const candidate = node.candidate;
-  const redeemers = decodeMidgardRedeemers(
-    nativeTx.witnessSet.redeemerTxWitsPreimageCbor,
-  );
+  const { ledgerTx } = candidate;
+  const redeemers = ledgerTx.redeemers;
   const seenRedeemerPointers = new Set<string>();
   for (const redeemer of redeemers) {
     const key = midgardRedeemerPointerKey(redeemer);
@@ -433,9 +404,8 @@ const discoverLocalScriptExecutions = (
     }
   }
 
-  const decodedMint = decodeMidgardNativeMint(nativeTx.body.mintPreimageCbor);
-  const mintValue = mintValueData(decodedMint);
-  const mintPolicies = candidate.mintPolicyHashes;
+  const mintValue = mintDeltaToScriptMintValue(candidate.derived.mintDelta);
+  const mintPolicies = candidate.derived.mintPolicyHashHexes;
   for (let index = 0; index < mintPolicies.length; index += 1) {
     const policyId = mintPolicies[index];
     const result = addExecution(
@@ -447,7 +417,7 @@ const discoverLocalScriptExecutions = (
     }
   }
 
-  const observers = [...candidate.requiredObserverHashes].sort();
+  const observers = [...candidate.derived.requiredObserverHashHexes].sort();
   for (let index = 0; index < observers.length; index += 1) {
     const observer = observers[index];
     const result = addExecution(
@@ -459,11 +429,7 @@ const discoverLocalScriptExecutions = (
     }
   }
 
-  const outputBytes = decodeMidgardNativeByteListPreimage(
-    nativeTx.body.outputsPreimageCbor,
-    "native.outputs",
-  );
-  const outputs = outputBytes.map((bytes) => decodeMidgardTxOutput(bytes));
+  const outputs = ledgerTx.outputs.map(ledgerOutputToTxOutput);
   const protectedReceivingHashes = new Set<string>();
   for (let index = 0; index < outputs.length; index += 1) {
     const output = outputs[index];
@@ -513,15 +479,15 @@ const discoverLocalScriptExecutions = (
     kind: "discovered",
     executions,
     contextView: {
-      txId: candidate.txId,
+      txId: ledgerTx.txId,
       inputs: resolvedInputs,
       referenceInputs: resolvedReferenceInputs,
       outputs,
-      fee: candidate.fee,
-      validityIntervalStart: candidate.validityIntervalStart,
-      validityIntervalEnd: candidate.validityIntervalEnd,
+      fee: ledgerTx.fee,
+      validityIntervalStart: ledgerTx.validityIntervalStart,
+      validityIntervalEnd: ledgerTx.validityIntervalEnd,
       observers,
-      signatories: candidate.witnessKeyHashes,
+      signatories: candidate.derived.witnessKeyHashHexes,
       mint: mintValue,
       redeemers: executions.flatMap((execution) => {
         const redeemer = findRedeemerByPointer(redeemers, execution.pointer);
@@ -540,13 +506,12 @@ const runLocalScriptEvaluation = (
   enforceScriptBudget: boolean,
 ): LocalScriptValidationResult => {
   const candidate = node.candidate;
-  const nativeTx = decodeMidgardNativeTxFullFromCanonicalCbor(candidate.txCbor);
-  const inlineSources = collectInlineScriptSources(nativeTx);
+  const { ledgerTx } = candidate;
+  const inlineSources = collectInlineScriptSources(ledgerTx);
   const referenceSources = collectReferenceScriptSources(node, stateValue);
   const sources = [...inlineSources, ...referenceSources];
   const discovered = discoverLocalScriptExecutions(
     node,
-    nativeTx,
     stateValue,
     sources,
     witnessKeyHashes,
@@ -578,8 +543,8 @@ const runLocalScriptEvaluation = (
     const nativeScript = execution.resolved.source.nativeScript!;
     if (
       !verifyMidgardNativeScript(nativeScript, {
-        validityIntervalStart: candidate.validityIntervalStart,
-        validityIntervalEnd: candidate.validityIntervalEnd,
+        validityIntervalStart: ledgerTx.validityIntervalStart,
+        validityIntervalEnd: ledgerTx.validityIntervalEnd,
         witnessSigners: witnessKeyHashes,
       })
     ) {
@@ -596,16 +561,13 @@ const runLocalScriptEvaluation = (
   );
 
   const languages = requiredScriptLanguages(discovered.executions);
-  const witnessCompact = deriveMidgardNativeTxWitnessSetCompact(
-    nativeTx.witnessSet,
-  );
   const expectedScriptIntegrityHash = computeScriptIntegrityHashForLanguages(
-    witnessCompact.redeemerTxWitsHash,
+    candidate.derived.redeemerWitnessHash,
     languages,
   );
-  if (!nativeTx.body.scriptIntegrityHash.equals(expectedScriptIntegrityHash)) {
+  if (!ledgerTx.scriptIntegrityHash.equals(expectedScriptIntegrityHash)) {
     const expectedHex = expectedScriptIntegrityHash.toString("hex");
-    const actualHex = nativeTx.body.scriptIntegrityHash.toString("hex");
+    const actualHex = ledgerTx.scriptIntegrityHash.toString("hex");
     return {
       kind: "rejected",
       code: RejectCodes.InvalidFieldType,
@@ -690,12 +652,12 @@ const buildConflictBuckets = (
 };
 
 const buildNodes = (
-  candidates: readonly PhaseAAccepted[],
+  candidates: readonly PhaseAValidatedTx[],
 ): readonly CandidateNode[] => {
   const producerByOutRef = new Map<string, number>();
 
   for (let i = 0; i < candidates.length; i++) {
-    for (const produced of candidates[i].processedTx.produced) {
+    for (const produced of candidates[i].graph.produced) {
       producerByOutRef.set(produced[LedgerColumns.OUTREF].toString("hex"), i);
     }
   }
@@ -704,12 +666,8 @@ const buildNodes = (
 
   for (let i = 0; i < candidates.length; i++) {
     const candidate = candidates[i];
-    const spentOutRefs = new Set(
-      candidate.processedTx.spent.map((outRef) => outRef.toString("hex")),
-    );
-    const referenceOutRefs = new Set(
-      candidate.referenceInputs.map((outRef) => outRef.toString("hex")),
-    );
+    const spentOutRefs = new Set(candidate.graph.spentOutRefHexes);
+    const referenceOutRefs = new Set(candidate.graph.referenceOutRefHexes);
     const parents = new Set<number>();
     for (const spentOutRef of spentOutRefs) {
       const parent = producerByOutRef.get(spentOutRef);
@@ -786,33 +744,34 @@ const validateCandidateAgainstState = (
 ): Effect.Effect<CandidateDecision> =>
   Effect.gen(function* () {
     const candidate = node.candidate;
+    const { ledgerTx } = candidate;
     const fail = (code: RejectedTx["code"], detail: string | null = null) => ({
       index: node.index,
       accepted: false as const,
-      rejection: reject(candidate.txId, code, detail),
+      rejection: reject(ledgerTx.txId, code, detail),
     });
 
     if (
-      candidate.validityIntervalStart !== undefined &&
-      config.nowCardanoSlotNo < candidate.validityIntervalStart
+      ledgerTx.validityIntervalStart !== undefined &&
+      config.nowCardanoSlotNo < ledgerTx.validityIntervalStart
     ) {
       return fail(
         RejectCodes.ValidityIntervalMismatch,
-        `${config.nowCardanoSlotNo} < ${candidate.validityIntervalStart}`,
+        `${config.nowCardanoSlotNo} < ${ledgerTx.validityIntervalStart}`,
       );
     }
 
     if (
-      candidate.validityIntervalEnd !== undefined &&
-      config.nowCardanoSlotNo > candidate.validityIntervalEnd
+      ledgerTx.validityIntervalEnd !== undefined &&
+      config.nowCardanoSlotNo > ledgerTx.validityIntervalEnd
     ) {
       return fail(
         RejectCodes.ValidityIntervalMismatch,
-        `${config.nowCardanoSlotNo} > ${candidate.validityIntervalEnd}`,
+        `${config.nowCardanoSlotNo} > ${ledgerTx.validityIntervalEnd}`,
       );
     }
 
-    const inputValues: CML.Value[] = [];
+    const inputValues: MidgardValue[] = [];
 
     for (const referenceOutRefHex of node.referenceOutRefs) {
       if (stateValue(referenceOutRefHex) === undefined) {
@@ -823,9 +782,13 @@ const validateCandidateAgainstState = (
       }
     }
 
-    const witnessKeyHashes = new Set(candidate.witnessKeyHashes);
-    const inlineNativeScriptHashes = new Set(candidate.nativeScriptHashes);
-    const inlinePlutusScriptHashes = new Set(candidate.plutusScriptHashes);
+    const witnessKeyHashes = new Set(candidate.derived.witnessKeyHashHexes);
+    const inlineNativeScriptHashes = new Set(
+      candidate.derived.nativeScriptHashHexes,
+    );
+    const inlinePlutusScriptHashes = new Set(
+      candidate.derived.plutusScriptHashHexes,
+    );
     const referenceNativeScriptsResult = decodeReferenceInputNativeScripts(
       node,
       stateValue,
@@ -852,8 +815,8 @@ const validateCandidateAgainstState = (
       if (referenceNativeScript !== undefined) {
         if (
           !verifyMidgardNativeScript(referenceNativeScript, {
-            validityIntervalStart: candidate.validityIntervalStart,
-            validityIntervalEnd: candidate.validityIntervalEnd,
+            validityIntervalStart: ledgerTx.validityIntervalStart,
+            validityIntervalEnd: ledgerTx.validityIntervalEnd,
             witnessSigners: witnessKeyHashes,
           })
         ) {
@@ -878,7 +841,7 @@ const validateCandidateAgainstState = (
       );
     };
 
-    for (const observerHash of candidate.requiredObserverHashes) {
+    for (const observerHash of candidate.derived.requiredObserverHashHexes) {
       const observerSatisfied = hasSatisfiedScriptMaterial(
         observerHash,
         `required observer ${observerHash}`,
@@ -888,7 +851,7 @@ const validateCandidateAgainstState = (
       }
     }
 
-    for (const mintPolicyHash of candidate.mintPolicyHashes) {
+    for (const mintPolicyHash of candidate.derived.mintPolicyHashHexes) {
       const mintSatisfied = hasSatisfiedScriptMaterial(
         mintPolicyHash,
         `mint policy ${mintPolicyHash}`,
@@ -933,7 +896,7 @@ const validateCandidateAgainstState = (
           }
         }
 
-        inputValues.push(midgardValueToCmlValue(output.value));
+        inputValues.push(output.value);
       } catch (e) {
         return fail(
           RejectCodes.InvalidOutput,
@@ -952,23 +915,17 @@ const validateCandidateAgainstState = (
       return fail(localScriptEvaluation.code, localScriptEvaluation.detail);
     }
 
-    try {
-      const inputSum = sumValues(inputValues);
-      const outputSum = candidate.outputSum;
-      const lhs = inputSum
-        .checked_sub(CML.Value.from_coin(candidate.fee))
-        .checked_add(candidate.mintedValue)
-        .checked_sub(candidate.burnedValue);
-      const delta = lhs.checked_sub(outputSum);
-
-      if (!delta.is_zero()) {
-        return fail(
-          RejectCodes.ValueNotPreserved,
-          `equation mismatch: (inputs - fee + minted - burned) - outputs = { coin: ${delta.coin()}, has_multiassets: ${delta.has_multiassets()} }`,
-        );
-      }
-    } catch (e) {
-      return fail(RejectCodes.ValueNotPreserved, String(e));
+    const delta = valuePreservationDelta(
+      sumMidgardValues(inputValues),
+      ledgerTx.fee,
+      candidate.derived.mintDelta,
+      candidate.derived.outputSum,
+    );
+    if (!isZeroValueDelta(delta)) {
+      return fail(
+        RejectCodes.ValueNotPreserved,
+        `equation mismatch: inputs - fee + mint - outputs = ${describeValueDelta(delta)}`,
+      );
     }
 
     return {
@@ -994,9 +951,9 @@ const cascadeRejectDescendants = (
     statusByIndex[child] = "rejected";
     rejected.push(
       reject(
-        nodes[child].candidate.txId,
+        nodes[child].candidate.ledgerTx.txId,
         RejectCodes.DependsOnRejectedTx,
-        `depends on rejected tx ${nodes[rejectedRoot].candidate.txId.toString("hex")}`,
+        `depends on rejected tx ${nodes[rejectedRoot].candidate.ledgerTx.txId.toString("hex")}`,
       ),
     );
 
@@ -1005,12 +962,12 @@ const cascadeRejectDescendants = (
 };
 
 export const runPhaseBValidationWithPatch = (
-  phaseACandidates: readonly PhaseAAccepted[],
+  phaseACandidates: readonly PhaseAValidatedTx[],
   preStateEntries: PreState,
   config: PhaseBConfig,
 ): Effect.Effect<PhaseBResultWithPatch> =>
   Effect.gen(function* () {
-    const accepted: PhaseAAccepted[] = [];
+    const accepted: PhaseAValidatedTx[] = [];
     const rejected: RejectedTx[] = [];
     const statePatch = makeEmptyStatePatch();
 
@@ -1034,7 +991,7 @@ export const runPhaseBValidationWithPatch = (
       statusByIndex[cycleNode] = "rejected";
       rejected.push(
         reject(
-          nodes[cycleNode].candidate.txId,
+          nodes[cycleNode].candidate.ledgerTx.txId,
           RejectCodes.DependencyCycle,
           "transaction is part of a dependency cycle",
         ),
@@ -1120,13 +1077,12 @@ export const runPhaseBValidationWithPatch = (
           statusByIndex[node.index] = "accepted";
           accepted.push(node.candidate);
 
-          for (const inputOutRef of node.candidate.processedTx.spent) {
-            const outRefHex = inputOutRef.toString("hex");
+          for (const outRefHex of node.candidate.graph.spentOutRefHexes) {
             spentByAccepted.add(outRefHex);
             statePatch.deletedOutRefs.add(outRefHex);
             statePatch.upsertedOutRefs.delete(outRefHex);
           }
-          for (const produced of node.candidate.processedTx.produced) {
+          for (const produced of node.candidate.graph.produced) {
             const outRefHex = produced[LedgerColumns.OUTREF].toString("hex");
             statePatch.upsertedOutRefs.set(
               outRefHex,
@@ -1157,7 +1113,7 @@ export const runPhaseBValidationWithPatch = (
         statusByIndex[node.index] = "rejected";
         rejected.push(
           reject(
-            node.candidate.txId,
+            node.candidate.ledgerTx.txId,
             RejectCodes.DependsOnRejectedTx,
             "dependency chain unresolved due to rejected ancestor",
           ),
@@ -1166,9 +1122,9 @@ export const runPhaseBValidationWithPatch = (
     }
 
     accepted.sort((left, right) =>
-      left.arrivalSeq < right.arrivalSeq
+      left.submission.arrivalSeq < right.submission.arrivalSeq
         ? -1
-        : left.arrivalSeq > right.arrivalSeq
+        : left.submission.arrivalSeq > right.submission.arrivalSeq
           ? 1
           : 0,
     );
