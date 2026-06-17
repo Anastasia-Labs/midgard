@@ -18,6 +18,7 @@ import {
   referenceScriptAuthUnit,
 } from "@/deployment/reference-script-auth.js";
 import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
+import { runProviderStepWithRetry } from "@/provider-retry.js";
 import {
   handleSignSubmit,
   TxConfirmError,
@@ -49,6 +50,12 @@ const WALLET_OWN_ADDRESS_REFRESH_MAX_RETRIES = 24;
 const WALLET_OWN_ADDRESS_REFRESH_RETRY_DELAY = "5 seconds";
 const WALLET_OUTREF_RECONCILE_MAX_RETRIES = 4;
 const WALLET_OUTREF_RECONCILE_RETRY_DELAY = "750 millis";
+const REFERENCE_SCRIPT_PROVIDER_FETCH_RETRY = {
+  maxAttempts: 8,
+  baseDelayMs: 750,
+  maxDelayMs: 8_000,
+  jitterRatio: 0.25,
+} as const;
 
 export const REFERENCE_SCRIPT_COMMAND_NAMES = [
   "node-runtime",
@@ -93,6 +100,25 @@ export const hasReferenceScriptAuthRole = (
 ): boolean =>
   utxo.assets[referenceScriptAuthUnit(authPolicy.policyId, target.name)] === 1n;
 
+const fetchReferenceScriptUtxosAt = (
+  lucid: LucidEvolution,
+  referenceScriptsAddress: string,
+  label: string,
+  failureMessage: string,
+): Effect.Effect<readonly UTxO[], SDK.StateQueueError> =>
+  runProviderStepWithRetry(
+    label,
+    Effect.tryPromise({
+      try: () => lucid.utxosAt(referenceScriptsAddress),
+      catch: (cause) =>
+        new SDK.StateQueueError({
+          message: failureMessage,
+          cause,
+        }),
+    }),
+    REFERENCE_SCRIPT_PROVIDER_FETCH_RETRY,
+  );
+
 const referenceScriptRoleAssets = (
   target: ReferenceScriptTarget,
   authPolicy: ReferenceScriptAuthPolicyRef,
@@ -108,14 +134,12 @@ export const fetchReferenceScriptUtxosProgram = (
   authPolicy: ReferenceScriptAuthPolicyRef,
 ): Effect.Effect<readonly ReferenceScriptResolved[], SDK.StateQueueError> =>
   Effect.gen(function* () {
-    const referenceScriptUtxos = yield* Effect.tryPromise({
-      try: () => lucid.utxosAt(referenceScriptsAddress),
-      catch: (cause) =>
-        new SDK.StateQueueError({
-          message: `Failed to fetch reference-script UTxOs at ${referenceScriptsAddress}`,
-          cause,
-        }),
-    });
+    const referenceScriptUtxos = yield* fetchReferenceScriptUtxosAt(
+      lucid,
+      referenceScriptsAddress,
+      `reference-script UTxO fetch at ${referenceScriptsAddress}`,
+      `Failed to fetch reference-script UTxOs at ${referenceScriptsAddress}`,
+    );
     return yield* Effect.forEach(targets, (target) =>
       Effect.gen(function* () {
         const resolved = [...referenceScriptUtxos]
@@ -1190,14 +1214,12 @@ export const ensureReferenceScriptTargetsProgram = (
       readonly UTxO[],
       SDK.StateQueueError
     > =>
-      Effect.tryPromise({
-        try: () => referenceScriptsLucid.utxosAt(referenceScriptsAddress),
-        catch: (cause) =>
-          new SDK.StateQueueError({
-            message: `Failed to fetch reference-script UTxOs at ${referenceScriptsAddress} while resolving ${scopeName}`,
-            cause,
-          }),
-      });
+      fetchReferenceScriptUtxosAt(
+        referenceScriptsLucid,
+        referenceScriptsAddress,
+        `${scopeName} reference-script publication UTxO fetch at ${referenceScriptsAddress}`,
+        `Failed to fetch reference-script UTxOs at ${referenceScriptsAddress} while resolving ${scopeName}`,
+      );
 
     const publishMissingTargetsInBatches = (
       missingTargets: readonly ReferenceScriptTarget[],
@@ -1422,14 +1444,12 @@ export const verifyNodeRuntimeReferenceScriptsProgram = (
 ): Effect.Effect<readonly ReferenceScriptResolved[], SDK.StateQueueError> =>
   Effect.gen(function* () {
     const targets = nodeRuntimeReferenceScriptTargets(contracts);
-    const referenceScriptUtxos = yield* Effect.tryPromise({
-      try: () => lucid.utxosAt(referenceScriptsAddress),
-      catch: (cause) =>
-        new SDK.StateQueueError({
-          message: `Failed to fetch node-runtime reference-script UTxOs at ${referenceScriptsAddress}`,
-          cause,
-        }),
-    });
+    const referenceScriptUtxos = yield* fetchReferenceScriptUtxosAt(
+      lucid,
+      referenceScriptsAddress,
+      `node-runtime reference-script UTxO fetch at ${referenceScriptsAddress}`,
+      `Failed to fetch node-runtime reference-script UTxOs at ${referenceScriptsAddress}`,
+    );
     const resolved: ReferenceScriptResolved[] = [];
     const missing: string[] = [];
     for (const target of targets) {

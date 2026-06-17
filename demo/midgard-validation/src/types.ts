@@ -1,6 +1,7 @@
-import { CML } from "@lucid-evolution/lucid";
+import type { MidgardValue } from "@al-ft/midgard-core/codec";
 
-import { type ProcessedTx } from "./ledger.js";
+import type { LedgerEntry } from "./ledger.js";
+import type { MidgardLedgerTx } from "./ledger-tx/types.js";
 
 /**
  * Stable rejection codes used by Midgard phase-A and phase-B validation.
@@ -50,27 +51,59 @@ export type QueuedTx = {
 };
 
 /**
- * Phase-A output for transactions that passed structural and witness checks and
- * can progress to dependency-aware validation.
+ * Signed value delta used for ledger accounting.
+ *
+ * `MidgardValue` represents spendable output values and therefore uses only
+ * positive asset quantities. Minting is a signed ledger delta, so Phase B uses
+ * this shape when checking value preservation.
  */
-export type PhaseAAccepted = {
-  readonly txId: Buffer;
-  readonly txCbor: Buffer;
-  readonly arrivalSeq: bigint;
-  readonly fee: bigint;
-  readonly validityIntervalStart?: bigint;
-  readonly validityIntervalEnd?: bigint;
-  readonly referenceInputs: readonly Buffer[];
-  readonly outputSum: CML.Value;
-  readonly witnessKeyHashes: readonly string[];
-  readonly requiredObserverHashes: readonly string[];
-  readonly mintPolicyHashes: readonly string[];
-  readonly mintedValue: CML.Value;
-  readonly burnedValue: CML.Value;
-  readonly nativeScriptHashes: readonly string[];
-  readonly plutusScriptHashes: readonly string[];
-  readonly requiresPlutusEvaluation: boolean;
-  readonly processedTx: ProcessedTx;
+export type MidgardValueDelta = {
+  /** Signed lovelace delta. Minting currently leaves this at zero. */
+  readonly lovelace: bigint;
+
+  /** Signed per-asset deltas keyed by policy id hex and asset-name hex. */
+  readonly assets: ReadonlyMap<string, ReadonlyMap<string, bigint>>;
+};
+
+/**
+ * Phase-A output for transactions that passed stateless validation and can
+ * progress to dependency-aware ledger validation.
+ *
+ * `ledgerTx` is authoritative for transaction semantics. `submission` carries
+ * admission/proof material. `graph` and `derived` are Phase-A projections used
+ * by Phase B for throughput and must be produced from `ledgerTx`, not authored
+ * independently by callers.
+ */
+export type PhaseAValidatedTx = {
+  /** Fully decoded ledger transaction accepted by Phase A. */
+  readonly ledgerTx: MidgardLedgerTx;
+
+  /** Non-ledger submission metadata retained for ordering and persistence. */
+  readonly submission: {
+    readonly txCbor: Buffer;
+    readonly arrivalSeq: bigint;
+    readonly createdAt: Date;
+  };
+
+  /** Dependency graph and state-patch projection consumed by Phase B. */
+  readonly graph: {
+    readonly spentOutRefHexes: readonly string[];
+    readonly referenceOutRefHexes: readonly string[];
+    readonly produced: readonly LedgerEntry[];
+  };
+
+  /** Non-authoritative projections derived from `ledgerTx` for validation. */
+  readonly derived: {
+    readonly outputSum: MidgardValue;
+    readonly mintDelta: MidgardValueDelta;
+    readonly witnessKeyHashHexes: readonly string[];
+    readonly nativeScriptHashHexes: readonly string[];
+    readonly plutusScriptHashHexes: readonly string[];
+    readonly requiredObserverHashHexes: readonly string[];
+    readonly mintPolicyHashHexes: readonly string[];
+    readonly redeemerWitnessHash: Buffer;
+    readonly requiresScriptEvaluation: boolean;
+  };
 };
 
 /**
@@ -86,7 +119,7 @@ export type RejectedTx = {
  * Result shape for stateless / per-transaction validation.
  */
 export type PhaseAResult = {
-  readonly accepted: readonly PhaseAAccepted[];
+  readonly accepted: readonly PhaseAValidatedTx[];
   readonly rejected: readonly RejectedTx[];
 };
 
@@ -94,7 +127,7 @@ export type PhaseAResult = {
  * Result shape for dependency-aware validation.
  */
 export type PhaseBResult = {
-  readonly accepted: readonly PhaseAAccepted[];
+  readonly accepted: readonly PhaseAValidatedTx[];
   readonly rejected: readonly RejectedTx[];
 };
 

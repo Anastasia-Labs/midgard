@@ -42,6 +42,7 @@ import {
   BlocksDB,
   CommonUtils,
   ConfirmedLedgerDB,
+  DaPayloadsDB,
   DepositsDB,
   ImmutableDB,
   LatestLedgerDB,
@@ -52,6 +53,7 @@ import {
   MutationJobsDB,
   PendingBlockFinalizationsDB,
   ProcessedMempoolDB,
+  StateQueueMutationLeasesDB,
   TxAdmissionsDB,
   TxRejectionsDB,
   UserEventsUtils,
@@ -104,6 +106,7 @@ import {
   type WorkerOutput as ConfirmationWorkerOutput,
 } from "@/workers/utils/confirm-block-commitments.js";
 import { deleteMpfStore, keyValuePhasRoot } from "@/workers/utils/mpf.js";
+
 import { collectSortedInputOutRefs } from "./helpers/tx-inspection.js";
 
 const EMULATOR_PROTOCOL_PARAMETERS = {
@@ -375,6 +378,7 @@ const clearNodeTables = Effect.all(
     ProcessedMempoolDB.clear,
     ImmutableDB.clear,
     PendingBlockFinalizationsDB.clear,
+    DaPayloadsDB.clear,
     TxRejectionsDB.clear,
     CommonUtils.clearTable(TxAdmissionsDB.tableName),
     CommonUtils.clearTable(MutationJobsDB.tableName),
@@ -984,7 +988,7 @@ const runCommitWorker = async (
   const currentBlockStartTimeMs = await getStateQueueDatumEndTime(
     latestBlock.datum,
   );
-  return runCommitWorkerWithInput(contracts, lucidService, {
+  const workerInput = {
     data: {
       availableConfirmedBlock: await Effect.runPromise(
         serializeStateQueueUTxO(latestBlock),
@@ -995,21 +999,38 @@ const runCommitWorker = async (
       mempoolTxsCountSoFar: 0,
       sizeOfProcessedTxsSoFar: 0,
     },
-  });
+  } satisfies CommitWorkerInput;
+  const leaseResult = await Effect.runPromise(
+    StateQueueMutationLeasesDB.tryWithLease(
+      "deposit-flow-emulator",
+      (stateQueueLeaseToken) =>
+        commitWorkerProgram(contracts, lucidService, {
+          data: {
+            ...workerInput.data,
+            stateQueueLeaseToken,
+          },
+        }),
+    ).pipe(Effect.provide(Database.layer)),
+  );
+  if (leaseResult._tag === "Busy") {
+    throw new Error(
+      `Expected emulator commit worker to acquire state-queue mutation lease, but lease was busy: ${StateQueueMutationLeasesDB.describeActiveLease(
+        leaseResult.activeLease,
+      )}`,
+    );
+  }
+  return leaseResult.value;
 };
 
-const runCommitWorkerWithInput = (
+const commitWorkerProgram = (
   contracts: SDK.MidgardValidators,
   lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>,
   workerInput: CommitWorkerInput,
 ) =>
-  Effect.runPromise(
-    runCommitBlockHeaderWorkerProgram(workerInput).pipe(
-      Effect.provideService(LucidService, lucidService as any),
-      Effect.provideService(MidgardContracts, contracts as any),
-      Effect.provide(Database.layer),
-      Effect.provide(NodeConfig.layer),
-    ),
+  runCommitBlockHeaderWorkerProgram(workerInput).pipe(
+    Effect.provideService(LucidService, lucidService as any),
+    Effect.provideService(MidgardContracts, contracts as any),
+    Effect.provide(NodeConfig.layer),
   );
 
 const makeGlobalsService = () =>
@@ -1608,6 +1629,35 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
     );
     const latestHeaderHash = await Effect.runPromise(
       SDK.hashBlockHeader(latestHeader),
+    );
+    const daPayloadAfterRecovery = await runNodeDatabaseEffect(
+      DaPayloadsDB.retrieveByHeaderHash(Buffer.from(latestHeaderHash, "hex")),
+    );
+    expect(daPayloadAfterRecovery._tag).toBe("Some");
+    if (daPayloadAfterRecovery._tag !== "Some") {
+      throw new Error("Expected a DA payload row for the finalized block");
+    }
+    const daPayloadRow = daPayloadAfterRecovery.value;
+    const daPayload = SDK.decodeDaPayloadV1(
+      daPayloadRow[DaPayloadsDB.Columns.PAYLOAD_CBOR],
+    );
+    expect(daPayload.header_hash).toEqual(latestHeaderHash);
+    expect(
+      daPayloadRow[DaPayloadsDB.Columns.PAYLOAD_SHA256].toString("hex"),
+    ).toEqual(
+      SDK.daPayloadHashHex(daPayloadRow[DaPayloadsDB.Columns.PAYLOAD_CBOR]),
+    );
+    expect(daPayloadRow[DaPayloadsDB.Columns.UTXOS_ROOT]).toEqual(
+      latestHeader.utxosRoot,
+    );
+    expect(daPayloadRow[DaPayloadsDB.Columns.TRANSACTIONS_ROOT]).toEqual(
+      latestHeader.transactionsRoot,
+    );
+    expect(daPayloadRow[DaPayloadsDB.Columns.DEPOSITS_ROOT]).toEqual(
+      latestHeader.depositsRoot,
+    );
+    expect(daPayloadRow[DaPayloadsDB.Columns.WITHDRAWALS_ROOT]).toEqual(
+      latestHeader.withdrawalsRoot,
     );
     const schedulerAfterCommit = await fetchSchedulerDatum(fixture);
     const depositEntriesAfterCommit = await runNodeDatabaseEffect(

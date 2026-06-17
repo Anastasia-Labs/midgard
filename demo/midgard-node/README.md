@@ -198,6 +198,9 @@ pnpm listen
 ## Key Entry Points
 
 - `pnpm listen`: build and start the HTTP server plus background fibers.
+- `node dist/index.js prepare-hub-oracle-one-shot-nonce`: create a fresh marked
+  operator-wallet UTxO and print the `HUB_ORACLE_ONE_SHOT_*` values needed for a
+  clean protocol deployment.
 - `node dist/index.js deploy-reference-script-node-runtime`: generate the
   reference-script auth timelock policy, publish the node-runtime reference
   scripts with role tokens, and write the deployment-info manifest.
@@ -343,6 +346,14 @@ are keyed by explicit script names such as `depositMint` and `depositSpend`.
 
 For a new deployment, publish reference scripts first; this generates the
 reference-script auth policy used to parameterize DA attestation:
+
+```sh
+node dist/index.js prepare-hub-oracle-one-shot-nonce
+```
+
+Copy the printed `HUB_ORACLE_ONE_SHOT_TX_HASH` and
+`HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX` into the deployment environment before
+publishing reference scripts or running `init`.
 
 ```sh
 node dist/index.js deploy-reference-script-node-runtime

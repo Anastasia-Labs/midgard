@@ -22,6 +22,7 @@ import * as EventSettlementProofCommand from "@/commands/event-settlement-proof.
 import * as FetchWithdrawalsOnceCommand from "@/commands/fetch-withdrawals-once.js";
 import * as L1UtxosCommand from "@/commands/l1-utxos.js";
 import { runNode } from "@/commands/listen.js";
+import * as PrepareHubOracleNonce from "@/commands/prepare-hub-oracle-nonce.js";
 import * as ReserveInspectionCommand from "@/commands/reserve-inspection.js";
 import * as ReservePayoutCommand from "@/commands/reserve-payout.js";
 import * as SubmitL2Transfer from "@/commands/submit-l2-transfer.js";
@@ -50,6 +51,7 @@ import * as RegisterActiveOperator from "@/transactions/register-active-operator
 import * as SubmitDeposit from "@/transactions/submit-deposit.js";
 import { chalk, ENV_VARS_GUIDE } from "@/utils.js";
 import { commitExplicitBlockHeaderProgram } from "@/workers/commit-block-header.js";
+import { backfillMissingDaPayloadsFromFinalizedJournals } from "@/workers/commit-block-header/da-payload-backfill.js";
 
 import packageJson from "../package.json" with { type: "json" };
 
@@ -93,6 +95,17 @@ const parseOptionalEndTimeMs = (value: unknown): number | undefined => {
   return parsed;
 };
 
+const parsePositiveIntegerOption = (value: unknown, label: string): number => {
+  if (typeof value !== "string" || !/^\d+$/.test(value)) {
+    throw new Error(`${label} must be a positive integer`);
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new Error(`${label} must be a safe positive integer`);
+  }
+  return parsed;
+};
+
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
@@ -121,6 +134,15 @@ const provideReferenceScriptDeploymentServices = <A, E>(
     effect,
     Effect.provide(Services.NodeConfig.layer),
     Effect.provide(Services.AlwaysSucceedsContract.Default),
+    Effect.provide(Services.Lucid.Default),
+  );
+
+const provideLucidOnlyServices = <A, E>(
+  effect: Effect.Effect<A, E, Services.NodeConfig | Services.Lucid>,
+): Effect.Effect<A, E | Services.ConfigError, never> =>
+  pipe(
+    effect,
+    Effect.provide(Services.NodeConfig.layer),
     Effect.provide(Services.Lucid.Default),
   );
 
@@ -397,6 +419,49 @@ program
   });
 
 program
+  .command("db:backfill-da-payloads")
+  .description(
+    "Safely materialize missing DA payload rows from finalized pending-block journals",
+  )
+  .option(
+    "--header-hash <hex>",
+    "Optional 28-byte finalized block header hash to backfill",
+  )
+  .option(
+    "--limit <count>",
+    "Maximum number of missing finalized journals to scan",
+    "100",
+  )
+  .action(async (_args, options) => {
+    let headerHash: string | undefined;
+    let limit: number;
+    try {
+      headerHash = parseOptionalHeaderHashOption(options.opts().headerHash);
+      limit = parsePositiveIntegerOption(options.opts().limit, "--limit");
+    } catch (error) {
+      console.error(`db:backfill-da-payloads: ${errorMessage(error)}`);
+      process.exitCode = 1;
+      return;
+    }
+
+    const mainEffect = provideDatabaseServices(
+      backfillMissingDaPayloadsFromFinalizedJournals({
+        headerHash:
+          headerHash === undefined ? undefined : Buffer.from(headerHash, "hex"),
+        limit,
+      }).pipe(
+        Effect.tap((summary) =>
+          Effect.sync(() => {
+            process.stdout.write(`${formatJson(summary)}\n`);
+          }),
+        ),
+      ),
+    );
+
+    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+  });
+
+program
   .command("init")
   .description(
     "Initialize hub-oracle, state_queue, registered/active/retired operators, and scheduler roots",
@@ -448,6 +513,89 @@ program
       }),
     );
 
+    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+  });
+
+program
+  .command("prepare-hub-oracle-one-shot-nonce")
+  .description(
+    "Create a fresh marked operator-wallet UTxO for HUB_ORACLE_ONE_SHOT_* in a new deployment",
+  )
+  .option(
+    "--amount-lovelace <lovelace>",
+    "Lovelace to lock in the marked nonce output",
+    PrepareHubOracleNonce.DEFAULT_NONCE_LOVELACE.toString(10),
+  )
+  .option(
+    "--dry-run",
+    "Only inspect operator-wallet readiness; do not submit a transaction",
+  )
+  .option("--json", "Print machine-readable JSON")
+  .action(async (_args, options) => {
+    const opts = options.opts();
+    let amountLovelace: bigint;
+    try {
+      amountLovelace = PrepareHubOracleNonce.parseNonceLovelaceOption(
+        opts.amountLovelace,
+      );
+    } catch (error) {
+      console.error(
+        `prepare-hub-oracle-one-shot-nonce: ${errorMessage(error)}`,
+      );
+      process.exitCode = 1;
+      return;
+    }
+
+    if (opts.dryRun) {
+      const mainEffect = provideLucidOnlyServices(
+        PrepareHubOracleNonce.inspectOperatorWalletForNonceProgram(
+          amountLovelace,
+        ).pipe(
+          Effect.tap((result) =>
+            Effect.sync(() => {
+              if (opts.json) {
+                process.stdout.write(`${formatJson(result)}\n`);
+                return;
+              }
+              process.stdout.write(
+                [
+                  `operator address=${result.address}`,
+                  `requested nonce lovelace=${result.requestedNonceLovelace}`,
+                  `spendable utxos=${result.spendableUtxos.length.toString()}`,
+                  `total spendable lovelace=${result.totalSpendableLovelace}`,
+                ].join("\n") + "\n",
+              );
+            }),
+          ),
+        ),
+      );
+      NodeRuntime.runMain(mainEffect, { teardown: undefined });
+      return;
+    }
+
+    const mainEffect = provideLucidOnlyServices(
+      PrepareHubOracleNonce.prepareHubOracleOneShotNonceProgram(
+        amountLovelace,
+      ).pipe(
+        Effect.tap((result) =>
+          Effect.sync(() => {
+            if (opts.json) {
+              process.stdout.write(`${formatJson(result)}\n`);
+              return;
+            }
+            process.stdout.write(
+              [
+                `prepared hub-oracle one-shot nonce: ${result.outRef}`,
+                `HUB_ORACLE_ONE_SHOT_TX_HASH=${result.txHash}`,
+                `HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX=${result.outputIndex.toString()}`,
+                `address=${result.address}`,
+                `lovelace=${result.lovelace}`,
+              ].join("\n") + "\n",
+            );
+          }),
+        ),
+      ),
+    );
     NodeRuntime.runMain(mainEffect, { teardown: undefined });
   });
 
@@ -662,8 +810,8 @@ program
       ),
     );
 
-      NodeRuntime.runMain(mainEffect, { teardown: undefined });
-    });
+    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+  });
 
 program
   .command("attest-state-queue-once")

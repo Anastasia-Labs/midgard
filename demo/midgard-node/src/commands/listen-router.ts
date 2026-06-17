@@ -3,8 +3,8 @@
  * This module groups endpoint handlers and access control in one place while
  * delegating startup checks and response shaping to narrower modules.
  */
-import * as SDK from "@al-ft/midgard-sdk";
 import { hexToBytes } from "@al-ft/midgard-core/hex";
+import * as SDK from "@al-ft/midgard-sdk";
 import { QueuedTxPayload } from "@al-ft/midgard-validation";
 import {
   HttpRouter,
@@ -15,7 +15,7 @@ import type { HttpBodyError } from "@effect/platform/HttpBody";
 import { ParsedSearchParams } from "@effect/platform/HttpServerRequest";
 import { SqlClient } from "@effect/sql/SqlClient";
 import { toHex } from "@lucid-evolution/lucid";
-import { Cause, Duration, Effect, Metric, Queue, Ref } from "effect";
+import { Cause, Duration, Effect, Metric, Option, Queue, Ref } from "effect";
 
 import {
   parseAddressArgument,
@@ -39,6 +39,7 @@ import * as UtxosCommand from "@/commands/utxos.js";
 import {
   AddressHistoryDB,
   BlocksDB,
+  DaPayloadsDB,
   ImmutableDB,
   MempoolDB,
   MempoolLedgerDB,
@@ -76,6 +77,8 @@ const MERGE_ENDPOINT: string = "merge";
 const UTXO_ENDPOINT: string = "utxo";
 const UTXOS_ENDPOINT: string = "utxos";
 const BLOCK_ENDPOINT: string = "block";
+const DA_PAYLOAD_ENDPOINT: string = "da/payload";
+const DA_PAYLOAD_METADATA_ENDPOINT: string = "da/payload/metadata";
 const INIT_ENDPOINT: string = "init";
 const COMMIT_ENDPOINT: string = "commit";
 const SUBMIT_ENDPOINT: string = "submit";
@@ -148,17 +151,15 @@ const encodeStateQueueMutationLease = (
         token: lease[StateQueueMutationLeasesDB.Columns.TOKEN],
         holder: lease[StateQueueMutationLeasesDB.Columns.HOLDER],
         status: lease[StateQueueMutationLeasesDB.Columns.STATUS],
-        acquiredAt: lease[
-          StateQueueMutationLeasesDB.Columns.ACQUIRED_AT
-        ].toISOString(),
-        expiresAt: lease[
-          StateQueueMutationLeasesDB.Columns.EXPIRES_AT
-        ].toISOString(),
+        acquiredAt:
+          lease[StateQueueMutationLeasesDB.Columns.ACQUIRED_AT].toISOString(),
+        expiresAt:
+          lease[StateQueueMutationLeasesDB.Columns.EXPIRES_AT].toISOString(),
         releasedAt:
-          lease[StateQueueMutationLeasesDB.Columns.RELEASED_AT]?.toISOString() ??
-          null,
-        lastError:
-          lease[StateQueueMutationLeasesDB.Columns.LAST_ERROR] ?? null,
+          lease[
+            StateQueueMutationLeasesDB.Columns.RELEASED_AT
+          ]?.toISOString() ?? null,
+        lastError: lease[StateQueueMutationLeasesDB.Columns.LAST_ERROR] ?? null,
       };
 
 export type StateQueueMutationLeaseEndpointResult = {
@@ -196,8 +197,7 @@ const defaultStateQueueMutationLeaseEndpointStore: StateQueueMutationLeaseEndpoi
 
 export const resolveStateQueueMutationLeaseRequest = <R = Database>(
   body: unknown,
-  store: StateQueueMutationLeaseEndpointStore<R> =
-    defaultStateQueueMutationLeaseEndpointStore as StateQueueMutationLeaseEndpointStore<R>,
+  store: StateQueueMutationLeaseEndpointStore<R> = defaultStateQueueMutationLeaseEndpointStore as StateQueueMutationLeaseEndpointStore<R>,
 ): Effect.Effect<StateQueueMutationLeaseEndpointResult, never, R> =>
   Effect.gen(function* () {
     if (typeof body !== "object" || body === null || !("action" in body)) {
@@ -222,7 +222,9 @@ export const resolveStateQueueMutationLeaseRequest = <R = Database>(
       } catch (error) {
         return {
           statusCode: 400,
-          body: { error: error instanceof Error ? error.message : String(error) },
+          body: {
+            error: error instanceof Error ? error.message : String(error),
+          },
         };
       }
       const result = yield* store.tryAcquire({
@@ -264,7 +266,9 @@ export const resolveStateQueueMutationLeaseRequest = <R = Database>(
       } catch (error) {
         return {
           statusCode: 400,
-          body: { error: error instanceof Error ? error.message : String(error) },
+          body: {
+            error: error instanceof Error ? error.message : String(error),
+          },
         };
       }
       yield* store.renew({
@@ -833,6 +837,103 @@ const getBlockHandler = Effect.gen(function* () {
     failWith500(
       "GET",
       BLOCK_ENDPOINT,
+      e.cause,
+      `db failure with table ${e.table}`,
+    ),
+  ),
+);
+
+const parseHeaderHashSearchParam = (
+  value: unknown,
+): Buffer | HttpServerResponse.HttpServerResponse => {
+  const headerHash = parseFixedHexParam(value, 28);
+  if (headerHash !== null) {
+    return headerHash;
+  }
+  return HttpServerResponse.unsafeJson(
+    { error: `Invalid header_hash: ${String(value)}` },
+    { status: 400 },
+  );
+};
+
+/**
+ * `GET /da/payload?header_hash=...`: returns canonical DaPayloadV1 CBOR.
+ */
+const getDaPayloadHandler = Effect.gen(function* () {
+  const params = yield* ParsedSearchParams;
+  const parsed = parseHeaderHashSearchParam(params["header_hash"]);
+  if (!Buffer.isBuffer(parsed)) {
+    return parsed;
+  }
+  const record = yield* DaPayloadsDB.retrieveByHeaderHash(parsed);
+  if (Option.isNone(record)) {
+    return yield* HttpServerResponse.json(
+      {
+        error: `DA payload not found for header_hash ${parsed.toString("hex")}`,
+      },
+      { status: 404 },
+    );
+  }
+  return HttpServerResponse.uint8Array(record.value.payload_cbor, {
+    contentType: "application/cbor",
+  });
+}).pipe(
+  Effect.catchTag("HttpBodyError", (e) =>
+    failWith500("GET", DA_PAYLOAD_ENDPOINT, e),
+  ),
+  Effect.catchTag("DatabaseError", (e) =>
+    failWith500(
+      "GET",
+      DA_PAYLOAD_ENDPOINT,
+      e.cause,
+      `db failure with table ${e.table}`,
+    ),
+  ),
+);
+
+/**
+ * `GET /da/payload/metadata?header_hash=...`: returns payload metadata.
+ */
+const getDaPayloadMetadataHandler = Effect.gen(function* () {
+  const params = yield* ParsedSearchParams;
+  const parsed = parseHeaderHashSearchParam(params["header_hash"]);
+  if (!Buffer.isBuffer(parsed)) {
+    return parsed;
+  }
+  const record = yield* DaPayloadsDB.retrieveByHeaderHash(parsed);
+  if (Option.isNone(record)) {
+    return yield* HttpServerResponse.json(
+      {
+        error: `DA payload not found for header_hash ${parsed.toString("hex")}`,
+      },
+      { status: 404 },
+    );
+  }
+  return yield* HttpServerResponse.json({
+    headerHash: record.value.header_hash.toString("hex"),
+    version: record.value.version,
+    payloadHash: record.value.payload_sha256.toString("hex"),
+    payloadBytes: record.value.payload_cbor.length,
+    status: "available",
+    roots: {
+      utxosRoot: record.value.utxos_root,
+      transactionsRoot: record.value.transactions_root,
+      depositsRoot: record.value.deposits_root,
+      withdrawalsRoot: record.value.withdrawals_root,
+    },
+    blockStartTime: record.value.block_start_time.toISOString(),
+    blockEndTime: record.value.block_end_time.toISOString(),
+    createdAt: record.value.created_at.toISOString(),
+    updatedAt: record.value.updated_at.toISOString(),
+  });
+}).pipe(
+  Effect.catchTag("HttpBodyError", (e) =>
+    failWith500("GET", DA_PAYLOAD_METADATA_ENDPOINT, e),
+  ),
+  Effect.catchTag("DatabaseError", (e) =>
+    failWith500(
+      "GET",
+      DA_PAYLOAD_METADATA_ENDPOINT,
       e.cause,
       `db failure with table ${e.table}`,
     ),
@@ -1414,6 +1515,13 @@ export const buildListenRouter = (
       HttpRouter.get(`/${UTXO_ENDPOINT}`, getUtxoHandler),
       HttpRouter.get(`/${UTXOS_ENDPOINT}`, getUtxosHandler),
       HttpRouter.get(`/${BLOCK_ENDPOINT}`, getBlockHandler),
+    )
+    .pipe(
+      HttpRouter.get(`/${DA_PAYLOAD_ENDPOINT}`, getDaPayloadHandler),
+      HttpRouter.get(
+        `/${DA_PAYLOAD_METADATA_ENDPOINT}`,
+        getDaPayloadMetadataHandler,
+      ),
       HttpRouter.get(
         `/${INIT_ENDPOINT}`,
         withAdminAccess(INIT_ENDPOINT, getInitHandler),

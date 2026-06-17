@@ -350,7 +350,9 @@ export const buildAndSubmitMergeTx = (
       const firstBlockNode = yield* SDK.getStateQueueNodeFromStateQueueDatum(
         firstBlockUTxO.datum,
       );
-      if (firstBlockNode.da_attestation !== contracts.daAttestation.policyId) {
+      if (
+        firstBlockNode.da_attestation !== contracts.daAttestation.policyId
+      ) {
         const unattestedHeader = yield* SDK.hashBlockHeader(
           firstBlockNode.header,
         );

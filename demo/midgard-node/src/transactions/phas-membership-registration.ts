@@ -32,13 +32,19 @@ export type PhasMembershipRewardRegistrationResult = {
     }
 );
 
-const isAlreadyRegisteredError = (
+export const isPhasMembershipAlreadyRegisteredError = (
   error: TxSubmitError,
   scriptHash: string,
 ): boolean => {
-  const message = formatUnknownError(error, { includeCause: true });
+  const message = formatUnknownError(error, {
+    includeCause: true,
+  }).toLowerCase();
+  const normalizedScriptHash = scriptHash.toLowerCase();
   return (
-    message.includes("StakeKeyRegisteredDELEG") && message.includes(scriptHash)
+    (message.includes("stakekeyregistereddeleg") ||
+      message.includes("already known credential") ||
+      message.includes("knowncredential")) &&
+    message.includes(normalizedScriptHash)
   );
 };
 
@@ -79,7 +85,7 @@ export const ensurePhasMembershipRewardAccountRegisteredProgram = (
     if (submitted._tag === "Left") {
       if (
         submitted.left instanceof TxSubmitError &&
-        isAlreadyRegisteredError(submitted.left, scriptHash)
+        isPhasMembershipAlreadyRegisteredError(submitted.left, scriptHash)
       ) {
         yield* Effect.logInfo(
           `PHAS membership reward account is already registered: scriptHash=${scriptHash},rewardAddress=${rewardAddress}`,

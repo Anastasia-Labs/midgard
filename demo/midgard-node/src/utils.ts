@@ -1,12 +1,10 @@
-import {
-  computeMidgardNativeTxId,
-  decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
-  decodeMidgardTxOutput,
-  encodeMidgardAddressText,
-} from "@al-ft/midgard-core/codec";
+import { encodeMidgardAddressText } from "@al-ft/midgard-core/codec";
 import * as SDK from "@al-ft/midgard-sdk";
-import { CML } from "@lucid-evolution/lucid";
+import {
+  decodeMidgardSubmittedTxFromCanonicalCbor,
+  ledgerOutputToCbor,
+  midgardOutRefToCbor,
+} from "@al-ft/midgard-validation";
 import * as chalk_ from "chalk";
 import { Data, Effect, pipe } from "effect";
 
@@ -29,8 +27,8 @@ export const findSpentAndProducedUTxOs = (
   SDK.CmlUnexpectedError
 > =>
   Effect.gen(function* () {
-    const nativeTx = yield* Effect.try({
-      try: () => decodeMidgardNativeTxFullFromCanonicalCbor(txCBOR),
+    const submittedTx = yield* Effect.try({
+      try: () => decodeMidgardSubmittedTxFromCanonicalCbor(txCBOR),
       catch: (e) =>
         new SDK.CmlUnexpectedError({
           message: `Failed to decode Midgard-native tx payload`,
@@ -38,57 +36,28 @@ export const findSpentAndProducedUTxOs = (
         }),
     });
 
-    const nativeSpent = yield* Effect.try({
-      try: () =>
-        decodeMidgardNativeByteListPreimage(
-          nativeTx.body.spendInputsPreimageCbor,
-          "native.spend_inputs",
-        ),
-      catch: (e) =>
-        new SDK.CmlUnexpectedError({
-          message: `Failed to decode native spend inputs`,
-          cause: e,
-        }),
-    });
-
-    const nativeOutputs = yield* Effect.try({
-      try: () =>
-        decodeMidgardNativeByteListPreimage(
-          nativeTx.body.outputsPreimageCbor,
-          "native.outputs",
-        ),
-      catch: (e) =>
-        new SDK.CmlUnexpectedError({
-          message: `Failed to decode native outputs`,
-          cause: e,
-        }),
-    });
-
     const spent = yield* Effect.try({
       try: () =>
-        nativeSpent.map((outRef) =>
-          Buffer.from(
-            CML.TransactionInput.from_cbor_bytes(outRef).to_cbor_bytes(),
-          ),
+        submittedTx.ledgerTx.spendInputs.map((outRef) =>
+          midgardOutRefToCbor(outRef),
         ),
       catch: (e) =>
         new SDK.CmlUnexpectedError({
-          message: `An error occurred on native input CBOR serialization`,
+          message: `Failed to encode Midgard spend inputs`,
           cause: e,
         }),
     });
 
     const produced: Ledger.MinimalEntry[] = [];
-    const finalTxHash =
-      txHash === undefined ? computeMidgardNativeTxId(nativeTx) : txHash;
-    const txHashObj = CML.TransactionHash.from_raw_bytes(finalTxHash);
-    for (let i = 0; i < nativeOutputs.length; i++) {
-      const output = nativeOutputs[i];
+    const finalTxHash = txHash ?? submittedTx.ledgerTx.txId;
+    for (let i = 0; i < submittedTx.ledgerTx.outputs.length; i++) {
+      const output = submittedTx.ledgerTx.outputs[i];
       produced.push({
-        [Ledger.Columns.OUTREF]: Buffer.from(
-          CML.TransactionInput.new(txHashObj, BigInt(i)).to_cbor_bytes(),
-        ),
-        [Ledger.Columns.OUTPUT]: Buffer.from(output),
+        [Ledger.Columns.OUTREF]: midgardOutRefToCbor({
+          txId: finalTxHash,
+          index: BigInt(i),
+        }),
+        [Ledger.Columns.OUTPUT]: ledgerOutputToCbor(output),
       });
     }
     return { spent, produced };
@@ -98,8 +67,8 @@ export const breakDownTx = (
   txCbor: Uint8Array,
 ): Effect.Effect<ProcessedTx, SDK.CmlDeserializationError> =>
   Effect.gen(function* () {
-    const nativeTx = yield* Effect.try({
-      try: () => decodeMidgardNativeTxFullFromCanonicalCbor(txCbor),
+    const submittedTx = yield* Effect.try({
+      try: () => decodeMidgardSubmittedTxFromCanonicalCbor(txCbor),
       catch: (e) =>
         new SDK.CmlDeserializationError({
           message: `Failed to deserialize Midgard-native transaction`,
@@ -107,51 +76,34 @@ export const breakDownTx = (
         }),
     });
 
-    const txHashBytes = computeMidgardNativeTxId(nativeTx);
-    const txHash = CML.TransactionHash.from_raw_bytes(txHashBytes);
+    const txHashBytes = Buffer.from(submittedTx.ledgerTx.txId);
     const spent = yield* Effect.try({
       try: () =>
-        decodeMidgardNativeByteListPreimage(
-          nativeTx.body.spendInputsPreimageCbor,
-          "native.spend_inputs",
-        ).map((outRef) =>
-          Buffer.from(
-            CML.TransactionInput.from_cbor_bytes(outRef).to_cbor_bytes(),
-          ),
+        submittedTx.ledgerTx.spendInputs.map((outRef) =>
+          midgardOutRefToCbor(outRef),
         ),
       catch: (e) =>
         new SDK.CmlDeserializationError({
-          message: `Failed to decode native spend inputs`,
-          cause: e,
-        }),
-    });
-    const outputBytes = yield* Effect.try({
-      try: () =>
-        decodeMidgardNativeByteListPreimage(
-          nativeTx.body.outputsPreimageCbor,
-          "native.outputs",
-        ),
-      catch: (e) =>
-        new SDK.CmlDeserializationError({
-          message: `Failed to decode native outputs`,
+          message: `Failed to encode Midgard spend inputs`,
           cause: e,
         }),
     });
     const produced: Ledger.Entry[] = [];
-    for (let i = 0; i < outputBytes.length; i++) {
-      const output = decodeMidgardTxOutput(outputBytes[i]);
+    for (let i = 0; i < submittedTx.ledgerTx.outputs.length; i++) {
+      const output = submittedTx.ledgerTx.outputs[i];
       produced.push({
         [Ledger.Columns.TX_ID]: txHashBytes,
-        [Ledger.Columns.OUTREF]: Buffer.from(
-          CML.TransactionInput.new(txHash, BigInt(i)).to_cbor_bytes(),
-        ),
-        [Ledger.Columns.OUTPUT]: Buffer.from(outputBytes[i]),
+        [Ledger.Columns.OUTREF]: midgardOutRefToCbor({
+          txId: txHashBytes,
+          index: BigInt(i),
+        }),
+        [Ledger.Columns.OUTPUT]: ledgerOutputToCbor(output),
         [Ledger.Columns.ADDRESS]: encodeMidgardAddressText(output.address),
       });
     }
     return {
       txId: txHashBytes,
-      txCbor: Buffer.from(txCbor),
+      txCbor: submittedTx.txCbor,
       spent,
       produced,
     };

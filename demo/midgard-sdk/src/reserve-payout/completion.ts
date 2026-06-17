@@ -1,4 +1,5 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import type { OutRefLike } from "@al-ft/midgard-core/out-ref";
 import {
   type LucidEvolution,
   type TxBuilder,
@@ -11,7 +12,6 @@ import {
   disposableFeeInputCandidates,
   fetchProviderVisibleWalletInputsProgram,
 } from "@/reserve-payout/inputs.js";
-import type { OutRefLike } from "@al-ft/midgard-core/out-ref";
 
 export type BuiltReservePayoutTx<L> = {
   readonly tx: TxSignBuilder;

@@ -2,6 +2,8 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Network, UTxO, walletFromSeed } from "@lucid-evolution/lucid";
 import { Config, Context, Data, Effect, Layer } from "effect";
 
+import { validateRetentionDays } from "@/database/retention-policy.js";
+
 /**
  * Configuration loading for the Midgard node process.
  *
@@ -65,6 +67,8 @@ type NodeConfigDep = {
   HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: number;
   OPERATOR_REQUIRED_BOND_LOVELACE: bigint;
   OPERATOR_SLASHING_PENALTY_LOVELACE: bigint;
+  DA_COMMITTEE_HEX: string;
+  DA_THRESHOLD: bigint | null;
   PROM_METRICS_PORT: number;
   OLTP_EXPORTER_URL: string;
   POSTGRES_USER: string;
@@ -237,6 +241,7 @@ const makeConfig = Effect.gen(function* () {
   ).pipe(Config.withDefault(1));
   const retentionDays = yield* Config.integer("RETENTION_DAYS").pipe(
     Config.withDefault(0),
+    Config.mapAttempt(validateRetentionDays),
   );
   const waitBetweenRetentionSweeps = yield* Config.integer(
     "WAIT_BETWEEN_RETENTION_SWEEPS",
@@ -258,6 +263,17 @@ const makeConfig = Effect.gen(function* () {
   ).pipe(
     Config.withDefault("200000"),
     Config.mapAttempt((value) => BigInt(value)),
+  );
+  const daCommitteeHex = yield* Config.string("DA_COMMITTEE_HEX").pipe(
+    Config.withDefault(""),
+    Config.map((value) => value.trim().toLowerCase()),
+  );
+  const daThreshold = yield* Config.string("DA_THRESHOLD").pipe(
+    Config.withDefault(""),
+    Config.mapAttempt((value) => {
+      const trimmed = value.trim();
+      return trimmed.length === 0 ? null : BigInt(trimmed);
+    }),
   );
   const waitBetweenDepositUTxOFetches = yield* Config.integer(
     "WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES",
@@ -413,6 +429,8 @@ const makeConfig = Effect.gen(function* () {
     HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: hubOracleOneShotOutputIndex,
     OPERATOR_REQUIRED_BOND_LOVELACE: operatorRequiredBondLovelace,
     OPERATOR_SLASHING_PENALTY_LOVELACE: operatorSlashingPenaltyLovelace,
+    DA_COMMITTEE_HEX: daCommitteeHex,
+    DA_THRESHOLD: daThreshold,
     WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES: waitBetweenDepositUTxOFetches,
     PROM_METRICS_PORT: promMetricsPort,
     OLTP_EXPORTER_URL: oltpExporterUrl,

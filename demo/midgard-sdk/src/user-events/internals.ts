@@ -1,4 +1,5 @@
 import { compareOutRefs } from "@al-ft/midgard-core/out-ref";
+import { aikenSerialisedPlutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
   Address,
   applyDoubleCborEncoding,
@@ -11,14 +12,15 @@ import {
   LucidEvolution,
   MintingPolicy,
   type Network,
-  slotToUnixTime,
   PolicyId,
+  slotToUnixTime,
   type TxSignBuilder,
   UTxO,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import { Data as EffectData, Effect } from "effect";
 
+import { scriptRewardAddress } from "@/cardano-addresses.js";
 import {
   GenericErrorFields,
   hashHexWithBlake2b,
@@ -28,7 +30,6 @@ import {
   POSIXTime,
   UnspecifiedNetworkError,
 } from "@/common.js";
-import { scriptRewardAddress } from "@/cardano-addresses.js";
 import { getProtocolParameters } from "@/protocol-parameters.js";
 import {
   requireInputIndex,
@@ -193,6 +194,26 @@ export type UserEventExtraFields = {
   inclusionTime: Date;
 };
 
+export const userEventCborFieldsFromInlineDatum = (
+  utxo: Pick<UTxO, "datum" | "txHash" | "outputIndex">,
+): Pick<UserEventExtraFields, "idCbor" | "infoCbor"> => {
+  if (utxo.datum === undefined || utxo.datum === null) {
+    throw new Error(
+      `Missing inline datum for user event ${utxo.txHash}#${utxo.outputIndex.toString()}`,
+    );
+  }
+  return {
+    idCbor: Buffer.from(
+      aikenSerialisedPlutusConstrFieldCbor(utxo.datum, [0, 0]),
+      "hex",
+    ),
+    infoCbor: Buffer.from(
+      aikenSerialisedPlutusConstrFieldCbor(utxo.datum, [0, 1]),
+      "hex",
+    ),
+  };
+};
+
 export const outputReferenceToPlutusDataCbor = (
   utxo: Pick<UTxO, "txHash" | "outputIndex">,
 ): string =>
@@ -252,7 +273,8 @@ export const fetchSortedWalletUtxosProgram = (
   label: string,
 ): Effect.Effect<readonly UTxO[], LucidError> =>
   Effect.tryPromise({
-    try: async () => [...(await lucid.wallet().getUtxos())].sort(compareOutRefs),
+    try: async () =>
+      [...(await lucid.wallet().getUtxos())].sort(compareOutRefs),
     catch: (cause) =>
       new LucidError({
         message: `Failed to fetch wallet UTxOs for ${label} submission`,
@@ -355,22 +377,22 @@ export const buildCompletedUserEventMintTxProgram = (
           ? baseTx.attach.MintingPolicy(params.mintingPolicy)
           : baseTx;
 
-        return txWithMintWitness
-        .attach.CertificateValidator(params.witnessScript)
-        .mintAssets({ [params.eventUnit]: 1n }, mintRedeemer)
-        .pay.ToAddressWithData(
-          params.eventAddress,
-          {
-            kind: "inline",
-            value: params.eventDatumCbor,
-          },
-          params.outputAssets,
-        )
-        .validTo(params.validTo)
-        .register.Stake(
-          scriptRewardAddress(params.network, params.witnessScript),
-          params.witnessRegistrationRedeemer,
-        );
+        return txWithMintWitness.attach
+          .CertificateValidator(params.witnessScript)
+          .mintAssets({ [params.eventUnit]: 1n }, mintRedeemer)
+          .pay.ToAddressWithData(
+            params.eventAddress,
+            {
+              kind: "inline",
+              value: params.eventDatumCbor,
+            },
+            params.outputAssets,
+          )
+          .validTo(params.validTo)
+          .register.Stake(
+            scriptRewardAddress(params.network, params.witnessScript),
+            params.witnessRegistrationRedeemer,
+          );
       };
 
       let resolvedLayout: UserEventMintRedeemerLayout | undefined;

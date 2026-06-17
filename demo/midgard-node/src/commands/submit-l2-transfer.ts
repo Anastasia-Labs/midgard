@@ -25,6 +25,7 @@ import {
   midgardAddressFromText,
 } from "@al-ft/midgard-core/codec";
 import {
+  processedTxFromValidatedTx,
   type QueuedTx,
   runPhaseAValidation,
   runPhaseBValidationWithPatch,
@@ -748,7 +749,7 @@ export const submitNativeTransferLocally = (
     }
 
     yield* MempoolDB.insertMultiple(
-      phaseB.accepted.map((accepted) => accepted.processedTx),
+      phaseB.accepted.map(processedTxFromValidatedTx),
     );
     return {
       txId: built.txIdHex,

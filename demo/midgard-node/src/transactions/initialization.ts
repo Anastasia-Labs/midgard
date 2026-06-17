@@ -209,22 +209,65 @@ export const atomicProtocolInitReferenceScriptsFromPublications = (
   ),
 });
 
-const deriveOperatorDaParams = (
-  operatorSeedPhrase: string,
-  network: Network,
+export const deriveOperatorDaParams = (
+  nodeConfig: {
+    readonly L1_OPERATOR_SEED_PHRASE: string;
+    readonly NETWORK: Network;
+    readonly DA_COMMITTEE_HEX?: string;
+    readonly DA_THRESHOLD?: bigint | null;
+  },
 ): Effect.Effect<SDK.DaParamsDatum, SDK.HashingError> =>
   Effect.gen(function* () {
-    const wallet = walletFromSeed(operatorSeedPhrase, { network });
+    const wallet = walletFromSeed(nodeConfig.L1_OPERATOR_SEED_PHRASE, {
+      network: nodeConfig.NETWORK,
+    });
     const privateKey = CML.PrivateKey.from_bech32(wallet.paymentKey);
     const publicKey = privateKey.to_public();
-    const committee = Buffer.from(publicKey.to_raw_bytes()).toString("hex");
+    const configuredCommittee = (nodeConfig.DA_COMMITTEE_HEX ?? "").trim();
+    const committee =
+      configuredCommittee.length > 0
+        ? yield* validateConfiguredDaCommittee(configuredCommittee)
+        : Buffer.from(publicKey.to_raw_bytes()).toString("hex");
+    const committeeLength = BigInt(committee.length / 64);
+    const daThreshold = nodeConfig.DA_THRESHOLD ?? 1n;
+    if (daThreshold <= 0n || daThreshold > committeeLength) {
+      return yield* Effect.fail(
+        new SDK.HashingError({
+          message: "Invalid DA threshold configuration",
+          cause: `threshold=${daThreshold.toString()},committee_members=${committeeLength.toString()}`,
+        }),
+      );
+    }
     return {
       committee,
       committee_signers_hash: yield* SDK.hashHexWithBlake2b(committee, 32),
-      da_threshold: 1n,
+      da_threshold: daThreshold,
       owners: [publicKey.hash().to_hex()],
       update_threshold: 1n,
     };
+  });
+
+const validateConfiguredDaCommittee = (
+  committee: string,
+): Effect.Effect<string, SDK.HashingError> =>
+  Effect.try({
+    try: () => {
+      const normalized = committee.trim().toLowerCase();
+      if (!/^[0-9a-f]*$/.test(normalized) || normalized.length % 64 !== 0) {
+        throw new Error(
+          "DA_COMMITTEE_HEX must be packed 32-byte verification keys as hex",
+        );
+      }
+      if (normalized.length === 0) {
+        throw new Error("DA_COMMITTEE_HEX cannot be empty when configured");
+      }
+      return normalized;
+    },
+    catch: (cause) =>
+      new SDK.HashingError({
+        message: "Invalid DA committee configuration",
+        cause,
+      }),
   });
 
 export const ensureAtomicProtocolInitReferenceScriptsProgram = (
@@ -374,6 +417,8 @@ export const fetchConfiguredNonceUtxo = (
     HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: number;
     L1_OPERATOR_SEED_PHRASE: string;
     NETWORK: Network;
+    DA_COMMITTEE_HEX?: string;
+    DA_THRESHOLD?: bigint | null;
   },
 ): Effect.Effect<UTxO, SDK.LucidError> =>
   Effect.gen(function* () {
@@ -652,10 +697,7 @@ export const buildAtomicProtocolInitTxProgram = (
   Effect.gen(function* () {
     const validityRange = resolveDeploymentValidityBounds(lucid, validTo);
     const nonceUtxo = yield* fetchConfiguredNonceUtxo(lucid, nodeConfig);
-    const daParams = yield* deriveOperatorDaParams(
-      nodeConfig.L1_OPERATOR_SEED_PHRASE,
-      nodeConfig.NETWORK,
-    );
+    const daParams = yield* deriveOperatorDaParams(nodeConfig);
     return yield* SDK.incompleteInitializationTxProgram(lucid, {
       midgardValidators: contracts,
       fraudProofCatalogueMerkleRoot,

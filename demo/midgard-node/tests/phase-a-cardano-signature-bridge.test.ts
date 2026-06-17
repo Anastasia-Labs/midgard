@@ -165,7 +165,7 @@ describe("phase-a converted fixture signature bridge", () => {
     const phaseA = await Effect.runPromise(
       runPhaseAValidation([queued], phaseAConfig),
     );
-    expect(phaseA.rejected).toHaveLength(0);
+    expect(phaseA.rejected, JSON.stringify(phaseA.rejected)).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
 
     const preState = new Map<string, Buffer>([
@@ -183,7 +183,7 @@ describe("phase-a converted fixture signature bridge", () => {
         bucketConcurrency: 1,
       }),
     );
-    expect(rejected).toHaveLength(0);
+    expect(rejected, JSON.stringify(rejected)).toHaveLength(0);
     expect(accepted).toHaveLength(1);
   });
 });

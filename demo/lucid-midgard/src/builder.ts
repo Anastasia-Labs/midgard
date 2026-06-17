@@ -1,3 +1,4 @@
+import { assetsEqual } from "@al-ft/midgard-core/assets";
 import {
   computeMidgardNativeTxId,
   decodeMidgardNativeTxFullFromCanonicalCbor,
@@ -7,7 +8,6 @@ import {
   midgardAddressFromText,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core/codec";
-import { assetsEqual } from "@al-ft/midgard-core/assets";
 import { normalizeHex } from "@al-ft/midgard-core/hex";
 import {
   LedgerColumns,
@@ -1808,7 +1808,9 @@ const localValidationReportFromPhaseA = (
   preStateSource?: LocalValidationPreStateSource,
 ): LocalValidationReport => ({
   phase: "phase-a",
-  acceptedTxIds: result.accepted.map((item) => item.txId.toString("hex")),
+  acceptedTxIds: result.accepted.map((item) =>
+    item.ledgerTx.txId.toString("hex"),
+  ),
   rejected: localValidationRejected(result.rejected),
   ...(preStateSource === undefined
     ? {}
@@ -1820,7 +1822,9 @@ const localValidationReportFromPhaseB = (
   preStateSource?: LocalValidationPreStateSource,
 ): LocalValidationReport => ({
   phase: "phase-b",
-  acceptedTxIds: result.accepted.map((item) => item.txId.toString("hex")),
+  acceptedTxIds: result.accepted.map((item) =>
+    item.ledgerTx.txId.toString("hex"),
+  ),
   rejected: localValidationRejected(result.rejected),
   ...(preStateSource === undefined
     ? {}

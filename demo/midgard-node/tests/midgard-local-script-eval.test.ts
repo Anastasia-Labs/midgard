@@ -9,12 +9,14 @@ import {
   hashMidgardVersionedScript,
   ScriptLanguageTags,
 } from "@al-ft/midgard-core/codec";
-import { txOutRefData } from "@al-ft/midgard-validation";
+import { plutusDataToCborHex, txOutRefData } from "@al-ft/midgard-validation";
+import type { MidgardLedgerRedeemer } from "@al-ft/midgard-validation/ledger-tx/types";
 import { evaluateScriptWithHarmonic } from "@al-ft/midgard-validation/local-script-eval";
 import {
   decodeMidgardRedeemers,
   MidgardRedeemerTag,
   midgardScriptPurposeData,
+  redeemerDataFromCborHex,
 } from "@al-ft/midgard-validation/midgard-redeemers";
 import {
   buildMidgardV1ScriptContext,
@@ -73,7 +75,18 @@ const MIDGARD_V1_CONTEXT_PROBE_SCRIPT_HEX = loadAlwaysSucceedsCompiledCode(
 );
 
 const txOutRefDataCborHex = (outRefHex: string): string =>
-  Data.to(txOutRefData(outRefHex) as any);
+  plutusDataToCborHex(txOutRefData(outRefHex));
+
+const ledgerRedeemer = <
+  T extends Omit<MidgardLedgerRedeemer, "data"> & {
+    readonly dataCborHex: string;
+  },
+>(
+  redeemer: T,
+): T & MidgardLedgerRedeemer => ({
+  ...redeemer,
+  data: redeemerDataFromCborHex(redeemer.dataCborHex),
+});
 
 const makeOutRefHex = (txHashByte: number, outputIndex: bigint): string =>
   Buffer.from(
@@ -115,7 +128,7 @@ const makeMidgardV1ContextProbeRedeemerCborHex = (opts: {
   readonly expectedReceiveScriptHash: string;
   readonly expectedReceiveRedeemer: unknown;
 }): string =>
-  Data.to(
+  plutusDataToCborHex(
     new Constr(0, [
       opts.expectedSpendScriptHash,
       txOutRefData(opts.expectedOwnRef),
@@ -134,7 +147,7 @@ const makeMidgardV1ContextProbeRedeemerCborHex = (opts: {
       opts.expectedObserveRedeemer,
       opts.expectedReceiveScriptHash,
       opts.expectedReceiveRedeemer,
-    ]) as any,
+    ]),
   );
 
 describe("Midgard local script evaluation primitives", () => {
@@ -346,12 +359,12 @@ describe("Midgard local script evaluation primitives", () => {
       kind: "receive" as const,
       scriptHash,
     };
-    const redeemer = {
+    const redeemer = ledgerRedeemer({
       tag: MidgardRedeemerTag.Receiving,
       index: 0n,
       dataCborHex: Data.to(new Constr(0, [])),
       exUnits: { memory: 0n, steps: 0n },
-    };
+    });
     const context = buildMidgardV1ScriptContext(
       {
         txId: Buffer.alloc(32, 0),
@@ -398,12 +411,12 @@ describe("Midgard local script evaluation primitives", () => {
       kind: "receive" as const,
       scriptHash: "aa".repeat(28),
     };
-    const receiveRedeemer = {
+    const receiveRedeemer = ledgerRedeemer({
       tag: MidgardRedeemerTag.Receiving,
       index: 0n,
       dataCborHex: Data.to(new Constr(0, [])),
       exUnits: { memory: 0n, steps: 0n },
-    };
+    });
     const midgardContext = buildMidgardV1ScriptContext(
       {
         txId: Buffer.alloc(32, 0),
@@ -424,12 +437,12 @@ describe("Midgard local script evaluation primitives", () => {
       scriptHash: "bb".repeat(28),
       policyId: "bb".repeat(28),
     };
-    const mintRedeemer = {
+    const mintRedeemer = ledgerRedeemer({
       tag: MidgardRedeemerTag.Mint,
       index: 0n,
       dataCborHex: Data.to(new Constr(0, [])),
       exUnits: { memory: 0n, steps: 0n },
-    };
+    });
     const plutusContext = buildPlutusV3ScriptContext(
       {
         txId: Buffer.alloc(32, 0),
@@ -485,12 +498,12 @@ describe("Midgard local script evaluation primitives", () => {
       ),
     );
     const purpose = { kind: "spend" as const, scriptHash, outRefHex };
-    const redeemer = {
+    const redeemer = ledgerRedeemer({
       tag: MidgardRedeemerTag.Spend,
       index: 0n,
       dataCborHex: Data.to(42n),
       exUnits: { memory: 0n, steps: 0n },
-    };
+    });
     const context = buildMidgardV1ScriptContext(
       {
         txId: Buffer.alloc(32, 0x31),
@@ -531,12 +544,12 @@ describe("Midgard local script evaluation primitives", () => {
       ),
     );
     const purpose = { kind: "spend" as const, scriptHash, outRefHex };
-    const redeemer = {
+    const redeemer = ledgerRedeemer({
       tag: MidgardRedeemerTag.Spend,
       index: 0n,
       dataCborHex: Data.to(41n),
       exUnits: { memory: 0n, steps: 0n },
-    };
+    });
     const context = buildMidgardV1ScriptContext(
       {
         txId: Buffer.alloc(32, 0x32),
@@ -587,16 +600,16 @@ describe("Midgard local script evaluation primitives", () => {
       ),
     );
     const purpose = { kind: "spend" as const, scriptHash, outRefHex };
-    const validRedeemer = {
+    const validRedeemer = ledgerRedeemer({
       tag: MidgardRedeemerTag.Spend,
       index: 0n,
       dataCborHex: txOutRefDataCborHex(outRefHex),
       exUnits: { memory: 0n, steps: 0n },
-    };
-    const invalidRedeemer = {
+    });
+    const invalidRedeemer = ledgerRedeemer({
       ...validRedeemer,
       dataCborHex: txOutRefDataCborHex(otherOutRefHex),
-    };
+    });
     const contextView = {
       txId: Buffer.alloc(32, 0x34),
       inputs: [{ outRefHex, output }],
@@ -667,7 +680,7 @@ describe("Midgard local script evaluation primitives", () => {
       kind: "receive" as const,
       scriptHash: receiveHash,
     };
-    const probeRedeemer = {
+    const probeRedeemer = ledgerRedeemer({
       tag: MidgardRedeemerTag.Spend,
       index: 0n,
       dataCborHex: makeMidgardV1ContextProbeRedeemerCborHex({
@@ -690,25 +703,25 @@ describe("Midgard local script evaluation primitives", () => {
         expectedReceiveRedeemer: receiveRedeemerData,
       }),
       exUnits: { memory: 0n, steps: 0n },
-    };
-    const mintRedeemer = {
+    });
+    const mintRedeemer = ledgerRedeemer({
       tag: MidgardRedeemerTag.Mint,
       index: 0n,
       dataCborHex: Data.to(emptyRedeemerData as any),
       exUnits: { memory: 0n, steps: 0n },
-    };
-    const observeRedeemer = {
+    });
+    const observeRedeemer = ledgerRedeemer({
       tag: MidgardRedeemerTag.Reward,
       index: 0n,
       dataCborHex: Data.to(emptyRedeemerData as any),
       exUnits: { memory: 0n, steps: 0n },
-    };
-    const receiveRedeemer = {
+    });
+    const receiveRedeemer = ledgerRedeemer({
       tag: MidgardRedeemerTag.Receiving,
       index: 0n,
       dataCborHex: Data.to(receiveRedeemerData),
       exUnits: { memory: 0n, steps: 0n },
-    };
+    });
     const keyHash = CML.Ed25519KeyHash.from_hex(signer);
     const contextView = {
       txId: Buffer.alloc(32, 0x36),
@@ -780,12 +793,12 @@ describe("Midgard local script evaluation primitives", () => {
       CML.Value.from_coin(2_000_000n),
     );
     const purpose = { kind: "receive" as const, scriptHash };
-    const redeemer = {
+    const redeemer = ledgerRedeemer({
       tag: MidgardRedeemerTag.Receiving,
       index: 0n,
       dataCborHex: Data.to(99n),
       exUnits: { memory: 0n, steps: 0n },
-    };
+    });
     const context = buildMidgardV1ScriptContext(
       {
         txId: Buffer.alloc(32, 0x33),
@@ -811,12 +824,12 @@ describe("Midgard local script evaluation primitives", () => {
     const scriptBytes = Buffer.from(MIDGARD_V1_ALWAYS_FAIL_SCRIPT_HEX, "hex");
     const scriptHash = hashMidgardV1Script(scriptBytes);
     const purpose = { kind: "receive" as const, scriptHash };
-    const redeemer = {
+    const redeemer = ledgerRedeemer({
       tag: MidgardRedeemerTag.Receiving,
       index: 0n,
       dataCborHex: Data.to(99n),
       exUnits: { memory: 0n, steps: 0n },
-    };
+    });
     const context = buildMidgardV1ScriptContext(
       {
         txId: Buffer.alloc(32, 0x34),
@@ -855,12 +868,12 @@ describe("Midgard local script evaluation primitives", () => {
       CML.DatumOption.new_datum(datum),
     );
     const purpose = { kind: "spend" as const, scriptHash, outRefHex };
-    const redeemer = {
+    const redeemer = ledgerRedeemer({
       tag: MidgardRedeemerTag.Spend,
       index: 0n,
       dataCborHex: Data.to(new Constr(0, [])),
       exUnits: { memory: 0n, steps: 0n },
-    };
+    });
 
     const context = buildPlutusV3ScriptContext(
       {
@@ -915,12 +928,12 @@ describe("Midgard local script evaluation primitives", () => {
       scriptHash: paymentScriptHash,
       outRefHex,
     };
-    const redeemer = {
+    const redeemer = ledgerRedeemer({
       tag: MidgardRedeemerTag.Spend,
       index: 0n,
       dataCborHex: Data.to(new Constr(0, [])),
       exUnits: { memory: 0n, steps: 0n },
-    };
+    });
 
     const context = buildPlutusV3ScriptContext(
       {
