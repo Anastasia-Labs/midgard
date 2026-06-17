@@ -307,7 +307,7 @@ describe("SDK canonical ABI fixtures", () => {
 
   it("encodes user-event witness, user-event spend, settlement, and fraud-proof fixtures", () => {
     const aikenWitnessPrefix = readFileSync(
-      path.join(repoRoot, "onchain/aiken/env/default.ak"),
+      path.join(repoRoot, "onchain/aiken/env/testnet.ak"),
       "utf8",
     ).match(
       /pub const user_events_witness_script_prefix: ByteArray =\n  #"([^"]+)"/,
