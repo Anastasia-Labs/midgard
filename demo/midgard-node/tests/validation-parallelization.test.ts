@@ -1,7 +1,9 @@
 import {
   computeHash32,
   computeMidgardNativeTxId,
+  deriveMidgardNativeTxBodyCompact,
   deriveMidgardNativeTxCompact,
+  encodeMidgardNativeTxBodyCompact,
   encodeMidgardNativeTxCanonical,
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
@@ -10,13 +12,15 @@ import {
   type MidgardNativeTxWitnessSetCanonical,
 } from "@al-ft/midgard-core/codec";
 import {
-  PhaseAAccepted,
+  buildPhaseAValidatedTx,
+  decodeMidgardSubmittedTxFromCanonicalCbor,
+  PhaseAValidatedTx,
   QueuedTx,
   RejectCodes,
   runPhaseAValidation,
   runPhaseBValidationWithPatch,
 } from "@al-ft/midgard-validation";
-import { CML, walletFromSeed } from "@lucid-evolution/lucid";
+import { CML } from "@lucid-evolution/lucid";
 import { encode } from "cborg";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -44,22 +48,15 @@ const makeOutput = (address: string, lovelace: bigint): Buffer =>
     ).to_cbor_bytes(),
   );
 
-const testAddress = walletFromSeed(
-  "panther fly crawl express smile lend company blue slogan dawn wall tip angle tomorrow battle myth category vanish misery ocean include salon wood rail",
-  { network: "Preprod" },
-).address;
+const testPrivateKey = CML.PrivateKey.generate_ed25519();
+const testPublicKeyHash = testPrivateKey.to_public().hash();
+const testAddress = CML.EnterpriseAddress.new(
+  0,
+  CML.Credential.new_pub_key(testPublicKeyHash),
+)
+  .to_address()
+  .to_bech32();
 
-/**
- * Builds a signer hash fixture for validation tests.
- */
-const signerHash = (() => {
-  const paymentCred = CML.Address.from_bech32(testAddress).payment_cred();
-  const signer = paymentCred?.as_pub_key()?.to_hex();
-  if (signer === undefined) {
-    throw new Error("failed to derive pubkey hash from test address");
-  }
-  return signer;
-})();
 const EMPTY_CBOR_LIST = Buffer.from([0x80]);
 const EMPTY_CBOR_NULL = Buffer.from([0xf6]);
 const EMPTY_NULL_ROOT = computeHash32(EMPTY_CBOR_NULL);
@@ -97,8 +94,18 @@ const makeNativeTx = ({
     auxiliaryDataHash: EMPTY_NULL_ROOT,
     networkId: 0n,
   };
+  const bodyHash = computeHash32(
+    encodeMidgardNativeTxBodyCompact(deriveMidgardNativeTxBodyCompact(body)),
+  );
   const witnessSet: MidgardNativeTxWitnessSetCanonical = {
-    addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+    addrTxWitsPreimageCbor: encodeByteList([
+      Buffer.from(
+        CML.make_vkey_witness(
+          CML.TransactionHash.from_raw_bytes(bodyHash),
+          testPrivateKey,
+        ).to_cbor_bytes(),
+      ),
+    ]),
     scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
     redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
   };
@@ -125,7 +132,7 @@ const makeCandidate = ({
   readonly inputLovelace?: bigint;
   readonly validityIntervalStart?: bigint;
   readonly validityIntervalEnd?: bigint;
-}): PhaseAAccepted => {
+}): PhaseAValidatedTx => {
   const output = makeOutput(testAddress, inputLovelace);
   const tx = makeNativeTx({
     spent,
@@ -134,40 +141,15 @@ const makeCandidate = ({
     validityIntervalStart,
     validityIntervalEnd,
   });
-  const txId = computeMidgardNativeTxId(tx);
   const txCbor = encodeMidgardNativeTxCanonical(tx);
-  const producedOutRef = outRefFromHash(txId.toString("hex"), 0n);
-  return {
-    txId,
-    txCbor,
+  const submittedTx = decodeMidgardSubmittedTxFromCanonicalCbor(txCbor);
+  return buildPhaseAValidatedTx({
+    ledgerTx: submittedTx.ledgerTx,
+    txCbor: submittedTx.txCbor,
     arrivalSeq,
-    fee: 0n,
-    validityIntervalStart,
-    validityIntervalEnd,
-    referenceInputs,
-    outputSum: CML.Value.from_coin(inputLovelace),
-    witnessKeyHashes: [signerHash],
-    requiredObserverHashes: [],
-    mintPolicyHashes: [],
-    mintedValue: CML.Value.zero(),
-    burnedValue: CML.Value.zero(),
-    nativeScriptHashes: [],
-    plutusScriptHashes: [],
-    requiresPlutusEvaluation: false,
-    processedTx: {
-      txId,
-      txCbor,
-      spent: [...spent],
-      produced: [
-        {
-          tx_id: txId,
-          outref: producedOutRef,
-          output,
-          address: testAddress,
-        },
-      ],
-    },
-  };
+    createdAt: new Date(0),
+    redeemerWitnessHash: submittedTx.commitments.redeemerWitnessHash,
+  });
 };
 
 describe("validation parallelization", () => {
@@ -214,8 +196,10 @@ describe("validation parallelization", () => {
     );
 
     expect(
-      parallel.accepted.map((tx) => tx.txId.toString("hex")),
-    ).toStrictEqual(serial.accepted.map((tx) => tx.txId.toString("hex")));
+      parallel.accepted.map((tx) => tx.ledgerTx.txId.toString("hex")),
+    ).toStrictEqual(
+      serial.accepted.map((tx) => tx.ledgerTx.txId.toString("hex")),
+    );
     expect(parallel.rejected.map((tx) => tx.code)).toStrictEqual(
       serial.rejected.map((tx) => tx.code),
     );
@@ -250,12 +234,14 @@ describe("validation parallelization", () => {
       }),
     );
 
-    expect(accepted.map((tx) => tx.txId.toString("hex"))).toStrictEqual([
-      txA.txId.toString("hex"),
-      txC.txId.toString("hex"),
+    expect(accepted.map((tx) => tx.ledgerTx.txId.toString("hex"))).toStrictEqual([
+      txA.ledgerTx.txId.toString("hex"),
+      txC.ledgerTx.txId.toString("hex"),
     ]);
     expect(rejected).toHaveLength(1);
-    expect(rejected[0].txId.toString("hex")).toBe(txB.txId.toString("hex"));
+    expect(rejected[0].txId.toString("hex")).toBe(
+      txB.ledgerTx.txId.toString("hex"),
+    );
     expect([RejectCodes.DoubleSpend, RejectCodes.InputNotFound]).toContain(
       rejected[0].code,
     );
@@ -298,9 +284,9 @@ describe("validation parallelization", () => {
           bucketConcurrency: 1,
         }),
       );
-    expect(activeAccepted.map((tx) => tx.txId.toString("hex"))).toStrictEqual([
-      active.txId.toString("hex"),
-    ]);
+    expect(
+      activeAccepted.map((tx) => tx.ledgerTx.txId.toString("hex")),
+    ).toStrictEqual([active.ledgerTx.txId.toString("hex")]);
     expect(activeRejected).toHaveLength(0);
   });
 });

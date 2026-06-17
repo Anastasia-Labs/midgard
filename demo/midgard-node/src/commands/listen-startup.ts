@@ -140,6 +140,21 @@ const writeStartupContractDeploymentInfo = Effect.gen(function* () {
   ),
 );
 
+const writeStartupContractDeploymentInfoInBackground =
+  writeStartupContractDeploymentInfo.pipe(Effect.forkDaemon, Effect.asVoid);
+
+const verifyNodeRuntimeReferenceScriptsInBackground = Effect.gen(function* () {
+  yield* ensureNodeRuntimeReferenceScriptsOnStartup(false);
+}).pipe(
+  Effect.catchAll((error) =>
+    Effect.logError(
+      `Startup node-runtime reference-script verification failed: ${formatUnknownError(error)}`,
+    ),
+  ),
+  Effect.forkDaemon,
+  Effect.asVoid,
+);
+
 const isRetryableProtocolStatusError = (error: SDK.LucidError): boolean =>
   error.message.startsWith("Failed to fetch ") ||
   error.message.startsWith("Failed to query ");
@@ -202,7 +217,9 @@ const ensureNodeRuntimeReferenceScriptsOnStartup = (shouldBootstrap: boolean) =>
       const publications = yield* ensureNodeRuntimeReferenceScriptsProgram(
         lucid.referenceScriptsApi,
         contracts,
+        contracts.referenceScriptAuth,
         lucid.api,
+        lucid.referenceScriptsAddress,
       );
       yield* Effect.logInfo(
         `Startup node-runtime reference-script preflight completed: count=${publications.length.toString()},address=${lucid.referenceScriptsAddress}`,
@@ -213,6 +230,7 @@ const ensureNodeRuntimeReferenceScriptsOnStartup = (shouldBootstrap: boolean) =>
       lucid.api,
       lucid.referenceScriptsAddress,
       contracts,
+      contracts.referenceScriptAuth,
     );
     yield* Effect.logInfo(
       `Startup node-runtime reference-script verification completed: count=${publications.length.toString()},address=${lucid.referenceScriptsAddress}`,
@@ -257,8 +275,12 @@ export const ensureProtocolInitializedOnStartup = Effect.gen(function* () {
     yield* Effect.logInfo(
       `Startup initialization check: protocol deployment already present (state_queue=${details}).`,
     );
-    yield* ensureNodeRuntimeReferenceScriptsOnStartup(shouldBootstrap);
-    yield* writeStartupContractDeploymentInfo;
+    if (shouldBootstrap) {
+      yield* ensureNodeRuntimeReferenceScriptsOnStartup(true);
+    } else {
+      yield* verifyNodeRuntimeReferenceScriptsInBackground;
+    }
+    yield* writeStartupContractDeploymentInfoInBackground;
     return;
   }
 
@@ -287,7 +309,7 @@ export const ensureProtocolInitializedOnStartup = Effect.gen(function* () {
     `Startup protocol initialization submitted successfully: ${initTxHash}`,
   );
   yield* ensureNodeRuntimeReferenceScriptsOnStartup(false);
-  yield* writeStartupContractDeploymentInfo;
+  yield* writeStartupContractDeploymentInfoInBackground;
 }).pipe(
   Effect.tapError((e) =>
     Effect.logError(
@@ -383,7 +405,6 @@ export const seedLatestLocalBlockBoundaryOnStartup = Effect.gen(function* () {
       `Failed to seed latest local block boundary on startup: ${formatUnknownError(e)}`,
     ),
   ),
-  Effect.orDie,
 );
 
 export const hydratePendingBlockFinalizationOnStartup = Effect.gen(

@@ -1,5 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
 import { compareOutRefs } from "@al-ft/midgard-core/out-ref";
+import * as SDK from "@al-ft/midgard-sdk";
 import {
   type Assets,
   CML,
@@ -33,12 +33,13 @@ import {
   buildInitializePayoutTxProgram,
   buildRefundInvalidWithdrawalTxProgram,
 } from "@/transactions/reserve-payout.js";
+
 import {
   findRedeemerDataCbor,
   getRedeemerPointersInContextOrder,
+  type RedeemerPointer,
   resolveMintPolicyContextIndex,
   resolveRedeemerTxInfoIndex,
-  type RedeemerPointer,
 } from "./helpers/redeemer-inspection.js";
 
 const mkUtxo = (
@@ -68,6 +69,13 @@ const hashHexBlake2b256 = (hex: string): Promise<string> =>
 
 const canonicalDatumCbor = (cbor: string): string =>
   CML.PlutusData.from_cbor_hex(cbor).to_canonical_cbor_hex();
+
+const userEventCborFieldsFromDatumCbor = (datum: string) =>
+  SDK.userEventCborFieldsFromInlineDatum({
+    txHash: "00".repeat(32),
+    outputIndex: 0,
+    datum,
+  });
 
 const expectLeft = <E, A>(
   result:
@@ -103,6 +111,7 @@ const loadRealContracts = (oneShotOutRef: {
         "Preprod",
         placeholder,
         oneShotOutRef,
+        { referenceScriptAuth: placeholder.referenceScriptAuth },
       );
     }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
   );
@@ -305,9 +314,7 @@ const expectAuthenticateMintRedeemerLayout = ({
   expect(redeemer.AuthenticateEvent.event_output_index).toBe(
     requireEventOutputIndex(transaction, eventAddress, eventUnit),
   );
-  expect(redeemer.AuthenticateEvent.hub_ref_input_index).toBe(
-    hubRefInputIndex,
-  );
+  expect(redeemer.AuthenticateEvent.hub_ref_input_index).toBe(hubRefInputIndex);
   expect(redeemer.AuthenticateEvent.witness_registration_redeemer_index).toBe(
     resolveRedeemerTxInfoIndex({
       pointers: getRedeemerPointersInContextOrder(transaction),
@@ -370,8 +377,7 @@ const makeDepositUTxO = ({
   utxo,
   datum,
   assetName,
-  idCbor: Buffer.from(Data.to(datum.event.id, SDK.OutputReference), "hex"),
-  infoCbor: Buffer.from(Data.to(datum.event.info, SDK.DepositInfo), "hex"),
+  ...SDK.userEventCborFieldsFromInlineDatum(utxo),
   inclusionTime: new Date(Number(datum.inclusion_time)),
 });
 
@@ -387,8 +393,7 @@ const makeWithdrawalUTxO = ({
   utxo,
   datum,
   assetName,
-  idCbor: Buffer.from(Data.to(datum.event.id, SDK.OutputReference), "hex"),
-  infoCbor: Buffer.from(Data.to(datum.event.info, SDK.WithdrawalInfo), "hex"),
+  ...SDK.userEventCborFieldsFromInlineDatum(utxo),
   inclusionTime: new Date(Number(datum.inclusion_time)),
 });
 
@@ -677,23 +682,33 @@ const makeReserveLifecycleBuilderFixture = async ({
     refund_address: l1AddressData,
     refund_datum: "NoDatum",
   };
-  const depositKeyCbor = Data.to(depositDatum.event.id, SDK.OutputReference);
-  const depositValueCbor = Data.to(depositDatum.event.info, SDK.DepositInfo);
+  const depositDatumCbor = Data.to(depositDatum, SDK.DepositDatum);
+  const withdrawalDatumCbor = Data.to(
+    withdrawalDatum,
+    SDK.WithdrawalOrderDatum,
+  );
+  const depositEventCbors = userEventCborFieldsFromDatumCbor(depositDatumCbor);
+  const withdrawalEventCbors =
+    userEventCborFieldsFromDatumCbor(withdrawalDatumCbor);
   const settlementWithdrawalInfo: SDK.WithdrawalInfo = {
     ...withdrawalDatum.event.info,
     validity: settlementWithdrawalValidity,
   };
-  const withdrawalKeyCbor = Data.to(
-    withdrawalDatum.event.id,
-    SDK.OutputReference,
-  );
-  const withdrawalValueCbor = Data.to(
-    settlementWithdrawalInfo,
-    SDK.WithdrawalInfo,
-  );
+  const withdrawalValueCbor =
+    settlementWithdrawalValidity === withdrawalDatum.event.info.validity
+      ? withdrawalEventCbors.infoCbor.toString("hex")
+      : __reservePayoutTest.aikenSerialisedPlutusDataCbor(
+          Data.to(settlementWithdrawalInfo, SDK.WithdrawalInfo),
+        );
   const [depositsRoot, withdrawalsRoot] = await Promise.all([
-    singletonMembershipRoot(depositKeyCbor, depositValueCbor),
-    singletonMembershipRoot(withdrawalKeyCbor, withdrawalValueCbor),
+    singletonMembershipRoot(
+      depositEventCbors.idCbor.toString("hex"),
+      depositEventCbors.infoCbor.toString("hex"),
+    ),
+    singletonMembershipRoot(
+      withdrawalEventCbors.idCbor.toString("hex"),
+      withdrawalValueCbor,
+    ),
   ]);
   const settlementDatum: SDK.SettlementDatum = {
     deposits_root: depositsRoot,
@@ -779,12 +794,12 @@ const makeReserveLifecycleBuilderFixture = async ({
       makeSeededScriptAccount({
         address: contracts.deposit.spendingScriptAddress,
         assets: { lovelace: 8_000_000n, [depositUnit]: 1n },
-        inlineDatum: Data.to(depositDatum, SDK.DepositDatum),
+        inlineDatum: depositDatumCbor,
       }),
       makeSeededScriptAccount({
         address: contracts.withdrawal.spendingScriptAddress,
         assets: { lovelace: 3_000_000n, [withdrawalUnit]: 1n },
-        inlineDatum: Data.to(withdrawalDatum, SDK.WithdrawalOrderDatum),
+        inlineDatum: withdrawalDatumCbor,
       }),
       makeSeededScriptAccount({
         address: contracts.settlement.spendingScriptAddress,

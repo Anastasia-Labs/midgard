@@ -1,9 +1,10 @@
+use aiken/builtin
 use aiken/collection/list
 use aiken/crypto.{verify_ed25519_signature}
 use aiken/primitive/bytearray
-use cardano/assets.{AssetName}
+use cardano/assets.{AssetName, PolicyId}
 use cardano/transaction.{
-  InlineDatum, Output, OutputReference, Transaction, resolve_input,
+  InlineDatum, Input, Output, OutputReference, Transaction, resolve_input,
 }
 use midgard/common/utils
 use midgard/da_params_governor as da_params_governor
@@ -14,15 +15,25 @@ use midgard/ledger_state.{HeaderHash}
 /// threshold-attested UTxO and must not rely on unique supply.
 pub const asset_name_prefix: AssetName = "DAAT"
 
+pub const state_queue_mint_reference_script_asset_name: AssetName =
+  "StateQueueMint"
+
 pub const signature_byte_count: Int = 64
 
 pub const signature_witness_byte_count: Int = 65
 
+pub const attested_signer_bitmap_byte_count: Int = 32
+
+pub const empty_attested_signer_bitmap: ByteArray =
+  #"0000000000000000000000000000000000000000000000000000000000000000"
+
 pub type Datum {
   header_hash: HeaderHash,
   da_threshold: Int,
-  /// Sorted verification keys, packed as 32-byte chunks.
-  remaining_signers: ByteArray,
+  /// Hash of the immutable sorted committee verification keys.
+  committee_signers_hash: ByteArray,
+  /// 256-bit MSB-first bitmap of committee indexes that have attested.
+  attested_signers: ByteArray,
   attestation_count: Int,
 }
 
@@ -31,20 +42,28 @@ pub type MintRedeemer {
     output_index: Int,
     da_params_ref_input_index: Int,
     state_queue_ref_input_index: Int,
+    state_queue_mint_ref_script_input_index: Int,
   }
   ApplyToStateQueue {
     da_attestation_input_index: Int,
     state_queue_input_index: Int,
     state_queue_output_index: Int,
+    state_queue_mint_ref_script_input_index: Int,
   }
 }
 
+/// `AddSignatures.da_params_ref_input_index` points at the authenticated DA
+/// params UTxO whose committee matches `Datum.committee_signers_hash`.
 /// `AddSignatures.signatures` is a packed sequence of
 /// `1-byte signer index || 64-byte Ed25519 signature` chunks. Indexes must be
-/// strictly ascending and point to 32-byte verification key slots in the input
-/// datum's `remaining_signers`.
+/// strictly ascending and point to 32-byte verification key slots in the DA
+/// params committee.
 pub type SpendRedeemer {
-  AddSignatures { output_index: Int, signatures: ByteArray }
+  AddSignatures {
+    output_index: Int,
+    da_params_ref_input_index: Int,
+    signatures: ByteArray,
+  }
   BurnForStateQueue { mint_redeemer_index: Int }
 }
 
@@ -58,51 +77,83 @@ fn attestation_message(header_hash: HeaderHash) -> ByteArray {
     |> bytearray.concat(header_hash)
 }
 
+pub fn get_authenticated_state_queue_policy_id(
+  reference_inputs: List<Input>,
+  reference_script_auth_policy_id: PolicyId,
+  state_queue_mint_ref_script_input_index: Int,
+) -> PolicyId {
+  expect Input {
+    output: Output { value, reference_script: Some(state_queue_policy_id), .. },
+    ..
+  } = reference_inputs |> list.expect_at(state_queue_mint_ref_script_input_index)
+
+  expect
+    assets.has_nft_strict(
+      value,
+      reference_script_auth_policy_id,
+      state_queue_mint_reference_script_asset_name,
+    )
+
+  state_queue_policy_id
+}
+
+pub fn validate_init_output(
+  output: Output,
+  own_policy_id: PolicyId,
+  params: da_params_governor.Datum,
+  expected_header_hash: HeaderHash,
+) -> AssetName {
+  expect Output {
+    address,
+    value,
+    datum: InlineDatum(datum_data),
+    reference_script: None,
+  } = output
+  expect utils.expect_script_hash(address) == own_policy_id
+
+  let expected_datum_data: Data =
+    Datum {
+      header_hash: expected_header_hash,
+      da_threshold: params.da_threshold,
+      committee_signers_hash: params.committee_signers_hash,
+      attested_signers: empty_attested_signer_bitmap,
+      attestation_count: 0,
+    }
+  expect datum_data == expected_datum_data
+
+  let attestation_asset = asset_name(expected_header_hash)
+  expect assets.has_nft_strict(value, own_policy_id, attestation_asset)
+
+  attestation_asset
+}
+
 fn verify_indexed_signatures(
   signatures: ByteArray,
   message: ByteArray,
-  input_remaining: ByteArray,
-  output_remaining: ByteArray,
+  committee_signers: ByteArray,
+  input_attested: ByteArray,
   min_signer_index: Int,
-  input_cursor: Int,
-  output_cursor: Int,
   signature_cursor: Int,
-  input_len: Int,
   signatures_len: Int,
-  count: Int,
-) -> Int {
+  committee_len: Int,
+  attested_bit_indexes: List<Int>,
+) -> ByteArray {
   if signature_cursor == signatures_len {
-    expect
-      bytearray.drop(input_remaining, input_cursor) == bytearray.drop(
-        output_remaining,
-        output_cursor,
-      )
-    count
+    builtin.write_bits(input_attested, attested_bit_indexes, True)
   } else {
     expect signature_cursor + signature_witness_byte_count <= signatures_len
     let signer_index = bytearray.at(signatures, signature_cursor)
     expect signer_index >= min_signer_index
+    let signer_bit_index = 255 - signer_index
+
     let signer_offset =
       signer_index * da_params_governor.verification_key_byte_count
-    let next_input_cursor =
-      signer_offset + da_params_governor.verification_key_byte_count
-    expect next_input_cursor <= input_len
-
-    let copied_byte_count = signer_offset - input_cursor
     expect
-      if copied_byte_count == 0 {
-        True
-      } else {
-        utils.bytearray_slice(input_remaining, input_cursor, copied_byte_count) == utils.bytearray_slice(
-          output_remaining,
-          output_cursor,
-          copied_byte_count,
-        )
-      }
+      signer_offset + da_params_governor.verification_key_byte_count <= committee_len
 
     let verification_key =
       utils.bytearray_slice(
-        input_remaining,
+        committee_signers,
         signer_offset,
         da_params_governor.verification_key_byte_count,
       )
@@ -117,30 +168,54 @@ fn verify_indexed_signatures(
     verify_indexed_signatures(
       signatures,
       message,
-      input_remaining,
-      output_remaining,
+      committee_signers,
+      input_attested,
       signer_index + 1,
-      next_input_cursor,
-      output_cursor + copied_byte_count,
       signature_cursor + signature_witness_byte_count,
-      input_len,
       signatures_len,
-      count + 1,
+      committee_len,
+      [signer_bit_index, ..attested_bit_indexes],
     )
   }
+}
+
+pub fn get_attestation_input_datum(
+  inputs: List<Input>,
+  input_index: Int,
+  own_policy_id: PolicyId,
+) -> Datum {
+  expect Input {
+    output: Output {
+      address,
+      value,
+      datum: InlineDatum(datum_data),
+      reference_script: None,
+    },
+    ..
+  } = inputs |> list.expect_at(input_index)
+
+  expect utils.expect_script_hash(address) == own_policy_id
+  expect datum: Datum = datum_data
+  let attestation_asset = asset_name(datum.header_hash)
+  expect assets.has_nft_strict(value, own_policy_id, attestation_asset)
+  datum
 }
 
 pub fn validate_add_signatures(
   datum: Option<Datum>,
   output_index: Int,
+  da_params_policy_id: PolicyId,
+  da_params_ref_input_index: Int,
   signatures: ByteArray,
   own_ref: OutputReference,
   tx: Transaction,
 ) -> Bool {
-  let Transaction { inputs, outputs, .. } = tx
+  let Transaction { inputs, outputs, reference_inputs, .. } = tx
 
   // 1. The spent datum must be present.
   expect Some(input_datum) = datum
+  expect
+    bytearray.length(input_datum.attested_signers) == attested_signer_bitmap_byte_count
 
   // 2. The script input must match the supplied datum exactly.
   expect Output {
@@ -154,16 +229,37 @@ pub fn validate_add_signatures(
 
   // 3. The script input must carry the exact header-specific attestation NFT.
   let own_policy_id = utils.expect_script_hash(input_address)
-  let Datum {
-    header_hash: input_header_hash,
-    da_threshold: input_da_threshold,
-    remaining_signers: input_remaining_signers,
-    attestation_count: input_attestation_count,
-  } = input_datum
-  let attestation_asset = asset_name(input_header_hash)
+  let attestation_asset = asset_name(input_datum.header_hash)
   expect assets.has_nft_strict(input_value, own_policy_id, attestation_asset)
 
-  // 4. The continued output must preserve address and value exactly.
+  // 4. The current DA params must authenticate the immutable committee for
+  //    this attestation datum.
+  let params =
+    da_params_governor.get_da_params(
+      reference_inputs,
+      da_params_policy_id,
+      da_params_ref_input_index,
+    )
+  expect params.committee_signers_hash == input_datum.committee_signers_hash
+
+  // 5. The supplied signatures mark attested committee indexes in the bitmap.
+  let signatures_len = bytearray.length(signatures)
+  let attested_signers =
+    verify_indexed_signatures(
+      signatures,
+      attestation_message(input_datum.header_hash),
+      params.committee,
+      input_datum.attested_signers,
+      0,
+      0,
+      signatures_len,
+      bytearray.length(params.committee),
+      [],
+    )
+  let attestation_count = builtin.count_set_bits(attested_signers)
+  expect attestation_count > input_datum.attestation_count
+
+  // 6. The continued output must preserve address and value exactly.
   expect Output {
     address: output_address,
     value: output_value,
@@ -173,38 +269,15 @@ pub fn validate_add_signatures(
   expect output_address == input_address
   expect output_value == input_value
 
-  // 5. The output remaining signer set feeds signature verification.
-  expect output_datum: Datum = output_datum_data
-  let Datum { remaining_signers: output_remaining_signers, .. } = output_datum
-
-  // 6. The supplied signatures must remove exactly the signed committee slots.
-  let verified_count =
-    verify_indexed_signatures(
-      signatures,
-      attestation_message(input_header_hash),
-      input_remaining_signers,
-      output_remaining_signers,
-      0,
-      0,
-      0,
-      0,
-      bytearray.length(input_remaining_signers),
-      bytearray.length(signatures),
-      0,
-    )
-
-  // 7. At least one signature must be added and the attestation count must
-  //    increase by exactly the verified count.
-  expect verified_count > 0
-
-  // 8. The continued datum must preserve the stable fields and update only the
-  //    signer set and attestation count according to verified signatures.
+  // 7. The continued datum must preserve the stable fields and update only the
+  //    attested signer bitmap and derived count.
   let expected_output_datum_data: Data =
     Datum {
-      header_hash: input_header_hash,
-      da_threshold: input_da_threshold,
-      remaining_signers: output_remaining_signers,
-      attestation_count: input_attestation_count + verified_count,
+      header_hash: input_datum.header_hash,
+      da_threshold: input_datum.da_threshold,
+      committee_signers_hash: input_datum.committee_signers_hash,
+      attested_signers,
+      attestation_count,
     }
   expect output_datum_data == expected_output_datum_data
 

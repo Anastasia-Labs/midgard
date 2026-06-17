@@ -48,9 +48,71 @@ import {
   MidgardContracts,
   NodeConfig,
 } from "@/services/index.js";
+import { backfillMissingDaPayloadsFromFinalizedJournals } from "@/workers/commit-block-header/da-payload-backfill.js";
 
 const logStartupFailure = (message: string) => (error: unknown) =>
   Effect.logError(`${message}: ${formatUnknownError(error)}`);
+
+const isRetryableStartupProviderError = (error: unknown): boolean => {
+  const message = formatUnknownError(error, {
+    includeCause: true,
+  }).toLowerCase();
+  return (
+    message.includes("failed to fetch ") ||
+    message.includes("failed to query ") ||
+    message.includes("fetch failed") ||
+    message.includes("status code 503") ||
+    message.includes("response code 503") ||
+    message.includes("status 503") ||
+    message.includes("service unavailable") ||
+    message.includes("temporarily unavailable") ||
+    message.includes("timeout") ||
+    message.includes("timed out") ||
+    message.includes("socket") ||
+    message.includes("econnrefused") ||
+    message.includes("econnreset") ||
+    message.includes("rate limit") ||
+    message.includes("too many requests")
+  );
+};
+
+const runStartupProviderStepWithRetry = <A, E, R>(
+  label: string,
+  step: Effect.Effect<A, E, R>,
+  options: { readonly maxAttempts: number; readonly retryDelayMs: number },
+): Effect.Effect<A, E, R> =>
+  Effect.gen(function* () {
+    const maxAttempts = Math.max(1, Math.floor(options.maxAttempts));
+    const retryDelayMs = Math.max(0, Math.floor(options.retryDelayMs));
+    let lastError: E | undefined;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      const result = yield* Effect.either(step);
+      if (result._tag === "Right") {
+        if (attempt > 1) {
+          yield* Effect.logInfo(
+            `${label} became available after ${attempt.toString()} attempt(s).`,
+          );
+        }
+        return result.right;
+      }
+
+      lastError = result.left;
+      if (!isRetryableStartupProviderError(lastError)) {
+        return yield* Effect.fail(lastError);
+      }
+      if (attempt < maxAttempts) {
+        yield* Effect.logWarning(
+          `${label} failed with a retryable provider error (attempt ${attempt.toString()}/${maxAttempts.toString()}); retrying in ${retryDelayMs.toString()}ms. cause=${formatUnknownError(lastError, { includeCause: true })}`,
+        );
+        if (retryDelayMs > 0) {
+          yield* Effect.sleep(Duration.millis(retryDelayMs));
+        }
+      }
+    }
+
+    return yield* Effect.fail(lastError as E);
+  });
 
 /**
  * Boots the long-running Midgard node runtime.
@@ -75,7 +137,26 @@ export const runNode = (
 
     yield* InitDB.program.pipe(Effect.provide(Database.layer));
     yield* ensureProtocolInitializedOnStartup;
-    yield* seedLatestLocalBlockBoundaryOnStartup;
+    const startupProviderRetry = {
+      maxAttempts: nodeConfig.STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS,
+      retryDelayMs: nodeConfig.STARTUP_PROTOCOL_STATUS_QUERY_RETRY_DELAY_MS,
+    } as const;
+    yield* runStartupProviderStepWithRetry(
+      "Startup state-queue boundary seed",
+      seedLatestLocalBlockBoundaryOnStartup,
+      startupProviderRetry,
+    ).pipe(
+      Effect.tapError(
+        logStartupFailure("Startup state-queue boundary seed failed"),
+      ),
+      Effect.mapError(
+        (e) =>
+          new DatabaseInitializationError({
+            message: "Startup state-queue boundary seed failed",
+            cause: e,
+          }),
+      ),
+    );
     yield* hydratePendingBlockFinalizationOnStartup;
     const unfinishedMutationJobs = yield* MutationJobsDB.retrieveUnfinished;
     if (unfinishedMutationJobs.length > 0) {
@@ -93,7 +174,11 @@ export const runNode = (
         }),
       );
     }
-    yield* fetchAndInsertDepositUTxOs.pipe(
+    yield* runStartupProviderStepWithRetry(
+      "Startup deposit catch-up",
+      fetchAndInsertDepositUTxOs,
+      startupProviderRetry,
+    ).pipe(
       Effect.tapError(logStartupFailure("Startup deposit catch-up failed")),
       Effect.mapError(
         (e) =>
@@ -115,7 +200,11 @@ export const runNode = (
           }),
       ),
     );
-    yield* fetchAndInsertWithdrawalUTxOs.pipe(
+    yield* runStartupProviderStepWithRetry(
+      "Startup withdrawal catch-up",
+      fetchAndInsertWithdrawalUTxOs,
+      startupProviderRetry,
+    ).pipe(
       Effect.tapError(logStartupFailure("Startup withdrawal catch-up failed")),
       Effect.mapError(
         (e) =>
@@ -123,6 +212,20 @@ export const runNode = (
             message: "Startup withdrawal catch-up failed",
             cause: e,
           }),
+      ),
+    );
+    yield* backfillMissingDaPayloadsFromFinalizedJournals({ limit: 100 }).pipe(
+      Effect.tap((summary) =>
+        summary.scanned === 0
+          ? Effect.void
+          : Effect.logInfo(
+              `Startup DA payload backfill scanned=${summary.scanned.toString()},backfilled=${summary.backfilled.length.toString()},skipped=${summary.skipped.length.toString()}`,
+            ),
+      ),
+      Effect.catchAll((error) =>
+        Effect.logWarning(
+          `Startup DA payload backfill skipped after error: ${formatUnknownError(error)}`,
+        ),
       ),
     );
 

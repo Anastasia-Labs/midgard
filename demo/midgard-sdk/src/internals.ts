@@ -146,7 +146,7 @@ export const authenticateUTxO: {
     utxo: UTxO,
     nftPolicy: string,
     schema: any,
-    extraFields: (datum: TDatum) => TExtra,
+    extraFields: (datum: TDatum, utxo: UTxO) => TExtra,
   ): Effect.Effect<
     AuthenticUTxO<TDatum, TExtra>,
     DataCoercionError | UnauthenticUtxoError
@@ -155,18 +155,30 @@ export const authenticateUTxO: {
   utxo: UTxO,
   nftPolicy: string,
   schema: any,
-  extraFields?: (datum: TDatum) => TExtra,
+  extraFields?: (datum: TDatum, utxo: UTxO) => TExtra,
 ) =>
-  Effect.map(
-    utxoToAuthenticUTxOBase<TDatum>(utxo, nftPolicy, schema),
-    (base) =>
-      extraFields === undefined
-        ? (base as AuthenticUTxO<TDatum>)
-        : ({
-            ...base,
-            ...extraFields(base.datum),
-          } as AuthenticUTxO<TDatum, TExtra>),
-  );
+  Effect.gen(function* () {
+    const base = yield* utxoToAuthenticUTxOBase<TDatum>(
+      utxo,
+      nftPolicy,
+      schema,
+    );
+    if (extraFields === undefined) {
+      return base as AuthenticUTxO<TDatum>;
+    }
+    const extra = yield* Effect.try({
+      try: () => extraFields(base.datum, base.utxo),
+      catch: (cause) =>
+        new DataCoercionError({
+          message: "Failed to derive authenticated UTxO extra fields",
+          cause,
+        }),
+    });
+    return {
+      ...base,
+      ...extra,
+    } as AuthenticUTxO<TDatum, TExtra>;
+  });
 
 /**
  * Silently drops invalid UTxOs.
@@ -181,13 +193,13 @@ export const authenticateUTxOs: {
     utxos: UTxO[],
     nftPolicy: string,
     schema: any,
-    extraFields: (datum: TDatum) => TExtra,
+    extraFields: (datum: TDatum, utxo: UTxO) => TExtra,
   ): Effect.Effect<AuthenticUTxO<TDatum, TExtra>[]>;
 } = <TDatum, TExtra>(
   utxos: UTxO[],
   nftPolicy: string,
   schema: any,
-  extraFields?: (datum: TDatum) => TExtra,
+  extraFields?: (datum: TDatum, utxo: UTxO) => TExtra,
 ) => {
   const effects = utxos.map((utxo) =>
     extraFields === undefined

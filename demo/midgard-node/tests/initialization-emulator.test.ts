@@ -44,6 +44,7 @@ const loadContracts = (oneShotOutRef: {
         "Preprod",
         placeholder,
         oneShotOutRef,
+        { referenceScriptAuth: placeholder.referenceScriptAuth },
       );
     }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
   );
@@ -55,12 +56,20 @@ const EMULATOR_PROTOCOL_PARAMETERS = {
 } as const;
 
 const EMPTY_FRAUD_PROOF_CATALOGUE_ROOT = "00".repeat(32);
+const TEST_DA_PARAMS: SDK.DaParamsDatum = {
+  committee: "00".repeat(32),
+  committee_signers_hash: "11".repeat(32),
+  da_threshold: 1n,
+  owners: ["22".repeat(28)],
+  update_threshold: 1n,
+};
 
 const buildAtomicInitializationTx = async (
   lucid: Awaited<ReturnType<typeof Lucid>>,
   referenceScriptsLucid: Awaited<ReturnType<typeof Lucid>>,
   contracts: SDK.MidgardValidators,
   nonceUtxo: UTxO,
+  operatorSeedPhrase: string,
 ) => {
   const referenceScripts = await Effect.runPromise(
     ensureAtomicProtocolInitReferenceScriptsProgram(
@@ -75,6 +84,8 @@ const buildAtomicInitializationTx = async (
       {
         HUB_ORACLE_ONE_SHOT_TX_HASH: nonceUtxo.txHash,
         HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: nonceUtxo.outputIndex,
+        L1_OPERATOR_SEED_PHRASE: operatorSeedPhrase,
+        NETWORK: "Preprod",
       },
       EMPTY_FRAUD_PROOF_CATALOGUE_ROOT,
       undefined,
@@ -105,7 +116,13 @@ const initEmulatorLucid = async () => {
   if (!nonceUtxo) {
     throw new Error("Expected at least one wallet UTxO in emulator");
   }
-  return { emulator, lucid, referenceScriptsLucid, nonceUtxo };
+  return {
+    emulator,
+    lucid,
+    referenceScriptsLucid,
+    nonceUtxo,
+    operatorSeedPhrase: operator.seedPhrase,
+  };
 };
 
 describe("initialization emulator", () => {
@@ -245,6 +262,7 @@ describe("initialization emulator", () => {
         SDK.incompleteInitializationTxProgram(fakeLucid, {
           midgardValidators: contracts,
           fraudProofCatalogueMerkleRoot: EMPTY_FRAUD_PROOF_CATALOGUE_ROOT,
+          daParams: TEST_DA_PARAMS,
           oneShotNonceUTxO: nonceUtxo,
           validityRange: { validFrom, validTo },
         }),
@@ -254,7 +272,7 @@ describe("initialization emulator", () => {
       expect(calls.validFrom).toBe(Number(validFrom));
       expect(calls.validTo).toBe(Number(validTo));
       expect(calls.collected).toEqual([nonceUtxo]);
-      expect(outputAssets).toHaveLength(7);
+      expect(outputAssets).toHaveLength(8);
       expect(outputAssets.every((assets) => !("lovelace" in assets))).toBe(
         true,
       );
@@ -265,7 +283,7 @@ describe("initialization emulator", () => {
   });
 
   it("deploys the canonical real protocol roots atomically", async () => {
-    const { lucid, referenceScriptsLucid, nonceUtxo } =
+    const { lucid, referenceScriptsLucid, nonceUtxo, operatorSeedPhrase } =
       await initEmulatorLucid();
     const contracts = await loadContracts({
       txHash: nonceUtxo.txHash,
@@ -277,6 +295,7 @@ describe("initialization emulator", () => {
       referenceScriptsLucid,
       contracts,
       nonceUtxo,
+      operatorSeedPhrase,
     );
     const signed = await (await initTx.complete({ localUPLCEval: true })).sign
       .withWallet()
@@ -306,6 +325,7 @@ describe("initialization emulator", () => {
         lucid,
         await referenceScriptsLucid.wallet().address(),
         contracts,
+        contracts.referenceScriptAuth,
       ),
     );
     const runtimeReferenceScriptNames = runtimeReferenceScripts.map(
@@ -332,7 +352,7 @@ describe("initialization emulator", () => {
   });
 
   it("reports already initialized when the atomic protocol root set exists", async () => {
-    const { lucid, referenceScriptsLucid, nonceUtxo } =
+    const { lucid, referenceScriptsLucid, nonceUtxo, operatorSeedPhrase } =
       await initEmulatorLucid();
     const contracts = await loadContracts({
       txHash: nonceUtxo.txHash,
@@ -344,6 +364,7 @@ describe("initialization emulator", () => {
       referenceScriptsLucid,
       contracts,
       nonceUtxo,
+      operatorSeedPhrase,
     );
     const signed = await (await initTx.complete({ localUPLCEval: true })).sign
       .withWallet()
@@ -390,7 +411,7 @@ describe("initialization emulator", () => {
   });
 
   it("initializes state_queue when all real protocol roots are minted atomically", async () => {
-    const { lucid, referenceScriptsLucid, nonceUtxo } =
+    const { lucid, referenceScriptsLucid, nonceUtxo, operatorSeedPhrase } =
       await initEmulatorLucid();
     const contracts = await loadContracts({
       txHash: nonceUtxo.txHash,
@@ -402,6 +423,7 @@ describe("initialization emulator", () => {
       referenceScriptsLucid,
       contracts,
       nonceUtxo,
+      operatorSeedPhrase,
     );
     const completed = await initTx.complete({ localUPLCEval: true });
     const signed = await completed.sign.withWallet().complete();
@@ -427,7 +449,7 @@ describe("initialization emulator", () => {
   });
 
   it("rejects re-initialization when the hub_oracle one-shot nonce is already consumed", async () => {
-    const { lucid, referenceScriptsLucid, nonceUtxo } =
+    const { lucid, referenceScriptsLucid, nonceUtxo, operatorSeedPhrase } =
       await initEmulatorLucid();
     const contracts = await loadContracts({
       txHash: nonceUtxo.txHash,
@@ -439,6 +461,7 @@ describe("initialization emulator", () => {
       referenceScriptsLucid,
       contracts,
       nonceUtxo,
+      operatorSeedPhrase,
     );
     const firstSigned = await (
       await firstInit.complete({ localUPLCEval: true })
@@ -463,6 +486,7 @@ describe("initialization emulator", () => {
           referenceScriptsLucid,
           contracts,
           nonceUtxo,
+          operatorSeedPhrase,
         );
         const secondSigned = await (
           await secondInit.complete({ localUPLCEval: true })
@@ -476,8 +500,13 @@ describe("initialization emulator", () => {
   });
 
   it("registers and activates the operator with real operator contracts", async () => {
-    const { emulator, lucid, referenceScriptsLucid, nonceUtxo } =
-      await initEmulatorLucid();
+    const {
+      emulator,
+      lucid,
+      referenceScriptsLucid,
+      nonceUtxo,
+      operatorSeedPhrase,
+    } = await initEmulatorLucid();
     const contracts = await loadContracts({
       txHash: nonceUtxo.txHash,
       outputIndex: nonceUtxo.outputIndex,
@@ -488,6 +517,7 @@ describe("initialization emulator", () => {
       referenceScriptsLucid,
       contracts,
       nonceUtxo,
+      operatorSeedPhrase,
     );
     const completed = await initTx.complete({ localUPLCEval: true });
     const signed = await completed.sign.withWallet().complete();

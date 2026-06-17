@@ -101,6 +101,27 @@ export const assertAddressNetwork = (
 const normalizeBodyHash = (bodyHash: Uint8Array): Hash32 =>
   ensureHash32(bodyHash, "body_hash");
 
+type PrivateKeyLike = {
+  readonly to_bech32: () => string;
+};
+
+const isPrivateKeyLike = (privateKey: unknown): privateKey is PrivateKeyLike =>
+  typeof privateKey === "object" &&
+  privateKey !== null &&
+  typeof (privateKey as { readonly to_bech32?: unknown }).to_bech32 ===
+    "function";
+
+const normalizePrivateKey = (privateKey: PrivateKey): PrivateKey => {
+  const candidate: unknown = privateKey;
+  if (candidate instanceof CML.PrivateKey) {
+    return candidate;
+  }
+  if (!isPrivateKeyLike(candidate)) {
+    throw new SigningError("Invalid private key");
+  }
+  return CML.PrivateKey.from_bech32(candidate.to_bech32());
+};
+
 export const verifyVKeyWitness = (
   bodyHash: Uint8Array,
   witness: VKeyWitness,
@@ -124,17 +145,18 @@ export const makeVKeyWitness = (
   privateKey: PrivateKey,
 ): VKeyWitness => {
   const normalizedBodyHash = normalizeBodyHash(bodyHash);
+  const normalizedPrivateKey = normalizePrivateKey(privateKey);
   return assertVKeyWitness(
     normalizedBodyHash,
     CML.make_vkey_witness(
       CML.TransactionHash.from_raw_bytes(normalizedBodyHash),
-      privateKey,
+      normalizedPrivateKey,
     ),
   );
 };
 
 const keyHashOfPrivateKey = (privateKey: PrivateKey): string =>
-  privateKey.to_public().hash().to_hex();
+  normalizePrivateKey(privateKey).to_public().hash().to_hex();
 
 const assertAddressMatchesKeyHash = (
   address: Address,
@@ -177,7 +199,7 @@ export const walletFromPrivateKey = (
   const parsedPrivateKey =
     typeof privateKey === "string"
       ? CML.PrivateKey.from_bech32(privateKey)
-      : privateKey;
+      : normalizePrivateKey(privateKey);
   const keyHash = keyHashOfPrivateKey(parsedPrivateKey);
   assertAddressMatchesKeyHash(address, keyHash, options.expectedNetworkId);
   return {

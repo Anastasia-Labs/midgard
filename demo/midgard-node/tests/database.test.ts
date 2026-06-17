@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -6,10 +7,11 @@ import {
   computeMidgardNativeTxId,
   decodeMidgardNativeTxFullFromCanonicalCbor,
 } from "@al-ft/midgard-core/codec";
+import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { it } from "@effect/vitest";
 import { toHex } from "@lucid-evolution/lucid";
-import { Duration, Effect, Fiber, TestClock } from "effect";
+import { Duration, Effect } from "effect";
 import { beforeAll, describe, expect } from "vitest";
 
 import {
@@ -24,6 +26,7 @@ import {
   // Utils
   CommonUtils,
   ConfirmedLedgerDB,
+  DaPayloadsDB,
   DepositIngestionCursorDB,
   DepositsDB,
   // Tx
@@ -67,6 +70,7 @@ const flushAll = Effect.gen(function* () {
       DepositsDB.clear,
       DepositIngestionCursorDB.clear,
       PendingBlockFinalizationsDB.clear,
+      DaPayloadsDB.clear,
       CommonUtils.clearTable(TxAdmissionsDB.tableName),
       CommonUtils.clearTable(MutationJobsDB.tableName),
       CommonUtils.clearTable(StateQueueMutationLeasesDB.tableName),
@@ -117,6 +121,168 @@ describe("Database: initialization and basic operations", () => {
         expect(now.length).toBeGreaterThan(0);
       }),
     ),
+  );
+});
+
+describe("DaPayloadsDB", () => {
+  it.effect(
+    "stores payloads idempotently and rejects conflicting bytes for a header",
+    (_) =>
+      provideDatabaseLayers(
+        Effect.gen(function* () {
+          yield* flushAll;
+          const headerHash = databaseFixtureBytes("da-payload-header", 28);
+          const payload = databaseFixtureBytes("da-payload-cbor", 48);
+          const payloadHash = createHash("sha256").update(payload).digest();
+          const insert = {
+            [DaPayloadsDB.Columns.HEADER_HASH]: headerHash,
+            [DaPayloadsDB.Columns.VERSION]: 1,
+            [DaPayloadsDB.Columns.PAYLOAD_CBOR]: payload,
+            [DaPayloadsDB.Columns.PAYLOAD_SHA256]: payloadHash,
+            [DaPayloadsDB.Columns.UTXOS_ROOT]: "11".repeat(32),
+            [DaPayloadsDB.Columns.TRANSACTIONS_ROOT]: "22".repeat(32),
+            [DaPayloadsDB.Columns.DEPOSITS_ROOT]: "33".repeat(32),
+            [DaPayloadsDB.Columns.WITHDRAWALS_ROOT]: "44".repeat(32),
+            [DaPayloadsDB.Columns.BLOCK_START_TIME]: new Date(
+              "2026-06-12T00:00:00.000Z",
+            ),
+            [DaPayloadsDB.Columns.BLOCK_END_TIME]: new Date(
+              "2026-06-12T00:00:10.000Z",
+            ),
+          };
+
+          yield* DaPayloadsDB.upsertAvailable(insert);
+          yield* DaPayloadsDB.upsertAvailable(insert);
+
+          const stored = yield* DaPayloadsDB.retrieveByHeaderHash(headerHash);
+          expect(stored._tag).toBe("Some");
+          if (stored._tag === "Some") {
+            expect(stored.value[DaPayloadsDB.Columns.PAYLOAD_CBOR]).toEqual(
+              payload,
+            );
+          }
+
+          const conflict = yield* Effect.either(
+            DaPayloadsDB.upsertAvailable({
+              ...insert,
+              [DaPayloadsDB.Columns.PAYLOAD_CBOR]: Buffer.from([...payload, 0]),
+            }),
+          );
+          expect(conflict._tag).toBe("Left");
+        }),
+      ),
+  );
+
+  it.effect(
+    "retrieves only finalized pending journals missing DA payload rows",
+    (_) =>
+      provideDatabaseLayers(
+        Effect.gen(function* () {
+          yield* flushAll;
+          const sql = yield* SqlClient.SqlClient;
+          const missingHeader = databaseFixtureBytes(
+            "missing-da-payload-finalized-header",
+            28,
+          );
+          const coveredHeader = databaseFixtureBytes(
+            "covered-da-payload-finalized-header",
+            28,
+          );
+          const activeHeader = databaseFixtureBytes(
+            "active-da-payload-header",
+            28,
+          );
+          const baseTime = new Date("2026-06-12T00:00:00.000Z");
+          const row = (
+            headerHash: Buffer,
+            status: PendingBlockFinalizationsDB.Status,
+          ) => ({
+            [PendingBlockFinalizationsDB.Columns.HEADER_HASH]: headerHash,
+            [PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH]:
+              databaseTxHash(`submitted-${headerHash.toString("hex")}`),
+            [PendingBlockFinalizationsDB.Columns.STATE_QUEUE_LEASE_TOKEN]:
+              "lease",
+            [PendingBlockFinalizationsDB.Columns.BASE_SNAPSHOT_ID]: "snapshot",
+            [PendingBlockFinalizationsDB.Columns.BASE_TAIL_OUT_REF]: "base#0",
+            [PendingBlockFinalizationsDB.Columns.BASE_TAIL_HEADER_HASH]:
+              databaseFixtureBytes("base-tail-header", 28),
+            [PendingBlockFinalizationsDB.Columns.BASE_TAIL_DATUM_CBOR]:
+              "d87980",
+            [PendingBlockFinalizationsDB.Columns.BASE_UTXOS_ROOT]:
+              SDK.EMPTY_MERKLE_TREE_ROOT,
+            [PendingBlockFinalizationsDB.Columns.BASE_TRANSACTIONS_ROOT]:
+              SDK.EMPTY_MERKLE_TREE_ROOT,
+            [PendingBlockFinalizationsDB.Columns.BASE_DEPOSITS_ROOT]:
+              SDK.EMPTY_MERKLE_TREE_ROOT,
+            [PendingBlockFinalizationsDB.Columns.BASE_WITHDRAWALS_ROOT]:
+              SDK.EMPTY_MERKLE_TREE_ROOT,
+            [PendingBlockFinalizationsDB.Columns.BLOCK_START_TIME]: baseTime,
+            [PendingBlockFinalizationsDB.Columns.BLOCK_END_TIME]: new Date(
+              baseTime.getTime() + 1_000,
+            ),
+            [PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT]:
+              SDK.EMPTY_MERKLE_TREE_ROOT,
+            [PendingBlockFinalizationsDB.Columns.EXPECTED_TRANSACTIONS_ROOT]:
+              SDK.EMPTY_MERKLE_TREE_ROOT,
+            [PendingBlockFinalizationsDB.Columns.EXPECTED_DEPOSITS_ROOT]:
+              SDK.EMPTY_MERKLE_TREE_ROOT,
+            [PendingBlockFinalizationsDB.Columns.EXPECTED_WITHDRAWALS_ROOT]:
+              SDK.EMPTY_MERKLE_TREE_ROOT,
+            [PendingBlockFinalizationsDB.Columns.STATUS]: status,
+            [PendingBlockFinalizationsDB.Columns.OBSERVED_CONFIRMED_AT_MS]: 1n,
+          });
+          yield* sql`INSERT INTO ${sql(
+            PendingBlockFinalizationsDB.tableName,
+          )} ${sql.insert([
+            row(missingHeader, PendingBlockFinalizationsDB.Status.Finalized),
+            row(coveredHeader, PendingBlockFinalizationsDB.Status.Finalized),
+            row(
+              activeHeader,
+              PendingBlockFinalizationsDB.Status.SubmittedUnconfirmed,
+            ),
+          ])}`;
+          yield* DaPayloadsDB.upsertAvailable({
+            [DaPayloadsDB.Columns.HEADER_HASH]: coveredHeader,
+            [DaPayloadsDB.Columns.VERSION]: 1,
+            [DaPayloadsDB.Columns.PAYLOAD_CBOR]: Buffer.from("a100", "hex"),
+            [DaPayloadsDB.Columns.PAYLOAD_SHA256]: createHash("sha256")
+              .update(Buffer.from("a100", "hex"))
+              .digest(),
+            [DaPayloadsDB.Columns.UTXOS_ROOT]: SDK.EMPTY_MERKLE_TREE_ROOT,
+            [DaPayloadsDB.Columns.TRANSACTIONS_ROOT]:
+              SDK.EMPTY_MERKLE_TREE_ROOT,
+            [DaPayloadsDB.Columns.DEPOSITS_ROOT]: SDK.EMPTY_MERKLE_TREE_ROOT,
+            [DaPayloadsDB.Columns.WITHDRAWALS_ROOT]: SDK.EMPTY_MERKLE_TREE_ROOT,
+            [DaPayloadsDB.Columns.BLOCK_START_TIME]: baseTime,
+            [DaPayloadsDB.Columns.BLOCK_END_TIME]: new Date(
+              baseTime.getTime() + 1_000,
+            ),
+          });
+
+          const missing =
+            yield* PendingBlockFinalizationsDB.retrieveFinalizedMissingDaPayloads(
+              {
+                limit: 10,
+              },
+            );
+          expect(
+            missing.map((record) =>
+              record[PendingBlockFinalizationsDB.Columns.HEADER_HASH].toString(
+                "hex",
+              ),
+            ),
+          ).toEqual([missingHeader.toString("hex")]);
+
+          const covered =
+            yield* PendingBlockFinalizationsDB.retrieveFinalizedMissingDaPayloads(
+              {
+                headerHash: coveredHeader,
+                limit: 10,
+              },
+            );
+          expect(covered).toEqual([]);
+        }),
+      ),
   );
 });
 
@@ -201,28 +367,26 @@ describe("StateQueueMutationLeasesDB", () => {
       ),
   );
 
-  it.effect(
+  it.live(
     "tryWithLease keeps long-running state-queue work leased past the initial ttl",
-    (_) =>
+    () =>
       provideDatabaseLayers(
         Effect.gen(function* () {
           yield* flushAll;
 
-          const leaseFiber = yield* StateQueueMutationLeasesDB.tryWithLease(
+          const ttlMs = 1_000;
+          const result = yield* StateQueueMutationLeasesDB.tryWithLease(
             "long-running-work",
             (token) =>
-              Effect.sleep(Duration.millis(90)).pipe(
+              Effect.sleep(Duration.millis(ttlMs + 250)).pipe(
                 Effect.andThen(StateQueueMutationLeasesDB.revalidate(token)),
                 Effect.as(token),
               ),
             {
-              ttlMs: 40,
-              renewIntervalMs: 10,
+              ttlMs,
+              renewIntervalMs: 100,
             },
-          ).pipe(Effect.fork);
-
-          yield* TestClock.adjust(Duration.millis(100));
-          const result = yield* Fiber.join(leaseFiber);
+          );
 
           expect(result._tag).toBe("Ran");
           expect(yield* StateQueueMutationLeasesDB.retrieveActive()).toBe(

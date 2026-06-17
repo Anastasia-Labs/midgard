@@ -6,12 +6,11 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { Constr, Data } from "@lucid-evolution/lucid";
 
+import type { MidgardLedgerRedeemer } from "./ledger-tx/types.js";
 import {
   cardanoScriptPurposeData,
-  DecodedMidgardRedeemer,
   MidgardScriptPurpose,
   midgardScriptPurposeData,
-  redeemerDataFromCborHex,
 } from "./midgard-redeemers.js";
 import { txOutRefData } from "./tx-out-ref.js";
 
@@ -37,7 +36,7 @@ export type ScriptContextView = {
   readonly mint: ScriptMintValue;
   readonly redeemers: readonly {
     readonly purpose: MidgardScriptPurpose;
-    readonly redeemer: DecodedMidgardRedeemer;
+    readonly redeemer: MidgardLedgerRedeemer;
   }[];
 };
 
@@ -153,7 +152,7 @@ const redeemersData = (
     if (purpose === undefined) {
       continue;
     }
-    result.set(purpose, redeemerDataFromCborHex(entry.redeemer.dataCborHex));
+    result.set(purpose, entry.redeemer.data);
   }
   return result;
 };
@@ -230,18 +229,18 @@ const cardanoScriptPurposeDataOrUndefined = (
 export const buildPlutusV3ScriptContext = (
   view: ScriptContextView,
   purpose: MidgardScriptPurpose,
-  redeemer: DecodedMidgardRedeemer,
+  redeemer: MidgardLedgerRedeemer,
 ): Constr<unknown> =>
   new Constr(0, [
     baseTxInfoData(view, cardanoScriptPurposeDataOrUndefined),
-    redeemerDataFromCborHex(redeemer.dataCborHex),
+    redeemer.data,
     cardanoScriptInfoData(view, purpose),
   ]);
 
 export const buildMidgardV1ScriptContext = (
   view: ScriptContextView,
   purpose: MidgardScriptPurpose,
-  redeemer: DecodedMidgardRedeemer,
+  redeemer: MidgardLedgerRedeemer,
 ): Constr<unknown> =>
   new Constr(0, [
     new Constr(0, [
@@ -256,6 +255,6 @@ export const buildMidgardV1ScriptContext = (
       redeemersData(view.redeemers, midgardScriptPurposeData),
       view.txId.toString("hex"),
     ]),
-    redeemerDataFromCborHex(redeemer.dataCborHex),
+    redeemer.data,
     midgardScriptPurposeData(purpose),
   ]);

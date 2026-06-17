@@ -2,6 +2,8 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Network, UTxO, walletFromSeed } from "@lucid-evolution/lucid";
 import { Config, Context, Data, Effect, Layer } from "effect";
 
+import { validateRetentionDays } from "@/database/retention-policy.js";
+
 /**
  * Configuration loading for the Midgard node process.
  *
@@ -25,6 +27,7 @@ type NodeConfigDep = {
   L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: string;
   L1_REFERENCE_SCRIPT_SEED_PHRASE: string;
   L1_REFERENCE_SCRIPT_ADDRESS: string;
+  L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS: string;
   NETWORK: Network;
   PROTOCOL_PARAMETERS: SDK.ProtocolParameters;
   PORT: number;
@@ -64,6 +67,8 @@ type NodeConfigDep = {
   HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: number;
   OPERATOR_REQUIRED_BOND_LOVELACE: bigint;
   OPERATOR_SLASHING_PENALTY_LOVELACE: bigint;
+  DA_COMMITTEE_HEX: string;
+  DA_THRESHOLD: bigint | null;
   PROM_METRICS_PORT: number;
   OLTP_EXPORTER_URL: string;
   POSTGRES_USER: string;
@@ -138,6 +143,9 @@ const makeConfig = Effect.gen(function* () {
   ).address;
   const referenceScriptAddress =
     configuredReferenceScriptAddress.trim() || derivedReferenceScriptAddress;
+  const referenceScriptDeployAddress = yield* Config.string(
+    "L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS",
+  ).pipe(Config.withDefault(referenceScriptAddress));
   const port = yield* Config.integer("PORT").pipe(Config.withDefault(3000));
   const waitBetweenBlockCommitment = yield* Config.integer(
     "WAIT_BETWEEN_BLOCK_COMMITMENT",
@@ -233,6 +241,7 @@ const makeConfig = Effect.gen(function* () {
   ).pipe(Config.withDefault(1));
   const retentionDays = yield* Config.integer("RETENTION_DAYS").pipe(
     Config.withDefault(0),
+    Config.mapAttempt(validateRetentionDays),
   );
   const waitBetweenRetentionSweeps = yield* Config.integer(
     "WAIT_BETWEEN_RETENTION_SWEEPS",
@@ -254,6 +263,17 @@ const makeConfig = Effect.gen(function* () {
   ).pipe(
     Config.withDefault("200000"),
     Config.mapAttempt((value) => BigInt(value)),
+  );
+  const daCommitteeHex = yield* Config.string("DA_COMMITTEE_HEX").pipe(
+    Config.withDefault(""),
+    Config.map((value) => value.trim().toLowerCase()),
+  );
+  const daThreshold = yield* Config.string("DA_THRESHOLD").pipe(
+    Config.withDefault(""),
+    Config.mapAttempt((value) => {
+      const trimmed = value.trim();
+      return trimmed.length === 0 ? null : BigInt(trimmed);
+    }),
   );
   const waitBetweenDepositUTxOFetches = yield* Config.integer(
     "WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES",
@@ -366,6 +386,7 @@ const makeConfig = Effect.gen(function* () {
     L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: operatorSeedPhraseForMergeTx,
     L1_REFERENCE_SCRIPT_SEED_PHRASE: referenceScriptSeedPhrase,
     L1_REFERENCE_SCRIPT_ADDRESS: referenceScriptAddress,
+    L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS: referenceScriptDeployAddress,
     NETWORK: network,
     PROTOCOL_PARAMETERS: SDK.getProtocolParameters(network),
     PORT: port,
@@ -408,6 +429,8 @@ const makeConfig = Effect.gen(function* () {
     HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: hubOracleOneShotOutputIndex,
     OPERATOR_REQUIRED_BOND_LOVELACE: operatorRequiredBondLovelace,
     OPERATOR_SLASHING_PENALTY_LOVELACE: operatorSlashingPenaltyLovelace,
+    DA_COMMITTEE_HEX: daCommitteeHex,
+    DA_THRESHOLD: daThreshold,
     WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES: waitBetweenDepositUTxOFetches,
     PROM_METRICS_PORT: promMetricsPort,
     OLTP_EXPORTER_URL: oltpExporterUrl,

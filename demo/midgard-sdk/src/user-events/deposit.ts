@@ -2,7 +2,6 @@ import {
   type Assets,
   credentialToAddress,
   Data,
-  fromHex,
   LucidEvolution,
   PolicyId,
   scriptHashToCredential,
@@ -22,14 +21,14 @@ import {
   MidgardValidators,
   ProofSchema,
 } from "@/common.js";
-import { OutputReference, POSIXTimeSchema } from "@/common.js";
+import { POSIXTimeSchema } from "@/common.js";
 import {
   fetchHubOracleUTxOProgram,
   HubOracleError,
   makeHubOracleDatum,
 } from "@/hub-oracle.js";
 import { authenticateUTxOs, AuthenticUTxO } from "@/internals.js";
-import { DepositEventSchema, DepositInfo } from "@/ledger-state.js";
+import { DepositEventSchema } from "@/ledger-state.js";
 
 import {
   buildCompletedUserEventMintTxProgram,
@@ -41,6 +40,7 @@ import {
   resolveUserEventValidTo,
   selectWalletNonceInputProgram,
   UserEventBuildError,
+  userEventCborFieldsFromInlineDatum,
   UserEventExtraFields,
   UserEventFetchConfig,
   userEventWitnessScriptHash,
@@ -81,9 +81,8 @@ export const utxosToDepositUTxOs = (
     utxos,
     nftPolicy,
     DepositDatum,
-    (datum) => ({
-      idCbor: Buffer.from(fromHex(Data.to(datum.event.id, OutputReference))),
-      infoCbor: Buffer.from(fromHex(Data.to(datum.event.info, DepositInfo))),
+    (datum, utxo) => ({
+      ...userEventCborFieldsFromInlineDatum(utxo),
       inclusionTime: new Date(Number(datum.inclusion_time)),
     }),
   );
@@ -243,9 +242,8 @@ export const buildUnsignedDepositTxWithMetadataProgram = (
       config.referenceScripts === undefined
         ? [hubOracleRefInput]
         : [hubOracleRefInput, config.referenceScripts.depositMinting];
-    const witnessRegistrationRedeemer = encodeUserEventWitnessMintOrBurnRedeemer(
-      contracts.deposit.policyId,
-    );
+    const witnessRegistrationRedeemer =
+      encodeUserEventWitnessMintOrBurnRedeemer(contracts.deposit.policyId);
 
     const tx = yield* buildCompletedUserEventMintTxProgram({
       lucid,

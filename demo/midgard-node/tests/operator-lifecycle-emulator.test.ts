@@ -46,6 +46,7 @@ const loadOperatorContracts = (oneShotOutRef: {
         "Preprod",
         placeholder,
         oneShotOutRef,
+        { referenceScriptAuth: placeholder.referenceScriptAuth },
       );
     }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
   );
@@ -55,6 +56,7 @@ const buildOperatorAwareInitializationTx = async (
   referenceScriptsLucid: Awaited<ReturnType<typeof Lucid>>,
   contracts: SDK.MidgardValidators,
   nonceUtxo: UTxO,
+  operatorSeedPhrase: string,
 ) => {
   const referenceScripts = await Effect.runPromise(
     ensureAtomicProtocolInitReferenceScriptsProgram(
@@ -69,6 +71,8 @@ const buildOperatorAwareInitializationTx = async (
       {
         HUB_ORACLE_ONE_SHOT_TX_HASH: nonceUtxo.txHash,
         HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: nonceUtxo.outputIndex,
+        L1_OPERATOR_SEED_PHRASE: operatorSeedPhrase,
+        NETWORK: "Preprod",
       },
       EMPTY_FRAUD_PROOF_CATALOGUE_ROOT,
       undefined,
@@ -109,6 +113,7 @@ const initOperatorLifecycleFixture = async () => {
     referenceScriptsLucid,
     contracts,
     nonceUtxo,
+    operator.seedPhrase,
   );
   const initCompleted = await initTx.complete({ localUPLCEval: true });
   const initSigned = await initCompleted.sign.withWallet().complete();
@@ -328,6 +333,7 @@ describe("operator lifecycle emulator", () => {
         referenceScriptsLucid,
         contracts,
         "active-operators",
+        contracts.referenceScriptAuth,
         fundingLucid,
       ),
     );

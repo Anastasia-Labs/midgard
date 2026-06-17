@@ -2,7 +2,6 @@ import {
   type Assets,
   credentialToAddress,
   Data,
-  fromHex,
   LucidEvolution,
   scriptHashToCredential,
   toUnit,
@@ -48,6 +47,7 @@ import {
   resolveUserEventValidTo,
   selectWalletNonceInputProgram,
   UserEventBuildError,
+  userEventCborFieldsFromInlineDatum,
   UserEventExtraFields,
   UserEventFetchConfig,
   userEventWitnessScriptHash,
@@ -91,9 +91,8 @@ export const utxosToTxOrderUTxOs = (
     utxos,
     nftPolicy,
     TxOrderDatum,
-    (datum) => ({
-      idCbor: Buffer.from(fromHex(Data.to(datum.event.id, H32))),
-      infoCbor: Buffer.from(fromHex(Data.to(datum.event.tx, MidgardTxCompact))),
+    (datum, utxo) => ({
+      ...userEventCborFieldsFromInlineDatum(utxo),
       inclusionTime: new Date(Number(datum.inclusion_time)),
     }),
   );
@@ -239,9 +238,8 @@ export const buildUnsignedTxOrderTxWithMetadataProgram = (
       config.referenceScripts === undefined
         ? [hubOracleRefInput]
         : [hubOracleRefInput, config.referenceScripts.txOrderMinting];
-    const witnessRegistrationRedeemer = encodeUserEventWitnessMintOrBurnRedeemer(
-      contracts.txOrder.policyId,
-    );
+    const witnessRegistrationRedeemer =
+      encodeUserEventWitnessMintOrBurnRedeemer(contracts.txOrder.policyId);
 
     const tx = yield* buildCompletedUserEventMintTxProgram({
       lucid,

@@ -347,6 +347,20 @@ export const buildAndSubmitMergeTx = (
       yield* Effect.logInfo(
         `🔸 First block found: ${firstBlockUTxO.utxo.txHash}#${firstBlockUTxO.utxo.outputIndex}`,
       );
+      const firstBlockNode = yield* SDK.getStateQueueNodeFromStateQueueDatum(
+        firstBlockUTxO.datum,
+      );
+      if (
+        firstBlockNode.da_attestation !== contracts.daAttestation.policyId
+      ) {
+        const unattestedHeader = yield* SDK.hashBlockHeader(
+          firstBlockNode.header,
+        );
+        yield* Effect.logInfo(
+          `🔸 Skipping merge because oldest block is not DA-attested yet (header=${unattestedHeader},current_da_attestation=${firstBlockNode.da_attestation},required_da_attestation=${contracts.daAttestation.policyId}).`,
+        );
+        return;
+      }
       // Fetch transactions from the first block
       yield* Effect.logInfo("🔸 Looking up its transactions from BlocksDB...");
       const {
@@ -501,6 +515,7 @@ export const buildAndSubmitMergeTx = (
                   script: contracts.settlement.mintingScript,
                 },
               ],
+              contracts.referenceScriptAuth,
             );
       const referenceScripts: SDK.StateQueueMergeReferenceScripts | undefined =
         options?.referenceScriptsAddress === undefined

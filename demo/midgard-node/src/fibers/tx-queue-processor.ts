@@ -1,5 +1,6 @@
 import {
   applyUTxOStatePatch,
+  processedTxFromValidatedTx,
   QueuedTx,
   QueuedTxPayload,
   RejectCode,
@@ -443,9 +444,7 @@ const txQueueProcessorAction = (
         yield* TxAdmissionsDB.markAccepted({
           rows: admittedRows,
           leaseOwner,
-          processedTxs: phaseB.accepted.map(
-            (acceptedTx) => acceptedTx.processedTx,
-          ),
+          processedTxs: phaseB.accepted.map(processedTxFromValidatedTx),
         });
         yield* validationMempoolInsertDurationTimer(
           Effect.succeed(Duration.millis(Date.now() - mempoolInsertStart)),

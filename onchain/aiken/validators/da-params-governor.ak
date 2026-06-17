@@ -1,4 +1,4 @@
-use aiken/crypto.{VerificationKeyHash}
+use aiken/crypto.{VerificationKeyHash, blake2b_256}
 use aiken/primitive/bytearray
 use cardano/address.{Address, Script}
 use cardano/assets.{PolicyId, Value}
@@ -94,7 +94,13 @@ fn valid_datum(
   max_committee_size: Int,
   max_owner_count: Int,
 ) -> Bool {
-  let Datum { committee, da_threshold, owners, update_threshold } = datum
+  let Datum {
+    committee,
+    committee_signers_hash,
+    da_threshold,
+    owners,
+    update_threshold,
+  } = datum
 
   // 1. Validator parameters must define positive bounded committee and owner
   //    limits.
@@ -103,7 +109,8 @@ fn valid_datum(
   expect max_owner_count > 0
 
   // 2. The data availability threshold must be positive and satisfiable by
-  //    the sorted unique committee.
+  //    the sorted unique committee. The stored committee hash must commit to
+  //    that exact packed committee.
   expect da_threshold > 0
   let committee_len =
     sorted_unique_packed_len_at_most(
@@ -111,6 +118,7 @@ fn valid_datum(
       max_committee_size,
       verification_key_byte_count,
     )
+  expect committee_signers_hash == blake2b_256(committee)
   expect da_threshold <= committee_len
 
   // 3. The update threshold must be positive and satisfiable by the sorted
@@ -294,7 +302,8 @@ validator main(
     let expected_input_datum_data: Data = input_datum
     expect input_datum_data == expected_input_datum_data
     expect Script(policy_id) = input_address.payment_credential
-    expect assets.quantity_of(input_value, policy_id, asset_name) == 1
+    expect
+      assets.quantity_of(input_value, policy_id, asset_name) == 1
 
     // 3. Enough current owners must have signed the update transaction.
     let Datum { owners, update_threshold, .. } = input_datum
@@ -311,6 +320,7 @@ validator main(
             max_committee_size,
             max_owner_count,
           )
+
     // 5. The params UTxO value must not be drained while updating the datum.
     expect value_not_drained(input_value, continued_output.value)
 

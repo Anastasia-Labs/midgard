@@ -8,10 +8,10 @@ import {
 export const EXPLICIT_COMMIT_DEFAULT_CANDIDATE_FUTURE_BUFFER_MS =
   5 * 60 * 1000;
 
-// Commit construction may include a scheduler refresh, which can exceed one
-// minute under provider latency; keep a safety margin without pushing header
-// end-times too far into the future.
-const COMMIT_VALIDITY_FUTURE_BUFFER_MS = 120_000;
+// Commit construction may include a scheduler refresh and reference-script
+// lookups under provider latency; keep enough validity for submission after
+// the witness context is assembled without exceeding on-chain range limits.
+const COMMIT_VALIDITY_FUTURE_BUFFER_MS = 240_000;
 
 export const alignUnixTimeToSlotBoundary = (
   lucid: LucidEvolution,
@@ -64,10 +64,12 @@ export const resolveAlignedCommitEndTime = ({
   lucid,
   latestEndTime,
   candidateEndTime,
+  nowMs = Date.now(),
 }: {
   readonly lucid: LucidEvolution;
   readonly latestEndTime: number;
   readonly candidateEndTime: number;
+  readonly nowMs?: number;
 }): {
   readonly alignedCandidateEndTime: number;
   readonly minimumMonotonicEndTime: number;
@@ -83,7 +85,7 @@ export const resolveAlignedCommitEndTime = ({
   );
   const minimumCurrentTimeEndTime = alignedUnixTimeStrictlyAfter(
     lucid,
-    Date.now() + COMMIT_VALIDITY_FUTURE_BUFFER_MS,
+    nowMs + COMMIT_VALIDITY_FUTURE_BUFFER_MS,
   );
   return {
     alignedCandidateEndTime,

@@ -8,7 +8,7 @@
  * corresponding script hash/policy id, and any matching reference-script UTxO
  * currently published in the dedicated reference-script wallet.
  */
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import { dirname, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,6 +21,12 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import {
+  type ReferenceScriptAuthPolicyRef,
+  type ReferenceScriptAuthPolicyDeploymentInfo,
+  type ReferenceScriptAuthTokenTarget,
+  referenceScriptAuthUnit,
+} from "@/deployment/reference-script-auth.js";
 import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
 import { Lucid, MidgardContracts } from "@/services/index.js";
 import {
@@ -44,9 +50,10 @@ export type ContractDeploymentInfoEntry = {
   readonly fraudProofCatalogue?: SDK.FraudProofCatalogueDeploymentInfo;
 };
 
-export type ContractDeploymentInfo = Readonly<
-  Record<string, ContractDeploymentInfoEntry>
->;
+export type ContractDeploymentInfo = {
+  readonly referenceScriptAuthPolicy: ReferenceScriptAuthPolicyDeploymentInfo;
+  readonly contracts: Readonly<Record<string, ContractDeploymentInfoEntry>>;
+};
 
 const DEFAULT_CONTRACT_DEPLOYMENT_INFO_FILENAME =
   "contract-deployment-info.json";
@@ -71,11 +78,13 @@ type ScriptDescriptor = {
   readonly script: Script;
   readonly scriptHash: string;
   readonly contract: ContractDeploymentInfoEntry["contract"];
+  readonly referenceScriptTargetName?: ReferenceScriptAuthTokenTarget;
 };
 
 const mintDescriptor = (
   name: string,
   validator: SDK.MintingValidator,
+  referenceScriptTargetName?: ReferenceScriptAuthTokenTarget,
 ): ScriptDescriptor => ({
   name,
   script: validator.mintingScript,
@@ -84,11 +93,15 @@ const mintDescriptor = (
     type: validator.mintingScript.type,
     cborHex: validator.mintingScriptCBOR,
   },
+  ...(referenceScriptTargetName === undefined
+    ? {}
+    : { referenceScriptTargetName }),
 });
 
 const spendDescriptor = (
   name: string,
   validator: SDK.SpendingValidator,
+  referenceScriptTargetName?: ReferenceScriptAuthTokenTarget,
 ): ScriptDescriptor => ({
   name,
   script: validator.spendingScript,
@@ -97,11 +110,15 @@ const spendDescriptor = (
     type: validator.spendingScript.type,
     cborHex: validator.spendingScriptCBOR,
   },
+  ...(referenceScriptTargetName === undefined
+    ? {}
+    : { referenceScriptTargetName }),
 });
 
 const withdrawalDescriptor = (
   name: string,
   validator: SDK.WithdrawalValidator,
+  referenceScriptTargetName?: ReferenceScriptAuthTokenTarget,
 ): ScriptDescriptor => ({
   name,
   script: validator.withdrawalScript,
@@ -110,9 +127,14 @@ const withdrawalDescriptor = (
     type: validator.withdrawalScript.type,
     cborHex: validator.withdrawalScriptCBOR,
   },
+  ...(referenceScriptTargetName === undefined
+    ? {}
+    : { referenceScriptTargetName }),
 });
 
-const phasMembershipDescriptor = (): ScriptDescriptor => {
+const phasMembershipDescriptor = (
+  referenceScriptTargetName?: ReferenceScriptAuthTokenTarget,
+): ScriptDescriptor => {
   const script = loadPhasMembershipWithdrawalScript();
   return {
     name: "phasMembershipWithdraw",
@@ -122,6 +144,9 @@ const phasMembershipDescriptor = (): ScriptDescriptor => {
       type: script.type,
       cborHex: script.script,
     },
+    ...(referenceScriptTargetName === undefined
+      ? {}
+      : { referenceScriptTargetName }),
   };
 };
 
@@ -155,21 +180,15 @@ const mergeWalletUtxosPreservingScriptRefs = (
 const fetchReferenceScriptWalletUtxos = Effect.gen(function* () {
   const lucidService = yield* Lucid;
   const referenceScriptsLucid = lucidService.referenceScriptsApi;
-  const walletAddress = yield* Effect.tryPromise({
-    try: () => referenceScriptsLucid.wallet().address(),
-    catch: (cause) =>
-      new Error(
-        `Failed to resolve reference-script wallet address: ${String(cause)}`,
-      ),
-  });
+  const referenceScriptsAddress = lucidService.referenceScriptsAddress;
   const cachedWalletUtxos = yield* Effect.tryPromise(() =>
     referenceScriptsLucid.wallet().getUtxos(),
   ).pipe(Effect.catchAll(() => Effect.succeed([] as readonly UTxO[])));
   const liveWalletUtxos = yield* Effect.tryPromise({
-    try: () => referenceScriptsLucid.utxosAt(walletAddress),
+    try: () => referenceScriptsLucid.utxosAt(referenceScriptsAddress),
     catch: (cause) =>
       new Error(
-        `Failed to fetch reference-script wallet UTxOs at ${walletAddress}: ${String(cause)}`,
+        `Failed to fetch reference-script UTxOs at ${referenceScriptsAddress}: ${String(cause)}`,
       ),
   });
   return mergeWalletUtxosPreservingScriptRefs(
@@ -178,59 +197,142 @@ const fetchReferenceScriptWalletUtxos = Effect.gen(function* () {
   );
 });
 
-const buildReferenceScriptOutRefMap = (
+export const buildReferenceScriptOutRefMap = (
   utxos: readonly UTxO[],
+  descriptors: readonly ScriptDescriptor[],
+  authPolicy: ReferenceScriptAuthPolicyRef,
 ): ReadonlyMap<string, ContractDeploymentInfoRefScriptUTxO> => {
   const sorted = [...utxos].sort(compareOutRefs).reverse();
-  const byScriptHash = new Map<string, ContractDeploymentInfoRefScriptUTxO>();
-  for (const utxo of sorted) {
-    if (utxo.scriptRef == null) {
+  const byDescriptorName = new Map<
+    string,
+    ContractDeploymentInfoRefScriptUTxO
+  >();
+  for (const descriptor of descriptors) {
+    if (descriptor.referenceScriptTargetName === undefined) {
       continue;
     }
-    const scriptHash = validatorToScriptHash(utxo.scriptRef);
-    if (!byScriptHash.has(scriptHash)) {
-      byScriptHash.set(scriptHash, {
+    const roleUnit = referenceScriptAuthUnit(
+      authPolicy.policyId,
+      descriptor.referenceScriptTargetName,
+    );
+    for (const utxo of sorted) {
+      if (utxo.scriptRef == null) {
+        continue;
+      }
+      if (utxo.assets[roleUnit] !== 1n) {
+        continue;
+      }
+      if (validatorToScriptHash(utxo.scriptRef) !== descriptor.scriptHash) {
+        continue;
+      }
+      byDescriptorName.set(descriptor.name, {
         txHash: utxo.txHash,
         outputIndex: utxo.outputIndex,
       });
+      break;
     }
   }
-  return byScriptHash;
+  return byDescriptorName;
 };
 
 const collectScriptDescriptors = (
   contracts: SDK.MidgardValidators,
 ): readonly ScriptDescriptor[] => [
-  mintDescriptor("hubOracleMint", contracts.hubOracle),
-  spendDescriptor("stateQueueSpend", contracts.stateQueue),
-  mintDescriptor("stateQueueMint", contracts.stateQueue),
-  spendDescriptor("schedulerSpend", contracts.scheduler),
-  mintDescriptor("schedulerMint", contracts.scheduler),
-  spendDescriptor("registeredOperatorsSpend", contracts.registeredOperators),
-  mintDescriptor("registeredOperatorsMint", contracts.registeredOperators),
-  spendDescriptor("activeOperatorsSpend", contracts.activeOperators),
-  mintDescriptor("activeOperatorsMint", contracts.activeOperators),
-  spendDescriptor("retiredOperatorsSpend", contracts.retiredOperators),
-  mintDescriptor("retiredOperatorsMint", contracts.retiredOperators),
+  mintDescriptor(
+    "referenceScriptAuthMint",
+    contracts.referenceScriptAuth,
+    "reference-script-auth minting",
+  ),
+  mintDescriptor("hubOracleMint", contracts.hubOracle, "hub-oracle minting"),
+  spendDescriptor(
+    "daParamsGovernorSpend",
+    contracts.daParamsGovernor,
+    "da-params-governor spending",
+  ),
+  mintDescriptor(
+    "daParamsGovernorMint",
+    contracts.daParamsGovernor,
+    "da-params-governor minting",
+  ),
+  spendDescriptor(
+    "daAttestationSpend",
+    contracts.daAttestation,
+    "da-attestation spending",
+  ),
+  mintDescriptor(
+    "daAttestationMint",
+    contracts.daAttestation,
+    "da-attestation minting",
+  ),
+  spendDescriptor(
+    "stateQueueSpend",
+    contracts.stateQueue,
+    "state-queue spending",
+  ),
+  mintDescriptor("stateQueueMint", contracts.stateQueue, "state-queue minting"),
+  spendDescriptor("schedulerSpend", contracts.scheduler, "scheduler spending"),
+  mintDescriptor("schedulerMint", contracts.scheduler, "scheduler minting"),
+  spendDescriptor(
+    "registeredOperatorsSpend",
+    contracts.registeredOperators,
+    "registered-operators spending",
+  ),
+  mintDescriptor(
+    "registeredOperatorsMint",
+    contracts.registeredOperators,
+    "registered-operators minting",
+  ),
+  spendDescriptor(
+    "activeOperatorsSpend",
+    contracts.activeOperators,
+    "active-operators spending",
+  ),
+  mintDescriptor(
+    "activeOperatorsMint",
+    contracts.activeOperators,
+    "active-operators minting",
+  ),
+  spendDescriptor(
+    "retiredOperatorsSpend",
+    contracts.retiredOperators,
+    "retired-operators spending",
+  ),
+  mintDescriptor(
+    "retiredOperatorsMint",
+    contracts.retiredOperators,
+    "retired-operators minting",
+  ),
   spendDescriptor("escapeHatchSpend", contracts.escapeHatch),
   mintDescriptor("escapeHatchMint", contracts.escapeHatch),
   spendDescriptor("fraudProofCatalogueSpend", contracts.fraudProofCatalogue),
-  mintDescriptor("fraudProofCatalogueMint", contracts.fraudProofCatalogue),
+  mintDescriptor(
+    "fraudProofCatalogueMint",
+    contracts.fraudProofCatalogue,
+    "fraud-proof-catalogue minting",
+  ),
   spendDescriptor("fraudProofSpend", contracts.fraudProof),
   mintDescriptor("fraudProofMint", contracts.fraudProof),
-  spendDescriptor("depositSpend", contracts.deposit),
-  mintDescriptor("depositMint", contracts.deposit),
-  spendDescriptor("withdrawalSpend", contracts.withdrawal),
-  mintDescriptor("withdrawalMint", contracts.withdrawal),
+  spendDescriptor("depositSpend", contracts.deposit, "deposit spending"),
+  mintDescriptor("depositMint", contracts.deposit, "deposit minting"),
+  spendDescriptor(
+    "withdrawalSpend",
+    contracts.withdrawal,
+    "withdrawal spending",
+  ),
+  mintDescriptor("withdrawalMint", contracts.withdrawal, "withdrawal minting"),
   spendDescriptor("txOrderSpend", contracts.txOrder),
   mintDescriptor("txOrderMint", contracts.txOrder),
   spendDescriptor("settlementSpend", contracts.settlement),
-  mintDescriptor("settlementMint", contracts.settlement),
-  spendDescriptor("payoutSpend", contracts.payout),
-  mintDescriptor("payoutMint", contracts.payout),
-  spendDescriptor("reserveSpend", contracts.reserve),
-  withdrawalDescriptor("reserveWithdraw", contracts.reserve),
-  phasMembershipDescriptor(),
+  mintDescriptor("settlementMint", contracts.settlement, "settlement minting"),
+  spendDescriptor("payoutSpend", contracts.payout, "payout spending"),
+  mintDescriptor("payoutMint", contracts.payout, "payout minting"),
+  spendDescriptor("reserveSpend", contracts.reserve, "reserve spending"),
+  withdrawalDescriptor(
+    "reserveWithdraw",
+    contracts.reserve,
+    "reserve observer",
+  ),
+  phasMembershipDescriptor("membership proof withdrawal"),
   spendDescriptor("fraudProofDoubleSpend", contracts.fraudProofs.doubleSpend),
   spendDescriptor(
     "fraudProofNonExistentInput",
@@ -245,19 +347,20 @@ const collectScriptDescriptors = (
 
 export const buildContractDeploymentInfoFromContracts = (
   contracts: SDK.MidgardValidators,
+  referenceScriptAuthPolicy: ReferenceScriptAuthPolicyDeploymentInfo,
   referenceScriptOutRefs: ReadonlyMap<
     string,
     ContractDeploymentInfoRefScriptUTxO
   > = new Map(),
   fraudProofCatalogue?: SDK.FraudProofCatalogueDeploymentInfo,
 ): ContractDeploymentInfo =>
-  Object.freeze(
-    Object.fromEntries(
+  Object.freeze({
+    referenceScriptAuthPolicy,
+    contracts: Object.fromEntries(
       collectScriptDescriptors(contracts).map((descriptor) => [
         descriptor.name,
         {
-          refScriptUTxO:
-            referenceScriptOutRefs.get(descriptor.scriptHash) ?? null,
+          refScriptUTxO: referenceScriptOutRefs.get(descriptor.name) ?? null,
           contract: descriptor.contract,
           scriptHash: descriptor.scriptHash,
           ...(descriptor.name === "fraudProofCatalogueMint" &&
@@ -267,27 +370,53 @@ export const buildContractDeploymentInfoFromContracts = (
         } satisfies ContractDeploymentInfoEntry,
       ]),
     ),
-  );
+  });
 
-export const resolveLiveContractDeploymentInfoProgram: Effect.Effect<
-  ContractDeploymentInfo,
-  Error,
-  Lucid | MidgardContracts
-> = Effect.gen(function* () {
-  const contracts = yield* MidgardContracts;
-  const referenceScriptWalletUtxos = yield* fetchReferenceScriptWalletUtxos;
-  const referenceScriptOutRefs = buildReferenceScriptOutRefMap(
-    referenceScriptWalletUtxos,
-  );
-  const fraudProofCatalogue = yield* buildFraudProofCatalogueDeploymentInfo(
-    fraudProofsToIndexedValidators(contracts.fraudProofs),
-  );
-  return buildContractDeploymentInfoFromContracts(
-    contracts,
-    referenceScriptOutRefs,
-    fraudProofCatalogue,
-  );
-});
+const resolveLiveContractDeploymentInfoProgram = (
+  referenceScriptAuthPolicy: ReferenceScriptAuthPolicyDeploymentInfo,
+): Effect.Effect<ContractDeploymentInfo, Error, Lucid | MidgardContracts> =>
+  Effect.gen(function* () {
+    const contracts = yield* MidgardContracts;
+    const referenceScriptWalletUtxos = yield* fetchReferenceScriptWalletUtxos;
+    const descriptors = collectScriptDescriptors(contracts);
+    const referenceScriptOutRefs = buildReferenceScriptOutRefMap(
+      referenceScriptWalletUtxos,
+      descriptors,
+      referenceScriptAuthPolicy,
+    );
+    const fraudProofCatalogue = yield* buildFraudProofCatalogueDeploymentInfo(
+      fraudProofsToIndexedValidators(contracts.fraudProofs),
+    );
+    return buildContractDeploymentInfoFromContracts(
+      contracts,
+      referenceScriptAuthPolicy,
+      referenceScriptOutRefs,
+      fraudProofCatalogue,
+    );
+  });
+
+export const buildContractDeploymentInfoProgram = (
+  contracts: SDK.MidgardValidators,
+  referenceScriptUtxos: readonly UTxO[],
+  referenceScriptAuthPolicy: ReferenceScriptAuthPolicyDeploymentInfo,
+): Effect.Effect<ContractDeploymentInfo, Error> =>
+  Effect.gen(function* () {
+    const descriptors = collectScriptDescriptors(contracts);
+    const referenceScriptOutRefs = buildReferenceScriptOutRefMap(
+      referenceScriptUtxos,
+      descriptors,
+      referenceScriptAuthPolicy,
+    );
+    const fraudProofCatalogue = yield* buildFraudProofCatalogueDeploymentInfo(
+      fraudProofsToIndexedValidators(contracts.fraudProofs),
+    );
+    return buildContractDeploymentInfoFromContracts(
+      contracts,
+      referenceScriptAuthPolicy,
+      referenceScriptOutRefs,
+      fraudProofCatalogue,
+    );
+  });
 
 export const defaultContractDeploymentInfoOutputPath = (): string =>
   resolvePath(
@@ -302,6 +431,60 @@ const normalizeOutputPath = (outputPath: string): string => {
     throw new Error("Contract deployment info output path must not be empty.");
   }
   return resolvePath(normalized);
+};
+
+const readExistingReferenceScriptAuthPolicy = (
+  outputPath: string,
+): ReferenceScriptAuthPolicyDeploymentInfo => {
+  const resolvedOutputPath = normalizeOutputPath(outputPath);
+  if (!existsSync(resolvedOutputPath)) {
+    throw new Error(
+      `Contract deployment info at "${resolvedOutputPath}" does not exist; deploy reference scripts first so the reference-script auth policy is recorded.`,
+    );
+  }
+  const parsed = JSON.parse(readFileSync(resolvedOutputPath, "utf8")) as {
+    referenceScriptAuthPolicy?: ReferenceScriptAuthPolicyDeploymentInfo;
+  };
+  if (parsed.referenceScriptAuthPolicy === undefined) {
+    throw new Error(
+      `Contract deployment info at "${resolvedOutputPath}" is missing referenceScriptAuthPolicy; redeploy reference scripts to create a complete manifest.`,
+    );
+  }
+  return parsed.referenceScriptAuthPolicy;
+};
+
+const referenceScriptAuthPolicyInputPaths = (outputPath: string): string[] => {
+  const configuredPath =
+    process.env.MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH?.trim();
+  return Array.from(
+    new Set(
+      [
+        outputPath,
+        ...(configuredPath === undefined || configuredPath.length === 0
+          ? []
+          : [configuredPath]),
+        defaultContractDeploymentInfoOutputPath(),
+      ].map((candidate) => normalizeOutputPath(candidate)),
+    ),
+  );
+};
+
+const readReferenceScriptAuthPolicyForLiveWrite = (
+  outputPath: string,
+): ReferenceScriptAuthPolicyDeploymentInfo => {
+  const errors: string[] = [];
+  for (const candidate of referenceScriptAuthPolicyInputPaths(outputPath)) {
+    try {
+      return readExistingReferenceScriptAuthPolicy(candidate);
+    } catch (cause) {
+      errors.push(`${candidate}: ${String(cause)}`);
+    }
+  }
+  throw new Error(
+    `Failed to find required referenceScriptAuthPolicy metadata. Tried: ${errors.join(
+      "; ",
+    )}`,
+  );
 };
 
 export const writeContractDeploymentInfoFileProgram = (
@@ -330,8 +513,19 @@ export const writeContractDeploymentInfoFileProgram = (
 export const writeLiveContractDeploymentInfoProgram = (
   outputPath: string,
 ): Effect.Effect<string, Error, Lucid | MidgardContracts> =>
-  resolveLiveContractDeploymentInfoProgram.pipe(
-    Effect.flatMap((deploymentInfo) =>
-      writeContractDeploymentInfoFileProgram(outputPath, deploymentInfo),
-    ),
-  );
+  Effect.gen(function* () {
+    const referenceScriptAuthPolicy = yield* Effect.try({
+      try: () => readReferenceScriptAuthPolicyForLiveWrite(outputPath),
+      catch: (cause) =>
+        new Error(
+          `Failed to read existing reference-script auth policy metadata: ${String(cause)}`,
+        ),
+    });
+    const deploymentInfo = yield* resolveLiveContractDeploymentInfoProgram(
+      referenceScriptAuthPolicy,
+    );
+    return yield* writeContractDeploymentInfoFileProgram(
+      outputPath,
+      deploymentInfo,
+    );
+  });

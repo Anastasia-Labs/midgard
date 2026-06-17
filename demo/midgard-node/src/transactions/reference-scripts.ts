@@ -1,6 +1,8 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import {
+  type Assets,
   coreToTxOutput,
+  Data,
   type LucidEvolution,
   type Script,
   type UTxO,
@@ -9,7 +11,14 @@ import {
 import { Effect } from "effect";
 
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import {
+  type ReferenceScriptAuthMintingPolicy,
+  type ReferenceScriptAuthPolicyRef,
+  referenceScriptAuthTokenNameText,
+  referenceScriptAuthUnit,
+} from "@/deployment/reference-script-auth.js";
 import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
+import { runProviderStepWithRetry } from "@/provider-retry.js";
 import {
   handleSignSubmit,
   TxConfirmError,
@@ -41,11 +50,19 @@ const WALLET_OWN_ADDRESS_REFRESH_MAX_RETRIES = 24;
 const WALLET_OWN_ADDRESS_REFRESH_RETRY_DELAY = "5 seconds";
 const WALLET_OUTREF_RECONCILE_MAX_RETRIES = 4;
 const WALLET_OUTREF_RECONCILE_RETRY_DELAY = "750 millis";
+const REFERENCE_SCRIPT_PROVIDER_FETCH_RETRY = {
+  maxAttempts: 8,
+  baseDelayMs: 750,
+  maxDelayMs: 8_000,
+  jitterRatio: 0.25,
+} as const;
 
 export const REFERENCE_SCRIPT_COMMAND_NAMES = [
   "node-runtime",
   "protocol-init",
+  "reference-script-auth",
   "hub-oracle",
+  "da",
   "state-queue",
   "scheduler",
   "registered-operators",
@@ -76,30 +93,69 @@ export const isSameScriptRef = (
   }
 };
 
+export const hasReferenceScriptAuthRole = (
+  utxo: UTxO,
+  target: ReferenceScriptTarget,
+  authPolicy: ReferenceScriptAuthPolicyRef,
+): boolean =>
+  utxo.assets[referenceScriptAuthUnit(authPolicy.policyId, target.name)] === 1n;
+
+const fetchReferenceScriptUtxosAt = (
+  lucid: LucidEvolution,
+  referenceScriptsAddress: string,
+  label: string,
+  failureMessage: string,
+): Effect.Effect<readonly UTxO[], SDK.StateQueueError> =>
+  runProviderStepWithRetry(
+    label,
+    Effect.tryPromise({
+      try: () => lucid.utxosAt(referenceScriptsAddress),
+      catch: (cause) =>
+        new SDK.StateQueueError({
+          message: failureMessage,
+          cause,
+        }),
+    }),
+    REFERENCE_SCRIPT_PROVIDER_FETCH_RETRY,
+  );
+
+const referenceScriptRoleAssets = (
+  target: ReferenceScriptTarget,
+  authPolicy: ReferenceScriptAuthPolicyRef,
+): Assets => ({
+  lovelace: SCRIPT_REF_OUTPUT_LOVELACE,
+  [referenceScriptAuthUnit(authPolicy.policyId, target.name)]: 1n,
+});
+
 export const fetchReferenceScriptUtxosProgram = (
   lucid: LucidEvolution,
   referenceScriptsAddress: string,
   targets: readonly ReferenceScriptTarget[],
+  authPolicy: ReferenceScriptAuthPolicyRef,
 ): Effect.Effect<readonly ReferenceScriptResolved[], SDK.StateQueueError> =>
   Effect.gen(function* () {
-    const referenceScriptUtxos = yield* Effect.tryPromise({
-      try: () => lucid.utxosAt(referenceScriptsAddress),
-      catch: (cause) =>
-        new SDK.StateQueueError({
-          message: `Failed to fetch reference-script UTxOs at ${referenceScriptsAddress}`,
-          cause,
-        }),
-    });
+    const referenceScriptUtxos = yield* fetchReferenceScriptUtxosAt(
+      lucid,
+      referenceScriptsAddress,
+      `reference-script UTxO fetch at ${referenceScriptsAddress}`,
+      `Failed to fetch reference-script UTxOs at ${referenceScriptsAddress}`,
+    );
     return yield* Effect.forEach(targets, (target) =>
       Effect.gen(function* () {
         const resolved = [...referenceScriptUtxos]
-          .filter((utxo) => isSameScriptRef(utxo.scriptRef, target.script))
+          .filter(
+            (utxo) =>
+              isSameScriptRef(utxo.scriptRef, target.script) &&
+              hasReferenceScriptAuthRole(utxo, target, authPolicy),
+          )
           .sort(compareOutRefs)[0];
         if (resolved === undefined) {
           return yield* Effect.fail(
             new SDK.StateQueueError({
               message: "Missing reference script",
-              cause: `${target.name} at ${referenceScriptsAddress}`,
+              cause: `${target.name} at ${referenceScriptsAddress} with role token ${referenceScriptAuthTokenNameText(
+                target.name,
+              )}`,
             }),
           );
         }
@@ -442,19 +498,25 @@ const resolveLiveWalletUtxo = (
 
 const resolveExistingReferenceScriptPublication = (
   lucid: LucidEvolution,
-  walletUtxos: readonly UTxO[],
+  referenceScriptUtxos: readonly UTxO[],
   target: ReferenceScriptTarget,
+  authPolicy: ReferenceScriptAuthPolicyRef,
 ): Effect.Effect<ReferenceScriptResolved | undefined, SDK.StateQueueError> =>
   Effect.gen(function* () {
-    const existingCandidates = walletUtxos
-      .filter((utxo) => isSameScriptRef(utxo.scriptRef, target.script))
+    const existingCandidates = referenceScriptUtxos
+      .filter(
+        (utxo) =>
+          isSameScriptRef(utxo.scriptRef, target.script) &&
+          hasReferenceScriptAuthRole(utxo, target, authPolicy),
+      )
       .sort(compareOutRefs)
       .reverse();
     for (const existingCandidate of existingCandidates) {
       const existing = yield* resolveLiveWalletUtxo(lucid, existingCandidate);
       if (
         existing !== undefined &&
-        isSameScriptRef(existing.scriptRef, target.script)
+        isSameScriptRef(existing.scriptRef, target.script) &&
+        hasReferenceScriptAuthRole(existing, target, authPolicy)
       ) {
         return {
           name: target.name,
@@ -583,10 +645,12 @@ const ensureReferenceScriptWalletWorkingCapital = (
 
 const publishMissingReferenceScriptTargets = (
   lucid: LucidEvolution,
-  operatorAddress: string,
+  walletAddress: string,
+  referenceScriptsAddress: string,
   walletUtxos: readonly UTxO[],
   fundingCandidateUtxos: readonly UTxO[],
   missingTargets: readonly ReferenceScriptTarget[],
+  authPolicy: ReferenceScriptAuthMintingPolicy,
 ): Effect.Effect<
   readonly ReferenceScriptResolved[],
   | SDK.StateQueueError
@@ -621,15 +685,31 @@ const publishMissingReferenceScriptTargets = (
           );
           const buildAttempt = yield* Effect.either(
             Effect.gen(function* () {
-              let tx = lucid.newTx().collectFrom([...selectedFundingInputs]);
-              tx = tx.pay.ToAddressWithData(operatorAddress, undefined, {
+              const roleMintAssets: Assets = {};
+              for (const target of missingTargets) {
+                roleMintAssets[
+                  referenceScriptAuthUnit(authPolicy.policyId, target.name)
+                ] = 1n;
+              }
+              let tx = lucid
+                .newTx()
+                .collectFrom([...selectedFundingInputs]);
+              tx =
+                authPolicy.mintingScript.type === "Native"
+                  ? tx.mintAssets(roleMintAssets)
+                  : tx.mintAssets(roleMintAssets, Data.void());
+              tx = tx.attach.MintingPolicy(authPolicy.mintingScript);
+              if (authPolicy.expiresAtUnixTime !== undefined) {
+                tx = tx.validTo(authPolicy.expiresAtUnixTime);
+              }
+              tx = tx.pay.ToAddressWithData(walletAddress, undefined, {
                 lovelace: SCRIPT_REF_OUTPUT_LOVELACE,
               });
               for (const target of missingTargets) {
                 tx = tx.pay.ToAddressWithData(
-                  operatorAddress,
+                  referenceScriptsAddress,
                   undefined,
-                  { lovelace: SCRIPT_REF_OUTPUT_LOVELACE },
+                  referenceScriptRoleAssets(target, authPolicy),
                   target.script,
                 );
               }
@@ -663,24 +743,27 @@ const publishMissingReferenceScriptTargets = (
                 const output = coreToTxOutput(
                   publicationOutputs.get(outputIndex),
                 );
-                if (output.address !== operatorAddress) {
-                  continue;
+                if (output.address === walletAddress) {
+                  walletOutputs.push({
+                    outputIndex,
+                    address: output.address,
+                    assets: output.assets,
+                    datum: output.datum ?? undefined,
+                    datumHash: output.datumHash ?? undefined,
+                    scriptRef: output.scriptRef ?? undefined,
+                  });
                 }
-                walletOutputs.push({
-                  outputIndex,
-                  address: output.address,
-                  assets: output.assets,
-                  datum: output.datum ?? undefined,
-                  datumHash: output.datumHash ?? undefined,
-                  scriptRef: output.scriptRef ?? undefined,
-                });
+                if (output.address !== referenceScriptsAddress) continue;
                 if (output.scriptRef === undefined) {
                   continue;
                 }
                 const matchingTarget = missingTargets.find(
                   (target) =>
                     !localReferenceOutputs.has(target.name) &&
-                    isSameScriptRef(output.scriptRef, target.script),
+                    isSameScriptRef(output.scriptRef, target.script) &&
+                    output.assets[
+                      referenceScriptAuthUnit(authPolicy.policyId, target.name)
+                    ] === 1n,
                 );
                 if (matchingTarget === undefined) {
                   continue;
@@ -766,7 +849,8 @@ const publishMissingReferenceScriptTargets = (
         if (
           liveReference._tag === "Right" &&
           liveReference.right !== undefined &&
-          isSameScriptRef(liveReference.right.scriptRef, target.script)
+          isSameScriptRef(liveReference.right.scriptRef, target.script) &&
+          hasReferenceScriptAuthRole(liveReference.right, target, authPolicy)
         ) {
           return {
             name: target.name,
@@ -775,7 +859,8 @@ const publishMissingReferenceScriptTargets = (
         }
         if (
           liveReference._tag === "Right" &&
-          liveReference.right !== undefined
+          liveReference.right !== undefined &&
+          hasReferenceScriptAuthRole(liveReference.right, target, authPolicy)
         ) {
           return {
             name: target.name,
@@ -800,8 +885,28 @@ export const nodeRuntimeReferenceScriptTargets = (
   contracts: SDK.MidgardValidators,
 ): readonly ReferenceScriptTarget[] => [
   {
+    name: "reference-script-auth minting",
+    script: contracts.referenceScriptAuth.mintingScript,
+  },
+  {
     name: "hub-oracle minting",
     script: contracts.hubOracle.mintingScript,
+  },
+  {
+    name: "da-params-governor spending",
+    script: contracts.daParamsGovernor.spendingScript,
+  },
+  {
+    name: "da-params-governor minting",
+    script: contracts.daParamsGovernor.mintingScript,
+  },
+  {
+    name: "da-attestation spending",
+    script: contracts.daAttestation.spendingScript,
+  },
+  {
+    name: "da-attestation minting",
+    script: contracts.daAttestation.mintingScript,
   },
   {
     name: "scheduler spending",
@@ -897,8 +1002,20 @@ export const referenceScriptTargetsByCommand = (
   "node-runtime": nodeRuntimeReferenceScriptTargets(contracts),
   "protocol-init": [
     {
+      name: "reference-script-auth minting",
+      script: contracts.referenceScriptAuth.mintingScript,
+    },
+    {
       name: "hub-oracle minting",
       script: contracts.hubOracle.mintingScript,
+    },
+    {
+      name: "da-params-governor minting",
+      script: contracts.daParamsGovernor.mintingScript,
+    },
+    {
+      name: "da-attestation minting",
+      script: contracts.daAttestation.mintingScript,
     },
     {
       name: "scheduler minting",
@@ -929,6 +1046,30 @@ export const referenceScriptTargetsByCommand = (
     {
       name: "hub-oracle minting",
       script: contracts.hubOracle.mintingScript,
+    },
+  ],
+  "reference-script-auth": [
+    {
+      name: "reference-script-auth minting",
+      script: contracts.referenceScriptAuth.mintingScript,
+    },
+  ],
+  da: [
+    {
+      name: "da-params-governor spending",
+      script: contracts.daParamsGovernor.spendingScript,
+    },
+    {
+      name: "da-params-governor minting",
+      script: contracts.daParamsGovernor.mintingScript,
+    },
+    {
+      name: "da-attestation spending",
+      script: contracts.daAttestation.spendingScript,
+    },
+    {
+      name: "da-attestation minting",
+      script: contracts.daAttestation.mintingScript,
     },
   ],
   "state-queue": [
@@ -1039,7 +1180,9 @@ export const ensureReferenceScriptTargetsProgram = (
   referenceScriptsLucid: LucidEvolution,
   scopeName: string,
   targets: readonly ReferenceScriptTarget[],
+  authPolicy: ReferenceScriptAuthMintingPolicy,
   fundingLucid: LucidEvolution = referenceScriptsLucid,
+  configuredReferenceScriptsAddress?: string,
 ): Effect.Effect<
   readonly ReferenceScriptResolved[],
   | SDK.StateQueueError
@@ -1049,6 +1192,16 @@ export const ensureReferenceScriptTargetsProgram = (
   | TxSubmitError
 > =>
   Effect.gen(function* () {
+    const walletAddress = yield* Effect.tryPromise({
+      try: () => referenceScriptsLucid.wallet().address(),
+      catch: (cause) =>
+        new SDK.StateQueueError({
+          message: `Failed to resolve reference-script wallet address while resolving ${scopeName} reference scripts`,
+          cause,
+        }),
+    });
+    const referenceScriptsAddress =
+      configuredReferenceScriptsAddress ?? walletAddress;
     const fetchReferenceScriptWalletUtxos = (): Effect.Effect<
       readonly UTxO[],
       SDK.StateQueueError
@@ -1057,6 +1210,16 @@ export const ensureReferenceScriptTargetsProgram = (
         scopeName: `${scopeName} reference scripts`,
         failureMessage: `Failed to fetch wallet UTxOs while resolving ${scopeName} reference scripts`,
       });
+    const fetchReferenceScriptPublicationUtxos = (): Effect.Effect<
+      readonly UTxO[],
+      SDK.StateQueueError
+    > =>
+      fetchReferenceScriptUtxosAt(
+        referenceScriptsLucid,
+        referenceScriptsAddress,
+        `${scopeName} reference-script publication UTxO fetch at ${referenceScriptsAddress}`,
+        `Failed to fetch reference-script UTxOs at ${referenceScriptsAddress} while resolving ${scopeName}`,
+      );
 
     const publishMissingTargetsInBatches = (
       missingTargets: readonly ReferenceScriptTarget[],
@@ -1082,14 +1245,6 @@ export const ensureReferenceScriptTargetsProgram = (
             requiredPlainBalance,
           );
           const walletUtxos = yield* fetchReferenceScriptWalletUtxos();
-          const operatorAddress = yield* Effect.tryPromise({
-            try: () => referenceScriptsLucid.wallet().address(),
-            catch: (cause) =>
-              new SDK.StateQueueError({
-                message: `Failed to resolve wallet address while creating ${scopeName} reference scripts`,
-                cause,
-              }),
-          });
           if (walletUtxos.length === 0) {
             return yield* Effect.fail(
               new SDK.StateQueueError({
@@ -1111,10 +1266,12 @@ export const ensureReferenceScriptTargetsProgram = (
           const publishAttempt = yield* Effect.either(
             publishMissingReferenceScriptTargets(
               referenceScriptsLucid,
-              operatorAddress,
+              walletAddress,
+              referenceScriptsAddress,
               walletUtxos,
               plainFundingCandidateUtxos,
               missingTargets,
+              authPolicy,
             ),
           );
           if (publishAttempt._tag === "Right") {
@@ -1161,12 +1318,13 @@ export const ensureReferenceScriptTargetsProgram = (
         }
       });
 
-    const walletUtxos = yield* fetchReferenceScriptWalletUtxos();
+    const walletUtxos = yield* fetchReferenceScriptPublicationUtxos();
     const existingPublications = yield* Effect.forEach(targets, (target) =>
       resolveExistingReferenceScriptPublication(
         referenceScriptsLucid,
         walletUtxos,
         target,
+        authPolicy,
       ),
     );
     const existingByName = new Map(
@@ -1209,7 +1367,9 @@ export const deployReferenceScriptCommandProgram = (
   referenceScriptsLucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
   commandName: ReferenceScriptCommandName,
+  authPolicy: ReferenceScriptAuthMintingPolicy,
   fundingLucid: LucidEvolution = referenceScriptsLucid,
+  referenceScriptsAddress?: string,
 ): Effect.Effect<
   readonly ReferenceScriptResolved[],
   | SDK.StateQueueError
@@ -1222,13 +1382,17 @@ export const deployReferenceScriptCommandProgram = (
     referenceScriptsLucid,
     commandName,
     referenceScriptTargetsByCommand(contracts)[commandName],
+    authPolicy,
     fundingLucid,
+    referenceScriptsAddress,
   );
 
 export const ensureNodeRuntimeReferenceScriptsProgram = (
   referenceScriptsLucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
+  authPolicy: ReferenceScriptAuthMintingPolicy,
   fundingLucid: LucidEvolution = referenceScriptsLucid,
+  referenceScriptsAddress?: string,
 ): Effect.Effect<
   readonly ReferenceScriptResolved[],
   | SDK.StateQueueError
@@ -1241,16 +1405,20 @@ export const ensureNodeRuntimeReferenceScriptsProgram = (
     referenceScriptsLucid,
     "node-runtime",
     nodeRuntimeReferenceScriptTargets(contracts),
+    authPolicy,
     fundingLucid,
+    referenceScriptsAddress,
   );
 
 export const resolveReferenceScriptTargetsProgram = (
   referenceScriptsLucid: LucidEvolution,
   scopeName: string,
   targets: readonly ReferenceScriptTarget[],
+  authPolicy: ReferenceScriptAuthPolicyRef,
+  configuredReferenceScriptsAddress?: string,
 ): Effect.Effect<readonly ReferenceScriptResolved[], SDK.StateQueueError> =>
   Effect.gen(function* () {
-    const referenceScriptsAddress = yield* Effect.tryPromise({
+    const walletAddress = yield* Effect.tryPromise({
       try: () => referenceScriptsLucid.wallet().address(),
       catch: (cause) =>
         new SDK.StateQueueError({
@@ -1258,10 +1426,13 @@ export const resolveReferenceScriptTargetsProgram = (
           cause,
         }),
     });
+    const referenceScriptsAddress =
+      configuredReferenceScriptsAddress ?? walletAddress;
     return yield* fetchReferenceScriptUtxosProgram(
       referenceScriptsLucid,
       referenceScriptsAddress,
       targets,
+      authPolicy,
     );
   });
 
@@ -1269,23 +1440,24 @@ export const verifyNodeRuntimeReferenceScriptsProgram = (
   lucid: LucidEvolution,
   referenceScriptsAddress: string,
   contracts: SDK.MidgardValidators,
+  authPolicy: ReferenceScriptAuthPolicyRef,
 ): Effect.Effect<readonly ReferenceScriptResolved[], SDK.StateQueueError> =>
   Effect.gen(function* () {
     const targets = nodeRuntimeReferenceScriptTargets(contracts);
-    const referenceScriptUtxos = yield* Effect.tryPromise({
-      try: () => lucid.utxosAt(referenceScriptsAddress),
-      catch: (cause) =>
-        new SDK.StateQueueError({
-          message: `Failed to fetch node-runtime reference-script UTxOs at ${referenceScriptsAddress}`,
-          cause,
-        }),
-    });
+    const referenceScriptUtxos = yield* fetchReferenceScriptUtxosAt(
+      lucid,
+      referenceScriptsAddress,
+      `node-runtime reference-script UTxO fetch at ${referenceScriptsAddress}`,
+      `Failed to fetch node-runtime reference-script UTxOs at ${referenceScriptsAddress}`,
+    );
     const resolved: ReferenceScriptResolved[] = [];
     const missing: string[] = [];
     for (const target of targets) {
       const utxo = [...referenceScriptUtxos]
-        .filter((candidate) =>
-          isSameScriptRef(candidate.scriptRef, target.script),
+        .filter(
+          (candidate) =>
+            isSameScriptRef(candidate.scriptRef, target.script) &&
+            hasReferenceScriptAuthRole(candidate, target, authPolicy),
         )
         .sort(compareOutRefs)[0];
       if (utxo === undefined) {

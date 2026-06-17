@@ -15,6 +15,11 @@ type CborNode =
     }
   | { readonly kind: "tag"; readonly tag: bigint; readonly value: CborNode };
 
+type CborRange = {
+  readonly start: number;
+  readonly end: number;
+};
+
 const readCborLength = (
   bytes: Buffer,
   offset: number,
@@ -145,6 +150,84 @@ const parseCborNode = (
   throw new Error(`Unsupported PlutusData CBOR major type ${major}`);
 };
 
+const parseCborRange = (bytes: Buffer, offset: number): CborRange => ({
+  start: offset,
+  end: parseCborNode(bytes, offset).offset,
+});
+
+const parseArrayItemRanges = (
+  bytes: Buffer,
+  offset: number,
+): { readonly items: readonly CborRange[]; readonly offset: number } => {
+  const initial = bytes[offset];
+  if (initial === undefined) {
+    throw new Error("Unexpected end of CBOR input");
+  }
+  const major = initial >> 5;
+  if (major !== 4) {
+    throw new Error("Expected constructor fields to be a CBOR array");
+  }
+
+  const additional = initial & 0x1f;
+  const length = readCborLength(bytes, offset + 1, additional);
+  const items: CborRange[] = [];
+  let cursor = length.offset;
+
+  if (length.value === null) {
+    while (bytes[cursor] !== 0xff) {
+      const range = parseCborRange(bytes, cursor);
+      items.push(range);
+      cursor = range.end;
+    }
+    if (bytes[cursor] !== 0xff) {
+      throw new Error("Unterminated indefinite CBOR array");
+    }
+    return { items, offset: cursor + 1 };
+  }
+
+  for (let i = 0n; i < length.value; i += 1n) {
+    const range = parseCborRange(bytes, cursor);
+    items.push(range);
+    cursor = range.end;
+  }
+  return { items, offset: cursor };
+};
+
+const constrFieldRanges = (
+  bytes: Buffer,
+): { readonly items: readonly CborRange[]; readonly offset: number } => {
+  const initial = bytes[0];
+  if (initial === undefined) {
+    throw new Error("Unexpected empty PlutusData CBOR input");
+  }
+  if (initial >> 5 !== 6) {
+    throw new Error("Expected constructor PlutusData CBOR");
+  }
+
+  const tag = readCborLength(bytes, 1, initial & 0x1f);
+  const tagValue = expectCborLength(tag.value, "constructor tag");
+  if (
+    (121n <= tagValue && tagValue <= 127n) ||
+    (1280n <= tagValue && tagValue <= 1400n)
+  ) {
+    return parseArrayItemRanges(bytes, tag.offset);
+  }
+
+  if (tagValue === 102n) {
+    const constructorItems = parseArrayItemRanges(bytes, tag.offset);
+    const fieldsRange = constructorItems.items[1];
+    if (fieldsRange === undefined) {
+      throw new Error("General constructor is missing its fields array");
+    }
+    return parseArrayItemRanges(
+      bytes.subarray(fieldsRange.start, fieldsRange.end),
+      0,
+    );
+  }
+
+  throw new Error(`Unsupported PlutusData constructor tag ${tagValue}`);
+};
+
 const encodeCborHeader = (major: number, value: bigint | null): Buffer => {
   if (value === null) {
     return Buffer.from([(major << 5) | 31]);
@@ -232,6 +315,28 @@ export const aikenSerialisedPlutusDataCbor = (cbor: string): string => {
   }
   return encodeCborNodeWithDefiniteMaps(parsed.node).toString("hex");
 };
+
+export const plutusConstrFieldCbor = (
+  cbor: string,
+  fieldPath: readonly number[],
+): string => {
+  let current = Buffer.from(cbor, "hex");
+  for (const index of fieldPath) {
+    const fields = constrFieldRanges(current);
+    const field = fields.items[index];
+    if (field === undefined) {
+      throw new Error(`Constructor field ${index.toString()} is missing`);
+    }
+    current = current.subarray(field.start, field.end);
+  }
+  return current.toString("hex");
+};
+
+export const aikenSerialisedPlutusConstrFieldCbor = (
+  cbor: string,
+  fieldPath: readonly number[],
+): string =>
+  aikenSerialisedPlutusDataCbor(plutusConstrFieldCbor(cbor, fieldPath));
 
 export const canonicalPlutusDataCbor = (cbor: string): string =>
   CML.PlutusData.from_cbor_hex(cbor).to_canonical_cbor_hex();

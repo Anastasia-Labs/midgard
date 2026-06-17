@@ -68,13 +68,19 @@ const outRef = (utxo: UTxO): string =>
 
 const fetchReferenceScripts = (
   targets: readonly ReferenceScriptTarget[],
-): Effect.Effect<ReservePayoutReferenceScripts, SDK.StateQueueError, Lucid> =>
+): Effect.Effect<
+  ReservePayoutReferenceScripts,
+  SDK.StateQueueError,
+  Lucid | MidgardContracts
+> =>
   Effect.gen(function* () {
     const lucidService = yield* Lucid;
+    const contracts = yield* MidgardContracts;
     const resolved = yield* fetchReferenceScriptUtxosProgram(
       lucidService.api,
       lucidService.referenceScriptsAddress,
       targets,
+      contracts.referenceScriptAuth,
     );
     return mergeReferenceScripts(undefined, resolved);
   });
