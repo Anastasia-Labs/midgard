@@ -1,7 +1,9 @@
 use aiken/builtin
 use aiken/cbor
 use aiken/crypto.{ScriptHash, blake2b_256}
-use midgard/common/types.{Empty, H32, PosixTimeDuration}
+use midgard/common/types.{Empty, H32, PosixTime, PosixTimeDuration}
+
+pub const posix_time_none: PosixTime = -1
 
 pub const plutus_version: Int = 3
 
