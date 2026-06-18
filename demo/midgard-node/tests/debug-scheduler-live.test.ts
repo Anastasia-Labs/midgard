@@ -8,6 +8,10 @@ import * as Services from "@/services/index.js";
 
 dotenv.config();
 
+const LIVE_DEBUG_FLAG = "MIDGARD_RUN_LIVE_SCHEDULER_DEBUG_TEST";
+const runLiveDebug = process.env[LIVE_DEBUG_FLAG] === "1";
+const describeLiveDebug = runLiveDebug ? describe : describe.skip;
+
 const decodeRegisteredData = (value: unknown): unknown => {
   try {
     return Data.from(value as string, SDK.RegisteredOperatorDatum);
@@ -18,7 +22,7 @@ const decodeRegisteredData = (value: unknown): unknown => {
   }
 };
 
-describe("debug scheduler live", () => {
+describeLiveDebug("debug scheduler live", () => {
   it("prints live scheduler and operator-set witness state", async () => {
     const { lucid, contracts } = await Effect.runPromise(
       Effect.gen(function* () {
