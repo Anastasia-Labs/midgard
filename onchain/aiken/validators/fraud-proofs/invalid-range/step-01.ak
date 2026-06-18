@@ -9,7 +9,7 @@ use aiken/crypto.{ScriptHash}
 use aiken_design_patterns/validity_range_normalization as vrn
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
-use midgard/common/constants.{posix_time_none}
+use env
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, pass_native_tx_to_next_step}
 use midgard/fraud_proofs/invalid_range/step_01.{Datum, SpendRedeemer}
@@ -26,7 +26,9 @@ fn normalize_native_validity_range(
     ..
   } = body
 
-  when (lower == posix_time_none, exclusive_upper == posix_time_none) is {
+  when
+    (lower == env.posix_time_none, exclusive_upper == env.posix_time_none)
+  is {
     (True, True) -> vrn.Always
     (True, False) -> vrn.FromNegInf { upper: exclusive_upper - 1 }
     (False, True) -> vrn.ToPosInf { lower }
@@ -148,6 +150,6 @@ test normalize_native_validity_range_rejects_empty_interval() {
 
 test normalize_native_validity_range_detects_unbounded_interval() {
   normalize_native_validity_range(
-    test_native_body(posix_time_none, posix_time_none),
+    test_native_body(env.posix_time_none, env.posix_time_none),
   ) == vrn.Always
 }

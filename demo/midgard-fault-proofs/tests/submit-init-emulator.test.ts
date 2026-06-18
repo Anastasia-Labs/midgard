@@ -1205,7 +1205,6 @@ const submitSetupTx = async ({
       {
         ActivateOperator: {
           new_active_operator_key: header.operatorVkey,
-          new_active_operator_bond_unlock_time: null,
           active_operator_anchor_element_output_index:
             ACTIVE_OPERATOR_ACTIVATION_OUTPUT_INDEX.root,
           active_operator_inserted_node_output_index:
@@ -1215,6 +1214,7 @@ const submitSetupTx = async ({
             contracts.registeredOperators.policyId,
             "test registered-operators activation mint",
           ),
+          active_operators_set_was_empty: true,
         },
       },
       ActiveOperatorMintRedeemer,

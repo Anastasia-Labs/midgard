@@ -237,8 +237,8 @@ validator mint(
               scheduler_ref_input_index: scheduler_ref_input_index,
             )
 
-          // 8. The `operator` field of `scheduler_state` must match
-          //    `operator` from redeemer.
+          // 8. The `operator` field of `scheduler_state` must match `operator`
+          //    from redeemer.
           expect operator == scheduler_operator
 
           // Update the operator's timestamp in the active operators set:

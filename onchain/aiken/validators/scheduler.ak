@@ -10,6 +10,7 @@ use cardano/transaction.{
   Input, Mint, OutputReference, Redeemer, ScriptPurpose, Transaction,
   ValidityRange,
 }
+use env
 use midgard/common/types.{PosixTime}
 use midgard/common/utils
 use midgard/hub_oracle as hub
@@ -17,18 +18,14 @@ use midgard/ledger_state
 use midgard/operator_directory
 use midgard/operator_directory/active_operators
 use midgard/operator_directory/registered_operators
-use midgard/protocol_parameters.{
-  max_inactivity_between_block_commitments, new_shift_inactivity_grace_period,
-  user_events_negligence_timeout,
-}
 use midgard/scheduler.{
-  ActiveOperator, AppointFirstOperator, Datum, Deinit, GoToNextDueToEndOfShift,
+  ActiveOperator, AppointFirstOperator, Deinit, GoToNextDueToEndOfShift,
   GoToNextDueToOperatorRemoval, GoToNextDueToSkippedOperator, Init, MintRedeemer,
   NeglectedDeposit, NeglectedTxOrder, NeglectedUserEvent, NeglectedWithdrawal,
   NoActiveOperators, NoNeglectedUserEvent, OperatorRemovalReason,
   OperatorRetirement, OperatorSlashing, RewindDueToEndOfShift,
-  RewindDueToOperatorRemoval, RewindDueToSkippedOperator, SpendRedeemer,
-  asset_name, shift_end_time,
+  RewindDueToOperatorRemoval, RewindDueToSkippedOperator, SchedDatum,
+  SpendRedeemer, asset_name, shift_end_time,
 }
 use midgard/state_queue
 use midgard/user_events
@@ -76,7 +73,7 @@ validator spend(
   hub_oracle_script_hash: PolicyId,
 ) {
   spend(
-    m_datum: Option<Datum>,
+    m_datum: Option<SchedDatum>,
     redeemer: SpendRedeemer,
     own_out_ref: OutputReference,
     self: Transaction,
@@ -525,7 +522,7 @@ validator spend(
 }
 
 fn validate_active_datums_and_get_info(
-  input_datum: Datum,
+  input_datum: SchedDatum,
   output_datum_data: Data,
   return: fn(VerificationKeyHash, VerificationKeyHash, PosixTime, PosixTime) ->
     result,
@@ -551,7 +548,7 @@ fn validate_active_datums_and_get_info(
 }
 
 fn validate_end_of_shift_and_get_operators(
-  input_datum: Datum,
+  input_datum: SchedDatum,
   output_datum_data: Data,
   validity_range: ValidityRange,
   extra_signatories: List<VerificationKeyHash>,
@@ -690,10 +687,10 @@ fn validate_operator_inactivity_and_get_its_link(
       //      `user_events_negligence_timeout` protocol parameter.
       let inactivity_threshold =
         max(
-          inactive_operators_shift_start_time + new_shift_inactivity_grace_period,
+          inactive_operators_shift_start_time + env.new_shift_inactivity_grace_period,
           when neglected_user_event is {
             NoNeglectedUserEvent ->
-              last_state_queue_elements_end_time + max_inactivity_between_block_commitments
+              last_state_queue_elements_end_time + env.max_inactivity_between_block_commitments
             NeglectedDeposit { deposit_ref_input_index } -> {
               let deposit.Datum { inclusion_time, .. } =
                 reference_inputs
@@ -760,7 +757,7 @@ fn inactivity_threshold_from_user_event_inclusion_time(
   last_state_queue_elements_end_time: PosixTime,
 ) -> PosixTime {
   expect inclusion_time >= last_state_queue_elements_end_time
-  inclusion_time + user_events_negligence_timeout
+  inclusion_time + env.user_events_negligence_timeout
 }
 
 /// Given the index of the input in reference inputs, this function validates
