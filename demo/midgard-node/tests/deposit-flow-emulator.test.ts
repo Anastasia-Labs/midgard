@@ -70,6 +70,7 @@ import {
   NodeConfig,
 } from "@/services/index.js";
 import { withRealStateQueueAndOperatorContracts } from "@/services/midgard-contracts.js";
+import { attestStateQueueOnceProgram } from "@/transactions/da-attestation.js";
 import {
   type AtomicProtocolInitReferenceScripts,
   buildAtomicProtocolInitTxProgram,
@@ -1040,6 +1041,19 @@ const makeGlobalsService = () =>
     }).pipe(Effect.provide(Globals.Default)),
   );
 
+const makeNodeConfigForFixture = async (fixture: EmulatorFixture) => {
+  const nodeConfig = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* NodeConfig;
+    }).pipe(Effect.provide(NodeConfig.layer)),
+  );
+  return {
+    ...nodeConfig,
+    L1_OPERATOR_SEED_PHRASE: fixture.operatorAccount.seedPhrase,
+    L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: fixture.operatorAccount.seedPhrase,
+  };
+};
+
 const withEmulatorExtraneousScriptRetry = async <A>(
   lucid: LucidEvolution,
   run: () => Promise<A>,
@@ -1090,17 +1104,18 @@ const runNodeCommandProgram = <A>(
     readonly globals: Globals;
   },
 ): Promise<A> =>
-  withEmulatorExtraneousScriptRetry(lucidService.api, () =>
-    Effect.runPromise(
+  withEmulatorExtraneousScriptRetry(lucidService.api, async () => {
+    const nodeConfig = await makeNodeConfigForFixture(fixture);
+    return Effect.runPromise(
       effect.pipe(
         Effect.provideService(LucidService, lucidService as any),
         Effect.provideService(MidgardContracts, fixture.contracts as any),
         Effect.provideService(Globals, globals),
+        Effect.provideService(NodeConfig, nodeConfig),
         Effect.provide(Database.layer),
-        Effect.provide(NodeConfig.layer),
       ) as Effect.Effect<A, any, never>,
-    ),
-  );
+    );
+  });
 
 const runBlockConfirmation = (
   globals: Globals,
@@ -1168,6 +1183,26 @@ const runLocalFinalizationRecoveryWorker = async (
       Effect.provide(NodeConfig.layer),
     ),
   );
+};
+
+const attestQueuedStateQueueHeader = async ({
+  fixture,
+  lucidService,
+  globals,
+  headerHash,
+}: {
+  readonly fixture: EmulatorFixture;
+  readonly lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>;
+  readonly globals: Globals;
+  readonly headerHash: string;
+}) => {
+  const attestedHeaders = await runNodeCommandProgram(
+    attestStateQueueOnceProgram({ headerHash }),
+    { fixture, lucidService, globals },
+  );
+  expect(attestedHeaders.map((result) => result.headerHash)).toEqual([
+    headerHash,
+  ]);
 };
 
 /**
@@ -1317,6 +1352,13 @@ const commitConfirmRecoverAndMerge = async ({
   const queuedHeaderHash = await Effect.runPromise(
     SDK.hashBlockHeader(queuedHeaderBeforeMerge),
   );
+
+  await attestQueuedStateQueueHeader({
+    fixture,
+    lucidService,
+    globals,
+    headerHash: queuedHeaderHash,
+  });
 
   await advanceEmulatorPastUnixTime(
     fixture,
@@ -1816,6 +1858,13 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
       SDK.EMPTY_MERKLE_TREE_ROOT,
     );
 
+    await attestQueuedStateQueueHeader({
+      fixture,
+      lucidService,
+      globals: globalsAfterCommit,
+      headerHash: queuedHeaderHash,
+    });
+
     const confirmedBeforeMerge = await Effect.runPromise(
       SDK.getConfirmedStateFromStateQueueDatum(
         sortedStateQueueBeforeMerge[0]!.datum,
@@ -1965,6 +2014,7 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
     expect(depositResolution.settlementRefInput.txHash).toEqual(
       depositBlock.settlementUtxo.txHash,
     );
+    await ensureSeparateCollateralUtxo(fixture.operatorLucid);
     const absorb = await runNodeCommandProgram(
       absorbConfirmedDepositToReserveProgram({ eventId: depositEventIdHex }),
       { fixture, lucidService, globals },
