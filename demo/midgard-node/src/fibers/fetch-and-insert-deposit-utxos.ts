@@ -160,7 +160,7 @@ const fetchDepositUTxOs = (
     return yield* SDK.fetchDepositUTxOsProgram(lucid, fetchConfig);
   });
 
-const reconcileVisibleDepositUTxOs = (
+export const reconcileVisibleDepositUTxOs = (
   config?: Pick<
     SDK.UserEventFetchConfig,
     "inclusionTimeLowerBound" | "inclusionTimeUpperBound"

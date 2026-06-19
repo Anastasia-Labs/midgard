@@ -13,6 +13,7 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { dedupeByOutRef, outRefLabel, type OutRefLike } from "@/tx-context.js";
+import { isPlainAdaOnlyUtxo } from "@/transactions/wallet-hygiene.js";
 
 export type OperatorWalletView = {
   readonly walletAddress: string;
@@ -65,7 +66,8 @@ export const availableOperatorWalletUtxos = (
 ): readonly UTxO[] => {
   const consumedOutRefs = toConsumedSet(view);
   return view.knownUtxos.filter(
-    (utxo) => !consumedOutRefs.has(outRefLabel(utxo)),
+    (utxo) =>
+      !consumedOutRefs.has(outRefLabel(utxo)) && isPlainAdaOnlyUtxo(utxo),
   );
 };
 

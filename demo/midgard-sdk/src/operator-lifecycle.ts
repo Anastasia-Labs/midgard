@@ -123,6 +123,7 @@ export type RegisterOperatorTxConfig = {
   readonly activeNotMemberWitness: NodeWithDatum;
   readonly retiredNotMemberWitness: NodeWithDatum;
   readonly registeredRootNode: NodeWithDatum;
+  readonly registerFundingInputs: readonly UTxO[];
   readonly registerMintAssets: Assets;
   readonly prependedNodeDatum: SDK.LinkedListNodeView;
   readonly prependedNodeAssets: Assets;
@@ -263,7 +264,8 @@ export const buildRegisterOperatorTx = (
       config.registeredRootNode.utxo.assets,
     )
     .addSignerKey(config.operatorKeyHash)
-    .validTo(Number(config.registerValidTo));
+    .validTo(Number(config.registerValidTo))
+    .collectFrom([...config.registerFundingInputs]);
 };
 
 export type ActivateOperatorTxConfig = {

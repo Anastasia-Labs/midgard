@@ -99,6 +99,37 @@ type StateQueueCommitLayout = {
   readonly stateQueueMintRedeemerIndex: bigint;
 };
 
+type TxCompleteOptions = NonNullable<Parameters<TxBuilder["complete"]>[0]>;
+
+const positiveAssetEntries = (
+  assets: Readonly<Assets>,
+): readonly (readonly [string, bigint])[] =>
+  Object.entries(assets).filter(([, amount]) => amount > 0n);
+
+const isPlainAdaOnlyUtxo = (utxo: UTxO): boolean => {
+  if (utxo.datum !== undefined || utxo.datumHash !== undefined) {
+    return false;
+  }
+  if (utxo.scriptRef !== undefined) {
+    return false;
+  }
+  const positiveAssets = positiveAssetEntries(utxo.assets);
+  return (
+    positiveAssets.length === 1 &&
+    positiveAssets[0]?.[0] === "lovelace" &&
+    positiveAssets[0][1] > 0n
+  );
+};
+
+const completeWithPresetWalletInputs = (
+  presetWalletInputs?: readonly UTxO[],
+): TxCompleteOptions => ({
+  localUPLCEval: true,
+  ...(presetWalletInputs === undefined
+    ? {}
+    : { presetWalletInputs: [...presetWalletInputs] }),
+});
+
 type StateQueueCommitRedeemer = {
   readonly CommitBlockHeader: {
     readonly new_block_output_index: bigint;
@@ -125,7 +156,8 @@ const availableOperatorWalletUtxos = (
 ): readonly UTxO[] => {
   const consumedOutRefs = new Set(view.consumedOutRefs);
   return view.knownUtxos.filter(
-    (utxo) => !consumedOutRefs.has(outRefLabel(utxo)),
+    (utxo) =>
+      !consumedOutRefs.has(outRefLabel(utxo)) && isPlainAdaOnlyUtxo(utxo),
   );
 };
 
@@ -156,15 +188,12 @@ export const selectPureAdaFeeInput = (
   walletUtxos: readonly UTxO[],
 ): Effect.Effect<UTxO, StateQueueError> =>
   Effect.gen(function* () {
-    const pureAdaUtxos = walletUtxos.filter((utxo) =>
-      Object.entries(utxo.assets).every(
-        ([unit, amount]) => unit === "lovelace" || amount <= 0n,
-      ),
-    );
+    const pureAdaUtxos = walletUtxos.filter(isPlainAdaOnlyUtxo);
     if (pureAdaUtxos.length === 0) {
       return yield* Effect.fail(
         new StateQueueError({
-          message: "Failed to select fee input for merge transaction",
+          message:
+            "Failed to select pure-ADA operator wallet input for transaction fees",
           cause: "operator wallet has no pure-ADA UTxO",
         }),
       );
@@ -393,7 +422,7 @@ export const buildDeterministicCommitTxBuilder = ({
   StateQueueError
 > =>
   Effect.gen(function* () {
-    const feeInput = yield* selectCommitFeeInput(
+    const feeInput = yield* selectPureAdaFeeInput(
       availableOperatorWalletUtxos(witness.operatorWalletView),
     );
     yield* Effect.logInfo(
@@ -480,8 +509,14 @@ export const buildDeterministicCommitTxBuilder = ({
         : withStateQueueSpendingScript;
     };
 
+    const presetWalletInputs = availableOperatorWalletUtxos(
+      witness.operatorWalletView,
+    );
     const builtCommitTx = yield* Effect.tryPromise({
-      try: () => makeCommitTx().complete({ localUPLCEval: true }),
+      try: () =>
+        makeCommitTx().complete(
+          completeWithPresetWalletInputs(presetWalletInputs),
+        ),
       catch: (cause) =>
         new StateQueueError({
           message: `Failed to build block header commitment transaction with final redeemer context: ${formatUnknownError(
@@ -640,6 +675,7 @@ export type ProductionMergeToConfirmedStateParams = {
   readonly firstBlockUTxO: StateQueueUTxO;
   readonly validFrom: number;
   readonly feeInput: UTxO;
+  readonly presetWalletInputs?: readonly UTxO[];
   readonly hubOracleRefInput: UTxO;
   readonly referenceScripts?: StateQueueMergeReferenceScripts;
   readonly settlementOutputLovelace?: bigint;
@@ -914,6 +950,7 @@ export const buildProductionMergeToConfirmedStateTxProgram = ({
   firstBlockUTxO,
   validFrom,
   feeInput,
+  presetWalletInputs,
   hubOracleRefInput,
   referenceScripts,
   settlementOutputLovelace = MIN_SETTLEMENT_OUTPUT_LOVELACE,
@@ -1109,7 +1146,7 @@ export const buildProductionMergeToConfirmedStateTxProgram = ({
         makeMergeTxWithScripts(
           stateQueueMergeRedeemer,
           settlementSpawnRedeemer,
-        ).complete({ localUPLCEval: true }),
+        ).complete(completeWithPresetWalletInputs(presetWalletInputs)),
       catch: (cause) =>
         mergeStateQueueError(
           "E_MERGE_UPLC_EVAL_FAILED",

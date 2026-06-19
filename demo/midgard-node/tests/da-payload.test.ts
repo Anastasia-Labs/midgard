@@ -56,13 +56,27 @@ const utxo = (
   [MempoolLedgerDB.Columns.TIMESTAMPTZ]: new Date("2026-06-12T00:00:00.000Z"),
 });
 
+const utxoMember = (
+  headerHash: Buffer,
+  key: Buffer,
+  value: Buffer,
+  ordinal: number,
+): PendingBlockFinalizationsDB.UtxoRecord => ({
+  [PendingBlockFinalizationsDB.UtxoColumns.HEADER_HASH]: headerHash,
+  [PendingBlockFinalizationsDB.UtxoColumns.OUTREF]: key,
+  [PendingBlockFinalizationsDB.UtxoColumns.ORDINAL]: ordinal,
+  [PendingBlockFinalizationsDB.UtxoColumns.OUTPUT]: value,
+});
+
 const record = ({
   headerHash,
+  utxoMembers = [],
   depositMembers,
   withdrawalMembers,
   roots,
 }: {
   readonly headerHash: Buffer;
+  readonly utxoMembers?: readonly PendingBlockFinalizationsDB.UtxoRecord[];
   readonly depositMembers: readonly PendingBlockFinalizationsDB.MemberRecord[];
   readonly withdrawalMembers: readonly PendingBlockFinalizationsDB.MemberRecord[];
   readonly roots: {
@@ -117,6 +131,7 @@ const record = ({
     depositMembers,
     withdrawalMembers,
     txMembers: [],
+    utxoMembers,
   };
 };
 
@@ -143,6 +158,9 @@ describe("DaPayloadV1 builder", () => {
     );
     const pending = record({
       headerHash,
+      utxoMembers: utxoEntries.map(([key, value], index) =>
+        utxoMember(headerHash, key, value, index),
+      ),
       depositMembers: depositEntries.map(([key, value], index) =>
         member(headerHash, key, value, index),
       ),
@@ -155,9 +173,6 @@ describe("DaPayloadV1 builder", () => {
     const insert = await Effect.runPromise(
       buildDaPayloadInsert({
         record: pending,
-        utxos: utxoEntries.map(([key, value], index) =>
-          utxo(key, value, index),
-        ),
       }),
     );
     const payload = SDK.decodeDaPayloadV1(insert.payload_cbor);
@@ -195,6 +210,9 @@ describe("DaPayloadV1 builder", () => {
     );
     const pending = record({
       headerHash,
+      utxoMembers: utxoEntries.map(([key, value], index) =>
+        utxoMember(headerHash, key, value, index),
+      ),
       depositMembers: depositEntries.map(([key, value], index) =>
         member(headerHash, key, value, index),
       ),
@@ -293,6 +311,9 @@ describe("DaPayloadV1 builder", () => {
     );
     const pending = record({
       headerHash,
+      utxoMembers: utxoEntries.map(([key, value], index) =>
+        utxoMember(headerHash, key, value, index),
+      ),
       depositMembers: depositEntries.map(([key, value], index) =>
         member(headerHash, key, value, index),
       ),
@@ -307,9 +328,6 @@ describe("DaPayloadV1 builder", () => {
       Effect.either(
         buildDaPayloadInsert({
           record: pending,
-          utxos: utxoEntries.map(([key, value], index) =>
-            utxo(key, value, index),
-          ),
         }),
       ),
     );

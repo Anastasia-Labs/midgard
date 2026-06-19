@@ -1,4 +1,5 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
 import {
@@ -85,7 +86,7 @@ export const backfillMissingDaPayloadsFromFinalizedJournals = <R = Database>({
       return { scanned: 0, backfilled, skipped };
     }
 
-    const utxos = yield* deps.retrieveUtxos;
+    let legacyUtxos: readonly MempoolLedgerDB.EntryWithTimeStamp[] | undefined;
     for (const record of records) {
       const header = headerHashHex(record);
       if (journalHasIncompletePayloads(record)) {
@@ -98,7 +99,17 @@ export const backfillMissingDaPayloadsFromFinalizedJournals = <R = Database>({
 
       const result = yield* Effect.either(
         Effect.gen(function* () {
-          const insert = yield* buildDaPayloadInsert({ record, utxos });
+          const needsLegacyUtxos =
+            record.utxoMembers.length === 0 &&
+            record[PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT] !==
+              SDK.EMPTY_MERKLE_TREE_ROOT;
+          if (needsLegacyUtxos && legacyUtxos === undefined) {
+            legacyUtxos = yield* deps.retrieveUtxos;
+          }
+          const insert = yield* buildDaPayloadInsert({
+            record,
+            ...(needsLegacyUtxos ? { utxos: legacyUtxos ?? [] } : {}),
+          });
           yield* deps.upsertAvailable(insert);
         }),
       );

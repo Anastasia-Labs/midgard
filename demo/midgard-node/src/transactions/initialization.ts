@@ -10,16 +10,12 @@ import {
   type TxBuilder,
   type TxSignBuilder,
   UTxO,
-  validatorToScriptHash,
   walletFromSeed,
 } from "@lucid-evolution/lucid";
 import { Effect, Schedule } from "effect";
 
 import { slotToUnixTimeForLucidOrEmulatorFallback } from "@/lucid-time.js";
-import {
-  loadPhasMembershipWithdrawalScript,
-  phasMembershipRewardAddress,
-} from "@/phas-membership.js";
+import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
 import { NodeConfig } from "@/services/config.js";
 import { Lucid } from "@/services/lucid.js";
 import { MidgardContracts } from "@/services/midgard-contracts.js";
@@ -209,14 +205,12 @@ export const atomicProtocolInitReferenceScriptsFromPublications = (
   ),
 });
 
-export const deriveOperatorDaParams = (
-  nodeConfig: {
-    readonly L1_OPERATOR_SEED_PHRASE: string;
-    readonly NETWORK: Network;
-    readonly DA_COMMITTEE_HEX?: string;
-    readonly DA_THRESHOLD?: bigint | null;
-  },
-): Effect.Effect<SDK.DaParamsDatum, SDK.HashingError> =>
+export const deriveOperatorDaParams = (nodeConfig: {
+  readonly L1_OPERATOR_SEED_PHRASE: string;
+  readonly NETWORK: Network;
+  readonly DA_COMMITTEE_HEX?: string;
+  readonly DA_THRESHOLD?: bigint | null;
+}): Effect.Effect<SDK.DaParamsDatum, SDK.HashingError> =>
   Effect.gen(function* () {
     const wallet = walletFromSeed(nodeConfig.L1_OPERATOR_SEED_PHRASE, {
       network: nodeConfig.NETWORK,
@@ -599,10 +593,10 @@ export const fetchProtocolDeploymentStatus = (
       );
     }
     const phasMembershipScript = loadPhasMembershipWithdrawalScript();
-    const phasMembershipReward = {
-      rewardAddress: phasMembershipRewardAddress(network, phasMembershipScript),
-      scriptHash: validatorToScriptHash(phasMembershipScript),
-    };
+    const phasMembershipReward = SDK.phasMembershipIdentity(
+      network,
+      phasMembershipScript,
+    );
     const missingComponents = [
       ...(hubOracleWitness === null ? ["hub-oracle"] : []),
       ...(!daParamsInitialized ? ["da-params"] : []),
@@ -738,6 +732,11 @@ export const program: Effect.Effect<
 
   const status = yield* fetchProtocolDeploymentStatus(lucid, contracts);
   if (status.complete) {
+    const phasRegistration =
+      yield* ensurePhasMembershipRewardAccountRegisteredProgram(lucid);
+    yield* Effect.logInfo(
+      `PHAS membership reward-account registration status: status=${phasRegistration.status},scriptHash=${phasRegistration.scriptHash},rewardAddress=${phasRegistration.rewardAddress},txHash=${phasRegistration.txHash ?? "already-registered"}`,
+    );
     return "already-initialized";
   }
 

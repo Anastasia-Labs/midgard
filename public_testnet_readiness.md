@@ -1,6 +1,6 @@
 # Public Testnet Readiness Checklist
 
-Last reviewed: 2026-06-13
+Last reviewed: 2026-06-19
 
 Scope: this checklist reviews the current Midgard repository state for an externally reachable public testnet deployment. It treats Midgard as a production-grade L2, so "public testnet ready" includes adversarial safety, deterministic deployment identity, restart/recovery behavior, public client ergonomics, monitoring, and explicit runbooks. It is stricter than "the local happy path works."
 
@@ -22,8 +22,8 @@ Current decision: no-go for an open public testnet.
 | Native transaction submit/admission | Mostly implemented | `/submit` accepts canonical Midgard-native CBOR and durable admission exists. Needs concurrency cap hardening and public DoS controls. |
 | Phase A/B validation | Mostly implemented | Shared validation is broad and used by node admission. Needs public adversarial fixture coverage tied to proof generation. |
 | Deposits | Mostly implemented | SDK/node builders and projection flow exist. Public `/deposit/build` needs richer metadata and runbook hardening. |
-| Withdrawals | Partial | SDK and CLI paths exist. Public build/submit surface and node submit helper usage need cleanup before public exposure. |
-| Reserve/payout | Partial | Builders and CLI flows exist. Invalid-withdrawal refund path and public operator runbooks need wiring/acceptance. |
+| Withdrawals | Partial | SDK and CLI paths, L1 withdrawal-order ingestion, projection/classification, withdrawal roots, local status lookup, and payout handoff exist. Public HTTP build/status parity, shared L1 submit/finality behavior, exact payability, and docs remain blockers. |
+| Reserve/payout | Partial | Builders and CLI flows exist for deposit absorption, valid-withdrawal payout init/funding/conclusion, plus SDK-level invalid-withdrawal refund construction. Node-level invalid-refund submission, public operator runbooks, and public/preprod acceptance remain blockers. |
 | Commit/confirm/merge | Mostly implemented | State queue, pending finalization journal, leases, DA-attestation-gated merge, and merge worker exist. Needs restart/recovery acceptance and stronger crash-boundary tests. |
 | Operator lifecycle | Partial | Register/activate builders and tests exist. Public CLI/API/runbook coverage for status, register, activate, deactivate/deregister, and monitoring is incomplete. |
 | Fraud proofs and DA | Partial, not public-testnet ready | Tooling, DA attestation transactions, merge gating, and `DaPayloadV1` node persistence/endpoints exist. Proof family completeness, typed proof-bundle witnesses, public DA committee/storage behavior, and preprod end-to-end challenge acceptance remain blockers. |
@@ -125,10 +125,12 @@ Current decision: no-go for an open public testnet.
 
 - [ ] Return deposit metadata needed by public clients.
 - [ ] Harden withdrawal submission through the shared production L1 submit helper.
-- [ ] Wire invalid-withdrawal refund command/API if the public lifecycle includes invalid withdrawal handling.
-- [ ] Document and test deposit -> L2 submit -> withdrawal -> merge -> reserve/payout end to end.
+- [ ] Expose withdrawal build/status through the chosen public surface.
+- [ ] Wire invalid-withdrawal refund submission through node CLI/API if the public lifecycle includes invalid withdrawal handling.
+- [ ] Document and add public/preprod acceptance for deposit -> L2 submit -> withdrawal -> merge -> reserve/payout end to end.
+  - Evidence: emulator coverage exists for deposit, reserve absorption, withdrawal commitment, settlement proof resolution, payout funding, and payout conclusion, but this is not yet a clean public/preprod acceptance gate.
 - [ ] Add explicit operator lifecycle commands/status docs for register, activate, deactivate/deregister, and bond/slash state.
-- [ ] Implement exact withdrawal payability classification and invalid-withdrawal refund routing.
+- [ ] Implement exact withdrawal payability classification and production invalid-withdrawal refund routing.
 - [ ] Implement or explicitly exclude settlement resolution-claim flows.
 - [ ] Add operator funding/faucet, inactivity enforcement, duplicate-operator handling, reward/slash, and key-rotation runbooks.
 
@@ -167,8 +169,9 @@ These are the main code-backed reasons for the no-go decision. They should be ke
 | `demo/midgard-node/docker-compose.kupmios.yaml` defaults Mithril, Ogmios, and Kupo images/snapshots to `latest` and exposes provider ports. | Public deployment must pin images/digests and restrict provider ports. |
 | `demo/midgard-node/.env.example` contains blank `ADMIN_API_KEY`, default Postgres credentials, `latest` image tags, retention `0`, and test/demo seed phrases. Positive retention below the DA minimum now fails config, but there is still no separate public env profile or public retention policy. | Public env template must reject demo/default secrets and document retention/DA availability choices explicitly. |
 | `demo/midgard-node/src/services/config.ts` defaults min fees to `0`, admin key to empty, hub-oracle one-shot index to `-1`, Postgres credentials to `postgres`, and MPF paths to relative local paths. | Public strict mode must require explicit production values and durable absolute paths. |
-| `demo/midgard-node/src/commands/listen-router.ts` readiness checks worker heartbeat timestamps, DB health, durable-admission backlog/age, unresolved submissions, unfinished local mutation jobs, and a hub-oracle query, but not provider tip freshness, Kupo coverage, deployment fingerprint, state-queue lease detail, or first successful worker loop. | `/readyz` is useful but not sufficient for public traffic routing. |
+| `demo/midgard-node/src/commands/listen-router.ts` readiness checks worker heartbeat timestamps, DB health, durable-admission backlog/age, unresolved submissions, unfinished local mutation jobs, state-queue mutation lease inspection, pending-finalization summaries, and a hub-oracle query, but not provider tip freshness, Kupo coverage, deployment fingerprint, or first successful worker loop. | `/readyz` is useful but not sufficient for public traffic routing. |
 | `demo/midgard-node/src/commands/listen-router.ts` keeps `/init`, `/commit`, `/merge`, `/stateQueue`, `/stateQueueMutationLease`, `/logBlocksDB`, and `/logGlobals` as HTTP admin routes. | Admin routes must be private/authenticated and not exposed via public ingress. |
+| `demo/midgard-node/src/commands/listen-router.ts` exposes `/deposit/build` and `/deposit-status`, but no `/withdrawal/build` or `/withdrawal-status` HTTP route. | Withdrawal support exists through SDK/CLI/node internals, but public API parity is incomplete. |
 | `demo/midgard-node/src/database/txAdmissions.ts` checks backlog with `COUNT(*)` before insert inside the transaction. | Concurrent public submissions can overshoot the configured cap unless admission is globally serialized or otherwise bounded. |
 | `demo/midgard-node/src/workers/utils/commit-submission.ts` finalizes DB state and then resets the transactions MPF root outside the SQL transaction. | Recovery may be valid, but public readiness needs explicit crash-boundary tests and alerts. |
 | `demo/midgard-node/src/workers/utils/commit-submission.ts` transfers skipped submissions by inserting processed mempool rows and then clearing mempool rows in separate steps. | Crash-boundary behavior must be tested or made atomic to avoid ambiguous duplicate material. |
@@ -200,6 +203,7 @@ These are the main code-backed reasons for the no-go decision. They should be ke
 | Active-operator comments document a duplicate active/retired scheduler-lock edge case. | Public readiness needs duplicate-operator/Sybil cleanup or explicit exclusion. |
 | Escape hatch is specified, but real runtime/validators do not appear wired for public deployment. | Public limitations must state whether escape hatch liveness recovery is supported. |
 | Settlement resolution-claim disprove/slashing builders are incomplete. | Settlement claim lifecycle must be completed or excluded from public scope. |
+| `demo/midgard-node/src/database/withdrawals.ts`, `demo/midgard-node/src/fibers/fetch-and-insert-withdrawal-utxos.ts`, `demo/midgard-node/src/workers/utils/mpf.ts`, `demo/midgard-node/src/commands/withdrawal-status.ts`, and `demo/midgard-node/src/workers/commit-block-header/event-roots.ts` implement withdrawal event persistence, ingestion, classification, L2 ledger deletion for valid withdrawals, local status, and withdrawal-root construction. | The readiness gap is no longer basic withdrawal support; it is public API/docs, finality/reorg safety, exact payability, and production refund/payout operations. |
 | Withdrawal classification lacks exact Cardano L1 payability/min-ADA evidence. | Valid withdrawals may be marked payable before the L1 output is actually constructible. |
 | Logs include raw tx CBOR and full user query values in public route paths. | Public logging needs privacy-safe redaction and retention/deletion policy. |
 
@@ -248,7 +252,8 @@ These are the main code-backed reasons for the no-go decision. They should be ke
 - [ ] Verify Kupo/Ogmios/Cardano tip freshness in readiness.
   - Acceptance: `/readyz` reports provider tip age, Kupo coverage, Ogmios connection, and Cardano node sync health.
 - [ ] Add deployment-fingerprint checks to readiness.
-- [ ] Add active state-queue mutation lease visibility to readiness.
+- [x] Add active state-queue mutation lease visibility to readiness.
+  - Evidence: `/readyz` includes `stateQueueMutationLease` with active lease, pending finalizations, and recent leases.
 - [ ] Ensure worker heartbeat readiness cannot pass before each required worker has completed at least one successful iteration.
 - [ ] Add node container healthcheck and operational health policy.
   - Acceptance: container restart/liveness uses `/healthz`, ingress/load balancer readiness uses `/readyz`, and the runbook states not to restart solely on temporary provider/readiness failures.
@@ -361,16 +366,21 @@ These are the main code-backed reasons for the no-go decision. They should be ke
 
 ## Withdrawals, Reserve, And Payout
 
+- [x] L1 withdrawal-order submission, ingestion, local status, projection/classification, committed withdrawal roots, and valid-withdrawal payout handoff exist.
+  - Evidence: `submit-withdrawal`, `fetch-withdrawals-once`, and `withdrawal-status` CLI commands are wired; `withdrawal_utxos` persists withdrawal rows; commit-time ingestion barriers reconcile visible withdrawal UTxOs; block commitment computes `withdrawalsRoot`; valid withdrawals remove the spent L2 ledger UTxO and can feed reserve/payout commands.
 - [ ] Centralize withdrawal submit/finalization through the production submit helper.
   - Acceptance: withdrawal L1 submission uses the same recovery, local UPLC evaluation, script-data hash repair, timeout, and confirmation behavior as other production L1 submissions.
   - Evidence: `demo/midgard-node/src/transactions/submit-withdrawal.ts` contains a direct sign/complete/submit path that should be reconciled with the shared production transaction submission path.
 - [ ] Provide a public withdrawal build/status surface if withdrawals are intended for public users through node APIs.
+  - Evidence: the HTTP router exposes `/deposit/build` and `/deposit-status`, but withdrawal build/status is currently CLI/local-node only.
 - [ ] Add withdrawal external-wallet build parity or explicitly reject it as unsupported.
   - Acceptance: either `/withdrawal/build` returns unsigned CBOR plus event metadata for external signing, or public docs state withdrawals require local CLI custody and are not a wallet API.
 - [ ] Decide and document whether users submit withdrawal orders through L2 `/submit`, L1 CLI/API, or both.
-- [ ] Wire invalid-withdrawal refund into node CLI/API if it is part of the public lifecycle.
-- [ ] Add end-to-end reserve/payout acceptance.
+- [ ] Wire invalid-withdrawal refund submission into node CLI/API if it is part of the public lifecycle.
+  - Evidence: `@al-ft/midgard-sdk` exports `buildRefundInvalidWithdrawalTxProgram`, but the node command surface currently wires deposit absorption, valid payout initialization/funding/conclusion, reserve inspection, and payout status rather than an invalid-refund submit command.
+- [ ] Add clean public/preprod end-to-end reserve/payout acceptance.
   - Acceptance: deposit reserve absorption, payout initialization, adding reserve funds, payout conclusion, and withdrawal finality are verified from clean deployment.
+  - Evidence: `demo/midgard-node/tests/deposit-flow-emulator.test.ts` covers the representative emulator happy path through payout conclusion, but public readiness still needs the same lifecycle from clean deployment with public/preprod services.
 - [ ] Add payout liveness monitoring.
   - Acceptance: stuck payout, insufficient reserve liquidity, expired withdrawal, and invalid withdrawal states are visible.
 - [ ] Add operator runbook for reserve funding, payout batching, fee funding, and failure recovery.
@@ -432,7 +442,7 @@ These are the main code-backed reasons for the no-go decision. They should be ke
   - Acceptance: recovery can prove whether job effects are complete and either mark complete or safely replay.
 - [ ] Add public metrics and alerts for unresolved block submission age, local finalization pending age, merge failure count, and state queue length.
 - [ ] Expand `/readyz` with concrete recovery-state diagnostics.
-  - Acceptance: readiness includes pending-finalization status/header/age, active lease holder/expiry, local mutation job ids/ages, processed-mempool depth, mempool/processed overlap count, and BlocksDB-to-ImmutableDB missing payload count.
+  - Acceptance: readiness extends the current lease and pending-finalization summaries with pending-finalization age, local mutation job ids/ages, processed-mempool depth, mempool/processed overlap count, and BlocksDB-to-ImmutableDB missing payload count.
 - [ ] Document manual recovery procedures for pending finalizations, mutation leases, stuck scheduler refresh, and failed merge.
 - [ ] Require restart acceptance with persistent Postgres and MPF state before public launch.
 - [ ] Add a runbook for intentionally abandoned commits and how public watchers should interpret them.

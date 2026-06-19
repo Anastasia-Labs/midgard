@@ -18,6 +18,7 @@ import {
   DepositStatusCommandError,
   resolveDepositStatusProgram,
 } from "../src/commands/deposit-status.js";
+import { reconcileTxCommittedProgram } from "../src/commands/reconcile.js";
 import {
   // Address history
   AddressHistoryDB,
@@ -28,6 +29,7 @@ import {
   ConfirmedLedgerDB,
   DaPayloadsDB,
   DepositIngestionCursorDB,
+  DepositSubmissionAttemptsDB,
   DepositsDB,
   // Tx
   ImmutableDB,
@@ -68,6 +70,7 @@ const flushAll = Effect.gen(function* () {
       AddressHistoryDB.clear,
       ProcessedMempoolDB.clear,
       DepositsDB.clear,
+      DepositSubmissionAttemptsDB.clear,
       DepositIngestionCursorDB.clear,
       PendingBlockFinalizationsDB.clear,
       DaPayloadsDB.clear,
@@ -281,6 +284,161 @@ describe("DaPayloadsDB", () => {
               },
             );
           expect(covered).toEqual([]);
+        }),
+      ),
+  );
+});
+
+describe("PendingBlockFinalizationsDB", () => {
+  const pendingSubmissionFixture = (
+    headerHash: Buffer,
+  ): PendingBlockFinalizationsDB.PrepareInput => {
+    const blockStartTime = new Date("2026-06-12T00:00:00.000Z");
+    return {
+      headerHash,
+      metadata: {
+        stateQueueLeaseToken: "lease-token",
+        baseSnapshotId: "snapshot",
+        baseTailOutRef: "base#0",
+        baseTailHeaderHash: databaseFixtureBytes("base-tail-header", 28),
+        baseTailDatumCbor: "d87980",
+        baseRoots: {
+          utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+          transactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+          depositsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+          withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+        },
+        blockStartTime,
+        expectedRoots: {
+          utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+          transactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+          depositsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+          withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+        },
+      },
+      blockEndTime: new Date(blockStartTime.getTime() + 60_000),
+      depositEventIds: [],
+      depositEntries: [],
+      withdrawalEventIds: [],
+      withdrawalEntries: [],
+      mempoolTxIds: [],
+      mempoolTxs: [],
+      mempoolTxSourceTable: "none",
+      utxoEntries: [],
+    };
+  };
+
+  it.effect(
+    "can discard and replace no-submission pending journals for retry recovery",
+    (_) =>
+      provideDatabaseLayers(
+        Effect.gen(function* () {
+          yield* flushAll;
+          const headerHash = databaseFixtureBytes(
+            "retryable-pending-header",
+            28,
+          );
+          const input = pendingSubmissionFixture(headerHash);
+
+          yield* PendingBlockFinalizationsDB.preparePendingSubmission(input);
+          yield* PendingBlockFinalizationsDB.discardUnsubmittedPendingSubmission(
+            headerHash,
+          );
+          let active = yield* PendingBlockFinalizationsDB.retrieveActive();
+          expect(active._tag).toBe("None");
+
+          yield* PendingBlockFinalizationsDB.preparePendingSubmission(input);
+          yield* PendingBlockFinalizationsDB.markAbandoned(headerHash);
+          active = yield* PendingBlockFinalizationsDB.retrieveActive();
+          expect(active._tag).toBe("None");
+
+          yield* PendingBlockFinalizationsDB.preparePendingSubmission(input);
+          active = yield* PendingBlockFinalizationsDB.retrieveActive();
+          expect(active._tag).toBe("Some");
+          if (active._tag === "Some") {
+            expect(
+              active.value[PendingBlockFinalizationsDB.Columns.STATUS],
+            ).toBe(PendingBlockFinalizationsDB.Status.PendingSubmission);
+            expect(
+              active.value[
+                PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH
+              ],
+            ).toBeNull();
+          }
+        }),
+      ),
+  );
+
+  it.effect(
+    "deletes superseded pre-submit journals after the replacement journal finalizes",
+    (_) =>
+      provideDatabaseLayers(
+        Effect.gen(function* () {
+          yield* flushAll;
+          const staleHeaderHash = databaseFixtureBytes(
+            "superseded-stale-pending-header",
+            28,
+          );
+          const finalizedHeaderHash = databaseFixtureBytes(
+            "superseded-finalized-pending-header",
+            28,
+          );
+          const staleInput = {
+            ...pendingSubmissionFixture(staleHeaderHash),
+            utxoEntries: [
+              {
+                [PendingBlockFinalizationsDB.UtxoColumns.OUTREF]:
+                  databaseOutputReferenceId("superseded-stale-utxo", 0n),
+                [PendingBlockFinalizationsDB.UtxoColumns.OUTPUT]:
+                  databaseFixtureBytes("superseded-stale-output", 48),
+              },
+            ],
+          };
+
+          yield* PendingBlockFinalizationsDB.preparePendingSubmission(
+            staleInput,
+          );
+          yield* PendingBlockFinalizationsDB.markAbandoned(staleHeaderHash);
+
+          const replacementFixture =
+            pendingSubmissionFixture(finalizedHeaderHash);
+          const replacementInput = {
+            ...replacementFixture,
+            metadata: {
+              ...replacementFixture.metadata,
+              baseTailOutRef: "replacement-base#1",
+            },
+          };
+          yield* PendingBlockFinalizationsDB.preparePendingSubmission(
+            replacementInput,
+          );
+          yield* PendingBlockFinalizationsDB.markSubmitted(
+            finalizedHeaderHash,
+            databaseTxHash("superseded-finalization-submitted"),
+          );
+          yield* PendingBlockFinalizationsDB.markLocalFinalizationComplete(
+            finalizedHeaderHash,
+          );
+          yield* PendingBlockFinalizationsDB.markFinalized(
+            finalizedHeaderHash,
+          );
+
+          const stale =
+            yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
+              staleHeaderHash,
+            );
+          const finalized =
+            yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
+              finalizedHeaderHash,
+            );
+          expect(stale._tag).toBe("None");
+          expect(finalized._tag).toBe("Some");
+
+          const sql = yield* SqlClient.SqlClient;
+          const staleUtxos = yield* sql<{ count: number }>`SELECT COUNT(*)::int AS count
+            FROM pending_block_finalization_utxos
+            WHERE header_hash = ${staleHeaderHash}`;
+          expect(staleUtxos[0]?.count).toBe(0);
         }),
       ),
   );
@@ -1090,6 +1248,166 @@ describe("AddressHistoryDB", () => {
   );
 });
 
+describe("DepositSubmissionAttemptsDB", () => {
+  it.effect(
+    "stores submitted attempts idempotently and rejects tx hash payload drift",
+    (_) =>
+      provideDatabaseLayers(
+        Effect.gen(function* () {
+          yield* flushAll;
+
+          const attempt = makeDepositSubmissionAttempt();
+          const first = yield* DepositSubmissionAttemptsDB.insertSubmitted(
+            attempt,
+          );
+          const second = yield* DepositSubmissionAttemptsDB.insertSubmitted(
+            attempt,
+          );
+
+          expect(
+            first[DepositSubmissionAttemptsDB.Columns.TX_HASH].equals(
+              second[DepositSubmissionAttemptsDB.Columns.TX_HASH],
+            ),
+          ).toEqual(true);
+          expect(
+            first[DepositSubmissionAttemptsDB.Columns.CONFIRMATION_STATUS],
+          ).toEqual(
+            DepositSubmissionAttemptsDB.Status.SubmittedConfirmationUnknown,
+          );
+
+          const conflict = yield* Effect.either(
+            DepositSubmissionAttemptsDB.insertSubmitted({
+              ...attempt,
+              [DepositSubmissionAttemptsDB.Columns.EXPECTED_LOVELACE]: "2",
+            }),
+          );
+          expect(conflict._tag).toEqual("Left");
+        }),
+      ),
+  );
+
+  it.effect("stores bigint metadata as stable JSON strings", (_) =>
+    provideDatabaseLayers(
+      Effect.gen(function* () {
+        yield* flushAll;
+
+        const attempt = makeDepositSubmissionAttempt();
+        const metadata = attempt[DepositSubmissionAttemptsDB.Columns.METADATA];
+        const bigintAttempt: DepositSubmissionAttemptsDB.InsertSubmittedInput = {
+          ...attempt,
+          [DepositSubmissionAttemptsDB.Columns.METADATA]: {
+            ...metadata,
+            nonceInput: {
+              ...metadata.nonceInput,
+              outputIndex: 1n as unknown as number,
+            },
+            validTo: 1_800_000_000_000n as unknown as number,
+            inclusionTime: 1_800_000_060_000n as unknown as number,
+          },
+        };
+
+        const first =
+          yield* DepositSubmissionAttemptsDB.insertSubmitted(bigintAttempt);
+        const second =
+          yield* DepositSubmissionAttemptsDB.insertSubmitted(bigintAttempt);
+        const rawStoredMetadata = first[
+          DepositSubmissionAttemptsDB.Columns.METADATA
+        ] as unknown;
+        const storedMetadata = (
+          typeof rawStoredMetadata === "string"
+            ? JSON.parse(rawStoredMetadata)
+            : rawStoredMetadata
+        ) as {
+          readonly nonceInput: { readonly outputIndex: string };
+          readonly validTo: string;
+          readonly inclusionTime: string;
+        };
+
+        expect(
+          first[DepositSubmissionAttemptsDB.Columns.TX_HASH].equals(
+            second[DepositSubmissionAttemptsDB.Columns.TX_HASH],
+          ),
+        ).toEqual(true);
+        expect(storedMetadata.nonceInput.outputIndex).toEqual("1");
+        expect(storedMetadata.validTo).toEqual("1800000000000");
+        expect(storedMetadata.inclusionTime).toEqual("1800000060000");
+      }),
+    ),
+  );
+
+  it.effect(
+    "tracks confirmation, reconciliation, ambiguity, and open attempts",
+    (_) =>
+      provideDatabaseLayers(
+        Effect.gen(function* () {
+          yield* flushAll;
+
+          const confirmed = makeDepositSubmissionAttempt({
+            txHash: databaseTxHash("deposit-submission.confirmed"),
+            eventId: databaseOutputReferenceId("deposit-submission.confirmed"),
+          });
+          const reconciled = makeDepositSubmissionAttempt({
+            txHash: databaseTxHash("deposit-submission.reconciled"),
+            eventId: databaseOutputReferenceId(
+              "deposit-submission.reconciled",
+            ),
+          });
+          const ambiguous = makeDepositSubmissionAttempt({
+            txHash: databaseTxHash("deposit-submission.ambiguous"),
+            eventId: databaseOutputReferenceId("deposit-submission.ambiguous"),
+          });
+
+          yield* DepositSubmissionAttemptsDB.insertSubmitted(confirmed);
+          yield* DepositSubmissionAttemptsDB.insertSubmitted(reconciled);
+          yield* DepositSubmissionAttemptsDB.insertSubmitted(ambiguous);
+
+          yield* DepositSubmissionAttemptsDB.markConfirmed(
+            confirmed[DepositSubmissionAttemptsDB.Columns.TX_HASH],
+          );
+          yield* DepositSubmissionAttemptsDB.markReconciled(
+            reconciled[DepositSubmissionAttemptsDB.Columns.TX_HASH],
+          );
+          yield* DepositSubmissionAttemptsDB.markAmbiguous(
+            ambiguous[DepositSubmissionAttemptsDB.Columns.TX_HASH],
+            "confirmation timed out",
+          );
+
+          const open =
+            yield* DepositSubmissionAttemptsDB.retrieveOpenAttempts();
+          expect(open).toHaveLength(1);
+          expect(
+            open[0]?.[
+              DepositSubmissionAttemptsDB.Columns.CONFIRMATION_STATUS
+            ],
+          ).toEqual(DepositSubmissionAttemptsDB.Status.Ambiguous);
+        }),
+      ),
+  );
+});
+
+describe("Reconciliation commands", () => {
+  it.effect("returns stable JSON for an unknown tx-committed target", (_) =>
+    provideDatabaseLayers(
+      Effect.gen(function* () {
+        yield* flushAll;
+
+        const txHash = databaseTxHash("reconcile.tx-committed.unknown");
+        const resolved = yield* reconcileTxCommittedProgram({ txHash });
+
+        expect(resolved.schemaVersion).toEqual(
+          "midgard-e2e-reconciliation-v1",
+        );
+        expect(resolved.milestone).toEqual("tx-committed");
+        expect(resolved.status).toEqual("ambiguous");
+        expect(resolved.safeToRetryOriginalStep).toEqual(true);
+        expect(resolved.target).toEqual({ txHash: txHash.toString("hex") });
+        expect(resolved.evidence.some((entry) => entry.kind === "tx_status"))
+          .toEqual(true);
+      }),
+    ),
+  );
+});
+
 describe("DepositsDB and MempoolLedgerDB exact-once projection", () => {
   it.effect("rejects payload drift for the same deposit event_id", (_) =>
     provideDatabaseLayers(
@@ -1648,3 +1966,37 @@ const makeDepositEntry = (
       overrides[DepositsDB.Columns.STATUS] ?? DepositsDB.Status.Awaiting,
   };
 };
+
+const makeDepositSubmissionAttempt = ({
+  txHash = databaseTxHash("deposit-submission.default"),
+  eventId = databaseOutputReferenceId("deposit-submission.default"),
+}: {
+  readonly txHash?: Buffer;
+  readonly eventId?: Buffer;
+} = {}): DepositSubmissionAttemptsDB.InsertSubmittedInput => ({
+  [DepositSubmissionAttemptsDB.Columns.TX_HASH]: txHash,
+  [DepositSubmissionAttemptsDB.Columns.DEPOSIT_EVENT_ID]: eventId,
+  [DepositSubmissionAttemptsDB.Columns.EXPECTED_DEPOSIT_OUT_REF]: `${txHash.toString(
+    "hex",
+  )}#0`,
+  [DepositSubmissionAttemptsDB.Columns.EXPECTED_L2_ADDRESS]: address1,
+  [DepositSubmissionAttemptsDB.Columns.EXPECTED_LOVELACE]: "1000000",
+  [DepositSubmissionAttemptsDB.Columns.EXPECTED_ASSETS]: {
+    lovelace: "1000000",
+  },
+  [DepositSubmissionAttemptsDB.Columns.METADATA]: {
+    depositAddress: address1,
+    depositEventId: eventId.toString("hex"),
+    depositAssetName: "00".repeat(32),
+    depositAuthUnit: `${"11".repeat(28)}${"00".repeat(32)}`,
+    nonceInput: {
+      txHash: databaseTxHash("deposit-submission.nonce").toString("hex"),
+      outputIndex: 0,
+    },
+    validTo: 1_800_000_000_000,
+    inclusionTime: 1_800_000_060_000,
+  },
+  [DepositSubmissionAttemptsDB.Columns.FUNDING_OUT_REFS]: [
+    `${databaseTxHash("deposit-submission.funding").toString("hex")}#0`,
+  ],
+});

@@ -7,6 +7,8 @@ import withdrawalEventsSql from "./sql/0004_withdrawal_events.sql";
 import pendingFinalizationJournalPayloadsSql from "./sql/0005_pending_finalization_journal_payloads.sql";
 import stateQueueMutationLeasesSql from "./sql/0006_state_queue_mutation_leases.sql";
 import daPayloadsSql from "./sql/0007_da_payloads.sql";
+import pendingFinalizationUtxoPayloadsSql from "./sql/0008_pending_finalization_utxo_payloads.sql";
+import depositSubmissionAttemptsSql from "./sql/0009_deposit_submission_attempts.sql";
 
 export type Migration = {
   readonly version: number;
@@ -69,6 +71,20 @@ export const MIGRATIONS: readonly Migration[] = [
     sql: daPayloadsSql,
     transactional: true,
   },
+  {
+    version: 8,
+    name: "pending_finalization_utxo_payloads",
+    checksumSha256: sha256Hex(pendingFinalizationUtxoPayloadsSql),
+    sql: pendingFinalizationUtxoPayloadsSql,
+    transactional: true,
+  },
+  {
+    version: 9,
+    name: "deposit_submission_attempts",
+    checksumSha256: sha256Hex(depositSubmissionAttemptsSql),
+    sql: depositSubmissionAttemptsSql,
+    transactional: true,
+  },
 ] as const;
 
 export const EXPECTED_SCHEMA_VERSION =
@@ -99,10 +115,12 @@ export const APPLICATION_TABLE_NAMES = [
   "pending_block_finalization_deposits",
   "pending_block_finalization_withdrawals",
   "pending_block_finalization_txs",
+  "pending_block_finalization_utxos",
   "tx_admissions",
   "local_mutation_jobs",
   "state_queue_mutation_leases",
   "da_payloads",
+  "deposit_submission_attempts",
 ] as const;
 
 export const APPLICATION_INDEX_NAMES = [
@@ -136,6 +154,8 @@ export const APPLICATION_INDEX_NAMES = [
   "uniq_state_queue_mutation_leases_active_scope",
   "idx_state_queue_mutation_leases_status_updated",
   "idx_da_payloads_created_at",
+  "idx_deposit_submission_attempts_deposit_event_id",
+  "idx_deposit_submission_attempts_status_submitted_at",
 ] as const;
 
 export const migrationByVersion = new Map(

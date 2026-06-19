@@ -8,7 +8,12 @@ import {
   type TxSignError,
   type TxSubmitError,
 } from "@/transactions/utils.js";
-import { resolveAlignedCommitEndTime } from "@/workers/utils/commit-end-time.js";
+import {
+  commitTimingBudget,
+  COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+  formatCommitTimingBudget,
+  resolveAlignedCommitEndTime,
+} from "@/workers/utils/commit-end-time.js";
 import {
   fetchRealStateQueueWitnessContext,
   type RealStateQueueWitnessContext,
@@ -22,7 +27,6 @@ import {
 
 const STATE_QUEUE_HEADER_NODE_LOVELACE = 5_000_000n;
 const COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS = 4;
-const COMMIT_MIN_REMAINING_SUBMIT_MS = 90_000;
 
 export type BuiltCommitTx = {
   readonly newHeaderHash: string;
@@ -70,12 +74,29 @@ export const buildUnsignedCommitTx = (
         latestEndTime,
         candidateEndTime: endDate.getTime(),
         nowMs: commitWindowResolutionNow,
+        minimumFutureBufferMs: COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
       });
     let commitWindow = resolveCommitWindow();
     let witnessContext: RealStateQueueWitnessContext | undefined;
-    let stabilizationAttempts = 0;
-    let commitWindowStabilized = false;
-    while (stabilizationAttempts < COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS) {
+    for (
+      let stabilizationAttempts = 1;
+      stabilizationAttempts <= COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS;
+      stabilizationAttempts += 1
+    ) {
+      const preWitnessBudget = commitTimingBudget({
+        checkpoint: "pre_witness",
+        resolvedEndTimeMs: commitWindow.resolvedEndTime,
+      });
+      if (!preWitnessBudget.satisfied) {
+        commitWindowResolutionNow = Date.now();
+        const refreshedCommitWindow = resolveCommitWindow();
+        yield* Effect.logWarning(
+          `Commit timing budget too low before witness assembly; rebuilding with refreshed window (${formatCommitTimingBudget(preWitnessBudget)},next=${refreshedCommitWindow.resolvedEndTime},attempt=${stabilizationAttempts}/${COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS}).`,
+        );
+        commitWindow = refreshedCommitWindow;
+        continue;
+      }
+
       const witnessEndTime = commitWindow.resolvedEndTime;
       witnessContext = yield* fetchRealStateQueueWitnessContext(
         lucid.api,
@@ -84,91 +105,98 @@ export const buildUnsignedCommitTx = (
         witnessContext?.operatorWalletView ?? initialOperatorWalletView,
         lucid.referenceScriptsAddress,
       );
-      const remainingSubmitMs = witnessEndTime - Date.now();
-      if (remainingSubmitMs < COMMIT_MIN_REMAINING_SUBMIT_MS) {
-        stabilizationAttempts += 1;
+      const preBuildBudget = commitTimingBudget({
+        checkpoint: "pre_build",
+        resolvedEndTimeMs: witnessEndTime,
+      });
+      if (!preBuildBudget.satisfied) {
         commitWindowResolutionNow = Date.now();
         const refreshedCommitWindow = resolveCommitWindow();
         yield* Effect.logWarning(
-          `Commit end-time is too close after witness assembly; rebuilding with refreshed window (previous=${commitWindow.resolvedEndTime}, next=${refreshedCommitWindow.resolvedEndTime}, remaining_ms=${remainingSubmitMs.toString()}, min_remaining_ms=${COMMIT_MIN_REMAINING_SUBMIT_MS.toString()}, attempt=${stabilizationAttempts}/${COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS}).`,
+          `Commit timing budget too low after witness assembly; rebuilding with refreshed window (${formatCommitTimingBudget(preBuildBudget)},previous=${commitWindow.resolvedEndTime},next=${refreshedCommitWindow.resolvedEndTime},attempt=${stabilizationAttempts}/${COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS}).`,
         );
         commitWindow = refreshedCommitWindow;
         continue;
       }
-      const refreshedCommitWindow = resolveCommitWindow();
-      if (refreshedCommitWindow.resolvedEndTime === witnessEndTime) {
-        commitWindow = refreshedCommitWindow;
-        commitWindowStabilized = true;
-        break;
+
+      const {
+        alignedCandidateEndTime,
+        minimumMonotonicEndTime,
+        resolvedEndTime: alignedEndTime,
+      } = commitWindow;
+      if (alignedEndTime !== alignedCandidateEndTime) {
+        yield* Effect.logWarning(
+          `Adjusted commit end-time to maintain monotonic header timing (candidate=${alignedCandidateEndTime}, minimum=${minimumMonotonicEndTime}, selected=${alignedEndTime}, latestEnd=${latestEndTime}).`,
+        );
       }
-      stabilizationAttempts += 1;
-      yield* Effect.logWarning(
-        `Commit end-time advanced while preparing scheduler-aligned witness context; rebuilding with refreshed window (previous=${commitWindow.resolvedEndTime}, next=${refreshedCommitWindow.resolvedEndTime}, candidate=${refreshedCommitWindow.alignedCandidateEndTime}, latestEnd=${latestEndTime}, attempt=${stabilizationAttempts}/${COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS}).`,
+      yield* Effect.logInfo("🔹 Finding updated block datum and new header...");
+      const { nodeDatum: updatedNodeDatum, header: newHeader } =
+        yield* updateLatestBlocksDatumAndGetTheNewHeaderLocal(
+          lucid.api,
+          latestBlock.datum,
+          utxosRoot,
+          txsRoot,
+          depositsRoot,
+          withdrawalsRoot,
+          BigInt(alignedEndTime),
+        );
+
+      const newHeaderHash = yield* hashBlockHeaderLocal(newHeader);
+      yield* Effect.logInfo(`🔹 New header hash is: ${newHeaderHash}`);
+      yield* Effect.logInfo(
+        "🔹 Building commitment with real state_queue witness context.",
       );
-      commitWindow = refreshedCommitWindow;
-    }
-    if (witnessContext === undefined || !commitWindowStabilized) {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message:
-            "Failed to stabilize the commit window before building the block commitment transaction",
-          cause: `attempts=${COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS},last_selected_end_time=${commitWindow.resolvedEndTime}`,
-        }),
-      );
-    }
-    const {
-      alignedCandidateEndTime,
-      minimumMonotonicEndTime,
-      resolvedEndTime: alignedEndTime,
-    } = commitWindow;
-    if (alignedEndTime !== alignedCandidateEndTime) {
-      yield* Effect.logWarning(
-        `Adjusted commit end-time to maintain monotonic header timing (candidate=${alignedCandidateEndTime}, minimum=${minimumMonotonicEndTime}, selected=${alignedEndTime}, latestEnd=${latestEndTime}).`,
-      );
-    }
-    yield* Effect.logInfo("🔹 Finding updated block datum and new header...");
-    const { nodeDatum: updatedNodeDatum, header: newHeader } =
-      yield* updateLatestBlocksDatumAndGetTheNewHeaderLocal(
-        lucid.api,
-        latestBlock.datum,
-        utxosRoot,
-        txsRoot,
-        depositsRoot,
-        withdrawalsRoot,
-        BigInt(alignedEndTime),
+      yield* Effect.logInfo("🔹 Building block commitment transaction...");
+
+      const { tx: txBuilder } =
+        yield* SDK.buildProductionCommitBlockHeaderTxProgram({
+          lucid: lucid.api,
+          contracts,
+          latestBlock,
+          updatedNodeDatum,
+          newHeader,
+          validTo: alignedEndTime,
+          witness: witnessContext,
+          headerNodeLovelace: STATE_QUEUE_HEADER_NODE_LOVELACE,
+        });
+
+      const txSize = txBuilder.toCBOR().length / 2;
+      yield* Effect.logInfo(
+        `🔹 Transaction built successfully. Size: ${txSize}`,
       );
 
-    const newHeaderHash = yield* hashBlockHeaderLocal(newHeader);
-    yield* Effect.logInfo(`🔹 New header hash is: ${newHeaderHash}`);
-    yield* Effect.logInfo(
-      "🔹 Building commitment with real state_queue witness context.",
-    );
-    yield* Effect.logInfo("🔹 Building block commitment transaction...");
-
-    const { tx: txBuilder } =
-      yield* SDK.buildProductionCommitBlockHeaderTxProgram({
-        lucid: lucid.api,
-        contracts,
-        latestBlock,
-        updatedNodeDatum,
-        newHeader,
-        validTo: alignedEndTime,
-        witness: witnessContext,
-        headerNodeLovelace: STATE_QUEUE_HEADER_NODE_LOVELACE,
+      const preSubmitBudget = commitTimingBudget({
+        checkpoint: "pre_submit",
+        resolvedEndTimeMs: alignedEndTime,
       });
+      if (!preSubmitBudget.satisfied) {
+        commitWindowResolutionNow = Date.now();
+        const refreshedCommitWindow = resolveCommitWindow();
+        yield* Effect.logWarning(
+          `Commit timing budget too low before submission; rebuilding before pending journal preparation (${formatCommitTimingBudget(preSubmitBudget)},previous=${commitWindow.resolvedEndTime},next=${refreshedCommitWindow.resolvedEndTime},attempt=${stabilizationAttempts}/${COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS}).`,
+        );
+        commitWindow = refreshedCommitWindow;
+        continue;
+      }
 
-    const txSize = txBuilder.toCBOR().length / 2;
-    yield* Effect.logInfo(`🔹 Transaction built successfully. Size: ${txSize}`);
+      const signAndSubmitProgram = handleSignSubmitNoConfirmation(
+        lucid.api,
+        txBuilder,
+      ).pipe(Effect.withSpan("handleSignSubmit-commit-block"));
 
-    const signAndSubmitProgram = handleSignSubmitNoConfirmation(
-      lucid.api,
-      txBuilder,
-    ).pipe(Effect.withSpan("handleSignSubmit-commit-block"));
+      return {
+        newHeaderHash,
+        blockEndTimeMs: alignedEndTime,
+        signAndSubmitProgram,
+        txSize,
+      };
+    }
 
-    return {
-      newHeaderHash,
-      blockEndTimeMs: alignedEndTime,
-      signAndSubmitProgram,
-      txSize,
-    };
+    return yield* Effect.fail(
+      new SDK.StateQueueError({
+        message:
+          "Failed to stabilize the commit timing budget before building the block commitment transaction",
+        cause: `attempts=${COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS},last_selected_end_time=${commitWindow.resolvedEndTime},witness_context=${witnessContext === undefined ? "missing" : "present"}`,
+      }),
+    );
   });

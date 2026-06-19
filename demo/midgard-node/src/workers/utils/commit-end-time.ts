@@ -5,13 +5,27 @@ import {
   unixTimeToSlot,
 } from "@lucid-evolution/lucid";
 
-export const EXPLICIT_COMMIT_DEFAULT_CANDIDATE_FUTURE_BUFFER_MS =
-  5 * 60 * 1000;
+export const EXPLICIT_COMMIT_DEFAULT_CANDIDATE_FUTURE_BUFFER_MS = 5 * 60 * 1000;
 
 // Commit construction may include a scheduler refresh and reference-script
 // lookups under provider latency; keep enough validity for submission after
 // the witness context is assembled without exceeding on-chain range limits.
-const COMMIT_VALIDITY_FUTURE_BUFFER_MS = 240_000;
+export const COMMIT_DEFAULT_MINIMUM_FUTURE_BUFFER_MS = 240_000;
+export const COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS = 8 * 60 * 1_000;
+export const COMMIT_MIN_PRE_WITNESS_BUDGET_MS = 6 * 60 * 1_000;
+export const COMMIT_MIN_PRE_BUILD_BUDGET_MS = 3 * 60 * 1_000;
+export const COMMIT_MIN_PRE_SUBMIT_BUDGET_MS = 2 * 60 * 1_000;
+
+export type CommitTimingCheckpoint = "pre_witness" | "pre_build" | "pre_submit";
+
+export type CommitTimingBudget = {
+  readonly checkpoint: CommitTimingCheckpoint;
+  readonly resolvedEndTimeMs: number;
+  readonly nowMs: number;
+  readonly remainingBudgetMs: number;
+  readonly minimumBudgetMs: number;
+  readonly satisfied: boolean;
+};
 
 export const alignUnixTimeToSlotBoundary = (
   lucid: LucidEvolution,
@@ -23,7 +37,10 @@ export const alignUnixTimeToSlotBoundary = (
       time?: number;
       slot?: number;
     };
-    if (typeof provider.time === "number" && typeof provider.slot === "number") {
+    if (
+      typeof provider.time === "number" &&
+      typeof provider.slot === "number"
+    ) {
       const slotLength = 1000;
       const zeroTime = provider.time - provider.slot * slotLength;
       const slot = lucid.unixTimeToSlot(unixTime);
@@ -45,7 +62,10 @@ export const alignedUnixTimeStrictlyAfter = (
       time?: number;
       slot?: number;
     };
-    if (typeof provider.time === "number" && typeof provider.slot === "number") {
+    if (
+      typeof provider.time === "number" &&
+      typeof provider.slot === "number"
+    ) {
       const slotLength = 1000;
       const zeroTime = provider.time - provider.slot * slotLength;
       const slot = lucid.unixTimeToSlot(unixTimeExclusive);
@@ -65,11 +85,13 @@ export const resolveAlignedCommitEndTime = ({
   latestEndTime,
   candidateEndTime,
   nowMs = Date.now(),
+  minimumFutureBufferMs = COMMIT_DEFAULT_MINIMUM_FUTURE_BUFFER_MS,
 }: {
   readonly lucid: LucidEvolution;
   readonly latestEndTime: number;
   readonly candidateEndTime: number;
   readonly nowMs?: number;
+  readonly minimumFutureBufferMs?: number;
 }): {
   readonly alignedCandidateEndTime: number;
   readonly minimumMonotonicEndTime: number;
@@ -85,7 +107,7 @@ export const resolveAlignedCommitEndTime = ({
   );
   const minimumCurrentTimeEndTime = alignedUnixTimeStrictlyAfter(
     lucid,
-    nowMs + COMMIT_VALIDITY_FUTURE_BUFFER_MS,
+    nowMs + minimumFutureBufferMs,
   );
   return {
     alignedCandidateEndTime,
@@ -97,6 +119,43 @@ export const resolveAlignedCommitEndTime = ({
     ),
   };
 };
+
+export const minimumCommitBudgetMs = (
+  checkpoint: CommitTimingCheckpoint,
+): number => {
+  switch (checkpoint) {
+    case "pre_witness":
+      return COMMIT_MIN_PRE_WITNESS_BUDGET_MS;
+    case "pre_build":
+      return COMMIT_MIN_PRE_BUILD_BUDGET_MS;
+    case "pre_submit":
+      return COMMIT_MIN_PRE_SUBMIT_BUDGET_MS;
+  }
+};
+
+export const commitTimingBudget = ({
+  checkpoint,
+  resolvedEndTimeMs,
+  nowMs = Date.now(),
+}: {
+  readonly checkpoint: CommitTimingCheckpoint;
+  readonly resolvedEndTimeMs: number;
+  readonly nowMs?: number;
+}): CommitTimingBudget => {
+  const minimumBudgetMs = minimumCommitBudgetMs(checkpoint);
+  const remainingBudgetMs = resolvedEndTimeMs - nowMs;
+  return {
+    checkpoint,
+    resolvedEndTimeMs,
+    nowMs,
+    remainingBudgetMs,
+    minimumBudgetMs,
+    satisfied: remainingBudgetMs >= minimumBudgetMs,
+  };
+};
+
+export const formatCommitTimingBudget = (budget: CommitTimingBudget): string =>
+  `checkpoint=${budget.checkpoint},resolvedEndTimeMs=${budget.resolvedEndTimeMs.toString()},nowMs=${budget.nowMs.toString()},remainingBudgetMs=${budget.remainingBudgetMs.toString()},minimumBudgetMs=${budget.minimumBudgetMs.toString()},satisfied=${String(budget.satisfied)}`;
 
 export const resolveExplicitCommitCandidateEndTimeMs = (
   candidateEndTimeMs: number | undefined,

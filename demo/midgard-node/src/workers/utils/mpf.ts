@@ -11,6 +11,7 @@ import { Data, Effect, Option } from "effect";
 import * as FS from "fs";
 import { Level } from "level";
 
+import * as ConfirmedLedgerDB from "@/database/confirmedLedger.js";
 import * as DepositsDB from "@/database/deposits.js";
 import * as MempoolDB from "@/database/mempool.js";
 import * as MempoolLedgerDB from "@/database/mempoolLedger.js";
@@ -30,6 +31,7 @@ import {
   type ClassifiedWithdrawal,
   classifyWithdrawal,
 } from "./mpf/withdrawal-classification.js";
+import { keyValuePhasRoot } from "./mpf/phas.js";
 
 export { keyValuePhasProof, keyValuePhasRoot } from "./mpf/phas.js";
 
@@ -44,7 +46,10 @@ export type MpfBatchOp =
   | { readonly type: "insert"; readonly key: Buffer; readonly value: Buffer }
   | { readonly type: "delete"; readonly key: Buffer };
 
-type MpfInsertBatchOp = Extract<MpfBatchOp, { readonly type: "insert" }>;
+export type MpfInsertBatchOp = Extract<
+  MpfBatchOp,
+  { readonly type: "insert" }
+>;
 
 type MpfStoredValue = string | Record<string, unknown>;
 
@@ -214,6 +219,91 @@ export const makeMpfs: Effect.Effect<
   };
 });
 
+export const ledgerEntryToInsertBatchOp = (
+  entry: Ledger.MinimalEntry,
+): MpfInsertBatchOp => ({
+  type: "insert",
+  key: Buffer.from(entry[Ledger.Columns.OUTREF]),
+  value: Buffer.from(entry[Ledger.Columns.OUTPUT]),
+});
+
+export const computeLedgerMpfRootFromLedgerEntries = (
+  entries: readonly Ledger.MinimalEntry[],
+): Effect.Effect<string, MpfError> =>
+  keyValuePhasRoot(
+    entries.map((entry) => entry[Ledger.Columns.OUTREF]),
+    entries.map((entry) => entry[Ledger.Columns.OUTPUT]),
+  );
+
+export const hydrateLedgerMpfFromLedgerEntries = (
+  ledgerMpf: MidgardMpf,
+  entries: readonly Ledger.MinimalEntry[],
+): Effect.Effect<string, MpfError> =>
+  Effect.gen(function* () {
+    yield* ledgerMpf.resetToEmpty();
+    yield* ledgerMpf.applyBatch(entries.map(ledgerEntryToInsertBatchOp));
+    return yield* ledgerMpf.rootHex();
+  });
+
+export const synchronizeCommitMpfStoresFromLedgerEntries = (
+  entries: readonly Ledger.MinimalEntry[],
+): Effect.Effect<
+  {
+    readonly ledgerEntryCount: number;
+    readonly ledgerRoot: string;
+    readonly transactionsRoot: string;
+  },
+  MpfError,
+  NodeConfig
+> =>
+  Effect.gen(function* () {
+    const nodeConfig = yield* NodeConfig;
+    const ledgerMpf = yield* MidgardMpf.create(
+      "ledger",
+      nodeConfig.LEDGER_MPF_DB_PATH,
+    );
+    const transactionsMpf = yield* MidgardMpf.create(
+      "transactions",
+      nodeConfig.TRANSACTIONS_MPF_DB_PATH,
+    );
+    const closeMpfs = Effect.all(
+      [
+        ledgerMpf.close().pipe(Effect.catchAll(() => Effect.void)),
+        transactionsMpf.close().pipe(Effect.catchAll(() => Effect.void)),
+      ],
+      { discard: true },
+    );
+    return yield* Effect.gen(function* () {
+      const ledgerRoot = yield* hydrateLedgerMpfFromLedgerEntries(
+        ledgerMpf,
+        entries,
+      );
+      yield* transactionsMpf.resetToEmpty();
+      const transactionsRoot = yield* transactionsMpf.rootHex();
+      yield* Effect.logInfo(
+        `Synchronized commit MPF stores from confirmed ledger: ledger_entries=${entries.length.toString()},ledger_root=${ledgerRoot},transactions_root=${transactionsRoot}`,
+      );
+      return {
+        ledgerEntryCount: entries.length,
+        ledgerRoot,
+        transactionsRoot,
+      };
+    }).pipe(Effect.ensuring(closeMpfs));
+  });
+
+export const synchronizeCommitMpfStoresFromConfirmedLedger: Effect.Effect<
+  {
+    readonly ledgerEntryCount: number;
+    readonly ledgerRoot: string;
+    readonly transactionsRoot: string;
+  },
+  DatabaseError | MpfError,
+  Database | NodeConfig
+> = Effect.gen(function* () {
+  const confirmedEntries = yield* ConfirmedLedgerDB.retrieve;
+  return yield* synchronizeCommitMpfStoresFromLedgerEntries(confirmedEntries);
+});
+
 export const utxoToInsertBatchOp = (
   utxo: UTxO,
 ): Effect.Effect<MpfInsertBatchOp, SDK.CmlDeserializationError> =>
@@ -269,6 +359,12 @@ export type ProcessMpfsConfig = {
   readonly depositOnlyEndTime?: Date;
   readonly depositVisibilityBarrierTime?: Date;
   readonly withdrawalVisibilityBarrierTime?: Date;
+  readonly initialLedgerEntries?: readonly MempoolLedgerDB.EntryWithTimeStamp[];
+};
+
+export type UtxoPayloadEntry = {
+  readonly outref: Buffer;
+  readonly output: Buffer;
 };
 
 export type DecodedMempoolTxForCommit = {
@@ -412,6 +508,47 @@ export const orderDecodedMempoolTxsForLedgerApplication = (
 
     return ordered;
   });
+
+const compareBufferHex = (left: Buffer, right: Buffer): number => {
+  const leftHex = left.toString("hex");
+  const rightHex = right.toString("hex");
+  return leftHex < rightHex ? -1 : leftHex > rightHex ? 1 : 0;
+};
+
+const materializeUtxoPayloadEntries = (
+  initialLedgerEntries: readonly MempoolLedgerDB.EntryWithTimeStamp[],
+  ledgerOps: readonly MpfBatchOp[],
+): readonly UtxoPayloadEntry[] => {
+  const entries = new Map<string, UtxoPayloadEntry>();
+  for (const entry of initialLedgerEntries) {
+    entries.set(entry[MempoolLedgerDB.Columns.OUTREF].toString("hex"), {
+      outref: Buffer.from(entry[MempoolLedgerDB.Columns.OUTREF]),
+      output: Buffer.from(entry[MempoolLedgerDB.Columns.OUTPUT]),
+    });
+  }
+  for (const op of ledgerOps) {
+    const key = op.key.toString("hex");
+    if (op.type === "delete") {
+      entries.delete(key);
+      continue;
+    }
+    entries.set(key, {
+      outref: Buffer.from(op.key),
+      output: Buffer.from(op.value),
+    });
+  }
+  return [...entries.values()].sort((left, right) =>
+    compareBufferHex(left.outref, right.outref),
+  );
+};
+
+const computeUtxoPayloadRoot = (
+  entries: readonly UtxoPayloadEntry[],
+): Effect.Effect<string, MpfError> =>
+  keyValuePhasRoot(
+    entries.map((entry) => entry.outref),
+    entries.map((entry) => entry.output),
+  );
 
 export const resolveIncludedDepositEntriesForWindow = ({
   currentBlockStartTime,
@@ -583,6 +720,7 @@ export const processMpfs = (
   {
     utxoRoot: string;
     txRoot: string;
+    utxoPayloadEntries: readonly UtxoPayloadEntry[];
     mempoolTxHashes: Buffer[];
     processedMempoolTxs: readonly Tx.EntryWithTimeStamp[];
     sizeOfProcessedTxs: number;
@@ -880,6 +1018,12 @@ export const processMpfs = (
 
     const transactionRootBeforeApply = yield* transactionsMpf.root();
     const ledgerRootBeforeApply = yield* ledgerMpf.root();
+    const initialLedgerEntries =
+      config?.initialLedgerEntries ?? (yield* MempoolLedgerDB.retrieve);
+    const utxoPayloadEntries = materializeUtxoPayloadEntries(
+      initialLedgerEntries,
+      ledgerOps,
+    );
     yield* Effect.all(
       [
         transactionsMpf.applyBatch(transactionOps),
@@ -902,6 +1046,17 @@ export const processMpfs = (
 
     const txRoot = yield* transactionsMpf.rootHex();
     const utxoRoot = yield* ledgerMpf.rootHex();
+    const payloadUtxoRoot = yield* computeUtxoPayloadRoot(utxoPayloadEntries);
+    if (payloadUtxoRoot !== utxoRoot) {
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: MempoolLedgerDB.tableName,
+          message:
+            "Refusing to build a block because the DA payload UTxO snapshot root does not match the computed ledger MPF root",
+          cause: `payload_utxos_root=${payloadUtxoRoot},computed_utxos_root=${utxoRoot}`,
+        }),
+      );
+    }
 
     yield* Effect.logInfo(`🔹 New transaction root found: ${txRoot}`);
     yield* Effect.logInfo(`🔹 New UTxO root found: ${utxoRoot}`);
@@ -914,6 +1069,7 @@ export const processMpfs = (
     return {
       utxoRoot,
       txRoot,
+      utxoPayloadEntries,
       mempoolTxHashes,
       processedMempoolTxs,
       sizeOfProcessedTxs,

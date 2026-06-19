@@ -18,6 +18,7 @@ export const tableName = "pending_block_finalizations";
 const depositsTableName = "pending_block_finalization_deposits";
 const withdrawalsTableName = "pending_block_finalization_withdrawals";
 const txsTableName = "pending_block_finalization_txs";
+const utxosTableName = "pending_block_finalization_utxos";
 
 export enum Columns {
   HEADER_HASH = "header_hash",
@@ -52,6 +53,13 @@ export enum MemberColumns {
   SOURCE_TABLE = "source_table",
   SOURCE_ID = "source_id",
   SOURCE_TIMESTAMP = "source_time_stamp_tz",
+}
+
+export enum UtxoColumns {
+  HEADER_HASH = "header_hash",
+  OUTREF = "outref",
+  ORDINAL = "ordinal",
+  OUTPUT = "output",
 }
 
 export const Status = {
@@ -107,6 +115,18 @@ export type MemberRecord = {
   [MemberColumns.SOURCE_TIMESTAMP]: Date;
 };
 
+export type UtxoRecord = {
+  [UtxoColumns.HEADER_HASH]: Buffer;
+  [UtxoColumns.OUTREF]: Buffer;
+  [UtxoColumns.ORDINAL]: number;
+  [UtxoColumns.OUTPUT]: Buffer;
+};
+
+export type UtxoInput = Omit<
+  UtxoRecord,
+  UtxoColumns.HEADER_HASH | UtxoColumns.ORDINAL
+>;
+
 export type Record = Row & {
   readonly depositEventIds: readonly Buffer[];
   readonly withdrawalEventIds: readonly Buffer[];
@@ -114,6 +134,7 @@ export type Record = Row & {
   readonly depositMembers: readonly MemberRecord[];
   readonly withdrawalMembers: readonly MemberRecord[];
   readonly txMembers: readonly MemberRecord[];
+  readonly utxoMembers: readonly UtxoRecord[];
 };
 
 export type PendingBlockFinalizationMetadata = {
@@ -148,6 +169,7 @@ export type PrepareInput = {
   readonly mempoolTxIds: readonly Buffer[];
   readonly mempoolTxs: readonly TxTable.EntryWithTimeStamp[];
   readonly mempoolTxSourceTable: string;
+  readonly utxoEntries: readonly UtxoInput[];
 };
 
 const sha256 = (payload: Buffer): Buffer =>
@@ -248,6 +270,17 @@ const withdrawalMemberEntry = (
     };
   });
 
+const utxoMemberEntry = (
+  headerHash: Buffer,
+  entry: UtxoInput,
+  ordinal: number,
+): UtxoRecord => ({
+  [UtxoColumns.HEADER_HASH]: headerHash,
+  [UtxoColumns.OUTREF]: Buffer.from(entry[UtxoColumns.OUTREF]),
+  [UtxoColumns.ORDINAL]: ordinal,
+  [UtxoColumns.OUTPUT]: Buffer.from(entry[UtxoColumns.OUTPUT]),
+});
+
 const retrieveMembers = (
   sql: SqlClient.SqlClient,
   memberTableName: string,
@@ -259,17 +292,28 @@ const retrieveMembers = (
       ORDER BY ${sql(MemberColumns.ORDINAL)} ASC`;
   }).pipe(Effect.orDie);
 
+const retrieveUtxoMembers = (
+  sql: SqlClient.SqlClient,
+  headerHash: Buffer,
+): Effect.Effect<readonly UtxoRecord[], never, never> =>
+  Effect.gen(function* () {
+    return yield* sql<UtxoRecord>`SELECT * FROM ${sql(utxosTableName)}
+      WHERE ${sql(UtxoColumns.HEADER_HASH)} = ${headerHash}
+      ORDER BY ${sql(UtxoColumns.ORDINAL)} ASC`;
+  }).pipe(Effect.orDie);
+
 const retrieveRecord = (
   sql: SqlClient.SqlClient,
   row: Row,
 ): Effect.Effect<Record, never, never> =>
   Effect.gen(function* () {
-    const [depositEventIds, withdrawalEventIds, mempoolTxIds] =
+    const [depositEventIds, withdrawalEventIds, mempoolTxIds, utxoMembers] =
       yield* Effect.all(
         [
           retrieveMembers(sql, depositsTableName, row[Columns.HEADER_HASH]),
           retrieveMembers(sql, withdrawalsTableName, row[Columns.HEADER_HASH]),
           retrieveMembers(sql, txsTableName, row[Columns.HEADER_HASH]),
+          retrieveUtxoMembers(sql, row[Columns.HEADER_HASH]),
         ],
         { concurrency: "unbounded" },
       );
@@ -287,6 +331,7 @@ const retrieveRecord = (
       depositMembers: depositEventIds,
       withdrawalMembers: withdrawalEventIds,
       txMembers: mempoolTxIds,
+      utxoMembers,
     };
   }).pipe(Effect.orDie);
 
@@ -328,6 +373,23 @@ export const retrieveByHeaderHash = (
     sqlErrorToDatabaseError(
       tableName,
       "Failed to retrieve pending-finalization record by header hash",
+    ),
+  );
+
+export const retrieveActiveByStateQueueLeaseToken = (
+  stateQueueLeaseToken: string,
+): Effect.Effect<readonly Row[], DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    return yield* sql<Row>`SELECT * FROM ${sql(tableName)}
+      WHERE ${sql(Columns.STATE_QUEUE_LEASE_TOKEN)} = ${stateQueueLeaseToken}
+        AND ${sql(Columns.STATUS)} IN ${sql.in(ACTIVE_STATUSES)}
+      ORDER BY ${sql(Columns.CREATED_AT)} ASC`;
+  }).pipe(
+    Effect.withLogSpan(`retrieveActiveByStateQueueLeaseToken ${tableName}`),
+    sqlErrorToDatabaseError(
+      tableName,
+      "Failed to retrieve active pending-finalization records by state-queue lease token",
     ),
   );
 
@@ -416,6 +478,9 @@ export const preparePendingSubmission = (
         input.mempoolTxSourceTable,
       ),
     );
+    const utxoMembers = input.utxoEntries.map((entry, ordinal) =>
+      utxoMemberEntry(input.headerHash, entry, ordinal),
+    );
     yield* sql.withTransaction(
       Effect.gen(function* () {
         const activeRows = yield* sql<Row>`SELECT * FROM ${sql(tableName)}
@@ -442,6 +507,10 @@ export const preparePendingSubmission = (
             WHERE ${sql(Columns.HEADER_HASH)} = ${input.headerHash}
               AND ${sql(Columns.STATUS)} = ${Status.PendingSubmission}`;
         }
+        yield* sql`DELETE FROM ${sql(tableName)}
+          WHERE ${sql(Columns.HEADER_HASH)} = ${input.headerHash}
+            AND ${sql(Columns.STATUS)} = ${Status.Abandoned}
+            AND ${sql(Columns.SUBMITTED_TX_HASH)} IS NULL`;
         yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert({
           [Columns.HEADER_HASH]: input.headerHash,
           [Columns.SUBMITTED_TX_HASH]: null,
@@ -482,6 +551,11 @@ export const preparePendingSubmission = (
         if (txMembers.length > 0) {
           yield* sql`INSERT INTO ${sql(txsTableName)} ${sql.insert(txMembers)}`;
         }
+        if (utxoMembers.length > 0) {
+          yield* sql`INSERT INTO ${sql(utxosTableName)} ${sql.insert(
+            utxoMembers,
+          )}`;
+        }
       }),
     );
   }).pipe(
@@ -519,6 +593,23 @@ export const markSubmitted = (
     sqlErrorToDatabaseError(
       tableName,
       "Failed to mark pending block as submitted",
+    ),
+  );
+
+export const discardUnsubmittedPendingSubmission = (
+  headerHash: Buffer,
+): Effect.Effect<void, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql`DELETE FROM ${sql(tableName)}
+      WHERE ${sql(Columns.HEADER_HASH)} = ${headerHash}
+        AND ${sql(Columns.STATUS)} = ${Status.PendingSubmission}
+        AND ${sql(Columns.SUBMITTED_TX_HASH)} IS NULL`;
+  }).pipe(
+    Effect.withLogSpan(`discardUnsubmittedPendingSubmission ${tableName}`),
+    sqlErrorToDatabaseError(
+      tableName,
+      "Failed to discard unsubmitted pending block journal",
     ),
   );
 
@@ -635,15 +726,24 @@ export const markFinalized = (
 ): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    const rows = yield* sql<Row>`UPDATE ${sql(tableName)}
-      SET ${sql(Columns.STATUS)} = ${Status.Finalized},
-          ${sql(Columns.UPDATED_AT)} = NOW()
-      WHERE ${sql(Columns.HEADER_HASH)} = ${headerHash}
-        AND ${sql(Columns.STATUS)} IN (
-          ${Status.SubmittedUnconfirmed},
-          ${Status.ObservedWaitingStability}
-        )
-      RETURNING *`;
+    const rows = yield* sql.withTransaction(
+      Effect.gen(function* () {
+        const updated = yield* sql<Row>`UPDATE ${sql(tableName)}
+          SET ${sql(Columns.STATUS)} = ${Status.Finalized},
+              ${sql(Columns.UPDATED_AT)} = NOW()
+          WHERE ${sql(Columns.HEADER_HASH)} = ${headerHash}
+            AND ${sql(Columns.STATUS)} IN (
+              ${Status.SubmittedUnconfirmed},
+              ${Status.ObservedWaitingStability}
+            )
+          RETURNING *`;
+        const finalized = updated[0];
+        if (finalized !== undefined) {
+          yield* deleteSupersededAbandonedUnsubmittedJournals(sql, finalized);
+        }
+        return updated;
+      }),
+    );
     if (rows.length !== 1) {
       return yield* Effect.fail(
         new DatabaseError({
@@ -658,6 +758,73 @@ export const markFinalized = (
     sqlErrorToDatabaseError(
       tableName,
       "Failed to finalize pending block journal",
+    ),
+  );
+
+const deleteSupersededAbandonedUnsubmittedJournals = (
+  sql: SqlClient.SqlClient,
+  finalized: Row,
+) =>
+  sql<{ readonly header_hash: Buffer }>`DELETE FROM ${sql(tableName)}
+    WHERE ${sql(Columns.STATUS)} = ${Status.Abandoned}
+      AND ${sql(Columns.SUBMITTED_TX_HASH)} IS NULL
+      AND ${sql(Columns.HEADER_HASH)} <> ${finalized[Columns.HEADER_HASH]}
+      AND ${sql(Columns.BASE_TAIL_HEADER_HASH)} = ${
+        finalized[Columns.BASE_TAIL_HEADER_HASH]
+      }
+      AND ${sql(Columns.BASE_UTXOS_ROOT)} = ${
+        finalized[Columns.BASE_UTXOS_ROOT]
+      }
+      AND ${sql(Columns.BASE_TRANSACTIONS_ROOT)} = ${
+        finalized[Columns.BASE_TRANSACTIONS_ROOT]
+      }
+      AND ${sql(Columns.BASE_DEPOSITS_ROOT)} = ${
+        finalized[Columns.BASE_DEPOSITS_ROOT]
+      }
+      AND ${sql(Columns.BASE_WITHDRAWALS_ROOT)} = ${
+        finalized[Columns.BASE_WITHDRAWALS_ROOT]
+      }
+      AND ${sql(Columns.EXPECTED_UTXOS_ROOT)} = ${
+        finalized[Columns.EXPECTED_UTXOS_ROOT]
+      }
+      AND ${sql(Columns.EXPECTED_TRANSACTIONS_ROOT)} = ${
+        finalized[Columns.EXPECTED_TRANSACTIONS_ROOT]
+      }
+      AND ${sql(Columns.EXPECTED_DEPOSITS_ROOT)} = ${
+        finalized[Columns.EXPECTED_DEPOSITS_ROOT]
+      }
+      AND ${sql(Columns.EXPECTED_WITHDRAWALS_ROOT)} = ${
+        finalized[Columns.EXPECTED_WITHDRAWALS_ROOT]
+      }
+    RETURNING ${sql(Columns.HEADER_HASH)}`;
+
+export const deleteSupersededAbandonedUnsubmitted = (): Effect.Effect<
+  number,
+  DatabaseError,
+  Database
+> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const deleted = yield* sql.withTransaction(
+      Effect.gen(function* () {
+        const finalizedRows = yield* sql<Row>`SELECT * FROM ${sql(tableName)}
+          WHERE ${sql(Columns.STATUS)} = ${Status.Finalized}
+          ORDER BY ${sql(Columns.CREATED_AT)} ASC`;
+        const deletedRows = yield* Effect.forEach(
+          finalizedRows,
+          (finalized) =>
+            deleteSupersededAbandonedUnsubmittedJournals(sql, finalized),
+          { concurrency: 1 },
+        );
+        return deletedRows.reduce((total, rows) => total + rows.length, 0);
+      }),
+    );
+    return deleted;
+  }).pipe(
+    Effect.withLogSpan(`deleteSupersededAbandonedUnsubmitted ${tableName}`),
+    sqlErrorToDatabaseError(
+      tableName,
+      "Failed to delete superseded pre-submit pending block journals",
     ),
   );
 
@@ -734,6 +901,7 @@ export const clear = Effect.all(
     clearTable(depositsTableName),
     clearTable(withdrawalsTableName),
     clearTable(txsTableName),
+    clearTable(utxosTableName),
     clearTable(tableName),
   ],
   { discard: true },

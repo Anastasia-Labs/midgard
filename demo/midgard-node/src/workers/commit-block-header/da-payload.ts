@@ -3,11 +3,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { decodeMidgardTxCommitmentsFromCanonicalCbor } from "@al-ft/midgard-validation";
 import { Effect } from "effect";
 
-import {
-  DaPayloadsDB,
-  MempoolLedgerDB,
-  PendingBlockFinalizationsDB,
-} from "@/database/index.js";
+import { DaPayloadsDB, PendingBlockFinalizationsDB } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { keyValuePhasRoot, type MpfError } from "@/workers/utils/mpf.js";
 
@@ -16,6 +12,11 @@ type PayloadRootSet = {
   readonly transactionsRoot: string;
   readonly depositsRoot: string;
   readonly withdrawalsRoot: string;
+};
+
+type PayloadUtxoEntry = {
+  readonly outref: Buffer;
+  readonly output: Buffer;
 };
 
 const bufferEntry = (key: Buffer, value: Buffer): SDK.DaPayloadEntry => [
@@ -125,21 +126,22 @@ export const buildDaPayloadInsert = ({
   utxos,
 }: {
   readonly record: PendingBlockFinalizationsDB.Record;
-  readonly utxos: readonly MempoolLedgerDB.EntryWithTimeStamp[];
+  readonly utxos?: readonly PayloadUtxoEntry[];
 }): Effect.Effect<DaPayloadsDB.InsertInput, DatabaseError | MpfError> =>
   Effect.gen(function* () {
+    const payloadUtxos =
+      utxos ??
+      record.utxoMembers.map((member) => ({
+        outref: member[PendingBlockFinalizationsDB.UtxoColumns.OUTREF],
+        output: member[PendingBlockFinalizationsDB.UtxoColumns.OUTPUT],
+      }));
     const payload: SDK.DaPayloadV1 = {
       version: SDK.DA_PAYLOAD_V1_VERSION,
       header_hash:
         record[PendingBlockFinalizationsDB.Columns.HEADER_HASH].toString("hex"),
       block_body: {
         utxos: sortedEntries(
-          utxos.map((entry) =>
-            bufferEntry(
-              entry[MempoolLedgerDB.Columns.OUTREF],
-              entry[MempoolLedgerDB.Columns.OUTPUT],
-            ),
-          ),
+          payloadUtxos.map((entry) => bufferEntry(entry.outref, entry.output)),
         ),
         transactions: sortedEntries(
           record.txMembers.map((member) =>

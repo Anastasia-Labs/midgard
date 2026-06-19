@@ -100,6 +100,8 @@ export const assertLiveTailCommitBase = (
   });
 
 export const assertPendingJournalCompleteness = ({
+  utxoRoot,
+  utxoMemberCount,
   txRoot,
   emptyTxRoot,
   txMemberCount,
@@ -108,6 +110,8 @@ export const assertPendingJournalCompleteness = ({
   withdrawalsRoot,
   withdrawalMemberCount,
 }: {
+  readonly utxoRoot: string;
+  readonly utxoMemberCount: number;
   readonly txRoot: string;
   readonly emptyTxRoot: string;
   readonly txMemberCount: number;
@@ -117,6 +121,16 @@ export const assertPendingJournalCompleteness = ({
   readonly withdrawalMemberCount: number;
 }): Effect.Effect<void, DatabaseError> =>
   Effect.gen(function* () {
+    if (utxoRoot !== emptyTxRoot && utxoMemberCount <= 0) {
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: PendingBlockFinalizationsDB.tableName,
+          message:
+            "Refusing to submit commit because a non-empty UTxO root would have no pending journal UTxO members",
+          cause: `utxo_root=${utxoRoot}`,
+        }),
+      );
+    }
     if (txRoot !== emptyTxRoot && txMemberCount <= 0) {
       return yield* Effect.fail(
         new DatabaseError({

@@ -9,7 +9,10 @@ import { Duration, Effect, Option, Ref } from "effect";
 
 import * as ContractDeploymentInfo from "@/commands/contract-deployment-info.js";
 import { shouldRunGenesisOnStartup } from "@/commands/startup-policy.js";
-import { PendingBlockFinalizationsDB } from "@/database/index.js";
+import {
+  ConfirmedLedgerDB,
+  PendingBlockFinalizationsDB,
+} from "@/database/index.js";
 import {
   Globals,
   Lucid,
@@ -26,7 +29,17 @@ import {
   ensureNodeRuntimeReferenceScriptsProgram,
   verifyNodeRuntimeReferenceScriptsProgram,
 } from "@/transactions/reference-scripts.js";
+import {
+  materializeConfirmedLedgerSnapshot,
+  replaceConfirmedLedgerWithEntriesTransaction,
+} from "@/transactions/state-queue/confirmed-ledger-snapshot.js";
 import { deserializeStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
+import {
+  computeLedgerMpfRootFromLedgerEntries,
+  synchronizeCommitMpfStoresFromLedgerEntries,
+} from "@/workers/utils/mpf.js";
+
+const STARTUP_BACKGROUND_PROVIDER_TIMEOUT = Duration.seconds(90);
 
 type CanonicalCommittedHeader = {
   readonly headerHash: Buffer;
@@ -133,9 +146,16 @@ const writeStartupContractDeploymentInfo = Effect.gen(function* () {
     `Startup contract deployment info written: ${manifestPath}`,
   );
 }).pipe(
+  Effect.timeoutFail({
+    duration: STARTUP_BACKGROUND_PROVIDER_TIMEOUT,
+    onTimeout: () =>
+      new Error(
+        "startup contract deployment info background refresh exceeded its bounded provider window",
+      ),
+  }),
   Effect.catchAll((error) =>
-    Effect.logError(
-      `Failed to write startup contract deployment info: ${formatUnknownError(error)}`,
+    Effect.logWarning(
+      `Startup contract deployment info background refresh did not complete after bounded provider retries; keeping the existing deployment manifest. cause=${formatUnknownError(error)}`,
     ),
   ),
 );
@@ -146,9 +166,16 @@ const writeStartupContractDeploymentInfoInBackground =
 const verifyNodeRuntimeReferenceScriptsInBackground = Effect.gen(function* () {
   yield* ensureNodeRuntimeReferenceScriptsOnStartup(false);
 }).pipe(
+  Effect.timeoutFail({
+    duration: STARTUP_BACKGROUND_PROVIDER_TIMEOUT,
+    onTimeout: () =>
+      new Error(
+        "startup node-runtime reference-script background verification exceeded its bounded provider window",
+      ),
+  }),
   Effect.catchAll((error) =>
-    Effect.logError(
-      `Startup node-runtime reference-script verification failed: ${formatUnknownError(error)}`,
+    Effect.logWarning(
+      `Startup node-runtime reference-script background verification did not complete after bounded provider retries; startup continues with the configured deployment manifest. cause=${formatUnknownError(error)}`,
     ),
   ),
   Effect.forkDaemon,
@@ -244,6 +271,17 @@ const ensureNodeRuntimeReferenceScriptsOnStartup = (shouldBootstrap: boolean) =>
  */
 export const ensureProtocolInitializedOnStartup = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
+  const manifestReport =
+    yield* ContractDeploymentInfo.verifyConfiguredDeploymentManifestIfPresentProgram;
+  if (manifestReport !== null && !manifestReport.ok) {
+    return yield* Effect.fail(
+      new SDK.StateQueueError({
+        message:
+          "Startup deployment manifest verification failed; refusing to attach to a mismatched deployment",
+        cause: `manifest_id=${manifestReport.manifestId ?? "unknown"},path=${manifestReport.path ?? "unknown"},recommendation=${manifestReport.recommendation},mismatches=[${manifestReport.mismatches.join(";")}]`,
+      }),
+    );
+  }
   const shouldBootstrap = shouldRunGenesisOnStartup({
     network: nodeConfig.NETWORK,
     runGenesisOnStartup: nodeConfig.RUN_GENESIS_ON_STARTUP,
@@ -341,6 +379,73 @@ export const seedLatestLocalBlockBoundaryOnStartup = Effect.gen(function* () {
   yield* Effect.logInfo(
     `Startup state-queue snapshot hydrated: tail=${snapshot.tailCommitBase.outRef},snapshot=${snapshot.snapshotId}`,
   );
+  if (snapshot.topology.parsedNodeCount <= 1) {
+    const confirmedLedgerEntries = yield* ConfirmedLedgerDB.retrieve;
+    const confirmedLedgerRoot = yield* computeLedgerMpfRootFromLedgerEntries(
+      confirmedLedgerEntries,
+    );
+    const onChainUtxoRoot = snapshot.tailCommitBase.roots.utxosRoot;
+    if (confirmedLedgerRoot === onChainUtxoRoot) {
+      const syncResult =
+        yield* synchronizeCommitMpfStoresFromLedgerEntries(
+          confirmedLedgerEntries,
+        );
+      yield* Effect.logInfo(
+        `Startup synchronized clean-queue commit MPFs from confirmed ledger (ledger_entries=${syncResult.ledgerEntryCount.toString()},ledger_root=${syncResult.ledgerRoot}).`,
+      );
+    } else {
+      const finalizedJournal =
+        snapshot.tailCommitBase.headerHash === null
+          ? Option.none<PendingBlockFinalizationsDB.Record>()
+          : yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
+              Buffer.from(snapshot.tailCommitBase.headerHash, "hex"),
+            );
+      if (
+        Option.isSome(finalizedJournal) &&
+        finalizedJournal.value[PendingBlockFinalizationsDB.Columns.STATUS] ===
+          PendingBlockFinalizationsDB.Status.Finalized
+      ) {
+        const finalizedSnapshot =
+          yield* materializeConfirmedLedgerSnapshot(finalizedJournal.value);
+        if (finalizedSnapshot.root === onChainUtxoRoot) {
+          yield* replaceConfirmedLedgerWithEntriesTransaction(
+            finalizedSnapshot.entries,
+          );
+          const syncResult =
+            yield* synchronizeCommitMpfStoresFromLedgerEntries(
+              finalizedSnapshot.entries,
+            );
+          yield* Effect.logWarning(
+            `Startup repaired confirmed_ledger and commit MPFs from finalized clean-queue journal (header=${snapshot.tailCommitBase.headerHash},ledger_entries=${syncResult.ledgerEntryCount.toString()},ledger_root=${syncResult.ledgerRoot},previous_confirmed_ledger_root=${confirmedLedgerRoot}).`,
+          );
+        } else if (confirmedLedgerEntries.length > 0) {
+          return yield* Effect.fail(
+            new SDK.StateQueueError({
+              message:
+                "Startup clean-queue confirmed ledger root does not match the on-chain state queue root",
+              cause: `confirmed_ledger_entries=${confirmedLedgerEntries.length.toString()},confirmed_ledger_root=${confirmedLedgerRoot},journal_snapshot_root=${finalizedSnapshot.root},on_chain_utxo_root=${onChainUtxoRoot},snapshot=${snapshot.snapshotId}`,
+            }),
+          );
+        } else {
+          yield* Effect.logInfo(
+            `Startup skipped clean-queue commit MPF synchronization because confirmed_ledger is empty and the finalized journal root (${finalizedSnapshot.root}) does not match the on-chain root (${onChainUtxoRoot}).`,
+          );
+        }
+      } else if (confirmedLedgerEntries.length > 0) {
+        return yield* Effect.fail(
+          new SDK.StateQueueError({
+            message:
+              "Startup clean-queue confirmed ledger root does not match the on-chain state queue root",
+            cause: `confirmed_ledger_entries=${confirmedLedgerEntries.length.toString()},confirmed_ledger_root=${confirmedLedgerRoot},on_chain_utxo_root=${onChainUtxoRoot},snapshot=${snapshot.snapshotId}`,
+          }),
+        );
+      } else {
+        yield* Effect.logInfo(
+          `Startup skipped clean-queue commit MPF synchronization because confirmed_ledger is empty and its root (${confirmedLedgerRoot}) does not match the on-chain root (${onChainUtxoRoot}).`,
+        );
+      }
+    }
+  }
   const canonicalHeaders = yield* fetchCanonicalCommittedHeaders;
   const revivedPayloadJournal =
     yield* reviveEarliestCanonicalPayloadJournalOnStartup(canonicalHeaders);
@@ -393,6 +498,13 @@ export const seedLatestLocalBlockBoundaryOnStartup = Effect.gen(function* () {
             ].getTime(),
         }),
       ),
+    );
+  }
+  const deletedSupersededPreSubmitJournals =
+    yield* PendingBlockFinalizationsDB.deleteSupersededAbandonedUnsubmitted();
+  if (deletedSupersededPreSubmitJournals > 0) {
+    yield* Effect.logInfo(
+      `Deleted ${deletedSupersededPreSubmitJournals.toString()} superseded pre-submit pending-finalization journal(s) already covered by finalized state-queue roots.`,
     );
   }
   yield* Ref.set(globals.LATEST_LOCAL_BLOCK_END_TIME_MS, seededBoundaryMs);

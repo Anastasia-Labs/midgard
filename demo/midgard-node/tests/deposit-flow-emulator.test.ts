@@ -24,6 +24,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { resolveEventSettlementProofProgram } from "@/commands/event-settlement-proof.js";
 import { fetchWithdrawalsOnceProgram } from "@/commands/fetch-withdrawals-once.js";
 import { seedLatestLocalBlockBoundaryOnStartup } from "@/commands/listen-startup.js";
+import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
 import {
   payoutStatusProgram,
   reserveUtxosProgram,
@@ -43,6 +44,7 @@ import {
   CommonUtils,
   ConfirmedLedgerDB,
   DaPayloadsDB,
+  DepositSubmissionAttemptsDB,
   DepositsDB,
   ImmutableDB,
   LatestLedgerDB,
@@ -123,6 +125,7 @@ const REQUIRED_BOND_LOVELACE = BigInt(
   process.env.OPERATOR_REQUIRED_BOND_LOVELACE ?? "5000000",
 );
 const REGISTRATION_ACTIVATION_DELAY_SLOTS = 180;
+const EMULATOR_REFERENCE_SCRIPT_AUTH_TIMELOCK_MS = 24 * 60 * 60 * 1000;
 // This harness exercises the real initialization, deposit submission, deposit
 // ingestion, and live commit-worker path against the bundled real blueprint.
 // Keep it sequential because it mutates shared emulator/database state.
@@ -161,10 +164,13 @@ type EmulatorFixture = {
   readonly operatorKeyHash: string;
 };
 
-const loadContracts = (oneShotOutRef: {
-  txHash: string;
-  outputIndex: number;
-}) =>
+const loadContracts = (
+  oneShotOutRef: {
+    txHash: string;
+    outputIndex: number;
+  },
+  referenceScriptAuth: SDK.MintingValidator,
+) =>
   Effect.runPromise(
     Effect.gen(function* () {
       const placeholder = yield* AlwaysSucceedsContract;
@@ -172,7 +178,7 @@ const loadContracts = (oneShotOutRef: {
         "Preprod",
         placeholder,
         oneShotOutRef,
-        { referenceScriptAuth: placeholder.referenceScriptAuth },
+        { referenceScriptAuth },
       );
     }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
   );
@@ -265,10 +271,18 @@ const makeFixture = async (): Promise<EmulatorFixture> => {
     throw new Error("Expected operator wallet to expose a nonce UTxO");
   }
 
-  const contracts = await loadContracts({
-    txHash: nonceUtxo.txHash,
-    outputIndex: nonceUtxo.outputIndex,
-  });
+  const referenceScriptAuth = createReferenceScriptAuthPolicy(
+    referenceScriptsLucid,
+    emulator.now(),
+    EMULATOR_REFERENCE_SCRIPT_AUTH_TIMELOCK_MS,
+  );
+  const contracts = await loadContracts(
+    {
+      txHash: nonceUtxo.txHash,
+      outputIndex: nonceUtxo.outputIndex,
+    },
+    referenceScriptAuth,
+  );
   const operatorKeyHash = await readKeyHash(operatorLucid);
   const referenceScripts = await publishDepositFlowReferenceScripts({
     operatorLucid,
@@ -380,6 +394,7 @@ const clearNodeTables = Effect.all(
     ImmutableDB.clear,
     PendingBlockFinalizationsDB.clear,
     DaPayloadsDB.clear,
+    DepositSubmissionAttemptsDB.clear,
     TxRejectionsDB.clear,
     CommonUtils.clearTable(TxAdmissionsDB.tableName),
     CommonUtils.clearTable(MutationJobsDB.tableName),
@@ -1726,11 +1741,13 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
     expect(localBoundaryAfterRecovery).toBe(commitOutput.blockEndTimeMs);
 
     const coldStartGlobals = await makeGlobalsService();
+    const coldStartNodeConfig = await makeNodeConfigForFixture(fixture);
     await Effect.runPromise(
       seedLatestLocalBlockBoundaryOnStartup.pipe(
         Effect.provideService(Globals, coldStartGlobals),
         Effect.provideService(LucidService, lucidService as any),
         Effect.provideService(MidgardContracts, fixture.contracts as any),
+        Effect.provideService(NodeConfig, coldStartNodeConfig),
         Effect.provide(Database.layer),
       ),
     );

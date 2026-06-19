@@ -1,22 +1,14 @@
 import {
   Address,
-  Assets,
   Data,
   fromText,
   LucidEvolution,
   PolicyId,
-  toUnit,
-  TxBuilder,
   UTxO,
 } from "@lucid-evolution/lucid";
 import { Data as EffectData, Effect } from "effect";
 
-import {
-  AuthenticatedValidator,
-  GenericErrorFields,
-  LucidError,
-  POSIXTimeSchema,
-} from "@/common.js";
+import { GenericErrorFields, LucidError, POSIXTimeSchema } from "@/common.js";
 import {
   authenticateUTxOs,
   AuthenticUTxO,
@@ -149,13 +141,6 @@ export type SchedulerSpendRedeemer = Data.Static<
 export const SchedulerSpendRedeemer =
   SchedulerSpendRedeemerSchema as unknown as SchedulerSpendRedeemer;
 
-export type SchedulerInitParams = {
-  validator: AuthenticatedValidator;
-  datum?: SchedulerDatum;
-  lovelace?: bigint;
-};
-
-const DEFAULT_SCHEDULER_INIT_LOVELACE = 5_000_000n;
 export const INITIAL_SCHEDULER_DATUM = "NoActiveOperators" as SchedulerDatum;
 
 export type SchedulerUTxO = AuthenticUTxO<SchedulerDatum>;
@@ -194,34 +179,3 @@ export const fetchSchedulerUTxOProgram = (
         }),
     },
   );
-
-/**
- * Init
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteSchedulerInitTxProgram = (
-  lucid: LucidEvolution,
-  params: SchedulerInitParams,
-): TxBuilder => {
-  const assets: Assets = {
-    [toUnit(params.validator.policyId, SCHEDULER_ASSET_NAME)]: 1n,
-  };
-  return lucid
-    .newTx()
-    .mintAssets(assets, Data.to("Init", SchedulerMintRedeemer))
-    .pay.ToContract(
-      params.validator.spendingScriptAddress,
-      {
-        kind: "inline",
-        value: Data.to(params.datum ?? INITIAL_SCHEDULER_DATUM, SchedulerDatum),
-      },
-      {
-        lovelace: params.lovelace ?? DEFAULT_SCHEDULER_INIT_LOVELACE,
-        ...assets,
-      },
-    )
-    .attach.Script(params.validator.mintingScript);
-};

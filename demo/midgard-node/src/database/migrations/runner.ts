@@ -1,3 +1,5 @@
+import { performance } from "node:perf_hooks";
+
 import { SqlClient, SqlError } from "@effect/sql";
 import { Data, Effect } from "effect";
 
@@ -13,6 +15,11 @@ import {
 import { Database } from "@/services/database.js";
 
 const MIGRATION_ADVISORY_LOCK_KEY = 0x4d494447415244n; // "MIDGARD"
+
+export const migrationExecutionMs = (
+  startedAtMs: number,
+  nowMs: number = performance.now(),
+): number => Math.max(0, Math.round(nowMs - startedAtMs));
 
 export class MigrationError extends Data.TaggedError("MigrationError")<{
   readonly code: string;
@@ -582,7 +589,7 @@ const applyMigration = ({
   readonly actor: string;
 }): Effect.Effect<void, MigrationError, Database> =>
   Effect.gen(function* () {
-    const startedAt = Date.now();
+    const startedAt = performance.now();
     yield* insertMigrationEvent({
       migration,
       eventType: "started",
@@ -595,7 +602,7 @@ const applyMigration = ({
     const sql = yield* SqlClient.SqlClient;
     const txProgram = Effect.gen(function* () {
       yield* executeMigrationSql(migration);
-      const executionMs = Date.now() - startedAt;
+      const executionMs = migrationExecutionMs(startedAt);
       yield* sql`INSERT INTO schema_migrations (
           version,
           name,

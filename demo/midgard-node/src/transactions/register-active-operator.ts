@@ -581,6 +581,8 @@ const operatorLifecycleProgram = (
         }),
       );
     }
+    const resumeActivationFromExistingRegistration =
+      existingRegisteredNodes.length === 1 && mode === "register-and-activate";
 
     if (existingRegisteredNodes.length === 1) {
       if (mode === "register-only") {
@@ -594,7 +596,11 @@ const operatorLifecycleProgram = (
         });
       }
 
-      if (mode !== "activate-only") {
+      if (mode === "register-and-activate") {
+        yield* Effect.logInfo(
+          `Operator ${operatorKeyHash} is already registered but not active; resuming with activation without deregistration.`,
+        );
+      } else if (mode === "deregister-only") {
         const existingRegisteredNode = existingRegisteredNodes[0];
         const existingRegisteredAnchor = currentRegisteredNodes.find(
           ({ datum }) =>
@@ -610,9 +616,7 @@ const operatorLifecycleProgram = (
           );
         }
         yield* Effect.logWarning(
-          mode === "deregister-only"
-            ? `Operator ${operatorKeyHash} is registered; executing deregister-only lifecycle step.`
-            : `Operator ${operatorKeyHash} is already registered but not active; refreshing the registration node before activation.`,
+          `Operator ${operatorKeyHash} is registered; executing deregister-only lifecycle step.`,
         );
 
         const registeredNodeUnit = toUnit(
@@ -738,10 +742,10 @@ const operatorLifecycleProgram = (
       );
     }
 
-    if (mode === "activate-only") {
+    if (mode === "activate-only" || resumeActivationFromExistingRegistration) {
       if (postRefreshRegisteredNodes.length === 1) {
         yield* Effect.logInfo(
-          `Activate-only flow found pre-existing registration node for operator ${operatorKeyHash}.`,
+          `${mode} flow found pre-existing registration node for operator ${operatorKeyHash}.`,
         );
       } else {
         return yield* Effect.fail(
@@ -762,7 +766,11 @@ const operatorLifecycleProgram = (
       );
     }
 
-    if (postRefreshRegisteredNodes.length === 0 && mode !== "activate-only") {
+    if (
+      postRefreshRegisteredNodes.length === 0 &&
+      mode !== "activate-only" &&
+      !resumeActivationFromExistingRegistration
+    ) {
       const registeredRootNode = currentRegisteredNodes.find(
         ({ datum }) => datum.key === "Empty",
       );
@@ -868,6 +876,7 @@ const operatorLifecycleProgram = (
         activeNotMemberWitness,
         retiredNotMemberWitness,
         registeredRootNode,
+        registerFundingInputs,
         registerMintAssets,
         prependedNodeDatum,
         prependedNodeAssets,
@@ -881,7 +890,7 @@ const operatorLifecycleProgram = (
           onLayout: (resolvedLayout) => {
             registerLayout = resolvedLayout;
           },
-        }).collectFrom([...registerFundingInputs]);
+        });
 
       yield* Effect.logInfo(
         [
@@ -1348,6 +1357,20 @@ export const program = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
   yield* lucidService.switchToOperatorsMainWallet;
   return yield* registerAndActivateOperatorProgram(
+    lucidService.api,
+    contracts,
+    nodeConfig.OPERATOR_REQUIRED_BOND_LOVELACE,
+    lucidService.referenceScriptsApi,
+    lucidService.referenceScriptsAddress,
+  );
+});
+
+export const activateProgram = Effect.gen(function* () {
+  const lucidService = yield* Lucid;
+  const contracts = yield* MidgardContracts;
+  const nodeConfig = yield* NodeConfig;
+  yield* lucidService.switchToOperatorsMainWallet;
+  return yield* activateOperatorProgram(
     lucidService.api,
     contracts,
     nodeConfig.OPERATOR_REQUIRED_BOND_LOVELACE,

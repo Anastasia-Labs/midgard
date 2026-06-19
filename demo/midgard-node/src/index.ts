@@ -1,8 +1,12 @@
 #!/usr/bin/env node
 
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
+
 import { NodeRuntime } from "@effect/platform-node";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { normalizeHex } from "@al-ft/midgard-core/hex";
+import { getAddressDetails, type Network } from "@lucid-evolution/lucid";
 import { Command } from "commander";
 import dotenv from "dotenv";
 import { Effect, pipe } from "effect";
@@ -13,18 +17,25 @@ import {
   DEFAULT_WALLET_SEED_ENV,
   defaultMidgardNodeEndpoint,
   formatJson,
+  parseEventId,
+  parseHexBytes,
   parseAddressArgument,
   type ResolvedWalletSeedPhrase,
   resolveWalletSeedPhrase,
 } from "@/commands/command-utils.js";
 import * as ContractDeploymentInfo from "@/commands/contract-deployment-info.js";
+import * as DeploymentRunStateCommand from "@/commands/deployment-run-state.js";
+import * as E2EFinalizeSummaryCommand from "@/commands/e2e-finalize-summary.js";
+import * as E2EServiceCommand from "@/commands/e2e-service.js";
 import * as EventSettlementProofCommand from "@/commands/event-settlement-proof.js";
 import * as FetchWithdrawalsOnceCommand from "@/commands/fetch-withdrawals-once.js";
 import * as L1UtxosCommand from "@/commands/l1-utxos.js";
+import * as L1ProviderPreflightCommand from "@/commands/l1-provider-preflight.js";
 import { runNode } from "@/commands/listen.js";
 import * as PrepareHubOracleNonce from "@/commands/prepare-hub-oracle-nonce.js";
 import * as ReserveInspectionCommand from "@/commands/reserve-inspection.js";
 import * as ReservePayoutCommand from "@/commands/reserve-payout.js";
+import * as ReconcileCommand from "@/commands/reconcile.js";
 import * as SubmitL2Transfer from "@/commands/submit-l2-transfer.js";
 import * as SubmitWithdrawalCommand from "@/commands/submit-withdrawal.js";
 import * as UtxosCommand from "@/commands/utxos.js";
@@ -36,22 +47,28 @@ import {
 } from "@/fibers/index.js";
 import * as Services from "@/services/index.js";
 import {
-  createReferenceScriptAuthPolicy,
+  assertReferenceScriptAuthMinimumRemaining,
   referenceScriptAuthPolicyDeploymentInfo,
-} from "@/deployment/reference-script-auth.js";
+} from "@al-ft/midgard-sdk";
 import * as DaAttestation from "@/transactions/da-attestation.js";
 import * as Initialization from "@/transactions/initialization.js";
 import * as PhasMembershipRegistration from "@/transactions/phas-membership-registration.js";
 import {
   fetchReferenceScriptUtxosProgram,
+  planReferenceScriptCommandProgram,
   referenceScriptByName,
+  referenceScriptWalletStatusProgram,
+  REFERENCE_SCRIPT_SWEEP_DEFAULT_MAX_ASSETS_PER_TOKEN_OUTPUT,
+  REFERENCE_SCRIPT_SWEEP_DEFAULT_TOKEN_OUTPUT_LOVELACE,
   referenceScriptTargetsByCommand,
+  sweepReferenceScriptWalletProgram,
 } from "@/transactions/reference-scripts.js";
 import * as RegisterActiveOperator from "@/transactions/register-active-operator.js";
 import * as SubmitDeposit from "@/transactions/submit-deposit.js";
 import { chalk, ENV_VARS_GUIDE } from "@/utils.js";
 import { commitExplicitBlockHeaderProgram } from "@/workers/commit-block-header.js";
 import { backfillMissingDaPayloadsFromFinalizedJournals } from "@/workers/commit-block-header/da-payload-backfill.js";
+import { runCommandStep } from "@/e2e/runner.js";
 
 import packageJson from "../package.json" with { type: "json" };
 
@@ -104,6 +121,122 @@ const parsePositiveIntegerOption = (value: unknown, label: string): number => {
     throw new Error(`${label} must be a safe positive integer`);
   }
   return parsed;
+};
+
+const parsePositiveBigIntOption = (value: unknown, label: string): bigint => {
+  if (typeof value !== "string" || !/^\d+$/.test(value)) {
+    throw new Error(`${label} must be a positive integer`);
+  }
+  const parsed = BigInt(value);
+  if (parsed <= 0n) {
+    throw new Error(`${label} must be greater than zero`);
+  }
+  return parsed;
+};
+
+const collectStringOption = (
+  value: string,
+  previous: string[] = [],
+): string[] => [...previous, value];
+
+const E2E_TX_STATUSES = new Set([
+  "submitted",
+  "confirmed",
+  "queued",
+  "accepted",
+  "committed",
+  "rejected",
+  "unknown",
+] as const);
+
+type E2ETxStatus = NonNullable<
+  E2EFinalizeSummaryCommand.FinalizeSummaryOptions["transactions"]
+>[number]["status"];
+
+const parseTxEvidenceOption = (
+  value: string,
+): NonNullable<
+  E2EFinalizeSummaryCommand.FinalizeSummaryOptions["transactions"]
+>[number] => {
+  const [label, txHash, status, ...sourceParts] = value.split(":");
+  if (
+    label === undefined ||
+    label.length === 0 ||
+    txHash === undefined ||
+    txHash.length === 0 ||
+    status === undefined ||
+    !E2E_TX_STATUSES.has(status as E2ETxStatus) ||
+    sourceParts.length === 0
+  ) {
+    throw new Error(
+      "--tx must use label:txHash:status:source with status one of submitted, confirmed, queued, accepted, committed, rejected, unknown",
+    );
+  }
+  return {
+    label,
+    txHash,
+    status: status as E2ETxStatus,
+    source: sourceParts.join(":"),
+  };
+};
+
+const parseTxEvidenceOptions = (
+  values: unknown,
+): NonNullable<
+  E2EFinalizeSummaryCommand.FinalizeSummaryOptions["transactions"]
+> =>
+  Array.isArray(values)
+    ? values.map((value) => {
+        if (typeof value !== "string") {
+          throw new Error("--tx must be provided as a string.");
+        }
+        return parseTxEvidenceOption(value);
+      })
+    : [];
+
+const parseStringListOption = (values: unknown, label: string): string[] =>
+  Array.isArray(values)
+    ? values.map((value) => {
+        if (typeof value !== "string" || value.length === 0) {
+          throw new Error(`${label} must be a non-empty string.`);
+        }
+        return value;
+      })
+    : [];
+
+const expectedNetworkIdForAddress = (network: Network): number | undefined => {
+  if (network === "Mainnet") {
+    return 1;
+  }
+  if (network === "Preprod" || network === "Preview") {
+    return 0;
+  }
+  return undefined;
+};
+
+const parseL1AddressOption = (
+  value: unknown,
+  label: string,
+  network: Network,
+): string => {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(`${label} must be a non-empty Cardano address`);
+  }
+  const normalized = value.trim();
+  let details: ReturnType<typeof getAddressDetails>;
+  try {
+    details = getAddressDetails(normalized);
+  } catch (cause) {
+    throw new Error(`Invalid ${label} "${normalized}": ${String(cause)}`);
+  }
+  const expectedNetworkId = expectedNetworkIdForAddress(network);
+  if (
+    expectedNetworkId !== undefined &&
+    details.networkId !== expectedNetworkId
+  ) {
+    throw new Error(`${label} must target the configured ${network} network`);
+  }
+  return details.address.bech32;
 };
 
 const errorMessage = (error: unknown): string =>
@@ -266,29 +399,23 @@ program.version(VERSION).description(
 
 program
   .command("l1-utxos")
-  .description(
-    "Fetch and print Cardano L1 UTxOs for an address through Blockfrost",
-  )
+  .description("Fetch and print Cardano L1 UTxOs for an address through local Kupmios")
   .requiredOption(
     "--address <address>",
-    "Cardano payment address to query from Blockfrost",
+    "Cardano payment address to query from local Kupmios",
   )
-  .option(
-    "--blockfrost-api-url <url>",
-    "Override Blockfrost API base URL; defaults to L1_BLOCKFROST_API_URL",
-  )
-  .option(
-    "--blockfrost-key <key>",
-    "Override Blockfrost API key; defaults to L1_BLOCKFROST_KEY",
-  )
+  .option("--kupo-url <url>", "Override Kupo URL; defaults to L1_KUPO_KEY")
+  .option("--ogmios-url <url>", "Override Ogmios URL; defaults to L1_OGMIOS_KEY")
+  .option("--network <network>", "Override network; defaults to NETWORK")
   .action(async (_args, options) => {
     let address: string;
-    let blockfrostConfig: { apiUrl: string; apiKey: string };
+    let kupmiosConfig: L1UtxosCommand.KupmiosConfig;
     try {
       address = parseAddressArgument(options.opts().address);
-      blockfrostConfig = L1UtxosCommand.resolveBlockfrostConfig({
-        apiUrl: options.opts().blockfrostApiUrl,
-        apiKey: options.opts().blockfrostKey,
+      kupmiosConfig = L1UtxosCommand.resolveKupmiosConfig({
+        kupoUrl: options.opts().kupoUrl,
+        ogmiosUrl: options.opts().ogmiosUrl,
+        network: options.opts().network,
       });
     } catch (error) {
       console.error(`l1-utxos: ${errorMessage(error)}`);
@@ -297,9 +424,9 @@ program
     }
 
     try {
-      const result = await L1UtxosCommand.fetchAllBlockfrostAddressUtxos({
+      const result = await L1UtxosCommand.fetchKupmiosAddressUtxos({
         address,
-        ...blockfrostConfig,
+        ...kupmiosConfig,
       });
       process.stdout.write(`${formatJson(result)}\n`);
     } catch (error) {
@@ -309,25 +436,46 @@ program
   });
 
 program
-  .command("address-from-seed")
+  .command("l1-provider-preflight")
   .description(
-    "Derive the Cardano address for a seed phrase using the network implied by the configured Blockfrost URL",
+    "Check the configured L1 provider route and fail before state-changing work when no source is healthy",
   )
+  .option("--json", "Print machine-readable JSON", true)
+  .action(async () => {
+    const mainEffect = Effect.gen(function* () {
+      const nodeConfig = yield* Services.NodeConfig;
+      const report = yield* Effect.tryPromise(() =>
+        L1ProviderPreflightCommand.runL1ProviderPreflight({
+          config: nodeConfig,
+        }),
+      );
+      yield* Effect.sync(() => {
+        process.stdout.write(`${formatJson(report)}\n`);
+      });
+      if (!report.ok) {
+        return yield* Effect.fail(
+          new Error("No configured L1 provider source passed preflight"),
+        );
+      }
+      return report;
+    }).pipe(Effect.provide(Services.NodeConfig.layer));
+
+    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+  });
+
+program
+  .command("address-from-seed")
+  .description("Derive the Cardano address for a seed phrase on an explicit network")
   .requiredOption(
     "--seed-phrase <seedPhrase>",
     "Quoted BIP-39 seed phrase used to derive the payment address",
   )
-  .option(
-    "--blockfrost-api-url <url>",
-    "Override Blockfrost API base URL; defaults to L1_BLOCKFROST_API_URL",
-  )
+  .option("--network <network>", "Override network; defaults to NETWORK")
   .action(async (_args, options) => {
     try {
-      const blockfrostApiUrl = AddressFromSeed.resolveBlockfrostApiUrl({
-        blockfrostApiUrl: options.opts().blockfrostApiUrl,
+      const network = AddressFromSeed.resolveNetwork({
+        network: options.opts().network,
       });
-      const network =
-        AddressFromSeed.inferNetworkFromBlockfrostApiUrl(blockfrostApiUrl);
       const address = AddressFromSeed.deriveAddressFromSeedPhrase(
         options.opts().seedPhrase,
         network,
@@ -461,6 +609,252 @@ program
     NodeRuntime.runMain(mainEffect, { teardown: undefined });
   });
 
+const reconcile = program
+  .command("reconcile")
+  .description("Inspect and optionally repair idempotent e2e recovery milestones");
+
+reconcile
+  .command("phas-registered")
+  .description("Reconcile PHAS membership reward-account registration")
+  .option("--repair", "Run the idempotent PHAS registration repair if missing")
+  .option("--json", "Print machine-readable JSON output", true)
+  .action(async (options: { readonly repair?: boolean }) => {
+    const mainEffect = provideLucidOnlyServices(
+      ReconcileCommand.reconcilePhasRegisteredProgram({
+        repair: options.repair === true,
+      }).pipe(
+        Effect.tap((result) =>
+          Effect.sync(() => {
+            process.stdout.write(`${formatJson(result)}\n`);
+          }),
+        ),
+      ),
+    );
+
+    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+  });
+
+reconcile
+  .command("reference-scripts-complete")
+  .description("Reconcile node-runtime reference-script publication")
+  .option(
+    "--manifest <path>",
+    "Deployment manifest path; the configured MidgardContracts manifest is used for verification",
+  )
+  .option("--scope <scope>", "Reference-script scope", "node-runtime")
+  .option("--repair", "Publish only missing node-runtime reference scripts")
+  .option("--json", "Print machine-readable JSON output", true)
+  .action(
+    async (options: {
+      readonly scope?: string;
+      readonly repair?: boolean;
+    }) => {
+      if ((options.scope ?? "node-runtime") !== "node-runtime") {
+        console.error(
+          "reconcile reference-scripts-complete: only --scope node-runtime is supported",
+        );
+        process.exitCode = 1;
+        return;
+      }
+      const mainEffect = provideTxServices(
+        ReconcileCommand.reconcileReferenceScriptsCompleteProgram({
+          repair: options.repair === true,
+        }).pipe(
+          Effect.tap((result) =>
+            Effect.sync(() => {
+              process.stdout.write(`${formatJson(result)}\n`);
+            }),
+          ),
+        ),
+      );
+
+      NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    },
+  );
+
+reconcile
+  .command("deposit-projected")
+  .description("Reconcile deposit visibility and projection into the L2 mempool ledger")
+  .option("--event-id <hex>", "Canonical OutputReference CBOR deposit event id")
+  .option("--cardano-tx-hash <hex>", "32-byte Cardano deposit transaction hash")
+  .option("--repair", "Reconcile visible deposit UTxOs and project due deposits")
+  .option("--json", "Print machine-readable JSON output", true)
+  .action(
+    async (options: {
+      readonly eventId?: string;
+      readonly cardanoTxHash?: string;
+      readonly repair?: boolean;
+    }) => {
+      let eventId: Buffer | undefined;
+      let cardanoTxHash: Buffer | undefined;
+      try {
+        eventId =
+          options.eventId === undefined
+            ? undefined
+            : parseEventId(options.eventId, "eventId");
+        cardanoTxHash =
+          options.cardanoTxHash === undefined
+            ? undefined
+            : parseHexBytes(options.cardanoTxHash, "cardanoTxHash", 32);
+        if (eventId === undefined && cardanoTxHash === undefined) {
+          throw new Error("Provide --event-id or --cardano-tx-hash.");
+        }
+      } catch (error) {
+        console.error(`reconcile deposit-projected: ${errorMessage(error)}`);
+        process.exitCode = 1;
+        return;
+      }
+
+      const mainEffect = provideNodeRuntimeServices(
+        ReconcileCommand.reconcileDepositProjectedProgram({
+          eventId,
+          cardanoTxHash,
+          repair: options.repair === true,
+        }).pipe(
+          Effect.tap((result) =>
+            Effect.sync(() => {
+              process.stdout.write(`${formatJson(result)}\n`);
+            }),
+          ),
+        ),
+      );
+
+      NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    },
+  );
+
+reconcile
+  .command("tx-committed")
+  .description("Reconcile an L2 transaction's local commit status")
+  .requiredOption("--tx-hash <hex>", "32-byte Midgard L2 transaction id")
+  .option("--json", "Print machine-readable JSON output", true)
+  .action(async (options: { readonly txHash: string }) => {
+    let txHash: Buffer;
+    try {
+      txHash = parseHexBytes(options.txHash, "txHash", 32);
+    } catch (error) {
+      console.error(`reconcile tx-committed: ${errorMessage(error)}`);
+      process.exitCode = 1;
+      return;
+    }
+    const mainEffect = provideDatabaseServices(
+      ReconcileCommand.reconcileTxCommittedProgram({ txHash }).pipe(
+        Effect.tap((result) =>
+          Effect.sync(() => {
+            process.stdout.write(`${formatJson(result)}\n`);
+          }),
+        ),
+      ),
+    );
+
+    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+  });
+
+reconcile
+  .command("da-attested")
+  .description("Reconcile DA payload and copied watcher attestation status")
+  .requiredOption("--header-hash <hex>", "28-byte block header hash")
+  .option("--watcher-url <url>", "Copied DA node base URL")
+  .option("--deployment-fingerprint <fingerprint>", "Copied DA deployment fingerprint")
+  .option("--repair", "Backfill missing local DA payload rows from finalized journals")
+  .option("--json", "Print machine-readable JSON output", true)
+  .action(
+    async (options: {
+      readonly headerHash: string;
+      readonly watcherUrl?: string;
+      readonly deploymentFingerprint?: string;
+      readonly repair?: boolean;
+    }) => {
+      let headerHash: Buffer;
+      try {
+        headerHash = parseHexBytes(options.headerHash, "headerHash", 28);
+      } catch (error) {
+        console.error(`reconcile da-attested: ${errorMessage(error)}`);
+        process.exitCode = 1;
+        return;
+      }
+      const mainEffect = provideDatabaseServices(
+        ReconcileCommand.reconcileDaAttestedProgram({
+          headerHash,
+          watcherUrl: options.watcherUrl,
+          deploymentFingerprint: options.deploymentFingerprint,
+          repair: options.repair === true,
+        }).pipe(
+          Effect.tap((result) =>
+            Effect.sync(() => {
+              process.stdout.write(`${formatJson(result)}\n`);
+            }),
+          ),
+        ),
+      );
+
+      NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    },
+  );
+
+reconcile
+  .command("block-committed")
+  .description("Reconcile block commitment in canonical state_queue/local journals")
+  .requiredOption("--header-hash <hex>", "28-byte block header hash")
+  .option("--json", "Print machine-readable JSON output", true)
+  .action(async (options: { readonly headerHash: string }) => {
+    let headerHash: Buffer;
+    try {
+      headerHash = parseHexBytes(options.headerHash, "headerHash", 28);
+    } catch (error) {
+      console.error(`reconcile block-committed: ${errorMessage(error)}`);
+      process.exitCode = 1;
+      return;
+    }
+    const mainEffect = provideDatabaseTxServices(
+      ReconcileCommand.reconcileBlockCommittedProgram({ headerHash }).pipe(
+        Effect.tap((result) =>
+          Effect.sync(() => {
+            process.stdout.write(`${formatJson(result)}\n`);
+          }),
+        ),
+      ),
+    );
+
+    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+  });
+
+reconcile
+  .command("merge-complete")
+  .description("Reconcile merge completion for a committed block header")
+  .requiredOption("--header-hash <hex>", "28-byte block header hash")
+  .option("--repair", "Trigger the existing idempotent merge action if queued")
+  .option("--json", "Print machine-readable JSON output", true)
+  .action(
+    async (options: {
+      readonly headerHash: string;
+      readonly repair?: boolean;
+    }) => {
+      let headerHash: Buffer;
+      try {
+        headerHash = parseHexBytes(options.headerHash, "headerHash", 28);
+      } catch (error) {
+        console.error(`reconcile merge-complete: ${errorMessage(error)}`);
+        process.exitCode = 1;
+        return;
+      }
+      const mainEffect = provideNodeRuntimeServices(
+        ReconcileCommand.reconcileMergeCompleteProgram({
+          headerHash,
+          repair: options.repair === true,
+        }).pipe(
+          Effect.tap((result) =>
+            Effect.sync(() => {
+              process.stdout.write(`${formatJson(result)}\n`);
+            }),
+          ),
+        ),
+      );
+
+      NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    },
+  );
+
 program
   .command("init")
   .description(
@@ -503,17 +897,189 @@ program
   .action(async () => {
     const mainEffect = provideTxServices(
       Effect.gen(function* () {
+        const manifestVerification = yield* Effect.either(
+          ContractDeploymentInfo.verifyConfiguredDeploymentManifestIfPresentProgram,
+        );
         const lucidService = yield* Services.Lucid;
         const contracts = yield* Services.MidgardContracts;
         const status = yield* Initialization.fetchProtocolDeploymentStatus(
           lucidService.api,
           contracts,
         );
-        process.stdout.write(`${formatJson(status)}\n`);
+        process.stdout.write(
+          `${formatJson({
+            manifest:
+              manifestVerification._tag === "Right"
+                ? (manifestVerification.right ?? {
+                    ok: false,
+                    mismatches: ["deployment manifest file not found"],
+                    recommendation: "fresh_redeploy_required",
+                  })
+                : {
+                    ok: false,
+                    mismatches: [formatUnknownError(manifestVerification.left)],
+                    recommendation: "fresh_redeploy_required",
+                  },
+            protocol: status,
+          })}\n`,
+        );
       }),
     );
 
     NodeRuntime.runMain(mainEffect, { teardown: undefined });
+  });
+
+program
+  .command("e2e-finalize-summary")
+  .description(
+    "Collect final e2e endpoint/database evidence and write summary.json plus summary.md",
+  )
+  .option("--out-dir <path>", "Output directory for summary artifacts")
+  .option("--run-id <id>", "Stable run id for the summary")
+  .option("--mode <mode>", "Run mode: attach, resume, fresh, or unknown")
+  .option("--node-url <url>", "Midgard node URL")
+  .option(
+    "--admin-api-key-env <name>",
+    "Environment variable that contains the admin API key",
+    "ADMIN_API_KEY",
+  )
+  .option("--node-log <path>", "Raw Midgard node log artifact to link")
+  .option(
+    "--step-summary <path>",
+    "Structured e2e-run-step summary JSON file to include; repeatable",
+    collectStringOption,
+    [],
+  )
+  .option(
+    "--tx <label:txHash:status:source>",
+    "Transaction evidence to include in the summary; repeatable",
+    collectStringOption,
+    [],
+  )
+  .action(async (_args, options) => {
+    const opts = options.opts();
+    const mode =
+      opts.mode === "attach" ||
+      opts.mode === "resume" ||
+      opts.mode === "fresh" ||
+      opts.mode === "unknown"
+        ? opts.mode
+        : "unknown";
+    const adminApiKey =
+      typeof opts.adminApiKeyEnv === "string"
+        ? process.env[opts.adminApiKeyEnv]
+        : undefined;
+    const mainEffect = provideDatabaseServices(
+      E2EFinalizeSummaryCommand.finalizeE2ESummaryProgram({
+        ...(typeof opts.outDir === "string" ? { outDir: opts.outDir } : {}),
+        ...(typeof opts.runId === "string" ? { runId: opts.runId } : {}),
+        mode,
+        ...(typeof opts.nodeUrl === "string" ? { nodeUrl: opts.nodeUrl } : {}),
+        ...(adminApiKey === undefined ? {} : { adminApiKey }),
+        ...(typeof opts.nodeLog === "string"
+          ? { nodeLogPath: opts.nodeLog }
+          : {}),
+        stepSummaryPaths: parseStringListOption(
+          opts.stepSummary,
+          "--step-summary",
+        ),
+        transactions: parseTxEvidenceOptions(opts.tx),
+      }).pipe(
+        Effect.tap((result) =>
+          Effect.sync(() => {
+            process.stdout.write(`${formatJson(result)}\n`);
+          }),
+        ),
+      ),
+    );
+
+    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+  });
+
+program
+  .command("e2e-run-step")
+  .description("Run one acceptance command through the structured e2e runner")
+  .requiredOption("--id <id>", "Step id")
+  .requiredOption("--cwd <path>", "Working directory")
+  .requiredOption("--raw-log <path>", "Raw log path")
+  .option("--summary-out <path>", "Write the step summary JSON to this path")
+  .option("--timeout-ms <ms>", "Step timeout in milliseconds")
+  .argument("<command>", "Command to execute")
+  .argument("[args...]", "Command arguments")
+  .action(async (command, args, opts) => {
+    const timeoutMs =
+      typeof opts.timeoutMs === "string"
+        ? parsePositiveIntegerOption(opts.timeoutMs, "--timeout-ms")
+        : undefined;
+    try {
+      const summary = await runCommandStep({
+        id: opts.id,
+        command,
+        args,
+        cwd: opts.cwd,
+        rawLogPath: opts.rawLog,
+        ...(timeoutMs === undefined ? {} : { timeoutMs }),
+      });
+      if (typeof opts.summaryOut === "string" && opts.summaryOut.length > 0) {
+        await mkdir(dirname(opts.summaryOut), { recursive: true });
+        await writeFile(
+          opts.summaryOut,
+          `${JSON.stringify(summary, null, 2)}\n`,
+          "utf8",
+        );
+      }
+      process.stdout.write(`${formatJson(summary)}\n`);
+      if (summary.status !== "success") {
+        process.exitCode = 1;
+      }
+    } catch (error) {
+      console.error(`e2e-run-step: ${errorMessage(error)}`);
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command("e2e-start-service")
+  .description(
+    "Start a long-running e2e service, write a PID file, and wait for readiness",
+  )
+  .requiredOption("--service <name>", "Service label")
+  .requiredOption("--cwd <path>", "Working directory")
+  .requiredOption("--raw-log <path>", "Raw log path")
+  .requiredOption("--pid-file <path>", "PID file path")
+  .requiredOption("--ready-url <url>", "Readiness endpoint URL")
+  .option("--health-url <url>", "Optional health endpoint URL")
+  .option("--ready-timeout-ms <ms>", "Readiness timeout", "120000")
+  .option("--poll-interval-ms <ms>", "Readiness polling interval", "5000")
+  .argument("<command>", "Command to execute")
+  .argument("[args...]", "Command arguments")
+  .action(async (command, args, opts) => {
+    try {
+      const summary = await E2EServiceCommand.startManagedService({
+        service: opts.service,
+        command,
+        args,
+        cwd: opts.cwd,
+        rawLogPath: opts.rawLog,
+        pidFilePath: opts.pidFile,
+        readyUrl: opts.readyUrl,
+        ...(typeof opts.healthUrl === "string"
+          ? { healthUrl: opts.healthUrl }
+          : {}),
+        readyTimeoutMs: parsePositiveIntegerOption(
+          opts.readyTimeoutMs,
+          "--ready-timeout-ms",
+        ),
+        pollIntervalMs: parsePositiveIntegerOption(
+          opts.pollIntervalMs,
+          "--poll-interval-ms",
+        ),
+      });
+      process.stdout.write(`${formatJson(summary)}\n`);
+    } catch (error) {
+      console.error(`e2e-start-service: ${errorMessage(error)}`);
+      process.exitCode = 1;
+    }
   });
 
 program
@@ -530,14 +1096,42 @@ program
     "--dry-run",
     "Only inspect operator-wallet readiness; do not submit a transaction",
   )
+  .option(
+    "--run-state <path>",
+    "Deployment run-state path used to prevent accidental identity replacement",
+  )
+  .option(
+    "--fresh-redeploy",
+    "Allow creation of a replacement deployment identity",
+  )
+  .option(
+    "--fresh-redeploy-reason <text>",
+    "Required reason when --fresh-redeploy is used",
+  )
   .option("--json", "Print machine-readable JSON")
   .action(async (_args, options) => {
     const opts = options.opts();
+    const runOptions =
+      DeploymentRunStateCommand.resolveDeploymentRunCliOptions(opts);
     let amountLovelace: bigint;
     try {
       amountLovelace = PrepareHubOracleNonce.parseNonceLovelaceOption(
         opts.amountLovelace,
       );
+    } catch (error) {
+      console.error(
+        `prepare-hub-oracle-one-shot-nonce: ${errorMessage(error)}`,
+      );
+      process.exitCode = 1;
+      return;
+    }
+
+    try {
+      if (!opts.dryRun) {
+        await DeploymentRunStateCommand.guardHubOracleNonceCreation({
+          options: runOptions,
+        });
+      }
     } catch (error) {
       console.error(
         `prepare-hub-oracle-one-shot-nonce: ${errorMessage(error)}`,
@@ -574,9 +1168,30 @@ program
     }
 
     const mainEffect = provideLucidOnlyServices(
-      PrepareHubOracleNonce.prepareHubOracleOneShotNonceProgram(
-        amountLovelace,
-      ).pipe(
+      Effect.gen(function* () {
+        const nodeConfig = yield* Services.NodeConfig;
+        const result =
+          yield* PrepareHubOracleNonce.prepareHubOracleOneShotNonceProgram(
+            amountLovelace,
+          );
+        yield* Effect.tryPromise({
+          try: () =>
+            DeploymentRunStateCommand.recordHubOracleNonce({
+              options: runOptions,
+              network: nodeConfig.NETWORK,
+              txHash: result.txHash,
+              outputIndex: result.outputIndex,
+              outRef: result.outRef,
+            }),
+          catch: (cause) =>
+            cause instanceof Error
+              ? cause
+              : new Error(
+                  `Failed to record hub-oracle nonce in run state: ${String(cause)}`,
+                ),
+        });
+        return result;
+      }).pipe(
         Effect.tap((result) =>
           Effect.sync(() => {
             if (opts.json) {
@@ -658,17 +1273,51 @@ for (const commandName of RegisterActiveOperator.REFERENCE_SCRIPT_COMMAND_NAMES)
       "--contract-deployment-info-output <path>",
       "Optional override path for the contract deployment info JSON written after reference-script deployment completes",
     )
+    .option(
+      "--plan-only",
+      "Print the reference-script deployment plan without publishing transactions",
+    )
+    .option(
+      "--run-state <path>",
+      "Deployment run-state path used to resume reference-script auth policy identity",
+    )
+    .option(
+      "--fresh-redeploy",
+      "Create a replacement reference-script auth policy instead of reusing run-state/manifest identity",
+    )
+    .option(
+      "--fresh-redeploy-reason <text>",
+      "Required reason when --fresh-redeploy is used",
+    )
     .action(async (_args, options) => {
-      const { contractDeploymentInfoOutput } = options.opts();
+      const commandOptions = options.opts();
+      const { contractDeploymentInfoOutput, planOnly } = commandOptions;
+      const runOptions =
+        DeploymentRunStateCommand.resolveDeploymentRunCliOptions(commandOptions);
       const mainEffect = provideReferenceScriptDeploymentServices(
         Effect.gen(function* () {
           const nodeConfig = yield* Services.NodeConfig;
           const lucidService = yield* Services.Lucid;
           yield* lucidService.switchToOperatorsMainWallet;
           yield* lucidService.switchToReferenceScriptWallet;
-          const authPolicy = createReferenceScriptAuthPolicy(
-            lucidService.referenceScriptsApi,
-          );
+          const manifestOutputPath =
+            typeof contractDeploymentInfoOutput === "string"
+              ? contractDeploymentInfoOutput
+              : ContractDeploymentInfo.defaultContractDeploymentInfoOutputPath();
+          const authPolicy =
+            yield* DeploymentRunStateCommand.resolveReferenceScriptAuthPolicyProgram(
+              {
+                options: runOptions,
+                lucid: lucidService.referenceScriptsApi,
+                network: nodeConfig.NETWORK,
+                hubOracleOneShotTxHash: nodeConfig.HUB_ORACLE_ONE_SHOT_TX_HASH,
+                hubOracleOneShotOutputIndex:
+                  nodeConfig.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX,
+                timelockDurationMs:
+                  nodeConfig.REFERENCE_SCRIPT_AUTH_TIMELOCK_MS,
+                manifestOutputPath,
+              },
+            );
           const baseContracts = yield* Services.AlwaysSucceedsContract;
           const contracts =
             yield* Services.withRealStateQueueAndOperatorContracts(
@@ -682,6 +1331,36 @@ for (const commandName of RegisterActiveOperator.REFERENCE_SCRIPT_COMMAND_NAMES)
                 referenceScriptAuth: authPolicy,
               },
             );
+          yield* Effect.try({
+            try: () =>
+              assertReferenceScriptAuthMinimumRemaining({
+                policy: contracts.referenceScriptAuth,
+                nowMs: Date.now(),
+                minRemainingMs:
+                  nodeConfig.REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS,
+                scopeName: `deploy-reference-script-${commandName}`,
+                targetNames: referenceScriptTargetsByCommand(contracts)[
+                  commandName
+                ].map(({ name }) => name),
+              }),
+            catch: (cause) =>
+              cause instanceof Error
+                ? cause
+                : new Error(
+                    `Reference-script auth guard failed: ${String(cause)}`,
+                  ),
+          });
+          if (planOnly === true) {
+            const plan = yield* planReferenceScriptCommandProgram(
+              lucidService.referenceScriptsApi,
+              contracts,
+              commandName,
+              contracts.referenceScriptAuth,
+              lucidService.referenceScriptsAddress,
+            );
+            process.stdout.write(`${formatJson(plan)}\n`);
+            return { mode: "plan" as const, plan };
+          }
           const published =
             yield* RegisterActiveOperator.deployReferenceScriptCommandProgram(
               lucidService.referenceScriptsApi,
@@ -690,6 +1369,10 @@ for (const commandName of RegisterActiveOperator.REFERENCE_SCRIPT_COMMAND_NAMES)
               contracts.referenceScriptAuth,
               lucidService.api,
               lucidService.referenceScriptsAddress,
+              nodeConfig.REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS,
+              new Set([
+                `${nodeConfig.HUB_ORACLE_ONE_SHOT_TX_HASH}#${nodeConfig.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX.toString()}`,
+              ]),
             );
           const liveReferenceScriptUtxos = yield* Effect.tryPromise({
             try: () =>
@@ -712,36 +1395,173 @@ for (const commandName of RegisterActiveOperator.REFERENCE_SCRIPT_COMMAND_NAMES)
               ],
               referenceScriptAuthPolicyDeploymentInfo(authPolicy),
             );
-          const manifestOutputPath =
-            typeof contractDeploymentInfoOutput === "string"
-              ? contractDeploymentInfoOutput
-              : ContractDeploymentInfo.defaultContractDeploymentInfoOutputPath();
           const manifestPath =
             yield* ContractDeploymentInfo.writeContractDeploymentInfoFileProgram(
               manifestOutputPath,
-              deploymentInfo,
+              ContractDeploymentInfo.buildDeploymentManifestV2(deploymentInfo, {
+                network: nodeConfig.NETWORK,
+                referenceScriptDeployAddress:
+                  nodeConfig.L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS,
+                hubOracleOneShotTxHash: nodeConfig.HUB_ORACLE_ONE_SHOT_TX_HASH,
+                hubOracleOneShotOutputIndex:
+                  nodeConfig.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX,
+              }),
             );
           yield* Effect.logInfo(
             `reference-script deployment info written: ${manifestPath}`,
           );
-          return published;
+          return { mode: "publish" as const, published };
         }).pipe(
-          Effect.tap((published) =>
-            Effect.logInfo(
+          Effect.tap((result) => {
+            if (result.mode === "plan") {
+              return Effect.logInfo(
+                `deploy-reference-script-${commandName} plan-only completed: ${formatJson(result.plan)}`,
+              );
+            }
+            return Effect.logInfo(
               `deploy-reference-script-${commandName} completed: ${JSON.stringify(
-                published.map(({ name, utxo }) => ({
+                result.published.map(({ name, utxo }) => ({
                   name,
                   outRef: `${utxo.txHash}#${utxo.outputIndex}`,
                 })),
               )}`,
-            ),
-          ),
+            );
+          }),
         ),
       );
 
       NodeRuntime.runMain(mainEffect, { teardown: undefined });
     });
 }
+
+program
+  .command("reference-script-wallet-status")
+  .description(
+    "Print total, plain ADA-only, and scriptRef/token-bearing balances for L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS",
+  )
+  .option("--json", "Print machine-readable JSON", true)
+  .action(async () => {
+    const mainEffect = provideLucidOnlyServices(
+      Effect.gen(function* () {
+        const lucidService = yield* Services.Lucid;
+        yield* lucidService.switchToReferenceScriptWallet;
+        return yield* referenceScriptWalletStatusProgram(
+          lucidService.referenceScriptsApi,
+          lucidService.referenceScriptsAddress,
+        );
+      }).pipe(
+        Effect.tap((result) =>
+          Effect.sync(() => {
+            process.stdout.write(`${formatJson(result)}\n`);
+          }),
+        ),
+      ),
+    );
+
+    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+  });
+
+program
+  .command("sweep-reference-script-wallet")
+  .description(
+    "Retire published reference-script UTxOs, quarantine non-ADA assets, and consolidate recovered ADA back to the reference-script wallet",
+  )
+  .option(
+    "--burn-address <address>",
+    "L1 address that receives non-ADA assets; this quarantines tokens unless their minting policies are still burnable",
+  )
+  .option(
+    "--execute",
+    "Submit the sweep transaction. Without this flag the command only prints the plan.",
+  )
+  .option(
+    "--i-am-retiring-reference-scripts",
+    "Required with --execute; confirms the published reference scripts at L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS are no longer live.",
+  )
+  .option(
+    "--include-plain",
+    "Also collect plain ADA-only UTxOs at L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS for full wallet consolidation.",
+  )
+  .option(
+    "--token-output-lovelace <lovelace>",
+    "Lovelace attached to each token quarantine output.",
+    (value) => {
+      parsePositiveBigIntOption(value, "--token-output-lovelace");
+      return value.trim();
+    },
+    REFERENCE_SCRIPT_SWEEP_DEFAULT_TOKEN_OUTPUT_LOVELACE.toString(),
+  )
+  .option(
+    "--max-assets-per-token-output <count>",
+    "Maximum non-ADA asset units per token quarantine output.",
+    (value) =>
+      parsePositiveIntegerOption(value, "--max-assets-per-token-output"),
+    REFERENCE_SCRIPT_SWEEP_DEFAULT_MAX_ASSETS_PER_TOKEN_OUTPUT,
+  )
+  .action(async (_args, options) => {
+    const opts = options.opts() as {
+      readonly burnAddress?: string;
+      readonly execute?: boolean;
+      readonly iAmRetiringReferenceScripts?: boolean;
+      readonly includePlain?: boolean;
+      readonly tokenOutputLovelace: string;
+      readonly maxAssetsPerTokenOutput: number;
+    };
+    const mainEffect = provideLucidOnlyServices(
+      Effect.gen(function* () {
+        const nodeConfig = yield* Services.NodeConfig;
+        const lucidService = yield* Services.Lucid;
+        yield* lucidService.switchToReferenceScriptWallet;
+        const burnAddress = yield* Effect.try({
+          try: () =>
+            opts.burnAddress === undefined
+              ? undefined
+              : parseL1AddressOption(
+                  opts.burnAddress,
+                  "--burn-address",
+                  nodeConfig.NETWORK,
+                ),
+          catch: (cause) =>
+            cause instanceof Error
+              ? cause
+              : new Error(`Failed to parse --burn-address: ${String(cause)}`),
+        });
+        const tokenOutputLovelace = yield* Effect.try({
+          try: () =>
+            parsePositiveBigIntOption(
+              opts.tokenOutputLovelace,
+              "--token-output-lovelace",
+            ),
+          catch: (cause) =>
+            cause instanceof Error
+              ? cause
+              : new Error(
+                  `Failed to parse --token-output-lovelace: ${String(cause)}`,
+                ),
+        });
+        return yield* sweepReferenceScriptWalletProgram(
+          lucidService.referenceScriptsApi,
+          lucidService.referenceScriptsAddress,
+          {
+            burnAddress,
+            execute: opts.execute === true,
+            acknowledgeRetirement: opts.iAmRetiringReferenceScripts === true,
+            includePlainUtxos: opts.includePlain === true,
+            tokenOutputLovelace,
+            maxAssetsPerTokenOutput: opts.maxAssetsPerTokenOutput,
+          },
+        );
+      }).pipe(
+        Effect.tap((result) =>
+          Effect.logInfo(
+            `sweep-reference-script-wallet completed: ${formatJson(result)}`,
+          ),
+        ),
+      ),
+    );
+
+    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+  });
 
 program
   .command("register-active-operator")
@@ -758,6 +1578,25 @@ program
         Effect.logInfo(
           `register-active-operator completed: ${JSON.stringify(result)}`,
         ),
+      ),
+    );
+
+    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+  });
+
+program
+  .command("activate-operator")
+  .description(
+    "Activate an already registered operator wallet without rerunning registration or deregistration",
+  )
+  .action(async () => {
+    const mainEffect = pipe(
+      RegisterActiveOperator.activateProgram,
+      Effect.provide(Services.NodeConfig.layer),
+      Effect.provide(Services.MidgardContracts.Default),
+      Effect.provide(Services.Lucid.Default),
+      Effect.tap((result) =>
+        Effect.logInfo(`activate-operator completed: ${JSON.stringify(result)}`),
       ),
     );
 
@@ -897,7 +1736,7 @@ program
         return;
       }
 
-      const mainEffect = provideTxServices(
+      const mainEffect = provideDatabaseTxServices(
         Effect.gen(function* () {
           const lucidService = yield* Services.Lucid;
           const contracts = yield* Services.MidgardContracts;
@@ -952,6 +1791,46 @@ program
           ),
           Effect.tap((result) =>
             Effect.logInfo(`submit-deposit completed: txHash=${result.txHash}`),
+          ),
+        ),
+      );
+
+      NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    },
+  );
+
+program
+  .command("reconcile-deposit-submission")
+  .description(
+    "Reconcile a previously submitted deposit transaction before retrying after a confirmation timeout",
+  )
+  .requiredOption("--tx-hash <hex>", "32-byte Cardano transaction hash")
+  .option("--json", "Print machine-readable JSON output", true)
+  .action(
+    async (options: {
+      readonly txHash: string;
+      readonly json?: boolean;
+    }) => {
+      let txHash: string;
+      try {
+        txHash = normalizeHex(options.txHash, {
+          byteLength: 32,
+          trim: false,
+        });
+      } catch (error) {
+        console.error(
+          `reconcile-deposit-submission: invalid --tx-hash: ${errorMessage(error)}`,
+        );
+        process.exitCode = 1;
+        return;
+      }
+
+      const mainEffect = provideDatabaseTxServices(
+        SubmitDeposit.reconcileDepositSubmissionAttemptProgram(txHash).pipe(
+          Effect.tap((result) =>
+            Effect.sync(() => {
+              process.stdout.write(`${formatJson(result)}\n`);
+            }),
           ),
         ),
       );

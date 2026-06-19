@@ -26,12 +26,14 @@ import {
   scriptHashToCredential,
   toUnit,
 } from "@lucid-evolution/lucid";
-import { Duration, Effect, Metric, Ref } from "effect";
+import { Duration, Effect, Metric, Option, Ref } from "effect";
 
 import {
   BlocksDB,
-  ConfirmedLedgerDB,
+  DepositsDB,
   MutationJobsDB,
+  PendingBlockFinalizationsDB,
+  WithdrawalsDB,
 } from "@/database/index.js";
 import {
   DatabaseError,
@@ -59,6 +61,13 @@ import {
 import { outRefLabel } from "@/tx-context.js";
 import { breakDownTx } from "@/utils.js";
 import { alignedUnixTimeStrictlyAfter } from "@/workers/utils/commit-end-time.js";
+import {
+  materializeConfirmedLedgerSnapshot,
+  replaceConfirmedLedgerWithEntries,
+} from "./confirmed-ledger-snapshot.js";
+import {
+  synchronizeCommitMpfStoresFromConfirmedLedger,
+} from "@/workers/utils/mpf.js";
 
 const mergeBlockCounter = Metric.counter("merge_block_count", {
   description: "A counter for tracking merged blocks",
@@ -543,9 +552,9 @@ export const buildAndSubmitMergeTx = (
             cause,
           }),
       });
-      const feeInput = yield* SDK.selectPureAdaFeeInput(
-        availableOperatorWalletUtxos(operatorWalletView),
-      );
+      const presetWalletInputs =
+        availableOperatorWalletUtxos(operatorWalletView);
+      const feeInput = yield* SDK.selectPureAdaFeeInput(presetWalletInputs);
       yield* Effect.logInfo(
         `🔸 Using fee input ${outRefLabel(feeInput)} (lovelace=${(feeInput.assets.lovelace ?? 0n).toString()}, known_wallet_utxos=${operatorWalletView.knownUtxos.length.toString()}) for merge tx.`,
       );
@@ -559,6 +568,7 @@ export const buildAndSubmitMergeTx = (
           firstBlockUTxO,
           validFrom: mergeMaturityValidFromUnixTime,
           feeInput,
+          presetWalletInputs,
           hubOracleRefInput,
           referenceScripts,
         }).pipe(Effect.tapError(() => Metric.increment(mergeFailureCounter)));
@@ -609,6 +619,51 @@ export const buildAndSubmitMergeTx = (
         const jobId = `confirmed_merge_finalization:${headerHash.toString(
           "hex",
         )}`;
+        const projectedDepositEntries =
+          yield* DepositsDB.retrieveByProjectedHeaderHash(headerHash);
+        const projectedWithdrawalEntries =
+          yield* WithdrawalsDB.retrieveByProjectedHeaderHash(headerHash);
+        const projectedDepositEventIds = projectedDepositEntries.map(
+          (entry) => entry[DepositsDB.Columns.ID],
+        );
+        const projectedWithdrawalEventIds = projectedWithdrawalEntries.map(
+          (entry) => entry[WithdrawalsDB.Columns.ID],
+        );
+        const finalizedJournal =
+          yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(headerHash);
+        if (Option.isNone(finalizedJournal)) {
+          return yield* Effect.fail(
+            new DatabaseError({
+              table: PendingBlockFinalizationsDB.tableName,
+              message:
+                "Failed to finalize confirmed-state merge locally because the pending-finalization journal is missing",
+              cause: `header_hash=${headerHash.toString("hex")}`,
+            }),
+          );
+        }
+        const confirmedLedgerSnapshot =
+          yield* materializeConfirmedLedgerSnapshot(finalizedJournal.value);
+        const confirmedLedgerSnapshotEntries = confirmedLedgerSnapshot.entries;
+        const confirmedLedgerSnapshotRoot = confirmedLedgerSnapshot.root;
+        const expectedSnapshotRoot =
+          finalizedJournal.value[
+            PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT
+          ];
+        if (
+          confirmedLedgerSnapshotRoot !== expectedSnapshotRoot ||
+          confirmedLedgerSnapshotRoot !== blockHeader.utxosRoot
+        ) {
+          return yield* Effect.fail(
+            new DatabaseError({
+              table: PendingBlockFinalizationsDB.tableName,
+              message:
+                "Failed to finalize confirmed-state merge locally because the durable UTxO snapshot root does not match the confirmed block",
+              cause: `header_hash=${headerHash.toString(
+                "hex",
+              )},snapshot_root=${confirmedLedgerSnapshotRoot},journal_expected_root=${expectedSnapshotRoot},confirmed_header_root=${blockHeader.utxosRoot}`,
+            }),
+          );
+        }
         yield* MutationJobsDB.start({
           jobId,
           kind: MutationJobsDB.Kind.ConfirmedMergeFinalization,
@@ -616,32 +671,36 @@ export const buildAndSubmitMergeTx = (
             headerHash: headerHash.toString("hex"),
             spentOutRefCount: preflightSpentOutRefs.length,
             producedUtxoCount: preflightProducedUTxOs.length,
+            depositEventCount: projectedDepositEventIds.length,
+            withdrawalEventCount: projectedWithdrawalEventIds.length,
+            confirmedLedgerSnapshotCount:
+              confirmedLedgerSnapshotEntries.length,
+            confirmedLedgerSnapshotRoot,
           },
         });
         const sql = yield* SqlClient.SqlClient;
-        // - Clear all the spent UTxOs from the confirmed ledger
-        // - Add all the produced UTxOs from the confirmed ledger
+        // - Replace the confirmed ledger with the full finalized block snapshot
         // - Remove all the tx hashes of the merged block from BlocksDB
-        const bs = 100;
         yield* sql
           .withTransaction(
             Effect.gen(function* () {
-              yield* Effect.logInfo("🔸 Clear confirmed ledger db...");
-              for (let i = 0; i < preflightSpentOutRefs.length; i += bs) {
-                yield* ConfirmedLedgerDB.clearUTxOs(
-                  preflightSpentOutRefs.slice(i, i + bs),
-                ).pipe(Effect.withSpan(`confirmed-ledger-clearUTxOs-${i}`));
-              }
-              yield* Effect.logInfo("🔸 Insert produced UTxOs...");
-              for (let i = 0; i < preflightProducedUTxOs.length; i += bs) {
-                yield* ConfirmedLedgerDB.insertMultiple(
-                  preflightProducedUTxOs.slice(i, i + bs),
-                ).pipe(Effect.withSpan(`confirmed-ledger-insert-${i}`));
-              }
+              yield* Effect.logInfo(
+                `🔸 Replace confirmed ledger db from finalized UTxO snapshot (entries=${confirmedLedgerSnapshotEntries.length.toString()},root=${confirmedLedgerSnapshotRoot})...`,
+              );
+              yield* replaceConfirmedLedgerWithEntries(
+                confirmedLedgerSnapshotEntries,
+              );
               yield* Effect.logInfo("🔸 Clear block from BlocksDB...");
               yield* BlocksDB.clearBlock(headerHash).pipe(
                 Effect.withSpan("clear-block-from-BlocksDB"),
               );
+              yield* DepositsDB.markConsumedByEventIds(
+                projectedDepositEventIds,
+              ).pipe(Effect.withSpan("mark-merged-deposits-consumed"));
+              yield* WithdrawalsDB.markFinalizedByEventIds(
+                projectedWithdrawalEventIds,
+                headerHash,
+              ).pipe(Effect.withSpan("mark-merged-withdrawals-finalized"));
             }),
           )
           .pipe(
@@ -650,6 +709,23 @@ export const buildAndSubmitMergeTx = (
               "Failed to finalize confirmed-state merge locally",
             ),
           );
+        const syncResult =
+          yield* synchronizeCommitMpfStoresFromConfirmedLedger.pipe(
+            Effect.mapError(
+              (error) =>
+                new DatabaseError({
+                  table: "confirmed_merge_finalization",
+                  message:
+                    "Failed to synchronize commit MPF stores after confirmed-state merge",
+                  cause: formatUnknownError(error),
+                }),
+            ),
+          );
+        yield* Effect.logInfo(
+          `🔸 Synchronized commit MPFs after merge local finalization (header=${headerHash.toString(
+            "hex",
+          )},ledger_entries=${syncResult.ledgerEntryCount.toString()},ledger_root=${syncResult.ledgerRoot}).`,
+        );
         yield* MutationJobsDB.markCompleted(jobId);
       }).pipe(
         Effect.tapError((error) =>

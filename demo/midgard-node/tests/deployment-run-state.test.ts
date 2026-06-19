@@ -1,0 +1,360 @@
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+
+import {
+  createReferenceScriptAuthPolicy,
+  referenceScriptAuthPolicyDeploymentInfo,
+} from "@al-ft/midgard-sdk";
+import type { LucidEvolution } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+import { afterEach, describe, expect, it } from "vitest";
+
+import {
+  resolveReferenceScriptAuthPolicyProgram,
+  type DeploymentRunCliOptions,
+} from "@/commands/deployment-run-state.js";
+import {
+  createDeploymentRunState,
+  defaultDeploymentRunStatePath,
+  DEPLOYMENT_RUN_STATE_SCHEMA_VERSION,
+  loadDeploymentRunState,
+  mutateDeploymentRunState,
+  parseDeploymentRunState,
+  RunStateError,
+  sha256File,
+  transitionDeploymentStep,
+  withDeploymentRunStateLock,
+  writeDeploymentRunStateAtomic,
+} from "@/e2e/run-state.js";
+
+let tempDirs: string[] = [];
+
+const lucid = {
+  unixTimeToSlot: (unixTime: number) => Math.floor(unixTime / 1_000),
+} as unknown as LucidEvolution;
+
+const makeTempDir = async (): Promise<string> => {
+  const dir = await mkdtemp(join(tmpdir(), "midgard-run-state-"));
+  tempDirs.push(dir);
+  return dir;
+};
+
+afterEach(async () => {
+  await Promise.all(
+    tempDirs.map((dir) => rm(dir, { recursive: true, force: true })),
+  );
+  tempDirs = [];
+});
+
+describe("deployment run state", () => {
+  it("creates and parses a versioned deployment run state", () => {
+    const state = createDeploymentRunState({
+      mode: "fresh",
+      runId: "run-1",
+      now: new Date("2026-01-01T00:00:00.000Z"),
+      identity: {
+        network: "Preprod",
+        hubOracleOneShot: {
+          txHash: "aa".repeat(32),
+          outputIndex: 1,
+        },
+      },
+    });
+
+    expect(parseDeploymentRunState(state)).toEqual(state);
+    expect(state).toMatchObject({
+      schemaVersion: DEPLOYMENT_RUN_STATE_SCHEMA_VERSION,
+      runId: "run-1",
+      mode: "fresh",
+      identity: {
+        network: "Preprod",
+      },
+    });
+  });
+
+  it("rejects corrupt or unsupported state", () => {
+    expect(() => parseDeploymentRunState({})).toThrow(RunStateError);
+    expect(() =>
+      parseDeploymentRunState({
+        schemaVersion: "old",
+      }),
+    ).toThrow("Unsupported run-state schemaVersion");
+  });
+
+  it("transitions steps without dropping prior evidence", () => {
+    const state = createDeploymentRunState({
+      mode: "resume",
+      runId: "run-2",
+      now: new Date("2026-01-01T00:00:00.000Z"),
+    });
+
+    const submitted = transitionDeploymentStep(
+      state,
+      "initProtocol",
+      "submitted",
+      {
+        txHashes: ["11".repeat(32)],
+        evidence: ["logs/init.log"],
+      },
+      new Date("2026-01-01T00:01:00.000Z"),
+    );
+    const complete = transitionDeploymentStep(
+      submitted,
+      "initProtocol",
+      "complete",
+      {
+        message: "deployment-status complete",
+      },
+      new Date("2026-01-01T00:02:00.000Z"),
+    );
+
+    expect(complete.steps.initProtocol).toMatchObject({
+      status: "complete",
+      txHashes: ["11".repeat(32)],
+      evidence: ["logs/init.log"],
+      message: "deployment-status complete",
+    });
+    expect(complete.events.map((event) => event.kind)).toEqual([
+      "created",
+      "step_transition",
+      "step_transition",
+    ]);
+  });
+
+  it("writes and reads state atomically", async () => {
+    const dir = await makeTempDir();
+    const path = join(dir, "state", "run-state.json");
+    const state = transitionDeploymentStep(
+      createDeploymentRunState({
+        mode: "attach",
+        runId: "run-3",
+        now: new Date("2026-01-01T00:00:00.000Z"),
+      }),
+      "referenceScripts",
+      "complete",
+      {
+        outRefs: ["aa".repeat(32) + "#0"],
+      },
+      new Date("2026-01-01T00:03:00.000Z"),
+    );
+
+    await writeDeploymentRunStateAtomic(path, state);
+
+    await expect(loadDeploymentRunState(path)).resolves.toEqual(state);
+    await expect(readFile(path, "utf8")).resolves.toContain(
+      '"schemaVersion": "midgard-deployment-run-state-v1"',
+    );
+  });
+
+  it("surfaces corrupt JSON as a run-state error", async () => {
+    const dir = await makeTempDir();
+    const path = join(dir, "run-state.json");
+    await writeFile(path, "{not json", "utf8");
+
+    await expect(loadDeploymentRunState(path)).rejects.toThrow(RunStateError);
+  });
+
+  it("locks mutations and refuses a concurrent holder", async () => {
+    const dir = await makeTempDir();
+    const path = join(dir, "run-state.json");
+
+    await expect(
+      withDeploymentRunStateLock(path, async () => {
+        await expect(
+          withDeploymentRunStateLock(path, async () => "unexpected"),
+        ).rejects.toThrow("Run state is locked");
+        return "ok";
+      }),
+    ).resolves.toBe("ok");
+  });
+
+  it("mutates under the lock and persists the next state", async () => {
+    const dir = await makeTempDir();
+    const path = join(dir, "run-state.json");
+
+    const next = await mutateDeploymentRunState(
+      path,
+      () =>
+        createDeploymentRunState({
+          mode: "fresh",
+          runId: "run-4",
+          now: new Date("2026-01-01T00:00:00.000Z"),
+        }),
+      (state) =>
+        transitionDeploymentStep(
+          state,
+          "hubOracleNonce",
+          "confirmed",
+          { outRefs: ["bb".repeat(32) + "#1"] },
+          new Date("2026-01-01T00:05:00.000Z"),
+        ),
+    );
+
+    expect(next.steps.hubOracleNonce?.status).toBe("confirmed");
+    await expect(loadDeploymentRunState(path)).resolves.toEqual(next);
+  });
+
+  it("hashes manifest files and resolves env override paths", async () => {
+    const dir = await makeTempDir();
+    const manifestPath = join(dir, "contract-deployment-info.json");
+    await writeFile(manifestPath, '{"contracts":{}}\n', "utf8");
+
+    await expect(sha256File(manifestPath)).resolves.toBe(
+      "4f68b856c756173b67a298783e963bdddc490623c904f6ad807c0e97d248f390",
+    );
+    expect(
+      defaultDeploymentRunStatePath({
+        MIDGARD_RUN_STATE_PATH: join(dir, "custom-state.json"),
+      }),
+    ).toBe(join(dir, "custom-state.json"));
+  });
+});
+
+describe("deployment run-state command identity guards", () => {
+  const resolveAuthPolicy = ({
+    runStatePath,
+    manifestPath,
+    hubOracleOneShotTxHash,
+  }: {
+    readonly runStatePath: string;
+    readonly manifestPath: string;
+    readonly hubOracleOneShotTxHash: string;
+  }) => {
+    const options: DeploymentRunCliOptions = {
+      runStatePath,
+      freshRedeploy: false,
+    };
+    return Effect.runPromise(
+      resolveReferenceScriptAuthPolicyProgram({
+        options,
+        lucid,
+        network: "Preprod",
+        hubOracleOneShotTxHash,
+        hubOracleOneShotOutputIndex: 0,
+        timelockDurationMs: 10_000,
+        manifestOutputPath: manifestPath,
+      }),
+    );
+  };
+
+  it("refuses to reuse a run-state auth policy for a different one-shot identity", async () => {
+    const dir = await makeTempDir();
+    const runStatePath = join(dir, "run-state.json");
+    const manifestPath = join(dir, "contract-deployment-info.json");
+    const policy = createReferenceScriptAuthPolicy(lucid, 1_000, 10_000);
+    const policyInfo = referenceScriptAuthPolicyDeploymentInfo(policy);
+    await writeDeploymentRunStateAtomic(
+      runStatePath,
+      createDeploymentRunState({
+        mode: "resume",
+        runId: "run-mismatch",
+        now: new Date("2026-01-01T00:00:00.000Z"),
+        identity: {
+          network: "Preprod",
+          hubOracleOneShot: {
+            txHash: "11".repeat(32),
+            outputIndex: 0,
+          },
+          manifestPath,
+          referenceScriptAuthPolicyId: policyInfo.policyId,
+          referenceScriptAuthPolicy: {
+            policyId: policyInfo.policyId,
+            nativeScript: policyInfo.nativeScript,
+          },
+        },
+      }),
+    );
+
+    await expect(
+      resolveAuthPolicy({
+        runStatePath,
+        manifestPath,
+        hubOracleOneShotTxHash: "22".repeat(32),
+      }),
+    ).rejects.toThrow("deployment run state deployment identity does not match");
+  });
+
+  it("refuses to import a manifest auth policy for a different one-shot identity", async () => {
+    const dir = await makeTempDir();
+    const runStatePath = join(dir, "run-state.json");
+    const manifestPath = join(dir, "contract-deployment-info.json");
+    const policy = createReferenceScriptAuthPolicy(lucid, 1_000, 10_000);
+    const policyInfo = referenceScriptAuthPolicyDeploymentInfo(policy);
+    await writeFile(
+      manifestPath,
+      `${JSON.stringify(
+        {
+          schemaVersion: "midgard-deployment-manifest-v2",
+          network: "Preprod",
+          hubOracleOneShot: {
+            txHash: "33".repeat(32),
+            outputIndex: 0,
+            outRef: `${"33".repeat(32)}#0`,
+            status: "prepared",
+          },
+          referenceScriptAuthPolicy: policyInfo,
+          contracts: {},
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    await expect(
+      resolveAuthPolicy({
+        runStatePath,
+        manifestPath,
+        hubOracleOneShotTxHash: "44".repeat(32),
+      }),
+    ).rejects.toThrow("deployment manifest deployment identity does not match");
+  });
+
+  it("imports a manifest auth policy only when deployment identity matches", async () => {
+    const dir = await makeTempDir();
+    const runStatePath = join(dir, "run-state.json");
+    const manifestPath = join(dir, "contract-deployment-info.json");
+    const oneShotTxHash = "55".repeat(32);
+    const policy = createReferenceScriptAuthPolicy(lucid, 1_000, 10_000);
+    const policyInfo = referenceScriptAuthPolicyDeploymentInfo(policy);
+    await writeFile(
+      manifestPath,
+      `${JSON.stringify(
+        {
+          schemaVersion: "midgard-deployment-manifest-v2",
+          network: "Preprod",
+          hubOracleOneShot: {
+            txHash: oneShotTxHash,
+            outputIndex: 0,
+            outRef: `${oneShotTxHash}#0`,
+            status: "prepared",
+          },
+          referenceScriptAuthPolicy: policyInfo,
+          contracts: {},
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    await expect(
+      resolveAuthPolicy({
+        runStatePath,
+        manifestPath,
+        hubOracleOneShotTxHash: oneShotTxHash,
+      }),
+    ).resolves.toMatchObject({ policyId: policyInfo.policyId });
+    await expect(loadDeploymentRunState(runStatePath)).resolves.toMatchObject({
+      identity: {
+        network: "Preprod",
+        hubOracleOneShot: {
+          txHash: oneShotTxHash,
+          outputIndex: 0,
+        },
+        referenceScriptAuthPolicyId: policyInfo.policyId,
+      },
+    });
+  });
+});

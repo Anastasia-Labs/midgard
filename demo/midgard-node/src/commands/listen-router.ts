@@ -144,23 +144,52 @@ const parsePositiveInteger = (
 
 const encodeStateQueueMutationLease = (
   lease: StateQueueMutationLeasesDB.Entry | undefined,
+  now: Date = new Date(),
 ) =>
   lease === undefined
     ? null
-    : {
-        token: lease[StateQueueMutationLeasesDB.Columns.TOKEN],
-        holder: lease[StateQueueMutationLeasesDB.Columns.HOLDER],
-        status: lease[StateQueueMutationLeasesDB.Columns.STATUS],
-        acquiredAt:
-          lease[StateQueueMutationLeasesDB.Columns.ACQUIRED_AT].toISOString(),
-        expiresAt:
-          lease[StateQueueMutationLeasesDB.Columns.EXPIRES_AT].toISOString(),
-        releasedAt:
-          lease[
-            StateQueueMutationLeasesDB.Columns.RELEASED_AT
-          ]?.toISOString() ?? null,
-        lastError: lease[StateQueueMutationLeasesDB.Columns.LAST_ERROR] ?? null,
-      };
+    : (() => {
+        const expiresAt = lease[StateQueueMutationLeasesDB.Columns.EXPIRES_AT];
+        const remainingMs = expiresAt.getTime() - now.getTime();
+        return {
+          token: lease[StateQueueMutationLeasesDB.Columns.TOKEN],
+          holder: lease[StateQueueMutationLeasesDB.Columns.HOLDER],
+          status: lease[StateQueueMutationLeasesDB.Columns.STATUS],
+          acquiredAt:
+            lease[StateQueueMutationLeasesDB.Columns.ACQUIRED_AT].toISOString(),
+          expiresAt: expiresAt.toISOString(),
+          releasedAt:
+            lease[
+              StateQueueMutationLeasesDB.Columns.RELEASED_AT
+            ]?.toISOString() ?? null,
+          lastError:
+            lease[StateQueueMutationLeasesDB.Columns.LAST_ERROR] ?? null,
+          remainingMs,
+          expired: remainingMs < 0,
+          blockedUntil: expiresAt.toISOString(),
+        };
+      })();
+
+const encodeStateQueueMutationLeaseInspection = (
+  inspection: StateQueueMutationLeasesDB.LeaseInspection,
+) => ({
+  status: inspection.activeLease === undefined ? "idle" : "busy",
+  dbNow: inspection.dbNow.toISOString(),
+  activeLease: encodeStateQueueMutationLease(
+    inspection.activeLease,
+    inspection.dbNow,
+  ),
+  pendingFinalizations: inspection.pendingFinalizations.map((entry) => ({
+    headerHash: entry.headerHash,
+    submittedTxHash: entry.submittedTxHash,
+    status: entry.status,
+    createdAt: entry.createdAt.toISOString(),
+    updatedAt: entry.updatedAt.toISOString(),
+  })),
+  recentLeases: inspection.recentLeases.map((lease) =>
+    encodeStateQueueMutationLease(lease, inspection.dbNow),
+  ),
+});
 
 export type StateQueueMutationLeaseEndpointResult = {
   readonly statusCode: number;
@@ -168,6 +197,9 @@ export type StateQueueMutationLeaseEndpointResult = {
 };
 
 export type StateQueueMutationLeaseEndpointStore<R = Database> = {
+  readonly inspect: (args?: {
+    readonly recentLimit?: number;
+  }) => Effect.Effect<StateQueueMutationLeasesDB.LeaseInspection, unknown, R>;
   readonly tryAcquire: (args: {
     readonly holder: string;
     readonly ttlMs?: number;
@@ -189,6 +221,7 @@ export type StateQueueMutationLeaseEndpointStore<R = Database> = {
 
 const defaultStateQueueMutationLeaseEndpointStore: StateQueueMutationLeaseEndpointStore =
   {
+    inspect: StateQueueMutationLeasesDB.inspect,
     tryAcquire: StateQueueMutationLeasesDB.tryAcquire,
     renew: StateQueueMutationLeasesDB.renew,
     release: StateQueueMutationLeasesDB.release,
@@ -207,6 +240,29 @@ export const resolveStateQueueMutationLeaseRequest = <R = Database>(
       };
     }
     const action = (body as { readonly action?: unknown }).action;
+    if (action === "inspect") {
+      let recentLimit: number | undefined;
+      try {
+        recentLimit = parsePositiveInteger(
+          (body as { readonly recentLimit?: unknown }).recentLimit,
+          "recentLimit",
+        );
+      } catch (error) {
+        return {
+          statusCode: 400,
+          body: {
+            error: error instanceof Error ? error.message : String(error),
+          },
+        };
+      }
+      const inspection = yield* store.inspect(
+        recentLimit === undefined ? undefined : { recentLimit },
+      );
+      return {
+        statusCode: 200,
+        body: encodeStateQueueMutationLeaseInspection(inspection),
+      };
+    }
     if (action === "acquire") {
       const holderValue = (body as { readonly holder?: unknown }).holder;
       const holder =
@@ -624,6 +680,41 @@ const postStateQueueMutationLeaseHandler = Effect.gen(function* () {
   ),
 );
 
+const getStateQueueMutationLeaseHandler = Effect.gen(function* () {
+  const params = yield* ParsedSearchParams;
+  const recentLimitParam = params["recent_limit"];
+  let recentLimit: number | undefined;
+  try {
+    recentLimit =
+      recentLimitParam === undefined
+        ? undefined
+        : parsePositiveInteger(Number(recentLimitParam), "recent_limit");
+  } catch (error) {
+    return yield* HttpServerResponse.json(
+      { error: error instanceof Error ? error.message : String(error) },
+      { status: 400 },
+    );
+  }
+  const inspection = yield* StateQueueMutationLeasesDB.inspect(
+    recentLimit === undefined ? undefined : { recentLimit },
+  );
+  return yield* HttpServerResponse.json(
+    encodeStateQueueMutationLeaseInspection(inspection),
+  );
+}).pipe(
+  Effect.catchTag("HttpBodyError", (e) =>
+    failWith500("GET", STATE_QUEUE_MUTATION_LEASE_ENDPOINT, e),
+  ),
+  Effect.catchTag("DatabaseError", (e) =>
+    failWith500(
+      "GET",
+      STATE_QUEUE_MUTATION_LEASE_ENDPOINT,
+      e.cause,
+      `db failure with table ${e.table}`,
+    ),
+  ),
+);
+
 /**
  * `GET /deposit-status`: returns one serialized deposit row by event id or L1
  * tx hash.
@@ -731,6 +822,17 @@ const getReadinessHandler = (txQueue: Queue.Dequeue<QueuedTxPayload>) =>
     const providerProbe = yield* Effect.either(
       Initialization.fetchHubOracleWitness(lucid.api, contracts),
     );
+    const leaseInspection = yield* StateQueueMutationLeasesDB.inspect({
+      recentLimit: 3,
+    });
+    const encodedLeaseInspection =
+      encodeStateQueueMutationLeaseInspection(leaseInspection);
+    const activeLease = leaseInspection.activeLease;
+    const activeLeaseRemainingMs =
+      activeLease === undefined
+        ? null
+        : activeLease[StateQueueMutationLeasesDB.Columns.EXPIRES_AT].getTime() -
+          leaseInspection.dbNow.getTime();
 
     const baseReadiness = evaluateReadiness({
       nowMillis,
@@ -750,6 +852,16 @@ const getReadinessHandler = (txQueue: Queue.Dequeue<QueuedTxPayload>) =>
       maxUnresolvedBlockSubmissionAgeMs:
         nodeConfig.UNCONFIRMED_BLOCK_MAX_AGE_MS,
       dbHealthy,
+      stateQueueMutationLease: {
+        active: activeLease !== undefined,
+        stale:
+          activeLeaseRemainingMs !== null &&
+          activeLeaseRemainingMs <
+            -nodeConfig.STATE_QUEUE_MUTATION_LEASE_STALE_GRACE_MS,
+        remainingMs: activeLeaseRemainingMs,
+        holder:
+          activeLease?.[StateQueueMutationLeasesDB.Columns.HOLDER] ?? null,
+      },
     });
     const reasons = [...baseReadiness.reasons];
     if (providerProbe._tag === "Left") {
@@ -777,6 +889,7 @@ const getReadinessHandler = (txQueue: Queue.Dequeue<QueuedTxPayload>) =>
       unresolvedBlockSubmissionAgeMs,
       legacyInMemoryQueueDepth: legacyQueueDepth,
       providerQueryHealthy: providerProbe._tag === "Right",
+      stateQueueMutationLease: encodedLeaseInspection,
     };
 
     return yield* HttpServerResponse.json(readiness, {
@@ -1537,6 +1650,13 @@ export const buildListenRouter = (
       HttpRouter.get(
         `/${STATE_QUEUE_ENDPOINT}`,
         withAdminAccess(STATE_QUEUE_ENDPOINT, getStateQueueHandler),
+      ),
+      HttpRouter.get(
+        `/${STATE_QUEUE_MUTATION_LEASE_ENDPOINT}`,
+        withAdminAccess(
+          STATE_QUEUE_MUTATION_LEASE_ENDPOINT,
+          getStateQueueMutationLeaseHandler,
+        ),
       ),
       HttpRouter.post(
         `/${STATE_QUEUE_MUTATION_LEASE_ENDPOINT}`,

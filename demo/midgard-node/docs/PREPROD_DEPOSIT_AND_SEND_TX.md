@@ -42,7 +42,7 @@ At minimum, verify these fields are set correctly:
 
 The runbook below also uses:
 
-- `USER_WALLET` for the deposit signer and later L2 sender wallet
+- `USER_SEED_PHRASE` for the deposit signer and later L2 sender wallet
 - optionally `DEST_WALLET` if you want to derive a second destination address from a seed phrase
 
 ## 1. Build And Start The Node
@@ -65,10 +65,10 @@ In a second terminal:
 ```sh
 cd demo/midgard-node
 
-export USER_WALLET="your user seed phrase here"
+export USER_SEED_PHRASE="your user seed phrase here"
 export DEST_WALLET="your destination seed phrase here"
 
-export USER_L2_ADDRESS="$(node --input-type=module -e 'import { walletFromSeed } from "@lucid-evolution/lucid"; console.log(walletFromSeed(process.env.USER_WALLET, { network: "Preprod" }).address)')"
+export USER_L2_ADDRESS="$(node --input-type=module -e 'import { walletFromSeed } from "@lucid-evolution/lucid"; console.log(walletFromSeed(process.env.USER_SEED_PHRASE, { network: "Preprod" }).address)')"
 export DEST_L2_ADDRESS="$(node --input-type=module -e 'import { walletFromSeed } from "@lucid-evolution/lucid"; console.log(walletFromSeed(process.env.DEST_WALLET, { network: "Preprod" }).address)')"
 
 printf 'USER_L2_ADDRESS=%s\n' "$USER_L2_ADDRESS"
@@ -86,7 +86,7 @@ cd demo/midgard-node
 pnpm build
 
 DEPOSIT_JSON="$(node dist/index.js submit-deposit \
-  --wallet-seed-phrase-env USER_WALLET \
+  --wallet-seed-phrase-env USER_SEED_PHRASE \
   --l2-address "$USER_L2_ADDRESS" \
   --lovelace 12000000)"
 
@@ -95,7 +95,7 @@ printf '%s\n' "$DEPOSIT_JSON" | jq .
 
 Important details:
 
-- `submit-deposit` defaults to `L1_OPERATOR_SEED_PHRASE`; for this flow, override it with `--wallet-seed-phrase-env USER_WALLET`.
+- `submit-deposit` defaults to `L1_OPERATOR_SEED_PHRASE`; for this flow, override it with `--wallet-seed-phrase-env USER_SEED_PHRASE`.
 - The command signs, submits, waits for L1 confirmation, and then prints JSON
   containing `txHash`, `metadata.depositEventId`, and the deposit auth asset.
 - If the user wallet collides with an operational node wallet, the command will fail by design.
@@ -155,7 +155,7 @@ Send part of the deposited lovelace to another L2 address:
 cd demo/midgard-node
 
 node dist/index.js submit-l2-transfer \
-  --wallet-seed-phrase-env USER_WALLET \
+  --wallet-seed-phrase-env USER_SEED_PHRASE \
   --l2-address "$DEST_L2_ADDRESS" \
   --lovelace 5000000
 ```
@@ -164,7 +164,7 @@ Notes:
 
 - `submit-l2-transfer` also has the alias `submit-tx`.
 - The default endpoint is taken from `MIDGARD_NODE_URL`, or falls back to `http://127.0.0.1:$PORT`.
-- The command prints JSON including `txId`, `status`, `selectedInputs`, `requestedAssets`, and `changeAssets`.
+- The command prints JSON including `txId`, `status`, `selectedInputs`, `requestedAssets`, and `changeAssets`; the status API still takes this value as `tx_hash`.
 - With the default API submission path, the immediate response status is typically `queued`.
 - The sender wallet for this command must be the same wallet whose address received the deposit in step 3.
 
@@ -172,7 +172,7 @@ If you want to override the node endpoint explicitly:
 
 ```sh
 node dist/index.js submit-l2-transfer \
-  --wallet-seed-phrase-env USER_WALLET \
+  --wallet-seed-phrase-env USER_SEED_PHRASE \
   --endpoint http://127.0.0.1:3000 \
   --l2-address "$DEST_L2_ADDRESS" \
   --lovelace 5000000
@@ -213,7 +213,7 @@ Expected result:
 
 ### `submit-deposit` rejects the wallet as operationally conflicting
 
-Use a separate `USER_WALLET`. The deposit and send-tx flows intentionally reject wallets that match:
+Use a separate `USER_SEED_PHRASE`. The deposit and send-tx flows intentionally reject wallets that match:
 
 - `L1_OPERATOR_SEED_PHRASE`
 - `L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX`
@@ -233,7 +233,7 @@ The deposit must satisfy both:
 Check all of the following:
 
 - the deposit used `--l2-address "$USER_L2_ADDRESS"`,
-- the address was derived from the same `USER_WALLET` later used for `submit-l2-transfer`,
+- the address was derived from the same `USER_SEED_PHRASE` later used for `submit-l2-transfer`,
 - enough time elapsed for projection,
 - the node is connected to the correct preprod deployment and database.
 

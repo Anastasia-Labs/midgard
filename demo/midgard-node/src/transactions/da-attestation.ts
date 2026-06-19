@@ -1,15 +1,10 @@
-import { assetsEqual } from "@al-ft/midgard-core/assets";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import { canonicalPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
   Data,
-  type Assets,
-  type BuildTxWithRedeemer,
   type LucidEvolution,
   type Network,
-  type TxOutput,
   type TxSignBuilder,
   type UTxO,
   walletFromSeed,
@@ -72,24 +67,6 @@ type TxEvaluator = {
   }) => Promise<TxEvaluationRedeemer[]>;
 };
 
-type DaAttestationReferenceScripts = {
-  readonly daAttestationMinting: UTxO;
-  readonly daAttestationSpending: UTxO;
-  readonly stateQueueMinting: UTxO;
-  readonly stateQueueSpending: UTxO;
-};
-
-type UnattestedStateQueueHeader = {
-  readonly stateQueueUtxo: SDK.StateQueueUTxO;
-  readonly stateQueueNode: SDK.StateQueueNode;
-  readonly headerHash: string;
-};
-
-type DaAttestationCandidate = {
-  readonly utxo: UTxO;
-  readonly datum: SDK.DaAttestationDatum;
-};
-
 type OperatorDaConfig = {
   readonly L1_OPERATOR_SEED_PHRASE: string;
   readonly NETWORK: Network;
@@ -107,13 +84,6 @@ export type AttestStateQueueHeaderResult = {
   readonly appliedAttestationOutRef: string;
   readonly candidateCount: number;
 };
-
-const outputDatumCborMatches = (
-  output: Pick<TxOutput, "datum">,
-  datumCbor: string,
-): boolean =>
-  output.datum != null &&
-  canonicalPlutusDataCbor(output.datum) === canonicalPlutusDataCbor(datumCbor);
 
 const decodeDatum = <T>(
   utxo: UTxO,
@@ -221,11 +191,7 @@ const bootstrapExUnitsEvaluator: TxEvaluator = {
       redeemer_tag: fromCmlRedeemerTag(key.tag),
       redeemer_index: safeNumber(key.index, "redeemer index"),
       ex_units: {
-        mem: splitBudget(
-          context.protocolParameters.maxTxExMem,
-          count,
-          index,
-        ),
+        mem: splitBudget(context.protocolParameters.maxTxExMem, count, index),
         steps: splitBudget(
           context.protocolParameters.maxTxExSteps,
           count,
@@ -380,7 +346,7 @@ const compareBigIntDesc = (left: bigint, right: bigint): number =>
   left === right ? 0 : left > right ? -1 : 1;
 
 const daAttestationMatchesParams = (
-  candidate: DaAttestationCandidate,
+  candidate: SDK.DaAttestationUtxo,
   daParamsDatum: SDK.DaParamsDatum,
 ): boolean =>
   candidate.datum.da_threshold === daParamsDatum.da_threshold &&
@@ -388,57 +354,15 @@ const daAttestationMatchesParams = (
     daParamsDatum.committee_signers_hash;
 
 const daAttestationReachedThreshold = (
-  candidate: DaAttestationCandidate,
+  candidate: SDK.DaAttestationUtxo,
 ): boolean => candidate.datum.attestation_count >= candidate.datum.da_threshold;
 
-const signerIndexIsAttested = (
-  attestedSigners: string,
-  signerIndex: number,
-): boolean => {
-  const bytes = Buffer.from(attestedSigners, "hex");
-  const byteIndex = Math.floor(signerIndex / 8);
-  const byte = bytes[byteIndex];
-  if (byte === undefined) {
-    return false;
-  }
-  const bitInByte = signerIndex % 8;
-  return (byte & (1 << (7 - bitInByte))) !== 0;
-};
-
-const addSignerToAttestedBitmap = (
-  attestedSigners: string,
-  signerIndex: number,
-): string => {
-  const bytes = Buffer.from(attestedSigners, "hex");
-  const byteIndex = Math.floor(signerIndex / 8);
-  if (byteIndex >= bytes.length) {
-    throw new Error(
-      `DA signer index ${signerIndex.toString()} is out of range`,
-    );
-  }
-  const bitInByte = signerIndex % 8;
-  bytes[byteIndex] |= 1 << (7 - bitInByte);
-  return bytes.toString("hex");
-};
-
-const countSetBits = (hex: string): bigint => {
-  let count = 0n;
-  for (const byte of Buffer.from(hex, "hex")) {
-    let value = byte;
-    while (value !== 0) {
-      count += BigInt(value & 1);
-      value >>= 1;
-    }
-  }
-  return count;
-};
-
 const selectDaAttestationCandidate = (
-  candidates: readonly DaAttestationCandidate[],
+  candidates: readonly SDK.DaAttestationUtxo[],
   daParamsDatum: SDK.DaParamsDatum,
   label: string,
-  predicate: (candidate: DaAttestationCandidate) => boolean = () => true,
-): Effect.Effect<DaAttestationCandidate, SDK.StateQueueError> =>
+  predicate: (candidate: SDK.DaAttestationUtxo) => boolean = () => true,
+): Effect.Effect<SDK.DaAttestationUtxo, SDK.StateQueueError> =>
   Effect.gen(function* () {
     const matching = candidates
       .filter((candidate) =>
@@ -470,7 +394,7 @@ const fetchDaAttestationCandidates = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
   headerHash: string,
-): Effect.Effect<readonly DaAttestationCandidate[], SDK.StateQueueError> =>
+): Effect.Effect<readonly SDK.DaAttestationUtxo[], SDK.StateQueueError> =>
   Effect.gen(function* () {
     const unit = SDK.daAttestationUnit(contracts.daAttestation, headerHash);
     const utxos = yield* Effect.tryPromise({
@@ -507,7 +431,7 @@ const fetchVisibleDaAttestationCandidates = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
   headerHash: string,
-): Effect.Effect<readonly DaAttestationCandidate[], SDK.StateQueueError> =>
+): Effect.Effect<readonly SDK.DaAttestationUtxo[], SDK.StateQueueError> =>
   Effect.gen(function* () {
     const candidates = yield* fetchDaAttestationCandidates(
       lucid,
@@ -536,7 +460,7 @@ const fetchDaAttestationReferenceScripts = (
   lucid: LucidEvolution,
   referenceScriptsAddress: string,
   contracts: SDK.MidgardValidators,
-): Effect.Effect<DaAttestationReferenceScripts, SDK.StateQueueError> =>
+): Effect.Effect<SDK.DaAttestationReferenceScripts, SDK.StateQueueError> =>
   fetchReferenceScriptUtxosProgram(
     lucid,
     referenceScriptsAddress,
@@ -582,7 +506,7 @@ const fetchUnattestedHeaders = (
   contracts: SDK.MidgardValidators,
   headerHash?: string,
 ): Effect.Effect<
-  readonly UnattestedStateQueueHeader[],
+  readonly SDK.DaAttestationStateQueueTarget[],
   | SDK.DataCoercionError
   | SDK.HashingError
   | SDK.LinkedListError
@@ -597,7 +521,7 @@ const fetchUnattestedHeaders = (
         stateQueuePolicyId: contracts.stateQueue.policyId,
       },
     );
-    const matches: UnattestedStateQueueHeader[] = [];
+    const matches: SDK.DaAttestationStateQueueTarget[] = [];
     for (const stateQueueUtxo of stateQueueUtxos) {
       if (stateQueueUtxo.datum.key === "Empty") {
         continue;
@@ -644,295 +568,16 @@ const indexedOperatorSignature = (
   headerHash: string,
   operatorSeedPhrase: string,
   network: Network,
-): string => {
+): SDK.DaAttestationSignatureWitness => {
   const wallet = walletFromSeed(operatorSeedPhrase, { network });
   const privateKey = CML.PrivateKey.from_bech32(wallet.paymentKey);
-  return `${OPERATOR_DA_SIGNER_INDEX.toString(16).padStart(2, "0")}${privateKey.sign(SDK.daAttestationMessage(headerHash)).to_hex()}`;
+  return {
+    signerIndex: OPERATOR_DA_SIGNER_INDEX,
+    signatureHex: privateKey
+      .sign(SDK.daAttestationMessage(headerHash))
+      .to_hex(),
+  };
 };
-
-const buildInitDaAttestationTx = ({
-  lucid,
-  contracts,
-  daParamsUtxo,
-  daParamsDatum,
-  target,
-  referenceScripts,
-}: {
-  readonly lucid: LucidEvolution;
-  readonly contracts: SDK.MidgardValidators;
-  readonly daParamsUtxo: UTxO;
-  readonly daParamsDatum: SDK.DaParamsDatum;
-  readonly target: UnattestedStateQueueHeader;
-  readonly referenceScripts: DaAttestationReferenceScripts;
-}): Effect.Effect<TxSignBuilder, SDK.LucidError> =>
-  Effect.gen(function* () {
-    const attestationUnit = SDK.daAttestationUnit(
-      contracts.daAttestation,
-      target.headerHash,
-    );
-    const attestationAssets: Assets = {
-      lovelace: DA_ATTESTATION_OUTPUT_LOVELACE,
-      [attestationUnit]: 1n,
-    };
-    const attestationDatum: SDK.DaAttestationDatum = {
-      header_hash: target.headerHash,
-      da_threshold: daParamsDatum.da_threshold,
-      committee_signers_hash: daParamsDatum.committee_signers_hash,
-      attested_signers: SDK.EMPTY_ATTESTED_SIGNER_BITMAP,
-      attestation_count: 0n,
-    };
-    const encodedAttestationDatum = Data.to(
-      attestationDatum as never,
-      SDK.DaAttestationDatum as never,
-    );
-    const initRedeemer = ((ctx) => {
-      SDK.requireOwnMintPurpose(
-        ctx,
-        contracts.daAttestation.policyId,
-        "DA attestation init",
-      );
-      return Data.to(
-        {
-          Init: {
-            output_index: SDK.requireUniqueOutputIndex(
-              ctx.outputs,
-              (output) =>
-                output.address ===
-                  contracts.daAttestation.spendingScriptAddress &&
-                outputDatumCborMatches(output, encodedAttestationDatum) &&
-                (output.assets[attestationUnit] ?? 0n) === 1n,
-              "DA attestation init",
-            ),
-            da_params_ref_input_index: SDK.requireReferenceInputIndex(
-              ctx,
-              daParamsUtxo,
-              "DA attestation init DA params",
-            ),
-            state_queue_ref_input_index: SDK.requireReferenceInputIndex(
-              ctx,
-              target.stateQueueUtxo.utxo,
-              "DA attestation init state queue",
-            ),
-            state_queue_mint_ref_script_input_index:
-              SDK.requireReferenceInputIndex(
-                ctx,
-                referenceScripts.stateQueueMinting,
-                "DA attestation init state_queue mint reference script",
-              ),
-          },
-        } satisfies SDK.DaAttestationMintRedeemer as never,
-        SDK.DaAttestationMintRedeemer as never,
-      );
-    }) satisfies BuildTxWithRedeemer;
-
-    return yield* completeWithLocalUplc(
-      lucid
-        .newTx()
-        .readFrom([
-          daParamsUtxo,
-          target.stateQueueUtxo.utxo,
-          referenceScripts.daAttestationMinting,
-          referenceScripts.stateQueueMinting,
-        ])
-        .mintAssets({ [attestationUnit]: 1n }, initRedeemer)
-        .pay.ToContract(
-          contracts.daAttestation.spendingScriptAddress,
-          { kind: "inline", value: encodedAttestationDatum },
-          attestationAssets,
-        ),
-      "DA attestation init",
-    );
-  });
-
-const buildAddSignaturesTx = ({
-  lucid,
-  contracts,
-  daParamsUtxo,
-  attestationUtxo,
-  attestationDatum,
-  signatureWitnesses,
-  referenceScripts,
-}: {
-  readonly lucid: LucidEvolution;
-  readonly contracts: SDK.MidgardValidators;
-  readonly daParamsUtxo: UTxO;
-  readonly attestationUtxo: UTxO;
-  readonly attestationDatum: SDK.DaAttestationDatum;
-  readonly signatureWitnesses: string;
-  readonly referenceScripts: DaAttestationReferenceScripts;
-}): Effect.Effect<TxSignBuilder, SDK.LucidError> =>
-  Effect.gen(function* () {
-    const updatedAttestedSigners = addSignerToAttestedBitmap(
-      attestationDatum.attested_signers,
-      OPERATOR_DA_SIGNER_INDEX,
-    );
-    const updatedDatum: SDK.DaAttestationDatum = {
-      ...attestationDatum,
-      attested_signers: updatedAttestedSigners,
-      attestation_count: countSetBits(updatedAttestedSigners),
-    };
-    const encodedUpdatedDatum = Data.to(
-      updatedDatum as never,
-      SDK.DaAttestationDatum as never,
-    );
-    const addSignaturesRedeemer = ((ctx) =>
-      Data.to(
-        {
-          AddSignatures: {
-            output_index: SDK.requireUniqueOutputIndex(
-              ctx.outputs,
-              (output) =>
-                output.address ===
-                  contracts.daAttestation.spendingScriptAddress &&
-                outputDatumCborMatches(output, encodedUpdatedDatum) &&
-                assetsEqual(output.assets, attestationUtxo.assets),
-              "DA attestation add-signatures",
-            ),
-            da_params_ref_input_index: SDK.requireReferenceInputIndex(
-              ctx,
-              daParamsUtxo,
-              "DA attestation add-signatures DA params",
-            ),
-            signatures: signatureWitnesses,
-          },
-        } satisfies SDK.DaAttestationSpendRedeemer as never,
-        SDK.DaAttestationSpendRedeemer as never,
-      )) satisfies BuildTxWithRedeemer;
-
-    const tx = lucid
-      .newTx()
-      .readFrom([daParamsUtxo, referenceScripts.daAttestationSpending])
-      .collectFrom([attestationUtxo], addSignaturesRedeemer)
-      .pay.ToContract(
-        contracts.daAttestation.spendingScriptAddress,
-        { kind: "inline", value: encodedUpdatedDatum },
-        attestationUtxo.assets,
-      );
-    return yield* completeWithLocalUplc(tx, "DA attestation add-signatures", {
-      providerEvalOnLocalBudgetFailure: true,
-      bootstrapExUnitsOnProviderFailure: true,
-    });
-  });
-
-const buildApplyAttestationTx = ({
-  lucid,
-  contracts,
-  target,
-  attestationUtxo,
-  referenceScripts,
-}: {
-  readonly lucid: LucidEvolution;
-  readonly contracts: SDK.MidgardValidators;
-  readonly target: UnattestedStateQueueHeader;
-  readonly attestationUtxo: UTxO;
-  readonly referenceScripts: DaAttestationReferenceScripts;
-}): Effect.Effect<TxSignBuilder, SDK.LucidError> =>
-  Effect.gen(function* () {
-    const attestationUnit = SDK.daAttestationUnit(
-      contracts.daAttestation,
-      target.headerHash,
-    );
-    const updatedStateQueueDatum = SDK.encodeLinkedListNodeView({
-      ...target.stateQueueUtxo.datum,
-      data: SDK.castStateQueueNodeToData({
-        header: target.stateQueueNode.header,
-        da_attestation: contracts.daAttestation.policyId,
-      }) as SDK.LinkedListNodeView["data"],
-    });
-    const daMintRedeemer = ((ctx) => {
-      SDK.requireOwnMintPurpose(
-        ctx,
-        contracts.daAttestation.policyId,
-        "DA attestation apply mint",
-      );
-      return Data.to(
-        {
-          ApplyToStateQueue: {
-            da_attestation_input_index: SDK.requireInputIndex(
-              ctx,
-              attestationUtxo,
-              "DA attestation apply DA attestation",
-            ),
-            state_queue_input_index: SDK.requireInputIndex(
-              ctx,
-              target.stateQueueUtxo.utxo,
-              "DA attestation apply state queue",
-            ),
-            state_queue_output_index: SDK.requireUniqueOutputIndex(
-              ctx.outputs,
-              (output) =>
-                output.address === contracts.stateQueue.spendingScriptAddress &&
-                outputDatumCborMatches(output, updatedStateQueueDatum) &&
-                assetsEqual(output.assets, target.stateQueueUtxo.utxo.assets),
-              "DA attestation apply state queue",
-            ),
-            state_queue_mint_ref_script_input_index:
-              SDK.requireReferenceInputIndex(
-                ctx,
-                referenceScripts.stateQueueMinting,
-                "DA attestation apply state_queue mint reference script",
-              ),
-          },
-        } satisfies SDK.DaAttestationMintRedeemer as never,
-        SDK.DaAttestationMintRedeemer as never,
-      );
-    }) satisfies BuildTxWithRedeemer;
-    const daSpendRedeemer = ((ctx) =>
-      Data.to(
-        {
-          BurnForStateQueue: {
-            mint_redeemer_index: SDK.requireMintRedeemerIndex(
-              ctx,
-              contracts.daAttestation.policyId,
-              "DA attestation apply DA attestation mint",
-            ),
-          },
-        } satisfies SDK.DaAttestationSpendRedeemer as never,
-        SDK.DaAttestationSpendRedeemer as never,
-      )) satisfies BuildTxWithRedeemer;
-    const stateQueueSpendRedeemer = ((ctx) =>
-      Data.to(
-        {
-          AttachDaAttestation: {
-            state_queue_input_index: SDK.requireInputIndex(
-              ctx,
-              target.stateQueueUtxo.utxo,
-              "DA attestation apply state queue",
-            ),
-            da_attestation_mint_redeemer_index: SDK.requireMintRedeemerIndex(
-              ctx,
-              contracts.daAttestation.policyId,
-              "DA attestation apply DA attestation mint",
-            ),
-          },
-        } satisfies SDK.StateQueueSpendRedeemer as never,
-        SDK.StateQueueSpendRedeemer as never,
-      )) satisfies BuildTxWithRedeemer;
-
-    return yield* completeWithLocalUplc(
-      lucid
-        .newTx()
-        .readFrom([
-          referenceScripts.daAttestationMinting,
-          referenceScripts.daAttestationSpending,
-          referenceScripts.stateQueueMinting,
-          referenceScripts.stateQueueSpending,
-        ])
-        .collectFrom([attestationUtxo], daSpendRedeemer)
-        .collectFrom([target.stateQueueUtxo.utxo], stateQueueSpendRedeemer)
-        .pay.ToContract(
-          contracts.stateQueue.spendingScriptAddress,
-          { kind: "inline", value: updatedStateQueueDatum },
-          target.stateQueueUtxo.utxo.assets,
-        )
-        .mintAssets({ [attestationUnit]: -1n }, daMintRedeemer),
-      "DA attestation apply",
-      {
-        providerEvalOnLocalBudgetFailure: true,
-        bootstrapExUnitsOnProviderFailure: true,
-      },
-    );
-  });
 
 const attestHeader = ({
   lucid,
@@ -948,11 +593,12 @@ const attestHeader = ({
   readonly nodeConfig: OperatorDaConfig;
   readonly daParamsUtxo: UTxO;
   readonly daParamsDatum: SDK.DaParamsDatum;
-  readonly target: UnattestedStateQueueHeader;
-  readonly referenceScripts: DaAttestationReferenceScripts;
+  readonly target: SDK.DaAttestationStateQueueTarget;
+  readonly referenceScripts: SDK.DaAttestationReferenceScripts;
 }): Effect.Effect<
   AttestStateQueueHeaderResult,
   | SDK.LucidError
+  | SDK.DaAttestationBuildError
   | SDK.StateQueueError
   | TxConfirmError
   | TxSignError
@@ -967,16 +613,20 @@ const attestHeader = ({
       target.headerHash,
     );
     if (candidates.length === 0) {
-      initTxHash = yield* submitCompletedTx(
+      const initTx = yield* SDK.incompleteInitDaAttestationTxProgram(
         lucid,
-        yield* buildInitDaAttestationTx({
-          lucid,
-          contracts,
+        contracts,
+        {
           daParamsUtxo,
           daParamsDatum,
           target,
           referenceScripts,
-        }),
+          attestationOutputLovelace: DA_ATTESTATION_OUTPUT_LOVELACE,
+        },
+      );
+      initTxHash = yield* submitCompletedTx(
+        lucid,
+        yield* completeWithLocalUplc(initTx, "DA attestation init"),
       );
       candidates = yield* fetchVisibleDaAttestationCandidates(
         lucid,
@@ -1002,7 +652,7 @@ const attestHeader = ({
 
     if (!daAttestationReachedThreshold(initializedAttestation)) {
       if (
-        signerIndexIsAttested(
+        SDK.signerIndexIsDaAttested(
           initializedAttestation.datum.attested_signers,
           OPERATOR_DA_SIGNER_INDEX,
         )
@@ -1015,17 +665,28 @@ const attestHeader = ({
           }),
         );
       }
-      addSignaturesTxHash = yield* submitCompletedTx(
-        lucid,
-        yield* buildAddSignaturesTx({
+      const addSignaturesTx =
+        yield* SDK.incompleteAddDaAttestationSignaturesTxProgram(
           lucid,
           contracts,
-          daParamsUtxo,
-          attestationUtxo: initializedAttestation.utxo,
-          attestationDatum: initializedAttestation.datum,
-          signatureWitnesses,
-          referenceScripts,
-        }),
+          {
+            daParamsUtxo,
+            daParamsDatum,
+            attestation: initializedAttestation,
+            witnesses: [signatureWitnesses],
+            referenceScripts,
+          },
+        );
+      addSignaturesTxHash = yield* submitCompletedTx(
+        lucid,
+        yield* completeWithLocalUplc(
+          addSignaturesTx,
+          "DA attestation add-signatures",
+          {
+            providerEvalOnLocalBudgetFailure: true,
+            bootstrapExUnitsOnProviderFailure: true,
+          },
+        ),
       );
       candidates = yield* fetchVisibleDaAttestationCandidates(
         lucid,
@@ -1040,14 +701,21 @@ const attestHeader = ({
       "threshold-signed",
       daAttestationReachedThreshold,
     );
-    const applyTxHash = yield* submitCompletedTx(
-      lucid,
-      yield* buildApplyAttestationTx({
+    const applyTx =
+      yield* SDK.incompleteApplyDaAttestationToStateQueueTxProgram(
         lucid,
         contracts,
-        target,
-        attestationUtxo: signedAttestation.utxo,
-        referenceScripts,
+        {
+          target,
+          attestation: signedAttestation,
+          referenceScripts,
+        },
+      );
+    const applyTxHash = yield* submitCompletedTx(
+      lucid,
+      yield* completeWithLocalUplc(applyTx, "DA attestation apply", {
+        providerEvalOnLocalBudgetFailure: true,
+        bootstrapExUnitsOnProviderFailure: true,
       }),
     );
     return {
@@ -1068,6 +736,7 @@ export const attestStateQueueOnceProgram = (
   | SDK.HashingError
   | SDK.LinkedListError
   | SDK.LucidError
+  | SDK.DaAttestationBuildError
   | SDK.StateQueueError
   | TxConfirmError
   | TxSignError

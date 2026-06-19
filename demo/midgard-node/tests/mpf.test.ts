@@ -8,7 +8,9 @@ import * as Ledger from "../src/database/utils/ledger.js";
 import * as Tx from "../src/database/utils/tx.js";
 import {
   DecodedMempoolTxForCommit,
+  computeLedgerMpfRootFromLedgerEntries,
   deleteMpfStore,
+  hydrateLedgerMpfFromLedgerEntries,
   keyValuePhasProof,
   keyValuePhasRoot,
   MidgardMpf,
@@ -159,6 +161,37 @@ describe("Midgard MPF wrapper", () => {
 
       expect(firstRoot.toString("hex")).not.toBe(secondRoot);
       expect(restored._tag).toBe("Some");
+    }),
+  );
+
+  it.effect("hydrates a ledger MPF from durable ledger entries", () =>
+    Effect.gen(function* () {
+      const mpf = yield* MidgardMpf.createScratch("test-mpf");
+      yield* mpf.applyBatch([
+        { type: "insert", key: key1, value: value1 },
+        { type: "insert", key: key3, value: value3 },
+      ]);
+
+      const entries: Ledger.MinimalEntry[] = [
+        {
+          [Ledger.Columns.OUTREF]: key1,
+          [Ledger.Columns.OUTPUT]: value1,
+        },
+        {
+          [Ledger.Columns.OUTREF]: key2,
+          [Ledger.Columns.OUTPUT]: value2,
+        },
+      ];
+      const expectedRoot =
+        yield* computeLedgerMpfRootFromLedgerEntries(entries);
+      const hydratedRoot = yield* hydrateLedgerMpfFromLedgerEntries(
+        mpf,
+        entries,
+      );
+      const removedStaleEntry = yield* mpf.get(key3);
+
+      expect(hydratedRoot).toBe(expectedRoot);
+      expect(removedStaleEntry._tag).toBe("None");
     }),
   );
 

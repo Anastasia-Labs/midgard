@@ -19,13 +19,12 @@ const makeUtxo = (
   outputIndex: number,
   address: string,
   lovelace: bigint,
+  assets: UTxO["assets"] = { lovelace },
 ): UTxO => ({
   txHash,
   outputIndex,
   address,
-  assets: {
-    lovelace,
-  },
+  assets,
 });
 
 const makeSubmittedTx = ({
@@ -79,6 +78,27 @@ describe("operator-wallet-view", () => {
       makeOperatorWalletView(wallet.address, [retained, consumed]),
       [consumed],
     );
+
+    expect(availableOperatorWalletUtxos(view)).toEqual([retained]);
+  });
+
+  it("filters token-bearing wallet outputs from fee and collateral candidates", () => {
+    const wallet = walletFromSeed(TEST_SEED, { network: "Preprod" });
+    const retained = makeUtxo("ab".repeat(32), 0, wallet.address, 7_000_000n);
+    const tokenBearing = makeUtxo(
+      "ac".repeat(32),
+      1,
+      wallet.address,
+      50_000_000n,
+      {
+        lovelace: 50_000_000n,
+        [`${"dd".repeat(28)}01`]: 1n,
+      },
+    );
+    const view = makeOperatorWalletView(wallet.address, [
+      tokenBearing,
+      retained,
+    ]);
 
     expect(availableOperatorWalletUtxos(view)).toEqual([retained]);
   });

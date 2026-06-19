@@ -249,10 +249,8 @@ export const finalizeCommittedBlockLocally = (
             includedWithdrawalEventIds,
           );
           if (options.daPayloadRecord !== undefined) {
-            const utxos = yield* MempoolLedgerDB.retrieve;
             const daPayload = yield* buildDaPayloadInsert({
               record: options.daPayloadRecord,
-              utxos,
             });
             yield* DaPayloadsDB.upsertAvailable(daPayload);
           }

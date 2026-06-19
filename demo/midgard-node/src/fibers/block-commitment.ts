@@ -9,6 +9,7 @@ import {
   Globals,
   Lucid,
   MidgardContracts,
+  NodeConfig,
 } from "@/services/index.js";
 import {
   fetchStateQueueSnapshotProgram,
@@ -87,6 +88,7 @@ export const buildAndSubmitCommitmentBlockAction = (
       globals.LATEST_LOCAL_BLOCK_END_TIME_MS,
     );
     let BASE_SNAPSHOT_ID: string | undefined;
+    let STATE_QUEUE_HAS_UNMERGED_TAIL = false;
     if (!LOCAL_FINALIZATION_PENDING) {
       const snapshot = yield* fetchStateQueueSnapshotProgram(
         lucid.api,
@@ -97,6 +99,8 @@ export const buildAndSubmitCommitmentBlockAction = (
       AVAILABLE_CONFIRMED_BLOCK = snapshot.tailCommitBase.utxo;
       CURRENT_BLOCK_START_TIME_MS = snapshot.tailCommitBase.blockEndTimeMs;
       BASE_SNAPSHOT_ID = snapshot.snapshotId;
+      STATE_QUEUE_HAS_UNMERGED_TAIL =
+        snapshot.root.outRef !== snapshot.tailCommitBase.outRef;
       yield* Effect.logInfo(
         `🔹 Using live state-queue tail commit base ${snapshot.tailCommitBase.outRef} from snapshot ${snapshot.snapshotId}.`,
       );
@@ -122,6 +126,7 @@ export const buildAndSubmitCommitmentBlockAction = (
               sizeOfProcessedTxsSoFar: PROCESSED_UNSUBMITTED_TXS_SIZE,
               stateQueueLeaseToken,
               baseSnapshotId: BASE_SNAPSHOT_ID,
+              stateQueueHasUnmergedTail: STATE_QUEUE_HAS_UNMERGED_TAIL,
             },
           } as WorkerInput, // TODO: Consider other approaches to avoid type assertion here.
         },
@@ -301,9 +306,10 @@ export const blockCommitmentAction: Effect.Effect<
   | SDK.CmlUnexpectedError
   | SDK.CborSerializationError
   | DatabaseError,
-  Globals | Lucid | MidgardContracts | Database
+  Globals | Lucid | MidgardContracts | Database | NodeConfig
 > = Effect.gen(function* () {
   const globals = yield* Globals;
+  const nodeConfig = yield* NodeConfig;
   yield* Ref.set(globals.HEARTBEAT_BLOCK_COMMITMENT, Date.now());
   const RESET_IN_PROGRESS = yield* Ref.get(globals.RESET_IN_PROGRESS);
   if (!RESET_IN_PROGRESS) {
@@ -325,6 +331,11 @@ export const blockCommitmentAction: Effect.Effect<
         buildAndSubmitCommitmentBlockAction(leaseToken).pipe(
           Effect.withSpan("buildAndSubmitCommitmentBlockAction"),
         ),
+      {
+        ttlMs: nodeConfig.STATE_QUEUE_MUTATION_LEASE_TTL_MS,
+        renewIntervalMs:
+          nodeConfig.STATE_QUEUE_MUTATION_LEASE_RENEW_INTERVAL_MS,
+      },
     ).pipe(Effect.ensuring(Ref.set(globals.COMMIT_WORKER_ACTIVE, false)));
     if (leaseResult._tag === "Busy") {
       yield* Effect.logInfo(
@@ -341,7 +352,11 @@ export const blockCommitmentAction: Effect.Effect<
  */
 export const blockCommitmentFiber = (
   schedule: Schedule.Schedule<number>,
-): Effect.Effect<void, never, Globals | Lucid | MidgardContracts | Database> =>
+): Effect.Effect<
+  void,
+  never,
+  Globals | Lucid | MidgardContracts | Database | NodeConfig
+> =>
   Effect.gen(function* () {
     yield* Effect.logInfo("🔵 Block commitment fiber started.");
     const action = blockCommitmentAction.pipe(

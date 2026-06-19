@@ -30,7 +30,11 @@ import {
   skippedSubmissionProgram,
   successfulLocalFinalizationRecoveryProgram,
 } from "@/workers/utils/commit-submission.js";
-import { emptyRootHexProgram, type MidgardMpf } from "@/workers/utils/mpf.js";
+import {
+  emptyRootHexProgram,
+  type MidgardMpf,
+  type UtxoPayloadEntry,
+} from "@/workers/utils/mpf.js";
 
 import { buildUnsignedCommitTx } from "./build-unsigned-tx.js";
 import { resolveDepositsRoot, resolveWithdrawalsRoot } from "./event-roots.js";
@@ -61,7 +65,15 @@ const maybeAbandonPreviousStaleAttempt = (
   previousPendingHeaderHash === undefined ||
   previousPendingHeaderHash.equals(nextHeaderHash)
     ? Effect.void
-    : PendingBlockFinalizationsDB.markAbandoned(previousPendingHeaderHash);
+    : PendingBlockFinalizationsDB.markAbandoned(previousPendingHeaderHash).pipe(
+        Effect.catchAll((cause) =>
+          Effect.logWarning(
+            `🔹 Previous stale pending journal was already cleared before retry (header=${previousPendingHeaderHash.toString(
+              "hex",
+            )}): ${formatUnknownError(cause)}`,
+          ),
+        ),
+      );
 
 const signalStaleOperatorWalletRetry = ({
   pendingHeaderHash,
@@ -78,6 +90,17 @@ const signalStaleOperatorWalletRetry = ({
         error,
       )}`,
     );
+    yield* PendingBlockFinalizationsDB.discardUnsubmittedPendingSubmission(
+      pendingHeaderHash,
+    ).pipe(
+      Effect.catchAll((cause) =>
+        Effect.logWarning(
+          `🔹 Failed to discard stale unsubmitted pending journal before retry (${pendingHeaderHash.toString(
+            "hex",
+          )}): ${formatUnknownError(cause)}`,
+        ),
+      ),
+    );
     return yield* Effect.fail(
       new StaleOperatorWalletRetrySignal({
         pendingHeaderHash,
@@ -85,6 +108,14 @@ const signalStaleOperatorWalletRetry = ({
       }),
     );
   });
+
+const journalUtxoEntries = (
+  entries: readonly UtxoPayloadEntry[],
+): readonly PendingBlockFinalizationsDB.UtxoInput[] =>
+  entries.map((entry) => ({
+    [PendingBlockFinalizationsDB.UtxoColumns.OUTREF]: entry.outref,
+    [PendingBlockFinalizationsDB.UtxoColumns.OUTPUT]: entry.output,
+  }));
 
 const runWithStaleOperatorWalletRetry = <A, E, R>({
   label,
@@ -175,6 +206,7 @@ export const submitDepositOnlyCommit = ({
   workerInput,
   utxoRoot,
   txRoot,
+  utxoPayloadEntries,
 }: {
   readonly contracts: SDK.MidgardValidators;
   readonly latestBlock: SDK.StateQueueUTxO;
@@ -186,6 +218,7 @@ export const submitDepositOnlyCommit = ({
   readonly workerInput: WorkerInput;
   readonly utxoRoot: string;
   readonly txRoot: string;
+  readonly utxoPayloadEntries: readonly UtxoPayloadEntry[];
 }) =>
   Effect.gen(function* () {
     const optDepositsRoot = yield* resolveDepositsRoot(includedDepositEntries);
@@ -228,6 +261,8 @@ export const submitDepositOnlyCommit = ({
       emptyRoot,
     });
     yield* assertPendingJournalCompleteness({
+      utxoRoot: roots.utxoRoot,
+      utxoMemberCount: utxoPayloadEntries.length,
       txRoot: roots.txRoot,
       emptyTxRoot: emptyRoot,
       txMemberCount: 0,
@@ -285,6 +320,7 @@ export const submitDepositOnlyCommit = ({
                   mempoolTxIds: [],
                   mempoolTxs: [],
                   mempoolTxSourceTable: "none",
+                  utxoEntries: journalUtxoEntries(utxoPayloadEntries),
                 },
               ).pipe(
                 Effect.andThen(
@@ -366,6 +402,7 @@ export const submitTxBackedCommit = ({
   includedWithdrawalEventIds,
   utxoRoot,
   txRoot,
+  utxoPayloadEntries,
   transactionsMpf,
   processedMempoolTxs,
   mempoolTxHashes,
@@ -382,6 +419,7 @@ export const submitTxBackedCommit = ({
   readonly includedWithdrawalEventIds: readonly Buffer[];
   readonly utxoRoot: string;
   readonly txRoot: string;
+  readonly utxoPayloadEntries: readonly UtxoPayloadEntry[];
   readonly transactionsMpf: MidgardMpf;
   readonly processedMempoolTxs: readonly TxTable.EntryWithTimeStamp[];
   readonly mempoolTxHashes: Buffer[];
@@ -413,6 +451,8 @@ export const submitTxBackedCommit = ({
       );
     }
     yield* assertPendingJournalCompleteness({
+      utxoRoot,
+      utxoMemberCount: utxoPayloadEntries.length,
       txRoot,
       emptyTxRoot: emptyRoot,
       txMemberCount: currentBlockMempoolTxsCount,
@@ -490,6 +530,7 @@ export const submitTxBackedCommit = ({
                   ),
                   mempoolTxs: processedMempoolTxs,
                   mempoolTxSourceTable,
+                  utxoEntries: journalUtxoEntries(utxoPayloadEntries),
                 },
               ).pipe(
                 Effect.andThen(

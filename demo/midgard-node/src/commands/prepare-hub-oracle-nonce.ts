@@ -1,12 +1,11 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import { Constr, Data as LucidData } from "@lucid-evolution/lucid";
+import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 import { randomUUID } from "node:crypto";
 
 import { Lucid } from "@/services/lucid.js";
 import { handleSignSubmit } from "@/transactions/utils.js";
 
-const NONCE_DATUM_DOMAIN = "MidgardHubOracleOneShotNonceV1";
 export const DEFAULT_NONCE_LOVELACE = 5_000_000n;
 
 export type PreparedHubOracleNonce = {
@@ -45,13 +44,13 @@ export const parseNonceLovelaceOption = (value: string): bigint => {
   return parsed;
 };
 
-const makeNonceDatum = (): string => {
-  const markerHex = Buffer.from(
-    `${NONCE_DATUM_DOMAIN}:${Date.now().toString(10)}:${randomUUID()}`,
+const makeHubOracleOneShotNonceMarkerHex = (): string =>
+  Buffer.from(
+    `${SDK.HUB_ORACLE_ONE_SHOT_NONCE_DATUM_DOMAIN}:${Date.now().toString(
+      10,
+    )}:${randomUUID()}`,
     "utf8",
   ).toString("hex");
-  return LucidData.to(new Constr(0, [markerHex]));
-};
 
 export const inspectOperatorWalletForNonceProgram = (
   requestedNonceLovelace: bigint,
@@ -109,17 +108,24 @@ export const prepareHubOracleOneShotNonceProgram = (
           `Failed to derive operator wallet address: ${formatUnknownError(cause)}`,
         ),
     });
-    const inlineDatum = makeNonceDatum();
-    const txBuilder = lucid.newTx().pay.ToAddressWithData(
-      address,
-      {
-        kind: "inline",
-        value: inlineDatum,
-      },
-      { lovelace: amountLovelace },
-    );
+    const markerHex = makeHubOracleOneShotNonceMarkerHex();
+    const { txBuilder, inlineDatum } =
+      yield* SDK.incompleteHubOracleOneShotNonceTxProgram(lucid, {
+        address,
+        amountLovelace,
+        markerHex,
+      }).pipe(
+        Effect.mapError(
+          (cause) =>
+            new Error(
+              `Failed to build hub-oracle nonce preparation transaction: ${formatUnknownError(
+                cause,
+              )}`,
+            ),
+        ),
+      );
     const unsigned = yield* Effect.tryPromise({
-      try: () => txBuilder.complete(),
+      try: () => txBuilder.complete({ localUPLCEval: true }),
       catch: (cause) =>
         new Error(
           `Failed to build hub-oracle nonce preparation transaction: ${formatUnknownError(

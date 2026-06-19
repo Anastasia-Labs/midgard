@@ -12,6 +12,7 @@ import {
   fetchSortedCommittedStateQueueBlocks,
   findCommittedStateQueueBlockByHeaderHash,
   latestCommittedStateQueueBlockFromSorted,
+  pendingBlockHasSubmittedTx,
   resolveStateQueueBlockEndTimeMs,
   WorkerInput,
   WorkerOutput,
@@ -156,6 +157,15 @@ export const runConfirmBlockCommitmentsWorkerProgram = (
     yield* Effect.logInfo(
       `🔍 Resolving pending block header ${pendingBlock.expectedHeaderHash} (submitted_tx=${pendingBlock.submittedTxHash || "unknown"}, age_ms=${pendingAgeMs}).`,
     );
+    if (!pendingBlockHasSubmittedTx(pendingBlock)) {
+      yield* Effect.logWarning(
+        `🔍 Pending block header ${pendingBlock.expectedHeaderHash} has no submitted tx hash; abandoning unsubmitted journal and recovering canonical state_queue tip.`,
+      );
+      return yield* recoverWithLatestBlock(
+        pendingBlock.expectedHeaderHash,
+        pendingBlock.submittedTxHash,
+      );
+    }
     const confirmationResult = yield* Effect.either(
       awaitPendingBlockResolution(
         lucid.api,

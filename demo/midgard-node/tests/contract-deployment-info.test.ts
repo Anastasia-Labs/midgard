@@ -6,15 +6,19 @@ import { it } from "@effect/vitest";
 import { Effect } from "effect";
 import { describe, expect } from "vitest";
 
-import type { ReferenceScriptAuthPolicyDeploymentInfo } from "@/deployment/reference-script-auth.js";
+import type { ReferenceScriptAuthPolicyDeploymentInfo } from "@al-ft/midgard-sdk";
 import {
   REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
   referenceScriptAuthTokenName,
-} from "@/deployment/reference-script-auth.js";
+} from "@al-ft/midgard-sdk";
 import {
+  buildDeploymentManifestV2,
   buildContractDeploymentInfoProgram,
   buildContractDeploymentInfoFromContracts,
+  DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
   defaultContractDeploymentInfoOutputPath,
+  parseDeploymentManifestV2,
+  verifyDeploymentManifestAgainstConfig,
 } from "@/commands/contract-deployment-info.js";
 import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
 
@@ -35,6 +39,8 @@ const testReferenceScriptAuthPolicy = (
     rule: "test fixture",
   },
 });
+
+const ONE_SHOT_TX_HASH = "ab".repeat(32);
 
 describe("contract deployment info", () => {
   it.effect(
@@ -187,4 +193,119 @@ describe("contract deployment info", () => {
       ),
     );
   });
+
+  it.effect("wraps deployment info in a stable v2 identity manifest", () =>
+    Effect.gen(function* () {
+      const contracts = yield* AlwaysSucceedsContract;
+      const authPolicy = testReferenceScriptAuthPolicy(
+        contracts.referenceScriptAuth.policyId,
+      );
+      const deploymentInfo = buildContractDeploymentInfoFromContracts(
+        contracts,
+        authPolicy,
+      );
+
+      const first = buildDeploymentManifestV2(deploymentInfo, {
+        network: "Preprod",
+        referenceScriptDeployAddress: "addr_test1reference",
+        hubOracleOneShotTxHash: ONE_SHOT_TX_HASH,
+        hubOracleOneShotOutputIndex: 0,
+        now: new Date("2026-06-18T00:00:00.000Z"),
+      });
+      const second = buildDeploymentManifestV2(deploymentInfo, {
+        network: "Preprod",
+        referenceScriptDeployAddress: "addr_test1reference",
+        hubOracleOneShotTxHash: ONE_SHOT_TX_HASH,
+        hubOracleOneShotOutputIndex: 0,
+        now: new Date("2026-06-19T00:00:00.000Z"),
+        existingManifest: first,
+        steps: {
+          initProtocol: { status: "submitted", txHash: "cd".repeat(32) },
+        },
+      });
+
+      expect(first.schemaVersion).toEqual(DEPLOYMENT_MANIFEST_SCHEMA_VERSION);
+      expect(first.manifestId).toEqual(second.manifestId);
+      expect(second.createdAt).toEqual(first.createdAt);
+      expect(second.updatedAt).toEqual("2026-06-19T00:00:00.000Z");
+      expect(second.hubOracleOneShot).toMatchObject({
+        txHash: ONE_SHOT_TX_HASH,
+        outputIndex: 0,
+        outRef: `${ONE_SHOT_TX_HASH}#0`,
+      });
+      expect(
+        second.referenceScripts["state-queue minting"]?.roleUnit,
+      ).toContain(authPolicy.policyId);
+      expect(parseDeploymentManifestV2(second).manifestId).toEqual(
+        second.manifestId,
+      );
+    }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
+  );
+
+  it.effect("reports manifest/config drift and missing reference targets", () =>
+    Effect.gen(function* () {
+      const contracts = yield* AlwaysSucceedsContract;
+      const authPolicy = testReferenceScriptAuthPolicy(
+        contracts.referenceScriptAuth.policyId,
+      );
+      const deploymentInfo = buildContractDeploymentInfoFromContracts(
+        contracts,
+        authPolicy,
+      );
+      const manifest = buildDeploymentManifestV2(deploymentInfo, {
+        network: "Preprod",
+        referenceScriptDeployAddress: "addr_test1reference",
+        hubOracleOneShotTxHash: ONE_SHOT_TX_HASH,
+        hubOracleOneShotOutputIndex: 0,
+      });
+
+      const report = verifyDeploymentManifestAgainstConfig(manifest, {
+        network: "Preview",
+        referenceScriptDeployAddress: "addr_test1other",
+        hubOracleOneShotTxHash: "cd".repeat(32),
+        hubOracleOneShotOutputIndex: 1,
+        path: "/tmp/contract-deployment-info.json",
+      });
+
+      expect(report.ok).toEqual(false);
+      expect(report.recommendation).toEqual("fresh_redeploy_required");
+      expect(report.mismatches.join("\n")).toContain("network");
+      expect(report.mismatches.join("\n")).toContain(
+        "referenceScriptDeployAddress",
+      );
+      expect(report.mismatches.join("\n")).toContain("hubOracleOneShot.txHash");
+      expect(report.mismatches.join("\n")).toContain(
+        "missing reference scripts",
+      );
+    }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
+  );
+
+  it.effect("rejects v2 manifests with a tampered identity hash", () =>
+    Effect.gen(function* () {
+      const contracts = yield* AlwaysSucceedsContract;
+      const authPolicy = testReferenceScriptAuthPolicy(
+        contracts.referenceScriptAuth.policyId,
+      );
+      const manifest = buildDeploymentManifestV2(
+        buildContractDeploymentInfoFromContracts(contracts, authPolicy),
+        {
+          network: "Preprod",
+          referenceScriptDeployAddress: "addr_test1reference",
+          hubOracleOneShotTxHash: ONE_SHOT_TX_HASH,
+          hubOracleOneShotOutputIndex: 0,
+        },
+      );
+
+      expect(() =>
+        parseDeploymentManifestV2({
+          ...manifest,
+          hubOracleOneShot: {
+            ...manifest.hubOracleOneShot,
+            outputIndex: 1,
+            outRef: `${ONE_SHOT_TX_HASH}#1`,
+          },
+        }),
+      ).toThrow(/Deployment manifest id mismatch/);
+    }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
+  );
 });

@@ -47,6 +47,7 @@ import {
   GENESIS_PROTOCOL_VERSION,
   headerHashFromStateQueueUTxO,
   getHeaderFromStateQueueDatum,
+  buildPhasMembershipRewardRegistrationTxProgram,
   hashBlockHeader,
   Header,
   HUB_ORACLE_ASSET_NAME,
@@ -60,6 +61,8 @@ import {
   type MintingValidator,
   normalizeNativeTxValidityRange,
   parseFaultProofBlueprint,
+  parsePhasMembershipBlueprint,
+  phasMembershipWithdrawalScriptFromBlueprint,
   REGISTERED_OPERATORS_ROOT_ASSET_NAME,
   RegisteredOperatorMintRedeemer,
   RETIRED_OPERATORS_ROOT_ASSET_NAME,
@@ -939,26 +942,19 @@ const buildCatalogueDeploymentInfo = async (
   };
 };
 
-const phasMembershipRewardAddress = (script: Script): string => {
-  const credential = CML.Credential.new_script(
-    CML.ScriptHash.from_hex(validatorToScriptHash(script)),
-  );
-  return CML.RewardAddress.new(0, credential).to_address().to_bech32();
-};
-
 const registerPhasMembershipRewardAccount = async (
   lucid: Awaited<ReturnType<typeof Lucid>>,
   realBlueprint: Blueprint,
 ): Promise<void> => {
-  const phasMembershipScript: Script = {
-    type: "PlutusV3",
-    script: getCompiledScript(realBlueprint, "phas.membership.withdraw"),
-  };
-  const unsigned = await lucid
-    .newTx()
-    .register.Stake(phasMembershipRewardAddress(phasMembershipScript))
-    .complete({ localUPLCEval: true });
-  const signed = await unsigned.sign.withWallet().complete();
+  const phasMembershipScript = phasMembershipWithdrawalScriptFromBlueprint(
+    parsePhasMembershipBlueprint(realBlueprint),
+  );
+  const built = await Effect.runPromise(
+    buildPhasMembershipRewardRegistrationTxProgram(lucid, {
+      script: phasMembershipScript,
+    }),
+  );
+  const signed = await built.tx.sign.withWallet().complete();
   await lucid.awaitTx(await signed.submit());
 };
 

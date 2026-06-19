@@ -9,9 +9,12 @@ import { Cause, Data, Effect, Option, pipe, Schedule } from "effect";
 import { parentPort, workerData } from "worker_threads";
 
 import {
+  DepositsDB,
+  MempoolLedgerDB,
   MempoolDB,
   ProcessedMempoolDB,
   TxUtils as TxTable,
+  WithdrawalsDB,
 } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { Columns as TxColumns } from "@/database/utils/tx.js";
@@ -47,6 +50,7 @@ import {
   processMpfs,
   withMpfRootTransactions,
 } from "@/workers/utils/mpf.js";
+import { shouldSkipIdleCommitBehindUnmergedTail } from "@/workers/utils/commit-block-planner.js";
 
 const EXPLICIT_COMMIT_CONFIRMATION_TIMEOUT_MS = 120_000;
 const EXPLICIT_COMMIT_CONFIRMATION_POLL_INTERVAL_MS = 5_000;
@@ -95,6 +99,20 @@ const establishEndTimeFromTxRequests = (
     // successful, `ProcessedMempoolDB` must be cleared. Following functions
     // should work fine with 0 mempool txs.
     return Option.some(processedMempoolTxs[0][TxColumns.TIMESTAMPTZ]);
+  });
+
+const pendingUserEventCountUpTo = (
+  effectiveEndTime: Date,
+): Effect.Effect<number, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const [depositEntries, withdrawalEntries] = yield* Effect.all(
+      [
+        DepositsDB.retrievePendingHeaderEntriesUpTo(effectiveEndTime),
+        WithdrawalsDB.retrievePendingHeaderEntriesUpTo(effectiveEndTime),
+      ],
+      { concurrency: "unbounded" },
+    );
+    return depositEntries.length + withdrawalEntries.length;
   });
 
 const shouldPreserveCommitMpfRoots = (output: WorkerOutput): boolean => {
@@ -297,6 +315,7 @@ const databaseOperationsProgram = (
 > =>
   Effect.gen(function* () {
     const mempoolTxs = yield* MempoolDB.retrieve;
+    const initialLedgerEntries = yield* MempoolLedgerDB.retrieve;
     const currentBlockStartTime = new Date(
       workerInput.data.currentBlockStartTimeMs,
     );
@@ -360,6 +379,27 @@ const databaseOperationsProgram = (
       });
     }
 
+    const pendingUserEventCount = yield* pendingUserEventCountUpTo(
+      userEventOnlyEndTime,
+    );
+    if (
+      shouldSkipIdleCommitBehindUnmergedTail({
+        localFinalizationPending: workerInput.data.localFinalizationPending,
+        stateQueueHasUnmergedTail:
+          workerInput.data.stateQueueHasUnmergedTail ?? false,
+        mempoolTxCount: mempoolTxs.length,
+        processedTxCount: processedPendingTxs.length,
+        pendingUserEventCount,
+      })
+    ) {
+      yield* Effect.logInfo(
+        "🔹 State queue has an unmerged tail and no pending tx/user-event work; waiting for merge before the next commit attempt.",
+      );
+      return {
+        type: "NothingToCommitOutput",
+      } satisfies WorkerOutput;
+    }
+
     const canBuildOnConfirmedBlock =
       hasAvailableConfirmedBlock && !workerInput.data.localFinalizationPending;
     const processed = yield* processMpfs(
@@ -380,12 +420,14 @@ const databaseOperationsProgram = (
         depositOnlyEndTime: canBuildOnConfirmedBlock
           ? userEventOnlyEndTime
           : undefined,
+        initialLedgerEntries,
       },
     );
 
     const {
       utxoRoot,
       txRoot,
+      utxoPayloadEntries,
       rejectedMempoolTxsCount,
       includedDepositEntriesCount,
       includedDepositEntries,
@@ -479,6 +521,7 @@ const databaseOperationsProgram = (
           workerInput,
           utxoRoot,
           txRoot,
+          utxoPayloadEntries,
         });
       } else {
         // One or more transactions found in either `ProcessedMempoolDB` or
@@ -497,6 +540,7 @@ const databaseOperationsProgram = (
           includedWithdrawalEventIds,
           utxoRoot,
           txRoot,
+          utxoPayloadEntries,
           transactionsMpf,
           processedMempoolTxs,
           mempoolTxHashes,
