@@ -5,10 +5,10 @@ use cardano/transaction.{
 }
 use midgard/common/utils
 use midgard/da_attestation.{
-  AddSignatures, ApplyToStateQueue, BurnForStateQueue, Datum, Init,
-  MintRedeemer, SpendRedeemer, asset_name,
-  get_authenticated_state_queue_policy_id, get_attestation_input_datum,
-  validate_add_signatures, validate_init_output,
+  AddSignatures, ApplyToStateQueue, BurnForStateQueue, Datum, Init, MintRedeemer,
+  SpendRedeemer, asset_name, get_attestation_input_datum,
+  get_authenticated_state_queue_policy_id, validate_add_signatures,
+  validate_init_output,
 }
 use midgard/da_params_governor
 use midgard/state_queue
@@ -62,11 +62,7 @@ validator main(
         let attestation_asset =
           tx.outputs
             |> list.expect_at(output_index)
-            |> validate_init_output(
-                own_policy_id,
-                params,
-                expected_header_hash,
-              )
+            |> validate_init_output(own_policy_id, params, expected_header_hash)
 
         // 5. Exactly one header-specific attestation NFT must be minted.
         expect utils.validate_mint(tx.mint, own_policy_id, attestation_asset, 1)
@@ -93,7 +89,8 @@ validator main(
 
         // 3. The header-specific attestation NFT must be burnt.
         let attestation_asset = asset_name(attestation_datum.header_hash)
-        expect utils.validate_mint(tx.mint, own_policy_id, attestation_asset, -1)
+        expect
+          utils.validate_mint(tx.mint, own_policy_id, attestation_asset, -1)
 
         // 4. The referenced state queue mint script must be authenticated by
         //    the reference-script authorization NFT.
@@ -126,11 +123,7 @@ validator main(
     tx: Transaction,
   ) {
     when redeemer is {
-      AddSignatures {
-        output_index,
-        da_params_ref_input_index,
-        signatures,
-      } ->
+      AddSignatures { output_index, da_params_ref_input_index, signatures } ->
         validate_add_signatures(
           datum,
           output_index,

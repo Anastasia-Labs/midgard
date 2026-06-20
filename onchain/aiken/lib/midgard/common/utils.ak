@@ -133,15 +133,7 @@ pub fn has_signed(
   signer: VerificationKeyHash,
   extra_signatories: List<VerificationKeyHash>,
 ) -> Bool {
-  when extra_signatories is {
-    [] -> False
-    [current, ..rest] ->
-      if current == signer {
-        True
-      } else {
-        has_signed(signer, rest)
-      }
-  }
+  extra_signatories |> list.has(signer)
 }
 
 /// Expects a single token to be present in the given `Value`, and returns it as

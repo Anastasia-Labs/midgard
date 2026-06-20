@@ -9,14 +9,11 @@ use cardano/transaction.{
 }
 use cardano/transaction as tx
 use midgard/da_attestation.{
-  Datum as DaAttestationDatum, asset_name_prefix as attestation_asset_name_prefix,
-  attested_signer_bitmap_byte_count, empty_attested_signer_bitmap,
-  signature_witness_byte_count, validate_add_signatures,
+  Datum, asset_name_prefix, attested_signer_bitmap_byte_count,
+  empty_attested_signer_bitmap, signature_witness_byte_count,
+  validate_add_signatures,
 }
-use midgard/da_params_governor.{
-  Datum as DaParamsDatum, asset_name as da_params_asset_name,
-  verification_key_byte_count,
-}
+use midgard/da_params_governor as da_params
 use midgard/ledger_state.{HeaderHash}
 
 // Deterministic Ed25519 fixture for DA signature capacity regression.
@@ -27,11 +24,7 @@ const capacity_fixture_signature_count: Int = 256
 const regression_signature_count: Int = 132
 
 type CapacityFixture {
-  CapacityFixture {
-    input_datum: DaAttestationDatum,
-    signatures: ByteArray,
-    tx: Transaction,
-  }
+  CapacityFixture { input_datum: Datum, signatures: ByteArray, tx: Transaction }
 }
 
 const capacity_da_policy: PolicyId =
@@ -264,7 +257,7 @@ fn capacity_committee_signers(signature_count: Int) -> ByteArray {
   slice_len(
     capacity_remaining_signers,
     0,
-    signature_count * verification_key_byte_count,
+    signature_count * da_params.verification_key_byte_count,
   )
 }
 
@@ -273,7 +266,7 @@ fn capacity_committee_hash(signature_count: Int) -> ByteArray {
 }
 
 fn capacity_attestation_asset() -> AssetName {
-  attestation_asset_name_prefix |> bytearray.concat(capacity_header_hash)
+  asset_name_prefix |> bytearray.concat(capacity_header_hash)
 }
 
 fn capacity_value() -> Value {
@@ -283,11 +276,11 @@ fn capacity_value() -> Value {
 
 fn capacity_da_params_value() -> Value {
   assets.from_lovelace(2_000_000)
-    |> assets.add(capacity_da_params_policy, da_params_asset_name, 1)
+    |> assets.add(capacity_da_params_policy, da_params.asset_name, 1)
 }
 
-fn capacity_da_params_datum(signature_count: Int) -> DaParamsDatum {
-  DaParamsDatum {
+fn capacity_da_params_datum(signature_count: Int) -> da_params.Datum {
+  da_params.Datum {
     committee: capacity_committee_signers(signature_count),
     committee_signers_hash: capacity_committee_hash(signature_count),
     da_threshold: signature_count,
@@ -308,10 +301,10 @@ fn capacity_da_params_input(signature_count: Int) -> Input {
   }
 }
 
-fn capacity_input_datum(signature_count: Int) -> DaAttestationDatum {
+fn capacity_input_datum(signature_count: Int) -> Datum {
   expect signature_count > 0
   expect signature_count <= capacity_fixture_signature_count
-  DaAttestationDatum {
+  Datum {
     header_hash: capacity_header_hash,
     da_threshold: signature_count,
     committee_signers_hash: capacity_committee_hash(signature_count),
@@ -350,8 +343,8 @@ fn prefix_attested_bitmap(signature_count: Int) -> ByteArray {
   prefix_attested_bitmap_from(signature_count, 0)
 }
 
-fn capacity_output_datum(signature_count: Int) -> DaAttestationDatum {
-  DaAttestationDatum {
+fn capacity_output_datum(signature_count: Int) -> Datum {
+  Datum {
     header_hash: capacity_header_hash,
     da_threshold: signature_count,
     committee_signers_hash: capacity_committee_hash(signature_count),
@@ -425,7 +418,7 @@ fn partial_capacity_output(attested_signers: ByteArray) -> Output {
     address: address.from_script(capacity_da_policy),
     value: capacity_value(),
     datum: InlineDatum(
-      DaAttestationDatum {
+      Datum {
         header_hash: capacity_header_hash,
         da_threshold: 3,
         committee_signers_hash: capacity_committee_hash(3),

@@ -85,7 +85,8 @@ pub fn get_authenticated_state_queue_policy_id(
   expect Input {
     output: Output { value, reference_script: Some(state_queue_policy_id), .. },
     ..
-  } = reference_inputs |> list.expect_at(state_queue_mint_ref_script_input_index)
+  } =
+    reference_inputs |> list.expect_at(state_queue_mint_ref_script_input_index)
 
   expect
     assets.has_nft_strict(
