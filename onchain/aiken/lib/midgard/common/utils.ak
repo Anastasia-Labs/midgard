@@ -6,7 +6,6 @@ use aiken/crypto.{
   ScriptHash, VerificationKey, VerificationKeyHash, blake2b_224, blake2b_256,
 }
 use aiken/interval.{Finite, Interval, NegativeInfinity, PositiveInfinity}
-use aiken/primitive/bytearray
 use aiken_design_patterns/merkelized_validator
 use aiken_design_patterns/validity_range_normalization as vrn
 use cardano/address.{Address, Script}
@@ -77,7 +76,7 @@ pub fn bytearray_slice(
   offset: Int,
   byte_count: Int,
 ) -> ByteArray {
-  bytearray.slice(bytes, offset, offset + byte_count - 1)
+  builtin.slice_bytearray(offset, byte_count, bytes)
 }
 
 pub fn expect_script_hash(address: Address) -> PolicyId {

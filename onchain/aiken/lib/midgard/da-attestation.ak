@@ -136,26 +136,19 @@ fn verify_indexed_signatures(
   min_signer_index: Int,
   signature_cursor: Int,
   signatures_len: Int,
-  committee_len: Int,
   attested_bit_indexes: List<Int>,
 ) -> ByteArray {
   if signature_cursor == signatures_len {
     builtin.write_bits(input_attested, attested_bit_indexes, True)
   } else {
-    expect signature_cursor + signature_witness_byte_count <= signatures_len
     let signer_index = bytearray.at(signatures, signature_cursor)
     expect signer_index >= min_signer_index
     let signer_bit_index = 255 - signer_index
 
-    let signer_offset =
-      signer_index * da_params_governor.verification_key_byte_count
-    expect
-      signer_offset + da_params_governor.verification_key_byte_count <= committee_len
-
     let verification_key =
       utils.bytearray_slice(
         committee_signers,
-        signer_offset,
+        signer_index * da_params_governor.verification_key_byte_count,
         da_params_governor.verification_key_byte_count,
       )
     let signature =
@@ -174,7 +167,6 @@ fn verify_indexed_signatures(
       signer_index + 1,
       signature_cursor + signature_witness_byte_count,
       signatures_len,
-      committee_len,
       [signer_bit_index, ..attested_bit_indexes],
     )
   }
@@ -215,8 +207,6 @@ pub fn validate_add_signatures(
 
   // 1. The spent datum must be present.
   expect Some(input_datum) = datum
-  expect
-    bytearray.length(input_datum.attested_signers) == attested_signer_bitmap_byte_count
 
   // 2. The script input must match the supplied datum exactly.
   expect Output {
@@ -254,7 +244,6 @@ pub fn validate_add_signatures(
       0,
       0,
       signatures_len,
-      bytearray.length(params.committee),
       [],
     )
   let attestation_count = builtin.count_set_bits(attested_signers)
