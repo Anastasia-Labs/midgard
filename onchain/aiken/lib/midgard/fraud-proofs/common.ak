@@ -15,7 +15,6 @@ use midgard/common/utils.{
 }
 use midgard/computation_thread as ct
 use midgard/fraud_proof
-use midgard/fraud_proof_catalogue
 use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_compact_cbor}
 use midgard/fraud_proofs/native_tx/types.{VerifiedMidgardNativeTxCompact} as native_tx_types
 use midgard/hub_oracle as hub
@@ -34,7 +33,7 @@ pub type TxFieldPreimage {
 pub type TxInclusionArgs {
   input_index: Int,
   output_index: Int,
-  hub_ref_input_index: Int,
+  state_queue_mint_hub_oracle_ref_index: Int,
   state_queue_node_ref_input_index: Int,
   tx_id: MidgardTxId,
   tx: MidgardTxCompact,
@@ -46,7 +45,7 @@ pub type TxInclusionArgs {
 pub type NativeTxInclusionArgs {
   input_index: Int,
   output_index: Int,
-  hub_ref_input_index: Int,
+  state_queue_mint_hub_oracle_ref_index: Int,
   state_queue_node_ref_input_index: Int,
   native_tx_id: ByteArray,
   native_tx_compact_cbor: ByteArray,
@@ -83,7 +82,7 @@ pub fn pass_tx_to_next_step(
   let TxInclusionArgs {
     input_index,
     output_index,
-    hub_ref_input_index,
+    state_queue_mint_hub_oracle_ref_index,
     state_queue_node_ref_input_index,
     tx_id,
     tx,
@@ -128,7 +127,7 @@ pub fn pass_tx_to_next_step(
       tx_membership_proof,
       computation_thread_token_asset_name,
       hub_oracle,
-      hub_ref_input_index,
+      state_queue_mint_hub_oracle_ref_index,
       state_queue_node_ref_input_index,
       inclusion_proof_script_withdraw_redeemer_index,
       reference_inputs,
@@ -180,7 +179,7 @@ pub fn pass_native_tx_to_next_step(
   let NativeTxInclusionArgs {
     input_index,
     output_index,
-    hub_ref_input_index,
+    state_queue_mint_hub_oracle_ref_index,
     state_queue_node_ref_input_index,
     native_tx_id,
     native_tx_compact_cbor,
@@ -221,7 +220,7 @@ pub fn pass_native_tx_to_next_step(
       tx_membership_proof,
       computation_thread_token_asset_name,
       hub_oracle,
-      hub_ref_input_index,
+      state_queue_mint_hub_oracle_ref_index,
       state_queue_node_ref_input_index,
       inclusion_proof_script_withdraw_redeemer_index,
       reference_inputs,
@@ -515,7 +514,7 @@ pub fn verify_tx_in_state_queue_node(
   tx_membership_proof: Proof,
   computation_thread_token_asset_name: AssetName,
   hub_oracle: ScriptHash,
-  hub_ref_input_index: Int,
+  state_queue_mint_hub_oracle_ref_index: Int,
   state_queue_node_ref_input_index: Int,
   inclusion_proof_script_withdraw_redeemer_index: Int,
   reference_inputs: List<Input>,
@@ -526,9 +525,15 @@ pub fn verify_tx_in_state_queue_node(
   //    its ID, and the field's hash.
   expect verify_tx_and_its_provided_field_preimage(tx_id, tx, tx_field_preimage)
 
-  // 2. Hub oracle must be provided as a reference input.
-  let hub.Datum { state_queue: state_queue_policy, .. } =
-    hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
+  // 2. The state-queue minting policy must be authenticated through its hub
+  //    oracle UTxO.
+  let state_queue_policy =
+    hub.get_authenticated_script_hash(
+      reference_inputs,
+      hub_oracle,
+      state_queue.hub_oracle_mint_asset_name,
+      state_queue_mint_hub_oracle_ref_index,
+    )
 
   let
     state_queue_datum,
@@ -541,12 +546,12 @@ pub fn verify_tx_in_state_queue_node(
     )
 
   // 3. The asset name of the computation thread token must match the state
-  //    queue node key (after dropping the fraud category ID prefix), which is
-  //    the block's header hash.
+  //    queue node key (after dropping the fraud proof ID prefix), which is the
+  //    block's header hash.
   expect
     state_queue_node_key == bytearray.drop(
       computation_thread_token_asset_name,
-      fraud_proof_catalogue.id_byte_count,
+      ct.fraud_proof_id_byte_count,
     )
 
   // 4. Specified transaction must be proven to be included in the referenced
@@ -571,7 +576,7 @@ pub fn verify_native_tx_in_state_queue_node(
   tx_membership_proof: Proof,
   computation_thread_token_asset_name: AssetName,
   hub_oracle: ScriptHash,
-  hub_ref_input_index: Int,
+  state_queue_mint_hub_oracle_ref_index: Int,
   state_queue_node_ref_input_index: Int,
   inclusion_proof_script_withdraw_redeemer_index: Int,
   reference_inputs: List<Input>,
@@ -581,8 +586,13 @@ pub fn verify_native_tx_in_state_queue_node(
   let native_tx_view =
     verify_native_tx_compact_cbor(native_tx_id, native_tx_compact_cbor)
 
-  let hub.Datum { state_queue: state_queue_policy, .. } =
-    hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
+  let state_queue_policy =
+    hub.get_authenticated_script_hash(
+      reference_inputs,
+      hub_oracle,
+      state_queue.hub_oracle_mint_asset_name,
+      state_queue_mint_hub_oracle_ref_index,
+    )
 
   let
     state_queue_datum,
@@ -597,7 +607,7 @@ pub fn verify_native_tx_in_state_queue_node(
   expect
     state_queue_node_key == bytearray.drop(
       computation_thread_token_asset_name,
-      fraud_proof_catalogue.id_byte_count,
+      ct.fraud_proof_id_byte_count,
     )
 
   expect

@@ -4,7 +4,7 @@ use cardano/address.{Script}
 use cardano/assets.{AssetName, PolicyId}
 use cardano/transaction.{InlineDatum, Input, Output}
 
-pub const asset_name: AssetName = "MIDGARD_DA_PARAMS"
+pub const asset_name: AssetName = "MidgardDaParams"
 
 pub const verification_key_byte_count: Int = 32
 

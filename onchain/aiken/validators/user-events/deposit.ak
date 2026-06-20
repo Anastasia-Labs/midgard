@@ -141,10 +141,7 @@ validator mint(hub_oracle: ScriptHash) {
     <-
       user_events.validate_mint(
         hub_oracle,
-        fn(hub_datum) {
-          let hub.Datum { deposit_addr, .. } = hub_datum
-          deposit_addr
-        },
+        deposit.hub_oracle_spend_asset_name,
         redeemer,
         own_policy,
         tx,

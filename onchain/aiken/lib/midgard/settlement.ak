@@ -8,6 +8,10 @@ use midgard/fraud_proofs/native_tx/types as native_tx
 use midgard/ledger_state
 use midgard/user_events/tx_order
 
+pub const hub_oracle_mint_asset_name: AssetName = "SettlementMint"
+
+pub const hub_oracle_spend_asset_name: AssetName = "SettlementSpend"
+
 pub type Datum {
   deposits_root: ledger_state.DepositsRoot,
   withdrawals_root: ledger_state.WithdrawalsRoot,

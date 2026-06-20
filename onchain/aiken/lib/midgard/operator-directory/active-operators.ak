@@ -7,7 +7,11 @@ use midgard/common/types.{PosixTime}
 use midgard/operator_directory.{SlashingArguments}
 
 /// TODO: Refer to state queue's library module.
-pub const root_asset_name: AssetName = "MIDGARD_ACTIVE_OPERATORS"
+pub const root_asset_name: AssetName = "MidgardActiveOperators"
+
+pub const hub_oracle_mint_asset_name: AssetName = "ActiveOperatorsMint"
+
+pub const hub_oracle_spend_asset_name: AssetName = "ActiveOperatorsSpend"
 
 /// Short for "Midgard Active". In hex it will be: #"4d414354"
 ///

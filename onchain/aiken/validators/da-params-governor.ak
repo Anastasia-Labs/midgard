@@ -302,8 +302,7 @@ validator main(
     let expected_input_datum_data: Data = input_datum
     expect input_datum_data == expected_input_datum_data
     expect Script(policy_id) = input_address.payment_credential
-    expect
-      assets.quantity_of(input_value, policy_id, asset_name) == 1
+    expect assets.quantity_of(input_value, policy_id, asset_name) == 1
 
     // 3. Enough current owners must have signed the update transaction.
     let Datum { owners, update_threshold, .. } = input_datum

@@ -9,7 +9,8 @@ use cardano/transaction.{
 }
 use cardano/transaction as tx
 use midgard/da_attestation.{
-  Datum as DaAttestationDatum, asset_name_prefix as attestation_asset_name_prefix,
+  Datum as DaAttestationDatum,
+  asset_name_prefix as attestation_asset_name_prefix,
   attested_signer_bitmap_byte_count, empty_attested_signer_bitmap,
   signature_witness_byte_count, validate_add_signatures,
 }

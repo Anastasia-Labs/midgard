@@ -10,7 +10,11 @@ use midgard/ledger_state.{
 }
 
 /// TODO: It might be better to be space-conscious and use an empty name.
-pub const confirmed_state_asset_name: AssetName = "MIDGARD_CONFIRMED_STATE"
+pub const confirmed_state_asset_name: AssetName = "MidgardConfirmedState"
+
+pub const hub_oracle_mint_asset_name: AssetName = "StateQueueMint"
+
+pub const hub_oracle_spend_asset_name: AssetName = "StateQueueSpend"
 
 /// Short for "Midgard Block". In hex it will be: #"4d424c43"
 ///

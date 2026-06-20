@@ -31,7 +31,7 @@ pub type MintRedeemer {
   AuthenticateEvent {
     nonce_input_index: Int,
     event_output_index: Int,
-    hub_ref_input_index: Int,
+    event_spend_hub_oracle_ref_index: Int,
     witness_registration_redeemer_index: Int,
   }
   BurnEventNFT {
@@ -50,7 +50,7 @@ pub fn out_ref_to_nonce(out_ref: OutputReference) -> AssetName {
 
 pub fn validate_mint(
   hub_oracle: ScriptHash,
-  event_address_getter: fn(hub.Datum) -> Address,
+  event_spend_asset_name: AssetName,
   redeemer: MintRedeemer,
   own_policy: PolicyId,
   tx: Transaction,
@@ -60,7 +60,7 @@ pub fn validate_mint(
     AuthenticateEvent {
       nonce_input_index,
       event_output_index,
-      hub_ref_input_index,
+      event_spend_hub_oracle_ref_index,
       witness_registration_redeemer_index,
     } -> {
       let Transaction {
@@ -73,11 +73,15 @@ pub fn validate_mint(
         ..
       } = tx
 
-      // Grab hub oracle datum.
-      let hub_datum =
-        hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
-
-      let event_address = event_address_getter(hub_datum)
+      // 1. The event output address is authenticated by the corresponding hub
+      //    oracle UTxO.
+      let event_address =
+        hub.get_authenticated_address(
+          reference_inputs,
+          hub_oracle,
+          event_spend_asset_name,
+          event_spend_hub_oracle_ref_index,
+        )
 
       authenticate_new_event(
         event_address,

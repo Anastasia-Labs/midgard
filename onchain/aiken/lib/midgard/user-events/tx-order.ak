@@ -1,5 +1,5 @@
 use aiken/crypto.{blake2b_256}
-use cardano/assets.{PolicyId}
+use cardano/assets.{AssetName, PolicyId}
 use cardano/transaction.{InlineDatum, Input, Output}
 use midgard/common/types.{Proof}
 use midgard/common/utils
@@ -11,6 +11,10 @@ use midgard/fraud_proofs/native_tx/transaction as native_tx
 use midgard/fraud_proofs/native_tx/types as native_tx_types
 use midgard/ledger_state.{TxOrderEvent}
 use midgard/user_events
+
+pub const hub_oracle_mint_asset_name: AssetName = "TxOrderMint"
+
+pub const hub_oracle_spend_asset_name: AssetName = "TxOrderSpend"
 
 pub type Datum =
   user_events.OptimisticDatum<TxOrderEvent>

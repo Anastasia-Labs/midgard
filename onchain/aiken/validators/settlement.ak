@@ -75,9 +75,8 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
             double_satisfaction_prevented: True,
           )
 
-        // 4. The transaction must include the Midgard hub oracle NFT in a
-        //    reference input.
-        // 5. hub_oracle.{active_operators, scheduler}
+        // 4. Hub oracle provides the active-operators spending address and the
+        //    scheduler minting policy.
         let hub.Datum { active_operators_addr, scheduler, .. } =
           hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
 
@@ -187,9 +186,7 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
           Datum { ..datum, resolution_claim: None }
         expect cont_output_datum_data == expected_datum_data
 
-        // 4. The transaction must include the Midgard hub oracle NFT in a
-        //    reference input.
-        // 5. hub_oracle.{active_operators, retired_operators, deposit, withdrawal, tx_order}
+        // 4. Required protocol minting policies come from the hub oracle.
         let hub.Datum {
           active_operators,
           retired_operators,
@@ -302,9 +299,8 @@ validator mint(hub_oracle: ScriptHash) {
         state_queue_merge_redeemer_index,
         hub_ref_input_index,
       } -> {
-        // 1. The transaction must include the Midgard hub oracle NFT in a
-        //    reference input.
-        // 2. hub_oracle.{state_queue}
+        // 1. Hub oracle provides the state-queue minting policy and settlement
+        //    spending address.
         let hub.Datum { state_queue, settlement_addr, .. } =
           hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
 

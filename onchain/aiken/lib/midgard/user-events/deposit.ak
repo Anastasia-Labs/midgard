@@ -1,9 +1,13 @@
 use aiken/crypto.{ScriptHash}
-use cardano/assets.{PolicyId}
+use cardano/assets.{AssetName, PolicyId}
 use cardano/transaction.{InlineDatum, Input, Output}
 use midgard/common/types.{PosixTime, Proof}
 use midgard/common/utils
 use midgard/ledger_state
+
+pub const hub_oracle_mint_asset_name: AssetName = "DepositMint"
+
+pub const hub_oracle_spend_asset_name: AssetName = "DepositSpend"
 
 pub type Datum {
   event: ledger_state.DepositEvent,

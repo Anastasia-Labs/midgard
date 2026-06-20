@@ -3,6 +3,10 @@ use cardano/assets.{AssetName}
 use cardano/transaction.{Datum as CardanoDatum, OutputReference}
 use midgard/common/types.{ValuePairs}
 
+pub const hub_oracle_mint_asset_name: AssetName = "PayoutMint"
+
+pub const hub_oracle_spend_asset_name: AssetName = "PayoutSpend"
+
 pub type Datum {
   l2_value: ValuePairs,
   l1_address: Address,

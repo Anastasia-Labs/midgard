@@ -8,7 +8,11 @@ use midgard/common/types.{PosixTime}
 use midgard/operator_directory
 
 /// TODO: Refer to state queue's library module.
-pub const root_asset_name: AssetName = "MIDGARD_REGISTERED_OPERATORS"
+pub const root_asset_name: AssetName = "MidgardRegisteredOperators"
+
+pub const hub_oracle_mint_asset_name: AssetName = "RegisteredOperatorsMint"
+
+pub const hub_oracle_spend_asset_name: AssetName = "RegisteredOperatorsSpend"
 
 /// Short for "Midgard Registered". In hex it will be: #"4d524547"
 ///
@@ -29,7 +33,7 @@ pub type Datum =
 
 pub type DuplicateOperatorStatus {
   DuplicateIsRegistered
-  DuplicateIsActive { hub_oracle_ref_input_index: Int }
+  DuplicateIsActive { active_operators_mint_hub_oracle_ref_index: Int }
   DuplicateIsRetired
 }
 
@@ -40,7 +44,7 @@ pub type MintRedeemer {
     registering_operator: VerificationKeyHash,
     root_output_index: Int,
     registered_node_output_index: Int,
-    hub_oracle_ref_input_index: Int,
+    active_operators_mint_hub_oracle_ref_index: Int,
     active_operators_element_ref_input_index: Int,
     retired_operators_element_ref_input_index: Int,
   }
@@ -48,7 +52,7 @@ pub type MintRedeemer {
     activating_operator: VerificationKeyHash,
     anchor_element_input_outref: OutputReference,
     anchor_element_output_index: Int,
-    hub_oracle_ref_input_index: Int,
+    active_operators_mint_hub_oracle_ref_index: Int,
     retired_operators_element_ref_input_index: Int,
     active_operators_redeemer_index: Int,
   }

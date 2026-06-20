@@ -2,8 +2,12 @@ use aiken/primitive/bytearray
 use cardano/assets.{AssetName, PolicyId}
 use cardano/transaction.{Input}
 use midgard/common/utils
-use midgard/fraud_proof_catalogue
+use midgard/computation_thread.{fraud_proof_id_byte_count}
 use midgard/ledger_state.{HeaderHash}
+
+pub const hub_oracle_mint_asset_name: AssetName = "FraudProofMint"
+
+pub const hub_oracle_spend_asset_name: AssetName = "FraudProofSpend"
 
 pub type Datum {
   fraud_prover: ByteArray,
@@ -17,7 +21,7 @@ pub type MintRedeemer {
 pub fn asset_name_to_header_hash(
   fraud_proof_asset_name: AssetName,
 ) -> HeaderHash {
-  fraud_proof_asset_name |> bytearray.drop(fraud_proof_catalogue.id_byte_count)
+  fraud_proof_asset_name |> bytearray.drop(fraud_proof_id_byte_count)
 }
 
 pub fn get_proven_fraudulent_blocks_header_hash(

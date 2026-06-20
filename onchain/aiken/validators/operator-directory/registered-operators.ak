@@ -12,7 +12,7 @@ use midgard/hub_oracle as hub
 use midgard/operator_directory.{deinit, init, operator_is_not_a_member}
 use midgard/operator_directory/active_operators
 use midgard/operator_directory/registered_operators.{
-  ActivateOperator, Datum, Deinit, DeregisterOperator, DuplicateIsActive,
+  ActivateOperator, Deinit, DeregisterOperator, DuplicateIsActive,
   DuplicateIsRegistered, DuplicateIsRetired, Init, MintRedeemer, NodeData,
   RegisterOperator, SlashDuplicateOperator, activation_time_to_node_key,
   finalize_linked_list, node_key_to_activation_time, root_asset_name,
@@ -57,7 +57,7 @@ validator mint(
         registering_operator,
         root_output_index,
         registered_node_output_index,
-        hub_oracle_ref_input_index,
+        active_operators_mint_hub_oracle_ref_index,
         active_operators_element_ref_input_index,
         retired_operators_element_ref_input_index,
       } -> {
@@ -74,15 +74,14 @@ validator mint(
         // 1. Transaction must be signed by the registering operator.
         expect registering_operator |> utils.has_signed(extra_signatories)
 
-        // 2. Transaction must refer to hub oracle's authentic UTxO.
-        let hub.Datum {
-          active_operators: active_operators_mint_script_hash,
-          ..
-        } =
-          hub.get_datum(
+        // 2. The active-operators minting policy is authenticated through its
+        //    hub oracle UTxO.
+        let active_operators_mint_script_hash =
+          hub.get_authenticated_script_hash(
             reference_inputs,
             hub_oracle_script_hash,
-            hub_oracle_ref_input_index,
+            active_operators.hub_oracle_mint_asset_name,
+            active_operators_mint_hub_oracle_ref_index,
           )
 
         // 3. Registering operator must not be present in the active operators
@@ -176,7 +175,7 @@ validator mint(
         activating_operator,
         anchor_element_input_outref,
         anchor_element_output_index,
-        hub_oracle_ref_input_index,
+        active_operators_mint_hub_oracle_ref_index,
         retired_operators_element_ref_input_index,
         active_operators_redeemer_index,
       } -> {
@@ -190,15 +189,14 @@ validator mint(
           ..
         } = self
 
-        // 1. Transaction must refer to hub oracle's authentic UTxO.
-        let hub.Datum {
-          active_operators: active_operators_mint_script_hash,
-          ..
-        } =
-          hub.get_datum(
+        // 1. The active-operators minting policy is authenticated through its
+        //    hub oracle UTxO.
+        let active_operators_mint_script_hash =
+          hub.get_authenticated_script_hash(
             reference_inputs,
             hub_oracle_script_hash,
-            hub_oracle_ref_input_index,
+            active_operators.hub_oracle_mint_asset_name,
+            active_operators_mint_hub_oracle_ref_index,
           )
 
         // 2. `ActivateOperator` minting redeemer of the active operators script
@@ -346,15 +344,16 @@ validator mint(
               True
             }
               |> finalize_linked_list(own_policy_id)
-          DuplicateIsActive { hub_oracle_ref_input_index } -> {
+          DuplicateIsActive { active_operators_mint_hub_oracle_ref_index } -> {
             // 4b. Since the active operators policy ID is not a parameter here,
-            //     the transaction must refer to hub oracle's authentic UTxO for
-            //     retrieval of the policy ID.
-            let hub_datum =
-              hub.get_datum(
+            //     the transaction must authenticate it through its hub oracle
+            //     UTxO.
+            let active_operators_mint_script_hash =
+              hub.get_authenticated_script_hash(
                 reference_inputs,
                 hub_oracle_script_hash,
-                hub_oracle_ref_input_index,
+                active_operators.hub_oracle_mint_asset_name,
+                active_operators_mint_hub_oracle_ref_index,
               )
 
             // 5b. Referenced element must be a node in the active operators
@@ -374,7 +373,7 @@ validator mint(
               True
             }
               |> active_operators.finalize_linked_list(
-                  hub_datum.active_operators,
+                  active_operators_mint_script_hash,
                 )
           }
           DuplicateIsRetired ->

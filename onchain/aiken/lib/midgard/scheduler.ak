@@ -1,10 +1,15 @@
 use aiken/crypto.{ScriptHash, VerificationKeyHash}
+use cardano/assets.{AssetName}
 use cardano/transaction.{Input}
 use env.{shift_duration}
 use midgard/common/types.{PosixTime}
 use midgard/common/utils
 
-pub const asset_name = "MIDGARD_SCHEDULER"
+pub const asset_name = "MidgardScheduler"
+
+pub const hub_oracle_mint_asset_name: AssetName = "SchedulerMint"
+
+pub const hub_oracle_spend_asset_name: AssetName = "SchedulerSpend"
 
 pub type SchedDatum {
   NoActiveOperators

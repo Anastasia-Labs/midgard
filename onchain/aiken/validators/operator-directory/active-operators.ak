@@ -467,14 +467,14 @@ validator mint(
               tx_mint: mint,
             )
 
-          // 5. Anchor element's ADA must be preserved.
+          // 4. Anchor element's ADA must be preserved.
           expect anchor_lovelace_change >= 0
 
-          // 6. Key of the removing node must match the operator key specified
+          // 5. Key of the removing node must match the operator key specified
           //    via the redeemer.
           expect active_operator_key == active_operator_node_key
 
-          // 7. Ensure scheduler datum is getting updated if needed, or show
+          // 6. Ensure scheduler datum is getting updated if needed, or show
           //    that it doesn't need to.
           expect
             operator_removal_scheduler_sync
@@ -493,7 +493,7 @@ validator mint(
             bond_unlock_time: removing_nodes_bond_unlock_time,
           } = active_operator_node_data
 
-          // 8. The `bond_unlock_time` redeemer argument from the retired
+          // 7. The `bond_unlock_time` redeemer argument from the retired
           //    operators directory must match the removing node's datum. This
           //    allows the minting of the retired operator's node to be able to
           //    rely on its correctness.
@@ -501,21 +501,21 @@ validator mint(
             removing_nodes_bond_unlock_time == retired_operators_redeemer_bond_unlock_time
 
           if penalize_for_inactivity {
-            // 9a. Since retired operators minting script relies on the penalty
+            // 8a. Since retired operators minting script relies on the penalty
             //     flag here, its correctness must be verified.
             expect inactivity_strikes >= env.max_inactivity_strikes
 
-            // 10a. With enough strikes, anyone can partially slash the
+            // 9a. With enough strikes, anyone can partially slash the
             //      operator,
             expect self.fee >= env.inactivity_slashing_penalty
 
             // Done.
             True
           } else {
-            // 9b. The penalty flag must be valid.
+            // 8b. The penalty flag must be valid.
             expect inactivity_strikes < env.max_inactivity_strikes
 
-            // 10b. The retiring operator must consent to the transaction.
+            // 9b. The retiring operator must consent to the transaction.
             expect active_operator_key |> utils.has_signed(extra_signatories)
 
             // Done.

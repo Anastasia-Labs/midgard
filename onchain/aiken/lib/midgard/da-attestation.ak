@@ -8,15 +8,14 @@ use cardano/transaction.{
 }
 use midgard/common/utils
 use midgard/da_params_governor as da_params_governor
+use midgard/hub_oracle as hub
 use midgard/ledger_state.{HeaderHash}
+use midgard/state_queue
 
 /// DAAT tokens carry attestation certificates. This stateless policy cannot
 /// prove per-header global uniqueness; downstream consumers must validate a
 /// threshold-attested UTxO and must not rely on unique supply.
 pub const asset_name_prefix: AssetName = "DAAT"
-
-pub const state_queue_mint_reference_script_asset_name: AssetName =
-  "StateQueueMint"
 
 pub const signature_byte_count: Int = 64
 
@@ -42,13 +41,13 @@ pub type MintRedeemer {
     output_index: Int,
     da_params_ref_input_index: Int,
     state_queue_ref_input_index: Int,
-    state_queue_mint_ref_script_input_index: Int,
+    state_queue_mint_hub_oracle_ref_index: Int,
   }
   ApplyToStateQueue {
     da_attestation_input_index: Int,
     state_queue_input_index: Int,
     state_queue_output_index: Int,
-    state_queue_mint_ref_script_input_index: Int,
+    state_queue_mint_hub_oracle_ref_index: Int,
   }
 }
 
@@ -79,22 +78,15 @@ fn attestation_message(header_hash: HeaderHash) -> ByteArray {
 
 pub fn get_authenticated_state_queue_policy_id(
   reference_inputs: List<Input>,
-  reference_script_auth_policy_id: PolicyId,
-  state_queue_mint_ref_script_input_index: Int,
+  hub_oracle_script_hash: PolicyId,
+  state_queue_mint_hub_oracle_ref_index: Int,
 ) -> PolicyId {
-  expect Input {
-    output: Output { value, reference_script: Some(state_queue_policy_id), .. },
-    ..
-  } = reference_inputs |> list.expect_at(state_queue_mint_ref_script_input_index)
-
-  expect
-    assets.has_nft_strict(
-      value,
-      reference_script_auth_policy_id,
-      state_queue_mint_reference_script_asset_name,
-    )
-
-  state_queue_policy_id
+  hub.get_authenticated_script_hash(
+    reference_inputs,
+    hub_oracle_script_hash,
+    state_queue.hub_oracle_mint_asset_name,
+    state_queue_mint_hub_oracle_ref_index,
+  )
 }
 
 pub fn validate_init_output(

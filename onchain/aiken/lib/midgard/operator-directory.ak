@@ -44,8 +44,8 @@ pub fn init(
   // 1. An output must exist at specified index.
   expect Some(root_output) = outputs |> list.at(output_index)
 
-  // 2. Linked list must be initiated with a void root data, and
-  //    validation that a hub oracle NFT is getting minted.
+  // 2. Linked list must be initiated with a void root data, and validation that
+  //    a hub oracle NFT is getting minted.
   linked_list.init(
     nonce_validated: assets.quantity_of(
       mint,

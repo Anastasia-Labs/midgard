@@ -5,17 +5,17 @@ use cardano/transaction.{
 }
 use midgard/common/utils
 use midgard/da_attestation.{
-  AddSignatures, ApplyToStateQueue, BurnForStateQueue, Datum, Init,
-  MintRedeemer, SpendRedeemer, asset_name,
-  get_authenticated_state_queue_policy_id, get_attestation_input_datum,
-  validate_add_signatures, validate_init_output,
+  AddSignatures, ApplyToStateQueue, BurnForStateQueue, Datum, Init, MintRedeemer,
+  SpendRedeemer, asset_name, get_attestation_input_datum,
+  get_authenticated_state_queue_policy_id, validate_add_signatures,
+  validate_init_output,
 }
 use midgard/da_params_governor
 use midgard/state_queue
 
 validator main(
   da_params_policy_id: PolicyId,
-  reference_script_auth_policy_id: PolicyId,
+  hub_oracle_script_hash: PolicyId,
 ) {
   mint(redeemer: MintRedeemer, own_policy_id: PolicyId, tx: Transaction) {
     when redeemer is {
@@ -23,7 +23,7 @@ validator main(
         output_index,
         da_params_ref_input_index,
         state_queue_ref_input_index,
-        state_queue_mint_ref_script_input_index,
+        state_queue_mint_hub_oracle_ref_index,
       } -> {
         // 1. The referenced data availability params must be authentic.
         let params =
@@ -34,12 +34,12 @@ validator main(
           )
 
         // 2. The referenced state queue mint script must be authenticated by
-        //    the reference-script authorization NFT.
+        //    its hub oracle UTxO.
         let state_queue_policy_id =
           get_authenticated_state_queue_policy_id(
             tx.reference_inputs,
-            reference_script_auth_policy_id,
-            state_queue_mint_ref_script_input_index,
+            hub_oracle_script_hash,
+            state_queue_mint_hub_oracle_ref_index,
           )
 
         // 3. The referenced state queue node must match a block with no
@@ -62,11 +62,7 @@ validator main(
         let attestation_asset =
           tx.outputs
             |> list.expect_at(output_index)
-            |> validate_init_output(
-                own_policy_id,
-                params,
-                expected_header_hash,
-              )
+            |> validate_init_output(own_policy_id, params, expected_header_hash)
 
         // 5. Exactly one header-specific attestation NFT must be minted.
         expect utils.validate_mint(tx.mint, own_policy_id, attestation_asset, 1)
@@ -77,7 +73,7 @@ validator main(
         da_attestation_input_index,
         state_queue_input_index,
         state_queue_output_index,
-        state_queue_mint_ref_script_input_index,
+        state_queue_mint_hub_oracle_ref_index,
       } -> {
         // 1. The attestation input must be authentic for this policy.
         let attestation_datum =
@@ -93,15 +89,16 @@ validator main(
 
         // 3. The header-specific attestation NFT must be burnt.
         let attestation_asset = asset_name(attestation_datum.header_hash)
-        expect utils.validate_mint(tx.mint, own_policy_id, attestation_asset, -1)
+        expect
+          utils.validate_mint(tx.mint, own_policy_id, attestation_asset, -1)
 
         // 4. The referenced state queue mint script must be authenticated by
-        //    the reference-script authorization NFT.
+        //    its hub oracle UTxO.
         let state_queue_policy_id =
           get_authenticated_state_queue_policy_id(
             tx.reference_inputs,
-            reference_script_auth_policy_id,
-            state_queue_mint_ref_script_input_index,
+            hub_oracle_script_hash,
+            state_queue_mint_hub_oracle_ref_index,
           )
 
         // 5. The state queue node must attach this attestation to the same
@@ -126,11 +123,7 @@ validator main(
     tx: Transaction,
   ) {
     when redeemer is {
-      AddSignatures {
-        output_index,
-        da_params_ref_input_index,
-        signatures,
-      } ->
+      AddSignatures { output_index, da_params_ref_input_index, signatures } ->
         validate_add_signatures(
           datum,
           output_index,

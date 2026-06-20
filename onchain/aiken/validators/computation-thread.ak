@@ -1,4 +1,3 @@
-use aiken/builtin
 use aiken/collection/list
 use aiken/primitive/bytearray
 use cardano/address.{Address, Script}
@@ -7,69 +6,50 @@ use cardano/transaction.{InlineDatum, Output, Transaction}
 use midgard/common/utils
 use midgard/computation_thread.{
   BurnForCancellation, Init, MintRedeemer, StepDatum, Success,
+  fraud_proof_id_byte_count, hub_oracle_first_fraud_proof_step_asset_name,
 }
-use midgard/fraud_proof_catalogue as catalogue
 use midgard/hub_oracle as hub
 use midgard/state_queue
 
-validator mint(
-  fraud_proof_catalogue_script_hash: ByteArray,
-  hub_oracle_script_hash: PolicyId,
-) {
+validator mint(hub_oracle_script_hash: PolicyId) {
   mint(redeemer: MintRedeemer, own_policy_id: PolicyId, self: Transaction) {
     when redeemer is {
       Init {
         first_step_output_index,
-        fraud_category_id,
-        fraud_category,
-        fraud_category_membership_proof,
-        fraud_proof_catalogue_ref_input_index,
-        inclusion_proof_script_redeemer_index,
-        hub_oracle_ref_input_index,
+        fraud_proof_id,
+        fraud_proof_step_hub_oracle_ref_index,
+        state_queue_mint_hub_oracle_ref_index,
         fraudulent_block_ref_input_index,
       } -> {
         let Transaction {
           outputs,
           reference_inputs,
-          redeemers,
           mint,
           extra_signatories,
           ..
         } = self
 
-        // 1. Transaction must reference the fraud proof category's authentic
-        //    utxo.
-        let catalogue_merkle_root =
-          reference_inputs
-            |> catalogue.get_datum(
-                fraud_proof_catalogue_script_hash,
-                fraud_proof_catalogue_ref_input_index,
-              )
-
-        // 2. The provided fraud category (i.e. spending script hash for the
-        //    first step of the desired fraud proof) must be a member of the
-        //    Merkle structure which its root is attached to the referenced
-        //    fraud proof category utxo.
-        expect
-          utils.plutarch_phas(
-            merkle_root: catalogue_merkle_root,
-            key: builtin.un_b_data(fraud_category_id),
-            value: builtin.un_b_data(fraud_category),
-            membership_proof: fraud_category_membership_proof,
-            redeemers: redeemers,
-            withdraw_redeemer_index: inclusion_proof_script_redeemer_index,
-          )
-
-        // 3. Transaction must retrieve policy ID of the state queue from the
-        //    authentic hub oracle utxo.
-        let hub.Datum { state_queue: state_queue_policy_id, .. } =
-          hub.get_datum(
+        // 1. Transaction must authenticate the first fraud-proof step through
+        //    its hub oracle UTxO for this fraud proof.
+        let first_fraud_proof_step_script_hash =
+          hub.get_authenticated_script_hash(
             reference_inputs,
             hub_oracle_script_hash,
-            hub_oracle_ref_input_index,
+            hub_oracle_first_fraud_proof_step_asset_name(fraud_proof_id),
+            fraud_proof_step_hub_oracle_ref_index,
           )
 
-        // 4. Transaction must reference the fraudulent block. Let its key be
+        // 2. Transaction must authenticate the state-queue minting policy
+        //    through its hub oracle UTxO.
+        let state_queue_policy_id =
+          hub.get_authenticated_script_hash(
+            reference_inputs,
+            hub_oracle_script_hash,
+            state_queue.hub_oracle_mint_asset_name,
+            state_queue_mint_hub_oracle_ref_index,
+          )
+
+        // 3. Transaction must reference the fraudulent block. Let its key be
         //    `fraudulent_header_hash`.
         let
           _fraudulent_header,
@@ -81,7 +61,7 @@ validator mint(
             fraudulent_block_ref_input_index,
           )
 
-        // 5. Output at the specified index must exist and:
+        // 4. Output at the specified index must exist and:
         //    - Go to an address which its payment part is a script
         //    - Have an inline datum attached
         //    - Have no reference script attached
@@ -96,31 +76,33 @@ validator mint(
           reference_script: None,
         }) = list.at(outputs, first_step_output_index)
 
-        // 6. The script hash of the destination address must be equal to the
-        //    proven fraud category.
-        expect first_step_output_script_hash == fraud_category
+        // 5. The script hash of the destination address must be equal to the
+        //    authenticated first-step fraud-proof script hash.
+        expect
+          first_step_output_script_hash == first_fraud_proof_step_script_hash
 
-        // 7. `first_step_output` must have only 1 NFT such that:
+        // 6. `first_step_output` must have only 1 NFT such that:
         //    - Its policy ID is that of the current script (computation thread)
-        //    - Its asset name is the concatenation of fraud category's ID, and
+        //    - Its asset name is the concatenation of fraud proof's ID, and
         //      `fraudulent_header_hash`
+        expect bytearray.length(fraud_proof_id) == fraud_proof_id_byte_count
         let expected_asset_name =
-          fraud_category_id |> bytearray.concat(fraudulent_header_hash)
+          fraud_proof_id |> bytearray.concat(fraudulent_header_hash)
         let expected_mint_triplet = (own_policy_id, expected_asset_name, 1)
         expect
           utils.get_single_asset_from_value_apart_from_ada(
             first_step_output_value,
           ) == expected_mint_triplet
 
-        // 8. The datum attached to `first_step_output` must carry the fraud
+        // 7. The datum attached to `first_step_output` must carry the fraud
         //    prover, without any additional data.
         expect StepDatum { fraud_prover, data: None }: StepDatum<Data> =
           first_step_output_datum_data
 
-        // 9. Transaction must be signed by the specified fraud prover.
+        // 8. Transaction must be signed by the specified fraud prover.
         expect fraud_prover |> utils.has_signed(extra_signatories)
 
-        // 10. The NFT in `first_step_output` must be the only asset minted in
+        // 9. The NFT in `first_step_output` must be the only asset minted in
         //     the transaction.
         expect utils.get_single_asset_from_value(mint) == expected_mint_triplet
 

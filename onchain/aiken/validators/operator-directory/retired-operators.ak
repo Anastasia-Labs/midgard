@@ -50,20 +50,21 @@ validator mint(hub_oracle_script_hash: PolicyId) {
       RetireOperator {
         new_retired_operator_key,
         bond_unlock_time,
-        hub_oracle_ref_input_index,
+        active_operators_mint_hub_oracle_ref_index,
         retired_operator_anchor_element_output_index,
         retired_operator_inserted_node_output_index,
         active_operators_redeemer_index,
       } -> {
         let Transaction { inputs, outputs, mint, redeemers, .. } = self
 
-        // 1. The active operators policy ID must come from reference authentic
+        // 1. The active-operators minting policy is authenticated through its
         //    hub oracle UTxO.
-        let hub_datum =
-          hub.get_datum(
+        let active_operators_mint_script_hash =
+          hub.get_authenticated_script_hash(
             self.reference_inputs,
             hub_oracle_script_hash,
-            hub_oracle_ref_input_index,
+            active_operators.hub_oracle_mint_asset_name,
+            active_operators_mint_hub_oracle_ref_index,
           )
 
         // 2. Generic validations for operator transfer must pass.
@@ -75,7 +76,7 @@ validator mint(hub_oracle_script_hash: PolicyId) {
           <-
             validate_transferred_operator_insertion(
               new_retired_operator_key,
-              hub_datum.active_operators,
+              active_operators_mint_script_hash,
               active_operators_redeemer_index,
               fn(active_operators_redeemer_data) -> (VerificationKeyHash, Bool) {
                 expect active_operators.RetireOperator {

@@ -7,7 +7,11 @@ use midgard/common/types.{PosixTime}
 use midgard/operator_directory.{SlashingArguments}
 
 /// TODO: Refer to state queue's library module.
-pub const root_asset_name: AssetName = "MIDGARD_RETIRED_OPERATORS"
+pub const root_asset_name: AssetName = "MidgardRetiredOperators"
+
+pub const hub_oracle_mint_asset_name: AssetName = "RetiredOperatorsMint"
+
+pub const hub_oracle_spend_asset_name: AssetName = "RetiredOperatorsSpend"
 
 /// Short for "Midgard Retired". In hex it will be: #"4d524554"
 ///
@@ -33,7 +37,7 @@ pub type MintRedeemer {
   RetireOperator {
     new_retired_operator_key: VerificationKeyHash,
     bond_unlock_time: Option<PosixTime>,
-    hub_oracle_ref_input_index: Int,
+    active_operators_mint_hub_oracle_ref_index: Int,
     retired_operator_anchor_element_output_index: Int,
     retired_operator_inserted_node_output_index: Int,
     active_operators_redeemer_index: Int,

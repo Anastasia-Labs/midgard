@@ -1,9 +1,13 @@
-use cardano/assets.{PolicyId}
+use cardano/assets.{AssetName, PolicyId}
 use cardano/transaction.{InlineDatum, Input, Output}
 use midgard/common/types.{Proof}
 use midgard/common/utils
 use midgard/ledger_state.{WithdrawalEvent, WithdrawalValidity}
 use midgard/user_events
+
+pub const hub_oracle_mint_asset_name: AssetName = "WithdrawalMint"
+
+pub const hub_oracle_spend_asset_name: AssetName = "WithdrawalSpend"
 
 pub type Datum =
   user_events.OptimisticDatum<WithdrawalEvent>

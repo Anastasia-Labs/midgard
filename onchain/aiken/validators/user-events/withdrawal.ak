@@ -403,7 +403,6 @@ fn test_hub_datum() -> hub.Datum {
     retired_operators: #"12121212121212121212121212121212121212121212121212121212",
     scheduler: #"13131313131313131313131313131313131313131313131313131313",
     state_queue: #"14141414141414141414141414141414141414141414141414141414",
-    fraud_proof_catalogue: #"15151515151515151515151515151515151515151515151515151515",
     fraud_proof: #"16161616161616161616161616161616161616161616161616161616",
     deposit: #"17171717171717171717171717171717171717171717171717171717",
     withdrawal: test_withdrawal_policy,
@@ -415,7 +414,6 @@ fn test_hub_datum() -> hub.Datum {
     retired_operators_addr: reserve_addr,
     scheduler_addr: reserve_addr,
     state_queue_addr: reserve_addr,
-    fraud_proof_catalogue_addr: reserve_addr,
     fraud_proof_addr: reserve_addr,
     deposit_addr: reserve_addr,
     withdrawal_addr: address.from_script(test_withdrawal_policy),
@@ -428,7 +426,6 @@ fn test_hub_datum() -> hub.Datum {
 }
 
 fn test_hub_ref_input() -> Input {
-  let hub_datum_data: Data = test_hub_datum()
   Input {
     output_reference: OutputReference {
       transaction_id: #"0303030303030303030303030303030303030303030303030303030303030303",
@@ -437,29 +434,10 @@ fn test_hub_ref_input() -> Input {
     output: Output {
       address: address.from_script(test_hub_policy),
       value: assets.from_asset(test_hub_policy, hub.asset_name, 1),
-      datum: InlineDatum(hub_datum_data),
+      datum: InlineDatum(test_hub_datum()),
       reference_script: None,
     },
   }
-}
-
-test withdrawal_refund_hub_fixture_decodes() {
-  let hub_datum_data: Data = test_hub_datum()
-  expect decoded: hub.Datum = hub_datum_data
-  and {
-    decoded == test_hub_datum(),
-    hub.get_datum(
-      [test_hub_ref_input(), test_settlement_ref_input()],
-      test_hub_policy,
-      0,
-    ) == test_hub_datum(),
-  }
-}
-
-test withdrawal_refund_tx_hub_decodes() {
-  let Transaction { reference_inputs, .. } =
-    test_refund_tx(test_valid_refund_output())
-  hub.get_datum(reference_inputs, test_hub_policy, 0) == test_hub_datum()
 }
 
 test withdrawal_refund_tx_settlement_decodes() {
@@ -544,14 +522,6 @@ test withdrawal_output_reference_cbor_matches_sdk_encoding() {
 
 test withdrawal_info_cbor_matches_sdk_default_encoding() {
   cbor.serialise(test_withdrawal_info(ledger_state.WithdrawalIsValid)) == #"d8799fd8799fd8799f5820020202020202020202020202020202020202020202020202020202020202020200ff581c66666666666666666666666666666666666666666666666666666666a140a1401a002dc6c0d8799fd87a9f581c66666666666666666666666666666666666666666666666666666666ffd87a80ffd87980ff9f41014102ffd87980ff"
-}
-
-test withdrawal_refund_hub_settlement_policy_matches_fixture() {
-  let Transaction { reference_inputs, .. } =
-    test_refund_tx(test_valid_refund_output())
-  let hub.Datum { settlement: settlement_policy_id, .. } =
-    hub.get_datum(reference_inputs, test_hub_policy, 0)
-  settlement_policy_id == test_settlement_policy
 }
 
 fn test_settlement_ref_input() -> Input {
@@ -969,10 +939,7 @@ validator mint(hub_oracle: ScriptHash) {
     <-
       user_events.validate_mint(
         hub_oracle,
-        fn(hub_datum) {
-          let hub.Datum { withdrawal_addr, .. } = hub_datum
-          withdrawal_addr
-        },
+        withdrawal.hub_oracle_spend_asset_name,
         redeemer,
         own_policy,
         tx,
