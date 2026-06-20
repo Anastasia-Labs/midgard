@@ -238,7 +238,7 @@ const ensureCachedUtxoState = (): Effect.Effect<
       return cachedUtxoState;
     }
 
-    const preStateEntries = yield* MempoolLedgerDB.retrieve;
+    const preStateEntries = yield* MempoolLedgerDB.retrieveSpendable;
     const state = new Map<string, Buffer>();
     for (const entry of preStateEntries) {
       state.set(entry.outref.toString("hex"), entry.output);

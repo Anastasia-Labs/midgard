@@ -612,7 +612,7 @@ export const fetchNodeUtxos = (
 export const fetchLocalUtxos = (
   address: string,
 ): Effect.Effect<readonly NodeUtxo[], Error, DatabaseService> =>
-  MempoolLedgerDB.retrieveByAddress(address).pipe(
+  MempoolLedgerDB.retrieveSpendableByAddress(address).pipe(
     Effect.map((entries) =>
       entries.map((entry) =>
         decodeNodeUtxo({
@@ -708,7 +708,7 @@ export const submitNativeTransferLocally = (
       strictnessProfile: nodeConfig.VALIDATION_STRICTNESS_PROFILE,
     });
 
-    const preStateEntries = yield* MempoolLedgerDB.retrieve;
+    const preStateEntries = yield* MempoolLedgerDB.retrieveSpendable;
     const preState = new Map<string, Buffer>();
     for (const entry of preStateEntries) {
       preState.set(entry.outref.toString("hex"), entry.output);

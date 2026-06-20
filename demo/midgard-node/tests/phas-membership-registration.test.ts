@@ -1,11 +1,11 @@
-import { describe, expect, it } from "vitest";
-import { Effect } from "effect";
-import { vi } from "vitest";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   type LucidEvolution,
   type TxSignBuilder,
 } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+import { describe, expect, it } from "vitest";
+import { vi } from "vitest";
 
 import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
 import {
@@ -306,8 +306,6 @@ describe("PHAS membership reward registration", () => {
 
     expect(result).toBe(true);
     expect(fetchImpl).toHaveBeenCalledTimes(2);
-    expect(fetchImpl.mock.calls[1]?.[0]).toBe(
-      "http://ogmios-b.example",
-    );
+    expect(fetchImpl.mock.calls[1]?.[0]).toBe("http://ogmios-b.example");
   });
 });

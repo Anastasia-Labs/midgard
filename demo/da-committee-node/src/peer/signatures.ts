@@ -1,9 +1,9 @@
+import { parseSignatureWitness } from "../coordinator/witnesses.js";
 import type { DaPayloadRecord, DaSignatureRecord } from "../domain.js";
 import {
-  verifyDaSignatureWitness,
   type DaCommitteeValidation,
+  verifyDaSignatureWitness,
 } from "../signer.js";
-import { parseSignatureWitness } from "../coordinator/witnesses.js";
 
 export type SignatureRecordValidationArgs = {
   readonly body: Partial<DaSignatureRecord>;

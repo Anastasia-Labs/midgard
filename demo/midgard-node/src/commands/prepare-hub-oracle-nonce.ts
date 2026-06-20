@@ -1,7 +1,8 @@
+import { randomUUID } from "node:crypto";
+
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
-import { randomUUID } from "node:crypto";
 
 import { Lucid } from "@/services/lucid.js";
 import { handleSignSubmit } from "@/transactions/utils.js";

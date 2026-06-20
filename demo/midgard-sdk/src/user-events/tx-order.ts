@@ -14,14 +14,14 @@ import {
   AddressData,
   AddressSchema,
   Bech32DeserializationError,
-  H32,
   hashHexWithBlake2b,
   HashingError,
   LucidError,
   makeReturn,
   MidgardValidators,
+  OutputReference,
+  outputReferenceFromUTxO,
   POSIXTimeSchema,
-  ProofSchema,
 } from "@/common.js";
 import {
   fetchHubOracleUTxOProgram,
@@ -36,6 +36,7 @@ import {
   MidgardTxValiditySchema,
   TxOrderEventSchema,
 } from "@/ledger-state.js";
+import { RawRootMembershipProofSchema } from "@/transition-trace.js";
 
 import {
   buildCompletedUserEventMintTxProgram,
@@ -68,7 +69,7 @@ export const TxOrderSpendRedeemerSchema = Data.Object({
   hub_ref_input_index: Data.Integer(),
   settlement_ref_input_index: Data.Integer(),
   burn_redeemer_index: Data.Integer(),
-  membership_proof: ProofSchema,
+  membership_proof: RawRootMembershipProofSchema,
   inclusion_proof_script_withdraw_redeemer_index: Data.Integer(),
   validity_override: MidgardTxValiditySchema,
 });
@@ -115,7 +116,6 @@ export type SubmitTxOrderReferenceScripts = {
 };
 
 export type SubmitTxOrderConfig = {
-  readonly txId: H32;
   readonly tx: MidgardTxCompact;
   readonly refundAddress: AddressData;
   readonly refundDatum?: CardanoDatum;
@@ -125,7 +125,7 @@ export type SubmitTxOrderConfig = {
 
 export type TxOrderBuildMetadata = {
   readonly txOrderAddress: string;
-  readonly txOrderId: H32;
+  readonly txOrderId: OutputReference;
   readonly authNonceCbor: string;
   readonly txOrderAuthUnit: string;
   readonly nonceInput: Pick<UTxO, "txHash" | "outputIndex">;
@@ -209,6 +209,7 @@ export const buildUnsignedTxOrderTxWithMetadataProgram = (
     );
 
     const nonceInput = yield* selectWalletNonceInputProgram(lucid, "tx order");
+    const txOrderId = outputReferenceFromUTxO(nonceInput);
     const authNonceCbor = outputReferenceToPlutusDataCbor(nonceInput);
     const nonceAssetName = yield* hashHexWithBlake2b(authNonceCbor, 32);
     const txOrderUnit = toUnit(contracts.txOrder.policyId, nonceAssetName);
@@ -221,7 +222,7 @@ export const buildUnsignedTxOrderTxWithMetadataProgram = (
 
     const txOrderDatum: TxOrderDatum = {
       event: {
-        id: config.txId,
+        id: txOrderId,
         tx: config.tx,
       },
       inclusion_time: BigInt(inclusionTime),
@@ -263,7 +264,7 @@ export const buildUnsignedTxOrderTxWithMetadataProgram = (
       tx,
       metadata: {
         txOrderAddress: contracts.txOrder.spendingScriptAddress,
-        txOrderId: config.txId,
+        txOrderId,
         authNonceCbor,
         txOrderAuthUnit: txOrderUnit,
         nonceInput,

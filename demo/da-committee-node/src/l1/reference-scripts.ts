@@ -1,13 +1,13 @@
 import {
-  validatorToScriptHash,
   type LucidEvolution,
   type UTxO,
+  validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
 import type {
   MidgardDeploymentContract,
-  MidgardNodeDeployment,
   MidgardDeploymentOutRef,
+  MidgardNodeDeployment,
 } from "./deployment.js";
 
 export type DaAttestationReferenceScripts = {
@@ -65,7 +65,9 @@ const requireReferenceScript = (
     throw new Error(`missing ${name} reference script UTxO at ${refLabel}`);
   }
   if (utxo.scriptRef === undefined) {
-    throw new Error(`${name} reference script UTxO ${refLabel} has no scriptRef`);
+    throw new Error(
+      `${name} reference script UTxO ${refLabel} has no scriptRef`,
+    );
   }
   const actualHash = validatorToScriptHash(utxo.scriptRef as never);
   if (actualHash !== contract.scriptHash) {

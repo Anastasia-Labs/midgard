@@ -11,9 +11,9 @@ import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
 import {
   classifyProviderHttpResponse,
   L1_REWARD_ACCOUNT_REGISTRATION_SOURCES,
+  type L1RewardAccountRegistrationSource,
   redactEndpoint,
   summarizeProviderBody,
-  type L1RewardAccountRegistrationSource,
 } from "@/provider-diagnostics.js";
 import {
   handleSignSubmit,

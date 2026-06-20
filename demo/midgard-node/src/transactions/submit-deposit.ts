@@ -24,10 +24,7 @@ import {
   parseAdditionalAssetSpecs,
   parseLovelaceAmount,
 } from "@/asset-specs.js";
-import {
-  DepositSubmissionAttemptsDB,
-  DepositsDB,
-} from "@/database/index.js";
+import { DepositsDB, DepositSubmissionAttemptsDB } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { reconcileVisibleDepositUTxOs } from "@/fibers/fetch-and-insert-deposit-utxos.js";
 import {
@@ -199,7 +196,9 @@ export const depositSubmissionAttemptFromSignedTx = ({
     ...config.additionalAssets,
     lovelace: config.lovelace,
   });
-  if (!sameSerializedAssets(expectedSerializedAssets, requestedSerializedAssets)) {
+  if (
+    !sameSerializedAssets(expectedSerializedAssets, requestedSerializedAssets)
+  ) {
     throw new Error(
       `Deposit output ${txHash}#${match.outputIndex.toString()} does not match requested projected assets`,
     );
@@ -211,7 +210,8 @@ export const depositSubmissionAttemptFromSignedTx = ({
       metadata.depositEventId,
       "hex",
     ),
-    [DepositSubmissionAttemptsDB.Columns.EXPECTED_DEPOSIT_OUT_REF]: `${txHash}#${match.outputIndex.toString()}`,
+    [DepositSubmissionAttemptsDB.Columns.EXPECTED_DEPOSIT_OUT_REF]:
+      `${txHash}#${match.outputIndex.toString()}`,
     [DepositSubmissionAttemptsDB.Columns.EXPECTED_L2_ADDRESS]: config.l2Address,
     [DepositSubmissionAttemptsDB.Columns.EXPECTED_LOVELACE]:
       config.lovelace.toString(),
@@ -279,17 +279,16 @@ export const reconcileDepositSubmissionAttemptProgram = (
     }
 
     const attempt = attemptOption.value;
-    const beforeRows =
-      yield* DepositsDB.retrieveByCardanoTxHash(txHashBuffer);
+    const beforeRows = yield* DepositsDB.retrieveByCardanoTxHash(txHashBuffer);
     const beforeMatch = findMatchingDepositEntry(beforeRows, attempt);
     if (beforeMatch !== undefined) {
       yield* DepositSubmissionAttemptsDB.markReconciled(txHashBuffer);
       return {
         txHash,
         depositEventId:
-          attempt[DepositSubmissionAttemptsDB.Columns.DEPOSIT_EVENT_ID].toString(
-            "hex",
-          ),
+          attempt[
+            DepositSubmissionAttemptsDB.Columns.DEPOSIT_EVENT_ID
+          ].toString("hex"),
         status: "reconciled_after_timeout",
         expectedDepositOutRef:
           attempt[DepositSubmissionAttemptsDB.Columns.EXPECTED_DEPOSIT_OUT_REF],
@@ -308,9 +307,9 @@ export const reconcileDepositSubmissionAttemptProgram = (
       return {
         txHash,
         depositEventId:
-          attempt[DepositSubmissionAttemptsDB.Columns.DEPOSIT_EVENT_ID].toString(
-            "hex",
-          ),
+          attempt[
+            DepositSubmissionAttemptsDB.Columns.DEPOSIT_EVENT_ID
+          ].toString("hex"),
         status: "reconciled_after_timeout",
         expectedDepositOutRef:
           attempt[DepositSubmissionAttemptsDB.Columns.EXPECTED_DEPOSIT_OUT_REF],
@@ -448,43 +447,43 @@ export const submitDepositWithMetadataProgram = (
     });
     yield* DepositSubmissionAttemptsDB.insertSubmitted(attempt);
 
-    const confirmationStatus =
-      yield* awaitSubmittedTransactionConfirmation(lucid, submission).pipe(
-        Effect.tap(() =>
-          DepositSubmissionAttemptsDB.markConfirmed(
-            Buffer.from(submission.txHash, "hex"),
-          ),
+    const confirmationStatus = yield* awaitSubmittedTransactionConfirmation(
+      lucid,
+      submission,
+    ).pipe(
+      Effect.tap(() =>
+        DepositSubmissionAttemptsDB.markConfirmed(
+          Buffer.from(submission.txHash, "hex"),
         ),
-        Effect.as("confirmed" as const),
-        Effect.catchTag("TxConfirmError", (error) =>
-          Effect.gen(function* () {
-            yield* Effect.logWarning(
-              `Deposit tx ${submission.txHash} confirmation timed out; reconciling visible deposit state before allowing retry.`,
-            );
-            const reconciliation = yield* reconcileDepositSubmissionAttemptProgram(
-              submission.txHash,
-            );
-            if (reconciliation.status === "reconciled_after_timeout") {
-              return reconciliation.status;
-            }
-            return yield* Effect.fail(
-              new DepositConfirmationUnknownError({
-                message:
-                  "Deposit transaction confirmation is unknown after timeout and reconciliation did not prove the expected deposit output.",
-                txHash: submission.txHash,
-                depositEventId: metadata.depositEventId,
-                expectedDepositOutRef:
-                  attempt[
-                    DepositSubmissionAttemptsDB.Columns
-                      .EXPECTED_DEPOSIT_OUT_REF
-                  ],
-                reconciliation,
-                cause: error,
-              }),
-            );
-          }),
-        ),
-      );
+      ),
+      Effect.as("confirmed" as const),
+      Effect.catchTag("TxConfirmError", (error) =>
+        Effect.gen(function* () {
+          yield* Effect.logWarning(
+            `Deposit tx ${submission.txHash} confirmation timed out; reconciling visible deposit state before allowing retry.`,
+          );
+          const reconciliation =
+            yield* reconcileDepositSubmissionAttemptProgram(submission.txHash);
+          if (reconciliation.status === "reconciled_after_timeout") {
+            return reconciliation.status;
+          }
+          return yield* Effect.fail(
+            new DepositConfirmationUnknownError({
+              message:
+                "Deposit transaction confirmation is unknown after timeout and reconciliation did not prove the expected deposit output.",
+              txHash: submission.txHash,
+              depositEventId: metadata.depositEventId,
+              expectedDepositOutRef:
+                attempt[
+                  DepositSubmissionAttemptsDB.Columns.EXPECTED_DEPOSIT_OUT_REF
+                ],
+              reconciliation,
+              cause: error,
+            }),
+          );
+        }),
+      ),
+    );
     return { txHash: submission.txHash, metadata, confirmationStatus };
   });
 

@@ -1,7 +1,4 @@
-import {
-  compareOutRefs,
-  outRefLabel,
-} from "@al-ft/midgard-core/out-ref";
+import { compareOutRefs, outRefLabel } from "@al-ft/midgard-core/out-ref";
 import { type UTxO } from "@lucid-evolution/lucid";
 
 /**

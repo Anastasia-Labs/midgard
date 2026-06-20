@@ -57,10 +57,24 @@ production and data availability. Task 7 makes fraud proofs enforceable on L1.
 Task 8 makes proofs buildable by challengers. Task 9 is the launch gate that
 proves TypeScript, Aiken, DA, and the technical specification agree.
 
+## Task09 Launch-Gate State
+
+As of 2026-06-20, the current TypeScript and Aiken type name is `Header`, but it
+uses the clean `HeaderV2` commitment shape: source roots, transition trace root,
+event-to-step root, and all event counts are serialized in the header hash. The
+legacy header shape is not a production compatibility path.
+
+The launch gate records ABI fixtures in
+`demo/midgard-node/tests/fixtures/transition-trace-abi.json`, checks them from
+TypeScript, and relies on the embedded Aiken transition-trace proof tests for
+cross-language proof-family coverage. DA payload v2 is retained by DA committee
+routes keyed by `header_hash`; challenger tooling must not require operator
+debug payload endpoints.
+
 ## Global Constraints
 
-- Treat this as a clean `HeaderV2` redeploy. Do not preserve old header shapes
-  through compatibility adapters in production paths.
+- Treat this as a clean `Header`/`HeaderV2` commitment redeploy. Do not preserve
+  old header shapes through compatibility adapters in production paths.
 - Preserve deterministic CBOR across TypeScript and Aiken.
 - Preserve the protocol phase order:
 
@@ -73,8 +87,8 @@ proves TypeScript, Aiken, DA, and the technical specification agree.
   `MidgardTxId`.
 - Add `forced_transactions_root` for L1 tx-order events keyed by the L1 order
   identity, not by the L2 transaction id.
-- Do not use `inclusion_time` as a source-root key. Due-window and ordering
-  checks use opened event payloads and L1 evidence.
+- Do not introduce `inclusion_time` for forced transaction orders. Their
+  due-window checks use the validity range extracted from the ordered
+  transaction body plus L1 order evidence.
 - Every committed source event must have exactly one trace step.
 - Every trace step must bind to exactly one committed source event.
-

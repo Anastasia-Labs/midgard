@@ -1,5 +1,8 @@
 # Task 09: Conformance, Budget, Integration, And Spec Completion
 
+Status: launch-gate implementation in progress as of 2026-06-20. The live
+evidence is recorded in `.codex/transition-trace-task-09/plan.md`.
+
 ## Goal
 
 Turn the transition-trace work from an implementation draft into a launch gate.
@@ -44,7 +47,7 @@ Build and deployment:
 
 Golden fixtures for:
 
-- `HeaderV2`
+- `HeaderV2` / current `Header`
 - `ForcedInclusionTx`
 - `TransitionStep`
 - `EventKey`
@@ -52,7 +55,10 @@ Golden fixtures for:
 - `DaPayloadBodyV2`
 - every transition fraud-proof redeemer
 
-Each fixture must be checked from both TypeScript and Aiken.
+The JSON/CBOR fixture file is checked from TypeScript. The existing Aiken test
+framework in this repository uses embedded Aiken fixtures rather than importing
+external JSON fixture files, so Aiken conformance is covered by source-level
+tests for the same transition-trace proof families and schemas.
 
 ### Ordering And Counts
 
@@ -112,6 +118,23 @@ For each Aiken fault proof:
 - record witness size
 - add failure thresholds if the existing test framework supports them
 
+Current Task09 evidence:
+
+- `/home/gumbo/.aiken/bin/aiken check -m midgard/fraud_proofs/transition_trace/proof --plain-numbers`
+  passed 23/23 transition-trace proof tests.
+- Largest observed proof-test budget: `accepts_l2_transaction_transition_fault`
+  at CPU `614855610`, memory `1362484`.
+- Largest observed deposit proof budget: `accepts_valid_deposit_transition_fault`
+  at CPU `540951867`, memory `1083744`.
+- Valid forced transactions remain fail-closed:
+  `rejects_valid_forced_transaction_unsupported_transition_fault` passed at CPU
+  `213347707`, memory `221458`.
+- Largest golden `.proof` fixtures are `invalid-forced-no-op` and
+  `valid-forced-unsupported` at `1178` bytes; largest corresponding
+  `.continue-redeemer` fixtures are `1190` bytes.
+- No established local threshold pattern was found, so arbitrary budget
+  thresholds were not added in Task09.
+
 ## Verification Commands
 
 Run the full launch gate:
@@ -152,4 +175,3 @@ Before launch, the architecture doc must explicitly state:
 - Challenger tooling can build proofs without trusted operator data.
 - All new Aiken scripts have budget evidence.
 - Clean redeploy instructions are updated and tested.
-

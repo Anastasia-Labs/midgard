@@ -3,6 +3,7 @@
  * The commit worker uses this module to read the real state_queue witness
  * context needed for scheduler-aligned, production-safe commit transactions.
  */
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   credentialToAddress,
@@ -16,7 +17,6 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { slotToUnixTimeForLucid } from "@/lucid-time.js";
 import {
   applySubmittedTxToOperatorWalletView,
@@ -782,8 +782,9 @@ const ensureSchedulerAlignedForCommit = (
         }
       }
     }
-    const presetWalletInputs =
-      availableOperatorWalletUtxos(flowOperatorWalletView);
+    const presetWalletInputs = availableOperatorWalletUtxos(
+      flowOperatorWalletView,
+    );
     const feeInput = yield* selectFeeInput(presetWalletInputs);
     yield* Effect.logInfo(
       `🔹 Refreshing scheduler witness datum for commit window via ${selection.kind} (from=${describeSchedulerDatum(schedulerDatum)} to=${describeSchedulerDatum(refreshedSchedulerDatum)}, validTo=${validTo.toString()}).`,

@@ -2,6 +2,13 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve as resolvePath } from "node:path";
 
+import {
+  createReferenceScriptAuthPolicy,
+  type ReferenceScriptAuthPolicy,
+  type ReferenceScriptAuthPolicyDeploymentInfo,
+  referenceScriptAuthPolicyDeploymentInfo,
+  referenceScriptAuthPolicyFromDeploymentInfo,
+} from "@al-ft/midgard-sdk";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -9,20 +16,13 @@ import * as ContractDeploymentInfo from "@/commands/contract-deployment-info.js"
 import {
   createDeploymentRunState,
   defaultDeploymentRunStatePath,
-  loadDeploymentRunState,
-  mutateDeploymentRunState,
   type DeploymentRunIdentity,
   type DeploymentRunState,
+  loadDeploymentRunState,
+  mutateDeploymentRunState,
   RunStateError,
   transitionDeploymentStep,
 } from "@/e2e/run-state.js";
-import {
-  createReferenceScriptAuthPolicy,
-  referenceScriptAuthPolicyDeploymentInfo,
-  referenceScriptAuthPolicyFromDeploymentInfo,
-  type ReferenceScriptAuthPolicy,
-  type ReferenceScriptAuthPolicyDeploymentInfo,
-} from "@al-ft/midgard-sdk";
 
 export type DeploymentRunCliOptions = {
   readonly runStatePath: string;
@@ -219,7 +219,8 @@ const authPolicyFromRunStateIdentity = (
       script: identity.referenceScriptAuthPolicy.nativeScript.cborHex,
     },
     policyId: identity.referenceScriptAuthPolicy.policyId,
-    expiresAtSlot: identity.referenceScriptAuthPolicy.nativeScript.expiresAtSlot,
+    expiresAtSlot:
+      identity.referenceScriptAuthPolicy.nativeScript.expiresAtSlot,
     expiresAtUnixTime:
       identity.referenceScriptAuthPolicy.nativeScript.expiresAtUnixTime,
     timelockDurationMs:
@@ -361,7 +362,8 @@ export const resolveReferenceScriptAuthPolicyProgram = ({
         manifestOutputPath: outputPath,
       });
       const manifestIdentity = await readManifestDeploymentIdentity(outputPath);
-      const manifestPolicy = manifestIdentity?.referenceScriptAuthPolicy ?? null;
+      const manifestPolicy =
+        manifestIdentity?.referenceScriptAuthPolicy ?? null;
       if (
         manifestIdentity !== null &&
         manifestPolicy !== null &&
@@ -374,11 +376,8 @@ export const resolveReferenceScriptAuthPolicyProgram = ({
         );
       }
       let resolvedPolicy: ReferenceScriptAuthPolicy | null = null;
-      let policySource:
-        | "run_state"
-        | "manifest"
-        | "created"
-        | "fresh_created" = "created";
+      let policySource: "run_state" | "manifest" | "created" | "fresh_created" =
+        "created";
 
       const nextState = await mutateDeploymentRunState(
         options.runStatePath,
@@ -419,9 +418,8 @@ export const resolveReferenceScriptAuthPolicyProgram = ({
             );
             policySource = options.freshRedeploy ? "fresh_created" : "created";
           }
-          const policyInfo = referenceScriptAuthPolicyDeploymentInfo(
-            resolvedPolicy,
-          );
+          const policyInfo =
+            referenceScriptAuthPolicyDeploymentInfo(resolvedPolicy);
           return transitionDeploymentStep(
             {
               ...state,
@@ -453,9 +451,12 @@ export const resolveReferenceScriptAuthPolicyProgram = ({
           );
         },
       );
-      const policy = resolvedPolicy ?? authPolicyFromRunStateIdentity(nextState.identity);
+      const policy =
+        resolvedPolicy ?? authPolicyFromRunStateIdentity(nextState.identity);
       if (policy === null) {
-        throw new RunStateError("Failed to resolve reference-script auth policy.");
+        throw new RunStateError(
+          "Failed to resolve reference-script auth policy.",
+        );
       }
       return policy;
     },

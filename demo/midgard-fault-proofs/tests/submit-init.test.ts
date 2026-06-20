@@ -7,16 +7,18 @@ import { STATE_QUEUE_NODE_ASSET_NAME_PREFIX } from "@al-ft/midgard-sdk";
 import {
   buildDoubleSpendFaultProofContracts,
   buildFaultProofContracts,
-  EMPTY_MERKLE_TREE_ROOT,
+  buildTransitionTraceFaultProofContracts,
   DOUBLE_SPEND_FAULT_PROOF_TITLES,
+  EMPTY_MERKLE_TREE_ROOT,
   FAULT_PROOF_SHARED_TITLES,
+  type FaultProofBlueprint,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
+  type FraudProofCatalogueDeploymentInfo,
   INVALID_RANGE_FAULT_PROOF_TITLES,
   parseFaultProofBlueprint,
   ScriptHashSchema,
-  type FaultProofBlueprint,
-  type FraudProofCatalogueDeploymentInfo,
+  TRANSITION_TRACE_FAULT_PROOF_TITLES,
 } from "@al-ft/midgard-sdk";
 import { CML, Data, type UTxO, walletFromSeed } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -27,6 +29,7 @@ import {
   resolveFraudulentHeaderHash,
   resolveInvalidRangeDeploymentContracts,
   resolveProverSigner,
+  resolveTransitionTraceDeploymentContracts,
   submitInit,
 } from "../src/index.js";
 
@@ -353,6 +356,43 @@ describe("fault-proof deployment contract resolution", () => {
     ).rejects.toThrow(
       "fraudProofCatalogue.categories.invalidRange.membershipProofCbor does not match",
     );
+  });
+
+  it("resolves transition-trace without requiring staged fault-proof validators in the blueprint", async () => {
+    const blueprint = filterBlueprint(readBlueprint(), [
+      ...Object.values(FAULT_PROOF_SHARED_TITLES),
+      ...Object.values(TRANSITION_TRACE_FAULT_PROOF_TITLES),
+    ]);
+    const contracts = await Effect.runPromise(
+      buildTransitionTraceFaultProofContracts({
+        blueprint,
+        network: "Preprod",
+        hubOraclePolicyId: h28,
+        fraudProofCataloguePolicyId: h28b,
+      }),
+    );
+    const fraudProofCatalogue = await catalogueFor({
+      transitionTrace: contracts.transitionTrace.firstStep.spendingScriptHash,
+    });
+
+    const resolved = await resolveTransitionTraceDeploymentContracts({
+      blueprint,
+      deploymentInfo: deploymentManifest({
+        hubOracleMint: { scriptHash: h28 },
+        fraudProofCatalogueMint: {
+          scriptHash: h28b,
+          fraudProofCatalogue,
+        },
+        fraudProofMint: { scriptHash: contracts.fraudProof.policyId },
+        fraudProofTransitionTrace: {
+          scriptHash: contracts.transitionTrace.firstStep.spendingScriptHash,
+        },
+      }),
+      network: "Preprod",
+    });
+
+    expect(resolved.transitionTraceCategory.categoryId).toBe("00000004");
+    expect(resolved.contracts.transitionTrace.steps).toHaveLength(1);
   });
 
   it("does not gate double-spend submit-init on stale invalid-range deployment readiness", async () => {

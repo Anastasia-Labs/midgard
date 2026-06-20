@@ -468,7 +468,8 @@ const getUtxosHandler = Effect.gen(function* () {
   try {
     const address = parseAddressArgument(addr);
 
-    const utxosWithAddress = yield* MempoolLedgerDB.retrieveByAddress(address);
+    const utxosWithAddress =
+      yield* MempoolLedgerDB.retrieveSpendableByAddress(address);
     const response = UtxosCommand.encodeStoredUtxos(utxosWithAddress);
 
     yield* Effect.logInfo(`Found ${response.length} UTxOs for ${addr}`);
@@ -970,7 +971,7 @@ const parseHeaderHashSearchParam = (
 };
 
 /**
- * `GET /da/payload?header_hash=...`: returns canonical DaPayloadV1 CBOR.
+ * `GET /da/payload?header_hash=...`: returns canonical DaPayloadV2 CBOR.
  */
 const getDaPayloadHandler = Effect.gen(function* () {
   const params = yield* ParsedSearchParams;
@@ -1030,9 +1031,20 @@ const getDaPayloadMetadataHandler = Effect.gen(function* () {
     status: "available",
     roots: {
       utxosRoot: record.value.utxos_root,
+      forcedTransactionsRoot: record.value.forced_transactions_root,
       transactionsRoot: record.value.transactions_root,
       depositsRoot: record.value.deposits_root,
       withdrawalsRoot: record.value.withdrawals_root,
+      transitionTraceRoot: record.value.transition_trace_root,
+      eventToStepRoot: record.value.event_to_step_root,
+    },
+    counts: {
+      withdrawalCount: record.value.withdrawal_count.toString(),
+      forcedTransactionCount: record.value.forced_transaction_count.toString(),
+      l2TransactionCount: record.value.l2_transaction_count.toString(),
+      depositCount: record.value.deposit_count.toString(),
+      totalEventCount: record.value.total_event_count.toString(),
+      transitionStepCount: record.value.transition_step_count.toString(),
     },
     blockStartTime: record.value.block_start_time.toISOString(),
     blockEndTime: record.value.block_end_time.toISOString(),

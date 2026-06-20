@@ -16,9 +16,7 @@ export const NativeTxBodyCompactSchema = Data.Object({
   auxiliary_data_hash: H32Schema,
   network_id: Data.Integer(),
 });
-export type NativeTxBodyCompact = Data.Static<
-  typeof NativeTxBodyCompactSchema
->;
+export type NativeTxBodyCompact = Data.Static<typeof NativeTxBodyCompactSchema>;
 export const NativeTxBodyCompact =
   NativeTxBodyCompactSchema as unknown as NativeTxBodyCompact;
 

@@ -20,7 +20,6 @@ import {
   makeReturn,
   MidgardValidators,
   POSIXTimeSchema,
-  ProofSchema,
 } from "@/common.js";
 import {
   fetchHubOracleUTxOProgram,
@@ -36,6 +35,7 @@ import {
   WithdrawalSignature,
   WithdrawalValiditySchema,
 } from "@/ledger-state.js";
+import { RawRootMembershipProofSchema } from "@/transition-trace.js";
 
 import {
   buildCompletedUserEventMintTxProgram,
@@ -85,7 +85,7 @@ export const WithdrawalSpendRedeemerSchema = Data.Object({
   settlement_ref_input_index: Data.Integer(),
   burn_redeemer_index: Data.Integer(),
   payout_mint_redeemer_index: Data.Integer(),
-  membership_proof: ProofSchema,
+  membership_proof: RawRootMembershipProofSchema,
   inclusion_proof_script_withdraw_redeemer_index: Data.Integer(),
   purpose: WithdrawalSpendPurposeSchema,
 });

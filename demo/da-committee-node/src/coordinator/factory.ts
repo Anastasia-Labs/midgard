@@ -1,21 +1,19 @@
 import type { WatcherConfig } from "../config.js";
-import type { WatcherStore } from "../store.js";
-import {
-  daAttestationValidatorsFromDeployment,
-} from "../l1/deployment.js";
 import {
   type DaAttestationChainReader,
   LucidDaAttestationChainReader,
 } from "../l1/da-attestation-reader.js";
+import { daAttestationValidatorsFromDeployment } from "../l1/deployment.js";
 import { lucidFromProviderUrl } from "../l1/lucid.js";
 import { fetchDaAttestationReferenceScripts } from "../l1/reference-scripts.js";
 import {
   assertL1SubmitterWalletPreflight,
-  preflightL1SubmitterWallet,
-  selectL1SubmitterWallet,
   type L1SubmitterPreflightOptions,
   type L1SubmitterPreflightResult,
+  preflightL1SubmitterWallet,
+  selectL1SubmitterWallet,
 } from "../l1/submitter.js";
+import type { WatcherStore } from "../store.js";
 import { LucidDaAttestationSubmitter } from "./lucid-submitter.js";
 import { OnChainLifecycleCoordinator } from "./on-chain.js";
 
@@ -105,14 +103,20 @@ export const l1SubmitterWalletPreflightFromConfig = async (
   config: WatcherConfig,
   deps: Pick<
     OnChainCoordinatorFactoryDeps,
-    "lucidFromProviderUrl" | "selectL1SubmitterWallet" | "preflightL1SubmitterWallet"
+    | "lucidFromProviderUrl"
+    | "selectL1SubmitterWallet"
+    | "preflightL1SubmitterWallet"
   > = defaultDeps,
 ): Promise<L1SubmitterPreflightResult> => {
   if (!config.l1SubmissionEnabled) {
-    throw new Error("L1 wallet preflight requires DA_L1_SUBMISSION_ENABLED=true");
+    throw new Error(
+      "L1 wallet preflight requires DA_L1_SUBMISSION_ENABLED=true",
+    );
   }
   if (config.l1SubmitterKeySource === undefined) {
-    throw new Error("L1_SUBMITTER_KEY_SOURCE is required for L1 wallet preflight");
+    throw new Error(
+      "L1_SUBMITTER_KEY_SOURCE is required for L1 wallet preflight",
+    );
   }
   const { lucid } = await deps.lucidFromProviderUrl(
     config.cardanoProviderUrls[0]!,
@@ -129,7 +133,9 @@ const l1SubmitterPreflightOptionsFromConfig = (
   config: WatcherConfig,
 ): L1SubmitterPreflightOptions => {
   if (config.l1SubmitterKeySource === undefined) {
-    throw new Error("L1_SUBMITTER_KEY_SOURCE is required for L1 wallet preflight");
+    throw new Error(
+      "L1_SUBMITTER_KEY_SOURCE is required for L1 wallet preflight",
+    );
   }
   return {
     submitterKeySource: config.l1SubmitterKeySource,
@@ -139,8 +145,7 @@ const l1SubmitterPreflightOptionsFromConfig = (
     ...(config.l1SubmitterPreflight.autoFundKeySource === undefined
       ? {}
       : { autoFundKeySource: config.l1SubmitterPreflight.autoFundKeySource }),
-    autoFundBufferLovelace:
-      config.l1SubmitterPreflight.autoFundBufferLovelace,
+    autoFundBufferLovelace: config.l1SubmitterPreflight.autoFundBufferLovelace,
     retryCount: config.l1SubmitterPreflight.retryCount,
     retryDelayMs: config.l1SubmitterPreflight.retryDelayMs,
   };

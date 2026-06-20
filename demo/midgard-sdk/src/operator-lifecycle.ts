@@ -1,15 +1,14 @@
+import { canonicalPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
-  Data as LucidData,
-  type BuildTxWithRedeemer,
   type Assets,
+  type BuildTxWithRedeemer,
+  Data as LucidData,
   type LucidEvolution,
   type TxBuilder,
   type TxOutput,
   type UTxO,
 } from "@lucid-evolution/lucid";
-import { canonicalPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 
-import * as SDK from "@/operator-lifecycle/primitives.js";
 import { outputReferenceFromUTxO } from "@/common.js";
 import {
   type ActivateRedeemerLayout,
@@ -17,6 +16,7 @@ import {
   type ReferenceScriptPublication,
   type RegisterRedeemerLayout,
 } from "@/operator-lifecycle/layout.js";
+import * as SDK from "@/operator-lifecycle/primitives.js";
 import {
   requireMintRedeemerIndex,
   requireOwnMintPurpose,

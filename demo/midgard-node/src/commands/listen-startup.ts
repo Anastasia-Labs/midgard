@@ -3,8 +3,8 @@
  * This module isolates safety checks that must run before serving traffic from
  * the steady-state wiring in the main listen entrypoint.
  */
-import * as SDK from "@al-ft/midgard-sdk";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import * as SDK from "@al-ft/midgard-sdk";
 import { Duration, Effect, Option, Ref } from "effect";
 
 import * as ContractDeploymentInfo from "@/commands/contract-deployment-info.js";
@@ -51,6 +51,7 @@ const localJournalHasPayloadMembers = (
   journal: PendingBlockFinalizationsDB.Record,
 ): boolean =>
   journal.depositEventIds.length > 0 ||
+  journal.forcedTransactionEventIds.length > 0 ||
   journal.withdrawalEventIds.length > 0 ||
   journal.mempoolTxIds.length > 0;
 
@@ -386,10 +387,9 @@ export const seedLatestLocalBlockBoundaryOnStartup = Effect.gen(function* () {
     );
     const onChainUtxoRoot = snapshot.tailCommitBase.roots.utxosRoot;
     if (confirmedLedgerRoot === onChainUtxoRoot) {
-      const syncResult =
-        yield* synchronizeCommitMpfStoresFromLedgerEntries(
-          confirmedLedgerEntries,
-        );
+      const syncResult = yield* synchronizeCommitMpfStoresFromLedgerEntries(
+        confirmedLedgerEntries,
+      );
       yield* Effect.logInfo(
         `Startup synchronized clean-queue commit MPFs from confirmed ledger (ledger_entries=${syncResult.ledgerEntryCount.toString()},ledger_root=${syncResult.ledgerRoot}).`,
       );
@@ -405,16 +405,16 @@ export const seedLatestLocalBlockBoundaryOnStartup = Effect.gen(function* () {
         finalizedJournal.value[PendingBlockFinalizationsDB.Columns.STATUS] ===
           PendingBlockFinalizationsDB.Status.Finalized
       ) {
-        const finalizedSnapshot =
-          yield* materializeConfirmedLedgerSnapshot(finalizedJournal.value);
+        const finalizedSnapshot = yield* materializeConfirmedLedgerSnapshot(
+          finalizedJournal.value,
+        );
         if (finalizedSnapshot.root === onChainUtxoRoot) {
           yield* replaceConfirmedLedgerWithEntriesTransaction(
             finalizedSnapshot.entries,
           );
-          const syncResult =
-            yield* synchronizeCommitMpfStoresFromLedgerEntries(
-              finalizedSnapshot.entries,
-            );
+          const syncResult = yield* synchronizeCommitMpfStoresFromLedgerEntries(
+            finalizedSnapshot.entries,
+          );
           yield* Effect.logWarning(
             `Startup repaired confirmed_ledger and commit MPFs from finalized clean-queue journal (header=${snapshot.tailCommitBase.headerHash},ledger_entries=${syncResult.ledgerEntryCount.toString()},ledger_root=${syncResult.ledgerRoot},previous_confirmed_ledger_root=${confirmedLedgerRoot}).`,
           );

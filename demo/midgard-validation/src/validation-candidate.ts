@@ -90,7 +90,9 @@ export const buildPhaseAValidatedTx = ({
     },
     graph: {
       spentOutRefHexes: ledgerTx.spendInputs.map(midgardOutRefToCborHex),
-      referenceOutRefHexes: ledgerTx.referenceInputs.map(midgardOutRefToCborHex),
+      referenceOutRefHexes: ledgerTx.referenceInputs.map(
+        midgardOutRefToCborHex,
+      ),
       produced,
     },
     derived: {

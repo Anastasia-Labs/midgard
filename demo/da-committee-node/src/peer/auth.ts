@@ -96,18 +96,31 @@ export const verifyPeerRequestAuth = ({
     return { ok: false, error: "missing peer authentication headers" };
   }
   const signerIndex = Number(signerIndexHeader);
-  if (!Number.isSafeInteger(signerIndex) || signerIndex < 0 || signerIndex > 255) {
+  if (
+    !Number.isSafeInteger(signerIndex) ||
+    signerIndex < 0 ||
+    signerIndex > 255
+  ) {
     return { ok: false, error: "peer signer index must fit in one byte" };
   }
   if (signerIndex >= signerValidation.committeeKeys.length) {
-    return { ok: false, error: "peer signer index is outside the DA committee" };
+    return {
+      ok: false,
+      error: "peer signer index is outside the DA committee",
+    };
   }
   const timestampMs = Number(timestampHeader);
   if (!Number.isSafeInteger(timestampMs) || timestampMs < 0) {
-    return { ok: false, error: "peer timestamp must be a non-negative integer" };
+    return {
+      ok: false,
+      error: "peer timestamp must be a non-negative integer",
+    };
   }
   if (Math.abs(nowMs - timestampMs) > replayWindowMs) {
-    return { ok: false, error: "peer request timestamp is outside replay window" };
+    return {
+      ok: false,
+      error: "peer request timestamp is outside replay window",
+    };
   }
   if (!/^[0-9a-fA-F]{16,128}$/.test(nonce)) {
     return { ok: false, error: "peer nonce must be 8-64 bytes of hex" };
@@ -124,7 +137,10 @@ export const verifyPeerRequestAuth = ({
       byteLength: 64,
     });
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
   }
   if (!timingSafeHexEqual(bodySha256, sha256Hex(body))) {
     return { ok: false, error: "peer body hash does not match request body" };
@@ -196,10 +212,7 @@ type HeaderLookup =
   | Record<string, string | string[] | undefined>
   | NodeJS.Dict<string | string[]>;
 
-const getHeader = (
-  headers: HeaderLookup,
-  name: string,
-): string | undefined => {
+const getHeader = (headers: HeaderLookup, name: string): string | undefined => {
   if (headers instanceof Headers) {
     return headers.get(name) ?? undefined;
   }

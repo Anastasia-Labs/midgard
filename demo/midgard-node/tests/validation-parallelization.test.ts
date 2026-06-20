@@ -234,7 +234,9 @@ describe("validation parallelization", () => {
       }),
     );
 
-    expect(accepted.map((tx) => tx.ledgerTx.txId.toString("hex"))).toStrictEqual([
+    expect(
+      accepted.map((tx) => tx.ledgerTx.txId.toString("hex")),
+    ).toStrictEqual([
       txA.ledgerTx.txId.toString("hex"),
       txC.ledgerTx.txId.toString("hex"),
     ]);

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  pendingBlockHasSubmittedTx,
   type PendingBlockConfirmation,
+  pendingBlockHasSubmittedTx,
 } from "@/workers/utils/confirm-block-commitments.js";
 
 const pendingBlock = (

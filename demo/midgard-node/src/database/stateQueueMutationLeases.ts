@@ -1,14 +1,14 @@
 import { randomUUID } from "node:crypto";
 
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { SqlClient } from "@effect/sql";
 import { Duration, Effect, Fiber } from "effect";
 
+import * as PendingBlockFinalizationsDB from "@/database/pendingBlockFinalizations.js";
 import {
   DatabaseError,
   sqlErrorToDatabaseError,
 } from "@/database/utils/common.js";
-import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import * as PendingBlockFinalizationsDB from "@/database/pendingBlockFinalizations.js";
 import { Database } from "@/services/database.js";
 
 export const tableName = "state_queue_mutation_leases";

@@ -1,9 +1,9 @@
+import type { AuthenticatedValidator } from "@al-ft/midgard-sdk";
 import {
   mintingPolicyToId,
   validatorToAddress,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
-import type { AuthenticatedValidator } from "@al-ft/midgard-sdk";
 
 import { normalizeHex } from "../utils/hex.js";
 
@@ -50,9 +50,7 @@ export type DaAttestationValidatorSet = {
 export const daAttestationValidatorsFromDeployment = (
   deployment: MidgardNodeDeployment,
 ): DaAttestationValidatorSet => ({
-  daAttestation: authenticatedValidatorFromDeployment(
-    deployment.daAttestation,
-  ),
+  daAttestation: authenticatedValidatorFromDeployment(deployment.daAttestation),
   daParamsGovernor: authenticatedValidatorFromDeployment(
     deployment.daParamsGovernor,
   ),
@@ -180,7 +178,10 @@ const deploymentContract = (
       ? mintingPolicyToId(script as never)
       : validatorToScriptHash(script as never);
   const configuredScriptHash = stringAt(root, ["scriptHash"]);
-  if (configuredScriptHash !== undefined && configuredScriptHash.trim() !== "") {
+  if (
+    configuredScriptHash !== undefined &&
+    configuredScriptHash.trim() !== ""
+  ) {
     const normalizedConfigured = normalizeHex(configuredScriptHash, {
       fieldName: `${label} scriptHash`,
       byteLength: 28,

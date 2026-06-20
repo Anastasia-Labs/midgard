@@ -1,23 +1,23 @@
 # Transition Trace Commitments Architecture
 
-Generated: 2026-06-19
+Last reconciled: 2026-06-20
 
-Status: draft architecture for production-grade state-transition fault proofs.
+Status: Task09 launch-gate architecture for production transition-trace
+commitments.
 
-Scope: this document specifies the proposed commitments needed to prove that a
-queued Midgard state commitment's `utxos_root` is the deterministic result of
+Scope: this document specifies the implemented commitments needed to prove that
+a queued Midgard state commitment's `utxos_root` is the deterministic result of
 applying the committed withdrawals, forced-inclusion transactions, normal L2
 transactions, and deposits to `prev_utxos_root`.
 
-This is a protocol design document, not a description of currently deployed
-schemas. The current state-queue block node commits the existing `Header` fields:
-`prev_utxos_root`, `utxos_root`, `transactions_root`, `deposits_root`,
-`withdrawals_root`, block time bounds, predecessor hash, operator key, and
-protocol version.
+This is now the current launch-gate protocol shape. The TypeScript and Aiken
+type name remains `Header`, but the serialized fields are the clean `HeaderV2`
+commitment surface described here. Production paths must not construct or accept
+the old header shape.
 
 ## Executive Summary
 
-Midgard should freeze the canonical event model around the roots that map most
+Midgard freezes the canonical event model around the roots that map most
 directly to the protocol's source objects:
 
 ```text
@@ -40,7 +40,7 @@ transition_trace_root:
   step_index -> TransitionStep CBOR
 
 event_to_step_root:
-  EventKey -> step_index
+  EventKey -> EventToStepValue
 ```
 
 The production model is:
@@ -74,9 +74,9 @@ The only event ordering enforced by the state-transition protocol is phase order
 withdrawals -> forced inclusion transactions -> normal L2 transactions -> deposits
 ```
 
-No source root key needs to include `inclusion_time` merely to enforce ordering.
-L1 event `inclusion_time` belongs in the event value or in the opened L1 evidence
-used for due-window proofs.
+Forced transaction orders do not introduce an `inclusion_time` field in either
+the source-root key or value. Their due-window checks use the validity range
+extracted from the ordered transaction body plus L1 order evidence.
 
 `transition_trace_root` is a dense ordered vector keyed by `step_index`. Each
 trace step commits to the event key it applies, the pre-state root, and the
@@ -101,14 +101,14 @@ The state queue node lives in the state-queue datum:
 Datum = linked_list.Element<ConfirmedState, StateQueueNode>
 ```
 
-The proposed roots live in the queued block's state commitment, meaning the
-`Header` embedded in `StateQueueNode.header`. They are not only off-chain DA
+The transition-trace roots live in the queued block's state commitment, meaning
+the `Header` embedded in `StateQueueNode.header`. They are not only off-chain DA
 metadata and they are not stored only in the node database.
 
-Proposed compact header shape:
+Current compact header shape:
 
 ```text
-HeaderV2 {
+Header {
   prev_utxos_root: MidgardLedgerRoot
   utxos_root: MidgardLedgerRoot
 
@@ -135,10 +135,10 @@ HeaderV2 {
 }
 ```
 
-The header hash must be computed over the full `HeaderV2`, including the new
-roots and counts. A protocol deployment that adds these fields requires a clean
-redeploy because all state-queue header hashes, node asset names, DA attestations,
-proof inputs, settlement proofs, and downstream SDK codecs change.
+The header hash is computed over the full `Header`, including all transition
+roots and counts. Deploying this shape requires a clean redeploy because all
+state-queue header hashes, node asset names, DA attestations, proof inputs,
+settlement proofs, and downstream SDK codecs change.
 
 Placement visualization:
 
@@ -148,7 +148,7 @@ flowchart TD
   Datum["state-queue Datum"]
   Elem["linked_list.Element"]
   Node["StateQueueNode"]
-  Header["HeaderV2"]
+  Header["Header"]
 
   L1 --> Datum
   Datum --> Elem
@@ -171,11 +171,21 @@ flowchart TD
 The header carries compact roots. Public challengers still need the data those
 roots authenticate.
 
-The DA/proof-data transport is libp2p-only. Midgard nodes must not be required
-to expose HTTP DA payload endpoints, and DA committee nodes must not scrape
-Midgard operator HTTP services for protocol data. Payloads, transition traces,
-proof witnesses, and attestations move through the deployment's DA libp2p
-network.
+The launch-gate implementation uses DA committee retention as the production
+source for challenger payloads. A challenger fetches retained `DaPayloadV2` by
+`header_hash` from DA committee endpoints such as:
+
+```text
+/v1/deployments/{deployment_fingerprint}/headers/{header_hash}/payload
+/v1/deployments/{deployment_fingerprint}/headers/{header_hash}/payload/metadata
+```
+
+Operator debug payload endpoints are not a production DA source. Local debug
+paths may exist for development, but challengers must be able to reconstruct
+proof data from the committee-retained payload and the L1 header without trusted
+operator cooperation. Committee peer synchronization and signature collection
+remain committee concerns; the public challenger contract is the retained
+committee payload keyed by `header_hash`.
 
 The DA/proof-data network must publish, retain, replicate, and attest:
 
@@ -189,14 +199,34 @@ The DA/proof-data network must publish, retain, replicate, and attest:
 - root schema versions, member counts, hash-domain tags, and verifier ABI
   versions.
 
-This does not mean the Midgard producer must submit a single monolithic payload
-containing every transition trace entry and proof witness. The data obtained
-from, or produced by, Midgard nodes is source block/event data. DA committee
-nodes may propagate an enriched DA payload among themselves after deriving
-transition proof data.
+This does not mean the Midgard producer must submit a separate witness bundle
+for every possible proof. The retained `DaPayloadV2` contains the header, final
+UTxO members, source entries, transition trace entries, event-to-step entries,
+and counts. Challengers derive membership, non-membership, boundary, link, count,
+and one-step witnesses from that retained data.
 
 ```text
-MidgardProducerPayload {
+DaPayloadV2 {
+  version
+  block_body {
+    header_hash
+    header
+    utxos
+    withdrawals
+    forced_transactions
+    transactions
+    deposits
+    transition_trace
+    event_to_step
+    counts
+  }
+}
+```
+
+Conceptually, committee nodes validate the producer payload before signing:
+
+```text
+ProducerPayload {
   header_hash
   source_entries {
     withdrawals
@@ -207,43 +237,22 @@ MidgardProducerPayload {
   event_to_step_entries
   required_preimages
   previous_state_references
-  no transition_proof_data
-}
-
-CommitteeDaPayload {
-  header_hash
-  producer_payload_hash
-  producer_payload_bytes_or_chunk_manifest
-  optional transition_proof_data {
-    transition_trace_entries
-    source_root_membership_witnesses
-    event_to_step_membership_witnesses
-    root_member_counts
-    opened_field_preimages
-    proof_bundle_index
-  }
 }
 ```
 
-DA committee nodes can reconstruct `transition_proof_data` deterministically
-from the producer payload, Cardano L1 state, previous Midgard state, and the
-frozen trace schema. Committee-to-committee propagation may include the derived
-`transition_proof_data` for replication efficiency, but a receiving committee
-node must recompute or verify it before signing.
-
-The payload/proof format is independent of the transport, but the production
-transport is libp2p. HTTP endpoints are not part of the DA protocol, including
-as fallback, debug, or gateway transport. The public rule is the important part:
-the DA attestation for a state commitment must cover all proof-critical data
-needed to challenge these roots, not only the final ledger root. If a committee
-node cannot derive, persist, and serve the trace/proof artifacts, it must not
+The DA attestation for a state commitment covers all proof-critical data needed
+to challenge these roots, not only the final ledger root. If a committee node
+cannot decode, recompute, persist, and serve the retained payload, it must not
 sign the DA attestation for that header.
 
 The authoritative header remains on L1. Producer payloads and derived proof
 artifacts are keyed by `header_hash` and must recompute to the roots in that L1
 header.
 
-Required libp2p protocol families:
+The previous architecture mentioned libp2p-only proof transport. That is not
+the launch-gate interface. Any future libp2p transport must preserve the same
+payload, validation, and retention semantics as the committee API above.
+Candidate future protocol names, if that transport is reintroduced:
 
 ```text
 GossipSub:
@@ -303,30 +312,36 @@ ForcedTransactionKey =
   tx_order_id
 
 ForcedInclusionTx {
-  tx_order_id: OutputReference
-  inclusion_time: PosixTime
-  tx_id: MidgardTxId
-  tx_compact: MidgardTxCompact
-  order_metadata_hash: H32
+  tx_compact: MidgardTxCompactWithoutValidity
+  operator_validity: MidgardTxValidity
 }
 
 forced_transactions_root =
   MerkleRoot<tx_order_id -> ForcedInclusionTx CBOR>
 ```
 
-`tx_order_id` is the L1 order identity. It must not be replaced by `tx_id`.
+`tx_order_id` is the L1 order identity and is the map key. It must not be
+replaced by `tx_id`, and it must not be repeated inside the source-root value.
+The L2 transaction ID is derived from `tx_compact.body` when needed.
 
 Forced transactions are obligatory L1 events. Every authenticated transaction
-order whose `inclusion_time` falls in the block event interval must appear in
-`forced_transactions_root`.
+order whose transaction validity range requires processing by the block interval
+must appear in `forced_transactions_root`.
 
-The forced transaction root is source data. It should not contain the operator's
-claimed result. Whether the transaction applied effects or became a no-op is
-derived by the one-step verifier from the forced transaction, the pre-state root,
-and the proof witnesses.
+The forced transaction root keeps the user-authored transaction payload separate
+from the operator's execution classification. `tx_compact` is validity-free;
+`operator_validity` is the operator's claim about how that ordered transaction
+processed against the block state, and is challengeable by one-step fraud proofs.
 
-Production forced-transaction step results should include no-op variants for at
-least:
+The launch-gate implementation supports invalid forced transactions as no-op
+trace steps and deliberately fails closed for effectful valid forced
+transactions. Production block construction refuses `TxIsValid` forced
+transaction traces until forced transaction ledger deltas and preimages are
+available, and the Aiken proof validator rejects the unsupported
+valid-forced-transaction redeemer path. This is a safety restriction, not a
+compatibility mode.
+
+Production forced-transaction no-op classifications include at least:
 
 - transaction validity interval mismatch;
 - missing input;
@@ -370,6 +385,9 @@ DepositKey =
 
 DepositRootValue =
   DepositInfo CBOR
+    l2_address
+    l2_network_id
+    l2_datum
 
 deposits_root =
   MerkleRoot<deposit_id -> DepositInfo CBOR>
@@ -379,8 +397,11 @@ Deposits are obligatory effectful L1 events. Every authenticated deposit whose
 `inclusion_time` falls in the block event interval must appear in `deposits_root`.
 
 Invalid or unauthenticated deposit UTxOs are not valid events. A valid deposit
-step inserts the corresponding L2 UTxO. There is no invalid-deposit no-op event
-in the state commitment.
+step inserts the corresponding L2 UTxO by deriving the output reference from
+`deposit_id`, removing the deposit authentication NFT from the authentic L1
+value, and encoding the L2 output with the committed `l2_address`,
+`l2_network_id`, and `l2_datum`. There is no invalid-deposit no-op event in the
+state commitment.
 
 ## Event Keys And Exact-Once Coverage
 
@@ -388,7 +409,7 @@ in the state commitment.
 
 ```text
 event_to_step_root =
-  MerkleRoot<EventKey -> step_index>
+  MerkleRoot<EventKey -> EventToStepValue>
 ```
 
 `EventKey` is source-specific:
@@ -403,7 +424,8 @@ deposit:<deposit_id>
 `event_to_step_root` has one entry for every committed source event. It is the
 exact-once coverage commitment:
 
-- every source-root member must have exactly one `EventKey -> step_index` entry;
+- every source-root member must have exactly one `EventKey -> EventToStepValue`
+  entry;
 - every transition trace step must refer to an event key whose mapped step index
   is that step's own `step_index`;
 - the mapped step must be inside the phase range for that event key's source
@@ -472,7 +494,7 @@ flowchart LR
   F["forced_transactions_root\ntx_order_id -> ForcedInclusionTx"]
   Txs["transactions_root\ntx_id -> MidgardTxCompact"]
   D["deposits_root\ndeposit_id -> DepositInfo"]
-  E["event_to_step_root\nEventKey -> step_index"]
+  E["event_to_step_root\nEventKey -> EventToStepValue"]
   T["transition_trace_root\nstep_index -> TransitionStep"]
 
   W --> E
@@ -516,7 +538,7 @@ TransitionStep {
 ```text
 Withdrawal
 ForcedTransaction
-Transaction
+L2Transaction
 Deposit
 ```
 
@@ -599,9 +621,9 @@ Together:
 ### Trace Boundary Invariants
 
 - If `transition_step_count > 0`, the first trace leaf's `pre_utxos_root` equals
-  `HeaderV2.prev_utxos_root`.
+  `Header.prev_utxos_root`.
 - If `transition_step_count > 0`, the last trace leaf's `post_utxos_root` equals
-  `HeaderV2.utxos_root`.
+  `Header.utxos_root`.
 
 ### Trace Link Invariants
 
@@ -663,7 +685,7 @@ not end at the committed current root.
 
 Evidence:
 
-- state-queue reference input containing `HeaderV2`;
+- state-queue reference input containing `Header`;
 - trace leaf membership proof for step `0` or step `transition_step_count - 1`;
 - opened trace leaf.
 
@@ -680,7 +702,7 @@ Purpose: prove two adjacent trace steps do not connect.
 
 Evidence:
 
-- state-queue reference input containing `HeaderV2`;
+- state-queue reference input containing `Header`;
 - trace leaf membership proof for step `i`;
 - trace leaf membership proof for step `i + 1`;
 - opened trace leaves.
@@ -697,7 +719,7 @@ Purpose: prove a trace step does not bind to the event mapped to that step.
 
 Evidence:
 
-- state-queue reference input containing `HeaderV2`;
+- state-queue reference input containing `Header`;
 - trace leaf membership proof for step `i`;
 - `event_to_step_root` membership proof for `trace.event_key`;
 - opened trace leaf and opened event-to-step leaf.
@@ -717,7 +739,7 @@ Purpose: prove a mapped event key does not exist in the matching source root.
 
 Evidence:
 
-- state-queue reference input containing `HeaderV2`;
+- state-queue reference input containing `Header`;
 - trace leaf membership proof for step `i`;
 - `event_to_step_root` membership proof for `trace.event_key`;
 - source-root non-membership proof for the event key's source id.
@@ -736,7 +758,7 @@ source event to its pre-state root.
 
 Evidence:
 
-- state-queue reference input containing `HeaderV2`;
+- state-queue reference input containing `Header`;
 - trace leaf membership proof for step `i`;
 - `event_to_step_root` membership proof for the trace step's event key;
 - source-root membership proof for the event;
@@ -771,17 +793,19 @@ was omitted from its source root.
 
 Evidence:
 
-- state-queue reference input containing `HeaderV2`;
+- state-queue reference input containing `Header`;
 - L1 evidence for the deposit, withdrawal, or forced transaction order UTxO and
   datum;
-- proof that the event's `inclusion_time` is in the block event interval;
+- proof that the event is due in the block interval. For forced transaction
+  orders, this uses the validity range extracted from the ordered transaction
+  body rather than an `inclusion_time` field;
 - source-root non-membership proof for the event id.
 
 Checks:
 
 ```text
 event is authenticated on L1
-header.start_time < event.inclusion_time <= header.end_time
+event is due for the committed block interval
 event id is absent from the matching source root
 ```
 
@@ -791,7 +815,7 @@ Purpose: prove a committed source-root member has no corresponding trace step.
 
 Evidence:
 
-- state-queue reference input containing `HeaderV2`;
+- state-queue reference input containing `Header`;
 - source-root membership proof for the event;
 - `event_to_step_root` non-membership proof for the event key.
 
@@ -822,19 +846,19 @@ trace[i].event_key == trace[j].event_key
 ### 9. Out-Of-Window Event Fault
 
 Purpose: prove a source root contains an L1 event outside the committed block
-event interval.
+event interval. For forced transaction orders, this means the transaction
+validity range does not require processing in the block interval.
 
 Evidence:
 
-- state-queue reference input containing `HeaderV2`;
+- state-queue reference input containing `Header`;
 - source-root membership proof for the event;
 - opened source member or L1 event evidence.
 
 Checks:
 
 ```text
-event.inclusion_time <= header.start_time
-  OR header.end_time < event.inclusion_time
+event is not due for the committed block interval
 ```
 
 ### 10. Count Fault
@@ -845,7 +869,7 @@ Evidence:
 
 - root metadata proof or count opening for one source root, `event_to_step_root`,
   or `transition_trace_root`;
-- state-queue reference input containing `HeaderV2`.
+- state-queue reference input containing `Header`.
 
 Checks:
 
@@ -1056,94 +1080,46 @@ MidgardTransitionTraceV1
 MidgardTransitionStepV1
 ```
 
-## Implementation Milestones
+## Launch-Gate State
 
-### M1: Freeze Protocol Schemas
+- The current `Header` ABI includes `forced_transactions_root`,
+  `transition_trace_root`, `event_to_step_root`, all per-source counts,
+  `total_event_count`, and `transition_step_count`.
+- Block production builds deterministic source roots, event-to-step members, and
+  dense transition trace members in phase order.
+- DA payload v2 retains the header, final UTxO members, all source-root members,
+  transition trace members, event-to-step members, and counts. DA committee
+  validation recomputes roots/counts and fails closed on malformed coverage.
+- Aiken transition-trace proof validators cover trace boundary, trace link,
+  event-to-step mismatch, source membership mismatch, invalid one-step
+  transition, omitted due L1 event, duplicate trace event, out-of-window source
+  event, and count faults.
+- Challenger tooling reconstructs roots from retained DA payloads, detects the
+  supported fault families, builds witnesses, and uses the canonical fraudulent
+  block removal lifecycle.
+- ABI fixture coverage is recorded in
+  `demo/midgard-node/tests/fixtures/transition-trace-abi.json`; Aiken budget
+  evidence is recorded in the Task09 plan.
 
-- Define `HeaderV2` in Aiken, TypeScript SDK, and CDDL.
-- Define `forced_transactions_root`.
-- Define `event_to_step_root`.
-- Define `TransitionStep` event binding fields and root proof witness encodings.
-- Define forced-transaction no-op result variants.
-- Keep `transactions_root` as `tx_id -> MidgardTxCompact CBOR`.
-
-### M2: Build Source Roots And Trace Off-Chain
-
-- Add deterministic builders for `forced_transactions_root`,
-  `event_to_step_root`, and `transition_trace_root`.
-- Use the production phase order: withdrawals, forced transactions, normal L2
-  transactions, deposits.
-- Reject same-block deposit spending under this event order.
-- Persist source entries, event-to-step entries, and trace entries before block
-  submission.
-- Recompute all roots after restart from durable data and fail closed on
-  mismatch.
-
-### M3: Publish Proof-Critical DA Over Libp2p
-
-- Define the committee DA payload/proof-bundle format keyed by `header_hash`.
-- Keep Midgard producer payloads limited to source block/event data and required
-  preimages; do not require Midgard nodes to provide `transition_proof_data`.
-- Publish and replicate committee-derived trace entries, event-to-step entries,
-  source-root entries, root counts, and proof witnesses over libp2p only.
-- Remove Midgard-node HTTP DA payload transport from production profiles.
-- Ensure DA committee validation recomputes these roots before attestation.
-- Retain proof data through the whole challenge window.
-
-### M4: Implement Aiken Fault Families
-
-- Trace boundary proof.
-- Trace link proof.
-- Event-to-step mismatch proof.
-- Source membership mismatch proof.
-- Invalid one-step proof for each phase.
-- Omitted due L1 event proof.
-- Source event not traced proof.
-- Duplicate trace event proof.
-- Out-of-window event proof.
-- Count proof.
-
-### M5: Implement Challenger Tooling
-
-- Fetch L1 state-queue header by `header_hash`.
-- Fetch DA/proof payload from DA committee peers over libp2p.
-- Recompute source roots, event-to-step root, and trace root.
-- Detect supported invalidity.
-- Build proof transactions from public data only.
-- Resume submitted computation-thread steps safely after restart.
-
-### M6: Conformance And Budget Gates
-
-- Add TypeScript/Aiken/CDDL golden fixtures for all new schemas and roots.
-- Add phase-boundary tests proving events map only into their allowed ranges.
-- Add validity tests proving invalid withdrawals and invalid forced transactions
-  are no-op trace steps, while invalid normal L2 transaction requests are
-  excluded.
-- Add same-block dependency tests for normal L2 transactions using committed
-  step order.
-- Add a regression test proving same-block deposit spending is rejected unless
-  the protocol phase order is deliberately changed.
-- Add valid-block negative tests proving supported proof paths cannot challenge
-  correct traces.
-- Add adversarial fixtures for every fault family.
-- Add Aiken budget gates for worst-case proof witnesses.
-- Run preprod end-to-end challenge from invalid state commitment to fraudulent
-  block removal before claiming public readiness.
-
-## Open Decisions
+## Frozen And Future Design Choices
 
 ### Forced Transaction Value Shape
 
-`ForcedInclusionTx CBOR` must be finalized against the tx-order datum and
-settlement/refund rules. It should include enough source data to authenticate the
-L1 order and recover the L2 transaction payload, but it should not include the
-operator's claimed execution result.
+`ForcedInclusionTx CBOR` is:
+
+```text
+ForcedInclusionTx {
+  tx_compact: MidgardTxCompactWithoutValidity
+  operator_validity: MidgardTxValidity
+}
+```
 
 ### Event-To-Step Root Primitive
 
 The root must support membership, non-membership, and count proofs for
-`EventKey -> step_index`. It does not need ordered-rank proofs if the protocol
-only enforces phase ordering.
+`EventKey -> EventToStepValue`. It does not need ordered-rank proofs because the
+protocol currently enforces phase ordering through header counts and trace step
+indexes.
 
 ### Step Granularity
 

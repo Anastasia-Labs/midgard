@@ -1,4 +1,5 @@
 import * as SDK from "@al-ft/midgard-sdk";
+import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
 import {
   Data,
   Emulator,
@@ -13,7 +14,6 @@ import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
-import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
 import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
 import { withRealStateQueueAndOperatorContracts } from "@/services/midgard-contracts.js";
 import {

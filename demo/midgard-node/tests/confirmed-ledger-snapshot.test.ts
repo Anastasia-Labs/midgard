@@ -30,6 +30,10 @@ describe("confirmed ledger snapshot materialization", () => {
     const now = new Date("2026-06-19T00:00:00.000Z");
     const record = {
       [PendingBlockFinalizationsDB.Columns.HEADER_HASH]: Buffer.alloc(28, 1),
+      [PendingBlockFinalizationsDB.Columns.HEADER_CBOR]: Buffer.from(
+        "d87980",
+        "hex",
+      ),
       [PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH]: Buffer.alloc(
         32,
         2,
@@ -37,10 +41,14 @@ describe("confirmed ledger snapshot materialization", () => {
       [PendingBlockFinalizationsDB.Columns.STATE_QUEUE_LEASE_TOKEN]: "lease",
       [PendingBlockFinalizationsDB.Columns.BASE_SNAPSHOT_ID]: "snapshot",
       [PendingBlockFinalizationsDB.Columns.BASE_TAIL_OUT_REF]: "base#0",
-      [PendingBlockFinalizationsDB.Columns.BASE_TAIL_HEADER_HASH]:
-        Buffer.alloc(28, 3),
+      [PendingBlockFinalizationsDB.Columns.BASE_TAIL_HEADER_HASH]: Buffer.alloc(
+        28,
+        3,
+      ),
       [PendingBlockFinalizationsDB.Columns.BASE_TAIL_DATUM_CBOR]: "d87980",
       [PendingBlockFinalizationsDB.Columns.BASE_UTXOS_ROOT]:
+        SDK.EMPTY_MERKLE_TREE_ROOT,
+      [PendingBlockFinalizationsDB.Columns.BASE_FORCED_TRANSACTIONS_ROOT]:
         SDK.EMPTY_MERKLE_TREE_ROOT,
       [PendingBlockFinalizationsDB.Columns.BASE_TRANSACTIONS_ROOT]:
         SDK.EMPTY_MERKLE_TREE_ROOT,
@@ -52,27 +60,46 @@ describe("confirmed ledger snapshot materialization", () => {
       [PendingBlockFinalizationsDB.Columns.BLOCK_END_TIME]: now,
       [PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT]:
         SDK.EMPTY_MERKLE_TREE_ROOT,
+      [PendingBlockFinalizationsDB.Columns.EXPECTED_FORCED_TRANSACTIONS_ROOT]:
+        SDK.EMPTY_MERKLE_TREE_ROOT,
       [PendingBlockFinalizationsDB.Columns.EXPECTED_TRANSACTIONS_ROOT]:
         SDK.EMPTY_MERKLE_TREE_ROOT,
       [PendingBlockFinalizationsDB.Columns.EXPECTED_DEPOSITS_ROOT]:
         SDK.EMPTY_MERKLE_TREE_ROOT,
       [PendingBlockFinalizationsDB.Columns.EXPECTED_WITHDRAWALS_ROOT]:
         SDK.EMPTY_MERKLE_TREE_ROOT,
+      [PendingBlockFinalizationsDB.Columns.EXPECTED_TRANSITION_TRACE_ROOT]:
+        SDK.EMPTY_MERKLE_TREE_ROOT,
+      [PendingBlockFinalizationsDB.Columns.EXPECTED_EVENT_TO_STEP_ROOT]:
+        SDK.EMPTY_MERKLE_TREE_ROOT,
+      [PendingBlockFinalizationsDB.Columns.EXPECTED_WITHDRAWAL_COUNT]: 0n,
+      [PendingBlockFinalizationsDB.Columns.EXPECTED_FORCED_TRANSACTION_COUNT]:
+        0n,
+      [PendingBlockFinalizationsDB.Columns.EXPECTED_L2_TRANSACTION_COUNT]: 0n,
+      [PendingBlockFinalizationsDB.Columns.EXPECTED_DEPOSIT_COUNT]: 0n,
+      [PendingBlockFinalizationsDB.Columns.EXPECTED_TOTAL_EVENT_COUNT]: 0n,
+      [PendingBlockFinalizationsDB.Columns.EXPECTED_TRANSITION_STEP_COUNT]: 0n,
       [PendingBlockFinalizationsDB.Columns.STATUS]:
         PendingBlockFinalizationsDB.Status.Finalized,
       [PendingBlockFinalizationsDB.Columns.OBSERVED_CONFIRMED_AT_MS]: 1n,
       [PendingBlockFinalizationsDB.Columns.CREATED_AT]: now,
       [PendingBlockFinalizationsDB.Columns.UPDATED_AT]: now,
       depositEventIds: [],
+      forcedTransactionEventIds: [],
       withdrawalEventIds: [],
       mempoolTxIds: [],
       depositMembers: [],
+      forcedTransactionMembers: [],
       withdrawalMembers: [],
       txMembers: [],
+      transitionTraceMembers: [],
+      eventToStepMembers: [],
       utxoMembers: [
         {
-          [PendingBlockFinalizationsDB.UtxoColumns.HEADER_HASH]:
-            Buffer.alloc(28, 1),
+          [PendingBlockFinalizationsDB.UtxoColumns.HEADER_HASH]: Buffer.alloc(
+            28,
+            1,
+          ),
           [PendingBlockFinalizationsDB.UtxoColumns.OUTREF]: outref,
           [PendingBlockFinalizationsDB.UtxoColumns.ORDINAL]: 0,
           [PendingBlockFinalizationsDB.UtxoColumns.OUTPUT]:

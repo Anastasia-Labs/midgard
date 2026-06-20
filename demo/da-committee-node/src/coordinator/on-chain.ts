@@ -1,9 +1,10 @@
+import { blake2b } from "@noble/hashes/blake2.js";
+
 import type {
   DaAttestationCandidateRecord,
   DaSignatureRecord,
   L1SubmissionRecord,
 } from "../domain.js";
-import { blake2b } from "@noble/hashes/blake2.js";
 import type { DaAttestationChainReader } from "../l1/da-attestation-reader.js";
 import type { AttestationCoordinator } from "./coordinator.js";
 import { planDaAttestationLifecycle } from "./planner.js";
@@ -36,7 +37,9 @@ type RequiredReconcileArgs = {
 };
 
 export interface OnChainAttestationSubmitter {
-  initAttestation(record: Pick<DaAttestationContext, "headerHash">): Promise<string>;
+  initAttestation(
+    record: Pick<DaAttestationContext, "headerHash">,
+  ): Promise<string>;
   addSignatures(args: {
     readonly record: DaAttestationContext;
     readonly candidate: DaAttestationCandidateRecord;
@@ -131,7 +134,9 @@ export class OnChainLifecycleCoordinator implements AttestationCoordinator {
   private async reconcile(args: RequiredReconcileArgs): Promise<void> {
     const retryCount = this.deps.raceRecoveryRetryCount ?? 2;
     const retryDelayMs =
-      this.deps.raceRecoveryRetryDelayMs ?? this.deps.visibilityRetryDelayMs ?? 2_000;
+      this.deps.raceRecoveryRetryDelayMs ??
+      this.deps.visibilityRetryDelayMs ??
+      2_000;
     for (let attempt = 0; attempt <= retryCount; attempt += 1) {
       try {
         await this.reconcileOnce(args);
@@ -244,7 +249,10 @@ export class OnChainLifecycleCoordinator implements AttestationCoordinator {
     for (let attempt = 0; attempt <= retryCount; attempt += 1) {
       const candidates = await this.fetchCandidates(args.context.headerHash);
       const action = await this.plan(args, candidates);
-      if (!sameCoordinatorAction(action, previousAction) || attempt === retryCount) {
+      if (
+        !sameCoordinatorAction(action, previousAction) ||
+        attempt === retryCount
+      ) {
         return { candidates, action };
       }
       await sleep(retryDelayMs);
@@ -316,10 +324,12 @@ export class OnChainLifecycleCoordinator implements AttestationCoordinator {
     return this.plan(args, candidates);
   }
 
-  private leadershipIds(
-    args: RequiredReconcileArgs,
-  ):
-    | { readonly allowed: true; readonly local: string; readonly eligible: readonly string[] }
+  private leadershipIds(args: RequiredReconcileArgs):
+    | {
+        readonly allowed: true;
+        readonly local: string;
+        readonly eligible: readonly string[];
+      }
     | { readonly allowed: false }
     | undefined {
     const submitterIds = this.deps.l1SubmitterIds ?? [];
@@ -350,7 +360,9 @@ export class OnChainLifecycleCoordinator implements AttestationCoordinator {
     for (const witnessHex of args.witnessHexes) {
       this.addWitness(selected, witnessHex);
     }
-    for (const witnessHex of await this.peerWitnessesFromRecords(args.context)) {
+    for (const witnessHex of await this.peerWitnessesFromRecords(
+      args.context,
+    )) {
       this.addWitness(selected, witnessHex);
     }
     if (this.deps.peerWitnessesFor !== undefined) {
@@ -374,10 +386,7 @@ export class OnChainLifecycleCoordinator implements AttestationCoordinator {
       .map((peerRecord) => peerRecord.signatureWitness);
   }
 
-  private addWitness(
-    selected: Map<number, string>,
-    witnessHex: string,
-  ): void {
+  private addWitness(selected: Map<number, string>, witnessHex: string): void {
     const witness = parseSignatureWitness(witnessHex);
     if (!selected.has(witness.signerIndex)) {
       selected.set(witness.signerIndex, witness.witnessHex);
@@ -495,7 +504,8 @@ const rankSubmitter = ({
     }))
     .sort(
       (left, right) =>
-        left.digest.localeCompare(right.digest) || left.id.localeCompare(right.id),
+        left.digest.localeCompare(right.digest) ||
+        left.id.localeCompare(right.id),
     );
   return ranked.findIndex((entry) => entry.id === submitterId);
 };
@@ -517,7 +527,9 @@ const isRecoverableL1Race = (error: unknown): boolean => {
 const errorMessageWithCause = (error: unknown): string => {
   if (error instanceof Error) {
     const cause =
-      error.cause === undefined ? "" : `\n${errorMessageWithCause(error.cause)}`;
+      error.cause === undefined
+        ? ""
+        : `\n${errorMessageWithCause(error.cause)}`;
     return `${error.message}${cause}`;
   }
   return String(error);
@@ -540,7 +552,9 @@ const sameCoordinatorAction = (
         left.packedWitnessesHex === right.packedWitnessesHex
       );
     case "apply":
-      return right.kind === "apply" && left.candidateOutRef === right.candidateOutRef;
+      return (
+        right.kind === "apply" && left.candidateOutRef === right.candidateOutRef
+      );
     case "wait":
       return right.kind === "wait" && left.reason === right.reason;
   }

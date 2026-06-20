@@ -5,19 +5,14 @@ import { blake2b } from "@noble/hashes/blake2.js";
 import { describe, expect, it } from "vitest";
 
 import { createWatcherApiServer } from "../src/api/server.js";
-import {
-  HttpSignatureCoordinator,
-} from "../src/coordinator/coordinator.js";
+import { HttpSignatureCoordinator } from "../src/coordinator/coordinator.js";
 import { OnChainLifecycleCoordinator } from "../src/coordinator/on-chain.js";
 import { DaPayloadClient } from "../src/da/client.js";
 import type { DaAttestationCandidateRecord } from "../src/domain.js";
-import {
-  loadDaSigner,
-  validateDaSignerMembership,
-} from "../src/signer.js";
+import { loadDaSigner, validateDaSignerMembership } from "../src/signer.js";
 import { JsonFileWatcherStore } from "../src/store.js";
-import { WatcherService } from "../src/watcher.js";
 import { bytesToHex } from "../src/utils/hex.js";
+import { WatcherService } from "../src/watcher.js";
 import {
   IDENTITY_TX_PROJECTOR,
   makeObservedNode,
@@ -153,8 +148,7 @@ describe("multi-node DA committee integration", () => {
         },
         recordCandidate: (record) =>
           coordinatorStore.saveDaAttestationCandidate(record),
-        recordSubmission: (record) =>
-          coordinatorStore.saveL1Submission(record),
+        recordSubmission: (record) => coordinatorStore.saveL1Submission(record),
         submitter: {
           initAttestation: async () => {
             calls.push("init");
@@ -200,11 +194,13 @@ describe("multi-node DA committee integration", () => {
         "add:0,1:00",
         `apply:${thresholdCandidate.outRef}`,
       ]);
-      await expect(coordinatorStore.listL1Submissions()).resolves.toMatchObject([
-        { headerHash, txKind: "add_signatures", txHash: "addTx" },
-        { headerHash, txKind: "apply", txHash: "applyTx" },
-        { headerHash, txKind: "init", txHash: "initTx" },
-      ]);
+      await expect(coordinatorStore.listL1Submissions()).resolves.toMatchObject(
+        [
+          { headerHash, txKind: "add_signatures", txHash: "addTx" },
+          { headerHash, txKind: "apply", txHash: "applyTx" },
+          { headerHash, txKind: "init", txHash: "initTx" },
+        ],
+      );
     } finally {
       await coordinatorApi.close();
       await closeServer(payloadServer);
@@ -255,13 +251,13 @@ const startPayloadServer = async ({
 };
 
 const endpointFor = (
-  server: Pick<Server, "address"> | { readonly address: () => AddressInfo | string | null },
+  server:
+    | Pick<Server, "address">
+    | { readonly address: () => AddressInfo | string | null },
 ): string => {
   const address = server.address();
   const port =
-    typeof address === "object" && address !== null
-      ? address.port
-      : 0;
+    typeof address === "object" && address !== null ? address.port : 0;
   return `http://127.0.0.1:${port.toString()}`;
 };
 

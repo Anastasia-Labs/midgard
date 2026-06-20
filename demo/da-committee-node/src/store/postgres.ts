@@ -2,10 +2,10 @@ import { Pool, type PoolClient } from "pg";
 
 import type {
   DaAttestationCandidateRecord,
+  DaPayloadRecord,
   DaPeerBroadcastRecord,
   DaPeerHealthRecord,
   DaPeerNonceRecord,
-  DaPayloadRecord,
   DaSignatureRecord,
   L1SubmissionRecord,
   StateQueueHeaderRecord,
@@ -81,10 +81,12 @@ export class PostgresWatcherStore implements WatcherStore {
     );
   }
 
-  async upsertStateQueueHeader(
-    record: StateQueueHeaderRecord,
-  ): Promise<void> {
-    await this.upsertRecord("watcher_state_queue_headers", record.headerHash, record);
+  async upsertStateQueueHeader(record: StateQueueHeaderRecord): Promise<void> {
+    await this.upsertRecord(
+      "watcher_state_queue_headers",
+      record.headerHash,
+      record,
+    );
   }
 
   async listStateQueueHeaders(): Promise<readonly StateQueueHeaderRecord[]> {
@@ -255,7 +257,12 @@ export class PostgresWatcherStore implements WatcherStore {
        ON CONFLICT (peer_base_url, header_hash, signer_index) DO UPDATE SET
          record = EXCLUDED.record,
          updated_at = NOW()`,
-      [record.peerBaseUrl, record.headerHash, record.signerIndex, encodeRecord(record)],
+      [
+        record.peerBaseUrl,
+        record.headerHash,
+        record.signerIndex,
+        encodeRecord(record),
+      ],
     );
   }
 

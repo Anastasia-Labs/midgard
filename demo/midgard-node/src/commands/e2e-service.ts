@@ -3,13 +3,13 @@ import { createWriteStream } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import {
-  inspectPidFile,
-  probeHttpEndpoint,
-  type HttpProbeSample,
-  type PidFileObservation,
-} from "@/e2e/service-supervisor.js";
 import { redactArg, redactEnvKeys } from "@/e2e/runner.js";
+import {
+  type HttpProbeSample,
+  inspectPidFile,
+  type PidFileObservation,
+  probeHttpEndpoint,
+} from "@/e2e/service-supervisor.js";
 
 export type StartServiceOptions = {
   readonly service: string;

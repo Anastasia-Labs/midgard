@@ -28,7 +28,6 @@ use cardano/transaction.{
 use env
 use midgard/common/types.{H28, H32, MerkleRoot, PosixTime, ValuePairs}
 use midgard/common/utils
-use midgard/fraud_proofs/native_tx/types as native_tx
 
 // # Ledger state types
 
@@ -58,9 +57,18 @@ pub type MidgardLedgerRoot =
 pub type Header {
   prev_utxos_root: MidgardLedgerRoot,
   utxos_root: MidgardLedgerRoot,
+  withdrawals_root: WithdrawalsRoot,
+  forced_transactions_root: ForcedTransactionsRoot,
   transactions_root: MidgardTxsRoot,
   deposits_root: DepositsRoot,
-  withdrawals_root: WithdrawalsRoot,
+  transition_trace_root: TransitionTraceRoot,
+  event_to_step_root: EventToStepRoot,
+  withdrawal_count: Int,
+  forced_transaction_count: Int,
+  l2_transaction_count: Int,
+  deposit_count: Int,
+  total_event_count: Int,
+  transition_step_count: Int,
   start_time: PosixTime,
   end_time: PosixTime,
   prev_header_hash: HeaderHash,
@@ -73,9 +81,12 @@ pub type Header {
 /// This type is not used in onchain code.
 pub type BlockBody {
   utxos: MidgardLedger,
+  withdrawals: Withdrawals,
+  forced_transactions: ForcedTransactions,
   transactions: MidgardTxs,
   deposits: Deposits,
-  withdrawals: Withdrawals,
+  transition_trace: TransitionTrace,
+  event_to_step: EventToStep,
 }
 
 // ## Confirmed state
@@ -125,6 +136,7 @@ pub type DepositId =
 
 pub type DepositInfo {
   l2_address: Address,
+  l2_network_id: Int,
   l2_datum: Option<Data>,
 }
 
@@ -182,11 +194,16 @@ pub type WithdrawalEvent {
 pub type TxOrderId =
   OutputReference
 
-/// TODO: This might need re-alignment.
 pub type TxOrderEvent {
   id: TxOrderId,
-  tx: native_tx.MidgardTransaction,
+  tx: MidgardTxCompact,
 }
+
+pub type ForcedTransactions =
+  Dict<TxOrderId, ForcedInclusionTx>
+
+pub type ForcedTransactionsRoot =
+  MerkleRoot<TxOrderId, ForcedInclusionTx>
 
 // ## Transaction
 
@@ -219,6 +236,11 @@ pub type MidgardTxCompact {
   validity: MidgardTxValidity,
 }
 
+pub type MidgardTxCompactWithoutValidity {
+  body: MidgardTxBodyCompact,
+  wits: MidgardTxWitsHash,
+}
+
 // TODO
 pub type MidgardTxValidity {
   TxIsValid
@@ -228,6 +250,51 @@ pub type MidgardTxValidity {
   FeeTooLow
   UnbalancedTx
 }
+
+pub type ForcedInclusionTx {
+  tx_compact: MidgardTxCompactWithoutValidity,
+  operator_validity: MidgardTxValidity,
+}
+
+pub type TransitionPhase {
+  Withdrawal
+  ForcedTransaction
+  L2Transaction
+  Deposit
+}
+
+pub type EventKey {
+  WithdrawalEventKey { withdrawal_id: WithdrawalId }
+  ForcedTransactionEventKey { tx_order_id: TxOrderId }
+  L2TransactionEventKey { tx_id: MidgardTxId }
+  DepositEventKey { deposit_id: DepositId }
+}
+
+pub type EventToStepValue {
+  step_index: Int,
+  phase: TransitionPhase,
+}
+
+pub type EventToStep =
+  Dict<EventKey, EventToStepValue>
+
+pub type EventToStepRoot =
+  MerkleRoot<EventKey, EventToStepValue>
+
+pub type TransitionStep {
+  schema_version: Int,
+  step_index: Int,
+  event_key: EventKey,
+  phase: TransitionPhase,
+  pre_utxos_root: MidgardLedgerRoot,
+  post_utxos_root: MidgardLedgerRoot,
+}
+
+pub type TransitionTrace =
+  Dict<Int, TransitionStep>
+
+pub type TransitionTraceRoot =
+  MerkleRoot<Int, TransitionStep>
 
 // ### Transaction body
 

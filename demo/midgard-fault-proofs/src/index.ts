@@ -10,3 +10,4 @@ export * from "./submit-step-01.js";
 export * from "./submit-step-02.js";
 export * from "./submit-step-03.js";
 export * from "./submit-step-04.js";
+export * from "./transition-trace/index.js";

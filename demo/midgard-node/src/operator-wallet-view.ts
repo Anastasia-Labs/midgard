@@ -12,8 +12,8 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { dedupeByOutRef, outRefLabel, type OutRefLike } from "@/tx-context.js";
 import { isPlainAdaOnlyUtxo } from "@/transactions/wallet-hygiene.js";
+import { dedupeByOutRef, outRefLabel, type OutRefLike } from "@/tx-context.js";
 
 export type OperatorWalletView = {
   readonly walletAddress: string;

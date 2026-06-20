@@ -18,7 +18,9 @@ export const parseSeedPhraseArgument = (seedPhrase: string): string => {
  */
 export const parseNetworkArgument = (network: string): Network => {
   const normalized = network.trim();
-  const matched = SUPPORTED_NETWORKS.find((candidate) => candidate === normalized);
+  const matched = SUPPORTED_NETWORKS.find(
+    (candidate) => candidate === normalized,
+  );
   if (matched === undefined) {
     throw new Error(
       `Unsupported network "${network}". Expected one of ${SUPPORTED_NETWORKS.join(", ")}.`,
@@ -35,11 +37,12 @@ export const resolveNetwork = (input?: {
   readonly env?: NodeJS.ProcessEnv;
 }): Network => {
   const rawNetwork =
-    input?.network?.trim() ?? input?.env?.NETWORK?.trim() ?? process.env.NETWORK?.trim() ?? "";
+    input?.network?.trim() ??
+    input?.env?.NETWORK?.trim() ??
+    process.env.NETWORK?.trim() ??
+    "";
   if (rawNetwork.length === 0) {
-    throw new Error(
-      "Network is required. Pass --network or set NETWORK.",
-    );
+    throw new Error("Network is required. Pass --network or set NETWORK.");
   }
   return parseNetworkArgument(rawNetwork);
 };

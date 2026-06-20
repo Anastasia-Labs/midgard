@@ -2,10 +2,10 @@ import { MIDGARD_POSIX_TIME_NONE } from "@al-ft/midgard-core";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
-  faultProofStepDatumSchema,
-  faultProofStepRedeemerSchema,
   FaultProofStepCancel,
   FaultProofStepCancelSchema,
+  faultProofStepDatumSchema,
+  faultProofStepRedeemerSchema,
   NativeTxBodyCompact,
   type NativeTxBodyCompact as NativeTxBodyCompactData,
   NativeTxInclusionArgs,
@@ -41,9 +41,7 @@ export const NormalizedTimeRangeSchema = Data.Enum([
   Data.Literal("Always"),
   Data.Literal("InvalidRange"),
 ]);
-export type NormalizedTimeRange = Data.Static<
-  typeof NormalizedTimeRangeSchema
->;
+export type NormalizedTimeRange = Data.Static<typeof NormalizedTimeRangeSchema>;
 export const NormalizedTimeRange =
   NormalizedTimeRangeSchema as unknown as NormalizedTimeRange;
 
@@ -130,7 +128,11 @@ export const invalidRangeViolationReason = ({
   readonly blockValidFrom: bigint;
   readonly blockValidTo: bigint;
   readonly normalizedRange: NormalizedTimeRange;
-}): "lower-before-block" | "upper-at-or-after-block" | "invalid-range" | null => {
+}):
+  | "lower-before-block"
+  | "upper-at-or-after-block"
+  | "invalid-range"
+  | null => {
   if (typeof normalizedRange === "string") {
     return normalizedRange === "InvalidRange" ? "invalid-range" : null;
   }

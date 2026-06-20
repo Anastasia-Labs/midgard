@@ -1,3 +1,4 @@
+import * as SDK from "@al-ft/midgard-sdk";
 import { Pool } from "pg";
 import { describe, expect, it } from "vitest";
 
@@ -20,7 +21,9 @@ describe("PostgresWatcherStore", () => {
     const admin = new Pool({ connectionString: databaseUrl });
     await admin.query(`CREATE SCHEMA ${schema}`);
     try {
-      const store = await PostgresWatcherStore.open(withSearchPath(databaseUrl!, schema));
+      const store = await PostgresWatcherStore.open(
+        withSearchPath(databaseUrl!, schema),
+      );
       try {
         await store.initDeployment({
           fingerprint: "dep",
@@ -37,9 +40,9 @@ describe("PostgresWatcherStore", () => {
 
         const header = stateQueueHeaderRecord();
         await store.upsertStateQueueHeader(header);
-        await expect(store.getStateQueueHeader(header.headerHash)).resolves.toEqual(
-          header,
-        );
+        await expect(
+          store.getStateQueueHeader(header.headerHash),
+        ).resolves.toEqual(header);
         await expect(store.listStateQueueHeaders()).resolves.toEqual([header]);
 
         const payload = daPayloadRecord();
@@ -49,11 +52,15 @@ describe("PostgresWatcherStore", () => {
           payloadCborHex: "bb",
           payloadSha256: "22".repeat(32),
         };
-        await expect(store.saveDaPayload(conflictingPayload)).resolves.toMatchObject({
+        await expect(
+          store.saveDaPayload(conflictingPayload),
+        ).resolves.toMatchObject({
           validationStatus: "conflicted",
           conflictStatus: "conflicting_bytes",
         });
-        await expect(store.getDaPayload(payload.headerHash)).resolves.toMatchObject({
+        await expect(
+          store.getDaPayload(payload.headerHash),
+        ).resolves.toMatchObject({
           payloadSha256: "22".repeat(32),
           validationStatus: "conflicted",
         });
@@ -66,9 +73,9 @@ describe("PostgresWatcherStore", () => {
             signerIndex: signature.signerIndex,
           }),
         ).resolves.toEqual(signature);
-        await expect(store.listDaSignatures(signature.headerHash)).resolves.toEqual([
-          signature,
-        ]);
+        await expect(
+          store.listDaSignatures(signature.headerHash),
+        ).resolves.toEqual([signature]);
 
         const candidate = daCandidateRecord();
         await store.saveDaAttestationCandidate(candidate);
@@ -103,6 +110,7 @@ const stateQueueHeaderRecord = (): StateQueueHeaderRecord => ({
   header: {
     ...fixtureHeaderBase(),
     utxosRoot: "10".repeat(32),
+    forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
     transactionsRoot: "11".repeat(32),
     depositsRoot: "12".repeat(32),
     withdrawalsRoot: "13".repeat(32),
@@ -143,7 +151,7 @@ const daSignatureRecord = (): DaSignatureRecord => ({
     depth: 12,
   },
   validation: {
-    payloadVersion: 1,
+    payloadVersion: Number(SDK.DA_PAYLOAD_V2_VERSION),
     rootsMatch: true,
     stateQueueOutRef: `${"02".repeat(32)}#0`,
     headerHash: "01".repeat(28),
@@ -152,6 +160,17 @@ const daSignatureRecord = (): DaSignatureRecord => ({
       transactionsRoot: "11".repeat(32),
       depositsRoot: "12".repeat(32),
       withdrawalsRoot: "13".repeat(32),
+      forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      transitionTraceRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      eventToStepRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    },
+    countSummary: {
+      withdrawalCount: 0n,
+      forcedTransactionCount: 0n,
+      l2TransactionCount: 0n,
+      depositCount: 0n,
+      totalEventCount: 0n,
+      transitionStepCount: 0n,
     },
     l1Header: {
       startTime: "1",

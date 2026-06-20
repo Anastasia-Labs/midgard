@@ -1,16 +1,17 @@
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
 import { fromHex } from "@lucid-evolution/lucid";
 import { Data, Effect, Option } from "effect";
 
 import {
   DepositsDB,
+  ForcedTransactionsDB,
   PendingBlockFinalizationsDB,
   TxUtils as TxTable,
   WithdrawalsDB,
 } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { Columns as TxColumns } from "@/database/utils/tx.js";
-import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import {
   fetchOperatorWalletView,
   isPotentiallyStaleOperatorWalletViewError,
@@ -33,11 +34,17 @@ import {
 import {
   emptyRootHexProgram,
   type MidgardMpf,
+  type RetainedEventToStepMember,
+  type RetainedTransitionTraceMember,
   type UtxoPayloadEntry,
 } from "@/workers/utils/mpf.js";
 
 import { buildUnsignedCommitTx } from "./build-unsigned-tx.js";
-import { resolveDepositsRoot, resolveWithdrawalsRoot } from "./event-roots.js";
+import {
+  resolveDepositsRoot,
+  resolveForcedTransactionsRoot,
+  resolveWithdrawalsRoot,
+} from "./event-roots.js";
 import {
   assertLiveTailCommitBase,
   assertPendingJournalCompleteness,
@@ -201,11 +208,18 @@ export const submitDepositOnlyCommit = ({
   endTime,
   includedDepositEntries,
   includedDepositEventIds,
+  includedForcedTransactionEntries,
+  includedForcedTransactionEventIds,
   includedWithdrawalEntries,
   includedWithdrawalEventIds,
   workerInput,
   utxoRoot,
   txRoot,
+  transitionTraceRoot,
+  eventToStepRoot,
+  transitionTraceMembers,
+  eventToStepMembers,
+  transitionStepCount,
   utxoPayloadEntries,
 }: {
   readonly contracts: SDK.MidgardValidators;
@@ -213,19 +227,33 @@ export const submitDepositOnlyCommit = ({
   readonly endTime: Date;
   readonly includedDepositEntries: readonly DepositsDB.Entry[];
   readonly includedDepositEventIds: readonly Buffer[];
+  readonly includedForcedTransactionEntries: readonly ForcedTransactionsDB.Entry[];
+  readonly includedForcedTransactionEventIds: readonly Buffer[];
   readonly includedWithdrawalEntries: readonly WithdrawalsDB.Entry[];
   readonly includedWithdrawalEventIds: readonly Buffer[];
   readonly workerInput: WorkerInput;
   readonly utxoRoot: string;
   readonly txRoot: string;
+  readonly transitionTraceRoot: string;
+  readonly eventToStepRoot: string;
+  readonly transitionTraceMembers: readonly RetainedTransitionTraceMember[];
+  readonly eventToStepMembers: readonly RetainedEventToStepMember[];
+  readonly transitionStepCount: number;
   readonly utxoPayloadEntries: readonly UtxoPayloadEntry[];
 }) =>
   Effect.gen(function* () {
     const optDepositsRoot = yield* resolveDepositsRoot(includedDepositEntries);
+    const optForcedTransactionsRoot = yield* resolveForcedTransactionsRoot(
+      includedForcedTransactionEntries,
+    );
     const optWithdrawalsRoot = yield* resolveWithdrawalsRoot(
       includedWithdrawalEntries,
     );
-    if (Option.isNone(optDepositsRoot) && Option.isNone(optWithdrawalsRoot)) {
+    if (
+      Option.isNone(optDepositsRoot) &&
+      Option.isNone(optForcedTransactionsRoot) &&
+      Option.isNone(optWithdrawalsRoot)
+    ) {
       yield* Effect.logInfo("🔹 Nothing to commit.");
       return {
         type: "NothingToCommitOutput",
@@ -239,7 +267,13 @@ export const submitDepositOnlyCommit = ({
     const withdrawalsRoot = Option.isSome(optWithdrawalsRoot)
       ? optWithdrawalsRoot.value
       : SDK.EMPTY_MERKLE_TREE_ROOT;
+    const forcedTransactionsRoot = Option.isSome(optForcedTransactionsRoot)
+      ? optForcedTransactionsRoot.value
+      : SDK.EMPTY_MERKLE_TREE_ROOT;
     yield* Effect.logInfo(`🔹 Deposits root is: ${depositsRoot}`);
+    yield* Effect.logInfo(
+      `🔹 Forced transactions root is: ${forcedTransactionsRoot}`,
+    );
     yield* Effect.logInfo(`🔹 Withdrawals root is: ${withdrawalsRoot}`);
     const submittedAwaitingConfirmationOutput = (
       submittedTxHash: string,
@@ -268,9 +302,31 @@ export const submitDepositOnlyCommit = ({
       txMemberCount: 0,
       depositsRoot,
       depositMemberCount: includedDepositEventIds.length,
+      forcedTransactionsRoot,
+      forcedTransactionMemberCount: includedForcedTransactionEventIds.length,
       withdrawalsRoot,
       withdrawalMemberCount: includedWithdrawalEventIds.length,
+      transitionTraceRoot,
+      transitionTraceMemberCount: transitionTraceMembers.length,
+      eventToStepRoot,
+      eventToStepMemberCount: eventToStepMembers.length,
     });
+    const transitionCommitments =
+      yield* SDK.makeHeaderTransitionCommitmentsProgram({
+        withdrawalsRoot,
+        forcedTransactionsRoot,
+        transactionsRoot: roots.txRoot,
+        depositsRoot,
+        withdrawalCount: BigInt(includedWithdrawalEventIds.length),
+        forcedTransactionCount: BigInt(
+          includedForcedTransactionEventIds.length,
+        ),
+        l2TransactionCount: 0n,
+        depositCount: BigInt(includedDepositEventIds.length),
+        transitionTraceRoot,
+        eventToStepRoot,
+        transitionStepCount: BigInt(transitionStepCount),
+      });
 
     const submitCommitAttempt = (
       initialOperatorWalletView?: OperatorWalletView,
@@ -286,12 +342,19 @@ export const submitDepositOnlyCommit = ({
             roots.txRoot,
             depositsRoot,
             withdrawalsRoot,
+            transitionCommitments,
             endTime,
             initialOperatorWalletView,
           ),
         ),
         Effect.flatMap(
-          ({ newHeaderHash, blockEndTimeMs, signAndSubmitProgram, txSize }) =>
+          ({
+            newHeaderHash,
+            newHeaderCbor,
+            blockEndTimeMs,
+            signAndSubmitProgram,
+            txSize,
+          }) =>
             Effect.gen(function* () {
               const headerHashBuffer = Buffer.from(fromHex(newHeaderHash));
               yield* maybeAbandonPreviousStaleAttempt(
@@ -301,25 +364,45 @@ export const submitDepositOnlyCommit = ({
               return yield* PendingBlockFinalizationsDB.preparePendingSubmission(
                 {
                   headerHash: headerHashBuffer,
+                  headerCbor: newHeaderCbor,
                   metadata: yield* buildPendingJournalMetadata({
                     latestBlock,
                     workerInput,
                     blockEndTimeMs,
                     expectedRoots: {
                       utxosRoot: roots.utxoRoot,
+                      forcedTransactionsRoot,
                       transactionsRoot: roots.txRoot,
                       depositsRoot,
                       withdrawalsRoot,
+                      transitionTraceRoot:
+                        transitionCommitments.transitionTraceRoot,
+                      eventToStepRoot: transitionCommitments.eventToStepRoot,
+                    },
+                    expectedCounts: {
+                      withdrawalCount: transitionCommitments.withdrawalCount,
+                      forcedTransactionCount:
+                        transitionCommitments.forcedTransactionCount,
+                      l2TransactionCount:
+                        transitionCommitments.l2TransactionCount,
+                      depositCount: transitionCommitments.depositCount,
+                      totalEventCount: transitionCommitments.totalEventCount,
+                      transitionStepCount:
+                        transitionCommitments.transitionStepCount,
                     },
                   }),
                   blockEndTime: new Date(blockEndTimeMs),
                   depositEventIds: includedDepositEventIds,
                   depositEntries: includedDepositEntries,
+                  forcedTransactionEventIds: includedForcedTransactionEventIds,
+                  forcedTransactionEntries: includedForcedTransactionEntries,
                   withdrawalEventIds: includedWithdrawalEventIds,
                   withdrawalEntries: includedWithdrawalEntries,
                   mempoolTxIds: [],
                   mempoolTxs: [],
                   mempoolTxSourceTable: "none",
+                  transitionTraceMembers,
+                  eventToStepMembers,
                   utxoEntries: journalUtxoEntries(utxoPayloadEntries),
                 },
               ).pipe(
@@ -398,10 +481,17 @@ export const submitTxBackedCommit = ({
   endTime,
   includedDepositEntries,
   includedDepositEventIds,
+  includedForcedTransactionEntries,
+  includedForcedTransactionEventIds,
   includedWithdrawalEntries,
   includedWithdrawalEventIds,
   utxoRoot,
   txRoot,
+  transitionTraceRoot,
+  eventToStepRoot,
+  transitionTraceMembers,
+  eventToStepMembers,
+  transitionStepCount,
   utxoPayloadEntries,
   transactionsMpf,
   processedMempoolTxs,
@@ -415,10 +505,17 @@ export const submitTxBackedCommit = ({
   readonly endTime: Date;
   readonly includedDepositEntries: readonly DepositsDB.Entry[];
   readonly includedDepositEventIds: readonly Buffer[];
+  readonly includedForcedTransactionEntries: readonly ForcedTransactionsDB.Entry[];
+  readonly includedForcedTransactionEventIds: readonly Buffer[];
   readonly includedWithdrawalEntries: readonly WithdrawalsDB.Entry[];
   readonly includedWithdrawalEventIds: readonly Buffer[];
   readonly utxoRoot: string;
   readonly txRoot: string;
+  readonly transitionTraceRoot: string;
+  readonly eventToStepRoot: string;
+  readonly transitionTraceMembers: readonly RetainedTransitionTraceMember[];
+  readonly eventToStepMembers: readonly RetainedEventToStepMember[];
+  readonly transitionStepCount: number;
   readonly utxoPayloadEntries: readonly UtxoPayloadEntry[];
   readonly transactionsMpf: MidgardMpf;
   readonly processedMempoolTxs: readonly TxTable.EntryWithTimeStamp[];
@@ -430,6 +527,9 @@ export const submitTxBackedCommit = ({
   Effect.gen(function* () {
     const emptyRoot = yield* emptyRootHexProgram;
     const optDepositsRoot = yield* resolveDepositsRoot(includedDepositEntries);
+    const optForcedTransactionsRoot = yield* resolveForcedTransactionsRoot(
+      includedForcedTransactionEntries,
+    );
     const optWithdrawalsRoot = yield* resolveWithdrawalsRoot(
       includedWithdrawalEntries,
     );
@@ -438,6 +538,9 @@ export const submitTxBackedCommit = ({
       : SDK.EMPTY_MERKLE_TREE_ROOT;
     const withdrawalsRoot = Option.isSome(optWithdrawalsRoot)
       ? optWithdrawalsRoot.value
+      : SDK.EMPTY_MERKLE_TREE_ROOT;
+    const forcedTransactionsRoot = Option.isSome(optForcedTransactionsRoot)
+      ? optForcedTransactionsRoot.value
       : SDK.EMPTY_MERKLE_TREE_ROOT;
     const currentBlockMempoolTxsCount = processedMempoolTxs.length;
     if (currentBlockMempoolTxsCount <= 0) {
@@ -458,9 +561,31 @@ export const submitTxBackedCommit = ({
       txMemberCount: currentBlockMempoolTxsCount,
       depositsRoot,
       depositMemberCount: includedDepositEventIds.length,
+      forcedTransactionsRoot,
+      forcedTransactionMemberCount: includedForcedTransactionEventIds.length,
       withdrawalsRoot,
       withdrawalMemberCount: includedWithdrawalEventIds.length,
+      transitionTraceRoot,
+      transitionTraceMemberCount: transitionTraceMembers.length,
+      eventToStepRoot,
+      eventToStepMemberCount: eventToStepMembers.length,
     });
+    const transitionCommitments =
+      yield* SDK.makeHeaderTransitionCommitmentsProgram({
+        withdrawalsRoot,
+        forcedTransactionsRoot,
+        transactionsRoot: txRoot,
+        depositsRoot,
+        withdrawalCount: BigInt(includedWithdrawalEventIds.length),
+        forcedTransactionCount: BigInt(
+          includedForcedTransactionEventIds.length,
+        ),
+        l2TransactionCount: BigInt(currentBlockMempoolTxsCount),
+        depositCount: BigInt(includedDepositEventIds.length),
+        transitionTraceRoot,
+        eventToStepRoot,
+        transitionStepCount: BigInt(transitionStepCount),
+      });
     const submittedAwaitingConfirmationOutput = (
       submittedTxHash: string,
       txSize: number,
@@ -478,6 +603,9 @@ export const submitTxBackedCommit = ({
       } satisfies WorkerOutput);
 
     yield* Effect.logInfo(`🔹 Deposits root is: ${depositsRoot}`);
+    yield* Effect.logInfo(
+      `🔹 Forced transactions root is: ${forcedTransactionsRoot}`,
+    );
     yield* Effect.logInfo(`🔹 Withdrawals root is: ${withdrawalsRoot}`);
 
     const submitCommitAttempt = (
@@ -494,12 +622,19 @@ export const submitTxBackedCommit = ({
             txRoot,
             depositsRoot,
             withdrawalsRoot,
+            transitionCommitments,
             endTime,
             initialOperatorWalletView,
           ),
         ),
         Effect.flatMap(
-          ({ newHeaderHash, blockEndTimeMs, signAndSubmitProgram, txSize }) =>
+          ({
+            newHeaderHash,
+            newHeaderCbor,
+            blockEndTimeMs,
+            signAndSubmitProgram,
+            txSize,
+          }) =>
             Effect.gen(function* () {
               const headerHashBuffer = Buffer.from(fromHex(newHeaderHash));
               yield* maybeAbandonPreviousStaleAttempt(
@@ -509,20 +644,38 @@ export const submitTxBackedCommit = ({
               return yield* PendingBlockFinalizationsDB.preparePendingSubmission(
                 {
                   headerHash: headerHashBuffer,
+                  headerCbor: newHeaderCbor,
                   metadata: yield* buildPendingJournalMetadata({
                     latestBlock,
                     workerInput,
                     blockEndTimeMs,
                     expectedRoots: {
                       utxosRoot: utxoRoot,
+                      forcedTransactionsRoot,
                       transactionsRoot: txRoot,
                       depositsRoot,
                       withdrawalsRoot,
+                      transitionTraceRoot:
+                        transitionCommitments.transitionTraceRoot,
+                      eventToStepRoot: transitionCommitments.eventToStepRoot,
+                    },
+                    expectedCounts: {
+                      withdrawalCount: transitionCommitments.withdrawalCount,
+                      forcedTransactionCount:
+                        transitionCommitments.forcedTransactionCount,
+                      l2TransactionCount:
+                        transitionCommitments.l2TransactionCount,
+                      depositCount: transitionCommitments.depositCount,
+                      totalEventCount: transitionCommitments.totalEventCount,
+                      transitionStepCount:
+                        transitionCommitments.transitionStepCount,
                     },
                   }),
                   blockEndTime: new Date(blockEndTimeMs),
                   depositEventIds: includedDepositEventIds,
                   depositEntries: includedDepositEntries,
+                  forcedTransactionEventIds: includedForcedTransactionEventIds,
+                  forcedTransactionEntries: includedForcedTransactionEntries,
                   withdrawalEventIds: includedWithdrawalEventIds,
                   withdrawalEntries: includedWithdrawalEntries,
                   mempoolTxIds: processedMempoolTxs.map(
@@ -530,6 +683,8 @@ export const submitTxBackedCommit = ({
                   ),
                   mempoolTxs: processedMempoolTxs,
                   mempoolTxSourceTable,
+                  transitionTraceMembers,
+                  eventToStepMembers,
                   utxoEntries: journalUtxoEntries(utxoPayloadEntries),
                 },
               ).pipe(
@@ -746,6 +901,9 @@ export const recoverLocalFinalizationAgainstConfirmedBlock = ({
     const rootsMatch =
       record[PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT] ===
         confirmedHeader.utxosRoot &&
+      record[
+        PendingBlockFinalizationsDB.Columns.EXPECTED_FORCED_TRANSACTIONS_ROOT
+      ] === confirmedHeader.forcedTransactionsRoot &&
       record[PendingBlockFinalizationsDB.Columns.EXPECTED_TRANSACTIONS_ROOT] ===
         confirmedHeader.transactionsRoot &&
       record[PendingBlockFinalizationsDB.Columns.EXPECTED_DEPOSITS_ROOT] ===

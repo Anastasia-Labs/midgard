@@ -1,16 +1,21 @@
 import { AddressInfo } from "node:net";
 
+import * as SDK from "@al-ft/midgard-sdk";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { describe, expect, it } from "vitest";
 
 import { createWatcherApiServer } from "../src/api/server.js";
-import type { DaSignatureRecord, StateQueueHeaderRecord } from "../src/domain.js";
+import type {
+  DaSignatureRecord,
+  StateQueueHeaderRecord,
+} from "../src/domain.js";
+import { jsonBigIntStringReplacer } from "../src/json.js";
+import { signPeerRequest } from "../src/peer/auth.js";
 import {
   loadDaSigner,
   signDaAttestation,
   validateDaSignerMembership,
 } from "../src/signer.js";
-import { signPeerRequest } from "../src/peer/auth.js";
 import { JsonFileWatcherStore } from "../src/store.js";
 import { bytesToHex } from "../src/utils/hex.js";
 import { tempDir } from "./helpers.js";
@@ -31,7 +36,7 @@ describe("watcher API", () => {
       broadcastStatus: "local",
       l1ChainPoint: {},
       validation: {
-        payloadVersion: 1,
+        payloadVersion: Number(SDK.DA_PAYLOAD_V2_VERSION),
         rootsMatch: true,
         stateQueueOutRef: "tx#0",
         headerHash,
@@ -40,6 +45,17 @@ describe("watcher API", () => {
           transactionsRoot: "55".repeat(32),
           depositsRoot: "66".repeat(32),
           withdrawalsRoot: "77".repeat(32),
+          forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+          transitionTraceRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+          eventToStepRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+        },
+        countSummary: {
+          withdrawalCount: 0n,
+          forcedTransactionCount: 0n,
+          l2TransactionCount: 0n,
+          depositCount: 0n,
+          totalEventCount: 0n,
+          transitionStepCount: 0n,
         },
         l1Header: {
           startTime: "1",
@@ -90,9 +106,10 @@ describe("watcher API", () => {
       header: {
         prevUtxosRoot: "00".repeat(32),
         utxosRoot: "11".repeat(32),
+        withdrawalsRoot: "44".repeat(32),
+        ...SDK.EMPTY_HEADER_TRANSITION_COMMITMENTS,
         transactionsRoot: "22".repeat(32),
         depositsRoot: "33".repeat(32),
-        withdrawalsRoot: "44".repeat(32),
         startTime: 1n,
         endTime: 2n,
         prevHeaderHash: "55".repeat(28),
@@ -188,7 +205,7 @@ describe("watcher API", () => {
       const accepted = await fetch(url, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(validPeerRecord),
+        body: JSON.stringify(validPeerRecord, jsonBigIntStringReplacer),
       });
       expect(accepted.status).toBe(202);
 
@@ -211,7 +228,7 @@ describe("watcher API", () => {
       const rejected = await fetch(url, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(invalidPeerRecord),
+        body: JSON.stringify(invalidPeerRecord, jsonBigIntStringReplacer),
       });
       expect(rejected.status).toBe(400);
 
@@ -286,7 +303,10 @@ describe("watcher API", () => {
           headerHash,
         }),
       });
-      const body = Buffer.from(JSON.stringify(validPeerRecord), "utf8");
+      const body = Buffer.from(
+        JSON.stringify(validPeerRecord, jsonBigIntStringReplacer),
+        "utf8",
+      );
       const authHeaders = signPeerRequest({
         signer: peerSigner,
         signerIndex: 1,
@@ -352,7 +372,7 @@ const signatureRecord = ({
   broadcastStatus: "local",
   l1ChainPoint: {},
   validation: {
-    payloadVersion: 1,
+    payloadVersion: Number(SDK.DA_PAYLOAD_V2_VERSION),
     rootsMatch: true,
     stateQueueOutRef: "tx#0",
     headerHash,
@@ -361,6 +381,17 @@ const signatureRecord = ({
       transactionsRoot: "55".repeat(32),
       depositsRoot: "66".repeat(32),
       withdrawalsRoot: "77".repeat(32),
+      forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      transitionTraceRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      eventToStepRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    },
+    countSummary: {
+      withdrawalCount: 0n,
+      forcedTransactionCount: 0n,
+      l2TransactionCount: 0n,
+      depositCount: 0n,
+      totalEventCount: 0n,
+      transitionStepCount: 0n,
     },
     l1Header: {
       startTime: "1",

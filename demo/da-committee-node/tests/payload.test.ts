@@ -1,6 +1,4 @@
-import * as SDK from "@al-ft/midgard-sdk";
 import {
-  computeMidgardNativeTxId,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeMidgardNativeTxCanonical,
@@ -9,18 +7,18 @@ import {
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
 } from "@al-ft/midgard-core/codec";
+import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
   computeDaPayloadRoots,
   DaPayloadValidationError,
-  decodeDaPayloadV1Strict,
+  decodeDaPayloadV2Strict,
   verifyDaPayloadAgainstHeader,
 } from "../src/da/payload.js";
 import { hashBlockHeader } from "../src/l1/state-queue-scanner.js";
 import { JsonFileWatcherStore } from "../src/store.js";
 import {
-  fixtureHeaderBase,
   IDENTITY_TX_PROJECTOR,
   makePayloadFixture,
   tempDir,
@@ -29,8 +27,9 @@ import {
 describe("DA payload verification", () => {
   it("strictly decodes and verifies roots against the L1 header", async () => {
     const { payloadCbor, header, headerHash } = await makePayloadFixture();
-    const decoded = decodeDaPayloadV1Strict(payloadCbor);
-    expect(decoded.header_hash).toBe(headerHash);
+    const decoded = decodeDaPayloadV2Strict(payloadCbor);
+    expect(decoded.block_body.header_hash).toBe(headerHash);
+    expect(decoded.block_body.forced_transactions).toHaveLength(1);
     const verified = await verifyDaPayloadAgainstHeader(
       payloadCbor,
       headerHash,
@@ -42,6 +41,11 @@ describe("DA payload verification", () => {
     );
     expect(verified.validation.rootsMatch).toBe(true);
     expect(verified.roots.utxosRoot).toBe(header.utxosRoot);
+    expect(verified.roots.transitionTraceRoot).toBe(header.transitionTraceRoot);
+    expect(verified.roots.forcedTransactionsRoot).toBe(
+      header.forcedTransactionsRoot,
+    );
+    expect(verified.counts.totalEventCount).toBe(header.totalEventCount);
   });
 
   it("verifies transaction roots with the production Midgard-native projector", async () => {
@@ -69,38 +73,42 @@ describe("DA payload verification", () => {
       },
     });
     const txCbor = encodeMidgardNativeTxCanonical(nativeTx);
-    const payloadWithoutHash: SDK.DaPayloadV1 = {
-      version: SDK.DA_PAYLOAD_V1_VERSION,
-      header_hash: "00".repeat(28),
+    const base = await makePayloadFixture();
+    const payloadWithoutHash: SDK.DaPayloadV2 = {
+      ...base.payload,
       block_body: {
-        utxos: [],
-        transactions: [
-          [
-            Buffer.from(computeMidgardNativeTxId(nativeTx)).toString("hex"),
-            txCbor.toString("hex"),
-          ],
-        ],
-        deposits: [],
-        withdrawals: [],
+        ...base.payload.block_body,
+        header_hash: "00".repeat(28),
+        transactions: base.payload.block_body.transactions.map(([key]) => [
+          key,
+          txCbor.toString("hex"),
+        ]),
       },
     };
     const roots = await computeDaPayloadRoots(payloadWithoutHash);
     const header = {
-      ...fixtureHeaderBase(),
+      ...base.header,
       utxosRoot: roots.utxosRoot,
+      forcedTransactionsRoot: roots.forcedTransactionsRoot,
       transactionsRoot: roots.transactionsRoot,
       depositsRoot: roots.depositsRoot,
       withdrawalsRoot: roots.withdrawalsRoot,
+      transitionTraceRoot: roots.transitionTraceRoot,
+      eventToStepRoot: roots.eventToStepRoot,
     };
     const headerHash = hashBlockHeader(header);
     const payload = {
       ...payloadWithoutHash,
-      header_hash: headerHash,
+      block_body: {
+        ...payloadWithoutHash.block_body,
+        header_hash: headerHash,
+        header,
+      },
     };
 
     await expect(
       verifyDaPayloadAgainstHeader(
-        SDK.encodeDaPayloadV1(payload),
+        SDK.encodeDaPayloadV2(payload),
         headerHash,
         header,
         { stateQueueOutRef: "tx#0" },
@@ -116,13 +124,13 @@ describe("DA payload verification", () => {
   it("rejects wrong versions, duplicate keys, unsorted keys, and root mismatches", async () => {
     const { payload, header, headerHash } = await makePayloadFixture();
     expect(() =>
-      decodeDaPayloadV1Strict(
-        SDK.encodeDaPayloadV1({ ...payload, version: 2n }),
+      decodeDaPayloadV2Strict(
+        SDK.encodeDaPayloadV2({ ...payload, version: 1n }),
       ),
     ).toThrow(/version/);
     expect(() =>
-      decodeDaPayloadV1Strict(
-        SDK.encodeDaPayloadV1({
+      decodeDaPayloadV2Strict(
+        SDK.encodeDaPayloadV2({
           ...payload,
           block_body: {
             ...payload.block_body,
@@ -135,8 +143,8 @@ describe("DA payload verification", () => {
       ),
     ).toThrow(/duplicate/);
     expect(() =>
-      decodeDaPayloadV1Strict(
-        SDK.encodeDaPayloadV1({
+      decodeDaPayloadV2Strict(
+        SDK.encodeDaPayloadV2({
           ...payload,
           block_body: {
             ...payload.block_body,
@@ -148,17 +156,76 @@ describe("DA payload verification", () => {
         }),
       ),
     ).toThrow(/sorted/);
+    const [depositKey] = payload.block_body.deposits[0]!;
+    const mismatchedPayload: SDK.DaPayloadV2 = {
+      ...payload,
+      block_body: {
+        ...payload.block_body,
+        deposits: [[depositKey, "ff"]],
+      },
+    };
     await expect(
       verifyDaPayloadAgainstHeader(
-        SDK.encodeDaPayloadV1(payload),
+        SDK.encodeDaPayloadV2(mismatchedPayload),
         headerHash,
-        { ...header, depositsRoot: "ff".repeat(32) },
+        header,
         {
           stateQueueOutRef: "tx#0",
           transactionProjector: IDENTITY_TX_PROJECTOR,
         },
       ),
     ).rejects.toMatchObject({ code: "root_mismatch" });
+  });
+
+  it("rejects missing trace and event-to-step members", async () => {
+    const { payload } = await makePayloadFixture();
+    expect(() =>
+      decodeDaPayloadV2Strict(
+        SDK.encodeDaPayloadV2({
+          ...payload,
+          block_body: {
+            ...payload.block_body,
+            transition_trace: payload.block_body.transition_trace.slice(1),
+          },
+        }),
+      ),
+    ).toThrow(/counts/);
+    expect(() =>
+      decodeDaPayloadV2Strict(
+        SDK.encodeDaPayloadV2({
+          ...payload,
+          block_body: {
+            ...payload.block_body,
+            event_to_step: payload.block_body.event_to_step.slice(1),
+          },
+        }),
+      ),
+    ).toThrow(/event_to_step/);
+  });
+
+  it("rejects header payload divergence before attestation", async () => {
+    const { payload, headerHash, header } = await makePayloadFixture();
+    const divergent = {
+      ...payload,
+      block_body: {
+        ...payload.block_body,
+        header: {
+          ...payload.block_body.header,
+          depositsRoot: "ff".repeat(32),
+        },
+      },
+    };
+    await expect(
+      verifyDaPayloadAgainstHeader(
+        SDK.encodeDaPayloadV2(divergent),
+        headerHash,
+        header,
+        {
+          stateQueueOutRef: "tx#0",
+          transactionProjector: IDENTITY_TX_PROJECTOR,
+        },
+      ),
+    ).rejects.toMatchObject({ code: "header_hash_mismatch" });
   });
 
   it("rejects malformed transaction values with the default projector", async () => {

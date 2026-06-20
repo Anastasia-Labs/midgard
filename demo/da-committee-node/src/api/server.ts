@@ -6,10 +6,11 @@ import {
 import type { AddressInfo } from "node:net";
 
 import type { DaSignatureRecord } from "../domain.js";
-import type { DaCommitteeValidation } from "../signer.js";
-import type { WatcherStore } from "../store.js";
+import { jsonBigIntStringReplacer } from "../json.js";
 import { verifyPeerRequestAuth } from "../peer/auth.js";
 import { validateDaSignatureRecord } from "../peer/signatures.js";
+import type { DaCommitteeValidation } from "../signer.js";
+import type { WatcherStore } from "../store.js";
 
 export type WatcherApiServer = {
   readonly listen: (port: number, host: string) => Promise<void>;
@@ -73,7 +74,9 @@ export const createWatcherApiServer = ({
     address: () => server.address(),
     close: () =>
       new Promise((resolve, reject) => {
-        server.close((error) => (error === undefined ? resolve() : reject(error)));
+        server.close((error) =>
+          error === undefined ? resolve() : reject(error),
+        );
       }),
   };
 };
@@ -160,7 +163,12 @@ const routeRequest = async ({
       });
       return;
     case "payload":
-      await handlePayloadRoute({ method, response, headerHash: route.headerHash, store });
+      await handlePayloadRoute({
+        method,
+        response,
+        headerHash: route.headerHash,
+        store,
+      });
       return;
     case "payload/metadata":
       await handlePayloadMetadataRoute({
@@ -171,7 +179,12 @@ const routeRequest = async ({
       });
       return;
     case "status":
-      await handleStatusRoute({ method, response, headerHash: route.headerHash, store });
+      await handleStatusRoute({
+        method,
+        response,
+        headerHash: route.headerHash,
+        store,
+      });
       return;
   }
 };
@@ -291,7 +304,9 @@ const handleSignaturesRoute = async ({
     return;
   }
   if (signerValidation === undefined) {
-    json(response, 403, { error: "peer signatures require committee validation" });
+    json(response, 403, {
+      error: "peer signatures require committee validation",
+    });
     return;
   }
   const rawBody = await readRawOrReject(request, response, peerMaxBodyBytes);
@@ -342,7 +357,9 @@ const handleSignaturesRoute = async ({
     body === null ||
     (body as Partial<DaSignatureRecord>).signerIndex !== auth.fields.signerIndex
   ) {
-    json(response, 400, { error: "peer auth signer index does not match body" });
+    json(response, 400, {
+      error: "peer auth signer index does not match body",
+    });
     return;
   }
   const verifiedPayload = await store.getDaPayload(headerHash);
@@ -441,23 +458,32 @@ const handleStatusRoute = async ({
     json(response, 405, { error: "method not allowed" });
     return;
   }
-  const [header, payload, signatures, candidates, submissions, broadcasts, health] =
-    await Promise.all([
-      store.getStateQueueHeader(headerHash),
-      store.getDaPayload(headerHash),
-      store.listDaSignatures(headerHash),
-      store.listDaAttestationCandidates(headerHash),
-      store.listL1Submissions(),
-      store.listPeerBroadcasts(headerHash),
-      store.listPeerHealth(),
-    ]);
+  const [
+    header,
+    payload,
+    signatures,
+    candidates,
+    submissions,
+    broadcasts,
+    health,
+  ] = await Promise.all([
+    store.getStateQueueHeader(headerHash),
+    store.getDaPayload(headerHash),
+    store.listDaSignatures(headerHash),
+    store.listDaAttestationCandidates(headerHash),
+    store.listL1Submissions(),
+    store.listPeerBroadcasts(headerHash),
+    store.listPeerHealth(),
+  ]);
   json(response, 200, {
     headerHash,
     header,
     payload,
     signatures,
     candidates,
-    l1Submissions: submissions.filter((entry) => entry.headerHash === headerHash),
+    l1Submissions: submissions.filter(
+      (entry) => entry.headerHash === headerHash,
+    ),
     peerBroadcasts: broadcasts,
     peerHealth: health,
   });
@@ -569,7 +595,10 @@ class BodyTooLargeError extends Error {}
 class WindowRateLimiter {
   private readonly windowMs: number;
   private readonly maxRequests: number;
-  private readonly buckets = new Map<string, { count: number; resetAt: number }>();
+  private readonly buckets = new Map<
+    string,
+    { count: number; resetAt: number }
+  >();
 
   constructor(windowMs: number, maxRequests: number) {
     this.windowMs = windowMs;
@@ -598,7 +627,7 @@ const json = (
   if (response.writableEnded || response.destroyed) {
     return;
   }
-  const payload = `${JSON.stringify(body, jsonResponseReplacer)}\n`;
+  const payload = `${JSON.stringify(body, jsonBigIntStringReplacer)}\n`;
   if (response.headersSent) {
     response.end();
     return;
@@ -606,6 +635,3 @@ const json = (
   response.writeHead(statusCode, { "content-type": "application/json" });
   response.end(payload);
 };
-
-const jsonResponseReplacer = (_key: string, value: unknown): unknown =>
-  typeof value === "bigint" ? value.toString() : value;

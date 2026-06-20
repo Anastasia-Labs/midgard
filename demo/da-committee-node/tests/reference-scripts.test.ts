@@ -13,9 +13,7 @@ import { fetchDaAttestationReferenceScripts } from "../src/l1/reference-scripts.
 describe("DA attestation reference script resolver", () => {
   it("resolves explicit reference script UTxOs from deployment info", async () => {
     const deployment = await loadRealDeployment();
-    const lucid = lucidWithReferenceScripts(
-      referenceScriptUtxos(deployment),
-    );
+    const lucid = lucidWithReferenceScripts(referenceScriptUtxos(deployment));
 
     await expect(
       fetchDaAttestationReferenceScripts(lucid, deployment),

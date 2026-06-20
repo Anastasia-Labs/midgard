@@ -100,6 +100,22 @@ const singletonMembershipRoot = async (
   return hashHexBlake2b256(`ff${keyHash}${valueHash}`);
 };
 
+const countedSingletonMembershipRoot = async (
+  domain: SDK.RootDomain,
+  keyCbor: string,
+  valueCbor: string,
+): Promise<{ readonly root: string; readonly phasRoot: string }> => {
+  const phasRoot = await singletonMembershipRoot(keyCbor, valueCbor);
+  const root = await Effect.runPromise(
+    SDK.commitCountedRootProgram({
+      domain,
+      phasRoot,
+      count: 1n,
+    }),
+  );
+  return { root, phasRoot };
+};
+
 const loadRealContracts = (oneShotOutRef: {
   readonly txHash: string;
   readonly outputIndex: number;
@@ -650,6 +666,7 @@ const makeReserveLifecycleBuilderFixture = async ({
       },
       info: {
         l2_address: l1AddressData,
+        l2_network_id: 0n,
         l2_datum: null,
       },
     },
@@ -701,18 +718,21 @@ const makeReserveLifecycleBuilderFixture = async ({
           Data.to(settlementWithdrawalInfo, SDK.WithdrawalInfo),
         );
   const [depositsRoot, withdrawalsRoot] = await Promise.all([
-    singletonMembershipRoot(
+    countedSingletonMembershipRoot(
+      SDK.ROOT_DOMAINS.deposits,
       depositEventCbors.idCbor.toString("hex"),
       depositEventCbors.infoCbor.toString("hex"),
     ),
-    singletonMembershipRoot(
+    countedSingletonMembershipRoot(
+      SDK.ROOT_DOMAINS.withdrawals,
       withdrawalEventCbors.idCbor.toString("hex"),
       withdrawalValueCbor,
     ),
   ]);
   const settlementDatum: SDK.SettlementDatum = {
-    deposits_root: depositsRoot,
-    withdrawals_root: withdrawalsRoot,
+    deposits_root: depositsRoot.root,
+    withdrawals_root: withdrawalsRoot.root,
+    forced_transactions_root: SDK.EMPTY_MERKLE_TREE_ROOT,
     transactions_root: "77".repeat(32),
     resolution_claim: null,
   };
@@ -872,6 +892,25 @@ const makeReserveLifecycleBuilderFixture = async ({
     ),
   };
 
+  const depositMembershipProof: SDK.RawRootMembershipProof = {
+    domain: SDK.ROOT_DOMAINS.deposits,
+    root: depositsRoot.root,
+    phas_root: depositsRoot.phasRoot,
+    count: 1n,
+    key: depositEventCbors.idCbor.toString("hex"),
+    value: depositEventCbors.infoCbor.toString("hex"),
+    proof: [] as SDK.Proof,
+  };
+  const withdrawalMembershipProof: SDK.RawRootMembershipProof = {
+    domain: SDK.ROOT_DOMAINS.withdrawals,
+    root: withdrawalsRoot.root,
+    phas_root: withdrawalsRoot.phasRoot,
+    count: 1n,
+    key: withdrawalEventCbors.idCbor.toString("hex"),
+    value: withdrawalValueCbor,
+    proof: [] as SDK.Proof,
+  };
+
   return {
     beneficiary,
     contracts,
@@ -889,7 +928,8 @@ const makeReserveLifecycleBuilderFixture = async ({
     ],
     hubOracleRefInput,
     lucid,
-    membershipProof: [] as SDK.Proof,
+    depositMembershipProof,
+    withdrawalMembershipProof,
     membershipProofWithdrawal: {
       script: membershipProofScript,
     },
@@ -1362,7 +1402,8 @@ describe("reserve/payout transaction builder primitives", () => {
       feeInputs,
       hubOracleRefInput,
       lucid,
-      membershipProof,
+      depositMembershipProof,
+      withdrawalMembershipProof,
       membershipProofWithdrawal,
       payoutUnit,
       referenceScripts,
@@ -1376,7 +1417,7 @@ describe("reserve/payout transaction builder primitives", () => {
         deposit,
         feeInput: feeInputs[0],
         hubOracleRefInput,
-        membershipProof,
+        membershipProof: depositMembershipProof,
         membershipProofWithdrawal,
         referenceScripts,
         settlementRefInput,
@@ -1406,7 +1447,7 @@ describe("reserve/payout transaction builder primitives", () => {
       buildInitializePayoutTxProgram(lucid, contracts, {
         hubOracleRefInput,
         feeInput: feeInputs[1],
-        membershipProof,
+        membershipProof: withdrawalMembershipProof,
         membershipProofWithdrawal,
         referenceScripts,
         settlementRefInput,
@@ -1480,7 +1521,8 @@ describe("reserve/payout transaction builder primitives", () => {
       feeInputs,
       hubOracleRefInput,
       lucid,
-      membershipProof,
+      depositMembershipProof,
+      withdrawalMembershipProof,
       membershipProofWithdrawal,
       referenceScripts,
       settlementRefInput,
@@ -1499,7 +1541,7 @@ describe("reserve/payout transaction builder primitives", () => {
         deposit,
         feeInput: feeInputs[0],
         hubOracleRefInput,
-        membershipProof,
+        membershipProof: depositMembershipProof,
         membershipProofWithdrawal,
         referenceScripts: staticReferenceScripts,
         settlementRefInput,
@@ -1512,7 +1554,7 @@ describe("reserve/payout transaction builder primitives", () => {
       buildInitializePayoutTxProgram(lucid, contracts, {
         hubOracleRefInput,
         feeInput: feeInputs[1],
-        membershipProof,
+        membershipProof: withdrawalMembershipProof,
         membershipProofWithdrawal,
         referenceScripts: staticReferenceScripts,
         settlementRefInput,
@@ -1530,7 +1572,7 @@ describe("reserve/payout transaction builder primitives", () => {
       feeInputs,
       hubOracleRefInput,
       lucid,
-      membershipProof,
+      withdrawalMembershipProof,
       membershipProofWithdrawal,
       referenceScripts,
       settlementRefInput,
@@ -1544,7 +1586,7 @@ describe("reserve/payout transaction builder primitives", () => {
       buildRefundInvalidWithdrawalTxProgram(lucid, contracts, {
         hubOracleRefInput,
         feeInput: feeInputs[0],
-        membershipProof,
+        membershipProof: withdrawalMembershipProof,
         membershipProofWithdrawal,
         referenceScripts,
         settlementRefInput,

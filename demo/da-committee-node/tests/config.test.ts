@@ -101,11 +101,15 @@ describe("loadWatcherConfig", () => {
     expect(config.daParamsGovernorAddress).toBe(
       expectedDeployment.daParamsGovernor.spendingScriptAddress,
     );
-    expect(config.stateQueuePolicyId).toBe(expectedDeployment.stateQueue.policyId);
+    expect(config.stateQueuePolicyId).toBe(
+      expectedDeployment.stateQueue.policyId,
+    );
     expect(config.stateQueueAddress).toBe(
       expectedDeployment.stateQueue.spendingScriptAddress,
     );
-    expect(config.midgardNodeDeployment?.daAttestation.mint.refScriptOutRef).toEqual({
+    expect(
+      config.midgardNodeDeployment?.daAttestation.mint.refScriptOutRef,
+    ).toEqual({
       txHash: "01".repeat(32),
       outputIndex: 0,
     });
@@ -227,8 +231,7 @@ describe("loadWatcherConfig", () => {
       l1SubmitterKeySource: "private-key:ed25519_sk_test",
       l1SubmitterPreflight: {
         enabled: true,
-        minPlainAdaLovelace:
-          DEFAULT_L1_SUBMITTER_PREFLIGHT.minPlainAdaLovelace,
+        minPlainAdaLovelace: DEFAULT_L1_SUBMITTER_PREFLIGHT.minPlainAdaLovelace,
         minCollateralLovelace:
           DEFAULT_L1_SUBMITTER_PREFLIGHT.minCollateralLovelace,
         minSpendableUtxoCount:
@@ -388,11 +391,11 @@ describe("loadWatcherConfig", () => {
         MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH: deploymentInfoPath,
         CARDANO_PROVIDER_URLS: "fixture:/tmp/state.json",
         CARDANO_FINALITY_DEPTH: "2",
-      DA_PAYLOAD_ENDPOINTS: "http://da-0.example",
-      DA_SIGNER_INDEX: "0",
-      DA_SIGNER_KEY_SOURCE: "hex:" + "00".repeat(32),
-      WATCHER_DB_PATH: join(dir, "db"),
-    }),
+        DA_PAYLOAD_ENDPOINTS: "http://da-0.example",
+        DA_SIGNER_INDEX: "0",
+        DA_SIGNER_KEY_SOURCE: "hex:" + "00".repeat(32),
+        WATCHER_DB_PATH: join(dir, "db"),
+      }),
     ).rejects.toThrow(/DA attestation policy id/);
   });
 });

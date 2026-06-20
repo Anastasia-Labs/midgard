@@ -1,23 +1,23 @@
 import {
-  Data,
-  toUnit,
   type BuildTxWithRedeemer,
+  Data,
   type LucidEvolution,
+  toUnit,
   type TxBuilder,
   type TxSignBuilder,
   type UTxO,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import type { AuthenticatedValidator } from "@/common.js";
 import { normalizeRootIndefiniteArrayEncoding } from "@/cbor.js";
+import type { AuthenticatedValidator } from "@/common.js";
 import {
   SCHEDULER_ASSET_NAME,
+  type SchedulerDatum,
   SchedulerDatum as SchedulerDatumSchema,
   SchedulerError,
-  SchedulerSpendRedeemer as SchedulerSpendRedeemerSchema,
-  type SchedulerDatum,
   type SchedulerSpendRedeemer,
+  SchedulerSpendRedeemer as SchedulerSpendRedeemerSchema,
 } from "@/scheduler.js";
 import {
   requireInputIndex,

@@ -1,5 +1,6 @@
 import type { AddressInfo } from "node:net";
 
+import * as SDK from "@al-ft/midgard-sdk";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { describe, expect, it } from "vitest";
 
@@ -21,7 +22,8 @@ describe("PeerSignatureCoordinator", () => {
     const headerHash = "01".repeat(28);
     const receiverSigner = await loadDaSigner(`hex:${"00".repeat(31)}01`);
     const senderSigner = await loadDaSigner(`hex:${"00".repeat(31)}02`);
-    const committeeHex = receiverSigner.publicKeyHex + senderSigner.publicKeyHex;
+    const committeeHex =
+      receiverSigner.publicKeyHex + senderSigner.publicKeyHex;
     const committeeSignersHash = bytesToHex(
       blake2b(Buffer.from(committeeHex, "hex"), { dkLen: 32 }),
     );
@@ -86,8 +88,13 @@ describe("PeerSignatureCoordinator", () => {
       expect(result).toBe("posted");
       await expect(
         receiverStore.getDaSignature({ headerHash, signerIndex: 1 }),
-      ).resolves.toMatchObject({ source: "peer", sourcePeer: expect.any(String) });
-      await expect(senderStore.listPeerBroadcasts(headerHash)).resolves.toMatchObject([
+      ).resolves.toMatchObject({
+        source: "peer",
+        sourcePeer: expect.any(String),
+      });
+      await expect(
+        senderStore.listPeerBroadcasts(headerHash),
+      ).resolves.toMatchObject([
         { peerBaseUrl, status: "posted", attempts: 1 },
       ]);
       await expect(senderStore.listPeerHealth()).resolves.toMatchObject([
@@ -103,7 +110,8 @@ describe("PeerSignatureCoordinator", () => {
     const headerHash = "02".repeat(28);
     const receiverSigner = await loadDaSigner(`hex:${"00".repeat(31)}03`);
     const senderSigner = await loadDaSigner(`hex:${"00".repeat(31)}04`);
-    const committeeHex = receiverSigner.publicKeyHex + senderSigner.publicKeyHex;
+    const committeeHex =
+      receiverSigner.publicKeyHex + senderSigner.publicKeyHex;
     const committeeSignersHash = bytesToHex(
       blake2b(Buffer.from(committeeHex, "hex"), { dkLen: 32 }),
     );
@@ -156,8 +164,12 @@ describe("PeerSignatureCoordinator", () => {
         }),
       });
 
-      await expect(coordinator.publishSignature(record)).resolves.toBe("posted");
-      await expect(senderStore.listPeerBroadcasts(headerHash)).resolves.toMatchObject([
+      await expect(coordinator.publishSignature(record)).resolves.toBe(
+        "posted",
+      );
+      await expect(
+        senderStore.listPeerBroadcasts(headerHash),
+      ).resolves.toMatchObject([
         { peerBaseUrl, status: "failed", attempts: 1 },
       ]);
 
@@ -174,8 +186,12 @@ describe("PeerSignatureCoordinator", () => {
       });
       await new Promise((resolve) => setTimeout(resolve, 30));
 
-      await expect(coordinator.publishSignature(record)).resolves.toBe("posted");
-      await expect(senderStore.listPeerBroadcasts(headerHash)).resolves.toMatchObject([
+      await expect(coordinator.publishSignature(record)).resolves.toBe(
+        "posted",
+      );
+      await expect(
+        senderStore.listPeerBroadcasts(headerHash),
+      ).resolves.toMatchObject([
         { peerBaseUrl, status: "posted", attempts: 2 },
       ]);
       await expect(
@@ -220,7 +236,7 @@ const signatureRecord = ({
   broadcastStatus: "local",
   l1ChainPoint: {},
   validation: {
-    payloadVersion: 1,
+    payloadVersion: Number(SDK.DA_PAYLOAD_V2_VERSION),
     rootsMatch: true,
     stateQueueOutRef: "tx#0",
     headerHash,
@@ -229,6 +245,17 @@ const signatureRecord = ({
       transactionsRoot: "55".repeat(32),
       depositsRoot: "66".repeat(32),
       withdrawalsRoot: "77".repeat(32),
+      forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      transitionTraceRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      eventToStepRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    },
+    countSummary: {
+      withdrawalCount: 0n,
+      forcedTransactionCount: 0n,
+      l2TransactionCount: 0n,
+      depositCount: 0n,
+      totalEventCount: 0n,
+      transitionStepCount: 0n,
     },
     l1Header: {
       startTime: "1",

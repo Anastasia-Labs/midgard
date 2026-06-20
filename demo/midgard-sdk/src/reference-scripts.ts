@@ -1,17 +1,17 @@
 import { compareOutRefs } from "@al-ft/midgard-core/out-ref";
 import {
+  type Assets,
   CML,
   coreToTxOutput,
   Data,
   fromText,
-  type Assets,
   type LucidEvolution,
   mintingPolicyToId,
   type Script,
+  toUnit,
   type TxBuilder,
   type TxSignBuilder,
   type UTxO,
-  toUnit,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -415,12 +415,13 @@ export const completeReferenceScriptWalletReplenishmentTxProgram = (
   params: ReferenceScriptWalletReplenishmentTxParams,
 ): Effect.Effect<TxSignBuilder, LucidError> =>
   Effect.gen(function* () {
-    const tx = yield* incompleteReferenceScriptWalletReplenishmentTxProgram(
-      params,
-    );
+    const tx =
+      yield* incompleteReferenceScriptWalletReplenishmentTxProgram(params);
     return yield* Effect.tryPromise({
       try: () =>
-        tx.complete(completeWithSelectedFundingInputs(params.selectedFundingInputs)),
+        tx.complete(
+          completeWithSelectedFundingInputs(params.selectedFundingInputs),
+        ),
       catch: (cause) =>
         new LucidError({
           message: `Failed to complete reference-script wallet replenishment transaction: ${String(cause)}`,
@@ -441,8 +442,9 @@ export const incompleteReferenceScriptPublicationTxProgram = ({
     try: () => {
       const roleMintAssets: Assets = {};
       for (const target of missingTargets) {
-        roleMintAssets[referenceScriptAuthUnit(authPolicy.policyId, target.name)] =
-          1n;
+        roleMintAssets[
+          referenceScriptAuthUnit(authPolicy.policyId, target.name)
+        ] = 1n;
       }
       let tx = lucid.newTx().collectFrom([...selectedFundingInputs]);
       tx =
@@ -479,7 +481,10 @@ export const resolveReferenceScriptPublicationLayout = (
   tx: TxSignBuilder,
   params: Pick<
     ReferenceScriptPublicationTxParams,
-    "walletAddress" | "referenceScriptsAddress" | "missingTargets" | "authPolicy"
+    | "walletAddress"
+    | "referenceScriptsAddress"
+    | "missingTargets"
+    | "authPolicy"
   >,
 ): Effect.Effect<ReferenceScriptPublicationLayout, StateQueueError> =>
   Effect.try({
@@ -543,11 +548,17 @@ export const resolveReferenceScriptPublicationLayout = (
 
 export const completeReferenceScriptPublicationTxProgram = (
   params: ReferenceScriptPublicationTxParams,
-): Effect.Effect<BuiltReferenceScriptPublicationTx, LucidError | StateQueueError> =>
+): Effect.Effect<
+  BuiltReferenceScriptPublicationTx,
+  LucidError | StateQueueError
+> =>
   Effect.gen(function* () {
     const tx = yield* incompleteReferenceScriptPublicationTxProgram(params);
     const unsigned = yield* Effect.tryPromise({
-      try: () => tx.complete(completeWithSelectedFundingInputs(params.selectedFundingInputs)),
+      try: () =>
+        tx.complete(
+          completeWithSelectedFundingInputs(params.selectedFundingInputs),
+        ),
       catch: (cause) =>
         new LucidError({
           message: `Failed to complete reference-script publication transaction for ${params.missingTargets

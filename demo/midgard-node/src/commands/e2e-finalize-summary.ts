@@ -5,6 +5,7 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
 import { defaultMidgardNodeEndpoint } from "@/commands/command-utils.js";
+import { E2E_STEP_SCHEMA_VERSION, type StepSummary } from "@/e2e/runner.js";
 import {
   createE2ERunSummary,
   type DbEvidence,
@@ -13,10 +14,6 @@ import {
   writeSummaryJsonAtomic,
   writeSummaryMarkdownAtomic,
 } from "@/e2e/summary.js";
-import {
-  E2E_STEP_SCHEMA_VERSION,
-  type StepSummary,
-} from "@/e2e/runner.js";
 import type { Database } from "@/services/database.js";
 
 export type FinalizeSummaryOptions = {
@@ -48,7 +45,10 @@ type CountRow = {
 };
 
 const timestampForPath = (date = new Date()): string =>
-  date.toISOString().replaceAll(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+  date
+    .toISOString()
+    .replaceAll(/[-:]/g, "")
+    .replace(/\.\d{3}Z$/, "Z");
 
 const countValue = (value: number | bigint | string | undefined): bigint => {
   if (value === undefined) {
@@ -182,8 +182,7 @@ export const requiredFreshEvidence = ({
     },
     {
       label: "required_transaction_evidence",
-      status:
-        missingTransactionLabels.length === 0 ? "satisfied" : "failed",
+      status: missingTransactionLabels.length === 0 ? "satisfied" : "failed",
       source: "e2e-finalize-summary",
       details: {
         required: REQUIRED_FRESH_TRANSACTION_LABELS.join(","),
@@ -409,7 +408,9 @@ export const finalizeE2ESummaryProgram = (
 
     const summaryJsonPath = join(outDir, "summary.json");
     const summaryMarkdownPath = join(outDir, "summary.md");
-    yield* Effect.promise(() => writeSummaryJsonAtomic(summaryJsonPath, summary));
+    yield* Effect.promise(() =>
+      writeSummaryJsonAtomic(summaryJsonPath, summary),
+    );
     yield* Effect.promise(() =>
       writeSummaryMarkdownAtomic(summaryMarkdownPath, summary),
     );

@@ -1,5 +1,5 @@
-import { Data } from "@lucid-evolution/lucid";
 import * as SDK from "@al-ft/midgard-sdk";
+import { Data } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 
 import type {
@@ -49,7 +49,9 @@ const validateObservedNode = (
   if (!node.assetName.startsWith(SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX)) {
     validationErrors.push("block_asset_prefix_mismatch");
   } else {
-    const suffix = node.assetName.slice(SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX.length);
+    const suffix = node.assetName.slice(
+      SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX.length,
+    );
     if (suffix !== computedHeaderHash) {
       validationErrors.push("block_asset_suffix_mismatch");
     }

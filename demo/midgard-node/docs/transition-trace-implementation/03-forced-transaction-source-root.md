@@ -62,12 +62,14 @@ the L1 order output reference where this is production-facing.
 Source-root value:
 
 ```text
+MidgardTxCompactWithoutValidity {
+  body
+  wits
+}
+
 ForcedInclusionTx {
-  tx_order_id: OutputReference
-  tx_id: MidgardTxId
-  tx_compact: MidgardTxCompact
+  tx_compact: MidgardTxCompactWithoutValidity
   operator_validity: MidgardTxValidity
-  inclusion_time: PosixTime
 }
 ```
 
@@ -98,16 +100,18 @@ tx:<tx_id>
   challengeable with L1 evidence plus non-membership in `forced_transactions_root`.
 - Invalid forced transactions remain source events. They become no-op trace
   steps with challengeable `operator_validity`.
-- Duplicate L1 orders carrying the same `tx_id` are distinct source events.
+- Duplicate L1 orders carrying the same `tx_compact.body` are distinct source
+  events because the root is keyed by `tx_order_id`.
 - `transactions_root` must not be used as the tx-order source root.
-- Do not put `inclusion_time` in the source-root key. Store it in the value and
-  verify due-window inclusion against L1 evidence in fault proofs.
+- Do not add `inclusion_time` to the forced-transaction source value. Due-window
+  checks for transaction orders use the validity range extracted from
+  `tx_compact.body` plus L1 order evidence.
 
 ## Tests And Verification
 
 Add tests for:
 
-- two tx orders with the same `tx_id` but different `tx_order_id`
+- two tx orders with the same `tx_compact.body` but different `tx_order_id`
 - omitted due tx-order event
 - invalid tx-order included as no-op trace source event
 - wrong `operator_validity`
@@ -129,4 +133,3 @@ cd ../onchain/aiken && aiken check
   `transactions_root`.
 - Forced and normal transactions cannot collide through a shared `tx_id` event
   identity.
-

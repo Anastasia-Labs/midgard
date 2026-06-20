@@ -40,6 +40,10 @@ export const INVALID_RANGE_FAULT_PROOF_TITLES = {
   step02: "fraud_proofs/invalid_range/step_02.main.spend",
 } as const;
 
+export const TRANSITION_TRACE_FAULT_PROOF_TITLES = {
+  proof: "fraud_proofs/transition_trace/proof.main.spend",
+} as const;
+
 export const FAULT_PROOF_SHARED_TITLES = {
   computationThreadMint: "computation_thread.mint.mint",
   fraudProofMint: "fraud_proof.mint.mint",
@@ -72,11 +76,20 @@ export type InvalidRangeFaultProofContracts = {
   };
 };
 
+export type TransitionTraceFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly transitionTrace: FraudProofChain & {
+    readonly steps: readonly [SpendingValidator];
+  };
+};
+
 export type FaultProofContracts = {
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
   readonly doubleSpend: DoubleSpendFaultProofContracts["doubleSpend"];
   readonly invalidRange: InvalidRangeFaultProofContracts["invalidRange"];
+  readonly transitionTrace: TransitionTraceFaultProofContracts["transitionTrace"];
 };
 
 type SharedFaultProofContracts = {
@@ -96,6 +109,9 @@ export type BuildDoubleSpendFaultProofContractsParams =
   BuildFaultProofContractsParams;
 
 export type BuildInvalidRangeFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+
+export type BuildTransitionTraceFaultProofContractsParams =
   BuildFaultProofContractsParams;
 
 export const parseFaultProofBlueprint = (
@@ -385,12 +401,57 @@ const buildInvalidRangeChain = ({
               hubOraclePolicyId,
             ],
           ),
-      ),
+        ),
     );
 
     return {
       firstStep: invalidRangeStep01,
       steps: [invalidRangeStep01, invalidRangeStep02],
+    };
+  });
+
+const buildTransitionTraceChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+}: {
+  readonly blueprint: FaultProofBlueprint;
+  readonly network: Network;
+  readonly hubOraclePolicyId: string;
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fraudProofTokenAddressData: Data;
+}): Effect.Effect<
+  TransitionTraceFaultProofContracts["transitionTrace"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const proof = yield* tryBuild(
+      "Failed to build transition-trace proof validator",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(
+            getCompiledScript(
+              blueprint,
+              TRANSITION_TRACE_FAULT_PROOF_TITLES.proof,
+            ),
+            [
+              computationThread.policyId,
+              fraudProof.policyId,
+              fraudProofTokenAddressData,
+              hubOraclePolicyId,
+            ],
+          ),
+        ),
+    );
+
+    return {
+      firstStep: proof,
+      steps: [proof],
     };
   });
 
@@ -407,12 +468,17 @@ export const buildFaultProofContracts = (
       ...params,
       ...shared,
     });
+    const transitionTrace = yield* buildTransitionTraceChain({
+      ...params,
+      ...shared,
+    });
 
     return {
       computationThread: shared.computationThread,
       fraudProof: shared.fraudProof,
       doubleSpend,
       invalidRange,
+      transitionTrace,
     };
   });
 
@@ -445,5 +511,21 @@ export const buildInvalidRangeFaultProofContracts = (
       computationThread: shared.computationThread,
       fraudProof: shared.fraudProof,
       invalidRange,
+    };
+  });
+
+export const buildTransitionTraceFaultProofContracts = (
+  params: BuildTransitionTraceFaultProofContractsParams,
+): Effect.Effect<TransitionTraceFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const transitionTrace = yield* buildTransitionTraceChain({
+      ...params,
+      ...shared,
+    });
+    return {
+      computationThread: shared.computationThread,
+      fraudProof: shared.fraudProof,
+      transitionTrace,
     };
   });

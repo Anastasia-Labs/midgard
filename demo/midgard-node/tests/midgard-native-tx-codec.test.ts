@@ -10,8 +10,8 @@ import {
   deriveMidgardNativeTxCompact,
   deriveMidgardNativeTxWitnessSetCompact,
   encodeMidgardNativeTxBodyCompact,
-  encodeMidgardNativeTxCompact,
   encodeMidgardNativeTxCanonical,
+  encodeMidgardNativeTxCompact,
   encodeMidgardNativeTxWitnessSetCompact,
   encodeMidgardVersionedScriptListPreimage,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
@@ -37,9 +37,7 @@ const mkHash = (tag: string): Buffer => computeHash32(Buffer.from(tag, "utf8"));
 const encodeByteList = (items: readonly Uint8Array[]): Buffer =>
   Buffer.from(encode(items.map((item) => Buffer.from(item))));
 
-const makePlutusIntegerData = (
-  value: bigint,
-): CML.PlutusData =>
+const makePlutusIntegerData = (value: bigint): CML.PlutusData =>
   CML.PlutusData.new_integer(CML.BigInteger.from_str(value.toString(10)));
 
 const makeConvertibleCardanoTxBytes = (): Buffer => {

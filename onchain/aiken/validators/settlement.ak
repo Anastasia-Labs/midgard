@@ -29,7 +29,8 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
     let Datum {
       deposits_root,
       withdrawals_root,
-      transactions_root,
+      forced_transactions_root,
+      transactions_root: _transactions_root,
       resolution_claim,
     } = datum
 
@@ -213,7 +214,7 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
             tx_order_script_hash,
             deposits_root,
             withdrawals_root,
-            transactions_root,
+            forced_transactions_root,
             membership_proof,
             unresolved_event_asset_name,
             unresolved_event_ref_input_index,
@@ -329,6 +330,7 @@ validator mint(hub_oracle: ScriptHash) {
           merged_block_transactions_root,
           merged_block_deposits_root,
           merged_block_withdrawals_root,
+          merged_block_forced_transactions_root,
           ..
         } = state_queue_redeemer_data
         // We verify this redeemer argument so that other scripts can use it:
@@ -360,6 +362,7 @@ validator mint(hub_oracle: ScriptHash) {
           Datum {
             deposits_root: merged_block_deposits_root,
             withdrawals_root: merged_block_withdrawals_root,
+            forced_transactions_root: merged_block_forced_transactions_root,
             transactions_root: merged_block_transactions_root,
             resolution_claim: None,
           }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { openWatcherStore } from "../src/store/factory.js";
 import { JsonFileWatcherStore } from "../src/store.js";
+import { openWatcherStore } from "../src/store/factory.js";
 import { tempDir } from "./helpers.js";
 
 describe("openWatcherStore", () => {

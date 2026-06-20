@@ -27,7 +27,9 @@ export const normalizeHex = (
     !HEX_PATTERN.test(normalized) ||
     (expectedLength !== undefined && normalized.length !== expectedLength)
   ) {
-    throw new Error(`${fieldName} must be ${hexLengthLabel(options.byteLength)}`);
+    throw new Error(
+      `${fieldName} must be ${hexLengthLabel(options.byteLength)}`,
+    );
   }
   return normalized;
 };

@@ -1,23 +1,32 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 
+import * as SDK from "@al-ft/midgard-sdk";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { describe, expect, it } from "vitest";
 
-import { DaPayloadClient } from "../src/da/client.js";
-import { daPayloadSha256 } from "../src/da/payload.js";
 import { OnChainLifecycleCoordinator } from "../src/coordinator/on-chain.js";
 import { SubmitterReconciler } from "../src/coordinator/submitter-reconciler.js";
+import { DaPayloadClient } from "../src/da/client.js";
+import { daPayloadSha256 } from "../src/da/payload.js";
+import type {
+  DaAttestationCandidateRecord,
+  DaSignatureRecord,
+  Header,
+  PayloadCountSet,
+  PayloadRootSet,
+} from "../src/domain.js";
+import { jsonBigIntStringReplacer } from "../src/json.js";
 import { PeerSignaturePoller } from "../src/peer/poller.js";
-import { JsonFileWatcherStore } from "../src/store.js";
-import { WatcherService } from "../src/watcher.js";
-import { bytesToHex } from "../src/utils/hex.js";
 import {
   loadDaSigner,
   signDaAttestation,
   validateDaCommittee,
   validateDaSignerMembership,
 } from "../src/signer.js";
+import { JsonFileWatcherStore } from "../src/store.js";
+import { bytesToHex } from "../src/utils/hex.js";
+import { WatcherService } from "../src/watcher.js";
 import {
   IDENTITY_TX_PROJECTOR,
   makeObservedNode,
@@ -25,10 +34,25 @@ import {
   minimalConfig,
   tempDir,
 } from "./helpers.js";
-import type {
-  DaAttestationCandidateRecord,
-  DaSignatureRecord,
-} from "../src/domain.js";
+
+const rootSummaryFromHeader = (header: Header): PayloadRootSet => ({
+  utxosRoot: header.utxosRoot,
+  withdrawalsRoot: header.withdrawalsRoot,
+  forcedTransactionsRoot: header.forcedTransactionsRoot,
+  transactionsRoot: header.transactionsRoot,
+  depositsRoot: header.depositsRoot,
+  transitionTraceRoot: header.transitionTraceRoot,
+  eventToStepRoot: header.eventToStepRoot,
+});
+
+const countSummaryFromHeader = (header: Header): PayloadCountSet => ({
+  withdrawalCount: header.withdrawalCount,
+  forcedTransactionCount: header.forcedTransactionCount,
+  l2TransactionCount: header.l2TransactionCount,
+  depositCount: header.depositCount,
+  totalEventCount: header.totalEventCount,
+  transitionStepCount: header.transitionStepCount,
+});
 
 describe("WatcherService", () => {
   it("fetches, verifies, signs, and persists one finalized unattested header", async () => {
@@ -577,9 +601,7 @@ describe("WatcherService", () => {
       scannedHeaders: 1,
       signedHeaders: 1,
       skippedHeaders: 0,
-      errors: [
-        `failed to publish DA signature for ${headerHash} signer 0`,
-      ],
+      errors: [`failed to publish DA signature for ${headerHash} signer 0`],
     });
     await expect(
       store.getDaSignature({ headerHash, signerIndex: 0 }),
@@ -589,9 +611,7 @@ describe("WatcherService", () => {
       scannedHeaders: 1,
       signedHeaders: 0,
       skippedHeaders: 1,
-      errors: [
-        `failed to publish DA signature for ${headerHash} signer 0`,
-      ],
+      errors: [`failed to publish DA signature for ${headerHash} signer 0`],
     });
     expect(published).toEqual([headerHash, headerHash]);
   });
@@ -640,16 +660,12 @@ describe("WatcherService", () => {
       verifiedAt: new Date().toISOString(),
       l1ChainPoint: {},
       validation: {
-        payloadVersion: 1,
+        payloadVersion: Number(SDK.DA_PAYLOAD_V2_VERSION),
         rootsMatch: true,
         stateQueueOutRef: "ab".repeat(32) + "#0",
         headerHash,
-        rootSummary: {
-          utxosRoot: header.utxosRoot,
-          transactionsRoot: header.transactionsRoot,
-          depositsRoot: header.depositsRoot,
-          withdrawalsRoot: header.withdrawalsRoot,
-        },
+        rootSummary: rootSummaryFromHeader(header),
+        countSummary: countSummaryFromHeader(header),
         l1Header: {
           startTime: header.startTime.toString(),
           endTime: header.endTime.toString(),
@@ -758,7 +774,8 @@ describe("WatcherService", () => {
       threshold: 1,
       visibilityRetryCount: 0,
       chainReader: {
-        fetchDaAttestationCandidates: async () => candidateResponses.shift() ?? [],
+        fetchDaAttestationCandidates: async () =>
+          candidateResponses.shift() ?? [],
       },
       recordSubmission: (record) => store.saveL1Submission(record),
       submitter: {
@@ -866,7 +883,8 @@ describe("WatcherService", () => {
       threshold: 2,
       visibilityRetryCount: 0,
       chainReader: {
-        fetchDaAttestationCandidates: async () => candidateResponses.shift() ?? [],
+        fetchDaAttestationCandidates: async () =>
+          candidateResponses.shift() ?? [],
       },
       recordSubmission: (record) => store.saveL1Submission(record),
       submitter: {
@@ -971,16 +989,12 @@ describe("WatcherService", () => {
       broadcastStatus: "posted",
       l1ChainPoint: {},
       validation: {
-        payloadVersion: 1,
+        payloadVersion: Number(SDK.DA_PAYLOAD_V2_VERSION),
         rootsMatch: true,
         stateQueueOutRef: "peer#0",
         headerHash,
-        rootSummary: {
-          utxosRoot: header.utxosRoot,
-          transactionsRoot: header.transactionsRoot,
-          depositsRoot: header.depositsRoot,
-          withdrawalsRoot: header.withdrawalsRoot,
-        },
+        rootSummary: rootSummaryFromHeader(header),
+        countSummary: countSummaryFromHeader(header),
         l1Header: {
           startTime: header.startTime.toString(),
           endTime: header.endTime.toString(),
@@ -1005,16 +1019,12 @@ describe("WatcherService", () => {
       broadcastStatus: "posted",
       l1ChainPoint: {},
       validation: {
-        payloadVersion: 1,
+        payloadVersion: Number(SDK.DA_PAYLOAD_V2_VERSION),
         rootsMatch: true,
         stateQueueOutRef: "stale#0",
         headerHash,
-        rootSummary: {
-          utxosRoot: header.utxosRoot,
-          transactionsRoot: header.transactionsRoot,
-          depositsRoot: header.depositsRoot,
-          withdrawalsRoot: header.withdrawalsRoot,
-        },
+        rootSummary: rootSummaryFromHeader(header),
+        countSummary: countSummaryFromHeader(header),
         l1Header: {
           startTime: header.startTime.toString(),
           endTime: header.endTime.toString(),
@@ -1131,12 +1141,8 @@ describe("WatcherService", () => {
     const committeeValidation = validateDaCommittee({
       daParams: config.daParams,
     });
-    const rootSummary = {
-      utxosRoot: header.utxosRoot,
-      transactionsRoot: header.transactionsRoot,
-      depositsRoot: header.depositsRoot,
-      withdrawalsRoot: header.withdrawalsRoot,
-    };
+    const rootSummary = rootSummaryFromHeader(header);
+    const countSummary = countSummaryFromHeader(header);
     const peerSignatures: readonly DaSignatureRecord[] = [
       {
         deploymentFingerprint: config.deploymentFingerprint,
@@ -1153,11 +1159,12 @@ describe("WatcherService", () => {
         broadcastStatus: "posted",
         l1ChainPoint: {},
         validation: {
-          payloadVersion: 1,
+          payloadVersion: Number(SDK.DA_PAYLOAD_V2_VERSION),
           rootsMatch: true,
           stateQueueOutRef: "peer#0",
           headerHash,
           rootSummary,
+          countSummary,
           l1Header: {
             startTime: header.startTime.toString(),
             endTime: header.endTime.toString(),
@@ -1182,11 +1189,12 @@ describe("WatcherService", () => {
         broadcastStatus: "posted",
         l1ChainPoint: {},
         validation: {
-          payloadVersion: 1,
+          payloadVersion: Number(SDK.DA_PAYLOAD_V2_VERSION),
           rootsMatch: true,
           stateQueueOutRef: "peer#1",
           headerHash,
           rootSummary,
+          countSummary,
           l1Header: {
             startTime: header.startTime.toString(),
             endTime: header.endTime.toString(),
@@ -1200,7 +1208,9 @@ describe("WatcherService", () => {
     const peerServer = createServer((request, response) => {
       if (request.method === "GET") {
         response.writeHead(200, { "content-type": "application/json" });
-        response.end(`${JSON.stringify({ signatures: peerSignatures })}\n`);
+        response.end(
+          `${JSON.stringify({ signatures: peerSignatures }, jsonBigIntStringReplacer)}\n`,
+        );
         return;
       }
       response.writeHead(405);
@@ -1378,7 +1388,8 @@ describe("WatcherService", () => {
         fetchDaAttestationCandidates: async () =>
           calls.length === 0 ? [initialized] : [signedByThisNode],
       },
-      recordCandidate: (record) => firstStore.saveDaAttestationCandidate(record),
+      recordCandidate: (record) =>
+        firstStore.saveDaAttestationCandidate(record),
       recordSubmission: (record) => firstStore.saveL1Submission(record),
       submitter: {
         initAttestation: async () => {

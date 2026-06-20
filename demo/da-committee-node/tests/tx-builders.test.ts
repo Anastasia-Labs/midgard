@@ -7,19 +7,19 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import type { DaAttestationValidatorSet } from "../src/l1/deployment.js";
-import type { DaAttestationReferenceScripts } from "../src/l1/reference-scripts.js";
 import {
   addSignaturesToDaAttestationDatum,
   buildAddSignaturesTx,
 } from "../src/coordinator/tx-builders.js";
+import type { DaAttestationValidatorSet } from "../src/l1/deployment.js";
+import type { DaAttestationReferenceScripts } from "../src/l1/reference-scripts.js";
 
 describe("DA attestation transaction builders", () => {
   it("updates signer bitmap and count for arbitrary signer indexes", () => {
-    const updated = addSignaturesToDaAttestationDatum(baseAttestationDatum(), [
-      0,
-      9,
-    ]);
+    const updated = addSignaturesToDaAttestationDatum(
+      baseAttestationDatum(),
+      [0, 9],
+    );
     expect(updated.attested_signers.startsWith("8040")).toBe(true);
     expect(updated.attestation_count).toBe(2n);
 

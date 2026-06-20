@@ -4,6 +4,7 @@ import { Worker } from "worker_threads";
 
 import {
   DepositsDB,
+  ForcedTransactionsDB,
   PendingBlockFinalizationsDB,
   WithdrawalsDB,
 } from "@/database/index.js";
@@ -84,6 +85,7 @@ const pendingRecordRequiresLocalFinalizationRecovery = (
   const status = record[PendingBlockFinalizationsDB.Columns.STATUS];
   const hasLocalPayloadMembers =
     record.depositEventIds.length > 0 ||
+    record.forcedTransactionEventIds.length > 0 ||
     record.withdrawalEventIds.length > 0 ||
     record.mempoolTxIds.length > 0;
   return (
@@ -98,23 +100,35 @@ const pendingRecordRequiresLocalFinalizationRecovery = (
 const observeConfirmedPendingBlock = (
   record: PendingBlockFinalizationsDB.Record,
   recoveredSubmittedTxHash: Buffer | null,
-): Effect.Effect<boolean, DatabaseError, Database> =>
+): Effect.Effect<boolean, DatabaseError, Database | Globals> =>
   Effect.gen(function* () {
+    const globals = yield* Globals;
     const journalHeaderHash =
       record[PendingBlockFinalizationsDB.Columns.HEADER_HASH];
     yield* DepositsDB.markProjectedByEventIds(
       record.depositEventIds,
       journalHeaderHash,
     );
+    yield* ForcedTransactionsDB.markProjectedByEventIds(
+      record.forcedTransactionEventIds,
+      journalHeaderHash,
+    );
     yield* WithdrawalsDB.markProjectedByEventIds(
       record.withdrawalEventIds,
       journalHeaderHash,
     );
+    if (record.depositEventIds.length > 0) {
+      yield* Ref.update(globals.MEMPOOL_LEDGER_VERSION, (version) => version + 1);
+    }
     const requiresLocalFinalizationRecovery =
       pendingRecordRequiresLocalFinalizationRecovery(record);
     if (!requiresLocalFinalizationRecovery) {
       yield* WithdrawalsDB.markFinalizedByEventIds(
         record.withdrawalEventIds,
+        journalHeaderHash,
+      );
+      yield* ForcedTransactionsDB.markFinalizedByEventIds(
+        record.forcedTransactionEventIds,
         journalHeaderHash,
       );
     }
@@ -135,6 +149,10 @@ const abandonPendingBlockIfPresent = (
     const headerHash = record[PendingBlockFinalizationsDB.Columns.HEADER_HASH];
     yield* DepositsDB.clearProjectedHeaderAssignmentByEventIds(
       record.depositEventIds,
+      headerHash,
+    );
+    yield* ForcedTransactionsDB.clearProjectedHeaderAssignmentByEventIds(
+      record.forcedTransactionEventIds,
       headerHash,
     );
     yield* WithdrawalsDB.clearProjectedHeaderAssignmentByEventIds(
@@ -295,6 +313,10 @@ export const buildBlockConfirmationAction = (
             pending.value[
               PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT
             ] === matchedHeader.utxosRoot &&
+            pending.value[
+              PendingBlockFinalizationsDB.Columns
+                .EXPECTED_FORCED_TRANSACTIONS_ROOT
+            ] === matchedHeader.forcedTransactionsRoot &&
             pending.value[
               PendingBlockFinalizationsDB.Columns.EXPECTED_TRANSACTIONS_ROOT
             ] === matchedHeader.transactionsRoot &&

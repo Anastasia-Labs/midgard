@@ -3,7 +3,7 @@ import "./utils.js";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { describe, expect, it, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import { runL1ProviderPreflight } from "@/commands/l1-provider-preflight.js";
 import {

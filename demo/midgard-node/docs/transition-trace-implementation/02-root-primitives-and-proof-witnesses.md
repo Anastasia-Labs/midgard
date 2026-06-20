@@ -141,4 +141,3 @@ cd ../onchain/aiken && aiken check
 - The proof layer can express every fault family in the architecture doc.
 - A count or range commitment exists for every count stored in `HeaderV2`.
 - Aiken and TypeScript agree on all proof encodings.
-

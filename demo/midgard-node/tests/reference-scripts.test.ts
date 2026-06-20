@@ -1,5 +1,6 @@
 import "./utils.js";
 
+import { referenceScriptAuthTokenName } from "@al-ft/midgard-sdk";
 import {
   type Assets,
   type LucidEvolution,
@@ -10,11 +11,10 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
-import { referenceScriptAuthTokenName } from "@al-ft/midgard-sdk";
 import {
   buildReferenceScriptDeploymentPlan,
-  buildReferenceScriptWalletStatus,
   buildReferenceScriptSweepPlan,
+  buildReferenceScriptWalletStatus,
   nodeRuntimeReferenceScriptTargets,
   REFERENCE_SCRIPT_COMMAND_NAMES,
   REFERENCE_SCRIPT_SWEEP_DEFAULT_TOKEN_OUTPUT_LOVELACE,
@@ -453,7 +453,10 @@ describe("reference-script deployment planner", () => {
         getUtxos: async () => utxos,
       }),
       utxosByOutRef: async (
-        refs: readonly { readonly txHash: string; readonly outputIndex: number }[],
+        refs: readonly {
+          readonly txHash: string;
+          readonly outputIndex: number;
+        }[],
       ) =>
         refs
           .map((ref) => byOutRef.get(`${ref.txHash}#${ref.outputIndex}`))
@@ -467,9 +470,9 @@ describe("reference-script deployment planner", () => {
       ),
     );
 
-    expect(spendable.map((utxo) => `${utxo.txHash}#${utxo.outputIndex}`)).toEqual(
-      [`${available.txHash}#${available.outputIndex}`],
-    );
+    expect(
+      spendable.map((utxo) => `${utxo.txHash}#${utxo.outputIndex}`),
+    ).toEqual([`${available.txHash}#${available.outputIndex}`]);
   });
 
   it("precomputes missing targets, conservative batches, and aggregate top-up", () => {

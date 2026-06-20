@@ -1,5 +1,12 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import {
+  assetsEqual,
+  mergeReferenceScripts,
+  removeAssetUnit,
+  subtractAssets,
+  valueToAssets,
+} from "@al-ft/midgard-sdk";
+import {
   type Assets,
   Data as LucidData,
   toUnit,
@@ -32,13 +39,6 @@ import {
   submitConcludePayoutProgram,
   submitInitializePayoutProgram,
 } from "@/transactions/reserve-payout.js";
-import {
-  assetsEqual,
-  mergeReferenceScripts,
-  removeAssetUnit,
-  subtractAssets,
-  valueToAssets,
-} from "@al-ft/midgard-sdk";
 
 export type EventIdConfig = {
   readonly eventId: string;

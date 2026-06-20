@@ -15,7 +15,10 @@ type CardanoNetwork = "Mainnet" | "Preprod" | "Preview" | "Custom";
 export const lucidFromProviderUrl = async (
   url: string,
   network: string,
-): Promise<{ readonly lucid: LucidEvolution; readonly providerSource: string }> => {
+): Promise<{
+  readonly lucid: LucidEvolution;
+  readonly providerSource: string;
+}> => {
   const runtime = LucidRuntime as unknown as LucidProviderRuntime;
   if (url.startsWith("blockfrost:")) {
     const { apiUrl, projectId } = parseBlockfrostUrl(url);
@@ -66,7 +69,9 @@ const parseKupmiosUrl = (
   const raw = value.slice("kupmios:".length);
   const [kupoUrl, ogmiosUrl] = raw.split("|");
   if (kupoUrl === undefined || ogmiosUrl === undefined) {
-    throw new Error("kupmios provider URL must be kupmios:<kupo-url>|<ogmios-url>");
+    throw new Error(
+      "kupmios provider URL must be kupmios:<kupo-url>|<ogmios-url>",
+    );
   }
   return { kupoUrl, ogmiosUrl };
 };

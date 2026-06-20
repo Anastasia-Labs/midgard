@@ -19,7 +19,6 @@ import {
   LucidError,
   makeReturn,
   MidgardValidators,
-  ProofSchema,
 } from "@/common.js";
 import { POSIXTimeSchema } from "@/common.js";
 import {
@@ -29,6 +28,7 @@ import {
 } from "@/hub-oracle.js";
 import { authenticateUTxOs, AuthenticUTxO } from "@/internals.js";
 import { DepositEventSchema } from "@/ledger-state.js";
+import { RawRootMembershipProofSchema } from "@/transition-trace.js";
 
 import {
   buildCompletedUserEventMintTxProgram,
@@ -59,7 +59,7 @@ export const DepositSpendRedeemerSchema = Data.Object({
   hub_ref_input_index: Data.Integer(),
   settlement_ref_input_index: Data.Integer(),
   mint_redeemer_index: Data.Integer(),
-  membership_proof: ProofSchema,
+  membership_proof: RawRootMembershipProofSchema,
   inclusion_proof_script_withdraw_redeemer_index: Data.Integer(),
 });
 export type DepositSpendRedeemer = Data.Static<
@@ -69,6 +69,10 @@ export const DepositSpendRedeemer =
   DepositSpendRedeemerSchema as unknown as DepositSpendRedeemer;
 
 export type DepositUTxO = AuthenticUTxO<DepositDatum, UserEventExtraFields>;
+
+const midgardNativeNetworkId = (
+  network: NonNullable<ReturnType<LucidEvolution["config"]>["network"]>,
+): bigint => (network === "Mainnet" ? 1n : 0n);
 
 /**
  * Silently drops invalid UTxOs.
@@ -226,6 +230,7 @@ export const buildUnsignedDepositTxWithMetadataProgram = (
         },
         info: {
           l2_address: l2AddressData,
+          l2_network_id: midgardNativeNetworkId(network),
           l2_datum: l2DatumData,
         },
       },

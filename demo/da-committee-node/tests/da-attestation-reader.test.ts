@@ -1,15 +1,15 @@
-import { Data, toUnit, type UTxO } from "@lucid-evolution/lucid";
 import * as SDK from "@al-ft/midgard-sdk";
+import { Data, toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { describe, expect, it } from "vitest";
 
+import type { DaAttestationCandidateRecord } from "../src/domain.js";
 import {
+  type DaAttestationChainReader,
   LucidDaAttestationChainReader,
   MultiDaAttestationChainReader,
-  type DaAttestationChainReader,
   type OnChainDaParams,
 } from "../src/l1/da-attestation-reader.js";
-import type { DaAttestationCandidateRecord } from "../src/domain.js";
 import { bytesToHex } from "../src/utils/hex.js";
 import { minimalConfig, tempDir } from "./helpers.js";
 
@@ -105,7 +105,9 @@ describe("LucidDaAttestationChainReader", () => {
       config,
       providerSource: "fake",
     });
-    await expect(reader.fetchDaAttestationCandidates(headerHash)).resolves.toEqual([
+    await expect(
+      reader.fetchDaAttestationCandidates(headerHash),
+    ).resolves.toEqual([
       expect.objectContaining({
         headerHash,
         outRef: `${"bb".repeat(32)}#0`,

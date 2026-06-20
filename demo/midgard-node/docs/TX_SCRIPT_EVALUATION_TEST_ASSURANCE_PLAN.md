@@ -176,6 +176,7 @@ legacy modes.
 ### PlutusV3 Only
 
 1. Accept context-sensitive PlutusV3 spend.
+
    - Spend a script output locked by the PlutusV3 hash of
      `datum_equals_redeemer_spend`.
    - Use inline datum `7` and redeemer `7`.
@@ -183,11 +184,13 @@ legacy modes.
      true.
 
 2. Reject context-sensitive PlutusV3 spend.
+
    - Same script and datum.
    - Use redeemer `8`.
    - Assert `RejectCodes.PlutusScriptInvalid`.
 
 3. Accept PlutusV3 context probe.
+
    - Spend a script output locked by `plutus_v3_context_probe`.
    - Include at least two spend inputs and at least two reference inputs authored
      out of lexicographic order.
@@ -197,6 +200,7 @@ legacy modes.
      positions and sorted redeemer map.
 
 4. Reject PlutusV3 context probe with wrong expected field.
+
    - Use the same transaction shape as test 3.
    - Make the redeemer request an absent signer, wrong out-ref, or wrong datum.
    - Assert `RejectCodes.PlutusScriptInvalid`.
@@ -207,6 +211,7 @@ legacy modes.
 ### MidgardV1 Only
 
 6. Accept MidgardV1 spend with inline raw UPLC witness.
+
    - Spend a script output locked by `hashMidgardV1Script(scriptBytes)`.
    - Supply the same raw UPLC bytes as an inline witness.
    - Use `MidgardRedeemerTag.Spend`, index `0`, redeemer `42`.
@@ -214,12 +219,14 @@ legacy modes.
      bytes is not the spent script hash.
 
 7. Reject MidgardV1 spend with wrong redeemer.
+
    - Same transaction shape as test 6.
    - Use redeemer `41`.
    - Assert `RejectCodes.PlutusScriptInvalid` and detail containing the
      MidgardV1 script hash.
 
 8. Accept MidgardV1 receive through protected output.
+
    - Produce a protected output addressed to `hashMidgardV1Script(scriptBytes)`.
    - Supply raw UPLC witness and `MidgardRedeemerTag.Receiving`, index `0`,
      redeemer `99`.
@@ -227,6 +234,7 @@ legacy modes.
    - Assert Phase A accepts and Phase B accepts.
 
 9. Reject PlutusV3 receive.
+
    - Produce a protected output addressed to the PlutusV3 hash of a typed
      PlutusV3 script.
    - Supply receive redeemer.
@@ -234,44 +242,51 @@ legacy modes.
      `ReceivingScript requires MidgardV1 context`.
 
 10. Reject datum-hash output.
-   - Spend a script output with a datum hash rather than inline datum.
-   - Assert `RejectCodes.InvalidOutput` with detail mentioning datum hashes.
+
+- Spend a script output with a datum hash rather than inline datum.
+- Assert `RejectCodes.InvalidOutput` with detail mentioning datum hashes.
 
 11. Accept MidgardV1 reference-script spend.
-   - Lock the spent output by MidgardV1 hash.
-   - Supply the UPLC bytes as a typed PlutusV3 reference script on a reference
-     input. `decodeScriptSource` should recover both the PlutusV3 hash and the
-     MidgardV1 hash from that typed reference script.
-   - Assert Phase B resolves the reference source and accepts.
+
+- Lock the spent output by MidgardV1 hash.
+- Supply the UPLC bytes as a typed PlutusV3 reference script on a reference
+  input. `decodeScriptSource` should recover both the PlutusV3 hash and the
+  MidgardV1 hash from that typed reference script.
+- Assert Phase B resolves the reference source and accepts.
 
 12. Accept MidgardV1 budget-covered spend.
-   - Enable `enforceScriptBudget`.
-   - Use declared ex-units larger than the measured Harmonic result.
-   - Assert Phase B accepts.
+
+- Enable `enforceScriptBudget`.
+- Use declared ex-units larger than the measured Harmonic result.
+- Assert Phase B accepts.
 
 13. Reject MidgardV1 low-budget spend.
-   - Enable `enforceScriptBudget`.
-   - Use declared ex-units below the measured Harmonic result.
-   - Assert `RejectCodes.PlutusScriptInvalid` with `budget exceeded`.
+
+- Enable `enforceScriptBudget`.
+- Use declared ex-units below the measured Harmonic result.
+- Assert `RejectCodes.PlutusScriptInvalid` with `budget exceeded`.
 
 14. Reject wrong non-zero MidgardV1 redeemer index.
-   - Use two MidgardV1 script spends authored in reverse lexicographic order.
-   - Put a valid redeemer on index `0` for the lexicographically first input and
-     an intentionally wrong or missing redeemer for index `1`.
-   - Assert the rejection proves Phase B derives spend indexes from sorted
-     out-refs, not authored order.
+
+- Use two MidgardV1 script spends authored in reverse lexicographic order.
+- Put a valid redeemer on index `0` for the lexicographically first input and
+  an intentionally wrong or missing redeemer for index `1`.
+- Assert the rejection proves Phase B derives spend indexes from sorted
+  out-refs, not authored order.
 
 15. Accept non-zero receive index.
-   - Produce two protected MidgardV1 script outputs with hashes that sort in a
-     known order.
-   - Put the real receive guard on the second sorted hash and use receiving
-     redeemer index `1`.
-   - Assert Phase B accepts. Add a paired wrong-index rejection if test runtime
-     remains reasonable.
+
+- Produce two protected MidgardV1 script outputs with hashes that sort in a
+  known order.
+- Put the real receive guard on the second sorted hash and use receiving
+  redeemer index `1`.
+- Assert Phase B accepts. Add a paired wrong-index rejection if test runtime
+  remains reasonable.
 
 ### Mixed MidgardV1 And PlutusV3
 
 16. Accept mixed MidgardV1 spend plus PlutusV3 mint.
+
     - MidgardV1 spend guard passes with redeemer `42`.
     - PlutusV3 mint always-succeeds policy mints one asset.
     - Assert Phase A accepts, Phase B accepts, and value preservation holds.
@@ -279,12 +294,14 @@ legacy modes.
       both PlutusV3 and MidgardV1 hashes for each inline non-native script.
 
 17. Accept mixed PlutusV3 spend plus MidgardV1 receive.
+
     - PlutusV3 `datum_equals_redeemer_spend` passes.
     - MidgardV1 receive guard passes for a protected output.
     - Assert both purposes are evaluated in one transaction.
 
 18. Reject mixed transaction when the MidgardV1 leg fails after a PlutusV3 leg
     has passed.
+
     - Use a PlutusV3 spend that passes.
     - Use a MidgardV1 receive guard with wrong redeemer. Receive executions occur
       after spend, mint, and observe discovery order, so this proves an earlier
@@ -294,6 +311,7 @@ legacy modes.
 
 19. Reject mixed transaction when the PlutusV3 leg fails after a MidgardV1 leg
     has passed.
+
     - Use a MidgardV1 spend guard that passes.
     - Use a PlutusV3 mint policy or observer that fails. Mint and observe
       executions occur after spend discovery order.
@@ -302,6 +320,7 @@ legacy modes.
 
 20. Accept mixed transaction where the same UPLC bytes are used for both
     domains in different purposes.
+
     - One purpose address/policy uses the PlutusV3 hash.
     - Another purpose uses the MidgardV1 hash of the same bytes.
     - Prefer a single inline raw or typed PlutusV3 source, because each decoded
@@ -332,7 +351,7 @@ legacy modes.
 9. Add mixed-version success and failure tests.
 10. Run the focused validation test command.
 11. If any test exposes implementation ambiguity, fix the validation behavior
-   rather than relaxing the tests.
+    rather than relaxing the tests.
 
 ## Verification Commands
 

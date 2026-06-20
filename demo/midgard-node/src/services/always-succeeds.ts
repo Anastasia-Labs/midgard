@@ -244,12 +244,14 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
     const nonExistentInput = yield* mkFP("non_existent_input");
     const nonExistentInputNoIndex = yield* mkFP("non_existent_input_no_index");
     const invalidRange = yield* mkFP("invalid_range");
+    const transitionTrace = yield* mkFP("transition_trace");
 
     const fraudProofs: SDK.FraudProofs = {
       doubleSpend,
       nonExistentInput,
       nonExistentInputNoIndex,
       invalidRange,
+      transitionTrace,
     };
 
     return {

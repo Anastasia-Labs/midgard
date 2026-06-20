@@ -3,8 +3,8 @@ import { Effect, Schedule } from "effect";
 
 import {
   L1_REWARD_ACCOUNT_REGISTRATION_SOURCES,
-  providerRouteSummary,
   type L1RewardAccountRegistrationSource,
+  providerRouteSummary,
 } from "@/provider-diagnostics.js";
 
 import { ConfigError, NodeConfig } from "./config.js";

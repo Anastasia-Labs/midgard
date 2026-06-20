@@ -115,7 +115,9 @@ finalization journal uses normalized tables for other roots.
 
 - DA payloads remain keyed by `header_hash`.
 - DA validation must fail closed on missing trace data.
-- Do not rely on operator HTTP endpoints as the only way to fetch proof data.
+- DA committee retained payload routes are the production challenger source.
+  Do not rely on operator debug HTTP endpoints as the only way to fetch proof
+  data.
 - If full transaction CBOR is retained separately from `MidgardTxCompact`, the
   root must still be computed from the compact value used by `transactions_root`.
 
@@ -146,4 +148,3 @@ cd demo && pnpm run typecheck
 - A challenger can reconstruct all committed roots from DA.
 - DA committee attestations cover trace commitments, not just old source roots.
 - Header, payload, and retained local journal data have the same root surface.
-

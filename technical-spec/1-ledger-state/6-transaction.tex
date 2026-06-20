@@ -5,19 +5,25 @@
 \section{Transaction}
 \label{h:transaction}
 
-A transaction set in Midgard is a finite map from transaction ID to Midgard L2 transaction.
+A transaction set in Midgard is a finite map from transaction ID to accepted L2 transaction request.
 The ID is the Blake2b-256 hash of the transaction body; equivalently, the map key must match the transaction's \code{body} field.
 The witness-set hash and validity tag are authenticated by the block's \code{transactions\_root} through the map value, but they are not part of the transaction ID:
 \begin{align*}
-    \T{TxSet} &\coloneq \T{Map(TxId, MidgardTx)} \\
+    \T{TxSet} &\coloneq \T{Map(TxId, MidgardTxCompact)} \\
       &\coloneq \Bigl\{
-        (k_i: \T{TxId}, v_i: \T{MidgardTx}) \mid 
+        (k_i: \T{TxId}, v_i: \T{MidgardTxCompact}) \mid
         k_i \equiv v_i.\T{body} ,\;
         \forall i \neq j.\; k_i \neq k_j
     \Bigr\}
 \end{align*}
 
-An L2 transaction in a Midgard block is an endogenous event.
+The \code{transactions\_root} is the source root for normal L2 transaction requests.
+Forced L1 transaction orders are committed separately in \code{forced\_transactions\_root}, keyed by their L1 order identity.
+Only accepted normal L2 transaction requests may appear in \code{transactions\_root}.
+Invalid normal L2 transaction requests are excluded before commitment; they do not become no-op source events in the transition trace.
+If two accepted normal L2 transactions share the same \code{TxId}, the block body is not canonical because \code{transactions\_root} is keyed by \code{TxId}; production block construction fails closed rather than choosing one silently.
+
+An L2 transaction request in a Midgard block is an endogenous event.
 Its corresponding utxo set transition is validated purely based on the information contained in the utxo set.
 This contrasts with deposit and withdrawal events, which create and spend utxos (respectively) based on information observed outside the L2 ledger.
 
@@ -172,7 +178,12 @@ The data availability layer is responsible for confirming that the hashes corres
 \allowdisplaybreaks
 \begin{align*}
     \T{TxId} \coloneq\;& \mathcal{H}_\T{Blake2b-256}(\T{MidgardTxBody}) \\
-    \T{MidgardTx} \coloneq\;& \left\{
+    \T{MidgardTxCompactWithoutValidity} \coloneq\;& \left\{
+    \begin{array}{ll}
+        \T{body} : & \T{TxId} \\
+        \T{wits} : & \mathcal{H}(\T{MidgardTxWits})
+    \end{array} \right\} \\
+    \T{MidgardTxCompact} \coloneq\;& \left\{
     \begin{array}{ll}
         \T{body} : & \T{TxId} \\
         \T{wits} : & \mathcal{H}(\T{MidgardTxWits}) \\

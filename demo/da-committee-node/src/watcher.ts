@@ -1,22 +1,29 @@
-import { DaPayloadClient } from "./da/client.js";
-import {
-  DaPayloadValidationError,
-  daPayloadSha256,
-  verifyDaPayloadAgainstHeader,
-  type TransactionRootValueProjector,
-  type VerifiedDaPayload,
-} from "./da/payload.js";
 import type { WatcherConfig } from "./config.js";
 import type { AttestationCoordinator } from "./coordinator/coordinator.js";
+import type { SubmitterReconciler } from "./coordinator/submitter-reconciler.js";
+import { DaPayloadClient } from "./da/client.js";
+import {
+  daPayloadSha256,
+  DaPayloadValidationError,
+  type TransactionRootValueProjector,
+  type VerifiedDaPayload,
+  verifyDaPayloadAgainstHeader,
+} from "./da/payload.js";
 import type {
   DaPayloadRecord,
   DaSignatureRecord,
   StateQueueHeaderRecord,
 } from "./domain.js";
-import type { SubmitterReconciler } from "./coordinator/submitter-reconciler.js";
 import type { DaAttestationChainReader } from "./l1/da-attestation-reader.js";
-import { scanStateQueue, type StateQueueProvider } from "./l1/state-queue-scanner.js";
-import { signDaAttestation, type DaSignerValidation, type DaSigner } from "./signer.js";
+import {
+  scanStateQueue,
+  type StateQueueProvider,
+} from "./l1/state-queue-scanner.js";
+import {
+  type DaSigner,
+  type DaSignerValidation,
+  signDaAttestation,
+} from "./signer.js";
 import type { WatcherStore } from "./store.js";
 
 export type WatcherServiceDeps = {
@@ -102,25 +109,25 @@ export class WatcherService {
       daAttestationPolicyId: this.deps.config.daAttestationPolicyId,
       finalityDepth: this.deps.config.finalityDepth,
     });
-  const errors: string[] = [];
-  let signedHeaders = 0;
-  let reconciledHeaders = 0;
-  let skippedHeaders = 0;
-  for (const record of records) {
-    await this.deps.store.upsertStateQueueHeader(record);
-    if (
-      this.deps.signer === undefined ||
-      this.deps.signerValidation === undefined ||
-      this.deps.config.signerIndex === undefined
-    ) {
-      await this.ensurePayloadForSubmitter(record, errors);
-      const reconciled = await this.reconcileHeader(record, errors);
-      if (reconciled) {
-        reconciledHeaders += 1;
+    const errors: string[] = [];
+    let signedHeaders = 0;
+    let reconciledHeaders = 0;
+    let skippedHeaders = 0;
+    for (const record of records) {
+      await this.deps.store.upsertStateQueueHeader(record);
+      if (
+        this.deps.signer === undefined ||
+        this.deps.signerValidation === undefined ||
+        this.deps.config.signerIndex === undefined
+      ) {
+        await this.ensurePayloadForSubmitter(record, errors);
+        const reconciled = await this.reconcileHeader(record, errors);
+        if (reconciled) {
+          reconciledHeaders += 1;
+        }
+        skippedHeaders += 1;
+        continue;
       }
-      skippedHeaders += 1;
-      continue;
-    }
       const existingSignature = await this.deps.store.getDaSignature({
         headerHash: record.headerHash,
         signerIndex: this.deps.config.signerIndex,
@@ -225,15 +232,18 @@ export class WatcherService {
         ...signature,
         broadcastStatus: published.broadcastStatus,
       },
-      ...(published.error === undefined ? {} : { publishError: published.error }),
+      ...(published.error === undefined
+        ? {}
+        : { publishError: published.error }),
     };
   }
 
   private async fetchVerifyPayload(
     record: Awaited<ReturnType<typeof scanStateQueue>>[number],
   ): Promise<VerifiedDaPayload> {
-    const fetched =
-      await this.deps.payloadClient.fetchPayloadCandidates(record.headerHash);
+    const fetched = await this.deps.payloadClient.fetchPayloadCandidates(
+      record.headerHash,
+    );
     if (!fetched.ok) {
       await this.deps.store.saveDaPayload({
         deploymentFingerprint: this.deps.config.deploymentFingerprint,
@@ -312,8 +322,12 @@ export class WatcherService {
       headerHash,
       payloadCborHex: candidates[0]?.payloadCbor.toString("hex") ?? "",
       payloadSha256:
-        candidates[0] === undefined ? "" : daPayloadSha256(candidates[0].payloadCbor),
-      sourceEndpoint: candidates.map((candidate) => candidate.endpoint).join(","),
+        candidates[0] === undefined
+          ? ""
+          : daPayloadSha256(candidates[0].payloadCbor),
+      sourceEndpoint: candidates
+        .map((candidate) => candidate.endpoint)
+        .join(","),
       fetchedAt: new Date().toISOString(),
       validationStatus: "conflicted",
       conflictStatus: "conflicting_bytes",

@@ -179,9 +179,7 @@ export const decodeMidgardValue = (bytes: Uint8Array): MidgardValue => {
   return decoded;
 };
 
-export const midgardValueToCmlValue = (
-  value: MidgardValue,
-): CML.Value => {
+export const midgardValueToCmlValue = (value: MidgardValue): CML.Value => {
   const multiasset = CML.MultiAsset.new();
   for (const [policyHex, assets] of value.assets.entries()) {
     const cmlAssets = CML.MapAssetNameToCoin.new();

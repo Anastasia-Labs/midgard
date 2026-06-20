@@ -7,6 +7,31 @@ Implement on-chain fraud-proof validators for transition trace commitments.
 This task is complete when each fault family from the architecture document has
 an Aiken redeemer, TypeScript witness builder, ABI fixture, and budget test.
 
+## Current Production Review Status
+
+Status: complete for the production-reachable transition-trace proof surface.
+
+The implementation now has header-bound Aiken/TypeScript coverage for the
+transition-trace proof family, including phase-specific one-step effect
+verification. The proof validator recomputes expected ledger-root transitions
+from opened source events plus explicit UTxO membership, non-membership,
+deletion, and insertion witnesses, then accepts only when the committed trace
+leaf disagrees with that derived result.
+
+The valid-deposit branch derives the inserted L2 output from the authenticated
+L1 deposit reference input and committed `DepositInfo`, including
+`l2_network_id`; witnesses cannot provide arbitrary projected bytes. Valid
+withdrawals delete the opened UTxO, invalid withdrawals and invalid forced
+transactions are no-op checks, and normal L2 transactions verify opened spend
+and output preimages against the compact transaction before applying the
+delete/insert witness sequence.
+
+Valid forced transactions remain deliberately fail-closed: block production
+refuses to commit an effectful forced-transaction trace until forced-transaction
+ledger deltas/preimages exist, and the Aiken validator rejects the unsupported
+valid-forced redeemer path. This is a launch-gate restriction, not a proof
+workaround; no production block can currently commit that transition class.
+
 ## Files To Update
 
 Aiken libraries:
@@ -139,8 +164,9 @@ Witnesses:
 
 ### Out-Of-Window Source Event
 
-Proves a source root contains an L1 event whose `inclusion_time` is outside the
-block window.
+Proves a source root contains an L1 event outside the block window. For forced
+transaction orders, the window check uses the transaction validity range
+extracted from the ordered transaction body, not an `inclusion_time` field.
 
 ### Count Fault
 
@@ -177,4 +203,3 @@ cd demo && pnpm run test -- fraud
 - Every transition commitment invariant has an enforceable on-chain proof.
 - Proof witnesses can be constructed by TypeScript and accepted by Aiken.
 - Budgets are recorded and reviewed before launch.
-

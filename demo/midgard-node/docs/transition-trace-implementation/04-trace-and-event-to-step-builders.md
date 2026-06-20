@@ -153,4 +153,3 @@ cd demo && pnpm run typecheck
 - Every event has an authenticated step.
 - Every step has an authenticated source event.
 - Deposits are applied last in production block construction.
-

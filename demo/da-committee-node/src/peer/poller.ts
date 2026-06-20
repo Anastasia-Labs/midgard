@@ -1,7 +1,4 @@
-import type {
-  DaPeerConfig,
-  DaSignatureRecord,
-} from "../domain.js";
+import type { DaPeerConfig, DaSignatureRecord } from "../domain.js";
 import type { DaCommitteeValidation } from "../signer.js";
 import type { WatcherStore } from "../store.js";
 import { validateDaSignatureRecord } from "./signatures.js";
@@ -12,10 +9,7 @@ export type PeerSignaturePollerDeps = {
   readonly signerValidation: DaCommitteeValidation;
   readonly store: Pick<
     WatcherStore,
-    | "getDaPayload"
-    | "saveDaSignature"
-    | "savePeerHealth"
-    | "listPeerHealth"
+    "getDaPayload" | "saveDaSignature" | "savePeerHealth" | "listPeerHealth"
   >;
   readonly requestTimeoutMs: number;
   readonly fetchFn?: typeof fetch;
@@ -32,7 +26,9 @@ export class PeerSignaturePoller {
 
   async pollPeerSignatures(headerHash: string): Promise<void> {
     await Promise.all(
-      this.deps.peers.map((peer) => this.pollPeerSignaturesFrom(peer, headerHash)),
+      this.deps.peers.map((peer) =>
+        this.pollPeerSignaturesFrom(peer, headerHash),
+      ),
     );
   }
 

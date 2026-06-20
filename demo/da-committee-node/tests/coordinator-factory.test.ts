@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
+import { describe, expect, it } from "vitest";
 
 import { onChainCoordinatorFromConfig } from "../src/coordinator/factory.js";
 import type { DaAttestationChainReader } from "../src/l1/da-attestation-reader.js";

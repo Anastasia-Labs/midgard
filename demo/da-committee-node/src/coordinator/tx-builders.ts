@@ -30,7 +30,13 @@ type RedeemerContextLike = {
 };
 
 type TxEvaluationRedeemer = {
-  readonly redeemer_tag: "spend" | "mint" | "publish" | "withdraw" | "vote" | "propose";
+  readonly redeemer_tag:
+    | "spend"
+    | "mint"
+    | "publish"
+    | "withdraw"
+    | "vote"
+    | "propose";
   readonly redeemer_index: number;
   readonly ex_units: {
     readonly mem: number;
@@ -189,7 +195,8 @@ export const buildAddSignaturesTx = async ({
           output_index: SDK.requireUniqueOutputIndex(
             ctx.outputs,
             (output: TxOutput) =>
-              output.address === contracts.daAttestation.spendingScriptAddress &&
+              output.address ===
+                contracts.daAttestation.spendingScriptAddress &&
               outputDatumCborMatches(output, encodedUpdatedDatum) &&
               assetsEqual(output.assets, attestationUtxo.assets),
             "DA attestation add-signatures",
@@ -405,7 +412,7 @@ const completeWithLocalUplc = async (
 
 const isLocalUplcEvaluationFallbackError = (cause: unknown): boolean =>
   /over budget|ex-?units|exunits|couldn'?t decode plutus script|failed to decode payload from base64 or base16/i.test(
-    cause instanceof Error ? cause.stack ?? cause.message : String(cause),
+    cause instanceof Error ? (cause.stack ?? cause.message) : String(cause),
   );
 
 const bootstrapExUnitsEvaluator: TxEvaluator = {
@@ -425,11 +432,7 @@ const bootstrapExUnitsEvaluator: TxEvaluator = {
       redeemer_tag: fromCmlRedeemerTag(key.tag),
       redeemer_index: safeNumber(key.index, "redeemer index"),
       ex_units: {
-        mem: splitBudget(
-          context.protocolParameters.maxTxExMem,
-          count,
-          index,
-        ),
+        mem: splitBudget(context.protocolParameters.maxTxExMem, count, index),
         steps: splitBudget(
           context.protocolParameters.maxTxExSteps,
           count,

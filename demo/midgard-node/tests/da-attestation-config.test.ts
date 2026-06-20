@@ -21,9 +21,9 @@ describe("DA attestation configuration", () => {
     expect(params.committee).toBe(committee);
     expect(params.da_threshold).toBe(2n);
     expect(params.committee_signers_hash).toBe(
-      Buffer.from(blake2b(Buffer.from(committee, "hex"), { dkLen: 32 })).toString(
-        "hex",
-      ),
+      Buffer.from(
+        blake2b(Buffer.from(committee, "hex"), { dkLen: 32 }),
+      ).toString("hex"),
     );
   });
 

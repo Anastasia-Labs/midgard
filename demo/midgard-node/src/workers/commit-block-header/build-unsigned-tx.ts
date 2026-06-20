@@ -1,4 +1,5 @@
 import * as SDK from "@al-ft/midgard-sdk";
+import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import type { OperatorWalletView } from "@/operator-wallet-view.js";
@@ -9,8 +10,8 @@ import {
   type TxSubmitError,
 } from "@/transactions/utils.js";
 import {
-  commitTimingBudget,
   COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+  commitTimingBudget,
   formatCommitTimingBudget,
   resolveAlignedCommitEndTime,
 } from "@/workers/utils/commit-end-time.js";
@@ -30,6 +31,8 @@ const COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS = 4;
 
 export type BuiltCommitTx = {
   readonly newHeaderHash: string;
+  readonly newHeader: SDK.Header;
+  readonly newHeaderCbor: Buffer;
   readonly blockEndTimeMs: number;
   readonly signAndSubmitProgram: Effect.Effect<
     string,
@@ -45,12 +48,14 @@ export const buildUnsignedCommitTx = (
   txsRoot: string,
   depositsRoot: string,
   withdrawalsRoot: string,
+  transitionCommitments: SDK.HeaderTransitionCommitments,
   endDate: Date,
   initialOperatorWalletView?: OperatorWalletView,
 ): Effect.Effect<
   BuiltCommitTx,
   | SDK.StateQueueError
   | SDK.DataCoercionError
+  | SDK.HeaderTransitionCommitmentsError
   | SDK.HashingError
   | SDK.LucidError
   | TxSignError
@@ -138,6 +143,7 @@ export const buildUnsignedCommitTx = (
           txsRoot,
           depositsRoot,
           withdrawalsRoot,
+          transitionCommitments,
           BigInt(alignedEndTime),
         );
 
@@ -186,6 +192,11 @@ export const buildUnsignedCommitTx = (
 
       return {
         newHeaderHash,
+        newHeader,
+        newHeaderCbor: Buffer.from(
+          LucidData.to(newHeader as never, SDK.Header as never),
+          "hex",
+        ),
         blockEndTimeMs: alignedEndTime,
         signAndSubmitProgram,
         txSize,

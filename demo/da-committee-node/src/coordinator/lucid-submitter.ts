@@ -44,8 +44,7 @@ export class LucidDaAttestationSubmitter
     this.deps = {
       ...deps,
       signSubmit:
-        deps.signSubmit ??
-        ((tx) => signSubmitAndConfirm(deps.lucid, tx)),
+        deps.signSubmit ?? ((tx) => signSubmitAndConfirm(deps.lucid, tx)),
       refreshFundingUtxos:
         deps.refreshFundingUtxos ??
         (async () => {
@@ -75,7 +74,9 @@ export class LucidDaAttestationSubmitter
     candidate,
     packedWitnessesHex,
     signerIndexes,
-  }: Parameters<OnChainAttestationSubmitter["addSignatures"]>[0]): Promise<string> {
+  }: Parameters<
+    OnChainAttestationSubmitter["addSignatures"]
+  >[0]): Promise<string> {
     const daParams = await this.fetchDaParamsUtxo();
     const attestation = await this.fetchCandidateUtxo(candidate);
     await this.deps.refreshFundingUtxos();
@@ -95,7 +96,9 @@ export class LucidDaAttestationSubmitter
   async applyAttestation({
     record,
     candidate,
-  }: Parameters<OnChainAttestationSubmitter["applyAttestation"]>[0]): Promise<string> {
+  }: Parameters<
+    OnChainAttestationSubmitter["applyAttestation"]
+  >[0]): Promise<string> {
     const target = await this.fetchTarget(record.headerHash);
     const attestation = await this.fetchCandidateUtxo(candidate);
     await this.deps.refreshFundingUtxos();

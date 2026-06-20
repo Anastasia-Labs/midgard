@@ -9,6 +9,16 @@ import {
   TxSubmitError,
 } from "@/transactions/utils.js";
 
+export type {
+  AbsorbConfirmedDepositConfig,
+  AddReserveFundsConfig,
+  BuiltReservePayoutTx,
+  ConcludePayoutConfig,
+  InitializePayoutConfig,
+  MembershipProofWithdrawalWitness,
+  RefundInvalidWithdrawalConfig,
+  ReservePayoutReferenceScripts,
+} from "@al-ft/midgard-sdk";
 export {
   __reservePayoutTest,
   assetsToValue,
@@ -19,16 +29,6 @@ export {
   buildRefundInvalidWithdrawalTxProgram,
   ReservePayoutTxError,
   valueToAssets,
-} from "@al-ft/midgard-sdk";
-export type {
-  AbsorbConfirmedDepositConfig,
-  AddReserveFundsConfig,
-  BuiltReservePayoutTx,
-  ConcludePayoutConfig,
-  InitializePayoutConfig,
-  MembershipProofWithdrawalWitness,
-  RefundInvalidWithdrawalConfig,
-  ReservePayoutReferenceScripts,
 } from "@al-ft/midgard-sdk";
 
 type ReservePayoutSubmitError =

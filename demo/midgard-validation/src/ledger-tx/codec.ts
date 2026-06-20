@@ -137,7 +137,10 @@ const assertByteLength = (
 ): Buffer => {
   const bytes = copyBuffer(value);
   if (bytes.length !== length) {
-    failEncode(`${fieldName} must be ${length} bytes`, `length=${bytes.length}`);
+    failEncode(
+      `${fieldName} must be ${length} bytes`,
+      `length=${bytes.length}`,
+    );
   }
   return bytes;
 };
@@ -185,7 +188,9 @@ const copyNativeTxCompact = (
   version: compact.version,
   transactionBody: {
     spendInputsHash: copyBuffer(compact.transactionBody.spendInputsHash),
-    referenceInputsHash: copyBuffer(compact.transactionBody.referenceInputsHash),
+    referenceInputsHash: copyBuffer(
+      compact.transactionBody.referenceInputsHash,
+    ),
     outputsHash: copyBuffer(compact.transactionBody.outputsHash),
     fee: compact.transactionBody.fee,
     validityIntervalStart: compact.transactionBody.validityIntervalStart,
@@ -193,9 +198,13 @@ const copyNativeTxCompact = (
     requiredObserversHash: copyBuffer(
       compact.transactionBody.requiredObserversHash,
     ),
-    requiredSignersHash: copyBuffer(compact.transactionBody.requiredSignersHash),
+    requiredSignersHash: copyBuffer(
+      compact.transactionBody.requiredSignersHash,
+    ),
     mintHash: copyBuffer(compact.transactionBody.mintHash),
-    scriptIntegrityHash: copyBuffer(compact.transactionBody.scriptIntegrityHash),
+    scriptIntegrityHash: copyBuffer(
+      compact.transactionBody.scriptIntegrityHash,
+    ),
     auxiliaryDataHash: copyBuffer(compact.transactionBody.auxiliaryDataHash),
     networkId: compact.transactionBody.networkId,
   },
@@ -236,14 +245,18 @@ const decodeOutRefList = (
   preimageCbor: Uint8Array,
   fieldName: string,
 ): MidgardOutRef[] =>
-  decodeMidgardNativeByteListPreimage(preimageCbor, fieldName).map(decodeOutRef);
+  decodeMidgardNativeByteListPreimage(preimageCbor, fieldName).map(
+    decodeOutRef,
+  );
 
 const encodeOutRefList = (
   outRefs: readonly MidgardOutRef[],
   fieldName: string,
 ): Buffer =>
   encodeByteList(
-    outRefs.map((outRef, index) => encodeOutRef(outRef, `${fieldName}[${index}]`)),
+    outRefs.map((outRef, index) =>
+      encodeOutRef(outRef, `${fieldName}[${index}]`),
+    ),
   );
 
 const toLedgerOutput = (output: MidgardTxOutput): MidgardLedgerOutput => ({
@@ -272,7 +285,9 @@ const decodeOutputs = (preimageCbor: Uint8Array): MidgardLedgerOutput[] => {
 };
 
 const encodeOutputs = (outputs: readonly MidgardLedgerOutput[]): Buffer =>
-  encodeByteList(outputs.map((output) => encodeMidgardTxOutput(toCodecOutput(output))));
+  encodeByteList(
+    outputs.map((output) => encodeMidgardTxOutput(toCodecOutput(output))),
+  );
 
 const decodeHashList = (
   preimageCbor: Uint8Array,
@@ -372,7 +387,11 @@ const encodeVKeyWitnesses = (
   const witnessBytes = orderedWitnesses.map((witness) => {
     const publicKey = CML.PublicKey.from_bytes(witness.vkey);
     const derivedKeyHash = Buffer.from(publicKey.hash().to_raw_bytes());
-    assertBufferEquals("vkeyWitnesses.keyHash", witness.keyHash, derivedKeyHash);
+    assertBufferEquals(
+      "vkeyWitnesses.keyHash",
+      witness.keyHash,
+      derivedKeyHash,
+    );
     const keyHashHex = derivedKeyHash.toString("hex");
     if (!seenKeyHashes.has(keyHashHex)) {
       seenKeyHashes.add(keyHashHex);
@@ -551,7 +570,10 @@ const encodeMint = (mint: MidgardLedgerMint): Buffer => {
 
   for (let index = 0; index < mint.assets.length; index += 1) {
     const entry = mint.assets[index];
-    const policyId = assertHash28(entry.policyId, `mint.assets[${index}].policyId`);
+    const policyId = assertHash28(
+      entry.policyId,
+      `mint.assets[${index}].policyId`,
+    );
     const assetName = ensureAssetName(
       entry.assetName,
       `mint.assets[${index}].assetName`,
@@ -582,24 +604,22 @@ const encodeMint = (mint: MidgardLedgerMint): Buffer => {
     .map((policy) => {
       const policyKey = encodeCborBytes(policy.policyId);
       const assetEntries = [...policy.assets.values()]
-        .map((asset) => [
-          encodeCborBytes(asset.assetName),
-          encodeCborInteger(asset.quantity),
-        ] as const)
+        .map(
+          (asset) =>
+            [
+              encodeCborBytes(asset.assetName),
+              encodeCborInteger(asset.quantity),
+            ] as const,
+        )
         .sort(([left], [right]) => compareBytes(left, right));
-      return [
-        policyKey,
-        encodeCborMapRaw(assetEntries),
-      ] as const;
+      return [policyKey, encodeCborMapRaw(assetEntries)] as const;
     })
     .sort(([left], [right]) => compareBytes(left, right));
 
   return encodeCborMapRaw(policyEntries);
 };
 
-const decodeRedeemers = (
-  preimageCbor: Uint8Array,
-): MidgardLedgerRedeemer[] =>
+const decodeRedeemers = (preimageCbor: Uint8Array): MidgardLedgerRedeemer[] =>
   decodeMidgardRedeemers(preimageCbor).map((redeemer) => ({
     tag: redeemer.tag,
     index: redeemer.index,
@@ -633,7 +653,10 @@ const encodeRedeemers = (
       return [
         BigInt(redeemer.tag),
         redeemer.index,
-        Buffer.from(plutusDataToCborHex(redeemer.data, { canonical: true }), "hex"),
+        Buffer.from(
+          plutusDataToCborHex(redeemer.data, { canonical: true }),
+          "hex",
+        ),
         [redeemer.exUnits.memory, redeemer.exUnits.steps],
       ];
     }),
@@ -685,10 +708,7 @@ const toNativeTx = (tx: MidgardLedgerTx): MidgardNativeTxFull => {
       tx.scriptIntegrityHash,
       "scriptIntegrityHash",
     ),
-    auxiliaryDataHash: assertHash32(
-      tx.auxiliaryDataHash,
-      "auxiliaryDataHash",
-    ),
+    auxiliaryDataHash: assertHash32(tx.auxiliaryDataHash, "auxiliaryDataHash"),
     networkId: encodeOptionalNetworkId(tx.networkId),
   };
   const witnessSet: MidgardNativeTxWitnessSetCanonical = {
@@ -725,7 +745,9 @@ const decodeMidgardLedgerTxFromNativeTx = (
     validity: nativeTx.validity,
     fee: nativeTx.body.fee,
     networkId: optionalNetworkId(nativeTx.body.networkId),
-    validityIntervalStart: optionalPosixTime(nativeTx.body.validityIntervalStart),
+    validityIntervalStart: optionalPosixTime(
+      nativeTx.body.validityIntervalStart,
+    ),
     validityIntervalEnd: optionalPosixTime(nativeTx.body.validityIntervalEnd),
     auxiliaryDataHash: copyBuffer(nativeTx.body.auxiliaryDataHash),
     scriptIntegrityHash: copyBuffer(nativeTx.body.scriptIntegrityHash),

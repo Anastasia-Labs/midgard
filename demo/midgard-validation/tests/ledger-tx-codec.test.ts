@@ -69,8 +69,9 @@ describe("Midgard ledger transaction codec", () => {
     expect(ledgerTx.validityIntervalStart).toBeUndefined();
     expect(ledgerTx.validityIntervalEnd).toBeUndefined();
     expect(ledgerTx.scriptIntegrityHash.equals(EMPTY_NULL_ROOT)).toBe(true);
-    expect(encodeMidgardLedgerTxToCanonicalCbor(ledgerTx).equals(fixture.txCbor))
-      .toBe(true);
+    expect(
+      encodeMidgardLedgerTxToCanonicalCbor(ledgerTx).equals(fixture.txCbor),
+    ).toBe(true);
   });
 
   it("round-trips vkey witnesses without storing witness CBOR in the semantic type", () => {
@@ -82,8 +83,9 @@ describe("Midgard ledger transaction codec", () => {
     expect(ledgerTx.witnessKeyHashes).toEqual([
       ledgerTx.vkeyWitnesses[0].keyHash,
     ]);
-    expect(encodeMidgardLedgerTxToCanonicalCbor(ledgerTx).equals(fixture.txCbor))
-      .toBe(true);
+    expect(
+      encodeMidgardLedgerTxToCanonicalCbor(ledgerTx).equals(fixture.txCbor),
+    ).toBe(true);
   });
 
   it("decodes and canonicalizes signed mint entries", () => {
@@ -113,25 +115,28 @@ describe("Midgard ledger transaction codec", () => {
     const ledgerTx = decodeMidgardLedgerTxFromCanonicalCbor(fixture.txCbor);
 
     const decodedAssets = ledgerTx.mint.assets.map((asset) => ({
-        policyId: asset.policyId.toString("hex"),
-        assetName: asset.assetName.toString("hex"),
-        quantity: asset.quantity,
-      }));
+      policyId: asset.policyId.toString("hex"),
+      assetName: asset.assetName.toString("hex"),
+      quantity: asset.quantity,
+    }));
     expect(decodedAssets).toHaveLength(2);
-    expect(decodedAssets).toEqual(expect.arrayContaining([
-      {
-        policyId: policyId.toString("hex"),
-        assetName: mintedAsset.toString("hex"),
-        quantity: 5n,
-      },
-      {
-        policyId: policyId.toString("hex"),
-        assetName: burnedAsset.toString("hex"),
-        quantity: -2n,
-      },
-    ]));
-    expect(encodeMidgardLedgerTxToCanonicalCbor(ledgerTx).equals(fixture.txCbor))
-      .toBe(true);
+    expect(decodedAssets).toEqual(
+      expect.arrayContaining([
+        {
+          policyId: policyId.toString("hex"),
+          assetName: mintedAsset.toString("hex"),
+          quantity: 5n,
+        },
+        {
+          policyId: policyId.toString("hex"),
+          assetName: burnedAsset.toString("hex"),
+          quantity: -2n,
+        },
+      ]),
+    );
+    expect(
+      encodeMidgardLedgerTxToCanonicalCbor(ledgerTx).equals(fixture.txCbor),
+    ).toBe(true);
   });
 
   it("round-trips script witnesses and decoded redeemers", () => {
@@ -167,8 +172,9 @@ describe("Midgard ledger transaction codec", () => {
       steps: 11n,
     });
     expect(ledgerTx.requiresPlutusEvaluation).toBe(true);
-    expect(encodeMidgardLedgerTxToCanonicalCbor(ledgerTx).equals(fixture.txCbor))
-      .toBe(true);
+    expect(
+      encodeMidgardLedgerTxToCanonicalCbor(ledgerTx).equals(fixture.txCbor),
+    ).toBe(true);
   });
 
   it("rejects semantic transactions whose tx id no longer matches the body", () => {

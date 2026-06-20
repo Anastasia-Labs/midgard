@@ -3,11 +3,11 @@ import { readFile } from "node:fs/promises";
 
 import { blake2b } from "@noble/hashes/blake2.js";
 
-import {
-  parseMidgardNodeDeploymentInfo,
-  type MidgardNodeDeployment,
-} from "./l1/deployment.js";
 import type { DaCommitteeMember, DaPeerConfig } from "./domain.js";
+import {
+  type MidgardNodeDeployment,
+  parseMidgardNodeDeploymentInfo,
+} from "./l1/deployment.js";
 import { bytesToHex, hexToBytes, normalizeHex } from "./utils/hex.js";
 
 export type DaParamsConfig = {
@@ -210,10 +210,14 @@ export const loadWatcherConfig = async (
     l1SubmitterIds.length > 0 &&
     (l1SubmitterId === undefined || !l1SubmitterIds.includes(l1SubmitterId))
   ) {
-    throw new Error("DA_L1_SUBMITTER_ID must be present in DA_L1_SUBMITTER_IDS");
+    throw new Error(
+      "DA_L1_SUBMITTER_ID must be present in DA_L1_SUBMITTER_IDS",
+    );
   }
   const publicBaseUrl = normalizeOptionalBaseUrl(env.DA_PUBLIC_BASE_URL);
-  const cardanoProviderUrls = splitList(requireEnv(env, "CARDANO_PROVIDER_URLS"));
+  const cardanoProviderUrls = splitList(
+    requireEnv(env, "CARDANO_PROVIDER_URLS"),
+  );
   const daCommitteeMembers = committeeMembersFromManifest(
     objectAt(deploymentManifest, ["da"]),
   );
@@ -408,7 +412,10 @@ const optionalSplitList = (value: string | undefined): readonly string[] => {
 const isLiveLucidProviderUrl = (value: string): boolean =>
   value.startsWith("blockfrost:") || value.startsWith("kupmios:");
 
-const booleanEnv = (value: string | undefined, defaultValue: boolean): boolean => {
+const booleanEnv = (
+  value: string | undefined,
+  defaultValue: boolean,
+): boolean => {
   const normalized = value?.trim().toLowerCase();
   if (normalized === undefined || normalized === "") {
     return defaultValue;
@@ -474,8 +481,7 @@ const l1SubmitterPreflightConfig = ({
   }
   return {
     enabled:
-      l1SubmissionEnabled &&
-      booleanEnv(env.DA_L1_PREFLIGHT_ENABLED, true),
+      l1SubmissionEnabled && booleanEnv(env.DA_L1_PREFLIGHT_ENABLED, true),
     minPlainAdaLovelace: positiveLovelace(
       env.DA_L1_MIN_PLAIN_ADA_LOVELACE ??
         DEFAULT_L1_SUBMITTER_PREFLIGHT.minPlainAdaLovelace.toString(),
@@ -533,7 +539,9 @@ const optionalSignerConfig = (
     return {};
   }
   if (index === undefined || keySource === undefined) {
-    throw new Error("DA_SIGNER_INDEX and DA_SIGNER_KEY_SOURCE must be set together");
+    throw new Error(
+      "DA_SIGNER_INDEX and DA_SIGNER_KEY_SOURCE must be set together",
+    );
   }
   return {
     signerIndex: signerIndex(index),
@@ -622,7 +630,9 @@ const committeeMembersFromManifest = (
         }),
         baseUrls: baseUrls.map((entry) => {
           if (typeof entry !== "string") {
-            throw new Error("manifest da.members baseUrls entries must be strings");
+            throw new Error(
+              "manifest da.members baseUrls entries must be strings",
+            );
           }
           return normalizeBaseUrl(entry);
         }),
@@ -726,7 +736,10 @@ const normalizeBaseUrl = (value: string): string => {
   return parsed.toString().replace(/\/$/, "");
 };
 
-const parseJsonObject = (raw: string, path: string): Record<string, unknown> => {
+const parseJsonObject = (
+  raw: string,
+  path: string,
+): Record<string, unknown> => {
   const parsed = JSON.parse(raw) as unknown;
   if (!isRecord(parsed)) {
     throw new Error(`${path} must contain a JSON object`);

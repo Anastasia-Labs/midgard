@@ -13,6 +13,7 @@ import {
   BlocksDB,
   DaPayloadsDB,
   DepositsDB,
+  ForcedTransactionsDB,
   ImmutableDB,
   MempoolDB,
   MempoolLedgerDB,
@@ -59,6 +60,7 @@ const withLocalBlockFinalizationJob = <A, E, R>(
     readonly headerHash: string;
     readonly mempoolTxCount: number;
     readonly includedDepositCount: number;
+    readonly includedForcedTransactionCount: number;
     readonly includedWithdrawalCount: number;
   },
   program: Effect.Effect<A, E, R>,
@@ -72,6 +74,7 @@ const withLocalBlockFinalizationJob = <A, E, R>(
         headerHash: input.headerHash,
         mempoolTxCount: input.mempoolTxCount,
         includedDepositCount: input.includedDepositCount,
+        includedForcedTransactionCount: input.includedForcedTransactionCount,
         includedWithdrawalCount: input.includedWithdrawalCount,
       },
     });
@@ -299,6 +302,7 @@ export const successfulLocalFinalizationRecoveryProgram = (
     }
     const record = pendingRecord.value;
     const finalizedDepositEventIds = record.depositEventIds;
+    const finalizedForcedTransactionEventIds = record.forcedTransactionEventIds;
     const finalizedWithdrawalEventIds = record.withdrawalEventIds;
     const unknownTxMember = record.txMembers.find(
       (member) =>
@@ -350,6 +354,8 @@ export const successfulLocalFinalizationRecoveryProgram = (
         headerHash: confirmedHeaderHash,
         mempoolTxCount: record.txMembers.length,
         includedDepositCount: finalizedDepositEventIds.length,
+        includedForcedTransactionCount:
+          finalizedForcedTransactionEventIds.length,
         includedWithdrawalCount: finalizedWithdrawalEventIds.length,
       },
       Effect.gen(function* () {
@@ -367,6 +373,10 @@ export const successfulLocalFinalizationRecoveryProgram = (
         );
         yield* WithdrawalsDB.markFinalizedByEventIds(
           finalizedWithdrawalEventIds,
+          confirmedHeaderHashBuffer,
+        );
+        yield* ForcedTransactionsDB.markFinalizedByEventIds(
+          finalizedForcedTransactionEventIds,
           confirmedHeaderHashBuffer,
         );
         yield* PendingBlockFinalizationsDB.markFinalized(

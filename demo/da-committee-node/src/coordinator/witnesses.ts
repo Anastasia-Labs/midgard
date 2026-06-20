@@ -35,7 +35,10 @@ export const packSortedSignatureWitnesses = (
   return parsed.map((witness) => witness.witnessHex).join("");
 };
 
-export const isSignerBitSet = (bitmapHex: string, signerIndex: number): boolean => {
+export const isSignerBitSet = (
+  bitmapHex: string,
+  signerIndex: number,
+): boolean => {
   const bitmap = hexToBytes(bitmapHex, "attested signer bitmap", 32);
   assertSignerIndex(signerIndex);
   const byteIndex = Math.floor(signerIndex / 8);
@@ -43,8 +46,13 @@ export const isSignerBitSet = (bitmapHex: string, signerIndex: number): boolean 
   return (bitmap[byteIndex]! & (1 << (7 - bitInByte))) !== 0;
 };
 
-export const setSignerBit = (bitmapHex: string, signerIndex: number): string => {
-  const bitmap = Buffer.from(hexToBytes(bitmapHex, "attested signer bitmap", 32));
+export const setSignerBit = (
+  bitmapHex: string,
+  signerIndex: number,
+): string => {
+  const bitmap = Buffer.from(
+    hexToBytes(bitmapHex, "attested signer bitmap", 32),
+  );
   assertSignerIndex(signerIndex);
   const byteIndex = Math.floor(signerIndex / 8);
   const bitInByte = signerIndex % 8;
@@ -68,7 +76,11 @@ export const normalizeBitmap = (bitmapHex: string): string =>
   });
 
 const assertSignerIndex = (signerIndex: number): void => {
-  if (!Number.isSafeInteger(signerIndex) || signerIndex < 0 || signerIndex > 255) {
+  if (
+    !Number.isSafeInteger(signerIndex) ||
+    signerIndex < 0 ||
+    signerIndex > 255
+  ) {
     throw new Error("signer index must fit in one byte");
   }
 };

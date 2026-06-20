@@ -3,28 +3,24 @@ import { join } from "node:path";
 
 import {
   invalidRangeViolationReason,
-  normalizeNativeTxValidityRange,
   type NativeTxCompact as NativeTxCompactData,
   type NormalizedTimeRange,
+  normalizeNativeTxValidityRange,
 } from "@al-ft/midgard-sdk";
 
+import { parseHex, parseSignedInteger, stringifyJson } from "./json-file.js";
 import {
   buildTrieView,
   compatibilityReasons,
   decodeTransactionMaterial,
-  fetchNodeBlockTransactions,
   type FetchLike,
+  fetchNodeBlockTransactions,
   nativeTrieItem,
   type NodeTransactionPayload,
   type PreparedTxInclusionJson,
   readNodeTransactionPayloadsFile,
   requireProof,
 } from "./prepare-double-spend.js";
-import {
-  parseHex,
-  parseSignedInteger,
-  stringifyJson,
-} from "./json-file.js";
 
 export type InvalidRangeViolationReason = NonNullable<
   ReturnType<typeof invalidRangeViolationReason>
@@ -99,7 +95,9 @@ const parseBlockValidity = ({
   const validFrom = parseSignedInteger(blockValidFrom, "--block-valid-from");
   const validTo = parseSignedInteger(blockValidTo, "--block-valid-to");
   if (validFrom > validTo) {
-    throw new Error("--block-valid-from must be less than or equal to --block-valid-to.");
+    throw new Error(
+      "--block-valid-from must be less than or equal to --block-valid-to.",
+    );
   }
   return { validFrom, validTo };
 };
@@ -213,7 +211,9 @@ export const prepareInvalidRangeFromTransactions = async ({
           : `Requested --tx-id ${normalizedTxId} was not found in the block.`,
       );
     }
-    throw new Error("No invalid-range transaction found in the selected block.");
+    throw new Error(
+      "No invalid-range transaction found in the selected block.",
+    );
   }
 
   const nativeTrie = await buildTrieView(decoded.map(nativeTrieItem));

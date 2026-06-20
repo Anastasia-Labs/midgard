@@ -45,10 +45,7 @@ export const TEST_SIGNER_HASH = Buffer.from(
 ).toString("hex");
 
 export const TEST_ADDRESS_BYTES = Buffer.from(
-  CML.EnterpriseAddress.new(
-    0,
-    CML.Credential.new_pub_key(TEST_PUBLIC_KEY_HASH),
-  )
+  CML.EnterpriseAddress.new(0, CML.Credential.new_pub_key(TEST_PUBLIC_KEY_HASH))
     .to_address()
     .to_raw_bytes(),
 );

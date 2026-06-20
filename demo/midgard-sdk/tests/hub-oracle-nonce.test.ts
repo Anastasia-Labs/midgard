@@ -1,7 +1,7 @@
 import {
+  type Assets,
   Constr,
   Data,
-  type Assets,
   type LucidEvolution,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";

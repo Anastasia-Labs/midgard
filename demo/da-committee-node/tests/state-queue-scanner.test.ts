@@ -1,7 +1,10 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import { scanStateQueue, type StateQueueProvider } from "../src/l1/state-queue-scanner.js";
+import {
+  scanStateQueue,
+  type StateQueueProvider,
+} from "../src/l1/state-queue-scanner.js";
 import { makeObservedNode, makePayloadFixture } from "./helpers.js";
 
 describe("state queue scanner", () => {
@@ -54,7 +57,9 @@ describe("state queue scanner", () => {
       "conflicted",
       "conflicted",
     ]);
-    expect(records[1]!.validationErrors).toContain("block_asset_suffix_mismatch");
+    expect(records[1]!.validationErrors).toContain(
+      "block_asset_suffix_mismatch",
+    );
     expect(records[2]!.validationErrors).toContain(
       "unexpected_da_attestation_marker",
     );

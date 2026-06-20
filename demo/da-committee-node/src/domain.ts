@@ -68,9 +68,21 @@ export type DaPayloadRecord = {
 
 export type PayloadRootSet = {
   readonly utxosRoot: string;
+  readonly withdrawalsRoot: string;
+  readonly forcedTransactionsRoot: string;
   readonly transactionsRoot: string;
   readonly depositsRoot: string;
-  readonly withdrawalsRoot: string;
+  readonly transitionTraceRoot: string;
+  readonly eventToStepRoot: string;
+};
+
+export type PayloadCountSet = {
+  readonly withdrawalCount: bigint;
+  readonly forcedTransactionCount: bigint;
+  readonly l2TransactionCount: bigint;
+  readonly depositCount: bigint;
+  readonly totalEventCount: bigint;
+  readonly transitionStepCount: bigint;
 };
 
 export type ValidationSummary = {
@@ -79,6 +91,7 @@ export type ValidationSummary = {
   readonly stateQueueOutRef: string;
   readonly headerHash: string;
   readonly rootSummary: PayloadRootSet;
+  readonly countSummary: PayloadCountSet;
   readonly l1Header: {
     readonly startTime: string;
     readonly endTime: string;

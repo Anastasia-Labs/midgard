@@ -119,6 +119,7 @@ const buildInspectionFixture = async () => {
   const fraudProofCatalogue = await buildCatalogueFixture({
     doubleSpend: contracts.doubleSpend.firstStep.spendingScriptHash,
     invalidRange: contracts.invalidRange.firstStep.spendingScriptHash,
+    transitionTrace: contracts.transitionTrace.firstStep.spendingScriptHash,
   });
   return { blueprintJson, contracts, fraudProofCatalogue };
 };
@@ -130,6 +131,8 @@ const deploymentInfoFor = (
   }: Awaited<ReturnType<typeof buildInspectionFixture>>,
   doubleSpendScriptHash = contracts.doubleSpend.firstStep.spendingScriptHash,
   invalidRangeScriptHash = contracts.invalidRange.firstStep.spendingScriptHash,
+  transitionTraceScriptHash = contracts.transitionTrace.firstStep
+    .spendingScriptHash,
 ) => ({
   referenceScriptAuthPolicy: {},
   contracts: {
@@ -144,6 +147,7 @@ const deploymentInfoFor = (
     },
     fraudProofDoubleSpend: { scriptHash: doubleSpendScriptHash },
     fraudProofInvalidRange: { scriptHash: invalidRangeScriptHash },
+    fraudProofTransitionTrace: { scriptHash: transitionTraceScriptHash },
   },
 });
 
@@ -191,6 +195,18 @@ describe("inspect-contracts", () => {
     expect(output.invalidRange.deploymentInvalidRangeMatchesFirstStep).toBe(
       true,
     );
+    expect(output.transitionTrace.categoryFirstStepHash).toBe(
+      contracts.transitionTrace.firstStep.spendingScriptHash,
+    );
+    expect(output.transitionTrace.steps.map((step) => step.name)).toEqual([
+      "proof",
+    ]);
+    expect(output.transitionTrace.deploymentTransitionTraceScriptHash).toBe(
+      contracts.transitionTrace.firstStep.spendingScriptHash,
+    );
+    expect(
+      output.transitionTrace.deploymentTransitionTraceMatchesFirstStep,
+    ).toBe(true);
     expect(output.fraudProofCatalogue.root).toBe(fraudProofCatalogue.root);
     expect(output.fraudProofCatalogue.rootMatchesDerived).toBe(true);
     expect(output.fraudProofCatalogue.doubleSpend.categoryId).toBe("00000000");
@@ -221,6 +237,22 @@ describe("inspect-contracts", () => {
       output.fraudProofCatalogue.invalidRange.membershipProofMatchesDerived,
     ).toBe(true);
     expect(output.fraudProofCatalogue.invalidRange.ready).toBe(true);
+    expect(output.fraudProofCatalogue.transitionTrace.categoryId).toBe(
+      "00000004",
+    );
+    expect(output.fraudProofCatalogue.transitionTrace.expectedCategoryId).toBe(
+      "00000004",
+    );
+    expect(
+      output.fraudProofCatalogue.transitionTrace.categoryIdMatchesExpected,
+    ).toBe(true);
+    expect(
+      output.fraudProofCatalogue.transitionTrace.scriptHashMatchesFirstStep,
+    ).toBe(true);
+    expect(
+      output.fraudProofCatalogue.transitionTrace.membershipProofMatchesDerived,
+    ).toBe(true);
+    expect(output.fraudProofCatalogue.transitionTrace.ready).toBe(true);
     expect(output.fraudProofCatalogue.initReady).toBe(true);
   });
 
@@ -240,6 +272,7 @@ describe("inspect-contracts", () => {
     );
     expect(output.fraudProofCatalogue.doubleSpend.ready).toBe(false);
     expect(output.fraudProofCatalogue.invalidRange.ready).toBe(true);
+    expect(output.fraudProofCatalogue.transitionTrace.ready).toBe(true);
     expect(output.fraudProofCatalogue.rootMatchesDerived).toBe(true);
     expect(output.fraudProofCatalogue.initReady).toBe(false);
   });

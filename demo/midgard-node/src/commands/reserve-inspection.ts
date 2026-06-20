@@ -1,5 +1,11 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import {
+  addAssets,
+  assetsEqual,
+  subtractAssets,
+  valueToAssets,
+} from "@al-ft/midgard-sdk";
+import {
   type Assets,
   Data as LucidData,
   toUnit,
@@ -16,12 +22,6 @@ import {
   MidgardContracts,
   NodeConfig,
 } from "@/services/index.js";
-import {
-  addAssets,
-  assetsEqual,
-  subtractAssets,
-  valueToAssets,
-} from "@al-ft/midgard-sdk";
 
 type ReserveUtxoSummary = {
   readonly outRef: string;

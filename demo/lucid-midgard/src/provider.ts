@@ -32,9 +32,9 @@ import {
 } from "./provider/diagnostics.js";
 import {
   isObject,
-  parseSubmitTxCanonicalCbor,
   normalizeTxIdHex,
   parseProtocolInfo,
+  parseSubmitTxCanonicalCbor,
   parseSubmitTxResult,
   parseTxStatus,
   parseUtxoResponse,

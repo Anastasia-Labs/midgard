@@ -15,9 +15,10 @@ import { describe, expect, it } from "vitest";
 import {
   AddressData,
   addressDataFromBech32,
-  buildFaultProofContracts,
   buildDoubleSpendFaultProofContracts,
+  buildFaultProofContracts,
   buildInvalidRangeFaultProofContracts,
+  buildTransitionTraceFaultProofContracts,
   DOUBLE_SPEND_FAULT_PROOF_TITLES,
   DoubleSpendStep01Datum,
   DoubleSpendStep01SpendRedeemer,
@@ -27,22 +28,23 @@ import {
   DoubleSpendStep03SpendRedeemer,
   DoubleSpendStep04Datum,
   DoubleSpendStep04SpendRedeemer,
+  FAULT_PROOF_SHARED_TITLES,
+  type FaultProofBlueprint,
   FraudProofComputationThreadRedeemer,
   FraudProofTokenMintRedeemer,
+  INVALID_RANGE_FAULT_PROOF_TITLES,
   InvalidRangeStep01Datum,
   InvalidRangeStep01SpendRedeemer,
   InvalidRangeStep02Datum,
   InvalidRangeStep02SpendRedeemer,
-  INVALID_RANGE_FAULT_PROOF_TITLES,
-  FAULT_PROOF_SHARED_TITLES,
   invalidRangeViolationReason,
   MidgardTxInputList,
   NativeTxBodyCompact,
-  normalizeNativeTxValidityRange,
   NormalizedTimeRange,
+  normalizeNativeTxValidityRange,
   parseFaultProofBlueprint,
   type Proof,
-  type FaultProofBlueprint,
+  TRANSITION_TRACE_FAULT_PROOF_TITLES,
 } from "../src/index.js";
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
@@ -107,7 +109,10 @@ const filterBlueprint = (
   };
 };
 
-const compiledScript = (blueprint: FaultProofBlueprint, title: string): string => {
+const compiledScript = (
+  blueprint: FaultProofBlueprint,
+  title: string,
+): string => {
   const validator = blueprint.validators.find((entry) => entry.title === title);
   if (validator === undefined) {
     throw new Error(`Missing validator ${title}`);
@@ -401,7 +406,7 @@ describe("double-spend fault-proof contract builder", () => {
 });
 
 describe("fault-proof contract builder", () => {
-  it("builds double-spend and invalid-range chains from the Aiken blueprint", async () => {
+  it("builds double-spend, invalid-range, and transition-trace chains from the Aiken blueprint", async () => {
     const blueprint = loadBlueprint();
 
     const contracts = await Effect.runPromise(
@@ -418,14 +423,19 @@ describe("fault-proof contract builder", () => {
       contracts.invalidRange.steps[0],
     );
     expect(contracts.invalidRange.steps).toHaveLength(2);
+    expect(contracts.transitionTrace.firstStep).toBe(
+      contracts.transitionTrace.steps[0],
+    );
+    expect(contracts.transitionTrace.steps).toHaveLength(1);
     expect(
       new Set(
         [
           ...contracts.doubleSpend.steps,
           ...contracts.invalidRange.steps,
+          ...contracts.transitionTrace.steps,
         ].map((step) => step.spendingScriptHash),
       ).size,
-    ).toBe(6);
+    ).toBe(7);
   });
 
   it("builds invalid-range with the validator parameter order from the blueprint", async () => {
@@ -511,5 +521,51 @@ describe("fault-proof contract builder", () => {
       contracts.invalidRange.steps[0],
     );
     expect(contracts.invalidRange.steps).toHaveLength(2);
+  });
+
+  it("builds transition-trace with the validator parameter order from the blueprint", async () => {
+    const blueprint = loadBlueprint();
+
+    const contracts = await Effect.runPromise(
+      buildTransitionTraceFaultProofContracts({
+        blueprint,
+        network: "Preprod",
+        hubOraclePolicyId: h28b,
+        fraudProofCataloguePolicyId: h28c,
+      }),
+    );
+
+    expect(contracts.transitionTrace.firstStep).toBe(
+      contracts.transitionTrace.steps[0],
+    );
+    expect(contracts.transitionTrace.steps).toHaveLength(1);
+
+    const fraudProofTokenAddressData = Data.from(
+      Data.to(
+        await Effect.runPromise(
+          addressDataFromBech32(contracts.fraudProof.spendingScriptAddress),
+        ),
+        AddressData,
+      ),
+    );
+    const expectedProofCbor = applyParamsToScript(
+      compiledScript(blueprint, TRANSITION_TRACE_FAULT_PROOF_TITLES.proof),
+      [
+        contracts.computationThread.policyId,
+        contracts.fraudProof.policyId,
+        fraudProofTokenAddressData,
+        h28b,
+      ],
+    );
+
+    expect(contracts.transitionTrace.steps[0].spendingScriptCBOR).toBe(
+      expectedProofCbor,
+    );
+    expect(contracts.transitionTrace.steps[0].spendingScriptHash).toBe(
+      spendingScriptHash(expectedProofCbor),
+    );
+    expect(contracts.transitionTrace.steps[0].spendingScriptAddress).toBe(
+      validatorToAddress("Preprod", spendingScript(expectedProofCbor)),
+    );
   });
 });

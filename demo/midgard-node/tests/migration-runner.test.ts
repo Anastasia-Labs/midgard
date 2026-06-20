@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { MIGRATIONS } from "@/database/migrations/index.js";
 import {
-  migrationExecutionMs,
   MigrationError,
+  migrationExecutionMs,
   splitSqlStatements,
 } from "@/database/migrations/runner.js";
 

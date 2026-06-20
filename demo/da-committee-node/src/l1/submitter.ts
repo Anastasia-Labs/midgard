@@ -198,7 +198,8 @@ export const classifyL1SubmitterUtxos = ({
   );
   const collateralCandidate = spendableUtxos
     .filter(
-      (utxo) => (utxo.assets.lovelace ?? 0n) >= requirements.minCollateralLovelace,
+      (utxo) =>
+        (utxo.assets.lovelace ?? 0n) >= requirements.minCollateralLovelace,
     )
     .sort((left, right) =>
       compareBigInt(right.assets.lovelace ?? 0n, left.assets.lovelace ?? 0n),
@@ -392,7 +393,9 @@ const staleCandidateOutRefs = async (
     return undefined;
   }
   const candidateOutRefs = utxos
-    .filter((utxo) => isPlainAdaUtxo(utxo) && !spentOutRefs?.has(outRefKey(utxo)))
+    .filter(
+      (utxo) => isPlainAdaUtxo(utxo) && !spentOutRefs?.has(outRefKey(utxo)),
+    )
     .map((utxo) => ({ txHash: utxo.txHash, outputIndex: utxo.outputIndex }));
   if (candidateOutRefs.length === 0) {
     return undefined;
@@ -456,16 +459,24 @@ const pollReadiness = async (
 ): Promise<L1SubmitterReadinessSummary> => {
   let summary = await refreshL1SubmitterPlainAdaUtxos(lucid, requirements);
   if (summary === undefined) {
-    throw new Error("L1 submitter wallet preflight requires a selectable wallet");
+    throw new Error(
+      "L1 submitter wallet preflight requires a selectable wallet",
+    );
   }
-  for (let attempt = 0; !summary.ready && attempt < requirements.retryCount; attempt += 1) {
+  for (
+    let attempt = 0;
+    !summary.ready && attempt < requirements.retryCount;
+    attempt += 1
+  ) {
     await sleep(requirements.retryDelayMs);
     const nextSummary = await refreshL1SubmitterPlainAdaUtxos(
       lucid,
       requirements,
     );
     if (nextSummary === undefined) {
-      throw new Error("L1 submitter wallet preflight requires a selectable wallet");
+      throw new Error(
+        "L1 submitter wallet preflight requires a selectable wallet",
+      );
     }
     summary = nextSummary;
   }
@@ -523,9 +534,7 @@ const preflightResult = (
   ...(extra.autoFundLovelace === undefined
     ? {}
     : { autoFundLovelace: extra.autoFundLovelace }),
-  errors:
-    extra.errors ??
-    readinessErrors(summary),
+  errors: extra.errors ?? readinessErrors(summary),
 });
 
 const readinessErrors = (
@@ -555,8 +564,9 @@ export const readL1SubmitterKeySource = async (
 ): Promise<L1SubmitterCredential> => {
   const trimmed = source.trim();
   if (trimmed.startsWith("file:")) {
-    const fromFile = (await readFile(trimmed.slice("file:".length), "utf8"))
-      .trim();
+    const fromFile = (
+      await readFile(trimmed.slice("file:".length), "utf8")
+    ).trim();
     return parseInlineCredential(fromFile);
   }
   return parseInlineCredential(trimmed);
@@ -576,10 +586,7 @@ const parseInlineCredential = (value: string): L1SubmitterCredential => {
     );
   }
   if (value.startsWith("privateKey:")) {
-    return requiredCredential(
-      "private_key",
-      value.slice("privateKey:".length),
-    );
+    return requiredCredential("private_key", value.slice("privateKey:".length));
   }
   if (value.trim().split(/\s+/).length >= 12) {
     return requiredCredential("seed", value);

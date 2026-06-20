@@ -9,16 +9,20 @@ import { Cause, Data, Effect, Option, pipe, Schedule } from "effect";
 import { parentPort, workerData } from "worker_threads";
 
 import {
+  ConfirmedLedgerDB,
   DepositsDB,
-  MempoolLedgerDB,
+  ForcedTransactionsDB,
   MempoolDB,
+  PendingBlockFinalizationsDB,
   ProcessedMempoolDB,
   TxUtils as TxTable,
   WithdrawalsDB,
 } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
+import * as Ledger from "@/database/utils/ledger.js";
 import { Columns as TxColumns } from "@/database/utils/tx.js";
 import { fetchAndInsertDepositUTxOsForCommitBarrier } from "@/fibers/fetch-and-insert-deposit-utxos.js";
+import { fetchAndInsertTxOrderUTxOsForCommitBarrier } from "@/fibers/fetch-and-insert-tx-order-utxos.js";
 import { fetchAndInsertWithdrawalUTxOsForCommitBarrier } from "@/fibers/fetch-and-insert-withdrawal-utxos.js";
 import {
   ConfigError,
@@ -39,18 +43,21 @@ import {
 } from "@/workers/commit-block-header/submission.js";
 import {
   deserializeStateQueueUTxO,
+  type SerializedStateQueueUTxO,
   WorkerInput,
   WorkerOutput,
 } from "@/workers/utils/commit-block-header.js";
+import { materializeConfirmedLedgerSnapshot } from "@/transactions/state-queue/confirmed-ledger-snapshot.js";
 import { shouldDeferCommitSubmission } from "@/workers/utils/commit-block-planner.js";
+import { shouldSkipIdleCommitBehindUnmergedTail } from "@/workers/utils/commit-block-planner.js";
 import { resolveExplicitCommitCandidateEndTimeMs } from "@/workers/utils/commit-end-time.js";
 import {
   makeMpfs,
   type MidgardMpf,
   processMpfs,
+  utxoToInsertBatchOp,
   withMpfRootTransactions,
 } from "@/workers/utils/mpf.js";
-import { shouldSkipIdleCommitBehindUnmergedTail } from "@/workers/utils/commit-block-planner.js";
 
 const EXPLICIT_COMMIT_CONFIRMATION_TIMEOUT_MS = 120_000;
 const EXPLICIT_COMMIT_CONFIRMATION_POLL_INTERVAL_MS = 5_000;
@@ -105,14 +112,95 @@ const pendingUserEventCountUpTo = (
   effectiveEndTime: Date,
 ): Effect.Effect<number, DatabaseError, Database> =>
   Effect.gen(function* () {
-    const [depositEntries, withdrawalEntries] = yield* Effect.all(
-      [
-        DepositsDB.retrievePendingHeaderEntriesUpTo(effectiveEndTime),
-        WithdrawalsDB.retrievePendingHeaderEntriesUpTo(effectiveEndTime),
-      ],
-      { concurrency: "unbounded" },
+    const [depositEntries, forcedTransactionEntries, withdrawalEntries] =
+      yield* Effect.all(
+        [
+          DepositsDB.retrievePendingHeaderEntriesUpTo(effectiveEndTime),
+          ForcedTransactionsDB.retrievePendingHeaderEntriesUpTo(
+            effectiveEndTime,
+          ),
+          WithdrawalsDB.retrievePendingHeaderEntriesUpTo(effectiveEndTime),
+        ],
+        { concurrency: "unbounded" },
+      );
+    return (
+      depositEntries.length +
+      forcedTransactionEntries.length +
+      withdrawalEntries.length
     );
-    return depositEntries.length + withdrawalEntries.length;
+  });
+
+const resolveCommitBaseLedgerEntries = (
+  availableConfirmedBlock: "" | SerializedStateQueueUTxO,
+): Effect.Effect<
+  readonly Ledger.MinimalEntry[],
+  unknown,
+  Database | NodeConfig
+> =>
+  Effect.gen(function* () {
+    const confirmedEntries = yield* ConfirmedLedgerDB.retrieve;
+    if (availableConfirmedBlock !== "") {
+      const latestBlock = yield* deserializeStateQueueUTxO(
+        availableConfirmedBlock,
+      );
+      if (latestBlock.datum.key === "Empty") {
+        yield* Effect.logInfo(
+          "🔹 Commit base state_queue tip is the confirmed-state root; using confirmed_ledger as base.",
+        );
+        if (confirmedEntries.length === 0) {
+          const nodeConfig = yield* NodeConfig;
+          const genesisEntries = yield* Effect.forEach(
+            nodeConfig.GENESIS_UTXOS,
+            (utxo) =>
+              utxoToInsertBatchOp(utxo).pipe(
+                Effect.map((op) => ({
+                  [Ledger.Columns.OUTREF]: op.key,
+                  [Ledger.Columns.OUTPUT]: op.value,
+                })),
+              ),
+          );
+          if (genesisEntries.length > 0) {
+            yield* Effect.logInfo(
+              `🔹 Commit base ledger snapshot resolved from configured genesis UTxOs (entries=${genesisEntries.length.toString()}).`,
+            );
+            return genesisEntries;
+          }
+        }
+      } else {
+        const header = yield* SDK.getHeaderFromStateQueueDatum(
+          latestBlock.datum,
+        );
+        const headerHash = yield* SDK.hashBlockHeader(header);
+        const journal = yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
+          Buffer.from(headerHash, "hex"),
+        );
+
+        if (Option.isSome(journal)) {
+          const snapshot = yield* materializeConfirmedLedgerSnapshot(
+            journal.value,
+          );
+          if (snapshot.root !== header.utxosRoot) {
+            return yield* Effect.fail(
+              new DatabaseError({
+                table: PendingBlockFinalizationsDB.tableName,
+                message:
+                  "Refusing to use pending-finalization journal as commit base because its UTxO snapshot root does not match the state-queue tip",
+                cause: `header_hash=${headerHash},journal_root=${snapshot.root},state_queue_root=${header.utxosRoot}`,
+              }),
+            );
+          }
+          yield* Effect.logInfo(
+            `🔹 Commit base ledger snapshot resolved from pending-finalization journal ${headerHash} (entries=${snapshot.entries.length.toString()}).`,
+          );
+          return snapshot.entries;
+        }
+      }
+    }
+
+    yield* Effect.logInfo(
+      `🔹 Commit base ledger snapshot resolved from confirmed_ledger (entries=${confirmedEntries.length.toString()}).`,
+    );
+    return confirmedEntries;
   });
 
 const shouldPreserveCommitMpfRoots = (output: WorkerOutput): boolean => {
@@ -243,6 +331,7 @@ export const commitExplicitBlockHeaderProgram = (
   ExplicitBlockHeaderCommitOutput,
   | SDK.StateQueueError
   | SDK.DataCoercionError
+  | SDK.HeaderTransitionCommitmentsError
   | SDK.LucidError
   | SDK.HashingError
   | TxSignError
@@ -265,6 +354,17 @@ export const commitExplicitBlockHeaderProgram = (
     const endTime = new Date(
       resolveExplicitCommitCandidateEndTimeMs(params.endTimeMs),
     );
+    const transitionCommitments =
+      yield* SDK.makeHeaderTransitionCommitmentsProgram({
+        withdrawalsRoot: params.withdrawalsRoot,
+        forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+        transactionsRoot: params.transactionsRoot,
+        depositsRoot: params.depositsRoot,
+        withdrawalCount: 0n,
+        forcedTransactionCount: 0n,
+        l2TransactionCount: 0n,
+        depositCount: 0n,
+      });
     const { newHeaderHash, blockEndTimeMs, signAndSubmitProgram, txSize } =
       yield* buildUnsignedCommitTx(
         contracts,
@@ -273,6 +373,7 @@ export const commitExplicitBlockHeaderProgram = (
         params.transactionsRoot,
         params.depositsRoot,
         params.withdrawalsRoot,
+        transitionCommitments,
         endTime,
       );
 
@@ -315,7 +416,6 @@ const databaseOperationsProgram = (
 > =>
   Effect.gen(function* () {
     const mempoolTxs = yield* MempoolDB.retrieve;
-    const initialLedgerEntries = yield* MempoolLedgerDB.retrieve;
     const currentBlockStartTime = new Date(
       workerInput.data.currentBlockStartTimeMs,
     );
@@ -334,11 +434,17 @@ const databaseOperationsProgram = (
       yield* fetchAndInsertWithdrawalUTxOsForCommitBarrier(
         depositIngestionBarrierTime,
       );
-    const userEventOnlyEndTime =
-      depositIngestionBarrierTime.getTime() <=
-      withdrawalIngestionBarrierTime.getTime()
-        ? depositIngestionBarrierTime
-        : withdrawalIngestionBarrierTime;
+    const txOrderIngestionBarrierTime =
+      yield* fetchAndInsertTxOrderUTxOsForCommitBarrier(
+        withdrawalIngestionBarrierTime,
+      );
+    const userEventOnlyEndTime = [
+      depositIngestionBarrierTime,
+      withdrawalIngestionBarrierTime,
+      txOrderIngestionBarrierTime,
+    ].reduce((earliest, candidate) =>
+      candidate.getTime() < earliest.getTime() ? candidate : earliest,
+    );
 
     const availableConfirmedBlock = workerInput.data.availableConfirmedBlock;
     const availableLocalFinalizationBlock =
@@ -379,9 +485,8 @@ const databaseOperationsProgram = (
       });
     }
 
-    const pendingUserEventCount = yield* pendingUserEventCountUpTo(
-      userEventOnlyEndTime,
-    );
+    const pendingUserEventCount =
+      yield* pendingUserEventCountUpTo(userEventOnlyEndTime);
     if (
       shouldSkipIdleCommitBehindUnmergedTail({
         localFinalizationPending: workerInput.data.localFinalizationPending,
@@ -402,6 +507,9 @@ const databaseOperationsProgram = (
 
     const canBuildOnConfirmedBlock =
       hasAvailableConfirmedBlock && !workerInput.data.localFinalizationPending;
+    const initialLedgerEntries = yield* resolveCommitBaseLedgerEntries(
+      availableConfirmedBlock,
+    );
     const processed = yield* processMpfs(
       ledgerMpf,
       transactionsMpf,
@@ -417,6 +525,9 @@ const databaseOperationsProgram = (
         withdrawalVisibilityBarrierTime: canBuildOnConfirmedBlock
           ? withdrawalIngestionBarrierTime
           : undefined,
+        txOrderVisibilityBarrierTime: canBuildOnConfirmedBlock
+          ? txOrderIngestionBarrierTime
+          : undefined,
         depositOnlyEndTime: canBuildOnConfirmedBlock
           ? userEventOnlyEndTime
           : undefined,
@@ -427,11 +538,19 @@ const databaseOperationsProgram = (
     const {
       utxoRoot,
       txRoot,
+      transitionTraceRoot,
+      eventToStepRoot,
+      transitionTraceMembers,
+      eventToStepMembers,
+      transitionStepCount,
       utxoPayloadEntries,
       rejectedMempoolTxsCount,
       includedDepositEntriesCount,
       includedDepositEntries,
       includedDepositEventIds,
+      includedForcedTransactionEntriesCount,
+      includedForcedTransactionEntries,
+      includedForcedTransactionEventIds,
       includedWithdrawalEntriesCount,
       includedWithdrawalEntries,
       includedWithdrawalEventIds,
@@ -476,6 +595,11 @@ const databaseOperationsProgram = (
         `🔹 Commitment pre-state includes ${includedWithdrawalEntriesCount} due withdrawal event(s).`,
       );
     }
+    if (includedForcedTransactionEntriesCount > 0) {
+      yield* Effect.logInfo(
+        `🔹 Commitment source set includes ${includedForcedTransactionEntriesCount} due tx-order event(s).`,
+      );
+    }
 
     const mempoolTxsCount = processedMempoolTxs.length;
     const optEndTime: Option.Option<Date> =
@@ -516,11 +640,18 @@ const databaseOperationsProgram = (
           endTime: userEventOnlyEndTime,
           includedDepositEntries,
           includedDepositEventIds,
+          includedForcedTransactionEntries,
+          includedForcedTransactionEventIds,
           includedWithdrawalEntries,
           includedWithdrawalEventIds,
           workerInput,
           utxoRoot,
           txRoot,
+          transitionTraceRoot,
+          eventToStepRoot,
+          transitionTraceMembers,
+          eventToStepMembers,
+          transitionStepCount,
           utxoPayloadEntries,
         });
       } else {
@@ -536,10 +667,17 @@ const databaseOperationsProgram = (
           endTime,
           includedDepositEntries,
           includedDepositEventIds,
+          includedForcedTransactionEntries,
+          includedForcedTransactionEventIds,
           includedWithdrawalEntries,
           includedWithdrawalEventIds,
           utxoRoot,
           txRoot,
+          transitionTraceRoot,
+          eventToStepRoot,
+          transitionTraceMembers,
+          eventToStepMembers,
+          transitionStepCount,
           utxoPayloadEntries,
           transactionsMpf,
           processedMempoolTxs,

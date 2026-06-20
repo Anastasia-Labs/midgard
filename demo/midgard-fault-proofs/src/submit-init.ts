@@ -41,6 +41,7 @@ import {
   resolveFraudulentHeaderHash,
   resolveInvalidRangeDeploymentContracts,
   resolveProverSigner,
+  resolveTransitionTraceDeploymentContracts,
   type SubmitProviderConfig,
 } from "./runtime.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
@@ -59,7 +60,10 @@ export type SubmitInitCliConfig = SubmitProviderConfig &
     readonly awaitConfirmation?: boolean;
   };
 
-export type SubmitInitFraudCategory = "doubleSpend" | "invalidRange";
+export type SubmitInitFraudCategory =
+  | "doubleSpend"
+  | "invalidRange"
+  | "transitionTrace";
 
 export type SubmitInitResult = {
   readonly txHash: string;
@@ -90,8 +94,16 @@ const requireFraudProofCatalogue = (deploymentInfo: ContractDeploymentInfo) => {
   return catalogue;
 };
 
-const fraudCategoryLabel = (category: SubmitInitFraudCategory): string =>
-  category === "doubleSpend" ? "double-spend" : "invalid-range";
+const fraudCategoryLabel = (category: SubmitInitFraudCategory): string => {
+  switch (category) {
+    case "doubleSpend":
+      return "double-spend";
+    case "invalidRange":
+      return "invalid-range";
+    case "transitionTrace":
+      return "transition-trace";
+  }
+};
 
 const encodePhasMembershipRedeemer = ({
   root,
@@ -166,7 +178,7 @@ export const submitInit = async ({
       resolvedDeployment.contracts.doubleSpend.firstStep.spendingScriptAddress;
     firstStepHash =
       resolvedDeployment.contracts.doubleSpend.firstStep.spendingScriptHash;
-  } else {
+  } else if (fraudCategory === "invalidRange") {
     const resolvedDeployment = await resolveInvalidRangeDeploymentContracts({
       blueprint,
       deploymentInfo,
@@ -183,6 +195,24 @@ export const submitInit = async ({
       resolvedDeployment.contracts.invalidRange.firstStep.spendingScriptAddress;
     firstStepHash =
       resolvedDeployment.contracts.invalidRange.firstStep.spendingScriptHash;
+  } else {
+    const resolvedDeployment = await resolveTransitionTraceDeploymentContracts({
+      blueprint,
+      deploymentInfo,
+      network,
+      requireStateQueueMint: true,
+    });
+    category = resolvedDeployment.transitionTraceCategory;
+    stateQueuePolicyId = resolvedDeployment.stateQueuePolicyId!;
+    computationThreadPolicyId =
+      resolvedDeployment.contracts.computationThread.policyId;
+    computationThreadMintingScript =
+      resolvedDeployment.contracts.computationThread.mintingScript;
+    firstStepAddress =
+      resolvedDeployment.contracts.transitionTrace.firstStep
+        .spendingScriptAddress;
+    firstStepHash =
+      resolvedDeployment.contracts.transitionTrace.firstStep.spendingScriptHash;
   }
   const fraudProofCataloguePolicyId = requireDeploymentScriptHash(
     parsedDeploymentInfo,
@@ -295,10 +325,10 @@ export const submitInit = async ({
             `${fraudCategoryLabel(fraudCategory)} init fraud-proof catalogue`,
           ),
           inclusion_proof_script_redeemer_index: requireWithdrawalRedeemerIndex(
-              ctx,
-              phasRewardAddress,
-              `${fraudCategoryLabel(fraudCategory)} init PHAS membership`,
-            ),
+            ctx,
+            phasRewardAddress,
+            `${fraudCategoryLabel(fraudCategory)} init PHAS membership`,
+          ),
           hub_oracle_ref_input_index: requireReferenceInputIndex(
             ctx,
             hubOracleUtxo,

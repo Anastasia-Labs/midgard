@@ -1,6 +1,6 @@
+import { spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
 import { mkdir } from "node:fs/promises";
-import { spawn } from "node:child_process";
 import { dirname } from "node:path";
 
 export const E2E_STEP_SCHEMA_VERSION = "midgard-e2e-step-v1";

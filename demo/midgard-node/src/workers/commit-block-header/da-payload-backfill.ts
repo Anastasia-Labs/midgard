@@ -1,12 +1,8 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import * as SDK from "@al-ft/midgard-sdk";
+import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
-import {
-  DaPayloadsDB,
-  MempoolLedgerDB,
-  PendingBlockFinalizationsDB,
-} from "@/database/index.js";
+import { DaPayloadsDB, PendingBlockFinalizationsDB } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { type Database } from "@/services/database.js";
 import { buildDaPayloadInsert } from "@/workers/commit-block-header/da-payload.js";
@@ -31,11 +27,6 @@ type BackfillDeps<R> = {
     DatabaseError,
     R
   >;
-  readonly retrieveUtxos: Effect.Effect<
-    readonly MempoolLedgerDB.EntryWithTimeStamp[],
-    DatabaseError,
-    R
-  >;
   readonly upsertAvailable: (
     input: DaPayloadsDB.InsertInput,
   ) => Effect.Effect<void, DatabaseError, R>;
@@ -44,7 +35,6 @@ type BackfillDeps<R> = {
 const defaultDeps: BackfillDeps<Database> = {
   retrieveMissingRecords:
     PendingBlockFinalizationsDB.retrieveFinalizedMissingDaPayloads,
-  retrieveUtxos: MempoolLedgerDB.retrieve,
   upsertAvailable: DaPayloadsDB.upsertAvailable,
 };
 
@@ -65,9 +55,34 @@ const hasIncompletePayload = (
 const journalHasIncompletePayloads = (
   record: PendingBlockFinalizationsDB.Record,
 ): boolean =>
-  [record.txMembers, record.depositMembers, record.withdrawalMembers].some(
-    hasIncompletePayload,
-  );
+  record[PendingBlockFinalizationsDB.Columns.HEADER_CBOR].length <= 0 ||
+  (record.utxoMembers.length === 0 &&
+    record[PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT] !==
+      EMPTY_MERKLE_TREE_ROOT) ||
+  [
+    record.txMembers,
+    record.depositMembers,
+    record.forcedTransactionMembers,
+    record.withdrawalMembers,
+    record.transitionTraceMembers,
+    record.eventToStepMembers,
+  ].some(hasIncompletePayload) ||
+  BigInt(record.withdrawalMembers.length) !==
+    record[PendingBlockFinalizationsDB.Columns.EXPECTED_WITHDRAWAL_COUNT] ||
+  BigInt(record.forcedTransactionMembers.length) !==
+    record[
+      PendingBlockFinalizationsDB.Columns.EXPECTED_FORCED_TRANSACTION_COUNT
+    ] ||
+  BigInt(record.txMembers.length) !==
+    record[PendingBlockFinalizationsDB.Columns.EXPECTED_L2_TRANSACTION_COUNT] ||
+  BigInt(record.depositMembers.length) !==
+    record[PendingBlockFinalizationsDB.Columns.EXPECTED_DEPOSIT_COUNT] ||
+  BigInt(record.transitionTraceMembers.length) !==
+    record[
+      PendingBlockFinalizationsDB.Columns.EXPECTED_TRANSITION_STEP_COUNT
+    ] ||
+  BigInt(record.eventToStepMembers.length) !==
+    record[PendingBlockFinalizationsDB.Columns.EXPECTED_TRANSITION_STEP_COUNT];
 
 export const backfillMissingDaPayloadsFromFinalizedJournals = <R = Database>({
   headerHash,
@@ -86,7 +101,6 @@ export const backfillMissingDaPayloadsFromFinalizedJournals = <R = Database>({
       return { scanned: 0, backfilled, skipped };
     }
 
-    let legacyUtxos: readonly MempoolLedgerDB.EntryWithTimeStamp[] | undefined;
     for (const record of records) {
       const header = headerHashHex(record);
       if (journalHasIncompletePayloads(record)) {
@@ -99,16 +113,8 @@ export const backfillMissingDaPayloadsFromFinalizedJournals = <R = Database>({
 
       const result = yield* Effect.either(
         Effect.gen(function* () {
-          const needsLegacyUtxos =
-            record.utxoMembers.length === 0 &&
-            record[PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT] !==
-              SDK.EMPTY_MERKLE_TREE_ROOT;
-          if (needsLegacyUtxos && legacyUtxos === undefined) {
-            legacyUtxos = yield* deps.retrieveUtxos;
-          }
           const insert = yield* buildDaPayloadInsert({
             record,
-            ...(needsLegacyUtxos ? { utxos: legacyUtxos ?? [] } : {}),
           });
           yield* deps.upsertAvailable(insert);
         }),

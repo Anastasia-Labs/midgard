@@ -7,8 +7,9 @@ import {
   normalizeAssets,
   subtractAssetsDelta as subtractAssets,
 } from "@al-ft/midgard-core/assets";
-import * as SDK from "@/reserve-payout/primitives.js";
 import type { Assets, UTxO } from "@lucid-evolution/lucid";
+
+import * as SDK from "@/reserve-payout/primitives.js";
 
 export {
   addAssets,

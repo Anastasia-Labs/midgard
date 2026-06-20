@@ -1,12 +1,12 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import { Network, UTxO, walletFromSeed } from "@lucid-evolution/lucid";
-import { Config, Context, Data, Effect, Layer } from "effect";
-
-import { validateRetentionDays } from "@/database/retention-policy.js";
 import {
   REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS,
   REFERENCE_SCRIPT_AUTH_TIMELOCK_MS,
 } from "@al-ft/midgard-sdk";
+import { Network, UTxO, walletFromSeed } from "@lucid-evolution/lucid";
+import { Config, Context, Data, Effect, Layer } from "effect";
+
+import { validateRetentionDays } from "@/database/retention-policy.js";
 
 /**
  * Configuration loading for the Midgard node process.

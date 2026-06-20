@@ -1,6 +1,5 @@
-import { Duration, Effect } from "effect";
-
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import { Duration, Effect } from "effect";
 
 export type ProviderRetryOptions = {
   readonly maxAttempts: number;

@@ -181,7 +181,7 @@ export const utxosProgram = (
   Database
 > =>
   Effect.gen(function* () {
-    const entries = yield* MempoolLedgerDB.retrieveByAddress(address);
+    const entries = yield* MempoolLedgerDB.retrieveSpendableByAddress(address);
     const decoded = yield* Effect.forEach(entries, decodeStoredUtxo);
     const utxos = [...decoded].sort(compareOutRefs);
 
@@ -204,6 +204,7 @@ export const utxosByTxOutRefsProgram = (
     if (txOutRefs.length === 0) {
       return [];
     }
-    const entries = yield* MempoolLedgerDB.retrieveByTxOutRefs(txOutRefs);
+    const entries =
+      yield* MempoolLedgerDB.retrieveSpendableByTxOutRefs(txOutRefs);
     return orderStoredUtxosByOutRef(txOutRefs, entries);
   });

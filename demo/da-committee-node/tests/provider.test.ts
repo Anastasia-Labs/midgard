@@ -1,5 +1,5 @@
-import { Data } from "@lucid-evolution/lucid";
 import * as SDK from "@al-ft/midgard-sdk";
+import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -46,8 +46,9 @@ describe("L1 provider adapters", () => {
         address: "addr_test1statequeue",
         assets: {
           lovelace: 5_000_000n,
-          ["11".repeat(28) + SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + headerHash]:
-            1n,
+          ["11".repeat(28) +
+          SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX +
+          headerHash]: 1n,
         },
         datum: SDK.encodeLinkedListNodeView(datum),
       },

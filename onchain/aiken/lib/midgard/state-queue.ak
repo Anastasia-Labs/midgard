@@ -5,8 +5,8 @@ use aiken_design_patterns/linked_list
 use cardano/assets.{AssetName, PolicyId}
 use cardano/transaction.{Input, Output, OutputReference}
 use midgard/ledger_state.{
-  ConfirmedState, DepositsRoot, Header, HeaderHash, MidgardTxsRoot,
-  WithdrawalsRoot,
+  ConfirmedState, DepositsRoot, EventToStepRoot, ForcedTransactionsRoot, Header,
+  HeaderHash, MidgardTxsRoot, TransitionTraceRoot, WithdrawalsRoot,
 }
 
 /// TODO: It might be better to be space-conscious and use an empty name.
@@ -77,9 +77,18 @@ pub type MintRedeemer {
     confirmed_state_input_outref: OutputReference,
     confirmed_state_output_index: Int,
     m_settlement_redeemer_index: Option<Int>,
+    merged_block_withdrawals_root: WithdrawalsRoot,
+    merged_block_forced_transactions_root: ForcedTransactionsRoot,
     merged_block_transactions_root: MidgardTxsRoot,
     merged_block_deposits_root: DepositsRoot,
-    merged_block_withdrawals_root: WithdrawalsRoot,
+    merged_block_transition_trace_root: TransitionTraceRoot,
+    merged_block_event_to_step_root: EventToStepRoot,
+    merged_block_withdrawal_count: Int,
+    merged_block_forced_transaction_count: Int,
+    merged_block_l2_transaction_count: Int,
+    merged_block_deposit_count: Int,
+    merged_block_total_event_count: Int,
+    merged_block_transition_step_count: Int,
   }
   RemoveFraudulentBlockHeader {
     fraudulent_operator: VerificationKeyHash,

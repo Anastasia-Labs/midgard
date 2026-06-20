@@ -69,7 +69,11 @@ export class DaPayloadClient {
   ): Promise<DaPayloadCandidatesResult> {
     const attempts: {
       readonly endpoint: string;
-      readonly status: "http_error" | "not_found" | "timeout" | "invalid_content";
+      readonly status:
+        | "http_error"
+        | "not_found"
+        | "timeout"
+        | "invalid_content";
       readonly detail: string;
     }[] = [];
     const candidates: DaPayloadCandidate[] = [];
@@ -170,7 +174,9 @@ export class DaPayloadClient {
 
 const endpointUrl = (endpoint: string, pathAndQuery: string): string => {
   const base = endpoint.endsWith("/") ? endpoint : `${endpoint}/`;
-  const path = pathAndQuery.startsWith("/") ? pathAndQuery.slice(1) : pathAndQuery;
+  const path = pathAndQuery.startsWith("/")
+    ? pathAndQuery.slice(1)
+    : pathAndQuery;
   return new URL(path, base).toString();
 };
 

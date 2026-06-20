@@ -1,7 +1,8 @@
+import type { AttestationCoordinator } from "../coordinator/coordinator.js";
 import type { DaPeerConfig, DaSignatureRecord } from "../domain.js";
+import { jsonBigIntStringReplacer } from "../json.js";
 import type { DaSigner, DaSignerValidation } from "../signer.js";
 import type { WatcherStore } from "../store.js";
-import type { AttestationCoordinator } from "../coordinator/coordinator.js";
 import { signPeerRequest } from "./auth.js";
 import {
   PeerSignaturePoller,
@@ -141,7 +142,10 @@ export class PeerSignatureCoordinator implements AttestationCoordinator {
       this.deps.deploymentFingerprint,
     )}/headers/${record.headerHash}/signatures`;
     const url = `${peer.baseUrl}${pathAndSearch}`;
-    const body = Buffer.from(JSON.stringify(record), "utf8");
+    const body = Buffer.from(
+      JSON.stringify(record, jsonBigIntStringReplacer),
+      "utf8",
+    );
     const headers = {
       "content-type": "application/json",
       ...signPeerRequest({
@@ -161,7 +165,9 @@ export class PeerSignatureCoordinator implements AttestationCoordinator {
         signal: AbortSignal.timeout(this.deps.requestTimeoutMs),
       });
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status.toString()}: ${await response.text()}`);
+        throw new Error(
+          `HTTP ${response.status.toString()}: ${await response.text()}`,
+        );
       }
       await this.deps.store.savePeerBroadcast({
         deploymentFingerprint: record.deploymentFingerprint,

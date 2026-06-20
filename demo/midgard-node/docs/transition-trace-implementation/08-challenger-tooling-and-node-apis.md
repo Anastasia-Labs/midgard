@@ -31,7 +31,8 @@ Node/DA APIs:
 - `demo/midgard-node/src/workers/commit-block-header/da-payload.ts`
 - `demo/midgard-node/src/database/daPayloads.ts`
 - `demo/da-committee-node/src/`
-- Any libp2p payload exchange module used by production DA.
+- DA committee retained-payload routes keyed by deployment fingerprint and
+  `header_hash`.
 
 CLI and tests:
 
@@ -94,8 +95,8 @@ new proof token.
 
 - Production DA must not depend on the operator's HTTP endpoint as the only
   data source.
-- Local debug endpoints may exist, but tests should exercise the production DA
-  path where possible.
+- Local debug endpoints may exist, but tests should exercise the DA committee
+  retained-payload path where possible.
 - Detection should be deterministic and explain which invariant failed.
 - Avoid hiding proof-builder failures behind broad catch-all errors; challenger
   diagnostics need to be precise.
@@ -126,4 +127,3 @@ cd demo && pnpm run typecheck
 - Transition-trace proof submission reuses the canonical fraudulent block
   removal lifecycle.
 - Error reporting is precise enough to diagnose which invariant failed.
-

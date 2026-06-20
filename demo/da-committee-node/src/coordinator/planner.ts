@@ -19,7 +19,11 @@ export type CoordinatorAction =
       readonly headerHash: string;
       readonly candidateOutRef: string;
     }
-  | { readonly kind: "wait"; readonly headerHash: string; readonly reason: string };
+  | {
+      readonly kind: "wait";
+      readonly headerHash: string;
+      readonly reason: string;
+    };
 
 export type CoordinatorPlanInput = {
   readonly headerHash: string;
@@ -72,7 +76,8 @@ export const planDaAttestationLifecycle = (
   }
   if (
     input.requireThresholdWitnesses === true &&
-    candidate.attestationCount + uniqueWitnessCount({ witnessHexes: witnessesToAdd }) <
+    candidate.attestationCount +
+      uniqueWitnessCount({ witnessHexes: witnessesToAdd }) <
       input.threshold
   ) {
     return {

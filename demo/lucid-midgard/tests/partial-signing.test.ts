@@ -33,9 +33,7 @@ const makeOutRef = (byte: number, outputIndex = 0): OutRef => ({
   outputIndex,
 });
 
-const addressFromKeyHash = (
-  keyHash: CML.Ed25519KeyHash,
-): string =>
+const addressFromKeyHash = (keyHash: CML.Ed25519KeyHash): string =>
   CML.EnterpriseAddress.new(0, CML.Credential.new_pub_key(keyHash))
     .to_address()
     .to_bech32();

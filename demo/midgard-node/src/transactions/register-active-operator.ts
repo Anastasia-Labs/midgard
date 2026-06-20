@@ -5,6 +5,15 @@
  */
 import * as SDK from "@al-ft/midgard-sdk";
 import {
+  activateLayoutToLogString,
+  activeAppendAnchorWitness,
+  getAssetNameByPolicy,
+  nodeKeyEquals,
+  type NodeWithDatum,
+  orderedNotMemberWitness,
+  registerLayoutToLogString,
+} from "@al-ft/midgard-sdk";
+import {
   Constr as LucidConstr,
   credentialToAddress,
   Data as LucidData,
@@ -29,15 +38,6 @@ import {
   currentTimeMsForLucidOrEmulatorFallback,
   resolveCurrentTimeMs,
 } from "@/transactions/register-active-operator/clock.js";
-import {
-  activateLayoutToLogString,
-  activeAppendAnchorWitness,
-  getAssetNameByPolicy,
-  nodeKeyEquals,
-  type NodeWithDatum,
-  orderedNotMemberWitness,
-  registerLayoutToLogString,
-} from "@al-ft/midgard-sdk";
 import {
   handleSignSubmit,
   TxConfirmError,

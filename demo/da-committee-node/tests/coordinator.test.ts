@@ -1,10 +1,11 @@
+import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
+import { OnChainLifecycleCoordinator } from "../src/coordinator/on-chain.js";
 import {
   planDaAttestationLifecycle,
   usableCandidatesFor,
 } from "../src/coordinator/planner.js";
-import { OnChainLifecycleCoordinator } from "../src/coordinator/on-chain.js";
 import {
   isSignerBitSet,
   packSortedSignatureWitnesses,
@@ -91,7 +92,10 @@ describe("coordinator witness and candidate planning", () => {
   });
 
   it("selects threshold candidates for apply and filters stale/foreign candidates", () => {
-    const usable = candidateRecord({ attestationCount: 2, status: "threshold" });
+    const usable = candidateRecord({
+      attestationCount: 2,
+      status: "threshold",
+    });
     const stale = candidateRecord({
       attestationCount: 100,
       status: "stale",
@@ -130,7 +134,8 @@ describe("coordinator witness and candidate planning", () => {
     const coordinator = new OnChainLifecycleCoordinator({
       threshold: 2,
       chainReader: {
-        fetchDaAttestationCandidates: async () => candidateResponses.shift() ?? [],
+        fetchDaAttestationCandidates: async () =>
+          candidateResponses.shift() ?? [],
       },
       recordSubmission: async (record) => {
         submissions.push(
@@ -194,9 +199,7 @@ describe("coordinator witness and candidate planning", () => {
           throw new Error("unexpected init");
         },
         addSignatures: async ({ packedWitnessesHex, signerIndexes }) => {
-          calls.push(
-            `add:${signerIndexes.join(",")}:${packedWitnessesHex}`,
-          );
+          calls.push(`add:${signerIndexes.join(",")}:${packedWitnessesHex}`);
           return "addTx";
         },
         applyAttestation: async ({ candidate }) => {
@@ -517,7 +520,7 @@ const signatureRecord = (): DaSignatureRecord => ({
   broadcastStatus: "local",
   l1ChainPoint: {},
   validation: {
-    payloadVersion: 1,
+    payloadVersion: Number(SDK.DA_PAYLOAD_V2_VERSION),
     rootsMatch: true,
     stateQueueOutRef: "state#0",
     headerHash: "01".repeat(28),
@@ -526,6 +529,17 @@ const signatureRecord = (): DaSignatureRecord => ({
       transactionsRoot: "00".repeat(32),
       depositsRoot: "00".repeat(32),
       withdrawalsRoot: "00".repeat(32),
+      forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      transitionTraceRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      eventToStepRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    },
+    countSummary: {
+      withdrawalCount: 0n,
+      forcedTransactionCount: 0n,
+      l2TransactionCount: 0n,
+      depositCount: 0n,
+      totalEventCount: 0n,
+      transitionStepCount: 0n,
     },
     l1Header: {
       startTime: "1",

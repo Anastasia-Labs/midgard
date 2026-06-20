@@ -29,6 +29,8 @@ import {
   blockConfirmationFiber,
   fetchAndInsertDepositUTxOs,
   fetchAndInsertDepositUTxOsFiber,
+  fetchAndInsertTxOrderUTxOs,
+  fetchAndInsertTxOrderUTxOsFiber,
   fetchAndInsertWithdrawalUTxOs,
   fetchAndInsertWithdrawalUTxOsFiber,
   mergeFiber,
@@ -214,6 +216,20 @@ export const runNode = (
           }),
       ),
     );
+    yield* runStartupProviderStepWithRetry(
+      "Startup tx-order catch-up",
+      fetchAndInsertTxOrderUTxOs,
+      startupProviderRetry,
+    ).pipe(
+      Effect.tapError(logStartupFailure("Startup tx-order catch-up failed")),
+      Effect.mapError(
+        (e) =>
+          new DatabaseInitializationError({
+            message: "Startup tx-order catch-up failed",
+            cause: e,
+          }),
+      ),
+    );
     yield* backfillMissingDaPayloadsFromFinalizedJournals({ limit: 100 }).pipe(
       Effect.tap((summary) =>
         summary.scanned === 0
@@ -280,6 +296,9 @@ export const runNode = (
           mkSchedule(nodeConfig.WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES),
         ),
         fetchAndInsertWithdrawalUTxOsFiber(
+          mkSchedule(nodeConfig.WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES),
+        ),
+        fetchAndInsertTxOrderUTxOsFiber(
           mkSchedule(nodeConfig.WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES),
         ),
         projectDepositsToMempoolLedgerFiber(

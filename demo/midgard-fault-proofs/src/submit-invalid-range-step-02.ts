@@ -29,8 +29,8 @@ import {
   outRefLabel,
   parseOutRef,
   readJsonFile,
-  resolveInvalidRangeDeploymentContracts,
   type ResolvedProverSigner,
+  resolveInvalidRangeDeploymentContracts,
   resolveProverSigner,
   type SubmitProviderConfig,
 } from "./runtime.js";
@@ -392,8 +392,7 @@ export const submitInvalidRangeStep02 = async ({
     secondStepAddress: contracts.invalidRange.steps[1].spendingScriptAddress,
     blockValidFrom: inputDatum.data.block_valid_from,
     blockValidTo: inputDatum.data.block_valid_to,
-    normalizedValidityRange:
-      inputDatum.data.bad_tx_normalized_validity_range,
+    normalizedValidityRange: inputDatum.data.bad_tx_normalized_validity_range,
     violationReason,
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),

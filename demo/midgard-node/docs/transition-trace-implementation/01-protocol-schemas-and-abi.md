@@ -72,9 +72,9 @@ HeaderV2 {
 
   start_time
   end_time
-  protocol_version
   prev_header_hash
   operator_vkey
+  protocol_version
 }
 ```
 
@@ -152,17 +152,27 @@ result commitments to the base step.
 Define the forced transaction source-root value:
 
 ```text
+TxOrderEvent = (TxOrderId, MidgardTxCompactWithoutValidity)
+
+MidgardTxCompactWithoutValidity {
+  body
+  wits
+}
+
 ForcedInclusionTx {
-  tx_order_id
-  tx_id
-  tx_compact
+  tx_compact: MidgardTxCompactWithoutValidity
   operator_validity
-  inclusion_time
 }
 ```
 
-`tx_order_id` is the L1 order identity, expected to align with the order UTxO
-output reference. `tx_id` is the L2 transaction id.
+`tx_order_id` is the L1 order identity and is the map key, not a repeated value
+field. `tx_id` is derived from `tx_compact.body` when needed. The transaction
+validity range is part of the compact body; do not introduce an `inclusion_time`
+field for forced transactions.
+
+`TxOrderEvent` is the validity-free L1 order payload. `ForcedInclusionTx` is the
+block source-root value after the operator has added its challengeable validity
+classification.
 
 ## Implementation Notes
 
@@ -196,4 +206,3 @@ output reference. `tx_id` is the L2 transaction id.
 - The old header shape is no longer used in production commit paths.
 - The spec has the same field names, phase names, and count invariants as the
   code.
-

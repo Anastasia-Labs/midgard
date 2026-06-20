@@ -14,8 +14,8 @@ import {
   deriveMidgardNativeTxBodyCompact,
   deriveMidgardNativeTxWitnessSetCompact,
   encodeMidgardNativeTxBodyCompact,
-  encodeMidgardNativeTxCompact,
   encodeMidgardNativeTxCanonical,
+  encodeMidgardNativeTxCompact,
   encodeMidgardNativeTxWitnessSetCompact,
 } from "@al-ft/midgard-core/codec";
 import { describe, expect, it } from "vitest";

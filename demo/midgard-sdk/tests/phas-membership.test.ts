@@ -16,9 +16,9 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildPhasMembershipRewardRegistrationTxProgram,
   parsePhasMembershipBlueprint,
+  PHAS_MEMBERSHIP_WITHDRAWAL_VALIDATOR_TITLE,
   phasMembershipIdentity,
   phasMembershipWithdrawalScriptFromBlueprint,
-  PHAS_MEMBERSHIP_WITHDRAWAL_VALIDATOR_TITLE,
   UnspecifiedNetworkError,
 } from "../src/index.js";
 

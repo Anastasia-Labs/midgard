@@ -1,11 +1,7 @@
 import { readFile } from "node:fs/promises";
 
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  Lucid,
-  type LucidEvolution,
-  type UTxO,
-} from "@lucid-evolution/lucid";
+import { Lucid, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import * as LucidRuntime from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -155,7 +151,8 @@ export const stateQueueUtxosToObservedNodes = async (
 
 export const providerFromConfig = async (
   config: WatcherConfig,
-): Promise<StateQueueProvider> => providerFromUrls(config.cardanoProviderUrls, config);
+): Promise<StateQueueProvider> =>
+  providerFromUrls(config.cardanoProviderUrls, config);
 
 export const providerFromUrls = async (
   urls: readonly string[],
@@ -167,7 +164,9 @@ export const providerFromUrls = async (
   if (urls.length === 0) {
     throw new Error("at least one CARDANO_PROVIDER_URLS entry is required");
   }
-  const providers = await Promise.all(urls.map((url) => providerFromUrl(url, config)));
+  const providers = await Promise.all(
+    urls.map((url) => providerFromUrl(url, config)),
+  );
   return providers.length === 1
     ? providers[0]!
     : new MultiStateQueueProvider(providers);
@@ -213,7 +212,10 @@ export const providerFromUrl = async (
       stateQueueAddress: config.stateQueueAddress,
       stateQueuePolicyId: config.stateQueuePolicyId,
       providerSource: `kupmios:${kupoUrl}|${ogmiosUrl}`,
-      chainPointResolver: kupoChainPointResolver(kupoUrl, config.stateQueueAddress),
+      chainPointResolver: kupoChainPointResolver(
+        kupoUrl,
+        config.stateQueueAddress,
+      ),
     });
   }
   throw new Error(
@@ -247,7 +249,9 @@ const parseKupmiosUrl = (
   const raw = value.slice("kupmios:".length);
   const [kupoUrl, ogmiosUrl] = raw.split("|");
   if (kupoUrl === undefined || ogmiosUrl === undefined) {
-    throw new Error("kupmios provider URL must be kupmios:<kupo-url>|<ogmios-url>");
+    throw new Error(
+      "kupmios provider URL must be kupmios:<kupo-url>|<ogmios-url>",
+    );
   }
   return { kupoUrl, ogmiosUrl };
 };
@@ -335,7 +339,11 @@ const blockfrostChainPointResolver =
   async (utxo: UTxO): Promise<ChainPoint> => {
     const [tx, latest] = await Promise.all([
       blockfrostJson<BlockfrostTx>(apiUrl, projectId, `/txs/${utxo.txHash}`),
-      blockfrostJson<BlockfrostLatestBlock>(apiUrl, projectId, "/blocks/latest"),
+      blockfrostJson<BlockfrostLatestBlock>(
+        apiUrl,
+        projectId,
+        "/blocks/latest",
+      ),
     ]);
     const blockHeight = tx.block_height;
     const latestHeight = latest.height;

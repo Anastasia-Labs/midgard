@@ -15,15 +15,15 @@ import {
   ActiveOperatorMintRedeemer,
 } from "@/active-operators.js";
 import {
-  DaParamsDatum,
-  daParamsUnit,
-  type DaParamsDatum as DaParamsDatumType,
-} from "@/da-attestation.js";
-import {
   Bech32DeserializationError,
   MidgardValidators,
   UnspecifiedNetworkError,
 } from "@/common.js";
+import {
+  DaParamsDatum,
+  type DaParamsDatum as DaParamsDatumType,
+  daParamsUnit,
+} from "@/da-attestation.js";
 import {
   FRAUD_PROOF_CATALOGUE_ASSET_NAME,
   FraudProofCatalogueDatum,
@@ -94,10 +94,7 @@ const encodeLinkedListRootDatum = (
 
 // Atomic initialization appends protocol root outputs in a fixed order before
 // wallet change, and each Init validator independently verifies its output.
-const encodeInitOutputRedeemer = <T>(
-  outputIndex: bigint,
-  schema: T,
-): string =>
+const encodeInitOutputRedeemer = <T>(outputIndex: bigint, schema: T): string =>
   Data.to({ Init: { output_index: outputIndex } } as never, schema as never);
 
 /**

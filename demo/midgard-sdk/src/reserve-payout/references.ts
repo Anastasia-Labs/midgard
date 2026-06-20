@@ -1,4 +1,4 @@
-import * as SDK from "@/reserve-payout/primitives.js";
+import { compareOutRefs, outRefLabel } from "@al-ft/midgard-core/out-ref";
 import {
   type LucidEvolution,
   type Script,
@@ -8,7 +8,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { compareOutRefs, outRefLabel } from "@al-ft/midgard-core/out-ref";
+import * as SDK from "@/reserve-payout/primitives.js";
 
 type ReferenceScriptTarget = {
   readonly name: string;

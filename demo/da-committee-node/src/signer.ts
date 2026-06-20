@@ -1,16 +1,13 @@
 import {
   createPrivateKey,
   createPublicKey,
+  type KeyObject,
   sign,
   verify,
-  type KeyObject,
 } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
-import {
-  CML,
-  walletFromSeed,
-} from "@lucid-evolution/lucid";
+import { CML, walletFromSeed } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 
 import type { DaParamsConfig } from "./config.js";
@@ -90,7 +87,8 @@ export const validateDaCommittee = ({
   }
   const committeeKeys = Array.from(
     { length: committee.length / 32 },
-    (_, index) => committee.subarray(index * 32, (index + 1) * 32).toString("hex"),
+    (_, index) =>
+      committee.subarray(index * 32, (index + 1) * 32).toString("hex"),
   );
   const computedCommitteeHash = bytesToHex(blake2b(committee, { dkLen: 32 }));
   if (computedCommitteeHash !== daParams.committeeSignersHash) {
@@ -123,7 +121,11 @@ export const signDaAttestation = ({
   readonly signerIndex: number;
   readonly headerHash: string;
 }): string => {
-  if (!Number.isSafeInteger(signerIndex) || signerIndex < 0 || signerIndex > 255) {
+  if (
+    !Number.isSafeInteger(signerIndex) ||
+    signerIndex < 0 ||
+    signerIndex > 255
+  ) {
     throw new Error("signer index must fit in one byte");
   }
   const signature = signer.sign(daAttestationMessage(headerHash));
@@ -197,7 +199,9 @@ const tryLoadCardanoDaSigner = async (
   }
   if (source.startsWith("cardano-seed-file:")) {
     return cardanoDaSignerFromSeedPhrase(
-      (await readFile(source.slice("cardano-seed-file:".length), "utf8")).trim(),
+      (
+        await readFile(source.slice("cardano-seed-file:".length), "utf8")
+      ).trim(),
     );
   }
   if (source.startsWith("cardano-private-key:")) {
@@ -208,10 +212,7 @@ const tryLoadCardanoDaSigner = async (
   if (source.startsWith("cardano-private-key-file:")) {
     return cardanoDaSignerFromPrivateKeyBech32(
       (
-        await readFile(
-          source.slice("cardano-private-key-file:".length),
-          "utf8",
-        )
+        await readFile(source.slice("cardano-private-key-file:".length), "utf8")
       ).trim(),
     );
   }
@@ -259,7 +260,9 @@ const parseEd25519Seed = (keyHex: string): Buffer => {
   if (normalized.length === 128) {
     return Buffer.from(normalized.slice(0, 64), "hex");
   }
-  throw new Error("DA signer key source must be a 32-byte seed or 64-byte secret");
+  throw new Error(
+    "DA signer key source must be a 32-byte seed or 64-byte secret",
+  );
 };
 
 const extractRawEd25519PublicKey = (publicKey: KeyObject): string => {

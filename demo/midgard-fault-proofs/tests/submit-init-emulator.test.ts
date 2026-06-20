@@ -29,12 +29,20 @@ import {
   type AuthenticatedValidator,
   buildDoubleSpendFaultProofContracts,
   buildInvalidRangeFaultProofContracts,
+  buildPhasMembershipRewardRegistrationTxProgram,
+  buildTransitionTraceFaultProofContracts,
   ConfirmedState,
+  DA_PAYLOAD_V2_VERSION,
   DoubleSpendStep02Datum,
   DoubleSpendStep03Datum,
   DoubleSpendStep04Datum,
+  EMPTY_HEADER_TRANSITION_COMMITMENTS,
   EMPTY_MERKLE_TREE_ROOT,
+  encodeDaPayloadV2,
   encodeLinkedListNodeView,
+  EventKeySchema,
+  EventToStepValueSchema,
+  ForcedInclusionTxSchema,
   FRAUD_PROOF_CATALOGUE_ASSET_NAME,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
@@ -45,45 +53,48 @@ import {
   FraudProofTokenDatum,
   GENESIS_HEADER_HASH,
   GENESIS_PROTOCOL_VERSION,
-  headerHashFromStateQueueUTxO,
   getHeaderFromStateQueueDatum,
-  buildPhasMembershipRewardRegistrationTxProgram,
   hashBlockHeader,
   Header,
+  headerHashFromStateQueueUTxO,
   HUB_ORACLE_ASSET_NAME,
   HubOracleDatum,
   incompleteEmulatorCommitBlockHeaderTxProgram,
+  invalidOneStepTransitionFault,
   InvalidRangeStep02Datum,
   invalidRangeViolationReason,
   makeHubOracleDatum,
-  outputReferenceFromUTxO,
   type MidgardValidators,
   type MintingValidator,
   normalizeNativeTxValidityRange,
+  OutputReference,
+  outputReferenceFromUTxO,
   parseFaultProofBlueprint,
   parsePhasMembershipBlueprint,
   phasMembershipWithdrawalScriptFromBlueprint,
   REGISTERED_OPERATORS_ROOT_ASSET_NAME,
   RegisteredOperatorMintRedeemer,
-  RETIRED_OPERATORS_ROOT_ASSET_NAME,
-  RetiredOperatorMintRedeemer,
   requireInputIndex,
-  requireReferenceInputIndex,
   requireMintRedeemerIndex,
   requireOwnMintPurpose,
+  requireReferenceInputIndex,
   requireUniqueOutputIndex,
+  RETIRED_OPERATORS_ROOT_ASSET_NAME,
+  RetiredOperatorMintRedeemer,
+  ROOT_DOMAINS,
   SCHEDULER_ASSET_NAME,
   SchedulerDatum,
   SchedulerMintRedeemer,
   SchedulerSpendRedeemer,
   ScriptHashSchema,
+  sortStateQueueUTxOs,
   type SpendingValidator as SdkSpendingValidator,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
   STATE_QUEUE_ROOT_ASSET_NAME,
   StateQueueRedeemer,
-  sortStateQueueUTxOs,
-  utxoToStateQueueUTxO,
+  TransitionStepSchema,
   utxosToStateQueueUTxOs,
+  utxoToStateQueueUTxO,
   type WithdrawalValidator as SdkWithdrawalValidator,
 } from "@al-ft/midgard-sdk";
 import {
@@ -115,9 +126,15 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
+  buildCountedRoot,
+  buildInvalidForcedTransactionNoOpWitness,
+  buildTransitionFaultProof,
+  encodeData,
+  keyValuePhasRootWithCount,
   nativeTxFromCoreCompact,
   parseSpendInputCbors,
   parseSubmitStep01TxInclusion,
+  reconstructDaPayloadV2,
   resolveProverSigner,
   type StateQueueMutationLeaseCoordinator,
   submitInit,
@@ -128,6 +145,7 @@ import {
   submitStep02,
   submitStep03,
   submitStep04,
+  submitTransitionTraceProof,
 } from "../src/index.js";
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
@@ -277,6 +295,9 @@ const makeAlwaysSucceedsContracts = (
     invalidRange: makeSpendingValidator(
       alwaysScript(blueprint, "fraud_proofs", "invalid_range", "spend"),
     ),
+    transitionTrace: makeSpendingValidator(
+      alwaysScript(blueprint, "fraud_proofs", "transition_trace", "spend"),
+    ),
   };
 
   return {
@@ -320,9 +341,11 @@ const buildMinimalFaultProofContracts = async (
   nonceUtxo: UTxO,
   {
     realInvalidRange = false,
+    realTransitionTrace = false,
     alwaysFraudProofCatalogue = false,
   }: {
     readonly realInvalidRange?: boolean;
+    readonly realTransitionTrace?: boolean;
     readonly alwaysFraudProofCatalogue?: boolean;
   } = {},
 ): Promise<MidgardValidators> => {
@@ -424,6 +447,21 @@ const buildMinimalFaultProofContracts = async (
       doubleSpendContracts.fraudProof.policyId,
     );
   }
+  const transitionTraceContracts = realTransitionTrace
+    ? await Effect.runPromise(
+        buildTransitionTraceFaultProofContracts({
+          blueprint: parseFaultProofBlueprint(cloneBlueprint(realBlueprint)),
+          network,
+          hubOraclePolicyId: hubOracle.policyId,
+          fraudProofCataloguePolicyId: fraudProofCatalogue.policyId,
+        }),
+      )
+    : undefined;
+  if (transitionTraceContracts !== undefined) {
+    expect(transitionTraceContracts.fraudProof.policyId).toBe(
+      doubleSpendContracts.fraudProof.policyId,
+    );
+  }
   const activeOperatorsAddressData = await Effect.runPromise(
     addressDataFromBech32(
       withActiveOperators.activeOperators.spendingScriptAddress,
@@ -495,6 +533,9 @@ const buildMinimalFaultProofContracts = async (
       invalidRange:
         invalidRangeContracts?.invalidRange.firstStep ??
         withActiveOperators.fraudProofs.invalidRange,
+      transitionTrace:
+        transitionTraceContracts?.transitionTrace.firstStep ??
+        withActiveOperators.fraudProofs.transitionTrace,
     },
   };
 };
@@ -965,15 +1006,201 @@ const makeHeader = (
 ): Header => ({
   prevUtxosRoot: EMPTY_MERKLE_TREE_ROOT,
   utxosRoot: EMPTY_MERKLE_TREE_ROOT,
+  withdrawalsRoot: EMPTY_MERKLE_TREE_ROOT,
+  ...EMPTY_HEADER_TRANSITION_COMMITMENTS,
   transactionsRoot,
   depositsRoot: EMPTY_MERKLE_TREE_ROOT,
-  withdrawalsRoot: EMPTY_MERKLE_TREE_ROOT,
   startTime: BigInt(now),
   endTime: BigInt(now + 1_000),
   prevHeaderHash: GENESIS_HEADER_HASH,
   operatorVkey,
   protocolVersion: GENESIS_PROTOCOL_VERSION,
 });
+
+const transitionTraceOutRef = (byte: string): OutputReference => ({
+  transactionId: h32(byte),
+  outputIndex: 0n,
+});
+
+const transitionTraceDaEntry = <K, V>({
+  key,
+  keySchema,
+  value,
+  valueSchema,
+}: {
+  readonly key: K;
+  readonly keySchema: Parameters<typeof Data.Nullable>[0];
+  readonly value: V;
+  readonly valueSchema: Parameters<typeof Data.Nullable>[0];
+}): [string, string] => [
+  encodeData(key, keySchema).toString("hex"),
+  encodeData(value, valueSchema).toString("hex"),
+];
+
+const transitionTraceRawEntry = (
+  key: string,
+  value: string,
+): [string, string] => [key, value];
+
+const sortedDaEntries = (
+  entries: readonly [string, string][],
+): [string, string][] =>
+  [...entries].sort(([left], [right]) =>
+    left < right ? -1 : left > right ? 1 : 0,
+  );
+
+const transitionTraceTxBody = (byte: string) => ({
+  spend_inputs: h32(byte),
+  reference_inputs: h32("b1"),
+  outputs: h32("b2"),
+  fee: 0n,
+  validity_interval: {
+    lower_bound: {
+      bound_type: "NegativeInfinity",
+      is_inclusive: true,
+    },
+    upper_bound: {
+      bound_type: "PositiveInfinity",
+      is_inclusive: false,
+    },
+  },
+  required_observers: h32("b3"),
+  required_signer_hashes: h32("b4"),
+  mint: h32("b5"),
+  script_integrity_hash: h32("b6"),
+  auxiliary_data_hash: h32("b7"),
+  network_id: "Testnet",
+});
+
+const buildInvalidForcedTransitionTraceFixture = async ({
+  operatorVkey,
+  now,
+}: {
+  readonly operatorVkey: string;
+  readonly now: number;
+}) => {
+  const txOrderId = transitionTraceOutRef("f1");
+  const eventKey = { ForcedTransactionEventKey: { tx_order_id: txOrderId } };
+  const finalUtxo = transitionTraceRawEntry("01", "02");
+  const finalUtxosRoot = await keyValuePhasRootWithCount([
+    {
+      key: Buffer.from(finalUtxo[0], "hex"),
+      value: Buffer.from(finalUtxo[1], "hex"),
+    },
+  ]);
+  const forcedTransaction = {
+    tx_compact: {
+      body: transitionTraceTxBody("b0"),
+      wits: h32("b8"),
+    },
+    operator_validity: "FailedScript",
+  };
+  const step = {
+    schema_version: 1n,
+    step_index: 0n,
+    event_key: eventKey,
+    phase: "ForcedTransaction",
+    pre_utxos_root: EMPTY_MERKLE_TREE_ROOT,
+    post_utxos_root: finalUtxosRoot.root,
+  };
+  const eventToStepValue = {
+    step_index: 0n,
+    phase: "ForcedTransaction",
+  };
+  const forcedEntries = [
+    transitionTraceDaEntry({
+      key: txOrderId,
+      keySchema: OutputReference as never,
+      value: forcedTransaction,
+      valueSchema: ForcedInclusionTxSchema,
+    }),
+  ];
+  const traceEntries = [
+    transitionTraceDaEntry({
+      key: step.step_index,
+      keySchema: Data.Integer() as never,
+      value: step,
+      valueSchema: TransitionStepSchema,
+    }),
+  ];
+  const eventToStepEntries = [
+    transitionTraceDaEntry({
+      key: eventKey,
+      keySchema: EventKeySchema,
+      value: eventToStepValue,
+      valueSchema: EventToStepValueSchema,
+    }),
+  ];
+  const forcedRoot = await buildCountedRoot(
+    ROOT_DOMAINS.forcedTransactions,
+    forcedEntries.map(([key, value]) => ({
+      key: Buffer.from(key, "hex"),
+      value: Buffer.from(value, "hex"),
+    })),
+  );
+  const traceRoot = await buildCountedRoot(
+    ROOT_DOMAINS.transitionTrace,
+    traceEntries.map(([key, value]) => ({
+      key: Buffer.from(key, "hex"),
+      value: Buffer.from(value, "hex"),
+    })),
+  );
+  const eventToStepRoot = await buildCountedRoot(
+    ROOT_DOMAINS.eventToStep,
+    eventToStepEntries.map(([key, value]) => ({
+      key: Buffer.from(key, "hex"),
+      value: Buffer.from(value, "hex"),
+    })),
+  );
+  const counts = {
+    withdrawalCount: 0n,
+    forcedTransactionCount: 1n,
+    l2TransactionCount: 0n,
+    depositCount: 0n,
+    totalEventCount: 1n,
+    transitionStepCount: 1n,
+  };
+  const header: Header = {
+    ...makeHeader(operatorVkey, now),
+    utxosRoot: finalUtxosRoot.root,
+    forcedTransactionsRoot: forcedRoot.root,
+    transitionTraceRoot: traceRoot.root,
+    eventToStepRoot: eventToStepRoot.root,
+    ...counts,
+  };
+  const headerHash = await Effect.runPromise(hashBlockHeader(header));
+  const payloadCbor = encodeDaPayloadV2({
+    version: DA_PAYLOAD_V2_VERSION,
+    block_body: {
+      header_hash: headerHash,
+      header,
+      utxos: sortedDaEntries([finalUtxo]),
+      withdrawals: [],
+      forced_transactions: sortedDaEntries(forcedEntries),
+      transactions: [],
+      deposits: [],
+      transition_trace: sortedDaEntries(traceEntries),
+      event_to_step: sortedDaEntries(eventToStepEntries),
+      counts,
+    },
+  });
+  const reconstruction = await reconstructDaPayloadV2({
+    payloadCbor,
+    expectedHeaderHash: headerHash,
+    committedHeader: header,
+  });
+  const fault = invalidOneStepTransitionFault(
+    await buildInvalidForcedTransactionNoOpWitness({
+      reconstruction,
+      stepIndex: 0n,
+    }),
+  );
+  return {
+    header,
+    headerHash,
+    proof: buildTransitionFaultProof({ reconstruction, fault }),
+  };
+};
 
 const submitSetupTx = async ({
   lucid,
@@ -1716,6 +1943,9 @@ const buildRemovalDeploymentInfo = (
     },
     fraudProofInvalidRange: {
       scriptHash: contracts.fraudProofs.invalidRange.spendingScriptHash,
+    },
+    fraudProofTransitionTrace: {
+      scriptHash: contracts.fraudProofs.transitionTrace.spendingScriptHash,
     },
     stateQueueMint: deploymentEntry(
       contracts.stateQueue.policyId,
@@ -3098,6 +3328,192 @@ describe("fault-proof emulator integration", () => {
     );
     expect(outRefLabel(retainedFraudProof)).toBe(outRefLabel(fraudProofUtxo));
     expect(retainedFraudProof.assets[step02Result.fraudProofUnit]).toBe(1n);
+  }, 180_000);
+
+  it("submits and removes a tail transition-trace fraud proof end to end", async () => {
+    const realBlueprint = readBlueprint(realBlueprintPath);
+    const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
+    const funder = generateEmulatorAccount({ lovelace: 40_000_000_000n });
+    const prover = generateEmulatorAccount({ lovelace: 20_000_000_000n });
+    const emulator = new Emulator(
+      [funder, prover],
+      EMULATOR_PROTOCOL_PARAMETERS,
+    );
+    const funderLucid = await Lucid(emulator, "Custom");
+    const proverLucid = await Lucid(emulator, "Custom");
+    funderLucid.selectWallet.fromSeed(funder.seedPhrase);
+    proverLucid.selectWallet.fromSeed(prover.seedPhrase);
+    const proverSigner = resolveProverSigner({
+      network,
+      walletSeedPhrase: prover.seedPhrase,
+    });
+
+    await registerPhasMembershipRewardAccount(funderLucid, realBlueprint);
+    const nonceUtxo = (await funderLucid.wallet().getUtxos())[0];
+    if (nonceUtxo === undefined) {
+      throw new Error("Expected funder wallet to expose a nonce UTxO");
+    }
+
+    const contracts = await buildMinimalFaultProofContracts(
+      realBlueprint,
+      alwaysBlueprint,
+      nonceUtxo,
+      { realTransitionTrace: true, alwaysFraudProofCatalogue: true },
+    );
+    const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
+    const funderPaymentCredential = getAddressDetails(
+      await funderLucid.wallet().address(),
+    ).paymentCredential;
+    if (
+      funderPaymentCredential === undefined ||
+      funderPaymentCredential.type !== "Key"
+    ) {
+      throw new Error("Expected funder wallet to expose a payment key hash");
+    }
+    const headerStartTime =
+      alignUnixTimeToEmulatorSlotBoundary(
+        funderLucid,
+        emulator.now() + 120_000,
+      ) - 1;
+    const traceFixture = await buildInvalidForcedTransitionTraceFixture({
+      operatorVkey: funderPaymentCredential.hash,
+      now: headerStartTime,
+    });
+    const setup = await submitSetupTx({
+      lucid: funderLucid,
+      contracts,
+      nonceUtxo,
+      catalogue,
+      header: traceFixture.header,
+    });
+    expect(setup.headerHash).toBe(traceFixture.headerHash);
+    await expectStateQueueHeaderOrder({
+      lucid: funderLucid,
+      contracts,
+      expectedHeaderHashes: [traceFixture.headerHash],
+    });
+
+    const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue);
+    const initResult = await submitInit({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: proverSigner,
+      fraudCategory: "transitionTrace",
+      fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+      awaitConfirmation: true,
+    });
+
+    expect(initResult.txHash).toHaveLength(64);
+    expect(initResult.fraudulentHeaderHash).toBe(traceFixture.headerHash);
+    expect(initResult.fraudCategoryName).toBe("transitionTrace");
+    expect(initResult.fraudCategoryId).toBe(
+      catalogue.categories.transitionTrace.categoryId,
+    );
+    expect(initResult.computationThreadAssetName).toBe(
+      `${catalogue.categories.transitionTrace.categoryId}${traceFixture.headerHash}`,
+    );
+
+    const firstStepUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
+      initResult.firstStepAddress,
+      initResult.computationThreadUnit,
+    );
+    const proverPaymentCredential = getAddressDetails(
+      await proverLucid.wallet().address(),
+    ).paymentCredential;
+    expect(proverPaymentCredential?.type).toBe("Key");
+    const proverPaymentKeyHash = proverPaymentCredential!.hash;
+
+    const proofResult = await submitTransitionTraceProof({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: proverSigner,
+      threadOutRef: outRefLabel(firstStepUtxo),
+      proof: traceFixture.proof,
+      awaitConfirmation: true,
+    });
+
+    expect(proofResult.txHash).toHaveLength(64);
+    expect(proofResult.fraudulentHeaderHash).toBe(traceFixture.headerHash);
+    expect(proofResult.fraudProofAssetName).toBe(
+      initResult.computationThreadAssetName,
+    );
+    expect(proofResult.fraudProofUnit).toBe(
+      toUnit(
+        contracts.fraudProof.policyId,
+        initResult.computationThreadAssetName,
+      ),
+    );
+    expect(proofResult.fraudProofMintRedeemerIndex).not.toBe(
+      proofResult.computationThreadMintRedeemerIndex,
+    );
+    await expect(
+      proverLucid.utxosAtWithUnit(
+        initResult.firstStepAddress,
+        initResult.computationThreadUnit,
+      ),
+    ).resolves.toHaveLength(0);
+
+    const fraudProofUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
+      proofResult.fraudProofAddress,
+      proofResult.fraudProofUnit,
+    );
+    expect(Data.from(fraudProofUtxo.datum!, FraudProofTokenDatum)).toEqual({
+      fraud_prover: proverPaymentKeyHash,
+    });
+
+    const removeNow = BigInt(emulator.now());
+    const removeResult = await submitRemoveFraudulentBlock({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: proverSigner,
+      fraudCategory: "transitionTrace",
+      fraudulentHeaderHash: traceFixture.headerHash,
+      awaitConfirmation: true,
+      requireReferenceScripts: false,
+      validFrom: removeNow > 120_000n ? removeNow - 120_000n : 0n,
+      validTo: removeNow + 300_000n,
+    });
+
+    expect(removeResult.fraudCategory).toBe("transitionTrace");
+    expect(removeResult.fraudCategoryId).toBe(
+      catalogue.categories.transitionTrace.categoryId,
+    );
+    expect(removeResult.stateQueueMutationLease).toBeNull();
+    expect(removeResult.transactions.map((tx) => tx.kind)).toEqual([
+      "remove-target",
+    ]);
+    expect(removeResult.transactions.map((tx) => tx.removedHeaderHash)).toEqual(
+      [traceFixture.headerHash],
+    );
+    expect(removeResult.transactions.map((tx) => tx.slashingApproach)).toEqual([
+      "SlashActiveOperator",
+    ]);
+    await expectStateQueueHeaderOrder({
+      lucid: funderLucid,
+      contracts,
+      expectedHeaderHashes: [],
+    });
+    await expect(
+      funderLucid.utxosAtWithUnit(
+        contracts.stateQueue.spendingScriptAddress,
+        setup.stateQueueBlockUnit,
+      ),
+    ).resolves.toHaveLength(0);
+    const retainedFraudProof = await expectSingleUtxoWithUnit(
+      proverLucid,
+      proofResult.fraudProofAddress,
+      proofResult.fraudProofUnit,
+    );
+    expect(outRefLabel(retainedFraudProof)).toBe(outRefLabel(fraudProofUtxo));
+    expect(retainedFraudProof.assets[proofResult.fraudProofUnit]).toBe(1n);
   }, 180_000);
 
   it("coordinates non-tail removal with lease acquire, refetch, renew, and release ordering", async () => {

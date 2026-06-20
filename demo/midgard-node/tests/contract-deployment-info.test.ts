@@ -1,22 +1,22 @@
 import { dirname, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { toUnit, type UTxO } from "@lucid-evolution/lucid";
-import { it } from "@effect/vitest";
-import { Effect } from "effect";
-import { describe, expect } from "vitest";
-
 import type { ReferenceScriptAuthPolicyDeploymentInfo } from "@al-ft/midgard-sdk";
 import {
   REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
   referenceScriptAuthTokenName,
 } from "@al-ft/midgard-sdk";
+import { it } from "@effect/vitest";
+import { toUnit, type UTxO } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+import { describe, expect } from "vitest";
+
 import {
-  buildDeploymentManifestV2,
-  buildContractDeploymentInfoProgram,
   buildContractDeploymentInfoFromContracts,
-  DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
+  buildContractDeploymentInfoProgram,
+  buildDeploymentManifestV2,
   defaultContractDeploymentInfoOutputPath,
+  DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
   parseDeploymentManifestV2,
   verifyDeploymentManifestAgainstConfig,
 } from "@/commands/contract-deployment-info.js";
@@ -130,6 +130,12 @@ describe("contract deployment info", () => {
             invalidRange: {
               categoryId: "00000003",
               scriptHash: contracts.fraudProofs.invalidRange.spendingScriptHash,
+              membershipProofCbor: "80",
+            },
+            transitionTrace: {
+              categoryId: "00000004",
+              scriptHash:
+                contracts.fraudProofs.transitionTrace.spendingScriptHash,
               membershipProofCbor: "80",
             },
           },

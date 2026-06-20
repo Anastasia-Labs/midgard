@@ -1,6 +1,6 @@
 import { normalizeTxHash } from "@al-ft/midgard-core/out-ref";
-import * as LE from "@lucid-evolution/lucid";
 import type { Assets, Network, UTxO } from "@lucid-evolution/lucid";
+import * as LE from "@lucid-evolution/lucid";
 
 import { resolveNetwork } from "@/commands/address-from-seed.js";
 import { parseAddressArgument } from "@/commands/command-utils.js";
@@ -76,7 +76,9 @@ export const resolveKupmiosConfig = (input?: {
   const network = resolveNetwork({ network: input?.network, env });
 
   if (kupoUrl.length === 0) {
-    throw new Error("Kupo URL is required. Pass --kupo-url or set L1_KUPO_KEY.");
+    throw new Error(
+      "Kupo URL is required. Pass --kupo-url or set L1_KUPO_KEY.",
+    );
   }
   if (ogmiosUrl.length === 0) {
     throw new Error(

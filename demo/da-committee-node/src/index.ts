@@ -35,7 +35,9 @@ const main = async (): Promise<void> => {
     config.signerKeySource === undefined
       ? undefined
       : await loadDaSigner(config.signerKeySource);
-  const committeeValidation = validateDaCommittee({ daParams: config.daParams });
+  const committeeValidation = validateDaCommittee({
+    daParams: config.daParams,
+  });
   const signerValidation =
     signer === undefined || config.signerIndex === undefined
       ? undefined
@@ -139,7 +141,7 @@ const main = async (): Promise<void> => {
     } catch (error) {
       ready = false;
       process.stderr.write(
-        `${error instanceof Error ? error.stack ?? error.message : String(error)}\n`,
+        `${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
       );
     }
   };
@@ -167,7 +169,9 @@ const runL1WalletPreflightCommand = async (
   }
   const unknownArgs = args.filter((arg) => arg !== "--json");
   if (unknownArgs.length > 0) {
-    throw new Error(`unknown l1-wallet-preflight arguments: ${unknownArgs.join(", ")}`);
+    throw new Error(
+      `unknown l1-wallet-preflight arguments: ${unknownArgs.join(", ")}`,
+    );
   }
   const config = await loadWatcherConfig();
   const result = await l1SubmitterWalletPreflightFromConfig(config);
@@ -206,7 +210,7 @@ configuration. Exits non-zero when readiness fails.
 
 main().catch((error) => {
   process.stderr.write(
-    `${error instanceof Error ? error.stack ?? error.message : String(error)}\n`,
+    `${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
   );
   process.exit(1);
 });

@@ -19,9 +19,7 @@ export type CardanoToMidgardNativeConstants = {
   readonly networkIdNone: bigint;
 };
 
-const parseCardanoTx = (
-  txBytes: Uint8Array,
-): CML.Transaction => {
+const parseCardanoTx = (txBytes: Uint8Array): CML.Transaction => {
   try {
     return CML.Transaction.from_cbor_bytes(txBytes);
   } catch (e) {
@@ -112,9 +110,7 @@ const cmlCollectionToPreimageCbor = (
   return encodeCbor(entries);
 };
 
-const cmlValueToMidgardValue = (
-  value: CML.Value,
-): MidgardValue => {
+const cmlValueToMidgardValue = (value: CML.Value): MidgardValue => {
   const policies = new Map<string, Map<string, bigint>>();
   const multiasset = value.multi_asset();
   if (multiasset !== undefined) {
@@ -412,9 +408,7 @@ const scriptWitnessesToPreimageCbor = (
   return encodeMidgardVersionedScriptListPreimage(scripts);
 };
 
-const assertCardanoTxConvertibleToNative = (
-  tx: CML.Transaction,
-): void => {
+const assertCardanoTxConvertibleToNative = (tx: CML.Transaction): void => {
   const txBody = tx.body();
   const txWitnessSet = tx.witness_set();
 

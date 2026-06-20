@@ -1,22 +1,22 @@
+import * as SDK from "@al-ft/midgard-sdk";
+
 import type {
   DaPayloadRecord,
   DaSignatureRecord,
+  PayloadCountSet,
   PayloadRootSet,
   StateQueueHeaderRecord,
   ValidationSummary,
 } from "../domain.js";
+import { validateDaSignatureRecord } from "../peer/signatures.js";
 import type { DaCommitteeValidation } from "../signer.js";
 import type { WatcherStore } from "../store.js";
-import { validateDaSignatureRecord } from "../peer/signatures.js";
 import type {
   DaAttestationContext,
   ReconcileAttestationArgs,
 } from "./on-chain.js";
 
-export type SubmitterReconcileStatus =
-  | "reconciled"
-  | "post_failed"
-  | "skipped";
+export type SubmitterReconcileStatus = "reconciled" | "post_failed" | "skipped";
 
 export type SubmitterReconcileResult = {
   readonly status: SubmitterReconcileStatus;
@@ -26,10 +26,7 @@ export type SubmitterReconcileResult = {
 export type SubmitterReconcilerDeps = {
   readonly deploymentFingerprint: string;
   readonly committeeValidation: DaCommitteeValidation;
-  readonly store: Pick<
-    WatcherStore,
-    "getDaPayload" | "listDaSignatures"
-  >;
+  readonly store: Pick<WatcherStore, "getDaPayload" | "listDaSignatures">;
   readonly coordinator: {
     readonly reconcileAttestation: (
       args: ReconcileAttestationArgs,
@@ -62,7 +59,10 @@ export class SubmitterReconciler {
       return { status: "skipped", reason: "verified payload is not available" };
     }
     await this.deps.peerPoller?.pollPeerSignatures(header.headerHash);
-    const witnessHexes = await this.validWitnessHexes(header.headerHash, payload);
+    const witnessHexes = await this.validWitnessHexes(
+      header.headerHash,
+      payload,
+    );
     const context = contextFromHeader({
       deploymentFingerprint: this.deps.deploymentFingerprint,
       committeeSignersHash: this.deps.committeeValidation.committeeSignersHash,
@@ -91,7 +91,9 @@ export class SubmitterReconciler {
     payload: DaPayloadRecord,
   ): Promise<readonly string[]> {
     const selected = new Map<number, string>();
-    for (const signature of await this.deps.store.listDaSignatures(headerHash)) {
+    for (const signature of await this.deps.store.listDaSignatures(
+      headerHash,
+    )) {
       const validationError = validateDaSignatureRecord({
         body: signature,
         headerHash,
@@ -111,7 +113,8 @@ export class SubmitterReconciler {
 }
 
 const isReconcilableHeader = (header: StateQueueHeaderRecord): boolean =>
-  header.finalized && (header.status === "unattested" || header.status === "attesting");
+  header.finalized &&
+  (header.status === "unattested" || header.status === "attesting");
 
 const isVerifiedPayload = (
   payload: DaPayloadRecord | undefined,
@@ -146,11 +149,12 @@ const validationSummaryFromHeader = (
   header: StateQueueHeaderRecord,
   rootSummary: PayloadRootSet,
 ): ValidationSummary => ({
-  payloadVersion: 1,
+  payloadVersion: Number(SDK.DA_PAYLOAD_V2_VERSION),
   rootsMatch: true,
   stateQueueOutRef: header.stateQueueOutRef,
   headerHash: header.headerHash,
   rootSummary,
+  countSummary: countSummaryFromHeader(header),
   l1Header: {
     startTime: header.header.startTime.toString(),
     endTime: header.header.endTime.toString(),
@@ -167,4 +171,18 @@ const rootSummaryFromHeader = (
   transactionsRoot: header.header.transactionsRoot,
   depositsRoot: header.header.depositsRoot,
   withdrawalsRoot: header.header.withdrawalsRoot,
+  forcedTransactionsRoot: header.header.forcedTransactionsRoot,
+  transitionTraceRoot: header.header.transitionTraceRoot,
+  eventToStepRoot: header.header.eventToStepRoot,
+});
+
+const countSummaryFromHeader = (
+  header: StateQueueHeaderRecord,
+): PayloadCountSet => ({
+  withdrawalCount: header.header.withdrawalCount,
+  forcedTransactionCount: header.header.forcedTransactionCount,
+  l2TransactionCount: header.header.l2TransactionCount,
+  depositCount: header.header.depositCount,
+  totalEventCount: header.header.totalEventCount,
+  transitionStepCount: header.header.transitionStepCount,
 });

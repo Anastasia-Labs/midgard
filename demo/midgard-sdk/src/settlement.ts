@@ -1,4 +1,4 @@
-import { assetsEqual, type Assets } from "@al-ft/midgard-core/assets";
+import { type Assets, assetsEqual } from "@al-ft/midgard-core/assets";
 import { canonicalPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
   type BuildTxWithRedeemer,
@@ -8,8 +8,8 @@ import {
   Script,
   toUnit,
   TxBuilder,
-  TxSignBuilder,
   type TxOutput,
+  TxSignBuilder,
 } from "@lucid-evolution/lucid";
 import { Data as EffectData, Effect } from "effect";
 
@@ -32,8 +32,6 @@ import {
   makeReturn,
   MerkleRootSchema,
   POSIXTimeSchema,
-  Proof,
-  ProofSchema,
   UnspecifiedNetworkError,
   VerificationKeyHashSchema,
 } from "@/common.js";
@@ -50,6 +48,10 @@ import {
   RetiredOperatorUTxO,
 } from "@/retired-operators.js";
 import { fetchSchedulerUTxOProgram, SchedulerError } from "@/scheduler.js";
+import {
+  EventSettlementMembershipProof,
+  EventSettlementMembershipProofSchema,
+} from "@/transition-trace.js";
 import { completeTxWithLocalUPLCEvalProgram } from "@/tx-completion.js";
 import {
   requireInputIndex,
@@ -78,6 +80,7 @@ export const ResolutionClaim =
 export const SettlementDatumSchema = Data.Object({
   deposits_root: MerkleRootSchema,
   withdrawals_root: MerkleRootSchema,
+  forced_transactions_root: MerkleRootSchema,
   transactions_root: MerkleRootSchema,
   resolution_claim: Data.Nullable(ResolutionClaimSchema),
 });
@@ -124,7 +127,7 @@ export const SettlementSpendRedeemerSchema = Data.Enum([
       unresolved_event_ref_input_index: Data.Integer(),
       unresolved_event_asset_name: Data.Bytes(),
       event_type: EventTypeSchema,
-      membership_proof: ProofSchema,
+      membership_proof: EventSettlementMembershipProofSchema,
       inclusion_proof_script_withdraw_redeemer_index: Data.Integer(),
     }),
   }),
@@ -368,7 +371,8 @@ export const incompleteUpdateBondHoldNewSettlementTxProgram = (
       ...activeOperatorsInputUtxo.datum,
       bond_unlock_time:
         activeOperatorsInputUtxo.datum.bond_unlock_time === null ||
-        params.newBondUnlockTime > activeOperatorsInputUtxo.datum.bond_unlock_time
+        params.newBondUnlockTime >
+          activeOperatorsInputUtxo.datum.bond_unlock_time
           ? params.newBondUnlockTime
           : activeOperatorsInputUtxo.datum.bond_unlock_time,
     };
@@ -561,7 +565,7 @@ export const fetchUserEventRefUTxO = (
 export type DisproveResolutionClaimParams = {
   settlementAddress: string;
   resolutionClaimOperator: string;
-  membershipProof: Proof;
+  membershipProof: EventSettlementMembershipProof;
   hubOracleValidator: AuthenticatedValidator;
   schedulerScriptAddress: string;
   schedulerPolicyId: string;

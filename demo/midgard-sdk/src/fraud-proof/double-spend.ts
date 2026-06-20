@@ -3,10 +3,10 @@ import { Data } from "@lucid-evolution/lucid";
 import { H32Schema } from "@/common.js";
 
 import {
-  faultProofStepDatumSchema,
-  faultProofStepRedeemerSchema,
   FaultProofStepCancel,
   FaultProofStepCancelSchema,
+  faultProofStepDatumSchema,
+  faultProofStepRedeemerSchema,
   MidgardTxInput,
   MidgardTxInputList,
   MidgardTxInputListSchema,
@@ -125,9 +125,8 @@ export type DoubleSpendStep03Args = Data.Static<
 export const DoubleSpendStep03Args =
   DoubleSpendStep03ArgsSchema as unknown as DoubleSpendStep03Args;
 
-export const DoubleSpendStep03SpendRedeemerSchema = faultProofStepRedeemerSchema(
-  DoubleSpendStep03ArgsSchema,
-);
+export const DoubleSpendStep03SpendRedeemerSchema =
+  faultProofStepRedeemerSchema(DoubleSpendStep03ArgsSchema);
 export type DoubleSpendStep03SpendRedeemer = Data.Static<
   typeof DoubleSpendStep03SpendRedeemerSchema
 >;
@@ -166,9 +165,8 @@ export type DoubleSpendStep04Args = Data.Static<
 export const DoubleSpendStep04Args =
   DoubleSpendStep04ArgsSchema as unknown as DoubleSpendStep04Args;
 
-export const DoubleSpendStep04SpendRedeemerSchema = faultProofStepRedeemerSchema(
-  DoubleSpendStep04ArgsSchema,
-);
+export const DoubleSpendStep04SpendRedeemerSchema =
+  faultProofStepRedeemerSchema(DoubleSpendStep04ArgsSchema);
 export type DoubleSpendStep04SpendRedeemer = Data.Static<
   typeof DoubleSpendStep04SpendRedeemerSchema
 >;

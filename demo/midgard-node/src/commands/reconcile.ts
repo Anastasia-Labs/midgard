@@ -2,6 +2,7 @@ import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Option } from "effect";
 
+import { resolveTxStatus } from "@/commands/tx-status.js";
 import {
   BlocksDB,
   DaPayloadsDB,
@@ -15,8 +16,10 @@ import {
   TxRejectionsDB,
 } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
-import { projectDepositsToMempoolLedger } from "@/fibers/project-deposits-to-mempool-ledger.js";
+import { reconcileVisibleDepositUTxOs } from "@/fibers/fetch-and-insert-deposit-utxos.js";
 import { mergeAction } from "@/fibers/merge.js";
+import { projectDepositsToMempoolLedger } from "@/fibers/project-deposits-to-mempool-ledger.js";
+import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
 import {
   Database,
   Globals,
@@ -28,17 +31,14 @@ import {
   ensurePhasMembershipRewardAccountRegisteredProgram,
   queryPhasMembershipRewardAccountRegisteredProgram,
 } from "@/transactions/phas-membership-registration.js";
-import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
 import {
   ensureNodeRuntimeReferenceScriptsProgram,
   verifyNodeRuntimeReferenceScriptsProgram,
 } from "@/transactions/reference-scripts.js";
 import {
-  reconcileDepositSubmissionAttemptProgram,
   type DepositSubmissionReconciliationResult,
+  reconcileDepositSubmissionAttemptProgram,
 } from "@/transactions/submit-deposit.js";
-import { resolveTxStatus } from "@/commands/tx-status.js";
-import { reconcileVisibleDepositUTxOs } from "@/fibers/fetch-and-insert-deposit-utxos.js";
 import { backfillMissingDaPayloadsFromFinalizedJournals } from "@/workers/commit-block-header/da-payload-backfill.js";
 
 export const RECONCILIATION_SCHEMA_VERSION =
@@ -80,10 +80,7 @@ type ReconciliationResultInput = Pick<
   Partial<
     Pick<
       ReconciliationResult,
-      | "safeToRetryOriginalStep"
-      | "evidence"
-      | "nextAction"
-      | "repairActions"
+      "safeToRetryOriginalStep" | "evidence" | "nextAction" | "repairActions"
     >
   >;
 
@@ -123,13 +120,16 @@ const optionRecordEvidence = (
               PendingBlockFinalizationsDB.Columns.HEADER_HASH
             ].toString("hex"),
           submittedTxHash: bufferHex(
-            record.value[
-              PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH
-            ],
+            record.value[PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH],
           ),
-          status:
-            record.value[PendingBlockFinalizationsDB.Columns.STATUS],
+          status: record.value[PendingBlockFinalizationsDB.Columns.STATUS],
           depositEventIds: record.value.depositEventIds.map((id) =>
+            id.toString("hex"),
+          ),
+          forcedTransactionEventIds: record.value.forcedTransactionEventIds.map(
+            (id) => id.toString("hex"),
+          ),
+          withdrawalEventIds: record.value.withdrawalEventIds.map((id) =>
             id.toString("hex"),
           ),
           txIds: record.value.mempoolTxIds.map((id) => id.toString("hex")),
@@ -269,7 +269,8 @@ export const reconcilePhasRegisteredProgram = ({
         evidence: [
           evidence("reward_account_registration", { registered: false }),
         ],
-        nextAction: "Run this reconciler with --repair or rerun the idempotent PHAS registration step.",
+        nextAction:
+          "Run this reconciler with --repair or rerun the idempotent PHAS registration step.",
       });
     }
 
@@ -428,8 +429,7 @@ const serializeDepositEvidence = (
   rows.map((row) =>
     evidence("deposit_row", {
       eventId: row[DepositsDB.Columns.ID].toString("hex"),
-      cardanoTxHash:
-        row[DepositsDB.Columns.DEPOSIT_L1_TX_HASH].toString("hex"),
+      cardanoTxHash: row[DepositsDB.Columns.DEPOSIT_L1_TX_HASH].toString("hex"),
       status: row[DepositsDB.Columns.STATUS],
       inclusionTime: row[DepositsDB.Columns.INCLUSION_TIME].toISOString(),
       projectedHeaderHash: bufferHex(
@@ -462,11 +462,7 @@ export const reconcileDepositProjectedProgram = ({
     let rows = yield* lookupDepositRows({ eventId, cardanoTxHash });
     const repairActions: string[] = [];
 
-    if (
-      rows.length === 0 &&
-      repair &&
-      cardanoTxHash !== undefined
-    ) {
+    if (rows.length === 0 && repair && cardanoTxHash !== undefined) {
       const reconciliation = yield* Effect.either(
         reconcileDepositSubmissionAttemptProgram(cardanoTxHash.toString("hex")),
       );
@@ -583,10 +579,7 @@ export const reconcileTxCommittedProgram = ({
       target: { txHash: txHash.toString("hex") },
       status: milestoneStatus,
       safeToRetryOriginalStep: status.status === "not_found",
-      evidence: [
-        evidence("tx_status", status),
-        optionRecordEvidence(active),
-      ],
+      evidence: [evidence("tx_status", status), optionRecordEvidence(active)],
       nextAction:
         milestoneStatus === "pending"
           ? "Wait for tx processing/commit workers or inspect readiness and pending finalization state."
@@ -650,11 +643,10 @@ export const reconcileDaAttestedProgram = ({
     let localPayload = yield* DaPayloadsDB.retrieveByHeaderHash(headerHash);
     const repairActions: string[] = [];
     if (Option.isNone(localPayload) && repair) {
-      const backfill =
-        yield* backfillMissingDaPayloadsFromFinalizedJournals({
-          headerHash,
-          limit: 1,
-        });
+      const backfill = yield* backfillMissingDaPayloadsFromFinalizedJournals({
+        headerHash,
+        limit: 1,
+      });
       repairActions.push("backfill_missing_da_payload");
       if (backfill.backfilled.includes(headerHashHex)) {
         localPayload = yield* DaPayloadsDB.retrieveByHeaderHash(headerHash);
@@ -729,16 +721,16 @@ export const reconcileBlockCommittedProgram = ({
 > =>
   Effect.gen(function* () {
     const headerHashHex = headerHash.toString("hex");
-    const journal = yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
-      headerHash,
-    );
+    const journal =
+      yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(headerHash);
     const canonicalHeaders = yield* fetchCanonicalStateQueueHeaderHashes;
     const canonical = canonicalHeaders.includes(headerHashHex);
     const journalStatus = Option.isSome(journal)
       ? journal.value[PendingBlockFinalizationsDB.Columns.STATUS]
       : null;
     const status: ReconciliationStatus =
-      canonical || journalStatus === PendingBlockFinalizationsDB.Status.Finalized
+      canonical ||
+      journalStatus === PendingBlockFinalizationsDB.Status.Finalized
         ? "satisfied"
         : journalStatus === null
           ? "ambiguous"
@@ -816,7 +808,10 @@ export const reconcileMergeCompleteProgram = ({
           headers: canonicalHeaders,
         }),
         evidence("local_block_rows", { txCount: txHashes.length }),
-        evidence("state_queue_lease", yield* StateQueueMutationLeasesDB.inspect()),
+        evidence(
+          "state_queue_lease",
+          yield* StateQueueMutationLeasesDB.inspect(),
+        ),
       ],
       repairActions,
       nextAction: canonical

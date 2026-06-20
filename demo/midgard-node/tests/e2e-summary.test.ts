@@ -1,6 +1,6 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -10,6 +10,11 @@ import {
   requiredFreshEvidence,
 } from "@/commands/e2e-finalize-summary.js";
 import {
+  E2E_STEP_SCHEMA_VERSION,
+  type StepStatus,
+  type StepSummary,
+} from "@/e2e/runner.js";
+import {
   createE2ERunSummary,
   E2E_SUMMARY_SCHEMA_VERSION,
   renderSummaryMarkdown,
@@ -17,11 +22,6 @@ import {
   writeSummaryJsonAtomic,
   writeSummaryMarkdownAtomic,
 } from "@/e2e/summary.js";
-import {
-  E2E_STEP_SCHEMA_VERSION,
-  type StepStatus,
-  type StepSummary,
-} from "@/e2e/runner.js";
 
 let tempDirs: string[] = [];
 
@@ -236,9 +236,7 @@ describe("e2e run summary", () => {
       })),
     });
 
-    expect(satisfied.every((entry) => entry.status === "satisfied")).toBe(
-      true,
-    );
+    expect(satisfied.every((entry) => entry.status === "satisfied")).toBe(true);
   });
 
   it("renders and writes summary artifacts atomically", async () => {

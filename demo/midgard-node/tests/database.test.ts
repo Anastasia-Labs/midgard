@@ -10,7 +10,7 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { it } from "@effect/vitest";
-import { toHex } from "@lucid-evolution/lucid";
+import { Data as LucidData, toHex } from "@lucid-evolution/lucid";
 import { Duration, Effect } from "effect";
 import { beforeAll, describe, expect } from "vitest";
 
@@ -29,8 +29,9 @@ import {
   ConfirmedLedgerDB,
   DaPayloadsDB,
   DepositIngestionCursorDB,
-  DepositSubmissionAttemptsDB,
   DepositsDB,
+  DepositSubmissionAttemptsDB,
+  ForcedTransactionsDB,
   // Tx
   ImmutableDB,
   // Ledger
@@ -70,6 +71,7 @@ const flushAll = Effect.gen(function* () {
       AddressHistoryDB.clear,
       ProcessedMempoolDB.clear,
       DepositsDB.clear,
+      ForcedTransactionsDB.clear,
       DepositSubmissionAttemptsDB.clear,
       DepositIngestionCursorDB.clear,
       PendingBlockFinalizationsDB.clear,
@@ -139,13 +141,25 @@ describe("DaPayloadsDB", () => {
           const payloadHash = createHash("sha256").update(payload).digest();
           const insert = {
             [DaPayloadsDB.Columns.HEADER_HASH]: headerHash,
-            [DaPayloadsDB.Columns.VERSION]: 1,
+            [DaPayloadsDB.Columns.VERSION]: Number(SDK.DA_PAYLOAD_V2_VERSION),
             [DaPayloadsDB.Columns.PAYLOAD_CBOR]: payload,
             [DaPayloadsDB.Columns.PAYLOAD_SHA256]: payloadHash,
             [DaPayloadsDB.Columns.UTXOS_ROOT]: "11".repeat(32),
+            [DaPayloadsDB.Columns.FORCED_TRANSACTIONS_ROOT]:
+              SDK.EMPTY_MERKLE_TREE_ROOT,
             [DaPayloadsDB.Columns.TRANSACTIONS_ROOT]: "22".repeat(32),
             [DaPayloadsDB.Columns.DEPOSITS_ROOT]: "33".repeat(32),
             [DaPayloadsDB.Columns.WITHDRAWALS_ROOT]: "44".repeat(32),
+            [DaPayloadsDB.Columns.TRANSITION_TRACE_ROOT]:
+              SDK.EMPTY_MERKLE_TREE_ROOT,
+            [DaPayloadsDB.Columns.EVENT_TO_STEP_ROOT]:
+              SDK.EMPTY_MERKLE_TREE_ROOT,
+            [DaPayloadsDB.Columns.WITHDRAWAL_COUNT]: 0n,
+            [DaPayloadsDB.Columns.FORCED_TRANSACTION_COUNT]: 0n,
+            [DaPayloadsDB.Columns.L2_TRANSACTION_COUNT]: 0n,
+            [DaPayloadsDB.Columns.DEPOSIT_COUNT]: 0n,
+            [DaPayloadsDB.Columns.TOTAL_EVENT_COUNT]: 0n,
+            [DaPayloadsDB.Columns.TRANSITION_STEP_COUNT]: 0n,
             [DaPayloadsDB.Columns.BLOCK_START_TIME]: new Date(
               "2026-06-12T00:00:00.000Z",
             ),
@@ -201,6 +215,10 @@ describe("DaPayloadsDB", () => {
             status: PendingBlockFinalizationsDB.Status,
           ) => ({
             [PendingBlockFinalizationsDB.Columns.HEADER_HASH]: headerHash,
+            [PendingBlockFinalizationsDB.Columns.HEADER_CBOR]: Buffer.from(
+              "d87980",
+              "hex",
+            ),
             [PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH]:
               databaseTxHash(`submitted-${headerHash.toString("hex")}`),
             [PendingBlockFinalizationsDB.Columns.STATE_QUEUE_LEASE_TOKEN]:
@@ -212,6 +230,8 @@ describe("DaPayloadsDB", () => {
             [PendingBlockFinalizationsDB.Columns.BASE_TAIL_DATUM_CBOR]:
               "d87980",
             [PendingBlockFinalizationsDB.Columns.BASE_UTXOS_ROOT]:
+              SDK.EMPTY_MERKLE_TREE_ROOT,
+            [PendingBlockFinalizationsDB.Columns.BASE_FORCED_TRANSACTIONS_ROOT]:
               SDK.EMPTY_MERKLE_TREE_ROOT,
             [PendingBlockFinalizationsDB.Columns.BASE_TRANSACTIONS_ROOT]:
               SDK.EMPTY_MERKLE_TREE_ROOT,
@@ -225,12 +245,28 @@ describe("DaPayloadsDB", () => {
             ),
             [PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT]:
               SDK.EMPTY_MERKLE_TREE_ROOT,
+            [PendingBlockFinalizationsDB.Columns
+              .EXPECTED_FORCED_TRANSACTIONS_ROOT]: SDK.EMPTY_MERKLE_TREE_ROOT,
             [PendingBlockFinalizationsDB.Columns.EXPECTED_TRANSACTIONS_ROOT]:
               SDK.EMPTY_MERKLE_TREE_ROOT,
             [PendingBlockFinalizationsDB.Columns.EXPECTED_DEPOSITS_ROOT]:
               SDK.EMPTY_MERKLE_TREE_ROOT,
             [PendingBlockFinalizationsDB.Columns.EXPECTED_WITHDRAWALS_ROOT]:
               SDK.EMPTY_MERKLE_TREE_ROOT,
+            [PendingBlockFinalizationsDB.Columns
+              .EXPECTED_TRANSITION_TRACE_ROOT]: SDK.EMPTY_MERKLE_TREE_ROOT,
+            [PendingBlockFinalizationsDB.Columns.EXPECTED_EVENT_TO_STEP_ROOT]:
+              SDK.EMPTY_MERKLE_TREE_ROOT,
+            [PendingBlockFinalizationsDB.Columns.EXPECTED_WITHDRAWAL_COUNT]: 0n,
+            [PendingBlockFinalizationsDB.Columns
+              .EXPECTED_FORCED_TRANSACTION_COUNT]: 0n,
+            [PendingBlockFinalizationsDB.Columns.EXPECTED_L2_TRANSACTION_COUNT]:
+              0n,
+            [PendingBlockFinalizationsDB.Columns.EXPECTED_DEPOSIT_COUNT]: 0n,
+            [PendingBlockFinalizationsDB.Columns.EXPECTED_TOTAL_EVENT_COUNT]:
+              0n,
+            [PendingBlockFinalizationsDB.Columns
+              .EXPECTED_TRANSITION_STEP_COUNT]: 0n,
             [PendingBlockFinalizationsDB.Columns.STATUS]: status,
             [PendingBlockFinalizationsDB.Columns.OBSERVED_CONFIRMED_AT_MS]: 1n,
           });
@@ -246,16 +282,28 @@ describe("DaPayloadsDB", () => {
           ])}`;
           yield* DaPayloadsDB.upsertAvailable({
             [DaPayloadsDB.Columns.HEADER_HASH]: coveredHeader,
-            [DaPayloadsDB.Columns.VERSION]: 1,
+            [DaPayloadsDB.Columns.VERSION]: Number(SDK.DA_PAYLOAD_V2_VERSION),
             [DaPayloadsDB.Columns.PAYLOAD_CBOR]: Buffer.from("a100", "hex"),
             [DaPayloadsDB.Columns.PAYLOAD_SHA256]: createHash("sha256")
               .update(Buffer.from("a100", "hex"))
               .digest(),
             [DaPayloadsDB.Columns.UTXOS_ROOT]: SDK.EMPTY_MERKLE_TREE_ROOT,
+            [DaPayloadsDB.Columns.FORCED_TRANSACTIONS_ROOT]:
+              SDK.EMPTY_MERKLE_TREE_ROOT,
             [DaPayloadsDB.Columns.TRANSACTIONS_ROOT]:
               SDK.EMPTY_MERKLE_TREE_ROOT,
             [DaPayloadsDB.Columns.DEPOSITS_ROOT]: SDK.EMPTY_MERKLE_TREE_ROOT,
             [DaPayloadsDB.Columns.WITHDRAWALS_ROOT]: SDK.EMPTY_MERKLE_TREE_ROOT,
+            [DaPayloadsDB.Columns.TRANSITION_TRACE_ROOT]:
+              SDK.EMPTY_MERKLE_TREE_ROOT,
+            [DaPayloadsDB.Columns.EVENT_TO_STEP_ROOT]:
+              SDK.EMPTY_MERKLE_TREE_ROOT,
+            [DaPayloadsDB.Columns.WITHDRAWAL_COUNT]: 0n,
+            [DaPayloadsDB.Columns.FORCED_TRANSACTION_COUNT]: 0n,
+            [DaPayloadsDB.Columns.L2_TRANSACTION_COUNT]: 0n,
+            [DaPayloadsDB.Columns.DEPOSIT_COUNT]: 0n,
+            [DaPayloadsDB.Columns.TOTAL_EVENT_COUNT]: 0n,
+            [DaPayloadsDB.Columns.TRANSITION_STEP_COUNT]: 0n,
             [DaPayloadsDB.Columns.BLOCK_START_TIME]: baseTime,
             [DaPayloadsDB.Columns.BLOCK_END_TIME]: new Date(
               baseTime.getTime() + 1_000,
@@ -294,36 +342,76 @@ describe("PendingBlockFinalizationsDB", () => {
     headerHash: Buffer,
   ): PendingBlockFinalizationsDB.PrepareInput => {
     const blockStartTime = new Date("2026-06-12T00:00:00.000Z");
+    const emptyRoots = {
+      utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      transactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      depositsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    };
+    const emptyExpectedRoots = {
+      ...emptyRoots,
+      transitionTraceRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      eventToStepRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    };
+    const emptyExpectedCounts = {
+      withdrawalCount: 0n,
+      forcedTransactionCount: 0n,
+      l2TransactionCount: 0n,
+      depositCount: 0n,
+      totalEventCount: 0n,
+      transitionStepCount: 0n,
+    };
+    const header: SDK.Header = {
+      prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      utxosRoot: emptyExpectedRoots.utxosRoot,
+      withdrawalsRoot: emptyExpectedRoots.withdrawalsRoot,
+      forcedTransactionsRoot: emptyExpectedRoots.forcedTransactionsRoot,
+      transactionsRoot: emptyExpectedRoots.transactionsRoot,
+      depositsRoot: emptyExpectedRoots.depositsRoot,
+      transitionTraceRoot: emptyExpectedRoots.transitionTraceRoot,
+      eventToStepRoot: emptyExpectedRoots.eventToStepRoot,
+      withdrawalCount: emptyExpectedCounts.withdrawalCount,
+      forcedTransactionCount: emptyExpectedCounts.forcedTransactionCount,
+      l2TransactionCount: emptyExpectedCounts.l2TransactionCount,
+      depositCount: emptyExpectedCounts.depositCount,
+      totalEventCount: emptyExpectedCounts.totalEventCount,
+      transitionStepCount: emptyExpectedCounts.transitionStepCount,
+      startTime: 1n,
+      endTime: 2n,
+      prevHeaderHash: "11".repeat(28),
+      operatorVkey: "22".repeat(28),
+      protocolVersion: 1n,
+    };
     return {
       headerHash,
+      headerCbor: Buffer.from(
+        LucidData.to(header as never, SDK.Header as never),
+        "hex",
+      ),
       metadata: {
         stateQueueLeaseToken: "lease-token",
         baseSnapshotId: "snapshot",
         baseTailOutRef: "base#0",
         baseTailHeaderHash: databaseFixtureBytes("base-tail-header", 28),
         baseTailDatumCbor: "d87980",
-        baseRoots: {
-          utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-          transactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-          depositsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-          withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-        },
+        baseRoots: emptyRoots,
         blockStartTime,
-        expectedRoots: {
-          utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-          transactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-          depositsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-          withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-        },
+        expectedRoots: emptyExpectedRoots,
+        expectedCounts: emptyExpectedCounts,
       },
       blockEndTime: new Date(blockStartTime.getTime() + 60_000),
       depositEventIds: [],
       depositEntries: [],
+      forcedTransactionEventIds: [],
+      forcedTransactionEntries: [],
       withdrawalEventIds: [],
       withdrawalEntries: [],
       mempoolTxIds: [],
       mempoolTxs: [],
       mempoolTxSourceTable: "none",
+      transitionTraceMembers: [],
+      eventToStepMembers: [],
       utxoEntries: [],
     };
   };
@@ -359,6 +447,16 @@ describe("PendingBlockFinalizationsDB", () => {
             expect(
               active.value[PendingBlockFinalizationsDB.Columns.STATUS],
             ).toBe(PendingBlockFinalizationsDB.Status.PendingSubmission);
+            expect(
+              typeof active.value[
+                PendingBlockFinalizationsDB.Columns.EXPECTED_TOTAL_EVENT_COUNT
+              ],
+            ).toBe("bigint");
+            expect(
+              active.value[
+                PendingBlockFinalizationsDB.Columns.EXPECTED_TOTAL_EVENT_COUNT
+              ],
+            ).toBe(0n);
             expect(
               active.value[
                 PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH
@@ -419,9 +517,7 @@ describe("PendingBlockFinalizationsDB", () => {
           yield* PendingBlockFinalizationsDB.markLocalFinalizationComplete(
             finalizedHeaderHash,
           );
-          yield* PendingBlockFinalizationsDB.markFinalized(
-            finalizedHeaderHash,
-          );
+          yield* PendingBlockFinalizationsDB.markFinalized(finalizedHeaderHash);
 
           const stale =
             yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
@@ -435,7 +531,9 @@ describe("PendingBlockFinalizationsDB", () => {
           expect(finalized._tag).toBe("Some");
 
           const sql = yield* SqlClient.SqlClient;
-          const staleUtxos = yield* sql<{ count: number }>`SELECT COUNT(*)::int AS count
+          const staleUtxos = yield* sql<{
+            count: number;
+          }>`SELECT COUNT(*)::int AS count
             FROM pending_block_finalization_utxos
             WHERE header_hash = ${staleHeaderHash}`;
           expect(staleUtxos[0]?.count).toBe(0);
@@ -1257,12 +1355,10 @@ describe("DepositSubmissionAttemptsDB", () => {
           yield* flushAll;
 
           const attempt = makeDepositSubmissionAttempt();
-          const first = yield* DepositSubmissionAttemptsDB.insertSubmitted(
-            attempt,
-          );
-          const second = yield* DepositSubmissionAttemptsDB.insertSubmitted(
-            attempt,
-          );
+          const first =
+            yield* DepositSubmissionAttemptsDB.insertSubmitted(attempt);
+          const second =
+            yield* DepositSubmissionAttemptsDB.insertSubmitted(attempt);
 
           expect(
             first[DepositSubmissionAttemptsDB.Columns.TX_HASH].equals(
@@ -1293,18 +1389,19 @@ describe("DepositSubmissionAttemptsDB", () => {
 
         const attempt = makeDepositSubmissionAttempt();
         const metadata = attempt[DepositSubmissionAttemptsDB.Columns.METADATA];
-        const bigintAttempt: DepositSubmissionAttemptsDB.InsertSubmittedInput = {
-          ...attempt,
-          [DepositSubmissionAttemptsDB.Columns.METADATA]: {
-            ...metadata,
-            nonceInput: {
-              ...metadata.nonceInput,
-              outputIndex: 1n as unknown as number,
+        const bigintAttempt: DepositSubmissionAttemptsDB.InsertSubmittedInput =
+          {
+            ...attempt,
+            [DepositSubmissionAttemptsDB.Columns.METADATA]: {
+              ...metadata,
+              nonceInput: {
+                ...metadata.nonceInput,
+                outputIndex: 1n as unknown as number,
+              },
+              validTo: 1_800_000_000_000n as unknown as number,
+              inclusionTime: 1_800_000_060_000n as unknown as number,
             },
-            validTo: 1_800_000_000_000n as unknown as number,
-            inclusionTime: 1_800_000_060_000n as unknown as number,
-          },
-        };
+          };
 
         const first =
           yield* DepositSubmissionAttemptsDB.insertSubmitted(bigintAttempt);
@@ -1348,9 +1445,7 @@ describe("DepositSubmissionAttemptsDB", () => {
           });
           const reconciled = makeDepositSubmissionAttempt({
             txHash: databaseTxHash("deposit-submission.reconciled"),
-            eventId: databaseOutputReferenceId(
-              "deposit-submission.reconciled",
-            ),
+            eventId: databaseOutputReferenceId("deposit-submission.reconciled"),
           });
           const ambiguous = makeDepositSubmissionAttempt({
             txHash: databaseTxHash("deposit-submission.ambiguous"),
@@ -1376,9 +1471,7 @@ describe("DepositSubmissionAttemptsDB", () => {
             yield* DepositSubmissionAttemptsDB.retrieveOpenAttempts();
           expect(open).toHaveLength(1);
           expect(
-            open[0]?.[
-              DepositSubmissionAttemptsDB.Columns.CONFIRMATION_STATUS
-            ],
+            open[0]?.[DepositSubmissionAttemptsDB.Columns.CONFIRMATION_STATUS],
           ).toEqual(DepositSubmissionAttemptsDB.Status.Ambiguous);
         }),
       ),
@@ -1394,15 +1487,14 @@ describe("Reconciliation commands", () => {
         const txHash = databaseTxHash("reconcile.tx-committed.unknown");
         const resolved = yield* reconcileTxCommittedProgram({ txHash });
 
-        expect(resolved.schemaVersion).toEqual(
-          "midgard-e2e-reconciliation-v1",
-        );
+        expect(resolved.schemaVersion).toEqual("midgard-e2e-reconciliation-v1");
         expect(resolved.milestone).toEqual("tx-committed");
         expect(resolved.status).toEqual("ambiguous");
         expect(resolved.safeToRetryOriginalStep).toEqual(true);
         expect(resolved.target).toEqual({ txHash: txHash.toString("hex") });
-        expect(resolved.evidence.some((entry) => entry.kind === "tx_status"))
-          .toEqual(true);
+        expect(
+          resolved.evidence.some((entry) => entry.kind === "tx_status"),
+        ).toEqual(true);
       }),
     ),
   );
@@ -1976,9 +2068,8 @@ const makeDepositSubmissionAttempt = ({
 } = {}): DepositSubmissionAttemptsDB.InsertSubmittedInput => ({
   [DepositSubmissionAttemptsDB.Columns.TX_HASH]: txHash,
   [DepositSubmissionAttemptsDB.Columns.DEPOSIT_EVENT_ID]: eventId,
-  [DepositSubmissionAttemptsDB.Columns.EXPECTED_DEPOSIT_OUT_REF]: `${txHash.toString(
-    "hex",
-  )}#0`,
+  [DepositSubmissionAttemptsDB.Columns.EXPECTED_DEPOSIT_OUT_REF]:
+    `${txHash.toString("hex")}#0`,
   [DepositSubmissionAttemptsDB.Columns.EXPECTED_L2_ADDRESS]: address1,
   [DepositSubmissionAttemptsDB.Columns.EXPECTED_LOVELACE]: "1000000",
   [DepositSubmissionAttemptsDB.Columns.EXPECTED_ASSETS]: {

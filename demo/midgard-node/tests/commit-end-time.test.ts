@@ -6,10 +6,10 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
-  commitTimingBudget,
-  EXPLICIT_COMMIT_DEFAULT_CANDIDATE_FUTURE_BUFFER_MS,
   COMMIT_MIN_PRE_SUBMIT_BUDGET_MS,
   COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+  commitTimingBudget,
+  EXPLICIT_COMMIT_DEFAULT_CANDIDATE_FUTURE_BUFFER_MS,
   resolveAlignedCommitEndTime,
   resolveExplicitCommitCandidateEndTimeMs,
 } from "@/workers/utils/commit-end-time.js";

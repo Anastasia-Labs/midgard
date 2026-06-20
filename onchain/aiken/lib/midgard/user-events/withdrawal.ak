@@ -1,8 +1,8 @@
 use cardano/assets.{PolicyId}
 use cardano/transaction.{InlineDatum, Input, Output}
-use midgard/common/types.{Proof}
 use midgard/common/utils
 use midgard/ledger_state.{WithdrawalEvent, WithdrawalValidity}
+use midgard/transition_trace
 use midgard/user_events
 
 pub type Datum =
@@ -20,7 +20,7 @@ pub type SpendRedeemer {
   settlement_ref_input_index: Int,
   burn_redeemer_index: Int,
   payout_mint_redeemer_index: Int,
-  membership_proof: Proof,
+  membership_proof: transition_trace.RootMembershipProof<ByteArray, ByteArray>,
   inclusion_proof_script_withdraw_redeemer_index: Int,
   purpose: SpendPurpose,
 }

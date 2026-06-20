@@ -5,8 +5,8 @@ import {
   EMPTY_MERKLE_TREE_ROOT,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
-  type FraudProofCatalogueCategoryName,
   type FraudProofCatalogueCategoryDeploymentInfo,
+  type FraudProofCatalogueCategoryName,
   type FraudProofCatalogueDeploymentInfo,
   parseFaultProofBlueprint,
   Proof,
@@ -68,6 +68,7 @@ export type InspectContractsOutput = {
     readonly initReady: boolean;
     readonly doubleSpend: InspectContractsCatalogueCategoryOutput;
     readonly invalidRange: InspectContractsCatalogueCategoryOutput;
+    readonly transitionTrace: InspectContractsCatalogueCategoryOutput;
   };
   readonly doubleSpend: {
     readonly categoryFirstStepHash: string;
@@ -89,10 +90,16 @@ export type InspectContractsOutput = {
       InspectContractsStepOutput,
     ];
   };
+  readonly transitionTrace: {
+    readonly categoryFirstStepHash: string;
+    readonly deploymentTransitionTraceScriptHash: string | null;
+    readonly deploymentTransitionTraceMatchesFirstStep: boolean | null;
+    readonly steps: readonly [InspectContractsStepOutput];
+  };
 };
 
 export type InspectContractsStepOutput = {
-  readonly name: "step01" | "step02" | "step03" | "step04";
+  readonly name: "step01" | "step02" | "step03" | "step04" | "proof";
   readonly scriptHash: string;
   readonly address: string;
 };
@@ -108,7 +115,10 @@ export type InspectContractsCatalogueCategoryOutput = {
   readonly ready: boolean;
 };
 
-export type ImplementedFraudProofCategoryName = "doubleSpend" | "invalidRange";
+export type ImplementedFraudProofCategoryName =
+  | "doubleSpend"
+  | "invalidRange"
+  | "transitionTrace";
 
 export const expectedFraudProofCategoryId = (
   name: FraudProofCatalogueCategoryName,
@@ -527,6 +537,7 @@ const inspectFraudProofCatalogue = (
       initReady: false,
       doubleSpend: emptyCatalogueCategoryInspection(),
       invalidRange: emptyCatalogueCategoryInspection(),
+      transitionTrace: emptyCatalogueCategoryInspection(),
     });
   }
 
@@ -577,11 +588,11 @@ const inspectFraudProofCatalogue = (
 
       const doubleSpend = await inspectCategory("doubleSpend");
       const invalidRange = await inspectCategory("invalidRange");
+      const transitionTrace = await inspectCategory("transitionTrace");
       const implementedCategories: readonly ImplementedFraudProofCategoryName[] =
-        ["doubleSpend", "invalidRange"];
+        ["doubleSpend", "invalidRange", "transitionTrace"];
       const implementedCategoriesReady = implementedCategories.every((name) => {
-        const category = name === "doubleSpend" ? doubleSpend : invalidRange;
-        return category.ready;
+        return { doubleSpend, invalidRange, transitionTrace }[name].ready;
       });
 
       return {
@@ -591,6 +602,7 @@ const inspectFraudProofCatalogue = (
         initReady: rootMatchesDerived && implementedCategoriesReady,
         doubleSpend,
         invalidRange,
+        transitionTrace,
       };
     },
     catch: (cause) =>
@@ -633,6 +645,10 @@ export const inspectContracts = ({
       parsedDeploymentInfo,
       "fraudProofInvalidRange",
     );
+    const deploymentTransitionTraceScriptHash = optionalDeploymentScriptHash(
+      parsedDeploymentInfo,
+      "fraudProofTransitionTrace",
+    );
     const deployedFraudProofCatalogue =
       parsedDeploymentInfo.fraudProofCatalogueMint?.fraudProofCatalogue;
 
@@ -673,6 +689,8 @@ export const inspectContracts = ({
       contracts.doubleSpend.firstStep.spendingScriptHash;
     const invalidRangeCategoryFirstStepHash =
       contracts.invalidRange.firstStep.spendingScriptHash;
+    const transitionTraceCategoryFirstStepHash =
+      contracts.transitionTrace.firstStep.spendingScriptHash;
     const deploymentDoubleSpendMatchesFirstStep =
       deploymentDoubleSpendScriptHash === null
         ? null
@@ -682,15 +700,22 @@ export const inspectContracts = ({
         ? null
         : deploymentInvalidRangeScriptHash ===
           invalidRangeCategoryFirstStepHash;
+    const deploymentTransitionTraceMatchesFirstStep =
+      deploymentTransitionTraceScriptHash === null
+        ? null
+        : deploymentTransitionTraceScriptHash ===
+          transitionTraceCategoryFirstStepHash;
     const fraudProofCatalogue = yield* inspectFraudProofCatalogue(
       deployedFraudProofCatalogue,
       {
         doubleSpend: categoryFirstStepHash,
         invalidRange: invalidRangeCategoryFirstStepHash,
+        transitionTrace: transitionTraceCategoryFirstStepHash,
       },
       {
         doubleSpend: deploymentDoubleSpendMatchesFirstStep,
         invalidRange: deploymentInvalidRangeMatchesFirstStep,
+        transitionTrace: deploymentTransitionTraceMatchesFirstStep,
       },
     );
 
@@ -719,6 +744,12 @@ export const inspectContracts = ({
           stepOutput("step01", contracts.invalidRange.steps[0]),
           stepOutput("step02", contracts.invalidRange.steps[1]),
         ],
+      },
+      transitionTrace: {
+        categoryFirstStepHash: transitionTraceCategoryFirstStepHash,
+        deploymentTransitionTraceScriptHash,
+        deploymentTransitionTraceMatchesFirstStep,
+        steps: [stepOutput("proof", contracts.transitionTrace.steps[0])],
       },
     };
   });

@@ -3,9 +3,13 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import { NodeRuntime } from "@effect/platform-node";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { normalizeHex } from "@al-ft/midgard-core/hex";
+import {
+  assertReferenceScriptAuthMinimumRemaining,
+  referenceScriptAuthPolicyDeploymentInfo,
+} from "@al-ft/midgard-sdk";
+import { NodeRuntime } from "@effect/platform-node";
 import { getAddressDetails, type Network } from "@lucid-evolution/lucid";
 import { Command } from "commander";
 import dotenv from "dotenv";
@@ -17,9 +21,9 @@ import {
   DEFAULT_WALLET_SEED_ENV,
   defaultMidgardNodeEndpoint,
   formatJson,
+  parseAddressArgument,
   parseEventId,
   parseHexBytes,
-  parseAddressArgument,
   type ResolvedWalletSeedPhrase,
   resolveWalletSeedPhrase,
 } from "@/commands/command-utils.js";
@@ -29,38 +33,35 @@ import * as E2EFinalizeSummaryCommand from "@/commands/e2e-finalize-summary.js";
 import * as E2EServiceCommand from "@/commands/e2e-service.js";
 import * as EventSettlementProofCommand from "@/commands/event-settlement-proof.js";
 import * as FetchWithdrawalsOnceCommand from "@/commands/fetch-withdrawals-once.js";
-import * as L1UtxosCommand from "@/commands/l1-utxos.js";
 import * as L1ProviderPreflightCommand from "@/commands/l1-provider-preflight.js";
+import * as L1UtxosCommand from "@/commands/l1-utxos.js";
 import { runNode } from "@/commands/listen.js";
 import * as PrepareHubOracleNonce from "@/commands/prepare-hub-oracle-nonce.js";
+import * as ReconcileCommand from "@/commands/reconcile.js";
 import * as ReserveInspectionCommand from "@/commands/reserve-inspection.js";
 import * as ReservePayoutCommand from "@/commands/reserve-payout.js";
-import * as ReconcileCommand from "@/commands/reconcile.js";
 import * as SubmitL2Transfer from "@/commands/submit-l2-transfer.js";
 import * as SubmitWithdrawalCommand from "@/commands/submit-withdrawal.js";
 import * as UtxosCommand from "@/commands/utxos.js";
 import * as WithdrawalStatusCommand from "@/commands/withdrawal-status.js";
 import * as MigrationRunner from "@/database/migrations/runner.js";
+import { runCommandStep } from "@/e2e/runner.js";
 import {
   fetchAndInsertDepositUTxOs,
   projectDepositsToMempoolLedger,
 } from "@/fibers/index.js";
 import * as Services from "@/services/index.js";
-import {
-  assertReferenceScriptAuthMinimumRemaining,
-  referenceScriptAuthPolicyDeploymentInfo,
-} from "@al-ft/midgard-sdk";
 import * as DaAttestation from "@/transactions/da-attestation.js";
 import * as Initialization from "@/transactions/initialization.js";
 import * as PhasMembershipRegistration from "@/transactions/phas-membership-registration.js";
 import {
   fetchReferenceScriptUtxosProgram,
   planReferenceScriptCommandProgram,
-  referenceScriptByName,
-  referenceScriptWalletStatusProgram,
   REFERENCE_SCRIPT_SWEEP_DEFAULT_MAX_ASSETS_PER_TOKEN_OUTPUT,
   REFERENCE_SCRIPT_SWEEP_DEFAULT_TOKEN_OUTPUT_LOVELACE,
+  referenceScriptByName,
   referenceScriptTargetsByCommand,
+  referenceScriptWalletStatusProgram,
   sweepReferenceScriptWalletProgram,
 } from "@/transactions/reference-scripts.js";
 import * as RegisterActiveOperator from "@/transactions/register-active-operator.js";
@@ -68,7 +69,6 @@ import * as SubmitDeposit from "@/transactions/submit-deposit.js";
 import { chalk, ENV_VARS_GUIDE } from "@/utils.js";
 import { commitExplicitBlockHeaderProgram } from "@/workers/commit-block-header.js";
 import { backfillMissingDaPayloadsFromFinalizedJournals } from "@/workers/commit-block-header/da-payload-backfill.js";
-import { runCommandStep } from "@/e2e/runner.js";
 
 import packageJson from "../package.json" with { type: "json" };
 
@@ -399,13 +399,18 @@ program.version(VERSION).description(
 
 program
   .command("l1-utxos")
-  .description("Fetch and print Cardano L1 UTxOs for an address through local Kupmios")
+  .description(
+    "Fetch and print Cardano L1 UTxOs for an address through local Kupmios",
+  )
   .requiredOption(
     "--address <address>",
     "Cardano payment address to query from local Kupmios",
   )
   .option("--kupo-url <url>", "Override Kupo URL; defaults to L1_KUPO_KEY")
-  .option("--ogmios-url <url>", "Override Ogmios URL; defaults to L1_OGMIOS_KEY")
+  .option(
+    "--ogmios-url <url>",
+    "Override Ogmios URL; defaults to L1_OGMIOS_KEY",
+  )
   .option("--network <network>", "Override network; defaults to NETWORK")
   .action(async (_args, options) => {
     let address: string;
@@ -465,7 +470,9 @@ program
 
 program
   .command("address-from-seed")
-  .description("Derive the Cardano address for a seed phrase on an explicit network")
+  .description(
+    "Derive the Cardano address for a seed phrase on an explicit network",
+  )
   .requiredOption(
     "--seed-phrase <seedPhrase>",
     "Quoted BIP-39 seed phrase used to derive the payment address",
@@ -611,7 +618,9 @@ program
 
 const reconcile = program
   .command("reconcile")
-  .description("Inspect and optionally repair idempotent e2e recovery milestones");
+  .description(
+    "Inspect and optionally repair idempotent e2e recovery milestones",
+  );
 
 reconcile
   .command("phas-registered")
@@ -645,10 +654,7 @@ reconcile
   .option("--repair", "Publish only missing node-runtime reference scripts")
   .option("--json", "Print machine-readable JSON output", true)
   .action(
-    async (options: {
-      readonly scope?: string;
-      readonly repair?: boolean;
-    }) => {
+    async (options: { readonly scope?: string; readonly repair?: boolean }) => {
       if ((options.scope ?? "node-runtime") !== "node-runtime") {
         console.error(
           "reconcile reference-scripts-complete: only --scope node-runtime is supported",
@@ -674,10 +680,15 @@ reconcile
 
 reconcile
   .command("deposit-projected")
-  .description("Reconcile deposit visibility and projection into the L2 mempool ledger")
+  .description(
+    "Reconcile deposit visibility and projection into the L2 mempool ledger",
+  )
   .option("--event-id <hex>", "Canonical OutputReference CBOR deposit event id")
   .option("--cardano-tx-hash <hex>", "32-byte Cardano deposit transaction hash")
-  .option("--repair", "Reconcile visible deposit UTxOs and project due deposits")
+  .option(
+    "--repair",
+    "Reconcile visible deposit UTxOs and project due deposits",
+  )
   .option("--json", "Print machine-readable JSON output", true)
   .action(
     async (options: {
@@ -755,8 +766,14 @@ reconcile
   .description("Reconcile DA payload and copied watcher attestation status")
   .requiredOption("--header-hash <hex>", "28-byte block header hash")
   .option("--watcher-url <url>", "Copied DA node base URL")
-  .option("--deployment-fingerprint <fingerprint>", "Copied DA deployment fingerprint")
-  .option("--repair", "Backfill missing local DA payload rows from finalized journals")
+  .option(
+    "--deployment-fingerprint <fingerprint>",
+    "Copied DA deployment fingerprint",
+  )
+  .option(
+    "--repair",
+    "Backfill missing local DA payload rows from finalized journals",
+  )
   .option("--json", "Print machine-readable JSON output", true)
   .action(
     async (options: {
@@ -794,7 +811,9 @@ reconcile
 
 reconcile
   .command("block-committed")
-  .description("Reconcile block commitment in canonical state_queue/local journals")
+  .description(
+    "Reconcile block commitment in canonical state_queue/local journals",
+  )
   .requiredOption("--header-hash <hex>", "28-byte block header hash")
   .option("--json", "Print machine-readable JSON output", true)
   .action(async (options: { readonly headerHash: string }) => {
@@ -1293,7 +1312,9 @@ for (const commandName of RegisterActiveOperator.REFERENCE_SCRIPT_COMMAND_NAMES)
       const commandOptions = options.opts();
       const { contractDeploymentInfoOutput, planOnly } = commandOptions;
       const runOptions =
-        DeploymentRunStateCommand.resolveDeploymentRunCliOptions(commandOptions);
+        DeploymentRunStateCommand.resolveDeploymentRunCliOptions(
+          commandOptions,
+        );
       const mainEffect = provideReferenceScriptDeploymentServices(
         Effect.gen(function* () {
           const nodeConfig = yield* Services.NodeConfig;
@@ -1596,7 +1617,9 @@ program
       Effect.provide(Services.MidgardContracts.Default),
       Effect.provide(Services.Lucid.Default),
       Effect.tap((result) =>
-        Effect.logInfo(`activate-operator completed: ${JSON.stringify(result)}`),
+        Effect.logInfo(
+          `activate-operator completed: ${JSON.stringify(result)}`,
+        ),
       ),
     );
 
@@ -1807,10 +1830,7 @@ program
   .requiredOption("--tx-hash <hex>", "32-byte Cardano transaction hash")
   .option("--json", "Print machine-readable JSON output", true)
   .action(
-    async (options: {
-      readonly txHash: string;
-      readonly json?: boolean;
-    }) => {
+    async (options: { readonly txHash: string; readonly json?: boolean }) => {
       let txHash: string;
       try {
         txHash = normalizeHex(options.txHash, {
@@ -2102,9 +2122,12 @@ program
 program
   .command("resolve-event-settlement-proof")
   .description(
-    "Resolve a deposit or withdrawal event's settlement UTxO and PHAS membership proof",
+    "Resolve a deposit, withdrawal, or tx-order event's settlement UTxO and membership proof",
   )
-  .requiredOption("--kind <kind>", 'Event kind: "deposit" or "withdrawal"')
+  .requiredOption(
+    "--kind <kind>",
+    'Event kind: "deposit", "withdrawal", or "tx-order"',
+  )
   .requiredOption("--event-id <hex>", "Canonical OutputReference CBOR event id")
   .action(async (_args, options) => {
     const opts = options.opts();

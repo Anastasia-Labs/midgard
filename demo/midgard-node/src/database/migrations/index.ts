@@ -9,6 +9,9 @@ import stateQueueMutationLeasesSql from "./sql/0006_state_queue_mutation_leases.
 import daPayloadsSql from "./sql/0007_da_payloads.sql";
 import pendingFinalizationUtxoPayloadsSql from "./sql/0008_pending_finalization_utxo_payloads.sql";
 import depositSubmissionAttemptsSql from "./sql/0009_deposit_submission_attempts.sql";
+import forcedTransactionsSql from "./sql/0010_forced_transactions.sql";
+import pendingFinalizationTraceMembersSql from "./sql/0011_pending_finalization_trace_members.sql";
+import daPayloadsV2Sql from "./sql/0012_da_payloads_v2.sql";
 
 export type Migration = {
   readonly version: number;
@@ -85,6 +88,27 @@ export const MIGRATIONS: readonly Migration[] = [
     sql: depositSubmissionAttemptsSql,
     transactional: true,
   },
+  {
+    version: 10,
+    name: "forced_transactions",
+    checksumSha256: sha256Hex(forcedTransactionsSql),
+    sql: forcedTransactionsSql,
+    transactional: true,
+  },
+  {
+    version: 11,
+    name: "pending_finalization_trace_members",
+    checksumSha256: sha256Hex(pendingFinalizationTraceMembersSql),
+    sql: pendingFinalizationTraceMembersSql,
+    transactional: true,
+  },
+  {
+    version: 12,
+    name: "da_payloads_v2",
+    checksumSha256: sha256Hex(daPayloadsV2Sql),
+    sql: daPayloadsV2Sql,
+    transactional: true,
+  },
 ] as const;
 
 export const EXPECTED_SCHEMA_VERSION =
@@ -103,6 +127,7 @@ export const APPLICATION_TABLE_NAMES = [
   "confirmed_ledger",
   "latest_ledger",
   "deposits_utxos",
+  "forced_transaction_utxos",
   "withdrawal_utxos",
   "immutable",
   "mempool",
@@ -113,9 +138,12 @@ export const APPLICATION_TABLE_NAMES = [
   "deposit_ingestion_cursor",
   "pending_block_finalizations",
   "pending_block_finalization_deposits",
+  "pending_block_finalization_forced_transactions",
   "pending_block_finalization_withdrawals",
   "pending_block_finalization_txs",
   "pending_block_finalization_utxos",
+  "pending_block_finalization_transition_trace",
+  "pending_block_finalization_event_to_step",
   "tx_admissions",
   "local_mutation_jobs",
   "state_queue_mutation_leases",
@@ -132,6 +160,9 @@ export const APPLICATION_INDEX_NAMES = [
   "idx_deposits_utxos_status_inclusion_time_event_id",
   "idx_deposits_utxos_projected_header_hash",
   "idx_deposits_utxos_deposit_l1_tx_hash",
+  "idx_forced_transaction_utxos_status_inclusion_time_tx_order_id",
+  "idx_forced_transaction_utxos_projected_header_hash",
+  "idx_forced_transaction_utxos_tx_id",
   "idx_withdrawal_utxos_status_inclusion_time_event_id",
   "idx_withdrawal_utxos_projected_header_hash",
   "idx_withdrawal_utxos_withdrawal_l1_tx_hash",

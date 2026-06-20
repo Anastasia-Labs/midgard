@@ -10,9 +10,9 @@ import {
   referenceScriptAuthUnit,
   referenceScriptPublicationFundingTarget,
   referenceScriptRoleAssets,
-  selectReferenceScriptFundingUtxos,
   SCRIPT_REF_OUTPUT_LOVELACE,
   SCRIPT_REF_PUBLICATION_FUNDING_BUFFER_LOVELACE,
+  selectReferenceScriptFundingUtxos,
 } from "../src/reference-scripts.js";
 
 const address = "addr_test1reference";
@@ -66,19 +66,15 @@ describe("reference-script SDK boundary", () => {
 
     expect(assets.lovelace).toBe(SCRIPT_REF_OUTPUT_LOVELACE);
     expect(
-      assets[
-        referenceScriptAuthUnit("aa".repeat(28), "hub-oracle minting")
-      ],
+      assets[referenceScriptAuthUnit("aa".repeat(28), "hub-oracle minting")],
     ).toBe(1n);
     expect(referenceScriptAuthTokenName("hub-oracle minting")).toMatch(
       /^[0-9a-f]+$/,
     );
     expect(
-      hasReferenceScriptAuthRole(
-        utxo({ txHash: "1", assets }),
-        target,
-        { policyId: "aa".repeat(28) },
-      ),
+      hasReferenceScriptAuthRole(utxo({ txHash: "1", assets }), target, {
+        policyId: "aa".repeat(28),
+      }),
     ).toBe(true);
   });
 

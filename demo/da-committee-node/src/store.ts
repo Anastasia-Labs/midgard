@@ -3,10 +3,10 @@ import { dirname, join } from "node:path";
 
 import type {
   DaAttestationCandidateRecord,
+  DaPayloadRecord,
   DaPeerBroadcastRecord,
   DaPeerHealthRecord,
   DaPeerNonceRecord,
-  DaPayloadRecord,
   DaSignatureRecord,
   L1SubmissionRecord,
   StateQueueHeaderRecord,
@@ -22,7 +22,10 @@ type StoreData = {
   readonly stateQueueHeaders: Record<string, StateQueueHeaderRecord>;
   readonly daPayloads: Record<string, DaPayloadRecord>;
   readonly daSignatures: Record<string, DaSignatureRecord>;
-  readonly daAttestationCandidates: Record<string, DaAttestationCandidateRecord>;
+  readonly daAttestationCandidates: Record<
+    string,
+    DaAttestationCandidateRecord
+  >;
   readonly l1Submissions: Record<string, L1SubmissionRecord>;
   readonly peerBroadcasts: Record<string, DaPeerBroadcastRecord>;
   readonly peerHealth: Record<string, DaPeerHealthRecord>;
@@ -63,7 +66,9 @@ export interface WatcherStore {
     readonly headerHash: string;
     readonly signerIndex: number;
   }): Promise<DaPeerBroadcastRecord | undefined>;
-  listPeerBroadcasts(headerHash?: string): Promise<readonly DaPeerBroadcastRecord[]>;
+  listPeerBroadcasts(
+    headerHash?: string,
+  ): Promise<readonly DaPeerBroadcastRecord[]>;
   savePeerHealth(record: DaPeerHealthRecord): Promise<void>;
   listPeerHealth(): Promise<readonly DaPeerHealthRecord[]>;
   recordPeerNonce(record: DaPeerNonceRecord): Promise<boolean>;
@@ -110,9 +115,7 @@ export class JsonFileWatcherStore implements WatcherStore {
     });
   }
 
-  async upsertStateQueueHeader(
-    record: StateQueueHeaderRecord,
-  ): Promise<void> {
+  async upsertStateQueueHeader(record: StateQueueHeaderRecord): Promise<void> {
     await this.mutate((data) => ({
       ...data,
       stateQueueHeaders: {
@@ -192,7 +195,10 @@ export class JsonFileWatcherStore implements WatcherStore {
   ): Promise<readonly DaSignatureRecord[]> {
     const data = await this.read();
     return Object.values(data.daSignatures)
-      .filter((record) => headerHash === undefined || record.headerHash === headerHash)
+      .filter(
+        (record) =>
+          headerHash === undefined || record.headerHash === headerHash,
+      )
       .sort(
         (left, right) =>
           left.headerHash.localeCompare(right.headerHash) ||
@@ -217,7 +223,10 @@ export class JsonFileWatcherStore implements WatcherStore {
   ): Promise<readonly DaAttestationCandidateRecord[]> {
     const data = await this.read();
     return Object.values(data.daAttestationCandidates)
-      .filter((record) => headerHash === undefined || record.headerHash === headerHash)
+      .filter(
+        (record) =>
+          headerHash === undefined || record.headerHash === headerHash,
+      )
       .sort(
         (left, right) =>
           left.headerHash.localeCompare(right.headerHash) ||
@@ -250,8 +259,11 @@ export class JsonFileWatcherStore implements WatcherStore {
       ...data,
       peerBroadcasts: {
         ...data.peerBroadcasts,
-        [peerBroadcastKey(record.peerBaseUrl, record.headerHash, record.signerIndex)]:
-          record,
+        [peerBroadcastKey(
+          record.peerBaseUrl,
+          record.headerHash,
+          record.signerIndex,
+        )]: record,
       },
     }));
   }
@@ -272,7 +284,10 @@ export class JsonFileWatcherStore implements WatcherStore {
   ): Promise<readonly DaPeerBroadcastRecord[]> {
     const data = await this.read();
     return Object.values(data.peerBroadcasts)
-      .filter((record) => headerHash === undefined || record.headerHash === headerHash)
+      .filter(
+        (record) =>
+          headerHash === undefined || record.headerHash === headerHash,
+      )
       .sort(
         (left, right) =>
           left.headerHash.localeCompare(right.headerHash) ||
@@ -301,7 +316,11 @@ export class JsonFileWatcherStore implements WatcherStore {
   async recordPeerNonce(record: DaPeerNonceRecord): Promise<boolean> {
     let accepted = false;
     await this.mutate((data) => {
-      const key = peerNonceKey(record.deploymentFingerprint, record.signerIndex, record.nonce);
+      const key = peerNonceKey(
+        record.deploymentFingerprint,
+        record.signerIndex,
+        record.nonce,
+      );
       if (data.peerNonces[key] !== undefined) {
         return data;
       }

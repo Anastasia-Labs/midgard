@@ -31,6 +31,7 @@ import { Duration, Effect, Metric, Option, Ref } from "effect";
 import {
   BlocksDB,
   DepositsDB,
+  ForcedTransactionsDB,
   MutationJobsDB,
   PendingBlockFinalizationsDB,
   WithdrawalsDB,
@@ -61,13 +62,12 @@ import {
 import { outRefLabel } from "@/tx-context.js";
 import { breakDownTx } from "@/utils.js";
 import { alignedUnixTimeStrictlyAfter } from "@/workers/utils/commit-end-time.js";
+import { synchronizeCommitMpfStoresFromConfirmedLedger } from "@/workers/utils/mpf.js";
+
 import {
   materializeConfirmedLedgerSnapshot,
   replaceConfirmedLedgerWithEntries,
 } from "./confirmed-ledger-snapshot.js";
-import {
-  synchronizeCommitMpfStoresFromConfirmedLedger,
-} from "@/workers/utils/mpf.js";
 
 const mergeBlockCounter = Metric.counter("merge_block_count", {
   description: "A counter for tracking merged blocks",
@@ -359,9 +359,7 @@ export const buildAndSubmitMergeTx = (
       const firstBlockNode = yield* SDK.getStateQueueNodeFromStateQueueDatum(
         firstBlockUTxO.datum,
       );
-      if (
-        firstBlockNode.da_attestation !== contracts.daAttestation.policyId
-      ) {
+      if (firstBlockNode.da_attestation !== contracts.daAttestation.policyId) {
         const unattestedHeader = yield* SDK.hashBlockHeader(
           firstBlockNode.header,
         );
@@ -621,6 +619,8 @@ export const buildAndSubmitMergeTx = (
         )}`;
         const projectedDepositEntries =
           yield* DepositsDB.retrieveByProjectedHeaderHash(headerHash);
+        const projectedForcedTransactionEntries =
+          yield* ForcedTransactionsDB.retrieveByProjectedHeaderHash(headerHash);
         const projectedWithdrawalEntries =
           yield* WithdrawalsDB.retrieveByProjectedHeaderHash(headerHash);
         const projectedDepositEventIds = projectedDepositEntries.map(
@@ -629,6 +629,10 @@ export const buildAndSubmitMergeTx = (
         const projectedWithdrawalEventIds = projectedWithdrawalEntries.map(
           (entry) => entry[WithdrawalsDB.Columns.ID],
         );
+        const projectedForcedTransactionEventIds =
+          projectedForcedTransactionEntries.map(
+            (entry) => entry[ForcedTransactionsDB.Columns.TX_ORDER_ID],
+          );
         const finalizedJournal =
           yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(headerHash);
         if (Option.isNone(finalizedJournal)) {
@@ -672,9 +676,10 @@ export const buildAndSubmitMergeTx = (
             spentOutRefCount: preflightSpentOutRefs.length,
             producedUtxoCount: preflightProducedUTxOs.length,
             depositEventCount: projectedDepositEventIds.length,
+            forcedTransactionEventCount:
+              projectedForcedTransactionEventIds.length,
             withdrawalEventCount: projectedWithdrawalEventIds.length,
-            confirmedLedgerSnapshotCount:
-              confirmedLedgerSnapshotEntries.length,
+            confirmedLedgerSnapshotCount: confirmedLedgerSnapshotEntries.length,
             confirmedLedgerSnapshotRoot,
           },
         });
@@ -701,6 +706,12 @@ export const buildAndSubmitMergeTx = (
                 projectedWithdrawalEventIds,
                 headerHash,
               ).pipe(Effect.withSpan("mark-merged-withdrawals-finalized"));
+              yield* ForcedTransactionsDB.markFinalizedByEventIds(
+                projectedForcedTransactionEventIds,
+                headerHash,
+              ).pipe(
+                Effect.withSpan("mark-merged-forced-transactions-finalized"),
+              );
             }),
           )
           .pipe(

@@ -1,12 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
-import {
-  type Assets,
-  type LucidEvolution,
-  type UTxO,
-} from "@lucid-evolution/lucid";
-import { Effect } from "effect";
-
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import * as SDK from "@al-ft/midgard-sdk";
 import {
   assertReferenceScriptAuthMinimumRemaining,
   REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS,
@@ -14,6 +7,13 @@ import {
   type ReferenceScriptAuthPolicyRef,
   referenceScriptAuthTokenNameText,
 } from "@al-ft/midgard-sdk";
+import {
+  type Assets,
+  type LucidEvolution,
+  type UTxO,
+} from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+
 import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
 import { runProviderStepWithRetry } from "@/provider-retry.js";
 import {
@@ -906,7 +906,9 @@ const ensureReferenceScriptWalletWorkingCapital = (
           message: `No operator wallet funding UTxOs available to replenish ${scopeName} reference scripts`,
           cause: `reference_script_wallet=${referenceScriptAddress},required_top_up=${topUpAmount.toString()},reserved_funding_outrefs=[${[
             ...reservedFundingOutRefKeys,
-          ].join(",")}],${formatReferenceScriptWalletStatusCause(walletStatus)}`,
+          ].join(
+            ",",
+          )}],${formatReferenceScriptWalletStatusCause(walletStatus)}`,
         }),
       );
     }
@@ -920,7 +922,9 @@ const ensureReferenceScriptWalletWorkingCapital = (
           message: `Failed to select operator wallet funding UTxOs to replenish ${scopeName} reference scripts`,
           cause: `reference_script_wallet=${referenceScriptAddress},required_top_up=${topUpAmount.toString()},reserved_funding_outrefs=[${[
             ...reservedFundingOutRefKeys,
-          ].join(",")}],${formatReferenceScriptWalletStatusCause(walletStatus)}`,
+          ].join(
+            ",",
+          )}],${formatReferenceScriptWalletStatusCause(walletStatus)}`,
         }),
       );
     }

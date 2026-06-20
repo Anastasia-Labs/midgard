@@ -16,18 +16,18 @@ import { fileURLToPath } from "node:url";
 
 import * as SDK from "@al-ft/midgard-sdk";
 import {
+  type ReferenceScriptAuthPolicyDeploymentInfo,
+  type ReferenceScriptAuthPolicyRef,
+  type ReferenceScriptAuthTokenTarget,
+  referenceScriptAuthUnit,
+} from "@al-ft/midgard-sdk";
+import {
   type Script,
   type UTxO,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import {
-  type ReferenceScriptAuthPolicyRef,
-  type ReferenceScriptAuthPolicyDeploymentInfo,
-  type ReferenceScriptAuthTokenTarget,
-  referenceScriptAuthUnit,
-} from "@al-ft/midgard-sdk";
 import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
 import { runProviderStepWithRetry } from "@/provider-retry.js";
 import { Lucid, MidgardContracts, NodeConfig } from "@/services/index.js";
@@ -451,6 +451,10 @@ const collectScriptDescriptors = (
     contracts.fraudProofs.nonExistentInputNoIndex,
   ),
   spendDescriptor("fraudProofInvalidRange", contracts.fraudProofs.invalidRange),
+  spendDescriptor(
+    "fraudProofTransitionTrace",
+    contracts.fraudProofs.transitionTrace,
+  ),
 ];
 
 const stableJson = (value: unknown): string => {

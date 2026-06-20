@@ -5,8 +5,8 @@ import {
   InvalidRangeStep01SpendRedeemer,
   InvalidRangeStep02Datum,
   invalidRangeViolationReason,
-  normalizeNativeTxValidityRange,
   type NormalizedTimeRange,
+  normalizeNativeTxValidityRange,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
@@ -36,9 +36,9 @@ import {
   phasMembershipRewardAddress,
   readJsonFile,
   requireSingletonUtxo,
+  type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
   resolveInvalidRangeDeploymentContracts,
-  type ResolvedProverSigner,
   resolveProverSigner,
   type SubmitProviderConfig,
 } from "./runtime.js";
@@ -234,11 +234,7 @@ export const submitInvalidRangeStep01 = async ({
   const redeemer = ((ctx) => {
     requireOwnSpendPurpose(ctx, threadUtxo, "invalid-range step 01");
     const layout: InvalidRangeStep01Layout = {
-      inputIndex: requireInputIndex(
-        ctx,
-        threadUtxo,
-        "invalid-range step 01",
-      ),
+      inputIndex: requireInputIndex(ctx, threadUtxo, "invalid-range step 01"),
       outputIndex: requireUniqueOutputIndex(
         ctx.outputs,
         step02OutputMatches,

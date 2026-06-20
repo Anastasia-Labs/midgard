@@ -102,8 +102,7 @@ const validateInputSets = (tx: MidgardLedgerTx): RejectedTx | null => {
 
 const validateValidityInterval = (tx: MidgardLedgerTx): RejectedTx | null => {
   if (
-    (tx.validityIntervalStart !== undefined &&
-      tx.validityIntervalStart < 0n) ||
+    (tx.validityIntervalStart !== undefined && tx.validityIntervalStart < 0n) ||
     (tx.validityIntervalEnd !== undefined && tx.validityIntervalEnd < 0n)
   ) {
     return reject(
@@ -192,7 +191,9 @@ const validateNativeScriptWitnesses = (
 };
 
 const validateRequiredObservers = (tx: MidgardLedgerTx): RejectedTx | null => {
-  const duplicateObserver = firstDuplicate(hashHexes(tx.requiredObserverHashes));
+  const duplicateObserver = firstDuplicate(
+    hashHexes(tx.requiredObserverHashes),
+  );
   if (duplicateObserver !== undefined) {
     return reject(
       tx.txId,
@@ -246,11 +247,7 @@ const validateNativeOne = (
           ? RejectCodes.InvalidOutput
           : RejectCodes.InvalidFieldType
         : RejectCodes.CborDeserialization;
-    return reject(
-      queuedTx.txId,
-      code,
-      codecErrorDetail(e),
-    );
+    return reject(queuedTx.txId, code, codecErrorDetail(e));
   }
 
   const { ledgerTx } = submittedTx;
@@ -289,7 +286,11 @@ const validateNativeOne = (
   const minFee =
     config.minFeeA * BigInt(queuedTx.txCbor.length) + config.minFeeB;
   if (ledgerTx.fee < minFee) {
-    return reject(ledgerTx.txId, RejectCodes.MinFee, `${ledgerTx.fee} < ${minFee}`);
+    return reject(
+      ledgerTx.txId,
+      RejectCodes.MinFee,
+      `${ledgerTx.fee} < ${minFee}`,
+    );
   }
 
   for (const validation of [

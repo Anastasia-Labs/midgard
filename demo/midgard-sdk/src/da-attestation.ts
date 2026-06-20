@@ -1,9 +1,9 @@
 import { assetsEqual } from "@al-ft/midgard-core/assets";
 import { canonicalPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
+  type BuildTxWithRedeemer,
   Data,
   fromText,
-  type BuildTxWithRedeemer,
   type LucidEvolution,
   toUnit,
   type TxBuilder,
@@ -19,15 +19,15 @@ import type {
 } from "@/common.js";
 import {
   castStateQueueNodeToData,
-  HeaderHashSchema,
   type HeaderHash,
+  HeaderHashSchema,
   type StateQueueNode,
 } from "@/ledger-state.js";
 import {
   encodeLinkedListNodeView,
   type LinkedListNodeView,
 } from "@/linked-list.js";
-import { type StateQueueUTxO, StateQueueSpendRedeemer } from "@/state-queue.js";
+import { StateQueueSpendRedeemer, type StateQueueUTxO } from "@/state-queue.js";
 import {
   requireInputIndex,
   requireMintRedeemerIndex,

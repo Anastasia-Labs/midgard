@@ -1,10 +1,10 @@
 import {
-  Data,
-  toUnit,
   type Assets,
   type BuildTxWithRedeemer,
+  Data,
   type RedeemerContext,
   type Script,
+  toUnit,
   type TxSignBuilder,
   type UTxO,
 } from "@lucid-evolution/lucid";
@@ -12,14 +12,14 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
+  type AuthenticatedValidator,
   buildSchedulerRefreshTx,
+  type BuildSchedulerRefreshTxConfig,
   buildUnsignedSchedulerRefreshTxProgram,
   encodeSchedulerDatumForChain,
   SCHEDULER_ASSET_NAME,
-  SchedulerSpendRedeemer,
-  type AuthenticatedValidator,
-  type BuildSchedulerRefreshTxConfig,
   type SchedulerRefreshWitnessSelection,
+  SchedulerSpendRedeemer,
 } from "../src/index.js";
 
 const h28 = (byte: string): string => byte.repeat(28);

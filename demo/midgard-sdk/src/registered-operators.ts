@@ -6,10 +6,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import {
-  AuthenticatedValidator,
-  OutputReferenceSchema,
-} from "@/common.js";
+import { AuthenticatedValidator, OutputReferenceSchema } from "@/common.js";
 
 import { incompleteInitLinkedListTxProgram } from "./linked-list.js";
 

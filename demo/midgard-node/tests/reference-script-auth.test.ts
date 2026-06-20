@@ -1,13 +1,12 @@
 import "./utils.js";
 
-import { describe, expect, it } from "vitest";
-
 import {
   assertReferenceScriptAuthMinimumRemaining,
   ReferenceScriptAuthDeadlineError,
-  referenceScriptAuthRemainingMs,
   type ReferenceScriptAuthMintingPolicy,
+  referenceScriptAuthRemainingMs,
 } from "@al-ft/midgard-sdk";
+import { describe, expect, it } from "vitest";
 
 const policy = (expiresAtUnixTime?: number): ReferenceScriptAuthMintingPolicy =>
   ({

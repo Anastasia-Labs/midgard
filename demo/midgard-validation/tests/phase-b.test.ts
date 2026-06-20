@@ -193,8 +193,7 @@ describe("phase B validation", () => {
       spent: [parentInput],
       outputLovelace: 9n,
     });
-    const parentOutputRef =
-      parent.graph.produced[0][LedgerColumns.OUTREF];
+    const parentOutputRef = parent.graph.produced[0][LedgerColumns.OUTREF];
     const child = makePhaseBCandidate({
       arrivalSeq: 1n,
       spent: [parentOutputRef],

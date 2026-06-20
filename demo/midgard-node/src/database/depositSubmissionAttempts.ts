@@ -91,7 +91,9 @@ const stableStringify = (value: unknown): string => {
   if (value !== null && typeof value === "object") {
     return `{${Object.entries(value as Record<string, unknown>)
       .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, nested]) => `${JSON.stringify(key)}:${stableStringify(nested)}`)
+      .map(
+        ([key, nested]) => `${JSON.stringify(key)}:${stableStringify(nested)}`,
+      )
       .join(",")}}`;
   }
   return JSON.stringify(value);
@@ -108,10 +110,7 @@ const normalizeJsonb = (value: unknown): unknown => {
   }
 };
 
-const sameSubmittedPayload = (
-  row: Row,
-  input: InsertSubmittedInput,
-): boolean =>
+const sameSubmittedPayload = (row: Row, input: InsertSubmittedInput): boolean =>
   row[Columns.TX_HASH].equals(input[Columns.TX_HASH]) &&
   row[Columns.DEPOSIT_EVENT_ID].equals(input[Columns.DEPOSIT_EVENT_ID]) &&
   row[Columns.EXPECTED_DEPOSIT_OUT_REF] ===

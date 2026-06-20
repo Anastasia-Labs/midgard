@@ -61,7 +61,12 @@ describe("L1 submitter helpers", () => {
 
   it("classifies live UTxOs into spendable plain ADA and ignored balances", () => {
     const plain = utxo("01", 0, { lovelace: 30_000_000n });
-    const withDatum = utxo("02", 0, { lovelace: 10_000_000n }, { datum: "d87980" });
+    const withDatum = utxo(
+      "02",
+      0,
+      { lovelace: 10_000_000n },
+      { datum: "d87980" },
+    );
     const withScriptRef = utxo(
       "03",
       0,
@@ -429,8 +434,14 @@ describe("L1 submitter helpers", () => {
     });
 
     expect(result.status).toBe("failed");
-    expect(result.errors).toEqual(["auto_fund_source_matches_submitter_address"]);
-    expect(calls).toEqual(["select:submitter", "select:funder", "select:submitter"]);
+    expect(result.errors).toEqual([
+      "auto_fund_source_matches_submitter_address",
+    ]);
+    expect(calls).toEqual([
+      "select:submitter",
+      "select:funder",
+      "select:submitter",
+    ]);
   });
 
   it("verifies that apply is visible on the state queue before succeeding", async () => {
@@ -447,7 +458,9 @@ describe("L1 submitter helpers", () => {
       stateQueueNode: { da_attestation: states.shift() ?? "" },
     });
 
-    await expect(probe.waitForApplied("01".repeat(28))).resolves.toBeUndefined();
+    await expect(
+      probe.waitForApplied("01".repeat(28)),
+    ).resolves.toBeUndefined();
   });
 
   it("rejects apply verification for an unexpected attestation policy", async () => {

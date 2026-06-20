@@ -125,7 +125,9 @@ const loadRealBlueprint = (): Effect.Effect<Blueprint, Error> =>
   });
 
 const resolveDefaultContractDeploymentInfoPath = (): string => {
-  for (const candidate of new Set(DEFAULT_CONTRACT_DEPLOYMENT_INFO_CANDIDATES)) {
+  for (const candidate of new Set(
+    DEFAULT_CONTRACT_DEPLOYMENT_INFO_CANDIDATES,
+  )) {
     if (existsSync(candidate)) {
       return candidate;
     }
@@ -583,7 +585,7 @@ const expectDerivedScriptHash = (
     ? Effect.void
     : Effect.fail(
         new Error(
-          `${label} mismatch while deriving real double-spend fault-proof contracts: expected=${expected}, actual=${actual}`,
+          `${label} mismatch while deriving real fault-proof contracts: expected=${expected}, actual=${actual}`,
         ),
       );
 
@@ -621,6 +623,41 @@ const buildRealDoubleSpendFirstStepValidator = (
     );
 
     return doubleSpendContracts.doubleSpend.firstStep;
+  });
+
+const buildRealTransitionTraceProofValidator = (
+  network: Network,
+  contracts: SDK.MidgardValidators,
+  computationThread: SDK.MintingValidator,
+  fraudProof: SDK.AuthenticatedValidator,
+): Effect.Effect<SDK.SpendingValidator, Error> =>
+  Effect.gen(function* () {
+    const blueprint = SDK.parseFaultProofBlueprint(yield* loadRealBlueprint());
+    const transitionTraceContracts =
+      yield* SDK.buildTransitionTraceFaultProofContracts({
+        blueprint,
+        network,
+        hubOraclePolicyId: contracts.hubOracle.policyId,
+        fraudProofCataloguePolicyId: contracts.fraudProofCatalogue.policyId,
+      });
+
+    yield* expectDerivedScriptHash(
+      "computation-thread policy",
+      computationThread.policyId,
+      transitionTraceContracts.computationThread.policyId,
+    );
+    yield* expectDerivedScriptHash(
+      "fraud-proof policy",
+      fraudProof.policyId,
+      transitionTraceContracts.fraudProof.policyId,
+    );
+    yield* expectDerivedScriptHash(
+      "fraud-proof spend",
+      fraudProof.spendingScriptHash,
+      transitionTraceContracts.fraudProof.spendingScriptHash,
+    );
+
+    return transitionTraceContracts.transitionTrace.firstStep;
   });
 
 /**
@@ -878,12 +915,19 @@ export const withRealStateQueueAndOperatorContracts = (
         realComputationThread,
         realFraudProof,
       );
+    const realTransitionTrace = yield* buildRealTransitionTraceProofValidator(
+      network,
+      withRealFraudProofCatalogue,
+      realComputationThread,
+      realFraudProof,
+    );
     const withRealFraudProof: SDK.MidgardValidators = {
       ...withRealFraudProofCatalogue,
       fraudProof: realFraudProof,
       fraudProofs: {
         ...withRealFraudProofCatalogue.fraudProofs,
         doubleSpend: realDoubleSpendFirstStep,
+        transitionTrace: realTransitionTrace,
       },
     };
 

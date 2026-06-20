@@ -1,8 +1,5 @@
+import { CML, walletFromSeed } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
-import {
-  CML,
-  walletFromSeed,
-} from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {

@@ -4,8 +4,8 @@ import {
   Assets,
   type BuildTxWithRedeemer,
   Data,
-  fromUnit,
   fromText,
+  fromUnit,
   LucidEvolution,
   paymentCredentialOf,
   PolicyId,
@@ -26,8 +26,8 @@ import {
   MerkleRoot,
   MerkleRootSchema,
   MissingDatumError,
-  OutputReferenceSchema,
   outputReferenceFromUTxO,
+  OutputReferenceSchema,
   POSIXTime,
   UnauthenticUtxoError,
   utxosAtByNFTPolicyId,
@@ -46,7 +46,10 @@ import {
   hashBlockHeader,
   Header,
   HeaderHashSchema,
+  HeaderTransitionCommitments,
+  HeaderTransitionCommitmentsError,
   NO_DA_ATTESTATION,
+  validateHeaderTransitionCommitmentsProgram,
 } from "@/ledger-state.js";
 import {
   encodeLinkedListNodeView,
@@ -146,9 +149,18 @@ export const StateQueueRedeemerSchema = Data.Enum([
       confirmed_state_input_outref: OutputReferenceSchema,
       confirmed_state_output_index: Data.Integer(),
       m_settlement_redeemer_index: Data.Nullable(Data.Integer()),
+      merged_block_withdrawals_root: MerkleRootSchema,
+      merged_block_forced_transactions_root: MerkleRootSchema,
       merged_block_transactions_root: MerkleRootSchema,
       merged_block_deposits_root: MerkleRootSchema,
-      merged_block_withdrawals_root: MerkleRootSchema,
+      merged_block_transition_trace_root: MerkleRootSchema,
+      merged_block_event_to_step_root: MerkleRootSchema,
+      merged_block_withdrawal_count: Data.Integer(),
+      merged_block_forced_transaction_count: Data.Integer(),
+      merged_block_l2_transaction_count: Data.Integer(),
+      merged_block_deposit_count: Data.Integer(),
+      merged_block_total_event_count: Data.Integer(),
+      merged_block_transition_step_count: Data.Integer(),
     }),
   }),
   Data.Object({
@@ -1096,6 +1108,7 @@ export const incompleteRemoveFraudulentBlocksLinkTxProgram = (
  * @param transactionsRoot - MPF root of the transactions included in the new block.
  * @param depositsRoot - MPF root of the deposit transactions included in the new block.
  * @param withdrawalsRoot - MPF root of the withdrawal transactions included in the new block.
+ * @param transitionCommitments - transition trace commitment roots and counts.
  * @param endTime - POSIX time of the new block's closing range.
  */
 export const updateLatestBlocksDatumAndGetTheNewHeaderProgram = (
@@ -1105,10 +1118,14 @@ export const updateLatestBlocksDatumAndGetTheNewHeaderProgram = (
   transactionsRoot: MerkleRoot,
   depositsRoot: MerkleRoot,
   withdrawalsRoot: MerkleRoot,
+  transitionCommitments: HeaderTransitionCommitments,
   endTime: POSIXTime,
 ): Effect.Effect<
   { nodeDatum: LinkedListNodeView; header: Header },
-  DataCoercionError | LucidError | HashingError
+  | DataCoercionError
+  | HeaderTransitionCommitmentsError
+  | LucidError
+  | HashingError
 > =>
   Effect.gen(function* () {
     const walletAddress: string = yield* Effect.tryPromise({
@@ -1118,15 +1135,28 @@ export const updateLatestBlocksDatumAndGetTheNewHeaderProgram = (
     });
 
     const pubKeyHash = paymentCredentialOf(walletAddress).hash;
+    const checkedTransitionCommitments =
+      yield* validateHeaderTransitionCommitmentsProgram(transitionCommitments);
     if (latestBlocksDatum.key === "Empty") {
       const { data: confirmedState } =
         yield* getConfirmedStateFromStateQueueDatum(latestBlocksDatum);
       const newHeader = {
         prevUtxosRoot: confirmedState.utxoRoot,
         utxosRoot: newUTxOsRoot,
+        withdrawalsRoot,
+        forcedTransactionsRoot:
+          checkedTransitionCommitments.forcedTransactionsRoot,
         transactionsRoot,
         depositsRoot,
-        withdrawalsRoot,
+        transitionTraceRoot: checkedTransitionCommitments.transitionTraceRoot,
+        eventToStepRoot: checkedTransitionCommitments.eventToStepRoot,
+        withdrawalCount: checkedTransitionCommitments.withdrawalCount,
+        forcedTransactionCount:
+          checkedTransitionCommitments.forcedTransactionCount,
+        l2TransactionCount: checkedTransitionCommitments.l2TransactionCount,
+        depositCount: checkedTransitionCommitments.depositCount,
+        totalEventCount: checkedTransitionCommitments.totalEventCount,
+        transitionStepCount: checkedTransitionCommitments.transitionStepCount,
         startTime: confirmedState.endTime,
         endTime,
         prevHeaderHash: confirmedState.headerHash,
@@ -1149,9 +1179,20 @@ export const updateLatestBlocksDatumAndGetTheNewHeaderProgram = (
         ...latestHeader,
         prevUtxosRoot: latestHeader.utxosRoot,
         utxosRoot: newUTxOsRoot,
+        withdrawalsRoot,
+        forcedTransactionsRoot:
+          checkedTransitionCommitments.forcedTransactionsRoot,
         transactionsRoot,
         depositsRoot,
-        withdrawalsRoot,
+        transitionTraceRoot: checkedTransitionCommitments.transitionTraceRoot,
+        eventToStepRoot: checkedTransitionCommitments.eventToStepRoot,
+        withdrawalCount: checkedTransitionCommitments.withdrawalCount,
+        forcedTransactionCount:
+          checkedTransitionCommitments.forcedTransactionCount,
+        l2TransactionCount: checkedTransitionCommitments.l2TransactionCount,
+        depositCount: checkedTransitionCommitments.depositCount,
+        totalEventCount: checkedTransitionCommitments.totalEventCount,
+        transitionStepCount: checkedTransitionCommitments.transitionStepCount,
         startTime: latestHeader.endTime,
         endTime,
         prevHeaderHash,
@@ -1179,6 +1220,7 @@ export const updateLatestBlocksDatumAndGetTheNewHeaderProgram = (
  * @param transactionsRoot - MPF root of the transactions included in the new block.
  * @param depositsRoot - MPF root of the deposit transactions included in the new block.
  * @param withdrawalsRoot - MPF root of the withdrawal transactions included in the new block.
+ * @param transitionCommitments - transition trace commitment roots and counts.
  * @param endTime - POSIX time of the new block's closing range.
  */
 export const updateLatestBlocksDatumAndGetTheNewHeader = (
@@ -1188,6 +1230,7 @@ export const updateLatestBlocksDatumAndGetTheNewHeader = (
   transactionsRoot: MerkleRoot,
   depositsRoot: MerkleRoot,
   withdrawalsRoot: MerkleRoot,
+  transitionCommitments: HeaderTransitionCommitments,
   endTime: POSIXTime,
 ): Promise<{ nodeDatum: LinkedListNodeView; header: Header }> =>
   makeReturn(
@@ -1198,6 +1241,7 @@ export const updateLatestBlocksDatumAndGetTheNewHeader = (
       transactionsRoot,
       depositsRoot,
       withdrawalsRoot,
+      transitionCommitments,
       endTime,
     ),
   ).unsafeRun();

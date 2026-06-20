@@ -1,10 +1,11 @@
 import { assetsEqual } from "@al-ft/midgard-core/assets";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { compareOutRefs, outRefLabel } from "@al-ft/midgard-core/out-ref";
+import { canonicalPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
-  Data,
   type Assets,
   type BuildTxWithRedeemer,
+  Data,
   type LucidEvolution,
   type Script,
   toUnit,
@@ -32,15 +33,15 @@ import {
   castStateQueueNodeToData,
   type ConfirmedState,
   getHeaderFromStateQueueDatum,
-  type Header,
   hashBlockHeader,
+  type Header,
   NO_DA_ATTESTATION,
 } from "@/ledger-state.js";
 import {
-  encodeLinkedListNodeView,
-  linkedListDatumToNodeView,
   ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX,
+  encodeLinkedListNodeView,
   LinkedListDatum,
+  linkedListDatumToNodeView,
   type LinkedListNodeView,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
 } from "@/linked-list.js";
@@ -52,8 +53,8 @@ import {
 import {
   getConfirmedStateFromStateQueueDatum,
   StateQueueError,
-  StateQueueRedeemer,
   type StateQueueFetchConfig,
+  StateQueueRedeemer,
   type StateQueueRedeemer as StateQueueRedeemerType,
   StateQueueSpendRedeemer,
   type StateQueueUTxO,
@@ -65,7 +66,6 @@ import {
   requireReferenceInputIndex as requireContextReferenceInputIndex,
   requireSpendRedeemerIndex as requireContextSpendRedeemerIndex,
 } from "@/tx-context-redeemer.js";
-import { canonicalPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 
 const STATE_QUEUE_HEADER_NODE_LOVELACE = 5_000_000n;
 const ACTIVE_OPERATOR_MATURITY_DURATION_MS = 30n;
@@ -745,9 +745,18 @@ const makeStateQueueMergeRedeemer = ({
     confirmed_state_input_outref: confirmedStateInputOutRef,
     confirmed_state_output_index: BigInt(layout.confirmedStateOutputIndex),
     m_settlement_redeemer_index: BigInt(layout.settlementRedeemerIndex),
+    merged_block_withdrawals_root: blockHeader.withdrawalsRoot,
+    merged_block_forced_transactions_root: blockHeader.forcedTransactionsRoot,
     merged_block_transactions_root: blockHeader.transactionsRoot,
     merged_block_deposits_root: blockHeader.depositsRoot,
-    merged_block_withdrawals_root: blockHeader.withdrawalsRoot,
+    merged_block_transition_trace_root: blockHeader.transitionTraceRoot,
+    merged_block_event_to_step_root: blockHeader.eventToStepRoot,
+    merged_block_withdrawal_count: blockHeader.withdrawalCount,
+    merged_block_forced_transaction_count: blockHeader.forcedTransactionCount,
+    merged_block_l2_transaction_count: blockHeader.l2TransactionCount,
+    merged_block_deposit_count: blockHeader.depositCount,
+    merged_block_total_event_count: blockHeader.totalEventCount,
+    merged_block_transition_step_count: blockHeader.transitionStepCount,
   },
 });
 
@@ -895,6 +904,18 @@ const assertMergeRedeemerInvariants = ({
       mismatches.push("state_queue.m_settlement_redeemer_index mismatch");
     }
     if (
+      stateQueueMerge.merged_block_withdrawals_root !==
+      blockHeader.withdrawalsRoot
+    ) {
+      mismatches.push("state_queue.withdrawals_root mismatch");
+    }
+    if (
+      stateQueueMerge.merged_block_forced_transactions_root !==
+      blockHeader.forcedTransactionsRoot
+    ) {
+      mismatches.push("state_queue.forced_transactions_root mismatch");
+    }
+    if (
       stateQueueMerge.merged_block_transactions_root !==
       blockHeader.transactionsRoot
     ) {
@@ -906,10 +927,51 @@ const assertMergeRedeemerInvariants = ({
       mismatches.push("state_queue.deposits_root mismatch");
     }
     if (
-      stateQueueMerge.merged_block_withdrawals_root !==
-      blockHeader.withdrawalsRoot
+      stateQueueMerge.merged_block_transition_trace_root !==
+      blockHeader.transitionTraceRoot
     ) {
-      mismatches.push("state_queue.withdrawals_root mismatch");
+      mismatches.push("state_queue.transition_trace_root mismatch");
+    }
+    if (
+      stateQueueMerge.merged_block_event_to_step_root !==
+      blockHeader.eventToStepRoot
+    ) {
+      mismatches.push("state_queue.event_to_step_root mismatch");
+    }
+    if (
+      stateQueueMerge.merged_block_withdrawal_count !==
+      blockHeader.withdrawalCount
+    ) {
+      mismatches.push("state_queue.withdrawal_count mismatch");
+    }
+    if (
+      stateQueueMerge.merged_block_forced_transaction_count !==
+      blockHeader.forcedTransactionCount
+    ) {
+      mismatches.push("state_queue.forced_transaction_count mismatch");
+    }
+    if (
+      stateQueueMerge.merged_block_l2_transaction_count !==
+      blockHeader.l2TransactionCount
+    ) {
+      mismatches.push("state_queue.l2_transaction_count mismatch");
+    }
+    if (
+      stateQueueMerge.merged_block_deposit_count !== blockHeader.depositCount
+    ) {
+      mismatches.push("state_queue.deposit_count mismatch");
+    }
+    if (
+      stateQueueMerge.merged_block_total_event_count !==
+      blockHeader.totalEventCount
+    ) {
+      mismatches.push("state_queue.total_event_count mismatch");
+    }
+    if (
+      stateQueueMerge.merged_block_transition_step_count !==
+      blockHeader.transitionStepCount
+    ) {
+      mismatches.push("state_queue.transition_step_count mismatch");
     }
   }
 
@@ -1012,6 +1074,7 @@ export const buildProductionMergeToConfirmedStateTxProgram = ({
     const settlementDatum = {
       deposits_root: blockHeader.depositsRoot,
       withdrawals_root: blockHeader.withdrawalsRoot,
+      forced_transactions_root: blockHeader.forcedTransactionsRoot,
       transactions_root: blockHeader.transactionsRoot,
       resolution_claim: null,
     };

@@ -134,4 +134,3 @@ cd ../onchain/aiken && aiken check
 - The authoritative L1 header commits to all trace roots and counts.
 - State queue merge cannot omit or substitute trace commitments.
 - Settlement no longer conflates forced tx orders with normal L2 transactions.
-

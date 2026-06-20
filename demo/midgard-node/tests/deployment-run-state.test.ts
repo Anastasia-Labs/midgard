@@ -1,6 +1,6 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import {
   createReferenceScriptAuthPolicy,
@@ -11,8 +11,8 @@ import { Effect } from "effect";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
-  resolveReferenceScriptAuthPolicyProgram,
   type DeploymentRunCliOptions,
+  resolveReferenceScriptAuthPolicyProgram,
 } from "@/commands/deployment-run-state.js";
 import {
   createDeploymentRunState,
@@ -272,7 +272,9 @@ describe("deployment run-state command identity guards", () => {
         manifestPath,
         hubOracleOneShotTxHash: "22".repeat(32),
       }),
-    ).rejects.toThrow("deployment run state deployment identity does not match");
+    ).rejects.toThrow(
+      "deployment run state deployment identity does not match",
+    );
   });
 
   it("refuses to import a manifest auth policy for a different one-shot identity", async () => {

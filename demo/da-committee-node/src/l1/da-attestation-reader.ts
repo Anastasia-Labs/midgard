@@ -2,8 +2,8 @@ import * as SDK from "@al-ft/midgard-sdk";
 import {
   Data,
   Lucid,
-  toUnit,
   type LucidEvolution,
+  toUnit,
   type UTxO,
 } from "@lucid-evolution/lucid";
 import * as LucidRuntime from "@lucid-evolution/lucid";
@@ -82,7 +82,10 @@ export class LucidDaAttestationChainReader implements DaAttestationChainReader {
       committeeSignersHash: datum.committee_signers_hash,
       threshold: safeNumber(datum.da_threshold, "DA threshold"),
       ownerCount: datum.owners.length,
-      updateThreshold: safeNumber(datum.update_threshold, "DA update threshold"),
+      updateThreshold: safeNumber(
+        datum.update_threshold,
+        "DA update threshold",
+      ),
       rawDatum: datum,
     };
   }
@@ -117,7 +120,10 @@ export class LucidDaAttestationChainReader implements DaAttestationChainReader {
         datum.attestation_count,
         "DA attestation count",
       );
-      const threshold = safeNumber(datum.da_threshold, "DA attestation threshold");
+      const threshold = safeNumber(
+        datum.da_threshold,
+        "DA attestation threshold",
+      );
       records.push({
         deploymentFingerprint: this.config.deploymentFingerprint,
         headerHash,
@@ -139,7 +145,9 @@ export class LucidDaAttestationChainReader implements DaAttestationChainReader {
               : "initialized",
       });
     }
-    return records.sort((left, right) => left.outRef.localeCompare(right.outRef));
+    return records.sort((left, right) =>
+      left.outRef.localeCompare(right.outRef),
+    );
   }
 }
 
@@ -193,8 +201,10 @@ export class MultiDaAttestationChainReader implements DaAttestationChainReader {
 export const daAttestationReaderFromConfig = async (
   config: WatcherConfig,
 ): Promise<DaAttestationChainReader | undefined> => {
-  if (config.cardanoProviderUrls[0]?.startsWith("fixture:") === true ||
-      config.cardanoProviderUrls[0]?.startsWith("file:") === true) {
+  if (
+    config.cardanoProviderUrls[0]?.startsWith("fixture:") === true ||
+    config.cardanoProviderUrls[0]?.startsWith("file:") === true
+  ) {
     return undefined;
   }
   const readers = await Promise.all(
@@ -203,7 +213,11 @@ export const daAttestationReaderFromConfig = async (
         url,
         config.network,
       );
-      return new LucidDaAttestationChainReader({ lucid, config, providerSource });
+      return new LucidDaAttestationChainReader({
+        lucid,
+        config,
+        providerSource,
+      });
     }),
   );
   return readers.length === 1
@@ -214,7 +228,10 @@ export const daAttestationReaderFromConfig = async (
 const lucidFromProviderUrl = async (
   url: string,
   network: string,
-): Promise<{ readonly lucid: LucidEvolution; readonly providerSource: string }> => {
+): Promise<{
+  readonly lucid: LucidEvolution;
+  readonly providerSource: string;
+}> => {
   const runtime = LucidRuntime as unknown as LucidProviderRuntime;
   if (url.startsWith("blockfrost:")) {
     const { apiUrl, projectId } = parseBlockfrostUrl(url);
@@ -279,7 +296,9 @@ const parseKupmiosUrl = (
   const raw = value.slice("kupmios:".length);
   const [kupoUrl, ogmiosUrl] = raw.split("|");
   if (kupoUrl === undefined || ogmiosUrl === undefined) {
-    throw new Error("kupmios provider URL must be kupmios:<kupo-url>|<ogmios-url>");
+    throw new Error(
+      "kupmios provider URL must be kupmios:<kupo-url>|<ogmios-url>",
+    );
   }
   return { kupoUrl, ogmiosUrl };
 };
@@ -302,15 +321,15 @@ const outRefLabel = (utxo: Pick<UTxO, "txHash" | "outputIndex">): string =>
 const sortCandidates = (
   candidates: readonly DaAttestationCandidateRecord[],
 ): readonly DaAttestationCandidateRecord[] =>
-  [...candidates].sort((left, right) => left.outRef.localeCompare(right.outRef));
+  [...candidates].sort((left, right) =>
+    left.outRef.localeCompare(right.outRef),
+  );
 
 const canonicalCandidates = (
   candidates: readonly DaAttestationCandidateRecord[],
 ): readonly string[] => candidates.map(canonicalCandidate);
 
-const canonicalCandidate = (
-  candidate: DaAttestationCandidateRecord,
-): string =>
+const canonicalCandidate = (candidate: DaAttestationCandidateRecord): string =>
   canonicalJson({
     deploymentFingerprint: candidate.deploymentFingerprint,
     headerHash: candidate.headerHash,
@@ -337,7 +356,9 @@ const mergeAgreedCandidates = (
     ...candidate,
     observedChainPoint: {
       providerSource: sortedResults
-        .map((candidates) => candidates[index]!.observedChainPoint.providerSource)
+        .map(
+          (candidates) => candidates[index]!.observedChainPoint.providerSource,
+        )
         .filter((source): source is string => source !== undefined)
         .join(","),
       observedAt: new Date().toISOString(),

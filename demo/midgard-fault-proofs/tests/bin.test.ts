@@ -104,6 +104,22 @@ describe("fault-proof CLI argument parsing", () => {
     ]);
 
     expect(init.fraudCategory).toBe("invalidRange");
+
+    const transitionTraceInit = parseArgs([
+      "node",
+      "midgard-fault-proofs",
+      "submit-init",
+      "--blueprint",
+      "plutus.json",
+      "--deployment-info",
+      "deployment.json",
+      "--fraudulent-block-out-ref",
+      `${"55".repeat(32)}#0`,
+      "--fraud-category",
+      "transitionTrace",
+    ]);
+
+    expect(transitionTraceInit.fraudCategory).toBe("transitionTrace");
   });
 
   it("rejects unknown fault-proof categories", () => {
@@ -115,7 +131,9 @@ describe("fault-proof CLI argument parsing", () => {
         "--fraud-category",
         "invalid-range",
       ]),
-    ).toThrow('--fraud-category must be either "doubleSpend" or "invalidRange"');
+    ).toThrow(
+      '--fraud-category must be one of "doubleSpend", "invalidRange", or "transitionTrace"',
+    );
   });
 
   it("passes a direct midgard node admin key through only for removal", () => {

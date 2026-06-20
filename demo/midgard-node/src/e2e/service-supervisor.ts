@@ -5,8 +5,8 @@ import { dirname } from "node:path";
 
 import {
   redactArg,
-  redactEnvKeys,
   type RedactedCommand,
+  redactEnvKeys,
 } from "@/e2e/runner.js";
 
 export const E2E_SERVICE_SUPERVISOR_SCHEMA_VERSION =

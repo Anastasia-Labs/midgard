@@ -211,13 +211,17 @@ describe("prepare-invalid-range", () => {
       });
 
       expect(output.tx.violationReason).toBe("invalid-range");
-      expect(output.files?.txInclusionPath).toBe(join(dir, "tx-inclusion.json"));
+      expect(output.files?.txInclusionPath).toBe(
+        join(dir, "tx-inclusion.json"),
+      );
       expect(output.files?.planPath).toBe(join(dir, "plan.json"));
       const inclusion = JSON.parse(
         await readFile(join(dir, "tx-inclusion.json"), "utf8"),
       ) as { readonly nativeTxId: string };
       expect(inclusion.nativeTxId).toBe(badTx.nodeTxId);
-      const plan = JSON.parse(await readFile(join(dir, "plan.json"), "utf8")) as {
+      const plan = JSON.parse(
+        await readFile(join(dir, "plan.json"), "utf8"),
+      ) as {
         readonly violationReason: string;
         readonly txNodeTxId: string;
       };
