@@ -3,12 +3,13 @@ module Midgard.Node.Config (
   ApiConfig (..),
   DatabaseConfig (..),
   MidgardConfig (..),
+  ProtocolConfig (..),
   ContractsConfig (..),
   FeatureFlags (..),
   loadConfigFile,
 ) where
 
-import Data.Aeson (FromJSON (..), withObject, (.:), (.:?))
+import Data.Aeson (FromJSON (..), withObject, (.!=), (.:), (.:?))
 import Data.Text (Text)
 import Data.Yaml qualified as Yaml
 
@@ -45,6 +46,22 @@ instance FromJSON MidgardConfig where
       <$> obj .: "network"
       <*> obj .:? "adminApiKey"
 
+data ProtocolConfig = ProtocolConfig
+  { minFeeA :: Text
+  , minFeeB :: Text
+  , maxSubmitTxCborBytes :: Int
+  , validationStrictnessProfile :: Text
+  }
+  deriving stock (Eq, Show)
+
+instance FromJSON ProtocolConfig where
+  parseJSON = withObject "ProtocolConfig" $ \obj ->
+    ProtocolConfig
+      <$> obj .:? "minFeeA" .!= "0"
+      <*> obj .:? "minFeeB" .!= "0"
+      <*> obj .:? "maxSubmitTxCborBytes" .!= 32768
+      <*> obj .:? "validationStrictnessProfile" .!= "phase1_midgard"
+
 data ContractsConfig = ContractsConfig
   { midgardEnvFile :: Maybe FilePath
   , deploymentInfoFile :: Maybe FilePath
@@ -72,6 +89,7 @@ data MidgardNodeConfig = MidgardNodeConfig
   , database :: Maybe DatabaseConfig
   , logLevel :: Text
   , midgard :: MidgardConfig
+  , protocol :: ProtocolConfig
   , contracts :: ContractsConfig
   , features :: FeatureFlags
   }
@@ -84,6 +102,7 @@ instance FromJSON MidgardNodeConfig where
       <*> obj .:? "database"
       <*> obj .: "logLevel"
       <*> obj .: "midgard"
+      <*> obj .:? "protocol" .!= ProtocolConfig "0" "0" 32768 "phase1_midgard"
       <*> obj .: "contracts"
       <*> obj .: "features"
 

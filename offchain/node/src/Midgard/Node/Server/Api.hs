@@ -1,4 +1,4 @@
-module Midgard.Node.API (
+module Midgard.Node.Server.Api (
   HealthAPI,
   QueryAPI,
   AdminAPI,
@@ -6,16 +6,19 @@ module Midgard.Node.API (
   MidgardNodeAPI,
 ) where
 
-import Data.Aeson (Value)
 import Data.Text (Text)
-import Midgard.Node.API.Types (
+import Midgard.Node.Server.Types (
   BlockResponse,
+  DepositBuildRequest,
+  DepositBuildResponse,
   DepositStatusResponse,
   HealthResponse,
-  PlaceholderResponse,
-  PlaceholderWithRequestResponse,
+  MessageResponse,
   ProtocolInfoResponse,
-  ReadyResponse,
+  ReadinessResponse,
+  StateQueueResponse,
+  SubmitAcceptedResponse,
+  SubmitTxRequest,
   TxResponse,
   TxStatusResponse,
   TxsResponse,
@@ -34,7 +37,7 @@ import Servant.API (
 
 type HealthAPI =
   "healthz" :> Get '[JSON] HealthResponse
-    :<|> "readyz" :> Get '[JSON] ReadyResponse
+    :<|> "readyz" :> Get '[JSON] ReadinessResponse
 
 type QueryAPI =
   "protocol-info" :> Get '[JSON] ProtocolInfoResponse
@@ -48,15 +51,15 @@ type QueryAPI =
     :<|> "block" :> QueryParam "header_hash" Text :> Get '[JSON] BlockResponse
 
 type AdminAPI =
-  "init" :> Get '[JSON] PlaceholderResponse
-    :<|> "commit" :> Get '[JSON] PlaceholderResponse
-    :<|> "merge" :> Get '[JSON] PlaceholderResponse
-    :<|> "stateQueue" :> Get '[JSON] PlaceholderResponse
-    :<|> "logBlocksDB" :> Get '[JSON] PlaceholderResponse
-    :<|> "logGlobals" :> Get '[JSON] PlaceholderResponse
+  "init" :> Get '[JSON] MessageResponse
+    :<|> "commit" :> Get '[JSON] MessageResponse
+    :<|> "merge" :> Get '[JSON] MessageResponse
+    :<|> "stateQueue" :> Get '[JSON] StateQueueResponse
+    :<|> "logBlocksDB" :> Get '[JSON] MessageResponse
+    :<|> "logGlobals" :> Get '[JSON] MessageResponse
 
 type TxAPI =
-  "deposit" :> "build" :> ReqBody '[JSON] Value :> Post '[JSON] PlaceholderWithRequestResponse
-    :<|> "submit" :> ReqBody '[JSON] Value :> Post '[JSON] PlaceholderWithRequestResponse
+  "deposit" :> "build" :> ReqBody '[JSON] DepositBuildRequest :> Post '[JSON] DepositBuildResponse
+    :<|> "submit" :> ReqBody '[JSON] SubmitTxRequest :> Post '[JSON] SubmitAcceptedResponse
 
 type MidgardNodeAPI = HealthAPI :<|> QueryAPI :<|> AdminAPI :<|> TxAPI
