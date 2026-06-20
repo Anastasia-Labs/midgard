@@ -5,14 +5,14 @@ module Midgard.Node.DB.TxStatus (
   lookupTxStatusFacts,
 ) where
 
-import Data.ByteString (ByteString)
 import Data.Pool (Pool)
 import Data.Text (Text)
 import Data.Time (UTCTime)
+import Database.Persist.Class (toPersistValue)
 import Database.Persist.Postgresql (SqlBackend)
-import Database.Persist.Sql (PersistValue (PersistByteString), Single (..), rawSql)
+import Database.Persist.Sql (Single (..), rawSql)
 import Midgard.Node.DB.Pool (runDB)
-import Midgard.Node.DB.Types (TxHash, unTxHash)
+import Midgard.Node.DB.Types (TxHash)
 
 newtype TxAdmissionStatus = TxAdmissionStatus
   { status :: Text
@@ -37,12 +37,11 @@ data TxStatusFacts = TxStatusFacts
 
 lookupTxStatusFacts :: Pool SqlBackend -> TxHash -> IO TxStatusFacts
 lookupTxStatusFacts pool txHash = do
-  let rawHash = unTxHash txHash
-  admissionStatus <- lookupAdmissionStatus pool rawHash
-  rejection <- lookupLatestRejection pool rawHash
-  inImmutable <- existsTxId pool "immutable" rawHash
-  inMempool <- existsTxId pool "mempool" rawHash
-  inProcessedMempool <- existsTxId pool "processed_mempool" rawHash
+  admissionStatus <- lookupAdmissionStatus pool txHash
+  rejection <- lookupLatestRejection pool txHash
+  inImmutable <- existsTxId pool "immutable" txHash
+  inMempool <- existsTxId pool "mempool" txHash
+  inProcessedMempool <- existsTxId pool "processed_mempool" txHash
   pure
     TxStatusFacts
       { admissionStatus
@@ -52,38 +51,38 @@ lookupTxStatusFacts pool txHash = do
       , inProcessedMempool
       }
 
-lookupAdmissionStatus :: Pool SqlBackend -> ByteString -> IO (Maybe TxAdmissionStatus)
+lookupAdmissionStatus :: Pool SqlBackend -> TxHash -> IO (Maybe TxAdmissionStatus)
 lookupAdmissionStatus pool txHash = do
   rows <-
     runDB pool $
       rawSql
         "SELECT status FROM tx_admissions WHERE tx_id = ? LIMIT 1"
-        [PersistByteString txHash]
+        [toPersistValue txHash]
   pure $
     case rows of
       [] -> Nothing
       Single status : _ -> Just (TxAdmissionStatus status)
 
-lookupLatestRejection :: Pool SqlBackend -> ByteString -> IO (Maybe TxRejection)
+lookupLatestRejection :: Pool SqlBackend -> TxHash -> IO (Maybe TxRejection)
 lookupLatestRejection pool txHash = do
   rows <-
     runDB pool $
       rawSql
         "SELECT reject_code, reject_detail, created_at FROM tx_rejections WHERE tx_id = ? ORDER BY created_at DESC LIMIT 1"
-        [PersistByteString txHash]
+        [toPersistValue txHash]
   pure $
     case rows of
       [] -> Nothing
       (Single rejectCode, Single rejectDetail, Single createdAt) : _ ->
         Just (TxRejection rejectCode rejectDetail createdAt)
 
-existsTxId :: Pool SqlBackend -> Text -> ByteString -> IO Bool
+existsTxId :: Pool SqlBackend -> Text -> TxHash -> IO Bool
 existsTxId pool tableName txHash = do
   rows <-
     runDB pool $
       rawSql
         ("SELECT 1 FROM " <> tableName <> " WHERE tx_id = ? LIMIT 1")
-        [PersistByteString txHash]
+        [toPersistValue txHash]
   pure $
     case rows :: [Single Int] of
       [] -> False

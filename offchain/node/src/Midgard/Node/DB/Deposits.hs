@@ -8,10 +8,11 @@ import Data.ByteString (ByteString)
 import Data.Pool (Pool)
 import Data.Text (Text)
 import Data.Time (UTCTime)
+import Database.Persist.Class (toPersistValue)
 import Database.Persist.Postgresql (SqlBackend)
-import Database.Persist.Sql (PersistValue (PersistByteString), Single (..), rawSql)
+import Database.Persist.Sql (Single (..), rawSql)
 import Midgard.Node.DB.Pool (runDB)
-import Midgard.Node.DB.Types (TxHash, TxOutRefCbor, unTxHash, unTxOutRefCbor)
+import Midgard.Node.DB.Types (TxHash, TxOutRefCbor)
 
 data DepositStatus = DepositStatus
   { eventId :: ByteString
@@ -30,7 +31,7 @@ lookupDepositByEventId :: Pool SqlBackend -> TxOutRefCbor -> IO (Maybe DepositSt
 lookupDepositByEventId pool eventId = do
   rows <-
     runDB pool $
-      rawSql depositStatusSelect [PersistByteString (unTxOutRefCbor eventId)]
+      rawSql depositStatusSelect [toPersistValue eventId]
   pure (firstDepositStatus (map decodeDepositStatusRow rows))
 
 lookupDepositsByCardanoTxHash :: Pool SqlBackend -> TxHash -> IO [DepositStatus]
@@ -41,7 +42,7 @@ lookupDepositsByCardanoTxHash pool txHash = do
         ( depositStatusSelectBase
             <> " WHERE deposit_l1_tx_hash = ? ORDER BY inclusion_time ASC, event_id ASC"
         )
-        [PersistByteString (unTxHash txHash)]
+        [toPersistValue txHash]
   pure (map decodeDepositStatusRow rows)
 
 depositStatusSelect :: Text

@@ -14,21 +14,25 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as ByteString
 import Data.Text (Text)
 import Data.Text qualified as Text
+import Database.Persist.Class (PersistField)
 
 newtype TxHash = TxHash
   { unTxHash :: ByteString
   }
   deriving stock (Eq, Show)
+  deriving newtype (PersistField)
 
 newtype HeaderHash = HeaderHash
   { unHeaderHash :: ByteString
   }
   deriving stock (Eq, Show)
+  deriving newtype (PersistField)
 
 newtype TxOutRefCbor = TxOutRefCbor
   { unTxOutRefCbor :: ByteString
   }
   deriving stock (Eq, Show)
+  deriving newtype (PersistField)
 
 mkTxHash :: ByteString -> Either Text TxHash
 mkTxHash =

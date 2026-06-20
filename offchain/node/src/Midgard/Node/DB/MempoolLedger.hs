@@ -8,10 +8,11 @@ module Midgard.Node.DB.MempoolLedger (
 import Data.ByteString (ByteString)
 import Data.Pool (Pool)
 import Data.Text (Text)
+import Database.Persist.Class (toPersistValue)
 import Database.Persist.Postgresql (SqlBackend)
-import Database.Persist.Sql (PersistValue (PersistByteString, PersistText), Single (..), rawSql)
+import Database.Persist.Sql (PersistValue (PersistText), Single (..), rawSql)
 import Midgard.Node.DB.Pool (runDB)
-import Midgard.Node.DB.Types (TxOutRefCbor, unTxOutRefCbor)
+import Midgard.Node.DB.Types (TxOutRefCbor)
 
 data StoredUtxo = StoredUtxo
   { outref :: ByteString
@@ -25,7 +26,7 @@ lookupUtxoByOutRef pool rawOutRef = do
     runDB pool $
       rawSql
         "SELECT outref, output FROM mempool_ledger WHERE outref = ? LIMIT 1"
-        [PersistByteString (unTxOutRefCbor rawOutRef)]
+        [toPersistValue rawOutRef]
   pure $
     case rows of
       [] -> Nothing

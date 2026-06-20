@@ -91,11 +91,13 @@ common dependencies
     , convex-base
     , convex-mockchain
     , convex-optics
+    , directory
     , mtl
     , plutus-ledger-api
     , plutus-tx
     , ply-core
     , text
+    , time
     , transformers
 
 library
@@ -124,7 +126,6 @@ library
     , cardano-ledger-core
     , lens
     , plutus-core
-    , time
     , yaml
 
 executable midgard-node
@@ -141,6 +142,15 @@ library midgard-node-lib
     Midgard.Node.App
     Midgard.Node.Codec.Scripts
     Midgard.Node.Config
+    Midgard.Node.DB.AddressHistory
+    Midgard.Node.DB.Blocks
+    Midgard.Node.DB.Deposits
+    Midgard.Node.DB.Hex
+    Midgard.Node.DB.MempoolLedger
+    Midgard.Node.DB.Pool
+    Midgard.Node.DB.Transactions
+    Midgard.Node.DB.TxStatus
+    Midgard.Node.DB.Types
     Midgard.Node.Env
     Midgard.Node.Migrations
     Midgard.Node.Server
@@ -166,7 +176,6 @@ library midgard-node-lib
     , cborg
     , cryptohash-sha256
     , deriving-aeson
-    , directory
     , filepath
     , midgard-offchain
     , monad-logger
@@ -176,7 +185,6 @@ library midgard-node-lib
     , resource-pool
     , servant
     , servant-server
-    , time
     , unliftio-core
     , wai
     , warp
@@ -202,17 +210,21 @@ test-suite mockchain-tests
     , tasty-hunit
     , tasty-quickcheck
 
-test-suite node-db-tests
-  import:         lang, dependencies
-  type:           exitcode-stdio-1.0
-  ghc-options:    -threaded
-  main-is:        Spec.hs
-  hs-source-dirs: node/tests
-  other-modules:  Spec.Node.Server
+test-suite node-tests
+  import:             lang, dependencies
+  type:               exitcode-stdio-1.0
+  ghc-options:        -threaded
+  default-extensions: OverloadedStrings
+  main-is:            Spec.hs
+  hs-source-dirs:     node/tests
+  other-modules:
+    Spec.Node.DB
+    Spec.Node.DB.Utils
+    Spec.Node.Server
+
   build-depends:
     , aeson
     , cardano-ledger-binary
-    , directory
     , http-client
     , http-types
     , midgard-node-lib
@@ -224,5 +236,4 @@ test-suite node-db-tests
     , servant-client
     , tasty
     , tasty-hunit
-    , time
     , warp
