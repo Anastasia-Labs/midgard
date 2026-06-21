@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { createWriteStream } from "node:fs";
+import { closeSync, openSync, writeSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
@@ -63,22 +63,22 @@ export const startManagedService = async (
   }
   await mkdir(dirname(options.rawLogPath), { recursive: true });
   await mkdir(dirname(options.pidFilePath), { recursive: true });
-  const log = createWriteStream(options.rawLogPath, { flags: "a" });
+  const logFd = openSync(options.rawLogPath, "a");
   const child = spawn(options.command, [...options.args], {
     cwd: options.cwd,
     env: process.env,
     shell: false,
     detached: true,
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio: ["ignore", logFd, logFd],
   });
   const pid = child.pid;
   if (pid === undefined) {
+    closeSync(logFd);
     throw new Error(`Failed to start ${options.service}: child pid missing`);
   }
   child.unref();
-  child.stdout.pipe(log, { end: false });
-  child.stderr.pipe(log, { end: false });
-  log.write(
+  writeSync(
+    logFd,
     JSON.stringify({
       event: "e2e_managed_service_started",
       service: options.service,
@@ -94,51 +94,55 @@ export const startManagedService = async (
   );
   await writeFile(options.pidFilePath, `${pid.toString()}\n`, "utf8");
 
-  const deadline = Date.now() + options.readyTimeoutMs;
-  let ready = await probeHttpEndpoint({
-    label: `${options.service}:ready`,
-    url: options.readyUrl,
-  });
-  while (ready.status !== "healthy" && Date.now() < deadline) {
-    if (!processAlive(pid)) {
-      throw new Error(
-        `${options.service} exited before readiness; inspect ${options.rawLogPath}`,
-      );
-    }
-    await sleep(options.pollIntervalMs);
-    ready = await probeHttpEndpoint({
+  try {
+    const deadline = Date.now() + options.readyTimeoutMs;
+    let ready = await probeHttpEndpoint({
       label: `${options.service}:ready`,
       url: options.readyUrl,
     });
+    while (ready.status !== "healthy" && Date.now() < deadline) {
+      if (!processAlive(pid)) {
+        throw new Error(
+          `${options.service} exited before readiness; inspect ${options.rawLogPath}`,
+        );
+      }
+      await sleep(options.pollIntervalMs);
+      ready = await probeHttpEndpoint({
+        label: `${options.service}:ready`,
+        url: options.readyUrl,
+      });
+    }
+    if (ready.status !== "healthy") {
+      throw new Error(
+        `${options.service} did not become ready before timeout; status=${ready.status}; inspect ${options.rawLogPath}`,
+      );
+    }
+    const health =
+      options.healthUrl === undefined
+        ? undefined
+        : await probeHttpEndpoint({
+            label: `${options.service}:health`,
+            url: options.healthUrl,
+          });
+    return {
+      schemaVersion: "midgard-e2e-managed-service-v1",
+      service: options.service,
+      pid,
+      rawLogPath: options.rawLogPath,
+      pidFile: await inspectPidFile({
+        path: options.pidFilePath,
+        runnerOwnedPids: new Set([pid]),
+      }),
+      ready,
+      ...(health === undefined ? {} : { health }),
+      command: {
+        command: options.command,
+        args: options.args.map(redactArg),
+        cwd: options.cwd,
+        envKeys: redactEnvKeys(process.env),
+      },
+    };
+  } finally {
+    closeSync(logFd);
   }
-  if (ready.status !== "healthy") {
-    throw new Error(
-      `${options.service} did not become ready before timeout; status=${ready.status}; inspect ${options.rawLogPath}`,
-    );
-  }
-  const health =
-    options.healthUrl === undefined
-      ? undefined
-      : await probeHttpEndpoint({
-          label: `${options.service}:health`,
-          url: options.healthUrl,
-        });
-  return {
-    schemaVersion: "midgard-e2e-managed-service-v1",
-    service: options.service,
-    pid,
-    rawLogPath: options.rawLogPath,
-    pidFile: await inspectPidFile({
-      path: options.pidFilePath,
-      runnerOwnedPids: new Set([pid]),
-    }),
-    ready,
-    ...(health === undefined ? {} : { health }),
-    command: {
-      command: options.command,
-      args: options.args.map(redactArg),
-      cwd: options.cwd,
-      envKeys: redactEnvKeys(process.env),
-    },
-  };
 };

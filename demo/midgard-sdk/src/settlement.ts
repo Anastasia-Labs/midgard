@@ -1,5 +1,4 @@
 import { type Assets, assetsEqual } from "@al-ft/midgard-core/assets";
-import { canonicalPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
   type BuildTxWithRedeemer,
   Data,
@@ -61,6 +60,7 @@ import {
   requireSpendRedeemerIndex,
   requireUniqueOutputIndex,
 } from "@/tx-context-redeemer.js";
+import { outputDatumCborMatches } from "@/tx-output-utils.js";
 
 import { DepositUTxO, utxosToDepositUTxOs } from "./user-events/deposit.js";
 import { TxOrderUTxO, utxosToTxOrderUTxOs } from "./user-events/tx-order.js";
@@ -177,13 +177,6 @@ export type AttachResolutionClaimParams = {
 };
 
 export type SettlementUTxO = AuthenticUTxO<SettlementDatum>;
-
-const outputDatumCborMatches = (
-  output: Pick<TxOutput, "datum">,
-  datumCbor: string,
-): boolean =>
-  output.datum != null &&
-  canonicalPlutusDataCbor(output.datum) === canonicalPlutusDataCbor(datumCbor);
 
 const outputMatches =
   ({

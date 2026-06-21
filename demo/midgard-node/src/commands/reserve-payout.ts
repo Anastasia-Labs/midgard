@@ -39,6 +39,7 @@ import {
   submitConcludePayoutProgram,
   submitInitializePayoutProgram,
 } from "@/transactions/reserve-payout.js";
+import { outRefLabel } from "@/tx-context.js";
 
 export type EventIdConfig = {
   readonly eventId: string;
@@ -62,9 +63,6 @@ const contributesToNeed = (
   Object.entries(neededAssets).some(
     ([unit, needed]) => needed > 0n && (reserveAssets[unit] ?? 0n) > 0n,
   );
-
-const outRef = (utxo: UTxO): string =>
-  `${utxo.txHash}#${utxo.outputIndex.toString()}`;
 
 const fetchReferenceScripts = (
   targets: readonly ReferenceScriptTarget[],
@@ -198,8 +196,8 @@ export const absorbConfirmedDepositToReserveProgram = (
       txHash,
       eventId: eventId.toString("hex"),
       details: {
-        settlementOutRef: outRef(resolution.settlementRefInput),
-        depositOutRef: outRef(deposit.utxo),
+        settlementOutRef: outRefLabel(resolution.settlementRefInput),
+        depositOutRef: outRefLabel(deposit.utxo),
         depositAssets: deposit.utxo.assets,
       },
     };
@@ -266,8 +264,8 @@ export const initializePayoutProgram = (
       txHash,
       eventId: eventId.toString("hex"),
       details: {
-        settlementOutRef: outRef(resolution.settlementRefInput),
-        withdrawalOutRef: outRef(withdrawal.utxo),
+        settlementOutRef: outRefLabel(resolution.settlementRefInput),
+        withdrawalOutRef: outRefLabel(withdrawal.utxo),
         payoutUnit,
       },
     };
@@ -328,7 +326,7 @@ const fetchPayoutByWithdrawalEvent = (
 
 const decodePayoutDatum = (payout: UTxO): SDK.PayoutDatum => {
   if (payout.datum == null) {
-    throw new Error(`Payout UTxO ${outRef(payout)} has no inline datum.`);
+    throw new Error(`Payout UTxO ${outRefLabel(payout)} has no inline datum.`);
   }
   return LucidData.from(payout.datum, SDK.PayoutDatum) as SDK.PayoutDatum;
 };
@@ -386,8 +384,8 @@ export const addReserveFundsToPayoutProgram = (
       txHash,
       eventId: eventId.toString("hex"),
       details: {
-        payoutOutRef: outRef(payout),
-        reserveOutRef: outRef(reserve),
+        payoutOutRef: outRefLabel(payout),
+        reserveOutRef: outRefLabel(reserve),
         targetAssets,
         currentAssets,
         remainingAssetsBeforeFunding: remaining,
@@ -435,7 +433,7 @@ export const concludePayoutProgram = (
       txHash,
       eventId: eventId.toString("hex"),
       details: {
-        payoutOutRef: outRef(payout),
+        payoutOutRef: outRefLabel(payout),
         payoutUnit,
         l1Address: addressDataToBech32(
           nodeConfig.NETWORK,

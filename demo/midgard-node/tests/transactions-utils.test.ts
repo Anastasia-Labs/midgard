@@ -2,6 +2,7 @@ import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  isUnknownOutputReferenceSubmitError,
   parseOutsideValidityIntervalDetails,
   resolveEarlyValidityRetryDelayMs,
   submitSignedTxWithRecovery,
@@ -118,4 +119,37 @@ describe("validity-window submit recovery", () => {
     expect(submitProgram).toHaveBeenCalledTimes(2);
     expect(waits).toEqual([2_000]);
   });
+
+  it("does not retry the same signed body for unknown input submit errors", async () => {
+    const waits: number[] = [];
+    const unknownInputError = new Error(
+      '{"jsonrpc":"2.0","error":{"data":{"unknownOutputReferences":[{"transaction":{"id":"abc"},"index":0}]}}}',
+    );
+    const submitProgram = vi.fn(() => Effect.fail(unknownInputError));
+    const signed = { submitProgram };
+
+    const result = await Effect.runPromise(
+      Effect.either(
+        submitSignedTxWithRecovery(
+          fakeLucid as never,
+          signed as never,
+          "tx-unknown-input",
+          {
+            sleep: (milliseconds) =>
+              Effect.sync(() => waits.push(milliseconds)),
+          },
+        ),
+      ),
+    );
+
+    expect(result._tag).toBe("Left");
+    expect(submitProgram).toHaveBeenCalledTimes(1);
+    expect(waits).toEqual([]);
+    expect(isUnknownOutputReferenceSubmitError(unknownInputMessage())).toBe(
+      true,
+    );
+  });
 });
+
+const unknownInputMessage = () =>
+  'KupmiosError: {"error":{"data":{"unknownOutputReferences":[{"transaction":{"id":"abc"},"index":0}]}}}';

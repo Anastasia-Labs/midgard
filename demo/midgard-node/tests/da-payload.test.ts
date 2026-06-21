@@ -250,6 +250,120 @@ const record = ({
   };
 };
 
+type JournalFixtureOptions = {
+  readonly utxoEntries?: readonly [Buffer, Buffer][];
+  readonly depositEntries?: readonly [Buffer, Buffer][];
+  readonly forcedTransactionEntries?: readonly [Buffer, Buffer][];
+  readonly withdrawalEntries?: readonly [Buffer, Buffer][];
+  readonly txEntries?: readonly [Buffer, Buffer][];
+  readonly transitionTraceEntries?: readonly [Buffer, Buffer][];
+  readonly eventToStepEntries?: readonly [Buffer, Buffer][];
+  readonly rootOverrides?: Partial<TestRoots>;
+  readonly recordRootOverrides?: Partial<TestRoots>;
+  readonly includeUtxoMembers?: boolean;
+};
+
+const sourceRootOrEmpty = (
+  domain: SDK.RootDomain,
+  entries: readonly [Buffer, Buffer][],
+) =>
+  entries.length === 0
+    ? Effect.succeed(SDK.EMPTY_MERKLE_TREE_ROOT)
+    : sourceRoot(domain, entries);
+
+const buildJournalFixture = async ({
+  utxoEntries = [],
+  depositEntries = [],
+  forcedTransactionEntries = [],
+  withdrawalEntries = [],
+  txEntries = [],
+  transitionTraceEntries = [],
+  eventToStepEntries = [],
+  rootOverrides = {},
+  recordRootOverrides = {},
+  includeUtxoMembers = true,
+}: JournalFixtureOptions): Promise<{
+  readonly roots: TestRoots;
+  readonly header: SDK.Header;
+  readonly headerHash: Buffer;
+  readonly pending: PendingBlockFinalizationsDB.Record;
+}> => {
+  const counts = countsFromLengths({
+    withdrawals: withdrawalEntries.length,
+    forcedTransactions: forcedTransactionEntries.length,
+    transactions: txEntries.length,
+    deposits: depositEntries.length,
+  });
+  const roots: TestRoots = {
+    ...(await Effect.runPromise(
+      Effect.all({
+        utxosRoot:
+          utxoEntries.length === 0
+            ? Effect.succeed(SDK.EMPTY_MERKLE_TREE_ROOT)
+            : root(utxoEntries),
+        forcedTransactionsRoot: sourceRootOrEmpty(
+          SDK.ROOT_DOMAINS.forcedTransactions,
+          forcedTransactionEntries,
+        ),
+        transactionsRoot: sourceRootOrEmpty(
+          SDK.ROOT_DOMAINS.transactions,
+          txEntries,
+        ),
+        depositsRoot: sourceRootOrEmpty(
+          SDK.ROOT_DOMAINS.deposits,
+          depositEntries,
+        ),
+        withdrawalsRoot: sourceRootOrEmpty(
+          SDK.ROOT_DOMAINS.withdrawals,
+          withdrawalEntries,
+        ),
+        transitionTraceRoot: sourceRootOrEmpty(
+          SDK.ROOT_DOMAINS.transitionTrace,
+          transitionTraceEntries,
+        ),
+        eventToStepRoot: sourceRootOrEmpty(
+          SDK.ROOT_DOMAINS.eventToStep,
+          eventToStepEntries,
+        ),
+      }),
+    )),
+    ...rootOverrides,
+  };
+  const header = headerFor(roots, counts);
+  const headerHash = Buffer.from(
+    await Effect.runPromise(SDK.hashBlockHeader(header)),
+    "hex",
+  );
+  const memberRecords = (entries: readonly [Buffer, Buffer][]) =>
+    entries.map(([key, value], index) => member(headerHash, key, value, index));
+
+  return {
+    roots,
+    header,
+    headerHash,
+    pending: record({
+      headerHash,
+      utxoMembers: includeUtxoMembers
+        ? utxoEntries.map(([key, value], index) =>
+            utxoMember(headerHash, key, value, index),
+          )
+        : [],
+      depositMembers: memberRecords(depositEntries),
+      forcedTransactionMembers: memberRecords(forcedTransactionEntries),
+      withdrawalMembers: memberRecords(withdrawalEntries),
+      txMembers: memberRecords(txEntries),
+      transitionTraceMembers: memberRecords(transitionTraceEntries),
+      eventToStepMembers: memberRecords(eventToStepEntries),
+      roots: {
+        ...roots,
+        ...recordRootOverrides,
+      },
+      counts,
+      header,
+    }),
+  };
+};
+
 describe("DaPayloadV2 builder", () => {
   it("builds a canonical payload whose roots, counts, and header match the journal", async () => {
     const utxoEntries: readonly [Buffer, Buffer][] = [
@@ -264,55 +378,12 @@ describe("DaPayloadV2 builder", () => {
     ];
     const transitionTraceEntries = retainedPairs("trace", 2);
     const eventToStepEntries = retainedPairs("event-to-step", 2);
-    const counts = countsFromLengths({
-      withdrawals: withdrawalEntries.length,
-      deposits: depositEntries.length,
-    });
-    const roots = await Effect.runPromise(
-      Effect.all({
-        utxosRoot: root(utxoEntries),
-        forcedTransactionsRoot: Effect.succeed(SDK.EMPTY_MERKLE_TREE_ROOT),
-        transactionsRoot: Effect.succeed(SDK.EMPTY_MERKLE_TREE_ROOT),
-        depositsRoot: sourceRoot(SDK.ROOT_DOMAINS.deposits, depositEntries),
-        withdrawalsRoot: sourceRoot(
-          SDK.ROOT_DOMAINS.withdrawals,
-          withdrawalEntries,
-        ),
-        transitionTraceRoot: sourceRoot(
-          SDK.ROOT_DOMAINS.transitionTrace,
-          transitionTraceEntries,
-        ),
-        eventToStepRoot: sourceRoot(
-          SDK.ROOT_DOMAINS.eventToStep,
-          eventToStepEntries,
-        ),
-      }),
-    );
-    const header = headerFor(roots, counts);
-    const headerHash = Buffer.from(
-      await Effect.runPromise(SDK.hashBlockHeader(header)),
-      "hex",
-    );
-    const pending = record({
-      headerHash,
-      utxoMembers: utxoEntries.map(([key, value], index) =>
-        utxoMember(headerHash, key, value, index),
-      ),
-      depositMembers: depositEntries.map(([key, value], index) =>
-        member(headerHash, key, value, index),
-      ),
-      withdrawalMembers: withdrawalEntries.map(([key, value], index) =>
-        member(headerHash, key, value, index),
-      ),
-      transitionTraceMembers: transitionTraceEntries.map(
-        ([key, value], index) => member(headerHash, key, value, index),
-      ),
-      eventToStepMembers: eventToStepEntries.map(([key, value], index) =>
-        member(headerHash, key, value, index),
-      ),
-      roots,
-      counts,
-      header,
+    const { pending, roots, header, headerHash } = await buildJournalFixture({
+      utxoEntries,
+      depositEntries,
+      withdrawalEntries,
+      transitionTraceEntries,
+      eventToStepEntries,
     });
 
     const insert = await Effect.runPromise(
@@ -352,47 +423,11 @@ describe("DaPayloadV2 builder", () => {
     ];
     const transitionTraceEntries = retainedPairs("backfill-trace", 1);
     const eventToStepEntries = retainedPairs("backfill-event-to-step", 1);
-    const counts = countsFromLengths({ deposits: depositEntries.length });
-    const roots = await Effect.runPromise(
-      Effect.all({
-        utxosRoot: root(utxoEntries),
-        forcedTransactionsRoot: Effect.succeed(SDK.EMPTY_MERKLE_TREE_ROOT),
-        transactionsRoot: Effect.succeed(SDK.EMPTY_MERKLE_TREE_ROOT),
-        depositsRoot: sourceRoot(SDK.ROOT_DOMAINS.deposits, depositEntries),
-        withdrawalsRoot: Effect.succeed(SDK.EMPTY_MERKLE_TREE_ROOT),
-        transitionTraceRoot: sourceRoot(
-          SDK.ROOT_DOMAINS.transitionTrace,
-          transitionTraceEntries,
-        ),
-        eventToStepRoot: sourceRoot(
-          SDK.ROOT_DOMAINS.eventToStep,
-          eventToStepEntries,
-        ),
-      }),
-    );
-    const header = headerFor(roots, counts);
-    const headerHash = Buffer.from(
-      await Effect.runPromise(SDK.hashBlockHeader(header)),
-      "hex",
-    );
-    const pending = record({
-      headerHash,
-      utxoMembers: utxoEntries.map(([key, value], index) =>
-        utxoMember(headerHash, key, value, index),
-      ),
-      depositMembers: depositEntries.map(([key, value], index) =>
-        member(headerHash, key, value, index),
-      ),
-      withdrawalMembers: [],
-      transitionTraceMembers: transitionTraceEntries.map(
-        ([key, value], index) => member(headerHash, key, value, index),
-      ),
-      eventToStepMembers: eventToStepEntries.map(([key, value], index) =>
-        member(headerHash, key, value, index),
-      ),
-      roots,
-      counts,
-      header,
+    const { pending, headerHash } = await buildJournalFixture({
+      utxoEntries,
+      depositEntries,
+      transitionTraceEntries,
+      eventToStepEntries,
     });
     const inserts: DaPayloadsDB.InsertInput[] = [];
 
@@ -420,30 +455,11 @@ describe("DaPayloadV2 builder", () => {
   });
 
   it("skips backfill when the journal is missing committed UTxO members", async () => {
-    const counts = countsFromLengths({});
-    const roots = {
-      utxosRoot: "00".repeat(32),
-      forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-      transactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-      depositsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-      withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-      transitionTraceRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-      eventToStepRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-    };
-    const header = headerFor(roots, counts);
-    const headerHash = Buffer.from(
-      await Effect.runPromise(SDK.hashBlockHeader(header)),
-      "hex",
-    );
-    const pending = record({
-      headerHash,
-      depositMembers: [],
-      withdrawalMembers: [],
-      transitionTraceMembers: [],
-      eventToStepMembers: [],
-      roots,
-      counts,
-      header,
+    const { pending, headerHash } = await buildJournalFixture({
+      rootOverrides: {
+        utxosRoot: "00".repeat(32),
+      },
+      includeUtxoMembers: false,
     });
     const inserts: DaPayloadsDB.InsertInput[] = [];
 
@@ -481,50 +497,14 @@ describe("DaPayloadV2 builder", () => {
     ];
     const transitionTraceEntries = retainedPairs("bad-trace", 1);
     const eventToStepEntries = retainedPairs("bad-event-to-step", 1);
-    const counts = countsFromLengths({ deposits: depositEntries.length });
-    const roots = await Effect.runPromise(
-      Effect.all({
-        utxosRoot: root(utxoEntries),
-        forcedTransactionsRoot: Effect.succeed(SDK.EMPTY_MERKLE_TREE_ROOT),
-        transactionsRoot: Effect.succeed(SDK.EMPTY_MERKLE_TREE_ROOT),
-        depositsRoot: sourceRoot(SDK.ROOT_DOMAINS.deposits, depositEntries),
-        withdrawalsRoot: Effect.succeed(SDK.EMPTY_MERKLE_TREE_ROOT),
-        transitionTraceRoot: sourceRoot(
-          SDK.ROOT_DOMAINS.transitionTrace,
-          transitionTraceEntries,
-        ),
-        eventToStepRoot: sourceRoot(
-          SDK.ROOT_DOMAINS.eventToStep,
-          eventToStepEntries,
-        ),
-      }),
-    );
-    const header = headerFor(roots, counts);
-    const headerHash = Buffer.from(
-      await Effect.runPromise(SDK.hashBlockHeader(header)),
-      "hex",
-    );
-    const pending = record({
-      headerHash,
-      utxoMembers: utxoEntries.map(([key, value], index) =>
-        utxoMember(headerHash, key, value, index),
-      ),
-      depositMembers: depositEntries.map(([key, value], index) =>
-        member(headerHash, key, value, index),
-      ),
-      withdrawalMembers: [],
-      transitionTraceMembers: transitionTraceEntries.map(
-        ([key, value], index) => member(headerHash, key, value, index),
-      ),
-      eventToStepMembers: eventToStepEntries.map(([key, value], index) =>
-        member(headerHash, key, value, index),
-      ),
-      roots: {
-        ...roots,
+    const { pending } = await buildJournalFixture({
+      utxoEntries,
+      depositEntries,
+      transitionTraceEntries,
+      eventToStepEntries,
+      recordRootOverrides: {
         depositsRoot: "00".repeat(32),
       },
-      counts,
-      header,
     });
 
     const result = await Effect.runPromise(

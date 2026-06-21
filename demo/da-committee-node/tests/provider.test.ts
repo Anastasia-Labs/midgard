@@ -149,6 +149,47 @@ describe("L1 provider adapters", () => {
     ]);
   });
 
+  it("refreshes Kupmios chain depth across scans", async () => {
+    let tip = 126197476;
+    const fetchFn = async (url: string | URL | Request) => {
+      const href = String(url);
+      if (href.endsWith("/health")) {
+        return new Response(`kupo_most_recent_node_tip  ${tip}\n`);
+      }
+      return Response.json([
+        {
+          transaction_id: "aa".repeat(32),
+          output_index: 1,
+          created_at: {
+            slot_no: 126197476,
+            header_hash: "bb".repeat(32),
+          },
+        },
+      ]);
+    };
+    const resolve = kupoChainPointResolver(
+      "http://127.0.0.1:1442/",
+      "addr_test1statequeue",
+      fetchFn as typeof fetch,
+    );
+
+    await expect(
+      resolve({
+        txHash: "aa".repeat(32),
+        outputIndex: 1,
+      } as never),
+    ).resolves.toMatchObject({ depth: 0 });
+
+    tip = 126197479;
+
+    await expect(
+      resolve({
+        txHash: "aa".repeat(32),
+        outputIndex: 1,
+      } as never),
+    ).resolves.toMatchObject({ depth: 3 });
+  });
+
   it("fails closed on L1 provider state-queue disagreement", async () => {
     const { header, headerHash } = await makePayloadFixture();
     const first = {

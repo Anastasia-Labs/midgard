@@ -48,6 +48,18 @@ const ALREADY_INCLUDED_ERROR_PATTERNS = [
 const isPotentiallyAlreadyIncludedError = (message: string): boolean =>
   ALREADY_INCLUDED_ERROR_PATTERNS.some((pattern) => message.includes(pattern));
 
+export const isUnknownOutputReferenceSubmitError = (
+  message: string,
+): boolean => {
+  const normalizedMessage = message.replace(/\\"/g, '"');
+  return (
+    normalizedMessage.includes("unknownOutputReferences") ||
+    normalizedMessage.includes("badInputs") ||
+    normalizedMessage.includes("BadInputsUTxO") ||
+    normalizedMessage.includes("UnknownInput")
+  );
+};
+
 const OUTSIDE_VALIDITY_INTERVAL_REGEX =
   /OutsideValidityIntervalUTxO \(ValidityInterval \{invalidBefore = SJust \(SlotNo (\d+)\), invalidHereafter = SJust \(SlotNo (\d+)\)\}\) \(SlotNo (\d+)\)/;
 const EMULATOR_LOWER_BOUND_OUTSIDE_VALIDITY_REGEX =
@@ -304,6 +316,10 @@ export const submitSignedTxWithRecovery = (
         earlyValidityAttempts += 1;
         yield* sleep(waitMs);
         continue;
+      }
+
+      if (isUnknownOutputReferenceSubmitError(submitError)) {
+        return yield* Effect.fail(e);
       }
 
       if (providerRetryAttempts < RETRY_ATTEMPTS) {

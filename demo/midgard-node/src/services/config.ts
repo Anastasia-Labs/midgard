@@ -56,11 +56,9 @@ type NodeConfigDep = {
   MIN_FEE_B: bigint;
   RUN_GENESIS_ON_STARTUP: boolean;
   ADMIN_API_KEY: string;
-  MAX_SUBMIT_QUEUE_SIZE: number;
   MAX_DURABLE_ADMISSION_BACKLOG: number;
   MAX_SUBMIT_TX_CBOR_BYTES: number;
   READINESS_MAX_HEARTBEAT_AGE_MS: number;
-  READINESS_MAX_QUEUE_DEPTH: number;
   READINESS_MAX_DURABLE_ADMISSION_BACKLOG: number;
   READINESS_MAX_DURABLE_ADMISSION_AGE_MS: number;
   STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS: number;
@@ -297,24 +295,18 @@ const makeConfig = Effect.gen(function* () {
   const adminApiKey = yield* Config.string("ADMIN_API_KEY").pipe(
     Config.withDefault(""),
   );
-  const maxSubmitQueueSize = yield* Config.integer(
-    "MAX_SUBMIT_QUEUE_SIZE",
-  ).pipe(Config.withDefault(10_000));
   const maxDurableAdmissionBacklog = yield* Config.integer(
     "MAX_DURABLE_ADMISSION_BACKLOG",
-  ).pipe(Config.withDefault(maxSubmitQueueSize));
+  ).pipe(Config.withDefault(10_000));
   const maxSubmitTxCborBytes = yield* Config.integer(
     "MAX_SUBMIT_TX_CBOR_BYTES",
   ).pipe(Config.withDefault(32_768));
   const readinessMaxHeartbeatAgeMs = yield* Config.integer(
     "READINESS_MAX_HEARTBEAT_AGE_MS",
   ).pipe(Config.withDefault(120_000));
-  const readinessMaxQueueDepth = yield* Config.integer(
-    "READINESS_MAX_QUEUE_DEPTH",
-  ).pipe(Config.withDefault(maxSubmitQueueSize));
   const readinessMaxDurableAdmissionBacklog = yield* Config.integer(
     "READINESS_MAX_DURABLE_ADMISSION_BACKLOG",
-  ).pipe(Config.withDefault(readinessMaxQueueDepth));
+  ).pipe(Config.withDefault(10_000));
   const readinessMaxDurableAdmissionAgeMs = yield* Config.integer(
     "READINESS_MAX_DURABLE_ADMISSION_AGE_MS",
   ).pipe(Config.withDefault(120_000));
@@ -556,11 +548,9 @@ const makeConfig = Effect.gen(function* () {
     MIN_FEE_B: minFeeB,
     RUN_GENESIS_ON_STARTUP: runGenesisOnStartup,
     ADMIN_API_KEY: adminApiKey,
-    MAX_SUBMIT_QUEUE_SIZE: maxSubmitQueueSize,
     MAX_DURABLE_ADMISSION_BACKLOG: maxDurableAdmissionBacklog,
     MAX_SUBMIT_TX_CBOR_BYTES: maxSubmitTxCborBytes,
     READINESS_MAX_HEARTBEAT_AGE_MS: readinessMaxHeartbeatAgeMs,
-    READINESS_MAX_QUEUE_DEPTH: readinessMaxQueueDepth,
     READINESS_MAX_DURABLE_ADMISSION_BACKLOG:
       readinessMaxDurableAdmissionBacklog,
     READINESS_MAX_DURABLE_ADMISSION_AGE_MS: readinessMaxDurableAdmissionAgeMs,

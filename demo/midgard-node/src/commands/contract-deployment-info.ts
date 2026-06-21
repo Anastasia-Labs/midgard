@@ -29,20 +29,17 @@ import {
 import { Effect } from "effect";
 
 import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
-import { runProviderStepWithRetry } from "@/provider-retry.js";
 import { Lucid, MidgardContracts, NodeConfig } from "@/services/index.js";
 import {
   buildFraudProofCatalogueDeploymentInfo,
+  fetchProtocolDeploymentStatus,
   fraudProofsToIndexedValidators,
 } from "@/transactions/initialization.js";
+import {
+  fetchReferenceScriptUtxosForTargets,
+  type ReferenceScriptTarget,
+} from "@/transactions/reference-scripts.js";
 import { compareOutRefs } from "@/tx-context.js";
-
-const CONTRACT_DEPLOYMENT_INFO_PROVIDER_FETCH_RETRY = {
-  maxAttempts: 8,
-  baseDelayMs: 750,
-  maxDelayMs: 8_000,
-  jitterRatio: 0.25,
-} as const;
 
 export type ContractDeploymentInfoRefScriptUTxO = {
   readonly txHash: string;
@@ -254,56 +251,45 @@ const phasMembershipDescriptor = (
   };
 };
 
-const mergeWalletUtxosPreservingScriptRefs = (
-  liveUtxos: readonly UTxO[],
-  cachedUtxos: readonly UTxO[],
-): readonly UTxO[] => {
-  const cachedByOutRef = new Map(
-    cachedUtxos.map((utxo) => [
-      `${utxo.txHash}#${utxo.outputIndex.toString()}`,
-      utxo,
-    ]),
+const referenceScriptTargetsFromDescriptors = (
+  descriptors: readonly ScriptDescriptor[],
+): readonly ReferenceScriptTarget[] =>
+  descriptors.flatMap((descriptor) =>
+    descriptor.referenceScriptTargetName === undefined
+      ? []
+      : [
+          {
+            name: descriptor.referenceScriptTargetName,
+            script: descriptor.script,
+          } satisfies ReferenceScriptTarget,
+        ],
   );
-  return liveUtxos.map((utxo) => {
-    if (utxo.scriptRef !== undefined) {
-      return utxo;
-    }
-    const cached = cachedByOutRef.get(
-      `${utxo.txHash}#${utxo.outputIndex.toString()}`,
-    );
-    if (cached?.scriptRef === undefined) {
-      return utxo;
-    }
-    return {
-      ...utxo,
-      scriptRef: cached.scriptRef,
-    };
-  });
-};
 
-const fetchReferenceScriptWalletUtxos = Effect.gen(function* () {
-  const lucidService = yield* Lucid;
-  const referenceScriptsLucid = lucidService.referenceScriptsApi;
-  const referenceScriptsAddress = lucidService.referenceScriptsAddress;
-  const cachedWalletUtxos = yield* Effect.tryPromise(() =>
-    referenceScriptsLucid.wallet().getUtxos(),
-  ).pipe(Effect.catchAll(() => Effect.succeed([] as readonly UTxO[])));
-  const liveWalletUtxos = yield* runProviderStepWithRetry(
-    "contract deployment info reference-script UTxO fetch",
-    Effect.tryPromise({
-      try: () => referenceScriptsLucid.utxosAt(referenceScriptsAddress),
-      catch: (cause) =>
-        new Error(
-          `Failed to fetch reference-script UTxOs at ${referenceScriptsAddress}: ${String(cause)}`,
-        ),
-    }),
-    CONTRACT_DEPLOYMENT_INFO_PROVIDER_FETCH_RETRY,
-  );
-  return mergeWalletUtxosPreservingScriptRefs(
-    liveWalletUtxos,
-    cachedWalletUtxos,
-  );
-});
+const fetchLiveReferenceScriptUtxos = (
+  descriptors: readonly ScriptDescriptor[],
+  authPolicy: ReferenceScriptAuthPolicyRef,
+): Effect.Effect<readonly UTxO[], Error, Lucid> =>
+  Effect.gen(function* () {
+    const lucidService = yield* Lucid;
+    const referenceScriptsLucid = lucidService.referenceScriptsApi;
+    const referenceScriptsAddress = lucidService.referenceScriptsAddress;
+    const targets = referenceScriptTargetsFromDescriptors(descriptors);
+    return yield* fetchReferenceScriptUtxosForTargets(
+      referenceScriptsLucid,
+      referenceScriptsAddress,
+      targets,
+      authPolicy,
+      "contract deployment info reference-script UTxO fetch",
+      `Failed to fetch reference-script UTxOs at ${referenceScriptsAddress}`,
+    ).pipe(
+      Effect.mapError(
+        (cause) =>
+          new Error("Failed to resolve contract deployment reference scripts", {
+            cause,
+          }),
+      ),
+    );
+  });
 
 export const buildReferenceScriptOutRefMap = (
   utxos: readonly UTxO[],
@@ -558,6 +544,7 @@ export type DeploymentManifestBuildContext = {
   readonly referenceScriptDeployAddress: string;
   readonly hubOracleOneShotTxHash: string;
   readonly hubOracleOneShotOutputIndex: number;
+  readonly hubOracleOneShotStatus?: DeploymentManifestV2["hubOracleOneShot"]["status"];
   readonly now?: Date;
   readonly existingManifest?: DeploymentManifestV2;
   readonly steps?: Partial<DeploymentManifestV2["steps"]>;
@@ -619,6 +606,7 @@ export const buildDeploymentManifestV2 = (
       outputIndex: context.hubOracleOneShotOutputIndex,
       outRef: `${context.hubOracleOneShotTxHash.toLowerCase()}#${context.hubOracleOneShotOutputIndex.toString()}`,
       status:
+        context.hubOracleOneShotStatus ??
         context.existingManifest?.hubOracleOneShot.status ??
         ("prepared" as const),
     },
@@ -844,8 +832,11 @@ const resolveLiveContractDeploymentInfoProgram = (
 ): Effect.Effect<ContractDeploymentInfo, Error, Lucid | MidgardContracts> =>
   Effect.gen(function* () {
     const contracts = yield* MidgardContracts;
-    const referenceScriptWalletUtxos = yield* fetchReferenceScriptWalletUtxos;
     const descriptors = collectScriptDescriptors(contracts);
+    const referenceScriptWalletUtxos = yield* fetchLiveReferenceScriptUtxos(
+      descriptors,
+      referenceScriptAuthPolicy,
+    );
     const referenceScriptOutRefs = buildReferenceScriptOutRefMap(
       referenceScriptWalletUtxos,
       descriptors,
@@ -977,9 +968,27 @@ export const writeContractDeploymentInfoFileProgram = (
       ),
   });
 
-export const writeLiveContractDeploymentInfoProgram = (
+export type LiveContractDeploymentInfoWriteOptions = {
+  readonly steps?: Partial<DeploymentManifestV2["steps"]>;
+  readonly hubOracleOneShotStatus?: DeploymentManifestV2["hubOracleOneShot"]["status"];
+  readonly requireReadyManifest?: boolean;
+};
+
+const formatDeploymentManifestVerificationReport = (
+  report: DeploymentManifestVerificationReport,
+): string =>
+  `recommendation=${report.recommendation}; mismatches=[${report.mismatches.join(
+    "; ",
+  )}]`;
+
+const buildLiveDeploymentManifestProgram = (
   outputPath: string,
-): Effect.Effect<string, Error, Lucid | MidgardContracts | NodeConfig> =>
+  options: LiveContractDeploymentInfoWriteOptions = {},
+): Effect.Effect<
+  DeploymentManifestV2,
+  Error,
+  Lucid | MidgardContracts | NodeConfig
+> =>
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfig;
     const referenceScriptAuthPolicy = yield* Effect.try({
@@ -1006,9 +1015,136 @@ export const writeLiveContractDeploymentInfoProgram = (
       hubOracleOneShotTxHash: nodeConfig.HUB_ORACLE_ONE_SHOT_TX_HASH,
       hubOracleOneShotOutputIndex: nodeConfig.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX,
       existingManifest,
+      steps: options.steps,
+      hubOracleOneShotStatus: options.hubOracleOneShotStatus,
     });
+    const verification = verifyDeploymentManifestAgainstConfig(
+      deploymentManifest,
+      {
+        network: nodeConfig.NETWORK,
+        referenceScriptDeployAddress:
+          nodeConfig.L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS,
+        hubOracleOneShotTxHash: nodeConfig.HUB_ORACLE_ONE_SHOT_TX_HASH,
+        hubOracleOneShotOutputIndex:
+          nodeConfig.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX,
+        path: outputPath,
+      },
+    );
+    if (options.requireReadyManifest === true && !verification.ok) {
+      return yield* Effect.fail(
+        new Error(
+          `Refusing to write incomplete deployment manifest: ${formatDeploymentManifestVerificationReport(
+            verification,
+          )}`,
+        ),
+      );
+    }
+    return deploymentManifest;
+  });
+
+export const writeLiveContractDeploymentInfoProgram = (
+  outputPath: string,
+  options: LiveContractDeploymentInfoWriteOptions = {},
+): Effect.Effect<string, Error, Lucid | MidgardContracts | NodeConfig> =>
+  Effect.gen(function* () {
+    const deploymentManifest = yield* buildLiveDeploymentManifestProgram(
+      outputPath,
+      options,
+    );
     return yield* writeContractDeploymentInfoFileProgram(
       outputPath,
       deploymentManifest,
     );
+  });
+
+export type ReconcileInitializedDeploymentManifestOptions = {
+  readonly outputPath: string;
+  readonly initTxHash: string;
+};
+
+export type ReconcileInitializedDeploymentManifestSummary = {
+  readonly status: "complete";
+  readonly path: string;
+  readonly manifestId: string;
+  readonly initTxHash: string;
+  readonly hubOracleOutRef: string;
+  readonly referenceScriptsConfirmed: number;
+};
+
+export const reconcileInitializedDeploymentManifestProgram = ({
+  outputPath,
+  initTxHash,
+}: ReconcileInitializedDeploymentManifestOptions): Effect.Effect<
+  ReconcileInitializedDeploymentManifestSummary,
+  Error,
+  Lucid | MidgardContracts | NodeConfig
+> =>
+  Effect.gen(function* () {
+    const lucidService = yield* Lucid;
+    const contracts = yield* MidgardContracts;
+    const normalizedInitTxHash = initTxHash.toLowerCase();
+    const deploymentStatus = yield* fetchProtocolDeploymentStatus(
+      lucidService.api,
+      contracts,
+    ).pipe(
+      Effect.mapError(
+        (cause) =>
+          new Error("Failed to inspect live protocol deployment status", {
+            cause,
+          }),
+      ),
+    );
+    if (!deploymentStatus.complete) {
+      return yield* Effect.fail(
+        new Error(
+          `Cannot reconcile deployment manifest for an incomplete protocol deployment: missing_components=[${deploymentStatus.missingComponents.join(
+            ",",
+          )}],state_queue_healthy=${deploymentStatus.stateQueueTopology.healthy.toString()}`,
+        ),
+      );
+    }
+    const hubOracleWitness = deploymentStatus.hubOracleWitness;
+    if (hubOracleWitness === null) {
+      return yield* Effect.fail(
+        new Error(
+          "Cannot reconcile deployment manifest without hub-oracle witness",
+        ),
+      );
+    }
+    const liveInitTxHash = hubOracleWitness.txHash.toLowerCase();
+    if (liveInitTxHash !== normalizedInitTxHash) {
+      return yield* Effect.fail(
+        new Error(
+          `Init transaction mismatch: live hub-oracle witness was created by ${liveInitTxHash}, expected ${normalizedInitTxHash}`,
+        ),
+      );
+    }
+
+    const path = yield* writeLiveContractDeploymentInfoProgram(outputPath, {
+      hubOracleOneShotStatus: "consumed_by_init",
+      steps: {
+        initProtocol: {
+          status: "complete",
+          txHash: normalizedInitTxHash,
+        },
+      },
+      requireReadyManifest: true,
+    });
+    const manifest = yield* Effect.try({
+      try: () => readDeploymentManifestV2File(path),
+      catch: (cause) =>
+        new Error(
+          `Failed to read reconciled deployment manifest: ${String(cause)}`,
+        ),
+    });
+    return {
+      status: "complete" as const,
+      path,
+      manifestId: manifest.manifestId,
+      initTxHash: normalizedInitTxHash,
+      hubOracleOutRef: `${hubOracleWitness.txHash}#${hubOracleWitness.outputIndex.toString()}`,
+      referenceScriptsConfirmed: Object.values(
+        manifest.referenceScripts,
+      ).filter((record) => record.status === "confirmed").length,
+    };
   });

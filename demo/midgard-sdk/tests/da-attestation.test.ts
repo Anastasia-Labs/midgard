@@ -12,6 +12,7 @@ import {
   castStateQueueNodeToData,
   type DaAttestationBuildError,
   DaAttestationDatum,
+  DaAttestationSpendRedeemer,
   type DaAttestationReferenceScripts,
   type DaAttestationStateQueueTarget,
   daAttestationUnit,
@@ -49,6 +50,7 @@ type Recording = {
   readonly collects: { readonly inputs: UTxO[]; readonly redeemer: unknown }[];
   readonly mints: { readonly assets: Assets; readonly redeemer: unknown }[];
   readonly payments: RecordedPayment[];
+  readonly signerKeys: string[];
 };
 
 const makeRecordingLucid = (): {
@@ -60,6 +62,7 @@ const makeRecordingLucid = (): {
     collects: [],
     mints: [],
     payments: [],
+    signerKeys: [],
   };
   const lucid = {
     newTx: () => {
@@ -85,6 +88,10 @@ const makeRecordingLucid = (): {
             record.payments.push({ address, datum, assets });
             return tx;
           },
+        },
+        addSignerKey: (keyHash: string) => {
+          record.signerKeys.push(keyHash);
+          return tx;
         },
       };
       return tx;
@@ -357,6 +364,23 @@ describe("DA attestation SDK builders", () => {
     );
     expect(datum.attested_signers).toBe(`80${"00".repeat(31)}`);
     expect(datum.attestation_count).toBe(1n);
+    const redeemer = Data.from(
+      (record.collects[0]!.redeemer as (ctx: unknown) => string)({
+        outputs: record.payments.map((payment) => ({
+          address: payment.address,
+          assets: payment.assets,
+          datum: payment.datum.value,
+        })),
+        referenceInputs: record.reads[0],
+      }),
+      DaAttestationSpendRedeemer,
+    );
+    expect(redeemer).toMatchObject({
+      AddSignatures: {
+        signatures: `00${signature("aa")}`,
+      },
+    });
+    expect(record.signerKeys).toHaveLength(0);
   });
 
   it("preflights add-signatures committee compatibility", async () => {

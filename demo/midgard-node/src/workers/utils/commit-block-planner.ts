@@ -9,6 +9,44 @@ export type SuccessfulCommitBatch = {
   readonly clearMempoolTxHashes: readonly Buffer[];
 };
 
+export type CommitTxSourceTable = "mempool" | "processed_mempool" | "none";
+
+export type CommitTxCandidateSelection = {
+  readonly candidateTxs: readonly EntryWithTimeStamp[];
+  readonly candidateTxHashes: readonly Buffer[];
+  readonly candidateTxsSize: number;
+  readonly sourceTable: CommitTxSourceTable;
+};
+
+export const selectCommitTxCandidates = ({
+  mempoolTxs,
+  processedMempoolTxs,
+}: {
+  readonly mempoolTxs: readonly EntryWithTimeStamp[];
+  readonly processedMempoolTxs: readonly EntryWithTimeStamp[];
+}): CommitTxCandidateSelection => {
+  const candidateTxs =
+    processedMempoolTxs.length > 0 ? processedMempoolTxs : mempoolTxs;
+  const sourceTable =
+    processedMempoolTxs.length > 0
+      ? "processed_mempool"
+      : mempoolTxs.length > 0
+        ? "mempool"
+        : "none";
+
+  return {
+    candidateTxs,
+    candidateTxHashes: candidateTxs.map((entry) =>
+      Buffer.from(entry[TxColumns.TX_ID]),
+    ),
+    candidateTxsSize: candidateTxs.reduce(
+      (total, entry) => total + entry[TxColumns.TX].length,
+      0,
+    ),
+    sourceTable,
+  };
+};
+
 export const buildSuccessfulCommitBatches = (
   mempoolTxs: readonly EntryWithTimeStamp[],
   mempoolTxHashes: readonly Buffer[],

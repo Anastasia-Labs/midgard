@@ -261,18 +261,11 @@ export const kupoChainPointResolver = (
   address: string,
   fetchFn: typeof fetch = fetch,
 ): ((utxo: UTxO) => Promise<ChainPoint>) => {
-  let matchesPromise: Promise<readonly KupoMatch[]> | undefined;
-  let tipSlotPromise: Promise<number | undefined> | undefined;
-  const matches = (): Promise<readonly KupoMatch[]> => {
-    matchesPromise ??= fetchKupoMatches(kupoUrl, address, fetchFn);
-    return matchesPromise;
-  };
-  const tipSlot = (): Promise<number | undefined> => {
-    tipSlotPromise ??= fetchKupoTipSlot(kupoUrl, fetchFn);
-    return tipSlotPromise;
-  };
   return async (utxo) => {
-    const [entries, tip] = await Promise.all([matches(), tipSlot()]);
+    const [entries, tip] = await Promise.all([
+      fetchKupoMatches(kupoUrl, address, fetchFn),
+      fetchKupoTipSlot(kupoUrl, fetchFn),
+    ]);
     const entry = entries.find(
       (candidate) =>
         candidate.transaction_id?.toLowerCase() === utxo.txHash.toLowerCase() &&

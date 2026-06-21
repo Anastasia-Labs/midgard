@@ -5,7 +5,6 @@
  */
 import { hexToBytes } from "@al-ft/midgard-core/hex";
 import * as SDK from "@al-ft/midgard-sdk";
-import { QueuedTxPayload } from "@al-ft/midgard-validation";
 import {
   HttpRouter,
   HttpServerRequest,
@@ -15,7 +14,7 @@ import type { HttpBodyError } from "@effect/platform/HttpBody";
 import { ParsedSearchParams } from "@effect/platform/HttpServerRequest";
 import { SqlClient } from "@effect/sql/SqlClient";
 import { toHex } from "@lucid-evolution/lucid";
-import { Cause, Duration, Effect, Metric, Option, Queue, Ref } from "effect";
+import { Cause, Duration, Effect, Metric, Option, Ref } from "effect";
 
 import {
   parseAddressArgument,
@@ -89,6 +88,9 @@ const DEPOSIT_STATUS_ENDPOINT: string = "deposit-status";
 const PROTOCOL_INFO_ENDPOINT: string = "protocol-info";
 const HEALTH_ENDPOINT: string = "healthz";
 const READINESS_ENDPOINT: string = "readyz";
+
+const errorMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
 const STATE_QUEUE_MUTATION_LEASE_ENDPOINT: string = "stateQueueMutationLease";
 
 const txCounter = Metric.counter("tx_count", {
@@ -251,7 +253,7 @@ export const resolveStateQueueMutationLeaseRequest = <R = Database>(
         return {
           statusCode: 400,
           body: {
-            error: error instanceof Error ? error.message : String(error),
+            error: errorMessage(error),
           },
         };
       }
@@ -279,7 +281,7 @@ export const resolveStateQueueMutationLeaseRequest = <R = Database>(
         return {
           statusCode: 400,
           body: {
-            error: error instanceof Error ? error.message : String(error),
+            error: errorMessage(error),
           },
         };
       }
@@ -323,7 +325,7 @@ export const resolveStateQueueMutationLeaseRequest = <R = Database>(
         return {
           statusCode: 400,
           body: {
-            error: error instanceof Error ? error.message : String(error),
+            error: errorMessage(error),
           },
         };
       }
@@ -509,7 +511,7 @@ const getUtxoHandler = Effect.gen(function* () {
   try {
     txOutRef = parseTxOutRefCborHex(rawTxOutRef, "txOutRef");
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     yield* Effect.logInfo(
       `GET /${UTXO_ENDPOINT} - invalid txOutRef: ${message}`,
     );
@@ -550,7 +552,7 @@ const postUtxosByTxOutRefsHandler = Effect.gen(function* () {
   try {
     UtxosCommand.requireByOutRefsSelector(params);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     yield* Effect.logInfo(
       `POST /${UTXOS_ENDPOINT} - missing selector: ${message}`,
     );
@@ -572,7 +574,7 @@ const postUtxosByTxOutRefsHandler = Effect.gen(function* () {
   try {
     txOutRefs = UtxosCommand.parseTxOutRefsRequest(parsedBody.right);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     yield* Effect.logInfo(
       `POST /${UTXOS_ENDPOINT} - invalid request: ${message}`,
     );
@@ -692,7 +694,7 @@ const getStateQueueMutationLeaseHandler = Effect.gen(function* () {
         : parsePositiveInteger(Number(recentLimitParam), "recent_limit");
   } catch (error) {
     return yield* HttpServerResponse.json(
-      { error: error instanceof Error ? error.message : String(error) },
+      { error: errorMessage(error) },
       { status: 400 },
     );
   }
@@ -727,7 +729,7 @@ const getDepositStatusHandler = Effect.gen(function* () {
   try {
     lookup = DepositStatusCommand.parseDepositStatusLookup(params);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     yield* Effect.logInfo(
       `GET /${DEPOSIT_STATUS_ENDPOINT} - invalid request: ${message}`,
     );
@@ -774,129 +776,122 @@ const getHealthHandler = Effect.gen(function* () {
  * `GET /readyz`: readiness endpoint that checks worker heartbeats, queue depth,
  * local recovery state, and database connectivity.
  */
-const getReadinessHandler = (txQueue: Queue.Dequeue<QueuedTxPayload>) =>
-  Effect.gen(function* () {
-    const globals = yield* Globals;
-    const nodeConfig = yield* NodeConfig;
-    const sql = yield* SqlClient;
+const getReadinessHandler = Effect.gen(function* () {
+  const globals = yield* Globals;
+  const nodeConfig = yield* NodeConfig;
+  const sql = yield* SqlClient;
 
-    const legacyQueueDepth = yield* txQueue.size;
-    const durableAdmissionBacklog = yield* TxAdmissionsDB.countBacklog;
-    const durableAdmissionOldestAgeMs = yield* TxAdmissionsDB.oldestQueuedAgeMs;
-    const unfinishedMutationJobs = yield* MutationJobsDB.countUnfinished;
-    const nowMillis = Date.now();
-    const blockCommitmentHeartbeat = yield* Ref.get(
-      globals.HEARTBEAT_BLOCK_COMMITMENT,
-    );
-    const blockConfirmationHeartbeat = yield* Ref.get(
-      globals.HEARTBEAT_BLOCK_CONFIRMATION,
-    );
-    const mergeHeartbeat = yield* Ref.get(globals.HEARTBEAT_MERGE);
-    const depositFetchHeartbeat = yield* Ref.get(
-      globals.HEARTBEAT_DEPOSIT_FETCH,
-    );
-    const withdrawalFetchHeartbeat = yield* Ref.get(
-      globals.HEARTBEAT_WITHDRAWAL_FETCH,
-    );
-    const txQueueProcessorHeartbeat = yield* Ref.get(
-      globals.HEARTBEAT_TX_QUEUE_PROCESSOR,
-    );
-    const localFinalizationPending = yield* Ref.get(
-      globals.LOCAL_FINALIZATION_PENDING,
-    );
-    const unconfirmedSubmittedBlockTxHash = yield* Ref.get(
-      globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
-    );
-    const unconfirmedSubmittedBlockSinceMs = yield* Ref.get(
-      globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS,
-    );
-    const unresolvedBlockSubmissionAgeMs =
-      unconfirmedSubmittedBlockTxHash === "" ||
-      unconfirmedSubmittedBlockSinceMs <= 0
-        ? 0
-        : nowMillis - unconfirmedSubmittedBlockSinceMs;
+  const durableAdmissionBacklog = yield* TxAdmissionsDB.countBacklog;
+  const durableAdmissionOldestAgeMs = yield* TxAdmissionsDB.oldestQueuedAgeMs;
+  const unfinishedMutationJobs = yield* MutationJobsDB.countUnfinished;
+  const nowMillis = Date.now();
+  const blockCommitmentHeartbeat = yield* Ref.get(
+    globals.HEARTBEAT_BLOCK_COMMITMENT,
+  );
+  const blockConfirmationHeartbeat = yield* Ref.get(
+    globals.HEARTBEAT_BLOCK_CONFIRMATION,
+  );
+  const mergeHeartbeat = yield* Ref.get(globals.HEARTBEAT_MERGE);
+  const depositFetchHeartbeat = yield* Ref.get(globals.HEARTBEAT_DEPOSIT_FETCH);
+  const withdrawalFetchHeartbeat = yield* Ref.get(
+    globals.HEARTBEAT_WITHDRAWAL_FETCH,
+  );
+  const txQueueProcessorHeartbeat = yield* Ref.get(
+    globals.HEARTBEAT_TX_QUEUE_PROCESSOR,
+  );
+  const localFinalizationPending = yield* Ref.get(
+    globals.LOCAL_FINALIZATION_PENDING,
+  );
+  const unconfirmedSubmittedBlockTxHash = yield* Ref.get(
+    globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
+  );
+  const unconfirmedSubmittedBlockSinceMs = yield* Ref.get(
+    globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS,
+  );
+  const unresolvedBlockSubmissionAgeMs =
+    unconfirmedSubmittedBlockTxHash === "" ||
+    unconfirmedSubmittedBlockSinceMs <= 0
+      ? 0
+      : nowMillis - unconfirmedSubmittedBlockSinceMs;
 
-    const dbProbe = yield* Effect.either(sql`SELECT 1 AS ok`);
-    const dbHealthy = dbProbe._tag === "Right";
-    const lucid = yield* Lucid;
-    const contracts = yield* MidgardContracts;
-    const providerProbe = yield* Effect.either(
-      Initialization.fetchHubOracleWitness(lucid.api, contracts),
-    );
-    const leaseInspection = yield* StateQueueMutationLeasesDB.inspect({
-      recentLimit: 3,
-    });
-    const encodedLeaseInspection =
-      encodeStateQueueMutationLeaseInspection(leaseInspection);
-    const activeLease = leaseInspection.activeLease;
-    const activeLeaseRemainingMs =
-      activeLease === undefined
-        ? null
-        : activeLease[StateQueueMutationLeasesDB.Columns.EXPIRES_AT].getTime() -
-          leaseInspection.dbNow.getTime();
-
-    const baseReadiness = evaluateReadiness({
-      nowMillis,
-      maxHeartbeatAgeMs: nodeConfig.READINESS_MAX_HEARTBEAT_AGE_MS,
-      maxQueueDepth: nodeConfig.READINESS_MAX_DURABLE_ADMISSION_BACKLOG,
-      queueDepth: Number(durableAdmissionBacklog),
-      workerHeartbeats: {
-        blockCommitment: blockCommitmentHeartbeat,
-        blockConfirmation: blockConfirmationHeartbeat,
-        merge: mergeHeartbeat,
-        depositFetch: depositFetchHeartbeat,
-        withdrawalFetch: withdrawalFetchHeartbeat,
-        txQueueProcessor: txQueueProcessorHeartbeat,
-      },
-      localFinalizationPending,
-      unresolvedBlockSubmissionAgeMs,
-      maxUnresolvedBlockSubmissionAgeMs:
-        nodeConfig.UNCONFIRMED_BLOCK_MAX_AGE_MS,
-      dbHealthy,
-      stateQueueMutationLease: {
-        active: activeLease !== undefined,
-        stale:
-          activeLeaseRemainingMs !== null &&
-          activeLeaseRemainingMs <
-            -nodeConfig.STATE_QUEUE_MUTATION_LEASE_STALE_GRACE_MS,
-        remainingMs: activeLeaseRemainingMs,
-        holder:
-          activeLease?.[StateQueueMutationLeasesDB.Columns.HOLDER] ?? null,
-      },
-    });
-    const reasons = [...baseReadiness.reasons];
-    if (providerProbe._tag === "Left") {
-      reasons.push("provider_query_unhealthy:hub-oracle");
-    }
-    if (
-      durableAdmissionOldestAgeMs >
-      nodeConfig.READINESS_MAX_DURABLE_ADMISSION_AGE_MS
-    ) {
-      reasons.push(
-        `durable_admission_oldest_age_exceeded:${durableAdmissionOldestAgeMs}:${nodeConfig.READINESS_MAX_DURABLE_ADMISSION_AGE_MS}`,
-      );
-    }
-    if (unfinishedMutationJobs > 0n) {
-      reasons.push(
-        `unfinished_local_mutation_jobs:${unfinishedMutationJobs.toString()}`,
-      );
-    }
-    const readiness = {
-      ready: reasons.length === 0,
-      reasons,
-      durableAdmissionBacklog: durableAdmissionBacklog.toString(),
-      durableAdmissionOldestAgeMs,
-      unfinishedLocalMutationJobs: unfinishedMutationJobs.toString(),
-      unresolvedBlockSubmissionAgeMs,
-      legacyInMemoryQueueDepth: legacyQueueDepth,
-      providerQueryHealthy: providerProbe._tag === "Right",
-      stateQueueMutationLease: encodedLeaseInspection,
-    };
-
-    return yield* HttpServerResponse.json(readiness, {
-      status: readiness.ready ? 200 : 503,
-    });
+  const dbProbe = yield* Effect.either(sql`SELECT 1 AS ok`);
+  const dbHealthy = dbProbe._tag === "Right";
+  const lucid = yield* Lucid;
+  const contracts = yield* MidgardContracts;
+  const providerProbe = yield* Effect.either(
+    Initialization.fetchHubOracleWitness(lucid.api, contracts),
+  );
+  const leaseInspection = yield* StateQueueMutationLeasesDB.inspect({
+    recentLimit: 3,
   });
+  const encodedLeaseInspection =
+    encodeStateQueueMutationLeaseInspection(leaseInspection);
+  const activeLease = leaseInspection.activeLease;
+  const activeLeaseRemainingMs =
+    activeLease === undefined
+      ? null
+      : activeLease[StateQueueMutationLeasesDB.Columns.EXPIRES_AT].getTime() -
+        leaseInspection.dbNow.getTime();
+
+  const baseReadiness = evaluateReadiness({
+    nowMillis,
+    maxHeartbeatAgeMs: nodeConfig.READINESS_MAX_HEARTBEAT_AGE_MS,
+    maxQueueDepth: nodeConfig.READINESS_MAX_DURABLE_ADMISSION_BACKLOG,
+    queueDepth: Number(durableAdmissionBacklog),
+    workerHeartbeats: {
+      blockCommitment: blockCommitmentHeartbeat,
+      blockConfirmation: blockConfirmationHeartbeat,
+      merge: mergeHeartbeat,
+      depositFetch: depositFetchHeartbeat,
+      withdrawalFetch: withdrawalFetchHeartbeat,
+      txQueueProcessor: txQueueProcessorHeartbeat,
+    },
+    localFinalizationPending,
+    unresolvedBlockSubmissionAgeMs,
+    maxUnresolvedBlockSubmissionAgeMs: nodeConfig.UNCONFIRMED_BLOCK_MAX_AGE_MS,
+    dbHealthy,
+    stateQueueMutationLease: {
+      active: activeLease !== undefined,
+      stale:
+        activeLeaseRemainingMs !== null &&
+        activeLeaseRemainingMs <
+          -nodeConfig.STATE_QUEUE_MUTATION_LEASE_STALE_GRACE_MS,
+      remainingMs: activeLeaseRemainingMs,
+      holder: activeLease?.[StateQueueMutationLeasesDB.Columns.HOLDER] ?? null,
+    },
+  });
+  const reasons = [...baseReadiness.reasons];
+  if (providerProbe._tag === "Left") {
+    reasons.push("provider_query_unhealthy:hub-oracle");
+  }
+  if (
+    durableAdmissionOldestAgeMs >
+    nodeConfig.READINESS_MAX_DURABLE_ADMISSION_AGE_MS
+  ) {
+    reasons.push(
+      `durable_admission_oldest_age_exceeded:${durableAdmissionOldestAgeMs}:${nodeConfig.READINESS_MAX_DURABLE_ADMISSION_AGE_MS}`,
+    );
+  }
+  if (unfinishedMutationJobs > 0n) {
+    reasons.push(
+      `unfinished_local_mutation_jobs:${unfinishedMutationJobs.toString()}`,
+    );
+  }
+  const readiness = {
+    ready: reasons.length === 0,
+    reasons,
+    durableAdmissionBacklog: durableAdmissionBacklog.toString(),
+    durableAdmissionOldestAgeMs,
+    unfinishedLocalMutationJobs: unfinishedMutationJobs.toString(),
+    unresolvedBlockSubmissionAgeMs,
+    providerQueryHealthy: providerProbe._tag === "Right",
+    stateQueueMutationLease: encodedLeaseInspection,
+  };
+
+  return yield* HttpServerResponse.json(readiness, {
+    status: readiness.ready ? 200 : 503,
+  });
+});
 
 /**
  * `GET /protocol-info`: returns stable public facts needed by external
@@ -1429,7 +1424,7 @@ const postDepositBuildHandler = Effect.gen(function* () {
       expectedNetwork: lucid.api.config().network,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     yield* Effect.logInfo(
       `POST /${DEPOSIT_BUILD_ENDPOINT} - invalid request: ${message}`,
     );
@@ -1615,7 +1610,6 @@ const postSubmitHandler = (withMonitoring?: boolean) =>
  * Builds the full HTTP router for the node command server.
  */
 export const buildListenRouter = (
-  txQueue: Queue.Queue<QueuedTxPayload>,
   withMonitoring?: boolean,
 ): Effect.Effect<
   HttpServerResponse.HttpServerResponse,
@@ -1631,7 +1625,7 @@ export const buildListenRouter = (
   HttpRouter.empty
     .pipe(
       HttpRouter.get(`/${HEALTH_ENDPOINT}`, getHealthHandler),
-      HttpRouter.get(`/${READINESS_ENDPOINT}`, getReadinessHandler(txQueue)),
+      HttpRouter.get(`/${READINESS_ENDPOINT}`, getReadinessHandler),
       HttpRouter.get(`/${PROTOCOL_INFO_ENDPOINT}`, getProtocolInfoHandler),
       HttpRouter.get(`/${TX_ENDPOINT}`, getTxHandler),
       HttpRouter.get(`/${TX_STATUS_ENDPOINT}`, getTxStatusHandler),

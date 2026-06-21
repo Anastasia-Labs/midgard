@@ -6,14 +6,13 @@
 import { createServer } from "node:http";
 
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import { QueuedTxPayload } from "@al-ft/midgard-validation";
 import { NodeSdk } from "@effect/opentelemetry";
 import { HttpServer } from "@effect/platform";
 import { NodeHttpServer } from "@effect/platform-node";
 import { PrometheusExporter } from "@opentelemetry/exporter-prometheus";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
-import { Cause, Duration, Effect, Layer, pipe, Queue, Schedule } from "effect";
+import { Cause, Duration, Effect, Layer, pipe, Schedule } from "effect";
 
 import { buildListenRouter } from "@/commands/listen-router.js";
 import {
@@ -132,10 +131,6 @@ export const runNode = (
 > =>
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfig;
-
-    const txQueue = yield* Queue.dropping<QueuedTxPayload>(
-      Math.max(1, nodeConfig.MAX_SUBMIT_QUEUE_SIZE),
-    );
 
     yield* InitDB.program.pipe(Effect.provide(Database.layer));
     yield* ensureProtocolInitializedOnStartup;
@@ -272,7 +267,7 @@ export const runNode = (
 
     const appThread = Layer.launch(
       Layer.provide(
-        HttpServer.serve(buildListenRouter(txQueue, withMonitoring)),
+        HttpServer.serve(buildListenRouter(withMonitoring)),
         NodeHttpServer.layer(createServer, { port: nodeConfig.PORT }),
       ),
     );
@@ -309,7 +304,7 @@ export const runNode = (
         ),
         mergeFiber(mkSchedule(nodeConfig.WAIT_BETWEEN_MERGE_TXS)),
         withMonitoring ? monitorMempoolFiber(mkSchedule(1000)) : Effect.void,
-        txQueueProcessorFiber(mkSchedule(500), txQueue, withMonitoring),
+        txQueueProcessorFiber(mkSchedule(500)),
       ],
       {
         concurrency: "unbounded",

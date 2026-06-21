@@ -270,21 +270,27 @@ const proofBytes = (value: string, label: string): Buffer => {
   return Buffer.from(value, "hex");
 };
 
-const doIncluding = (
+type PhasProofTraversalMode =
+  | { readonly kind: "including"; readonly valueDigest: Buffer }
+  | { readonly kind: "excluding" };
+
+const traversePhasProof = (
+  mode: PhasProofTraversalMode,
   path: string,
-  valueDigest: Buffer,
   cursor: number,
   proof: readonly SDK.ProofStep[],
   index: number,
 ): Buffer => {
   const step = proof[index];
   if (step === undefined) {
-    return computeLeafHash(path.slice(cursor), valueDigest);
+    return mode.kind === "including"
+      ? computeLeafHash(path.slice(cursor), mode.valueDigest)
+      : MPF_NULL_ROOT;
   }
   if ("Branch" in step) {
     const skip = parseProofInteger(step.Branch.skip, "branch skip");
     const nextCursor = cursor + 1 + skip;
-    const root = doIncluding(path, valueDigest, nextCursor, proof, index + 1);
+    const root = traversePhasProof(mode, path, nextCursor, proof, index + 1);
     const thisNibble = Number.parseInt(path[nextCursor - 1]!, 16);
     const prefix = path.slice(cursor, nextCursor - 1);
     return computeBranchHash(
@@ -298,87 +304,8 @@ const doIncluding = (
   }
   if ("Fork" in step) {
     const skip = parseProofInteger(step.Fork.skip, "fork skip");
-    const nextCursor = cursor + 1 + skip;
-    const root = doIncluding(path, valueDigest, nextCursor, proof, index + 1);
-    const thisNibble = Number.parseInt(path[nextCursor - 1]!, 16);
     const neighbor = step.Fork.neighbor.Neighbor;
-    const neighborNibble = parseProofInteger(neighbor.nibble, "fork nibble");
-    if (neighborNibble === thisNibble) {
-      throw new Error("Fork proof neighbor uses the proven path nibble");
-    }
-    const nodes: Record<number, Buffer> = {
-      [thisNibble]: root,
-      [neighborNibble]: digest(
-        Buffer.concat([
-          proofBytes(neighbor.prefix, "fork neighbor prefix"),
-          proofBytes(neighbor.root, "fork neighbor root"),
-        ]),
-      ),
-    };
-    return computeBranchHash(
-      path.slice(cursor, nextCursor - 1),
-      merkleRoot16(nodes),
-    );
-  }
-  if ("Leaf" in step) {
-    const skip = parseProofInteger(step.Leaf.skip, "leaf skip");
-    const nextCursor = cursor + 1 + skip;
-    const root = doIncluding(path, valueDigest, nextCursor, proof, index + 1);
-    const thisNibble = Number.parseInt(path[nextCursor - 1]!, 16);
-    const neighborPath = proofBytes(
-      step.Leaf.key,
-      "leaf neighbor key",
-    ).toString("hex");
-    if (neighborPath.slice(0, cursor) !== path.slice(0, cursor)) {
-      throw new Error("Leaf proof neighbor is not under the expected prefix");
-    }
-    const neighborNibble = Number.parseInt(neighborPath[nextCursor - 1]!, 16);
-    if (neighborNibble === thisNibble) {
-      throw new Error("Leaf proof neighbor uses the proven path nibble");
-    }
-    const nodes: Record<number, Buffer> = {
-      [thisNibble]: root,
-      [neighborNibble]: computeLeafHash(
-        neighborPath.slice(nextCursor),
-        proofBytes(step.Leaf.value, "leaf neighbor value"),
-      ),
-    };
-    return computeBranchHash(
-      path.slice(cursor, nextCursor - 1),
-      merkleRoot16(nodes),
-    );
-  }
-  throw new Error("Unknown PHAS proof step");
-};
-
-const doExcluding = (
-  path: string,
-  cursor: number,
-  proof: readonly SDK.ProofStep[],
-  index: number,
-): Buffer => {
-  const step = proof[index];
-  if (step === undefined) {
-    return MPF_NULL_ROOT;
-  }
-  if ("Branch" in step) {
-    const skip = parseProofInteger(step.Branch.skip, "branch skip");
-    const nextCursor = cursor + 1 + skip;
-    const root = doExcluding(path, nextCursor, proof, index + 1);
-    const thisNibble = Number.parseInt(path[nextCursor - 1]!, 16);
-    return computeBranchHash(
-      path.slice(cursor, nextCursor - 1),
-      branchRootFromNeighbors(
-        thisNibble,
-        root,
-        proofBytes(step.Branch.neighbors, "branch neighbors"),
-      ),
-    );
-  }
-  if ("Fork" in step) {
-    const skip = parseProofInteger(step.Fork.skip, "fork skip");
-    const neighbor = step.Fork.neighbor.Neighbor;
-    if (proof[index + 1] === undefined) {
+    if (mode.kind === "excluding" && proof[index + 1] === undefined) {
       const prefixParts =
         skip === 0
           ? [
@@ -402,11 +329,11 @@ const doExcluding = (
       );
     }
     const nextCursor = cursor + 1 + skip;
-    const root = doExcluding(path, nextCursor, proof, index + 1);
+    const root = traversePhasProof(mode, path, nextCursor, proof, index + 1);
     const thisNibble = Number.parseInt(path[nextCursor - 1]!, 16);
     const neighborNibble = parseProofInteger(
       neighbor.nibble,
-      "fork neighbor nibble",
+      mode.kind === "including" ? "fork nibble" : "fork neighbor nibble",
     );
     if (neighborNibble === thisNibble) {
       throw new Error("Fork proof neighbor uses the proven path nibble");
@@ -430,7 +357,7 @@ const doExcluding = (
       step.Leaf.key,
       "leaf neighbor key",
     ).toString("hex");
-    if (proof[index + 1] === undefined) {
+    if (mode.kind === "excluding" && proof[index + 1] === undefined) {
       return computeLeafHash(
         neighborPath.slice(cursor),
         proofBytes(step.Leaf.value, "leaf neighbor value"),
@@ -438,9 +365,18 @@ const doExcluding = (
     }
     const skip = parseProofInteger(step.Leaf.skip, "leaf skip");
     const nextCursor = cursor + 1 + skip;
-    const root = doExcluding(path, nextCursor, proof, index + 1);
+    const root = traversePhasProof(mode, path, nextCursor, proof, index + 1);
     const thisNibble = Number.parseInt(path[nextCursor - 1]!, 16);
-    const neighborNibble = Number.parseInt(neighborPath[cursor]!, 16);
+    if (
+      mode.kind === "including" &&
+      neighborPath.slice(0, cursor) !== path.slice(0, cursor)
+    ) {
+      throw new Error("Leaf proof neighbor is not under the expected prefix");
+    }
+    const neighborNibble =
+      mode.kind === "including"
+        ? Number.parseInt(neighborPath[nextCursor - 1]!, 16)
+        : Number.parseInt(neighborPath[cursor]!, 16);
     if (neighborNibble === thisNibble) {
       throw new Error("Leaf proof neighbor uses the proven path nibble");
     }
@@ -492,8 +428,14 @@ export const rootFromPhasProof = ({
       }
       const path = digest(key).toString("hex");
       const root = includingItem
-        ? doIncluding(path, digest(value!), 0, proof, 0)
-        : doExcluding(path, 0, proof, 0);
+        ? traversePhasProof(
+            { kind: "including", valueDigest: digest(value!) },
+            path,
+            0,
+            proof,
+            0,
+          )
+        : traversePhasProof({ kind: "excluding" }, path, 0, proof, 0);
       return normalizeVerifiedPhasRoot(root).toString("hex");
     },
     catch: (e) => MpfError.phasRoot(e),

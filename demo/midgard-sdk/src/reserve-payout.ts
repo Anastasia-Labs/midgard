@@ -1,8 +1,5 @@
 import { outRefLabel } from "@al-ft/midgard-core/out-ref";
-import {
-  aikenSerialisedPlutusDataCbor,
-  canonicalPlutusDataCbor,
-} from "@al-ft/midgard-core/plutus-data-cbor";
+import { aikenSerialisedPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
   type Assets,
   type BuildTxWithRedeemer,
@@ -72,6 +69,7 @@ import {
   requireUniqueOutputIndex,
   requireWithdrawalRedeemerIndex,
 } from "@/tx-context-redeemer.js";
+import { outputDatumCborMatches } from "@/tx-output-utils.js";
 
 export {
   addAssets,
@@ -360,10 +358,6 @@ const outputDatumMatches = (
     Data.to(datum.InlineDatum.data as any, Data.Any() as any),
   );
 };
-
-const outputDatumCborMatches = (output: TxOutput, datumCbor: string): boolean =>
-  output.datum != null &&
-  canonicalPlutusDataCbor(output.datum) === canonicalPlutusDataCbor(datumCbor);
 
 const reserveOutputIndex = (
   outputs: readonly TxOutput[],

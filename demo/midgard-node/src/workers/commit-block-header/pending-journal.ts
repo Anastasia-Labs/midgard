@@ -15,9 +15,41 @@ import {
 
 import {
   fetchLatestCommittedBlockLocal,
+  getConfirmedStateFromStateQueueDatumLocal,
+  getHeaderFromStateQueueDatumLocal,
   stateQueueBaseHeaderHash,
   stateQueueOutRef,
 } from "./state-queue.js";
+
+const baseRootsFromStateQueueTail = (
+  latestBlock: SDK.StateQueueUTxO,
+): Effect.Effect<
+  PendingBlockFinalizationsDB.PendingBlockFinalizationMetadata["baseRoots"],
+  SDK.DataCoercionError,
+  never
+> =>
+  Effect.gen(function* () {
+    if (latestBlock.datum.key === "Empty") {
+      const { data: confirmedState } =
+        yield* getConfirmedStateFromStateQueueDatumLocal(latestBlock.datum);
+      return {
+        utxosRoot: confirmedState.utxoRoot,
+        forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+        transactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+        depositsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+        withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      };
+    }
+
+    const header = yield* getHeaderFromStateQueueDatumLocal(latestBlock.datum);
+    return {
+      utxosRoot: header.utxosRoot,
+      forcedTransactionsRoot: header.forcedTransactionsRoot,
+      transactionsRoot: header.transactionsRoot,
+      depositsRoot: header.depositsRoot,
+      withdrawalsRoot: header.withdrawalsRoot,
+    };
+  });
 
 export const buildPendingJournalMetadata = ({
   latestBlock,
@@ -46,6 +78,7 @@ export const buildPendingJournalMetadata = ({
     const serializedBase = yield* serializeStateQueueUTxO(latestBlock);
     const baseHeaderHash = yield* stateQueueBaseHeaderHash(latestBlock);
     const baseTailOutRef = stateQueueOutRef(latestBlock);
+    const baseRoots = yield* baseRootsFromStateQueueTail(latestBlock);
     return {
       stateQueueLeaseToken,
       baseSnapshotId:
@@ -54,7 +87,7 @@ export const buildPendingJournalMetadata = ({
       baseTailOutRef,
       baseTailHeaderHash: Buffer.from(fromHex(baseHeaderHash)),
       baseTailDatumCbor: serializedBase.datum,
-      baseRoots: expectedRoots,
+      baseRoots,
       blockStartTime: new Date(workerInput.data.currentBlockStartTimeMs),
       expectedRoots,
       expectedCounts,
@@ -100,6 +133,47 @@ export const assertLiveTailCommitBase = (
         }),
       );
     }
+  });
+
+export const resolveLiveTailCommitBase = (
+  contracts: SDK.MidgardValidators,
+  expectedTail: SDK.StateQueueUTxO,
+): Effect.Effect<
+  SDK.StateQueueUTxO,
+  | SDK.LucidError
+  | SDK.StateQueueError
+  | SDK.DataCoercionError
+  | SDK.HashingError,
+  Lucid
+> =>
+  Effect.gen(function* () {
+    const lucid = yield* Lucid;
+    const liveTail = yield* fetchLatestCommittedBlockLocal(lucid.api, {
+      stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
+      stateQueuePolicyId: contracts.stateQueue.policyId,
+    });
+    const expectedOutRef = stateQueueOutRef(expectedTail);
+    const liveOutRef = stateQueueOutRef(liveTail);
+    if (expectedOutRef === liveOutRef) {
+      return expectedTail;
+    }
+
+    const expectedHeaderHash = yield* stateQueueBaseHeaderHash(expectedTail);
+    const liveHeaderHash = yield* stateQueueBaseHeaderHash(liveTail);
+    if (expectedHeaderHash === liveHeaderHash) {
+      yield* Effect.logWarning(
+        `🔹 Commit base tail was replaced without advancing the logical header; rebuilding on live tail ${liveOutRef} instead of stale tail ${expectedOutRef}.`,
+      );
+      return liveTail;
+    }
+
+    return yield* Effect.fail(
+      new SDK.StateQueueError({
+        message:
+          "Commit base is stale; aborting block build before creating a pending journal",
+        cause: `expected_tail=${expectedOutRef},live_tail=${liveOutRef},expected_header=${expectedHeaderHash},live_header=${liveHeaderHash}`,
+      }),
+    );
   });
 
 export const assertPendingJournalCompleteness = ({

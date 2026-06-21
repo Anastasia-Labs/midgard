@@ -7,6 +7,7 @@ import {
 import {
   buildSuccessfulCommitBatches,
   selectCommitRoots,
+  selectCommitTxCandidates,
 } from "@/workers/utils/commit-block-planner.js";
 
 const mkTxEntry = (seed: number): EntryWithTimeStamp => ({
@@ -65,5 +66,51 @@ describe("commit block planner", () => {
 
     expect(roots.utxoRoot).toBe("0xutxo");
     expect(roots.txRoot).toBe("0xtx");
+  });
+
+  it("selects durable processed transactions before newer mempool transactions", () => {
+    const processed = [mkTxEntry(1)];
+    const mempool = [mkTxEntry(2)];
+
+    const selection = selectCommitTxCandidates({
+      mempoolTxs: mempool,
+      processedMempoolTxs: processed,
+    });
+
+    expect(selection.sourceTable).toBe("processed_mempool");
+    expect(selection.candidateTxs).toStrictEqual(processed);
+    expect(selection.candidateTxHashes.map((h) => h.toString("hex"))).toEqual([
+      processed[0][TxColumns.TX_ID].toString("hex"),
+    ]);
+    expect(selection.candidateTxsSize).toBe(processed[0][TxColumns.TX].length);
+  });
+
+  it("selects mempool transactions when there is no deferred processed payload", () => {
+    const mempool = [mkTxEntry(3), mkTxEntry(4)];
+
+    const selection = selectCommitTxCandidates({
+      mempoolTxs: mempool,
+      processedMempoolTxs: [],
+    });
+
+    expect(selection.sourceTable).toBe("mempool");
+    expect(selection.candidateTxs).toStrictEqual(mempool);
+    expect(selection.candidateTxHashes.map((h) => h.toString("hex"))).toEqual(
+      mempool.map((entry) => entry[TxColumns.TX_ID].toString("hex")),
+    );
+  });
+
+  it("selects no tx source when both pending queues are empty", () => {
+    const selection = selectCommitTxCandidates({
+      mempoolTxs: [],
+      processedMempoolTxs: [],
+    });
+
+    expect(selection).toMatchObject({
+      candidateTxs: [],
+      candidateTxHashes: [],
+      candidateTxsSize: 0,
+      sourceTable: "none",
+    });
   });
 });

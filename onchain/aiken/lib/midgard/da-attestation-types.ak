@@ -66,7 +66,9 @@ pub type MintRedeemer {
 /// `AddSignatures.signatures` is a packed sequence of
 /// `1-byte signer index || 64-byte Ed25519 signature` chunks. Indexes must be
 /// strictly ascending and point to 32-byte verification key slots in the DA
-/// params committee.
+/// params committee. Each signature must verify against the DA attestation
+/// message for this header; transaction required signers are not a substitute
+/// for DA-message attestations.
 pub type SpendRedeemer {
   AddSignatures {
     output_index: Int,

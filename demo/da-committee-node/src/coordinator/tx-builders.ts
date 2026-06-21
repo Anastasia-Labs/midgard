@@ -2,7 +2,6 @@ import { assetsEqual } from "@al-ft/midgard-core/assets";
 import { canonicalPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  CML,
   Data,
   type LucidEvolution,
   type TxOutput,
@@ -12,7 +11,7 @@ import {
 
 import type { DaAttestationValidatorSet } from "../l1/deployment.js";
 import type { DaAttestationReferenceScripts } from "../l1/reference-scripts.js";
-import { setSignerBit } from "./witnesses.js";
+import { isSignerBitSet, setSignerBit } from "./witnesses.js";
 
 const DA_ATTESTATION_OUTPUT_LOVELACE = 5_000_000n;
 
@@ -21,40 +20,11 @@ type Assets = Record<string, bigint>;
 type CompletableTx = {
   readonly complete: (options?: {
     readonly localUPLCEval?: boolean;
-    readonly evaluator?: TxEvaluator;
   }) => Promise<TxSignBuilder>;
 };
 
 type RedeemerContextLike = {
   readonly outputs: readonly TxOutput[];
-};
-
-type TxEvaluationRedeemer = {
-  readonly redeemer_tag:
-    | "spend"
-    | "mint"
-    | "publish"
-    | "withdraw"
-    | "vote"
-    | "propose";
-  readonly redeemer_index: number;
-  readonly ex_units: {
-    readonly mem: number;
-    readonly steps: number;
-  };
-};
-
-type TxEvaluator = {
-  readonly name: string;
-  readonly evaluate: (args: {
-    readonly tx: string;
-    readonly context: {
-      readonly protocolParameters: {
-        readonly maxTxExMem: bigint | number;
-        readonly maxTxExSteps: bigint | number;
-      };
-    };
-  }) => Promise<TxEvaluationRedeemer[]>;
 };
 
 export type DaAttestationTarget = {
@@ -223,10 +193,6 @@ export const buildAddSignaturesTx = async ({
         attestationUtxo.assets,
       ),
     "DA attestation add-signatures",
-    {
-      providerEvalOnLocalBudgetFailure: true,
-      bootstrapExUnitsOnProviderFailure: true,
-    },
   );
 };
 
@@ -342,10 +308,6 @@ export const buildApplyAttestationTx = async ({
       )
       .mintAssets({ [attestationUnit]: -1n }, daMintRedeemer),
     "DA attestation apply",
-    {
-      providerEvalOnLocalBudgetFailure: true,
-      bootstrapExUnitsOnProviderFailure: true,
-    },
   );
 };
 
@@ -356,14 +318,26 @@ export const addSignaturesToDaAttestationDatum = (
   if (signerIndexes.length === 0) {
     throw new Error("at least one signer index is required");
   }
+  for (const signerIndex of signerIndexes) {
+    if (isSignerBitSet(attestationDatum.attested_signers, signerIndex)) {
+      throw new Error(
+        `DA signer ${signerIndex.toString()} is already attested for this header`,
+      );
+    }
+  }
   const updatedAttestedSigners = signerIndexes.reduce(
     (bitmap, signerIndex) => setSignerBit(bitmap, signerIndex),
     attestationDatum.attested_signers,
   );
+  const inputCount = countSetBits(attestationDatum.attested_signers);
+  const outputCount = countSetBits(updatedAttestedSigners);
+  if (outputCount !== inputCount + BigInt(signerIndexes.length)) {
+    throw new Error("DA signer indexes must identify distinct new witnesses");
+  }
   return {
     ...attestationDatum,
     attested_signers: updatedAttestedSigners,
-    attestation_count: countSetBits(updatedAttestedSigners),
+    attestation_count: outputCount,
   };
 };
 
@@ -377,159 +351,15 @@ const outputDatumCborMatches = (
 const completeWithLocalUplc = async (
   tx: CompletableTx,
   label: string,
-  options: {
-    readonly providerEvalOnLocalBudgetFailure?: boolean;
-    readonly bootstrapExUnitsOnProviderFailure?: boolean;
-  } = {},
 ): Promise<TxSignBuilder> => {
   try {
     return await tx.complete({ localUPLCEval: true });
   } catch (error) {
-    if (
-      options.providerEvalOnLocalBudgetFailure === true &&
-      isLocalUplcEvaluationFallbackError(error)
-    ) {
-      try {
-        return await tx.complete({ localUPLCEval: false });
-      } catch (providerError) {
-        if (
-          options.bootstrapExUnitsOnProviderFailure === true &&
-          isLocalUplcEvaluationFallbackError(providerError)
-        ) {
-          return tx.complete({
-            localUPLCEval: true,
-            evaluator: bootstrapExUnitsEvaluator,
-          });
-        }
-        throw new Error(`Failed to build ${label} transaction`, {
-          cause: providerError,
-        });
-      }
-    }
-    throw new Error(`Failed to build ${label} transaction`, { cause: error });
+    throw new Error(
+      `Failed to build ${label} transaction with local UPLC evaluation`,
+      { cause: error },
+    );
   }
-};
-
-const isLocalUplcEvaluationFallbackError = (cause: unknown): boolean =>
-  /over budget|ex-?units|exunits|couldn'?t decode plutus script|failed to decode payload from base64 or base16/i.test(
-    cause instanceof Error ? (cause.stack ?? cause.message) : String(cause),
-  );
-
-const bootstrapExUnitsEvaluator: TxEvaluator = {
-  name: "midgard-bootstrap-exunits",
-  evaluate: async ({ tx, context }) => {
-    const transaction = CML.Transaction.from_cbor_hex(tx);
-    const redeemers = transaction.witness_set().redeemers();
-    if (redeemers == null) {
-      return [];
-    }
-    const keys = redeemerKeys(redeemers as never);
-    const count = keys.length;
-    if (count === 0) {
-      return [];
-    }
-    return keys.map((key, index) => ({
-      redeemer_tag: fromCmlRedeemerTag(key.tag),
-      redeemer_index: safeNumber(key.index, "redeemer index"),
-      ex_units: {
-        mem: splitBudget(context.protocolParameters.maxTxExMem, count, index),
-        steps: splitBudget(
-          context.protocolParameters.maxTxExSteps,
-          count,
-          index,
-        ),
-      },
-    }));
-  },
-};
-
-type RedeemerKey = {
-  readonly tag: unknown;
-  readonly index: bigint;
-};
-
-const redeemerKeys = (redeemers: {
-  readonly as_arr_legacy_redeemer: () =>
-    | {
-        readonly len: () => number;
-        readonly get: (index: number) => {
-          readonly tag: () => unknown;
-          readonly index: () => bigint;
-        };
-      }
-    | undefined;
-  readonly as_map_redeemer_key_to_redeemer_val: () =>
-    | {
-        readonly keys: () => {
-          readonly len: () => number;
-          readonly get: (index: number) => {
-            readonly tag: () => unknown;
-            readonly index: () => bigint;
-          };
-        };
-      }
-    | undefined;
-}): readonly RedeemerKey[] => {
-  const keys: RedeemerKey[] = [];
-  const legacy = redeemers.as_arr_legacy_redeemer();
-  if (legacy !== undefined) {
-    for (let index = 0; index < legacy.len(); index += 1) {
-      const redeemer = legacy.get(index);
-      keys.push({ tag: redeemer.tag(), index: redeemer.index() });
-    }
-  }
-  const mapped = redeemers.as_map_redeemer_key_to_redeemer_val();
-  if (mapped !== undefined) {
-    const mapKeys = mapped.keys();
-    for (let index = 0; index < mapKeys.len(); index += 1) {
-      const key = mapKeys.get(index);
-      keys.push({ tag: key.tag(), index: key.index() });
-    }
-  }
-  return keys;
-};
-
-const fromCmlRedeemerTag = (
-  tag: unknown,
-): TxEvaluationRedeemer["redeemer_tag"] => {
-  switch (tag) {
-    case CML.RedeemerTag.Spend:
-      return "spend";
-    case CML.RedeemerTag.Mint:
-      return "mint";
-    case CML.RedeemerTag.Cert:
-      return "publish";
-    case CML.RedeemerTag.Reward:
-      return "withdraw";
-    case CML.RedeemerTag.Voting:
-      return "vote";
-    case CML.RedeemerTag.Proposing:
-      return "propose";
-    default:
-      throw new Error(`unsupported redeemer tag ${String(tag)}`);
-  }
-};
-
-const splitBudget = (
-  total: bigint | number,
-  count: number,
-  index: number,
-): number => {
-  const totalBudget = BigInt(total);
-  const countBudget = BigInt(count);
-  const indexBudget = BigInt(index);
-  return safeNumber(
-    totalBudget / countBudget +
-      (indexBudget < totalBudget % countBudget ? 1n : 0n),
-    "redeemer execution budget",
-  );
-};
-
-const safeNumber = (value: bigint, label: string): number => {
-  if (value > BigInt(Number.MAX_SAFE_INTEGER)) {
-    throw new Error(`${label} ${value.toString()} exceeds safe integer range`);
-  }
-  return Number(value);
 };
 
 const countSetBits = (hex: string): bigint => {

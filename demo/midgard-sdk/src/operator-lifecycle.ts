@@ -1,4 +1,3 @@
-import { canonicalPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
   type Assets,
   type BuildTxWithRedeemer,
@@ -23,6 +22,7 @@ import {
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
 } from "@/tx-context-redeemer.js";
+import { outputDatumCborMatches } from "@/tx-output-utils.js";
 
 export * from "@/operator-lifecycle/layout.js";
 
@@ -41,13 +41,6 @@ const encodeActiveOperatorDatumValue = (
 
 const encodeLinkedListNodeView = (nodeView: SDK.LinkedListNodeView): string =>
   SDK.encodeLinkedListNodeView(nodeView);
-
-const outputDatumCborMatches = (
-  output: Pick<TxOutput, "datum">,
-  datumCbor: string,
-): boolean =>
-  output.datum != null &&
-  canonicalPlutusDataCbor(output.datum) === canonicalPlutusDataCbor(datumCbor);
 
 const outputMatches = ({
   output,

@@ -23,16 +23,22 @@ describe("DA attestation transaction builders", () => {
     expect(updated.attested_signers.startsWith("8040")).toBe(true);
     expect(updated.attestation_count).toBe(2n);
 
-    const withExisting = addSignaturesToDaAttestationDatum(updated, [0, 2]);
+    const withExisting = addSignaturesToDaAttestationDatum(updated, [2]);
     expect(withExisting.attested_signers.startsWith("a040")).toBe(true);
     expect(withExisting.attestation_count).toBe(3n);
+    expect(() => addSignaturesToDaAttestationDatum(updated, [0])).toThrow(
+      /already attested/,
+    );
+    expect(() =>
+      addSignaturesToDaAttestationDatum(baseAttestationDatum(), [2, 2]),
+    ).toThrow(/distinct new witnesses/);
     expect(() =>
       addSignaturesToDaAttestationDatum(baseAttestationDatum(), []),
     ).toThrow(/at least one/);
   });
 
-  it("builds AddSignatures with updated datum and provider-eval fallback", async () => {
-    const builder = new FakeTxBuilder({ failFirstComplete: true });
+  it("builds AddSignatures with updated datum using local UPLC evaluation", async () => {
+    const builder = new FakeTxBuilder();
     const attestationUtxo = utxo("03", 0, {
       lovelace: 5_000_000n,
       [SDK.daAttestationUnit(contracts.daAttestation, HEADER_HASH)]: 1n,
@@ -44,7 +50,7 @@ describe("DA attestation transaction builders", () => {
       daParamsUtxo: utxo("01", 0),
       attestationUtxo,
       attestationDatum: baseAttestationDatum(),
-      packedWitnessesHex: "00" + "11".repeat(64) + "09" + "22".repeat(64),
+      packedWitnessesHex: `00${"aa".repeat(64)}09${"bb".repeat(64)}`,
       signerIndexes: [0, 9],
       referenceScripts,
     });
@@ -66,10 +72,24 @@ describe("DA attestation transaction builders", () => {
     ) as SDK.DaAttestationDatum;
     expect(updatedDatum.attested_signers.startsWith("8040")).toBe(true);
     expect(updatedDatum.attestation_count).toBe(2n);
-    expect(builder.completeOptions).toEqual([
-      { localUPLCEval: true },
-      { localUPLCEval: false },
-    ]);
+    const redeemer = Data.from(
+      (builder.collects[0]!.redeemer as (ctx: unknown) => string)({
+        outputs: builder.payments.map((payment) => ({
+          address: payment.address,
+          assets: payment.assets,
+          datum: payment.datum.value,
+        })),
+        referenceInputs: builder.reads[0],
+      }),
+      SDK.DaAttestationSpendRedeemer as never,
+    ) as SDK.DaAttestationSpendRedeemer;
+    expect(redeemer).toMatchObject({
+      AddSignatures: {
+        signatures: `00${"aa".repeat(64)}09${"bb".repeat(64)}`,
+      },
+    });
+    expect(builder.signerKeys).toHaveLength(0);
+    expect(builder.completeOptions).toEqual([{ localUPLCEval: true }]);
   });
 });
 
@@ -142,6 +162,7 @@ class FakeTxBuilder {
     readonly assets: UTxO["assets"];
   }[] = [];
   readonly completeOptions: unknown[] = [];
+  readonly signerKeys: string[] = [];
   private readonly failFirstComplete: boolean;
 
   readonly pay = {
@@ -174,6 +195,11 @@ class FakeTxBuilder {
   }
 
   mintAssets(): FakeTxBuilder {
+    return this;
+  }
+
+  addSignerKey(keyHash: string): FakeTxBuilder {
+    this.signerKeys.push(keyHash);
     return this;
   }
 

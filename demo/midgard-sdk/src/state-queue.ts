@@ -1,4 +1,3 @@
-import { canonicalPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
   Address,
   Assets,
@@ -70,6 +69,7 @@ import {
   requireUniqueOutputIndex,
 } from "@/tx-context-redeemer.js";
 import { dedupeAndSortUtxos } from "@/tx-out-ref-order.js";
+import { outputDatumCborMatches } from "@/tx-output-utils.js";
 
 export const STATE_QUEUE_ROOT_ASSET_NAME = fromText("MIDGARD_CONFIRMED_STATE");
 
@@ -520,13 +520,6 @@ export const getConfirmedStateFromStateQueueDatum = (
     );
   }
 };
-
-const outputDatumCborMatches = (
-  output: { readonly datum?: string | null },
-  datumCbor: string,
-): boolean =>
-  output.datum != null &&
-  canonicalPlutusDataCbor(output.datum) === canonicalPlutusDataCbor(datumCbor);
 
 const requireSingleNonAdaPolicyId = (
   assets: Assets,

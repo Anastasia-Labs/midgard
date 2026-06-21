@@ -1,5 +1,4 @@
 import { assetsEqual } from "@al-ft/midgard-core/assets";
-import { canonicalPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
   type BuildTxWithRedeemer,
   Data,
@@ -7,7 +6,6 @@ import {
   type LucidEvolution,
   toUnit,
   type TxBuilder,
-  type TxOutput,
   type UTxO,
 } from "@lucid-evolution/lucid";
 import { Data as EffectData, Effect } from "effect";
@@ -35,6 +33,7 @@ import {
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
 } from "@/tx-context-redeemer.js";
+import { outputDatumCborMatches } from "@/tx-output-utils.js";
 
 export const DA_PARAMS_ASSET_NAME = fromText("MIDGARD_DA_PARAMS");
 export const DA_ATTESTATION_ASSET_NAME_PREFIX = fromText("DAAT");
@@ -165,13 +164,6 @@ export type DaAttestationSignatureWitness = {
   readonly signerIndex: number;
   readonly signatureHex: string;
 };
-
-const outputDatumCborMatches = (
-  output: Pick<TxOutput, "datum">,
-  datumCbor: string,
-): boolean =>
-  output.datum != null &&
-  canonicalPlutusDataCbor(output.datum) === canonicalPlutusDataCbor(datumCbor);
 
 const failBuild = (
   message: string,

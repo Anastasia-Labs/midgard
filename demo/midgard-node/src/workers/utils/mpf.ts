@@ -2388,7 +2388,9 @@ export class MidgardMpf {
           ),
         ),
       );
-      return yield* this.root();
+      const rootAfter = yield* this.root();
+      yield* this.persistRootMarker(rootAfter);
+      return rootAfter;
     }).pipe(
       Effect.mapError((cause) =>
         cause instanceof MpfError

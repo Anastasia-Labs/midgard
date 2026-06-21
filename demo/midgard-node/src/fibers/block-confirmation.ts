@@ -118,7 +118,10 @@ const observeConfirmedPendingBlock = (
       journalHeaderHash,
     );
     if (record.depositEventIds.length > 0) {
-      yield* Ref.update(globals.MEMPOOL_LEDGER_VERSION, (version) => version + 1);
+      yield* Ref.update(
+        globals.MEMPOOL_LEDGER_VERSION,
+        (version) => version + 1,
+      );
     }
     const requiresLocalFinalizationRecovery =
       pendingRecordRequiresLocalFinalizationRecovery(record);

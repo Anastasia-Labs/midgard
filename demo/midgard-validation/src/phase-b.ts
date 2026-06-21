@@ -2,7 +2,6 @@ import {
   computeScriptIntegrityHashForLanguages,
   decodeMidgardAddressBytes,
   decodeMidgardTxOutput,
-  type MidgardNativeScript,
   type MidgardTxOutput,
   type MidgardValue,
   type ScriptLanguageName,
@@ -68,6 +67,17 @@ type CandidateDecision = {
   readonly index: number;
   readonly accepted: boolean;
   readonly rejection?: RejectedTx;
+};
+
+type ResolvedReferenceInput = {
+  readonly outRefHex: string;
+  readonly output: MidgardTxOutput;
+};
+
+type ResolvedReferenceInputs = {
+  readonly inputs: readonly ResolvedReferenceInput[];
+  readonly scriptSources: readonly ScriptSource[];
+  readonly scriptHashes: ReadonlySet<string>;
 };
 
 export type UTxOStatePatch = {
@@ -156,22 +166,22 @@ const hasIntersection = (left: Set<string>, right: Set<string>): boolean => {
   return false;
 };
 
-const decodeReferenceInputNativeScripts = (
+const resolveReferenceInputs = (
   node: CandidateNode,
   stateValue: (outRefHex: string) => Buffer | undefined,
-):
-  | {
-      readonly nativeScripts: Map<string, MidgardNativeScript>;
-      readonly nonNativeScriptHashes: Set<string>;
-    }
-  | RejectedTx => {
-  const referenceScripts = new Map<string, MidgardNativeScript>();
-  const nonNativeScriptHashes = new Set<string>();
+): ResolvedReferenceInputs | RejectedTx => {
+  const inputs: ResolvedReferenceInput[] = [];
+  const scriptSources: ScriptSource[] = [];
+  const scriptHashes = new Set<string>();
 
-  for (const referenceOutRefHex of node.referenceOutRefs) {
+  for (const referenceOutRefHex of sortTxOutRefHexes(node.referenceOutRefs)) {
     const referenceOutput = stateValue(referenceOutRefHex);
     if (referenceOutput === undefined) {
-      continue;
+      return reject(
+        node.candidate.ledgerTx.txId,
+        RejectCodes.InputNotFound,
+        `reference input not found: ${referenceOutRefHex}`,
+      );
     }
 
     let output: MidgardTxOutput;
@@ -184,6 +194,7 @@ const decodeReferenceInputNativeScripts = (
         `failed to decode reference input output ${referenceOutRefHex}: ${String(e)}`,
       );
     }
+    inputs.push({ outRefHex: referenceOutRefHex, output });
 
     const scriptRef = output.script_ref;
     if (scriptRef === undefined) {
@@ -195,15 +206,11 @@ const decodeReferenceInputNativeScripts = (
       "reference",
       referenceOutRefHex,
     );
-    if (source.nativeScript === undefined) {
-      nonNativeScriptHashes.add(source.scriptHash);
-      continue;
-    }
-
-    referenceScripts.set(source.scriptHash, source.nativeScript);
+    scriptSources.push(source);
+    scriptHashes.add(source.scriptHash);
   }
 
-  return { nativeScripts: referenceScripts, nonNativeScriptHashes };
+  return { inputs, scriptSources, scriptHashes };
 };
 
 const conflict = (left: CandidateNode, right: CandidateNode): boolean =>
@@ -245,31 +252,6 @@ const collectInlineScriptSources = (
     ),
   );
 
-const collectReferenceScriptSources = (
-  node: CandidateNode,
-  stateValue: (outRefHex: string) => Buffer | undefined,
-): readonly ScriptSource[] => {
-  const sources: ScriptSource[] = [];
-  for (const referenceOutRefHex of node.referenceOutRefs) {
-    const outputBytes = stateValue(referenceOutRefHex);
-    if (outputBytes === undefined) {
-      continue;
-    }
-    const output = decodeMidgardTxOutput(outputBytes);
-    const scriptRef = output.script_ref;
-    if (scriptRef !== undefined) {
-      sources.push(
-        scriptSourceFromVersionedScript(
-          scriptRef,
-          "reference",
-          referenceOutRefHex,
-        ),
-      );
-    }
-  }
-  return sources;
-};
-
 const scriptLanguageForExecution = (
   execution: RequiredScriptExecution,
 ): ScriptLanguageName | undefined => {
@@ -299,6 +281,7 @@ const discoverLocalScriptExecutions = (
   node: CandidateNode,
   stateValue: (outRefHex: string) => Buffer | undefined,
   sources: readonly ScriptSource[],
+  resolvedReferenceInputs: readonly ResolvedReferenceInput[],
   witnessKeyHashes: ReadonlySet<string>,
 ):
   | Extract<LocalScriptValidationResult, { readonly kind: "rejected" }>
@@ -324,12 +307,7 @@ const discoverLocalScriptExecutions = (
   }
 
   const sortedSpent = sortTxOutRefHexes(node.spentOutRefs);
-  const sortedReferenceInputs = sortTxOutRefHexes(node.referenceOutRefs);
   const resolvedInputs: {
-    readonly outRefHex: string;
-    readonly output: MidgardTxOutput;
-  }[] = [];
-  const resolvedReferenceInputs: {
     readonly outRefHex: string;
     readonly output: MidgardTxOutput;
   }[] = [];
@@ -393,14 +371,6 @@ const discoverLocalScriptExecutions = (
       if (result.kind === "rejected") {
         return result;
       }
-    }
-  }
-
-  for (const outRefHex of sortedReferenceInputs) {
-    const outputBytes = stateValue(outRefHex);
-    if (outputBytes !== undefined) {
-      const output = decodeMidgardTxOutput(outputBytes);
-      resolvedReferenceInputs.push({ outRefHex, output });
     }
   }
 
@@ -502,18 +472,19 @@ const discoverLocalScriptExecutions = (
 const runLocalScriptEvaluation = (
   node: CandidateNode,
   stateValue: (outRefHex: string) => Buffer | undefined,
+  resolvedReferenceInputs: ResolvedReferenceInputs,
   witnessKeyHashes: ReadonlySet<string>,
   enforceScriptBudget: boolean,
 ): LocalScriptValidationResult => {
   const candidate = node.candidate;
   const { ledgerTx } = candidate;
   const inlineSources = collectInlineScriptSources(ledgerTx);
-  const referenceSources = collectReferenceScriptSources(node, stateValue);
-  const sources = [...inlineSources, ...referenceSources];
+  const sources = [...inlineSources, ...resolvedReferenceInputs.scriptSources];
   const discovered = discoverLocalScriptExecutions(
     node,
     stateValue,
     sources,
+    resolvedReferenceInputs.inputs,
     witnessKeyHashes,
   );
   if (discovered.kind === "rejected") {
@@ -773,15 +744,6 @@ const validateCandidateAgainstState = (
 
     const inputValues: MidgardValue[] = [];
 
-    for (const referenceOutRefHex of node.referenceOutRefs) {
-      if (stateValue(referenceOutRefHex) === undefined) {
-        return fail(
-          RejectCodes.InputNotFound,
-          `reference input not found: ${referenceOutRefHex}`,
-        );
-      }
-    }
-
     const witnessKeyHashes = new Set(candidate.derived.witnessKeyHashHexes);
     const inlineNativeScriptHashes = new Set(
       candidate.derived.nativeScriptHashHexes,
@@ -789,19 +751,14 @@ const validateCandidateAgainstState = (
     const inlinePlutusScriptHashes = new Set(
       candidate.derived.plutusScriptHashHexes,
     );
-    const referenceNativeScriptsResult = decodeReferenceInputNativeScripts(
-      node,
-      stateValue,
-    );
-    if ("code" in referenceNativeScriptsResult) {
+    const resolvedReferenceInputs = resolveReferenceInputs(node, stateValue);
+    if ("code" in resolvedReferenceInputs) {
       return {
         index: node.index,
         accepted: false,
-        rejection: referenceNativeScriptsResult,
+        rejection: resolvedReferenceInputs,
       };
     }
-    const { nativeScripts: referenceNativeScripts, nonNativeScriptHashes } =
-      referenceNativeScriptsResult;
 
     const hasSatisfiedScriptMaterial = (
       scriptHash: string,
@@ -811,26 +768,9 @@ const validateCandidateAgainstState = (
         return true;
       }
 
-      const referenceNativeScript = referenceNativeScripts.get(scriptHash);
-      if (referenceNativeScript !== undefined) {
-        if (
-          !verifyMidgardNativeScript(referenceNativeScript, {
-            validityIntervalStart: ledgerTx.validityIntervalStart,
-            validityIntervalEnd: ledgerTx.validityIntervalEnd,
-            witnessSigners: witnessKeyHashes,
-          })
-        ) {
-          return fail(
-            RejectCodes.NativeScriptInvalid,
-            `reference native script verification failed for ${context}: ${scriptHash}`,
-          );
-        }
-        return true;
-      }
-
       if (
         inlinePlutusScriptHashes.has(scriptHash) ||
-        nonNativeScriptHashes.has(scriptHash)
+        resolvedReferenceInputs.scriptHashes.has(scriptHash)
       ) {
         return true;
       }
@@ -908,6 +848,7 @@ const validateCandidateAgainstState = (
     const localScriptEvaluation = runLocalScriptEvaluation(
       node,
       stateValue,
+      resolvedReferenceInputs,
       witnessKeyHashes,
       config.enforceScriptBudget !== false,
     );

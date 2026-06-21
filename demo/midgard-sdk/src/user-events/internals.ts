@@ -6,14 +6,16 @@ import {
   Assets,
   type BuildTxWithRedeemer,
   CertificateValidator,
-  CML,
+  credentialToAddress,
   Data,
   fromUnit,
   LucidEvolution,
   MintingPolicy,
   type Network,
   PolicyId,
+  scriptHashToCredential,
   slotToUnixTime,
+  toUnit,
   type TxSignBuilder,
   UTxO,
   validatorToScriptHash,
@@ -22,14 +24,21 @@ import { Data as EffectData, Effect } from "effect";
 
 import { scriptRewardAddress } from "@/cardano-addresses.js";
 import {
+  Bech32DeserializationError,
   GenericErrorFields,
   hashHexWithBlake2b,
   HashingError,
   LucidError,
+  MidgardValidators,
   OutputReference,
   POSIXTime,
-  UnspecifiedNetworkError,
 } from "@/common.js";
+import {
+  fetchHubOracleUTxOProgram,
+  HubOracleDatum,
+  HubOracleError,
+  makeHubOracleDatum,
+} from "@/hub-oracle.js";
 import { getProtocolParameters } from "@/protocol-parameters.js";
 import {
   requireInputIndex,
@@ -300,6 +309,112 @@ export const selectWalletNonceInputProgram = (
     }),
   );
 
+type HubOraclePolicyField = Extract<
+  keyof HubOracleDatum,
+  "deposit" | "tx_order" | "withdrawal"
+>;
+
+type HubOracleAddressField = Extract<
+  keyof HubOracleDatum,
+  "deposit_addr" | "tx_order_addr" | "withdrawal_addr"
+>;
+
+export type PrepareUserEventMintContextParams = {
+  readonly lucid: LucidEvolution;
+  readonly contracts: MidgardValidators;
+  readonly label: "deposit" | "tx order" | "withdrawal";
+  readonly eventPolicyId: PolicyId;
+  readonly hubOraclePolicyField: HubOraclePolicyField;
+  readonly hubOracleAddressField: HubOracleAddressField;
+};
+
+export type UserEventMintContext = {
+  readonly network: NonNullable<
+    ReturnType<LucidEvolution["config"]>["network"]
+  >;
+  readonly hubOracleRefInput: UTxO;
+  readonly nonceInput: UTxO;
+  readonly nonceAssetName: string;
+  readonly eventUnit: string;
+  readonly witnessScript: CertificateValidator;
+  readonly witnessScriptHash: string;
+  readonly validTo: number;
+  readonly inclusionTime: number;
+};
+
+export const prepareUserEventMintContext = ({
+  lucid,
+  contracts,
+  label,
+  eventPolicyId,
+  hubOraclePolicyField,
+  hubOracleAddressField,
+}: PrepareUserEventMintContextParams): Effect.Effect<
+  UserEventMintContext,
+  | HubOracleError
+  | LucidError
+  | Bech32DeserializationError
+  | HashingError
+  | UserEventBuildError
+> =>
+  Effect.gen(function* () {
+    const network = lucid.config().network;
+    if (network === undefined) {
+      return yield* Effect.fail(
+        new UserEventBuildError({
+          message: `Cardano network not found while preparing ${label} transaction`,
+          cause: "Lucid network configuration is undefined",
+        }),
+      );
+    }
+
+    const actual = yield* fetchHubOracleUTxOProgram(lucid, {
+      hubOracleAddress: credentialToAddress(
+        network,
+        scriptHashToCredential(contracts.hubOracle.policyId),
+      ),
+      hubOraclePolicyId: contracts.hubOracle.policyId,
+    });
+    const expectedDatum = yield* makeHubOracleDatum(contracts);
+    if (
+      actual.datum[hubOraclePolicyField] !==
+        expectedDatum[hubOraclePolicyField] ||
+      JSON.stringify(actual.datum[hubOracleAddressField]) !==
+        JSON.stringify(expectedDatum[hubOracleAddressField])
+    ) {
+      return yield* Effect.fail(
+        new UserEventBuildError({
+          message: `On-chain hub oracle deployment does not match the locally configured ${label} contract`,
+          cause: {
+            expectedPolicyId: expectedDatum[hubOraclePolicyField],
+            actualPolicyId: actual.datum[hubOraclePolicyField],
+            expectedAddress: expectedDatum[hubOracleAddressField],
+            actualAddress: actual.datum[hubOracleAddressField],
+          },
+        }),
+      );
+    }
+
+    const nonceInput = yield* selectWalletNonceInputProgram(lucid, label);
+    const eventIdCbor = outputReferenceToPlutusDataCbor(nonceInput);
+    const nonceAssetName = yield* hashHexWithBlake2b(eventIdCbor, 32);
+    const witnessScript =
+      buildUserEventWitnessCertificateValidator(nonceAssetName);
+    const validTo = resolveUserEventValidTo(lucid);
+
+    return {
+      network,
+      hubOracleRefInput: actual.utxo,
+      nonceInput,
+      nonceAssetName,
+      eventUnit: toUnit(eventPolicyId, nonceAssetName),
+      witnessScript,
+      witnessScriptHash: validatorToScriptHash(witnessScript),
+      validTo,
+      inclusionTime: resolveEventInclusionTime(validTo, network),
+    };
+  });
+
 export type BuildCompletedUserEventMintTxParams = {
   readonly lucid: LucidEvolution;
   readonly network: Network;
@@ -417,65 +532,7 @@ export const buildCompletedUserEventMintTxProgram = (
       }),
   });
 
-export const findInclusionTimeForUserEvent = (
-  lucid: LucidEvolution,
-): Effect.Effect<number, UnspecifiedNetworkError> =>
-  Effect.gen(function* () {
-    const currTime = Date.now();
-    const network = lucid.config().network;
-    if (network === undefined) {
-      return yield* new UnspecifiedNetworkError({
-        message: "Failed to build the deposit transaction",
-        cause: "Unknown",
-      });
-    }
-    const waitTime = getProtocolParameters(network).event_wait_duration;
-    return currTime + waitTime;
-  });
-
 export const resolveEventInclusionTime = (
   validTo: number,
   network: NonNullable<ReturnType<LucidEvolution["config"]>["network"]>,
 ): number => validTo + getProtocolParameters(network).event_wait_duration - 1;
-
-export const getNonceInputAndAssetName = (
-  lucid: LucidEvolution,
-  eventName: "deposit" | "tx order" | "withdrawal",
-  utxo?: UTxO,
-): Effect.Effect<
-  { inputUtxo: UTxO; assetName: string },
-  LucidError | HashingError
-> =>
-  Effect.gen(function* () {
-    const nonceUTxOEffect: Effect.Effect<UTxO, LucidError> = Effect.tryPromise({
-      try: () => lucid.wallet().getUtxos(),
-      catch: (err) =>
-        new LucidError({
-          message: "Failed to fetch wallet UTxOs",
-          cause: err,
-        }),
-    }).pipe(
-      Effect.andThen((utxos) => {
-        if (utxos.length === 0) {
-          return new LucidError({
-            message: `Failed to build the ${eventName} transaction`,
-            cause: "No UTxOs found in wallet",
-          });
-        }
-
-        return Effect.succeed(utxos[0]);
-      }),
-    );
-    const inputUtxo = utxo ?? (yield* nonceUTxOEffect);
-    const transactionInput = CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(inputUtxo.txHash),
-      BigInt(inputUtxo.outputIndex),
-    );
-
-    const assetName = yield* hashHexWithBlake2b(
-      transactionInput.to_cbor_hex(),
-      32,
-    );
-
-    return { inputUtxo, assetName };
-  });

@@ -225,8 +225,9 @@ describe("contract deployment info", () => {
         hubOracleOneShotOutputIndex: 0,
         now: new Date("2026-06-19T00:00:00.000Z"),
         existingManifest: first,
+        hubOracleOneShotStatus: "consumed_by_init",
         steps: {
-          initProtocol: { status: "submitted", txHash: "cd".repeat(32) },
+          initProtocol: { status: "complete", txHash: "cd".repeat(32) },
         },
       });
 
@@ -238,6 +239,11 @@ describe("contract deployment info", () => {
         txHash: ONE_SHOT_TX_HASH,
         outputIndex: 0,
         outRef: `${ONE_SHOT_TX_HASH}#0`,
+        status: "consumed_by_init",
+      });
+      expect(second.steps.initProtocol).toEqual({
+        status: "complete",
+        txHash: "cd".repeat(32),
       });
       expect(
         second.referenceScripts["state-queue minting"]?.roleUnit,

@@ -28,6 +28,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Duration, Effect, Metric, Option, Ref } from "effect";
 
+import { jsonReplacer } from "@/commands/command-utils.js";
 import {
   BlocksDB,
   DepositsDB,
@@ -158,11 +159,7 @@ type MergeOptions = {
 
 const makeJsonSafe = (value: unknown): unknown => {
   try {
-    return JSON.parse(
-      JSON.stringify(value, (_key, nestedValue) =>
-        typeof nestedValue === "bigint" ? nestedValue.toString() : nestedValue,
-      ),
-    ) as unknown;
+    return JSON.parse(JSON.stringify(value, jsonReplacer)) as unknown;
   } catch {
     return formatUnknownError(value);
   }

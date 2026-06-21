@@ -19,6 +19,7 @@ import {
   type SchedulerSpendRedeemer,
   SchedulerSpendRedeemer as SchedulerSpendRedeemerSchema,
 } from "@/scheduler.js";
+import { completeOptionsWithLocalEval } from "@/tx-completion.js";
 import {
   requireInputIndex,
   requireOwnSpendPurpose,
@@ -90,17 +91,6 @@ export type SchedulerRefreshTxResult = {
   readonly schedulerSpendRedeemerCbor: string;
   readonly refreshedDatumCbor: string;
 };
-
-type TxCompleteOptions = NonNullable<Parameters<TxBuilder["complete"]>[0]>;
-
-const completeWithPresetWalletInputs = (
-  presetWalletInputs?: readonly UTxO[],
-): TxCompleteOptions => ({
-  localUPLCEval: true,
-  ...(presetWalletInputs === undefined
-    ? {}
-    : { presetWalletInputs: [...presetWalletInputs] }),
-});
 
 export const encodeSchedulerDatumForChain = (datum: SchedulerDatum): string =>
   // Older deployed scheduler validators on preprod expect the root constructor
@@ -349,7 +339,9 @@ export const buildUnsignedSchedulerRefreshTxProgram = (
     yield* Effect.tryPromise({
       try: () =>
         buildSchedulerRefreshTx(config, schedulerSpendRedeemer).complete(
-          completeWithPresetWalletInputs(config.presetWalletInputs),
+          completeOptionsWithLocalEval({
+            presetWalletInputs: config.presetWalletInputs,
+          }),
         ),
       catch: (cause) =>
         schedulerError(`Failed to build scheduler refresh tx: ${cause}`, cause),
@@ -373,7 +365,11 @@ export const buildUnsignedSchedulerRefreshTxProgram = (
         buildSchedulerRefreshTx(
           config,
           resolvedSchedulerSpendRedeemerCbor,
-        ).complete(completeWithPresetWalletInputs(config.presetWalletInputs)),
+        ).complete(
+          completeOptionsWithLocalEval({
+            presetWalletInputs: config.presetWalletInputs,
+          }),
+        ),
       catch: (cause) =>
         schedulerError(
           `Failed to rebuild scheduler refresh tx: ${cause}`,

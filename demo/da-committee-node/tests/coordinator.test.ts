@@ -40,14 +40,19 @@ describe("coordinator witness and candidate planning", () => {
 
   it("does not mint duplicate init when a usable candidate exists", () => {
     const candidate = candidateRecord({ attestationCount: 0 });
+    const witness0 = "00" + "11".repeat(64);
     const action = planDaAttestationLifecycle({
       headerHash: candidate.headerHash,
       threshold: candidate.threshold,
       committeeSignersHash: candidate.committeeSignersHash,
       candidates: [candidate],
-      ownWitnessHex: "00" + "11".repeat(64),
+      ownWitnessHex: witness0,
     });
-    expect(action.kind).toBe("add_signatures");
+    expect(action).toMatchObject({
+      kind: "add_signatures",
+      packedWitnessesHex: witness0,
+      signerIndexes: [0],
+    });
   });
 
   it("waits in threshold-gated mode until witnesses can reach threshold", () => {
@@ -215,6 +220,70 @@ describe("coordinator witness and candidate planning", () => {
     expect(calls).toEqual([
       `add:0,1:${"00" + "11".repeat(64)}${peerWitness}`,
       "apply:tx#0",
+    ]);
+  });
+
+  it("uses validated submitter witnesses without a local signer index", async () => {
+    const initialized = candidateRecord({ attestationCount: 0 });
+    const threshold = candidateRecord({
+      attestationCount: 2,
+      status: "threshold",
+      bitmap: "c0" + "00".repeat(31),
+    });
+    const candidateResponses = [[initialized], [threshold]];
+    const calls: string[] = [];
+    const submissions: string[] = [];
+    const signature = signatureRecord();
+    const coordinator = new OnChainLifecycleCoordinator({
+      threshold: 2,
+      visibilityRetryCount: 0,
+      chainReader: {
+        fetchDaAttestationCandidates: async () =>
+          candidateResponses.shift() ?? [threshold],
+      },
+      recordSubmission: async (record) => {
+        submissions.push(
+          `${record.txKind}:${record.txHash}:${record.inputsUsed.join(",")}`,
+        );
+      },
+      submitter: {
+        initAttestation: async () => {
+          throw new Error("unexpected init");
+        },
+        addSignatures: async ({ packedWitnessesHex, signerIndexes }) => {
+          calls.push(
+            `add:${signerIndexes.join(",")}:${packedWitnessesHex.slice(0, 2)}`,
+          );
+          return "addTx";
+        },
+        applyAttestation: async ({ candidate }) => {
+          calls.push(`apply:${candidate.outRef}`);
+          return "applyTx";
+        },
+      },
+    });
+
+    await expect(
+      coordinator.reconcileAttestation({
+        context: {
+          deploymentFingerprint: signature.deploymentFingerprint,
+          headerHash: signature.headerHash,
+          payloadHash: signature.payloadHash,
+          committeeSignersHash: signature.committeeSignersHash,
+          l1ChainPoint: signature.l1ChainPoint,
+          validation: signature.validation,
+        },
+        witnessHexes: [
+          signature.signatureWitness,
+          "01" + "22".repeat(64),
+        ],
+        requireThresholdWitnesses: true,
+      }),
+    ).resolves.toBe("posted");
+    expect(calls).toEqual(["add:0,1:00", "apply:tx#0"]);
+    expect(submissions).toEqual([
+      "add_signatures:addTx:tx#0",
+      "apply:applyTx:tx#0,state#0",
     ]);
   });
 

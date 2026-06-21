@@ -50,6 +50,7 @@ import {
   fetchAndInsertDepositUTxOs,
   projectDepositsToMempoolLedger,
 } from "@/fibers/index.js";
+import { runProviderStepWithRetry } from "@/provider-retry.js";
 import * as Services from "@/services/index.js";
 import * as DaAttestation from "@/transactions/da-attestation.js";
 import * as Initialization from "@/transactions/initialization.js";
@@ -74,6 +75,13 @@ import packageJson from "../package.json" with { type: "json" };
 
 dotenv.config();
 const VERSION = packageJson.version;
+
+const REFERENCE_SCRIPT_MANIFEST_FETCH_RETRY = {
+  maxAttempts: 8,
+  baseDelayMs: 750,
+  maxDelayMs: 8_000,
+  jitterRatio: 0.25,
+} as const;
 
 const program = new Command();
 
@@ -665,6 +673,52 @@ reconcile
       const mainEffect = provideTxServices(
         ReconcileCommand.reconcileReferenceScriptsCompleteProgram({
           repair: options.repair === true,
+        }).pipe(
+          Effect.tap((result) =>
+            Effect.sync(() => {
+              process.stdout.write(`${formatJson(result)}\n`);
+            }),
+          ),
+        ),
+      );
+
+      NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    },
+  );
+
+reconcile
+  .command("deployment-manifest")
+  .description(
+    "Reconcile the deployment manifest after a confirmed protocol initialization",
+  )
+  .requiredOption(
+    "--out <path>",
+    "Destination filepath for the contract deployment info JSON",
+  )
+  .requiredOption(
+    "--init-tx-hash <hex>",
+    "32-byte protocol initialization transaction hash",
+  )
+  .option("--json", "Print machine-readable JSON output", true)
+  .action(
+    async (options: { readonly out: string; readonly initTxHash: string }) => {
+      let initTxHash: string;
+      try {
+        initTxHash = parseHexBytes(
+          options.initTxHash,
+          "initTxHash",
+          32,
+        ).toString("hex");
+      } catch (error) {
+        console.error(`reconcile deployment-manifest: ${errorMessage(error)}`);
+        process.exitCode = 1;
+        return;
+      }
+
+      const mainEffect = provideTxServices(
+        ContractDeploymentInfo.reconcileInitializedDeploymentManifestProgram({
+          outputPath: options.out,
+          initTxHash,
         }).pipe(
           Effect.tap((result) =>
             Effect.sync(() => {
@@ -1395,18 +1449,22 @@ for (const commandName of RegisterActiveOperator.REFERENCE_SCRIPT_COMMAND_NAMES)
                 `${nodeConfig.HUB_ORACLE_ONE_SHOT_TX_HASH}#${nodeConfig.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX.toString()}`,
               ]),
             );
-          const liveReferenceScriptUtxos = yield* Effect.tryPromise({
-            try: () =>
-              lucidService.referenceScriptsApi.utxosAt(
-                lucidService.referenceScriptsAddress,
-              ),
-            catch: (cause) =>
-              new Error(
-                `Failed to fetch published reference-script UTxOs at ${lucidService.referenceScriptsAddress}: ${formatUnknownError(
-                  cause,
-                )}`,
-              ),
-          });
+          const liveReferenceScriptUtxos = yield* runProviderStepWithRetry(
+            `deploy-reference-script-${commandName} final reference-script UTxO fetch`,
+            Effect.tryPromise({
+              try: () =>
+                lucidService.referenceScriptsApi.utxosAt(
+                  lucidService.referenceScriptsAddress,
+                ),
+              catch: (cause) =>
+                new Error(
+                  `Failed to fetch published reference-script UTxOs at ${lucidService.referenceScriptsAddress}: ${formatUnknownError(
+                    cause,
+                  )}`,
+                ),
+            }),
+            REFERENCE_SCRIPT_MANIFEST_FETCH_RETRY,
+          );
           const deploymentInfo =
             yield* ContractDeploymentInfo.buildContractDeploymentInfoProgram(
               contracts,

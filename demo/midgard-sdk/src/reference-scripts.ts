@@ -19,6 +19,7 @@ import { Effect } from "effect";
 import type { MintingValidator } from "@/common.js";
 import { LucidError } from "@/common.js";
 import { StateQueueError } from "@/state-queue.js";
+import { isPlainPositiveAdaOnlyUtxo } from "@/tx-output-utils.js";
 
 export const REFERENCE_SCRIPT_AUTH_TIMELOCK_MS = 4 * 60 * 60 * 1000;
 export const REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS = 90 * 60 * 1000;
@@ -320,27 +321,9 @@ export const referenceScriptPublicationFundingTarget = (
   SCRIPT_REF_OUTPUT_LOVELACE * (BigInt(missingTargetCount) + 1n) +
   SCRIPT_REF_PUBLICATION_FUNDING_BUFFER_LOVELACE;
 
-const positiveAssetEntries = (
-  assets: Readonly<Assets>,
-): readonly (readonly [string, bigint])[] =>
-  Object.entries(assets).filter(([, amount]) => amount > 0n);
-
 const lovelaceOf = (utxo: UTxO): bigint => utxo.assets.lovelace ?? 0n;
 
-const isPlainAdaOnlyUtxo = (utxo: UTxO): boolean => {
-  if (utxo.datum !== undefined || utxo.datumHash !== undefined) {
-    return false;
-  }
-  if (utxo.scriptRef !== undefined) {
-    return false;
-  }
-  const positiveAssets = positiveAssetEntries(utxo.assets);
-  return (
-    positiveAssets.length === 1 &&
-    positiveAssets[0]?.[0] === "lovelace" &&
-    positiveAssets[0][1] > 0n
-  );
-};
+const isPlainAdaOnlyUtxo = isPlainPositiveAdaOnlyUtxo;
 
 export const orderReferenceScriptFundingUtxos = (
   utxos: readonly UTxO[],

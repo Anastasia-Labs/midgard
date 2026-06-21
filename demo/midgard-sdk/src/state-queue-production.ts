@@ -1,7 +1,6 @@
 import { assetsEqual } from "@al-ft/midgard-core/assets";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { compareOutRefs, outRefLabel } from "@al-ft/midgard-core/out-ref";
-import { canonicalPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
   type Assets,
   type BuildTxWithRedeemer,
@@ -59,6 +58,7 @@ import {
   StateQueueSpendRedeemer,
   type StateQueueUTxO,
 } from "@/state-queue.js";
+import { completeOptionsWithLocalEval } from "@/tx-completion.js";
 import {
   requireInputIndex as requireContextInputIndex,
   requireMintRedeemerIndex as requireContextMintRedeemerIndex,
@@ -66,6 +66,10 @@ import {
   requireReferenceInputIndex as requireContextReferenceInputIndex,
   requireSpendRedeemerIndex as requireContextSpendRedeemerIndex,
 } from "@/tx-context-redeemer.js";
+import {
+  isPlainPositiveAdaOnlyUtxo,
+  outputDatumCborMatches,
+} from "@/tx-output-utils.js";
 
 const STATE_QUEUE_HEADER_NODE_LOVELACE = 5_000_000n;
 const ACTIVE_OPERATOR_MATURITY_DURATION_MS = 30n;
@@ -99,36 +103,7 @@ type StateQueueCommitLayout = {
   readonly stateQueueMintRedeemerIndex: bigint;
 };
 
-type TxCompleteOptions = NonNullable<Parameters<TxBuilder["complete"]>[0]>;
-
-const positiveAssetEntries = (
-  assets: Readonly<Assets>,
-): readonly (readonly [string, bigint])[] =>
-  Object.entries(assets).filter(([, amount]) => amount > 0n);
-
-const isPlainAdaOnlyUtxo = (utxo: UTxO): boolean => {
-  if (utxo.datum !== undefined || utxo.datumHash !== undefined) {
-    return false;
-  }
-  if (utxo.scriptRef !== undefined) {
-    return false;
-  }
-  const positiveAssets = positiveAssetEntries(utxo.assets);
-  return (
-    positiveAssets.length === 1 &&
-    positiveAssets[0]?.[0] === "lovelace" &&
-    positiveAssets[0][1] > 0n
-  );
-};
-
-const completeWithPresetWalletInputs = (
-  presetWalletInputs?: readonly UTxO[],
-): TxCompleteOptions => ({
-  localUPLCEval: true,
-  ...(presetWalletInputs === undefined
-    ? {}
-    : { presetWalletInputs: [...presetWalletInputs] }),
-});
+const isPlainAdaOnlyUtxo = isPlainPositiveAdaOnlyUtxo;
 
 type StateQueueCommitRedeemer = {
   readonly CommitBlockHeader: {
@@ -293,13 +268,6 @@ const formatCommitLayout = (layout: CommitLayoutLike): string =>
   COMMIT_LAYOUT_FIELDS.map(
     ({ key, label }) => `${label}=${layout[key].toString()}`,
   ).join(",");
-
-const outputDatumCborMatches = (
-  output: Pick<TxOutput, "datum">,
-  datumCbor: string,
-): boolean =>
-  output.datum != null &&
-  canonicalPlutusDataCbor(output.datum) === canonicalPlutusDataCbor(datumCbor);
 
 const requireUniqueContextOutputIndex = (
   outputs: readonly TxOutput[],
@@ -515,7 +483,7 @@ export const buildDeterministicCommitTxBuilder = ({
     const builtCommitTx = yield* Effect.tryPromise({
       try: () =>
         makeCommitTx().complete(
-          completeWithPresetWalletInputs(presetWalletInputs),
+          completeOptionsWithLocalEval({ presetWalletInputs }),
         ),
       catch: (cause) =>
         new StateQueueError({
@@ -1209,7 +1177,7 @@ export const buildProductionMergeToConfirmedStateTxProgram = ({
         makeMergeTxWithScripts(
           stateQueueMergeRedeemer,
           settlementSpawnRedeemer,
-        ).complete(completeWithPresetWalletInputs(presetWalletInputs)),
+        ).complete(completeOptionsWithLocalEval({ presetWalletInputs })),
       catch: (cause) =>
         mergeStateQueueError(
           "E_MERGE_UPLC_EVAL_FAILED",

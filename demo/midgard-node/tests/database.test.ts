@@ -84,6 +84,14 @@ const flushAll = Effect.gen(function* () {
   );
 });
 
+const isolatedDb = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+  provideDatabaseLayers(
+    Effect.gen(function* () {
+      yield* flushAll;
+      return yield* effect;
+    }),
+  );
+
 const databaseFixtureBytes = (label: string, length: number): Buffer =>
   deterministicFixtureBytes(`database:${label}`, length);
 
@@ -117,9 +125,8 @@ beforeAll(async () => {
 
 describe("Database: initialization and basic operations", () => {
   it.effect("initialize and flush", (_) =>
-    provideDatabaseLayers(
+    isolatedDb(
       Effect.gen(function* () {
-        yield* flushAll;
         // Smoke select to ensure connection works
         const sql = yield* SqlClient.SqlClient;
         const now = yield* sql<Date>`SELECT NOW()`;
@@ -133,9 +140,8 @@ describe("DaPayloadsDB", () => {
   it.effect(
     "stores payloads idempotently and rejects conflicting bytes for a header",
     (_) =>
-      provideDatabaseLayers(
+      isolatedDb(
         Effect.gen(function* () {
-          yield* flushAll;
           const headerHash = databaseFixtureBytes("da-payload-header", 28);
           const payload = databaseFixtureBytes("da-payload-cbor", 48);
           const payloadHash = createHash("sha256").update(payload).digest();
@@ -193,9 +199,8 @@ describe("DaPayloadsDB", () => {
   it.effect(
     "retrieves only finalized pending journals missing DA payload rows",
     (_) =>
-      provideDatabaseLayers(
+      isolatedDb(
         Effect.gen(function* () {
-          yield* flushAll;
           const sql = yield* SqlClient.SqlClient;
           const missingHeader = databaseFixtureBytes(
             "missing-da-payload-finalized-header",
@@ -419,9 +424,8 @@ describe("PendingBlockFinalizationsDB", () => {
   it.effect(
     "can discard and replace no-submission pending journals for retry recovery",
     (_) =>
-      provideDatabaseLayers(
+      isolatedDb(
         Effect.gen(function* () {
-          yield* flushAll;
           const headerHash = databaseFixtureBytes(
             "retryable-pending-header",
             28,
@@ -470,9 +474,8 @@ describe("PendingBlockFinalizationsDB", () => {
   it.effect(
     "deletes superseded pre-submit journals after the replacement journal finalizes",
     (_) =>
-      provideDatabaseLayers(
+      isolatedDb(
         Effect.gen(function* () {
-          yield* flushAll;
           const staleHeaderHash = databaseFixtureBytes(
             "superseded-stale-pending-header",
             28,
@@ -546,10 +549,8 @@ describe("StateQueueMutationLeasesDB", () => {
   it.effect(
     "returns Busy instead of failing when the state-queue lease is already held",
     (_) =>
-      provideDatabaseLayers(
+      isolatedDb(
         Effect.gen(function* () {
-          yield* flushAll;
-
           const first = yield* StateQueueMutationLeasesDB.tryAcquire({
             holder: "first",
           });
@@ -583,10 +584,8 @@ describe("StateQueueMutationLeasesDB", () => {
   it.effect(
     "tryWithLease releases successful work and marks failed work without leaving an active lease",
     (_) =>
-      provideDatabaseLayers(
+      isolatedDb(
         Effect.gen(function* () {
-          yield* flushAll;
-
           const success = yield* StateQueueMutationLeasesDB.tryWithLease(
             "success",
             (token) => Effect.succeed(token),
@@ -626,10 +625,8 @@ describe("StateQueueMutationLeasesDB", () => {
   it.live(
     "tryWithLease keeps long-running state-queue work leased past the initial ttl",
     () =>
-      provideDatabaseLayers(
+      isolatedDb(
         Effect.gen(function* () {
-          yield* flushAll;
-
           const ttlMs = 1_000;
           const result = yield* StateQueueMutationLeasesDB.tryWithLease(
             "long-running-work",
@@ -669,10 +666,8 @@ describe("BlocksDB", () => {
   it.effect(
     "insert, retrieve all, retrieve by header, retrieve by tx, clear block, clear all",
     (_) =>
-      provideDatabaseLayers(
+      isolatedDb(
         Effect.gen(function* () {
-          yield* flushAll;
-
           // insert with some txs
           yield* BlocksDB.insert(blockHeader1, [tx1, tx2]);
           yield* BlocksDB.insert(blockHeader2, [tx3]);
@@ -748,10 +743,8 @@ describe("MempoolDB", () => {
   it.effect(
     "insert, retrieve single, retrieve all, retrieve cbor by hash, retrieve cbors by hashes, retrieve count, clear txs, clear all",
     (_) =>
-      provideDatabaseLayers(
+      isolatedDb(
         Effect.gen(function* () {
-          yield* flushAll;
-
           const pTxId1 = databaseTxHash("mempool.tx-1");
           const pTx1 = databaseFixtureBytes("mempool.tx-1-cbor", 64);
           const pSpent1 = databaseFixtureBytes("mempool.tx-1-spent", 32);
@@ -848,10 +841,8 @@ describe("ProcessedMempoolDB", () => {
   it.effect(
     "insert tx, insert txs, retrieve all, retrieve cbor by hash, retrieve cbors by hashes, clear all",
     (_) =>
-      provideDatabaseLayers(
+      isolatedDb(
         Effect.gen(function* () {
-          yield* flushAll;
-
           // insert txs
           yield* ProcessedMempoolDB.insertTxs([txEntry1, txEntry2]);
 
@@ -910,10 +901,8 @@ describe("ImmutableDB", () => {
   it.effect(
     "insert tx, insert txs, retrieve all, retrieve cbor by hash, retrieve cbor by hashes, clear all",
     (_) =>
-      provideDatabaseLayers(
+      isolatedDb(
         Effect.gen(function* () {
-          yield* flushAll;
-
           // insert txs
           yield* ImmutableDB.insertTxs([txEntry1, txEntry2]);
 
@@ -973,9 +962,8 @@ describe("ImmutableDB", () => {
   );
 
   it.effect("insertTxsValidatedNative accepts valid native payloads", (_) =>
-    provideDatabaseLayers(
+    isolatedDb(
       Effect.gen(function* () {
-        yield* flushAll;
         const valid = makeValidNativeImmutableEntry();
 
         yield* ImmutableDB.insertTxsValidatedNative([valid]);
@@ -991,9 +979,8 @@ describe("ImmutableDB", () => {
   it.effect(
     "insertTxsValidatedNative rejects malformed or mismatched payloads",
     (_) =>
-      provideDatabaseLayers(
+      isolatedDb(
         Effect.gen(function* () {
-          yield* flushAll;
           const valid = makeValidNativeImmutableEntry();
           const mismatchedTxId = Buffer.from(valid[TxUtils.Columns.TX_ID]);
           mismatchedTxId[0] ^= 0xff;
@@ -1035,10 +1022,8 @@ describe("ImmutableDB", () => {
 
 describe("LatestLedgerDB", () => {
   it.effect("insert multiple, retrieve, clear UTxOs, clear all", () =>
-    provideDatabaseLayers(
+    isolatedDb(
       Effect.gen(function* () {
-        yield* flushAll;
-
         // insert multiple
         yield* LatestLedgerDB.insertMultiple([ledgerEntry1, ledgerEntry2]);
 
@@ -1066,10 +1051,8 @@ describe("MempoolLedgerDB", () => {
   it.effect(
     "insert, retrieve by address, retrieve by outrefs, retrieve all, clearUTxOs, clearAll",
     () =>
-      provideDatabaseLayers(
+      isolatedDb(
         Effect.gen(function* () {
-          yield* flushAll;
-
           // insert
           yield* MempoolLedgerDB.insert([ledgerEntry1, ledgerEntry2]);
 
@@ -1118,10 +1101,8 @@ describe("MempoolLedgerDB", () => {
 
 describe("ConfirmedLedgerDB", () => {
   it.effect("insert multiple, retrieve", () =>
-    provideDatabaseLayers(
+    isolatedDb(
       Effect.gen(function* () {
-        yield* flushAll;
-
         // insert
         yield* ConfirmedLedgerDB.insertMultiple([ledgerEntry1, ledgerEntry2]);
 
@@ -1151,10 +1132,8 @@ describe("ConfirmedLedgerDB", () => {
 
 describe("AddressHistoryDB", () => {
   it.effect("insert, retrieve, clears tx hash, clear all", () =>
-    provideDatabaseLayers(
+    isolatedDb(
       Effect.gen(function* () {
-        yield* flushAll;
-
         const pTxId1 = databaseTxHash("address-history.tx-1");
         const pTx1 = databaseFixtureBytes("address-history.tx-1-cbor", 64);
         const pSpent1 = databaseFixtureBytes("address-history.tx-1-spent", 32);
@@ -1245,9 +1224,8 @@ describe("AddressHistoryDB", () => {
   );
 
   it.effect("submit tx pipeline inserts a tx id in address db history", () =>
-    provideDatabaseLayers(
+    isolatedDb(
       Effect.gen(function* () {
-        yield* flushAll;
         const thisWalletAddress = address2;
         const firstTxId = databaseTxHash("address-history.pipeline.tx-1");
         const firstProcessedTx: ProcessedTx = {
@@ -1350,10 +1328,8 @@ describe("DepositSubmissionAttemptsDB", () => {
   it.effect(
     "stores submitted attempts idempotently and rejects tx hash payload drift",
     (_) =>
-      provideDatabaseLayers(
+      isolatedDb(
         Effect.gen(function* () {
-          yield* flushAll;
-
           const attempt = makeDepositSubmissionAttempt();
           const first =
             yield* DepositSubmissionAttemptsDB.insertSubmitted(attempt);
@@ -1383,10 +1359,8 @@ describe("DepositSubmissionAttemptsDB", () => {
   );
 
   it.effect("stores bigint metadata as stable JSON strings", (_) =>
-    provideDatabaseLayers(
+    isolatedDb(
       Effect.gen(function* () {
-        yield* flushAll;
-
         const attempt = makeDepositSubmissionAttempt();
         const metadata = attempt[DepositSubmissionAttemptsDB.Columns.METADATA];
         const bigintAttempt: DepositSubmissionAttemptsDB.InsertSubmittedInput =
@@ -1435,10 +1409,8 @@ describe("DepositSubmissionAttemptsDB", () => {
   it.effect(
     "tracks confirmation, reconciliation, ambiguity, and open attempts",
     (_) =>
-      provideDatabaseLayers(
+      isolatedDb(
         Effect.gen(function* () {
-          yield* flushAll;
-
           const confirmed = makeDepositSubmissionAttempt({
             txHash: databaseTxHash("deposit-submission.confirmed"),
             eventId: databaseOutputReferenceId("deposit-submission.confirmed"),
@@ -1480,10 +1452,8 @@ describe("DepositSubmissionAttemptsDB", () => {
 
 describe("Reconciliation commands", () => {
   it.effect("returns stable JSON for an unknown tx-committed target", (_) =>
-    provideDatabaseLayers(
+    isolatedDb(
       Effect.gen(function* () {
-        yield* flushAll;
-
         const txHash = databaseTxHash("reconcile.tx-committed.unknown");
         const resolved = yield* reconcileTxCommittedProgram({ txHash });
 
@@ -1502,10 +1472,8 @@ describe("Reconciliation commands", () => {
 
 describe("DepositsDB and MempoolLedgerDB exact-once projection", () => {
   it.effect("rejects payload drift for the same deposit event_id", (_) =>
-    provideDatabaseLayers(
+    isolatedDb(
       Effect.gen(function* () {
-        yield* flushAll;
-
         const eventId = databaseOutputReferenceId("deposits.payload-drift", 0);
         const first = makeDepositEntry({
           [DepositsDB.Columns.ID]: eventId,
@@ -1529,10 +1497,8 @@ describe("DepositsDB and MempoolLedgerDB exact-once projection", () => {
   );
 
   it.effect("retrieves one deposit by event_id", (_) =>
-    provideDatabaseLayers(
+    isolatedDb(
       Effect.gen(function* () {
-        yield* flushAll;
-
         const deposit = makeDepositEntry();
         yield* DepositsDB.insertEntries([deposit]);
 
@@ -1561,10 +1527,8 @@ describe("DepositsDB and MempoolLedgerDB exact-once projection", () => {
   it.effect(
     "retrieves deposits by Cardano tx hash in deterministic order",
     (_) =>
-      provideDatabaseLayers(
+      isolatedDb(
         Effect.gen(function* () {
-          yield* flushAll;
-
           const sharedCardanoTxHash = databaseTxHash(
             "deposits.shared-cardano-tx.deterministic-order",
           );
@@ -1611,10 +1575,8 @@ describe("DepositsDB and MempoolLedgerDB exact-once projection", () => {
   it.effect(
     "rejects ambiguous cardanoTxHash lookups and requires eventId to disambiguate",
     (_) =>
-      provideDatabaseLayers(
+      isolatedDb(
         Effect.gen(function* () {
-          yield* flushAll;
-
           const sharedCardanoTxHash = databaseTxHash(
             "deposits.shared-cardano-tx.ambiguous-status",
           );
@@ -1657,10 +1619,8 @@ describe("DepositsDB and MempoolLedgerDB exact-once projection", () => {
   it.effect(
     "allows eventId to disambiguate a shared cardanoTxHash lookup",
     (_) =>
-      provideDatabaseLayers(
+      isolatedDb(
         Effect.gen(function* () {
-          yield* flushAll;
-
           const sharedCardanoTxHash = databaseTxHash(
             "deposits.shared-cardano-tx.event-id-disambiguates",
           );
@@ -1697,10 +1657,8 @@ describe("DepositsDB and MempoolLedgerDB exact-once projection", () => {
   it.effect(
     "projects a deposit into mempool_ledger exactly once by source_event_id",
     (_) =>
-      provideDatabaseLayers(
+      isolatedDb(
         Effect.gen(function* () {
-          yield* flushAll;
-
           const deposit = makeDepositEntry();
           yield* DepositsDB.insertEntries([deposit]);
           const mempoolEntry = yield* DepositsDB.toMempoolLedgerEntry(deposit);
@@ -1733,10 +1691,8 @@ describe("DepositsDB and MempoolLedgerDB exact-once projection", () => {
   );
 
   it.effect("projects only deposits whose inclusion time has arrived", (_) =>
-    provideDatabaseLayers(
+    isolatedDb(
       Effect.gen(function* () {
-        yield* flushAll;
-
         const pastDeposit = makeDepositEntry({
           [DepositsDB.Columns.INCLUSION_TIME]: new Date(
             "2020-01-01T00:00:00.000Z",
@@ -1775,10 +1731,8 @@ describe("DepositsDB and MempoolLedgerDB exact-once projection", () => {
   it.effect(
     "rejects source_event_id payload drift during idempotent projection reconciliation",
     (_) =>
-      provideDatabaseLayers(
+      isolatedDb(
         Effect.gen(function* () {
-          yield* flushAll;
-
           const deposit = makeDepositEntry();
           yield* DepositsDB.insertEntries([deposit]);
           const mempoolEntry = yield* DepositsDB.toMempoolLedgerEntry(deposit);
@@ -1803,10 +1757,8 @@ describe("DepositsDB and MempoolLedgerDB exact-once projection", () => {
   it.effect(
     "assigns and clears a projected header hash for a projected deposit",
     (_) =>
-      provideDatabaseLayers(
+      isolatedDb(
         Effect.gen(function* () {
-          yield* flushAll;
-
           const deposit = makeDepositEntry();
           const headerHash = databaseFixtureBytes(
             "deposits.projected-header",
@@ -1844,10 +1796,8 @@ describe("DepositsDB and MempoolLedgerDB exact-once projection", () => {
   it.effect(
     "treats projection claiming as idempotent once a deposit is already projected",
     (_) =>
-      provideDatabaseLayers(
+      isolatedDb(
         Effect.gen(function* () {
-          yield* flushAll;
-
           const deposit = makeDepositEntry();
           yield* DepositsDB.insertEntries([deposit]);
           yield* DepositsDB.markAwaitingAsProjected([
@@ -1872,10 +1822,8 @@ describe("DepositsDB and MempoolLedgerDB exact-once projection", () => {
   it.effect(
     "re-includes an overdue projected deposit whose earlier header assignment was abandoned",
     (_) =>
-      provideDatabaseLayers(
+      isolatedDb(
         Effect.gen(function* () {
-          yield* flushAll;
-
           const currentBlockStartTime = new Date("2026-04-13T17:28:10.000Z");
           const overdueProjectedDeposit = makeDepositEntry({
             [DepositsDB.Columns.INCLUSION_TIME]: new Date(
@@ -1906,10 +1854,8 @@ describe("DepositsDB and MempoolLedgerDB exact-once projection", () => {
   it.effect(
     "fails closed when an overdue deposit was never projected before its window closed",
     (_) =>
-      provideDatabaseLayers(
+      isolatedDb(
         Effect.gen(function* () {
-          yield* flushAll;
-
           const currentBlockStartTime = new Date("2026-04-13T17:28:10.000Z");
           const overdueAwaitingDeposit = makeDepositEntry({
             [DepositsDB.Columns.INCLUSION_TIME]: new Date(

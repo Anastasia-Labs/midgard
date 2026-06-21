@@ -10,28 +10,12 @@ import {
   type UtxoPayloadEntry,
 } from "@/workers/utils/mpf.js";
 
-const h32 = (byte: number) => byte.toString(16).padStart(2, "0").repeat(32);
-
-const outputReference = (byte: number): SDK.OutputReference => ({
-  transactionId: h32(byte),
-  outputIndex: 0n,
-});
-
-const withdrawalEventKey = (byte: number): SDK.EventKey => ({
-  WithdrawalEventKey: { withdrawal_id: outputReference(byte) },
-});
-
-const forcedTransactionEventKey = (byte: number): SDK.EventKey => ({
-  ForcedTransactionEventKey: { tx_order_id: outputReference(byte) },
-});
-
-const l2TransactionEventKey = (byte: number): SDK.EventKey => ({
-  L2TransactionEventKey: { tx_id: h32(byte) },
-});
-
-const depositEventKey = (byte: number): SDK.EventKey => ({
-  DepositEventKey: { deposit_id: outputReference(byte) },
-});
+import {
+  depositEventKey,
+  forcedTransactionEventKey,
+  l2TransactionEventKey,
+  withdrawalEventKey,
+} from "./helpers/transition-fixtures.js";
 
 const outRef = (byte: number) => Buffer.from([byte]);
 const output = (byte: number) => Buffer.from([byte, byte]);

@@ -14,6 +14,10 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
+  makeCardanoSignedMapOutputTxBytes,
+  TEST_ADDRESS,
+} from "./helpers/cardano-native-fixtures.js";
+import {
   makeCardanoTxOutput,
   makeMidgardTxOutput,
 } from "./midgard-output-helpers.js";
@@ -25,9 +29,6 @@ const phaseAConfig = {
   concurrency: 1,
   strictnessProfile: "phase1_midgard",
 } as const;
-
-const TEST_ADDRESS =
-  "addr_test1wzylc3gg4h37gt69yx057gkn4egefs5t9rsycmryecpsenswtdp58";
 
 const makePubKeyOutput = (
   keyHash: CML.Ed25519KeyHash,
@@ -45,34 +46,7 @@ const makePubKeyOutput = (
 
 describe("phase-a converted fixture signature bridge", () => {
   it("rejects converted Cardano witnesses that only sign the original Cardano body hash", async () => {
-    const signerKey = CML.PrivateKey.generate_ed25519();
-    const inputs = CML.TransactionInputList.new();
-    inputs.add(
-      CML.TransactionInput.new(
-        CML.TransactionHash.from_hex("11".repeat(32)),
-        0n,
-      ),
-    );
-    const outputs = CML.TransactionOutputList.new();
-    outputs.add(
-      makeCardanoTxOutput(
-        CML.EnterpriseAddress.new(
-          0,
-          CML.Credential.new_pub_key(signerKey.to_public().hash()),
-        ).to_address(),
-        CML.Value.from_coin(3_000_000n),
-      ),
-    );
-    const body = CML.TransactionBody.new(inputs, outputs, 0n);
-    const witnessSet = CML.TransactionWitnessSet.new();
-    const vkeyWitnesses = CML.VkeywitnessList.new();
-    vkeyWitnesses.add(
-      CML.make_vkey_witness(CML.hash_transaction(body), signerKey),
-    );
-    witnessSet.set_vkeywitnesses(vkeyWitnesses);
-    const cardanoBytes = Buffer.from(
-      CML.Transaction.new(body, witnessSet, true, undefined).to_cbor_bytes(),
-    );
+    const cardanoBytes = makeCardanoSignedMapOutputTxBytes();
     const nativeBytes =
       cardanoTxBytesToMidgardNativeTxCanonicalCbor(cardanoBytes);
     const nativeTx = decodeMidgardNativeTxFullFromCanonicalCbor(nativeBytes);

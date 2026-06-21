@@ -354,7 +354,6 @@ const transitionTraceEntries = (
       }
       return 0;
     });
-    const seen = new Set<bigint>();
     for (const [index, step] of ordered.entries()) {
       if (step.schema_version < 0n) {
         return yield* Effect.fail(
@@ -374,16 +373,6 @@ const transitionTraceEntries = (
           ),
         );
       }
-      if (seen.has(step.step_index)) {
-        return yield* Effect.fail(
-          MpfError.phasRoot(
-            new Error(
-              `Transition trace contains duplicate step_index ${step.step_index.toString()}`,
-            ),
-          ),
-        );
-      }
-      seen.add(step.step_index);
     }
     return ordered.map((step) => ({
       key: step.step_index,

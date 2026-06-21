@@ -32,6 +32,7 @@ import {
   MidgardContracts,
   NodeConfig,
 } from "@/services/index.js";
+import { materializeConfirmedLedgerSnapshot } from "@/transactions/state-queue/confirmed-ledger-snapshot.js";
 import { type TxSignError, type TxSubmitError } from "@/transactions/utils.js";
 import { buildUnsignedCommitTx } from "@/workers/commit-block-header/build-unsigned-tx.js";
 import { fetchLatestCommittedBlockLocal } from "@/workers/commit-block-header/state-queue.js";
@@ -41,17 +42,22 @@ import {
   submitDepositOnlyCommit,
   submitTxBackedCommit,
 } from "@/workers/commit-block-header/submission.js";
+import { makeEventCommitments } from "@/workers/commit-block-header/transition-commitments.js";
 import {
   deserializeStateQueueUTxO,
   type SerializedStateQueueUTxO,
   WorkerInput,
   WorkerOutput,
 } from "@/workers/utils/commit-block-header.js";
-import { materializeConfirmedLedgerSnapshot } from "@/transactions/state-queue/confirmed-ledger-snapshot.js";
-import { shouldDeferCommitSubmission } from "@/workers/utils/commit-block-planner.js";
-import { shouldSkipIdleCommitBehindUnmergedTail } from "@/workers/utils/commit-block-planner.js";
+import {
+  selectCommitTxCandidates,
+  shouldDeferCommitSubmission,
+  shouldSkipIdleCommitBehindUnmergedTail,
+} from "@/workers/utils/commit-block-planner.js";
 import { resolveExplicitCommitCandidateEndTimeMs } from "@/workers/utils/commit-end-time.js";
 import {
+  computeLedgerMpfRootFromLedgerEntries,
+  hydrateLedgerMpfFromLedgerEntries,
   makeMpfs,
   type MidgardMpf,
   processMpfs,
@@ -82,31 +88,11 @@ const provideCommitBlockWorkerServices = <A, E>(
   );
 
 const establishEndTimeFromTxRequests = (
-  mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
-): Effect.Effect<Option.Option<Date>, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    if (mempoolTxs.length > 0) {
-      yield* Effect.logInfo(`🔹 ${mempoolTxs.length} retrieved.`);
-      return Option.some(mempoolTxs[0][TxColumns.TIMESTAMPTZ]);
-    }
-
-    yield* Effect.logInfo(
-      "🔹 No transactions were found in MempoolDB, checking ProcessedMempoolDB...",
-    );
-    const processedMempoolTxs = yield* ProcessedMempoolDB.retrieve;
-    if (processedMempoolTxs.length <= 0) {
-      // No transaction requests are available for inclusion in a block. By
-      // setting `endTime` to `undefined` here, the code below can decide
-      // whether it can stop if no
-      return Option.none();
-    }
-
-    // No new transactions received, but there are uncommitted transactions
-    // in the transactions MPF. So its root must be used to submit a new block, and if
-    // successful, `ProcessedMempoolDB` must be cleared. Following functions
-    // should work fine with 0 mempool txs.
-    return Option.some(processedMempoolTxs[0][TxColumns.TIMESTAMPTZ]);
-  });
+  candidateTxs: readonly TxTable.EntryWithTimeStamp[],
+): Option.Option<Date> =>
+  candidateTxs.length > 0
+    ? Option.some(candidateTxs[0][TxColumns.TIMESTAMPTZ])
+    : Option.none();
 
 const pendingUserEventCountUpTo = (
   effectiveEndTime: Date,
@@ -130,10 +116,16 @@ const pendingUserEventCountUpTo = (
     );
   });
 
+type ResolvedCommitBaseLedgerEntries = {
+  readonly source: string;
+  readonly entries: readonly Ledger.MinimalEntry[];
+  readonly root: string;
+};
+
 const resolveCommitBaseLedgerEntries = (
   availableConfirmedBlock: "" | SerializedStateQueueUTxO,
 ): Effect.Effect<
-  readonly Ledger.MinimalEntry[],
+  ResolvedCommitBaseLedgerEntries,
   unknown,
   Database | NodeConfig
 > =>
@@ -160,10 +152,16 @@ const resolveCommitBaseLedgerEntries = (
               ),
           );
           if (genesisEntries.length > 0) {
+            const root =
+              yield* computeLedgerMpfRootFromLedgerEntries(genesisEntries);
             yield* Effect.logInfo(
               `🔹 Commit base ledger snapshot resolved from configured genesis UTxOs (entries=${genesisEntries.length.toString()}).`,
             );
-            return genesisEntries;
+            return {
+              source: "genesis",
+              entries: genesisEntries,
+              root,
+            } satisfies ResolvedCommitBaseLedgerEntries;
           }
         }
       } else {
@@ -192,15 +190,67 @@ const resolveCommitBaseLedgerEntries = (
           yield* Effect.logInfo(
             `🔹 Commit base ledger snapshot resolved from pending-finalization journal ${headerHash} (entries=${snapshot.entries.length.toString()}).`,
           );
-          return snapshot.entries;
+          return {
+            source: `pending-finalization:${headerHash}`,
+            entries: snapshot.entries,
+            root: snapshot.root,
+          } satisfies ResolvedCommitBaseLedgerEntries;
         }
       }
     }
 
+    const confirmedRoot =
+      yield* computeLedgerMpfRootFromLedgerEntries(confirmedEntries);
     yield* Effect.logInfo(
       `🔹 Commit base ledger snapshot resolved from confirmed_ledger (entries=${confirmedEntries.length.toString()}).`,
     );
-    return confirmedEntries;
+    return {
+      source: "confirmed_ledger",
+      entries: confirmedEntries,
+      root: confirmedRoot,
+    } satisfies ResolvedCommitBaseLedgerEntries;
+  });
+
+const alignCommitMpfsToBase = ({
+  ledgerMpf,
+  transactionsMpf,
+  base,
+}: {
+  readonly ledgerMpf: MidgardMpf;
+  readonly transactionsMpf: MidgardMpf;
+  readonly base: ResolvedCommitBaseLedgerEntries;
+}): Effect.Effect<readonly Ledger.MinimalEntry[], unknown, never> =>
+  Effect.gen(function* () {
+    const currentLedgerRoot = yield* ledgerMpf.rootHex();
+    if (currentLedgerRoot !== base.root) {
+      const hydratedRoot = yield* hydrateLedgerMpfFromLedgerEntries(
+        ledgerMpf,
+        base.entries,
+      );
+      if (hydratedRoot !== base.root) {
+        return yield* Effect.fail(
+          new DatabaseError({
+            table: PendingBlockFinalizationsDB.tableName,
+            message:
+              "Refusing to build a block because hydrating the commit ledger MPF did not reproduce the selected base root",
+            cause: `source=${base.source},expected_root=${base.root},hydrated_root=${hydratedRoot}`,
+          }),
+        );
+      }
+      yield* Effect.logInfo(
+        `🔹 Hydrated commit ledger MPF from ${base.source}: previous_root=${currentLedgerRoot},root=${hydratedRoot},entries=${base.entries.length.toString()}.`,
+      );
+    }
+
+    const transactionsRootIsEmpty = yield* transactionsMpf.rootIsEmpty();
+    if (!transactionsRootIsEmpty) {
+      yield* transactionsMpf.resetToEmpty();
+      yield* Effect.logInfo(
+        `🔹 Reset per-block transactions MPF before building on ${base.source}.`,
+      );
+    }
+
+    return base.entries;
   });
 
 const shouldPreserveCommitMpfRoots = (output: WorkerOutput): boolean => {
@@ -354,17 +404,20 @@ export const commitExplicitBlockHeaderProgram = (
     const endTime = new Date(
       resolveExplicitCommitCandidateEndTimeMs(params.endTimeMs),
     );
-    const transitionCommitments =
-      yield* SDK.makeHeaderTransitionCommitmentsProgram({
+    const transitionCommitments = yield* makeEventCommitments(
+      {
         withdrawalsRoot: params.withdrawalsRoot,
         forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
         transactionsRoot: params.transactionsRoot,
         depositsRoot: params.depositsRoot,
+      },
+      {
         withdrawalCount: 0n,
         forcedTransactionCount: 0n,
         l2TransactionCount: 0n,
         depositCount: 0n,
-      });
+      },
+    );
     const { newHeaderHash, blockEndTimeMs, signAndSubmitProgram, txSize } =
       yield* buildUnsignedCommitTx(
         contracts,
@@ -419,15 +472,11 @@ const databaseOperationsProgram = (
     const currentBlockStartTime = new Date(
       workerInput.data.currentBlockStartTimeMs,
     );
-    const processedPendingTxs =
-      mempoolTxs.length > 0 ? [] : yield* ProcessedMempoolDB.retrieve;
-    const processedPendingTxHashes = processedPendingTxs.map((entry) =>
-      Buffer.from(entry[TxColumns.TX_ID]),
-    );
-    const processedPendingTxsSize = processedPendingTxs.reduce(
-      (total, entry) => total + entry[TxColumns.TX].length,
-      0,
-    );
+    const processedPendingTxs = yield* ProcessedMempoolDB.retrieve;
+    const candidateSelection = selectCommitTxCandidates({
+      mempoolTxs,
+      processedMempoolTxs: processedPendingTxs,
+    });
     const depositIngestionBarrierTime =
       yield* fetchAndInsertDepositUTxOsForCommitBarrier(new Date());
     const withdrawalIngestionBarrierTime =
@@ -507,18 +556,26 @@ const databaseOperationsProgram = (
 
     const canBuildOnConfirmedBlock =
       hasAvailableConfirmedBlock && !workerInput.data.localFinalizationPending;
-    const initialLedgerEntries = yield* resolveCommitBaseLedgerEntries(
+    const commitBase = yield* resolveCommitBaseLedgerEntries(
       availableConfirmedBlock,
     );
+    const initialLedgerEntries = yield* alignCommitMpfsToBase({
+      ledgerMpf,
+      transactionsMpf,
+      base: commitBase,
+    });
     const processed = yield* processMpfs(
       ledgerMpf,
       transactionsMpf,
-      mempoolTxs,
+      candidateSelection.candidateTxs,
       {
         currentBlockStartTime: canBuildOnConfirmedBlock
           ? currentBlockStartTime
           : undefined,
-        processedOnlyEndTime: processedPendingTxs[0]?.[TxColumns.TIMESTAMPTZ],
+        processedOnlyEndTime:
+          candidateSelection.sourceTable === ProcessedMempoolDB.tableName
+            ? candidateSelection.candidateTxs[0]?.[TxColumns.TIMESTAMPTZ]
+            : undefined,
         depositVisibilityBarrierTime: canBuildOnConfirmedBlock
           ? depositIngestionBarrierTime
           : undefined,
@@ -556,27 +613,18 @@ const databaseOperationsProgram = (
       includedWithdrawalEventIds,
     } = processed;
 
-    const useDeferredProcessedPayload =
-      mempoolTxs.length === 0 &&
-      processed.processedMempoolTxs.length === 0 &&
-      processedPendingTxs.length > 0 &&
-      (availableConfirmedBlock !== "" ||
-        workerInput.data.localFinalizationPending);
-    const processedMempoolTxs = useDeferredProcessedPayload
-      ? processedPendingTxs
-      : processed.processedMempoolTxs;
-    const mempoolTxHashes = useDeferredProcessedPayload
-      ? processedPendingTxHashes
-      : processed.mempoolTxHashes;
-    const sizeOfProcessedTxs = useDeferredProcessedPayload
-      ? processedPendingTxsSize
-      : processed.sizeOfProcessedTxs;
-    const mempoolTxSourceTable = useDeferredProcessedPayload
-      ? ProcessedMempoolDB.tableName
-      : MempoolDB.tableName;
-    if (useDeferredProcessedPayload) {
+    const processedMempoolTxs = processed.processedMempoolTxs;
+    const mempoolTxHashes = processed.mempoolTxHashes;
+    const sizeOfProcessedTxs = processed.sizeOfProcessedTxs;
+    const mempoolTxSourceTable =
+      candidateSelection.sourceTable === "processed_mempool"
+        ? ProcessedMempoolDB.tableName
+        : candidateSelection.sourceTable === "mempool"
+          ? MempoolDB.tableName
+          : "none";
+    if (candidateSelection.sourceTable === "processed_mempool") {
       yield* Effect.logWarning(
-        `🔹 Reusing ${processedPendingTxs.length.toString()} deferred processed tx(s) as the tx-backed commit journal payload.`,
+        `🔹 Prioritizing ${processedPendingTxs.length.toString()} deferred processed tx(s) before newer mempool tx(s).`,
       );
     }
 
@@ -602,8 +650,7 @@ const databaseOperationsProgram = (
     }
 
     const mempoolTxsCount = processedMempoolTxs.length;
-    const optEndTime: Option.Option<Date> =
-      yield* establishEndTimeFromTxRequests(processedMempoolTxs);
+    const optEndTime = establishEndTimeFromTxRequests(processedMempoolTxs);
 
     const contracts = yield* MidgardContracts;
 
@@ -613,6 +660,16 @@ const databaseOperationsProgram = (
       // However, it is stored on disk in our LevelDB mempool. Therefore,
       // the processed txs must be transferred to `ProcessedMempoolDB` from
       // `MempoolDB`.
+      if (mempoolTxSourceTable === ProcessedMempoolDB.tableName) {
+        yield* Effect.logInfo(
+          "🔹 No confirmed block available and selected tx payload is already durable in ProcessedMempoolDB; preserving it for the next commit attempt.",
+        );
+        return {
+          type: "SkippedSubmissionOutput",
+          mempoolTxsCount: 0,
+          sizeOfProcessedTxs: 0,
+        } satisfies WorkerOutput;
+      }
       return yield* deferProcessedCommitPayloadUntilConfirmation({
         processedMempoolTxs,
         mempoolTxHashes,

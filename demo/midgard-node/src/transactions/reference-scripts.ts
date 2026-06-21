@@ -5,12 +5,14 @@ import {
   REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS,
   type ReferenceScriptAuthMintingPolicy,
   type ReferenceScriptAuthPolicyRef,
+  referenceScriptAuthTokenName,
   referenceScriptAuthTokenNameText,
 } from "@al-ft/midgard-sdk";
 import {
   type Assets,
   type LucidEvolution,
   type UTxO,
+  validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -74,6 +76,19 @@ const REFERENCE_SCRIPT_PROVIDER_FETCH_RETRY = {
   maxDelayMs: 8_000,
   jitterRatio: 0.25,
 } as const;
+
+type KupoMatchUtxo = {
+  readonly transaction_id: string;
+  readonly output_index: number;
+  readonly address: string;
+  readonly value: {
+    readonly coins: string;
+    readonly assets: Readonly<Record<string, string>>;
+  };
+  readonly datum_hash?: string | null;
+  readonly datum_type?: string | null;
+  readonly script_hash?: string | null;
+};
 
 export const REFERENCE_SCRIPT_COMMAND_NAMES = [
   "node-runtime",
@@ -180,6 +195,276 @@ const fetchReferenceScriptUtxosAt = (
     REFERENCE_SCRIPT_PROVIDER_FETCH_RETRY,
   );
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const parseKupoMatchUtxo = (value: unknown): KupoMatchUtxo => {
+  if (!isRecord(value)) {
+    throw new Error("Kupo match entry must be an object");
+  }
+  const rawValue = value.value;
+  if (!isRecord(rawValue)) {
+    throw new Error("Kupo match entry is missing value");
+  }
+  const rawAssets = rawValue.assets;
+  if (!isRecord(rawAssets)) {
+    throw new Error("Kupo match entry value.assets must be an object");
+  }
+  const transactionId = value.transaction_id;
+  const outputIndex = value.output_index;
+  const address = value.address;
+  const coins = rawValue.coins;
+  if (typeof transactionId !== "string" || transactionId.length === 0) {
+    throw new Error("Kupo match entry is missing transaction_id");
+  }
+  if (
+    typeof outputIndex !== "number" ||
+    !Number.isSafeInteger(outputIndex) ||
+    outputIndex < 0
+  ) {
+    throw new Error("Kupo match entry has an invalid output_index");
+  }
+  if (typeof address !== "string" || address.length === 0) {
+    throw new Error("Kupo match entry is missing address");
+  }
+  if (typeof coins !== "string" || !/^\d+$/.test(coins)) {
+    throw new Error("Kupo match entry value.coins must be a decimal string");
+  }
+  const assets: Record<string, string> = {};
+  for (const [unit, amount] of Object.entries(rawAssets)) {
+    if (typeof amount !== "string" || !/^\d+$/.test(amount)) {
+      throw new Error(
+        `Kupo match entry asset ${unit} must be a decimal string`,
+      );
+    }
+    assets[unit] = amount;
+  }
+  return {
+    transaction_id: transactionId,
+    output_index: outputIndex,
+    address,
+    value: {
+      coins,
+      assets,
+    },
+    ...(typeof value.datum_hash === "string" || value.datum_hash === null
+      ? { datum_hash: value.datum_hash }
+      : {}),
+    ...(typeof value.datum_type === "string" || value.datum_type === null
+      ? { datum_type: value.datum_type }
+      : {}),
+    ...(typeof value.script_hash === "string" || value.script_hash === null
+      ? { script_hash: value.script_hash }
+      : {}),
+  };
+};
+
+export const plainAdaOnlyUtxosFromKupoMatches = (
+  rawMatches: unknown,
+  walletAddress: string,
+): readonly UTxO[] => {
+  if (!Array.isArray(rawMatches)) {
+    throw new Error("Kupo matches response must be an array");
+  }
+  return rawMatches
+    .map(parseKupoMatchUtxo)
+    .filter((match) => {
+      if (match.address !== walletAddress) {
+        throw new Error(
+          `Kupo match address mismatch: expected=${walletAddress},actual=${match.address}`,
+        );
+      }
+      return (
+        match.datum_hash == null &&
+        match.datum_type == null &&
+        match.script_hash == null &&
+        Object.keys(match.value.assets).length === 0 &&
+        BigInt(match.value.coins) > 0n
+      );
+    })
+    .map(
+      (match): UTxO => ({
+        txHash: match.transaction_id,
+        outputIndex: match.output_index,
+        address: match.address,
+        assets: { lovelace: BigInt(match.value.coins) },
+      }),
+    )
+    .sort(compareOutRefs);
+};
+
+const lucidAssetsFromKupoAssets = (
+  coins: string,
+  rawAssets: Readonly<Record<string, string>>,
+): Assets => {
+  const assets: Assets = { lovelace: BigInt(coins) };
+  for (const [unit, amount] of Object.entries(rawAssets)) {
+    assets[unit.replace(".", "")] = BigInt(amount);
+  }
+  return assets;
+};
+
+const fetchKupoMatches = (
+  kupoUrl: string,
+  walletAddress: string,
+  failureMessage: string,
+): Effect.Effect<readonly KupoMatchUtxo[], SDK.StateQueueError> =>
+  Effect.tryPromise({
+    try: async () => {
+      const response = await fetch(
+        `${kupoUrl}/matches/${encodeURIComponent(walletAddress)}?unspent`,
+        {
+          headers: { accept: "application/json" },
+        },
+      );
+      if (!response.ok) {
+        throw new Error(
+          `Kupo returned HTTP ${response.status.toString()} ${response.statusText}`,
+        );
+      }
+      const body: unknown = await response.json();
+      if (!Array.isArray(body)) {
+        throw new Error("Kupo matches response must be an array");
+      }
+      return body.map(parseKupoMatchUtxo);
+    },
+    catch: (cause) =>
+      new SDK.StateQueueError({
+        message: failureMessage,
+        cause,
+      }),
+  });
+
+const assertKupoMatchAddress = (
+  match: KupoMatchUtxo,
+  walletAddress: string,
+): void => {
+  if (match.address !== walletAddress) {
+    throw new Error(
+      `Kupo match address mismatch: expected=${walletAddress},actual=${match.address}`,
+    );
+  }
+};
+
+const kupoRoleUnit = (
+  authPolicy: ReferenceScriptAuthPolicyRef,
+  target: ReferenceScriptTarget,
+): string =>
+  `${authPolicy.policyId}.${referenceScriptAuthTokenName(target.name)}`;
+
+const targetScriptHash = (target: ReferenceScriptTarget): string =>
+  validatorToScriptHash(target.script);
+
+export const referenceScriptUtxosFromKupoMatches = (
+  matches: readonly KupoMatchUtxo[],
+  walletAddress: string,
+  targets: readonly ReferenceScriptTarget[],
+  authPolicy: ReferenceScriptAuthPolicyRef,
+): readonly UTxO[] => {
+  const expectedByRoleUnit = new Map(
+    targets.map((target) => [
+      kupoRoleUnit(authPolicy, target),
+      {
+        target,
+        scriptHash: targetScriptHash(target),
+      },
+    ]),
+  );
+  const resolved: UTxO[] = [];
+  for (const match of matches) {
+    assertKupoMatchAddress(match, walletAddress);
+    if (match.script_hash == null) {
+      continue;
+    }
+    const matchingTarget = Object.entries(match.value.assets)
+      .filter(([, amount]) => BigInt(amount) > 0n)
+      .flatMap(([unit]) => {
+        const expected = expectedByRoleUnit.get(unit);
+        return expected === undefined ? [] : [expected];
+      })[0];
+    if (matchingTarget === undefined) {
+      continue;
+    }
+    if (match.script_hash !== matchingTarget.scriptHash) {
+      continue;
+    }
+    resolved.push({
+      txHash: match.transaction_id,
+      outputIndex: match.output_index,
+      address: match.address,
+      assets: lucidAssetsFromKupoAssets(match.value.coins, match.value.assets),
+      scriptRef: matchingTarget.target.script,
+    });
+  }
+  return resolved.sort(compareOutRefs);
+};
+
+export const fetchReferenceScriptUtxosForTargets = (
+  lucid: LucidEvolution,
+  referenceScriptsAddress: string,
+  targets: readonly ReferenceScriptTarget[],
+  authPolicy: ReferenceScriptAuthPolicyRef,
+  label: string,
+  failureMessage: string,
+): Effect.Effect<readonly UTxO[], SDK.StateQueueError> => {
+  const kupoUrl = kupmiosKupoUrlFromLucid(lucid);
+  if (kupoUrl === undefined) {
+    return fetchReferenceScriptUtxosAt(
+      lucid,
+      referenceScriptsAddress,
+      label,
+      failureMessage,
+    );
+  }
+  return runProviderStepWithRetry(
+    label,
+    Effect.gen(function* () {
+      const matches = yield* fetchKupoMatches(
+        kupoUrl,
+        referenceScriptsAddress,
+        failureMessage,
+      );
+      return referenceScriptUtxosFromKupoMatches(
+        matches,
+        referenceScriptsAddress,
+        targets,
+        authPolicy,
+      );
+    }),
+    REFERENCE_SCRIPT_PROVIDER_FETCH_RETRY,
+  );
+};
+
+const kupmiosKupoUrlFromLucid = (lucid: LucidEvolution): string | undefined => {
+  const config = (lucid as { readonly config?: unknown }).config;
+  if (typeof config !== "function") {
+    return undefined;
+  }
+  const provider = (config as () => { readonly provider?: unknown })()
+    .provider as { readonly kupoUrl?: unknown } | undefined;
+  if (provider === undefined) {
+    return undefined;
+  }
+  if (typeof provider.kupoUrl !== "string" || provider.kupoUrl.length === 0) {
+    return undefined;
+  }
+  return provider.kupoUrl.replace(/\/+$/, "");
+};
+
+const fetchPlainAdaOnlyWalletUtxosFromKupo = (
+  kupoUrl: string,
+  walletAddress: string,
+  failureMessage: string,
+): Effect.Effect<readonly UTxO[], SDK.StateQueueError> =>
+  Effect.gen(function* () {
+    const matches = yield* fetchKupoMatches(
+      kupoUrl,
+      walletAddress,
+      failureMessage,
+    );
+    return plainAdaOnlyUtxosFromKupoMatches(matches, walletAddress);
+  });
+
 export const fetchReferenceScriptUtxosProgram = (
   lucid: LucidEvolution,
   referenceScriptsAddress: string,
@@ -187,9 +472,11 @@ export const fetchReferenceScriptUtxosProgram = (
   authPolicy: ReferenceScriptAuthPolicyRef,
 ): Effect.Effect<readonly ReferenceScriptResolved[], SDK.StateQueueError> =>
   Effect.gen(function* () {
-    const referenceScriptUtxos = yield* fetchReferenceScriptUtxosAt(
+    const referenceScriptUtxos = yield* fetchReferenceScriptUtxosForTargets(
       lucid,
       referenceScriptsAddress,
+      targets,
+      authPolicy,
       `reference-script UTxO fetch at ${referenceScriptsAddress}`,
       `Failed to fetch reference-script UTxOs at ${referenceScriptsAddress}`,
     );
@@ -692,10 +979,14 @@ const refreshWalletUtxosFromOwnAddress = (
           cause,
         }),
     });
-    const cachedWalletUtxos = yield* Effect.tryPromise({
-      try: () => lucid.wallet().getUtxos(),
-      catch: () => [] as readonly UTxO[],
-    }).pipe(Effect.catchAll(() => Effect.succeed([] as readonly UTxO[])));
+    const kupoUrl = kupmiosKupoUrlFromLucid(lucid);
+    const cachedWalletUtxos =
+      kupoUrl === undefined
+        ? yield* Effect.tryPromise({
+            try: () => lucid.wallet().getUtxos(),
+            catch: () => [] as readonly UTxO[],
+          }).pipe(Effect.catchAll(() => Effect.succeed([] as readonly UTxO[])))
+        : [];
 
     let refreshedWalletUtxos: readonly UTxO[] | null = null;
     let lastCause: unknown = null;
@@ -705,10 +996,16 @@ const refreshWalletUtxosFromOwnAddress = (
       attempt += 1
     ) {
       const atAddressAttempt = yield* Effect.either(
-        Effect.tryPromise({
-          try: () => lucid.utxosAt(walletAddress),
-          catch: (cause) => cause,
-        }),
+        kupoUrl === undefined
+          ? Effect.tryPromise({
+              try: () => lucid.utxosAt(walletAddress),
+              catch: (cause) => cause,
+            })
+          : fetchPlainAdaOnlyWalletUtxosFromKupo(
+              kupoUrl,
+              walletAddress,
+              failureMessage,
+            ),
       );
       if (atAddressAttempt._tag === "Right") {
         const mergedWalletUtxos = mergeWalletUtxosPreservingScriptRefs(
@@ -1446,9 +1743,11 @@ export const ensureReferenceScriptTargetsProgram = (
       readonly UTxO[],
       SDK.StateQueueError
     > =>
-      fetchReferenceScriptUtxosAt(
+      fetchReferenceScriptUtxosForTargets(
         referenceScriptsLucid,
         referenceScriptsAddress,
+        targets,
+        authPolicy,
         `${scopeName} reference-script publication UTxO fetch at ${referenceScriptsAddress}`,
         `Failed to fetch reference-script UTxOs at ${referenceScriptsAddress} while resolving ${scopeName}`,
       );
@@ -1719,9 +2018,11 @@ export const planReferenceScriptCommandProgram = (
     const resolvedReferenceScriptsAddress =
       referenceScriptsAddress ?? walletAddress;
     const targets = referenceScriptTargetsByCommand(contracts)[commandName];
-    const referenceScriptUtxos = yield* fetchReferenceScriptUtxosAt(
+    const referenceScriptUtxos = yield* fetchReferenceScriptUtxosForTargets(
       referenceScriptsLucid,
       resolvedReferenceScriptsAddress,
+      targets,
+      authPolicy,
       `${commandName} reference-script deployment plan UTxO fetch at ${resolvedReferenceScriptsAddress}`,
       `Failed to fetch reference-script UTxOs while planning ${commandName}`,
     );
@@ -1938,9 +2239,11 @@ export const verifyNodeRuntimeReferenceScriptsProgram = (
 ): Effect.Effect<readonly ReferenceScriptResolved[], SDK.StateQueueError> =>
   Effect.gen(function* () {
     const targets = nodeRuntimeReferenceScriptTargets(contracts);
-    const referenceScriptUtxos = yield* fetchReferenceScriptUtxosAt(
+    const referenceScriptUtxos = yield* fetchReferenceScriptUtxosForTargets(
       lucid,
       referenceScriptsAddress,
+      targets,
+      authPolicy,
       `node-runtime reference-script UTxO fetch at ${referenceScriptsAddress}`,
       `Failed to fetch node-runtime reference-script UTxOs at ${referenceScriptsAddress}`,
     );

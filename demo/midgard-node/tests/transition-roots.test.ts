@@ -21,22 +21,13 @@ import {
   verifyRootMembershipProof,
   verifyRootNonMembershipProof,
 } from "../src/workers/commit-block-header/transition-roots.js";
-
-const h32 = (byte: number) => byte.toString(16).padStart(2, "0").repeat(32);
-const h28 = (byte: number) => byte.toString(16).padStart(2, "0").repeat(28);
-
-const outputReference = (byte: number): SDK.OutputReference => ({
-  transactionId: h32(byte),
-  outputIndex: 0n,
-});
-
-const withdrawalEventKey = (byte: number): SDK.EventKey => ({
-  WithdrawalEventKey: { withdrawal_id: outputReference(byte) },
-});
-
-const depositEventKey = (byte: number): SDK.EventKey => ({
-  DepositEventKey: { deposit_id: outputReference(byte) },
-});
+import {
+  depositEventKey,
+  h28,
+  h32,
+  outputReference,
+  withdrawalEventKey,
+} from "./helpers/transition-fixtures.js";
 
 const transitionStep = ({
   stepIndex,

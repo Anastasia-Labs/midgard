@@ -892,10 +892,8 @@ describe("WatcherService", () => {
           calls.push("init");
           return "initTx";
         },
-        addSignatures: async ({ packedWitnessesHex, signerIndexes }) => {
-          calls.push(
-            `add:${signerIndexes.join(",")}:${packedWitnessesHex.slice(0, 2)}`,
-          );
+        addSignatures: async ({ signerIndexes }) => {
+          calls.push(`add:${signerIndexes.join(",")}`);
           return "addTx";
         },
         applyAttestation: async ({ candidate }) => {
@@ -936,7 +934,7 @@ describe("WatcherService", () => {
       skippedHeaders: 1,
       errors: [],
     });
-    expect(calls).toEqual(["add:0:00", `apply:${initialized.outRef}`]);
+    expect(calls).toEqual(["add:0", `apply:${initialized.outRef}`]);
     await expect(store.listL1Submissions()).resolves.toMatchObject([
       { headerHash, txKind: "add_signatures", txHash: "addTx" },
       { headerHash, txKind: "apply", txHash: "applyTx" },
@@ -1064,10 +1062,8 @@ describe("WatcherService", () => {
         initAttestation: async () => {
           throw new Error("unexpected init");
         },
-        addSignatures: async ({ packedWitnessesHex, signerIndexes }) => {
-          calls.push(
-            `add:${signerIndexes.join(",")}:${packedWitnessesHex.slice(0, 2)}`,
-          );
+        addSignatures: async ({ signerIndexes }) => {
+          calls.push(`add:${signerIndexes.join(",")}`);
           return "addTx";
         },
         applyAttestation: async ({ candidate }) => {
@@ -1105,14 +1101,14 @@ describe("WatcherService", () => {
       skippedHeaders: 0,
       errors: [],
     });
-    expect(calls).toEqual(["add:0,1:00", `apply:${initialized.outRef}`]);
+    expect(calls).toEqual(["add:0", `apply:${initialized.outRef}`]);
     await expect(store.listL1Submissions()).resolves.toMatchObject([
       { headerHash, txKind: "add_signatures", txHash: "addTx" },
       { headerHash, txKind: "apply", txHash: "applyTx" },
     ]);
   });
 
-  it("submitter-only mode polls peer signatures and submits the L1 lifecycle", async () => {
+  it("submitter-only mode polls peer signatures and initializes the L1 lifecycle", async () => {
     const dir = await tempDir();
     const { header, headerHash, payloadCbor } = await makePayloadFixture();
     const signer0 = await loadDaSigner(`hex:${"00".repeat(31)}01`);
@@ -1308,7 +1304,11 @@ describe("WatcherService", () => {
         skippedHeaders: 1,
         errors: [],
       });
-      expect(calls).toEqual(["init", "add:0,1", `apply:${initialized.outRef}`]);
+      expect(calls).toEqual([
+        "init",
+        "add:0,1",
+        `apply:${threshold.outRef}`,
+      ]);
       await expect(store.listDaSignatures(headerHash)).resolves.toMatchObject([
         { headerHash, signerIndex: 0, source: "peer" },
         { headerHash, signerIndex: 1, source: "peer" },

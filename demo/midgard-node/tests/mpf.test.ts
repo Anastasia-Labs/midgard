@@ -25,6 +25,7 @@ import {
 
 const TEST_DB = "test-mpf-db";
 const EMPTY_DELETE_DB = "test-mpf-empty-delete-db";
+const BATCH_PERSIST_DB = "test-mpf-batch-persist-db";
 const CORRUPT_DB = "test-mpf-corrupt-db";
 const key1 = Buffer.from("01", "hex");
 const key2 = Buffer.from("02", "hex");
@@ -64,6 +65,9 @@ beforeAll(async () => {
   await Effect.runPromise(
     deleteMpfStore(EMPTY_DELETE_DB, "test-mpf-empty-delete"),
   );
+  await Effect.runPromise(
+    deleteMpfStore(BATCH_PERSIST_DB, "test-mpf-batch-persist"),
+  );
   await Effect.runPromise(deleteMpfStore(CORRUPT_DB, "test-mpf-corrupt"));
 });
 
@@ -71,6 +75,9 @@ afterAll(async () => {
   await Effect.runPromise(deleteMpfStore(TEST_DB, "test-mpf"));
   await Effect.runPromise(
     deleteMpfStore(EMPTY_DELETE_DB, "test-mpf-empty-delete"),
+  );
+  await Effect.runPromise(
+    deleteMpfStore(BATCH_PERSIST_DB, "test-mpf-batch-persist"),
   );
   await Effect.runPromise(deleteMpfStore(CORRUPT_DB, "test-mpf-corrupt"));
 });
@@ -165,6 +172,33 @@ describe("Midgard MPF wrapper", () => {
 
       expect(firstRoot.toString("hex")).not.toBe(secondRoot);
       expect(restored._tag).toBe("Some");
+    }),
+  );
+
+  it.effect("persists the root marker after a successful batch", () =>
+    Effect.gen(function* () {
+      const mpf = yield* MidgardMpf.create(
+        "test-mpf-batch-persist",
+        BATCH_PERSIST_DB,
+      );
+      yield* mpf.applyBatch([
+        { type: "insert", key: key1, value: value1 },
+        { type: "insert", key: key2, value: value2 },
+      ]);
+      const rootHex = yield* mpf.rootHex();
+      yield* mpf.close();
+
+      const reopened = yield* MidgardMpf.create(
+        "test-mpf-batch-persist",
+        BATCH_PERSIST_DB,
+      );
+      const reopenedRootHex = yield* reopened.rootHex();
+      const reopenedValue = yield* reopened.get(key2);
+      yield* reopened.close();
+
+      expect(rootHex).not.toBe(SDK.EMPTY_MERKLE_TREE_ROOT);
+      expect(reopenedRootHex).toBe(rootHex);
+      expect(reopenedValue._tag).toBe("Some");
     }),
   );
 

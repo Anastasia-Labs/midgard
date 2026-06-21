@@ -7,6 +7,7 @@ import {
   DepositsDB,
   ForcedTransactionsDB,
   PendingBlockFinalizationsDB,
+  ProcessedMempoolDB,
   TxUtils as TxTable,
   WithdrawalsDB,
 } from "@/database/index.js";
@@ -19,7 +20,11 @@ import {
 } from "@/operator-wallet-view.js";
 import type { Database } from "@/services/index.js";
 import { Lucid } from "@/services/index.js";
-import { TxSignError, TxSubmitError } from "@/transactions/utils.js";
+import {
+  isUnknownOutputReferenceSubmitError,
+  TxSignError,
+  TxSubmitError,
+} from "@/transactions/utils.js";
 import type {
   WorkerInput,
   WorkerOutput,
@@ -50,11 +55,14 @@ import {
   assertPendingJournalCompleteness,
   buildPendingJournalMetadata,
   revalidateStateQueueLease,
+  resolveLiveTailCommitBase,
 } from "./pending-journal.js";
 import {
   getHeaderFromStateQueueDatumLocal,
   hashBlockHeaderLocal,
+  stateQueueOutRef,
 } from "./state-queue.js";
+import { makeEventCommitments } from "./transition-commitments.js";
 
 const COMMIT_STALE_OPERATOR_WALLET_VIEW_RETRIES = 1;
 
@@ -123,6 +131,33 @@ const journalUtxoEntries = (
     [PendingBlockFinalizationsDB.UtxoColumns.OUTREF]: entry.outref,
     [PendingBlockFinalizationsDB.UtxoColumns.OUTPUT]: entry.output,
   }));
+
+const submitErrorReferencesOutRef = (
+  error: TxSubmitError,
+  outRef: string,
+): boolean => {
+  const [txHash, outputIndex] = outRef.split("#");
+  if (txHash === undefined || outputIndex === undefined) {
+    return false;
+  }
+  const detail = formatUnknownError(error, { includeCause: true }).replace(
+    /\\"/g,
+    '"',
+  );
+  return (
+    isUnknownOutputReferenceSubmitError(detail) &&
+    detail.includes(txHash) &&
+    (detail.includes(`"index":${outputIndex}`) ||
+      detail.includes(`"index": ${outputIndex}`) ||
+      detail.includes(`#${outputIndex}`))
+  );
+};
+
+const isStaleCommitBaseError = (error: unknown): boolean =>
+  error instanceof SDK.StateQueueError &&
+  formatUnknownError(error, { includeCause: true }).includes(
+    "Commit base is stale",
+  );
 
 const runWithStaleOperatorWalletRetry = <A, E, R>({
   label,
@@ -311,33 +346,36 @@ export const submitDepositOnlyCommit = ({
       eventToStepRoot,
       eventToStepMemberCount: eventToStepMembers.length,
     });
-    const transitionCommitments =
-      yield* SDK.makeHeaderTransitionCommitmentsProgram({
+    const transitionCommitments = yield* makeEventCommitments(
+      {
         withdrawalsRoot,
         forcedTransactionsRoot,
         transactionsRoot: roots.txRoot,
         depositsRoot,
+        transitionTraceRoot,
+        eventToStepRoot,
+      },
+      {
         withdrawalCount: BigInt(includedWithdrawalEventIds.length),
         forcedTransactionCount: BigInt(
           includedForcedTransactionEventIds.length,
         ),
         l2TransactionCount: 0n,
         depositCount: BigInt(includedDepositEventIds.length),
-        transitionTraceRoot,
-        eventToStepRoot,
         transitionStepCount: BigInt(transitionStepCount),
-      });
+      },
+    );
 
     const submitCommitAttempt = (
       initialOperatorWalletView?: OperatorWalletView,
       previousPendingHeaderHash?: Buffer,
     ) =>
       revalidateStateQueueLease(workerInput).pipe(
-        Effect.andThen(assertLiveTailCommitBase(contracts, latestBlock)),
-        Effect.andThen(
+        Effect.andThen(resolveLiveTailCommitBase(contracts, latestBlock)),
+        Effect.flatMap((commitBaseTail) =>
           buildUnsignedCommitTx(
             contracts,
-            latestBlock,
+            commitBaseTail,
             roots.utxoRoot,
             roots.txRoot,
             depositsRoot,
@@ -345,16 +383,15 @@ export const submitDepositOnlyCommit = ({
             transitionCommitments,
             endTime,
             initialOperatorWalletView,
-          ),
-        ),
-        Effect.flatMap(
-          ({
-            newHeaderHash,
-            newHeaderCbor,
-            blockEndTimeMs,
-            signAndSubmitProgram,
-            txSize,
-          }) =>
+          ).pipe(
+            Effect.flatMap(
+              ({
+                newHeaderHash,
+                newHeaderCbor,
+                blockEndTimeMs,
+                signAndSubmitProgram,
+                txSize,
+              }) =>
             Effect.gen(function* () {
               const headerHashBuffer = Buffer.from(fromHex(newHeaderHash));
               yield* maybeAbandonPreviousStaleAttempt(
@@ -366,7 +403,7 @@ export const submitDepositOnlyCommit = ({
                   headerHash: headerHashBuffer,
                   headerCbor: newHeaderCbor,
                   metadata: yield* buildPendingJournalMetadata({
-                    latestBlock,
+                    latestBlock: commitBaseTail,
                     workerInput,
                     blockEndTimeMs,
                     expectedRoots: {
@@ -410,7 +447,7 @@ export const submitDepositOnlyCommit = ({
                   Effect.matchEffect(
                     revalidateStateQueueLease(workerInput).pipe(
                       Effect.andThen(
-                        assertLiveTailCommitBase(contracts, latestBlock),
+                        assertLiveTailCommitBase(contracts, commitBaseTail),
                       ),
                       Effect.andThen(signAndSubmitProgram),
                     ),
@@ -419,6 +456,7 @@ export const submitDepositOnlyCommit = ({
                         handleDepositOnlySubmissionFailure({
                           error,
                           headerHashBuffer,
+                          expectedTailOutRef: stateQueueOutRef(commitBaseTail),
                         }),
                       onSuccess: (txHash) =>
                         PendingBlockFinalizationsDB.markSubmitted(
@@ -438,16 +476,24 @@ export const submitDepositOnlyCommit = ({
                 ),
               );
             }),
+            ),
+          ),
         ),
       );
 
     const handleDepositOnlySubmissionFailure = ({
       error,
       headerHashBuffer,
+      expectedTailOutRef,
     }: {
       readonly error: unknown;
       readonly headerHashBuffer: Buffer;
-    }) =>
+      readonly expectedTailOutRef: string;
+    }): Effect.Effect<
+      WorkerOutput,
+      StaleOperatorWalletRetrySignal,
+      Database
+    > =>
       error instanceof TxSubmitError &&
       isPotentiallyStaleOperatorWalletViewError(error)
         ? signalStaleOperatorWalletRetry({
@@ -455,6 +501,31 @@ export const submitDepositOnlyCommit = ({
             error,
             label: "User-event-only commit submission",
           })
+        : error instanceof TxSubmitError &&
+            submitErrorReferencesOutRef(error, expectedTailOutRef)
+          ? Effect.gen(function* () {
+              yield* PendingBlockFinalizationsDB.markAbandoned(
+                headerHashBuffer,
+              ).pipe(Effect.catchAll(() => Effect.void));
+              yield* Effect.logWarning(
+                `🔹 User-event-only commit submission hit stale state-queue tail ${expectedTailOutRef}; the next worker tick will rebuild against the refreshed live tail.`,
+              );
+              return {
+                type: "NothingToCommitOutput",
+              } satisfies WorkerOutput;
+            })
+          : isStaleCommitBaseError(error)
+            ? Effect.gen(function* () {
+                yield* PendingBlockFinalizationsDB.markAbandoned(
+                  headerHashBuffer,
+                ).pipe(Effect.catchAll(() => Effect.void));
+                yield* Effect.logWarning(
+                  `🔹 User-event-only commit base ${expectedTailOutRef} became stale before submission; rolling back local roots for a rebuild on the next worker tick.`,
+                );
+                return {
+                  type: "NothingToCommitOutput",
+                } satisfies WorkerOutput;
+              })
         : Effect.gen(function* () {
             yield* PendingBlockFinalizationsDB.markAbandoned(
               headerHashBuffer,
@@ -570,22 +641,25 @@ export const submitTxBackedCommit = ({
       eventToStepRoot,
       eventToStepMemberCount: eventToStepMembers.length,
     });
-    const transitionCommitments =
-      yield* SDK.makeHeaderTransitionCommitmentsProgram({
+    const transitionCommitments = yield* makeEventCommitments(
+      {
         withdrawalsRoot,
         forcedTransactionsRoot,
         transactionsRoot: txRoot,
         depositsRoot,
+        transitionTraceRoot,
+        eventToStepRoot,
+      },
+      {
         withdrawalCount: BigInt(includedWithdrawalEventIds.length),
         forcedTransactionCount: BigInt(
           includedForcedTransactionEventIds.length,
         ),
         l2TransactionCount: BigInt(currentBlockMempoolTxsCount),
         depositCount: BigInt(includedDepositEventIds.length),
-        transitionTraceRoot,
-        eventToStepRoot,
         transitionStepCount: BigInt(transitionStepCount),
-      });
+      },
+    );
     const submittedAwaitingConfirmationOutput = (
       submittedTxHash: string,
       txSize: number,
@@ -601,6 +675,55 @@ export const submitTxBackedCommit = ({
           sizeOfProcessedTxs + workerInput.data.sizeOfProcessedTxsSoFar,
         blockEndTimeMs,
       } satisfies WorkerOutput);
+    const selectedPayloadAlreadyDeferred =
+      mempoolTxSourceTable === ProcessedMempoolDB.tableName;
+    const newlyDeferredTxsCount = selectedPayloadAlreadyDeferred
+      ? 0
+      : currentBlockMempoolTxsCount;
+    const newlyDeferredTxsSize = selectedPayloadAlreadyDeferred
+      ? 0
+      : sizeOfProcessedTxs;
+    const preserveTxPayloadForRetryAfterSubmitFailure = (
+      error: TxSubmitError,
+    ): Effect.Effect<WorkerOutput, never, Database> =>
+      Effect.gen(function* () {
+        if (selectedPayloadAlreadyDeferred) {
+          yield* Effect.logWarning(
+            "🔹 Commit submission failed while the selected tx payload was already in ProcessedMempoolDB; preserving durable retry rows without another transfer.",
+          );
+          return yield* failedSubmissionProgram(
+            transactionsMpf,
+            newlyDeferredTxsCount,
+            newlyDeferredTxsSize,
+            error,
+          );
+        }
+
+        const transferResult = yield* Effect.either(
+          skippedSubmissionProgram(processedMempoolTxs, mempoolTxHashes),
+        );
+        if (transferResult._tag === "Left") {
+          const detail = formatUnknownError(transferResult.left);
+          yield* Effect.logError(
+            `🔹 Commit submission failed and deferred transfer failed: submit=${formatUnknownError(
+              error,
+            )}; transfer=${detail}`,
+          );
+          return {
+            type: "FailureOutput",
+            error: `Commit submission failed and deferred transfer failed: submit=${formatUnknownError(
+              error,
+            )}; transfer=${detail}`,
+          } satisfies WorkerOutput;
+        }
+
+        return yield* failedSubmissionProgram(
+          transactionsMpf,
+          newlyDeferredTxsCount,
+          newlyDeferredTxsSize,
+          error,
+        );
+      });
 
     yield* Effect.logInfo(`🔹 Deposits root is: ${depositsRoot}`);
     yield* Effect.logInfo(
@@ -613,11 +736,11 @@ export const submitTxBackedCommit = ({
       previousPendingHeaderHash?: Buffer,
     ) =>
       revalidateStateQueueLease(workerInput).pipe(
-        Effect.andThen(assertLiveTailCommitBase(contracts, latestBlock)),
-        Effect.andThen(
+        Effect.andThen(resolveLiveTailCommitBase(contracts, latestBlock)),
+        Effect.flatMap((commitBaseTail) =>
           buildUnsignedCommitTx(
             contracts,
-            latestBlock,
+            commitBaseTail,
             utxoRoot,
             txRoot,
             depositsRoot,
@@ -625,16 +748,15 @@ export const submitTxBackedCommit = ({
             transitionCommitments,
             endTime,
             initialOperatorWalletView,
-          ),
-        ),
-        Effect.flatMap(
-          ({
-            newHeaderHash,
-            newHeaderCbor,
-            blockEndTimeMs,
-            signAndSubmitProgram,
-            txSize,
-          }) =>
+          ).pipe(
+            Effect.flatMap(
+              ({
+                newHeaderHash,
+                newHeaderCbor,
+                blockEndTimeMs,
+                signAndSubmitProgram,
+                txSize,
+              }) =>
             Effect.gen(function* () {
               const headerHashBuffer = Buffer.from(fromHex(newHeaderHash));
               yield* maybeAbandonPreviousStaleAttempt(
@@ -646,7 +768,7 @@ export const submitTxBackedCommit = ({
                   headerHash: headerHashBuffer,
                   headerCbor: newHeaderCbor,
                   metadata: yield* buildPendingJournalMetadata({
-                    latestBlock,
+                    latestBlock: commitBaseTail,
                     workerInput,
                     blockEndTimeMs,
                     expectedRoots: {
@@ -692,7 +814,7 @@ export const submitTxBackedCommit = ({
                   Effect.matchEffect(
                     revalidateStateQueueLease(workerInput).pipe(
                       Effect.andThen(
-                        assertLiveTailCommitBase(contracts, latestBlock),
+                        assertLiveTailCommitBase(contracts, commitBaseTail),
                       ),
                       Effect.andThen(signAndSubmitProgram),
                     ),
@@ -726,10 +848,40 @@ export const submitTxBackedCommit = ({
                             });
                           }
 
+                          if (
+                            error instanceof TxSubmitError &&
+                            submitErrorReferencesOutRef(
+                              error,
+                              stateQueueOutRef(commitBaseTail),
+                            )
+                          ) {
+                            yield* PendingBlockFinalizationsDB.markAbandoned(
+                              headerHashBuffer,
+                            ).pipe(Effect.catchAll(() => Effect.void));
+                            yield* Effect.logWarning(
+                              `🔹 Tx-backed commit submission hit stale state-queue tail ${stateQueueOutRef(
+                                commitBaseTail,
+                              )}; preserving tx payload for rebuild against the refreshed live tail.`,
+                            );
+                            return yield* preserveTxPayloadForRetryAfterSubmitFailure(
+                              error,
+                            );
+                          }
+
                           if (!(error instanceof TxSubmitError)) {
                             yield* PendingBlockFinalizationsDB.markAbandoned(
                               headerHashBuffer,
                             ).pipe(Effect.catchAll(() => Effect.void));
+                            if (isStaleCommitBaseError(error)) {
+                              yield* Effect.logWarning(
+                                `🔹 Tx-backed commit base ${stateQueueOutRef(
+                                  commitBaseTail,
+                                )} became stale before submission; rolling back local roots for a rebuild on the next worker tick.`,
+                              );
+                              return {
+                                type: "NothingToCommitOutput",
+                              } satisfies WorkerOutput;
+                            }
                             const detail = formatUnknownError(error);
                             yield* Effect.logError(
                               `🔹 Commit aborted before submission: ${detail}`,
@@ -763,33 +915,7 @@ export const submitTxBackedCommit = ({
                           yield* PendingBlockFinalizationsDB.markAbandoned(
                             headerHashBuffer,
                           ).pipe(Effect.catchAll(() => Effect.void));
-                          const transferResult = yield* Effect.either(
-                            skippedSubmissionProgram(
-                              processedMempoolTxs,
-                              mempoolTxHashes,
-                            ),
-                          );
-                          if (transferResult._tag === "Left") {
-                            const detail = formatUnknownError(
-                              transferResult.left,
-                            );
-                            yield* Effect.logError(
-                              `🔹 Commit submission failed and deferred transfer failed: submit=${formatUnknownError(
-                                error,
-                              )}; transfer=${detail}`,
-                            );
-                            return {
-                              type: "FailureOutput",
-                              error: `Commit submission failed and deferred transfer failed: submit=${formatUnknownError(
-                                error,
-                              )}; transfer=${detail}`,
-                            } satisfies WorkerOutput;
-                          }
-
-                          return yield* failedSubmissionProgram(
-                            transactionsMpf,
-                            currentBlockMempoolTxsCount,
-                            sizeOfProcessedTxs,
+                          return yield* preserveTxPayloadForRetryAfterSubmitFailure(
                             error,
                           );
                         });
@@ -812,6 +938,8 @@ export const submitTxBackedCommit = ({
                 ),
               );
             }),
+            ),
+          ),
         ),
       );
 

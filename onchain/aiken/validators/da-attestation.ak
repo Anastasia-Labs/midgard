@@ -12,7 +12,8 @@ use midgard/common/utils
 use midgard/da_attestation_types.{
   AddSignatures, ApplyToStateQueue, BurnForStateQueue, DaAttestationDatum,
   DaParamsDatum, Init, MintRedeemer, SpendRedeemer,
-  attestation_asset_name_prefix, da_params_asset_name,
+  attestation_asset_name_prefix, attested_signer_bitmap_byte_count,
+  da_params_asset_name,
   empty_attested_signer_bitmap, signature_byte_count,
   signature_witness_byte_count, state_queue_mint_reference_script_asset_name,
   verification_key_byte_count,
@@ -32,6 +33,37 @@ fn attestation_message(header_hash: HeaderHash) -> ByteArray {
 
 fn bytearray_slice(bytes: ByteArray, offset: Int, byte_count: Int) -> ByteArray {
   builtin.slice_bytearray(offset, byte_count, bytes)
+}
+
+fn signer_bit_mask(signer_index: Int) -> Int {
+  let byte_index = signer_index / 8
+  let bit_in_byte = signer_index - byte_index * 8
+  bytearray.at(#[128, 64, 32, 16, 8, 4, 2, 1], bit_in_byte)
+}
+
+fn signer_bit_is_clear(byte: Int, mask: Int) -> Bool {
+  let high_bit_window = byte / mask
+  let next_window = byte / (mask * 2)
+  high_bit_window - next_window * 2 == 0
+}
+
+fn set_attested_signer(attested: ByteArray, signer_index: Int) -> ByteArray {
+  expect bytearray.length(attested) == attested_signer_bitmap_byte_count
+
+  let byte_index = signer_index / 8
+  let mask = signer_bit_mask(signer_index)
+  let old_byte = bytearray.at(attested, byte_index)
+  expect signer_bit_is_clear(old_byte, mask)
+
+  bytearray_slice(attested, 0, byte_index)
+    |> bytearray.concat(builtin.cons_bytearray(old_byte + mask, #""))
+    |> bytearray.concat(
+        bytearray_slice(
+          attested,
+          byte_index + 1,
+          attested_signer_bitmap_byte_count - byte_index - 1,
+        ),
+      )
 }
 
 fn get_da_params(
@@ -127,14 +159,14 @@ fn verify_indexed_signatures(
   min_signer_index: Int,
   signature_cursor: Int,
   signatures_len: Int,
-  attested_bit_indexes: List<Int>,
 ) -> ByteArray {
   if signature_cursor == signatures_len {
-    builtin.write_bits(input_attested, attested_bit_indexes, True)
+    input_attested
   } else {
     let signer_index = bytearray.at(signatures, signature_cursor)
     expect signer_index >= min_signer_index
-    let signer_bit_index = 255 - signer_index
+    expect
+      signer_index < bytearray.length(committee_signers) / verification_key_byte_count
 
     let verification_key =
       bytearray_slice(
@@ -145,16 +177,16 @@ fn verify_indexed_signatures(
     let signature =
       bytearray_slice(signatures, signature_cursor + 1, signature_byte_count)
     expect verify_ed25519_signature(verification_key, message, signature)
+    let attested_signers = set_attested_signer(input_attested, signer_index)
 
     verify_indexed_signatures(
       signatures,
       message,
       committee_signers,
-      input_attested,
+      attested_signers,
       signer_index + 1,
       signature_cursor + signature_witness_byte_count,
       signatures_len,
-      [signer_bit_index, ..attested_bit_indexes],
     )
   }
 }
@@ -229,6 +261,8 @@ pub fn validate_add_signatures(
   expect params.committee_signers_hash == input_datum.committee_signers_hash
 
   let signatures_len = bytearray.length(signatures)
+  expect signatures_len > 0
+  expect signatures_len % signature_witness_byte_count == 0
 
   let attested_signers =
     verify_indexed_signatures(
@@ -239,7 +273,6 @@ pub fn validate_add_signatures(
       0,
       0,
       signatures_len,
-      [],
     )
   let attestation_count = builtin.count_set_bits(attested_signers)
   expect output_datum.attested_signers == attested_signers

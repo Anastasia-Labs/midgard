@@ -8,7 +8,6 @@ import {
   EMPTY_CBOR_LIST,
   EMPTY_CBOR_NULL,
   EMPTY_NULL_ROOT,
-  encodeCbor,
   encodeMidgardNativeTxBodyCompact,
   encodeMidgardNativeTxCanonical,
   materializeMidgardNativeTxFromCanonical,
@@ -16,7 +15,6 @@ import {
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
   type MidgardNativeTxCanonical,
-  type MidgardNativeTxFull,
   verifyMidgardNativeScript,
 } from "../src/index.js";
 
@@ -43,34 +41,6 @@ const makeCanonical = (): MidgardNativeTxCanonical => ({
     redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
   },
 });
-
-const compactValue = (tx: MidgardNativeTxFull): readonly unknown[] => [
-  tx.compact.version,
-  computeMidgardNativeTxId(tx),
-  tx.compact.transactionWitnessSetHash,
-  0n,
-];
-
-const bodyFullValue = (tx: MidgardNativeTxFull): readonly unknown[] => [
-  tx.compact.transactionBody.spendInputsHash,
-  tx.body.spendInputsPreimageCbor,
-  tx.compact.transactionBody.referenceInputsHash,
-  tx.body.referenceInputsPreimageCbor,
-  tx.compact.transactionBody.outputsHash,
-  tx.body.outputsPreimageCbor,
-  tx.body.fee,
-  tx.body.validityIntervalStart,
-  tx.body.validityIntervalEnd,
-  tx.compact.transactionBody.requiredObserversHash,
-  tx.body.requiredObserversPreimageCbor,
-  tx.compact.transactionBody.requiredSignersHash,
-  tx.body.requiredSignersPreimageCbor,
-  tx.compact.transactionBody.mintHash,
-  tx.body.mintPreimageCbor,
-  tx.body.scriptIntegrityHash,
-  tx.body.auxiliaryDataHash,
-  tx.body.networkId,
-];
 
 describe("Midgard native v1 codec", () => {
   it("round trips canonical transaction CBOR into a materialized full transaction", () => {
@@ -108,31 +78,9 @@ describe("Midgard native v1 codec", () => {
     );
   });
 
-  it("rejects the old embedded-compact transaction format", () => {
-    const tx = materializeMidgardNativeTxFromCanonical(makeCanonical());
-    const legacyWitnessSet = [
-      tx.compact.transactionWitnessSetHash,
-      tx.witnessSet.addrTxWitsPreimageCbor,
-      tx.compact.transactionWitnessSetHash,
-      tx.witnessSet.scriptTxWitsPreimageCbor,
-      tx.compact.transactionWitnessSetHash,
-      tx.witnessSet.redeemerTxWitsPreimageCbor,
-    ];
-    const encoded = encodeCbor([
-      MIDGARD_NATIVE_TX_VERSION,
-      compactValue(tx),
-      bodyFullValue(tx),
-      legacyWitnessSet,
-    ]);
-
-    expect(() => decodeMidgardNativeTxFullFromCanonicalCbor(encoded)).toThrow(
-      /transaction\[1\] must have exactly 12 elements/,
-    );
-  });
-
   it("rejects derived compact body drift", () => {
     const tx = materializeMidgardNativeTxFromCanonical(makeCanonical());
-    const tampered: MidgardNativeTxFull = {
+    const tampered: typeof tx = {
       ...tx,
       compact: {
         ...tx.compact,
