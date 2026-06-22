@@ -6,8 +6,16 @@ database: null
 logLevel: info
 
 midgard:
-  network: preprod
+  network: Preview
   adminApiKey: null
+
+protocol:
+  # These values feed /protocol-info and should match the deployed network
+  # configuration. Defaults are placeholders until provider/env wiring lands.
+  minFeeA: "0"
+  minFeeB: "0"
+  maxSubmitTxCborBytes: 32768
+  validationStrictnessProfile: phase1_midgard
 
 contracts:
   midgardEnvFile: null
