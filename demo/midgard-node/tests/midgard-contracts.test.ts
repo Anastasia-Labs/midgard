@@ -32,6 +32,7 @@ describe("midgard contracts registry", () => {
         "Preprod",
         placeholderContracts,
         { ...oneShotOutRef },
+        { referenceScriptAuth: placeholderContracts.referenceScriptAuth },
       );
 
       expect(REAL_HUB_ORACLE_SCRIPT_TITLES.mint).toBe("hub_oracle.mint.mint");
@@ -134,6 +135,7 @@ describe("midgard contracts registry", () => {
             txHash: "zz",
             outputIndex: -1,
           },
+          { referenceScriptAuth: placeholderContracts.referenceScriptAuth },
         ),
       );
       expect(result._tag).toEqual("Left");

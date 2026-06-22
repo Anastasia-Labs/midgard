@@ -1,5 +1,7 @@
 import { type Network, walletFromSeed } from "@lucid-evolution/lucid";
 
+const SUPPORTED_NETWORKS = ["Mainnet", "Preprod", "Preview"] as const;
+
 /**
  * Normalizes a seed phrase for deterministic CLI handling.
  */
@@ -12,51 +14,37 @@ export const parseSeedPhraseArgument = (seedPhrase: string): string => {
 };
 
 /**
- * Resolves the active Blockfrost API URL for CLI commands that need to align
- * their network with the current L1 provider target.
+ * Parses an explicit Cardano network for local-provider CLI helpers.
  */
-export const resolveBlockfrostApiUrl = (input?: {
-  readonly blockfrostApiUrl?: string;
-  readonly env?: NodeJS.ProcessEnv;
-}): string => {
-  const rawApiUrl =
-    input?.blockfrostApiUrl?.trim() ??
-    input?.env?.L1_BLOCKFROST_API_URL?.trim() ??
-    process.env.L1_BLOCKFROST_API_URL?.trim() ??
-    "";
-  if (rawApiUrl.length === 0) {
+export const parseNetworkArgument = (network: string): Network => {
+  const normalized = network.trim();
+  const matched = SUPPORTED_NETWORKS.find(
+    (candidate) => candidate === normalized,
+  );
+  if (matched === undefined) {
     throw new Error(
-      "Blockfrost API URL is required. Pass --blockfrost-api-url or set L1_BLOCKFROST_API_URL.",
+      `Unsupported network "${network}". Expected one of ${SUPPORTED_NETWORKS.join(", ")}.`,
     );
   }
-
-  try {
-    return new URL(rawApiUrl).toString().replace(/\/+$/, "");
-  } catch (cause) {
-    throw new Error(
-      `Invalid Blockfrost API URL "${rawApiUrl}": ${String(cause)}`,
-    );
-  }
+  return matched;
 };
 
 /**
- * Infers the target Cardano network from the configured Blockfrost API URL.
+ * Resolves the network from an explicit argument or the runtime environment.
  */
-export const inferNetworkFromBlockfrostApiUrl = (
-  blockfrostApiUrl: string,
-): Network => {
-  const normalized = blockfrostApiUrl.toLowerCase();
-  const matchedNetworks = (["Mainnet", "Preprod", "Preview"] as const).filter(
-    (network) => normalized.includes(network.toLowerCase()),
-  );
-
-  if (matchedNetworks.length !== 1) {
-    throw new Error(
-      `Could not infer Blockfrost network from URL "${blockfrostApiUrl}". Expected one of mainnet, preprod, or preview in the URL.`,
-    );
+export const resolveNetwork = (input?: {
+  readonly network?: string;
+  readonly env?: NodeJS.ProcessEnv;
+}): Network => {
+  const rawNetwork =
+    input?.network?.trim() ??
+    input?.env?.NETWORK?.trim() ??
+    process.env.NETWORK?.trim() ??
+    "";
+  if (rawNetwork.length === 0) {
+    throw new Error("Network is required. Pass --network or set NETWORK.");
   }
-
-  return matchedNetworks[0];
+  return parseNetworkArgument(rawNetwork);
 };
 
 /**

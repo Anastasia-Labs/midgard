@@ -1,7 +1,4 @@
-import {
-  compareOutRefs,
-  type OutRefLike,
-} from "@al-ft/midgard-core/out-ref";
+import { compareOutRefs, type OutRefLike } from "@al-ft/midgard-core/out-ref";
 import { CML } from "@lucid-evolution/lucid";
 
 export const collectSortedInputOutRefs = (

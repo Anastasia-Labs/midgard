@@ -1,12 +1,16 @@
 import { formatUnknownError } from "@al-ft/midgard-core";
 import {
   ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX,
-  ActiveOperatorMintRedeemer,
   ACTIVE_OPERATORS_ROOT_ASSET_NAME,
+  ActiveOperatorMintRedeemer,
   type ActiveOperatorMintRedeemer as ActiveOperatorMintRedeemerData,
   buildDoubleSpendFaultProofContracts,
+  buildInvalidRangeFaultProofContracts,
+  buildTransitionTraceFaultProofContracts,
+  type DoubleSpendFaultProofContracts,
   encodeLinkedListNodeView,
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
+  type FraudProofCatalogueCategoryName,
   FraudProofTokenDatum,
   getHeaderFromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
@@ -14,15 +18,12 @@ import {
   HUB_ORACLE_ASSET_NAME,
   incompleteRemoveFraudulentBlocksLinkTxProgram,
   incompleteRemoveLastFraudulentBlockHeaderTxProgram,
-  outputReferenceFromUTxO,
+  type InvalidRangeFaultProofContracts,
   type LinkedListNodeView,
   type OutputReference,
+  outputReferenceFromUTxO,
   parseFaultProofBlueprint,
   REGISTERED_OPERATORS_ROOT_ASSET_NAME,
-  RETIRED_OPERATOR_NODE_ASSET_NAME_PREFIX,
-  RetiredOperatorMintRedeemer,
-  type RetiredOperatorMintRedeemer as RetiredOperatorMintRedeemerData,
-  RETIRED_OPERATORS_ROOT_ASSET_NAME,
   requireInputIndex,
   requireMintRedeemerIndex,
   requireOwnMintPurpose,
@@ -30,18 +31,23 @@ import {
   requireReferenceInputIndex,
   requireSpendRedeemerIndex,
   requireUniqueOutputIndex,
+  RETIRED_OPERATOR_NODE_ASSET_NAME_PREFIX,
+  RETIRED_OPERATORS_ROOT_ASSET_NAME,
+  RetiredOperatorMintRedeemer,
+  type RetiredOperatorMintRedeemer as RetiredOperatorMintRedeemerData,
   SCHEDULER_ASSET_NAME,
   SchedulerDatum,
   SchedulerSpendRedeemer,
   type SchedulerSpendRedeemer as SchedulerSpendRedeemerData,
-  SlashingArguments,
   type SlashingApproach as SlashingApproachData,
+  SlashingArguments,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
   STATE_QUEUE_ROOT_ASSET_NAME,
   StateQueueRedeemer,
   type StateQueueRedeemer as StateQueueRedeemerData,
-  type StateQueueUTxO,
   type StateQueueRemoveReferenceScriptUTxOs,
+  type StateQueueUTxO,
+  type TransitionTraceFaultProofContracts,
   utxoToStateQueueUTxO,
 } from "@al-ft/midgard-sdk";
 import {
@@ -122,7 +128,8 @@ type RemoveFraudulentBlockContracts = {
   readonly registeredOperatorsAddress: string;
   readonly fraudProofPolicyId: string;
   readonly fraudProofAddress: string;
-  readonly doubleSpendCategoryId: string;
+  readonly fraudCategoryId: string;
+  readonly fraudCategory: RemoveFraudulentBlockFraudCategory;
 };
 
 type RemoveFraudulentBlockLayout = {
@@ -247,6 +254,7 @@ export type RemoveFraudulentBlockCliConfig = SubmitProviderConfig & {
   readonly walletSeedPhraseEnv?: string;
   readonly walletPrivateKey?: string;
   readonly walletPrivateKeyEnv?: string;
+  readonly fraudCategory?: RemoveFraudulentBlockFraudCategory;
   readonly fraudulentHeaderHash: string;
   readonly awaitConfirmation?: boolean;
   readonly midgardNodeUrl?: string;
@@ -254,6 +262,11 @@ export type RemoveFraudulentBlockCliConfig = SubmitProviderConfig & {
   readonly midgardNodeAdminKeyEnv?: string;
   readonly stateQueueLeaseTtlMs?: number;
 };
+
+export type RemoveFraudulentBlockFraudCategory = Extract<
+  FraudProofCatalogueCategoryName,
+  "doubleSpend" | "invalidRange" | "transitionTrace"
+>;
 
 export type StateQueueMutationLease = {
   readonly token: string;
@@ -272,6 +285,8 @@ export type SubmitRemoveFraudulentBlockResult = {
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
+  readonly fraudCategory: RemoveFraudulentBlockFraudCategory;
+  readonly fraudCategoryId: string;
   readonly fraudulentHeaderHash: string;
   readonly stateQueueBlockOutRef: string;
   readonly stateQueueRootOutRef: string;
@@ -370,7 +385,10 @@ export const createHttpStateQueueMutationLeaseCoordinator = ({
   readonly ttlMs?: number;
 }): StateQueueMutationLeaseCoordinator => {
   const nodeUrl = normalizeNodeUrl(midgardNodeUrl);
-  const normalizedTtlMs = parsePositiveSafeInteger(ttlMs, "--state-queue-lease-ttl-ms");
+  const normalizedTtlMs = parsePositiveSafeInteger(
+    ttlMs,
+    "--state-queue-lease-ttl-ms",
+  );
   const endpoint = `${nodeUrl}/${STATE_QUEUE_MUTATION_LEASE_ENDPOINT}`;
   const post = async (body: Record<string, unknown>): Promise<unknown> => {
     const response = await fetch(endpoint, {
@@ -504,10 +522,12 @@ const buildRemovalContracts = async ({
   blueprint,
   deploymentInfo,
   network,
+  fraudCategory,
 }: {
   readonly blueprint: unknown;
   readonly deploymentInfo: ContractDeploymentInfo;
   readonly network: Network;
+  readonly fraudCategory: RemoveFraudulentBlockFraudCategory;
 }): Promise<RemoveFraudulentBlockContracts> => {
   const hubOraclePolicyId = requireDeploymentScriptHash(
     deploymentInfo,
@@ -517,32 +537,83 @@ const buildRemovalContracts = async ({
     deploymentInfo,
     "fraudProofCatalogueMint",
   );
-  const doubleSpendContracts = await Effect.runPromise(
-    buildDoubleSpendFaultProofContracts({
-      blueprint: parseFaultProofBlueprint(blueprint),
-      network,
-      hubOraclePolicyId,
-      fraudProofCataloguePolicyId,
-    }),
-  );
+  const parsedBlueprint = parseFaultProofBlueprint(blueprint);
+  let categoryContracts:
+    | DoubleSpendFaultProofContracts
+    | InvalidRangeFaultProofContracts
+    | TransitionTraceFaultProofContracts;
+  let expectedCategoryDeploymentEntry:
+    | "fraudProofDoubleSpend"
+    | "fraudProofInvalidRange"
+    | "fraudProofTransitionTrace";
+  let derivedCategoryFirstStepHash: string;
+  if (fraudCategory === "doubleSpend") {
+    const doubleSpendContracts = await Effect.runPromise(
+      buildDoubleSpendFaultProofContracts({
+        blueprint: parsedBlueprint,
+        network,
+        hubOraclePolicyId,
+        fraudProofCataloguePolicyId,
+      }),
+    );
+    categoryContracts = doubleSpendContracts;
+    expectedCategoryDeploymentEntry = "fraudProofDoubleSpend";
+    derivedCategoryFirstStepHash =
+      doubleSpendContracts.doubleSpend.firstStep.spendingScriptHash;
+  } else if (fraudCategory === "invalidRange") {
+    const invalidRangeContracts = await Effect.runPromise(
+      buildInvalidRangeFaultProofContracts({
+        blueprint: parsedBlueprint,
+        network,
+        hubOraclePolicyId,
+        fraudProofCataloguePolicyId,
+      }),
+    );
+    categoryContracts = invalidRangeContracts;
+    expectedCategoryDeploymentEntry = "fraudProofInvalidRange";
+    derivedCategoryFirstStepHash =
+      invalidRangeContracts.invalidRange.firstStep.spendingScriptHash;
+  } else {
+    const transitionTraceContracts = await Effect.runPromise(
+      buildTransitionTraceFaultProofContracts({
+        blueprint: parsedBlueprint,
+        network,
+        hubOraclePolicyId,
+        fraudProofCataloguePolicyId,
+      }),
+    );
+    categoryContracts = transitionTraceContracts;
+    expectedCategoryDeploymentEntry = "fraudProofTransitionTrace";
+    derivedCategoryFirstStepHash =
+      transitionTraceContracts.transitionTrace.firstStep.spendingScriptHash;
+  }
   requireMatchingScriptHash({
     label: "fraudProofMint policy",
     deployed: requireDeploymentScriptHash(deploymentInfo, "fraudProofMint"),
-    derived: doubleSpendContracts.fraudProof.policyId,
+    derived: categoryContracts.fraudProof.policyId,
   });
   requireMatchingScriptHash({
     label: "fraudProofSpend script",
     deployed: requireDeploymentScriptHash(deploymentInfo, "fraudProofSpend"),
-    derived: doubleSpendContracts.fraudProof.spendingScriptHash,
+    derived: categoryContracts.fraudProof.spendingScriptHash,
   });
   requireMatchingScriptHash({
-    label: "fraudProofDoubleSpend step-01 script",
+    label: `${expectedCategoryDeploymentEntry} step-01 script`,
     deployed: requireDeploymentScriptHash(
       deploymentInfo,
-      "fraudProofDoubleSpend",
+      expectedCategoryDeploymentEntry,
     ),
-    derived: doubleSpendContracts.doubleSpend.firstStep.spendingScriptHash,
+    derived: derivedCategoryFirstStepHash,
   });
+  const categoryId =
+    deploymentInfo.fraudProofCatalogueMint?.fraudProofCatalogue?.categories[
+      fraudCategory
+    ].categoryId;
+  if (categoryId === undefined) {
+    throw new Error(
+      `Deployment info is missing fraudProofCatalogueMint.fraudProofCatalogue.categories.${fraudCategory}.`,
+    );
+  }
 
   const stateQueueSpendingScript = requireDeploymentScript(
     deploymentInfo,
@@ -629,16 +700,10 @@ const buildRemovalContracts = async ({
         "registeredOperatorsSpend",
       ) as SpendingValidator,
     ),
-    fraudProofPolicyId: doubleSpendContracts.fraudProof.policyId,
-    fraudProofAddress: doubleSpendContracts.fraudProof.spendingScriptAddress,
-    doubleSpendCategoryId:
-      deploymentInfo.fraudProofCatalogueMint?.fraudProofCatalogue?.categories
-        .doubleSpend.categoryId ??
-      (() => {
-        throw new Error(
-          "Deployment info is missing fraudProofCatalogueMint.fraudProofCatalogue.categories.doubleSpend.",
-        );
-      })(),
+    fraudProofPolicyId: categoryContracts.fraudProof.policyId,
+    fraudProofAddress: categoryContracts.fraudProof.spendingScriptAddress,
+    fraudCategoryId: categoryId,
+    fraudCategory,
   };
 };
 
@@ -1973,6 +2038,7 @@ export const submitRemoveFraudulentBlock = async ({
   deploymentInfo,
   network,
   signer,
+  fraudCategory = "doubleSpend",
   fraudulentHeaderHash,
   awaitConfirmation = true,
   requireReferenceScripts = true,
@@ -1985,6 +2051,7 @@ export const submitRemoveFraudulentBlock = async ({
   readonly deploymentInfo: unknown;
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
+  readonly fraudCategory?: RemoveFraudulentBlockFraudCategory;
   readonly fraudulentHeaderHash: string;
   readonly awaitConfirmation?: boolean;
   readonly requireReferenceScripts?: boolean;
@@ -2002,12 +2069,15 @@ export const submitRemoveFraudulentBlock = async ({
     blueprint,
     deploymentInfo: parsedDeploymentInfo,
     network,
+    fraudCategory,
   });
   if (
-    contracts.doubleSpendCategoryId.length !==
+    contracts.fraudCategoryId.length !==
     FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT * 2
   ) {
-    throw new Error("Double-spend fraud-proof category id has invalid length.");
+    throw new Error(
+      `${contracts.fraudCategory} fraud-proof category id has invalid length.`,
+    );
   }
 
   const referenceScripts = await resolveReferenceScripts({
@@ -2017,7 +2087,7 @@ export const submitRemoveFraudulentBlock = async ({
   });
   signer.selectWallet(lucid);
 
-  const fraudProofAssetName = contracts.doubleSpendCategoryId + headerHash;
+  const fraudProofAssetName = contracts.fraudCategoryId + headerHash;
   const fraudProofUnit = toUnit(
     contracts.fraudProofPolicyId,
     fraudProofAssetName,
@@ -2340,6 +2410,8 @@ export const submitRemoveFraudulentBlock = async ({
       walletSource: signer.source,
       proverAddress: signer.address,
       fraudProver: signer.paymentKeyHash,
+      fraudCategory: contracts.fraudCategory,
+      fraudCategoryId: contracts.fraudCategoryId,
       fraudulentHeaderHash: headerHash,
       stateQueueBlockOutRef: initialTargetOutRef,
       stateQueueRootOutRef: initialStateQueueRootOutRef,
@@ -2395,6 +2467,7 @@ export const submitRemoveFraudulentBlockFromFiles = async (
     deploymentInfo,
     network: config.network,
     signer,
+    fraudCategory: config.fraudCategory,
     fraudulentHeaderHash: config.fraudulentHeaderHash,
     awaitConfirmation: config.awaitConfirmation,
     requireReferenceScripts: true,

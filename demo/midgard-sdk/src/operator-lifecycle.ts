@@ -1,15 +1,13 @@
 import {
-  Data as LucidData,
-  type BuildTxWithRedeemer,
   type Assets,
+  type BuildTxWithRedeemer,
+  Data as LucidData,
   type LucidEvolution,
   type TxBuilder,
   type TxOutput,
   type UTxO,
 } from "@lucid-evolution/lucid";
-import { canonicalPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 
-import * as SDK from "@/operator-lifecycle/primitives.js";
 import { outputReferenceFromUTxO } from "@/common.js";
 import {
   type ActivateRedeemerLayout,
@@ -17,12 +15,14 @@ import {
   type ReferenceScriptPublication,
   type RegisterRedeemerLayout,
 } from "@/operator-lifecycle/layout.js";
+import * as SDK from "@/operator-lifecycle/primitives.js";
 import {
   requireMintRedeemerIndex,
   requireOwnMintPurpose,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
 } from "@/tx-context-redeemer.js";
+import { outputDatumCborMatches } from "@/tx-output-utils.js";
 
 export * from "@/operator-lifecycle/layout.js";
 
@@ -41,13 +41,6 @@ const encodeActiveOperatorDatumValue = (
 
 const encodeLinkedListNodeView = (nodeView: SDK.LinkedListNodeView): string =>
   SDK.encodeLinkedListNodeView(nodeView);
-
-const outputDatumCborMatches = (
-  output: Pick<TxOutput, "datum">,
-  datumCbor: string,
-): boolean =>
-  output.datum != null &&
-  canonicalPlutusDataCbor(output.datum) === canonicalPlutusDataCbor(datumCbor);
 
 const outputMatches = ({
   output,
@@ -88,7 +81,6 @@ export const encodeRegisteredOperatorDatumValue = (
 ): unknown =>
   SDK.castRegisteredOperatorDatumToData({
     operator: operatorKeyHash,
-    bond_unlock_time: null,
   });
 
 const registeredActivateRedeemer = ({
@@ -124,11 +116,13 @@ export type RegisterOperatorTxConfig = {
   readonly activeNotMemberWitness: NodeWithDatum;
   readonly retiredNotMemberWitness: NodeWithDatum;
   readonly registeredRootNode: NodeWithDatum;
+  readonly registerFundingInputs: readonly UTxO[];
   readonly registerMintAssets: Assets;
   readonly prependedNodeDatum: SDK.LinkedListNodeView;
   readonly prependedNodeAssets: Assets;
   readonly updatedRegisteredRootDatum: SDK.LinkedListNodeView;
   readonly registerValidTo: bigint;
+  readonly layout?: RegisterRedeemerLayout;
   readonly onLayout?: (layout: RegisterRedeemerLayout) => void;
 };
 
@@ -199,20 +193,8 @@ export const buildRegisterOperatorTx = (
   const updatedRegisteredRootDatumCbor = encodeLinkedListNodeView(
     config.updatedRegisteredRootDatum,
   );
-  const registerRedeemer = ((ctx) => {
-    requireOwnMintPurpose(
-      ctx,
-      config.contracts.registeredOperators.policyId,
-      "registered-operator register mint",
-    );
-    const layout = deriveRegisterLayoutFromContext({
-      config,
-      ctx,
-      prependedNodeDatumCbor,
-      updatedRegisteredRootDatumCbor,
-    });
-    config.onLayout?.(layout);
-    return LucidData.to(
+  const encodeRegisterRedeemer = (layout: RegisterRedeemerLayout): string =>
+    LucidData.to(
       {
         RegisterOperator: {
           registering_operator: config.operatorKeyHash,
@@ -221,17 +203,33 @@ export const buildRegisterOperatorTx = (
           hub_oracle_ref_input_index: layout.hubOracleRefInputIndex,
           active_operators_element_ref_input_index:
             layout.activeOperatorRefInputIndex,
-          operator_origin: {
-            NewOperator: {
-              retired_operators_element_ref_input_index:
-                layout.retiredOperatorRefInputIndex,
-            },
-          },
+          retired_operators_element_ref_input_index:
+            layout.retiredOperatorRefInputIndex,
         },
       },
       SDK.RegisteredOperatorMintRedeemer,
     );
-  }) satisfies BuildTxWithRedeemer;
+  const registerRedeemer =
+    config.layout === undefined
+      ? (((ctx) => {
+          requireOwnMintPurpose(
+            ctx,
+            config.contracts.registeredOperators.policyId,
+            "registered-operator register mint",
+          );
+          const layout = deriveRegisterLayoutFromContext({
+            config,
+            ctx,
+            prependedNodeDatumCbor,
+            updatedRegisteredRootDatumCbor,
+          });
+          config.onLayout?.(layout);
+          return encodeRegisterRedeemer(layout);
+        }) satisfies BuildTxWithRedeemer)
+      : encodeRegisterRedeemer(config.layout);
+  if (config.layout !== undefined) {
+    config.onLayout?.(config.layout);
+  }
   return config.lucid
     .newTx()
     .collectFrom([config.registeredRootNode.utxo], LucidData.void())
@@ -259,7 +257,8 @@ export const buildRegisterOperatorTx = (
       config.registeredRootNode.utxo.assets,
     )
     .addSignerKey(config.operatorKeyHash)
-    .validTo(Number(config.registerValidTo));
+    .validTo(Number(config.registerValidTo))
+    .collectFrom([...config.registerFundingInputs]);
 };
 
 export type ActivateOperatorTxConfig = {
@@ -280,6 +279,7 @@ export type ActivateOperatorTxConfig = {
   readonly activeNodeUnit: string;
   readonly transferredOperatorAssets: Assets;
   readonly updatedRegisteredAnchorDatum: SDK.LinkedListNodeView;
+  readonly layout?: ActivateRedeemerLayout;
   readonly onLayout?: (layout: ActivateRedeemerLayout) => void;
 };
 
@@ -386,6 +386,9 @@ export const buildActivateOperatorTx = (
   const layoutFromContext = (
     ctx: Parameters<BuildTxWithRedeemer>[0],
   ): ActivateRedeemerLayout => {
+    if (config.layout !== undefined) {
+      return config.layout;
+    }
     const layout = deriveActivateLayoutFromContext({
       config,
       ctx,
@@ -396,40 +399,55 @@ export const buildActivateOperatorTx = (
     config.onLayout?.(layout);
     return layout;
   };
-  const registeredRedeemer = ((ctx) => {
-    requireOwnMintPurpose(
-      ctx,
-      config.contracts.registeredOperators.policyId,
-      "operator activation registered mint",
-    );
-    return registeredActivateRedeemer({
-      operatorKeyHash: config.operatorKeyHash,
-      layout: layoutFromContext(ctx),
-    });
-  }) satisfies BuildTxWithRedeemer;
-  const activeRedeemer = ((ctx) => {
-    requireOwnMintPurpose(
-      ctx,
-      config.contracts.activeOperators.policyId,
-      "operator activation active mint",
-    );
-    const layout = layoutFromContext(ctx);
-    return LucidData.to(
+  const encodeActiveRedeemer = (layout: ActivateRedeemerLayout): string =>
+    LucidData.to(
       {
         ActivateOperator: {
           new_active_operator_key: config.operatorKeyHash,
-          new_active_operator_bond_unlock_time: null,
           active_operator_anchor_element_output_index:
             layout.activeOperatorsAnchorNodeOutputIndex,
           active_operator_inserted_node_output_index:
             layout.activeOperatorsInsertedNodeOutputIndex,
           registered_operators_redeemer_index:
             layout.registeredOperatorsRedeemerIndex,
+          active_operators_set_was_empty:
+            config.activeAppendAnchor.datum.key === "Empty" &&
+            config.activeAppendAnchor.datum.next === "Empty",
         },
       },
       SDK.ActiveOperatorMintRedeemer,
     );
-  }) satisfies BuildTxWithRedeemer;
+  const registeredRedeemer =
+    config.layout === undefined
+      ? (((ctx) => {
+          requireOwnMintPurpose(
+            ctx,
+            config.contracts.registeredOperators.policyId,
+            "operator activation registered mint",
+          );
+          return registeredActivateRedeemer({
+            operatorKeyHash: config.operatorKeyHash,
+            layout: layoutFromContext(ctx),
+          });
+        }) satisfies BuildTxWithRedeemer)
+      : registeredActivateRedeemer({
+          operatorKeyHash: config.operatorKeyHash,
+          layout: config.layout,
+        });
+  const activeRedeemer =
+    config.layout === undefined
+      ? (((ctx) => {
+          requireOwnMintPurpose(
+            ctx,
+            config.contracts.activeOperators.policyId,
+            "operator activation active mint",
+          );
+          return encodeActiveRedeemer(layoutFromContext(ctx));
+        }) satisfies BuildTxWithRedeemer)
+      : encodeActiveRedeemer(config.layout);
+  if (config.layout !== undefined) {
+    config.onLayout?.(config.layout);
+  }
 
   let tx = config.lucid
     .newTx()

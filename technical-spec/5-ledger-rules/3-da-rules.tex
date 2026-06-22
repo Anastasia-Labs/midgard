@@ -5,13 +5,32 @@
 \section{Data availability rules}
 \label{h:data-availability-rules}
 
-\subsection{Rule: Transaction count correct}
+\subsection{Rule: Retained block payload matches the L1 header}
 
-% DA layer fraud proof
-% DA can answer: is the data (tx) available?
+For each queued block header, the data availability committee retains a
+\code{DaPayloadV2} value keyed by \code{header\_hash}.
+Before signing an attestation, a committee node must verify:
+\begin{enumerate}
+    \item The payload CBOR is canonical and has the expected payload version.
+    \item The embedded header hashes to the payload's \code{header\_hash}.
+    \item The payload \code{header\_hash} equals the L1 state-queue header hash being attested.
+    \item The embedded header is byte-for-byte the L1 header.
+    \item Every member array is sorted by canonical key bytes and has no duplicate keys.
+    \item The source roots, \code{utxos\_root}, \code{transition\_trace\_root}, and \code{event\_to\_step\_root} recompute to the roots in the header.
+    \item The declared counts equal the member-array counts and the header counts.
+    \item \code{total\_event\_count} equals the sum of the per-source counts.
+    \item \code{transition\_step\_count} equals \code{total\_event\_count}.
+    \item The transition trace is dense, each trace key equals the opened \code{step\_index}, and each trace phase matches the event-key variant.
+    \item Each event-to-step member points to an existing trace step whose event key and phase point back to that member.
+\end{enumerate}
 
-% later blobs (comes with built-in availability proofs)
-%   - do we need to do compression?
-%   - maximum size per blob?
+If any check fails, the committee node must not sign the DA attestation for that header.
+This fail-closed rule is part of the fraud-proof soundness argument: a challenger can derive transition-trace witnesses only if the DA attestation covers the source members, event-to-step members, trace members, final UTxO members, and counts needed to reconstruct the committed roots.
+
+\subsection{Rule: Normal transaction root projection}
+
+The retained payload may carry full Midgard-native transaction CBOR for proof construction, but \code{transactions\_root} is computed from the compact transaction value committed by the block.
+DA validation must project each retained full transaction to the compact value before recomputing \code{transactions\_root}.
+L2 source membership and non-membership proofs use the raw transaction-root key/value bytes after this projection.
 
 \end{document}

@@ -489,7 +489,7 @@ const metricSpecs = {
   accept: ["validation_accept_count_total", "validation_accept_count"],
   reject: ["validation_reject_count_total", "validation_reject_count"],
   mempoolTx: ["mempool_tx_count"],
-  validationQueueDepth: ["validation_queue_depth", "tx_queue_size"],
+  validationQueueDepth: ["validation_queue_depth"],
   validationBatchSize: ["validation_batch_size"],
   validationPhaseALatencyMs: ["validation_phase_a_latency_ms"],
   validationPhaseBLatencyMs: ["validation_phase_b_latency_ms"],

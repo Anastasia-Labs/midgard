@@ -237,8 +237,8 @@ validator mint(
               scheduler_ref_input_index: scheduler_ref_input_index,
             )
 
-          // 8. The `operator` field of `scheduler_state` must match
-          //    `operator` from redeemer.
+          // 8. The `operator` field of `scheduler_state` must match `operator`
+          //    from redeemer.
           expect operator == scheduler_operator
 
           // Update the operator's timestamp in the active operators set:
@@ -300,9 +300,18 @@ validator mint(
         confirmed_state_input_outref,
         confirmed_state_output_index,
         m_settlement_redeemer_index,
+        merged_block_withdrawals_root,
+        merged_block_forced_transactions_root,
         merged_block_transactions_root,
         merged_block_deposits_root,
-        merged_block_withdrawals_root,
+        merged_block_transition_trace_root,
+        merged_block_event_to_step_root,
+        merged_block_withdrawal_count,
+        merged_block_forced_transaction_count,
+        merged_block_l2_transaction_count,
+        merged_block_deposit_count,
+        merged_block_total_event_count,
+        merged_block_transition_step_count,
       } -> {
         let Transaction { inputs, outputs, mint, redeemers, validity_range, .. } =
           self
@@ -346,18 +355,89 @@ validator mint(
             utxos_root: input_header_utxos_root,
             end_time: input_header_end_time,
             protocol_version: input_header_protocol_version,
+            withdrawals_root: input_header_withdrawals_root,
+            forced_transactions_root: input_header_forced_transactions_root,
             transactions_root: input_header_transactions_root,
             deposits_root: input_header_deposits_root,
-            withdrawals_root: input_header_withdrawals_root,
+            transition_trace_root: input_header_transition_trace_root,
+            event_to_step_root: input_header_event_to_step_root,
+            withdrawal_count: input_header_withdrawal_count,
+            forced_transaction_count: input_header_forced_transaction_count,
+            l2_transaction_count: input_header_l2_transaction_count,
+            deposit_count: input_header_deposit_count,
+            total_event_count: input_header_total_event_count,
+            transition_step_count: input_header_transition_step_count,
             ..
           } = input_header
 
           // 4. Correctness of redeemer arguments must be guaranteed for other
           //    contracts to use.
+          expect merged_block_withdrawals_root == input_header_withdrawals_root
+          expect
+            merged_block_forced_transactions_root == input_header_forced_transactions_root
           expect
             merged_block_transactions_root == input_header_transactions_root
           expect merged_block_deposits_root == input_header_deposits_root
-          expect merged_block_withdrawals_root == input_header_withdrawals_root
+          expect
+            merged_block_transition_trace_root == input_header_transition_trace_root
+          expect
+            merged_block_event_to_step_root == input_header_event_to_step_root
+          expect merged_block_withdrawal_count == input_header_withdrawal_count
+          expect
+            merged_block_forced_transaction_count == input_header_forced_transaction_count
+          expect
+            merged_block_l2_transaction_count == input_header_l2_transaction_count
+          expect merged_block_deposit_count == input_header_deposit_count
+          expect
+            merged_block_total_event_count == input_header_total_event_count
+          expect
+            merged_block_transition_step_count == input_header_transition_step_count
+          expect input_header_withdrawal_count >= 0
+          expect input_header_forced_transaction_count >= 0
+          expect input_header_l2_transaction_count >= 0
+          expect input_header_deposit_count >= 0
+          expect input_header_total_event_count >= 0
+          expect input_header_transition_step_count >= 0
+          expect
+            input_header_total_event_count == input_header_withdrawal_count + input_header_forced_transaction_count + input_header_l2_transaction_count + input_header_deposit_count
+          expect
+            input_header_transition_step_count == input_header_total_event_count
+          expect
+            if input_header_withdrawal_count == 0 {
+              input_header_withdrawals_root == env.empty_merkle_tree_root
+            } else {
+              input_header_withdrawals_root != env.empty_merkle_tree_root
+            }
+          expect
+            if input_header_forced_transaction_count == 0 {
+              input_header_forced_transactions_root == env.empty_merkle_tree_root
+            } else {
+              input_header_forced_transactions_root != env.empty_merkle_tree_root
+            }
+          expect
+            if input_header_l2_transaction_count == 0 {
+              input_header_transactions_root == env.empty_merkle_tree_root
+            } else {
+              input_header_transactions_root != env.empty_merkle_tree_root
+            }
+          expect
+            if input_header_deposit_count == 0 {
+              input_header_deposits_root == env.empty_merkle_tree_root
+            } else {
+              input_header_deposits_root != env.empty_merkle_tree_root
+            }
+          expect
+            if input_header_total_event_count == 0 {
+              and {
+                input_header_transition_trace_root == env.empty_merkle_tree_root,
+                input_header_event_to_step_root == env.empty_merkle_tree_root,
+              }
+            } else {
+              and {
+                input_header_transition_trace_root != env.empty_merkle_tree_root,
+                input_header_event_to_step_root != env.empty_merkle_tree_root,
+              }
+            }
 
           // 5. `header_node` must be mature---the lower bound of the
           //    transaction validity interval meets or exceeds the sum of the
@@ -411,6 +491,7 @@ validator mint(
             input_header_transactions_root != env.empty_merkle_tree_root,
             input_header_deposits_root != env.empty_merkle_tree_root,
             input_header_withdrawals_root != env.empty_merkle_tree_root,
+            input_header_forced_transactions_root != env.empty_merkle_tree_root,
           } {
             // 9a. The redeemer index for settlement minting policy must be
             //     provided.

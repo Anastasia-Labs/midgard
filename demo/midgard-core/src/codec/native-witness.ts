@@ -1,32 +1,14 @@
-import { asBytes, decodeSingleCbor, encodeCbor } from "./cbor.js";
+import { decodeSingleCbor, encodeCbor } from "./cbor.js";
 import { computeHash32, ensureHash32, type Hash32 } from "./hash.js";
 import type {
   MidgardNativeTxWitnessSetCanonical,
   MidgardNativeTxWitnessSetCompact,
 } from "./native.js";
 import { MIDGARD_NATIVE_TX_VERSION } from "./native-constants.js";
-import { asFixedArray } from "./native-validation.js";
+import { asFixedArray, bytesItem, hashItem } from "./native-validation.js";
 
 type NativeTxWitnessSetCompactValue = readonly [Hash32, Hash32, Hash32];
 type NativeTxWitnessSetCanonicalValue = readonly [Buffer, Buffer, Buffer];
-
-const itemField = (fieldName: string, index: number): string =>
-  `${fieldName}[${index}]`;
-
-const hashItem = (
-  value: readonly unknown[],
-  index: number,
-  fieldName: string,
-): Hash32 => {
-  const field = itemField(fieldName, index);
-  return ensureHash32(asBytes(value[index], field), field);
-};
-
-const bytesItem = (
-  value: readonly unknown[],
-  index: number,
-  fieldName: string,
-): Buffer => asBytes(value[index], itemField(fieldName, index));
 
 export const encodeNativeTxWitnessSetCompactValue = (
   witnessSet: MidgardNativeTxWitnessSetCompact,

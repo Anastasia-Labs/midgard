@@ -147,6 +147,30 @@ describe("output helpers", () => {
     ).toBe(true);
   });
 
+  it("accepts CML values from a different Lucid module instance", () => {
+    const assets = {
+      lovelace: 2_000_000n,
+      [`${"ab".repeat(28)}${Buffer.from("TOKEN").toString("hex")}`]: 3n,
+    };
+    const localValue = assetsToCmlValue(assets);
+    const foreignValue = {
+      __wbg_ptr:
+        (localValue as unknown as { readonly __wbg_ptr?: number }).__wbg_ptr ??
+        1,
+      coin: localValue.coin.bind(localValue),
+      has_multiassets: localValue.has_multiassets.bind(localValue),
+      multi_asset: localValue.multi_asset.bind(localValue),
+      to_cbor_bytes: localValue.to_cbor_bytes.bind(localValue),
+    } as unknown as CML.Value;
+
+    expect(foreignValue).not.toBeInstanceOf(CML.Value);
+    expect(cmlValueToAssets(foreignValue)).toEqual(assets);
+    expect(
+      decodeMidgardTxOutput(encodeMidgardTxOutput(address, foreignValue))
+        .assets,
+    ).toEqual(assets);
+  });
+
   it("rejects datum-hash outputs at construction time", () => {
     expect(() =>
       makeMidgardTxOutput(

@@ -1,8 +1,14 @@
 import { Effect, Option } from "effect";
 
-import { DepositsDB, WithdrawalsDB } from "@/database/index.js";
+import {
+  DepositsDB,
+  ForcedTransactionsDB,
+  WithdrawalsDB,
+} from "@/database/index.js";
 import type { DatabaseError } from "@/database/utils/common.js";
-import { keyValuePhasRoot, type MpfError } from "@/workers/utils/mpf.js";
+import type { MpfError } from "@/workers/utils/mpf.js";
+
+import { buildAuthenticatedRootFromEncodedEntries } from "./transition-roots.js";
 
 export const resolveDepositsRoot = (
   depositEntries: readonly DepositsDB.Entry[],
@@ -17,8 +23,14 @@ export const resolveDepositsRoot = (
     const eventInfos = depositEntries.map(
       (entry) => entry[DepositsDB.Columns.INFO],
     );
-    const root = yield* keyValuePhasRoot(eventIds, eventInfos);
-    return Option.some(root);
+    const root = yield* buildAuthenticatedRootFromEncodedEntries(
+      "DepositsRootDomain",
+      eventIds.map((key, index) => ({
+        key,
+        value: eventInfos[index]!,
+      })),
+    );
+    return Option.some(root.root);
   });
 
 export const resolveWithdrawalsRoot = (
@@ -32,9 +44,23 @@ export const resolveWithdrawalsRoot = (
       withdrawalEntries,
       WithdrawalsDB.toRootKeyValue,
     );
-    const root = yield* keyValuePhasRoot(
-      keyValues.map((keyValue) => keyValue.key),
-      keyValues.map((keyValue) => keyValue.value),
+    const root = yield* buildAuthenticatedRootFromEncodedEntries(
+      "WithdrawalsRootDomain",
+      keyValues,
     );
-    return Option.some(root);
+    return Option.some(root.root);
+  });
+
+export const resolveForcedTransactionsRoot = (
+  forcedTransactionEntries: readonly ForcedTransactionsDB.Entry[],
+): Effect.Effect<Option.Option<string>, MpfError, never> =>
+  Effect.gen(function* () {
+    if (forcedTransactionEntries.length <= 0) {
+      return Option.none();
+    }
+    const root = yield* buildAuthenticatedRootFromEncodedEntries(
+      "ForcedTransactionsRootDomain",
+      forcedTransactionEntries.map(ForcedTransactionsDB.toRootKeyValue),
+    );
+    return Option.some(root.root);
   });

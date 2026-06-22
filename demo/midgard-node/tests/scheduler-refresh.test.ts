@@ -1,10 +1,19 @@
-import type * as SDK from "@al-ft/midgard-sdk";
-import type { UTxO } from "@lucid-evolution/lucid";
+import * as SDK from "@al-ft/midgard-sdk";
+import {
+  Emulator,
+  generateEmulatorAccount,
+  Lucid,
+  type UTxO,
+} from "@lucid-evolution/lucid";
+import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  encodeSchedulerDatumForChain,
+  captureSchedulerSlotSnapshot,
+  filterLocallyConsumedUtxos,
   type NodeUtxoWithDatum,
+  requireExistingSchedulerWitnessUtxo,
+  resolveSchedulerFirstAppointmentValidityWindow,
   resolveSchedulerRefreshWitnessSelection,
 } from "@/workers/utils/scheduler-refresh.js";
 
@@ -127,12 +136,74 @@ describe("scheduler refresh witness selection", () => {
 
   it("encodes scheduler datums with a definite root array for deployed validators", () => {
     expect(
-      encodeSchedulerDatumForChain({
+      SDK.encodeSchedulerDatumForChain({
         ActiveOperator: {
           operator: "aa",
           start_time: 42n,
         },
       } satisfies SDK.SchedulerDatum),
     ).toBe("d87a8241aa182a");
+  });
+
+  it("rejects missing scheduler roots instead of bootstrapping during commit witness resolution", async () => {
+    const result = await Effect.runPromise(
+      Effect.either(requireExistingSchedulerWitnessUtxo([], "scheduler-unit")),
+    );
+
+    expect(result._tag).toBe("Left");
+    if (result._tag === "Left") {
+      expect(result.left.message).toContain("Incomplete protocol deployment");
+      expect(result.left.message).toContain("refusing commit-time scheduler");
+    }
+  });
+
+  it("filters active-operator candidates consumed by a submitted scheduler refresh", () => {
+    const stale = mkUtxo("66".repeat(32), 0);
+    const fresh = mkUtxo("77".repeat(32), 1);
+
+    expect(
+      filterLocallyConsumedUtxos(
+        [stale, fresh],
+        [`${stale.txHash}#${stale.outputIndex}`],
+      ),
+    ).toEqual([fresh]);
+  });
+
+  it("captures a single current-slot snapshot for scheduler validity resolution", async () => {
+    const operator = generateEmulatorAccount({ lovelace: 50_000_000n });
+    const emulator = new Emulator([operator]);
+    const lucid = await Lucid(emulator, "Custom");
+    lucid.selectWallet.fromSeed(operator.seedPhrase);
+
+    const snapshot = captureSchedulerSlotSnapshot(lucid, 1_779_150_000_000);
+
+    expect(snapshot.currentSlot).toBe(lucid.currentSlot());
+    expect(snapshot.currentSlotStartMs).toEqual(expect.any(Number));
+    expect(snapshot.observedAtMs).toBe(1_779_150_000_000);
+  });
+
+  it("keeps first-appointment validity within the on-chain short-range limit for production commit buffers", async () => {
+    const operator = generateEmulatorAccount({ lovelace: 50_000_000n });
+    const emulator = new Emulator([operator]);
+    const lucid = await Lucid(emulator, "Custom");
+    lucid.selectWallet.fromSeed(operator.seedPhrase);
+    const snapshot = captureSchedulerSlotSnapshot(lucid);
+    const targetCommitEndTime = BigInt(
+      snapshot.currentSlotStartMs + 8 * 60 * 1000 + 1_000,
+    );
+
+    const window = resolveSchedulerFirstAppointmentValidityWindow(
+      lucid,
+      targetCommitEndTime,
+      snapshot,
+    );
+
+    expect(window.validTo).toBeLessThanOrEqual(targetCommitEndTime);
+    expect(window.validFrom).toBeGreaterThanOrEqual(
+      BigInt(snapshot.currentSlotStartMs),
+    );
+    expect(window.validTo - window.validFrom).toBeLessThanOrEqual(
+      8n * 60n * 1000n,
+    );
   });
 });

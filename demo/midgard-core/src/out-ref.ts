@@ -7,10 +7,7 @@ export type OutRefLike = {
 
 export const TX_HASH_BYTE_LENGTH = 32;
 
-export const normalizeTxHash = (
-  txHash: string,
-  fieldName = "txHash",
-): string =>
+export const normalizeTxHash = (txHash: string, fieldName = "txHash"): string =>
   normalizeHex(txHash, {
     fieldName,
     byteLength: TX_HASH_BYTE_LENGTH,
@@ -47,10 +44,7 @@ export const parseOutRefLabel = (label: string): OutRefLike => {
   });
 };
 
-export const compareOutRefs = (
-  left: OutRefLike,
-  right: OutRefLike,
-): number => {
+export const compareOutRefs = (left: OutRefLike, right: OutRefLike): number => {
   const normalizedLeft = normalizeOutRef(left);
   const normalizedRight = normalizeOutRef(right);
   if (normalizedLeft.txHash !== normalizedRight.txHash) {

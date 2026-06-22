@@ -1,7 +1,8 @@
 export * from "./deposit.js";
-export * from "./tx-order.js";
-export * from "./withdrawal.js";
-
+export type {
+  UserEventExtraFields,
+  UserEventFetchConfig,
+} from "./internals.js";
 export {
   buildUserEventWitnessCertificateValidator,
   encodeUserEventWitnessMintOrBurnRedeemer,
@@ -12,8 +13,10 @@ export {
   slotToUnixTimeForLucid,
   USER_EVENT_WITNESS_SCRIPT_PREFIX,
   UserEventBuildError,
+  userEventCborFieldsFromInlineDatum,
   UserEventMintRedeemer,
-  userEventWitnessScriptHash,
   UserEventWitnessPublishRedeemer,
+  userEventWitnessScriptHash,
 } from "./internals.js";
-export type { UserEventExtraFields, UserEventFetchConfig } from "./internals.js";
+export * from "./tx-order.js";
+export * from "./withdrawal.js";

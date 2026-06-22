@@ -12,6 +12,7 @@ export type WorkerInput = {
     sizeOfProcessedTxsSoFar: number;
     stateQueueLeaseToken?: string;
     baseSnapshotId?: string;
+    stateQueueHasUnmergedTail?: boolean;
   };
 };
 

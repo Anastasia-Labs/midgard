@@ -1,19 +1,19 @@
 import { Proof, Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { encodeMidgardTxOutput } from "@al-ft/lucid-midgard";
-import {
-  decodeMidgardNativeTxFullFromCanonicalCbor,
-  encodeMidgardNativeTxCompact,
-} from "@al-ft/midgard-core/codec";
+import { encodeMidgardNativeTxCompact } from "@al-ft/midgard-core/codec";
 import { normalizeHex } from "@al-ft/midgard-core/hex";
 import * as SDK from "@al-ft/midgard-sdk";
+import { decodeMidgardTxCommitmentsFromCanonicalCbor } from "@al-ft/midgard-validation";
 import { SqlClient } from "@effect/sql";
 import type { UTxO } from "@lucid-evolution/lucid";
-import { CML } from "@lucid-evolution/lucid";
+import { CML, Data as LucidData } from "@lucid-evolution/lucid";
 import { Data, Effect, Option } from "effect";
 import * as FS from "fs";
 import { Level } from "level";
 
+import * as ConfirmedLedgerDB from "@/database/confirmedLedger.js";
 import * as DepositsDB from "@/database/deposits.js";
+import * as ForcedTransactionsDB from "@/database/forcedTransactions.js";
 import * as MempoolDB from "@/database/mempool.js";
 import * as MempoolLedgerDB from "@/database/mempoolLedger.js";
 import * as MempoolTxDeltasDB from "@/database/mempoolTxDeltas.js";
@@ -28,12 +28,24 @@ import * as WithdrawalsDB from "@/database/withdrawals.js";
 import { Database, NodeConfig } from "@/services/index.js";
 import { FileSystemError, findSpentAndProducedUTxOs } from "@/utils.js";
 
+import { keyValuePhasRoot, keyValuePhasRootWithCount } from "./mpf/phas.js";
 import {
   type ClassifiedWithdrawal,
   classifyWithdrawal,
 } from "./mpf/withdrawal-classification.js";
 
-export { keyValuePhasProof, keyValuePhasRoot } from "./mpf/phas.js";
+export {
+  canonicalizeKeyValuePhasEntries,
+  type KeyValuePhasEntry,
+  keyValuePhasNonMembershipProof,
+  keyValuePhasProof,
+  type KeyValuePhasRoot,
+  keyValuePhasRoot,
+  keyValuePhasRootWithCount,
+  rootFromPhasProof,
+  verifyKeyValuePhasMembershipProof,
+  verifyKeyValuePhasNonMembershipProof,
+} from "./mpf/phas.js";
 
 const ROOT_KEY = "__root__";
 const JSON_LEVEL_ENCODING_OPTS = { valueEncoding: "json" as const };
@@ -45,6 +57,8 @@ const MPF_INTERNAL_NULL_ROOT_HEX = "00".repeat(32);
 export type MpfBatchOp =
   | { readonly type: "insert"; readonly key: Buffer; readonly value: Buffer }
   | { readonly type: "delete"; readonly key: Buffer };
+
+export type MpfInsertBatchOp = Extract<MpfBatchOp, { readonly type: "insert" }>;
 
 type MpfStoredValue = string | Record<string, unknown>;
 
@@ -97,14 +111,17 @@ const applyPendingBatch = (
     return op.type === "put" ? op.value : undefined;
   }, value);
 
-const encodeTransactionRootValue = (txCanonicalCbor: Buffer): Buffer =>
+export const encodeTransactionRootValue = (txCanonicalCbor: Buffer): Buffer =>
   encodeMidgardNativeTxCompact(
-    decodeMidgardNativeTxFullFromCanonicalCbor(txCanonicalCbor).compact,
+    decodeMidgardTxCommitmentsFromCanonicalCbor(txCanonicalCbor)
+      .transactionCompact,
   );
 
 export const COMMIT_REJECT_CODE_DECODE_FAILED = "E_COMMIT_CBOR_DESERIALIZATION";
 export const COMMIT_REJECT_CODE_WITHDRAWN_REFERENCE_INPUT =
   "E_COMMIT_WITHDRAWN_REFERENCE_INPUT";
+export const COMMIT_REJECT_CODE_SAME_BLOCK_DEPOSIT_INPUT =
+  "E_COMMIT_SAME_BLOCK_DEPOSIT_INPUT";
 
 export type ResolvedTxDeltaForCommit =
   | {
@@ -163,8 +180,8 @@ export const resolveTxDeltaForCommit = (
 
 export const makeMpfs: Effect.Effect<
   { ledgerMpf: MidgardMpf; transactionsMpf: MidgardMpf },
-  MpfError,
-  NodeConfig
+  DatabaseError | MpfError,
+  Database | NodeConfig
 > = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
   const transactionsMpf = yield* MidgardMpf.create(
@@ -180,13 +197,27 @@ export const makeMpfs: Effect.Effect<
     yield* Effect.logInfo(
       "🔹 No previous ledger MPF root found - inserting genesis utxos",
     );
-    const ops: MpfBatchOp[] = yield* Effect.forEach(
+    const genesisEntries = yield* Effect.forEach(
       nodeConfig.GENESIS_UTXOS,
       (u: UTxO) =>
         utxoToInsertBatchOp(u).pipe(
           Effect.mapError((e) => MpfError.rootBuild("ledger genesis", e)),
+          Effect.map((op) => ({
+            op,
+            ledgerEntry: {
+              [MempoolLedgerDB.Columns.TX_ID]: Buffer.from(u.txHash, "hex"),
+              [MempoolLedgerDB.Columns.OUTREF]: op.key,
+              [MempoolLedgerDB.Columns.OUTPUT]: op.value,
+              [MempoolLedgerDB.Columns.ADDRESS]: u.address,
+              [MempoolLedgerDB.Columns.SOURCE_EVENT_ID]: null,
+            } satisfies MempoolLedgerDB.EntryNoTimeStamp,
+          })),
         ),
     );
+    yield* MempoolLedgerDB.insert(
+      genesisEntries.map(({ ledgerEntry }) => ledgerEntry),
+    );
+    const ops = genesisEntries.map(({ op }) => op);
     yield* ledgerMpf.applyBatch(ops);
     const rootAfterGenesis = yield* ledgerMpf.rootHex();
     yield* Effect.logInfo(
@@ -199,9 +230,94 @@ export const makeMpfs: Effect.Effect<
   };
 });
 
+export const ledgerEntryToInsertBatchOp = (
+  entry: Ledger.MinimalEntry,
+): MpfInsertBatchOp => ({
+  type: "insert",
+  key: Buffer.from(entry[Ledger.Columns.OUTREF]),
+  value: Buffer.from(entry[Ledger.Columns.OUTPUT]),
+});
+
+export const computeLedgerMpfRootFromLedgerEntries = (
+  entries: readonly Ledger.MinimalEntry[],
+): Effect.Effect<string, MpfError> =>
+  keyValuePhasRoot(
+    entries.map((entry) => entry[Ledger.Columns.OUTREF]),
+    entries.map((entry) => entry[Ledger.Columns.OUTPUT]),
+  );
+
+export const hydrateLedgerMpfFromLedgerEntries = (
+  ledgerMpf: MidgardMpf,
+  entries: readonly Ledger.MinimalEntry[],
+): Effect.Effect<string, MpfError> =>
+  Effect.gen(function* () {
+    yield* ledgerMpf.resetToEmpty();
+    yield* ledgerMpf.applyBatch(entries.map(ledgerEntryToInsertBatchOp));
+    return yield* ledgerMpf.rootHex();
+  });
+
+export const synchronizeCommitMpfStoresFromLedgerEntries = (
+  entries: readonly Ledger.MinimalEntry[],
+): Effect.Effect<
+  {
+    readonly ledgerEntryCount: number;
+    readonly ledgerRoot: string;
+    readonly transactionsRoot: string;
+  },
+  MpfError,
+  NodeConfig
+> =>
+  Effect.gen(function* () {
+    const nodeConfig = yield* NodeConfig;
+    const ledgerMpf = yield* MidgardMpf.create(
+      "ledger",
+      nodeConfig.LEDGER_MPF_DB_PATH,
+    );
+    const transactionsMpf = yield* MidgardMpf.create(
+      "transactions",
+      nodeConfig.TRANSACTIONS_MPF_DB_PATH,
+    );
+    const closeMpfs = Effect.all(
+      [
+        ledgerMpf.close().pipe(Effect.catchAll(() => Effect.void)),
+        transactionsMpf.close().pipe(Effect.catchAll(() => Effect.void)),
+      ],
+      { discard: true },
+    );
+    return yield* Effect.gen(function* () {
+      const ledgerRoot = yield* hydrateLedgerMpfFromLedgerEntries(
+        ledgerMpf,
+        entries,
+      );
+      yield* transactionsMpf.resetToEmpty();
+      const transactionsRoot = yield* transactionsMpf.rootHex();
+      yield* Effect.logInfo(
+        `Synchronized commit MPF stores from confirmed ledger: ledger_entries=${entries.length.toString()},ledger_root=${ledgerRoot},transactions_root=${transactionsRoot}`,
+      );
+      return {
+        ledgerEntryCount: entries.length,
+        ledgerRoot,
+        transactionsRoot,
+      };
+    }).pipe(Effect.ensuring(closeMpfs));
+  });
+
+export const synchronizeCommitMpfStoresFromConfirmedLedger: Effect.Effect<
+  {
+    readonly ledgerEntryCount: number;
+    readonly ledgerRoot: string;
+    readonly transactionsRoot: string;
+  },
+  DatabaseError | MpfError,
+  Database | NodeConfig
+> = Effect.gen(function* () {
+  const confirmedEntries = yield* ConfirmedLedgerDB.retrieve;
+  return yield* synchronizeCommitMpfStoresFromLedgerEntries(confirmedEntries);
+});
+
 export const utxoToInsertBatchOp = (
   utxo: UTxO,
-): Effect.Effect<MpfBatchOp, SDK.CmlDeserializationError> =>
+): Effect.Effect<MpfInsertBatchOp, SDK.CmlDeserializationError> =>
   Effect.gen(function* () {
     const input = yield* Effect.try({
       try: () =>
@@ -253,7 +369,48 @@ export type ProcessMpfsConfig = {
   readonly processedOnlyEndTime?: Date;
   readonly depositOnlyEndTime?: Date;
   readonly depositVisibilityBarrierTime?: Date;
+  readonly txOrderVisibilityBarrierTime?: Date;
   readonly withdrawalVisibilityBarrierTime?: Date;
+  readonly initialLedgerEntries?: readonly Ledger.MinimalEntry[];
+};
+
+export type UtxoPayloadEntry = {
+  readonly outref: Buffer;
+  readonly output: Buffer;
+};
+
+export type TransitionTraceSourceEvent = {
+  readonly eventKey: SDK.EventKey;
+  readonly phase: SDK.TransitionPhase;
+  readonly ledgerOps: readonly MpfBatchOp[];
+};
+
+export type RetainedTransitionTraceMember = {
+  readonly stepIndex: bigint;
+  readonly keyCbor: Buffer;
+  readonly valueCbor: Buffer;
+  readonly value: SDK.TransitionStep;
+};
+
+export type RetainedEventToStepMember = {
+  readonly eventKey: SDK.EventKey;
+  readonly keyCbor: Buffer;
+  readonly valueCbor: Buffer;
+  readonly value: SDK.EventToStepValue;
+};
+
+export type TransitionTraceBuildResult = {
+  readonly finalUtxosRoot: string;
+  readonly transitionTraceRoot: string;
+  readonly eventToStepRoot: string;
+  readonly transitionTraceMembers: readonly RetainedTransitionTraceMember[];
+  readonly eventToStepMembers: readonly RetainedEventToStepMember[];
+  readonly withdrawalCount: number;
+  readonly forcedTransactionCount: number;
+  readonly l2TransactionCount: number;
+  readonly depositCount: number;
+  readonly totalEventCount: number;
+  readonly transitionStepCount: number;
 };
 
 export type DecodedMempoolTxForCommit = {
@@ -263,6 +420,65 @@ export type DecodedMempoolTxForCommit = {
   readonly spent: readonly Buffer[];
   readonly produced: readonly Ledger.MinimalEntry[];
 };
+
+const outputReferenceFromCbor = (
+  cbor: Buffer,
+  label: string,
+): Effect.Effect<SDK.OutputReference, MpfError> =>
+  Effect.try({
+    try: () =>
+      LucidData.from(
+        cbor.toString("hex"),
+        SDK.OutputReference,
+      ) as SDK.OutputReference,
+    catch: (cause) =>
+      MpfError.rootBuild(
+        "transition trace event key",
+        new Error(`Failed to decode ${label} as OutputReference CBOR`, {
+          cause,
+        }),
+      ),
+  });
+
+const withdrawalTraceEventKey = (
+  entry: WithdrawalsDB.Entry,
+): Effect.Effect<SDK.EventKey, MpfError> =>
+  outputReferenceFromCbor(
+    entry[WithdrawalsDB.Columns.ID],
+    "withdrawal event id",
+  ).pipe(
+    Effect.map((withdrawalId) => ({
+      WithdrawalEventKey: { withdrawal_id: withdrawalId },
+    })),
+  );
+
+const forcedTransactionTraceEventKey = (
+  entry: ForcedTransactionsDB.Entry,
+): Effect.Effect<SDK.EventKey, MpfError> =>
+  outputReferenceFromCbor(
+    entry[ForcedTransactionsDB.Columns.TX_ORDER_ID],
+    "forced transaction tx_order_id",
+  ).pipe(
+    Effect.map((txOrderId) => ({
+      ForcedTransactionEventKey: { tx_order_id: txOrderId },
+    })),
+  );
+
+const depositTraceEventKey = (
+  entry: DepositsDB.Entry,
+): Effect.Effect<SDK.EventKey, MpfError> =>
+  outputReferenceFromCbor(
+    entry[DepositsDB.Columns.ID],
+    "deposit event id",
+  ).pipe(
+    Effect.map((depositId) => ({
+      DepositEventKey: { deposit_id: depositId },
+    })),
+  );
+
+const l2TransactionTraceEventKey = (txHash: Buffer): SDK.EventKey => ({
+  L2TransactionEventKey: { tx_id: txHash.toString("hex") },
+});
 
 export const orderDecodedMempoolTxsForLedgerApplication = (
   decodedMempoolTxs: readonly DecodedMempoolTxForCommit[],
@@ -396,6 +612,433 @@ export const orderDecodedMempoolTxsForLedgerApplication = (
     }
 
     return ordered;
+  });
+
+const compareBufferHex = (left: Buffer, right: Buffer): number => {
+  const leftHex = left.toString("hex");
+  const rightHex = right.toString("hex");
+  return leftHex < rightHex ? -1 : leftHex > rightHex ? 1 : 0;
+};
+
+const materializeUtxoPayloadEntries = (
+  initialLedgerEntries: readonly Ledger.MinimalEntry[],
+  ledgerOps: readonly MpfBatchOp[],
+): readonly UtxoPayloadEntry[] => {
+  const entries = new Map<string, UtxoPayloadEntry>();
+  for (const entry of initialLedgerEntries) {
+    entries.set(entry[Ledger.Columns.OUTREF].toString("hex"), {
+      outref: Buffer.from(entry[Ledger.Columns.OUTREF]),
+      output: Buffer.from(entry[Ledger.Columns.OUTPUT]),
+    });
+  }
+  for (const op of ledgerOps) {
+    const key = op.key.toString("hex");
+    if (op.type === "delete") {
+      entries.delete(key);
+      continue;
+    }
+    entries.set(key, {
+      outref: Buffer.from(op.key),
+      output: Buffer.from(op.value),
+    });
+  }
+  return [...entries.values()].sort((left, right) =>
+    compareBufferHex(left.outref, right.outref),
+  );
+};
+
+const computeUtxoPayloadRoot = (
+  entries: readonly UtxoPayloadEntry[],
+): Effect.Effect<string, MpfError> =>
+  keyValuePhasRoot(
+    entries.map((entry) => entry.outref),
+    entries.map((entry) => entry.output),
+  );
+
+const encodePlutusData = <A>(
+  value: A,
+  schema: Parameters<typeof LucidData.Nullable>[0],
+  label: string,
+): Effect.Effect<Buffer, MpfError> =>
+  Effect.try({
+    try: () =>
+      Buffer.from(LucidData.to(value as never, schema as never), "hex"),
+    catch: (cause) =>
+      MpfError.rootBuild(
+        "transition trace",
+        new Error(`Failed to encode ${label} as canonical Plutus data`, {
+          cause,
+        }),
+      ),
+  });
+
+const countedRootFromEncodedEntries = (
+  domain: SDK.RootDomain,
+  entries: readonly { readonly key: Buffer; readonly value: Buffer }[],
+): Effect.Effect<string, MpfError> =>
+  Effect.gen(function* () {
+    const phas = yield* keyValuePhasRootWithCount(
+      entries.map((entry) => entry.key),
+      entries.map((entry) => entry.value),
+    );
+    return yield* SDK.commitCountedRootProgram({
+      domain,
+      phasRoot: phas.root,
+      count: phas.count,
+    }).pipe(
+      Effect.mapError((cause) =>
+        MpfError.rootBuild(
+          "count-bound transition commitment",
+          new Error("Failed to commit count-bound root", { cause }),
+        ),
+      ),
+    );
+  });
+
+export const buildTransactionsSourceRoot = (
+  entries: readonly MpfInsertBatchOp[],
+): Effect.Effect<string, MpfError> =>
+  countedRootFromEncodedEntries(SDK.ROOT_DOMAINS.transactions, entries);
+
+const eventKeyCbor = (
+  eventKey: SDK.EventKey,
+): Effect.Effect<Buffer, MpfError> =>
+  encodePlutusData(eventKey, SDK.EventKeySchema, "transition event key");
+
+const eventKeyFingerprint = (
+  eventKey: SDK.EventKey,
+): Effect.Effect<string, MpfError> =>
+  eventKeyCbor(eventKey).pipe(Effect.map((encoded) => encoded.toString("hex")));
+
+const assertUniqueTransitionSourceEvents = (
+  sourceEvents: readonly TransitionTraceSourceEvent[],
+): Effect.Effect<void, MpfError> =>
+  Effect.gen(function* () {
+    const seen = new Set<string>();
+    for (const [index, event] of sourceEvents.entries()) {
+      const fingerprint = yield* eventKeyFingerprint(event.eventKey);
+      if (seen.has(fingerprint)) {
+        return yield* Effect.fail(
+          MpfError.rootBuild(
+            "transition trace",
+            new Error(
+              `Duplicate source event key at source index ${index.toString()}: ${fingerprint}`,
+            ),
+          ),
+        );
+      }
+      seen.add(fingerprint);
+    }
+  });
+
+const transitionPhaseRank = (phase: SDK.TransitionPhase): number => {
+  switch (phase) {
+    case "Withdrawal":
+      return 0;
+    case "ForcedTransaction":
+      return 1;
+    case "L2Transaction":
+      return 2;
+    case "Deposit":
+      return 3;
+  }
+};
+
+const assertCanonicalTransitionPhaseOrder = (
+  sourceEvents: readonly TransitionTraceSourceEvent[],
+): Effect.Effect<void, MpfError> =>
+  Effect.gen(function* () {
+    let lastRank = -1;
+    for (const [index, sourceEvent] of sourceEvents.entries()) {
+      const rank = transitionPhaseRank(sourceEvent.phase);
+      if (rank < lastRank) {
+        return yield* Effect.fail(
+          MpfError.rootBuild(
+            "transition trace",
+            new Error(
+              `Transition source events are not in canonical phase order at source index ${index.toString()}: phase=${sourceEvent.phase}`,
+            ),
+          ),
+        );
+      }
+      lastRank = rank;
+    }
+  });
+
+const materializeUtxoRootFromMap = (
+  entries: ReadonlyMap<string, UtxoPayloadEntry>,
+): Effect.Effect<string, MpfError> =>
+  computeUtxoPayloadRoot([...entries.values()]);
+
+const applyTraceLedgerOps = (
+  workingUtxos: Map<string, UtxoPayloadEntry>,
+  ops: readonly MpfBatchOp[],
+  eventKeyDescription: string,
+): Effect.Effect<void, MpfError> =>
+  Effect.gen(function* () {
+    for (const op of ops) {
+      const keyHex = op.key.toString("hex");
+      if (op.type === "delete") {
+        if (!workingUtxos.has(keyHex)) {
+          return yield* Effect.fail(
+            MpfError.rootBuild(
+              "transition trace",
+              new Error(
+                `Transition event ${eventKeyDescription} deletes missing UTxO ${keyHex}`,
+              ),
+            ),
+          );
+        }
+        workingUtxos.delete(keyHex);
+        continue;
+      }
+      if (workingUtxos.has(keyHex)) {
+        return yield* Effect.fail(
+          MpfError.rootBuild(
+            "transition trace",
+            new Error(
+              `Transition event ${eventKeyDescription} inserts duplicate UTxO ${keyHex}`,
+            ),
+          ),
+        );
+      }
+      workingUtxos.set(keyHex, {
+        outref: Buffer.from(op.key),
+        output: Buffer.from(op.value),
+      });
+    }
+  });
+
+export const buildEventToStepMembersFromTrace = ({
+  sourceEvents,
+  transitionTraceMembers,
+}: {
+  readonly sourceEvents: readonly TransitionTraceSourceEvent[];
+  readonly transitionTraceMembers: readonly RetainedTransitionTraceMember[];
+}): Effect.Effect<readonly RetainedEventToStepMember[], MpfError> =>
+  Effect.gen(function* () {
+    yield* assertUniqueTransitionSourceEvents(sourceEvents);
+    if (sourceEvents.length !== transitionTraceMembers.length) {
+      return yield* Effect.fail(
+        MpfError.rootBuild(
+          "event-to-step root",
+          new Error(
+            `Transition source event count does not match trace step count: source_events=${sourceEvents.length.toString()},trace_steps=${transitionTraceMembers.length.toString()}`,
+          ),
+        ),
+      );
+    }
+
+    const sourceByKey = new Map<string, TransitionTraceSourceEvent>();
+    for (const sourceEvent of sourceEvents) {
+      sourceByKey.set(
+        yield* eventKeyFingerprint(sourceEvent.eventKey),
+        sourceEvent,
+      );
+    }
+
+    const seenTraceEvents = new Set<string>();
+    const members: RetainedEventToStepMember[] = [];
+    for (const traceMember of transitionTraceMembers) {
+      const step = traceMember.value;
+      const fingerprint = yield* eventKeyFingerprint(step.event_key);
+      const source = sourceByKey.get(fingerprint);
+      if (source === undefined) {
+        return yield* Effect.fail(
+          MpfError.rootBuild(
+            "event-to-step root",
+            new Error(
+              `Transition trace step ${step.step_index.toString()} references an event key with no source-root member: ${fingerprint}`,
+            ),
+          ),
+        );
+      }
+      if (seenTraceEvents.has(fingerprint)) {
+        return yield* Effect.fail(
+          MpfError.rootBuild(
+            "event-to-step root",
+            new Error(
+              `Transition trace contains duplicate event key ${fingerprint}`,
+            ),
+          ),
+        );
+      }
+      if (source.phase !== step.phase) {
+        return yield* Effect.fail(
+          MpfError.rootBuild(
+            "event-to-step root",
+            new Error(
+              `Transition trace step phase does not match source phase: step_index=${step.step_index.toString()},source_phase=${source.phase},step_phase=${step.phase}`,
+            ),
+          ),
+        );
+      }
+      seenTraceEvents.add(fingerprint);
+      const value: SDK.EventToStepValue = {
+        step_index: step.step_index,
+        phase: step.phase,
+      };
+      members.push({
+        eventKey: step.event_key,
+        keyCbor: yield* eventKeyCbor(step.event_key),
+        valueCbor: yield* encodePlutusData(
+          value,
+          SDK.EventToStepValueSchema,
+          "event-to-step value",
+        ),
+        value,
+      });
+    }
+
+    if (seenTraceEvents.size !== sourceByKey.size) {
+      return yield* Effect.fail(
+        MpfError.rootBuild(
+          "event-to-step root",
+          new Error(
+            `Event-to-step root omits source events: source_events=${sourceByKey.size.toString()},mapped_events=${seenTraceEvents.size.toString()}`,
+          ),
+        ),
+      );
+    }
+    return members;
+  });
+
+export const buildTransitionTraceResult = ({
+  initialUtxos,
+  sourceEvents,
+  withdrawalCount,
+  forcedTransactionCount,
+  l2TransactionCount,
+  depositCount,
+  expectedTotalEventCount,
+}: {
+  readonly initialUtxos: readonly UtxoPayloadEntry[];
+  readonly sourceEvents: readonly TransitionTraceSourceEvent[];
+  readonly withdrawalCount: number;
+  readonly forcedTransactionCount: number;
+  readonly l2TransactionCount: number;
+  readonly depositCount: number;
+  readonly expectedTotalEventCount?: number;
+}): Effect.Effect<TransitionTraceBuildResult, MpfError> =>
+  Effect.gen(function* () {
+    const totalEventCount =
+      withdrawalCount +
+      forcedTransactionCount +
+      l2TransactionCount +
+      depositCount;
+    if (
+      expectedTotalEventCount !== undefined &&
+      totalEventCount !== expectedTotalEventCount
+    ) {
+      return yield* Effect.fail(
+        MpfError.rootBuild(
+          "transition trace",
+          new Error(
+            `Transition source count mismatch: expected=${expectedTotalEventCount.toString()},actual=${totalEventCount.toString()}`,
+          ),
+        ),
+      );
+    }
+    if (sourceEvents.length !== totalEventCount) {
+      return yield* Effect.fail(
+        MpfError.rootBuild(
+          "transition trace",
+          new Error(
+            `Transition source event array length does not match source counts: source_events=${sourceEvents.length.toString()},source_count_sum=${totalEventCount.toString()}`,
+          ),
+        ),
+      );
+    }
+    yield* assertUniqueTransitionSourceEvents(sourceEvents);
+    yield* assertCanonicalTransitionPhaseOrder(sourceEvents);
+
+    const workingUtxos = new Map<string, UtxoPayloadEntry>();
+    for (const entry of initialUtxos) {
+      const keyHex = entry.outref.toString("hex");
+      if (workingUtxos.has(keyHex)) {
+        return yield* Effect.fail(
+          MpfError.rootBuild(
+            "transition trace",
+            new Error(
+              `Initial transition UTxO snapshot contains duplicate outref ${keyHex}`,
+            ),
+          ),
+        );
+      }
+      workingUtxos.set(keyHex, {
+        outref: Buffer.from(entry.outref),
+        output: Buffer.from(entry.output),
+      });
+    }
+
+    const transitionTraceMembers: RetainedTransitionTraceMember[] = [];
+    for (const [index, sourceEvent] of sourceEvents.entries()) {
+      const preUtxosRoot = yield* materializeUtxoRootFromMap(workingUtxos);
+      const eventKeyDescription = yield* eventKeyFingerprint(
+        sourceEvent.eventKey,
+      );
+      yield* applyTraceLedgerOps(
+        workingUtxos,
+        sourceEvent.ledgerOps,
+        eventKeyDescription,
+      );
+      const postUtxosRoot = yield* materializeUtxoRootFromMap(workingUtxos);
+      const value: SDK.TransitionStep = {
+        schema_version: 1n,
+        step_index: BigInt(index),
+        event_key: sourceEvent.eventKey,
+        phase: sourceEvent.phase,
+        pre_utxos_root: preUtxosRoot,
+        post_utxos_root: postUtxosRoot,
+      };
+      transitionTraceMembers.push({
+        stepIndex: value.step_index,
+        keyCbor: yield* encodePlutusData(
+          value.step_index,
+          LucidData.Integer(),
+          "transition trace step index",
+        ),
+        valueCbor: yield* encodePlutusData(
+          value,
+          SDK.TransitionStepSchema,
+          "transition trace step",
+        ),
+        value,
+      });
+    }
+
+    const eventToStepMembers = yield* buildEventToStepMembersFromTrace({
+      sourceEvents,
+      transitionTraceMembers,
+    });
+    const transitionTraceRoot = yield* countedRootFromEncodedEntries(
+      SDK.ROOT_DOMAINS.transitionTrace,
+      transitionTraceMembers.map((member) => ({
+        key: member.keyCbor,
+        value: member.valueCbor,
+      })),
+    );
+    const eventToStepRoot = yield* countedRootFromEncodedEntries(
+      SDK.ROOT_DOMAINS.eventToStep,
+      eventToStepMembers.map((member) => ({
+        key: member.keyCbor,
+        value: member.valueCbor,
+      })),
+    );
+
+    return {
+      finalUtxosRoot: yield* materializeUtxoRootFromMap(workingUtxos),
+      transitionTraceRoot,
+      eventToStepRoot,
+      transitionTraceMembers,
+      eventToStepMembers,
+      withdrawalCount,
+      forcedTransactionCount,
+      l2TransactionCount,
+      depositCount,
+      totalEventCount,
+      transitionStepCount: transitionTraceMembers.length,
+    };
   });
 
 export const resolveIncludedDepositEntriesForWindow = ({
@@ -559,6 +1202,110 @@ export const resolveIncludedWithdrawalEntriesForWindow = ({
     ),
   );
 
+export const resolveIncludedForcedTransactionEntriesForWindow = ({
+  currentBlockStartTime,
+  effectiveEndTime,
+}: {
+  readonly currentBlockStartTime: Date;
+  readonly effectiveEndTime: Date;
+}): Effect.Effect<
+  readonly ForcedTransactionsDB.Entry[],
+  DatabaseError,
+  Database
+> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    return yield* sql.withTransaction(
+      Effect.gen(function* () {
+        const pendingEntries =
+          yield* ForcedTransactionsDB.retrievePendingHeaderEntriesUpTo(
+            effectiveEndTime,
+          );
+        if (pendingEntries.length <= 0) {
+          return [];
+        }
+
+        const overdueEntries = pendingEntries.filter(
+          (entry) =>
+            entry[ForcedTransactionsDB.Columns.INCLUSION_TIME].getTime() <=
+            currentBlockStartTime.getTime(),
+        );
+        const skippedAwaitingEntries = overdueEntries.filter(
+          (entry) =>
+            entry[ForcedTransactionsDB.Columns.STATUS] ===
+            ForcedTransactionsDB.Status.Awaiting,
+        );
+        if (skippedAwaitingEntries.length > 0) {
+          return yield* Effect.fail(
+            new DatabaseError({
+              table: ForcedTransactionsDB.tableName,
+              message:
+                "Refusing to build a block because one or more tx-order events due for an earlier block were never assigned to a header",
+              cause: skippedAwaitingEntries
+                .map((entry) =>
+                  entry[ForcedTransactionsDB.Columns.TX_ORDER_ID].toString(
+                    "hex",
+                  ),
+                )
+                .join(","),
+            }),
+          );
+        }
+
+        const replayableOverdueEntries = overdueEntries.filter(
+          (entry) =>
+            entry[ForcedTransactionsDB.Columns.STATUS] !==
+            ForcedTransactionsDB.Status.Awaiting,
+        );
+        if (replayableOverdueEntries.length > 0) {
+          yield* Effect.logWarning(
+            `Re-including ${replayableOverdueEntries.length} previously projected tx-order event(s) whose prior header assignment was abandoned before confirmation.`,
+          );
+        }
+
+        const currentWindowEntries = pendingEntries.filter(
+          (entry) =>
+            currentBlockStartTime.getTime() <
+            entry[ForcedTransactionsDB.Columns.INCLUSION_TIME].getTime(),
+        );
+        if (currentWindowEntries.length <= 0) {
+          return replayableOverdueEntries;
+        }
+
+        const awaitingEntries = currentWindowEntries.filter(
+          (entry) =>
+            entry[ForcedTransactionsDB.Columns.STATUS] ===
+            ForcedTransactionsDB.Status.Awaiting,
+        );
+        if (awaitingEntries.length > 0) {
+          yield* ForcedTransactionsDB.markAwaitingAsProjected(
+            awaitingEntries.map(
+              (entry) => entry[ForcedTransactionsDB.Columns.TX_ORDER_ID],
+            ),
+          );
+        }
+
+        const normalizedCurrentWindowEntries = currentWindowEntries.map(
+          (entry) =>
+            entry[ForcedTransactionsDB.Columns.STATUS] ===
+            ForcedTransactionsDB.Status.Awaiting
+              ? {
+                  ...entry,
+                  [ForcedTransactionsDB.Columns.STATUS]:
+                    ForcedTransactionsDB.Status.Projected,
+                }
+              : entry,
+        );
+        return [...replayableOverdueEntries, ...normalizedCurrentWindowEntries];
+      }),
+    );
+  }).pipe(
+    sqlErrorToDatabaseError(
+      ForcedTransactionsDB.tableName,
+      "Failed to resolve forced transactions for the current block window",
+    ),
+  );
+
 export const processMpfs = (
   ledgerMpf: MidgardMpf,
   transactionsMpf: MidgardMpf,
@@ -568,6 +1315,13 @@ export const processMpfs = (
   {
     utxoRoot: string;
     txRoot: string;
+    transitionTraceRoot: string;
+    eventToStepRoot: string;
+    transitionTraceMembers: readonly RetainedTransitionTraceMember[];
+    eventToStepMembers: readonly RetainedEventToStepMember[];
+    transitionStepCount: number;
+    totalEventCount: number;
+    utxoPayloadEntries: readonly UtxoPayloadEntry[];
     mempoolTxHashes: Buffer[];
     processedMempoolTxs: readonly Tx.EntryWithTimeStamp[];
     sizeOfProcessedTxs: number;
@@ -575,9 +1329,13 @@ export const processMpfs = (
     includedDepositEntriesCount: number;
     includedDepositEntries: readonly DepositsDB.Entry[];
     includedDepositEventIds: readonly Buffer[];
+    includedForcedTransactionEntriesCount: number;
+    includedForcedTransactionEntries: readonly ForcedTransactionsDB.Entry[];
+    includedForcedTransactionEventIds: readonly Buffer[];
     includedWithdrawalEntriesCount: number;
     includedWithdrawalEntries: readonly WithdrawalsDB.Entry[];
     includedWithdrawalEventIds: readonly Buffer[];
+    transitionTraceBuild: TransitionTraceBuildResult;
   },
   MpfError | DatabaseError,
   Database
@@ -588,7 +1346,7 @@ export const processMpfs = (
     const rejectionEntries: TxRejectionsDB.EntryNoTimestamp[] = [];
     const mempoolTxHashes: Buffer[] = [];
     const transactionOps: MpfBatchOp[] = [];
-    const ledgerOps: MpfBatchOp[] = [];
+    const transactionSourceOps: MpfInsertBatchOp[] = [];
     const decodedMempoolTxs: DecodedMempoolTxForCommit[] = [];
     let sizeOfProcessedTxs = 0;
     const txDeltasByTxHash = yield* MempoolTxDeltasDB.retrieveByTxIds(
@@ -660,6 +1418,21 @@ export const processMpfs = (
       );
     }
 
+    if (
+      effectiveEndTime !== undefined &&
+      config?.txOrderVisibilityBarrierTime !== undefined &&
+      effectiveEndTime.getTime() > config.txOrderVisibilityBarrierTime.getTime()
+    ) {
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: ForcedTransactionsDB.tableName,
+          message:
+            "Refusing to build a block because tx-order ingestion is not confirmed up to the selected block end time",
+          cause: `effective_end_time=${effectiveEndTime.toISOString()},tx_order_visibility_barrier_time=${config.txOrderVisibilityBarrierTime.toISOString()}`,
+        }),
+      );
+    }
+
     let includedDepositEntries: readonly DepositsDB.Entry[] = [];
     if (
       config?.currentBlockStartTime !== undefined &&
@@ -684,6 +1457,25 @@ export const processMpfs = (
         Buffer.from(entry[Ledger.Columns.OUTPUT]),
       ]),
     );
+
+    let includedForcedTransactionEntries: readonly ForcedTransactionsDB.Entry[] =
+      [];
+    if (
+      config?.currentBlockStartTime !== undefined &&
+      effectiveEndTime !== undefined
+    ) {
+      includedForcedTransactionEntries =
+        yield* resolveIncludedForcedTransactionEntriesForWindow({
+          currentBlockStartTime: config.currentBlockStartTime,
+          effectiveEndTime,
+        });
+    }
+    const includedForcedTransactionEntriesCount =
+      includedForcedTransactionEntries.length;
+    const includedForcedTransactionEventIds =
+      includedForcedTransactionEntries.map((entry) =>
+        Buffer.from(entry[ForcedTransactionsDB.Columns.TX_ORDER_ID]),
+      );
 
     let includedWithdrawalEntries: readonly WithdrawalsDB.Entry[] = [];
     let classifiedWithdrawals: readonly ClassifiedWithdrawal[] = [];
@@ -719,12 +1511,7 @@ export const processMpfs = (
           );
         }
 
-        const sameBlockDepositOutput =
-          sameBlockDepositOutputsByOutRef.get(ledgerOutRefHex);
-        const mpfLedgerOutput =
-          sameBlockDepositOutput === undefined
-            ? yield* ledgerMpf.get(ledgerOutRef)
-            : Option.some(sameBlockDepositOutput);
+        const mpfLedgerOutput = yield* ledgerMpf.get(ledgerOutRef);
         const classifiedWithdrawal = yield* classifyWithdrawal({
           entry,
           ledgerOutRef,
@@ -769,11 +1556,6 @@ export const processMpfs = (
     const validWithdrawalClassifications = classifiedWithdrawals.filter(
       (classified) => classified.shouldDeleteLedgerUtxo,
     );
-    const withdrawalLedgerDeleteOps: MpfBatchOp[] =
-      validWithdrawalClassifications.map((classified) => ({
-        type: "delete" as const,
-        key: classified.ledgerOutRef,
-      }));
     const withdrawnOutRefHexes = new Set(
       validWithdrawalClassifications.map((classified) =>
         classified.ledgerOutRef.toString("hex"),
@@ -805,49 +1587,49 @@ export const processMpfs = (
           );
           return;
         }
+        const sameBlockDepositInput = decoded.spent.find((outRef) =>
+          sameBlockDepositOutputsByOutRef.has(outRef.toString("hex")),
+        );
+        if (sameBlockDepositInput !== undefined) {
+          rejectedTxHashes.push(Buffer.from(decoded.txHash));
+          rejectionEntries.push({
+            [TxRejectionsDB.Columns.TX_ID]: Buffer.from(decoded.txHash),
+            [TxRejectionsDB.Columns.REJECT_CODE]:
+              COMMIT_REJECT_CODE_SAME_BLOCK_DEPOSIT_INPUT,
+            [TxRejectionsDB.Columns.REJECT_DETAIL]:
+              `Transaction spends L2 outref ${sameBlockDepositInput.toString(
+                "hex",
+              )}, which is produced by a deposit that executes later in the same block window`,
+          });
+          yield* Effect.logWarning(
+            `Skipping mempool tx ${txHashHex}: it spends an outref produced by a due deposit event that executes after L2 transactions.`,
+          );
+          return;
+        }
 
         mempoolTxHashes.push(decoded.txHash);
         processedMempoolTxs.push(decoded.entry);
         sizeOfProcessedTxs += decoded.txCbor.length;
-        const deleteOps: MpfBatchOp[] = decoded.spent.map((outRef) => ({
-          type: "delete",
-          key: outRef,
-        }));
-        const insertOps: MpfBatchOp[] = decoded.produced.map(
-          (le: Ledger.MinimalEntry) => ({
-            type: "insert",
-            key: le[Ledger.Columns.OUTREF],
-            value: le[Ledger.Columns.OUTPUT],
-          }),
-        );
-        transactionOps.push({
+        const transactionInsertOp = {
           type: "insert",
           key: decoded.txHash,
           value: encodeTransactionRootValue(decoded.txCbor),
-        });
-        ledgerOps.push(...deleteOps);
-        ledgerOps.push(...insertOps);
+        } as const satisfies MpfInsertBatchOp;
+        transactionOps.push(transactionInsertOp);
+        transactionSourceOps.push(transactionInsertOp);
       }),
     );
 
     if (depositLedgerEntries.length > 0) {
       yield* Effect.logInfo(
-        `🔹 Applying ${depositLedgerEntries.length} projected deposit UTxO(s) to the block pre-state.`,
-      );
-      ledgerOps.unshift(
-        ...depositLedgerEntries.map((entry) => ({
-          type: "insert" as const,
-          key: entry[Ledger.Columns.OUTREF],
-          value: entry[Ledger.Columns.OUTPUT],
-        })),
+        `🔹 Including ${depositLedgerEntries.length} projected deposit UTxO(s) in the deposit phase.`,
       );
     }
 
-    if (withdrawalLedgerDeleteOps.length > 0) {
+    if (validWithdrawalClassifications.length > 0) {
       yield* Effect.logInfo(
-        `🔹 Applying ${withdrawalLedgerDeleteOps.length} valid withdrawal event(s) to the block UTxO state.`,
+        `🔹 Including ${validWithdrawalClassifications.length} valid withdrawal event(s) in the withdrawal phase.`,
       );
-      ledgerOps.push(...withdrawalLedgerDeleteOps);
     }
 
     if (rejectedTxHashes.length > 0) {
@@ -865,10 +1647,157 @@ export const processMpfs = (
 
     const transactionRootBeforeApply = yield* transactionsMpf.root();
     const ledgerRootBeforeApply = yield* ledgerMpf.root();
+    const initialLedgerEntries =
+      config?.initialLedgerEntries ?? (yield* ConfirmedLedgerDB.retrieve);
+    const initialUtxoPayloadEntries = materializeUtxoPayloadEntries(
+      initialLedgerEntries,
+      [],
+    );
+    const initialPayloadRoot = yield* computeUtxoPayloadRoot(
+      initialUtxoPayloadEntries,
+    );
+    const ledgerRootBeforeApplyHex = ledgerRootBeforeApply.toString("hex");
+    if (initialPayloadRoot !== ledgerRootBeforeApplyHex) {
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: MempoolLedgerDB.tableName,
+          message:
+            "Refusing to build a block because the transition trace base UTxO snapshot root does not match the ledger MPF root",
+          cause: `payload_base_utxos_root=${initialPayloadRoot},ledger_mpf_root=${ledgerRootBeforeApplyHex}`,
+        }),
+      );
+    }
+    const withdrawalSourceEvents = yield* Effect.forEach(
+      includedWithdrawalEntries,
+      (entry) =>
+        Effect.gen(function* () {
+          const eventKey = yield* withdrawalTraceEventKey(entry);
+          const valid = entry[WithdrawalsDB.Columns.VALIDITY];
+          return {
+            eventKey,
+            phase: "Withdrawal" as const,
+            ledgerOps:
+              valid === WithdrawalsDB.Validity.WithdrawalIsValid
+                ? [
+                    {
+                      type: "delete" as const,
+                      key: yield* WithdrawalsDB.toLedgerOutRef(entry),
+                    },
+                  ]
+                : [],
+          } satisfies TransitionTraceSourceEvent;
+        }),
+    );
+    const forcedTransactionSourceEvents = yield* Effect.forEach(
+      includedForcedTransactionEntries,
+      (entry) =>
+        Effect.gen(function* () {
+          if (
+            entry[ForcedTransactionsDB.Columns.OPERATOR_VALIDITY] ===
+            "TxIsValid"
+          ) {
+            return yield* Effect.fail(
+              new DatabaseError({
+                table: ForcedTransactionsDB.tableName,
+                message:
+                  "Refusing to build a transition trace for an effectful forced transaction before forced transaction ledger deltas are available",
+                cause: `tx_order_id=${entry[
+                  ForcedTransactionsDB.Columns.TX_ORDER_ID
+                ].toString("hex")}`,
+              }),
+            );
+          }
+          return {
+            eventKey: yield* forcedTransactionTraceEventKey(entry),
+            phase: "ForcedTransaction" as const,
+            ledgerOps: [],
+          } satisfies TransitionTraceSourceEvent;
+        }),
+    );
+    const decodedByTxHash = new Map(
+      orderedDecodedMempoolTxs.map((decoded) => [
+        decoded.txHash.toString("hex"),
+        decoded,
+      ]),
+    );
+    const l2TransactionSourceEvents = yield* Effect.forEach(
+      processedMempoolTxs,
+      (entry, index) =>
+        Effect.gen(function* () {
+          const txHash = entry[Tx.Columns.TX_ID];
+          const decoded = decodedByTxHash.get(txHash.toString("hex"));
+          if (decoded === undefined) {
+            return yield* Effect.fail(
+              new DatabaseError({
+                table: MempoolDB.tableName,
+                message:
+                  "Refusing to build a transition trace because an included transaction is missing decoded ledger deltas",
+                cause: `source_index=${index.toString()},tx_id=${txHash.toString(
+                  "hex",
+                )}`,
+              }),
+            );
+          }
+          return {
+            eventKey: l2TransactionTraceEventKey(decoded.txHash),
+            phase: "L2Transaction" as const,
+            ledgerOps: [
+              ...decoded.spent.map((outRef) => ({
+                type: "delete" as const,
+                key: outRef,
+              })),
+              ...decoded.produced.map((entry) => ({
+                type: "insert" as const,
+                key: entry[Ledger.Columns.OUTREF],
+                value: entry[Ledger.Columns.OUTPUT],
+              })),
+            ],
+          } satisfies TransitionTraceSourceEvent;
+        }),
+    );
+    const depositSourceEvents = yield* Effect.forEach(
+      includedDepositEntries,
+      (entry) =>
+        Effect.gen(function* () {
+          const ledgerEntry = yield* DepositsDB.toLedgerEntry(entry);
+          return {
+            eventKey: yield* depositTraceEventKey(entry),
+            phase: "Deposit" as const,
+            ledgerOps: [
+              {
+                type: "insert" as const,
+                key: ledgerEntry[Ledger.Columns.OUTREF],
+                value: ledgerEntry[Ledger.Columns.OUTPUT],
+              },
+            ],
+          } satisfies TransitionTraceSourceEvent;
+        }),
+    );
+    const sourceEvents = [
+      ...withdrawalSourceEvents,
+      ...forcedTransactionSourceEvents,
+      ...l2TransactionSourceEvents,
+      ...depositSourceEvents,
+    ];
+    const transitionLedgerOps = sourceEvents.flatMap((event) =>
+      event.ledgerOps.map((op) => ({ ...op })),
+    );
+    const transitionTraceBuild = yield* buildTransitionTraceResult({
+      initialUtxos: initialUtxoPayloadEntries,
+      sourceEvents,
+      withdrawalCount: includedWithdrawalEntries.length,
+      forcedTransactionCount: includedForcedTransactionEntries.length,
+      l2TransactionCount: processedMempoolTxs.length,
+      depositCount: includedDepositEntries.length,
+    });
+    const utxoPayloadEntries = materializeUtxoPayloadEntries(
+      initialLedgerEntries,
+      transitionLedgerOps,
+    );
     yield* Effect.all(
       [
         transactionsMpf.applyBatch(transactionOps),
-        ledgerMpf.applyBatch(ledgerOps),
+        ledgerMpf.applyBatch(transitionLedgerOps),
       ],
       { concurrency: "unbounded" },
     ).pipe(
@@ -885,11 +1814,42 @@ export const processMpfs = (
       ),
     );
 
-    const txRoot = yield* transactionsMpf.rootHex();
+    const rawTxRoot = yield* transactionsMpf.rootHex();
+    const txRoot = yield* buildTransactionsSourceRoot(transactionSourceOps);
     const utxoRoot = yield* ledgerMpf.rootHex();
+    const payloadUtxoRoot = yield* computeUtxoPayloadRoot(utxoPayloadEntries);
+    if (payloadUtxoRoot !== utxoRoot) {
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: MempoolLedgerDB.tableName,
+          message:
+            "Refusing to build a block because the DA payload UTxO snapshot root does not match the computed ledger MPF root",
+          cause: `payload_utxos_root=${payloadUtxoRoot},computed_utxos_root=${utxoRoot}`,
+        }),
+      );
+    }
+    if (transitionTraceBuild.finalUtxosRoot !== utxoRoot) {
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: MempoolLedgerDB.tableName,
+          message:
+            "Refusing to build a block because the transition trace final UTxO root does not match the computed ledger MPF root",
+          cause: `trace_final_utxos_root=${transitionTraceBuild.finalUtxosRoot},computed_utxos_root=${utxoRoot}`,
+        }),
+      );
+    }
 
-    yield* Effect.logInfo(`🔹 New transaction root found: ${txRoot}`);
+    yield* Effect.logInfo(
+      `🔹 New raw transaction MPF root found: ${rawTxRoot}`,
+    );
+    yield* Effect.logInfo(`🔹 New transaction source root found: ${txRoot}`);
     yield* Effect.logInfo(`🔹 New UTxO root found: ${utxoRoot}`);
+    yield* Effect.logInfo(
+      `🔹 New transition trace root found: ${transitionTraceBuild.transitionTraceRoot}`,
+    );
+    yield* Effect.logInfo(
+      `🔹 New event-to-step root found: ${transitionTraceBuild.eventToStepRoot}`,
+    );
 
     const includedWithdrawalEntriesCount = includedWithdrawalEntries.length;
     const includedWithdrawalEventIds = includedWithdrawalEntries.map((entry) =>
@@ -899,6 +1859,13 @@ export const processMpfs = (
     return {
       utxoRoot,
       txRoot,
+      transitionTraceRoot: transitionTraceBuild.transitionTraceRoot,
+      eventToStepRoot: transitionTraceBuild.eventToStepRoot,
+      transitionTraceMembers: transitionTraceBuild.transitionTraceMembers,
+      eventToStepMembers: transitionTraceBuild.eventToStepMembers,
+      transitionStepCount: transitionTraceBuild.transitionStepCount,
+      totalEventCount: transitionTraceBuild.totalEventCount,
+      utxoPayloadEntries,
       mempoolTxHashes,
       processedMempoolTxs,
       sizeOfProcessedTxs,
@@ -906,9 +1873,13 @@ export const processMpfs = (
       includedDepositEntriesCount,
       includedDepositEntries,
       includedDepositEventIds,
+      includedForcedTransactionEntriesCount,
+      includedForcedTransactionEntries,
+      includedForcedTransactionEventIds,
       includedWithdrawalEntriesCount,
       includedWithdrawalEntries,
       includedWithdrawalEventIds,
+      transitionTraceBuild,
     };
   });
 
@@ -1417,7 +2388,9 @@ export class MidgardMpf {
           ),
         ),
       );
-      return yield* this.root();
+      const rootAfter = yield* this.root();
+      yield* this.persistRootMarker(rootAfter);
+      return rootAfter;
     }).pipe(
       Effect.mapError((cause) =>
         cause instanceof MpfError
@@ -1453,7 +2426,14 @@ export class MidgardMpf {
     return Effect.try({
       try: () => {
         const proofObject = "proof" in proof ? proof.proof : proof;
-        return Buffer.from(proofObject.verify(includingItem));
+        const verifiedRoot = proofObject.verify(includingItem);
+        if (verifiedRoot === null || verifiedRoot === undefined) {
+          return MPF_EMPTY_ROOT;
+        }
+        const normalizedRoot = Buffer.from(verifiedRoot);
+        return normalizedRoot.equals(Buffer.alloc(32))
+          ? MPF_EMPTY_ROOT
+          : normalizedRoot;
       },
       catch: (e) => MpfError.verify(this.trieName, e),
     });

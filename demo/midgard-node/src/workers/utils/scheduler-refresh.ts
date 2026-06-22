@@ -3,9 +3,9 @@
  * The commit worker uses this module to read the real state_queue witness
  * context needed for scheduler-aligned, production-safe commit transactions.
  */
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  type BuildTxWithRedeemer,
   credentialToAddress,
   Data as LucidData,
   type LucidEvolution,
@@ -17,7 +17,6 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { slotToUnixTimeForLucid } from "@/lucid-time.js";
 import {
   applySubmittedTxToOperatorWalletView,
@@ -76,39 +75,6 @@ type SchedulerAlignmentResult = {
   readonly operatorWalletView: OperatorWalletView;
 };
 
-type CanonicalSchedulerDatum =
-  | "NoActiveOperators"
-  | {
-      readonly ActiveOperator: {
-        readonly operator: string;
-        readonly start_time: bigint;
-      };
-    };
-
-type CanonicalSchedulerSpendRedeemer = {
-  readonly scheduler_input_index: bigint;
-  readonly scheduler_output_index: bigint;
-  readonly advancing_approach:
-    | {
-        readonly GoToNextDueToEndOfShift: {
-          readonly new_shifts_operator_node_ref_input_index: bigint;
-        };
-      }
-    | {
-        readonly RewindDueToEndOfShift: {
-          readonly active_operators_root_ref_input_index: bigint;
-          readonly active_operators_last_node_ref_input_index: bigint;
-          readonly registered_element_ref_input_index: bigint;
-        };
-      }
-    | {
-        readonly AppointFirstOperator: {
-          readonly new_shifts_operator_node_ref_input_index: bigint;
-          readonly registered_element_ref_input_index: bigint;
-        };
-      };
-};
-
 type ActiveSchedulerState = {
   readonly operator: string;
   readonly startTime: bigint;
@@ -116,20 +82,31 @@ type ActiveSchedulerState = {
 
 const SCHEDULER_REFRESH_POLL_INTERVAL = "2 seconds";
 const SCHEDULER_REFRESH_MAX_POLLS = 30;
-const MIN_SCHEDULER_WITNESS_LOVELACE = 5_000_000n;
 const SCHEDULER_SUBMISSION_CONFIRMATION_TIMEOUT_MS = 90_000;
 const SCHEDULER_SUBMISSION_CONFIRMATION_POLL_INTERVAL_MS = 5_000;
 const SCHEDULER_SHIFT_DURATION_MS = SDK.SHIFT_DURATION_MS;
-const SCHEDULER_TRANSITION_VALIDITY_WINDOW_MS = 5n * 60n * 1000n;
-export const encodeSchedulerDatumForChain = (
-  datum: CanonicalSchedulerDatum,
-): string =>
-  // Older deployed scheduler validators on preprod expect the root constructor
-  // array in definite form. Lucid emits an indefinite root array here, so
-  // normalize before publishing scheduler outputs on-chain.
-  SDK.normalizeRootIndefiniteArrayEncoding(
-    LucidData.to(datum as never, SDK.SchedulerDatum as never),
-  );
+// Mirrors on-chain env.max_validity_range_length for scheduler spends.
+const SCHEDULER_TRANSITION_VALIDITY_WINDOW_MS = 8n * 60n * 1000n;
+const SCHEDULER_FIRST_APPOINTMENT_MIN_VALIDITY_GAP_MS = 30n * 1000n;
+
+export type SchedulerSlotSnapshot = {
+  readonly currentSlot: number;
+  readonly currentSlotStartMs: number;
+  readonly observedAtMs: number;
+};
+
+export const captureSchedulerSlotSnapshot = (
+  lucid: LucidEvolution,
+  observedAtMs: number = Date.now(),
+): SchedulerSlotSnapshot => {
+  const currentSlot = lucid.currentSlot();
+  return {
+    currentSlot,
+    currentSlotStartMs:
+      slotToUnixTimeForLucid(lucid, currentSlot) ?? observedAtMs,
+    observedAtMs,
+  };
+};
 
 const nodeKeyBytes = (key: SDK.NodeKey): string | undefined =>
   key === "Empty" ? undefined : key.Key.key;
@@ -138,7 +115,7 @@ const linkKeyBytes = (datum: SDK.LinkedListNodeView): string | undefined =>
   datum.next === "Empty" ? undefined : datum.next.Key.key;
 
 const activeSchedulerState = (
-  datum: CanonicalSchedulerDatum,
+  datum: SDK.SchedulerDatum,
 ): ActiveSchedulerState | undefined =>
   datum === "NoActiveOperators"
     ? undefined
@@ -150,14 +127,14 @@ const activeSchedulerState = (
 const activeSchedulerDatum = (
   operator: string,
   startTime: bigint,
-): CanonicalSchedulerDatum => ({
+): SDK.SchedulerDatum => ({
   ActiveOperator: {
     operator,
     start_time: startTime,
   },
 });
 
-const describeSchedulerDatum = (datum: CanonicalSchedulerDatum): string => {
+const describeSchedulerDatum = (datum: SDK.SchedulerDatum): string => {
   const active = activeSchedulerState(datum);
   return active === undefined
     ? "NoActiveOperators"
@@ -263,6 +240,35 @@ export const resolveSchedulerRefreshWitnessSelection = ({
   };
 };
 
+const toSdkSchedulerRefreshWitnessSelection = (
+  selection: SchedulerRefreshWitnessSelection,
+): SDK.SchedulerRefreshWitnessSelection => {
+  switch (selection.kind) {
+    case "Advance":
+      return {
+        kind: "Advance",
+        activeNode: { utxo: selection.activeNode.utxo },
+      };
+    case "AppointFirst":
+      return {
+        kind: "AppointFirst",
+        activeNode: { utxo: selection.activeNode.utxo },
+        registeredWitnessNode: {
+          utxo: selection.registeredWitnessNode.utxo,
+        },
+      };
+    case "Rewind":
+      return {
+        kind: "Rewind",
+        activeNode: { utxo: selection.activeNode.utxo },
+        activeRootNode: { utxo: selection.activeRootNode.utxo },
+        registeredWitnessNode: {
+          utxo: selection.registeredWitnessNode.utxo,
+        },
+      };
+  }
+};
+
 export const selectFeeInput = (
   walletUtxos: readonly UTxO[],
 ): Effect.Effect<UTxO, SDK.StateQueueError> =>
@@ -311,19 +317,17 @@ const parseNodeSetUtxos = (
 const resolveSchedulerRefreshValidityWindow = (
   lucid: LucidEvolution,
   currentSchedulerStartTime: bigint,
+  slotSnapshot: SchedulerSlotSnapshot = captureSchedulerSlotSnapshot(lucid),
 ): {
   readonly validFrom: bigint;
   readonly validTo: bigint;
 } => {
-  const currentSlot = lucid.currentSlot();
-  const currentSlotStart =
-    slotToUnixTimeForLucid(lucid, currentSlot) ?? Date.now();
   const minimumShiftStart = Number(
     currentSchedulerStartTime + SCHEDULER_SHIFT_DURATION_MS,
   );
   let validFrom = alignUnixTimeToSlotBoundary(
     lucid,
-    Math.max(currentSlotStart, minimumShiftStart),
+    Math.max(slotSnapshot.currentSlotStartMs, minimumShiftStart),
   );
   if (validFrom < minimumShiftStart) {
     validFrom = alignUnixTimeToSlotBoundary(lucid, minimumShiftStart + 999);
@@ -334,23 +338,34 @@ const resolveSchedulerRefreshValidityWindow = (
   };
 };
 
-const resolveSchedulerFirstAppointmentValidityWindow = (
+export const resolveSchedulerFirstAppointmentValidityWindow = (
   lucid: LucidEvolution,
   targetCommitEndTime: bigint,
+  slotSnapshot: SchedulerSlotSnapshot = captureSchedulerSlotSnapshot(lucid),
 ): {
   readonly validFrom: bigint;
   readonly validTo: bigint;
 } => {
-  const currentSlot = lucid.currentSlot();
-  const currentSlotStart =
-    slotToUnixTimeForLucid(lucid, currentSlot) ?? Date.now();
   const validFrom = BigInt(
-    alignUnixTimeToSlotBoundary(lucid, currentSlotStart),
+    alignUnixTimeToSlotBoundary(lucid, slotSnapshot.currentSlotStartMs),
   );
-  const validTo = targetCommitEndTime;
-  if (validFrom >= validTo) {
+  if (validFrom >= targetCommitEndTime) {
     throw new Error(
-      `Cannot appoint first scheduler operator because the target commit end-time is not in the future: valid_from=${validFrom.toString()},target_commit_end=${validTo.toString()}`,
+      `Cannot appoint first scheduler operator because the target commit end-time is not in the future: valid_from=${validFrom.toString()},target_commit_end=${targetCommitEndTime.toString()}`,
+    );
+  }
+  const maxRefreshValidTo = validFrom + SCHEDULER_TRANSITION_VALIDITY_WINDOW_MS;
+  const validTo =
+    targetCommitEndTime < maxRefreshValidTo
+      ? targetCommitEndTime
+      : maxRefreshValidTo;
+  if (
+    targetCommitEndTime - validFrom <
+      SCHEDULER_FIRST_APPOINTMENT_MIN_VALIDITY_GAP_MS ||
+    validTo - validFrom < SCHEDULER_FIRST_APPOINTMENT_MIN_VALIDITY_GAP_MS
+  ) {
+    throw new Error(
+      `Cannot appoint first scheduler operator because the target commit end-time leaves too little validity budget: valid_from=${validFrom.toString()},target_commit_end=${targetCommitEndTime.toString()},valid_to=${validTo.toString()},minimum_gap=${SCHEDULER_FIRST_APPOINTMENT_MIN_VALIDITY_GAP_MS.toString()}`,
     );
   }
   if (validTo - validFrom > SCHEDULER_TRANSITION_VALIDITY_WINDOW_MS) {
@@ -385,7 +400,7 @@ const resolveRefreshedSchedulerStartTime = ({
 const awaitSubmittedSchedulerTx = (
   lucid: LucidEvolution,
   txHash: string,
-  purpose: "bootstrap" | "refresh",
+  purpose: "refresh",
 ): Effect.Effect<void, SDK.StateQueueError> =>
   Effect.gen(function* () {
     const confirmed = yield* Effect.tryPromise({
@@ -477,9 +492,114 @@ const selectActiveOperatorInput = (
     );
   });
 
+export const filterLocallyConsumedUtxos = (
+  utxos: readonly UTxO[],
+  consumedOutRefs: readonly string[],
+): readonly UTxO[] => {
+  const consumed = new Set(consumedOutRefs);
+  return utxos.filter((utxo) => !consumed.has(outRefLabel(utxo)));
+};
+
+const fetchActiveOperatorUtxos = (
+  lucid: LucidEvolution,
+  contracts: SDK.MidgardValidators,
+  message: string,
+): Effect.Effect<readonly UTxO[], SDK.StateQueueError> =>
+  SDK.utxosAtByNFTPolicyId(
+    lucid,
+    contracts.activeOperators.spendingScriptAddress,
+    contracts.activeOperators.policyId,
+  ).pipe(
+    Effect.map((beacons) => beacons.map((beacon) => beacon.utxo)),
+    Effect.mapError(
+      (cause) =>
+        new SDK.StateQueueError({
+          message,
+          cause,
+        }),
+    ),
+  );
+
+const requireInlineActiveOperatorDatum = (
+  activeOperatorInput: UTxO,
+): Effect.Effect<UTxO & { datum: string }, SDK.StateQueueError> =>
+  Effect.gen(function* () {
+    if (activeOperatorInput.datum == null) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message:
+            "Active-operators UTxO must include inline datum for real state_queue commit",
+          cause: `${activeOperatorInput.txHash}#${activeOperatorInput.outputIndex}`,
+        }),
+      );
+    }
+    return activeOperatorInput as UTxO & { datum: string };
+  });
+
+const fetchFreshActiveOperatorInputForCommit = (
+  lucid: LucidEvolution,
+  contracts: SDK.MidgardValidators,
+  operatorKeyHash: string,
+  operatorWalletView: OperatorWalletView,
+): Effect.Effect<UTxO & { datum: string }, SDK.StateQueueError> =>
+  Effect.gen(function* () {
+    const consumedOutRefs = new Set(operatorWalletView.consumedOutRefs);
+    let lastCandidateLabels: readonly string[] = [];
+
+    for (
+      let pollCount = 0;
+      pollCount < SCHEDULER_REFRESH_MAX_POLLS;
+      pollCount += 1
+    ) {
+      const activeOperatorUtxos = yield* fetchActiveOperatorUtxos(
+        lucid,
+        contracts,
+        "Failed to refresh active-operators UTxOs for state_queue commit",
+      );
+      lastCandidateLabels = activeOperatorUtxos.map(outRefLabel);
+      const freshActiveOperatorUtxos = filterLocallyConsumedUtxos(
+        activeOperatorUtxos,
+        operatorWalletView.consumedOutRefs,
+      );
+      const activeOperatorInput = yield* Effect.either(
+        selectActiveOperatorInput(freshActiveOperatorUtxos, operatorKeyHash),
+      );
+      if (activeOperatorInput._tag === "Right") {
+        return yield* requireInlineActiveOperatorDatum(
+          activeOperatorInput.right,
+        );
+      }
+
+      const staleCandidateLabels = activeOperatorUtxos
+        .filter((utxo) => consumedOutRefs.has(outRefLabel(utxo)))
+        .map(outRefLabel);
+      if (staleCandidateLabels.length === 0) {
+        return yield* Effect.fail(activeOperatorInput.left);
+      }
+      if (pollCount === 0) {
+        yield* Effect.logWarning(
+          `Active-operators provider view still includes locally consumed outref(s) ${staleCandidateLabels.join(
+            ",",
+          )}; waiting for refreshed commit witness input.`,
+        );
+      }
+      yield* Effect.sleep(SCHEDULER_REFRESH_POLL_INTERVAL);
+    }
+
+    return yield* Effect.fail(
+      new SDK.StateQueueError({
+        message:
+          "Timed out waiting for refreshed active-operators UTxO after scheduler refresh",
+        cause: `operator=${operatorKeyHash},consumed_outrefs=${operatorWalletView.consumedOutRefs.join(
+          ",",
+        )},last_candidates=${lastCandidateLabels.join(",")}`,
+      }),
+    );
+  });
+
 const getSchedulerDatumFromUTxO = (
   schedulerUtxo: UTxO,
-): Effect.Effect<CanonicalSchedulerDatum, SDK.StateQueueError> =>
+): Effect.Effect<SDK.SchedulerDatum, SDK.StateQueueError> =>
   Effect.gen(function* () {
     if (schedulerUtxo.datum == null) {
       return yield* Effect.fail(
@@ -495,7 +615,7 @@ const getSchedulerDatumFromUTxO = (
         LucidData.from(
           schedulerDatum,
           SDK.SchedulerDatum as never,
-        ) as CanonicalSchedulerDatum,
+        ) as SDK.SchedulerDatum,
       catch: (cause) =>
         new SDK.StateQueueError({
           message: "Failed to decode scheduler datum",
@@ -504,17 +624,11 @@ const getSchedulerDatumFromUTxO = (
     });
   });
 
-const ensureRealSchedulerWitnessUtxo = (
-  lucid: LucidEvolution,
-  contracts: SDK.MidgardValidators,
+export const requireExistingSchedulerWitnessUtxo = (
   schedulerUtxos: readonly UTxO[],
-  schedulerMintingScriptRef?: UTxO,
-): Effect.Effect<UTxO, SDK.StateQueueError | TxSignError | TxSubmitError> =>
+  schedulerWitnessUnit: string,
+): Effect.Effect<UTxO, SDK.StateQueueError> =>
   Effect.gen(function* () {
-    const schedulerWitnessUnit = toUnit(
-      contracts.scheduler.policyId,
-      SDK.SCHEDULER_ASSET_NAME,
-    );
     const existingWitness = [...schedulerUtxos]
       .filter((utxo) => (utxo.assets[schedulerWitnessUnit] ?? 0n) > 0n)
       .sort(compareOutRefs)[0];
@@ -522,87 +636,11 @@ const ensureRealSchedulerWitnessUtxo = (
       return existingWitness;
     }
 
-    yield* Effect.logInfo(
-      "🔹 Scheduler witness token with empty asset-name missing; creating one for real state_queue commits.",
-    );
-    const walletUtxos = yield* Effect.tryPromise({
-      try: () => lucid.wallet().getUtxos(),
-      catch: (cause) =>
-        new SDK.StateQueueError({
-          message:
-            "Failed to fetch wallet UTxOs for scheduler witness bootstrap",
-          cause,
-        }),
-    });
-    const feeInput = yield* selectFeeInput(walletUtxos);
-    const bootstrapDatum: CanonicalSchedulerDatum = "NoActiveOperators";
-    const bootstrapTx = yield* Effect.tryPromise({
-      try: () => {
-        const tx = lucid
-          .newTx()
-          .collectFrom([feeInput])
-          .mintAssets({ [schedulerWitnessUnit]: 1n }, LucidData.void())
-          .pay.ToContract(
-            contracts.scheduler.spendingScriptAddress,
-            {
-              kind: "inline",
-              value: encodeSchedulerDatumForChain(bootstrapDatum),
-            },
-            {
-              lovelace: MIN_SCHEDULER_WITNESS_LOVELACE,
-              [schedulerWitnessUnit]: 1n,
-            },
-          );
-        return (
-          schedulerMintingScriptRef === undefined
-            ? tx.attach.Script(contracts.scheduler.mintingScript)
-            : tx.readFrom([schedulerMintingScriptRef])
-        ).complete({ localUPLCEval: true });
-      },
-      catch: (cause) =>
-        new SDK.StateQueueError({
-          message: `Failed to build scheduler witness bootstrap tx: ${cause}`,
-          cause,
-        }),
-    });
-
-    const bootstrapTxHash = yield* handleSignSubmitNoConfirmation(
-      lucid,
-      bootstrapTx,
-    );
-    yield* Effect.logInfo(
-      `🔹 Scheduler witness bootstrap submitted: ${bootstrapTxHash}`,
-    );
-    yield* awaitSubmittedSchedulerTx(lucid, bootstrapTxHash, "bootstrap");
-
-    let pollCount = 0;
-    while (pollCount < SCHEDULER_REFRESH_MAX_POLLS) {
-      const witnessUtxos = yield* Effect.tryPromise({
-        try: () =>
-          lucid.utxosAtWithUnit(
-            contracts.scheduler.spendingScriptAddress,
-            schedulerWitnessUnit,
-          ),
-        catch: (cause) =>
-          new SDK.StateQueueError({
-            message:
-              "Failed to fetch scheduler witness UTxOs while waiting for bootstrap confirmation",
-            cause,
-          }),
-      });
-      const witness = [...witnessUtxos].sort(compareOutRefs)[0];
-      if (witness !== undefined) {
-        return witness;
-      }
-      pollCount += 1;
-      yield* Effect.sleep(SCHEDULER_REFRESH_POLL_INTERVAL);
-    }
-
     return yield* Effect.fail(
       new SDK.StateQueueError({
         message:
-          "Timed out waiting for scheduler witness UTxO bootstrap confirmation",
-        cause: bootstrapTxHash,
+          "Incomplete protocol deployment: scheduler root UTxO is missing; refusing commit-time scheduler minting",
+        cause: `unit=${schedulerWitnessUnit}`,
       }),
     );
   });
@@ -662,6 +700,7 @@ const ensureSchedulerAlignedForCommit = (
     const currentOperator = currentSchedulerState?.operator ?? "";
     const currentStartTime = currentSchedulerState?.startTime ?? 0n;
     const allowGenesisRewind = currentSchedulerState === undefined;
+    const schedulerSlotSnapshot = captureSchedulerSlotSnapshot(lucid);
     const selection = yield* Effect.try({
       try: () =>
         resolveSchedulerRefreshWitnessSelection({
@@ -685,6 +724,7 @@ const ensureSchedulerAlignedForCommit = (
               resolveSchedulerFirstAppointmentValidityWindow(
                 lucid,
                 targetStartTime,
+                schedulerSlotSnapshot,
               ),
             catch: (cause) =>
               new SDK.StateQueueError({
@@ -693,7 +733,11 @@ const ensureSchedulerAlignedForCommit = (
                 cause,
               }),
           })
-        : resolveSchedulerRefreshValidityWindow(lucid, currentStartTime);
+        : resolveSchedulerRefreshValidityWindow(
+            lucid,
+            currentStartTime,
+            schedulerSlotSnapshot,
+          );
     if (targetStartTime < validFrom) {
       return yield* Effect.fail(
         new SDK.StateQueueError({
@@ -720,23 +764,6 @@ const ensureSchedulerAlignedForCommit = (
       operatorKeyHash,
       refreshedSchedulerStartTime,
     );
-    const refreshedSchedulerDatumCbor = encodeSchedulerDatumForChain(
-      refreshedSchedulerDatum,
-    );
-    const witnessReferenceInputs =
-      selection.kind === "Advance"
-        ? [selection.activeNode.utxo]
-        : selection.kind === "AppointFirst"
-          ? [selection.activeNode.utxo, selection.registeredWitnessNode.utxo]
-          : [
-              selection.activeNode.utxo,
-              selection.activeRootNode.utxo,
-              selection.registeredWitnessNode.utxo,
-            ];
-    const referenceInputs =
-      schedulerSpendingScriptRef === undefined
-        ? witnessReferenceInputs
-        : [...witnessReferenceInputs, schedulerSpendingScriptRef];
     if (selection.kind !== "Advance") {
       const registeredWitness = selection.registeredWitnessNode;
       if (registeredWitness.datum.key !== "Empty") {
@@ -755,132 +782,38 @@ const ensureSchedulerAlignedForCommit = (
         }
       }
     }
-    const feeInput = yield* selectFeeInput(
-      availableOperatorWalletUtxos(flowOperatorWalletView),
+    const presetWalletInputs = availableOperatorWalletUtxos(
+      flowOperatorWalletView,
     );
-    const schedulerSpendRedeemer = ((ctx) => {
-      SDK.requireOwnSpendPurpose(ctx, schedulerRefInput, "scheduler refresh");
-      const schedulerInputIndex = SDK.requireInputIndex(
-        ctx,
-        schedulerRefInput,
-        "scheduler refresh",
-      );
-      const schedulerOutputIndex = SDK.requireUniqueOutputIndex(
-        ctx.outputs,
-        (output) =>
-          output.address === contracts.scheduler.spendingScriptAddress &&
-          output.datum === refreshedSchedulerDatumCbor &&
-          (output.assets[schedulerWitnessUnit] ?? 0n) === 1n,
-        "scheduler refresh",
-      );
-      const redeemer: CanonicalSchedulerSpendRedeemer =
-        selection.kind === "Advance"
-          ? {
-              scheduler_input_index: schedulerInputIndex,
-              scheduler_output_index: schedulerOutputIndex,
-              advancing_approach: {
-                GoToNextDueToEndOfShift: {
-                  new_shifts_operator_node_ref_input_index:
-                    SDK.requireReferenceInputIndex(
-                      ctx,
-                      selection.activeNode.utxo,
-                      "scheduler refresh active node",
-                    ),
-                },
-              },
-            }
-          : selection.kind === "AppointFirst"
-            ? {
-                scheduler_input_index: schedulerInputIndex,
-                scheduler_output_index: schedulerOutputIndex,
-                advancing_approach: {
-                  AppointFirstOperator: {
-                    new_shifts_operator_node_ref_input_index:
-                      SDK.requireReferenceInputIndex(
-                        ctx,
-                        selection.activeNode.utxo,
-                        "scheduler refresh active node",
-                      ),
-                    registered_element_ref_input_index:
-                      SDK.requireReferenceInputIndex(
-                        ctx,
-                        selection.registeredWitnessNode.utxo,
-                        "scheduler refresh registered witness",
-                      ),
-                  },
-                },
-              }
-            : {
-                scheduler_input_index: schedulerInputIndex,
-                scheduler_output_index: schedulerOutputIndex,
-                advancing_approach: {
-                  RewindDueToEndOfShift: {
-                    active_operators_root_ref_input_index:
-                      SDK.requireReferenceInputIndex(
-                        ctx,
-                        selection.activeRootNode.utxo,
-                        "scheduler refresh active root",
-                      ),
-                    active_operators_last_node_ref_input_index:
-                      SDK.requireReferenceInputIndex(
-                        ctx,
-                        selection.activeNode.utxo,
-                        "scheduler refresh active tail",
-                      ),
-                    registered_element_ref_input_index:
-                      SDK.requireReferenceInputIndex(
-                        ctx,
-                        selection.registeredWitnessNode.utxo,
-                        "scheduler refresh registered witness",
-                      ),
-                  },
-                },
-              };
-      return LucidData.to(
-        redeemer as never,
-        SDK.SchedulerSpendRedeemer as never,
-      );
-    }) satisfies BuildTxWithRedeemer;
+    const feeInput = yield* selectFeeInput(presetWalletInputs);
     yield* Effect.logInfo(
       `🔹 Refreshing scheduler witness datum for commit window via ${selection.kind} (from=${describeSchedulerDatum(schedulerDatum)} to=${describeSchedulerDatum(refreshedSchedulerDatum)}, validTo=${validTo.toString()}).`,
     );
-
-    /**
-     * Builds the scheduler-refresh transaction.
-     */
-    const mkSchedulerRefreshTx = () =>
-      lucid
-        .newTx()
-        .validFrom(Number(validFrom))
-        .validTo(Number(validTo))
-        .collectFrom([feeInput])
-        .readFrom(referenceInputs)
-        .collectFrom([schedulerRefInput], schedulerSpendRedeemer)
-        .pay.ToContract(
-          contracts.scheduler.spendingScriptAddress,
-          {
-            kind: "inline",
-            value: refreshedSchedulerDatumCbor,
-          },
-          schedulerRefInput.assets,
-        )
-        .addSignerKey(operatorKeyHash);
-    const mkSchedulerRefreshTxWithScript = () =>
-      schedulerSpendingScriptRef === undefined
-        ? mkSchedulerRefreshTx().attach.Script(
-            contracts.scheduler.spendingScript,
-          )
-        : mkSchedulerRefreshTx();
-
-    const refreshTx = yield* Effect.tryPromise({
-      try: () =>
-        mkSchedulerRefreshTxWithScript().complete({ localUPLCEval: true }),
-      catch: (cause) =>
-        new SDK.StateQueueError({
-          message: `Failed to build scheduler refresh tx: ${cause}`,
-          cause,
-        }),
-    });
+    const refreshTxResult = yield* SDK.buildUnsignedSchedulerRefreshTxProgram({
+      lucid,
+      scheduler: contracts.scheduler,
+      operatorKeyHash,
+      feeInput,
+      presetWalletInputs,
+      schedulerInput: schedulerRefInput,
+      refreshedDatum: refreshedSchedulerDatum,
+      validFrom,
+      validTo,
+      selection: toSdkSchedulerRefreshWitnessSelection(selection),
+      schedulerSpendingScriptRef,
+    }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new SDK.StateQueueError({
+            message: `Failed to build scheduler refresh transaction through SDK: ${formatUnknownError(
+              cause,
+              { includeCause: true },
+            )}`,
+            cause,
+          }),
+      ),
+    );
+    const refreshTx = refreshTxResult.tx;
 
     const refreshTxHash = yield* handleSignSubmitNoConfirmation(
       lucid,
@@ -970,10 +903,6 @@ export const fetchRealStateQueueWitnessContext = (
                 script: contracts.scheduler.spendingScript,
               },
               {
-                name: "scheduler minting",
-                script: contracts.scheduler.mintingScript,
-              },
-              {
                 name: "active-operators spending",
                 script: contracts.activeOperators.spendingScript,
               },
@@ -986,6 +915,7 @@ export const fetchRealStateQueueWitnessContext = (
                 script: contracts.stateQueue.mintingScript,
               },
             ],
+            contracts.referenceScriptAuth,
           );
     const optionalReferenceScript = (name: string): UTxO | undefined =>
       referenceScriptsAddress === undefined
@@ -993,8 +923,6 @@ export const fetchRealStateQueueWitnessContext = (
         : referenceScriptByName(resolvedReferenceScripts, name);
     const schedulerSpendingScriptRef =
       optionalReferenceScript("scheduler spending");
-    const schedulerMintingScriptRef =
-      optionalReferenceScript("scheduler minting");
     const activeOperatorsSpendingScriptRef = optionalReferenceScript(
       "active-operators spending",
     );
@@ -1008,20 +936,11 @@ export const fetchRealStateQueueWitnessContext = (
       contracts.scheduler.policyId,
       SDK.SCHEDULER_ASSET_NAME,
     );
-    const activeOperatorUtxosForRefresh = (yield* SDK.utxosAtByNFTPolicyId(
+    const activeOperatorUtxosForRefresh = yield* fetchActiveOperatorUtxos(
       lucid,
-      contracts.activeOperators.spendingScriptAddress,
-      contracts.activeOperators.policyId,
-    ).pipe(
-      Effect.mapError(
-        (cause) =>
-          new SDK.StateQueueError({
-            message:
-              "Failed to fetch active-operators UTxOs for state_queue commit",
-            cause,
-          }),
-      ),
-    )).map((beacon) => beacon.utxo);
+      contracts,
+      "Failed to fetch active-operators UTxOs for state_queue commit",
+    );
     const registeredOperatorUtxos = (yield* SDK.utxosAtByNFTPolicyId(
       lucid,
       contracts.registeredOperators.spendingScriptAddress,
@@ -1050,11 +969,9 @@ export const fetchRealStateQueueWitnessContext = (
           }),
       ),
     )).map((beacon) => beacon.utxo);
-    const initialSchedulerRefInput = yield* ensureRealSchedulerWitnessUtxo(
-      lucid,
-      contracts,
+    const initialSchedulerRefInput = yield* requireExistingSchedulerWitnessUtxo(
       schedulerUtxos,
-      schedulerMintingScriptRef,
+      schedulerWitnessUnit,
     );
     const schedulerRefInput = yield* ensureSchedulerAlignedForCommit(
       lucid,
@@ -1106,40 +1023,18 @@ export const fetchRealStateQueueWitnessContext = (
     }
     const hubOracleRefInput = hubOracleWitnessUtxos[0];
 
-    const activeOperatorUtxos = (yield* SDK.utxosAtByNFTPolicyId(
+    const activeOperatorInput = yield* fetchFreshActiveOperatorInputForCommit(
       lucid,
-      contracts.activeOperators.spendingScriptAddress,
-      contracts.activeOperators.policyId,
-    ).pipe(
-      Effect.mapError(
-        (cause) =>
-          new SDK.StateQueueError({
-            message:
-              "Failed to refresh active-operators UTxOs for state_queue commit",
-            cause,
-          }),
-      ),
-    )).map((beacon) => beacon.utxo);
-    const activeOperatorInput = yield* selectActiveOperatorInput(
-      activeOperatorUtxos,
+      contracts,
       operatorKeyHash,
+      schedulerRefInput.operatorWalletView,
     );
-
-    if (activeOperatorInput.datum == null) {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message:
-            "Active-operators UTxO must include inline datum for real state_queue commit",
-          cause: `${activeOperatorInput.txHash}#${activeOperatorInput.outputIndex}`,
-        }),
-      );
-    }
 
     return {
       operatorKeyHash,
       schedulerRefInput: schedulerRefInput.schedulerRefInput,
       hubOracleRefInput,
-      activeOperatorInput: activeOperatorInput as UTxO & { datum: string },
+      activeOperatorInput,
       activeOperatorsSpendingScript: contracts.activeOperators.spendingScript,
       activeOperatorsSpendingScriptRef,
       stateQueueSpendingScriptRef,

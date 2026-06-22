@@ -5,31 +5,46 @@
 \section{Transaction Order event}
 \label{h:transaction-order-event}
 
-A transaction order set is a finite map from transaction order ID to a Midgard transaction:
+A forced transaction set is a finite map from transaction order ID to the compact transaction order source value:
 \begin{align*}
-    \T{TxOrderSet} &\coloneq \T{Map(TxOrderId, MidgardTx)} \\
+    \T{ForcedTransactionSet} &\coloneq \T{Map(TxOrderId, ForcedInclusionTx)} \\
       &\coloneq \Bigl\{
-        (k_i: \T{TxOrderId}, v_i: \T{MidgardTx}) \mid \forall i \neq j.\; k_i \neq k_j
+        (k_i: \T{TxOrderId}, v_i: \T{ForcedInclusionTx}) \mid \forall i \neq j.\; k_i \neq k_j
     \Bigr\}
 \end{align*}
 
 Transaction orders are events on L1 as an alternative to the L2 transaction submission to operators.
 Similar to a deposit or withdrawal event, a transaction order in a Midgard block acknowledges that a user has created an L1 utxo at the Midgard L1 transaction order address, obligating the operator to include the given L2 transaction.
-In turn, the operator is free to set \code{MidgardTxValidity}, if the included transaction is invalid.
+The transaction order payload does not carry an operator validity classification.
+In turn, the operator sets \code{MidgardTxValidity} when including the order in a block.
 This invalidity claim itself can then be subject to fraud proofs if the operator had stated incorrectly.
 \begingroup
 \allowdisplaybreaks{}
 \begin{align*}
-    \T{TxOrderEvent} &\coloneq \T{(TxOrderId, MidgardTx)} \\
-    \T{TxOrderId} &\coloneq \T{OutputRef}
+    \T{TxOrderEvent} &\coloneq \T{(TxOrderId, MidgardTxCompactWithoutValidity)} \\
+    \T{TxOrderId} &\coloneq \T{OutputRef} \\
+    \T{ForcedInclusionTx} &\coloneq \left\{
+    \begin{array}{ll}
+        \T{tx\_compact} : & \T{MidgardTxCompactWithoutValidity} \\
+        \T{operator\_validity} : & \T{MidgardTxValidity}
+    \end{array} \right\}
 \end{align*}
 \endgroup
 
 The \code{TxOrderId} of a transaction order event corresponds to one of the inputs spent by the user in the L1 transaction that created the transaction order utxo on L1 (more specifically, it's the hash of its serialized output-reference).
 This key is needed to identify the L1 transaction order utxo, and ensure that each order is unique.
+The forced transaction source root is keyed by this L1 order identity, not by the L2 transaction ID.
+This permits multiple L1 orders for the same L2 transaction to be represented and challenged independently.
+The L2 transaction ID is derived from \code{tx\_compact.body}; it is not repeated in \code{ForcedInclusionTx}.
+The transaction validity interval is also part of the compact body, so transaction-order due checks use that validity range rather than a separate inclusion timestamp.
 
-The effect of an included transaction order on a block's utxo set is identical to any other transaction from block's transaction tree.
-Meaning it simply should remove all the transaction's inputs from the ledger, and add all its outputs.
+The effect of a valid included transaction order on a block's utxo set is identical to a valid L2 transaction request.
+It removes all of the transaction's inputs from the ledger and adds all of its outputs.
+Invalid included transaction orders are represented as forced transaction trace steps whose operator validity classification is challengeable.
+
+The current transition-trace launch gate intentionally supports only invalid/no-op forced transaction steps in production block construction.
+An operator must not commit an effectful \code{TxIsValid} forced transaction trace step until the forced-transaction ledger deltas and proof preimages needed by the one-step verifier are available.
+The Aiken transition-trace proof validator rejects the unsupported valid-forced redeemer path, so this is a fail-closed deployment restriction rather than an alternate validity rule.
 
 \Cref{h:transaction-order} describes the lifecycle of a transaction order request in further detail.
 

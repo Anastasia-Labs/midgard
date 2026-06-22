@@ -14,9 +14,6 @@ const explicitPostgresDb =
 
 const TEST_ENV_DEFAULTS: Record<string, string> = {
   L1_PROVIDER: "Kupmios",
-  L1_BLOCKFROST_API_URL: "https://blockfrost.invalid",
-  L1_BLOCKFROST_KEY: "test-key",
-  L1_BLOCKFROST_KEY_FALLBACK: "",
   L1_OGMIOS_KEY: "http://127.0.0.1:1337",
   L1_KUPO_KEY: "http://127.0.0.1:1442",
   L1_OPERATOR_SEED_PHRASE:

@@ -3,8 +3,8 @@
  * Keeping response shaping here prevents route handlers from each inventing
  * their own failure formatting and status-code behavior.
  */
-import * as SDK from "@al-ft/midgard-sdk";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import * as SDK from "@al-ft/midgard-sdk";
 import { HttpServerResponse } from "@effect/platform";
 import type { HttpBodyError } from "@effect/platform/HttpBody";
 import { Effect } from "effect";

@@ -20,6 +20,11 @@ import {
   UnspecifiedNetworkError,
 } from "@/common.js";
 import {
+  DaParamsDatum,
+  type DaParamsDatum as DaParamsDatumType,
+  daParamsUnit,
+} from "@/da-attestation.js";
+import {
   FRAUD_PROOF_CATALOGUE_ASSET_NAME,
   FraudProofCatalogueDatum,
   FraudProofCatalogueMintRedeemer,
@@ -57,6 +62,7 @@ import {
 
 export type AtomicProtocolInitReferenceScripts = {
   readonly hubOracleMinting: UTxO;
+  readonly daParamsGovernorMinting: UTxO;
   readonly schedulerMinting: UTxO;
   readonly stateQueueMinting: UTxO;
   readonly registeredOperatorsMinting: UTxO;
@@ -68,6 +74,7 @@ export type AtomicProtocolInitReferenceScripts = {
 export type InitializationParams = {
   midgardValidators: MidgardValidators;
   fraudProofCatalogueMerkleRoot: string;
+  daParams: DaParamsDatumType;
   oneShotNonceUTxO: UTxO;
   validityRange: {
     readonly validFrom: bigint;
@@ -87,10 +94,7 @@ const encodeLinkedListRootDatum = (
 
 // Atomic initialization appends protocol root outputs in a fixed order before
 // wallet change, and each Init validator independently verifies its output.
-const encodeInitOutputRedeemer = <T>(
-  outputIndex: bigint,
-  schema: T,
-): string =>
+const encodeInitOutputRedeemer = <T>(outputIndex: bigint, schema: T): string =>
   Data.to({ Init: { output_index: outputIndex } } as never, schema as never);
 
 /**
@@ -159,6 +163,9 @@ export const incompleteInitializationTxProgram = (
       midgardValidators.fraudProofCatalogue.policyId,
       FRAUD_PROOF_CATALOGUE_ASSET_NAME,
     );
+    const daParamsGovernorUnit = daParamsUnit(
+      midgardValidators.daParamsGovernor,
+    );
 
     const hubOracleAssets = { [hubOracleUnit]: 1n };
     const schedulerAssets = { [schedulerUnit]: 1n };
@@ -167,12 +174,22 @@ export const incompleteInitializationTxProgram = (
     const activeOperatorsAssets = { [activeOperatorsUnit]: 1n };
     const retiredOperatorsAssets = { [retiredOperatorsUnit]: 1n };
     const fraudProofCatalogueAssets = { [fraudProofCatalogueUnit]: 1n };
+    const daParamsGovernorAssets = { [daParamsGovernorUnit]: 1n };
 
     const tx = lucid
       .newTx()
       .validFrom(Number(params.validityRange.validFrom))
       .validTo(Number(params.validityRange.validTo))
       .collectFrom([params.oneShotNonceUTxO])
+      .mintAssets(daParamsGovernorAssets, Data.void())
+      .pay.ToContract(
+        midgardValidators.daParamsGovernor.spendingScriptAddress,
+        {
+          kind: "inline",
+          value: Data.to(params.daParams, DaParamsDatum),
+        },
+        daParamsGovernorAssets,
+      )
       .mintAssets(hubOracleAssets, Data.void())
       .pay.ToAddressWithData(
         credentialToAddress(
@@ -193,7 +210,7 @@ export const incompleteInitializationTxProgram = (
       )
       .mintAssets(
         stateQueueAssets,
-        encodeInitOutputRedeemer(2n, StateQueueRedeemer),
+        encodeInitOutputRedeemer(3n, StateQueueRedeemer),
       )
       .pay.ToContract(
         midgardValidators.stateQueue.spendingScriptAddress,
@@ -209,7 +226,7 @@ export const incompleteInitializationTxProgram = (
       )
       .mintAssets(
         registeredOperatorsAssets,
-        encodeInitOutputRedeemer(3n, RegisteredOperatorMintRedeemer),
+        encodeInitOutputRedeemer(4n, RegisteredOperatorMintRedeemer),
       )
       .pay.ToContract(
         midgardValidators.registeredOperators.spendingScriptAddress,
@@ -218,7 +235,7 @@ export const incompleteInitializationTxProgram = (
       )
       .mintAssets(
         activeOperatorsAssets,
-        encodeInitOutputRedeemer(4n, ActiveOperatorMintRedeemer),
+        encodeInitOutputRedeemer(5n, ActiveOperatorMintRedeemer),
       )
       .pay.ToContract(
         midgardValidators.activeOperators.spendingScriptAddress,
@@ -227,7 +244,7 @@ export const incompleteInitializationTxProgram = (
       )
       .mintAssets(
         retiredOperatorsAssets,
-        encodeInitOutputRedeemer(5n, RetiredOperatorMintRedeemer),
+        encodeInitOutputRedeemer(6n, RetiredOperatorMintRedeemer),
       )
       .pay.ToContract(
         midgardValidators.retiredOperators.spendingScriptAddress,
@@ -252,6 +269,7 @@ export const incompleteInitializationTxProgram = (
 
     if (params.referenceScripts !== undefined) {
       return tx.readFrom([
+        params.referenceScripts.daParamsGovernorMinting,
         params.referenceScripts.hubOracleMinting,
         params.referenceScripts.schedulerMinting,
         params.referenceScripts.stateQueueMinting,
@@ -263,7 +281,8 @@ export const incompleteInitializationTxProgram = (
     }
 
     return tx.attach
-      .MintingPolicy(midgardValidators.hubOracle.mintingScript)
+      .Script(midgardValidators.daParamsGovernor.mintingScript)
+      .attach.Script(midgardValidators.hubOracle.mintingScript)
       .attach.Script(midgardValidators.scheduler.mintingScript)
       .attach.Script(midgardValidators.stateQueue.mintingScript)
       .attach.Script(midgardValidators.registeredOperators.mintingScript)

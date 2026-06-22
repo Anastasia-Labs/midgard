@@ -134,10 +134,10 @@ export const decodeMidgardRedeemers = (
   );
 };
 
-export const findRedeemerByPointer = (
-  redeemers: readonly DecodedMidgardRedeemer[],
+export const findRedeemerByPointer = <T extends MidgardRedeemerPointer>(
+  redeemers: readonly T[],
   pointer: MidgardRedeemerPointer,
-): DecodedMidgardRedeemer | undefined => {
+): T | undefined => {
   return redeemers.find(
     (redeemer) =>
       redeemer.tag === pointer.tag && redeemer.index === pointer.index,

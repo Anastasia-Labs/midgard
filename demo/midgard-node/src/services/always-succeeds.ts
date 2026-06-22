@@ -203,8 +203,14 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       "hub_oracle",
       NETWORK,
     );
+    const referenceScriptAuth = yield* makeMintingValidator(
+      "midgard",
+      "state_queue",
+    );
     const scheduler = yield* mkAuthVal("scheduler");
     const stateQueue = yield* mkAuthVal("state_queue");
+    const daParamsGovernor = stateQueue;
+    const daAttestation = stateQueue;
     const registeredOperators = yield* mkAuthVal("registered_operators");
     const activeOperators = yield* mkAuthVal("active_operators");
     const retiredOperators = yield* mkAuthVal("retired_operators");
@@ -238,16 +244,21 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
     const nonExistentInput = yield* mkFP("non_existent_input");
     const nonExistentInputNoIndex = yield* mkFP("non_existent_input_no_index");
     const invalidRange = yield* mkFP("invalid_range");
+    const transitionTrace = yield* mkFP("transition_trace");
 
     const fraudProofs: SDK.FraudProofs = {
       doubleSpend,
       nonExistentInput,
       nonExistentInputNoIndex,
       invalidRange,
+      transitionTrace,
     };
 
     return {
+      referenceScriptAuth,
       hubOracle,
+      daParamsGovernor,
+      daAttestation,
       stateQueue,
       scheduler,
       registeredOperators,

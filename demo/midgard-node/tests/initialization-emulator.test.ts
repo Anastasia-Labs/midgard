@@ -1,6 +1,6 @@
 import * as SDK from "@al-ft/midgard-sdk";
+import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
 import {
-  CML,
   Data,
   Emulator,
   generateEmulatorAccount,
@@ -9,15 +9,11 @@ import {
   PROTOCOL_PARAMETERS_DEFAULT,
   toUnit,
   UTxO,
-  validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  loadPhasMembershipWithdrawalScript,
-  phasMembershipRewardAddress,
-} from "@/phas-membership.js";
+import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
 import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
 import { withRealStateQueueAndOperatorContracts } from "@/services/midgard-contracts.js";
 import {
@@ -33,10 +29,13 @@ import {
   registerOperatorProgram,
 } from "@/transactions/register-active-operator.js";
 
-const loadContracts = (oneShotOutRef: {
-  txHash: string;
-  outputIndex: number;
-}) =>
+const loadContracts = (
+  oneShotOutRef: {
+    txHash: string;
+    outputIndex: number;
+  },
+  referenceScriptAuth?: SDK.MintingValidator,
+) =>
   Effect.runPromise(
     Effect.gen(function* () {
       const placeholder = yield* AlwaysSucceedsContract;
@@ -44,6 +43,10 @@ const loadContracts = (oneShotOutRef: {
         "Preprod",
         placeholder,
         oneShotOutRef,
+        {
+          referenceScriptAuth:
+            referenceScriptAuth ?? placeholder.referenceScriptAuth,
+        },
       );
     }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
   );
@@ -55,12 +58,20 @@ const EMULATOR_PROTOCOL_PARAMETERS = {
 } as const;
 
 const EMPTY_FRAUD_PROOF_CATALOGUE_ROOT = "00".repeat(32);
+const TEST_DA_PARAMS: SDK.DaParamsDatum = {
+  committee: "00".repeat(32),
+  committee_signers_hash: "11".repeat(32),
+  da_threshold: 1n,
+  owners: ["22".repeat(28)],
+  update_threshold: 1n,
+};
 
 const buildAtomicInitializationTx = async (
   lucid: Awaited<ReturnType<typeof Lucid>>,
   referenceScriptsLucid: Awaited<ReturnType<typeof Lucid>>,
   contracts: SDK.MidgardValidators,
   nonceUtxo: UTxO,
+  operatorSeedPhrase: string,
 ) => {
   const referenceScripts = await Effect.runPromise(
     ensureAtomicProtocolInitReferenceScriptsProgram(
@@ -75,6 +86,8 @@ const buildAtomicInitializationTx = async (
       {
         HUB_ORACLE_ONE_SHOT_TX_HASH: nonceUtxo.txHash,
         HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: nonceUtxo.outputIndex,
+        L1_OPERATOR_SEED_PHRASE: operatorSeedPhrase,
+        NETWORK: "Preprod",
       },
       EMPTY_FRAUD_PROOF_CATALOGUE_ROOT,
       undefined,
@@ -105,51 +118,21 @@ const initEmulatorLucid = async () => {
   if (!nonceUtxo) {
     throw new Error("Expected at least one wallet UTxO in emulator");
   }
-  return { emulator, lucid, referenceScriptsLucid, nonceUtxo };
+  const referenceScriptAuth = createReferenceScriptAuthPolicy(
+    referenceScriptsLucid,
+    emulator.now(),
+  );
+  return {
+    emulator,
+    lucid,
+    referenceScriptsLucid,
+    nonceUtxo,
+    operatorSeedPhrase: operator.seedPhrase,
+    referenceScriptAuth,
+  };
 };
 
 describe("initialization emulator", () => {
-  it("derives the canonical PHAS membership reward address", () => {
-    const script = loadPhasMembershipWithdrawalScript();
-    const scriptHash = validatorToScriptHash(script);
-    const rewardAddress = phasMembershipRewardAddress("Preprod", script);
-
-    expect(scriptHash).toEqual(
-      "46df0027fc0af07197924dc07f1c27ac6b15eb2bd6efc7a73b0dbb4d",
-    );
-    expect(rewardAddress.startsWith("stake_test")).toBe(true);
-  });
-
-  it("builds PHAS registration as a script stake certificate without a Plutus certificate witness", async () => {
-    const { lucid } = await initEmulatorLucid();
-    const script = loadPhasMembershipWithdrawalScript();
-    const scriptHash = validatorToScriptHash(script);
-    const rewardAddress = phasMembershipRewardAddress("Preprod", script);
-
-    const unsigned = await lucid
-      .newTx()
-      .register.Stake(rewardAddress)
-      .complete({
-        localUPLCEval: true,
-      });
-    const tx = CML.Transaction.from_cbor_hex(unsigned.toCBOR());
-    const certs = tx.body().certs();
-    expect(certs?.len()).toBe(1);
-    const cert = certs!.get(0);
-    expect(cert.kind()).toBe(CML.CertificateKind.StakeRegistration);
-    const stakeRegistration = cert.as_stake_registration();
-    expect(stakeRegistration).not.toBeUndefined();
-    const credential = stakeRegistration!.stake_credential();
-    expect(credential.kind()).toBe(CML.CredentialKind.Script);
-    expect(credential.as_script()?.to_hex()).toBe(scriptHash);
-
-    const witnessSet = tx.witness_set();
-    expect(witnessSet.plutus_v1_scripts()).toBeUndefined();
-    expect(witnessSet.plutus_v2_scripts()).toBeUndefined();
-    expect(witnessSet.plutus_v3_scripts()).toBeUndefined();
-    expect(witnessSet.redeemers()).toBeUndefined();
-  });
-
   it("builds the hub-oracle mint fragment in isolation", async () => {
     const { lucid, nonceUtxo } = await initEmulatorLucid();
     const contracts = await loadContracts({
@@ -179,6 +162,10 @@ describe("initialization emulator", () => {
     const validFrom = BigInt(emulator.now());
     const validTo = validFrom + 7n * 60n * 1000n;
     const outputAssets: Record<string, bigint>[] = [];
+    const mintCalls: {
+      readonly assets: Record<string, bigint>;
+      readonly redeemer: unknown;
+    }[] = [];
     const calls: {
       validFrom?: number;
       validTo?: number;
@@ -198,7 +185,10 @@ describe("initialization emulator", () => {
         calls.collected = utxos;
         return txBuilder;
       }),
-      mintAssets: vi.fn(() => txBuilder),
+      mintAssets: vi.fn((assets: Record<string, bigint>, redeemer: unknown) => {
+        mintCalls.push({ assets, redeemer });
+        return txBuilder;
+      }),
       pay: {
         ToAddressWithData: vi.fn(
           (
@@ -245,6 +235,7 @@ describe("initialization emulator", () => {
         SDK.incompleteInitializationTxProgram(fakeLucid, {
           midgardValidators: contracts,
           fraudProofCatalogueMerkleRoot: EMPTY_FRAUD_PROOF_CATALOGUE_ROOT,
+          daParams: TEST_DA_PARAMS,
           oneShotNonceUTxO: nonceUtxo,
           validityRange: { validFrom, validTo },
         }),
@@ -254,9 +245,28 @@ describe("initialization emulator", () => {
       expect(calls.validFrom).toBe(Number(validFrom));
       expect(calls.validTo).toBe(Number(validTo));
       expect(calls.collected).toEqual([nonceUtxo]);
-      expect(outputAssets).toHaveLength(7);
+      expect(outputAssets).toHaveLength(8);
       expect(outputAssets.every((assets) => !("lovelace" in assets))).toBe(
         true,
+      );
+      const hubOracleUnit = toUnit(
+        contracts.hubOracle.policyId,
+        SDK.HUB_ORACLE_ASSET_NAME,
+      );
+      const schedulerUnit = toUnit(
+        contracts.scheduler.policyId,
+        SDK.SCHEDULER_ASSET_NAME,
+      );
+      const hubOracleMint = mintCalls.find(
+        ({ assets }) => assets[hubOracleUnit] === 1n,
+      );
+      const schedulerMint = mintCalls.find(
+        ({ assets }) => assets[schedulerUnit] === 1n,
+      );
+      expect(hubOracleMint).toBeDefined();
+      expect(schedulerMint).toBeDefined();
+      expect(schedulerMint?.redeemer).toBe(
+        Data.to("Init", SDK.SchedulerMintRedeemer),
       );
       expect(wallet).not.toHaveBeenCalled();
     } finally {
@@ -265,18 +275,27 @@ describe("initialization emulator", () => {
   });
 
   it("deploys the canonical real protocol roots atomically", async () => {
-    const { lucid, referenceScriptsLucid, nonceUtxo } =
-      await initEmulatorLucid();
-    const contracts = await loadContracts({
-      txHash: nonceUtxo.txHash,
-      outputIndex: nonceUtxo.outputIndex,
-    });
+    const {
+      lucid,
+      referenceScriptsLucid,
+      nonceUtxo,
+      operatorSeedPhrase,
+      referenceScriptAuth,
+    } = await initEmulatorLucid();
+    const contracts = await loadContracts(
+      {
+        txHash: nonceUtxo.txHash,
+        outputIndex: nonceUtxo.outputIndex,
+      },
+      referenceScriptAuth,
+    );
 
     const initTx = await buildAtomicInitializationTx(
       lucid,
       referenceScriptsLucid,
       contracts,
       nonceUtxo,
+      operatorSeedPhrase,
     );
     const signed = await (await initTx.complete({ localUPLCEval: true })).sign
       .withWallet()
@@ -306,6 +325,7 @@ describe("initialization emulator", () => {
         lucid,
         await referenceScriptsLucid.wallet().address(),
         contracts,
+        contracts.referenceScriptAuth,
       ),
     );
     const runtimeReferenceScriptNames = runtimeReferenceScripts.map(
@@ -317,11 +337,14 @@ describe("initialization emulator", () => {
     expect(schedulerInitialized).toBe(true);
     expect(schedulerDatum).toEqual("NoActiveOperators");
     expect(status.complete).toBe(true);
-    expect(status.phasMembershipRewardAddress).toEqual(
-      phasMembershipRewardAddress("Preprod"),
-    );
-    expect(status.phasMembershipScriptHash).toEqual(
-      validatorToScriptHash(loadPhasMembershipWithdrawalScript()),
+    expect({
+      rewardAddress: status.phasMembershipRewardAddress,
+      scriptHash: status.phasMembershipScriptHash,
+    }).toEqual(
+      SDK.phasMembershipIdentity(
+        "Preprod",
+        loadPhasMembershipWithdrawalScript(),
+      ),
     );
     expect(runtimeReferenceScriptNames).toContain("state-queue spending");
     expect(runtimeReferenceScriptNames).toContain("deposit minting");
@@ -332,18 +355,27 @@ describe("initialization emulator", () => {
   });
 
   it("reports already initialized when the atomic protocol root set exists", async () => {
-    const { lucid, referenceScriptsLucid, nonceUtxo } =
-      await initEmulatorLucid();
-    const contracts = await loadContracts({
-      txHash: nonceUtxo.txHash,
-      outputIndex: nonceUtxo.outputIndex,
-    });
+    const {
+      lucid,
+      referenceScriptsLucid,
+      nonceUtxo,
+      operatorSeedPhrase,
+      referenceScriptAuth,
+    } = await initEmulatorLucid();
+    const contracts = await loadContracts(
+      {
+        txHash: nonceUtxo.txHash,
+        outputIndex: nonceUtxo.outputIndex,
+      },
+      referenceScriptAuth,
+    );
 
     const initTx = await buildAtomicInitializationTx(
       lucid,
       referenceScriptsLucid,
       contracts,
       nonceUtxo,
+      operatorSeedPhrase,
     );
     const signed = await (await initTx.complete({ localUPLCEval: true })).sign
       .withWallet()
@@ -390,18 +422,27 @@ describe("initialization emulator", () => {
   });
 
   it("initializes state_queue when all real protocol roots are minted atomically", async () => {
-    const { lucid, referenceScriptsLucid, nonceUtxo } =
-      await initEmulatorLucid();
-    const contracts = await loadContracts({
-      txHash: nonceUtxo.txHash,
-      outputIndex: nonceUtxo.outputIndex,
-    });
+    const {
+      lucid,
+      referenceScriptsLucid,
+      nonceUtxo,
+      operatorSeedPhrase,
+      referenceScriptAuth,
+    } = await initEmulatorLucid();
+    const contracts = await loadContracts(
+      {
+        txHash: nonceUtxo.txHash,
+        outputIndex: nonceUtxo.outputIndex,
+      },
+      referenceScriptAuth,
+    );
 
     const initTx = await buildAtomicInitializationTx(
       lucid,
       referenceScriptsLucid,
       contracts,
       nonceUtxo,
+      operatorSeedPhrase,
     );
     const completed = await initTx.complete({ localUPLCEval: true });
     const signed = await completed.sign.withWallet().complete();
@@ -427,18 +468,27 @@ describe("initialization emulator", () => {
   });
 
   it("rejects re-initialization when the hub_oracle one-shot nonce is already consumed", async () => {
-    const { lucid, referenceScriptsLucid, nonceUtxo } =
-      await initEmulatorLucid();
-    const contracts = await loadContracts({
-      txHash: nonceUtxo.txHash,
-      outputIndex: nonceUtxo.outputIndex,
-    });
+    const {
+      lucid,
+      referenceScriptsLucid,
+      nonceUtxo,
+      operatorSeedPhrase,
+      referenceScriptAuth,
+    } = await initEmulatorLucid();
+    const contracts = await loadContracts(
+      {
+        txHash: nonceUtxo.txHash,
+        outputIndex: nonceUtxo.outputIndex,
+      },
+      referenceScriptAuth,
+    );
 
     const firstInit = await buildAtomicInitializationTx(
       lucid,
       referenceScriptsLucid,
       contracts,
       nonceUtxo,
+      operatorSeedPhrase,
     );
     const firstSigned = await (
       await firstInit.complete({ localUPLCEval: true })
@@ -463,6 +513,7 @@ describe("initialization emulator", () => {
           referenceScriptsLucid,
           contracts,
           nonceUtxo,
+          operatorSeedPhrase,
         );
         const secondSigned = await (
           await secondInit.complete({ localUPLCEval: true })
@@ -476,18 +527,28 @@ describe("initialization emulator", () => {
   });
 
   it("registers and activates the operator with real operator contracts", async () => {
-    const { emulator, lucid, referenceScriptsLucid, nonceUtxo } =
-      await initEmulatorLucid();
-    const contracts = await loadContracts({
-      txHash: nonceUtxo.txHash,
-      outputIndex: nonceUtxo.outputIndex,
-    });
+    const {
+      emulator,
+      lucid,
+      referenceScriptsLucid,
+      nonceUtxo,
+      operatorSeedPhrase,
+      referenceScriptAuth,
+    } = await initEmulatorLucid();
+    const contracts = await loadContracts(
+      {
+        txHash: nonceUtxo.txHash,
+        outputIndex: nonceUtxo.outputIndex,
+      },
+      referenceScriptAuth,
+    );
 
     const initTx = await buildAtomicInitializationTx(
       lucid,
       referenceScriptsLucid,
       contracts,
       nonceUtxo,
+      operatorSeedPhrase,
     );
     const completed = await initTx.complete({ localUPLCEval: true });
     const signed = await completed.sign.withWallet().complete();

@@ -4,6 +4,7 @@ import {
   rootsMatchConfirmedHeader,
   shouldAttemptLocalFinalizationRecovery,
   shouldDeferCommitSubmission,
+  shouldSkipIdleCommitBehindUnmergedTail,
 } from "@/workers/utils/commit-block-planner.js";
 
 describe("commit recovery planner", () => {
@@ -69,6 +70,48 @@ describe("commit recovery planner", () => {
         computedTxRoot: "ccdd",
         confirmedUtxoRoot: "eeee",
         confirmedTxRoot: "ccdd",
+      }),
+    ).toBe(false);
+  });
+
+  it("skips idle commit attempts behind an unmerged tail only when no work is pending", () => {
+    expect(
+      shouldSkipIdleCommitBehindUnmergedTail({
+        localFinalizationPending: false,
+        stateQueueHasUnmergedTail: true,
+        mempoolTxCount: 0,
+        processedTxCount: 0,
+        pendingUserEventCount: 0,
+      }),
+    ).toBe(true);
+
+    expect(
+      shouldSkipIdleCommitBehindUnmergedTail({
+        localFinalizationPending: false,
+        stateQueueHasUnmergedTail: true,
+        mempoolTxCount: 1,
+        processedTxCount: 0,
+        pendingUserEventCount: 0,
+      }),
+    ).toBe(false);
+
+    expect(
+      shouldSkipIdleCommitBehindUnmergedTail({
+        localFinalizationPending: false,
+        stateQueueHasUnmergedTail: false,
+        mempoolTxCount: 0,
+        processedTxCount: 0,
+        pendingUserEventCount: 0,
+      }),
+    ).toBe(false);
+
+    expect(
+      shouldSkipIdleCommitBehindUnmergedTail({
+        localFinalizationPending: true,
+        stateQueueHasUnmergedTail: true,
+        mempoolTxCount: 0,
+        processedTxCount: 0,
+        pendingUserEventCount: 0,
       }),
     ).toBe(false);
   });

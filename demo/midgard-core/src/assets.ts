@@ -49,7 +49,8 @@ export const assetsEqual = (left: Assets, right: Assets): boolean => {
   const normalizedLeft = normalizeAssets(left);
   const normalizedRight = normalizeAssets(right);
   return (
-    Object.keys(normalizedLeft).length === Object.keys(normalizedRight).length &&
+    Object.keys(normalizedLeft).length ===
+      Object.keys(normalizedRight).length &&
     Object.entries(normalizedLeft).every(
       ([unit, quantity]) => normalizedRight[unit] === quantity,
     )
@@ -81,4 +82,7 @@ export const assetUnitParts = (
 } =>
   unit === LOVELACE_UNIT
     ? { policyId: ADA_POLICY_ID, assetName: ADA_ASSET_NAME }
-    : { policyId: unit.slice(0, 56).toLowerCase(), assetName: unit.slice(56).toLowerCase() };
+    : {
+        policyId: unit.slice(0, 56).toLowerCase(),
+        assetName: unit.slice(56).toLowerCase(),
+      };

@@ -46,6 +46,10 @@ export type WorkerOutput =
   | StaleUnconfirmedRecoveryOutput
   | FailedConfirmationOutput;
 
+export const pendingBlockHasSubmittedTx = (
+  pendingBlock: PendingBlockConfirmation,
+): boolean => pendingBlock.submittedTxHash.length > 0;
+
 export const fetchLatestCommittedStateQueueBlock = (
   lucid: LucidEvolution,
   stateQueueAuthValidator: SDK.AuthenticatedValidator,

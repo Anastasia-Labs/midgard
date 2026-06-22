@@ -8,12 +8,17 @@ import {
 } from "@al-ft/midgard-core/out-ref";
 import {
   buildDoubleSpendFaultProofContracts,
+  buildInvalidRangeFaultProofContracts,
+  buildTransitionTraceFaultProofContracts,
   type DoubleSpendFaultProofContracts,
   type FraudProofCatalogueCategoryDeploymentInfo,
+  type FraudProofCatalogueCategoryName,
+  type InvalidRangeFaultProofContracts,
   MerkleRoot,
   parseFaultProofBlueprint,
   Proof,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
+  type TransitionTraceFaultProofContracts,
 } from "@al-ft/midgard-sdk";
 import {
   Blockfrost,
@@ -35,6 +40,7 @@ import {
 import { Effect } from "effect";
 
 import {
+  assertFraudProofCatalogueCategoryReady,
   type ContractDeploymentInfo,
   parseContractDeploymentInfo,
 } from "./inspect-contracts.js";
@@ -301,26 +307,85 @@ export type ResolvedDoubleSpendDeploymentContracts = {
   readonly contracts: DoubleSpendFaultProofContracts;
 };
 
-export const resolveDoubleSpendDeploymentContracts = async ({
+export type ResolvedInvalidRangeDeploymentContracts = {
+  readonly deploymentInfo: ContractDeploymentInfo;
+  readonly invalidRangeCategory: FraudProofCatalogueCategoryDeploymentInfo;
+  readonly stateQueuePolicyId: string | undefined;
+  readonly fraudProofCataloguePolicyId: string;
+  readonly hubOraclePolicyId: string;
+  readonly contracts: InvalidRangeFaultProofContracts;
+};
+
+export type ResolvedTransitionTraceDeploymentContracts = {
+  readonly deploymentInfo: ContractDeploymentInfo;
+  readonly transitionTraceCategory: FraudProofCatalogueCategoryDeploymentInfo;
+  readonly stateQueuePolicyId: string | undefined;
+  readonly fraudProofCataloguePolicyId: string;
+  readonly hubOraclePolicyId: string;
+  readonly contracts: TransitionTraceFaultProofContracts;
+};
+
+type SupportedFaultProofCategoryName = Extract<
+  FraudProofCatalogueCategoryName,
+  "doubleSpend" | "invalidRange" | "transitionTrace"
+>;
+
+const FRAUD_PROOF_DEPLOYMENT_ENTRY_BY_CATEGORY = {
+  doubleSpend: "fraudProofDoubleSpend",
+  invalidRange: "fraudProofInvalidRange",
+  transitionTrace: "fraudProofTransitionTrace",
+} as const satisfies Record<SupportedFaultProofCategoryName, string>;
+
+const categoryLabel = (
+  categoryName: SupportedFaultProofCategoryName,
+): string => {
+  switch (categoryName) {
+    case "doubleSpend":
+      return "double-spend";
+    case "invalidRange":
+      return "invalid-range";
+    case "transitionTrace":
+      return "transition-trace";
+  }
+};
+
+const resolveFaultProofDeploymentContracts = async ({
   blueprint,
   deploymentInfo,
   network,
+  categoryName,
   requireStateQueueMint = false,
   requireFraudProofSpend = false,
 }: {
   readonly blueprint: unknown;
   readonly deploymentInfo: unknown;
   readonly network: Network;
+  readonly categoryName: SupportedFaultProofCategoryName;
   readonly requireStateQueueMint?: boolean;
   readonly requireFraudProofSpend?: boolean;
-}): Promise<ResolvedDoubleSpendDeploymentContracts> => {
+}): Promise<{
+  readonly deploymentInfo: ContractDeploymentInfo;
+  readonly category: FraudProofCatalogueCategoryDeploymentInfo;
+  readonly stateQueuePolicyId: string | undefined;
+  readonly fraudProofCataloguePolicyId: string;
+  readonly hubOraclePolicyId: string;
+  readonly contracts:
+    | DoubleSpendFaultProofContracts
+    | InvalidRangeFaultProofContracts
+    | TransitionTraceFaultProofContracts;
+}> => {
   const parsedDeploymentInfo = parseContractDeploymentInfo(deploymentInfo);
   const catalogue =
     parsedDeploymentInfo.fraudProofCatalogueMint?.fraudProofCatalogue;
-  const doubleSpendCategory = catalogue?.categories.doubleSpend;
-  if (doubleSpendCategory === undefined) {
+  if (catalogue === undefined) {
     throw new Error(
-      "Deployment info is missing fraudProofCatalogueMint.fraudProofCatalogue.categories.doubleSpend.",
+      "Deployment info is missing fraudProofCatalogueMint.fraudProofCatalogue.",
+    );
+  }
+  const category = catalogue.categories[categoryName];
+  if (category === undefined) {
+    throw new Error(
+      `Deployment info is missing fraudProofCatalogueMint.fraudProofCatalogue.categories.${categoryName}.`,
     );
   }
 
@@ -342,19 +407,54 @@ export const resolveDoubleSpendDeploymentContracts = async ({
   const deployedFraudProofSpendHash = requireFraudProofSpend
     ? requireDeploymentScriptHash(parsedDeploymentInfo, "fraudProofSpend")
     : undefined;
-  const deployedDoubleSpendHash = requireDeploymentScriptHash(
+  const deployedFirstStepHash = requireDeploymentScriptHash(
     parsedDeploymentInfo,
-    "fraudProofDoubleSpend",
+    FRAUD_PROOF_DEPLOYMENT_ENTRY_BY_CATEGORY[categoryName],
   );
 
-  const contracts = await Effect.runPromise(
-    buildDoubleSpendFaultProofContracts({
-      blueprint: parseFaultProofBlueprint(blueprint),
-      network,
-      hubOraclePolicyId,
-      fraudProofCataloguePolicyId,
-    }),
-  );
+  const parsedBlueprint = parseFaultProofBlueprint(blueprint);
+  let contracts:
+    | DoubleSpendFaultProofContracts
+    | InvalidRangeFaultProofContracts
+    | TransitionTraceFaultProofContracts;
+  let derivedFirstStepHash: string;
+  if (categoryName === "doubleSpend") {
+    const doubleSpendContracts = await Effect.runPromise(
+      buildDoubleSpendFaultProofContracts({
+        blueprint: parsedBlueprint,
+        network,
+        hubOraclePolicyId,
+        fraudProofCataloguePolicyId,
+      }),
+    );
+    contracts = doubleSpendContracts;
+    derivedFirstStepHash =
+      doubleSpendContracts.doubleSpend.firstStep.spendingScriptHash;
+  } else if (categoryName === "invalidRange") {
+    const invalidRangeContracts = await Effect.runPromise(
+      buildInvalidRangeFaultProofContracts({
+        blueprint: parsedBlueprint,
+        network,
+        hubOraclePolicyId,
+        fraudProofCataloguePolicyId,
+      }),
+    );
+    contracts = invalidRangeContracts;
+    derivedFirstStepHash =
+      invalidRangeContracts.invalidRange.firstStep.spendingScriptHash;
+  } else {
+    const transitionTraceContracts = await Effect.runPromise(
+      buildTransitionTraceFaultProofContracts({
+        blueprint: parsedBlueprint,
+        network,
+        hubOraclePolicyId,
+        fraudProofCataloguePolicyId,
+      }),
+    );
+    contracts = transitionTraceContracts;
+    derivedFirstStepHash =
+      transitionTraceContracts.transitionTrace.firstStep.spendingScriptHash;
+  }
   requireMatchingScriptHash({
     label: "fraudProofMint policy",
     deployed: deployedFraudProofPolicyId,
@@ -368,20 +468,91 @@ export const resolveDoubleSpendDeploymentContracts = async ({
     });
   }
   requireMatchingScriptHash({
-    label: "fraudProofDoubleSpend step-01 script",
-    deployed: deployedDoubleSpendHash,
-    derived: contracts.doubleSpend.firstStep.spendingScriptHash,
+    label: `${FRAUD_PROOF_DEPLOYMENT_ENTRY_BY_CATEGORY[categoryName]} step-01 script`,
+    deployed: deployedFirstStepHash,
+    derived: derivedFirstStepHash,
+  });
+  const readyCategory = await assertFraudProofCatalogueCategoryReady({
+    catalogue,
+    categoryName,
+    expectedFirstStepHash: derivedFirstStepHash,
+    deploymentMatchesFirstStep: true,
   });
 
   return {
     deploymentInfo: parsedDeploymentInfo,
-    doubleSpendCategory,
+    category: readyCategory,
     stateQueuePolicyId,
     fraudProofCataloguePolicyId,
     hubOraclePolicyId,
     contracts,
   };
 };
+
+export const resolveDoubleSpendDeploymentContracts = async (params: {
+  readonly blueprint: unknown;
+  readonly deploymentInfo: unknown;
+  readonly network: Network;
+  readonly requireStateQueueMint?: boolean;
+  readonly requireFraudProofSpend?: boolean;
+}): Promise<ResolvedDoubleSpendDeploymentContracts> => {
+  const resolved = await resolveFaultProofDeploymentContracts({
+    ...params,
+    categoryName: "doubleSpend",
+  });
+  return {
+    deploymentInfo: resolved.deploymentInfo,
+    doubleSpendCategory: resolved.category,
+    stateQueuePolicyId: resolved.stateQueuePolicyId,
+    fraudProofCataloguePolicyId: resolved.fraudProofCataloguePolicyId,
+    hubOraclePolicyId: resolved.hubOraclePolicyId,
+    contracts: resolved.contracts as DoubleSpendFaultProofContracts,
+  };
+};
+
+export const resolveInvalidRangeDeploymentContracts = async (params: {
+  readonly blueprint: unknown;
+  readonly deploymentInfo: unknown;
+  readonly network: Network;
+  readonly requireStateQueueMint?: boolean;
+  readonly requireFraudProofSpend?: boolean;
+}): Promise<ResolvedInvalidRangeDeploymentContracts> => {
+  const resolved = await resolveFaultProofDeploymentContracts({
+    ...params,
+    categoryName: "invalidRange",
+  });
+  return {
+    deploymentInfo: resolved.deploymentInfo,
+    invalidRangeCategory: resolved.category,
+    stateQueuePolicyId: resolved.stateQueuePolicyId,
+    fraudProofCataloguePolicyId: resolved.fraudProofCataloguePolicyId,
+    hubOraclePolicyId: resolved.hubOraclePolicyId,
+    contracts: resolved.contracts as InvalidRangeFaultProofContracts,
+  };
+};
+
+export const resolveTransitionTraceDeploymentContracts = async (params: {
+  readonly blueprint: unknown;
+  readonly deploymentInfo: unknown;
+  readonly network: Network;
+  readonly requireStateQueueMint?: boolean;
+  readonly requireFraudProofSpend?: boolean;
+}): Promise<ResolvedTransitionTraceDeploymentContracts> => {
+  const resolved = await resolveFaultProofDeploymentContracts({
+    ...params,
+    categoryName: "transitionTrace",
+  });
+  return {
+    deploymentInfo: resolved.deploymentInfo,
+    transitionTraceCategory: resolved.category,
+    stateQueuePolicyId: resolved.stateQueuePolicyId,
+    fraudProofCataloguePolicyId: resolved.fraudProofCataloguePolicyId,
+    hubOraclePolicyId: resolved.hubOraclePolicyId,
+    contracts: resolved.contracts as TransitionTraceFaultProofContracts,
+  };
+};
+
+export const faultProofCategoryLabel = categoryLabel;
 
 export const requireSingletonUtxo = async ({
   lucid,

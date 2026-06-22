@@ -39,8 +39,6 @@ const SLOT_LENGTH_MS = 1_000;
 
 const ALREADY_INCLUDED_ERROR_PATTERNS = [
   "All inputs are spent. Transaction has probably already been included",
-  "ValueNotConservedUTxO",
-  "BadInputsUTxO",
 ] as const;
 
 /**
@@ -50,6 +48,18 @@ const ALREADY_INCLUDED_ERROR_PATTERNS = [
 const isPotentiallyAlreadyIncludedError = (message: string): boolean =>
   ALREADY_INCLUDED_ERROR_PATTERNS.some((pattern) => message.includes(pattern));
 
+export const isUnknownOutputReferenceSubmitError = (
+  message: string,
+): boolean => {
+  const normalizedMessage = message.replace(/\\"/g, '"');
+  return (
+    normalizedMessage.includes("unknownOutputReferences") ||
+    normalizedMessage.includes("badInputs") ||
+    normalizedMessage.includes("BadInputsUTxO") ||
+    normalizedMessage.includes("UnknownInput")
+  );
+};
+
 const OUTSIDE_VALIDITY_INTERVAL_REGEX =
   /OutsideValidityIntervalUTxO \(ValidityInterval \{invalidBefore = SJust \(SlotNo (\d+)\), invalidHereafter = SJust \(SlotNo (\d+)\)\}\) \(SlotNo (\d+)\)/;
 const EMULATOR_LOWER_BOUND_OUTSIDE_VALIDITY_REGEX =
@@ -57,7 +67,7 @@ const EMULATOR_LOWER_BOUND_OUTSIDE_VALIDITY_REGEX =
 const OGMIOS_OUTSIDE_VALIDITY_INTERVAL_REGEX =
   /"validityInterval"\s*:\s*\{\s*"invalidBefore"\s*:\s*(\d+)\s*,\s*"invalidAfter"\s*:\s*(\d+)\s*\}\s*,\s*"currentSlot"\s*:\s*(\d+)/;
 
-type OutsideValidityIntervalDetails = {
+export type OutsideValidityIntervalDetails = {
   readonly invalidBeforeSlot: number;
   readonly invalidHereafterSlot: number;
   readonly currentSlot: number;
@@ -109,7 +119,28 @@ export const parseOutsideValidityIntervalDetails = (
   );
 };
 
-type SignSubmitContext = {
+export const resolveEarlyValidityRetryDelayMs = (
+  details: OutsideValidityIntervalDetails,
+  attempt: number,
+): number | null => {
+  if (
+    details.currentSlot >= details.invalidBeforeSlot ||
+    attempt >= EARLY_VALIDITY_RETRY_MAX_ATTEMPTS
+  ) {
+    return null;
+  }
+  const slotsUntilValid = details.invalidBeforeSlot - details.currentSlot;
+  const validityWindowSlots =
+    details.invalidHereafterSlot - details.invalidBeforeSlot;
+  const reportedSlotLagExceedsValidityWindow =
+    validityWindowSlots > 0 && slotsUntilValid > validityWindowSlots;
+  const retryWaitSlots = reportedSlotLagExceedsValidityWindow
+    ? EARLY_VALIDITY_RETRY_SLOT_BUFFER
+    : slotsUntilValid + EARLY_VALIDITY_RETRY_SLOT_BUFFER;
+  return retryWaitSlots * SLOT_LENGTH_MS;
+};
+
+export type SignSubmitContext = {
   readonly txHash: string;
   readonly signedTxCbor: string;
   readonly walletAddress: string;
@@ -189,108 +220,121 @@ export type BlockTxPayload = {
   readonly txCbor: Buffer;
 };
 
+type SubmitRecoveryOptions = {
+  readonly sleep?: (milliseconds: number) => Effect.Effect<void, never>;
+};
+
 /**
  * Submits a signed transaction with recovery logic for provider races and
  * early-validity-window failures.
  */
-const submitSignedTxWithRecovery = (
+export const submitSignedTxWithRecovery = (
   lucid: LucidEvolution,
   signed: Awaited<ReturnType<TxSignBuilder["complete"]>>,
   txHash: string,
-  attempt: number = 0,
+  options: SubmitRecoveryOptions = {},
 ): Effect.Effect<void, unknown> =>
-  signed.submitProgram({ canonical: true }).pipe(
-    Effect.catchAll((e) =>
-      Effect.gen(function* () {
-        const submitError = formatUnknownError(e, { includeCause: true });
-        if (isPotentiallyAlreadyIncludedError(submitError)) {
-          yield* Effect.logWarning(
-            `Tx submit returned an already-included style error for ${txHash}; verifying on-chain confirmation before failing: ${submitError}`,
-          );
-          const confirmed = yield* Effect.tryPromise({
-            try: () =>
-              new Promise<boolean>((resolve, reject) => {
-                const timeoutId = setTimeout(() => {
-                  reject(
-                    new Error(
-                      `submit-recovery confirmation timeout after ${SUBMIT_RECOVERY_AWAIT_TIMEOUT_MS}ms`,
-                    ),
-                  );
-                }, SUBMIT_RECOVERY_AWAIT_TIMEOUT_MS);
-                lucid
-                  .awaitTx(txHash, SUBMIT_RECOVERY_POLL_INTERVAL_MS)
-                  .then((result) => {
-                    clearTimeout(timeoutId);
-                    resolve(result);
-                  })
-                  .catch((error) => {
-                    clearTimeout(timeoutId);
-                    reject(error);
-                  });
-              }),
-            catch: (cause) =>
-              new Error(
-                `submit-recovery confirmation check failed for ${txHash}: ${formatUnknownError(
-                  cause,
-                  { includeCause: true },
-                )}`,
-              ),
-          });
-          if (!confirmed) {
-            return yield* Effect.fail(e);
-          }
-          yield* Effect.logInfo(
-            `Tx ${txHash} confirmed after submit race; treating submission as successful.`,
-          );
-          return;
-        }
+  Effect.gen(function* () {
+    const sleep =
+      options.sleep ?? ((milliseconds: number) => Effect.sleep(milliseconds));
+    let earlyValidityAttempts = 0;
+    let providerRetryAttempts = 0;
 
-        const outsideValidityDetails =
-          parseOutsideValidityIntervalDetails(submitError);
-        if (
-          outsideValidityDetails !== null &&
-          outsideValidityDetails.currentSlot <
-            outsideValidityDetails.invalidBeforeSlot &&
-          attempt < EARLY_VALIDITY_RETRY_MAX_ATTEMPTS
-        ) {
-          const slotsUntilValid =
-            outsideValidityDetails.invalidBeforeSlot -
-            outsideValidityDetails.currentSlot;
-          const validityWindowSlots =
-            outsideValidityDetails.invalidHereafterSlot -
-            outsideValidityDetails.invalidBeforeSlot;
-          const reportedSlotLagExceedsValidityWindow =
-            validityWindowSlots > 0 && slotsUntilValid > validityWindowSlots;
-          const retryWaitSlots = reportedSlotLagExceedsValidityWindow
-            ? EARLY_VALIDITY_RETRY_SLOT_BUFFER
-            : slotsUntilValid + EARLY_VALIDITY_RETRY_SLOT_BUFFER;
-          const waitMs = retryWaitSlots * SLOT_LENGTH_MS;
-          yield* Effect.logWarning(
-            [
-              `Tx ${txHash} submitted before validity interval opened `,
-              `(slot=${outsideValidityDetails.currentSlot},`,
-              `invalidBefore=${outsideValidityDetails.invalidBeforeSlot},`,
-              `invalidHereafter=${outsideValidityDetails.invalidHereafterSlot}).`,
-              reportedSlotLagExceedsValidityWindow
-                ? " Reported slot lag exceeds validity window; using bounded retry delay."
-                : "",
-              ` Waiting ${waitMs}ms and retrying submit `,
-              `(${attempt + 1}/${EARLY_VALIDITY_RETRY_MAX_ATTEMPTS}).`,
-            ].join(" "),
-          );
-          yield* Effect.sleep(waitMs);
-          return yield* submitSignedTxWithRecovery(
-            lucid,
-            signed,
-            txHash,
-            attempt + 1,
-          );
-        }
+    for (;;) {
+      const submitResult = yield* Effect.either(signed.submitProgram());
+      if (submitResult._tag === "Right") {
+        return;
+      }
 
+      const e = submitResult.left;
+      const submitError = formatUnknownError(e, { includeCause: true });
+      if (isPotentiallyAlreadyIncludedError(submitError)) {
+        yield* Effect.logWarning(
+          `Tx submit returned an already-included style error for ${txHash}; verifying on-chain confirmation before failing: ${submitError}`,
+        );
+        const confirmed = yield* Effect.tryPromise({
+          try: () =>
+            new Promise<boolean>((resolve, reject) => {
+              const timeoutId = setTimeout(() => {
+                reject(
+                  new Error(
+                    `submit-recovery confirmation timeout after ${SUBMIT_RECOVERY_AWAIT_TIMEOUT_MS}ms`,
+                  ),
+                );
+              }, SUBMIT_RECOVERY_AWAIT_TIMEOUT_MS);
+              lucid
+                .awaitTx(txHash, SUBMIT_RECOVERY_POLL_INTERVAL_MS)
+                .then((result) => {
+                  clearTimeout(timeoutId);
+                  resolve(result);
+                })
+                .catch((error) => {
+                  clearTimeout(timeoutId);
+                  reject(error);
+                });
+            }),
+          catch: (cause) =>
+            new Error(
+              `submit-recovery confirmation check failed for ${txHash}: ${formatUnknownError(
+                cause,
+                { includeCause: true },
+              )}`,
+            ),
+        });
+        if (!confirmed) {
+          return yield* Effect.fail(e);
+        }
+        yield* Effect.logInfo(
+          `Tx ${txHash} confirmed after submit race; treating submission as successful.`,
+        );
+        return;
+      }
+
+      const outsideValidityDetails =
+        parseOutsideValidityIntervalDetails(submitError);
+      if (outsideValidityDetails !== null) {
+        const waitMs = resolveEarlyValidityRetryDelayMs(
+          outsideValidityDetails,
+          earlyValidityAttempts,
+        );
+        if (waitMs === null) {
+          return yield* Effect.fail(e);
+        }
+        yield* Effect.logWarning(
+          [
+            `Tx ${txHash} submitted before validity interval opened `,
+            `(slot=${outsideValidityDetails.currentSlot},`,
+            `invalidBefore=${outsideValidityDetails.invalidBeforeSlot},`,
+            `invalidHereafter=${outsideValidityDetails.invalidHereafterSlot}).`,
+            waitMs === EARLY_VALIDITY_RETRY_SLOT_BUFFER * SLOT_LENGTH_MS
+              ? " Reported slot lag exceeds validity window; using bounded retry delay."
+              : "",
+            ` Waiting ${waitMs}ms and retrying submit `,
+            `(${earlyValidityAttempts + 1}/${EARLY_VALIDITY_RETRY_MAX_ATTEMPTS}).`,
+          ].join(" "),
+        );
+        earlyValidityAttempts += 1;
+        yield* sleep(waitMs);
+        continue;
+      }
+
+      if (isUnknownOutputReferenceSubmitError(submitError)) {
         return yield* Effect.fail(e);
-      }),
-    ),
-  );
+      }
+
+      if (providerRetryAttempts < RETRY_ATTEMPTS) {
+        const waitMs = INIT_RETRY_AFTER_MILLIS * 2 ** providerRetryAttempts;
+        providerRetryAttempts += 1;
+        yield* Effect.logWarning(
+          `Tx ${txHash} submit failed with provider error; waiting ${waitMs}ms before retry ${providerRetryAttempts}/${RETRY_ATTEMPTS}: ${submitError}`,
+        );
+        yield* sleep(waitMs);
+        continue;
+      }
+
+      return yield* Effect.fail(e);
+    }
+  });
 
 /**
  * Handle the signing and submission of a transaction.
@@ -304,7 +348,19 @@ export const handleSignSubmit = (
   signBuilder: TxSignBuilder,
 ): Effect.Effect<string, TxSignError | TxSubmitError | TxConfirmError> =>
   Effect.gen(function* () {
-    const submission = yield* signSubmitHelper(lucid, signBuilder);
+    const submission = yield* signSubmitTransaction(lucid, signBuilder);
+    return yield* awaitSubmittedTransactionConfirmation(lucid, submission);
+  }).pipe(
+    Effect.tapErrorTag("TxSignError", (e) =>
+      Effect.logError(`TxSignError: ${e}`),
+    ),
+  );
+
+export const awaitSubmittedTransactionConfirmation = (
+  lucid: LucidEvolution,
+  submission: SignSubmitContext,
+): Effect.Effect<string, TxConfirmError> =>
+  Effect.gen(function* () {
     const txHash = submission.txHash;
     yield* Effect.logInfo(`⏳ Confirming Transaction...`);
     const awaitWithTimeout = Effect.tryPromise({
@@ -344,11 +400,7 @@ export const handleSignSubmit = (
     yield* Effect.sleep(PAUSE_DURATION);
     yield* Effect.logInfo("✅ Pause ended.");
     return txHash;
-  }).pipe(
-    Effect.tapErrorTag("TxSignError", (e) =>
-      Effect.logError(`TxSignError: ${e}`),
-    ),
-  );
+  });
 
 /**
  * Handle the signing and submission of a transaction without waiting for the
@@ -363,7 +415,7 @@ export const handleSignSubmitNoConfirmation = (
   signBuilder: TxSignBuilder,
 ): Effect.Effect<string, TxSignError | TxSubmitError> =>
   Effect.gen(function* () {
-    const submission = yield* signSubmitHelper(lucid, signBuilder);
+    const submission = yield* signSubmitTransaction(lucid, signBuilder);
     return submission.txHash;
   }).pipe(
     Effect.tapErrorTag("TxSignError", (e) =>
@@ -375,7 +427,7 @@ export const handleSignSubmitNoConfirmation = (
  * Shared implementation used by the confirmation and no-confirmation sign/
  * submit entrypoints.
  */
-const signSubmitHelper = (
+export const signSubmitTransaction = (
   lucid: LucidEvolution,
   signBuilder: TxSignBuilder,
 ): Effect.Effect<SignSubmitContext, TxSubmitError | TxSignError> =>
@@ -400,18 +452,12 @@ const signSubmitHelper = (
         ),
       );
     const signed = yield* signedProgram;
-    const signedTxCbor = signed.toCBOR({ canonical: true });
+    const signedTxCbor = signed.toCBOR();
     yield* Effect.logInfo(
       `✍  Signed tx prepared: txHash=${txHash}, cborBytes=${signedTxCbor.length / 2}`,
     );
     yield* Effect.logInfo("✉️  Submitting transaction...");
     yield* submitSignedTxWithRecovery(lucid, signed, txHash).pipe(
-      Effect.retry(
-        Schedule.compose(
-          Schedule.exponential(INIT_RETRY_AFTER_MILLIS),
-          Schedule.recurs(RETRY_ATTEMPTS),
-        ),
-      ),
       Effect.tapError((e) =>
         Effect.logError(
           `Tx submission provider error for ${txHash}: ${formatUnknownError(e, {

@@ -2,9 +2,10 @@
  * Register/activate layout types and list-position helpers.
  */
 import { compareHex } from "@al-ft/midgard-core/hex";
-import * as SDK from "@/operator-lifecycle/primitives.js";
-import type { OutputReference } from "@/common.js";
 import { type UTxO } from "@lucid-evolution/lucid";
+
+import type { OutputReference } from "@/common.js";
+import * as SDK from "@/operator-lifecycle/primitives.js";
 
 export type ReferenceScriptPublication = {
   readonly name: string;

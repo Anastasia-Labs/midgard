@@ -3,9 +3,12 @@ artifacts/
 # Aiken's project working directory
 build/
 # Aiken's default documentation export
-docs/*
+docs/
+.env
 !docs/lucid-midgard/
 !docs/lucid-midgard/**
+!docs/agents/
+!docs/agents/**
 .direnv
 utils.log
 .codex

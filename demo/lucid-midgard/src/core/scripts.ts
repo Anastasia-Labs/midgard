@@ -34,10 +34,7 @@ export type ScriptSource =
   | {
       readonly kind: "native";
       readonly language: "NativeCardano";
-      readonly script:
-        | CML.NativeScript
-        | Uint8Array
-        | string;
+      readonly script: CML.NativeScript | Uint8Array | string;
     }
   | {
       readonly kind: "plutus-v3";

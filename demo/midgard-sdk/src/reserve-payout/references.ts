@@ -1,14 +1,14 @@
-import * as SDK from "@/reserve-payout/primitives.js";
+import { compareOutRefs, outRefLabel } from "@al-ft/midgard-core/out-ref";
 import {
   type LucidEvolution,
   type Script,
   type TxBuilder,
   type UTxO,
-  validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { compareOutRefs, outRefLabel } from "@al-ft/midgard-core/out-ref";
+import { isSameScriptRef } from "@/reference-scripts.js";
+import * as SDK from "@/reserve-payout/primitives.js";
 
 type ReferenceScriptTarget = {
   readonly name: string;
@@ -18,20 +18,6 @@ type ReferenceScriptTarget = {
 export type ReferenceScriptResolved = {
   readonly name: string;
   readonly utxo: UTxO;
-};
-
-const isSameScriptRef = (
-  left: Script | null | undefined,
-  right: Script,
-): boolean => {
-  if (left === undefined || left === null || left.type !== right.type) {
-    return false;
-  }
-  try {
-    return validatorToScriptHash(left) === validatorToScriptHash(right);
-  } catch {
-    return false;
-  }
 };
 
 const fetchReferenceScriptUtxosProgram = (
@@ -91,18 +77,30 @@ export type ReservePayoutReferenceScripts = {
   readonly payoutMinting?: UTxO;
 };
 
-const referenceScriptFieldByName = {
-  "deposit minting": "depositMinting",
-  "deposit spending": "depositSpending",
-  "deposit witness certificate": "depositWitnessCertificate",
-  "withdrawal minting": "withdrawalMinting",
-  "withdrawal spending": "withdrawalSpending",
-  "withdrawal witness certificate": "withdrawalWitnessCertificate",
-  "membership proof withdrawal": "membershipProofWithdrawal",
-  "reserve spending": "reserveSpending",
-  "payout spending": "payoutSpending",
-  "payout minting": "payoutMinting",
-} as const satisfies Record<string, keyof ReservePayoutReferenceScripts>;
+type MutableReservePayoutReferenceScripts = {
+  -readonly [Key in keyof ReservePayoutReferenceScripts]?: UTxO;
+};
+
+const referenceScriptFields = [
+  ["deposit minting", "depositMinting"],
+  ["deposit spending", "depositSpending"],
+  ["deposit witness certificate", "depositWitnessCertificate"],
+  ["withdrawal minting", "withdrawalMinting"],
+  ["withdrawal spending", "withdrawalSpending"],
+  ["withdrawal witness certificate", "withdrawalWitnessCertificate"],
+  ["membership proof withdrawal", "membershipProofWithdrawal"],
+  ["reserve spending", "reserveSpending"],
+  ["payout spending", "payoutSpending"],
+  ["payout minting", "payoutMinting"],
+] as const satisfies readonly (readonly [
+  string,
+  keyof ReservePayoutReferenceScripts,
+])[];
+
+const referenceScriptFieldByName = new Map<
+  string,
+  keyof ReservePayoutReferenceScripts
+>(referenceScriptFields);
 
 export const resolveReferenceScriptsProgram = (
   lucid: LucidEvolution,
@@ -133,10 +131,7 @@ export const resolveReferenceScriptsProgram = (
 const hasExplicitReferenceScript = (
   explicit: ReservePayoutReferenceScripts | undefined,
   name: string,
-): boolean =>
-  explicit?.[
-    referenceScriptFieldByName[name as keyof typeof referenceScriptFieldByName]
-  ] !== undefined;
+): boolean => explicit?.[referenceScriptFieldByName.get(name)!] !== undefined;
 
 const resolvedReferenceScript = (
   resolved: readonly ReferenceScriptResolved[],
@@ -146,39 +141,14 @@ const resolvedReferenceScript = (
 export const mergeReferenceScripts = (
   explicit: ReservePayoutReferenceScripts | undefined,
   resolved: readonly ReferenceScriptResolved[],
-): ReservePayoutReferenceScripts => ({
-  ...explicit,
-  depositMinting:
-    explicit?.depositMinting ??
-    resolvedReferenceScript(resolved, "deposit minting"),
-  depositSpending:
-    explicit?.depositSpending ??
-    resolvedReferenceScript(resolved, "deposit spending"),
-  depositWitnessCertificate:
-    explicit?.depositWitnessCertificate ??
-    resolvedReferenceScript(resolved, "deposit witness certificate"),
-  withdrawalMinting:
-    explicit?.withdrawalMinting ??
-    resolvedReferenceScript(resolved, "withdrawal minting"),
-  withdrawalSpending:
-    explicit?.withdrawalSpending ??
-    resolvedReferenceScript(resolved, "withdrawal spending"),
-  withdrawalWitnessCertificate:
-    explicit?.withdrawalWitnessCertificate ??
-    resolvedReferenceScript(resolved, "withdrawal witness certificate"),
-  membershipProofWithdrawal:
-    explicit?.membershipProofWithdrawal ??
-    resolvedReferenceScript(resolved, "membership proof withdrawal"),
-  reserveSpending:
-    explicit?.reserveSpending ??
-    resolvedReferenceScript(resolved, "reserve spending"),
-  payoutSpending:
-    explicit?.payoutSpending ??
-    resolvedReferenceScript(resolved, "payout spending"),
-  payoutMinting:
-    explicit?.payoutMinting ??
-    resolvedReferenceScript(resolved, "payout minting"),
-});
+): ReservePayoutReferenceScripts => {
+  const merged: MutableReservePayoutReferenceScripts = { ...explicit };
+  for (const [name, field] of referenceScriptFields) {
+    merged[field] =
+      explicit?.[field] ?? resolvedReferenceScript(resolved, name);
+  }
+  return merged;
+};
 
 export const referenceInputs = (
   hubOracleRefInput: UTxO,

@@ -22,6 +22,7 @@ import {
   ScriptLanguageTags,
 } from "@al-ft/midgard-core/codec";
 import {
+  plutusDataToCborHex,
   type QueuedTx,
   RejectCodes,
   runPhaseAValidation,
@@ -117,9 +118,7 @@ const PLUTUS_V3_CONTEXT_PROBE_SCRIPT_HEX = loadAlwaysSucceedsCompiledCode(
   "midgard.plutus_v3_context_probe.else",
 );
 
-const makeAlwaysSucceedsScript = (
-  compiledCode: string,
-): CML.Script =>
+const makeAlwaysSucceedsScript = (compiledCode: string): CML.Script =>
   CML.Script.new_plutus_v3(
     CML.PlutusV3Script.from_raw_bytes(Buffer.from(compiledCode, "hex")),
   );
@@ -181,9 +180,7 @@ const scriptWitnessItemToVersioned = (
   }
 };
 
-const makeTypedPlutusV3Witness = (
-  scriptHex: string,
-): CML.Script =>
+const makeTypedPlutusV3Witness = (scriptHex: string): CML.Script =>
   CML.Script.new_plutus_v3(
     CML.PlutusV3Script.from_raw_bytes(Buffer.from(scriptHex, "hex")),
   );
@@ -281,10 +278,7 @@ const makeMultiAssetValue = (
   return CML.Value.new(lovelace, multiasset);
 };
 
-const makeValueOutput = (
-  address: string,
-  value: CML.Value,
-): Buffer =>
+const makeValueOutput = (address: string, value: CML.Value): Buffer =>
   Buffer.from(
     makeMidgardTxOutput(
       CML.Address.from_bech32(address),
@@ -401,7 +395,7 @@ const makeLegacyRedeemersCbor = (
   );
 
 const makePlutusDataBytes = (value: unknown): Buffer =>
-  Buffer.from(Data.to(value as any), "hex");
+  Buffer.from(plutusDataToCborHex(value), "hex");
 
 const makeOutRefDataBytes = (outRef: Buffer): Buffer =>
   makePlutusDataBytes(txOutRefData(outRef.toString("hex")));
@@ -472,9 +466,7 @@ const makeMidgardV1ContextProbeRedeemer = (opts: {
     ]),
   );
 
-const makePlutusIntegerData = (
-  value: bigint,
-): CML.PlutusData =>
+const makePlutusIntegerData = (value: bigint): CML.PlutusData =>
   CML.PlutusData.new_integer(CML.BigInteger.from_str(value.toString(10)));
 
 const makeMintPreimage = (
@@ -726,6 +718,55 @@ const runBothPhases = async (
   return { phaseA, phaseB: { accepted, rejected } };
 };
 
+const makeScriptSpendPreState = (opts: {
+  readonly inputOutRef: Buffer;
+  readonly referenceInputOutRef: Buffer;
+  readonly scriptHash: CML.ScriptHash;
+  readonly datum?: CML.PlutusData;
+  readonly referenceOutput?: Buffer;
+}): Map<string, Buffer> =>
+  new Map<string, Buffer>([
+    [
+      opts.inputOutRef.toString("hex"),
+      makeScriptOutput(
+        opts.scriptHash,
+        3_000_000n,
+        opts.datum === undefined ? undefined : { datum: opts.datum },
+      ),
+    ],
+    [
+      opts.referenceInputOutRef.toString("hex"),
+      opts.referenceOutput ?? makeOutput(TEST_ADDRESS, 2_000_000n),
+    ],
+  ]);
+
+const runPlutusV3SpendScenario = async (opts: {
+  readonly spendScript: CML.Script;
+  readonly datum?: CML.PlutusData;
+  readonly txOptions?: Parameters<typeof buildNativeTx>[0];
+  readonly attachScriptIntegrityHash?: boolean;
+  readonly referenceOutput?: Buffer;
+  readonly phaseBOptions?: Parameters<typeof runBothPhases>[3];
+}) => {
+  const base = buildNativeTx(opts.txOptions);
+  const tx =
+    opts.attachScriptIntegrityHash === false
+      ? base
+      : attachComputedScriptIntegrityHash(base, [CML.Language.PlutusV3]);
+  const preState = makeScriptSpendPreState({
+    inputOutRef: tx.inputOutRef,
+    referenceInputOutRef: tx.referenceInputOutRef,
+    scriptHash: opts.spendScript.hash(),
+    datum: opts.datum,
+    referenceOutput: opts.referenceOutput,
+  });
+
+  return {
+    ...tx,
+    ...(await runBothPhases(tx.txId, tx.txCbor, preState, opts.phaseBOptions)),
+  };
+};
+
 type MidgardV1ContextProbeRedeemerOverrides = Partial<{
   readonly expectedFirstInput: Buffer;
   readonly expectedSecondInput: Buffer;
@@ -871,13 +912,14 @@ describe("native transaction integration", () => {
     expect(result.rejected).toHaveLength(0);
     expect(result.accepted).toHaveLength(1);
     const accepted = result.accepted[0];
-    expect(accepted.txId.equals(txId)).toBe(true);
-    expect(accepted.processedTx.spent).toHaveLength(1);
-    expect(accepted.processedTx.spent[0].equals(inputOutRef)).toBe(true);
-    expect(accepted.processedTx.produced).toHaveLength(1);
-    expect(accepted.witnessKeyHashes).toStrictEqual([]);
-    expect(accepted.nativeScriptHashes).toStrictEqual([]);
-    expect(accepted.outputSum.coin()).toBe(3_000_000n);
+    expect(accepted.ledgerTx.txId.equals(txId)).toBe(true);
+    expect(accepted.graph.spentOutRefHexes).toStrictEqual([
+      inputOutRef.toString("hex"),
+    ]);
+    expect(accepted.graph.produced).toHaveLength(1);
+    expect(accepted.derived.witnessKeyHashHexes).toStrictEqual([]);
+    expect(accepted.derived.nativeScriptHashHexes).toStrictEqual([]);
+    expect(accepted.derived.outputSum.lovelace).toBe(3_000_000n);
   });
 
   it("accepts required signer when native witness signature is valid", async () => {
@@ -888,7 +930,7 @@ describe("native transaction integration", () => {
 
     expect(result.rejected).toHaveLength(0);
     expect(result.accepted).toHaveLength(1);
-    expect(result.accepted[0].witnessKeyHashes.length).toBe(1);
+    expect(result.accepted[0].derived.witnessKeyHashHexes.length).toBe(1);
   });
 
   it("accepts native txs when network id is omitted via sentinel", async () => {
@@ -949,34 +991,24 @@ describe("native transaction integration", () => {
       Buffer.from("deadbeef", "hex"),
     );
     const wrappedPlutusScript = CML.Script.new_plutus_v3(plutusScript);
-    const scriptHash = wrappedPlutusScript.hash();
     const redeemerBytes = makeLegacyRedeemersCbor([
       { tag: CML.RedeemerTag.Spend, index: 0n },
     ]);
-    const datum = makePlutusIntegerData(42n);
-    const { txId, txCbor, inputOutRef, referenceInputOutRef } = buildNativeTx({
-      scriptWitnessItems: [Buffer.from(wrappedPlutusScript.to_cbor_bytes())],
-      redeemerTxWitsPreimageCbor: redeemerBytes,
-      scriptLanguages: ["PlutusV3"],
+    const { phaseA, phaseB } = await runPlutusV3SpendScenario({
+      spendScript: wrappedPlutusScript,
+      datum: makePlutusIntegerData(42n),
+      attachScriptIntegrityHash: false,
+      txOptions: {
+        scriptWitnessItems: [Buffer.from(wrappedPlutusScript.to_cbor_bytes())],
+        redeemerTxWitsPreimageCbor: redeemerBytes,
+        scriptLanguages: ["PlutusV3"],
+      },
     });
-
-    const preState = new Map<string, Buffer>([
-      [
-        inputOutRef.toString("hex"),
-        makeScriptOutput(scriptHash, 3_000_000n, { datum }),
-      ],
-      [
-        referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
-
-    const { phaseA, phaseB } = await runBothPhases(txId, txCbor, preState);
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
-    expect(phaseA.accepted[0].requiresPlutusEvaluation).toBe(true);
-    expect(phaseA.accepted[0].plutusScriptHashes).toHaveLength(1);
+    expect(phaseA.accepted[0].derived.requiresScriptEvaluation).toBe(true);
+    expect(phaseA.accepted[0].derived.plutusScriptHashHexes).toHaveLength(1);
     expect(phaseB.accepted).toHaveLength(0);
     expect(phaseB.rejected).toHaveLength(1);
     expect(phaseB.rejected[0].code).toBe(RejectCodes.PlutusScriptInvalid);
@@ -1106,7 +1138,7 @@ describe("native transaction integration", () => {
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
-    expect(phaseA.accepted[0].requiredObserverHashes).toStrictEqual([
+    expect(phaseA.accepted[0].derived.requiredObserverHashHexes).toStrictEqual([
       observerScriptHash.toString("hex"),
     ]);
     expect(phaseB.rejected).toHaveLength(0);
@@ -1153,10 +1185,10 @@ describe("native transaction integration", () => {
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
-    expect(phaseA.accepted[0].requiredObserverHashes).toStrictEqual([
+    expect(phaseA.accepted[0].derived.requiredObserverHashHexes).toStrictEqual([
       scriptHash.toString("hex"),
     ]);
-    expect(phaseA.accepted[0].mintPolicyHashes).toStrictEqual([
+    expect(phaseA.accepted[0].derived.mintPolicyHashHexes).toStrictEqual([
       scriptHash.toString("hex"),
     ]);
     expect(phaseB.rejected).toHaveLength(0);
@@ -1423,11 +1455,14 @@ describe("native transaction integration", () => {
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
-    expect(phaseA.accepted[0].mintPolicyHashes).toStrictEqual([
+    expect(phaseA.accepted[0].derived.mintPolicyHashHexes).toStrictEqual([
       policyId.toString("hex"),
     ]);
-    expect(phaseA.accepted[0].mintedValue.has_multiassets()).toBe(true);
-    expect(phaseA.accepted[0].burnedValue.is_zero()).toBe(true);
+    expect(
+      phaseA.accepted[0].derived.mintDelta.assets
+        .get(policyId.toString("hex"))
+        ?.get(assetName.toString("hex")),
+    ).toBe(1n);
     expect(phaseB.rejected).toHaveLength(0);
     expect(phaseB.accepted).toHaveLength(1);
   });
@@ -1552,7 +1587,7 @@ describe("native transaction integration", () => {
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
-    expect(phaseA.accepted[0].mintPolicyHashes).toStrictEqual(
+    expect(phaseA.accepted[0].derived.mintPolicyHashHexes).toStrictEqual(
       [inlinePolicyId.toString("hex"), referencePolicyId.toString("hex")].sort(
         (a, b) => a.localeCompare(b),
       ),
@@ -1794,8 +1829,11 @@ describe("native transaction integration", () => {
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
-    expect(phaseA.accepted[0].mintedValue.is_zero()).toBe(true);
-    expect(phaseA.accepted[0].burnedValue.has_multiassets()).toBe(true);
+    expect(
+      phaseA.accepted[0].derived.mintDelta.assets
+        .get(policyId.toString("hex"))
+        ?.get(assetName.toString("hex")),
+    ).toBe(-1n);
     expect(phaseB.rejected).toHaveLength(0);
     expect(phaseB.accepted).toHaveLength(1);
   });
@@ -1805,32 +1843,22 @@ describe("native transaction integration", () => {
       Buffer.from("deadbeef", "hex"),
     );
     const plutusScriptRef = CML.Script.new_plutus_v3(plutusScript);
-    const scriptHash = plutusScriptRef.hash();
-    const datum = makePlutusIntegerData(99n);
-    const { txId, txCbor, inputOutRef, referenceInputOutRef } = buildNativeTx({
-      scriptWitnessItems: [Buffer.from(plutusScriptRef.to_cbor_bytes())],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
-        { tag: CML.RedeemerTag.Spend, index: 0n },
-      ]),
-      scriptLanguages: ["PlutusV3"],
+    const { phaseA, phaseB } = await runPlutusV3SpendScenario({
+      spendScript: plutusScriptRef,
+      datum: makePlutusIntegerData(99n),
+      attachScriptIntegrityHash: false,
+      txOptions: {
+        scriptWitnessItems: [Buffer.from(plutusScriptRef.to_cbor_bytes())],
+        redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+          { tag: CML.RedeemerTag.Spend, index: 0n },
+        ]),
+        scriptLanguages: ["PlutusV3"],
+      },
     });
-
-    const preState = new Map<string, Buffer>([
-      [
-        inputOutRef.toString("hex"),
-        makeScriptOutput(scriptHash, 3_000_000n, { datum }),
-      ],
-      [
-        referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
-
-    const { phaseA, phaseB } = await runBothPhases(txId, txCbor, preState);
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
-    expect(phaseA.accepted[0].requiresPlutusEvaluation).toBe(true);
+    expect(phaseA.accepted[0].derived.requiresScriptEvaluation).toBe(true);
     expect(phaseB.accepted).toHaveLength(0);
     expect(phaseB.rejected).toHaveLength(1);
     expect(phaseB.rejected[0].code).toBe(RejectCodes.PlutusScriptInvalid);
@@ -1876,10 +1904,10 @@ describe("native transaction integration", () => {
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
-    expect(phaseA.accepted[0].mintPolicyHashes).toStrictEqual([
+    expect(phaseA.accepted[0].derived.mintPolicyHashHexes).toStrictEqual([
       policyId.toString("hex"),
     ]);
-    expect(phaseA.accepted[0].requiresPlutusEvaluation).toBe(true);
+    expect(phaseA.accepted[0].derived.requiresScriptEvaluation).toBe(true);
     expect(phaseB.accepted).toHaveLength(0);
     expect(phaseB.rejected).toHaveLength(1);
     expect(phaseB.rejected[0].code).toBe(RejectCodes.PlutusScriptInvalid);
@@ -1957,14 +1985,6 @@ describe("native transaction integration", () => {
       Buffer.from("4d696467617264", "hex"),
     );
     const plutusScriptRef = CML.Script.new_plutus_v3(plutusScript);
-    const scriptHash = plutusScriptRef.hash();
-    const { txId, txCbor, inputOutRef, referenceInputOutRef } = buildNativeTx({
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
-        { tag: CML.RedeemerTag.Spend, index: 0n },
-      ]),
-      scriptLanguages: ["PlutusV3"],
-    });
-
     const referenceOutput = Buffer.from(
       makeMidgardTxOutput(
         CML.Address.from_bech32(TEST_ADDRESS),
@@ -1973,12 +1993,17 @@ describe("native transaction integration", () => {
         plutusScriptRef,
       ).to_cbor_bytes(),
     );
-    const preState = new Map<string, Buffer>([
-      [inputOutRef.toString("hex"), makeScriptOutput(scriptHash, 3_000_000n)],
-      [referenceInputOutRef.toString("hex"), referenceOutput],
-    ]);
-
-    const { phaseA, phaseB } = await runBothPhases(txId, txCbor, preState);
+    const { phaseA, phaseB } = await runPlutusV3SpendScenario({
+      spendScript: plutusScriptRef,
+      referenceOutput,
+      attachScriptIntegrityHash: false,
+      txOptions: {
+        redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+          { tag: CML.RedeemerTag.Spend, index: 0n },
+        ]),
+        scriptLanguages: ["PlutusV3"],
+      },
+    });
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
@@ -1992,24 +2017,17 @@ describe("native transaction integration", () => {
       Buffer.from("cafebabe", "hex"),
     );
     const plutusScriptRef = CML.Script.new_plutus_v3(plutusScript);
-    const scriptHash = plutusScriptRef.hash();
-    const { txId, txCbor, inputOutRef, referenceInputOutRef } = buildNativeTx({
-      scriptWitnessItems: [Buffer.from(plutusScriptRef.to_cbor_bytes())],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
-        { tag: CML.RedeemerTag.Spend, index: 0n },
-      ]),
-      scriptLanguages: ["PlutusV3"],
+    const { phaseA, phaseB } = await runPlutusV3SpendScenario({
+      spendScript: plutusScriptRef,
+      attachScriptIntegrityHash: false,
+      txOptions: {
+        scriptWitnessItems: [Buffer.from(plutusScriptRef.to_cbor_bytes())],
+        redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+          { tag: CML.RedeemerTag.Spend, index: 0n },
+        ]),
+        scriptLanguages: ["PlutusV3"],
+      },
     });
-
-    const preState = new Map<string, Buffer>([
-      [inputOutRef.toString("hex"), makeScriptOutput(scriptHash, 3_000_000n)],
-      [
-        referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
-
-    const { phaseA, phaseB } = await runBothPhases(txId, txCbor, preState);
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
@@ -2024,24 +2042,17 @@ describe("native transaction integration", () => {
       Buffer.from("beadbead", "hex"),
     );
     const plutusScriptRef = CML.Script.new_plutus_v3(plutusScript);
-    const scriptHash = plutusScriptRef.hash();
-    const { txId, txCbor, inputOutRef, referenceInputOutRef } = buildNativeTx({
-      scriptWitnessItems: [Buffer.from(plutusScriptRef.to_cbor_bytes())],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
-        { tag: CML.RedeemerTag.Spend, index: 0n },
-      ]),
-      scriptLanguages: ["PlutusV3"],
+    const { phaseA, phaseB } = await runPlutusV3SpendScenario({
+      spendScript: plutusScriptRef,
+      attachScriptIntegrityHash: false,
+      txOptions: {
+        scriptWitnessItems: [Buffer.from(plutusScriptRef.to_cbor_bytes())],
+        redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+          { tag: CML.RedeemerTag.Spend, index: 0n },
+        ]),
+        scriptLanguages: ["PlutusV3"],
+      },
     });
-
-    const preState = new Map<string, Buffer>([
-      [inputOutRef.toString("hex"), makeScriptOutput(scriptHash, 3_000_000n)],
-      [
-        referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
-
-    const { phaseA, phaseB } = await runBothPhases(txId, txCbor, preState);
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
@@ -2054,30 +2065,17 @@ describe("native transaction integration", () => {
     const spendScript = makeAlwaysSucceedsScript(
       ALWAYS_SUCCEEDS_SPEND_SCRIPT_HEX,
     );
-    const scriptHash = spendScript.hash();
-    const datum = makePlutusIntegerData(99n);
-    const base = buildNativeTx({
-      scriptWitnessItems: [Buffer.from(spendScript.to_cbor_bytes())],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
-        { tag: CML.RedeemerTag.Spend, index: 0n },
-      ]),
-      outputCbors: [makeOutput(TEST_ADDRESS, 4_000_000n)],
+    const { phaseA, phaseB } = await runPlutusV3SpendScenario({
+      spendScript,
+      datum: makePlutusIntegerData(99n),
+      txOptions: {
+        scriptWitnessItems: [Buffer.from(spendScript.to_cbor_bytes())],
+        redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+          { tag: CML.RedeemerTag.Spend, index: 0n },
+        ]),
+        outputCbors: [makeOutput(TEST_ADDRESS, 4_000_000n)],
+      },
     });
-    const { txId, txCbor, inputOutRef, referenceInputOutRef } =
-      attachComputedScriptIntegrityHash(base, [CML.Language.PlutusV3]);
-
-    const preState = new Map<string, Buffer>([
-      [
-        inputOutRef.toString("hex"),
-        makeScriptOutput(scriptHash, 3_000_000n, { datum }),
-      ],
-      [
-        referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
-
-    const { phaseA, phaseB } = await runBothPhases(txId, txCbor, preState);
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
@@ -2090,29 +2088,16 @@ describe("native transaction integration", () => {
     const spendScript = makeAlwaysSucceedsScript(
       ALWAYS_SUCCEEDS_SPEND_SCRIPT_HEX,
     );
-    const scriptHash = spendScript.hash();
-    const datum = makePlutusIntegerData(99n);
-    const base = buildNativeTx({
-      scriptWitnessItems: [Buffer.from(spendScript.to_cbor_bytes())],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
-        { tag: CML.RedeemerTag.Spend, index: 0n },
-      ]),
+    const { phaseA, phaseB } = await runPlutusV3SpendScenario({
+      spendScript,
+      datum: makePlutusIntegerData(99n),
+      txOptions: {
+        scriptWitnessItems: [Buffer.from(spendScript.to_cbor_bytes())],
+        redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+          { tag: CML.RedeemerTag.Spend, index: 0n },
+        ]),
+      },
     });
-    const { txId, txCbor, inputOutRef, referenceInputOutRef } =
-      attachComputedScriptIntegrityHash(base, [CML.Language.PlutusV3]);
-
-    const preState = new Map<string, Buffer>([
-      [
-        inputOutRef.toString("hex"),
-        makeScriptOutput(scriptHash, 3_000_000n, { datum }),
-      ],
-      [
-        referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
-
-    const { phaseA, phaseB } = await runBothPhases(txId, txCbor, preState);
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
@@ -2124,34 +2109,20 @@ describe("native transaction integration", () => {
     const spendScript = makeAlwaysSucceedsScript(
       ALWAYS_SUCCEEDS_SPEND_SCRIPT_HEX,
     );
-    const scriptHash = spendScript.hash();
-    const datum = makePlutusIntegerData(99n);
-    const base = buildNativeTx({
-      scriptWitnessItems: [Buffer.from(spendScript.to_cbor_bytes())],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
-        {
-          tag: CML.RedeemerTag.Spend,
-          index: 0n,
-          exUnits: [1_000_000_000n, 1_000_000_000n],
-        },
-      ]),
-    });
-    const { txId, txCbor, inputOutRef, referenceInputOutRef } =
-      attachComputedScriptIntegrityHash(base, [CML.Language.PlutusV3]);
-
-    const preState = new Map<string, Buffer>([
-      [
-        inputOutRef.toString("hex"),
-        makeScriptOutput(scriptHash, 3_000_000n, { datum }),
-      ],
-      [
-        referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
-
-    const { phaseA, phaseB } = await runBothPhases(txId, txCbor, preState, {
-      enforceScriptBudget: true,
+    const { phaseA, phaseB } = await runPlutusV3SpendScenario({
+      spendScript,
+      datum: makePlutusIntegerData(99n),
+      txOptions: {
+        scriptWitnessItems: [Buffer.from(spendScript.to_cbor_bytes())],
+        redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+          {
+            tag: CML.RedeemerTag.Spend,
+            index: 0n,
+            exUnits: [1_000_000_000n, 1_000_000_000n],
+          },
+        ]),
+      },
+      phaseBOptions: { enforceScriptBudget: true },
     });
 
     expect(phaseA.rejected).toHaveLength(0);
@@ -2164,34 +2135,20 @@ describe("native transaction integration", () => {
     const spendScript = makeAlwaysSucceedsScript(
       ALWAYS_SUCCEEDS_SPEND_SCRIPT_HEX,
     );
-    const scriptHash = spendScript.hash();
-    const datum = makePlutusIntegerData(99n);
-    const base = buildNativeTx({
-      scriptWitnessItems: [Buffer.from(spendScript.to_cbor_bytes())],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
-        {
-          tag: CML.RedeemerTag.Spend,
-          index: 0n,
-          exUnits: [0n, 0n],
-        },
-      ]),
-    });
-    const { txId, txCbor, inputOutRef, referenceInputOutRef } =
-      attachComputedScriptIntegrityHash(base, [CML.Language.PlutusV3]);
-
-    const preState = new Map<string, Buffer>([
-      [
-        inputOutRef.toString("hex"),
-        makeScriptOutput(scriptHash, 3_000_000n, { datum }),
-      ],
-      [
-        referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
-
-    const { phaseA, phaseB } = await runBothPhases(txId, txCbor, preState, {
-      enforceScriptBudget: true,
+    const { phaseA, phaseB } = await runPlutusV3SpendScenario({
+      spendScript,
+      datum: makePlutusIntegerData(99n),
+      txOptions: {
+        scriptWitnessItems: [Buffer.from(spendScript.to_cbor_bytes())],
+        redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+          {
+            tag: CML.RedeemerTag.Spend,
+            index: 0n,
+            exUnits: [0n, 0n],
+          },
+        ]),
+      },
+      phaseBOptions: { enforceScriptBudget: true },
     });
 
     expect(phaseA.rejected).toHaveLength(0);
@@ -2204,29 +2161,16 @@ describe("native transaction integration", () => {
 
   it("rejects inline always-fails Plutus spends with the real local evaluator", async () => {
     const spendScript = makeAlwaysSucceedsScript(ALWAYS_FAILS_SCRIPT_HEX);
-    const scriptHash = spendScript.hash();
-    const datum = makePlutusIntegerData(99n);
-    const base = buildNativeTx({
-      scriptWitnessItems: [Buffer.from(spendScript.to_cbor_bytes())],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
-        { tag: CML.RedeemerTag.Spend, index: 0n },
-      ]),
+    const { phaseA, phaseB } = await runPlutusV3SpendScenario({
+      spendScript,
+      datum: makePlutusIntegerData(99n),
+      txOptions: {
+        scriptWitnessItems: [Buffer.from(spendScript.to_cbor_bytes())],
+        redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+          { tag: CML.RedeemerTag.Spend, index: 0n },
+        ]),
+      },
     });
-    const { txId, txCbor, inputOutRef, referenceInputOutRef } =
-      attachComputedScriptIntegrityHash(base, [CML.Language.PlutusV3]);
-
-    const preState = new Map<string, Buffer>([
-      [
-        inputOutRef.toString("hex"),
-        makeScriptOutput(scriptHash, 3_000_000n, { datum }),
-      ],
-      [
-        referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
-
-    const { phaseA, phaseB } = await runBothPhases(txId, txCbor, preState);
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
@@ -2240,33 +2184,20 @@ describe("native transaction integration", () => {
     const spendScript = makeAlwaysSucceedsScript(
       DATUM_EQUALS_REDEEMER_SPEND_SCRIPT_HEX,
     );
-    const scriptHash = spendScript.hash();
-    const datum = makePlutusIntegerData(1n);
-    const base = buildNativeTx({
-      scriptWitnessItems: [Buffer.from(spendScript.to_cbor_bytes())],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
-        {
-          tag: CML.RedeemerTag.Spend,
-          index: 0n,
-          data: Buffer.from(makePlutusIntegerData(2n).to_cbor_bytes()),
-        },
-      ]),
+    const { phaseA, phaseB } = await runPlutusV3SpendScenario({
+      spendScript,
+      datum: makePlutusIntegerData(1n),
+      txOptions: {
+        scriptWitnessItems: [Buffer.from(spendScript.to_cbor_bytes())],
+        redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+          {
+            tag: CML.RedeemerTag.Spend,
+            index: 0n,
+            data: Buffer.from(makePlutusIntegerData(2n).to_cbor_bytes()),
+          },
+        ]),
+      },
     });
-    const { txId, txCbor, inputOutRef, referenceInputOutRef } =
-      attachComputedScriptIntegrityHash(base, [CML.Language.PlutusV3]);
-
-    const preState = new Map<string, Buffer>([
-      [
-        inputOutRef.toString("hex"),
-        makeScriptOutput(scriptHash, 3_000_000n, { datum }),
-      ],
-      [
-        referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
-
-    const { phaseA, phaseB } = await runBothPhases(txId, txCbor, preState);
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
@@ -2465,30 +2396,18 @@ describe("native transaction integration", () => {
     const spendScript = makeAlwaysSucceedsScript(
       ALWAYS_SUCCEEDS_SPEND_SCRIPT_HEX,
     );
-    const base = buildNativeTx({
-      scriptWitnessItems: [Buffer.from(spendScript.to_cbor_bytes())],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
-        { tag: CML.RedeemerTag.Spend, index: 0n },
-      ]),
-      scriptLanguages: ["PlutusV3", "MidgardV1"],
+    const { phaseA, phaseB } = await runPlutusV3SpendScenario({
+      spendScript,
+      datum: makePlutusIntegerData(1n),
+      attachScriptIntegrityHash: false,
+      txOptions: {
+        scriptWitnessItems: [Buffer.from(spendScript.to_cbor_bytes())],
+        redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+          { tag: CML.RedeemerTag.Spend, index: 0n },
+        ]),
+        scriptLanguages: ["PlutusV3", "MidgardV1"],
+      },
     });
-
-    const { phaseA, phaseB } = await runBothPhases(
-      base.txId,
-      base.txCbor,
-      new Map<string, Buffer>([
-        [
-          base.inputOutRef.toString("hex"),
-          makeScriptOutput(spendScript.hash(), 3_000_000n, {
-            datum: makePlutusIntegerData(1n),
-          }),
-        ],
-        [
-          base.referenceInputOutRef.toString("hex"),
-          makeOutput(TEST_ADDRESS, 2_000_000n),
-        ],
-      ]),
-    );
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
@@ -2504,29 +2423,16 @@ describe("native transaction integration", () => {
     const spendScript = makeAlwaysSucceedsScript(
       ALWAYS_SUCCEEDS_SPEND_SCRIPT_HEX,
     );
-    const scriptHash = spendScript.hash();
-    const datum = makePlutusIntegerData(5n);
-    const base = buildNativeTx({
-      scriptWitnessItems: [Buffer.from(spendScript.to_cbor_bytes())],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
-        { tag: CML.RedeemerTag.Spend, index: 1n },
-      ]),
+    const { phaseA, phaseB } = await runPlutusV3SpendScenario({
+      spendScript,
+      datum: makePlutusIntegerData(5n),
+      txOptions: {
+        scriptWitnessItems: [Buffer.from(spendScript.to_cbor_bytes())],
+        redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+          { tag: CML.RedeemerTag.Spend, index: 1n },
+        ]),
+      },
     });
-    const { txId, txCbor, inputOutRef, referenceInputOutRef } =
-      attachComputedScriptIntegrityHash(base, [CML.Language.PlutusV3]);
-
-    const preState = new Map<string, Buffer>([
-      [
-        inputOutRef.toString("hex"),
-        makeScriptOutput(scriptHash, 3_000_000n, { datum }),
-      ],
-      [
-        referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
-
-    const { phaseA, phaseB } = await runBothPhases(txId, txCbor, preState);
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
@@ -2540,26 +2446,16 @@ describe("native transaction integration", () => {
     const spendScript = makeAlwaysSucceedsScript(
       ALWAYS_SUCCEEDS_SPEND_SCRIPT_HEX,
     );
-    const scriptHash = spendScript.hash();
-    const base = buildNativeTx({
-      scriptWitnessItems: [Buffer.from(spendScript.to_cbor_bytes())],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
-        { tag: CML.RedeemerTag.Spend, index: 0n },
-        { tag: CML.RedeemerTag.Spend, index: 0n },
-      ]),
+    const { phaseA, phaseB } = await runPlutusV3SpendScenario({
+      spendScript,
+      txOptions: {
+        scriptWitnessItems: [Buffer.from(spendScript.to_cbor_bytes())],
+        redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+          { tag: CML.RedeemerTag.Spend, index: 0n },
+          { tag: CML.RedeemerTag.Spend, index: 0n },
+        ]),
+      },
     });
-    const { txId, txCbor, inputOutRef, referenceInputOutRef } =
-      attachComputedScriptIntegrityHash(base, [CML.Language.PlutusV3]);
-
-    const preState = new Map<string, Buffer>([
-      [inputOutRef.toString("hex"), makeScriptOutput(scriptHash, 3_000_000n)],
-      [
-        referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
-
-    const { phaseA, phaseB } = await runBothPhases(txId, txCbor, preState);
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
@@ -2573,29 +2469,16 @@ describe("native transaction integration", () => {
     const spendScript = makeAlwaysSucceedsScript(
       ALWAYS_SUCCEEDS_SPEND_SCRIPT_HEX,
     );
-    const scriptHash = spendScript.hash();
-    const datum = makePlutusIntegerData(6n);
-    const base = buildNativeTx({
-      scriptWitnessItems: [Buffer.from(spendScript.to_cbor_bytes())],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
-        { tag: CML.RedeemerTag.Mint, index: 0n },
-      ]),
+    const { phaseA, phaseB } = await runPlutusV3SpendScenario({
+      spendScript,
+      datum: makePlutusIntegerData(6n),
+      txOptions: {
+        scriptWitnessItems: [Buffer.from(spendScript.to_cbor_bytes())],
+        redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+          { tag: CML.RedeemerTag.Mint, index: 0n },
+        ]),
+      },
     });
-    const { txId, txCbor, inputOutRef, referenceInputOutRef } =
-      attachComputedScriptIntegrityHash(base, [CML.Language.PlutusV3]);
-
-    const preState = new Map<string, Buffer>([
-      [
-        inputOutRef.toString("hex"),
-        makeScriptOutput(scriptHash, 3_000_000n, { datum }),
-      ],
-      [
-        referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
-
-    const { phaseA, phaseB } = await runBothPhases(txId, txCbor, preState);
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
@@ -2609,16 +2492,6 @@ describe("native transaction integration", () => {
     const spendScript = makeAlwaysSucceedsScript(
       ALWAYS_SUCCEEDS_SPEND_SCRIPT_HEX,
     );
-    const scriptHash = spendScript.hash();
-    const datum = makePlutusIntegerData(101n);
-    const base = buildNativeTx({
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
-        { tag: CML.RedeemerTag.Spend, index: 0n },
-      ]),
-    });
-    const { txId, txCbor, inputOutRef, referenceInputOutRef } =
-      attachComputedScriptIntegrityHash(base, [CML.Language.PlutusV3]);
-
     const referenceOutput = Buffer.from(
       makeMidgardTxOutput(
         CML.Address.from_bech32(TEST_ADDRESS),
@@ -2627,15 +2500,16 @@ describe("native transaction integration", () => {
         spendScript,
       ).to_cbor_bytes(),
     );
-    const preState = new Map<string, Buffer>([
-      [
-        inputOutRef.toString("hex"),
-        makeScriptOutput(scriptHash, 3_000_000n, { datum }),
-      ],
-      [referenceInputOutRef.toString("hex"), referenceOutput],
-    ]);
-
-    const { phaseA, phaseB } = await runBothPhases(txId, txCbor, preState);
+    const { phaseA, phaseB } = await runPlutusV3SpendScenario({
+      spendScript,
+      datum: makePlutusIntegerData(101n),
+      referenceOutput,
+      txOptions: {
+        redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+          { tag: CML.RedeemerTag.Spend, index: 0n },
+        ]),
+      },
+    });
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
@@ -2648,27 +2522,15 @@ describe("native transaction integration", () => {
       ALWAYS_SUCCEEDS_SPEND_SCRIPT_HEX,
     );
     const scriptHash = spendScript.hash();
-    const datum = makePlutusIntegerData(102n);
-    const base = buildNativeTx({
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
-        { tag: CML.RedeemerTag.Spend, index: 0n },
-      ]),
+    const { phaseA, phaseB } = await runPlutusV3SpendScenario({
+      spendScript,
+      datum: makePlutusIntegerData(102n),
+      txOptions: {
+        redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+          { tag: CML.RedeemerTag.Spend, index: 0n },
+        ]),
+      },
     });
-    const { txId, txCbor, inputOutRef, referenceInputOutRef } =
-      attachComputedScriptIntegrityHash(base, [CML.Language.PlutusV3]);
-
-    const preState = new Map<string, Buffer>([
-      [
-        inputOutRef.toString("hex"),
-        makeScriptOutput(scriptHash, 3_000_000n, { datum }),
-      ],
-      [
-        referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
-
-    const { phaseA, phaseB } = await runBothPhases(txId, txCbor, preState);
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
@@ -2682,25 +2544,15 @@ describe("native transaction integration", () => {
     const spendScript = makeAlwaysSucceedsScript(
       ALWAYS_SUCCEEDS_SPEND_SCRIPT_HEX,
     );
-    const scriptHash = spendScript.hash();
-    const datum = makePlutusIntegerData(103n);
-    const { txId, txCbor, inputOutRef, referenceInputOutRef } = buildNativeTx({
-      scriptWitnessItems: [Buffer.from(spendScript.to_cbor_bytes())],
-      scriptIntegrityHash: Buffer.from("91".repeat(32), "hex"),
+    const { phaseA, phaseB } = await runPlutusV3SpendScenario({
+      spendScript,
+      datum: makePlutusIntegerData(103n),
+      attachScriptIntegrityHash: false,
+      txOptions: {
+        scriptWitnessItems: [Buffer.from(spendScript.to_cbor_bytes())],
+        scriptIntegrityHash: Buffer.from("91".repeat(32), "hex"),
+      },
     });
-
-    const preState = new Map<string, Buffer>([
-      [
-        inputOutRef.toString("hex"),
-        makeScriptOutput(scriptHash, 3_000_000n, { datum }),
-      ],
-      [
-        referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
-
-    const { phaseA, phaseB } = await runBothPhases(txId, txCbor, preState);
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
@@ -2724,32 +2576,21 @@ describe("native transaction integration", () => {
       TEST_ADDRESS,
       makeSingleAssetValue(3_000_000n, policyId, assetName, 1n),
     );
-    const base = buildNativeTx({
-      mintPreimageCbor: makeMintPreimage([
-        { policyId: policyId, assetName: assetName, quantity: 1n },
-      ]),
-      scriptWitnessItems: uniqueScriptWitnessItems([spendScript, mintScript]),
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
-        { tag: CML.RedeemerTag.Spend, index: 0n },
-        { tag: CML.RedeemerTag.Mint, index: 0n },
-      ]),
-      outputCbors: [mintedOutput],
+    const { phaseA, phaseB } = await runPlutusV3SpendScenario({
+      spendScript,
+      datum,
+      txOptions: {
+        mintPreimageCbor: makeMintPreimage([
+          { policyId: policyId, assetName: assetName, quantity: 1n },
+        ]),
+        scriptWitnessItems: uniqueScriptWitnessItems([spendScript, mintScript]),
+        redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+          { tag: CML.RedeemerTag.Spend, index: 0n },
+          { tag: CML.RedeemerTag.Mint, index: 0n },
+        ]),
+        outputCbors: [mintedOutput],
+      },
     });
-    const { txId, txCbor, inputOutRef, referenceInputOutRef } =
-      attachComputedScriptIntegrityHash(base, [CML.Language.PlutusV3]);
-
-    const preState = new Map<string, Buffer>([
-      [
-        inputOutRef.toString("hex"),
-        makeScriptOutput(spendScript.hash(), 3_000_000n, { datum }),
-      ],
-      [
-        referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
-
-    const { phaseA, phaseB } = await runBothPhases(txId, txCbor, preState);
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
@@ -2764,36 +2605,24 @@ describe("native transaction integration", () => {
     const withdrawScript = makeAlwaysSucceedsScript(
       ALWAYS_SUCCEEDS_WITHDRAW_SCRIPT_HEX,
     );
-    const datum = makePlutusIntegerData(11n);
-    const base = buildNativeTx({
-      scriptWitnessItems: uniqueScriptWitnessItems([
-        spendScript,
-        withdrawScript,
-      ]),
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
-        { tag: CML.RedeemerTag.Spend, index: 0n },
-        { tag: CML.RedeemerTag.Reward, index: 0n },
-      ]),
-      requiredObserverItems: [
-        Buffer.from(withdrawScript.hash().to_raw_bytes()),
-      ],
-      networkId: 0n,
+    const { phaseA, phaseB } = await runPlutusV3SpendScenario({
+      spendScript,
+      datum: makePlutusIntegerData(11n),
+      txOptions: {
+        scriptWitnessItems: uniqueScriptWitnessItems([
+          spendScript,
+          withdrawScript,
+        ]),
+        redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+          { tag: CML.RedeemerTag.Spend, index: 0n },
+          { tag: CML.RedeemerTag.Reward, index: 0n },
+        ]),
+        requiredObserverItems: [
+          Buffer.from(withdrawScript.hash().to_raw_bytes()),
+        ],
+        networkId: 0n,
+      },
     });
-    const { txId, txCbor, inputOutRef, referenceInputOutRef } =
-      attachComputedScriptIntegrityHash(base, [CML.Language.PlutusV3]);
-
-    const preState = new Map<string, Buffer>([
-      [
-        inputOutRef.toString("hex"),
-        makeScriptOutput(spendScript.hash(), 3_000_000n, { datum }),
-      ],
-      [
-        referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
-
-    const { phaseA, phaseB } = await runBothPhases(txId, txCbor, preState);
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
@@ -2805,37 +2634,24 @@ describe("native transaction integration", () => {
     const spendScript = makeTypedPlutusV3Witness(
       DATUM_EQUALS_REDEEMER_SPEND_SCRIPT_HEX,
     );
-    const scriptHash = spendScript.hash();
-    const datum = makePlutusIntegerData(7n);
-    const base = buildNativeTx({
-      scriptWitnessItems: [Buffer.from(spendScript.to_cbor_bytes())],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
-        {
-          tag: CML.RedeemerTag.Spend,
-          index: 0n,
-          data: makePlutusDataBytes(7n),
-        },
-      ]),
+    const { phaseA, phaseB } = await runPlutusV3SpendScenario({
+      spendScript,
+      datum: makePlutusIntegerData(7n),
+      txOptions: {
+        scriptWitnessItems: [Buffer.from(spendScript.to_cbor_bytes())],
+        redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
+          {
+            tag: CML.RedeemerTag.Spend,
+            index: 0n,
+            data: makePlutusDataBytes(7n),
+          },
+        ]),
+      },
     });
-    const { txId, txCbor, inputOutRef, referenceInputOutRef } =
-      attachComputedScriptIntegrityHash(base, [CML.Language.PlutusV3]);
-
-    const preState = new Map<string, Buffer>([
-      [
-        inputOutRef.toString("hex"),
-        makeScriptOutput(scriptHash, 3_000_000n, { datum }),
-      ],
-      [
-        referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
-
-    const { phaseA, phaseB } = await runBothPhases(txId, txCbor, preState);
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
-    expect(phaseA.accepted[0].requiresPlutusEvaluation).toBe(true);
+    expect(phaseA.accepted[0].derived.requiresScriptEvaluation).toBe(true);
     expect(phaseB.rejected).toHaveLength(0);
     expect(phaseB.accepted).toHaveLength(1);
   });
@@ -3149,7 +2965,7 @@ describe("native transaction integration", () => {
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
-    expect(phaseA.accepted[0].requiresPlutusEvaluation).toBe(true);
+    expect(phaseA.accepted[0].derived.requiresScriptEvaluation).toBe(true);
     expect(plutusV3Hash(MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX)).not.toBe(
       scriptHash,
     );

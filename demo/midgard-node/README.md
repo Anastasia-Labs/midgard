@@ -43,6 +43,24 @@ It is responsible for:
 - `ADMIN_API_KEY` gates the admin-only HTTP surface; keep it set in any shared
   or remotely reachable environment.
 
+## Transaction Preparation Checks
+
+Before using live preprod e2e as a debugging loop for builder, wallet,
+validity-window, worker, DA, or post-submit recovery changes, run the focused
+feedback ladder in [TX_PREP_FEEDBACK_LADDER.md](./docs/TX_PREP_FEEDBACK_LADDER.md).
+The package-level shortcuts are:
+
+```sh
+cd ../
+pnpm run test:tx-prep:sdk
+pnpm run test:tx-prep:node
+pnpm run test:tx-prep:emulator
+```
+
+Record the relevant lower-layer commands in live acceptance evidence. If live
+e2e finds a deterministic transaction-preparation defect, add a local or
+emulator regression before rerunning the full live flow.
+
 ## How to Run
 
 ### With Docker
@@ -67,9 +85,13 @@ quite easily.
    cp .env.example .env
    ```
 
-   1. When running with `L1_PROVIDER=Kupmios`, you do not need to fill out
-      `L1_BLOCKFROST_API_URL` and `L1_BLOCKFROST_KEY`. The remaining fields need
-      to be filled out.
+   1. Demo-node acceptance supports `L1_PROVIDER=Kupmios` only. Use local Kupo
+      and Ogmios endpoints, keep `L1_PROVIDER_FAILOVER` empty, and run
+      `node dist/index.js l1-provider-preflight --json` before long-running
+      deployment steps.
+   2. If local Kupo or Ogmios is unhealthy, fix the local
+      `docker-compose.kupmios.yaml` stack instead of switching to a remote L1
+      provider.
 
 4. Install all the dependencies:
 
@@ -198,13 +220,21 @@ pnpm listen
 ## Key Entry Points
 
 - `pnpm listen`: build and start the HTTP server plus background fibers.
+- `node dist/index.js prepare-hub-oracle-one-shot-nonce`: create a fresh marked
+  operator-wallet UTxO and print the `HUB_ORACLE_ONE_SHOT_*` values needed for a
+  clean protocol deployment.
+- `node dist/index.js deploy-reference-script-node-runtime`: generate the
+  reference-script auth timelock policy, publish the node-runtime reference
+  scripts with role tokens, and write the deployment-info manifest.
 - `pnpm init`: initialize hub-oracle, state-queue, operator roots, and
   scheduler state.
 - `node dist/index.js export-contract-deployment-info --out <path>`: write a
-  JSON manifest describing the currently configured validator bundle and any
-  published reference-script UTxOs visible in the reference-script wallet.
+  JSON manifest describing the currently configured validator bundle,
+  generated reference-script auth policy, and any published reference-script
+  UTxOs visible at the configured reference-script deploy address.
 - `node dist/index.js submit-deposit`: build and submit an L1 deposit into the
-  Midgard deposit contract for a target L2 address.
+  Midgard deposit contract for a target L2 address. Submitted deposits are
+  journaled before confirmation wait so timeouts can be reconciled by tx hash.
 - `pnpm submit:l2-transfer`: build and submit a Midgard-native user transfer.
 - `node dist/index.js project-deposits-once`: fetch L1 deposit events once and
   project newly visible deposits into the local Midgard ledger view.
@@ -212,6 +242,33 @@ pnpm listen
   persistence.
 - `pnpm stress:valid`: run the high-throughput valid-transaction submitter.
 - `pnpm stress:nominal`: run the lower-rate sustained activity generator.
+
+## Reconciliation Commands
+
+Use `node dist/index.js reconcile <milestone> --json` after an interrupted e2e
+run, timeout, provider lag, or worker restart. Commands are read-only by
+default and return `schemaVersion: "midgard-e2e-reconciliation-v1"` plus
+`satisfied`, `pending`, `repaired`, `blocked`, `ambiguous`, or `failed`.
+`--repair` only runs existing idempotent recovery paths.
+
+```sh
+node dist/index.js reconcile phas-registered --json [--repair]
+node dist/index.js reconcile reference-scripts-complete --scope node-runtime --json [--repair]
+node dist/index.js reconcile deposit-projected --cardano-tx-hash <hash> --json [--repair]
+node dist/index.js reconcile tx-committed --tx-hash <l2-tx-id> --json
+node dist/index.js reconcile da-attested --header-hash <hash> --watcher-url <url> --deployment-fingerprint <id> --json [--repair]
+node dist/index.js reconcile block-committed --header-hash <hash> --json
+node dist/index.js reconcile merge-complete --header-hash <hash> --json [--repair]
+```
+
+For deposit confirmation timeouts, use:
+
+```sh
+node dist/index.js reconcile-deposit-submission --tx-hash <cardano-tx-hash> --json
+```
+
+If a reconciler reports `ambiguous`, do not blindly repeat the original
+state-changing step. Inspect the emitted evidence and next action first.
 
 ## HTTP Surface
 
@@ -334,8 +391,34 @@ The response includes:
 
 ## Export Contract Deployment Info
 
-Write a manifest of the currently configured validator bundle, keyed by explicit
-script names such as `depositMint` and `depositSpend`.
+Write a manifest of the currently configured validator bundle. Contract entries
+are keyed by explicit script names such as `depositMint` and `depositSpend`.
+
+For a new deployment, publish reference scripts first; this generates the
+reference-script auth policy used to parameterize DA attestation:
+
+```sh
+node dist/index.js prepare-hub-oracle-one-shot-nonce
+```
+
+Copy the printed `HUB_ORACLE_ONE_SHOT_TX_HASH` and
+`HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX` into the deployment environment before
+publishing reference scripts or running `init`.
+
+```sh
+node dist/index.js deploy-reference-script-node-runtime
+```
+
+Before publishing or republishing reference scripts, inspect the deploy wallet:
+
+```sh
+node dist/index.js reference-script-wallet-status --json
+```
+
+The status separates explorer-like total ADA from plain ADA-only ADA that can be
+used for deployment funding. If stale script-ref or token-bearing ADA is present,
+use `node dist/index.js sweep-reference-script-wallet` as a dry run and execute
+it only after confirming the referenced scripts are retired.
 
 ```sh
 cd midgard-node
@@ -348,16 +431,68 @@ Each entry has the shape:
 
 ```json
 {
-  "depositMint": {
-    "refScriptUTxO": null,
-    "contract": {
-      "type": "PlutusV3",
-      "cborHex": "..."
+  "schemaVersion": "midgard-deployment-manifest-v2",
+  "manifestId": "...",
+  "network": "Preprod",
+  "referenceScriptDeployAddress": "addr_test...",
+  "hubOracleOneShot": {
+    "txHash": "...",
+    "outputIndex": 0,
+    "outRef": "...#0",
+    "status": "prepared"
+  },
+  "referenceScriptAuthPolicy": {
+    "policyId": "...",
+    "nativeScript": {
+      "type": "Native",
+      "cborHex": "...",
+      "expiresAtSlot": 0,
+      "expiresAtUnixTime": 0,
+      "timelockDurationMs": 14400000
     },
-    "scriptHash": "..."
-  }
+    "tokenNames": {
+      "state-queue minting": "StateQueueMint"
+    },
+    "postTimelockAudit": {
+      "required": true,
+      "rule": "..."
+    }
+  },
+  "contracts": {
+    "depositMint": {
+      "refScriptUTxO": null,
+      "contract": {
+        "type": "PlutusV3",
+        "cborHex": "..."
+      },
+      "scriptHash": "..."
+    }
+  },
+  "referenceScripts": {},
+  "steps": {}
 }
 ```
+
+Reference scripts are currently published to `L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS`,
+which defaults to the separate reference-script wallet address
+`L1_REFERENCE_SCRIPT_ADDRESS` so stale test deployments can reclaim ADA. Before
+production, set `L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS` to the intended
+non-spendable reference-script address and deploy fresh reference scripts.
+
+Reference-script deployment creates a timelock native minting policy and mints
+one role token into each published reference-script UTxO. The default window is
+four hours (`REFERENCE_SCRIPT_AUTH_TIMELOCK_MS=14400000`), and publication fails
+before submitting a batch when less than
+`REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS` remains. The policy metadata is written
+to `referenceScriptAuthPolicy` in the manifest. After the timelock expires, the
+deployment must be audited before production use: for every token name listed in
+`referenceScriptAuthPolicy.tokenNames`, exactly one token under
+`referenceScriptAuthPolicy.policyId` must exist.
+
+`deployment-status` reports both the v2 manifest verification result and live
+protocol deployment status. If a present manifest disagrees with configured
+network, one-shot outref, or reference-script deploy address, startup refuses to
+attach until config is corrected or a fresh redeploy is explicit.
 
 `init` now always writes the manifest. By default it goes to the repository root
 at `deploymentInfo/contract-deployment-info.json`. If you want to override that

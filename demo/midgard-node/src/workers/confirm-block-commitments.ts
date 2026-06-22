@@ -12,6 +12,7 @@ import {
   fetchSortedCommittedStateQueueBlocks,
   findCommittedStateQueueBlockByHeaderHash,
   latestCommittedStateQueueBlockFromSorted,
+  pendingBlockHasSubmittedTx,
   resolveStateQueueBlockEndTimeMs,
   WorkerInput,
   WorkerOutput,
@@ -156,6 +157,15 @@ export const runConfirmBlockCommitmentsWorkerProgram = (
     yield* Effect.logInfo(
       `🔍 Resolving pending block header ${pendingBlock.expectedHeaderHash} (submitted_tx=${pendingBlock.submittedTxHash || "unknown"}, age_ms=${pendingAgeMs}).`,
     );
+    if (!pendingBlockHasSubmittedTx(pendingBlock)) {
+      yield* Effect.logWarning(
+        `🔍 Pending block header ${pendingBlock.expectedHeaderHash} has no submitted tx hash; abandoning unsubmitted journal and recovering canonical state_queue tip.`,
+      );
+      return yield* recoverWithLatestBlock(
+        pendingBlock.expectedHeaderHash,
+        pendingBlock.submittedTxHash,
+      );
+    }
     const confirmationResult = yield* Effect.either(
       awaitPendingBlockResolution(
         lucid.api,
@@ -169,6 +179,19 @@ export const runConfirmBlockCommitmentsWorkerProgram = (
       yield* Effect.logWarning(
         `🔍 Pending block header ${pendingBlock.expectedHeaderHash} not resolved yet (submitted_tx=${pendingBlock.submittedTxHash || "unknown"}, age_ms=${pendingAgeMs}, timeout_ms=${nodeConfig.BLOCK_CONFIRMATION_AWAIT_TIMEOUT_MS}).`,
       );
+      const expiryRecoveryGraceMs = Math.max(
+        nodeConfig.BLOCK_CONFIRMATION_AWAIT_TIMEOUT_MS,
+        30_000,
+      );
+      if (Date.now() > pendingBlock.blockEndTimeMs + expiryRecoveryGraceMs) {
+        yield* Effect.logWarning(
+          `🔍 Pending block header ${pendingBlock.expectedHeaderHash} passed its validity upper bound without confirmation; abandoning expired submission and recovering canonical state_queue tip.`,
+        );
+        return yield* recoverWithLatestBlock(
+          pendingBlock.expectedHeaderHash,
+          pendingBlock.submittedTxHash,
+        );
+      }
       if (pendingAgeMs >= nodeConfig.UNCONFIRMED_BLOCK_MAX_AGE_MS) {
         yield* Effect.logWarning(
           `🔍 Pending block header ${pendingBlock.expectedHeaderHash} exceeded warning age (${nodeConfig.UNCONFIRMED_BLOCK_MAX_AGE_MS}ms) without deterministic chain resolution.`,

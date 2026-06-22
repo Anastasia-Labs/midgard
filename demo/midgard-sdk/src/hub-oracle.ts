@@ -1,6 +1,7 @@
 import {
   Address,
   Assets,
+  Constr,
   credentialToAddress,
   Data,
   fromText,
@@ -19,6 +20,7 @@ import {
   AuthenticatedValidator,
   Bech32DeserializationError,
   GenericErrorFields,
+  isHexString,
   LucidError,
   makeReturn,
   MidgardValidators,
@@ -38,6 +40,23 @@ export type HubOracleConfig = {
 };
 
 export const HUB_ORACLE_ASSET_NAME = fromText("MIDGARD_HUB_ORACLE");
+export const HUB_ORACLE_ONE_SHOT_NONCE_DATUM_DOMAIN =
+  "MidgardHubOracleOneShotNonceV1";
+
+export type HubOracleOneShotNonceDatumParams = {
+  readonly markerHex: string;
+};
+
+export type HubOracleOneShotNonceTxParams = {
+  readonly address: Address;
+  readonly amountLovelace: bigint;
+  readonly markerHex: string;
+};
+
+export type IncompleteHubOracleOneShotNonceTx = {
+  readonly txBuilder: TxBuilder;
+  readonly inlineDatum: string;
+};
 
 export const HubOracleDatumSchema = Data.Object({
   registered_operators: ScriptHashSchema,
@@ -212,6 +231,88 @@ export const incompleteHubOracleInitTxProgram = (
 export class HubOracleError extends EffectData.TaggedError(
   "HubOracleError",
 )<GenericErrorFields> {}
+
+const validateHubOracleOneShotNonceMarkerHex = (
+  markerHex: string,
+): Effect.Effect<string, HubOracleError> => {
+  if (markerHex.length === 0) {
+    return Effect.fail(
+      new HubOracleError({
+        message: "Invalid hub-oracle one-shot nonce marker",
+        cause: "markerHex must be non-empty hex bytes",
+      }),
+    );
+  }
+  if (markerHex.length % 2 !== 0) {
+    return Effect.fail(
+      new HubOracleError({
+        message: "Invalid hub-oracle one-shot nonce marker",
+        cause: "markerHex must contain an even number of hex characters",
+      }),
+    );
+  }
+  if (!isHexString(markerHex)) {
+    return Effect.fail(
+      new HubOracleError({
+        message: "Invalid hub-oracle one-shot nonce marker",
+        cause: "markerHex must contain only hex characters",
+      }),
+    );
+  }
+  return Effect.succeed(markerHex);
+};
+
+export const makeHubOracleOneShotNonceDatum = (
+  params: HubOracleOneShotNonceDatumParams,
+): Effect.Effect<string, HubOracleError> =>
+  Effect.gen(function* () {
+    const markerHex = yield* validateHubOracleOneShotNonceMarkerHex(
+      params.markerHex,
+    );
+    return yield* Effect.try({
+      try: () => Data.to(new Constr(0, [markerHex])),
+      catch: (cause) =>
+        new HubOracleError({
+          message: "Failed to encode hub-oracle one-shot nonce datum",
+          cause,
+        }),
+    });
+  });
+
+export const incompleteHubOracleOneShotNonceTxProgram = (
+  lucid: LucidEvolution,
+  params: HubOracleOneShotNonceTxParams,
+): Effect.Effect<IncompleteHubOracleOneShotNonceTx, HubOracleError> =>
+  Effect.gen(function* () {
+    if (params.amountLovelace <= 0n) {
+      return yield* new HubOracleError({
+        message: "Invalid hub-oracle one-shot nonce amount",
+        cause: "amountLovelace must be greater than zero",
+      });
+    }
+
+    const inlineDatum = yield* makeHubOracleOneShotNonceDatum({
+      markerHex: params.markerHex,
+    });
+    const txBuilder = yield* Effect.try({
+      try: () =>
+        lucid
+          .newTx()
+          .pay.ToAddressWithData(
+            params.address,
+            { kind: "inline", value: inlineDatum },
+            { lovelace: params.amountLovelace },
+          ),
+      catch: (cause) =>
+        new HubOracleError({
+          message:
+            "Failed to build hub-oracle one-shot nonce preparation transaction",
+          cause,
+        }),
+    });
+
+    return { txBuilder, inlineDatum };
+  });
 
 /**
  * Attempts fetching the hub oracle UTxO.

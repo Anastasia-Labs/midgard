@@ -2,12 +2,8 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import {
-  CML,
-  type Network,
-  type Script,
-  validatorToScriptHash,
-} from "@lucid-evolution/lucid";
+import * as SDK from "@al-ft/midgard-sdk";
+import { type Network, type Script } from "@lucid-evolution/lucid";
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const blueprintCandidates = [
@@ -27,41 +23,20 @@ export const loadPhasMembershipWithdrawalScript = (): Script => {
       `Failed to locate Aiken blueprint for PHAS membership validator. Looked in: ${blueprintCandidates.join(", ")}`,
     );
   }
-  const blueprint = JSON.parse(readFileSync(blueprintPath, "utf8")) as {
-    readonly validators?: readonly {
-      readonly title?: unknown;
-      readonly compiledCode?: unknown;
-    }[];
-  };
-  const validator = blueprint.validators?.find(
-    ({ title }) => title === "phas.membership.withdraw",
+  const blueprint = SDK.parsePhasMembershipBlueprint(
+    JSON.parse(readFileSync(blueprintPath, "utf8")),
   );
-  if (
-    typeof validator?.compiledCode !== "string" ||
-    validator.compiledCode.length === 0
-  ) {
-    throw new Error(`Missing phas.membership.withdraw in ${blueprintPath}`);
+  try {
+    return SDK.phasMembershipWithdrawalScriptFromBlueprint(blueprint);
+  } catch (cause) {
+    const detail = cause instanceof Error ? `: ${cause.message}` : "";
+    throw new Error(
+      `Missing phas.membership.withdraw in ${blueprintPath}${detail}`,
+    );
   }
-  return {
-    type: "PlutusV3",
-    script: validator.compiledCode,
-  };
 };
-
-export const phasMembershipStakeCredential = (
-  script: Script = loadPhasMembershipWithdrawalScript(),
-): CML.Credential =>
-  CML.Credential.new_script(
-    CML.ScriptHash.from_hex(validatorToScriptHash(script)),
-  );
 
 export const phasMembershipRewardAddress = (
   network: Network,
   script: Script = loadPhasMembershipWithdrawalScript(),
-): string =>
-  CML.RewardAddress.new(
-    network === "Mainnet" ? 1 : 0,
-    phasMembershipStakeCredential(script),
-  )
-    .to_address()
-    .to_bech32();
+): string => SDK.phasMembershipRewardAddress(network, script);

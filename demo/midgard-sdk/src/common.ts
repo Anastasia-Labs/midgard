@@ -160,10 +160,14 @@ export type FraudProofs = {
   nonExistentInput: SpendingValidator;
   nonExistentInputNoIndex: SpendingValidator;
   invalidRange: SpendingValidator;
+  transitionTrace: SpendingValidator;
 };
 
 export type MidgardValidators = {
+  referenceScriptAuth: MintingValidator;
   hubOracle: AuthenticatedValidator;
+  daParamsGovernor: AuthenticatedValidator;
+  daAttestation: AuthenticatedValidator;
   stateQueue: AuthenticatedValidator;
   scheduler: AuthenticatedValidator;
   registeredOperators: AuthenticatedValidator;

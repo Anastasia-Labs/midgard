@@ -1,3 +1,4 @@
+use aiken/cbor
 use aiken/collection/dict
 use aiken/collection/list
 use aiken/crypto.{ScriptHash}
@@ -9,8 +10,10 @@ use cardano/transaction.{
 use cardano/transaction as tx
 use midgard/common/utils
 use midgard/hub_oracle as hub
+use midgard/ledger_state
 use midgard/payout
 use midgard/reserve
+use midgard/transition_trace
 use midgard/user_events/withdrawal as withdrawal_lib
 
 fn singleton_asset_name_with_policy(
@@ -533,6 +536,16 @@ const withdrawal_ref: OutputReference =
     transaction_id: #"0404040404040404040404040404040404040404040404040404040404040404",
     output_index: 0,
   }
+
+const withdrawal_phas_root =
+  #"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+const withdrawal_root =
+  transition_trace.commit_counted_root(
+    transition_trace.WithdrawalsRootDomain,
+    withdrawal_phas_root,
+    1,
+  )
 
 fn ada(quantity: Int) -> Value {
   assets.from_lovelace(quantity)
@@ -1273,7 +1286,29 @@ fn withdrawal_spend_redeemer_data() -> Data {
       settlement_ref_input_index: 0,
       burn_redeemer_index: 0,
       payout_mint_redeemer_index: 1,
-      membership_proof: [],
+      membership_proof: transition_trace.RootMembershipProof {
+        domain: transition_trace.WithdrawalsRootDomain,
+        root: withdrawal_root,
+        phas_root: withdrawal_phas_root,
+        count: 1,
+        key: cbor.serialise(withdrawal_ref),
+        value: cbor.serialise(
+          ledger_state.WithdrawalInfo {
+            body: ledger_state.WithdrawalBody {
+              l2_outref: withdrawal_ref,
+              l2_owner: #"11111111111111111111111111111111111111111111111111111111",
+              l2_value: payout_value_pairs(7),
+              l1_address: address.from_script(
+                #"66666666666666666666666666666666666666666666666666666666",
+              ),
+              l1_datum: NoDatum,
+            },
+            signature: Pair(#"01", #"02"),
+            validity: ledger_state.WithdrawalIsValid,
+          },
+        ),
+        proof: [],
+      },
       inclusion_proof_script_withdraw_redeemer_index: 0,
       purpose: withdrawal_lib.InitializePayout,
     }

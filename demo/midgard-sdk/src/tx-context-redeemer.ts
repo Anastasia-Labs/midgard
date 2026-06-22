@@ -144,8 +144,7 @@ export const requireSpendRedeemerIndex = (
     ctx,
     requirePurpose(
       ctx,
-      (purpose) =>
-        purpose.tag === "spend" && sameOutRef(purpose.input, input),
+      (purpose) => purpose.tag === "spend" && sameOutRef(purpose.input, input),
       `${label} spend`,
     ),
     `${label} spend`,

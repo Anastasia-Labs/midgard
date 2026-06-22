@@ -1,5 +1,6 @@
-import { asArray, asBigInt } from "./cbor.js";
+import { asArray, asBigInt, asBytes } from "./cbor.js";
 import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
+import { ensureHash32, type Hash32 } from "./hash.js";
 import { MIDGARD_NATIVE_TX_VERSION } from "./native-constants.js";
 
 export const MidgardTxValidityCodes = {
@@ -42,6 +43,24 @@ export const asFixedArray = (
   }
   return arr;
 };
+
+const itemField = (fieldName: string, index: number): string =>
+  `${fieldName}[${index}]`;
+
+export const hashItem = (
+  value: readonly unknown[],
+  index: number,
+  fieldName: string,
+): Hash32 => {
+  const field = itemField(fieldName, index);
+  return ensureHash32(asBytes(value[index], field), field);
+};
+
+export const bytesItem = (
+  value: readonly unknown[],
+  index: number,
+  fieldName: string,
+): Buffer => asBytes(value[index], itemField(fieldName, index));
 
 export const asUnsigned = (value: unknown, fieldName: string): bigint => {
   const intValue = asBigInt(value, fieldName);

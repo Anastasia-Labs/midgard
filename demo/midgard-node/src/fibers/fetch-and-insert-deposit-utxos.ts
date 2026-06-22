@@ -45,13 +45,30 @@ const credentialFromAddressData = (credential: SDK.CredentialD): Credential =>
         hash: credential.ScriptCredential[0],
       };
 
+const networkFromDepositInfo = (
+  configuredNetwork: Network,
+  l2NetworkId: bigint,
+): Network => {
+  if (l2NetworkId === 1n) {
+    return "Mainnet";
+  }
+  if (l2NetworkId === 0n) {
+    return configuredNetwork === "Mainnet" ? "Preprod" : configuredNetwork;
+  }
+  throw new Error(
+    `Unsupported committed deposit L2 network id ${l2NetworkId.toString()}`,
+  );
+};
+
 /**
  * Reconstructs a bech32 L2 address from deposit-event address data.
  */
 const addressFromDepositInfo = (
-  network: Network,
+  configuredNetwork: Network,
+  l2NetworkId: bigint,
   addressData: SDK.AddressData,
 ): string => {
+  const network = networkFromDepositInfo(configuredNetwork, l2NetworkId);
   const stakeCredential =
     addressData.stakeCredential === null
       ? undefined
@@ -99,6 +116,7 @@ const depositUTxOToEntry = (
     try: () => {
       const l2Address = addressFromDepositInfo(
         network,
+        depositUTxO.datum.event.info.l2_network_id,
         depositUTxO.datum.event.info.l2_address,
       );
       const l2Datum = depositUTxO.datum.event.info.l2_datum;
@@ -160,7 +178,7 @@ const fetchDepositUTxOs = (
     return yield* SDK.fetchDepositUTxOsProgram(lucid, fetchConfig);
   });
 
-const reconcileVisibleDepositUTxOs = (
+export const reconcileVisibleDepositUTxOs = (
   config?: Pick<
     SDK.UserEventFetchConfig,
     "inclusionTimeLowerBound" | "inclusionTimeUpperBound"

@@ -18,7 +18,14 @@ export type CmlValue = CML.Value;
 export type ValueLike = Assets | CmlValue | bigint;
 
 const isCmlValue = (value: ValueLike): value is CmlValue =>
-  value instanceof CML.Value;
+  value instanceof CML.Value ||
+  (typeof value === "object" &&
+    value !== null &&
+    typeof (value as { readonly coin?: unknown }).coin === "function" &&
+    typeof (value as { readonly multi_asset?: unknown }).multi_asset ===
+      "function" &&
+    typeof (value as { readonly to_cbor_bytes?: unknown }).to_cbor_bytes ===
+      "function");
 
 export const assertNonNegativeAssets = (
   assets: Assets,

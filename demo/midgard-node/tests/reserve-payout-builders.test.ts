@@ -1,5 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
 import { compareOutRefs } from "@al-ft/midgard-core/out-ref";
+import * as SDK from "@al-ft/midgard-sdk";
 import {
   type Assets,
   CML,
@@ -33,12 +33,13 @@ import {
   buildInitializePayoutTxProgram,
   buildRefundInvalidWithdrawalTxProgram,
 } from "@/transactions/reserve-payout.js";
+
 import {
   findRedeemerDataCbor,
   getRedeemerPointersInContextOrder,
+  type RedeemerPointer,
   resolveMintPolicyContextIndex,
   resolveRedeemerTxInfoIndex,
-  type RedeemerPointer,
 } from "./helpers/redeemer-inspection.js";
 
 const mkUtxo = (
@@ -69,6 +70,13 @@ const hashHexBlake2b256 = (hex: string): Promise<string> =>
 const canonicalDatumCbor = (cbor: string): string =>
   CML.PlutusData.from_cbor_hex(cbor).to_canonical_cbor_hex();
 
+const userEventCborFieldsFromDatumCbor = (datum: string) =>
+  SDK.userEventCborFieldsFromInlineDatum({
+    txHash: "00".repeat(32),
+    outputIndex: 0,
+    datum,
+  });
+
 const expectLeft = <E, A>(
   result:
     | { readonly _tag: "Left"; readonly left: E }
@@ -92,6 +100,22 @@ const singletonMembershipRoot = async (
   return hashHexBlake2b256(`ff${keyHash}${valueHash}`);
 };
 
+const countedSingletonMembershipRoot = async (
+  domain: SDK.RootDomain,
+  keyCbor: string,
+  valueCbor: string,
+): Promise<{ readonly root: string; readonly phasRoot: string }> => {
+  const phasRoot = await singletonMembershipRoot(keyCbor, valueCbor);
+  const root = await Effect.runPromise(
+    SDK.commitCountedRootProgram({
+      domain,
+      phasRoot,
+      count: 1n,
+    }),
+  );
+  return { root, phasRoot };
+};
+
 const loadRealContracts = (oneShotOutRef: {
   readonly txHash: string;
   readonly outputIndex: number;
@@ -103,6 +127,7 @@ const loadRealContracts = (oneShotOutRef: {
         "Preprod",
         placeholder,
         oneShotOutRef,
+        { referenceScriptAuth: placeholder.referenceScriptAuth },
       );
     }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
   );
@@ -305,9 +330,7 @@ const expectAuthenticateMintRedeemerLayout = ({
   expect(redeemer.AuthenticateEvent.event_output_index).toBe(
     requireEventOutputIndex(transaction, eventAddress, eventUnit),
   );
-  expect(redeemer.AuthenticateEvent.hub_ref_input_index).toBe(
-    hubRefInputIndex,
-  );
+  expect(redeemer.AuthenticateEvent.hub_ref_input_index).toBe(hubRefInputIndex);
   expect(redeemer.AuthenticateEvent.witness_registration_redeemer_index).toBe(
     resolveRedeemerTxInfoIndex({
       pointers: getRedeemerPointersInContextOrder(transaction),
@@ -370,8 +393,7 @@ const makeDepositUTxO = ({
   utxo,
   datum,
   assetName,
-  idCbor: Buffer.from(Data.to(datum.event.id, SDK.OutputReference), "hex"),
-  infoCbor: Buffer.from(Data.to(datum.event.info, SDK.DepositInfo), "hex"),
+  ...SDK.userEventCborFieldsFromInlineDatum(utxo),
   inclusionTime: new Date(Number(datum.inclusion_time)),
 });
 
@@ -387,8 +409,7 @@ const makeWithdrawalUTxO = ({
   utxo,
   datum,
   assetName,
-  idCbor: Buffer.from(Data.to(datum.event.id, SDK.OutputReference), "hex"),
-  infoCbor: Buffer.from(Data.to(datum.event.info, SDK.WithdrawalInfo), "hex"),
+  ...SDK.userEventCborFieldsFromInlineDatum(utxo),
   inclusionTime: new Date(Number(datum.inclusion_time)),
 });
 
@@ -645,6 +666,7 @@ const makeReserveLifecycleBuilderFixture = async ({
       },
       info: {
         l2_address: l1AddressData,
+        l2_network_id: 0n,
         l2_datum: null,
       },
     },
@@ -677,27 +699,40 @@ const makeReserveLifecycleBuilderFixture = async ({
     refund_address: l1AddressData,
     refund_datum: "NoDatum",
   };
-  const depositKeyCbor = Data.to(depositDatum.event.id, SDK.OutputReference);
-  const depositValueCbor = Data.to(depositDatum.event.info, SDK.DepositInfo);
+  const depositDatumCbor = Data.to(depositDatum, SDK.DepositDatum);
+  const withdrawalDatumCbor = Data.to(
+    withdrawalDatum,
+    SDK.WithdrawalOrderDatum,
+  );
+  const depositEventCbors = userEventCborFieldsFromDatumCbor(depositDatumCbor);
+  const withdrawalEventCbors =
+    userEventCborFieldsFromDatumCbor(withdrawalDatumCbor);
   const settlementWithdrawalInfo: SDK.WithdrawalInfo = {
     ...withdrawalDatum.event.info,
     validity: settlementWithdrawalValidity,
   };
-  const withdrawalKeyCbor = Data.to(
-    withdrawalDatum.event.id,
-    SDK.OutputReference,
-  );
-  const withdrawalValueCbor = Data.to(
-    settlementWithdrawalInfo,
-    SDK.WithdrawalInfo,
-  );
+  const withdrawalValueCbor =
+    settlementWithdrawalValidity === withdrawalDatum.event.info.validity
+      ? withdrawalEventCbors.infoCbor.toString("hex")
+      : __reservePayoutTest.aikenSerialisedPlutusDataCbor(
+          Data.to(settlementWithdrawalInfo, SDK.WithdrawalInfo),
+        );
   const [depositsRoot, withdrawalsRoot] = await Promise.all([
-    singletonMembershipRoot(depositKeyCbor, depositValueCbor),
-    singletonMembershipRoot(withdrawalKeyCbor, withdrawalValueCbor),
+    countedSingletonMembershipRoot(
+      SDK.ROOT_DOMAINS.deposits,
+      depositEventCbors.idCbor.toString("hex"),
+      depositEventCbors.infoCbor.toString("hex"),
+    ),
+    countedSingletonMembershipRoot(
+      SDK.ROOT_DOMAINS.withdrawals,
+      withdrawalEventCbors.idCbor.toString("hex"),
+      withdrawalValueCbor,
+    ),
   ]);
   const settlementDatum: SDK.SettlementDatum = {
-    deposits_root: depositsRoot,
-    withdrawals_root: withdrawalsRoot,
+    deposits_root: depositsRoot.root,
+    withdrawals_root: withdrawalsRoot.root,
+    forced_transactions_root: SDK.EMPTY_MERKLE_TREE_ROOT,
     transactions_root: "77".repeat(32),
     resolution_claim: null,
   };
@@ -779,12 +814,12 @@ const makeReserveLifecycleBuilderFixture = async ({
       makeSeededScriptAccount({
         address: contracts.deposit.spendingScriptAddress,
         assets: { lovelace: 8_000_000n, [depositUnit]: 1n },
-        inlineDatum: Data.to(depositDatum, SDK.DepositDatum),
+        inlineDatum: depositDatumCbor,
       }),
       makeSeededScriptAccount({
         address: contracts.withdrawal.spendingScriptAddress,
         assets: { lovelace: 3_000_000n, [withdrawalUnit]: 1n },
-        inlineDatum: Data.to(withdrawalDatum, SDK.WithdrawalOrderDatum),
+        inlineDatum: withdrawalDatumCbor,
       }),
       makeSeededScriptAccount({
         address: contracts.settlement.spendingScriptAddress,
@@ -857,6 +892,25 @@ const makeReserveLifecycleBuilderFixture = async ({
     ),
   };
 
+  const depositMembershipProof: SDK.RawRootMembershipProof = {
+    domain: SDK.ROOT_DOMAINS.deposits,
+    root: depositsRoot.root,
+    phas_root: depositsRoot.phasRoot,
+    count: 1n,
+    key: depositEventCbors.idCbor.toString("hex"),
+    value: depositEventCbors.infoCbor.toString("hex"),
+    proof: [] as SDK.Proof,
+  };
+  const withdrawalMembershipProof: SDK.RawRootMembershipProof = {
+    domain: SDK.ROOT_DOMAINS.withdrawals,
+    root: withdrawalsRoot.root,
+    phas_root: withdrawalsRoot.phasRoot,
+    count: 1n,
+    key: withdrawalEventCbors.idCbor.toString("hex"),
+    value: withdrawalValueCbor,
+    proof: [] as SDK.Proof,
+  };
+
   return {
     beneficiary,
     contracts,
@@ -874,7 +928,8 @@ const makeReserveLifecycleBuilderFixture = async ({
     ],
     hubOracleRefInput,
     lucid,
-    membershipProof: [] as SDK.Proof,
+    depositMembershipProof,
+    withdrawalMembershipProof,
     membershipProofWithdrawal: {
       script: membershipProofScript,
     },
@@ -1347,7 +1402,8 @@ describe("reserve/payout transaction builder primitives", () => {
       feeInputs,
       hubOracleRefInput,
       lucid,
-      membershipProof,
+      depositMembershipProof,
+      withdrawalMembershipProof,
       membershipProofWithdrawal,
       payoutUnit,
       referenceScripts,
@@ -1361,7 +1417,7 @@ describe("reserve/payout transaction builder primitives", () => {
         deposit,
         feeInput: feeInputs[0],
         hubOracleRefInput,
-        membershipProof,
+        membershipProof: depositMembershipProof,
         membershipProofWithdrawal,
         referenceScripts,
         settlementRefInput,
@@ -1391,7 +1447,7 @@ describe("reserve/payout transaction builder primitives", () => {
       buildInitializePayoutTxProgram(lucid, contracts, {
         hubOracleRefInput,
         feeInput: feeInputs[1],
-        membershipProof,
+        membershipProof: withdrawalMembershipProof,
         membershipProofWithdrawal,
         referenceScripts,
         settlementRefInput,
@@ -1465,7 +1521,8 @@ describe("reserve/payout transaction builder primitives", () => {
       feeInputs,
       hubOracleRefInput,
       lucid,
-      membershipProof,
+      depositMembershipProof,
+      withdrawalMembershipProof,
       membershipProofWithdrawal,
       referenceScripts,
       settlementRefInput,
@@ -1484,7 +1541,7 @@ describe("reserve/payout transaction builder primitives", () => {
         deposit,
         feeInput: feeInputs[0],
         hubOracleRefInput,
-        membershipProof,
+        membershipProof: depositMembershipProof,
         membershipProofWithdrawal,
         referenceScripts: staticReferenceScripts,
         settlementRefInput,
@@ -1497,7 +1554,7 @@ describe("reserve/payout transaction builder primitives", () => {
       buildInitializePayoutTxProgram(lucid, contracts, {
         hubOracleRefInput,
         feeInput: feeInputs[1],
-        membershipProof,
+        membershipProof: withdrawalMembershipProof,
         membershipProofWithdrawal,
         referenceScripts: staticReferenceScripts,
         settlementRefInput,
@@ -1515,7 +1572,7 @@ describe("reserve/payout transaction builder primitives", () => {
       feeInputs,
       hubOracleRefInput,
       lucid,
-      membershipProof,
+      withdrawalMembershipProof,
       membershipProofWithdrawal,
       referenceScripts,
       settlementRefInput,
@@ -1529,7 +1586,7 @@ describe("reserve/payout transaction builder primitives", () => {
       buildRefundInvalidWithdrawalTxProgram(lucid, contracts, {
         hubOracleRefInput,
         feeInput: feeInputs[0],
-        membershipProof,
+        membershipProof: withdrawalMembershipProof,
         membershipProofWithdrawal,
         referenceScripts,
         settlementRefInput,

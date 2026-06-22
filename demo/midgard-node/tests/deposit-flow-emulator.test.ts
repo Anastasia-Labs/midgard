@@ -3,6 +3,7 @@ import "./utils.js";
 import { randomUUID } from "node:crypto";
 
 import * as SDK from "@al-ft/midgard-sdk";
+import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
 import {
   CML,
   coreToTxOutput,
@@ -42,7 +43,9 @@ import {
   BlocksDB,
   CommonUtils,
   ConfirmedLedgerDB,
+  DaPayloadsDB,
   DepositsDB,
+  DepositSubmissionAttemptsDB,
   ImmutableDB,
   LatestLedgerDB,
   MempoolDB,
@@ -52,13 +55,16 @@ import {
   MutationJobsDB,
   PendingBlockFinalizationsDB,
   ProcessedMempoolDB,
+  StateQueueMutationLeasesDB,
   TxAdmissionsDB,
   TxRejectionsDB,
   UserEventsUtils,
   WithdrawalsDB,
 } from "@/database/index.js";
 import { buildBlockConfirmationAction } from "@/fibers/block-confirmation.js";
+import { reconcileVisibleDepositUTxOs } from "@/fibers/fetch-and-insert-deposit-utxos.js";
 import { mergeAction } from "@/fibers/merge.js";
+import { projectDepositsToMempoolLedger } from "@/fibers/project-deposits-to-mempool-ledger.js";
 import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
 import {
   Database,
@@ -68,6 +74,7 @@ import {
   NodeConfig,
 } from "@/services/index.js";
 import { withRealStateQueueAndOperatorContracts } from "@/services/midgard-contracts.js";
+import { attestStateQueueOnceProgram } from "@/transactions/da-attestation.js";
 import {
   type AtomicProtocolInitReferenceScripts,
   buildAtomicProtocolInitTxProgram,
@@ -93,6 +100,7 @@ import {
 import { outRefLabel } from "@/tx-context.js";
 import { signWithdrawalBody } from "@/withdrawal-signature.js";
 import { runCommitBlockHeaderWorkerProgram } from "@/workers/commit-block-header.js";
+import { buildAuthenticatedRootFromEncodedEntries } from "@/workers/commit-block-header/transition-roots.js";
 import { runConfirmBlockCommitmentsWorkerProgram } from "@/workers/confirm-block-commitments.js";
 import {
   serializeStateQueueUTxO,
@@ -103,7 +111,8 @@ import {
   type WorkerInput as ConfirmationWorkerInput,
   type WorkerOutput as ConfirmationWorkerOutput,
 } from "@/workers/utils/confirm-block-commitments.js";
-import { deleteMpfStore, keyValuePhasRoot } from "@/workers/utils/mpf.js";
+import { deleteMpfStore } from "@/workers/utils/mpf.js";
+
 import { collectSortedInputOutRefs } from "./helpers/tx-inspection.js";
 
 const EMULATOR_PROTOCOL_PARAMETERS = {
@@ -119,6 +128,7 @@ const REQUIRED_BOND_LOVELACE = BigInt(
   process.env.OPERATOR_REQUIRED_BOND_LOVELACE ?? "5000000",
 );
 const REGISTRATION_ACTIVATION_DELAY_SLOTS = 180;
+const EMULATOR_REFERENCE_SCRIPT_AUTH_TIMELOCK_MS = 24 * 60 * 60 * 1000;
 // This harness exercises the real initialization, deposit submission, deposit
 // ingestion, and live commit-worker path against the bundled real blueprint.
 // Keep it sequential because it mutates shared emulator/database state.
@@ -157,10 +167,13 @@ type EmulatorFixture = {
   readonly operatorKeyHash: string;
 };
 
-const loadContracts = (oneShotOutRef: {
-  txHash: string;
-  outputIndex: number;
-}) =>
+const loadContracts = (
+  oneShotOutRef: {
+    txHash: string;
+    outputIndex: number;
+  },
+  referenceScriptAuth: SDK.MintingValidator,
+) =>
   Effect.runPromise(
     Effect.gen(function* () {
       const placeholder = yield* AlwaysSucceedsContract;
@@ -168,6 +181,7 @@ const loadContracts = (oneShotOutRef: {
         "Preprod",
         placeholder,
         oneShotOutRef,
+        { referenceScriptAuth },
       );
     }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
   );
@@ -197,6 +211,7 @@ const publishDepositFlowReferenceScripts = async ({
       referenceScriptsLucid,
       contracts,
       "node-runtime",
+      contracts.referenceScriptAuth,
       operatorLucid,
     ),
   );
@@ -213,6 +228,7 @@ const publishDepositFlowReferenceScripts = async ({
   };
   return {
     init: {
+      daParamsGovernorMinting: requireRef("da-params-governor minting"),
       hubOracleMinting: requireRef("hub-oracle minting"),
       schedulerMinting: requireRef("scheduler minting"),
       stateQueueMinting: requireRef("state-queue minting"),
@@ -258,10 +274,18 @@ const makeFixture = async (): Promise<EmulatorFixture> => {
     throw new Error("Expected operator wallet to expose a nonce UTxO");
   }
 
-  const contracts = await loadContracts({
-    txHash: nonceUtxo.txHash,
-    outputIndex: nonceUtxo.outputIndex,
-  });
+  const referenceScriptAuth = createReferenceScriptAuthPolicy(
+    referenceScriptsLucid,
+    emulator.now(),
+    EMULATOR_REFERENCE_SCRIPT_AUTH_TIMELOCK_MS,
+  );
+  const contracts = await loadContracts(
+    {
+      txHash: nonceUtxo.txHash,
+      outputIndex: nonceUtxo.outputIndex,
+    },
+    referenceScriptAuth,
+  );
   const operatorKeyHash = await readKeyHash(operatorLucid);
   const referenceScripts = await publishDepositFlowReferenceScripts({
     operatorLucid,
@@ -286,6 +310,7 @@ const makeFixture = async (): Promise<EmulatorFixture> => {
 const initializeProtocol = async ({
   emulator,
   operatorLucid,
+  operatorAccount,
   referenceScriptsLucid,
   contracts,
   referenceScripts,
@@ -293,6 +318,7 @@ const initializeProtocol = async ({
   EmulatorFixture,
   | "emulator"
   | "operatorLucid"
+  | "operatorAccount"
   | "referenceScriptsLucid"
   | "contracts"
   | "referenceScripts"
@@ -322,6 +348,8 @@ const initializeProtocol = async ({
       {
         HUB_ORACLE_ONE_SHOT_TX_HASH: nonceUtxo.txHash,
         HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: nonceUtxo.outputIndex,
+        L1_OPERATOR_SEED_PHRASE: operatorAccount.seedPhrase,
+        NETWORK: "Preprod",
       },
       fraudProofCatalogueRoot,
       undefined,
@@ -368,6 +396,8 @@ const clearNodeTables = Effect.all(
     ProcessedMempoolDB.clear,
     ImmutableDB.clear,
     PendingBlockFinalizationsDB.clear,
+    DaPayloadsDB.clear,
+    DepositSubmissionAttemptsDB.clear,
     TxRejectionsDB.clear,
     CommonUtils.clearTable(TxAdmissionsDB.tableName),
     CommonUtils.clearTable(MutationJobsDB.tableName),
@@ -977,7 +1007,7 @@ const runCommitWorker = async (
   const currentBlockStartTimeMs = await getStateQueueDatumEndTime(
     latestBlock.datum,
   );
-  return runCommitWorkerWithInput(contracts, lucidService, {
+  const workerInput = {
     data: {
       availableConfirmedBlock: await Effect.runPromise(
         serializeStateQueueUTxO(latestBlock),
@@ -988,21 +1018,38 @@ const runCommitWorker = async (
       mempoolTxsCountSoFar: 0,
       sizeOfProcessedTxsSoFar: 0,
     },
-  });
+  } satisfies CommitWorkerInput;
+  const leaseResult = await Effect.runPromise(
+    StateQueueMutationLeasesDB.tryWithLease(
+      "deposit-flow-emulator",
+      (stateQueueLeaseToken) =>
+        commitWorkerProgram(contracts, lucidService, {
+          data: {
+            ...workerInput.data,
+            stateQueueLeaseToken,
+          },
+        }),
+    ).pipe(Effect.provide(Database.layer)),
+  );
+  if (leaseResult._tag === "Busy") {
+    throw new Error(
+      `Expected emulator commit worker to acquire state-queue mutation lease, but lease was busy: ${StateQueueMutationLeasesDB.describeActiveLease(
+        leaseResult.activeLease,
+      )}`,
+    );
+  }
+  return leaseResult.value;
 };
 
-const runCommitWorkerWithInput = (
+const commitWorkerProgram = (
   contracts: SDK.MidgardValidators,
   lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>,
   workerInput: CommitWorkerInput,
 ) =>
-  Effect.runPromise(
-    runCommitBlockHeaderWorkerProgram(workerInput).pipe(
-      Effect.provideService(LucidService, lucidService as any),
-      Effect.provideService(MidgardContracts, contracts as any),
-      Effect.provide(Database.layer),
-      Effect.provide(NodeConfig.layer),
-    ),
+  runCommitBlockHeaderWorkerProgram(workerInput).pipe(
+    Effect.provideService(LucidService, lucidService as any),
+    Effect.provideService(MidgardContracts, contracts as any),
+    Effect.provide(NodeConfig.layer),
   );
 
 const makeGlobalsService = () =>
@@ -1011,6 +1058,19 @@ const makeGlobalsService = () =>
       return yield* Globals;
     }).pipe(Effect.provide(Globals.Default)),
   );
+
+const makeNodeConfigForFixture = async (fixture: EmulatorFixture) => {
+  const nodeConfig = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* NodeConfig;
+    }).pipe(Effect.provide(NodeConfig.layer)),
+  );
+  return {
+    ...nodeConfig,
+    L1_OPERATOR_SEED_PHRASE: fixture.operatorAccount.seedPhrase,
+    L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: fixture.operatorAccount.seedPhrase,
+  };
+};
 
 const withEmulatorExtraneousScriptRetry = async <A>(
   lucid: LucidEvolution,
@@ -1062,17 +1122,18 @@ const runNodeCommandProgram = <A>(
     readonly globals: Globals;
   },
 ): Promise<A> =>
-  withEmulatorExtraneousScriptRetry(lucidService.api, () =>
-    Effect.runPromise(
+  withEmulatorExtraneousScriptRetry(lucidService.api, async () => {
+    const nodeConfig = await makeNodeConfigForFixture(fixture);
+    return Effect.runPromise(
       effect.pipe(
         Effect.provideService(LucidService, lucidService as any),
         Effect.provideService(MidgardContracts, fixture.contracts as any),
         Effect.provideService(Globals, globals),
+        Effect.provideService(NodeConfig, nodeConfig),
         Effect.provide(Database.layer),
-        Effect.provide(NodeConfig.layer),
       ) as Effect.Effect<A, any, never>,
-    ),
-  );
+    );
+  });
 
 const runBlockConfirmation = (
   globals: Globals,
@@ -1140,6 +1201,26 @@ const runLocalFinalizationRecoveryWorker = async (
       Effect.provide(NodeConfig.layer),
     ),
   );
+};
+
+const attestQueuedStateQueueHeader = async ({
+  fixture,
+  lucidService,
+  globals,
+  headerHash,
+}: {
+  readonly fixture: EmulatorFixture;
+  readonly lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>;
+  readonly globals: Globals;
+  readonly headerHash: string;
+}) => {
+  const attestedHeaders = await runNodeCommandProgram(
+    attestStateQueueOnceProgram({ headerHash }),
+    { fixture, lucidService, globals },
+  );
+  expect(attestedHeaders.map((result) => result.headerHash)).toEqual([
+    headerHash,
+  ]);
 };
 
 /**
@@ -1290,6 +1371,13 @@ const commitConfirmRecoverAndMerge = async ({
     SDK.hashBlockHeader(queuedHeaderBeforeMerge),
   );
 
+  await attestQueuedStateQueueHeader({
+    fixture,
+    lucidService,
+    globals,
+    headerHash: queuedHeaderHash,
+  });
+
   await advanceEmulatorPastUnixTime(
     fixture,
     Number(queuedHeaderBeforeMerge.endTime) + 60_000,
@@ -1324,6 +1412,16 @@ const commitConfirmRecoverAndMerge = async ({
     settlementUtxo,
   };
 };
+
+const expectedAuthenticatedEventRoot = (
+  domain: SDK.RootDomain,
+  entries: readonly { readonly key: Buffer; readonly value: Buffer }[],
+): Promise<string> =>
+  Effect.runPromise(
+    buildAuthenticatedRootFromEncodedEntries(domain, entries).pipe(
+      Effect.map((root) => root.root),
+    ),
+  );
 
 let activeRuntimePaths: {
   readonly ledgerMpfPath: string;
@@ -1467,6 +1565,29 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
     );
     expect(utxosBeforeProjection.utxoCount).toEqual(0);
 
+    const globalsBeforeCommit = await makeGlobalsService();
+    await runNodeCommandProgram(
+      reconcileVisibleDepositUTxOs({
+        inclusionTimeUpperBound: BigInt(Date.now()),
+      }),
+      { fixture, lucidService, globals: globalsBeforeCommit },
+    );
+    await runNodeCommandProgram(projectDepositsToMempoolLedger, {
+      fixture,
+      lucidService,
+      globals: globalsBeforeCommit,
+    });
+
+    const rawUtxosAfterBackgroundProjection = await runNodeDatabaseEffect(
+      MempoolLedgerDB.retrieveByAddress(l2Address),
+    );
+    expect(rawUtxosAfterBackgroundProjection).toHaveLength(1);
+
+    const spendableUtxosAfterBackgroundProjection = await Effect.runPromise(
+      utxosProgram(l2Address).pipe(Effect.provide(Database.layer)),
+    );
+    expect(spendableUtxosAfterBackgroundProjection.utxoCount).toEqual(0);
+
     const latestBlockBeforeCommit = await fetchLatestCommittedBlock(
       fixture.operatorLucid,
       fixture.contracts,
@@ -1502,14 +1623,10 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
     );
     expect(depositEntry[DepositsDB.Columns.PROJECTED_HEADER_HASH]).toBeNull();
 
-    const projectedUtxos = await Effect.runPromise(
+    const projectedUtxosBeforeConfirmation = await Effect.runPromise(
       utxosProgram(l2Address).pipe(Effect.provide(Database.layer)),
     );
-    expect(projectedUtxos.utxoCount).toEqual(1);
-    expect(projectedUtxos.totals.lovelace).toEqual(12_000_000n);
-    expect(projectedUtxos.utxos[0]?.address).toEqual(l2Address);
-    expect(projectedUtxos.utxos[0]?.assets[depositAuthUnit]).toBeUndefined();
-    expect(projectedUtxos.utxos[0]?.datum).toBeUndefined();
+    expect(projectedUtxosBeforeConfirmation.utxoCount).toEqual(0);
 
     const activePendingAfterSubmission = await runNodeDatabaseEffect(
       PendingBlockFinalizationsDB.retrieveActive(),
@@ -1526,15 +1643,12 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
       PendingBlockFinalizationsDB.Status.SubmittedLocalFinalizationPending,
     );
 
-    const expectedDepositsRoot = await Effect.runPromise(
-      keyValuePhasRoot(
-        depositEntriesAfterSubmission.map(
-          (entry) => entry[UserEventsUtils.Columns.ID],
-        ),
-        depositEntriesAfterSubmission.map(
-          (entry) => entry[UserEventsUtils.Columns.INFO],
-        ),
-      ),
+    const expectedDepositsRoot = await expectedAuthenticatedEventRoot(
+      SDK.ROOT_DOMAINS.deposits,
+      depositEntriesAfterSubmission.map((entry) => ({
+        key: entry[UserEventsUtils.Columns.ID],
+        value: entry[UserEventsUtils.Columns.INFO],
+      })),
     );
 
     await fixture.operatorLucid.awaitTx(commitOutput.submittedTxHash);
@@ -1583,6 +1697,21 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
     expect(recoverableConfirmedBlockAfterObservation).not.toBe("");
     expect(localBoundaryAfterObservation).toBe(commitOutput.blockEndTimeMs);
 
+    const projectedUtxosAfterConfirmation = await Effect.runPromise(
+      utxosProgram(l2Address).pipe(Effect.provide(Database.layer)),
+    );
+    expect(projectedUtxosAfterConfirmation.utxoCount).toEqual(1);
+    expect(projectedUtxosAfterConfirmation.totals.lovelace).toEqual(
+      12_000_000n,
+    );
+    expect(projectedUtxosAfterConfirmation.utxos[0]?.address).toEqual(
+      l2Address,
+    );
+    expect(
+      projectedUtxosAfterConfirmation.utxos[0]?.assets[depositAuthUnit],
+    ).toBeUndefined();
+    expect(projectedUtxosAfterConfirmation.utxos[0]?.datum).toBeUndefined();
+
     const recoveryOutput = await runLocalFinalizationRecoveryWorker(
       restartedGlobals,
       fixture.contracts,
@@ -1601,6 +1730,47 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
     );
     const latestHeaderHash = await Effect.runPromise(
       SDK.hashBlockHeader(latestHeader),
+    );
+    const daPayloadAfterRecovery = await runNodeDatabaseEffect(
+      DaPayloadsDB.retrieveByHeaderHash(Buffer.from(latestHeaderHash, "hex")),
+    );
+    expect(daPayloadAfterRecovery._tag).toBe("Some");
+    if (daPayloadAfterRecovery._tag !== "Some") {
+      throw new Error("Expected a DA payload row for the finalized block");
+    }
+    const daPayloadRow = daPayloadAfterRecovery.value;
+    const daPayload = SDK.decodeDaPayloadV2(
+      daPayloadRow[DaPayloadsDB.Columns.PAYLOAD_CBOR],
+    );
+    expect(daPayload.block_body.header_hash).toEqual(latestHeaderHash);
+    expect(
+      daPayloadRow[DaPayloadsDB.Columns.PAYLOAD_SHA256].toString("hex"),
+    ).toEqual(
+      SDK.daPayloadHashHex(daPayloadRow[DaPayloadsDB.Columns.PAYLOAD_CBOR]),
+    );
+    expect(daPayloadRow[DaPayloadsDB.Columns.UTXOS_ROOT]).toEqual(
+      latestHeader.utxosRoot,
+    );
+    expect(daPayloadRow[DaPayloadsDB.Columns.TRANSACTIONS_ROOT]).toEqual(
+      latestHeader.transactionsRoot,
+    );
+    expect(daPayloadRow[DaPayloadsDB.Columns.FORCED_TRANSACTIONS_ROOT]).toEqual(
+      latestHeader.forcedTransactionsRoot,
+    );
+    expect(daPayloadRow[DaPayloadsDB.Columns.DEPOSITS_ROOT]).toEqual(
+      latestHeader.depositsRoot,
+    );
+    expect(daPayloadRow[DaPayloadsDB.Columns.WITHDRAWALS_ROOT]).toEqual(
+      latestHeader.withdrawalsRoot,
+    );
+    expect(daPayloadRow[DaPayloadsDB.Columns.TRANSITION_TRACE_ROOT]).toEqual(
+      latestHeader.transitionTraceRoot,
+    );
+    expect(daPayloadRow[DaPayloadsDB.Columns.EVENT_TO_STEP_ROOT]).toEqual(
+      latestHeader.eventToStepRoot,
+    );
+    expect(daPayloadRow[DaPayloadsDB.Columns.TOTAL_EVENT_COUNT]).toEqual(
+      latestHeader.totalEventCount,
     );
     const schedulerAfterCommit = await fetchSchedulerDatum(fixture);
     const depositEntriesAfterCommit = await runNodeDatabaseEffect(
@@ -1627,11 +1797,13 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
     expect(localBoundaryAfterRecovery).toBe(commitOutput.blockEndTimeMs);
 
     const coldStartGlobals = await makeGlobalsService();
+    const coldStartNodeConfig = await makeNodeConfigForFixture(fixture);
     await Effect.runPromise(
       seedLatestLocalBlockBoundaryOnStartup.pipe(
         Effect.provideService(Globals, coldStartGlobals),
         Effect.provideService(LucidService, lucidService as any),
         Effect.provideService(MidgardContracts, fixture.contracts as any),
+        Effect.provideService(NodeConfig, coldStartNodeConfig),
         Effect.provide(Database.layer),
       ),
     );
@@ -1759,6 +1931,13 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
       SDK.EMPTY_MERKLE_TREE_ROOT,
     );
 
+    await attestQueuedStateQueueHeader({
+      fixture,
+      lucidService,
+      globals: globalsAfterCommit,
+      headerHash: queuedHeaderHash,
+    });
+
     const confirmedBeforeMerge = await Effect.runPromise(
       SDK.getConfirmedStateFromStateQueueDatum(
         sortedStateQueueBeforeMerge[0]!.datum,
@@ -1838,6 +2017,7 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
     expect(settlementDatum).toEqual({
       deposits_root: queuedHeaderBeforeMerge.depositsRoot,
       withdrawals_root: queuedHeaderBeforeMerge.withdrawalsRoot,
+      forced_transactions_root: queuedHeaderBeforeMerge.forcedTransactionsRoot,
       transactions_root: queuedHeaderBeforeMerge.transactionsRoot,
       resolution_claim: null,
     });
@@ -1886,8 +2066,9 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
       globals,
     });
     const emptyProtocolRoot = SDK.EMPTY_MERKLE_TREE_ROOT;
-    const expectedDepositRoot = await Effect.runPromise(
-      keyValuePhasRoot([depositUtxo.idCbor], [depositUtxo.infoCbor]),
+    const expectedDepositRoot = await expectedAuthenticatedEventRoot(
+      SDK.ROOT_DOMAINS.deposits,
+      [{ key: depositUtxo.idCbor, value: depositUtxo.infoCbor }],
     );
     expect(depositBlock.queuedHeader.depositsRoot).not.toEqual(
       emptyProtocolRoot,
@@ -1908,6 +2089,7 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
     expect(depositResolution.settlementRefInput.txHash).toEqual(
       depositBlock.settlementUtxo.txHash,
     );
+    await ensureSeparateCollateralUtxo(fixture.operatorLucid);
     const absorb = await runNodeCommandProgram(
       absorbConfirmedDepositToReserveProgram({ eventId: depositEventIdHex }),
       { fixture, lucidService, globals },
@@ -2024,11 +2206,9 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
     const withdrawalRootKeyValues = await Effect.runPromise(
       Effect.forEach(withdrawalEntries, WithdrawalsDB.toRootKeyValue),
     );
-    const expectedWithdrawalRoot = await Effect.runPromise(
-      keyValuePhasRoot(
-        withdrawalRootKeyValues.map((keyValue) => keyValue.key),
-        withdrawalRootKeyValues.map((keyValue) => keyValue.value),
-      ),
+    const expectedWithdrawalRoot = await expectedAuthenticatedEventRoot(
+      SDK.ROOT_DOMAINS.withdrawals,
+      withdrawalRootKeyValues,
     );
     expect(withdrawalBlock.queuedHeader.withdrawalsRoot).toEqual(
       expectedWithdrawalRoot,

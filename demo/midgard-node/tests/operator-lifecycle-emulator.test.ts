@@ -1,4 +1,5 @@
 import * as SDK from "@al-ft/midgard-sdk";
+import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
 import {
   Emulator,
   generateEmulatorAccount,
@@ -21,6 +22,7 @@ import {
   activateOperatorProgram,
   deployReferenceScriptCommandProgram,
   deregisterOperatorProgram,
+  registerAndActivateOperatorProgram,
   registerOperatorProgram,
 } from "@/transactions/register-active-operator.js";
 
@@ -34,11 +36,15 @@ const EMULATOR_PROTOCOL_PARAMETERS = {
 // can satisfy collateral + collateral-return constraints within max inputs (3).
 const MIN_COLLATERAL_SAFE_FRAGMENT_LOVELACE = 2_300_000n;
 const EMPTY_FRAUD_PROOF_CATALOGUE_ROOT = "00".repeat(32);
+const EMULATOR_REFERENCE_SCRIPT_AUTH_TIMELOCK_MS = 24 * 60 * 60 * 1000;
 
-const loadOperatorContracts = (oneShotOutRef: {
-  txHash: string;
-  outputIndex: number;
-}) =>
+const loadOperatorContracts = (
+  oneShotOutRef: {
+    txHash: string;
+    outputIndex: number;
+  },
+  referenceScriptAuth: SDK.MintingValidator,
+) =>
   Effect.runPromise(
     Effect.gen(function* () {
       const placeholder = yield* AlwaysSucceedsContract;
@@ -46,6 +52,7 @@ const loadOperatorContracts = (oneShotOutRef: {
         "Preprod",
         placeholder,
         oneShotOutRef,
+        { referenceScriptAuth },
       );
     }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
   );
@@ -55,6 +62,7 @@ const buildOperatorAwareInitializationTx = async (
   referenceScriptsLucid: Awaited<ReturnType<typeof Lucid>>,
   contracts: SDK.MidgardValidators,
   nonceUtxo: UTxO,
+  operatorSeedPhrase: string,
 ) => {
   const referenceScripts = await Effect.runPromise(
     ensureAtomicProtocolInitReferenceScriptsProgram(
@@ -69,6 +77,8 @@ const buildOperatorAwareInitializationTx = async (
       {
         HUB_ORACLE_ONE_SHOT_TX_HASH: nonceUtxo.txHash,
         HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: nonceUtxo.outputIndex,
+        L1_OPERATOR_SEED_PHRASE: operatorSeedPhrase,
+        NETWORK: "Preprod",
       },
       EMPTY_FRAUD_PROOF_CATALOGUE_ROOT,
       undefined,
@@ -100,15 +110,24 @@ const initOperatorLifecycleFixture = async () => {
   if (!nonceUtxo) {
     throw new Error("Expected at least one wallet UTxO in emulator");
   }
-  const contracts = await loadOperatorContracts({
-    txHash: nonceUtxo.txHash,
-    outputIndex: nonceUtxo.outputIndex,
-  });
+  const referenceScriptAuth = createReferenceScriptAuthPolicy(
+    referenceScriptsLucid,
+    emulator.now(),
+    EMULATOR_REFERENCE_SCRIPT_AUTH_TIMELOCK_MS,
+  );
+  const contracts = await loadOperatorContracts(
+    {
+      txHash: nonceUtxo.txHash,
+      outputIndex: nonceUtxo.outputIndex,
+    },
+    referenceScriptAuth,
+  );
   const initTx = await buildOperatorAwareInitializationTx(
     lucid,
     referenceScriptsLucid,
     contracts,
     nonceUtxo,
+    operator.seedPhrase,
   );
   const initCompleted = await initTx.complete({ localUPLCEval: true });
   const initSigned = await initCompleted.sign.withWallet().complete();
@@ -309,10 +328,18 @@ describe("operator lifecycle emulator", () => {
     if (!oneShotNonce) {
       throw new Error("Expected at least one operator wallet UTxO in emulator");
     }
-    const contracts = await loadOperatorContracts({
-      txHash: oneShotNonce.txHash,
-      outputIndex: oneShotNonce.outputIndex,
-    });
+    const referenceScriptAuth = createReferenceScriptAuthPolicy(
+      referenceScriptsLucid,
+      emulator.now(),
+      EMULATOR_REFERENCE_SCRIPT_AUTH_TIMELOCK_MS,
+    );
+    const contracts = await loadOperatorContracts(
+      {
+        txHash: oneShotNonce.txHash,
+        outputIndex: oneShotNonce.outputIndex,
+      },
+      referenceScriptAuth,
+    );
 
     referenceScriptsLucid.overrideUTxOs([]);
     const staleReferenceWalletUtxos = await referenceScriptsLucid
@@ -328,6 +355,7 @@ describe("operator lifecycle emulator", () => {
         referenceScriptsLucid,
         contracts,
         "active-operators",
+        contracts.referenceScriptAuth,
         fundingLucid,
       ),
     );
@@ -393,6 +421,52 @@ describe("operator lifecycle emulator", () => {
       ),
     );
     expect(activateResult.activateTxHash).toHaveLength(64);
+
+    await assertOperatorActivatedState({
+      lucid,
+      contracts,
+      activeNodeUnit,
+      operatorKeyHash,
+    });
+  });
+
+  it("resumes register-active-operator from an already registered inactive operator without deregistering", async () => {
+    const {
+      emulator,
+      lucid,
+      referenceScriptsLucid,
+      contracts,
+      activeNodeUnit,
+      operatorKeyHash,
+    } = await initOperatorLifecycleFixture();
+
+    const registerResult = await Effect.runPromise(
+      registerOperatorProgram(
+        lucid,
+        contracts,
+        5_000_000n,
+        referenceScriptsLucid,
+      ),
+    );
+    expect(registerResult.registerTxHash).toHaveLength(64);
+
+    const registeredNodeUtxosAfterRegister = await fetchRegisteredOperatorNodes(
+      lucid,
+      contracts,
+    );
+    expect(registeredNodeUtxosAfterRegister.length).toBeGreaterThan(0);
+
+    advanceEmulatorPastRegistrationDelay(emulator);
+    const resumedResult = await Effect.runPromise(
+      registerAndActivateOperatorProgram(
+        lucid,
+        contracts,
+        5_000_000n,
+        referenceScriptsLucid,
+      ),
+    );
+    expect(resumedResult.registerTxHash).toBeNull();
+    expect(resumedResult.activateTxHash).toHaveLength(64);
 
     await assertOperatorActivatedState({
       lucid,

@@ -1,5 +1,11 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import {
+  addAssets,
+  assetsEqual,
+  subtractAssets,
+  valueToAssets,
+} from "@al-ft/midgard-sdk";
+import {
   type Assets,
   Data as LucidData,
   toUnit,
@@ -16,12 +22,7 @@ import {
   MidgardContracts,
   NodeConfig,
 } from "@/services/index.js";
-import {
-  addAssets,
-  assetsEqual,
-  subtractAssets,
-  valueToAssets,
-} from "@al-ft/midgard-sdk";
+import { outRefLabel } from "@/tx-context.js";
 
 type ReserveUtxoSummary = {
   readonly outRef: string;
@@ -57,12 +58,9 @@ export type PayoutStatusResult = {
   readonly diagnostic: string | null;
 };
 
-const outRef = (utxo: UTxO): string =>
-  `${utxo.txHash}#${utxo.outputIndex.toString()}`;
-
 const decodePayoutDatum = (payout: UTxO): SDK.PayoutDatum => {
   if (payout.datum == null) {
-    throw new Error(`Payout UTxO ${outRef(payout)} has no inline datum.`);
+    throw new Error(`Payout UTxO ${outRefLabel(payout)} has no inline datum.`);
   }
   return LucidData.from(payout.datum, SDK.PayoutDatum) as SDK.PayoutDatum;
 };
@@ -70,7 +68,7 @@ const decodePayoutDatum = (payout: UTxO): SDK.PayoutDatum => {
 const assertReserveUtxoShape = (utxo: UTxO): void => {
   if (utxo.datum != null || utxo.scriptRef !== undefined) {
     throw new Error(
-      `Reserve UTxO ${outRef(utxo)} has unexpected datum or reference script.`,
+      `Reserve UTxO ${outRefLabel(utxo)} has unexpected datum or reference script.`,
     );
   }
 };
@@ -101,7 +99,7 @@ export const reserveUtxosProgram: Effect.Effect<
       {},
     ),
     utxos: utxos.map((utxo) => ({
-      outRef: outRef(utxo),
+      outRef: outRefLabel(utxo),
       assets: utxo.assets,
       datum: "NoDatum",
       hasReferenceScript: false,
@@ -222,7 +220,7 @@ export const payoutStatusProgram = (
     return {
       withdrawalEventId: eventId.toString("hex"),
       payoutUnit,
-      payoutOutRef: outRef(payout),
+      payoutOutRef: outRefLabel(payout),
       phase,
       targetAssets,
       currentAssets,

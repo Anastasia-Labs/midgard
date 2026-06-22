@@ -23,8 +23,8 @@ const describePreprod = runPreprodFlow ? describe : describe.skip;
 
 const REQUIRED_PREPROD_ENV = [
   "L1_PROVIDER",
-  "L1_BLOCKFROST_API_URL",
-  "L1_BLOCKFROST_KEY",
+  "L1_OGMIOS_KEY",
+  "L1_KUPO_KEY",
   "L1_OPERATOR_SEED_PHRASE",
   "L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX",
   "L1_REFERENCE_SCRIPT_SEED_PHRASE",
@@ -122,7 +122,7 @@ const loadRuntime = (): Promise<LifecycleRuntime> =>
     ),
   );
 
-describePreprod("operator lifecycle preprod blockfrost", () => {
+describePreprod("operator lifecycle preprod kupmios", () => {
   let runtime: LifecycleRuntime;
 
   beforeAll(async () => {
@@ -136,9 +136,9 @@ describePreprod("operator lifecycle preprod blockfrost", () => {
       );
     }
     runtime = await loadRuntime();
-    if (runtime.provider !== "Blockfrost") {
+    if (runtime.provider !== "Kupmios") {
       throw new Error(
-        `Expected L1_PROVIDER=Blockfrost for preprod lifecycle tests, got ${runtime.provider}`,
+        `Expected L1_PROVIDER=Kupmios for preprod lifecycle tests, got ${runtime.provider}`,
       );
     }
     if (runtime.network !== "Preprod") {

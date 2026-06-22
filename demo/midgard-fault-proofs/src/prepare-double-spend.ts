@@ -32,7 +32,10 @@ import {
 } from "./json-file.js";
 import { nativeTxFromCoreCompact } from "./submit-step-01.js";
 
-type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>;
+export type FetchLike = (
+  input: string | URL,
+  init?: RequestInit,
+) => Promise<Response>;
 
 export type PrepareDoubleSpendCliConfig = {
   readonly midgardNodeUrl: string;
@@ -112,7 +115,7 @@ export type PrepareSampleDoubleSpendConfig = {
   readonly allowIncompatibleOutput?: boolean;
 };
 
-type DecodedTransactionMaterial = {
+export type DecodedTransactionMaterial = {
   readonly nodeTxId: string;
   readonly txCbor: string;
   readonly nativeTx: MidgardNativeTxFull;
@@ -122,7 +125,7 @@ type DecodedTransactionMaterial = {
   readonly nativeCompactCbor: string;
 };
 
-type TrieView = {
+export type TrieView = {
   readonly root: string;
   readonly proofCborByKeyHex: ReadonlyMap<string, string>;
 };
@@ -365,7 +368,7 @@ const decodeNativeInputCbors = (
 ): readonly string[] =>
   decodeMidgardNativeByteListPreimage(preimageCbor, label).map(bytesHex);
 
-const decodeTransactionMaterial = async (
+export const decodeTransactionMaterial = async (
   payload: NodeTransactionPayload,
 ): Promise<DecodedTransactionMaterial> => {
   const nodeTxId = parseHex(payload.nodeTxId, "nodeTxId", 32);
@@ -493,7 +496,7 @@ const resolveDoubleSpendPair = ({
   throw new Error("No double spend found in the selected block.");
 };
 
-const buildTrieView = async (
+export const buildTrieView = async (
   items: readonly {
     readonly key: Buffer;
     readonly value: Buffer;
@@ -523,12 +526,16 @@ const buildTrieView = async (
   };
 };
 
-const nativeTrieItem = (tx: DecodedTransactionMaterial) => ({
+export const nativeTrieItem = (tx: DecodedTransactionMaterial) => ({
   key: Buffer.from(tx.nodeTxId, "hex"),
   value: Buffer.from(tx.nativeCompactCbor, "hex"),
 });
 
-const requireProof = (trie: TrieView, key: Buffer, label: string): string => {
+export const requireProof = (
+  trie: TrieView,
+  key: Buffer,
+  label: string,
+): string => {
   const proof = trie.proofCborByKeyHex.get(key.toString("hex"));
   if (proof === undefined) {
     throw new Error(`Internal error: missing ${label} membership proof.`);
@@ -559,7 +566,7 @@ const prepareTx = ({
   doubleSpentInputIndex,
 });
 
-const compatibilityReasons = ({
+export const compatibilityReasons = ({
   nativeRoot,
   expectedTransactionsRoot,
 }: {

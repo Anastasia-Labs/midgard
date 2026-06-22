@@ -3,8 +3,19 @@ import { describe, expect, it } from "vitest";
 import { MIGRATIONS } from "@/database/migrations/index.js";
 import {
   MigrationError,
+  migrationExecutionMs,
   splitSqlStatements,
 } from "@/database/migrations/runner.js";
+
+describe("migrationExecutionMs", () => {
+  it("never returns a negative duration", () => {
+    expect(migrationExecutionMs(200, 22)).toEqual(0);
+  });
+
+  it("rounds monotonic elapsed time to integer milliseconds", () => {
+    expect(migrationExecutionMs(100, 112.6)).toEqual(13);
+  });
+});
 
 describe("splitSqlStatements", () => {
   it("does not split semicolons inside quoted text or comments", () => {

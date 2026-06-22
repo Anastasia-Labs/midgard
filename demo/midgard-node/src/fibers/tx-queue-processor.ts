@@ -1,14 +1,14 @@
 import {
   applyUTxOStatePatch,
+  processedTxFromValidatedTx,
   QueuedTx,
-  QueuedTxPayload,
   RejectCode,
   RejectedTx,
   runPhaseAValidation,
   runPhaseBValidationWithPatch,
 } from "@al-ft/midgard-validation";
 import { SqlClient } from "@effect/sql/SqlClient";
-import { Duration, Effect, Metric, Queue, Ref, Schedule } from "effect";
+import { Duration, Effect, Metric, Ref, Schedule } from "effect";
 
 import { MempoolLedgerDB, TxAdmissionsDB } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
@@ -21,11 +21,6 @@ import { Globals, Lucid, NodeConfig } from "@/services/index.js";
  * applies accepted state patches to the mempool ledger, and records rejections
  * for later inspection.
  */
-const txQueueSizeGauge = Metric.gauge("tx_queue_size", {
-  description: "A tracker for the size of the tx queue before processing",
-  bigint: true,
-});
-
 const validationPhaseALatencyGauge = Metric.gauge(
   "validation_phase_a_latency_ms",
   {
@@ -237,7 +232,7 @@ const ensureCachedUtxoState = (): Effect.Effect<
       return cachedUtxoState;
     }
 
-    const preStateEntries = yield* MempoolLedgerDB.retrieve;
+    const preStateEntries = yield* MempoolLedgerDB.retrieveSpendable;
     const state = new Map<string, Buffer>();
     for (const entry of preStateEntries) {
       state.set(entry.outref.toString("hex"), entry.output);
@@ -306,10 +301,7 @@ const selectPhaseAConcurrency = (
  * Runs one queue-processing tick, draining queued payloads and validating an
  * effective batch against the current mempool-ledger pre-state.
  */
-const txQueueProcessorAction = (
-  _txQueue: Queue.Dequeue<QueuedTxPayload>,
-  withMonitoring?: boolean,
-): Effect.Effect<
+const txQueueProcessorAction = (): Effect.Effect<
   void,
   DatabaseError,
   SqlClient | NodeConfig | Globals | Lucid
@@ -326,10 +318,6 @@ const txQueueProcessorAction = (
     const expiredLeaseCount = yield* TxAdmissionsDB.requeueExpiredLeases;
     const durableBacklog = yield* TxAdmissionsDB.countBacklog;
     const totalQueueDepth = Number(durableBacklog);
-    if (withMonitoring) {
-      yield* txQueueSizeGauge(Effect.succeed(durableBacklog));
-    }
-
     yield* validationQueueDepthGauge(Effect.succeed(durableBacklog));
 
     if (localFinalizationPending) {
@@ -443,9 +431,7 @@ const txQueueProcessorAction = (
         yield* TxAdmissionsDB.markAccepted({
           rows: admittedRows,
           leaseOwner,
-          processedTxs: phaseB.accepted.map(
-            (acceptedTx) => acceptedTx.processedTx,
-          ),
+          processedTxs: phaseB.accepted.map(processedTxFromValidatedTx),
         });
         yield* validationMempoolInsertDurationTimer(
           Effect.succeed(Duration.millis(Date.now() - mempoolInsertStart)),
@@ -481,13 +467,8 @@ const txQueueProcessorAction = (
  */
 export const txQueueProcessorFiber = (
   schedule: Schedule.Schedule<number>,
-  txQueue: Queue.Dequeue<QueuedTxPayload>,
-  withMonitoring?: boolean,
 ): Effect.Effect<void, never, SqlClient | NodeConfig | Globals | Lucid> =>
   Effect.gen(function* () {
     yield* Effect.logInfo("🔶 Tx queue processor fiber started.");
-    yield* repeatScheduledWithCauseLogging(
-      txQueueProcessorAction(txQueue, withMonitoring),
-      schedule,
-    );
+    yield* repeatScheduledWithCauseLogging(txQueueProcessorAction(), schedule);
   });

@@ -10,8 +10,8 @@ import {
   deriveMidgardNativeTxCompact,
   deriveMidgardNativeTxWitnessSetCompact,
   encodeMidgardNativeTxBodyCompact,
-  encodeMidgardNativeTxCompact,
   encodeMidgardNativeTxCanonical,
+  encodeMidgardNativeTxCompact,
   encodeMidgardNativeTxWitnessSetCompact,
   encodeMidgardVersionedScriptListPreimage,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
@@ -27,44 +27,16 @@ import { CML } from "@lucid-evolution/lucid";
 import { encode } from "cborg";
 import { describe, expect, it } from "vitest";
 
-import {
-  makeCardanoTxOutput,
-  makeMidgardTxOutput,
-} from "./midgard-output-helpers.js";
+import { makeConvertibleCardanoTxBytes } from "./helpers/cardano-native-fixtures.js";
+import { makeMidgardTxOutput } from "./midgard-output-helpers.js";
 
 const mkHash = (tag: string): Buffer => computeHash32(Buffer.from(tag, "utf8"));
 
 const encodeByteList = (items: readonly Uint8Array[]): Buffer =>
   Buffer.from(encode(items.map((item) => Buffer.from(item))));
 
-const makePlutusIntegerData = (
-  value: bigint,
-): CML.PlutusData =>
+const makePlutusIntegerData = (value: bigint): CML.PlutusData =>
   CML.PlutusData.new_integer(CML.BigInteger.from_str(value.toString(10)));
-
-const makeConvertibleCardanoTxBytes = (): Buffer => {
-  const inputs = CML.TransactionInputList.new();
-  inputs.add(
-    CML.TransactionInput.new(CML.TransactionHash.from_hex("11".repeat(32)), 0n),
-  );
-  const outputs = CML.TransactionOutputList.new();
-  outputs.add(
-    makeCardanoTxOutput(
-      CML.Address.from_bech32(
-        "addr_test1wzylc3gg4h37gt69yx057gkn4egefs5t9rsycmryecpsenswtdp58",
-      ),
-      CML.Value.from_coin(2_000_000n),
-    ),
-  );
-  return Buffer.from(
-    CML.Transaction.new(
-      CML.TransactionBody.new(inputs, outputs, 0n),
-      CML.TransactionWitnessSet.new(),
-      true,
-      undefined,
-    ).to_cbor_bytes(),
-  );
-};
 
 const mkBody = (): MidgardNativeTxBodyCanonical => {
   const spendInputsPreimageCbor = Buffer.from("820102", "hex");

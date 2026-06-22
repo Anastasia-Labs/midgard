@@ -1,12 +1,8 @@
 import {
   type Assets,
-  credentialToAddress,
   Data,
-  fromHex,
   LucidEvolution,
   PolicyId,
-  scriptHashToCredential,
-  toUnit,
   TxSignBuilder,
   UTxO,
 } from "@lucid-evolution/lucid";
@@ -15,35 +11,27 @@ import { Effect } from "effect";
 import {
   addressDataFromBech32,
   Bech32DeserializationError,
-  hashHexWithBlake2b,
   HashingError,
   LucidError,
   makeReturn,
   MidgardValidators,
-  ProofSchema,
 } from "@/common.js";
-import { OutputReference, POSIXTimeSchema } from "@/common.js";
-import {
-  fetchHubOracleUTxOProgram,
-  HubOracleError,
-  makeHubOracleDatum,
-} from "@/hub-oracle.js";
+import { POSIXTimeSchema } from "@/common.js";
+import { HubOracleError } from "@/hub-oracle.js";
 import { authenticateUTxOs, AuthenticUTxO } from "@/internals.js";
-import { DepositEventSchema, DepositInfo } from "@/ledger-state.js";
+import { DepositEventSchema } from "@/ledger-state.js";
+import { RawRootMembershipProofSchema } from "@/transition-trace.js";
 
 import {
   buildCompletedUserEventMintTxProgram,
-  buildUserEventWitnessCertificateValidator,
   encodeUserEventWitnessMintOrBurnRedeemer,
   fetchUserEventUTxOsProgram,
   outputReferenceToPlutusDataCbor,
-  resolveEventInclusionTime,
-  resolveUserEventValidTo,
-  selectWalletNonceInputProgram,
+  prepareUserEventMintContext,
   UserEventBuildError,
+  userEventCborFieldsFromInlineDatum,
   UserEventExtraFields,
   UserEventFetchConfig,
-  userEventWitnessScriptHash,
 } from "./internals.js";
 
 export const DepositDatumSchema = Data.Object({
@@ -59,7 +47,7 @@ export const DepositSpendRedeemerSchema = Data.Object({
   hub_ref_input_index: Data.Integer(),
   settlement_ref_input_index: Data.Integer(),
   mint_redeemer_index: Data.Integer(),
-  membership_proof: ProofSchema,
+  membership_proof: RawRootMembershipProofSchema,
   inclusion_proof_script_withdraw_redeemer_index: Data.Integer(),
 });
 export type DepositSpendRedeemer = Data.Static<
@@ -69,6 +57,10 @@ export const DepositSpendRedeemer =
   DepositSpendRedeemerSchema as unknown as DepositSpendRedeemer;
 
 export type DepositUTxO = AuthenticUTxO<DepositDatum, UserEventExtraFields>;
+
+const midgardNativeNetworkId = (
+  network: NonNullable<ReturnType<LucidEvolution["config"]>["network"]>,
+): bigint => (network === "Mainnet" ? 1n : 0n);
 
 /**
  * Silently drops invalid UTxOs.
@@ -81,9 +73,8 @@ export const utxosToDepositUTxOs = (
     utxos,
     nftPolicy,
     DepositDatum,
-    (datum) => ({
-      idCbor: Buffer.from(fromHex(Data.to(datum.event.id, OutputReference))),
-      infoCbor: Buffer.from(fromHex(Data.to(datum.event.info, DepositInfo))),
+    (datum, utxo) => ({
+      ...userEventCborFieldsFromInlineDatum(utxo),
       inclusionTime: new Date(Number(datum.inclusion_time)),
     }),
   );
@@ -123,46 +114,6 @@ export type DepositBuildMetadata = {
   readonly inclusionTime: number;
 };
 
-const fetchDepositHubOracleReferenceProgram = (
-  lucid: LucidEvolution,
-  contracts: MidgardValidators,
-  network: NonNullable<ReturnType<LucidEvolution["config"]>["network"]>,
-): Effect.Effect<
-  UTxO,
-  HubOracleError | LucidError | Bech32DeserializationError | UserEventBuildError
-> =>
-  Effect.gen(function* () {
-    const actual = yield* fetchHubOracleUTxOProgram(lucid, {
-      hubOracleAddress: credentialToAddress(
-        network,
-        scriptHashToCredential(contracts.hubOracle.policyId),
-      ),
-      hubOraclePolicyId: contracts.hubOracle.policyId,
-    });
-    const expectedDatum = yield* makeHubOracleDatum(contracts);
-
-    if (
-      actual.datum.deposit !== expectedDatum.deposit ||
-      JSON.stringify(actual.datum.deposit_addr) !==
-        JSON.stringify(expectedDatum.deposit_addr)
-    ) {
-      return yield* Effect.fail(
-        new UserEventBuildError({
-          message:
-            "On-chain hub oracle deployment does not match the locally configured deposit contract",
-          cause: {
-            expectedPolicyId: expectedDatum.deposit,
-            actualPolicyId: actual.datum.deposit,
-            expectedAddress: expectedDatum.deposit_addr,
-            actualAddress: actual.datum.deposit_addr,
-          },
-        }),
-      );
-    }
-
-    return actual.utxo;
-  });
-
 export const buildUnsignedDepositTxWithMetadataProgram = (
   lucid: LucidEvolution,
   contracts: MidgardValidators,
@@ -179,27 +130,26 @@ export const buildUnsignedDepositTxWithMetadataProgram = (
   | UserEventBuildError
 > =>
   Effect.gen(function* () {
-    const network = lucid.config().network;
-    if (network === undefined) {
-      return yield* Effect.fail(
-        new UserEventBuildError({
-          message:
-            "Cardano network not found while preparing deposit transaction",
-          cause: "Lucid network configuration is undefined",
-        }),
-      );
-    }
-
-    const hubOracleRefInput = yield* fetchDepositHubOracleReferenceProgram(
+    const context = yield* prepareUserEventMintContext({
       lucid,
       contracts,
+      label: "deposit",
+      eventPolicyId: contracts.deposit.policyId,
+      hubOraclePolicyField: "deposit",
+      hubOracleAddressField: "deposit_addr",
+    });
+    const {
+      eventUnit: depositUnit,
+      hubOracleRefInput,
+      inclusionTime,
       network,
-    );
-
-    const nonceInput = yield* selectWalletNonceInputProgram(lucid, "deposit");
+      nonceInput,
+      nonceAssetName,
+      validTo,
+      witnessScript,
+      witnessScriptHash,
+    } = context;
     const depositEventId = outputReferenceToPlutusDataCbor(nonceInput);
-    const nonceAssetName = yield* hashHexWithBlake2b(depositEventId, 32);
-    const depositUnit = toUnit(contracts.deposit.policyId, nonceAssetName);
     if ((config.additionalAssets[depositUnit] ?? 0n) !== 0n) {
       return yield* Effect.fail(
         new UserEventBuildError({
@@ -210,11 +160,6 @@ export const buildUnsignedDepositTxWithMetadataProgram = (
       );
     }
 
-    const witnessScript =
-      buildUserEventWitnessCertificateValidator(nonceAssetName);
-    const witnessScriptHash = userEventWitnessScriptHash(nonceAssetName);
-    const validTo = resolveUserEventValidTo(lucid);
-    const inclusionTime = resolveEventInclusionTime(validTo, network);
     const l2AddressData = yield* addressDataFromBech32(config.l2Address);
     const l2DatumData =
       config.l2Datum === null ? null : Data.from(config.l2Datum);
@@ -227,6 +172,7 @@ export const buildUnsignedDepositTxWithMetadataProgram = (
         },
         info: {
           l2_address: l2AddressData,
+          l2_network_id: midgardNativeNetworkId(network),
           l2_datum: l2DatumData,
         },
       },
@@ -243,9 +189,8 @@ export const buildUnsignedDepositTxWithMetadataProgram = (
       config.referenceScripts === undefined
         ? [hubOracleRefInput]
         : [hubOracleRefInput, config.referenceScripts.depositMinting];
-    const witnessRegistrationRedeemer = encodeUserEventWitnessMintOrBurnRedeemer(
-      contracts.deposit.policyId,
-    );
+    const witnessRegistrationRedeemer =
+      encodeUserEventWitnessMintOrBurnRedeemer(contracts.deposit.policyId);
 
     const tx = yield* buildCompletedUserEventMintTxProgram({
       lucid,

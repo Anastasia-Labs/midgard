@@ -14,11 +14,13 @@ const makeLeaseEntry = ({
   holder,
   status,
   lastError = null,
+  expiresAt,
 }: {
   readonly token: string;
   readonly holder: string;
   readonly status: StateQueueMutationLeasesDB.Status;
   readonly lastError?: string | null;
+  readonly expiresAt?: Date;
 }): FakeLeaseEntry => ({
   [StateQueueMutationLeasesDB.Columns.TOKEN]: token,
   [StateQueueMutationLeasesDB.Columns.SCOPE]: "state_queue",
@@ -28,7 +30,7 @@ const makeLeaseEntry = ({
     "2026-01-01T00:00:00.000Z",
   ),
   [StateQueueMutationLeasesDB.Columns.EXPIRES_AT]: new Date(
-    "2026-01-01T00:10:00.000Z",
+    expiresAt ?? "2026-01-01T00:10:00.000Z",
   ),
   [StateQueueMutationLeasesDB.Columns.RELEASED_AT]:
     status === StateQueueMutationLeasesDB.Status.Active
@@ -48,6 +50,25 @@ const createFakeLeaseStore = () => {
   let activeLease: FakeLeaseEntry | undefined;
   const allLeases: FakeLeaseEntry[] = [];
   const store: StateQueueMutationLeaseEndpointStore<never> = {
+    inspect: ({ recentLimit = 10 } = {}) =>
+      Effect.sync(() => ({
+        dbNow: new Date("2026-01-01T00:00:30.000Z"),
+        activeLease,
+        recentLeases: allLeases.slice(0, recentLimit),
+        pendingFinalizations:
+          activeLease === undefined
+            ? []
+            : [
+                {
+                  headerHash: "11".repeat(28),
+                  submittedTxHash: null,
+                  status:
+                    "pending_submission" as StateQueueMutationLeasesDB.LeaseInspection["pendingFinalizations"][number]["status"],
+                  createdAt: new Date("2026-01-01T00:00:05.000Z"),
+                  updatedAt: new Date("2026-01-01T00:00:10.000Z"),
+                },
+              ],
+      })),
     tryAcquire: ({ holder, ttlMs }) =>
       Effect.sync(() => {
         calls.push({ action: "acquire", holder, ttlMs });
@@ -204,6 +225,46 @@ describe("POST /stateQueueMutationLease request handling", () => {
         error: "fault-proof removal failed",
       },
     ]);
+  });
+
+  it("inspects active leases without mutating them", async () => {
+    const fake = createFakeLeaseStore();
+
+    await resolveRequest(
+      { action: "acquire", holder: "commit-worker", ttlMs: 30_000 },
+      fake.store,
+    );
+    const inspected = await resolveRequest(
+      { action: "inspect", recentLimit: 1 },
+      fake.store,
+    );
+
+    expect(inspected.statusCode).toBe(200);
+    expect(inspected.body).toMatchObject({
+      status: "busy",
+      dbNow: "2026-01-01T00:00:30.000Z",
+      activeLease: {
+        token: "commit-worker:fake-1",
+        holder: "commit-worker",
+        remainingMs: 570_000,
+        expired: false,
+        blockedUntil: "2026-01-01T00:10:00.000Z",
+      },
+      pendingFinalizations: [
+        {
+          headerHash: "11".repeat(28),
+          status: "pending_submission",
+          submittedTxHash: null,
+        },
+      ],
+      recentLeases: [
+        {
+          token: "commit-worker:fake-1",
+          holder: "commit-worker",
+        },
+      ],
+    });
+    expect(fake.activeLease()).toBeDefined();
   });
 
   it("rejects invalid request bodies with 400 responses", async () => {

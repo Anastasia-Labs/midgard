@@ -2,6 +2,7 @@ import { SqlClient } from "@effect/sql";
 import { Address } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import * as DepositsDB from "@/database/deposits.js";
 import {
   clearTable,
   DatabaseError,
@@ -200,6 +201,35 @@ export const retrieve: Effect.Effect<
   sqlErrorToDatabaseError(tableName, "Failed to retrieve the whole ledger"),
 );
 
+const spendablePredicate = (sql: SqlClient.SqlClient) => sql`
+  (${sql(tableName)}.${sql(Columns.SOURCE_EVENT_ID)} IS NULL
+    OR ${sql(DepositsDB.tableName)}.${sql(
+      DepositsDB.Columns.PROJECTED_HEADER_HASH,
+    )} IS NOT NULL)
+`;
+
+export const retrieveSpendable: Effect.Effect<
+  readonly EntryWithTimeStamp[],
+  DatabaseError,
+  Database
+> = Effect.gen(function* () {
+  yield* Effect.logDebug(`${tableName} db: attempt to retrieve spendable`);
+  const sql = yield* SqlClient.SqlClient;
+  return yield* sql<EntryWithTimeStamp>`SELECT ${sql(tableName)}.* FROM ${sql(
+    tableName,
+  )}
+    LEFT JOIN ${sql(DepositsDB.tableName)}
+      ON ${sql(DepositsDB.tableName)}.${sql(DepositsDB.Columns.ID)}
+       = ${sql(tableName)}.${sql(Columns.SOURCE_EVENT_ID)}
+    WHERE ${spendablePredicate(sql)}`;
+}).pipe(
+  Effect.withLogSpan(`retrieveSpendable ${tableName}`),
+  Effect.tapErrorTag("SqlError", (e) =>
+    logDatabaseError(tableName, "retrieveSpendable", e),
+  ),
+  sqlErrorToDatabaseError(tableName, "Failed to retrieve spendable ledger"),
+);
+
 export const retrieveByAddress = (
   address: string,
 ): Effect.Effect<readonly EntryWithTimeStamp[], DatabaseError, Database> =>
@@ -217,6 +247,33 @@ export const retrieveByAddress = (
     sqlErrorToDatabaseError(
       tableName,
       `Failed to retrieve UTxOs of address: ${address}`,
+    ),
+  );
+
+export const retrieveSpendableByAddress = (
+  address: string,
+): Effect.Effect<readonly EntryWithTimeStamp[], DatabaseError, Database> =>
+  Effect.gen(function* () {
+    yield* Effect.logDebug(
+      `${tableName} db: attempt to retrieve spendable Ledger UTxOs`,
+    );
+    const sql = yield* SqlClient.SqlClient;
+    return yield* sql<EntryWithTimeStamp>`SELECT ${sql(
+      tableName,
+    )}.* FROM ${sql(tableName)}
+      LEFT JOIN ${sql(DepositsDB.tableName)}
+        ON ${sql(DepositsDB.tableName)}.${sql(DepositsDB.Columns.ID)}
+         = ${sql(tableName)}.${sql(Columns.SOURCE_EVENT_ID)}
+      WHERE ${sql(tableName)}.${sql(Columns.ADDRESS)} = ${address}
+        AND ${spendablePredicate(sql)}`;
+  }).pipe(
+    Effect.withLogSpan(`retrieveSpendableByAddress ${tableName}`),
+    Effect.tapErrorTag("SqlError", (e) =>
+      logDatabaseError(tableName, "retrieveSpendableByAddress", e),
+    ),
+    sqlErrorToDatabaseError(
+      tableName,
+      `Failed to retrieve spendable UTxOs of address: ${address}`,
     ),
   );
 
@@ -239,6 +296,33 @@ export const retrieveByTxOutRefs = (
     sqlErrorToDatabaseError(
       tableName,
       "Failed to retrieve UTxOs for the given outrefs",
+    ),
+  );
+
+export const retrieveSpendableByTxOutRefs = (
+  outrefs: readonly Buffer[],
+): Effect.Effect<readonly EntryWithTimeStamp[], DatabaseError, Database> =>
+  Effect.gen(function* () {
+    if (outrefs.length === 0) {
+      return [];
+    }
+    const sql = yield* SqlClient.SqlClient;
+    return yield* sql<EntryWithTimeStamp>`SELECT ${sql(
+      tableName,
+    )}.* FROM ${sql(tableName)}
+      LEFT JOIN ${sql(DepositsDB.tableName)}
+        ON ${sql(DepositsDB.tableName)}.${sql(DepositsDB.Columns.ID)}
+         = ${sql(tableName)}.${sql(Columns.SOURCE_EVENT_ID)}
+      WHERE ${sql(tableName)}.${sql(Columns.OUTREF)} IN ${sql.in(outrefs)}
+        AND ${spendablePredicate(sql)}`;
+  }).pipe(
+    Effect.withLogSpan(`retrieveSpendableByTxOutRefs ${tableName}`),
+    Effect.tapErrorTag("SqlError", (e) =>
+      logDatabaseError(tableName, "retrieveSpendableByTxOutRefs", e),
+    ),
+    sqlErrorToDatabaseError(
+      tableName,
+      "Failed to retrieve spendable UTxOs for the given outrefs",
     ),
   );
 

@@ -4,17 +4,15 @@ import { Data as EffectData, Effect, Option } from "effect";
 
 import { parseEventId } from "@/commands/command-utils.js";
 import * as DepositsDB from "@/database/deposits.js";
+import * as ForcedTransactionsDB from "@/database/forcedTransactions.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import * as WithdrawalsDB from "@/database/withdrawals.js";
 import { Database, Lucid, MidgardContracts } from "@/services/index.js";
 import { outRefLabel } from "@/tx-context.js";
-import {
-  keyValuePhasProof,
-  keyValuePhasRoot,
-  MpfError,
-} from "@/workers/utils/mpf.js";
+import { buildAuthenticatedRootFromEncodedEntries } from "@/workers/commit-block-header/transition-roots.js";
+import { keyValuePhasProof, MpfError } from "@/workers/utils/mpf.js";
 
-export type EventKind = "deposit" | "withdrawal";
+export type EventKind = "deposit" | "withdrawal" | "tx-order";
 
 export type EventSettlementProofLookup = {
   readonly kind: EventKind;
@@ -29,7 +27,7 @@ export type EventSettlementProofResolution =
       readonly settlementRefInput: UTxO;
       readonly settlementDatum: SDK.SettlementDatum;
       readonly root: string;
-      readonly proof: SDK.Proof;
+      readonly proof: SDK.RawRootMembershipProof;
       readonly proofCbor: string;
       readonly status: DepositsDB.Status;
       readonly entry: DepositsDB.Entry;
@@ -41,11 +39,24 @@ export type EventSettlementProofResolution =
       readonly settlementRefInput: UTxO;
       readonly settlementDatum: SDK.SettlementDatum;
       readonly root: string;
-      readonly proof: SDK.Proof;
+      readonly proof: SDK.RawRootMembershipProof;
       readonly proofCbor: string;
       readonly status: WithdrawalsDB.Status;
       readonly validity: WithdrawalsDB.Validity | null;
       readonly entry: WithdrawalsDB.Entry;
+    }
+  | {
+      readonly kind: "tx-order";
+      readonly eventId: string;
+      readonly headerHash: string;
+      readonly settlementRefInput: UTxO;
+      readonly settlementDatum: SDK.SettlementDatum;
+      readonly root: string;
+      readonly proof: SDK.RawRootMembershipProof;
+      readonly proofCbor: string;
+      readonly status: ForcedTransactionsDB.Status;
+      readonly validity: SDK.MidgardTxValidity;
+      readonly entry: ForcedTransactionsDB.Entry;
     };
 
 export type SerializedEventSettlementProofResolution = {
@@ -74,11 +85,17 @@ export const parseEventSettlementProofLookup = ({
   readonly eventId: string;
 }): EventSettlementProofLookup => {
   const normalizedKind = kind.trim().toLowerCase();
-  if (normalizedKind !== "deposit" && normalizedKind !== "withdrawal") {
-    throw new Error('--kind must be either "deposit" or "withdrawal".');
+  if (
+    normalizedKind !== "deposit" &&
+    normalizedKind !== "withdrawal" &&
+    normalizedKind !== "tx-order"
+  ) {
+    throw new Error(
+      '--kind must be either "deposit", "withdrawal", or "tx-order".',
+    );
   }
   return {
-    kind: normalizedKind,
+    kind: normalizedKind as EventKind,
     eventId: parseEventId(eventId, "--event-id"),
   };
 };
@@ -155,6 +172,74 @@ const fetchSettlementRefInput = (
     return { utxo, datum };
   });
 
+const rootProofError = (
+  message: string,
+  cause: unknown,
+): EventSettlementProofError =>
+  new EventSettlementProofError({ message, cause });
+
+const buildSourceMembershipProof = ({
+  domain,
+  expectedRoot,
+  entries,
+  targetKey,
+  label,
+}: {
+  readonly domain: SDK.RootDomain;
+  readonly expectedRoot: string;
+  readonly entries: readonly { readonly key: Buffer; readonly value: Buffer }[];
+  readonly targetKey: Buffer;
+  readonly label: string;
+}): Effect.Effect<
+  SDK.RawRootMembershipProof,
+  EventSettlementProofError | MpfError
+> =>
+  Effect.gen(function* () {
+    const root = yield* buildAuthenticatedRootFromEncodedEntries(
+      domain,
+      entries,
+    );
+    if (root.root !== expectedRoot) {
+      return yield* Effect.fail(
+        rootProofError(
+          `Recomputed ${label} root does not match settlement datum`,
+          {
+            expected: expectedRoot,
+            actual: root.root,
+            phasRoot: root.phasRoot,
+            count: root.count.toString(),
+          },
+        ),
+      );
+    }
+
+    const matchingEntry = root.entries.find((entry) =>
+      entry.key.equals(targetKey),
+    );
+    if (matchingEntry === undefined) {
+      return yield* Effect.fail(
+        rootProofError(`${label} event is not present in projected root`, {
+          eventId: targetKey.toString("hex"),
+        }),
+      );
+    }
+
+    const proof = yield* keyValuePhasProof(
+      root.entries.map((entry) => entry.key),
+      root.entries.map((entry) => entry.value),
+      targetKey,
+    );
+    return {
+      domain,
+      root: root.root,
+      phas_root: root.phasRoot,
+      count: root.count,
+      key: matchingEntry.key.toString("hex"),
+      value: matchingEntry.value.toString("hex"),
+      proof,
+    };
+  });
+
 export const resolveEventSettlementProofProgram = (
   lookup: EventSettlementProofLookup,
 ): Effect.Effect<
@@ -179,91 +264,116 @@ export const resolveEventSettlementProofProgram = (
         lookup.eventId,
         entry[DepositsDB.Columns.PROJECTED_HEADER_HASH],
       );
+      const settlement = yield* fetchSettlementRefInput(headerHash);
       const entries =
         yield* DepositsDB.retrieveByProjectedHeaderHash(headerHash);
-      const keys = entries.map((row) => row[DepositsDB.Columns.ID]);
-      const values = entries.map((row) => row[DepositsDB.Columns.INFO]);
-      const root = yield* keyValuePhasRoot(keys, values);
-      const proof = yield* keyValuePhasProof(keys, values, lookup.eventId);
-      const settlement = yield* fetchSettlementRefInput(headerHash);
-      if (settlement.datum.deposits_root !== root) {
-        return yield* Effect.fail(
-          new EventSettlementProofError({
-            message: "Recomputed deposit root does not match settlement datum",
-            cause: {
-              expected: settlement.datum.deposits_root,
-              actual: root,
-            },
-          }),
-        );
-      }
+      const proof = yield* buildSourceMembershipProof({
+        domain: SDK.ROOT_DOMAINS.deposits,
+        expectedRoot: settlement.datum.deposits_root,
+        entries: entries.map((row) => ({
+          key: row[DepositsDB.Columns.ID],
+          value: row[DepositsDB.Columns.INFO],
+        })),
+        targetKey: lookup.eventId,
+        label: "deposit",
+      });
       return {
         kind: "deposit",
         eventId: lookup.eventId.toString("hex"),
         headerHash: headerHash.toString("hex"),
         settlementRefInput: settlement.utxo,
         settlementDatum: settlement.datum,
-        root,
+        root: proof.root,
         proof,
-        proofCbor: LucidData.to(proof, SDK.Proof),
+        proofCbor: LucidData.to(proof, SDK.RawRootMembershipProof),
         status: entry[DepositsDB.Columns.STATUS],
         entry,
       };
     }
 
-    const maybeEntry = yield* WithdrawalsDB.retrieveByEventId(lookup.eventId);
+    if (lookup.kind === "withdrawal") {
+      const maybeEntry = yield* WithdrawalsDB.retrieveByEventId(lookup.eventId);
+      if (Option.isNone(maybeEntry)) {
+        return yield* Effect.fail(
+          new EventSettlementProofError({
+            message: "Withdrawal event not found",
+            cause: lookup.eventId.toString("hex"),
+          }),
+        );
+      }
+      const entry = maybeEntry.value;
+      const headerHash = yield* requireProjectedHeaderHash(
+        "withdrawal",
+        lookup.eventId,
+        entry[WithdrawalsDB.Columns.PROJECTED_HEADER_HASH],
+      );
+      const entries =
+        yield* WithdrawalsDB.retrieveByProjectedHeaderHash(headerHash);
+      const keyValues = yield* Effect.forEach(
+        entries,
+        WithdrawalsDB.toRootKeyValue,
+      );
+      const settlement = yield* fetchSettlementRefInput(headerHash);
+      const proof = yield* buildSourceMembershipProof({
+        domain: SDK.ROOT_DOMAINS.withdrawals,
+        expectedRoot: settlement.datum.withdrawals_root,
+        entries: keyValues,
+        targetKey: lookup.eventId,
+        label: "withdrawal",
+      });
+      return {
+        kind: "withdrawal",
+        eventId: lookup.eventId.toString("hex"),
+        headerHash: headerHash.toString("hex"),
+        settlementRefInput: settlement.utxo,
+        settlementDatum: settlement.datum,
+        root: proof.root,
+        proof,
+        proofCbor: LucidData.to(proof, SDK.RawRootMembershipProof),
+        status: entry[WithdrawalsDB.Columns.STATUS],
+        validity: entry[WithdrawalsDB.Columns.VALIDITY],
+        entry,
+      };
+    }
+
+    const maybeEntry = yield* ForcedTransactionsDB.retrieveByTxOrderId(
+      lookup.eventId,
+    );
     if (Option.isNone(maybeEntry)) {
       return yield* Effect.fail(
         new EventSettlementProofError({
-          message: "Withdrawal event not found",
+          message: "Tx-order event not found",
           cause: lookup.eventId.toString("hex"),
         }),
       );
     }
     const entry = maybeEntry.value;
     const headerHash = yield* requireProjectedHeaderHash(
-      "withdrawal",
+      "tx-order",
       lookup.eventId,
-      entry[WithdrawalsDB.Columns.PROJECTED_HEADER_HASH],
+      entry[ForcedTransactionsDB.Columns.PROJECTED_HEADER_HASH],
     );
     const entries =
-      yield* WithdrawalsDB.retrieveByProjectedHeaderHash(headerHash);
-    const keyValues = yield* Effect.forEach(
-      entries,
-      WithdrawalsDB.toRootKeyValue,
-    );
-    const root = yield* keyValuePhasRoot(
-      keyValues.map((keyValue) => keyValue.key),
-      keyValues.map((keyValue) => keyValue.value),
-    );
-    const proof = yield* keyValuePhasProof(
-      keyValues.map((keyValue) => keyValue.key),
-      keyValues.map((keyValue) => keyValue.value),
-      lookup.eventId,
-    );
+      yield* ForcedTransactionsDB.retrieveByProjectedHeaderHash(headerHash);
     const settlement = yield* fetchSettlementRefInput(headerHash);
-    if (settlement.datum.withdrawals_root !== root) {
-      return yield* Effect.fail(
-        new EventSettlementProofError({
-          message: "Recomputed withdrawal root does not match settlement datum",
-          cause: {
-            expected: settlement.datum.withdrawals_root,
-            actual: root,
-          },
-        }),
-      );
-    }
+    const proof = yield* buildSourceMembershipProof({
+      domain: SDK.ROOT_DOMAINS.forcedTransactions,
+      expectedRoot: settlement.datum.forced_transactions_root,
+      entries: entries.map(ForcedTransactionsDB.toRootKeyValue),
+      targetKey: lookup.eventId,
+      label: "tx-order",
+    });
     return {
-      kind: "withdrawal",
+      kind: "tx-order",
       eventId: lookup.eventId.toString("hex"),
       headerHash: headerHash.toString("hex"),
       settlementRefInput: settlement.utxo,
       settlementDatum: settlement.datum,
-      root,
+      root: proof.root,
       proof,
-      proofCbor: LucidData.to(proof, SDK.Proof),
-      status: entry[WithdrawalsDB.Columns.STATUS],
-      validity: entry[WithdrawalsDB.Columns.VALIDITY],
+      proofCbor: LucidData.to(proof, SDK.RawRootMembershipProof),
+      status: entry[ForcedTransactionsDB.Columns.STATUS],
+      validity: entry[ForcedTransactionsDB.Columns.OPERATOR_VALIDITY],
       entry,
     };
   });
@@ -278,7 +388,7 @@ export const serializeEventSettlementProofResolution = (
   root: resolution.root,
   proofCbor: resolution.proofCbor,
   status: resolution.status,
-  ...(resolution.kind === "withdrawal"
+  ...(resolution.kind === "withdrawal" || resolution.kind === "tx-order"
     ? { validity: resolution.validity }
     : {}),
 });

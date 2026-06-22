@@ -292,11 +292,13 @@ export const singlePositiveNonAdaAsset = (
 export const requireComputationThreadToken = ({
   utxo,
   computationThreadPolicyId,
-  doubleSpendCategoryId,
+  categoryId,
+  categoryLabel,
 }: {
   readonly utxo: UTxO;
   readonly computationThreadPolicyId: string;
-  readonly doubleSpendCategoryId: string;
+  readonly categoryId: string;
+  readonly categoryLabel: string;
 }): {
   readonly unit: string;
   readonly assetName: string;
@@ -308,10 +310,10 @@ export const requireComputationThreadToken = ({
       `Expected computation-thread token amount 1 at ${outRefLabel(utxo)}, found ${amount.toString()}.`,
     );
   }
-  const expectedPrefix = `${computationThreadPolicyId}${doubleSpendCategoryId}`;
+  const expectedPrefix = `${computationThreadPolicyId}${categoryId}`;
   if (!unit.startsWith(expectedPrefix)) {
     throw new Error(
-      `Thread UTxO ${outRefLabel(utxo)} does not carry a double-spend computation-thread token for policy ${computationThreadPolicyId}.`,
+      `Thread UTxO ${outRefLabel(utxo)} does not carry a ${categoryLabel} computation-thread token for policy ${computationThreadPolicyId}.`,
     );
   }
   const assetName = unit.slice(computationThreadPolicyId.length);
@@ -323,7 +325,7 @@ export const requireComputationThreadToken = ({
   return { unit, assetName, fraudulentHeaderHash };
 };
 
-const requireInitialStepDatum = ({
+export const requireInitialStepDatum = ({
   threadUtxo,
   signer,
 }: {
@@ -445,7 +447,8 @@ export const submitStep01 = async ({
   const threadToken = requireComputationThreadToken({
     utxo: threadUtxo,
     computationThreadPolicyId: contracts.computationThread.policyId,
-    doubleSpendCategoryId: doubleSpendCategory.categoryId,
+    categoryId: doubleSpendCategory.categoryId,
+    categoryLabel: "double-spend",
   });
   requireInitialStepDatum({ threadUtxo, signer });
   const stateQueueHeaderHash = resolveFraudulentHeaderHash({

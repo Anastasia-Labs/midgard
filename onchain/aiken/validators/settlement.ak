@@ -29,7 +29,8 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
     let Datum {
       deposits_root,
       withdrawals_root,
-      transactions_root,
+      forced_transactions_root,
+      transactions_root: _transactions_root,
       resolution_claim,
     } = datum
 
@@ -87,7 +88,7 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
         //    operator.
         expect active_operators.UpdateBondHoldNewSettlement {
           active_operator,
-          new_bond_unlock_time,
+          resolution_time,
           ..
         } =
           utils.get_spending_redeemer_data_at(
@@ -99,9 +100,8 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
           )
         expect operator == active_operator
 
-        // 7. The `bond_unlock_time` of the `operator_node` must match the
-        //    `resolution_time` of the resolution claim, which lies in the
-        //    future by `maturity_duration` milliseconds.
+        // 7. The active operators redeemer provides a validated resolution
+        //    time, which must be used as the settlement claim's resolution time.
         let cont_output_datum_data =
           utils.authenticate_input_output_and_get_output_datum_data(
             input,
@@ -112,10 +112,7 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
           Datum {
             ..datum,
             resolution_claim: Some(
-              ResolutionClaim {
-                resolution_time: new_bond_unlock_time,
-                operator,
-              },
+              ResolutionClaim { resolution_time, operator },
             ),
           }
         expect cont_output_datum_data == expected_output_datum_data
@@ -217,7 +214,7 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
             tx_order_script_hash,
             deposits_root,
             withdrawals_root,
-            transactions_root,
+            forced_transactions_root,
             membership_proof,
             unresolved_event_asset_name,
             unresolved_event_ref_input_index,
@@ -333,6 +330,7 @@ validator mint(hub_oracle: ScriptHash) {
           merged_block_transactions_root,
           merged_block_deposits_root,
           merged_block_withdrawals_root,
+          merged_block_forced_transactions_root,
           ..
         } = state_queue_redeemer_data
         // We verify this redeemer argument so that other scripts can use it:
@@ -364,6 +362,7 @@ validator mint(hub_oracle: ScriptHash) {
           Datum {
             deposits_root: merged_block_deposits_root,
             withdrawals_root: merged_block_withdrawals_root,
+            forced_transactions_root: merged_block_forced_transactions_root,
             transactions_root: merged_block_transactions_root,
             resolution_claim: None,
           }

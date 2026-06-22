@@ -6,11 +6,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import {
-  AuthenticatedValidator,
-  OutputReferenceSchema,
-  POSIXTimeSchema,
-} from "@/common.js";
+import { AuthenticatedValidator, OutputReferenceSchema } from "@/common.js";
 
 import { incompleteInitLinkedListTxProgram } from "./linked-list.js";
 
@@ -20,7 +16,6 @@ export const REGISTERED_OPERATORS_ROOT_ASSET_NAME = fromText(
 
 export const RegisteredOperatorDatumSchema = Data.Object({
   operator: Data.Bytes({ minLength: 28, maxLength: 28 }),
-  bond_unlock_time: Data.Nullable(POSIXTimeSchema),
 });
 export type RegisteredOperatorDatum = Data.Static<
   typeof RegisteredOperatorDatumSchema
@@ -46,21 +41,6 @@ export type DuplicateOperatorStatus = Data.Static<
 export const DuplicateOperatorStatus =
   DuplicateOperatorStatusSchema as unknown as DuplicateOperatorStatus;
 
-export const OperatorOriginSchema = Data.Enum([
-  Data.Object({
-    ReturningOperator: Data.Object({
-      retired_operators_redeemer_index: Data.Integer(),
-    }),
-  }),
-  Data.Object({
-    NewOperator: Data.Object({
-      retired_operators_element_ref_input_index: Data.Integer(),
-    }),
-  }),
-]);
-export type OperatorOrigin = Data.Static<typeof OperatorOriginSchema>;
-export const OperatorOrigin = OperatorOriginSchema as unknown as OperatorOrigin;
-
 export const RegisteredOperatorMintRedeemerSchema = Data.Enum([
   Data.Object({
     Init: Data.Object({
@@ -75,7 +55,7 @@ export const RegisteredOperatorMintRedeemerSchema = Data.Enum([
       registered_node_output_index: Data.Integer(),
       hub_oracle_ref_input_index: Data.Integer(),
       active_operators_element_ref_input_index: Data.Integer(),
-      operator_origin: OperatorOriginSchema,
+      retired_operators_element_ref_input_index: Data.Integer(),
     }),
   }),
   Data.Object({
@@ -102,11 +82,6 @@ export const RegisteredOperatorMintRedeemerSchema = Data.Enum([
       anchor_element_output_index: Data.Integer(),
       duplicate_node_ref_input_index: Data.Integer(),
       duplicate_operator_status: DuplicateOperatorStatusSchema,
-    }),
-  }),
-  Data.Object({
-    SlashFraudulentOperator: Data.Object({
-      slashing_arguments: Data.Any(),
     }),
   }),
 ]);

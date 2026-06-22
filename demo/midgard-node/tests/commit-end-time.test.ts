@@ -6,6 +6,9 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
+  COMMIT_MIN_PRE_SUBMIT_BUDGET_MS,
+  COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+  commitTimingBudget,
   EXPLICIT_COMMIT_DEFAULT_CANDIDATE_FUTURE_BUFFER_MS,
   resolveAlignedCommitEndTime,
   resolveExplicitCommitCandidateEndTimeMs,
@@ -57,6 +60,47 @@ describe("commit end-time resolver", () => {
     expect(minimumMonotonicEndTime).toBeGreaterThan(latestEndTime);
     expect(resolvedEndTime).toBeGreaterThanOrEqual(minimumMonotonicEndTime);
     expect(resolvedEndTime).toBeGreaterThanOrEqual(alignedCandidateEndTime);
+  });
+
+  it("can raise stale candidates to the production live-chain safety floor", async () => {
+    const lucid = await makeLucid();
+    const provider = lucid.config().provider as unknown as {
+      time: number;
+      slot: number;
+    };
+    const zeroTime = provider.time - provider.slot * 1000;
+    const latestEndTime = zeroTime + provider.slot * 1000;
+    const nowMs = latestEndTime + 10_000;
+
+    const { resolvedEndTime } = resolveAlignedCommitEndTime({
+      lucid,
+      latestEndTime,
+      candidateEndTime: latestEndTime,
+      nowMs,
+      minimumFutureBufferMs: COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+    });
+
+    expect(resolvedEndTime).toBeGreaterThanOrEqual(
+      nowMs + COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+    );
+  });
+
+  it("reports named timing checkpoint budgets", () => {
+    const nowMs = 1_779_150_000_000;
+    const satisfied = commitTimingBudget({
+      checkpoint: "pre_submit",
+      resolvedEndTimeMs: nowMs + COMMIT_MIN_PRE_SUBMIT_BUDGET_MS,
+      nowMs,
+    });
+    const tooLate = commitTimingBudget({
+      checkpoint: "pre_submit",
+      resolvedEndTimeMs: nowMs + COMMIT_MIN_PRE_SUBMIT_BUDGET_MS - 1,
+      nowMs,
+    });
+
+    expect(satisfied.satisfied).toBe(true);
+    expect(tooLate.satisfied).toBe(false);
+    expect(tooLate.remainingBudgetMs).toBe(COMMIT_MIN_PRE_SUBMIT_BUDGET_MS - 1);
   });
 
   it("keeps a forward candidate end-time when already monotonic", async () => {

@@ -2,9 +2,9 @@ import { assetsEqual } from "@al-ft/midgard-core/assets";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { compareOutRefs, outRefLabel } from "@al-ft/midgard-core/out-ref";
 import {
-  Data,
   type Assets,
   type BuildTxWithRedeemer,
+  Data,
   type LucidEvolution,
   type Script,
   toUnit,
@@ -32,15 +32,15 @@ import {
   castStateQueueNodeToData,
   type ConfirmedState,
   getHeaderFromStateQueueDatum,
-  type Header,
   hashBlockHeader,
+  type Header,
   NO_DA_ATTESTATION,
 } from "@/ledger-state.js";
 import {
-  encodeLinkedListNodeView,
-  linkedListDatumToNodeView,
   ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX,
+  encodeLinkedListNodeView,
   LinkedListDatum,
+  linkedListDatumToNodeView,
   type LinkedListNodeView,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
 } from "@/linked-list.js";
@@ -52,12 +52,13 @@ import {
 import {
   getConfirmedStateFromStateQueueDatum,
   StateQueueError,
-  StateQueueRedeemer,
   type StateQueueFetchConfig,
+  StateQueueRedeemer,
   type StateQueueRedeemer as StateQueueRedeemerType,
   StateQueueSpendRedeemer,
   type StateQueueUTxO,
 } from "@/state-queue.js";
+import { completeOptionsWithLocalEval } from "@/tx-completion.js";
 import {
   requireInputIndex as requireContextInputIndex,
   requireMintRedeemerIndex as requireContextMintRedeemerIndex,
@@ -65,7 +66,10 @@ import {
   requireReferenceInputIndex as requireContextReferenceInputIndex,
   requireSpendRedeemerIndex as requireContextSpendRedeemerIndex,
 } from "@/tx-context-redeemer.js";
-import { canonicalPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
+import {
+  isPlainPositiveAdaOnlyUtxo,
+  outputDatumCborMatches,
+} from "@/tx-output-utils.js";
 
 const STATE_QUEUE_HEADER_NODE_LOVELACE = 5_000_000n;
 const ACTIVE_OPERATOR_MATURITY_DURATION_MS = 30n;
@@ -99,6 +103,8 @@ type StateQueueCommitLayout = {
   readonly stateQueueMintRedeemerIndex: bigint;
 };
 
+const isPlainAdaOnlyUtxo = isPlainPositiveAdaOnlyUtxo;
+
 type StateQueueCommitRedeemer = {
   readonly CommitBlockHeader: {
     readonly new_block_output_index: bigint;
@@ -125,7 +131,8 @@ const availableOperatorWalletUtxos = (
 ): readonly UTxO[] => {
   const consumedOutRefs = new Set(view.consumedOutRefs);
   return view.knownUtxos.filter(
-    (utxo) => !consumedOutRefs.has(outRefLabel(utxo)),
+    (utxo) =>
+      !consumedOutRefs.has(outRefLabel(utxo)) && isPlainAdaOnlyUtxo(utxo),
   );
 };
 
@@ -156,15 +163,12 @@ export const selectPureAdaFeeInput = (
   walletUtxos: readonly UTxO[],
 ): Effect.Effect<UTxO, StateQueueError> =>
   Effect.gen(function* () {
-    const pureAdaUtxos = walletUtxos.filter((utxo) =>
-      Object.entries(utxo.assets).every(
-        ([unit, amount]) => unit === "lovelace" || amount <= 0n,
-      ),
-    );
+    const pureAdaUtxos = walletUtxos.filter(isPlainAdaOnlyUtxo);
     if (pureAdaUtxos.length === 0) {
       return yield* Effect.fail(
         new StateQueueError({
-          message: "Failed to select fee input for merge transaction",
+          message:
+            "Failed to select pure-ADA operator wallet input for transaction fees",
           cause: "operator wallet has no pure-ADA UTxO",
         }),
       );
@@ -265,13 +269,6 @@ const formatCommitLayout = (layout: CommitLayoutLike): string =>
     ({ key, label }) => `${label}=${layout[key].toString()}`,
   ).join(",");
 
-const outputDatumCborMatches = (
-  output: Pick<TxOutput, "datum">,
-  datumCbor: string,
-): boolean =>
-  output.datum != null &&
-  canonicalPlutusDataCbor(output.datum) === canonicalPlutusDataCbor(datumCbor);
-
 const requireUniqueContextOutputIndex = (
   outputs: readonly TxOutput[],
   predicate: (output: TxOutput) => boolean,
@@ -298,8 +295,8 @@ const deriveCommitLayoutFromRedeemerContext = ({
   schedulerRefInput,
   hubOracleRefInput,
   activeOperatorInput,
-  stateQueueAddress,
   stateQueuePolicyId,
+  stateQueueAddress,
   headerNodeUnit,
   headerNodeDatum,
   previousHeaderNodeDatum,
@@ -308,8 +305,8 @@ const deriveCommitLayoutFromRedeemerContext = ({
   readonly schedulerRefInput: UTxO;
   readonly hubOracleRefInput: UTxO;
   readonly activeOperatorInput: UTxO;
-  readonly stateQueueAddress: string;
   readonly stateQueuePolicyId: string;
+  readonly stateQueueAddress: string;
   readonly headerNodeUnit: string;
   readonly headerNodeDatum: string;
   readonly previousHeaderNodeDatum: string;
@@ -375,7 +372,7 @@ export type DeterministicCommitTxBuilderInput = {
   readonly updatedActiveOperatorDatumCbor: string;
   readonly commitMintAssets: Readonly<Record<string, bigint>>;
   readonly makeBaseCommitTx: (
-    stateQueueCommitRedeemer: BuildTxWithRedeemer,
+    stateQueueCommitSpendRedeemer: BuildTxWithRedeemer | string,
   ) => TxBuilder;
 };
 
@@ -393,7 +390,7 @@ export const buildDeterministicCommitTxBuilder = ({
   StateQueueError
 > =>
   Effect.gen(function* () {
-    const feeInput = yield* selectCommitFeeInput(
+    const feeInput = yield* selectPureAdaFeeInput(
       availableOperatorWalletUtxos(witness.operatorWalletView),
     );
     yield* Effect.logInfo(
@@ -480,8 +477,14 @@ export const buildDeterministicCommitTxBuilder = ({
         : withStateQueueSpendingScript;
     };
 
+    const presetWalletInputs = availableOperatorWalletUtxos(
+      witness.operatorWalletView,
+    );
     const builtCommitTx = yield* Effect.tryPromise({
-      try: () => makeCommitTx().complete({ localUPLCEval: true }),
+      try: () =>
+        makeCommitTx().complete(
+          completeOptionsWithLocalEval({ presetWalletInputs }),
+        ),
       catch: (cause) =>
         new StateQueueError({
           message: `Failed to build block header commitment transaction with final redeemer context: ${formatUnknownError(
@@ -588,7 +591,9 @@ export const buildProductionCommitBlockHeaderTxProgram = ({
         }),
     });
 
-    const makeBaseCommitTx = (stateQueueCommitRedeemer: BuildTxWithRedeemer) =>
+    const makeBaseCommitTx = (
+      stateQueueCommitRedeemer: BuildTxWithRedeemer | string,
+    ) =>
       lucid
         .newTx()
         .validTo(validTo)
@@ -638,6 +643,7 @@ export type ProductionMergeToConfirmedStateParams = {
   readonly firstBlockUTxO: StateQueueUTxO;
   readonly validFrom: number;
   readonly feeInput: UTxO;
+  readonly presetWalletInputs?: readonly UTxO[];
   readonly hubOracleRefInput: UTxO;
   readonly referenceScripts?: StateQueueMergeReferenceScripts;
   readonly settlementOutputLovelace?: bigint;
@@ -707,9 +713,18 @@ const makeStateQueueMergeRedeemer = ({
     confirmed_state_input_outref: confirmedStateInputOutRef,
     confirmed_state_output_index: BigInt(layout.confirmedStateOutputIndex),
     m_settlement_redeemer_index: BigInt(layout.settlementRedeemerIndex),
+    merged_block_withdrawals_root: blockHeader.withdrawalsRoot,
+    merged_block_forced_transactions_root: blockHeader.forcedTransactionsRoot,
     merged_block_transactions_root: blockHeader.transactionsRoot,
     merged_block_deposits_root: blockHeader.depositsRoot,
-    merged_block_withdrawals_root: blockHeader.withdrawalsRoot,
+    merged_block_transition_trace_root: blockHeader.transitionTraceRoot,
+    merged_block_event_to_step_root: blockHeader.eventToStepRoot,
+    merged_block_withdrawal_count: blockHeader.withdrawalCount,
+    merged_block_forced_transaction_count: blockHeader.forcedTransactionCount,
+    merged_block_l2_transaction_count: blockHeader.l2TransactionCount,
+    merged_block_deposit_count: blockHeader.depositCount,
+    merged_block_total_event_count: blockHeader.totalEventCount,
+    merged_block_transition_step_count: blockHeader.transitionStepCount,
   },
 });
 
@@ -857,6 +872,18 @@ const assertMergeRedeemerInvariants = ({
       mismatches.push("state_queue.m_settlement_redeemer_index mismatch");
     }
     if (
+      stateQueueMerge.merged_block_withdrawals_root !==
+      blockHeader.withdrawalsRoot
+    ) {
+      mismatches.push("state_queue.withdrawals_root mismatch");
+    }
+    if (
+      stateQueueMerge.merged_block_forced_transactions_root !==
+      blockHeader.forcedTransactionsRoot
+    ) {
+      mismatches.push("state_queue.forced_transactions_root mismatch");
+    }
+    if (
       stateQueueMerge.merged_block_transactions_root !==
       blockHeader.transactionsRoot
     ) {
@@ -868,10 +895,51 @@ const assertMergeRedeemerInvariants = ({
       mismatches.push("state_queue.deposits_root mismatch");
     }
     if (
-      stateQueueMerge.merged_block_withdrawals_root !==
-      blockHeader.withdrawalsRoot
+      stateQueueMerge.merged_block_transition_trace_root !==
+      blockHeader.transitionTraceRoot
     ) {
-      mismatches.push("state_queue.withdrawals_root mismatch");
+      mismatches.push("state_queue.transition_trace_root mismatch");
+    }
+    if (
+      stateQueueMerge.merged_block_event_to_step_root !==
+      blockHeader.eventToStepRoot
+    ) {
+      mismatches.push("state_queue.event_to_step_root mismatch");
+    }
+    if (
+      stateQueueMerge.merged_block_withdrawal_count !==
+      blockHeader.withdrawalCount
+    ) {
+      mismatches.push("state_queue.withdrawal_count mismatch");
+    }
+    if (
+      stateQueueMerge.merged_block_forced_transaction_count !==
+      blockHeader.forcedTransactionCount
+    ) {
+      mismatches.push("state_queue.forced_transaction_count mismatch");
+    }
+    if (
+      stateQueueMerge.merged_block_l2_transaction_count !==
+      blockHeader.l2TransactionCount
+    ) {
+      mismatches.push("state_queue.l2_transaction_count mismatch");
+    }
+    if (
+      stateQueueMerge.merged_block_deposit_count !== blockHeader.depositCount
+    ) {
+      mismatches.push("state_queue.deposit_count mismatch");
+    }
+    if (
+      stateQueueMerge.merged_block_total_event_count !==
+      blockHeader.totalEventCount
+    ) {
+      mismatches.push("state_queue.total_event_count mismatch");
+    }
+    if (
+      stateQueueMerge.merged_block_transition_step_count !==
+      blockHeader.transitionStepCount
+    ) {
+      mismatches.push("state_queue.transition_step_count mismatch");
     }
   }
 
@@ -912,6 +980,7 @@ export const buildProductionMergeToConfirmedStateTxProgram = ({
   firstBlockUTxO,
   validFrom,
   feeInput,
+  presetWalletInputs,
   hubOracleRefInput,
   referenceScripts,
   settlementOutputLovelace = MIN_SETTLEMENT_OUTPUT_LOVELACE,
@@ -973,6 +1042,7 @@ export const buildProductionMergeToConfirmedStateTxProgram = ({
     const settlementDatum = {
       deposits_root: blockHeader.depositsRoot,
       withdrawals_root: blockHeader.withdrawalsRoot,
+      forced_transactions_root: blockHeader.forcedTransactionsRoot,
       transactions_root: blockHeader.transactionsRoot,
       resolution_claim: null,
     };
@@ -994,8 +1064,8 @@ export const buildProductionMergeToConfirmedStateTxProgram = ({
     ];
 
     const makeMergeTx = (
-      encodedStateQueueMergeRedeemer: BuildTxWithRedeemer,
-      encodedSettlementSpawnRedeemer: BuildTxWithRedeemer,
+      encodedStateQueueMergeRedeemer: BuildTxWithRedeemer | string,
+      encodedSettlementSpawnRedeemer: BuildTxWithRedeemer | string,
     ) =>
       lucid
         .newTx()
@@ -1020,8 +1090,8 @@ export const buildProductionMergeToConfirmedStateTxProgram = ({
         .mintAssets(settlementAssetsToMint, encodedSettlementSpawnRedeemer);
 
     const makeMergeTxWithScripts = (
-      encodedStateQueueMergeRedeemer: BuildTxWithRedeemer,
-      encodedSettlementSpawnRedeemer: BuildTxWithRedeemer,
+      encodedStateQueueMergeRedeemer: BuildTxWithRedeemer | string,
+      encodedSettlementSpawnRedeemer: BuildTxWithRedeemer | string,
     ) => {
       const tx = makeMergeTx(
         encodedStateQueueMergeRedeemer,
@@ -1107,7 +1177,7 @@ export const buildProductionMergeToConfirmedStateTxProgram = ({
         makeMergeTxWithScripts(
           stateQueueMergeRedeemer,
           settlementSpawnRedeemer,
-        ).complete({ localUPLCEval: true }),
+        ).complete(completeOptionsWithLocalEval({ presetWalletInputs })),
       catch: (cause) =>
         mergeStateQueueError(
           "E_MERGE_UPLC_EVAL_FAILED",

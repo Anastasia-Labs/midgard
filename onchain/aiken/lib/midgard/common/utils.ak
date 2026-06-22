@@ -15,9 +15,7 @@ use cardano/transaction.{
   Withdraw,
 }
 use env
-use midgard/common/constants.{posix_time_none}
 use midgard/common/types.{H28, H32, MerkleRoot, PosixTime, Proof, ValuePairs}
-use midgard/protocol_parameters.{max_validity_range_length}
 
 /// Check whether the interval starts on or after the point.
 pub fn is_hereafter(self: Interval, point: Int) -> Bool {
@@ -42,7 +40,7 @@ pub fn get_inclusive_bounds_of_a_short_validity_range(
 ) -> (PosixTime, PosixTime) {
   when vrn.normalize_time_range(interval) is {
     vrn.ClosedRange { lower, upper } -> {
-      expect upper - lower <= max_validity_range_length
+      expect upper - lower <= env.max_validity_range_length
       (lower, upper)
     }
     _ -> fail @"Validity range was expected to be a closed range"
@@ -86,10 +84,6 @@ pub fn safe_list_head(elems: List<a>) -> a {
 pub fn safe_list_init(elems: List<a>) {
   expect Some(elems_except_last) = list.init(elems)
   elems_except_last
-}
-
-pub fn is_posix_time_none(time: PosixTime) {
-  time == posix_time_none
 }
 
 /// Returns the quantity of all tokens with the policyId
@@ -426,9 +420,8 @@ pub fn authenticate_input_output_and_get_output_datum_data(
   output_datum_data
 }
 
-// Verify a 32-byte hash (Blake2b-256)
-pub fn verify_hash_32(data: Data, data_hash: H32<Data>) -> Bool {
-  blake2b_256(cbor.serialise(data)) == data_hash
+pub fn serialise_and_hash_28(data: Data) -> H28<Data> {
+  data |> cbor.serialise |> blake2b_224
 }
 
 pub fn serialise_and_hash_32(data: Data) -> H32<Data> {
@@ -437,7 +430,12 @@ pub fn serialise_and_hash_32(data: Data) -> H32<Data> {
 
 // Verify a 28-byte hash (Blake2b-224)
 pub fn verify_hash_28(data: Data, data_hash: H28<Data>) -> Bool {
-  blake2b_224(cbor.serialise(data)) == data_hash
+  serialise_and_hash_28(data) == data_hash
+}
+
+// Verify a 32-byte hash (Blake2b-256)
+pub fn verify_hash_32(data: Data, data_hash: H32<Data>) -> Bool {
+  serialise_and_hash_32(data) == data_hash
 }
 
 /// Given a value, an NFT, and a `ValuePairs` (structured identical to `Value`,
@@ -592,6 +590,10 @@ pub fn get_inline_datum_and_spending_redeemer_data_at(
   )
 }
 
+/// Merkelized validator abstraction for `phas` function from Plutarch.
+///
+/// > [!WARNING]
+/// > This function can only be used **once within a given transaction**.
 pub fn plutarch_phas(
   merkle_root: MerkleRoot<key, value>,
   key: Data<key>,

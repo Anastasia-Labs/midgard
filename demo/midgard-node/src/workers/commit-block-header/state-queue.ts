@@ -34,10 +34,14 @@ export const updateLatestBlocksDatumAndGetTheNewHeaderLocal = (
   transactionsRoot: string,
   depositsRoot: string,
   withdrawalsRoot: string,
+  transitionCommitments: SDK.HeaderTransitionCommitments,
   endTime: bigint,
 ): Effect.Effect<
   { readonly nodeDatum: SDK.LinkedListNodeView; readonly header: SDK.Header },
-  SDK.DataCoercionError | SDK.LucidError | SDK.HashingError
+  | SDK.DataCoercionError
+  | SDK.HeaderTransitionCommitmentsError
+  | SDK.LucidError
+  | SDK.HashingError
 > =>
   localizeSdkEffect(
     SDK.updateLatestBlocksDatumAndGetTheNewHeaderProgram(
@@ -47,6 +51,7 @@ export const updateLatestBlocksDatumAndGetTheNewHeaderLocal = (
       transactionsRoot,
       depositsRoot,
       withdrawalsRoot,
+      transitionCommitments,
       endTime,
     ),
   );

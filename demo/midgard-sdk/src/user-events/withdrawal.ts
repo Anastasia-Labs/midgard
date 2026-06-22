@@ -1,11 +1,7 @@
 import {
   type Assets,
-  credentialToAddress,
   Data,
-  fromHex,
   LucidEvolution,
-  scriptHashToCredential,
-  toUnit,
   TxSignBuilder,
   UTxO,
 } from "@lucid-evolution/lucid";
@@ -15,44 +11,34 @@ import {
   AddressData,
   AddressSchema,
   Bech32DeserializationError,
-  hashHexWithBlake2b,
   HashingError,
   LucidError,
   makeReturn,
   MidgardValidators,
-  OutputReference,
   POSIXTimeSchema,
-  ProofSchema,
 } from "@/common.js";
-import {
-  fetchHubOracleUTxOProgram,
-  HubOracleError,
-  makeHubOracleDatum,
-} from "@/hub-oracle.js";
+import { HubOracleError } from "@/hub-oracle.js";
 import { authenticateUTxOs, AuthenticUTxO } from "@/internals.js";
 import {
   CardanoDatum,
   CardanoDatumSchema,
   WithdrawalBody,
   WithdrawalEventSchema,
-  WithdrawalInfo,
   WithdrawalSignature,
   WithdrawalValiditySchema,
 } from "@/ledger-state.js";
+import { RawRootMembershipProofSchema } from "@/transition-trace.js";
 
 import {
   buildCompletedUserEventMintTxProgram,
-  buildUserEventWitnessCertificateValidator,
   encodeUserEventWitnessMintOrBurnRedeemer,
   fetchUserEventUTxOsProgram,
   outputReferenceToPlutusDataCbor,
-  resolveEventInclusionTime,
-  resolveUserEventValidTo,
-  selectWalletNonceInputProgram,
+  prepareUserEventMintContext,
   UserEventBuildError,
+  userEventCborFieldsFromInlineDatum,
   UserEventExtraFields,
   UserEventFetchConfig,
-  userEventWitnessScriptHash,
 } from "./internals.js";
 
 export const WithdrawalOrderDatumSchema = Data.Object({
@@ -87,7 +73,7 @@ export const WithdrawalSpendRedeemerSchema = Data.Object({
   settlement_ref_input_index: Data.Integer(),
   burn_redeemer_index: Data.Integer(),
   payout_mint_redeemer_index: Data.Integer(),
-  membership_proof: ProofSchema,
+  membership_proof: RawRootMembershipProofSchema,
   inclusion_proof_script_withdraw_redeemer_index: Data.Integer(),
   purpose: WithdrawalSpendPurposeSchema,
 });
@@ -113,9 +99,8 @@ export const utxosToWithdrawalUTxOs = (
     utxos,
     nftPolicy,
     WithdrawalOrderDatum,
-    (datum) => ({
-      idCbor: Buffer.from(fromHex(Data.to(datum.event.id, OutputReference))),
-      infoCbor: Buffer.from(fromHex(Data.to(datum.event.info, WithdrawalInfo))),
+    (datum, utxo) => ({
+      ...userEventCborFieldsFromInlineDatum(utxo),
       inclusionTime: new Date(Number(datum.inclusion_time)),
     }),
   );
@@ -157,46 +142,6 @@ export type WithdrawalBuildMetadata = {
 
 const DEFAULT_WITHDRAWAL_ORDER_LOVELACE = 3_000_000n;
 
-const fetchWithdrawalHubOracleReferenceProgram = (
-  lucid: LucidEvolution,
-  contracts: MidgardValidators,
-  network: NonNullable<ReturnType<LucidEvolution["config"]>["network"]>,
-): Effect.Effect<
-  UTxO,
-  HubOracleError | LucidError | Bech32DeserializationError | UserEventBuildError
-> =>
-  Effect.gen(function* () {
-    const actual = yield* fetchHubOracleUTxOProgram(lucid, {
-      hubOracleAddress: credentialToAddress(
-        network,
-        scriptHashToCredential(contracts.hubOracle.policyId),
-      ),
-      hubOraclePolicyId: contracts.hubOracle.policyId,
-    });
-    const expectedDatum = yield* makeHubOracleDatum(contracts);
-
-    if (
-      actual.datum.withdrawal !== expectedDatum.withdrawal ||
-      JSON.stringify(actual.datum.withdrawal_addr) !==
-        JSON.stringify(expectedDatum.withdrawal_addr)
-    ) {
-      return yield* Effect.fail(
-        new UserEventBuildError({
-          message:
-            "On-chain hub oracle deployment does not match the locally configured withdrawal contract",
-          cause: {
-            expectedPolicyId: expectedDatum.withdrawal,
-            actualPolicyId: actual.datum.withdrawal,
-            expectedAddress: expectedDatum.withdrawal_addr,
-            actualAddress: actual.datum.withdrawal_addr,
-          },
-        }),
-      );
-    }
-
-    return actual.utxo;
-  });
-
 export const buildUnsignedWithdrawalTxWithMetadataProgram = (
   lucid: LucidEvolution,
   contracts: MidgardValidators,
@@ -213,42 +158,25 @@ export const buildUnsignedWithdrawalTxWithMetadataProgram = (
   | UserEventBuildError
 > =>
   Effect.gen(function* () {
-    const network = lucid.config().network;
-    if (network === undefined) {
-      return yield* Effect.fail(
-        new UserEventBuildError({
-          message:
-            "Cardano network not found while preparing withdrawal transaction",
-          cause: "Lucid network configuration is undefined",
-        }),
-      );
-    }
-
-    const hubOracleRefInput = yield* fetchWithdrawalHubOracleReferenceProgram(
+    const context = yield* prepareUserEventMintContext({
       lucid,
       contracts,
+      label: "withdrawal",
+      eventPolicyId: contracts.withdrawal.policyId,
+      hubOraclePolicyField: "withdrawal",
+      hubOracleAddressField: "withdrawal_addr",
+    });
+    const {
+      eventUnit: withdrawalUnit,
+      hubOracleRefInput,
+      inclusionTime,
       network,
-    );
-
-    const nonceInput = yield* selectWalletNonceInputProgram(
-      lucid,
-      "withdrawal",
-    );
+      nonceInput,
+      validTo,
+      witnessScript,
+      witnessScriptHash,
+    } = context;
     const withdrawalEventIdCbor = outputReferenceToPlutusDataCbor(nonceInput);
-    const nonceAssetName = yield* hashHexWithBlake2b(
-      withdrawalEventIdCbor,
-      32,
-    );
-    const withdrawalUnit = toUnit(
-      contracts.withdrawal.policyId,
-      nonceAssetName,
-    );
-
-    const witnessScript =
-      buildUserEventWitnessCertificateValidator(nonceAssetName);
-    const witnessScriptHash = userEventWitnessScriptHash(nonceAssetName);
-    const validTo = resolveUserEventValidTo(lucid);
-    const inclusionTime = resolveEventInclusionTime(validTo, network);
 
     const withdrawalOrderDatum: WithdrawalOrderDatum = {
       event: {
@@ -279,9 +207,8 @@ export const buildUnsignedWithdrawalTxWithMetadataProgram = (
       config.referenceScripts === undefined
         ? [hubOracleRefInput]
         : [hubOracleRefInput, config.referenceScripts.withdrawalMinting];
-    const witnessRegistrationRedeemer = encodeUserEventWitnessMintOrBurnRedeemer(
-      contracts.withdrawal.policyId,
-    );
+    const witnessRegistrationRedeemer =
+      encodeUserEventWitnessMintOrBurnRedeemer(contracts.withdrawal.policyId);
 
     const tx = yield* buildCompletedUserEventMintTxProgram({
       lucid,

@@ -23,6 +23,12 @@ export type ReadinessInput = {
   readonly unresolvedBlockSubmissionAgeMs: number;
   readonly maxUnresolvedBlockSubmissionAgeMs: number;
   readonly dbHealthy: boolean;
+  readonly stateQueueMutationLease?: {
+    readonly active: boolean;
+    readonly stale: boolean;
+    readonly remainingMs: number | null;
+    readonly holder: string | null;
+  };
 };
 
 /**
@@ -76,6 +82,14 @@ export const evaluateReadiness = (input: ReadinessInput): ReadinessResult => {
   ) {
     reasons.push(
       `unresolved_block_submission:${input.unresolvedBlockSubmissionAgeMs}:${input.maxUnresolvedBlockSubmissionAgeMs}`,
+    );
+  }
+
+  if (input.stateQueueMutationLease?.stale === true) {
+    reasons.push(
+      `state_queue_lease_stale:${
+        input.stateQueueMutationLease.holder ?? "unknown"
+      }:${input.stateQueueMutationLease.remainingMs ?? "unknown"}`,
     );
   }
 

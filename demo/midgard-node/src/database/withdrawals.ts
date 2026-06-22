@@ -8,6 +8,7 @@ import {
   DatabaseError,
   sqlErrorToDatabaseError,
 } from "@/database/utils/common.js";
+import * as ProjectedEvents from "@/database/utils/projected-events.js";
 import * as UserEvents from "@/database/utils/user-events.js";
 import { Database } from "@/services/database.js";
 
@@ -82,6 +83,33 @@ export type SettlementInfoAssignment = {
   readonly validity: Validity;
   readonly validityDetail?: unknown;
 };
+
+const projectedEventsTable = {
+  tableName,
+  idColumn: Columns.ID,
+  inclusionTimeColumn: Columns.INCLUSION_TIME,
+  projectedHeaderHashColumn: Columns.PROJECTED_HEADER_HASH,
+  statusColumn: Columns.STATUS,
+  awaitingStatus: Status.Awaiting,
+  projectedStatus: Status.Projected,
+  terminalStatus: Status.Finalized,
+  entitySingular: "withdrawal",
+  entityPlural: "withdrawals",
+  idLabel: "event_id",
+  touchUpdatedAt: true,
+  validateHeaderAssignment: (row, idHex) =>
+    row[Columns.SETTLEMENT_EVENT_INFO] === null ||
+    row[Columns.VALIDITY] === null
+      ? Effect.fail(
+          new DatabaseError({
+            table: tableName,
+            message:
+              "Failed to assign projected header because the withdrawal has not been classified",
+            cause: `event_id=${idHex}`,
+          }),
+        )
+      : Effect.void,
+} as const satisfies ProjectedEvents.ProjectedEventTable;
 
 const validityDetailEquals = (left: unknown, right: unknown): boolean =>
   JSON.stringify(left ?? {}) === JSON.stringify(right ?? {});
@@ -331,12 +359,10 @@ export const retrieveByCardanoTxHash = (
 export const retrieveByProjectedHeaderHash = (
   projectedHeaderHash: Buffer,
 ): Effect.Effect<readonly Entry[], DatabaseError, Database> =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    return yield* sql<Entry>`SELECT * FROM ${sql(tableName)}
-      WHERE ${sql(Columns.PROJECTED_HEADER_HASH)} = ${projectedHeaderHash}
-      ORDER BY ${sql(Columns.INCLUSION_TIME)} ASC, ${sql(Columns.ID)} ASC`;
-  }).pipe(
+  ProjectedEvents.retrieveByProjectedHeaderHash<Entry>(
+    projectedEventsTable,
+    projectedHeaderHash,
+  ).pipe(
     Effect.withLogSpan(`retrieveByProjectedHeaderHash ${tableName}`),
     sqlErrorToDatabaseError(
       tableName,
@@ -364,14 +390,11 @@ export const retrieveAwaitingEntriesDueBy = (
 export const retrievePendingHeaderEntriesUpTo = (
   endTime: Date,
 ): Effect.Effect<readonly Entry[], DatabaseError, Database> =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    return yield* sql<Entry>`SELECT * FROM ${sql(tableName)}
-      WHERE ${sql(Columns.STATUS)} IN (${Status.Awaiting}, ${Status.Projected})
-        AND ${sql(Columns.PROJECTED_HEADER_HASH)} IS NULL
-        AND ${sql(Columns.INCLUSION_TIME)} <= ${endTime}
-      ORDER BY ${sql(Columns.INCLUSION_TIME)} ASC, ${sql(Columns.ID)} ASC`;
-  }).pipe(
+  ProjectedEvents.retrievePendingHeaderEntriesUpTo<Entry>(
+    projectedEventsTable,
+    endTime,
+    [Status.Awaiting, Status.Projected],
+  ).pipe(
     Effect.withLogSpan(`retrievePendingHeaderEntriesUpTo ${tableName}`),
     sqlErrorToDatabaseError(
       tableName,
@@ -384,13 +407,10 @@ export const retrieveProjectedPendingHeaderEntries = (): Effect.Effect<
   DatabaseError,
   Database
 > =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    return yield* sql<Entry>`SELECT * FROM ${sql(tableName)}
-      WHERE ${sql(Columns.STATUS)} = ${Status.Projected}
-        AND ${sql(Columns.PROJECTED_HEADER_HASH)} IS NULL
-      ORDER BY ${sql(Columns.INCLUSION_TIME)} ASC, ${sql(Columns.ID)} ASC`;
-  }).pipe(
+  ProjectedEvents.retrieveProjectedPendingHeaderEntries<Entry>(
+    projectedEventsTable,
+    [Status.Projected],
+  ).pipe(
     Effect.withLogSpan(`retrieveProjectedPendingHeaderEntries ${tableName}`),
     sqlErrorToDatabaseError(
       tableName,
@@ -401,67 +421,7 @@ export const retrieveProjectedPendingHeaderEntries = (): Effect.Effect<
 export const markAwaitingAsProjected = (
   ids: readonly Buffer[],
 ): Effect.Effect<void, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    if (ids.length <= 0) {
-      return;
-    }
-    const sql = yield* SqlClient.SqlClient;
-    const rows = yield* sql<Entry>`UPDATE ${sql(tableName)}
-      SET ${sql(Columns.STATUS)} = ${Status.Projected},
-          updated_at = NOW()
-      WHERE ${sql(Columns.ID)} IN ${sql.in(ids)}
-        AND ${sql(Columns.STATUS)} = ${Status.Awaiting}
-        AND ${sql(Columns.PROJECTED_HEADER_HASH)} IS NULL
-      RETURNING *`;
-    if (rows.length === ids.length) {
-      return;
-    }
-
-    const currentRows = yield* sql<{
-      [Columns.ID]: Buffer;
-      [Columns.STATUS]: Status;
-      [Columns.PROJECTED_HEADER_HASH]: Buffer | null;
-    }>`SELECT ${sql(Columns.ID)}, ${sql(Columns.STATUS)}, ${sql(
-      Columns.PROJECTED_HEADER_HASH,
-    )} FROM ${sql(tableName)}
-      WHERE ${sql(Columns.ID)} IN ${sql.in(ids)}`;
-
-    if (currentRows.length !== ids.length) {
-      return yield* Effect.fail(
-        new DatabaseError({
-          table: tableName,
-          message:
-            "Failed to mark awaiting withdrawals as projected because at least one row no longer exists",
-          cause: `requested=${ids.length},found=${currentRows.length}`,
-        }),
-      );
-    }
-
-    for (const row of currentRows) {
-      const status = row[Columns.STATUS];
-      const projectedHeaderHash = row[Columns.PROJECTED_HEADER_HASH];
-      if (status !== Status.Projected && status !== Status.Finalized) {
-        return yield* Effect.fail(
-          new DatabaseError({
-            table: tableName,
-            message:
-              "Failed to mark awaiting withdrawals as projected because at least one row is still not in a projected lifecycle state",
-            cause: `event_id=${row[Columns.ID].toString("hex")},status=${status}`,
-          }),
-        );
-      }
-      if (projectedHeaderHash !== null) {
-        return yield* Effect.fail(
-          new DatabaseError({
-            table: tableName,
-            message:
-              "Failed to mark awaiting withdrawals as projected because at least one row is already assigned to a header",
-            cause: `event_id=${row[Columns.ID].toString("hex")},projected_header_hash=${projectedHeaderHash.toString("hex")}`,
-          }),
-        );
-      }
-    }
-  }).pipe(
+  ProjectedEvents.markAwaitingAsProjected(projectedEventsTable, ids).pipe(
     Effect.withLogSpan(`markAwaitingAsProjected ${tableName}`),
     sqlErrorToDatabaseError(
       tableName,
@@ -566,90 +526,11 @@ export const markProjectedByEventIds = (
   ids: readonly Buffer[],
   projectedHeaderHash: Buffer,
 ): Effect.Effect<void, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    if (ids.length <= 0) {
-      return;
-    }
-
-    const sql = yield* SqlClient.SqlClient;
-
-    const existing = yield* sql<{
-      [Columns.ID]: Buffer;
-      [Columns.PROJECTED_HEADER_HASH]: Buffer | null;
-      [Columns.STATUS]: Status;
-      [Columns.SETTLEMENT_EVENT_INFO]: Buffer | null;
-      [Columns.VALIDITY]: Validity | null;
-    }>`SELECT ${sql(Columns.ID)}, ${sql(
-      Columns.PROJECTED_HEADER_HASH,
-    )}, ${sql(Columns.STATUS)}, ${sql(Columns.SETTLEMENT_EVENT_INFO)}, ${sql(
-      Columns.VALIDITY,
-    )} FROM ${sql(tableName)}
-      WHERE ${sql(Columns.ID)} IN ${sql.in(ids)}`;
-
-    const existingById = new Map(
-      existing.map((row) => [row[Columns.ID].toString("hex"), row] as const),
-    );
-    for (const id of ids) {
-      const key = id.toString("hex");
-      const row = existingById.get(key);
-      if (row === undefined) {
-        return yield* Effect.fail(
-          new DatabaseError({
-            table: tableName,
-            message:
-              "Failed to mark withdrawal header assignment because it does not exist",
-            cause: `event_id=${key}`,
-          }),
-        );
-      }
-      if (
-        row[Columns.STATUS] !== Status.Projected &&
-        row[Columns.STATUS] !== Status.Finalized
-      ) {
-        return yield* Effect.fail(
-          new DatabaseError({
-            table: tableName,
-            message:
-              "Failed to assign projected header because the withdrawal is not in a projected lifecycle state",
-            cause: `event_id=${key},status=${row[Columns.STATUS]}`,
-          }),
-        );
-      }
-      if (
-        row[Columns.SETTLEMENT_EVENT_INFO] === null ||
-        row[Columns.VALIDITY] === null
-      ) {
-        return yield* Effect.fail(
-          new DatabaseError({
-            table: tableName,
-            message:
-              "Failed to assign projected header because the withdrawal has not been classified",
-            cause: `event_id=${key}`,
-          }),
-        );
-      }
-      const currentProjectedHeaderHash = row[Columns.PROJECTED_HEADER_HASH];
-      if (
-        currentProjectedHeaderHash !== null &&
-        !currentProjectedHeaderHash.equals(projectedHeaderHash)
-      ) {
-        return yield* Effect.fail(
-          new DatabaseError({
-            table: tableName,
-            message:
-              "Failed to assign projected header because the withdrawal is already assigned to a different header",
-            cause: `event_id=${key},existing_header_hash=${currentProjectedHeaderHash.toString("hex")},requested_header_hash=${projectedHeaderHash.toString("hex")}`,
-          }),
-        );
-      }
-    }
-
-    yield* sql`UPDATE ${sql(tableName)}
-      SET ${sql(Columns.PROJECTED_HEADER_HASH)} = ${projectedHeaderHash},
-          updated_at = NOW()
-      WHERE ${sql(Columns.ID)} IN ${sql.in(ids)}
-        AND ${sql(Columns.PROJECTED_HEADER_HASH)} IS NULL`;
-  }).pipe(
+  ProjectedEvents.markProjectedByEventIds(
+    projectedEventsTable,
+    ids,
+    projectedHeaderHash,
+  ).pipe(
     Effect.withLogSpan(`markProjectedByEventIds ${tableName}`),
     sqlErrorToDatabaseError(
       tableName,
@@ -661,58 +542,11 @@ export const clearProjectedHeaderAssignmentByEventIds = (
   ids: readonly Buffer[],
   projectedHeaderHash: Buffer,
 ): Effect.Effect<void, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    if (ids.length <= 0) {
-      return;
-    }
-
-    const sql = yield* SqlClient.SqlClient;
-
-    const existing = yield* sql<{
-      [Columns.ID]: Buffer;
-      [Columns.PROJECTED_HEADER_HASH]: Buffer | null;
-    }>`SELECT ${sql(Columns.ID)}, ${sql(Columns.PROJECTED_HEADER_HASH)}
-      FROM ${sql(tableName)}
-      WHERE ${sql(Columns.ID)} IN ${sql.in(ids)}`;
-
-    const existingById = new Map(
-      existing.map((row) => [row[Columns.ID].toString("hex"), row] as const),
-    );
-    for (const id of ids) {
-      const key = id.toString("hex");
-      const row = existingById.get(key);
-      if (row === undefined) {
-        return yield* Effect.fail(
-          new DatabaseError({
-            table: tableName,
-            message:
-              "Failed to clear projected header assignment because the withdrawal does not exist",
-            cause: `event_id=${key}`,
-          }),
-        );
-      }
-      const currentProjectedHeaderHash = row[Columns.PROJECTED_HEADER_HASH];
-      if (
-        currentProjectedHeaderHash !== null &&
-        !currentProjectedHeaderHash.equals(projectedHeaderHash)
-      ) {
-        return yield* Effect.fail(
-          new DatabaseError({
-            table: tableName,
-            message:
-              "Failed to clear projected header assignment because the withdrawal is assigned to a different header",
-            cause: `event_id=${key},existing_header_hash=${currentProjectedHeaderHash.toString("hex")},requested_header_hash=${projectedHeaderHash.toString("hex")}`,
-          }),
-        );
-      }
-    }
-
-    yield* sql`UPDATE ${sql(tableName)}
-      SET ${sql(Columns.PROJECTED_HEADER_HASH)} = NULL,
-          updated_at = NOW()
-      WHERE ${sql(Columns.ID)} IN ${sql.in(ids)}
-        AND ${sql(Columns.PROJECTED_HEADER_HASH)} = ${projectedHeaderHash}`;
-  }).pipe(
+  ProjectedEvents.clearProjectedHeaderAssignmentByEventIds(
+    projectedEventsTable,
+    ids,
+    projectedHeaderHash,
+  ).pipe(
     Effect.withLogSpan(`clearProjectedHeaderAssignmentByEventIds ${tableName}`),
     sqlErrorToDatabaseError(
       tableName,

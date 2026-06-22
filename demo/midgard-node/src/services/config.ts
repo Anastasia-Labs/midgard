@@ -1,6 +1,12 @@
 import * as SDK from "@al-ft/midgard-sdk";
+import {
+  REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS,
+  REFERENCE_SCRIPT_AUTH_TIMELOCK_MS,
+} from "@al-ft/midgard-sdk";
 import { Network, UTxO, walletFromSeed } from "@lucid-evolution/lucid";
 import { Config, Context, Data, Effect, Layer } from "effect";
+
+import { validateRetentionDays } from "@/database/retention-policy.js";
 
 /**
  * Configuration loading for the Midgard node process.
@@ -9,22 +15,27 @@ import { Config, Context, Data, Effect, Layer } from "effect";
  * derived values that other services depend on. Keeping it in one place makes
  * production configuration easier to audit.
  */
-type Provider = "Kupmios" | "Blockfrost";
+type Provider = "Kupmios";
 
 /**
  * Fully-decoded runtime configuration required by the node.
  */
 type NodeConfigDep = {
   L1_PROVIDER: Provider;
-  L1_BLOCKFROST_API_URL: string;
-  L1_BLOCKFROST_KEY: string;
-  L1_BLOCKFROST_KEY_FALLBACK: string;
+  L1_PROVIDER_FAILOVER: readonly never[];
+  L1_PROVIDER_PREFLIGHT_TIMEOUT_MS: number;
+  L1_PROVIDER_RATE_LIMIT_COOLDOWN_MS: number;
+  L1_RECENT_TX_VISIBILITY_TIMEOUT_MS: number;
+  L1_RECENT_TX_404_MAX_DELAY_MS: number;
   L1_OGMIOS_KEY: string;
   L1_KUPO_KEY: string;
   L1_OPERATOR_SEED_PHRASE: string;
   L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: string;
   L1_REFERENCE_SCRIPT_SEED_PHRASE: string;
   L1_REFERENCE_SCRIPT_ADDRESS: string;
+  L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS: string;
+  REFERENCE_SCRIPT_AUTH_TIMELOCK_MS: number;
+  REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS: number;
   NETWORK: Network;
   PROTOCOL_PARAMETERS: SDK.ProtocolParameters;
   PORT: number;
@@ -45,11 +56,9 @@ type NodeConfigDep = {
   MIN_FEE_B: bigint;
   RUN_GENESIS_ON_STARTUP: boolean;
   ADMIN_API_KEY: string;
-  MAX_SUBMIT_QUEUE_SIZE: number;
   MAX_DURABLE_ADMISSION_BACKLOG: number;
   MAX_SUBMIT_TX_CBOR_BYTES: number;
   READINESS_MAX_HEARTBEAT_AGE_MS: number;
-  READINESS_MAX_QUEUE_DEPTH: number;
   READINESS_MAX_DURABLE_ADMISSION_BACKLOG: number;
   READINESS_MAX_DURABLE_ADMISSION_AGE_MS: number;
   STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS: number;
@@ -58,12 +67,17 @@ type NodeConfigDep = {
   VALIDATION_RETRY_BACKOFF_BASE_MS: number;
   VALIDATION_RETRY_BACKOFF_MAX_MS: number;
   VALIDATION_EXPIRED_LEASE_READINESS_THRESHOLD: number;
+  STATE_QUEUE_MUTATION_LEASE_TTL_MS: number;
+  STATE_QUEUE_MUTATION_LEASE_RENEW_INTERVAL_MS: number;
+  STATE_QUEUE_MUTATION_LEASE_STALE_GRACE_MS: number;
   RETENTION_DAYS: number;
   WAIT_BETWEEN_RETENTION_SWEEPS: number;
   HUB_ORACLE_ONE_SHOT_TX_HASH: string;
   HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: number;
   OPERATOR_REQUIRED_BOND_LOVELACE: bigint;
   OPERATOR_SLASHING_PENALTY_LOVELACE: bigint;
+  DA_COMMITTEE_HEX: string;
+  DA_THRESHOLD: bigint | null;
   PROM_METRICS_PORT: number;
   OLTP_EXPORTER_URL: string;
   POSTGRES_USER: string;
@@ -103,15 +117,7 @@ const rejectDeprecatedRootStoreEnvVars = Effect.sync(() => {
  */
 const makeConfig = Effect.gen(function* () {
   yield* rejectDeprecatedRootStoreEnvVars;
-  const provider = yield* Config.literal(
-    "Kupmios",
-    "Blockfrost",
-  )("L1_PROVIDER");
-  const blockfrostApiUrl = yield* Config.string("L1_BLOCKFROST_API_URL");
-  const blockfrostKey = yield* Config.string("L1_BLOCKFROST_KEY");
-  const blockfrostFallbackKey = yield* Config.string(
-    "L1_BLOCKFROST_KEY_FALLBACK",
-  ).pipe(Config.withDefault(""));
+  const provider = yield* Config.literal("Kupmios")("L1_PROVIDER");
   const ogmiosKey = yield* Config.string("L1_OGMIOS_KEY");
   const kupoKey = yield* Config.string("L1_KUPO_KEY");
   const operatorSeedPhrase = yield* Config.string("L1_OPERATOR_SEED_PHRASE");
@@ -124,12 +130,106 @@ const makeConfig = Effect.gen(function* () {
     "Preview",
     "Custom",
   )("NETWORK");
+  const providerFailover = yield* Config.string("L1_PROVIDER_FAILOVER").pipe(
+    Config.withDefault(""),
+    Config.mapAttempt((value) => {
+      if (value.trim().length > 0) {
+        throw new Error(
+          "L1_PROVIDER_FAILOVER is no longer supported for demo/midgard-node acceptance; use local Kupmios only.",
+        );
+      }
+      return [];
+    }),
+  );
+  const l1ProviderPreflightTimeoutMs = yield* Config.integer(
+    "L1_PROVIDER_PREFLIGHT_TIMEOUT_MS",
+  ).pipe(
+    Config.withDefault(15_000),
+    Config.mapAttempt((value) => {
+      if (!Number.isSafeInteger(value) || value <= 0) {
+        throw new Error(
+          "L1_PROVIDER_PREFLIGHT_TIMEOUT_MS must be a positive safe integer",
+        );
+      }
+      return value;
+    }),
+  );
+  const l1ProviderRateLimitCooldownMs = yield* Config.integer(
+    "L1_PROVIDER_RATE_LIMIT_COOLDOWN_MS",
+  ).pipe(
+    Config.withDefault(60_000),
+    Config.mapAttempt((value) => {
+      if (!Number.isSafeInteger(value) || value <= 0) {
+        throw new Error(
+          "L1_PROVIDER_RATE_LIMIT_COOLDOWN_MS must be a positive safe integer",
+        );
+      }
+      return value;
+    }),
+  );
+  const l1RecentTxVisibilityTimeoutMs = yield* Config.integer(
+    "L1_RECENT_TX_VISIBILITY_TIMEOUT_MS",
+  ).pipe(
+    Config.withDefault(180_000),
+    Config.mapAttempt((value) => {
+      if (!Number.isSafeInteger(value) || value <= 0) {
+        throw new Error(
+          "L1_RECENT_TX_VISIBILITY_TIMEOUT_MS must be a positive safe integer",
+        );
+      }
+      return value;
+    }),
+  );
+  const l1RecentTx404MaxDelayMs = yield* Config.integer(
+    "L1_RECENT_TX_404_MAX_DELAY_MS",
+  ).pipe(
+    Config.withDefault(10_000),
+    Config.mapAttempt((value) => {
+      if (!Number.isSafeInteger(value) || value <= 0) {
+        throw new Error(
+          "L1_RECENT_TX_404_MAX_DELAY_MS must be a positive safe integer",
+        );
+      }
+      return value;
+    }),
+  );
   const referenceScriptSeedPhrase = yield* Config.string(
     "L1_REFERENCE_SCRIPT_SEED_PHRASE",
   ).pipe(Config.withDefault(operatorSeedPhrase));
   const configuredReferenceScriptAddress = yield* Config.string(
     "L1_REFERENCE_SCRIPT_ADDRESS",
   ).pipe(Config.withDefault(""));
+  const referenceScriptAuthTimelockMs = yield* Config.integer(
+    "REFERENCE_SCRIPT_AUTH_TIMELOCK_MS",
+  ).pipe(
+    Config.withDefault(REFERENCE_SCRIPT_AUTH_TIMELOCK_MS),
+    Config.mapAttempt((value) => {
+      if (!Number.isSafeInteger(value) || value <= 0) {
+        throw new Error(
+          "REFERENCE_SCRIPT_AUTH_TIMELOCK_MS must be a positive safe integer",
+        );
+      }
+      return value;
+    }),
+  );
+  const referenceScriptAuthMinRemainingMs = yield* Config.integer(
+    "REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS",
+  ).pipe(
+    Config.withDefault(REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS),
+    Config.mapAttempt((value) => {
+      if (!Number.isSafeInteger(value) || value <= 0) {
+        throw new Error(
+          "REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS must be a positive safe integer",
+        );
+      }
+      if (value >= referenceScriptAuthTimelockMs) {
+        throw new Error(
+          "REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS must be lower than REFERENCE_SCRIPT_AUTH_TIMELOCK_MS",
+        );
+      }
+      return value;
+    }),
+  );
   const derivedReferenceScriptAddress = walletFromSeed(
     referenceScriptSeedPhrase,
     {
@@ -138,6 +238,9 @@ const makeConfig = Effect.gen(function* () {
   ).address;
   const referenceScriptAddress =
     configuredReferenceScriptAddress.trim() || derivedReferenceScriptAddress;
+  const referenceScriptDeployAddress = yield* Config.string(
+    "L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS",
+  ).pipe(Config.withDefault(referenceScriptAddress));
   const port = yield* Config.integer("PORT").pipe(Config.withDefault(3000));
   const waitBetweenBlockCommitment = yield* Config.integer(
     "WAIT_BETWEEN_BLOCK_COMMITMENT",
@@ -192,24 +295,18 @@ const makeConfig = Effect.gen(function* () {
   const adminApiKey = yield* Config.string("ADMIN_API_KEY").pipe(
     Config.withDefault(""),
   );
-  const maxSubmitQueueSize = yield* Config.integer(
-    "MAX_SUBMIT_QUEUE_SIZE",
-  ).pipe(Config.withDefault(10_000));
   const maxDurableAdmissionBacklog = yield* Config.integer(
     "MAX_DURABLE_ADMISSION_BACKLOG",
-  ).pipe(Config.withDefault(maxSubmitQueueSize));
+  ).pipe(Config.withDefault(10_000));
   const maxSubmitTxCborBytes = yield* Config.integer(
     "MAX_SUBMIT_TX_CBOR_BYTES",
   ).pipe(Config.withDefault(32_768));
   const readinessMaxHeartbeatAgeMs = yield* Config.integer(
     "READINESS_MAX_HEARTBEAT_AGE_MS",
   ).pipe(Config.withDefault(120_000));
-  const readinessMaxQueueDepth = yield* Config.integer(
-    "READINESS_MAX_QUEUE_DEPTH",
-  ).pipe(Config.withDefault(maxSubmitQueueSize));
   const readinessMaxDurableAdmissionBacklog = yield* Config.integer(
     "READINESS_MAX_DURABLE_ADMISSION_BACKLOG",
-  ).pipe(Config.withDefault(readinessMaxQueueDepth));
+  ).pipe(Config.withDefault(10_000));
   const readinessMaxDurableAdmissionAgeMs = yield* Config.integer(
     "READINESS_MAX_DURABLE_ADMISSION_AGE_MS",
   ).pipe(Config.withDefault(120_000));
@@ -231,8 +328,58 @@ const makeConfig = Effect.gen(function* () {
   const validationExpiredLeaseReadinessThreshold = yield* Config.integer(
     "VALIDATION_EXPIRED_LEASE_READINESS_THRESHOLD",
   ).pipe(Config.withDefault(1));
+  const stateQueueMutationLeaseTtlMs = yield* Config.integer(
+    "STATE_QUEUE_MUTATION_LEASE_TTL_MS",
+  ).pipe(
+    Config.withDefault(10 * 60 * 1000),
+    Config.mapAttempt((value) => {
+      if (!Number.isSafeInteger(value) || value <= 0) {
+        throw new Error(
+          "STATE_QUEUE_MUTATION_LEASE_TTL_MS must be a positive safe integer",
+        );
+      }
+      return value;
+    }),
+  );
+  const stateQueueMutationLeaseRenewIntervalMs = yield* Config.integer(
+    "STATE_QUEUE_MUTATION_LEASE_RENEW_INTERVAL_MS",
+  ).pipe(
+    Config.withDefault(
+      Math.min(
+        60 * 1000,
+        Math.max(1, Math.floor(stateQueueMutationLeaseTtlMs / 3)),
+      ),
+    ),
+    Config.mapAttempt((value) => {
+      if (!Number.isSafeInteger(value) || value <= 0) {
+        throw new Error(
+          "STATE_QUEUE_MUTATION_LEASE_RENEW_INTERVAL_MS must be a positive safe integer",
+        );
+      }
+      if (value >= stateQueueMutationLeaseTtlMs) {
+        throw new Error(
+          "STATE_QUEUE_MUTATION_LEASE_RENEW_INTERVAL_MS must be less than STATE_QUEUE_MUTATION_LEASE_TTL_MS",
+        );
+      }
+      return value;
+    }),
+  );
+  const stateQueueMutationLeaseStaleGraceMs = yield* Config.integer(
+    "STATE_QUEUE_MUTATION_LEASE_STALE_GRACE_MS",
+  ).pipe(
+    Config.withDefault(60 * 1000),
+    Config.mapAttempt((value) => {
+      if (!Number.isSafeInteger(value) || value < 0) {
+        throw new Error(
+          "STATE_QUEUE_MUTATION_LEASE_STALE_GRACE_MS must be a non-negative safe integer",
+        );
+      }
+      return value;
+    }),
+  );
   const retentionDays = yield* Config.integer("RETENTION_DAYS").pipe(
     Config.withDefault(0),
+    Config.mapAttempt(validateRetentionDays),
   );
   const waitBetweenRetentionSweeps = yield* Config.integer(
     "WAIT_BETWEEN_RETENTION_SWEEPS",
@@ -254,6 +401,17 @@ const makeConfig = Effect.gen(function* () {
   ).pipe(
     Config.withDefault("200000"),
     Config.mapAttempt((value) => BigInt(value)),
+  );
+  const daCommitteeHex = yield* Config.string("DA_COMMITTEE_HEX").pipe(
+    Config.withDefault(""),
+    Config.map((value) => value.trim().toLowerCase()),
+  );
+  const daThreshold = yield* Config.string("DA_THRESHOLD").pipe(
+    Config.withDefault(""),
+    Config.mapAttempt((value) => {
+      const trimmed = value.trim();
+      return trimmed.length === 0 ? null : BigInt(trimmed);
+    }),
   );
   const waitBetweenDepositUTxOFetches = yield* Config.integer(
     "WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES",
@@ -357,15 +515,20 @@ const makeConfig = Effect.gen(function* () {
 
   return {
     L1_PROVIDER: provider,
-    L1_BLOCKFROST_API_URL: blockfrostApiUrl,
-    L1_BLOCKFROST_KEY: blockfrostKey,
-    L1_BLOCKFROST_KEY_FALLBACK: blockfrostFallbackKey,
+    L1_PROVIDER_FAILOVER: providerFailover,
+    L1_PROVIDER_PREFLIGHT_TIMEOUT_MS: l1ProviderPreflightTimeoutMs,
+    L1_PROVIDER_RATE_LIMIT_COOLDOWN_MS: l1ProviderRateLimitCooldownMs,
+    L1_RECENT_TX_VISIBILITY_TIMEOUT_MS: l1RecentTxVisibilityTimeoutMs,
+    L1_RECENT_TX_404_MAX_DELAY_MS: l1RecentTx404MaxDelayMs,
     L1_OGMIOS_KEY: ogmiosKey,
     L1_KUPO_KEY: kupoKey,
     L1_OPERATOR_SEED_PHRASE: operatorSeedPhrase,
     L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: operatorSeedPhraseForMergeTx,
     L1_REFERENCE_SCRIPT_SEED_PHRASE: referenceScriptSeedPhrase,
     L1_REFERENCE_SCRIPT_ADDRESS: referenceScriptAddress,
+    L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS: referenceScriptDeployAddress,
+    REFERENCE_SCRIPT_AUTH_TIMELOCK_MS: referenceScriptAuthTimelockMs,
+    REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS: referenceScriptAuthMinRemainingMs,
     NETWORK: network,
     PROTOCOL_PARAMETERS: SDK.getProtocolParameters(network),
     PORT: port,
@@ -385,11 +548,9 @@ const makeConfig = Effect.gen(function* () {
     MIN_FEE_B: minFeeB,
     RUN_GENESIS_ON_STARTUP: runGenesisOnStartup,
     ADMIN_API_KEY: adminApiKey,
-    MAX_SUBMIT_QUEUE_SIZE: maxSubmitQueueSize,
     MAX_DURABLE_ADMISSION_BACKLOG: maxDurableAdmissionBacklog,
     MAX_SUBMIT_TX_CBOR_BYTES: maxSubmitTxCborBytes,
     READINESS_MAX_HEARTBEAT_AGE_MS: readinessMaxHeartbeatAgeMs,
-    READINESS_MAX_QUEUE_DEPTH: readinessMaxQueueDepth,
     READINESS_MAX_DURABLE_ADMISSION_BACKLOG:
       readinessMaxDurableAdmissionBacklog,
     READINESS_MAX_DURABLE_ADMISSION_AGE_MS: readinessMaxDurableAdmissionAgeMs,
@@ -402,12 +563,19 @@ const makeConfig = Effect.gen(function* () {
     VALIDATION_RETRY_BACKOFF_MAX_MS: validationRetryBackoffMaxMs,
     VALIDATION_EXPIRED_LEASE_READINESS_THRESHOLD:
       validationExpiredLeaseReadinessThreshold,
+    STATE_QUEUE_MUTATION_LEASE_TTL_MS: stateQueueMutationLeaseTtlMs,
+    STATE_QUEUE_MUTATION_LEASE_RENEW_INTERVAL_MS:
+      stateQueueMutationLeaseRenewIntervalMs,
+    STATE_QUEUE_MUTATION_LEASE_STALE_GRACE_MS:
+      stateQueueMutationLeaseStaleGraceMs,
     RETENTION_DAYS: retentionDays,
     WAIT_BETWEEN_RETENTION_SWEEPS: waitBetweenRetentionSweeps,
     HUB_ORACLE_ONE_SHOT_TX_HASH: hubOracleOneShotTxHash,
     HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: hubOracleOneShotOutputIndex,
     OPERATOR_REQUIRED_BOND_LOVELACE: operatorRequiredBondLovelace,
     OPERATOR_SLASHING_PENALTY_LOVELACE: operatorSlashingPenaltyLovelace,
+    DA_COMMITTEE_HEX: daCommitteeHex,
+    DA_THRESHOLD: daThreshold,
     WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES: waitBetweenDepositUTxOFetches,
     PROM_METRICS_PORT: promMetricsPort,
     OLTP_EXPORTER_URL: oltpExporterUrl,

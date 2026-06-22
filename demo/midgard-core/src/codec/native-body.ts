@@ -1,10 +1,16 @@
-import { asBytes, decodeSingleCbor, encodeCbor } from "./cbor.js";
+import { decodeSingleCbor, encodeCbor } from "./cbor.js";
 import { computeHash32, ensureHash32, type Hash32 } from "./hash.js";
 import type {
   MidgardNativeTxBodyCanonical,
   MidgardNativeTxBodyCompact,
 } from "./native.js";
-import { asFixedArray, asSigned, asUnsigned } from "./native-validation.js";
+import {
+  asFixedArray,
+  asSigned,
+  asUnsigned,
+  bytesItem,
+  hashItem,
+} from "./native-validation.js";
 
 type NativeTxBodyCompactValue = readonly [
   Hash32,
@@ -35,24 +41,6 @@ type NativeTxBodyCanonicalValue = readonly [
   Hash32,
   bigint,
 ];
-
-const itemField = (fieldName: string, index: number): string =>
-  `${fieldName}[${index}]`;
-
-const hashItem = (
-  value: readonly unknown[],
-  index: number,
-  fieldName: string,
-): Hash32 => {
-  const field = itemField(fieldName, index);
-  return ensureHash32(asBytes(value[index], field), field);
-};
-
-const bytesItem = (
-  value: readonly unknown[],
-  index: number,
-  fieldName: string,
-): Buffer => asBytes(value[index], itemField(fieldName, index));
 
 export const encodeNativeTxBodyCompactValue = (
   body: MidgardNativeTxBodyCompact,

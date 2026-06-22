@@ -1,8 +1,5 @@
-import {
-  computeMidgardNativeTxId,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
-} from "@al-ft/midgard-core/codec";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import { computeMidgardTxIdFromCanonicalCbor } from "@al-ft/midgard-validation";
 import { SqlClient, SqlError } from "@effect/sql";
 import { Effect } from "effect";
 
@@ -67,8 +64,7 @@ const assertNativeTxEntryIdsMatchPayload = (
       const txId = tx[Tx.Columns.TX_ID];
       const txPayload = tx[Tx.Columns.TX];
       try {
-        const decoded = decodeMidgardNativeTxFullFromCanonicalCbor(txPayload);
-        const computedTxId = computeMidgardNativeTxId(decoded);
+        const computedTxId = computeMidgardTxIdFromCanonicalCbor(txPayload);
         if (!computedTxId.equals(txId)) {
           yield* Effect.fail(
             new SqlError.SqlError({

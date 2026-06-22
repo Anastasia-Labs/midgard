@@ -67,6 +67,7 @@ export const mergeAction = (
 > =>
   Effect.gen(function* () {
     const globals = yield* Globals;
+    const nodeConfig = yield* NodeConfig;
     yield* Ref.set(globals.HEARTBEAT_MERGE, Date.now());
     if (!force) {
       const [unconfirmedSubmittedBlockTxHash, localFinalizationPending] =
@@ -133,6 +134,11 @@ export const mergeAction = (
             postMergeSnapshot: snapshot,
           } satisfies MergeActionResult;
         }),
+      {
+        ttlMs: nodeConfig.STATE_QUEUE_MUTATION_LEASE_TTL_MS,
+        renewIntervalMs:
+          nodeConfig.STATE_QUEUE_MUTATION_LEASE_RENEW_INTERVAL_MS,
+      },
     );
     if (leaseResult._tag === "Busy") {
       const reason = StateQueueMutationLeasesDB.describeActiveLease(

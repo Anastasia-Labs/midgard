@@ -1,5 +1,4 @@
-import { assetsEqual, type Assets } from "@al-ft/midgard-core/assets";
-import { canonicalPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
+import { type Assets, assetsEqual } from "@al-ft/midgard-core/assets";
 import {
   type BuildTxWithRedeemer,
   Data,
@@ -8,8 +7,8 @@ import {
   Script,
   toUnit,
   TxBuilder,
-  TxSignBuilder,
   type TxOutput,
+  TxSignBuilder,
 } from "@lucid-evolution/lucid";
 import { Data as EffectData, Effect } from "effect";
 
@@ -32,8 +31,6 @@ import {
   makeReturn,
   MerkleRootSchema,
   POSIXTimeSchema,
-  Proof,
-  ProofSchema,
   UnspecifiedNetworkError,
   VerificationKeyHashSchema,
 } from "@/common.js";
@@ -50,6 +47,10 @@ import {
   RetiredOperatorUTxO,
 } from "@/retired-operators.js";
 import { fetchSchedulerUTxOProgram, SchedulerError } from "@/scheduler.js";
+import {
+  EventSettlementMembershipProof,
+  EventSettlementMembershipProofSchema,
+} from "@/transition-trace.js";
 import { completeTxWithLocalUPLCEvalProgram } from "@/tx-completion.js";
 import {
   requireInputIndex,
@@ -59,6 +60,7 @@ import {
   requireSpendRedeemerIndex,
   requireUniqueOutputIndex,
 } from "@/tx-context-redeemer.js";
+import { outputDatumCborMatches } from "@/tx-output-utils.js";
 
 import { DepositUTxO, utxosToDepositUTxOs } from "./user-events/deposit.js";
 import { TxOrderUTxO, utxosToTxOrderUTxOs } from "./user-events/tx-order.js";
@@ -78,6 +80,7 @@ export const ResolutionClaim =
 export const SettlementDatumSchema = Data.Object({
   deposits_root: MerkleRootSchema,
   withdrawals_root: MerkleRootSchema,
+  forced_transactions_root: MerkleRootSchema,
   transactions_root: MerkleRootSchema,
   resolution_claim: Data.Nullable(ResolutionClaimSchema),
 });
@@ -124,7 +127,7 @@ export const SettlementSpendRedeemerSchema = Data.Enum([
       unresolved_event_ref_input_index: Data.Integer(),
       unresolved_event_asset_name: Data.Bytes(),
       event_type: EventTypeSchema,
-      membership_proof: ProofSchema,
+      membership_proof: EventSettlementMembershipProofSchema,
       inclusion_proof_script_withdraw_redeemer_index: Data.Integer(),
     }),
   }),
@@ -174,13 +177,6 @@ export type AttachResolutionClaimParams = {
 };
 
 export type SettlementUTxO = AuthenticUTxO<SettlementDatum>;
-
-const outputDatumCborMatches = (
-  output: Pick<TxOutput, "datum">,
-  datumCbor: string,
-): boolean =>
-  output.datum != null &&
-  canonicalPlutusDataCbor(output.datum) === canonicalPlutusDataCbor(datumCbor);
 
 const outputMatches =
   ({
@@ -366,7 +362,12 @@ export const incompleteUpdateBondHoldNewSettlementTxProgram = (
 
     const updatedDatum: ActiveOperatorDatum = {
       ...activeOperatorsInputUtxo.datum,
-      bond_unlock_time: params.newBondUnlockTime,
+      bond_unlock_time:
+        activeOperatorsInputUtxo.datum.bond_unlock_time === null ||
+        params.newBondUnlockTime >
+          activeOperatorsInputUtxo.datum.bond_unlock_time
+          ? params.newBondUnlockTime
+          : activeOperatorsInputUtxo.datum.bond_unlock_time,
     };
     const updatedDatumCBOR = Data.to(updatedDatum, ActiveOperatorDatum);
 
@@ -419,7 +420,7 @@ export const incompleteUpdateBondHoldNewSettlementTxProgram = (
               params.settlementUTxO.utxo,
               "update bond hold new settlement settlement",
             ),
-            new_bond_unlock_time: params.newBondUnlockTime,
+            resolution_time: params.newBondUnlockTime,
           },
         } satisfies ActiveOperatorSpendRedeemer,
         ActiveOperatorSpendRedeemer,
@@ -557,7 +558,7 @@ export const fetchUserEventRefUTxO = (
 export type DisproveResolutionClaimParams = {
   settlementAddress: string;
   resolutionClaimOperator: string;
-  membershipProof: Proof;
+  membershipProof: EventSettlementMembershipProof;
   hubOracleValidator: AuthenticatedValidator;
   schedulerScriptAddress: string;
   schedulerPolicyId: string;

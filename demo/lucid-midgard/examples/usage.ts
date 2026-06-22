@@ -29,9 +29,7 @@ const makeOutRef = (byte: number, outputIndex = 0): OutRef => ({
   outputIndex,
 });
 
-const addressFromPrivateKey = (
-  privateKey: CML.PrivateKey,
-): Address =>
+const addressFromPrivateKey = (privateKey: CML.PrivateKey): Address =>
   CML.EnterpriseAddress.new(
     0,
     CML.Credential.new_pub_key(privateKey.to_public().hash()),

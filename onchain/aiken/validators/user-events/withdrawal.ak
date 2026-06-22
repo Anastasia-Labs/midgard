@@ -11,12 +11,12 @@ use cardano/transaction.{
 }
 use cardano/transaction as tx
 use env
-use midgard/common/types.{Proof}
-use midgard/common/utils.{plutarch_phas}
+use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/ledger_state
 use midgard/payout
 use midgard/settlement
+use midgard/transition_trace
 use midgard/user_events
 use midgard/user_events/withdrawal.{
   Datum, InitializePayout, Refund, SpendRedeemer,
@@ -80,7 +80,7 @@ fn validate_refund_branch(
   withdrawal_datum: Datum,
   withdrawals_root: ledger_state.WithdrawalsRoot,
   validity_override: ledger_state.WithdrawalValidity,
-  membership_proof: Proof,
+  membership_proof: transition_trace.RootMembershipProof<ByteArray, ByteArray>,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
   inclusion_proof_script_withdraw_redeemer_index: Int,
 ) -> Bool {
@@ -106,21 +106,23 @@ fn validate_refund_branch(
 
   let Pair(withdrawal_event_id, withdrawal_event_info) =
     ledger_state.unsafe_event_to_key_value_pair(withdrawal_event)
+  expect withdrawal_id: ledger_state.WithdrawalId = withdrawal_event_id
   expect coerced_withdrawal_info: ledger_state.WithdrawalInfo =
     withdrawal_event_info
-  let overridden_withdrawal_info: Data =
+  let overridden_withdrawal_info =
     ledger_state.WithdrawalInfo {
       ..coerced_withdrawal_info,
       validity: validity_override,
     }
 
-  plutarch_phas(
-    withdrawals_root,
-    withdrawal_event_id,
-    overridden_withdrawal_info,
-    membership_proof,
-    redeemers,
-    inclusion_proof_script_withdraw_redeemer_index,
+  settlement.valid_counted_membership(
+    expected_domain: transition_trace.WithdrawalsRootDomain,
+    expected_root: withdrawals_root,
+    witness: membership_proof,
+    key: withdrawal_id,
+    value: overridden_withdrawal_info,
+    redeemers: redeemers,
+    inclusion_proof_script_withdraw_redeemer_index: inclusion_proof_script_withdraw_redeemer_index,
   )
 }
 
@@ -141,8 +143,8 @@ fn get_settlement_withdrawals_root(
   expect Pair(0, settlement_fields) =
     builtin.un_constr_data(settlement_datum_data)
   expect [
-    _deposits_root_data, withdrawals_root_data, _transactions_root_data,
-    _resolution_claim_data,
+    _deposits_root_data, withdrawals_root_data, _forced_transactions_root_data,
+    _transactions_root_data, _resolution_claim_data,
   ] = settlement_fields
   builtin.un_b_data(withdrawals_root_data)
 }
@@ -266,6 +268,7 @@ validator spend(hub_oracle: ScriptHash) {
 
         let Pair(withdrawal_event_id, withdrawal_event_info) =
           ledger_state.unsafe_event_to_key_value_pair(withdrawal_event)
+        expect withdrawal_id: ledger_state.WithdrawalId = withdrawal_event_id
 
         // 5. Initiation of a payout accumulator can only happen for valid
         //    withdrawals.
@@ -278,13 +281,14 @@ validator spend(hub_oracle: ScriptHash) {
         // 6. The referenced settlement UTxO's withdrawal tree must contain
         //    the subject withdrawal event.
         expect
-          plutarch_phas(
-            withdrawals_root,
-            withdrawal_event_id,
-            withdrawal_event_info,
-            membership_proof,
-            redeemers,
-            inclusion_proof_script_withdraw_redeemer_index,
+          settlement.valid_counted_membership(
+            expected_domain: transition_trace.WithdrawalsRootDomain,
+            expected_root: withdrawals_root,
+            witness: membership_proof,
+            key: withdrawal_id,
+            value: withdrawal_event_info,
+            redeemers: redeemers,
+            inclusion_proof_script_withdraw_redeemer_index: inclusion_proof_script_withdraw_redeemer_index,
           )
 
         let ledger_state.WithdrawalBody { l2_value, l1_address, l1_datum, .. } =
@@ -382,8 +386,15 @@ const test_l2_ref =
     output_index: 0,
   }
 
-const test_withdrawals_root =
+const test_withdrawals_phas_root =
   #"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+const test_withdrawals_root =
+  transition_trace.commit_counted_root(
+    transition_trace.WithdrawalsRootDomain,
+    test_withdrawals_phas_root,
+    1,
+  )
 
 const test_deposits_root =
   #"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
@@ -468,6 +479,7 @@ test withdrawal_refund_tx_settlement_decodes() {
   settlement.get_datum(reference_inputs, test_settlement_policy, 1) == settlement.Datum {
     deposits_root: test_deposits_root,
     withdrawals_root: test_withdrawals_root,
+    forced_transactions_root: env.empty_merkle_tree_root,
     transactions_root: test_transactions_root,
     resolution_claim: None,
   }
@@ -476,12 +488,13 @@ test withdrawal_refund_tx_settlement_decodes() {
 test settlement_sdk_fixture_decodes() {
   expect Some(settlement_datum_data) =
     cbor.deserialise(
-      #"d8799f58209199f6a06dd054c176b03f971663fb08eab680f330c53f03a7c2a7a4f7e2deb35820a0a6bfacf243dca6d2adbae4e8846841e74c90f17d7602cefc2375dad3ae56eb58207777777777777777777777777777777777777777777777777777777777777777d87a80ff",
+      #"d8799f58209199f6a06dd054c176b03f971663fb08eab680f330c53f03a7c2a7a4f7e2deb35820a0a6bfacf243dca6d2adbae4e8846841e74c90f17d7602cefc2375dad3ae56eb58200e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a858207777777777777777777777777777777777777777777777777777777777777777d87a80ff",
     )
   expect decoded: settlement.Datum = settlement_datum_data
   decoded == settlement.Datum {
     deposits_root: #"9199f6a06dd054c176b03f971663fb08eab680f330c53f03a7c2a7a4f7e2deb3",
     withdrawals_root: #"a0a6bfacf243dca6d2adbae4e8846841e74c90f17d7602cefc2375dad3ae56eb",
+    forced_transactions_root: env.empty_merkle_tree_root,
     transactions_root: #"7777777777777777777777777777777777777777777777777777777777777777",
     resolution_claim: None,
   }
@@ -490,7 +503,7 @@ test settlement_sdk_fixture_decodes() {
 test settlement_sdk_fixture_get_datum_decodes() {
   expect Some(settlement_datum_data) =
     cbor.deserialise(
-      #"d8799f58209199f6a06dd054c176b03f971663fb08eab680f330c53f03a7c2a7a4f7e2deb35820a0a6bfacf243dca6d2adbae4e8846841e74c90f17d7602cefc2375dad3ae56eb58207777777777777777777777777777777777777777777777777777777777777777d87a80ff",
+      #"d8799f58209199f6a06dd054c176b03f971663fb08eab680f330c53f03a7c2a7a4f7e2deb35820a0a6bfacf243dca6d2adbae4e8846841e74c90f17d7602cefc2375dad3ae56eb58200e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a858207777777777777777777777777777777777777777777777777777777777777777d87a80ff",
     )
   let settlement_policy = #"7079358dfbe98ea1a3b7afac27d1d99d140979eaa28dac13"
   let settlement_input =
@@ -509,6 +522,7 @@ test settlement_sdk_fixture_get_datum_decodes() {
   settlement.get_datum([settlement_input], settlement_policy, 0) == settlement.Datum {
     deposits_root: #"9199f6a06dd054c176b03f971663fb08eab680f330c53f03a7c2a7a4f7e2deb3",
     withdrawals_root: #"a0a6bfacf243dca6d2adbae4e8846841e74c90f17d7602cefc2375dad3ae56eb",
+    forced_transactions_root: env.empty_merkle_tree_root,
     transactions_root: #"7777777777777777777777777777777777777777777777777777777777777777",
     resolution_claim: None,
   }
@@ -561,6 +575,7 @@ fn test_settlement_ref_input() -> Input {
       [
         builtin.b_data(test_deposits_root),
         builtin.b_data(test_withdrawals_root),
+        builtin.b_data(env.empty_merkle_tree_root),
         builtin.b_data(test_transactions_root),
         builtin.constr_data(1, []),
       ],
@@ -624,9 +639,25 @@ fn test_refund_spend_redeemer(output_index: Int) -> SpendRedeemer {
     settlement_ref_input_index: 1,
     burn_redeemer_index: 1,
     payout_mint_redeemer_index: 0,
-    membership_proof: [],
+    membership_proof: test_withdrawal_membership_proof(
+      test_withdrawal_info(ledger_state.UnpayableWithdrawalValue),
+    ),
     inclusion_proof_script_withdraw_redeemer_index: 2,
     purpose: Refund { validity_override: ledger_state.UnpayableWithdrawalValue },
+  }
+}
+
+fn test_withdrawal_membership_proof(
+  value: ledger_state.WithdrawalInfo,
+) -> transition_trace.RootMembershipProof<ByteArray, ByteArray> {
+  transition_trace.RootMembershipProof {
+    domain: transition_trace.WithdrawalsRootDomain,
+    root: test_withdrawals_root,
+    phas_root: test_withdrawals_phas_root,
+    count: 1,
+    key: cbor.serialise(test_withdrawal_ref),
+    value: cbor.serialise(value),
+    proof: [],
   }
 }
 
@@ -635,7 +666,7 @@ fn test_phas_redeemer(value: Data) -> Data {
   let proof_data: Data = []
   builtin.list_data(
     [
-      builtin.b_data(test_withdrawals_root),
+      builtin.b_data(test_withdrawals_phas_root),
       builtin.b_data(cbor.serialise(key_data)),
       builtin.b_data(cbor.serialise(value)),
       proof_data,

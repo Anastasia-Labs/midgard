@@ -1,8 +1,11 @@
 export * as AddressHistoryDB from "./addressHistory.js";
 export * as BlocksDB from "./blocks.js";
 export * as ConfirmedLedgerDB from "./confirmedLedger.js";
+export * as DaPayloadsDB from "./daPayloads.js";
 export * as DepositIngestionCursorDB from "./depositIngestionCursor.js";
 export * as DepositsDB from "./deposits.js";
+export * as DepositSubmissionAttemptsDB from "./depositSubmissionAttempts.js";
+export * as ForcedTransactionsDB from "./forcedTransactions.js";
 export * as ImmutableDB from "./immutable.js";
 export * as InitDB from "./init.js";
 export * as LatestLedgerDB from "./latestLedger.js";

@@ -50,16 +50,6 @@ export const RetiredOperatorMintRedeemerSchema = Data.Enum([
     }),
   }),
   Data.Object({
-    ReregisterOperator: Data.Object({
-      retired_operator_key: Data.Bytes({ minLength: 28, maxLength: 28 }),
-      retired_operator_bond_unlock_time: Data.Nullable(POSIXTimeSchema),
-      hub_oracle_ref_input_index: Data.Integer(),
-      retired_operator_anchor_element_input_outref: OutputReferenceSchema,
-      retired_operator_anchor_element_output_index: Data.Integer(),
-      registered_operators_redeemer_index: Data.Integer(),
-    }),
-  }),
-  Data.Object({
     RecoverOperatorBond: Data.Object({
       retired_operator_key: Data.Bytes({ minLength: 28, maxLength: 28 }),
       retired_operator_anchor_element_input_outref: OutputReferenceSchema,

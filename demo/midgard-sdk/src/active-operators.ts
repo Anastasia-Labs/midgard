@@ -90,7 +90,7 @@ export const ActiveOperatorSpendRedeemerSchema = Data.Enum([
       hub_oracle_ref_input_index: Data.Integer(),
       settlement_input_index: Data.Integer(),
       settlement_redeemer_index: Data.Integer(),
-      new_bond_unlock_time: POSIXTimeSchema,
+      resolution_time: POSIXTimeSchema,
     }),
   }),
   Data.Object({
@@ -121,10 +121,10 @@ export const ActiveOperatorMintRedeemerSchema = Data.Enum([
   Data.Object({
     ActivateOperator: Data.Object({
       new_active_operator_key: Data.Bytes({ minLength: 28, maxLength: 28 }),
-      new_active_operator_bond_unlock_time: Data.Nullable(POSIXTimeSchema),
       active_operator_anchor_element_output_index: Data.Integer(),
       active_operator_inserted_node_output_index: Data.Integer(),
       registered_operators_redeemer_index: Data.Integer(),
+      active_operators_set_was_empty: Data.Boolean(),
     }),
   }),
   Data.Object({

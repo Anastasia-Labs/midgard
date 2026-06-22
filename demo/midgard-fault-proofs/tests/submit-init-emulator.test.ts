@@ -28,12 +28,21 @@ import {
   addressDataFromBech32,
   type AuthenticatedValidator,
   buildDoubleSpendFaultProofContracts,
+  buildInvalidRangeFaultProofContracts,
+  buildPhasMembershipRewardRegistrationTxProgram,
+  buildTransitionTraceFaultProofContracts,
   ConfirmedState,
+  DA_PAYLOAD_V2_VERSION,
   DoubleSpendStep02Datum,
   DoubleSpendStep03Datum,
   DoubleSpendStep04Datum,
+  EMPTY_HEADER_TRANSITION_COMMITMENTS,
   EMPTY_MERKLE_TREE_ROOT,
+  encodeDaPayloadV2,
   encodeLinkedListNodeView,
+  EventKeySchema,
+  EventToStepValueSchema,
+  ForcedInclusionTxSchema,
   FRAUD_PROOF_CATALOGUE_ASSET_NAME,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
@@ -44,39 +53,48 @@ import {
   FraudProofTokenDatum,
   GENESIS_HEADER_HASH,
   GENESIS_PROTOCOL_VERSION,
-  headerHashFromStateQueueUTxO,
   getHeaderFromStateQueueDatum,
   hashBlockHeader,
   Header,
+  headerHashFromStateQueueUTxO,
   HUB_ORACLE_ASSET_NAME,
   HubOracleDatum,
   incompleteEmulatorCommitBlockHeaderTxProgram,
+  invalidOneStepTransitionFault,
+  InvalidRangeStep02Datum,
+  invalidRangeViolationReason,
   makeHubOracleDatum,
-  outputReferenceFromUTxO,
   type MidgardValidators,
   type MintingValidator,
+  normalizeNativeTxValidityRange,
+  OutputReference,
+  outputReferenceFromUTxO,
   parseFaultProofBlueprint,
+  parsePhasMembershipBlueprint,
+  phasMembershipWithdrawalScriptFromBlueprint,
   REGISTERED_OPERATORS_ROOT_ASSET_NAME,
   RegisteredOperatorMintRedeemer,
-  RETIRED_OPERATORS_ROOT_ASSET_NAME,
-  RetiredOperatorMintRedeemer,
   requireInputIndex,
-  requireReferenceInputIndex,
   requireMintRedeemerIndex,
   requireOwnMintPurpose,
+  requireReferenceInputIndex,
   requireUniqueOutputIndex,
+  RETIRED_OPERATORS_ROOT_ASSET_NAME,
+  RetiredOperatorMintRedeemer,
+  ROOT_DOMAINS,
   SCHEDULER_ASSET_NAME,
   SchedulerDatum,
   SchedulerMintRedeemer,
   SchedulerSpendRedeemer,
   ScriptHashSchema,
+  sortStateQueueUTxOs,
   type SpendingValidator as SdkSpendingValidator,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
   STATE_QUEUE_ROOT_ASSET_NAME,
   StateQueueRedeemer,
-  sortStateQueueUTxOs,
-  utxoToStateQueueUTxO,
+  TransitionStepSchema,
   utxosToStateQueueUTxOs,
+  utxoToStateQueueUTxO,
   type WithdrawalValidator as SdkWithdrawalValidator,
 } from "@al-ft/midgard-sdk";
 import {
@@ -108,22 +126,33 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
+  buildCountedRoot,
+  buildInvalidForcedTransactionNoOpWitness,
+  buildTransitionFaultProof,
+  encodeData,
+  keyValuePhasRootWithCount,
   nativeTxFromCoreCompact,
   parseSpendInputCbors,
   parseSubmitStep01TxInclusion,
+  reconstructDaPayloadV2,
   resolveProverSigner,
   type StateQueueMutationLeaseCoordinator,
   submitInit,
+  submitInvalidRangeStep01,
+  submitInvalidRangeStep02,
   submitRemoveFraudulentBlock,
   submitStep01,
   submitStep02,
   submitStep03,
   submitStep04,
+  submitTransitionTraceProof,
 } from "../src/index.js";
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(moduleDir, "../../..");
-const realBlueprintPath = resolve(repoRoot, "onchain/aiken/plutus.json");
+const realBlueprintPath =
+  process.env.MIDGARD_REAL_BLUEPRINT_PATH ??
+  resolve(repoRoot, "onchain/aiken/plutus.json");
 const alwaysSucceedsBlueprintPath = resolve(
   repoRoot,
   "demo/midgard-node/blueprints/always-succeeds/plutus.json",
@@ -146,6 +175,9 @@ type Blueprint = {
 
 const readBlueprint = (path: string): Blueprint =>
   JSON.parse(readFileSync(path, "utf8")) as Blueprint;
+
+const cloneBlueprint = (blueprint: Blueprint): Blueprint =>
+  JSON.parse(JSON.stringify(blueprint)) as Blueprint;
 
 const getCompiledScript = (blueprint: Blueprint, title: string): string => {
   const found = blueprint.validators.find(
@@ -263,9 +295,15 @@ const makeAlwaysSucceedsContracts = (
     invalidRange: makeSpendingValidator(
       alwaysScript(blueprint, "fraud_proofs", "invalid_range", "spend"),
     ),
+    transitionTrace: makeSpendingValidator(
+      alwaysScript(blueprint, "fraud_proofs", "transition_trace", "spend"),
+    ),
   };
 
   return {
+    referenceScriptAuth: makeMintingValidator(
+      alwaysScript(blueprint, "midgard", "state_queue", "mint"),
+    ),
     hubOracle: {
       ...makeMintingValidator(
         alwaysScript(blueprint, "midgard", "hub_oracle", "mint"),
@@ -274,6 +312,8 @@ const makeAlwaysSucceedsContracts = (
         alwaysScript(blueprint, "midgard", "hub_oracle", "mint"),
       ),
     },
+    daParamsGovernor: alwaysAuthenticated(blueprint, "state_queue"),
+    daAttestation: alwaysAuthenticated(blueprint, "state_queue"),
     stateQueue: alwaysAuthenticated(blueprint, "state_queue"),
     scheduler: alwaysAuthenticated(blueprint, "scheduler"),
     registeredOperators: alwaysAuthenticated(blueprint, "registered_operators"),
@@ -299,6 +339,15 @@ const buildMinimalFaultProofContracts = async (
   realBlueprint: Blueprint,
   alwaysBlueprint: Blueprint,
   nonceUtxo: UTxO,
+  {
+    realInvalidRange = false,
+    realTransitionTrace = false,
+    alwaysFraudProofCatalogue = false,
+  }: {
+    readonly realInvalidRange?: boolean;
+    readonly realTransitionTrace?: boolean;
+    readonly alwaysFraudProofCatalogue?: boolean;
+  } = {},
 ): Promise<MidgardValidators> => {
   // This integration test proves the real active-operators slashing and
   // scheduler removal path. Registered/retired operator setup remains
@@ -331,13 +380,15 @@ const buildMinimalFaultProofContracts = async (
     hubOracle: hubOracleAuth,
   };
 
-  const fraudProofCatalogue = makeAuthenticatedValidator(
-    applyParamsToScript(
-      getCompiledScript(realBlueprint, "fraud_proof_catalogue.mint.mint"),
-      [hubOracle.policyId],
-    ),
-    getCompiledScript(realBlueprint, "fraud_proof_catalogue.spend.else"),
-  );
+  const fraudProofCatalogue = alwaysFraudProofCatalogue
+    ? withHubOracle.fraudProofCatalogue
+    : makeAuthenticatedValidator(
+        applyParamsToScript(
+          getCompiledScript(realBlueprint, "fraud_proof_catalogue.mint.mint"),
+          [hubOracle.policyId],
+        ),
+        getCompiledScript(realBlueprint, "fraud_proof_catalogue.spend.else"),
+      );
   const withCatalogue = {
     ...withHubOracle,
     fraudProofCatalogue,
@@ -381,6 +432,36 @@ const buildMinimalFaultProofContracts = async (
       fraudProofCataloguePolicyId: fraudProofCatalogue.policyId,
     }),
   );
+  const invalidRangeContracts = realInvalidRange
+    ? await Effect.runPromise(
+        buildInvalidRangeFaultProofContracts({
+          blueprint: parseFaultProofBlueprint(cloneBlueprint(realBlueprint)),
+          network,
+          hubOraclePolicyId: hubOracle.policyId,
+          fraudProofCataloguePolicyId: fraudProofCatalogue.policyId,
+        }),
+      )
+    : undefined;
+  if (invalidRangeContracts !== undefined) {
+    expect(invalidRangeContracts.fraudProof.policyId).toBe(
+      doubleSpendContracts.fraudProof.policyId,
+    );
+  }
+  const transitionTraceContracts = realTransitionTrace
+    ? await Effect.runPromise(
+        buildTransitionTraceFaultProofContracts({
+          blueprint: parseFaultProofBlueprint(cloneBlueprint(realBlueprint)),
+          network,
+          hubOraclePolicyId: hubOracle.policyId,
+          fraudProofCataloguePolicyId: fraudProofCatalogue.policyId,
+        }),
+      )
+    : undefined;
+  if (transitionTraceContracts !== undefined) {
+    expect(transitionTraceContracts.fraudProof.policyId).toBe(
+      doubleSpendContracts.fraudProof.policyId,
+    );
+  }
   const activeOperatorsAddressData = await Effect.runPromise(
     addressDataFromBech32(
       withActiveOperators.activeOperators.spendingScriptAddress,
@@ -449,6 +530,12 @@ const buildMinimalFaultProofContracts = async (
     fraudProofs: {
       ...withActiveOperators.fraudProofs,
       doubleSpend: doubleSpendContracts.doubleSpend.firstStep,
+      invalidRange:
+        invalidRangeContracts?.invalidRange.firstStep ??
+        withActiveOperators.fraudProofs.invalidRange,
+      transitionTrace:
+        transitionTraceContracts?.transitionTrace.firstStep ??
+        withActiveOperators.fraudProofs.transitionTrace,
     },
   };
 };
@@ -617,6 +704,11 @@ const SCHEDULER_APPOINTMENT_OUTPUT_INDEX = {
 
 const h32 = (byte: string): string => byte.repeat(32);
 
+const deploymentManifest = (contracts: Record<string, unknown>) => ({
+  referenceScriptAuthPolicy: {},
+  contracts,
+});
+
 type TestOutputReference = {
   readonly transactionId: string;
   readonly outputIndex: bigint;
@@ -658,12 +750,16 @@ const makeNativeTx = ({
   referenceByte,
   outputByte,
   witnessByte,
+  validityIntervalStart = MIDGARD_POSIX_TIME_NONE,
+  validityIntervalEnd = MIDGARD_POSIX_TIME_NONE,
 }: {
   readonly spendInputCbors: readonly Buffer[];
   readonly fee: bigint;
   readonly referenceByte: string;
   readonly outputByte: string;
   readonly witnessByte: string;
+  readonly validityIntervalStart?: bigint;
+  readonly validityIntervalEnd?: bigint;
 }): MidgardNativeTxFull =>
   materializeMidgardNativeTxFromCanonical({
     version: MIDGARD_NATIVE_TX_VERSION,
@@ -680,8 +776,8 @@ const makeNativeTx = ({
       scriptIntegrityHash: EMPTY_NULL_ROOT,
       auxiliaryDataHash: EMPTY_NULL_ROOT,
       fee,
-      validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
-      validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
+      validityIntervalStart,
+      validityIntervalEnd,
       networkId: 0n,
     },
     witnessSet: {
@@ -777,6 +873,75 @@ const buildTransactionInclusionFixture = async (): Promise<{
   };
 };
 
+const buildInvalidRangeTransactionInclusionFixture = async ({
+  blockValidFrom,
+  blockValidTo,
+}: {
+  readonly blockValidFrom: bigint;
+  readonly blockValidTo: bigint;
+}): Promise<{
+  readonly transactionsRoot: string;
+  readonly badTx: TransactionInclusionEntry;
+  readonly normalizedValidityRange: ReturnType<
+    typeof normalizeNativeTxValidityRange
+  >;
+  readonly violationReason: NonNullable<
+    ReturnType<typeof invalidRangeViolationReason>
+  >;
+}> => {
+  const badNativeTx = makeNativeTx({
+    spendInputCbors: [outputReferenceCbor(tx1InputsPreimage[0]!)],
+    fee: 3n,
+    referenceByte: "41",
+    outputByte: "42",
+    witnessByte: "43",
+    validityIntervalStart: blockValidFrom - 1n,
+    validityIntervalEnd: blockValidTo,
+  });
+  const badTx = compactTxEntry(badNativeTx);
+  const normalizedValidityRange = normalizeNativeTxValidityRange(
+    badTx.nativeTx.body,
+  );
+  const violationReason = invalidRangeViolationReason({
+    blockValidFrom,
+    blockValidTo,
+    normalizedRange: normalizedValidityRange,
+  });
+  if (violationReason === null) {
+    throw new Error(
+      "Invalid-range fixture transaction does not violate block validity.",
+    );
+  }
+
+  const store = new Store(undefined);
+  await store.ready();
+  const trie = new Trie(store);
+  await trie.insert(
+    Buffer.from(badTx.nativeTxId, "hex"),
+    Buffer.from(encodeMidgardNativeTxCompact(badNativeTx.compact)),
+  );
+  const proof = await trie.prove(Buffer.from(badTx.nativeTxId, "hex"));
+
+  return {
+    transactionsRoot: trieRootHex(trie),
+    badTx: {
+      inclusion: {
+        nativeTxId: badTx.nativeTxId,
+        nativeTx: badTx.nativeTx,
+        nativeTxCompactCbor: encodeMidgardNativeTxCompact(
+          badNativeTx.compact,
+        ).toString("hex"),
+        txMembershipProofCbor: proof.toCBOR().toString("hex"),
+      },
+      nativeTx: badTx.nativeTx,
+      nativeTxId: badTx.nativeTxId,
+      spendInputCbors: badTx.spendInputCbors,
+    },
+    normalizedValidityRange,
+    violationReason,
+  };
+};
+
 const buildCatalogueDeploymentInfo = async (
   fraudProofs: FraudProofs,
 ): Promise<FraudProofCatalogueDeploymentInfo> => {
@@ -818,26 +983,19 @@ const buildCatalogueDeploymentInfo = async (
   };
 };
 
-const phasMembershipRewardAddress = (script: Script): string => {
-  const credential = CML.Credential.new_script(
-    CML.ScriptHash.from_hex(validatorToScriptHash(script)),
-  );
-  return CML.RewardAddress.new(0, credential).to_address().to_bech32();
-};
-
 const registerPhasMembershipRewardAccount = async (
   lucid: Awaited<ReturnType<typeof Lucid>>,
   realBlueprint: Blueprint,
 ): Promise<void> => {
-  const phasMembershipScript: Script = {
-    type: "PlutusV3",
-    script: getCompiledScript(realBlueprint, "phas.membership.withdraw"),
-  };
-  const unsigned = await lucid
-    .newTx()
-    .register.Stake(phasMembershipRewardAddress(phasMembershipScript))
-    .complete({ localUPLCEval: true });
-  const signed = await unsigned.sign.withWallet().complete();
+  const phasMembershipScript = phasMembershipWithdrawalScriptFromBlueprint(
+    parsePhasMembershipBlueprint(realBlueprint),
+  );
+  const built = await Effect.runPromise(
+    buildPhasMembershipRewardRegistrationTxProgram(lucid, {
+      script: phasMembershipScript,
+    }),
+  );
+  const signed = await built.tx.sign.withWallet().complete();
   await lucid.awaitTx(await signed.submit());
 };
 
@@ -848,15 +1006,201 @@ const makeHeader = (
 ): Header => ({
   prevUtxosRoot: EMPTY_MERKLE_TREE_ROOT,
   utxosRoot: EMPTY_MERKLE_TREE_ROOT,
+  withdrawalsRoot: EMPTY_MERKLE_TREE_ROOT,
+  ...EMPTY_HEADER_TRANSITION_COMMITMENTS,
   transactionsRoot,
   depositsRoot: EMPTY_MERKLE_TREE_ROOT,
-  withdrawalsRoot: EMPTY_MERKLE_TREE_ROOT,
   startTime: BigInt(now),
   endTime: BigInt(now + 1_000),
   prevHeaderHash: GENESIS_HEADER_HASH,
   operatorVkey,
   protocolVersion: GENESIS_PROTOCOL_VERSION,
 });
+
+const transitionTraceOutRef = (byte: string): OutputReference => ({
+  transactionId: h32(byte),
+  outputIndex: 0n,
+});
+
+const transitionTraceDaEntry = <K, V>({
+  key,
+  keySchema,
+  value,
+  valueSchema,
+}: {
+  readonly key: K;
+  readonly keySchema: Parameters<typeof Data.Nullable>[0];
+  readonly value: V;
+  readonly valueSchema: Parameters<typeof Data.Nullable>[0];
+}): [string, string] => [
+  encodeData(key, keySchema).toString("hex"),
+  encodeData(value, valueSchema).toString("hex"),
+];
+
+const transitionTraceRawEntry = (
+  key: string,
+  value: string,
+): [string, string] => [key, value];
+
+const sortedDaEntries = (
+  entries: readonly [string, string][],
+): [string, string][] =>
+  [...entries].sort(([left], [right]) =>
+    left < right ? -1 : left > right ? 1 : 0,
+  );
+
+const transitionTraceTxBody = (byte: string) => ({
+  spend_inputs: h32(byte),
+  reference_inputs: h32("b1"),
+  outputs: h32("b2"),
+  fee: 0n,
+  validity_interval: {
+    lower_bound: {
+      bound_type: "NegativeInfinity",
+      is_inclusive: true,
+    },
+    upper_bound: {
+      bound_type: "PositiveInfinity",
+      is_inclusive: false,
+    },
+  },
+  required_observers: h32("b3"),
+  required_signer_hashes: h32("b4"),
+  mint: h32("b5"),
+  script_integrity_hash: h32("b6"),
+  auxiliary_data_hash: h32("b7"),
+  network_id: "Testnet",
+});
+
+const buildInvalidForcedTransitionTraceFixture = async ({
+  operatorVkey,
+  now,
+}: {
+  readonly operatorVkey: string;
+  readonly now: number;
+}) => {
+  const txOrderId = transitionTraceOutRef("f1");
+  const eventKey = { ForcedTransactionEventKey: { tx_order_id: txOrderId } };
+  const finalUtxo = transitionTraceRawEntry("01", "02");
+  const finalUtxosRoot = await keyValuePhasRootWithCount([
+    {
+      key: Buffer.from(finalUtxo[0], "hex"),
+      value: Buffer.from(finalUtxo[1], "hex"),
+    },
+  ]);
+  const forcedTransaction = {
+    tx_compact: {
+      body: transitionTraceTxBody("b0"),
+      wits: h32("b8"),
+    },
+    operator_validity: "FailedScript",
+  };
+  const step = {
+    schema_version: 1n,
+    step_index: 0n,
+    event_key: eventKey,
+    phase: "ForcedTransaction",
+    pre_utxos_root: EMPTY_MERKLE_TREE_ROOT,
+    post_utxos_root: finalUtxosRoot.root,
+  };
+  const eventToStepValue = {
+    step_index: 0n,
+    phase: "ForcedTransaction",
+  };
+  const forcedEntries = [
+    transitionTraceDaEntry({
+      key: txOrderId,
+      keySchema: OutputReference as never,
+      value: forcedTransaction,
+      valueSchema: ForcedInclusionTxSchema,
+    }),
+  ];
+  const traceEntries = [
+    transitionTraceDaEntry({
+      key: step.step_index,
+      keySchema: Data.Integer() as never,
+      value: step,
+      valueSchema: TransitionStepSchema,
+    }),
+  ];
+  const eventToStepEntries = [
+    transitionTraceDaEntry({
+      key: eventKey,
+      keySchema: EventKeySchema,
+      value: eventToStepValue,
+      valueSchema: EventToStepValueSchema,
+    }),
+  ];
+  const forcedRoot = await buildCountedRoot(
+    ROOT_DOMAINS.forcedTransactions,
+    forcedEntries.map(([key, value]) => ({
+      key: Buffer.from(key, "hex"),
+      value: Buffer.from(value, "hex"),
+    })),
+  );
+  const traceRoot = await buildCountedRoot(
+    ROOT_DOMAINS.transitionTrace,
+    traceEntries.map(([key, value]) => ({
+      key: Buffer.from(key, "hex"),
+      value: Buffer.from(value, "hex"),
+    })),
+  );
+  const eventToStepRoot = await buildCountedRoot(
+    ROOT_DOMAINS.eventToStep,
+    eventToStepEntries.map(([key, value]) => ({
+      key: Buffer.from(key, "hex"),
+      value: Buffer.from(value, "hex"),
+    })),
+  );
+  const counts = {
+    withdrawalCount: 0n,
+    forcedTransactionCount: 1n,
+    l2TransactionCount: 0n,
+    depositCount: 0n,
+    totalEventCount: 1n,
+    transitionStepCount: 1n,
+  };
+  const header: Header = {
+    ...makeHeader(operatorVkey, now),
+    utxosRoot: finalUtxosRoot.root,
+    forcedTransactionsRoot: forcedRoot.root,
+    transitionTraceRoot: traceRoot.root,
+    eventToStepRoot: eventToStepRoot.root,
+    ...counts,
+  };
+  const headerHash = await Effect.runPromise(hashBlockHeader(header));
+  const payloadCbor = encodeDaPayloadV2({
+    version: DA_PAYLOAD_V2_VERSION,
+    block_body: {
+      header_hash: headerHash,
+      header,
+      utxos: sortedDaEntries([finalUtxo]),
+      withdrawals: [],
+      forced_transactions: sortedDaEntries(forcedEntries),
+      transactions: [],
+      deposits: [],
+      transition_trace: sortedDaEntries(traceEntries),
+      event_to_step: sortedDaEntries(eventToStepEntries),
+      counts,
+    },
+  });
+  const reconstruction = await reconstructDaPayloadV2({
+    payloadCbor,
+    expectedHeaderHash: headerHash,
+    committedHeader: header,
+  });
+  const fault = invalidOneStepTransitionFault(
+    await buildInvalidForcedTransactionNoOpWitness({
+      reconstruction,
+      stepIndex: 0n,
+    }),
+  );
+  return {
+    header,
+    headerHash,
+    proof: buildTransitionFaultProof({ reconstruction, fault }),
+  };
+};
 
 const submitSetupTx = async ({
   lucid,
@@ -1084,7 +1428,6 @@ const submitSetupTx = async ({
       {
         ActivateOperator: {
           new_active_operator_key: header.operatorVkey,
-          new_active_operator_bond_unlock_time: null,
           active_operator_anchor_element_output_index:
             ACTIVE_OPERATOR_ACTIVATION_OUTPUT_INDEX.root,
           active_operator_inserted_node_output_index:
@@ -1094,6 +1437,7 @@ const submitSetupTx = async ({
             contracts.registeredOperators.policyId,
             "test registered-operators activation mint",
           ),
+          active_operators_set_was_empty: true,
         },
       },
       ActiveOperatorMintRedeemer,
@@ -1312,7 +1656,8 @@ const submitSetupTx = async ({
           active_node_output_index: requireUniqueOutputIndex(
             ctx.outputs,
             (output) =>
-              output.address === contracts.activeOperators.spendingScriptAddress &&
+              output.address ===
+                contracts.activeOperators.spendingScriptAddress &&
               (output.assets[activeOperatorNodeUnit] ?? 0n) === 1n,
             "commit active-operator output",
           ),
@@ -1320,11 +1665,6 @@ const submitSetupTx = async ({
             ctx,
             hubOracleUtxo,
             "commit hub-oracle reference input",
-          ),
-          state_queue_input_index: requireInputIndex(
-            ctx,
-            stateQueueRoot.utxo,
-            "commit state-queue root input",
           ),
           state_queue_redeemer_index: requireMintRedeemerIndex(
             ctx,
@@ -1487,7 +1827,8 @@ const submitSuccessorBlockTx = async ({
           active_node_output_index: requireUniqueOutputIndex(
             ctx.outputs,
             (output) =>
-              output.address === contracts.activeOperators.spendingScriptAddress &&
+              output.address ===
+                contracts.activeOperators.spendingScriptAddress &&
               (output.assets[activeOperatorNodeUnit] ?? 0n) === 1n,
             "successor commit active-operator output",
           ),
@@ -1495,11 +1836,6 @@ const submitSuccessorBlockTx = async ({
             ctx,
             hubOracle,
             "successor commit hub-oracle reference input",
-          ),
-          state_queue_input_index: requireInputIndex(
-            ctx,
-            anchorBlock.utxo,
-            "successor commit state-queue anchor input",
           ),
           state_queue_redeemer_index: requireMintRedeemerIndex(
             ctx,
@@ -1563,6 +1899,7 @@ const submitSuccessorBlockTx = async ({
   const continuedAnchor = await Effect.runPromise(
     utxoToStateQueueUTxO(continuedAnchorUtxo, contracts.stateQueue.policyId),
   );
+  await Effect.runPromise(getHeaderFromStateQueueDatum(continuedAnchor.datum));
   expect(continuedAnchor.datum.next).toEqual({
     Key: { key: successorHeaderHash },
   });
@@ -1588,7 +1925,7 @@ const buildRemovalDeploymentInfo = (
       cborHex: script.script,
     },
   });
-  return {
+  return deploymentManifest({
     hubOracleMint: { scriptHash: contracts.hubOracle.policyId },
     fraudProofCatalogueMint: {
       scriptHash: contracts.fraudProofCatalogue.policyId,
@@ -1603,6 +1940,12 @@ const buildRemovalDeploymentInfo = (
     },
     fraudProofDoubleSpend: {
       scriptHash: contracts.fraudProofs.doubleSpend.spendingScriptHash,
+    },
+    fraudProofInvalidRange: {
+      scriptHash: contracts.fraudProofs.invalidRange.spendingScriptHash,
+    },
+    fraudProofTransitionTrace: {
+      scriptHash: contracts.fraudProofs.transitionTrace.spendingScriptHash,
     },
     stateQueueMint: deploymentEntry(
       contracts.stateQueue.policyId,
@@ -1641,7 +1984,7 @@ const buildRemovalDeploymentInfo = (
       contracts.scheduler.spendingScript,
     ),
     settlementMint: { scriptHash: contracts.settlement.policyId },
-  };
+  });
 };
 
 type SuccessorBlockFixture = Awaited<
@@ -1761,8 +2104,7 @@ const instrumentLucidForRemoval = ({
               call: schedulerUtxosAtWithUnitCalls,
             });
             if (
-              schedulerUtxosAtWithUnitCalls ===
-              failSchedulerUtxosAtWithUnitCall
+              schedulerUtxosAtWithUnitCalls === failSchedulerUtxosAtWithUnitCall
             ) {
               throw new Error("instrumented scheduler lookup failure");
             }
@@ -1815,10 +2157,8 @@ const buildProvedDoubleSpendFixture = async ({
   const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
   const transactionInclusion = await buildTransactionInclusionFixture();
   const headerStartTime =
-    alignUnixTimeToEmulatorSlotBoundary(
-      funderLucid,
-      emulator.now() + 120_000,
-    ) - 1;
+    alignUnixTimeToEmulatorSlotBoundary(funderLucid, emulator.now() + 120_000) -
+    1;
   const funderPaymentCredential = getAddressDetails(
     await funderLucid.wallet().address(),
   ).paymentCredential;
@@ -1952,10 +2292,7 @@ const buildProvedDoubleSpendFixture = async ({
     step01Result.secondStepAddress,
     submitInitResult.computationThreadUnit,
   );
-  const step02Datum = Data.from(
-    secondStepUtxo.datum!,
-    DoubleSpendStep02Datum,
-  );
+  const step02Datum = Data.from(secondStepUtxo.datum!, DoubleSpendStep02Datum);
   expect(step02Datum).toEqual({
     fraud_prover: proverPaymentKeyHash,
     data: {
@@ -2058,10 +2395,7 @@ const buildProvedDoubleSpendFixture = async ({
     step03Result.fourthStepAddress,
     submitInitResult.computationThreadUnit,
   );
-  const step04Datum = Data.from(
-    fourthStepUtxo.datum!,
-    DoubleSpendStep04Datum,
-  );
+  const step04Datum = Data.from(fourthStepUtxo.datum!, DoubleSpendStep04Datum);
   expect(step04Datum).toEqual({
     fraud_prover: proverPaymentKeyHash,
     data: {
@@ -2344,7 +2678,7 @@ describe("fault-proof emulator integration", () => {
         cborHex: script.script,
       },
     });
-    const deploymentInfo = {
+    const deploymentInfo = deploymentManifest({
       hubOracleMint: { scriptHash: contracts.hubOracle.policyId },
       fraudProofCatalogueMint: {
         scriptHash: contracts.fraudProofCatalogue.policyId,
@@ -2397,7 +2731,7 @@ describe("fault-proof emulator integration", () => {
         contracts.scheduler.spendingScript,
       ),
       settlementMint: { scriptHash: contracts.settlement.policyId },
-    };
+    });
 
     const result = await submitInit({
       lucid: proverLucid,
@@ -2685,9 +3019,10 @@ describe("fault-proof emulator integration", () => {
     expect(removeResult.transactions.map((tx) => tx.removedHeaderHash)).toEqual(
       [successor.successorHeaderHash, headerHash],
     );
-    expect(
-      removeResult.transactions.map((tx) => tx.slashingApproach),
-    ).toEqual(["SlashActiveOperator", "OperatorAlreadySlashed"]);
+    expect(removeResult.transactions.map((tx) => tx.slashingApproach)).toEqual([
+      "SlashActiveOperator",
+      "OperatorAlreadySlashed",
+    ]);
     await expectStateQueueHeaderOrder({
       lucid: funderLucid,
       contracts,
@@ -2744,6 +3079,443 @@ describe("fault-proof emulator integration", () => {
     expect(retainedFraudProof.assets[step04Result.fraudProofUnit]).toBe(1n);
   }, 180_000);
 
+  it("proves and removes a tail invalid-range block end to end", async () => {
+    const realBlueprint = readBlueprint(realBlueprintPath);
+    const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
+    const funder = generateEmulatorAccount({ lovelace: 40_000_000_000n });
+    const prover = generateEmulatorAccount({ lovelace: 20_000_000_000n });
+    const emulator = new Emulator(
+      [funder, prover],
+      EMULATOR_PROTOCOL_PARAMETERS,
+    );
+    const funderLucid = await Lucid(emulator, "Custom");
+    const proverLucid = await Lucid(emulator, "Custom");
+    funderLucid.selectWallet.fromSeed(funder.seedPhrase);
+    proverLucid.selectWallet.fromSeed(prover.seedPhrase);
+    const proverSigner = resolveProverSigner({
+      network,
+      walletSeedPhrase: prover.seedPhrase,
+    });
+
+    await registerPhasMembershipRewardAccount(funderLucid, realBlueprint);
+    const nonceUtxo = (await funderLucid.wallet().getUtxos())[0];
+    if (nonceUtxo === undefined) {
+      throw new Error("Expected funder wallet to expose a nonce UTxO");
+    }
+
+    const contracts = await buildMinimalFaultProofContracts(
+      realBlueprint,
+      alwaysBlueprint,
+      nonceUtxo,
+      { realInvalidRange: true, alwaysFraudProofCatalogue: true },
+    );
+    const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
+    const headerStartTime =
+      alignUnixTimeToEmulatorSlotBoundary(
+        funderLucid,
+        emulator.now() + 120_000,
+      ) - 1;
+    const invalidRangeInclusion =
+      await buildInvalidRangeTransactionInclusionFixture({
+        blockValidFrom: BigInt(headerStartTime),
+        blockValidTo: BigInt(headerStartTime + 1_000),
+      });
+    expect(invalidRangeInclusion.violationReason).toBe("lower-before-block");
+
+    const funderPaymentCredential = getAddressDetails(
+      await funderLucid.wallet().address(),
+    ).paymentCredential;
+    if (
+      funderPaymentCredential === undefined ||
+      funderPaymentCredential.type !== "Key"
+    ) {
+      throw new Error("Expected funder wallet to expose a payment key hash");
+    }
+    const fraudulentHeader = makeHeader(
+      funderPaymentCredential.hash,
+      headerStartTime,
+      invalidRangeInclusion.transactionsRoot,
+    );
+    const setup = await submitSetupTx({
+      lucid: funderLucid,
+      contracts,
+      nonceUtxo,
+      catalogue,
+      header: fraudulentHeader,
+    });
+    const { headerHash } = setup;
+    await expectStateQueueHeaderOrder({
+      lucid: funderLucid,
+      contracts,
+      expectedHeaderHashes: [headerHash],
+    });
+
+    const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue);
+    const initResult = await submitInit({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: proverSigner,
+      fraudCategory: "invalidRange",
+      fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+      awaitConfirmation: true,
+    });
+
+    expect(initResult.txHash).toHaveLength(64);
+    expect(initResult.fraudulentHeaderHash).toBe(headerHash);
+    expect(initResult.fraudCategoryName).toBe("invalidRange");
+    expect(initResult.fraudCategoryId).toBe(
+      catalogue.categories.invalidRange.categoryId,
+    );
+    expect(initResult.computationThreadAssetName).toBe(
+      `${catalogue.categories.invalidRange.categoryId}${headerHash}`,
+    );
+
+    const firstStepUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
+      initResult.firstStepAddress,
+      initResult.computationThreadUnit,
+    );
+    const proverPaymentCredential = getAddressDetails(
+      await proverLucid.wallet().address(),
+    ).paymentCredential;
+    expect(proverPaymentCredential?.type).toBe("Key");
+    const proverPaymentKeyHash = proverPaymentCredential!.hash;
+
+    const step01Result = await submitInvalidRangeStep01({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: proverSigner,
+      threadOutRef: outRefLabel(firstStepUtxo),
+      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+      txInclusion: parseSubmitStep01TxInclusion(
+        invalidRangeInclusion.badTx.inclusion,
+      ),
+      awaitConfirmation: true,
+    });
+
+    expect(step01Result.txHash).toHaveLength(64);
+    expect(step01Result.fraudulentHeaderHash).toBe(headerHash);
+    expect(step01Result.nativeTxId).toBe(
+      invalidRangeInclusion.badTx.nativeTxId,
+    );
+    expect(step01Result.blockValidFrom).toBe(fraudulentHeader.startTime);
+    expect(step01Result.blockValidTo).toBe(fraudulentHeader.endTime);
+    expect(step01Result.normalizedValidityRange).toEqual(
+      invalidRangeInclusion.normalizedValidityRange,
+    );
+    expect(step01Result.violationReason).toBe("lower-before-block");
+    await expect(
+      proverLucid.utxosAtWithUnit(
+        initResult.firstStepAddress,
+        initResult.computationThreadUnit,
+      ),
+    ).resolves.toHaveLength(0);
+
+    const secondStepUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
+      step01Result.secondStepAddress,
+      initResult.computationThreadUnit,
+    );
+    const step02Datum = Data.from(
+      secondStepUtxo.datum!,
+      InvalidRangeStep02Datum,
+    );
+    expect(step02Datum).toEqual({
+      fraud_prover: proverPaymentKeyHash,
+      data: {
+        block_valid_from: fraudulentHeader.startTime,
+        block_valid_to: fraudulentHeader.endTime,
+        bad_tx_normalized_validity_range:
+          invalidRangeInclusion.normalizedValidityRange,
+      },
+    });
+
+    const step02Result = await submitInvalidRangeStep02({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: proverSigner,
+      threadOutRef: outRefLabel(secondStepUtxo),
+      awaitConfirmation: true,
+    });
+
+    expect(step02Result.txHash).toHaveLength(64);
+    expect(step02Result.fraudulentHeaderHash).toBe(headerHash);
+    expect(step02Result.fraudProofAssetName).toBe(
+      initResult.computationThreadAssetName,
+    );
+    expect(step02Result.fraudProofUnit).toBe(
+      toUnit(
+        contracts.fraudProof.policyId,
+        initResult.computationThreadAssetName,
+      ),
+    );
+    expect(step02Result.violationReason).toBe("lower-before-block");
+    expect(step02Result.normalizedValidityRange).toEqual(
+      invalidRangeInclusion.normalizedValidityRange,
+    );
+    await expect(
+      proverLucid.utxosAtWithUnit(
+        step01Result.secondStepAddress,
+        initResult.computationThreadUnit,
+      ),
+    ).resolves.toHaveLength(0);
+
+    const fraudProofUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
+      step02Result.fraudProofAddress,
+      step02Result.fraudProofUnit,
+    );
+    expect(Data.from(fraudProofUtxo.datum!, FraudProofTokenDatum)).toEqual({
+      fraud_prover: proverPaymentKeyHash,
+    });
+
+    const removeNow = BigInt(emulator.now());
+    const removeResult = await submitRemoveFraudulentBlock({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: proverSigner,
+      fraudCategory: "invalidRange",
+      fraudulentHeaderHash: headerHash,
+      awaitConfirmation: true,
+      requireReferenceScripts: false,
+      validFrom: removeNow > 120_000n ? removeNow - 120_000n : 0n,
+      validTo: removeNow + 300_000n,
+    });
+
+    expect(removeResult.fraudCategory).toBe("invalidRange");
+    expect(removeResult.fraudCategoryId).toBe(
+      catalogue.categories.invalidRange.categoryId,
+    );
+    expect(removeResult.stateQueueMutationLease).toBeNull();
+    expect(removeResult.transactions.map((tx) => tx.kind)).toEqual([
+      "remove-target",
+    ]);
+    expect(removeResult.transactions.map((tx) => tx.removedHeaderHash)).toEqual(
+      [headerHash],
+    );
+    expect(removeResult.transactions.map((tx) => tx.slashingApproach)).toEqual([
+      "SlashActiveOperator",
+    ]);
+    await expectStateQueueHeaderOrder({
+      lucid: funderLucid,
+      contracts,
+      expectedHeaderHashes: [],
+    });
+    await expect(
+      funderLucid.utxosAtWithUnit(
+        contracts.stateQueue.spendingScriptAddress,
+        setup.stateQueueBlockUnit,
+      ),
+    ).resolves.toHaveLength(0);
+    await expect(
+      funderLucid.utxosAtWithUnit(
+        contracts.activeOperators.spendingScriptAddress,
+        setup.activeOperatorNodeUnit,
+      ),
+    ).resolves.toHaveLength(0);
+    const retainedFraudProof = await expectSingleUtxoWithUnit(
+      proverLucid,
+      step02Result.fraudProofAddress,
+      step02Result.fraudProofUnit,
+    );
+    expect(outRefLabel(retainedFraudProof)).toBe(outRefLabel(fraudProofUtxo));
+    expect(retainedFraudProof.assets[step02Result.fraudProofUnit]).toBe(1n);
+  }, 180_000);
+
+  it("submits and removes a tail transition-trace fraud proof end to end", async () => {
+    const realBlueprint = readBlueprint(realBlueprintPath);
+    const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
+    const funder = generateEmulatorAccount({ lovelace: 40_000_000_000n });
+    const prover = generateEmulatorAccount({ lovelace: 20_000_000_000n });
+    const emulator = new Emulator(
+      [funder, prover],
+      EMULATOR_PROTOCOL_PARAMETERS,
+    );
+    const funderLucid = await Lucid(emulator, "Custom");
+    const proverLucid = await Lucid(emulator, "Custom");
+    funderLucid.selectWallet.fromSeed(funder.seedPhrase);
+    proverLucid.selectWallet.fromSeed(prover.seedPhrase);
+    const proverSigner = resolveProverSigner({
+      network,
+      walletSeedPhrase: prover.seedPhrase,
+    });
+
+    await registerPhasMembershipRewardAccount(funderLucid, realBlueprint);
+    const nonceUtxo = (await funderLucid.wallet().getUtxos())[0];
+    if (nonceUtxo === undefined) {
+      throw new Error("Expected funder wallet to expose a nonce UTxO");
+    }
+
+    const contracts = await buildMinimalFaultProofContracts(
+      realBlueprint,
+      alwaysBlueprint,
+      nonceUtxo,
+      { realTransitionTrace: true, alwaysFraudProofCatalogue: true },
+    );
+    const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
+    const funderPaymentCredential = getAddressDetails(
+      await funderLucid.wallet().address(),
+    ).paymentCredential;
+    if (
+      funderPaymentCredential === undefined ||
+      funderPaymentCredential.type !== "Key"
+    ) {
+      throw new Error("Expected funder wallet to expose a payment key hash");
+    }
+    const headerStartTime =
+      alignUnixTimeToEmulatorSlotBoundary(
+        funderLucid,
+        emulator.now() + 120_000,
+      ) - 1;
+    const traceFixture = await buildInvalidForcedTransitionTraceFixture({
+      operatorVkey: funderPaymentCredential.hash,
+      now: headerStartTime,
+    });
+    const setup = await submitSetupTx({
+      lucid: funderLucid,
+      contracts,
+      nonceUtxo,
+      catalogue,
+      header: traceFixture.header,
+    });
+    expect(setup.headerHash).toBe(traceFixture.headerHash);
+    await expectStateQueueHeaderOrder({
+      lucid: funderLucid,
+      contracts,
+      expectedHeaderHashes: [traceFixture.headerHash],
+    });
+
+    const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue);
+    const initResult = await submitInit({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: proverSigner,
+      fraudCategory: "transitionTrace",
+      fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+      awaitConfirmation: true,
+    });
+
+    expect(initResult.txHash).toHaveLength(64);
+    expect(initResult.fraudulentHeaderHash).toBe(traceFixture.headerHash);
+    expect(initResult.fraudCategoryName).toBe("transitionTrace");
+    expect(initResult.fraudCategoryId).toBe(
+      catalogue.categories.transitionTrace.categoryId,
+    );
+    expect(initResult.computationThreadAssetName).toBe(
+      `${catalogue.categories.transitionTrace.categoryId}${traceFixture.headerHash}`,
+    );
+
+    const firstStepUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
+      initResult.firstStepAddress,
+      initResult.computationThreadUnit,
+    );
+    const proverPaymentCredential = getAddressDetails(
+      await proverLucid.wallet().address(),
+    ).paymentCredential;
+    expect(proverPaymentCredential?.type).toBe("Key");
+    const proverPaymentKeyHash = proverPaymentCredential!.hash;
+
+    const proofResult = await submitTransitionTraceProof({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: proverSigner,
+      threadOutRef: outRefLabel(firstStepUtxo),
+      proof: traceFixture.proof,
+      awaitConfirmation: true,
+    });
+
+    expect(proofResult.txHash).toHaveLength(64);
+    expect(proofResult.fraudulentHeaderHash).toBe(traceFixture.headerHash);
+    expect(proofResult.fraudProofAssetName).toBe(
+      initResult.computationThreadAssetName,
+    );
+    expect(proofResult.fraudProofUnit).toBe(
+      toUnit(
+        contracts.fraudProof.policyId,
+        initResult.computationThreadAssetName,
+      ),
+    );
+    expect(proofResult.fraudProofMintRedeemerIndex).not.toBe(
+      proofResult.computationThreadMintRedeemerIndex,
+    );
+    await expect(
+      proverLucid.utxosAtWithUnit(
+        initResult.firstStepAddress,
+        initResult.computationThreadUnit,
+      ),
+    ).resolves.toHaveLength(0);
+
+    const fraudProofUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
+      proofResult.fraudProofAddress,
+      proofResult.fraudProofUnit,
+    );
+    expect(Data.from(fraudProofUtxo.datum!, FraudProofTokenDatum)).toEqual({
+      fraud_prover: proverPaymentKeyHash,
+    });
+
+    const removeNow = BigInt(emulator.now());
+    const removeResult = await submitRemoveFraudulentBlock({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: proverSigner,
+      fraudCategory: "transitionTrace",
+      fraudulentHeaderHash: traceFixture.headerHash,
+      awaitConfirmation: true,
+      requireReferenceScripts: false,
+      validFrom: removeNow > 120_000n ? removeNow - 120_000n : 0n,
+      validTo: removeNow + 300_000n,
+    });
+
+    expect(removeResult.fraudCategory).toBe("transitionTrace");
+    expect(removeResult.fraudCategoryId).toBe(
+      catalogue.categories.transitionTrace.categoryId,
+    );
+    expect(removeResult.stateQueueMutationLease).toBeNull();
+    expect(removeResult.transactions.map((tx) => tx.kind)).toEqual([
+      "remove-target",
+    ]);
+    expect(removeResult.transactions.map((tx) => tx.removedHeaderHash)).toEqual(
+      [traceFixture.headerHash],
+    );
+    expect(removeResult.transactions.map((tx) => tx.slashingApproach)).toEqual([
+      "SlashActiveOperator",
+    ]);
+    await expectStateQueueHeaderOrder({
+      lucid: funderLucid,
+      contracts,
+      expectedHeaderHashes: [],
+    });
+    await expect(
+      funderLucid.utxosAtWithUnit(
+        contracts.stateQueue.spendingScriptAddress,
+        setup.stateQueueBlockUnit,
+      ),
+    ).resolves.toHaveLength(0);
+    const retainedFraudProof = await expectSingleUtxoWithUnit(
+      proverLucid,
+      proofResult.fraudProofAddress,
+      proofResult.fraudProofUnit,
+    );
+    expect(outRefLabel(retainedFraudProof)).toBe(outRefLabel(fraudProofUtxo));
+    expect(retainedFraudProof.assets[proofResult.fraudProofUnit]).toBe(1n);
+  }, 180_000);
+
   it("coordinates non-tail removal with lease acquire, refetch, renew, and release ordering", async () => {
     const fixture = await buildProvedDoubleSpendFixture({ successorCount: 1 });
     const events: RemovalEvent[] = [];
@@ -2771,9 +3543,10 @@ describe("fault-proof emulator integration", () => {
     expect(removeResult.transactions.map((tx) => tx.removedHeaderHash)).toEqual(
       [fixture.successors[0]!.successorHeaderHash, fixture.headerHash],
     );
-    expect(
-      removeResult.transactions.map((tx) => tx.slashingApproach),
-    ).toEqual(["SlashActiveOperator", "OperatorAlreadySlashed"]);
+    expect(removeResult.transactions.map((tx) => tx.slashingApproach)).toEqual([
+      "SlashActiveOperator",
+      "OperatorAlreadySlashed",
+    ]);
 
     const stateQueueLoadIndexes = eventIndexes(events, "stateQueue.utxosAt");
     const acquireIndex = eventIndexes(events, "lease.acquire")[0]!;
@@ -2874,10 +3647,7 @@ describe("fault-proof emulator integration", () => {
     ).rejects.toThrow("instrumented scheduler lookup failure");
 
     const stateQueueLoadIndexes = eventIndexes(events, "stateQueue.utxosAt");
-    const schedulerIndexes = eventIndexes(
-      events,
-      "scheduler.utxosAtWithUnit",
-    );
+    const schedulerIndexes = eventIndexes(events, "scheduler.utxosAtWithUnit");
     const acquireIndex = eventIndexes(events, "lease.acquire")[0]!;
     const renewIndex = eventIndexes(events, "lease.renew")[0]!;
     const failIndex = eventIndexes(events, "lease.fail")[0]!;
@@ -2924,9 +3694,9 @@ describe("fault-proof emulator integration", () => {
     expect(removeResult.transactions.map((tx) => tx.removedHeaderHash)).toEqual(
       [fixture.headerHash],
     );
-    expect(
-      removeResult.transactions.map((tx) => tx.slashingApproach),
-    ).toEqual(["SlashActiveOperator"]);
+    expect(removeResult.transactions.map((tx) => tx.slashingApproach)).toEqual([
+      "SlashActiveOperator",
+    ]);
     expect(eventIndexes(events, "lease.acquire")).toHaveLength(0);
     expect(eventIndexes(events, "lease.renew")).toHaveLength(0);
     expect(eventIndexes(events, "lease.release")).toHaveLength(0);
@@ -2967,9 +3737,7 @@ describe("fault-proof emulator integration", () => {
         fixture.headerHash,
       ],
     );
-    expect(
-      removeResult.transactions.map((tx) => tx.slashingApproach),
-    ).toEqual([
+    expect(removeResult.transactions.map((tx) => tx.slashingApproach)).toEqual([
       "SlashActiveOperator",
       "OperatorAlreadySlashed",
       "OperatorAlreadySlashed",

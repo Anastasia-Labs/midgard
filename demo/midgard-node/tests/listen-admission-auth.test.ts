@@ -1,7 +1,5 @@
 import { cardanoTxBytesToMidgardNativeTxCanonicalCbor } from "@al-ft/midgard-core/codec";
-import type { QueuedTxPayload } from "@al-ft/midgard-validation";
 import { CML } from "@lucid-evolution/lucid";
-import { Effect, Queue } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { buildListenRouter } from "@/commands/listen-router.js";
@@ -13,35 +11,8 @@ import {
   validateSubmitTxCanonicalCbor,
 } from "@/commands/listen-utils.js";
 
+import { makeCardanoSignedMapOutputTxBytes } from "./helpers/cardano-native-fixtures.js";
 import { makeCardanoTxOutput } from "./midgard-output-helpers.js";
-
-const makeCardanoSignedMapOutputTxBytes = (): Buffer => {
-  const signerKey = CML.PrivateKey.generate_ed25519();
-  const inputs = CML.TransactionInputList.new();
-  inputs.add(
-    CML.TransactionInput.new(CML.TransactionHash.from_hex("11".repeat(32)), 0n),
-  );
-  const outputs = CML.TransactionOutputList.new();
-  outputs.add(
-    makeCardanoTxOutput(
-      CML.EnterpriseAddress.new(
-        0,
-        CML.Credential.new_pub_key(signerKey.to_public().hash()),
-      ).to_address(),
-      CML.Value.from_coin(3_000_000n),
-    ),
-  );
-  const body = CML.TransactionBody.new(inputs, outputs, 0n);
-  const witnessSet = CML.TransactionWitnessSet.new();
-  const vkeyWitnesses = CML.VkeywitnessList.new();
-  vkeyWitnesses.add(
-    CML.make_vkey_witness(CML.hash_transaction(body), signerKey),
-  );
-  witnessSet.set_vkeywitnesses(vkeyWitnesses);
-  return Buffer.from(
-    CML.Transaction.new(body, witnessSet, true, undefined).to_cbor_bytes(),
-  );
-};
 
 const expectUnauthorized = (
   result: ReturnType<typeof authorizeAdminRoute>,
@@ -187,8 +158,7 @@ describe("submit admission helpers", () => {
     });
   });
 
-  it("constructs the listen router with the extended utxo routes", async () => {
-    const txQueue = await Effect.runPromise(Queue.unbounded<QueuedTxPayload>());
-    expect(buildListenRouter(txQueue)).toBeDefined();
+  it("constructs the listen router with the extended utxo routes", () => {
+    expect(buildListenRouter()).toBeDefined();
   });
 });

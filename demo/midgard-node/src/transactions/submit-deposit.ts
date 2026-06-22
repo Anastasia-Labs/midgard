@@ -8,20 +8,34 @@ import { normalizeHex as normalizeCoreHex } from "@al-ft/midgard-core/hex";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   type Assets,
+  CML,
+  coreToTxOutput,
+  Data as LucidData,
   getAddressDetails,
   Lucid as makeLucid,
   type LucidEvolution,
   type TxSignBuilder,
   type UTxO,
 } from "@lucid-evolution/lucid";
+import { Option } from "effect";
 import { Data as EffectData, Effect } from "effect";
 
 import {
   parseAdditionalAssetSpecs,
   parseLovelaceAmount,
 } from "@/asset-specs.js";
+import { DepositsDB, DepositSubmissionAttemptsDB } from "@/database/index.js";
+import { DatabaseError } from "@/database/utils/common.js";
+import { reconcileVisibleDepositUTxOs } from "@/fibers/fetch-and-insert-deposit-utxos.js";
 import {
-  handleSignSubmit,
+  Database,
+  Lucid as LucidService,
+  MidgardContracts,
+  NodeConfig,
+} from "@/services/index.js";
+import {
+  awaitSubmittedTransactionConfirmation,
+  signSubmitTransaction,
   TxConfirmError,
   TxSignError,
   TxSubmitError,
@@ -44,12 +58,27 @@ export type DepositBuildMetadata = SDK.DepositBuildMetadata;
 export type SubmittedDeposit = {
   readonly txHash: string;
   readonly metadata: DepositBuildMetadata;
+  readonly confirmationStatus:
+    | "confirmed"
+    | "reconciled_after_timeout"
+    | "ambiguous";
 };
 
 export class SubmitDepositError extends EffectData.TaggedError(
   "SubmitDepositError",
 )<{
   message: string;
+  cause: unknown;
+}> {}
+
+export class DepositConfirmationUnknownError extends EffectData.TaggedError(
+  "DepositConfirmationUnknownError",
+)<{
+  message: string;
+  txHash: string;
+  depositEventId: string;
+  expectedDepositOutRef: string;
+  reconciliation: DepositSubmissionReconciliationResult;
   cause: unknown;
 }> {}
 
@@ -82,6 +111,237 @@ const buildUnsignedDepositTxWithMetadataProgram = (
       ),
     ),
   );
+
+const sortedAssetEntries = (assets: Assets): [string, string][] =>
+  Object.entries(assets)
+    .map(([unit, quantity]) => [unit, quantity.toString()] as [string, string])
+    .sort(([left], [right]) => left.localeCompare(right));
+
+const serializeAssets = (
+  assets: Assets,
+): DepositSubmissionAttemptsDB.SerializedAssets =>
+  Object.fromEntries(sortedAssetEntries(assets));
+
+const sameSerializedAssets = (
+  left: DepositSubmissionAttemptsDB.SerializedAssets,
+  right: DepositSubmissionAttemptsDB.SerializedAssets,
+): boolean => JSON.stringify(left) === JSON.stringify(right);
+
+const inputOutRefsFromSignedTx = (tx: CML.Transaction): readonly string[] => {
+  const inputs = tx.body().inputs();
+  const outRefs: string[] = [];
+  for (let index = 0; index < inputs.len(); index += 1) {
+    const input = inputs.get(index);
+    outRefs.push(
+      `${input.transaction_id().to_hex()}#${Number(input.index()).toString()}`,
+    );
+  }
+  return outRefs;
+};
+
+const decodeDepositDatumEventId = (datumCbor: string): string => {
+  const datum = LucidData.from(datumCbor, SDK.DepositDatum) as SDK.DepositDatum;
+  return LucidData.to(datum.event.id, SDK.OutputReference);
+};
+
+export const depositSubmissionAttemptFromSignedTx = ({
+  txHash,
+  signedTxCbor,
+  metadata,
+  config,
+}: {
+  readonly txHash: string;
+  readonly signedTxCbor: string;
+  readonly metadata: DepositBuildMetadata;
+  readonly config: SubmitDepositConfig;
+}): DepositSubmissionAttemptsDB.InsertSubmittedInput => {
+  const tx = CML.Transaction.from_cbor_hex(signedTxCbor);
+  const outputs = tx.body().outputs();
+  const matches: Array<{
+    readonly outputIndex: number;
+    readonly assets: Assets;
+  }> = [];
+
+  for (let outputIndex = 0; outputIndex < outputs.len(); outputIndex += 1) {
+    const output = coreToTxOutput(outputs.get(outputIndex));
+    if (output.address !== metadata.depositAddress) {
+      continue;
+    }
+    if ((output.assets[metadata.depositAuthUnit] ?? 0n) !== 1n) {
+      continue;
+    }
+    if (output.datum === undefined || output.datum === null) {
+      throw new Error(
+        `Deposit output ${txHash}#${outputIndex.toString()} is missing the inline deposit datum`,
+      );
+    }
+    const actualEventId = decodeDepositDatumEventId(output.datum);
+    if (actualEventId !== metadata.depositEventId) {
+      continue;
+    }
+    matches.push({ outputIndex, assets: output.assets });
+  }
+
+  if (matches.length !== 1) {
+    throw new Error(
+      `Expected exactly one deposit output for event ${metadata.depositEventId} in signed tx ${txHash}; found ${matches.length.toString()}`,
+    );
+  }
+
+  const match = matches[0]!;
+  const expectedAssets: Assets = { ...match.assets };
+  delete expectedAssets[metadata.depositAuthUnit];
+  const expectedSerializedAssets = serializeAssets(expectedAssets);
+  const requestedSerializedAssets = serializeAssets({
+    ...config.additionalAssets,
+    lovelace: config.lovelace,
+  });
+  if (
+    !sameSerializedAssets(expectedSerializedAssets, requestedSerializedAssets)
+  ) {
+    throw new Error(
+      `Deposit output ${txHash}#${match.outputIndex.toString()} does not match requested projected assets`,
+    );
+  }
+
+  return {
+    [DepositSubmissionAttemptsDB.Columns.TX_HASH]: Buffer.from(txHash, "hex"),
+    [DepositSubmissionAttemptsDB.Columns.DEPOSIT_EVENT_ID]: Buffer.from(
+      metadata.depositEventId,
+      "hex",
+    ),
+    [DepositSubmissionAttemptsDB.Columns.EXPECTED_DEPOSIT_OUT_REF]:
+      `${txHash}#${match.outputIndex.toString()}`,
+    [DepositSubmissionAttemptsDB.Columns.EXPECTED_L2_ADDRESS]: config.l2Address,
+    [DepositSubmissionAttemptsDB.Columns.EXPECTED_LOVELACE]:
+      config.lovelace.toString(),
+    [DepositSubmissionAttemptsDB.Columns.EXPECTED_ASSETS]:
+      expectedSerializedAssets,
+    [DepositSubmissionAttemptsDB.Columns.METADATA]: {
+      depositAddress: metadata.depositAddress,
+      depositEventId: metadata.depositEventId,
+      depositAssetName: metadata.depositAssetName,
+      depositAuthUnit: metadata.depositAuthUnit,
+      nonceInput: metadata.nonceInput,
+      validTo: metadata.validTo,
+      inclusionTime: metadata.inclusionTime,
+    },
+    [DepositSubmissionAttemptsDB.Columns.FUNDING_OUT_REFS]:
+      inputOutRefsFromSignedTx(tx),
+  };
+};
+
+export type DepositSubmissionReconciliationResult = {
+  readonly txHash: string;
+  readonly depositEventId: string;
+  readonly status:
+    | "confirmed"
+    | "reconciled_after_timeout"
+    | "ambiguous"
+    | "missing_attempt";
+  readonly expectedDepositOutRef?: string;
+  readonly depositRowsFound: number;
+  readonly reconciledCount: number;
+  readonly nextSafeAction: string;
+};
+
+const findMatchingDepositEntry = (
+  rows: readonly DepositsDB.Entry[],
+  attempt: DepositSubmissionAttemptsDB.Row,
+): DepositsDB.Entry | undefined =>
+  rows.find((row) =>
+    row[DepositsDB.Columns.ID].equals(
+      attempt[DepositSubmissionAttemptsDB.Columns.DEPOSIT_EVENT_ID],
+    ),
+  );
+
+export const reconcileDepositSubmissionAttemptProgram = (
+  txHash: string,
+): Effect.Effect<
+  DepositSubmissionReconciliationResult,
+  DatabaseError | SDK.LucidError,
+  Database | MidgardContracts | LucidService | NodeConfig
+> =>
+  Effect.gen(function* () {
+    const txHashBuffer = Buffer.from(txHash, "hex");
+    const attemptOption =
+      yield* DepositSubmissionAttemptsDB.retrieveByTxHash(txHashBuffer);
+    if (Option.isNone(attemptOption)) {
+      return {
+        txHash,
+        depositEventId: "",
+        status: "missing_attempt",
+        depositRowsFound: 0,
+        reconciledCount: 0,
+        nextSafeAction:
+          "Do not blindly retry; inspect the transaction hash with provider tooling and only rebuild if the submitted transaction is not on-chain.",
+      } as const;
+    }
+
+    const attempt = attemptOption.value;
+    const beforeRows = yield* DepositsDB.retrieveByCardanoTxHash(txHashBuffer);
+    const beforeMatch = findMatchingDepositEntry(beforeRows, attempt);
+    if (beforeMatch !== undefined) {
+      yield* DepositSubmissionAttemptsDB.markReconciled(txHashBuffer);
+      return {
+        txHash,
+        depositEventId:
+          attempt[
+            DepositSubmissionAttemptsDB.Columns.DEPOSIT_EVENT_ID
+          ].toString("hex"),
+        status: "reconciled_after_timeout",
+        expectedDepositOutRef:
+          attempt[DepositSubmissionAttemptsDB.Columns.EXPECTED_DEPOSIT_OUT_REF],
+        depositRowsFound: beforeRows.length,
+        reconciledCount: 0,
+        nextSafeAction:
+          "Deposit is already visible in deposits_utxos; continue the flow without resubmitting.",
+      } as const;
+    }
+
+    const { reconciledCount } = yield* reconcileVisibleDepositUTxOs();
+    const afterRows = yield* DepositsDB.retrieveByCardanoTxHash(txHashBuffer);
+    const afterMatch = findMatchingDepositEntry(afterRows, attempt);
+    if (afterMatch !== undefined) {
+      yield* DepositSubmissionAttemptsDB.markReconciled(txHashBuffer);
+      return {
+        txHash,
+        depositEventId:
+          attempt[
+            DepositSubmissionAttemptsDB.Columns.DEPOSIT_EVENT_ID
+          ].toString("hex"),
+        status: "reconciled_after_timeout",
+        expectedDepositOutRef:
+          attempt[DepositSubmissionAttemptsDB.Columns.EXPECTED_DEPOSIT_OUT_REF],
+        depositRowsFound: afterRows.length,
+        reconciledCount,
+        nextSafeAction:
+          "Deposit was recovered from visible chain state; continue the flow without resubmitting.",
+      } as const;
+    }
+
+    const reason =
+      afterRows.length > 0
+        ? `Cardano tx ${txHash} has deposit rows, but none match expected event ${attempt[
+            DepositSubmissionAttemptsDB.Columns.DEPOSIT_EVENT_ID
+          ].toString("hex")}.`
+        : `Cardano tx ${txHash} is not visible in deposits_utxos after reconciliation.`;
+    yield* DepositSubmissionAttemptsDB.markAmbiguous(txHashBuffer, reason);
+    return {
+      txHash,
+      depositEventId:
+        attempt[DepositSubmissionAttemptsDB.Columns.DEPOSIT_EVENT_ID].toString(
+          "hex",
+        ),
+      status: "ambiguous",
+      expectedDepositOutRef:
+        attempt[DepositSubmissionAttemptsDB.Columns.EXPECTED_DEPOSIT_OUT_REF],
+      depositRowsFound: afterRows.length,
+      reconciledCount,
+      nextSafeAction:
+        "Do not resubmit yet; inspect provider confirmation and deposit contract UTxOs for this tx hash/event id.",
+    } as const;
+  });
 
 export const buildUnsignedDepositTxProgram = (
   lucid: LucidEvolution,
@@ -159,6 +419,9 @@ export const submitDepositWithMetadataProgram = (
   | TxSubmitError
   | TxConfirmError
   | TxSignError
+  | DatabaseError
+  | DepositConfirmationUnknownError,
+  Database | MidgardContracts | LucidService | NodeConfig
 > =>
   Effect.gen(function* () {
     const { tx, metadata } = yield* buildUnsignedDepositTxWithMetadataProgram(
@@ -166,8 +429,62 @@ export const submitDepositWithMetadataProgram = (
       contracts,
       config,
     );
-    const txHash = yield* handleSignSubmit(lucid, tx);
-    return { txHash, metadata };
+    const submission = yield* signSubmitTransaction(lucid, tx);
+    const attempt = yield* Effect.try({
+      try: () =>
+        depositSubmissionAttemptFromSignedTx({
+          txHash: submission.txHash,
+          signedTxCbor: submission.signedTxCbor,
+          metadata,
+          config,
+        }),
+      catch: (cause) =>
+        new SubmitDepositError({
+          message:
+            "Failed to derive expected deposit output from the submitted transaction",
+          cause,
+        }),
+    });
+    yield* DepositSubmissionAttemptsDB.insertSubmitted(attempt);
+
+    const confirmationStatus = yield* awaitSubmittedTransactionConfirmation(
+      lucid,
+      submission,
+    ).pipe(
+      Effect.tap(() =>
+        DepositSubmissionAttemptsDB.markConfirmed(
+          Buffer.from(submission.txHash, "hex"),
+        ),
+      ),
+      Effect.as("confirmed" as const),
+      Effect.catchTag("TxConfirmError", (error) =>
+        Effect.gen(function* () {
+          yield* Effect.logWarning(
+            `Deposit tx ${submission.txHash} confirmation timed out; reconciling visible deposit state before allowing retry.`,
+          );
+          const reconciliation =
+            yield* reconcileDepositSubmissionAttemptProgram(submission.txHash);
+          if (reconciliation.status === "reconciled_after_timeout") {
+            return reconciliation.status;
+          }
+          return yield* Effect.fail(
+            new DepositConfirmationUnknownError({
+              message:
+                "Deposit transaction confirmation is unknown after timeout and reconciliation did not prove the expected deposit output.",
+              txHash: submission.txHash,
+              depositEventId: metadata.depositEventId,
+              expectedDepositOutRef:
+                attempt[
+                  DepositSubmissionAttemptsDB.Columns.EXPECTED_DEPOSIT_OUT_REF
+                ],
+              reconciliation,
+              cause: error,
+            }),
+          );
+        }),
+      ),
+    );
+    return { txHash: submission.txHash, metadata, confirmationStatus };
   });
 
 type UnknownRecord = Record<string, unknown>;

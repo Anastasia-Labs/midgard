@@ -630,9 +630,7 @@ const decodeNativeScriptsToCardano = (
   };
 };
 
-const valueFromMultiasset = (
-  multiasset: CML.MultiAsset,
-): CML.Value =>
+const valueFromMultiasset = (multiasset: CML.MultiAsset): CML.Value =>
   multiasset.policy_count() === 0
     ? CML.Value.zero()
     : CML.Value.new(0n, multiasset);

@@ -1,3 +1,4 @@
+use aiken/builtin
 use aiken/collection/dict
 use aiken/collection/list
 use aiken/crypto.{verify_ed25519_signature}
@@ -11,8 +12,10 @@ use midgard/common/utils
 use midgard/da_attestation_types.{
   AddSignatures, ApplyToStateQueue, BurnForStateQueue, DaAttestationDatum,
   DaParamsDatum, Init, MintRedeemer, SpendRedeemer,
-  attestation_asset_name_prefix, da_params_asset_name, max_indexed_signer_count,
-  signature_byte_count, signature_witness_byte_count,
+  attestation_asset_name_prefix, attested_signer_bitmap_byte_count,
+  da_params_asset_name,
+  empty_attested_signer_bitmap, signature_byte_count,
+  signature_witness_byte_count, state_queue_mint_reference_script_asset_name,
   verification_key_byte_count,
 }
 use midgard/ledger_state.{HeaderHash}
@@ -29,58 +32,38 @@ fn attestation_message(header_hash: HeaderHash) -> ByteArray {
 }
 
 fn bytearray_slice(bytes: ByteArray, offset: Int, byte_count: Int) -> ByteArray {
-  bytearray.slice(bytes, offset, offset + byte_count - 1)
+  builtin.slice_bytearray(offset, byte_count, bytes)
 }
 
-fn sorted_unique_vkey_len_at_most(keys: ByteArray, max: Int) -> Int {
-  expect max > 0
-  let keys_len = bytearray.length(keys)
-  expect keys_len >= verification_key_byte_count
-  let first = bytearray_slice(keys, 0, verification_key_byte_count)
-  sorted_unique_vkey_len_from(
-    keys,
-    verification_key_byte_count,
-    first,
-    1,
-    max,
-    keys_len,
-  )
+fn signer_bit_mask(signer_index: Int) -> Int {
+  let byte_index = signer_index / 8
+  let bit_in_byte = signer_index - byte_index * 8
+  bytearray.at(#[128, 64, 32, 16, 8, 4, 2, 1], bit_in_byte)
 }
 
-fn sorted_unique_vkey_len_from(
-  keys: ByteArray,
-  offset: Int,
-  previous: ByteArray,
-  len: Int,
-  max: Int,
-  keys_len: Int,
-) -> Int {
-  if offset == keys_len {
-    len
-  } else {
-    expect offset + verification_key_byte_count <= keys_len
-    let key = bytearray_slice(keys, offset, verification_key_byte_count)
-    expect bytearray.compare(previous, key) == Less
-    let next_len = len + 1
-    expect next_len <= max
-    sorted_unique_vkey_len_from(
-      keys,
-      offset + verification_key_byte_count,
-      key,
-      next_len,
-      max,
-      keys_len,
-    )
-  }
+fn signer_bit_is_clear(byte: Int, mask: Int) -> Bool {
+  let high_bit_window = byte / mask
+  let next_window = byte / (mask * 2)
+  high_bit_window - next_window * 2 == 0
 }
 
-fn validate_da_committee(datum: DaParamsDatum) -> Bool {
-  expect datum.da_threshold > 0
-  let committee_len =
-    sorted_unique_vkey_len_at_most(datum.committee, max_indexed_signer_count)
-  expect datum.da_threshold <= committee_len
+fn set_attested_signer(attested: ByteArray, signer_index: Int) -> ByteArray {
+  expect bytearray.length(attested) == attested_signer_bitmap_byte_count
 
-  True
+  let byte_index = signer_index / 8
+  let mask = signer_bit_mask(signer_index)
+  let old_byte = bytearray.at(attested, byte_index)
+  expect signer_bit_is_clear(old_byte, mask)
+
+  bytearray_slice(attested, 0, byte_index)
+    |> bytearray.concat(builtin.cons_bytearray(old_byte + mask, #""))
+    |> bytearray.concat(
+        bytearray_slice(
+          attested,
+          byte_index + 1,
+          attested_signer_bitmap_byte_count - byte_index - 1,
+        ),
+      )
 }
 
 fn get_da_params(
@@ -104,8 +87,27 @@ fn get_da_params(
     assets.quantity_of(value, da_params_policy_id, da_params_asset_name) == 1
 
   expect datum: DaParamsDatum = datum_data
-  expect validate_da_committee(datum)
   datum
+}
+
+fn get_authenticated_state_queue_policy_id(
+  reference_inputs: List<Input>,
+  reference_script_auth_policy_id: PolicyId,
+  state_queue_mint_ref_script_input_index: Int,
+) -> PolicyId {
+  expect Some(Input {
+    output: Output { value, reference_script: Some(state_queue_policy_id), .. },
+    ..
+  }) = reference_inputs |> list.at(state_queue_mint_ref_script_input_index)
+
+  expect
+    assets.has_nft_strict(
+      value,
+      reference_script_auth_policy_id,
+      state_queue_mint_reference_script_asset_name,
+    )
+
+  state_queue_policy_id
 }
 
 fn output_at_index(outputs: List<Output>, output_index: Int) -> Output {
@@ -139,7 +141,8 @@ fn validate_init_output(
   expect datum: DaAttestationDatum = datum_data
   expect datum.header_hash == expected_header_hash
   expect datum.da_threshold == params.da_threshold
-  expect datum.remaining_signers == params.committee
+  expect datum.committee_signers_hash == params.committee_signers_hash
+  expect datum.attested_signers == empty_attested_signer_bitmap
   expect datum.attestation_count == 0
 
   let asset_name = attestation_asset_name(datum.header_hash)
@@ -151,65 +154,39 @@ fn validate_init_output(
 fn verify_indexed_signatures(
   signatures: ByteArray,
   message: ByteArray,
-  input_remaining: ByteArray,
-  output_remaining: ByteArray,
+  committee_signers: ByteArray,
+  input_attested: ByteArray,
   min_signer_index: Int,
-  input_cursor: Int,
-  output_cursor: Int,
   signature_cursor: Int,
-  input_len: Int,
   signatures_len: Int,
-  count: Int,
-) -> Int {
+) -> ByteArray {
   if signature_cursor == signatures_len {
-    expect
-      bytearray.drop(input_remaining, input_cursor) == bytearray.drop(
-        output_remaining,
-        output_cursor,
-      )
-    count
+    input_attested
   } else {
-    expect signature_cursor + signature_witness_byte_count <= signatures_len
     let signer_index = bytearray.at(signatures, signature_cursor)
     expect signer_index >= min_signer_index
-    let signer_offset = signer_index * verification_key_byte_count
-    let next_input_cursor = signer_offset + verification_key_byte_count
-    expect next_input_cursor <= input_len
-
-    let copied_byte_count = signer_offset - input_cursor
     expect
-      if copied_byte_count == 0 {
-        True
-      } else {
-        bytearray_slice(input_remaining, input_cursor, copied_byte_count) == bytearray_slice(
-          output_remaining,
-          output_cursor,
-          copied_byte_count,
-        )
-      }
+      signer_index < bytearray.length(committee_signers) / verification_key_byte_count
 
     let verification_key =
       bytearray_slice(
-        input_remaining,
-        signer_offset,
+        committee_signers,
+        signer_index * verification_key_byte_count,
         verification_key_byte_count,
       )
     let signature =
       bytearray_slice(signatures, signature_cursor + 1, signature_byte_count)
     expect verify_ed25519_signature(verification_key, message, signature)
+    let attested_signers = set_attested_signer(input_attested, signer_index)
 
     verify_indexed_signatures(
       signatures,
       message,
-      input_remaining,
-      output_remaining,
+      committee_signers,
+      attested_signers,
       signer_index + 1,
-      next_input_cursor,
-      output_cursor + copied_byte_count,
       signature_cursor + signature_witness_byte_count,
-      input_len,
       signatures_len,
-      count + 1,
     )
   }
 }
@@ -239,6 +216,8 @@ fn get_attestation_input_datum(
 pub fn validate_add_signatures(
   datum: Option<DaAttestationDatum>,
   output_index: Int,
+  da_params_policy_id: PolicyId,
+  da_params_ref_input_index: Int,
   signatures: ByteArray,
   own_ref: OutputReference,
   tx: Transaction,
@@ -270,32 +249,42 @@ pub fn validate_add_signatures(
   expect output_datum: DaAttestationDatum = output_datum_data
   expect output_datum.header_hash == input_datum.header_hash
   expect output_datum.da_threshold == input_datum.da_threshold
+  expect
+    output_datum.committee_signers_hash == input_datum.committee_signers_hash
 
-  let verified_count =
+  let params =
+    get_da_params(
+      tx.reference_inputs,
+      da_params_policy_id,
+      da_params_ref_input_index,
+    )
+  expect params.committee_signers_hash == input_datum.committee_signers_hash
+
+  let signatures_len = bytearray.length(signatures)
+  expect signatures_len > 0
+  expect signatures_len % signature_witness_byte_count == 0
+
+  let attested_signers =
     verify_indexed_signatures(
       signatures,
       attestation_message(input_datum.header_hash),
-      input_datum.remaining_signers,
-      output_datum.remaining_signers,
+      params.committee,
+      input_datum.attested_signers,
       0,
       0,
-      0,
-      0,
-      bytearray.length(input_datum.remaining_signers),
-      bytearray.length(signatures),
-      0,
+      signatures_len,
     )
-  expect verified_count > 0
-
-  expect
-    output_datum.attestation_count == input_datum.attestation_count + verified_count
+  let attestation_count = builtin.count_set_bits(attested_signers)
+  expect output_datum.attested_signers == attested_signers
+  expect output_datum.attestation_count == attestation_count
+  expect attestation_count > input_datum.attestation_count
 
   True
 }
 
 validator da_attestation(
   da_params_policy_id: PolicyId,
-  state_queue_policy_id: PolicyId,
+  reference_script_auth_policy_id: PolicyId,
 ) {
   mint(redeemer: MintRedeemer, own_policy_id: PolicyId, tx: Transaction) {
     when redeemer is {
@@ -303,12 +292,19 @@ validator da_attestation(
         output_index,
         da_params_ref_input_index,
         state_queue_ref_input_index,
+        state_queue_mint_ref_script_input_index,
       } -> {
         let params =
           get_da_params(
             tx.reference_inputs,
             da_params_policy_id,
             da_params_ref_input_index,
+          )
+        let state_queue_policy_id =
+          get_authenticated_state_queue_policy_id(
+            tx.reference_inputs,
+            reference_script_auth_policy_id,
+            state_queue_mint_ref_script_input_index,
           )
 
         let expected_header_hash =
@@ -341,6 +337,7 @@ validator da_attestation(
         da_attestation_input_index,
         state_queue_input_index,
         state_queue_output_index,
+        state_queue_mint_ref_script_input_index,
       } -> {
         let attestation_datum =
           get_attestation_input_datum(
@@ -359,6 +356,13 @@ validator da_attestation(
             |> dict.to_pairs
         expect minted_asset_name == attestation_asset
         expect minted_quantity == -1
+
+        let state_queue_policy_id =
+          get_authenticated_state_queue_policy_id(
+            tx.reference_inputs,
+            reference_script_auth_policy_id,
+            state_queue_mint_ref_script_input_index,
+          )
 
         state_queue.validate_da_attestation_attachment(
           tx.inputs,
@@ -380,8 +384,16 @@ validator da_attestation(
     tx: Transaction,
   ) {
     when redeemer is {
-      AddSignatures { output_index, signatures } ->
-        validate_add_signatures(datum, output_index, signatures, own_ref, tx)
+      AddSignatures { output_index, da_params_ref_input_index, signatures } ->
+        validate_add_signatures(
+          datum,
+          output_index,
+          da_params_policy_id,
+          da_params_ref_input_index,
+          signatures,
+          own_ref,
+          tx,
+        )
       BurnForStateQueue { mint_redeemer_index } -> {
         let own_policy_id =
           tx.inputs

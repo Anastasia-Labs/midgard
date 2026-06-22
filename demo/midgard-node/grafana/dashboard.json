@@ -88,7 +88,7 @@
               "options": {
                 "mode": "exclude",
                 "names": [
-                  "{__name__=\"tx_queue_size\", instance=\"midgard-node:9464\", job=\"midgard_nodes\"}"
+                  "{__name__=\"validation_queue_depth\", instance=\"midgard-node:9464\", job=\"midgard_nodes\"}"
                 ],
                 "prefix": "All except:",
                 "readOnly": true
@@ -132,7 +132,7 @@
         {
           "disableTextWrap": false,
           "editorMode": "builder",
-          "expr": "tx_queue_size{instance=\"midgard-node:9464\"}",
+          "expr": "validation_queue_depth{instance=\"midgard-node:9464\"}",
           "fullMetaSearch": false,
           "includeNullMetadata": true,
           "legendFormat": "__auto",

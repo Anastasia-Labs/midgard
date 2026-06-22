@@ -1,5 +1,5 @@
 use aiken/collection/dict
-use aiken/crypto.{VerificationKeyHash}
+use aiken/crypto.{VerificationKeyHash, blake2b_256}
 use aiken/primitive/bytearray
 use cardano/address.{Address, Script}
 use cardano/assets.{PolicyId, Value}
@@ -111,6 +111,7 @@ fn valid_datum(
       max_committee_size,
       verification_key_byte_count,
     )
+  expect datum.committee_signers_hash == blake2b_256(datum.committee)
   expect datum.da_threshold <= committee_len
 
   expect datum.update_threshold > 0

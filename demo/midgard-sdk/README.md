@@ -29,7 +29,7 @@ pnpm repack
 ```json
 {
   "dependencies": {
-    "@al-ft/midgard-sdk": "file:~/path/to/midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz"
+    "@al-ft/midgard-sdk": "file:./path/to/al-ft-midgard-sdk-0.1.0.tgz"
   }
 }
 ```

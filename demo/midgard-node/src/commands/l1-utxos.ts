@@ -1,25 +1,10 @@
 import { normalizeTxHash } from "@al-ft/midgard-core/out-ref";
-import type { Assets } from "@lucid-evolution/lucid";
+import type { Assets, Network, UTxO } from "@lucid-evolution/lucid";
+import * as LE from "@lucid-evolution/lucid";
 
-import { resolveBlockfrostApiUrl } from "@/commands/address-from-seed.js";
+import { resolveNetwork } from "@/commands/address-from-seed.js";
 import { parseAddressArgument } from "@/commands/command-utils.js";
 import { compareOutRefs } from "@/tx-context.js";
-
-export type BlockfrostAmount = {
-  readonly unit: string;
-  readonly quantity: string;
-};
-
-export type BlockfrostAddressUtxo = {
-  readonly tx_hash: string;
-  readonly output_index: number;
-  readonly amount: readonly BlockfrostAmount[];
-  readonly block?: string;
-  readonly tx_index?: number;
-  readonly data_hash?: string | null;
-  readonly inline_datum?: string | null;
-  readonly reference_script_hash?: string | null;
-};
 
 export type L1Utxo = {
   readonly txHash: string;
@@ -39,14 +24,25 @@ export type L1UtxosResult = {
   readonly utxos: readonly L1Utxo[];
 };
 
-export type BlockfrostFetchConfig = {
+export type KupmiosFetchConfig = {
   readonly address: string;
-  readonly apiUrl: string;
-  readonly apiKey: string;
-  readonly fetchImpl?: typeof fetch;
+  readonly kupoUrl: string;
+  readonly ogmiosUrl: string;
+  readonly network: Network;
+  readonly lucidFactory?: LucidFactory;
 };
 
-const BLOCKFROST_PAGE_SIZE = 100;
+export type KupmiosConfig = {
+  readonly kupoUrl: string;
+  readonly ogmiosUrl: string;
+  readonly network: Network;
+};
+
+type LucidUtxoReader = Pick<LE.LucidEvolution, "utxosAt">;
+type LucidFactory = (
+  provider: LE.Provider,
+  network: Network,
+) => Promise<LucidUtxoReader>;
 
 const orderAssetsByUnit = (assets: Readonly<Assets>): Readonly<Assets> =>
   Object.fromEntries(
@@ -66,189 +62,65 @@ const sumL1UtxoAssets = (utxos: readonly L1Utxo[]): Readonly<Assets> => {
 };
 
 /**
- * Validates and normalizes the Blockfrost connection settings for the command.
+ * Validates and normalizes local Kupmios connection settings for the command.
  */
-export const resolveBlockfrostConfig = (input?: {
-  readonly apiUrl?: string;
-  readonly apiKey?: string;
+export const resolveKupmiosConfig = (input?: {
+  readonly kupoUrl?: string;
+  readonly ogmiosUrl?: string;
+  readonly network?: string;
   readonly env?: NodeJS.ProcessEnv;
-}): {
-  readonly apiUrl: string;
-  readonly apiKey: string;
-} => {
+}): KupmiosConfig => {
   const env = input?.env ?? process.env;
-  const apiUrl = resolveBlockfrostApiUrl({
-    blockfrostApiUrl: input?.apiUrl,
-    env,
-  });
-  const rawApiKey =
-    input?.apiKey?.trim() ?? env.L1_BLOCKFROST_KEY?.trim() ?? "";
+  const kupoUrl = input?.kupoUrl?.trim() ?? env.L1_KUPO_KEY?.trim() ?? "";
+  const ogmiosUrl = input?.ogmiosUrl?.trim() ?? env.L1_OGMIOS_KEY?.trim() ?? "";
+  const network = resolveNetwork({ network: input?.network, env });
 
-  if (rawApiKey.length === 0) {
+  if (kupoUrl.length === 0) {
     throw new Error(
-      "Blockfrost API key is required. Pass --blockfrost-key or set L1_BLOCKFROST_KEY.",
+      "Kupo URL is required. Pass --kupo-url or set L1_KUPO_KEY.",
     );
   }
-
+  if (ogmiosUrl.length === 0) {
+    throw new Error(
+      "Ogmios URL is required. Pass --ogmios-url or set L1_OGMIOS_KEY.",
+    );
+  }
   return {
-    apiUrl,
-    apiKey: rawApiKey,
+    kupoUrl: new URL(kupoUrl).toString().replace(/\/+$/, ""),
+    ogmiosUrl: new URL(ogmiosUrl).toString().replace(/\/+$/, ""),
+    network,
   };
 };
 
-const parseBlockfrostAmount = (
-  amount: unknown,
-  index: number,
-): BlockfrostAmount => {
-  if (
-    typeof amount !== "object" ||
-    amount === null ||
-    typeof (amount as { unit?: unknown }).unit !== "string" ||
-    typeof (amount as { quantity?: unknown }).quantity !== "string"
-  ) {
-    throw new Error(
-      `Blockfrost amount[${index.toString()}] must contain string unit and quantity fields.`,
-    );
-  }
-
-  const { unit, quantity } = amount as { unit: string; quantity: string };
-  if (!/^\d+$/.test(quantity)) {
-    throw new Error(
-      `Blockfrost amount[${index.toString()}].quantity must be a non-negative integer string.`,
-    );
-  }
-
+export const lucidUtxoToL1Utxo = (utxo: UTxO): L1Utxo => {
   return {
-    unit,
-    quantity,
-  };
-};
-
-const parseBlockfrostAssets = (
-  amounts: readonly BlockfrostAmount[],
-): Readonly<Assets> => {
-  const assets: Assets = {};
-  for (const { unit, quantity } of amounts) {
-    assets[unit] = BigInt(quantity);
-  }
-  if (assets.lovelace === undefined) {
-    assets.lovelace = 0n;
-  }
-  return orderAssetsByUnit(assets);
-};
-
-/**
- * Parses one raw Blockfrost address UTxO record into the command's stable shape.
- */
-export const parseBlockfrostAddressUtxo = (
-  entry: unknown,
-  index: number,
-): L1Utxo => {
-  if (typeof entry !== "object" || entry === null) {
-    throw new Error(
-      `Blockfrost UTxO entry[${index.toString()}] must be an object.`,
-    );
-  }
-
-  const candidate = entry as Record<string, unknown>;
-  const fieldName = `Blockfrost UTxO entry[${index.toString()}]`;
-  if (typeof candidate.tx_hash !== "string") {
-    throw new Error(`${fieldName}.tx_hash must be a 32-byte hex string.`);
-  }
-  const txHash = normalizeTxHash(candidate.tx_hash, `${fieldName}.tx_hash`);
-  if (
-    typeof candidate.output_index !== "number" ||
-    !Number.isInteger(candidate.output_index) ||
-    candidate.output_index < 0
-  ) {
-    throw new Error(
-      `${fieldName}.output_index must be a non-negative integer.`,
-    );
-  }
-  if (!Array.isArray(candidate.amount)) {
-    throw new Error(`${fieldName}.amount must be an array.`);
-  }
-
-  const amount = candidate.amount.map((item, amountIndex) =>
-    parseBlockfrostAmount(item, amountIndex),
-  );
-  const txIndex =
-    typeof candidate.tx_index === "number" &&
-    Number.isInteger(candidate.tx_index) &&
-    candidate.tx_index >= 0
-      ? candidate.tx_index
-      : null;
-
-  return {
-    txHash,
-    outputIndex: candidate.output_index,
-    assets: parseBlockfrostAssets(amount),
-    block: typeof candidate.block === "string" ? candidate.block : null,
-    txIndex,
+    txHash: normalizeTxHash(utxo.txHash, "utxo.txHash"),
+    outputIndex: utxo.outputIndex,
+    assets: orderAssetsByUnit(utxo.assets),
+    block: null,
+    txIndex: null,
     dataHash:
-      typeof candidate.data_hash === "string" ? candidate.data_hash : null,
-    inlineDatum:
-      typeof candidate.inline_datum === "string"
-        ? candidate.inline_datum
+      typeof utxo.datumHash === "string" && utxo.datumHash.length > 0
+        ? utxo.datumHash
         : null,
-    referenceScriptHash:
-      typeof candidate.reference_script_hash === "string"
-        ? candidate.reference_script_hash
-        : null,
+    inlineDatum: typeof utxo.datum === "string" ? utxo.datum : null,
+    referenceScriptHash: utxo.scriptRef === undefined ? null : "present",
   };
 };
 
 /**
- * Parses the raw Blockfrost address UTxO page payload.
+ * Fetches local Kupmios-visible UTxOs for a payment address.
  */
-export const parseBlockfrostAddressUtxoPage = (
-  payload: unknown,
-): readonly L1Utxo[] => {
-  if (!Array.isArray(payload)) {
-    throw new Error("Blockfrost address UTxO response must be a JSON array.");
-  }
-
-  return payload.map((entry, index) =>
-    parseBlockfrostAddressUtxo(entry, index),
-  );
-};
-
-/**
- * Fetches every visible Blockfrost UTxO page for a payment address.
- */
-export const fetchAllBlockfrostAddressUtxos = async ({
+export const fetchKupmiosAddressUtxos = async ({
   address,
-  apiUrl,
-  apiKey,
-  fetchImpl = fetch,
-}: BlockfrostFetchConfig): Promise<L1UtxosResult> => {
+  kupoUrl,
+  ogmiosUrl,
+  network,
+  lucidFactory = LE.Lucid,
+}: KupmiosFetchConfig): Promise<L1UtxosResult> => {
   const normalizedAddress = parseAddressArgument(address);
-  const utxos: L1Utxo[] = [];
-
-  for (let page = 1; ; page += 1) {
-    const response = await fetchImpl(
-      `${apiUrl}/addresses/${normalizedAddress}/utxos?page=${page.toString()}&count=${BLOCKFROST_PAGE_SIZE.toString()}&order=asc`,
-      {
-        headers: {
-          project_id: apiKey,
-        },
-      },
-    );
-
-    if (!response.ok) {
-      const body = await response.text();
-      throw new Error(
-        `Blockfrost address UTxO lookup failed with status ${response.status}: ${body}`,
-      );
-    }
-
-    const pageItems = parseBlockfrostAddressUtxoPage(await response.json());
-    utxos.push(...pageItems);
-
-    if (pageItems.length < BLOCKFROST_PAGE_SIZE) {
-      break;
-    }
-  }
+  const lucid = await lucidFactory(new LE.Kupmios(kupoUrl, ogmiosUrl), network);
+  const utxos = (await lucid.utxosAt(normalizedAddress)).map(lucidUtxoToL1Utxo);
 
   utxos.sort(compareOutRefs);
 

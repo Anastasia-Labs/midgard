@@ -1,18 +1,21 @@
 import { Data } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import { Data as EffectData, Effect } from "effect";
 
 import {
   AddressSchema,
   DataCoercionError,
+  GenericErrorFields,
   H32Schema,
   hashHexWithBlake2b,
   HashingError,
+  MerkleRoot,
   MerkleRootSchema,
   OutputReferenceSchema,
   POSIXTimeSchema,
   PubKeyHashSchema,
   ValueSchema,
 } from "@/common.js";
+import { EMPTY_MERKLE_TREE_ROOT } from "@/ledger-constants.js";
 
 export const HeaderHashSchema = Data.Bytes({ minLength: 28, maxLength: 28 });
 export type HeaderHash = Data.Static<typeof HeaderHashSchema>;
@@ -21,9 +24,18 @@ export const HeaderHash = HeaderHashSchema as unknown as HeaderHash;
 export const HeaderSchema = Data.Object({
   prevUtxosRoot: MerkleRootSchema,
   utxosRoot: MerkleRootSchema,
+  withdrawalsRoot: MerkleRootSchema,
+  forcedTransactionsRoot: MerkleRootSchema,
   transactionsRoot: MerkleRootSchema,
   depositsRoot: MerkleRootSchema,
-  withdrawalsRoot: MerkleRootSchema,
+  transitionTraceRoot: MerkleRootSchema,
+  eventToStepRoot: MerkleRootSchema,
+  withdrawalCount: Data.Integer(),
+  forcedTransactionCount: Data.Integer(),
+  l2TransactionCount: Data.Integer(),
+  depositCount: Data.Integer(),
+  totalEventCount: Data.Integer(),
+  transitionStepCount: Data.Integer(),
   startTime: POSIXTimeSchema,
   endTime: POSIXTimeSchema,
   prevHeaderHash: HeaderHashSchema,
@@ -33,6 +45,219 @@ export const HeaderSchema = Data.Object({
 export type Header = Data.Static<typeof HeaderSchema>;
 export const Header = HeaderSchema as unknown as Header;
 
+export type HeaderTransitionCommitments = Pick<
+  Header,
+  | "forcedTransactionsRoot"
+  | "transitionTraceRoot"
+  | "eventToStepRoot"
+  | "withdrawalCount"
+  | "forcedTransactionCount"
+  | "l2TransactionCount"
+  | "depositCount"
+  | "totalEventCount"
+  | "transitionStepCount"
+>;
+
+export const EMPTY_HEADER_TRANSITION_COMMITMENTS: HeaderTransitionCommitments =
+  {
+    forcedTransactionsRoot: EMPTY_MERKLE_TREE_ROOT,
+    transitionTraceRoot: EMPTY_MERKLE_TREE_ROOT,
+    eventToStepRoot: EMPTY_MERKLE_TREE_ROOT,
+    withdrawalCount: 0n,
+    forcedTransactionCount: 0n,
+    l2TransactionCount: 0n,
+    depositCount: 0n,
+    totalEventCount: 0n,
+    transitionStepCount: 0n,
+  };
+
+export type HeaderTransitionCommitmentSourceRoots = Pick<
+  Header,
+  | "withdrawalsRoot"
+  | "forcedTransactionsRoot"
+  | "transactionsRoot"
+  | "depositsRoot"
+>;
+
+export type HeaderTransitionCommitmentCounts = Pick<
+  HeaderTransitionCommitments,
+  | "withdrawalCount"
+  | "forcedTransactionCount"
+  | "l2TransactionCount"
+  | "depositCount"
+>;
+
+export type MakeHeaderTransitionCommitmentsInput =
+  HeaderTransitionCommitmentSourceRoots &
+    HeaderTransitionCommitmentCounts &
+    Partial<
+      Pick<
+        HeaderTransitionCommitments,
+        "transitionTraceRoot" | "eventToStepRoot" | "transitionStepCount"
+      >
+    >;
+
+export class HeaderTransitionCommitmentsError extends EffectData.TaggedError(
+  "HeaderTransitionCommitmentsError",
+)<GenericErrorFields> {}
+
+const headerTransitionCommitmentsError = (
+  message: string,
+  cause: unknown,
+): HeaderTransitionCommitmentsError =>
+  new HeaderTransitionCommitmentsError({ message, cause });
+
+export const validateHeaderTransitionCommitmentsProgram = (
+  commitments: HeaderTransitionCommitments,
+): Effect.Effect<
+  HeaderTransitionCommitments,
+  HeaderTransitionCommitmentsError
+> =>
+  Effect.gen(function* () {
+    const countEntries = [
+      ["withdrawalCount", commitments.withdrawalCount],
+      ["forcedTransactionCount", commitments.forcedTransactionCount],
+      ["l2TransactionCount", commitments.l2TransactionCount],
+      ["depositCount", commitments.depositCount],
+      ["totalEventCount", commitments.totalEventCount],
+      ["transitionStepCount", commitments.transitionStepCount],
+    ] as const;
+    for (const [field, count] of countEntries) {
+      if (count < 0n) {
+        return yield* Effect.fail(
+          headerTransitionCommitmentsError(
+            "Header transition commitment counts must be non-negative",
+            `${field}=${count.toString()}`,
+          ),
+        );
+      }
+    }
+
+    const expectedTotal =
+      commitments.withdrawalCount +
+      commitments.forcedTransactionCount +
+      commitments.l2TransactionCount +
+      commitments.depositCount;
+    if (commitments.totalEventCount !== expectedTotal) {
+      return yield* Effect.fail(
+        headerTransitionCommitmentsError(
+          "Header transition total_event_count does not match source event counts",
+          `expected=${expectedTotal.toString()},actual=${commitments.totalEventCount.toString()}`,
+        ),
+      );
+    }
+    if (commitments.transitionStepCount !== commitments.totalEventCount) {
+      return yield* Effect.fail(
+        headerTransitionCommitmentsError(
+          "Header transition_step_count must equal total_event_count",
+          `transition_step_count=${commitments.transitionStepCount.toString()},total_event_count=${commitments.totalEventCount.toString()}`,
+        ),
+      );
+    }
+
+    const hasTransitionEvents = commitments.totalEventCount > 0n;
+    if (hasTransitionEvents) {
+      if (commitments.transitionTraceRoot === EMPTY_MERKLE_TREE_ROOT) {
+        return yield* Effect.fail(
+          headerTransitionCommitmentsError(
+            "Refusing non-empty transition counts with an empty transition_trace_root",
+            `total_event_count=${commitments.totalEventCount.toString()}`,
+          ),
+        );
+      }
+      if (commitments.eventToStepRoot === EMPTY_MERKLE_TREE_ROOT) {
+        return yield* Effect.fail(
+          headerTransitionCommitmentsError(
+            "Refusing non-empty transition counts with an empty event_to_step_root",
+            `total_event_count=${commitments.totalEventCount.toString()}`,
+          ),
+        );
+      }
+    } else if (
+      commitments.transitionTraceRoot !== EMPTY_MERKLE_TREE_ROOT ||
+      commitments.eventToStepRoot !== EMPTY_MERKLE_TREE_ROOT
+    ) {
+      return yield* Effect.fail(
+        headerTransitionCommitmentsError(
+          "Empty transition counts must use empty transition roots",
+          `transition_trace_root=${commitments.transitionTraceRoot},event_to_step_root=${commitments.eventToStepRoot}`,
+        ),
+      );
+    }
+
+    return commitments;
+  });
+
+const validateSourceRootCount = (
+  label: string,
+  root: MerkleRoot,
+  count: bigint,
+): Effect.Effect<void, HeaderTransitionCommitmentsError> => {
+  if (root === EMPTY_MERKLE_TREE_ROOT && count > 0n) {
+    return Effect.fail(
+      headerTransitionCommitmentsError(
+        "Refusing non-empty source event count with an empty source root",
+        `${label}_root=${root},${label}_count=${count.toString()}`,
+      ),
+    );
+  }
+  if (root !== EMPTY_MERKLE_TREE_ROOT && count === 0n) {
+    return Effect.fail(
+      headerTransitionCommitmentsError(
+        "Refusing non-empty source root with a zero source event count",
+        `${label}_root=${root},${label}_count=0`,
+      ),
+    );
+  }
+  return Effect.void;
+};
+
+export const makeHeaderTransitionCommitmentsProgram = (
+  input: MakeHeaderTransitionCommitmentsInput,
+): Effect.Effect<
+  HeaderTransitionCommitments,
+  HeaderTransitionCommitmentsError
+> =>
+  Effect.gen(function* () {
+    yield* validateSourceRootCount(
+      "withdrawals",
+      input.withdrawalsRoot,
+      input.withdrawalCount,
+    );
+    yield* validateSourceRootCount(
+      "forced_transactions",
+      input.forcedTransactionsRoot,
+      input.forcedTransactionCount,
+    );
+    yield* validateSourceRootCount(
+      "transactions",
+      input.transactionsRoot,
+      input.l2TransactionCount,
+    );
+    yield* validateSourceRootCount(
+      "deposits",
+      input.depositsRoot,
+      input.depositCount,
+    );
+
+    const totalEventCount =
+      input.withdrawalCount +
+      input.forcedTransactionCount +
+      input.l2TransactionCount +
+      input.depositCount;
+    return yield* validateHeaderTransitionCommitmentsProgram({
+      forcedTransactionsRoot: input.forcedTransactionsRoot,
+      transitionTraceRoot: input.transitionTraceRoot ?? EMPTY_MERKLE_TREE_ROOT,
+      eventToStepRoot: input.eventToStepRoot ?? EMPTY_MERKLE_TREE_ROOT,
+      withdrawalCount: input.withdrawalCount,
+      forcedTransactionCount: input.forcedTransactionCount,
+      l2TransactionCount: input.l2TransactionCount,
+      depositCount: input.depositCount,
+      totalEventCount,
+      transitionStepCount: input.transitionStepCount ?? totalEventCount,
+    });
+  });
+
 export const NO_DA_ATTESTATION = "";
 
 export const StateQueueNodeSchema = Data.Object({
@@ -41,15 +266,26 @@ export const StateQueueNodeSchema = Data.Object({
 });
 export type StateQueueNode = Data.Static<typeof StateQueueNodeSchema>;
 export const StateQueueNode = StateQueueNodeSchema as unknown as StateQueueNode;
-export const castStateQueueNodeToData = (
-  node: StateQueueNode,
-): unknown => Data.castTo(node, StateQueueNode);
+export const castStateQueueNodeToData = (node: StateQueueNode): unknown =>
+  Data.castTo(node, StateQueueNode);
 
 export const getHeaderFromStateQueueDatum = (nodeDatum: {
   readonly data: Parameters<typeof Data.castFrom>[0];
 }): Effect.Effect<Header, DataCoercionError> =>
   Effect.try({
     try: () => Data.castFrom(nodeDatum.data, StateQueueNode).header,
+    catch: (cause) =>
+      new DataCoercionError({
+        message: "Failed coercing block's datum data to `StateQueueNode`",
+        cause,
+      }),
+  });
+
+export const getStateQueueNodeFromStateQueueDatum = (nodeDatum: {
+  readonly data: Parameters<typeof Data.castFrom>[0];
+}): Effect.Effect<StateQueueNode, DataCoercionError> =>
+  Effect.try({
+    try: () => Data.castFrom(nodeDatum.data, StateQueueNode),
     catch: (cause) =>
       new DataCoercionError({
         message: "Failed coercing block's datum data to `StateQueueNode`",
@@ -94,6 +330,7 @@ export const CardanoDatum = CardanoDatumSchema as unknown as CardanoDatum;
 
 export const DepositInfoSchema = Data.Object({
   l2_address: AddressSchema,
+  l2_network_id: Data.Integer(),
   l2_datum: Data.Nullable(Data.Any()),
 });
 export type DepositInfo = Data.Static<typeof DepositInfoSchema>;
@@ -188,8 +425,80 @@ export type MidgardTxCompact = Data.Static<typeof MidgardTxCompactSchema>;
 export const MidgardTxCompact =
   MidgardTxCompactSchema as unknown as MidgardTxCompact;
 
+export const MidgardTxCompactWithoutValiditySchema = Data.Object({
+  body: MidgardTxBodyCompactSchema,
+  wits: H32Schema,
+});
+export type MidgardTxCompactWithoutValidity = Data.Static<
+  typeof MidgardTxCompactWithoutValiditySchema
+>;
+export const MidgardTxCompactWithoutValidity =
+  MidgardTxCompactWithoutValiditySchema as unknown as MidgardTxCompactWithoutValidity;
+
+export const ForcedInclusionTxSchema = Data.Object({
+  tx_compact: MidgardTxCompactWithoutValiditySchema,
+  operator_validity: MidgardTxValiditySchema,
+});
+export type ForcedInclusionTx = Data.Static<typeof ForcedInclusionTxSchema>;
+export const ForcedInclusionTx =
+  ForcedInclusionTxSchema as unknown as ForcedInclusionTx;
+
+export const TransitionPhaseSchema = Data.Enum([
+  Data.Literal("Withdrawal"),
+  Data.Literal("ForcedTransaction"),
+  Data.Literal("L2Transaction"),
+  Data.Literal("Deposit"),
+]);
+export type TransitionPhase = Data.Static<typeof TransitionPhaseSchema>;
+export const TransitionPhase =
+  TransitionPhaseSchema as unknown as TransitionPhase;
+
+export const EventKeySchema = Data.Enum([
+  Data.Object({
+    WithdrawalEventKey: Data.Object({
+      withdrawal_id: OutputReferenceSchema,
+    }),
+  }),
+  Data.Object({
+    ForcedTransactionEventKey: Data.Object({
+      tx_order_id: OutputReferenceSchema,
+    }),
+  }),
+  Data.Object({
+    L2TransactionEventKey: Data.Object({
+      tx_id: H32Schema,
+    }),
+  }),
+  Data.Object({
+    DepositEventKey: Data.Object({
+      deposit_id: OutputReferenceSchema,
+    }),
+  }),
+]);
+export type EventKey = Data.Static<typeof EventKeySchema>;
+export const EventKey = EventKeySchema as unknown as EventKey;
+
+export const EventToStepValueSchema = Data.Object({
+  step_index: Data.Integer(),
+  phase: TransitionPhaseSchema,
+});
+export type EventToStepValue = Data.Static<typeof EventToStepValueSchema>;
+export const EventToStepValue =
+  EventToStepValueSchema as unknown as EventToStepValue;
+
+export const TransitionStepSchema = Data.Object({
+  schema_version: Data.Integer(),
+  step_index: Data.Integer(),
+  event_key: EventKeySchema,
+  phase: TransitionPhaseSchema,
+  pre_utxos_root: MerkleRootSchema,
+  post_utxos_root: MerkleRootSchema,
+});
+export type TransitionStep = Data.Static<typeof TransitionStepSchema>;
+export const TransitionStep = TransitionStepSchema as unknown as TransitionStep;
+
 export const TxOrderEventSchema = Data.Object({
-  id: H32Schema,
+  id: OutputReferenceSchema,
   tx: MidgardTxCompactSchema,
 });
 export type TxOrderEvent = Data.Static<typeof TxOrderEventSchema>;

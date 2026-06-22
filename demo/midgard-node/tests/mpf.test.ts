@@ -7,18 +7,25 @@ import { afterAll, beforeAll, describe, expect } from "vitest";
 import * as Ledger from "../src/database/utils/ledger.js";
 import * as Tx from "../src/database/utils/tx.js";
 import {
+  computeLedgerMpfRootFromLedgerEntries,
   DecodedMempoolTxForCommit,
   deleteMpfStore,
+  hydrateLedgerMpfFromLedgerEntries,
+  keyValuePhasNonMembershipProof,
   keyValuePhasProof,
   keyValuePhasRoot,
+  keyValuePhasRootWithCount,
   MidgardMpf,
   MpfBatchOp,
   orderDecodedMempoolTxsForLedgerApplication,
+  verifyKeyValuePhasMembershipProof,
+  verifyKeyValuePhasNonMembershipProof,
   withMpfRootTransaction,
 } from "../src/workers/utils/mpf.js";
 
 const TEST_DB = "test-mpf-db";
 const EMPTY_DELETE_DB = "test-mpf-empty-delete-db";
+const BATCH_PERSIST_DB = "test-mpf-batch-persist-db";
 const CORRUPT_DB = "test-mpf-corrupt-db";
 const key1 = Buffer.from("01", "hex");
 const key2 = Buffer.from("02", "hex");
@@ -58,6 +65,9 @@ beforeAll(async () => {
   await Effect.runPromise(
     deleteMpfStore(EMPTY_DELETE_DB, "test-mpf-empty-delete"),
   );
+  await Effect.runPromise(
+    deleteMpfStore(BATCH_PERSIST_DB, "test-mpf-batch-persist"),
+  );
   await Effect.runPromise(deleteMpfStore(CORRUPT_DB, "test-mpf-corrupt"));
 });
 
@@ -65,6 +75,9 @@ afterAll(async () => {
   await Effect.runPromise(deleteMpfStore(TEST_DB, "test-mpf"));
   await Effect.runPromise(
     deleteMpfStore(EMPTY_DELETE_DB, "test-mpf-empty-delete"),
+  );
+  await Effect.runPromise(
+    deleteMpfStore(BATCH_PERSIST_DB, "test-mpf-batch-persist"),
   );
   await Effect.runPromise(deleteMpfStore(CORRUPT_DB, "test-mpf-corrupt"));
 });
@@ -162,6 +175,64 @@ describe("Midgard MPF wrapper", () => {
     }),
   );
 
+  it.effect("persists the root marker after a successful batch", () =>
+    Effect.gen(function* () {
+      const mpf = yield* MidgardMpf.create(
+        "test-mpf-batch-persist",
+        BATCH_PERSIST_DB,
+      );
+      yield* mpf.applyBatch([
+        { type: "insert", key: key1, value: value1 },
+        { type: "insert", key: key2, value: value2 },
+      ]);
+      const rootHex = yield* mpf.rootHex();
+      yield* mpf.close();
+
+      const reopened = yield* MidgardMpf.create(
+        "test-mpf-batch-persist",
+        BATCH_PERSIST_DB,
+      );
+      const reopenedRootHex = yield* reopened.rootHex();
+      const reopenedValue = yield* reopened.get(key2);
+      yield* reopened.close();
+
+      expect(rootHex).not.toBe(SDK.EMPTY_MERKLE_TREE_ROOT);
+      expect(reopenedRootHex).toBe(rootHex);
+      expect(reopenedValue._tag).toBe("Some");
+    }),
+  );
+
+  it.effect("hydrates a ledger MPF from durable ledger entries", () =>
+    Effect.gen(function* () {
+      const mpf = yield* MidgardMpf.createScratch("test-mpf");
+      yield* mpf.applyBatch([
+        { type: "insert", key: key1, value: value1 },
+        { type: "insert", key: key3, value: value3 },
+      ]);
+
+      const entries: Ledger.MinimalEntry[] = [
+        {
+          [Ledger.Columns.OUTREF]: key1,
+          [Ledger.Columns.OUTPUT]: value1,
+        },
+        {
+          [Ledger.Columns.OUTREF]: key2,
+          [Ledger.Columns.OUTPUT]: value2,
+        },
+      ];
+      const expectedRoot =
+        yield* computeLedgerMpfRootFromLedgerEntries(entries);
+      const hydratedRoot = yield* hydrateLedgerMpfFromLedgerEntries(
+        mpf,
+        entries,
+      );
+      const removedStaleEntry = yield* mpf.get(key3);
+
+      expect(hydratedRoot).toBe(expectedRoot);
+      expect(removedStaleEntry._tag).toBe("None");
+    }),
+  );
+
   it.effect(
     "produces the same root for the same inserts in different orders",
     () =>
@@ -245,6 +316,84 @@ describe("Midgard MPF wrapper", () => {
     }),
   );
 
+  it.effect("canonicalizes PHAS root inputs and commits the item count", () =>
+    Effect.gen(function* () {
+      const left = yield* keyValuePhasRootWithCount(
+        [key2, key1],
+        [value2, value1],
+      );
+      const right = yield* keyValuePhasRootWithCount(
+        [key1, key2],
+        [value1, value2],
+      );
+
+      expect(left.root).toBe(right.root);
+      expect(left.count).toBe(2n);
+      expect(left.entries.map((entry) => entry.key.toString("hex"))).toEqual([
+        "01",
+        "02",
+      ]);
+    }),
+  );
+
+  it.effect("rejects duplicate PHAS root keys before root construction", () =>
+    Effect.gen(function* () {
+      const result = yield* keyValuePhasRoot(
+        [key1, key1],
+        [value1, value2],
+      ).pipe(Effect.either);
+
+      expect(result._tag).toBe("Left");
+    }),
+  );
+
+  it.effect("builds and verifies PHAS non-membership proofs", () =>
+    Effect.gen(function* () {
+      const root = yield* keyValuePhasRoot([key1], [value1]);
+      const proof = yield* keyValuePhasNonMembershipProof(
+        [key1],
+        [value1],
+        key2,
+      );
+      const membership = yield* keyValuePhasProof([key1], [value1], key1);
+
+      yield* verifyKeyValuePhasNonMembershipProof({
+        root,
+        key: key2,
+        proof,
+      });
+      yield* verifyKeyValuePhasMembershipProof({
+        root,
+        key: key1,
+        value: value1,
+        proof: membership,
+      });
+
+      const presentKey = yield* verifyKeyValuePhasNonMembershipProof({
+        root,
+        key: key1,
+        proof,
+      }).pipe(Effect.either);
+
+      expect(presentKey._tag).toBe("Left");
+    }),
+  );
+
+  it.effect("rejects PHAS membership proofs with the wrong value", () =>
+    Effect.gen(function* () {
+      const root = yield* keyValuePhasRoot([key1], [value1]);
+      const proof = yield* keyValuePhasProof([key1], [value1], key1);
+      const result = yield* verifyKeyValuePhasMembershipProof({
+        root,
+        key: key1,
+        value: value2,
+        proof,
+      }).pipe(Effect.either);
+
+      expect(result._tag).toBe("Left");
+    }),
+  );
+
   it.effect("fails closed when the persisted root marker is corrupt", () =>
     Effect.gen(function* () {
       yield* Effect.promise(async () => {
@@ -308,6 +457,26 @@ describe("Midgard MPF wrapper", () => {
       const result = yield* orderDecodedMempoolTxsForLedgerApplication([
         left,
         right,
+      ]).pipe(Effect.either);
+
+      expect(result._tag).toBe("Left");
+    }),
+  );
+
+  it.effect("fails closed on duplicate normal L2 transaction ids", () =>
+    Effect.gen(function* () {
+      const txHash = makeTxHash(3);
+      const result = yield* orderDecodedMempoolTxsForLedgerApplication([
+        makeDecodedMempoolTx({
+          txHash,
+          spent: [makeOutRef(3)],
+          produced: [makeOutRef(4)],
+        }),
+        makeDecodedMempoolTx({
+          txHash,
+          spent: [makeOutRef(5)],
+          produced: [makeOutRef(6)],
+        }),
       ]).pipe(Effect.either);
 
       expect(result._tag).toBe("Left");

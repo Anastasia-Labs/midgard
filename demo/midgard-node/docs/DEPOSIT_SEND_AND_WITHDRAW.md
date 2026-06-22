@@ -53,10 +53,10 @@ In a second terminal:
 cd demo/midgard-node
 
 export MIDGARD_NODE_URL="${MIDGARD_NODE_URL:-http://127.0.0.1:${PORT:-3000}}"
-export USER_WALLET="user deposit seed phrase here"
+export USER_SEED_PHRASE="user deposit seed phrase here"
 export DEST_WALLET="destination withdrawal seed phrase here"
 
-export USER_L2_ADDRESS="$(node --input-type=module -e 'import { walletFromSeed } from "@lucid-evolution/lucid"; console.log(walletFromSeed(process.env.USER_WALLET, { network: "Preprod" }).address)')"
+export USER_L2_ADDRESS="$(node --input-type=module -e 'import { walletFromSeed } from "@lucid-evolution/lucid"; console.log(walletFromSeed(process.env.USER_SEED_PHRASE, { network: "Preprod" }).address)')"
 export DEST_L2_ADDRESS="$(node --input-type=module -e 'import { walletFromSeed } from "@lucid-evolution/lucid"; console.log(walletFromSeed(process.env.DEST_WALLET, { network: "Preprod" }).address)')"
 export DEST_L1_ADDRESS="$DEST_L2_ADDRESS"
 
@@ -94,7 +94,7 @@ node dist/index.js deployment-status | jq .
 
 ```sh
 DEPOSIT_JSON="$(node dist/index.js submit-deposit \
-  --wallet-seed-phrase-env USER_WALLET \
+  --wallet-seed-phrase-env USER_SEED_PHRASE \
   --l2-address "$USER_L2_ADDRESS" \
   --lovelace 12000000)"
 
@@ -130,7 +130,7 @@ Send part of the deposited value to the destination wallet:
 
 ```sh
 TRANSFER_JSON="$(node dist/index.js submit-l2-transfer \
-  --wallet-seed-phrase-env USER_WALLET \
+  --wallet-seed-phrase-env USER_SEED_PHRASE \
   --endpoint "$MIDGARD_NODE_URL" \
   --l2-address "$DEST_L2_ADDRESS" \
   --lovelace 5000000)"

@@ -83,4 +83,38 @@ describe("evaluateReadiness", () => {
     expect(readiness.ready).toBe(false);
     expect(readiness.reasons).toContain("db_unhealthy");
   });
+
+  it("reports fresh active state-queue leases without failing readiness", () => {
+    const readiness = evaluateReadiness(
+      readinessInput({
+        stateQueueMutationLease: {
+          active: true,
+          stale: false,
+          remainingMs: 30_000,
+          holder: "block_commitment",
+        },
+      }),
+    );
+
+    expect(readiness.ready).toBe(true);
+    expect(readiness.reasons).toHaveLength(0);
+  });
+
+  it("fails readiness when a state-queue lease is stale", () => {
+    const readiness = evaluateReadiness(
+      readinessInput({
+        stateQueueMutationLease: {
+          active: true,
+          stale: true,
+          remainingMs: -120_000,
+          holder: "state_queue_merge",
+        },
+      }),
+    );
+
+    expect(readiness.ready).toBe(false);
+    expect(readiness.reasons).toContain(
+      "state_queue_lease_stale:state_queue_merge:-120000",
+    );
+  });
 });

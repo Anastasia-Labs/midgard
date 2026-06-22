@@ -2,6 +2,7 @@ import { Effect, Schedule } from "effect";
 
 import {
   AddressHistoryDB,
+  DaPayloadsDB,
   DepositsDB,
   TxRejectionsDB,
   WithdrawalsDB,
@@ -31,12 +32,14 @@ export const retentionSweepAction: Effect.Effect<
 
   const cutoff = computeRetentionCutoff(new Date(), nodeConfig.RETENTION_DAYS);
   const [
+    prunedDaPayloads,
     prunedTxRejections,
     prunedAddressHistory,
     prunedDeposits,
     prunedWithdrawals,
   ] = yield* Effect.all(
     [
+      DaPayloadsDB.pruneOlderThan(cutoff),
       TxRejectionsDB.pruneOlderThan(cutoff),
       AddressHistoryDB.pruneOlderThan(cutoff),
       DepositsDB.pruneOlderThan(cutoff),
@@ -46,7 +49,7 @@ export const retentionSweepAction: Effect.Effect<
   );
 
   yield* Effect.logInfo(
-    `🧹 Retention sweep done (cutoff=${cutoff.toISOString()}): tx_rejections=${prunedTxRejections}, address_history=${prunedAddressHistory}, deposits_utxos=${prunedDeposits}, withdrawal_utxos=${prunedWithdrawals}`,
+    `🧹 Retention sweep done (cutoff=${cutoff.toISOString()}): da_payloads=${prunedDaPayloads}, tx_rejections=${prunedTxRejections}, address_history=${prunedAddressHistory}, deposits_utxos=${prunedDeposits}, withdrawal_utxos=${prunedWithdrawals}`,
   );
 });
 

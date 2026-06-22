@@ -17,6 +17,7 @@ import {
 import {
   applyDoubleCborEncoding,
   applyParamsToScript,
+  type BuildTxWithRedeemer,
   CML,
   credentialToAddress,
   Data,
@@ -24,7 +25,6 @@ import {
   generateEmulatorAccount,
   getAddressDetails,
   Lucid,
-  type BuildTxWithRedeemer,
   type MintingPolicy,
   mintingPolicyToId,
   type Network,
@@ -46,6 +46,7 @@ import {
   addressDataFromBech32,
   type AuthenticatedValidator,
   ConfirmedState,
+  EMPTY_HEADER_TRANSITION_COMMITMENTS,
   EMPTY_MERKLE_TREE_ROOT,
   encodeLinkedListNodeView,
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
@@ -60,13 +61,14 @@ import {
   incompleteEmulatorCommitBlockHeaderTxProgram,
   incompleteRemoveFraudulentBlocksLinkTxProgram,
   incompleteRemoveLastFraudulentBlockHeaderTxProgram,
-  RETIRED_OPERATORS_ROOT_ASSET_NAME,
   requireInputIndex,
   requireMintRedeemerIndex,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
+  RETIRED_OPERATORS_ROOT_ASSET_NAME,
   SCHEDULER_ASSET_NAME,
   SchedulerDatum,
+  selectPureAdaFeeInput,
   type SpendingValidator as SdkSpendingValidator,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
   STATE_QUEUE_ROOT_ASSET_NAME,
@@ -93,6 +95,84 @@ const EMULATOR_PROTOCOL_PARAMETERS = {
   maxTxSize: 65_536,
   maxCollateralInputs: 3,
 } as const;
+
+describe("state-queue fee input selection", () => {
+  it("selects a pure-ADA fee input over a larger token-bearing input", async () => {
+    const tokenBearing = {
+      txHash: "aa".repeat(32),
+      outputIndex: 0,
+      address: "addr_test1vr0dummy",
+      assets: {
+        lovelace: 10_000_000n,
+        [`${"bb".repeat(28)}01`]: 1n,
+      },
+      datum: undefined,
+      datumHash: undefined,
+      scriptRef: undefined,
+    } as UTxO;
+    const pureAda = {
+      ...tokenBearing,
+      txHash: "cc".repeat(32),
+      outputIndex: 1,
+      assets: { lovelace: 5_000_000n },
+    } as UTxO;
+
+    await expect(
+      Effect.runPromise(selectPureAdaFeeInput([tokenBearing, pureAda])),
+    ).resolves.toBe(pureAda);
+  });
+
+  it("rejects token-only operator wallet views for fee selection", async () => {
+    const tokenBearing = {
+      txHash: "dd".repeat(32),
+      outputIndex: 0,
+      address: "addr_test1vr0dummy",
+      assets: {
+        lovelace: 10_000_000n,
+        [`${"ee".repeat(28)}01`]: 1n,
+      },
+      datum: undefined,
+      datumHash: undefined,
+      scriptRef: undefined,
+    } as UTxO;
+
+    const result = await Effect.runPromise(
+      Effect.either(selectPureAdaFeeInput([tokenBearing])),
+    );
+
+    expect(result._tag).toBe("Left");
+    if (result._tag === "Left") {
+      expect(result.left.message).toContain("pure-ADA");
+    }
+  });
+
+  it("rejects datum and script-ref wallet outputs for fee selection", async () => {
+    const withDatum = {
+      txHash: "12".repeat(32),
+      outputIndex: 0,
+      address: "addr_test1vr0dummy",
+      assets: { lovelace: 10_000_000n },
+      datum: "d87980",
+      datumHash: undefined,
+      scriptRef: undefined,
+    } as UTxO;
+    const withScriptRef = {
+      ...withDatum,
+      txHash: "13".repeat(32),
+      datum: undefined,
+      scriptRef: { type: "Native", script: "8200" },
+    } as UTxO;
+
+    const result = await Effect.runPromise(
+      Effect.either(selectPureAdaFeeInput([withDatum, withScriptRef])),
+    );
+
+    expect(result._tag).toBe("Left");
+    if (result._tag === "Left") {
+      expect(result.left.message).toContain("pure-ADA");
+    }
+  });
+});
 
 type BlueprintValidator = {
   readonly title: string;
@@ -737,9 +817,10 @@ describe("state-queue emulator builders", () => {
     const header: HeaderType = {
       prevUtxosRoot: EMPTY_MERKLE_TREE_ROOT,
       utxosRoot: EMPTY_MERKLE_TREE_ROOT,
+      withdrawalsRoot: EMPTY_MERKLE_TREE_ROOT,
+      ...EMPTY_HEADER_TRANSITION_COMMITMENTS,
       transactionsRoot,
       depositsRoot: EMPTY_MERKLE_TREE_ROOT,
-      withdrawalsRoot: EMPTY_MERKLE_TREE_ROOT,
       startTime: genesisTime,
       endTime: genesisTime + 1_000n,
       prevHeaderHash: GENESIS_HEADER_HASH,
@@ -875,9 +956,10 @@ describe("state-queue emulator builders", () => {
     const firstHeader: HeaderType = {
       prevUtxosRoot: EMPTY_MERKLE_TREE_ROOT,
       utxosRoot: EMPTY_MERKLE_TREE_ROOT,
+      withdrawalsRoot: EMPTY_MERKLE_TREE_ROOT,
+      ...EMPTY_HEADER_TRANSITION_COMMITMENTS,
       transactionsRoot: await buildTransactionsRoot(),
       depositsRoot: EMPTY_MERKLE_TREE_ROOT,
-      withdrawalsRoot: EMPTY_MERKLE_TREE_ROOT,
       startTime: genesisTime,
       endTime: genesisTime + 1_000n,
       prevHeaderHash: GENESIS_HEADER_HASH,

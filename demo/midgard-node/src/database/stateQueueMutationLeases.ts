@@ -1,13 +1,14 @@
 import { randomUUID } from "node:crypto";
 
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { SqlClient } from "@effect/sql";
 import { Duration, Effect, Fiber } from "effect";
 
+import * as PendingBlockFinalizationsDB from "@/database/pendingBlockFinalizations.js";
 import {
   DatabaseError,
   sqlErrorToDatabaseError,
 } from "@/database/utils/common.js";
-import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { Database } from "@/services/database.js";
 
 export const tableName = "state_queue_mutation_leases";
@@ -71,6 +72,21 @@ type LeaseOptions = {
   readonly renewIntervalMs?: number;
 };
 
+export type PendingFinalizationLeaseInspection = {
+  readonly headerHash: string;
+  readonly submittedTxHash: string | null;
+  readonly status: PendingBlockFinalizationsDB.Status;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+};
+
+export type LeaseInspection = {
+  readonly dbNow: Date;
+  readonly activeLease: Entry | undefined;
+  readonly recentLeases: readonly Entry[];
+  readonly pendingFinalizations: readonly PendingFinalizationLeaseInspection[];
+};
+
 const normalizeTtlMs = (ttlMs: number | undefined): number =>
   Math.max(1, Math.floor(ttlMs ?? DEFAULT_TTL_MS));
 
@@ -129,6 +145,54 @@ export const describeActiveLease = (activeLease: Entry | undefined): string =>
     : `active_holder=${activeLease[Columns.HOLDER]},active_token=${
         activeLease[Columns.TOKEN]
       },active_expires_at=${activeLease[Columns.EXPIRES_AT].toISOString()}`;
+
+const encodePendingFinalizationLeaseInspection = (
+  row: PendingBlockFinalizationsDB.Row,
+): PendingFinalizationLeaseInspection => ({
+  headerHash:
+    row[PendingBlockFinalizationsDB.Columns.HEADER_HASH].toString("hex"),
+  submittedTxHash:
+    row[PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH]?.toString(
+      "hex",
+    ) ?? null,
+  status: row[PendingBlockFinalizationsDB.Columns.STATUS],
+  createdAt: row[PendingBlockFinalizationsDB.Columns.CREATED_AT],
+  updatedAt: row[PendingBlockFinalizationsDB.Columns.UPDATED_AT],
+});
+
+export const inspect = ({
+  recentLimit = 10,
+}: {
+  readonly recentLimit?: number;
+} = {}): Effect.Effect<LeaseInspection, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    yield* expireTimedOutLeases;
+    const [{ now: dbNow }] = yield* sql<{ now: Date }>`SELECT NOW() AS now`;
+    const activeLease = yield* retrieveActive();
+    const limit = Math.max(1, Math.min(100, Math.floor(recentLimit)));
+    const recentLeases = yield* sql<Entry>`SELECT * FROM ${sql(tableName)}
+      WHERE ${sql(Columns.SCOPE)} = ${SCOPE}
+      ORDER BY ${sql(Columns.ACQUIRED_AT)} DESC
+      LIMIT ${limit}`;
+    const pendingFinalizations =
+      activeLease === undefined
+        ? []
+        : (yield* PendingBlockFinalizationsDB.retrieveActiveByStateQueueLeaseToken(
+            activeLease[Columns.TOKEN],
+          )).map(encodePendingFinalizationLeaseInspection);
+    return {
+      dbNow,
+      activeLease,
+      recentLeases,
+      pendingFinalizations,
+    };
+  }).pipe(
+    sqlErrorToDatabaseError(
+      tableName,
+      "Failed to inspect state-queue mutation leases",
+    ),
+  );
 
 export const tryAcquire = ({
   holder,

@@ -15,21 +15,26 @@ A block consists of a header hash, a header, and a block body:
     \end{array} \right\}
 \end{equation*}
 
-The block body contains the block's transactions, deposits, and withdrawals, along with
-the unspent outputs that result from applying the block's transition to the previous block's unspent outputs.
-The transactions include both transaction requests (submitted to operators' mempools) and transaction orders (submitted as L1 events).
+The block body contains the block's source events, transition trace, and resulting unspent outputs.
+Transaction requests submitted to operators' mempools and forced transaction orders submitted on L1 are committed separately.
 \begin{equation*}
     \T{BlockBody} \coloneq \left\{
     \begin{array}{ll}
         \T{utxos} : & \T{UtxoSet} \\
+        \T{withdrawals} : & \T{WithdrawalSet} \\
+        \T{forced\_transactions} : & \T{ForcedTransactionSet} \\
         \T{transactions} : & \T{TxSet} \\
         \T{deposits} : & \T{DepositSet} \\
-        \T{withdrawals} : & \T{WithdrawalSet} \\
+        \T{transition\_trace} : & \T{TransitionTrace} \\
+        \T{event\_to\_step} : & \T{EventToStep} \\
     \end{array} \right\}
 \end{equation*}
 
+The data-availability payload for this body is \code{DaPayloadBodyV2}. It includes the embedded header, the header hash, all body member arrays above, and the count fields repeated from the header.
+The payload is accepted by DA committee validators only when the embedded header hashes to \code{header\_hash}, the member arrays are canonical and duplicate-free, all counted roots recompute to the header roots, and the repeated counts match both the member arrays and the header.
+
 \Cref{fig:block-transition} shows how the block's \code{utxos} are derived from the previous block's \code{utxos} by applying the block's events.
-The events are applied in the following order: withdrawals, then transactions (with transaction orders prioritized over transaction requests), and finally deposits.
+The events are applied in the following order: withdrawals, forced transactions, L2 transaction requests, and deposits.
 Failing to uphold proper ordering of event application will be considered fraud.
 This ensures transaction orders (which are costlier) are not marked invalid in favor of transaction requests.
 
@@ -42,10 +47,12 @@ This ensures transaction orders (which are costlier) are not marked invalid in f
         
         \path[every node/.style={font=\sffamily\normalsize}] [arrow]
             (s1.south east) edge [bend right = 30]
-                 node [anchor = north, above, yshift = 0.5em] {\codeNC{withdrawals}} ($(s1.south east)!0.33!(s2.south west)$)
-            ($(s1.south east)!0.33!(s2.south west)$) edge [bend right = 30]
-                 node [anchor = north, above, yshift = 0.5em] {\codeNC{transactions}} ($(s1.south east)!0.66!(s2.south west)$)
-            ($(s1.south east)!0.66!(s2.south west)$) edge [bend right = 30]
+                 node [anchor = north, above, yshift = 0.5em] {\codeNC{withdrawals}} ($(s1.south east)!0.25!(s2.south west)$)
+            ($(s1.south east)!0.25!(s2.south west)$) edge [bend right = 30]
+                 node [anchor = north, above, yshift = 0.5em] {\codeNC{forced\_transactions}} ($(s1.south east)!0.50!(s2.south west)$)
+            ($(s1.south east)!0.50!(s2.south west)$) edge [bend right = 30]
+                 node [anchor = north, above, yshift = 0.5em] {\codeNC{transactions}} ($(s1.south east)!0.75!(s2.south west)$)
+            ($(s1.south east)!0.75!(s2.south west)$) edge [bend right = 30]
                  node [anchor = north, above, yshift = 0.5em] {\codeNC{deposits}} (s2.south west)
             (s1.north east) edge [bend left = 15]
                 node [anchor = south, below, yshift = -0.5em] {Block transition} (s2.north west);
@@ -60,12 +67,15 @@ During serialization, each of the block body's sets is serialized as a sequence 
 However, only the header hash and header are stored on Cardano L1.
 This is sufficient because the header specifies Merkle Patricia Trie (MPT) root hashes for each of the sets in the block body.
 Each of these root hashes can be verified onchain by streaming over the corresponding set's elements, hashing them, and iteratively calculating the root hash.
+The source roots, \code{transition\_trace\_root}, and \code{event\_to\_step\_root} are counted, domain-separated commitments: fraud proofs can open membership, non-membership, and the committed member count for the relevant root.
 
 \Cref{fig:block-tx-mpt} shows an example MPT representation of a block's transactions.
-The $(\T{TxId_i}, \T{MidgardTx_i})$ pairs are the data blocks of the tree, which are individually hashed to form the leaves $L_i$ of the tree.
+Each leaf stores a pair $(\T{TxId_i}, v_i)$ where $v_i : \T{MidgardTxCompact}$.
+These pairs are individually hashed to form the leaves $L_i$ of the tree.
 The hashes of sibling leaves are concatenated and hashed to form their parent nodes.
 The nodes $N_{ij}$ are formed by concatenating and hashing their children's hashes.
 The \code{transactions\_root} is formed by concatenating and hashing its children's hashes.
+The \code{forced\_transactions\_root}, \code{transition\_trace\_root}, and \code{event\_to\_step\_root} use the same authenticated-map commitment pattern with their own key and value types.
 
 \begin{figure}[htb]
 \centering
@@ -82,18 +92,18 @@ The \code{transactions\_root} is formed by concatenating and hashing its childre
   \node[merkleroot] {transactions\_root: $\mathcal{H}(N_{12} \mid\mid N_{34})$}
     child { node[merklenode] {$N_{12}: \mathcal{H}(L_1 \mid\mid L_2)$}
         child { node[merkleleaf] {$L_1: \mathcal{H}(D_1)$}
-          child { node[merkledata] {$D_1$ \\ $(\T{TxId_1}, \T{MidgardTx_1})$} }
+          child { node[merkledata] {$D_1$ \\ $(\T{TxId_1}, v_1)$} }
         }
         child { node[merkleleaf] {$L_2: \mathcal{H}(D_2)$}
-          child { node[merkledata] {$D_2$ \\ $(\T{TxId_2}, \T{MidgardTx_2})$} }
+          child { node[merkledata] {$D_2$ \\ $(\T{TxId_2}, v_2)$} }
         }
     }
     child { node[merklenode] {$N_{34}: \mathcal{H}(L_3 \mid\mid L_4)$}
         child { node[merkleleaf] {$L_3: \mathcal{H}(D_3)$}
-          child { node[merkledata] {$D_3$ \\ $(\T{TxId_3}, \T{MidgardTx_3})$} }
+          child { node[merkledata] {$D_3$ \\ $(\T{TxId_3}, v_3)$} }
         }
         child { node[merkleleaf] {$L_4: \mathcal{H}(D_4)$}
-          child { node[merkledata] {$D_4$ \\ $(\T{TxId_4}, \T{MidgardTx_4})$} }
+          child { node[merkledata] {$D_4$ \\ $(\T{TxId_4}, v_4)$} }
         }
     };
 
@@ -105,14 +115,14 @@ The \code{transactions\_root} is formed by concatenating and hashing its childre
 \subsection{Transaction requests vs. transaction orders}
 \label{h:tx-requests-vs-tx-orders}
 
-To distinguish between transactions applied to the ledger from different sources, Midgard recognizes two types of transactions within a block:
+To distinguish between transactions applied to the ledger from different sources, Midgard recognizes two transaction source classes within a block:
 \begin{itemize}
-    \item \textbf{Transaction requests:} Transactions submitted to operators' mempools. These are the typical L2 transactions that operators collect from users offchain.
-    \item \textbf{Transaction orders:} Transactions submitted as L1 events through the transaction order contract (see \cref{h:transaction-order-event}). These provide an alternative submission path when users need guaranteed inclusion.
+    \item \textbf{Transaction requests:} Transactions submitted to operators' mempools. These are normal L2 transactions that operators collect from users offchain and commit in \code{transactions\_root}.
+    \item \textbf{Forced transactions:} Transactions submitted as L1 transaction orders (see \cref{h:transaction-order-event}). These are committed in \code{forced\_transactions\_root} by their L1 order identity.
 \end{itemize}
 
-Both transaction requests and transaction orders are included in the block's \code{transactions} set and share the same \code{transactions\_root} Merkle root.
-However, they must be applied to the ledger with transaction orders prioritized over requests.
+Transaction requests and forced transactions do not share the same source root.
+Forced transactions are applied before transaction requests, and the transition trace binds every source event to its claimed pre-state and post-state roots.
 
 \subsection{Block header}
 \label{h:block-header}
@@ -126,9 +136,18 @@ A block header hash is 28 bytes in size and calculated via the Blake2b-224.
     \begin{array}{ll}
         \T{prev\_utxos\_root} : & \T{RootHash} \\
         \T{utxos\_root} : & \T{RootHash} \\
+        \T{withdrawals\_root} : & \T{RootHash} \\
+        \T{forced\_transactions\_root} : & \T{RootHash} \\
         \T{transactions\_root} : & \T{RootHash} \\
         \T{deposits\_root} : & \T{RootHash} \\
-        \T{withdrawals\_root} : & \T{RootHash} \\
+        \T{transition\_trace\_root} : & \T{RootHash} \\
+        \T{event\_to\_step\_root} : & \T{RootHash} \\
+        \T{withdrawal\_count} : & \T{Int} \\
+        \T{forced\_transaction\_count} : & \T{Int} \\
+        \T{l2\_transaction\_count} : & \T{Int} \\
+        \T{deposit\_count} : & \T{Int} \\
+        \T{total\_event\_count} : & \T{Int} \\
+        \T{transition\_step\_count} : & \T{Int} \\
         \T{start\_time} : & \T{PosixTime} \\
         \T{end\_time} : & \T{PosixTime} \\
         \T{prev\_header\_hash} : & \T{HeaderHash} \\
@@ -142,11 +161,77 @@ These header fields are interpreted as follows:
 \begin{itemize}
     \item The \code{*\_root} fields are the MPT root hashes of the corresponding sets in the block body.
     \item The \code{prev\_utxos\_root} is a copy of the \code{utxos\_root} from the previous block, included for convenience in the fraud proof verification procedures.
+    \item The source roots are \code{withdrawals\_root}, \code{forced\_transactions\_root}, \code{transactions\_root}, and \code{deposits\_root}.
+    \item The \code{transition\_trace\_root} commits to the ordered one-step transition trace keyed by step index.
+    \item The \code{event\_to\_step\_root} commits to an authenticated map from source-specific event keys to the step index and phase where the event is applied.
+    \item The count fields commit to the cardinality of each source phase and the total trace length. The corresponding source-root counts must equal their header count fields, \code{event\_to\_step\_root.count} must equal \code{total\_event\_count}, and \code{transition\_trace\_root.count} must equal \code{transition\_step\_count}. They must satisfy:
+    \begin{align*}
+        \T{total\_event\_count} &=
+            \T{withdrawal\_count}
+            + \T{forced\_transaction\_count} \\
+        &\quad
+            + \T{l2\_transaction\_count}
+            + \T{deposit\_count} \\
+        \T{transition\_step\_count} &= \T{total\_event\_count}
+    \end{align*}
     \item The \code{start\_time} and \code{end\_time} fields are the block's event interval bounds (see \cref{h:time-model}).
     \item The \code{prev\_header\_hash} field is a hash of the previous block header. For the genesis block, this field is set to 28 \code{0x00} bytes.
     \item The \code{operator\_vkey} field is the cryptographic verification key for signatures of the operator who committed the block header to the L1 state queue.
     \item The \code{protocol\_version} is the Midgard protocol version that applies to this block.
 \end{itemize}
 
+\subsection{Transition trace commitments}
+\label{h:transition-trace-commitments}
+
+The transition trace is a dense ordered map from step index to the pre-state and post-state roots claimed for a single source event:
+\begin{equation*}
+    \T{TransitionTrace} \coloneq \T{Map(Int, TransitionStep)}
+\end{equation*}
+
+\begin{equation*}
+    \T{TransitionPhase} \coloneq
+        \T{Withdrawal}
+        \mid \T{ForcedTransaction}
+        \mid \T{L2Transaction}
+        \mid \T{Deposit}
+\end{equation*}
+
+\begin{align*}
+    \T{EventKey} \coloneq\;&
+        \T{WithdrawalEventKey}\{\T{withdrawal\_id}\} \\
+        \mid\;& \T{ForcedTransactionEventKey}\{\T{tx\_order\_id}\} \\
+        \mid\;& \T{L2TransactionEventKey}\{\T{tx\_id}\} \\
+        \mid\;& \T{DepositEventKey}\{\T{deposit\_id}\}
+\end{align*}
+
+\begin{equation*}
+    \T{EventToStepValue} \coloneq \left\{
+    \begin{array}{ll}
+        \T{step\_index} : & \T{Int} \\
+        \T{phase} : & \T{TransitionPhase}
+    \end{array} \right\}
+\end{equation*}
+
+\begin{equation*}
+    \T{TransitionStep} \coloneq \left\{
+    \begin{array}{ll}
+        \T{schema\_version} : & \T{Int} \\
+        \T{step\_index} : & \T{Int} \\
+        \T{event\_key} : & \T{EventKey} \\
+        \T{phase} : & \T{TransitionPhase} \\
+        \T{pre\_utxos\_root} : & \T{RootHash} \\
+        \T{post\_utxos\_root} : & \T{RootHash}
+    \end{array} \right\}
+\end{equation*}
+
+The base transition step does not include a claimed effect, read-set hash, consumed-set hash, produced-set hash, or local-result commitment.
+Given a source event, the corresponding pre-state root, and the corresponding post-state root, a phase-specific one-step verifier can recompute whether that event transforms the pre-state into the claimed post-state.
+The \code{event\_to\_step\_root} prevents an operator from using a valid-looking trace that omits or duplicates an event from one of the source roots.
+
+The transition trace is dense: for every integer \(i\) with \(0 \leq i < \T{transition\_step\_count}\), there must be exactly one transition trace member whose key and \code{step\_index} are both \(i\).
+For every event-to-step member, the pointed-to trace step must exist, must have the same event key, and must have the same phase.
+For every trace step, the event-to-step root must contain the trace step's event key with the same step index and phase.
+The phase ranges are derived from the header counts and are ordered as withdrawals, forced transactions, L2 transactions, and deposits.
+Because deposits execute after L2 transactions, same-block spending of a deposit output is invalid unless the protocol deliberately changes this phase order.
 
 \end{document}

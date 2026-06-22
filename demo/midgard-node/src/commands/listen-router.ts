@@ -3,9 +3,8 @@
  * This module groups endpoint handlers and access control in one place while
  * delegating startup checks and response shaping to narrower modules.
  */
-import * as SDK from "@al-ft/midgard-sdk";
 import { hexToBytes } from "@al-ft/midgard-core/hex";
-import { QueuedTxPayload } from "@al-ft/midgard-validation";
+import * as SDK from "@al-ft/midgard-sdk";
 import {
   HttpRouter,
   HttpServerRequest,
@@ -15,7 +14,7 @@ import type { HttpBodyError } from "@effect/platform/HttpBody";
 import { ParsedSearchParams } from "@effect/platform/HttpServerRequest";
 import { SqlClient } from "@effect/sql/SqlClient";
 import { toHex } from "@lucid-evolution/lucid";
-import { Cause, Duration, Effect, Metric, Queue, Ref } from "effect";
+import { Cause, Duration, Effect, Metric, Option, Ref } from "effect";
 
 import {
   parseAddressArgument,
@@ -39,6 +38,7 @@ import * as UtxosCommand from "@/commands/utxos.js";
 import {
   AddressHistoryDB,
   BlocksDB,
+  DaPayloadsDB,
   ImmutableDB,
   MempoolDB,
   MempoolLedgerDB,
@@ -76,6 +76,8 @@ const MERGE_ENDPOINT: string = "merge";
 const UTXO_ENDPOINT: string = "utxo";
 const UTXOS_ENDPOINT: string = "utxos";
 const BLOCK_ENDPOINT: string = "block";
+const DA_PAYLOAD_ENDPOINT: string = "da/payload";
+const DA_PAYLOAD_METADATA_ENDPOINT: string = "da/payload/metadata";
 const INIT_ENDPOINT: string = "init";
 const COMMIT_ENDPOINT: string = "commit";
 const SUBMIT_ENDPOINT: string = "submit";
@@ -86,6 +88,9 @@ const DEPOSIT_STATUS_ENDPOINT: string = "deposit-status";
 const PROTOCOL_INFO_ENDPOINT: string = "protocol-info";
 const HEALTH_ENDPOINT: string = "healthz";
 const READINESS_ENDPOINT: string = "readyz";
+
+const errorMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
 const STATE_QUEUE_MUTATION_LEASE_ENDPOINT: string = "stateQueueMutationLease";
 
 const txCounter = Metric.counter("tx_count", {
@@ -141,25 +146,52 @@ const parsePositiveInteger = (
 
 const encodeStateQueueMutationLease = (
   lease: StateQueueMutationLeasesDB.Entry | undefined,
+  now: Date = new Date(),
 ) =>
   lease === undefined
     ? null
-    : {
-        token: lease[StateQueueMutationLeasesDB.Columns.TOKEN],
-        holder: lease[StateQueueMutationLeasesDB.Columns.HOLDER],
-        status: lease[StateQueueMutationLeasesDB.Columns.STATUS],
-        acquiredAt: lease[
-          StateQueueMutationLeasesDB.Columns.ACQUIRED_AT
-        ].toISOString(),
-        expiresAt: lease[
-          StateQueueMutationLeasesDB.Columns.EXPIRES_AT
-        ].toISOString(),
-        releasedAt:
-          lease[StateQueueMutationLeasesDB.Columns.RELEASED_AT]?.toISOString() ??
-          null,
-        lastError:
-          lease[StateQueueMutationLeasesDB.Columns.LAST_ERROR] ?? null,
-      };
+    : (() => {
+        const expiresAt = lease[StateQueueMutationLeasesDB.Columns.EXPIRES_AT];
+        const remainingMs = expiresAt.getTime() - now.getTime();
+        return {
+          token: lease[StateQueueMutationLeasesDB.Columns.TOKEN],
+          holder: lease[StateQueueMutationLeasesDB.Columns.HOLDER],
+          status: lease[StateQueueMutationLeasesDB.Columns.STATUS],
+          acquiredAt:
+            lease[StateQueueMutationLeasesDB.Columns.ACQUIRED_AT].toISOString(),
+          expiresAt: expiresAt.toISOString(),
+          releasedAt:
+            lease[
+              StateQueueMutationLeasesDB.Columns.RELEASED_AT
+            ]?.toISOString() ?? null,
+          lastError:
+            lease[StateQueueMutationLeasesDB.Columns.LAST_ERROR] ?? null,
+          remainingMs,
+          expired: remainingMs < 0,
+          blockedUntil: expiresAt.toISOString(),
+        };
+      })();
+
+const encodeStateQueueMutationLeaseInspection = (
+  inspection: StateQueueMutationLeasesDB.LeaseInspection,
+) => ({
+  status: inspection.activeLease === undefined ? "idle" : "busy",
+  dbNow: inspection.dbNow.toISOString(),
+  activeLease: encodeStateQueueMutationLease(
+    inspection.activeLease,
+    inspection.dbNow,
+  ),
+  pendingFinalizations: inspection.pendingFinalizations.map((entry) => ({
+    headerHash: entry.headerHash,
+    submittedTxHash: entry.submittedTxHash,
+    status: entry.status,
+    createdAt: entry.createdAt.toISOString(),
+    updatedAt: entry.updatedAt.toISOString(),
+  })),
+  recentLeases: inspection.recentLeases.map((lease) =>
+    encodeStateQueueMutationLease(lease, inspection.dbNow),
+  ),
+});
 
 export type StateQueueMutationLeaseEndpointResult = {
   readonly statusCode: number;
@@ -167,6 +199,9 @@ export type StateQueueMutationLeaseEndpointResult = {
 };
 
 export type StateQueueMutationLeaseEndpointStore<R = Database> = {
+  readonly inspect: (args?: {
+    readonly recentLimit?: number;
+  }) => Effect.Effect<StateQueueMutationLeasesDB.LeaseInspection, unknown, R>;
   readonly tryAcquire: (args: {
     readonly holder: string;
     readonly ttlMs?: number;
@@ -188,6 +223,7 @@ export type StateQueueMutationLeaseEndpointStore<R = Database> = {
 
 const defaultStateQueueMutationLeaseEndpointStore: StateQueueMutationLeaseEndpointStore =
   {
+    inspect: StateQueueMutationLeasesDB.inspect,
     tryAcquire: StateQueueMutationLeasesDB.tryAcquire,
     renew: StateQueueMutationLeasesDB.renew,
     release: StateQueueMutationLeasesDB.release,
@@ -196,8 +232,7 @@ const defaultStateQueueMutationLeaseEndpointStore: StateQueueMutationLeaseEndpoi
 
 export const resolveStateQueueMutationLeaseRequest = <R = Database>(
   body: unknown,
-  store: StateQueueMutationLeaseEndpointStore<R> =
-    defaultStateQueueMutationLeaseEndpointStore as StateQueueMutationLeaseEndpointStore<R>,
+  store: StateQueueMutationLeaseEndpointStore<R> = defaultStateQueueMutationLeaseEndpointStore as StateQueueMutationLeaseEndpointStore<R>,
 ): Effect.Effect<StateQueueMutationLeaseEndpointResult, never, R> =>
   Effect.gen(function* () {
     if (typeof body !== "object" || body === null || !("action" in body)) {
@@ -207,6 +242,29 @@ export const resolveStateQueueMutationLeaseRequest = <R = Database>(
       };
     }
     const action = (body as { readonly action?: unknown }).action;
+    if (action === "inspect") {
+      let recentLimit: number | undefined;
+      try {
+        recentLimit = parsePositiveInteger(
+          (body as { readonly recentLimit?: unknown }).recentLimit,
+          "recentLimit",
+        );
+      } catch (error) {
+        return {
+          statusCode: 400,
+          body: {
+            error: errorMessage(error),
+          },
+        };
+      }
+      const inspection = yield* store.inspect(
+        recentLimit === undefined ? undefined : { recentLimit },
+      );
+      return {
+        statusCode: 200,
+        body: encodeStateQueueMutationLeaseInspection(inspection),
+      };
+    }
     if (action === "acquire") {
       const holderValue = (body as { readonly holder?: unknown }).holder;
       const holder =
@@ -222,7 +280,9 @@ export const resolveStateQueueMutationLeaseRequest = <R = Database>(
       } catch (error) {
         return {
           statusCode: 400,
-          body: { error: error instanceof Error ? error.message : String(error) },
+          body: {
+            error: errorMessage(error),
+          },
         };
       }
       const result = yield* store.tryAcquire({
@@ -264,7 +324,9 @@ export const resolveStateQueueMutationLeaseRequest = <R = Database>(
       } catch (error) {
         return {
           statusCode: 400,
-          body: { error: error instanceof Error ? error.message : String(error) },
+          body: {
+            error: errorMessage(error),
+          },
         };
       }
       yield* store.renew({
@@ -408,7 +470,8 @@ const getUtxosHandler = Effect.gen(function* () {
   try {
     const address = parseAddressArgument(addr);
 
-    const utxosWithAddress = yield* MempoolLedgerDB.retrieveByAddress(address);
+    const utxosWithAddress =
+      yield* MempoolLedgerDB.retrieveSpendableByAddress(address);
     const response = UtxosCommand.encodeStoredUtxos(utxosWithAddress);
 
     yield* Effect.logInfo(`Found ${response.length} UTxOs for ${addr}`);
@@ -448,7 +511,7 @@ const getUtxoHandler = Effect.gen(function* () {
   try {
     txOutRef = parseTxOutRefCborHex(rawTxOutRef, "txOutRef");
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     yield* Effect.logInfo(
       `GET /${UTXO_ENDPOINT} - invalid txOutRef: ${message}`,
     );
@@ -489,7 +552,7 @@ const postUtxosByTxOutRefsHandler = Effect.gen(function* () {
   try {
     UtxosCommand.requireByOutRefsSelector(params);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     yield* Effect.logInfo(
       `POST /${UTXOS_ENDPOINT} - missing selector: ${message}`,
     );
@@ -511,7 +574,7 @@ const postUtxosByTxOutRefsHandler = Effect.gen(function* () {
   try {
     txOutRefs = UtxosCommand.parseTxOutRefsRequest(parsedBody.right);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     yield* Effect.logInfo(
       `POST /${UTXOS_ENDPOINT} - invalid request: ${message}`,
     );
@@ -620,6 +683,41 @@ const postStateQueueMutationLeaseHandler = Effect.gen(function* () {
   ),
 );
 
+const getStateQueueMutationLeaseHandler = Effect.gen(function* () {
+  const params = yield* ParsedSearchParams;
+  const recentLimitParam = params["recent_limit"];
+  let recentLimit: number | undefined;
+  try {
+    recentLimit =
+      recentLimitParam === undefined
+        ? undefined
+        : parsePositiveInteger(Number(recentLimitParam), "recent_limit");
+  } catch (error) {
+    return yield* HttpServerResponse.json(
+      { error: errorMessage(error) },
+      { status: 400 },
+    );
+  }
+  const inspection = yield* StateQueueMutationLeasesDB.inspect(
+    recentLimit === undefined ? undefined : { recentLimit },
+  );
+  return yield* HttpServerResponse.json(
+    encodeStateQueueMutationLeaseInspection(inspection),
+  );
+}).pipe(
+  Effect.catchTag("HttpBodyError", (e) =>
+    failWith500("GET", STATE_QUEUE_MUTATION_LEASE_ENDPOINT, e),
+  ),
+  Effect.catchTag("DatabaseError", (e) =>
+    failWith500(
+      "GET",
+      STATE_QUEUE_MUTATION_LEASE_ENDPOINT,
+      e.cause,
+      `db failure with table ${e.table}`,
+    ),
+  ),
+);
+
 /**
  * `GET /deposit-status`: returns one serialized deposit row by event id or L1
  * tx hash.
@@ -631,7 +729,7 @@ const getDepositStatusHandler = Effect.gen(function* () {
   try {
     lookup = DepositStatusCommand.parseDepositStatusLookup(params);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     yield* Effect.logInfo(
       `GET /${DEPOSIT_STATUS_ENDPOINT} - invalid request: ${message}`,
     );
@@ -678,107 +776,122 @@ const getHealthHandler = Effect.gen(function* () {
  * `GET /readyz`: readiness endpoint that checks worker heartbeats, queue depth,
  * local recovery state, and database connectivity.
  */
-const getReadinessHandler = (txQueue: Queue.Dequeue<QueuedTxPayload>) =>
-  Effect.gen(function* () {
-    const globals = yield* Globals;
-    const nodeConfig = yield* NodeConfig;
-    const sql = yield* SqlClient;
+const getReadinessHandler = Effect.gen(function* () {
+  const globals = yield* Globals;
+  const nodeConfig = yield* NodeConfig;
+  const sql = yield* SqlClient;
 
-    const legacyQueueDepth = yield* txQueue.size;
-    const durableAdmissionBacklog = yield* TxAdmissionsDB.countBacklog;
-    const durableAdmissionOldestAgeMs = yield* TxAdmissionsDB.oldestQueuedAgeMs;
-    const unfinishedMutationJobs = yield* MutationJobsDB.countUnfinished;
-    const nowMillis = Date.now();
-    const blockCommitmentHeartbeat = yield* Ref.get(
-      globals.HEARTBEAT_BLOCK_COMMITMENT,
-    );
-    const blockConfirmationHeartbeat = yield* Ref.get(
-      globals.HEARTBEAT_BLOCK_CONFIRMATION,
-    );
-    const mergeHeartbeat = yield* Ref.get(globals.HEARTBEAT_MERGE);
-    const depositFetchHeartbeat = yield* Ref.get(
-      globals.HEARTBEAT_DEPOSIT_FETCH,
-    );
-    const withdrawalFetchHeartbeat = yield* Ref.get(
-      globals.HEARTBEAT_WITHDRAWAL_FETCH,
-    );
-    const txQueueProcessorHeartbeat = yield* Ref.get(
-      globals.HEARTBEAT_TX_QUEUE_PROCESSOR,
-    );
-    const localFinalizationPending = yield* Ref.get(
-      globals.LOCAL_FINALIZATION_PENDING,
-    );
-    const unconfirmedSubmittedBlockTxHash = yield* Ref.get(
-      globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
-    );
-    const unconfirmedSubmittedBlockSinceMs = yield* Ref.get(
-      globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS,
-    );
-    const unresolvedBlockSubmissionAgeMs =
-      unconfirmedSubmittedBlockTxHash === "" ||
-      unconfirmedSubmittedBlockSinceMs <= 0
-        ? 0
-        : nowMillis - unconfirmedSubmittedBlockSinceMs;
+  const durableAdmissionBacklog = yield* TxAdmissionsDB.countBacklog;
+  const durableAdmissionOldestAgeMs = yield* TxAdmissionsDB.oldestQueuedAgeMs;
+  const unfinishedMutationJobs = yield* MutationJobsDB.countUnfinished;
+  const nowMillis = Date.now();
+  const blockCommitmentHeartbeat = yield* Ref.get(
+    globals.HEARTBEAT_BLOCK_COMMITMENT,
+  );
+  const blockConfirmationHeartbeat = yield* Ref.get(
+    globals.HEARTBEAT_BLOCK_CONFIRMATION,
+  );
+  const mergeHeartbeat = yield* Ref.get(globals.HEARTBEAT_MERGE);
+  const depositFetchHeartbeat = yield* Ref.get(globals.HEARTBEAT_DEPOSIT_FETCH);
+  const withdrawalFetchHeartbeat = yield* Ref.get(
+    globals.HEARTBEAT_WITHDRAWAL_FETCH,
+  );
+  const txQueueProcessorHeartbeat = yield* Ref.get(
+    globals.HEARTBEAT_TX_QUEUE_PROCESSOR,
+  );
+  const localFinalizationPending = yield* Ref.get(
+    globals.LOCAL_FINALIZATION_PENDING,
+  );
+  const unconfirmedSubmittedBlockTxHash = yield* Ref.get(
+    globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
+  );
+  const unconfirmedSubmittedBlockSinceMs = yield* Ref.get(
+    globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS,
+  );
+  const unresolvedBlockSubmissionAgeMs =
+    unconfirmedSubmittedBlockTxHash === "" ||
+    unconfirmedSubmittedBlockSinceMs <= 0
+      ? 0
+      : nowMillis - unconfirmedSubmittedBlockSinceMs;
 
-    const dbProbe = yield* Effect.either(sql`SELECT 1 AS ok`);
-    const dbHealthy = dbProbe._tag === "Right";
-    const lucid = yield* Lucid;
-    const contracts = yield* MidgardContracts;
-    const providerProbe = yield* Effect.either(
-      Initialization.fetchHubOracleWitness(lucid.api, contracts),
-    );
-
-    const baseReadiness = evaluateReadiness({
-      nowMillis,
-      maxHeartbeatAgeMs: nodeConfig.READINESS_MAX_HEARTBEAT_AGE_MS,
-      maxQueueDepth: nodeConfig.READINESS_MAX_DURABLE_ADMISSION_BACKLOG,
-      queueDepth: Number(durableAdmissionBacklog),
-      workerHeartbeats: {
-        blockCommitment: blockCommitmentHeartbeat,
-        blockConfirmation: blockConfirmationHeartbeat,
-        merge: mergeHeartbeat,
-        depositFetch: depositFetchHeartbeat,
-        withdrawalFetch: withdrawalFetchHeartbeat,
-        txQueueProcessor: txQueueProcessorHeartbeat,
-      },
-      localFinalizationPending,
-      unresolvedBlockSubmissionAgeMs,
-      maxUnresolvedBlockSubmissionAgeMs:
-        nodeConfig.UNCONFIRMED_BLOCK_MAX_AGE_MS,
-      dbHealthy,
-    });
-    const reasons = [...baseReadiness.reasons];
-    if (providerProbe._tag === "Left") {
-      reasons.push("provider_query_unhealthy:hub-oracle");
-    }
-    if (
-      durableAdmissionOldestAgeMs >
-      nodeConfig.READINESS_MAX_DURABLE_ADMISSION_AGE_MS
-    ) {
-      reasons.push(
-        `durable_admission_oldest_age_exceeded:${durableAdmissionOldestAgeMs}:${nodeConfig.READINESS_MAX_DURABLE_ADMISSION_AGE_MS}`,
-      );
-    }
-    if (unfinishedMutationJobs > 0n) {
-      reasons.push(
-        `unfinished_local_mutation_jobs:${unfinishedMutationJobs.toString()}`,
-      );
-    }
-    const readiness = {
-      ready: reasons.length === 0,
-      reasons,
-      durableAdmissionBacklog: durableAdmissionBacklog.toString(),
-      durableAdmissionOldestAgeMs,
-      unfinishedLocalMutationJobs: unfinishedMutationJobs.toString(),
-      unresolvedBlockSubmissionAgeMs,
-      legacyInMemoryQueueDepth: legacyQueueDepth,
-      providerQueryHealthy: providerProbe._tag === "Right",
-    };
-
-    return yield* HttpServerResponse.json(readiness, {
-      status: readiness.ready ? 200 : 503,
-    });
+  const dbProbe = yield* Effect.either(sql`SELECT 1 AS ok`);
+  const dbHealthy = dbProbe._tag === "Right";
+  const lucid = yield* Lucid;
+  const contracts = yield* MidgardContracts;
+  const providerProbe = yield* Effect.either(
+    Initialization.fetchHubOracleWitness(lucid.api, contracts),
+  );
+  const leaseInspection = yield* StateQueueMutationLeasesDB.inspect({
+    recentLimit: 3,
   });
+  const encodedLeaseInspection =
+    encodeStateQueueMutationLeaseInspection(leaseInspection);
+  const activeLease = leaseInspection.activeLease;
+  const activeLeaseRemainingMs =
+    activeLease === undefined
+      ? null
+      : activeLease[StateQueueMutationLeasesDB.Columns.EXPIRES_AT].getTime() -
+        leaseInspection.dbNow.getTime();
+
+  const baseReadiness = evaluateReadiness({
+    nowMillis,
+    maxHeartbeatAgeMs: nodeConfig.READINESS_MAX_HEARTBEAT_AGE_MS,
+    maxQueueDepth: nodeConfig.READINESS_MAX_DURABLE_ADMISSION_BACKLOG,
+    queueDepth: Number(durableAdmissionBacklog),
+    workerHeartbeats: {
+      blockCommitment: blockCommitmentHeartbeat,
+      blockConfirmation: blockConfirmationHeartbeat,
+      merge: mergeHeartbeat,
+      depositFetch: depositFetchHeartbeat,
+      withdrawalFetch: withdrawalFetchHeartbeat,
+      txQueueProcessor: txQueueProcessorHeartbeat,
+    },
+    localFinalizationPending,
+    unresolvedBlockSubmissionAgeMs,
+    maxUnresolvedBlockSubmissionAgeMs: nodeConfig.UNCONFIRMED_BLOCK_MAX_AGE_MS,
+    dbHealthy,
+    stateQueueMutationLease: {
+      active: activeLease !== undefined,
+      stale:
+        activeLeaseRemainingMs !== null &&
+        activeLeaseRemainingMs <
+          -nodeConfig.STATE_QUEUE_MUTATION_LEASE_STALE_GRACE_MS,
+      remainingMs: activeLeaseRemainingMs,
+      holder: activeLease?.[StateQueueMutationLeasesDB.Columns.HOLDER] ?? null,
+    },
+  });
+  const reasons = [...baseReadiness.reasons];
+  if (providerProbe._tag === "Left") {
+    reasons.push("provider_query_unhealthy:hub-oracle");
+  }
+  if (
+    durableAdmissionOldestAgeMs >
+    nodeConfig.READINESS_MAX_DURABLE_ADMISSION_AGE_MS
+  ) {
+    reasons.push(
+      `durable_admission_oldest_age_exceeded:${durableAdmissionOldestAgeMs}:${nodeConfig.READINESS_MAX_DURABLE_ADMISSION_AGE_MS}`,
+    );
+  }
+  if (unfinishedMutationJobs > 0n) {
+    reasons.push(
+      `unfinished_local_mutation_jobs:${unfinishedMutationJobs.toString()}`,
+    );
+  }
+  const readiness = {
+    ready: reasons.length === 0,
+    reasons,
+    durableAdmissionBacklog: durableAdmissionBacklog.toString(),
+    durableAdmissionOldestAgeMs,
+    unfinishedLocalMutationJobs: unfinishedMutationJobs.toString(),
+    unresolvedBlockSubmissionAgeMs,
+    providerQueryHealthy: providerProbe._tag === "Right",
+    stateQueueMutationLease: encodedLeaseInspection,
+  };
+
+  return yield* HttpServerResponse.json(readiness, {
+    status: readiness.ready ? 200 : 503,
+  });
+});
 
 /**
  * `GET /protocol-info`: returns stable public facts needed by external
@@ -833,6 +946,114 @@ const getBlockHandler = Effect.gen(function* () {
     failWith500(
       "GET",
       BLOCK_ENDPOINT,
+      e.cause,
+      `db failure with table ${e.table}`,
+    ),
+  ),
+);
+
+const parseHeaderHashSearchParam = (
+  value: unknown,
+): Buffer | HttpServerResponse.HttpServerResponse => {
+  const headerHash = parseFixedHexParam(value, 28);
+  if (headerHash !== null) {
+    return headerHash;
+  }
+  return HttpServerResponse.unsafeJson(
+    { error: `Invalid header_hash: ${String(value)}` },
+    { status: 400 },
+  );
+};
+
+/**
+ * `GET /da/payload?header_hash=...`: returns canonical DaPayloadV2 CBOR.
+ */
+const getDaPayloadHandler = Effect.gen(function* () {
+  const params = yield* ParsedSearchParams;
+  const parsed = parseHeaderHashSearchParam(params["header_hash"]);
+  if (!Buffer.isBuffer(parsed)) {
+    return parsed;
+  }
+  const record = yield* DaPayloadsDB.retrieveByHeaderHash(parsed);
+  if (Option.isNone(record)) {
+    return yield* HttpServerResponse.json(
+      {
+        error: `DA payload not found for header_hash ${parsed.toString("hex")}`,
+      },
+      { status: 404 },
+    );
+  }
+  return HttpServerResponse.uint8Array(record.value.payload_cbor, {
+    contentType: "application/cbor",
+  });
+}).pipe(
+  Effect.catchTag("HttpBodyError", (e) =>
+    failWith500("GET", DA_PAYLOAD_ENDPOINT, e),
+  ),
+  Effect.catchTag("DatabaseError", (e) =>
+    failWith500(
+      "GET",
+      DA_PAYLOAD_ENDPOINT,
+      e.cause,
+      `db failure with table ${e.table}`,
+    ),
+  ),
+);
+
+/**
+ * `GET /da/payload/metadata?header_hash=...`: returns payload metadata.
+ */
+const getDaPayloadMetadataHandler = Effect.gen(function* () {
+  const params = yield* ParsedSearchParams;
+  const parsed = parseHeaderHashSearchParam(params["header_hash"]);
+  if (!Buffer.isBuffer(parsed)) {
+    return parsed;
+  }
+  const record = yield* DaPayloadsDB.retrieveByHeaderHash(parsed);
+  if (Option.isNone(record)) {
+    return yield* HttpServerResponse.json(
+      {
+        error: `DA payload not found for header_hash ${parsed.toString("hex")}`,
+      },
+      { status: 404 },
+    );
+  }
+  return yield* HttpServerResponse.json({
+    headerHash: record.value.header_hash.toString("hex"),
+    version: record.value.version,
+    payloadHash: record.value.payload_sha256.toString("hex"),
+    payloadBytes: record.value.payload_cbor.length,
+    status: "available",
+    roots: {
+      utxosRoot: record.value.utxos_root,
+      forcedTransactionsRoot: record.value.forced_transactions_root,
+      transactionsRoot: record.value.transactions_root,
+      depositsRoot: record.value.deposits_root,
+      withdrawalsRoot: record.value.withdrawals_root,
+      transitionTraceRoot: record.value.transition_trace_root,
+      eventToStepRoot: record.value.event_to_step_root,
+    },
+    counts: {
+      withdrawalCount: record.value.withdrawal_count.toString(),
+      forcedTransactionCount: record.value.forced_transaction_count.toString(),
+      l2TransactionCount: record.value.l2_transaction_count.toString(),
+      depositCount: record.value.deposit_count.toString(),
+      totalEventCount: record.value.total_event_count.toString(),
+      transitionStepCount: record.value.transition_step_count.toString(),
+    },
+    blockStartTime: record.value.block_start_time.toISOString(),
+    blockEndTime: record.value.block_end_time.toISOString(),
+    createdAt: record.value.created_at.toISOString(),
+    updatedAt: record.value.updated_at.toISOString(),
+  });
+}).pipe(
+  Effect.catchTag("HttpBodyError", (e) =>
+    failWith500("GET", DA_PAYLOAD_METADATA_ENDPOINT, e),
+  ),
+  Effect.catchTag("DatabaseError", (e) =>
+    failWith500(
+      "GET",
+      DA_PAYLOAD_METADATA_ENDPOINT,
       e.cause,
       `db failure with table ${e.table}`,
     ),
@@ -1203,7 +1424,7 @@ const postDepositBuildHandler = Effect.gen(function* () {
       expectedNetwork: lucid.api.config().network,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     yield* Effect.logInfo(
       `POST /${DEPOSIT_BUILD_ENDPOINT} - invalid request: ${message}`,
     );
@@ -1215,6 +1436,7 @@ const postDepositBuildHandler = Effect.gen(function* () {
     lucid.api,
     lucid.referenceScriptsAddress,
     referenceScriptTargetsByCommand(contracts).deposit,
+    contracts.referenceScriptAuth,
   ).pipe(
     Effect.map((resolved) => ({
       depositMinting: referenceScriptByName(resolved, "deposit minting"),
@@ -1388,7 +1610,6 @@ const postSubmitHandler = (withMonitoring?: boolean) =>
  * Builds the full HTTP router for the node command server.
  */
 export const buildListenRouter = (
-  txQueue: Queue.Queue<QueuedTxPayload>,
   withMonitoring?: boolean,
 ): Effect.Effect<
   HttpServerResponse.HttpServerResponse,
@@ -1404,7 +1625,7 @@ export const buildListenRouter = (
   HttpRouter.empty
     .pipe(
       HttpRouter.get(`/${HEALTH_ENDPOINT}`, getHealthHandler),
-      HttpRouter.get(`/${READINESS_ENDPOINT}`, getReadinessHandler(txQueue)),
+      HttpRouter.get(`/${READINESS_ENDPOINT}`, getReadinessHandler),
       HttpRouter.get(`/${PROTOCOL_INFO_ENDPOINT}`, getProtocolInfoHandler),
       HttpRouter.get(`/${TX_ENDPOINT}`, getTxHandler),
       HttpRouter.get(`/${TX_STATUS_ENDPOINT}`, getTxStatusHandler),
@@ -1413,6 +1634,13 @@ export const buildListenRouter = (
       HttpRouter.get(`/${UTXO_ENDPOINT}`, getUtxoHandler),
       HttpRouter.get(`/${UTXOS_ENDPOINT}`, getUtxosHandler),
       HttpRouter.get(`/${BLOCK_ENDPOINT}`, getBlockHandler),
+    )
+    .pipe(
+      HttpRouter.get(`/${DA_PAYLOAD_ENDPOINT}`, getDaPayloadHandler),
+      HttpRouter.get(
+        `/${DA_PAYLOAD_METADATA_ENDPOINT}`,
+        getDaPayloadMetadataHandler,
+      ),
       HttpRouter.get(
         `/${INIT_ENDPOINT}`,
         withAdminAccess(INIT_ENDPOINT, getInitHandler),
@@ -1428,6 +1656,13 @@ export const buildListenRouter = (
       HttpRouter.get(
         `/${STATE_QUEUE_ENDPOINT}`,
         withAdminAccess(STATE_QUEUE_ENDPOINT, getStateQueueHandler),
+      ),
+      HttpRouter.get(
+        `/${STATE_QUEUE_MUTATION_LEASE_ENDPOINT}`,
+        withAdminAccess(
+          STATE_QUEUE_MUTATION_LEASE_ENDPOINT,
+          getStateQueueMutationLeaseHandler,
+        ),
       ),
       HttpRouter.post(
         `/${STATE_QUEUE_MUTATION_LEASE_ENDPOINT}`,

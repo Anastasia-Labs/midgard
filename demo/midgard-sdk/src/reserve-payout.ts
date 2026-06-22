@@ -1,4 +1,5 @@
-import * as SDK from "@/reserve-payout/primitives.js";
+import { outRefLabel } from "@al-ft/midgard-core/out-ref";
+import { aikenSerialisedPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
   type Assets,
   type BuildTxWithRedeemer,
@@ -9,10 +10,10 @@ import {
   type Network,
   type OutputDatum,
   type Script,
-  type TxOutput,
   scriptHashToCredential,
   toUnit,
   type TxBuilder,
+  type TxOutput,
   type UTxO,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -47,8 +48,8 @@ import {
   type ConcludePayoutLayout,
   type InitializePayoutLayout,
   type RefundWithdrawalLayout,
-  settlementDatumFromInput,
 } from "@/reserve-payout/layout.js";
+import * as SDK from "@/reserve-payout/primitives.js";
 import {
   attachIfMissing,
   mergeReferenceScripts,
@@ -68,24 +69,20 @@ import {
   requireUniqueOutputIndex,
   requireWithdrawalRedeemerIndex,
 } from "@/tx-context-redeemer.js";
-import { outRefLabel } from "@al-ft/midgard-core/out-ref";
-import {
-  aikenSerialisedPlutusDataCbor,
-  canonicalPlutusDataCbor,
-} from "@al-ft/midgard-core/plutus-data-cbor";
+import { outputDatumCborMatches } from "@/tx-output-utils.js";
 
 export {
   addAssets,
-  assetsToValue,
   assetsEqual,
+  assetsToValue,
   removeAssetUnit,
   subtractAssets,
   valueToAssets,
 } from "@/reserve-payout/assets.js";
 export type { BuiltReservePayoutTx } from "@/reserve-payout/completion.js";
 export { ReservePayoutTxError } from "@/reserve-payout/errors.js";
-export { mergeReferenceScripts } from "@/reserve-payout/references.js";
 export type { ReservePayoutReferenceScripts } from "@/reserve-payout/references.js";
+export { mergeReferenceScripts } from "@/reserve-payout/references.js";
 
 export type MembershipProofWithdrawalWitness = {
   readonly script: Script;
@@ -102,14 +99,14 @@ type CommonBuilderConfig = {
 export type AbsorbConfirmedDepositConfig = CommonBuilderConfig & {
   readonly deposit: SDK.DepositUTxO;
   readonly settlementRefInput: UTxO;
-  readonly membershipProof: SDK.Proof;
+  readonly membershipProof: SDK.RawRootMembershipProof;
   readonly membershipProofWithdrawal: MembershipProofWithdrawalWitness;
 };
 
 export type InitializePayoutConfig = CommonBuilderConfig & {
   readonly withdrawal: SDK.WithdrawalUTxO;
   readonly settlementRefInput: UTxO;
-  readonly membershipProof: SDK.Proof;
+  readonly membershipProof: SDK.RawRootMembershipProof;
   readonly membershipProofWithdrawal: MembershipProofWithdrawalWitness;
 };
 
@@ -125,7 +122,7 @@ export type ConcludePayoutConfig = CommonBuilderConfig & {
 export type RefundInvalidWithdrawalConfig = CommonBuilderConfig & {
   readonly withdrawal: SDK.WithdrawalUTxO;
   readonly settlementRefInput: UTxO;
-  readonly membershipProof: SDK.Proof;
+  readonly membershipProof: SDK.RawRootMembershipProof;
   readonly membershipProofWithdrawal: MembershipProofWithdrawalWitness;
   readonly validityOverride: Exclude<
     SDK.WithdrawalValidity,
@@ -300,15 +297,14 @@ const fetchHubOracleReferenceProgram = (
   });
 
 const encodeMembershipProofWithdrawalRedeemer = (
-  root: string,
   keyCbor: string,
   valueCbor: string,
-  proof: SDK.Proof,
+  proof: SDK.RootMembershipProof<unknown, unknown>,
 ): string => {
-  const rootData = Data.from(Data.to(root, SDK.MerkleRoot));
+  const rootData = Data.from(Data.to(proof.phas_root, SDK.MerkleRoot));
   const keyData = encodeHexBytesData(keyCbor);
   const valueData = encodeHexBytesData(valueCbor);
-  const proofData = Data.from(Data.to(proof, SDK.Proof));
+  const proofData = Data.from(Data.to(proof.proof, SDK.Proof));
   return Data.to(
     [rootData, keyData, valueData, proofData] as any,
     Data.Array(Data.Any()) as any,
@@ -362,10 +358,6 @@ const outputDatumMatches = (
     Data.to(datum.InlineDatum.data as any, Data.Any() as any),
   );
 };
-
-const outputDatumCborMatches = (output: TxOutput, datumCbor: string): boolean =>
-  output.datum != null &&
-  canonicalPlutusDataCbor(output.datum) === canonicalPlutusDataCbor(datumCbor);
 
 const reserveOutputIndex = (
   outputs: readonly TxOutput[],
@@ -474,9 +466,7 @@ export const buildAbsorbConfirmedDepositToReserveTxProgram = (
       depositUnit,
       1n,
     );
-    const settlementDatum = settlementDatumFromInput(config.settlementRefInput);
     const membershipRedeemer = encodeMembershipProofWithdrawalRedeemer(
-      settlementDatum.deposits_root,
       config.deposit.idCbor.toString("hex"),
       config.deposit.infoCbor.toString("hex"),
       config.membershipProof,
@@ -727,9 +717,7 @@ export const buildInitializePayoutTxProgram = (
       targetAssets,
       "Initial payout accumulator",
     );
-    const settlementDatum = settlementDatumFromInput(config.settlementRefInput);
     const membershipRedeemer = encodeMembershipProofWithdrawalRedeemer(
-      settlementDatum.withdrawals_root,
       config.withdrawal.idCbor.toString("hex"),
       config.withdrawal.infoCbor.toString("hex"),
       config.membershipProof,
@@ -1449,15 +1437,15 @@ export const buildRefundInvalidWithdrawalTxProgram = (
       network,
       config.withdrawal.datum.refund_address,
     );
-    const settlementDatum = settlementDatumFromInput(config.settlementRefInput);
     const overriddenWithdrawalInfo: SDK.WithdrawalInfo = {
       ...config.withdrawal.datum.event.info,
       validity: config.validityOverride,
     };
     const membershipRedeemer = encodeMembershipProofWithdrawalRedeemer(
-      settlementDatum.withdrawals_root,
-      Data.to(config.withdrawal.datum.event.id, SDK.OutputReference),
-      Data.to(overriddenWithdrawalInfo, SDK.WithdrawalInfo),
+      config.withdrawal.idCbor.toString("hex"),
+      aikenSerialisedPlutusDataCbor(
+        Data.to(overriddenWithdrawalInfo, SDK.WithdrawalInfo),
+      ),
       config.membershipProof,
     );
     const witnessRedeemer = SDK.encodeUserEventWitnessMintOrBurnRedeemer(

@@ -15,9 +15,18 @@ import {
   prepareDoubleSpendFromNode,
   prepareSampleDoubleSpend,
 } from "./prepare-double-spend.js";
+import {
+  prepareInvalidRangeFromFile,
+  prepareInvalidRangeFromNode,
+} from "./prepare-invalid-range.js";
 import { submitRemoveFraudulentBlockFromFiles } from "./remove-fraudulent-block.js";
 import { type ProviderKind } from "./runtime.js";
-import { submitInitFromFiles } from "./submit-init.js";
+import {
+  type SubmitInitFraudCategory,
+  submitInitFromFiles,
+} from "./submit-init.js";
+import { submitInvalidRangeStep01FromFiles } from "./submit-invalid-range-step-01.js";
+import { submitInvalidRangeStep02FromFiles } from "./submit-invalid-range-step-02.js";
 import { submitStep01FromFiles } from "./submit-step-01.js";
 import { submitStep02FromFiles } from "./submit-step-02.js";
 import { submitStep03FromFiles } from "./submit-step-03.js";
@@ -58,18 +67,43 @@ export type ParsedArgs = {
   readonly outputDir: string | undefined;
   readonly allowIncompatibleOutput: boolean;
   readonly awaitConfirmation: boolean;
+  readonly fraudCategory: SubmitInitFraudCategory | undefined;
+  readonly blockValidFrom: string | undefined;
+  readonly blockValidTo: string | undefined;
+  readonly txId: string | undefined;
 };
 
 const usage = `Usage:
   midgard-fault-proofs prepare-double-spend (--midgard-node-url <url> | --transactions-file <path> | --sample-double-spend) --header-hash <hex> [--expected-transactions-root <hex>] [--tx1-id <hex> --tx2-id <hex>] [--output-dir <path>] [--allow-incompatible-output]
+  midgard-fault-proofs prepare-invalid-range (--midgard-node-url <url> | --transactions-file <path>) --header-hash <hex> --block-valid-from <posixMs> --block-valid-to <posixMs> [--expected-transactions-root <hex>] [--tx-id <hex>] [--output-dir <path>] [--allow-incompatible-output]
   midgard-fault-proofs inspect-contracts --blueprint <path> --deployment-info <path> [--network <Mainnet|Preview|Preprod>]
-  midgard-fault-proofs submit-init --blueprint <path> --deployment-info <path> --fraudulent-block-out-ref <txHash#outputIndex> [--fraudulent-header-hash <hex>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-init --blueprint <path> --deployment-info <path> --fraudulent-block-out-ref <txHash#outputIndex> [--fraud-category <doubleSpend|invalidRange|transitionTrace>] [--fraudulent-header-hash <hex>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-step-01 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-step-03 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --tx1-inputs <raw-input-cbor-list.json> --double-spent-input-index <n> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-step-04 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --tx2-inputs <raw-input-cbor-list.json> --double-spent-input-index <n> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
-  midgard-fault-proofs remove-fraudulent-block --blueprint <path> --deployment-info <path> --fraudulent-header-hash <hex> [--midgard-node-url <url> --midgard-node-admin-key <key> | --midgard-node-admin-key-env <envVar>] [--state-queue-lease-ttl-ms <n>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-invalid-range-step-01 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-invalid-range-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs remove-fraudulent-block --blueprint <path> --deployment-info <path> --fraudulent-header-hash <hex> [--fraud-category <doubleSpend|invalidRange|transitionTrace>] [--midgard-node-url <url> --midgard-node-admin-key <key> | --midgard-node-admin-key-env <envVar>] [--state-queue-lease-ttl-ms <n>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
 `;
+
+export const parseFraudCategory = (
+  value: string | undefined,
+): SubmitInitFraudCategory | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (
+    value === "doubleSpend" ||
+    value === "invalidRange" ||
+    value === "transitionTrace"
+  ) {
+    return value;
+  }
+  throw new Error(
+    '--fraud-category must be one of "doubleSpend", "invalidRange", or "transitionTrace".',
+  );
+};
 
 export const parseArgs = (argv: readonly string[]): ParsedArgs => {
   const [, , command, ...rest] = argv;
@@ -110,6 +144,10 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
   let outputDir: string | undefined;
   let allowIncompatibleOutput = false;
   let awaitConfirmation = true;
+  let fraudCategory: SubmitInitFraudCategory | undefined;
+  let blockValidFrom: string | undefined;
+  let blockValidTo: string | undefined;
+  let txId: string | undefined;
 
   for (let index = 0; index < rest.length; index += 1) {
     const arg = rest[index];
@@ -217,6 +255,18 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
       case "--allow-incompatible-output":
         allowIncompatibleOutput = true;
         break;
+      case "--fraud-category":
+        fraudCategory = parseFraudCategory(rest[++index]);
+        break;
+      case "--block-valid-from":
+        blockValidFrom = rest[++index];
+        break;
+      case "--block-valid-to":
+        blockValidTo = rest[++index];
+        break;
+      case "--tx-id":
+        txId = rest[++index];
+        break;
       case "--no-await-confirmation":
         awaitConfirmation = false;
         break;
@@ -264,6 +314,10 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
     outputDir,
     allowIncompatibleOutput,
     awaitConfirmation,
+    fraudCategory,
+    blockValidFrom,
+    blockValidTo,
+    txId,
   };
 };
 
@@ -292,6 +346,7 @@ export const buildRemoveFraudulentBlockCliConfig = (args: ParsedArgs) => {
     walletSeedPhraseEnv: args.walletSeedPhraseEnv,
     walletPrivateKey: args.walletPrivateKey,
     walletPrivateKeyEnv: args.walletPrivateKeyEnv,
+    fraudCategory: args.fraudCategory,
     fraudulentHeaderHash: args.fraudulentHeaderHash,
     awaitConfirmation: args.awaitConfirmation,
     midgardNodeUrl: args.midgardNodeUrl,
@@ -329,16 +384,19 @@ export const main = async (): Promise<void> => {
   const args = parseArgs(process.argv);
   if (
     args.command !== "prepare-double-spend" &&
+    args.command !== "prepare-invalid-range" &&
     args.command !== "inspect-contracts" &&
     args.command !== "submit-init" &&
     args.command !== "submit-step-01" &&
     args.command !== "submit-step-02" &&
     args.command !== "submit-step-03" &&
     args.command !== "submit-step-04" &&
+    args.command !== "submit-invalid-range-step-01" &&
+    args.command !== "submit-invalid-range-step-02" &&
     args.command !== "remove-fraudulent-block"
   ) {
     throw new Error(
-      `Expected command "prepare-double-spend", "inspect-contracts", "submit-init", "submit-step-01", "submit-step-02", "submit-step-03", "submit-step-04", or "remove-fraudulent-block".\n${usage}`,
+      `Expected command "prepare-double-spend", "prepare-invalid-range", "inspect-contracts", "submit-init", "submit-step-01", "submit-step-02", "submit-step-03", "submit-step-04", "submit-invalid-range-step-01", "submit-invalid-range-step-02", or "remove-fraudulent-block".\n${usage}`,
     );
   }
 
@@ -387,6 +445,53 @@ export const main = async (): Promise<void> => {
     return;
   }
 
+  if (args.command === "prepare-invalid-range") {
+    if (args.headerHash === undefined) {
+      throw new Error(`Missing required --header-hash <hex>.\n${usage}`);
+    }
+    if (args.blockValidFrom === undefined) {
+      throw new Error(
+        `Missing required --block-valid-from <posixMs>.\n${usage}`,
+      );
+    }
+    if (args.blockValidTo === undefined) {
+      throw new Error(`Missing required --block-valid-to <posixMs>.\n${usage}`);
+    }
+    const inputModes = [
+      args.midgardNodeUrl !== undefined,
+      args.transactionsPath !== undefined,
+    ].filter(Boolean).length;
+    if (inputModes !== 1) {
+      throw new Error(
+        `Provide exactly one of --midgard-node-url or --transactions-file.\n${usage}`,
+      );
+    }
+    const output =
+      args.midgardNodeUrl !== undefined
+        ? await prepareInvalidRangeFromNode({
+            midgardNodeUrl: args.midgardNodeUrl,
+            headerHash: args.headerHash,
+            blockValidFrom: args.blockValidFrom,
+            blockValidTo: args.blockValidTo,
+            expectedTransactionsRoot: args.expectedTransactionsRoot,
+            txId: args.txId,
+            outputDir: args.outputDir,
+            allowIncompatibleOutput: args.allowIncompatibleOutput,
+          })
+        : await prepareInvalidRangeFromFile({
+            transactionsPath: args.transactionsPath!,
+            headerHash: args.headerHash,
+            blockValidFrom: args.blockValidFrom,
+            blockValidTo: args.blockValidTo,
+            expectedTransactionsRoot: args.expectedTransactionsRoot,
+            txId: args.txId,
+            outputDir: args.outputDir,
+            allowIncompatibleOutput: args.allowIncompatibleOutput,
+          });
+    writeJson(output);
+    return;
+  }
+
   if (args.blueprintPath === undefined) {
     throw new Error(`Missing required --blueprint <path>.\n${usage}`);
   }
@@ -413,8 +518,73 @@ export const main = async (): Promise<void> => {
       walletSeedPhraseEnv: args.walletSeedPhraseEnv,
       walletPrivateKey: args.walletPrivateKey,
       walletPrivateKeyEnv: args.walletPrivateKeyEnv,
+      fraudCategory: args.fraudCategory,
       fraudulentBlockOutRef: args.fraudulentBlockOutRef,
       fraudulentHeaderHash: args.fraudulentHeaderHash,
+      awaitConfirmation: args.awaitConfirmation,
+    });
+
+    writeJson(output);
+    return;
+  }
+
+  if (args.command === "submit-invalid-range-step-01") {
+    if (args.threadOutRef === undefined) {
+      throw new Error(
+        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    if (args.stateQueueBlockOutRef === undefined) {
+      throw new Error(
+        `Missing required --state-queue-block-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    if (args.txInclusionPath === undefined) {
+      throw new Error(`Missing required --tx-inclusion <path>.\n${usage}`);
+    }
+    const output = await submitInvalidRangeStep01FromFiles({
+      blueprintPath: args.blueprintPath,
+      deploymentInfoPath: args.deploymentInfoPath,
+      network: parseNetwork(args.network),
+      provider: args.provider,
+      blockfrostApiUrl: args.blockfrostApiUrl,
+      blockfrostKey: args.blockfrostKey,
+      kupoUrl: args.kupoUrl,
+      ogmiosUrl: args.ogmiosUrl,
+      walletSeedPhrase: args.walletSeedPhrase,
+      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
+      walletPrivateKey: args.walletPrivateKey,
+      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
+      threadOutRef: args.threadOutRef,
+      stateQueueBlockOutRef: args.stateQueueBlockOutRef,
+      txInclusionPath: args.txInclusionPath,
+      awaitConfirmation: args.awaitConfirmation,
+    });
+
+    writeJson(output);
+    return;
+  }
+
+  if (args.command === "submit-invalid-range-step-02") {
+    if (args.threadOutRef === undefined) {
+      throw new Error(
+        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    const output = await submitInvalidRangeStep02FromFiles({
+      blueprintPath: args.blueprintPath,
+      deploymentInfoPath: args.deploymentInfoPath,
+      network: parseNetwork(args.network),
+      provider: args.provider,
+      blockfrostApiUrl: args.blockfrostApiUrl,
+      blockfrostKey: args.blockfrostKey,
+      kupoUrl: args.kupoUrl,
+      ogmiosUrl: args.ogmiosUrl,
+      walletSeedPhrase: args.walletSeedPhrase,
+      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
+      walletPrivateKey: args.walletPrivateKey,
+      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
+      threadOutRef: args.threadOutRef,
       awaitConfirmation: args.awaitConfirmation,
     });
 
@@ -588,7 +758,9 @@ export const main = async (): Promise<void> => {
   writeJson(output);
 };
 
-if (isCliEntrypoint({ moduleUrl: import.meta.url, argvPath: process.argv[1] })) {
+if (
+  isCliEntrypoint({ moduleUrl: import.meta.url, argvPath: process.argv[1] })
+) {
   main().catch((error: unknown) => {
     process.stderr.write(
       `midgard-fault-proofs: ${formatUnknownError(error)}\n`,
