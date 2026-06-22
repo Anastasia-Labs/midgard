@@ -18,6 +18,7 @@ import Cardano.Api qualified as C
 import PlutusLedgerApi.V3 (
   BuiltinByteString,
   PubKeyHash,
+  TxOutRef,
  )
 import PlutusTx.Blueprint (HasBlueprintDefinition, definitionRef)
 import PlutusTx.Blueprint.TH (makeIsDataSchemaIndexed)
@@ -65,10 +66,9 @@ $( makeIsDataSchemaIndexed
 
 data MintRedeemer
   = Init {outputIndex :: Integer}
-  | Deinit {inputIndex :: Integer}
+  | Deinit
   | RegisterOperator
       { registeringOperator :: PubKeyHash
-      , rootInputIndex :: Integer
       , rootOutputIndex :: Integer
       , registeredNodeOutputIndex :: Integer
       , hubOracleRefInputIndex :: Integer
@@ -77,8 +77,7 @@ data MintRedeemer
       }
   | ActivateOperator
       { activatingOperator :: PubKeyHash
-      , anchorElementInputIndex :: Integer
-      , removedNodeInputIndex :: Integer
+      , anchorElementInputOutRef :: TxOutRef
       , anchorElementOutputIndex :: Integer
       , hubOracleRefInputIndex :: Integer
       , retiredOperatorsElementRefInputIndex :: Integer
@@ -86,14 +85,12 @@ data MintRedeemer
       }
   | DeregisterOperator
       { deregisteringOperator :: PubKeyHash
-      , anchorElementInputIndex :: Integer
-      , removedNodeInputIndex :: Integer
+      , anchorElementInputOutRef :: TxOutRef
       , anchorElementOutputIndex :: Integer
       }
   | SlashDuplicateOperator
       { duplicateOperator :: PubKeyHash
-      , anchorElementInputIndex :: Integer
-      , removedNodeInputIndex :: Integer
+      , anchorElementInputOutRef :: TxOutRef
       , anchorElementOutputIndex :: Integer
       , duplicateNodeRefInputIndex :: Integer
       , duplicateOperatorStatus :: DuplicateOperatorStatus

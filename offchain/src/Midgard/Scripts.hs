@@ -2,14 +2,13 @@ module Midgard.Scripts (MidgardScripts (..), MidgardRefScripts (..), readAikenSc
 
 import Cardano.Api qualified as C
 import Convex.PlutusLedger.V1 (transScriptHash)
-import PlutusLedgerApi.Data.V3 (BuiltinData, uncheckedDeserialiseUPLC)
+import PlutusLedgerApi.Data.V3 (BuiltinData)
 import PlutusLedgerApi.V1 (scriptHashAddress)
 import PlutusTx.Builtins qualified as PlutusTx
 import Ply
 
 import Midgard.Constants (hubOracleMintingPolicyId)
-import Midgard.ScriptUtils (mintingPolicyId, policyIdBytes, toValidator, validatorHash)
-import Midgard.Types.ActiveOperators qualified as ActivateOperator
+import Midgard.ScriptUtils (mintingPolicyId, policyIdBytes, validatorHash)
 import Midgard.Types.ActiveOperators qualified as ActiveOperators
 import Midgard.Types.RegisteredOperators qualified as RegisteredOperators
 import Midgard.Types.RetiredOperators qualified as RetiredOperators
