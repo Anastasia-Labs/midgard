@@ -6,7 +6,7 @@ import Control.Monad.Reader (runReaderT)
 import Data.ByteString.Char8 qualified as BS8
 import Data.Foldable (foldl', for_)
 import Data.Functor (void)
-import Data.Maybe (isNothing)
+import Data.Maybe (isJust, isNothing)
 
 import Cardano.Api qualified as C
 import Convex.Class (MonadUtxoQuery, nextSlot, setPOSIXTime, utxosByPaymentCredential)
@@ -61,16 +61,25 @@ tests ms =
           { elementData = LinkedList.Root confirmedStateBefore
           } <-
           currentConfirmedStateDatum ms
-        (_, currentOperator, _) <- withExceptT TxBuildingError $ currentScheduleInfo ms
+        (_, Just (currentOperator, _)) <- withExceptT TxBuildingError $ currentScheduleInfo ms
 
         let newBlock = sampleNewBlock "1"
             expectedHeader =
               LedgerState.Header
                 { prevUtxosRoot = confirmedStateBefore.confirmedUtxoRoot
                 , utxosRoot = newBlock.utxosRoot
+                , withdrawalsRoot = newBlock.withdrawalsRoot
+                , forcedTransactionsRoot = LedgerState.genesisUtxoRoot
                 , transactionsRoot = newBlock.transactionsRoot
                 , depositsRoot = newBlock.depositsRoot
-                , withdrawalsRoot = newBlock.withdrawalsRoot
+                , transitionTraceRoot = LedgerState.genesisUtxoRoot
+                , eventToStepRoot = LedgerState.genesisUtxoRoot
+                , withdrawalCount = 0
+                , forcedTransactionCount = 0
+                , l2TransactionCount = 0
+                , depositCount = 0
+                , totalEventCount = 0
+                , transitionStepCount = 0
                 , startTime = confirmedStateBefore.confirmedEndTime
                 , endTime = 0
                 , prevHeaderHash = confirmedStateBefore.confirmedHeaderHash
@@ -108,7 +117,7 @@ tests ms =
         unless (committedHeader == expectedCommittedHeader) $
           throwError $
             TxBuildingError "Committed block header datum does not match the expected queued header"
-        unless (activeNodeData.bondUnlockTime /= Nothing) $
+        unless (isJust activeNodeData.bondUnlockTime) $
           throwError $
             TxBuildingError "Committing a block header should set the active operator bond unlock time"
     , stateQueueTestCase ms "merge a queued block into confirmed state" [Wallet.w1] $ \_ operatorWallets -> do
@@ -118,16 +127,25 @@ tests ms =
           { elementData = LinkedList.Root confirmedStateBefore
           } <-
           currentConfirmedStateDatum ms
-        (_, currentOperator, _) <- withExceptT TxBuildingError $ currentScheduleInfo ms
+        (_, Just (currentOperator, _)) <- withExceptT TxBuildingError $ currentScheduleInfo ms
 
         let newBlock = sampleNewBlock "2"
             expectedHeader =
               LedgerState.Header
                 { prevUtxosRoot = confirmedStateBefore.confirmedUtxoRoot
                 , utxosRoot = newBlock.utxosRoot
+                , withdrawalsRoot = newBlock.withdrawalsRoot
+                , forcedTransactionsRoot = LedgerState.genesisUtxoRoot
                 , transactionsRoot = newBlock.transactionsRoot
                 , depositsRoot = newBlock.depositsRoot
-                , withdrawalsRoot = newBlock.withdrawalsRoot
+                , transitionTraceRoot = LedgerState.genesisUtxoRoot
+                , eventToStepRoot = LedgerState.genesisUtxoRoot
+                , withdrawalCount = 0
+                , forcedTransactionCount = 0
+                , l2TransactionCount = 0
+                , depositCount = 0
+                , totalEventCount = 0
+                , transitionStepCount = 0
                 , startTime = confirmedStateBefore.confirmedEndTime
                 , endTime = 0
                 , prevHeaderHash = confirmedStateBefore.confirmedHeaderHash
@@ -209,7 +227,7 @@ stateQueueTestCase ms msg wallets act = midgardTestCase ms msg $ \refScripts -> 
         $ Wallet.verificationKeyHash wallet
     void $ balanceAndSubmit' wallet txBody TrailingChange []
 
-  (txBody, _) <- withExceptT TxBuildingError $ scheduleNextOperator False ms
+  (txBody, _) <- withExceptT TxBuildingError $ scheduleNextOperator ms
   void $ balanceAndSubmit' (expectSingleWallet wallets) txBody TrailingChange []
 
   act refScripts wallets
@@ -223,7 +241,7 @@ sampleNewBlock suffix =
     , withdrawalsRoot = sampleRoot $ "withdrawals-" <> suffix
     }
 
-sampleRoot :: String -> LedgerState.MerkleRoot
+sampleRoot :: String -> LedgerState.MidgardLedgerRoot
 sampleRoot = PlutusTx.toBuiltin . BS8.pack
 
 currentConfirmedStateDatum ::
@@ -315,7 +333,7 @@ expectSingleWallet = \case
   _ -> error "absurd: expected a single operator wallet"
 
 expectHeaderNode :: StateQueue.Datum -> LedgerState.Header
-expectHeaderNode LinkedList.Element {elementData = LinkedList.Node header} = header
+expectHeaderNode LinkedList.Element {elementData = LinkedList.Node StateQueue.StateQueueNode {header}} = header
 expectHeaderNode _ = error "Expected a queued header node"
 
 isConfirmedStateRoot :: StateQueue.Datum -> Bool

@@ -1,13 +1,16 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module Midgard.Types.StateQueue (
+  StateQueueNode (..),
   SlashingApproach (..),
   BlockRemovalApproach (..),
+  SpendRedeemer (..),
   MintRedeemer (..),
   Datum,
   confirmedStateAssetName,
   blockAssetNamePrefix,
   blockAssetNamePrefixLen,
+  noDaAttestation,
 ) where
 
 import Data.ByteString (ByteString)
@@ -15,13 +18,23 @@ import Data.ByteString.Char8 qualified as BS8
 import GHC.Generics (Generic)
 
 import Cardano.Api qualified as C
-import PlutusLedgerApi.V3 (BuiltinByteString, PubKeyHash)
+import PlutusLedgerApi.V3 (BuiltinByteString, PubKeyHash, TxOutRef)
 import PlutusTx.Blueprint (HasBlueprintDefinition, definitionRef)
 import PlutusTx.Blueprint.TH (makeIsDataSchemaIndexed)
 
 import Ply (PlyArg)
 
-import Midgard.Types.LedgerState qualified as LedgerState
+import Midgard.Types.LedgerState (
+  ConfirmedState,
+  DepositsRoot,
+  EventToStepRoot,
+  ForcedTransactionsRoot,
+  Header,
+  HeaderHash,
+  MidgardTxsRoot,
+  TransitionTraceRoot,
+  WithdrawalsRoot,
+ )
 import Midgard.Types.LinkedList qualified as LinkedList
 
 confirmedStateAssetName :: C.AssetName
@@ -33,7 +46,41 @@ blockAssetNamePrefix = BS8.pack "MBLC"
 blockAssetNamePrefixLen :: Int
 blockAssetNamePrefixLen = BS8.length blockAssetNamePrefix
 
-type Datum = LinkedList.Element LedgerState.ConfirmedState LedgerState.Header
+noDaAttestation :: BuiltinByteString
+noDaAttestation = mempty
+
+data StateQueueNode = StateQueueNode
+  { header :: Header
+  , daAttestation :: BuiltinByteString
+  }
+  deriving stock (Eq, Show, Generic)
+  deriving anyclass (HasBlueprintDefinition)
+
+$( makeIsDataSchemaIndexed
+     ''StateQueueNode
+     [ ('StateQueueNode, 0)
+     ]
+ )
+
+type Datum = LinkedList.Element ConfirmedState StateQueueNode
+
+data SpendRedeemer
+  = LinkedListMutation
+  | AttachDaAttestation
+      { stateQueueInputIndex :: Integer
+      , daAttestationMintRedeemerIndex :: Integer
+      }
+  deriving stock (Eq, Show, Generic)
+  deriving anyclass (HasBlueprintDefinition)
+
+$( makeIsDataSchemaIndexed
+     ''SpendRedeemer
+     [ ('LinkedListMutation, 0)
+     , ('AttachDaAttestation, 1)
+     ]
+ )
+
+instance PlyArg SpendRedeemer
 
 data SlashingApproach
   = SlashActiveOperator {activeOperatorsRedeemerIndex :: Integer}
@@ -55,12 +102,12 @@ $( makeIsDataSchemaIndexed
 
 data BlockRemovalApproach
   = RemoveLastFraudulentBlock
-      { anchorElementInputIndex :: Integer
+      { anchorElementInputOutRef :: TxOutRef
       , anchorElementOutputIndex :: Integer
       }
   | RemoveFraudulentBlocksLink
-      { fraudulentNodeOutputIndex :: Integer
-      , removedBlockInputIndex :: Integer
+      { fraudulentNodeInputOutRef :: TxOutRef
+      , fraudulentNodeOutputIndex :: Integer
       }
   deriving stock (Eq, Show, Generic)
   deriving anyclass (HasBlueprintDefinition)
@@ -74,10 +121,9 @@ $( makeIsDataSchemaIndexed
 
 data MintRedeemer
   = Init {outputIndex :: Integer}
-  | Deinit {inputIndex :: Integer}
+  | Deinit
   | CommitBlockHeader
-      { latestBlockInputIndex :: Integer
-      , newBlockOutputIndex :: Integer
+      { newBlockOutputIndex :: Integer
       , continuedLatestBlockOutputIndex :: Integer
       , operator :: PubKeyHash
       , schedulerRefInputIndex :: Integer
@@ -86,16 +132,26 @@ data MintRedeemer
       }
   | MergeToConfirmedState
       { headerNodeKey :: BuiltinByteString
-      , headerNodeInputIndex :: Integer
-      , confirmedStateInputIndex :: Integer
+      , confirmedStateInputOutref :: TxOutRef
       , confirmedStateOutputIndex :: Integer
       , mSettlementRedeemerIndex :: Maybe Integer
+      , mergedBlockWithdrawalsRoot :: WithdrawalsRoot
+      , mergedBlockForcedTransactionsRoot :: ForcedTransactionsRoot
+      , mergedBlockTransactionsRoot :: MidgardTxsRoot
+      , mergedBlockDepositsRoot :: DepositsRoot
+      , mergedBlockTransitionTraceRoot :: TransitionTraceRoot
+      , mergedBlockEventToStepRoot :: EventToStepRoot
+      , mergedBlockWithdrawalCount :: Integer
+      , mergedBlockForcedTransactionCount :: Integer
+      , mergedBlockL2TransactionCount :: Integer
+      , mergedBlockDepositCount :: Integer
+      , mergedBlockTotalEventCount :: Integer
+      , mergedBlockTransitionStepCount :: Integer
       }
   | RemoveFraudulentBlockHeader
       { fraudulentOperator :: PubKeyHash
-      , fraudulentBlocksHeaderHash :: BuiltinByteString
+      , fraudulentBlocksHeaderHash :: HeaderHash
       , slashingApproach :: SlashingApproach
-      , fraudulentNodeInputIndex :: Integer
       , fraudProofRefInputIndex :: Integer
       , blockRemovalApproach :: BlockRemovalApproach
       }

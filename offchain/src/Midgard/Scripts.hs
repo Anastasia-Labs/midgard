@@ -69,7 +69,7 @@ data MidgardScripts = MidgardScripts
       TypedScript
         PlutusV3
         '[ AsDatum BuiltinData
-         , AsRedeemer BuiltinData
+         , AsRedeemer StateQueue.SpendRedeemer
          ]
   }
 
@@ -137,17 +137,23 @@ readAikenScripts = do
         stateQueuePolicy'
           #! PlutusTx.toBuiltin (policyIdBytes hubOracleMintingPolicyId)
           #! PlutusTx.toBuiltin (policyIdBytes $ mintingPolicyId activeOperatorsPolicy)
+          #! scriptHashAddress (transScriptHash $ validatorHash activeOperatorsValidator)
           #! PlutusTx.toBuiltin (policyIdBytes $ mintingPolicyId retiredOperatorsPolicy)
           #! PlutusTx.toBuiltin (policyIdBytes $ mintingPolicyId schedulerPolicy)
           -- TODO(chase): Replace these temporary placeholder hashes once
-          -- fraud-proof and settlement offchain script wiring lands.
+          -- fraud-proof, settlement offchain, and da_attestation script wiring lands.
+          #! PlutusTx.toBuiltin (policyIdBytes $ mintingPolicyId registeredOperatorsPolicy)
           #! PlutusTx.toBuiltin (policyIdBytes $ mintingPolicyId registeredOperatorsPolicy)
           #! PlutusTx.toBuiltin (policyIdBytes $ mintingPolicyId registeredOperatorsPolicy)
   let stateQueueValidator =
         stateQueueValidator'
-          #$! PlutusTx.toBuiltin
-          . policyIdBytes
-          $ mintingPolicyId stateQueuePolicy
+          #! ( PlutusTx.toBuiltin
+                 . policyIdBytes
+                 $ mintingPolicyId stateQueuePolicy
+             )
+          -- TODO(chase): Replace these temporary placeholder hashes once
+          -- da_attestation script wiring lands.
+          #! PlutusTx.toBuiltin (policyIdBytes $ mintingPolicyId registeredOperatorsPolicy)
   pure
     MidgardScripts
       { registeredOperatorsValidator

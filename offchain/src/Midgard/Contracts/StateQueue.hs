@@ -31,6 +31,7 @@ import Convex.Class (
   utxosByPaymentCredential,
  )
 import Convex.PlutusLedger.V1 (transPOSIXTime, unTransPOSIXTime, unTransPubKeyHash)
+import Convex.PlutusLedger.V3 (transTxOutRef)
 import Convex.Utils (utcTimeToPosixTime)
 import Convex.Utxos (toTxOut)
 import PlutusLedgerApi.Common (fromBuiltin, toBuiltin)
@@ -69,10 +70,10 @@ import Midgard.Types.LinkedList qualified as LinkedList
 import Midgard.Types.StateQueue qualified as StateQueue
 
 data NewBlock = NewBlock
-  { utxosRoot :: LedgerState.MerkleRoot
-  , transactionsRoot :: LedgerState.MerkleRoot
-  , depositsRoot :: LedgerState.MerkleRoot
-  , withdrawalsRoot :: LedgerState.MerkleRoot
+  { utxosRoot :: LedgerState.MidgardLedgerRoot
+  , transactionsRoot :: LedgerState.MidgardTxsRoot
+  , depositsRoot :: LedgerState.DepositsRoot
+  , withdrawalsRoot :: LedgerState.WithdrawalsRoot
   }
 
 -- | Initialize the state queue and return the start time for committing blocks.
@@ -189,7 +190,8 @@ commitBlockHeader
           C.AssetId hubOracleMintingPolicyId hubOracleAssetName
 
     -- Need to figure out the currently scheduled operator
-    (schedulerTxIn, currentOperator, _) <- currentScheduleInfo ms
+    (schedulerTxIn, currentOperatorInfoM) <- currentScheduleInfo ms
+    (currentOperator, _) <- maybe (throwError "No operator scheduled") pure currentOperatorInfoM
     let currentOperatorBytes = fromBuiltin $ getPubKeyHash currentOperator
         activeOperatorAssetName =
           C.UnsafeAssetName $ ActiveOperators.nodeAssetNamePrefix <> currentOperatorBytes
@@ -240,7 +242,7 @@ commitBlockHeader
               , confirmedState.confirmedEndTime
               , confirmedState.confirmedProtocolVersion
               )
-            LinkedList.Element {elementData = LinkedList.Node header} ->
+            LinkedList.Element {elementData = LinkedList.Node StateQueue.StateQueueNode {header}} ->
               ( toBuiltin $ LinkedList.nodeKeyFromAssetName' StateQueue.blockAssetNamePrefixLen latestBlockAssetName
               , header.utxosRoot
               , header.endTime
@@ -250,9 +252,18 @@ commitBlockHeader
           LedgerState.Header
             { prevUtxosRoot = prevUtxosRoot
             , utxosRoot = utxosRoot
+            , withdrawalsRoot = withdrawalsRoot
+            , forcedTransactionsRoot = LedgerState.genesisUtxoRoot
             , transactionsRoot = transactionsRoot
             , depositsRoot = depositsRoot
-            , withdrawalsRoot = withdrawalsRoot
+            , transitionTraceRoot = LedgerState.genesisUtxoRoot
+            , eventToStepRoot = LedgerState.genesisUtxoRoot
+            , withdrawalCount = 0
+            , forcedTransactionCount = 0
+            , l2TransactionCount = 0
+            , depositCount = 0
+            , totalEventCount = 0
+            , transitionStepCount = 0
             , startTime = blockStartTime
             , endTime = headerEndTime
             , prevHeaderHash = prevHeaderHash
@@ -283,7 +294,12 @@ commitBlockHeader
         (txOutValue latestBlockTxOut)
       let newBlockOutputDatum :: StateQueue.Datum =
             LinkedList.Element
-              { elementData = LinkedList.Node headerDatum
+              { elementData =
+                  LinkedList.Node $
+                    StateQueue.StateQueueNode
+                      { header = headerDatum
+                      , daAttestation = StateQueue.noDaAttestation
+                      }
               , elementLink = Nothing
               }
       payToScriptInlineDatum
@@ -300,8 +316,7 @@ commitBlockHeader
         1
         $ \txBody ->
           StateQueue.CommitBlockHeader
-            { latestBlockInputIndex = toInteger $ findIndexSpending latestBlockTxIn txBody
-            , newBlockOutputIndex =
+            { newBlockOutputIndex =
                 toInteger $
                   findOutputIndexWithAsset
                     (mintingPolicyId stateQueuePolicy)
@@ -325,7 +340,8 @@ commitBlockHeader
         activeOperatorTxIn
         $ \txBody ->
           ActiveOperators.UpdateBondHoldNewState
-            { activeNodeInputIndex = toInteger $ findIndexSpending activeOperatorTxIn txBody
+            { activeOperator = currentOperator
+            , activeNodeInputIndex = toInteger $ findIndexSpending activeOperatorTxIn txBody
             , activeNodeOutputIndex =
                 toInteger $
                   findOutputIndexWithAsset
@@ -333,20 +349,23 @@ commitBlockHeader
                     activeOperatorAssetName
                     txBody
             , hubOracleRefInputIndex = toInteger $ findIndexReference hubOracleTxIn txBody
-            , stateQueueInputIndex = toInteger $ findIndexSpending latestBlockTxIn txBody
-            , stateQueueRedeemerIndex =
+            , stateQueueMintRedeemerIndex =
                 toInteger $
                   findMintRedeemerIndex
                     stateQueuePolicies
                     txBody
                     (mintingPolicyId stateQueuePolicy)
             }
-      let updatedActiveOperatorDatum :: ActiveOperators.Datum =
+      let activeOperatorInactivityStrikes = case LinkedList.elementData activeOperatorDatum of
+            LinkedList.Node ActiveOperators.NodeData {inactivityStrikes} -> inactivityStrikes
+            _ -> error "absurd: Active Operator node is Root"
+          updatedActiveOperatorDatum :: ActiveOperators.Datum =
             activeOperatorDatum
               { LinkedList.elementData =
                   LinkedList.Node $
                     ActiveOperators.NodeData
                       { bondUnlockTime = Just newBondUnlockTime
+                      , inactivityStrikes = activeOperatorInactivityStrikes
                       }
               }
       payToScriptInlineDatum
@@ -404,12 +423,16 @@ mergeToConfirmedState MidgardScripts {stateQueueValidator, stateQueuePolicy} = d
   headerNodeDatum <-
     maybe (throwError "Invalid header node datum") pure $
       inlineDatumFromUTxO @StateQueue.Datum (toTxOut @era headerNodeUtxoAnyEra)
+  mergedHeader <-
+    case headerNodeDatum of
+      LinkedList.Element {elementData = LinkedList.Node StateQueue.StateQueueNode {header}} -> pure header
+      _ -> throwError "Malformed header node datum"
 
   let mergedConfirmedStateDatum :: StateQueue.Datum =
         case (confirmedStateDatum, headerNodeDatum) of
           ( LinkedList.Element {elementData = LinkedList.Root confirmedState}
             , LinkedList.Element
-                { elementData = LinkedList.Node header
+                { elementData = LinkedList.Node StateQueue.StateQueueNode {header}
                 , elementLink = remainingLink
                 }
             ) ->
@@ -451,8 +474,7 @@ mergeToConfirmedState MidgardScripts {stateQueueValidator, stateQueuePolicy} = d
       $ \txBody ->
         StateQueue.MergeToConfirmedState
           { headerNodeKey = toBuiltin $ LinkedList.getNodeKey headerNodeKey
-          , headerNodeInputIndex = toInteger $ findIndexSpending headerNodeTxIn txBody
-          , confirmedStateInputIndex = toInteger $ findIndexSpending confirmedStateTxIn txBody
+          , confirmedStateInputOutref = transTxOutRef confirmedStateTxIn
           , confirmedStateOutputIndex =
               toInteger $
                 findOutputIndexWithAsset
@@ -460,6 +482,18 @@ mergeToConfirmedState MidgardScripts {stateQueueValidator, stateQueuePolicy} = d
                   StateQueue.confirmedStateAssetName
                   txBody
           , mSettlementRedeemerIndex = Nothing
+          , mergedBlockWithdrawalsRoot = mergedHeader.withdrawalsRoot
+          , mergedBlockForcedTransactionsRoot = mergedHeader.forcedTransactionsRoot
+          , mergedBlockTransactionsRoot = mergedHeader.transactionsRoot
+          , mergedBlockDepositsRoot = mergedHeader.depositsRoot
+          , mergedBlockTransitionTraceRoot = mergedHeader.transitionTraceRoot
+          , mergedBlockEventToStepRoot = mergedHeader.eventToStepRoot
+          , mergedBlockWithdrawalCount = mergedHeader.withdrawalCount
+          , mergedBlockForcedTransactionCount = mergedHeader.forcedTransactionCount
+          , mergedBlockL2TransactionCount = mergedHeader.l2TransactionCount
+          , mergedBlockDepositCount = mergedHeader.depositCount
+          , mergedBlockTotalEventCount = mergedHeader.totalEventCount
+          , mergedBlockTransitionStepCount = mergedHeader.transitionStepCount
           }
     addBtx $ \txBody ->
       -- Constraint: merging requires the tx lower bound to be at or after the

@@ -269,20 +269,6 @@ mintPlutusRefWithRedeemerFinal refIn scriptVersion policyId assetName quantity r
   addMintWithTxBody policyId assetName quantity $
     buildRefScriptWitness refIn scriptVersion C.NoScriptDatumForMint . redeemerF
 
--- | Like 'addMintWithTxBody' but tailored towards easier usage.
-mintPlutusWithRedeemerFinal ::
-  (ToData redeemer, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang, MonadBuildTx era m, C.IsMaryBasedEra era) =>
-  C.PlutusScript lang ->
-  C.AssetName ->
-  C.Quantity ->
-  (C.TxBodyContent C.BuildTx era -> redeemer) ->
-  m ()
-mintPlutusWithRedeemerFinal script assetName quantity redeemerF =
-  addMintWithTxBody policyId assetName quantity $
-    buildScriptWitness script C.NoScriptDatumForMint . redeemerF
-  where
-    policyId = C.PolicyId . C.hashScript $ C.PlutusScript C.plutusScriptVersion script
-
 -- | Like 'addInputWithTxBody' but tailored towards easy usage with inline datum script spending.
 spendPlutusInlineDatumWithRedeemerFinal ::
   (MonadBuildTx era m, ToData b, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang) =>
