@@ -19,7 +19,7 @@ import Convex.BuildTx (
   execBuildTx,
   findIndexReference,
   findIndexSpending,
-  mintPlutus,
+  mintPlutusRef,
   payToScriptInlineDatum,
   setMinAdaDepositAll,
  )
@@ -47,8 +47,9 @@ import Midgard.Contracts.Utils (
   spendPlutusInlineDatumWithRedeemerFinal,
   utcTimeToEnclosingSlot,
  )
-import Midgard.ScriptUtils (mintingPolicyId, toMintingPolicy, toValidator, validatorHash)
+import Midgard.ScriptUtils (mintingPolicyId, plutusVersion, toValidator, validatorHash)
 import Midgard.Scripts (
+  MidgardRefScripts (MidgardRefScripts, schedulerPolicyRef),
   MidgardScripts (
     MidgardScripts,
     activeOperatorsPolicy,
@@ -71,13 +72,23 @@ initScheduler ::
   ) =>
   C.NetworkId ->
   MidgardScripts ->
+  MidgardRefScripts ->
   m ()
 initScheduler
   netId
-  MidgardScripts {schedulerValidator, schedulerPolicy} = do
+  MidgardScripts {schedulerValidator, schedulerPolicy}
+  MidgardRefScripts {schedulerPolicyRef} = do
     let C.PolicyId policyId = mintingPolicyId schedulerPolicy
+    -- Use reference script to mint.
+    addReference schedulerPolicyRef
     -- The scheduler token should be minted.
-    mintPlutus (toMintingPolicy schedulerPolicy) Scheduler.Init Scheduler.assetName 1
+    mintPlutusRef
+      schedulerPolicyRef
+      (plutusVersion schedulerPolicy)
+      policyId
+      Scheduler.Init
+      Scheduler.assetName
+      1
     -- And sent to the scheduler validator.
     let datum :: Scheduler.Datum
         datum = Scheduler.NoActiveOperators

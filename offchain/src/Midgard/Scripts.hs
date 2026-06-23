@@ -78,6 +78,8 @@ data MidgardRefScripts = MidgardRefScripts
   { registeredOperatorsPolicyRef :: C.TxIn
   , activeOperatorsPolicyRef :: C.TxIn
   , retiredOperatorsPolicyRef :: C.TxIn
+  , schedulerPolicyRef :: C.TxIn
+  , stateQueuePolicyRef :: C.TxIn
   }
   deriving stock (Show)
 
@@ -133,6 +135,7 @@ readAikenScripts = do
           #! PlutusTx.toBuiltin (policyIdBytes $ mintingPolicyId activeOperatorsPolicy)
           #! PlutusTx.toBuiltin (policyIdBytes $ mintingPolicyId schedulerPolicy)
           #! PlutusTx.toBuiltin (policyIdBytes hubOracleMintingPolicyId)
+  let placeholderDaAttestation = PlutusTx.toBuiltin (policyIdBytes $ mintingPolicyId registeredOperatorsPolicy)
   let stateQueuePolicy =
         stateQueuePolicy'
           #! PlutusTx.toBuiltin (policyIdBytes hubOracleMintingPolicyId)
@@ -144,7 +147,7 @@ readAikenScripts = do
           -- fraud-proof, settlement offchain, and da_attestation script wiring lands.
           #! PlutusTx.toBuiltin (policyIdBytes $ mintingPolicyId registeredOperatorsPolicy)
           #! PlutusTx.toBuiltin (policyIdBytes $ mintingPolicyId registeredOperatorsPolicy)
-          #! PlutusTx.toBuiltin (policyIdBytes $ mintingPolicyId registeredOperatorsPolicy)
+          #! placeholderDaAttestation
   let stateQueueValidator =
         stateQueueValidator'
           #! ( PlutusTx.toBuiltin
@@ -153,7 +156,7 @@ readAikenScripts = do
              )
           -- TODO(chase): Replace these temporary placeholder hashes once
           -- da_attestation script wiring lands.
-          #! PlutusTx.toBuiltin (policyIdBytes $ mintingPolicyId registeredOperatorsPolicy)
+          #! placeholderDaAttestation
   pure
     MidgardScripts
       { registeredOperatorsValidator

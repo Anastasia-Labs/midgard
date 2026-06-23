@@ -54,7 +54,7 @@ tests :: MidgardScripts -> TestTree
 tests ms =
   testGroup
     "state-queue"
-    [ stateQueueTestCase ms "commit a block header" [Wallet.w1] $ \_ operatorWallets -> do
+    [ stateQueueTestCase ms "commit a block header" [Wallet.w1] $ \refScripts operatorWallets -> do
         let operatorWallet = expectSingleWallet operatorWallets
 
         LinkedList.Element
@@ -87,7 +87,7 @@ tests ms =
                 , protocolVersion = confirmedStateBefore.confirmedProtocolVersion
                 }
 
-        (txBody, headerEndTime) <- withExceptT TxBuildingError $ commitBlockHeader ms newBlock
+        (txBody, headerEndTime) <- withExceptT TxBuildingError $ commitBlockHeader ms refScripts newBlock
         void $ balanceAndSubmit' operatorWallet txBody TrailingChange []
 
         let expectedCommittedHeader = expectedHeader {LedgerState.endTime = headerEndTime}
@@ -120,7 +120,7 @@ tests ms =
         unless (isJust activeNodeData.bondUnlockTime) $
           throwError $
             TxBuildingError "Committing a block header should set the active operator bond unlock time"
-    , stateQueueTestCase ms "merge a queued block into confirmed state" [Wallet.w1] $ \_ operatorWallets -> do
+    , stateQueueTestCase ms "merge a queued block into confirmed state" [Wallet.w1] $ \refScripts operatorWallets -> do
         let operatorWallet = expectSingleWallet operatorWallets
 
         LinkedList.Element
@@ -153,7 +153,7 @@ tests ms =
                 , protocolVersion = confirmedStateBefore.confirmedProtocolVersion
                 }
 
-        (txBody, headerEndTime) <- withExceptT TxBuildingError $ commitBlockHeader ms newBlock
+        (txBody, headerEndTime) <- withExceptT TxBuildingError $ commitBlockHeader ms refScripts newBlock
         void $ balanceAndSubmit' operatorWallet txBody TrailingChange []
 
         let expectedCommittedHeader = expectedHeader {LedgerState.endTime = headerEndTime}
@@ -164,7 +164,7 @@ tests ms =
         setPOSIXTime headerEndTime
         nextSlot
 
-        txBody <- withExceptT TxBuildingError $ mergeToConfirmedState ms
+        txBody <- withExceptT TxBuildingError $ mergeToConfirmedState ms refScripts
         void $ balanceAndSubmit' operatorWallet txBody TrailingChange []
 
         LinkedList.Element

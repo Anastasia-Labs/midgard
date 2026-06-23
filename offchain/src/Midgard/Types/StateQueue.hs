@@ -10,7 +10,6 @@ module Midgard.Types.StateQueue (
   confirmedStateAssetName,
   blockAssetNamePrefix,
   blockAssetNamePrefixLen,
-  noDaAttestation,
 ) where
 
 import Data.ByteString (ByteString)
@@ -45,9 +44,6 @@ blockAssetNamePrefix = BS8.pack "MBLC"
 
 blockAssetNamePrefixLen :: Int
 blockAssetNamePrefixLen = BS8.length blockAssetNamePrefix
-
-noDaAttestation :: BuiltinByteString
-noDaAttestation = mempty
 
 data StateQueueNode = StateQueueNode
   { header :: Header

@@ -109,8 +109,8 @@ initProtocol
         initRegisteredOperators netId scripts refScripts
         initActiveOperators netId scripts refScripts
         initRetiredOperators netId scripts refScripts
-        initScheduler netId scripts
-        initStateQueue netId eraHistory systemStart currentSlot scripts
+        initScheduler netId scripts refScripts
+        initStateQueue netId eraHistory systemStart currentSlot scripts refScripts
         setMinAdaDepositAll params
     where
       scriptCurrencySymbol = currencySymbol . policyIdBytes . mintingPolicyId
