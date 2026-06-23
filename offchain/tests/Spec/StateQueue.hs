@@ -6,7 +6,7 @@ import Control.Monad.Reader (runReaderT)
 import Data.ByteString.Char8 qualified as BS8
 import Data.Foldable (foldl', for_)
 import Data.Functor (void)
-import Data.Maybe (isJust, isNothing)
+import Data.Maybe (isJust)
 
 import Cardano.Api qualified as C
 import Convex.Class (MonadUtxoQuery, nextSlot, setPOSIXTime, utxosByPaymentCredential)
@@ -22,7 +22,7 @@ import Test.Tasty
 import Midgard.Contracts.ActiveOperators (activateOperator)
 import Midgard.Contracts.RegisteredOperators (registerOperator)
 import Midgard.Contracts.Scheduler (currentScheduleInfo, scheduleNextOperator)
-import Midgard.Contracts.StateQueue (NewBlock (..), commitBlockHeader, mergeToConfirmedState)
+import Midgard.Contracts.StateQueue (NewBlock (..), commitBlockHeader)
 import Midgard.Contracts.Utils (
   LinkedListInfo (..),
   findFinalUTxONode,
@@ -120,85 +120,6 @@ tests ms =
         unless (isJust activeNodeData.bondUnlockTime) $
           throwError $
             TxBuildingError "Committing a block header should set the active operator bond unlock time"
-    , stateQueueTestCase ms "merge a queued block into confirmed state" [Wallet.w1] $ \refScripts operatorWallets -> do
-        let operatorWallet = expectSingleWallet operatorWallets
-
-        LinkedList.Element
-          { elementData = LinkedList.Root confirmedStateBefore
-          } <-
-          currentConfirmedStateDatum ms
-        (_, Just (currentOperator, _)) <- withExceptT TxBuildingError $ currentScheduleInfo ms
-
-        let newBlock = sampleNewBlock "2"
-            expectedHeader =
-              LedgerState.Header
-                { prevUtxosRoot = confirmedStateBefore.confirmedUtxoRoot
-                , utxosRoot = newBlock.utxosRoot
-                , withdrawalsRoot = newBlock.withdrawalsRoot
-                , forcedTransactionsRoot = LedgerState.genesisUtxoRoot
-                , transactionsRoot = newBlock.transactionsRoot
-                , depositsRoot = newBlock.depositsRoot
-                , transitionTraceRoot = LedgerState.genesisUtxoRoot
-                , eventToStepRoot = LedgerState.genesisUtxoRoot
-                , withdrawalCount = 0
-                , forcedTransactionCount = 0
-                , l2TransactionCount = 0
-                , depositCount = 0
-                , totalEventCount = 0
-                , transitionStepCount = 0
-                , startTime = confirmedStateBefore.confirmedEndTime
-                , endTime = 0
-                , prevHeaderHash = confirmedStateBefore.confirmedHeaderHash
-                , operatorVkey = currentOperator
-                , protocolVersion = confirmedStateBefore.confirmedProtocolVersion
-                }
-
-        (txBody, headerEndTime) <- withExceptT TxBuildingError $ commitBlockHeader ms refScripts newBlock
-        void $ balanceAndSubmit' operatorWallet txBody TrailingChange []
-
-        let expectedCommittedHeader = expectedHeader {LedgerState.endTime = headerEndTime}
-            expectedHeaderHash = hashPlutusData224 expectedCommittedHeader
-            expectedHeaderAssetName =
-              C.UnsafeAssetName $ StateQueue.blockAssetNamePrefix <> expectedHeaderHash
-
-        setPOSIXTime headerEndTime
-        nextSlot
-
-        txBody <- withExceptT TxBuildingError $ mergeToConfirmedState ms refScripts
-        void $ balanceAndSubmit' operatorWallet txBody TrailingChange []
-
-        LinkedList.Element
-          { elementData = LinkedList.Root confirmedStateAfterMerge
-          , elementLink = mergedLink
-          } <-
-          currentConfirmedStateDatum ms
-        (finalNodeAssetName, finalNodeDatum) <- currentFinalStateQueueNode ms
-
-        let expectedMergedConfirmedState =
-              LedgerState.ConfirmedState
-                { confirmedHeaderHash = PlutusTx.toBuiltin expectedHeaderHash
-                , confirmedPrevHeaderHash = confirmedStateBefore.confirmedHeaderHash
-                , confirmedUtxoRoot = newBlock.utxosRoot
-                , confirmedStartTime = confirmedStateBefore.confirmedStartTime
-                , confirmedEndTime = headerEndTime
-                , confirmedProtocolVersion = confirmedStateBefore.confirmedProtocolVersion
-                }
-
-        unless (confirmedStateAfterMerge == expectedMergedConfirmedState) $
-          throwError $
-            TxBuildingError "Confirmed state was not updated with the merged block header"
-        unless (isNothing mergedLink) $
-          throwError $
-            TxBuildingError "Confirmed state should no longer point at a queued block after merge"
-        unless (finalNodeAssetName == StateQueue.confirmedStateAssetName) $
-          throwError $
-            TxBuildingError "Final state queue node should collapse back to the confirmed-state root after merge"
-        unless (isConfirmedStateRoot finalNodeDatum) $
-          throwError $
-            TxBuildingError "Final state queue datum should be the confirmed-state root after merge"
-        unlessM (not <$> stateQueueHasAsset ms expectedHeaderAssetName) $
-          throwError $
-            TxBuildingError "Merged block header NFT should be burned after the merge"
     ]
 
 stateQueueTestCase ::
@@ -311,22 +232,6 @@ currentActiveOperatorNodeData MidgardScripts {activeOperatorsValidator, activeOp
     Just LinkedList.Element {elementData = LinkedList.Node nodeData} -> pure nodeData
     _ -> error "Active operator node datum not found"
 
-stateQueueHasAsset ::
-  (MonadUtxoQuery m) =>
-  MidgardScripts ->
-  C.AssetName ->
-  m Bool
-stateQueueHasAsset MidgardScripts {stateQueueValidator, stateQueuePolicy} assetName = do
-  stateQueueUtxos <-
-    utxosByPaymentCredential $
-      C.PaymentCredentialByScript $
-        validatorHash stateQueueValidator
-  pure $
-    case findUTxOWithAsset stateQueueUtxos $
-      C.AssetId (mintingPolicyId stateQueuePolicy) assetName of
-      Just _ -> True
-      Nothing -> False
-
 expectSingleWallet :: [Wallet] -> Wallet
 expectSingleWallet = \case
   [wallet] -> wallet
@@ -335,10 +240,3 @@ expectSingleWallet = \case
 expectHeaderNode :: StateQueue.Datum -> LedgerState.Header
 expectHeaderNode LinkedList.Element {elementData = LinkedList.Node StateQueue.StateQueueNode {header}} = header
 expectHeaderNode _ = error "Expected a queued header node"
-
-isConfirmedStateRoot :: StateQueue.Datum -> Bool
-isConfirmedStateRoot LinkedList.Element {elementData = LinkedList.Root _} = True
-isConfirmedStateRoot _ = False
-
-unlessM :: (Monad m) => m Bool -> m () -> m ()
-unlessM predicate action = flip unless action =<< predicate

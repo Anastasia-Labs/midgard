@@ -64,7 +64,6 @@ import Midgard.Scripts (
     stateQueuePolicy,
     stateQueueValidator
   ),
-  registeredOperatorsPolicy,
  )
 import Midgard.Types.ActiveOperators qualified as ActiveOperators
 import Midgard.Types.LedgerState qualified as LedgerState
@@ -294,7 +293,10 @@ commitBlockHeader
       -- Use reference script to mint.
       addReference stateQueuePolicyRef
       -- Append the new block.
-      spendPlutusInlineDatum latestBlockTxIn (toValidator stateQueueValidator) ()
+      spendPlutusInlineDatum
+        latestBlockTxIn
+        (toValidator stateQueueValidator)
+        StateQueue.LinkedListMutation
       -- Update the link to point to the new block.
       let continuedLatestBlockDatum = latestBlockDatum {LinkedList.elementLink = Just newBlockKey}
       payToScriptInlineDatum
@@ -309,7 +311,7 @@ commitBlockHeader
                   LinkedList.Node $
                     StateQueue.StateQueueNode
                       { header = headerDatum
-                      , -- Must start with no da attestation.
+                      , -- Must start with no DA attestation.
                         daAttestation = mempty
                       }
               , elementLink = Nothing
@@ -472,8 +474,14 @@ mergeToConfirmedState
       addReference stateQueuePolicyRef
       -- Constraint: fold the first queued block into the confirmed-state root by
       -- spending both the root and the linked header node.
-      spendPlutusInlineDatum confirmedStateTxIn (toValidator stateQueueValidator) ()
-      spendPlutusInlineDatum headerNodeTxIn (toValidator stateQueueValidator) ()
+      spendPlutusInlineDatum
+        confirmedStateTxIn
+        (toValidator stateQueueValidator)
+        StateQueue.LinkedListMutation
+      spendPlutusInlineDatum
+        headerNodeTxIn
+        (toValidator stateQueueValidator)
+        StateQueue.LinkedListMutation
       payToScriptInlineDatum
         netId
         (validatorHash stateQueueValidator)
