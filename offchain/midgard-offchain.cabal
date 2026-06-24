@@ -92,11 +92,13 @@ common dependencies
     , convex-base
     , convex-mockchain
     , convex-optics
+    , directory
     , mtl
     , plutus-ledger-api
     , plutus-tx
     , ply-core
     , text
+    , time
     , transformers
 
 library
@@ -126,6 +128,69 @@ library
     , plutus-core
     , time
 
+executable midgard-node
+  import:         lang, dependencies
+  main-is:        Main.hs
+  hs-source-dirs: node/app
+  build-depends:  midgard-node-lib
+
+library midgard-node-lib
+  import:             lang, dependencies
+  hs-source-dirs:     node/src
+  default-extensions: OverloadedStrings
+  exposed-modules:
+    Midgard.Node.App
+    Midgard.Node.Codec.Scripts
+    Midgard.Node.Config
+    Midgard.Node.DB.AddressHistory
+    Midgard.Node.DB.Blocks
+    Midgard.Node.DB.Deposits
+    Midgard.Node.DB.Hex
+    Midgard.Node.DB.MempoolLedger
+    Midgard.Node.DB.Pool
+    Midgard.Node.DB.Transactions
+    Midgard.Node.DB.TxStatus
+    Midgard.Node.DB.Types
+    Midgard.Node.Env
+    Midgard.Node.Migrations
+    Midgard.Node.Server
+    Midgard.Node.Server.Admin
+    Midgard.Node.Server.Admin.Types
+    Midgard.Node.Server.Api
+    Midgard.Node.Server.Health
+    Midgard.Node.Server.Health.Types
+    Midgard.Node.Server.JSON.Types
+    Midgard.Node.Server.Monad
+    Midgard.Node.Server.Protocol
+    Midgard.Node.Server.Protocol.Types
+    Midgard.Node.Server.Query
+    Midgard.Node.Server.Query.Types
+    Midgard.Node.Server.Tx
+    Midgard.Node.Server.Tx.Types
+    Midgard.Node.Server.Types
+    Midgard.Node.Server.Utils
+
+  build-depends:
+    , aeson
+    , cardano-ledger-binary
+    , cborg
+    , cryptohash-sha256
+    , deriving-aeson
+    , filepath
+    , midgard-offchain
+    , monad-logger
+    , persistent
+    , persistent-postgresql
+    , postgresql-simple
+    , resource-pool
+    , servant
+    , servant-server
+    , time
+    , unliftio-core
+    , wai
+    , warp
+    , yaml
+
 test-suite mockchain-tests
   import:         lang, dependencies
   type:           exitcode-stdio-1.0
@@ -145,3 +210,31 @@ test-suite mockchain-tests
     , tasty
     , tasty-hunit
     , tasty-quickcheck
+
+test-suite node-tests
+  import:             lang, dependencies
+  type:               exitcode-stdio-1.0
+  ghc-options:        -threaded
+  default-extensions: OverloadedStrings
+  main-is:            Spec.hs
+  hs-source-dirs:     node/tests
+  other-modules:
+    Spec.Node.DB
+    Spec.Node.DB.Utils
+    Spec.Node.Server
+
+  build-depends:
+    , aeson
+    , cardano-ledger-binary
+    , http-client
+    , http-types
+    , midgard-node-lib
+    , monad-logger
+    , persistent
+    , persistent-sqlite
+    , resource-pool
+    , servant
+    , servant-client
+    , tasty
+    , tasty-hunit
+    , warp
