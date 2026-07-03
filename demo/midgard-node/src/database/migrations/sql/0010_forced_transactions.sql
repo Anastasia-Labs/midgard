@@ -20,7 +20,7 @@ CREATE TABLE forced_transaction_utxos (
   status TEXT NOT NULL CHECK (status IN ('awaiting', 'projected', 'finalized')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (tx_order_l1_tx_hash, tx_order_l1_output_index),
+  CONSTRAINT unique_forced_transaction_l1_ref UNIQUE (tx_order_l1_tx_hash, tx_order_l1_output_index),
   CHECK (status <> 'awaiting' OR projected_header_hash IS NULL)
 );
 
@@ -43,7 +43,7 @@ CREATE TABLE pending_block_finalization_forced_transactions (
   source_id BYTEA NOT NULL,
   source_time_stamp_tz TIMESTAMPTZ NOT NULL,
   PRIMARY KEY (header_hash, member_id),
-  UNIQUE (header_hash, ordinal)
+  CONSTRAINT unique_pending_block_finalization_forced_transaction_ordinal UNIQUE (header_hash, ordinal)
 );
 
 ALTER TABLE pending_block_finalizations

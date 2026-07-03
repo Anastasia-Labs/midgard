@@ -21,7 +21,7 @@ CREATE TABLE tx_admissions (
   tx_id BYTEA PRIMARY KEY CHECK (octet_length(tx_id) = 32),
   tx_canonical_cbor BYTEA NOT NULL CHECK (octet_length(tx_canonical_cbor) > 0),
   tx_canonical_cbor_sha256 BYTEA NOT NULL CHECK (octet_length(tx_canonical_cbor_sha256) = 32),
-  arrival_seq BIGSERIAL UNIQUE NOT NULL,
+  arrival_seq BIGSERIAL CONSTRAINT unique_tx_admission_arrival_seq UNIQUE NOT NULL,
   status tx_admission_status NOT NULL,
   first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
