@@ -37,6 +37,7 @@ newtype BlockResponse = BlockResponse
   deriving stock (Eq, Generic, Show)
   deriving anyclass (FromJSON, ToJSON)
 
+-- TODO: TxOutRefJSON should actually describe a Midgard UTxO. Not a normal one.
 data EncodedStoredUtxo = EncodedStoredUtxo
   { outref :: TxOutRefJSON
   , outputCbor :: TxOutJSON

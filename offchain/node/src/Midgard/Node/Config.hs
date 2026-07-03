@@ -1,6 +1,7 @@
 module Midgard.Node.Config (
   MidgardNodeConfig (..),
   ApiConfig (..),
+  DbConnStr (..),
   DatabaseConfig (..),
   MidgardConfig (..),
   ProtocolConfig (..),
@@ -9,50 +10,48 @@ module Midgard.Node.Config (
   loadConfigFile,
 ) where
 
-import Data.Aeson (FromJSON (..), withObject, (.!=), (.:), (.:?))
 import Data.Text (Text)
-import Data.Yaml qualified as Yaml
 
-data ApiConfig = ApiConfig
+import Data.Aeson (FromJSON (..), withObject, withText, (.!=), (.:), (.:?))
+import Data.Text.Encoding qualified as Text
+import Data.Yaml qualified as Yaml
+import Database.Persist.Postgresql (ConnectionString)
+import GHC.Generics (Generic)
+
+newtype ApiConfig = ApiConfig
   { port :: Int
   }
+  deriving stock (Eq, Show, Generic)
+  deriving anyclass (FromJSON)
+
+-- | Helper bytestring wrapper with a text-based JSON instance.
+newtype DbConnStr = DbConnStr {unDbConnStr :: ConnectionString}
   deriving stock (Eq, Show)
 
-instance FromJSON ApiConfig where
-  parseJSON = withObject "ApiConfig" $ \obj ->
-    ApiConfig <$> obj .: "port"
+instance FromJSON DbConnStr where
+  parseJSON = withText "DatabaseConnectionString" $ pure . DbConnStr . Text.encodeUtf8
 
 data DatabaseConfig = DatabaseConfig
-  { connectionString :: Text
-  , poolSize :: Maybe Int
+  { connectionString :: DbConnStr
+  , poolSize :: !Int
   }
-  deriving stock (Eq, Show)
-
-instance FromJSON DatabaseConfig where
-  parseJSON = withObject "DatabaseConfig" $ \obj ->
-    DatabaseConfig
-      <$> obj .: "connectionString"
-      <*> obj .:? "poolSize"
+  deriving stock (Eq, Show, Generic)
+  deriving anyclass (FromJSON)
 
 data MidgardConfig = MidgardConfig
-  { network :: Text
-  , adminApiKey :: Maybe Text
+  { network :: !Text
+  , adminApiKey :: !(Maybe Text)
   }
-  deriving stock (Eq, Show)
-
-instance FromJSON MidgardConfig where
-  parseJSON = withObject "MidgardConfig" $ \obj ->
-    MidgardConfig
-      <$> obj .: "network"
-      <*> obj .:? "adminApiKey"
+  deriving stock (Eq, Show, Generic)
+  deriving anyclass (FromJSON)
 
 data ProtocolConfig = ProtocolConfig
-  { minFeeA :: Text
-  , minFeeB :: Text
-  , maxSubmitTxCborBytes :: Int
-  , validationStrictnessProfile :: Text
+  { minFeeA :: !Text
+  , minFeeB :: !Text
+  , maxSubmitTxCborBytes :: !Int
+  , validationStrictnessProfile :: !Text
   }
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Show, Generic)
 
 instance FromJSON ProtocolConfig where
   parseJSON = withObject "ProtocolConfig" $ \obj ->
@@ -63,43 +62,34 @@ instance FromJSON ProtocolConfig where
       <*> obj .:? "validationStrictnessProfile" .!= "phase1_midgard"
 
 data ContractsConfig = ContractsConfig
-  { midgardEnvFile :: Maybe FilePath
-  , deploymentInfoFile :: Maybe FilePath
+  { midgardEnvFile :: !(Maybe FilePath)
+  , deploymentInfoFile :: !(Maybe FilePath)
   }
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Show, Generic)
+  deriving anyclass (FromJSON)
 
-instance FromJSON ContractsConfig where
-  parseJSON = withObject "ContractsConfig" $ \obj ->
-    ContractsConfig
-      <$> obj .:? "midgardEnvFile"
-      <*> obj .:? "deploymentInfoFile"
-
-data FeatureFlags = FeatureFlags
+newtype FeatureFlags = FeatureFlags
   { enableMutatingEndpoints :: Bool
   }
-  deriving stock (Eq, Show)
-
-instance FromJSON FeatureFlags where
-  parseJSON = withObject "FeatureFlags" $ \obj ->
-    FeatureFlags
-      <$> obj .: "enableMutatingEndpoints"
+  deriving stock (Eq, Show, Generic)
+  deriving anyclass (FromJSON)
 
 data MidgardNodeConfig = MidgardNodeConfig
-  { api :: ApiConfig
-  , database :: Maybe DatabaseConfig
-  , logLevel :: Text
-  , midgard :: MidgardConfig
-  , protocol :: ProtocolConfig
-  , contracts :: ContractsConfig
-  , features :: FeatureFlags
+  { api :: !ApiConfig
+  , database :: !DatabaseConfig
+  , logLevel :: !Text
+  , midgard :: !MidgardConfig
+  , protocol :: !ProtocolConfig
+  , contracts :: !ContractsConfig
+  , features :: !FeatureFlags
   }
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Show, Generic)
 
 instance FromJSON MidgardNodeConfig where
   parseJSON = withObject "MidgardNodeConfig" $ \obj ->
     MidgardNodeConfig
       <$> obj .: "api"
-      <*> obj .:? "database"
+      <*> obj .: "database"
       <*> obj .: "logLevel"
       <*> obj .: "midgard"
       <*> obj .:? "protocol" .!= ProtocolConfig "0" "0" 32768 "phase1_midgard"
