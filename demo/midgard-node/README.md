@@ -238,6 +238,10 @@ pnpm listen
 - `pnpm submit:l2-transfer`: build and submit a Midgard-native user transfer.
 - `node dist/index.js project-deposits-once`: fetch L1 deposit events once and
   project newly visible deposits into the local Midgard ledger view.
+- `node dist/index.js create-l2-wallet`: create persisted local stress-wallet
+  seed records plus env/argument helper files for parallel fanout benchmarks.
+- `node dist/index.js stress-wallets:prepare`: fund, project, and verify
+  persisted stress wallets before parallel fanout benchmarks.
 - `pnpm audit:blocks-immutable`: inspect immutable block state and related
   persistence.
 - `pnpm stress:valid`: run the high-throughput valid-transaction submitter.
@@ -256,7 +260,7 @@ node dist/index.js reconcile phas-registered --json [--repair]
 node dist/index.js reconcile reference-scripts-complete --scope node-runtime --json [--repair]
 node dist/index.js reconcile deposit-projected --cardano-tx-hash <hash> --json [--repair]
 node dist/index.js reconcile tx-committed --tx-hash <l2-tx-id> --json
-node dist/index.js reconcile da-attested --header-hash <hash> --watcher-url <url> --deployment-fingerprint <id> --json [--repair]
+node dist/index.js reconcile da-attested --header-hash <hash> --watcher-url <url> --contract-deployment-info deploymentInfo/contract-deployment-info.json --json [--repair]
 node dist/index.js reconcile block-committed --header-hash <hash> --json
 node dist/index.js reconcile merge-complete --header-hash <hash> --json [--repair]
 ```
@@ -501,6 +505,61 @@ path, pass:
 ```sh
 node dist/index.js init \
   --contract-deployment-info-output contract-deployment-info.json
+```
+
+## Parallel Fanout Stress Wallets
+
+Parallel fanout stress uses independent L2 wallets so concurrent workers do not
+race on the same wallet UTxO. Generate a larger pool once, source the generated
+env file, then prepare the subset needed for a run:
+
+```sh
+cd midgard-node
+pnpm build
+
+node dist/index.js create-l2-wallet \
+  --count 128 \
+  --out-dir .stress-wallets
+
+. .stress-wallets/stress-wallets.env
+
+node dist/index.js stress-wallets:prepare \
+  --count 64 \
+  --lovelace-per-wallet 12000000 \
+  --out-dir .stress-wallets
+```
+
+`stress-wallets:prepare` reads existing wallet JSON files, creates missing files
+only when `--create-missing` is passed, submits one deposit for each wallet that
+does not already have sufficient spendable L2 funding, runs deposit projection,
+and verifies each wallet through the node's `/utxos?address=...` endpoint. The
+wallet directory contains private seed phrases and is gitignored.
+
+After preparation, pass the generated argument file to the stress runner. Use 16
+as the first serious concurrency target, then 32 and 64:
+
+```sh
+STRESS_WALLET_ARGS="$(tr '\n' ' ' < .stress-wallets/stress-wallets.args)"
+
+node dist/index.js e2e-stress-l2-throughput \
+  --mode parallel-fanout \
+  --count 256 \
+  --concurrency 16 \
+  $STRESS_WALLET_ARGS
+
+node dist/index.js e2e-stress-l2-throughput \
+  --mode parallel-fanout \
+  --count 512 \
+  --concurrency 32 \
+  --unsafe-allow-large-stress \
+  $STRESS_WALLET_ARGS
+
+node dist/index.js e2e-stress-l2-throughput \
+  --mode parallel-fanout \
+  --count 1024 \
+  --concurrency 64 \
+  --unsafe-allow-large-stress \
+  $STRESS_WALLET_ARGS
 ```
 
 ## Valid Throughput Stress Test

@@ -1193,7 +1193,7 @@ const runLocalFinalizationRecoveryWorker = async (
     }),
   );
 
-  return Effect.runPromise(
+  const output = await Effect.runPromise(
     runCommitBlockHeaderWorkerProgram(workerInput).pipe(
       Effect.provideService(LucidService, lucidService as any),
       Effect.provideService(MidgardContracts, contracts as any),
@@ -1201,6 +1201,20 @@ const runLocalFinalizationRecoveryWorker = async (
       Effect.provide(NodeConfig.layer),
     ),
   );
+  if (output.type === "SuccessfulLocalFinalizationRecoveryOutput") {
+    await Effect.runPromise(
+      Effect.all(
+        [
+          Ref.set(globals.LOCAL_FINALIZATION_PENDING, false),
+          Ref.set(globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK, ""),
+          Ref.set(globals.PROCESSED_UNSUBMITTED_TXS_COUNT, 0),
+          Ref.set(globals.PROCESSED_UNSUBMITTED_TXS_SIZE, 0),
+        ],
+        { concurrency: "unbounded" },
+      ).pipe(Effect.asVoid),
+    );
+  }
+  return output;
 };
 
 const attestQueuedStateQueueHeader = async ({

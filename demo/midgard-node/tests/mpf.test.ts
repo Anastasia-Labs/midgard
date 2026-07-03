@@ -21,6 +21,7 @@ import {
   verifyKeyValuePhasMembershipProof,
   verifyKeyValuePhasNonMembershipProof,
   withMpfRootTransaction,
+  withMpfRootTransactions,
 } from "../src/workers/utils/mpf.js";
 
 const TEST_DB = "test-mpf-db";
@@ -289,6 +290,67 @@ describe("Midgard MPF wrapper", () => {
       expect(result._tag).toBe("Left");
       expect(after).toBe(before);
     }),
+  );
+
+  it.effect(
+    "resets or preserves multiple MPF roots at the worker boundary",
+    () =>
+      Effect.gen(function* () {
+        const assertOutputBoundary = (preserve: boolean) =>
+          Effect.gen(function* () {
+            const left = yield* MidgardMpf.createScratch("left");
+            const right = yield* MidgardMpf.createScratch("right");
+            const leftBefore = yield* left.rootHex();
+            const rightBefore = yield* right.rootHex();
+            const result = yield* withMpfRootTransactions(
+              [left, right],
+              Effect.gen(function* () {
+                yield* left.applyBatch([
+                  { type: "insert", key: key1, value: value1 },
+                ]);
+                yield* right.applyBatch([
+                  { type: "insert", key: key2, value: value2 },
+                ]);
+                return preserve;
+              }),
+              (value) => value,
+            );
+
+            expect(result).toBe(preserve);
+            if (preserve) {
+              expect(yield* left.rootHex()).not.toBe(leftBefore);
+              expect(yield* right.rootHex()).not.toBe(rightBefore);
+            } else {
+              expect(yield* left.rootHex()).toBe(leftBefore);
+              expect(yield* right.rootHex()).toBe(rightBefore);
+            }
+          });
+
+        yield* assertOutputBoundary(false);
+        yield* assertOutputBoundary(true);
+
+        const left = yield* MidgardMpf.createScratch("left");
+        const right = yield* MidgardMpf.createScratch("right");
+        const leftBefore = yield* left.rootHex();
+        const rightBefore = yield* right.rootHex();
+        const failed = yield* withMpfRootTransactions(
+          [left, right],
+          Effect.gen(function* () {
+            yield* left.applyBatch([
+              { type: "insert", key: key1, value: value1 },
+            ]);
+            yield* right.applyBatch([
+              { type: "insert", key: key2, value: value2 },
+            ]);
+            return yield* Effect.fail(new Error("boom"));
+          }),
+          () => true,
+        ).pipe(Effect.either);
+
+        expect(failed._tag).toBe("Left");
+        expect(yield* left.rootHex()).toBe(leftBefore);
+        expect(yield* right.rootHex()).toBe(rightBefore);
+      }),
   );
 
   it.effect("creates and verifies membership proofs", () =>

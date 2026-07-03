@@ -10,10 +10,11 @@ import {
   referenceScriptAuthPolicyDeploymentInfo,
 } from "@al-ft/midgard-sdk";
 import { NodeRuntime } from "@effect/platform-node";
+import { SqlClient } from "@effect/sql";
 import { getAddressDetails, type Network } from "@lucid-evolution/lucid";
 import { Command } from "commander";
 import dotenv from "dotenv";
-import { Effect, pipe } from "effect";
+import { Effect, Logger, pipe } from "effect";
 
 import * as AddressFromSeed from "@/commands/address-from-seed.js";
 import { auditBlocksImmutableProgram } from "@/commands/audit-blocks-immutable.js";
@@ -31,6 +32,7 @@ import * as ContractDeploymentInfo from "@/commands/contract-deployment-info.js"
 import * as DeploymentRunStateCommand from "@/commands/deployment-run-state.js";
 import * as E2EFinalizeSummaryCommand from "@/commands/e2e-finalize-summary.js";
 import * as E2EServiceCommand from "@/commands/e2e-service.js";
+import * as E2EStressL2ThroughputCommand from "@/commands/e2e-stress-l2-throughput.js";
 import * as EventSettlementProofCommand from "@/commands/event-settlement-proof.js";
 import * as FetchWithdrawalsOnceCommand from "@/commands/fetch-withdrawals-once.js";
 import * as L1ProviderPreflightCommand from "@/commands/l1-provider-preflight.js";
@@ -40,17 +42,34 @@ import * as PrepareHubOracleNonce from "@/commands/prepare-hub-oracle-nonce.js";
 import * as ReconcileCommand from "@/commands/reconcile.js";
 import * as ReserveInspectionCommand from "@/commands/reserve-inspection.js";
 import * as ReservePayoutCommand from "@/commands/reserve-payout.js";
+import { collectStressStageMetricSourcesFromSql } from "@/commands/stress-stage-metrics.js";
+import * as StressWalletsCommand from "@/commands/stress-wallets.js";
 import * as SubmitL2Transfer from "@/commands/submit-l2-transfer.js";
 import * as SubmitWithdrawalCommand from "@/commands/submit-withdrawal.js";
 import * as UtxosCommand from "@/commands/utxos.js";
 import * as WithdrawalStatusCommand from "@/commands/withdrawal-status.js";
+import {
+  type DaLibp2pPreflightMode,
+  runDaLibp2pPreflightFromEnv,
+} from "@/da/libp2p-producer.js";
+import {
+  DA_LIBP2P_RUNTIME_PROFILES,
+  type DaLibp2pRuntimeManifestOptions,
+  type DaLibp2pRuntimeManifestTarget,
+  generateDaLibp2pRuntimeManifest,
+  writeDaLibp2pRuntimeManifest,
+} from "@/da/libp2p-runtime-manifest.js";
 import * as MigrationRunner from "@/database/migrations/runner.js";
+import {
+  buildE2EProcessEnv,
+  type E2EEnvInheritance,
+  parseEnvOverrides,
+} from "@/e2e/env.js";
 import { runCommandStep } from "@/e2e/runner.js";
 import {
   fetchAndInsertDepositUTxOs,
   projectDepositsToMempoolLedger,
 } from "@/fibers/index.js";
-import { runProviderStepWithRetry } from "@/provider-retry.js";
 import * as Services from "@/services/index.js";
 import * as DaAttestation from "@/transactions/da-attestation.js";
 import * as Initialization from "@/transactions/initialization.js";
@@ -75,13 +94,6 @@ import packageJson from "../package.json" with { type: "json" };
 
 dotenv.config();
 const VERSION = packageJson.version;
-
-const REFERENCE_SCRIPT_MANIFEST_FETCH_RETRY = {
-  maxAttempts: 8,
-  baseDelayMs: 750,
-  maxDelayMs: 8_000,
-  jitterRatio: 0.25,
-} as const;
 
 const program = new Command();
 
@@ -131,6 +143,20 @@ const parsePositiveIntegerOption = (value: unknown, label: string): number => {
   return parsed;
 };
 
+const parseNonNegativeIntegerOption = (
+  value: unknown,
+  label: string,
+): number => {
+  if (typeof value !== "string" || !/^\d+$/.test(value)) {
+    throw new Error(`${label} must be a non-negative integer`);
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+    throw new Error(`${label} must be a safe non-negative integer`);
+  }
+  return parsed;
+};
+
 const parsePositiveBigIntOption = (value: unknown, label: string): bigint => {
   if (typeof value !== "string" || !/^\d+$/.test(value)) {
     throw new Error(`${label} must be a positive integer`);
@@ -161,30 +187,39 @@ type E2ETxStatus = NonNullable<
   E2EFinalizeSummaryCommand.FinalizeSummaryOptions["transactions"]
 >[number]["status"];
 
+const E2E_TX_HASH_PATTERN = /^[0-9a-f]{64}$/i;
+const E2E_TX_LABEL_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/;
+
 const parseTxEvidenceOption = (
   value: string,
 ): NonNullable<
   E2EFinalizeSummaryCommand.FinalizeSummaryOptions["transactions"]
 >[number] => {
   const [label, txHash, status, ...sourceParts] = value.split(":");
+  const normalizedStatus = status?.toLowerCase();
+  const source = sourceParts.join(":").trim();
   if (
     label === undefined ||
     label.length === 0 ||
     txHash === undefined ||
-    txHash.length === 0 ||
+    !E2E_TX_HASH_PATTERN.test(txHash) ||
     status === undefined ||
-    !E2E_TX_STATUSES.has(status as E2ETxStatus) ||
-    sourceParts.length === 0
+    normalizedStatus === undefined ||
+    !E2E_TX_STATUSES.has(normalizedStatus as E2ETxStatus) ||
+    sourceParts.length === 0 ||
+    !E2E_TX_LABEL_PATTERN.test(label) ||
+    source.length === 0 ||
+    source.toLowerCase().includes("observedtxhashes")
   ) {
     throw new Error(
-      "--tx must use label:txHash:status:source with status one of submitted, confirmed, queued, accepted, committed, rejected, unknown",
+      "--tx must use label:64hexTxHash:status:source with a non-raw source and status one of submitted, confirmed, queued, accepted, committed, rejected, unknown",
     );
   }
   return {
     label,
-    txHash,
-    status: status as E2ETxStatus,
-    source: sourceParts.join(":"),
+    txHash: txHash.toLowerCase(),
+    status: normalizedStatus as E2ETxStatus,
+    source,
   };
 };
 
@@ -211,6 +246,91 @@ const parseStringListOption = (values: unknown, label: string): string[] =>
         return value;
       })
     : [];
+
+const parseE2EEnvInheritanceOption = (
+  value: unknown,
+): E2EEnvInheritance | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === "process" || value === "none") {
+    return value;
+  }
+  throw new Error("--env-inheritance must be process or none");
+};
+
+const parseDaLibp2pPreflightMode = (value: unknown): DaLibp2pPreflightMode => {
+  if (value === "bind-listen" || value === "dial-only") {
+    return value;
+  }
+  throw new Error("--mode must be bind-listen or dial-only");
+};
+
+const DA_LIBP2P_RUNTIME_TARGETS = new Set(["producer", "watcher"]);
+
+const parseDaLibp2pRuntimeTarget = (
+  value: unknown,
+): DaLibp2pRuntimeManifestTarget => {
+  if (typeof value === "string" && DA_LIBP2P_RUNTIME_TARGETS.has(value)) {
+    return value as DaLibp2pRuntimeManifestTarget;
+  }
+  throw new Error("--target must be producer or watcher");
+};
+
+const parseDaLibp2pRuntimeProfile = (
+  value: unknown,
+): DaLibp2pRuntimeManifestOptions["profile"] => {
+  if (
+    typeof value === "string" &&
+    (DA_LIBP2P_RUNTIME_PROFILES as readonly string[]).includes(value)
+  ) {
+    return value as DaLibp2pRuntimeManifestOptions["profile"];
+  }
+  throw new Error(
+    `--profile must be one of ${DA_LIBP2P_RUNTIME_PROFILES.join(", ")}`,
+  );
+};
+
+const parseDaLibp2pCommitteeMember = (
+  value: string,
+): DaLibp2pRuntimeManifestOptions["committeeMembers"][number] => {
+  const [signerIndexRaw, daVkey, keySource, rolesRaw, ...extra] =
+    value.split(",");
+  if (
+    signerIndexRaw === undefined ||
+    daVkey === undefined ||
+    keySource === undefined ||
+    rolesRaw === undefined ||
+    extra.length > 0
+  ) {
+    throw new Error(
+      "--committee-member must use signerIndex,daVkey,libp2pKeySource,role+role",
+    );
+  }
+  const roles = rolesRaw
+    .split("+")
+    .map((role) => role.trim())
+    .filter((role) => role.length > 0);
+  if (roles.length === 0) {
+    throw new Error("--committee-member roles must be non-empty");
+  }
+  return {
+    signerIndex: parseNonNegativeIntegerOption(
+      signerIndexRaw,
+      "--committee-member signerIndex",
+    ),
+    daVkey,
+    libp2pPrivateKeySource: keySource,
+    roles,
+  };
+};
+
+const parseDaLibp2pCommitteeMembers = (
+  values: unknown,
+): DaLibp2pRuntimeManifestOptions["committeeMembers"] =>
+  parseStringListOption(values, "--committee-member").map((value) =>
+    parseDaLibp2pCommitteeMember(value),
+  );
 
 const expectedNetworkIdForAddress = (network: Network): number | undefined => {
   if (network === "Mainnet") {
@@ -249,6 +369,11 @@ const parseL1AddressOption = (
 
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
+
+const stressCliLoggerLayer = Logger.replace(
+  Logger.defaultLogger,
+  Logger.withConsoleError(Logger.logfmtLogger),
+);
 
 const provideTxServices = <A, E>(
   effect: Effect.Effect<
@@ -501,6 +626,258 @@ program
       process.exitCode = 1;
     }
   });
+
+program
+  .command("create-l2-wallet")
+  .description(
+    "Generate or read persisted L2 stress wallets and write seed env exports",
+  )
+  .option("--count <count>", "Number of L2 stress wallets to create", "1")
+  .option("--start-index <index>", "First wallet index to create", "1")
+  .option(
+    "--out-dir <path>",
+    "Directory that stores stress wallet JSON/env/args files",
+    StressWalletsCommand.DEFAULT_STRESS_WALLET_DIR,
+  )
+  .option(
+    "--env-prefix <prefix>",
+    "Environment variable prefix for generated seed phrases",
+    StressWalletsCommand.DEFAULT_STRESS_WALLET_ENV_PREFIX,
+  )
+  .option(
+    "--network <network>",
+    "Override network; defaults to NETWORK/Preprod",
+  )
+  .option("--reuse-existing", "Read existing wallet files instead of failing")
+  .option("--overwrite", "Replace existing wallet files with new seed phrases")
+  .action(async (options) => {
+    try {
+      const result = await StressWalletsCommand.createL2Wallets({
+        count: StressWalletsCommand.parseStressWalletCount(
+          options.count,
+          "--count",
+        ),
+        startIndex: StressWalletsCommand.parseStressWalletCount(
+          options.startIndex,
+          "--start-index",
+        ),
+        outDir: options.outDir,
+        envPrefix: options.envPrefix,
+        network: StressWalletsCommand.parseStressWalletNetwork(options.network),
+        reuseExisting: options.reuseExisting === true,
+        overwrite: options.overwrite === true,
+      });
+      process.stdout.write(`${formatJson(result)}\n`);
+    } catch (error) {
+      console.error(`create-l2-wallet: ${errorMessage(error)}`);
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command("stress-wallets:prepare")
+  .description(
+    "Fund, project, and verify persisted L2 stress wallets for parallel-fanout benchmarks",
+  )
+  .requiredOption("--count <count>", "Number of stress wallets to prepare")
+  .requiredOption(
+    "--lovelace-per-wallet <amount>",
+    "Projected L2 lovelace funding required for each wallet",
+  )
+  .option(
+    "--endpoint <url>",
+    "Midgard node HTTP endpoint used for /utxos verification",
+    defaultMidgardNodeEndpoint(),
+  )
+  .option("--start-index <index>", "First wallet index to prepare", "1")
+  .option(
+    "--out-dir <path>",
+    "Directory that stores stress wallet JSON/env/args files",
+    StressWalletsCommand.DEFAULT_STRESS_WALLET_DIR,
+  )
+  .option(
+    "--env-prefix <prefix>",
+    "Environment variable prefix for generated seed phrases",
+    StressWalletsCommand.DEFAULT_STRESS_WALLET_ENV_PREFIX,
+  )
+  .option(
+    "--network <network>",
+    "Override network; defaults to NETWORK/Preprod",
+  )
+  .option(
+    "--funding-wallet-seed-phrase-env <envVar>",
+    "Environment variable containing the L1 wallet seed phrase used to submit deposits",
+    "L1_OPERATOR_SEED_PHRASE",
+  )
+  .option(
+    "--projection-wait-ms <ms>",
+    "Delay after submitted deposits before projecting L1 deposit events",
+    StressWalletsCommand.DEFAULT_PROJECTION_WAIT_MS.toString(),
+  )
+  .option(
+    "--verify-timeout-ms <ms>",
+    "Maximum time to poll /utxos for projected L2 funding",
+    StressWalletsCommand.DEFAULT_VERIFY_TIMEOUT_MS.toString(),
+  )
+  .option(
+    "--poll-interval-ms <ms>",
+    "Polling interval while verifying projected L2 funding",
+    StressWalletsCommand.DEFAULT_VERIFY_POLL_INTERVAL_MS.toString(),
+  )
+  .option("--create-missing", "Create missing wallet files before funding")
+  .option(
+    "--force-fund-existing",
+    "Submit a new deposit even when a wallet already has spendable L2 funding",
+  )
+  .action(
+    async (options: {
+      readonly count: string;
+      readonly lovelacePerWallet: string;
+      readonly endpoint: string;
+      readonly startIndex: string;
+      readonly outDir: string;
+      readonly envPrefix: string;
+      readonly network?: string;
+      readonly fundingWalletSeedPhraseEnv: string;
+      readonly projectionWaitMs: string;
+      readonly verifyTimeoutMs: string;
+      readonly pollIntervalMs: string;
+      readonly createMissing?: boolean;
+      readonly forceFundExisting?: boolean;
+    }) => {
+      let fundingWalletSeedPhrase: ResolvedWalletSeedPhrase;
+      try {
+        fundingWalletSeedPhrase = resolveWalletSeedPhrase({
+          walletSeedPhraseEnv: options.fundingWalletSeedPhraseEnv,
+        });
+      } catch (error) {
+        console.error(`stress-wallets:prepare: ${errorMessage(error)}`);
+        process.exitCode = 1;
+        return;
+      }
+
+      try {
+        const result = await StressWalletsCommand.prepareStressWallets(
+          {
+            count: StressWalletsCommand.parseStressWalletCount(
+              options.count,
+              "--count",
+            ),
+            lovelacePerWallet: StressWalletsCommand.parseStressWalletLovelace(
+              options.lovelacePerWallet,
+              "--lovelace-per-wallet",
+            ),
+            nodeEndpoint: options.endpoint,
+            startIndex: StressWalletsCommand.parseStressWalletCount(
+              options.startIndex,
+              "--start-index",
+            ),
+            outDir: options.outDir,
+            envPrefix: options.envPrefix,
+            network: StressWalletsCommand.parseStressWalletNetwork(
+              options.network,
+            ),
+            createMissing: options.createMissing === true,
+            forceFundExisting: options.forceFundExisting === true,
+            projectionWaitMs:
+              StressWalletsCommand.parseStressWalletNonNegativeMs(
+                options.projectionWaitMs,
+                "--projection-wait-ms",
+              ),
+            verifyTimeoutMs:
+              StressWalletsCommand.parseStressWalletNonNegativeMs(
+                options.verifyTimeoutMs,
+                "--verify-timeout-ms",
+              ),
+            pollIntervalMs: StressWalletsCommand.parseStressWalletNonNegativeMs(
+              options.pollIntervalMs,
+              "--poll-interval-ms",
+            ),
+          },
+          {
+            submitDeposit: async ({ wallet, lovelace }) =>
+              Effect.runPromise(
+                provideDatabaseTxServices(
+                  Effect.gen(function* () {
+                    const lucidService = yield* Services.Lucid;
+                    const contracts = yield* Services.MidgardContracts;
+                    yield* Effect.sync(() =>
+                      lucidService.api.selectWallet.fromSeed(
+                        fundingWalletSeedPhrase.seedPhrase,
+                      ),
+                    );
+                    const walletAddress = yield* Effect.tryPromise({
+                      try: () => lucidService.api.wallet().address(),
+                      catch: (cause) =>
+                        Promise.reject(
+                          new Error(
+                            `Failed to resolve stress funding wallet address: ${String(cause)}`,
+                          ),
+                        ),
+                    });
+                    yield* Effect.sync(() =>
+                      assertUserCliWalletIsOperationallyIsolated({
+                        commandName: "stress-wallets:prepare",
+                        walletAddress,
+                        operatorMainAddress: lucidService.operatorMainAddress,
+                        operatorMergeAddress: lucidService.operatorMergeAddress,
+                        referenceScriptsAddress:
+                          lucidService.referenceScriptsWalletAddress,
+                      }),
+                    );
+                    const depositReferenceScripts =
+                      yield* fetchReferenceScriptUtxosProgram(
+                        lucidService.api,
+                        lucidService.referenceScriptsAddress,
+                        referenceScriptTargetsByCommand(contracts).deposit,
+                        contracts.referenceScriptAuth,
+                      ).pipe(
+                        Effect.map((resolved) => ({
+                          depositMinting: referenceScriptByName(
+                            resolved,
+                            "deposit minting",
+                          ),
+                        })),
+                      );
+                    const depositConfig =
+                      SubmitDeposit.parseSubmitDepositConfig({
+                        l2Address: wallet.l2Address,
+                        lovelace: lovelace.toString(10),
+                        assetSpecs: [],
+                      });
+                    const submitted =
+                      yield* SubmitDeposit.submitDepositWithMetadataProgram(
+                        lucidService.api,
+                        contracts,
+                        {
+                          ...depositConfig,
+                          referenceScripts: depositReferenceScripts,
+                        },
+                      );
+                    return {
+                      txHash: submitted.txHash,
+                      depositEventId: submitted.metadata.depositEventId,
+                    };
+                  }),
+                ),
+              ),
+            projectDeposits: async () =>
+              Effect.runPromise(
+                provideNodeRuntimeServices(
+                  fetchAndInsertDepositUTxOs.pipe(
+                    Effect.andThen(projectDepositsToMempoolLedger),
+                  ),
+                ),
+              ),
+          },
+        );
+        process.stdout.write(`${formatJson(result)}\n`);
+      } catch (error) {
+        console.error(`stress-wallets:prepare: ${errorMessage(error)}`);
+        process.exitCode = 1;
+      }
+    },
+  );
 
 program
   .command("listen")
@@ -821,8 +1198,8 @@ reconcile
   .requiredOption("--header-hash <hex>", "28-byte block header hash")
   .option("--watcher-url <url>", "Copied DA node base URL")
   .option(
-    "--deployment-fingerprint <fingerprint>",
-    "Copied DA deployment fingerprint",
+    "--contract-deployment-info <path>",
+    "Finalized v2 contract deployment info path used to derive the watcher deployment fingerprint",
   )
   .option(
     "--repair",
@@ -833,12 +1210,19 @@ reconcile
     async (options: {
       readonly headerHash: string;
       readonly watcherUrl?: string;
-      readonly deploymentFingerprint?: string;
+      readonly contractDeploymentInfo?: string;
       readonly repair?: boolean;
     }) => {
       let headerHash: Buffer;
+      let deploymentFingerprint: string | undefined;
       try {
         headerHash = parseHexBytes(options.headerHash, "headerHash", 28);
+        deploymentFingerprint =
+          typeof options.contractDeploymentInfo === "string"
+            ? ContractDeploymentInfo.readFinalizedDeploymentIdentity(
+                options.contractDeploymentInfo,
+              ).manifestId
+            : undefined;
       } catch (error) {
         console.error(`reconcile da-attested: ${errorMessage(error)}`);
         process.exitCode = 1;
@@ -848,7 +1232,7 @@ reconcile
         ReconcileCommand.reconcileDaAttestedProgram({
           headerHash,
           watcherUrl: options.watcherUrl,
-          deploymentFingerprint: options.deploymentFingerprint,
+          deploymentFingerprint,
           repair: options.repair === true,
         }).pipe(
           Effect.tap((result) =>
@@ -949,6 +1333,16 @@ program
         const manifestPath =
           yield* ContractDeploymentInfo.writeLiveContractDeploymentInfoProgram(
             manifestOutputPath,
+            {
+              hubOracleOneShotStatus: "consumed_by_init",
+              steps: {
+                initProtocol: {
+                  status: "complete",
+                  txHash,
+                },
+              },
+              requireReadyManifest: true,
+            },
           );
         yield* Effect.logInfo(
           `contract deployment info written: ${manifestPath}`,
@@ -1029,6 +1423,10 @@ program
     collectStringOption,
     [],
   )
+  .option(
+    "--stress-summary <path>",
+    "Optional e2e-stress-l2-throughput summary.json artifact to include as a functional gate",
+  )
   .action(async (_args, options) => {
     const opts = options.opts();
     const mode =
@@ -1057,6 +1455,9 @@ program
           "--step-summary",
         ),
         transactions: parseTxEvidenceOptions(opts.tx),
+        ...(typeof opts.stressSummary === "string"
+          ? { stressSummaryPath: opts.stressSummary }
+          : {}),
       }).pipe(
         Effect.tap((result) =>
           Effect.sync(() => {
@@ -1070,6 +1471,179 @@ program
   });
 
 program
+  .command("e2e-stress-l2-throughput")
+  .description(
+    "Run opt-in bounded L2 transfer stress for an e2e deployment and write stress artifacts",
+  )
+  .option(
+    "--endpoint <url>",
+    "Midgard node HTTP endpoint used for /utxos, /submit, and /tx-status",
+    defaultMidgardNodeEndpoint(),
+  )
+  .option(
+    "--mode <mode>",
+    "Stress mode: serial-chain or parallel-fanout",
+    "serial-chain",
+  )
+  .option("--count <count>", "Number of stress transfers to submit", "25")
+  .option("--concurrency <count>", "Maximum concurrent stress workers", "1")
+  .option(
+    "--lovelace <amount>",
+    "Lovelace amount for each stress transfer",
+    "1000000",
+  )
+  .option(
+    "--wallet-seed-phrase <seedPhrase>",
+    "Optional primary seed phrase used directly instead of reading from an environment variable",
+  )
+  .option(
+    "--wallet-seed-phrase-env <envVar>",
+    "Environment variable containing the primary wallet seed phrase",
+    DEFAULT_WALLET_SEED_ENV,
+  )
+  .option(
+    "--stress-wallet-seed-phrase-env <envVar>",
+    "Environment variable for an independent pre-funded stress wallet; repeat for parallel-fanout",
+    collectStringOption,
+    [],
+  )
+  .option(
+    "--l2-address <address>",
+    "Optional destination L2 address; defaults to each sender's own address",
+  )
+  .option("--run-id <id>", "Stable e2e run id for stress artifacts")
+  .option("--out-dir <path>", "Output directory for stress artifacts")
+  .option("--poll-interval-ms <ms>", "Polling interval for /tx-status", "2000")
+  .option(
+    "--submit-request-timeout-ms <ms>",
+    "Per-transfer timeout for the submit request phase",
+    "300000",
+  )
+  .option(
+    "--acceptance-timeout-ms <ms>",
+    "Per-transfer timeout for /tx-status to reach accepted-or-later",
+    "600000",
+  )
+  .option(
+    "--commit-observation-timeout-ms <ms>",
+    "Per-transfer background timeout for observing committed status",
+    "600000",
+  )
+  .option(
+    "--finality-observer-max-concurrent-requests <count>",
+    "Maximum concurrent /tx-status requests used by post-submit finality observation",
+    "4",
+  )
+  .option(
+    "--unsafe-allow-large-stress",
+    "Explicitly allow count/concurrency above the default safety caps",
+  )
+  .option("--json", "Print JSON result")
+  .action(async (options) => {
+    const abortController = new AbortController();
+    const interrupt = (signalName: NodeJS.Signals): void => {
+      if (!abortController.signal.aborted) {
+        abortController.abort(
+          new Error(
+            `received ${signalName}; writing interrupted stress summary`,
+          ),
+        );
+      }
+    };
+    process.once("SIGINT", interrupt);
+    process.once("SIGTERM", interrupt);
+    try {
+      const stressConfig = E2EStressL2ThroughputCommand.parseE2EL2StressConfig({
+        endpoint: options.endpoint,
+        mode: options.mode,
+        count: options.count,
+        concurrency: options.concurrency,
+        lovelace: options.lovelace,
+        walletSeedPhrase: options.walletSeedPhrase,
+        walletSeedPhraseEnv: options.walletSeedPhraseEnv,
+        stressWalletSeedPhraseEnvs: parseStringListOption(
+          options.stressWalletSeedPhraseEnv,
+          "--stress-wallet-seed-phrase-env",
+        ),
+        l2Address: options.l2Address,
+        runId: options.runId,
+        outDir: options.outDir,
+        pollIntervalMs: options.pollIntervalMs,
+        submitRequestTimeoutMs: options.submitRequestTimeoutMs,
+        acceptanceTimeoutMs: options.acceptanceTimeoutMs,
+        commitObservationTimeoutMs: options.commitObservationTimeoutMs,
+        finalityObserverMaxConcurrentRequests:
+          options.finalityObserverMaxConcurrentRequests,
+        network: process.env.NETWORK === "Mainnet" ? "Mainnet" : "Preprod",
+        allowUnsafeBounds: options.unsafeAllowLargeStress === true,
+      });
+      const stressProgram = Effect.gen(function* () {
+        const lucidService = yield* Services.Lucid;
+        const sql = yield* SqlClient.SqlClient;
+        const nodeConfig = yield* Services.NodeConfig;
+        return yield* Effect.tryPromise({
+          try: () =>
+            E2EStressL2ThroughputCommand.runE2EL2StressThroughput(
+              stressConfig,
+              {
+                submitTransfer: async (request) =>
+                  await Effect.runPromise(
+                    SubmitL2Transfer.submitL2TransferProgram({
+                      config: request.config,
+                      resolvedWalletSeedPhrase:
+                        request.resolvedWalletSeedPhrase,
+                      assertWalletAddress: (walletAddress) =>
+                        assertUserCliWalletIsOperationallyIsolated({
+                          commandName: "e2e-stress-l2-throughput",
+                          walletAddress,
+                          operatorMainAddress: lucidService.operatorMainAddress,
+                          operatorMergeAddress:
+                            lucidService.operatorMergeAddress,
+                          referenceScriptsAddress:
+                            lucidService.referenceScriptsWalletAddress,
+                        }),
+                    }).pipe(
+                      Effect.provideService(Services.Lucid, lucidService),
+                      Effect.provideService(SqlClient.SqlClient, sql),
+                      Effect.provideService(Services.NodeConfig, nodeConfig),
+                    ),
+                  ),
+                collectStageMetricSources: async ({ txHashes }) =>
+                  await Effect.runPromise(
+                    collectStressStageMetricSourcesFromSql(txHashes).pipe(
+                      Effect.provideService(SqlClient.SqlClient, sql),
+                    ),
+                  ),
+                abortSignal: abortController.signal,
+              },
+            ),
+          catch: (cause) =>
+            cause instanceof Error ? cause : new Error(String(cause)),
+        });
+      });
+      const result = await Effect.runPromise(
+        pipe(
+          stressProgram,
+          Effect.provide(Services.NodeConfig.layer),
+          Effect.provide(Services.Database.layer),
+          Effect.provide(Services.Lucid.Default),
+          Effect.provide(stressCliLoggerLayer),
+        ),
+      );
+      process.stdout.write(`${formatJson(result.summary)}\n`);
+      if (result.summary.status === "interrupted") {
+        process.exitCode = 130;
+      }
+    } catch (error) {
+      console.error(`e2e-stress-l2-throughput: ${errorMessage(error)}`);
+      process.exitCode = 1;
+    } finally {
+      process.off("SIGINT", interrupt);
+      process.off("SIGTERM", interrupt);
+    }
+  });
+
+program
   .command("e2e-run-step")
   .description("Run one acceptance command through the structured e2e runner")
   .requiredOption("--id <id>", "Step id")
@@ -1077,6 +1651,23 @@ program
   .requiredOption("--raw-log <path>", "Raw log path")
   .option("--summary-out <path>", "Write the step summary JSON to this path")
   .option("--timeout-ms <ms>", "Step timeout in milliseconds")
+  .option(
+    "--env-file <path>",
+    "Dotenv-compatible env file to apply before explicit --env overrides; repeatable",
+    collectStringOption,
+    [],
+  )
+  .option(
+    "--env <KEY=VALUE>",
+    "Explicit environment override; repeatable and applied after --env-file",
+    collectStringOption,
+    [],
+  )
+  .option(
+    "--env-inheritance <mode>",
+    "Environment inheritance mode: process or none",
+    "process",
+  )
   .argument("<command>", "Command to execute")
   .argument("[args...]", "Command arguments")
   .action(async (command, args, opts) => {
@@ -1090,6 +1681,9 @@ program
         command,
         args,
         cwd: opts.cwd,
+        envFiles: parseStringListOption(opts.envFile, "--env-file"),
+        env: parseEnvOverrides(parseStringListOption(opts.env, "--env")),
+        envInheritance: parseE2EEnvInheritanceOption(opts.envInheritance),
         rawLogPath: opts.rawLog,
         ...(timeoutMs === undefined ? {} : { timeoutMs }),
       });
@@ -1112,6 +1706,150 @@ program
   });
 
 program
+  .command("da-libp2p-generate-manifest")
+  .description("Generate a target-specific libp2p DA runtime manifest")
+  .requiredOption("--target <target>", "Runtime target: producer or watcher")
+  .requiredOption(
+    "--profile <profile>",
+    `Address profile: ${DA_LIBP2P_RUNTIME_PROFILES.join(", ")}`,
+  )
+  .requiredOption(
+    "--contract-deployment-info <path>",
+    "Finalized v2 contract deployment info path; deployment.fingerprint is derived from manifestId",
+  )
+  .requiredOption(
+    "--producer-libp2p-key-source <source>",
+    "Producer DA_LIBP2P_PRIVATE_KEY_SOURCE",
+  )
+  .requiredOption("--threshold <n>", "DA committee threshold")
+  .option(
+    "--committee-member <spec>",
+    "Committee member as signerIndex,daVkey,libp2pKeySource,role+role; repeatable",
+    collectStringOption,
+    [],
+  )
+  .option("--network <network>", "Cardano network label")
+  .option("--local-signer-index <n>", "Local watcher signer index")
+  .option("--producer-port <port>", "Producer retrieval libp2p port")
+  .option("--watcher-port <port>", "Watcher libp2p port")
+  .option("--producer-service-name <name>", "Compose producer service DNS name")
+  .option("--watcher-service-name <name>", "Compose watcher service DNS name")
+  .option("--producer-public-host <host>", "Public producer DNS/IP")
+  .option("--watcher-public-host <host>", "Public watcher DNS/IP")
+  .option("--out <path>", "Write manifest JSON to this path")
+  .action(async (options) => {
+    const opts = typeof options.opts === "function" ? options.opts() : options;
+    try {
+      const committeeMembers = parseDaLibp2pCommitteeMembers(
+        opts.committeeMember,
+      );
+      if (committeeMembers.length === 0) {
+        throw new Error("at least one --committee-member is required");
+      }
+      const manifest = await generateDaLibp2pRuntimeManifest({
+        target: parseDaLibp2pRuntimeTarget(opts.target),
+        profile: parseDaLibp2pRuntimeProfile(opts.profile),
+        contractDeploymentInfoPath: opts.contractDeploymentInfo,
+        producerPrivateKeySource: opts.producerLibp2pKeySource,
+        committeeMembers,
+        threshold: parsePositiveIntegerOption(opts.threshold, "--threshold"),
+        ...(typeof opts.network === "string" ? { network: opts.network } : {}),
+        ...(typeof opts.localSignerIndex === "string"
+          ? {
+              localSignerIndex: parseNonNegativeIntegerOption(
+                opts.localSignerIndex,
+                "--local-signer-index",
+              ),
+            }
+          : {}),
+        ...(typeof opts.producerPort === "string"
+          ? {
+              producerPort: parsePositiveIntegerOption(
+                opts.producerPort,
+                "--producer-port",
+              ),
+            }
+          : {}),
+        ...(typeof opts.watcherPort === "string"
+          ? {
+              watcherPort: parsePositiveIntegerOption(
+                opts.watcherPort,
+                "--watcher-port",
+              ),
+            }
+          : {}),
+        ...(typeof opts.producerServiceName === "string"
+          ? { producerServiceName: opts.producerServiceName }
+          : {}),
+        ...(typeof opts.watcherServiceName === "string"
+          ? { watcherServiceName: opts.watcherServiceName }
+          : {}),
+        ...(typeof opts.producerPublicHost === "string"
+          ? { producerPublicHost: opts.producerPublicHost }
+          : {}),
+        ...(typeof opts.watcherPublicHost === "string"
+          ? { watcherPublicHost: opts.watcherPublicHost }
+          : {}),
+      });
+      if (typeof opts.out === "string" && opts.out.length > 0) {
+        await writeDaLibp2pRuntimeManifest(opts.out, manifest);
+      }
+      process.stdout.write(`${formatJson(manifest)}\n`);
+    } catch (error) {
+      console.error(`da-libp2p-generate-manifest: ${errorMessage(error)}`);
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command("da-libp2p-preflight")
+  .description("Probe libp2p DA committee reachability from the producer")
+  .option("--json", "Print machine-readable JSON", true)
+  .option(
+    "--mode <mode>",
+    "Preflight mode: bind-listen validates producer listener binding before startup; dial-only probes peers without binding after startup",
+    "bind-listen",
+  )
+  .option(
+    "--env-file <path>",
+    "Dotenv-compatible env file to apply before explicit --env overrides; repeatable",
+    collectStringOption,
+    [],
+  )
+  .option(
+    "--env <KEY=VALUE>",
+    "Explicit environment override; repeatable and applied after --env-file",
+    collectStringOption,
+    [],
+  )
+  .option(
+    "--env-inheritance <mode>",
+    "Environment inheritance mode: process or none",
+    "process",
+  )
+  .action(async (options) => {
+    const opts = typeof options.opts === "function" ? options.opts() : options;
+    try {
+      const { env } = await buildE2EProcessEnv({
+        cwd: process.cwd(),
+        envFiles: parseStringListOption(opts.envFile, "--env-file"),
+        overrides: parseEnvOverrides(parseStringListOption(opts.env, "--env")),
+        inherit: parseE2EEnvInheritanceOption(opts.envInheritance),
+      });
+      const report = await runDaLibp2pPreflightFromEnv(env, {
+        mode: parseDaLibp2pPreflightMode(opts.mode),
+      });
+      process.stdout.write(`${formatJson(report)}\n`);
+      if (!report.passed) {
+        process.exitCode = 1;
+      }
+    } catch (error) {
+      console.error(`da-libp2p-preflight: ${errorMessage(error)}`);
+      process.exitCode = 1;
+    }
+  });
+
+program
   .command("e2e-start-service")
   .description(
     "Start a long-running e2e service, write a PID file, and wait for readiness",
@@ -1124,6 +1862,23 @@ program
   .option("--health-url <url>", "Optional health endpoint URL")
   .option("--ready-timeout-ms <ms>", "Readiness timeout", "120000")
   .option("--poll-interval-ms <ms>", "Readiness polling interval", "5000")
+  .option(
+    "--env-file <path>",
+    "Dotenv-compatible env file to apply before explicit --env overrides; repeatable",
+    collectStringOption,
+    [],
+  )
+  .option(
+    "--env <KEY=VALUE>",
+    "Explicit environment override; repeatable and applied after --env-file",
+    collectStringOption,
+    [],
+  )
+  .option(
+    "--env-inheritance <mode>",
+    "Environment inheritance mode: process or none",
+    "process",
+  )
   .argument("<command>", "Command to execute")
   .argument("[args...]", "Command arguments")
   .action(async (command, args, opts) => {
@@ -1133,6 +1888,9 @@ program
         command,
         args,
         cwd: opts.cwd,
+        envFiles: parseStringListOption(opts.envFile, "--env-file"),
+        env: parseEnvOverrides(parseStringListOption(opts.env, "--env")),
+        envInheritance: parseE2EEnvInheritanceOption(opts.envInheritance),
         rawLogPath: opts.rawLog,
         pidFilePath: opts.pidFile,
         readyUrl: opts.readyUrl,
@@ -1199,6 +1957,97 @@ program
       return;
     }
 
+    let pendingAttempt: DeploymentRunStateCommand.PendingHubOracleNonceAttempt | null =
+      null;
+    if (!opts.dryRun && !runOptions.freshRedeploy) {
+      try {
+        pendingAttempt =
+          await DeploymentRunStateCommand.loadPendingHubOracleNonceAttempt({
+            options: runOptions,
+          });
+      } catch (error) {
+        console.error(
+          `prepare-hub-oracle-one-shot-nonce: ${errorMessage(error)}`,
+        );
+        process.exitCode = 1;
+        return;
+      }
+    }
+
+    if (pendingAttempt !== null) {
+      const attempt = pendingAttempt;
+      const mainEffect = provideLucidOnlyServices(
+        Effect.gen(function* () {
+          const nodeConfig = yield* Services.NodeConfig;
+          const result =
+            yield* PrepareHubOracleNonce.reconcileHubOracleOneShotNonceAttemptProgram(
+              attempt,
+              {
+                onTxHashConfirmed: (confirmedAttempt, confirmationStatus) =>
+                  Effect.tryPromise({
+                    try: () =>
+                      DeploymentRunStateCommand.recordHubOracleNonceTxHashConfirmed(
+                        {
+                          options: runOptions,
+                          network: nodeConfig.NETWORK,
+                          txHash: confirmedAttempt.txHash,
+                          address: confirmedAttempt.address,
+                          lovelace: confirmedAttempt.lovelace,
+                          inlineDatum: confirmedAttempt.inlineDatum,
+                          confirmationStatus,
+                        },
+                      ),
+                    catch: (cause) =>
+                      cause instanceof Error
+                        ? cause
+                        : new Error(
+                            `Failed to record confirmed hub-oracle nonce tx in run state: ${String(cause)}`,
+                          ),
+                  }),
+              },
+            );
+          yield* Effect.tryPromise({
+            try: () =>
+              DeploymentRunStateCommand.recordHubOracleNonce({
+                options: runOptions,
+                network: nodeConfig.NETWORK,
+                txHash: result.txHash,
+                outputIndex: result.outputIndex,
+                outRef: result.outRef,
+              }),
+            catch: (cause) =>
+              cause instanceof Error
+                ? cause
+                : new Error(
+                    `Failed to record hub-oracle nonce in run state: ${String(cause)}`,
+                  ),
+          });
+          return result;
+        }).pipe(
+          Effect.tap((result) =>
+            Effect.sync(() => {
+              if (opts.json) {
+                process.stdout.write(`${formatJson(result)}\n`);
+                return;
+              }
+              process.stdout.write(
+                [
+                  `reconciled hub-oracle one-shot nonce: ${result.outRef}`,
+                  `HUB_ORACLE_ONE_SHOT_TX_HASH=${result.txHash}`,
+                  `HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX=${result.outputIndex.toString()}`,
+                  `confirmationStatus=${result.confirmationStatus}`,
+                  `address=${result.address}`,
+                  `lovelace=${result.lovelace}`,
+                ].join("\n") + "\n",
+              );
+            }),
+          ),
+        ),
+      );
+      NodeRuntime.runMain(mainEffect, { teardown: undefined });
+      return;
+    }
+
     try {
       if (!opts.dryRun) {
         await DeploymentRunStateCommand.guardHubOracleNonceCreation({
@@ -1246,6 +2095,47 @@ program
         const result =
           yield* PrepareHubOracleNonce.prepareHubOracleOneShotNonceProgram(
             amountLovelace,
+            {
+              onSubmitted: (attempt) =>
+                Effect.tryPromise({
+                  try: () =>
+                    DeploymentRunStateCommand.recordHubOracleNonceSubmitted({
+                      options: runOptions,
+                      network: nodeConfig.NETWORK,
+                      txHash: attempt.txHash,
+                      address: attempt.address,
+                      lovelace: attempt.lovelace,
+                      inlineDatum: attempt.inlineDatum,
+                    }),
+                  catch: (cause) =>
+                    cause instanceof Error
+                      ? cause
+                      : new Error(
+                          `Failed to record submitted hub-oracle nonce in run state: ${String(cause)}`,
+                        ),
+                }),
+              onTxHashConfirmed: (attempt, confirmationStatus) =>
+                Effect.tryPromise({
+                  try: () =>
+                    DeploymentRunStateCommand.recordHubOracleNonceTxHashConfirmed(
+                      {
+                        options: runOptions,
+                        network: nodeConfig.NETWORK,
+                        txHash: attempt.txHash,
+                        address: attempt.address,
+                        lovelace: attempt.lovelace,
+                        inlineDatum: attempt.inlineDatum,
+                        confirmationStatus,
+                      },
+                    ),
+                  catch: (cause) =>
+                    cause instanceof Error
+                      ? cause
+                      : new Error(
+                          `Failed to record confirmed hub-oracle nonce tx in run state: ${String(cause)}`,
+                        ),
+                }),
+            },
           );
         yield* Effect.tryPromise({
           try: () =>
@@ -1276,6 +2166,7 @@ program
                 `prepared hub-oracle one-shot nonce: ${result.outRef}`,
                 `HUB_ORACLE_ONE_SHOT_TX_HASH=${result.txHash}`,
                 `HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX=${result.outputIndex.toString()}`,
+                `confirmationStatus=${result.confirmationStatus}`,
                 `address=${result.address}`,
                 `lovelace=${result.lovelace}`,
               ].join("\n") + "\n",
@@ -1449,27 +2340,17 @@ for (const commandName of RegisterActiveOperator.REFERENCE_SCRIPT_COMMAND_NAMES)
                 `${nodeConfig.HUB_ORACLE_ONE_SHOT_TX_HASH}#${nodeConfig.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX.toString()}`,
               ]),
             );
-          const liveReferenceScriptUtxos = yield* runProviderStepWithRetry(
-            `deploy-reference-script-${commandName} final reference-script UTxO fetch`,
-            Effect.tryPromise({
-              try: () =>
-                lucidService.referenceScriptsApi.utxosAt(
-                  lucidService.referenceScriptsAddress,
-                ),
-              catch: (cause) =>
-                new Error(
-                  `Failed to fetch published reference-script UTxOs at ${lucidService.referenceScriptsAddress}: ${formatUnknownError(
-                    cause,
-                  )}`,
-                ),
-            }),
-            REFERENCE_SCRIPT_MANIFEST_FETCH_RETRY,
+          const liveReferenceScripts = yield* fetchReferenceScriptUtxosProgram(
+            lucidService.referenceScriptsApi,
+            lucidService.referenceScriptsAddress,
+            referenceScriptTargetsByCommand(contracts)[commandName],
+            contracts.referenceScriptAuth,
           );
           const deploymentInfo =
             yield* ContractDeploymentInfo.buildContractDeploymentInfoProgram(
               contracts,
               [
-                ...liveReferenceScriptUtxos,
+                ...liveReferenceScripts.map(({ utxo }) => utxo),
                 ...published.map(({ utxo }) => utxo),
               ],
               referenceScriptAuthPolicyDeploymentInfo(authPolicy),

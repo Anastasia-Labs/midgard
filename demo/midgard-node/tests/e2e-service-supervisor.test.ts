@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -36,6 +36,19 @@ const writeScript = async (
   const path = join(dir, name);
   await writeFile(path, source, "utf8");
   return path;
+};
+
+const waitForFile = async (path: string): Promise<void> => {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    try {
+      await access(path);
+      return;
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  }
+  throw new Error(`timed out waiting for ${path}`);
 };
 
 describe("e2e service error classification", () => {
@@ -150,6 +163,91 @@ describe("e2e host process supervisor", () => {
     expect(summary.restartCount).toBe(0);
     expect(summary.attempts).toHaveLength(1);
     expect(summary.terminalClassification.class).toBe("fatal_config");
+  });
+
+  it("passes dotenv env into supervised host processes with redacted provenance", async () => {
+    const dir = await makeTempDir();
+    await writeFile(join(dir, ".env"), "NETWORK=Preview\n", "utf8");
+    const script = await writeScript(
+      dir,
+      "env-service.mjs",
+      [
+        "if (process.env.NETWORK !== 'Preprod') {",
+        "  console.error('NETWORK=' + process.env.NETWORK);",
+        "  process.exit(1);",
+        "}",
+        "console.log('ready');",
+      ].join("\n"),
+    );
+
+    const summary = await superviseHostProcess({
+      service: "env-service",
+      command: process.execPath,
+      args: [script],
+      cwd: dir,
+      envFiles: [".env"],
+      env: { NETWORK: "Preprod", L1_PROVIDER_API_KEY: "secret" },
+      envInheritance: "none",
+      rawLogPath: join(dir, "logs", "env-service.log"),
+      maxRestarts: 0,
+    });
+
+    expect(summary.status).toBe("exited_success");
+    expect(summary.command.envInheritance).toBe("none");
+    expect(summary.command.envFiles).toEqual([
+      { path: join(dir, ".env"), keys: ["NETWORK"] },
+    ]);
+    expect(summary.command.envKeys).toEqual([
+      "L1_PROVIDER_API_KEY=<redacted>",
+      "NETWORK",
+    ]);
+  });
+
+  it("terminates a timed-out service process group", async () => {
+    const dir = await makeTempDir();
+    const childTerminated = join(dir, "service-child-terminated.txt");
+    const child = await writeScript(
+      dir,
+      "service-grandchild.mjs",
+      [
+        "import { writeFileSync } from 'node:fs';",
+        `const terminated = ${JSON.stringify(childTerminated)};`,
+        "process.on('SIGTERM', () => {",
+        "  writeFileSync(terminated, String(process.pid));",
+        "  process.exit(0);",
+        "});",
+        "setInterval(() => {}, 1000);",
+      ].join("\n"),
+    );
+    const parent = await writeScript(
+      dir,
+      "service-parent.mjs",
+      [
+        "import { spawn } from 'node:child_process';",
+        `spawn(process.execPath, [${JSON.stringify(child)}], { stdio: 'ignore' });`,
+        "setInterval(() => {}, 1000);",
+      ].join("\n"),
+    );
+
+    const summary = await superviseHostProcess({
+      service: "stress",
+      command: process.execPath,
+      args: [parent],
+      cwd: dir,
+      timeoutMs: 300,
+      rawLogPath: join(dir, "logs", "stress-service.log"),
+      maxRestarts: 0,
+    });
+
+    expect(summary.status).toBe("timeout");
+    expect(summary.attempts[0]?.cleanup).toMatchObject({
+      attempted: true,
+      target: process.platform === "win32" ? "process" : "process_group",
+      success: true,
+    });
+    if (process.platform !== "win32") {
+      await waitForFile(childTerminated);
+    }
   });
 });
 

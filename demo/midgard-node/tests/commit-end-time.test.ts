@@ -11,6 +11,7 @@ import {
   commitTimingBudget,
   EXPLICIT_COMMIT_DEFAULT_CANDIDATE_FUTURE_BUFFER_MS,
   resolveAlignedCommitEndTime,
+  resolveCommitEndTimeFit,
   resolveExplicitCommitCandidateEndTimeMs,
 } from "@/workers/utils/commit-end-time.js";
 
@@ -83,6 +84,116 @@ describe("commit end-time resolver", () => {
     expect(resolvedEndTime).toBeGreaterThanOrEqual(
       nowMs + COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
     );
+  });
+
+  it("reports a cap-aware fit when the production resolved end-time stays inside the scheduler window", async () => {
+    const lucid = await makeLucid();
+    const provider = lucid.config().provider as unknown as {
+      time: number;
+      slot: number;
+    };
+    const zeroTime = provider.time - provider.slot * 1000;
+    const latestEndTime = zeroTime + provider.slot * 1000;
+    const nowMs = latestEndTime + 10_000;
+    const maximumEndTimeMs =
+      nowMs + COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS + 5_000;
+
+    const fit = resolveCommitEndTimeFit({
+      lucid,
+      latestEndTime,
+      candidateEndTime: latestEndTime,
+      nowMs,
+      minimumFutureBufferMs: COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+      maximumEndTimeMs,
+    });
+
+    expect(fit.status).toBe("fits");
+    expect(fit.maximumEndTimeMs).toBe(maximumEndTimeMs);
+    expect(fit.resolvedEndTime).toBeLessThanOrEqual(maximumEndTimeMs);
+    expect(fit.minimumCurrentTimeEndTime).toBeGreaterThanOrEqual(
+      nowMs + COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+    );
+  });
+
+  it("reports cap overflow when the production current-time floor crosses the scheduler window", async () => {
+    const lucid = await makeLucid();
+    const provider = lucid.config().provider as unknown as {
+      time: number;
+      slot: number;
+    };
+    const zeroTime = provider.time - provider.slot * 1000;
+    const latestEndTime = zeroTime + provider.slot * 1000;
+    const nowMs = latestEndTime + 10_000;
+    const maximumEndTimeMs =
+      nowMs + COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS - 60_000;
+
+    const fit = resolveCommitEndTimeFit({
+      lucid,
+      latestEndTime,
+      candidateEndTime: latestEndTime,
+      nowMs,
+      minimumFutureBufferMs: COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+      maximumEndTimeMs,
+    });
+
+    expect(fit.status).toBe("exceeds_cap");
+    if (fit.status !== "exceeds_cap") {
+      throw new Error("expected production current-time floor to exceed cap");
+    }
+    expect(fit.resolvedEndTime).toBeGreaterThan(maximumEndTimeMs);
+    expect(fit.reason).toContain("minimum_current_time_end_time_ms=");
+  });
+
+  it("keeps the monotonic latest-block lower bound when it is later than the production current-time floor", async () => {
+    const lucid = await makeLucid();
+    const provider = lucid.config().provider as unknown as {
+      time: number;
+      slot: number;
+    };
+    const zeroTime = provider.time - provider.slot * 1000;
+    const nowMs = zeroTime + provider.slot * 1000;
+    const latestEndTime =
+      nowMs + COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS + 30_000;
+
+    const fit = resolveCommitEndTimeFit({
+      lucid,
+      latestEndTime,
+      candidateEndTime: nowMs,
+      nowMs,
+      minimumFutureBufferMs: COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+      maximumEndTimeMs: latestEndTime + 5_000,
+    });
+
+    expect(fit.status).toBe("fits");
+    expect(fit.resolvedEndTime).toBe(fit.minimumMonotonicEndTime);
+    expect(fit.minimumMonotonicEndTime).toBeGreaterThan(
+      fit.minimumCurrentTimeEndTime,
+    );
+  });
+
+  it("reports slot-aligned current-time floors that exceed a cap by one slot", async () => {
+    const lucid = await makeLucid();
+    const provider = lucid.config().provider as unknown as {
+      time: number;
+      slot: number;
+    };
+    const zeroTime = provider.time - provider.slot * 1000;
+    const latestEndTime = zeroTime + provider.slot * 1000;
+    const nowMs = latestEndTime + 10_000;
+    const maximumEndTimeMs = nowMs + COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS;
+
+    const fit = resolveCommitEndTimeFit({
+      lucid,
+      latestEndTime,
+      candidateEndTime: latestEndTime,
+      nowMs,
+      minimumFutureBufferMs: COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+      maximumEndTimeMs,
+    });
+
+    expect(fit.status).toBe("exceeds_cap");
+    expect(fit.minimumCurrentTimeEndTime).toBe(maximumEndTimeMs + 1_000);
+    expect(fit.resolvedEndTime).toBe(fit.minimumCurrentTimeEndTime);
   });
 
   it("reports named timing checkpoint budgets", () => {

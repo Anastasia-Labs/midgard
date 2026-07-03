@@ -12,6 +12,9 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   type DeploymentRunCliOptions,
+  loadPendingHubOracleNonceAttempt,
+  recordHubOracleNonceSubmitted,
+  recordHubOracleNonceTxHashConfirmed,
   resolveReferenceScriptAuthPolicyProgram,
 } from "@/commands/deployment-run-state.js";
 import {
@@ -96,6 +99,9 @@ describe("deployment run state", () => {
       {
         txHashes: ["11".repeat(32)],
         evidence: ["logs/init.log"],
+        details: {
+          confirmationStatus: "submitted_confirmation_unknown",
+        },
       },
       new Date("2026-01-01T00:01:00.000Z"),
     );
@@ -113,6 +119,9 @@ describe("deployment run state", () => {
       status: "complete",
       txHashes: ["11".repeat(32)],
       evidence: ["logs/init.log"],
+      details: {
+        confirmationStatus: "submitted_confirmation_unknown",
+      },
       message: "deployment-status complete",
     });
     expect(complete.events.map((event) => event.kind)).toEqual([
@@ -193,6 +202,77 @@ describe("deployment run state", () => {
 
     expect(next.steps.hubOracleNonce?.status).toBe("confirmed");
     await expect(loadDeploymentRunState(path)).resolves.toEqual(next);
+  });
+
+  it("records and loads a pending submitted hub-oracle nonce attempt", async () => {
+    const dir = await makeTempDir();
+    const path = join(dir, "run-state.json");
+    const options: DeploymentRunCliOptions = {
+      runStatePath: path,
+      freshRedeploy: false,
+    };
+    const txHash = "cc".repeat(32);
+
+    const state = await recordHubOracleNonceSubmitted({
+      options,
+      network: "Preprod",
+      txHash,
+      address: "addr_test1operatornonce",
+      lovelace: "5000000",
+      inlineDatum: "d8799f00",
+    });
+
+    expect(state.steps.hubOracleNonce).toMatchObject({
+      status: "submitted",
+      txHashes: [txHash],
+      message: "submitted_confirmation_unknown",
+      details: {
+        address: "addr_test1operatornonce",
+        lovelace: "5000000",
+        inlineDatum: "d8799f00",
+        confirmationStatus: "submitted_confirmation_unknown",
+        outputStatus: "unknown",
+      },
+    });
+    await expect(
+      loadPendingHubOracleNonceAttempt({ options }),
+    ).resolves.toEqual({
+      txHash,
+      address: "addr_test1operatornonce",
+      lovelace: "5000000",
+      inlineDatum: "d8799f00",
+    });
+
+    const confirmed = await recordHubOracleNonceTxHashConfirmed({
+      options,
+      network: "Preprod",
+      txHash,
+      address: "addr_test1operatornonce",
+      lovelace: "5000000",
+      inlineDatum: "d8799f00",
+      confirmationStatus: "reconciled_after_timeout",
+    });
+
+    expect(confirmed.steps.hubOracleNonce).toMatchObject({
+      status: "submitted",
+      txHashes: [txHash],
+      message: "confirmed_output_pending",
+      details: {
+        address: "addr_test1operatornonce",
+        lovelace: "5000000",
+        inlineDatum: "d8799f00",
+        confirmationStatus: "reconciled_after_timeout",
+        outputStatus: "pending",
+      },
+    });
+    await expect(
+      loadPendingHubOracleNonceAttempt({ options }),
+    ).resolves.toEqual({
+      txHash,
+      address: "addr_test1operatornonce",
+      lovelace: "5000000",
+      inlineDatum: "d8799f00",
+    });
   });
 
   it("hashes manifest files and resolves env override paths", async () => {

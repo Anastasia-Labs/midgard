@@ -1,27 +1,37 @@
-import type { DaPeerConfig, DaSignatureRecord } from "../domain.js";
+import type {
+  DaAttestationExchange,
+  DaAttestationPeer,
+} from "../da/libp2p/attestations.js";
+import type { DaSignatureRecord } from "../domain.js";
 import type { DaCommitteeValidation } from "../signer.js";
 import type { WatcherStore } from "../store.js";
 import { validateDaSignatureRecord } from "./signatures.js";
+import { attestationPeersExcludingLocal } from "./targets.js";
 
 export type PeerSignaturePollerDeps = {
   readonly deploymentFingerprint: string;
-  readonly peers: readonly DaPeerConfig[];
+  readonly peers: readonly DaAttestationPeer[];
+  readonly localPeerId?: string;
+  readonly attestationExchange?: DaAttestationExchange;
   readonly signerValidation: DaCommitteeValidation;
   readonly store: Pick<
     WatcherStore,
     "getDaPayload" | "saveDaSignature" | "savePeerHealth" | "listPeerHealth"
   >;
-  readonly requestTimeoutMs: number;
-  readonly fetchFn?: typeof fetch;
+  readonly requestTimeoutMs?: number;
 };
 
 export class PeerSignaturePoller {
-  private readonly deps: PeerSignaturePollerDeps & {
-    readonly fetchFn: typeof fetch;
-  };
+  private readonly deps: PeerSignaturePollerDeps;
 
   constructor(deps: PeerSignaturePollerDeps) {
-    this.deps = { ...deps, fetchFn: deps.fetchFn ?? fetch };
+    this.deps = {
+      ...deps,
+      peers:
+        deps.localPeerId === undefined
+          ? deps.peers
+          : attestationPeersExcludingLocal(deps.peers, deps.localPeerId),
+    };
   }
 
   async pollPeerSignatures(headerHash: string): Promise<void> {
@@ -33,31 +43,19 @@ export class PeerSignaturePoller {
   }
 
   private async pollPeerSignaturesFrom(
-    peer: DaPeerConfig,
+    peer: DaAttestationPeer,
     headerHash: string,
   ): Promise<void> {
-    const pathAndSearch = `/v1/deployments/${encodeURIComponent(
-      this.deps.deploymentFingerprint,
-    )}/headers/${headerHash}/signatures`;
     try {
-      const response = await this.deps.fetchFn(
-        `${peer.baseUrl}${pathAndSearch}`,
-        {
-          method: "GET",
-          signal: AbortSignal.timeout(this.deps.requestTimeoutMs),
-        },
-      );
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status.toString()}`);
+      if (this.deps.attestationExchange === undefined) {
+        throw new Error("libp2p attestation exchange is not configured");
       }
-      const body = (await response.json()) as unknown;
-      const signatures = Array.isArray(body)
-        ? body
-        : typeof body === "object" &&
-            body !== null &&
-            Array.isArray((body as { signatures?: unknown }).signatures)
-          ? (body as { signatures: unknown[] }).signatures
-          : [];
+      const signatures =
+        await this.deps.attestationExchange.attestationsByHeader({
+          peer,
+          deploymentFingerprint: this.deps.deploymentFingerprint,
+          headerHash,
+        });
       const verifiedPayload = await this.deps.store.getDaPayload(headerHash);
       if (verifiedPayload === undefined) {
         return;
@@ -82,7 +80,7 @@ export class PeerSignaturePoller {
           ...(candidate as DaSignatureRecord),
           broadcastStatus: "posted",
           source: "peer",
-          sourcePeer: peer.baseUrl,
+          sourcePeer: peer.peerId,
           receivedAt: now,
           verifiedAt: now,
         });
@@ -100,10 +98,10 @@ export class PeerSignaturePoller {
 
 export const recordPeerSuccess = async (
   store: Pick<WatcherStore, "savePeerHealth">,
-  peer: DaPeerConfig,
+  peer: DaAttestationPeer,
 ): Promise<void> => {
   await store.savePeerHealth({
-    peerBaseUrl: peer.baseUrl,
+    peerId: peer.peerId,
     signerIndex: peer.signerIndex,
     lastSuccessAt: new Date().toISOString(),
     consecutiveFailures: 0,
@@ -113,14 +111,14 @@ export const recordPeerSuccess = async (
 
 export const recordPeerFailure = async (
   store: Pick<WatcherStore, "listPeerHealth" | "savePeerHealth">,
-  peer: DaPeerConfig,
+  peer: DaAttestationPeer,
   lastError: string,
 ): Promise<void> => {
   const existing = (await store.listPeerHealth()).find(
-    (entry) => entry.peerBaseUrl === peer.baseUrl,
+    (entry) => entry.peerId === peer.peerId,
   );
   await store.savePeerHealth({
-    peerBaseUrl: peer.baseUrl,
+    peerId: peer.peerId,
     signerIndex: peer.signerIndex,
     lastFailureAt: new Date().toISOString(),
     lastError,

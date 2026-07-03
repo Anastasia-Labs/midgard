@@ -51,8 +51,13 @@ export type DaPayloadRecord = {
   readonly headerHash: string;
   readonly payloadCborHex: string;
   readonly payloadSha256: string;
-  readonly sourceEndpoint: string;
+  readonly sourcePeerId: string;
   readonly fetchedAt: string;
+  readonly payloadFetchStatus?:
+    | "not_attempted"
+    | "missing_da"
+    | "available"
+    | "fetch_failed";
   readonly verifiedAt?: string;
   readonly rootSummary?: PayloadRootSet;
   readonly validationStatus:
@@ -146,18 +151,12 @@ export type L1SubmissionRecord = {
 export type DaCommitteeMember = {
   readonly index: number;
   readonly vkey: string;
-  readonly baseUrls: readonly string[];
   readonly canSubmitL1: boolean;
-};
-
-export type DaPeerConfig = {
-  readonly signerIndex?: number;
-  readonly baseUrl: string;
 };
 
 export type DaPeerBroadcastRecord = {
   readonly deploymentFingerprint: string;
-  readonly peerBaseUrl: string;
+  readonly peerId: string;
   readonly headerHash: string;
   readonly signerIndex: number;
   readonly status: "pending" | "posted" | "failed";
@@ -170,7 +169,7 @@ export type DaPeerBroadcastRecord = {
 };
 
 export type DaPeerHealthRecord = {
-  readonly peerBaseUrl: string;
+  readonly peerId: string;
   readonly signerIndex?: number;
   readonly lastSuccessAt?: string;
   readonly lastFailureAt?: string;

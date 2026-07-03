@@ -16,6 +16,7 @@ type StoreData = {
   readonly deployment?: {
     readonly fingerprint: string;
     readonly manifestSha256: string;
+    readonly contractDeploymentInfoSha256?: string;
     readonly manifestRaw: string;
   };
   readonly chainCursor?: Record<string, unknown>;
@@ -32,13 +33,22 @@ type StoreData = {
   readonly peerNonces: Record<string, DaPeerNonceRecord>;
 };
 
+export type WatcherDeploymentRecord = {
+  readonly fingerprint: string;
+  readonly manifestSha256: string;
+  readonly contractDeploymentInfoSha256?: string;
+  readonly manifestRaw: string;
+};
+
 export interface WatcherStore {
   close?(): Promise<void>;
   initDeployment(args: {
     readonly fingerprint: string;
     readonly manifestSha256: string;
+    readonly contractDeploymentInfoSha256: string;
     readonly manifestRaw: string;
   }): Promise<void>;
+  getDeployment(): Promise<WatcherDeploymentRecord | undefined>;
   upsertStateQueueHeader(record: StateQueueHeaderRecord): Promise<void>;
   listStateQueueHeaders(): Promise<readonly StateQueueHeaderRecord[]>;
   getStateQueueHeader(
@@ -62,7 +72,7 @@ export interface WatcherStore {
   listL1Submissions(): Promise<readonly L1SubmissionRecord[]>;
   savePeerBroadcast(record: DaPeerBroadcastRecord): Promise<void>;
   getPeerBroadcast(args: {
-    readonly peerBaseUrl: string;
+    readonly peerId: string;
     readonly headerHash: string;
     readonly signerIndex: number;
   }): Promise<DaPeerBroadcastRecord | undefined>;
@@ -93,6 +103,7 @@ export class JsonFileWatcherStore implements WatcherStore {
   async initDeployment(args: {
     readonly fingerprint: string;
     readonly manifestSha256: string;
+    readonly contractDeploymentInfoSha256: string;
     readonly manifestRaw: string;
   }): Promise<void> {
     await this.mutate((data) => {
@@ -101,7 +112,7 @@ export class JsonFileWatcherStore implements WatcherStore {
         data.deployment.fingerprint !== args.fingerprint
       ) {
         throw new Error(
-          `deployment fingerprint mismatch: stored=${data.deployment.fingerprint}, configured=${args.fingerprint}`,
+          `stale_deployment_state_requires_fresh_redeploy: stored_fingerprint=${data.deployment.fingerprint}, canonical_manifest_id=${args.fingerprint}, contract_deployment_info_sha256=${args.contractDeploymentInfoSha256}; refusing to reuse stale watcher state; perform an explicit fresh redeploy/reset before deleting local watcher state.`,
         );
       }
       return {
@@ -109,10 +120,16 @@ export class JsonFileWatcherStore implements WatcherStore {
         deployment: {
           fingerprint: args.fingerprint,
           manifestSha256: args.manifestSha256,
+          contractDeploymentInfoSha256: args.contractDeploymentInfoSha256,
           manifestRaw: args.manifestRaw,
         },
       };
     });
+  }
+
+  async getDeployment(): Promise<WatcherDeploymentRecord | undefined> {
+    const data = await this.read();
+    return data.deployment;
   }
 
   async upsertStateQueueHeader(record: StateQueueHeaderRecord): Promise<void> {
@@ -143,19 +160,7 @@ export class JsonFileWatcherStore implements WatcherStore {
     let saved = record;
     await this.mutate((data) => {
       const existing = data.daPayloads[record.headerHash];
-      if (
-        existing !== undefined &&
-        hasPayloadBytes(existing) &&
-        hasPayloadBytes(record) &&
-        existing.payloadSha256 !== record.payloadSha256
-      ) {
-        saved = {
-          ...record,
-          validationStatus: "conflicted",
-          conflictStatus: "conflicting_bytes",
-          validationError: `payload bytes conflict with existing sha256 ${existing.payloadSha256}`,
-        };
-      }
+      saved = resolveDaPayloadSave(existing, record);
       return {
         ...data,
         daPayloads: {
@@ -260,7 +265,7 @@ export class JsonFileWatcherStore implements WatcherStore {
       peerBroadcasts: {
         ...data.peerBroadcasts,
         [peerBroadcastKey(
-          record.peerBaseUrl,
+          record.peerId,
           record.headerHash,
           record.signerIndex,
         )]: record,
@@ -269,13 +274,13 @@ export class JsonFileWatcherStore implements WatcherStore {
   }
 
   async getPeerBroadcast(args: {
-    readonly peerBaseUrl: string;
+    readonly peerId: string;
     readonly headerHash: string;
     readonly signerIndex: number;
   }): Promise<DaPeerBroadcastRecord | undefined> {
     const data = await this.read();
     return data.peerBroadcasts[
-      peerBroadcastKey(args.peerBaseUrl, args.headerHash, args.signerIndex)
+      peerBroadcastKey(args.peerId, args.headerHash, args.signerIndex)
     ];
   }
 
@@ -292,7 +297,7 @@ export class JsonFileWatcherStore implements WatcherStore {
         (left, right) =>
           left.headerHash.localeCompare(right.headerHash) ||
           left.signerIndex - right.signerIndex ||
-          left.peerBaseUrl.localeCompare(right.peerBaseUrl),
+          left.peerId.localeCompare(right.peerId),
       );
   }
 
@@ -301,7 +306,7 @@ export class JsonFileWatcherStore implements WatcherStore {
       ...data,
       peerHealth: {
         ...data.peerHealth,
-        [record.peerBaseUrl]: record,
+        [record.peerId]: record,
       },
     }));
   }
@@ -309,7 +314,7 @@ export class JsonFileWatcherStore implements WatcherStore {
   async listPeerHealth(): Promise<readonly DaPeerHealthRecord[]> {
     const data = await this.read();
     return Object.values(data.peerHealth).sort((left, right) =>
-      left.peerBaseUrl.localeCompare(right.peerBaseUrl),
+      left.peerId.localeCompare(right.peerId),
     );
   }
 
@@ -369,10 +374,10 @@ const signatureKey = (headerHash: string, signerIndex: number): string =>
   `${headerHash}:${signerIndex.toString()}`;
 
 const peerBroadcastKey = (
-  peerBaseUrl: string,
+  peerId: string,
   headerHash: string,
   signerIndex: number,
-): string => `${peerBaseUrl}:${headerHash}:${signerIndex.toString()}`;
+): string => `${peerId}:${headerHash}:${signerIndex.toString()}`;
 
 const peerNonceKey = (
   deploymentFingerprint: string,
@@ -382,6 +387,79 @@ const peerNonceKey = (
 
 export const hasPayloadBytes = (record: DaPayloadRecord): boolean =>
   record.payloadSha256.length > 0 && record.payloadCborHex.length > 0;
+
+const terminalPayloadStatuses = new Set<DaPayloadRecord["validationStatus"]>([
+  "verified",
+  "malformed_da",
+  "root_mismatch",
+  "conflicted",
+]);
+
+export const resolveDaPayloadSave = (
+  existing: DaPayloadRecord | undefined,
+  record: DaPayloadRecord,
+): DaPayloadRecord => {
+  if (existing === undefined) {
+    return withDerivedPayloadFetchStatus(record);
+  }
+  if (hasPayloadBytes(existing) && !hasPayloadBytes(record)) {
+    return existing;
+  }
+  if (
+    hasPayloadBytes(existing) &&
+    hasPayloadBytes(record) &&
+    existing.payloadSha256 !== record.payloadSha256
+  ) {
+    return {
+      ...withDerivedPayloadFetchStatus(record),
+      validationStatus: "conflicted",
+      conflictStatus: "conflicting_bytes",
+      validationError: `payload bytes conflict with existing sha256 ${existing.payloadSha256}`,
+    };
+  }
+  if (
+    hasPayloadBytes(existing) &&
+    hasPayloadBytes(record) &&
+    existing.payloadSha256 === record.payloadSha256 &&
+    terminalPayloadStatuses.has(existing.validationStatus) &&
+    !terminalPayloadStatuses.has(record.validationStatus)
+  ) {
+    return existing;
+  }
+  return withDerivedPayloadFetchStatus(record);
+};
+
+export const libp2pSubmittedDaPayloadRecord = (args: {
+  readonly deploymentFingerprint: string;
+  readonly headerHash: string;
+  readonly payloadCbor: Uint8Array;
+  readonly payloadSha256: string;
+  readonly receivedAt: Date;
+}): DaPayloadRecord => ({
+  deploymentFingerprint: args.deploymentFingerprint,
+  headerHash: args.headerHash,
+  payloadCborHex: Buffer.from(args.payloadCbor).toString("hex"),
+  payloadSha256: args.payloadSha256,
+  sourcePeerId: "libp2p:payload-submit",
+  fetchedAt: args.receivedAt.toISOString(),
+  payloadFetchStatus: "available",
+  validationStatus: "fetched",
+});
+
+const withDerivedPayloadFetchStatus = (
+  record: DaPayloadRecord,
+): DaPayloadRecord => {
+  if (record.payloadFetchStatus !== undefined) {
+    return record;
+  }
+  if (hasPayloadBytes(record)) {
+    return { ...record, payloadFetchStatus: "available" };
+  }
+  if (record.validationStatus === "missing_da") {
+    return { ...record, payloadFetchStatus: "missing_da" };
+  }
+  return record;
+};
 
 const emptyStoreData = (): StoreData => ({
   stateQueueHeaders: {},

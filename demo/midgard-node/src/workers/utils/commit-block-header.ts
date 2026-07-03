@@ -2,6 +2,8 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { CML, coreToUtxo, UTxO, utxoToCore } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import type { SlotAwareDueWork } from "@/fibers/slot-aware-due-work.js";
+
 export type WorkerInput = {
   data: {
     availableConfirmedBlock: "" | SerializedStateQueueUTxO;
@@ -40,6 +42,11 @@ export type FailureOutput = {
   error: string;
 };
 
+export type RegisteredDueWorkOutput = {
+  type: "RegisteredDueWorkOutput";
+  dueWork: SlotAwareDueWork;
+};
+
 export type SubmittedAwaitingLocalFinalizationOutput = {
   type: "SubmittedAwaitingLocalFinalizationOutput";
   submittedTxHash: string;
@@ -70,6 +77,7 @@ export type WorkerOutput =
   | SkippedSubmissionOutput
   | NothingToCommitOutput
   | FailureOutput
+  | RegisteredDueWorkOutput
   | SubmittedAwaitingLocalFinalizationOutput
   | SubmittedAwaitingConfirmationOutput
   | SuccessfulLocalFinalizationRecoveryOutput;

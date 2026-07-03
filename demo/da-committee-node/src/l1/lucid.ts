@@ -1,5 +1,6 @@
 import { Lucid, type LucidEvolution } from "@lucid-evolution/lucid";
 import * as LucidRuntime from "@lucid-evolution/lucid";
+import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 
 type LucidProviderRuntime = {
   readonly Blockfrost: new (url: string, projectId?: string) => unknown;
@@ -11,6 +12,10 @@ type LucidProviderRuntime = {
 };
 
 type CardanoNetwork = "Mainnet" | "Preprod" | "Preview" | "Custom";
+
+const lucidOptions = {
+  evaluator: createScalusEvaluator(),
+};
 
 export const lucidFromProviderUrl = async (
   url: string,
@@ -26,6 +31,7 @@ export const lucidFromProviderUrl = async (
       lucid: await Lucid(
         new runtime.Blockfrost(apiUrl, projectId) as never,
         normalizeNetwork(network) as never,
+        lucidOptions,
       ),
       providerSource: `blockfrost:${apiUrl}`,
     };
@@ -36,6 +42,7 @@ export const lucidFromProviderUrl = async (
       lucid: await Lucid(
         new runtime.Kupmios(kupoUrl, ogmiosUrl, headers) as never,
         normalizeNetwork(network) as never,
+        lucidOptions,
       ),
       providerSource: `kupmios:${kupoUrl}|${ogmiosUrl}`,
     };

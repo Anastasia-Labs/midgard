@@ -14,6 +14,7 @@ import {
   selectL1SubmitterWallet,
 } from "../l1/submitter.js";
 import type { WatcherStore } from "../store.js";
+import { normalizeHex } from "../utils/hex.js";
 import { LucidDaAttestationSubmitter } from "./lucid-submitter.js";
 import { OnChainLifecycleCoordinator } from "./on-chain.js";
 
@@ -68,6 +69,18 @@ export const onChainCoordinatorFromConfig = async (
   const contracts = daAttestationValidatorsFromDeployment(
     config.midgardNodeDeployment,
   );
+  const contractDaAttestationPolicyId = normalizeHex(
+    contracts.daAttestation.policyId,
+    {
+      fieldName: "contract deployment DA attestation policy id",
+      byteLength: 28,
+    },
+  );
+  if (contractDaAttestationPolicyId !== config.daAttestationPolicyId) {
+    throw new Error(
+      "configured DA attestation policy id does not match Midgard node deployment-info",
+    );
+  }
   const resolvedChainReader =
     chainReader ??
     new LucidDaAttestationChainReader({ lucid, config, providerSource });

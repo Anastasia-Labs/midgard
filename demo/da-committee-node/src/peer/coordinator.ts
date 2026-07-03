@@ -1,23 +1,28 @@
 import type { AttestationCoordinator } from "../coordinator/coordinator.js";
-import type { DaPeerConfig, DaSignatureRecord } from "../domain.js";
-import { jsonBigIntStringReplacer } from "../json.js";
+import type {
+  DaAttestationExchange,
+  DaAttestationPeer,
+} from "../da/libp2p/attestations.js";
+import type { DaSignatureRecord } from "../domain.js";
 import type { DaSigner, DaSignerValidation } from "../signer.js";
 import type { WatcherStore } from "../store.js";
-import { signPeerRequest } from "./auth.js";
 import {
   PeerSignaturePoller,
   recordPeerFailure,
   recordPeerSuccess,
 } from "./poller.js";
+import { attestationPeersExcludingLocal } from "./targets.js";
 
 export type PeerSignatureCoordinatorDeps = {
   readonly deploymentFingerprint: string;
-  readonly peers: readonly DaPeerConfig[];
+  readonly peers: readonly DaAttestationPeer[];
+  readonly localPeerId?: string;
+  readonly attestationExchange?: DaAttestationExchange;
   readonly signer: DaSigner;
   readonly signerIndex: number;
   readonly signerValidation: DaSignerValidation;
   readonly store: WatcherStore;
-  readonly requestTimeoutMs: number;
+  readonly requestTimeoutMs?: number;
   readonly retryInitialDelayMs: number;
   readonly retryMaxDelayMs: number;
   readonly retryMaxAttempts: number;
@@ -33,10 +38,18 @@ export class PeerSignatureCoordinator implements AttestationCoordinator {
   private readonly lastErrors = new Map<string, string>();
 
   constructor(deps: PeerSignatureCoordinatorDeps) {
-    this.deps = deps;
+    const peers =
+      deps.localPeerId === undefined
+        ? deps.peers
+        : attestationPeersExcludingLocal(deps.peers, deps.localPeerId);
+    this.deps = { ...deps, peers };
     this.poller = new PeerSignaturePoller({
       deploymentFingerprint: deps.deploymentFingerprint,
-      peers: deps.peers,
+      peers,
+      ...(deps.localPeerId === undefined
+        ? {}
+        : { localPeerId: deps.localPeerId }),
+      attestationExchange: deps.attestationExchange,
       signerValidation: deps.signerValidation,
       store: deps.store,
       requestTimeoutMs: deps.requestTimeoutMs,
@@ -96,11 +109,11 @@ export class PeerSignatureCoordinator implements AttestationCoordinator {
   }
 
   private async broadcastSignature(
-    peer: DaPeerConfig,
+    peer: DaAttestationPeer,
     record: DaSignatureRecord,
   ): Promise<boolean> {
     const existing = await this.deps.store.getPeerBroadcast({
-      peerBaseUrl: peer.baseUrl,
+      peerId: peer.peerId,
       headerHash: record.headerHash,
       signerIndex: record.signerIndex,
     });
@@ -118,7 +131,7 @@ export class PeerSignatureCoordinator implements AttestationCoordinator {
     if (attempts > this.deps.retryMaxAttempts) {
       await this.deps.store.savePeerBroadcast({
         deploymentFingerprint: record.deploymentFingerprint,
-        peerBaseUrl: peer.baseUrl,
+        peerId: peer.peerId,
         headerHash: record.headerHash,
         signerIndex: record.signerIndex,
         status: "failed",
@@ -130,7 +143,7 @@ export class PeerSignatureCoordinator implements AttestationCoordinator {
     }
     await this.deps.store.savePeerBroadcast({
       deploymentFingerprint: record.deploymentFingerprint,
-      peerBaseUrl: peer.baseUrl,
+      peerId: peer.peerId,
       headerHash: record.headerHash,
       signerIndex: record.signerIndex,
       status: "pending",
@@ -138,40 +151,20 @@ export class PeerSignatureCoordinator implements AttestationCoordinator {
       lastAttemptAt: new Date(now).toISOString(),
       updatedAt: new Date(now).toISOString(),
     });
-    const pathAndSearch = `/v1/deployments/${encodeURIComponent(
-      this.deps.deploymentFingerprint,
-    )}/headers/${record.headerHash}/signatures`;
-    const url = `${peer.baseUrl}${pathAndSearch}`;
-    const body = Buffer.from(
-      JSON.stringify(record, jsonBigIntStringReplacer),
-      "utf8",
-    );
-    const headers = {
-      "content-type": "application/json",
-      ...signPeerRequest({
-        signer: this.deps.signer,
-        signerIndex: this.deps.signerIndex,
-        deploymentFingerprint: this.deps.deploymentFingerprint,
-        method: "POST",
-        pathAndSearch,
-        body,
-      }),
-    };
     try {
-      const response = await fetch(url, {
-        method: "POST",
-        headers,
-        body,
-        signal: AbortSignal.timeout(this.deps.requestTimeoutMs),
+      if (this.deps.attestationExchange === undefined) {
+        throw new Error("libp2p attestation exchange is not configured");
+      }
+      const result = await this.deps.attestationExchange.publishAttestation({
+        peer,
+        record,
       });
-      if (!response.ok) {
-        throw new Error(
-          `HTTP ${response.status.toString()}: ${await response.text()}`,
-        );
+      if (result.status !== "accepted") {
+        throw new Error(result.reason);
       }
       await this.deps.store.savePeerBroadcast({
         deploymentFingerprint: record.deploymentFingerprint,
-        peerBaseUrl: peer.baseUrl,
+        peerId: peer.peerId,
         headerHash: record.headerHash,
         signerIndex: record.signerIndex,
         status: "posted",
@@ -186,7 +179,7 @@ export class PeerSignatureCoordinator implements AttestationCoordinator {
       const lastError = error instanceof Error ? error.message : String(error);
       await this.deps.store.savePeerBroadcast({
         deploymentFingerprint: record.deploymentFingerprint,
-        peerBaseUrl: peer.baseUrl,
+        peerId: peer.peerId,
         headerHash: record.headerHash,
         signerIndex: record.signerIndex,
         status: "failed",
@@ -212,12 +205,12 @@ export class PeerSignatureCoordinator implements AttestationCoordinator {
     return exponential + jitter;
   }
 
-  private async recordPeerSuccess(peer: DaPeerConfig): Promise<void> {
+  private async recordPeerSuccess(peer: DaAttestationPeer): Promise<void> {
     await recordPeerSuccess(this.deps.store, peer);
   }
 
   private async recordPeerFailure(
-    peer: DaPeerConfig,
+    peer: DaAttestationPeer,
     lastError: string,
   ): Promise<void> {
     await recordPeerFailure(this.deps.store, peer, lastError);

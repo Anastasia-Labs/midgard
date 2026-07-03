@@ -11,9 +11,10 @@ import type {
   StateQueueHeaderRecord,
 } from "../domain.js";
 import {
-  hasPayloadBytes,
   jsonReplacer,
   jsonReviver,
+  resolveDaPayloadSave,
+  type WatcherDeploymentRecord,
   type WatcherStore,
 } from "../store.js";
 
@@ -52,6 +53,7 @@ export class PostgresWatcherStore implements WatcherStore {
   async initDeployment(args: {
     readonly fingerprint: string;
     readonly manifestSha256: string;
+    readonly contractDeploymentInfoSha256: string;
     readonly manifestRaw: string;
   }): Promise<void> {
     const result = await this.pool.query<{
@@ -60,7 +62,7 @@ export class PostgresWatcherStore implements WatcherStore {
     const existing = result.rows[0];
     if (existing !== undefined && existing.fingerprint !== args.fingerprint) {
       throw new Error(
-        `deployment fingerprint mismatch: stored=${existing.fingerprint}, configured=${args.fingerprint}`,
+        `stale_deployment_state_requires_fresh_redeploy: stored_fingerprint=${existing.fingerprint}, canonical_manifest_id=${args.fingerprint}, contract_deployment_info_sha256=${args.contractDeploymentInfoSha256}; refusing to reuse stale watcher state; perform an explicit fresh redeploy/reset before deleting local watcher state.`,
       );
     }
     await this.pool.query(
@@ -68,17 +70,54 @@ export class PostgresWatcherStore implements WatcherStore {
          id,
          fingerprint,
          manifest_sha256,
+         contract_deployment_info_sha256,
          manifest_raw,
          updated_at
        )
-       VALUES (1, $1, $2, $3, NOW())
+       VALUES (1, $1, $2, $3, $4, NOW())
        ON CONFLICT (id) DO UPDATE SET
          fingerprint = EXCLUDED.fingerprint,
          manifest_sha256 = EXCLUDED.manifest_sha256,
+         contract_deployment_info_sha256 = EXCLUDED.contract_deployment_info_sha256,
          manifest_raw = EXCLUDED.manifest_raw,
          updated_at = NOW()`,
-      [args.fingerprint, args.manifestSha256, args.manifestRaw],
+      [
+        args.fingerprint,
+        args.manifestSha256,
+        args.contractDeploymentInfoSha256,
+        args.manifestRaw,
+      ],
     );
+  }
+
+  async getDeployment(): Promise<WatcherDeploymentRecord | undefined> {
+    const result = await this.pool.query<{
+      readonly fingerprint: string;
+      readonly manifest_sha256: string;
+      readonly contract_deployment_info_sha256: string | null;
+      readonly manifest_raw: string;
+    }>(
+      `SELECT fingerprint,
+              manifest_sha256,
+              contract_deployment_info_sha256,
+              manifest_raw
+       FROM watcher_deployment
+       WHERE id = 1`,
+    );
+    const row = result.rows[0];
+    if (row === undefined) {
+      return undefined;
+    }
+    return {
+      fingerprint: row.fingerprint,
+      manifestSha256: row.manifest_sha256,
+      ...(row.contract_deployment_info_sha256 === null
+        ? {}
+        : {
+            contractDeploymentInfoSha256: row.contract_deployment_info_sha256,
+          }),
+      manifestRaw: row.manifest_raw,
+    };
   }
 
   async upsertStateQueueHeader(record: StateQueueHeaderRecord): Promise<void> {
@@ -113,18 +152,7 @@ export class PostgresWatcherStore implements WatcherStore {
           "SELECT record FROM watcher_da_payloads WHERE header_hash = $1 FOR UPDATE",
           [record.headerHash],
         );
-        const saved =
-          existing !== undefined &&
-          hasPayloadBytes(existing) &&
-          hasPayloadBytes(record) &&
-          existing.payloadSha256 !== record.payloadSha256
-            ? {
-                ...record,
-                validationStatus: "conflicted" as const,
-                conflictStatus: "conflicting_bytes" as const,
-                validationError: `payload bytes conflict with existing sha256 ${existing.payloadSha256}`,
-              }
-            : record;
+        const saved = resolveDaPayloadSave(existing, record);
         await upsertRecordWithClient(
           client,
           "watcher_da_payloads",
@@ -247,18 +275,18 @@ export class PostgresWatcherStore implements WatcherStore {
   async savePeerBroadcast(record: DaPeerBroadcastRecord): Promise<void> {
     await this.pool.query(
       `INSERT INTO watcher_peer_broadcasts (
-         peer_base_url,
+         peer_id,
          header_hash,
          signer_index,
          record,
          updated_at
        )
        VALUES ($1, $2, $3, $4::jsonb, NOW())
-       ON CONFLICT (peer_base_url, header_hash, signer_index) DO UPDATE SET
+       ON CONFLICT (peer_id, header_hash, signer_index) DO UPDATE SET
          record = EXCLUDED.record,
          updated_at = NOW()`,
       [
-        record.peerBaseUrl,
+        record.peerId,
         record.headerHash,
         record.signerIndex,
         encodeRecord(record),
@@ -267,14 +295,14 @@ export class PostgresWatcherStore implements WatcherStore {
   }
 
   async getPeerBroadcast(args: {
-    readonly peerBaseUrl: string;
+    readonly peerId: string;
     readonly headerHash: string;
     readonly signerIndex: number;
   }): Promise<DaPeerBroadcastRecord | undefined> {
     return this.getRecord<DaPeerBroadcastRecord>(
       `SELECT record FROM watcher_peer_broadcasts
-       WHERE peer_base_url = $1 AND header_hash = $2 AND signer_index = $3`,
-      [args.peerBaseUrl, args.headerHash, args.signerIndex],
+       WHERE peer_id = $1 AND header_hash = $2 AND signer_index = $3`,
+      [args.peerId, args.headerHash, args.signerIndex],
     );
   }
 
@@ -284,10 +312,10 @@ export class PostgresWatcherStore implements WatcherStore {
     return this.listRecords<DaPeerBroadcastRecord>(
       headerHash === undefined
         ? `SELECT record FROM watcher_peer_broadcasts
-           ORDER BY header_hash, signer_index, peer_base_url`
+           ORDER BY header_hash, signer_index, peer_id`
         : `SELECT record FROM watcher_peer_broadcasts
            WHERE header_hash = $1
-           ORDER BY header_hash, signer_index, peer_base_url`,
+           ORDER BY header_hash, signer_index, peer_id`,
       headerHash === undefined ? [] : [headerHash],
     );
   }
@@ -295,21 +323,21 @@ export class PostgresWatcherStore implements WatcherStore {
   async savePeerHealth(record: DaPeerHealthRecord): Promise<void> {
     await this.pool.query(
       `INSERT INTO watcher_peer_health (
-         peer_base_url,
+         peer_id,
          record,
          updated_at
        )
        VALUES ($1, $2::jsonb, NOW())
-       ON CONFLICT (peer_base_url) DO UPDATE SET
+       ON CONFLICT (peer_id) DO UPDATE SET
          record = EXCLUDED.record,
          updated_at = NOW()`,
-      [record.peerBaseUrl, encodeRecord(record)],
+      [record.peerId, encodeRecord(record)],
     );
   }
 
   async listPeerHealth(): Promise<readonly DaPeerHealthRecord[]> {
     return this.listRecords<DaPeerHealthRecord>(
-      `SELECT record FROM watcher_peer_health ORDER BY peer_base_url`,
+      `SELECT record FROM watcher_peer_health ORDER BY peer_id`,
     );
   }
 
@@ -340,6 +368,7 @@ export class PostgresWatcherStore implements WatcherStore {
         id integer PRIMARY KEY CHECK (id = 1),
         fingerprint text NOT NULL,
         manifest_sha256 text NOT NULL,
+        contract_deployment_info_sha256 text,
         manifest_raw text NOT NULL,
         created_at timestamptz NOT NULL DEFAULT NOW(),
         updated_at timestamptz NOT NULL DEFAULT NOW()
@@ -388,17 +417,17 @@ export class PostgresWatcherStore implements WatcherStore {
       );
 
       CREATE TABLE IF NOT EXISTS watcher_peer_broadcasts (
-        peer_base_url text NOT NULL,
+        peer_id text NOT NULL,
         header_hash text NOT NULL,
         signer_index integer NOT NULL CHECK (signer_index >= 0 AND signer_index <= 255),
         record jsonb NOT NULL,
         created_at timestamptz NOT NULL DEFAULT NOW(),
         updated_at timestamptz NOT NULL DEFAULT NOW(),
-        PRIMARY KEY (peer_base_url, header_hash, signer_index)
+        PRIMARY KEY (peer_id, header_hash, signer_index)
       );
 
       CREATE TABLE IF NOT EXISTS watcher_peer_health (
-        peer_base_url text PRIMARY KEY,
+        peer_id text PRIMARY KEY,
         record jsonb NOT NULL,
         created_at timestamptz NOT NULL DEFAULT NOW(),
         updated_at timestamptz NOT NULL DEFAULT NOW()
@@ -413,6 +442,50 @@ export class PostgresWatcherStore implements WatcherStore {
         PRIMARY KEY (deployment_fingerprint, signer_index, nonce)
       );
     `);
+    await this.migratePeerIdColumnNames();
+  }
+
+  private async migratePeerIdColumnNames(): Promise<void> {
+    const legacyPeerColumn = ["peer", "base", "url"].join("_");
+    await this.renameColumnIfOnlyLegacyExists(
+      "watcher_peer_broadcasts",
+      legacyPeerColumn,
+      "peer_id",
+    );
+    await this.renameColumnIfOnlyLegacyExists(
+      "watcher_peer_health",
+      legacyPeerColumn,
+      "peer_id",
+    );
+  }
+
+  private async renameColumnIfOnlyLegacyExists(
+    tableName: string,
+    legacyColumnName: string,
+    replacementColumnName: string,
+  ): Promise<void> {
+    const [legacy, replacement] = await Promise.all([
+      this.hasColumn(tableName, legacyColumnName),
+      this.hasColumn(tableName, replacementColumnName),
+    ]);
+    if (legacy && !replacement) {
+      await this.pool.query(
+        `ALTER TABLE ${tableName} RENAME COLUMN ${legacyColumnName} TO ${replacementColumnName}`,
+      );
+    }
+  }
+
+  private async hasColumn(
+    tableName: string,
+    columnName: string,
+  ): Promise<boolean> {
+    const result = await this.pool.query(
+      `SELECT 1
+       FROM information_schema.columns
+       WHERE table_name = $1 AND column_name = $2`,
+      [tableName, columnName],
+    );
+    return result.rowCount === 1;
   }
 
   private async upsertRecord<T extends { readonly headerHash: string }>(

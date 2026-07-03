@@ -14,7 +14,7 @@ import type { HttpBodyError } from "@effect/platform/HttpBody";
 import { ParsedSearchParams } from "@effect/platform/HttpServerRequest";
 import { SqlClient } from "@effect/sql/SqlClient";
 import { toHex } from "@lucid-evolution/lucid";
-import { Cause, Duration, Effect, Metric, Option, Ref } from "effect";
+import { Cause, Duration, Effect, Metric, Ref } from "effect";
 
 import {
   parseAddressArgument,
@@ -38,7 +38,6 @@ import * as UtxosCommand from "@/commands/utxos.js";
 import {
   AddressHistoryDB,
   BlocksDB,
-  DaPayloadsDB,
   ImmutableDB,
   MempoolDB,
   MempoolLedgerDB,
@@ -50,6 +49,10 @@ import {
 } from "@/database/index.js";
 import { blockCommitmentAction, mergeAction } from "@/fibers/index.js";
 import * as Genesis from "@/genesis.js";
+import {
+  localOgmiosSubmitSlotEvidence,
+  readLocalOgmiosSubmitSlot,
+} from "@/local-ogmios-slot.js";
 import { Database } from "@/services/index.js";
 import {
   Globals,
@@ -67,6 +70,12 @@ import {
   referenceScriptByName,
   referenceScriptTargetsByCommand,
 } from "@/transactions/reference-scripts.js";
+import {
+  classifyOldestQueuedBlockReadiness,
+  DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING,
+  mergeMaturityWindow,
+  planMergePreflight,
+} from "@/transactions/state-queue/merge-readiness.js";
 import * as SubmitDeposit from "@/transactions/submit-deposit.js";
 import { SerializedStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
 
@@ -76,8 +85,6 @@ const MERGE_ENDPOINT: string = "merge";
 const UTXO_ENDPOINT: string = "utxo";
 const UTXOS_ENDPOINT: string = "utxos";
 const BLOCK_ENDPOINT: string = "block";
-const DA_PAYLOAD_ENDPOINT: string = "da/payload";
-const DA_PAYLOAD_METADATA_ENDPOINT: string = "da/payload/metadata";
 const INIT_ENDPOINT: string = "init";
 const COMMIT_ENDPOINT: string = "commit";
 const SUBMIT_ENDPOINT: string = "submit";
@@ -784,7 +791,10 @@ const getReadinessHandler = Effect.gen(function* () {
   const durableAdmissionBacklog = yield* TxAdmissionsDB.countBacklog;
   const durableAdmissionOldestAgeMs = yield* TxAdmissionsDB.oldestQueuedAgeMs;
   const unfinishedMutationJobs = yield* MutationJobsDB.countUnfinished;
+  const mempoolTxCount = yield* MempoolDB.retrieveTxCount;
   const nowMillis = Date.now();
+  const stateQueueBlocksInQueue = yield* Ref.get(globals.BLOCKS_IN_QUEUE);
+  const resetInProgress = yield* Ref.get(globals.RESET_IN_PROGRESS);
   const blockCommitmentHeartbeat = yield* Ref.get(
     globals.HEARTBEAT_BLOCK_COMMITMENT,
   );
@@ -820,6 +830,12 @@ const getReadinessHandler = Effect.gen(function* () {
   const contracts = yield* MidgardContracts;
   const providerProbe = yield* Effect.either(
     Initialization.fetchHubOracleWitness(lucid.api, contracts),
+  );
+  const localOgmiosSlotProbe = yield* Effect.either(
+    readLocalOgmiosSubmitSlot({
+      ogmiosUrl: nodeConfig.L1_OGMIOS_KEY,
+      timeoutMs: nodeConfig.L1_PROVIDER_PREFLIGHT_TIMEOUT_MS,
+    }),
   );
   const leaseInspection = yield* StateQueueMutationLeasesDB.inspect({
     recentLimit: 3,
@@ -864,6 +880,9 @@ const getReadinessHandler = Effect.gen(function* () {
   if (providerProbe._tag === "Left") {
     reasons.push("provider_query_unhealthy:hub-oracle");
   }
+  if (localOgmiosSlotProbe._tag === "Left") {
+    reasons.push("provider_query_unhealthy:local-ogmios-slot");
+  }
   if (
     durableAdmissionOldestAgeMs >
     nodeConfig.READINESS_MAX_DURABLE_ADMISSION_AGE_MS
@@ -877,15 +896,39 @@ const getReadinessHandler = Effect.gen(function* () {
       `unfinished_local_mutation_jobs:${unfinishedMutationJobs.toString()}`,
     );
   }
+  const mergeReadiness = planMergePreflight({
+    force: false,
+    queueLength: stateQueueBlocksInQueue,
+    minQueueLength:
+      nodeConfig.MIN_QUEUE_LENGTH_FOR_MERGING ??
+      DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING,
+    unresolvedSubmittedBlockTxHash: unconfirmedSubmittedBlockTxHash,
+    localFinalizationPending,
+    resetInProgress,
+    durableAdmissionBacklog,
+    mempoolTxCount,
+    unfinishedMutationJobs,
+  });
   const readiness = {
     ready: reasons.length === 0,
     reasons,
     durableAdmissionBacklog: durableAdmissionBacklog.toString(),
     durableAdmissionOldestAgeMs,
+    mempoolTxCount: mempoolTxCount.toString(),
     unfinishedLocalMutationJobs: unfinishedMutationJobs.toString(),
     unresolvedBlockSubmissionAgeMs,
     providerQueryHealthy: providerProbe._tag === "Right",
+    localOgmiosSlot:
+      localOgmiosSlotProbe._tag === "Right"
+        ? {
+            ...localOgmiosSlotProbe.right,
+            evidence: localOgmiosSubmitSlotEvidence(localOgmiosSlotProbe.right),
+          }
+        : {
+            error: String(localOgmiosSlotProbe.left),
+          },
     stateQueueMutationLease: encodedLeaseInspection,
+    mergeReadiness,
   };
 
   return yield* HttpServerResponse.json(readiness, {
@@ -946,114 +989,6 @@ const getBlockHandler = Effect.gen(function* () {
     failWith500(
       "GET",
       BLOCK_ENDPOINT,
-      e.cause,
-      `db failure with table ${e.table}`,
-    ),
-  ),
-);
-
-const parseHeaderHashSearchParam = (
-  value: unknown,
-): Buffer | HttpServerResponse.HttpServerResponse => {
-  const headerHash = parseFixedHexParam(value, 28);
-  if (headerHash !== null) {
-    return headerHash;
-  }
-  return HttpServerResponse.unsafeJson(
-    { error: `Invalid header_hash: ${String(value)}` },
-    { status: 400 },
-  );
-};
-
-/**
- * `GET /da/payload?header_hash=...`: returns canonical DaPayloadV2 CBOR.
- */
-const getDaPayloadHandler = Effect.gen(function* () {
-  const params = yield* ParsedSearchParams;
-  const parsed = parseHeaderHashSearchParam(params["header_hash"]);
-  if (!Buffer.isBuffer(parsed)) {
-    return parsed;
-  }
-  const record = yield* DaPayloadsDB.retrieveByHeaderHash(parsed);
-  if (Option.isNone(record)) {
-    return yield* HttpServerResponse.json(
-      {
-        error: `DA payload not found for header_hash ${parsed.toString("hex")}`,
-      },
-      { status: 404 },
-    );
-  }
-  return HttpServerResponse.uint8Array(record.value.payload_cbor, {
-    contentType: "application/cbor",
-  });
-}).pipe(
-  Effect.catchTag("HttpBodyError", (e) =>
-    failWith500("GET", DA_PAYLOAD_ENDPOINT, e),
-  ),
-  Effect.catchTag("DatabaseError", (e) =>
-    failWith500(
-      "GET",
-      DA_PAYLOAD_ENDPOINT,
-      e.cause,
-      `db failure with table ${e.table}`,
-    ),
-  ),
-);
-
-/**
- * `GET /da/payload/metadata?header_hash=...`: returns payload metadata.
- */
-const getDaPayloadMetadataHandler = Effect.gen(function* () {
-  const params = yield* ParsedSearchParams;
-  const parsed = parseHeaderHashSearchParam(params["header_hash"]);
-  if (!Buffer.isBuffer(parsed)) {
-    return parsed;
-  }
-  const record = yield* DaPayloadsDB.retrieveByHeaderHash(parsed);
-  if (Option.isNone(record)) {
-    return yield* HttpServerResponse.json(
-      {
-        error: `DA payload not found for header_hash ${parsed.toString("hex")}`,
-      },
-      { status: 404 },
-    );
-  }
-  return yield* HttpServerResponse.json({
-    headerHash: record.value.header_hash.toString("hex"),
-    version: record.value.version,
-    payloadHash: record.value.payload_sha256.toString("hex"),
-    payloadBytes: record.value.payload_cbor.length,
-    status: "available",
-    roots: {
-      utxosRoot: record.value.utxos_root,
-      forcedTransactionsRoot: record.value.forced_transactions_root,
-      transactionsRoot: record.value.transactions_root,
-      depositsRoot: record.value.deposits_root,
-      withdrawalsRoot: record.value.withdrawals_root,
-      transitionTraceRoot: record.value.transition_trace_root,
-      eventToStepRoot: record.value.event_to_step_root,
-    },
-    counts: {
-      withdrawalCount: record.value.withdrawal_count.toString(),
-      forcedTransactionCount: record.value.forced_transaction_count.toString(),
-      l2TransactionCount: record.value.l2_transaction_count.toString(),
-      depositCount: record.value.deposit_count.toString(),
-      totalEventCount: record.value.total_event_count.toString(),
-      transitionStepCount: record.value.transition_step_count.toString(),
-    },
-    blockStartTime: record.value.block_start_time.toISOString(),
-    blockEndTime: record.value.block_end_time.toISOString(),
-    createdAt: record.value.created_at.toISOString(),
-    updatedAt: record.value.updated_at.toISOString(),
-  });
-}).pipe(
-  Effect.catchTag("HttpBodyError", (e) =>
-    failWith500("GET", DA_PAYLOAD_METADATA_ENDPOINT, e),
-  ),
-  Effect.catchTag("DatabaseError", (e) =>
-    failWith500(
-      "GET",
-      DA_PAYLOAD_METADATA_ENDPOINT,
       e.cause,
       `db failure with table ${e.table}`,
     ),
@@ -1232,8 +1167,10 @@ const getTxsOfAddressHandler = Effect.gen(function* () {
  */
 const getStateQueueHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`✍  Drawing state queue UTxOs...`);
+  const globals = yield* Globals;
   const lucid = yield* Lucid;
   const contracts = yield* MidgardContracts;
+  const nodeConfig = yield* NodeConfig;
   const fetchConfig: SDK.StateQueueFetchConfig = {
     stateQueuePolicyId: contracts.stateQueue.policyId,
     stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
@@ -1245,6 +1182,62 @@ const getStateQueueHandler = Effect.gen(function* () {
   const headers = sortedUTxOs.flatMap((u) =>
     u.datum.key === "Empty" ? [] : [u.datum.key.Key.key],
   );
+  const [
+    unconfirmedSubmittedBlockTxHash,
+    localFinalizationPending,
+    resetInProgress,
+    durableAdmissionBacklog,
+    mempoolTxCount,
+    unfinishedMutationJobs,
+  ] = yield* Effect.all(
+    [
+      Ref.get(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH),
+      Ref.get(globals.LOCAL_FINALIZATION_PENDING),
+      Ref.get(globals.RESET_IN_PROGRESS),
+      TxAdmissionsDB.countBacklog,
+      MempoolDB.retrieveTxCount,
+      MutationJobsDB.countUnfinished,
+    ],
+    { concurrency: "unbounded" },
+  );
+  const mergeReadiness = planMergePreflight({
+    force: false,
+    queueLength: headers.length,
+    minQueueLength:
+      nodeConfig.MIN_QUEUE_LENGTH_FOR_MERGING ??
+      DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING,
+    unresolvedSubmittedBlockTxHash: unconfirmedSubmittedBlockTxHash,
+    localFinalizationPending,
+    resetInProgress,
+    durableAdmissionBacklog,
+    mempoolTxCount,
+    unfinishedMutationJobs,
+  });
+  const oldestQueuedBlock = sortedUTxOs.find((u) => u.datum.key !== "Empty");
+  const oldestBlockReadiness =
+    oldestQueuedBlock === undefined
+      ? null
+      : yield* Effect.gen(function* () {
+          const blockHeader = yield* SDK.getHeaderFromStateQueueDatum(
+            oldestQueuedBlock.datum,
+          );
+          const stateQueueNode =
+            yield* SDK.getStateQueueNodeFromStateQueueDatum(
+              oldestQueuedBlock.datum,
+            );
+          const headerHash = yield* SDK.hashBlockHeader(blockHeader);
+          const maturity = mergeMaturityWindow(
+            lucid.api,
+            Number(blockHeader.endTime),
+          );
+          return classifyOldestQueuedBlockReadiness({
+            headerHash,
+            currentDaAttestation: stateQueueNode.da_attestation,
+            requiredDaAttestation: contracts.daAttestation.policyId,
+            readyAfterUnixTime: maturity.readyAfterUnixTime,
+            nowUnixTime: Date.now(),
+          });
+        });
   let drawn = `
 ---------------------------- STATE QUEUE ----------------------------`;
   yield* Effect.allSuccesses(
@@ -1270,6 +1263,13 @@ ${emoji} ${u.utxo.txHash}#${u.utxo.outputIndex}${info}`;
   yield* Effect.logInfo(drawn);
   return yield* HttpServerResponse.json({
     headers,
+    mergeReadiness: {
+      ...mergeReadiness,
+      durableAdmissionBacklog: durableAdmissionBacklog.toString(),
+      mempoolTxCount: mempoolTxCount.toString(),
+      unfinishedMutationJobs: unfinishedMutationJobs.toString(),
+      oldestBlock: oldestBlockReadiness,
+    },
   });
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) =>
@@ -1277,6 +1277,20 @@ ${emoji} ${u.utxo.txHash}#${u.utxo.outputIndex}${info}`;
   ),
   Effect.catchTag("LinkedListError", (e) =>
     failWith500("GET", "logStateQueue", e.cause, e.message),
+  ),
+  Effect.catchTag("DataCoercionError", (e) =>
+    failWith500("GET", "logStateQueue", e.cause, e.message),
+  ),
+  Effect.catchTag("HashingError", (e) =>
+    failWith500("GET", "logStateQueue", e.cause, e.message),
+  ),
+  Effect.catchTag("DatabaseError", (e) =>
+    failWith500(
+      "GET",
+      "logStateQueue",
+      e.cause,
+      `db failure with table ${e.table}`,
+    ),
   ),
   Effect.catchTag("LucidError", (e) =>
     failWith500("GET", "logStateQueue", e.cause, e.message),
@@ -1636,11 +1650,6 @@ export const buildListenRouter = (
       HttpRouter.get(`/${BLOCK_ENDPOINT}`, getBlockHandler),
     )
     .pipe(
-      HttpRouter.get(`/${DA_PAYLOAD_ENDPOINT}`, getDaPayloadHandler),
-      HttpRouter.get(
-        `/${DA_PAYLOAD_METADATA_ENDPOINT}`,
-        getDaPayloadMetadataHandler,
-      ),
       HttpRouter.get(
         `/${INIT_ENDPOINT}`,
         withAdminAccess(INIT_ENDPOINT, getInitHandler),

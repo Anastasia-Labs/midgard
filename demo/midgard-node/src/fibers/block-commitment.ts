@@ -14,15 +14,27 @@ import {
 import {
   fetchStateQueueSnapshotProgram,
   refreshStateQueueGlobalsFromSnapshot,
+  type StateQueueSnapshot,
 } from "@/services/state-queue-topology.js";
+import type {
+  CommitSchedulerStateQueueEvidence,
+  EarliestCommitSchedulerPlan,
+} from "@/workers/utils/commit-block-planner.js";
 import {
   WorkerInput,
   WorkerOutput,
 } from "@/workers/utils/commit-block-header.js";
 import { WorkerError } from "@/workers/utils/common.js";
+import { resolveEarliestCommitSchedulerDueWorkPlan } from "@/workers/utils/scheduler-refresh.js";
 
 import { emitQueueStateMetrics } from "./queue-metrics.js";
 import { resolveWorkerEntry } from "./resolve-worker-entry.js";
+import {
+  checkSlotAwareDueWork,
+  clearSlotAwareDueWork,
+  peekSlotAwareDueWork,
+  registerSlotAwareDueWork,
+} from "./slot-aware-due-work.js";
 
 /**
  * Background block-commitment loop that packages processed L2 transactions into
@@ -64,6 +76,152 @@ const commitWorkerDurationTimer = Metric.timer(
   "commit_worker_duration",
   "Duration of one block commitment worker attempt in milliseconds",
 );
+
+const BLOCK_COMMITMENT_DUE_WORK_KIND = "commit_scheduler_refresh" as const;
+const BLOCK_COMMITMENT_DUE_WORK_KEY = "block_commitment";
+
+const stateQueueEvidenceFromSnapshot = (
+  snapshot: StateQueueSnapshot,
+): CommitSchedulerStateQueueEvidence => ({
+  tailCommitBaseOutRef: snapshot.tailCommitBase.outRef,
+  tailBlockEndTimeMs: snapshot.tailCommitBase.blockEndTimeMs,
+  stateQueueHasUnmergedTail:
+    snapshot.root.outRef !== snapshot.tailCommitBase.outRef,
+});
+
+const localFinalizationPendingCommitSchedulerPlan =
+  (): EarliestCommitSchedulerPlan => ({
+    status: "proceed",
+    reason: "local_finalization_pending",
+    dependencyKey:
+      "planner=earliest_commit_scheduler_v1,local_finalization_pending=true",
+    invalidationKey:
+      "planner=earliest_commit_scheduler_v1,local_finalization_pending=true",
+  });
+
+const planPreLeaseCommitSchedulerDueWork = Effect.gen(function* () {
+  const globals = yield* Globals;
+  const lucid = yield* Lucid;
+  const contracts = yield* MidgardContracts;
+  const LOCAL_FINALIZATION_PENDING = yield* globals.LOCAL_FINALIZATION_PENDING;
+  if (LOCAL_FINALIZATION_PENDING) {
+    return localFinalizationPendingCommitSchedulerPlan();
+  }
+  const snapshot = yield* fetchStateQueueSnapshotProgram(
+    lucid.api,
+    contracts.stateQueue,
+    "commit_preflight",
+  );
+  yield* lucid.switchToOperatorsMainWallet;
+  return yield* resolveEarliestCommitSchedulerDueWorkPlan({
+    lucid: lucid.api,
+    contracts,
+    submitSlotSnapshot: lucid.submitSlotSnapshot,
+    stateQueueEvidence: stateQueueEvidenceFromSnapshot(snapshot),
+    localFinalizationPending: LOCAL_FINALIZATION_PENDING,
+    callerLabel: "commit-scheduler-preflight",
+    discoveryStage: "pre_lease",
+  });
+});
+
+const clearRegisteredCommitDueWork = (): void => {
+  clearSlotAwareDueWork(
+    BLOCK_COMMITMENT_DUE_WORK_KIND,
+    BLOCK_COMMITMENT_DUE_WORK_KEY,
+  );
+};
+
+const shouldSkipForRegisteredCommitDueWork = Effect.gen(function* () {
+  const entry = peekSlotAwareDueWork(
+    BLOCK_COMMITMENT_DUE_WORK_KIND,
+    BLOCK_COMMITMENT_DUE_WORK_KEY,
+  );
+  if (entry === undefined) {
+    return false;
+  }
+  const freshPlan = yield* Effect.either(planPreLeaseCommitSchedulerDueWork);
+  if (freshPlan._tag === "Left") {
+    clearRegisteredCommitDueWork();
+    yield* Effect.logWarning(
+      `🔹 Clearing block commitment due work before re-plan because fresh pre-lease evidence failed: ${String(freshPlan.left)}`,
+    );
+    return false;
+  }
+  if (freshPlan.right.status !== "register_due_work") {
+    clearRegisteredCommitDueWork();
+    yield* Effect.logInfo(
+      `🔹 Clearing block commitment due work before re-plan because fresh pre-lease evidence no longer proves scheduler due-work (status=${freshPlan.right.status},reason=${freshPlan.right.reason}).`,
+    );
+    return false;
+  }
+  if (
+    freshPlan.right.dueWork.key !== entry.key ||
+    freshPlan.right.dueWork.dueSlot !== entry.dueSlot
+  ) {
+    clearRegisteredCommitDueWork();
+    yield* Effect.logInfo(
+      `🔹 Clearing block commitment due work before re-plan because fresh pre-lease due-work changed (old_due_slot=${entry.dueSlot.toString()},fresh_due_slot=${freshPlan.right.dueWork.dueSlot.toString()}).`,
+    );
+    return false;
+  }
+  const decision = checkSlotAwareDueWork({
+    kind: BLOCK_COMMITMENT_DUE_WORK_KIND,
+    key: BLOCK_COMMITMENT_DUE_WORK_KEY,
+    currentSlot: freshPlan.right.dueWork.observedSlot,
+    dependencyKey: freshPlan.right.dueWork.dependencyKey,
+    invalidationKey: freshPlan.right.dueWork.invalidationKey,
+  });
+  switch (decision.status) {
+    case "skip":
+      yield* Effect.logInfo(
+        `🔹 Skipping block commitment trigger because registered due work is not due discovery_stage=pre_lease (kind=${decision.entry.kind},key=${decision.entry.key},current_slot=${decision.currentSlot.toString()},due_slot=${decision.entry.dueSlot.toString()},wait_ms=${decision.entry.waitMs.toString()},dependency_key=${freshPlan.right.dueWork.dependencyKey}).`,
+      );
+      return true;
+    case "due":
+      yield* Effect.logInfo(
+        `🔹 Waking block commitment due work discovery_stage=pre_lease (kind=${decision.entry.kind},key=${decision.entry.key},current_slot=${decision.currentSlot.toString()},due_slot=${decision.entry.dueSlot.toString()}).`,
+      );
+      return false;
+    case "invalidated":
+      yield* Effect.logInfo(
+        `🔹 Clearing block commitment due work before re-plan discovery_stage=pre_lease (${decision.reason}).`,
+      );
+      return false;
+    case "missing":
+      return false;
+  }
+});
+
+const registerPreLeaseCommitSchedulerDueWork = (
+  plan: Extract<EarliestCommitSchedulerPlan, { status: "register_due_work" }>,
+) =>
+  Effect.sync(() => registerSlotAwareDueWork(plan.dueWork)).pipe(
+    Effect.andThen((entry) =>
+      Effect.logInfo(
+        `🔹 Registered slot-aware due work before block commitment lease discovery_stage=${plan.discoveryStage} (kind=${entry.kind},key=${entry.key},current_slot=${entry.observedSlot.toString()},due_slot=${entry.dueSlot.toString()},due_at_ms=${entry.dueAtMs.toString()},wait_ms=${entry.waitMs.toString()},slot_source=${entry.slotSource},dependency_key=${entry.dependencyKey}).`,
+      ),
+    ),
+  );
+
+const registerPreLeaseCommitSchedulerDueWorkIfProven = Effect.gen(function* () {
+  const plan = yield* Effect.either(planPreLeaseCommitSchedulerDueWork);
+  if (plan._tag === "Left") {
+    yield* Effect.logWarning(
+      `🔹 Earliest block commitment scheduler preflight failed; continuing to full planner: ${String(plan.left)}`,
+    );
+    return false;
+  }
+  if (plan.right.status === "register_due_work") {
+    yield* registerPreLeaseCommitSchedulerDueWork(plan.right);
+    return true;
+  }
+  if (plan.right.status === "ambiguous") {
+    yield* Effect.logInfo(
+      `🔹 Earliest block commitment scheduler preflight ambiguous; continuing to full planner (reason=${plan.right.reason}).`,
+    );
+  }
+  return false;
+});
 
 /**
  * Launches one commitment worker, applies its result to global node state, and
@@ -284,6 +442,13 @@ export const buildAndSubmitCommitmentBlockAction = (
       case "NothingToCommitOutput": {
         break;
       }
+      case "RegisteredDueWorkOutput": {
+        registerSlotAwareDueWork(workerOutput.dueWork);
+        yield* Effect.logInfo(
+          `🔹 Registered slot-aware due work from commitment worker (kind=${workerOutput.dueWork.kind},key=${workerOutput.dueWork.key},due_slot=${workerOutput.dueWork.dueSlot.toString()},wait_ms=${workerOutput.dueWork.waitMs.toString()}).`,
+        );
+        break;
+      }
       case "FailureOutput": {
         break;
       }
@@ -313,6 +478,12 @@ export const blockCommitmentAction: Effect.Effect<
   yield* Ref.set(globals.HEARTBEAT_BLOCK_COMMITMENT, Date.now());
   const RESET_IN_PROGRESS = yield* Ref.get(globals.RESET_IN_PROGRESS);
   if (!RESET_IN_PROGRESS) {
+    if (yield* shouldSkipForRegisteredCommitDueWork) {
+      return;
+    }
+    if (yield* registerPreLeaseCommitSchedulerDueWorkIfProven) {
+      return;
+    }
     const acquired = yield* Ref.modify(
       globals.COMMIT_WORKER_ACTIVE,
       (active) => (active ? [false, true] : [true, true]),

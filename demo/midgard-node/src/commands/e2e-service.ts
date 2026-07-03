@@ -3,6 +3,12 @@ import { closeSync, openSync, writeSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
+import {
+  buildE2EProcessEnv,
+  type E2EEnvFileProvenance,
+  type E2EEnvInheritance,
+  type E2EEnvProvenance,
+} from "@/e2e/env.js";
 import { redactArg, redactEnvKeys } from "@/e2e/runner.js";
 import {
   type HttpProbeSample,
@@ -16,6 +22,9 @@ export type StartServiceOptions = {
   readonly command: string;
   readonly args: readonly string[];
   readonly cwd: string;
+  readonly env?: Readonly<Record<string, string | undefined>>;
+  readonly envFiles?: readonly string[];
+  readonly envInheritance?: E2EEnvInheritance;
   readonly rawLogPath: string;
   readonly pidFilePath: string;
   readonly readyUrl: string;
@@ -37,6 +46,8 @@ export type StartServiceSummary = {
     readonly args: readonly string[];
     readonly cwd: string;
     readonly envKeys: readonly string[];
+    readonly envFiles: readonly E2EEnvFileProvenance[];
+    readonly envInheritance: E2EEnvInheritance;
   };
 };
 
@@ -52,6 +63,18 @@ const processAlive = (pid: number): boolean => {
   }
 };
 
+const redactedServiceCommand = (
+  options: Pick<StartServiceOptions, "command" | "args" | "cwd">,
+  provenance: E2EEnvProvenance,
+): StartServiceSummary["command"] => ({
+  command: options.command,
+  args: options.args.map(redactArg),
+  cwd: options.cwd,
+  envKeys: provenance.explicitEnvKeys,
+  envFiles: provenance.envFiles,
+  envInheritance: provenance.inheritance,
+});
+
 export const startManagedService = async (
   options: StartServiceOptions,
 ): Promise<StartServiceSummary> => {
@@ -63,10 +86,17 @@ export const startManagedService = async (
   }
   await mkdir(dirname(options.rawLogPath), { recursive: true });
   await mkdir(dirname(options.pidFilePath), { recursive: true });
+  const { env, provenance } = await buildE2EProcessEnv({
+    cwd: options.cwd,
+    envFiles: options.envFiles,
+    overrides: options.env,
+    inherit: options.envInheritance,
+  });
+  const command = redactedServiceCommand(options, provenance);
   const logFd = openSync(options.rawLogPath, "a");
   const child = spawn(options.command, [...options.args], {
     cwd: options.cwd,
-    env: process.env,
+    env,
     shell: false,
     detached: true,
     stdio: ["ignore", logFd, logFd],
@@ -85,10 +115,11 @@ export const startManagedService = async (
       pid,
       at: new Date().toISOString(),
       command: {
-        command: options.command,
-        args: options.args.map(redactArg),
-        cwd: options.cwd,
-        envKeys: redactEnvKeys(process.env),
+        ...command,
+        inheritedEnvKeyCount:
+          provenance.inheritance === "process"
+            ? redactEnvKeys(process.env).length
+            : 0,
       },
     }) + "\n",
   );
@@ -135,12 +166,7 @@ export const startManagedService = async (
       }),
       ready,
       ...(health === undefined ? {} : { health }),
-      command: {
-        command: options.command,
-        args: options.args.map(redactArg),
-        cwd: options.cwd,
-        envKeys: redactEnvKeys(process.env),
-      },
+      command,
     };
   } finally {
     closeSync(logFd);

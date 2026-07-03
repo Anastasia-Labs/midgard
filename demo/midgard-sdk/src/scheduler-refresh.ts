@@ -75,7 +75,6 @@ export type BuildSchedulerRefreshTxConfig = {
   readonly lucid: LucidEvolution;
   readonly scheduler: AuthenticatedValidator;
   readonly operatorKeyHash: string;
-  readonly feeInput: UTxO;
   readonly presetWalletInputs?: readonly UTxO[];
   readonly schedulerInput: UTxO;
   readonly refreshedDatum: SchedulerDatum;
@@ -276,7 +275,6 @@ export const buildSchedulerRefreshTx = (
     .newTx()
     .validFrom(safeTimeNumber(config.validFrom, "scheduler refresh validFrom"))
     .validTo(safeTimeNumber(config.validTo, "scheduler refresh validTo"))
-    .collectFrom([config.feeInput])
     .readFrom([...referenceInputs])
     .collectFrom([config.schedulerInput], schedulerSpendRedeemer)
     .pay.ToContract(

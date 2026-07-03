@@ -150,17 +150,17 @@ describe("coordinator witness and candidate planning", () => {
       submitter: {
         initAttestation: async () => {
           calls.push("init");
-          return "initTx";
+          return submitted("initTx");
         },
         addSignatures: async ({ packedWitnessesHex, signerIndexes }) => {
           calls.push(
             `add:${signerIndexes.join(",")}:${packedWitnessesHex.slice(0, 2)}`,
           );
-          return "addTx";
+          return submitted("addTx");
         },
         applyAttestation: async ({ candidate }) => {
           calls.push(`apply:${candidate.outRef}`);
-          return "applyTx";
+          return submitted("applyTx");
         },
       },
     });
@@ -205,11 +205,11 @@ describe("coordinator witness and candidate planning", () => {
         },
         addSignatures: async ({ packedWitnessesHex, signerIndexes }) => {
           calls.push(`add:${signerIndexes.join(",")}:${packedWitnessesHex}`);
-          return "addTx";
+          return submitted("addTx");
         },
         applyAttestation: async ({ candidate }) => {
           calls.push(`apply:${candidate.outRef}`);
-          return "applyTx";
+          return submitted("applyTx");
         },
       },
     });
@@ -254,11 +254,11 @@ describe("coordinator witness and candidate planning", () => {
           calls.push(
             `add:${signerIndexes.join(",")}:${packedWitnessesHex.slice(0, 2)}`,
           );
-          return "addTx";
+          return submitted("addTx");
         },
         applyAttestation: async ({ candidate }) => {
           calls.push(`apply:${candidate.outRef}`);
-          return "applyTx";
+          return submitted("applyTx");
         },
       },
     });
@@ -273,10 +273,7 @@ describe("coordinator witness and candidate planning", () => {
           l1ChainPoint: signature.l1ChainPoint,
           validation: signature.validation,
         },
-        witnessHexes: [
-          signature.signatureWitness,
-          "01" + "22".repeat(64),
-        ],
+        witnessHexes: [signature.signatureWitness, "01" + "22".repeat(64)],
         requireThresholdWitnesses: true,
       }),
     ).resolves.toBe("posted");
@@ -325,11 +322,11 @@ describe("coordinator witness and candidate planning", () => {
         },
         addSignatures: async ({ signerIndexes }) => {
           calls.push(`add:${signerIndexes.join(",")}`);
-          return "addTx";
+          return submitted("addTx");
         },
         applyAttestation: async ({ candidate }) => {
           calls.push(`apply:${candidate.outRef}`);
-          return "applyTx";
+          return submitted("applyTx");
         },
       },
     });
@@ -403,7 +400,7 @@ describe("coordinator witness and candidate planning", () => {
           addStarted();
           await addGate;
           added = true;
-          return "addTx";
+          return submitted("addTx");
         },
         applyAttestation: async () => {
           throw new Error("unexpected apply");
@@ -456,7 +453,7 @@ describe("coordinator witness and candidate planning", () => {
         },
         applyAttestation: async ({ candidate }) => {
           calls.push(`apply:${candidate.outRef}`);
-          return "applyTx";
+          return submitted("applyTx");
         },
       },
     });
@@ -508,7 +505,7 @@ describe("coordinator witness and candidate planning", () => {
       submitter: {
         initAttestation: async () => {
           initCalls += 1;
-          return "initTx";
+          return submitted("initTx");
         },
         addSignatures: async () => {
           throw new Error("unexpected add");
@@ -523,6 +520,35 @@ describe("coordinator witness and candidate planning", () => {
       "post_failed",
     );
     expect(initCalls).toBe(1);
+  });
+
+  it("treats expected-policy already-attested apply as success without recording a fake L1 submission", async () => {
+    const submissions: string[] = [];
+    const coordinator = new OnChainLifecycleCoordinator({
+      threshold: 2,
+      chainReader: {
+        fetchDaAttestationCandidates: async () => [
+          candidateRecord({ attestationCount: 2, status: "threshold" }),
+        ],
+      },
+      recordSubmission: async (record) => {
+        submissions.push(`${record.txKind}:${record.txHash}`);
+      },
+      submitter: {
+        initAttestation: async () => {
+          throw new Error("unexpected init");
+        },
+        addSignatures: async () => {
+          throw new Error("unexpected add");
+        },
+        applyAttestation: async () => ({ status: "already_attested" }),
+      },
+    });
+
+    await expect(coordinator.publishSignature(signatureRecord())).resolves.toBe(
+      "posted",
+    );
+    expect(submissions).toEqual([]);
   });
 
   it("fails publish when add-signatures is not visible after confirmation", async () => {
@@ -540,7 +566,7 @@ describe("coordinator witness and candidate planning", () => {
         },
         addSignatures: async () => {
           addCalls += 1;
-          return "addTx";
+          return submitted("addTx");
         },
         applyAttestation: async () => {
           throw new Error("unexpected apply");
@@ -554,6 +580,8 @@ describe("coordinator witness and candidate planning", () => {
     expect(addCalls).toBe(1);
   });
 });
+
+const submitted = (txHash: string) => ({ status: "submitted" as const, txHash });
 
 const candidateRecord = ({
   attestationCount,

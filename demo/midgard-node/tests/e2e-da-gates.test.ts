@@ -1,217 +1,118 @@
-import { createHash } from "node:crypto";
-import {
-  createServer,
-  type IncomingMessage,
-  type ServerResponse,
-} from "node:http";
-import type { AddressInfo } from "node:net";
-
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
-  daPayloadCborUrl,
-  daPayloadMetadataUrl,
-  daWatcherStatusUrl,
+  E2E_DA_GATE_SCHEMA_VERSION,
   probeDaGate,
   waitForDaGate,
 } from "@/e2e/da-gates.js";
 
 const headerHash = "ab".repeat(28);
-const deploymentFingerprint = "deployment-test";
-const payloadCbor = Buffer.from("d87980", "hex");
-const payloadHash = createHash("sha256").update(payloadCbor).digest("hex");
 
-type TestServer = {
-  readonly baseUrl: string;
-  readonly close: () => Promise<void>;
-};
-
-const json = (
-  response: ServerResponse,
-  statusCode: number,
-  body: unknown,
-): void => {
-  response.writeHead(statusCode, { "content-type": "application/json" });
-  response.end(JSON.stringify(body));
-};
-
-const startServer = async (
-  handler: (request: IncomingMessage, response: ServerResponse) => void,
-): Promise<TestServer> => {
-  const server = createServer(handler);
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const address = server.address() as AddressInfo;
-  return {
-    baseUrl: `http://127.0.0.1:${address.port.toString()}`,
-    close: () =>
-      new Promise((resolve, reject) =>
-        server.close((error) =>
-          error === undefined ? resolve() : reject(error),
-        ),
-      ),
-  };
-};
-
-const servers: TestServer[] = [];
-
-afterEach(async () => {
-  await Promise.all(servers.splice(0).map((server) => server.close()));
-});
-
-describe("e2e DA gates", () => {
-  it("builds current Midgard and watcher endpoint URLs from base URLs", () => {
-    expect(daPayloadMetadataUrl("http://127.0.0.1:3000", headerHash)).toBe(
-      `http://127.0.0.1:3000/da/payload/metadata?header_hash=${headerHash}`,
-    );
-    expect(daPayloadCborUrl("http://127.0.0.1:3000/", headerHash)).toBe(
-      `http://127.0.0.1:3000/da/payload?header_hash=${headerHash}`,
-    );
-    expect(
-      daWatcherStatusUrl({
-        baseUrl: "http://127.0.0.1:8787",
-        deploymentFingerprint,
-        headerHash,
-      }),
-    ).toBe(
-      `http://127.0.0.1:8787/v1/deployments/${deploymentFingerprint}/headers/${headerHash}/status`,
-    );
-  });
-
-  it("classifies available payload and attested watcher status as satisfied", async () => {
-    const server = await startServer((request, response) => {
-      const url = new URL(request.url ?? "/", "http://test.local");
-      if (url.pathname === "/da/payload/metadata") {
-        json(response, 200, {
-          headerHash,
-          payloadHash,
-          payloadBytes: payloadCbor.length,
-        });
-        return;
-      }
-      if (url.pathname === "/da/payload") {
-        response.writeHead(200, { "content-type": "application/cbor" });
-        response.end(payloadCbor);
-        return;
-      }
-      if (url.pathname.endsWith(`/headers/${headerHash}/status`)) {
-        json(response, 200, {
-          headerHash,
-          header: { status: "attested" },
-          payload: { validationStatus: "verified", payloadSha256: payloadHash },
-          signatures: [{ signerIndex: 0 }],
-          l1Submissions: [
-            {
-              txKind: "apply",
-              txHash: "cd".repeat(32),
-              resultStatus: "confirmed",
-            },
-          ],
-        });
-        return;
-      }
-      json(response, 404, { error: "not found" });
-    });
-    servers.push(server);
-
+describe("e2e DA publication gates", () => {
+  it("classifies threshold libp2p publication as satisfied", async () => {
     const result = await probeDaGate({
       headerHash,
-      payloadEndpointBaseUrl: server.baseUrl,
-      watcherBaseUrl: server.baseUrl,
-      deploymentFingerprint,
+      publicationReport: {
+        configured: true,
+        headerHash,
+        payloadHash: "cd".repeat(32),
+        deploymentFingerprint: "ef".repeat(32),
+        threshold: 2,
+        acceptedPeers: 2,
+        peerResults: [
+          peerResult(0, "peer-a", "accepted"),
+          peerResult(1, "peer-b", "duplicate"),
+        ],
+        announcement: {
+          topic: `/midgard/${"ef".repeat(32)}/da/payload-announcements/1`,
+          payloadHash: "cd".repeat(32),
+          recipients: ["peer-a", "peer-b"],
+        },
+      },
     });
 
+    expect(result.schemaVersion).toBe(E2E_DA_GATE_SCHEMA_VERSION);
     expect(result.status).toBe("satisfied");
     expect(result.nextSafeAction).toBe("continue");
-    expect(result.payloadBytes).toBe(payloadCbor.length);
-    expect(result.payloadHash).toBe(payloadHash);
-    expect(result.watcherHeaderStatus).toBe("attested");
-    expect(result.watcherPayloadStatus).toBe("verified");
-    expect(result.watcherSignatureCount).toBe(1);
-    expect(result.watcherL1Submissions).toEqual([
-      { txKind: "apply", txHash: "cd".repeat(32), resultStatus: "confirmed" },
-    ]);
+    expect(result.acceptedPeers).toBe(2);
+    expect(result.announcementRecipients).toEqual(["peer-a", "peer-b"]);
   });
 
-  it("keeps missing payloads pending instead of allowing merge to proceed", async () => {
-    const server = await startServer((_request, response) => {
-      json(response, 404, { error: "missing" });
-    });
-    servers.push(server);
-
+  it("blocks when libp2p DA publication is not configured", async () => {
     const result = await probeDaGate({
       headerHash,
-      payloadEndpointBaseUrl: server.baseUrl,
-    });
-
-    expect(result.status).toBe("pending");
-    expect(result.nextSafeAction).toBe("wait_for_da_payload");
-    expect(result.reason).toContain("not available");
-  });
-
-  it("blocks on watcher payload conflicts", async () => {
-    const server = await startServer((request, response) => {
-      const url = new URL(request.url ?? "/", "http://test.local");
-      if (url.pathname === "/da/payload/metadata") {
-        json(response, 200, { headerHash, payloadHash });
-        return;
-      }
-      if (url.pathname === "/da/payload") {
-        response.writeHead(200, { "content-type": "application/cbor" });
-        response.end(payloadCbor);
-        return;
-      }
-      if (url.pathname.endsWith(`/headers/${headerHash}/status`)) {
-        json(response, 200, {
-          headerHash,
-          header: { status: "attesting" },
-          payload: { validationStatus: "root_mismatch" },
-          signatures: [],
-        });
-        return;
-      }
-      json(response, 404, { error: "not found" });
-    });
-    servers.push(server);
-
-    const result = await probeDaGate({
-      headerHash,
-      payloadEndpointBaseUrl: server.baseUrl,
-      watcherBaseUrl: server.baseUrl,
-      deploymentFingerprint,
+      publicationReport: {
+        configured: false,
+        headerHash,
+        payloadHash: "cd".repeat(32),
+        acceptedPeers: 0,
+        peerResults: [],
+        reason: "no libp2p DA manifest configured",
+      },
     });
 
     expect(result.status).toBe("blocked");
-    expect(result.nextSafeAction).toBe("inspect_da_payload_conflict");
-    expect(result.reason).toContain("root_mismatch");
+    expect(result.nextSafeAction).toBe("configure_da_libp2p");
   });
 
-  it("waits through bounded payload lag and returns the first satisfied probe", async () => {
-    let payloadRequests = 0;
-    const server = await startServer((request, response) => {
-      const url = new URL(request.url ?? "/", "http://test.local");
-      if (url.pathname === "/da/payload/metadata") {
-        json(response, 200, { headerHash, payloadHash });
-        return;
-      }
-      if (url.pathname === "/da/payload") {
-        payloadRequests += 1;
-        if (payloadRequests === 1) {
-          json(response, 404, { error: "not yet" });
-          return;
-        }
-        response.writeHead(200, { "content-type": "application/cbor" });
-        response.end(payloadCbor);
-        return;
-      }
-      json(response, 404, { error: "not found" });
+  it("keeps below-threshold publication pending", async () => {
+    const result = await probeDaGate({
+      headerHash,
+      publicationReport: {
+        configured: true,
+        headerHash,
+        payloadHash: "cd".repeat(32),
+        deploymentFingerprint: "ef".repeat(32),
+        threshold: 2,
+        acceptedPeers: 1,
+        peerResults: [
+          peerResult(0, "peer-a", "accepted"),
+          peerResult(1, "peer-b", "transport_error"),
+        ],
+        announcement: {
+          topic: `/midgard/${"ef".repeat(32)}/da/payload-announcements/1`,
+          payloadHash: "cd".repeat(32),
+          recipients: ["peer-a"],
+        },
+      },
     });
-    servers.push(server);
 
+    expect(result.status).toBe("pending");
+    expect(result.nextSafeAction).toBe("wait_for_da_payload_publication");
+  });
+
+  it("waits through bounded publication lag", async () => {
+    let attempts = 0;
     const result = await waitForDaGate({
       headerHash,
-      payloadEndpointBaseUrl: server.baseUrl,
       intervalMs: 1,
       sleep: async () => {},
+      probePublication: async () => {
+        attempts += 1;
+        return {
+          configured: true,
+          headerHash,
+          payloadHash: "cd".repeat(32),
+          deploymentFingerprint: "ef".repeat(32),
+          threshold: 2,
+          acceptedPeers: attempts === 1 ? 1 : 2,
+          peerResults:
+            attempts === 1
+              ? [
+                  peerResult(0, "peer-a", "accepted"),
+                  peerResult(1, "peer-b", "transport_error"),
+                ]
+              : [
+                  peerResult(0, "peer-a", "accepted"),
+                  peerResult(1, "peer-b", "accepted"),
+                ],
+          announcement: {
+            topic: `/midgard/${"ef".repeat(32)}/da/payload-announcements/1`,
+            payloadHash: "cd".repeat(32),
+            recipients: attempts === 1 ? ["peer-a"] : ["peer-a", "peer-b"],
+          },
+        };
+      },
     });
 
     expect(result.status).toBe("satisfied");
@@ -219,12 +120,30 @@ describe("e2e DA gates", () => {
     expect(result.timedOut).toBe(false);
   });
 
-  it("rejects payload endpoint paths that are not base URLs", async () => {
+  it("rejects malformed header hashes", async () => {
     await expect(
       probeDaGate({
-        headerHash,
-        payloadEndpointBaseUrl: "http://127.0.0.1:3000/da/payload",
+        headerHash: "not-a-header",
+        publicationReport: {
+          configured: false,
+          headerHash: "not-a-header",
+          payloadHash: "cd".repeat(32),
+          acceptedPeers: 0,
+          peerResults: [],
+        },
       }),
-    ).rejects.toThrow("base URL");
+    ).rejects.toThrow("56-character hex");
   });
+});
+
+const peerResult = (
+  signerIndex: number,
+  peerId: string,
+  status: "accepted" | "duplicate" | "transport_error",
+) => ({
+  peerId,
+  signerIndex,
+  protocolId: `/midgard/${"ef".repeat(32)}/da/payload-submit/1`,
+  status,
+  payloadHash: "cd".repeat(32),
 });

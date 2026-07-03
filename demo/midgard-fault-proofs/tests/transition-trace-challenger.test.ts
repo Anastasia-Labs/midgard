@@ -1,3 +1,16 @@
+import {
+  computeDaSha256Hash,
+  DaRequestResponseProtocol,
+  decodeDaEventToStepByEventRequestV1Cbor,
+  decodeDaPayloadByHeaderRequestV1Cbor,
+  decodeDaProofBundleByHeaderRequestV1Cbor,
+  decodeDaTraceStepByIndexRequestV1Cbor,
+  encodeDaEventToStepByEventResponseV1Cbor,
+  encodeDaMetadataByHeaderResponseV1Cbor,
+  encodeDaPayloadByHeaderResponseV1Cbor,
+  encodeDaProofBundleByHeaderResponseV1Cbor,
+  encodeDaTraceStepByIndexResponseV1Cbor,
+} from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -14,6 +27,7 @@ import {
   buildSourcePhaseMismatchFault,
   buildTraceBoundaryFault,
   buildTransitionFaultProof,
+  DaLibp2pRetainedDaSource,
   detectTransitionTraceFaults,
   encodeData,
   fetchRetainedDaPayloadByHeaderHash,
@@ -21,6 +35,7 @@ import {
   type OmittedDueL1EventEvidence,
   type OutOfWindowSourceEventEvidence,
   reconstructDaPayloadV2,
+  type RetainedDaLibp2pTransport,
   type TransitionTraceReconstruction,
 } from "../src/transition-trace/index.js";
 
@@ -1020,44 +1035,215 @@ describe("transition-trace challenger tooling", () => {
     });
   });
 
-  it("fetches retained DA payloads from committee routes, not operator debug paths by default", async () => {
+  it("fetches retained DA payloads and proof material over libp2p protocols", async () => {
     const fixture = await buildPayloadFixture({});
-    const calls: string[] = [];
-    const fetchFn = async (url: string) => {
-      calls.push(url);
-      if (url.endsWith("/payload")) {
-        return new Response(fixture.payloadCbor, {
-          status: 200,
-          headers: { "content-type": "application/cbor" },
-        });
-      }
-      return new Response(JSON.stringify({ ok: true }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
+    const deploymentFingerprint = "11".repeat(32);
+    const headerHashBytes = Buffer.from(fixture.headerHash, "hex");
+    const payloadHash = computeDaSha256Hash(fixture.payloadCbor);
+    const proofBundleBytes = Buffer.from("retained proof bundle");
+    const proofBundleHash = computeDaSha256Hash(proofBundleBytes);
+    const transitionStepBytes = Buffer.from("transition step");
+    const traceMembershipProofBytes = Buffer.from("trace membership proof");
+    const eventKeyBytes = Buffer.from("aabbcc", "hex");
+    const eventToStepEntryBytes = Buffer.from("event to step entry");
+    const eventProofBytes = Buffer.from("event proof");
+    const calls: Array<{
+      readonly peerId: string;
+      readonly protocol: DaRequestResponseProtocol;
+    }> = [];
+
+    const transport: RetainedDaLibp2pTransport = {
+      request: async ({ peer, protocol, payload }) => {
+        calls.push({ peerId: peer.peerId, protocol });
+        switch (protocol) {
+          case DaRequestResponseProtocol.payloadByHeader: {
+            const request = decodeDaPayloadByHeaderRequestV1Cbor(payload);
+            expect(request.headerHash.equals(headerHashBytes)).toBe(true);
+            return encodeDaPayloadByHeaderResponseV1Cbor({
+              status: "found_inline",
+              headerHash: request.headerHash,
+              payloadHash,
+              payloadBytes: fixture.payloadCbor,
+              chunkManifest: null,
+              reasonCode: null,
+            });
+          }
+          case DaRequestResponseProtocol.metadataByHeader: {
+            const request = decodeDaPayloadByHeaderRequestV1Cbor(payload);
+            expect(request.headerHash.equals(headerHashBytes)).toBe(true);
+            return encodeDaMetadataByHeaderResponseV1Cbor({
+              status: "found",
+              headerHash: request.headerHash,
+              payloadHash,
+              payloadSchemaVersion: Number(SDK.DA_PAYLOAD_V2_VERSION),
+              payloadBytes: fixture.payloadCbor.length,
+              rootSummaryHash: computeDaSha256Hash(Buffer.from("root summary")),
+              proofBundleHash,
+              transitionTraceRoot: Buffer.from(
+                fixture.header.transitionTraceRoot,
+                "hex",
+              ),
+              eventToStepRoot: Buffer.from(
+                fixture.header.eventToStepRoot,
+                "hex",
+              ),
+              retainedUntilSlot: 123,
+              localStatus: "verified",
+            });
+          }
+          case DaRequestResponseProtocol.proofBundleByHeader: {
+            const request = decodeDaProofBundleByHeaderRequestV1Cbor(payload);
+            expect(request.headerHash.equals(headerHashBytes)).toBe(true);
+            return encodeDaProofBundleByHeaderResponseV1Cbor({
+              status: "found_inline",
+              headerHash: request.headerHash,
+              proofBundleHash,
+              proofBundleBytes,
+              chunkManifest: null,
+              reasonCode: null,
+            });
+          }
+          case DaRequestResponseProtocol.traceStepByIndex: {
+            const request = decodeDaTraceStepByIndexRequestV1Cbor(payload);
+            expect(request.headerHash.equals(headerHashBytes)).toBe(true);
+            expect(request.stepIndex).toBe(0);
+            return encodeDaTraceStepByIndexResponseV1Cbor({
+              status: "found",
+              headerHash: request.headerHash,
+              stepIndex: request.stepIndex,
+              transitionStepBytes,
+              membershipProofBytes: traceMembershipProofBytes,
+            });
+          }
+          case DaRequestResponseProtocol.eventToStepByEvent: {
+            const request = decodeDaEventToStepByEventRequestV1Cbor(payload);
+            expect(request.headerHash.equals(headerHashBytes)).toBe(true);
+            expect(request.eventKey.equals(eventKeyBytes)).toBe(true);
+            return encodeDaEventToStepByEventResponseV1Cbor({
+              status: "found",
+              headerHash: request.headerHash,
+              eventKey: request.eventKey,
+              eventToStepEntryBytes,
+              membershipOrNonmembershipProofBytes: eventProofBytes,
+            });
+          }
+          default:
+            throw new Error(`unexpected protocol ${protocol}`);
+        }
+      },
     };
+    const source = new DaLibp2pRetainedDaSource({
+      sourceId: "committee-libp2p",
+      deploymentFingerprint,
+      peers: [{ peerId: "peer-a" }],
+      transport,
+    });
 
     const result = await fetchRetainedDaPayloadByHeaderHash({
       headerHash: fixture.headerHash,
-      endpoints: [
-        {
-          baseUrl: "http://da-committee.test",
-          deploymentFingerprint: "deployment-1",
-        },
-      ],
-      fetchFn: fetchFn as typeof fetch,
+      sources: [source],
       retries: 0,
     });
 
+    expect(result.sourceId).toBe("committee-libp2p");
+    expect(result.sourcePeerId).toBe("peer-a");
     expect(result.payloadCbor.equals(fixture.payloadCbor)).toBe(true);
-    expect(calls[0]).toBe(
-      `http://da-committee.test/v1/deployments/deployment-1/headers/${fixture.headerHash}/payload`,
+    expect(result.metadata).toMatchObject({
+      status: "found",
+      payloadBytes: fixture.payloadCbor.length,
+      localStatus: "verified",
+    });
+
+    const proofBundle = await source.fetchProofBundleByHeaderHash(
+      fixture.headerHash,
     );
+    if (!proofBundle.ok) {
+      throw new Error("expected proof bundle response");
+    }
+    expect(proofBundle.proofBundleHash.equals(proofBundleHash)).toBe(true);
+    expect(proofBundle.proofBundleBytes.equals(proofBundleBytes)).toBe(true);
+
+    const traceStep = await source.fetchTraceStepByIndex({
+      headerHash: fixture.headerHash,
+      stepIndex: 0,
+    });
+    if (!traceStep.ok) {
+      throw new Error("expected trace step response");
+    }
+    expect(traceStep.transitionStepBytes.equals(transitionStepBytes)).toBe(
+      true,
+    );
+    expect(
+      traceStep.membershipProofBytes.equals(traceMembershipProofBytes),
+    ).toBe(true);
+
+    const eventToStep = await source.fetchEventToStepByEvent({
+      headerHash: fixture.headerHash,
+      eventKey: eventKeyBytes,
+    });
+    if (!eventToStep.ok) {
+      throw new Error("expected event-to-step response");
+    }
+    if (
+      eventToStep.eventToStepEntryBytes === null ||
+      eventToStep.membershipOrNonmembershipProofBytes === null
+    ) {
+      throw new Error("expected event-to-step proof bytes");
+    }
+    expect(
+      eventToStep.eventToStepEntryBytes.equals(eventToStepEntryBytes),
+    ).toBe(true);
+    expect(
+      eventToStep.membershipOrNonmembershipProofBytes.equals(eventProofBytes),
+    ).toBe(true);
+
+    expect(calls).toEqual([
+      {
+        peerId: "peer-a",
+        protocol: DaRequestResponseProtocol.payloadByHeader,
+      },
+      {
+        peerId: "peer-a",
+        protocol: DaRequestResponseProtocol.metadataByHeader,
+      },
+      {
+        peerId: "peer-a",
+        protocol: DaRequestResponseProtocol.proofBundleByHeader,
+      },
+      {
+        peerId: "peer-a",
+        protocol: DaRequestResponseProtocol.traceStepByIndex,
+      },
+      {
+        peerId: "peer-a",
+        protocol: DaRequestResponseProtocol.eventToStepByEvent,
+      },
+    ]);
+  });
+
+  it("fails closed when libp2p sources do not retain the requested payload", async () => {
+    const fixture = await buildPayloadFixture({});
+    const source = {
+      sourceId: "empty-libp2p",
+      fetchPayloadByHeaderHash: async () => ({
+        ok: false as const,
+        sourceId: "empty-libp2p",
+        attempts: [
+          {
+            sourceId: "empty-libp2p",
+            sourcePeerId: "peer-a",
+            protocol: DaRequestResponseProtocol.payloadByHeader,
+            status: "not_found" as const,
+            detail: "payload not found",
+          },
+        ],
+      }),
+    };
+
     await expect(
       fetchRetainedDaPayloadByHeaderHash({
         headerHash: fixture.headerHash,
-        endpoints: ["http://operator-debug.test"],
-        fetchFn: fetchFn as typeof fetch,
+        sources: [source],
         retries: 0,
       }),
     ).rejects.toMatchObject({ code: "fetchFailed" });

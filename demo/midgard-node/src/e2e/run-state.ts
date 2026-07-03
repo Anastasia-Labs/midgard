@@ -52,6 +52,7 @@ export type DeploymentStepState = {
   readonly outRefs?: readonly string[];
   readonly message?: string;
   readonly evidence?: readonly string[];
+  readonly details?: Readonly<Record<string, string>>;
 };
 
 export type DeploymentRunEvent = {
@@ -118,6 +119,22 @@ const assertStringArray = (
     throw new RunStateError(`${label} must be an array of strings.`);
   }
   return value as readonly string[];
+};
+
+const assertStringRecord = (
+  value: unknown,
+  label: string,
+): Readonly<Record<string, string>> | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+  const input = assertRecord(value, label);
+  for (const [key, entry] of Object.entries(input)) {
+    if (typeof entry !== "string") {
+      throw new RunStateError(`${label}.${key} must be a string.`);
+    }
+  }
+  return input as Readonly<Record<string, string>>;
 };
 
 const parseMode = (value: unknown): DeploymentRunMode => {
@@ -292,6 +309,9 @@ const parseStep = (value: unknown): DeploymentStepState => {
     ...(input.evidence === undefined
       ? {}
       : { evidence: assertStringArray(input.evidence, "step.evidence") }),
+    ...(input.details === undefined
+      ? {}
+      : { details: assertStringRecord(input.details, "step.details") }),
   };
 };
 

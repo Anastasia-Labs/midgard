@@ -1,7 +1,6 @@
 import { blake2b } from "@noble/hashes/blake2.js";
 import { describe, expect, it } from "vitest";
 
-import { DaPayloadClient } from "../src/da/client.js";
 import type { DaAttestationChainReader } from "../src/l1/da-attestation-reader.js";
 import { loadDaSigner, validateDaSignerMembership } from "../src/signer.js";
 import { JsonFileWatcherStore } from "../src/store.js";
@@ -40,7 +39,11 @@ describe("watcher startup DA params checks", () => {
       config,
       store: await JsonFileWatcherStore.open(dir),
       stateQueueProvider: { fetchStateQueueNodes: async () => [] },
-      payloadClient: new DaPayloadClient({ endpoints: ["http://da.example"] }),
+      payloadSource: {
+        fetchPayloadCandidates: async () => {
+          throw new Error("payload source should not be used during startup");
+        },
+      },
       signer,
       signerValidation,
       daChainReader: {

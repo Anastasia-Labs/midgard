@@ -7,6 +7,7 @@ import type {
   StateQueueHeaderRecord,
 } from "../domain.js";
 import { bytesToHex, normalizeHex } from "../utils/hex.js";
+import { classifyDaAttestationMarker } from "./attestation-marker.js";
 
 export interface StateQueueProvider {
   fetchStateQueueNodes(): Promise<readonly ObservedStateQueueNode[]>;
@@ -56,11 +57,17 @@ const validateObservedNode = (
       validationErrors.push("block_asset_suffix_mismatch");
     }
   }
-  const unexpectedAttestation = isUnexpectedAttestation(node, config);
+  const attestationMarker = classifyDaAttestationMarker(
+    node.daAttestation,
+    config.daAttestationPolicyId,
+  );
+  const unexpectedAttestation =
+    attestationMarker.kind === "already_attested_foreign" ||
+    attestationMarker.kind === "invalid";
   const status =
     validationErrors.length > 0 || unexpectedAttestation
       ? "conflicted"
-      : node.daAttestation === SDK.NO_DA_ATTESTATION
+      : attestationMarker.kind === "unattested"
         ? "unattested"
         : "attested";
   if (status === "conflicted" && unexpectedAttestation) {
@@ -84,10 +91,3 @@ const validateObservedNode = (
     updatedAt: new Date().toISOString(),
   };
 };
-
-const isUnexpectedAttestation = (
-  node: ObservedStateQueueNode,
-  config: StateQueueScanConfig,
-): boolean =>
-  node.daAttestation !== SDK.NO_DA_ATTESTATION &&
-  node.daAttestation !== config.daAttestationPolicyId;

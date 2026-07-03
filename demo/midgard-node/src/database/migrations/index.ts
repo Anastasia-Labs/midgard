@@ -6,12 +6,12 @@ import localMutationJobsSql from "./sql/0003_local_mutation_jobs.sql";
 import withdrawalEventsSql from "./sql/0004_withdrawal_events.sql";
 import pendingFinalizationJournalPayloadsSql from "./sql/0005_pending_finalization_journal_payloads.sql";
 import stateQueueMutationLeasesSql from "./sql/0006_state_queue_mutation_leases.sql";
-import daPayloadsSql from "./sql/0007_da_payloads.sql";
+import daPayloadsV2Sql from "./sql/0007_da_payloads_v2.sql";
 import pendingFinalizationUtxoPayloadsSql from "./sql/0008_pending_finalization_utxo_payloads.sql";
 import depositSubmissionAttemptsSql from "./sql/0009_deposit_submission_attempts.sql";
 import forcedTransactionsSql from "./sql/0010_forced_transactions.sql";
 import pendingFinalizationTraceMembersSql from "./sql/0011_pending_finalization_trace_members.sql";
-import daPayloadsV2Sql from "./sql/0012_da_payloads_v2.sql";
+import pendingFinalizationTracePayloadsSql from "./sql/0012_pending_finalization_trace_payloads.sql";
 
 export type Migration = {
   readonly version: number;
@@ -69,9 +69,9 @@ export const MIGRATIONS: readonly Migration[] = [
   },
   {
     version: 7,
-    name: "da_payloads",
-    checksumSha256: sha256Hex(daPayloadsSql),
-    sql: daPayloadsSql,
+    name: "da_payloads_v2",
+    checksumSha256: sha256Hex(daPayloadsV2Sql),
+    sql: daPayloadsV2Sql,
     transactional: true,
   },
   {
@@ -104,9 +104,9 @@ export const MIGRATIONS: readonly Migration[] = [
   },
   {
     version: 12,
-    name: "da_payloads_v2",
-    checksumSha256: sha256Hex(daPayloadsV2Sql),
-    sql: daPayloadsV2Sql,
+    name: "pending_finalization_trace_payloads",
+    checksumSha256: sha256Hex(pendingFinalizationTracePayloadsSql),
+    sql: pendingFinalizationTracePayloadsSql,
     transactional: true,
   },
 ] as const;

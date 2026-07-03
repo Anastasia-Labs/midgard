@@ -245,7 +245,7 @@ describe("DA payload verification", () => {
       headerHash: "01".repeat(28),
       payloadCborHex: "aa",
       payloadSha256: "11".repeat(32),
-      sourceEndpoint: "a",
+      sourcePeerId: "a",
       fetchedAt: new Date().toISOString(),
       validationStatus: "fetched",
     });
@@ -256,5 +256,60 @@ describe("DA payload verification", () => {
     });
     expect(second.validationStatus).toBe("conflicted");
     expect(second.conflictStatus).toBe("conflicting_bytes");
+  });
+
+  it("does not let missing DA status erase stored payload bytes", async () => {
+    const dir = await tempDir();
+    const store = await JsonFileWatcherStore.open(dir);
+    const stored = await store.saveDaPayload({
+      deploymentFingerprint: "dep",
+      headerHash: "01".repeat(28),
+      payloadCborHex: "aa",
+      payloadSha256: "11".repeat(32),
+      sourcePeerId: "libp2p:payload-submit",
+      fetchedAt: "2026-06-13T00:00:01.000Z",
+      validationStatus: "fetched",
+    });
+    const missing = await store.saveDaPayload({
+      deploymentFingerprint: "dep",
+      headerHash: stored.headerHash,
+      payloadCborHex: "",
+      payloadSha256: "",
+      sourcePeerId: "",
+      fetchedAt: "2026-06-13T00:00:02.000Z",
+      validationStatus: "missing_da",
+      validationError: "producer:transport_error",
+    });
+
+    expect(missing).toEqual(stored);
+    await expect(store.getDaPayload(stored.headerHash)).resolves.toEqual(
+      stored,
+    );
+  });
+
+  it("does not downgrade verified payload bytes to fetched", async () => {
+    const dir = await tempDir();
+    const store = await JsonFileWatcherStore.open(dir);
+    const verified = await store.saveDaPayload({
+      deploymentFingerprint: "dep",
+      headerHash: "01".repeat(28),
+      payloadCborHex: "aa",
+      payloadSha256: "11".repeat(32),
+      sourcePeerId: "libp2p:payload-submit",
+      fetchedAt: "2026-06-13T00:00:01.000Z",
+      verifiedAt: "2026-06-13T00:00:02.000Z",
+      validationStatus: "verified",
+      payloadFetchStatus: "available",
+    });
+
+    const fetched = await store.saveDaPayload({
+      ...verified,
+      validationStatus: "fetched",
+    });
+
+    expect(fetched).toEqual(verified);
+    await expect(store.getDaPayload(verified.headerHash)).resolves.toEqual(
+      verified,
+    );
   });
 });

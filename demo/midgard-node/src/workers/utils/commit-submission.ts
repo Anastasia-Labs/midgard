@@ -9,6 +9,7 @@ import { SqlClient } from "@effect/sql";
 import { fromHex } from "@lucid-evolution/lucid";
 import { Effect, Option, Schedule } from "effect";
 
+import { publishDaPayloadInsertFromEnv } from "@/da/libp2p-producer.js";
 import {
   BlocksDB,
   DaPayloadsDB,
@@ -212,6 +213,7 @@ export const finalizeCommittedBlockLocally = (
       Math.floor(BATCH_SIZE / 2),
     );
     const filteredBatches = yield* filterAlreadyCommittedTxs(batches);
+    let persistedDaPayload: DaPayloadsDB.InsertInput | undefined;
 
     yield* Effect.logInfo(
       "🔹 Inserting included transactions into ImmutableDB and BlocksDB, clearing included txs from MempoolDB/ProcessedMempoolDB, and resetting the transactions MPF root marker...",
@@ -256,6 +258,7 @@ export const finalizeCommittedBlockLocally = (
               record: options.daPayloadRecord,
             });
             yield* DaPayloadsDB.upsertAvailable(daPayload);
+            persistedDaPayload = daPayload;
           }
         }),
       )
@@ -265,6 +268,19 @@ export const finalizeCommittedBlockLocally = (
           "Failed to finalize committed block locally",
         ),
       );
+    if (persistedDaPayload !== undefined) {
+      const publication =
+        yield* publishDaPayloadInsertFromEnv(persistedDaPayload);
+      if (publication.configured) {
+        yield* Effect.logInfo(
+          `🔹 Published DA payload over libp2p (header=${publication.headerHash},accepted_peers=${publication.acceptedPeers.toString()},threshold=${publication.threshold?.toString() ?? "unknown"})`,
+        );
+      } else {
+        yield* Effect.logInfo(
+          `🔹 Skipped DA payload libp2p publication for ${publication.headerHash}: ${publication.reason ?? "not configured"}`,
+        );
+      }
+    }
     yield* transactionsMpf.resetToEmpty();
   }).pipe(
     Effect.tapError((error) =>

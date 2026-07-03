@@ -43,6 +43,10 @@ const repoRoot = path.resolve(testDir, "../../..");
 const blueprint = JSON.parse(
   readFileSync(path.join(repoRoot, "onchain/aiken/plutus.json"), "utf8"),
 ) as Blueprint;
+const testnetEnv = readFileSync(
+  path.join(repoRoot, "onchain/aiken/env/testnet.ak"),
+  "utf8",
+);
 const transitionTraceAbiGolden = JSON.parse(
   readFileSync(
     path.join(testDir, "fixtures/transition-trace-abi.json"),
@@ -72,6 +76,21 @@ const constructor = (
 
 const fields = (ctor: BlueprintConstructor): readonly string[] =>
   (ctor.fields ?? []).map((field) => field.title ?? "");
+
+const testnetIntegerConst = (name: string): bigint => {
+  const match = testnetEnv.match(
+    new RegExp(`pub const ${name}: [^=]+=([\\d_\\s*]+)`, "m"),
+  );
+  expect(match, `missing testnet Aiken const ${name}`).toBeDefined();
+  const expression = match![1]!.trim().replace(/\s+/g, " ");
+  expect(expression, `unsupported expression for ${name}`).toMatch(
+    /^[\d_]+(?: \* [\d_]+)*$/,
+  );
+  return expression
+    .split(" * ")
+    .map((term) => BigInt(term.replaceAll("_", "")))
+    .reduce((acc, term) => acc * term, 1n);
+};
 
 const h28 = "11".repeat(28);
 const h32 = "22".repeat(32);
@@ -702,6 +721,34 @@ const buildTransitionTraceAbiFixtures = (): Record<string, AbiFixtureValue> => {
 };
 
 describe("SDK canonical ABI fixtures", () => {
+  it("keeps SDK protocol timing constants aligned with the testnet Aiken env used by e2e", () => {
+    expect(SDK.SHIFT_DURATION_MS).toBe(testnetIntegerConst("shift_duration"));
+    expect(SDK.REGISTRATION_DURATION_MS).toBe(
+      testnetIntegerConst("registration_duration"),
+    );
+    expect(SDK.MATURITY_DURATION_MS).toBe(
+      testnetIntegerConst("maturity_duration"),
+    );
+    expect(SDK.USER_EVENTS_NEGLIGENCE_TIMEOUT_MS).toBe(
+      testnetIntegerConst("user_events_negligence_timeout"),
+    );
+    expect(SDK.MAX_INACTIVITY_BETWEEN_BLOCK_COMMITMENTS_MS).toBe(
+      testnetIntegerConst("max_inactivity_between_block_commitments"),
+    );
+    expect(SDK.NEW_SHIFT_INACTIVITY_GRACE_PERIOD_MS).toBe(
+      testnetIntegerConst("new_shift_inactivity_grace_period"),
+    );
+    expect(SDK.MAX_VALIDITY_RANGE_LENGTH_MS).toBe(
+      testnetIntegerConst("max_validity_range_length"),
+    );
+    expect(SDK.MAX_INACTIVITY_STRIKES).toBe(
+      testnetIntegerConst("max_inactivity_strikes"),
+    );
+    expect(BigInt(SDK.EVENT_WAIT_DURATION_MS)).toBe(
+      testnetIntegerConst("event_wait_duration"),
+    );
+  });
+
   it("tracks canonical Aiken datum and redeemer field names", () => {
     expect(
       fields(constructor("midgard/scheduler/SchedDatum", "ActiveOperator")),

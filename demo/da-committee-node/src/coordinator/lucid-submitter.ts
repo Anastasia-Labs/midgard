@@ -8,13 +8,20 @@ import {
 import { Effect } from "effect";
 
 import type { DaAttestationCandidateRecord } from "../domain.js";
+import {
+  classifyDaAttestationMarker,
+  formatUnexpectedDaAttestationMarker,
+} from "../l1/attestation-marker.js";
 import type { DaAttestationValidatorSet } from "../l1/deployment.js";
 import type { DaAttestationReferenceScripts } from "../l1/reference-scripts.js";
 import {
   refreshL1SubmitterPlainAdaUtxos,
   signSubmitAndConfirm,
 } from "../l1/submitter.js";
-import type { OnChainAttestationSubmitter } from "./on-chain.js";
+import type {
+  AttestationSubmissionResult,
+  OnChainAttestationSubmitter,
+} from "./on-chain.js";
 import {
   buildAddSignaturesTx,
   buildApplyAttestationTx,
@@ -55,9 +62,12 @@ export class LucidDaAttestationSubmitter
 
   async initAttestation(record: {
     readonly headerHash: string;
-  }): Promise<string> {
+  }): Promise<AttestationSubmissionResult> {
+    const target = await this.fetchUnattestedTarget(record.headerHash);
+    if (target.status === "already_attested") {
+      return { status: "already_attested" };
+    }
     const daParams = await this.fetchDaParamsUtxo();
-    const target = await this.fetchTarget(record.headerHash);
     await this.deps.refreshFundingUtxos();
     const tx = await buildInitDaAttestationTx({
       lucid: this.deps.lucid,
@@ -67,16 +77,21 @@ export class LucidDaAttestationSubmitter
       target,
       referenceScripts: this.deps.referenceScripts,
     });
-    return this.deps.signSubmit(tx);
+    return { status: "submitted", txHash: await this.deps.signSubmit(tx) };
   }
 
   async addSignatures({
+    record,
     candidate,
     packedWitnessesHex,
     signerIndexes,
   }: Parameters<
     OnChainAttestationSubmitter["addSignatures"]
-  >[0]): Promise<string> {
+  >[0]): Promise<AttestationSubmissionResult> {
+    const target = await this.fetchUnattestedTarget(record.headerHash);
+    if (target.status === "already_attested") {
+      return { status: "already_attested" };
+    }
     const daParams = await this.fetchDaParamsUtxo();
     const attestation = await this.fetchCandidateUtxo(candidate);
     await this.deps.refreshFundingUtxos();
@@ -90,7 +105,7 @@ export class LucidDaAttestationSubmitter
       signerIndexes,
       referenceScripts: this.deps.referenceScripts,
     });
-    return this.deps.signSubmit(tx);
+    return { status: "submitted", txHash: await this.deps.signSubmit(tx) };
   }
 
   async applyAttestation({
@@ -98,8 +113,11 @@ export class LucidDaAttestationSubmitter
     candidate,
   }: Parameters<
     OnChainAttestationSubmitter["applyAttestation"]
-  >[0]): Promise<string> {
-    const target = await this.fetchTarget(record.headerHash);
+  >[0]): Promise<AttestationSubmissionResult> {
+    const target = await this.fetchUnattestedTarget(record.headerHash);
+    if (target.status === "already_attested") {
+      return { status: "already_attested" };
+    }
     const attestation = await this.fetchCandidateUtxo(candidate);
     await this.deps.refreshFundingUtxos();
     const tx = await buildApplyAttestationTx({
@@ -111,7 +129,7 @@ export class LucidDaAttestationSubmitter
     });
     const txHash = await this.deps.signSubmit(tx);
     await this.waitForApplied(record.headerHash);
-    return txHash;
+    return { status: "submitted", txHash };
   }
 
   private async fetchDaParamsUtxo(): Promise<{
@@ -138,14 +156,27 @@ export class LucidDaAttestationSubmitter
     };
   }
 
-  private async fetchTarget(headerHash: string): Promise<DaAttestationTarget> {
+  private async fetchUnattestedTarget(
+    headerHash: string,
+  ): Promise<
+    | ({ readonly status: "unattested" } & DaAttestationTarget)
+    | { readonly status: "already_attested" }
+  > {
     const target = await this.findStateQueueHeader(headerHash);
-    if (target.stateQueueNode.da_attestation !== SDK.NO_DA_ATTESTATION) {
-      throw new Error(
-        `state queue header ${headerHash} already has DA attestation ${target.stateQueueNode.da_attestation}`,
-      );
+    const marker = classifyDaAttestationMarker(
+      target.stateQueueNode.da_attestation,
+      this.deps.contracts.daAttestation.policyId,
+    );
+    if (marker.kind === "already_attested_expected") {
+      return { status: "already_attested" };
     }
-    return target;
+    if (
+      marker.kind === "already_attested_foreign" ||
+      marker.kind === "invalid"
+    ) {
+      throw new Error(formatUnexpectedDaAttestationMarker(headerHash, marker));
+    }
+    return { ...target, status: "unattested" };
   }
 
   private async findStateQueueHeader(
@@ -181,15 +212,19 @@ export class LucidDaAttestationSubmitter
     const retryDelayMs = this.deps.postSubmitVerificationDelayMs ?? 2_000;
     for (let attempt = 0; attempt <= retryCount; attempt += 1) {
       const target = await this.findStateQueueHeader(headerHash);
-      if (
-        target.stateQueueNode.da_attestation ===
-        this.deps.contracts.daAttestation.policyId
-      ) {
+      const marker = classifyDaAttestationMarker(
+        target.stateQueueNode.da_attestation,
+        this.deps.contracts.daAttestation.policyId,
+      );
+      if (marker.kind === "already_attested_expected") {
         return;
       }
-      if (target.stateQueueNode.da_attestation !== SDK.NO_DA_ATTESTATION) {
+      if (
+        marker.kind === "already_attested_foreign" ||
+        marker.kind === "invalid"
+      ) {
         throw new Error(
-          `state queue header ${headerHash} was attested by unexpected policy ${target.stateQueueNode.da_attestation}`,
+          formatUnexpectedDaAttestationMarker(headerHash, marker),
         );
       }
       if (attempt < retryCount) {

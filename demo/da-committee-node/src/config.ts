@@ -1,9 +1,11 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
+import { parseDaLibp2pRuntimeManifestDeploymentIdentity } from "@al-ft/midgard-core/da-transport";
+import { multiaddr } from "@multiformats/multiaddr";
 import { blake2b } from "@noble/hashes/blake2.js";
 
-import type { DaCommitteeMember, DaPeerConfig } from "./domain.js";
+import type { DaCommitteeMember } from "./domain.js";
 import {
   type MidgardNodeDeployment,
   parseMidgardNodeDeploymentInfo,
@@ -26,14 +28,15 @@ export type WatcherConfig = {
   readonly contractDeploymentInfoPath: string;
   readonly deploymentFingerprint: string;
   readonly deploymentManifestSha256: string;
+  readonly contractDeploymentInfoSha256: string;
   readonly deploymentManifestRaw: string;
   readonly deploymentManifest: Record<string, unknown>;
   readonly contractDeploymentInfo: Record<string, unknown>;
   readonly midgardNodeDeployment?: MidgardNodeDeployment;
   readonly cardanoProviderUrls: readonly string[];
   readonly finalityDepth: number;
-  readonly daPayloadEndpoints: readonly string[];
-  readonly publicBaseUrl?: string;
+  readonly daTransport: Libp2pDaTransportConfig;
+  readonly libp2pPrivateKeySource?: string;
   readonly signerIndex?: number;
   readonly signerKeySource?: string;
   readonly l1SubmitterKeySource?: string;
@@ -52,7 +55,6 @@ export type WatcherConfig = {
   readonly daParamsGovernorAddress: string;
   readonly stateQueuePolicyId: string;
   readonly stateQueueAddress: string;
-  readonly peerEndpoints: readonly DaPeerConfig[];
   readonly peerRequestTimeoutMs: number;
   readonly peerReplayWindowMs: number;
   readonly peerMaxBodyBytes: number;
@@ -64,6 +66,51 @@ export type WatcherConfig = {
   readonly apiHost: string;
   readonly apiPort: number;
   readonly pollIntervalMs: number;
+};
+
+export type Libp2pDaRole =
+  | "committee"
+  | "producer"
+  | "watcher"
+  | "challenger"
+  | "coordinator"
+  | "retrieval";
+
+export type Libp2pDaTransportLimits = {
+  readonly maxPayloadBytes: number;
+  readonly maxInlineResponseBytes: number;
+  readonly maxChunkBytes: number;
+  readonly maxStreamsPerPeer: number;
+  readonly requestTimeoutMs: number;
+};
+
+export type Libp2pDaGossipConfig = {
+  readonly strictSign: true;
+  readonly emitSelf: false;
+  readonly allowedTopicsOnly: true;
+  readonly maxGossipMessageBytes: number;
+};
+
+export type Libp2pDaPeerConfig = {
+  readonly signerIndex: number;
+  readonly daVkey: string;
+  readonly peerId: string;
+  readonly multiaddrs: readonly string[];
+  readonly roles: readonly Libp2pDaRole[];
+};
+
+export type Libp2pDaTransportConfig = {
+  readonly kind: "libp2p";
+  readonly deploymentFingerprint: string;
+  readonly noHttpDaTransport: true;
+  readonly threshold: number;
+  readonly listenMultiaddrs: readonly string[];
+  readonly announceMultiaddrs: readonly string[];
+  readonly bootstrapMultiaddrs: readonly string[];
+  readonly gossip: Libp2pDaGossipConfig;
+  readonly limits: Libp2pDaTransportLimits;
+  readonly retentionDays: number;
+  readonly peers: readonly Libp2pDaPeerConfig[];
 };
 
 export type L1SubmitterPreflightConfig = {
@@ -87,6 +134,19 @@ export const DEFAULT_L1_SUBMITTER_PREFLIGHT = {
   retryCount: 3,
   retryDelayMs: 5_000,
 } as const;
+
+export const LIBP2P_DA_TRANSPORT_LIMITS = {
+  maxPayloadBytes: 67_108_864,
+  maxInlineResponseBytes: 1_048_576,
+  maxChunkBytes: 1_048_576,
+  maxStreamsPerPeer: 16,
+  requestTimeoutMs: 15_000,
+} as const satisfies Libp2pDaTransportLimits;
+
+export const LIBP2P_DA_GOSSIP_MAX_MESSAGE_BYTES = 65_536;
+export const LIBP2P_DA_MIN_RETENTION_DAYS = 15;
+const CONTRACT_DEPLOYMENT_MANIFEST_SCHEMA_VERSION =
+  "midgard-deployment-manifest-v2";
 
 export const loadWatcherConfig = async (
   env: Env = process.env,
@@ -115,13 +175,28 @@ export const loadWatcherConfig = async (
   const deploymentManifestSha256 = createHash("sha256")
     .update(deploymentManifestRaw)
     .digest("hex");
-  const deploymentFingerprint =
-    optionalString(deploymentManifest, "deploymentFingerprint") ??
-    optionalString(deploymentManifest, "fingerprint") ??
-    deploymentManifestSha256;
+  const contractDeploymentInfoSha256 = createHash("sha256")
+    .update(contractDeploymentInfoRaw)
+    .digest("hex");
+  const contractDeploymentManifestId = contractDeploymentManifestIdConfig(
+    contractDeploymentInfo,
+    contractDeploymentInfoPath,
+  );
+  const deploymentFingerprint = deploymentFingerprintConfig(
+    deploymentManifest,
+    contractDeploymentManifestId,
+  );
+  const libp2pDaTransport = libp2pDaTransportConfig({
+    env,
+    deploymentManifest,
+    deploymentFingerprint,
+  });
+  const libp2pPrivateKeySource = libp2pPrivateKeySourceConfig(env);
   const network =
     env.MIDGARD_NETWORK ??
     optionalString(deploymentManifest, "network") ??
+    stringAt(deploymentManifest, ["deployment", "cardano_network"]) ??
+    stringAt(deploymentManifest, ["deployment", "midgard_network"]) ??
     optionalString(deploymentManifest, "networkId");
   if (network === undefined || network.trim() === "") {
     throw new Error("MIDGARD_NETWORK or manifest network is required");
@@ -214,18 +289,14 @@ export const loadWatcherConfig = async (
       "DA_L1_SUBMITTER_ID must be present in DA_L1_SUBMITTER_IDS",
     );
   }
-  const publicBaseUrl = normalizeOptionalBaseUrl(env.DA_PUBLIC_BASE_URL);
   const cardanoProviderUrls = splitList(
     requireEnv(env, "CARDANO_PROVIDER_URLS"),
   );
-  const daCommitteeMembers = committeeMembersFromManifest(
-    objectAt(deploymentManifest, ["da"]),
-  );
-  const peerEndpoints = peerEndpointsConfig({
-    env,
-    manifestMembers: daCommitteeMembers,
-    publicBaseUrl,
-  });
+  const daCommitteeMembers = libp2pDaTransport.peers.map((member) => ({
+    index: member.signerIndex,
+    vkey: member.daVkey,
+    canSubmitL1: member.roles.includes("coordinator"),
+  }));
   const l1SubmissionEnabled = booleanEnv(
     env.DA_L1_SUBMISSION_ENABLED,
     l1SubmitterKeySource !== undefined,
@@ -253,11 +324,11 @@ export const loadWatcherConfig = async (
     l1SubmitterKeySource,
   });
   const maybeSigner = optionalSignerConfig(env);
-  const daParams = daParamsConfig(env, deploymentManifest);
+  const daParams = daParamsConfig(env, deploymentManifest, daCommitteeMembers);
+  validateLibp2pCommitteeMatchesDaParams(libp2pDaTransport, daParams);
   const l1SubmitterSignerIndexes = parseL1SubmitterSignerIndexes(
     env,
     daCommitteeMembers,
-    daParams,
   );
 
   return {
@@ -266,6 +337,7 @@ export const loadWatcherConfig = async (
     contractDeploymentInfoPath,
     deploymentFingerprint,
     deploymentManifestSha256,
+    contractDeploymentInfoSha256,
     deploymentManifestRaw,
     deploymentManifest,
     contractDeploymentInfo,
@@ -275,8 +347,8 @@ export const loadWatcherConfig = async (
       requireEnv(env, "CARDANO_FINALITY_DEPTH"),
       "CARDANO_FINALITY_DEPTH",
     ),
-    daPayloadEndpoints: splitList(requireEnv(env, "DA_PAYLOAD_ENDPOINTS")),
-    ...(publicBaseUrl === undefined ? {} : { publicBaseUrl }),
+    daTransport: libp2pDaTransport,
+    libp2pPrivateKeySource,
     ...maybeSigner,
     l1SubmitterKeySource,
     l1SubmissionEnabled,
@@ -311,7 +383,6 @@ export const loadWatcherConfig = async (
       byteLength: 28,
     }),
     stateQueueAddress,
-    peerEndpoints,
     peerRequestTimeoutMs: positiveInt(
       env.DA_PEER_REQUEST_TIMEOUT_MS ?? "5000",
       "DA_PEER_REQUEST_TIMEOUT_MS",
@@ -564,13 +635,614 @@ const localState = (env: Env): LocalStateConfig => {
   throw new Error("WATCHER_DB_PATH or WATCHER_DATABASE_URL is required");
 };
 
+// @midgard-no-http-da-transport:start
+const LIBP2P_DA_ROLES = [
+  "committee",
+  "producer",
+  "watcher",
+  "challenger",
+  "coordinator",
+  "retrieval",
+] as const satisfies readonly Libp2pDaRole[];
+
+const libp2pDaKey = (...parts: readonly string[]): string => parts.join("");
+
+const FORBIDDEN_LIBP2P_DA_CONFIG_KEYS = new Set([
+  libp2pDaKey("base", "Url"),
+  libp2pDaKey("base", "_url"),
+  libp2pDaKey("base", "Urls"),
+  libp2pDaKey("base", "_urls"),
+  "endpoint",
+  "url",
+  libp2pDaKey("http", "Endpoint"),
+  libp2pDaKey("http", "_endpoint"),
+  libp2pDaKey("committee", "Endpoint"),
+  libp2pDaKey("committee", "_endpoint"),
+  libp2pDaKey("da", "Endpoint"),
+  libp2pDaKey("da", "_endpoint"),
+  libp2pDaKey("gate", "way"),
+  libp2pDaKey("object", "Store"),
+  libp2pDaKey("object", "_store"),
+  libp2pDaKey("buck", "et"),
+  libp2pDaKey("s", "3"),
+  libp2pDaKey("source", "Endpoint"),
+  libp2pDaKey("source", "_endpoint"),
+  libp2pDaKey("peer", "Base", "Url"),
+  libp2pDaKey("peer", "_base", "_url"),
+  libp2pDaKey("payload", "Endpoint", "Base", "Url"),
+  libp2pDaKey("payload", "_endpoint", "_base", "_url"),
+]);
+
+const LIBP2P_DA_URL_ENV_OVERRIDES = [
+  "DA_PAYLOAD_ENDPOINTS",
+  "DA_PEER_ENDPOINTS",
+  "DA_COORDINATOR_ENDPOINT",
+  "DA_PUBLIC_BASE_URL",
+] as const;
+
+const contractDeploymentManifestIdConfig = (
+  contractDeploymentInfo: Record<string, unknown>,
+  path: string,
+): string => {
+  const schemaVersion = optionalString(contractDeploymentInfo, "schemaVersion");
+  if (schemaVersion !== CONTRACT_DEPLOYMENT_MANIFEST_SCHEMA_VERSION) {
+    throw new Error(
+      `${path} must be a ${CONTRACT_DEPLOYMENT_MANIFEST_SCHEMA_VERSION} contract deployment manifest`,
+    );
+  }
+  const manifestId = optionalString(contractDeploymentInfo, "manifestId");
+  if (manifestId === undefined) {
+    throw new Error(`${path} is missing manifestId`);
+  }
+  return normalizeHex(manifestId, {
+    fieldName: "contract deployment manifestId",
+    byteLength: 32,
+  });
+};
+
+const deploymentFingerprintConfig = (
+  deploymentManifest: Record<string, unknown>,
+  contractDeploymentManifestId: string,
+): string => {
+  const identity = parseDaLibp2pRuntimeManifestDeploymentIdentity(
+    deploymentManifest,
+    "watcher DA libp2p runtime manifest",
+  );
+  if (identity.contractDeploymentManifestId !== contractDeploymentManifestId) {
+    throw new Error(
+      `deployment.contract_deployment_manifest_id does not match contract deployment manifestId: runtime=${identity.contractDeploymentManifestId}, contract=${contractDeploymentManifestId}`,
+    );
+  }
+  return identity.fingerprint;
+};
+
+const libp2pDaTransportConfig = ({
+  env,
+  deploymentManifest,
+  deploymentFingerprint,
+}: {
+  readonly env: Env;
+  readonly deploymentManifest: Record<string, unknown>;
+  readonly deploymentFingerprint: string;
+}): Libp2pDaTransportConfig => {
+  rejectLibp2pDaUrlEnvOverrides(env);
+  const daTransport = daTransportObject(deploymentManifest);
+  if (daTransport === undefined) {
+    throw new Error("da_transport.kind=libp2p is required");
+  }
+  const kind = optionalString(daTransport, "kind");
+  if (kind !== "libp2p") {
+    throw new Error("da_transport.kind must be libp2p");
+  }
+  const daCommittee = daCommitteeObject(deploymentManifest);
+  if (daCommittee === undefined) {
+    throw new Error("da_committee is required for libp2p DA mode");
+  }
+  rejectUrlShapedLibp2pDaConfig(daTransport, "da_transport");
+  rejectUrlShapedLibp2pDaConfig(daCommittee, "da_committee");
+  const noHttpDaTransport = daTransport.no_http_da_transport;
+  if (noHttpDaTransport !== true) {
+    throw new Error(
+      "da_transport.no_http_da_transport must be true in libp2p DA mode",
+    );
+  }
+  const gossip = parseLibp2pGossipConfig(daTransport);
+  const limits = parseLibp2pLimitsConfig(daTransport);
+  const threshold = requiredLibp2pDaCommitteeThreshold(daCommittee);
+  const peers = parseLibp2pDaCommitteePeers(daCommittee, threshold);
+  return {
+    kind: "libp2p",
+    deploymentFingerprint,
+    noHttpDaTransport,
+    threshold,
+    listenMultiaddrs: requiredMultiaddrList(
+      daTransport,
+      "listen_multiaddrs",
+      "da_transport.listen_multiaddrs",
+      { requirePeerId: false },
+    ),
+    announceMultiaddrs: requiredMultiaddrList(
+      daTransport,
+      "announce_multiaddrs",
+      "da_transport.announce_multiaddrs",
+      { requirePeerId: true },
+    ),
+    bootstrapMultiaddrs: requiredMultiaddrList(
+      daTransport,
+      "bootstrap_multiaddrs",
+      "da_transport.bootstrap_multiaddrs",
+      { requirePeerId: true },
+    ),
+    gossip,
+    limits,
+    retentionDays: parseLibp2pRetentionDays({
+      daTransport,
+      daCommittee,
+      legacyDa: objectAt(deploymentManifest, ["da"]),
+    }),
+    peers,
+  };
+};
+
+const daTransportObject = (
+  deploymentManifest: Record<string, unknown>,
+): Record<string, unknown> | undefined =>
+  objectAt(deploymentManifest, ["da_transport"]) ??
+  objectAt(deploymentManifest, ["daTransport"]);
+
+const daCommitteeObject = (
+  deploymentManifest: Record<string, unknown>,
+): Record<string, unknown> | undefined =>
+  objectAt(deploymentManifest, ["da_committee"]) ??
+  objectAt(deploymentManifest, ["daCommittee"]);
+
+const rejectLibp2pDaUrlEnvOverrides = (env: Env): void => {
+  for (const name of LIBP2P_DA_URL_ENV_OVERRIDES) {
+    if (optionalNonEmpty(env[name]) !== undefined) {
+      throw new Error(`${name} is not allowed in libp2p DA mode`);
+    }
+  }
+};
+
+const rejectUrlShapedLibp2pDaConfig = (value: unknown, path: string): void => {
+  if (Array.isArray(value)) {
+    value.forEach((entry, index) => {
+      rejectUrlShapedLibp2pDaConfig(entry, `${path}[${index.toString()}]`);
+    });
+    return;
+  }
+  if (!isRecord(value)) {
+    if (typeof value === "string" && /^https?:\/\//i.test(value.trim())) {
+      throw new Error(`${path} must not contain HTTP(S) URL values`);
+    }
+    return;
+  }
+  for (const [key, entry] of Object.entries(value)) {
+    const entryPath = `${path}.${key}`;
+    if (FORBIDDEN_LIBP2P_DA_CONFIG_KEYS.has(key)) {
+      throw new Error(`${entryPath} is not allowed in libp2p DA mode`);
+    }
+    rejectUrlShapedLibp2pDaConfig(entry, entryPath);
+  }
+};
+
+const parseLibp2pGossipConfig = (
+  daTransport: Record<string, unknown>,
+): Libp2pDaGossipConfig => {
+  const gossip = objectAt(daTransport, ["gossip"]);
+  if (gossip === undefined) {
+    throw new Error("da_transport.gossip is required in libp2p DA mode");
+  }
+  requireExactBoolean(gossip, "strict_sign", true, "da_transport.gossip");
+  requireExactBoolean(gossip, "emit_self", false, "da_transport.gossip");
+  requireExactBoolean(
+    gossip,
+    "allowed_topics_only",
+    true,
+    "da_transport.gossip",
+  );
+  requireExactNumber(
+    gossip,
+    "max_gossip_message_bytes",
+    LIBP2P_DA_GOSSIP_MAX_MESSAGE_BYTES,
+    "da_transport.gossip",
+  );
+  return {
+    strictSign: true,
+    emitSelf: false,
+    allowedTopicsOnly: true,
+    maxGossipMessageBytes: LIBP2P_DA_GOSSIP_MAX_MESSAGE_BYTES,
+  };
+};
+
+const parseLibp2pLimitsConfig = (
+  daTransport: Record<string, unknown>,
+): Libp2pDaTransportLimits => {
+  const limits = objectAt(daTransport, ["limits"]);
+  if (limits === undefined) {
+    throw new Error("da_transport.limits is required in libp2p DA mode");
+  }
+  requireExactNumber(
+    limits,
+    "max_payload_bytes",
+    LIBP2P_DA_TRANSPORT_LIMITS.maxPayloadBytes,
+    "da_transport.limits",
+  );
+  requireExactNumber(
+    limits,
+    "max_inline_response_bytes",
+    LIBP2P_DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
+    "da_transport.limits",
+  );
+  requireExactNumber(
+    limits,
+    "max_chunk_bytes",
+    LIBP2P_DA_TRANSPORT_LIMITS.maxChunkBytes,
+    "da_transport.limits",
+  );
+  requireExactNumber(
+    limits,
+    "max_streams_per_peer",
+    LIBP2P_DA_TRANSPORT_LIMITS.maxStreamsPerPeer,
+    "da_transport.limits",
+  );
+  requireExactNumber(
+    limits,
+    "request_timeout_ms",
+    LIBP2P_DA_TRANSPORT_LIMITS.requestTimeoutMs,
+    "da_transport.limits",
+  );
+  return LIBP2P_DA_TRANSPORT_LIMITS;
+};
+
+const parseLibp2pRetentionDays = ({
+  daTransport,
+  daCommittee,
+  legacyDa,
+}: {
+  readonly daTransport: Record<string, unknown>;
+  readonly daCommittee: Record<string, unknown>;
+  readonly legacyDa?: Record<string, unknown>;
+}): number => {
+  const days =
+    numberAt(daTransport, ["retention_days"]) ??
+    numberAt(daTransport, ["retentionDays"]) ??
+    numberAt(daCommittee, ["retention_days"]) ??
+    numberAt(daCommittee, ["retentionDays"]) ??
+    (legacyDa === undefined
+      ? undefined
+      : (numberAt(legacyDa, ["retention_days"]) ??
+        numberAt(legacyDa, ["retentionDays"])));
+  const slots =
+    numberAt(daTransport, ["retention_slots"]) ??
+    numberAt(daTransport, ["retentionSlots"]) ??
+    numberAt(daCommittee, ["retention_slots"]) ??
+    numberAt(daCommittee, ["retentionSlots"]) ??
+    (legacyDa === undefined
+      ? undefined
+      : (numberAt(legacyDa, ["retention_slots"]) ??
+        numberAt(legacyDa, ["retentionSlots"])));
+  const retentionDays =
+    days ?? (slots === undefined ? undefined : slots / 86_400);
+  if (
+    retentionDays === undefined ||
+    !Number.isFinite(retentionDays) ||
+    retentionDays < LIBP2P_DA_MIN_RETENTION_DAYS
+  ) {
+    throw new Error(
+      `libp2p DA retention must be at least ${LIBP2P_DA_MIN_RETENTION_DAYS.toString()} days`,
+    );
+  }
+  return retentionDays;
+};
+
+const libp2pPrivateKeySourceConfig = (env: Env): string => {
+  const source = optionalNonEmpty(env.DA_LIBP2P_PRIVATE_KEY_SOURCE);
+  if (source === undefined) {
+    throw new Error(
+      "DA_LIBP2P_PRIVATE_KEY_SOURCE is required in libp2p DA mode",
+    );
+  }
+  validateLibp2pPrivateKeySource(source);
+  return source;
+};
+
+const validateLibp2pPrivateKeySource = (source: string): void => {
+  if (source.startsWith("seed:")) {
+    normalizeHex(source.slice("seed:".length), {
+      fieldName: "DA_LIBP2P_PRIVATE_KEY_SOURCE seed",
+      byteLength: 32,
+    });
+    return;
+  }
+  if (source.startsWith("hex:")) {
+    const encoded = source.slice("hex:".length);
+    if (encoded.length === 0) {
+      throw new Error("DA_LIBP2P_PRIVATE_KEY_SOURCE must include a hex key");
+    }
+    normalizeHex(encoded, {
+      fieldName: "DA_LIBP2P_PRIVATE_KEY_SOURCE protobuf key",
+    });
+    return;
+  }
+  if (source.startsWith("file:")) {
+    if (source.slice("file:".length).trim() === "") {
+      throw new Error("DA_LIBP2P_PRIVATE_KEY_SOURCE must include a file path");
+    }
+    return;
+  }
+  throw new Error(
+    "DA_LIBP2P_PRIVATE_KEY_SOURCE must use seed:, hex:, or file:",
+  );
+};
+
+const parseLibp2pDaCommitteePeers = (
+  daCommittee: Record<string, unknown>,
+  threshold: number,
+): readonly Libp2pDaPeerConfig[] => {
+  const members = daCommittee.members;
+  if (!Array.isArray(members) || members.length === 0) {
+    throw new Error("da_committee.members must be a non-empty array");
+  }
+  const seenIndexes = new Set<number>();
+  const seenPeerIds = new Set<string>();
+  const peers = members.map((member, memberPosition) => {
+    if (!isRecord(member)) {
+      throw new Error("da_committee.members entries must be objects");
+    }
+    const signerIndex = requiredSignerIndex(
+      member,
+      "da_committee.members",
+      memberPosition,
+    );
+    if (seenIndexes.has(signerIndex)) {
+      throw new Error(
+        `duplicate da_committee.members signer_index ${signerIndex.toString()}`,
+      );
+    }
+    seenIndexes.add(signerIndex);
+    const peerId = requiredPeerId(
+      stringField(
+        member,
+        ["peer_id", "peerId"],
+        `da_committee.members[${memberPosition.toString()}].peer_id`,
+      ),
+      `da_committee.members[${memberPosition.toString()}].peer_id`,
+    );
+    if (seenPeerIds.has(peerId)) {
+      throw new Error(`duplicate da_committee.members peer_id ${peerId}`);
+    }
+    seenPeerIds.add(peerId);
+    return {
+      signerIndex,
+      daVkey: normalizeHex(
+        stringField(
+          member,
+          ["da_vkey", "daVkey", "vkey"],
+          `da_committee.members[${memberPosition.toString()}].da_vkey`,
+        ),
+        {
+          fieldName: `da_committee.members[${memberPosition.toString()}].da_vkey`,
+          byteLength: 32,
+        },
+      ),
+      peerId,
+      multiaddrs: requiredMultiaddrList(
+        member,
+        "multiaddrs",
+        `da_committee.members[${memberPosition.toString()}].multiaddrs`,
+        { requirePeerId: true, expectedPeerId: peerId },
+      ),
+      roles: parseLibp2pRoles(
+        member.roles,
+        `da_committee.members[${memberPosition.toString()}].roles`,
+      ),
+    };
+  });
+  if (threshold > peers.length) {
+    throw new Error(
+      "da_committee.threshold must be no greater than member count",
+    );
+  }
+  return peers.sort((left, right) => left.signerIndex - right.signerIndex);
+};
+
+const requiredLibp2pDaCommitteeThreshold = (
+  daCommittee: Record<string, unknown>,
+): number => {
+  const threshold = numberAt(daCommittee, ["threshold"]);
+  if (
+    threshold === undefined ||
+    !Number.isSafeInteger(threshold) ||
+    threshold <= 0
+  ) {
+    throw new Error("da_committee.threshold must be a positive integer");
+  }
+  return threshold;
+};
+
+const requiredSignerIndex = (
+  member: Record<string, unknown>,
+  collectionName: string,
+  memberPosition: number,
+): number => {
+  const value = member.signer_index ?? member.signerIndex ?? member.index;
+  if (
+    !Number.isSafeInteger(value) ||
+    (value as number) < 0 ||
+    (value as number) > 255
+  ) {
+    throw new Error(
+      `${collectionName}[${memberPosition.toString()}].signer_index must fit in one byte`,
+    );
+  }
+  return value as number;
+};
+
+const requiredPeerId = (value: string, fieldName: string): string => {
+  const peerId = value.trim();
+  if (peerId.length === 0 || /^https?:\/\//i.test(peerId)) {
+    throw new Error(`${fieldName} must be a libp2p peer id`);
+  }
+  try {
+    multiaddr(`/p2p/${peerId}`);
+  } catch (cause) {
+    throw new Error(`${fieldName} must be a valid libp2p peer id`, { cause });
+  }
+  return peerId;
+};
+
+const parseLibp2pRoles = (
+  value: unknown,
+  fieldName: string,
+): readonly Libp2pDaRole[] => {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error(`${fieldName} must be a non-empty array`);
+  }
+  const roles = new Set<Libp2pDaRole>();
+  for (const entry of value) {
+    if (typeof entry !== "string" || !isLibp2pDaRole(entry)) {
+      throw new Error(`${fieldName} contains an unrecognized libp2p DA role`);
+    }
+    if (roles.has(entry)) {
+      throw new Error(`${fieldName} contains duplicate role ${entry}`);
+    }
+    roles.add(entry);
+  }
+  return [...roles].sort();
+};
+
+const isLibp2pDaRole = (value: string): value is Libp2pDaRole =>
+  (LIBP2P_DA_ROLES as readonly string[]).includes(value);
+
+const requiredMultiaddrList = (
+  source: Record<string, unknown>,
+  key: string,
+  fieldName: string,
+  {
+    requirePeerId,
+    expectedPeerId,
+  }: {
+    readonly requirePeerId: boolean;
+    readonly expectedPeerId?: string;
+  },
+): readonly string[] => {
+  const values = source[key];
+  if (!Array.isArray(values) || values.length === 0) {
+    throw new Error(`${fieldName} must be a non-empty multiaddr array`);
+  }
+  return values.map((entry, index) => {
+    if (typeof entry !== "string") {
+      throw new Error(`${fieldName}[${index.toString()}] must be a string`);
+    }
+    return normalizeMultiaddr(entry, `${fieldName}[${index.toString()}]`, {
+      requirePeerId,
+      expectedPeerId,
+    });
+  });
+};
+
+const normalizeMultiaddr = (
+  value: string,
+  fieldName: string,
+  {
+    requirePeerId,
+    expectedPeerId,
+  }: {
+    readonly requirePeerId: boolean;
+    readonly expectedPeerId?: string;
+  },
+): string => {
+  let parsed: ReturnType<typeof multiaddr>;
+  try {
+    parsed = multiaddr(value.trim());
+  } catch (cause) {
+    throw new Error(`${fieldName} must be a valid multiaddr`, { cause });
+  }
+  const peerIds = parsed
+    .getComponents()
+    .filter((component) => component.name === "p2p")
+    .map((component) => component.value)
+    .filter((peerId): peerId is string => peerId !== undefined);
+  const peerId = peerIds.at(-1);
+  if (requirePeerId && peerId === undefined) {
+    throw new Error(`${fieldName} must include a /p2p/<peer-id> component`);
+  }
+  if (expectedPeerId !== undefined && peerId !== expectedPeerId) {
+    throw new Error(`${fieldName} peer id must match ${expectedPeerId}`);
+  }
+  return parsed.toString();
+};
+
+const requireExactBoolean = (
+  source: Record<string, unknown>,
+  key: string,
+  expected: boolean,
+  objectName: string,
+): void => {
+  if (source[key] !== expected) {
+    throw new Error(`${objectName}.${key} must be ${expected.toString()}`);
+  }
+};
+
+const requireExactNumber = (
+  source: Record<string, unknown>,
+  key: string,
+  expected: number,
+  objectName: string,
+): void => {
+  if (source[key] !== expected) {
+    throw new Error(`${objectName}.${key} must be ${expected.toString()}`);
+  }
+};
+
+const stringField = (
+  source: Record<string, unknown>,
+  keys: readonly string[],
+  fieldName: string,
+): string => {
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === "string" && value.trim() !== "") {
+      return value;
+    }
+  }
+  throw new Error(`${fieldName} is required`);
+};
+
+const validateLibp2pCommitteeMatchesDaParams = (
+  transport: Libp2pDaTransportConfig,
+  daParams: DaParamsConfig,
+): void => {
+  const committeeKeys = hexToBytes(daParams.committeeHex, "DA committee");
+  const signerCount = committeeKeys.length / 32;
+  for (const peer of transport.peers) {
+    if (peer.signerIndex >= signerCount) {
+      throw new Error(
+        `da_committee member signer_index ${peer.signerIndex.toString()} is outside DA committee`,
+      );
+    }
+    const expectedKey = bytesToHex(
+      committeeKeys.subarray(peer.signerIndex * 32, peer.signerIndex * 32 + 32),
+    );
+    if (peer.daVkey !== expectedKey) {
+      throw new Error(
+        `da_committee member signer_index ${peer.signerIndex.toString()} da_vkey does not match DA committee`,
+      );
+    }
+  }
+  if (transport.threshold !== daParams.threshold) {
+    throw new Error("da_committee.threshold must match DA params threshold");
+  }
+};
+// @midgard-no-http-da-transport:end
+
 const daParamsConfig = (
   env: Env,
   deploymentManifest: Record<string, unknown>,
+  daCommitteeMembers: readonly DaCommitteeMember[],
 ): DaParamsConfig => {
-  const manifestDa = objectAt(deploymentManifest, ["da"]);
-  const memberKeys =
-    manifestDa === undefined ? [] : daMemberKeysFromManifest(manifestDa);
+  const memberKeys = daCommitteeMembers.map((member) => member.vkey);
   const committeeHex = normalizeHex(
     env.DA_COMMITTEE_HEX ?? memberKeys.join(""),
     { fieldName: "DA committee" },
@@ -584,75 +1256,29 @@ const daParamsConfig = (
   const committeeSignersHash = normalizeHex(
     env.DA_COMMITTEE_SIGNERS_HASH ??
       stringAt(deploymentManifest, ["da", "committeeSignersHash"]) ??
+      stringAt(deploymentManifest, ["da_committee", "committeeSignersHash"]) ??
+      stringAt(deploymentManifest, [
+        "da_committee",
+        "committee_signers_hash",
+      ]) ??
+      stringAt(deploymentManifest, ["daCommittee", "committeeSignersHash"]) ??
       computedCommitteeHash,
     { fieldName: "DA committee signers hash", byteLength: 32 },
   );
   const threshold = positiveInt(
     env.DA_THRESHOLD ??
       numberAt(deploymentManifest, ["da", "threshold"])?.toString() ??
+      numberAt(deploymentManifest, ["da_committee", "threshold"])?.toString() ??
+      numberAt(deploymentManifest, ["daCommittee", "threshold"])?.toString() ??
       "",
     "DA_THRESHOLD",
   );
   return { committeeHex, committeeSignersHash, threshold };
 };
 
-const committeeMembersFromManifest = (
-  manifestDa: Record<string, unknown> | undefined,
-): readonly DaCommitteeMember[] => {
-  if (manifestDa === undefined || !Array.isArray(manifestDa.members)) {
-    return [];
-  }
-  return manifestDa.members
-    .map((member) => {
-      if (!isRecord(member)) {
-        throw new Error("manifest da.members entries must be objects");
-      }
-      const index = member.index;
-      const vkey = member.vkey;
-      if (!Number.isSafeInteger(index) || typeof vkey !== "string") {
-        throw new Error("manifest da.members entries require index and vkey");
-      }
-      const memberIndex = index as number;
-      if (memberIndex < 0 || memberIndex > 255) {
-        throw new Error("manifest da.members index must fit in one byte");
-      }
-      const baseUrls =
-        Array.isArray(member.baseUrls) || Array.isArray(member.base_urls)
-          ? [...((member.baseUrls ?? member.base_urls) as unknown[])]
-          : typeof member.baseUrl === "string"
-            ? [member.baseUrl]
-            : [];
-      return {
-        index: memberIndex,
-        vkey: normalizeHex(vkey, {
-          fieldName: `DA member ${memberIndex.toString()} vkey`,
-          byteLength: 32,
-        }),
-        baseUrls: baseUrls.map((entry) => {
-          if (typeof entry !== "string") {
-            throw new Error(
-              "manifest da.members baseUrls entries must be strings",
-            );
-          }
-          return normalizeBaseUrl(entry);
-        }),
-        canSubmitL1:
-          typeof member.canSubmitL1 === "boolean" ? member.canSubmitL1 : true,
-      };
-    })
-    .sort((left, right) => left.index - right.index);
-};
-
-const daMemberKeysFromManifest = (
-  manifestDa: Record<string, unknown>,
-): readonly string[] => {
-  return committeeMembersFromManifest(manifestDa).map((member) => member.vkey);
-};
-
 const parseL1SubmitterSignerIndexes = (
   env: Env,
   members: readonly DaCommitteeMember[],
-  daParams: DaParamsConfig,
 ): readonly number[] => {
   const configured = optionalNonEmpty(env.DA_L1_SUBMITTER_SIGNER_INDEXES);
   if (configured !== undefined) {
@@ -664,76 +1290,7 @@ const parseL1SubmitterSignerIndexes = (
   if (submitterMembers.length > 0) {
     return submitterMembers;
   }
-  return Array.from(
-    { length: hexToBytes(daParams.committeeHex, "DA committee").length / 32 },
-    (_value, index) => index,
-  );
-};
-
-const peerEndpointsConfig = ({
-  env,
-  manifestMembers,
-  publicBaseUrl,
-}: {
-  readonly env: Env;
-  readonly manifestMembers: readonly DaCommitteeMember[];
-  readonly publicBaseUrl?: string;
-}): readonly DaPeerConfig[] => {
-  const configured = [
-    ...optionalSplitList(env.DA_PEER_ENDPOINTS),
-    ...optionalSplitList(env.DA_COORDINATOR_ENDPOINT),
-  ].map(parsePeerEndpoint);
-  const fromManifest = manifestMembers.flatMap((member) =>
-    member.baseUrls.map((baseUrl) => ({
-      signerIndex: member.index,
-      baseUrl,
-    })),
-  );
-  const ownBaseUrl = publicBaseUrl?.toLowerCase();
-  const deduped = new Map<string, DaPeerConfig>();
-  for (const peer of [...fromManifest, ...configured]) {
-    if (ownBaseUrl !== undefined && peer.baseUrl.toLowerCase() === ownBaseUrl) {
-      continue;
-    }
-    deduped.set(
-      `${peer.signerIndex?.toString() ?? "unknown"}@${peer.baseUrl}`,
-      peer,
-    );
-  }
-  return [...deduped.values()].sort(
-    (left, right) =>
-      (left.signerIndex ?? Number.MAX_SAFE_INTEGER) -
-        (right.signerIndex ?? Number.MAX_SAFE_INTEGER) ||
-      left.baseUrl.localeCompare(right.baseUrl),
-  );
-};
-
-const parsePeerEndpoint = (value: string): DaPeerConfig => {
-  const atIndex = value.indexOf("@");
-  if (atIndex > 0 && /^[0-9]+$/.test(value.slice(0, atIndex))) {
-    return {
-      signerIndex: signerIndex(value.slice(0, atIndex)),
-      baseUrl: normalizeBaseUrl(value.slice(atIndex + 1)),
-    };
-  }
-  return { baseUrl: normalizeBaseUrl(value) };
-};
-
-const normalizeOptionalBaseUrl = (
-  value: string | undefined,
-): string | undefined => {
-  const trimmed = optionalNonEmpty(value);
-  return trimmed === undefined ? undefined : normalizeBaseUrl(trimmed);
-};
-
-const normalizeBaseUrl = (value: string): string => {
-  const parsed = new URL(value.trim());
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error("DA peer base URLs must use http or https");
-  }
-  parsed.hash = "";
-  parsed.search = "";
-  return parsed.toString().replace(/\/$/, "");
+  return [];
 };
 
 const parseJsonObject = (

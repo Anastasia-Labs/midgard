@@ -136,34 +136,6 @@ const reviveEarliestCanonicalPayloadJournalOnStartup = (
     return Option.some(candidate);
   });
 
-const writeStartupContractDeploymentInfo = Effect.gen(function* () {
-  const outputPath =
-    ContractDeploymentInfo.defaultContractDeploymentInfoOutputPath();
-  const manifestPath =
-    yield* ContractDeploymentInfo.writeLiveContractDeploymentInfoProgram(
-      outputPath,
-    );
-  yield* Effect.logInfo(
-    `Startup contract deployment info written: ${manifestPath}`,
-  );
-}).pipe(
-  Effect.timeoutFail({
-    duration: STARTUP_BACKGROUND_PROVIDER_TIMEOUT,
-    onTimeout: () =>
-      new Error(
-        "startup contract deployment info background refresh exceeded its bounded provider window",
-      ),
-  }),
-  Effect.catchAll((error) =>
-    Effect.logWarning(
-      `Startup contract deployment info background refresh did not complete after bounded provider retries; keeping the existing deployment manifest. cause=${formatUnknownError(error)}`,
-    ),
-  ),
-);
-
-const writeStartupContractDeploymentInfoInBackground =
-  writeStartupContractDeploymentInfo.pipe(Effect.forkDaemon, Effect.asVoid);
-
 const verifyNodeRuntimeReferenceScriptsInBackground = Effect.gen(function* () {
   yield* ensureNodeRuntimeReferenceScriptsOnStartup(false);
 }).pipe(
@@ -182,6 +154,39 @@ const verifyNodeRuntimeReferenceScriptsInBackground = Effect.gen(function* () {
   Effect.forkDaemon,
   Effect.asVoid,
 );
+
+const writeStartupContractDeploymentInfoAfterFreshInit = (
+  initTxHash: string,
+) =>
+  Effect.gen(function* () {
+    const outputPath =
+      ContractDeploymentInfo.defaultContractDeploymentInfoOutputPath();
+    const manifestPath =
+      yield* ContractDeploymentInfo.writeLiveContractDeploymentInfoProgram(
+        outputPath,
+        {
+          hubOracleOneShotStatus: "consumed_by_init",
+          steps: {
+            initProtocol: {
+              status: "complete",
+              txHash: initTxHash,
+            },
+          },
+          requireReadyManifest: true,
+        },
+      );
+    yield* Effect.logInfo(
+      `Startup contract deployment info written after fresh initialization: ${manifestPath}`,
+    );
+  }).pipe(
+    Effect.timeoutFail({
+      duration: STARTUP_BACKGROUND_PROVIDER_TIMEOUT,
+      onTimeout: () =>
+        new Error(
+          "startup contract deployment info write exceeded its bounded provider window",
+        ),
+    }),
+  );
 
 const isRetryableProtocolStatusError = (error: SDK.LucidError): boolean =>
   error.message.startsWith("Failed to fetch ") ||
@@ -311,6 +316,16 @@ export const ensureProtocolInitializedOnStartup = Effect.gen(function* () {
   }
 
   if (deploymentStatus.complete) {
+    if (manifestReport === null) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message:
+            "Startup deployment manifest verification failed; refusing to attach without a finalized contract deployment manifest",
+          cause:
+            "manifest_id=unknown,path=unknown,recommendation=fresh_redeploy_required,mismatches=[contract deployment manifest file not found]",
+        }),
+      );
+    }
     yield* Effect.logInfo(
       `Startup initialization check: protocol deployment already present (state_queue=${details}).`,
     );
@@ -319,7 +334,9 @@ export const ensureProtocolInitializedOnStartup = Effect.gen(function* () {
     } else {
       yield* verifyNodeRuntimeReferenceScriptsInBackground;
     }
-    yield* writeStartupContractDeploymentInfoInBackground;
+    yield* Effect.logInfo(
+      `Startup contract deployment manifest verified: manifest_id=${manifestReport.manifestId ?? "unknown"},path=${manifestReport.path ?? "unknown"}`,
+    );
     return;
   }
 
@@ -348,7 +365,7 @@ export const ensureProtocolInitializedOnStartup = Effect.gen(function* () {
     `Startup protocol initialization submitted successfully: ${initTxHash}`,
   );
   yield* ensureNodeRuntimeReferenceScriptsOnStartup(false);
-  yield* writeStartupContractDeploymentInfoInBackground;
+  yield* writeStartupContractDeploymentInfoAfterFreshInit(initTxHash);
 }).pipe(
   Effect.tapError((e) =>
     Effect.logError(

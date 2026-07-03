@@ -1,6 +1,6 @@
 import { assetsEqual } from "@al-ft/midgard-core/assets";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import { compareOutRefs, outRefLabel } from "@al-ft/midgard-core/out-ref";
+import { outRefLabel } from "@al-ft/midgard-core/out-ref";
 import {
   type Assets,
   type BuildTxWithRedeemer,
@@ -66,10 +66,7 @@ import {
   requireReferenceInputIndex as requireContextReferenceInputIndex,
   requireSpendRedeemerIndex as requireContextSpendRedeemerIndex,
 } from "@/tx-context-redeemer.js";
-import {
-  isPlainPositiveAdaOnlyUtxo,
-  outputDatumCborMatches,
-} from "@/tx-output-utils.js";
+import { outputDatumCborMatches } from "@/tx-output-utils.js";
 
 const STATE_QUEUE_HEADER_NODE_LOVELACE = 5_000_000n;
 const ACTIVE_OPERATOR_MATURITY_DURATION_MS = 30n;
@@ -103,8 +100,6 @@ type StateQueueCommitLayout = {
   readonly stateQueueMintRedeemerIndex: bigint;
 };
 
-const isPlainAdaOnlyUtxo = isPlainPositiveAdaOnlyUtxo;
-
 type StateQueueCommitRedeemer = {
   readonly CommitBlockHeader: {
     readonly new_block_output_index: bigint;
@@ -126,55 +121,30 @@ type ActiveOperatorCommitRedeemer = {
   };
 };
 
+export const requireOperatorWalletInputs = (
+  walletUtxos: readonly UTxO[],
+  transactionLabel: string,
+): Effect.Effect<readonly UTxO[], StateQueueError> =>
+  Effect.gen(function* () {
+    if (walletUtxos.length === 0) {
+      return yield* Effect.fail(
+        new StateQueueError({
+          message: `No operator wallet inputs available to fund ${transactionLabel}`,
+          cause: "operator wallet has no available UTxO",
+        }),
+      );
+    }
+    return walletUtxos;
+  });
+
 const availableOperatorWalletUtxos = (
   view: OperatorWalletViewLike,
 ): readonly UTxO[] => {
   const consumedOutRefs = new Set(view.consumedOutRefs);
   return view.knownUtxos.filter(
-    (utxo) =>
-      !consumedOutRefs.has(outRefLabel(utxo)) && isPlainAdaOnlyUtxo(utxo),
+    (utxo) => !consumedOutRefs.has(outRefLabel(utxo)),
   );
 };
-
-const selectCommitFeeInput = (
-  walletUtxos: readonly UTxO[],
-): Effect.Effect<UTxO, StateQueueError> =>
-  Effect.gen(function* () {
-    const feeInput = [...walletUtxos].sort((a, b) => {
-      const lovelaceA = a.assets.lovelace ?? 0n;
-      const lovelaceB = b.assets.lovelace ?? 0n;
-      if (lovelaceA === lovelaceB) {
-        return compareOutRefs(a, b);
-      }
-      return lovelaceA > lovelaceB ? -1 : 1;
-    })[0];
-    if (feeInput === undefined) {
-      return yield* Effect.fail(
-        new StateQueueError({
-          message: "No wallet UTxO available to fund state_queue commit tx",
-          cause: "empty wallet",
-        }),
-      );
-    }
-    return feeInput;
-  });
-
-export const selectPureAdaFeeInput = (
-  walletUtxos: readonly UTxO[],
-): Effect.Effect<UTxO, StateQueueError> =>
-  Effect.gen(function* () {
-    const pureAdaUtxos = walletUtxos.filter(isPlainAdaOnlyUtxo);
-    if (pureAdaUtxos.length === 0) {
-      return yield* Effect.fail(
-        new StateQueueError({
-          message:
-            "Failed to select pure-ADA operator wallet input for transaction fees",
-          cause: "operator wallet has no pure-ADA UTxO",
-        }),
-      );
-    }
-    return yield* selectCommitFeeInput(pureAdaUtxos);
-  });
 
 const decodeActiveOperatorDatum = (data: unknown): ActiveOperatorDatum =>
   Data.castFrom(
@@ -390,11 +360,12 @@ export const buildDeterministicCommitTxBuilder = ({
   StateQueueError
 > =>
   Effect.gen(function* () {
-    const feeInput = yield* selectPureAdaFeeInput(
+    const presetWalletInputs = yield* requireOperatorWalletInputs(
       availableOperatorWalletUtxos(witness.operatorWalletView),
+      "state_queue commit tx",
     );
     yield* Effect.logInfo(
-      `🔹 Selected fee input ${outRefLabel(feeInput)} for state_queue commit tx.`,
+      `🔹 Using ${presetWalletInputs.length.toString()} preset operator wallet input(s) for state_queue commit tx.`,
     );
 
     const referenceInputs = [
@@ -444,7 +415,6 @@ export const buildDeterministicCommitTxBuilder = ({
 
     const makeCommitTx = () => {
       const tx = makeBaseCommitTx(stateQueueCommitSpendRedeemer)
-        .collectFrom([feeInput])
         .readFrom(referenceInputs)
         .collectFrom(
           [witness.activeOperatorInput],
@@ -477,9 +447,6 @@ export const buildDeterministicCommitTxBuilder = ({
         : withStateQueueSpendingScript;
     };
 
-    const presetWalletInputs = availableOperatorWalletUtxos(
-      witness.operatorWalletView,
-    );
     const builtCommitTx = yield* Effect.tryPromise({
       try: () =>
         makeCommitTx().complete(
@@ -642,7 +609,6 @@ export type ProductionMergeToConfirmedStateParams = {
   readonly confirmedUTxO: StateQueueUTxO;
   readonly firstBlockUTxO: StateQueueUTxO;
   readonly validFrom: number;
-  readonly feeInput: UTxO;
   readonly presetWalletInputs?: readonly UTxO[];
   readonly hubOracleRefInput: UTxO;
   readonly referenceScripts?: StateQueueMergeReferenceScripts;
@@ -979,7 +945,6 @@ export const buildProductionMergeToConfirmedStateTxProgram = ({
   confirmedUTxO,
   firstBlockUTxO,
   validFrom,
-  feeInput,
   presetWalletInputs,
   hubOracleRefInput,
   referenceScripts,
@@ -1074,7 +1039,6 @@ export const buildProductionMergeToConfirmedStateTxProgram = ({
           [confirmedUTxO.utxo, firstBlockUTxO.utxo],
           encodeStateQueueLinkedListMutationSpendRedeemer(),
         )
-        .collectFrom([feeInput])
         .readFrom(mergeReferenceInputs)
         .pay.ToContract(
           fetchConfig.stateQueueAddress,

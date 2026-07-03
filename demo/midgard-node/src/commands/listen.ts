@@ -6,13 +6,14 @@
 import { createServer } from "node:http";
 
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import { SqlClient } from "@effect/sql";
 import { NodeSdk } from "@effect/opentelemetry";
 import { HttpServer } from "@effect/platform";
 import { NodeHttpServer } from "@effect/platform-node";
 import { PrometheusExporter } from "@opentelemetry/exporter-prometheus";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
-import { Cause, Duration, Effect, Layer, pipe, Schedule } from "effect";
+import { Cause, Duration, Effect, Layer, Option, pipe, Schedule } from "effect";
 
 import { buildListenRouter } from "@/commands/listen-router.js";
 import {
@@ -21,8 +22,9 @@ import {
   seedLatestLocalBlockBoundaryOnStartup,
 } from "@/commands/listen-startup.js";
 import { shouldRunGenesisOnStartup } from "@/commands/startup-policy.js";
-import { InitDB, MutationJobsDB } from "@/database/index.js";
+import { DaPayloadsDB, InitDB, MutationJobsDB } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
+import { startDaLibp2pRetainedPayloadServerFromEnv } from "@/da/libp2p-producer.js";
 import {
   blockCommitmentFiber,
   blockConfirmationFiber,
@@ -114,6 +116,49 @@ const runStartupProviderStepWithRetry = <A, E, R>(
 
     return yield* Effect.fail(lastError as E);
   });
+
+const retainedPayloadServerThread = (
+  retrieveByHeaderHash: (headerHash: Buffer) => Promise<
+    DaPayloadsDB.Row | undefined
+  >,
+): Effect.Effect<void, never> =>
+  Effect.tryPromise({
+      try: () =>
+        startDaLibp2pRetainedPayloadServerFromEnv({ retrieveByHeaderHash }),
+      catch: (cause) => cause,
+    }).pipe(
+    Effect.tap((server) =>
+      server.configured
+        ? Effect.logInfo(
+            `DA libp2p retained-payload server listening deployment_fingerprint=${server.deploymentFingerprint},local_peer_id=${server.localPeerId},listen=${server.listenMultiaddrs?.join(",") ?? ""},announce=${server.announceMultiaddrs?.join(",") ?? ""}`,
+          )
+        : Effect.logInfo(
+            `DA libp2p retained-payload server skipped: ${server.reason ?? "not configured"}`,
+          ),
+    ),
+    Effect.flatMap((server) =>
+      server.configured
+        ? Effect.never.pipe(
+            Effect.ensuring(
+              server.close === undefined
+                ? Effect.void
+                : Effect.promise(() => server.close!()).pipe(
+                    Effect.catchAll((error) =>
+                      Effect.logWarning(
+                        `DA libp2p retained-payload server stop failed: ${formatUnknownError(error)}`,
+                      ),
+                    ),
+                  ),
+            ),
+          )
+        : Effect.void,
+    ),
+    Effect.catchAll((error) =>
+      Effect.logWarning(
+        `DA libp2p retained-payload server disabled after startup failure: ${formatUnknownError(error)}`,
+      ),
+    ),
+  );
 
 /**
  * Boots the long-running Midgard node runtime.
@@ -271,6 +316,16 @@ export const runNode = (
         NodeHttpServer.layer(createServer, { port: nodeConfig.PORT }),
       ),
     );
+    const sql = yield* SqlClient.SqlClient;
+    const retrieveRetainedDaPayload = (headerHash: Buffer) =>
+      Effect.runPromise(
+        DaPayloadsDB.retrieveByHeaderHash(headerHash).pipe(
+          Effect.provideService(SqlClient.SqlClient, sql),
+          Effect.map((payload) =>
+            Option.isSome(payload) ? payload.value : undefined,
+          ),
+        ),
+      );
 
     /**
      * Builds a fixed Effect schedule from a millisecond interval.
@@ -281,6 +336,7 @@ export const runNode = (
     const program = Effect.all(
       [
         appThread,
+        retainedPayloadServerThread(retrieveRetainedDaPayload),
         blockCommitmentFiber(
           mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENT),
         ),

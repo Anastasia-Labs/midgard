@@ -1,20 +1,75 @@
+import { Option } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
   Columns as TxColumns,
   EntryWithTimeStamp,
 } from "@/database/utils/tx.js";
+import { shouldShortCircuitIdleCommitAttempt } from "@/workers/commit-block-header.js";
 import {
   buildSuccessfulCommitBatches,
+  establishEndTimeFromTxRequests,
+  planEarliestCommitSchedulerDueWork,
+  planSchedulerAwareCommitSelection,
   selectCommitRoots,
   selectCommitTxCandidates,
+  type CommitSchedulerStateQueueEvidence,
 } from "@/workers/utils/commit-block-planner.js";
 
-const mkTxEntry = (seed: number): EntryWithTimeStamp => ({
+const mkTxEntry = (
+  seed: number,
+  timestamp = new Date("2026-01-01T00:00:00.000Z"),
+): EntryWithTimeStamp => ({
   [TxColumns.TX_ID]: Buffer.from(seed.toString(16).padStart(64, "0"), "hex"),
   [TxColumns.TX]: Buffer.from(`tx-${seed}`),
-  [TxColumns.TIMESTAMPTZ]: new Date("2026-01-01T00:00:00.000Z"),
+  [TxColumns.TIMESTAMPTZ]: timestamp,
 });
+
+const fitInsideSchedulerWindow = ({
+  resolvedEndTimeMs,
+  maximumEndTimeMs,
+}: {
+  readonly resolvedEndTimeMs: number;
+  readonly maximumEndTimeMs: number;
+}) =>
+  ({
+    status: "fits",
+    alignedCandidateEndTime: resolvedEndTimeMs,
+    minimumMonotonicEndTime: resolvedEndTimeMs - 2_000,
+    minimumCurrentTimeEndTime: resolvedEndTimeMs - 1_000,
+    resolvedEndTime: resolvedEndTimeMs,
+    maximumEndTimeMs,
+  }) as const;
+
+const fitExceedingSchedulerWindow = ({
+  resolvedEndTimeMs,
+  maximumEndTimeMs,
+}: {
+  readonly resolvedEndTimeMs: number;
+  readonly maximumEndTimeMs: number;
+}) =>
+  ({
+    status: "exceeds_cap",
+    alignedCandidateEndTime: resolvedEndTimeMs - 2_000,
+    minimumMonotonicEndTime: resolvedEndTimeMs - 1_000,
+    minimumCurrentTimeEndTime: resolvedEndTimeMs,
+    resolvedEndTime: resolvedEndTimeMs,
+    maximumEndTimeMs,
+    reason: `resolved_end_time_ms=${resolvedEndTimeMs.toString()},maximum_end_time_ms=${maximumEndTimeMs.toString()}`,
+  }) as const;
+
+const submitSlotSnapshot = {
+  source: "test",
+  currentSlot: 10,
+  observedAtMs: 50_000,
+  slotLengthMs: 1_000,
+} as const;
+
+const stateQueueEvidence: CommitSchedulerStateQueueEvidence = {
+  tailCommitBaseOutRef: "stateq#1",
+  tailBlockEndTimeMs: Date.parse("2026-01-01T00:00:00.000Z"),
+  stateQueueHasUnmergedTail: false,
+};
 
 describe("commit block planner", () => {
   it("includes processed mempool txs even when mempool is empty", () => {
@@ -112,5 +167,432 @@ describe("commit block planner", () => {
       candidateTxsSize: 0,
       sourceTable: "none",
     });
+  });
+
+  it("uses the first candidate tx timestamp as the shared tx-backed candidate end-time source", () => {
+    const first = mkTxEntry(1, new Date("2026-01-01T00:03:00.000Z"));
+    const second = mkTxEntry(2, new Date("2026-01-01T00:04:00.000Z"));
+    const candidateEndTime = establishEndTimeFromTxRequests([first, second]);
+
+    expect(Option.isSome(candidateEndTime)).toBe(true);
+    expect(Option.getOrThrow(candidateEndTime).getTime()).toBe(
+      first[TxColumns.TIMESTAMPTZ].getTime(),
+    );
+  });
+
+  it("short-circuits idle commitment only when no recoverable work remains", () => {
+    expect(
+      shouldShortCircuitIdleCommitAttempt({
+        candidateTxCount: 0,
+        processedPendingTxCount: 0,
+        pendingUserEventCount: 0,
+        localFinalizationPending: false,
+      }),
+    ).toBe(true);
+
+    for (const nonIdle of [
+      { candidateTxCount: 1 },
+      { processedPendingTxCount: 1 },
+      { pendingUserEventCount: 1 },
+      { localFinalizationPending: true },
+    ]) {
+      expect(
+        shouldShortCircuitIdleCommitAttempt({
+          candidateTxCount: 0,
+          processedPendingTxCount: 0,
+          pendingUserEventCount: 0,
+          localFinalizationPending: false,
+          ...nonIdle,
+        }),
+      ).toBe(false);
+    }
+  });
+
+  it("caps tx and user-event selection to a safe current scheduler window", () => {
+    const cap = Date.parse("2026-01-01T00:05:00.000Z");
+    const beforeCap = mkTxEntry(1, new Date("2026-01-01T00:04:59.000Z"));
+    const afterCap = mkTxEntry(2, new Date("2026-01-01T00:05:01.000Z"));
+    const selection = {
+      candidateTxs: [beforeCap, afterCap],
+      candidateTxHashes: [beforeCap.tx_id, afterCap.tx_id],
+      candidateTxsSize: afterCap.tx.length + beforeCap.tx.length,
+      sourceTable: "mempool" as const,
+    };
+
+    const plan = planSchedulerAwareCommitSelection({
+      candidateSelection: selection,
+      userEventOnlyEndTime: new Date("2026-01-01T00:06:00.000Z"),
+      currentSchedulerWindow: {
+        schedulerOutRef: "aa#0",
+        operatorKeyHash: "operator",
+        startTimeMs: Date.parse("2026-01-01T00:00:00.000Z"),
+        endTimeMs: cap,
+      },
+      currentBlockStartTimeMs: Date.parse("2025-12-31T23:59:00.000Z"),
+      nowMs: Date.parse("2026-01-01T00:00:00.000Z"),
+      minimumCurrentWindowBudgetMs: 60_000,
+      productionMinimumFutureBufferMs: 240_000,
+      currentWindowCommitEndTimeFit: fitInsideSchedulerWindow({
+        resolvedEndTimeMs: Date.parse("2026-01-01T00:04:30.000Z"),
+        maximumEndTimeMs: cap,
+      }),
+    });
+
+    expect(plan.status).toBe("using_current_scheduler_window");
+    expect(plan.prunedTxCount).toBe(1);
+    expect(plan.userEventOnlyEndTime.getTime()).toBe(cap);
+    expect(plan.candidateSelection.candidateTxs).toEqual([beforeCap]);
+    expect(plan.candidateSelection.candidateTxHashes).toEqual([
+      beforeCap.tx_id,
+    ]);
+  });
+
+  it("does not cap to the current scheduler window when the remaining budget is too low", () => {
+    const cap = Date.parse("2026-01-01T00:05:00.000Z");
+    const afterCap = mkTxEntry(2, new Date("2026-01-01T00:05:01.000Z"));
+    const selection = selectCommitTxCandidates({
+      mempoolTxs: [afterCap],
+      processedMempoolTxs: [],
+    });
+
+    const plan = planSchedulerAwareCommitSelection({
+      candidateSelection: selection,
+      userEventOnlyEndTime: new Date("2026-01-01T00:06:00.000Z"),
+      currentSchedulerWindow: {
+        schedulerOutRef: "aa#0",
+        operatorKeyHash: "operator",
+        startTimeMs: Date.parse("2026-01-01T00:00:00.000Z"),
+        endTimeMs: cap,
+      },
+      currentBlockStartTimeMs: Date.parse("2025-12-31T23:59:00.000Z"),
+      nowMs: cap - 10_000,
+      minimumCurrentWindowBudgetMs: 60_000,
+      productionMinimumFutureBufferMs: 480_000,
+    });
+
+    expect(plan.status).toBe("current_scheduler_budget_too_low");
+    expect(plan.candidateSelection).toBe(selection);
+    expect(plan.userEventOnlyEndTime.getTime()).toBe(
+      Date.parse("2026-01-01T00:06:00.000Z"),
+    );
+  });
+
+  it("does not cap to a seven-minute scheduler window when the production end-time floor needs eight minutes", () => {
+    const nowMs = Date.parse("2026-01-01T00:00:00.000Z");
+    const cap = nowMs + 7 * 60_000;
+    const afterCap = mkTxEntry(2, new Date(cap + 1_000));
+    const selection = selectCommitTxCandidates({
+      mempoolTxs: [afterCap],
+      processedMempoolTxs: [],
+    });
+    const userEventOnlyEndTime = new Date(cap + 30_000);
+
+    const plan = planSchedulerAwareCommitSelection({
+      candidateSelection: selection,
+      userEventOnlyEndTime,
+      currentSchedulerWindow: {
+        schedulerOutRef: "aa#0",
+        operatorKeyHash: "operator",
+        startTimeMs: nowMs - 60_000,
+        endTimeMs: cap,
+      },
+      currentBlockStartTimeMs: nowMs - 120_000,
+      nowMs,
+      minimumCurrentWindowBudgetMs: 6 * 60_000,
+      productionMinimumFutureBufferMs: 8 * 60_000,
+      currentWindowCommitEndTimeFit: fitExceedingSchedulerWindow({
+        resolvedEndTimeMs: nowMs + 8 * 60_000 + 1_000,
+        maximumEndTimeMs: cap,
+      }),
+    });
+
+    expect(plan.status).toBe("current_scheduler_end_time_floor_exceeds_window");
+    expect(plan.candidateSelection).toBe(selection);
+    expect(plan.userEventOnlyEndTime).toBe(userEventOnlyEndTime);
+    expect(plan.reason).toContain(
+      `resolved_end_time_ms=${(nowMs + 8 * 60_000 + 1_000).toString()}`,
+    );
+    expect(plan.reason).toContain(`current_scheduler_end_ms=${cap.toString()}`);
+    expect(plan.reason).toContain("minimum_future_buffer_ms=480000");
+  });
+
+  it("does not prune candidate txs when the pre-pruning tx-backed candidate end-time cannot fit the current scheduler window", () => {
+    const cap = Date.parse("2026-01-01T00:05:00.000Z");
+    const beforeCap = mkTxEntry(1, new Date("2026-01-01T00:04:59.000Z"));
+    const afterCap = mkTxEntry(2, new Date("2026-01-01T00:05:01.000Z"));
+    const selection = {
+      candidateTxs: [afterCap, beforeCap],
+      candidateTxHashes: [afterCap.tx_id, beforeCap.tx_id],
+      candidateTxsSize: afterCap.tx.length + beforeCap.tx.length,
+      sourceTable: "mempool" as const,
+    };
+
+    const plan = planSchedulerAwareCommitSelection({
+      candidateSelection: selection,
+      userEventOnlyEndTime: new Date("2026-01-01T00:06:00.000Z"),
+      currentSchedulerWindow: {
+        schedulerOutRef: "aa#0",
+        operatorKeyHash: "operator",
+        startTimeMs: Date.parse("2026-01-01T00:00:00.000Z"),
+        endTimeMs: cap,
+      },
+      currentBlockStartTimeMs: Date.parse("2025-12-31T23:59:00.000Z"),
+      nowMs: Date.parse("2026-01-01T00:00:00.000Z"),
+      minimumCurrentWindowBudgetMs: 60_000,
+      productionMinimumFutureBufferMs: 240_000,
+      currentWindowCommitEndTimeFit: fitExceedingSchedulerWindow({
+        resolvedEndTimeMs: Date.parse("2026-01-01T00:05:01.000Z"),
+        maximumEndTimeMs: cap,
+      }),
+    });
+
+    expect(plan.status).toBe("current_scheduler_end_time_floor_exceeds_window");
+    expect(plan.candidateSelection).toBe(selection);
+    expect(plan.prunedTxCount).toBe(0);
+    expect(plan.userEventOnlyEndTime.getTime()).toBe(
+      Date.parse("2026-01-01T00:06:00.000Z"),
+    );
+  });
+
+  it("requires the current-window fit to be computed against the selected scheduler cap", () => {
+    const cap = Date.parse("2026-01-01T00:05:00.000Z");
+    const beforeCap = mkTxEntry(1, new Date("2026-01-01T00:04:00.000Z"));
+    const selection = selectCommitTxCandidates({
+      mempoolTxs: [beforeCap],
+      processedMempoolTxs: [],
+    });
+
+    const plan = planSchedulerAwareCommitSelection({
+      candidateSelection: selection,
+      userEventOnlyEndTime: new Date("2026-01-01T00:04:00.000Z"),
+      currentSchedulerWindow: {
+        schedulerOutRef: "aa#0",
+        operatorKeyHash: "operator",
+        startTimeMs: Date.parse("2026-01-01T00:00:00.000Z"),
+        endTimeMs: cap,
+      },
+      currentBlockStartTimeMs: Date.parse("2025-12-31T23:59:00.000Z"),
+      nowMs: Date.parse("2026-01-01T00:00:00.000Z"),
+      minimumCurrentWindowBudgetMs: 60_000,
+      productionMinimumFutureBufferMs: 240_000,
+      currentWindowCommitEndTimeFit: fitInsideSchedulerWindow({
+        resolvedEndTimeMs: Date.parse("2026-01-01T00:04:00.000Z"),
+        maximumEndTimeMs: cap + 60_000,
+      }),
+    });
+
+    expect(plan.status).toBe("current_scheduler_end_time_floor_exceeds_window");
+    expect(plan.reason).toContain("commit_end_time_fit_cap_mismatch");
+    expect(plan.candidateSelection).toBe(selection);
+  });
+
+  it("registers earliest due work only when another active scheduler operator is strictly not due", () => {
+    const plan = planEarliestCommitSchedulerDueWork({
+      callerLabel: "commit-scheduler-preflight",
+      discoveryStage: "pre_lease",
+      schedulerOutRef: "scheduler#0",
+      schedulerState: {
+        status: "active",
+        operatorKeyHash: "other-operator",
+        startTimeMs: Date.parse("2026-01-01T00:00:00.000Z"),
+        transitionInvalidBeforeSlot: 100,
+        transitionInvalidHereafterSlot: 600,
+      },
+      currentOperatorKeyHash: "this-operator",
+      submitSlotSnapshot,
+      stateQueueEvidence,
+      localFinalizationPending: false,
+      maxInlineWaitMs: 60_000,
+    });
+
+    expect(plan.status).toBe("register_due_work");
+    if (plan.status !== "register_due_work") {
+      throw new Error(`unexpected plan status ${plan.status}`);
+    }
+    expect(plan.discoveryStage).toBe("pre_lease");
+    expect(plan.dueWork).toMatchObject({
+      kind: "commit_scheduler_refresh",
+      key: "block_commitment",
+      callerLabel: "commit-scheduler-preflight",
+      reason: "scheduler_transition_not_reached",
+      observedSlot: 10,
+      dueSlot: 102,
+      waitMs: 92_000,
+      dueAtMs: 142_000,
+      slotSource: "test",
+    });
+    expect(plan.dueWork.dependencyKey).toContain("scheduler=scheduler#0");
+    expect(plan.dueWork.dependencyKey).toContain(
+      "scheduler_operator=other-operator",
+    );
+    expect(plan.dueWork.dependencyKey).toContain(
+      "current_operator=this-operator",
+    );
+    expect(plan.dueWork.dependencyKey).toContain(
+      "state_queue_tail_base=stateq#1",
+    );
+  });
+
+  it("does not register earliest scheduler due work without strict local slot evidence", () => {
+    const plan = planEarliestCommitSchedulerDueWork({
+      callerLabel: "commit-scheduler-preflight",
+      discoveryStage: "pre_lease",
+      schedulerOutRef: "scheduler#0",
+      schedulerState: {
+        status: "active",
+        operatorKeyHash: "other-operator",
+        startTimeMs: Date.parse("2026-01-01T00:00:00.000Z"),
+        transitionInvalidBeforeSlot: 100,
+        transitionInvalidHereafterSlot: 600,
+      },
+      currentOperatorKeyHash: "this-operator",
+      submitSlotSnapshotError: new Error("slot unavailable"),
+      stateQueueEvidence,
+      localFinalizationPending: false,
+      maxInlineWaitMs: 60_000,
+    });
+
+    expect(plan).toMatchObject({
+      status: "ambiguous",
+      reason: "scheduler_submit_timing_slot_source_unavailable",
+    });
+  });
+
+  it("does not register earliest due work for no-active or current-operator scheduler states", () => {
+    const noActive = planEarliestCommitSchedulerDueWork({
+      callerLabel: "commit-scheduler-preflight",
+      discoveryStage: "pre_lease",
+      schedulerOutRef: "scheduler#0",
+      schedulerState: { status: "no_active_operators" },
+      currentOperatorKeyHash: "this-operator",
+      submitSlotSnapshot,
+      stateQueueEvidence,
+      localFinalizationPending: false,
+      maxInlineWaitMs: 60_000,
+    });
+    expect(noActive).toMatchObject({
+      status: "ambiguous",
+      reason: "scheduler_has_no_active_operator",
+    });
+
+    const currentOperator = planEarliestCommitSchedulerDueWork({
+      callerLabel: "commit-scheduler-preflight",
+      discoveryStage: "pre_lease",
+      schedulerOutRef: "scheduler#0",
+      schedulerState: {
+        status: "active",
+        operatorKeyHash: "this-operator",
+        startTimeMs: Date.parse("2026-01-01T00:00:00.000Z"),
+        transitionInvalidBeforeSlot: 100,
+        transitionInvalidHereafterSlot: 600,
+      },
+      currentOperatorKeyHash: "this-operator",
+      submitSlotSnapshot,
+      stateQueueEvidence,
+      localFinalizationPending: false,
+      maxInlineWaitMs: 60_000,
+    });
+    expect(currentOperator).toMatchObject({
+      status: "proceed",
+      reason: "current_operator_already_active",
+    });
+  });
+
+  it("proceeds instead of registering due work when the scheduler transition is inside the inline wait budget", () => {
+    const plan = planEarliestCommitSchedulerDueWork({
+      callerLabel: "commit-scheduler-preflight",
+      discoveryStage: "pre_lease",
+      schedulerOutRef: "scheduler#0",
+      schedulerState: {
+        status: "active",
+        operatorKeyHash: "other-operator",
+        startTimeMs: Date.parse("2026-01-01T00:00:00.000Z"),
+        transitionInvalidBeforeSlot: 20,
+        transitionInvalidHereafterSlot: 600,
+      },
+      currentOperatorKeyHash: "this-operator",
+      submitSlotSnapshot,
+      stateQueueEvidence,
+      localFinalizationPending: false,
+      maxInlineWaitMs: 60_000,
+    });
+
+    expect(plan).toMatchObject({
+      status: "proceed",
+      reason: "scheduler_submit_timing_wait",
+    });
+  });
+
+  it("changes earliest due-work dependency keys when scheduler or state-queue evidence changes", () => {
+    const baseInput = {
+      callerLabel: "commit-scheduler-preflight",
+      discoveryStage: "pre_lease",
+      schedulerOutRef: "scheduler#0",
+      schedulerState: {
+        status: "active",
+        operatorKeyHash: "other-operator",
+        startTimeMs: Date.parse("2026-01-01T00:00:00.000Z"),
+        transitionInvalidBeforeSlot: 100,
+        transitionInvalidHereafterSlot: 600,
+      },
+      currentOperatorKeyHash: "this-operator",
+      submitSlotSnapshot,
+      stateQueueEvidence,
+      localFinalizationPending: false,
+      maxInlineWaitMs: 60_000,
+    } as const;
+    const base = planEarliestCommitSchedulerDueWork(baseInput);
+    const changedScheduler = planEarliestCommitSchedulerDueWork({
+      ...baseInput,
+      schedulerOutRef: "scheduler#1",
+    });
+    const changedStateQueue = planEarliestCommitSchedulerDueWork({
+      ...baseInput,
+      stateQueueEvidence: {
+        ...stateQueueEvidence,
+        tailCommitBaseOutRef: "stateq#2",
+      },
+    });
+    const changedTailEndTime = planEarliestCommitSchedulerDueWork({
+      ...baseInput,
+      stateQueueEvidence: {
+        ...stateQueueEvidence,
+        tailBlockEndTimeMs: stateQueueEvidence.tailBlockEndTimeMs + 1_000,
+      },
+    });
+    const localFinalizationPending = planEarliestCommitSchedulerDueWork({
+      ...baseInput,
+      localFinalizationPending: true,
+    });
+
+    expect(base.status).toBe("register_due_work");
+    expect(changedScheduler.status).toBe("register_due_work");
+    expect(changedStateQueue.status).toBe("register_due_work");
+    expect(changedTailEndTime.status).toBe("register_due_work");
+    expect(localFinalizationPending.status).toBe("proceed");
+    if (
+      base.status !== "register_due_work" ||
+      changedScheduler.status !== "register_due_work" ||
+      changedStateQueue.status !== "register_due_work" ||
+      changedTailEndTime.status !== "register_due_work" ||
+      localFinalizationPending.status !== "proceed"
+    ) {
+      throw new Error("expected due-work and local-finalization proceed plans");
+    }
+    expect(changedScheduler.dueWork.dependencyKey).not.toBe(
+      base.dueWork.dependencyKey,
+    );
+    expect(changedStateQueue.dueWork.dependencyKey).not.toBe(
+      base.dueWork.dependencyKey,
+    );
+    expect(changedTailEndTime.dueWork.dependencyKey).not.toBe(
+      base.dueWork.dependencyKey,
+    );
+    expect(localFinalizationPending.dependencyKey).not.toBe(
+      base.dueWork.dependencyKey,
+    );
+    expect(localFinalizationPending.dependencyKey).toContain(
+      "local_finalization_pending=true",
+    );
   });
 });

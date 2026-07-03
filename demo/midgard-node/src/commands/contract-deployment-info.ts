@@ -124,6 +124,13 @@ export type DeploymentManifestVerificationReport = {
     | "fresh_redeploy_required";
 };
 
+export type FinalizedDeploymentIdentity = {
+  readonly path: string;
+  readonly manifestId: string;
+  readonly contractDeploymentInfoSha256: string;
+  readonly manifest: DeploymentManifestV2;
+};
+
 const DEFAULT_CONTRACT_DEPLOYMENT_INFO_FILENAME =
   "contract-deployment-info.json";
 const DEFAULT_CONTRACT_DEPLOYMENT_INFO_DIRECTORY_NAME = "deploymentInfo";
@@ -693,6 +700,63 @@ export const readDeploymentManifestV2File = (
   const resolvedOutputPath = normalizeOutputPath(outputPath);
   const parsed = JSON.parse(readFileSync(resolvedOutputPath, "utf8"));
   return parseDeploymentManifestV2(parsed);
+};
+
+const requiredFinalizedDeploymentSteps = [
+  "prepareHubOracleNonce",
+  "deployNodeRuntimeReferenceScripts",
+  "initProtocol",
+] as const satisfies readonly (keyof DeploymentManifestV2["steps"])[];
+
+export const finalizedDeploymentReadinessMismatches = (
+  manifest: DeploymentManifestV2,
+): readonly string[] => {
+  const mismatches: string[] = [];
+  const missingReferenceScripts = Object.entries(manifest.referenceScripts)
+    .filter(([, record]) => record.status !== "confirmed")
+    .map(([name]) => name);
+  if (missingReferenceScripts.length > 0) {
+    mismatches.push(
+      `missing reference scripts: ${missingReferenceScripts.join(",")}`,
+    );
+  }
+  for (const stepName of requiredFinalizedDeploymentSteps) {
+    const step = manifest.steps[stepName];
+    if (step?.status !== "complete") {
+      mismatches.push(`steps.${stepName}.status=${step?.status ?? "missing"}`);
+    }
+  }
+  if (manifest.hubOracleOneShot.status !== "consumed_by_init") {
+    mismatches.push(
+      `hubOracleOneShot.status=${manifest.hubOracleOneShot.status}`,
+    );
+  }
+  return mismatches;
+};
+
+export const readFinalizedDeploymentIdentity = (
+  outputPath: string,
+): FinalizedDeploymentIdentity => {
+  const resolvedOutputPath = normalizeOutputPath(outputPath);
+  const raw = readFileSync(resolvedOutputPath);
+  const parsed = JSON.parse(raw.toString("utf8"));
+  const manifest = parseDeploymentManifestV2(parsed);
+  const readinessMismatches = finalizedDeploymentReadinessMismatches(manifest);
+  if (readinessMismatches.length > 0) {
+    throw new Error(
+      `Contract deployment manifest is not finalized for DA runtime generation: ${readinessMismatches.join(
+        "; ",
+      )}`,
+    );
+  }
+  return {
+    path: resolvedOutputPath,
+    manifestId: manifest.manifestId,
+    contractDeploymentInfoSha256: createHash("sha256")
+      .update(raw)
+      .digest("hex"),
+    manifest,
+  };
 };
 
 export const verifyDeploymentManifestAgainstConfig = (

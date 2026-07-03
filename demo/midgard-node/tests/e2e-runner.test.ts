@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -36,15 +36,28 @@ const writeScript = async (
   return path;
 };
 
+const waitForFile = async (path: string): Promise<void> => {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    try {
+      await access(path);
+      return;
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  }
+  throw new Error(`timed out waiting for ${path}`);
+};
+
 describe("e2e step runner", () => {
-  it("records successful JSON output and tx hashes", async () => {
+  it("records successful JSON output and explicit submitted tx hashes", async () => {
     const dir = await makeTempDir();
     const script = await writeScript(
       dir,
       "success.mjs",
       [
         "console.log('prelude');",
-        "console.log(JSON.stringify({ txHash: 'aa'.repeat(32), status: 'ok' }));",
+        "console.log(JSON.stringify({ txHash: 'aa'.repeat(32), status: 'submitted' }));",
       ].join("\n"),
     );
 
@@ -64,15 +77,56 @@ describe("e2e step runner", () => {
       signal: null,
       timedOut: false,
       observedTxHashes: ["aa".repeat(32)],
+      txObservations: [
+        {
+          txHash: "aa".repeat(32),
+          role: "submitted",
+          status: "submitted",
+          source: "parsedJson",
+          field: "$.txHash",
+          stepId: "submit-deposit",
+        },
+      ],
       parsedJson: {
         txHash: "aa".repeat(32),
-        status: "ok",
+        status: "submitted",
       },
       error: null,
     });
     await expect(readFile(summary.rawLogPath, "utf8")).resolves.toContain(
       "prelude",
     );
+  });
+
+  it("does not promote generic JSON tx hashes without explicit tx status", async () => {
+    const dir = await makeTempDir();
+    const script = await writeScript(
+      dir,
+      "generic-success.mjs",
+      [
+        "console.log(JSON.stringify({ txHash: 'ab'.repeat(32), status: 'ok' }));",
+      ].join("\n"),
+    );
+
+    const summary = await runCommandStep({
+      id: "provider-preflight",
+      command: process.execPath,
+      args: [script],
+      cwd: dir,
+      rawLogPath: join(dir, "logs", "generic-success.log"),
+    });
+
+    expect(summary.status).toBe("success");
+    expect(summary.observedTxHashes).toEqual(["ab".repeat(32)]);
+    expect(summary.hashObservations).toEqual([
+      {
+        hash: "ab".repeat(32),
+        role: "unknown",
+        source: "regex",
+        stepId: "provider-preflight",
+      },
+    ]);
+    expect(summary.txObservations).toEqual([]);
   });
 
   it("does not mark timeout-after-tx as success", async () => {
@@ -91,14 +145,153 @@ describe("e2e step runner", () => {
       command: process.execPath,
       args: [script],
       cwd: dir,
-      timeoutMs: 100,
+      timeoutMs: 2_000,
       rawLogPath: join(dir, "logs", "await-confirmation.log"),
     });
 
     expect(summary.status).toBe("timeout");
     expect(summary.timedOut).toBe(true);
     expect(summary.observedTxHashes).toEqual(["bb".repeat(32)]);
+    expect(summary.txObservations).toContainEqual({
+      txHash: "bb".repeat(32),
+      role: "submitted",
+      status: "submitted",
+      source: "log:transaction_submitted",
+      stepId: "await-confirmation",
+    });
     expect(summary.error).toContain("timed out");
+  });
+
+  it("terminates a timed-out step process group", async () => {
+    const dir = await makeTempDir();
+    const childTerminated = join(dir, "child-terminated.txt");
+    const child = await writeScript(
+      dir,
+      "grandchild.mjs",
+      [
+        "import { writeFileSync } from 'node:fs';",
+        `const terminated = ${JSON.stringify(childTerminated)};`,
+        "process.on('SIGTERM', () => {",
+        "  writeFileSync(terminated, String(process.pid));",
+        "  process.exit(0);",
+        "});",
+        "setInterval(() => {}, 1000);",
+      ].join("\n"),
+    );
+    const parent = await writeScript(
+      dir,
+      "parent.mjs",
+      [
+        "import { spawn } from 'node:child_process';",
+        `spawn(process.execPath, [${JSON.stringify(child)}], { stdio: 'ignore' });`,
+        "setInterval(() => {}, 1000);",
+      ].join("\n"),
+    );
+
+    const summary = await runCommandStep({
+      id: "stress",
+      command: process.execPath,
+      args: [parent],
+      cwd: dir,
+      timeoutMs: 300,
+      rawLogPath: join(dir, "logs", "stress.log"),
+    });
+
+    expect(summary.status).toBe("timeout");
+    expect(summary.cleanup).toMatchObject({
+      attempted: true,
+      target: process.platform === "win32" ? "process" : "process_group",
+      success: true,
+    });
+    if (process.platform !== "win32") {
+      await waitForFile(childTerminated);
+    }
+  });
+
+  it("keeps generic and prepared hashes out of submitted tx evidence", async () => {
+    const dir = await makeTempDir();
+    const preparedHash = "cc".repeat(32);
+    const rootHash = "dd".repeat(32);
+    const submittedHash = "ee".repeat(32);
+    const script = await writeScript(
+      dir,
+      "hashes.mjs",
+      [
+        `console.log('Signed tx prepared: txHash=${preparedHash}');`,
+        `console.log('utxosRoot=${rootHash}');`,
+        `console.log('Transaction submitted: ${submittedHash}');`,
+      ].join("\n"),
+    );
+
+    const summary = await runCommandStep({
+      id: "submit-l2-transfer-a",
+      command: process.execPath,
+      args: [script],
+      cwd: dir,
+      rawLogPath: join(dir, "logs", "hashes.log"),
+    });
+
+    expect(summary.observedTxHashes).toEqual([
+      preparedHash,
+      rootHash,
+      submittedHash,
+    ]);
+    expect(summary.txObservations).toEqual([
+      {
+        txHash: submittedHash,
+        role: "submitted",
+        status: "submitted",
+        source: "log:transaction_submitted",
+        stepId: "submit-l2-transfer-a",
+      },
+      {
+        txHash: preparedHash,
+        role: "prepared",
+        status: "prepared",
+        source: "log:signed_tx_prepared",
+        stepId: "submit-l2-transfer-a",
+      },
+    ]);
+  });
+
+  it("records known transaction field logs as explicit submitted evidence", async () => {
+    const dir = await makeTempDir();
+    const registerHash = "12".repeat(32);
+    const activateHash = "34".repeat(32);
+    const script = await writeScript(
+      dir,
+      "operator.mjs",
+      [
+        `console.log('Operator lifecycle result: registerTxHash=${registerHash}, activateTxHash=${activateHash}, deregisterTxHash=skipped');`,
+      ].join("\n"),
+    );
+
+    const summary = await runCommandStep({
+      id: "operator-lifecycle",
+      command: process.execPath,
+      args: [script],
+      cwd: dir,
+      rawLogPath: join(dir, "logs", "operator.log"),
+    });
+
+    expect(summary.txObservations).toEqual([
+      {
+        txHash: registerHash,
+        role: "submitted",
+        status: "submitted",
+        source: "log:structured_tx_field",
+        field: "$.registerTxHash",
+        stepId: "operator-lifecycle",
+      },
+      {
+        txHash: activateHash,
+        role: "submitted",
+        status: "submitted",
+        source: "log:structured_tx_field",
+        field: "$.activateTxHash",
+        stepId: "operator-lifecycle",
+      },
+    ]);
   });
 
   it("records nonzero exits as failed with stderr in the raw log", async () => {
@@ -123,6 +316,55 @@ describe("e2e step runner", () => {
     await expect(readFile(summary.rawLogPath, "utf8")).resolves.toContain(
       "boom",
     );
+  });
+
+  it("loads dotenv files and explicit env overrides into child processes", async () => {
+    const dir = await makeTempDir();
+    await writeFile(
+      join(dir, ".env"),
+      ['WALLET_SEED_PHRASE="alpha beta"', "NETWORK=Preview"].join("\n"),
+      "utf8",
+    );
+    const script = await writeScript(
+      dir,
+      "env.mjs",
+      [
+        "console.log(JSON.stringify({",
+        "  seed: process.env.WALLET_SEED_PHRASE,",
+        "  network: process.env.NETWORK,",
+        "  inherited: process.env.PATH === undefined,",
+        "}));",
+      ].join("\n"),
+    );
+
+    const summary = await runCommandStep({
+      id: "env-step",
+      command: process.execPath,
+      args: [script],
+      cwd: dir,
+      envFiles: [".env"],
+      env: { NETWORK: "Preprod" },
+      envInheritance: "none",
+      rawLogPath: join(dir, "logs", "env-step.log"),
+    });
+
+    expect(summary.status).toBe("success");
+    expect(summary.parsedJson).toEqual({
+      seed: "alpha beta",
+      network: "Preprod",
+      inherited: true,
+    });
+    expect(summary.command.envFiles).toEqual([
+      {
+        path: join(dir, ".env"),
+        keys: ["NETWORK", "WALLET_SEED_PHRASE=<redacted>"],
+      },
+    ]);
+    expect(summary.command.envKeys).toEqual([
+      "NETWORK",
+      "WALLET_SEED_PHRASE=<redacted>",
+    ]);
+    expect(summary.command.envInheritance).toBe("none");
   });
 
   it("redacts sensitive argv and env metadata", () => {

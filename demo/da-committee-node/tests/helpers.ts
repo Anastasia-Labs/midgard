@@ -5,8 +5,14 @@ import { join } from "node:path";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 
-import type { WatcherConfig } from "../src/config.js";
+import {
+  LIBP2P_DA_GOSSIP_MAX_MESSAGE_BYTES,
+  LIBP2P_DA_MIN_RETENTION_DAYS,
+  LIBP2P_DA_TRANSPORT_LIMITS,
+  type WatcherConfig,
+} from "../src/config.js";
 import { computeDaPayloadRoots } from "../src/da/payload.js";
+import type { DaPayloadSource } from "../src/da/source.js";
 import type { Header, ObservedStateQueueNode } from "../src/domain.js";
 import { hashBlockHeader } from "../src/l1/state-queue-scanner.js";
 
@@ -259,12 +265,38 @@ export const minimalConfig = ({
   contractDeploymentInfoPath: deploymentInfoPath,
   deploymentFingerprint: "f".repeat(64),
   deploymentManifestSha256: "a".repeat(64),
+  contractDeploymentInfoSha256: "b".repeat(64),
   deploymentManifestRaw: "{}",
   deploymentManifest: {},
   contractDeploymentInfo: {},
   cardanoProviderUrls: ["fixture:/tmp/state-queue.json"],
   finalityDepth: 2,
-  daPayloadEndpoints: ["http://da.example"],
+  daTransport: {
+    kind: "libp2p",
+    deploymentFingerprint: "f".repeat(64),
+    noHttpDaTransport: true,
+    threshold: 1,
+    listenMultiaddrs: ["/ip4/127.0.0.1/tcp/0"],
+    announceMultiaddrs: [`/ip4/127.0.0.1/tcp/0/p2p/${MINIMAL_LIBP2P_PEER_ID}`],
+    bootstrapMultiaddrs: [`/ip4/127.0.0.1/tcp/0/p2p/${MINIMAL_LIBP2P_PEER_ID}`],
+    gossip: {
+      strictSign: true,
+      emitSelf: false,
+      allowedTopicsOnly: true,
+      maxGossipMessageBytes: LIBP2P_DA_GOSSIP_MAX_MESSAGE_BYTES,
+    },
+    limits: LIBP2P_DA_TRANSPORT_LIMITS,
+    retentionDays: LIBP2P_DA_MIN_RETENTION_DAYS,
+    peers: [
+      {
+        signerIndex: 0,
+        daVkey: signerPublicKey,
+        peerId: MINIMAL_LIBP2P_PEER_ID,
+        multiaddrs: [`/ip4/127.0.0.1/tcp/0/p2p/${MINIMAL_LIBP2P_PEER_ID}`],
+        roles: ["committee", "coordinator", "retrieval"],
+      },
+    ],
+  },
   signerIndex: 0,
   signerKeySource: `hex:${signerSeed}`,
   l1SubmissionEnabled: false,
@@ -289,7 +321,6 @@ export const minimalConfig = ({
     {
       index: 0,
       vkey: signerPublicKey,
-      baseUrls: [],
       canSubmitL1: true,
     },
   ],
@@ -300,7 +331,6 @@ export const minimalConfig = ({
   daParamsGovernorAddress: "addr_test1daparams",
   stateQueuePolicyId: "44".repeat(28),
   stateQueueAddress: "addr_test1statequeue",
-  peerEndpoints: [],
   peerRequestTimeoutMs: 1000,
   peerReplayWindowMs: 300_000,
   peerMaxBodyBytes: 1_048_576,
@@ -312,4 +342,18 @@ export const minimalConfig = ({
   apiHost: "127.0.0.1",
   apiPort: 0,
   pollIntervalMs: 1000,
+});
+
+const MINIMAL_LIBP2P_PEER_ID =
+  "12D3KooWJzVqLz7QpLdfW6M5G2X1L8L6GQ9QJ3uCHZP8X8J6BC8u";
+
+export const payloadSourceFromBytes = (
+  payloadCbor: Buffer,
+  sourcePeerId = "fixture-peer",
+): DaPayloadSource => ({
+  fetchPayloadCandidates: async () => ({
+    ok: true,
+    candidates: [{ sourcePeerId, payloadCbor }],
+    attempts: [],
+  }),
 });

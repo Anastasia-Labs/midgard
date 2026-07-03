@@ -28,15 +28,17 @@ describe("PostgresWatcherStore", () => {
         await store.initDeployment({
           fingerprint: "dep",
           manifestSha256: "aa".repeat(32),
+          contractDeploymentInfoSha256: "cc".repeat(32),
           manifestRaw: "{}",
         });
         await expect(
           store.initDeployment({
             fingerprint: "other-dep",
             manifestSha256: "bb".repeat(32),
+            contractDeploymentInfoSha256: "cc".repeat(32),
             manifestRaw: "{}",
           }),
-        ).rejects.toThrow(/deployment fingerprint mismatch/);
+        ).rejects.toThrow(/stale_deployment_state_requires_fresh_redeploy/);
 
         const header = stateQueueHeaderRecord();
         await store.upsertStateQueueHeader(header);
@@ -46,7 +48,10 @@ describe("PostgresWatcherStore", () => {
         await expect(store.listStateQueueHeaders()).resolves.toEqual([header]);
 
         const payload = daPayloadRecord();
-        await expect(store.saveDaPayload(payload)).resolves.toEqual(payload);
+        await expect(store.saveDaPayload(payload)).resolves.toEqual({
+          ...payload,
+          payloadFetchStatus: "available",
+        });
         const conflictingPayload = {
           ...payload,
           payloadCborHex: "bb",
@@ -57,6 +62,27 @@ describe("PostgresWatcherStore", () => {
         ).resolves.toMatchObject({
           validationStatus: "conflicted",
           conflictStatus: "conflicting_bytes",
+        });
+        await expect(
+          store.getDaPayload(payload.headerHash),
+        ).resolves.toMatchObject({
+          payloadSha256: "22".repeat(32),
+          validationStatus: "conflicted",
+        });
+
+        const missingPayload = {
+          ...conflictingPayload,
+          payloadCborHex: "",
+          payloadSha256: "",
+          sourcePeerId: "",
+          validationStatus: "missing_da" as const,
+          validationError: "producer:transport_error",
+        };
+        await expect(
+          store.saveDaPayload(missingPayload),
+        ).resolves.toMatchObject({
+          payloadSha256: "22".repeat(32),
+          validationStatus: "conflicted",
         });
         await expect(
           store.getDaPayload(payload.headerHash),
@@ -132,7 +158,7 @@ const daPayloadRecord = (): DaPayloadRecord => ({
   headerHash: "01".repeat(28),
   payloadCborHex: "aa",
   payloadSha256: "11".repeat(32),
-  sourceEndpoint: "http://da.example",
+  sourcePeerId: "http://da.example",
   fetchedAt: "2026-06-13T00:00:01.000Z",
   validationStatus: "fetched",
 });

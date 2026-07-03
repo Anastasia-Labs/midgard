@@ -1,14 +1,11 @@
-import { createServer } from "node:http";
-import type { AddressInfo } from "node:net";
-
 import * as SDK from "@al-ft/midgard-sdk";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { describe, expect, it } from "vitest";
 
 import { OnChainLifecycleCoordinator } from "../src/coordinator/on-chain.js";
 import { SubmitterReconciler } from "../src/coordinator/submitter-reconciler.js";
-import { DaPayloadClient } from "../src/da/client.js";
 import { daPayloadSha256 } from "../src/da/payload.js";
+import type { DaPayloadCandidate, DaPayloadSource } from "../src/da/source.js";
 import type {
   DaAttestationCandidateRecord,
   DaSignatureRecord,
@@ -16,7 +13,6 @@ import type {
   PayloadCountSet,
   PayloadRootSet,
 } from "../src/domain.js";
-import { jsonBigIntStringReplacer } from "../src/json.js";
 import { PeerSignaturePoller } from "../src/peer/poller.js";
 import {
   loadDaSigner,
@@ -32,6 +28,7 @@ import {
   makeObservedNode,
   makePayloadFixture,
   minimalConfig,
+  payloadSourceFromBytes,
   tempDir,
 } from "./helpers.js";
 
@@ -82,18 +79,189 @@ describe("WatcherService", () => {
       signerIndex: 0,
     });
     const store = await JsonFileWatcherStore.open(dir);
-    const payloadClient = new DaPayloadClient({
-      endpoints: ["http://da.example"],
-      fetchFn: (async (url: string | URL | Request) => {
-        const value = url.toString();
-        if (value.includes("/metadata")) {
-          return Response.json({ headerHash });
-        }
-        return new Response(payloadCbor, {
-          status: 200,
-          headers: { "content-type": "application/cbor" },
-        });
-      }) as typeof fetch,
+    const payloadSource = payloadSourceFromBytes(payloadCbor);
+    const service = new WatcherService({
+      config: configWithDaHash,
+      store,
+      stateQueueProvider: {
+        fetchStateQueueNodes: async () => [
+          makeObservedNode({ header, headerHash, depth: 10 }),
+        ],
+      },
+      payloadSource,
+      signer,
+      signerValidation,
+      transactionProjector: IDENTITY_TX_PROJECTOR,
+    });
+    await service.initialize();
+    await expect(service.readinessSnapshot()).resolves.toMatchObject({
+      ready: false,
+      deployment: {
+        configuredFingerprint: configWithDaHash.deploymentFingerprint,
+        storeFingerprint: configWithDaHash.deploymentFingerprint,
+        storeMatchesConfigured: true,
+      },
+      scanner: { status: "not_started" },
+      reasons: ["state queue scanner has not completed a tick"],
+    });
+    const result = await service.tick();
+    expect(result).toMatchObject({ scannedHeaders: 1, signedHeaders: 1 });
+    await expect(
+      store.getDaSignature({ headerHash, signerIndex: 0 }),
+    ).resolves.toMatchObject({ headerHash, signerIndex: 0 });
+    await expect(
+      service.readinessSnapshot({ localPeerId: "watcher-peer" }),
+    ).resolves.toMatchObject({
+      ready: true,
+      deployment: {
+        configuredFingerprint: configWithDaHash.deploymentFingerprint,
+        storeFingerprint: configWithDaHash.deploymentFingerprint,
+        storeMatchesConfigured: true,
+      },
+      peer: {
+        localPeerId: "watcher-peer",
+        l1SubmitterPreflight: { status: "not_required" },
+      },
+      scanner: { status: "ok", scannedHeaders: 1, signedHeaders: 1 },
+      counts: {
+        discoveredHeaders: 1,
+        missingPayloads: 0,
+        verifiedPayloads: 1,
+        signatures: 1,
+      },
+      reasons: [],
+    });
+  });
+
+  it("fails readiness after a scanner tick failure", async () => {
+    const dir = await tempDir();
+    const seed = "00".repeat(31) + "01";
+    const signer = await loadDaSigner(`hex:${seed}`);
+    const config = minimalConfig({
+      dir,
+      manifestPath: `${dir}/manifest.json`,
+      deploymentInfoPath: `${dir}/deployment.json`,
+      signerSeed: seed,
+      signerPublicKey: signer.publicKeyHex,
+    });
+    const store = await JsonFileWatcherStore.open(dir);
+    const service = new WatcherService({
+      config,
+      store,
+      stateQueueProvider: {
+        fetchStateQueueNodes: async () => {
+          throw new Error("scanner unavailable");
+        },
+      },
+      payloadSource: failPayloadSource("payload should not be fetched"),
+      transactionProjector: IDENTITY_TX_PROJECTOR,
+    });
+    await service.initialize();
+
+    await expect(service.tick()).rejects.toThrow("scanner unavailable");
+    await expect(service.readinessSnapshot()).resolves.toMatchObject({
+      ready: false,
+      scanner: {
+        status: "failed",
+        errors: ["scanner unavailable"],
+      },
+      reasons: ["last state queue scanner tick failed"],
+    });
+  });
+
+  it("fetches payload bytes from the configured DA payload source", async () => {
+    const dir = await tempDir();
+    const { header, headerHash, payloadCbor } = await makePayloadFixture();
+    const seed = "00".repeat(31) + "01";
+    const signer = await loadDaSigner(`hex:${seed}`);
+    const config = minimalConfig({
+      dir,
+      manifestPath: `${dir}/manifest.json`,
+      deploymentInfoPath: `${dir}/deployment.json`,
+      signerSeed: seed,
+      signerPublicKey: signer.publicKeyHex,
+    });
+    const configWithDaHash = {
+      ...config,
+      daParams: {
+        ...config.daParams,
+        committeeSignersHash: bytesToHex(
+          blake2b(Buffer.from(signer.publicKeyHex, "hex"), { dkLen: 32 }),
+        ),
+      },
+    };
+    const signerValidation = validateDaSignerMembership({
+      daParams: configWithDaHash.daParams,
+      signer,
+      signerIndex: 0,
+    });
+    const store = await JsonFileWatcherStore.open(dir);
+    const service = new WatcherService({
+      config: configWithDaHash,
+      store,
+      stateQueueProvider: {
+        fetchStateQueueNodes: async () => [
+          makeObservedNode({ header, headerHash, depth: 10 }),
+        ],
+      },
+      payloadSource: payloadSourceFromBytes(payloadCbor, "producer-peer"),
+      signer,
+      signerValidation,
+      transactionProjector: IDENTITY_TX_PROJECTOR,
+    });
+
+    await service.initialize();
+    await expect(service.tick()).resolves.toMatchObject({
+      scannedHeaders: 1,
+      signedHeaders: 1,
+      skippedHeaders: 0,
+      errors: [],
+    });
+    await expect(store.getDaPayload(headerHash)).resolves.toMatchObject({
+      headerHash,
+      sourcePeerId: "producer-peer",
+      validationStatus: "verified",
+    });
+    await expect(
+      store.getDaSignature({ headerHash, signerIndex: 0 }),
+    ).resolves.toMatchObject({ headerHash, broadcastStatus: "local" });
+  });
+
+  it("verifies and signs a locally accepted libp2p payload without refetching", async () => {
+    const dir = await tempDir();
+    const { header, headerHash, payloadCbor } = await makePayloadFixture();
+    const seed = "00".repeat(31) + "01";
+    const signer = await loadDaSigner(`hex:${seed}`);
+    const config = minimalConfig({
+      dir,
+      manifestPath: `${dir}/manifest.json`,
+      deploymentInfoPath: `${dir}/deployment.json`,
+      signerSeed: seed,
+      signerPublicKey: signer.publicKeyHex,
+    });
+    const configWithDaHash = {
+      ...config,
+      daParams: {
+        ...config.daParams,
+        committeeSignersHash: bytesToHex(
+          blake2b(Buffer.from(signer.publicKeyHex, "hex"), { dkLen: 32 }),
+        ),
+      },
+    };
+    const signerValidation = validateDaSignerMembership({
+      daParams: configWithDaHash.daParams,
+      signer,
+      signerIndex: 0,
+    });
+    const store = await JsonFileWatcherStore.open(dir);
+    await store.saveDaPayload({
+      deploymentFingerprint: configWithDaHash.deploymentFingerprint,
+      headerHash,
+      payloadCborHex: payloadCbor.toString("hex"),
+      payloadSha256: daPayloadSha256(payloadCbor),
+      sourcePeerId: "libp2p:payload-submit",
+      fetchedAt: new Date().toISOString(),
+      validationStatus: "fetched",
     });
     const service = new WatcherService({
       config: configWithDaHash,
@@ -103,124 +271,96 @@ describe("WatcherService", () => {
           makeObservedNode({ header, headerHash, depth: 10 }),
         ],
       },
-      payloadClient,
+      payloadSource: failPayloadSource("payload source must not be used"),
       signer,
       signerValidation,
       transactionProjector: IDENTITY_TX_PROJECTOR,
     });
+
     await service.initialize();
-    const result = await service.tick();
-    expect(result).toMatchObject({ scannedHeaders: 1, signedHeaders: 1 });
+    await expect(service.tick()).resolves.toMatchObject({
+      scannedHeaders: 1,
+      signedHeaders: 1,
+      skippedHeaders: 0,
+      errors: [],
+    });
+    await expect(store.getDaPayload(headerHash)).resolves.toMatchObject({
+      headerHash,
+      sourcePeerId: "libp2p:payload-submit",
+      validationStatus: "verified",
+      payloadSha256: daPayloadSha256(payloadCbor),
+      conflictStatus: "none",
+    });
     await expect(
       store.getDaSignature({ headerHash, signerIndex: 0 }),
-    ).resolves.toMatchObject({ headerHash, signerIndex: 0 });
+    ).resolves.toMatchObject({ headerHash, broadcastStatus: "local" });
   });
 
-  it("fetches payload bytes from a Midgard-node-compatible HTTP endpoint", async () => {
+  it("fails closed for malformed locally accepted payload bytes", async () => {
     const dir = await tempDir();
-    const { header, headerHash, payloadCbor } = await makePayloadFixture();
-    const payloadServer = createServer((request, response) => {
-      const url = new URL(request.url ?? "/", "http://midgard-node.local");
-      if (
-        request.method === "GET" &&
-        url.pathname === "/da/payload" &&
-        url.searchParams.get("header_hash") === headerHash
-      ) {
-        response.writeHead(200, { "content-type": "application/cbor" });
-        response.end(payloadCbor);
-        return;
-      }
-      if (
-        request.method === "GET" &&
-        url.pathname === "/da/payload/metadata" &&
-        url.searchParams.get("header_hash") === headerHash
-      ) {
-        response.writeHead(200, { "content-type": "application/json" });
-        response.end(
-          `${JSON.stringify({
-            headerHash,
-            payloadBytes: payloadCbor.length,
-            status: "available",
-          })}\n`,
-        );
-        return;
-      }
-      response.writeHead(404, { "content-type": "application/json" });
-      response.end('{"error":"not found"}\n');
+    const { header, headerHash } = await makePayloadFixture();
+    const invalidPayload = Buffer.from("deadbeef", "hex");
+    const seed = "00".repeat(31) + "01";
+    const signer = await loadDaSigner(`hex:${seed}`);
+    const config = minimalConfig({
+      dir,
+      manifestPath: `${dir}/manifest.json`,
+      deploymentInfoPath: `${dir}/deployment.json`,
+      signerSeed: seed,
+      signerPublicKey: signer.publicKeyHex,
     });
-    await new Promise<void>((resolve) => {
-      payloadServer.listen(0, "127.0.0.1", resolve);
+    const configWithDaHash = {
+      ...config,
+      daParams: {
+        ...config.daParams,
+        committeeSignersHash: bytesToHex(
+          blake2b(Buffer.from(signer.publicKeyHex, "hex"), { dkLen: 32 }),
+        ),
+      },
+    };
+    const signerValidation = validateDaSignerMembership({
+      daParams: configWithDaHash.daParams,
+      signer,
+      signerIndex: 0,
     });
-    try {
-      const address = payloadServer.address();
-      const port =
-        typeof address === "object" && address !== null
-          ? (address as AddressInfo).port
-          : 0;
-      const endpoint = `http://127.0.0.1:${port.toString()}`;
-      const seed = "00".repeat(31) + "01";
-      const signer = await loadDaSigner(`hex:${seed}`);
-      const config = minimalConfig({
-        dir,
-        manifestPath: `${dir}/manifest.json`,
-        deploymentInfoPath: `${dir}/deployment.json`,
-        signerSeed: seed,
-        signerPublicKey: signer.publicKeyHex,
-      });
-      const configWithDaHash = {
-        ...config,
-        daParams: {
-          ...config.daParams,
-          committeeSignersHash: bytesToHex(
-            blake2b(Buffer.from(signer.publicKeyHex, "hex"), { dkLen: 32 }),
-          ),
-        },
-        daPayloadEndpoints: [endpoint],
-      };
-      const signerValidation = validateDaSignerMembership({
-        daParams: configWithDaHash.daParams,
-        signer,
-        signerIndex: 0,
-      });
-      const store = await JsonFileWatcherStore.open(dir);
-      const service = new WatcherService({
-        config: configWithDaHash,
-        store,
-        stateQueueProvider: {
-          fetchStateQueueNodes: async () => [
-            makeObservedNode({ header, headerHash, depth: 10 }),
-          ],
-        },
-        payloadClient: new DaPayloadClient({
-          endpoints: configWithDaHash.daPayloadEndpoints,
-        }),
-        signer,
-        signerValidation,
-        transactionProjector: IDENTITY_TX_PROJECTOR,
-      });
+    const store = await JsonFileWatcherStore.open(dir);
+    await store.saveDaPayload({
+      deploymentFingerprint: configWithDaHash.deploymentFingerprint,
+      headerHash,
+      payloadCborHex: invalidPayload.toString("hex"),
+      payloadSha256: daPayloadSha256(invalidPayload),
+      sourcePeerId: "libp2p:payload-submit",
+      fetchedAt: new Date().toISOString(),
+      validationStatus: "fetched",
+    });
+    const service = new WatcherService({
+      config: configWithDaHash,
+      store,
+      stateQueueProvider: {
+        fetchStateQueueNodes: async () => [
+          makeObservedNode({ header, headerHash, depth: 10 }),
+        ],
+      },
+      payloadSource: failPayloadSource("payload source must not be used"),
+      signer,
+      signerValidation,
+      transactionProjector: IDENTITY_TX_PROJECTOR,
+    });
 
-      await service.initialize();
-      await expect(service.tick()).resolves.toMatchObject({
-        scannedHeaders: 1,
-        signedHeaders: 1,
-        skippedHeaders: 0,
-        errors: [],
-      });
-      await expect(store.getDaPayload(headerHash)).resolves.toMatchObject({
-        headerHash,
-        sourceEndpoint: endpoint,
-        validationStatus: "verified",
-      });
-      await expect(
-        store.getDaSignature({ headerHash, signerIndex: 0 }),
-      ).resolves.toMatchObject({ headerHash, broadcastStatus: "local" });
-    } finally {
-      await new Promise<void>((resolve, reject) => {
-        payloadServer.close((error) =>
-          error === undefined ? resolve() : reject(error),
-        );
-      });
-    }
+    await service.initialize();
+    await expect(service.tick()).resolves.toMatchObject({
+      scannedHeaders: 1,
+      signedHeaders: 0,
+      skippedHeaders: 1,
+    });
+    await expect(store.getDaPayload(headerHash)).resolves.toMatchObject({
+      headerHash,
+      sourcePeerId: "libp2p:payload-submit",
+      validationStatus: "malformed_da",
+    });
+    await expect(
+      store.getDaSignature({ headerHash, signerIndex: 0 }),
+    ).resolves.toBeUndefined();
   });
 
   it("detects conflicting payload bytes across DA endpoints and refuses to sign", async () => {
@@ -246,7 +386,6 @@ describe("WatcherService", () => {
           blake2b(Buffer.from(signer.publicKeyHex, "hex"), { dkLen: 32 }),
         ),
       },
-      daPayloadEndpoints: ["http://da-a.example", "http://da-b.example"],
     };
     const signerValidation = validateDaSignerMembership({
       daParams: configWithDaHash.daParams,
@@ -262,25 +401,10 @@ describe("WatcherService", () => {
           makeObservedNode({ header, headerHash, depth: 10 }),
         ],
       },
-      payloadClient: new DaPayloadClient({
-        endpoints: configWithDaHash.daPayloadEndpoints,
-        retries: 0,
-        fetchFn: (async (url: string | URL | Request) => {
-          const value = url.toString();
-          if (value.includes("/metadata")) {
-            return Response.json({ headerHash });
-          }
-          return new Response(
-            value.startsWith("http://da-a.example")
-              ? payloadCbor
-              : conflictingPayload,
-            {
-              status: 200,
-              headers: { "content-type": "application/cbor" },
-            },
-          );
-        }) as typeof fetch,
-      }),
+      payloadSource: payloadSourceFromCandidates([
+        { sourcePeerId: "da-peer-a", payloadCbor },
+        { sourcePeerId: "da-peer-b", payloadCbor: conflictingPayload },
+      ]),
       signer,
       signerValidation,
       transactionProjector: IDENTITY_TX_PROJECTOR,
@@ -297,7 +421,7 @@ describe("WatcherService", () => {
       headerHash,
       validationStatus: "conflicted",
       conflictStatus: "conflicting_bytes",
-      sourceEndpoint: "http://da-a.example,http://da-b.example",
+      sourcePeerId: "da-peer-a,da-peer-b",
     });
     await expect(
       store.getDaSignature({ headerHash, signerIndex: 0 }),
@@ -340,21 +464,12 @@ describe("WatcherService", () => {
           makeObservedNode({ header, headerHash, depth: 10 }),
         ],
       },
-      payloadClient: new DaPayloadClient({
-        endpoints: ["http://da.example"],
-        retries: 0,
-        fetchFn: (async (url: string | URL | Request) => {
-          if (url.toString().includes("/metadata")) {
-            return Response.json({ headerHash });
-          }
-          return payloadAvailable
-            ? new Response(payloadCbor, {
-                status: 200,
-                headers: { "content-type": "application/cbor" },
-              })
-            : new Response("missing", { status: 404 });
-        }) as typeof fetch,
-      }),
+      payloadSource: {
+        fetchPayloadCandidates: async () =>
+          payloadAvailable
+            ? payloadCandidates([{ sourcePeerId: "da-peer", payloadCbor }])
+            : missingPayload("da-peer"),
+      },
       signer,
       signerValidation,
       transactionProjector: IDENTITY_TX_PROJECTOR,
@@ -365,7 +480,15 @@ describe("WatcherService", () => {
       scannedHeaders: 1,
       signedHeaders: 0,
       skippedHeaders: 1,
-      errors: [`missing DA payload for ${headerHash}`],
+      payloadFetches: [
+        {
+          headerHash,
+          status: "missing_da",
+          sourcePeerIds: ["da-peer"],
+          detail: "da-peer:not_found",
+        },
+      ],
+      errors: [],
     });
     await expect(store.getDaPayload(headerHash)).resolves.toMatchObject({
       validationStatus: "missing_da",
@@ -432,21 +555,14 @@ describe("WatcherService", () => {
           return [makeObservedNode({ header, headerHash, depth: 10 })];
         },
       },
-      payloadClient: new DaPayloadClient({
-        endpoints: ["http://da.example"],
-        fetchFn: (async (url: string | URL | Request) => {
-          if (url.toString().includes("/metadata")) {
-            return Response.json({ headerHash });
-          }
+      payloadSource: {
+        fetchPayloadCandidates: async () => {
           payloadFetches += 1;
           payloadFetchStarted();
           await payloadGate;
-          return new Response(payloadCbor, {
-            status: 200,
-            headers: { "content-type": "application/cbor" },
-          });
-        }) as typeof fetch,
-      }),
+          return payloadCandidates([{ sourcePeerId: "da-peer", payloadCbor }]);
+        },
+      },
       signer,
       signerValidation,
       transactionProjector: IDENTITY_TX_PROJECTOR,
@@ -498,14 +614,7 @@ describe("WatcherService", () => {
       signerIndex: 0,
     });
     const store = await JsonFileWatcherStore.open(dir);
-    const payloadClient = new DaPayloadClient({
-      endpoints: ["http://da.example"],
-      fetchFn: (async () =>
-        new Response(payloadCbor, {
-          status: 200,
-          headers: { "content-type": "application/cbor" },
-        })) as typeof fetch,
-    });
+    const payloadSource = payloadSourceFromBytes(payloadCbor);
     const published: string[] = [];
     const service = new WatcherService({
       config: configWithDaHash,
@@ -515,7 +624,7 @@ describe("WatcherService", () => {
           makeObservedNode({ header, headerHash, depth: 10 }),
         ],
       },
-      payloadClient,
+      payloadSource,
       signer,
       signerValidation,
       coordinator: {
@@ -567,14 +676,7 @@ describe("WatcherService", () => {
       signerIndex: 0,
     });
     const store = await JsonFileWatcherStore.open(dir);
-    const payloadClient = new DaPayloadClient({
-      endpoints: ["http://da.example"],
-      fetchFn: (async () =>
-        new Response(payloadCbor, {
-          status: 200,
-          headers: { "content-type": "application/cbor" },
-        })) as typeof fetch,
-    });
+    const payloadSource = payloadSourceFromBytes(payloadCbor);
     const published: string[] = [];
     const service = new WatcherService({
       config: configWithDaHash,
@@ -584,7 +686,7 @@ describe("WatcherService", () => {
           makeObservedNode({ header, headerHash, depth: 10 }),
         ],
       },
-      payloadClient,
+      payloadSource,
       signer,
       signerValidation,
       coordinator: {
@@ -690,12 +792,9 @@ describe("WatcherService", () => {
           }),
         ],
       },
-      payloadClient: new DaPayloadClient({
-        endpoints: ["http://da.example"],
-        fetchFn: (async () => {
-          throw new Error("payload should not be fetched for attested header");
-        }) as typeof fetch,
-      }),
+      payloadSource: failPayloadSource(
+        "payload should not be fetched for attested header",
+      ),
       signer,
       signerValidation,
       coordinator: {
@@ -749,14 +848,7 @@ describe("WatcherService", () => {
       signerIndex: 0,
     });
     const store = await JsonFileWatcherStore.open(dir);
-    const payloadClient = new DaPayloadClient({
-      endpoints: ["http://da.example"],
-      fetchFn: (async () =>
-        new Response(payloadCbor, {
-          status: 200,
-          headers: { "content-type": "application/cbor" },
-        })) as typeof fetch,
-    });
+    const payloadSource = payloadSourceFromBytes(payloadCbor);
     const initialized = candidateRecord({
       headerHash,
       committeeSignersHash: signerValidation.committeeSignersHash,
@@ -779,9 +871,9 @@ describe("WatcherService", () => {
       },
       recordSubmission: (record) => store.saveL1Submission(record),
       submitter: {
-        initAttestation: async () => "initTx",
-        addSignatures: async () => "addTx",
-        applyAttestation: async () => "applyTx",
+        initAttestation: async () => submitted("initTx"),
+        addSignatures: async () => submitted("addTx"),
+        applyAttestation: async () => submitted("applyTx"),
       },
     });
     const service = new WatcherService({
@@ -792,7 +884,7 @@ describe("WatcherService", () => {
           makeObservedNode({ header, headerHash, depth: 10 }),
         ],
       },
-      payloadClient,
+      payloadSource,
       signer,
       signerValidation,
       coordinator,
@@ -843,14 +935,7 @@ describe("WatcherService", () => {
       signerIndex: 0,
     });
     const store = await JsonFileWatcherStore.open(dir);
-    const payloadClient = new DaPayloadClient({
-      endpoints: ["http://da.example"],
-      fetchFn: (async () =>
-        new Response(payloadCbor, {
-          status: 200,
-          headers: { "content-type": "application/cbor" },
-        })) as typeof fetch,
-    });
+    const payloadSource = payloadSourceFromBytes(payloadCbor);
     const initialized = candidateRecord({
       headerHash,
       committeeSignersHash: signerValidation.committeeSignersHash,
@@ -890,15 +975,15 @@ describe("WatcherService", () => {
       submitter: {
         initAttestation: async () => {
           calls.push("init");
-          return "initTx";
+          return submitted("initTx");
         },
         addSignatures: async ({ signerIndexes }) => {
           calls.push(`add:${signerIndexes.join(",")}`);
-          return "addTx";
+          return submitted("addTx");
         },
         applyAttestation: async ({ candidate }) => {
           calls.push(`apply:${candidate.outRef}`);
-          return "applyTx";
+          return submitted("applyTx");
         },
       },
     });
@@ -910,7 +995,7 @@ describe("WatcherService", () => {
           makeObservedNode({ header, headerHash, depth: 10 }),
         ],
       },
-      payloadClient,
+      payloadSource,
       signer,
       signerValidation,
       coordinator,
@@ -1064,11 +1149,11 @@ describe("WatcherService", () => {
         },
         addSignatures: async ({ signerIndexes }) => {
           calls.push(`add:${signerIndexes.join(",")}`);
-          return "addTx";
+          return submitted("addTx");
         },
         applyAttestation: async ({ candidate }) => {
           calls.push(`apply:${candidate.outRef}`);
-          return "applyTx";
+          return submitted("applyTx");
         },
       },
     });
@@ -1080,14 +1165,7 @@ describe("WatcherService", () => {
           makeObservedNode({ header, headerHash, depth: 10 }),
         ],
       },
-      payloadClient: new DaPayloadClient({
-        endpoints: ["http://da.example"],
-        fetchFn: (async () =>
-          new Response(payloadCbor, {
-            status: 200,
-            headers: { "content-type": "application/cbor" },
-          })) as typeof fetch,
-      }),
+      payloadSource: payloadSourceFromBytes(payloadCbor),
       signer,
       signerValidation,
       coordinator,
@@ -1101,7 +1179,7 @@ describe("WatcherService", () => {
       skippedHeaders: 0,
       errors: [],
     });
-    expect(calls).toEqual(["add:0", `apply:${initialized.outRef}`]);
+    expect(calls).toEqual(["add:0,1", `apply:${initialized.outRef}`]);
     await expect(store.listL1Submissions()).resolves.toMatchObject([
       { headerHash, txKind: "add_signatures", txHash: "addTx" },
       { headerHash, txKind: "apply", txHash: "applyTx" },
@@ -1201,130 +1279,106 @@ describe("WatcherService", () => {
         },
       },
     ];
-    const peerServer = createServer((request, response) => {
-      if (request.method === "GET") {
-        response.writeHead(200, { "content-type": "application/json" });
-        response.end(
-          `${JSON.stringify({ signatures: peerSignatures }, jsonBigIntStringReplacer)}\n`,
-        );
-        return;
-      }
-      response.writeHead(405);
-      response.end();
+    const peerId = "peer-libp2p-1";
+    const store = await JsonFileWatcherStore.open(dir);
+    const initialized = candidateRecord({
+      headerHash,
+      committeeSignersHash,
+      attestationCount: 0,
+      threshold: 2,
     });
-    await new Promise<void>((resolve) => {
-      peerServer.listen(0, "127.0.0.1", resolve);
+    const threshold = candidateRecord({
+      headerHash,
+      committeeSignersHash,
+      attestationCount: 2,
+      threshold: 2,
+      status: "threshold",
+      bitmap: "c0" + "00".repeat(31),
     });
-    try {
-      const address = peerServer.address();
-      const port =
-        typeof address === "object" && address !== null
-          ? (address as AddressInfo).port
-          : 0;
-      const peerBaseUrl = `http://127.0.0.1:${port.toString()}`;
-      const store = await JsonFileWatcherStore.open(dir);
-      const initialized = candidateRecord({
-        headerHash,
-        committeeSignersHash,
-        attestationCount: 0,
-        threshold: 2,
-      });
-      const threshold = candidateRecord({
-        headerHash,
-        committeeSignersHash,
-        attestationCount: 2,
-        threshold: 2,
-        status: "threshold",
-        bitmap: "c0" + "00".repeat(31),
-      });
-      const candidateResponses = [[], [initialized], [threshold]];
-      const calls: string[] = [];
-      const onChainCoordinator = new OnChainLifecycleCoordinator({
-        threshold: 2,
-        visibilityRetryCount: 0,
-        chainReader: {
-          fetchDaAttestationCandidates: async () =>
-            candidateResponses.shift() ?? [threshold],
+    const candidateResponses = [[], [initialized], [threshold]];
+    const calls: string[] = [];
+    const onChainCoordinator = new OnChainLifecycleCoordinator({
+      threshold: 2,
+      visibilityRetryCount: 0,
+      chainReader: {
+        fetchDaAttestationCandidates: async () =>
+          candidateResponses.shift() ?? [threshold],
+      },
+      recordSubmission: (record) => store.saveL1Submission(record),
+      submitter: {
+        initAttestation: async () => {
+          calls.push("init");
+          return submitted("initTx");
         },
-        recordSubmission: (record) => store.saveL1Submission(record),
-        submitter: {
-          initAttestation: async () => {
-            calls.push("init");
-            return "initTx";
-          },
-          addSignatures: async ({ signerIndexes }) => {
-            calls.push(`add:${signerIndexes.join(",")}`);
-            return "addTx";
-          },
-          applyAttestation: async ({ candidate }) => {
-            calls.push(`apply:${candidate.outRef}`);
-            return "applyTx";
-          },
+        addSignatures: async ({ signerIndexes }) => {
+          calls.push(`add:${signerIndexes.join(",")}`);
+          return submitted("addTx");
         },
-      });
-      const peerPoller = new PeerSignaturePoller({
-        deploymentFingerprint: config.deploymentFingerprint,
-        peers: [{ baseUrl: peerBaseUrl }],
-        signerValidation: committeeValidation,
-        store,
-        requestTimeoutMs: 1000,
-      });
-      const submitterReconciler = new SubmitterReconciler({
-        deploymentFingerprint: config.deploymentFingerprint,
-        committeeValidation,
-        store,
-        coordinator: onChainCoordinator,
-        peerPoller,
-      });
-      const service = new WatcherService({
-        config,
-        store,
-        stateQueueProvider: {
-          fetchStateQueueNodes: async () => [
-            makeObservedNode({ header, headerHash, depth: 10 }),
-          ],
+        applyAttestation: async ({ candidate }) => {
+          calls.push(`apply:${candidate.outRef}`);
+          return submitted("applyTx");
         },
-        payloadClient: new DaPayloadClient({
-          endpoints: ["http://da.example"],
-          fetchFn: (async () =>
-            new Response(payloadCbor, {
-              status: 200,
-              headers: { "content-type": "application/cbor" },
-            })) as typeof fetch,
-        }),
-        submitterReconciler,
-        transactionProjector: IDENTITY_TX_PROJECTOR,
-      });
+      },
+    });
+    const peerPoller = new PeerSignaturePoller({
+      deploymentFingerprint: config.deploymentFingerprint,
+      peers: [{ peerId }],
+      attestationExchange: {
+        publishAttestation: async () => ({ status: "accepted" }),
+        attestationsByHeader: async ({
+          deploymentFingerprint,
+          headerHash: requestedHeaderHash,
+          peer,
+        }) =>
+          peer.peerId === peerId &&
+          deploymentFingerprint === config.deploymentFingerprint &&
+          requestedHeaderHash === headerHash
+            ? peerSignatures
+            : [],
+      },
+      signerValidation: committeeValidation,
+      store,
+      requestTimeoutMs: 1000,
+    });
+    const submitterReconciler = new SubmitterReconciler({
+      deploymentFingerprint: config.deploymentFingerprint,
+      committeeValidation,
+      daAttestationPolicyId: config.daAttestationPolicyId,
+      store,
+      coordinator: onChainCoordinator,
+      peerPoller,
+    });
+    const service = new WatcherService({
+      config,
+      store,
+      stateQueueProvider: {
+        fetchStateQueueNodes: async () => [
+          makeObservedNode({ header, headerHash, depth: 10 }),
+        ],
+      },
+      payloadSource: payloadSourceFromBytes(payloadCbor),
+      submitterReconciler,
+      transactionProjector: IDENTITY_TX_PROJECTOR,
+    });
 
-      await service.initialize();
-      await expect(service.tick()).resolves.toMatchObject({
-        scannedHeaders: 1,
-        signedHeaders: 0,
-        reconciledHeaders: 1,
-        skippedHeaders: 1,
-        errors: [],
-      });
-      expect(calls).toEqual([
-        "init",
-        "add:0,1",
-        `apply:${threshold.outRef}`,
-      ]);
-      await expect(store.listDaSignatures(headerHash)).resolves.toMatchObject([
-        { headerHash, signerIndex: 0, source: "peer" },
-        { headerHash, signerIndex: 1, source: "peer" },
-      ]);
-      await expect(store.listL1Submissions()).resolves.toMatchObject([
-        { headerHash, txKind: "add_signatures", txHash: "addTx" },
-        { headerHash, txKind: "apply", txHash: "applyTx" },
-        { headerHash, txKind: "init", txHash: "initTx" },
-      ]);
-    } finally {
-      await new Promise<void>((resolve, reject) => {
-        peerServer.close((error) =>
-          error === undefined ? resolve() : reject(error),
-        );
-      });
-    }
+    await service.initialize();
+    await expect(service.tick()).resolves.toMatchObject({
+      scannedHeaders: 1,
+      signedHeaders: 0,
+      reconciledHeaders: 1,
+      skippedHeaders: 1,
+      errors: [],
+    });
+    expect(calls).toEqual(["init", "add:0,1", `apply:${threshold.outRef}`]);
+    await expect(store.listDaSignatures(headerHash)).resolves.toMatchObject([
+      { headerHash, signerIndex: 0, source: "peer" },
+      { headerHash, signerIndex: 1, source: "peer" },
+    ]);
+    await expect(store.listL1Submissions()).resolves.toMatchObject([
+      { headerHash, txKind: "add_signatures", txHash: "addTx" },
+      { headerHash, txKind: "apply", txHash: "applyTx" },
+      { headerHash, txKind: "init", txHash: "initTx" },
+    ]);
   });
 
   it("recovers after restart between add-signatures and threshold apply", async () => {
@@ -1397,7 +1451,7 @@ describe("WatcherService", () => {
         },
         addSignatures: async () => {
           calls.push("add");
-          return "addTx";
+          return submitted("addTx");
         },
         applyAttestation: async () => {
           throw new Error("unexpected apply before threshold");
@@ -1412,14 +1466,7 @@ describe("WatcherService", () => {
           makeObservedNode({ header, headerHash, depth: 10 }),
         ],
       },
-      payloadClient: new DaPayloadClient({
-        endpoints: ["http://da.example"],
-        fetchFn: (async () =>
-          new Response(payloadCbor, {
-            status: 200,
-            headers: { "content-type": "application/cbor" },
-          })) as typeof fetch,
-      }),
+      payloadSource: payloadSourceFromBytes(payloadCbor),
       signer,
       signerValidation,
       coordinator: firstCoordinator,
@@ -1456,7 +1503,7 @@ describe("WatcherService", () => {
         },
         applyAttestation: async () => {
           calls.push("apply");
-          return "applyTx";
+          return submitted("applyTx");
         },
       },
     });
@@ -1468,12 +1515,9 @@ describe("WatcherService", () => {
           makeObservedNode({ header, headerHash, depth: 10 }),
         ],
       },
-      payloadClient: new DaPayloadClient({
-        endpoints: ["http://da.example"],
-        fetchFn: (async () => {
-          throw new Error("payload should not be refetched after restart");
-        }) as typeof fetch,
-      }),
+      payloadSource: failPayloadSource(
+        "payload should not be refetched after restart",
+      ),
       signer,
       signerValidation,
       coordinator: restartedCoordinator,
@@ -1503,6 +1547,40 @@ describe("WatcherService", () => {
       { headerHash, txKind: "apply", txHash: "applyTx" },
     ]);
   });
+});
+
+const submitted = (txHash: string) => ({
+  status: "submitted" as const,
+  txHash,
+});
+
+const payloadSourceFromCandidates = (
+  candidates: readonly DaPayloadCandidate[],
+): DaPayloadSource => ({
+  fetchPayloadCandidates: async () => payloadCandidates(candidates),
+});
+
+const payloadCandidates = (
+  candidates: readonly DaPayloadCandidate[],
+): Awaited<ReturnType<DaPayloadSource["fetchPayloadCandidates"]>> => ({
+  ok: true,
+  candidates,
+  attempts: [],
+});
+
+const missingPayload = (
+  sourcePeerId: string,
+): Awaited<ReturnType<DaPayloadSource["fetchPayloadCandidates"]>> => ({
+  ok: false,
+  attempts: [
+    { sourcePeerId, status: "not_found", detail: "payload not found" },
+  ],
+});
+
+const failPayloadSource = (message: string): DaPayloadSource => ({
+  fetchPayloadCandidates: async () => {
+    throw new Error(message);
+  },
 });
 
 const candidateRecord = ({

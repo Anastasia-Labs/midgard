@@ -1,3 +1,10 @@
+import { Effect } from "effect";
+
+import {
+  localOgmiosSubmitSlotEvidence,
+  readLocalOgmiosSubmitSlot,
+  type SubmitSlotSnapshot,
+} from "@/local-ogmios-slot.js";
 import {
   classifyProviderHttpResponse,
   getProviderCooldown,
@@ -27,6 +34,7 @@ export type L1ProviderHealth = {
   readonly status?: number;
   readonly failureKind?: string;
   readonly bodySummary?: string;
+  readonly localLedgerSlot?: SubmitSlotSnapshot;
   readonly cooldown?: {
     readonly reason: string;
     readonly retryAtMs: number;
@@ -196,11 +204,48 @@ const checkKupmios = async (
     cooldownMs: config.L1_PROVIDER_RATE_LIMIT_COOLDOWN_MS,
     nowMs,
   });
+  if (!ogmios.healthy) {
+    return {
+      ...ogmios,
+      endpoint: `${redactEndpoint(config.L1_KUPO_KEY)},${redactEndpoint(
+        config.L1_OGMIOS_KEY,
+      )}`,
+    };
+  }
+  let slotSnapshot: SubmitSlotSnapshot;
+  try {
+    slotSnapshot = await Effect.runPromise(
+      readLocalOgmiosSubmitSlot({
+        ogmiosUrl: config.L1_OGMIOS_KEY,
+        fetchImpl,
+        nowMs,
+        timeoutMs: config.L1_PROVIDER_PREFLIGHT_TIMEOUT_MS,
+      }),
+    );
+  } catch (cause) {
+    return {
+      ...ogmios,
+      healthy: false,
+      degraded: false,
+      endpoint: `${redactEndpoint(config.L1_KUPO_KEY)},${redactEndpoint(
+        config.L1_OGMIOS_KEY,
+      )}`,
+      failureKind: "local_ogmios_slot_unavailable",
+      bodySummary: summarizeProviderBody(String(cause)),
+    };
+  }
   return {
     ...ogmios,
     endpoint: `${redactEndpoint(config.L1_KUPO_KEY)},${redactEndpoint(
       config.L1_OGMIOS_KEY,
     )}`,
+    localLedgerSlot: slotSnapshot,
+    bodySummary: [
+      ogmios.bodySummary,
+      localOgmiosSubmitSlotEvidence(slotSnapshot),
+    ]
+      .filter((part): part is string => part !== undefined && part.length > 0)
+      .join("; "),
   };
 };
 

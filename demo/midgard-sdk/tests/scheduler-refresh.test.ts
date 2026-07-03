@@ -77,8 +77,21 @@ const schedulerValidator = (): AuthenticatedValidator =>
 const makeRedeemerContext = (
   record: RecordedTx,
   ownInput: UTxO,
+  completeOptions: unknown,
 ): RedeemerContext => {
+  const presetWalletInputs =
+    typeof completeOptions === "object" &&
+    completeOptions !== null &&
+    "presetWalletInputs" in completeOptions &&
+    Array.isArray(
+      (completeOptions as { readonly presetWalletInputs?: unknown })
+        .presetWalletInputs,
+    )
+      ? ((completeOptions as { readonly presetWalletInputs: readonly UTxO[] })
+          .presetWalletInputs as readonly UTxO[])
+      : [];
   const collectedInputs = record.collects.flatMap(({ inputs }) => inputs);
+  const finalInputs = [...presetWalletInputs, ...collectedInputs];
   return {
     ownPurpose: { tag: "spend", input: ownInput },
     redeemers: [{ tag: "spend", input: ownInput }],
@@ -89,7 +102,7 @@ const makeRedeemerContext = (
       assets: payment.assets,
     })),
     inputIndex: (input: UTxO) => {
-      const index = collectedInputs.findIndex((candidate) =>
+      const index = finalInputs.findIndex((candidate) =>
         sameOutRef(candidate, input),
       );
       return index < 0 ? undefined : BigInt(index);
@@ -162,7 +175,11 @@ const makeRecordingLucid = (
               for (let i = 0; i < redeemerCallbackInvocations; i += 1) {
                 record.redeemerCallbackCalls += 1;
                 (collect.redeemer as BuildTxWithRedeemer)(
-                  makeRedeemerContext(record, collect.inputs[0]!),
+                  makeRedeemerContext(
+                    record,
+                    collect.inputs[0]!,
+                    completeOptions,
+                  ),
                 );
               }
             }
@@ -185,7 +202,7 @@ const makeFixture = () => {
     lovelace: 5_000_000n,
     [schedulerUnit]: 1n,
   });
-  const feeInput = mkUtxo("01", 0);
+  const walletInput = mkUtxo("01", 0);
   const activeRoot = mkUtxo("20", 0);
   const activeTail = mkUtxo("30", 0);
   const registeredWitness = mkUtxo("40", 0);
@@ -193,7 +210,7 @@ const makeFixture = () => {
   return {
     scheduler,
     schedulerInput,
-    feeInput,
+    walletInput,
     activeRoot,
     activeTail,
     registeredWitness,
@@ -201,8 +218,7 @@ const makeFixture = () => {
     baseConfig: {
       scheduler,
       operatorKeyHash: h28("99"),
-      feeInput,
-      presetWalletInputs: [feeInput],
+      presetWalletInputs: [walletInput],
       schedulerInput,
       refreshedDatum: {
         ActiveOperator: {
@@ -270,16 +286,20 @@ describe("scheduler refresh SDK builder", () => {
     expect(txs[0]?.reads).toEqual([
       [fixture.activeTail, fixture.schedulerScriptRef],
     ]);
-    expect(txs[1]?.collects[1]?.redeemer).toBe(
+    expect(txs[0]?.collects).toHaveLength(1);
+    expect(txs[0]?.collects[0]?.inputs).toEqual([fixture.schedulerInput]);
+    expect(txs[1]?.collects).toHaveLength(1);
+    expect(txs[1]?.collects[0]?.inputs).toEqual([fixture.schedulerInput]);
+    expect(txs[1]?.collects[0]?.redeemer).toBe(
       result.schedulerSpendRedeemerCbor,
     );
     expect(txs[0]?.completeOptions[0]).toEqual({
       localUPLCEval: true,
-      presetWalletInputs: [fixture.feeInput],
+      presetWalletInputs: [fixture.walletInput],
     });
     expect(txs[1]?.completeOptions[0]).toEqual({
       localUPLCEval: true,
-      presetWalletInputs: [fixture.feeInput],
+      presetWalletInputs: [fixture.walletInput],
     });
   });
 
@@ -308,7 +328,7 @@ describe("scheduler refresh SDK builder", () => {
       schedulerOutputIndex: 0n,
       activeNodeRefInputIndex: 0n,
     });
-    expect(txs[1]?.collects[1]?.redeemer).toBe(
+    expect(txs[1]?.collects[0]?.redeemer).toBe(
       result.schedulerSpendRedeemerCbor,
     );
   });

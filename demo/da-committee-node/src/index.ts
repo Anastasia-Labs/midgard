@@ -6,12 +6,23 @@ import {
   onChainCoordinatorFromConfig,
 } from "./coordinator/factory.js";
 import { SubmitterReconciler } from "./coordinator/submitter-reconciler.js";
-import { DaPayloadClient } from "./da/client.js";
+import {
+  createDaLibp2pAttestationRequestHandlers,
+  createDaLibp2pPayloadRequestHandlers,
+  createDaLibp2pProofRequestHandlers,
+  DaLibp2pAttestationExchange,
+  DaLibp2pNode,
+  DaLibp2pPayloadSource,
+  DaPeerRegistry,
+  loadDaLibp2pIdentity,
+  StoreBackedDaAttestationProtocol,
+} from "./da/libp2p/index.js";
 import { daAttestationReaderFromConfig } from "./l1/da-attestation-reader.js";
 import { providerFromConfig } from "./l1/provider.js";
 import { l1SubmitterPreflightResultToJson } from "./l1/submitter.js";
 import { PeerSignatureCoordinator } from "./peer/coordinator.js";
 import { PeerSignaturePoller } from "./peer/poller.js";
+import { resolveRemoteDaAttestationTargets } from "./peer/targets.js";
 import {
   loadDaSigner,
   validateDaCommittee,
@@ -48,17 +59,79 @@ const main = async (): Promise<void> => {
         });
   const provider = await providerFromConfig(config);
   const daChainReader = await daAttestationReaderFromConfig(config);
-  const payloadClient = new DaPayloadClient({
-    endpoints: config.daPayloadEndpoints,
+  if (config.daTransport.kind !== "libp2p") {
+    throw new Error("midgard-watcher requires libp2p DA transport mode");
+  }
+  if (config.libp2pPrivateKeySource === undefined) {
+    throw new Error(
+      "midgard-watcher libp2p mode requires DA_LIBP2P_PRIVATE_KEY_SOURCE",
+    );
+  }
+  const daIdentity = await loadDaLibp2pIdentity(config.libp2pPrivateKeySource);
+  const daPeerRegistry = DaPeerRegistry.fromConfig(config.daTransport);
+  daPeerRegistry.requireKnownPeer(daIdentity.peerId);
+  const daAttestationProtocol = new StoreBackedDaAttestationProtocol({
+    deploymentFingerprint: config.deploymentFingerprint,
+    localPeerId: daIdentity.peerId,
+    committeeValidation,
+    store,
+  });
+  const requestHandlers = new Map([
+    ...createDaLibp2pPayloadRequestHandlers({
+      deploymentFingerprint: config.deploymentFingerprint,
+      store,
+      limits: config.daTransport.limits,
+    }),
+    ...createDaLibp2pProofRequestHandlers({
+      deploymentFingerprint: config.deploymentFingerprint,
+      store,
+      limits: config.daTransport.limits,
+      registry: daPeerRegistry,
+    }),
+    ...createDaLibp2pAttestationRequestHandlers({
+      deploymentFingerprint: config.deploymentFingerprint,
+      protocol: daAttestationProtocol,
+      limits: config.daTransport.limits,
+    }),
+  ]);
+  const daLibp2pNode = new DaLibp2pNode({
+    config: config.daTransport,
+    registry: daPeerRegistry,
+    privateKeySource: config.libp2pPrivateKeySource,
+    requestHandlers,
+  });
+  const payloadSource = new DaLibp2pPayloadSource({
+    deploymentFingerprint: config.deploymentFingerprint,
+    node: daLibp2pNode,
+    registry: daPeerRegistry,
+    limits: config.daTransport.limits,
+  });
+  const daAttestationTargets = resolveRemoteDaAttestationTargets({
+    peers: config.daTransport.peers,
+    localPeerId: daIdentity.peerId,
+    signerIndex: config.signerIndex,
+  });
+  const daAttestationPeers = daAttestationTargets.remotePeers;
+  const attestationExchange = new DaLibp2pAttestationExchange({
+    deploymentFingerprint: config.deploymentFingerprint,
+    localPeerId: daIdentity.peerId,
+    node: daLibp2pNode,
+    registry: daPeerRegistry,
+    protocol: daAttestationProtocol,
+    committeeValidation,
+    store,
+    requestTimeoutMs: config.peerRequestTimeoutMs,
   });
   const onChainCoordinator = config.l1SubmissionEnabled
     ? await onChainCoordinatorFromConfig(config, daChainReader, store)
     : undefined;
   const peerPoller =
-    onChainCoordinator !== undefined && config.peerEndpoints.length > 0
+    onChainCoordinator !== undefined && daAttestationPeers.length > 0
       ? new PeerSignaturePoller({
           deploymentFingerprint: config.deploymentFingerprint,
-          peers: config.peerEndpoints,
+          peers: daAttestationPeers,
+          localPeerId: daIdentity.peerId,
+          attestationExchange,
           signerValidation: committeeValidation,
           store,
           requestTimeoutMs: config.peerRequestTimeoutMs,
@@ -73,31 +146,46 @@ const main = async (): Promise<void> => {
           store,
           coordinator: onChainCoordinator,
           peerPoller,
+          daAttestationPolicyId: config.daAttestationPolicyId,
           submitterId: config.l1SubmitterId,
         });
+  const l1SubmitterPreflight = config.l1SubmissionEnabled
+    ? await l1SubmitterWalletPreflightFromConfig(config)
+        .then((result) => ({
+          status: result.status,
+          detail: l1SubmitterPreflightResultToJson(result),
+        }))
+        .catch((error: unknown) => ({
+          status: "failed" as const,
+          error: error instanceof Error ? error.message : String(error),
+        }))
+    : { status: "not_required" as const };
   const coordinator =
     signer !== undefined &&
     signerValidation !== undefined &&
     config.signerIndex !== undefined &&
-    config.peerEndpoints.length > 0
+    (daAttestationPeers.length > 0 || onChainCoordinator !== undefined)
       ? new PeerSignatureCoordinator({
           deploymentFingerprint: config.deploymentFingerprint,
-          peers: config.peerEndpoints,
+          peers: daAttestationPeers,
+          localPeerId: daIdentity.peerId,
           signer,
           signerIndex: config.signerIndex,
           signerValidation,
           store,
+          attestationExchange,
           requestTimeoutMs: config.peerRequestTimeoutMs,
           retryInitialDelayMs: config.peerRetryInitialDelayMs,
           retryMaxDelayMs: config.peerRetryMaxDelayMs,
           retryMaxAttempts: config.peerRetryMaxAttempts,
+          onChainCoordinator,
         })
       : undefined;
   const service = new WatcherService({
     config,
     store,
     stateQueueProvider: provider,
-    payloadClient,
+    payloadSource,
     signer,
     signerValidation,
     coordinator,
@@ -105,21 +193,29 @@ const main = async (): Promise<void> => {
     daChainReader,
   });
   await service.initialize();
+  await daLibp2pNode.start();
 
   if (process.argv.includes("--once")) {
-    const result = await service.tick();
-    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-    await store.close?.();
+    try {
+      const result = await service.tick();
+      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    } finally {
+      await daLibp2pNode.stop();
+      await store.close?.();
+    }
     return;
   }
 
-  let ready = true;
   const api = createWatcherApiServer({
     deploymentFingerprint: config.deploymentFingerprint,
     signerIndex: config.signerIndex,
     signerValidation: committeeValidation,
     store,
-    ready: () => ready,
+    readiness: () =>
+      service.readinessSnapshot({
+        localPeerId: daIdentity.peerId,
+        l1SubmitterPreflight,
+      }),
     manifest: config.deploymentManifest,
     peerReplayWindowMs: config.peerReplayWindowMs,
     peerMaxBodyBytes: config.peerMaxBodyBytes,
@@ -133,13 +229,11 @@ const main = async (): Promise<void> => {
 
   const runTick = async (): Promise<void> => {
     try {
-      ready = true;
       const result = await service.tick();
       if (result.errors.length > 0) {
         process.stderr.write(`${JSON.stringify(result)}\n`);
       }
     } catch (error) {
-      ready = false;
       process.stderr.write(
         `${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
       );
@@ -150,6 +244,7 @@ const main = async (): Promise<void> => {
   const shutdown = async (): Promise<void> => {
     clearInterval(interval);
     await api.close();
+    await daLibp2pNode.stop();
     await store.close?.();
   };
   process.once("SIGINT", () => {

@@ -98,6 +98,13 @@ const mockLucidService = LucidService.make({
   operatorMergeAddress: "",
   referenceScriptsWalletAddress: "",
   referenceScriptsAddress: "",
+  submitSlotSnapshot: () =>
+    Effect.succeed({
+      source: "test",
+      currentSlot: 0,
+      observedAtMs: 0,
+      slotLengthMs: 1_000,
+    }),
   switchToOperatorsMainWallet: Effect.succeed(undefined),
   switchToOperatorsMergingWallet: Effect.succeed(undefined),
   switchToReferenceScriptWallet: Effect.succeed(undefined),

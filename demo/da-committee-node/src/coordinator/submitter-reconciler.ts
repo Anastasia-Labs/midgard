@@ -8,6 +8,10 @@ import type {
   StateQueueHeaderRecord,
   ValidationSummary,
 } from "../domain.js";
+import {
+  classifyDaAttestationMarker,
+  formatUnexpectedDaAttestationMarker,
+} from "../l1/attestation-marker.js";
 import { validateDaSignatureRecord } from "../peer/signatures.js";
 import type { DaCommitteeValidation } from "../signer.js";
 import type { WatcherStore } from "../store.js";
@@ -26,6 +30,7 @@ export type SubmitterReconcileResult = {
 export type SubmitterReconcilerDeps = {
   readonly deploymentFingerprint: string;
   readonly committeeValidation: DaCommitteeValidation;
+  readonly daAttestationPolicyId: string;
   readonly store: Pick<WatcherStore, "getDaPayload" | "listDaSignatures">;
   readonly coordinator: {
     readonly reconcileAttestation: (
@@ -51,6 +56,26 @@ export class SubmitterReconciler {
   async reconcileHeader(
     header: StateQueueHeaderRecord,
   ): Promise<SubmitterReconcileResult> {
+    const marker = classifyDaAttestationMarker(
+      header.daAttestation,
+      this.deps.daAttestationPolicyId,
+    );
+    if (
+      header.finalized &&
+      header.status === "attested" &&
+      marker.kind === "already_attested_expected"
+    ) {
+      return { status: "reconciled", reason: "already attested" };
+    }
+    if (
+      header.finalized &&
+      (marker.kind === "already_attested_foreign" || marker.kind === "invalid")
+    ) {
+      return {
+        status: "post_failed",
+        reason: formatUnexpectedDaAttestationMarker(header.headerHash, marker),
+      };
+    }
     if (!isReconcilableHeader(header)) {
       return { status: "skipped", reason: "header is not in submitter scope" };
     }

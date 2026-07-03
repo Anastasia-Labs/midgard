@@ -141,6 +141,7 @@ const l1ReadyConfig = () => ({
   }),
   l1SubmissionEnabled: true,
   l1SubmitterKeySource: "private-key:ed25519_sk_test",
+  daAttestationPolicyId: "aa".repeat(28),
   l1SubmitterPreflight: {
     enabled: true,
     minPlainAdaLovelace: 50_000_000n,

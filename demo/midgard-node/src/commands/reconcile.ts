@@ -705,7 +705,7 @@ export const reconcileDaAttestedProgram = ({
       repairActions,
       nextAction:
         watcherUrl === undefined || deploymentFingerprint === undefined
-          ? "Provide --watcher-url and --deployment-fingerprint to prove DA attestation; local payload presence alone is not DA submission."
+          ? "Provide --watcher-url and --contract-deployment-info to prove DA attestation; local payload presence alone is not DA submission."
           : "DA payload or watcher witness evidence is missing.",
     });
   });

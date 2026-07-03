@@ -37,7 +37,7 @@ describe("DA attestation transaction builders", () => {
     ).toThrow(/at least one/);
   });
 
-  it("builds AddSignatures with updated datum using local UPLC evaluation", async () => {
+  it("builds AddSignatures with updated datum and defaults to local UPLC evaluation", async () => {
     const builder = new FakeTxBuilder();
     const attestationUtxo = utxo("03", 0, {
       lovelace: 5_000_000n,
@@ -91,6 +91,30 @@ describe("DA attestation transaction builders", () => {
     expect(builder.signerKeys).toHaveLength(0);
     expect(builder.completeOptions).toEqual([{ localUPLCEval: true }]);
   });
+
+  it("leaves local evaluator selection to the Lucid instance", async () => {
+    const builder = new FakeTxBuilder();
+    const attestationUtxo = utxo("03", 0, {
+      lovelace: 5_000_000n,
+      [SDK.daAttestationUnit(contracts.daAttestation, HEADER_HASH)]: 1n,
+    });
+
+    await buildAddSignaturesTx({
+      lucid: fakeLucid(builder, {
+        kupoUrl: "https://kupo.example.com",
+        ogmiosUrl: "http://127.0.0.1:1337",
+      }),
+      contracts,
+      daParamsUtxo: utxo("01", 0),
+      attestationUtxo,
+      attestationDatum: baseAttestationDatum(),
+      packedWitnessesHex: `00${"aa".repeat(64)}`,
+      signerIndexes: [0],
+      referenceScripts,
+    });
+
+    expect(builder.completeOptions).toEqual([{ localUPLCEval: true }]);
+  });
 });
 
 const HEADER_HASH = "01".repeat(28);
@@ -135,21 +159,30 @@ function utxo(
   byte: string,
   outputIndex: number,
   assets: UTxO["assets"] = { lovelace: 5_000_000n },
+  extra: Partial<UTxO> = {},
 ): UTxO {
   return {
     txHash: byte.repeat(32),
     outputIndex,
     address: "addr_test1fixture",
     assets,
+    ...extra,
   } as UTxO;
 }
 
 const outRef = (entry: Pick<UTxO, "txHash" | "outputIndex">): string =>
   `${entry.txHash}#${entry.outputIndex.toString()}`;
 
-const fakeLucid = (builder: FakeTxBuilder): LucidEvolution =>
+const fakeLucid = (
+  builder: FakeTxBuilder,
+  provider?: {
+    readonly kupoUrl: string;
+    readonly ogmiosUrl: string;
+  },
+): LucidEvolution =>
   ({
     newTx: () => builder,
+    config: () => ({ provider }),
   }) as unknown as LucidEvolution;
 
 class FakeTxBuilder {

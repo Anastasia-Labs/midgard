@@ -15,7 +15,6 @@ import {
   MempoolDB,
   PendingBlockFinalizationsDB,
   ProcessedMempoolDB,
-  TxUtils as TxTable,
   WithdrawalsDB,
 } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
@@ -34,8 +33,12 @@ import {
 } from "@/services/index.js";
 import { materializeConfirmedLedgerSnapshot } from "@/transactions/state-queue/confirmed-ledger-snapshot.js";
 import { type TxSignError, type TxSubmitError } from "@/transactions/utils.js";
+import { outRefLabel } from "@/tx-context.js";
 import { buildUnsignedCommitTx } from "@/workers/commit-block-header/build-unsigned-tx.js";
-import { fetchLatestCommittedBlockLocal } from "@/workers/commit-block-header/state-queue.js";
+import {
+  fetchLatestCommittedBlockLocal,
+  getLatestBlockDatumEndTime,
+} from "@/workers/commit-block-header/state-queue.js";
 import {
   deferProcessedCommitPayloadUntilConfirmation,
   recoverLocalFinalizationAgainstConfirmedBlock,
@@ -45,16 +48,27 @@ import {
 import { makeEventCommitments } from "@/workers/commit-block-header/transition-commitments.js";
 import {
   deserializeStateQueueUTxO,
+  type RegisteredDueWorkOutput,
   type SerializedStateQueueUTxO,
   WorkerInput,
   WorkerOutput,
 } from "@/workers/utils/commit-block-header.js";
 import {
+  type CommitSchedulerStateQueueEvidence,
+  type CurrentOperatorSchedulerWindow,
+  type EarliestCommitSchedulerPlan,
+  establishEndTimeFromTxRequests,
+  planSchedulerAwareCommitSelection,
   selectCommitTxCandidates,
   shouldDeferCommitSubmission,
   shouldSkipIdleCommitBehindUnmergedTail,
 } from "@/workers/utils/commit-block-planner.js";
-import { resolveExplicitCommitCandidateEndTimeMs } from "@/workers/utils/commit-end-time.js";
+import {
+  COMMIT_MIN_PRE_WITNESS_BUDGET_MS,
+  COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+  resolveCommitEndTimeFit,
+  resolveExplicitCommitCandidateEndTimeMs,
+} from "@/workers/utils/commit-end-time.js";
 import {
   computeLedgerMpfRootFromLedgerEntries,
   hydrateLedgerMpfFromLedgerEntries,
@@ -64,6 +78,10 @@ import {
   utxoToInsertBatchOp,
   withMpfRootTransactions,
 } from "@/workers/utils/mpf.js";
+import {
+  resolveCurrentOperatorSchedulerWindow,
+  resolveEarliestCommitSchedulerDueWorkPlan,
+} from "@/workers/utils/scheduler-refresh.js";
 
 const EXPLICIT_COMMIT_CONFIRMATION_TIMEOUT_MS = 120_000;
 const EXPLICIT_COMMIT_CONFIRMATION_POLL_INTERVAL_MS = 5_000;
@@ -86,13 +104,6 @@ const provideCommitBlockWorkerServices = <A, E>(
     Effect.provide(Lucid.Default),
     Effect.provide(NodeConfig.layer),
   );
-
-const establishEndTimeFromTxRequests = (
-  candidateTxs: readonly TxTable.EntryWithTimeStamp[],
-): Option.Option<Date> =>
-  candidateTxs.length > 0
-    ? Option.some(candidateTxs[0][TxColumns.TIMESTAMPTZ])
-    : Option.none();
 
 const pendingUserEventCountUpTo = (
   effectiveEndTime: Date,
@@ -253,7 +264,7 @@ const alignCommitMpfsToBase = ({
     return base.entries;
   });
 
-const shouldPreserveCommitMpfRoots = (output: WorkerOutput): boolean => {
+export const shouldPreserveCommitMpfRoots = (output: WorkerOutput): boolean => {
   switch (output.type) {
     case "SubmittedAwaitingConfirmationOutput":
     case "SubmittedAwaitingLocalFinalizationOutput":
@@ -265,10 +276,37 @@ const shouldPreserveCommitMpfRoots = (output: WorkerOutput): boolean => {
       // the transactions MPF root; rolling back would undo recovery.
       return true;
     case "FailureOutput":
+    case "RegisteredDueWorkOutput":
     case "NothingToCommitOutput":
       return false;
   }
 };
+
+export const workerPreIngestionDueWorkOutputFromPlan = (
+  plan: EarliestCommitSchedulerPlan,
+): RegisteredDueWorkOutput | undefined =>
+  plan.status === "register_due_work"
+    ? {
+        type: "RegisteredDueWorkOutput",
+        dueWork: plan.dueWork,
+      }
+    : undefined;
+
+export const shouldShortCircuitIdleCommitAttempt = ({
+  candidateTxCount,
+  processedPendingTxCount,
+  pendingUserEventCount,
+  localFinalizationPending,
+}: {
+  readonly candidateTxCount: number;
+  readonly processedPendingTxCount: number;
+  readonly pendingUserEventCount: number;
+  readonly localFinalizationPending: boolean;
+}): boolean =>
+  candidateTxCount === 0 &&
+  processedPendingTxCount === 0 &&
+  pendingUserEventCount === 0 &&
+  !localFinalizationPending;
 
 export type ExplicitBlockHeaderCommitParams = {
   readonly utxosRoot: string;
@@ -386,7 +424,7 @@ export const commitExplicitBlockHeaderProgram = (
   | SDK.HashingError
   | TxSignError
   | TxSubmitError,
-  Lucid | MidgardContracts
+  Lucid | MidgardContracts | NodeConfig
 > =>
   Effect.gen(function* () {
     const lucidService = yield* Lucid;
@@ -418,17 +456,27 @@ export const commitExplicitBlockHeaderProgram = (
         depositCount: 0n,
       },
     );
-    const { newHeaderHash, blockEndTimeMs, signAndSubmitProgram, txSize } =
-      yield* buildUnsignedCommitTx(
-        contracts,
-        latestBlock,
-        params.utxosRoot,
-        params.transactionsRoot,
-        params.depositsRoot,
-        params.withdrawalsRoot,
-        transitionCommitments,
-        endTime,
+    const explicitBuildResult = yield* buildUnsignedCommitTx(
+      contracts,
+      latestBlock,
+      params.utxosRoot,
+      params.transactionsRoot,
+      params.depositsRoot,
+      params.withdrawalsRoot,
+      transitionCommitments,
+      endTime,
+    );
+    if ("dueWork" in explicitBuildResult) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message:
+            "Explicit block commit discovered scheduler due work instead of a ready transaction",
+          cause: `kind=${explicitBuildResult.dueWork.kind},due_slot=${explicitBuildResult.dueWork.dueSlot.toString()},wait_ms=${explicitBuildResult.dueWork.waitMs.toString()}`,
+        }),
       );
+    }
+    const { newHeaderHash, blockEndTimeMs, signAndSubmitProgram, txSize } =
+      explicitBuildResult;
 
     const submittedTxHash = yield* signAndSubmitProgram;
     const shouldAwait = params.awaitConfirmation ?? true;
@@ -473,10 +521,65 @@ const databaseOperationsProgram = (
       workerInput.data.currentBlockStartTimeMs,
     );
     const processedPendingTxs = yield* ProcessedMempoolDB.retrieve;
-    const candidateSelection = selectCommitTxCandidates({
+    const rawCandidateSelection = selectCommitTxCandidates({
       mempoolTxs,
       processedMempoolTxs: processedPendingTxs,
     });
+    const availableConfirmedBlock = workerInput.data.availableConfirmedBlock;
+    const availableLocalFinalizationBlock =
+      workerInput.data.availableLocalFinalizationBlock;
+    const hasAvailableConfirmedBlock = availableConfirmedBlock !== "";
+    const hasAvailableLocalFinalizationBlock =
+      availableLocalFinalizationBlock !== "";
+    const canBuildOnConfirmedBlock =
+      hasAvailableConfirmedBlock && !workerInput.data.localFinalizationPending;
+    const contracts = yield* MidgardContracts;
+    const lucid = yield* Lucid;
+    let latestBlockForSchedulerPlanning: SDK.StateQueueUTxO | undefined;
+    let latestEndTimeMsForSchedulerPlanning: number | undefined;
+    if (canBuildOnConfirmedBlock) {
+      latestBlockForSchedulerPlanning = yield* deserializeStateQueueUTxO(
+        availableConfirmedBlock,
+      );
+      latestEndTimeMsForSchedulerPlanning = Number(
+        (yield* getLatestBlockDatumEndTime(
+          latestBlockForSchedulerPlanning.datum,
+        )).getTime(),
+      );
+      const stateQueueEvidence: CommitSchedulerStateQueueEvidence = {
+        tailCommitBaseOutRef: outRefLabel(latestBlockForSchedulerPlanning.utxo),
+        tailBlockEndTimeMs: latestEndTimeMsForSchedulerPlanning,
+        stateQueueHasUnmergedTail:
+          workerInput.data.stateQueueHasUnmergedTail ?? false,
+      };
+      yield* lucid.switchToOperatorsMainWallet;
+      const preIngestionPlan = yield* Effect.either(
+        resolveEarliestCommitSchedulerDueWorkPlan({
+          lucid: lucid.api,
+          contracts,
+          submitSlotSnapshot: lucid.submitSlotSnapshot,
+          stateQueueEvidence,
+          localFinalizationPending: workerInput.data.localFinalizationPending,
+          callerLabel: "commit-scheduler-worker-pre-ingestion",
+          discoveryStage: "worker_pre_ingestion",
+        }),
+      );
+      if (preIngestionPlan._tag === "Right") {
+        const output = workerPreIngestionDueWorkOutputFromPlan(
+          preIngestionPlan.right,
+        );
+        if (output !== undefined) {
+          yield* Effect.logInfo(
+            `🔹 Registered slot-aware due work before commit ingestion barriers discovery_stage=worker_pre_ingestion (kind=${output.dueWork.kind},key=${output.dueWork.key},current_slot=${output.dueWork.observedSlot.toString()},due_slot=${output.dueWork.dueSlot.toString()},due_at_ms=${output.dueWork.dueAtMs.toString()},wait_ms=${output.dueWork.waitMs.toString()},slot_source=${output.dueWork.slotSource},dependency_key=${output.dueWork.dependencyKey}).`,
+          );
+          return output;
+        }
+      } else {
+        yield* Effect.logWarning(
+          `🔹 Worker pre-ingestion scheduler due-work preflight failed; continuing to full planner: ${String(preIngestionPlan.left)}`,
+        );
+      }
+    }
     const depositIngestionBarrierTime =
       yield* fetchAndInsertDepositUTxOsForCommitBarrier(new Date());
     const withdrawalIngestionBarrierTime =
@@ -495,12 +598,74 @@ const databaseOperationsProgram = (
       candidate.getTime() < earliest.getTime() ? candidate : earliest,
     );
 
-    const availableConfirmedBlock = workerInput.data.availableConfirmedBlock;
-    const availableLocalFinalizationBlock =
-      workerInput.data.availableLocalFinalizationBlock;
-    const hasAvailableConfirmedBlock = availableConfirmedBlock !== "";
-    const hasAvailableLocalFinalizationBlock =
-      availableLocalFinalizationBlock !== "";
+    let currentSchedulerWindow: CurrentOperatorSchedulerWindow | undefined;
+    let currentWindowCommitEndTimeFit:
+      | ReturnType<typeof resolveCommitEndTimeFit>
+      | undefined;
+    const schedulerPlanningNowMs = Date.now();
+    if (canBuildOnConfirmedBlock) {
+      yield* lucid.switchToOperatorsMainWallet;
+      currentSchedulerWindow = yield* resolveCurrentOperatorSchedulerWindow(
+        lucid.api,
+        contracts,
+      );
+      if (currentSchedulerWindow !== undefined) {
+        const latestBlockForPlanning =
+          latestBlockForSchedulerPlanning ??
+          (yield* deserializeStateQueueUTxO(availableConfirmedBlock));
+        const latestEndTimeMs = Number(
+          latestEndTimeMsForSchedulerPlanning ??
+            (yield* getLatestBlockDatumEndTime(
+              latestBlockForPlanning.datum,
+            )).getTime(),
+        );
+        const txBackedCandidateEndTime = establishEndTimeFromTxRequests(
+          rawCandidateSelection.candidateTxs,
+        );
+        const candidateEndTimeMs = Option.isSome(txBackedCandidateEndTime)
+          ? txBackedCandidateEndTime.value.getTime()
+          : userEventOnlyEndTime.getTime();
+        currentWindowCommitEndTimeFit = resolveCommitEndTimeFit({
+          lucid: lucid.api,
+          latestEndTime: latestEndTimeMs,
+          candidateEndTime: candidateEndTimeMs,
+          nowMs: schedulerPlanningNowMs,
+          minimumFutureBufferMs: COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+          maximumEndTimeMs: currentSchedulerWindow.endTimeMs,
+        });
+      }
+    }
+    const schedulerAwareCommitSelection = planSchedulerAwareCommitSelection({
+      candidateSelection: rawCandidateSelection,
+      userEventOnlyEndTime,
+      currentSchedulerWindow,
+      currentBlockStartTimeMs: currentBlockStartTime.getTime(),
+      nowMs: schedulerPlanningNowMs,
+      minimumCurrentWindowBudgetMs: COMMIT_MIN_PRE_WITNESS_BUDGET_MS,
+      productionMinimumFutureBufferMs:
+        COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+      currentWindowCommitEndTimeFit,
+    });
+    if (
+      schedulerAwareCommitSelection.status === "using_current_scheduler_window"
+    ) {
+      yield* Effect.logInfo(
+        `🔹 Scheduler-aware commit planner using current scheduler window (${schedulerAwareCommitSelection.reason},user_event_end_time=${schedulerAwareCommitSelection.userEventOnlyEndTime.toISOString()}).`,
+      );
+    } else if (
+      schedulerAwareCommitSelection.status ===
+        "current_scheduler_budget_too_low" ||
+      schedulerAwareCommitSelection.status ===
+        "current_scheduler_end_time_floor_exceeds_window"
+    ) {
+      yield* Effect.logInfo(
+        `🔹 Scheduler-aware commit planner will not cap to current scheduler window (${schedulerAwareCommitSelection.reason}).`,
+      );
+    }
+    const candidateSelection = schedulerAwareCommitSelection.candidateSelection;
+    const effectiveUserEventOnlyEndTime =
+      schedulerAwareCommitSelection.userEventOnlyEndTime;
+    const blockEndTimeCapMs = schedulerAwareCommitSelection.blockEndTimeCapMs;
     if (
       shouldDeferCommitSubmission({
         localFinalizationPending: workerInput.data.localFinalizationPending,
@@ -534,8 +699,9 @@ const databaseOperationsProgram = (
       });
     }
 
-    const pendingUserEventCount =
-      yield* pendingUserEventCountUpTo(userEventOnlyEndTime);
+    const pendingUserEventCount = yield* pendingUserEventCountUpTo(
+      effectiveUserEventOnlyEndTime,
+    );
     if (
       shouldSkipIdleCommitBehindUnmergedTail({
         localFinalizationPending: workerInput.data.localFinalizationPending,
@@ -554,8 +720,23 @@ const databaseOperationsProgram = (
       } satisfies WorkerOutput;
     }
 
-    const canBuildOnConfirmedBlock =
-      hasAvailableConfirmedBlock && !workerInput.data.localFinalizationPending;
+    if (
+      shouldShortCircuitIdleCommitAttempt({
+        candidateTxCount: candidateSelection.candidateTxs.length,
+        processedPendingTxCount: processedPendingTxs.length,
+        pendingUserEventCount,
+        localFinalizationPending: workerInput.data.localFinalizationPending,
+      })
+    ) {
+      yield* Effect.logInfo(
+        "🔹 No pending tx/user-event work for block commitment; skipping commit base hydration.",
+      );
+      return {
+        type: "NothingToCommitOutput",
+      } satisfies WorkerOutput;
+    }
+
+    const baseHydrationStartedAtMs = Date.now();
     const commitBase = yield* resolveCommitBaseLedgerEntries(
       availableConfirmedBlock,
     );
@@ -564,6 +745,12 @@ const databaseOperationsProgram = (
       transactionsMpf,
       base: commitBase,
     });
+    yield* Effect.logInfo(
+      `🔹 Commit base hydration phase completed duration_ms=${Math.max(
+        0,
+        Date.now() - baseHydrationStartedAtMs,
+      ).toString()},source=${commitBase.source},base_entry_count=${initialLedgerEntries.length.toString()}`,
+    );
     const processed = yield* processMpfs(
       ledgerMpf,
       transactionsMpf,
@@ -586,9 +773,10 @@ const databaseOperationsProgram = (
           ? txOrderIngestionBarrierTime
           : undefined,
         depositOnlyEndTime: canBuildOnConfirmedBlock
-          ? userEventOnlyEndTime
+          ? effectiveUserEventOnlyEndTime
           : undefined,
         initialLedgerEntries,
+        selectedBaseUtxoRoot: commitBase.root,
       },
     );
 
@@ -652,8 +840,6 @@ const databaseOperationsProgram = (
     const mempoolTxsCount = processedMempoolTxs.length;
     const optEndTime = establishEndTimeFromTxRequests(processedMempoolTxs);
 
-    const contracts = yield* MidgardContracts;
-
     if (availableConfirmedBlock === "") {
       // The tx confirmation worker has not yet confirmed a previously
       // submitted tx, so the root we have found can not be used yet.
@@ -694,7 +880,7 @@ const databaseOperationsProgram = (
         return yield* submitDepositOnlyCommit({
           contracts,
           latestBlock,
-          endTime: userEventOnlyEndTime,
+          endTime: effectiveUserEventOnlyEndTime,
           includedDepositEntries,
           includedDepositEventIds,
           includedForcedTransactionEntries,
@@ -702,6 +888,7 @@ const databaseOperationsProgram = (
           includedWithdrawalEntries,
           includedWithdrawalEventIds,
           workerInput,
+          blockEndTimeCapMs,
           utxoRoot,
           txRoot,
           transitionTraceRoot,
@@ -713,8 +900,8 @@ const databaseOperationsProgram = (
         });
       } else {
         // One or more transactions found in either `ProcessedMempoolDB` or
-        // `MempoolDB`. We use the latest transaction's timestamp as the upper
-        // bound of the block we are about to submit.
+        // `MempoolDB`. Use the shared first-candidate timestamp rule as the
+        // upper bound of the block we are about to submit.
         const endTime = optEndTime.value;
 
         yield* Effect.logInfo("🔹 Checking for user events...");
@@ -742,6 +929,7 @@ const databaseOperationsProgram = (
           mempoolTxSourceTable,
           workerInput,
           sizeOfProcessedTxs,
+          blockEndTimeCapMs,
         });
       }
     }

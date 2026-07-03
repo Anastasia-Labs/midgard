@@ -82,7 +82,7 @@ describe("operator-wallet-view", () => {
     expect(availableOperatorWalletUtxos(view)).toEqual([retained]);
   });
 
-  it("filters token-bearing wallet outputs from fee and collateral candidates", () => {
+  it("keeps token-bearing wallet outputs available for funding candidates", () => {
     const wallet = walletFromSeed(TEST_SEED, { network: "Preprod" });
     const retained = makeUtxo("ab".repeat(32), 0, wallet.address, 7_000_000n);
     const tokenBearing = makeUtxo(
@@ -100,7 +100,10 @@ describe("operator-wallet-view", () => {
       retained,
     ]);
 
-    expect(availableOperatorWalletUtxos(view)).toEqual([retained]);
+    expect(availableOperatorWalletUtxos(view)).toEqual([
+      tokenBearing,
+      retained,
+    ]);
   });
 
   it("applies locally submitted wallet spends and same-wallet outputs", () => {

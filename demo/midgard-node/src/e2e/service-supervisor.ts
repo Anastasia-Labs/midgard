@@ -4,10 +4,17 @@ import { mkdir, readFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import {
-  redactArg,
-  type RedactedCommand,
-  redactEnvKeys,
-} from "@/e2e/runner.js";
+  buildE2EProcessEnv,
+  type BuiltE2EProcessEnv,
+  type E2EEnvInheritance,
+  type E2EEnvProvenance,
+} from "@/e2e/env.js";
+import {
+  type ChildProcessCleanupResult,
+  shouldSpawnDetachedProcessGroup,
+  terminateChildProcessGroup,
+} from "@/e2e/process-cleanup.js";
+import { redactArg, type RedactedCommand } from "@/e2e/runner.js";
 
 export const E2E_SERVICE_SUPERVISOR_SCHEMA_VERSION =
   "midgard-e2e-service-supervisor-v1";
@@ -54,6 +61,8 @@ export type HostProcessServiceSpec = {
   readonly args?: readonly string[];
   readonly cwd: string;
   readonly env?: Readonly<Record<string, string | undefined>>;
+  readonly envFiles?: readonly string[];
+  readonly envInheritance?: E2EEnvInheritance;
   readonly rawLogPath: string;
   readonly maxRestarts?: number;
   readonly restartBackoffMs?: number;
@@ -71,6 +80,7 @@ export type ServiceAttemptSummary = {
   readonly signal: NodeJS.Signals | null;
   readonly timedOut: boolean;
   readonly classification: ServiceErrorClassification;
+  readonly cleanup: ChildProcessCleanupResult | null;
 };
 
 export type ServiceSupervisorSummary = {
@@ -180,11 +190,16 @@ export const classifyServiceError = ({
   };
 };
 
-const redactedCommand = (spec: HostProcessServiceSpec): RedactedCommand => ({
+const redactedCommand = (
+  spec: HostProcessServiceSpec,
+  provenance: E2EEnvProvenance,
+): RedactedCommand => ({
   command: spec.command,
   args: (spec.args ?? []).map(redactArg),
   cwd: spec.cwd,
-  envKeys: redactEnvKeys(spec.env),
+  envKeys: provenance.explicitEnvKeys,
+  envFiles: provenance.envFiles,
+  envInheritance: provenance.inheritance,
 });
 
 export const probeHttpEndpoint = async ({
@@ -284,6 +299,7 @@ export const inspectPidFile = async ({
 const runAttempt = async (
   spec: HostProcessServiceSpec,
   attempt: number,
+  resolvedEnv: BuiltE2EProcessEnv,
 ): Promise<{
   readonly summary: ServiceAttemptSummary;
   readonly output: string;
@@ -295,6 +311,7 @@ const runAttempt = async (
   let output = "";
   let pid: number | null = null;
   let timedOut = false;
+  let cleanup: ChildProcessCleanupResult | null = null;
 
   return await new Promise((resolve) => {
     let settled = false;
@@ -321,15 +338,16 @@ const runAttempt = async (
         signal,
         timedOut,
         classification,
+        cleanup,
       };
       log.end(() => resolve({ summary, output }));
     };
 
     const child = spawn(spec.command, [...(spec.args ?? [])], {
       cwd: spec.cwd,
-      env: { ...process.env, ...spec.env },
+      env: resolvedEnv.env,
       shell: false,
-      detached: false,
+      detached: shouldSpawnDetachedProcessGroup(),
       stdio: ["ignore", "pipe", "pipe"],
     });
     pid = child.pid ?? null;
@@ -340,7 +358,7 @@ const runAttempt = async (
         attempt,
         pid,
         at: startedAt,
-        command: redactedCommand(spec),
+        command: redactedCommand(spec, resolvedEnv.provenance),
       }) + "\n",
     );
     const timeout =
@@ -349,7 +367,16 @@ const runAttempt = async (
         : setTimeout(
             () => {
               timedOut = true;
-              child.kill("SIGTERM");
+              cleanup = terminateChildProcessGroup({ pid, signal: "SIGTERM" });
+              log.write(
+                JSON.stringify({
+                  event: "e2e_service_cleanup",
+                  service: spec.service,
+                  attempt,
+                  at: new Date().toISOString(),
+                  cleanup,
+                }) + "\n",
+              );
             },
             Math.max(1, spec.timeoutMs),
           );
@@ -409,6 +436,12 @@ export const superviseHostProcess = async (
     ((milliseconds: number) =>
       new Promise((resolve) => setTimeout(resolve, milliseconds)));
   const attempts: ServiceAttemptSummary[] = [];
+  const resolvedEnv = await buildE2EProcessEnv({
+    cwd: spec.cwd,
+    envFiles: spec.envFiles,
+    overrides: spec.env,
+    inherit: spec.envInheritance,
+  });
   let restartCount = 0;
   let terminalClassification: ServiceErrorClassification = {
     class: "supervisor_failure",
@@ -417,14 +450,14 @@ export const superviseHostProcess = async (
   };
 
   for (let attempt = 1; attempt <= maxRestarts + 1; attempt += 1) {
-    const { summary } = await runAttempt(spec, attempt);
+    const { summary } = await runAttempt(spec, attempt, resolvedEnv);
     attempts.push(summary);
     terminalClassification = summary.classification;
     if (summary.exitCode === 0 && !summary.timedOut) {
       return {
         schemaVersion: E2E_SERVICE_SUPERVISOR_SCHEMA_VERSION,
         service: spec.service,
-        command: redactedCommand(spec),
+        command: redactedCommand(spec, resolvedEnv.provenance),
         status: "exited_success",
         rawLogPath: spec.rawLogPath,
         attempts,
@@ -436,7 +469,7 @@ export const superviseHostProcess = async (
       return {
         schemaVersion: E2E_SERVICE_SUPERVISOR_SCHEMA_VERSION,
         service: spec.service,
-        command: redactedCommand(spec),
+        command: redactedCommand(spec, resolvedEnv.provenance),
         status:
           summary.classification.class === "supervisor_failure"
             ? "supervisor_failure"
@@ -453,7 +486,7 @@ export const superviseHostProcess = async (
       return {
         schemaVersion: E2E_SERVICE_SUPERVISOR_SCHEMA_VERSION,
         service: spec.service,
-        command: redactedCommand(spec),
+        command: redactedCommand(spec, resolvedEnv.provenance),
         status: summary.timedOut ? "timeout" : "restart_budget_exhausted",
         rawLogPath: spec.rawLogPath,
         attempts,
@@ -468,7 +501,7 @@ export const superviseHostProcess = async (
   return {
     schemaVersion: E2E_SERVICE_SUPERVISOR_SCHEMA_VERSION,
     service: spec.service,
-    command: redactedCommand(spec),
+    command: redactedCommand(spec, resolvedEnv.provenance),
     status: "supervisor_failure",
     rawLogPath: spec.rawLogPath,
     attempts,

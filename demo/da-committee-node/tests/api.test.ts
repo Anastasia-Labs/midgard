@@ -1,404 +1,168 @@
 import { AddressInfo } from "node:net";
 
-import * as SDK from "@al-ft/midgard-sdk";
-import { blake2b } from "@noble/hashes/blake2.js";
 import { describe, expect, it } from "vitest";
 
 import { createWatcherApiServer } from "../src/api/server.js";
-import type {
-  DaSignatureRecord,
-  StateQueueHeaderRecord,
-} from "../src/domain.js";
-import { jsonBigIntStringReplacer } from "../src/json.js";
-import { signPeerRequest } from "../src/peer/auth.js";
-import {
-  loadDaSigner,
-  signDaAttestation,
-  validateDaSignerMembership,
-} from "../src/signer.js";
 import { JsonFileWatcherStore } from "../src/store.js";
-import { bytesToHex } from "../src/utils/hex.js";
+import type { WatcherReadinessSnapshot } from "../src/watcher.js";
 import { tempDir } from "./helpers.js";
 
+const readinessSnapshot = (
+  ready: boolean,
+  reasons: readonly string[] = [],
+): WatcherReadinessSnapshot => ({
+  ready,
+  deployment: {
+    configuredFingerprint: "dep",
+    storeFingerprint: "dep",
+    storeMatchesConfigured: true,
+    manifestSha256: "aa".repeat(32),
+    storeManifestSha256: "aa".repeat(32),
+    contractDeploymentInfoSha256: "bb".repeat(32),
+    storeContractDeploymentInfoSha256: "bb".repeat(32),
+  },
+  contracts: {
+    stateQueuePolicyId: "policy-state",
+    stateQueueAddress: "addr-state",
+    daAttestationPolicyId: "policy-da",
+    daAttestationAddress: "addr-da",
+    daParamsGovernorPolicyId: "policy-gov",
+    daParamsGovernorAddress: "addr-gov",
+    committeeSignersHash: "cc".repeat(32),
+    threshold: 1,
+  },
+  peer: {
+    localPeerId: "watcher-peer",
+    signerIndex: 0,
+    producerPeerIds: ["producer-peer"],
+    configuredPeerCount: 2,
+    producerTargetCount: 1,
+    localPeerIsProducer: false,
+    l1SubmissionEnabled: false,
+    l1SubmitterIds: [],
+    l1SubmitterSignerIndexes: [],
+    l1SubmitterPreflight: { status: "not_required" },
+  },
+  scanner: {
+    status: ready ? "ok" : "failed",
+    lastStartedAt: "2026-01-01T00:00:00.000Z",
+    lastFinishedAt: "2026-01-01T00:00:01.000Z",
+    scannedHeaders: 1,
+    signedHeaders: 1,
+    reconciledHeaders: 0,
+    skippedHeaders: 0,
+    errors: reasons,
+  },
+  counts: {
+    discoveredHeaders: 1,
+    missingPayloads: 0,
+    verifiedPayloads: 1,
+    verifiedPayloadsMissingL1Attestation: 0,
+    signatures: 1,
+    l1AttestationSubmissions: 0,
+    submittedOrConfirmedL1Attestations: 0,
+  },
+  reasons,
+});
+
 describe("watcher API", () => {
-  it("serves health, readiness, and stored signature records", async () => {
+  it("serves process health, readiness, and manifest only", async () => {
     const store = await JsonFileWatcherStore.open(await tempDir());
-    const deploymentFingerprint = "dep";
-    const headerHash = "01".repeat(28);
-    await store.saveDaSignature({
-      deploymentFingerprint,
-      headerHash,
-      signerIndex: 0,
-      signatureWitness: "00" + "11".repeat(64),
-      payloadHash: "22".repeat(32),
-      committeeSignersHash: "33".repeat(32),
-      signedAt: new Date().toISOString(),
-      broadcastStatus: "local",
-      l1ChainPoint: {},
-      validation: {
-        payloadVersion: Number(SDK.DA_PAYLOAD_V2_VERSION),
-        rootsMatch: true,
-        stateQueueOutRef: "tx#0",
-        headerHash,
-        rootSummary: {
-          utxosRoot: "44".repeat(32),
-          transactionsRoot: "55".repeat(32),
-          depositsRoot: "66".repeat(32),
-          withdrawalsRoot: "77".repeat(32),
-          forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-          transitionTraceRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-          eventToStepRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-        },
-        countSummary: {
-          withdrawalCount: 0n,
-          forcedTransactionCount: 0n,
-          l2TransactionCount: 0n,
-          depositCount: 0n,
-          totalEventCount: 0n,
-          transitionStepCount: 0n,
-        },
-        l1Header: {
-          startTime: "1",
-          endTime: "2",
-          operatorVkey: "88".repeat(28),
-          prevHeaderHash: "99".repeat(28),
-          protocolVersion: "1",
-        },
-      },
-    });
     const api = createWatcherApiServer({
-      deploymentFingerprint,
+      deploymentFingerprint: "dep",
       signerIndex: 0,
       store,
-      ready: () => true,
+      readiness: () => readinessSnapshot(true),
+      manifest: { deployment: { fingerprint: "dep" } },
     });
     await api.listen(0, "127.0.0.1");
     try {
-      const address = api.address();
-      const port =
-        typeof address === "object" && address !== null
-          ? (address as AddressInfo).port
-          : 0;
+      const port = apiPort(api.address());
       const health = await fetch(`http://127.0.0.1:${port.toString()}/healthz`);
       expect(health.status).toBe(200);
-      const signature = await fetch(
-        `http://127.0.0.1:${port.toString()}/v1/deployments/${deploymentFingerprint}/headers/${headerHash}/signature`,
-      );
-      expect(signature.status).toBe(200);
-      await expect(signature.json()).resolves.toMatchObject({
-        headerHash,
-        signatureWitness: "00" + "11".repeat(64),
-      });
-    } finally {
-      await api.close();
-    }
-  });
+      await expect(health.json()).resolves.toEqual({ ok: true });
 
-  it("serves status records with bigint header fields as JSON strings", async () => {
-    const store = await JsonFileWatcherStore.open(await tempDir());
-    const deploymentFingerprint = "dep";
-    const headerHash = "02".repeat(28);
-    const headerRecord: StateQueueHeaderRecord = {
-      deploymentFingerprint,
-      headerHash,
-      stateQueueOutRef: "tx#0",
-      blockAssetName: `MBLCT${headerHash}`,
-      header: {
-        prevUtxosRoot: "00".repeat(32),
-        utxosRoot: "11".repeat(32),
-        withdrawalsRoot: "44".repeat(32),
-        ...SDK.EMPTY_HEADER_TRANSITION_COMMITMENTS,
-        transactionsRoot: "22".repeat(32),
-        depositsRoot: "33".repeat(32),
-        startTime: 1n,
-        endTime: 2n,
-        prevHeaderHash: "55".repeat(28),
-        operatorVkey: "66".repeat(28),
-        protocolVersion: 0n,
-      },
-      computedHeaderHash: headerHash,
-      daAttestation: "77".repeat(28),
-      observedChainPoint: { depth: 10 },
-      finalized: true,
-      status: "attested",
-      validationErrors: [],
-      updatedAt: new Date().toISOString(),
-    };
-    await store.upsertStateQueueHeader(headerRecord);
-    const api = createWatcherApiServer({
-      deploymentFingerprint,
-      signerIndex: 0,
-      store,
-      ready: () => true,
-    });
-    await api.listen(0, "127.0.0.1");
-    try {
-      const address = api.address();
-      const port =
-        typeof address === "object" && address !== null
-          ? (address as AddressInfo).port
-          : 0;
-      const status = await fetch(
-        `http://127.0.0.1:${port.toString()}/v1/deployments/${deploymentFingerprint}/headers/${headerHash}/status`,
-      );
-      expect(status.status).toBe(200);
-      await expect(status.json()).resolves.toMatchObject({
-        headerHash,
-        header: {
-          header: {
-            startTime: "1",
-            endTime: "2",
-            protocolVersion: "0",
-          },
+      const ready = await fetch(`http://127.0.0.1:${port.toString()}/readyz`);
+      expect(ready.status).toBe(200);
+      await expect(ready.json()).resolves.toMatchObject({
+        ready: true,
+        deployment: {
+          configuredFingerprint: "dep",
+          storeFingerprint: "dep",
         },
-      });
-    } finally {
-      await api.close();
-    }
-  });
-
-  it("accepts valid peer signatures and rejects invalid witnesses", async () => {
-    const store = await JsonFileWatcherStore.open(await tempDir());
-    const deploymentFingerprint = "dep";
-    const headerHash = "01".repeat(28);
-    const localSigner = await loadDaSigner(`hex:${"00".repeat(31)}01`);
-    const peerSigner = await loadDaSigner(`hex:${"00".repeat(31)}02`);
-    const committeeHex = localSigner.publicKeyHex + peerSigner.publicKeyHex;
-    const committeeSignersHash = bytesToHex(
-      blake2b(Buffer.from(committeeHex, "hex"), { dkLen: 32 }),
-    );
-    const signerValidation = validateDaSignerMembership({
-      daParams: {
-        committeeHex,
-        committeeSignersHash,
-        threshold: 2,
-      },
-      signer: localSigner,
-      signerIndex: 0,
-    });
-    const api = createWatcherApiServer({
-      deploymentFingerprint,
-      signerIndex: 0,
-      signerValidation,
-      store,
-      ready: () => true,
-    });
-    await api.listen(0, "127.0.0.1");
-    try {
-      const address = api.address();
-      const port =
-        typeof address === "object" && address !== null
-          ? (address as AddressInfo).port
-          : 0;
-      const url = `http://127.0.0.1:${port.toString()}/v1/deployments/${deploymentFingerprint}/headers/${headerHash}/signature`;
-      const validPeerRecord = signatureRecord({
-        deploymentFingerprint,
-        headerHash,
-        signerIndex: 1,
-        committeeSignersHash,
-        signatureWitness: signDaAttestation({
-          signer: peerSigner,
-          signerIndex: 1,
-          headerHash,
-        }),
-      });
-      const accepted = await fetch(url, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(validPeerRecord, jsonBigIntStringReplacer),
-      });
-      expect(accepted.status).toBe(202);
-
-      const storedPeer = await fetch(`${url}?signer_index=1`);
-      expect(storedPeer.status).toBe(200);
-      await expect(storedPeer.json()).resolves.toMatchObject({
-        headerHash,
-        signerIndex: 1,
-        broadcastStatus: "posted",
+        scanner: { status: "ok", scannedHeaders: 1 },
+        counts: { discoveredHeaders: 1, verifiedPayloads: 1 },
+        reasons: [],
       });
 
-      const invalidPeerRecord = {
-        ...validPeerRecord,
-        signatureWitness: signDaAttestation({
-          signer: localSigner,
-          signerIndex: 1,
-          headerHash,
-        }),
-      };
-      const rejected = await fetch(url, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(invalidPeerRecord, jsonBigIntStringReplacer),
-      });
-      expect(rejected.status).toBe(400);
-
-      const badSignerQuery = await fetch(`${url}?signer_index=not-a-number`);
-      expect(badSignerQuery.status).toBe(400);
-
-      const badJson = await fetch(url, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: "{",
-      });
-      expect(badJson.status).toBe(400);
-    } finally {
-      await api.close();
-    }
-  });
-
-  it("requires signed peer auth, verified local payload, and fresh nonces on plural signature POSTs", async () => {
-    const store = await JsonFileWatcherStore.open(await tempDir());
-    const deploymentFingerprint = "dep";
-    const headerHash = "01".repeat(28);
-    const localSigner = await loadDaSigner(`hex:${"00".repeat(31)}01`);
-    const peerSigner = await loadDaSigner(`hex:${"00".repeat(31)}02`);
-    const committeeHex = localSigner.publicKeyHex + peerSigner.publicKeyHex;
-    const committeeSignersHash = bytesToHex(
-      blake2b(Buffer.from(committeeHex, "hex"), { dkLen: 32 }),
-    );
-    const signerValidation = validateDaSignerMembership({
-      daParams: {
-        committeeHex,
-        committeeSignersHash,
-        threshold: 2,
-      },
-      signer: localSigner,
-      signerIndex: 0,
-    });
-    await store.saveDaPayload({
-      deploymentFingerprint,
-      headerHash,
-      payloadCborHex: "aabb",
-      payloadSha256: "22".repeat(32),
-      sourceEndpoint: "fixture",
-      fetchedAt: new Date().toISOString(),
-      verifiedAt: new Date().toISOString(),
-      validationStatus: "verified",
-      conflictStatus: "none",
-    });
-    const api = createWatcherApiServer({
-      deploymentFingerprint,
-      signerIndex: 0,
-      signerValidation,
-      store,
-      ready: () => true,
-    });
-    await api.listen(0, "127.0.0.1");
-    try {
-      const address = api.address();
-      const port =
-        typeof address === "object" && address !== null
-          ? (address as AddressInfo).port
-          : 0;
-      const pathAndSearch = `/v1/deployments/${deploymentFingerprint}/headers/${headerHash}/signatures`;
-      const url = `http://127.0.0.1:${port.toString()}${pathAndSearch}`;
-      const validPeerRecord = signatureRecord({
-        deploymentFingerprint,
-        headerHash,
-        signerIndex: 1,
-        committeeSignersHash,
-        signatureWitness: signDaAttestation({
-          signer: peerSigner,
-          signerIndex: 1,
-          headerHash,
-        }),
-      });
-      const body = Buffer.from(
-        JSON.stringify(validPeerRecord, jsonBigIntStringReplacer),
-        "utf8",
+      const manifest = await fetch(
+        `http://127.0.0.1:${port.toString()}/v1/manifest`,
       );
-      const authHeaders = signPeerRequest({
-        signer: peerSigner,
-        signerIndex: 1,
-        deploymentFingerprint,
-        method: "POST",
-        pathAndSearch,
-        body,
-        timestampMs: Date.now(),
-        nonce: "aa".repeat(16),
+      expect(manifest.status).toBe(200);
+      await expect(manifest.json()).resolves.toEqual({
+        deployment: { fingerprint: "dep" },
       });
-      const unsigned = await fetch(url, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body,
-      });
-      expect(unsigned.status).toBe(401);
+    } finally {
+      await api.close();
+    }
+  });
 
-      const accepted = await fetch(url, {
-        method: "POST",
-        headers: { "content-type": "application/json", ...authHeaders },
-        body,
+  it("returns 503 readiness with reasons when the snapshot is not ready", async () => {
+    const store = await JsonFileWatcherStore.open(await tempDir());
+    const api = createWatcherApiServer({
+      deploymentFingerprint: "dep",
+      signerIndex: 0,
+      store,
+      readiness: () =>
+        readinessSnapshot(false, ["last state queue scanner tick failed"]),
+    });
+    await api.listen(0, "127.0.0.1");
+    try {
+      const port = apiPort(api.address());
+      const ready = await fetch(`http://127.0.0.1:${port.toString()}/readyz`);
+      expect(ready.status).toBe(503);
+      await expect(ready.json()).resolves.toMatchObject({
+        ready: false,
+        scanner: { status: "failed" },
+        reasons: ["last state queue scanner tick failed"],
       });
-      expect(accepted.status).toBe(202);
-      await expect(
-        store.getDaSignature({ headerHash, signerIndex: 1 }),
-      ).resolves.toMatchObject({
-        source: "peer",
-        signerIndex: 1,
-      });
+    } finally {
+      await api.close();
+    }
+  });
 
-      const replayed = await fetch(url, {
-        method: "POST",
-        headers: { "content-type": "application/json", ...authHeaders },
-        body,
-      });
-      expect(replayed.status).toBe(409);
+  it("does not expose DA payload, status, or signature routes over HTTP", async () => {
+    const store = await JsonFileWatcherStore.open(await tempDir());
+    const api = createWatcherApiServer({
+      deploymentFingerprint: "dep",
+      signerIndex: 0,
+      store,
+      readiness: () => readinessSnapshot(true),
+    });
+    await api.listen(0, "127.0.0.1");
+    try {
+      const port = apiPort(api.address());
+      for (const resource of [
+        "payload",
+        "payload/metadata",
+        "signature",
+        "signatures",
+        "status",
+      ]) {
+        const response = await fetch(
+          `http://127.0.0.1:${port.toString()}/v1/deployments/dep/headers/${"01".repeat(
+            28,
+          )}/${resource}`,
+        );
+        expect(response.status, resource).toBe(404);
+      }
     } finally {
       await api.close();
     }
   });
 });
 
-const signatureRecord = ({
-  deploymentFingerprint,
-  headerHash,
-  signerIndex,
-  committeeSignersHash,
-  signatureWitness,
-}: {
-  readonly deploymentFingerprint: string;
-  readonly headerHash: string;
-  readonly signerIndex: number;
-  readonly committeeSignersHash: string;
-  readonly signatureWitness: string;
-}): DaSignatureRecord => ({
-  deploymentFingerprint,
-  headerHash,
-  signerIndex,
-  signatureWitness,
-  payloadHash: "22".repeat(32),
-  committeeSignersHash,
-  signedAt: new Date().toISOString(),
-  broadcastStatus: "local",
-  l1ChainPoint: {},
-  validation: {
-    payloadVersion: Number(SDK.DA_PAYLOAD_V2_VERSION),
-    rootsMatch: true,
-    stateQueueOutRef: "tx#0",
-    headerHash,
-    rootSummary: {
-      utxosRoot: "44".repeat(32),
-      transactionsRoot: "55".repeat(32),
-      depositsRoot: "66".repeat(32),
-      withdrawalsRoot: "77".repeat(32),
-      forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-      transitionTraceRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-      eventToStepRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-    },
-    countSummary: {
-      withdrawalCount: 0n,
-      forcedTransactionCount: 0n,
-      l2TransactionCount: 0n,
-      depositCount: 0n,
-      totalEventCount: 0n,
-      transitionStepCount: 0n,
-    },
-    l1Header: {
-      startTime: "1",
-      endTime: "2",
-      operatorVkey: "88".repeat(28),
-      prevHeaderHash: "99".repeat(28),
-      protocolVersion: "1",
-    },
-  },
-});
+const apiPort = (address: AddressInfo | string | null): number =>
+  typeof address === "object" && address !== null
+    ? (address as AddressInfo).port
+    : 0;

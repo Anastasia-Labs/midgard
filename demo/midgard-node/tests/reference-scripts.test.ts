@@ -20,8 +20,8 @@ import {
   plainAdaOnlyUtxosFromKupoMatches,
   REFERENCE_SCRIPT_COMMAND_NAMES,
   REFERENCE_SCRIPT_SWEEP_DEFAULT_TOKEN_OUTPUT_LOVELACE,
-  referenceScriptUtxosFromKupoMatches,
   referenceScriptTargetsByCommand,
+  referenceScriptUtxosFromKupoMatches,
   resolveSpendableWalletUtxos,
   verifyNodeRuntimeReferenceScriptsProgram,
 } from "@/transactions/reference-scripts.js";

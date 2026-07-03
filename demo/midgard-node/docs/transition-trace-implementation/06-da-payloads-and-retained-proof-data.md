@@ -19,7 +19,7 @@ Node DA payload construction:
 
 - `demo/midgard-node/src/workers/commit-block-header/da-payload.ts`
 - `demo/midgard-node/src/database/daPayloads.ts`
-- `demo/midgard-node/src/database/migrations/sql/0007_da_payloads.sql`
+- `demo/midgard-node/src/database/migrations/sql/0007_da_payloads_v2.sql`
 - `demo/midgard-node/src/database/pendingBlockFinalizations.ts`
 - `demo/midgard-node/src/workers/commit-block-header/pending-journal.ts`
 

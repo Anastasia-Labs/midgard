@@ -2,6 +2,10 @@ import * as LE from "@lucid-evolution/lucid";
 import { Effect, Schedule } from "effect";
 
 import {
+  fetchLocalOgmiosSubmitSlotSnapshot,
+  type SubmitSlotSnapshot,
+} from "@/local-ogmios-slot.js";
+import {
   L1_REWARD_ACCOUNT_REGISTRATION_SOURCES,
   type L1RewardAccountRegistrationSource,
   providerRouteSummary,
@@ -39,6 +43,7 @@ const makeLucid: Effect.Effect<
     operatorMergeAddress: string;
     referenceScriptsWalletAddress: string;
     referenceScriptsAddress: string;
+    submitSlotSnapshot: () => Effect.Effect<SubmitSlotSnapshot, Error>;
     switchToOperatorsMainWallet: Effect.Effect<void>;
     switchToOperatorsMergingWallet: Effect.Effect<void>;
     switchToReferenceScriptWallet: Effect.Effect<void>;
@@ -172,6 +177,11 @@ const makeLucid: Effect.Effect<
     operatorMergeAddress,
     referenceScriptsWalletAddress,
     referenceScriptsAddress,
+    submitSlotSnapshot: () =>
+      fetchLocalOgmiosSubmitSlotSnapshot({
+        ogmiosUrl: nodeConfig.L1_OGMIOS_KEY,
+        timeoutMs: nodeConfig.L1_PROVIDER_PREFLIGHT_TIMEOUT_MS,
+      }),
     switchToOperatorsMainWallet: Effect.sync(() =>
       lucid.selectWallet.fromSeed(nodeConfig.L1_OPERATOR_SEED_PHRASE),
     ),

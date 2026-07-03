@@ -1,248 +1,727 @@
+import {
+  computeDaSha256Hash,
+  DA_TRANSPORT_LIMITS_V1,
+  daDeploymentFingerprintFromHex,
+  type DaPayloadChunkManifestV1,
+  DaRequestResponseProtocol,
+  decodeDaEventToStepByEventResponseV1Cbor,
+  decodeDaMetadataByHeaderResponseV1Cbor,
+  decodeDaPayloadByHeaderResponseV1Cbor,
+  decodeDaPayloadChunkResponseV1Cbor,
+  decodeDaProofBundleByHeaderResponseV1Cbor,
+  decodeDaTraceStepByIndexResponseV1Cbor,
+  encodeDaEventToStepByEventRequestV1Cbor,
+  encodeDaPayloadByHeaderRequestV1Cbor,
+  encodeDaPayloadChunkRequestV1Cbor,
+  encodeDaProofBundleByHeaderRequestV1Cbor,
+  encodeDaTraceStepByIndexRequestV1Cbor,
+} from "@al-ft/midgard-core/da-transport";
 import { normalizeHex } from "@al-ft/midgard-core/hex";
 
 import { transitionTraceError } from "./errors.js";
 
-export type RetainedDaPayloadEndpoint = {
-  readonly baseUrl: string;
-  readonly deploymentFingerprint?: string;
-  readonly allowOperatorDebugPath?: boolean;
+export type RetainedDaLibp2pPeer = {
+  readonly peerId: string;
 };
 
-export type FetchRetainedDaPayloadOptions = {
-  readonly headerHash: string;
-  readonly endpoints: readonly (string | RetainedDaPayloadEndpoint)[];
-  readonly fetchFn?: typeof fetch;
-  readonly timeoutMs?: number;
-  readonly retries?: number;
+export type RetainedDaLibp2pRequest = {
+  readonly peer: RetainedDaLibp2pPeer;
+  readonly protocol: DaRequestResponseProtocol;
+  readonly payload: Buffer;
+  readonly timeoutMs: number;
 };
 
-export type RetainedDaPayloadFetchAttempt = {
-  readonly url: string;
-  readonly status: "httpError" | "notFound" | "timeout" | "invalidContent";
+export interface RetainedDaLibp2pTransport {
+  request(args: RetainedDaLibp2pRequest): Promise<Uint8Array>;
+}
+
+export type RetainedDaFetchAttemptStatus =
+  | "not_found"
+  | "transport_error"
+  | "timeout"
+  | "invalid_content"
+  | "rejected"
+  | "conflict";
+
+export type RetainedDaFetchAttempt = {
+  readonly sourceId: string;
+  readonly sourcePeerId: string;
+  readonly protocol: DaRequestResponseProtocol;
+  readonly status: RetainedDaFetchAttemptStatus;
   readonly detail: string;
 };
 
 export type RetainedDaPayloadFetchResult = {
-  readonly endpoint: string;
-  readonly url: string;
+  readonly sourceId: string;
+  readonly sourcePeerId: string;
   readonly payloadCbor: Buffer;
   readonly metadata?: unknown;
-  readonly attempts: readonly RetainedDaPayloadFetchAttempt[];
+  readonly attempts: readonly RetainedDaFetchAttempt[];
 };
 
-const normalizeEndpoint = (
-  endpoint: string | RetainedDaPayloadEndpoint,
-): RetainedDaPayloadEndpoint =>
-  typeof endpoint === "string" ? { baseUrl: endpoint } : endpoint;
-
-const endpointUrl = (baseUrl: string, pathAndQuery: string): string => {
-  const base = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
-  const path = pathAndQuery.startsWith("/")
-    ? pathAndQuery.slice(1)
-    : pathAndQuery;
-  return new URL(path, base).toString();
+export type RetainedDaProofBundle = {
+  readonly sourceId: string;
+  readonly sourcePeerId: string;
+  readonly proofBundleHash: Buffer;
+  readonly proofBundleBytes: Buffer;
+  readonly attempts: readonly RetainedDaFetchAttempt[];
 };
 
-const payloadPath = ({
-  endpoint,
-  headerHash,
-}: {
-  readonly endpoint: RetainedDaPayloadEndpoint;
+export type RetainedDaTraceStep = {
+  readonly sourceId: string;
+  readonly sourcePeerId: string;
+  readonly stepIndex: number;
+  readonly transitionStepBytes: Buffer;
+  readonly membershipProofBytes: Buffer;
+  readonly attempts: readonly RetainedDaFetchAttempt[];
+};
+
+export type RetainedDaEventToStep = {
+  readonly sourceId: string;
+  readonly sourcePeerId: string;
+  readonly eventKey: Buffer;
+  readonly eventToStepEntryBytes: Buffer | null;
+  readonly membershipOrNonmembershipProofBytes: Buffer;
+  readonly attempts: readonly RetainedDaFetchAttempt[];
+};
+
+export type RetainedDaPayloadSourceResult =
+  | ({
+      readonly ok: true;
+    } & RetainedDaPayloadFetchResult)
+  | {
+      readonly ok: false;
+      readonly sourceId: string;
+      readonly attempts: readonly RetainedDaFetchAttempt[];
+    };
+
+export interface RetainedDaPayloadSource {
+  readonly sourceId: string;
+  fetchPayloadByHeaderHash(
+    headerHash: string,
+  ): Promise<RetainedDaPayloadSourceResult>;
+}
+
+export type FetchRetainedDaPayloadOptions = {
   readonly headerHash: string;
-}): string => {
-  if (endpoint.deploymentFingerprint !== undefined) {
-    return `/v1/deployments/${encodeURIComponent(
-      endpoint.deploymentFingerprint,
-    )}/headers/${headerHash}/payload`;
+  readonly sources: readonly RetainedDaPayloadSource[];
+  readonly retries?: number;
+};
+
+export type DaLibp2pRetainedDaSourceOptions = {
+  readonly sourceId?: string;
+  readonly deploymentFingerprint: string;
+  readonly peers: readonly RetainedDaLibp2pPeer[];
+  readonly transport: RetainedDaLibp2pTransport;
+  readonly timeoutMs?: number;
+  readonly maxInlineResponseBytes?: number;
+  readonly maxChunkBytes?: number;
+};
+
+type SourceSuccess<T> = { readonly ok: true } & T;
+type SourceFailure = {
+  readonly ok: false;
+  readonly sourceId: string;
+  readonly attempts: readonly RetainedDaFetchAttempt[];
+};
+
+export class DaLibp2pRetainedDaSource implements RetainedDaPayloadSource {
+  readonly sourceId: string;
+
+  private readonly deploymentFingerprint: Buffer;
+  private readonly peers: readonly RetainedDaLibp2pPeer[];
+  private readonly transport: RetainedDaLibp2pTransport;
+  private readonly timeoutMs: number;
+  private readonly maxInlineResponseBytes: number;
+  private readonly maxChunkBytes: number;
+
+  constructor(options: DaLibp2pRetainedDaSourceOptions) {
+    this.sourceId = options.sourceId ?? "libp2p";
+    this.deploymentFingerprint = daDeploymentFingerprintFromHex(
+      options.deploymentFingerprint,
+    );
+    this.peers = options.peers;
+    this.transport = options.transport;
+    this.timeoutMs =
+      options.timeoutMs ?? DA_TRANSPORT_LIMITS_V1.requestTimeoutMs;
+    this.maxInlineResponseBytes =
+      options.maxInlineResponseBytes ??
+      DA_TRANSPORT_LIMITS_V1.maxInlineResponseBytes;
+    this.maxChunkBytes =
+      options.maxChunkBytes ?? DA_TRANSPORT_LIMITS_V1.maxChunkBytes;
   }
-  if (endpoint.allowOperatorDebugPath === true) {
-    return `/da/payload?header_hash=${encodeURIComponent(headerHash)}`;
+
+  async fetchPayloadByHeaderHash(
+    headerHash: string,
+  ): Promise<RetainedDaPayloadSourceResult> {
+    const normalizedHeaderHash = normalizeHeaderHash(headerHash);
+    const headerHashBytes = Buffer.from(normalizedHeaderHash, "hex");
+    const attempts: RetainedDaFetchAttempt[] = [];
+
+    for (const peer of this.peers) {
+      try {
+        const result = await this.fetchPayloadFromPeer(peer, headerHashBytes);
+        if (result === undefined) {
+          attempts.push(
+            this.attempt({
+              peer,
+              protocol: DaRequestResponseProtocol.payloadByHeader,
+              status: "not_found",
+              detail: "payload not found",
+            }),
+          );
+          continue;
+        }
+        return {
+          ok: true,
+          sourceId: this.sourceId,
+          sourcePeerId: peer.peerId,
+          payloadCbor: result.payloadCbor,
+          metadata: result.metadata,
+          attempts,
+        };
+      } catch (error) {
+        attempts.push(
+          this.attemptFromError(
+            peer,
+            DaRequestResponseProtocol.payloadByHeader,
+            error,
+          ),
+        );
+      }
+    }
+
+    return { ok: false, sourceId: this.sourceId, attempts };
   }
+
+  async fetchProofBundleByHeaderHash(
+    headerHash: string,
+  ): Promise<SourceSuccess<RetainedDaProofBundle> | SourceFailure> {
+    const normalizedHeaderHash = normalizeHeaderHash(headerHash);
+    const headerHashBytes = Buffer.from(normalizedHeaderHash, "hex");
+    const attempts: RetainedDaFetchAttempt[] = [];
+
+    for (const peer of this.peers) {
+      try {
+        const response = decodeDaProofBundleByHeaderResponseV1Cbor(
+          await this.request(
+            peer,
+            DaRequestResponseProtocol.proofBundleByHeader,
+            encodeDaProofBundleByHeaderRequestV1Cbor({
+              deploymentFingerprint: this.deploymentFingerprint,
+              headerHash: headerHashBytes,
+              maxInlineBytes: this.maxInlineResponseBytes,
+            }),
+          ),
+        );
+        if (response.status === "not_found") {
+          attempts.push(
+            this.attempt({
+              peer,
+              protocol: DaRequestResponseProtocol.proofBundleByHeader,
+              status: "not_found",
+              detail: response.reasonCode ?? "proof bundle not found",
+            }),
+          );
+          continue;
+        }
+        if (response.status === "rejected") {
+          throw new PeerRejectedDaRequestError(
+            response.reasonCode ?? "peer rejected proof bundle request",
+          );
+        }
+        if (response.status === "found_chunked") {
+          throw new InvalidRetainedDaResponseError(
+            "chunked proof bundles require a proof-bundle chunk retrieval protocol",
+          );
+        }
+        if (response.proofBundleHash === null) {
+          throw new InvalidRetainedDaResponseError(
+            "proof bundle response is missing proof_bundle_hash",
+          );
+        }
+        if (response.proofBundleBytes === null) {
+          throw new InvalidRetainedDaResponseError(
+            "inline proof bundle response is missing proof_bundle_bytes",
+          );
+        }
+        const proofBundleBytes = Buffer.from(response.proofBundleBytes);
+        assertHash(
+          proofBundleBytes,
+          response.proofBundleHash,
+          "proof bundle hash mismatch",
+        );
+        return {
+          ok: true,
+          sourceId: this.sourceId,
+          sourcePeerId: peer.peerId,
+          proofBundleHash: Buffer.from(response.proofBundleHash),
+          proofBundleBytes,
+          attempts,
+        };
+      } catch (error) {
+        attempts.push(
+          this.attemptFromError(
+            peer,
+            DaRequestResponseProtocol.proofBundleByHeader,
+            error,
+          ),
+        );
+      }
+    }
+
+    return { ok: false, sourceId: this.sourceId, attempts };
+  }
+
+  async fetchTraceStepByIndex({
+    headerHash,
+    stepIndex,
+  }: {
+    readonly headerHash: string;
+    readonly stepIndex: number;
+  }): Promise<SourceSuccess<RetainedDaTraceStep> | SourceFailure> {
+    const normalizedHeaderHash = normalizeHeaderHash(headerHash);
+    const headerHashBytes = Buffer.from(normalizedHeaderHash, "hex");
+    const attempts: RetainedDaFetchAttempt[] = [];
+
+    for (const peer of this.peers) {
+      try {
+        const response = decodeDaTraceStepByIndexResponseV1Cbor(
+          await this.request(
+            peer,
+            DaRequestResponseProtocol.traceStepByIndex,
+            encodeDaTraceStepByIndexRequestV1Cbor({
+              deploymentFingerprint: this.deploymentFingerprint,
+              headerHash: headerHashBytes,
+              stepIndex,
+            }),
+          ),
+        );
+        if (response.status === "not_found") {
+          attempts.push(
+            this.attempt({
+              peer,
+              protocol: DaRequestResponseProtocol.traceStepByIndex,
+              status: "not_found",
+              detail: "trace step not found",
+            }),
+          );
+          continue;
+        }
+        if (response.status === "rejected") {
+          throw new PeerRejectedDaRequestError(
+            "peer rejected trace step request",
+          );
+        }
+        if (
+          response.transitionStepBytes === null ||
+          response.membershipProofBytes === null
+        ) {
+          throw new InvalidRetainedDaResponseError(
+            "trace step response is missing step or membership proof bytes",
+          );
+        }
+        return {
+          ok: true,
+          sourceId: this.sourceId,
+          sourcePeerId: peer.peerId,
+          stepIndex,
+          transitionStepBytes: Buffer.from(response.transitionStepBytes),
+          membershipProofBytes: Buffer.from(response.membershipProofBytes),
+          attempts,
+        };
+      } catch (error) {
+        attempts.push(
+          this.attemptFromError(
+            peer,
+            DaRequestResponseProtocol.traceStepByIndex,
+            error,
+          ),
+        );
+      }
+    }
+
+    return { ok: false, sourceId: this.sourceId, attempts };
+  }
+
+  async fetchEventToStepByEvent({
+    headerHash,
+    eventKey,
+  }: {
+    readonly headerHash: string;
+    readonly eventKey: string | Uint8Array;
+  }): Promise<SourceSuccess<RetainedDaEventToStep> | SourceFailure> {
+    const normalizedHeaderHash = normalizeHeaderHash(headerHash);
+    const headerHashBytes = Buffer.from(normalizedHeaderHash, "hex");
+    const eventKeyBytes = bytesFromHexOrBytes(eventKey, "event_key");
+    const attempts: RetainedDaFetchAttempt[] = [];
+
+    for (const peer of this.peers) {
+      try {
+        const response = decodeDaEventToStepByEventResponseV1Cbor(
+          await this.request(
+            peer,
+            DaRequestResponseProtocol.eventToStepByEvent,
+            encodeDaEventToStepByEventRequestV1Cbor({
+              deploymentFingerprint: this.deploymentFingerprint,
+              headerHash: headerHashBytes,
+              eventKey: eventKeyBytes,
+            }),
+          ),
+        );
+        if (response.status === "not_found") {
+          attempts.push(
+            this.attempt({
+              peer,
+              protocol: DaRequestResponseProtocol.eventToStepByEvent,
+              status: "not_found",
+              detail: "event-to-step entry not found",
+            }),
+          );
+          continue;
+        }
+        if (response.status === "rejected") {
+          throw new PeerRejectedDaRequestError(
+            "peer rejected event-to-step request",
+          );
+        }
+        if (response.membershipOrNonmembershipProofBytes === null) {
+          throw new InvalidRetainedDaResponseError(
+            "event-to-step response is missing proof bytes",
+          );
+        }
+        return {
+          ok: true,
+          sourceId: this.sourceId,
+          sourcePeerId: peer.peerId,
+          eventKey: eventKeyBytes,
+          eventToStepEntryBytes:
+            response.eventToStepEntryBytes === null
+              ? null
+              : Buffer.from(response.eventToStepEntryBytes),
+          membershipOrNonmembershipProofBytes: Buffer.from(
+            response.membershipOrNonmembershipProofBytes,
+          ),
+          attempts,
+        };
+      } catch (error) {
+        attempts.push(
+          this.attemptFromError(
+            peer,
+            DaRequestResponseProtocol.eventToStepByEvent,
+            error,
+          ),
+        );
+      }
+    }
+
+    return { ok: false, sourceId: this.sourceId, attempts };
+  }
+
+  private async fetchPayloadFromPeer(
+    peer: RetainedDaLibp2pPeer,
+    headerHash: Buffer,
+  ): Promise<
+    | {
+        readonly payloadCbor: Buffer;
+        readonly metadata?: unknown;
+      }
+    | undefined
+  > {
+    const response = decodeDaPayloadByHeaderResponseV1Cbor(
+      await this.request(
+        peer,
+        DaRequestResponseProtocol.payloadByHeader,
+        encodeDaPayloadByHeaderRequestV1Cbor({
+          deploymentFingerprint: this.deploymentFingerprint,
+          headerHash,
+          acceptedPayloadHashes: null,
+          maxInlineBytes: this.maxInlineResponseBytes,
+        }),
+      ),
+    );
+
+    switch (response.status) {
+      case "found_inline": {
+        if (response.payloadHash === null || response.payloadBytes === null) {
+          throw new InvalidRetainedDaResponseError(
+            "inline payload response is missing payload bytes",
+          );
+        }
+        const payloadCbor = Buffer.from(response.payloadBytes);
+        assertHash(payloadCbor, response.payloadHash, "payload hash mismatch");
+        return {
+          payloadCbor,
+          metadata: await this.fetchMetadata(peer, headerHash),
+        };
+      }
+      case "found_chunked": {
+        if (response.payloadHash === null || response.chunkManifest === null) {
+          throw new InvalidRetainedDaResponseError(
+            "chunked payload response is missing chunk manifest",
+          );
+        }
+        const payloadCbor = await this.fetchPayloadChunks(
+          peer,
+          headerHash,
+          response.payloadHash,
+          response.chunkManifest,
+        );
+        assertHash(payloadCbor, response.payloadHash, "payload hash mismatch");
+        return {
+          payloadCbor,
+          metadata: await this.fetchMetadata(peer, headerHash),
+        };
+      }
+      case "not_found":
+        return undefined;
+      case "conflict":
+        throw new PeerConflictDaResponseError(
+          response.reasonCode ?? "peer reported payload conflict",
+        );
+      case "rejected":
+        throw new PeerRejectedDaRequestError(
+          response.reasonCode ?? "peer rejected payload request",
+        );
+    }
+  }
+
+  private async fetchPayloadChunks(
+    peer: RetainedDaLibp2pPeer,
+    headerHash: Buffer,
+    payloadHash: Buffer,
+    manifest: DaPayloadChunkManifestV1,
+  ): Promise<Buffer> {
+    if (manifest.chunkSize > this.maxChunkBytes) {
+      throw new InvalidRetainedDaResponseError(
+        "payload chunk manifest exceeds retained DA chunk size limit",
+      );
+    }
+
+    const chunks: Buffer[] = [];
+    for (let index = 0; index < manifest.chunkHashes.length; index += 1) {
+      const response = decodeDaPayloadChunkResponseV1Cbor(
+        await this.request(
+          peer,
+          DaRequestResponseProtocol.payloadChunk,
+          encodeDaPayloadChunkRequestV1Cbor({
+            deploymentFingerprint: this.deploymentFingerprint,
+            headerHash,
+            payloadHash,
+            chunkIndex: index,
+          }),
+        ),
+      );
+      if (response.status !== "found" || response.chunkBytes === null) {
+        throw new InvalidRetainedDaResponseError(
+          `payload chunk ${index.toString()} was not found`,
+        );
+      }
+      const chunk = Buffer.from(response.chunkBytes);
+      if (chunk.length > this.maxChunkBytes) {
+        throw new InvalidRetainedDaResponseError(
+          "payload chunk exceeds retained DA chunk size limit",
+        );
+      }
+      const expectedChunkHash = manifest.chunkHashes[index]!;
+      assertHash(chunk, expectedChunkHash, "payload chunk hash mismatch");
+      if (
+        response.chunkHash !== null &&
+        !Buffer.from(response.chunkHash).equals(expectedChunkHash)
+      ) {
+        throw new InvalidRetainedDaResponseError(
+          "payload chunk response hash does not match manifest",
+        );
+      }
+      chunks.push(chunk);
+    }
+    const payloadCbor = Buffer.concat(chunks);
+    if (payloadCbor.length !== manifest.totalBytes) {
+      throw new InvalidRetainedDaResponseError(
+        "chunked payload total size does not match manifest",
+      );
+    }
+    return payloadCbor;
+  }
+
+  private async fetchMetadata(
+    peer: RetainedDaLibp2pPeer,
+    headerHash: Buffer,
+  ): Promise<unknown> {
+    try {
+      const response = decodeDaMetadataByHeaderResponseV1Cbor(
+        await this.request(
+          peer,
+          DaRequestResponseProtocol.metadataByHeader,
+          encodeDaPayloadByHeaderRequestV1Cbor({
+            deploymentFingerprint: this.deploymentFingerprint,
+            headerHash,
+            acceptedPayloadHashes: null,
+            maxInlineBytes: 0,
+          }),
+        ),
+      );
+      return response.status === "found" ? response : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private request(
+    peer: RetainedDaLibp2pPeer,
+    protocol: DaRequestResponseProtocol,
+    payload: Buffer,
+  ): Promise<Uint8Array> {
+    return this.transport.request({
+      peer,
+      protocol,
+      payload,
+      timeoutMs: this.timeoutMs,
+    });
+  }
+
+  private attempt({
+    peer,
+    protocol,
+    status,
+    detail,
+  }: {
+    readonly peer: RetainedDaLibp2pPeer;
+    readonly protocol: DaRequestResponseProtocol;
+    readonly status: RetainedDaFetchAttemptStatus;
+    readonly detail: string;
+  }): RetainedDaFetchAttempt {
+    return {
+      sourceId: this.sourceId,
+      sourcePeerId: peer.peerId,
+      protocol,
+      status,
+      detail,
+    };
+  }
+
+  private attemptFromError(
+    peer: RetainedDaLibp2pPeer,
+    protocol: DaRequestResponseProtocol,
+    error: unknown,
+  ): RetainedDaFetchAttempt {
+    return this.attempt({
+      peer,
+      protocol,
+      status: statusFromError(error),
+      detail: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+export const fetchRetainedDaPayloadByHeaderHash = async ({
+  headerHash,
+  sources,
+  retries = 1,
+}: FetchRetainedDaPayloadOptions): Promise<RetainedDaPayloadFetchResult> => {
+  const normalizedHeaderHash = normalizeHeaderHash(headerHash);
+  const attempts: RetainedDaFetchAttempt[] = [];
+
+  for (const source of sources) {
+    for (let attempt = 0; attempt <= retries; attempt += 1) {
+      const result =
+        await source.fetchPayloadByHeaderHash(normalizedHeaderHash);
+      attempts.push(...result.attempts);
+      if (result.ok) {
+        return {
+          sourceId: result.sourceId,
+          sourcePeerId: result.sourcePeerId,
+          payloadCbor: result.payloadCbor,
+          metadata: result.metadata,
+          attempts,
+        };
+      }
+      if (attempt < retries) {
+        await sleep(50 * 2 ** attempt);
+      }
+    }
+  }
+
   throw transitionTraceError(
     "fetchFailed",
-    "Retained DA payload fetch requires a deploymentFingerprint for the DA committee API; set allowOperatorDebugPath only for local debug endpoints.",
+    `Unable to fetch retained DA payload for header_hash ${normalizedHeaderHash}: ${attempts
+      .map(
+        (attempt) =>
+          `${attempt.sourceId}/${attempt.sourcePeerId} ${attempt.protocol} ${attempt.status} ${attempt.detail}`,
+      )
+      .join("; ")}`,
   );
 };
 
-const metadataPath = ({
-  endpoint,
-  headerHash,
-}: {
-  readonly endpoint: RetainedDaPayloadEndpoint;
-  readonly headerHash: string;
-}): string => {
-  if (endpoint.deploymentFingerprint !== undefined) {
-    return `/v1/deployments/${encodeURIComponent(
-      endpoint.deploymentFingerprint,
-    )}/headers/${headerHash}/payload/metadata`;
+class InvalidRetainedDaResponseError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidRetainedDaResponseError";
   }
-  return `/da/payload/metadata?header_hash=${encodeURIComponent(headerHash)}`;
-};
+}
 
-const fetchWithTimeout = async (
-  fetchFn: typeof fetch,
-  url: string,
-  timeoutMs: number,
-): Promise<Response> => {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetchFn(url, { signal: controller.signal });
-  } finally {
-    clearTimeout(timeout);
+class PeerRejectedDaRequestError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PeerRejectedDaRequestError";
   }
-};
+}
 
-const isAbortError = (error: unknown): boolean =>
-  error instanceof Error && error.name === "AbortError";
-
-const tryFetchMetadata = async ({
-  fetchFn,
-  endpoint,
-  headerHash,
-}: {
-  readonly fetchFn: typeof fetch;
-  readonly endpoint: RetainedDaPayloadEndpoint;
-  readonly headerHash: string;
-}): Promise<unknown> => {
-  try {
-    const response = await fetchFn(
-      endpointUrl(endpoint.baseUrl, metadataPath({ endpoint, headerHash })),
-    );
-    return response.ok ? await response.json() : undefined;
-  } catch {
-    return undefined;
+class PeerConflictDaResponseError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PeerConflictDaResponseError";
   }
-};
+}
 
-const tryFetchPayload = async ({
-  fetchFn,
-  endpoint,
-  headerHash,
-  timeoutMs,
-}: {
-  readonly fetchFn: typeof fetch;
-  readonly endpoint: RetainedDaPayloadEndpoint;
-  readonly headerHash: string;
-  readonly timeoutMs: number;
-}): Promise<
-  | {
-      readonly ok: true;
-      readonly url: string;
-      readonly payloadCbor: Buffer;
-      readonly metadata?: unknown;
-    }
-  | { readonly ok: false; readonly attempt: RetainedDaPayloadFetchAttempt }
-> => {
-  const url = endpointUrl(
-    endpoint.baseUrl,
-    payloadPath({ endpoint, headerHash }),
+const normalizeHeaderHash = (value: string): string =>
+  normalizeHex(value, {
+    fieldName: "header_hash",
+    byteLength: 28,
+    trim: true,
+  });
+
+const bytesFromHexOrBytes = (
+  value: string | Uint8Array,
+  fieldName: string,
+): Buffer => {
+  if (typeof value !== "string") {
+    return Buffer.from(value);
+  }
+  return Buffer.from(
+    normalizeHex(value, { fieldName, trim: true, allowEmpty: false }),
+    "hex",
   );
-  try {
-    const response = await fetchWithTimeout(fetchFn, url, timeoutMs);
-    if (response.status === 404) {
-      return {
-        ok: false,
-        attempt: { url, status: "notFound", detail: "payload not found" },
-      };
-    }
-    if (!response.ok) {
-      return {
-        ok: false,
-        attempt: {
-          url,
-          status: "httpError",
-          detail: `HTTP ${response.status.toString()}`,
-        },
-      };
-    }
-    const contentType = response.headers.get("content-type") ?? "";
-    if (
-      contentType.length > 0 &&
-      !contentType.includes("application/cbor") &&
-      !contentType.includes("application/octet-stream")
-    ) {
-      return {
-        ok: false,
-        attempt: {
-          url,
-          status: "invalidContent",
-          detail: `unexpected content-type ${contentType}`,
-        },
-      };
-    }
-    const payloadCbor = Buffer.from(await response.arrayBuffer());
-    if (payloadCbor.length === 0) {
-      return {
-        ok: false,
-        attempt: { url, status: "invalidContent", detail: "empty payload" },
-      };
-    }
-    return {
-      ok: true,
-      url,
-      payloadCbor,
-      metadata: await tryFetchMetadata({ fetchFn, endpoint, headerHash }),
-    };
-  } catch (error) {
-    return {
-      ok: false,
-      attempt: {
-        url,
-        status: isAbortError(error) ? "timeout" : "httpError",
-        detail: error instanceof Error ? error.message : String(error),
-      },
-    };
+};
+
+const assertHash = (
+  bytes: Buffer,
+  expectedHash: Buffer,
+  message: string,
+): void => {
+  if (!computeDaSha256Hash(bytes).equals(expectedHash)) {
+    throw new InvalidRetainedDaResponseError(message);
   }
+};
+
+const statusFromError = (error: unknown): RetainedDaFetchAttemptStatus => {
+  if (error instanceof PeerRejectedDaRequestError) {
+    return "rejected";
+  }
+  if (error instanceof PeerConflictDaResponseError) {
+    return "conflict";
+  }
+  if (error instanceof InvalidRetainedDaResponseError) {
+    return "invalid_content";
+  }
+  if (error instanceof Error && error.name === "TimeoutError") {
+    return "timeout";
+  }
+  return "transport_error";
 };
 
 const sleep = async (ms: number): Promise<void> => {
   await new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
-};
-
-export const fetchRetainedDaPayloadByHeaderHash = async ({
-  headerHash,
-  endpoints,
-  fetchFn = fetch,
-  timeoutMs = 10_000,
-  retries = 1,
-}: FetchRetainedDaPayloadOptions): Promise<RetainedDaPayloadFetchResult> => {
-  const normalizedHeaderHash = normalizeHex(headerHash, {
-    fieldName: "header_hash",
-    byteLength: 28,
-    trim: true,
-  });
-  const attempts: RetainedDaPayloadFetchAttempt[] = [];
-  for (const rawEndpoint of endpoints) {
-    const endpoint = normalizeEndpoint(rawEndpoint);
-    for (let attempt = 0; attempt <= retries; attempt += 1) {
-      const result = await tryFetchPayload({
-        fetchFn,
-        endpoint,
-        headerHash: normalizedHeaderHash,
-        timeoutMs,
-      });
-      if (result.ok) {
-        return {
-          endpoint: endpoint.baseUrl,
-          url: result.url,
-          payloadCbor: result.payloadCbor,
-          metadata: result.metadata,
-          attempts,
-        };
-      }
-      attempts.push(result.attempt);
-      if (attempt < retries) {
-        await sleep(50 * 2 ** attempt);
-      }
-    }
-  }
-  throw transitionTraceError(
-    "fetchFailed",
-    `Unable to fetch retained DA payload for header_hash ${normalizedHeaderHash}: ${attempts
-      .map((attempt) => `${attempt.url} ${attempt.status} ${attempt.detail}`)
-      .join("; ")}`,
-  );
 };

@@ -36,6 +36,13 @@ export type DeploymentRunCliOptionInput = {
   readonly freshRedeployReason?: unknown;
 };
 
+export type PendingHubOracleNonceAttempt = {
+  readonly txHash: string;
+  readonly address: string;
+  readonly lovelace: string;
+  readonly inlineDatum: string;
+};
+
 export const resolveDeploymentRunCliOptions = (
   input: DeploymentRunCliOptionInput,
 ): DeploymentRunCliOptions => ({
@@ -199,12 +206,150 @@ export const recordHubOracleNonce = async ({
         {
           outRefs: [outRef],
           txHashes: [txHash],
+          details: {
+            ...(state.steps.hubOracleNonce?.details ?? {}),
+            outputStatus: "visible",
+          },
           message: options.freshRedeploy
             ? `fresh_redeploy_reason=${options.freshRedeployReason}`
             : "prepared nonce",
         },
       ),
   );
+
+export const recordHubOracleNonceSubmitted = async ({
+  options,
+  network,
+  txHash,
+  address,
+  lovelace,
+  inlineDatum,
+}: {
+  readonly options: DeploymentRunCliOptions;
+  readonly network: string;
+  readonly txHash: string;
+  readonly address: string;
+  readonly lovelace: string;
+  readonly inlineDatum: string;
+}): Promise<DeploymentRunState> =>
+  mutateDeploymentRunState(
+    options.runStatePath,
+    () =>
+      createDeploymentRunState({
+        mode: options.freshRedeploy ? "fresh" : "resume",
+        identity: {
+          network,
+        },
+      }),
+    (state) =>
+      transitionDeploymentStep(
+        {
+          ...state,
+          mode: options.freshRedeploy ? "fresh" : state.mode,
+          identity: {
+            ...state.identity,
+            network,
+          },
+        },
+        "hubOracleNonce",
+        "submitted",
+        {
+          txHashes: [txHash],
+          message: "submitted_confirmation_unknown",
+          details: {
+            address,
+            lovelace,
+            inlineDatum,
+            confirmationStatus: "submitted_confirmation_unknown",
+            outputStatus: "unknown",
+          },
+        },
+      ),
+  );
+
+export const recordHubOracleNonceTxHashConfirmed = async ({
+  options,
+  network,
+  txHash,
+  address,
+  lovelace,
+  inlineDatum,
+  confirmationStatus,
+}: {
+  readonly options: DeploymentRunCliOptions;
+  readonly network: string;
+  readonly txHash: string;
+  readonly address: string;
+  readonly lovelace: string;
+  readonly inlineDatum: string;
+  readonly confirmationStatus: string;
+}): Promise<DeploymentRunState> =>
+  mutateDeploymentRunState(
+    options.runStatePath,
+    () =>
+      createDeploymentRunState({
+        mode: options.freshRedeploy ? "fresh" : "resume",
+        identity: {
+          network,
+        },
+      }),
+    (state) =>
+      transitionDeploymentStep(
+        {
+          ...state,
+          mode: options.freshRedeploy ? "fresh" : state.mode,
+          identity: {
+            ...state.identity,
+            network,
+          },
+        },
+        "hubOracleNonce",
+        "submitted",
+        {
+          txHashes: [txHash],
+          message: "confirmed_output_pending",
+          details: {
+            address,
+            lovelace,
+            inlineDatum,
+            confirmationStatus,
+            outputStatus: "pending",
+          },
+        },
+      ),
+  );
+
+export const loadPendingHubOracleNonceAttempt = async ({
+  options,
+}: {
+  readonly options: DeploymentRunCliOptions;
+}): Promise<PendingHubOracleNonceAttempt | null> => {
+  const state = await loadDeploymentRunState(options.runStatePath);
+  const step = state?.steps.hubOracleNonce;
+  if (step === undefined || step.status !== "submitted") {
+    return null;
+  }
+  const txHash = step.txHashes?.[0];
+  const address = step.details?.address;
+  const lovelace = step.details?.lovelace;
+  const inlineDatum = step.details?.inlineDatum;
+  if (
+    txHash === undefined ||
+    address === undefined ||
+    lovelace === undefined ||
+    inlineDatum === undefined
+  ) {
+    throw new RunStateError(
+      `Pending hub-oracle nonce attempt in ${options.runStatePath} is missing recovery details.`,
+    );
+  }
+  return {
+    txHash,
+    address,
+    lovelace,
+    inlineDatum,
+  };
+};
 
 const authPolicyFromRunStateIdentity = (
   identity: DeploymentRunIdentity,

@@ -94,13 +94,32 @@ describe("provider diagnostics", () => {
 
   it("passes only when local Kupo and Ogmios health endpoints are reachable", async () => {
     const nowMs = 1_000_000;
+    const healthBody = {
+      connectionStatus: "connected",
+      networkSynchronization: 1,
+      lastKnownTip: { slot: 41 },
+      lastTipUpdate: new Date(nowMs).toISOString(),
+    };
     const calls: string[] = [];
     const report = await runL1ProviderPreflight({
       config,
       nowMs,
-      fetchImpl: async (url) => {
+      fetchImpl: async (url, init) => {
         calls.push(url);
-        return textResponse("ok");
+        if (url === "http://127.0.0.1:1442/health") {
+          return textResponse("ok");
+        }
+        if (url === "http://127.0.0.1:1337/health") {
+          return textResponse(JSON.stringify(healthBody));
+        }
+        expect(init?.method).toBe("POST");
+        return textResponse(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            result: { slot: 42 },
+            id: "midgard-submit-slot",
+          }),
+        );
       },
     });
 
@@ -113,9 +132,15 @@ describe("provider diagnostics", () => {
     });
     expect(report.healthySources).toEqual(["kupmios"]);
     expect(report.unhealthySources).toEqual([]);
+    expect(report.sources[0].localLedgerSlot).toMatchObject({
+      source: "local_ogmios_tip",
+      currentSlot: 42,
+    });
     expect(calls).toEqual([
       "http://127.0.0.1:1442/health",
       "http://127.0.0.1:1337/health",
+      "http://127.0.0.1:1337/health",
+      "http://127.0.0.1:1337",
     ]);
   });
 

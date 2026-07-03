@@ -71,6 +71,7 @@ export type SubmitL2TransferConfig = {
   readonly lovelace: bigint;
   readonly additionalAssets: Readonly<Assets>;
   readonly nodeEndpoint: string;
+  readonly submitRequestTimeoutMs?: number;
   readonly networkId: bigint;
   readonly submissionMode: SubmissionMode;
 };
@@ -330,12 +331,14 @@ export const parseSubmitL2TransferConfig = ({
   lovelace,
   assetSpecs,
   nodeEndpoint,
+  submitRequestTimeoutMs,
   submissionMode,
 }: {
   readonly l2Address: string;
   readonly lovelace: string;
   readonly assetSpecs: readonly string[];
   readonly nodeEndpoint?: string;
+  readonly submitRequestTimeoutMs?: number;
   readonly submissionMode?: string;
 }): SubmitL2TransferConfig => {
   let addressBytes: ReturnType<typeof midgardAddressFromText>;
@@ -358,6 +361,7 @@ export const parseSubmitL2TransferConfig = ({
     nodeEndpoint: parseNodeEndpoint(
       nodeEndpoint ?? defaultMidgardNodeEndpoint(),
     ),
+    ...(submitRequestTimeoutMs === undefined ? {} : { submitRequestTimeoutMs }),
     networkId: BigInt(addressDetails.networkId),
     submissionMode: parseSubmissionMode(submissionMode),
   };
@@ -634,43 +638,57 @@ export const submitNativeTransferTx = (
   nodeEndpoint: string,
   txHex: string,
   expectedTxIdHex: string,
+  requestTimeoutMs?: number,
 ): Effect.Effect<{ readonly txId: string; readonly status: string }, Error> =>
   Effect.tryPromise({
     try: async () => {
-      const response = await fetch(`${nodeEndpoint}/submit`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/cbor",
-        },
-        body: Buffer.from(txHex, "hex"),
-      });
-      const responseText = await response.text();
-      if (!response.ok) {
-        throw new Error(
-          `Midgard node transfer submit failed (${response.status}): ${responseText}`,
-        );
+      const controller =
+        requestTimeoutMs === undefined ? undefined : new AbortController();
+      const timeout =
+        controller === undefined
+          ? undefined
+          : setTimeout(() => controller.abort(), requestTimeoutMs);
+      try {
+        const response = await fetch(`${nodeEndpoint}/submit`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/cbor",
+          },
+          body: Buffer.from(txHex, "hex"),
+          ...(controller === undefined ? {} : { signal: controller.signal }),
+        });
+        const responseText = await response.text();
+        if (!response.ok) {
+          throw new Error(
+            `Midgard node transfer submit failed (${response.status}): ${responseText}`,
+          );
+        }
+        const parsed = JSON.parse(responseText) as {
+          readonly txId?: unknown;
+          readonly status?: unknown;
+        };
+        if (
+          typeof parsed.txId !== "string" ||
+          typeof parsed.status !== "string"
+        ) {
+          throw new Error(
+            "Midgard node submit response must contain string txId/status fields.",
+          );
+        }
+        if (parsed.txId !== expectedTxIdHex) {
+          throw new Error(
+            `Midgard node returned mismatched txId ${parsed.txId} (expected ${expectedTxIdHex}).`,
+          );
+        }
+        return {
+          txId: parsed.txId,
+          status: parsed.status,
+        };
+      } finally {
+        if (timeout !== undefined) {
+          clearTimeout(timeout);
+        }
       }
-      const parsed = JSON.parse(responseText) as {
-        readonly txId?: unknown;
-        readonly status?: unknown;
-      };
-      if (
-        typeof parsed.txId !== "string" ||
-        typeof parsed.status !== "string"
-      ) {
-        throw new Error(
-          "Midgard node submit response must contain string txId/status fields.",
-        );
-      }
-      if (parsed.txId !== expectedTxIdHex) {
-        throw new Error(
-          `Midgard node returned mismatched txId ${parsed.txId} (expected ${expectedTxIdHex}).`,
-        );
-      }
-      return {
-        txId: parsed.txId,
-        status: parsed.status,
-      };
     },
     catch: (cause) =>
       new Error(`Failed to submit Midgard-native transfer: ${String(cause)}`),
@@ -847,6 +865,7 @@ export const submitL2TransferProgram = ({
             config.nodeEndpoint,
             built.txHex,
             built.txIdHex,
+            config.submitRequestTimeoutMs,
           );
 
     return {

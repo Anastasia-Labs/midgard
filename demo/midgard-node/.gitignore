@@ -9,6 +9,7 @@ dist
 test-mpt-db*/
 tests/benchmarks/output/
 logs/
+.stress-wallets/
 tmp-*
 .flow-ledger-*/
 .flow-mempool-*/

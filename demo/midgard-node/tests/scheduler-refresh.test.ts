@@ -14,7 +14,11 @@ import {
   type NodeUtxoWithDatum,
   requireExistingSchedulerWitnessUtxo,
   resolveSchedulerFirstAppointmentValidityWindow,
+  resolveSchedulerRefreshValidityWindow,
   resolveSchedulerRefreshWitnessSelection,
+  SCHEDULER_SUBMISSION_CONFIRMATION_TIMEOUT_MS,
+  schedulerRefreshDueWorkFromSubmitTiming,
+  schedulerSlotSnapshotFromSubmitSlot,
 } from "@/workers/utils/scheduler-refresh.js";
 
 const mkUtxo = (txHash: string, outputIndex: number): UTxO =>
@@ -36,6 +40,17 @@ const mkNode = (
   utxo: mkUtxo(txHash, outputIndex),
   datum,
 });
+
+const customSlotLucid = {
+  config: () => ({
+    network: "Custom",
+    provider: { time: 0, slot: 0 },
+  }),
+  unixTimeToSlot: (unixTime: number) => Math.floor(unixTime / 1_000),
+};
+
+const schedulerStartForShiftBoundary = (shiftBoundaryMs: number): bigint =>
+  BigInt(shiftBoundaryMs) - SDK.SHIFT_DURATION_MS;
 
 describe("scheduler refresh witness selection", () => {
   const activeRoot = mkNode("00".repeat(32), 0, {
@@ -182,6 +197,62 @@ describe("scheduler refresh witness selection", () => {
     expect(snapshot.observedAtMs).toBe(1_779_150_000_000);
   });
 
+  it("captures production scheduler slots from local submit-ledger snapshots", () => {
+    const lucid = {
+      currentSlot: () => {
+        throw new Error("wall-clock Lucid slot must not be used");
+      },
+      config: () => ({
+        network: "Custom",
+        provider: { time: 20_000, slot: 20 },
+      }),
+    };
+
+    const snapshot = schedulerSlotSnapshotFromSubmitSlot(lucid as never, {
+      source: "local_ogmios_tip",
+      currentSlot: 12,
+      observedAtMs: 1_779_149_999_000,
+      slotLengthMs: 1_000,
+    });
+
+    expect(snapshot).toEqual({
+      currentSlot: 12,
+      currentSlotStartMs: 12_000,
+      observedAtMs: 1_779_149_999_000,
+    });
+  });
+
+  it("backdates refresh validity when the scheduler shift boundary is already mature", () => {
+    const window = resolveSchedulerRefreshValidityWindow(
+      customSlotLucid as never,
+      schedulerStartForShiftBoundary(40_000),
+      {
+        currentSlot: 100,
+        currentSlotStartMs: 100_000,
+        observedAtMs: 100_500,
+      },
+    );
+
+    expect(window.validFrom).toBe(70_000n);
+    expect(window.validTo - window.validFrom).toBe(8n * 60n * 1000n);
+  });
+
+  it("does not backdate refresh validity before the scheduler shift boundary", () => {
+    const window = resolveSchedulerRefreshValidityWindow(
+      customSlotLucid as never,
+      schedulerStartForShiftBoundary(95_500),
+      {
+        currentSlot: 100,
+        currentSlotStartMs: 100_000,
+        observedAtMs: 100_500,
+      },
+    );
+
+    expect(window.validFrom).toBe(96_000n);
+    expect(window.validFrom).toBeGreaterThanOrEqual(95_500n);
+    expect(window.validTo - window.validFrom).toBe(8n * 60n * 1000n);
+  });
+
   it("keeps first-appointment validity within the on-chain short-range limit for production commit buffers", async () => {
     const operator = generateEmulatorAccount({ lovelace: 50_000_000n });
     const emulator = new Emulator([operator]);
@@ -205,5 +276,52 @@ describe("scheduler refresh witness selection", () => {
     expect(window.validTo - window.validFrom).toBeLessThanOrEqual(
       8n * 60n * 1000n,
     );
+  });
+
+  it("keeps scheduler refresh confirmation wait tolerant of live preprod confirmation latency", () => {
+    expect(SCHEDULER_SUBMISSION_CONFIRMATION_TIMEOUT_MS).toBe(5 * 60_000);
+    expect(SCHEDULER_SUBMISSION_CONFIRMATION_TIMEOUT_MS).toBeLessThan(
+      Number(8n * 60n * 1000n),
+    );
+  });
+
+  it("routes not-due scheduler timing to block-commitment due work before transaction build", () => {
+    const result = schedulerRefreshDueWorkFromSubmitTiming({
+      plan: {
+        status: "not_due",
+        callerLabel: "scheduler-refresh",
+        targetSlot: 30,
+        dueSlot: 30,
+        currentSlot: 20,
+        observedSlot: 20,
+        observedAtMs: 1_000,
+        deltaSlots: 10,
+        waitMs: 10_000,
+        slotLengthMs: 1_000,
+        slotSource: "local_ogmios_tip",
+        invalidBeforeSlot: 28,
+        invalidHereafterSlot: 40,
+        reason: "wait_ms=10000,max_inline_wait_ms=5000",
+        dependencyKey: "scheduler=tx#0,current_operator=aa",
+        invalidationKey: "scheduler=tx#0,current_operator=aa",
+      },
+    });
+
+    expect(result).toStrictEqual({
+      type: "CommitTimingDueWork",
+      dueWork: {
+        kind: "commit_scheduler_refresh",
+        key: "block_commitment",
+        callerLabel: "scheduler-refresh",
+        reason: "scheduler_transition_not_reached",
+        observedSlot: 20,
+        dueSlot: 30,
+        dueAtMs: 11_000,
+        waitMs: 10_000,
+        slotSource: "local_ogmios_tip",
+        dependencyKey: "scheduler=tx#0,current_operator=aa",
+        invalidationKey: "scheduler=tx#0,current_operator=aa",
+      },
+    });
   });
 });

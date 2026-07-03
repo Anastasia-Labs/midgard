@@ -1,7 +1,8 @@
 # Libp2p DA Transport Migration Plan
 
 Generated: 2026-06-19
-Status: implementation plan
+Status: implementation complete in current worktree; Phase 0/1 decisions frozen
+2026-06-21
 Scope: DA protocol transport only
 
 ## Decision
@@ -23,6 +24,100 @@ HTTP may remain for unrelated process surfaces:
 
 This is a protocol migration, not a cosmetic transport refactor. The output must
 be fail-closed, auditable, and testable as a production L2 data path.
+
+## Phase 0/1 Decision Lock
+
+The first implementation PR must freeze protocol constants, codecs, vectors,
+dependency pins, and libp2p manifest validation before adding runtime libp2p
+service behavior. It must not remove the current HTTP DA runtime paths until
+replacement libp2p tests exist.
+
+Frozen v1 decisions:
+
+- Use deployment-scoped protocol ids and GossipSub topics exactly as listed in
+  this document. Do not accept near-match `/1` negotiation or compatibility
+  aliases.
+- Normalize `deployment_fingerprint` as a 32-byte lowercase hex string at the
+  config boundary. Protocol ids and topics use that lowercase hex text; CBOR
+  messages encode it as bytes[32].
+- Encode DA transport messages as canonical CBOR fixed-position arrays, not
+  self-describing maps. The logical schema field order below is the binary tuple
+  order. Optional fields are encoded as `null` when absent.
+- Use numeric enums in CBOR. Human-readable enum strings in this document are
+  documentation only.
+- Put shared protocol ids, topic builders, message types, canonical CBOR
+  codecs, enum tables, and golden vectors in `@al-ft/midgard-core` under a pure
+  DA transport module. Do not import libp2p runtime packages from
+  `@al-ft/midgard-core`.
+- Keep the current on-chain V1 attestation signature unchanged:
+  `MidgardDAAttestationV1 || header_hash`.
+- Use SHA-256 for `payload_hash`, chunk hashes, proof-bundle hashes, root-summary
+  hashes, conflict evidence hashes, and encoded-body hashes.
+- Use only manifest-known peers in v1. Unknown peers are rejected for submit,
+  gossip, and retrieval. Public-limited retrieval is not enabled in v1.
+- Serve proof-bundle, trace-step, and event-to-step material from committee
+  nodes in v1. Dedicated proof peers are a future manifest role, not a v1
+  requirement.
+- Use TCP, Noise, Yamux, Identify, Bootstrap, and GossipSub. Do not add DHT,
+  WebSockets, QUIC, mplex, HTTP gateways, or object-store fallback.
+- Pin exact libp2p package versions in the package that implements the runtime.
+  Do not use semver ranges for the libp2p stack.
+- Use these v1 public-testnet limits unless a later signed-off plan revises
+  them:
+  - `max_payload_bytes`: 67,108,864 bytes.
+  - `max_inline_response_bytes`: 1,048,576 bytes.
+  - `max_chunk_bytes`: 1,048,576 bytes.
+  - `max_gossip_message_bytes`: 65,536 bytes.
+  - `max_streams_per_peer`: 16.
+  - `request_timeout_ms`: 15,000.
+- The minimum retention promise is the 14-day challenge window plus a 24-hour
+  safety margin. Config that cannot retain signed data for at least 15 days must
+  fail closed.
+- A future V2 on-chain attestation may bind `payload_hash`; that is explicitly
+  out of scope for this migration.
+
+## Implementation Status: 2026-06-21
+
+Implemented in the current Phase 0/1 plus remaining-runtime worktree:
+
+- `@al-ft/midgard-core/da-transport` owns protocol IDs, topics, limits, strict
+  canonical CBOR codecs, and golden vectors for payload, metadata, proof, trace,
+  event-to-step, conflict, gossip, and `attestations-by-header/1` messages.
+- The DA libp2p runtime uses the pinned TCP, Noise, Yamux, Identify, Bootstrap,
+  and GossipSub stack with manifest peer registry, connection gating, protocol
+  and topic allowlists, bounded stream framing, and start/stop tests.
+- Production watcher startup now requires libp2p DA transport mode plus
+  `DA_LIBP2P_PRIVATE_KEY_SOURCE`, rejects unknown local identities, registers
+  payload and attestation request handlers, and injects a node-backed
+  attestation exchange into peer polling and signer coordination.
+- Payload bytes and metadata move through `payload-submit/1`,
+  `payload-by-header/1`, `payload-chunk/1`, and `metadata-by-header/1` handlers.
+  The watcher retrieves payload candidates through the `DaPayloadSource`
+  boundary, and watcher tests use peer/candidate fixtures rather than HTTP DA
+  fixtures.
+- Midgard-node production `/da/payload` and `/da/payload/metadata` routes are
+  removed; producer publication now targets manifest committee peers over
+  `payload-submit/1` and publishes payload announcements.
+- The production watcher HTTP API is process-only (`/healthz`, `/readyz`, and
+  `/v1/manifest`); DA payload, metadata, signature, status, and peer submission
+  HTTP routes are removed.
+- The static no-HTTP-DA guardrail scans the pure core transport module plus
+  migrated libp2p watcher runtime surfaces, peer coordination, submitter
+  reconciliation, store modules, proof serving modules, challenger retained DA
+  retrieval, and guarded libp2p config regions.
+
+Operational notes that must not be hidden:
+
+- Watcher DA URL config parsing has been removed from the normal config path:
+  `da_transport.kind` must be `libp2p`, URL-shaped DA environment overrides are
+  rejected, and watcher domain/config objects no longer carry DA payload or peer
+  HTTP endpoint fields. The fault-proof challenger package now uses an injected
+  libp2p retained DA source over the frozen DA transport protocols; HTTP
+  retained-payload fallback must not be reintroduced.
+- `midgard-core/dist` is an ignored package build artifact. After changing core
+  transport exports, local watcher verification requires
+  `pnpm --filter @al-ft/midgard-core build` before watcher typecheck/tests that
+  import `@al-ft/midgard-core/da-transport` through package exports.
 
 ## Why HTTP Is Being Removed
 
@@ -158,8 +253,15 @@ Do not collapse these identifiers. In schemas and tests, name them separately:
 Wire encoding requirements:
 
 - Canonical deterministic CBOR for all DA protocol messages.
+- Fixed-position CBOR arrays for all protocol messages. Do not encode transport
+  messages as CBOR maps with string keys.
+- Logical schema order is binary tuple order. Append-only field changes are not
+  allowed in `/1`; any breaking or additive wire change must use `/2`.
+- Optional fields encode absent values as CBOR `null`.
+- Numeric enums encode as unsigned integers. The string labels in this document
+  are for code constants, logs, and tests.
 - Strict decoding: no trailing bytes, duplicate keys, unknown required fields, or
-  non-canonical map ordering.
+  non-canonical map ordering where nested maps are used.
 - Length-delimited binary frames on libp2p streams.
 - Explicit maximum frame, payload, metadata, proof bundle, and gossip message
   sizes.
@@ -288,28 +390,32 @@ Responsibilities:
 Use the JavaScript/TypeScript libp2p stack first, matching the current demo
 workspace.
 
-Expected packages, adjusted to the exact current libp2p API at implementation
-time:
+Phase 0/1 pins for the first runtime package:
 
 ```text
-libp2p
-@libp2p/tcp
-@libp2p/bootstrap
-@libp2p/identify
-@libp2p/gossipsub
-@chainsafe/libp2p-noise
-@chainsafe/libp2p-yamux
-@multiformats/multiaddr
+libp2p@3.3.4
+@libp2p/tcp@11.0.22
+@libp2p/bootstrap@12.0.25
+@libp2p/identify@4.1.8
+@libp2p/gossipsub@16.0.3
+@chainsafe/libp2p-noise@17.0.0
+@chainsafe/libp2p-yamux@8.0.1
+@multiformats/multiaddr@13.0.3
 ```
 
+These versions were selected on 2026-06-21 from current registry metadata and
+must be committed as exact versions, not semver ranges. If the implementation
+PR intentionally changes any version, the PR must update this table, explain the
+reason, and rerun the dependency/security checks.
+
 Use only the packages actually needed. Prefer Yamux for new code. Do not use
-mplex unless the repository already requires it.
+mplex.
 
 Security floor:
 
 - `@libp2p/gossipsub` must be a version not affected by CVE-2026-46679.
 - The advisory states versions before `15.0.23` are affected, so use
-  `>=15.0.23` or the repository-approved newer version.
+  `>=15.0.23`; the selected `16.0.3` pin satisfies that floor.
 - Run the repository's dependency audit/security tooling after dependency
   changes.
 
@@ -333,8 +439,10 @@ demo/da-committee-node/src/da/libp2p/
   DaRequestResponse.ts
 ```
 
-Move shared protocol types/codecs into the existing shared SDK/core package if
-both `midgard-node` and `da-committee-node` need them.
+Move shared protocol types/codecs into `@al-ft/midgard-core` because both
+`midgard-node` and `da-committee-node` need the same ids, topics, CBOR codecs,
+and golden vectors. Keep this module pure: no libp2p runtime imports, no network
+I/O, no filesystem I/O, and no signer side effects.
 
 Required capabilities:
 
@@ -359,11 +467,14 @@ Replace URL fields with libp2p identity and addressing.
 Example:
 
 ```yaml
-schema_version: 1
+schemaVersion: midgard-da-libp2p-runtime-manifest-v2
 
 deployment:
   name: public-testnet
-  fingerprint: "<deployment-fingerprint>"
+  fingerprint: "<contract-deployment-info.manifestId>"
+  contract_deployment_manifest_id: "<contract-deployment-info.manifestId>"
+  contract_deployment_info_sha256: "<raw contract-deployment-info.json sha256 for audit>"
+  identity_source: contract_deployment_manifest_id
   cardano_network: "<network-id>"
   midgard_network: "<network-id>"
   da_protocol_version: 1
@@ -381,6 +492,7 @@ da_transport:
     strict_sign: true
     emit_self: false
     allowed_topics_only: true
+    max_gossip_message_bytes: 65536
   limits:
     max_payload_bytes: 67108864
     max_inline_response_bytes: 1048576
@@ -403,18 +515,40 @@ da_committee:
 
 Configuration rules:
 
+- Phase 0/1 adds this parser behind `da_transport.kind: libp2p`. The existing
+  HTTP DA parser may remain only for the current runtime until replacement
+  libp2p coverage exists.
+- In libp2p mode, require `da_transport.no_http_da_transport: true`.
 - Reject `baseUrl`, `baseUrls`, `endpoint`, `url`, `httpEndpoint`,
   `committeeEndpoint`, `daEndpoint`, `gateway`, `objectStore`, `bucket`, and
   `s3` under DA transport or DA committee config.
-- Reject `http://` and `https://` values in DA transport config.
+- Reject `http://` and `https://` values anywhere under DA transport or DA
+  committee config.
+- Reject DA URL environment overrides in libp2p mode, including
+  `DA_PAYLOAD_ENDPOINTS`, `DA_PEER_ENDPOINTS`, and `DA_COORDINATOR_ENDPOINT`.
+- Require `schemaVersion: midgard-da-libp2p-runtime-manifest-v2`,
+  `deployment.identity_source: contract_deployment_manifest_id`, and
+  `deployment.fingerprint === deployment.contract_deployment_manifest_id`
+  before deriving protocol ids, topics, signatures, or storage keys.
+- Reject v1/raw-SHA runtime manifests and stale stores. The runtime fingerprint
+  is the canonical contract deployment `manifestId`; raw
+  `contract_deployment_info_sha256` is audit metadata only.
 - Require stable peer IDs for committee members.
 - Require signer index and DA verification key to match the on-chain DA params.
 - Require every configured multiaddr to include or resolve to the expected
   peer ID.
+- Require every committee member role to be explicit. V1 recognizes
+  `committee`, `producer`, `watcher`, `challenger`, `coordinator`, and
+  `retrieval`.
+- Fail closed if the configured retention window is less than 15 days.
 
 ## Protocol IDs
 
 All protocol IDs and topic names are deployment-scoped.
+
+`{deployment_fingerprint}` is the normalized lowercase 32-byte hex deployment
+fingerprint. Do not accept protocol ids or topics that use aliases, mixed-case
+fingerprints, shortened fingerprints, or raw manifest names.
 
 GossipSub topics:
 
@@ -454,28 +588,93 @@ must use explicit `/2` protocols and topics.
 
 ## Authorization Matrix
 
-| Protocol               | Producer               | Committee         | Watcher/challenger | Unknown peer             |
-| ---------------------- | ---------------------- | ----------------- | ------------------ | ------------------------ |
-| payload-announcements  | publish                | publish/subscribe | subscribe          | reject                   |
-| payload-submit         | submit                 | submit/serve      | no                 | reject                   |
-| payload-by-header      | serve optional/request | serve/request     | request            | reject or public-limited |
-| payload-chunk          | serve optional/request | serve/request     | request            | reject or public-limited |
-| metadata-by-header     | serve optional/request | serve/request     | request            | reject or public-limited |
-| proof-bundle-by-header | no/request             | serve/request     | request            | reject or public-limited |
-| trace-step-by-index    | no/request             | serve/request     | request            | reject or public-limited |
-| event-to-step-by-event | no/request             | serve/request     | request            | reject or public-limited |
-| attestations           | no                     | publish/subscribe | subscribe          | reject                   |
-| attestations-by-header | no/request             | serve/request     | request            | reject or public-limited |
-| conflicts              | no                     | publish/subscribe | publish/subscribe  | reject                   |
+| Protocol               | Producer               | Committee         | Watcher/challenger | Unknown peer |
+| ---------------------- | ---------------------- | ----------------- | ------------------ | ------------ |
+| payload-announcements  | publish                | publish/subscribe | subscribe          | reject       |
+| payload-submit         | submit                 | submit/serve      | no                 | reject       |
+| payload-by-header      | serve optional/request | serve/request     | request            | reject       |
+| payload-chunk          | serve optional/request | serve/request     | request            | reject       |
+| metadata-by-header     | serve optional/request | serve/request     | request            | reject       |
+| proof-bundle-by-header | no/request             | serve/request     | request            | reject       |
+| trace-step-by-index    | no/request             | serve/request     | request            | reject       |
+| event-to-step-by-event | no/request             | serve/request     | request            | reject       |
+| attestations           | no                     | publish/subscribe | subscribe          | reject       |
+| attestations-by-header | no/request             | serve/request     | request            | reject       |
+| conflicts              | no                     | publish/subscribe | publish/subscribe  | reject       |
 
-The initial public-testnet profile should default to manifest-known peers only.
-If public-limited retrieval is later enabled, it must be separately rate-limited,
-bounded, and documented. It must not silently become the default.
+The v1 public-testnet profile is manifest-known peers only. Public-limited
+retrieval is deferred. If it is later enabled, it must be a separate signed-off
+change with dedicated rate limits, byte limits, peer-scoring rules, and tests.
+It must not silently become the default.
 
 ## Message Schemas
 
-Schemas below are logical field definitions. Implement the binary wire encoding
-as canonical CBOR with golden vectors.
+Schemas below are logical field definitions and fixed tuple order. Implement
+the binary wire encoding as canonical CBOR arrays with golden vectors.
+
+CBOR primitive mapping:
+
+- `bytes[n]`: definite-length CBOR byte string with exactly `n` bytes.
+- `bytes`: definite-length CBOR byte string bounded by the message limit.
+- `string`: definite-length UTF-8 CBOR text string, used only where the logical
+  value is not a hash or raw protocol object.
+- `uint`: canonical CBOR unsigned integer within JavaScript safe integer range
+  unless the field explicitly needs a bigint.
+- `uint8`: canonical CBOR unsigned integer from 0 through 255.
+- `optional T`: encode `null` when absent, otherwise encode `T`.
+- `T[]`: definite-length CBOR array.
+
+Enum values:
+
+```text
+PayloadSubmitMode:
+  0 inline
+  1 chunked
+
+PayloadSubmitStatus:
+  0 accepted
+  1 duplicate
+  2 conflict
+  3 rejected
+  4 deferred
+
+PayloadByHeaderStatus:
+  0 found_inline
+  1 found_chunked
+  2 not_found
+  3 conflict
+  4 rejected
+
+GenericFoundStatus:
+  0 found
+  1 not_found
+  2 rejected
+
+ProofBundleStatus:
+  0 found_inline
+  1 found_chunked
+  2 not_found
+  3 rejected
+
+MetadataStatus:
+  0 found
+  1 not_found
+  2 conflict
+  3 rejected
+
+LocalPayloadStatus:
+  0 staged
+  1 verified
+  2 signed
+  3 conflict
+
+ConflictEvidenceKind:
+  0 conflicting_payload_bytes
+  1 invalid_roots
+  2 signature_without_retrieval
+  3 malformed_message
+  4 equivocation
+```
 
 ```text
 DaPayloadAnnouncementV1 {
@@ -635,6 +834,29 @@ DaAttestationGossipV1 {
 ```
 
 ```text
+AttestationsByHeaderRequestV1 {
+  deployment_fingerprint: bytes[32]
+  header_hash: bytes[28]
+  accepted_signer_indexes: optional uint8[]
+  max_attestations: optional uint
+}
+
+AttestationsByHeaderResponseV1 {
+  status: enum("found", "not_found", "rejected")
+  header_hash: bytes[28]
+  attestations: DaAttestationGossipV1[]
+  reason_code: optional string
+}
+```
+
+`attestations-by-header/1` responses carry witness material as
+`DaAttestationGossipV1`, not peer-supplied internal watcher records. The
+requesting node reconstructs local `DaSignatureRecord` state from its locally
+verified payload/header context and validates the witness against the configured
+DA committee. Peer identity is not treated as signer identity; retrieval peers
+may serve arbitrary valid signer indexes.
+
+```text
 ConflictEvidenceV1 {
   deployment_fingerprint: bytes
   header_hash: bytes[28]
@@ -765,8 +987,10 @@ Migration requirements:
 
 Delete or migrate DA HTTP code in this order:
 
-1. Add libp2p config and manifest parsing behind strict feature flags.
-2. Add libp2p service and codecs with unit tests.
+1. Add the Phase 0/1 protocol freeze: constants, topic/protocol builders,
+   canonical CBOR tuple codecs, enum tables, golden vectors, exact dependency
+   pins, manifest parsing, URL rejection, and scoped static guardrails.
+2. Add libp2p service with unit tests.
 3. Add request-response handlers and in-memory integration tests.
 4. Add producer publication over `payload-submit/1`.
 5. Add committee validation/signing over libp2p.
@@ -778,7 +1002,9 @@ Delete or migrate DA HTTP code in this order:
 10. Rewrite tests that used HTTP fixtures.
 11. Add static tests that fail on DA HTTP reintroduction.
 
-Static guardrails should fail if DA transport code imports or uses:
+The Phase 0/1 guardrail is intentionally scoped. It must fail if the new
+`@al-ft/midgard-core` DA transport module, new libp2p manifest parser, or new
+libp2p DA transport runtime imports or uses:
 
 ```text
 fetch(
@@ -799,26 +1025,38 @@ objectStore
 s3
 ```
 
-The guardrail must be scoped tightly enough that non-DA HTTP APIs can remain.
+The Phase 0/1 guardrail must not fail on current HTTP DA runtime files that are
+still needed before replacement libp2p coverage exists. Phase 6 expands the same
+guardrail to all DA transport code after those files are deleted. The guardrail
+must always be scoped tightly enough that non-DA HTTP APIs can remain.
 
 ## Phased Implementation
 
 ### Phase 0: Protocol Freeze
 
 - Finalize this plan and the architecture docs.
-- Freeze v1 protocol IDs, topic names, message schemas, size limits, and error
-  codes.
-- Add golden vectors for hashes, CBOR, and signature preimages.
+- Freeze v1 protocol IDs, topic names, tuple message schemas, enum numbers,
+  size limits, retention floor, dependency pins, and error/reason codes.
+- Add pure `@al-ft/midgard-core` DA transport constants and codecs.
+- Add golden vectors for protocol/topic construction, hashes, canonical CBOR,
+  chunk manifests, and signature preimages.
+- Add a scoped no-HTTP DA guardrail for newly introduced DA transport modules.
 
 ### Phase 1: Manifest And Config
 
-- Add libp2p manifest schema.
-- Reject URL-based DA config fields.
+- Add libp2p manifest schema behind `da_transport.kind: libp2p`.
+- Require `da_transport.no_http_da_transport: true` in libp2p mode.
+- Reject URL-based DA config fields and URL environment overrides in libp2p mode.
+- Normalize deployment fingerprints as lowercase bytes[32] hex.
 - Persist peer identity.
-- Validate committee signer indexes and peer IDs against deployment manifest.
+- Validate committee signer indexes, roles, vkeys, peer IDs, multiaddrs, limits,
+  and retention floor against the deployment manifest.
 - Keep old HTTP tests only until replacement coverage exists.
 
 ### Phase 2: Libp2p Service
+
+Status 2026-06-21: implemented for the watcher package with mocked lifecycle
+tests; a real multi-process socket smoke test remains hardening work.
 
 - Implement the shared DA libp2p service.
 - Add connection gating and manifest peer registry.
@@ -828,6 +1066,9 @@ The guardrail must be scoped tightly enough that non-DA HTTP APIs can remain.
 
 ### Phase 3: Payload Protocols
 
+Status 2026-06-21: implemented for inline/chunked payload submit and retrieval,
+metadata retrieval, duplicate handling, and conflict detection.
+
 - Implement `payload-submit/1`.
 - Implement `payload-by-header/1`.
 - Implement `payload-chunk/1`.
@@ -836,12 +1077,52 @@ The guardrail must be scoped tightly enough that non-DA HTTP APIs can remain.
 
 ### Phase 4: Attestation Protocols
 
+Status 2026-06-21: implemented with gossip message codecs, typed
+`attestations-by-header/1` request/response, store-backed handlers, and
+node-backed watcher startup wiring. Peer responses are witness-only and are
+validated against local payload/header state.
+
 - Implement attestation gossip.
 - Implement `attestations-by-header/1`.
 - Preserve arbitrary signer index support.
 - Preserve signerless submitter/coordinator mode.
 
 ### Phase 5: Proof Retrieval
+
+Status 2026-06-21: implemented for the v1 retained-payload model. Committee
+nodes derive proof artifacts on demand from immutable verified `DaPayloadV2`
+bytes plus the committed state-queue header. The deriver fails closed unless the
+stored payload is verified, the stored payload hash matches, the stored root
+summary matches recomputed payload roots, and the committed L1 header roots and
+counts match. This avoids a second mutable proof store while still serving only
+root-checked material.
+
+`proof-bundle-by-header/1` serves a bounded v1 metadata bundle as canonical
+CBOR:
+
+```text
+[
+  1,
+  header_hash: bytes[28],
+  payload_hash: bytes[32],
+  root_summary_hash: bytes[32],
+  [utxos_root, withdrawals_root, forced_transactions_root,
+   transactions_root, deposits_root, transition_trace_root,
+   event_to_step_root],
+  [withdrawal_count, forced_transaction_count, l2_transaction_count,
+   deposit_count, total_event_count, transition_step_count]
+]
+```
+
+`trace-step-by-index/1.transition_step_bytes` are the canonical
+`TransitionStepSchema` value bytes from `DaPayloadV2.block_body.transition_trace`;
+`membership_proof_bytes` are canonical
+`TransitionTraceMembershipProofSchema` (`IndexedTraceProof`) bytes.
+
+`event-to-step-by-event/1.event_to_step_entry_bytes` are canonical
+`EventToStepValueSchema` bytes when the event is present, or null when the
+opening is a non-membership proof. `membership_or_nonmembership_proof_bytes`
+are canonical `EventToStepProofSchema` bytes.
 
 - Implement `proof-bundle-by-header/1`.
 - Implement `trace-step-by-index/1`.
@@ -852,6 +1133,11 @@ The guardrail must be scoped tightly enough that non-DA HTTP APIs can remain.
 
 ### Phase 6: Remove HTTP DA Transport
 
+Status 2026-06-21: production payload/metadata HTTP routes, the watcher HTTP DA
+client, URL-based DA config, HTTP peer polling, and challenger retained-payload
+HTTP fallback are removed. Remaining HTTP-shaped literals are rejection tests,
+guardrail fixtures, or unrelated process/provider APIs.
+
 - Delete DA HTTP endpoints from Midgard node.
 - Delete DA HTTP clients from committee/watcher code.
 - Delete URL-based DA config.
@@ -859,6 +1145,13 @@ The guardrail must be scoped tightly enough that non-DA HTTP APIs can remain.
 - Add static no-HTTP-DA regression tests.
 
 ### Phase 7: Hardening And Public-Testnet Readiness
+
+Status 2026-06-21: narrow acceptance is implemented and verified in this
+worktree: runtime start/stop and peer-gating tests, payload/proof protocol
+failure tests, watcher/core/node suites, no-HTTP guardrails, and dependency pin
+audit are green. Real packet-level inspection plus multi-process
+partition/slow-peer chaos tests remain pre-testnet hardening follow-up, not DA
+HTTP fallback work.
 
 - Run multi-node libp2p tests with at least 3 committee peers.
 - Test node restarts, rollbacks, partial partitions, slow peers, duplicate
@@ -872,11 +1165,17 @@ The guardrail must be scoped tightly enough that non-DA HTTP APIs can remain.
 Unit tests:
 
 - Canonical CBOR strict decode.
+- Golden tuple encoding rejects map/object encodings for protocol messages.
+- Enum values are frozen and round-trip by number.
 - Golden vectors for every DA message.
 - `header_hash` length is 28 bytes.
 - `payload_hash` length is 32 bytes.
+- `deployment_fingerprint` length is 32 bytes and protocol/topic text is
+  lowercase hex.
 - Protocol ID/topic construction.
 - Manifest validation rejects HTTP and URL fields.
+- Manifest validation rejects DA URL environment overrides in libp2p mode.
+- Manifest validation rejects retention windows below 15 days.
 - Connection gater rejects unknown peers.
 - Chunk manifest hashing.
 - Duplicate payload idempotence.
@@ -905,7 +1204,8 @@ Integration tests:
 
 Regression tests:
 
-- DA code cannot import HTTP clients.
+- New DA transport modules cannot import HTTP clients or use URL-shaped DA
+  config.
 - DA config cannot contain HTTP URLs.
 - DA docs/tests do not reintroduce `/da/payload` as a production path.
 - Unknown peers cannot retrieve unbounded data.
@@ -944,18 +1244,46 @@ commands above or a documented reason they cannot run.
 - Retention window too short: fail config load or refuse signing.
 - Manifest committee differs from on-chain DA params: fail closed.
 
-## Open Decisions Before Implementation
+## Resolved Phase 0/1 Decisions
 
-These must be decided before coding the production path:
+These decisions are fixed for the first implementation PR and should not be
+reopened without updating this document and the golden vectors:
 
-- Exact canonical CBOR library and deterministic encoding API.
-- Exact libp2p package versions after dependency audit.
-- Exact maximum payload, chunk, stream, and gossip sizes for public testnet.
-- Whether public-limited retrieval is allowed at all in v1.
-- Whether proof-bundle retrieval is served by committee nodes, dedicated proof
-  peers, or both.
-- Whether a future V2 attestation should bind `payload_hash` on chain.
-- Exact retention margin beyond the challenge window.
+- Canonical CBOR API: use the existing strict `@al-ft/midgard-core`
+  CBOR helpers for pure DA transport codecs, with fixed-position tuple arrays,
+  numeric enums, and byte-exact golden vectors.
+- Shared module location: add pure protocol ids, topics, types, codecs, and
+  vectors under `@al-ft/midgard-core`. Keep libp2p runtime construction in the
+  package that owns the service.
+- Dependency pins: use the exact libp2p package versions listed in
+  `Dependencies`.
+- Public-testnet size limits: use the exact `da_transport.limits` and
+  `gossip.max_gossip_message_bytes` values listed in `Deployment Manifest`.
+- Retrieval policy: v1 is manifest-known peers only. Unknown peers are rejected;
+  public-limited retrieval is deferred.
+- Proof serving: v1 committee nodes serve proof-bundle, trace-step, and
+  event-to-step material from verified payload bytes and committed L1 header
+  records. Dedicated proof peers are deferred to a future manifest role.
+- On-chain signature: V1 remains
+  `MidgardDAAttestationV1 || header_hash`. Binding `payload_hash` on chain is a
+  future V2 question, not part of this migration.
+- Retention margin: v1 public-testnet requires the 14-day challenge window plus
+  24 hours, for a minimum signed-data retention floor of 15 days.
+- Guardrail scope: Phase 0/1 guardrails apply to new DA transport modules and
+  libp2p-mode config; Phase 6 expands the guardrail after HTTP DA replacement
+  coverage exists.
+
+## Deferred Decisions
+
+These are intentionally outside the Phase 0/1 PR:
+
+- Whether and how to add public-limited retrieval.
+- Whether to introduce dedicated proof peers.
+- Whether a future V2 on-chain attestation binds `payload_hash`,
+  `payload_schema_version`, and `retention_until_slot`.
+- Whether to add QUIC, WebSocket, DHT discovery, or browser-facing transports.
+- Whether public-testnet limits should change after load testing and abuse
+  testing.
 
 ## Completion Criteria
 

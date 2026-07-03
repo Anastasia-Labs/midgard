@@ -36,20 +36,24 @@ type RequiredReconcileArgs = {
   readonly submitterId?: string;
 };
 
+export type AttestationSubmissionResult =
+  | { readonly status: "submitted"; readonly txHash: string }
+  | { readonly status: "already_attested" };
+
 export interface OnChainAttestationSubmitter {
   initAttestation(
     record: Pick<DaAttestationContext, "headerHash">,
-  ): Promise<string>;
+  ): Promise<AttestationSubmissionResult>;
   addSignatures(args: {
     readonly record: DaAttestationContext;
     readonly candidate: DaAttestationCandidateRecord;
     readonly packedWitnessesHex: string;
     readonly signerIndexes: readonly number[];
-  }): Promise<string>;
+  }): Promise<AttestationSubmissionResult>;
   applyAttestation(args: {
     readonly record: DaAttestationContext;
     readonly candidate: DaAttestationCandidateRecord;
-  }): Promise<string>;
+  }): Promise<AttestationSubmissionResult>;
 }
 
 export type OnChainLifecycleCoordinatorDeps = {
@@ -157,8 +161,11 @@ export class OnChainLifecycleCoordinator implements AttestationCoordinator {
     action = await this.waitForLeadership(args, action);
 
     if (action.kind === "init") {
-      const txHash = await this.deps.submitter.initAttestation(context);
-      await this.recordSubmission(context, "init", txHash, [
+      const result = await this.deps.submitter.initAttestation(context);
+      if (result.status === "already_attested") {
+        return;
+      }
+      await this.recordSubmission(context, "init", result.txHash, [
         context.validation.stateQueueOutRef,
       ]);
       candidates = await this.fetchCandidatesUntilVisible(context.headerHash);
@@ -173,13 +180,16 @@ export class OnChainLifecycleCoordinator implements AttestationCoordinator {
 
     if (action.kind === "add_signatures") {
       const candidate = requireCandidate(candidates, action.candidateOutRef);
-      const txHash = await this.deps.submitter.addSignatures({
+      const result = await this.deps.submitter.addSignatures({
         record: context,
         candidate,
         packedWitnessesHex: action.packedWitnessesHex,
         signerIndexes: action.signerIndexes,
       });
-      await this.recordSubmission(context, "add_signatures", txHash, [
+      if (result.status === "already_attested") {
+        return;
+      }
+      await this.recordSubmission(context, "add_signatures", result.txHash, [
         candidate.outRef,
       ]);
       const updated = await this.fetchCandidatesUntilPlanChanges(args, action);
@@ -198,11 +208,14 @@ export class OnChainLifecycleCoordinator implements AttestationCoordinator {
 
     if (action.kind === "apply") {
       const candidate = requireCandidate(candidates, action.candidateOutRef);
-      const txHash = await this.deps.submitter.applyAttestation({
+      const result = await this.deps.submitter.applyAttestation({
         record: context,
         candidate,
       });
-      await this.recordSubmission(context, "apply", txHash, [
+      if (result.status === "already_attested") {
+        return;
+      }
+      await this.recordSubmission(context, "apply", result.txHash, [
         candidate.outRef,
         context.validation.stateQueueOutRef,
       ]);

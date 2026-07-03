@@ -27,6 +27,24 @@ export type CommitTimingBudget = {
   readonly satisfied: boolean;
 };
 
+type CommitEndTimeResolution = {
+  readonly alignedCandidateEndTime: number;
+  readonly minimumMonotonicEndTime: number;
+  readonly minimumCurrentTimeEndTime: number;
+  readonly resolvedEndTime: number;
+};
+
+export type CommitEndTimeFit =
+  | (CommitEndTimeResolution & {
+      readonly status: "fits";
+      readonly maximumEndTimeMs?: number;
+    })
+  | (CommitEndTimeResolution & {
+      readonly status: "exceeds_cap";
+      readonly maximumEndTimeMs: number;
+      readonly reason: string;
+    });
+
 export const alignUnixTimeToSlotBoundary = (
   lucid: LucidEvolution,
   unixTime: number,
@@ -95,8 +113,39 @@ export const resolveAlignedCommitEndTime = ({
 }): {
   readonly alignedCandidateEndTime: number;
   readonly minimumMonotonicEndTime: number;
+  readonly minimumCurrentTimeEndTime: number;
   readonly resolvedEndTime: number;
 } => {
+  const resolution = resolveCommitEndTimeFit({
+    lucid,
+    latestEndTime,
+    candidateEndTime,
+    nowMs,
+    minimumFutureBufferMs,
+  });
+  return {
+    alignedCandidateEndTime: resolution.alignedCandidateEndTime,
+    minimumMonotonicEndTime: resolution.minimumMonotonicEndTime,
+    minimumCurrentTimeEndTime: resolution.minimumCurrentTimeEndTime,
+    resolvedEndTime: resolution.resolvedEndTime,
+  };
+};
+
+export const resolveCommitEndTimeFit = ({
+  lucid,
+  latestEndTime,
+  candidateEndTime,
+  nowMs = Date.now(),
+  minimumFutureBufferMs = COMMIT_DEFAULT_MINIMUM_FUTURE_BUFFER_MS,
+  maximumEndTimeMs,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly latestEndTime: number;
+  readonly candidateEndTime: number;
+  readonly nowMs?: number;
+  readonly minimumFutureBufferMs?: number;
+  readonly maximumEndTimeMs?: number;
+}): CommitEndTimeFit => {
   const alignedCandidateEndTime = alignUnixTimeToSlotBoundary(
     lucid,
     candidateEndTime,
@@ -109,14 +158,29 @@ export const resolveAlignedCommitEndTime = ({
     lucid,
     nowMs + minimumFutureBufferMs,
   );
-  return {
+  const resolvedEndTime = Math.max(
     alignedCandidateEndTime,
     minimumMonotonicEndTime,
-    resolvedEndTime: Math.max(
-      alignedCandidateEndTime,
-      minimumMonotonicEndTime,
-      minimumCurrentTimeEndTime,
-    ),
+    minimumCurrentTimeEndTime,
+  );
+  const resolution = {
+    alignedCandidateEndTime,
+    minimumMonotonicEndTime,
+    minimumCurrentTimeEndTime,
+    resolvedEndTime,
+  };
+  if (maximumEndTimeMs !== undefined && resolvedEndTime > maximumEndTimeMs) {
+    return {
+      ...resolution,
+      status: "exceeds_cap",
+      maximumEndTimeMs,
+      reason: `resolved_end_time_ms=${resolvedEndTime.toString()},maximum_end_time_ms=${maximumEndTimeMs.toString()},aligned_candidate_end_time_ms=${alignedCandidateEndTime.toString()},minimum_monotonic_end_time_ms=${minimumMonotonicEndTime.toString()},minimum_current_time_end_time_ms=${minimumCurrentTimeEndTime.toString()}`,
+    };
+  }
+  return {
+    ...resolution,
+    status: "fits",
+    maximumEndTimeMs,
   };
 };
 

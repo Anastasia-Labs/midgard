@@ -68,7 +68,7 @@ import {
   RETIRED_OPERATORS_ROOT_ASSET_NAME,
   SCHEDULER_ASSET_NAME,
   SchedulerDatum,
-  selectPureAdaFeeInput,
+  requireOperatorWalletInputs,
   type SpendingValidator as SdkSpendingValidator,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
   STATE_QUEUE_ROOT_ASSET_NAME,
@@ -96,8 +96,8 @@ const EMULATOR_PROTOCOL_PARAMETERS = {
   maxCollateralInputs: 3,
 } as const;
 
-describe("state-queue fee input selection", () => {
-  it("selects a pure-ADA fee input over a larger token-bearing input", async () => {
+describe("state-queue operator funding inputs", () => {
+  it("retains token-bearing preset wallet inputs", async () => {
     const tokenBearing = {
       txHash: "aa".repeat(32),
       outputIndex: 0,
@@ -118,11 +118,16 @@ describe("state-queue fee input selection", () => {
     } as UTxO;
 
     await expect(
-      Effect.runPromise(selectPureAdaFeeInput([tokenBearing, pureAda])),
-    ).resolves.toBe(pureAda);
+      Effect.runPromise(
+        requireOperatorWalletInputs(
+          [tokenBearing, pureAda],
+          "state_queue commit tx",
+        ),
+      ),
+    ).resolves.toEqual([tokenBearing, pureAda]);
   });
 
-  it("rejects token-only operator wallet views for fee selection", async () => {
+  it("accepts token-only operator wallet views for preset funding", async () => {
     const tokenBearing = {
       txHash: "dd".repeat(32),
       outputIndex: 0,
@@ -136,17 +141,25 @@ describe("state-queue fee input selection", () => {
       scriptRef: undefined,
     } as UTxO;
 
+    await expect(
+      Effect.runPromise(
+        requireOperatorWalletInputs([tokenBearing], "state_queue commit tx"),
+      ),
+    ).resolves.toEqual([tokenBearing]);
+  });
+
+  it("rejects empty operator wallet views for preset funding", async () => {
     const result = await Effect.runPromise(
-      Effect.either(selectPureAdaFeeInput([tokenBearing])),
+      Effect.either(requireOperatorWalletInputs([], "state_queue commit tx")),
     );
 
     expect(result._tag).toBe("Left");
     if (result._tag === "Left") {
-      expect(result.left.message).toContain("pure-ADA");
+      expect(result.left.message).toContain("operator wallet inputs");
     }
   });
 
-  it("rejects datum and script-ref wallet outputs for fee selection", async () => {
+  it("does not impose datum or script-ref filters on preset wallet inputs", async () => {
     const withDatum = {
       txHash: "12".repeat(32),
       outputIndex: 0,
@@ -163,14 +176,14 @@ describe("state-queue fee input selection", () => {
       scriptRef: { type: "Native", script: "8200" },
     } as UTxO;
 
-    const result = await Effect.runPromise(
-      Effect.either(selectPureAdaFeeInput([withDatum, withScriptRef])),
-    );
-
-    expect(result._tag).toBe("Left");
-    if (result._tag === "Left") {
-      expect(result.left.message).toContain("pure-ADA");
-    }
+    await expect(
+      Effect.runPromise(
+        requireOperatorWalletInputs(
+          [withDatum, withScriptRef],
+          "state_queue commit tx",
+        ),
+      ),
+    ).resolves.toEqual([withDatum, withScriptRef]);
   });
 });
 

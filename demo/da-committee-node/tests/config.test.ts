@@ -1,62 +1,278 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { blake2b } from "@noble/hashes/blake2.js";
 import { describe, expect, it } from "vitest";
 
 import {
   DEFAULT_L1_SUBMITTER_PREFLIGHT,
+  LIBP2P_DA_GOSSIP_MAX_MESSAGE_BYTES,
+  LIBP2P_DA_MIN_RETENTION_DAYS,
+  LIBP2P_DA_TRANSPORT_LIMITS,
   loadWatcherConfig,
 } from "../src/config.js";
 import { parseMidgardNodeDeploymentInfo } from "../src/l1/deployment.js";
-import { bytesToHex } from "../src/utils/hex.js";
 import { tempDir } from "./helpers.js";
 
 describe("loadWatcherConfig", () => {
   it("loads deployment files and DA params from the manifest", async () => {
     const dir = await tempDir();
     const member = "01".repeat(32);
-    const manifest = {
-      network: "Preview",
-      contracts: {
-        stateQueue: {
-          policyId: "02".repeat(28),
-          spendingScriptAddress: "addr_test1statequeue",
-        },
-        daAttestation: {
-          policyId: "03".repeat(28),
-          spendingScriptAddress: "addr_test1daattestation",
-        },
-        daParamsGovernor: {
-          policyId: "04".repeat(28),
-          spendingScriptAddress: "addr_test1daparams",
-        },
-      },
-      da: {
-        threshold: 1,
-        committeeSignersHash: bytesToHex(
-          blake2b(Buffer.from(member, "hex"), { dkLen: 32 }),
-        ),
-        members: [{ index: 0, vkey: member }],
-      },
-    };
+    const manifest = libp2pManifest(member);
     const manifestPath = join(dir, "manifest.json");
     const deploymentInfoPath = join(dir, "deployment.json");
     await writeFile(manifestPath, JSON.stringify(manifest));
-    await writeFile(deploymentInfoPath, JSON.stringify({}));
+    await writeMinimalDeploymentInfo(deploymentInfoPath);
     const config = await loadWatcherConfig({
-      MIDGARD_DEPLOYMENT_MANIFEST_PATH: manifestPath,
-      MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH: deploymentInfoPath,
-      CARDANO_PROVIDER_URLS: "fixture:/tmp/state.json",
-      CARDANO_FINALITY_DEPTH: "2",
-      DA_PAYLOAD_ENDPOINTS: "http://da-0.example",
+      ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
       DA_SIGNER_INDEX: "0",
       DA_SIGNER_KEY_SOURCE: "hex:" + "00".repeat(32),
-      WATCHER_DB_PATH: join(dir, "db"),
     });
     expect(config.network).toBe("Preview");
+    expect(config.daTransport.kind).toBe("libp2p");
     expect(config.daParams.committeeHex).toBe(member);
     expect(config.daParams.threshold).toBe(1);
+  });
+
+  it("parses libp2p DA transport manifests without HTTP endpoint config", async () => {
+    const dir = await tempDir();
+    const member = "01".repeat(32);
+    const manifest = libp2pManifest(member);
+    const { manifestPath, deploymentInfoPath } = await writeConfigFiles(
+      dir,
+      manifest,
+    );
+
+    const config = await loadWatcherConfig(
+      libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
+    );
+
+    expect(config.network).toBe("Preview");
+    expect(config.deploymentFingerprint).toBe("ab".repeat(32));
+    expect(config.libp2pPrivateKeySource).toBe(LIBP2P_PRIVATE_KEY_SOURCE);
+    expect(config.l1SubmitterSignerIndexes).toEqual([]);
+    expect(config.daCommitteeMembers).toEqual([
+      { index: 0, vkey: member, canSubmitL1: false },
+    ]);
+    expect(config.daTransport.kind).toBe("libp2p");
+    if (config.daTransport.kind !== "libp2p") {
+      throw new Error("expected libp2p DA transport config");
+    }
+    expect(config.daTransport).toMatchObject({
+      deploymentFingerprint: "ab".repeat(32),
+      noHttpDaTransport: true,
+      threshold: 1,
+      listenMultiaddrs: ["/ip4/0.0.0.0/tcp/0"],
+      announceMultiaddrs: [
+        `/dns4/da-a.example/tcp/4001/p2p/${LIBP2P_PEER_ID_A}`,
+      ],
+      bootstrapMultiaddrs: [
+        `/dns4/bootstrap.example/tcp/4001/p2p/${LIBP2P_PEER_ID_B}`,
+      ],
+      gossip: {
+        strictSign: true,
+        emitSelf: false,
+        allowedTopicsOnly: true,
+        maxGossipMessageBytes: LIBP2P_DA_GOSSIP_MAX_MESSAGE_BYTES,
+      },
+      limits: LIBP2P_DA_TRANSPORT_LIMITS,
+      retentionDays: LIBP2P_DA_MIN_RETENTION_DAYS,
+      peers: [
+        {
+          signerIndex: 0,
+          daVkey: member,
+          peerId: LIBP2P_PEER_ID_A,
+          multiaddrs: [`/dns4/da-a.example/tcp/4001/p2p/${LIBP2P_PEER_ID_A}`],
+          roles: ["committee", "retrieval"],
+        },
+      ],
+    });
+  });
+
+  it("allows contract deployment info raw SHA drift without changing identity", async () => {
+    const dir = await tempDir();
+    const member = "01".repeat(32);
+    const manifest = libp2pManifest(member);
+    (
+      manifest.deployment as Record<string, unknown>
+    ).contract_deployment_info_sha256 = "ef".repeat(32);
+    const { manifestPath, deploymentInfoPath } = await writeConfigFiles(
+      dir,
+      manifest,
+    );
+
+    const config = await loadWatcherConfig(
+      libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
+    );
+
+    expect(config.deploymentFingerprint).toBe(DEPLOYMENT_MANIFEST_ID);
+  });
+
+  it("rejects DA URL environment overrides in libp2p mode", async () => {
+    const dir = await tempDir();
+    const { manifestPath, deploymentInfoPath } = await writeConfigFiles(
+      dir,
+      libp2pManifest("01".repeat(32)),
+    );
+    const baseEnv = libp2pConfigEnv(dir, manifestPath, deploymentInfoPath);
+    for (const [name, value] of Object.entries({
+      DA_PAYLOAD_ENDPOINTS: "http://da-0.example",
+      DA_PEER_ENDPOINTS: "0@http://da-1.example",
+      DA_COORDINATOR_ENDPOINT: "http://coordinator.example",
+      DA_PUBLIC_BASE_URL: "http://da-self.example",
+    })) {
+      await expect(
+        loadWatcherConfig({ ...baseEnv, [name]: value }),
+      ).rejects.toThrow(new RegExp(name));
+    }
+  });
+
+  it("requires a persistent libp2p private key source in libp2p mode", async () => {
+    const dir = await tempDir();
+    const { manifestPath, deploymentInfoPath } = await writeConfigFiles(
+      dir,
+      libp2pManifest("01".repeat(32)),
+    );
+    const baseEnv = libp2pConfigEnv(dir, manifestPath, deploymentInfoPath);
+    const missingKeyEnv: Record<string, string> = { ...baseEnv };
+    delete missingKeyEnv.DA_LIBP2P_PRIVATE_KEY_SOURCE;
+
+    await expect(loadWatcherConfig(missingKeyEnv)).rejects.toThrow(
+      /DA_LIBP2P_PRIVATE_KEY_SOURCE/,
+    );
+    await expect(
+      loadWatcherConfig({
+        ...baseEnv,
+        DA_LIBP2P_PRIVATE_KEY_SOURCE: "seed:abcd",
+      }),
+    ).rejects.toThrow(/DA_LIBP2P_PRIVATE_KEY_SOURCE seed/);
+    await expect(
+      loadWatcherConfig({
+        ...baseEnv,
+        DA_LIBP2P_PRIVATE_KEY_SOURCE: "private-key:ed25519_sk_test",
+      }),
+    ).rejects.toThrow(/seed:, hex:, or file:/);
+  });
+
+  it("rejects URL-shaped DA manifest fields and values in libp2p mode", async () => {
+    await expectLibp2pManifestRejects((manifest) => {
+      (manifest.da_transport as Record<string, unknown>).baseUrl =
+        "http://da-0.example";
+    }, /baseUrl/);
+    await expectLibp2pManifestRejects((manifest) => {
+      (
+        (manifest.da_committee as Record<string, unknown>).members as Record<
+          string,
+          unknown
+        >[]
+      )[0]!.metadata = "https://da-0.example/metadata";
+    }, /HTTP\(S\) URL/);
+  });
+
+  it("fails closed for invalid libp2p DA manifest security fields", async () => {
+    const cases: readonly {
+      readonly mutate: (manifest: Record<string, unknown>) => void;
+      readonly env?: Record<string, string>;
+      readonly error: RegExp;
+    }[] = [
+      {
+        mutate: (manifest) => {
+          manifest.schemaVersion = "midgard-da-libp2p-runtime-manifest-v1";
+        },
+        error: /schemaVersion/,
+      },
+      {
+        mutate: (manifest) => {
+          (manifest.deployment as Record<string, unknown>).identity_source =
+            "contract_deployment_info_sha256";
+        },
+        error: /identity_source/,
+      },
+      {
+        mutate: (manifest) => {
+          (
+            manifest.deployment as Record<string, unknown>
+          ).contract_deployment_manifest_id = "cd".repeat(32);
+        },
+        error:
+          /fingerprint must equal deployment\.contract_deployment_manifest_id/,
+      },
+      {
+        mutate: (manifest) => {
+          delete (manifest.deployment as Record<string, unknown>)
+            .contract_deployment_info_sha256;
+        },
+        error: /contract_deployment_info_sha256/,
+      },
+      {
+        mutate: (manifest) => {
+          (manifest.deployment as Record<string, unknown>).fingerprint = "ab";
+        },
+        error: /deployment[._ ]fingerprint/,
+      },
+      {
+        mutate: (manifest) => {
+          (
+            manifest.da_transport as Record<string, unknown>
+          ).no_http_da_transport = false;
+        },
+        error: /no_http_da_transport/,
+      },
+      {
+        mutate: (manifest) => {
+          (manifest.da_transport as Record<string, unknown>).retention_days =
+            14;
+        },
+        error: /at least 15 days/,
+      },
+      {
+        mutate: (manifest) => {
+          (
+            (manifest.da_transport as Record<string, unknown>).limits as Record<
+              string,
+              unknown
+            >
+          ).max_payload_bytes = LIBP2P_DA_TRANSPORT_LIMITS.maxPayloadBytes + 1;
+        },
+        error: /max_payload_bytes/,
+      },
+      {
+        mutate: (manifest) => {
+          (
+            (manifest.da_committee as Record<string, unknown>)
+              .members as Record<string, unknown>[]
+          )[0]!.roles = ["committee", "admin"];
+        },
+        error: /unrecognized libp2p DA role/,
+      },
+      {
+        mutate: (manifest) => {
+          (
+            (manifest.da_committee as Record<string, unknown>)
+              .members as Record<string, unknown>[]
+          )[0]!.multiaddrs = [
+            `/dns4/da-a.example/tcp/4001/p2p/${LIBP2P_PEER_ID_B}`,
+          ];
+        },
+        error: /peer id must match/,
+      },
+      {
+        mutate: (manifest) => {
+          (
+            (manifest.da_committee as Record<string, unknown>)
+              .members as Record<string, unknown>[]
+          )[0]!.da_vkey = "02".repeat(32);
+        },
+        env: { DA_COMMITTEE_HEX: "01".repeat(32), DA_THRESHOLD: "1" },
+        error: /does not match DA committee/,
+      },
+    ];
+    for (const testCase of cases) {
+      await expectLibp2pManifestRejects(
+        testCase.mutate,
+        testCase.error,
+        testCase.env,
+      );
+    }
   });
 
   it("derives contracts from the Midgard node deployment-info format", async () => {
@@ -64,6 +280,12 @@ describe("loadWatcherConfig", () => {
     const member = "01".repeat(32);
     const manifestPath = join(dir, "manifest.json");
     const deploymentInfoPath = await writeRealDeploymentFixture(dir);
+    const manifest = libp2pManifest(
+      member,
+      ["committee", "retrieval"],
+      await deploymentManifestIdFromFile(deploymentInfoPath),
+    );
+    delete manifest.contracts;
     const expectedDeployment = parseMidgardNodeDeploymentInfo(
       JSON.parse(await readFile(deploymentInfoPath, "utf8")) as Record<
         string,
@@ -74,19 +296,11 @@ describe("loadWatcherConfig", () => {
     if (expectedDeployment === undefined) {
       throw new Error("real Midgard deployment fixture did not parse");
     }
-    await writeFile(manifestPath, JSON.stringify({}));
+    await writeFile(manifestPath, JSON.stringify(manifest));
     const config = await loadWatcherConfig({
-      MIDGARD_DEPLOYMENT_MANIFEST_PATH: manifestPath,
-      MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH: deploymentInfoPath,
-      MIDGARD_NETWORK: "Preview",
-      CARDANO_PROVIDER_URLS: "fixture:/tmp/state.json",
-      CARDANO_FINALITY_DEPTH: "2",
-      DA_PAYLOAD_ENDPOINTS: "http://da-0.example",
+      ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
       DA_SIGNER_INDEX: "0",
       DA_SIGNER_KEY_SOURCE: "hex:" + "00".repeat(32),
-      WATCHER_DB_PATH: join(dir, "db"),
-      DA_COMMITTEE_HEX: member,
-      DA_THRESHOLD: "1",
     });
 
     expect(config.daAttestationPolicyId).toBe(
@@ -120,43 +334,51 @@ describe("loadWatcherConfig", () => {
 
   it("requires an L1 submitter key source when L1 submission is enabled", async () => {
     const dir = await tempDir();
+    const member = "01".repeat(32);
     const manifestPath = join(dir, "manifest.json");
     const deploymentInfoPath = await writeRealDeploymentFixture(dir);
-    await writeFile(manifestPath, JSON.stringify({}));
+    await writeFile(
+      manifestPath,
+      JSON.stringify(
+        libp2pManifest(
+          member,
+          ["committee", "retrieval"],
+          await deploymentManifestIdFromFile(deploymentInfoPath),
+        ),
+      ),
+    );
     await expect(
       loadWatcherConfig({
-        MIDGARD_DEPLOYMENT_MANIFEST_PATH: manifestPath,
-        MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH: deploymentInfoPath,
-        MIDGARD_NETWORK: "Preview",
-        CARDANO_PROVIDER_URLS: "fixture:/tmp/state.json",
-        CARDANO_FINALITY_DEPTH: "2",
-        DA_PAYLOAD_ENDPOINTS: "http://da-0.example",
+        ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
         DA_SIGNER_INDEX: "0",
         DA_SIGNER_KEY_SOURCE: "hex:" + "00".repeat(32),
         DA_L1_SUBMISSION_ENABLED: "true",
-        WATCHER_DB_PATH: join(dir, "db"),
       }),
     ).rejects.toThrow(/L1_SUBMITTER_KEY_SOURCE/);
   });
 
   it("requires a live Cardano provider in self-submitting coordinator mode", async () => {
     const dir = await tempDir();
+    const member = "01".repeat(32);
     const manifestPath = join(dir, "manifest.json");
     const deploymentInfoPath = await writeRealDeploymentFixture(dir);
-    await writeFile(manifestPath, JSON.stringify({}));
+    await writeFile(
+      manifestPath,
+      JSON.stringify(
+        libp2pManifest(
+          member,
+          ["committee", "coordinator"],
+          await deploymentManifestIdFromFile(deploymentInfoPath),
+        ),
+      ),
+    );
     await expect(
       loadWatcherConfig({
-        MIDGARD_DEPLOYMENT_MANIFEST_PATH: manifestPath,
-        MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH: deploymentInfoPath,
-        MIDGARD_NETWORK: "Preview",
-        CARDANO_PROVIDER_URLS: "fixture:/tmp/state.json",
-        CARDANO_FINALITY_DEPTH: "2",
-        DA_PAYLOAD_ENDPOINTS: "http://da-0.example",
+        ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
         DA_SIGNER_INDEX: "0",
         DA_SIGNER_KEY_SOURCE: "hex:" + "00".repeat(32),
         L1_SUBMITTER_KEY_SOURCE: "private-key:ed25519_sk_test",
         DA_L1_SUBMISSION_ENABLED: "true",
-        WATCHER_DB_PATH: join(dir, "db"),
       }),
     ).rejects.toThrow(/blockfrost: or kupmios:/);
   });
@@ -164,41 +386,20 @@ describe("loadWatcherConfig", () => {
   it("requires script CBOR and reference-script UTxOs in self-submitting coordinator mode", async () => {
     const dir = await tempDir();
     const member = "01".repeat(32);
-    const manifest = {
-      network: "Preview",
-      contracts: {
-        stateQueue: {
-          policyId: "02".repeat(28),
-          spendingScriptAddress: "addr_test1statequeue",
-        },
-        daAttestation: {
-          policyId: "03".repeat(28),
-          spendingScriptAddress: "addr_test1daattestation",
-        },
-        daParamsGovernor: {
-          policyId: "04".repeat(28),
-          spendingScriptAddress: "addr_test1daparams",
-        },
-      },
-      da: { threshold: 1, members: [{ index: 0, vkey: member }] },
-    };
+    const manifest = libp2pManifest(member, ["committee", "coordinator"]);
     const manifestPath = join(dir, "manifest.json");
     const deploymentInfoPath = join(dir, "deployment.json");
     await writeFile(manifestPath, JSON.stringify(manifest));
-    await writeFile(deploymentInfoPath, JSON.stringify({}));
+    await writeMinimalDeploymentInfo(deploymentInfoPath);
     await expect(
       loadWatcherConfig({
-        MIDGARD_DEPLOYMENT_MANIFEST_PATH: manifestPath,
-        MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH: deploymentInfoPath,
+        ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
         CARDANO_PROVIDER_URLS:
           "blockfrost:https://cardano-preview.blockfrost.io/api/v0#project",
-        CARDANO_FINALITY_DEPTH: "2",
-        DA_PAYLOAD_ENDPOINTS: "http://da-0.example",
         DA_SIGNER_INDEX: "0",
         DA_SIGNER_KEY_SOURCE: "hex:" + "00".repeat(32),
         L1_SUBMITTER_KEY_SOURCE: "private-key:ed25519_sk_test",
         DA_L1_SUBMISSION_ENABLED: "true",
-        WATCHER_DB_PATH: join(dir, "db"),
       }),
     ).rejects.toThrow(/script CBOR and reference-script UTxOs/);
   });
@@ -208,23 +409,25 @@ describe("loadWatcherConfig", () => {
     const member = "01".repeat(32);
     const manifestPath = join(dir, "manifest.json");
     const deploymentInfoPath = await writeRealDeploymentFixture(dir);
-    await writeFile(manifestPath, JSON.stringify({}));
+    await writeFile(
+      manifestPath,
+      JSON.stringify(
+        libp2pManifest(
+          member,
+          ["committee", "coordinator"],
+          await deploymentManifestIdFromFile(deploymentInfoPath),
+        ),
+      ),
+    );
     await expect(
       loadWatcherConfig({
-        MIDGARD_DEPLOYMENT_MANIFEST_PATH: manifestPath,
-        MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH: deploymentInfoPath,
-        MIDGARD_NETWORK: "Preview",
+        ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
         CARDANO_PROVIDER_URLS:
           "blockfrost:https://cardano-preview.blockfrost.io/api/v0#project",
-        CARDANO_FINALITY_DEPTH: "2",
-        DA_PAYLOAD_ENDPOINTS: "http://da-0.example",
         DA_SIGNER_INDEX: "0",
         DA_SIGNER_KEY_SOURCE: "hex:" + "00".repeat(32),
         L1_SUBMITTER_KEY_SOURCE: "private-key:ed25519_sk_test",
         DA_L1_SUBMISSION_ENABLED: "true",
-        WATCHER_DB_PATH: join(dir, "db"),
-        DA_COMMITTEE_HEX: member,
-        DA_THRESHOLD: "1",
       }),
     ).resolves.toMatchObject({
       l1SubmissionEnabled: true,
@@ -249,16 +452,21 @@ describe("loadWatcherConfig", () => {
     const member = "01".repeat(32);
     const manifestPath = join(dir, "manifest.json");
     const deploymentInfoPath = await writeRealDeploymentFixture(dir);
-    await writeFile(manifestPath, JSON.stringify({}));
+    await writeFile(
+      manifestPath,
+      JSON.stringify(
+        libp2pManifest(
+          member,
+          ["committee", "coordinator"],
+          await deploymentManifestIdFromFile(deploymentInfoPath),
+        ),
+      ),
+    );
 
     const config = await loadWatcherConfig({
-      MIDGARD_DEPLOYMENT_MANIFEST_PATH: manifestPath,
-      MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH: deploymentInfoPath,
-      MIDGARD_NETWORK: "Preview",
+      ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
       CARDANO_PROVIDER_URLS:
         "blockfrost:https://cardano-preview.blockfrost.io/api/v0#project",
-      CARDANO_FINALITY_DEPTH: "2",
-      DA_PAYLOAD_ENDPOINTS: "http://da-0.example",
       L1_SUBMITTER_KEY_SOURCE: "private-key:ed25519_sk_test",
       DA_L1_SUBMISSION_ENABLED: "true",
       DA_L1_MIN_PLAIN_ADA_LOVELACE: "75000000",
@@ -268,9 +476,6 @@ describe("loadWatcherConfig", () => {
       DA_L1_AUTO_FUND_BUFFER_LOVELACE: "12000000",
       DA_L1_PREFLIGHT_RETRY_COUNT: "5",
       DA_L1_PREFLIGHT_RETRY_DELAY_MS: "250",
-      WATCHER_DB_PATH: join(dir, "db"),
-      DA_COMMITTEE_HEX: member,
-      DA_THRESHOLD: "1",
     });
 
     expect(config.l1SubmitterPreflight).toEqual({
@@ -290,20 +495,22 @@ describe("loadWatcherConfig", () => {
     const member = "01".repeat(32);
     const manifestPath = join(dir, "manifest.json");
     const deploymentInfoPath = await writeRealDeploymentFixture(dir);
-    await writeFile(manifestPath, JSON.stringify({}));
+    await writeFile(
+      manifestPath,
+      JSON.stringify(
+        libp2pManifest(
+          member,
+          ["committee", "coordinator"],
+          await deploymentManifestIdFromFile(deploymentInfoPath),
+        ),
+      ),
+    );
     const baseEnv = {
-      MIDGARD_DEPLOYMENT_MANIFEST_PATH: manifestPath,
-      MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH: deploymentInfoPath,
-      MIDGARD_NETWORK: "Preview",
+      ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
       CARDANO_PROVIDER_URLS:
         "blockfrost:https://cardano-preview.blockfrost.io/api/v0#project",
-      CARDANO_FINALITY_DEPTH: "2",
-      DA_PAYLOAD_ENDPOINTS: "http://da-0.example",
       L1_SUBMITTER_KEY_SOURCE: "private-key:ed25519_sk_test",
       DA_L1_SUBMISSION_ENABLED: "true",
-      WATCHER_DB_PATH: join(dir, "db"),
-      DA_COMMITTEE_HEX: member,
-      DA_THRESHOLD: "1",
     };
 
     await expect(
@@ -343,20 +550,22 @@ describe("loadWatcherConfig", () => {
     const member = "01".repeat(32);
     const manifestPath = join(dir, "manifest.json");
     const deploymentInfoPath = await writeRealDeploymentFixture(dir);
-    await writeFile(manifestPath, JSON.stringify({}));
+    await writeFile(
+      manifestPath,
+      JSON.stringify(
+        libp2pManifest(
+          member,
+          ["committee", "retrieval"],
+          await deploymentManifestIdFromFile(deploymentInfoPath),
+        ),
+      ),
+    );
     const baseEnv = {
-      MIDGARD_DEPLOYMENT_MANIFEST_PATH: manifestPath,
-      MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH: deploymentInfoPath,
-      MIDGARD_NETWORK: "Preview",
+      ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
       CARDANO_PROVIDER_URLS:
         "blockfrost:https://cardano-preview.blockfrost.io/api/v0#project",
-      CARDANO_FINALITY_DEPTH: "2",
-      DA_PAYLOAD_ENDPOINTS: "http://da-0.example",
       L1_SUBMITTER_KEY_SOURCE: "private-key:ed25519_sk_test",
       DA_L1_SUBMISSION_ENABLED: "true",
-      WATCHER_DB_PATH: join(dir, "db"),
-      DA_COMMITTEE_HEX: member,
-      DA_THRESHOLD: "1",
     };
     const config = await loadWatcherConfig({
       ...baseEnv,
@@ -381,24 +590,167 @@ describe("loadWatcherConfig", () => {
 
   it("fails closed when required deployment contract fields are absent", async () => {
     const dir = await tempDir();
+    const manifest = libp2pManifest("01".repeat(32));
+    delete manifest.contracts;
     const manifestPath = join(dir, "manifest.json");
     const deploymentInfoPath = join(dir, "deployment.json");
-    await writeFile(manifestPath, JSON.stringify({ network: "Preview" }));
-    await writeFile(deploymentInfoPath, JSON.stringify({}));
+    await writeFile(manifestPath, JSON.stringify(manifest));
+    await writeMinimalDeploymentInfo(deploymentInfoPath);
     await expect(
       loadWatcherConfig({
-        MIDGARD_DEPLOYMENT_MANIFEST_PATH: manifestPath,
-        MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH: deploymentInfoPath,
-        CARDANO_PROVIDER_URLS: "fixture:/tmp/state.json",
-        CARDANO_FINALITY_DEPTH: "2",
-        DA_PAYLOAD_ENDPOINTS: "http://da-0.example",
+        ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
         DA_SIGNER_INDEX: "0",
         DA_SIGNER_KEY_SOURCE: "hex:" + "00".repeat(32),
-        WATCHER_DB_PATH: join(dir, "db"),
       }),
     ).rejects.toThrow(/DA attestation policy id/);
   });
 });
+
+const LIBP2P_PEER_ID_A = "12D3KooWJzVqLz7QpLdfW6M5G2X1L8L6GQ9QJ3uCHZP8X8J6BC8u";
+const LIBP2P_PEER_ID_B = "12D3KooWR3iZBFz6W2fyFdRt2t45x2Ytz9p6c9JwHyDqaN49XU47";
+const LIBP2P_PRIVATE_KEY_SOURCE = `seed:${"00".repeat(31)}01`;
+const DEPLOYMENT_MANIFEST_ID = "ab".repeat(32);
+
+const libp2pManifest = (
+  member: string,
+  roles: readonly string[] = ["committee", "retrieval"],
+  deploymentManifestId = DEPLOYMENT_MANIFEST_ID,
+): Record<string, unknown> => ({
+  schemaVersion: "midgard-da-libp2p-runtime-manifest-v2",
+  deployment: {
+    name: "public-testnet",
+    fingerprint: deploymentManifestId.toUpperCase(),
+    contract_deployment_manifest_id: deploymentManifestId,
+    contract_deployment_info_sha256: "cd".repeat(32),
+    identity_source: "contract_deployment_manifest_id",
+    cardano_network: "Preview",
+    midgard_network: "Preview",
+    da_protocol_version: 1,
+  },
+  contracts: {
+    stateQueue: {
+      policyId: "02".repeat(28),
+      spendingScriptAddress: "addr_test1statequeue",
+    },
+    daAttestation: {
+      policyId: "03".repeat(28),
+      spendingScriptAddress: "addr_test1daattestation",
+    },
+    daParamsGovernor: {
+      policyId: "04".repeat(28),
+      spendingScriptAddress: "addr_test1daparams",
+    },
+  },
+  da_transport: {
+    kind: "libp2p",
+    no_http_da_transport: true,
+    listen_multiaddrs: ["/ip4/0.0.0.0/tcp/0"],
+    announce_multiaddrs: [
+      `/dns4/da-a.example/tcp/4001/p2p/${LIBP2P_PEER_ID_A}`,
+    ],
+    bootstrap_multiaddrs: [
+      `/dns4/bootstrap.example/tcp/4001/p2p/${LIBP2P_PEER_ID_B}`,
+    ],
+    retention_days: LIBP2P_DA_MIN_RETENTION_DAYS,
+    gossip: {
+      strict_sign: true,
+      emit_self: false,
+      allowed_topics_only: true,
+      max_gossip_message_bytes: LIBP2P_DA_GOSSIP_MAX_MESSAGE_BYTES,
+    },
+    limits: {
+      max_payload_bytes: LIBP2P_DA_TRANSPORT_LIMITS.maxPayloadBytes,
+      max_inline_response_bytes:
+        LIBP2P_DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
+      max_chunk_bytes: LIBP2P_DA_TRANSPORT_LIMITS.maxChunkBytes,
+      max_streams_per_peer: LIBP2P_DA_TRANSPORT_LIMITS.maxStreamsPerPeer,
+      request_timeout_ms: LIBP2P_DA_TRANSPORT_LIMITS.requestTimeoutMs,
+    },
+  },
+  da_committee: {
+    threshold: 1,
+    members: [
+      {
+        signer_index: 0,
+        da_vkey: member,
+        peer_id: LIBP2P_PEER_ID_A,
+        multiaddrs: [`/dns4/da-a.example/tcp/4001/p2p/${LIBP2P_PEER_ID_A}`],
+        roles,
+      },
+    ],
+  },
+});
+
+const writeConfigFiles = async (
+  dir: string,
+  manifest: Record<string, unknown>,
+): Promise<{
+  readonly manifestPath: string;
+  readonly deploymentInfoPath: string;
+}> => {
+  const manifestPath = join(dir, "manifest.json");
+  const deploymentInfoPath = join(dir, "deployment.json");
+  await writeFile(manifestPath, JSON.stringify(manifest));
+  await writeMinimalDeploymentInfo(deploymentInfoPath);
+  return { manifestPath, deploymentInfoPath };
+};
+
+const writeMinimalDeploymentInfo = async (
+  path: string,
+  manifestId = DEPLOYMENT_MANIFEST_ID,
+): Promise<void> => {
+  await writeFile(
+    path,
+    JSON.stringify({
+      schemaVersion: "midgard-deployment-manifest-v2",
+      manifestId,
+    }),
+  );
+};
+
+const deploymentManifestIdFromFile = async (path: string): Promise<string> => {
+  const parsed = JSON.parse(await readFile(path, "utf8")) as Record<
+    string,
+    unknown
+  >;
+  if (typeof parsed.manifestId !== "string") {
+    throw new Error(`${path} is missing manifestId`);
+  }
+  return parsed.manifestId;
+};
+
+const libp2pConfigEnv = (
+  dir: string,
+  manifestPath: string,
+  deploymentInfoPath: string,
+): Record<string, string> => ({
+  MIDGARD_DEPLOYMENT_MANIFEST_PATH: manifestPath,
+  MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH: deploymentInfoPath,
+  CARDANO_PROVIDER_URLS: "fixture:/tmp/state.json",
+  CARDANO_FINALITY_DEPTH: "2",
+  DA_LIBP2P_PRIVATE_KEY_SOURCE: LIBP2P_PRIVATE_KEY_SOURCE,
+  WATCHER_DB_PATH: join(dir, "db"),
+});
+
+const expectLibp2pManifestRejects = async (
+  mutate: (manifest: Record<string, unknown>) => void,
+  error: RegExp,
+  envOverrides: Record<string, string> = {},
+): Promise<void> => {
+  const dir = await tempDir();
+  const manifest = libp2pManifest("01".repeat(32));
+  mutate(manifest);
+  const { manifestPath, deploymentInfoPath } = await writeConfigFiles(
+    dir,
+    manifest,
+  );
+  await expect(
+    loadWatcherConfig({
+      ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
+      ...envOverrides,
+    }),
+  ).rejects.toThrow(error);
+};
 
 const writeRealDeploymentFixture = async (dir: string): Promise<string> => {
   const sourcePath = join(

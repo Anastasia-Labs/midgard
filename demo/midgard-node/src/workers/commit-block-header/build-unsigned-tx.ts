@@ -16,6 +16,7 @@ import {
   resolveAlignedCommitEndTime,
 } from "@/workers/utils/commit-end-time.js";
 import {
+  type CommitTimingDueWork,
   fetchRealStateQueueWitnessContext,
   type RealStateQueueWitnessContext,
 } from "@/workers/utils/scheduler-refresh.js";
@@ -41,6 +42,12 @@ export type BuiltCommitTx = {
   readonly txSize: number;
 };
 
+export type CommitBuildResult = BuiltCommitTx | CommitTimingDueWork;
+
+const isCommitTimingDueWork = (
+  value: RealStateQueueWitnessContext | CommitTimingDueWork,
+): value is CommitTimingDueWork => "type" in value;
+
 export const buildUnsignedCommitTx = (
   contracts: SDK.MidgardValidators,
   latestBlock: SDK.StateQueueUTxO,
@@ -51,8 +58,9 @@ export const buildUnsignedCommitTx = (
   transitionCommitments: SDK.HeaderTransitionCommitments,
   endDate: Date,
   initialOperatorWalletView?: OperatorWalletView,
+  maximumEndTimeMs?: number,
 ): Effect.Effect<
-  BuiltCommitTx,
+  CommitBuildResult,
   | SDK.StateQueueError
   | SDK.DataCoercionError
   | SDK.HeaderTransitionCommitmentsError
@@ -64,6 +72,7 @@ export const buildUnsignedCommitTx = (
 > =>
   Effect.gen(function* () {
     const lucid = yield* Lucid;
+    const submitSlotSnapshot = lucid.submitSlotSnapshot;
     const latestEndTime = Number(
       (yield* getLatestBlockDatumEndTime(latestBlock.datum)).getTime(),
     );
@@ -81,7 +90,22 @@ export const buildUnsignedCommitTx = (
         nowMs: commitWindowResolutionNow,
         minimumFutureBufferMs: COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
       });
+    const enforceCommitWindowCap = (
+      commitWindow: ReturnType<typeof resolveCommitWindow>,
+      stage: string,
+    ) =>
+      maximumEndTimeMs !== undefined &&
+      commitWindow.resolvedEndTime > maximumEndTimeMs
+        ? Effect.fail(
+            new SDK.StateQueueError({
+              message:
+                "Resolved commit end-time exceeds the selected scheduler window cap",
+              cause: `stage=${stage},resolved_end_time_ms=${commitWindow.resolvedEndTime.toString()},maximum_end_time_ms=${maximumEndTimeMs.toString()},aligned_candidate_end_time_ms=${commitWindow.alignedCandidateEndTime.toString()},minimum_monotonic_end_time_ms=${commitWindow.minimumMonotonicEndTime.toString()},minimum_current_time_end_time_ms=${commitWindow.minimumCurrentTimeEndTime.toString()}`,
+            }),
+          )
+        : Effect.void;
     let commitWindow = resolveCommitWindow();
+    yield* enforceCommitWindowCap(commitWindow, "initial_resolution");
     let witnessContext: RealStateQueueWitnessContext | undefined;
     for (
       let stabilizationAttempts = 1;
@@ -98,18 +122,28 @@ export const buildUnsignedCommitTx = (
         yield* Effect.logWarning(
           `Commit timing budget too low before witness assembly; rebuilding with refreshed window (${formatCommitTimingBudget(preWitnessBudget)},next=${refreshedCommitWindow.resolvedEndTime},attempt=${stabilizationAttempts}/${COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS}).`,
         );
+        yield* enforceCommitWindowCap(
+          refreshedCommitWindow,
+          "pre_witness_refresh",
+        );
         commitWindow = refreshedCommitWindow;
         continue;
       }
 
       const witnessEndTime = commitWindow.resolvedEndTime;
-      witnessContext = yield* fetchRealStateQueueWitnessContext(
+      yield* enforceCommitWindowCap(commitWindow, "before_witness_lookup");
+      const witnessResult = yield* fetchRealStateQueueWitnessContext(
         lucid.api,
         contracts,
         witnessEndTime,
         witnessContext?.operatorWalletView ?? initialOperatorWalletView,
         lucid.referenceScriptsAddress,
+        submitSlotSnapshot,
       );
+      if (isCommitTimingDueWork(witnessResult)) {
+        return witnessResult;
+      }
+      witnessContext = witnessResult;
       const preBuildBudget = commitTimingBudget({
         checkpoint: "pre_build",
         resolvedEndTimeMs: witnessEndTime,
@@ -119,6 +153,10 @@ export const buildUnsignedCommitTx = (
         const refreshedCommitWindow = resolveCommitWindow();
         yield* Effect.logWarning(
           `Commit timing budget too low after witness assembly; rebuilding with refreshed window (${formatCommitTimingBudget(preBuildBudget)},previous=${commitWindow.resolvedEndTime},next=${refreshedCommitWindow.resolvedEndTime},attempt=${stabilizationAttempts}/${COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS}).`,
+        );
+        yield* enforceCommitWindowCap(
+          refreshedCommitWindow,
+          "pre_build_refresh",
         );
         commitWindow = refreshedCommitWindow;
         continue;
@@ -134,6 +172,7 @@ export const buildUnsignedCommitTx = (
           `Adjusted commit end-time to maintain monotonic header timing (candidate=${alignedCandidateEndTime}, minimum=${minimumMonotonicEndTime}, selected=${alignedEndTime}, latestEnd=${latestEndTime}).`,
         );
       }
+      yield* enforceCommitWindowCap(commitWindow, "before_header_build");
       yield* Effect.logInfo("🔹 Finding updated block datum and new header...");
       const { nodeDatum: updatedNodeDatum, header: newHeader } =
         yield* updateLatestBlocksDatumAndGetTheNewHeaderLocal(
@@ -181,13 +220,28 @@ export const buildUnsignedCommitTx = (
         yield* Effect.logWarning(
           `Commit timing budget too low before submission; rebuilding before pending journal preparation (${formatCommitTimingBudget(preSubmitBudget)},previous=${commitWindow.resolvedEndTime},next=${refreshedCommitWindow.resolvedEndTime},attempt=${stabilizationAttempts}/${COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS}).`,
         );
+        yield* enforceCommitWindowCap(
+          refreshedCommitWindow,
+          "pre_submit_refresh",
+        );
         commitWindow = refreshedCommitWindow;
         continue;
       }
 
+      yield* enforceCommitWindowCap(
+        commitWindow,
+        "before_pending_journal_preparation",
+      );
+
       const signAndSubmitProgram = handleSignSubmitNoConfirmation(
         lucid.api,
         txBuilder,
+        {
+          label: "commit-block",
+          slotSnapshot: submitSlotSnapshot,
+          requireSlotForBoundedTx: true,
+          maxPreSubmitWaitMs: preSubmitBudget.remainingBudgetMs,
+        },
       ).pipe(Effect.withSpan("handleSignSubmit-commit-block"));
 
       return {

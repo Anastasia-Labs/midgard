@@ -1,7 +1,13 @@
+import { Option } from "effect";
+
 import {
   Columns as TxColumns,
   EntryWithTimeStamp,
 } from "@/database/utils/tx.js";
+import type { SubmitSlotSnapshot } from "@/local-ledger-slot.js";
+import { slotAwareDueWorkFromSubmitTiming } from "@/transactions/submit-timing-due-work.js";
+import { planSubmitTiming } from "@/transactions/submit-timing.js";
+import type { CommitEndTimeFit } from "@/workers/utils/commit-end-time.js";
 
 export type SuccessfulCommitBatch = {
   readonly txsToInsertImmutable: readonly EntryWithTimeStamp[];
@@ -17,6 +23,235 @@ export type CommitTxCandidateSelection = {
   readonly candidateTxsSize: number;
   readonly sourceTable: CommitTxSourceTable;
 };
+
+export type CurrentOperatorSchedulerWindow = {
+  readonly schedulerOutRef: string;
+  readonly operatorKeyHash: string;
+  readonly startTimeMs: number;
+  readonly endTimeMs: number;
+};
+
+export type CommitSchedulerDiscoveryStage =
+  | "pre_lease"
+  | "worker_pre_ingestion"
+  | "scheduler_refresh_deep";
+
+export type CommitSchedulerState =
+  | {
+      readonly status: "active";
+      readonly operatorKeyHash: string;
+      readonly startTimeMs: number;
+      readonly transitionInvalidBeforeSlot?: number;
+      readonly transitionInvalidHereafterSlot?: number;
+    }
+  | {
+      readonly status: "no_active_operators";
+    };
+
+export type CommitSchedulerStateQueueEvidence = {
+  readonly tailCommitBaseOutRef: string;
+  readonly tailBlockEndTimeMs: number;
+  readonly stateQueueHasUnmergedTail: boolean;
+  readonly rootOutRef?: string;
+};
+
+export type EarliestCommitSchedulerPlan =
+  | {
+      readonly status: "proceed";
+      readonly reason: string;
+      readonly dependencyKey: string;
+      readonly invalidationKey: string;
+    }
+  | {
+      readonly status: "register_due_work";
+      readonly dueWork: ReturnType<typeof slotAwareDueWorkFromSubmitTiming>;
+      readonly reason: "scheduler_transition_not_reached";
+      readonly discoveryStage: CommitSchedulerDiscoveryStage;
+    }
+  | {
+      readonly status: "ambiguous";
+      readonly reason: string;
+    };
+
+export const EARLIEST_COMMIT_SCHEDULER_PLANNER_VERSION =
+  "earliest_commit_scheduler_v1";
+
+const safeNumberEvidence = (label: string, value: number): string =>
+  `${label}=${Number.isSafeInteger(value) ? value.toString() : "unsafe"}`;
+
+const commitSchedulerEvidenceKey = ({
+  schedulerOutRef,
+  schedulerState,
+  currentOperatorKeyHash,
+  stateQueueEvidence,
+  localFinalizationPending,
+  plannerVersion,
+}: {
+  readonly schedulerOutRef: string;
+  readonly schedulerState: CommitSchedulerState;
+  readonly currentOperatorKeyHash: string;
+  readonly stateQueueEvidence: CommitSchedulerStateQueueEvidence;
+  readonly localFinalizationPending: boolean;
+  readonly plannerVersion: string;
+}): string =>
+  [
+    `planner=${plannerVersion}`,
+    `scheduler=${schedulerOutRef}`,
+    schedulerState.status === "active"
+      ? `scheduler_state=active,scheduler_operator=${schedulerState.operatorKeyHash},${safeNumberEvidence("scheduler_start_ms", schedulerState.startTimeMs)},transition_invalid_before_slot=${schedulerState.transitionInvalidBeforeSlot?.toString() ?? "missing"},transition_invalid_hereafter_slot=${schedulerState.transitionInvalidHereafterSlot?.toString() ?? "missing"},selection=active_other_shift_boundary`
+      : "scheduler_state=no_active_operators",
+    `current_operator=${currentOperatorKeyHash}`,
+    `state_queue_tail_base=${stateQueueEvidence.tailCommitBaseOutRef}`,
+    safeNumberEvidence(
+      "state_queue_tail_end_ms",
+      stateQueueEvidence.tailBlockEndTimeMs,
+    ),
+    `state_queue_unmerged_tail=${stateQueueEvidence.stateQueueHasUnmergedTail.toString()}`,
+    ...(stateQueueEvidence.rootOutRef === undefined
+      ? []
+      : [`state_queue_root=${stateQueueEvidence.rootOutRef}`]),
+    `local_finalization_pending=${localFinalizationPending.toString()}`,
+  ].join(",");
+
+export const planEarliestCommitSchedulerDueWork = ({
+  callerLabel,
+  discoveryStage,
+  schedulerOutRef,
+  schedulerState,
+  currentOperatorKeyHash,
+  submitSlotSnapshot,
+  submitSlotSnapshotError,
+  stateQueueEvidence,
+  localFinalizationPending,
+  maxInlineWaitMs,
+  plannerVersion = EARLIEST_COMMIT_SCHEDULER_PLANNER_VERSION,
+}: {
+  readonly callerLabel: string;
+  readonly discoveryStage: CommitSchedulerDiscoveryStage;
+  readonly schedulerOutRef: string;
+  readonly schedulerState: CommitSchedulerState;
+  readonly currentOperatorKeyHash: string;
+  readonly submitSlotSnapshot?: SubmitSlotSnapshot;
+  readonly submitSlotSnapshotError?: unknown;
+  readonly stateQueueEvidence: CommitSchedulerStateQueueEvidence;
+  readonly localFinalizationPending: boolean;
+  readonly maxInlineWaitMs: number;
+  readonly plannerVersion?: string;
+}): EarliestCommitSchedulerPlan => {
+  const dependencyKey = commitSchedulerEvidenceKey({
+    schedulerOutRef,
+    schedulerState,
+    currentOperatorKeyHash,
+    stateQueueEvidence,
+    localFinalizationPending,
+    plannerVersion,
+  });
+  const proceed = (reason: string): EarliestCommitSchedulerPlan => ({
+    status: "proceed",
+    reason,
+    dependencyKey,
+    invalidationKey: dependencyKey,
+  });
+
+  if (localFinalizationPending) {
+    return proceed("local_finalization_pending");
+  }
+  if (
+    stateQueueEvidence.tailCommitBaseOutRef.trim() === "" ||
+    !Number.isSafeInteger(stateQueueEvidence.tailBlockEndTimeMs)
+  ) {
+    return {
+      status: "ambiguous",
+      reason: "state_queue_evidence_unsafe",
+    };
+  }
+  if (schedulerState.status === "no_active_operators") {
+    return {
+      status: "ambiguous",
+      reason: "scheduler_has_no_active_operator",
+    };
+  }
+  if (!Number.isSafeInteger(schedulerState.startTimeMs)) {
+    return {
+      status: "ambiguous",
+      reason: "scheduler_active_start_time_unsafe",
+    };
+  }
+  if (schedulerState.operatorKeyHash === currentOperatorKeyHash) {
+    return proceed("current_operator_already_active");
+  }
+  if (
+    schedulerState.transitionInvalidBeforeSlot === undefined ||
+    !Number.isSafeInteger(schedulerState.transitionInvalidBeforeSlot)
+  ) {
+    return {
+      status: "ambiguous",
+      reason: "scheduler_transition_slot_unavailable",
+    };
+  }
+
+  const timingPlan = planSubmitTiming({
+    callerLabel,
+    invalidBeforeSlot: schedulerState.transitionInvalidBeforeSlot,
+    invalidHereafterSlot: schedulerState.transitionInvalidHereafterSlot,
+    slotSnapshot: submitSlotSnapshot,
+    slotSnapshotError: submitSlotSnapshotError,
+    maxInlineWaitMs,
+    dependencyKey,
+    invalidationKey: dependencyKey,
+  });
+
+  if (timingPlan.status === "not_due") {
+    return {
+      status: "register_due_work",
+      reason: "scheduler_transition_not_reached",
+      discoveryStage,
+      dueWork: slotAwareDueWorkFromSubmitTiming({
+        kind: "commit_scheduler_refresh",
+        key: "block_commitment",
+        callerLabel,
+        reason: "scheduler_transition_not_reached",
+        plan: {
+          ...timingPlan,
+          dependencyKey,
+          invalidationKey: dependencyKey,
+        },
+      }),
+    };
+  }
+
+  if (timingPlan.status === "ready" || timingPlan.status === "wait") {
+    return proceed(`scheduler_submit_timing_${timingPlan.status}`);
+  }
+
+  return {
+    status: "ambiguous",
+    reason: `scheduler_submit_timing_${timingPlan.status}`,
+  };
+};
+
+export type SchedulerAwareCommitSelectionPlan = {
+  readonly candidateSelection: CommitTxCandidateSelection;
+  readonly userEventOnlyEndTime: Date;
+  readonly currentSchedulerWindow?: CurrentOperatorSchedulerWindow;
+  readonly status:
+    | "no_current_scheduler_window"
+    | "current_scheduler_budget_too_low"
+    | "current_scheduler_window_not_ahead"
+    | "current_scheduler_end_time_floor_exceeds_window"
+    | "using_current_scheduler_window";
+  readonly prunedTxCount: number;
+  readonly originalTxCount: number;
+  readonly blockEndTimeCapMs?: number;
+  readonly reason: string;
+};
+
+export const establishEndTimeFromTxRequests = (
+  candidateTxs: readonly EntryWithTimeStamp[],
+): Option.Option<Date> =>
+  candidateTxs.length > 0
+    ? Option.some(candidateTxs[0][TxColumns.TIMESTAMPTZ])
+    : Option.none();
 
 export const selectCommitTxCandidates = ({
   mempoolTxs,
@@ -44,6 +279,135 @@ export const selectCommitTxCandidates = ({
       0,
     ),
     sourceTable,
+  };
+};
+
+const buildCommitTxCandidateSelection = (
+  candidateTxs: readonly EntryWithTimeStamp[],
+  sourceTable: CommitTxSourceTable,
+): CommitTxCandidateSelection => ({
+  candidateTxs,
+  candidateTxHashes: candidateTxs.map((entry) =>
+    Buffer.from(entry[TxColumns.TX_ID]),
+  ),
+  candidateTxsSize: candidateTxs.reduce(
+    (total, entry) => total + entry[TxColumns.TX].length,
+    0,
+  ),
+  sourceTable: candidateTxs.length > 0 ? sourceTable : "none",
+});
+
+export const planSchedulerAwareCommitSelection = ({
+  candidateSelection,
+  userEventOnlyEndTime,
+  currentSchedulerWindow,
+  currentBlockStartTimeMs,
+  nowMs,
+  minimumCurrentWindowBudgetMs,
+  productionMinimumFutureBufferMs,
+  currentWindowCommitEndTimeFit,
+}: {
+  readonly candidateSelection: CommitTxCandidateSelection;
+  readonly userEventOnlyEndTime: Date;
+  readonly currentSchedulerWindow?: CurrentOperatorSchedulerWindow;
+  readonly currentBlockStartTimeMs: number;
+  readonly nowMs: number;
+  readonly minimumCurrentWindowBudgetMs: number;
+  readonly productionMinimumFutureBufferMs?: number;
+  readonly currentWindowCommitEndTimeFit?: CommitEndTimeFit;
+}): SchedulerAwareCommitSelectionPlan => {
+  if (currentSchedulerWindow === undefined) {
+    return {
+      candidateSelection,
+      userEventOnlyEndTime,
+      status: "no_current_scheduler_window",
+      prunedTxCount: 0,
+      originalTxCount: candidateSelection.candidateTxs.length,
+      reason: "current operator is not active in the scheduler window",
+    };
+  }
+
+  const remainingCurrentWindowMs = currentSchedulerWindow.endTimeMs - nowMs;
+  if (remainingCurrentWindowMs < minimumCurrentWindowBudgetMs) {
+    return {
+      candidateSelection,
+      userEventOnlyEndTime,
+      currentSchedulerWindow,
+      status: "current_scheduler_budget_too_low",
+      prunedTxCount: 0,
+      originalTxCount: candidateSelection.candidateTxs.length,
+      reason: `remaining_current_window_ms=${remainingCurrentWindowMs.toString()},minimum_current_window_budget_ms=${minimumCurrentWindowBudgetMs.toString()}`,
+    };
+  }
+
+  if (currentSchedulerWindow.endTimeMs <= currentBlockStartTimeMs) {
+    return {
+      candidateSelection,
+      userEventOnlyEndTime,
+      currentSchedulerWindow,
+      status: "current_scheduler_window_not_ahead",
+      prunedTxCount: 0,
+      originalTxCount: candidateSelection.candidateTxs.length,
+      reason: `current_scheduler_end_ms=${currentSchedulerWindow.endTimeMs.toString()},current_block_start_ms=${currentBlockStartTimeMs.toString()}`,
+    };
+  }
+
+  const commitEndTimeFitUsesSchedulerCap =
+    currentWindowCommitEndTimeFit?.maximumEndTimeMs ===
+    currentSchedulerWindow.endTimeMs;
+  const commitEndTimeFitExceedsSchedulerWindow =
+    currentWindowCommitEndTimeFit === undefined ||
+    currentWindowCommitEndTimeFit.status === "exceeds_cap" ||
+    currentWindowCommitEndTimeFit.resolvedEndTime >
+      currentSchedulerWindow.endTimeMs;
+  if (
+    !commitEndTimeFitUsesSchedulerCap ||
+    commitEndTimeFitExceedsSchedulerWindow
+  ) {
+    const resolvedEndTimeMs =
+      currentWindowCommitEndTimeFit?.resolvedEndTime ?? "missing";
+    const fitReason =
+      currentWindowCommitEndTimeFit === undefined
+        ? "commit_end_time_fit=missing"
+        : currentWindowCommitEndTimeFit.status === "exceeds_cap"
+          ? currentWindowCommitEndTimeFit.reason
+          : !commitEndTimeFitUsesSchedulerCap
+            ? `commit_end_time_fit_cap_mismatch=${String(currentWindowCommitEndTimeFit.maximumEndTimeMs)}`
+            : "commit_end_time_fit_exceeds_scheduler_window";
+    return {
+      candidateSelection,
+      userEventOnlyEndTime,
+      currentSchedulerWindow,
+      status: "current_scheduler_end_time_floor_exceeds_window",
+      prunedTxCount: 0,
+      originalTxCount: candidateSelection.candidateTxs.length,
+      reason: `resolved_end_time_ms=${resolvedEndTimeMs.toString()},current_scheduler_end_ms=${currentSchedulerWindow.endTimeMs.toString()},minimum_future_buffer_ms=${(productionMinimumFutureBufferMs ?? 0).toString()},remaining_current_window_ms=${remainingCurrentWindowMs.toString()},${fitReason}`,
+    };
+  }
+
+  const cappedTxs = candidateSelection.candidateTxs.filter(
+    (entry) =>
+      entry[TxColumns.TIMESTAMPTZ].getTime() <=
+      currentSchedulerWindow.endTimeMs,
+  );
+  const cappedUserEventOnlyEndTime =
+    userEventOnlyEndTime.getTime() > currentSchedulerWindow.endTimeMs
+      ? new Date(currentSchedulerWindow.endTimeMs)
+      : userEventOnlyEndTime;
+  const prunedTxCount =
+    candidateSelection.candidateTxs.length - cappedTxs.length;
+  return {
+    candidateSelection: buildCommitTxCandidateSelection(
+      cappedTxs,
+      candidateSelection.sourceTable,
+    ),
+    userEventOnlyEndTime: cappedUserEventOnlyEndTime,
+    currentSchedulerWindow,
+    status: "using_current_scheduler_window",
+    prunedTxCount,
+    originalTxCount: candidateSelection.candidateTxs.length,
+    blockEndTimeCapMs: currentSchedulerWindow.endTimeMs,
+    reason: `scheduler_out_ref=${currentSchedulerWindow.schedulerOutRef},current_scheduler_end_ms=${currentSchedulerWindow.endTimeMs.toString()},resolved_end_time_ms=${currentWindowCommitEndTimeFit.resolvedEndTime.toString()},pruned_tx_count=${prunedTxCount.toString()}`,
   };
 };
 

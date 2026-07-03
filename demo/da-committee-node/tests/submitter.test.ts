@@ -10,6 +10,7 @@ import {
 import { describe, expect, it } from "vitest";
 
 import { LucidDaAttestationSubmitter } from "../src/coordinator/lucid-submitter.js";
+import { classifyDaAttestationMarker } from "../src/l1/attestation-marker.js";
 import type { DaAttestationValidatorSet } from "../src/l1/deployment.js";
 import {
   classifyL1SubmitterUtxos,
@@ -22,6 +23,31 @@ import {
 import { tempDir } from "./helpers.js";
 
 describe("L1 submitter helpers", () => {
+  it("classifies expected, empty, and foreign DA attestation markers", () => {
+    expect(
+      classifyDaAttestationMarker("", contracts.daAttestation.policyId),
+    ).toEqual({ kind: "unattested" });
+    expect(
+      classifyDaAttestationMarker(
+        contracts.daAttestation.policyId.toUpperCase(),
+        contracts.daAttestation.policyId,
+      ),
+    ).toEqual({
+      kind: "already_attested_expected",
+      policyId: contracts.daAttestation.policyId,
+    });
+    expect(
+      classifyDaAttestationMarker(
+        "ff".repeat(28),
+        contracts.daAttestation.policyId,
+      ),
+    ).toEqual({
+      kind: "already_attested_foreign",
+      policyId: "ff".repeat(28),
+      expectedPolicyId: contracts.daAttestation.policyId,
+    });
+  });
+
   it("parses inline and file-backed submitter key sources", async () => {
     const seed =
       "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
@@ -461,6 +487,33 @@ describe("L1 submitter helpers", () => {
     await expect(
       probe.waitForApplied("01".repeat(28)),
     ).resolves.toBeUndefined();
+  });
+
+  it("treats add-signatures as a no-op once the expected DA attestation is already applied", async () => {
+    let signCalls = 0;
+    const submitter = new LucidDaAttestationSubmitter({
+      lucid: {} as LucidEvolution,
+      contracts,
+      referenceScripts: {} as never,
+      signSubmit: async () => {
+        signCalls += 1;
+        return "txhash";
+      },
+    });
+    const probe = submitter as unknown as SubmitterProbe;
+    probe.findStateQueueHeader = async () => ({
+      stateQueueNode: { da_attestation: contracts.daAttestation.policyId },
+    });
+
+    await expect(
+      submitter.addSignatures({
+        record: { headerHash: "01".repeat(28) } as never,
+        candidate: {} as never,
+        packedWitnessesHex: "",
+        signerIndexes: [],
+      }),
+    ).resolves.toEqual({ status: "already_attested" });
+    expect(signCalls).toBe(0);
   });
 
   it("rejects apply verification for an unexpected attestation policy", async () => {

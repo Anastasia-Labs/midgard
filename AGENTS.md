@@ -18,7 +18,12 @@ specification.
   - Test: `cd demo && pnpm run test`
   - Lint: `cd demo && pnpm run lint`
   - Format check: `cd demo && pnpm run format-check`
-- Build Aiken contracts from `onchain/aiken` with `aiken build`.
+- For demo/preprod/e2e deployments, build Aiken contracts from
+  `onchain/aiken` with `aiken build --env testnet` before building node
+  images. Use another Aiken env only when the task explicitly targets it.
+- For SDK/node transaction builders, do not edge-trigger `validFrom` at the
+  current wall-clock or tip-derived slot. Backdate by at least 30 seconds when
+  protocol rules allow it; see transaction finalization guidance.
 - Build the technical specification with `make spec`.
 
 ## Detailed Guidance

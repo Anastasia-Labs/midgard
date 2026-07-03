@@ -12,16 +12,27 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   parseNonceLovelaceOption,
+  type PrepareHubOracleNonceOptions,
   type PreparedHubOracleNonce,
   prepareHubOracleOneShotNonceProgram,
+  reconcileHubOracleOneShotNonceAttemptProgram,
 } from "@/commands/prepare-hub-oracle-nonce.js";
 import { Lucid as LucidService } from "@/services/lucid.js";
+import { TxConfirmError } from "@/transactions/utils.js";
 
-const handleSignSubmitMock = vi.hoisted(() => vi.fn());
+const signSubmitTransactionMock = vi.hoisted(() => vi.fn());
+const awaitSubmittedTransactionConfirmationMock = vi.hoisted(() => vi.fn());
 
-vi.mock("@/transactions/utils.js", () => ({
-  handleSignSubmit: handleSignSubmitMock,
-}));
+vi.mock("@/transactions/utils.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/transactions/utils.js")>();
+  return {
+    ...actual,
+    signSubmitTransaction: signSubmitTransactionMock,
+    awaitSubmittedTransactionConfirmation:
+      awaitSubmittedTransactionConfirmationMock,
+  };
+});
 
 const TX_HASH = "ab".repeat(32);
 const OPERATOR_ADDRESS = "addr_test1operatornonce";
@@ -68,6 +79,7 @@ const makeLucidService = (params: {
   const newTx = vi.fn(() => tx);
   const walletAddress = vi.fn(async () => OPERATOR_ADDRESS);
   const wallet = vi.fn(() => ({ address: walletAddress }));
+  const awaitTx = vi.fn(async () => true);
   const utxosAt = vi.fn(async () => {
     const inlineDatum = payments[0]?.datum.value ?? "";
     return Array.from({ length: params.matchingOutputCount }, (_, index) =>
@@ -78,6 +90,7 @@ const makeLucidService = (params: {
   const lucid = {
     newTx,
     wallet,
+    awaitTx,
     utxosAt,
   } as unknown as LucidEvolution;
   const lucidService = {
@@ -96,6 +109,7 @@ const makeLucidService = (params: {
       newTx,
       wallet,
       walletAddress,
+      awaitTx,
       utxosAt,
       switchToOperatorsMainWallet,
     },
@@ -105,9 +119,26 @@ const makeLucidService = (params: {
 const runPrepare = (
   amountLovelace: bigint,
   lucidService: unknown,
+  options: PrepareHubOracleNonceOptions = {},
 ): Promise<PreparedHubOracleNonce> =>
   Effect.runPromise(
-    prepareHubOracleOneShotNonceProgram(amountLovelace).pipe(
+    prepareHubOracleOneShotNonceProgram(amountLovelace, options).pipe(
+      Effect.provideService(LucidService, lucidService as never),
+    ),
+  );
+
+const runReconcile = (
+  lucidService: unknown,
+  attempt: {
+    readonly txHash: string;
+    readonly address: string;
+    readonly lovelace: string;
+    readonly inlineDatum: string;
+  },
+  options: PrepareHubOracleNonceOptions = {},
+): Promise<PreparedHubOracleNonce> =>
+  Effect.runPromise(
+    reconcileHubOracleOneShotNonceAttemptProgram(attempt, options).pipe(
       Effect.provideService(LucidService, lucidService as never),
     ),
   );
@@ -123,8 +154,19 @@ const markerFromInlineDatum = (inlineDatum: string): string => {
 
 describe("prepare hub-oracle one-shot nonce command boundary", () => {
   beforeEach(() => {
-    handleSignSubmitMock.mockReset();
-    handleSignSubmitMock.mockImplementation(() => Effect.succeed(TX_HASH));
+    signSubmitTransactionMock.mockReset();
+    awaitSubmittedTransactionConfirmationMock.mockReset();
+    signSubmitTransactionMock.mockImplementation(() =>
+      Effect.succeed({
+        txHash: TX_HASH,
+        signedTxCbor: "00",
+        walletAddress: OPERATOR_ADDRESS,
+      }),
+    );
+    awaitSubmittedTransactionConfirmationMock.mockImplementation(
+      (_lucid, submission: { readonly txHash: string }) =>
+        Effect.succeed(submission.txHash),
+    );
   });
 
   it("parses positive integer lovelace options and rejects invalid values", () => {
@@ -162,9 +204,17 @@ describe("prepare hub-oracle one-shot nonce command boundary", () => {
       assets: { lovelace: amountLovelace },
     });
     expect(record.complete).toHaveBeenCalledWith({ localUPLCEval: true });
-    expect(handleSignSubmitMock).toHaveBeenCalledWith(
+    expect(signSubmitTransactionMock).toHaveBeenCalledWith(
       (lucidService as { readonly api: LucidEvolution }).api,
       record.unsignedTx,
+    );
+    expect(awaitSubmittedTransactionConfirmationMock).toHaveBeenCalledWith(
+      (lucidService as { readonly api: LucidEvolution }).api,
+      {
+        txHash: TX_HASH,
+        signedTxCbor: "00",
+        walletAddress: OPERATOR_ADDRESS,
+      },
     );
     expect(record.utxosAt).toHaveBeenCalledWith(OPERATOR_ADDRESS);
 
@@ -175,6 +225,7 @@ describe("prepare hub-oracle one-shot nonce command boundary", () => {
       address: OPERATOR_ADDRESS,
       lovelace: amountLovelace.toString(10),
       inlineDatum: record.payments[0]!.datum.value,
+      confirmationStatus: "confirmed",
     });
 
     const markerHex = markerFromInlineDatum(result.inlineDatum);
@@ -195,7 +246,9 @@ describe("prepare hub-oracle one-shot nonce command boundary", () => {
       matchingOutputCount: 0,
     });
 
-    await expect(runPrepare(amountLovelace, lucidService)).rejects.toThrow(
+    await expect(
+      runPrepare(amountLovelace, lucidService, { outputLookupTimeoutMs: 0 }),
+    ).rejects.toThrow(
       `Expected exactly one marked nonce output for ${TX_HASH}, found 0`,
     );
   });
@@ -207,9 +260,96 @@ describe("prepare hub-oracle one-shot nonce command boundary", () => {
       matchingOutputCount: 2,
     });
 
-    await expect(runPrepare(amountLovelace, lucidService)).rejects.toThrow(
+    await expect(
+      runPrepare(amountLovelace, lucidService, { outputLookupTimeoutMs: 0 }),
+    ).rejects.toThrow(
       `Expected exactly one marked nonce output for ${TX_HASH}, found 2`,
     );
+  });
+
+  it("records submitted nonce details before waiting for confirmation", async () => {
+    const amountLovelace = 5_000_000n;
+    const { lucidService, record } = makeLucidService({
+      amountLovelace,
+      matchingOutputCount: 1,
+    });
+    const onSubmitted = vi.fn(() => Effect.void);
+    const onTxHashConfirmed = vi.fn(() => Effect.void);
+
+    await runPrepare(amountLovelace, lucidService, {
+      onSubmitted,
+      onTxHashConfirmed,
+    });
+
+    const attempt = {
+      txHash: TX_HASH,
+      address: OPERATOR_ADDRESS,
+      lovelace: amountLovelace.toString(10),
+      inlineDatum: record.payments[0]!.datum.value,
+    };
+    expect(onSubmitted).toHaveBeenCalledWith(attempt);
+    expect(onTxHashConfirmed).toHaveBeenCalledWith(attempt, "confirmed");
+  });
+
+  it("reconciles by tx hash when the first confirmation wait times out", async () => {
+    const amountLovelace = 5_000_000n;
+    const { lucidService, record } = makeLucidService({
+      amountLovelace,
+      matchingOutputCount: 1,
+    });
+    awaitSubmittedTransactionConfirmationMock.mockImplementationOnce(
+      (_lucid, submission: { readonly txHash: string }) =>
+        Effect.fail(
+          new TxConfirmError({
+            message: "Failed to confirm transaction",
+            txHash: submission.txHash,
+            cause: new Error(
+              "timed out waiting for tx confirmation after 90000ms",
+            ),
+          }),
+        ),
+    );
+
+    const result = await runPrepare(amountLovelace, lucidService);
+
+    expect(record.awaitTx).toHaveBeenCalledWith(TX_HASH, 5_000);
+    expect(result).toMatchObject({
+      txHash: TX_HASH,
+      outRef: `${TX_HASH}#7`,
+      confirmationStatus: "reconciled_after_timeout",
+    });
+  });
+
+  it("reconciles a pending submitted nonce attempt without building a new tx", async () => {
+    const amountLovelace = 5_000_000n;
+    const inlineDatum =
+      "d8799f581d6d6964676172645f6875625f6f7261636c655f6f6e655f73686f745fff";
+    const { lucidService, record } = makeLucidService({
+      amountLovelace,
+      matchingOutputCount: 1,
+    });
+    record.utxosAt.mockImplementation(async () => [
+      makeVisibleUtxo(9, inlineDatum, amountLovelace),
+    ]);
+
+    const result = await runReconcile(lucidService, {
+      txHash: TX_HASH,
+      address: OPERATOR_ADDRESS,
+      lovelace: amountLovelace.toString(10),
+      inlineDatum,
+    });
+
+    expect(record.newTx).not.toHaveBeenCalled();
+    expect(record.awaitTx).toHaveBeenCalledWith(TX_HASH, 5_000);
+    expect(result).toEqual({
+      txHash: TX_HASH,
+      outputIndex: 9,
+      outRef: `${TX_HASH}#9`,
+      address: OPERATOR_ADDRESS,
+      lovelace: amountLovelace.toString(10),
+      inlineDatum,
+      confirmationStatus: "reconciled_after_timeout",
+    });
   });
 
   it("wraps completion failures with the existing operator-facing message", async () => {
@@ -226,6 +366,6 @@ describe("prepare hub-oracle one-shot nonce command boundary", () => {
         completionError,
       )}`,
     );
-    expect(handleSignSubmitMock).not.toHaveBeenCalled();
+    expect(signSubmitTransactionMock).not.toHaveBeenCalled();
   });
 });
