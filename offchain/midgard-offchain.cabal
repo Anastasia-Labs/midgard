@@ -142,17 +142,22 @@ library midgard-node-lib
     Midgard.Node.App
     Midgard.Node.Codec.Scripts
     Midgard.Node.Config
-    Midgard.Node.DB.AddressHistory
-    Midgard.Node.DB.Blocks
-    Midgard.Node.DB.Deposits
-    Midgard.Node.DB.Hex
-    Midgard.Node.DB.MempoolLedger
-    Midgard.Node.DB.Pool
-    Midgard.Node.DB.Transactions
-    Midgard.Node.DB.TxStatus
+    Midgard.Node.DB.Schema
+    Midgard.Node.DB.Schema.DepositConfirmationStatus
+    Midgard.Node.DB.Schema.DepositsUtxosStatus
+    Midgard.Node.DB.Schema.EventProjectionStatus
+    Midgard.Node.DB.Schema.ForcedOperatorValidity
+    Midgard.Node.DB.Schema.LocalMutationJobKind
+    Midgard.Node.DB.Schema.LocalMutationJobStatus
+    Midgard.Node.DB.Schema.PendingBlockFinalizationStatus
+    Midgard.Node.DB.Schema.StateQueueLeaseStatus
+    Midgard.Node.DB.Schema.StateQueueScope
+    Midgard.Node.DB.Schema.SubmitSource
+    Midgard.Node.DB.Schema.TxAdmissionStatus
+    Midgard.Node.DB.Schema.WithdrawalValidity
     Midgard.Node.DB.Types
+    Midgard.Node.DB.Utils
     Midgard.Node.Env
-    Midgard.Node.Migrations
     Midgard.Node.Server
     Midgard.Node.Server.Admin
     Midgard.Node.Server.Admin.Types
@@ -177,11 +182,15 @@ library midgard-node-lib
     , cryptohash-sha256
     , deriving-aeson
     , filepath
+    , http-api-data
     , midgard-offchain
     , monad-logger
+    , path-pieces
     , persistent
     , persistent-postgresql
+    , persistent-template
     , postgresql-simple
+    , pretty-simple
     , resource-pool
     , servant
     , servant-server
@@ -218,21 +227,15 @@ test-suite node-tests
   default-extensions: OverloadedStrings
   main-is:            Spec.hs
   hs-source-dirs:     node/tests
-  other-modules:
-    Spec.Node.DB
-    Spec.Node.DB.Utils
-    Spec.Node.Server
-
+  other-modules:      Spec.Node.DB
   build-depends:
     , aeson
     , cardano-ledger-binary
     , http-client
     , http-types
     , midgard-node-lib
-    , monad-logger
     , persistent
-    , persistent-sqlite
-    , resource-pool
+    , persistent-postgresql
     , servant
     , servant-client
     , tasty
