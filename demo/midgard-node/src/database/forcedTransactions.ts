@@ -72,6 +72,25 @@ const projectedEventsTable = {
   touchUpdatedAt: true,
 } as const satisfies ProjectedEvents.ProjectedEventTable;
 
+const projectedEventAdapter = ProjectedEvents.makeProjectedEventAdapter<Entry>({
+  config: projectedEventsTable,
+  pendingHeaderStatuses: [Status.Awaiting, Status.Projected],
+  messages: {
+    retrieveByProjectedHeaderHash:
+      "Failed to retrieve forced transactions by projected header hash",
+    retrievePendingHeaderEntriesUpTo:
+      "Failed to retrieve forced transactions pending header assignment",
+    retrieveProjectedPendingHeaderEntries:
+      "Failed to retrieve projected forced transactions awaiting header assignment",
+    markAwaitingAsProjected:
+      "Failed to mark awaiting forced transactions as projected",
+    markProjectedByEventIds:
+      "Failed to mark forced transactions as assigned to the given header",
+    clearProjectedHeaderAssignmentByEventIds:
+      "Failed to clear projected header assignments for forced transactions",
+  },
+});
+
 const sameImmutablePayload = (left: Entry, right: Entry): boolean =>
   left[Columns.TX_ORDER_ID].equals(right[Columns.TX_ORDER_ID]) &&
   left[Columns.TX_ORDER_L1_TX_HASH].equals(
@@ -305,73 +324,31 @@ export const retrieveByTxOrderId = (
 export const retrievePendingHeaderEntriesUpTo = (
   endTime: Date,
 ): Effect.Effect<readonly Entry[], DatabaseError, Database> =>
-  ProjectedEvents.retrievePendingHeaderEntriesUpTo<Entry>(
-    projectedEventsTable,
-    endTime,
-    [Status.Awaiting, Status.Projected],
-  ).pipe(
-    Effect.withLogSpan(`retrievePendingHeaderEntriesUpTo ${tableName}`),
-    sqlErrorToDatabaseError(
-      tableName,
-      "Failed to retrieve forced transactions pending header assignment",
-    ),
-  );
+  projectedEventAdapter.retrievePendingHeaderEntriesUpTo(endTime);
 
 export const retrieveByProjectedHeaderHash = (
   projectedHeaderHash: Buffer,
 ): Effect.Effect<readonly Entry[], DatabaseError, Database> =>
-  ProjectedEvents.retrieveByProjectedHeaderHash<Entry>(
-    projectedEventsTable,
-    projectedHeaderHash,
-  ).pipe(
-    Effect.withLogSpan(`retrieveByProjectedHeaderHash ${tableName}`),
-    sqlErrorToDatabaseError(
-      tableName,
-      "Failed to retrieve forced transactions by projected header hash",
-    ),
-  );
+  projectedEventAdapter.retrieveByProjectedHeaderHash(projectedHeaderHash);
 
 export const markAwaitingAsProjected = (
   ids: readonly Buffer[],
 ): Effect.Effect<void, DatabaseError, Database> =>
-  ProjectedEvents.markAwaitingAsProjected(projectedEventsTable, ids).pipe(
-    Effect.withLogSpan(`markAwaitingAsProjected ${tableName}`),
-    sqlErrorToDatabaseError(
-      tableName,
-      "Failed to mark awaiting forced transactions as projected",
-    ),
-  );
+  projectedEventAdapter.markAwaitingAsProjected(ids);
 
 export const markProjectedByEventIds = (
   ids: readonly Buffer[],
   projectedHeaderHash: Buffer,
 ): Effect.Effect<void, DatabaseError, Database> =>
-  ProjectedEvents.markProjectedByEventIds(
-    projectedEventsTable,
-    ids,
-    projectedHeaderHash,
-  ).pipe(
-    Effect.withLogSpan(`markProjectedByEventIds ${tableName}`),
-    sqlErrorToDatabaseError(
-      tableName,
-      "Failed to mark forced transactions as assigned to the given header",
-    ),
-  );
+  projectedEventAdapter.markProjectedByEventIds(ids, projectedHeaderHash);
 
 export const clearProjectedHeaderAssignmentByEventIds = (
   ids: readonly Buffer[],
   projectedHeaderHash: Buffer,
 ): Effect.Effect<void, DatabaseError, Database> =>
-  ProjectedEvents.clearProjectedHeaderAssignmentByEventIds(
-    projectedEventsTable,
+  projectedEventAdapter.clearProjectedHeaderAssignmentByEventIds(
     ids,
     projectedHeaderHash,
-  ).pipe(
-    Effect.withLogSpan(`clearProjectedHeaderAssignmentByEventIds ${tableName}`),
-    sqlErrorToDatabaseError(
-      tableName,
-      "Failed to clear projected header assignments for forced transactions",
-    ),
   );
 
 export const markFinalizedByEventIds = (

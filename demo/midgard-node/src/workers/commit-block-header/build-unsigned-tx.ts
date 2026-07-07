@@ -6,8 +6,9 @@ import type { OperatorWalletView } from "@/operator-wallet-view.js";
 import { Lucid } from "@/services/index.js";
 import {
   handleSignSubmitNoConfirmation,
+  type NoInlineSubmitRecoveryOptions,
   type TxSignError,
-  type TxSubmitError,
+  TxSubmitError,
 } from "@/transactions/utils.js";
 import {
   COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
@@ -139,6 +140,7 @@ export const buildUnsignedCommitTx = (
         witnessContext?.operatorWalletView ?? initialOperatorWalletView,
         lucid.referenceScriptsAddress,
         submitSlotSnapshot,
+        false,
       );
       if (isCommitTimingDueWork(witnessResult)) {
         return witnessResult;
@@ -233,16 +235,38 @@ export const buildUnsignedCommitTx = (
         "before_pending_journal_preparation",
       );
 
+      const submitRecoveryOptions: NoInlineSubmitRecoveryOptions = {
+        label: "commit-block",
+        slotSnapshot: submitSlotSnapshot,
+        requireSlotForBoundedTx: true,
+        maxPreSubmitWaitMs: preSubmitBudget.remainingBudgetMs,
+        inlineWaitPolicy: "defer_positive_wait",
+        noInlineSubmitDefer: {
+          key: `commit-block:${newHeaderHash}`,
+          dependencyKey: `commit-block:${newHeaderHash}`,
+          invalidationKey: `commit-block:${newHeaderHash}`,
+        },
+      };
       const signAndSubmitProgram = handleSignSubmitNoConfirmation(
         lucid.api,
         txBuilder,
-        {
-          label: "commit-block",
-          slotSnapshot: submitSlotSnapshot,
-          requireSlotForBoundedTx: true,
-          maxPreSubmitWaitMs: preSubmitBudget.remainingBudgetMs,
-        },
-      ).pipe(Effect.withSpan("handleSignSubmit-commit-block"));
+        submitRecoveryOptions,
+      )
+        .pipe(
+          Effect.flatMap((result) =>
+            result.status === "submitted"
+              ? Effect.succeed(result.txHash)
+              : Effect.fail(
+                  new TxSubmitError({
+                    message:
+                      "Commit block submit deferred in no-inline mode before submission",
+                    txHash: newHeaderHash,
+                    cause: result.defer,
+                  }),
+                ),
+          ),
+        )
+        .pipe(Effect.withSpan("handleSignSubmit-commit-block"));
 
       return {
         newHeaderHash,

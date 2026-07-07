@@ -1,8 +1,7 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   REQUIRED_FRESH_E2E_STEP_IDS,
@@ -33,20 +32,9 @@ import {
   writeSummaryMarkdownAtomic,
 } from "@/e2e/summary.js";
 
-let tempDirs: string[] = [];
+import { createTrackedTempDirFactory } from "./helpers/temp-files.js";
 
-const makeTempDir = async (): Promise<string> => {
-  const dir = await mkdtemp(join(tmpdir(), "midgard-e2e-summary-"));
-  tempDirs.push(dir);
-  return dir;
-};
-
-afterEach(async () => {
-  await Promise.all(
-    tempDirs.map((dir) => rm(dir, { recursive: true, force: true })),
-  );
-  tempDirs = [];
-});
+const makeTempDir = createTrackedTempDirFactory("midgard-e2e-summary-");
 
 const step = ({
   id,
@@ -145,8 +133,14 @@ const stressSummary = (
     schemaVersion: E2E_L2_STRESS_SCHEMA_VERSION,
     runId: "e2e-run-stress",
     status: "completed",
+    loadModel: "closed-loop-smoke",
+    workloadProfile: "production-end-user",
+    classification: "closed_loop_smoke",
     mode: "serial-chain",
     measurementPolicy: {
+      loadModel: "closed-loop-smoke",
+      workloadProfile: "production-end-user",
+      syntheticVsProduction: "production_end_user_path",
       advanceOn: "accepted",
       primaryStageMetric: "metrics.l2Admission.perSecond",
       finalityObservation: "post-submit-bounded",
@@ -568,6 +562,51 @@ describe("e2e run summary", () => {
     expect(summary.cleanRunVerdict).toBe("failed");
     expect(summary.verdict).toBe("success");
     expect(summary.nextSafeAction).toBe("none_run_complete");
+  });
+
+  it("accepts identity-safe resume and retry aliases while preserving failed attempt quality", () => {
+    const steps = [
+      step({ id: "reference-scripts", status: "failed" }),
+      ...requiredFreshSuccessSteps().filter(
+        (entry) =>
+          entry.id !== "reference-scripts" &&
+          entry.id !== "init-protocol" &&
+          entry.id !== "operator-lifecycle",
+      ),
+      step({ id: "reference-scripts-resume", status: "success" }),
+      step({ id: "init-protocol-retry", status: "success" }),
+      step({ id: "operator-activate-retry", status: "success" }),
+    ];
+
+    const evidence = requiredFreshEvidence({
+      mode: "fresh",
+      steps,
+      transactions: requiredFreshTransactions(),
+    });
+
+    expect(evidence.db).toContainEqual(
+      expect.objectContaining({
+        label: "required_fresh_steps",
+        status: "satisfied",
+        details: expect.objectContaining({ missing: "" }),
+      }),
+    );
+    expect(evidence.db).toContainEqual(
+      expect.objectContaining({
+        label: "required_transaction_evidence",
+        status: "satisfied",
+      }),
+    );
+    expect(evidence.cleanRunGates).toContainEqual(
+      expect.objectContaining({
+        label: "required_fresh_step_attempt_quality",
+        status: "failed",
+        details: expect.objectContaining({
+          failedAttempts: "1",
+          failed: "reference-scripts:failed:logs/reference-scripts.log",
+        }),
+      }),
+    );
   });
 
   it("blocks completion when a recovered signaled attempt has unresolved submitted tx risk", () => {

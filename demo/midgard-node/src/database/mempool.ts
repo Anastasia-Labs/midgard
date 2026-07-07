@@ -1,5 +1,5 @@
 import { SqlClient } from "@effect/sql";
-import { Effect } from "effect";
+import { Duration, Effect, Metric } from "effect";
 
 import * as AddressHistoryDB from "@/database/addressHistory.js";
 import {
@@ -19,6 +19,31 @@ import * as MempoolLedgerDB from "./mempoolLedger.js";
 import * as MempoolTxDeltasDB from "./mempoolTxDeltas.js";
 
 export const tableName = "mempool";
+
+const mempoolPersistTxRowsDurationTimer = Metric.timer(
+  "mempool_persist_tx_rows_duration",
+  "Duration of accepted transaction row inserts into mempool",
+);
+
+const mempoolPersistProducedDurationTimer = Metric.timer(
+  "mempool_persist_produced_duration",
+  "Duration of accepted produced UTxO inserts into mempool_ledger",
+);
+
+const mempoolPersistDeltasDurationTimer = Metric.timer(
+  "mempool_persist_deltas_duration",
+  "Duration of accepted mempool tx delta upserts",
+);
+
+const mempoolPersistSpentDurationTimer = Metric.timer(
+  "mempool_persist_spent_duration",
+  "Duration of accepted spent-input deletion from mempool_ledger",
+);
+
+const mempoolPersistAddressHistoryDurationTimer = Metric.timer(
+  "mempool_persist_address_history_duration",
+  "Duration of accepted address-history persistence",
+);
 
 const toTxDelta = (processedTx: ProcessedTx): MempoolTxDeltasDB.TxDelta => ({
   txId: processedTx.txId,
@@ -74,20 +99,40 @@ export const insertMultiple = (
     yield* sql.withTransaction(
       Effect.gen(function* () {
         // Insert the tx itself in `MempoolDB`.
+        const txRowsStartedAt = Date.now();
         yield* Tx.insertEntries(tableName, txEntries);
+        yield* mempoolPersistTxRowsDurationTimer(
+          Effect.succeed(Duration.millis(Date.now() - txRowsStartedAt)),
+        );
 
         const allProduced = processedTxs.flatMap((tx) => tx.produced);
         const allSpent = processedTxs.flatMap((tx) => tx.spent);
 
         // Insert produced UTxOs in `MempoolLedgerDB`.
+        const producedStartedAt = Date.now();
         yield* MempoolLedgerDB.insert(allProduced);
+        yield* mempoolPersistProducedDurationTimer(
+          Effect.succeed(Duration.millis(Date.now() - producedStartedAt)),
+        );
+        const deltasStartedAt = Date.now();
         yield* MempoolTxDeltasDB.upsertMany(processedTxs.map(toTxDelta));
+        yield* mempoolPersistDeltasDurationTimer(
+          Effect.succeed(Duration.millis(Date.now() - deltasStartedAt)),
+        );
         // Remove spent inputs from MempoolLedgerDB.
+        const spentStartedAt = Date.now();
         const consumedDepositEventIds =
           yield* MempoolLedgerDB.clearUTxOs(allSpent);
         yield* DepositsDB.markConsumedByEventIds(consumedDepositEventIds);
+        yield* mempoolPersistSpentDurationTimer(
+          Effect.succeed(Duration.millis(Date.now() - spentStartedAt)),
+        );
         // Update AddressHistoryDB
+        const addressHistoryStartedAt = Date.now();
         yield* AddressHistoryDB.insert(allSpent, allProduced);
+        yield* mempoolPersistAddressHistoryDurationTimer(
+          Effect.succeed(Duration.millis(Date.now() - addressHistoryStartedAt)),
+        );
       }),
     );
   }).pipe(

@@ -82,6 +82,45 @@ describe("submit timing planner", () => {
     });
   });
 
+  it("defers positive waits when the caller disallows inline sleeps", () => {
+    expect(
+      planSubmitTiming({
+        callerLabel: "test",
+        invalidBeforeSlot: 10,
+        invalidHereafterSlot: 20,
+        slotSnapshot: snapshot(11),
+        maxInlineWaitMs: 60_000,
+        inlineWaitPolicy: "defer_positive_wait",
+        dependencyKey: "dep-1s",
+        invalidationKey: "inv-1s",
+      }),
+    ).toMatchObject({
+      status: "not_due",
+      targetSlot: 12,
+      currentSlot: 11,
+      dueSlot: 12,
+      waitMs: 1_000,
+      dependencyKey: "dep-1s",
+      invalidationKey: "inv-1s",
+    });
+
+    expect(
+      planSubmitTiming({
+        callerLabel: "test",
+        invalidBeforeSlot: 100,
+        invalidHereafterSlot: 150,
+        slotSnapshot: snapshot(84),
+        maxInlineWaitMs: 60_000,
+        inlineWaitPolicy: "defer_positive_wait",
+      }),
+    ).toMatchObject({
+      status: "not_due",
+      targetSlot: 102,
+      currentSlot: 84,
+      waitMs: 18_000,
+    });
+  });
+
   it("fails closed when bounded timing has no local slot source", () => {
     expect(
       planSubmitTiming({

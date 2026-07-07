@@ -3,19 +3,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { encode as cborEncode } from "cborg";
-import dotenv from "dotenv";
-import { blake2b } from "@noble/hashes/blake2.js";
-import { CML, walletFromSeed } from "@lucid-evolution/lucid";
 
-const MIDGARD_NATIVE_TX_VERSION = 1n;
-const MIDGARD_POSIX_TIME_NONE = -1n;
-const MIDGARD_NETWORK_ID_PREPROD = 0n;
-const TX_IS_VALID_CODE = 0n;
-const HASH32_LEN = 32;
-
-const EMPTY_CBOR_LIST = Buffer.from([0x80]);
-const EMPTY_CBOR_NULL = Buffer.from([0xf6]);
+import {
+  buildNativeSignedOneToOne,
+  decodeCoin,
+  makeWalletsFromEnv,
+  parseEnv,
+} from "./native-tx-workload-utils.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -25,32 +19,6 @@ const pkgRoot = path.resolve(__dirname, "..");
  * Waits for the requested number of milliseconds.
  */
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-/**
- * Encodes a value into hexadecimal CBOR text.
- */
-const encodeCbor = (value) => Buffer.from(cborEncode(value));
-/**
- * Computes a 32-byte Blake2b hash.
- */
-const hash32 = (value) => Buffer.from(blake2b(value, { dkLen: HASH32_LEN }));
-
-/**
- * Encodes a byte-list preimage used by the native transaction fixtures.
- */
-const encodeByteListPreimage = (items) =>
-  encodeCbor(items.map((item) => Buffer.from(item)));
-
-/**
- * Encodes a transaction output reference into CBOR.
- */
-const toOutRefCbor = (txId, outputIndex) =>
-  Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_raw_bytes(txId),
-      BigInt(outputIndex),
-    ).to_cbor_bytes(),
-  );
 
 /**
  * Parses a duration flag into milliseconds.
@@ -251,37 +219,6 @@ if (minIntervalMs > maxIntervalMs) {
 
 /** @typedef {{ outref: string; value: string }} NodeUtxo */
 
-const parseEnv = (filename) => {
-  const raw = fs.readFileSync(filename, "utf8");
-  return dotenv.parse(raw);
-};
-
-/**
- * Builds wallet descriptors from environment configuration.
- */
-const makeWalletsFromEnv = (env) => {
-  const keys = [
-    "TESTNET_GENESIS_WALLET_SEED_PHRASE_A",
-    "TESTNET_GENESIS_WALLET_SEED_PHRASE_B",
-    "TESTNET_GENESIS_WALLET_SEED_PHRASE_C",
-  ];
-  return keys
-    .map((key) => {
-      const seed = env[key];
-      if (!seed || seed.trim().length === 0) {
-        return null;
-      }
-      const wallet = walletFromSeed(seed.trim(), { network: "Preprod" });
-      return {
-        key,
-        seed: seed.trim(),
-        address: wallet.address,
-        signer: CML.PrivateKey.from_bech32(wallet.paymentKey),
-      };
-    })
-    .filter((wallet) => wallet !== null);
-};
-
 /**
  * Escapes a string for literal use in a regular expression.
  */
@@ -345,118 +282,6 @@ const fetchUtxos = async (address) => {
     return [];
   }
   return /** @type {NodeUtxo[]} */ (body.utxos);
-};
-
-/**
- * Decodes a lovelace quantity from a UTxO payload.
- */
-const decodeCoin = (outputHex) => {
-  const output = CML.TransactionOutput.from_cbor_bytes(
-    Buffer.from(outputHex, "hex"),
-  );
-  return output.amount().coin();
-};
-
-/**
- * Builds and signs a native one-to-one transfer transaction.
- */
-const buildNativeSignedOneToOne = ({ spendOutRefCbor, outputCbor, signer }) => {
-  const spendInputsPreimageCbor = encodeByteListPreimage([spendOutRefCbor]);
-  const referenceInputsPreimageCbor = EMPTY_CBOR_LIST;
-  const outputsPreimageCbor = encodeByteListPreimage([outputCbor]);
-  const requiredObserversPreimageCbor = EMPTY_CBOR_LIST;
-  const requiredSignersPreimageCbor = encodeByteListPreimage([
-    Buffer.from(signer.to_public().hash().to_raw_bytes()),
-  ]);
-  const mintPreimageCbor = EMPTY_CBOR_LIST;
-
-  const scriptIntegrityHash = hash32(EMPTY_CBOR_NULL);
-  const auxiliaryDataHash = hash32(EMPTY_CBOR_NULL);
-
-  const bodyCompact = [
-    hash32(spendInputsPreimageCbor),
-    hash32(referenceInputsPreimageCbor),
-    hash32(outputsPreimageCbor),
-    0n,
-    MIDGARD_POSIX_TIME_NONE,
-    MIDGARD_POSIX_TIME_NONE,
-    hash32(requiredObserversPreimageCbor),
-    hash32(requiredSignersPreimageCbor),
-    hash32(mintPreimageCbor),
-    scriptIntegrityHash,
-    auxiliaryDataHash,
-    MIDGARD_NETWORK_ID_PREPROD,
-  ];
-
-  const bodyHash = hash32(encodeCbor(bodyCompact));
-  const witness = CML.make_vkey_witness(
-    CML.TransactionHash.from_raw_bytes(bodyHash),
-    signer,
-  );
-
-  const addrTxWitsPreimageCbor = encodeByteListPreimage([
-    Buffer.from(witness.to_cbor_bytes()),
-  ]);
-  const scriptTxWitsPreimageCbor = EMPTY_CBOR_LIST;
-  const redeemerTxWitsPreimageCbor = EMPTY_CBOR_LIST;
-
-  const witnessCompact = [
-    hash32(addrTxWitsPreimageCbor),
-    hash32(scriptTxWitsPreimageCbor),
-    hash32(redeemerTxWitsPreimageCbor),
-  ];
-
-  const compact = [
-    MIDGARD_NATIVE_TX_VERSION,
-    bodyHash,
-    hash32(encodeCbor(witnessCompact)),
-    TX_IS_VALID_CODE,
-  ];
-
-  const bodyFull = [
-    bodyCompact[0],
-    spendInputsPreimageCbor,
-    bodyCompact[1],
-    referenceInputsPreimageCbor,
-    bodyCompact[2],
-    outputsPreimageCbor,
-    bodyCompact[3],
-    bodyCompact[4],
-    bodyCompact[5],
-    bodyCompact[6],
-    requiredObserversPreimageCbor,
-    bodyCompact[7],
-    requiredSignersPreimageCbor,
-    bodyCompact[8],
-    mintPreimageCbor,
-    bodyCompact[9],
-    bodyCompact[10],
-    bodyCompact[11],
-  ];
-
-  const witnessFull = [
-    witnessCompact[0],
-    addrTxWitsPreimageCbor,
-    witnessCompact[1],
-    scriptTxWitsPreimageCbor,
-    witnessCompact[2],
-    redeemerTxWitsPreimageCbor,
-  ];
-
-  const txCbor = encodeCbor([
-    MIDGARD_NATIVE_TX_VERSION,
-    compact,
-    bodyFull,
-    witnessFull,
-  ]);
-
-  const txId = hash32(encodeCbor(compact));
-
-  return {
-    txId,
-    txHex: txCbor.toString("hex"),
-    nextOutRef: toOutRefCbor(txId, 0),
-  };
 };
 
 /**

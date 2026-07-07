@@ -3,6 +3,15 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
+  releaseCommitMutationWorkerPhase,
+  releaseCommitSchedulerAlignmentPhase,
+  shouldAttemptCommitPipeline,
+  shouldRunPreLeaseSchedulerAlignment,
+  tryAcquireCommitMutationWorkerPhase,
+  tryAcquireCommitSchedulerAlignmentPhase,
+} from "@/fibers/block-commitment.js";
+import { Globals } from "@/services/index.js";
+import {
   shouldPreserveCommitMpfRoots,
   shouldShortCircuitIdleCommitAttempt,
   workerPreIngestionDueWorkOutputFromPlan,
@@ -107,6 +116,105 @@ describe("commit block worker output handling", () => {
         reason: "slot_source_unavailable",
       }),
     ).toBeUndefined();
+  });
+
+  it("keeps scheduler alignment outside the active mutation-worker phase", async () => {
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const globals = yield* Globals;
+
+        const workerAcquire =
+          yield* tryAcquireCommitMutationWorkerPhase(globals);
+        const workerActiveAfterAcquire = yield* globals.COMMIT_WORKER_ACTIVE;
+        const alignmentBlockedByWorker =
+          yield* tryAcquireCommitSchedulerAlignmentPhase(globals);
+        yield* releaseCommitMutationWorkerPhase(globals);
+
+        const alignmentAcquire =
+          yield* tryAcquireCommitSchedulerAlignmentPhase(globals);
+        const workerActiveDuringAlignment = yield* globals.COMMIT_WORKER_ACTIVE;
+        const workerBlockedByAlignment =
+          yield* tryAcquireCommitMutationWorkerPhase(globals);
+        yield* releaseCommitSchedulerAlignmentPhase(globals);
+
+        return {
+          workerAcquire,
+          workerActiveAfterAcquire,
+          alignmentBlockedByWorker,
+          alignmentAcquire,
+          workerActiveDuringAlignment,
+          workerBlockedByAlignment,
+        };
+      }).pipe(Effect.provide(Globals.Default)),
+    );
+
+    expect(result.workerAcquire).toStrictEqual({ acquired: true });
+    expect(result.workerActiveAfterAcquire).toBe(true);
+    expect(result.alignmentBlockedByWorker).toStrictEqual({
+      acquired: false,
+      activePhase: "mutation_worker",
+    });
+    expect(result.alignmentAcquire).toStrictEqual({ acquired: true });
+    expect(result.workerActiveDuringAlignment).toBe(false);
+    expect(result.workerBlockedByAlignment).toStrictEqual({
+      acquired: false,
+      activePhase: "scheduler_alignment",
+    });
+  });
+
+  it("still runs detailed pre-lease alignment when the current operator is active", () => {
+    expect(
+      shouldRunPreLeaseSchedulerAlignment({
+        status: "proceed",
+        reason: "current_operator_already_active",
+        dependencyKey: "dep",
+        invalidationKey: "dep",
+      }),
+    ).toBe(true);
+
+    expect(
+      shouldRunPreLeaseSchedulerAlignment({
+        status: "proceed",
+        reason: "local_finalization_pending",
+        dependencyKey: "dep",
+        invalidationKey: "dep",
+      }),
+    ).toBe(false);
+  });
+
+  it("skips the pre-lease commit pipeline only when all commit work sources are empty", () => {
+    const base = {
+      localFinalizationPending: false,
+      mempoolTxCount: 0n,
+      processedUnsubmittedTxCount: 0,
+      pendingUserEventCount: 0,
+    };
+
+    expect(shouldAttemptCommitPipeline(base)).toBe(false);
+    expect(
+      shouldAttemptCommitPipeline({
+        ...base,
+        localFinalizationPending: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldAttemptCommitPipeline({
+        ...base,
+        mempoolTxCount: 1n,
+      }),
+    ).toBe(true);
+    expect(
+      shouldAttemptCommitPipeline({
+        ...base,
+        processedUnsubmittedTxCount: 1,
+      }),
+    ).toBe(true);
+    expect(
+      shouldAttemptCommitPipeline({
+        ...base,
+        pendingUserEventCount: 1,
+      }),
+    ).toBe(true);
   });
 
   it("short-circuits idle attempts only after tx, event, and recovery work are absent", () => {

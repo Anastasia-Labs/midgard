@@ -1,5 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
@@ -8,7 +7,7 @@ import {
 } from "@al-ft/midgard-sdk";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   type DeploymentRunCliOptions,
@@ -31,24 +30,13 @@ import {
   writeDeploymentRunStateAtomic,
 } from "@/e2e/run-state.js";
 
-let tempDirs: string[] = [];
+import { createTrackedTempDirFactory } from "./helpers/temp-files.js";
 
 const lucid = {
   unixTimeToSlot: (unixTime: number) => Math.floor(unixTime / 1_000),
 } as unknown as LucidEvolution;
 
-const makeTempDir = async (): Promise<string> => {
-  const dir = await mkdtemp(join(tmpdir(), "midgard-run-state-"));
-  tempDirs.push(dir);
-  return dir;
-};
-
-afterEach(async () => {
-  await Promise.all(
-    tempDirs.map((dir) => rm(dir, { recursive: true, force: true })),
-  );
-  tempDirs = [];
-});
+const makeTempDir = createTrackedTempDirFactory("midgard-run-state-");
 
 describe("deployment run state", () => {
   it("creates and parses a versioned deployment run state", () => {

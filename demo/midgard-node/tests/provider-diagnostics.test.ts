@@ -3,20 +3,20 @@ import "./utils.js";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { Effect } from "effect";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { runL1ProviderPreflight } from "@/commands/l1-provider-preflight.js";
 import {
   classifyProviderHttpResponse,
   clearProviderCooldownsForTest,
-  parseProviderFailoverSources,
   parseRetryAfterMs,
   redactEndpoint,
 } from "@/provider-diagnostics.js";
+import { NodeConfig } from "@/services/config.js";
 
 const config = {
   L1_PROVIDER: "Kupmios" as const,
-  L1_PROVIDER_FAILOVER: [] as const,
   L1_PROVIDER_PREFLIGHT_TIMEOUT_MS: 1_000,
   L1_PROVIDER_RATE_LIMIT_COOLDOWN_MS: 60_000,
   L1_OGMIOS_KEY: "http://127.0.0.1:1337",
@@ -80,16 +80,32 @@ describe("provider diagnostics", () => {
     });
   });
 
-  it("rejects explicit failover sources and redacts route URLs", () => {
-    expect(parseProviderFailoverSources("")).toEqual([]);
-    expect(() => parseProviderFailoverSources("remote-fallback")).toThrow(
-      /no longer supported/,
-    );
+  it("redacts route URLs", () => {
     expect(
       redactEndpoint(
         "https://user:secret@example.test/api/v0?project_id=leak#frag",
       ),
     ).toEqual("https://example.test/api/v0");
+  });
+
+  it("rejects deprecated L1_PROVIDER_FAILOVER even when empty", async () => {
+    const previous = process.env.L1_PROVIDER_FAILOVER;
+    process.env.L1_PROVIDER_FAILOVER = "";
+    try {
+      await expect(
+        Effect.runPromise(
+          Effect.gen(function* () {
+            return yield* NodeConfig;
+          }).pipe(Effect.provide(NodeConfig.layer)),
+        ),
+      ).rejects.toThrow(/L1_PROVIDER_FAILOVER is no longer supported/);
+    } finally {
+      if (previous === undefined) {
+        delete process.env.L1_PROVIDER_FAILOVER;
+      } else {
+        process.env.L1_PROVIDER_FAILOVER = previous;
+      }
+    }
   });
 
   it("passes only when local Kupo and Ogmios health endpoints are reachable", async () => {
@@ -127,7 +143,6 @@ describe("provider diagnostics", () => {
     expect(report.degraded).toEqual(false);
     expect(report.route).toEqual({
       primary: "kupmios",
-      failover: [],
       network: "Preprod",
     });
     expect(report.healthySources).toEqual(["kupmios"]);

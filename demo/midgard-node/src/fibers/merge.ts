@@ -1,4 +1,5 @@
 import * as SDK from "@al-ft/midgard-sdk";
+import type { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect, Ref, Schedule } from "effect";
 
 import {
@@ -23,16 +24,25 @@ import {
 import {
   DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING,
   type MergeReadinessStatus,
+  mergeSubmitValidityEvidence,
   planMergePreflight,
 } from "@/transactions/state-queue/merge-readiness.js";
-import { buildAndSubmitMergeTx } from "@/transactions/state-queue/merge-to-confirmed-state.js";
+import {
+  buildAndSubmitMergeTx,
+  type CanonicalMergeCandidateReadiness,
+  captureMergeLocalLedgerGate,
+  fetchCanonicalMergeCandidateReadiness,
+  mergeSemanticSkipResult,
+} from "@/transactions/state-queue/merge-to-confirmed-state.js";
 import {
   TxConfirmError,
   TxSignError,
   TxSubmitError,
 } from "@/transactions/utils.js";
+
 import {
   checkSlotAwareDueWork,
+  clearSlotAwareDueWork,
   listSlotAwareDueWork,
 } from "./slot-aware-due-work.js";
 
@@ -64,55 +74,149 @@ export type MergeActionResult =
       readonly nowUnixTime?: number;
     };
 
-const registeredMergeDueWorkSkip: Effect.Effect<
-  MergeActionResult | undefined,
-  never,
-  Lucid
-> = Effect.gen(function* () {
-  const entries = listSlotAwareDueWork().filter(
-    (entry) => entry.kind === "merge_submit_validity",
-  );
-  if (entries.length === 0) {
-    return undefined;
-  }
-  const lucid = yield* Lucid;
-  const slotSnapshot = yield* Effect.either(lucid.submitSlotSnapshot());
-  for (const entry of entries) {
-    const decision = checkSlotAwareDueWork({
-      kind: entry.kind,
-      key: entry.key,
-      currentSlot:
-        slotSnapshot._tag === "Right"
-          ? slotSnapshot.right.currentSlot
-          : undefined,
-      dependencyKey: entry.dependencyKey,
-      invalidationKey: entry.invalidationKey,
-    });
-    switch (decision.status) {
-      case "skip": {
-        const reason = `merge_due_work_not_due,key=${entry.key},current_slot=${decision.currentSlot.toString()},due_slot=${entry.dueSlot.toString()},wait_ms=${entry.waitMs.toString()}`;
-        yield* Effect.logInfo(`🔸 Skipping merge (${reason}).`);
-        return {
-          status: "skipped_oldest_block_local_ledger_not_ready",
-          reason,
-        } satisfies MergeActionResult;
-      }
-      case "due":
-        yield* Effect.logInfo(
-          `🔸 Waking merge due work (key=${entry.key},current_slot=${decision.currentSlot.toString()},due_slot=${entry.dueSlot.toString()}).`,
-        );
-        break;
-      case "invalidated":
-        yield* Effect.logInfo(
-          `🔸 Clearing merge due work before re-plan (key=${entry.key},reason=${decision.reason}).`,
-        );
-        break;
-      case "missing":
-        break;
+type CurrentMergeDueWorkEvidence = {
+  readonly key: string;
+  readonly dependencyKey: string;
+  readonly invalidationKey: string;
+  readonly headerHash: string;
+  readonly validFromSlot: number;
+  readonly targetSlot: number;
+};
+
+const registeredMergeDueWorkSkip = (
+  currentEvidence: CurrentMergeDueWorkEvidence,
+): Effect.Effect<MergeActionResult | undefined, never, Lucid> =>
+  Effect.gen(function* () {
+    const entries = listSlotAwareDueWork().filter(
+      (entry) => entry.kind === "merge_submit_validity",
+    );
+    if (entries.length === 0) {
+      return undefined;
     }
-  }
-  return undefined;
-});
+    const lucid = yield* Lucid;
+    const slotSnapshot = yield* Effect.either(lucid.submitSlotSnapshot());
+    for (const entry of entries) {
+      if (entry.key !== currentEvidence.key) {
+        clearSlotAwareDueWork(entry.kind, entry.key);
+        yield* Effect.logInfo(
+          `🔸 Clearing stale merge due work before re-plan (key=${entry.key},current_key=${currentEvidence.key},header=${currentEvidence.headerHash},valid_from_slot=${currentEvidence.validFromSlot.toString()},target_slot=${currentEvidence.targetSlot.toString()}).`,
+        );
+        continue;
+      }
+      const decision = checkSlotAwareDueWork({
+        kind: entry.kind,
+        key: entry.key,
+        currentSlot:
+          slotSnapshot._tag === "Right"
+            ? slotSnapshot.right.currentSlot
+            : undefined,
+        dependencyKey: currentEvidence.dependencyKey,
+        invalidationKey: currentEvidence.invalidationKey,
+      });
+      switch (decision.status) {
+        case "skip": {
+          const reason = `merge_due_work_not_due,key=${entry.key},current_slot=${decision.currentSlot.toString()},due_slot=${entry.dueSlot.toString()},wait_ms=${entry.waitMs.toString()}`;
+          yield* Effect.logInfo(`🔸 Skipping merge (${reason}).`);
+          return {
+            status: "skipped_oldest_block_local_ledger_not_ready",
+            reason,
+          } satisfies MergeActionResult;
+        }
+        case "due":
+          yield* Effect.logInfo(
+            `🔸 Waking merge due work (key=${entry.key},current_slot=${decision.currentSlot.toString()},due_slot=${entry.dueSlot.toString()}).`,
+          );
+          break;
+        case "invalidated":
+          yield* Effect.logInfo(
+            `🔸 Clearing merge due work before re-plan (key=${entry.key},reason=${decision.reason}).`,
+          );
+          break;
+        case "missing":
+          break;
+      }
+    }
+    return undefined;
+  });
+
+type SemanticCandidate = Extract<
+  CanonicalMergeCandidateReadiness,
+  { readonly status: "candidate" }
+>;
+
+type SemanticCandidateSkip = Exclude<
+  SemanticCandidate["readiness"],
+  { readonly status: "ready" }
+>;
+
+type MergeCandidateChangedResult = {
+  readonly status: "skipped_merge_candidate_changed";
+  readonly reason: string;
+  readonly headerHash?: string;
+  readonly readyAfterUnixTime?: number;
+  readonly nowUnixTime?: number;
+};
+
+const logSemanticSkip = (
+  phase: "before lease" | "after leased recheck",
+  readiness: SemanticCandidateSkip,
+): Effect.Effect<void> => {
+  const message =
+    readiness.status === "skipped_oldest_block_unattested"
+      ? "oldest block is not DA-attested yet"
+      : "oldest block is not mature yet";
+  return Effect.logInfo(
+    `🔸 Skipping merge ${phase} because ${message} (${readiness.reason}).`,
+  );
+};
+
+const mergeActionSemanticSkipResult = (
+  readiness: SemanticCandidateSkip,
+): MergeActionResult => mergeSemanticSkipResult(readiness) as MergeActionResult;
+
+const mergeValidFromSlot = (
+  lucid: LucidEvolution,
+  validFromUnixTime: number,
+): Effect.Effect<number, SDK.StateQueueError> =>
+  Effect.try({
+    try: () => {
+      const slot = Number(lucid.unixTimeToSlot(validFromUnixTime));
+      if (!Number.isSafeInteger(slot) || slot < 0) {
+        throw new Error(`invalid slot=${slot.toString()}`);
+      }
+      return slot;
+    },
+    catch: (cause) =>
+      new SDK.StateQueueError({
+        message: "Failed to convert merge pre-lease valid-from time to a slot",
+        cause,
+      }),
+  });
+
+const changedCandidateResult = ({
+  preLeaseCandidate,
+  leasedCandidate,
+}: {
+  readonly preLeaseCandidate: SemanticCandidate;
+  readonly leasedCandidate: CanonicalMergeCandidateReadiness;
+}): MergeCandidateChangedResult => {
+  const preLeaseIdentity = preLeaseCandidate.readiness.candidateIdentity;
+  const leasedIdentity =
+    leasedCandidate.status === "candidate"
+      ? leasedCandidate.readiness.candidateIdentity
+      : leasedCandidate.reason;
+  const readiness =
+    leasedCandidate.status === "candidate"
+      ? leasedCandidate.readiness
+      : preLeaseCandidate.readiness;
+  return {
+    status: "skipped_merge_candidate_changed",
+    reason: `preflight_candidate=${preLeaseIdentity},leased_candidate=${leasedIdentity}`,
+    headerHash: readiness.headerHash,
+    readyAfterUnixTime: readiness.readyAfterUnixTime,
+    nowUnixTime: readiness.nowUnixTime,
+  };
+};
 
 /**
  * Runs one merge attempt, optionally bypassing the queue-length guard for
@@ -184,14 +288,111 @@ export const mergeAction = (
       stateQueueAddress: stateQueueAuthValidator.spendingScriptAddress,
       stateQueuePolicyId: stateQueueAuthValidator.policyId,
     };
-    const mergeDueWorkSkip = yield* registeredMergeDueWorkSkip;
-    if (mergeDueWorkSkip !== undefined) {
-      return mergeDueWorkSkip;
+    const minQueueLength =
+      nodeConfig.MIN_QUEUE_LENGTH_FOR_MERGING ??
+      DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING;
+    const preLeaseCandidate = yield* fetchCanonicalMergeCandidateReadiness(
+      lucid.api,
+      fetchConfig,
+      contracts,
+    );
+    if (
+      preLeaseCandidate.status === "candidate" &&
+      preLeaseCandidate.readiness.status !== "ready"
+    ) {
+      yield* logSemanticSkip("before lease", preLeaseCandidate.readiness);
+      return mergeActionSemanticSkipResult(preLeaseCandidate.readiness);
+    }
+    if (preLeaseCandidate.status === "candidate") {
+      const validFromSlot = yield* mergeValidFromSlot(
+        lucid.api,
+        preLeaseCandidate.readiness.validFromUnixTime,
+      );
+      const currentMergeDueWorkEvidence = mergeSubmitValidityEvidence({
+        headerHash: preLeaseCandidate.readiness.headerHash,
+        validFromSlot,
+        candidateIdentity: preLeaseCandidate.readiness.candidateIdentity,
+      });
+      const mergeDueWorkSkip = yield* registeredMergeDueWorkSkip(
+        currentMergeDueWorkEvidence,
+      );
+      if (mergeDueWorkSkip !== undefined) {
+        return mergeDueWorkSkip;
+      }
+      const preLeaseLocalLedgerGate = yield* captureMergeLocalLedgerGate({
+        lucid: lucid.api,
+        nodeConfig,
+        validFromUnixTime: preLeaseCandidate.readiness.validFromUnixTime,
+        headerHash: preLeaseCandidate.readiness.headerHash,
+        candidateIdentity: preLeaseCandidate.readiness.candidateIdentity,
+        submitSlotSnapshot: lucid.submitSlotSnapshot,
+      });
+      if (preLeaseLocalLedgerGate.status === "retry_later") {
+        return {
+          status: "skipped_oldest_block_local_ledger_not_ready",
+          headerHash: preLeaseCandidate.readiness.headerHash,
+          reason: preLeaseLocalLedgerGate.reason,
+          readyAfterUnixTime: preLeaseCandidate.readiness.readyAfterUnixTime,
+          nowUnixTime: Date.now(),
+        } satisfies MergeActionResult;
+      }
     }
     const leaseResult = yield* StateQueueMutationLeasesDB.tryWithLease(
       "state_queue_merge",
       (leaseToken) =>
         Effect.gen(function* () {
+          const leasedCandidate = yield* fetchCanonicalMergeCandidateReadiness(
+            lucid.api,
+            fetchConfig,
+            contracts,
+          );
+          if (
+            preLeaseCandidate.status === "candidate" &&
+            (leasedCandidate.status !== "candidate" ||
+              leasedCandidate.readiness.candidateIdentity !==
+                preLeaseCandidate.readiness.candidateIdentity)
+          ) {
+            const changed = changedCandidateResult({
+              preLeaseCandidate,
+              leasedCandidate,
+            });
+            yield* Effect.logInfo(
+              `🔸 Skipping merge after leased recheck because the oldest block candidate changed (${changed.reason}).`,
+            );
+            return changed;
+          }
+          if (
+            leasedCandidate.status === "candidate" &&
+            leasedCandidate.readiness.status !== "ready"
+          ) {
+            yield* logSemanticSkip(
+              "after leased recheck",
+              leasedCandidate.readiness,
+            );
+            return mergeActionSemanticSkipResult(leasedCandidate.readiness);
+          }
+          if (leasedCandidate.status === "candidate") {
+            const leasedLocalLedgerGate = yield* captureMergeLocalLedgerGate({
+              lucid: lucid.api,
+              nodeConfig,
+              validFromUnixTime: leasedCandidate.readiness.validFromUnixTime,
+              leaseToken,
+              headerHash: leasedCandidate.readiness.headerHash,
+              candidateIdentity: leasedCandidate.readiness.candidateIdentity,
+              submitSlotSnapshot: lucid.submitSlotSnapshot,
+            });
+            if (leasedLocalLedgerGate.status === "retry_later") {
+              return {
+                status: "skipped_oldest_block_local_ledger_not_ready",
+                headerHash: leasedCandidate.readiness.headerHash,
+                reason: leasedLocalLedgerGate.reason,
+                readyAfterUnixTime:
+                  leasedCandidate.readiness.readyAfterUnixTime,
+                nowUnixTime: Date.now(),
+              } satisfies MergeActionResult;
+            }
+          }
+
           const preMergeSnapshot = yield* fetchStateQueueSnapshotProgram(
             lucid.api,
             stateQueueAuthValidator,
@@ -223,9 +424,6 @@ export const mergeAction = (
             0,
             preMergeSnapshot.topology.parsedNodeCount - 1,
           );
-          const minQueueLength =
-            nodeConfig.MIN_QUEUE_LENGTH_FOR_MERGING ??
-            DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING;
           const preflight = planMergePreflight({
             force,
             queueLength,
@@ -268,6 +466,7 @@ export const mergeAction = (
                   leaseToken,
                 ) as Effect.Effect<void, unknown, never>,
               referenceScriptsAddress: lucid.referenceScriptsAddress,
+              submitSlotSnapshot: lucid.submitSlotSnapshot,
             },
           );
           if (mergeTxResult.status !== "merged") {

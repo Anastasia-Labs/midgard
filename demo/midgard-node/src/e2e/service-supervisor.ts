@@ -1,7 +1,4 @@
-import { spawn } from "node:child_process";
-import { createWriteStream } from "node:fs";
-import { mkdir, readFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { readFile } from "node:fs/promises";
 
 import {
   buildE2EProcessEnv,
@@ -9,11 +6,8 @@ import {
   type E2EEnvInheritance,
   type E2EEnvProvenance,
 } from "@/e2e/env.js";
-import {
-  type ChildProcessCleanupResult,
-  shouldSpawnDetachedProcessGroup,
-  terminateChildProcessGroup,
-} from "@/e2e/process-cleanup.js";
+import { runLoggedChildProcessAttempt } from "@/e2e/logged-child-process.js";
+import type { ChildProcessCleanupResult } from "@/e2e/process-cleanup.js";
 import { redactArg, type RedactedCommand } from "@/e2e/runner.js";
 
 export const E2E_SERVICE_SUPERVISOR_SCHEMA_VERSION =
@@ -305,125 +299,65 @@ const runAttempt = async (
   readonly output: string;
 }> => {
   const startedAtDate = new Date();
-  const startedAt = startedAtDate.toISOString();
-  await mkdir(dirname(spec.rawLogPath), { recursive: true });
-  const log = createWriteStream(spec.rawLogPath, { flags: "a" });
-  let output = "";
-  let pid: number | null = null;
-  let timedOut = false;
-  let cleanup: ChildProcessCleanupResult | null = null;
-
-  return await new Promise((resolve) => {
-    let settled = false;
-    const settle = (
-      exitCode: number | null,
-      signal: NodeJS.Signals | null,
-      classification: ServiceErrorClassification,
-    ): void => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      const finishedAtDate = new Date();
-      const summary: ServiceAttemptSummary = {
-        attempt,
-        pid,
-        startedAt,
-        finishedAt: finishedAtDate.toISOString(),
-        durationMs: Math.max(
-          0,
-          finishedAtDate.getTime() - startedAtDate.getTime(),
-        ),
-        exitCode,
-        signal,
-        timedOut,
-        classification,
-        cleanup,
-      };
-      log.end(() => resolve({ summary, output }));
-    };
-
-    const child = spawn(spec.command, [...(spec.args ?? [])], {
-      cwd: spec.cwd,
-      env: resolvedEnv.env,
-      shell: false,
-      detached: shouldSpawnDetachedProcessGroup(),
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    pid = child.pid ?? null;
-    log.write(
-      JSON.stringify({
-        event: "e2e_service_start",
-        service: spec.service,
-        attempt,
-        pid,
-        at: startedAt,
-        command: redactedCommand(spec, resolvedEnv.provenance),
-      }) + "\n",
-    );
-    const timeout =
-      spec.timeoutMs === undefined
-        ? undefined
-        : setTimeout(
-            () => {
-              timedOut = true;
-              cleanup = terminateChildProcessGroup({ pid, signal: "SIGTERM" });
-              log.write(
-                JSON.stringify({
-                  event: "e2e_service_cleanup",
-                  service: spec.service,
-                  attempt,
-                  at: new Date().toISOString(),
-                  cleanup,
-                }) + "\n",
-              );
-            },
-            Math.max(1, spec.timeoutMs),
-          );
-
-    child.stdout.on("data", (chunk: Buffer) => {
-      const text = chunk.toString("utf8");
-      output += text;
-      log.write(text);
-    });
-    child.stderr.on("data", (chunk: Buffer) => {
-      const text = chunk.toString("utf8");
-      output += text;
-      log.write(text);
-    });
-    child.on("error", (error) => {
-      if (timeout !== undefined) {
-        clearTimeout(timeout);
-      }
-      settle(null, null, {
-        class: "supervisor_failure",
-        reason: error.message,
-        restartable: false,
-      });
-    });
-    child.on("close", (exitCode, signal) => {
-      if (timeout !== undefined) {
-        clearTimeout(timeout);
-      }
-      settle(
-        exitCode,
-        signal,
-        timedOut
-          ? {
-              class: "restartable_runtime",
-              reason: `service timed out after ${spec.timeoutMs?.toString()}ms`,
-              restartable: true,
-            }
-          : exitCode === 0
-            ? {
-                class: "unknown",
-                reason: "service exited successfully",
-                restartable: false,
-              }
-            : classifyServiceError({ text: output }),
-      );
-    });
+  const attemptResult = await runLoggedChildProcessAttempt({
+    command: spec.command,
+    args: spec.args,
+    cwd: spec.cwd,
+    env: resolvedEnv.env,
+    rawLogPath: spec.rawLogPath,
+    timeoutMs: spec.timeoutMs,
+    startedAtDate,
+    startEvent: ({ pid, startedAt }) => ({
+      event: "e2e_service_start",
+      service: spec.service,
+      attempt,
+      pid,
+      at: startedAt,
+      command: redactedCommand(spec, resolvedEnv.provenance),
+    }),
+    cleanupEvent: ({ cleanup, at }) => ({
+      event: "e2e_service_cleanup",
+      service: spec.service,
+      attempt,
+      at,
+      cleanup,
+    }),
   });
+  const classification: ServiceErrorClassification =
+    attemptResult.error !== null
+      ? {
+          class: "supervisor_failure",
+          reason: attemptResult.error.message,
+          restartable: false,
+        }
+      : attemptResult.timedOut
+        ? {
+            class: "restartable_runtime",
+            reason: `service timed out after ${spec.timeoutMs?.toString()}ms`,
+            restartable: true,
+          }
+        : attemptResult.exitCode === 0
+          ? {
+              class: "unknown",
+              reason: "service exited successfully",
+              restartable: false,
+            }
+          : classifyServiceError({ text: attemptResult.combinedOutput });
+  return {
+    summary: {
+      attempt,
+      pid: attemptResult.pid,
+      startedAt: attemptResult.startedAt,
+      finishedAt: attemptResult.finishedAt,
+      durationMs: attemptResult.durationMs,
+      exitCode: attemptResult.exitCode,
+      signal: attemptResult.signal,
+      timedOut: attemptResult.timedOut,
+      classification,
+      cleanup: attemptResult.cleanup,
+    },
+    output: attemptResult.combinedOutput,
+  };
 };
 
 export const superviseHostProcess = async (

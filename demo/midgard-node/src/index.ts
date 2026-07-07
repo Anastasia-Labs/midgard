@@ -370,6 +370,36 @@ const parseL1AddressOption = (
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
+const failCli = (label: string, error: unknown): void => {
+  console.error(`${label}: ${errorMessage(error)}`);
+  process.exitCode = 1;
+};
+
+const writeJson = (value: unknown): void => {
+  process.stdout.write(`${formatJson(value)}\n`);
+};
+
+function tapJson(): <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+) => Effect.Effect<A, E, R>;
+function tapJson<A>(
+  project: (value: A) => unknown,
+): <E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
+function tapJson<A>(project?: (value: A) => unknown) {
+  return <E, R>(effect: Effect.Effect<A, E, R>) =>
+    effect.pipe(
+      Effect.tap((value: A) =>
+        Effect.sync(() =>
+          writeJson(project === undefined ? value : project(value)),
+        ),
+      ),
+    );
+}
+
+const runCliEffect = <A, E>(effect: Effect.Effect<A, E, never>): void => {
+  NodeRuntime.runMain(effect, { teardown: undefined });
+};
+
 const stressCliLoggerLayer = Logger.replace(
   Logger.defaultLogger,
   Logger.withConsoleError(Logger.logfmtLogger),
@@ -556,8 +586,7 @@ program
         network: options.opts().network,
       });
     } catch (error) {
-      console.error(`l1-utxos: ${errorMessage(error)}`);
-      process.exitCode = 1;
+      failCli("l1-utxos", error);
       return;
     }
 
@@ -566,10 +595,9 @@ program
         address,
         ...kupmiosConfig,
       });
-      process.stdout.write(`${formatJson(result)}\n`);
+      writeJson(result);
     } catch (error) {
-      console.error(`l1-utxos: ${errorMessage(error)}`);
-      process.exitCode = 1;
+      failCli("l1-utxos", error);
     }
   });
 
@@ -588,7 +616,7 @@ program
         }),
       );
       yield* Effect.sync(() => {
-        process.stdout.write(`${formatJson(report)}\n`);
+        writeJson(report);
       });
       if (!report.ok) {
         return yield* Effect.fail(
@@ -598,7 +626,7 @@ program
       return report;
     }).pipe(Effect.provide(Services.NodeConfig.layer));
 
-    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    runCliEffect(mainEffect);
   });
 
 program
@@ -622,8 +650,7 @@ program
       );
       process.stdout.write(`${address}\n`);
     } catch (error) {
-      console.error(`address-from-seed: ${errorMessage(error)}`);
-      process.exitCode = 1;
+      failCli("address-from-seed", error);
     }
   });
 
@@ -667,10 +694,9 @@ program
         reuseExisting: options.reuseExisting === true,
         overwrite: options.overwrite === true,
       });
-      process.stdout.write(`${formatJson(result)}\n`);
+      writeJson(result);
     } catch (error) {
-      console.error(`create-l2-wallet: ${errorMessage(error)}`);
-      process.exitCode = 1;
+      failCli("create-l2-wallet", error);
     }
   });
 
@@ -751,8 +777,7 @@ program
           walletSeedPhraseEnv: options.fundingWalletSeedPhraseEnv,
         });
       } catch (error) {
-        console.error(`stress-wallets:prepare: ${errorMessage(error)}`);
-        process.exitCode = 1;
+        failCli("stress-wallets:prepare", error);
         return;
       }
 
@@ -871,10 +896,9 @@ program
               ),
           },
         );
-        process.stdout.write(`${formatJson(result)}\n`);
+        writeJson(result);
       } catch (error) {
-        console.error(`stress-wallets:prepare: ${errorMessage(error)}`);
-        process.exitCode = 1;
+        failCli("stress-wallets:prepare", error);
       }
     },
   );
@@ -891,7 +915,7 @@ program
     const { withMonitoring } = options.opts();
     const mainEffect = provideNodeRuntimeServices(runNode(withMonitoring));
 
-    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    runCliEffect(mainEffect);
   });
 
 program
@@ -911,7 +935,7 @@ program
       ),
     );
 
-    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    runCliEffect(mainEffect);
   });
 
 program
@@ -929,7 +953,7 @@ program
       ),
     );
 
-    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    runCliEffect(mainEffect);
   });
 
 program
@@ -948,7 +972,7 @@ program
       ),
     );
 
-    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    runCliEffect(mainEffect);
   });
 
 program
@@ -979,8 +1003,7 @@ program
       headerHash = parseOptionalHeaderHashOption(options.opts().headerHash);
       limit = parsePositiveIntegerOption(options.opts().limit, "--limit");
     } catch (error) {
-      console.error(`db:backfill-da-payloads: ${errorMessage(error)}`);
-      process.exitCode = 1;
+      failCli("db:backfill-da-payloads", error);
       return;
     }
 
@@ -989,16 +1012,10 @@ program
         headerHash:
           headerHash === undefined ? undefined : Buffer.from(headerHash, "hex"),
         limit,
-      }).pipe(
-        Effect.tap((summary) =>
-          Effect.sync(() => {
-            process.stdout.write(`${formatJson(summary)}\n`);
-          }),
-        ),
-      ),
+      }).pipe(tapJson()),
     );
 
-    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    runCliEffect(mainEffect);
   });
 
 const reconcile = program
@@ -1016,16 +1033,10 @@ reconcile
     const mainEffect = provideLucidOnlyServices(
       ReconcileCommand.reconcilePhasRegisteredProgram({
         repair: options.repair === true,
-      }).pipe(
-        Effect.tap((result) =>
-          Effect.sync(() => {
-            process.stdout.write(`${formatJson(result)}\n`);
-          }),
-        ),
-      ),
+      }).pipe(tapJson()),
     );
 
-    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    runCliEffect(mainEffect);
   });
 
 reconcile
@@ -1041,25 +1052,19 @@ reconcile
   .action(
     async (options: { readonly scope?: string; readonly repair?: boolean }) => {
       if ((options.scope ?? "node-runtime") !== "node-runtime") {
-        console.error(
-          "reconcile reference-scripts-complete: only --scope node-runtime is supported",
+        failCli(
+          "reconcile reference-scripts-complete",
+          new Error("only --scope node-runtime is supported"),
         );
-        process.exitCode = 1;
         return;
       }
       const mainEffect = provideTxServices(
         ReconcileCommand.reconcileReferenceScriptsCompleteProgram({
           repair: options.repair === true,
-        }).pipe(
-          Effect.tap((result) =>
-            Effect.sync(() => {
-              process.stdout.write(`${formatJson(result)}\n`);
-            }),
-          ),
-        ),
+        }).pipe(tapJson()),
       );
 
-      NodeRuntime.runMain(mainEffect, { teardown: undefined });
+      runCliEffect(mainEffect);
     },
   );
 
@@ -1087,8 +1092,7 @@ reconcile
           32,
         ).toString("hex");
       } catch (error) {
-        console.error(`reconcile deployment-manifest: ${errorMessage(error)}`);
-        process.exitCode = 1;
+        failCli("reconcile deployment-manifest", error);
         return;
       }
 
@@ -1096,16 +1100,10 @@ reconcile
         ContractDeploymentInfo.reconcileInitializedDeploymentManifestProgram({
           outputPath: options.out,
           initTxHash,
-        }).pipe(
-          Effect.tap((result) =>
-            Effect.sync(() => {
-              process.stdout.write(`${formatJson(result)}\n`);
-            }),
-          ),
-        ),
+        }).pipe(tapJson()),
       );
 
-      NodeRuntime.runMain(mainEffect, { teardown: undefined });
+      runCliEffect(mainEffect);
     },
   );
 
@@ -1142,8 +1140,7 @@ reconcile
           throw new Error("Provide --event-id or --cardano-tx-hash.");
         }
       } catch (error) {
-        console.error(`reconcile deposit-projected: ${errorMessage(error)}`);
-        process.exitCode = 1;
+        failCli("reconcile deposit-projected", error);
         return;
       }
 
@@ -1152,16 +1149,10 @@ reconcile
           eventId,
           cardanoTxHash,
           repair: options.repair === true,
-        }).pipe(
-          Effect.tap((result) =>
-            Effect.sync(() => {
-              process.stdout.write(`${formatJson(result)}\n`);
-            }),
-          ),
-        ),
+        }).pipe(tapJson()),
       );
 
-      NodeRuntime.runMain(mainEffect, { teardown: undefined });
+      runCliEffect(mainEffect);
     },
   );
 
@@ -1175,21 +1166,14 @@ reconcile
     try {
       txHash = parseHexBytes(options.txHash, "txHash", 32);
     } catch (error) {
-      console.error(`reconcile tx-committed: ${errorMessage(error)}`);
-      process.exitCode = 1;
+      failCli("reconcile tx-committed", error);
       return;
     }
     const mainEffect = provideDatabaseServices(
-      ReconcileCommand.reconcileTxCommittedProgram({ txHash }).pipe(
-        Effect.tap((result) =>
-          Effect.sync(() => {
-            process.stdout.write(`${formatJson(result)}\n`);
-          }),
-        ),
-      ),
+      ReconcileCommand.reconcileTxCommittedProgram({ txHash }).pipe(tapJson()),
     );
 
-    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    runCliEffect(mainEffect);
   });
 
 reconcile
@@ -1224,8 +1208,7 @@ reconcile
               ).manifestId
             : undefined;
       } catch (error) {
-        console.error(`reconcile da-attested: ${errorMessage(error)}`);
-        process.exitCode = 1;
+        failCli("reconcile da-attested", error);
         return;
       }
       const mainEffect = provideDatabaseServices(
@@ -1234,16 +1217,10 @@ reconcile
           watcherUrl: options.watcherUrl,
           deploymentFingerprint,
           repair: options.repair === true,
-        }).pipe(
-          Effect.tap((result) =>
-            Effect.sync(() => {
-              process.stdout.write(`${formatJson(result)}\n`);
-            }),
-          ),
-        ),
+        }).pipe(tapJson()),
       );
 
-      NodeRuntime.runMain(mainEffect, { teardown: undefined });
+      runCliEffect(mainEffect);
     },
   );
 
@@ -1259,21 +1236,16 @@ reconcile
     try {
       headerHash = parseHexBytes(options.headerHash, "headerHash", 28);
     } catch (error) {
-      console.error(`reconcile block-committed: ${errorMessage(error)}`);
-      process.exitCode = 1;
+      failCli("reconcile block-committed", error);
       return;
     }
     const mainEffect = provideDatabaseTxServices(
       ReconcileCommand.reconcileBlockCommittedProgram({ headerHash }).pipe(
-        Effect.tap((result) =>
-          Effect.sync(() => {
-            process.stdout.write(`${formatJson(result)}\n`);
-          }),
-        ),
+        tapJson(),
       ),
     );
 
-    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    runCliEffect(mainEffect);
   });
 
 reconcile
@@ -1291,24 +1263,17 @@ reconcile
       try {
         headerHash = parseHexBytes(options.headerHash, "headerHash", 28);
       } catch (error) {
-        console.error(`reconcile merge-complete: ${errorMessage(error)}`);
-        process.exitCode = 1;
+        failCli("reconcile merge-complete", error);
         return;
       }
       const mainEffect = provideNodeRuntimeServices(
         ReconcileCommand.reconcileMergeCompleteProgram({
           headerHash,
           repair: options.repair === true,
-        }).pipe(
-          Effect.tap((result) =>
-            Effect.sync(() => {
-              process.stdout.write(`${formatJson(result)}\n`);
-            }),
-          ),
-        ),
+        }).pipe(tapJson()),
       );
 
-      NodeRuntime.runMain(mainEffect, { teardown: undefined });
+      runCliEffect(mainEffect);
     },
   );
 
@@ -1355,7 +1320,7 @@ program
       ),
     );
 
-    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    runCliEffect(mainEffect);
   });
 
 program
@@ -1393,7 +1358,7 @@ program
       }),
     );
 
-    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    runCliEffect(mainEffect);
   });
 
 program
@@ -1458,16 +1423,10 @@ program
         ...(typeof opts.stressSummary === "string"
           ? { stressSummaryPath: opts.stressSummary }
           : {}),
-      }).pipe(
-        Effect.tap((result) =>
-          Effect.sync(() => {
-            process.stdout.write(`${formatJson(result)}\n`);
-          }),
-        ),
-      ),
+      }).pipe(tapJson()),
     );
 
-    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    runCliEffect(mainEffect);
   });
 
 program
@@ -1484,6 +1443,72 @@ program
     "--mode <mode>",
     "Stress mode: serial-chain or parallel-fanout",
     "serial-chain",
+  )
+  .option(
+    "--load-model <model>",
+    "Stress load model: closed-loop-smoke or open-loop-upper-bound",
+    "closed-loop-smoke",
+  )
+  .option(
+    "--workload-profile <profile>",
+    "Workload profile label: synthetic-admission or production-end-user",
+  )
+  .option(
+    "--corpus-shape <shape>",
+    "Open-loop corpus shape: fanout, chain, or mixed",
+    "fanout",
+  )
+  .option(
+    "--tx-corpus <path>",
+    "Open-loop tx-corpus.ndjson path with prebuilt canonical CBOR rows",
+  )
+  .option(
+    "--corpus-slice-id <id>",
+    "Open-loop corpus slice id to use for this rate step",
+    "default",
+  )
+  .option(
+    "--target-rate-tps <rate>",
+    "Open-loop target submit rate in transactions per second",
+    "100",
+  )
+  .option(
+    "--open-loop-duration-ms <ms>",
+    "Open-loop measured submission duration in milliseconds",
+    "10000",
+  )
+  .option(
+    "--open-loop-warmup-count <count>",
+    "Open-loop corpus warmup transaction count reserved before the measured window",
+    "0",
+  )
+  .option(
+    "--open-loop-cooldown-count <count>",
+    "Open-loop corpus cooldown transaction count reserved after the measured window",
+    "0",
+  )
+  .option(
+    "--open-loop-max-in-flight <count>",
+    "Open-loop maximum concurrent POST /submit requests",
+    "256",
+  )
+  .option(
+    "--no-op-calibration-endpoint <url>",
+    "No-op /submit-compatible endpoint used for client calibration",
+  )
+  .option(
+    "--require-no-op-calibration",
+    "Fail open-loop runs unless no-op calibration is configured and passes",
+  )
+  .option(
+    "--no-op-calibration-duration-ms <ms>",
+    "No-op calibration duration in milliseconds",
+    "5000",
+  )
+  .option(
+    "--aggregate-observer-interval-ms <ms>",
+    "Aggregate observer sampling interval during open-loop submission",
+    "1000",
   )
   .option("--count <count>", "Number of stress transfers to submit", "25")
   .option("--concurrency <count>", "Maximum concurrent stress workers", "1")
@@ -1555,7 +1580,21 @@ program
     try {
       const stressConfig = E2EStressL2ThroughputCommand.parseE2EL2StressConfig({
         endpoint: options.endpoint,
+        loadModel: options.loadModel,
+        workloadProfile: options.workloadProfile,
         mode: options.mode,
+        corpusShape: options.corpusShape,
+        corpusPath: options.txCorpus,
+        corpusSliceId: options.corpusSliceId,
+        targetRateTps: options.targetRateTps,
+        openLoopDurationMs: options.openLoopDurationMs,
+        openLoopWarmupCount: options.openLoopWarmupCount,
+        openLoopCooldownCount: options.openLoopCooldownCount,
+        openLoopMaxInFlight: options.openLoopMaxInFlight,
+        noOpCalibrationEndpoint: options.noOpCalibrationEndpoint,
+        requireNoOpCalibration: options.requireNoOpCalibration === true,
+        noOpCalibrationDurationMs: options.noOpCalibrationDurationMs,
+        aggregateObserverIntervalMs: options.aggregateObserverIntervalMs,
         count: options.count,
         concurrency: options.concurrency,
         lovelace: options.lovelace,
@@ -1614,6 +1653,56 @@ program
                       Effect.provideService(SqlClient.SqlClient, sql),
                     ),
                   ),
+                collectAggregateObserverSample: async ({ at }) =>
+                  await Effect.runPromise(
+                    Effect.gen(function* () {
+                      const [
+                        admissionRows,
+                        mempoolRows,
+                        processedRows,
+                        pendingRows,
+                      ] = yield* Effect.all(
+                        [
+                          sql<{
+                            readonly status: string;
+                            readonly count: bigint | number | string;
+                          }>`SELECT status, COUNT(*)::bigint AS count FROM tx_admissions GROUP BY status ORDER BY status`,
+                          sql<{
+                            readonly count: bigint | number | string;
+                          }>`SELECT COUNT(*)::bigint AS count FROM mempool`,
+                          sql<{
+                            readonly count: bigint | number | string;
+                          }>`SELECT COUNT(*)::bigint AS count FROM processed_mempool`,
+                          sql<{
+                            readonly status: string;
+                            readonly count: bigint | number | string;
+                          }>`SELECT status, COUNT(*)::bigint AS count FROM pending_block_finalizations GROUP BY status ORDER BY status`,
+                        ],
+                        { concurrency: "unbounded" },
+                      );
+                      return {
+                        at,
+                        txAdmissions: Object.fromEntries(
+                          admissionRows.map((row) => [
+                            row.status,
+                            BigInt(row.count).toString(),
+                          ]),
+                        ),
+                        mempoolTxCount: BigInt(
+                          mempoolRows[0]?.count ?? 0,
+                        ).toString(),
+                        processedMempoolTxCount: BigInt(
+                          processedRows[0]?.count ?? 0,
+                        ).toString(),
+                        pendingBlockFinalizations: Object.fromEntries(
+                          pendingRows.map((row) => [
+                            row.status,
+                            BigInt(row.count).toString(),
+                          ]),
+                        ),
+                      };
+                    }).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
+                  ),
                 abortSignal: abortController.signal,
               },
             ),
@@ -1630,13 +1719,12 @@ program
           Effect.provide(stressCliLoggerLayer),
         ),
       );
-      process.stdout.write(`${formatJson(result.summary)}\n`);
+      writeJson(result.summary);
       if (result.summary.status === "interrupted") {
         process.exitCode = 130;
       }
     } catch (error) {
-      console.error(`e2e-stress-l2-throughput: ${errorMessage(error)}`);
-      process.exitCode = 1;
+      failCli("e2e-stress-l2-throughput", error);
     } finally {
       process.off("SIGINT", interrupt);
       process.off("SIGTERM", interrupt);
@@ -1695,13 +1783,12 @@ program
           "utf8",
         );
       }
-      process.stdout.write(`${formatJson(summary)}\n`);
+      writeJson(summary);
       if (summary.status !== "success") {
         process.exitCode = 1;
       }
     } catch (error) {
-      console.error(`e2e-run-step: ${errorMessage(error)}`);
-      process.exitCode = 1;
+      failCli("e2e-run-step", error);
     }
   });
 
@@ -1794,10 +1881,9 @@ program
       if (typeof opts.out === "string" && opts.out.length > 0) {
         await writeDaLibp2pRuntimeManifest(opts.out, manifest);
       }
-      process.stdout.write(`${formatJson(manifest)}\n`);
+      writeJson(manifest);
     } catch (error) {
-      console.error(`da-libp2p-generate-manifest: ${errorMessage(error)}`);
-      process.exitCode = 1;
+      failCli("da-libp2p-generate-manifest", error);
     }
   });
 
@@ -1839,13 +1925,12 @@ program
       const report = await runDaLibp2pPreflightFromEnv(env, {
         mode: parseDaLibp2pPreflightMode(opts.mode),
       });
-      process.stdout.write(`${formatJson(report)}\n`);
+      writeJson(report);
       if (!report.passed) {
         process.exitCode = 1;
       }
     } catch (error) {
-      console.error(`da-libp2p-preflight: ${errorMessage(error)}`);
-      process.exitCode = 1;
+      failCli("da-libp2p-preflight", error);
     }
   });
 
@@ -1906,10 +1991,9 @@ program
           "--poll-interval-ms",
         ),
       });
-      process.stdout.write(`${formatJson(summary)}\n`);
+      writeJson(summary);
     } catch (error) {
-      console.error(`e2e-start-service: ${errorMessage(error)}`);
-      process.exitCode = 1;
+      failCli("e2e-start-service", error);
     }
   });
 
@@ -1950,10 +2034,7 @@ program
         opts.amountLovelace,
       );
     } catch (error) {
-      console.error(
-        `prepare-hub-oracle-one-shot-nonce: ${errorMessage(error)}`,
-      );
-      process.exitCode = 1;
+      failCli("prepare-hub-oracle-one-shot-nonce", error);
       return;
     }
 
@@ -1966,10 +2047,7 @@ program
             options: runOptions,
           });
       } catch (error) {
-        console.error(
-          `prepare-hub-oracle-one-shot-nonce: ${errorMessage(error)}`,
-        );
-        process.exitCode = 1;
+        failCli("prepare-hub-oracle-one-shot-nonce", error);
         return;
       }
     }
@@ -2027,7 +2105,7 @@ program
           Effect.tap((result) =>
             Effect.sync(() => {
               if (opts.json) {
-                process.stdout.write(`${formatJson(result)}\n`);
+                writeJson(result);
                 return;
               }
               process.stdout.write(
@@ -2044,7 +2122,7 @@ program
           ),
         ),
       );
-      NodeRuntime.runMain(mainEffect, { teardown: undefined });
+      runCliEffect(mainEffect);
       return;
     }
 
@@ -2055,10 +2133,7 @@ program
         });
       }
     } catch (error) {
-      console.error(
-        `prepare-hub-oracle-one-shot-nonce: ${errorMessage(error)}`,
-      );
-      process.exitCode = 1;
+      failCli("prepare-hub-oracle-one-shot-nonce", error);
       return;
     }
 
@@ -2070,7 +2145,7 @@ program
           Effect.tap((result) =>
             Effect.sync(() => {
               if (opts.json) {
-                process.stdout.write(`${formatJson(result)}\n`);
+                writeJson(result);
                 return;
               }
               process.stdout.write(
@@ -2085,7 +2160,7 @@ program
           ),
         ),
       );
-      NodeRuntime.runMain(mainEffect, { teardown: undefined });
+      runCliEffect(mainEffect);
       return;
     }
 
@@ -2158,7 +2233,7 @@ program
         Effect.tap((result) =>
           Effect.sync(() => {
             if (opts.json) {
-              process.stdout.write(`${formatJson(result)}\n`);
+              writeJson(result);
               return;
             }
             process.stdout.write(
@@ -2175,7 +2250,7 @@ program
         ),
       ),
     );
-    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    runCliEffect(mainEffect);
   });
 
 program
@@ -2202,7 +2277,7 @@ program
       ),
     );
 
-    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    runCliEffect(mainEffect);
   });
 
 program
@@ -2226,7 +2301,7 @@ program
       ),
     );
 
-    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    runCliEffect(mainEffect);
   });
 
 for (const commandName of RegisterActiveOperator.REFERENCE_SCRIPT_COMMAND_NAMES) {
@@ -2324,7 +2399,7 @@ for (const commandName of RegisterActiveOperator.REFERENCE_SCRIPT_COMMAND_NAMES)
               contracts.referenceScriptAuth,
               lucidService.referenceScriptsAddress,
             );
-            process.stdout.write(`${formatJson(plan)}\n`);
+            writeJson(plan);
             return { mode: "plan" as const, plan };
           }
           const published =
@@ -2390,7 +2465,7 @@ for (const commandName of RegisterActiveOperator.REFERENCE_SCRIPT_COMMAND_NAMES)
         ),
       );
 
-      NodeRuntime.runMain(mainEffect, { teardown: undefined });
+      runCliEffect(mainEffect);
     });
 }
 
@@ -2409,16 +2484,10 @@ program
           lucidService.referenceScriptsApi,
           lucidService.referenceScriptsAddress,
         );
-      }).pipe(
-        Effect.tap((result) =>
-          Effect.sync(() => {
-            process.stdout.write(`${formatJson(result)}\n`);
-          }),
-        ),
-      ),
+      }).pipe(tapJson()),
     );
 
-    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    runCliEffect(mainEffect);
   });
 
 program
@@ -2520,7 +2589,7 @@ program
       ),
     );
 
-    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    runCliEffect(mainEffect);
   });
 
 program
@@ -2541,7 +2610,7 @@ program
       ),
     );
 
-    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    runCliEffect(mainEffect);
   });
 
 program
@@ -2562,7 +2631,7 @@ program
       ),
     );
 
-    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    runCliEffect(mainEffect);
   });
 
 program
@@ -2602,16 +2671,10 @@ program
       awaitConfirmation: opts.awaitConfirmation !== false,
     };
     const mainEffect = provideTxServices(
-      commitExplicitBlockHeaderProgram(params).pipe(
-        Effect.tap((result) =>
-          Effect.sync(() => {
-            process.stdout.write(`${formatJson(result)}\n`);
-          }),
-        ),
-      ),
+      commitExplicitBlockHeaderProgram(params).pipe(tapJson()),
     );
 
-    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    runCliEffect(mainEffect);
   });
 
 program
@@ -2628,22 +2691,15 @@ program
     try {
       headerHash = parseOptionalHeaderHashOption(options.opts().headerHash);
     } catch (error) {
-      console.error(`attest-state-queue-once: ${errorMessage(error)}`);
-      process.exitCode = 1;
+      failCli("attest-state-queue-once", error);
       return;
     }
 
     const mainEffect = provideTxServices(
-      DaAttestation.attestStateQueueOnceProgram({ headerHash }).pipe(
-        Effect.tap((results) =>
-          Effect.sync(() => {
-            process.stdout.write(`${formatJson(results)}\n`);
-          }),
-        ),
-      ),
+      DaAttestation.attestStateQueueOnceProgram({ headerHash }).pipe(tapJson()),
     );
 
-    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    runCliEffect(mainEffect);
   });
 
 program
@@ -2693,8 +2749,7 @@ program
           walletSeedPhraseEnv,
         });
       } catch (error) {
-        console.error(`submit-deposit: ${errorMessage(error)}`);
-        process.exitCode = 1;
+        failCli("submit-deposit", error);
         return;
       }
 
@@ -2746,18 +2801,14 @@ program
             { ...depositConfig, referenceScripts: depositReferenceScripts },
           );
         }).pipe(
-          Effect.tap((result) =>
-            Effect.sync(() => {
-              process.stdout.write(`${formatJson(result)}\n`);
-            }),
-          ),
+          tapJson(),
           Effect.tap((result) =>
             Effect.logInfo(`submit-deposit completed: txHash=${result.txHash}`),
           ),
         ),
       );
 
-      NodeRuntime.runMain(mainEffect, { teardown: undefined });
+      runCliEffect(mainEffect);
     },
   );
 
@@ -2777,24 +2828,17 @@ program
           trim: false,
         });
       } catch (error) {
-        console.error(
-          `reconcile-deposit-submission: invalid --tx-hash: ${errorMessage(error)}`,
-        );
-        process.exitCode = 1;
+        failCli("reconcile-deposit-submission: invalid --tx-hash", error);
         return;
       }
 
       const mainEffect = provideDatabaseTxServices(
         SubmitDeposit.reconcileDepositSubmissionAttemptProgram(txHash).pipe(
-          Effect.tap((result) =>
-            Effect.sync(() => {
-              process.stdout.write(`${formatJson(result)}\n`);
-            }),
-          ),
+          tapJson(),
         ),
       );
 
-      NodeRuntime.runMain(mainEffect, { teardown: undefined });
+      runCliEffect(mainEffect);
     },
   );
 
@@ -2862,8 +2906,7 @@ program
           walletSeedPhraseEnv: options.walletSeedPhraseEnv,
         });
       } catch (error) {
-        console.error(`submit-l2-transfer: ${errorMessage(error)}`);
-        process.exitCode = 1;
+        failCli("submit-l2-transfer", error);
         return;
       }
 
@@ -2885,11 +2928,7 @@ program
           });
           return result;
         }).pipe(
-          Effect.tap((result) =>
-            Effect.sync(() => {
-              process.stdout.write(`${formatJson(result)}\n`);
-            }),
-          ),
+          tapJson(),
           Effect.tapError((error) =>
             Effect.logError(
               `submit-l2-transfer failed: ${errorMessage(error)}`,
@@ -2901,7 +2940,7 @@ program
         Effect.provide(Services.NodeConfig.layer),
       );
 
-      NodeRuntime.runMain(mainEffect, { teardown: undefined });
+      runCliEffect(mainEffect);
     },
   );
 
@@ -2974,19 +3013,13 @@ program
                 lucidService.referenceScriptsWalletAddress,
             }),
         });
-      }).pipe(
-        Effect.tap((result) =>
-          Effect.sync(() => {
-            process.stdout.write(`${formatJson(result)}\n`);
-          }),
-        ),
-      ),
+      }).pipe(tapJson()),
       Effect.provide(Services.NodeConfig.layer),
       Effect.provide(Services.MidgardContracts.Default),
       Effect.provide(Services.Lucid.Default),
     );
 
-    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    runCliEffect(mainEffect);
   });
 
 program
@@ -3003,8 +3036,7 @@ program
     try {
       address = parseAddressArgument(options.opts().address);
     } catch (error) {
-      console.error(`utxos: ${errorMessage(error)}`);
-      process.exitCode = 1;
+      failCli("utxos", error);
       return;
     }
 
@@ -3012,13 +3044,13 @@ program
       UtxosCommand.utxosProgram(address).pipe(
         Effect.flatMap((result) =>
           Effect.sync(() => {
-            process.stdout.write(`${formatJson(result)}\n`);
+            writeJson(result);
           }),
         ),
       ),
     );
 
-    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    runCliEffect(mainEffect);
   });
 
 program
@@ -3036,7 +3068,7 @@ program
       ),
     );
 
-    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    runCliEffect(mainEffect);
   });
 
 program
@@ -3046,16 +3078,10 @@ program
   )
   .action(async () => {
     const mainEffect = provideNodeRuntimeServices(
-      FetchWithdrawalsOnceCommand.fetchWithdrawalsOnceProgram.pipe(
-        Effect.tap((result) =>
-          Effect.sync(() => {
-            process.stdout.write(`${formatJson(result)}\n`);
-          }),
-        ),
-      ),
+      FetchWithdrawalsOnceCommand.fetchWithdrawalsOnceProgram.pipe(tapJson()),
     );
 
-    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    runCliEffect(mainEffect);
   });
 
 program
@@ -3077,8 +3103,7 @@ program
         eventId: opts.eventId,
       });
     } catch (error) {
-      console.error(`resolve-event-settlement-proof: ${errorMessage(error)}`);
-      process.exitCode = 1;
+      failCli("resolve-event-settlement-proof", error);
       return;
     }
 
@@ -3086,17 +3111,13 @@ program
       EventSettlementProofCommand.resolveEventSettlementProofProgram(
         lookup,
       ).pipe(
-        Effect.tap((result) =>
-          Effect.sync(() => {
-            process.stdout.write(
-              `${formatJson(EventSettlementProofCommand.serializeEventSettlementProofResolution(result))}\n`,
-            );
-          }),
+        tapJson(
+          EventSettlementProofCommand.serializeEventSettlementProofResolution,
         ),
       ),
     );
 
-    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    runCliEffect(mainEffect);
   });
 
 program
@@ -3111,16 +3132,10 @@ program
     const mainEffect = provideDatabaseTxServices(
       ReservePayoutCommand.absorbConfirmedDepositToReserveProgram({
         eventId: opts.depositEventId,
-      }).pipe(
-        Effect.tap((result) =>
-          Effect.sync(() => {
-            process.stdout.write(`${formatJson(result)}\n`);
-          }),
-        ),
-      ),
+      }).pipe(tapJson()),
     );
 
-    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    runCliEffect(mainEffect);
   });
 
 program
@@ -3135,16 +3150,10 @@ program
     const mainEffect = provideDatabaseTxServices(
       ReservePayoutCommand.initializePayoutProgram({
         eventId: opts.withdrawalEventId,
-      }).pipe(
-        Effect.tap((result) =>
-          Effect.sync(() => {
-            process.stdout.write(`${formatJson(result)}\n`);
-          }),
-        ),
-      ),
+      }).pipe(tapJson()),
     );
 
-    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    runCliEffect(mainEffect);
   });
 
 program
@@ -3159,16 +3168,10 @@ program
     const mainEffect = provideDatabaseTxServices(
       ReservePayoutCommand.addReserveFundsToPayoutProgram({
         eventId: opts.withdrawalEventId,
-      }).pipe(
-        Effect.tap((result) =>
-          Effect.sync(() => {
-            process.stdout.write(`${formatJson(result)}\n`);
-          }),
-        ),
-      ),
+      }).pipe(tapJson()),
     );
 
-    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    runCliEffect(mainEffect);
   });
 
 program
@@ -3183,16 +3186,10 @@ program
     const mainEffect = provideDatabaseTxServices(
       ReservePayoutCommand.concludePayoutProgram({
         eventId: opts.withdrawalEventId,
-      }).pipe(
-        Effect.tap((result) =>
-          Effect.sync(() => {
-            process.stdout.write(`${formatJson(result)}\n`);
-          }),
-        ),
-      ),
+      }).pipe(tapJson()),
     );
 
-    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    runCliEffect(mainEffect);
   });
 
 program
@@ -3212,22 +3209,15 @@ program
         l1TxHash: opts.l1TxHash,
       });
     } catch (error) {
-      console.error(`withdrawal-status: ${errorMessage(error)}`);
-      process.exitCode = 1;
+      failCli("withdrawal-status", error);
       return;
     }
 
     const mainEffect = provideDatabaseTxServices(
-      WithdrawalStatusCommand.withdrawalStatusProgram(lookup).pipe(
-        Effect.tap((result) =>
-          Effect.sync(() => {
-            process.stdout.write(`${formatJson(result)}\n`);
-          }),
-        ),
-      ),
+      WithdrawalStatusCommand.withdrawalStatusProgram(lookup).pipe(tapJson()),
     );
 
-    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    runCliEffect(mainEffect);
   });
 
 program
@@ -3235,16 +3225,10 @@ program
   .description("Print typed reserve-address UTxOs and aggregate assets")
   .action(async () => {
     const mainEffect = provideTxServices(
-      ReserveInspectionCommand.reserveUtxosProgram.pipe(
-        Effect.tap((result) =>
-          Effect.sync(() => {
-            process.stdout.write(`${formatJson(result)}\n`);
-          }),
-        ),
-      ),
+      ReserveInspectionCommand.reserveUtxosProgram.pipe(tapJson()),
     );
 
-    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    runCliEffect(mainEffect);
   });
 
 program
@@ -3258,15 +3242,11 @@ program
     const opts = options.opts();
     const mainEffect = provideDatabaseTxServices(
       ReserveInspectionCommand.payoutStatusProgram(opts.withdrawalEventId).pipe(
-        Effect.tap((result) =>
-          Effect.sync(() => {
-            process.stdout.write(`${formatJson(result)}\n`);
-          }),
-        ),
+        tapJson(),
       ),
     );
 
-    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    runCliEffect(mainEffect);
   });
 
 program
@@ -3300,7 +3280,7 @@ program
       Effect.provide(Services.Database.layer),
     );
 
-    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    runCliEffect(mainEffect);
   });
 
 program.parse(process.argv);

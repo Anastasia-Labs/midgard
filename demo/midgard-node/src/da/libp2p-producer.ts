@@ -465,7 +465,10 @@ export const createDaLibp2pRetainedPayloadRequestHandlers = ({
     }
 
     const resolved = await resolveRow(headerHash);
-    if (resolved.kind !== "found" || !resolved.payloadHash.equals(payloadHash)) {
+    if (
+      resolved.kind !== "found" ||
+      !resolved.payloadHash.equals(payloadHash)
+    ) {
       return encodeRetainedPayloadChunkNotFound(
         headerHash,
         payloadHash,
@@ -483,10 +486,7 @@ export const createDaLibp2pRetainedPayloadRequestHandlers = ({
     }
     const chunkBytes = resolved.payloadBytes.subarray(
       offset,
-      Math.min(
-        offset + manifest.maxChunkBytes,
-        resolved.payloadBytes.length,
-      ),
+      Math.min(offset + manifest.maxChunkBytes, resolved.payloadBytes.length),
     );
     return encodeDaPayloadChunkResponseV1Cbor({
       status: "found",
@@ -498,40 +498,43 @@ export const createDaLibp2pRetainedPayloadRequestHandlers = ({
     });
   });
 
-  addHandler(DaRequestResponseProtocol.metadataByHeader, async (requestCbor) => {
-    const request = decodeRetainedPayloadRequest(
-      () => decodeDaPayloadByHeaderRequestV1Cbor(requestCbor),
-      "metadata-by-header request",
-    );
-    const headerHash = request.headerHash;
-    if (!request.deploymentFingerprint.equals(deploymentFingerprint)) {
-      return encodeDaMetadataByHeaderResponseV1Cbor({
-        ...emptyRetainedPayloadMetadataResponse(headerHash),
-        status: "rejected",
-      });
-    }
-
-    const resolved = await resolveRow(headerHash);
-    if (resolved.kind !== "found") {
-      return encodeDaMetadataByHeaderResponseV1Cbor(
-        retainedPayloadMetadataAbsentResponse(headerHash, resolved),
+  addHandler(
+    DaRequestResponseProtocol.metadataByHeader,
+    async (requestCbor) => {
+      const request = decodeRetainedPayloadRequest(
+        () => decodeDaPayloadByHeaderRequestV1Cbor(requestCbor),
+        "metadata-by-header request",
       );
-    }
-    if (
-      request.acceptedPayloadHashes !== null &&
-      !containsHash(request.acceptedPayloadHashes, resolved.payloadHash)
-    ) {
-      return encodeDaMetadataByHeaderResponseV1Cbor({
-        ...emptyRetainedPayloadMetadataResponse(headerHash),
-        status: "conflict",
-        payloadHash: resolved.payloadHash,
-      });
-    }
+      const headerHash = request.headerHash;
+      if (!request.deploymentFingerprint.equals(deploymentFingerprint)) {
+        return encodeDaMetadataByHeaderResponseV1Cbor({
+          ...emptyRetainedPayloadMetadataResponse(headerHash),
+          status: "rejected",
+        });
+      }
 
-    return encodeDaMetadataByHeaderResponseV1Cbor(
-      metadataForRetainedPayload(headerHash, resolved),
-    );
-  });
+      const resolved = await resolveRow(headerHash);
+      if (resolved.kind !== "found") {
+        return encodeDaMetadataByHeaderResponseV1Cbor(
+          retainedPayloadMetadataAbsentResponse(headerHash, resolved),
+        );
+      }
+      if (
+        request.acceptedPayloadHashes !== null &&
+        !containsHash(request.acceptedPayloadHashes, resolved.payloadHash)
+      ) {
+        return encodeDaMetadataByHeaderResponseV1Cbor({
+          ...emptyRetainedPayloadMetadataResponse(headerHash),
+          status: "conflict",
+          payloadHash: resolved.payloadHash,
+        });
+      }
+
+      return encodeDaMetadataByHeaderResponseV1Cbor(
+        metadataForRetainedPayload(headerHash, resolved),
+      );
+    },
+  );
 
   return handlerMap;
 };
@@ -727,38 +730,6 @@ export const publicationSatisfied = (
   report.threshold !== undefined &&
   report.acceptedPeers >= report.threshold;
 
-export const waitForPublicationGate = async ({
-  probe,
-  timeoutMs = 120_000,
-  intervalMs = 5_000,
-  sleep = (milliseconds) =>
-    new Promise((resolve) => setTimeout(resolve, milliseconds)),
-}: {
-  readonly probe: () => Promise<DaProducerPublicationReport>;
-  readonly timeoutMs?: number;
-  readonly intervalMs?: number;
-  readonly sleep?: (milliseconds: number) => Promise<void>;
-}): Promise<
-  DaProducerPublicationReport & {
-    readonly attempts: number;
-    readonly timedOut: boolean;
-  }
-> => {
-  const startedAt = Date.now();
-  let attempts = 0;
-  for (;;) {
-    attempts += 1;
-    const report = await probe();
-    if (publicationSatisfied(report)) {
-      return { ...report, attempts, timedOut: false };
-    }
-    if (Date.now() - startedAt >= timeoutMs) {
-      return { ...report, attempts, timedOut: true };
-    }
-    await sleep(intervalMs);
-  }
-};
-
 export const runDaLibp2pPreflightFromEnv = async (
   env: NodeJS.ProcessEnv = process.env,
   options: {
@@ -905,10 +876,7 @@ export const runDaLibp2pPreflight = async ({
 
 export const createDaLibp2pProducerTransport = async (
   manifest: DaProducerPublicationManifest,
-  {
-    mode = "bind-listen",
-    requestHandlers,
-  }: DaProducerTransportOptions = {},
+  { mode = "bind-listen", requestHandlers }: DaProducerTransportOptions = {},
 ): Promise<DaProducerTransport> => {
   const [
     { createLibp2p },
@@ -1520,10 +1488,7 @@ const encodeRetainedPayloadChunkNotFound = (
     chunkHash: null,
   });
 
-const decodeRetainedPayloadRequest = <T>(
-  decode: () => T,
-  label: string,
-): T => {
+const decodeRetainedPayloadRequest = <T>(decode: () => T, label: string): T => {
   try {
     return decode();
   } catch (cause) {

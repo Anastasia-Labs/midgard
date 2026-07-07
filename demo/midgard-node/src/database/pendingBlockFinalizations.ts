@@ -1146,6 +1146,27 @@ export const markAbandoned = (
     ),
   );
 
+export const markUnsubmittedAbandoned = (
+  headerHash: Buffer,
+): Effect.Effect<boolean, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql<Row>`UPDATE ${sql(tableName)}
+      SET ${sql(Columns.STATUS)} = ${Status.Abandoned},
+          ${sql(Columns.UPDATED_AT)} = NOW()
+      WHERE ${sql(Columns.HEADER_HASH)} = ${headerHash}
+        AND ${sql(Columns.STATUS)} = ${Status.PendingSubmission}
+        AND ${sql(Columns.SUBMITTED_TX_HASH)} IS NULL
+      RETURNING *`;
+    return rows.length === 1;
+  }).pipe(
+    Effect.withLogSpan(`markUnsubmittedAbandoned ${tableName}`),
+    sqlErrorToDatabaseError(
+      tableName,
+      "Failed to abandon unsubmitted pending block journal",
+    ),
+  );
+
 export const txMemberToEntry = (
   member: MemberRecord,
 ): TxTable.EntryWithTimeStamp => ({

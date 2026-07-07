@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveTxStatus } from "@/commands/tx-status.js";
+import { resolveTxStatus, resolveTxStatusBatch } from "@/commands/tx-status.js";
 
 describe("resolveTxStatus", () => {
   it("returns rejected when rejection entry exists", () => {
@@ -33,6 +33,10 @@ describe("resolveTxStatus", () => {
     });
 
     expect(status.status).toBe("committed");
+    expect(status).toMatchObject({
+      committedMeaning: "immutable_db_inclusion_not_confirmed_ledger_merge",
+      confirmedLedgerFinalized: false,
+    });
   });
 
   it("returns pending_commit when tx is in processed mempool", () => {
@@ -89,5 +93,50 @@ describe("resolveTxStatus", () => {
     });
 
     expect(status.status).toBe("not_found");
+  });
+
+  it("resolves batch statuses with the same priority as single status", () => {
+    const statuses = resolveTxStatusBatch({
+      txIdsHex: ["aa", "bb", "cc"],
+      rejectionsByTxId: new Map([
+        [
+          "cc",
+          {
+            rejectCode: "E_PHASE_B",
+            rejectDetail: "double spend",
+            createdAtIso: "2026-01-01T00:00:00.000Z",
+          },
+        ],
+      ]),
+      admissionStatusByTxId: new Map([
+        ["aa", "queued"],
+        ["bb", "validating"],
+      ]),
+      immutableTxIds: new Set(["aa"]),
+      mempoolTxIds: new Set(["bb"]),
+      processedMempoolTxIds: new Set<string>(),
+      localFinalizationPending: false,
+      headerEvidenceByTxId: new Map([
+        [
+          "aa",
+          {
+            headerHash: "11".repeat(28),
+            headerStatus: "finalized",
+            mergeStatus: "finalized",
+            confirmedLedgerFinalized: true,
+          },
+        ],
+      ]),
+    });
+
+    expect(statuses.map((status) => status.status)).toEqual([
+      "committed",
+      "accepted",
+      "rejected",
+    ]);
+    expect(statuses[0]).toMatchObject({
+      headerStatus: "finalized",
+      confirmedLedgerFinalized: true,
+    });
   });
 });

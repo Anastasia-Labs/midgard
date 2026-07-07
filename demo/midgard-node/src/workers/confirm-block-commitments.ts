@@ -8,12 +8,13 @@ import { Lucid } from "@/services/lucid.js";
 import { MidgardContracts } from "@/services/midgard-contracts.js";
 import { serializeStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
 import {
-  fetchLatestCommittedStateQueueBlock,
+  decideUnsubmittedPendingBlockRecovery,
   fetchSortedCommittedStateQueueBlocks,
   findCommittedStateQueueBlockByHeaderHash,
   latestCommittedStateQueueBlockFromSorted,
   pendingBlockHasSubmittedTx,
   resolveStateQueueBlockEndTimeMs,
+  serializeCanonicalCommittedHeaders,
   WorkerInput,
   WorkerOutput,
 } from "@/workers/utils/confirm-block-commitments.js";
@@ -53,12 +54,14 @@ const awaitPendingBlockResolution = (
         return {
           latestBlock,
           matchedPendingBlock: matchedPendingBlock.value,
+          sortedBlocks,
         };
       }
       if (latestEndTimeMs >= pendingBlock.blockEndTimeMs) {
         return {
           latestBlock,
           matchedPendingBlock: null,
+          sortedBlocks,
         };
       }
       yield* Effect.sleep(`${pollIntervalMs} millis`);
@@ -119,36 +122,58 @@ export const runConfirmBlockCommitmentsWorkerProgram = (
       staleSubmittedTxHash: "" | string,
     ) =>
       Effect.gen(function* () {
-        const latestBlock = yield* fetchLatestCommittedStateQueueBlock(
+        const sortedBlocks = yield* fetchSortedCommittedStateQueueBlocks(
           lucid.api,
           stateQueueAuthValidator,
         );
+        const latestBlock =
+          yield* latestCommittedStateQueueBlockFromSorted(sortedBlocks);
         const serializedUTxO = yield* serializeStateQueueUTxO(latestBlock);
         return {
           type: "StaleUnconfirmedRecoveryOutput",
           stalePendingHeaderHash,
           staleSubmittedTxHash,
           latestBlocksUTxO: serializedUTxO,
+          canonicalHeaders:
+            yield* serializeCanonicalCommittedHeaders(sortedBlocks),
         } satisfies WorkerOutput;
       });
 
     if (workerInput.data.firstRun) {
       yield* Effect.logInfo("🔍 First run. Fetching the latest block...");
-      const latestBlock = yield* fetchLatestCommittedStateQueueBlock(
+      const sortedBlocks = yield* fetchSortedCommittedStateQueueBlocks(
         lucid.api,
         stateQueueAuthValidator,
       );
+      const latestBlock =
+        yield* latestCommittedStateQueueBlockFromSorted(sortedBlocks);
       const serializedUTxO = yield* serializeStateQueueUTxO(latestBlock);
       return {
         type: "SuccessfulConfirmationOutput",
         latestBlocksUTxO: serializedUTxO,
         matchedPendingBlocksUTxO: null,
+        canonicalHeaders:
+          yield* serializeCanonicalCommittedHeaders(sortedBlocks),
       } satisfies WorkerOutput;
     }
 
     if (workerInput.data.pendingBlock === null) {
+      yield* Effect.logInfo(
+        "🔍 No active pending block. Refreshing canonical state_queue snapshot...",
+      );
+      const sortedBlocks = yield* fetchSortedCommittedStateQueueBlocks(
+        lucid.api,
+        stateQueueAuthValidator,
+      );
+      const latestBlock =
+        yield* latestCommittedStateQueueBlockFromSorted(sortedBlocks);
+      const serializedUTxO = yield* serializeStateQueueUTxO(latestBlock);
       return {
-        type: "NoTxForConfirmationOutput",
+        type: "SuccessfulConfirmationOutput",
+        latestBlocksUTxO: serializedUTxO,
+        matchedPendingBlocksUTxO: null,
+        canonicalHeaders:
+          yield* serializeCanonicalCommittedHeaders(sortedBlocks),
       } satisfies WorkerOutput;
     }
 
@@ -158,8 +183,64 @@ export const runConfirmBlockCommitmentsWorkerProgram = (
       `🔍 Resolving pending block header ${pendingBlock.expectedHeaderHash} (submitted_tx=${pendingBlock.submittedTxHash || "unknown"}, age_ms=${pendingAgeMs}).`,
     );
     if (!pendingBlockHasSubmittedTx(pendingBlock)) {
+      const sortedBlocks = yield* fetchSortedCommittedStateQueueBlocks(
+        lucid.api,
+        stateQueueAuthValidator,
+      );
+      const latestBlock =
+        yield* latestCommittedStateQueueBlockFromSorted(sortedBlocks);
+      const matchedPendingBlock =
+        yield* findCommittedStateQueueBlockByHeaderHash(
+          sortedBlocks,
+          pendingBlock.expectedHeaderHash,
+        );
+      const recoveryGraceMs = Math.max(
+        nodeConfig.BLOCK_CONFIRMATION_AWAIT_TIMEOUT_MS,
+        30_000,
+      );
+      const recoveryDecision = decideUnsubmittedPendingBlockRecovery({
+        canonicalMatchFound: Option.isSome(matchedPendingBlock),
+        pendingBlock,
+        nowMs: Date.now(),
+        recoveryGraceMs,
+      });
+      if (recoveryDecision === "recover_canonical") {
+        yield* Effect.logWarning(
+          `🔍 Pending block header ${pendingBlock.expectedHeaderHash} has no submitted tx hash locally but is already present in canonical state_queue; recovering confirmation state instead of abandoning.`,
+        );
+        if (Option.isNone(matchedPendingBlock)) {
+          return yield* Effect.fail(
+            new TxConfirmAwaitError({
+              message:
+                "Unsubmitted pending recovery chose canonical recovery without a matched block",
+              headerHash: pendingBlock.expectedHeaderHash,
+              cause: "missing_matched_pending_block",
+            }),
+          );
+        }
+        const latestSerializedUTxO =
+          yield* serializeStateQueueUTxO(latestBlock);
+        const matchedSerializedUTxO = yield* serializeStateQueueUTxO(
+          matchedPendingBlock.value,
+        );
+        return {
+          type: "SuccessfulConfirmationOutput",
+          latestBlocksUTxO: latestSerializedUTxO,
+          matchedPendingBlocksUTxO: matchedSerializedUTxO,
+          canonicalHeaders:
+            yield* serializeCanonicalCommittedHeaders(sortedBlocks),
+        } satisfies WorkerOutput;
+      }
+      if (recoveryDecision === "defer") {
+        yield* Effect.logWarning(
+          `🔍 Pending block header ${pendingBlock.expectedHeaderHash} has no submitted tx hash and is not canonical yet; deferring stale recovery until the block validity window plus grace has elapsed (age_ms=${pendingAgeMs}, block_end_ms=${pendingBlock.blockEndTimeMs.toString()}, grace_ms=${recoveryGraceMs.toString()}).`,
+        );
+        return {
+          type: "NoTxForConfirmationOutput",
+        } satisfies WorkerOutput;
+      }
       yield* Effect.logWarning(
-        `🔍 Pending block header ${pendingBlock.expectedHeaderHash} has no submitted tx hash; abandoning unsubmitted journal and recovering canonical state_queue tip.`,
+        `🔍 Pending block header ${pendingBlock.expectedHeaderHash} has no submitted tx hash and is still absent from canonical state_queue after its recovery grace; abandoning unsubmitted journal and recovering canonical state_queue tip.`,
       );
       return yield* recoverWithLatestBlock(
         pendingBlock.expectedHeaderHash,
@@ -218,6 +299,9 @@ export const runConfirmBlockCommitmentsWorkerProgram = (
         type: "SuccessfulConfirmationOutput",
         latestBlocksUTxO: latestSerializedUTxO,
         matchedPendingBlocksUTxO: matchedSerializedUTxO,
+        canonicalHeaders: yield* serializeCanonicalCommittedHeaders(
+          resolved.sortedBlocks,
+        ),
       } satisfies WorkerOutput;
     }
 

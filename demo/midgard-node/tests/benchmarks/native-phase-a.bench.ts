@@ -1,8 +1,5 @@
-import { execSync } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
-import { performance } from "node:perf_hooks";
 
 import {
   cardanoTxBytesToMidgardNativeTxCanonicalCbor,
@@ -15,20 +12,17 @@ import { QueuedTx, runPhaseAValidation } from "@al-ft/midgard-validation";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
+import {
+  benchmarkOperation,
+  buildBenchmarkMeta,
+  type OperationStats,
+  printOperationTable,
+  writeBenchmarkJson,
+} from "./benchmark-utils.js";
+
 type TxFixture = {
   readonly cborHex: string;
   readonly txId: string;
-};
-
-type OperationStats = {
-  name: string;
-  runs: number;
-  minMs: number;
-  p50Ms: number;
-  p95Ms: number;
-  maxMs: number;
-  meanMs: number;
-  throughputPerSec: number;
 };
 
 type Report = {
@@ -79,51 +73,6 @@ const outputPath = path.resolve(
 );
 const EMPTY_CBOR_LIST = Buffer.from([0x80]);
 
-const quantile = (values: readonly number[], q: number): number => {
-  const sorted = [...values].sort((a, b) => a - b);
-  const position = (sorted.length - 1) * q;
-  const left = Math.floor(position);
-  const right = Math.ceil(position);
-  if (left === right) {
-    return sorted[left];
-  }
-  const weight = position - left;
-  return sorted[left] + weight * (sorted[right] - sorted[left]);
-};
-
-const getGitCommit = (): string => {
-  try {
-    return execSync("git rev-parse --short HEAD", {
-      stdio: ["ignore", "pipe", "ignore"],
-    })
-      .toString("utf8")
-      .trim();
-  } catch {
-    return "unknown";
-  }
-};
-
-const summarize = (
-  name: string,
-  runTimesMs: readonly number[],
-  txCount: number,
-): OperationStats => {
-  const minMs = Math.min(...runTimesMs);
-  const maxMs = Math.max(...runTimesMs);
-  const meanMs =
-    runTimesMs.reduce((sum, value) => sum + value, 0) / runTimesMs.length;
-  return {
-    name,
-    runs: runTimesMs.length,
-    minMs,
-    p50Ms: quantile(runTimesMs, 0.5),
-    p95Ms: quantile(runTimesMs, 0.95),
-    maxMs,
-    meanMs,
-    throughputPerSec: txCount / (meanMs / 1000),
-  };
-};
-
 const runPhaseAOnce = async (
   queuedTxs: readonly QueuedTx[],
   expectedNetworkId: bigint,
@@ -164,24 +113,10 @@ const verdictsMatch = (
 ): boolean =>
   left.length === right.length && left.every((value, i) => value === right[i]);
 
-const benchmarkOperation = async (
-  name: string,
-  run: () => Promise<void>,
-  txCount: number,
-): Promise<OperationStats> => {
-  for (let i = 0; i < WARMUP_RUNS; i++) {
-    await run();
-  }
-
-  const runTimesMs: number[] = [];
-  for (let i = 0; i < MEASURED_RUNS; i++) {
-    const start = performance.now();
-    await run();
-    runTimesMs.push(performance.now() - start);
-  }
-
-  return summarize(name, runTimesMs, txCount);
-};
+const benchmarkOptions = {
+  warmupRuns: WARMUP_RUNS,
+  measuredRuns: MEASURED_RUNS,
+} as const;
 
 describe("native tx phase-A benchmark", () => {
   it("measures phase-A throughput for native payloads", async () => {
@@ -261,19 +196,13 @@ describe("native tx phase-A benchmark", () => {
           }
         },
         nativeQueued.length,
+        benchmarkOptions,
       ),
     ];
 
     const report: Report = {
       meta: {
-        generatedAtIso: new Date().toISOString(),
-        benchmarkVersion: BENCHMARK_VERSION,
-        hostname: os.hostname(),
-        cpuModel: os.cpus()[0]?.model ?? "unknown",
-        cpuCount: os.cpus().length,
-        platform: `${os.platform()} ${os.release()}`,
-        nodeVersion: process.version,
-        gitCommit: getGitCommit(),
+        ...buildBenchmarkMeta(BENCHMARK_VERSION),
         txCount: txBytes.length,
         nativeAccepted: baselineNative.accepted,
         nativeRejected: baselineNative.rejected,
@@ -288,20 +217,10 @@ describe("native tx phase-A benchmark", () => {
       operations,
     };
 
-    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-    fs.writeFileSync(outputPath, JSON.stringify(report, null, 2));
+    writeBenchmarkJson(outputPath, report);
 
     console.log(`\nNative phase-A benchmark written to ${outputPath}`);
-    console.table(
-      operations.map((op) => ({
-        operation: op.name,
-        runs: op.runs,
-        p50: `${op.p50Ms.toFixed(2)} ms`,
-        p95: `${op.p95Ms.toFixed(2)} ms`,
-        mean: `${op.meanMs.toFixed(2)} ms`,
-        throughput: `${op.throughputPerSec.toFixed(2)} tx/s`,
-      })),
-    );
+    printOperationTable(operations);
 
     expect(operations.length).toBe(1);
   });

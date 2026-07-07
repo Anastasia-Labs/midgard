@@ -1,7 +1,4 @@
-import { execSync } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 
@@ -22,6 +19,16 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import * as LedgerUtils from "@/database/utils/ledger.js";
+
+import {
+  buildBenchmarkMeta,
+  formatMs,
+  formatTps,
+  quantile,
+  type StatSummary,
+  summarizeStats,
+  writeBenchmarkJson,
+} from "./benchmark-utils.js";
 
 type InitialLedgerEntryFixture = {
   txIdHex: string;
@@ -49,14 +56,6 @@ type GeneratedTxSequenceFixture = {
   generatedAtIso: string;
   txCount: number;
   transactions: GeneratedTxFixture[];
-};
-
-type StatSummary = {
-  min: number;
-  p50: number;
-  p95: number;
-  max: number;
-  mean: number;
 };
 
 type BenchSizeResult = {
@@ -148,32 +147,6 @@ const assertOrThrow = (condition: boolean, message: string) => {
   if (!condition) {
     throw new Error(message);
   }
-};
-
-const quantile = (values: readonly number[], q: number): number => {
-  assertOrThrow(values.length > 0, "quantile requires at least one value");
-  const sorted = [...values].sort((a, b) => a - b);
-  const position = (sorted.length - 1) * q;
-  const left = Math.floor(position);
-  const right = Math.ceil(position);
-  if (left === right) {
-    return sorted[left];
-  }
-  const weight = position - left;
-  return sorted[left] + weight * (sorted[right] - sorted[left]);
-};
-
-const summarize = (values: readonly number[]): StatSummary => {
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
-  return {
-    min,
-    p50: quantile(values, 0.5),
-    p95: quantile(values, 0.95),
-    max,
-    mean,
-  };
 };
 
 const loadInitialLedgerFixture = (): InitialLedgerStateFixture => {
@@ -272,18 +245,6 @@ const runPhaseB = async (
   return { accepted: phaseBAccepted, rejected };
 };
 
-const getGitCommit = (): string => {
-  try {
-    return execSync("git rev-parse --short HEAD", {
-      stdio: ["ignore", "pipe", "ignore"],
-    })
-      .toString("utf8")
-      .trim();
-  } catch {
-    return "unknown";
-  }
-};
-
 const measureBlockSize = async (
   queued: readonly QueuedTx[],
   preState: readonly LedgerUtils.Entry[],
@@ -371,9 +332,9 @@ const measureBlockSize = async (
     measuredRuns,
     acceptedCountExpected: baselinePhaseBAccepted,
     acceptedCountObserved,
-    phaseA: summarize(phaseATimings),
-    phaseB: summarize(phaseBTimings),
-    total: summarize(totalTimings),
+    phaseA: summarizeStats(phaseATimings),
+    phaseB: summarizeStats(phaseBTimings),
+    total: summarizeStats(totalTimings),
     throughputTps: {
       p50: quantile(throughputTps, 0.5),
       mean:
@@ -384,20 +345,10 @@ const measureBlockSize = async (
 };
 
 /**
- * Formats a duration in milliseconds for benchmark output.
- */
-const formatMs = (value: number) => `${value.toFixed(2)} ms`;
-/**
- * Formats a transactions-per-second metric for benchmark output.
- */
-const formatTps = (value: number) => `${value.toFixed(2)} tx/s`;
-
-/**
  * Writes the benchmark report to disk.
  */
 const writeReport = (report: BenchmarkReport) => {
-  fs.mkdirSync(path.dirname(OUTPUT_JSON_PATH), { recursive: true });
-  fs.writeFileSync(OUTPUT_JSON_PATH, `${JSON.stringify(report, null, 2)}\n`);
+  writeBenchmarkJson(OUTPUT_JSON_PATH, report, { trailingNewline: true });
 };
 
 /**
@@ -459,16 +410,7 @@ describe("validation benchmark", () => {
     }
 
     const report: BenchmarkReport = {
-      meta: {
-        generatedAtIso: new Date().toISOString(),
-        benchmarkVersion: BENCHMARK_VERSION,
-        hostname: os.hostname(),
-        cpuModel: os.cpus()[0]?.model ?? "unknown",
-        cpuCount: os.cpus().length,
-        platform: `${os.platform()} ${os.release()}`,
-        nodeVersion: process.version,
-        gitCommit: getGitCommit(),
-      },
+      meta: buildBenchmarkMeta(BENCHMARK_VERSION),
       config: {
         fixtureDirectory: FIXTURE_DIRECTORY,
         initialLedgerFixturePath: INITIAL_LEDGER_FIXTURE_PATH,

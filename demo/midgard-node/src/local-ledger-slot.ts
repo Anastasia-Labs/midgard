@@ -85,11 +85,6 @@ export const normalizeOgmiosHttpUrl = (url: string): string => {
 const joinUrl = (base: string, path: string): string =>
   `${base.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 
-export const ogmiosHttpUrl = (url: string, path = ""): string =>
-  path === ""
-    ? normalizeOgmiosHttpUrl(url)
-    : joinUrl(normalizeOgmiosHttpUrl(url), path);
-
 const fetchTextWithTimeout = async (
   fetchImpl: FetchLike,
   url: string,
@@ -264,9 +259,7 @@ export const queryLocalOgmiosSubmitSlotSnapshot = async ({
     },
     timeoutMs,
   );
-  const queriedTipSlot = parseOgmiosTipSlot(
-    parseJson(tipBody, "Ogmios tip"),
-  );
+  const queriedTipSlot = parseOgmiosTipSlot(parseJson(tipBody, "Ogmios tip"));
   const derivedLiveSlot = deriveLiveSlotFromOgmiosHealth(health, nowMs);
   return {
     source: "local_ogmios_tip",

@@ -1,19 +1,10 @@
-import { Effect } from "effect";
-
 import {
   SUBMIT_SLOT_LENGTH_MS,
   SUBMIT_SLOT_VALIDITY_BUFFER,
   type SubmitSlotSnapshot,
 } from "@/local-ledger-slot.js";
 
-export type SubmitTimingStatus =
-  | "ready"
-  | "wait"
-  | "not_due"
-  | "expired"
-  | "window_too_narrow"
-  | "slot_source_unavailable"
-  | "slot_source_stalled";
+export type InlineWaitPolicy = "allow_inline_wait" | "defer_positive_wait";
 
 export type SubmitTimingInput = {
   readonly callerLabel: string;
@@ -23,6 +14,7 @@ export type SubmitTimingInput = {
   readonly slotSnapshotError?: unknown;
   readonly submitSlotBuffer?: number;
   readonly maxInlineWaitMs?: number;
+  readonly inlineWaitPolicy?: InlineWaitPolicy;
   readonly dependencyKey?: string;
   readonly invalidationKey?: string;
 };
@@ -252,6 +244,13 @@ export const planSubmitTiming = (
     input.maxInlineWaitMs,
     Number.MAX_SAFE_INTEGER,
   );
+  if (input.inlineWaitPolicy === "defer_positive_wait") {
+    return {
+      ...waitBase,
+      status: "not_due",
+      reason: `inline_wait_policy=defer_positive_wait,wait_ms=${waitMs.toString()}`,
+    };
+  }
   return waitMs <= maxInlineWaitMs
     ? { ...waitBase, status: "wait" }
     : {
@@ -292,50 +291,3 @@ export const planSubmitTimingAfterInlineWait = (
   }
   return refreshed;
 };
-
-export const captureSubmitTimingPlan = (
-  input: Omit<SubmitTimingInput, "slotSnapshot" | "slotSnapshotError"> & {
-    readonly slotSnapshot: () => Effect.Effect<SubmitSlotSnapshot, unknown>;
-  },
-): Effect.Effect<SubmitTimingPlan, never> =>
-  Effect.gen(function* () {
-    const snapshot = yield* Effect.either(input.slotSnapshot());
-    return planSubmitTiming({
-      ...input,
-      slotSnapshot: snapshot._tag === "Right" ? snapshot.right : undefined,
-      slotSnapshotError: snapshot._tag === "Left" ? snapshot.left : undefined,
-    });
-  });
-
-export const submitTimingPlanEvidence = (plan: SubmitTimingPlan): string =>
-  [
-    `status=${plan.status}`,
-    `callerLabel=${plan.callerLabel}`,
-    ...("currentSlot" in plan && plan.currentSlot !== undefined
-      ? [`currentSlot=${plan.currentSlot.toString()}`]
-      : []),
-    ...("targetSlot" in plan && plan.targetSlot !== undefined
-      ? [`targetSlot=${plan.targetSlot.toString()}`]
-      : []),
-    ...("observedAtMs" in plan && plan.observedAtMs !== undefined
-      ? [`observedAtMs=${plan.observedAtMs.toString()}`]
-      : []),
-    ...("deltaSlots" in plan
-      ? [`deltaSlots=${plan.deltaSlots.toString()}`]
-      : []),
-    ...("waitMs" in plan ? [`waitMs=${plan.waitMs.toString()}`] : []),
-    ...("invalidBeforeSlot" in plan && plan.invalidBeforeSlot !== undefined
-      ? [`invalidBefore=${plan.invalidBeforeSlot.toString()}`]
-      : []),
-    ...("invalidHereafterSlot" in plan &&
-    plan.invalidHereafterSlot !== undefined
-      ? [`invalidHereafter=${plan.invalidHereafterSlot.toString()}`]
-      : []),
-    ...("slotSource" in plan ? [`slotSource=${plan.slotSource}`] : []),
-    ...(plan.dependencyKey === undefined
-      ? []
-      : [`dependencyKey=${plan.dependencyKey}`]),
-    ...(plan.invalidationKey === undefined
-      ? []
-      : [`invalidationKey=${plan.invalidationKey}`]),
-  ].join(",");

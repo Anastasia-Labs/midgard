@@ -1,7 +1,10 @@
 import { SqlClient, SqlError } from "@effect/sql";
 import { Effect } from "effect";
 
-import { DatabaseError } from "@/database/utils/common.js";
+import {
+  DatabaseError,
+  sqlErrorToDatabaseError,
+} from "@/database/utils/common.js";
 import { Database } from "@/services/database.js";
 
 export type ProjectedEventRow = Record<string, unknown>;
@@ -301,3 +304,108 @@ export const clearProjectedHeaderAssignmentByEventIds = (
       WHERE ${sql(config.idColumn)} IN ${sql.in(ids)}
         AND ${sql(config.projectedHeaderHashColumn)} = ${headerHash}`;
   });
+
+export type ProjectedEventAdapterMessages = {
+  readonly retrieveByProjectedHeaderHash: string;
+  readonly retrievePendingHeaderEntriesUpTo: string;
+  readonly retrieveProjectedPendingHeaderEntries: string;
+  readonly markAwaitingAsProjected: string;
+  readonly markProjectedByEventIds: string;
+  readonly clearProjectedHeaderAssignmentByEventIds: string;
+};
+
+export type ProjectedEventAdapterInput = {
+  readonly config: ProjectedEventTable;
+  readonly pendingHeaderStatuses?: readonly string[];
+  readonly projectedPendingStatuses?: readonly string[];
+  readonly messages: ProjectedEventAdapterMessages;
+};
+
+export const makeProjectedEventAdapter = <Entry extends object>({
+  config,
+  pendingHeaderStatuses = [],
+  projectedPendingStatuses = [config.projectedStatus],
+  messages,
+}: ProjectedEventAdapterInput) => ({
+  retrieveByProjectedHeaderHash: (
+    headerHash: Buffer,
+  ): Effect.Effect<readonly Entry[], DatabaseError, Database> =>
+    retrieveByProjectedHeaderHash<Entry>(config, headerHash).pipe(
+      Effect.withLogSpan(`retrieveByProjectedHeaderHash ${config.tableName}`),
+      sqlErrorToDatabaseError(
+        config.tableName,
+        messages.retrieveByProjectedHeaderHash,
+      ),
+    ),
+  retrievePendingHeaderEntriesUpTo: (
+    endTime: Date,
+  ): Effect.Effect<readonly Entry[], DatabaseError, Database> =>
+    retrievePendingHeaderEntriesUpTo<Entry>(
+      config,
+      endTime,
+      pendingHeaderStatuses,
+    ).pipe(
+      Effect.withLogSpan(
+        `retrievePendingHeaderEntriesUpTo ${config.tableName}`,
+      ),
+      sqlErrorToDatabaseError(
+        config.tableName,
+        messages.retrievePendingHeaderEntriesUpTo,
+      ),
+    ),
+  retrieveProjectedPendingHeaderEntries: (): Effect.Effect<
+    readonly Entry[],
+    DatabaseError,
+    Database
+  > =>
+    retrieveProjectedPendingHeaderEntries<Entry>(
+      config,
+      projectedPendingStatuses,
+    ).pipe(
+      Effect.withLogSpan(
+        `retrieveProjectedPendingHeaderEntries ${config.tableName}`,
+      ),
+      sqlErrorToDatabaseError(
+        config.tableName,
+        messages.retrieveProjectedPendingHeaderEntries,
+      ),
+    ),
+  markAwaitingAsProjected: (
+    ids: readonly Buffer[],
+  ): Effect.Effect<void, DatabaseError, Database> =>
+    markAwaitingAsProjected(config, ids).pipe(
+      Effect.withLogSpan(`markAwaitingAsProjected ${config.tableName}`),
+      sqlErrorToDatabaseError(
+        config.tableName,
+        messages.markAwaitingAsProjected,
+      ),
+    ),
+  markProjectedByEventIds: (
+    ids: readonly Buffer[],
+    projectedHeaderHash: Buffer,
+  ): Effect.Effect<void, DatabaseError, Database> =>
+    markProjectedByEventIds(config, ids, projectedHeaderHash).pipe(
+      Effect.withLogSpan(`markProjectedByEventIds ${config.tableName}`),
+      sqlErrorToDatabaseError(
+        config.tableName,
+        messages.markProjectedByEventIds,
+      ),
+    ),
+  clearProjectedHeaderAssignmentByEventIds: (
+    ids: readonly Buffer[],
+    projectedHeaderHash: Buffer,
+  ): Effect.Effect<void, DatabaseError, Database> =>
+    clearProjectedHeaderAssignmentByEventIds(
+      config,
+      ids,
+      projectedHeaderHash,
+    ).pipe(
+      Effect.withLogSpan(
+        `clearProjectedHeaderAssignmentByEventIds ${config.tableName}`,
+      ),
+      sqlErrorToDatabaseError(
+        config.tableName,
+        messages.clearProjectedHeaderAssignmentByEventIds,
+      ),
+    ),
+});

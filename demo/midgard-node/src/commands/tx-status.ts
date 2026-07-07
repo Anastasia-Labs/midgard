@@ -24,6 +24,10 @@ export type ResolveTxStatusInput = {
   readonly inMempool: boolean;
   readonly inProcessedMempool: boolean;
   readonly localFinalizationPending: boolean;
+  readonly headerHash?: string | null;
+  readonly headerStatus?: string | null;
+  readonly mergeStatus?: string | null;
+  readonly confirmedLedgerFinalized?: boolean;
 };
 
 /**
@@ -49,6 +53,11 @@ export type ResolvedTxStatus =
         | "validating"
         | "queued"
         | "not_found";
+      readonly committedMeaning?: "immutable_db_inclusion_not_confirmed_ledger_merge";
+      readonly headerHash?: string;
+      readonly headerStatus?: string;
+      readonly mergeStatus?: string;
+      readonly confirmedLedgerFinalized?: boolean;
     };
 
 /**
@@ -61,6 +70,17 @@ export const resolveTxStatus = (
     return {
       txId: input.txIdHex,
       status: "committed",
+      committedMeaning: "immutable_db_inclusion_not_confirmed_ledger_merge",
+      ...(input.headerHash === undefined || input.headerHash === null
+        ? {}
+        : { headerHash: input.headerHash }),
+      ...(input.headerStatus === undefined || input.headerStatus === null
+        ? {}
+        : { headerStatus: input.headerStatus }),
+      ...(input.mergeStatus === undefined || input.mergeStatus === null
+        ? {}
+        : { mergeStatus: input.mergeStatus }),
+      confirmedLedgerFinalized: input.confirmedLedgerFinalized ?? false,
     };
   }
 
@@ -116,3 +136,42 @@ export const resolveTxStatus = (
     status: "not_found",
   };
 };
+
+export type ResolveTxStatusBatchInput = {
+  readonly txIdsHex: readonly string[];
+  readonly rejectionsByTxId: ReadonlyMap<string, TxRejectionDetails>;
+  readonly admissionStatusByTxId: ReadonlyMap<
+    string,
+    ResolveTxStatusInput["admissionStatus"]
+  >;
+  readonly immutableTxIds: ReadonlySet<string>;
+  readonly mempoolTxIds: ReadonlySet<string>;
+  readonly processedMempoolTxIds: ReadonlySet<string>;
+  readonly localFinalizationPending: boolean;
+  readonly headerEvidenceByTxId?: ReadonlyMap<
+    string,
+    {
+      readonly headerHash?: string;
+      readonly headerStatus?: string;
+      readonly mergeStatus?: string;
+      readonly confirmedLedgerFinalized?: boolean;
+    }
+  >;
+};
+
+export const resolveTxStatusBatch = (
+  input: ResolveTxStatusBatchInput,
+): readonly ResolvedTxStatus[] =>
+  input.txIdsHex.map((txIdHex) => {
+    const headerEvidence = input.headerEvidenceByTxId?.get(txIdHex);
+    return resolveTxStatus({
+      txIdHex,
+      rejection: input.rejectionsByTxId.get(txIdHex) ?? null,
+      admissionStatus: input.admissionStatusByTxId.get(txIdHex) ?? null,
+      inImmutable: input.immutableTxIds.has(txIdHex),
+      inMempool: input.mempoolTxIds.has(txIdHex),
+      inProcessedMempool: input.processedMempoolTxIds.has(txIdHex),
+      localFinalizationPending: input.localFinalizationPending,
+      ...(headerEvidence === undefined ? {} : headerEvidence),
+    });
+  });

@@ -9,10 +9,15 @@ import {
   WithdrawalsDB,
 } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
+import {
+  reviveEarliestCanonicalPayloadJournal,
+  withCanonicalHeaderJournals,
+} from "@/services/canonical-journal-recovery.js";
 import { Database, Globals } from "@/services/index.js";
 import { deserializeStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
 import { WorkerError } from "@/workers/utils/common.js";
 import {
+  SerializedCanonicalCommittedHeader,
   WorkerInput as BlockConfirmationWorkerInput,
   WorkerOutput as BlockConfirmationWorkerOutput,
 } from "@/workers/utils/confirm-block-commitments.js";
@@ -163,6 +168,48 @@ const abandonPendingBlockIfPresent = (
       headerHash,
     );
     yield* PendingBlockFinalizationsDB.markAbandoned(headerHash);
+  });
+
+const abandonUnsubmittedPendingBlockIfStillPresent = (
+  record: PendingBlockFinalizationsDB.Record,
+): Effect.Effect<boolean, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const headerHash = record[PendingBlockFinalizationsDB.Columns.HEADER_HASH];
+    const abandoned =
+      yield* PendingBlockFinalizationsDB.markUnsubmittedAbandoned(headerHash);
+    if (!abandoned) {
+      return false;
+    }
+    yield* DepositsDB.clearProjectedHeaderAssignmentByEventIds(
+      record.depositEventIds,
+      headerHash,
+    );
+    yield* ForcedTransactionsDB.clearProjectedHeaderAssignmentByEventIds(
+      record.forcedTransactionEventIds,
+      headerHash,
+    );
+    yield* WithdrawalsDB.clearProjectedHeaderAssignmentByEventIds(
+      record.withdrawalEventIds,
+      headerHash,
+    );
+    return true;
+  });
+
+const reviveCanonicalPayloadJournalFromWorkerSnapshot = (
+  canonicalHeaders: readonly SerializedCanonicalCommittedHeader[],
+) =>
+  Effect.gen(function* () {
+    const headersWithJournals = yield* withCanonicalHeaderJournals(
+      canonicalHeaders.map((header) => ({
+        headerHash: Buffer.from(header.headerHash, "hex"),
+        endTimeMs: header.endTimeMs,
+        blockUTxO: header.blockUTxO,
+      })),
+    );
+    return yield* reviveEarliestCanonicalPayloadJournal({
+      canonicalHeaders: headersWithJournals,
+      logPrefix: "Steady-state confirmation",
+    });
   });
 
 const runConfirmationWorkerInThread: ConfirmationWorkerRunner = (input) =>
@@ -358,8 +405,48 @@ export const buildBlockConfirmationAction = (
               PendingBlockFinalizationsDB.Columns.BLOCK_END_TIME
             ].getTime();
         } else {
-          yield* Ref.set(globals.LOCAL_FINALIZATION_PENDING, false);
-          yield* Ref.set(globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK, "");
+          const revivedCanonicalPayloadJournal =
+            yield* reviveCanonicalPayloadJournalFromWorkerSnapshot(
+              workerOutput.canonicalHeaders,
+            );
+          if (Option.isSome(revivedCanonicalPayloadJournal)) {
+            const recoveryBlock =
+              revivedCanonicalPayloadJournal.value.blockUTxO;
+            if (recoveryBlock === undefined) {
+              return yield* Effect.fail(
+                new ConfirmationInvariantError({
+                  message:
+                    "Canonical payload journal recovery target is missing its serialized state-queue UTxO",
+                  cause: `header_hash=${revivedCanonicalPayloadJournal.value.headerHash.toString(
+                    "hex",
+                  )}`,
+                }),
+              );
+            }
+            const journalBoundaryMs =
+              revivedCanonicalPayloadJournal.value.journal.pipe(
+                Option.match({
+                  onNone: () => revivedCanonicalPayloadJournal.value.endTimeMs,
+                  onSome: (journal) =>
+                    journal[
+                      PendingBlockFinalizationsDB.Columns.BLOCK_END_TIME
+                    ].getTime(),
+                }),
+              );
+            nextLocalBlockBoundaryMs = Math.max(
+              nextLocalBlockBoundaryMs,
+              revivedCanonicalPayloadJournal.value.endTimeMs,
+              journalBoundaryMs,
+            );
+            yield* Ref.set(globals.LOCAL_FINALIZATION_PENDING, true);
+            yield* Ref.set(
+              globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK,
+              recoveryBlock,
+            );
+          } else {
+            yield* Ref.set(globals.LOCAL_FINALIZATION_PENDING, false);
+            yield* Ref.set(globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK, "");
+          }
         }
         yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH, "");
         yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS, 0);
@@ -371,20 +458,38 @@ export const buildBlockConfirmationAction = (
           globals.AVAILABLE_CONFIRMED_BLOCK,
           workerOutput.latestBlocksUTxO,
         );
-        yield* Effect.logInfo("🔍 ☑️  Submitted block confirmed.");
+        yield* Effect.logInfo(
+          Option.isSome(pending)
+            ? "🔍 ☑️  Submitted block confirmed."
+            : "🔍 ☑️  Canonical state_queue snapshot refreshed.",
+        );
         break;
       }
       case "StaleUnconfirmedRecoveryOutput": {
         const metadata = yield* stateQueueTipMetadata(
           workerOutput.latestBlocksUTxO,
         ).pipe(Effect.orDie);
+        let appliedStaleRecovery = true;
         if (
           Option.isSome(pending) &&
           pending.value[
             PendingBlockFinalizationsDB.Columns.HEADER_HASH
           ].toString("hex") === workerOutput.stalePendingHeaderHash
         ) {
-          yield* abandonPendingBlockIfPresent(pending.value);
+          if (workerOutput.staleSubmittedTxHash === "") {
+            appliedStaleRecovery =
+              yield* abandonUnsubmittedPendingBlockIfStillPresent(
+                pending.value,
+              );
+          } else {
+            yield* abandonPendingBlockIfPresent(pending.value);
+          }
+        }
+        if (!appliedStaleRecovery) {
+          yield* Effect.logInfo(
+            `🔍 Skipping stale unsubmitted recovery for ${workerOutput.stalePendingHeaderHash} because the pending-finalization row changed after the confirmation worker snapshot.`,
+          );
+          break;
         }
         yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH, "");
         yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS, 0);

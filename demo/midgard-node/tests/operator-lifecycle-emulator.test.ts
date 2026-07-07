@@ -12,8 +12,6 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
-import { withRealStateQueueAndOperatorContracts } from "@/services/midgard-contracts.js";
 import {
   buildAtomicProtocolInitTxProgram,
   ensureAtomicProtocolInitReferenceScriptsProgram,
@@ -25,6 +23,8 @@ import {
   registerAndActivateOperatorProgram,
   registerOperatorProgram,
 } from "@/transactions/register-active-operator.js";
+
+import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
 const EMULATOR_PROTOCOL_PARAMETERS = {
   ...PROTOCOL_PARAMETERS_DEFAULT,
@@ -44,18 +44,7 @@ const loadOperatorContracts = (
     outputIndex: number;
   },
   referenceScriptAuth: SDK.MintingValidator,
-) =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const placeholder = yield* AlwaysSucceedsContract;
-      return yield* withRealStateQueueAndOperatorContracts(
-        "Preprod",
-        placeholder,
-        oneShotOutRef,
-        { referenceScriptAuth },
-      );
-    }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
-  );
+) => loadRealMidgardContractsForTest(oneShotOutRef, referenceScriptAuth);
 
 const buildOperatorAwareInitializationTx = async (
   lucid: Awaited<ReturnType<typeof Lucid>>,

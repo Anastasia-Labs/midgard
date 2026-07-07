@@ -642,12 +642,14 @@ export const reconcileDaAttestedProgram = ({
     const headerHashHex = headerHash.toString("hex");
     let localPayload = yield* DaPayloadsDB.retrieveByHeaderHash(headerHash);
     const repairActions: string[] = [];
+    let backfillSkipped: readonly { readonly reason: string }[] = [];
     if (Option.isNone(localPayload) && repair) {
       const backfill = yield* backfillMissingDaPayloadsFromFinalizedJournals({
         headerHash,
         limit: 1,
       });
       repairActions.push("backfill_missing_da_payload");
+      backfillSkipped = backfill.skipped;
       if (backfill.backfilled.includes(headerHashHex)) {
         localPayload = yield* DaPayloadsDB.retrieveByHeaderHash(headerHash);
       }
@@ -658,6 +660,13 @@ export const reconcileDaAttestedProgram = ({
         present: Option.isSome(localPayload),
       }),
     ];
+    if (backfillSkipped.length > 0) {
+      evidenceEntries.push(
+        evidence("da_payload_backfill_skipped", {
+          reasons: backfillSkipped.map((entry) => entry.reason),
+        }),
+      );
+    }
     if (watcherUrl !== undefined && deploymentFingerprint !== undefined) {
       const watcher = yield* readWatcherHeaderStatus({
         watcherUrl,
@@ -703,8 +712,11 @@ export const reconcileDaAttestedProgram = ({
       status: Option.isSome(localPayload) ? "pending" : "blocked",
       evidence: evidenceEntries,
       repairActions,
-      nextAction:
-        watcherUrl === undefined || deploymentFingerprint === undefined
+      nextAction: backfillSkipped.some((entry) =>
+        entry.reason.includes("journal excluded by status: abandoned"),
+      )
+        ? "Canonical journal is abandoned locally; revive it through confirmation recovery and complete local finalization before DA payload backfill."
+        : watcherUrl === undefined || deploymentFingerprint === undefined
           ? "Provide --watcher-url and --contract-deployment-info to prove DA attestation; local payload presence alone is not DA submission."
           : "DA payload or watcher witness evidence is missing.",
     });

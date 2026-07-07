@@ -1,7 +1,4 @@
-import {
-  fetchLocalOgmiosSubmitSlotSnapshot,
-  makeLocalOgmiosSubmitSlotSnapshotProvider,
-} from "@/local-ledger-slot.js";
+import { fetchLocalOgmiosSubmitSlotSnapshot } from "@/local-ledger-slot.js";
 
 export {
   fetchLocalOgmiosSubmitSlotSnapshot,
@@ -16,8 +13,5 @@ export {
   SUBMIT_SLOT_VALIDITY_BUFFER,
   type SubmitSlotSnapshot,
 } from "@/local-ledger-slot.js";
-
-export const makeLocalOgmiosSubmitSlotProvider =
-  makeLocalOgmiosSubmitSlotSnapshotProvider;
 
 export const readLocalOgmiosSubmitSlot = fetchLocalOgmiosSubmitSlotSnapshot;

@@ -58,6 +58,7 @@ import {
   type CurrentOperatorSchedulerWindow,
   type EarliestCommitSchedulerPlan,
   establishEndTimeFromTxRequests,
+  planCommitBatchBudgets,
   planSchedulerAwareCommitSelection,
   selectCommitTxCandidates,
   shouldDeferCommitSubmission,
@@ -516,6 +517,10 @@ const databaseOperationsProgram = (
   MidgardContracts | Database | Lucid | NodeConfig
 > =>
   Effect.gen(function* () {
+    const workerStartedAtMs = Date.now();
+    yield* Effect.logInfo(
+      `pipeline_trace phase=commit_worker_started at_ms=${workerStartedAtMs.toString()}`,
+    );
     const mempoolTxs = yield* MempoolDB.retrieve;
     const currentBlockStartTime = new Date(
       workerInput.data.currentBlockStartTimeMs,
@@ -662,7 +667,22 @@ const databaseOperationsProgram = (
         `🔹 Scheduler-aware commit planner will not cap to current scheduler window (${schedulerAwareCommitSelection.reason}).`,
       );
     }
-    const candidateSelection = schedulerAwareCommitSelection.candidateSelection;
+    const budgetedCommitSelection = planCommitBatchBudgets({
+      candidateSelection: schedulerAwareCommitSelection.candidateSelection,
+    });
+    const batchSelectedAtMs = Date.now();
+    if (
+      budgetedCommitSelection.plan.selectedTxCount > 0 ||
+      budgetedCommitSelection.prunedTxCount > 0
+    ) {
+      yield* Effect.logInfo(
+        `🔹 Commit batch planner selected tx_count=${budgetedCommitSelection.plan.selectedTxCount.toString()}, tx_bytes=${budgetedCommitSelection.plan.selectedTxBytes.toString()}, estimated_da_payload_bytes=${budgetedCommitSelection.plan.estimatedDaPayloadBytes.toString()}, estimated_commit_build_ms=${budgetedCommitSelection.plan.estimatedCommitBuildMs.toString()}, stop_reason=${budgetedCommitSelection.plan.stopReason}, pruned_tx_count=${budgetedCommitSelection.prunedTxCount.toString()}.`,
+      );
+    }
+    const candidateSelection = budgetedCommitSelection.candidateSelection;
+    yield* Effect.logInfo(
+      `pipeline_trace phase=batch_selected at_ms=${batchSelectedAtMs.toString()} elapsed_ms=${Math.max(0, batchSelectedAtMs - workerStartedAtMs).toString()} selected_tx_count=${budgetedCommitSelection.plan.selectedTxCount.toString()} selected_tx_bytes=${budgetedCommitSelection.plan.selectedTxBytes.toString()} stop_reason=${budgetedCommitSelection.plan.stopReason}`,
+    );
     const effectiveUserEventOnlyEndTime =
       schedulerAwareCommitSelection.userEventOnlyEndTime;
     const blockEndTimeCapMs = schedulerAwareCommitSelection.blockEndTimeCapMs;
@@ -751,6 +771,7 @@ const databaseOperationsProgram = (
         Date.now() - baseHydrationStartedAtMs,
       ).toString()},source=${commitBase.source},base_entry_count=${initialLedgerEntries.length.toString()}`,
     );
+    const mpfProcessingStartedAtMs = Date.now();
     const processed = yield* processMpfs(
       ledgerMpf,
       transactionsMpf,
@@ -778,6 +799,10 @@ const databaseOperationsProgram = (
         initialLedgerEntries,
         selectedBaseUtxoRoot: commitBase.root,
       },
+    );
+    const mpfProcessingFinishedAtMs = Date.now();
+    yield* Effect.logInfo(
+      `pipeline_trace phase=mpf_processing_finished at_ms=${mpfProcessingFinishedAtMs.toString()} duration_ms=${Math.max(0, mpfProcessingFinishedAtMs - mpfProcessingStartedAtMs).toString()}`,
     );
 
     const {

@@ -1,7 +1,8 @@
-import { mkdir, rename, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
-
 import type { StepStatus, StepSummary, TxObservation } from "@/e2e/runner.js";
+import {
+  writeJsonFileAtomic,
+  writeTextFileAtomic,
+} from "@/files/atomic-write.js";
 
 export const E2E_SUMMARY_SCHEMA_VERSION = "midgard-e2e-summary-v2";
 
@@ -538,20 +539,6 @@ export const classifyNextSafeAction = (
   return "investigate_unknown";
 };
 
-export const recomputeVerdict = (
-  summary: Pick<
-    E2ERunSummary,
-    "steps" | "http" | "db" | "transactions" | "cleanRunGates"
-  >,
-): RunVerdict => {
-  return operatorVerdict({
-    cleanRunVerdict: recomputeCleanRunVerdict(summary),
-    functionalVerdict: recomputeFunctionalVerdict(
-      buildFinalFunctionalGates(summary),
-    ),
-  });
-};
-
 export const updateE2ERunSummary = (
   summary: E2ERunSummary,
   patch: Partial<
@@ -610,10 +597,7 @@ export const writeSummaryJsonAtomic = async (
   path: string,
   summary: E2ERunSummary,
 ): Promise<void> => {
-  await mkdir(dirname(path), { recursive: true });
-  const tmpPath = `${path}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
-  await writeFile(tmpPath, `${JSON.stringify(summary, null, 2)}\n`, "utf8");
-  await rename(tmpPath, path);
+  await writeJsonFileAtomic(path, summary);
 };
 
 export const renderSummaryMarkdown = (summary: E2ERunSummary): string => {
@@ -721,8 +705,5 @@ export const writeSummaryMarkdownAtomic = async (
   path: string,
   summary: E2ERunSummary,
 ): Promise<void> => {
-  await mkdir(dirname(path), { recursive: true });
-  const tmpPath = `${path}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
-  await writeFile(tmpPath, renderSummaryMarkdown(summary), "utf8");
-  await rename(tmpPath, path);
+  await writeTextFileAtomic(path, renderSummaryMarkdown(summary));
 };

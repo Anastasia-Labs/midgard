@@ -59,6 +59,24 @@ const projectedEventsTable = {
   idLabel: "event_id",
 } as const satisfies ProjectedEvents.ProjectedEventTable;
 
+const projectedEventAdapter = ProjectedEvents.makeProjectedEventAdapter<Entry>({
+  config: projectedEventsTable,
+  projectedPendingStatuses: [Status.Projected, Status.Consumed],
+  messages: {
+    retrieveByProjectedHeaderHash:
+      "Failed to retrieve deposit UTxOs by projected header hash",
+    retrievePendingHeaderEntriesUpTo:
+      "Failed to retrieve deposits pending header assignment up to the requested time",
+    retrieveProjectedPendingHeaderEntries:
+      "Failed to retrieve projected deposits awaiting header assignment",
+    markAwaitingAsProjected: "Failed to mark awaiting deposits as projected",
+    markProjectedByEventIds:
+      "Failed to mark deposits as assigned to the given header",
+    clearProjectedHeaderAssignmentByEventIds:
+      "Failed to clear projected header assignments for the given deposits",
+  },
+});
+
 const sameEntryPayload = (left: Entry, right: Entry): boolean =>
   left[Columns.ID].equals(right[Columns.ID]) &&
   left[Columns.INFO].equals(right[Columns.INFO]) &&
@@ -231,16 +249,7 @@ export const retrieveByCardanoTxHash = (
 export const retrieveByProjectedHeaderHash = (
   projectedHeaderHash: Buffer,
 ): Effect.Effect<readonly Entry[], DatabaseError, Database> =>
-  ProjectedEvents.retrieveByProjectedHeaderHash<Entry>(
-    projectedEventsTable,
-    projectedHeaderHash,
-  ).pipe(
-    Effect.withLogSpan(`retrieveByProjectedHeaderHash ${tableName}`),
-    sqlErrorToDatabaseError(
-      tableName,
-      "Failed to retrieve deposit UTxOs by projected header hash",
-    ),
-  );
+  projectedEventAdapter.retrieveByProjectedHeaderHash(projectedHeaderHash);
 
 export const retrieveTimeBoundEntries = (
   startTime: Date,
@@ -296,31 +305,12 @@ export const retrieveProjectedPendingHeaderEntries = (): Effect.Effect<
   readonly Entry[],
   DatabaseError,
   Database
-> =>
-  ProjectedEvents.retrieveProjectedPendingHeaderEntries<Entry>(
-    projectedEventsTable,
-    [Status.Projected, Status.Consumed],
-  ).pipe(
-    Effect.withLogSpan(`retrieveProjectedPendingHeaderEntries ${tableName}`),
-    sqlErrorToDatabaseError(
-      tableName,
-      "Failed to retrieve projected deposits awaiting header assignment",
-    ),
-  );
+> => projectedEventAdapter.retrieveProjectedPendingHeaderEntries();
 
 export const retrievePendingHeaderEntriesUpTo = (
   endTime: Date,
 ): Effect.Effect<readonly Entry[], DatabaseError, Database> =>
-  ProjectedEvents.retrievePendingHeaderEntriesUpTo<Entry>(
-    projectedEventsTable,
-    endTime,
-  ).pipe(
-    Effect.withLogSpan(`retrievePendingHeaderEntriesUpTo ${tableName}`),
-    sqlErrorToDatabaseError(
-      tableName,
-      "Failed to retrieve deposits pending header assignment up to the requested time",
-    ),
-  );
+  projectedEventAdapter.retrievePendingHeaderEntriesUpTo(endTime);
 
 export const retrieveProjectedEntries = (): Effect.Effect<
   readonly Entry[],
@@ -340,44 +330,21 @@ export const retrieveProjectedEntries = (): Effect.Effect<
 export const markAwaitingAsProjected = (
   ids: readonly Buffer[],
 ): Effect.Effect<void, DatabaseError, Database> =>
-  ProjectedEvents.markAwaitingAsProjected(projectedEventsTable, ids).pipe(
-    Effect.withLogSpan(`markAwaitingAsProjected ${tableName}`),
-    sqlErrorToDatabaseError(
-      tableName,
-      "Failed to mark awaiting deposits as projected",
-    ),
-  );
+  projectedEventAdapter.markAwaitingAsProjected(ids);
 
 export const markProjectedByEventIds = (
   ids: readonly Buffer[],
   projectedHeaderHash: Buffer,
 ): Effect.Effect<void, DatabaseError, Database> =>
-  ProjectedEvents.markProjectedByEventIds(
-    projectedEventsTable,
-    ids,
-    projectedHeaderHash,
-  ).pipe(
-    Effect.withLogSpan(`markProjectedByEventIds ${tableName}`),
-    sqlErrorToDatabaseError(
-      tableName,
-      "Failed to mark deposits as assigned to the given header",
-    ),
-  );
+  projectedEventAdapter.markProjectedByEventIds(ids, projectedHeaderHash);
 
 export const clearProjectedHeaderAssignmentByEventIds = (
   ids: readonly Buffer[],
   projectedHeaderHash: Buffer,
 ): Effect.Effect<void, DatabaseError, Database> =>
-  ProjectedEvents.clearProjectedHeaderAssignmentByEventIds(
-    projectedEventsTable,
+  projectedEventAdapter.clearProjectedHeaderAssignmentByEventIds(
     ids,
     projectedHeaderHash,
-  ).pipe(
-    Effect.withLogSpan(`clearProjectedHeaderAssignmentByEventIds ${tableName}`),
-    sqlErrorToDatabaseError(
-      tableName,
-      "Failed to clear projected header assignments for the given deposits",
-    ),
   );
 
 export const markConsumedByEventIds = (

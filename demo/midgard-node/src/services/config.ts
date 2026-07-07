@@ -22,7 +22,6 @@ type Provider = "Kupmios";
  */
 type NodeConfigDep = {
   L1_PROVIDER: Provider;
-  L1_PROVIDER_FAILOVER: readonly never[];
   L1_PROVIDER_PREFLIGHT_TIMEOUT_MS: number;
   L1_PROVIDER_RATE_LIMIT_COOLDOWN_MS: number;
   L1_RECENT_TX_VISIBILITY_TIMEOUT_MS: number;
@@ -95,6 +94,7 @@ const rejectDeprecatedRootStoreEnvVars = Effect.sync(() => {
     ["LEDGER_MPT_DB_PATH", "LEDGER_MPF_DB_PATH"],
     ["MEMPOOL_MPT_DB_PATH", "TRANSACTIONS_MPF_DB_PATH"],
     ["MEMPOOL_MPF_DB_PATH", "TRANSACTIONS_MPF_DB_PATH"],
+    ["L1_PROVIDER_FAILOVER", "local Kupmios configuration"],
   ] as const;
   const configuredDeprecated = deprecated.filter(
     ([name]) => process.env[name] !== undefined,
@@ -130,17 +130,6 @@ const makeConfig = Effect.gen(function* () {
     "Preview",
     "Custom",
   )("NETWORK");
-  const providerFailover = yield* Config.string("L1_PROVIDER_FAILOVER").pipe(
-    Config.withDefault(""),
-    Config.mapAttempt((value) => {
-      if (value.trim().length > 0) {
-        throw new Error(
-          "L1_PROVIDER_FAILOVER is no longer supported for demo/midgard-node acceptance; use local Kupmios only.",
-        );
-      }
-      return [];
-    }),
-  );
   const l1ProviderPreflightTimeoutMs = yield* Config.integer(
     "L1_PROVIDER_PREFLIGHT_TIMEOUT_MS",
   ).pipe(
@@ -515,7 +504,6 @@ const makeConfig = Effect.gen(function* () {
 
   return {
     L1_PROVIDER: provider,
-    L1_PROVIDER_FAILOVER: providerFailover,
     L1_PROVIDER_PREFLIGHT_TIMEOUT_MS: l1ProviderPreflightTimeoutMs,
     L1_PROVIDER_RATE_LIMIT_COOLDOWN_MS: l1ProviderRateLimitCooldownMs,
     L1_RECENT_TX_VISIBILITY_TIMEOUT_MS: l1RecentTxVisibilityTimeoutMs,
