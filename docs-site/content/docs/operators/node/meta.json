@@ -1,0 +1,16 @@
+{
+  "title": "Running a Node",
+  "pages": [
+    "overview",
+    "server-http-api",
+    "cli-reference",
+    "initialization-deployment",
+    "database",
+    "background-fibers",
+    "deposits-withdrawals",
+    "reserve-payout",
+    "compatibility-rules",
+    "benchmarks",
+    "e2e-testing-flow"
+  ]
+}

@@ -1,0 +1,124 @@
+---
+title: "L1 Backend"
+description: "The Cardano Layer 1 dependency stack for Midgard, the Docker Compose services (Cardano node, Ogmios, Kupo, Mithril bootstrap) and how to bring them up."
+---
+
+Midgard needs a synced Cardano Layer 1 backend to read chain state and submit
+transactions. The `l1-services/docker-compose.yml` file defines a Docker Compose
+stack that boots a Cardano node, bootstrapped from a Mithril snapshot rather than
+synced from genesis, together with the Ogmios and Kupo indexers.
+
+## Services
+
+The compose file defines five services, wired together with `depends_on` ordering.
+Most edges wait for readiness; only Kupo starts as soon as Ogmios has started.
+
+| Service | Image | Role |
+| --- | --- | --- |
+| `config-init` | `curlimages/curl:latest` | One-shot init: downloads the network config files (`config.json`, `topology.json`, and the Byron/Shelley/Alonzo/Conway genesis files) from `book.play.dev.cardano.org` if they are not already present. |
+| `mithril-bootstrap` | `${MITHRIL_CLIENT_IMAGE}` | One-shot: uses the Mithril client to download a Cardano DB snapshot (`cardano-db download --include-ancillary`) so the node does not have to sync from genesis. Skips if a DB is already present. |
+| `cardano-node` | `${CARDANO_NODE_IMAGE}` | Runs the Cardano node. Exposes its Unix socket on a shared IPC volume; a healthcheck waits for `/ipc/node.socket` to exist. |
+| `ogmios` | `cardanosolutions/ogmios:v6.11.0` | WebSocket/HTTP bridge to the node. Listens on port `1337`; starts once the node is healthy. |
+| `kupo` | `cardanosolutions/kupo:v2.9.0` | Chain indexer. Connects to Ogmios, matches all patterns (`--match "*"`) from `origin`, and listens on port `1442`. |
+
+<Callout type="info" title="node-ipc is a shared volume, not a service">
+The node's Unix domain socket is shared between `cardano-node` and `ogmios` via a
+named Docker volume called `node-ipc` (mounted at `/ipc`). It is declared under
+the compose file's `volumes:` section, not as a service. The `DATA_DIR`-backed
+volume holds the downloaded config and the Cardano DB.
+</Callout>
+
+## Startup order
+
+<Mermaid chart={`flowchart TD
+  A[config-init: download network config] --> B[mithril-bootstrap: download DB snapshot]
+  B --> C[cardano-node: start and expose node.socket]
+  C -->|healthy: socket present| D[ogmios: port 1337]
+  D --> E[kupo: indexer on port 1442]
+`} />
+
+- `mithril-bootstrap` runs after `config-init` completes successfully
+  (`service_completed_successfully`).
+- `cardano-node` runs after `mithril-bootstrap` completes successfully
+  (`service_completed_successfully`).
+- `ogmios` waits for the `cardano-node` healthcheck to pass (`service_healthy`), which
+  tests for the presence of `/ipc/node.socket`.
+- `kupo` starts once the `ogmios` container has started. This edge is a plain
+  `depends_on` and does not wait for Ogmios to become reachable, so Kupo may retry on
+  startup.
+
+## Environment variables
+
+Configuration is supplied through environment variables. `l1-services/.env.example`
+documents the following:
+
+| Variable | Example / default | Purpose |
+| --- | --- | --- |
+| `COMPOSE_PROJECT_NAME` | `midgard` | Docker Compose project name. |
+| `CARDANO_NODE_IMAGE` | `ghcr.io/intersectmbo/cardano-node:10.6.3` | Cardano node image. |
+| `MITHRIL_CLIENT_IMAGE` | `ghcr.io/input-output-hk/mithril-client:latest` | Mithril client image. |
+| `CARDANO_NETWORK` | `preprod` | Target network (e.g. `preprod`, `preview`, `mainnet`); drives the config download URL. |
+| `AGGREGATOR_ENDPOINT` | `https://aggregator.release-preprod.api.mithril.network/aggregator` | Mithril aggregator for the target network. |
+| `SNAPSHOT_DIGEST` | `latest` | Snapshot digest to download; `latest` always pulls the most recent snapshot. |
+| `GENESIS_VERIFICATION_KEY` | (empty, must be set) | Mithril genesis verification key for the target network. |
+| `ANCILLARY_VERIFICATION_KEY` | (empty, must be set) | Ancillary verification key, needed for `--include-ancillary`. |
+| `DATA_DIR` | `./data` | Base directory for all service data volumes. |
+
+<Callout type="warn" title="Verification keys are required">
+`GENESIS_VERIFICATION_KEY` and `ANCILLARY_VERIFICATION_KEY` are blank in the example
+file. The Mithril download will not verify without them. The `.env.example` comments
+point to the IOG-published key locations for each network.
+</Callout>
+
+<Callout type="warn" title="cardano-node is pinned to preprod">
+`CARDANO_NETWORK` drives the config download and the Mithril aggregator for
+`config-init` and `mithril-bootstrap`, but the `cardano-node` service sets
+`NETWORK=preprod` directly in `docker-compose.yml`. To target `preview` or `mainnet`
+you must change that service's `NETWORK` value as well, not only `CARDANO_NETWORK`.
+</Callout>
+
+## Bringing it up
+
+<Steps>
+
+<Step>
+Copy the example environment file and fill in the two Mithril verification keys
+for your target network:
+
+```sh
+cd l1-services
+cp .env.example .env
+```
+</Step>
+
+<Step>
+Start the stack. The two init services (`config-init`, `mithril-bootstrap`) run to
+completion first, then the long-running services start in dependency order:
+
+```sh
+docker compose up -d
+```
+</Step>
+
+<Step>
+Once running, the node socket is available inside the `node-ipc` volume, Ogmios is
+reachable on port `1337`, and Kupo is reachable on port `1442`. Downloaded config
+and the Cardano DB live under `DATA_DIR` (`./data` by default).
+</Step>
+
+</Steps>
+
+## Where to go next
+
+<Cards>
+  <Card
+    title="Repository map"
+    href="/docs/getting-started/repository-map"
+    description="Where the L1 services sit relative to the rest of the monorepo."
+  />
+  <Card
+    title="Run a node"
+    href="/docs/operators"
+    description="Operate a Midgard node against this L1 backend."
+  />
+</Cards>

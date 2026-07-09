@@ -1,0 +1,117 @@
+---
+title: "Builder State Machine"
+description: "How lucid-midgard turns user intent into native transaction bytes, internal builder state, immutability and composition, the canonicalization phases, ordering rules, conflict checks, and local chaining."
+---
+
+The builder is a deterministic state machine from user intent to native
+transaction bytes. Its implementation is split across the `src/builder/`
+directory:
+
+- `context.ts`: builder context snapshot (provider, config, wallet).
+- `state.ts`: the internal builder state and empty-state helpers.
+- `normalizers.ts`: input normalization.
+- `balancing.ts`: coin selection, fees, and change.
+- `script-materialization.ts`: resolving inline and reference scripts.
+- `witness-bundle.ts`: witness bucket assembly and partial-witness bundles.
+- `metadata.ts`: completion metadata (`CompleteTxMetadata`).
+- `imported-tx.ts`: `fromTx` import path.
+- `unsigned-tx.ts`: the unsigned native transaction shape.
+- `status.ts`: status normalization and awaiting.
+
+## Internal state
+
+The builder state records spend inputs (with optional spend redeemers),
+reference inputs, authored outputs, required signers, required observers and
+observer redeemers, mint assets and mint redeemers, inline scripts, reference
+script dependencies, datum witnesses, the validity interval, network id, fee and
+balancing mode, and change policy. The state is structurally typed and
+serializable enough to inspect before signing via `snapshot()` /
+`debugSnapshot()`.
+
+## Immutability and composition
+
+The builder prefers immutable methods that return a new instance. Even where
+mutable internals exist for performance, public behavior is snapshot-safe: once
+`complete()` starts, later user calls cannot affect that completion.
+
+Composition follows the same rule. `a.compose(b, c)` returns a new immutable
+builder and never mutates any source fragment. Context compatibility is checked
+before merge, provider identity, provider generation, protocol-info
+diagnostics, wallet identity, native tx version, network id, and UTxO override
+generation must all agree. `compose` merges fragments left-to-right and
+recomputes derived roots, redeemer indexes, language views, and script integrity
+during final completion.
+
+## Canonicalization phases
+
+`complete()` runs these phases in order:
+
+<Steps>
+<Step>Normalize and validate builder inputs.</Step>
+<Step>Resolve provider-dependent defaults such as protocol fee parameters.</Step>
+<Step>Select additional inputs if balancing is enabled.</Step>
+<Step>Create an explicit change output if required.</Step>
+<Step>Derive script purpose indexes.</Step>
+<Step>Build native preimage CBOR buckets.</Step>
+<Step>Compute roots and compact commitments.</Step>
+<Step>Construct the unsigned native transaction.</Step>
+<Step>Optionally run local validation.</Step>
+</Steps>
+
+Signing happens **after** unsigned completion because signatures cover the final
+body hash.
+
+## Ordering rules
+
+Midgard validation depends on exact ordering. The builder derives context
+indexes using validator ordering semantics:
+
+- Spend inputs in script context are sorted lexicographically by `TxOutRef`.
+- Reference inputs in script context are sorted lexicographically by `TxOutRef`.
+- **Outputs remain in authored transaction-body order.**
+- Mint policy ids are sorted lexicographically for redeemer indexing.
+- Required observer hashes are sorted lexicographically for redeemer indexing.
+- Protected receiving script hashes are deduplicated and sorted for receive
+  redeemer indexing.
+
+The wire preimage may preserve user-authored spend/reference input order where
+the protocol allows, but any derived index uses validator ordering.
+
+## Duplicate and conflict checks
+
+The builder fails before encoding when a spend input appears twice, a reference
+input appears twice, the same outref is both spend and reference input, a
+redeemer pointer is duplicated, a datum witness hash is duplicated, a required
+signer is malformed, or a required observer is not a script credential or script
+hash. These checks mirror Phase A and Phase B, but node validation remains
+authoritative.
+
+## Output policy
+
+Outputs must be explicit. The builder may add a change output during balancing,
+but it reports the generated change output in the completion result. It never
+silently drops assets or negative balances.
+
+## Local chaining
+
+`CompleteTx.producedOutputs()` derives optimistic local UTxOs from the Midgard
+transaction id, native **body output index**, and the exact output CBOR. The
+chained `outputCbor` is copied from the native output preimage byte-for-byte, so
+protected-output markers and script references cannot be lost through
+decode/re-encode. Local chaining uses body output indexes, not authored-output
+indexes, as the UTxO index namespace.
+
+```ts
+const [, produced, firstTx] = await first.chain();
+const secondTx = await midgard
+  .newTx()
+  .collectFrom([produced[0]])
+  .pay.ToAddress(nextAddress, produced[0].assets ?? {})
+  .complete();
+```
+
+<Callout type="warn" title="Chained outputs are optimistic">
+Local chained outputs are optimistic until node status reports acceptance or a
+later durable state. Phase B can still reject a chained spend for missing inputs
+or double spends.
+</Callout>

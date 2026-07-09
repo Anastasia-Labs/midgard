@@ -1,0 +1,145 @@
+---
+title: "Phase A, Structural & Native Validation"
+description: "Phase A decodes each queued Midgard L2 transaction and runs stateless structural, signature, and native-script checks before it can progress to dependency-aware ledger validation."
+---
+
+Phase A is the **stateless, per-transaction** stage of the Midgard validation
+pipeline, implemented in `src/phase-a.ts`. It takes a batch of `QueuedTx`
+records and, for each one independently, decodes the submitted CBOR and applies
+a fixed sequence of checks. Nothing in Phase A depends on other transactions or on
+any UTxO state; that is Phase B's job.
+
+## Entry point
+
+```ts
+export const runPhaseAValidation = (
+  queuedTxs: readonly QueuedTx[],
+  config: PhaseAConfig,
+): Effect.Effect<PhaseAResult>
+```
+
+Each queued transaction is validated with `Effect.forEach`, honoring the
+`config.concurrency` knob (values `<= 0` run `"unbounded"`). Results are
+partitioned into `accepted: PhaseAValidatedTx[]` and `rejected: RejectedTx[]`.
+A result is treated as accepted when it carries a `ledgerTx` field.
+
+`PhaseAConfig` supplies the parameters the checks need:
+
+```ts
+type PhaseAConfig = {
+  readonly expectedNetworkId: bigint;
+  readonly minFeeA: bigint;
+  readonly minFeeB: bigint;
+  readonly concurrency: number;
+  readonly strictnessProfile: string;
+};
+```
+
+## Per-transaction checks
+
+`validateNativeOne` runs the checks in order and returns the first rejection it
+encounters. The order matters, later checks assume earlier ones passed.
+
+### 1. Decode
+
+The queued CBOR is decoded with
+`decodeMidgardSubmittedTxFromCanonicalCbor`. A decode failure maps to a specific
+reject code: a ledger-stage failure becomes `E_INVALID_OUTPUT` or
+`E_INVALID_FIELD_TYPE`, and any other failure becomes `E_CBOR_DESERIALIZATION`.
+
+### 2. Transaction body invariants
+
+| Check | Reject code | Condition |
+| --- | --- | --- |
+| Tx id match | `E_TX_HASH_MISMATCH` | Decoded `ledgerTx.txId` must equal the queued `txId`. |
+| Validity flag | `E_IS_VALID_FALSE_FORBIDDEN` | `ledgerTx.validity` must be `TxIsValid`. |
+| Auxiliary data | `E_AUX_DATA_FORBIDDEN` | `auxiliaryDataHash` must equal the canonical empty hash (`EMPTY_NULL_ROOT`). |
+| Network id | `E_NETWORK_ID_MISMATCH` | If present, `networkId` must equal `config.expectedNetworkId`. |
+| Minimum fee | `E_MIN_FEE` | `fee` must be `>= minFeeA * txCbor.length + minFeeB`. |
+
+<Callout type="info">
+The minimum-fee formula is linear in the *serialized transaction size*, the
+byte length of the queued CBOR, matching Cardano's `minFeeA`/`minFeeB` fee
+model.
+</Callout>
+
+### 3. Input sets: `validateInputSets`
+
+- Rejects `E_EMPTY_INPUTS` when there are no spend inputs.
+- Rejects `E_DUPLICATE_INPUT_IN_TX` on a duplicated spend input, a duplicated
+  reference input, or an out-ref that appears in **both** the spend and
+  reference sets. Out-refs are compared by their canonical CBOR-hex encoding
+  via `midgardOutRefToCborHex`.
+
+### 4. Validity interval: `validateValidityInterval`
+
+Rejects `E_INVALID_VALIDITY_INTERVAL_FORMAT` when a bound is negative, or when
+`validityIntervalStart > validityIntervalEnd`.
+
+### 5. Required signers: `validateRequiredSigners`
+
+Every hash in `requiredSignerHashes` must appear in the transaction's
+`witnessKeyHashes`, else `E_MISSING_REQUIRED_WITNESS`.
+
+### 6. VKey witness signatures: `verifyVKeyWitnessSignatures`
+
+Each `MidgardLedgerVKeyWitness` is checked with CML: the raw `vkey` verifies the
+`signature` over the transaction body hash (`txId`). A failure yields
+`E_INVALID_SIGNATURE`.
+
+### 7. Native script witnesses: `validateNativeScriptWitnesses`
+
+For each script witness whose language is `NativeCardano`,
+`verifyMidgardNativeScript` evaluates the native script against the transaction's
+validity interval and the set of witness signer hashes. A failure yields
+`E_NATIVE_SCRIPT_INVALID`. Non-native scripts are skipped here, they are
+evaluated in [Phase B](/docs/validation/phase-b).
+
+### 8. Required observers: `validateRequiredObservers`
+
+Rejects `E_INVALID_FIELD_TYPE` on a duplicated required-observer hash.
+
+### 9. Script-evaluation preconditions: `validateScriptEvaluationPreconditions`
+
+When `requiresPlutusEvaluation` is set:
+
+- The `scriptIntegrityHash` must not be the canonical empty hash, a plutus
+  witness bundle requires a script-data commitment (`E_INVALID_FIELD_TYPE`).
+- If required observers are present, `networkId` must be set
+  (`E_INVALID_FIELD_TYPE`).
+
+## Output: `PhaseAValidatedTx`
+
+On success, `buildPhaseAValidatedTx` (from `validation-candidate.ts`)
+materializes the candidate consumed by Phase B. Its JSDoc is explicit about
+authority: `ledgerTx` "is authoritative for transaction semantics", while the
+`graph` and `derived` projections "must be produced from `ledgerTx`, not
+authored independently by callers."
+
+```ts
+type PhaseAValidatedTx = {
+  readonly ledgerTx: MidgardLedgerTx;            // authoritative semantics
+  readonly submission: { txCbor; arrivalSeq; createdAt };
+  readonly graph: {                              // consumed by Phase B
+    readonly spentOutRefHexes: readonly string[];
+    readonly referenceOutRefHexes: readonly string[];
+    readonly produced: readonly LedgerEntry[];
+  };
+  readonly derived: {                            // non-authoritative projections
+    readonly outputSum: MidgardValue;
+    readonly mintDelta: MidgardValueDelta;
+    readonly witnessKeyHashHexes: readonly string[];
+    // ...script-hash projections, redeemerWitnessHash, requiresScriptEvaluation
+  };
+};
+```
+
+If materialization throws, the transaction is rejected with `E_INVALID_OUTPUT`
+("failed to materialize Phase B candidate").
+
+<Callout type="info">
+Because Phase A is per-transaction and side-effect free, its checks are safe to
+run at `"unbounded"` concurrency. The dependency and double-spend reasoning that
+requires ordering is deferred to
+[Phase B](/docs/validation/phase-b).
+</Callout>

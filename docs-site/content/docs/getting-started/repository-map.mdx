@@ -1,0 +1,82 @@
+---
+title: "Repository Map"
+description: "How the Midgard monorepo is laid out, on-chain validators, the demo TypeScript workspace, the technical specification, and supporting directories."
+---
+
+Midgard is a single repository containing the on-chain protocol, the off-chain
+SDK, demo node and runtime implementations, and the LaTeX technical
+specification.
+
+## Top-level layout
+
+| Directory | Purpose | Docs |
+| --- | --- | --- |
+| `onchain/aiken` | Primary Aiken validators, minting policies, and shared protocol libraries. | [On-Chain Validators](/docs/onchain/overview) |
+| `onchain/plutarch` | Plutarch models, validators, and test helpers that mirror important protocol logic. | [On-Chain Validators](/docs/onchain/overview) |
+| `demo/` | The off-chain TypeScript `pnpm` workspace: SDK, node runtime, and tooling. | [Developer SDK](/docs/sdk) |
+| `technical-spec` | The authoritative written specification and diagrams for the protocol. | [Protocol Specification](/docs/spec/building) |
+| `offchain` | A Haskell (`cabal`) off-chain package (`midgard-offchain.cabal`) with its own `src` and `tests`. | [Off-Chain Haskell](/docs/spec/offchain-haskell) |
+| `l1-services` | Docker Compose stack for the Cardano L1 dependencies (node, Ogmios, Kupo, Mithril bootstrap). | [L1 Backend](/docs/getting-started/l1-backend) |
+| `cddl-files` | CDDL schema files for protocol data structures. | Source only |
+| `scripts` | Repository helper scripts. | Source only |
+| `docs`, `docs-site` | Contributor documentation and this Fumadocs documentation site. | Source only |
+
+<Callout type="info" title="Source">
+The descriptions above come from the repository's `README.md` repository map and a
+listing of the repo root and `demo/`. Directories without a linked doc section
+(`offchain`, `cddl-files`, `scripts`) are listed for completeness.
+</Callout>
+
+## The `demo/` workspace
+
+The demo packages form a `pnpm` workspace. The workspace members declared in
+`demo/pnpm-workspace.yaml` are:
+
+| Package | Purpose | Docs |
+| --- | --- | --- |
+| `lucid-midgard` | Lucid-based building blocks for Midgard transactions. | [Developer SDK](/docs/sdk) |
+| `midgard-core` | Core protocol primitives and the native transaction codec. | [Developer SDK](/docs/sdk) |
+| `midgard-sdk` | Off-chain TypeScript SDK for building Midgard transactions and decoding protocol data. | [Developer SDK](/docs/sdk) |
+| `midgard-validation` | Shared Phase A / Phase B transaction validation used by node admission. | [Validation Engine](/docs/validation/overview) |
+| `midgard-node` | Demo node runtime, HTTP server, worker loops, stress scripts, and integration tests. | [Operators](/docs/operators) |
+| `midgard-fault-proofs` | Fault-proof tooling for challenging invalid blocks. | [Fault Proofs](/docs/fault-proofs/overview) |
+| `da-committee-node` | Data-availability committee node that validates and exchanges block payloads over libp2p. | [Watchers & DA](/docs/watchers/concept) |
+
+Additional directories exist under `demo/` that are not workspace members in
+`pnpm-workspace.yaml` but are described in the `README.md` or present in the tree:
+
+| Directory | Purpose |
+| --- | --- |
+| `midgard-manager` | CLI and transaction-generator tooling for operator workflows and demos. |
+| `midgard-watcher` | Watcher design notes. Markdown only, no implementation. The working watcher/DA service is `da-committee-node`. |
+| `midgard-utxo-cache` | UTxO caching support. |
+| `schemes` | Shared scheme definitions. |
+
+## Package documentation guides
+
+The `README.md` points to the following in-repo guides, each rendered elsewhere in
+this site or available as source:
+
+- **Technical specification guide** (`technical-spec/README.md`), how to build and
+  work on the LaTeX spec.
+- **Midgard node guide** (`demo/midgard-node/README.md`), runtime setup,
+  operational workflows, stress scripts, and test entrypoints.
+- **Midgard SDK guide** (`demo/midgard-sdk/README.md`), packaging, conventions,
+  and SDK module layout.
+- **Contribution guidelines** (`CONTRIBUTING.md`), repository workflow, hooks, and
+  review expectations.
+
+## Where to go next
+
+<Cards>
+  <Card
+    title="Local development"
+    href="/docs/getting-started/local-dev"
+    description="Toolchain versions and the build, test, and lint commands for the workspace."
+  />
+  <Card
+    title="L1 backend"
+    href="/docs/getting-started/l1-backend"
+    description="Bring up the Cardano node, Ogmios, and Kupo dependency stack."
+  />
+</Cards>

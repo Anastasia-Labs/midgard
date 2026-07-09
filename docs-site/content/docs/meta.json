@@ -1,0 +1,19 @@
+{
+  "title": "Midgard",
+  "root": true,
+  "pages": [
+    "index",
+    "---Getting Started---",
+    "getting-started",
+    "---Developer SDK---",
+    "sdk",
+    "validation",
+    "---Operations---",
+    "operators",
+    "watchers",
+    "fault-proofs",
+    "---Protocol---",
+    "onchain",
+    "spec"
+  ]
+}

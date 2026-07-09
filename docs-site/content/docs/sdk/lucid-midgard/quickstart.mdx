@@ -1,0 +1,149 @@
+---
+title: "Quickstart"
+description: "Build, sign, and submit your first Midgard-native L2 transfer with lucid-midgard, provider setup, wallet selection, and awaiting submission status."
+---
+
+`lucid-midgard` builds and signs **Midgard native canonical transaction bytes**.
+It does not build or submit Cardano transactions. This quickstart walks the real
+end-to-end flow: create a provider, attach `LucidMidgard`, select a wallet, then
+build, sign, submit, and await a transfer.
+
+## Install
+
+The intended package name is `@al-ft/lucid-midgard`. It is not yet on a public
+registry. In this repository it is consumed as a workspace package from
+`demo/lucid-midgard`.
+
+```ts
+import {
+  LucidMidgard,
+  MidgardNodeProvider,
+  walletFromExternalSigner,
+} from "@al-ft/lucid-midgard";
+```
+
+All of `LucidMidgard`, `MidgardNodeProvider`, and the wallet helpers are
+re-exported from the package root (`src/index.ts` re-exports `builder.js`,
+`core/index.js`, `provider.js`, and `wallet.js`).
+
+## End-to-end transfer
+
+<Steps>
+
+<Step>
+### Create a provider
+
+`MidgardNodeProvider.create(...)` is backed by the node HTTP API. It fetches
+`GET /protocol-info` during construction and **fails closed** when protocol info
+is unavailable, so the builder does not silently run against unknown protocol facts.
+Passing an explicit fallback overrides this, and you then own the correctness of the
+values you supplied.
+
+```ts
+const provider = await MidgardNodeProvider.create({
+  endpoint: "http://127.0.0.1:3000",
+});
+```
+</Step>
+
+<Step>
+### Attach `LucidMidgard`
+
+`LucidMidgard.new(provider, networkOrConfig?)` reads a provider snapshot and
+returns the configured instance. The second argument is either a `Network`
+string or a config object.
+
+```ts
+const midgard = await LucidMidgard.new(provider, {
+  network: "Preprod",
+  networkId: 0,
+});
+```
+
+The rest of these docs use `Preprod`, matching the
+[L1 backend](/docs/getting-started/l1-backend), which pins `cardano-node` to preprod.
+</Step>
+
+<Step>
+### Select a wallet
+
+Wallet selection lives under `midgard.selectWallet`. For an external body-hash
+signer, build the wallet with `walletFromExternalSigner(...)` and hand it to
+`selectWallet.fromExternalSigner(...)`.
+
+```ts
+midgard.selectWallet.fromExternalSigner(
+  walletFromExternalSigner({
+    address,
+    keyHash,
+    signBodyHash,
+  }),
+);
+```
+
+The signing domain is explicit: an external signer's `signBodyHash` receives the
+Midgard-native body hash, and `walletFromExternalSigner` verifies the returned
+witness key hash matches the wallet identity. Other adapters include
+`selectWallet.fromSeed`, `selectWallet.fromPrivateKey`, and `selectWallet.fromAddress`
+(read-only). See [Provider and Wallet](/docs/sdk/lucid-midgard/provider-and-wallet).
+</Step>
+
+<Step>
+### Build the transaction
+
+`midgard.newTx()` starts a fluent `TxBuilder`. `pay.ToAddress(address, value)`
+adds an output, and `complete()` canonicalizes, balances, computes roots, and
+derives the transaction id, returning a `CompleteTx`.
+
+```ts
+const tx = await midgard
+  .newTx()
+  .pay.ToAddress(destination, { lovelace: 2_000_000n })
+  .complete();
+```
+</Step>
+
+<Step>
+### Sign, submit, and await status
+
+Signing is explicit about the Midgard hash domain. `tx.sign.withWallet()` returns
+a partial-sign builder whose `.complete()` assembles a submit-capable `CompleteTx`.
+`.submit()` posts the canonical CBOR to the node and returns a `SubmittedTx` with
+durable admission metadata. `awaitStatus` polls until the requested state.
+
+```ts
+const signed = await tx.sign.withWallet().complete();
+const submitted = await signed.submit();
+await submitted.awaitStatus({ until: "accepted" });
+```
+</Step>
+
+</Steps>
+
+<Callout type="warn" title="Admission is not final validity">
+`submit()` returns durable admission, not validation acceptance. A `202` submit
+response means the transaction is `queued`. Use `status()` or `awaitStatus()` to
+observe the outcome. A rejection arrives as a `rejected` status carrying the node's
+reject code, not as a thrown error. See
+[Submission and Observability](/docs/sdk/lucid-midgard/submission-observability).
+</Callout>
+
+## Where to go next
+
+<Cards>
+  <Card
+    title="Public API"
+    href="/docs/sdk/lucid-midgard/public-api"
+    description="The full exported surface: entry point, builder, sign, provider, and wallet."
+  />
+  <Card
+    title="Native Transaction Model"
+    href="/docs/sdk/lucid-midgard/native-transaction-model"
+    description="The Midgard native v1 tuple, hashing, and canonical CBOR the builder targets."
+  />
+  <Card
+    title="Balancing and Fees"
+    href="/docs/sdk/lucid-midgard/balancing-fees"
+    description="How coin selection, the fee floor, and change output derivation work."
+  />
+</Cards>

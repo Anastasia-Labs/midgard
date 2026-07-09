@@ -1,0 +1,10 @@
+{
+  "title": "Developer SDK",
+  "pages": [
+    "index",
+    "lucid-midgard",
+    "midgard-core",
+    "midgard-sdk",
+    "boundary-plans"
+  ]
+}

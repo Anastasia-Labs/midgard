@@ -1,0 +1,11 @@
+{
+  "title": "Watchers & Data Availability",
+  "pages": [
+    "concept",
+    "adversarial-review",
+    "da-committee-node",
+    "libp2p-runtime",
+    "da-transport-migration",
+    "da-layer-spec"
+  ]
+}

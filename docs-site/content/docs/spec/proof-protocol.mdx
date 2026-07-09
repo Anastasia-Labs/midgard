@@ -1,0 +1,31 @@
+---
+title: "Proof Protocol"
+description: "The fraud-proof computation threads, catalogue, and tokens that adjudicate invalid blocks on L1."
+---
+
+Chapter 4 defines Midgard's **optimistic security core**: how an invalid block is
+challenged and resolved on L1. Each piece is specified as a minting policy plus one
+or more spending validators.
+
+## Components
+
+- **Fraud proof computation threads**: the single-threaded on-chain state machine
+  that steps a proof through verification across several transactions, so expensive
+  checks can be spread out and bounded per transaction. Defined by its **minting
+  policy** and **spending validators**. The thread token is what tracks a challenge
+  while it is in progress.
+- **Fraud proof catalogue**: the enumerated categories of invalidity a block can be
+  challenged for, with its own minting policy and spending validator.
+- **Fraud proof tokens**: minted once a computation thread succeeds, again with a
+  minting policy and spending validator. A fraud proof token is the permanent record
+  that a proof concluded, not authorization to open one.
+
+## In this repository
+
+The protocol is implemented by the
+[fraud-proof on-chain machines](/docs/onchain/fraud-proof-machines)
+(`fraud-proof`, `fraud-proof-catalogue`, `computation-thread`, and the per-category
+`fraud-proofs/<category>/step-0N` validators) and driven off-chain by the
+[fault-proof tooling](/docs/fault-proofs/overview). The deep validation a proof relies on is
+specified in [Phase-Two Validation](/docs/spec/phase-two-validation); watchers detect
+invalid blocks (see [Watchers](/docs/watchers/concept)).

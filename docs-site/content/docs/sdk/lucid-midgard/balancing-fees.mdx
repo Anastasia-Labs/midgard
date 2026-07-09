@@ -1,0 +1,114 @@
+---
+title: "Balancing, Fees & Coin Selection"
+description: "How lucid-midgard selects inputs, converges on a fee, and derives change, and why balancing is treated as a correctness feature rather than a convenience."
+---
+
+Balancing turns a partially specified transaction into one the node will admit: it
+selects inputs to cover the outputs and the fee, computes change, and produces a
+deterministic result. It runs inside `.complete()` and is implemented in
+`src/builder/balancing.ts`.
+
+Balancing is a **correctness feature**, not a best-effort convenience. A transaction
+the builder accepts must satisfy Phase B value preservation. Where it cannot, it fails
+rather than guessing.
+
+## The value equation
+
+Balancing must satisfy the same equation
+[Phase B](/docs/validation/phase-b) enforces:
+
+```text
+inputs − fee + mint − outputs = 0
+```
+
+Lovelace and multi-assets are accounted for exactly. Negative asset quantities are
+rejected except in a mint map, where they represent a burn.
+
+<Callout type="warn" title="Assets are never burned by omission">
+Leaving an asset out of the change output does not burn it. A burn must be an explicit
+mint-map entry with a negative quantity and the required policy authorization.
+Balancing will not silently drop value.
+</Callout>
+
+## Fees
+
+The fee floor is linear in the serialized transaction size, matching Cardano's fee
+model:
+
+```text
+fee >= minFeeA * native_cbor_length + minFeeB
+```
+
+Because the fee depends on the transaction size and the transaction size depends on the
+fee, the builder iterates until the two converge. `maxFeeIterations` bounds that loop.
+Failure to converge is a hard error, not a fallback to an approximate fee.
+
+`minFeeA` and `minFeeB` come from the provider snapshot by default. Supply
+`feePolicy` in `complete()` to pin them explicitly. `setMinFee(fee)` raises the floor
+for a single transaction; the provider fee policy stays authoritative unless you
+override it.
+
+## Coin selection
+
+Selection is deterministic, so the same builder state and provider snapshot always
+produce the same transaction. Candidates are ordered by:
+
+1. UTxOs that cover the required non-lovelace assets.
+2. Higher coverage of the required asset quantity.
+3. Lovelace coverage, after token coverage.
+4. Canonical `TxOutRef` order, to break ties.
+
+This serves the transfer case directly rather than attempting general coin selection.
+Additional strategies belong behind explicit named options.
+
+## Where wallet inputs come from
+
+Balancing records the origin of the candidate inputs it selected, as a
+`WalletInputSource`:
+
+| Source | Meaning |
+| --- | --- |
+| `provider` | Fetched from the captured `MidgardProvider` snapshot. |
+| `instance-override` | Supplied through `LucidMidgard.overrideUTxOs(...)` before `newTx()`. |
+| `completion-preset` | Supplied through `complete({ presetWalletInputs })`. |
+
+Overrides and presets are **local construction inputs only**. They do not rewrite node
+truth, hide missing state, or make a spend authoritative. Each override is normalized
+before use: duplicate out-refs are rejected, output bytes must decode as Midgard
+outputs, the address network must match the active config, and the input must belong to
+the selected wallet's payment key.
+
+A builder snapshots the override generation at `newTx()`. Replacing or clearing
+overrides afterwards cannot change an existing builder or an in-flight completion.
+`clearUTxOOverrides()` returns later builders to provider lookup.
+
+## Change
+
+Change is explicit:
+
+- The default change address is the selected wallet address.
+- `complete({ changeAddress })` overrides it.
+- A change output is omitted only when the remaining value is exactly zero.
+- The generated change output is reported in the completion metadata.
+
+## Insufficient funds
+
+When selection cannot cover the requirement, `InsufficientFundsError` carries the
+missing `unit`, the `required` quantity, the `available` quantity, and whether the fee
+was included in the requirement (`feeIncluded`). The error is deterministic and
+serializable, so a CLI can render it without re-deriving the shortfall.
+
+## Balancing cannot outrun the node
+
+The builder balances against a provider snapshot. A UTxO can be spent between that
+fetch and node validation. Phase B may still reject the transaction with
+`E_INPUT_NOT_FOUND` or `E_DOUBLE_SPEND`, and that is expected rather than a builder
+defect. Observe the
+[submitted status](/docs/sdk/lucid-midgard/submission-observability) before treating a
+transfer as done.
+
+## Related
+
+- [Builder State Machine](/docs/sdk/lucid-midgard/builder-state-machine)
+- [Validation &amp; Simulation](/docs/sdk/lucid-midgard/validation-simulation)
+- [Value Accounting](/docs/validation/value-accounting), the equation as Phase B applies it.

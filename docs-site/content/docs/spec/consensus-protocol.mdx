@@ -1,0 +1,34 @@
+---
+title: "Consensus Protocol"
+description: "Midgard's operator consensus: the time model, state queue, scheduler, operator directory, reserve and payout, hub oracle, and escape hatch."
+---
+
+Chapter 3 specifies how operators take turns producing blocks and how the protocol
+stays live and safe when they misbehave. Each component is defined by its on-chain
+scripts (typically a minting policy and a spending validator) and its UTxO
+representation.
+
+## Components
+
+- **Time model**: how the protocol measures time, rounds, and operator shifts.
+- **State queue**: the on-chain queue of committed block headers awaiting
+  settlement. The chapter covers its **UTxO representation**, **minting policy**, and
+  **spending validator**, and the commit/merge lifecycle.
+- **Scheduler**: how block-production duty rotates between operators.
+- **Operator directory**: the registry of operators (active, registered, retired)
+  maintained as an on-chain linked list.
+- **Reserve and payout**: the **reserve spending validator**, **payout minting
+  policy**, and **payout spending validator** that hold protocol funds and disburse
+  withdrawals.
+- **Midgard hub oracle**: the central config/nonce authority, with its own minting
+  policy and spending validator.
+- **Escape hatch**: the fallback that lets users exit safely if operators stall.
+
+## In this repository
+
+These map directly to the on-chain
+[consensus validators](/docs/onchain/consensus-validators) and
+[operator directory](/docs/onchain/operator-directory), to the operator-facing
+builders in [`midgard-sdk`](/docs/sdk/midgard-sdk/blocks-and-scheduling), and to the
+node's [background fibers](/docs/operators/node/background-fibers) that run the
+commit/confirm/merge lifecycle.

@@ -1,0 +1,74 @@
+---
+title: "Validation & Simulation"
+description: "Running Phase A and Phase B locally as a preflight before submitting, what local validation can prove, and why the node remains the authority."
+---
+
+`lucid-midgard` can run the node's own validation rules locally, before a transaction is
+submitted. Use it to catch an error you would otherwise discover as a rejection, and to
+debug a failing transaction without spending a submission.
+
+Local validation is a **preflight, never an authority**. It cannot prove a transaction
+will be accepted, only that it would not be rejected for the reasons it checked against
+the state it was given.
+
+## When to run it
+
+- During development, to turn a silent rejection into a local error with a stack trace.
+- Before submitting a transaction you built from overridden or preset inputs, where the
+  provider snapshot may not reflect node state.
+- Never as a substitute for observing
+  [submitted status](/docs/sdk/lucid-midgard/submission-observability).
+
+## Two ways to invoke it
+
+`complete({ localValidation })` validates as part of completion and **fails the
+completion** when the shared validator rejects. The option accepts `"none"` (the
+default), `"phase-a"`, or `"phase-b"`.
+
+`CompleteTx.validate(phase, options?)` returns the same reject-preserving report
+without mutating completion metadata, so you can inspect a transaction you already
+built. `validateSafe(...)` and `validateProgram(...)` are the safe-result and lazy
+`Effect` wrappers.
+
+## What each phase checks
+
+**Phase A** is stateless and per-transaction. It catches encoding, fee, input, output,
+script-witness, redeemer, datum, network, and auxiliary-data problems. Run after
+unsigned completion, it cannot check signatures. Run after signing, it verifies the
+required witnesses and the vkey signatures over the Midgard-native body hash.
+
+**Phase B** is stateful. It needs the current slot, the UTxO pre-state for every spend
+and reference input, script-source resolution data, and a budget-enforcement setting.
+If a dependency is missing, simulation fails with a structured insufficient-pre-state
+error rather than guessing. Budget enforcement is on by default.
+
+## The rules are shared, not reimplemented
+
+`lucid-midgard` imports `runPhaseAValidation` and `runPhaseBValidationWithPatch` from
+[`@al-ft/midgard-validation`](/docs/validation/overview). The node's queue processing
+imports the same functions from the same package. Preflight and node admission share one
+rule implementation and one set of reject codes, so a local `E_VALUE_NOT_PRESERVED`
+means what the node means by it.
+
+Local validation preserves those node reject codes rather than translating them into
+library-specific ones.
+
+<Callout type="warn" title="Local validation cannot see the future">
+Inputs valid against a provider snapshot may be spent before the node validates. Phase B
+can still reject with `E_INPUT_NOT_FOUND` or `E_DOUBLE_SPEND`. Pre-state derived from
+`overrideUTxOs` or `presetWalletInputs` is explicitly non-authoritative: it is useful for
+simulation, but the node decides whether those inputs exist and are unspent.
+</Callout>
+
+## Determinism
+
+For a fixed provider snapshot, validation is deterministic. The debug metadata records
+what the result depended on: the slot, the protocol parameters, the pre-state out-refs
+and output hashes, and the native transaction id and byte hash. Two runs against the
+same snapshot that disagree are a bug, not a race.
+
+## Related
+
+- [Validation Engine](/docs/validation/overview), the shared rules and reject codes.
+- [Phase A](/docs/validation/phase-a) and [Phase B](/docs/validation/phase-b).
+- [Submission &amp; Observability](/docs/sdk/lucid-midgard/submission-observability)

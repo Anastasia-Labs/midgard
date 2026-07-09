@@ -1,0 +1,28 @@
+---
+title: "Data-Availability Validators"
+description: "The da-attestation control plane and da-params-governor validators."
+---
+
+Two validators govern Midgard's **data-availability (DA)** control plane on L1,
+enforcing the DA rules from the [Off-Chain Data Architecture](/docs/spec/offchain-data-architecture)
+chapter.
+
+## Validators
+
+- **`da-attestation`**: the DA attestation control plane. Records committee
+  attestations that block data has been made available, gated by a signature
+  threshold from the DA committee.
+- **`da-params-governor`**: governs the DA parameters (for example the committee
+  configuration and thresholds), controlling how those values may change.
+
+<Callout type="info" title="Blueprint note">
+These validators exist in the Aiken source. Confirm their presence in the compiled
+`onchain/aiken/plutus.json` blueprint for the commit you are building against. The
+committed blueprint may lag the source on an in-progress branch: as of `f7a7163b`,
+`da_attestation` and `da_params_governor` do not appear in it.
+</Callout>
+
+## Related
+
+- Implementation: [DA committee node](/docs/watchers/da-committee-node)
+- Off-chain builders: [`midgard-sdk` DA](/docs/sdk/midgard-sdk/da-and-oracle)

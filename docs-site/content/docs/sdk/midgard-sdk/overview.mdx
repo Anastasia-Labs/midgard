@@ -1,0 +1,39 @@
+---
+title: "Overview"
+description: "The @al-ft/midgard-sdk package, the TypeScript library for building operator and watcher transactions."
+---
+
+`@al-ft/midgard-sdk` is the **operator and watcher** transaction-building library.
+Where [`lucid-midgard`](/docs/sdk/lucid-midgard/quickstart) targets application
+developers building L2 user transactions, `midgard-sdk` builds the L1 transactions
+that operate the protocol: committing blocks, registering operators, attesting data
+availability, running payouts, and driving fraud proofs.
+
+<Callout type="info" title="Who this package is for">
+Use `midgard-sdk` if you are running an operator, running a watcher, or building
+protocol tooling that submits L1 transactions. Application developers moving funds on
+L2 want [`lucid-midgard`](/docs/sdk/lucid-midgard/quickstart) instead.
+
+The SDK is built with `effect`, but it does not impose `effect` on dependent packages.
+Functions returning `Effect` blueprints are postfixed with `Program`, following the
+Lucid Evolution convention.
+</Callout>
+
+## Module layout
+
+The package uses a **vertical** layout: each transaction family is its own module
+with globally unique names, re-exported from `src/index.ts`. The modules group into:
+
+| Group | Modules | Docs |
+|-------|---------|------|
+| Operator lifecycle | `operator-lifecycle`, `active-operators`, `registered-operators`, `retired-operators` | [Operator Lifecycle](/docs/sdk/midgard-sdk/operator-lifecycle) |
+| Blocks &amp; scheduling | `state-queue`, `state-queue-production`, `scheduler`, `scheduler-refresh` | [Blocks &amp; Scheduling](/docs/sdk/midgard-sdk/blocks-and-scheduling) |
+| Settlement &amp; proofs | `settlement`, `transition-trace`, `fraud-proof`, `fraud-proofs` | [Settlement &amp; Proofs](/docs/sdk/midgard-sdk/settlement-and-proofs) |
+| User events | `user-events` (`deposit`, `withdrawal`, `tx-order`) | [User Events](/docs/sdk/midgard-sdk/user-events) |
+| Reserve &amp; payout | `reserve`, `reserve-payout`, `payout` | [Reserve &amp; Payout](/docs/sdk/midgard-sdk/reserve-and-payout) |
+| DA &amp; oracle | `da-attestation`, `da-payload`, `hub-oracle`, `initialization`, `escape-hatch` | [DA &amp; Oracle](/docs/sdk/midgard-sdk/da-and-oracle) |
+| Protocol primitives | `reference-scripts`, `phas-membership`, `protocol-parameters`, `ledger-state`, `ledger-constants`, `linked-list` | [Protocol Primitives](/docs/sdk/midgard-sdk/protocol-primitives) |
+
+Shared internals include `common`, `internals`, `errors`, `cbor`,
+`cardano-addresses`, `tx-completion`, `tx-context-redeemer`, and the
+`tx-out-ref-order` / `tx-output-utils` helpers.

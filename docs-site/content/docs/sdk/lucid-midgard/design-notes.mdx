@@ -1,0 +1,76 @@
+---
+title: "Design Notes & Non-Goals"
+description: "The scope of lucid-midgard, what it deliberately does not do, and the design constraints that produced its API."
+---
+
+<Callout type="info" title="Design context, not usage docs">
+This page records why `lucid-midgard` is shaped the way it is. To build a transaction,
+start with the [quickstart](/docs/sdk/lucid-midgard/quickstart); for the exported
+surface, see the [public API](/docs/sdk/lucid-midgard/public-api).
+</Callout>
+
+`lucid-midgard` constructs, signs, validates, and submits Midgard-native L2
+transactions. Its public interface should feel familiar to lucid-evolution users, but
+its semantics come from Midgard's native transaction format and validation pipeline, not
+from Cardano's.
+
+Understanding what it does **not** do is as important as its API.
+
+## Goals
+
+- A fluent, typed, deterministic transaction builder for Midgard L2.
+- Produce `MidgardNativeTxFull` bytes the node's `/submit` path accepts.
+- Sign the Midgard-native body hash, never a Cardano transaction body hash.
+- Make Phase A failures unlikely by construction, and easy to diagnose when they happen.
+- Offer optional Phase A and Phase B local validation.
+- Support pubkey transfers first, then scripts, observers, minting, protected receive
+  outputs, and chaining.
+
+## Non-goals
+
+- It does **not** build or submit Cardano (L1) transactions. Operator and watcher L1
+  transactions belong to [`midgard-sdk`](/docs/sdk/midgard-sdk/overview).
+- No legacy transaction compatibility, and no alias behavior.
+- Cardano transaction CBOR is not the primary builder output.
+- Cardano-to-native conversion is a diagnostic and import path, never the normal one.
+- Validation defaults are not weakened to make demos easier.
+- User intent is never silently rewritten when canonicalization fails.
+- Transaction id collisions, byte conflicts, fee failures, and validation rejections are
+  never hidden.
+- The node grows no compatibility mode to support this library.
+
+## The constraint behind the API
+
+Every design choice is ordered by protocol correctness, deterministic serialization,
+explicit validation boundaries, auditability of intent and final bytes, clear failure
+recovery, and reproducible tests.
+
+A convenience method is acceptable only when it compiles down to explicit, auditable
+builder state. Hidden fallback paths are not. This is why `complete()` fails instead of
+approximating a fee, why overrides are marked non-authoritative rather than merged into
+provider truth, and why an under-signed `CompleteTx` has no usable `submit()`.
+
+## Two transaction domains
+
+The repository has two, and this library owns one:
+
+| Domain | Built as | By |
+| --- | --- | --- |
+| L1 protocol actions | lucid-evolution `TxBuilder` | `midgard-sdk` and the node |
+| L2 user transfers | `MidgardNativeTxFull` | `lucid-midgard` |
+
+It reuses Lucid CML types and wallet utilities where appropriate, but it does not blur
+L1 Cardano transaction rules with Midgard L2 validation rules.
+
+## Admission is not validation
+
+`/submit` validates hex and size, normalizes bytes, derives the transaction id, and
+stores a queued admission. Phase A and Phase B run later, in the queue processor.
+`lucid-midgard` offers local preflight, and node validation stays authoritative. See
+[Validation &amp; Simulation](/docs/sdk/lucid-midgard/validation-simulation).
+
+## Related
+
+- [Public API](/docs/sdk/lucid-midgard/public-api)
+- [Developer SDK overview](/docs/sdk)
+- [The L2 versus L1 boundary](/docs/sdk#the-l2-vs-l1-boundary)

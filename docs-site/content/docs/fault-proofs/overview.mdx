@@ -1,0 +1,127 @@
+---
+title: "Fault-Proof Tooling Overview"
+description: "The midgard-fault-proofs CLI, manual tooling for preparing, submitting, and finalizing fraud proofs that challenge invalid Midgard blocks under the optimistic-security model."
+---
+
+Midgard is an **optimistic rollup**: block producers post compact block headers to
+Cardano L1, and those blocks are assumed valid unless someone proves otherwise.
+The mechanism that makes "otherwise" enforceable is the **fraud proof**, an on-chain
+procedure that demonstrates a committed block violated Midgard's ledger rules, letting
+the block be removed and its operator's bond slashed. A block can be challenged while it
+is queued, before it merges into confirmed state.
+
+The `@al-ft/midgard-fault-proofs` package is the **manual fault-proof tooling**. It ships
+a single CLI, `midgard-fault-proofs`, that a watcher or prover drives by hand to build a
+fraud proof, walk it through its on-chain computation thread, and finalize it.
+
+The protocol concept is a **fraud proof**. The package, its binary, and its commands say
+**fault proof**. Both names refer to the same thing; see
+[watcher concept](/docs/watchers/concept) for why the two survive side by side.
+
+<Callout type="info" title="Where this fits">
+This tooling is the challenge side of the optimistic model. The watchers that detect
+fraud are documented under [Watchers &amp; Data Availability](/docs/watchers/concept); the
+on-chain validators these commands drive are the fraud-proof machines described in
+[On-chain: Fraud-Proof Machines](/docs/onchain/fraud-proof-machines). For the
+protocol-level design, see [Protocol Spec](/docs/fault-proofs/protocol-spec).
+</Callout>
+
+## How the CLI dispatches commands
+
+`src/bin.ts` is the entrypoint. It reads `process.argv`, takes the first token as
+the **command**, and parses the rest as `--flag value` pairs into a single
+`ParsedArgs` record (an unknown flag throws `Unknown argument: <arg>`). `main()`
+then validates the command against a fixed allow-list and calls the matching
+module function, writing the result to stdout as JSON. Passing `--help` or `-h`
+prints the usage block and exits.
+
+The command is rejected unless it is exactly one of the eleven real commands
+below, from the guard in `main()`:
+
+```ts
+if (
+  args.command !== "prepare-double-spend" &&
+  args.command !== "prepare-invalid-range" &&
+  args.command !== "inspect-contracts" &&
+  args.command !== "submit-init" &&
+  args.command !== "submit-step-01" &&
+  args.command !== "submit-step-02" &&
+  args.command !== "submit-step-03" &&
+  args.command !== "submit-step-04" &&
+  args.command !== "submit-invalid-range-step-01" &&
+  args.command !== "submit-invalid-range-step-02" &&
+  args.command !== "remove-fraudulent-block"
+) {
+  throw new Error(/* Expected command "..." */);
+}
+```
+
+Each command delegates to a `*FromFiles` / `*FromNode` function exported from its
+own module (all re-exported through `src/index.ts`), so the CLI and the library
+surface stay in lock-step.
+
+## The command groups
+
+The eleven commands fall into four groups.
+
+| Group | Commands | Module(s) | What it does |
+| --- | --- | --- | --- |
+| **Prepare** | `prepare-double-spend`, `prepare-invalid-range` | `prepare-double-spend.ts`, `prepare-invalid-range.ts` | Pull a block's transactions (from a node, a file, or a built-in sample), find the violating transaction(s), and emit the JSON artifacts later steps consume. |
+| **Inspect** | `inspect-contracts` | `inspect-contracts.ts` | Resolve a blueprint + deployment against the fraud-proof catalogue and report policy IDs, addresses, step hashes, and init-readiness. |
+| **Submit** | `submit-init`, `submit-step-01`…`submit-step-04`, `submit-invalid-range-step-01`, `submit-invalid-range-step-02` | `submit-init.ts`, `submit-step-0N.ts`, `submit-invalid-range-step-0N.ts` | Start a computation thread (`submit-init`) and drive it through its per-category steps, ending by minting a fraud-proof token. |
+| **Remove** | `remove-fraudulent-block` | `remove-fraudulent-block.ts` | After a successful proof exists, remove the fraudulent block from the state queue and slash the operator. |
+
+## Fraud categories
+
+The tooling implements three of Midgard's fraud-proof categories, selected with
+`--fraud-category`. The parser in `bin.ts` (`parseFraudCategory`) accepts exactly
+these values:
+
+- `doubleSpend`: one block includes two transactions that spend the same input.
+  Proven with `submit-step-01` through `submit-step-04`.
+- `invalidRange`: a transaction's validity range is incompatible with the
+  block's declared validity window. Proven with `submit-invalid-range-step-01`
+  and `-step-02`.
+- `transitionTrace`: state-transition-trace faults (the `transition-trace/`
+  challenger module: `detect.ts`, `fetch.ts`, `reconstruct.ts`, `witnesses.ts`,
+  `submit.ts`). The CLI exposes `submit-init` and `remove-fraudulent-block` for it, but
+  no dedicated per-step commands, so it is not driveable end to end from the CLI alone.
+
+Every category runs through the same **computation-thread state machine**: mint a
+thread token, advance it step-by-step through category-specific spending
+validators, and on success mint a `fraud_proof` token that reifies the concluded
+proof. That machine is specified on the [Protocol Spec](/docs/fault-proofs/protocol-spec)
+page.
+
+## Providers, wallets, and networks
+
+Every submit/remove command shares the same L1 wiring, resolved in `src/runtime.ts`:
+
+- **Provider**: `--provider Blockfrost` (default) or `--provider Kupmios`.
+  Blockfrost needs `--blockfrost-api-url` / `--blockfrost-key` (or the
+  `L1_BLOCKFROST_API_URL` / `L1_BLOCKFROST_KEY` env vars); Kupmios needs
+  `--kupo-url` / `--ogmios-url`.
+- **Network**: `--network Mainnet|Preview|Preprod` (parsed by `parseNetwork`).
+- **Prover wallet**: one of `--wallet-seed-phrase`, `--wallet-seed-phrase-env`,
+  `--wallet-private-key`, or `--wallet-private-key-env`. With none supplied,
+  `resolveProverSigner` falls back to the `USER_WALLET` seed-phrase env var.
+- **Contracts**: every command needs `--blueprint <path>` (the compiled
+  `plutus.json`) and `--deployment-info <path>` (the deployed script hashes and
+  fraud-proof catalogue). The two `prepare-*` commands are the exception: they
+  work purely off transaction data and need neither.
+
+<Callout type="warn" title="Manual tooling">
+These commands submit real L1 transactions and sign with a real wallet. They are
+low-level building blocks for a prover, not an automated watcher. Run
+`inspect-contracts` first to confirm your blueprint and deployment agree before
+initializing a thread.
+</Callout>
+
+## Next steps
+
+<Cards>
+  <Card title="Preparing proofs" href="/docs/fault-proofs/preparing-proofs" description="Turn a block's transactions into fraud-proof artifacts with prepare-double-spend and prepare-invalid-range." />
+  <Card title="Submitting steps" href="/docs/fault-proofs/submitting-steps" description="Walk a computation thread from submit-init through the per-category steps to a minted fraud-proof token." />
+  <Card title="Removing blocks" href="/docs/fault-proofs/removing-blocks" description="Remove a fraudulent block after a successful proof, and inspect deployed contracts." />
+  <Card title="Protocol spec" href="/docs/fault-proofs/protocol-spec" description="The catalogue, fraud-proof tokens, and the computation-thread state machine." />
+</Cards>

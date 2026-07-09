@@ -1,0 +1,60 @@
+---
+title: "libp2p DA Transport Migration"
+description: "Historical design context for the move of Midgard's data-availability transport to libp2p, and the protocol constants that migration froze."
+---
+
+<Callout type="info" title="Historical design context">
+This migration is complete. The plan document
+(`demo/da-committee-node/docs/LIBP2P_DA_TRANSPORT_MIGRATION_PLAN.md`) records its own
+status as *"implementation complete in current worktree; Phase 0/1 decisions frozen
+2026-06-21"*. For the runtime that ships today, see
+[libp2p runtime](/docs/watchers/libp2p-runtime). This page is kept for the decisions the
+migration froze, which the DA protocol still depends on.
+</Callout>
+
+## The decision
+
+Midgard DA protocol data moves over **libp2p only**. No DA payload, DA metadata, proof
+bundle, root summary, chunk, attestation, attestation set, conflict evidence, watcher
+retrieval, challenger retrieval, committee replication, or producer publication may use
+HTTP. There is no HTTP fallback, not for gateways, object stores, debugging, or local
+development.
+
+HTTP remains in use for process surfaces that carry no DA protocol data:
+
+- user transaction submission APIs,
+- health checks,
+- metrics endpoints,
+- operator dashboards,
+- non-DA admin endpoints.
+
+The rule is fail-closed by design. A committee node that cannot serve a payload over
+libp2p has not made that payload available, regardless of what any HTTP endpoint returns.
+
+## What the migration froze
+
+The first implementation froze the protocol constants, codecs, and test vectors that the
+DA transport depends on. They are consumed from
+`@al-ft/midgard-core/da-transport` and cover:
+
+- the DA transport protocol version, hash lengths, and witness lengths;
+- `DA_TRANSPORT_LIMITS_V1`: payload, response, chunk, and gossip size caps, stream
+  limits, request timeout, and minimum retention days;
+- the signing domains (`DaTransportSigningDomain`) and gossip topics (`DaGossipTopic`);
+- the on-chain attestation domain (`DA_ON_CHAIN_ATTESTATION_V1_DOMAIN`).
+
+The deployment-scoped gossip topics and request-response protocols are listed on the
+[DA committee node](/docs/watchers/da-committee-node) page.
+
+<Callout type="warn" title="Wire schemas are not on this page">
+The exact CBOR wire schemas live in the plan document and in
+`@al-ft/midgard-core/da-transport`, not here. Read the source before implementing a
+peer.
+</Callout>
+
+## Related
+
+- [libp2p Runtime](/docs/watchers/libp2p-runtime), what runs today.
+- [DA Committee Node](/docs/watchers/da-committee-node), the architecture it serves.
+- [DA Layer (spec)](/docs/watchers/da-layer-spec)
+- [`midgard-core` primitives](/docs/sdk/midgard-core/primitives), the transport constants.

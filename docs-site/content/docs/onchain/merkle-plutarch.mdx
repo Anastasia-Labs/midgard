@@ -1,0 +1,24 @@
+---
+title: "Merkle Proofs (Plutarch)"
+description: "The Plutarch midgard-merkle library, Merkle Patricia Forestry construction and on-chain membership verification for the fraud-proof system."
+---
+
+In addition to the Aiken validators, the repository includes a **Plutarch** library
+at [`onchain/plutarch/`](https://github.com/Anastasia-Labs/midgard/tree/tx-validation/onchain/plutarch)
+(`midgard-merkle`) that implements Merkle Patricia Forestry (MPF) proofs used by the
+fraud-proof system.
+
+## What it provides
+
+- **`src/Validators/Membership.hs`**: on-chain membership verification against a
+  Merkle commitment.
+- **`src/Types/`**: the supporting types: `Blocks`, `Membership`,
+  `StateCommitment`, `Constants`, `Classes`.
+
+These proofs let a fraud proof demonstrate that a particular element is (or is not)
+part of a committed block's state, without re-publishing the whole state on-chain.
+
+## Related
+
+- [Fraud-Proof Machines](/docs/onchain/fraud-proof-machines)
+- [Phase-Two Validation](/docs/spec/phase-two-validation)

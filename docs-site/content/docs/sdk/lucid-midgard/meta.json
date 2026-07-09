@@ -1,0 +1,15 @@
+{
+  "title": "lucid-midgard",
+  "pages": [
+    "quickstart",
+    "public-api",
+    "native-transaction-model",
+    "builder-state-machine",
+    "provider-and-wallet",
+    "balancing-fees",
+    "scripts-redeemers",
+    "validation-simulation",
+    "submission-observability",
+    "design-notes"
+  ]
+}

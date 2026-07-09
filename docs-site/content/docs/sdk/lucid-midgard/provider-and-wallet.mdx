@@ -1,0 +1,108 @@
+---
+title: "Provider & Wallet"
+description: "The MidgardProvider interface and the wallet adapters, how protocol info is fetched and fails closed, and why the signing domain is the Midgard native body hash."
+---
+
+`lucid-midgard` reaches a Midgard node through a **provider**, and signs with a
+**wallet**. You need a provider to read UTxOs, protocol facts, and status. You need a
+wallet only when you sign.
+
+A read-only workflow (building and balancing a transaction, inspecting the result) needs
+a provider and `selectWallet.fromAddress(...)`. Signing needs a real body-hash signer.
+
+## The provider interface
+
+`MidgardProvider` is Midgard-native throughout. It returns `MidgardUtxo` values, not
+Cardano ones.
+
+```ts twoslash
+import type { MidgardProvider } from "@al-ft/lucid-midgard";
+declare const provider: MidgardProvider;
+// ---cut---
+const info = await provider.getProtocolInfo();
+const slot = await provider.getCurrentSlot();
+```
+
+`MidgardNodeProvider` is the concrete implementation, backed by the node HTTP API:
+`GET /utxos`, `GET /utxo`, `POST /utxos?by-outrefs`, `POST /submit`,
+`GET /tx-status`, and `GET /protocol-info`.
+
+## Protocol info fails closed
+
+`GET /protocol-info` is the canonical source for the API version, the Midgard-native
+transaction version, the network, the current slot, the supported non-native script
+language tags, the fee parameters, submission limits, and the validation strictness
+profile.
+
+`supportedScriptLanguages` must match the shared Midgard profile exactly: `PlutusV3`
+with tag `2`, and `MidgardV1` with tag `128`. Missing, extra, `PlutusV1`, `PlutusV2`,
+or unknown tags **fail closed** until a protocol migration updates the shared constants.
+
+If the endpoint is unavailable, `MidgardNodeProvider.create(...)` fails rather than
+guessing, unless you supply an explicit fallback configuration. Fallback-derived values
+stay visible in `diagnostics()` and in `config()`, and are never presented as node facts.
+
+The library hard-codes no fee policy, slot assumption, network identity, or maximum
+transaction size.
+
+## Queries
+
+`LucidMidgard` exposes native query helpers over the active provider: `currentSlot()`,
+`utxosAt(address)`, `utxosAtWithUnit(address, unit)`, `utxosByOutRef(outRefs, options?)`,
+`utxoByUnit(unit)`, and `datumOf(utxo, options?)`.
+
+Address queries take an address string. Credential scans and Cardano provider queries
+are intentionally absent. Batch out-ref queries reject duplicate request keys and error
+on missing results by default; `{ missing: "omit" }` preserves request order and skips
+them.
+
+## Switching providers
+
+`switchProvider(provider, expectations?)` is atomic. Before replacing the current
+provider it fetches and validates protocol info. If the candidate is missing Midgard
+methods, cannot return protocol info, reports a different network, reports an
+unsupported native transaction version, or fails wallet-network revalidation, the
+previous provider stays active.
+
+Builders capture the provider snapshot at `newTx()`. A later switch does not affect an
+existing builder or an in-flight `complete()`.
+
+## Wallets and the signing domain
+
+Wallet selection mirrors Lucid ergonomics, but the signing domain is explicit. A
+`MidgardWallet` signs a **Midgard-native body hash**, not a Cardano transaction hash.
+
+| Adapter | Use |
+| --- | --- |
+| `selectWallet.fromSeed(seedPhrase)` | Local seed phrase. |
+| `selectWallet.fromPrivateKey(privateKey)` | Local private key. |
+| `selectWallet.fromExternalSigner(signer)` | An external signer that returns a witness over the body hash. |
+| `selectWallet.fromAddress(address, utxos?)` | Read-only. Builds and balances; cannot sign. |
+
+Every vkey witness must verify against `nativeTx.compact.transactionBodyHash`. The
+library verifies witnesses immediately after signing and before submission, and
+`walletFromExternalSigner` additionally checks that the returned witness key hash
+matches the wallet identity.
+
+<Callout type="error" title="A Cardano signature is not a Midgard signature">
+Cardano-domain signatures are invalid for Midgard-native transactions. There is no path
+that completes a Cardano transaction and relies on node conversion as a normal
+submission method. A browser wallet that signs Cardano transaction hashes cannot sign
+Midgard transactions: any browser adapter must prove it signs the correct bytes.
+</Callout>
+
+## Network id
+
+The provider or an explicit config determines the expected network id, and the builder
+rejects address/network mismatches before producing bytes.
+
+Network id may be omitted using the native sentinel `255`
+(`MIDGARD_NATIVE_NETWORK_ID_NONE`). A script bundle that requires observer
+reconstruction must supply an explicit network id, because Phase A rejects
+observer-bearing Plutus bundles without one.
+
+## Related
+
+- [Quickstart](/docs/sdk/lucid-midgard/quickstart)
+- [Public API](/docs/sdk/lucid-midgard/public-api)
+- [Submission &amp; Observability](/docs/sdk/lucid-midgard/submission-observability)

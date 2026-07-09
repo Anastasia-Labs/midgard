@@ -1,0 +1,28 @@
+---
+title: "SDK Boundary Plans"
+description: "Reference index of the SDK/node boundary plans that define where the SDK ends and the node begins for each transaction family."
+---
+
+The [`docs/midgard-sdk-boundary-plans/`](https://github.com/Anastasia-Labs/midgard/tree/tx-validation/docs/midgard-sdk-boundary-plans)
+directory contains a set of plans that pin down the **boundary** between the
+`midgard-sdk` transaction builders and the [operator node](/docs/operators/node/overview)
+runtime for each transaction family, which side owns witness assembly, input
+selection, nonce preparation, and completion.
+
+<Callout type="info" title="Status">
+These boundary plans are marked complete as of 2026-06-19.
+</Callout>
+
+## Plans
+
+1. **Scheduler witness bootstrap**, bootstrapping the scheduler witness.
+2. **Scheduler refresh builder**, the scheduler-refresh transaction boundary.
+3. **DA attestation builders**, the DA attestation transaction boundary.
+4. **Operator registration funding inputs**, funding inputs for operator
+   registration.
+5. **Reference script publication**, publishing reference scripts.
+6. **PHAS membership registration**, the PHAS membership registration boundary.
+7. **Hub oracle nonce preparation**, preparing the hub-oracle one-shot nonce.
+
+Read the individual plan files for the exact input/witness/completion split each one
+specifies.

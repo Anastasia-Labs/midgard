@@ -1,0 +1,23 @@
+---
+title: "Off-Chain Haskell Utilities"
+description: "The small Haskell scripts/constants utility library under offchain/, not the main off-chain runtime."
+---
+
+The [`offchain/`](https://github.com/Anastasia-Labs/midgard/tree/tx-validation/offchain)
+directory is a small Haskell/Cabal project (`midgard-offchain.cabal`) that provides
+script and constant utilities:
+
+- `src/Midgard/Scripts.hs`
+- `src/Midgard/ScriptUtils.hs`
+- `src/Midgard/Constants.hs`
+
+It acts as a Haskell-side helper layer for script serialization and shared
+constants, with a corresponding `tests/` suite.
+
+<Callout type="warn" title="Not the main off-chain runtime">
+The production off-chain stack for Midgard is the **TypeScript** monorepo under
+[`demo/`](/docs/sdk), `lucid-midgard`, `midgard-core`, `midgard-sdk`, the
+[operator node](/docs/operators/node/overview), and the
+[DA committee node](/docs/watchers/da-committee-node). The Haskell `offchain/`
+project is a supporting utilities library, not the operator runtime.
+</Callout>

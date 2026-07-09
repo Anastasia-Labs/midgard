@@ -1,0 +1,66 @@
+---
+title: "Introduction"
+description: "Documentation for Midgard, Cardano's first optimistic rollup protocol: SDKs, operator nodes, watchers and data availability, fraud proofs, on-chain validators, and the technical specification."
+---
+
+**Midgard** is Cardano's first optimistic rollup protocol, a Layer 2 that batches
+user transactions off-chain, commits compact block headers to Layer 1, and relies
+on an **optimistic security model**: blocks are assumed valid unless a watcher
+submits a fraud proof that an on-chain validator can resolve.
+
+This documentation covers the main parts of the repository, from the developer SDK
+down to the on-chain validators and the formal protocol specification.
+
+## Start here
+
+<Cards>
+  <Card
+    title="What is Midgard?"
+    href="/docs/getting-started/what-is-midgard"
+    description="The optimistic rollup model, actors, and how L2 transactions reach L1."
+  />
+  <Card
+    title="Repository map"
+    href="/docs/getting-started/repository-map"
+    description="How the monorepo is laid out: onchain, demo SDK packages, node, spec."
+  />
+  <Card
+    title="lucid-midgard quickstart"
+    href="/docs/sdk/lucid-midgard/quickstart"
+    description="Build and sign your first Midgard native L2 transaction."
+  />
+  <Card
+    title="Run a node"
+    href="/docs/operators/node/overview"
+    description="Operate a Midgard node: API, block commit/merge, deposits, withdrawals."
+  />
+</Cards>
+
+## Documentation map
+
+- **Getting Started**: what Midgard is, the repository layout, local dev setup,
+  the L1 backend, and testnet-readiness status.
+- **Developer SDK**: `lucid-midgard` (native transaction builder), `midgard-core`
+  (protocol primitives and the native transaction codec), and `midgard-sdk`
+  (operator and watcher transaction builders).
+- **Validation Engine**: the Phase A / Phase B pipeline that validates queued L2
+  transactions.
+- **Operators**: running the Midgard node and the manager and load-generation tools.
+- **Watchers & Data Availability**: the libp2p DA committee that lets watchers verify
+  availability and challenge invalid commitments.
+- **Fault Proofs**: the tooling and protocol for challenging invalid blocks.
+- **On-Chain Validators**: the Aiken and Plutarch validators that enforce the
+  protocol on Layer 1.
+- **Protocol Specification**: the authoritative architecture reference.
+
+<Callout title="Status" type="warn">
+Midgard is under active development. See
+[Project Status &amp; Testnet Readiness](/docs/getting-started/status) for the
+feature matrix and the go/no-go assessment, dated to its last review.
+</Callout>
+
+<Callout title="How to read implementation status" type="info">
+Pages that describe behavior which is designed but not shipped say so at the top.
+Where a page states what the code does, it names the file or function that backs the
+claim. Where the source does not state a behavior, these docs do not assert one.
+</Callout>

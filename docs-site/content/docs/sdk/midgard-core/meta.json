@@ -1,0 +1,4 @@
+{
+  "title": "midgard-core",
+  "pages": ["overview", "native-tx-codec", "primitives"]
+}

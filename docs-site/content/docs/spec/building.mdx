@@ -1,0 +1,36 @@
+---
+title: "Building the Specification"
+description: "How the Midgard protocol specification is assembled from LaTeX sources into the authoritative midgard.pdf."
+---
+
+The authoritative Midgard protocol specification lives under
+[`technical-spec/`](https://github.com/Anastasia-Labs/midgard/tree/tx-validation/technical-spec)
+as a set of numbered LaTeX chapters that are assembled, in order, into a single
+`midgard.pdf`. The build is driven by `latexmk` (packaged with Nix); see
+`technical-spec/README.md` for the exact invocation.
+
+<Callout type="info" title="Source of truth">
+These pages are an orientation layer that summarizes each chapter and links it to
+the corresponding code in this repository. For precise definitions, equations, and
+transaction diagrams, read the compiled `midgard.pdf`.
+</Callout>
+
+## Chapter layout
+
+The spec is organized into a numbered main body and lettered appendices:
+
+| Part | Chapter | Docs |
+|------|---------|------|
+| 1 | Ledger state | [Ledger State](/docs/spec/ledger-state) |
+| 2 | User-event protocol | [User-Event Protocol](/docs/spec/user-event-protocol) |
+| 3 | Consensus protocol | [Consensus Protocol](/docs/spec/consensus-protocol) |
+| 4 | Proof protocol | [Proof Protocol](/docs/spec/proof-protocol) |
+| 5 | Ledger rules | [Ledger Rules](/docs/spec/ledger-rules) |
+| 6 | Off-chain data architecture | [Off-Chain Data Architecture](/docs/spec/offchain-data-architecture) |
+| 7 | Phase-two validation | [Phase-Two Validation](/docs/spec/phase-two-validation) |
+| A | General data structures | [Data Structures](/docs/spec/data-structures) |
+| B | L1 transactions | [L1 Transactions](/docs/spec/l1-transactions) |
+| C | Considerations | [Considerations](/docs/spec/considerations) |
+
+A companion `Lean4Midgard/` directory holds [formal models](/docs/spec/formal-models)
+of parts of the protocol.

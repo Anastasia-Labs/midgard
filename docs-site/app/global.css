@@ -1,0 +1,59 @@
+@import 'tailwindcss';
+@import 'fumadocs-ui/css/neutral.css';
+@import 'fumadocs-ui/css/preset.css';
+
+@source '../node_modules/fumadocs-ui/dist/**/*.js';
+
+/* Midgard brand typography: fonts injected by next/font in app/layout.tsx */
+@theme {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-space-grotesk), var(--font-inter), sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, monospace;
+}
+
+/* Midgard brand + semantic protocol palette.
+   Light tokens are darkened to clear WCAG AA on white (bright #10b981 fails on
+   white); dark tokens brighten for dark surfaces. Each token encodes a protocol
+   meaning, never mood. Mirrors the midgard-website palette. */
+:root {
+  --color-fd-primary: #047857;
+  --color-fd-ring: #047857;
+
+  --mid-l2: #047857;       /* emerald  — L2, finality, confirmed state */
+  --mid-l1: #1c4fd6;       /* blue     — Cardano L1, settlement */
+  --mid-pending: #b45309;  /* amber    — challenge window, pending, dispute */
+  --mid-danger: #b42318;   /* red      — fraud, slashing, irreversible */
+  --mid-infra: #4b5563;    /* graphite — node, runtime, database */
+}
+
+.dark {
+  --color-fd-primary: #10b981;
+  --color-fd-ring: #10b981;
+
+  --mid-l2: #10b981;
+  --mid-l1: #5b8dff;
+  --mid-pending: #fbbf24;
+  --mid-danger: #f97066;
+  --mid-infra: #9ca3af;
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+/* Tighter tracking on display headings for a precise, engineered feel. */
+#nd-page h1,
+#nd-page h2 {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+}
+
+/* Inline protocol identifiers (validator names, redeemers, CLI verbs). */
+.mid-ident {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  color: var(--mid-l2);
+  background: color-mix(in srgb, var(--mid-l2) 10%, transparent);
+  padding: 0.1em 0.35em;
+  border-radius: 0.3rem;
+}

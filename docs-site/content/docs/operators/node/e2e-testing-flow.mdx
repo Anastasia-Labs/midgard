@@ -1,0 +1,187 @@
+---
+title: "End-to-End Testing Flow"
+description: "The full demo-node acceptance run: prerequisites, run modes, the deposit/L2/DA/merge sequence, artifacts, pass criteria, and failure routing."
+---
+
+The end-to-end (E2E) acceptance flow verifies that a change has not broken the real
+Midgard demo-node path: it drives a full deployment through deposit, L2 transfers,
+block commit, data-availability attestation, and merge, then checks health, database
+state, balances, and logs.
+
+<Callout type="warn" title="Advanced / internal acceptance path">
+This is the operator acceptance runbook for the demo node, not a user quickstart. The
+canonical source in this repository is the skill at
+[`.agents/skills/midgard-e2e-acceptance/SKILL.md`](https://github.com/Anastasia-Labs/midgard/blob/tx-validation/.agents/skills/midgard-e2e-acceptance/SKILL.md).
+A clean public-testnet acceptance gate is still a
+[project blocker](/docs/getting-started/status), so treat a green run as the current
+bar, not a production guarantee.
+</Callout>
+
+## The step wrappers
+
+Three node subcommands structure the run so every step produces a durable, machine-
+readable summary:
+
+- **`e2e-run-step`**: wraps a one-shot command, capturing a raw log and a JSON step
+  summary. Flags: `--id`, `--cwd`, `--raw-log`, `--summary-out`, `--timeout-ms`,
+  then `--` followed by the wrapped command.
+- **`e2e-start-service`**: starts a long-running service (the node or the DA committee
+  node) and waits on its readiness URL. Flags include `--service`, `--ready-url`,
+  `--health-url`, `--pid-file`, `--ready-timeout-ms`, `--poll-interval-ms`.
+- **`e2e-finalize-summary`**: aggregates the step summaries, transaction hashes, and
+  the node log into `logs/$RUN_ID/summary.json` and `summary.md` with a verdict.
+
+## Prerequisites
+
+<Steps>
+<Step>**Toolchain**: `pnpm` (see [Local Dev](/docs/getting-started/local-dev)) and a
+built node (`pnpm build` in `demo/midgard-node`).</Step>
+<Step>**On-chain code**: a compiled Aiken blueprint (`plutus.json`), see
+[On-Chain Validators](/docs/onchain/overview).</Step>
+<Step>**L1 backend**: local Kupmios (Cardano node + Ogmios + Kupo) for the
+`docker-compose.kupmios.yaml` override, see [Running the L1 Backend](/docs/getting-started/l1-backend).
+Acceptance requires `L1_PROVIDER=Kupmios` with no remote failover.</Step>
+<Step>**Local feedback gate**: for transaction-preparation changes, run the lower
+layers first and record them in the evidence.</Step>
+</Steps>
+
+```bash
+cd demo
+pnpm run test:tx-prep:sdk
+pnpm run test:tx-prep:node
+pnpm run test:tx-prep:emulator
+```
+
+## Choose a run mode
+
+Pick a mode before any state-changing command:
+
+| Mode | When |
+|------|------|
+| **Fresh deployment** | Starting a new acceptance identity on purpose (fresh one-shot, fresh reference scripts, fresh `init`, matching local state reset). |
+| **Attach / resume** | A complete deployment already exists; run or continue it. Do **not** run `init`; start via `listen` / Docker. |
+| **Continue interrupted pre-init** | A fresh deployment failed before `init`; resume only within the same documented identity. |
+| **Diagnose post-init** | `init` or a later step may have succeeded; reconcile chain/DB/run-state before acting. |
+| **Fresh redeploy recovery** | Required only by the [state-reset rules](/docs/operators/node/compatibility-rules). |
+
+<Callout type="warn" title="Do not fresh-redeploy on every failure">
+Provider, wallet, DA, projection, scheduler, and merge failures are gates to fix or
+wait through, not redeploy triggers. Never combine clean local databases with an old
+on-chain manifest or an old hub-oracle one-shot outref.
+</Callout>
+
+## The fresh-run sequence
+
+<Mermaid chart={`flowchart TD
+  A["pnpm build + compose build"] --> B["hub-oracle one-shot nonce"]
+  B --> C["patch .env, reset local state"]
+  C --> D["publish node-runtime reference scripts"]
+  D --> E["init protocol"]
+  E --> F["register + activate operator"]
+  F --> G["start node, wait /readyz"]
+  G --> H["start DA committee node"]
+  H --> I["submit-deposit, project-deposits-once"]
+  I --> J["submit L2 transfers A + B"]
+  J --> K["poll /tx-status until committed"]
+  K --> L["DA attestation: sign, submit, apply"]
+  L --> M["merge until stateQueue empty"]
+  M --> N["e2e-finalize-summary"]`} />
+
+Each state-changing step is wrapped in `e2e-run-step`. For example, protocol init:
+
+```bash
+RUN_ID="e2e-run-$(date -u +%Y%m%dT%H%M%SZ)"
+E2E_STEP_DIR="logs/$RUN_ID/steps"; mkdir -p "$E2E_STEP_DIR"
+
+node dist/index.js e2e-run-step \
+  --id init-protocol \
+  --cwd "$(pwd)" \
+  --raw-log "logs/e2e-init.log" \
+  --summary-out "$E2E_STEP_DIR/init.json" \
+  --timeout-ms 1200000 \
+  -- \
+  node dist/index.js init \
+  --contract-deployment-info-output deploymentInfo/contract-deployment-info.json
+```
+
+The DA committee node (from `demo/da-committee-node`) is started as a service and
+must be ready on its `/readyz` before any L2 activity:
+
+```bash
+node dist/index.js e2e-start-service \
+  --service da-committee-node \
+  --cwd "$DA_NODE_DIR" \
+  --ready-url http://127.0.0.1:8787/readyz \
+  --health-url http://127.0.0.1:8787/healthz \
+  --pid-file "$DA_NODE_DIR/run/e2e-watcher.pid" \
+  --ready-timeout-ms 180000 \
+  -- pnpm start
+```
+
+<Callout type="info" title="Key rules baked into the flow">
+Keep `RUN_GENESIS_ON_STARTUP=false` and run protocol init explicitly. Use a fresh,
+funded operator-wallet UTxO for the hub-oracle one-shot. Host DB-backed commands need
+`POSTGRES_HOST=127.0.0.1 POSTGRES_PORT=5433`; `/tx-status` takes `tx_hash`. Do not use
+`attest-state-queue-once` as the acceptance path; the DA node must sign, submit, and
+apply the attestation. See the skill for the exact per-step commands.
+</Callout>
+
+## What a green run proves
+
+A passing run shows the happy path holds end to end for one deployment: a deposit is
+projected, two L2 transfers are admitted and committed, DA attestation reaches threshold,
+and the blocks merge, leaving the state queue empty and the balances correct.
+
+It does not exercise a fraud proof, a restart, an L1 rollback, provider disagreement, or
+adversarial input. It runs against a local Kupmios with demo parameters. A green run is
+the current bar, not a production guarantee.
+
+## Artifacts
+
+A run produces, under `logs/$RUN_ID/`:
+
+- `steps/*.json`: one structured summary per `e2e-run-step` (with `observedTxHashes`).
+- per-step raw logs (`logs/e2e-*.log`) and the node log captured for the window.
+- `deployment-run-state.json`: the run-state used across nonce and reference-script
+  publication.
+- `summary.json` and `summary.md`: the finalized dashboard from
+  `e2e-finalize-summary`.
+
+## Pass criteria
+
+`e2e-finalize-summary` must report `verdict: success` with
+`nextSafeAction: none_run_complete`, and:
+
+- one consumed deposit and two accepted L2 admissions;
+- `/healthz` healthy and `/readyz` ready with no readiness reasons;
+- both L2 transaction statuses are `committed`, with balances reflecting the transfers;
+- `pending_block_finalizations` finalized; `mempool`, `processed_mempool`, `blocks`,
+  and unfinished local mutation jobs all zero after merges;
+- `immutable` and `confirmed_ledger` contain the merged results;
+- `stateQueue.headers` is empty after the final merge;
+- the final log scan shows no unexplained error, failure, abandon, or crash entries.
+
+## Common failure modes
+
+Classify a blocker and take the safe next action rather than resubmitting blindly:
+
+| Blocker | Safe next action |
+|---------|------------------|
+| Local Kupmios unhealthy or failover configured | Run `l1-provider-preflight --json`; fix local Kupo/Ogmios/Cardano-node. Do not switch to a remote provider. |
+| Fresh one-shot mismatch | Stop. Attach/resume if already initialized; otherwise restart fresh with a new one-shot and matching manifest. |
+| Operator registered but not active | Reconcile operator lifecycle; use activate-only recovery only when chain state proves registration exists. |
+| Deposit not projected | Check `deposits_utxos.inclusion_time`; wait until due, then run `project-deposits-once`. |
+| DA node not ready before L2 activity | Stop before transfers. Fix DA wallet/config/provider and restart the DA node. |
+| DA payload conflict or root mismatch | Stop. Do not merge. Diagnose payload construction and the endpoint set. |
+| DA signatures below threshold | Start enough DA signer instances or fix peer propagation. Do not lower the threshold. |
+| Merge skipped by state-queue lease | Inspect `/stateQueueMutationLease` and unfinished mutation jobs; wait or repair the real stuck job. |
+
+Before repeating a submitted milestone, use the `reconcile` commands
+(`reconcile tx-committed`, `reconcile da-attested`, `reconcile merge-complete`, and
+others) with `--json [--repair]`.
+
+## Related
+
+- [Benchmarks &amp; Stress Testing](/docs/operators/node/benchmarks) for throughput runs.
+- [CLI Reference](/docs/operators/node/cli-reference) for the full command list.
+- [Compatibility &amp; State-Reset Rules](/docs/operators/node/compatibility-rules).

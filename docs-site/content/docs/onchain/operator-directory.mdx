@@ -1,0 +1,25 @@
+---
+title: "Operator Directory"
+description: "The linked-list operator directory validators, active, registered, and retired operators."
+---
+
+The operator directory tracks the set of operators as an on-chain **linked list**
+(see [Data Structures](/docs/spec/data-structures)). It lives under
+`onchain/aiken/validators/operator-directory/` and is split into three lifecycle
+stages:
+
+- **`registered-operators`**: operators that have registered and bonded but are not
+  yet active.
+- **`active-operators`**: operators currently eligible to produce blocks under the
+  [scheduler](/docs/onchain/consensus-validators).
+- **`retired-operators`**: operators that have exited the active set.
+
+Membership transitions (register → activate → retire) move an operator between these
+linked lists while preserving the ordered, tamper-evident structure.
+
+## Related
+
+- Off-chain builders: [`midgard-sdk` operator lifecycle](/docs/sdk/midgard-sdk/operator-lifecycle)
+- Node commands: `register-active-operator`, `activate-operator`, see the
+  [CLI reference](/docs/operators/node/cli-reference)
+- Spec: [Consensus Protocol](/docs/spec/consensus-protocol)

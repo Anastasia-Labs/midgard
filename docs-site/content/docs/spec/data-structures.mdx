@@ -1,0 +1,22 @@
+---
+title: "General Data Structures"
+description: "The reusable on-chain data structures Midgard relies on, the linked list and the single-threaded state machine."
+---
+
+Appendix A specifies the general-purpose on-chain data structures that recur across
+the protocol.
+
+## What the appendix covers
+
+- **Linked list**: an on-chain, ordered, append-friendly structure used, for
+  example, by the operator directory (active / registered / retired operators).
+- **Single-threaded state machine**: the pattern for a state machine advanced by a
+  single token/thread across transactions, used by long-running processes such as
+  the fraud-proof [computation thread](/docs/spec/proof-protocol).
+
+## In this repository
+
+The linked list backs the [operator directory](/docs/onchain/operator-directory)
+validators and has an SDK counterpart in `midgard-sdk` (`linked-list`). The
+single-threaded state-machine pattern underlies the
+[fraud-proof machines](/docs/onchain/fraud-proof-machines).

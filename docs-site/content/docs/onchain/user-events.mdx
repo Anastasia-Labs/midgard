@@ -1,0 +1,22 @@
+---
+title: "User-Event Validators"
+description: "The on-chain validators for deposits, withdrawals, transaction orders, and witnesses."
+---
+
+These validators, under `onchain/aiken/validators/user-events/`, enforce the
+[User-Event Protocol](/docs/spec/user-event-protocol) on Layer 1, the points where
+users and L1 interact with the rollup.
+
+## Validators
+
+- **`deposit`**: validates deposits moving funds from L1 into the L2 ledger.
+- **`withdrawal`**: validates withdrawal orders moving funds from L2 back to L1.
+- **`tx-order`**: validates transaction-order events used to sequence L2
+  transactions into blocks.
+- **`witness`**: the witness staking script used to witness user events on-chain.
+
+## Related
+
+- Off-chain builders: [`midgard-sdk` user events](/docs/sdk/midgard-sdk/user-events)
+- Node flows: [deposits &amp; withdrawals](/docs/operators/node/deposits-withdrawals)
+- Spec: [User-Event Protocol](/docs/spec/user-event-protocol)

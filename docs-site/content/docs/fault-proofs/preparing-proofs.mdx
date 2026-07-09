@@ -1,0 +1,120 @@
+---
+title: "Preparing Fraud Proofs"
+description: "Use prepare-double-spend and prepare-invalid-range to turn a Midgard block's transactions into the JSON inclusion proofs, input lists, and plan files the submit steps consume."
+---
+
+The two `prepare-*` commands are the front of the fault-proof pipeline. They take
+a Midgard block, find the transaction(s) that violate a ledger rule, build the
+membership proofs against the block's transactions Merkle-Patricia Trie, and emit
+the JSON artifacts that the `submit-*` commands later feed on-chain. They touch no
+wallet and no L1 provider. They operate purely on transaction data.
+
+Both commands take their input from **exactly one** source: a live node
+(`--midgard-node-url`), a saved transactions file (`--transactions-file`), or, for double-spend only, a built-in `--sample-double-spend` fixture. Supplying zero
+or more than one source is an error.
+
+## `prepare-double-spend`
+
+Grounded in `src/prepare-double-spend.ts`. It finds two transactions in one block
+that spend the same input, then produces per-transaction inclusion proofs and
+input CBOR lists.
+
+```sh
+midgard-fault-proofs prepare-double-spend \
+  (--midgard-node-url <url> | --transactions-file <path> | --sample-double-spend) \
+  --header-hash <hex> \
+  [--expected-transactions-root <hex>] \
+  [--tx1-id <hex> --tx2-id <hex>] \
+  [--output-dir <path>] \
+  [--allow-incompatible-output]
+```
+
+- `--header-hash` (required), the 28-byte block header hash the block is fetched
+  or matched by.
+- `--tx1-id` / `--tx2-id` (optional, must be given together), pin the exact
+  double-spending pair. When omitted, `resolveDoubleSpendPair` scans the block for the
+  first input spent by two distinct transactions.
+- `--expected-transactions-root`: a 32-byte root to cross-check against the root
+  the tool recomputes from the block's native transactions.
+- `--output-dir`: when set, the artifacts are written to disk (see below);
+  otherwise the full result is printed to stdout as JSON.
+
+### What it computes
+
+`decodeTransactionMaterial` decodes each transaction's canonical CBOR into a
+native Midgard tx, recomputes and checks its node tx id, and extracts its spend
+inputs. `buildTrieView` builds the block's transactions trie and produces a
+membership proof for each of the two chosen transactions. The result records the
+shared `doubleSpentInput`, each transaction's `doubleSpentInputIndex`, and a
+`compatibility` block flagging whether the material can be used by the
+`submit-step` commands.
+
+<Callout type="warn" title="Compatibility gate">
+If `--expected-transactions-root` is supplied and does not match the root the tool
+recomputes, `compatibility.canUseSubmitStepCommands` is `false`. When writing
+files, the tool then **refuses** to emit submit-step material unless you pass
+`--allow-incompatible-output` (which writes them for diagnostics only).
+</Callout>
+
+### Files written with `--output-dir`
+
+From `writePreparedFiles`:
+
+| File | Consumed by |
+| --- | --- |
+| `tx1-inclusion.json` | `submit-step-01` `--tx-inclusion` |
+| `tx2-inclusion.json` | `submit-step-02` `--tx-inclusion` |
+| `tx1-inputs.json` | `submit-step-03` `--tx1-inputs` |
+| `tx2-inputs.json` | `submit-step-04` `--tx2-inputs` |
+| `plan.json` | Human-readable summary: header hash, double-spent input, both node tx ids, both input indices, compatibility, commitment encodings. |
+
+With `--sample-double-spend` and `--output-dir`, an extra
+`block-transactions.json` is written from `makeSampleDoubleSpendTransactions`, a
+three-transaction fixture where `tx1` and `tx2` share input `1111…#7`. This is the
+quickest way to see the artifact shape without a running node.
+
+## `prepare-invalid-range`
+
+Grounded in `src/prepare-invalid-range.ts`. It finds a transaction whose validity
+range violates the block's declared validity window.
+
+```sh
+midgard-fault-proofs prepare-invalid-range \
+  (--midgard-node-url <url> | --transactions-file <path>) \
+  --header-hash <hex> \
+  --block-valid-from <posixMs> \
+  --block-valid-to <posixMs> \
+  [--expected-transactions-root <hex>] \
+  [--tx-id <hex>] \
+  [--output-dir <path>] \
+  [--allow-incompatible-output]
+```
+
+- `--block-valid-from` / `--block-valid-to` (both required), the block's declared
+  validity window in POSIX milliseconds. `--block-valid-from` must be `<=`
+  `--block-valid-to`.
+- `--tx-id` (optional), pin a specific transaction. When omitted, the tool selects the
+  first violating transaction in the block.
+
+For each transaction, `normalizeNativeTxValidityRange` normalizes its validity
+interval and `invalidRangeViolationReason` decides whether it falls outside the
+block window. The selected transaction is emitted with its
+`normalizedValidityRange` and a machine-readable `violationReason`.
+
+### Files written with `--output-dir`
+
+| File | Consumed by |
+| --- | --- |
+| `tx-inclusion.json` | `submit-invalid-range-step-01` `--tx-inclusion` |
+| `plan.json` | Summary: header hash, block validity window, node tx id, normalized range, violation reason, compatibility, commitment encodings. |
+
+The same compatibility gate and `--allow-incompatible-output` override apply.
+
+## From artifacts to a proof
+
+`prepare-*` only builds inputs, it never touches L1. The next stage takes these
+files and drives them through the on-chain computation thread.
+
+<Cards>
+  <Card title="Submitting steps" href="/docs/fault-proofs/submitting-steps" description="Feed the inclusion proofs and input lists into submit-init and the per-category steps." />
+</Cards>

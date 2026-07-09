@@ -1,0 +1,78 @@
+---
+title: "Validation Engine Overview"
+description: "The two-phase validation pipeline (Phase A structural/native checks, Phase B script/ledger evaluation) the Midgard node uses to admit queued L2 transactions."
+---
+
+The `@al-ft/midgard-validation` package is the **shared Midgard native
+transaction validation pipeline**. Its own module header describes it as the
+"public validation surface for queued Midgard L2 transactions", the code a
+Midgard node runs to decide which queued Layer 2 transactions may be admitted
+into a block.
+
+Validation is split into two phases. **Phase A** is stateless and
+per-transaction: it decodes each queued transaction, checks structural
+invariants, and verifies signatures and native scripts. **Phase B** is
+dependency-aware and stateful: it orders transactions by their input/output
+dependencies, applies each against a UTxO state, evaluates Plutus and Midgard
+scripts locally, and enforces value preservation.
+
+<Callout type="info">
+This engine validates the *ledger* semantics of L2 transactions. It is the
+off-chain counterpart to the protocol's on-chain rules, see
+[Phase Two Validation](/docs/spec/phase-two-validation) in the specification for
+how these checks relate to the fraud-proof settlement layer.
+</Callout>
+
+## Pipeline
+
+<Mermaid chart={`flowchart TD
+  Q[QueuedTx: txId, txCbor, arrivalSeq, createdAt] --> A[Phase A: runPhaseAValidation]
+  A -->|decode + structural + signature checks| AR{per-tx valid?}
+  AR -->|no| RJ1[RejectedTx: code + detail]
+  AR -->|yes| PV[PhaseAValidatedTx: ledgerTx + graph + derived]
+  PV --> B[Phase B: runPhaseBValidationWithPatch]
+  B -->|dependency graph, conflict buckets| BO[ordered evaluation]
+  BO -->|UTxO lookup, script eval, value preservation| BR{ledger valid?}
+  BR -->|no| RJ2[RejectedTx + cascade to dependents]
+  BR -->|yes| ACC[accepted + UTxOStatePatch]
+`} />
+
+## Package exports
+
+The package exposes a public surface through `package.json` subpath exports and
+re-exports everything from `src/index.ts`. The most important entry points:
+
+| Export | Module | Purpose |
+| --- | --- | --- |
+| `./phase-a` | `phase-a.ts` | `runPhaseAValidation`, stateless per-tx validation. |
+| `./phase-b` | `phase-b.ts` | `runPhaseBValidationWithPatch`, dependency-aware ledger validation. |
+| `./ledger` | `ledger.ts` | `LedgerEntry` / `ProcessedTx` UTxO row model. |
+| `./ledger-tx` | `ledger-tx/` | Semantic `MidgardLedgerTx` types and canonical CBOR codec. |
+| `./local-script-eval` | `local-script-eval.ts` | Local UPLC evaluation via the Harmonic Labs machine. |
+| `./script-context` | `script-context.ts` | Builds Plutus V3 / Midgard V1 script contexts. |
+| `./script-source` | `script-source.ts` | Resolves inline and reference script sources. |
+| `./midgard-redeemers` | `midgard-redeemers.ts` | Redeemer decoding and script-purpose data. |
+| `./plutus-data` | `plutus-data.ts` | Plutus data to canonical CBOR hex conversion. |
+| `./tx-out-ref` | `tx-out-ref.ts` | Transaction-input reference helpers. |
+| `./types` | `types.ts` | Shared config, result, and `RejectCodes`. |
+
+<Callout type="warn">
+The package has **no README**. This documentation is grounded in the module
+header comments, `package.json` exports, and the JSDoc on the exported types.
+Where the code does not state a behavior, this documentation does not assert one.
+</Callout>
+
+## Rejection codes
+
+Both phases emit a canonical `RejectedTx` record, `{ txId, code, detail }`, using the stable `RejectCodes` map in `types.ts`. Its JSDoc notes that the
+pipeline "persists these codes for observability and replay, so they should
+change only when the corresponding rejection semantics change." Codes range from
+`E_CBOR_DESERIALIZATION` and `E_EMPTY_INPUTS` (Phase A) to `E_DOUBLE_SPEND`,
+`E_DEPENDENCY_CYCLE`, and `E_VALUE_NOT_PRESERVED` (Phase B).
+
+<Cards>
+  <Card title="Phase A" href="/docs/validation/phase-a" description="Stateless structural and native validation of each queued transaction." />
+  <Card title="Phase B" href="/docs/validation/phase-b" description="Dependency-aware ledger validation with local script evaluation." />
+  <Card title="Ledger Model" href="/docs/validation/ledger-model" description="The MidgardLedgerTx semantic model and the UTxO ledger rows." />
+  <Card title="Value Accounting" href="/docs/validation/value-accounting" description="Value preservation and redeemer handling." />
+</Cards>

@@ -1,0 +1,148 @@
+---
+title: "Runtime Overview"
+description: "The demo/midgard-node runtime layout, HTTP API server, PostgreSQL-backed views, LevelDB Merkle Patricia Forestry state, and the background fibers started by the listen command."
+---
+
+`demo/midgard-node` is a server application with GET and POST endpoints for
+interacting with Midgard. It is the demo off-chain runtime that ties the
+protocol together: it serves the HTTP API, validates and enqueues submitted
+Midgard-native transactions, maintains durable database and MPF state, and runs
+the long-running background fibers that keep the node progressing.
+
+## Runtime layout
+
+The source tree groups responsibilities into a small number of directories:
+
+- `src/commands`: HTTP handlers, CLI entrypoints, readiness logic, and
+  response shaping.
+- `src/fibers`: long-running background loops started by `listen`.
+- `src/workers`: transaction-building and commitment helpers used by the
+  background fibers.
+- `src/database`: SQL access layers and persistence utilities.
+- `src/services`: Effect services for config, contracts, Lucid, database, and
+  global runtime state.
+- `src/transactions`: one-shot transaction programs for initialization,
+  operator lifecycle, deposit, withdrawal, and reserve/payout flows.
+- `scripts`: standalone stress and maintenance scripts used outside the main
+  server loop.
+
+## The three state stores
+
+A running node keeps three distinct kinds of state, and they must stay
+mutually consistent.
+
+<Cards>
+  <Card
+    title="PostgreSQL views"
+    href="/docs/operators/node/database"
+    description="Durable relational views: mempool, latest/confirmed ledger, immutable history, address history, admissions, rejections, and finalization journals."
+  />
+  <Card
+    title="LevelDB MPF state"
+    href="/docs/operators/node/database"
+    description="Merkle Patricia Forestry roots for the ledger (LEDGER_MPF_DB_PATH) and transactions (TRANSACTIONS_MPF_DB_PATH), persisted across restarts."
+  />
+  <Card
+    title="On-chain protocol state"
+    href="/docs/operators/node/initialization-deployment"
+    description="State queue, hub oracle, operator lists, scheduler, and reference scripts on Cardano L1."
+  />
+</Cards>
+
+- PostgreSQL stores durable relational views such as mempool entries, latest
+  ledger entries, immutable transactions, address history, and rejection logs.
+- `LEDGER_MPF_DB_PATH` and `TRANSACTIONS_MPF_DB_PATH` point at the LevelDB
+  directories used to persist MPF-backed state roots across restarts.
+- `ADMIN_API_KEY` gates the admin-only HTTP surface; keep it set in any shared
+  or remotely reachable environment.
+
+<Callout type="warn" title="Do not split-brain the state stores">
+Never combine a fresh local database with previously deployed on-chain protocol
+state. If local DBs or durable node state are wiped, the on-chain contracts must
+be redeployed from a clean genesis/deployment flow first. See the
+[state-reset rules](/docs/operators/node/compatibility-rules).
+</Callout>
+
+## Component diagram
+
+<Mermaid chart={`
+flowchart TB
+  subgraph clients [Clients]
+    W[Wallets and tooling]
+    B[Benchmark and stress runners]
+  end
+
+  subgraph node [midgard-node process]
+    H[HTTP API server<br/>listen-router.ts]
+    subgraph fibers [Background fibers]
+      FC[block-commitment]
+      FK[block-confirmation]
+      FM[merge]
+      FD[fetch-and-insert deposits]
+      FW[fetch-and-insert withdrawals]
+      FT[fetch-and-insert tx-order]
+      FP[project-deposits-to-mempool-ledger]
+      FR[retention-sweeper]
+      FQ[tx-queue-processor]
+      FMM[monitor-mempool<br/>--with-monitoring only]
+    end
+    subgraph state [Local state]
+      PG[(PostgreSQL views)]
+      MPF[(LevelDB MPF roots)]
+    end
+  end
+
+  L1[(Cardano L1<br/>via Kupmios)]
+
+  W -->|POST /submit, GET /utxos| H
+  B -->|/submit, /tx-status| H
+  H --> PG
+  FQ --> PG
+  FC --> MPF
+  FC --> PG
+  FC -->|commit block header| L1
+  FK -->|confirm commitment| L1
+  FM -->|merge to confirmed| L1
+  FD -->|read deposit UTxOs| L1
+  FW -->|read withdrawal UTxOs| L1
+  FT -->|read tx-order UTxOs| L1
+  FP --> PG
+  FR --> PG
+`} />
+
+## Entry points
+
+The node exposes one long-running entry point plus many one-shot CLI commands.
+
+- `pnpm listen` (or `node dist/index.js listen`) builds and starts the HTTP
+  server plus every background fiber. Pass `-m` / `--with-monitoring` to enable
+  Prometheus metrics and OpenTelemetry spans.
+- The remaining subcommands are one-shot operations: deployment, operator
+  lifecycle, deposit/withdrawal flows, reserve/payout, reconciliation, audit,
+  benchmarks, and DA libp2p tooling.
+
+See the [CLI reference](/docs/operators/node/cli-reference) for the complete,
+grouped list, and the [HTTP API](/docs/operators/node/server-http-api) page for
+the route graph.
+
+## Startup sequence
+
+When `listen` runs, the node performs a strict startup sequence before it begins
+serving traffic. This is where correctness is enforced:
+
+<Steps>
+<Step>Initialize the database and verify/apply schema state.</Step>
+<Step>Verify the configured deployment manifest and protocol deployment status; auto-initialize only an empty deployment when startup policy allows it (never over partial or externally provisioned state).</Step>
+<Step>Seed the latest local block boundary from the state-queue tip and reconcile confirmed-ledger and commit MPFs against the on-chain root.</Step>
+<Step>Hydrate any pending block-finalization journal, then refuse to serve if unfinished local mutation jobs remain.</Step>
+<Step>Run deposit, withdrawal, and tx-order catch-up, then backfill any missing DA payloads from finalized journals.</Step>
+<Step>Launch the HTTP server and all background fibers concurrently.</Step>
+</Steps>
+
+<Callout type="info" title="Readiness vs. liveness">
+`GET /healthz` only confirms the process is up. `GET /readyz` is the real signal:
+it checks worker heartbeats, durable admission backlog and age, unfinished local
+mutation jobs, unresolved block submissions, database connectivity, provider
+reachability, and state-queue mutation-lease state, returning `503` until the
+node is genuinely ready.
+</Callout>

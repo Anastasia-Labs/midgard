@@ -1,0 +1,137 @@
+---
+title: "Value Accounting & Redeemers"
+description: "How Phase B enforces the ledger value-preservation equation, sums multi-asset values, converts signed mint deltas, and decodes and points at redeemers by script purpose."
+---
+
+Two concerns underpin correct ledger validation: **value accounting** (does the
+transaction conserve value?) and **redeemer handling** (which script runs, with
+what argument?). They live in `src/value-accounting.ts` and
+`src/midgard-redeemers.ts`.
+
+## Value accounting: `value-accounting.ts`
+
+Cardano is multi-asset, so value is a lovelace amount plus a nested map of
+policy id to asset name to quantity. `MidgardValue` (from `midgard-core`) uses
+only positive quantities because it represents spendable output value. Minting,
+however, is a *signed* delta, so validation uses `MidgardValueDelta`:
+
+```ts
+type MidgardValueDelta = {
+  readonly lovelace: bigint;                                     // signed
+  readonly assets: ReadonlyMap<string, ReadonlyMap<string, bigint>>;
+};
+```
+
+### Summing and normalization
+
+- **`sumMidgardValues(values)`** adds a list of `MidgardValue`s into one.
+- Internally, per-asset deltas are accumulated and then **normalized**: any
+  asset whose running quantity reaches `0n` is dropped, and any policy whose map
+  becomes empty is removed. Results are returned in sorted (canonical) order via
+  `orderedAssets`. This normalization is what makes a zero net delta representable
+  as an empty map.
+
+### Mint conversion
+
+- **`mintToValueDelta(mint)`** turns a decoded `MidgardLedgerMint` (signed
+  per-asset entries) into a `MidgardValueDelta`, leaving `lovelace` at `0n`.
+- **`mintDeltaToScriptMintValue(mintDelta)`** projects that delta into the
+  `ScriptMintValue` shape the script context uses for the `mint` field.
+
+### The preservation equation
+
+The core check is `valuePreservationDelta`, which computes:
+
+```
+delta = inputs − fee + mint − outputs
+```
+
+```ts
+export const valuePreservationDelta = (
+  inputSum: MidgardValue,
+  fee: bigint,
+  mintDelta: MidgardValueDelta,
+  outputSum: MidgardValue,
+): MidgardValueDelta
+```
+
+[Phase B](/docs/validation/phase-b) sums the resolved input values, then calls
+this with the transaction's `fee`, the candidate's `derived.mintDelta`, and its
+`derived.outputSum`. If the result is not zero, tested by
+**`isZeroValueDelta`**, the transaction is rejected `E_VALUE_NOT_PRESERVED`.
+
+<Callout type="info">
+The reject detail is produced by **`describeValueDelta`**, which renders the
+non-zero delta as `lovelace=<n> assets=<policy>.<asset>=<qty>,...` (or
+`assets=none`). This makes a value-preservation failure debuggable from the
+rejection record alone.
+</Callout>
+
+<Mermaid chart={`flowchart LR
+  I[inputSum] --> D[valuePreservationDelta]
+  F[fee] --> D
+  M[mintDelta] --> D
+  O[outputSum] --> D
+  D --> Z{isZeroValueDelta?}
+  Z -->|yes| OK[accept]
+  Z -->|no| REJ[reject E_VALUE_NOT_PRESERVED + describeValueDelta]
+`} />
+
+## Redeemer handling: `midgard-redeemers.ts`
+
+A redeemer tells the ledger *which* script runs and *with what* argument. Midgard
+uses Cardano's redeemer tags plus one of its own:
+
+```ts
+const MidgardRedeemerTag = {
+  Spend: CML.RedeemerTag.Spend,
+  Mint: CML.RedeemerTag.Mint,
+  Reward: CML.RedeemerTag.Reward,
+  Receiving: 6,   // Midgard-specific
+} as const;
+```
+
+### Decoding
+
+`decodeMidgardRedeemers(preimageCbor)` accepts **both** redeemer encodings, a
+CBOR array of 4-element entries (`[tag, index, data, exUnits]`) or a CBOR map
+keyed by `[tag, index]`, and returns a normalized
+`DecodedMidgardRedeemer[]`. During decoding it:
+
+- rejects any tag outside the supported set (`ensureSupportedTag`);
+- validates that each redeemer payload actually encodes Plutus `Data`
+  (`decodeRedeemerDataCborHex`);
+- parses ex-units as `{ memory, steps }`.
+
+### Pointers
+
+A `MidgardRedeemerPointer` is `{ tag, index }`. `midgardRedeemerPointerKey`
+renders it as `"<tag>:<index>"`, and `findRedeemerByPointer` locates the
+redeemer a given script purpose points at.
+
+### Script purposes
+
+`MidgardScriptPurpose` is the tagged union describing what a script is doing, `mint`, `spend`, `observe`, or `receive`, each carrying its `scriptHash` plus a
+purpose-specific field (`policyId` for mint, `outRefHex` for spend). Two encoders
+turn a purpose into Plutus data:
+
+| Function | Target |
+| --- | --- |
+| `cardanoScriptPurposeData` | Cardano script-purpose data. Throws on `receive`, Cardano has no receiving purpose. |
+| `midgardScriptPurposeData` | Midgard's own encoding, including `receive` (constructor 3). |
+
+<Callout type="warn">
+The `receive` purpose is Midgard-specific. Cardano Plutus V3 contexts cannot
+represent it, which is why [Phase B](/docs/validation/phase-b) selects
+`buildMidgardV1ScriptContext` (rather than the Plutus V3 builder) for scripts
+that use it.
+</Callout>
+
+## How the pieces connect
+
+When Phase B evaluates a script, it: resolves the input/output values and runs
+`valuePreservationDelta` to confirm conservation; converts the signed mint into
+`ScriptMintValue` for the context; matches the script purpose to its redeemer via
+`findRedeemerByPointer`; and encodes the purpose with the appropriate
+Cardano/Midgard encoder before handing the assembled context to
+`evaluateScriptWithHarmonic`.

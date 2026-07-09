@@ -1,0 +1,192 @@
+---
+title: "Public API"
+description: "The exported surface of lucid-midgard, LucidMidgard entry point, the fluent TxBuilder, CompleteTx / PartiallySignedTx / SubmittedTx stages, the sign API, provider, wallet adapters, and the error model."
+---
+
+Use this page as the reference for the exported surface: what exists, what each stage
+can do, and which errors it raises. If you are writing your first transfer, start with
+the [quickstart](/docs/sdk/lucid-midgard/quickstart) instead.
+
+The package root re-exports four modules: `builder.js`, `core/index.js`,
+`provider.js`, and `wallet.js`. The API is designed to feel familiar to
+lucid-evolution users while preserving Midgard-native semantics.
+
+## Entry point: `LucidMidgard`
+
+`LucidMidgard` owns configuration, provider access, wallet selection, protocol
+parameters, and transaction builder creation.
+
+```ts
+const midgard = await LucidMidgard.new(provider, "Preprod");
+midgard.selectWallet.fromSeed(seedPhrase);
+
+const completed = await midgard
+  .newTx()
+  .collectFrom([utxo])
+  .pay.ToAddress(destination, { lovelace: 3_000_000n })
+  .complete();
+```
+
+Key members:
+
+- `LucidMidgard.new(provider, networkOrConfig?)`: async constructor that reads a
+  provider snapshot.
+- `selectWallet`: `.fromSeed`, `.fromPrivateKey`, `.fromExternalSigner`,
+  `.fromAddress` (read-only).
+- `newTx()`: returns a fresh `TxBuilder` bound to the current provider snapshot.
+- `fromTx(input, options?)`: imports canonical Midgard native v1 full
+  transactions (native objects, native CBOR/hex, `{ txCbor }`, `{ txHex }`, or an
+  existing `CompleteTx`). Cardano transaction/body/witness bytes are rejected.
+- `switchProvider(provider, expectations?)`, `overrideUTxOs(utxos)`,
+  `clearUTxOOverrides()`, provider and UTxO source control.
+- `config()`: immutable `LucidMidgardConfigSnapshot` (provider generation,
+  protocol-info diagnostics, current slot, fee parameters, submission limits,
+  network identity, UTxO override generation).
+- Query convenience: `currentSlot()`, `utxosAt(address)`,
+  `utxosAtWithUnit(address, unit)`, `utxosByOutRef(outRefs, options?)`,
+  `utxoByUnit(unit)`, `datumOf(utxo, options?)`, `txStatus(txId)`,
+  `awaitTx(txId, options?)`.
+
+## Builder lifecycle
+
+The lifecycle is staged, and each stage exposes immutable data or snapshots:
+
+1. `TxBuilder` records what the transaction should do.
+2. `CompleteTx` canonicalizes, balances, computes roots, and derives the transaction
+   id. It becomes submit-capable only once the expected address witness set is
+   complete; `submit()` on an under-signed `CompleteTx` fails.
+3. `PartiallySignedTx` holds a partial witness collection and has no `submit` method.
+   It is returned only with `allowPartial: true`.
+4. `SubmittedTx` carries the durable admission result and the status helpers.
+
+## Fluent surface: `TxBuilder`
+
+The builder methods, all returning a new `TxBuilder`:
+
+- `collectFrom(utxos, redeemer?)`
+- `readFrom(utxos, { trustedReferenceScripts? })`
+- `pay.ToAddress(address, value, options?)`
+- `pay.ToContract(address, datum, value, options?)`
+- `pay.ToProtectedAddress(address, value, options?)`
+- `addSigner(keyHashOrAddress)`, `addSignerKey(keyHash)`
+- `mintAssets(policyId, assets, redeemer?)`, `mint(mints, redeemer?)`
+- `observe(scriptHash, redeemer?)`, `receiveRedeemer(scriptHash, redeemer)`
+- `validFrom(slotOrPosix)`, `validTo(slotOrPosix)`
+- `setMinFee(fee)`: a fee floor; provider fee policy stays authoritative unless
+  a caller supplies an explicit `feePolicy`.
+- `attach.Script`, `attach.NativeScript`, `attach.SpendingValidator`,
+  `attach.MintingPolicy`, `attach.ObserverValidator`,
+  `attach.ReferenceScriptMetadata`, `attach.Datum`
+- `compose(other, ...others)`: merges compatible fragments left-to-right.
+- `snapshot()` / `debugSnapshot()`, inspectable builder state.
+
+Completion comes in three flavors, each also as a `Safe` and `Program` variant:
+
+- `complete(options?)` / `completeSafe(options?)` / `completeProgram(options?)`
+- `chain(options?)` / `chainSafe(options?)` / `chainProgram(options?)`, returns
+  `[newWalletUtxos, derivedOutputs, completeTx]` for [local chaining](/docs/sdk/lucid-midgard/builder-state-machine).
+
+<Callout type="info" title="Completion options">
+`complete` accepts `changeAddress`, `localValidation` (`"none" | "phase-a" | "phase-b"`,
+default `"none"`), `feePolicy` (`"provider"` or explicit `minFeeA` / `minFeeB`),
+and `maxFeeIterations`. See [Balancing and Fees](/docs/sdk/lucid-midgard/balancing-fees).
+</Callout>
+
+## `CompleteTx`
+
+The canonicalized, submit-capable stage. Notable members:
+
+- `sign`: a callable-and-object sign API (see below).
+- `assemble(bundles, options?)`: combine detached partial witness bundles.
+- `submit(options?)` / `submitSafe` / `submitProgram`, post canonical CBOR and
+  return a `SubmittedTx`.
+- `validate(phase, options?)` / `validateSafe` / `validateProgram`, local
+  preflight without mutating completion metadata.
+- `producedOutputs()`: optimistic local `MidgardUtxo` values for chaining.
+- `toHash()`: the Midgard native transaction id (hex).
+
+## Sign API
+
+`CompleteTx.sign` is both callable and an object. Called directly,
+`sign(wallet?)` is a thin single-wallet shortcut returning a signed `CompleteTx`.
+As an object it exposes partial-sign entry points, each returning a
+`TxPartialSignBuilder`:
+
+- `sign.withWallet(wallet?)`
+- `sign.withPrivateKey(privateKey)`
+- `sign.withExternalSigner(signer)`
+- `sign.withWitness(witness)` / `sign.withWitnesses(witnesses)`
+
+Each has `Safe` and `Program` variants. A `TxPartialSignBuilder` exposes
+`partial()` (returns a detached `MidgardPartialWitnessBundle`), `complete()`,
+`completeSafe()`, and `completeProgram()`.
+
+```ts
+const bundleA = await tx.sign.withWallet(walletA).partial();
+const bundleB = await tx.sign.withPrivateKey(privateKeyB).partial();
+const signed = tx.assemble([bundleA, bundleB]);
+```
+
+Assembly verifies every vkey witness against the compact transaction body hash
+and returns a submit-capable `CompleteTx` only when the expected address witness
+set is complete. `PartiallySignedTx` (returned only with `allowPartial: true`)
+has no `submit` method.
+
+## `SubmittedTx`
+
+Returned by `submit()`. Members include `txIdHex` (and `toHash()`),
+`producedOutputs()`, `status()` / `statusSafe` / `statusProgram`, and
+`awaitStatus(options?)` / `awaitStatusSafe` / `awaitStatusProgram`.
+
+## Provider and wallet exports
+
+- `MidgardNodeProvider` with static `create(options)` and instance
+  `diagnostics()`. Implements the `MidgardProvider` interface
+  (`getUtxos`, `getUtxoByOutRef`, `getUtxosByOutRefs`, `getProtocolInfo`,
+  `getProtocolParameters`, `getCurrentSlot`, `submitTx`, `getTxStatus`).
+- Wallet factories: `walletFromSeedPhrase`, `walletFromPrivateKey`,
+  `walletFromExternalSigner`; helpers `makeVKeyWitness`, `verifyVKeyWitness`,
+  `assertVKeyWitness`, `paymentKeyHashFromAddress`, `addressNetworkId`,
+  `assertAddressNetwork`; and the `MidgardWallet` / `ExternalBodyHashSigner`
+  types.
+
+## Core exports
+
+From `core/index.js`: value helpers and `ValueLike`
+(`Assets | CmlValue | bigint`); the `Address`, `MidgardUtxo`, `MidgardOutRef`,
+`MidgardDatum`, `MidgardProtocolParameters`, `TxStatus`, `SubmitTxResult`,
+`CompleteOptions`, and `MidgardResult` types; the script types
+(`ScriptPurpose`, `SupportedValidatorLanguage`, `SpendingValidator`,
+`MintingPolicy`, `ObserverValidator`); and the `LucidMidgardError` family.
+
+## Safe and Effect conventions
+
+Every operation with side effects comes in three forms:
+
+- **Promise**: throws structured `LucidMidgardError` subclasses.
+- **`Safe`**: returns `MidgardResult<T, LucidMidgardError>`, that is
+  `{ ok: true, value } | { ok: false, error }`. Unexpected defects are rethrown.
+- **`Program`**: returns a lazy `Effect` value; no provider or wallet work runs
+  until the effect is run.
+
+## Error model
+
+Every thrown error is a subclass of `LucidMidgardError` (`src/core/errors.ts`):
+
+| Error | Raised when |
+| --- | --- |
+| `BuilderInvariantError` | The builder is asked to do something structurally impossible, for example a duplicate spend input or a malformed option. |
+| `InsufficientFundsError` | Coin selection cannot cover the required value. Carries `unit`, `required`, `available`, and `feeIncluded`. |
+| `SigningError` | Signing failed, or a returned witness does not match the wallet identity. |
+| `ProviderError` | Base class for provider failures. |
+| `ProviderCapabilityError` | The provider does not support a required operation. |
+| `ProviderPayloadError` | The provider returned a malformed or inconsistent response. |
+| `ProviderHttpError` | The node answered with an HTTP error status. |
+| `ProviderTransportError` | The provider could not be reached. |
+
+<Callout type="warn" title="Node rejections are not exceptions">
+A transaction rejected by node validation is not thrown. It arrives as a `rejected`
+[`TxStatus`](/docs/sdk/lucid-midgard/submission-observability) carrying the node's
+stable reject `code` and a nullable `detail`. `lucid-midgard` preserves those codes
+verbatim rather than translating them away.
+</Callout>

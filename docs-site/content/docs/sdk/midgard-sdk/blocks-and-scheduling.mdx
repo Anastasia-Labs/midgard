@@ -1,0 +1,31 @@
+---
+title: "Blocks & Scheduling"
+description: "Building state-queue (block commit/merge) and scheduler transactions, with their datum and redeemer types."
+---
+
+These modules build the transactions that produce blocks and rotate operator duty,
+driving the [consensus protocol](/docs/spec/consensus-protocol). Each module exports
+its on-chain **datum/redeemer Schema types** (Effect `Schema`) alongside the
+transaction builders.
+
+## `state-queue` / `state-queue-production`
+
+Transactions against the on-chain state queue: committing block headers and advancing
+them through the commit/confirm/merge lifecycle. Key exported types include
+`StateQueueRedeemer` and `StateQueueSpendRedeemer`, plus the policy choices
+`SlashingApproach` and `BlockRemovalApproach` and the `STATE_QUEUE_ROOT_ASSET_NAME`
+constant. `state-queue-production` carries the production-tuned flow.
+
+## `scheduler` / `scheduler-refresh`
+
+Transactions that advance the operator schedule / shift. Key exported types include
+`SchedulerDatum`, `SchedulerMintRedeemer`, `AdvancingApproach`, `NeglectedUserEvent`,
+and `OperatorRemovalReason`, plus `SCHEDULER_ASSET_NAME`. `scheduler-refresh` refreshes
+scheduler state.
+
+## Related
+
+- On-chain: [`state-queue`, `scheduler` validators](/docs/onchain/consensus-validators)
+- Node lifecycle: [background fibers](/docs/operators/node/background-fibers)
+  (`commit-explicit-block-header`, `merge-complete`)
+- Spec: [Consensus Protocol](/docs/spec/consensus-protocol)

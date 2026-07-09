@@ -1,0 +1,73 @@
+---
+title: "Background Fibers"
+description: "The ten long-running fibers the Midgard node starts with listen, what each one drives, and how a stalled fiber shows up in readiness and logs."
+---
+
+When the node runs `listen`, it starts a set of **background fibers** that drive the
+protocol forward without manual intervention. They are defined in `src/fibers/`,
+exported through `src/fibers/index.ts`, and launched together near the end of
+`src/commands/listen.ts`.
+
+Nine fibers always run. `monitor-mempool` runs only when the node is started with
+`-m` / `--with-monitoring`.
+
+## The fibers
+
+| Fiber | Drives | One-shot equivalent |
+| --- | --- | --- |
+| `block-commitment` | Batches mempool activity and commits a block header to the L1 state queue. | `commit-explicit-block-header` |
+| `block-confirmation` | Advances committed block headers through confirmation. | `block-committed` |
+| `merge` | Merges matured, DA-attested blocks into confirmed state. | `merge-complete` |
+| `tx-queue-processor` | Drains the durable admission queue into validation and the mempool. | None |
+| `fetch-and-insert-deposit-utxos` | Reads L1 deposit UTxOs and records them locally. | None |
+| `fetch-and-insert-withdrawal-utxos` | Reads L1 withdrawal-order UTxOs and records them locally. | `fetch-withdrawals-once` |
+| `fetch-and-insert-tx-order-utxos` | Reads L1 transaction-order UTxOs and records them locally. | None |
+| `project-deposits-to-mempool-ledger` | Projects confirmed deposits into the mempool ledger once their inclusion time is due. | `project-deposits-once` |
+| `retention-sweeper` | Removes retention-expired data, subject to the DA retention guards. | None |
+| `monitor-mempool` | Emits mempool metrics. Started only with `--with-monitoring`. | None |
+
+Each fiber runs on its own schedule, configured through the node's environment (for
+example `WAIT_BETWEEN_MERGE_TXS` for `merge`). `tx-queue-processor` polls every 500 ms
+and `monitor-mempool` every second.
+
+<Callout type="warn" title="attest-state-queue-once is not a fiber">
+DA attestation is not driven by a background fiber. `attest-state-queue-once` is an
+operator-local shortcut that signs, submits, and applies an attestation with a
+single-key committee. It is not the acceptance path: a real deployment attests
+through the [DA committee node](/docs/watchers/da-committee-node). See the
+[end-to-end testing flow](/docs/operators/node/e2e-testing-flow).
+</Callout>
+
+## How the fibers relate
+
+<Mermaid chart={`flowchart LR
+  Q["durable admission queue"] --> TQ["tx-queue-processor"]
+  TQ --> MP["mempool"]
+  MP --> C["block-commitment"]
+  C --> SQ["state queue (L1)"]
+  SQ --> CF["block-confirmation"]
+  CF --> MG["merge"]
+  D["L1 deposit UTxOs"] --> FD["fetch-and-insert-deposit-utxos"]
+  FD --> PD["project-deposits-to-mempool-ledger"]
+  PD --> MP
+  W["L1 withdrawal orders"] --> FW["fetch-and-insert-withdrawal-utxos"]
+  T["L1 tx orders"] --> FT["fetch-and-insert-tx-order-utxos"]
+  RS["retention-sweeper"] --> PG[("PostgreSQL")]`} />
+
+## When a fiber stalls
+
+A stalled fiber does not crash the process. It shows up in two places:
+
+- `GET /readyz` checks worker heartbeats and returns `503` with a readiness reason
+  when a fiber stops reporting. This is the signal to watch, not `/healthz`.
+- The node log records the fiber's own error before it backs off and retries.
+
+A stuck `merge` is most often the state-queue mutation lease rather than the fiber
+itself. Inspect `GET /stateQueueMutationLease` before restarting anything. See
+[Server HTTP API](/docs/operators/node/server-http-api).
+
+## Related
+
+- [Server &amp; HTTP API](/docs/operators/node/server-http-api)
+- [Database &amp; State](/docs/operators/node/database)
+- [Runtime Overview](/docs/operators/node/overview)

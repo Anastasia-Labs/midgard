@@ -1,0 +1,48 @@
+name: Docs Site CI
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "docs-site/**"
+      - "demo/lucid-midgard/**"
+      - "demo/midgard-core/**"
+      - ".github/workflows/docs-site-ci.yml"
+  pull_request:
+    paths:
+      - "docs-site/**"
+      - "demo/lucid-midgard/**"
+      - "demo/midgard-core/**"
+      - ".github/workflows/docs-site-ci.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # The demo workspace pins pnpm 9; docs-site pins pnpm 10. Install the
+      # workspace deps first, so the SDK packages can be built, then switch.
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - name: Install demo workspace dependencies
+        run: pnpm --dir demo install --frozen-lockfile
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.11.0
+      - name: Install docs-site dependencies
+        run: pnpm --dir docs-site install --frozen-lockfile
+
+      # `prebuild` builds midgard-core and lucid-midgard. The MDX code samples are
+      # type-checked against them, so a sample naming a nonexistent export fails here.
+      - name: Build docs site
+        run: pnpm --dir docs-site run build
+
+      - name: Typecheck docs site
+        run: pnpm --dir docs-site exec tsc --noEmit

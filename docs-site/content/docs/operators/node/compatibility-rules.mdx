@@ -1,0 +1,31 @@
+---
+title: "Compatibility & State-Reset Rules"
+description: "Node compatibility rules, state-reset/redeploy rules, and the always-local-UPLC finalization rule."
+---
+
+Operating a Midgard node in a shared/networked environment carries rules that keep
+operators, watchers, and the on-chain deployment consistent. These are documented in
+the repository's agent guidance and apply directly to `midgard-node`.
+
+## Rules
+
+- **Node compatibility** (`docs/agents/midgard-node.md`), the compatibility rules a
+  node must respect so it interoperates with the rest of the deployment.
+- **State reset &amp; redeploy** (`docs/agents/state-reset.md`), how to safely reset
+  state and redeploy contracts in networked environments without stranding peers or
+  funds.
+- **Transaction finalization** (`docs/agents/transaction-finalization.md`), always
+  finalize transactions using **local UPLC** evaluation, not a remote evaluator.
+
+<Callout type="warn" title="Production-grade L2 posture">
+These rules exist because Midgard is intended as a production-grade L2: correctness and
+safety take priority over convenience. See [Operators overview](/docs/operators) and
+[Project Status](/docs/getting-started/status).
+</Callout>
+
+<Callout type="info" title="Backward compatibility is not a goal">
+Midgard has not launched. The rule is to prefer the current canonical design and delete
+the old one: do not add fallback paths, alias lookups, or legacy-format support to keep
+an older shape working. "Compatibility" on this page means agreement between a node, its
+peers, and the deployed contracts, not compatibility with earlier versions of Midgard.
+</Callout>

@@ -1,0 +1,123 @@
+---
+title: "Local Development"
+description: "Toolchain versions and the commands for building, typechecking, testing, and linting the Midgard TypeScript workspace, on-chain contracts, and technical specification."
+---
+
+This page lists the toolchain and the commands used to work on Midgard. They are taken
+from `AGENTS.md`, `demo/package.json`, `demo/Makefile`, and the root `README.md`.
+
+## Toolchain
+
+The TypeScript workspace under `demo/` uses `pnpm`:
+
+- **Package manager:** `pnpm@9.15.4` (pinned via `packageManager` in
+  `demo/package.json`).
+- **Node.js:** `>=18` (declared in the `engines` field of `demo/package.json`).
+
+<Callout type="info" title="On-chain toolchain">
+The on-chain Aiken code is built separately with the Aiken compiler. Install
+[Aiken](https://aiken-lang.org/) to build `onchain/aiken`.
+</Callout>
+
+## Demo workspace commands
+
+Run these from the `demo/` directory. They are the common commands documented in
+`AGENTS.md`:
+
+From `demo/`, run:
+
+```sh
+pnpm run build        # build all workspace packages
+pnpm run typecheck    # typecheck all workspace packages
+pnpm run test         # typecheck, then run all package tests
+pnpm run lint         # eslint with --max-warnings=0
+pnpm run format-check # prettier --check
+```
+
+The underlying scripts are defined in `demo/package.json`:
+
+| Script | Command |
+| --- | --- |
+| `build` | `pnpm -r --if-present --workspace-concurrency=1 run build` |
+| `typecheck` | `pnpm -r --if-present --workspace-concurrency=1 run typecheck` |
+| `test` | `pnpm run typecheck && pnpm -r --if-present --workspace-concurrency=1 run test` |
+| `lint` | `eslint . --max-warnings=0` |
+| `lint:fix` | `eslint . --fix` |
+| `format` | `prettier --write "**/*.{ts,tsx,md}"` |
+| `format-check` | `prettier --check "**/*.{ts,tsx,md}"` |
+| `clean` | `pnpm -r --if-present --workspace-concurrency=1 run clean && rm -rf node_modules` |
+
+### Targeted transaction-preparation tests
+
+`demo/package.json` also defines focused test scripts:
+
+| Script | Command |
+| --- | --- |
+| `test:tx-prep:sdk` | `pnpm --filter @al-ft/lucid-midgard test && pnpm --filter @al-ft/midgard-sdk test` |
+| `test:tx-prep:node` | `pnpm --filter midgard-node run test:tx-prep:node` |
+| `test:tx-prep:emulator` | Runs `midgard-node` emulator tests and a fault-proofs submit-init emulator test. |
+| `test:tx-prep:local` | Runs the `sdk`, `node`, and `emulator` groups in sequence. |
+
+## Per-package builds
+
+Per the `README.md`, the demo packages can also be built independently inside
+`demo/`. For example:
+
+```sh
+pnpm install && pnpm build
+```
+
+This applies to `demo/midgard-sdk`, `demo/midgard-node`, and
+`demo/midgard-manager`.
+
+## Building the on-chain code
+
+From the `README.md`, build the Aiken validators with:
+
+```sh
+aiken build
+```
+
+For demo, preprod, or e2e deployments, build the Aiken contracts from `onchain/aiken`
+with the `testnet` environment **before** building node images:
+
+```sh
+cd onchain/aiken && aiken build --env testnet
+```
+
+Use another Aiken environment only when the task explicitly targets it.
+
+## Development shell
+
+`demo/Makefile` provides a Nix development shell:
+
+```sh
+make shell   # runs: nix develop
+```
+
+## Building the technical specification
+
+From the `README.md` and `AGENTS.md`, build the LaTeX spec with:
+
+```sh
+make spec
+```
+
+Then open `technical-spec/midgard.pdf`.
+
+## Git hooks
+
+Contributors must enable the project's standardized git hooks (`README.md`):
+
+```sh
+make enable-git-hooks
+```
+
+See `CONTRIBUTING.md` for the full contribution workflow and review expectations.
+
+<Callout type="warn" title="Transaction validity windows">
+Do not edge-trigger `validFrom` at the current wall-clock or tip-derived slot when
+building SDK or node transactions. Backdate it by at least 30 seconds where the protocol
+rules allow. A validity interval that starts exactly at the tip can be rejected by the
+time the transaction reaches a block.
+</Callout>

@@ -1,0 +1,28 @@
+---
+title: "L1 Transactions"
+description: "How Midgard's Layer 1 transactions integrate multiple validators, and the transaction-diagram conventions used in the spec."
+---
+
+Appendix B describes the **Layer 1 transactions** that operate the protocol, the
+concrete transactions that commit blocks, register operators, process deposits and
+withdrawals, run payouts, and drive fraud proofs. Because a single L1 transaction
+often touches several validators at once, this appendix treats the off-chain layer
+as the **integration layer** that wires the individual validators together.
+
+## What the appendix covers
+
+- The catalogue of L1 transactions and which validators each one interacts with.
+- The **transaction-diagram conventions** (inputs, mints, outputs, reference
+  inputs, signatures) used throughout the specification.
+
+## In this repository
+
+L1 protocol actions are built by operator and watcher tooling in
+[`midgard-sdk`](/docs/sdk/midgard-sdk/overview) and the node packages, and executed by
+the [operator node](/docs/operators/node/cli-reference). The validators they target are
+documented under [On-Chain Validators](/docs/onchain/overview).
+
+User-facing **L2** transfers are a separate domain. They are built with
+[`lucid-midgard`](/docs/sdk/lucid-midgard/quickstart) as Midgard native transactions
+and submitted to a Midgard node. `lucid-midgard` does not build or submit Cardano L1
+transactions. See [the L2 versus L1 boundary](/docs/sdk#the-l2-vs-l1-boundary).

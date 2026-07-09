@@ -1,0 +1,151 @@
+---
+title: "What is Midgard?"
+description: "Learn what Midgard is, how L2 transactions are batched off-chain, how block headers are committed to L1, and how fraud proofs challenge invalid blocks."
+---
+
+**Midgard is the first optimistic rollup protocol on Cardano.** It offloads
+transaction processing from Layer 1 (L1) to Layer 2 (L2) while maintaining L1's
+security and decentralization properties for those transactions. As a result, it
+can handle a significantly higher volume of transactions without compromising on
+security.
+
+Optimistic rollups process blocks of transactions off-chain and commit those
+blocks' *headers* on-chain to the L1 ledger. Each block is committed by a Midgard
+operator who guarantees the block's validity. The block then waits in a queue for
+at least a fixed duration before it is merged into the confirmed state of the
+rollup on L1.
+
+## The optimistic security model
+
+The word *optimistic* is literal: committed blocks are assumed valid unless
+someone proves otherwise. Security comes from economic incentives and a challenge
+window rather than from re-executing every transaction on L1.
+
+When an operator commits a block, they must:
+
+- **Collateralize their guarantee with a bond deposit**: a slashable stake that
+  backs the claim that the block is valid.
+- **Publish the full contents of the block** on the publicly accessible data
+  availability (DA) layer, so anyone can inspect it.
+
+While a committed block is queued, anyone can inspect its contents on the DA layer
+and determine whether it is valid. If someone detects that the block is invalid,
+they can submit a **fraud proof** to prevent it from being merged into the
+confirmed state, slash the operator's bond, and receive a portion of the forfeited
+bond as a reward.
+
+<Callout type="info" title="Why fraud is not worth it">
+Because a disqualified block never affects the confirmed state, there are no
+fraudulent revenues to offset a forfeited bond. An operator cannot treat the lost
+bond as a cost of doing business; the fraud fails and the stake is gone.
+</Callout>
+
+<Callout type="warn" title="Intended protocol model, not current deployment state">
+This section describes how Midgard is *designed* to work. Fraud proofs, the DA layer,
+and the bond/slash/reward economics are still being finalized, and the testnet
+environment carries zero bond, slash, and reward values. See
+[Project Status](/docs/getting-started/status) for what is production-ready, as of the
+review that page is dated to.
+</Callout>
+
+The security guarantees hold as long as the protocol's parameters are calibrated
+correctly. The whitepaper states these conditions directly:
+
+- The bond requirement is large enough to discourage fraud.
+- The reward for preventing an invalid block from merging is large enough to
+  encourage public vigilance.
+- The waiting period for committed blocks is long enough for watchers to detect
+  and prove fraud before those blocks merge.
+- The data availability layer is accessible to anyone who wishes to inspect the
+  rollup blocks at any time.
+
+## The three actors
+
+<Cards>
+  <Card
+    title="Users"
+    description="Submit L2 transactions, and deposit or withdraw through L1 smart contracts. Can escalate an ignored transaction by posting an L1 transaction order."
+  />
+  <Card
+    title="Operators"
+    description="Batch L2 transactions into blocks, commit block headers to L1, post a slashable bond, and publish full block contents to the data availability layer."
+  />
+  <Card
+    title="Watchers"
+    description="Verify queued block data on the DA layer and challenge invalid commitments with a fraud proof. Earn a share of the slashed bond when a fraud proof stops an invalid block from merging."
+  />
+</Cards>
+
+## How a transaction reaches L1
+
+<Mermaid chart={`flowchart TD
+  U[User submits L2 transaction] --> OP[Operator batches transactions into a block]
+  OP --> BOND[Operator posts bond and publishes full block to DA layer]
+  BOND --> COMMIT[Block header committed to L1 state queue]
+  COMMIT --> WAIT[Block waits in queue for the challenge window]
+  WAIT --> WATCH{Watcher inspects block on DA layer}
+  WATCH -->|Valid, window elapses| MERGE[Block merged into confirmed L2 state on L1]
+  WATCH -->|Invalid| PROOF[Watcher submits fraud proof]
+  PROOF --> SLASH[Block rejected, operator bond slashed, watcher rewarded]
+`} />
+
+Only the compact block **header** goes on-chain in the state queue; the full block
+body lives on the DA layer. The L2 executes off-chain, and L1 is only asked to
+re-examine a transaction when a fraud proof challenges it.
+
+## Efficient fraud proofs on the UTxO model
+
+The deterministic nature of Cardano transactions lets Midgard fraud proofs pinpoint the
+exact site of a ledger-rule violation. A proof does not need to inspect the rest of that
+transaction, any unrelated transaction in the block, or any other block. This keeps
+fraud proofs and their on-chain validation small and cheap.
+
+Midgard's rollup blocks use **sparse Merkle trees** and compact state
+representations to enhance efficiency further, enabling a large transaction volume
+without overburdening L1. Compared with optimistic rollups on account-based chains
+such as Ethereum, where a much larger part of global state must be inspected to
+construct and verify a fraud proof, Midgard significantly reduces fraud-proof
+size.
+
+## Censorship resistance and the escape hatch
+
+The optimistic mechanism assures the *validity* of committed blocks, but on its
+own it does not stop operators from *censoring* users. Midgard's consensus
+protocol adds smart-contract mechanisms for this:
+
+- **Deposits and withdrawals** are initiated via L1 smart contracts that assign
+  definite inclusion times. A block is invalid if its event interval spans one of
+  these inclusion times but omits the associated event, so operators who keep
+  committing blocks cannot ignore deposits and withdrawals.
+- **L2 transaction orders** let any user escalate an ignored transaction by posting
+  it on L1, which also assigns an inclusion time guaranteeing inclusion in a
+  subsequent valid block.
+- **The escape hatch** covers the extreme case where operators stop committing
+  blocks entirely. It temporarily lowers the bond requirement for new operators,
+  making it easier for honest actors to step in so that user funds cannot be
+  stranded on Midgard.
+
+## Where to go next
+
+<Cards>
+  <Card
+    title="Repository map"
+    href="/docs/getting-started/repository-map"
+    description="How the monorepo is organized: on-chain validators, SDK packages, node, and spec."
+  />
+  <Card
+    title="Local development"
+    href="/docs/getting-started/local-dev"
+    description="Toolchain versions and the build, typecheck, test, lint, and format commands."
+  />
+  <Card
+    title="Protocol specification"
+    href="/docs/spec/building"
+    description="The authoritative written architecture reference for the protocol."
+  />
+  <Card
+    title="Project status"
+    href="/docs/getting-started/status"
+    description="The current testnet-readiness assessment and feature matrix."
+  />
+</Cards>
