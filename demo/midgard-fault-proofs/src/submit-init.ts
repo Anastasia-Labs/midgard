@@ -40,6 +40,7 @@ import {
   type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
   resolveInvalidRangeDeploymentContracts,
+  resolveNonExistentInputDeploymentContracts,
   resolveProverSigner,
   resolveTransitionTraceDeploymentContracts,
   type SubmitProviderConfig,
@@ -62,6 +63,7 @@ export type SubmitInitCliConfig = SubmitProviderConfig &
 
 export type SubmitInitFraudCategory =
   | "doubleSpend"
+  | "nonExistentInput"
   | "invalidRange"
   | "transitionTrace";
 
@@ -98,6 +100,8 @@ const fraudCategoryLabel = (category: SubmitInitFraudCategory): string => {
   switch (category) {
     case "doubleSpend":
       return "double-spend";
+    case "nonExistentInput":
+      return "non-existent-input";
     case "invalidRange":
       return "invalid-range";
     case "transitionTrace":
@@ -178,6 +182,24 @@ export const submitInit = async ({
       resolvedDeployment.contracts.doubleSpend.firstStep.spendingScriptAddress;
     firstStepHash =
       resolvedDeployment.contracts.doubleSpend.firstStep.spendingScriptHash;
+  } else if (fraudCategory === "nonExistentInput") {
+    const resolvedDeployment = await resolveNonExistentInputDeploymentContracts({
+      blueprint,
+      deploymentInfo,
+      network,
+      requireStateQueueMint: true,
+    });
+    category = resolvedDeployment.nonExistentInputCategory;
+    stateQueuePolicyId = resolvedDeployment.stateQueuePolicyId!;
+    computationThreadPolicyId =
+      resolvedDeployment.contracts.computationThread.policyId;
+    computationThreadMintingScript =
+      resolvedDeployment.contracts.computationThread.mintingScript;
+    firstStepAddress =
+      resolvedDeployment.contracts.nonExistentInput.firstStep
+        .spendingScriptAddress;
+    firstStepHash =
+      resolvedDeployment.contracts.nonExistentInput.firstStep.spendingScriptHash;
   } else if (fraudCategory === "invalidRange") {
     const resolvedDeployment = await resolveInvalidRangeDeploymentContracts({
       blueprint,
