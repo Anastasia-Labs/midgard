@@ -21,6 +21,8 @@ implementations, and the LaTeX technical specification in a single repository.
   workflows and demos.
 - `technical-spec`: authoritative written specification and diagrams for the
   protocol.
+- `docs-site`: documentation site covering the SDK, node, watchers, fault
+  proofs, and on-chain validators.
 
 ## Documentation Guide
 
@@ -32,6 +34,8 @@ implementations, and the LaTeX technical specification in a single repository.
   operational workflows, stress scripts, and test entrypoints.
 - [Midgard SDK guide](./demo/midgard-sdk/README.md): packaging, conventions,
   and SDK module layout.
+- [Documentation site](./docs-site/README.md): the full guides and reference,
+  runnable locally with `pnpm dev`.
 
 ## Build the On-Chain Code
 

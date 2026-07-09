@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 /**
  * Asserts that structural facts stated in the docs still match the source they
- * describe: no documented symbol has disappeared, no source symbol is
- * undocumented, and the counts written in prose still add up.
+ * describe: no source symbol is undocumented, and the counts written in prose
+ * still add up.
  *
  * This checks symbols and counts, not meaning. A page can still be misleading
  * while passing. It exists because every stale claim found in the copy audit
  * was a symbol or a count that drifted with no way to fail.
+ *
+ * To cover a new fact, add an entry to FACTS below.
  */
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -21,87 +23,78 @@ const NUMBER_WORDS = [
   "sixteen", "seventeen", "eighteen", "nineteen", "twenty",
 ];
 
-const failures = [];
-const fail = (message) => failures.push(message);
-
-/** Every symbol the source exports must be named somewhere in the page. */
-const requireDocumented = (docPath, symbols, sourcePath, label) => {
-  const doc = read(docPath);
-  for (const symbol of symbols) {
-    if (!doc.includes(symbol)) {
-      fail(
-        `${docPath}: ${label} \`${symbol}\` exists in ${sourcePath} but is not documented.`,
-      );
-    }
-  }
-};
-
-/** A count written in prose must match the count derived from source. */
-const requireCount = (docPath, count, phrase, sourcePath) => {
-  const doc = read(docPath);
-  const expected = phrase.replace("{n}", NUMBER_WORDS[count] ?? String(count));
-  if (!doc.includes(expected)) {
-    fail(
-      `${docPath}: expected the phrase "${expected}" (${sourcePath} yields ${count}).`,
-    );
-  }
-};
-
 /** Pulls every double-quoted string out of a source fragment. */
 const quoted = (fragment) =>
   [...fragment.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
 
-// --- Node background fibers ------------------------------------------------
-const FIBERS_SOURCE = "demo/midgard-node/src/fibers/index.ts";
-const FIBERS_DOC = "docs-site/content/docs/operators/node/background-fibers.mdx";
+/**
+ * Each fact names a source file, the doc page that restates it, an `extract`
+ * that returns the list of symbols the source defines, the singular noun for
+ * error messages, and the prose count phrase (`{n}` is the spelled-out length).
+ */
+const FACTS = [
+  {
+    label: "fiber",
+    source: "demo/midgard-node/src/fibers/index.ts",
+    doc: "docs-site/content/docs/operators/node/background-fibers.mdx",
+    extract: (src) =>
+      [...src.matchAll(/export \* from "\.\/([\w-]+)\.js";/g)].map((m) => m[1]),
+    countPhrase: "The {n} long-running fibers",
+  },
+  {
+    // bin.ts rejects an unknown command by listing every valid one. That error
+    // string is the command allow-list.
+    label: "command",
+    source: "demo/midgard-fault-proofs/src/bin.ts",
+    doc: "docs-site/content/docs/fault-proofs/overview.mdx",
+    extract: (src) => {
+      const usage = src.match(/Expected command ([^\n]+?)\.\\n\$\{usage\}/);
+      return usage ? quoted(usage[1]) : [];
+    },
+    countPhrase: "The {n} commands",
+  },
+  {
+    label: "status",
+    source: "demo/lucid-midgard/src/builder/status.ts",
+    doc: "docs-site/content/docs/sdk/lucid-midgard/submission-observability.mdx",
+    extract: (src) => {
+      const set = src.match(
+        /const TX_STATUS_KINDS: ReadonlySet<string> = new Set\(\[([\s\S]*?)\]\)/,
+      );
+      return set ? quoted(set[1]) : [];
+    },
+    countPhrase: "`TxStatus` has {n} kinds",
+  },
+];
 
-const fibers = [...read(FIBERS_SOURCE).matchAll(/export \* from "\.\/([\w-]+)\.js";/g)]
-  .map((match) => match[1]);
+const failures = [];
+const fail = (message) => failures.push(message);
 
-if (fibers.length === 0) fail(`${FIBERS_SOURCE}: no fiber exports found.`);
-requireDocumented(FIBERS_DOC, fibers, FIBERS_SOURCE, "fiber");
-requireCount(FIBERS_DOC, fibers.length, "The {n} long-running fibers", FIBERS_SOURCE);
+for (const { label, source, doc, extract, countPhrase } of FACTS) {
+  const symbols = extract(read(source));
+  if (symbols.length === 0) {
+    fail(`${source}: found no ${label}s to check. Has the source shape changed?`);
+    continue;
+  }
 
-// --- Fault-proof CLI commands ----------------------------------------------
-// bin.ts rejects an unknown command by listing every valid one. That error
-// string is the command allow-list.
-const CLI_SOURCE = "demo/midgard-fault-proofs/src/bin.ts";
-const CLI_DOC = "docs-site/content/docs/fault-proofs/overview.mdx";
+  const page = read(doc);
+  for (const symbol of symbols) {
+    if (!page.includes(symbol)) {
+      fail(`${doc}: ${label} \`${symbol}\` exists in ${source} but is not documented.`);
+    }
+  }
 
-const usageError = read(CLI_SOURCE).match(/Expected command ([^\n]+?)\.\\n\$\{usage\}/);
-if (!usageError) {
-  fail(`${CLI_SOURCE}: could not find the "Expected command ..." allow-list.`);
-} else {
-  const commands = quoted(usageError[1]);
-  requireDocumented(CLI_DOC, commands, CLI_SOURCE, "command");
-  requireCount(CLI_DOC, commands.length, "The {n} commands", CLI_SOURCE);
+  const expected = countPhrase.replace("{n}", NUMBER_WORDS[symbols.length] ?? String(symbols.length));
+  if (!page.includes(expected)) {
+    fail(`${doc}: expected the phrase "${expected}" (${source} yields ${symbols.length}).`);
+  }
 }
 
-// --- lucid-midgard transaction statuses ------------------------------------
-const STATUS_SOURCE = "demo/lucid-midgard/src/builder/status.ts";
-const STATUS_DOC = "docs-site/content/docs/sdk/lucid-midgard/submission-observability.mdx";
-
-const statusSet = read(STATUS_SOURCE).match(
-  /const TX_STATUS_KINDS: ReadonlySet<string> = new Set\(\[([\s\S]*?)\]\)/,
-);
-if (!statusSet) {
-  fail(`${STATUS_SOURCE}: could not find the TX_STATUS_KINDS set.`);
-} else {
-  const statuses = quoted(statusSet[1]);
-  requireDocumented(STATUS_DOC, statuses, STATUS_SOURCE, "status");
-  requireCount(STATUS_DOC, statuses.length, "`TxStatus` has {n} kinds", STATUS_SOURCE);
-}
-
-// --- Report ----------------------------------------------------------------
 if (failures.length > 0) {
   console.error("Documentation has drifted from source:\n");
   for (const failure of failures) console.error(`  - ${failure}`);
-  console.error(
-    "\nUpdate the page, or the source, so the two agree. See docs-site/README.md.",
-  );
+  console.error("\nUpdate the page, or the source, so the two agree. See docs-site/README.md.");
   process.exit(1);
 }
 
-console.log(
-  `Docs facts check passed: ${fibers.length} fibers, fault-proof commands, and transaction statuses all documented.`,
-);
+console.log(`Docs facts check passed: ${FACTS.length} facts documented and counted.`);
