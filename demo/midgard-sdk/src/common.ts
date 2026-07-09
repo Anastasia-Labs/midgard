@@ -53,8 +53,16 @@ export const utxosAtByNFTPolicyId = (
   policyId: PolicyId,
 ): Effect.Effect<BeaconUTxO[], LucidError> =>
   Effect.gen(function* () {
+    // Filter by the authentication NFT policy at the provider (Kupo
+    // `?policy_id=`) instead of fetching every UTxO at the address and
+    // filtering in memory. The linked-list spending addresses (e.g. the
+    // fraud-proof catalogue) are shared/unparametrised and accumulate nodes
+    // from every historical deployment; fetching all of them forces the
+    // provider to resolve hundreds of datums and blows its per-request
+    // timeout. A policy-scoped query only returns this deployment's nodes and
+    // only resolves their datums.
     const allUTxOs = yield* Effect.tryPromise({
-      try: () => lucid.utxosAt(addressOrCred),
+      try: () => lucid.utxosAtWithUnit(addressOrCred, policyId),
       catch: (e) => {
         return new LucidError({
           message: `Failed to fetch UTxOs at: ${addressOrCred}`,

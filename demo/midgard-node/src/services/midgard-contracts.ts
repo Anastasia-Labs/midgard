@@ -660,6 +660,41 @@ const buildRealTransitionTraceProofValidator = (
     return transitionTraceContracts.transitionTrace.firstStep;
   });
 
+const buildRealNonExistentInputFirstStepValidator = (
+  network: Network,
+  contracts: SDK.MidgardValidators,
+  computationThread: SDK.MintingValidator,
+  fraudProof: SDK.AuthenticatedValidator,
+): Effect.Effect<SDK.SpendingValidator, Error> =>
+  Effect.gen(function* () {
+    const blueprint = SDK.parseFaultProofBlueprint(yield* loadRealBlueprint());
+    const nonExistentInputContracts =
+      yield* SDK.buildNonExistentInputFaultProofContracts({
+        blueprint,
+        network,
+        hubOraclePolicyId: contracts.hubOracle.policyId,
+        fraudProofCataloguePolicyId: contracts.fraudProofCatalogue.policyId,
+      });
+
+    yield* expectDerivedScriptHash(
+      "computation-thread policy",
+      computationThread.policyId,
+      nonExistentInputContracts.computationThread.policyId,
+    );
+    yield* expectDerivedScriptHash(
+      "fraud-proof policy",
+      fraudProof.policyId,
+      nonExistentInputContracts.fraudProof.policyId,
+    );
+    yield* expectDerivedScriptHash(
+      "fraud-proof spend",
+      fraudProof.spendingScriptHash,
+      nonExistentInputContracts.fraudProof.spendingScriptHash,
+    );
+
+    return nonExistentInputContracts.nonExistentInput.firstStep;
+  });
+
 /**
  * Builds the real state-queue authenticated validator.
  */
@@ -921,6 +956,13 @@ export const withRealStateQueueAndOperatorContracts = (
       realComputationThread,
       realFraudProof,
     );
+    const realNonExistentInput =
+      yield* buildRealNonExistentInputFirstStepValidator(
+        network,
+        withRealFraudProofCatalogue,
+        realComputationThread,
+        realFraudProof,
+      );
     const withRealFraudProof: SDK.MidgardValidators = {
       ...withRealFraudProofCatalogue,
       fraudProof: realFraudProof,
@@ -928,6 +970,7 @@ export const withRealStateQueueAndOperatorContracts = (
         ...withRealFraudProofCatalogue.fraudProofs,
         doubleSpend: realDoubleSpendFirstStep,
         transitionTrace: realTransitionTrace,
+        nonExistentInput: realNonExistentInput,
       },
     };
 
@@ -1077,7 +1120,7 @@ const makeMidgardContracts = Effect.gen(function* () {
     },
   );
   yield* Effect.logInfo(
-    "🔐 Contract source selected: state_queue=real, da_attestation=real, da_params_governor=real, hub_oracle=real, deposit=real, tx_order=real, withdrawal=real, settlement=real, reserve=real, payout=real, registered_operators=real, active_operators=real, retired_operators=real, scheduler=real, fraud_proofs.double_spend=real",
+    "🔐 Contract source selected: state_queue=real, da_attestation=real, da_params_governor=real, hub_oracle=real, deposit=real, tx_order=real, withdrawal=real, settlement=real, reserve=real, payout=real, registered_operators=real, active_operators=real, retired_operators=real, scheduler=real, fraud_proofs.double_spend=real, fraud_proofs.transition_trace=real, fraud_proofs.non_existent_input=real",
   );
   return resolvedContracts;
 }).pipe(Effect.orDie);
