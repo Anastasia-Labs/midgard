@@ -66,6 +66,32 @@ The homepage sample lives in a JSX string literal that twoslash cannot reach, so
 
 Aiken has no Shiki grammar. Use a ` ```rust ` fence for Aiken source.
 
+### Structural facts are checked too
+
+`pnpm check:facts` (run by `prebuild` and by CI) asserts that the fibers, fault-proof
+CLI commands, and transaction statuses named in the docs still match the source they
+are drawn from, including the counts written in prose. Add a fiber and the build tells
+you which page to update. To cover a new fact, extend
+`scripts/check-docs-facts.mjs`.
+
+It checks symbols and counts, not meaning. A page can still mislead while passing.
+
+### Three kinds of claim
+
+Every stale sentence found in the copy audit was a claim nothing could check. Sort a
+claim before you write it:
+
+| Kind | Example | Rule |
+| --- | --- | --- |
+| Derivable from code | "Ten long-running fibers." | Add it to `check:facts`, or do not state it. |
+| About a past event | "Boundary plans complete as of 2026-06-19." | Durable. A date on something that happened stays true. |
+| About present project state | "No-go for an open public testnet." | Never duplicate. State it once, dated, and link. |
+
+The third kind has no mechanical guard, so the only defence is to keep one copy of it.
+`getting-started/status.mdx` is that copy, and it defers to
+`public_testnet_readiness.md`. Do not reproduce a readiness matrix, a blocker list, or a
+commit hash pinning present state on any other page. Link to the page that owns it.
+
 ### Rules
 
 1. **Cite the source, and lead with the reader task where both are possible.** These do

@@ -7,12 +7,20 @@ on:
       - "docs-site/**"
       - "demo/lucid-midgard/**"
       - "demo/midgard-core/**"
+      # Sources whose exported symbols the docs restate.
+      # See docs-site/scripts/check-docs-facts.mjs.
+      - "demo/midgard-node/src/fibers/index.ts"
+      - "demo/midgard-fault-proofs/src/bin.ts"
       - ".github/workflows/docs-site-ci.yml"
   pull_request:
     paths:
       - "docs-site/**"
       - "demo/lucid-midgard/**"
       - "demo/midgard-core/**"
+      # Sources whose exported symbols the docs restate.
+      # See docs-site/scripts/check-docs-facts.mjs.
+      - "demo/midgard-node/src/fibers/index.ts"
+      - "demo/midgard-fault-proofs/src/bin.ts"
       - ".github/workflows/docs-site-ci.yml"
 
 jobs:
@@ -38,6 +46,11 @@ jobs:
           version: 10.11.0
       - name: Install docs-site dependencies
         run: pnpm --dir docs-site install --frozen-lockfile
+
+      # Fails when a fiber, CLI command, or transaction status named in the docs
+      # no longer matches the source it is drawn from.
+      - name: Check documented facts against source
+        run: pnpm --dir docs-site run check:facts
 
       # `prebuild` builds midgard-core and lucid-midgard. The MDX code samples are
       # type-checked against them, so a sample naming a nonexistent export fails here.

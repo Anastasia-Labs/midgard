@@ -16,10 +16,10 @@ chapter.
   configuration and thresholds), controlling how those values may change.
 
 <Callout type="info" title="Blueprint note">
-These validators exist in the Aiken source. Confirm their presence in the compiled
-`onchain/aiken/plutus.json` blueprint for the commit you are building against. The
-committed blueprint may lag the source on an in-progress branch: as of `f7a7163b`,
-`da_attestation` and `da_params_governor` do not appear in it.
+These validators exist in the Aiken source, but the committed
+`onchain/aiken/plutus.json` blueprint can lag the source on an in-progress branch.
+Before you build against them, run `aiken build` in `onchain/aiken` and confirm
+that `da_attestation` and `da_params_governor` appear in the blueprint you get.
 </Callout>
 
 ## Related

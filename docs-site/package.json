@@ -5,7 +5,8 @@
   "packageManager": "pnpm@10.11.0",
   "scripts": {
     "build:sdk": "pnpm --dir ../demo/midgard-core run build && pnpm --dir ../demo/lucid-midgard run build",
-    "prebuild": "pnpm run build:sdk",
+    "check:facts": "node scripts/check-docs-facts.mjs",
+    "prebuild": "pnpm run build:sdk && pnpm run check:facts",
     "build": "next build",
     "predev": "pnpm run build:sdk",
     "dev": "next dev",
