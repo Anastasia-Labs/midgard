@@ -1,6 +1,8 @@
 # Midgard Off-Chain SDK
 
-Midgard TypeScript library for building operator and watcher transactions.
+Midgard TypeScript library for building operator and watcher transactions. Each
+transaction family has a reference page in the
+[documentation site](../../docs-site/content/docs/sdk/midgard-sdk).
 
 ## How to use
 
