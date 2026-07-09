@@ -67,6 +67,9 @@ export type PreparedNeTxInclusionJson = {
   readonly nativeTxId: string;
   readonly nativeTx: NativeTxCompactData;
   readonly nativeTxCompactCbor: string;
+  // Raw transactions MPF root the membership proof opens; authenticated on-chain
+  // against the header's counted `transactions_root`.
+  readonly transactionsPhasRoot: string;
   readonly txMembershipProofCbor: string;
 };
 
@@ -327,6 +330,7 @@ export const prepareNonExistentInputFromTransactions = async ({
       nativeTxId: bad.nodeTxId,
       nativeTx: bad.nativeTxCompact,
       nativeTxCompactCbor: bad.nativeCompactCbor,
+      transactionsPhasRoot: transactionsRoot,
       txMembershipProofCbor,
     },
     inputsPreimage,

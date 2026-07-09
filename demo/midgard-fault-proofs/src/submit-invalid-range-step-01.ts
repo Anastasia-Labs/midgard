@@ -263,6 +263,7 @@ export const submitInvalidRangeStep01 = async ({
               layout.stateQueueNodeRefInputIndex,
             native_tx_id: txInclusion.nativeTxId,
             native_tx_compact_cbor: txInclusion.nativeTxCompactCbor,
+            transactions_phas_root: txInclusion.transactionsPhasRoot,
             tx_membership_proof: txInclusion.txMembershipProof,
             inclusion_proof_script_withdraw_redeemer_index:
               requireWithdrawalRedeemerIndex(
@@ -290,7 +291,7 @@ export const submitInvalidRangeStep01 = async ({
       phasRewardAddress,
       0n,
       encodeRawPhasMembershipProofRedeemer({
-        root: header.transactionsRoot,
+        root: txInclusion.transactionsPhasRoot,
         keyBytes: txInclusion.nativeTxId,
         valueBytes: txInclusion.nativeTxCompactCbor,
         membershipProofCbor: txInclusion.txMembershipProofCbor,

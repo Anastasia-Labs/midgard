@@ -37,6 +37,7 @@ import {
   DoubleSpendStep02Datum,
   DoubleSpendStep03Datum,
   DoubleSpendStep04Datum,
+  commitCountedRootProgram,
   EMPTY_HEADER_TRANSITION_COMMITMENTS,
   EMPTY_MERKLE_TREE_ROOT,
   encodeDaPayloadV2,
@@ -837,6 +838,7 @@ const decodeSpendInputCbors = (
 
 const buildTransactionInclusionFixture = async (): Promise<{
   readonly transactionsRoot: string;
+  readonly l2TransactionCount: bigint;
   readonly tx1: TransactionInclusionEntry;
   readonly tx2: TransactionInclusionEntry;
   readonly tx1InputsPreimage: readonly TestOutputReference[];
@@ -885,6 +887,7 @@ const buildTransactionInclusionFixture = async (): Promise<{
         nativeTxCompactCbor: encodeMidgardNativeTxCompact(
           entry === tx1 ? tx1Native.compact : tx2Native.compact,
         ).toString("hex"),
+        transactionsPhasRoot: trieRootHex(trie),
         txMembershipProofCbor: proof.toCBOR().toString("hex"),
       },
       nativeTx: entry.nativeTx,
@@ -894,6 +897,7 @@ const buildTransactionInclusionFixture = async (): Promise<{
   };
   return {
     transactionsRoot: trieRootHex(trie),
+    l2TransactionCount: 2n,
     tx1: await withProof(tx1),
     tx2: await withProof(tx2),
     tx1InputsPreimage,
@@ -911,6 +915,7 @@ const buildInvalidRangeTransactionInclusionFixture = async ({
   readonly blockValidTo: bigint;
 }): Promise<{
   readonly transactionsRoot: string;
+  readonly l2TransactionCount: bigint;
   readonly badTx: TransactionInclusionEntry;
   readonly normalizedValidityRange: ReturnType<
     typeof normalizeNativeTxValidityRange
@@ -954,6 +959,7 @@ const buildInvalidRangeTransactionInclusionFixture = async ({
 
   return {
     transactionsRoot: trieRootHex(trie),
+    l2TransactionCount: 1n,
     badTx: {
       inclusion: {
         nativeTxId: badTx.nativeTxId,
@@ -961,6 +967,7 @@ const buildInvalidRangeTransactionInclusionFixture = async ({
         nativeTxCompactCbor: encodeMidgardNativeTxCompact(
           badNativeTx.compact,
         ).toString("hex"),
+        transactionsPhasRoot: trieRootHex(trie),
         txMembershipProofCbor: proof.toCBOR().toString("hex"),
       },
       nativeTx: badTx.nativeTx,
@@ -980,6 +987,7 @@ const buildInvalidRangeTransactionInclusionFixture = async ({
 // absent from the block's transactions.
 const buildNonExistentInputFixture = async (): Promise<{
   readonly transactionsRoot: string;
+  readonly l2TransactionCount: bigint;
   readonly inclusion: ReturnType<typeof parseSubmitStep01TxInclusion>;
   readonly inputsPreimage: readonly NeInputPreimageEntry[];
   readonly badInputIndex: bigint;
@@ -1053,10 +1061,12 @@ const buildNonExistentInputFixture = async (): Promise<{
 
   return {
     transactionsRoot,
+    l2TransactionCount: 2n,
     inclusion: parseSubmitStep01TxInclusion({
       nativeTxId: badTx.nativeTxId,
       nativeTx: badTx.nativeTx,
       nativeTxCompactCbor: badTxCompactCbor.toString("hex"),
+      transactionsPhasRoot: transactionsRoot,
       txMembershipProofCbor: membershipProof.toCBOR().toString("hex"),
     }),
     inputsPreimage: [
@@ -1144,15 +1154,32 @@ const registerPexcludesExclusionRewardAccount = async (
   await lucid.awaitTx(await signed.submit());
 };
 
+// Commit a raw transactions MPF root the way the node does: wrap it with the
+// counted-root hash under the transactions domain. Fault-proof inclusion then
+// authenticates the raw root against this committed value.
+const countedTransactionsRoot = (
+  rawRoot: string,
+  count: bigint,
+): Promise<string> =>
+  Effect.runPromise(
+    commitCountedRootProgram({
+      domain: ROOT_DOMAINS.transactions,
+      phasRoot: rawRoot,
+      count,
+    }),
+  );
+
 const makeHeader = (
   operatorVkey: string,
   now: number,
   transactionsRoot = EMPTY_MERKLE_TREE_ROOT,
+  l2TransactionCount = 0n,
 ): Header => ({
   prevUtxosRoot: EMPTY_MERKLE_TREE_ROOT,
   utxosRoot: EMPTY_MERKLE_TREE_ROOT,
   withdrawalsRoot: EMPTY_MERKLE_TREE_ROOT,
   ...EMPTY_HEADER_TRANSITION_COMMITMENTS,
+  l2TransactionCount,
   transactionsRoot,
   depositsRoot: EMPTY_MERKLE_TREE_ROOT,
   startTime: BigInt(now),
@@ -2319,7 +2346,11 @@ const buildProvedDoubleSpendFixture = async ({
   const fraudulentHeader = makeHeader(
     funderPaymentCredential.hash,
     headerStartTime,
-    transactionInclusion.transactionsRoot,
+    await countedTransactionsRoot(
+      transactionInclusion.transactionsRoot,
+      transactionInclusion.l2TransactionCount,
+    ),
+    transactionInclusion.l2TransactionCount,
   );
   const setup = await submitSetupTx({
     lucid: funderLucid,
@@ -2785,7 +2816,11 @@ describe("fault-proof emulator integration", () => {
     const fraudulentHeader = makeHeader(
       funderPaymentCredential.hash,
       headerStartTime,
-      transactionInclusion.transactionsRoot,
+      await countedTransactionsRoot(
+        transactionInclusion.transactionsRoot,
+        transactionInclusion.l2TransactionCount,
+      ),
+      transactionInclusion.l2TransactionCount,
     );
     const setup = await submitSetupTx({
       lucid: funderLucid,
@@ -3282,7 +3317,11 @@ describe("fault-proof emulator integration", () => {
     const fraudulentHeader = makeHeader(
       funderPaymentCredential.hash,
       headerStartTime,
-      invalidRangeInclusion.transactionsRoot,
+      await countedTransactionsRoot(
+        invalidRangeInclusion.transactionsRoot,
+        invalidRangeInclusion.l2TransactionCount,
+      ),
+      invalidRangeInclusion.l2TransactionCount,
     );
     const setup = await submitSetupTx({
       lucid: funderLucid,
@@ -3528,7 +3567,11 @@ describe("fault-proof emulator integration", () => {
     const fraudulentHeader = makeHeader(
       funderPaymentCredential.hash,
       headerStartTime,
-      fixture.transactionsRoot,
+      await countedTransactionsRoot(
+        fixture.transactionsRoot,
+        fixture.l2TransactionCount,
+      ),
+      fixture.l2TransactionCount,
     );
     const setup = await submitSetupTx({
       lucid: funderLucid,

@@ -201,7 +201,7 @@ export const neSubmitStep01 = async ({
       data: {
         bad_tx_inputs_hash: txInclusion.nativeTx.body.spend_inputs_hash,
         blocks_prev_utxos_root: header.prevUtxosRoot,
-        blocks_transactions_root: header.transactionsRoot,
+        blocks_transactions_root: txInclusion.transactionsPhasRoot,
       },
     },
     NonExistentInputStep02Datum,
@@ -248,6 +248,7 @@ export const neSubmitStep01 = async ({
               layout.stateQueueNodeRefInputIndex,
             native_tx_id: txInclusion.nativeTxId,
             native_tx_compact_cbor: txInclusion.nativeTxCompactCbor,
+            transactions_phas_root: txInclusion.transactionsPhasRoot,
             tx_membership_proof: txInclusion.txMembershipProof,
             inclusion_proof_script_withdraw_redeemer_index:
               requireWithdrawalRedeemerIndex(
@@ -275,7 +276,7 @@ export const neSubmitStep01 = async ({
       phasRewardAddress,
       0n,
       encodeRawPhasMembershipProofRedeemer({
-        root: header.transactionsRoot,
+        root: txInclusion.transactionsPhasRoot,
         keyBytes: txInclusion.nativeTxId,
         valueBytes: txInclusion.nativeTxCompactCbor,
         membershipProofCbor: txInclusion.txMembershipProofCbor,
@@ -319,7 +320,7 @@ export const neSubmitStep01 = async ({
     nativeTxId: txInclusion.nativeTxId,
     badTxInputsHash: txInclusion.nativeTx.body.spend_inputs_hash,
     blocksPrevUtxosRoot: header.prevUtxosRoot,
-    blocksTransactionsRoot: header.transactionsRoot,
+    blocksTransactionsRoot: txInclusion.transactionsPhasRoot,
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
     hubOracleRefInputIndex: Number(resolvedLayout.hubOracleRefInputIndex),

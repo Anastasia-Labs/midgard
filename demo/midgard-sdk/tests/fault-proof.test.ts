@@ -85,6 +85,7 @@ const txInclusionArgs = {
   state_queue_node_ref_input_index: 2n,
   native_tx_id: h32,
   native_tx_compact_cbor: nativeTxCompactCbor,
+  transactions_phas_root: h32,
   tx_membership_proof: proof,
   inclusion_proof_script_withdraw_redeemer_index: 3n,
 };

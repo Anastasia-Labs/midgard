@@ -11,8 +11,6 @@ import {
   DoubleSpendStep01SpendRedeemer,
   DoubleSpendStep02Datum,
   FraudProofComputationThreadStepDatum,
-  getHeaderFromStateQueueDatum,
-  getLinkedListNodeViewFromUTxO,
   HUB_ORACLE_ASSET_NAME,
   NativeTxCompact,
   type NativeTxCompact as NativeTxCompactData,
@@ -34,7 +32,6 @@ import {
   toUnit,
   type UTxO,
 } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
 
 import {
   parseHex,
@@ -82,6 +79,9 @@ export type SubmitStep01TxInclusion = {
   readonly nativeTxId: string;
   readonly nativeTx: NativeTxCompactData;
   readonly nativeTxCompactCbor: string;
+  // Raw transactions MPF root the membership proof opens. Authenticated on-chain
+  // against the block header's counted `transactions_root`.
+  readonly transactionsPhasRoot: string;
   readonly txMembershipProof: Proof;
   readonly txMembershipProofCbor: string;
 };
@@ -224,6 +224,11 @@ export const parseSubmitStep01TxInclusion = (
     record.nativeTxCompactCbor,
     "--tx-inclusion.nativeTxCompactCbor",
   );
+  const transactionsPhasRoot = parseHex(
+    record.transactionsPhasRoot,
+    "--tx-inclusion.transactionsPhasRoot",
+    32,
+  );
   const txMembershipProofCbor = parseHex(
     record.txMembershipProofCbor,
     "--tx-inclusion.txMembershipProofCbor",
@@ -232,6 +237,7 @@ export const parseSubmitStep01TxInclusion = (
     nativeTxId,
     nativeTx,
     nativeTxCompactCbor,
+    transactionsPhasRoot,
     txMembershipProof: Data.from(txMembershipProofCbor, Proof),
     txMembershipProofCbor,
   };
@@ -461,12 +467,6 @@ export const submitStep01 = async ({
     );
   }
 
-  const stateQueueNodeView = await Effect.runPromise(
-    getLinkedListNodeViewFromUTxO(stateQueueBlockUtxo),
-  );
-  const header = await Effect.runPromise(
-    getHeaderFromStateQueueDatum(stateQueueNodeView),
-  );
   requireNativeTxMatchesCompactCbor(txInclusion);
 
   signer.selectWallet(lucid);
@@ -529,6 +529,7 @@ export const submitStep01 = async ({
               layout.stateQueueNodeRefInputIndex,
             native_tx_id: txInclusion.nativeTxId,
             native_tx_compact_cbor: txInclusion.nativeTxCompactCbor,
+            transactions_phas_root: txInclusion.transactionsPhasRoot,
             tx_membership_proof: txInclusion.txMembershipProof,
             inclusion_proof_script_withdraw_redeemer_index:
               requireWithdrawalRedeemerIndex(
@@ -556,7 +557,7 @@ export const submitStep01 = async ({
       phasRewardAddress,
       0n,
       encodeRawPhasMembershipProofRedeemer({
-        root: header.transactionsRoot,
+        root: txInclusion.transactionsPhasRoot,
         keyBytes: txInclusion.nativeTxId,
         valueBytes: txInclusion.nativeTxCompactCbor,
         membershipProofCbor: txInclusion.txMembershipProofCbor,
