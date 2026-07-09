@@ -56,6 +56,9 @@ export type PreparedTxInclusionJson = {
   readonly nativeTxId: string;
   readonly nativeTx: NativeTxCompactData;
   readonly nativeTxCompactCbor: string;
+  // Raw transactions MPF root the membership proof opens; authenticated on-chain
+  // against the header's counted `transactions_root`.
+  readonly transactionsPhasRoot: string;
   readonly txMembershipProofCbor: string;
 };
 
@@ -547,10 +550,12 @@ const prepareTx = ({
   tx,
   doubleSpentInputIndex,
   proofCbor,
+  transactionsPhasRoot,
 }: {
   readonly tx: DecodedTransactionMaterial;
   readonly doubleSpentInputIndex: number;
   readonly proofCbor: string;
+  readonly transactionsPhasRoot: string;
 }): PreparedDoubleSpendTx => ({
   nodeTxId: tx.nodeTxId,
   nativeTx: tx.nativeTxCompact,
@@ -559,6 +564,7 @@ const prepareTx = ({
     nativeTxId: tx.nodeTxId,
     nativeTx: tx.nativeTxCompact,
     nativeTxCompactCbor: tx.nativeCompactCbor,
+    transactionsPhasRoot,
     txMembershipProofCbor: proofCbor,
   },
   inputs: tx.inputs,
@@ -711,11 +717,13 @@ export const prepareDoubleSpendFromTransactions = async ({
       tx: pair.tx1,
       doubleSpentInputIndex: pair.tx1DoubleSpentInputIndex,
       proofCbor: tx1Proof,
+      transactionsPhasRoot: nativeTrie.root,
     }),
     tx2: prepareTx({
       tx: pair.tx2,
       doubleSpentInputIndex: pair.tx2DoubleSpentInputIndex,
       proofCbor: tx2Proof,
+      transactionsPhasRoot: nativeTrie.root,
     }),
   };
   if (outputDir === undefined) {

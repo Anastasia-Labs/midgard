@@ -2647,6 +2647,18 @@ program
   .requiredOption("--deposits-root <hex>", "Committed deposits MPF root")
   .requiredOption("--withdrawals-root <hex>", "Committed withdrawals MPF root")
   .option(
+    "--l2-transaction-count <n>",
+    "L2 transaction count to commit in the header (must be > 0 for a non-empty transactions root)",
+  )
+  .option(
+    "--transition-trace-root <hex>",
+    "Committed transition-trace MPF root (required non-empty when total event count > 0)",
+  )
+  .option(
+    "--event-to-step-root <hex>",
+    "Committed event-to-step MPF root (required non-empty when total event count > 0)",
+  )
+  .option(
     "--end-time-ms <ms>",
     "Optional candidate block end time in POSIX milliseconds",
   )
@@ -2667,6 +2679,24 @@ program
         opts.withdrawalsRoot,
         "--withdrawals-root",
       ),
+      l2TransactionCount:
+        opts.l2TransactionCount === undefined
+          ? undefined
+          : BigInt(opts.l2TransactionCount),
+      transitionTraceRoot:
+        opts.transitionTraceRoot === undefined
+          ? undefined
+          : parseMerkleRootOption(
+              opts.transitionTraceRoot,
+              "--transition-trace-root",
+            ),
+      eventToStepRoot:
+        opts.eventToStepRoot === undefined
+          ? undefined
+          : parseMerkleRootOption(
+              opts.eventToStepRoot,
+              "--event-to-step-root",
+            ),
       endTimeMs: parseOptionalEndTimeMs(opts.endTimeMs),
       awaitConfirmation: opts.awaitConfirmation !== false,
     };

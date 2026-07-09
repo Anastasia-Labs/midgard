@@ -2,8 +2,6 @@ import {
   DoubleSpendStep02Datum,
   DoubleSpendStep02SpendRedeemer,
   DoubleSpendStep03Datum,
-  getHeaderFromStateQueueDatum,
-  getLinkedListNodeViewFromUTxO,
   HUB_ORACLE_ASSET_NAME,
   requireInputIndex,
   requireOwnSpendPurpose,
@@ -22,7 +20,6 @@ import {
   toUnit,
   type UTxO,
 } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
 
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -204,12 +201,6 @@ export const submitStep02 = async ({
     );
   }
 
-  const stateQueueNodeView = await Effect.runPromise(
-    getLinkedListNodeViewFromUTxO(stateQueueBlockUtxo),
-  );
-  const header = await Effect.runPromise(
-    getHeaderFromStateQueueDatum(stateQueueNodeView),
-  );
   requireNativeTxMatchesCompactCbor(txInclusion);
   if (inputDatum.data.verified_tx1_id === txInclusion.nativeTxId) {
     throw new Error(
@@ -278,6 +269,7 @@ export const submitStep02 = async ({
               layout.stateQueueNodeRefInputIndex,
             native_tx_id: txInclusion.nativeTxId,
             native_tx_compact_cbor: txInclusion.nativeTxCompactCbor,
+            transactions_phas_root: txInclusion.transactionsPhasRoot,
             tx_membership_proof: txInclusion.txMembershipProof,
             inclusion_proof_script_withdraw_redeemer_index:
               requireWithdrawalRedeemerIndex(
@@ -305,7 +297,7 @@ export const submitStep02 = async ({
       phasRewardAddress,
       0n,
       encodeRawPhasMembershipProofRedeemer({
-        root: header.transactionsRoot,
+        root: txInclusion.transactionsPhasRoot,
         keyBytes: txInclusion.nativeTxId,
         valueBytes: txInclusion.nativeTxCompactCbor,
         membershipProofCbor: txInclusion.txMembershipProofCbor,

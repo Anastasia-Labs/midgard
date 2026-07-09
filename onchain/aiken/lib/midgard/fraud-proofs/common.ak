@@ -24,6 +24,7 @@ use midgard/ledger_state.{
   MidgardTxWitnessSetCompact,
 }
 use midgard/state_queue
+use midgard/transition_trace
 
 pub type TxFieldPreimage {
   TxBodyProvided(MidgardTxBodyCompact)
@@ -50,6 +51,10 @@ pub type NativeTxInclusionArgs {
   state_queue_node_ref_input_index: Int,
   native_tx_id: ByteArray,
   native_tx_compact_cbor: ByteArray,
+  // Raw transactions MPF root the prover supplies. It is authenticated against
+  // the header's counted `transactions_root` before being used for the
+  // membership check (see `verify_native_tx_in_state_queue_node`).
+  transactions_phas_root: ByteArray,
   tx_membership_proof: Proof,
   inclusion_proof_script_withdraw_redeemer_index: Int,
 }
@@ -184,6 +189,7 @@ pub fn pass_native_tx_to_next_step(
     state_queue_node_ref_input_index,
     native_tx_id,
     native_tx_compact_cbor,
+    transactions_phas_root,
     tx_membership_proof,
     inclusion_proof_script_withdraw_redeemer_index,
   } = tx_inclusion_args
@@ -218,6 +224,7 @@ pub fn pass_native_tx_to_next_step(
     verify_native_tx_in_state_queue_node(
       native_tx_id,
       native_tx_compact_cbor,
+      transactions_phas_root,
       tx_membership_proof,
       computation_thread_token_asset_name,
       hub_oracle,
@@ -568,6 +575,7 @@ pub fn verify_tx_in_state_queue_node(
 pub fn verify_native_tx_in_state_queue_node(
   native_tx_id: ByteArray,
   native_tx_compact_cbor: ByteArray,
+  transactions_phas_root: ByteArray,
   tx_membership_proof: Proof,
   computation_thread_token_asset_name: AssetName,
   hub_oracle: ScriptHash,
@@ -600,9 +608,21 @@ pub fn verify_native_tx_in_state_queue_node(
       fraud_proof_catalogue.id_byte_count,
     )
 
+  // Authenticate the prover-supplied raw phas root against the header's counted
+  // `transactions_root`: only the genuine raw root re-hashes to the committed
+  // value under this block's `l2_transaction_count`. After this check the raw
+  // root is as trustworthy as the header commitment.
+  expect
+    transition_trace.commit_counted_root(
+      transition_trace.TransactionsRootDomain,
+      transactions_phas_root,
+      state_queue_datum.l2_transaction_count,
+    ) == state_queue_datum.transactions_root
+
+  // MPF membership check runs against the authenticated raw root.
   expect
     plutarch_phas_raw(
-      merkle_root: state_queue_datum.transactions_root,
+      merkle_root: transactions_phas_root,
       key_bytes: native_tx_id,
       value_bytes: native_tx_compact_cbor,
       membership_proof: tx_membership_proof,

@@ -255,6 +255,7 @@ export const prepareInvalidRangeFromTransactions = async ({
         nativeTxId: selected.tx.nodeTxId,
         nativeTx: selected.tx.nativeTxCompact,
         nativeTxCompactCbor: selected.tx.nativeCompactCbor,
+        transactionsPhasRoot: nativeTrie.root,
         txMembershipProofCbor: proofCbor,
       },
       normalizedValidityRange: selected.normalizedValidityRange,
