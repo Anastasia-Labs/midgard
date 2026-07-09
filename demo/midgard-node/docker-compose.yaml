@@ -26,7 +26,10 @@ services:
     ports:
       - "3000:3000" # api server
       - "9464:9464" # prometheus exporter
+      - "39002:39002" # DA libp2p producer
       # - "4318:4318" # opentelemetry
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./db:/app/db
       - ./deploymentInfo:/app/deploymentInfo
