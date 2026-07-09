@@ -1,6 +1,6 @@
 # Midgard Off-Chain SDK
 
-Midgard Typescript library for building operator and watcher transactions.
+Midgard TypeScript library for building operator and watcher transactions.
 
 ## How to use
 
@@ -49,7 +49,7 @@ projects that use `effect` as well.
 
 The convention is the same as Lucid Evolution, i.e. functions that return
 `Effect` blueprints are postfixed with `Program` (e.g.
-`incompleteInitTxProgram`).
+`incompleteInitializationTxProgram`).
 
 Note that this SDK is under ongoing development and these conventions may not
 hold for every single function yet.

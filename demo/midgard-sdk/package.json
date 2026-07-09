@@ -1,7 +1,7 @@
 {
   "name": "@al-ft/midgard-sdk",
   "version": "0.1.0",
-  "description": "https://docs.github.com/en/packages/quickstart",
+  "description": "Midgard TypeScript library for building operator and watcher transactions",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "type": "module",
