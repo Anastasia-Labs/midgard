@@ -1,8 +1,9 @@
 import {
-  DoubleSpendStep02Datum,
-  DoubleSpendStep02SpendRedeemer,
-  DoubleSpendStep03Datum,
+  getHeaderFromStateQueueDatum,
+  getLinkedListNodeViewFromUTxO,
   HUB_ORACLE_ASSET_NAME,
+  NonExistentInputStep01SpendRedeemer,
+  NonExistentInputStep02Datum,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
@@ -18,8 +19,8 @@ import {
   type Script,
   scriptHashToCredential,
   toUnit,
-  type UTxO,
 } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
 
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -32,9 +33,9 @@ import {
   phasMembershipRewardAddress,
   readJsonFile,
   requireSingletonUtxo,
-  resolveDoubleSpendDeploymentContracts,
   type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
+  resolveNonExistentInputDeploymentContracts,
   resolveProverSigner,
   type SubmitProviderConfig,
 } from "./runtime.js";
@@ -42,13 +43,20 @@ import {
   parseSubmitStep01TxInclusion,
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
   requireComputationThreadToken,
+  requireInitialStepDatum,
   requireNativeTxMatchesCompactCbor,
   selectFeeInput,
   type SubmitStep01TxInclusion,
 } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
 
-export type SubmitStep02CliConfig = SubmitProviderConfig & {
+// The non-existent-input proof commits the bad transaction by the node's native
+// transaction root (the same inclusion path as double-spend), so the
+// tx-inclusion material is identical to `submit-step-01`'s.
+export type NeStep01TxInclusion = SubmitStep01TxInclusion;
+export const parseNeStep01TxInclusion = parseSubmitStep01TxInclusion;
+
+export type NeSubmitStep01CliConfig = SubmitProviderConfig & {
   readonly blueprintPath: string;
   readonly deploymentInfoPath: string;
   readonly walletSeedPhrase?: string;
@@ -61,7 +69,7 @@ export type SubmitStep02CliConfig = SubmitProviderConfig & {
   readonly awaitConfirmation?: boolean;
 };
 
-export type SubmitStep02Result = {
+export type NeSubmitStep01Result = {
   readonly txHash: string;
   readonly walletSource: string;
   readonly proverAddress: string;
@@ -73,12 +81,12 @@ export type SubmitStep02Result = {
   readonly computationThreadPolicyId: string;
   readonly computationThreadAssetName: string;
   readonly computationThreadUnit: string;
+  readonly firstStepAddress: string;
   readonly secondStepAddress: string;
-  readonly thirdStepAddress: string;
-  readonly verifiedTx1Id: string;
-  readonly nativeTx2Id: string;
-  readonly verifiedTx1SpendInputsHash: string;
-  readonly verifiedTx2SpendInputsHash: string;
+  readonly nativeTxId: string;
+  readonly badTxInputsHash: string;
+  readonly blocksPrevUtxosRoot: string;
+  readonly blocksTransactionsRoot: string;
   readonly inputIndex: number;
   readonly outputIndex: number;
   readonly hubOracleRefInputIndex: number;
@@ -86,40 +94,14 @@ export type SubmitStep02Result = {
   readonly awaitedConfirmation: boolean;
 };
 
-type Step02Layout = {
+type NeStep01Layout = {
   readonly inputIndex: bigint;
   readonly outputIndex: bigint;
   readonly hubOracleRefInputIndex: bigint;
   readonly stateQueueNodeRefInputIndex: bigint;
 };
 
-type Step02DatumWithState = DoubleSpendStep02Datum & {
-  readonly data: NonNullable<DoubleSpendStep02Datum["data"]>;
-};
-
-const requireStep02Datum = ({
-  threadUtxo,
-  signer,
-}: {
-  readonly threadUtxo: UTxO;
-  readonly signer: ResolvedProverSigner;
-}): Step02DatumWithState => {
-  if (threadUtxo.datum == null) {
-    throw new Error(`Thread UTxO ${outRefLabel(threadUtxo)} is missing datum.`);
-  }
-  const datum = Data.from(threadUtxo.datum, DoubleSpendStep02Datum);
-  if (datum.fraud_prover !== signer.paymentKeyHash) {
-    throw new Error(
-      `Thread UTxO fraud_prover ${datum.fraud_prover} does not match prover signer ${signer.paymentKeyHash}.`,
-    );
-  }
-  if (datum.data === null) {
-    throw new Error("Step 02 input datum must carry verified tx1 state data.");
-  }
-  return datum as Step02DatumWithState;
-};
-
-export const submitStep02 = async ({
+export const neSubmitStep01 = async ({
   lucid,
   blueprint,
   deploymentInfo,
@@ -137,29 +119,26 @@ export const submitStep02 = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly stateQueueBlockOutRef: string;
-  readonly txInclusion: SubmitStep01TxInclusion;
+  readonly txInclusion: NeStep01TxInclusion;
   readonly awaitConfirmation?: boolean;
-}): Promise<SubmitStep02Result> => {
-  const resolvedDeployment = await resolveDoubleSpendDeploymentContracts({
+}): Promise<NeSubmitStep01Result> => {
+  requireNativeTxMatchesCompactCbor(txInclusion);
+  const resolvedDeployment = await resolveNonExistentInputDeploymentContracts({
     blueprint,
     deploymentInfo,
     network,
     requireStateQueueMint: true,
   });
-  const { doubleSpendCategory, hubOraclePolicyId, contracts } =
+  const { nonExistentInputCategory, hubOraclePolicyId, contracts } =
     resolvedDeployment;
   const stateQueuePolicyId = resolvedDeployment.stateQueuePolicyId!;
+  const steps = contracts.nonExistentInput.steps;
 
-  const parsedThreadOutRef = parseOutRef(threadOutRef, "--thread-out-ref");
-  const parsedStateQueueBlockOutRef = parseOutRef(
-    stateQueueBlockOutRef,
-    "--state-queue-block-out-ref",
-  );
   const [threadUtxo, hubOracleUtxo, stateQueueBlockUtxo] = await Promise.all([
     fetchUtxoByOutRef({
       lucid,
-      outRef: parsedThreadOutRef,
-      label: "step-02 computation-thread UTxO",
+      outRef: parseOutRef(threadOutRef, "--thread-out-ref"),
+      label: "non-existent-input step-01 computation-thread UTxO",
     }),
     requireSingletonUtxo({
       lucid,
@@ -172,25 +151,22 @@ export const submitStep02 = async ({
     }),
     fetchUtxoByOutRef({
       lucid,
-      outRef: parsedStateQueueBlockOutRef,
+      outRef: parseOutRef(stateQueueBlockOutRef, "--state-queue-block-out-ref"),
       label: "state-queue block UTxO",
     }),
   ]);
-  if (
-    threadUtxo.address !== contracts.doubleSpend.steps[1].spendingScriptAddress
-  ) {
+  if (threadUtxo.address !== steps[0].spendingScriptAddress) {
     throw new Error(
-      `Thread UTxO ${outRefLabel(threadUtxo)} is not locked at double-spend step 02.`,
+      `Thread UTxO ${outRefLabel(threadUtxo)} is not locked at non-existent-input step 01.`,
     );
   }
-
   const threadToken = requireComputationThreadToken({
     utxo: threadUtxo,
     computationThreadPolicyId: contracts.computationThread.policyId,
-    categoryId: doubleSpendCategory.categoryId,
-    categoryLabel: "double-spend",
+    categoryId: nonExistentInputCategory.categoryId,
+    categoryLabel: "non-existent-input",
   });
-  const inputDatum = requireStep02Datum({ threadUtxo, signer });
+  requireInitialStepDatum({ threadUtxo, signer });
   const stateQueueHeaderHash = resolveFraudulentHeaderHash({
     stateQueuePolicyId,
     fraudulentBlockUtxo: stateQueueBlockUtxo,
@@ -201,12 +177,12 @@ export const submitStep02 = async ({
     );
   }
 
-  requireNativeTxMatchesCompactCbor(txInclusion);
-  if (inputDatum.data.verified_tx1_id === txInclusion.nativeTxId) {
-    throw new Error(
-      "--tx-inclusion.nativeTxId must differ from the verified tx1 id in the step-02 datum.",
-    );
-  }
+  const stateQueueNodeView = await Effect.runPromise(
+    getLinkedListNodeViewFromUTxO(stateQueueBlockUtxo),
+  );
+  const header = await Effect.runPromise(
+    getHeaderFromStateQueueDatum(stateQueueNodeView),
+  );
 
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
@@ -219,42 +195,45 @@ export const submitStep02 = async ({
     network,
     phasMembershipScript,
   );
-  const step03Datum = Data.to(
+  const step02Datum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
       data: {
-        verified_tx1_spend_inputs_hash:
-          inputDatum.data.verified_tx1_spend_inputs_hash,
-        verified_tx2_spend_inputs_hash:
-          txInclusion.nativeTx.body.spend_inputs_hash,
+        bad_tx_inputs_hash: txInclusion.nativeTx.body.spend_inputs_hash,
+        blocks_prev_utxos_root: header.prevUtxosRoot,
+        blocks_transactions_root: txInclusion.transactionsPhasRoot,
       },
     },
-    DoubleSpendStep03Datum,
+    NonExistentInputStep02Datum,
   );
-  const step03OutputMatches = computationThreadOutputPredicate({
-    address: contracts.doubleSpend.steps[2].spendingScriptAddress,
-    datum: step03Datum,
+  const step02OutputMatches = computationThreadOutputPredicate({
+    address: steps[1].spendingScriptAddress,
+    datum: step02Datum,
     unit: threadToken.unit,
   });
-  let resolvedLayout: Step02Layout | undefined;
+  let resolvedLayout: NeStep01Layout | undefined;
   const redeemer = ((ctx) => {
-    requireOwnSpendPurpose(ctx, threadUtxo, "double-spend step 02");
-    const layout: Step02Layout = {
-      inputIndex: requireInputIndex(ctx, threadUtxo, "double-spend step 02"),
+    requireOwnSpendPurpose(ctx, threadUtxo, "non-existent-input step 01");
+    const layout: NeStep01Layout = {
+      inputIndex: requireInputIndex(
+        ctx,
+        threadUtxo,
+        "non-existent-input step 01",
+      ),
       outputIndex: requireUniqueOutputIndex(
         ctx.outputs,
-        step03OutputMatches,
-        "double-spend step 02 output",
+        step02OutputMatches,
+        "non-existent-input step 01 output",
       ),
       hubOracleRefInputIndex: requireReferenceInputIndex(
         ctx,
         hubOracleUtxo,
-        "double-spend step 02 hub oracle",
+        "non-existent-input step 01 hub oracle",
       ),
       stateQueueNodeRefInputIndex: requireReferenceInputIndex(
         ctx,
         stateQueueBlockUtxo,
-        "double-spend step 02 state-queue node",
+        "non-existent-input step 01 state-queue node",
       ),
     };
     resolvedLayout = layout;
@@ -275,12 +254,12 @@ export const submitStep02 = async ({
               requireWithdrawalRedeemerIndex(
                 ctx,
                 phasRewardAddress,
-                "double-spend step 02 PHAS membership",
+                "non-existent-input step 01 PHAS membership",
               ),
           },
         ],
       },
-      DoubleSpendStep02SpendRedeemer,
+      NonExistentInputStep01SpendRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
   const threadAssets = {
@@ -304,20 +283,19 @@ export const submitStep02 = async ({
       }),
     )
     .pay.ToContract(
-      contracts.doubleSpend.steps[2].spendingScriptAddress,
-      {
-        kind: "inline",
-        value: step03Datum,
-      },
+      steps[1].spendingScriptAddress,
+      { kind: "inline", value: step02Datum },
       threadAssets,
     )
     .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(contracts.doubleSpend.steps[1].spendingScript)
+    .attach.SpendingValidator(steps[0].spendingScript)
     .attach.WithdrawalValidator(phasMembershipScript);
 
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (resolvedLayout === undefined) {
-    throw new Error("BuildTxWithRedeemer did not resolve step 02 layout.");
+    throw new Error(
+      "BuildTxWithRedeemer did not resolve non-existent-input step 01 layout.",
+    );
   }
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();
@@ -337,12 +315,12 @@ export const submitStep02 = async ({
     computationThreadPolicyId: contracts.computationThread.policyId,
     computationThreadAssetName: threadToken.assetName,
     computationThreadUnit: threadToken.unit,
-    secondStepAddress: contracts.doubleSpend.steps[1].spendingScriptAddress,
-    thirdStepAddress: contracts.doubleSpend.steps[2].spendingScriptAddress,
-    verifiedTx1Id: inputDatum.data.verified_tx1_id,
-    nativeTx2Id: txInclusion.nativeTxId,
-    verifiedTx1SpendInputsHash: inputDatum.data.verified_tx1_spend_inputs_hash,
-    verifiedTx2SpendInputsHash: txInclusion.nativeTx.body.spend_inputs_hash,
+    firstStepAddress: steps[0].spendingScriptAddress,
+    secondStepAddress: steps[1].spendingScriptAddress,
+    nativeTxId: txInclusion.nativeTxId,
+    badTxInputsHash: txInclusion.nativeTx.body.spend_inputs_hash,
+    blocksPrevUtxosRoot: header.prevUtxosRoot,
+    blocksTransactionsRoot: txInclusion.transactionsPhasRoot,
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
     hubOracleRefInputIndex: Number(resolvedLayout.hubOracleRefInputIndex),
@@ -353,9 +331,9 @@ export const submitStep02 = async ({
   };
 };
 
-export const submitStep02FromFiles = async (
-  config: SubmitStep02CliConfig,
-): Promise<SubmitStep02Result> => {
+export const neSubmitStep01FromFiles = async (
+  config: NeSubmitStep01CliConfig,
+): Promise<NeSubmitStep01Result> => {
   const [blueprint, deploymentInfo, txInclusionJson, lucid] = await Promise.all(
     [
       readJsonFile(config.blueprintPath),
@@ -365,7 +343,7 @@ export const submitStep02FromFiles = async (
     ],
   );
   const signer = resolveProverSigner(config);
-  return await submitStep02({
+  return await neSubmitStep01({
     lucid,
     blueprint,
     deploymentInfo,
@@ -373,7 +351,7 @@ export const submitStep02FromFiles = async (
     signer,
     threadOutRef: config.threadOutRef,
     stateQueueBlockOutRef: config.stateQueueBlockOutRef,
-    txInclusion: parseSubmitStep01TxInclusion(txInclusionJson),
+    txInclusion: parseNeStep01TxInclusion(txInclusionJson),
     awaitConfirmation: config.awaitConfirmation,
   });
 };

@@ -35,6 +35,13 @@ export const DOUBLE_SPEND_FAULT_PROOF_TITLES = {
   step04: "fraud_proofs/double_spend/step_04.main.spend",
 } as const;
 
+export const NON_EXISTENT_INPUT_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/no_input/step_01.main.spend",
+  step02: "fraud_proofs/no_input/step_02.main.spend",
+  step03: "fraud_proofs/no_input/step_03.main.spend",
+  step04: "fraud_proofs/no_input/step_04.main.spend",
+} as const;
+
 export const INVALID_RANGE_FAULT_PROOF_TITLES = {
   step01: "fraud_proofs/invalid_range/step_01.main.spend",
   step02: "fraud_proofs/invalid_range/step_02.main.spend",
@@ -59,6 +66,19 @@ export type DoubleSpendFaultProofContracts = {
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
   readonly doubleSpend: FraudProofChain & {
+    readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+  };
+};
+
+export type NonExistentInputFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly nonExistentInput: FraudProofChain & {
     readonly steps: readonly [
       SpendingValidator,
       SpendingValidator,
@@ -106,6 +126,9 @@ export type BuildFaultProofContractsParams = {
 };
 
 export type BuildDoubleSpendFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+
+export type BuildNonExistentInputFaultProofContractsParams =
   BuildFaultProofContractsParams;
 
 export type BuildInvalidRangeFaultProofContractsParams =
@@ -350,6 +373,99 @@ const buildDoubleSpendChain = ({
     };
   });
 
+const buildNonExistentInputChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+}: {
+  readonly blueprint: FaultProofBlueprint;
+  readonly network: Network;
+  readonly hubOraclePolicyId: string;
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fraudProofTokenAddressData: Data;
+}): Effect.Effect<
+  NonExistentInputFaultProofContracts["nonExistentInput"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const step04 = yield* tryBuild(
+      "Failed to build non-existent-input step 04",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(
+            getCompiledScript(
+              blueprint,
+              NON_EXISTENT_INPUT_FAULT_PROOF_TITLES.step04,
+            ),
+            [
+              fraudProof.policyId,
+              fraudProofTokenAddressData,
+              computationThread.policyId,
+            ],
+          ),
+        ),
+    );
+
+    const step03 = yield* tryBuild(
+      "Failed to build non-existent-input step 03",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(
+            getCompiledScript(
+              blueprint,
+              NON_EXISTENT_INPUT_FAULT_PROOF_TITLES.step03,
+            ),
+            [step04.spendingScriptHash, computationThread.policyId],
+          ),
+        ),
+    );
+
+    const step02 = yield* tryBuild(
+      "Failed to build non-existent-input step 02",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(
+            getCompiledScript(
+              blueprint,
+              NON_EXISTENT_INPUT_FAULT_PROOF_TITLES.step02,
+            ),
+            [step03.spendingScriptHash, computationThread.policyId],
+          ),
+        ),
+    );
+
+    const step01 = yield* tryBuild(
+      "Failed to build non-existent-input step 01",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(
+            getCompiledScript(
+              blueprint,
+              NON_EXISTENT_INPUT_FAULT_PROOF_TITLES.step01,
+            ),
+            [
+              step02.spendingScriptHash,
+              computationThread.policyId,
+              hubOraclePolicyId,
+            ],
+          ),
+        ),
+    );
+
+    return {
+      firstStep: step01,
+      steps: [step01, step02, step03, step04],
+    };
+  });
+
 const buildInvalidRangeChain = ({
   blueprint,
   network,
@@ -495,6 +611,22 @@ export const buildDoubleSpendFaultProofContracts = (
       computationThread: shared.computationThread,
       fraudProof: shared.fraudProof,
       doubleSpend,
+    };
+  });
+
+export const buildNonExistentInputFaultProofContracts = (
+  params: BuildNonExistentInputFaultProofContractsParams,
+): Effect.Effect<NonExistentInputFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const nonExistentInput = yield* buildNonExistentInputChain({
+      ...params,
+      ...shared,
+    });
+    return {
+      computationThread: shared.computationThread,
+      fraudProof: shared.fraudProof,
+      nonExistentInput,
     };
   });
 

@@ -424,7 +424,7 @@ export const inspectFraudProofCatalogueCategoryReadiness = async ({
   deploymentMatchesFirstStep,
 }: {
   readonly catalogue: FraudProofCatalogueDeploymentInfo;
-  readonly categoryName: ImplementedFraudProofCategoryName;
+  readonly categoryName: FraudProofCatalogueCategoryName;
   readonly expectedFirstStepHash: string;
   readonly deploymentMatchesFirstStep: boolean | null;
 }): Promise<{
@@ -481,7 +481,7 @@ export const assertFraudProofCatalogueCategoryReady = async ({
   deploymentMatchesFirstStep,
 }: {
   readonly catalogue: FraudProofCatalogueDeploymentInfo;
-  readonly categoryName: ImplementedFraudProofCategoryName;
+  readonly categoryName: FraudProofCatalogueCategoryName;
   readonly expectedFirstStepHash: string;
   readonly deploymentMatchesFirstStep: boolean | null;
 }): Promise<FraudProofCatalogueCategoryDeploymentInfo> => {

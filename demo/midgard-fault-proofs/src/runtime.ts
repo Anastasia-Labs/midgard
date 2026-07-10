@@ -9,12 +9,14 @@ import {
 import {
   buildDoubleSpendFaultProofContracts,
   buildInvalidRangeFaultProofContracts,
+  buildNonExistentInputFaultProofContracts,
   buildTransitionTraceFaultProofContracts,
   type DoubleSpendFaultProofContracts,
   type FraudProofCatalogueCategoryDeploymentInfo,
   type FraudProofCatalogueCategoryName,
   type InvalidRangeFaultProofContracts,
   MerkleRoot,
+  type NonExistentInputFaultProofContracts,
   parseFaultProofBlueprint,
   Proof,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
@@ -316,6 +318,15 @@ export type ResolvedInvalidRangeDeploymentContracts = {
   readonly contracts: InvalidRangeFaultProofContracts;
 };
 
+export type ResolvedNonExistentInputDeploymentContracts = {
+  readonly deploymentInfo: ContractDeploymentInfo;
+  readonly nonExistentInputCategory: FraudProofCatalogueCategoryDeploymentInfo;
+  readonly stateQueuePolicyId: string | undefined;
+  readonly fraudProofCataloguePolicyId: string;
+  readonly hubOraclePolicyId: string;
+  readonly contracts: NonExistentInputFaultProofContracts;
+};
+
 export type ResolvedTransitionTraceDeploymentContracts = {
   readonly deploymentInfo: ContractDeploymentInfo;
   readonly transitionTraceCategory: FraudProofCatalogueCategoryDeploymentInfo;
@@ -327,11 +338,12 @@ export type ResolvedTransitionTraceDeploymentContracts = {
 
 type SupportedFaultProofCategoryName = Extract<
   FraudProofCatalogueCategoryName,
-  "doubleSpend" | "invalidRange" | "transitionTrace"
+  "doubleSpend" | "nonExistentInput" | "invalidRange" | "transitionTrace"
 >;
 
 const FRAUD_PROOF_DEPLOYMENT_ENTRY_BY_CATEGORY = {
   doubleSpend: "fraudProofDoubleSpend",
+  nonExistentInput: "fraudProofNonExistentInput",
   invalidRange: "fraudProofInvalidRange",
   transitionTrace: "fraudProofTransitionTrace",
 } as const satisfies Record<SupportedFaultProofCategoryName, string>;
@@ -342,6 +354,8 @@ const categoryLabel = (
   switch (categoryName) {
     case "doubleSpend":
       return "double-spend";
+    case "nonExistentInput":
+      return "non-existent-input";
     case "invalidRange":
       return "invalid-range";
     case "transitionTrace":
@@ -371,6 +385,7 @@ const resolveFaultProofDeploymentContracts = async ({
   readonly hubOraclePolicyId: string;
   readonly contracts:
     | DoubleSpendFaultProofContracts
+    | NonExistentInputFaultProofContracts
     | InvalidRangeFaultProofContracts
     | TransitionTraceFaultProofContracts;
 }> => {
@@ -415,6 +430,7 @@ const resolveFaultProofDeploymentContracts = async ({
   const parsedBlueprint = parseFaultProofBlueprint(blueprint);
   let contracts:
     | DoubleSpendFaultProofContracts
+    | NonExistentInputFaultProofContracts
     | InvalidRangeFaultProofContracts
     | TransitionTraceFaultProofContracts;
   let derivedFirstStepHash: string;
@@ -430,6 +446,18 @@ const resolveFaultProofDeploymentContracts = async ({
     contracts = doubleSpendContracts;
     derivedFirstStepHash =
       doubleSpendContracts.doubleSpend.firstStep.spendingScriptHash;
+  } else if (categoryName === "nonExistentInput") {
+    const nonExistentInputContracts = await Effect.runPromise(
+      buildNonExistentInputFaultProofContracts({
+        blueprint: parsedBlueprint,
+        network,
+        hubOraclePolicyId,
+        fraudProofCataloguePolicyId,
+      }),
+    );
+    contracts = nonExistentInputContracts;
+    derivedFirstStepHash =
+      nonExistentInputContracts.nonExistentInput.firstStep.spendingScriptHash;
   } else if (categoryName === "invalidRange") {
     const invalidRangeContracts = await Effect.runPromise(
       buildInvalidRangeFaultProofContracts({
@@ -507,6 +535,27 @@ export const resolveDoubleSpendDeploymentContracts = async (params: {
     fraudProofCataloguePolicyId: resolved.fraudProofCataloguePolicyId,
     hubOraclePolicyId: resolved.hubOraclePolicyId,
     contracts: resolved.contracts as DoubleSpendFaultProofContracts,
+  };
+};
+
+export const resolveNonExistentInputDeploymentContracts = async (params: {
+  readonly blueprint: unknown;
+  readonly deploymentInfo: unknown;
+  readonly network: Network;
+  readonly requireStateQueueMint?: boolean;
+  readonly requireFraudProofSpend?: boolean;
+}): Promise<ResolvedNonExistentInputDeploymentContracts> => {
+  const resolved = await resolveFaultProofDeploymentContracts({
+    ...params,
+    categoryName: "nonExistentInput",
+  });
+  return {
+    deploymentInfo: resolved.deploymentInfo,
+    nonExistentInputCategory: resolved.category,
+    stateQueuePolicyId: resolved.stateQueuePolicyId,
+    fraudProofCataloguePolicyId: resolved.fraudProofCataloguePolicyId,
+    hubOraclePolicyId: resolved.hubOraclePolicyId,
+    contracts: resolved.contracts as NonExistentInputFaultProofContracts,
   };
 };
 
@@ -690,6 +739,36 @@ export const encodePhasMembershipProofRedeemer = ({
   );
   return Data.to(
     [rootData, keyData, valueData, proofData],
+    Data.Array(Data.Any()) as unknown as LucidDataSchema,
+  );
+};
+
+/**
+ * Non-membership (exclusion) redeemer for the `pexcludes.exclusion.withdraw`
+ * validator: `[root, key, proof]` (no value, unlike the phas membership
+ * counterpart). `keyBytes` are the trie's native key bytes — the ledger trie
+ * keyed by Cardano `TransactionInput` CBOR, or the transactions trie keyed by
+ * the raw 32-byte native tx id.
+ */
+export const encodeRawPexcludesProofRedeemer = ({
+  root,
+  keyBytes,
+  nonMembershipProofCbor,
+}: {
+  readonly root: string;
+  readonly keyBytes: string;
+  readonly nonMembershipProofCbor: string;
+}): string => {
+  const proof = Data.from(nonMembershipProofCbor, Proof);
+  const rootData = Data.from(Data.to(root, MerkleRoot));
+  const keyData = Data.from(
+    Data.to(keyBytes, Data.Bytes() as unknown as LucidDataSchema),
+  );
+  const proofData = Data.from(
+    Data.to(proof, Proof as unknown as LucidDataSchema),
+  );
+  return Data.to(
+    [rootData, keyData, proofData],
     Data.Array(Data.Any()) as unknown as LucidDataSchema,
   );
 };

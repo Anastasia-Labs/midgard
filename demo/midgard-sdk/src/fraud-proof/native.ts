@@ -36,6 +36,10 @@ export const NativeTxInclusionArgsSchema = Data.Object({
   state_queue_node_ref_input_index: Data.Integer(),
   native_tx_id: H32Schema,
   native_tx_compact_cbor: Data.Bytes(),
+  // Raw transactions MPF root; authenticated on-chain against the header's
+  // counted `transactions_root`. Positional slot must match the aiken
+  // `NativeTxInclusionArgs` type.
+  transactions_phas_root: H32Schema,
   tx_membership_proof: ProofSchema,
   inclusion_proof_script_withdraw_redeemer_index: Data.Integer(),
 });

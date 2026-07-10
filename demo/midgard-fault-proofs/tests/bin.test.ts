@@ -132,8 +132,112 @@ describe("fault-proof CLI argument parsing", () => {
         "invalid-range",
       ]),
     ).toThrow(
-      '--fraud-category must be one of "doubleSpend", "invalidRange", or "transitionTrace"',
+      '--fraud-category must be one of "doubleSpend", "invalidRange", "transitionTrace", or "nonExistentInput"',
     );
+  });
+
+  it("parses non-existent-input prepare, init category, and submit-step arguments", () => {
+    const prepare = parseArgs([
+      "node",
+      "midgard-fault-proofs",
+      "prepare-non-existent-input",
+      "--transactions-file",
+      "block-transactions.json",
+      "--header-hash",
+      "33".repeat(28),
+      "--bad-tx-id",
+      "44".repeat(32),
+      "--bad-input-index",
+      "2",
+      "--prev-utxos-root",
+      "55".repeat(32),
+    ]);
+
+    expect(prepare).toMatchObject({
+      command: "prepare-non-existent-input",
+      transactionsPath: "block-transactions.json",
+      headerHash: "33".repeat(28),
+      badTxId: "44".repeat(32),
+      badInputIndex: "2",
+      prevUtxosRoot: "55".repeat(32),
+    });
+
+    const init = parseArgs([
+      "node",
+      "midgard-fault-proofs",
+      "submit-init",
+      "--blueprint",
+      "plutus.json",
+      "--deployment-info",
+      "deployment.json",
+      "--fraudulent-block-out-ref",
+      `${"55".repeat(32)}#0`,
+      "--fraud-category",
+      "nonExistentInput",
+    ]);
+
+    expect(init.fraudCategory).toBe("nonExistentInput");
+
+    const step02 = parseArgs([
+      "node",
+      "midgard-fault-proofs",
+      "submit-non-existent-input-step-02",
+      "--blueprint",
+      "plutus.json",
+      "--deployment-info",
+      "deployment.json",
+      "--thread-out-ref",
+      `${"66".repeat(32)}#0`,
+      "--inputs-preimage",
+      "ne-inputs-preimage.json",
+      "--bad-input-index",
+      "0",
+    ]);
+
+    expect(step02).toMatchObject({
+      command: "submit-non-existent-input-step-02",
+      threadOutRef: `${"66".repeat(32)}#0`,
+      inputsPreimagePath: "ne-inputs-preimage.json",
+      badInputIndex: "0",
+    });
+
+    const step03 = parseArgs([
+      "node",
+      "midgard-fault-proofs",
+      "submit-non-existent-input-step-03",
+      "--blueprint",
+      "plutus.json",
+      "--deployment-info",
+      "deployment.json",
+      "--thread-out-ref",
+      `${"77".repeat(32)}#0`,
+      "--ledger-non-membership-proof",
+      "ne-ledger-non-membership.json",
+    ]);
+
+    expect(step03).toMatchObject({
+      command: "submit-non-existent-input-step-03",
+      ledgerNonMembershipProofPath: "ne-ledger-non-membership.json",
+    });
+
+    const step04 = parseArgs([
+      "node",
+      "midgard-fault-proofs",
+      "submit-non-existent-input-step-04",
+      "--blueprint",
+      "plutus.json",
+      "--deployment-info",
+      "deployment.json",
+      "--thread-out-ref",
+      `${"88".repeat(32)}#0`,
+      "--txs-non-membership-proof",
+      "ne-txs-non-membership.json",
+    ]);
+
+    expect(step04).toMatchObject({
+      command: "submit-non-existent-input-step-04",
+      txsNonMembershipProofPath: "ne-txs-non-membership.json",
+    });
   });
 
   it("passes a direct midgard node admin key through only for removal", () => {
