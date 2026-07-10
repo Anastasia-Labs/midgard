@@ -43,10 +43,15 @@ import {
 } from "@/database/utils/common.js";
 import { Entry as LedgerEntry } from "@/database/utils/ledger.js";
 import { emitQueueStateMetrics } from "@/fibers/queue-metrics.js";
-import { registerSlotAwareDueWork } from "@/fibers/slot-aware-due-work.js";
+import {
+  registerSlotAwareDueWork,
+  type SlotAwareDueWork,
+} from "@/fibers/slot-aware-due-work.js";
 import {
   localOgmiosSubmitSlotEvidence,
   makeLocalOgmiosSubmitSlotSnapshotProvider,
+  SUBMIT_SLOT_LENGTH_MS,
+  type SubmitSlotSnapshot,
 } from "@/local-ledger-slot.js";
 import {
   availableOperatorWalletUtxos,
@@ -62,7 +67,8 @@ import {
   BlockTxPayload,
   fetchFirstBlockTxs,
   handleSignSubmit,
-  type SubmitRecoveryOptions,
+  type NoInlineSubmitDefer,
+  type NoInlineSubmitRecoveryOptions,
   TxConfirmError,
   TxSignError,
   TxSubmitError,
@@ -75,11 +81,13 @@ import {
   replaceConfirmedLedgerWithEntries,
 } from "./confirmed-ledger-snapshot.js";
 import {
-  classifyOldestQueuedBlockReadiness,
+  classifyOldestQueuedBlockCandidateReadiness,
   DEFAULT_MERGE_LOCAL_LEDGER_MAX_WAIT_MS,
   DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING,
   mergeMaturityWindow,
   type MergeReadinessStatus,
+  mergeSubmitValidityEvidence,
+  type OldestQueuedBlockCandidateReadiness,
   planMergeLocalLedgerGate,
 } from "./merge-readiness.js";
 
@@ -164,12 +172,30 @@ type MergeOptions = {
   readonly referenceScriptsAddress?: string;
   readonly leaseToken?: string;
   readonly headerHash?: string;
+  readonly submitSlotSnapshot?: () => Effect.Effect<
+    SubmitSlotSnapshot,
+    unknown
+  >;
   readonly revalidateMutationLease?: () => Effect.Effect<
     void,
     unknown,
     Database
   >;
 };
+
+export type CanonicalMergeCandidateReadiness =
+  | {
+      readonly status: "candidate";
+      readonly confirmedUTxO: SDK.StateQueueUTxO;
+      readonly firstBlockUTxO: SDK.StateQueueUTxO;
+      readonly blockHeader: SDK.Header;
+      readonly firstBlockNode: SDK.StateQueueNode;
+      readonly readiness: OldestQueuedBlockCandidateReadiness;
+    }
+  | {
+      readonly status: "no_candidate";
+      readonly reason: string;
+    };
 
 type SubmitSlotConfig = {
   readonly L1_OGMIOS_KEY: string;
@@ -232,6 +258,108 @@ const failMergeWithCode = (
       makeMergeStateQueueError(errorCode, message, cause),
     );
   });
+
+const firstBlockOutRef = (firstBlockUTxO: SDK.StateQueueUTxO): string =>
+  `${firstBlockUTxO.utxo.txHash}#${firstBlockUTxO.utxo.outputIndex.toString()}`;
+
+const isEmptyConfirmedStateLinkError = (error: unknown): boolean =>
+  typeof error === "object" &&
+  error !== null &&
+  "_tag" in error &&
+  (error as { readonly _tag?: unknown })._tag === "LinkedListError" &&
+  "cause" in error &&
+  (error as { readonly cause?: unknown }).cause === 'Given link is "Empty"';
+
+export const fetchCanonicalMergeCandidateReadiness = (
+  lucid: LucidEvolution,
+  fetchConfig: SDK.StateQueueFetchConfig,
+  contracts: SDK.MidgardValidators,
+  nowUnixTime: number = Date.now(),
+): Effect.Effect<
+  CanonicalMergeCandidateReadiness,
+  | SDK.DataCoercionError
+  | SDK.HashingError
+  | SDK.LinkedListError
+  | SDK.LucidError
+  | SDK.StateQueueError
+> =>
+  Effect.gen(function* () {
+    const fetchedCandidate = yield* Effect.either(
+      SDK.fetchConfirmedStateAndItsLinkProgram(lucid, fetchConfig),
+    );
+    if (fetchedCandidate._tag === "Left") {
+      if (isEmptyConfirmedStateLinkError(fetchedCandidate.left)) {
+        return {
+          status: "no_candidate",
+          reason: "confirmed_state_link_empty",
+        } satisfies CanonicalMergeCandidateReadiness;
+      }
+      return yield* Effect.fail(fetchedCandidate.left);
+    }
+
+    const { confirmed: confirmedUTxO, link: firstBlockUTxO } =
+      fetchedCandidate.right;
+    if (firstBlockUTxO.datum.key === "Empty") {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message: "Failed to classify merge candidate",
+          cause: "first queued block cannot be a root node",
+        }),
+      );
+    }
+
+    const headerNodeKey = firstBlockUTxO.datum.key.Key.key;
+    const firstBlockNode = yield* SDK.getStateQueueNodeFromStateQueueDatum(
+      firstBlockUTxO.datum,
+    );
+    const blockHeader = yield* SDK.getHeaderFromStateQueueDatum(
+      firstBlockUTxO.datum,
+    );
+    const recomputedHeaderHash = yield* SDK.hashBlockHeader(blockHeader);
+    if (recomputedHeaderHash !== headerNodeKey) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message:
+            "Failed to classify merge candidate: queued block key/hash mismatch",
+          cause: `datumKey=${headerNodeKey},computed=${recomputedHeaderHash}`,
+        }),
+      );
+    }
+
+    const mergeMaturity = mergeMaturityWindow(
+      lucid,
+      Number(blockHeader.endTime),
+    );
+    return {
+      status: "candidate",
+      confirmedUTxO,
+      firstBlockUTxO,
+      blockHeader,
+      firstBlockNode,
+      readiness: classifyOldestQueuedBlockCandidateReadiness({
+        firstBlockOutRef: firstBlockOutRef(firstBlockUTxO),
+        headerHash: recomputedHeaderHash,
+        currentDaAttestation: firstBlockNode.da_attestation,
+        requiredDaAttestation: contracts.daAttestation.policyId,
+        validFromUnixTime: mergeMaturity.validFromUnixTime,
+        readyAfterUnixTime: mergeMaturity.readyAfterUnixTime,
+        nowUnixTime,
+      }),
+    } satisfies CanonicalMergeCandidateReadiness;
+  });
+
+export const mergeSemanticSkipResult = (
+  readiness: Exclude<
+    OldestQueuedBlockCandidateReadiness,
+    { readonly status: "ready" }
+  >,
+): MergeTxResult => ({
+  status: readiness.status,
+  headerHash: readiness.headerHash,
+  reason: readiness.reason,
+  readyAfterUnixTime: readiness.readyAfterUnixTime,
+  nowUnixTime: readiness.nowUnixTime,
+});
 
 type MergeDecodedBlockTx = {
   readonly txId: Buffer;
@@ -348,33 +476,133 @@ const slotFromUnixTime = (
 
 const mergeSubmitRecoveryOptions = (
   nodeConfig: SubmitSlotConfig,
-): SubmitRecoveryOptions => ({
+  deferEvidence: {
+    readonly key: string;
+    readonly dependencyKey: string;
+    readonly invalidationKey: string;
+  },
+  submitSlotSnapshot?: () => Effect.Effect<SubmitSlotSnapshot, unknown>,
+): NoInlineSubmitRecoveryOptions => ({
   label: "merge",
-  slotSnapshot: makeLocalOgmiosSubmitSlotSnapshotProvider({
-    ogmiosUrl: nodeConfig.L1_OGMIOS_KEY,
-    timeoutMs: nodeConfig.L1_PROVIDER_PREFLIGHT_TIMEOUT_MS,
-  }),
+  slotSnapshot:
+    submitSlotSnapshot ??
+    makeLocalOgmiosSubmitSlotSnapshotProvider({
+      ogmiosUrl: nodeConfig.L1_OGMIOS_KEY,
+      timeoutMs: nodeConfig.L1_PROVIDER_PREFLIGHT_TIMEOUT_MS,
+    }),
   requireSlotForBoundedTx: true,
   maxPreSubmitWaitMs: DEFAULT_MERGE_LOCAL_LEDGER_MAX_WAIT_MS,
+  inlineWaitPolicy: "defer_positive_wait",
+  noInlineSubmitDefer: deferEvidence,
 });
 
-const waitForMergeLocalLedgerGate = ({
+export const mergeNoInlineSubmitDueWorkFromDefer = ({
+  defer,
+  localSubmitSlotSnapshot,
+  nowMs,
+}: {
+  readonly defer: NoInlineSubmitDefer;
+  readonly localSubmitSlotSnapshot?: {
+    readonly currentSlot: number;
+    readonly slotLengthMs: number;
+    readonly source: string;
+  };
+  readonly nowMs?: number;
+}): SlotAwareDueWork => {
+  if (defer.kind !== "provider_slot_wait") {
+    return {
+      kind: "merge_submit_validity",
+      key: defer.key,
+      callerLabel: defer.callerLabel,
+      reason: `merge_submit_${defer.kind}_not_reached`,
+      observedSlot: defer.currentSlot,
+      dueSlot: defer.dueSlot,
+      dueAtMs: (nowMs ?? Date.now()) + defer.waitMs,
+      waitMs: defer.waitMs,
+      slotSource: defer.slotSource,
+      dependencyKey: defer.dependencyKey,
+      invalidationKey: defer.invalidationKey,
+    };
+  }
+  if (localSubmitSlotSnapshot === undefined) {
+    throw new Error(
+      "local submit slot snapshot is required for merge provider-slot defer",
+    );
+  }
+  const slotLengthMs = Math.max(
+    1,
+    Math.floor(localSubmitSlotSnapshot.slotLengthMs || SUBMIT_SLOT_LENGTH_MS),
+  );
+  return {
+    kind: "merge_submit_validity",
+    key: defer.key,
+    callerLabel: defer.callerLabel,
+    reason: `merge_submit_${defer.kind}_not_reached,provider_current_slot=${defer.currentSlot.toString()},provider_due_slot=${defer.dueSlot.toString()}`,
+    observedSlot: localSubmitSlotSnapshot.currentSlot,
+    dueSlot:
+      localSubmitSlotSnapshot.currentSlot +
+      Math.max(1, Math.ceil(defer.waitMs / slotLengthMs)),
+    dueAtMs: (nowMs ?? Date.now()) + defer.waitMs,
+    waitMs: defer.waitMs,
+    slotSource: localSubmitSlotSnapshot.source,
+    dependencyKey: defer.dependencyKey,
+    invalidationKey: defer.invalidationKey,
+  };
+};
+
+const registerMergeNoInlineSubmitDueWork = (
+  defer: NoInlineSubmitDefer,
+  nodeConfig: SubmitSlotConfig,
+  submitSlotSnapshot?: () => Effect.Effect<SubmitSlotSnapshot, unknown>,
+) =>
+  Effect.gen(function* () {
+    if (defer.kind !== "provider_slot_wait") {
+      return registerSlotAwareDueWork(
+        mergeNoInlineSubmitDueWorkFromDefer({ defer }),
+      );
+    }
+    const localSnapshot = yield* (
+      submitSlotSnapshot ??
+      makeLocalOgmiosSubmitSlotSnapshotProvider({
+        ogmiosUrl: nodeConfig.L1_OGMIOS_KEY,
+        timeoutMs: nodeConfig.L1_PROVIDER_PREFLIGHT_TIMEOUT_MS,
+      })
+    )().pipe(
+      Effect.mapError(
+        (cause) =>
+          new SDK.StateQueueError({
+            message:
+              "Failed to read local Ogmios submit-ledger slot before registering merge provider-slot defer",
+            cause,
+          }),
+      ),
+    );
+    return registerSlotAwareDueWork(
+      mergeNoInlineSubmitDueWorkFromDefer({
+        defer,
+        localSubmitSlotSnapshot: localSnapshot,
+      }),
+    );
+  });
+
+export const captureMergeLocalLedgerGate = ({
   lucid,
   nodeConfig,
   validFromUnixTime,
   leaseToken,
   headerHash,
-  revalidateMutationLease,
+  candidateIdentity,
+  submitSlotSnapshot,
 }: {
   readonly lucid: LucidEvolution;
   readonly nodeConfig: SubmitSlotConfig;
   readonly validFromUnixTime: number;
   readonly leaseToken?: string;
-  readonly headerHash?: string;
-  readonly revalidateMutationLease?: () => Effect.Effect<
-    void,
-    unknown,
-    Database
+  readonly headerHash: string;
+  readonly candidateIdentity?: string;
+  readonly submitSlotSnapshot?: () => Effect.Effect<
+    SubmitSlotSnapshot,
+    unknown
   >;
 }): Effect.Effect<
   | { readonly status: "ready" }
@@ -384,21 +612,26 @@ const waitForMergeLocalLedgerGate = ({
 > =>
   Effect.gen(function* () {
     const validFromSlot = yield* slotFromUnixTime(lucid, validFromUnixTime);
-    const slotSnapshotProvider = makeLocalOgmiosSubmitSlotSnapshotProvider({
-      ogmiosUrl: nodeConfig.L1_OGMIOS_KEY,
-      timeoutMs: nodeConfig.L1_PROVIDER_PREFLIGHT_TIMEOUT_MS,
+    const dueWorkEvidence = mergeSubmitValidityEvidence({
+      headerHash,
+      validFromSlot,
+      ...(candidateIdentity === undefined ? {} : { candidateIdentity }),
     });
+    const slotSnapshotProvider =
+      submitSlotSnapshot ??
+      makeLocalOgmiosSubmitSlotSnapshotProvider({
+        ogmiosUrl: nodeConfig.L1_OGMIOS_KEY,
+        timeoutMs: nodeConfig.L1_PROVIDER_PREFLIGHT_TIMEOUT_MS,
+      });
     const snapshot = yield* slotSnapshotProvider().pipe(
       Effect.mapError(
         (cause) =>
           new SDK.StateQueueError({
-            message:
-              "Failed to read local Ogmios submit-ledger slot before merge build",
+            message: "Failed to read submit-ledger slot before merge build",
             cause,
           }),
       ),
     );
-    const dependencyKey = `merge:${headerHash ?? "unknown"}:${validFromSlot.toString()}`;
     const gate = planMergeLocalLedgerGate({
       validFromSlot,
       localLedgerSlot: snapshot.currentSlot,
@@ -406,12 +639,15 @@ const waitForMergeLocalLedgerGate = ({
       slotSource: snapshot.source,
       observedAtMs: snapshot.observedAtMs,
       maxWaitMs: DEFAULT_MERGE_LOCAL_LEDGER_MAX_WAIT_MS,
-      dependencyKey,
-      invalidationKey: dependencyKey,
+      inlineWaitPolicy: "defer_positive_wait",
+      dependencyKey: dueWorkEvidence.dependencyKey,
+      invalidationKey: dueWorkEvidence.invalidationKey,
     });
     const logFields = [
       `validFromUnixTime=${validFromUnixTime.toString()}`,
       `validFromSlot=${validFromSlot.toString()}`,
+      `headerHash=${headerHash}`,
+      `candidateIdentity=${candidateIdentity ?? "none"}`,
       `targetSlot=${gate.targetSlot.toString()}`,
       `localLedgerSlot=${snapshot.currentSlot.toString()}`,
       `deltaSlots=${gate.deltaSlots.toString()}`,
@@ -419,6 +655,8 @@ const waitForMergeLocalLedgerGate = ({
       `slotSource=${snapshot.source}`,
       `leaseToken=${leaseToken ?? "none"}`,
       "callerLabel=merge",
+      `dependencyKey=${dueWorkEvidence.dependencyKey}`,
+      `invalidationKey=${dueWorkEvidence.invalidationKey}`,
       localOgmiosSubmitSlotEvidence(snapshot),
     ].join(",");
     if (gate.status === "ready") {
@@ -436,7 +674,7 @@ const waitForMergeLocalLedgerGate = ({
       }
       const dueWork = slotAwareDueWorkFromSubmitTiming({
         kind: "merge_submit_validity",
-        key: dependencyKey,
+        key: dueWorkEvidence.key,
         callerLabel: "merge",
         reason: "merge_submit_validity_not_reached",
         plan: gate.submitTimingNotDuePlan,
@@ -451,50 +689,13 @@ const waitForMergeLocalLedgerGate = ({
         reason: `${gate.reason},valid_from_unix_time=${validFromUnixTime.toString()}`,
       } as const;
     }
-    yield* Effect.logInfo(
-      `🔸 Waiting for local submit ledger before merge build (${logFields}).`,
+    return yield* Effect.fail(
+      new SDK.StateQueueError({
+        message:
+          "Merge local-ledger planner unexpectedly allowed an inline wait in no-inline mode",
+        cause: logFields,
+      }),
     );
-    yield* Effect.sleep(gate.waitMs);
-    if (revalidateMutationLease !== undefined) {
-      yield* revalidateMutationLease().pipe(
-        Effect.mapError(
-          (cause) =>
-            new SDK.StateQueueError({
-              message:
-                "State-queue mutation lease failed revalidation after local-ledger merge wait",
-              cause,
-            }),
-        ),
-      );
-    }
-    const refreshedSnapshot = yield* slotSnapshotProvider().pipe(
-      Effect.mapError(
-        (cause) =>
-          new SDK.StateQueueError({
-            message:
-              "Failed to re-read local Ogmios submit-ledger slot after merge local-ledger wait",
-            cause,
-          }),
-      ),
-    );
-    const refreshedGate = planMergeLocalLedgerGate({
-      validFromSlot,
-      localLedgerSlot: refreshedSnapshot.currentSlot,
-      slotLengthMs: refreshedSnapshot.slotLengthMs,
-      slotSource: refreshedSnapshot.source,
-      observedAtMs: refreshedSnapshot.observedAtMs,
-      maxWaitMs: 0,
-    });
-    if (refreshedGate.status !== "ready") {
-      yield* Effect.logInfo(
-        `🔸 Skipping merge because the local submit ledger is still behind after wait (validFromUnixTime=${validFromUnixTime.toString()},validFromSlot=${validFromSlot.toString()},targetSlot=${refreshedGate.targetSlot.toString()},localLedgerSlot=${refreshedSnapshot.currentSlot.toString()},deltaSlots=${refreshedGate.deltaSlots.toString()},slotSource=${refreshedSnapshot.source},leaseToken=${leaseToken ?? "none"},callerLabel=merge,${localOgmiosSubmitSlotEvidence(refreshedSnapshot)}).`,
-      );
-      return {
-        status: "retry_later",
-        reason: `local_submit_ledger_still_behind_after_wait,valid_from_unix_time=${validFromUnixTime.toString()},valid_from_slot=${validFromSlot.toString()},target_slot=${refreshedGate.targetSlot.toString()},local_ledger_slot=${refreshedSnapshot.currentSlot.toString()}`,
-      } as const;
-    }
-    return { status: "ready" } as const;
   });
 
 /**
@@ -529,7 +730,6 @@ export const buildAndSubmitMergeTx = (
     const mergeStartedAt = Date.now();
     const globals = yield* Globals;
     const nodeConfig = yield* NodeConfig;
-    const submitRecoveryOptions = mergeSubmitRecoveryOptions(nodeConfig);
     const currentStateQueueLength = yield* getStateQueueLength(
       lucid,
       fetchConfig.stateQueueAddress,
@@ -573,26 +773,38 @@ export const buildAndSubmitMergeTx = (
     yield* Effect.logInfo(
       "🔸 Fetching confirmed state and the first block in queue from L1...",
     );
-    const { confirmed: confirmedUTxO, link: firstBlockUTxO } =
-      yield* SDK.fetchConfirmedStateAndItsLinkProgram(lucid, fetchConfig);
-    if (firstBlockUTxO) {
+    const candidate = yield* fetchCanonicalMergeCandidateReadiness(
+      lucid,
+      fetchConfig,
+      contracts,
+    );
+    if (candidate.status === "candidate") {
+      const {
+        confirmedUTxO,
+        firstBlockUTxO,
+        blockHeader,
+        readiness: oldestBlockReadiness,
+      } = candidate;
       yield* Effect.logInfo(
         `🔸 First block found: ${firstBlockUTxO.utxo.txHash}#${firstBlockUTxO.utxo.outputIndex}`,
       );
-      const firstBlockNode = yield* SDK.getStateQueueNodeFromStateQueueDatum(
-        firstBlockUTxO.datum,
-      );
-      if (firstBlockNode.da_attestation !== contracts.daAttestation.policyId) {
-        const headerHash = yield* SDK.hashBlockHeader(firstBlockNode.header);
-        yield* Effect.logInfo(
-          `🔸 Skipping merge because oldest block is not DA-attested yet (header=${headerHash},current_da_attestation=${firstBlockNode.da_attestation},required_da_attestation=${contracts.daAttestation.policyId}).`,
-        );
-        return {
-          status: "skipped_oldest_block_unattested",
-          headerHash,
-          reason: `header=${headerHash},current_da_attestation=${firstBlockNode.da_attestation},required_da_attestation=${contracts.daAttestation.policyId}`,
-        } satisfies MergeTxResult;
+      if (oldestBlockReadiness.status !== "ready") {
+        if (oldestBlockReadiness.status === "skipped_oldest_block_unattested") {
+          yield* Effect.logInfo(
+            `🔸 Skipping merge because oldest block is not DA-attested yet (${oldestBlockReadiness.reason}).`,
+          );
+        } else {
+          yield* Effect.logInfo(
+            `🔸 Oldest block is not mature enough for merge yet (${oldestBlockReadiness.reason}).`,
+          );
+        }
+        return mergeSemanticSkipResult(oldestBlockReadiness);
       }
+      const mergeMaturity = {
+        validFromUnixTime: oldestBlockReadiness.validFromUnixTime,
+        readyAfterUnixTime: oldestBlockReadiness.readyAfterUnixTime,
+      };
+      const recomputedHeaderHash = oldestBlockReadiness.headerHash;
       // Fetch transactions from the first block
       yield* Effect.logInfo("🔸 Looking up its transactions from BlocksDB...");
       const {
@@ -649,59 +861,14 @@ export const buildAndSubmitMergeTx = (
       );
       yield* Effect.logInfo("🔸 Building merge transaction...");
 
-      const blockHeader: SDK.Header = yield* SDK.getHeaderFromStateQueueDatum(
-        firstBlockUTxO.datum,
-      );
-      if (firstBlockUTxO.datum.key === "Empty") {
-        return yield* Effect.fail(
-          new SDK.StateQueueError({
-            message: "Failed to build merge transaction",
-            cause: "first queued block cannot be a root node",
-          }),
-        );
-      }
-      const headerNodeKey = firstBlockUTxO.datum.key.Key.key;
-      const recomputedHeaderHash = yield* SDK.hashBlockHeader(blockHeader);
-      if (recomputedHeaderHash !== headerNodeKey) {
-        return yield* Effect.fail(
-          new SDK.StateQueueError({
-            message:
-              "Failed to build merge transaction: queued block key/hash mismatch",
-            cause: `datumKey=${headerNodeKey},computed=${recomputedHeaderHash}`,
-          }),
-        );
-      }
-      const mergeMaturity = mergeMaturityWindow(
-        lucid,
-        Number(blockHeader.endTime),
-      );
-      const oldestBlockReadiness = classifyOldestQueuedBlockReadiness({
-        headerHash: recomputedHeaderHash,
-        currentDaAttestation: firstBlockNode.da_attestation,
-        requiredDaAttestation: contracts.daAttestation.policyId,
-        readyAfterUnixTime: mergeMaturity.readyAfterUnixTime,
-        nowUnixTime: Date.now(),
-      });
-      if (oldestBlockReadiness.status !== "ready") {
-        yield* Effect.logInfo(
-          `🔸 Oldest block is not mature enough for merge yet (${oldestBlockReadiness.reason}).`,
-        );
-        return {
-          status: oldestBlockReadiness.status,
-          headerHash: oldestBlockReadiness.headerHash,
-          reason: oldestBlockReadiness.reason,
-          readyAfterUnixTime: oldestBlockReadiness.readyAfterUnixTime,
-          nowUnixTime: oldestBlockReadiness.nowUnixTime,
-        } satisfies MergeTxResult;
-      }
-
-      const localLedgerGate = yield* waitForMergeLocalLedgerGate({
+      const localLedgerGate = yield* captureMergeLocalLedgerGate({
         lucid,
         nodeConfig,
         validFromUnixTime: mergeMaturity.validFromUnixTime,
         leaseToken: options?.leaseToken,
         headerHash: recomputedHeaderHash,
-        revalidateMutationLease: options?.revalidateMutationLease,
+        candidateIdentity: oldestBlockReadiness.candidateIdentity,
+        submitSlotSnapshot: options?.submitSlotSnapshot,
       });
       if (localLedgerGate.status === "retry_later") {
         return {
@@ -857,11 +1024,53 @@ export const buildAndSubmitMergeTx = (
           );
         });
       const txHash = txBuilder.toHash();
-      yield* handleSignSubmit(lucid, txBuilder, submitRecoveryOptions).pipe(
+      const submitValidFromSlot = yield* slotFromUnixTime(
+        lucid,
+        mergeMaturity.validFromUnixTime,
+      );
+      const submitDueWorkEvidence = mergeSubmitValidityEvidence({
+        headerHash: recomputedHeaderHash,
+        validFromSlot: submitValidFromSlot,
+        candidateIdentity: oldestBlockReadiness.candidateIdentity,
+      });
+      const submitRecoveryOptions = mergeSubmitRecoveryOptions(
+        nodeConfig,
+        submitDueWorkEvidence,
+        options?.submitSlotSnapshot,
+      );
+      const rawSubmitOutcome = yield* handleSignSubmit(
+        lucid,
+        txBuilder,
+        submitRecoveryOptions,
+      ).pipe(
+        Effect.as({ status: "submitted" } as const),
+        Effect.catchTag("NoInlineSubmitDefer", (defer) =>
+          Effect.succeed({ status: "deferred", defer } as const),
+        ),
         Effect.catchTag("TxSubmitError", onSubmitFailure),
         Effect.catchTag("TxConfirmError", onConfirmFailure),
         Effect.withSpan("handleSignSubmit-merge-tx"),
       );
+      const submitOutcome = rawSubmitOutcome ?? {
+        status: "submitted",
+      };
+      if (submitOutcome.status === "deferred") {
+        const dueWork = yield* registerMergeNoInlineSubmitDueWork(
+          submitOutcome.defer,
+          nodeConfig,
+          options?.submitSlotSnapshot,
+        );
+        yield* Effect.logInfo(
+          `🔸 Skipping merge after no-inline submit defer (kind=${dueWork.kind},key=${dueWork.key},callerLabel=${dueWork.callerLabel},deferKind=${submitOutcome.defer.kind},current_slot=${dueWork.observedSlot.toString()},due_slot=${dueWork.dueSlot.toString()},wait_ms=${dueWork.waitMs.toString()},slot_source=${dueWork.slotSource},dependency_key=${dueWork.dependencyKey},invalidation_key=${dueWork.invalidationKey},leaseToken=${options?.leaseToken ?? "none"},headerHash=${recomputedHeaderHash}).`,
+        );
+        return {
+          status: "skipped_oldest_block_local_ledger_not_ready",
+          headerHash: recomputedHeaderHash,
+          reason: `no_inline_submit_defer,kind=${submitOutcome.defer.kind},current_slot=${submitOutcome.defer.currentSlot.toString()},target_slot=${submitOutcome.defer.targetSlot.toString()},due_slot=${submitOutcome.defer.dueSlot.toString()},wait_ms=${submitOutcome.defer.waitMs.toString()},slot_source=${submitOutcome.defer.slotSource}`,
+          readyAfterUnixTime: mergeMaturity.readyAfterUnixTime,
+          nowUnixTime: Date.now(),
+        } satisfies MergeTxResult;
+      }
       yield* Effect.logInfo(
         "🔸 Merge transaction submitted, updating the db...",
       );

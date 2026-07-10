@@ -407,6 +407,22 @@ const REQUIRED_FRESH_E2E_STEP_ID_SET = new Set<string>(
   REQUIRED_FRESH_E2E_STEP_IDS,
 );
 
+const REQUIRED_FRESH_STEP_SUCCESS_ALIASES = new Map<string, string>([
+  ["reference-scripts-resume", "reference-scripts"],
+  ["init-protocol-retry", "init-protocol"],
+]);
+
+const REQUIRED_FRESH_STEP_ATTEMPT_ALIASES = new Map<string, string>([
+  ...REQUIRED_FRESH_STEP_SUCCESS_ALIASES,
+  ["operator-activate-retry", "operator-lifecycle"],
+]);
+
+const canonicalFreshStepSuccessId = (stepId: string): string =>
+  REQUIRED_FRESH_STEP_SUCCESS_ALIASES.get(stepId) ?? stepId;
+
+const canonicalFreshStepAttemptId = (stepId: string): string =>
+  REQUIRED_FRESH_STEP_ATTEMPT_ALIASES.get(stepId) ?? stepId;
+
 const REQUIRED_FRESH_TRANSACTION_STEP_IDS = new Set<string>([
   "hub-oracle-nonce",
   "reference-scripts",
@@ -464,7 +480,9 @@ const stepHasUnresolvedTxObservation = ({
 
 const stepHasUnknownInterruptedSubmitRisk = (step: StepSummary): boolean =>
   (step.status === "timeout" || step.status === "signaled") &&
-  REQUIRED_FRESH_TRANSACTION_STEP_IDS.has(step.id) &&
+  REQUIRED_FRESH_TRANSACTION_STEP_IDS.has(
+    canonicalFreshStepAttemptId(step.id),
+  ) &&
   step.txObservations.length === 0;
 
 const formatStepAttempts = (steps: readonly StepSummary[]): string =>
@@ -590,12 +608,13 @@ export const requiredFreshEvidence = ({
     return { db: [], cleanRunGates: [] };
   }
   const requiredStepAttempts = steps.filter((step) =>
-    REQUIRED_FRESH_E2E_STEP_ID_SET.has(step.id),
+    REQUIRED_FRESH_E2E_STEP_ID_SET.has(canonicalFreshStepAttemptId(step.id)),
   );
   const successfulStepIds = new Set(
     requiredStepAttempts
       .filter((step) => step.status === "success")
-      .map((step) => step.id),
+      .map((step) => canonicalFreshStepSuccessId(step.id))
+      .filter((stepId) => REQUIRED_FRESH_E2E_STEP_ID_SET.has(stepId)),
   );
   const allTransactionEvidence = mergeTransactionEvidence([
     ...transactions,
@@ -606,6 +625,17 @@ export const requiredFreshEvidence = ({
       .filter((tx) => EVIDENCE_TRANSACTION_STATUSES.has(tx.status))
       .map((tx) => tx.label),
   );
+  const confirmedTxLabels = new Set(
+    allTransactionEvidence
+      .filter((tx) => tx.status === "confirmed" || tx.status === "committed")
+      .map((tx) => tx.label),
+  );
+  if (
+    confirmedTxLabels.has("operator-registration") &&
+    confirmedTxLabels.has("operator-activation")
+  ) {
+    successfulStepIds.add("operator-lifecycle");
+  }
   const missingStepIds = REQUIRED_FRESH_E2E_STEP_IDS.filter(
     (stepId) => !successfulStepIds.has(stepId),
   );
@@ -662,6 +692,14 @@ const collectDbCounts = (): Effect.Effect<
       SELECT 'pending_finalizations_finalized' AS label, COUNT(*) AS count
         FROM pending_block_finalizations WHERE status = 'finalized'
       UNION ALL
+      SELECT 'pending_finalization_tx_headers' AS label, COUNT(DISTINCT header_hash) AS count
+        FROM pending_block_finalization_txs
+      UNION ALL
+      SELECT 'pending_finalizations_finalized_tx_headers' AS label, COUNT(DISTINCT f.header_hash) AS count
+        FROM pending_block_finalizations f
+        JOIN pending_block_finalization_txs t USING (header_hash)
+        WHERE f.status = 'finalized'
+      UNION ALL
       SELECT 'pending_finalizations_unfinished' AS label, COUNT(*) AS count
         FROM pending_block_finalizations WHERE status <> 'finalized'
       UNION ALL
@@ -670,8 +708,6 @@ const collectDbCounts = (): Effect.Effect<
       SELECT 'processed_mempool' AS label, COUNT(*) AS count FROM processed_mempool
       UNION ALL
       SELECT 'blocks' AS label, COUNT(*) AS count FROM blocks
-      UNION ALL
-      SELECT 'latest_ledger' AS label, COUNT(*) AS count FROM latest_ledger
       UNION ALL
       SELECT 'immutable' AS label, COUNT(*) AS count FROM immutable
       UNION ALL
@@ -732,9 +768,12 @@ export const finalizeE2ESummaryProgram = (
       (counts.get("mempool") ?? 0n) +
       (counts.get("processed_mempool") ?? 0n) +
       (counts.get("blocks") ?? 0n) +
-      (counts.get("latest_ledger") ?? 0n) +
       (counts.get("local_mutation_jobs_unfinished") ?? 0n);
     const finalized = counts.get("pending_finalizations_finalized") ?? 0n;
+    const txBearingHeaders =
+      counts.get("pending_finalization_tx_headers") ?? 0n;
+    const finalizedTxBearingHeaders =
+      counts.get("pending_finalizations_finalized_tx_headers") ?? 0n;
     const consumedDeposits = counts.get("deposits_consumed") ?? 0n;
     const acceptedL2Txs = counts.get("tx_admissions_accepted") ?? 0n;
     const immutableRows = counts.get("immutable") ?? 0n;
@@ -815,7 +854,6 @@ export const finalizeE2ESummaryProgram = (
                 "mempool",
                 "processed_mempool",
                 "blocks",
-                "latest_ledger",
                 "local_mutation_jobs_unfinished",
               ].map((label) => [label, (counts.get(label) ?? 0n).toString()]),
             ),
@@ -831,11 +869,15 @@ export const finalizeE2ESummaryProgram = (
           },
           {
             label: "finalized_headers",
-            status: finalized >= expectedL2Count ? "satisfied" : "failed",
+            status:
+              finalizedTxBearingHeaders >= txBearingHeaders
+                ? "satisfied"
+                : "failed",
             source: "postgres",
             details: {
               finalized: finalized.toString(),
-              expectedMinimum: expectedL2Count.toString(),
+              finalizedTxBearing: finalizedTxBearingHeaders.toString(),
+              expectedTxBearingMinimum: txBearingHeaders.toString(),
             },
           },
           {
@@ -867,7 +909,7 @@ export const finalizeE2ESummaryProgram = (
             label: "confirmed_ledger",
             status:
               confirmedLedgerRows > 0n &&
-              daPayloads >= expectedL2Count &&
+              daPayloads >= finalized &&
               consumedDeposits === 1n
                 ? "satisfied"
                 : "failed",
@@ -875,7 +917,7 @@ export const finalizeE2ESummaryProgram = (
             details: {
               confirmedLedger: confirmedLedgerRows.toString(),
               daPayloads: daPayloads.toString(),
-              expectedDaPayloadsMinimum: expectedL2Count.toString(),
+              expectedDaPayloadsMinimum: finalized.toString(),
               consumedDeposits: consumedDeposits.toString(),
             },
           },

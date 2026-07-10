@@ -5,8 +5,11 @@ import {
   SUBMIT_SLOT_VALIDITY_BUFFER,
   type SubmitSlotSnapshot,
 } from "@/local-ledger-slot.js";
+import {
+  type InlineWaitPolicy,
+  planSubmitTiming,
+} from "@/transactions/submit-timing.js";
 import type { SubmitTimingNotDuePlanWithDueWorkEvidence } from "@/transactions/submit-timing-due-work.js";
-import { planSubmitTiming } from "@/transactions/submit-timing.js";
 import { alignedUnixTimeStrictlyAfter } from "@/workers/utils/commit-end-time.js";
 
 export const DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING = 8;
@@ -27,7 +30,8 @@ export type MergeReadinessStatus =
   | "skipped_pending_local_work"
   | "skipped_oldest_block_unattested"
   | "skipped_oldest_block_not_mature"
-  | "skipped_oldest_block_local_ledger_not_ready";
+  | "skipped_oldest_block_local_ledger_not_ready"
+  | "skipped_merge_candidate_changed";
 
 export type MergePreflightInput = {
   readonly force: boolean;
@@ -44,7 +48,9 @@ export type MergePreflightInput = {
 export type MergePreflightDecision = {
   readonly status: Exclude<
     MergeReadinessStatus,
-    "skipped_oldest_block_unattested" | "skipped_oldest_block_not_mature"
+    | "skipped_oldest_block_unattested"
+    | "skipped_oldest_block_not_mature"
+    | "skipped_merge_candidate_changed"
   >;
   readonly reason: string;
   readonly queueLength: number;
@@ -144,14 +150,6 @@ export const planMergePreflight = (
   };
 };
 
-export const mergeReadyAfterUnixTime = (
-  lucid: LucidEvolution,
-  blockEndTimeMs: number,
-): number => {
-  const { readyAfterUnixTime } = mergeMaturityWindow(lucid, blockEndTimeMs);
-  return readyAfterUnixTime;
-};
-
 export const mergeMaturityWindow = (
   lucid: LucidEvolution,
   blockEndTimeMs: number,
@@ -181,6 +179,7 @@ export type MergeLocalLedgerGateInput = {
   readonly maxWaitMs?: number;
   readonly slotSource?: SubmitSlotSnapshot["source"];
   readonly observedAtMs?: number;
+  readonly inlineWaitPolicy?: InlineWaitPolicy;
   readonly dependencyKey?: string;
   readonly invalidationKey?: string;
 };
@@ -233,6 +232,7 @@ export const planMergeLocalLedgerGate = (
     slotSnapshot: snapshot,
     submitSlotBuffer: MERGE_LOCAL_LEDGER_SLOT_BUFFER,
     maxInlineWaitMs: maxWaitMs,
+    inlineWaitPolicy: input.inlineWaitPolicy,
     dependencyKey: input.dependencyKey,
     invalidationKey: input.invalidationKey,
   });
@@ -292,6 +292,46 @@ export const planMergeLocalLedgerGate = (
 
 export const planMergeLocalLedgerReadiness = planMergeLocalLedgerGate;
 
+export type MergeSubmitValidityEvidenceInput = {
+  readonly headerHash: string;
+  readonly validFromSlot: number;
+  readonly candidateIdentity?: string;
+};
+
+export type MergeSubmitValidityEvidence = {
+  readonly key: string;
+  readonly dependencyKey: string;
+  readonly invalidationKey: string;
+  readonly headerHash: string;
+  readonly validFromSlot: number;
+  readonly targetSlot: number;
+  readonly candidateIdentity?: string;
+};
+
+export const mergeSubmitValidityEvidence = ({
+  headerHash,
+  validFromSlot,
+  candidateIdentity,
+}: MergeSubmitValidityEvidenceInput): MergeSubmitValidityEvidence => {
+  const targetSlot = validFromSlot + MERGE_LOCAL_LEDGER_SLOT_BUFFER;
+  const candidateKey = candidateIdentity ?? headerHash;
+  const key = [
+    "merge",
+    candidateKey,
+    validFromSlot.toString(),
+    targetSlot.toString(),
+  ].join(":");
+  return {
+    key,
+    dependencyKey: key,
+    invalidationKey: key,
+    headerHash,
+    validFromSlot,
+    targetSlot,
+    ...(candidateIdentity === undefined ? {} : { candidateIdentity }),
+  };
+};
+
 export type OldestQueuedBlockReadinessInput = {
   readonly headerHash: string;
   readonly currentDaAttestation: string;
@@ -317,6 +357,39 @@ export type OldestQueuedBlockReadiness =
       readonly readyAfterUnixTime: number;
       readonly nowUnixTime: number;
     };
+
+export type MergeCandidateIdentityInput = {
+  readonly firstBlockOutRef: string;
+  readonly headerHash: string;
+  readonly currentDaAttestation: string;
+  readonly requiredDaAttestation: string;
+  readonly readyAfterUnixTime: number;
+};
+
+export const mergeCandidateIdentity = (
+  input: MergeCandidateIdentityInput,
+): string =>
+  [
+    input.firstBlockOutRef,
+    input.headerHash,
+    input.currentDaAttestation,
+    input.requiredDaAttestation,
+    input.readyAfterUnixTime.toString(),
+  ].join("|");
+
+export type OldestQueuedBlockCandidateReadinessInput =
+  OldestQueuedBlockReadinessInput & {
+    readonly firstBlockOutRef: string;
+    readonly validFromUnixTime: number;
+  };
+
+export type OldestQueuedBlockCandidateReadiness = OldestQueuedBlockReadiness & {
+  readonly firstBlockOutRef: string;
+  readonly candidateIdentity: string;
+  readonly currentDaAttestation: string;
+  readonly requiredDaAttestation: string;
+  readonly validFromUnixTime: number;
+};
 
 export const classifyOldestQueuedBlockReadiness = (
   input: OldestQueuedBlockReadinessInput,
@@ -345,5 +418,19 @@ export const classifyOldestQueuedBlockReadiness = (
     reason: `header=${input.headerHash}`,
     readyAfterUnixTime: input.readyAfterUnixTime,
     nowUnixTime: input.nowUnixTime,
+  };
+};
+
+export const classifyOldestQueuedBlockCandidateReadiness = (
+  input: OldestQueuedBlockCandidateReadinessInput,
+): OldestQueuedBlockCandidateReadiness => {
+  const readiness = classifyOldestQueuedBlockReadiness(input);
+  return {
+    ...readiness,
+    firstBlockOutRef: input.firstBlockOutRef,
+    candidateIdentity: mergeCandidateIdentity(input),
+    currentDaAttestation: input.currentDaAttestation,
+    requiredDaAttestation: input.requiredDaAttestation,
+    validFromUnixTime: input.validFromUnixTime,
   };
 };

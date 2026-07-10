@@ -11,9 +11,9 @@ import {
   daGossipTopic,
   DaRequestResponseProtocol,
   daRequestResponseProtocolId,
+  decodeDaMetadataByHeaderResponseV1Cbor,
   decodeDaPayloadAnnouncementV1Cbor,
   decodeDaPayloadByHeaderResponseV1Cbor,
-  decodeDaMetadataByHeaderResponseV1Cbor,
   decodeDaPayloadSubmitRequestV1Cbor,
   encodeDaMetadataByHeaderResponseV1Cbor,
   encodeDaPayloadByHeaderRequestV1Cbor,
@@ -25,11 +25,11 @@ import { loadDaLibp2pIdentity } from "@/da/libp2p-identity.js";
 import {
   createDaLibp2pProducerProbeTransport,
   createDaLibp2pRetainedPayloadRequestHandlers,
-  decodeLengthPrefixedDaFrameForTest,
-  encodeLengthPrefixedDaFrameForTest,
   type DaProducerProbeTransport,
   type DaProducerStream,
   type DaProducerTransport,
+  decodeLengthPrefixedDaFrameForTest,
+  encodeLengthPrefixedDaFrameForTest,
   parseDaProducerPublicationManifest,
   publishDaPayloadInsert,
   runDaLibp2pPreflight,
@@ -697,7 +697,10 @@ const callRetainedPayloadHandler = async ({
   if (handler === undefined) {
     throw new Error(`missing handler for ${protocol}`);
   }
-  const requestFrame = encodeLengthPrefixedDaFrameForTest(request);
+  const requestFrame = encodeLengthPrefixedDaFrameForTest(
+    request,
+    DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+  );
   let responseFrame: Buffer | undefined;
   const stream: DaProducerStream = {
     async *[Symbol.asyncIterator]() {

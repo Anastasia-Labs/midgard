@@ -8,16 +8,22 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
+import { createSlotAwareDueWorkRegistry } from "@/fibers/slot-aware-due-work.js";
+import { NoInlineSubmitDefer } from "@/transactions/utils.js";
 import {
   captureSchedulerSlotSnapshot,
   filterLocallyConsumedUtxos,
   type NodeUtxoWithDatum,
   requireExistingSchedulerWitnessUtxo,
   resolveSchedulerFirstAppointmentValidityWindow,
+  resolveRefreshedSchedulerStartTime,
   resolveSchedulerRefreshValidityWindow,
   resolveSchedulerRefreshWitnessSelection,
   SCHEDULER_SUBMISSION_CONFIRMATION_TIMEOUT_MS,
+  schedulerRefreshDependencyKey,
+  schedulerRefreshDueWorkFromNoInlineSubmitDefer,
   schedulerRefreshDueWorkFromSubmitTiming,
+  schedulerRefreshRequiredOutsideMutationWorkerDueWork,
   schedulerSlotSnapshotFromSubmitSlot,
 } from "@/workers/utils/scheduler-refresh.js";
 
@@ -237,6 +243,21 @@ describe("scheduler refresh witness selection", () => {
     expect(window.validTo - window.validFrom).toBe(8n * 60n * 1000n);
   });
 
+  it("anchors refresh backdating to the local submit slot when wall clock is ahead", () => {
+    const window = resolveSchedulerRefreshValidityWindow(
+      customSlotLucid as never,
+      schedulerStartForShiftBoundary(40_000),
+      {
+        currentSlot: 100,
+        currentSlotStartMs: 100_000,
+        observedAtMs: 145_000,
+      },
+    );
+
+    expect(window.validFrom).toBe(70_000n);
+    expect(window.validTo - window.validFrom).toBe(8n * 60n * 1000n);
+  });
+
   it("does not backdate refresh validity before the scheduler shift boundary", () => {
     const window = resolveSchedulerRefreshValidityWindow(
       customSlotLucid as never,
@@ -253,11 +274,48 @@ describe("scheduler refresh witness selection", () => {
     expect(window.validTo - window.validFrom).toBe(8n * 60n * 1000n);
   });
 
-  it("keeps first-appointment validity within the on-chain short-range limit for production commit buffers", async () => {
+  it("uses the refresh validity lower bound as the next end-of-shift start time", () => {
+    const previousStart = 1_000_000n;
+    const previousShiftEnd = previousStart + SDK.SHIFT_DURATION_MS;
+    const validFrom = previousShiftEnd + 30_000n;
+
+    expect(
+      resolveRefreshedSchedulerStartTime({
+        selection: { kind: "Advance", activeNode: activeHead },
+        currentSchedulerState: {
+          operator: "aa",
+          startTime: previousStart,
+        },
+        validFrom,
+        validTo: validFrom + 8n * 60n * 1000n,
+      }),
+    ).toBe(validFrom);
+  });
+
+  it("rejects end-of-shift refresh starts before the previous shift end", () => {
+    const previousStart = 1_000_000n;
+    const previousShiftEnd = previousStart + SDK.SHIFT_DURATION_MS;
+
+    expect(() =>
+      resolveRefreshedSchedulerStartTime({
+        selection: { kind: "Advance", activeNode: activeHead },
+        currentSchedulerState: {
+          operator: "aa",
+          startTime: previousStart,
+        },
+        validFrom: previousShiftEnd - 1n,
+        validTo: previousShiftEnd + 8n * 60n * 1000n,
+      }),
+    ).toThrow("Cannot refresh scheduler before previous shift end");
+  });
+
+  it("backdates first-appointment validity while staying within the on-chain short-range limit", async () => {
     const operator = generateEmulatorAccount({ lovelace: 50_000_000n });
     const emulator = new Emulator([operator]);
     const lucid = await Lucid(emulator, "Custom");
     lucid.selectWallet.fromSeed(operator.seedPhrase);
+    await emulator.awaitSlot(60);
+
     const snapshot = captureSchedulerSlotSnapshot(lucid);
     const targetCommitEndTime = BigInt(
       snapshot.currentSlotStartMs + 8 * 60 * 1000 + 1_000,
@@ -270,9 +328,12 @@ describe("scheduler refresh witness selection", () => {
     );
 
     expect(window.validTo).toBeLessThanOrEqual(targetCommitEndTime);
-    expect(window.validFrom).toBeGreaterThanOrEqual(
+    expect(window.validFrom).toBeLessThanOrEqual(
       BigInt(snapshot.currentSlotStartMs),
     );
+    expect(
+      BigInt(snapshot.currentSlotStartMs) - window.validFrom,
+    ).toBeLessThanOrEqual(30_000n);
     expect(window.validTo - window.validFrom).toBeLessThanOrEqual(
       8n * 60n * 1000n,
     );
@@ -318,6 +379,143 @@ describe("scheduler refresh witness selection", () => {
         dueSlot: 30,
         dueAtMs: 11_000,
         waitMs: 10_000,
+        slotSource: "local_ogmios_tip",
+        dependencyKey: "scheduler=tx#0,current_operator=aa",
+        invalidationKey: "scheduler=tx#0,current_operator=aa",
+      },
+    });
+  });
+
+  it("anchors provider-slot scheduler submit defers to fresh local future slots", () => {
+    const defer = new NoInlineSubmitDefer({
+      callerLabel: "scheduler-refresh",
+      kind: "provider_slot_wait",
+      key: "block_commitment",
+      txHash: "aa".repeat(32),
+      currentSlot: 7,
+      targetSlot: 12,
+      dueSlot: 12,
+      waitMs: 5_000,
+      slotSource: "provider",
+      dependencyKey: "scheduler=tx#0,current_operator=aa",
+      invalidationKey: "scheduler=tx#0,current_operator=aa",
+      invalidBeforeSlot: 10,
+      invalidHereafterSlot: 20,
+    });
+
+    expect(
+      schedulerRefreshDueWorkFromNoInlineSubmitDefer({
+        defer,
+        localSubmitSlot: {
+          source: "local_ogmios_tip",
+          currentSlot: 12,
+          observedAtMs: 1_000,
+          slotLengthMs: 1_000,
+        },
+        nowMs: 1_000,
+      }),
+    ).toStrictEqual({
+      type: "CommitTimingDueWork",
+      dueWork: {
+        kind: "commit_scheduler_refresh",
+        key: "block_commitment",
+        callerLabel: "scheduler-refresh",
+        reason: "scheduler_refresh_provider_slot_wait_not_reached",
+        observedSlot: 12,
+        dueSlot: 17,
+        dueAtMs: 6_000,
+        waitMs: 5_000,
+        slotSource: "local_ogmios_tip",
+        dependencyKey: "scheduler=tx#0,current_operator=aa",
+        invalidationKey: "scheduler=tx#0,current_operator=aa",
+      },
+    });
+  });
+
+  it("honors registered no-inline scheduler submit defers with fresh matching evidence", () => {
+    const dependencyKey = schedulerRefreshDependencyKey({
+      schedulerOutRef: "tx#0",
+      currentOperator: "aa",
+      currentStartTime: 10n,
+      targetOperator: "bb",
+      selectionKind: "Advance",
+    });
+    const defer = new NoInlineSubmitDefer({
+      callerLabel: "scheduler-refresh",
+      kind: "provider_slot_wait",
+      key: "block_commitment",
+      txHash: "bb".repeat(32),
+      currentSlot: 7,
+      targetSlot: 12,
+      dueSlot: 12,
+      waitMs: 5_000,
+      slotSource: "provider",
+      dependencyKey,
+      invalidationKey: dependencyKey,
+      invalidBeforeSlot: 10,
+      invalidHereafterSlot: 20,
+    });
+    const dueWork = schedulerRefreshDueWorkFromNoInlineSubmitDefer({
+      defer,
+      localSubmitSlot: {
+        source: "local_ogmios_tip",
+        currentSlot: 12,
+        observedAtMs: 1_000,
+        slotLengthMs: 1_000,
+      },
+      nowMs: 1_000,
+    }).dueWork;
+    const registry = createSlotAwareDueWorkRegistry();
+    registry.register(dueWork);
+
+    expect(
+      registry.check({
+        kind: "commit_scheduler_refresh",
+        key: "block_commitment",
+        currentSlot: 16,
+        dependencyKey,
+        invalidationKey: dependencyKey,
+      }),
+    ).toMatchObject({ status: "skip" });
+    expect(registry.peek("commit_scheduler_refresh", "block_commitment")).toBe(
+      dueWork,
+    );
+
+    expect(
+      registry.check({
+        kind: "commit_scheduler_refresh",
+        key: "block_commitment",
+        currentSlot: 17,
+        dependencyKey,
+        invalidationKey: dependencyKey,
+      }),
+    ).toMatchObject({ status: "due" });
+  });
+
+  it("defers required scheduler refreshes back out of the mutation worker", () => {
+    expect(
+      schedulerRefreshRequiredOutsideMutationWorkerDueWork({
+        submitTimingSnapshot: {
+          source: "local_ogmios_tip",
+          currentSlot: 30,
+          observedAtMs: 7_000,
+          slotLengthMs: 1_000,
+        },
+        invalidBeforeSlot: 20,
+        invalidHereafterSlot: 80,
+        schedulerDependencyKey: "scheduler=tx#0,current_operator=aa",
+      }),
+    ).toStrictEqual({
+      type: "CommitTimingDueWork",
+      dueWork: {
+        kind: "commit_scheduler_refresh",
+        key: "block_commitment",
+        callerLabel: "scheduler-refresh",
+        reason: "scheduler_refresh_required_outside_mutation_worker",
+        observedSlot: 30,
+        dueSlot: 31,
+        dueAtMs: 8_000,
+        waitMs: 1_000,
         slotSource: "local_ogmios_tip",
         dependencyKey: "scheduler=tx#0,current_operator=aa",
         invalidationKey: "scheduler=tx#0,current_operator=aa",

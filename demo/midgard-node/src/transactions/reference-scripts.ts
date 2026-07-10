@@ -527,9 +527,6 @@ export const referenceScriptByName = (
   return found.utxo;
 };
 
-export const describeReferenceScriptInputs = (utxos: readonly UTxO[]): string =>
-  utxos.map(outRefLabel).join(",");
-
 const isReferenceScriptPublicationTxTooLarge = (cause: unknown): boolean =>
   REFERENCE_SCRIPT_PUBLICATION_TX_SIZE_EXCEEDED_PATTERN.test(
     formatUnknownError(cause),

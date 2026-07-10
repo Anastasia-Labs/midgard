@@ -47,7 +47,6 @@ import {
   DepositsDB,
   DepositSubmissionAttemptsDB,
   ImmutableDB,
-  LatestLedgerDB,
   MempoolDB,
   MempoolLedgerDB,
   MempoolTxDeltasDB,
@@ -65,7 +64,8 @@ import { buildBlockConfirmationAction } from "@/fibers/block-confirmation.js";
 import { reconcileVisibleDepositUTxOs } from "@/fibers/fetch-and-insert-deposit-utxos.js";
 import { mergeAction } from "@/fibers/merge.js";
 import { projectDepositsToMempoolLedger } from "@/fibers/project-deposits-to-mempool-ledger.js";
-import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
+import type { SlotAwareDueWork } from "@/fibers/slot-aware-due-work.js";
+import type { SubmitSlotSnapshot } from "@/local-ledger-slot.js";
 import {
   Database,
   Globals,
@@ -73,7 +73,6 @@ import {
   MidgardContracts,
   NodeConfig,
 } from "@/services/index.js";
-import { withRealStateQueueAndOperatorContracts } from "@/services/midgard-contracts.js";
 import { attestStateQueueOnceProgram } from "@/transactions/da-attestation.js";
 import {
   type AtomicProtocolInitReferenceScripts,
@@ -105,14 +104,18 @@ import { runConfirmBlockCommitmentsWorkerProgram } from "@/workers/confirm-block
 import {
   serializeStateQueueUTxO,
   type WorkerInput as CommitWorkerInput,
+  type WorkerOutput as CommitWorkerOutput,
 } from "@/workers/utils/commit-block-header.js";
+import { COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS } from "@/workers/utils/commit-end-time.js";
 import { WorkerError } from "@/workers/utils/common.js";
 import {
   type WorkerInput as ConfirmationWorkerInput,
   type WorkerOutput as ConfirmationWorkerOutput,
 } from "@/workers/utils/confirm-block-commitments.js";
 import { deleteMpfStore } from "@/workers/utils/mpf.js";
+import { fetchRealStateQueueWitnessContext } from "@/workers/utils/scheduler-refresh.js";
 
+import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 import { collectSortedInputOutRefs } from "./helpers/tx-inspection.js";
 
 const EMULATOR_PROTOCOL_PARAMETERS = {
@@ -173,18 +176,7 @@ const loadContracts = (
     outputIndex: number;
   },
   referenceScriptAuth: SDK.MintingValidator,
-) =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const placeholder = yield* AlwaysSucceedsContract;
-      return yield* withRealStateQueueAndOperatorContracts(
-        "Preprod",
-        placeholder,
-        oneShotOutRef,
-        { referenceScriptAuth },
-      );
-    }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
-  );
+) => loadRealMidgardContractsForTest(oneShotOutRef, referenceScriptAuth);
 
 const readKeyHash = async (lucid: LucidEvolution): Promise<string> => {
   const address = await lucid.wallet().address();
@@ -389,7 +381,6 @@ const clearNodeTables = Effect.all(
     AddressHistoryDB.clear,
     BlocksDB.clear,
     ConfirmedLedgerDB.clear,
-    LatestLedgerDB.clear,
     MempoolDB.clear,
     MempoolLedgerDB.clear,
     MempoolTxDeltasDB.clear,
@@ -972,12 +963,14 @@ const submitWithdrawalWithDiagnostics = async (
 };
 
 const makeLucidRuntimeService = async ({
+  emulator,
   operatorLucid,
   referenceScriptsLucid,
   operatorAccount,
   referenceScriptsAccount,
 }: Pick<
   EmulatorFixture,
+  | "emulator"
   | "operatorLucid"
   | "referenceScriptsLucid"
   | "operatorAccount"
@@ -997,6 +990,15 @@ const makeLucidRuntimeService = async ({
       referenceScriptsAccount.seedPhrase,
     ),
   ),
+  submitSlotSnapshot: () =>
+    Effect.sync(
+      (): SubmitSlotSnapshot => ({
+        source: "emulator",
+        currentSlot: Number(operatorLucid.unixTimeToSlot(emulator.now())),
+        observedAtMs: emulator.now(),
+        slotLengthMs: 1_000,
+      }),
+    ),
 });
 
 const runCommitWorker = async (
@@ -1039,6 +1041,94 @@ const runCommitWorker = async (
     );
   }
   return leaseResult.value;
+};
+
+const advanceEmulatorToDueWork = async (
+  fixture: Pick<EmulatorFixture, "emulator" | "operatorLucid">,
+  dueWork: SlotAwareDueWork,
+) => {
+  const currentSlot = Number(
+    fixture.operatorLucid.unixTimeToSlot(fixture.emulator.now()),
+  );
+  const slotsToAdvance = Math.max(1, dueWork.dueSlot - currentSlot + 1);
+  await fixture.emulator.awaitSlot(slotsToAdvance);
+  vi.setSystemTime(new Date(fixture.emulator.now()));
+};
+
+const alignCommitSchedulerBeforeTestWorker = async ({
+  fixture,
+  lucidService,
+  targetEndTimeMs,
+  maxAttempts = 6,
+}: {
+  readonly fixture: EmulatorFixture;
+  readonly lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>;
+  readonly targetEndTimeMs: number;
+  readonly maxAttempts?: number;
+}) => {
+  let lastDueWork: SlotAwareDueWork | undefined;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const alignment = await Effect.runPromise(
+      fetchRealStateQueueWitnessContext(
+        lucidService.api,
+        fixture.contracts,
+        targetEndTimeMs,
+        undefined,
+        lucidService.referenceScriptsAddress,
+        lucidService.submitSlotSnapshot,
+        true,
+      ),
+    );
+    if (!("dueWork" in alignment)) {
+      return;
+    }
+    lastDueWork = alignment.dueWork;
+    await advanceEmulatorToDueWork(fixture, alignment.dueWork);
+  }
+  throw new Error(
+    `Unexpected scheduler alignment due work: ${JSON.stringify(lastDueWork)}`,
+  );
+};
+
+const runCommitWorkerUntilSubmitted = async ({
+  fixture,
+  lucidService,
+  latestBlock,
+  maxAttempts = 4,
+}: {
+  readonly fixture: EmulatorFixture;
+  readonly lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>;
+  readonly latestBlock: SDK.StateQueueUTxO;
+  readonly maxAttempts?: number;
+}): Promise<
+  Extract<
+    CommitWorkerOutput,
+    { readonly type: "SubmittedAwaitingConfirmationOutput" }
+  >
+> => {
+  await alignCommitSchedulerBeforeTestWorker({
+    fixture,
+    lucidService,
+    targetEndTimeMs: Date.now() + COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+  });
+
+  let lastOutput: CommitWorkerOutput | undefined;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const output = await runCommitWorker(
+      fixture.contracts,
+      lucidService,
+      latestBlock,
+    );
+    if (output?.type === "SubmittedAwaitingConfirmationOutput") {
+      return output;
+    }
+    lastOutput = output;
+    if (output?.type !== "RegisteredDueWorkOutput") {
+      break;
+    }
+    await advanceEmulatorToDueWork(fixture, output.dueWork);
+  }
+  throw new Error(`Unexpected commit output: ${JSON.stringify(lastOutput)}`);
 };
 
 const commitWorkerProgram = (
@@ -1346,21 +1436,11 @@ const commitConfirmRecoverAndMerge = async ({
     fixture.operatorLucid,
     fixture.contracts,
   );
-  const commitOutput = await runCommitWorker(
-    fixture.contracts,
+  const commitOutput = await runCommitWorkerUntilSubmitted({
+    fixture,
     lucidService,
-    latestBlockBeforeCommit,
-  );
-  expect(commitOutput).toBeDefined();
-  expect(commitOutput?.type).toBe("SubmittedAwaitingConfirmationOutput");
-  if (
-    commitOutput === undefined ||
-    commitOutput.type !== "SubmittedAwaitingConfirmationOutput"
-  ) {
-    throw new Error(
-      `Unexpected commit output: ${JSON.stringify(commitOutput)}`,
-    );
-  }
+    latestBlock: latestBlockBeforeCommit,
+  });
   await fixture.operatorLucid.awaitTx(commitOutput.submittedTxHash);
   await runBlockConfirmation(globals, fixture.contracts, lucidService);
   await runLocalFinalizationRecoveryWorker(
@@ -1606,22 +1686,12 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
       fixture.operatorLucid,
       fixture.contracts,
     );
-    const commitOutput = await runCommitWorker(
-      fixture.contracts,
+    const commitOutput = await runCommitWorkerUntilSubmitted({
+      fixture,
       lucidService,
-      latestBlockBeforeCommit,
-    );
+      latestBlock: latestBlockBeforeCommit,
+    });
 
-    expect(commitOutput).toBeDefined();
-    expect(commitOutput?.type).toBe("SubmittedAwaitingConfirmationOutput");
-    if (
-      commitOutput === undefined ||
-      commitOutput.type !== "SubmittedAwaitingConfirmationOutput"
-    ) {
-      throw new Error(
-        `Unexpected commit output: ${JSON.stringify(commitOutput)}`,
-      );
-    }
     expect(commitOutput.mempoolTxsCount).toEqual(0);
 
     const depositEntriesAfterSubmission = await runNodeDatabaseEffect(
@@ -1883,21 +1953,11 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
       fixture.operatorLucid,
       fixture.contracts,
     );
-    const commitOutput = await runCommitWorker(
-      fixture.contracts,
+    const commitOutput = await runCommitWorkerUntilSubmitted({
+      fixture,
       lucidService,
-      latestBlockBeforeCommit,
-    );
-    expect(commitOutput).toBeDefined();
-    expect(commitOutput?.type).toBe("SubmittedAwaitingConfirmationOutput");
-    if (
-      commitOutput === undefined ||
-      commitOutput.type !== "SubmittedAwaitingConfirmationOutput"
-    ) {
-      throw new Error(
-        `Unexpected commit output: ${JSON.stringify(commitOutput)}`,
-      );
-    }
+      latestBlock: latestBlockBeforeCommit,
+    });
 
     await fixture.operatorLucid.awaitTx(commitOutput.submittedTxHash);
 

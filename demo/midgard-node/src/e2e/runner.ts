@@ -1,19 +1,11 @@
-import { spawn } from "node:child_process";
-import { createWriteStream } from "node:fs";
-import { mkdir } from "node:fs/promises";
-import { dirname } from "node:path";
-
 import {
   buildE2EProcessEnv,
   type E2EEnvFileProvenance,
   type E2EEnvInheritance,
   type E2EEnvProvenance,
 } from "@/e2e/env.js";
-import {
-  type ChildProcessCleanupResult,
-  shouldSpawnDetachedProcessGroup,
-  terminateChildProcessGroup,
-} from "@/e2e/process-cleanup.js";
+import { runLoggedChildProcessAttempt } from "@/e2e/logged-child-process.js";
+import type { ChildProcessCleanupResult } from "@/e2e/process-cleanup.js";
 
 export { redactEnvKeys } from "@/e2e/env.js";
 
@@ -364,7 +356,6 @@ const parseLastJsonLine = (text: string): unknown | null => {
 
 export const runCommandStep = async (spec: StepSpec): Promise<StepSummary> => {
   const startedAtDate = new Date();
-  const startedAt = startedAtDate.toISOString();
   const args = [...(spec.args ?? [])];
   const { env, provenance } = await buildE2EProcessEnv({
     cwd: spec.cwd,
@@ -372,151 +363,69 @@ export const runCommandStep = async (spec: StepSpec): Promise<StepSummary> => {
     overrides: spec.env,
     inherit: spec.envInheritance,
   });
-  await mkdir(dirname(spec.rawLogPath), { recursive: true });
-  const log = createWriteStream(spec.rawLogPath, { flags: "a" });
-  let pid: number | null = null;
-  let stdout = "";
-  let combined = "";
-  let timedOut = false;
-  let cleanup: ChildProcessCleanupResult | null = null;
-
-  const finishSummary = ({
-    status,
-    exitCode,
-    signal,
-    error,
-  }: {
-    readonly status: StepStatus;
-    readonly exitCode: number | null;
-    readonly signal: NodeJS.Signals | null;
-    readonly error: string | null;
-  }): StepSummary => {
-    const finishedAtDate = new Date();
-    const parsedJson = parseLastJsonLine(stdout);
-    return {
-      schemaVersion: E2E_STEP_SCHEMA_VERSION,
+  const command = redactedCommand(spec, provenance);
+  const attempt = await runLoggedChildProcessAttempt({
+    command: spec.command,
+    args,
+    cwd: spec.cwd,
+    env,
+    rawLogPath: spec.rawLogPath,
+    timeoutMs: spec.timeoutMs,
+    startedAtDate,
+    startEvent: ({ pid, startedAt }) => ({
+      event: "started",
       id: spec.id,
-      status,
-      command: redactedCommand(spec, provenance),
       pid,
-      startedAt,
-      finishedAt: finishedAtDate.toISOString(),
-      durationMs: Math.max(
-        0,
-        finishedAtDate.getTime() - startedAtDate.getTime(),
-      ),
-      exitCode,
-      signal,
-      timedOut,
-      rawLogPath: spec.rawLogPath,
-      observedTxHashes: uniqueTxHashes(combined),
-      hashObservations: hashObservations(combined, spec.id),
-      txObservations: explicitTxObservations({
-        combined,
-        parsedJson,
-        stepId: spec.id,
-      }),
-      parsedJson,
-      error,
+      at: startedAt,
+      command,
+    }),
+    cleanupEvent: ({ cleanup, at }) => ({
+      event: "cleanup",
+      id: spec.id,
+      at,
       cleanup,
-    };
-  };
-
-  return await new Promise<StepSummary>((resolve) => {
-    let settled = false;
-    const settle = (summary: StepSummary): void => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      log.end(() => resolve(summary));
-    };
-
-    const child = spawn(spec.command, args, {
-      cwd: spec.cwd,
-      env,
-      shell: false,
-      detached: shouldSpawnDetachedProcessGroup(),
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    pid = child.pid ?? null;
-    log.write(
-      JSON.stringify({
-        event: "started",
-        id: spec.id,
-        pid,
-        at: startedAt,
-        command: redactedCommand(spec, provenance),
-      }) + "\n",
-    );
-
-    const timeout =
-      spec.timeoutMs === undefined
-        ? undefined
-        : setTimeout(
-            () => {
-              timedOut = true;
-              cleanup = terminateChildProcessGroup({ pid, signal: "SIGTERM" });
-              log.write(
-                JSON.stringify({
-                  event: "cleanup",
-                  id: spec.id,
-                  at: new Date().toISOString(),
-                  cleanup,
-                }) + "\n",
-              );
-            },
-            Math.max(1, spec.timeoutMs),
-          );
-
-    child.stdout.on("data", (chunk: Buffer) => {
-      const text = chunk.toString("utf8");
-      stdout += text;
-      combined += text;
-      log.write(text);
-    });
-    child.stderr.on("data", (chunk: Buffer) => {
-      const text = chunk.toString("utf8");
-      combined += text;
-      log.write(text);
-    });
-    child.on("error", (error) => {
-      if (timeout !== undefined) {
-        clearTimeout(timeout);
-      }
-      settle(
-        finishSummary({
-          status: "runner_error",
-          exitCode: null,
-          signal: null,
-          error: error.message,
-        }),
-      );
-    });
-    child.on("close", (exitCode, signal) => {
-      if (timeout !== undefined) {
-        clearTimeout(timeout);
-      }
-      const status: StepStatus = timedOut
+    }),
+  });
+  const status: StepStatus =
+    attempt.error !== null
+      ? "runner_error"
+      : attempt.timedOut
         ? "timeout"
-        : signal !== null
+        : attempt.signal !== null
           ? "signaled"
-          : exitCode === 0
+          : attempt.exitCode === 0
             ? "success"
             : "failed";
-      settle(
-        finishSummary({
-          status,
-          exitCode,
-          signal,
-          error:
-            status === "success"
-              ? null
-              : timedOut
-                ? `Step timed out after ${spec.timeoutMs?.toString()}ms.`
-                : `Step exited with status ${exitCode?.toString() ?? signal ?? "unknown"}.`,
-        }),
-      );
-    });
-  });
+  const parsedJson = parseLastJsonLine(attempt.stdout);
+  return {
+    schemaVersion: E2E_STEP_SCHEMA_VERSION,
+    id: spec.id,
+    status,
+    command,
+    pid: attempt.pid,
+    startedAt: attempt.startedAt,
+    finishedAt: attempt.finishedAt,
+    durationMs: attempt.durationMs,
+    exitCode: attempt.exitCode,
+    signal: attempt.signal,
+    timedOut: attempt.timedOut,
+    rawLogPath: spec.rawLogPath,
+    observedTxHashes: uniqueTxHashes(attempt.combinedOutput),
+    hashObservations: hashObservations(attempt.combinedOutput, spec.id),
+    txObservations: explicitTxObservations({
+      combined: attempt.combinedOutput,
+      parsedJson,
+      stepId: spec.id,
+    }),
+    parsedJson,
+    error:
+      status === "success"
+        ? null
+        : attempt.error !== null
+          ? attempt.error.message
+          : attempt.timedOut
+            ? `Step timed out after ${spec.timeoutMs?.toString()}ms.`
+            : `Step exited with status ${attempt.exitCode?.toString() ?? attempt.signal ?? "unknown"}.`,
+    cleanup: attempt.cleanup,
+  };
 };

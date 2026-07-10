@@ -1,4 +1,4 @@
-import { appendFile, mkdir, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { type Network, walletFromSeed } from "@lucid-evolution/lucid";
@@ -15,10 +15,18 @@ import {
   resolveWalletSeedPhrase,
 } from "@/commands/command-utils.js";
 import {
-  parseSubmitL2TransferConfig,
-  type SubmitL2TransferConfig,
-  type SubmitL2TransferResult,
-} from "@/commands/submit-l2-transfer.js";
+  buildOpenLoopPlacementProof,
+  type NoOpCalibrationSummary,
+  type OpenLoopCorpusPlan,
+  type OpenLoopCorpusShape,
+  type OpenLoopPlacementProof,
+  type OpenLoopSubmitSummary,
+  type OpenLoopWorkloadProfile,
+  parseOpenLoopCorpusNdjson,
+  planOpenLoopCorpus,
+  runNoOpSubmitCalibration,
+  runOpenLoopSubmitter,
+} from "@/commands/stress-open-loop.js";
 import {
   buildStressMetrics,
   flattenStressMetricRows,
@@ -26,14 +34,41 @@ import {
   type StressMetrics,
   type StressStageMetricDbSources,
 } from "@/commands/stress-stage-metrics.js";
+import {
+  parseSubmitL2TransferConfig,
+  type SubmitL2TransferConfig,
+  type SubmitL2TransferResult,
+} from "@/commands/submit-l2-transfer.js";
 
 export const E2E_L2_STRESS_SCHEMA_VERSION = "midgard-e2e-l2-stress-v2";
 
 export type E2EL2StressMode = "serial-chain" | "parallel-fanout";
+export type E2EL2StressLoadModel =
+  | "closed-loop-smoke"
+  | "open-loop-upper-bound";
+export type E2EL2StressClassification =
+  | "closed_loop_smoke"
+  | "full_pipeline_sustained"
+  | "ingress_ok_commit_failed"
+  | "admission_bottleneck"
+  | "validation_bottleneck"
+  | "commit_planner_bottleneck"
+  | "da_bottleneck"
+  | "merge_bottleneck"
+  | "provider_bottleneck"
+  | "observer_overloaded"
+  | "client_overloaded";
 export type E2EL2StressMeasurementPolicy = {
-  readonly advanceOn: "accepted";
-  readonly primaryStageMetric: "metrics.l2Admission.perSecond";
-  readonly finalityObservation: "post-submit-bounded";
+  readonly loadModel: E2EL2StressLoadModel;
+  readonly workloadProfile: OpenLoopWorkloadProfile;
+  readonly syntheticVsProduction:
+    | "synthetic_admission_diagnostic"
+    | "production_end_user_path";
+  readonly advanceOn: "accepted" | "scheduled_submit";
+  readonly primaryStageMetric:
+    | "metrics.l2Admission.perSecond"
+    | "metrics.durableAdmission.perSecond";
+  readonly finalityObservation: "post-submit-bounded" | "aggregate-window";
   readonly submissionWindowExcludesCommitDrain: true;
   readonly fullFinalityRequiresDrainProof: true;
 };
@@ -79,7 +114,7 @@ export type E2EL2StressTransaction = {
 };
 
 export type E2EL2StressFinalityObserverSummary = {
-  readonly mode: "post-submit-bounded";
+  readonly mode: "post-submit-bounded" | "aggregate-window";
   readonly maxConcurrentRequests: number;
   readonly maxObservedConcurrentRequests: number;
   readonly observedTransactionCount: number;
@@ -93,8 +128,21 @@ export type E2EL2StressSummary = {
   readonly runId: string;
   readonly status: "completed" | "interrupted";
   readonly interruptedReason?: string;
+  readonly loadModel: E2EL2StressLoadModel;
+  readonly workloadProfile: OpenLoopWorkloadProfile;
+  readonly corpusShape?: OpenLoopCorpusShape;
+  readonly classification: E2EL2StressClassification;
   readonly mode: E2EL2StressMode;
   readonly measurementPolicy: E2EL2StressMeasurementPolicy;
+  readonly openLoop?: {
+    readonly targetRateTps: number;
+    readonly durationMs: number;
+    readonly maxInFlight: number;
+    readonly corpus: OpenLoopCorpusPlan;
+    readonly submission: OpenLoopSubmitSummary;
+    readonly calibration?: NoOpCalibrationSummary;
+    readonly placement: OpenLoopPlacementProof;
+  };
   readonly requestedCount: number;
   readonly notStartedCount: number;
   readonly submittedCount: number;
@@ -160,11 +208,25 @@ type StressWallet = {
 
 export type E2EL2StressConfig = {
   readonly runId: string;
+  readonly loadModel: E2EL2StressLoadModel;
+  readonly workloadProfile: OpenLoopWorkloadProfile;
   readonly mode: E2EL2StressMode;
+  readonly corpusShape: OpenLoopCorpusShape;
   readonly count: number;
   readonly concurrency: number;
   readonly lovelace: bigint;
   readonly nodeEndpoint: string;
+  readonly corpusPath?: string;
+  readonly corpusSliceId: string;
+  readonly targetRateTps: number;
+  readonly openLoopDurationMs: number;
+  readonly openLoopWarmupCount: number;
+  readonly openLoopCooldownCount: number;
+  readonly openLoopMaxInFlight: number;
+  readonly noOpCalibrationEndpoint?: string;
+  readonly requireNoOpCalibration: boolean;
+  readonly noOpCalibrationDurationMs: number;
+  readonly aggregateObserverIntervalMs: number;
   readonly destinationAddress?: string;
   readonly pollIntervalMs: number;
   readonly submitRequestTimeoutMs: number;
@@ -180,7 +242,21 @@ export type E2EL2StressConfig = {
 
 export type ParseE2EL2StressOptions = {
   readonly endpoint?: string;
+  readonly loadModel?: string;
+  readonly workloadProfile?: string;
   readonly mode?: string;
+  readonly corpusShape?: string;
+  readonly corpusPath?: string;
+  readonly corpusSliceId?: string;
+  readonly targetRateTps?: string;
+  readonly openLoopDurationMs?: string;
+  readonly openLoopWarmupCount?: string;
+  readonly openLoopCooldownCount?: string;
+  readonly openLoopMaxInFlight?: string;
+  readonly noOpCalibrationEndpoint?: string;
+  readonly requireNoOpCalibration?: boolean;
+  readonly noOpCalibrationDurationMs?: string;
+  readonly aggregateObserverIntervalMs?: string;
   readonly count?: string;
   readonly concurrency?: string;
   readonly lovelace?: string;
@@ -213,6 +289,11 @@ export type E2EL2StressRuntime = {
   readonly collectStageMetricSources?: (input: {
     readonly txHashes: readonly string[];
   }) => Promise<StressStageMetricDbSources>;
+  readonly collectAggregateObserverSample?: (input: {
+    readonly at: string;
+    readonly runId: string;
+    readonly loadModel: E2EL2StressLoadModel;
+  }) => Promise<unknown>;
   readonly fullFinalityDrainProof?: StressFullFinalityDrainProof;
 };
 
@@ -226,8 +307,16 @@ const DEFAULT_COMMIT_OBSERVATION_TIMEOUT_MS = 600_000;
 const DEFAULT_FINALITY_OBSERVER_MAX_CONCURRENT_REQUESTS = 4;
 const MAX_DEFAULT_COUNT = 500;
 const MAX_DEFAULT_CONCURRENCY = 16;
+const DEFAULT_OPEN_LOOP_TARGET_RATE_TPS = 100;
+const DEFAULT_OPEN_LOOP_DURATION_MS = 10_000;
+const DEFAULT_OPEN_LOOP_MAX_IN_FLIGHT = 256;
+const DEFAULT_NO_OP_CALIBRATION_DURATION_MS = 5_000;
+const DEFAULT_AGGREGATE_OBSERVER_INTERVAL_MS = 1_000;
 
 export const E2E_L2_STRESS_MEASUREMENT_POLICY: E2EL2StressMeasurementPolicy = {
+  loadModel: "closed-loop-smoke",
+  workloadProfile: "production-end-user",
+  syntheticVsProduction: "production_end_user_path",
   advanceOn: "accepted",
   primaryStageMetric: "metrics.l2Admission.perSecond",
   finalityObservation: "post-submit-bounded",
@@ -331,6 +420,41 @@ const parsePositiveInteger = (
   return parsed;
 };
 
+const parseNonNegativeInteger = (
+  value: string | undefined,
+  label: string,
+  defaultValue: number,
+): number => {
+  const raw = value?.trim();
+  if (raw === undefined || raw.length === 0) {
+    return defaultValue;
+  }
+  if (!/^\d+$/.test(raw)) {
+    throw new Error(`${label} must be a non-negative integer.`);
+  }
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+    throw new Error(`${label} must be a safe non-negative integer.`);
+  }
+  return parsed;
+};
+
+const parsePositiveNumber = (
+  value: string | undefined,
+  label: string,
+  defaultValue: number,
+): number => {
+  const raw = value?.trim();
+  if (raw === undefined || raw.length === 0) {
+    return defaultValue;
+  }
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`${label} must be a positive number.`);
+  }
+  return parsed;
+};
+
 const parsePositiveBigInt = (
   value: string | undefined,
   label: string,
@@ -359,6 +483,81 @@ const parseMode = (value: string | undefined): E2EL2StressMode => {
     `--mode must be "serial-chain" or "parallel-fanout", got "${value}".`,
   );
 };
+
+const parseLoadModel = (value: string | undefined): E2EL2StressLoadModel => {
+  const normalized = value?.trim() || "closed-loop-smoke";
+  if (
+    normalized === "closed-loop-smoke" ||
+    normalized === "open-loop-upper-bound"
+  ) {
+    return normalized;
+  }
+  throw new Error(
+    `--load-model must be "closed-loop-smoke" or "open-loop-upper-bound", got "${value}".`,
+  );
+};
+
+const parseWorkloadProfile = ({
+  value,
+  loadModel,
+}: {
+  readonly value: string | undefined;
+  readonly loadModel: E2EL2StressLoadModel;
+}): OpenLoopWorkloadProfile => {
+  const normalized =
+    value?.trim() ||
+    (loadModel === "open-loop-upper-bound"
+      ? "synthetic-admission"
+      : "production-end-user");
+  if (
+    normalized === "synthetic-admission" ||
+    normalized === "production-end-user"
+  ) {
+    return normalized;
+  }
+  throw new Error(
+    `--workload-profile must be "synthetic-admission" or "production-end-user", got "${value}".`,
+  );
+};
+
+const parseCorpusShape = (value: string | undefined): OpenLoopCorpusShape => {
+  const normalized = value?.trim() || "fanout";
+  if (
+    normalized === "fanout" ||
+    normalized === "chain" ||
+    normalized === "mixed"
+  ) {
+    return normalized;
+  }
+  throw new Error(
+    `--corpus-shape must be "fanout", "chain", or "mixed", got "${value}".`,
+  );
+};
+
+const measurementPolicyForConfig = (
+  config: Pick<E2EL2StressConfig, "loadModel" | "workloadProfile">,
+): E2EL2StressMeasurementPolicy => ({
+  loadModel: config.loadModel,
+  workloadProfile: config.workloadProfile,
+  syntheticVsProduction:
+    config.workloadProfile === "synthetic-admission"
+      ? "synthetic_admission_diagnostic"
+      : "production_end_user_path",
+  advanceOn:
+    config.loadModel === "open-loop-upper-bound"
+      ? "scheduled_submit"
+      : "accepted",
+  primaryStageMetric:
+    config.loadModel === "open-loop-upper-bound"
+      ? "metrics.durableAdmission.perSecond"
+      : "metrics.l2Admission.perSecond",
+  finalityObservation:
+    config.loadModel === "open-loop-upper-bound"
+      ? "aggregate-window"
+      : "post-submit-bounded",
+  submissionWindowExcludesCommitDrain: true,
+  fullFinalityRequiresDrainProof: true,
+});
 
 const deriveWalletAddress = (
   resolvedWalletSeedPhrase: ResolvedWalletSeedPhrase,
@@ -411,7 +610,21 @@ const validateDistinctStressWallets = (
 
 export const parseE2EL2StressConfig = ({
   endpoint,
+  loadModel: rawLoadModel,
+  workloadProfile: rawWorkloadProfile,
   mode: rawMode,
+  corpusShape: rawCorpusShape,
+  corpusPath,
+  corpusSliceId,
+  targetRateTps: rawTargetRateTps,
+  openLoopDurationMs: rawOpenLoopDurationMs,
+  openLoopWarmupCount: rawOpenLoopWarmupCount,
+  openLoopCooldownCount: rawOpenLoopCooldownCount,
+  openLoopMaxInFlight: rawOpenLoopMaxInFlight,
+  noOpCalibrationEndpoint,
+  requireNoOpCalibration = false,
+  noOpCalibrationDurationMs: rawNoOpCalibrationDurationMs,
+  aggregateObserverIntervalMs: rawAggregateObserverIntervalMs,
   count: rawCount,
   concurrency: rawConcurrency,
   lovelace: rawLovelace,
@@ -431,8 +644,49 @@ export const parseE2EL2StressConfig = ({
   env = process.env,
   allowUnsafeBounds = false,
 }: ParseE2EL2StressOptions): E2EL2StressConfig => {
+  const loadModel = parseLoadModel(rawLoadModel);
+  const workloadProfile = parseWorkloadProfile({
+    value: rawWorkloadProfile,
+    loadModel,
+  });
   const mode = parseMode(rawMode);
+  const corpusShape = parseCorpusShape(rawCorpusShape);
   const count = parsePositiveInteger(rawCount, "--count", DEFAULT_COUNT);
+  const targetRateTps = parsePositiveNumber(
+    rawTargetRateTps,
+    "--target-rate-tps",
+    DEFAULT_OPEN_LOOP_TARGET_RATE_TPS,
+  );
+  const openLoopDurationMs = parsePositiveInteger(
+    rawOpenLoopDurationMs,
+    "--open-loop-duration-ms",
+    DEFAULT_OPEN_LOOP_DURATION_MS,
+  );
+  const openLoopWarmupCount = parseNonNegativeInteger(
+    rawOpenLoopWarmupCount,
+    "--open-loop-warmup-count",
+    0,
+  );
+  const openLoopCooldownCount = parseNonNegativeInteger(
+    rawOpenLoopCooldownCount,
+    "--open-loop-cooldown-count",
+    0,
+  );
+  const openLoopMaxInFlight = parsePositiveInteger(
+    rawOpenLoopMaxInFlight,
+    "--open-loop-max-in-flight",
+    DEFAULT_OPEN_LOOP_MAX_IN_FLIGHT,
+  );
+  const noOpCalibrationDurationMs = parsePositiveInteger(
+    rawNoOpCalibrationDurationMs,
+    "--no-op-calibration-duration-ms",
+    DEFAULT_NO_OP_CALIBRATION_DURATION_MS,
+  );
+  const aggregateObserverIntervalMs = parsePositiveInteger(
+    rawAggregateObserverIntervalMs,
+    "--aggregate-observer-interval-ms",
+    DEFAULT_AGGREGATE_OBSERVER_INTERVAL_MS,
+  );
   const concurrency = parsePositiveInteger(
     rawConcurrency,
     "--concurrency",
@@ -473,7 +727,7 @@ export const parseE2EL2StressConfig = ({
   );
   const resolvedRunId = runId?.trim() || `e2e-run-${timestampForPath()}`;
   const primaryWallet =
-    mode === "serial-chain"
+    loadModel === "closed-loop-smoke" && mode === "serial-chain"
       ? resolveStressWallet({
           walletSeedPhrase,
           walletSeedPhraseEnv,
@@ -481,13 +735,16 @@ export const parseE2EL2StressConfig = ({
           network,
         })
       : undefined;
-  const stressWallets = stressWalletSeedPhraseEnvs.map((envName) =>
-    resolveStressWallet({
-      walletSeedPhraseEnv: envName,
-      env,
-      network,
-    }),
-  );
+  const stressWallets =
+    loadModel === "closed-loop-smoke"
+      ? stressWalletSeedPhraseEnvs.map((envName) =>
+          resolveStressWallet({
+            walletSeedPhraseEnv: envName,
+            env,
+            network,
+          }),
+        )
+      : [];
   validateDistinctStressWallets(stressWallets);
 
   if (count > MAX_DEFAULT_COUNT && !allowUnsafeBounds) {
@@ -503,24 +760,73 @@ export const parseE2EL2StressConfig = ({
       `--concurrency ${concurrency.toString()} exceeds the default cap ${MAX_DEFAULT_CONCURRENCY.toString()}; pass --unsafe-allow-large-stress to make that choice explicit.`,
     );
   }
-  if (concurrency > 1 && mode !== "parallel-fanout") {
+  if (
+    loadModel === "closed-loop-smoke" &&
+    concurrency > 1 &&
+    mode !== "parallel-fanout"
+  ) {
     throw new Error(
       "--concurrency > 1 requires --mode parallel-fanout and independent stress wallet seed env vars.",
     );
   }
-  if (mode === "parallel-fanout" && stressWallets.length < concurrency) {
+  if (
+    loadModel === "closed-loop-smoke" &&
+    mode === "parallel-fanout" &&
+    stressWallets.length < concurrency
+  ) {
     throw new Error(
       `--mode parallel-fanout requires at least ${concurrency.toString()} independent --stress-wallet-seed-phrase-env values with spendable L2 UTxOs; no submissions were made.`,
+    );
+  }
+  if (loadModel === "open-loop-upper-bound") {
+    if (corpusPath === undefined || corpusPath.trim().length === 0) {
+      throw new Error(
+        "--load-model open-loop-upper-bound requires --tx-corpus with prebuilt canonical CBOR rows.",
+      );
+    }
+    if (
+      workloadProfile === "production-end-user" &&
+      noOpCalibrationEndpoint === undefined
+    ) {
+      throw new Error(
+        "production-end-user open-loop runs must still provide --no-op-calibration-endpoint before upper-bound claims.",
+      );
+    }
+  }
+  if (requireNoOpCalibration && noOpCalibrationEndpoint === undefined) {
+    throw new Error(
+      "--require-no-op-calibration requires --no-op-calibration-endpoint.",
     );
   }
 
   return {
     runId: resolvedRunId,
+    loadModel,
+    workloadProfile,
     mode,
+    corpusShape,
     count,
     concurrency,
     lovelace,
     nodeEndpoint: normalizedEndpoint,
+    ...(corpusPath === undefined || corpusPath.trim().length === 0
+      ? {}
+      : { corpusPath: corpusPath.trim() }),
+    corpusSliceId: corpusSliceId?.trim() || "default",
+    targetRateTps,
+    openLoopDurationMs,
+    openLoopWarmupCount,
+    openLoopCooldownCount,
+    openLoopMaxInFlight,
+    ...(noOpCalibrationEndpoint === undefined ||
+    noOpCalibrationEndpoint.trim().length === 0
+      ? {}
+      : {
+          noOpCalibrationEndpoint: parseNodeEndpoint(noOpCalibrationEndpoint),
+        }),
+    requireNoOpCalibration,
+    noOpCalibrationDurationMs,
+    aggregateObserverIntervalMs,
     ...(l2Address === undefined || l2Address.trim().length === 0
       ? {}
       : { destinationAddress: parseAddressArgument(l2Address) }),
@@ -540,12 +846,26 @@ export const parseE2EL2StressConfig = ({
 const artifactConfig = (config: E2EL2StressConfig) => ({
   schemaVersion: E2E_L2_STRESS_SCHEMA_VERSION,
   runId: config.runId,
+  loadModel: config.loadModel,
+  workloadProfile: config.workloadProfile,
+  corpusShape: config.corpusShape,
   mode: config.mode,
-  measurementPolicy: E2E_L2_STRESS_MEASUREMENT_POLICY,
+  measurementPolicy: measurementPolicyForConfig(config),
   count: config.count,
   concurrency: config.concurrency,
   lovelace: config.lovelace.toString(10),
   nodeEndpoint: config.nodeEndpoint,
+  corpusPath: config.corpusPath ?? null,
+  corpusSliceId: config.corpusSliceId,
+  targetRateTps: config.targetRateTps,
+  openLoopDurationMs: config.openLoopDurationMs,
+  openLoopWarmupCount: config.openLoopWarmupCount,
+  openLoopCooldownCount: config.openLoopCooldownCount,
+  openLoopMaxInFlight: config.openLoopMaxInFlight,
+  noOpCalibrationEndpoint: config.noOpCalibrationEndpoint ?? null,
+  requireNoOpCalibration: config.requireNoOpCalibration,
+  noOpCalibrationDurationMs: config.noOpCalibrationDurationMs,
+  aggregateObserverIntervalMs: config.aggregateObserverIntervalMs,
   destination:
     config.destinationAddress === undefined
       ? { mode: "self" }
@@ -559,19 +879,21 @@ const artifactConfig = (config: E2EL2StressConfig) => ({
   network: config.network,
   allowUnsafeBounds: config.allowUnsafeBounds,
   wallets:
-    config.mode === "parallel-fanout"
-      ? config.stressWallets.map((wallet) => ({
-          seedSource: wallet.resolvedWalletSeedPhrase.resolvedFrom,
-          address: wallet.address,
-        }))
-      : [
-          {
-            seedSource:
-              requirePrimaryWallet(config).resolvedWalletSeedPhrase
-                .resolvedFrom,
-            address: requirePrimaryWallet(config).address,
-          },
-        ],
+    config.loadModel === "open-loop-upper-bound"
+      ? []
+      : config.mode === "parallel-fanout"
+        ? config.stressWallets.map((wallet) => ({
+            seedSource: wallet.resolvedWalletSeedPhrase.resolvedFrom,
+            address: wallet.address,
+          }))
+        : [
+            {
+              seedSource:
+                requirePrimaryWallet(config).resolvedWalletSeedPhrase
+                  .resolvedFrom,
+              address: requirePrimaryWallet(config).address,
+            },
+          ],
 });
 
 const appendEvent = async (
@@ -609,7 +931,13 @@ const renderStressSummaryMarkdown = (summary: E2EL2StressSummary): string => {
     ...(summary.interruptedReason === undefined
       ? []
       : [`- interruptedReason: ${summary.interruptedReason}`]),
+    `- loadModel: ${summary.loadModel}`,
+    `- workloadProfile: ${summary.workloadProfile}`,
+    `- classification: ${summary.classification}`,
     `- mode: ${summary.mode}`,
+    ...(summary.corpusShape === undefined
+      ? []
+      : [`- corpusShape: ${summary.corpusShape}`]),
     `- advanceOn: ${summary.measurementPolicy.advanceOn}`,
     `- primaryStageMetric: ${summary.measurementPolicy.primaryStageMetric}`,
     `- finalityObservation: ${summary.measurementPolicy.finalityObservation}`,
@@ -1079,10 +1407,433 @@ const spendableUtxosForLovelace = (
 ): readonly NodeUtxo[] =>
   utxos.filter((utxo) => (utxo.assets.lovelace ?? 0n) >= lovelace);
 
+type AggregateObserverRunSummary = {
+  readonly sampleCount: number;
+  readonly errorCount: number;
+  readonly overloaded: boolean;
+};
+
+const runAggregateObserverDuring = async <A>({
+  config,
+  runtime,
+  action,
+  eventsNdjsonPath,
+  sleepImpl,
+  now,
+}: {
+  readonly config: E2EL2StressConfig;
+  readonly runtime: E2EL2StressRuntime;
+  readonly action: () => Promise<A>;
+  readonly eventsNdjsonPath: string;
+  readonly sleepImpl: (ms: number) => Promise<void>;
+  readonly now: () => Date;
+}): Promise<{
+  readonly result: A;
+  readonly observer: AggregateObserverRunSummary;
+}> => {
+  if (runtime.collectAggregateObserverSample === undefined) {
+    return {
+      result: await action(),
+      observer: { sampleCount: 0, errorCount: 0, overloaded: false },
+    };
+  }
+  let done = false;
+  let sampleCount = 0;
+  let errorCount = 0;
+  let overloaded = false;
+  const observer = (async () => {
+    while (!done) {
+      const sampleStartedAt = now();
+      const sampleStartedMs = sampleStartedAt.getTime();
+      try {
+        const sample = await runtime.collectAggregateObserverSample!({
+          at: sampleStartedAt.toISOString(),
+          runId: config.runId,
+          loadModel: config.loadModel,
+        });
+        sampleCount += 1;
+        const durationMs = Math.max(0, now().getTime() - sampleStartedMs);
+        if (durationMs > config.aggregateObserverIntervalMs) {
+          overloaded = true;
+        }
+        await appendEvent(eventsNdjsonPath, {
+          event: "stress.aggregate_observer.sample",
+          at: sampleStartedAt.toISOString(),
+          durationMs,
+          overloaded: durationMs > config.aggregateObserverIntervalMs,
+          sample,
+        });
+      } catch (error) {
+        errorCount += 1;
+        await appendEvent(eventsNdjsonPath, {
+          event: "stress.aggregate_observer.error",
+          at: now().toISOString(),
+          error: errorMessage(error),
+        });
+      }
+      await sleepImpl(config.aggregateObserverIntervalMs);
+    }
+  })();
+  try {
+    const result = await action();
+    done = true;
+    await observer;
+    return {
+      result,
+      observer: { sampleCount, errorCount, overloaded },
+    };
+  } catch (error) {
+    done = true;
+    await observer;
+    throw error;
+  }
+};
+
+const classifyOpenLoopRun = ({
+  metrics,
+  submission,
+  calibration,
+  placement,
+  observer,
+}: {
+  readonly metrics: StressMetrics;
+  readonly submission: OpenLoopSubmitSummary;
+  readonly calibration?: NoOpCalibrationSummary;
+  readonly placement: OpenLoopPlacementProof;
+  readonly observer: AggregateObserverRunSummary;
+}): E2EL2StressClassification => {
+  if (
+    !placement.validForUpperBoundClaim ||
+    calibration?.passed === false ||
+    submission.submittedOfferedRatio < 0.98
+  ) {
+    return "client_overloaded";
+  }
+  if (observer.overloaded || observer.errorCount > 0) {
+    return "observer_overloaded";
+  }
+  if (
+    metrics.durableAdmission.status !== "complete" ||
+    metrics.durableAdmission.count < submission.submittedCount
+  ) {
+    return "admission_bottleneck";
+  }
+  if (
+    metrics.l2Admission.status !== "complete" ||
+    metrics.l2Admission.count < submission.submittedCount
+  ) {
+    return "validation_bottleneck";
+  }
+  if (metrics.fullFinality.status === "complete") {
+    return "full_pipeline_sustained";
+  }
+  return "ingress_ok_commit_failed";
+};
+
+const runOpenLoopUpperBoundStress = async (
+  config: E2EL2StressConfig,
+  runtime: E2EL2StressRuntime,
+): Promise<E2EL2StressRunResult> => {
+  if (config.corpusPath === undefined) {
+    throw new Error("open-loop upper-bound stress requires a corpusPath");
+  }
+  const fetchImpl = runtime.fetch ?? fetch;
+  const sleepImpl = runtime.sleep ?? sleep;
+  const now = runtime.now ?? (() => new Date());
+  const signal = runtime.abortSignal;
+
+  await mkdir(config.outDir, { recursive: true });
+  const configJsonPath = join(config.outDir, "config.json");
+  const eventsNdjsonPath = join(config.outDir, "events.ndjson");
+  const summaryJsonPath = join(config.outDir, "summary.json");
+  const summaryMarkdownPath = join(config.outDir, "summary.md");
+  await writeFile(configJsonPath, `${formatJson(artifactConfig(config))}\n`, {
+    encoding: "utf8",
+    flag: "w",
+  });
+
+  const corpusRows = parseOpenLoopCorpusNdjson(
+    await readFile(config.corpusPath, "utf8"),
+  );
+  const corpus = planOpenLoopCorpus({
+    rows: corpusRows,
+    targetRateTps: config.targetRateTps,
+    durationMs: config.openLoopDurationMs,
+    warmupCount: config.openLoopWarmupCount,
+    cooldownCount: config.openLoopCooldownCount,
+    corpusShape: config.corpusShape,
+    corpusSliceId: config.corpusSliceId,
+  });
+  const placement = buildOpenLoopPlacementProof();
+  const startedAtDate = now();
+  const startedAt = startedAtDate.toISOString();
+  await appendEvent(eventsNdjsonPath, {
+    event: "stress_started",
+    at: startedAt,
+    runId: config.runId,
+    loadModel: config.loadModel,
+    workloadProfile: config.workloadProfile,
+    corpusShape: config.corpusShape,
+    corpusSliceId: config.corpusSliceId,
+    corpusSelectedTransactionCount: corpus.selectedTransactionCount,
+    placement,
+  });
+
+  let calibration: NoOpCalibrationSummary | undefined;
+  if (config.noOpCalibrationEndpoint !== undefined) {
+    calibration = await runNoOpSubmitCalibration({
+      endpoint: config.noOpCalibrationEndpoint,
+      rows: corpus.rows,
+      targetRateTps: config.targetRateTps,
+      durationMs: config.noOpCalibrationDurationMs,
+      maxInFlight: config.openLoopMaxInFlight,
+      fetchImpl,
+      signal,
+    });
+    await appendEvent(eventsNdjsonPath, {
+      event: "stress.no_op_calibration.finished",
+      at: now().toISOString(),
+      calibration,
+    });
+    if (config.requireNoOpCalibration && !calibration.passed) {
+      throw new Error("no-op submit calibration failed required gate");
+    }
+  } else if (config.requireNoOpCalibration) {
+    throw new Error("no-op submit calibration was required but not configured");
+  }
+
+  const submitEndpoint = `${config.nodeEndpoint}/submit`;
+  const { result: submitResult, observer } = await runAggregateObserverDuring({
+    config,
+    runtime,
+    eventsNdjsonPath,
+    sleepImpl,
+    now,
+    action: () =>
+      runOpenLoopSubmitter({
+        rows: corpus.rows,
+        endpoint: submitEndpoint,
+        targetRateTps: config.targetRateTps,
+        maxInFlight: config.openLoopMaxInFlight,
+        fetchImpl,
+        signal,
+      }),
+  });
+  const submissionFinishedAtDate = now();
+  const submissionFinishedAt = submissionFinishedAtDate.toISOString();
+  const submittedTxHashes = submitResult.records.flatMap((record) =>
+    record.statusCode !== null &&
+    record.statusCode >= 200 &&
+    record.statusCode < 300
+      ? [record.txHash]
+      : [],
+  );
+  let dbMetricSources: StressStageMetricDbSources | undefined;
+  if (runtime.collectStageMetricSources !== undefined) {
+    dbMetricSources = await runtime.collectStageMetricSources({
+      txHashes: submittedTxHashes,
+    });
+    await appendEvent(eventsNdjsonPath, {
+      event: "stress.stage_metrics.db_sources_collected",
+      at: now().toISOString(),
+      txHashCount: submittedTxHashes.length,
+      l2AdmissionRows: dbMetricSources.l2Admissions.length,
+      l1CommitRows: dbMetricSources.l1Commits.length,
+      immutableRows: dbMetricSources.immutableObservations.length,
+      residueRows: dbMetricSources.residue.length,
+    });
+  }
+  const admissionByTxHash = new Map(
+    (dbMetricSources?.l2Admissions ?? []).map((row) => [row.txHash, row]),
+  );
+  const corpusByTxHash = new Map(corpus.rows.map((row) => [row.txHash, row]));
+  const transactions: E2EL2StressTransaction[] = submitResult.records
+    .map((record, index): E2EL2StressTransaction => {
+      const corpusRow = corpusByTxHash.get(record.txHash)!;
+      const successfulSubmit =
+        record.statusCode !== null &&
+        record.statusCode >= 200 &&
+        record.statusCode < 300 &&
+        record.error === null;
+      const admission = admissionByTxHash.get(record.txHash);
+      const acceptedAt =
+        admission?.status === "accepted" ? admission.terminalAt : null;
+      return {
+        index,
+        phase: "stress",
+        txHash: successfulSubmit ? record.txHash : null,
+        senderAddress: corpusRow.senderWalletId,
+        destinationAddress: corpusRow.outputOutrefs.join(","),
+        selectedInputs: [corpusRow.selectedInputOutref],
+        submission: successfulSubmit
+          ? {
+              status: "submitted",
+              submittedAt: new Date(record.submittedAtMs).toISOString(),
+              durationMs: record.latencyMs,
+            }
+          : {
+              status: "failed",
+              submittedAt: null,
+              error:
+                record.error ??
+                `POST /submit returned ${record.statusCode?.toString() ?? "no_status"}`,
+            },
+        acceptance:
+          admission?.status === "accepted"
+            ? {
+                status: "accepted",
+                ...(acceptedAt === null ? {} : { acceptedAt }),
+              }
+            : admission?.status === "rejected"
+              ? { status: "rejected" }
+              : successfulSubmit
+                ? { status: "not_observed" }
+                : { status: "not_submitted" },
+        finality: { status: "not_observed" },
+        workerIndex: 0,
+        walletSeedSource: corpusRow.senderWalletId,
+      };
+    })
+    .sort((left, right) => left.index - right.index);
+  const finishedAtDate = now();
+  const finishedAt = finishedAtDate.toISOString();
+  const submittedCount = transactions.filter(
+    (tx) => tx.submission.status === "submitted",
+  ).length;
+  const acceptedCount = transactions.filter(
+    (tx) => tx.acceptance.status === "accepted",
+  ).length;
+  const submissionFailedCount = transactions.filter(
+    (tx) => tx.submission.status === "failed",
+  ).length;
+  const rejectedCount = transactions.filter(
+    (tx) => tx.acceptance.status === "rejected",
+  ).length;
+  const metrics = buildStressMetrics({
+    requestedCount: corpus.selectedTransactionCount,
+    submittedCount,
+    acceptedCount,
+    observedCommittedCount: 0,
+    startedAt,
+    submissionFinishedAt,
+    finishedAt,
+    transactions,
+    ...(dbMetricSources === undefined ? {} : { dbSources: dbMetricSources }),
+    ...(runtime.fullFinalityDrainProof === undefined
+      ? {}
+      : { fullFinalityDrainProof: runtime.fullFinalityDrainProof }),
+  });
+  const classification = classifyOpenLoopRun({
+    metrics,
+    submission: submitResult.summary,
+    calibration,
+    placement,
+    observer,
+  });
+  const summary: E2EL2StressSummary = {
+    schemaVersion: E2E_L2_STRESS_SCHEMA_VERSION,
+    runId: config.runId,
+    status: signalWasAborted(signal) ? "interrupted" : "completed",
+    ...(signalWasAborted(signal)
+      ? { interruptedReason: abortReason(signal) }
+      : {}),
+    loadModel: config.loadModel,
+    workloadProfile: config.workloadProfile,
+    corpusShape: config.corpusShape,
+    classification,
+    mode: config.mode,
+    measurementPolicy: measurementPolicyForConfig(config),
+    openLoop: {
+      targetRateTps: config.targetRateTps,
+      durationMs: config.openLoopDurationMs,
+      maxInFlight: config.openLoopMaxInFlight,
+      corpus,
+      submission: submitResult.summary,
+      ...(calibration === undefined ? {} : { calibration }),
+      placement,
+    },
+    requestedCount: corpus.selectedTransactionCount,
+    notStartedCount: Math.max(
+      0,
+      corpus.selectedTransactionCount - transactions.length,
+    ),
+    submittedCount,
+    submissionFailedCount,
+    acceptedCount,
+    acceptanceNotObservedCount: transactions.filter(
+      (tx) => tx.acceptance.status === "not_observed",
+    ).length,
+    acceptanceTimedOutCount: 0,
+    finalityTimedOutCount: 0,
+    observedCommittedCount: 0,
+    unknownFinalityCount: acceptedCount,
+    rejectedCount,
+    concurrency: config.openLoopMaxInFlight,
+    finalityObserver: {
+      mode: "aggregate-window",
+      maxConcurrentRequests: 0,
+      maxObservedConcurrentRequests: 0,
+      observedTransactionCount: transactions.length,
+      pollRequestCount: 0,
+      batchCount: observer.sampleCount,
+      errorCount: observer.errorCount,
+    },
+    startedAt,
+    submissionFinishedAt,
+    finishedAt,
+    submissionDurationMs: Math.max(
+      0,
+      submissionFinishedAtDate.getTime() - startedAtDate.getTime(),
+    ),
+    durationMs: Math.max(0, finishedAtDate.getTime() - startedAtDate.getTime()),
+    metrics,
+    latencyMs: {
+      submitP50: submitResult.summary.scheduleSlipMs.p50,
+      submitP95: submitResult.summary.scheduleSlipMs.p95,
+      acceptanceP50: 0,
+      acceptanceP95: 0,
+      commitP50: 0,
+      commitP95: 0,
+    },
+    artifactPaths: {
+      configJson: configJsonPath,
+      eventsNdjson: eventsNdjsonPath,
+      summaryJson: summaryJsonPath,
+      summaryMarkdown: summaryMarkdownPath,
+    },
+    transactions,
+  };
+  await writeFile(summaryJsonPath, `${formatJson(summary)}\n`, "utf8");
+  await writeFile(summaryMarkdownPath, renderStressSummaryMarkdown(summary), {
+    encoding: "utf8",
+  });
+  await appendEvent(eventsNdjsonPath, {
+    event: "stress_finished",
+    at: finishedAt,
+    summaryJsonPath,
+    summaryMarkdownPath,
+    submittedCount,
+    acceptedCount,
+    rejectedCount,
+    submissionFailedCount,
+    classification,
+  });
+  return {
+    summary,
+    configJsonPath,
+    eventsNdjsonPath,
+    summaryJsonPath,
+    summaryMarkdownPath,
+  };
+};
+
 export const runE2EL2StressThroughput = async (
   config: E2EL2StressConfig,
   runtime: E2EL2StressRuntime,
 ): Promise<E2EL2StressRunResult> => {
+  if (config.loadModel === "open-loop-upper-bound") {
+    return await runOpenLoopUpperBoundStress(config, runtime);
+  }
   const fetchUtxos = runtime.fetchUtxos ?? fetchNodeUtxosByAddress;
   const fetchImpl = runtime.fetch ?? fetch;
   const sleepImpl = runtime.sleep ?? sleep;
@@ -1522,8 +2273,11 @@ export const runE2EL2StressThroughput = async (
     runId: config.runId,
     status: interruptedReason === undefined ? "completed" : "interrupted",
     ...(interruptedReason === undefined ? {} : { interruptedReason }),
+    loadModel: config.loadModel,
+    workloadProfile: config.workloadProfile,
+    classification: "closed_loop_smoke",
     mode: config.mode,
-    measurementPolicy: E2E_L2_STRESS_MEASUREMENT_POLICY,
+    measurementPolicy: measurementPolicyForConfig(config),
     requestedCount: config.count,
     notStartedCount,
     submittedCount,

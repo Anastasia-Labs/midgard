@@ -2,9 +2,16 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Duration, Effect, Metric, Ref, Schedule } from "effect";
 import { Worker } from "worker_threads";
 
-import { StateQueueMutationLeasesDB } from "@/database/index.js";
+import {
+  DepositsDB,
+  ForcedTransactionsDB,
+  MempoolDB,
+  StateQueueMutationLeasesDB,
+  WithdrawalsDB,
+} from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import {
+  type CommitPipelinePhase,
   Database,
   Globals,
   Lucid,
@@ -16,16 +23,20 @@ import {
   refreshStateQueueGlobalsFromSnapshot,
   type StateQueueSnapshot,
 } from "@/services/state-queue-topology.js";
-import type {
-  CommitSchedulerStateQueueEvidence,
-  EarliestCommitSchedulerPlan,
-} from "@/workers/utils/commit-block-planner.js";
 import {
   WorkerInput,
   WorkerOutput,
 } from "@/workers/utils/commit-block-header.js";
+import type {
+  CommitSchedulerStateQueueEvidence,
+  EarliestCommitSchedulerPlan,
+} from "@/workers/utils/commit-block-planner.js";
+import { COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS } from "@/workers/utils/commit-end-time.js";
 import { WorkerError } from "@/workers/utils/common.js";
-import { resolveEarliestCommitSchedulerDueWorkPlan } from "@/workers/utils/scheduler-refresh.js";
+import {
+  fetchRealStateQueueWitnessContext,
+  resolveEarliestCommitSchedulerDueWorkPlan,
+} from "@/workers/utils/scheduler-refresh.js";
 
 import { emitQueueStateMetrics } from "./queue-metrics.js";
 import { resolveWorkerEntry } from "./resolve-worker-entry.js";
@@ -34,6 +45,7 @@ import {
   clearSlotAwareDueWork,
   peekSlotAwareDueWork,
   registerSlotAwareDueWork,
+  type SlotAwareDueWork,
 } from "./slot-aware-due-work.js";
 
 /**
@@ -131,6 +143,161 @@ const clearRegisteredCommitDueWork = (): void => {
   );
 };
 
+const pendingUserEventCountUpTo = (
+  effectiveEndTime: Date,
+): Effect.Effect<number, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const [depositEntries, forcedTransactionEntries, withdrawalEntries] =
+      yield* Effect.all(
+        [
+          DepositsDB.retrievePendingHeaderEntriesUpTo(effectiveEndTime),
+          ForcedTransactionsDB.retrievePendingHeaderEntriesUpTo(
+            effectiveEndTime,
+          ),
+          WithdrawalsDB.retrievePendingHeaderEntriesUpTo(effectiveEndTime),
+        ],
+        { concurrency: "unbounded" },
+      );
+    return (
+      depositEntries.length +
+      forcedTransactionEntries.length +
+      withdrawalEntries.length
+    );
+  });
+
+export const shouldAttemptCommitPipeline = ({
+  localFinalizationPending,
+  mempoolTxCount,
+  processedUnsubmittedTxCount,
+  pendingUserEventCount,
+}: {
+  readonly localFinalizationPending: boolean;
+  readonly mempoolTxCount: bigint;
+  readonly processedUnsubmittedTxCount: number;
+  readonly pendingUserEventCount: number;
+}): boolean =>
+  localFinalizationPending ||
+  mempoolTxCount > 0n ||
+  processedUnsubmittedTxCount > 0 ||
+  pendingUserEventCount > 0;
+
+const shouldSkipIdleCommitPipelineBeforeSchedulerAlignment =
+  Effect.gen(function* () {
+    const globals = yield* Globals;
+    const localFinalizationPending = yield* Ref.get(
+      globals.LOCAL_FINALIZATION_PENDING,
+    );
+    const processedUnsubmittedTxCount = yield* Ref.get(
+      globals.PROCESSED_UNSUBMITTED_TXS_COUNT,
+    );
+    const mempoolTxCount = yield* MempoolDB.retrieveTxCount;
+    const pendingUserEventCount = yield* pendingUserEventCountUpTo(
+      new Date(Date.now() + COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS),
+    );
+    if (
+      shouldAttemptCommitPipeline({
+        localFinalizationPending,
+        mempoolTxCount,
+        processedUnsubmittedTxCount,
+        pendingUserEventCount,
+      })
+    ) {
+      return false;
+    }
+    yield* Effect.logInfo(
+      "🔹 No pending tx/user-event work for block commitment; skipping pre-lease scheduler alignment.",
+    );
+    yield* emitQueueStateMetrics;
+    return true;
+  });
+
+const isDetailedSchedulerAlignmentDueWork = (
+  entry: SlotAwareDueWork,
+): boolean =>
+  entry.kind === BLOCK_COMMITMENT_DUE_WORK_KIND &&
+  entry.key === BLOCK_COMMITMENT_DUE_WORK_KEY &&
+  entry.dependencyKey.startsWith("scheduler=");
+
+const resolveFreshDetailedSchedulerDueWork = Effect.gen(function* () {
+  const lucid = yield* Lucid;
+  const contracts = yield* MidgardContracts;
+  const alignedEndTime =
+    Date.now() + COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS;
+  const alignment = yield* fetchRealStateQueueWitnessContext(
+    lucid.api,
+    contracts,
+    alignedEndTime,
+    undefined,
+    lucid.referenceScriptsAddress,
+    lucid.submitSlotSnapshot,
+    false,
+  );
+  if ("dueWork" in alignment) {
+    return alignment.dueWork;
+  }
+  return undefined;
+});
+
+const shouldSkipForDetailedSchedulerDueWork: Effect.Effect<
+  boolean,
+  never,
+  Globals | Lucid | MidgardContracts
+> = Effect.gen(function* () {
+  const freshDueWork = yield* Effect.either(
+    resolveFreshDetailedSchedulerDueWork,
+  );
+  if (freshDueWork._tag === "Left") {
+    clearRegisteredCommitDueWork();
+    yield* Effect.logWarning(
+      `🔹 Clearing detailed scheduler due work before re-plan because fresh scheduler alignment evidence failed: ${String(freshDueWork.left)}`,
+    );
+    return false;
+  }
+  if (freshDueWork.right === undefined) {
+    clearRegisteredCommitDueWork();
+    yield* Effect.logInfo(
+      "🔹 Clearing detailed scheduler due work before re-plan because scheduler alignment is no longer required.",
+    );
+    return false;
+  }
+  const decision = checkSlotAwareDueWork({
+    kind: BLOCK_COMMITMENT_DUE_WORK_KIND,
+    key: BLOCK_COMMITMENT_DUE_WORK_KEY,
+    currentSlot: freshDueWork.right.observedSlot,
+    dependencyKey: freshDueWork.right.dependencyKey,
+    invalidationKey: freshDueWork.right.invalidationKey,
+  });
+  switch (decision.status) {
+    case "skip":
+      yield* Effect.logInfo(
+        `🔹 Skipping block commitment trigger because registered detailed scheduler due work is not due (kind=${decision.entry.kind},key=${decision.entry.key},current_slot=${decision.currentSlot.toString()},due_slot=${decision.entry.dueSlot.toString()},wait_ms=${decision.entry.waitMs.toString()},dependency_key=${freshDueWork.right.dependencyKey}).`,
+      );
+      return true;
+    case "due":
+      yield* Effect.logInfo(
+        `🔹 Waking detailed scheduler due work (kind=${decision.entry.kind},key=${decision.entry.key},current_slot=${decision.currentSlot.toString()},due_slot=${decision.entry.dueSlot.toString()}).`,
+      );
+      return false;
+    case "invalidated":
+      yield* Effect.logInfo(
+        `🔹 Clearing detailed scheduler due work before re-plan (${decision.reason}).`,
+      );
+      return false;
+    case "missing":
+      return false;
+  }
+}).pipe(
+  Effect.catchAll((error) =>
+    Effect.gen(function* () {
+      clearRegisteredCommitDueWork();
+      yield* Effect.logWarning(
+        `🔹 Clearing detailed scheduler due work before re-plan after unexpected fresh-evidence failure: ${String(error)}`,
+      );
+      return false;
+    }),
+  ),
+);
+
 const shouldSkipForRegisteredCommitDueWork = Effect.gen(function* () {
   const entry = peekSlotAwareDueWork(
     BLOCK_COMMITMENT_DUE_WORK_KIND,
@@ -138,6 +305,9 @@ const shouldSkipForRegisteredCommitDueWork = Effect.gen(function* () {
   );
   if (entry === undefined) {
     return false;
+  }
+  if (isDetailedSchedulerAlignmentDueWork(entry)) {
+    return yield* shouldSkipForDetailedSchedulerDueWork;
   }
   const freshPlan = yield* Effect.either(planPreLeaseCommitSchedulerDueWork);
   if (freshPlan._tag === "Left") {
@@ -221,6 +391,133 @@ const registerPreLeaseCommitSchedulerDueWorkIfProven = Effect.gen(function* () {
     );
   }
   return false;
+});
+
+export const shouldRunPreLeaseSchedulerAlignment = (
+  plan: EarliestCommitSchedulerPlan,
+): boolean =>
+  (plan.status === "proceed" &&
+    (plan.reason === "scheduler_submit_timing_ready" ||
+      plan.reason === "current_operator_already_active")) ||
+  (plan.status === "ambiguous" &&
+    plan.reason === "scheduler_has_no_active_operator");
+
+const alignCommitSchedulerBeforeMutationWorker = Effect.gen(function* () {
+  const plan = yield* Effect.either(planPreLeaseCommitSchedulerDueWork);
+  if (plan._tag === "Left") {
+    yield* Effect.logWarning(
+      `🔹 Pre-lease scheduler alignment probe failed; continuing to mutation worker guard where scheduler refresh is disabled: ${String(plan.left)}`,
+    );
+    return false;
+  }
+  if (plan.right.status === "register_due_work") {
+    yield* registerPreLeaseCommitSchedulerDueWork(plan.right);
+    return true;
+  }
+  if (!shouldRunPreLeaseSchedulerAlignment(plan.right)) {
+    return false;
+  }
+  const lucid = yield* Lucid;
+  const contracts = yield* MidgardContracts;
+  const alignedEndTime =
+    Date.now() + COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS;
+  const alignment = yield* Effect.either(
+    fetchRealStateQueueWitnessContext(
+      lucid.api,
+      contracts,
+      alignedEndTime,
+      undefined,
+      lucid.referenceScriptsAddress,
+      lucid.submitSlotSnapshot,
+      true,
+    ),
+  );
+  if (alignment._tag === "Left") {
+    yield* Effect.logWarning(
+      `🔹 Pre-lease scheduler alignment failed; continuing to mutation worker guard where scheduler refresh is disabled: ${String(alignment.left)}`,
+    );
+    return false;
+  }
+  if ("dueWork" in alignment.right) {
+    registerSlotAwareDueWork(alignment.right.dueWork);
+    yield* Effect.logInfo(
+      `🔹 Registered slot-aware due work from pre-lease scheduler alignment (kind=${alignment.right.dueWork.kind},key=${alignment.right.dueWork.key},current_slot=${alignment.right.dueWork.observedSlot.toString()},due_slot=${alignment.right.dueWork.dueSlot.toString()},wait_ms=${alignment.right.dueWork.waitMs.toString()},dependency_key=${alignment.right.dueWork.dependencyKey}).`,
+    );
+    return true;
+  }
+  yield* Effect.logInfo(
+    `🔹 Scheduler alignment completed before block commitment mutation worker (reason=${plan.right.reason}).`,
+  );
+  return false;
+});
+
+type CommitPhaseAcquireResult =
+  | {
+      readonly acquired: true;
+    }
+  | {
+      readonly acquired: false;
+      readonly activePhase: CommitPipelinePhase;
+    };
+
+const acquireCommitPipelinePhase = (
+  globals: Globals,
+  targetPhase: Exclude<CommitPipelinePhase, "idle">,
+): Effect.Effect<CommitPhaseAcquireResult> =>
+  Ref.modify(
+    globals.COMMIT_PIPELINE_PHASE,
+    (activePhase): [CommitPhaseAcquireResult, CommitPipelinePhase] =>
+      activePhase === "idle"
+        ? [{ acquired: true }, targetPhase]
+        : [{ acquired: false, activePhase }, activePhase],
+  );
+
+export const tryAcquireCommitSchedulerAlignmentPhase = (
+  globals: Globals,
+): Effect.Effect<CommitPhaseAcquireResult> =>
+  acquireCommitPipelinePhase(globals, "scheduler_alignment");
+
+export const releaseCommitSchedulerAlignmentPhase = (
+  globals: Globals,
+): Effect.Effect<void> => Ref.set(globals.COMMIT_PIPELINE_PHASE, "idle");
+
+export const tryAcquireCommitMutationWorkerPhase = (
+  globals: Globals,
+): Effect.Effect<CommitPhaseAcquireResult> =>
+  Effect.gen(function* () {
+    const acquired = yield* acquireCommitPipelinePhase(
+      globals,
+      "mutation_worker",
+    );
+    if (acquired.acquired) {
+      yield* Ref.set(globals.COMMIT_WORKER_ACTIVE, true);
+    }
+    return acquired;
+  });
+
+export const releaseCommitMutationWorkerPhase = (
+  globals: Globals,
+): Effect.Effect<void> =>
+  Effect.all(
+    [
+      Ref.set(globals.COMMIT_WORKER_ACTIVE, false),
+      Ref.set(globals.COMMIT_PIPELINE_PHASE, "idle"),
+    ],
+    { discard: true },
+  );
+
+const alignCommitSchedulerBeforeMutationWorkerIfIdle = Effect.gen(function* () {
+  const globals = yield* Globals;
+  const acquired = yield* tryAcquireCommitSchedulerAlignmentPhase(globals);
+  if (!acquired.acquired) {
+    yield* Effect.logInfo(
+      `🔹 Skipping block commitment trigger because commit pipeline phase is already active (phase=${acquired.activePhase}).`,
+    );
+    return true;
+  }
+  return yield* alignCommitSchedulerBeforeMutationWorker.pipe(
+    Effect.ensuring(releaseCommitSchedulerAlignmentPhase(globals)),
+  );
 });
 
 /**
@@ -478,19 +775,22 @@ export const blockCommitmentAction: Effect.Effect<
   yield* Ref.set(globals.HEARTBEAT_BLOCK_COMMITMENT, Date.now());
   const RESET_IN_PROGRESS = yield* Ref.get(globals.RESET_IN_PROGRESS);
   if (!RESET_IN_PROGRESS) {
+    if (yield* shouldSkipIdleCommitPipelineBeforeSchedulerAlignment) {
+      return;
+    }
     if (yield* shouldSkipForRegisteredCommitDueWork) {
       return;
     }
     if (yield* registerPreLeaseCommitSchedulerDueWorkIfProven) {
       return;
     }
-    const acquired = yield* Ref.modify(
-      globals.COMMIT_WORKER_ACTIVE,
-      (active) => (active ? [false, true] : [true, true]),
-    );
-    if (!acquired) {
+    if (yield* alignCommitSchedulerBeforeMutationWorkerIfIdle) {
+      return;
+    }
+    const acquired = yield* tryAcquireCommitMutationWorkerPhase(globals);
+    if (!acquired.acquired) {
       yield* Effect.logInfo(
-        "🔹 Skipping block commitment trigger because a worker is already active.",
+        `🔹 Skipping block commitment trigger because commit pipeline phase is already active (phase=${acquired.activePhase}).`,
       );
       return;
     }
@@ -507,7 +807,7 @@ export const blockCommitmentAction: Effect.Effect<
         renewIntervalMs:
           nodeConfig.STATE_QUEUE_MUTATION_LEASE_RENEW_INTERVAL_MS,
       },
-    ).pipe(Effect.ensuring(Ref.set(globals.COMMIT_WORKER_ACTIVE, false)));
+    ).pipe(Effect.ensuring(releaseCommitMutationWorkerPhase(globals)));
     if (leaseResult._tag === "Busy") {
       yield* Effect.logInfo(
         `🔹 Skipping block commitment trigger because the state-queue mutation lease is busy (${StateQueueMutationLeasesDB.describeActiveLease(

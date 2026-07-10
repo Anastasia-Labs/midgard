@@ -15,6 +15,14 @@ import { Effect, Ref, Schedule } from "effect";
 import { DepositsDB, UserEventsUtils } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import {
+  logReconciledVisibleUserEvents,
+  persistVisibleUserEventUTxOs,
+  repeatVisibleUserEventIngestionFiber,
+  runCommitTimeUserEventIngestionBarrier,
+  type UserEventFetchBounds,
+  type UserEventReconcileResult,
+} from "@/fibers/user-event-ingestion.js";
+import {
   Database,
   Globals,
   Lucid,
@@ -163,10 +171,7 @@ const depositUTxOToEntry = (
  */
 const fetchDepositUTxOs = (
   lucid: LucidEvolution,
-  config?: Pick<
-    SDK.UserEventFetchConfig,
-    "inclusionTimeLowerBound" | "inclusionTimeUpperBound"
-  >,
+  config?: UserEventFetchBounds,
 ): Effect.Effect<SDK.DepositUTxO[], SDK.LucidError, MidgardContracts> =>
   Effect.gen(function* () {
     const { deposit: depositAuthValidator } = yield* MidgardContracts;
@@ -179,12 +184,9 @@ const fetchDepositUTxOs = (
   });
 
 export const reconcileVisibleDepositUTxOs = (
-  config?: Pick<
-    SDK.UserEventFetchConfig,
-    "inclusionTimeLowerBound" | "inclusionTimeUpperBound"
-  >,
+  config?: UserEventFetchBounds,
 ): Effect.Effect<
-  { readonly reconciledCount: number; readonly completedAt: Date },
+  UserEventReconcileResult,
   SDK.LucidError | DatabaseError,
   MidgardContracts | Lucid | Database | NodeConfig
 > =>
@@ -197,30 +199,18 @@ export const reconcileVisibleDepositUTxOs = (
       lucid,
       config,
     );
-
-    if (depositUTxOs.length <= 0) {
-      yield* Effect.logDebug("🏦 No deposit UTxOs found.");
-      return {
-        reconciledCount: 0,
-        completedAt: new Date(),
-      } as const;
-    }
-
-    yield* Effect.logInfo(`🏦 ${depositUTxOs.length} deposit UTxOs found.`);
-
-    const entries = yield* Effect.forEach(depositUTxOs, (utxo) =>
-      depositUTxOToEntry(
-        utxo,
-        nodeConfig.NETWORK,
-        depositAuthValidator.policyId,
-      ),
-    );
-
-    yield* DepositsDB.insertEntries(entries);
-    return {
-      reconciledCount: entries.length,
-      completedAt: new Date(),
-    } as const;
+    return yield* persistVisibleUserEventUTxOs({
+      visibleUtxos: depositUTxOs,
+      toEntry: (utxo) =>
+        depositUTxOToEntry(
+          utxo,
+          nodeConfig.NETWORK,
+          depositAuthValidator.policyId,
+        ),
+      insertEntries: DepositsDB.insertEntries,
+      emptyLogMessage: "🏦 No deposit UTxOs found.",
+      foundLogMessage: (count) => `🏦 ${count} deposit UTxOs found.`,
+    });
   });
 
 /**
@@ -239,12 +229,11 @@ export const fetchAndInsertDepositUTxOs: Effect.Effect<
   const { reconciledCount, completedAt } =
     yield* reconcileVisibleDepositUTxOs();
   yield* Ref.set(globals.LATEST_DEPOSIT_FETCH_TIME, completedAt.getTime());
-  if (reconciledCount <= 0) {
-    return;
-  }
-  yield* Effect.logInfo(
-    `🏦 Reconciled ${reconciledCount} visible deposit UTxO(s) into deposits_utxos.`,
-  );
+  yield* logReconciledVisibleUserEvents({
+    reconciledCount,
+    message: (count) =>
+      `🏦 Reconciled ${count} visible deposit UTxO(s) into deposits_utxos.`,
+  });
 });
 
 export const fetchAndInsertDepositUTxOsForCommitBarrier = (
@@ -254,18 +243,18 @@ export const fetchAndInsertDepositUTxOsForCommitBarrier = (
   SDK.LucidError | DatabaseError,
   MidgardContracts | Lucid | Database | NodeConfig
 > =>
-  Effect.gen(function* () {
-    yield* Effect.logInfo(
-      `🏦 Running commit-time deposit ingestion barrier up to ${inclusionTimeUpperBound.toISOString()}.`,
-    );
-    const { reconciledCount, completedAt } =
-      yield* reconcileVisibleDepositUTxOs({
-        inclusionTimeUpperBound: BigInt(inclusionTimeUpperBound.getTime()),
-      });
-    yield* Effect.logInfo(
-      `🏦 Commit-time deposit barrier reconciled ${reconciledCount} deposit UTxO(s); fetch completed at ${completedAt.toISOString()} and locked the visibility barrier at ${inclusionTimeUpperBound.toISOString()}.`,
-    );
-    return inclusionTimeUpperBound;
+  runCommitTimeUserEventIngestionBarrier({
+    inclusionTimeUpperBound,
+    inclusionTimeUpperBoundOffsetMs: 0,
+    startLogMessage: (upperBound) =>
+      `🏦 Running commit-time deposit ingestion barrier up to ${upperBound.toISOString()}.`,
+    completedLogMessage: ({
+      reconciledCount,
+      completedAt,
+      inclusionTimeUpperBound: upperBound,
+    }) =>
+      `🏦 Commit-time deposit barrier reconciled ${reconciledCount} deposit UTxO(s); fetch completed at ${completedAt.toISOString()} and locked the visibility barrier at ${upperBound.toISOString()}.`,
+    reconcile: reconcileVisibleDepositUTxOs,
   });
 
 /**
@@ -278,11 +267,9 @@ export const fetchAndInsertDepositUTxOsFiber = (
   SDK.LucidError | DatabaseError,
   MidgardContracts | Lucid | Database | Globals | NodeConfig
 > =>
-  Effect.gen(function* () {
-    yield* Effect.logInfo("🏦 Fetch and insert DepositUTxOs to DepositsDB.");
-    const action = fetchAndInsertDepositUTxOs.pipe(
-      Effect.withSpan("fetch-and-inser-deposi-utxos-fiber"),
-      Effect.catchAllCause(Effect.logWarning),
-    );
-    yield* Effect.repeat(action, schedule);
+  repeatVisibleUserEventIngestionFiber({
+    schedule,
+    startLogMessage: "🏦 Fetch and insert DepositUTxOs to DepositsDB.",
+    spanName: "fetch-and-inser-deposi-utxos-fiber",
+    action: fetchAndInsertDepositUTxOs,
   });

@@ -1,8 +1,7 @@
-import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   E2E_STEP_SCHEMA_VERSION,
@@ -11,43 +10,13 @@ import {
   runCommandStep,
 } from "@/e2e/runner.js";
 
-let tempDirs: string[] = [];
+import {
+  createTrackedTempDirFactory,
+  waitForFile,
+  writeScript,
+} from "./helpers/temp-files.js";
 
-const makeTempDir = async (): Promise<string> => {
-  const dir = await mkdtemp(join(tmpdir(), "midgard-e2e-runner-"));
-  tempDirs.push(dir);
-  return dir;
-};
-
-afterEach(async () => {
-  await Promise.all(
-    tempDirs.map((dir) => rm(dir, { recursive: true, force: true })),
-  );
-  tempDirs = [];
-});
-
-const writeScript = async (
-  dir: string,
-  name: string,
-  source: string,
-): Promise<string> => {
-  const path = join(dir, name);
-  await writeFile(path, source, "utf8");
-  return path;
-};
-
-const waitForFile = async (path: string): Promise<void> => {
-  const deadline = Date.now() + 5_000;
-  while (Date.now() < deadline) {
-    try {
-      await access(path);
-      return;
-    } catch {
-      await new Promise((resolve) => setTimeout(resolve, 25));
-    }
-  }
-  throw new Error(`timed out waiting for ${path}`);
-};
+const makeTempDir = createTrackedTempDirFactory("midgard-e2e-runner-");
 
 describe("e2e step runner", () => {
   it("records successful JSON output and explicit submitted tx hashes", async () => {

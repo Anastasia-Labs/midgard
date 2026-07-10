@@ -1,9 +1,6 @@
-import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import type { Network } from "@lucid-evolution/lucid";
 
 export type L1ProviderSource = "kupmios";
-
-export type L1ProviderFailoverSource = never;
 
 export const L1_REWARD_ACCOUNT_REGISTRATION_SOURCES =
   "__midgardRewardAccountRegistrationSources";
@@ -14,18 +11,6 @@ export type L1RewardAccountRegistrationSource = {
   readonly url: string;
   readonly headers?: Record<string, string>;
 };
-
-export type L1ProviderQueryKind =
-  | "provider-health"
-  | "reward-account-registration"
-  | "protocol-parameters"
-  | "utxos-at"
-  | "utxos-by-outref"
-  | "datum"
-  | "evaluate-tx"
-  | "submit-tx"
-  | "await-tx"
-  | "tx-confirmation";
 
 export type L1ProviderFailureKind =
   | "rate_limited"
@@ -175,78 +160,6 @@ export const classifyProviderHttpResponse = ({
   };
 };
 
-export const classifyProviderError = (
-  error: unknown,
-): ProviderFailureClassification => {
-  const message = formatUnknownError(error, { includeCause: true });
-  const normalized = message.toLowerCase();
-  const statusMatch =
-    /status[_\s-]*code["']?\s*[:=]\s*(\d{3})/i.exec(message) ??
-    /status\s+(\d{3})/i.exec(message);
-  const status =
-    statusMatch === null ? undefined : Number.parseInt(statusMatch[1], 10);
-  if (
-    status === 402 ||
-    status === 429 ||
-    normalized.includes("project over limit") ||
-    normalized.includes("usage is over limit") ||
-    normalized.includes("too many requests") ||
-    normalized.includes("rate limit")
-  ) {
-    return {
-      kind: "rate_limited",
-      retryable: true,
-      rateLimitEligible: true,
-      ...(status === undefined ? {} : { status }),
-      summary: summarizeProviderBody(message),
-    };
-  }
-  if (
-    normalized.includes("unexpected token '<'") ||
-    normalized.includes("<html") ||
-    normalized.includes("is not valid json")
-  ) {
-    return {
-      kind: normalized.includes("html") ? "html_response" : "malformed_json",
-      retryable: true,
-      rateLimitEligible: true,
-      ...(status === undefined ? {} : { status }),
-      summary: summarizeProviderBody(message),
-    };
-  }
-  if (
-    normalized.includes("fetch failed") ||
-    normalized.includes("econnreset") ||
-    normalized.includes("econnrefused") ||
-    normalized.includes("socket") ||
-    normalized.includes("network")
-  ) {
-    return {
-      kind: "network_error",
-      retryable: true,
-      rateLimitEligible: false,
-      ...(status === undefined ? {} : { status }),
-      summary: summarizeProviderBody(message),
-    };
-  }
-  if (status !== undefined && status >= 500) {
-    return {
-      kind: "server_error",
-      retryable: true,
-      rateLimitEligible: false,
-      status,
-      summary: summarizeProviderBody(message),
-    };
-  }
-  return {
-    kind: "unknown",
-    retryable: false,
-    rateLimitEligible: false,
-    ...(status === undefined ? {} : { status }),
-    summary: summarizeProviderBody(message),
-  };
-};
-
 export const markProviderCooldown = ({
   source,
   reason,
@@ -287,18 +200,6 @@ export const clearProviderCooldownsForTest = (): void => {
   cooldowns.clear();
 };
 
-export const parseProviderFailoverSources = (
-  value: string,
-): readonly L1ProviderFailoverSource[] => {
-  const trimmed = value.trim();
-  if (trimmed.length === 0) {
-    return [];
-  }
-  throw new Error(
-    "L1_PROVIDER_FAILOVER is no longer supported for demo/midgard-node acceptance; use local Kupmios only.",
-  );
-};
-
 export const providerRouteSummary = ({
   network,
 }: {
@@ -306,10 +207,8 @@ export const providerRouteSummary = ({
   readonly network: Network;
 }): {
   readonly primary: L1ProviderSource;
-  readonly failover: readonly L1ProviderFailoverSource[];
   readonly network: Network;
 } => ({
   primary: "kupmios",
-  failover: [],
   network,
 });

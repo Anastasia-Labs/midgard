@@ -17,7 +17,6 @@ Covered tables:
 - `processed_mempool`
 - `mempool_tx_deltas`
 - `tx_rejections`
-- `deposit_ingestion_cursor`
 - `pending_block_finalizations`
 - `pending_block_finalization_deposits`
 - `pending_block_finalization_txs`
@@ -60,7 +59,6 @@ The migration runner creates `schema_migrations` and
 | `processed_mempool`                   | Durable holding area for tx payloads already incorporated into the mempool MPT while waiting for a later submit/finalization path. |
 | `mempool_tx_deltas`                   | Per-tx spent/produced delta cache used to build MPT roots from accepted mempool txs.                                               |
 | `tx_rejections`                       | Durable rejection evidence for validation, malformed preprocessing, and tx-status responses.                                       |
-| `deposit_ingestion_cursor`            | Intended durable stable-L1 deposit scan cursor. Currently schema and adapter exist, but production ingestion does not use it.      |
 | `pending_block_finalizations`         | Single-active journal for submitted or potentially submitted block finalization and recovery.                                      |
 | `pending_block_finalization_deposits` | Ordered deposit-event membership for a pending block journal.                                                                      |
 | `pending_block_finalization_txs`      | Ordered tx-id membership for a pending block journal.                                                                              |
@@ -417,90 +415,6 @@ Known gaps:
 - Startup readiness plans call contradictory rejection state an integrity
   problem
   ([04-startup-fail-closed-integrity.md](production-readiness-plans/04-startup-fail-closed-integrity.md#L516)).
-
-## `deposit_ingestion_cursor`
-
-### Purpose
-
-`deposit_ingestion_cursor` is intended to be the durable cursor for stable L1
-deposit discovery. It records which stable L1 view and scan upper bound were
-used, so deposit ingestion can be audited and resumed deterministically.
-
-Current implementation note: the table and adapter exist, but the production
-deposit fetch path does not currently read or advance this cursor. Deposit
-ingestion reconciles visible deposits directly
-([fetch-and-insert-deposit-utxos.ts](src/fibers/fetch-and-insert-deposit-utxos.ts#L213)).
-
-### Stored Information
-
-Schema:
-
-- `cursor_name TEXT PRIMARY KEY`
-- `stable_tip_hash TEXT NOT NULL`
-- `stable_tip_slot BIGINT NOT NULL`
-- `stable_tip_time_ms BIGINT NOT NULL`
-- `scan_upper_bound_time_ms BIGINT NOT NULL`
-- `last_scanned_event_id BYTEA NOT NULL`
-- `updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`
-
-Defined in
-[0001_initial_schema.sql](src/database/migrations/sql/0001_initial_schema.sql#L147).
-The adapter defines the default cursor name `stable_l1_deposits`, supports
-lookup, and upserts cursor advancement
-([depositIngestionCursor.ts](src/database/depositIngestionCursor.ts#L10),
-[depositIngestionCursor.ts](src/database/depositIngestionCursor.ts#L72)).
-
-### Writers
-
-No production writer was found in the current branch. The `advance` function is
-available but not called by the deposit fetch fiber or commit-time deposit
-barrier.
-
-### Readers
-
-No production reader was found in the current branch.
-
-### Lifecycle
-
-Intended lifecycle:
-
-1. Resolve a stable L1 view for deposits.
-2. Fetch deposits up to a stable scan bound.
-3. Insert or reconcile deposit rows.
-4. Advance the cursor in the same auditable operation.
-5. Use the cursor for startup/recovery/readiness checks.
-
-Current lifecycle:
-
-1. The fetcher reconciles visible deposit UTxOs into `deposits_utxos`.
-2. The commit-time barrier fetches visible deposits up to the requested upper
-   bound and returns that upper bound
-   ([fetch-and-insert-deposit-utxos.ts](src/fibers/fetch-and-insert-deposit-utxos.ts#L233)).
-3. No cursor row is advanced.
-
-### Relationships
-
-- Intended to relate stable L1 deposit discovery to `deposits_utxos`.
-- Should eventually support deposit ingestion readiness and fail-closed startup.
-
-### Invariants And Gaps
-
-Expected future invariants:
-
-- cursor advancement should be monotonic;
-- cursor advancement should happen only after deposits for that stable view have
-  been inserted or byte-compared;
-- startup should verify the cursor's stable L1 evidence if present.
-
-Known gaps:
-
-- Currently unused by production code.
-- Existing deposit projection docs describe the desired cursor-driven model, but
-  implementation is not fully wired
-  ([exact-once-deposit-projection.md](docs/exact-once-deposit-projection.md#L35)).
-- Production readiness plans call out missing cursor persistence and stable L1
-  verification
-  ([04-startup-fail-closed-integrity.md](production-readiness-plans/04-startup-fail-closed-integrity.md#L340)).
 
 ## `pending_block_finalizations`
 
@@ -1224,8 +1138,6 @@ gaps are about proving that SQL evidence and persistent MPT roots agree:
 - `processed_mempool` should explain non-empty mempool MPT state.
 - `mempool_tx_deltas` should have lifecycle owners.
 - `blocks`/`immutable` should replay to expected state-queue roots.
-- future `latest_ledger` work may add an auditable submitted-tip SQL cache, but
-  it must remain derived and root-checked.
 
 ### Migration integrity
 

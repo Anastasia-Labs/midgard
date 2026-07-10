@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  classifyOldestQueuedBlockCandidateReadiness,
   classifyOldestQueuedBlockReadiness,
+  mergeCandidateIdentity,
+  mergeSubmitValidityEvidence,
   planMergeLocalLedgerReadiness,
   planMergePreflight,
 } from "@/transactions/state-queue/merge-readiness.js";
@@ -118,6 +121,94 @@ describe("merge readiness planner", () => {
     });
   });
 
+  it("derives a stable merge candidate identity from semantic readiness evidence", () => {
+    const baseIdentityInput = {
+      firstBlockOutRef: `${"aa".repeat(32)}#0`,
+      headerHash: "11".repeat(28),
+      currentDaAttestation: "22".repeat(28),
+      requiredDaAttestation: "33".repeat(28),
+      readyAfterUnixTime: 300,
+    };
+
+    expect(mergeCandidateIdentity(baseIdentityInput)).toBe(
+      [
+        baseIdentityInput.firstBlockOutRef,
+        baseIdentityInput.headerHash,
+        baseIdentityInput.currentDaAttestation,
+        baseIdentityInput.requiredDaAttestation,
+        baseIdentityInput.readyAfterUnixTime.toString(),
+      ].join("|"),
+    );
+
+    const variants = [
+      { firstBlockOutRef: `${"bb".repeat(32)}#0` },
+      { headerHash: "44".repeat(28) },
+      { currentDaAttestation: "55".repeat(28) },
+      { requiredDaAttestation: "66".repeat(28) },
+      { readyAfterUnixTime: 301 },
+    ];
+    for (const variant of variants) {
+      expect(
+        mergeCandidateIdentity({
+          ...baseIdentityInput,
+          ...variant,
+        }),
+      ).not.toBe(mergeCandidateIdentity(baseIdentityInput));
+    }
+  });
+
+  it("carries candidate identity and validity evidence with semantic readiness", () => {
+    expect(
+      classifyOldestQueuedBlockCandidateReadiness({
+        firstBlockOutRef: `${"aa".repeat(32)}#0`,
+        headerHash: "11".repeat(28),
+        currentDaAttestation: "22".repeat(28),
+        requiredDaAttestation: "22".repeat(28),
+        validFromUnixTime: 280,
+        readyAfterUnixTime: 300,
+        nowUnixTime: 250,
+      }),
+    ).toMatchObject({
+      status: "skipped_oldest_block_not_mature",
+      firstBlockOutRef: `${"aa".repeat(32)}#0`,
+      candidateIdentity: [
+        `${"aa".repeat(32)}#0`,
+        "11".repeat(28),
+        "22".repeat(28),
+        "22".repeat(28),
+        "300",
+      ].join("|"),
+      validFromUnixTime: 280,
+      readyAfterUnixTime: 300,
+      nowUnixTime: 250,
+    });
+  });
+
+  it("keeps semantic oldest-block readiness independent from force batching", () => {
+    expect(
+      planMergePreflight({
+        ...baseInput,
+        force: true,
+      }),
+    ).toMatchObject({
+      status: "ready",
+      bypassQueueLengthGuard: true,
+    });
+    expect(
+      classifyOldestQueuedBlockCandidateReadiness({
+        firstBlockOutRef: `${"aa".repeat(32)}#0`,
+        headerHash: "11".repeat(28),
+        currentDaAttestation: "22".repeat(28),
+        requiredDaAttestation: "22".repeat(28),
+        validFromUnixTime: 280,
+        readyAfterUnixTime: 300,
+        nowUnixTime: 250,
+      }),
+    ).toMatchObject({
+      status: "skipped_oldest_block_not_mature",
+    });
+  });
+
   it("retry-laters before volatile merge inputs when local ledger lags validFrom plus buffer", () => {
     expect(
       planMergeLocalLedgerReadiness({
@@ -154,6 +245,54 @@ describe("merge readiness planner", () => {
         dependencyKey: "merge:header:126544954",
         invalidationKey: "merge:header:126544954",
       },
+    });
+  });
+
+  it("retry-laters every positive local-ledger wait in no-inline mode", () => {
+    const evidence = mergeSubmitValidityEvidence({
+      headerHash: "11".repeat(28),
+      candidateIdentity: "candidate-a",
+      validFromSlot: 126544954,
+    });
+
+    const decision = planMergeLocalLedgerReadiness({
+      validFromSlot: evidence.validFromSlot,
+      localLedgerSlot: 126544955,
+      maxWaitMs: 120_000,
+      inlineWaitPolicy: "defer_positive_wait",
+      dependencyKey: evidence.dependencyKey,
+      invalidationKey: evidence.invalidationKey,
+    });
+
+    expect(decision).toMatchObject({
+      status: "retry_later",
+      targetSlot: 126544956,
+      deltaSlots: 1,
+      waitMs: 1_000,
+      submitTimingNotDuePlan: {
+        status: "not_due",
+        reason: "inline_wait_policy=defer_positive_wait,wait_ms=1000",
+        dependencyKey: evidence.dependencyKey,
+        invalidationKey: evidence.invalidationKey,
+      },
+    });
+  });
+
+  it("derives merge submit-validity evidence from candidate identity and slots", () => {
+    expect(
+      mergeSubmitValidityEvidence({
+        headerHash: "11".repeat(28),
+        candidateIdentity: "candidate-a",
+        validFromSlot: 126544954,
+      }),
+    ).toEqual({
+      key: "merge:candidate-a:126544954:126544956",
+      dependencyKey: "merge:candidate-a:126544954:126544956",
+      invalidationKey: "merge:candidate-a:126544954:126544956",
+      headerHash: "11".repeat(28),
+      validFromSlot: 126544954,
+      targetSlot: 126544956,
+      candidateIdentity: "candidate-a",
     });
   });
 

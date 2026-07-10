@@ -5,7 +5,9 @@ import { describe, expect, it, vi } from "vitest";
 import {
   handleSignSubmitNoConfirmation,
   inspectSignedTxValidityInterval,
+  isNoInlineSubmitDefer,
   isUnknownOutputReferenceSubmitError,
+  NoInlineSubmitDefer,
   parseOutsideValidityIntervalDetails,
   resolveEarlyValidityRetryDelayMs,
   signSubmitTransaction,
@@ -462,6 +464,174 @@ describe("validity-window submit recovery", () => {
     expect(waits).toEqual([1_000]);
   });
 
+  it("defers pre-submit validity waits in no-inline mode without sleeping or submitting", async () => {
+    const waits: number[] = [];
+    const submitProgram = vi.fn(() => Effect.void);
+    const signed = {
+      toCBOR: () =>
+        signedTxCbor({
+          invalidBeforeSlot: 126544954,
+          invalidHereafterSlot: 126545000,
+        }),
+      submitProgram,
+    };
+
+    const result = await Effect.runPromise(
+      Effect.either(
+        submitSignedTxWithRecovery(
+          { awaitTx: vi.fn() } as never,
+          signed as never,
+          "tx-pre-submit-no-inline",
+          {
+            inlineWaitPolicy: "defer_positive_wait",
+            noInlineSubmitDefer: {
+              key: "pre-submit-key",
+              dependencyKey: "dep-pre-submit",
+              invalidationKey: "inv-pre-submit",
+            },
+            slotSnapshot: () =>
+              Effect.succeed({
+                source: "test",
+                currentSlot: 126544938,
+                observedAtMs: 1_779_150_000_000,
+                slotLengthMs: 1_000,
+              }),
+            sleep: (milliseconds) =>
+              Effect.sync(() => waits.push(milliseconds)),
+          },
+        ),
+      ),
+    );
+
+    expect(result._tag).toBe("Left");
+    if (result._tag !== "Left") {
+      throw new Error("expected no-inline defer");
+    }
+    const defer = expectNoInlineSubmitDefer(result.left);
+    expect(defer).toBeInstanceOf(NoInlineSubmitDefer);
+    expect(defer).toMatchObject({
+      kind: "pre_submit_validity",
+      key: "pre-submit-key",
+      txHash: "tx-pre-submit-no-inline",
+      currentSlot: 126544938,
+      targetSlot: 126544956,
+      dueSlot: 126544956,
+      waitMs: 18_000,
+      slotSource: "test",
+      dependencyKey: "dep-pre-submit",
+      invalidationKey: "inv-pre-submit",
+      invalidBeforeSlot: 126544954,
+      invalidHereafterSlot: 126545000,
+    });
+    expect(submitProgram).not.toHaveBeenCalled();
+    expect(waits).toEqual([]);
+  });
+
+  it("defers early-validity recovery waits in no-inline mode without sleeping", async () => {
+    const waits: number[] = [];
+    const submitProgram = vi.fn(() => Effect.fail(outsideValidityError));
+    const signed = { submitProgram };
+
+    const result = await Effect.runPromise(
+      Effect.either(
+        submitSignedTxWithRecovery(
+          fakeLucid as never,
+          signed as never,
+          "tx-early-validity-no-inline",
+          {
+            inlineWaitPolicy: "defer_positive_wait",
+            noInlineSubmitDefer: {
+              key: "early-validity-key",
+              dependencyKey: "dep-early-validity",
+              invalidationKey: "inv-early-validity",
+            },
+            sleep: (milliseconds) =>
+              Effect.sync(() => waits.push(milliseconds)),
+          },
+        ),
+      ),
+    );
+
+    expect(result._tag).toBe("Left");
+    if (result._tag !== "Left") {
+      throw new Error("expected no-inline defer");
+    }
+    expect(expectNoInlineSubmitDefer(result.left)).toMatchObject({
+      kind: "early_validity_recovery",
+      key: "early-validity-key",
+      txHash: "tx-early-validity-no-inline",
+      currentSlot: 7,
+      targetSlot: 12,
+      dueSlot: 12,
+      waitMs: 5_000,
+      slotSource: "test",
+      dependencyKey: "dep-early-validity",
+      invalidationKey: "inv-early-validity",
+      invalidBeforeSlot: 10,
+      invalidHereafterSlot: 20,
+    });
+    expect(submitProgram).toHaveBeenCalledTimes(1);
+    expect(waits).toEqual([]);
+  });
+
+  it("defers provider slot waits in no-inline mode without sleeping", async () => {
+    const waits: number[] = [];
+    const submitProgram = vi.fn(() => Effect.fail(outsideValidityError));
+    const signed = {
+      toCBOR: () =>
+        signedTxCbor({ invalidBeforeSlot: 10, invalidHereafterSlot: 20 }),
+      submitProgram,
+    };
+
+    const result = await Effect.runPromise(
+      Effect.either(
+        submitSignedTxWithRecovery(
+          { awaitTx: vi.fn() } as never,
+          signed as never,
+          "tx-provider-no-inline",
+          {
+            inlineWaitPolicy: "defer_positive_wait",
+            noInlineSubmitDefer: {
+              key: "provider-slot-key",
+              dependencyKey: "dep-provider-slot",
+              invalidationKey: "inv-provider-slot",
+            },
+            slotSnapshot: () =>
+              Effect.succeed({
+                source: "test",
+                currentSlot: 12,
+                observedAtMs: 1_779_150_000_000,
+                slotLengthMs: 1_000,
+              }),
+            sleep: (milliseconds) =>
+              Effect.sync(() => waits.push(milliseconds)),
+          },
+        ),
+      ),
+    );
+
+    expect(result._tag).toBe("Left");
+    if (result._tag !== "Left") {
+      throw new Error("expected no-inline defer");
+    }
+    expect(expectNoInlineSubmitDefer(result.left)).toMatchObject({
+      kind: "provider_slot_wait",
+      key: "provider-slot-key",
+      txHash: "tx-provider-no-inline",
+      currentSlot: 7,
+      targetSlot: 12,
+      dueSlot: 12,
+      waitMs: 5_000,
+      slotSource: "provider",
+      dependencyKey: "dep-provider-slot",
+      invalidationKey: "inv-provider-slot",
+      invalidBeforeSlot: 10,
+      invalidHereafterSlot: 20,
+    });
+    expect(submitProgram).toHaveBeenCalledTimes(1);
+    expect(waits).toEqual([]);
+  });
+
   it("advances emulator provider slots during default pre-submit waits", async () => {
     const provider = {
       slot: 7,
@@ -595,6 +765,40 @@ describe("validity-window submit recovery", () => {
       true,
     );
   });
+
+  it("does not sleep for generic provider retries in no-inline mode", async () => {
+    const waits: number[] = [];
+    const providerError = new Error("fetch failed");
+    const submitProgram = vi.fn(() => Effect.fail(providerError));
+    const signed = { submitProgram };
+
+    const result = await Effect.runPromise(
+      Effect.either(
+        submitSignedTxWithRecovery(
+          fakeLucid as never,
+          signed as never,
+          "tx-no-inline-provider-error",
+          {
+            inlineWaitPolicy: "defer_positive_wait",
+            noInlineSubmitDefer: {
+              key: "provider-error-key",
+              dependencyKey: "dep-provider-error",
+              invalidationKey: "inv-provider-error",
+            },
+            sleep: (milliseconds) =>
+              Effect.sync(() => waits.push(milliseconds)),
+          },
+        ),
+      ),
+    );
+
+    expect(result._tag).toBe("Left");
+    expect(String((result as { readonly left: unknown }).left)).toContain(
+      "refusing provider retry sleep under ownership",
+    );
+    expect(submitProgram).toHaveBeenCalledTimes(1);
+    expect(waits).toEqual([]);
+  });
 });
 
 describe("sign/submit wrapper recovery options", () => {
@@ -653,7 +857,146 @@ describe("sign/submit wrapper recovery options", () => {
     expect(result._tag).toBe("Left");
     expect(submitProgram).not.toHaveBeenCalled();
   });
+
+  it("preserves no-inline submit defer through signSubmitTransaction", async () => {
+    const submitProgram = vi.fn(() => Effect.void);
+    const signed = {
+      toCBOR: () =>
+        signedTxCbor({ invalidBeforeSlot: 10, invalidHereafterSlot: 20 }),
+      submitProgram,
+    };
+
+    const result = await Effect.runPromise(
+      Effect.either(
+        signSubmitTransaction(
+          fakeWrapperLucid() as never,
+          fakeSignBuilder(signed),
+          {
+            inlineWaitPolicy: "defer_positive_wait",
+            noInlineSubmitDefer: {
+              key: "sign-submit-key",
+              dependencyKey: "dep-sign-submit",
+              invalidationKey: "inv-sign-submit",
+            },
+            slotSnapshot: () =>
+              Effect.succeed({
+                source: "test",
+                currentSlot: 7,
+                observedAtMs: 1_779_150_000_000,
+                slotLengthMs: 1_000,
+              }),
+            sleep: (milliseconds) =>
+              Effect.sync(() => {
+                throw new Error(`unexpected sleep ${milliseconds.toString()}`);
+              }),
+          },
+        ),
+      ),
+    );
+
+    expect(result._tag).toBe("Left");
+    if (result._tag !== "Left") {
+      throw new Error("expected no-inline defer");
+    }
+    expect(expectNoInlineSubmitDefer(result.left)).toMatchObject({
+      kind: "pre_submit_validity",
+      key: "sign-submit-key",
+      txHash: "tx-wrapper",
+      currentSlot: 7,
+      targetSlot: 12,
+      waitMs: 5_000,
+    });
+    expect(submitProgram).not.toHaveBeenCalled();
+  });
+
+  it("exposes no-inline no-confirmation defers as a result union", async () => {
+    const submitProgram = vi.fn(() => Effect.void);
+    const signed = {
+      toCBOR: () =>
+        signedTxCbor({ invalidBeforeSlot: 10, invalidHereafterSlot: 20 }),
+      submitProgram,
+    };
+
+    const result = await Effect.runPromise(
+      handleSignSubmitNoConfirmation(
+        fakeWrapperLucid() as never,
+        fakeSignBuilder(signed),
+        {
+          inlineWaitPolicy: "defer_positive_wait",
+          noInlineSubmitDefer: {
+            key: "no-confirm-key",
+            dependencyKey: "dep-no-confirm",
+            invalidationKey: "inv-no-confirm",
+          },
+          slotSnapshot: () =>
+            Effect.succeed({
+              source: "test",
+              currentSlot: 7,
+              observedAtMs: 1_779_150_000_000,
+              slotLengthMs: 1_000,
+            }),
+          sleep: (milliseconds) =>
+            Effect.sync(() => {
+              throw new Error(`unexpected sleep ${milliseconds.toString()}`);
+            }),
+        },
+      ),
+    );
+
+    expect(result.status).toBe("deferred");
+    if (result.status !== "deferred") {
+      throw new Error("expected deferred result");
+    }
+    expect(result.defer).toMatchObject({
+      kind: "pre_submit_validity",
+      key: "no-confirm-key",
+      txHash: "tx-wrapper",
+      currentSlot: 7,
+      targetSlot: 12,
+      waitMs: 5_000,
+    });
+    expect(submitProgram).not.toHaveBeenCalled();
+  });
+
+  it("exposes no-inline no-confirmation submissions as a result union", async () => {
+    const submitProgram = vi.fn(() => Effect.void);
+    const signed = {
+      toCBOR: () =>
+        signedTxCbor({ invalidBeforeSlot: 10, invalidHereafterSlot: 20 }),
+      submitProgram,
+    };
+
+    const result = await Effect.runPromise(
+      handleSignSubmitNoConfirmation(
+        fakeWrapperLucid() as never,
+        fakeSignBuilder(signed),
+        {
+          inlineWaitPolicy: "defer_positive_wait",
+          noInlineSubmitDefer: {
+            key: "no-confirm-submitted-key",
+            dependencyKey: "dep-no-confirm-submitted",
+            invalidationKey: "inv-no-confirm-submitted",
+          },
+          slotSnapshot: () =>
+            Effect.succeed({
+              source: "test",
+              currentSlot: 12,
+              observedAtMs: 1_779_150_000_000,
+              slotLengthMs: 1_000,
+            }),
+        },
+      ),
+    );
+
+    expect(result).toEqual({ status: "submitted", txHash: "tx-wrapper" });
+    expect(submitProgram).toHaveBeenCalledTimes(1);
+  });
 });
+
+const expectNoInlineSubmitDefer = (value: unknown): NoInlineSubmitDefer => {
+  expect(isNoInlineSubmitDefer(value)).toBe(true);
+  return value as NoInlineSubmitDefer;
+};
 
 const unknownInputMessage = () =>
   'KupmiosError: {"error":{"data":{"unknownOutputReferences":[{"transaction":{"id":"abc"},"index":0}]}}}';

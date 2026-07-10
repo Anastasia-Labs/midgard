@@ -80,6 +80,39 @@ const validationOldestQueuedTxAgeGauge = Metric.gauge(
   },
 );
 
+const validationQueueWaitDurationTimer = Metric.timer(
+  "validation_queue_wait_duration",
+  "Time from durable admission first_seen_at to validation_started_at in milliseconds",
+);
+
+const validationQueueWaitMaxGauge = Metric.gauge(
+  "validation_queue_wait_max_ms",
+  {
+    description:
+      "Maximum first_seen_at to validation_started_at wait in the latest claimed batch",
+  },
+);
+
+const validationEventWakeupCounter = Metric.counter(
+  "validation_event_wakeup_count",
+  {
+    description:
+      "Number of event-driven tx queue wakeups requested after durable admission",
+    bigint: true,
+    incremental: true,
+  },
+);
+
+const validationCoalescedWakeupCounter = Metric.counter(
+  "validation_coalesced_wakeup_count",
+  {
+    description:
+      "Number of tx queue wakeup requests coalesced behind an active processor",
+    bigint: true,
+    incremental: true,
+  },
+);
+
 const validationBatchDurationTimer = Metric.timer(
   "validation_batch_duration",
   "End-to-end validation batch duration in milliseconds",
@@ -358,6 +391,22 @@ const txQueueProcessorAction = (): Effect.Effect<
       return;
     }
 
+    const queueWaits = admittedRows.map((row) =>
+      Math.max(
+        0,
+        (row.validation_started_at ?? new Date()).getTime() -
+          row.first_seen_at.getTime(),
+      ),
+    );
+    for (const waitMs of queueWaits) {
+      yield* validationQueueWaitDurationTimer(
+        Effect.succeed(Duration.millis(waitMs)),
+      );
+    }
+    const maxQueueWaitMs =
+      queueWaits.length === 0 ? 0 : Math.max(...queueWaits);
+    yield* validationQueueWaitMaxGauge(Effect.succeed(maxQueueWaitMs));
+
     yield* validationBatchSizeGauge(
       Effect.succeed(BigInt(admittedRows.length)),
     );
@@ -446,7 +495,7 @@ const txQueueProcessorAction = (): Effect.Effect<
       cachedUtxoStateVersion = yield* Ref.get(globals.MEMPOOL_LEDGER_VERSION);
 
       yield* Effect.logInfo(
-        `tx-queue validation batch done: queued=${admittedRows.length}, accepted=${phaseB.accepted.length}, rejected=${allRejected.length}, expired_leases_requeued=${expiredLeaseCount}, rejected_by_code=[${summarizeRejections(allRejected)}]`,
+        `tx-queue validation batch done: queued=${admittedRows.length}, accepted=${phaseB.accepted.length}, rejected=${allRejected.length}, expired_leases_requeued=${expiredLeaseCount}, queue_wait_max_ms=${maxQueueWaitMs.toString()}, rejected_by_code=[${summarizeRejections(allRejected)}]`,
       );
       yield* validationBatchDurationTimer(
         Effect.succeed(Duration.millis(Date.now() - batchStart)),
@@ -461,6 +510,56 @@ const txQueueProcessorAction = (): Effect.Effect<
     }
   });
 
+const txQueueProcessorDrainLoop = (): Effect.Effect<
+  void,
+  DatabaseError,
+  SqlClient | NodeConfig | Globals | Lucid
+> =>
+  Effect.gen(function* () {
+    const globals = yield* Globals;
+    let keepDraining = true;
+    while (keepDraining) {
+      yield* Ref.set(globals.TX_QUEUE_WAKE_REQUESTED, false);
+      yield* txQueueProcessorAction();
+      keepDraining = yield* Ref.get(globals.TX_QUEUE_WAKE_REQUESTED);
+      if (keepDraining) {
+        yield* Metric.increment(validationCoalescedWakeupCounter);
+      }
+    }
+  });
+
+export const txQueueProcessorDrainOnce = (): Effect.Effect<
+  void,
+  DatabaseError,
+  SqlClient | NodeConfig | Globals | Lucid
+> =>
+  Effect.gen(function* () {
+    const globals = yield* Globals;
+    const active = yield* Ref.get(globals.TX_QUEUE_PROCESSOR_ACTIVE);
+    if (active) {
+      yield* Ref.set(globals.TX_QUEUE_WAKE_REQUESTED, true);
+      yield* Metric.increment(validationCoalescedWakeupCounter);
+      return;
+    }
+    yield* Ref.set(globals.TX_QUEUE_PROCESSOR_ACTIVE, true);
+    yield* txQueueProcessorDrainLoop().pipe(
+      Effect.ensuring(Ref.set(globals.TX_QUEUE_PROCESSOR_ACTIVE, false)),
+    );
+  });
+
+export const requestTxQueueProcessorWakeup: Effect.Effect<
+  void,
+  never,
+  SqlClient | NodeConfig | Globals | Lucid
+> = Effect.gen(function* () {
+  const globals = yield* Globals;
+  yield* Ref.set(globals.TX_QUEUE_WAKE_REQUESTED, true);
+  yield* Metric.increment(validationEventWakeupCounter);
+  yield* Effect.forkDaemon(
+    txQueueProcessorDrainOnce().pipe(Effect.catchAllCause(Effect.logWarning)),
+  );
+});
+
 /**
  * Fiber wrapper that repeats queue-drain and validation work on the provided
  * schedule.
@@ -470,5 +569,8 @@ export const txQueueProcessorFiber = (
 ): Effect.Effect<void, never, SqlClient | NodeConfig | Globals | Lucid> =>
   Effect.gen(function* () {
     yield* Effect.logInfo("🔶 Tx queue processor fiber started.");
-    yield* repeatScheduledWithCauseLogging(txQueueProcessorAction(), schedule);
+    yield* repeatScheduledWithCauseLogging(
+      txQueueProcessorDrainOnce(),
+      schedule,
+    );
   });

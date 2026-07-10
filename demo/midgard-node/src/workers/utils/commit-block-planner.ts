@@ -5,8 +5,8 @@ import {
   EntryWithTimeStamp,
 } from "@/database/utils/tx.js";
 import type { SubmitSlotSnapshot } from "@/local-ledger-slot.js";
-import { slotAwareDueWorkFromSubmitTiming } from "@/transactions/submit-timing-due-work.js";
 import { planSubmitTiming } from "@/transactions/submit-timing.js";
+import { slotAwareDueWorkFromSubmitTiming } from "@/transactions/submit-timing-due-work.js";
 import type { CommitEndTimeFit } from "@/workers/utils/commit-end-time.js";
 
 export type SuccessfulCommitBatch = {
@@ -22,6 +22,64 @@ export type CommitTxCandidateSelection = {
   readonly candidateTxHashes: readonly Buffer[];
   readonly candidateTxsSize: number;
   readonly sourceTable: CommitTxSourceTable;
+};
+
+export type CommitBatchStopReason =
+  | "tx_count_budget"
+  | "tx_bytes_budget"
+  | "ledger_ops_budget"
+  | "transition_steps_budget"
+  | "da_payload_budget"
+  | "commit_tx_budget"
+  | "latency_budget"
+  | "mempool_exhausted";
+
+export type CommitBatchBudgetLimits = {
+  readonly maxL2TxCount: number;
+  readonly maxCanonicalTxBytes: number;
+  readonly maxLedgerOpCount: number;
+  readonly maxTransitionStepCount: number;
+  readonly maxDaPayloadBytes: number;
+  readonly maxCommitTxBytes: number;
+  readonly maxEstimatedCommitBuildMs: number;
+  readonly estimatedLedgerOpsPerTx: number;
+  readonly estimatedTransitionStepsPerTx: number;
+  readonly estimatedDaOverheadBytesPerTx: number;
+  readonly estimatedCommitTxOverheadBytes: number;
+  readonly estimatedCommitBuildMsPerTx: number;
+};
+
+export type CommitBatchPlan = {
+  readonly selectedTxCount: number;
+  readonly selectedTxBytes: number;
+  readonly selectedLedgerOpCount: number;
+  readonly selectedTransitionStepCount: number;
+  readonly estimatedDaPayloadBytes: number;
+  readonly estimatedCommitTxBytes: number;
+  readonly estimatedCommitBuildMs: number;
+  readonly stopReason: CommitBatchStopReason;
+};
+
+export type PlannedCommitBatchSelection = {
+  readonly candidateSelection: CommitTxCandidateSelection;
+  readonly plan: CommitBatchPlan;
+  readonly originalTxCount: number;
+  readonly prunedTxCount: number;
+};
+
+export const DEFAULT_COMMIT_BATCH_BUDGET_LIMITS: CommitBatchBudgetLimits = {
+  maxL2TxCount: 10_000,
+  maxCanonicalTxBytes: 32 * 1024 * 1024,
+  maxLedgerOpCount: 40_000,
+  maxTransitionStepCount: 40_000,
+  maxDaPayloadBytes: 64 * 1024 * 1024,
+  maxCommitTxBytes: 128 * 1024,
+  maxEstimatedCommitBuildMs: 30_000,
+  estimatedLedgerOpsPerTx: 2,
+  estimatedTransitionStepsPerTx: 1,
+  estimatedDaOverheadBytesPerTx: 128,
+  estimatedCommitTxOverheadBytes: 512,
+  estimatedCommitBuildMsPerTx: 1,
 };
 
 export type CurrentOperatorSchedulerWindow = {
@@ -197,6 +255,7 @@ export const planEarliestCommitSchedulerDueWork = ({
     slotSnapshot: submitSlotSnapshot,
     slotSnapshotError: submitSlotSnapshotError,
     maxInlineWaitMs,
+    inlineWaitPolicy: "defer_positive_wait",
     dependencyKey,
     invalidationKey: dependencyKey,
   });
@@ -296,6 +355,100 @@ const buildCommitTxCandidateSelection = (
   ),
   sourceTable: candidateTxs.length > 0 ? sourceTable : "none",
 });
+
+const estimateCommitBatchPlan = (
+  txs: readonly EntryWithTimeStamp[],
+  limits: CommitBatchBudgetLimits,
+  stopReason: CommitBatchStopReason,
+): CommitBatchPlan => {
+  const selectedTxBytes = txs.reduce(
+    (total, entry) => total + entry[TxColumns.TX].length,
+    0,
+  );
+  const selectedTxCount = txs.length;
+  return {
+    selectedTxCount,
+    selectedTxBytes,
+    selectedLedgerOpCount: selectedTxCount * limits.estimatedLedgerOpsPerTx,
+    selectedTransitionStepCount:
+      selectedTxCount * limits.estimatedTransitionStepsPerTx,
+    estimatedDaPayloadBytes:
+      selectedTxBytes + selectedTxCount * limits.estimatedDaOverheadBytesPerTx,
+    estimatedCommitTxBytes:
+      limits.estimatedCommitTxOverheadBytes + selectedTxCount * 32,
+    estimatedCommitBuildMs:
+      selectedTxCount * limits.estimatedCommitBuildMsPerTx,
+    stopReason,
+  };
+};
+
+const firstExceededBudget = (
+  plan: CommitBatchPlan,
+  limits: CommitBatchBudgetLimits,
+): CommitBatchStopReason | null => {
+  if (plan.selectedTxCount > limits.maxL2TxCount) {
+    return "tx_count_budget";
+  }
+  if (plan.selectedTxBytes > limits.maxCanonicalTxBytes) {
+    return "tx_bytes_budget";
+  }
+  if (plan.selectedLedgerOpCount > limits.maxLedgerOpCount) {
+    return "ledger_ops_budget";
+  }
+  if (plan.selectedTransitionStepCount > limits.maxTransitionStepCount) {
+    return "transition_steps_budget";
+  }
+  if (plan.estimatedDaPayloadBytes > limits.maxDaPayloadBytes) {
+    return "da_payload_budget";
+  }
+  if (plan.estimatedCommitTxBytes > limits.maxCommitTxBytes) {
+    return "commit_tx_budget";
+  }
+  if (plan.estimatedCommitBuildMs > limits.maxEstimatedCommitBuildMs) {
+    return "latency_budget";
+  }
+  return null;
+};
+
+export const planCommitBatchBudgets = ({
+  candidateSelection,
+  limits = DEFAULT_COMMIT_BATCH_BUDGET_LIMITS,
+}: {
+  readonly candidateSelection: CommitTxCandidateSelection;
+  readonly limits?: CommitBatchBudgetLimits;
+}): PlannedCommitBatchSelection => {
+  const selected: EntryWithTimeStamp[] = [];
+  let stopReason: CommitBatchStopReason = "mempool_exhausted";
+
+  for (const candidate of candidateSelection.candidateTxs) {
+    const next = [...selected, candidate];
+    const nextPlan = estimateCommitBatchPlan(next, limits, "mempool_exhausted");
+    const exceeded = firstExceededBudget(nextPlan, limits);
+    if (exceeded !== null) {
+      stopReason = exceeded;
+      break;
+    }
+    selected.push(candidate);
+  }
+
+  const candidateTxs =
+    candidateSelection.candidateTxs.length > 0 && selected.length === 0
+      ? [candidateSelection.candidateTxs[0]!]
+      : selected;
+  const finalPlan = estimateCommitBatchPlan(candidateTxs, limits, stopReason);
+  return {
+    candidateSelection: buildCommitTxCandidateSelection(
+      candidateTxs,
+      candidateSelection.sourceTable,
+    ),
+    plan: finalPlan,
+    originalTxCount: candidateSelection.candidateTxs.length,
+    prunedTxCount: Math.max(
+      0,
+      candidateSelection.candidateTxs.length - candidateTxs.length,
+    ),
+  };
+};
 
 export const planSchedulerAwareCommitSelection = ({
   candidateSelection,

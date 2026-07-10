@@ -30,24 +30,26 @@ import {
   fetchReferenceScriptUtxosProgram,
   referenceScriptByName,
 } from "@/transactions/reference-scripts.js";
+import { planSubmitTiming } from "@/transactions/submit-timing.js";
 import {
   slotAwareDueWorkFromSubmitTiming,
   type SubmitTimingNotDuePlanWithDueWorkEvidence,
 } from "@/transactions/submit-timing-due-work.js";
-import { planSubmitTiming } from "@/transactions/submit-timing.js";
 import {
   handleSignSubmitNoConfirmation,
+  type NoInlineSubmitDefer,
+  type NoInlineSubmitRecoveryOptions,
   type TxSignError,
   type TxSubmitError,
 } from "@/transactions/utils.js";
 import { compareOutRefs, outRefLabel } from "@/tx-context.js";
 import {
-  planEarliestCommitSchedulerDueWork,
   type CommitSchedulerDiscoveryStage,
   type CommitSchedulerState,
   type CommitSchedulerStateQueueEvidence,
   type CurrentOperatorSchedulerWindow,
   type EarliestCommitSchedulerPlan,
+  planEarliestCommitSchedulerDueWork,
 } from "@/workers/utils/commit-block-planner.js";
 import { alignUnixTimeToSlotBoundary } from "@/workers/utils/commit-end-time.js";
 
@@ -73,15 +75,37 @@ export type CommitTimingDueWork = {
   readonly dueWork: SlotAwareDueWork;
 };
 
+export const schedulerRefreshDependencyKey = ({
+  schedulerOutRef,
+  currentOperator,
+  currentStartTime,
+  targetOperator,
+  selectionKind,
+}: {
+  readonly schedulerOutRef: string;
+  readonly currentOperator: string;
+  readonly currentStartTime: bigint;
+  readonly targetOperator: string;
+  readonly selectionKind: SchedulerRefreshWitnessSelection["kind"];
+}): string =>
+  [
+    `scheduler=${schedulerOutRef}`,
+    `current_operator=${currentOperator}`,
+    `current_start=${currentStartTime.toString()}`,
+    `target_operator=${targetOperator}`,
+    `selection=${selectionKind}`,
+  ].join(",");
+
 export const schedulerRefreshDueWorkFromSubmitTiming = (input: {
   readonly plan: SubmitTimingNotDuePlanWithDueWorkEvidence;
+  readonly reason?: string;
 }): CommitTimingDueWork => ({
   type: "CommitTimingDueWork",
   dueWork: slotAwareDueWorkFromSubmitTiming({
     kind: "commit_scheduler_refresh",
     key: "block_commitment",
     callerLabel: "scheduler-refresh",
-    reason: "scheduler_transition_not_reached",
+    reason: input.reason ?? "scheduler_transition_not_reached",
     plan: input.plan,
   }),
 });
@@ -110,7 +134,7 @@ type SchedulerAlignmentResult =
     }
   | CommitTimingDueWork;
 
-type ActiveSchedulerState = {
+export type ActiveSchedulerState = {
   readonly operator: string;
   readonly startTime: bigint;
 };
@@ -125,6 +149,85 @@ const SCHEDULER_TRANSITION_VALIDITY_WINDOW_MS = 8n * 60n * 1000n;
 const SCHEDULER_REFRESH_VALID_FROM_BACKDATE_MS = 30_000;
 const SCHEDULER_FIRST_APPOINTMENT_MIN_VALIDITY_GAP_MS = 30n * 1000n;
 const SCHEDULER_MAX_PRE_SUBMIT_WAIT_MS = 120_000;
+
+export const schedulerRefreshDueWorkFromNoInlineSubmitDefer = ({
+  defer,
+  localSubmitSlot,
+  nowMs,
+}: {
+  readonly defer: NoInlineSubmitDefer;
+  readonly localSubmitSlot?: SubmitSlotSnapshot;
+  readonly nowMs: number;
+}): CommitTimingDueWork => {
+  const providerSlotWait = defer.kind === "provider_slot_wait";
+  const observedSlot =
+    providerSlotWait && localSubmitSlot !== undefined
+      ? localSubmitSlot.currentSlot
+      : defer.currentSlot;
+  const slotLengthMs = Math.max(
+    1,
+    Math.floor(localSubmitSlot?.slotLengthMs ?? 1_000),
+  );
+  const dueSlot =
+    providerSlotWait && localSubmitSlot !== undefined
+      ? localSubmitSlot.currentSlot +
+        Math.max(1, Math.ceil(defer.waitMs / slotLengthMs))
+      : defer.dueSlot;
+  return {
+    type: "CommitTimingDueWork",
+    dueWork: {
+      kind: "commit_scheduler_refresh",
+      key: "block_commitment",
+      callerLabel: defer.callerLabel,
+      reason: `scheduler_refresh_${defer.kind}_not_reached`,
+      observedSlot,
+      dueSlot,
+      dueAtMs: nowMs + defer.waitMs,
+      waitMs: defer.waitMs,
+      slotSource:
+        providerSlotWait && localSubmitSlot !== undefined
+          ? localSubmitSlot.source
+          : defer.slotSource,
+      dependencyKey: defer.dependencyKey,
+      invalidationKey: defer.invalidationKey,
+    },
+  };
+};
+
+export const schedulerRefreshRequiredOutsideMutationWorkerDueWork = ({
+  submitTimingSnapshot,
+  invalidBeforeSlot,
+  invalidHereafterSlot,
+  schedulerDependencyKey,
+}: {
+  readonly submitTimingSnapshot: SubmitSlotSnapshot;
+  readonly invalidBeforeSlot: number;
+  readonly invalidHereafterSlot: number;
+  readonly schedulerDependencyKey: string;
+}): CommitTimingDueWork =>
+  schedulerRefreshDueWorkFromSubmitTiming({
+    reason: "scheduler_refresh_required_outside_mutation_worker",
+    plan: {
+      status: "not_due",
+      callerLabel: "scheduler-refresh",
+      targetSlot: submitTimingSnapshot.currentSlot + 1,
+      dueSlot: submitTimingSnapshot.currentSlot + 1,
+      currentSlot: submitTimingSnapshot.currentSlot,
+      observedSlot: submitTimingSnapshot.currentSlot,
+      observedAtMs: submitTimingSnapshot.observedAtMs,
+      deltaSlots: 1,
+      waitMs: Math.max(1, submitTimingSnapshot.slotLengthMs),
+      slotLengthMs: Math.max(1, submitTimingSnapshot.slotLengthMs),
+      slotSource: submitTimingSnapshot.source,
+      invalidBeforeSlot,
+      ...(Number.isSafeInteger(invalidHereafterSlot)
+        ? { invalidHereafterSlot }
+        : {}),
+      reason: "scheduler_refresh_required_outside_mutation_worker",
+      dependencyKey: schedulerDependencyKey,
+      invalidationKey: schedulerDependencyKey,
+    },
+  });
 
 export type SchedulerSlotSnapshot = {
   readonly currentSlot: number;
@@ -352,12 +455,11 @@ export const resolveSchedulerRefreshValidityWindow = (
   const minimumShiftStart = Number(
     currentSchedulerStartTime + SCHEDULER_SHIFT_DURATION_MS,
   );
+  const submitLedgerBackdatedStart =
+    slotSnapshot.currentSlotStartMs - SCHEDULER_REFRESH_VALID_FROM_BACKDATE_MS;
   let validFrom = alignUnixTimeToSlotBoundary(
     lucid,
-    Math.max(
-      slotSnapshot.observedAtMs - SCHEDULER_REFRESH_VALID_FROM_BACKDATE_MS,
-      minimumShiftStart,
-    ),
+    Math.max(submitLedgerBackdatedStart, minimumShiftStart),
   );
   if (validFrom < minimumShiftStart) {
     validFrom = alignUnixTimeToSlotBoundary(lucid, minimumShiftStart + 999);
@@ -377,7 +479,13 @@ export const resolveSchedulerFirstAppointmentValidityWindow = (
   readonly validTo: bigint;
 } => {
   const validFrom = BigInt(
-    alignUnixTimeToSlotBoundary(lucid, slotSnapshot.currentSlotStartMs),
+    alignUnixTimeToSlotBoundary(
+      lucid,
+      Math.max(
+        0,
+        slotSnapshot.observedAtMs - SCHEDULER_REFRESH_VALID_FROM_BACKDATE_MS,
+      ),
+    ),
   );
   if (validFrom >= targetCommitEndTime) {
     throw new Error(
@@ -406,13 +514,15 @@ export const resolveSchedulerFirstAppointmentValidityWindow = (
   return { validFrom, validTo };
 };
 
-const resolveRefreshedSchedulerStartTime = ({
+export const resolveRefreshedSchedulerStartTime = ({
   selection,
   currentSchedulerState,
+  validFrom,
   validTo,
 }: {
   readonly selection: SchedulerRefreshWitnessSelection;
   readonly currentSchedulerState: ActiveSchedulerState | undefined;
+  readonly validFrom: bigint;
   readonly validTo: bigint;
 }): bigint => {
   if (selection.kind === "AppointFirst") {
@@ -424,7 +534,14 @@ const resolveRefreshedSchedulerStartTime = ({
       "Cannot resolve end-of-shift scheduler start time without an active scheduler datum",
     );
   }
-  return currentSchedulerState.startTime + SCHEDULER_SHIFT_DURATION_MS;
+  const previousShiftEnd =
+    currentSchedulerState.startTime + SCHEDULER_SHIFT_DURATION_MS;
+  if (validFrom < previousShiftEnd) {
+    throw new Error(
+      `Cannot refresh scheduler before previous shift end: valid_from=${validFrom.toString()},previous_shift_end=${previousShiftEnd.toString()}`,
+    );
+  }
+  return validFrom;
 };
 
 const awaitSubmittedSchedulerTx = (
@@ -876,6 +993,7 @@ const ensureSchedulerAlignedForCommit = (
   operatorWalletView?: OperatorWalletView,
   schedulerSpendingScriptRef?: UTxO,
   submitSlotSnapshot?: () => Effect.Effect<SubmitSlotSnapshot, unknown>,
+  allowSchedulerRefresh: boolean = true,
 ): Effect.Effect<
   SchedulerAlignmentResult,
   SDK.StateQueueError | TxSignError | TxSubmitError
@@ -995,19 +1113,20 @@ const ensureSchedulerAlignedForCommit = (
     };
     const invalidBeforeSlot = Number(lucid.unixTimeToSlot(Number(validFrom)));
     const invalidHereafterSlot = Number(lucid.unixTimeToSlot(Number(validTo)));
-    const schedulerDependencyKey = [
-      `scheduler=${outRefLabel(schedulerRefInput)}`,
-      `current_operator=${currentOperator}`,
-      `current_start=${currentStartTime.toString()}`,
-      `target_start=${targetStartTime.toString()}`,
-      `selection=${selection.kind}`,
-    ].join(",");
+    const schedulerDependencyKey = schedulerRefreshDependencyKey({
+      schedulerOutRef: outRefLabel(schedulerRefInput),
+      currentOperator,
+      currentStartTime,
+      targetOperator: operatorKeyHash,
+      selectionKind: selection.kind,
+    });
     const submitTiming = planSubmitTiming({
       callerLabel: "scheduler-refresh",
       invalidBeforeSlot,
       invalidHereafterSlot,
       slotSnapshot: submitTimingSnapshot,
       maxInlineWaitMs: SCHEDULER_MAX_PRE_SUBMIT_WAIT_MS,
+      inlineWaitPolicy: "defer_positive_wait",
       dependencyKey: schedulerDependencyKey,
       invalidationKey: schedulerDependencyKey,
     });
@@ -1037,6 +1156,19 @@ const ensureSchedulerAlignedForCommit = (
       );
       return dueWorkOutput;
     }
+    if (!allowSchedulerRefresh) {
+      const dueWorkOutput =
+        schedulerRefreshRequiredOutsideMutationWorkerDueWork({
+          submitTimingSnapshot,
+          invalidBeforeSlot,
+          invalidHereafterSlot,
+          schedulerDependencyKey,
+        });
+      yield* Effect.logInfo(
+        `🔹 Scheduler refresh is required inside the commit mutation worker; deferring so refresh can run before COMMIT_WORKER_ACTIVE and block_commitment lease (kind=${dueWorkOutput.dueWork.kind},key=${dueWorkOutput.dueWork.key},current_slot=${dueWorkOutput.dueWork.observedSlot.toString()},due_slot=${dueWorkOutput.dueWork.dueSlot.toString()},wait_ms=${dueWorkOutput.dueWork.waitMs.toString()},dependency_key=${dueWorkOutput.dueWork.dependencyKey}).`,
+      );
+      return dueWorkOutput;
+    }
     if (submitTiming.status !== "ready" && submitTiming.status !== "wait") {
       return yield* Effect.fail(
         new SDK.StateQueueError({
@@ -1051,6 +1183,7 @@ const ensureSchedulerAlignedForCommit = (
         resolveRefreshedSchedulerStartTime({
           selection,
           currentSchedulerState,
+          validFrom,
           validTo,
         }),
       catch: (cause) =>
@@ -1114,16 +1247,31 @@ const ensureSchedulerAlignedForCommit = (
     );
     const refreshTx = refreshTxResult.tx;
 
-    const refreshTxHash = yield* handleSignSubmitNoConfirmation(
+    const submitRecoveryOptions: NoInlineSubmitRecoveryOptions = {
+      label: "scheduler-refresh",
+      slotSnapshot: submitSlotSnapshot,
+      requireSlotForBoundedTx: submitSlotSnapshot !== undefined,
+      maxPreSubmitWaitMs: SCHEDULER_MAX_PRE_SUBMIT_WAIT_MS,
+      inlineWaitPolicy: "defer_positive_wait",
+      noInlineSubmitDefer: {
+        key: "block_commitment",
+        dependencyKey: schedulerDependencyKey,
+        invalidationKey: schedulerDependencyKey,
+      },
+    };
+    const refreshSubmitResult = yield* handleSignSubmitNoConfirmation(
       lucid,
       refreshTx,
-      {
-        label: "scheduler-refresh",
-        slotSnapshot: submitSlotSnapshot,
-        requireSlotForBoundedTx: submitSlotSnapshot !== undefined,
-        maxPreSubmitWaitMs: SCHEDULER_MAX_PRE_SUBMIT_WAIT_MS,
-      },
+      submitRecoveryOptions,
     );
+    if (refreshSubmitResult.status === "deferred") {
+      return schedulerRefreshDueWorkFromNoInlineSubmitDefer({
+        defer: refreshSubmitResult.defer,
+        localSubmitSlot: submitSlot,
+        nowMs: Date.now(),
+      });
+    }
+    const refreshTxHash = refreshSubmitResult.txHash;
     const refreshedOperatorWalletView = applySubmittedTxToOperatorWalletView(
       flowOperatorWalletView,
       refreshTx.toTransaction(),
@@ -1191,6 +1339,7 @@ export const fetchRealStateQueueWitnessContext = (
   operatorWalletView?: OperatorWalletView,
   referenceScriptsAddress?: string,
   submitSlotSnapshot?: () => Effect.Effect<SubmitSlotSnapshot, unknown>,
+  allowSchedulerRefresh: boolean = true,
 ): Effect.Effect<
   RealStateQueueWitnessContext | CommitTimingDueWork,
   SDK.StateQueueError | TxSignError | TxSubmitError
@@ -1291,6 +1440,7 @@ export const fetchRealStateQueueWitnessContext = (
       operatorWalletView,
       schedulerSpendingScriptRef,
       submitSlotSnapshot,
+      allowSchedulerRefresh,
     );
     if ("dueWork" in schedulerRefInput) {
       return schedulerRefInput;

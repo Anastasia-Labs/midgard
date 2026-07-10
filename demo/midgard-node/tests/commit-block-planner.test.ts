@@ -8,12 +8,13 @@ import {
 import { shouldShortCircuitIdleCommitAttempt } from "@/workers/commit-block-header.js";
 import {
   buildSuccessfulCommitBatches,
+  type CommitSchedulerStateQueueEvidence,
   establishEndTimeFromTxRequests,
+  planCommitBatchBudgets,
   planEarliestCommitSchedulerDueWork,
   planSchedulerAwareCommitSelection,
   selectCommitRoots,
   selectCommitTxCandidates,
-  type CommitSchedulerStateQueueEvidence,
 } from "@/workers/utils/commit-block-planner.js";
 
 const mkTxEntry = (
@@ -167,6 +168,36 @@ describe("commit block planner", () => {
       candidateTxsSize: 0,
       sourceTable: "none",
     });
+  });
+
+  it("plans conservative commit batches with explicit budget stop reasons", () => {
+    const selection = selectCommitTxCandidates({
+      mempoolTxs: [mkTxEntry(1), mkTxEntry(2), mkTxEntry(3)],
+      processedMempoolTxs: [],
+    });
+
+    const planned = planCommitBatchBudgets({
+      candidateSelection: selection,
+      limits: {
+        maxL2TxCount: 2,
+        maxCanonicalTxBytes: 1_000,
+        maxLedgerOpCount: 1_000,
+        maxTransitionStepCount: 1_000,
+        maxDaPayloadBytes: 1_000,
+        maxCommitTxBytes: 1_000,
+        maxEstimatedCommitBuildMs: 1_000,
+        estimatedLedgerOpsPerTx: 1,
+        estimatedTransitionStepsPerTx: 1,
+        estimatedDaOverheadBytesPerTx: 1,
+        estimatedCommitTxOverheadBytes: 1,
+        estimatedCommitBuildMsPerTx: 1,
+      },
+    });
+
+    expect(planned.plan.stopReason).toBe("tx_count_budget");
+    expect(planned.plan.selectedTxCount).toBe(2);
+    expect(planned.prunedTxCount).toBe(1);
+    expect(planned.candidateSelection.candidateTxHashes).toHaveLength(2);
   });
 
   it("uses the first candidate tx timestamp as the shared tx-backed candidate end-time source", () => {
@@ -498,7 +529,7 @@ describe("commit block planner", () => {
     });
   });
 
-  it("proceeds instead of registering due work when the scheduler transition is inside the inline wait budget", () => {
+  it("registers due work even when the scheduler transition is inside the former inline wait budget", () => {
     const plan = planEarliestCommitSchedulerDueWork({
       callerLabel: "commit-scheduler-preflight",
       discoveryStage: "pre_lease",
@@ -518,8 +549,19 @@ describe("commit block planner", () => {
     });
 
     expect(plan).toMatchObject({
-      status: "proceed",
-      reason: "scheduler_submit_timing_wait",
+      status: "register_due_work",
+      reason: "scheduler_transition_not_reached",
+      discoveryStage: "pre_lease",
+      dueWork: {
+        kind: "commit_scheduler_refresh",
+        key: "block_commitment",
+        callerLabel: "commit-scheduler-preflight",
+        reason: "scheduler_transition_not_reached",
+        observedSlot: 10,
+        dueSlot: 22,
+        waitMs: 12_000,
+        dueAtMs: 62_000,
+      },
     });
   });
 

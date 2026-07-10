@@ -1,8 +1,5 @@
-import { execSync } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
-import { performance } from "node:perf_hooks";
 
 import {
   cardanoTxBytesToMidgardNativeTxCanonicalCbor,
@@ -20,20 +17,17 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { describe, expect, it } from "vitest";
 
+import {
+  benchmarkOperation,
+  buildBenchmarkMeta,
+  type OperationStats,
+  printOperationTable,
+  writeBenchmarkJson,
+} from "./benchmark-utils.js";
+
 type TxFixture = {
   readonly cborHex: string;
   readonly txId: string;
-};
-
-type OperationStats = {
-  name: string;
-  runs: number;
-  minMs: number;
-  p50Ms: number;
-  p95Ms: number;
-  maxMs: number;
-  meanMs: number;
-  throughputPerSec: number;
 };
 
 type Report = {
@@ -68,72 +62,13 @@ const outputPath = path.resolve(
   "./output/midgard-tx-codec-benchmark.json",
 );
 
-const quantile = (values: readonly number[], q: number): number => {
-  const sorted = [...values].sort((a, b) => a - b);
-  const position = (sorted.length - 1) * q;
-  const left = Math.floor(position);
-  const right = Math.ceil(position);
-  if (left === right) {
-    return sorted[left];
-  }
-  const weight = position - left;
-  return sorted[left] + weight * (sorted[right] - sorted[left]);
-};
-
-const getGitCommit = (): string => {
-  try {
-    return execSync("git rev-parse --short HEAD", {
-      stdio: ["ignore", "pipe", "ignore"],
-    })
-      .toString("utf8")
-      .trim();
-  } catch {
-    return "unknown";
-  }
-};
-
-const summarize = (
-  name: string,
-  runTimesMs: readonly number[],
-  txCount: number,
-): OperationStats => {
-  const minMs = Math.min(...runTimesMs);
-  const maxMs = Math.max(...runTimesMs);
-  const meanMs =
-    runTimesMs.reduce((sum, value) => sum + value, 0) / runTimesMs.length;
-  return {
-    name,
-    runs: runTimesMs.length,
-    minMs,
-    p50Ms: quantile(runTimesMs, 0.5),
-    p95Ms: quantile(runTimesMs, 0.95),
-    maxMs,
-    meanMs,
-    throughputPerSec: txCount / (meanMs / 1000),
-  };
-};
-
-const benchmarkOperation = (
-  name: string,
-  run: () => void,
-  txCount: number,
-): OperationStats => {
-  for (let i = 0; i < WARMUP_RUNS; i++) {
-    run();
-  }
-
-  const runTimesMs: number[] = [];
-  for (let i = 0; i < MEASURED_RUNS; i++) {
-    const start = performance.now();
-    run();
-    runTimesMs.push(performance.now() - start);
-  }
-
-  return summarize(name, runTimesMs, txCount);
-};
+const benchmarkOptions = {
+  warmupRuns: WARMUP_RUNS,
+  measuredRuns: MEASURED_RUNS,
+} as const;
 
 describe("midgard native tx codec benchmark", () => {
-  it("measures native serialization, deserialization, conversion, and hashing", () => {
+  it("measures native serialization, deserialization, conversion, and hashing", async () => {
     const fixtures = JSON.parse(
       fs.readFileSync(fixturePath, "utf8"),
     ) as readonly TxFixture[];
@@ -165,7 +100,7 @@ describe("midgard native tx codec benchmark", () => {
     );
 
     const operations: OperationStats[] = [
-      benchmarkOperation(
+      await benchmarkOperation(
         "serialize_native_full",
         () => {
           for (const tx of nativeDecoded) {
@@ -173,8 +108,9 @@ describe("midgard native tx codec benchmark", () => {
           }
         },
         txBytes.length,
+        benchmarkOptions,
       ),
-      benchmarkOperation(
+      await benchmarkOperation(
         "deserialize_native_full",
         () => {
           for (const bytes of nativeCanonicalCbors) {
@@ -182,8 +118,9 @@ describe("midgard native tx codec benchmark", () => {
           }
         },
         txBytes.length,
+        benchmarkOptions,
       ),
-      benchmarkOperation(
+      await benchmarkOperation(
         "serialize_native_compact",
         () => {
           for (const tx of nativeCompactDecoded) {
@@ -191,8 +128,9 @@ describe("midgard native tx codec benchmark", () => {
           }
         },
         txBytes.length,
+        benchmarkOptions,
       ),
-      benchmarkOperation(
+      await benchmarkOperation(
         "deserialize_native_compact",
         () => {
           for (const bytes of nativeCompactBytes) {
@@ -200,8 +138,9 @@ describe("midgard native tx codec benchmark", () => {
           }
         },
         txBytes.length,
+        benchmarkOptions,
       ),
-      benchmarkOperation(
+      await benchmarkOperation(
         "serialize_native_body_compact",
         () => {
           for (const body of nativeBodyCompactDecoded) {
@@ -209,8 +148,9 @@ describe("midgard native tx codec benchmark", () => {
           }
         },
         txBytes.length,
+        benchmarkOptions,
       ),
-      benchmarkOperation(
+      await benchmarkOperation(
         "deserialize_native_body_compact",
         () => {
           for (const bytes of nativeBodyCompactBytes) {
@@ -218,8 +158,9 @@ describe("midgard native tx codec benchmark", () => {
           }
         },
         txBytes.length,
+        benchmarkOptions,
       ),
-      benchmarkOperation(
+      await benchmarkOperation(
         "serialize_native_witness_compact",
         () => {
           for (const wits of nativeWitnessCompactDecoded) {
@@ -227,8 +168,9 @@ describe("midgard native tx codec benchmark", () => {
           }
         },
         txBytes.length,
+        benchmarkOptions,
       ),
-      benchmarkOperation(
+      await benchmarkOperation(
         "deserialize_native_witness_compact",
         () => {
           for (const bytes of nativeWitnessCompactBytes) {
@@ -236,8 +178,9 @@ describe("midgard native tx codec benchmark", () => {
           }
         },
         txBytes.length,
+        benchmarkOptions,
       ),
-      benchmarkOperation(
+      await benchmarkOperation(
         "convert_cardano_to_midgard_native_full",
         () => {
           for (const bytes of txBytes) {
@@ -245,8 +188,9 @@ describe("midgard native tx codec benchmark", () => {
           }
         },
         txBytes.length,
+        benchmarkOptions,
       ),
-      benchmarkOperation(
+      await benchmarkOperation(
         "hash_midgard_native_tx_id",
         () => {
           for (const tx of nativeDecoded) {
@@ -254,19 +198,13 @@ describe("midgard native tx codec benchmark", () => {
           }
         },
         txBytes.length,
+        benchmarkOptions,
       ),
     ];
 
     const report: Report = {
       meta: {
-        generatedAtIso: new Date().toISOString(),
-        benchmarkVersion: BENCHMARK_VERSION,
-        hostname: os.hostname(),
-        cpuModel: os.cpus()[0]?.model ?? "unknown",
-        cpuCount: os.cpus().length,
-        platform: `${os.platform()} ${os.release()}`,
-        nodeVersion: process.version,
-        gitCommit: getGitCommit(),
+        ...buildBenchmarkMeta(BENCHMARK_VERSION),
         txCount: txBytes.length,
       },
       config: {
@@ -277,20 +215,10 @@ describe("midgard native tx codec benchmark", () => {
       operations,
     };
 
-    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-    fs.writeFileSync(outputPath, JSON.stringify(report, null, 2));
+    writeBenchmarkJson(outputPath, report);
 
     console.log(`\nCodec benchmark written to ${outputPath}`);
-    console.table(
-      operations.map((op) => ({
-        operation: op.name,
-        runs: op.runs,
-        p50: `${op.p50Ms.toFixed(2)} ms`,
-        p95: `${op.p95Ms.toFixed(2)} ms`,
-        mean: `${op.meanMs.toFixed(2)} ms`,
-        throughput: `${op.throughputPerSec.toFixed(2)} tx/s`,
-      })),
-    );
+    printOperationTable(operations);
 
     expect(operations.length).toBe(10);
   });

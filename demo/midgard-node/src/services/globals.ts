@@ -3,6 +3,11 @@ import { Effect, Ref } from "effect";
 
 import { SerializedStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
 
+export type CommitPipelinePhase =
+  | "idle"
+  | "scheduler_alignment"
+  | "mutation_worker";
+
 /**
  * Process-wide mutable references shared between long-running fibers.
  *
@@ -27,6 +32,10 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
 
     // Prevents overlapping commitment workers (periodic + manual trigger).
     const COMMIT_WORKER_ACTIVE = yield* Ref.make<boolean>(false);
+
+    // Serializes pre-worker scheduler alignment with actual mutation workers.
+    // COMMIT_WORKER_ACTIVE intentionally remains true only for the worker phase.
+    const COMMIT_PIPELINE_PHASE = yield* Ref.make<CommitPipelinePhase>("idle");
 
     // The state queue UTxO confirmed by the confirmation worker, unused for
     // block commitment.
@@ -65,6 +74,11 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
     // UTxO state whenever another fiber mutates mempool_ledger directly.
     const MEMPOOL_LEDGER_VERSION = yield* Ref.make<number>(0);
 
+    // Coordinates event-driven tx queue wakeups without allowing overlapping
+    // validation processors.
+    const TX_QUEUE_PROCESSOR_ACTIVE = yield* Ref.make<boolean>(false);
+    const TX_QUEUE_WAKE_REQUESTED = yield* Ref.make<boolean>(false);
+
     // Indicates that on-chain block submission succeeded but local persistence
     // failed and must be retried against the confirmed block.
     const LOCAL_FINALIZATION_PENDING = yield* Ref.make<boolean>(false);
@@ -82,6 +96,7 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH,
       RESET_IN_PROGRESS,
       COMMIT_WORKER_ACTIVE,
+      COMMIT_PIPELINE_PHASE,
       AVAILABLE_CONFIRMED_BLOCK,
       AVAILABLE_LOCAL_FINALIZATION_BLOCK,
       PROCESSED_UNSUBMITTED_TXS_COUNT,
@@ -91,6 +106,8 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       LATEST_DEPOSIT_FETCH_TIME,
       LATEST_LOCAL_BLOCK_END_TIME_MS,
       MEMPOOL_LEDGER_VERSION,
+      TX_QUEUE_PROCESSOR_ACTIVE,
+      TX_QUEUE_WAKE_REQUESTED,
       LOCAL_FINALIZATION_PENDING,
       HEARTBEAT_BLOCK_COMMITMENT,
       HEARTBEAT_BLOCK_CONFIRMATION,

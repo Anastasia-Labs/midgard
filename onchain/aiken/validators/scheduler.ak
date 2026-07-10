@@ -551,7 +551,7 @@ fn validate_end_of_shift_and_get_operators(
   input_datum: SchedDatum,
   output_datum_data: Data,
   validity_range: ValidityRange,
-  extra_signatories: List<VerificationKeyHash>,
+  _extra_signatories: List<VerificationKeyHash>,
 ) -> (VerificationKeyHash, VerificationKeyHash) {
   // 1. Input and output datums must both have an appointed operators.
   let
@@ -561,28 +561,15 @@ fn validate_end_of_shift_and_get_operators(
     new_shifts_start_time,
   <- validate_active_datums_and_get_info(input_datum, output_datum_data)
 
-  // 2. The start time of the new shift must be the end time of the previous
-  //    shift.
-  expect new_shifts_start_time == shift_end_time(previous_shifts_start_time)
-
-  // 3. If the next shift's start time is in the past, it means the next shift's
-  //    operator is most likely inactive, so anyone can first advance the
-  //    scheduler, and, if inactivity criteria are met, immediately give an
-  //    inactivity strike while again advancing to the next operator. Otherwise,
-  //    the transaction's (short) validity range must contain the next shift's
-  //    start time, and requires consent of the next operator to advance. This
-  //    ensures readiness/liveness of the next operator to take over.
-  expect or {
-      validity_range |> interval.is_entirely_after(new_shifts_start_time),
-      and {
-        new_shifts_operator |> utils.has_signed(extra_signatories),
-        {
-          let (_inclusive_lower_bound, inclusive_upper_bound) =
-            utils.get_inclusive_bounds_of_a_short_validity_range(validity_range)
-          new_shifts_start_time <= inclusive_upper_bound
-        },
-      },
-    }
+  // 2. End-of-shift advancement is permissionless once the transaction validity
+  //    range starts at or after the previous shift ended. The new shift starts
+  //    at the validity lower bound, allowing stale schedules to catch up in a
+  //    single refresh instead of replaying every missed shift.
+  let previous_shift_end = shift_end_time(previous_shifts_start_time)
+  let (inclusive_lower_bound, _inclusive_upper_bound) =
+    utils.get_inclusive_bounds_of_a_short_validity_range(validity_range)
+  expect inclusive_lower_bound >= previous_shift_end
+  expect new_shifts_start_time == inclusive_lower_bound
 
   (previous_shifts_operator, new_shifts_operator)
 }

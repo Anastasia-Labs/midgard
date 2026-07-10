@@ -2,7 +2,10 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { type LucidEvolution, TxHash } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
-import { SerializedStateQueueUTxO } from "./commit-block-header.js";
+import {
+  SerializedStateQueueUTxO,
+  serializeStateQueueUTxO,
+} from "./commit-block-header.js";
 
 export type PendingBlockConfirmation = {
   expectedHeaderHash: string;
@@ -22,6 +25,7 @@ export type SuccessfulConfirmationOutput = {
   type: "SuccessfulConfirmationOutput";
   latestBlocksUTxO: SerializedStateQueueUTxO;
   matchedPendingBlocksUTxO: SerializedStateQueueUTxO | null;
+  canonicalHeaders: readonly SerializedCanonicalCommittedHeader[];
 };
 
 export type NoTxForConfirmationOutput = {
@@ -33,6 +37,7 @@ export type StaleUnconfirmedRecoveryOutput = {
   stalePendingHeaderHash: string;
   staleSubmittedTxHash: "" | TxHash;
   latestBlocksUTxO: SerializedStateQueueUTxO;
+  canonicalHeaders: readonly SerializedCanonicalCommittedHeader[];
 };
 
 export type FailedConfirmationOutput = {
@@ -46,9 +51,53 @@ export type WorkerOutput =
   | StaleUnconfirmedRecoveryOutput
   | FailedConfirmationOutput;
 
+export type SerializedCanonicalCommittedHeader = {
+  readonly headerHash: string;
+  readonly endTimeMs: number;
+  readonly blockUTxO: SerializedStateQueueUTxO;
+};
+
 export const pendingBlockHasSubmittedTx = (
   pendingBlock: PendingBlockConfirmation,
 ): boolean => pendingBlock.submittedTxHash.length > 0;
+
+export const shouldDeferUnsubmittedPendingBlockRecovery = ({
+  pendingBlock,
+  nowMs,
+  recoveryGraceMs,
+}: {
+  readonly pendingBlock: PendingBlockConfirmation;
+  readonly nowMs: number;
+  readonly recoveryGraceMs: number;
+}): boolean => nowMs <= pendingBlock.blockEndTimeMs + recoveryGraceMs;
+
+export type UnsubmittedPendingBlockRecoveryDecision =
+  | "recover_canonical"
+  | "defer"
+  | "recover_stale";
+
+export const decideUnsubmittedPendingBlockRecovery = ({
+  canonicalMatchFound,
+  pendingBlock,
+  nowMs,
+  recoveryGraceMs,
+}: {
+  readonly canonicalMatchFound: boolean;
+  readonly pendingBlock: PendingBlockConfirmation;
+  readonly nowMs: number;
+  readonly recoveryGraceMs: number;
+}): UnsubmittedPendingBlockRecoveryDecision => {
+  if (canonicalMatchFound) {
+    return "recover_canonical";
+  }
+  return shouldDeferUnsubmittedPendingBlockRecovery({
+    pendingBlock,
+    nowMs,
+    recoveryGraceMs,
+  })
+    ? "defer"
+    : "recover_stale";
+};
 
 export const fetchLatestCommittedStateQueueBlock = (
   lucid: LucidEvolution,
@@ -119,4 +168,29 @@ export const findCommittedStateQueueBlockByHeaderHash = (
       }
     }
     return Option.none();
+  });
+
+export const serializeCanonicalCommittedHeaders = (
+  blocks: readonly SDK.StateQueueUTxO[],
+): Effect.Effect<
+  readonly SerializedCanonicalCommittedHeader[],
+  | SDK.CborSerializationError
+  | SDK.CmlUnexpectedError
+  | SDK.DataCoercionError
+  | SDK.HashingError
+> =>
+  Effect.gen(function* () {
+    const headers: SerializedCanonicalCommittedHeader[] = [];
+    for (const block of blocks) {
+      if (block.datum.key === "Empty") {
+        continue;
+      }
+      const header = yield* SDK.getHeaderFromStateQueueDatum(block.datum);
+      headers.push({
+        headerHash: yield* SDK.hashBlockHeader(header),
+        endTimeMs: Number(header.endTime),
+        blockUTxO: yield* serializeStateQueueUTxO(block),
+      });
+    }
+    return headers;
   });

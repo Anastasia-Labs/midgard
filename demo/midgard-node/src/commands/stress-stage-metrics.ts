@@ -22,6 +22,7 @@ export type StressMetricWindow = {
 
 export type StressMetrics = {
   readonly clientSubmission: StressMetricWindow;
+  readonly durableAdmission: StressMetricWindow;
   readonly l2Admission: StressMetricWindow;
   readonly l1Commit: {
     readonly headers: StressMetricWindow;
@@ -323,12 +324,52 @@ const buildClientSubmissionMetric = ({
       submittedCount >= requestedCount ? [] : ["client_submission_incomplete"],
   });
 
+const submittedTxHashes = (
+  transactions: readonly StressStageTransaction[],
+): readonly string[] =>
+  transactions
+    .filter((tx) => tx.txHash !== null && tx.submission.status === "submitted")
+    .map((tx) => normalizeHash(tx.txHash!));
+
 const acceptedTxHashes = (
   transactions: readonly StressStageTransaction[],
 ): readonly string[] =>
   transactions
     .filter((tx) => tx.txHash !== null && tx.acceptance.status === "accepted")
     .map((tx) => normalizeHash(tx.txHash!));
+
+const buildDurableAdmissionMetric = ({
+  submittedCount,
+  transactions,
+  dbSources,
+}: BuildStressMetricsInput): StressMetricWindow => {
+  const expectedHashes = submittedTxHashes(transactions);
+  if (dbSources === undefined) {
+    return emptyUnavailableMetric({
+      source: "tx_admissions",
+      precision: "db_timestamp",
+      missingCount: submittedCount,
+      notes: ["db_metrics_unavailable"],
+    });
+  }
+  const rows = dbSources.l2Admissions.filter((row) =>
+    expectedHashes.includes(row.txHash),
+  );
+  return metricFromDbRange({
+    count: rows.length,
+    expectedCount: expectedHashes.length,
+    startedAt: minIso(rows.map((row) => row.firstSeenAt)),
+    finishedAt: maxIso(rows.map((row) => row.firstSeenAt)),
+    source: "tx_admissions.first_seen_at",
+    notes:
+      rows.length === expectedHashes.length
+        ? ["durable_enqueue_not_validation_acceptance"]
+        : [
+            "durable_enqueue_not_validation_acceptance",
+            "missing_durable_admission_db_rows",
+          ],
+  });
+};
 
 const committedTransactions = (
   transactions: readonly StressStageTransaction[],
@@ -600,6 +641,7 @@ export const buildStressMetrics = (
   input: BuildStressMetricsInput,
 ): StressMetrics => ({
   clientSubmission: buildClientSubmissionMetric(input),
+  durableAdmission: buildDurableAdmissionMetric(input),
   l2Admission: buildL2AdmissionMetric(input),
   l1Commit: buildL1CommitMetrics(input),
   immutableObservation: buildImmutableObservationMetric(input),
@@ -610,6 +652,7 @@ export const flattenStressMetricRows = (
   metrics: StressMetrics,
 ): readonly (readonly [string, StressMetricWindow])[] => [
   ["client_submission", metrics.clientSubmission],
+  ["durable_admission", metrics.durableAdmission],
   ["l2_admission", metrics.l2Admission],
   ["l1_commit_headers", metrics.l1Commit.headers],
   ["l1_commit_l2_txs", metrics.l1Commit.l2Transactions],

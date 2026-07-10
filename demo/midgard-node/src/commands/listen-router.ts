@@ -33,7 +33,7 @@ import {
 } from "@/commands/listen-utils.js";
 import * as ProtocolInfoCommand from "@/commands/protocol-info.js";
 import { evaluateReadiness } from "@/commands/readiness.js";
-import { resolveTxStatus } from "@/commands/tx-status.js";
+import { resolveTxStatus, resolveTxStatusBatch } from "@/commands/tx-status.js";
 import * as UtxosCommand from "@/commands/utxos.js";
 import {
   AddressHistoryDB,
@@ -47,7 +47,11 @@ import {
   TxAdmissionsDB,
   TxRejectionsDB,
 } from "@/database/index.js";
-import { blockCommitmentAction, mergeAction } from "@/fibers/index.js";
+import {
+  blockCommitmentAction,
+  mergeAction,
+  requestTxQueueProcessorWakeup,
+} from "@/fibers/index.js";
 import * as Genesis from "@/genesis.js";
 import {
   localOgmiosSubmitSlotEvidence,
@@ -91,6 +95,7 @@ const SUBMIT_ENDPOINT: string = "submit";
 const DEPOSIT_BUILD_ENDPOINT: string = "deposit/build";
 const STATE_QUEUE_ENDPOINT: string = "stateQueue";
 const TX_STATUS_ENDPOINT: string = "tx-status";
+const PIPELINE_STATUS_ENDPOINT: string = "pipeline-status";
 const DEPOSIT_STATUS_ENDPOINT: string = "deposit-status";
 const PROTOCOL_INFO_ENDPOINT: string = "protocol-info";
 const HEALTH_ENDPOINT: string = "healthz";
@@ -109,6 +114,26 @@ const txCounter = Metric.counter("tx_count", {
 const submitHandlerLatencyTimer = Metric.timer(
   "submit_handler_latency",
   "Latency of POST /submit handler responses in milliseconds",
+);
+
+const submitBodyReadDurationTimer = Metric.timer(
+  "submit_body_read_duration",
+  "Duration of POST /submit request body reads in milliseconds",
+);
+
+const submitNormalizeDurationTimer = Metric.timer(
+  "submit_normalize_duration",
+  "Duration of POST /submit canonical CBOR validation and normalization in milliseconds",
+);
+
+const submitDurableAdmissionDurationTimer = Metric.timer(
+  "submit_durable_admission_duration",
+  "Duration of POST /submit durable admission writes in milliseconds",
+);
+
+const submitResponseDurationTimer = Metric.timer(
+  "submit_response_duration",
+  "Duration of POST /submit response construction in milliseconds",
 );
 
 const submitQueueOfferFailureCounter = Metric.counter(
@@ -667,6 +692,167 @@ const getTxStatusHandler = Effect.gen(function* () {
   ),
 );
 
+type TxStatusBatchRejectionRow = {
+  readonly tx_hash: string;
+  readonly reject_code: string;
+  readonly reject_detail: string | null;
+  readonly created_at: Date;
+};
+
+type TxStatusBatchAdmissionRow = {
+  readonly tx_hash: string;
+  readonly status: TxAdmissionsDB.Status;
+};
+
+type TxStatusBatchMembershipRow = {
+  readonly tx_hash: string;
+};
+
+type TxStatusBatchHeaderRow = {
+  readonly tx_hash: string;
+  readonly header_hash: string;
+  readonly status: string;
+};
+
+const postTxStatusBatchHandler = Effect.gen(function* () {
+  const request = yield* HttpServerRequest.HttpServerRequest;
+  const parsedBody = yield* Effect.either(request.json);
+  if (parsedBody._tag === "Left") {
+    return yield* HttpServerResponse.json(
+      { error: "Request body must be valid JSON." },
+      { status: 400 },
+    );
+  }
+  const txHashes = (parsedBody.right as { readonly txHashes?: unknown })
+    .txHashes;
+  if (
+    !Array.isArray(txHashes) ||
+    txHashes.some((entry) => typeof entry !== "string")
+  ) {
+    return yield* HttpServerResponse.json(
+      { error: "Request body must include txHashes: string[]." },
+      { status: 400 },
+    );
+  }
+  if (txHashes.length === 0 || txHashes.length > 1000) {
+    return yield* HttpServerResponse.json(
+      { error: "txHashes must contain 1 to 1000 transaction hashes." },
+      { status: 400 },
+    );
+  }
+  const normalized = txHashes.map((txHash) => txHash.toLowerCase());
+  const txIdBytes = normalized.map((txHash) => parseFixedHexParam(txHash, 32));
+  const invalidIndex = txIdBytes.findIndex((txId) => txId === null);
+  if (invalidIndex >= 0) {
+    return yield* HttpServerResponse.json(
+      { error: `Invalid transaction hash: ${txHashes[invalidIndex]}` },
+      { status: 400 },
+    );
+  }
+  const txIds = txIdBytes as Buffer[];
+  const sql = yield* SqlClient;
+  const globals = yield* Globals;
+  const [
+    rejectionRows,
+    admissionRows,
+    immutableRows,
+    mempoolRows,
+    processedMempoolRows,
+    headerRows,
+  ] = yield* Effect.all(
+    [
+      sql<TxStatusBatchRejectionRow>`SELECT DISTINCT ON (tx_id)
+          encode(tx_id, 'hex') AS tx_hash,
+          reject_code,
+          reject_detail,
+          created_at
+        FROM tx_rejections
+        WHERE ${sql.in("tx_id", txIds)}
+        ORDER BY tx_id, created_at DESC`,
+      sql<TxStatusBatchAdmissionRow>`SELECT
+          encode(tx_id, 'hex') AS tx_hash,
+          status
+        FROM tx_admissions
+        WHERE ${sql.in("tx_id", txIds)}`,
+      sql<TxStatusBatchMembershipRow>`SELECT
+          encode(tx_id, 'hex') AS tx_hash
+        FROM immutable
+        WHERE ${sql.in("tx_id", txIds)}`,
+      sql<TxStatusBatchMembershipRow>`SELECT
+          encode(tx_id, 'hex') AS tx_hash
+        FROM mempool
+        WHERE ${sql.in("tx_id", txIds)}`,
+      sql<TxStatusBatchMembershipRow>`SELECT
+          encode(tx_id, 'hex') AS tx_hash
+        FROM processed_mempool
+        WHERE ${sql.in("tx_id", txIds)}`,
+      sql<TxStatusBatchHeaderRow>`SELECT
+          encode(member.member_id, 'hex') AS tx_hash,
+          encode(member.header_hash, 'hex') AS header_hash,
+          pending.status
+        FROM pending_block_finalization_txs AS member
+        JOIN pending_block_finalizations AS pending
+          ON pending.header_hash = member.header_hash
+        WHERE ${sql.in("member.member_id", txIds)}`,
+    ],
+    { concurrency: "unbounded" },
+  );
+  const rejectionsByTxId = new Map(
+    rejectionRows.map((row) => [
+      row.tx_hash,
+      {
+        rejectCode: row.reject_code,
+        rejectDetail: row.reject_detail,
+        createdAtIso: row.created_at.toISOString(),
+      },
+    ]),
+  );
+  const admissionStatusByTxId = new Map(
+    admissionRows.map((row) => [row.tx_hash, row.status]),
+  );
+  const immutableTxIds = new Set(immutableRows.map((row) => row.tx_hash));
+  const mempoolTxIds = new Set(mempoolRows.map((row) => row.tx_hash));
+  const processedMempoolTxIds = new Set(
+    processedMempoolRows.map((row) => row.tx_hash),
+  );
+  const headerEvidenceByTxId = new Map(
+    headerRows.map((row) => [
+      row.tx_hash,
+      {
+        headerHash: row.header_hash,
+        headerStatus: row.status,
+        mergeStatus: row.status === "finalized" ? "finalized" : "not_finalized",
+        confirmedLedgerFinalized: row.status === "finalized",
+      },
+    ]),
+  );
+  const results = resolveTxStatusBatch({
+    txIdsHex: normalized,
+    rejectionsByTxId,
+    admissionStatusByTxId,
+    immutableTxIds,
+    mempoolTxIds,
+    processedMempoolTxIds,
+    localFinalizationPending: yield* Ref.get(
+      globals.LOCAL_FINALIZATION_PENDING,
+    ),
+    headerEvidenceByTxId,
+  });
+  return yield* HttpServerResponse.json({ results });
+}).pipe(
+  Effect.catchTag("HttpBodyError", (e) =>
+    failWith500("POST", TX_STATUS_ENDPOINT, e),
+  ),
+  Effect.catchTag("SqlError", (e) =>
+    failWith500(
+      "POST",
+      TX_STATUS_ENDPOINT,
+      e.cause,
+      "batched transaction status query failed",
+    ),
+  ),
+);
+
 /**
  * `POST /stateQueueMutationLease`: admin-only coordination endpoint for
  * external state-queue mutators such as manual fault-proof removal.
@@ -795,6 +981,8 @@ const getReadinessHandler = Effect.gen(function* () {
   const nowMillis = Date.now();
   const stateQueueBlocksInQueue = yield* Ref.get(globals.BLOCKS_IN_QUEUE);
   const resetInProgress = yield* Ref.get(globals.RESET_IN_PROGRESS);
+  const commitWorkerActive = yield* Ref.get(globals.COMMIT_WORKER_ACTIVE);
+  const commitPipelinePhase = yield* Ref.get(globals.COMMIT_PIPELINE_PHASE);
   const blockCommitmentHeartbeat = yield* Ref.get(
     globals.HEARTBEAT_BLOCK_COMMITMENT,
   );
@@ -928,6 +1116,10 @@ const getReadinessHandler = Effect.gen(function* () {
             error: String(localOgmiosSlotProbe.left),
           },
     stateQueueMutationLease: encodedLeaseInspection,
+    blockCommitmentCoordination: {
+      commitWorkerActive,
+      commitPipelinePhase,
+    },
     mergeReadiness,
   };
 
@@ -935,6 +1127,153 @@ const getReadinessHandler = Effect.gen(function* () {
     status: readiness.ready ? 200 : 503,
   });
 });
+
+type PipelineStatusCountRow = {
+  readonly status: string;
+  readonly count: bigint | number | string;
+};
+
+type PipelineStatusOldestActiveRow = {
+  readonly header_hash: string;
+  readonly submitted_tx_hash: string | null;
+  readonly status: string;
+  readonly created_at: Date;
+  readonly updated_at: Date;
+  readonly observed_confirmed_at_ms: bigint | number | string | null;
+};
+
+type PipelineStatusCountOnlyRow = {
+  readonly count: bigint | number | string;
+};
+
+const bigintString = (value: bigint | number | string): string =>
+  BigInt(value).toString();
+
+const getPipelineStatusHandler = Effect.gen(function* () {
+  const globals = yield* Globals;
+  const sql = yield* SqlClient;
+  const now = new Date();
+  const [
+    pendingCounts,
+    oldestActiveRows,
+    durableAdmissionBacklog,
+    mempoolTxCountRows,
+    processedMempoolTxCountRows,
+    unfinishedMutationJobs,
+    leaseInspection,
+  ] = yield* Effect.all(
+    [
+      sql<PipelineStatusCountRow>`SELECT
+          status,
+          COUNT(*)::bigint AS count
+        FROM pending_block_finalizations
+        GROUP BY status
+        ORDER BY status`,
+      sql<PipelineStatusOldestActiveRow>`SELECT
+          encode(header_hash, 'hex') AS header_hash,
+          encode(submitted_tx_hash, 'hex') AS submitted_tx_hash,
+          status,
+          created_at,
+          updated_at,
+          observed_confirmed_at_ms
+        FROM pending_block_finalizations
+        WHERE status IN ('prepared', 'submitted', 'confirmed')
+        ORDER BY created_at ASC
+        LIMIT 1`,
+      TxAdmissionsDB.countBacklog,
+      sql<PipelineStatusCountOnlyRow>`SELECT COUNT(*)::bigint AS count FROM mempool`,
+      sql<PipelineStatusCountOnlyRow>`SELECT COUNT(*)::bigint AS count FROM processed_mempool`,
+      MutationJobsDB.countUnfinished,
+      StateQueueMutationLeasesDB.inspect({ recentLimit: 5 }),
+    ],
+    { concurrency: "unbounded" },
+  );
+  const queueLength = yield* Ref.get(globals.BLOCKS_IN_QUEUE);
+  const localFinalizationPending = yield* Ref.get(
+    globals.LOCAL_FINALIZATION_PENDING,
+  );
+  const unconfirmedSubmittedBlockTxHash = yield* Ref.get(
+    globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
+  );
+  const unconfirmedSubmittedBlockSinceMs = yield* Ref.get(
+    globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS,
+  );
+  const oldestActive = oldestActiveRows[0];
+  return yield* HttpServerResponse.json({
+    status: "ok",
+    now: now.toISOString(),
+    finalityVocabulary: {
+      txStatusCommittedMeaning:
+        "immutable_db_inclusion_not_confirmed_ledger_merge",
+      confirmedDrainMeaning:
+        "containing state-queue header merged to confirmed ledger and locally finalized after L1 confirmation",
+    },
+    durableAdmission: {
+      backlog: durableAdmissionBacklog.toString(),
+    },
+    localResidue: {
+      mempoolTxCount: bigintString(mempoolTxCountRows[0]?.count ?? 0),
+      processedMempoolTxCount: bigintString(
+        processedMempoolTxCountRows[0]?.count ?? 0,
+      ),
+    },
+    pendingBlockFinalizations: {
+      countsByStatus: Object.fromEntries(
+        pendingCounts.map((row) => [row.status, bigintString(row.count)]),
+      ),
+      oldestActive:
+        oldestActive === undefined
+          ? null
+          : {
+              headerHash: oldestActive.header_hash,
+              submittedTxHash: oldestActive.submitted_tx_hash,
+              status: oldestActive.status,
+              ageMs: Math.max(
+                0,
+                now.getTime() - oldestActive.created_at.getTime(),
+              ),
+              createdAt: oldestActive.created_at.toISOString(),
+              updatedAt: oldestActive.updated_at.toISOString(),
+              observedConfirmedAt:
+                oldestActive.observed_confirmed_at_ms === null
+                  ? null
+                  : new Date(
+                      Number(oldestActive.observed_confirmed_at_ms),
+                    ).toISOString(),
+            },
+    },
+    stateQueue: {
+      queueLength,
+      unconfirmedSubmittedBlockTxHash:
+        unconfirmedSubmittedBlockTxHash === ""
+          ? null
+          : unconfirmedSubmittedBlockTxHash,
+      unconfirmedSubmittedBlockAgeMs:
+        unconfirmedSubmittedBlockTxHash === "" ||
+        unconfirmedSubmittedBlockSinceMs <= 0
+          ? 0
+          : Math.max(0, now.getTime() - unconfirmedSubmittedBlockSinceMs),
+      localFinalizationPending,
+    },
+    stateQueueMutationLease:
+      encodeStateQueueMutationLeaseInspection(leaseInspection),
+    localMutationJobs: {
+      unfinished: unfinishedMutationJobs.toString(),
+    },
+  });
+}).pipe(
+  Effect.catchTag("HttpBodyError", (e) =>
+    failWith500("GET", PIPELINE_STATUS_ENDPOINT, e),
+  ),
+  Effect.catchTag("SqlError", (e) =>
+    failWith500(
+      "GET",
+      PIPELINE_STATUS_ENDPOINT,
+      e.cause,
+      "pipeline status query failed",
+    ),
+  ),
+);
 
 /**
  * `GET /protocol-info`: returns stable public facts needed by external
@@ -1351,6 +1690,12 @@ const getLogGlobalsHandler = Effect.gen(function* () {
     globals.LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH,
   );
   const RESET_IN_PROGRESS: boolean = yield* Ref.get(globals.RESET_IN_PROGRESS);
+  const COMMIT_WORKER_ACTIVE: boolean = yield* Ref.get(
+    globals.COMMIT_WORKER_ACTIVE,
+  );
+  const COMMIT_PIPELINE_PHASE: string = yield* Ref.get(
+    globals.COMMIT_PIPELINE_PHASE,
+  );
   const AVAILABLE_CONFIRMED_BLOCK: "" | SerializedStateQueueUTxO =
     yield* Ref.get(globals.AVAILABLE_CONFIRMED_BLOCK);
   const PROCESSED_UNSUBMITTED_TXS_COUNT: number = yield* Ref.get(
@@ -1394,6 +1739,8 @@ const getLogGlobalsHandler = Effect.gen(function* () {
   BLOCKS_IN_QUEUE ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${BLOCKS_IN_QUEUE}
   LATEST_SYNC ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${new Date(Number(LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH)).toLocaleString()}
   RESET_IN_PROGRESS ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${RESET_IN_PROGRESS}
+  COMMIT_WORKER_ACTIVE ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${COMMIT_WORKER_ACTIVE}
+  COMMIT_PIPELINE_PHASE ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${COMMIT_PIPELINE_PHASE}
   AVAILABLE_CONFIRMED_BLOCK ⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${JSON.stringify(AVAILABLE_CONFIRMED_BLOCK)}
   PROCESSED_UNSUBMITTED_TXS_COUNT ⋅⋅⋅ ${PROCESSED_UNSUBMITTED_TXS_COUNT}
   PROCESSED_UNSUBMITTED_TXS_SIZE ⋅⋅⋅⋅ ${PROCESSED_UNSUBMITTED_TXS_SIZE}
@@ -1518,7 +1865,11 @@ const postSubmitHandler = (withMonitoring?: boolean) =>
         );
       }
 
+      const bodyReadStartedAt = Date.now();
       const bodyBytes = yield* Effect.either(request.arrayBuffer);
+      yield* submitBodyReadDurationTimer(
+        Effect.succeed(Duration.millis(Date.now() - bodyReadStartedAt)),
+      );
       if (bodyBytes._tag === "Left") {
         yield* Effect.logInfo(
           `▫️ Submit rejected: failed to read request body`,
@@ -1530,11 +1881,15 @@ const postSubmitHandler = (withMonitoring?: boolean) =>
         );
       }
 
+      const normalizeStartedAt = Date.now();
       const validation = validateSubmitTxCanonicalCbor(
         new Uint8Array(bodyBytes.right),
         nodeConfig.MAX_SUBMIT_TX_CBOR_BYTES,
       );
       if (!validation.ok) {
+        yield* submitNormalizeDurationTimer(
+          Effect.succeed(Duration.millis(Date.now() - normalizeStartedAt)),
+        );
         yield* Effect.logInfo(`▫️ Submit rejected: ${validation.error}`);
         yield* recordLatency();
         return yield* HttpServerResponse.json(
@@ -1547,6 +1902,9 @@ const postSubmitHandler = (withMonitoring?: boolean) =>
         validation.txCanonicalCbor,
       );
       if (!normalized.ok) {
+        yield* submitNormalizeDurationTimer(
+          Effect.succeed(Duration.millis(Date.now() - normalizeStartedAt)),
+        );
         yield* Effect.logInfo(`▫️ ${normalized.error}`);
         yield* Effect.logInfo(`▫️ ${normalized.detail}`);
         yield* recordLatency();
@@ -1555,17 +1913,28 @@ const postSubmitHandler = (withMonitoring?: boolean) =>
           { status: 400 },
         );
       }
+      yield* submitNormalizeDurationTimer(
+        Effect.succeed(Duration.millis(Date.now() - normalizeStartedAt)),
+      );
 
+      const durableAdmissionStartedAt = Date.now();
       const admitted = yield* TxAdmissionsDB.admit({
         txId: normalized.txId,
         txCanonicalCbor: normalized.txCanonicalCbor,
         submitSource: normalized.source,
         maxBacklog: nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG,
       });
+      yield* submitDurableAdmissionDurationTimer(
+        Effect.succeed(Duration.millis(Date.now() - durableAdmissionStartedAt)),
+      );
+      if (admitted.kind === "new") {
+        yield* requestTxQueueProcessorWakeup;
+      }
 
       Effect.runSync(Metric.increment(txCounter));
       yield* recordLatency();
-      return yield* HttpServerResponse.json(
+      const responseStartedAt = Date.now();
+      const response = yield* HttpServerResponse.json(
         {
           txId: normalized.txIdHex,
           status: admitted.entry.status,
@@ -1575,6 +1944,10 @@ const postSubmitHandler = (withMonitoring?: boolean) =>
         },
         { status: admitted.kind === "new" ? 202 : 200 },
       );
+      yield* submitResponseDurationTimer(
+        Effect.succeed(Duration.millis(Date.now() - responseStartedAt)),
+      );
+      return response;
     }).pipe(
       Effect.catchTag("TxAdmissionConflictError", (e) =>
         Effect.gen(function* () {
@@ -1640,9 +2013,11 @@ export const buildListenRouter = (
     .pipe(
       HttpRouter.get(`/${HEALTH_ENDPOINT}`, getHealthHandler),
       HttpRouter.get(`/${READINESS_ENDPOINT}`, getReadinessHandler),
+      HttpRouter.get(`/${PIPELINE_STATUS_ENDPOINT}`, getPipelineStatusHandler),
       HttpRouter.get(`/${PROTOCOL_INFO_ENDPOINT}`, getProtocolInfoHandler),
       HttpRouter.get(`/${TX_ENDPOINT}`, getTxHandler),
       HttpRouter.get(`/${TX_STATUS_ENDPOINT}`, getTxStatusHandler),
+      HttpRouter.post(`/${TX_STATUS_ENDPOINT}`, postTxStatusBatchHandler),
       HttpRouter.get(`/${DEPOSIT_STATUS_ENDPOINT}`, getDepositStatusHandler),
       HttpRouter.get(`/${ADDRESS_HISTORY_ENDPOINT}`, getTxsOfAddressHandler),
       HttpRouter.get(`/${UTXO_ENDPOINT}`, getUtxoHandler),

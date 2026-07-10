@@ -1,36 +1,64 @@
 # Midgard Agent Guide
 
-Midgard is Cardano's first optimistic rollup protocol, containing on-chain
-contracts, off-chain SDKs, demo node/runtime packages, and the technical
-specification.
+Always-loaded context only. Keep this file narrow: project facts the code
+cannot tell you, repo-wide guardrails, and pitfalls observed across sessions.
+Move task-triggered rules to `docs/agents/*` or a skill.
 
-## Essentials
+## Project Context
 
-- Treat this repository as a production-grade L2: prioritize correctness,
-  safety, liveness, performance, then convenience.
-- Default to strict, auditable behavior; do not make benchmark, demo, or
-  compatibility shortcuts the default path.
-- Use `pnpm` for the TypeScript workspace in `demo/`
-  (`pnpm@9.15.4`, Node.js `>=18`).
-- Common demo workspace commands:
-  - Build: `cd demo && pnpm run build`
-  - Typecheck: `cd demo && pnpm run typecheck`
-  - Test: `cd demo && pnpm run test`
-  - Lint: `cd demo && pnpm run lint`
-  - Format check: `cd demo && pnpm run format-check`
-- For demo/preprod/e2e deployments, build Aiken contracts from
-  `onchain/aiken` with `aiken build --env testnet` before building node
-  images. Use another Aiken env only when the task explicitly targets it.
-- For SDK/node transaction builders, do not edge-trigger `validFrom` at the
-  current wall-clock or tip-derived slot. Backdate by at least 30 seconds when
-  protocol rules allow it; see transaction finalization guidance.
-- Build the technical specification with `make spec`.
+Midgard is Cardano's first optimistic rollup protocol. It runs across on-chain
+Cardano validators and off-chain node/runtime services, with Plutus V3/Aiken
+contracts, TypeScript SDK/demo/e2e packages, and a technical specification.
 
-## Detailed Guidance
+Treat it as production-grade L2 infrastructure. Faulty state transitions,
+timing assumptions, resets, or compatibility shortcuts can corrupt protocol
+state, break liveness, or put funds at risk.
 
-- [Production L2 principles](docs/agents/production-l2.md)
-- [State reset and redeploy rules](docs/agents/state-reset.md)
-- [Transaction finalization](docs/agents/transaction-finalization.md)
-- [Midgard node compatibility](docs/agents/midgard-node.md)
-- [Progressive disclosure structure](docs/agents/README.md)
-- [Instructions flagged for deletion or consolidation](docs/agents/deletion-candidates.md)
+## North Star
+
+Build a strict, auditable, production-ready rollup. Prefer solutions that
+preserve protocol semantics, deterministic operation, explicit recovery paths,
+and evidence another engineer can verify.
+
+Tradeoff order: correctness, safety, liveness, performance, convenience.
+
+## Repo Shape
+
+- `onchain/aiken`: Plutus V3 contracts.
+- `demo`: pnpm TypeScript workspace for SDKs, node/runtime, manager/CLI, tests,
+  benchmarks, and e2e tooling.
+- `technical-spec`: protocol specification built through the root `Makefile`.
+- `docs/agents`: progressive guidance; open only the relevant domain doc.
+
+Use the declared repo toolchain: pnpm/Node in `demo`, Aiken in
+`onchain/aiken`, and `make` for the spec. Demo, preprod, and e2e deployment
+work defaults to the Aiken `testnet` environment unless the task explicitly
+targets another environment.
+
+## Always-On Rules
+
+- Strict behavior is the default. Demo, benchmark, migration, or compatibility
+  shortcuts must be explicit, isolated, and unavailable by default.
+- Named plan docs, review docs, commands, and verification surfaces are the
+  source of truth before improvising.
+- Preserve user work: check dirty state, do not clean or revert unrelated
+  changes, and keep patches scoped to the request.
+- Before finalizing changes, run the narrow checks that prove the touched
+  behavior and report exactly what ran.
+
+## Observed Pitfalls
+
+- Plan work has drifted into nearby reliability fixes. Stay inside the named
+  boundary.
+- Dirty worktrees and generated artifacts have been mistaken for cleanup
+  targets. Leave unrelated state alone.
+- Loose smoke tests have replaced plan-requested checks. Run named checks
+  first.
+- Demo or benchmark behavior has leaked into defaults. Keep production
+  semantics strict.
+
+## When Relevant
+
+Open `docs/agents/production-l2.md`, `state-reset.md`,
+`transaction-finalization.md`, `midgard-node.md`, or `README.md` only when the
+task enters that domain.

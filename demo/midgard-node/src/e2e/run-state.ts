@@ -1,15 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import {
-  type FileHandle,
-  mkdir,
-  open,
-  readFile,
-  rename,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { type FileHandle, mkdir, open, readFile, rm } from "node:fs/promises";
 import { dirname, resolve as resolvePath } from "node:path";
+
+import { writeJsonFileAtomic } from "@/files/atomic-write.js";
 
 export const DEPLOYMENT_RUN_STATE_SCHEMA_VERSION =
   "midgard-deployment-run-state-v1";
@@ -464,10 +458,7 @@ export const writeDeploymentRunStateAtomic = async (
   state: DeploymentRunState,
 ): Promise<void> => {
   const normalized = parseDeploymentRunState(state);
-  await mkdir(dirname(path), { recursive: true });
-  const tmpPath = `${path}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
-  await writeFile(tmpPath, `${JSON.stringify(normalized, null, 2)}\n`, "utf8");
-  await rename(tmpPath, path);
+  await writeJsonFileAtomic(path, normalized);
 };
 
 export const withDeploymentRunStateLock = async <A>(

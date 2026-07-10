@@ -1,6 +1,5 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { createHash } from "node:crypto";
+import { readFile, writeFile } from "node:fs/promises";
 
 import { walletFromSeed } from "@lucid-evolution/lucid";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -13,9 +12,16 @@ import {
   type StressSubmitTransfer,
 } from "@/commands/e2e-stress-l2-throughput.js";
 import {
+  type OpenLoopCorpusRow,
+  parseOpenLoopCorpusNdjson,
+  planOpenLoopCorpus,
+} from "@/commands/stress-open-loop.js";
+import {
   buildStressMetrics,
   computeMetricWindow,
 } from "@/commands/stress-stage-metrics.js";
+
+import { createTrackedTempDirFactory } from "./helpers/temp-files.js";
 
 const TEST_SEED =
   "cupboard digital guitar diesel critic will afford salon game dolphin phrase baby dad urban machine barely rack acoustic blood vote misery enemy salute depart";
@@ -27,27 +33,50 @@ const THIRD_TEST_SEED =
 const txHashForIndex = (index: number): string =>
   index.toString(16).padStart(64, "0");
 
-let tempDirs: string[] = [];
-
-const makeTempDir = async (): Promise<string> => {
-  const dir = await mkdtemp(join(tmpdir(), "midgard-e2e-stress-"));
-  tempDirs.push(dir);
-  return dir;
-};
+const makeTempDir = createTrackedTempDirFactory("midgard-e2e-stress-");
 
 afterEach(async () => {
   vi.restoreAllMocks();
-  await Promise.all(
-    tempDirs.map((dir) => rm(dir, { recursive: true, force: true })),
-  );
-  tempDirs = [];
 });
 
 const responseJson = (body: unknown, status = 200): Response =>
   ({
     status,
     text: async () => JSON.stringify(body),
+    json: async () => body,
   }) as Response;
+
+const sha256Hex = (bytes: Buffer): string =>
+  createHash("sha256").update(bytes).digest("hex");
+
+const corpusRow = (index: number): OpenLoopCorpusRow => {
+  const canonicalCbor = Buffer.from(`tx-${index.toString()}`);
+  return {
+    txHash: txHashForIndex(index + 100),
+    canonicalCborHex: canonicalCbor.toString("hex"),
+    canonicalCborSha256: sha256Hex(canonicalCbor),
+    canonicalCborByteLength: canonicalCbor.length,
+    senderWalletId: `wallet-${index.toString()}`,
+    selectedInputOutref: `${txHashForIndex(index + 200)}#0`,
+    outputOutrefs: [`${txHashForIndex(index + 300)}#0`],
+    planShape: "fanout",
+    parentTxHash: null,
+    corpusSliceId: "slice-a",
+  };
+};
+
+const writeCorpus = async (
+  outDir: string,
+  rows: readonly OpenLoopCorpusRow[],
+): Promise<string> => {
+  const path = `${outDir}/tx-corpus.ndjson`;
+  await writeFile(
+    path,
+    `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`,
+    "utf8",
+  );
+  return path;
+};
 
 const makeClock = () => {
   let time = Date.parse("2026-01-01T00:00:00.000Z");
@@ -130,6 +159,16 @@ describe("e2e-stress-l2-throughput config", () => {
       new Set(config.stressWallets.map((wallet) => wallet.address)).size,
     ).toBe(2);
   });
+
+  it("requires a prebuilt corpus for open-loop upper-bound runs", () => {
+    expect(() =>
+      parseE2EL2StressConfig({
+        loadModel: "open-loop-upper-bound",
+        targetRateTps: "2",
+        openLoopDurationMs: "1000",
+      }),
+    ).toThrow("requires --tx-corpus");
+  });
 });
 
 describe("e2e-stress-l2-throughput runner", () => {
@@ -171,8 +210,14 @@ describe("e2e-stress-l2-throughput runner", () => {
     });
 
     expect(result.summary.schemaVersion).toBe(E2E_L2_STRESS_SCHEMA_VERSION);
+    expect(result.summary.loadModel).toBe("closed-loop-smoke");
+    expect(result.summary.workloadProfile).toBe("production-end-user");
+    expect(result.summary.classification).toBe("closed_loop_smoke");
     expect(result.summary.requestedCount).toBe(2);
     expect(result.summary.measurementPolicy).toMatchObject({
+      loadModel: "closed-loop-smoke",
+      workloadProfile: "production-end-user",
+      syntheticVsProduction: "production_end_user_path",
       advanceOn: "accepted",
       primaryStageMetric: "metrics.l2Admission.perSecond",
       finalityObservation: "post-submit-bounded",
@@ -183,6 +228,7 @@ describe("e2e-stress-l2-throughput runner", () => {
     expect(result.summary.submissionFailedCount).toBe(0);
     expect(result.summary.observedCommittedCount).toBe(2);
     expect(result.summary.metrics.clientSubmission.count).toBe(2);
+    expect(result.summary.metrics.durableAdmission.status).toBe("unavailable");
     expect(result.summary.metrics.l2Admission).toMatchObject({
       status: "complete",
       count: 2,
@@ -641,6 +687,105 @@ describe("e2e-stress-l2-throughput runner", () => {
       acceptance: { status: "rejected" },
       finality: { status: "rejected" },
     });
+  });
+
+  it("runs open-loop upper-bound from a corpus without wallet or tx-status work", async () => {
+    const outDir = await makeTempDir();
+    const rows = [corpusRow(1), corpusRow(2)];
+    const corpusPath = await writeCorpus(outDir, rows);
+    const config = parseE2EL2StressConfig({
+      loadModel: "open-loop-upper-bound",
+      corpusPath,
+      corpusSliceId: "slice-a",
+      targetRateTps: "2",
+      openLoopDurationMs: "1000",
+      openLoopMaxInFlight: "2",
+      outDir,
+    });
+    const submitTransfer = vi.fn<StressSubmitTransfer>(async () => {
+      throw new Error("open-loop must not call submit-l2-transfer");
+    });
+    const fetchImpl = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        expect(String(input)).toBe(`${config.nodeEndpoint}/submit`);
+        expect(String(input)).not.toContain("/tx-status");
+        expect(init?.method).toBe("POST");
+        expect(init?.headers).toEqual({ "content-type": "application/cbor" });
+        const body = Buffer.from(init?.body as Buffer);
+        const row = rows.find(
+          (candidate) => candidate.canonicalCborHex === body.toString("hex"),
+        );
+        expect(row).toBeDefined();
+        return responseJson({ txId: row!.txHash }, 202);
+      },
+    );
+    const observedSamples: unknown[] = [];
+
+    const result = await runE2EL2StressThroughput(config, {
+      submitTransfer,
+      fetch: fetchImpl as typeof fetch,
+      fetchUtxos: async () => {
+        throw new Error("open-loop must not fetch /utxos");
+      },
+      collectAggregateObserverSample: async (sample) => {
+        observedSamples.push(sample);
+        return { ok: true };
+      },
+      collectStageMetricSources: async ({ txHashes }) => ({
+        l2Admissions: txHashes.map((txHash, index) => ({
+          txHash,
+          status: "accepted",
+          firstSeenAt: `2026-01-01T00:00:0${index.toString()}.000Z`,
+          terminalAt: `2026-01-01T00:00:0${(index + 1).toString()}.000Z`,
+        })),
+        l1Commits: [],
+        immutableObservations: [],
+        residue: [],
+      }),
+      sleep: async () => undefined,
+    });
+
+    expect(submitTransfer).not.toHaveBeenCalled();
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(observedSamples.length).toBeGreaterThanOrEqual(0);
+    expect(result.summary.loadModel).toBe("open-loop-upper-bound");
+    expect(result.summary.workloadProfile).toBe("synthetic-admission");
+    expect(result.summary.measurementPolicy).toMatchObject({
+      advanceOn: "scheduled_submit",
+      finalityObservation: "aggregate-window",
+      primaryStageMetric: "metrics.durableAdmission.perSecond",
+    });
+    expect(result.summary.finalityObserver.pollRequestCount).toBe(0);
+    expect(result.summary.metrics.durableAdmission.count).toBe(2);
+    expect(result.summary.metrics.l2Admission.count).toBe(2);
+    expect(result.summary.classification).toBe("ingress_ok_commit_failed");
+  });
+});
+
+describe("open-loop corpus planning", () => {
+  it("rejects duplicate input outrefs within a corpus slice", () => {
+    const rows = [
+      corpusRow(1),
+      {
+        ...corpusRow(2),
+        selectedInputOutref: corpusRow(1).selectedInputOutref,
+      },
+    ];
+    const parsed = parseOpenLoopCorpusNdjson(
+      rows.map((row) => JSON.stringify(row)).join("\n"),
+    );
+
+    expect(() =>
+      planOpenLoopCorpus({
+        rows: parsed,
+        targetRateTps: 2,
+        durationMs: 1000,
+        warmupCount: 0,
+        cooldownCount: 0,
+        corpusShape: "fanout",
+        corpusSliceId: "slice-a",
+      }),
+    ).toThrow("duplicate selected input");
   });
 });
 

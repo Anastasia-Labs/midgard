@@ -29,6 +29,7 @@ import {
   type AuthenticatedValidator,
   buildDoubleSpendFaultProofContracts,
   buildInvalidRangeFaultProofContracts,
+  buildNonExistentInputFaultProofContracts,
   buildPhasMembershipRewardRegistrationTxProgram,
   buildTransitionTraceFaultProofContracts,
   ConfirmedState,
@@ -36,6 +37,7 @@ import {
   DoubleSpendStep02Datum,
   DoubleSpendStep03Datum,
   DoubleSpendStep04Datum,
+  commitCountedRootProgram,
   EMPTY_HEADER_TRANSITION_COMMITMENTS,
   EMPTY_MERKLE_TREE_ROOT,
   encodeDaPayloadV2,
@@ -132,6 +134,10 @@ import {
   encodeData,
   keyValuePhasRootWithCount,
   nativeTxFromCoreCompact,
+  neSubmitStep01,
+  neSubmitStep02,
+  neSubmitStep03,
+  neSubmitStep04,
   parseSpendInputCbors,
   parseSubmitStep01TxInclusion,
   reconstructDaPayloadV2,
@@ -147,6 +153,11 @@ import {
   submitStep04,
   submitTransitionTraceProof,
 } from "../src/index.js";
+import {
+  buildNonMembershipProof,
+  type TrieEntry,
+} from "../src/ne-proofs.js";
+import type { NeInputPreimageEntry } from "../src/ne-submit-step-02.js";
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(moduleDir, "../../..");
@@ -340,10 +351,12 @@ const buildMinimalFaultProofContracts = async (
   alwaysBlueprint: Blueprint,
   nonceUtxo: UTxO,
   {
+    realNonExistentInput = false,
     realInvalidRange = false,
     realTransitionTrace = false,
     alwaysFraudProofCatalogue = false,
   }: {
+    readonly realNonExistentInput?: boolean;
     readonly realInvalidRange?: boolean;
     readonly realTransitionTrace?: boolean;
     readonly alwaysFraudProofCatalogue?: boolean;
@@ -432,6 +445,21 @@ const buildMinimalFaultProofContracts = async (
       fraudProofCataloguePolicyId: fraudProofCatalogue.policyId,
     }),
   );
+  const nonExistentInputContracts = realNonExistentInput
+    ? await Effect.runPromise(
+        buildNonExistentInputFaultProofContracts({
+          blueprint: parseFaultProofBlueprint(cloneBlueprint(realBlueprint)),
+          network,
+          hubOraclePolicyId: hubOracle.policyId,
+          fraudProofCataloguePolicyId: fraudProofCatalogue.policyId,
+        }),
+      )
+    : undefined;
+  if (nonExistentInputContracts !== undefined) {
+    expect(nonExistentInputContracts.fraudProof.policyId).toBe(
+      doubleSpendContracts.fraudProof.policyId,
+    );
+  }
   const invalidRangeContracts = realInvalidRange
     ? await Effect.runPromise(
         buildInvalidRangeFaultProofContracts({
@@ -530,6 +558,9 @@ const buildMinimalFaultProofContracts = async (
     fraudProofs: {
       ...withActiveOperators.fraudProofs,
       doubleSpend: doubleSpendContracts.doubleSpend.firstStep,
+      nonExistentInput:
+        nonExistentInputContracts?.nonExistentInput.firstStep ??
+        withActiveOperators.fraudProofs.nonExistentInput,
       invalidRange:
         invalidRangeContracts?.invalidRange.firstStep ??
         withActiveOperators.fraudProofs.invalidRange,
@@ -807,6 +838,7 @@ const decodeSpendInputCbors = (
 
 const buildTransactionInclusionFixture = async (): Promise<{
   readonly transactionsRoot: string;
+  readonly l2TransactionCount: bigint;
   readonly tx1: TransactionInclusionEntry;
   readonly tx2: TransactionInclusionEntry;
   readonly tx1InputsPreimage: readonly TestOutputReference[];
@@ -855,6 +887,7 @@ const buildTransactionInclusionFixture = async (): Promise<{
         nativeTxCompactCbor: encodeMidgardNativeTxCompact(
           entry === tx1 ? tx1Native.compact : tx2Native.compact,
         ).toString("hex"),
+        transactionsPhasRoot: trieRootHex(trie),
         txMembershipProofCbor: proof.toCBOR().toString("hex"),
       },
       nativeTx: entry.nativeTx,
@@ -864,6 +897,7 @@ const buildTransactionInclusionFixture = async (): Promise<{
   };
   return {
     transactionsRoot: trieRootHex(trie),
+    l2TransactionCount: 2n,
     tx1: await withProof(tx1),
     tx2: await withProof(tx2),
     tx1InputsPreimage,
@@ -881,6 +915,7 @@ const buildInvalidRangeTransactionInclusionFixture = async ({
   readonly blockValidTo: bigint;
 }): Promise<{
   readonly transactionsRoot: string;
+  readonly l2TransactionCount: bigint;
   readonly badTx: TransactionInclusionEntry;
   readonly normalizedValidityRange: ReturnType<
     typeof normalizeNativeTxValidityRange
@@ -924,6 +959,7 @@ const buildInvalidRangeTransactionInclusionFixture = async ({
 
   return {
     transactionsRoot: trieRootHex(trie),
+    l2TransactionCount: 1n,
     badTx: {
       inclusion: {
         nativeTxId: badTx.nativeTxId,
@@ -931,6 +967,7 @@ const buildInvalidRangeTransactionInclusionFixture = async ({
         nativeTxCompactCbor: encodeMidgardNativeTxCompact(
           badNativeTx.compact,
         ).toString("hex"),
+        transactionsPhasRoot: trieRootHex(trie),
         txMembershipProofCbor: proof.toCBOR().toString("hex"),
       },
       nativeTx: badTx.nativeTx,
@@ -939,6 +976,107 @@ const buildInvalidRangeTransactionInclusionFixture = async ({
     },
     normalizedValidityRange,
     violationReason,
+  };
+};
+
+// Non-existent-input fixture: a bad L2 tx spends an input whose producing
+// transaction never existed. The transactions trie is keyed by the raw native
+// tx id (matching the node); the ledger non-membership is proven against the
+// empty prev-ledger (`EMPTY_MERKLE_TREE_ROOT`, the genesis confirmed-state root
+// the setup block builds on); and the phantom input's producing tx id is proven
+// absent from the block's transactions.
+const buildNonExistentInputFixture = async (): Promise<{
+  readonly transactionsRoot: string;
+  readonly l2TransactionCount: bigint;
+  readonly inclusion: ReturnType<typeof parseSubmitStep01TxInclusion>;
+  readonly inputsPreimage: readonly NeInputPreimageEntry[];
+  readonly badInputIndex: bigint;
+  readonly ledgerNonMembershipProofCbor: string;
+  readonly txsNonMembershipProofCbor: string;
+  readonly missingInputTxId: string;
+  readonly nativeTxId: string;
+}> => {
+  const phantomOutRef: TestOutputReference = {
+    transactionId: h32("de"),
+    outputIndex: 0n,
+  };
+  const badTxNative = makeNativeTx({
+    spendInputCbors: [outputReferenceCbor(phantomOutRef)],
+    fee: 0n,
+    referenceByte: "e3",
+    outputByte: "e4",
+    witnessByte: "e5",
+  });
+  const badTx = compactTxEntry(badTxNative);
+  const badTxCompactCbor = encodeMidgardNativeTxCompact(badTxNative.compact);
+
+  // A second, well-formed L2 tx so the transactions trie is non-trivial (proofs
+  // for a single-element trie are degenerate).
+  const otherTxNative = makeNativeTx({
+    spendInputCbors: [
+      outputReferenceCbor({ transactionId: h32("c1"), outputIndex: 0n }),
+    ],
+    fee: 1n,
+    referenceByte: "c3",
+    outputByte: "c4",
+    witnessByte: "c5",
+  });
+  const otherTx = compactTxEntry(otherTxNative);
+  const otherTxCompactCbor = encodeMidgardNativeTxCompact(otherTxNative.compact);
+
+  const store = new Store(undefined);
+  await store.ready();
+  const trie = new Trie(store);
+  await trie.insert(
+    Buffer.from(badTx.nativeTxId, "hex"),
+    Buffer.from(badTxCompactCbor),
+  );
+  await trie.insert(
+    Buffer.from(otherTx.nativeTxId, "hex"),
+    Buffer.from(otherTxCompactCbor),
+  );
+  const transactionsRoot = trieRootHex(trie);
+  const membershipProof = await trie.prove(
+    Buffer.from(badTx.nativeTxId, "hex"),
+  );
+
+  const txsEntries: TrieEntry[] = [
+    {
+      key: Buffer.from(badTx.nativeTxId, "hex"),
+      value: Buffer.from(badTxCompactCbor),
+    },
+    {
+      key: Buffer.from(otherTx.nativeTxId, "hex"),
+      value: Buffer.from(otherTxCompactCbor),
+    },
+  ];
+  const txsNonMembershipProofCbor = await buildNonMembershipProof(
+    txsEntries,
+    Buffer.from(phantomOutRef.transactionId, "hex"),
+  );
+  const ledgerNonMembershipProofCbor = await buildNonMembershipProof(
+    [],
+    outputReferenceCbor(phantomOutRef),
+  );
+
+  return {
+    transactionsRoot,
+    l2TransactionCount: 2n,
+    inclusion: parseSubmitStep01TxInclusion({
+      nativeTxId: badTx.nativeTxId,
+      nativeTx: badTx.nativeTx,
+      nativeTxCompactCbor: badTxCompactCbor.toString("hex"),
+      transactionsPhasRoot: transactionsRoot,
+      txMembershipProofCbor: membershipProof.toCBOR().toString("hex"),
+    }),
+    inputsPreimage: [
+      { txId: phantomOutRef.transactionId, index: phantomOutRef.outputIndex },
+    ],
+    badInputIndex: 0n,
+    ledgerNonMembershipProofCbor,
+    txsNonMembershipProofCbor,
+    missingInputTxId: phantomOutRef.transactionId,
+    nativeTxId: badTx.nativeTxId,
   };
 };
 
@@ -999,15 +1137,49 @@ const registerPhasMembershipRewardAccount = async (
   await lucid.awaitTx(await signed.submit());
 };
 
+const registerPexcludesExclusionRewardAccount = async (
+  lucid: Awaited<ReturnType<typeof Lucid>>,
+  realBlueprint: Blueprint,
+): Promise<void> => {
+  const pexcludesScript: Script = {
+    type: "PlutusV3",
+    script: getCompiledScript(realBlueprint, "pexcludes.exclusion.withdraw"),
+  };
+  const built = await Effect.runPromise(
+    buildPhasMembershipRewardRegistrationTxProgram(lucid, {
+      script: pexcludesScript,
+    }),
+  );
+  const signed = await built.tx.sign.withWallet().complete();
+  await lucid.awaitTx(await signed.submit());
+};
+
+// Commit a raw transactions MPF root the way the node does: wrap it with the
+// counted-root hash under the transactions domain. Fault-proof inclusion then
+// authenticates the raw root against this committed value.
+const countedTransactionsRoot = (
+  rawRoot: string,
+  count: bigint,
+): Promise<string> =>
+  Effect.runPromise(
+    commitCountedRootProgram({
+      domain: ROOT_DOMAINS.transactions,
+      phasRoot: rawRoot,
+      count,
+    }),
+  );
+
 const makeHeader = (
   operatorVkey: string,
   now: number,
   transactionsRoot = EMPTY_MERKLE_TREE_ROOT,
+  l2TransactionCount = 0n,
 ): Header => ({
   prevUtxosRoot: EMPTY_MERKLE_TREE_ROOT,
   utxosRoot: EMPTY_MERKLE_TREE_ROOT,
   withdrawalsRoot: EMPTY_MERKLE_TREE_ROOT,
   ...EMPTY_HEADER_TRANSITION_COMMITMENTS,
+  l2TransactionCount,
   transactionsRoot,
   depositsRoot: EMPTY_MERKLE_TREE_ROOT,
   startTime: BigInt(now),
@@ -1941,6 +2113,9 @@ const buildRemovalDeploymentInfo = (
     fraudProofDoubleSpend: {
       scriptHash: contracts.fraudProofs.doubleSpend.spendingScriptHash,
     },
+    fraudProofNonExistentInput: {
+      scriptHash: contracts.fraudProofs.nonExistentInput.spendingScriptHash,
+    },
     fraudProofInvalidRange: {
       scriptHash: contracts.fraudProofs.invalidRange.spendingScriptHash,
     },
@@ -2171,7 +2346,11 @@ const buildProvedDoubleSpendFixture = async ({
   const fraudulentHeader = makeHeader(
     funderPaymentCredential.hash,
     headerStartTime,
-    transactionInclusion.transactionsRoot,
+    await countedTransactionsRoot(
+      transactionInclusion.transactionsRoot,
+      transactionInclusion.l2TransactionCount,
+    ),
+    transactionInclusion.l2TransactionCount,
   );
   const setup = await submitSetupTx({
     lucid: funderLucid,
@@ -2637,7 +2816,11 @@ describe("fault-proof emulator integration", () => {
     const fraudulentHeader = makeHeader(
       funderPaymentCredential.hash,
       headerStartTime,
-      transactionInclusion.transactionsRoot,
+      await countedTransactionsRoot(
+        transactionInclusion.transactionsRoot,
+        transactionInclusion.l2TransactionCount,
+      ),
+      transactionInclusion.l2TransactionCount,
     );
     const setup = await submitSetupTx({
       lucid: funderLucid,
@@ -3134,7 +3317,11 @@ describe("fault-proof emulator integration", () => {
     const fraudulentHeader = makeHeader(
       funderPaymentCredential.hash,
       headerStartTime,
-      invalidRangeInclusion.transactionsRoot,
+      await countedTransactionsRoot(
+        invalidRangeInclusion.transactionsRoot,
+        invalidRangeInclusion.l2TransactionCount,
+      ),
+      invalidRangeInclusion.l2TransactionCount,
     );
     const setup = await submitSetupTx({
       lucid: funderLucid,
@@ -3328,6 +3515,202 @@ describe("fault-proof emulator integration", () => {
     );
     expect(outRefLabel(retainedFraudProof)).toBe(outRefLabel(fraudProofUtxo));
     expect(retainedFraudProof.assets[step02Result.fraudProofUnit]).toBe(1n);
+  }, 180_000);
+
+  it("proves and removes a tail non-existent-input block end to end", async () => {
+    const realBlueprint = readBlueprint(realBlueprintPath);
+    const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
+    const funder = generateEmulatorAccount({ lovelace: 40_000_000_000n });
+    const prover = generateEmulatorAccount({ lovelace: 20_000_000_000n });
+    const emulator = new Emulator(
+      [funder, prover],
+      EMULATOR_PROTOCOL_PARAMETERS,
+    );
+    const funderLucid = await Lucid(emulator, "Custom");
+    const proverLucid = await Lucid(emulator, "Custom");
+    funderLucid.selectWallet.fromSeed(funder.seedPhrase);
+    proverLucid.selectWallet.fromSeed(prover.seedPhrase);
+    const proverSigner = resolveProverSigner({
+      network,
+      walletSeedPhrase: prover.seedPhrase,
+    });
+
+    await registerPhasMembershipRewardAccount(funderLucid, realBlueprint);
+    await registerPexcludesExclusionRewardAccount(funderLucid, realBlueprint);
+    const nonceUtxo = (await funderLucid.wallet().getUtxos())[0];
+    if (nonceUtxo === undefined) {
+      throw new Error("Expected funder wallet to expose a nonce UTxO");
+    }
+
+    const contracts = await buildMinimalFaultProofContracts(
+      realBlueprint,
+      alwaysBlueprint,
+      nonceUtxo,
+      { realNonExistentInput: true, alwaysFraudProofCatalogue: true },
+    );
+    const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
+    const fixture = await buildNonExistentInputFixture();
+    const headerStartTime =
+      alignUnixTimeToEmulatorSlotBoundary(
+        funderLucid,
+        emulator.now() + 120_000,
+      ) - 1;
+    const funderPaymentCredential = getAddressDetails(
+      await funderLucid.wallet().address(),
+    ).paymentCredential;
+    if (
+      funderPaymentCredential === undefined ||
+      funderPaymentCredential.type !== "Key"
+    ) {
+      throw new Error("Expected funder wallet to expose a payment key hash");
+    }
+    const fraudulentHeader = makeHeader(
+      funderPaymentCredential.hash,
+      headerStartTime,
+      await countedTransactionsRoot(
+        fixture.transactionsRoot,
+        fixture.l2TransactionCount,
+      ),
+      fixture.l2TransactionCount,
+    );
+    const setup = await submitSetupTx({
+      lucid: funderLucid,
+      contracts,
+      nonceUtxo,
+      catalogue,
+      header: fraudulentHeader,
+    });
+    const { headerHash } = setup;
+
+    const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue);
+    const initResult = await submitInit({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: proverSigner,
+      fraudCategory: "nonExistentInput",
+      fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+      awaitConfirmation: true,
+    });
+    expect(initResult.fraudCategoryName).toBe("nonExistentInput");
+    expect(initResult.computationThreadAssetName).toBe(
+      `${catalogue.categories.nonExistentInput.categoryId}${headerHash}`,
+    );
+
+    const firstStepUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
+      initResult.firstStepAddress,
+      initResult.computationThreadUnit,
+    );
+    const step01Result = await neSubmitStep01({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: proverSigner,
+      threadOutRef: outRefLabel(firstStepUtxo),
+      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+      txInclusion: fixture.inclusion,
+      awaitConfirmation: true,
+    });
+    expect(step01Result.nativeTxId).toBe(fixture.nativeTxId);
+
+    const secondStepUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
+      step01Result.secondStepAddress,
+      initResult.computationThreadUnit,
+    );
+    const step02Result = await neSubmitStep02({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: proverSigner,
+      threadOutRef: outRefLabel(secondStepUtxo),
+      inputsPreimage: fixture.inputsPreimage,
+      badInputIndex: fixture.badInputIndex,
+      awaitConfirmation: true,
+    });
+    expect(step02Result.missingInput.tx_id).toBe(fixture.missingInputTxId);
+
+    const thirdStepUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
+      step02Result.thirdStepAddress,
+      initResult.computationThreadUnit,
+    );
+    const step03Result = await neSubmitStep03({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: proverSigner,
+      threadOutRef: outRefLabel(thirdStepUtxo),
+      ledgerNonMembershipProofCbor: fixture.ledgerNonMembershipProofCbor,
+      awaitConfirmation: true,
+    });
+    expect(step03Result.missingInputTxId).toBe(fixture.missingInputTxId);
+
+    const fourthStepUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
+      step03Result.fourthStepAddress,
+      initResult.computationThreadUnit,
+    );
+    const step04Result = await neSubmitStep04({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: proverSigner,
+      threadOutRef: outRefLabel(fourthStepUtxo),
+      txsNonMembershipProofCbor: fixture.txsNonMembershipProofCbor,
+      awaitConfirmation: true,
+    });
+    expect(step04Result.fraudProofAssetName).toBe(
+      initResult.computationThreadAssetName,
+    );
+
+    const proverPaymentKeyHash = getAddressDetails(
+      await proverLucid.wallet().address(),
+    ).paymentCredential!.hash;
+    const fraudProofUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
+      step04Result.fraudProofAddress,
+      step04Result.fraudProofUnit,
+    );
+    expect(Data.from(fraudProofUtxo.datum!, FraudProofTokenDatum)).toEqual({
+      fraud_prover: proverPaymentKeyHash,
+    });
+
+    const removeNow = BigInt(emulator.now());
+    const removeResult = await submitRemoveFraudulentBlock({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: proverSigner,
+      fraudCategory: "nonExistentInput",
+      fraudulentHeaderHash: headerHash,
+      awaitConfirmation: true,
+      requireReferenceScripts: false,
+      validFrom: removeNow > 120_000n ? removeNow - 120_000n : 0n,
+      validTo: removeNow + 300_000n,
+    });
+    expect(removeResult.fraudCategory).toBe("nonExistentInput");
+    expect(removeResult.transactions.map((tx) => tx.removedHeaderHash)).toEqual(
+      [headerHash],
+    );
+    await expectStateQueueHeaderOrder({
+      lucid: funderLucid,
+      contracts,
+      expectedHeaderHashes: [],
+    });
+    const retainedFraudProof = await expectSingleUtxoWithUnit(
+      proverLucid,
+      step04Result.fraudProofAddress,
+      step04Result.fraudProofUnit,
+    );
+    expect(retainedFraudProof.assets[step04Result.fraudProofUnit]).toBe(1n);
   }, 180_000);
 
   it("submits and removes a tail transition-trace fraud proof end to end", async () => {

@@ -10,7 +10,6 @@
  */
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { mkdir, rename, writeFile } from "node:fs/promises";
 import { dirname, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -28,6 +27,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { writeJsonFileAtomic } from "@/files/atomic-write.js";
 import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
 import { Lucid, MidgardContracts, NodeConfig } from "@/services/index.js";
 import {
@@ -1016,14 +1016,7 @@ export const writeContractDeploymentInfoFileProgram = (
   Effect.tryPromise({
     try: async () => {
       const resolvedOutputPath = normalizeOutputPath(outputPath);
-      await mkdir(dirname(resolvedOutputPath), { recursive: true });
-      const tempPath = `${resolvedOutputPath}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
-      await writeFile(
-        tempPath,
-        `${JSON.stringify(deploymentInfo, null, 2)}\n`,
-        "utf8",
-      );
-      await rename(tempPath, resolvedOutputPath);
+      await writeJsonFileAtomic(resolvedOutputPath, deploymentInfo);
       return resolvedOutputPath;
     },
     catch: (cause) =>

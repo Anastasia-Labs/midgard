@@ -5,7 +5,6 @@ import {
   coreToTxOutput,
   fromHex,
   LucidEvolution,
-  OutRef,
   TxSignBuilder,
   UTxO,
 } from "@lucid-evolution/lucid";
@@ -21,6 +20,7 @@ import {
 } from "@/local-ledger-slot.js";
 import { Database } from "@/services/index.js";
 import {
+  type InlineWaitPolicy,
   planSubmitTiming,
   planSubmitTimingAfterInlineWait,
   type SubmitTimingPlan,
@@ -90,17 +90,6 @@ export type SignedTxValidityInterval = {
   readonly invalidBeforeSlot?: number;
   readonly invalidHereafterSlot?: number;
 };
-
-export type EarlyValidityRetryDecision =
-  | {
-      readonly status: "wait";
-      readonly waitMs: number;
-      readonly targetSlot: number;
-    }
-  | { readonly status: "already_valid" }
-  | { readonly status: "expired" }
-  | { readonly status: "window_too_narrow" }
-  | { readonly status: "attempts_exhausted" };
 
 const outsideValidityDetails = (
   invalidBeforeSlot: number,
@@ -477,13 +466,73 @@ export type BlockTxPayload = {
   readonly txCbor: Buffer;
 };
 
-export type SubmitRecoveryOptions = {
+export type SubmitRecoveryInlineOptions = {
   readonly label?: string;
   readonly sleep?: (milliseconds: number) => Effect.Effect<void, never>;
   readonly slotSnapshot?: () => Effect.Effect<SubmitSlotSnapshot, unknown>;
   readonly requireSlotForBoundedTx?: boolean;
   readonly maxPreSubmitWaitMs?: number;
+  readonly inlineWaitPolicy?: Extract<InlineWaitPolicy, "allow_inline_wait">;
+  readonly noInlineSubmitDefer?: never;
 };
+
+export type NoInlineSubmitDeferKind =
+  | "pre_submit_validity"
+  | "early_validity_recovery"
+  | "provider_slot_wait";
+
+export type NoInlineSubmitDeferEvidence = {
+  readonly key: string;
+  readonly dependencyKey: string;
+  readonly invalidationKey: string;
+};
+
+export type NoInlineSubmitRecoveryOptions = Omit<
+  SubmitRecoveryInlineOptions,
+  "inlineWaitPolicy" | "noInlineSubmitDefer"
+> & {
+  readonly inlineWaitPolicy: "defer_positive_wait";
+  readonly noInlineSubmitDefer: NoInlineSubmitDeferEvidence;
+};
+
+export type SubmitRecoveryOptions =
+  | SubmitRecoveryInlineOptions
+  | NoInlineSubmitRecoveryOptions;
+
+export class NoInlineSubmitDefer extends Data.TaggedError(
+  "NoInlineSubmitDefer",
+)<{
+  readonly callerLabel: string;
+  readonly kind: NoInlineSubmitDeferKind;
+  readonly key: string;
+  readonly txHash?: string;
+  readonly currentSlot: number;
+  readonly targetSlot: number;
+  readonly dueSlot: number;
+  readonly waitMs: number;
+  readonly slotSource: string;
+  readonly dependencyKey: string;
+  readonly invalidationKey: string;
+  readonly invalidBeforeSlot?: number;
+  readonly invalidHereafterSlot?: number;
+}> {}
+
+export type SignSubmitNoConfirmationResult =
+  | {
+      readonly status: "submitted";
+      readonly txHash: string;
+    }
+  | {
+      readonly status: "deferred";
+      readonly defer: NoInlineSubmitDefer;
+    };
+
+export const isNoInlineSubmitDefer = (
+  value: unknown,
+): value is NoInlineSubmitDefer =>
+  typeof value === "object" &&
+  value !== null &&
+  (value as { readonly _tag?: unknown })._tag === "NoInlineSubmitDefer";
 
 type EmulatorTimeProvider = {
   readonly now: () => number;
@@ -562,6 +611,101 @@ const resolvePreSubmitSlotSnapshot = (
   return Effect.fail(new Error("No local submit slot snapshot is configured"));
 };
 
+type SubmitTimingPositiveWaitPlan = Extract<
+  SubmitTimingPlan,
+  {
+    readonly status: "wait" | "not_due" | "slot_source_stalled";
+  }
+>;
+
+const noInlineSubmitDeferEvidence = (
+  options: NoInlineSubmitRecoveryOptions,
+): NoInlineSubmitDeferEvidence => options.noInlineSubmitDefer;
+
+const noInlineSubmitDeferFromTimingPlan = (
+  kind: NoInlineSubmitDeferKind,
+  txHash: string,
+  plan: SubmitTimingPlan,
+  options: SubmitRecoveryOptions,
+): NoInlineSubmitDefer | undefined => {
+  if (
+    options.inlineWaitPolicy !== "defer_positive_wait" ||
+    !("waitMs" in plan) ||
+    plan.waitMs <= 0 ||
+    !("currentSlot" in plan) ||
+    plan.currentSlot === undefined ||
+    !("targetSlot" in plan) ||
+    plan.targetSlot === undefined ||
+    !("dueSlot" in plan) ||
+    plan.dueSlot === undefined ||
+    !("slotSource" in plan) ||
+    plan.slotSource === undefined
+  ) {
+    return undefined;
+  }
+  const positiveWaitPlan = plan as SubmitTimingPositiveWaitPlan;
+  const deferEvidence = noInlineSubmitDeferEvidence(options);
+  return new NoInlineSubmitDefer({
+    callerLabel: positiveWaitPlan.callerLabel,
+    kind,
+    key: deferEvidence.key,
+    txHash,
+    currentSlot: positiveWaitPlan.currentSlot,
+    targetSlot: positiveWaitPlan.targetSlot,
+    dueSlot: positiveWaitPlan.dueSlot,
+    waitMs: positiveWaitPlan.waitMs,
+    slotSource: positiveWaitPlan.slotSource,
+    dependencyKey: deferEvidence.dependencyKey,
+    invalidationKey: deferEvidence.invalidationKey,
+    invalidBeforeSlot: positiveWaitPlan.invalidBeforeSlot,
+    ...(positiveWaitPlan.invalidHereafterSlot === undefined
+      ? {}
+      : { invalidHereafterSlot: positiveWaitPlan.invalidHereafterSlot }),
+  });
+};
+
+const noInlineSubmitProviderSlotDefer = ({
+  txHash,
+  options,
+  callerLabel,
+  kind,
+  currentSlot,
+  targetSlot,
+  waitMs,
+  invalidBeforeSlot,
+  invalidHereafterSlot,
+}: {
+  readonly txHash: string;
+  readonly options: SubmitRecoveryOptions;
+  readonly callerLabel: string;
+  readonly kind: NoInlineSubmitDeferKind;
+  readonly currentSlot: number;
+  readonly targetSlot: number;
+  readonly waitMs: number;
+  readonly invalidBeforeSlot: number;
+  readonly invalidHereafterSlot?: number;
+}): NoInlineSubmitDefer | undefined => {
+  if (options.inlineWaitPolicy !== "defer_positive_wait" || waitMs <= 0) {
+    return undefined;
+  }
+  const deferEvidence = noInlineSubmitDeferEvidence(options);
+  return new NoInlineSubmitDefer({
+    callerLabel,
+    kind,
+    key: deferEvidence.key,
+    txHash,
+    currentSlot,
+    targetSlot,
+    dueSlot: targetSlot,
+    waitMs,
+    slotSource: "provider",
+    dependencyKey: deferEvidence.dependencyKey,
+    invalidationKey: deferEvidence.invalidationKey,
+    invalidBeforeSlot,
+    ...(invalidHereafterSlot === undefined ? {} : { invalidHereafterSlot }),
+  });
+};
+
 const preSubmitValidityCheck = (
   lucid: LucidEvolution,
   signed: Awaited<ReturnType<TxSignBuilder["complete"]>>,
@@ -613,6 +757,9 @@ const preSubmitValidityCheck = (
       submitSlotBuffer: EARLY_VALIDITY_RETRY_SLOT_BUFFER,
       maxInlineWaitMs:
         options.maxPreSubmitWaitMs ?? DEFAULT_SIGNED_TX_INLINE_WAIT_MS,
+      inlineWaitPolicy: options.inlineWaitPolicy,
+      dependencyKey: options.noInlineSubmitDefer?.dependencyKey,
+      invalidationKey: options.noInlineSubmitDefer?.invalidationKey,
     });
   });
 
@@ -691,6 +838,15 @@ export const submitSignedTxWithRecovery = (
         return yield* Effect.fail(
           submitTimingFailureError(txHash, preSubmitValidity),
         );
+      }
+      const preSubmitDefer = noInlineSubmitDeferFromTimingPlan(
+        "pre_submit_validity",
+        txHash,
+        preSubmitValidity,
+        options,
+      );
+      if (preSubmitDefer !== undefined) {
+        return yield* Effect.fail(preSubmitDefer);
       }
       if (preSubmitValidity.status === "not_due") {
         return yield* Effect.fail(
@@ -799,8 +955,7 @@ export const submitSignedTxWithRecovery = (
         parseOutsideValidityIntervalDetails(submitError);
       if (outsideValidityDetails !== null) {
         if (
-          outsideValidityRecoveryAttempts >=
-          maxOutsideValidityRecoveryAttempts
+          outsideValidityRecoveryAttempts >= maxOutsideValidityRecoveryAttempts
         ) {
           return yield* Effect.fail(
             new Error(
@@ -837,6 +992,9 @@ export const submitSignedTxWithRecovery = (
           submitSlotBuffer: EARLY_VALIDITY_RETRY_SLOT_BUFFER,
           maxInlineWaitMs:
             options.maxPreSubmitWaitMs ?? DEFAULT_SIGNED_TX_INLINE_WAIT_MS,
+          inlineWaitPolicy: options.inlineWaitPolicy,
+          dependencyKey: options.noInlineSubmitDefer?.dependencyKey,
+          invalidationKey: options.noInlineSubmitDefer?.invalidationKey,
         });
         if (recoveryPlan.status === "ready") {
           const providerDetails = {
@@ -851,6 +1009,20 @@ export const submitSignedTxWithRecovery = (
             maxOutsideValidityRecoveryAttempts,
           );
           if (providerRetry.status === "wait") {
+            const providerDefer = noInlineSubmitProviderSlotDefer({
+              txHash,
+              options,
+              callerLabel: recoveryPlan.callerLabel,
+              kind: "provider_slot_wait",
+              currentSlot: outsideValidityDetails.currentSlot,
+              targetSlot: providerRetry.targetSlot,
+              waitMs: providerRetry.waitMs,
+              invalidBeforeSlot: outsideValidityDetails.invalidBeforeSlot,
+              invalidHereafterSlot,
+            });
+            if (providerDefer !== undefined) {
+              return yield* Effect.fail(providerDefer);
+            }
             const remainingWaitMs =
               maxOutsideValidityRecoveryWaitMs -
               outsideValidityRecoveryWaitedMs;
@@ -902,6 +1074,20 @@ export const submitSignedTxWithRecovery = (
           }
           const remainingWaitMs =
             maxOutsideValidityRecoveryWaitMs - outsideValidityRecoveryWaitedMs;
+          const staleProviderDefer = noInlineSubmitProviderSlotDefer({
+            txHash,
+            options,
+            callerLabel: recoveryPlan.callerLabel,
+            kind: "provider_slot_wait",
+            currentSlot: outsideValidityDetails.currentSlot,
+            targetSlot: outsideValidityDetails.currentSlot + 1,
+            waitMs: SLOT_LENGTH_MS,
+            invalidBeforeSlot: outsideValidityDetails.invalidBeforeSlot,
+            invalidHereafterSlot,
+          });
+          if (staleProviderDefer !== undefined) {
+            return yield* Effect.fail(staleProviderDefer);
+          }
           if (SLOT_LENGTH_MS > remainingWaitMs || remainingWaitMs <= 0) {
             return yield* Effect.fail(
               new Error(
@@ -926,6 +1112,15 @@ export const submitSignedTxWithRecovery = (
           yield* sleep(SLOT_LENGTH_MS);
           continue;
         }
+        const recoveryDefer = noInlineSubmitDeferFromTimingPlan(
+          "early_validity_recovery",
+          txHash,
+          recoveryPlan,
+          options,
+        );
+        if (recoveryDefer !== undefined) {
+          return yield* Effect.fail(recoveryDefer);
+        }
         if (recoveryPlan.status !== "wait") {
           return yield* Effect.fail(
             submitTimingFailureError(txHash, recoveryPlan),
@@ -936,8 +1131,7 @@ export const submitSignedTxWithRecovery = (
         if (
           recoveryPlan.waitMs > remainingWaitMs ||
           remainingWaitMs <= 0 ||
-          outsideValidityRecoveryAttempts >=
-            maxOutsideValidityRecoveryAttempts
+          outsideValidityRecoveryAttempts >= maxOutsideValidityRecoveryAttempts
         ) {
           return yield* Effect.fail(
             new Error(
@@ -966,6 +1160,14 @@ export const submitSignedTxWithRecovery = (
         return yield* Effect.fail(e);
       }
 
+      if (options.inlineWaitPolicy === "defer_positive_wait") {
+        return yield* Effect.fail(
+          new Error(
+            `Tx ${txHash} submit failed with provider error in no-inline mode; refusing provider retry sleep under ownership: ${submitError}`,
+          ),
+        );
+      }
+
       if (providerRetryAttempts < RETRY_ATTEMPTS) {
         const waitMs = INIT_RETRY_AFTER_MILLIS * 2 ** providerRetryAttempts;
         providerRetryAttempts += 1;
@@ -987,12 +1189,28 @@ export const submitSignedTxWithRecovery = (
  * @param signBuilder - The transaction sign builder.
  * @returns An Effect that resolves when the transaction is signed, submitted, and confirmed.
  */
-export const handleSignSubmit = (
+export function handleSignSubmit(
+  lucid: LucidEvolution,
+  signBuilder: TxSignBuilder,
+  options: NoInlineSubmitRecoveryOptions,
+): Effect.Effect<
+  string,
+  TxSignError | TxSubmitError | TxConfirmError | NoInlineSubmitDefer
+>;
+export function handleSignSubmit(
+  lucid: LucidEvolution,
+  signBuilder: TxSignBuilder,
+  options?: SubmitRecoveryOptions,
+): Effect.Effect<string, TxSignError | TxSubmitError | TxConfirmError>;
+export function handleSignSubmit(
   lucid: LucidEvolution,
   signBuilder: TxSignBuilder,
   options: SubmitRecoveryOptions = {},
-): Effect.Effect<string, TxSignError | TxSubmitError | TxConfirmError> =>
-  Effect.gen(function* () {
+): Effect.Effect<
+  string,
+  TxSignError | TxSubmitError | TxConfirmError | NoInlineSubmitDefer
+> {
+  return Effect.gen(function* () {
     const submission = yield* signSubmitTransaction(
       lucid,
       signBuilder,
@@ -1004,6 +1222,7 @@ export const handleSignSubmit = (
       Effect.logError(`TxSignError: ${e}`),
     ),
   );
+}
 
 export const awaitSubmittedTransactionConfirmation = (
   lucid: LucidEvolution,
@@ -1059,33 +1278,93 @@ export const awaitSubmittedTransactionConfirmation = (
  * @param signBuilder - The transaction sign builder.
  * @returns An Effect that resolves when the transaction is signed, submitted, and confirmed.
  */
-export const handleSignSubmitNoConfirmation = (
+export function handleSignSubmitNoConfirmation(
+  lucid: LucidEvolution,
+  signBuilder: TxSignBuilder,
+  options: NoInlineSubmitRecoveryOptions,
+): Effect.Effect<SignSubmitNoConfirmationResult, TxSignError | TxSubmitError>;
+export function handleSignSubmitNoConfirmation(
+  lucid: LucidEvolution,
+  signBuilder: TxSignBuilder,
+  options?: SubmitRecoveryOptions,
+): Effect.Effect<string, TxSignError | TxSubmitError>;
+export function handleSignSubmitNoConfirmation(
   lucid: LucidEvolution,
   signBuilder: TxSignBuilder,
   options: SubmitRecoveryOptions = {},
-): Effect.Effect<string, TxSignError | TxSubmitError> =>
-  Effect.gen(function* () {
-    const submission = yield* signSubmitTransaction(
-      lucid,
-      signBuilder,
-      options,
+): Effect.Effect<
+  string | SignSubmitNoConfirmationResult,
+  TxSignError | TxSubmitError | NoInlineSubmitDefer
+> {
+  const returnNoInlineDefer =
+    options.inlineWaitPolicy === "defer_positive_wait";
+  return Effect.gen(function* () {
+    const submissionResult = yield* Effect.either(
+      signSubmitTransactionWithDefer(lucid, signBuilder, options),
     );
+    if (submissionResult._tag === "Left") {
+      const error = submissionResult.left;
+      if (isNoInlineSubmitDefer(error) && returnNoInlineDefer) {
+        return {
+          status: "deferred",
+          defer: error,
+        } satisfies SignSubmitNoConfirmationResult;
+      }
+      return yield* Effect.fail(error);
+    }
+    const submission = submissionResult.right;
+    if (returnNoInlineDefer) {
+      return {
+        status: "submitted",
+        txHash: submission.txHash,
+      } satisfies SignSubmitNoConfirmationResult;
+    }
     return submission.txHash;
   }).pipe(
     Effect.tapErrorTag("TxSignError", (e) =>
       Effect.logError(`TxSignError: ${e}`),
     ),
   );
+}
 
 /**
  * Shared implementation used by the confirmation and no-confirmation sign/
  * submit entrypoints.
  */
-export const signSubmitTransaction = (
+export function signSubmitTransaction(
+  lucid: LucidEvolution,
+  signBuilder: TxSignBuilder,
+  options: SubmitRecoveryOptions & {
+    readonly inlineWaitPolicy: "defer_positive_wait";
+  },
+): Effect.Effect<
+  SignSubmitContext,
+  TxSubmitError | TxSignError | NoInlineSubmitDefer
+>;
+export function signSubmitTransaction(
+  lucid: LucidEvolution,
+  signBuilder: TxSignBuilder,
+  options?: SubmitRecoveryOptions,
+): Effect.Effect<SignSubmitContext, TxSubmitError | TxSignError>;
+export function signSubmitTransaction(
   lucid: LucidEvolution,
   signBuilder: TxSignBuilder,
   options: SubmitRecoveryOptions = {},
-): Effect.Effect<SignSubmitContext, TxSubmitError | TxSignError> =>
+): Effect.Effect<
+  SignSubmitContext,
+  TxSubmitError | TxSignError | NoInlineSubmitDefer
+> {
+  return signSubmitTransactionWithDefer(lucid, signBuilder, options);
+}
+
+const signSubmitTransactionWithDefer = (
+  lucid: LucidEvolution,
+  signBuilder: TxSignBuilder,
+  options: SubmitRecoveryOptions = {},
+): Effect.Effect<
+  SignSubmitContext,
+  TxSubmitError | TxSignError | NoInlineSubmitDefer
+> =>
   Effect.gen(function* () {
     const walletAddr = yield* Effect.tryPromise(() =>
       lucid.wallet().address(),
@@ -1114,21 +1393,27 @@ export const signSubmitTransaction = (
     yield* Effect.logInfo("✉️  Submitting transaction...");
     yield* submitSignedTxWithRecovery(lucid, signed, txHash, options).pipe(
       Effect.tapError((e) =>
-        Effect.logError(
-          `Tx submission provider error for ${txHash}: ${formatUnknownError(e, {
-            includeCause: true,
-          })}`,
-        ),
+        isNoInlineSubmitDefer(e)
+          ? Effect.void
+          : Effect.logError(
+              `Tx submission provider error for ${txHash}: ${formatUnknownError(
+                e,
+                {
+                  includeCause: true,
+                },
+              )}`,
+            ),
       ),
-      Effect.mapError(
-        (e) =>
-          new TxSubmitError({
-            message: `Failed to submit transaction: ${formatUnknownError(e, {
-              includeCause: true,
-            })}`,
-            cause: e,
-            txHash,
-          }),
+      Effect.mapError((e) =>
+        isNoInlineSubmitDefer(e)
+          ? e
+          : new TxSubmitError({
+              message: `Failed to submit transaction: ${formatUnknownError(e, {
+                includeCause: true,
+              })}`,
+              cause: e,
+              txHash,
+            }),
       ),
     );
     yield* Effect.logInfo(`🚀 Transaction submitted: ${txHash}`);
@@ -1183,14 +1468,6 @@ export const fetchFirstBlockTxs = (
     return { txs, txHashes, headerHash };
   });
 
-/**
- * Projects a full UTxO into its outref-only form.
- */
-export const utxoToOutRef = (utxo: UTxO): OutRef => ({
-  txHash: utxo.txHash,
-  outputIndex: utxo.outputIndex,
-});
-
 export class TxSignError extends Data.TaggedError("TxSignError")<
   SDK.GenericErrorFields & {
     readonly txHash: string;
@@ -1208,7 +1485,3 @@ export class TxConfirmError extends Data.TaggedError("TxConfirmError")<
     readonly txHash: string;
   }
 > {}
-
-export class GenesisDepositError extends Data.TaggedError(
-  "GenesisDepositError",
-)<SDK.GenericErrorFields> {}

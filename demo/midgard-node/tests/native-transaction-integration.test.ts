@@ -718,6 +718,48 @@ const runBothPhases = async (
   return { phaseA, phaseB: { accepted, rejected } };
 };
 
+type BothPhaseResult = Awaited<ReturnType<typeof runBothPhases>>;
+type PhaseAResult = BothPhaseResult["phaseA"];
+type PhaseBResult = BothPhaseResult["phaseB"];
+type RejectCode = (typeof RejectCodes)[keyof typeof RejectCodes];
+
+const expectPhaseAAcceptsOne = (phaseA: PhaseAResult) => {
+  expect(phaseA.rejected).toHaveLength(0);
+  expect(phaseA.accepted).toHaveLength(1);
+};
+
+const expectPhaseBAcceptsOne = (phaseB: PhaseBResult) => {
+  expect(phaseB.rejected).toHaveLength(0);
+  expect(phaseB.accepted).toHaveLength(1);
+};
+
+const expectBothPhasesAcceptOne = ({ phaseA, phaseB }: BothPhaseResult) => {
+  expectPhaseAAcceptsOne(phaseA);
+  expectPhaseBAcceptsOne(phaseB);
+};
+
+const expectPhaseBRejectsOne = (
+  phaseB: PhaseBResult,
+  code: RejectCode,
+  detail?: string,
+) => {
+  expect(phaseB.accepted).toHaveLength(0);
+  expect(phaseB.rejected).toHaveLength(1);
+  expect(phaseB.rejected[0].code).toBe(code);
+  if (detail !== undefined) {
+    expect(phaseB.rejected[0].detail).toContain(detail);
+  }
+};
+
+const expectPhaseAAcceptsAndPhaseBRejectsOne = (
+  result: BothPhaseResult,
+  code: RejectCode,
+  detail?: string,
+) => {
+  expectPhaseAAcceptsOne(result.phaseA);
+  expectPhaseBRejectsOne(result.phaseB, code, detail);
+};
+
 const makeScriptSpendPreState = (opts: {
   readonly inputOutRef: Buffer;
   readonly referenceInputOutRef: Buffer;
@@ -1226,12 +1268,7 @@ describe("native transaction integration", () => {
       ],
     ]);
 
-    const { phaseA, phaseB } = await runBothPhases(txId, txCbor, preState);
-
-    expect(phaseA.rejected).toHaveLength(0);
-    expect(phaseA.accepted).toHaveLength(1);
-    expect(phaseB.rejected).toHaveLength(0);
-    expect(phaseB.accepted).toHaveLength(1);
+    expectBothPhasesAcceptOne(await runBothPhases(txId, txCbor, preState));
   });
 
   it("accepts required observers when satisfied by a reference native script", async () => {
@@ -1264,12 +1301,7 @@ describe("native transaction integration", () => {
       [referenceInputOutRef.toString("hex"), referenceOutput],
     ]);
 
-    const { phaseA, phaseB } = await runBothPhases(txId, txCbor, preState);
-
-    expect(phaseA.rejected).toHaveLength(0);
-    expect(phaseA.accepted).toHaveLength(1);
-    expect(phaseB.rejected).toHaveLength(0);
-    expect(phaseB.accepted).toHaveLength(1);
+    expectBothPhasesAcceptOne(await runBothPhases(txId, txCbor, preState));
   });
 
   it("rejects required observers when a matching reference native script is not satisfied by tx signers", async () => {
@@ -1303,14 +1335,9 @@ describe("native transaction integration", () => {
       [referenceInputOutRef.toString("hex"), referenceOutput],
     ]);
 
-    const { phaseA, phaseB } = await runBothPhases(txId, txCbor, preState);
-
-    expect(phaseA.rejected).toHaveLength(0);
-    expect(phaseA.accepted).toHaveLength(1);
-    expect(phaseB.accepted).toHaveLength(0);
-    expect(phaseB.rejected).toHaveLength(1);
-    expect(phaseB.rejected[0].code).toBe(RejectCodes.NativeScriptInvalid);
-    expect(phaseB.rejected[0].detail).toContain(
+    expectPhaseAAcceptsAndPhaseBRejectsOne(
+      await runBothPhases(txId, txCbor, preState),
+      RejectCodes.NativeScriptInvalid,
       observerScriptHash.toString("hex"),
     );
   });
@@ -1335,14 +1362,11 @@ describe("native transaction integration", () => {
       ],
     ]);
 
-    const { phaseA, phaseB } = await runBothPhases(txId, txCbor, preState);
-
-    expect(phaseA.rejected).toHaveLength(0);
-    expect(phaseA.accepted).toHaveLength(1);
-    expect(phaseB.accepted).toHaveLength(0);
-    expect(phaseB.rejected).toHaveLength(1);
-    expect(phaseB.rejected[0].code).toBe(RejectCodes.MissingRequiredWitness);
-    expect(phaseB.rejected[0].detail).toContain(observerHash.toString("hex"));
+    expectPhaseAAcceptsAndPhaseBRejectsOne(
+      await runBothPhases(txId, txCbor, preState),
+      RejectCodes.MissingRequiredWitness,
+      observerHash.toString("hex"),
+    );
   });
 
   it("rejects extraneous inline native script witnesses", async () => {
@@ -1369,14 +1393,9 @@ describe("native transaction integration", () => {
       ],
     ]);
 
-    const { phaseA, phaseB } = await runBothPhases(txId, txCbor, preState);
-
-    expect(phaseA.rejected).toHaveLength(0);
-    expect(phaseA.accepted).toHaveLength(1);
-    expect(phaseB.accepted).toHaveLength(0);
-    expect(phaseB.rejected).toHaveLength(1);
-    expect(phaseB.rejected[0].code).toBe(RejectCodes.InvalidFieldType);
-    expect(phaseB.rejected[0].detail).toContain(
+    expectPhaseAAcceptsAndPhaseBRejectsOne(
+      await runBothPhases(txId, txCbor, preState),
+      RejectCodes.InvalidFieldType,
       "extraneous native script witness",
     );
   });
@@ -1404,14 +1423,9 @@ describe("native transaction integration", () => {
       ],
     ]);
 
-    const { phaseA, phaseB } = await runBothPhases(txId, txCbor, preState);
-
-    expect(phaseA.rejected).toHaveLength(0);
-    expect(phaseA.accepted).toHaveLength(1);
-    expect(phaseB.accepted).toHaveLength(0);
-    expect(phaseB.rejected).toHaveLength(1);
-    expect(phaseB.rejected[0].code).toBe(RejectCodes.InvalidFieldType);
-    expect(phaseB.rejected[0].detail).toContain(
+    expectPhaseAAcceptsAndPhaseBRejectsOne(
+      await runBothPhases(txId, txCbor, preState),
+      RejectCodes.InvalidFieldType,
       "extraneous non-native script witness",
     );
   });
@@ -2845,14 +2859,11 @@ describe("native transaction integration", () => {
   });
 
   it("accepts the MidgardV1 context probe with sorted inputs, authored outputs, mint, observer, signer, and redeemers", async () => {
-    const { phaseA, phaseB } = await runMidgardV1ContextProbeScenario({
-      marker: 0xb3,
-    });
-
-    expect(phaseA.rejected).toHaveLength(0);
-    expect(phaseA.accepted).toHaveLength(1);
-    expect(phaseB.rejected).toHaveLength(0);
-    expect(phaseB.accepted).toHaveLength(1);
+    expectBothPhasesAcceptOne(
+      await runMidgardV1ContextProbeScenario({
+        marker: 0xb3,
+      }),
+    );
   });
 
   it("rejects the MidgardV1 context probe when the expected first sorted spend input is wrong", async () => {
@@ -2864,12 +2875,8 @@ describe("native transaction integration", () => {
         },
       });
 
-    expect(phaseA.rejected).toHaveLength(0);
-    expect(phaseA.accepted).toHaveLength(1);
-    expect(phaseB.accepted).toHaveLength(0);
-    expect(phaseB.rejected).toHaveLength(1);
-    expect(phaseB.rejected[0].code).toBe(RejectCodes.PlutusScriptInvalid);
-    expect(phaseB.rejected[0].detail).toContain(probeHash);
+    expectPhaseAAcceptsOne(phaseA);
+    expectPhaseBRejectsOne(phaseB, RejectCodes.PlutusScriptInvalid, probeHash);
   });
 
   it("rejects the MidgardV1 context probe when the expected first sorted reference input is wrong", async () => {
@@ -2881,12 +2888,8 @@ describe("native transaction integration", () => {
         },
       });
 
-    expect(phaseA.rejected).toHaveLength(0);
-    expect(phaseA.accepted).toHaveLength(1);
-    expect(phaseB.accepted).toHaveLength(0);
-    expect(phaseB.rejected).toHaveLength(1);
-    expect(phaseB.rejected[0].code).toBe(RejectCodes.PlutusScriptInvalid);
-    expect(phaseB.rejected[0].detail).toContain(probeHash);
+    expectPhaseAAcceptsOne(phaseA);
+    expectPhaseBRejectsOne(phaseB, RejectCodes.PlutusScriptInvalid, probeHash);
   });
 
   it("rejects the MidgardV1 context probe when expected output order is swapped", async () => {
@@ -2903,12 +2906,8 @@ describe("native transaction integration", () => {
         },
       });
 
-    expect(phaseA.rejected).toHaveLength(0);
-    expect(phaseA.accepted).toHaveLength(1);
-    expect(phaseB.accepted).toHaveLength(0);
-    expect(phaseB.rejected).toHaveLength(1);
-    expect(phaseB.rejected[0].code).toBe(RejectCodes.PlutusScriptInvalid);
-    expect(phaseB.rejected[0].detail).toContain(probeHash);
+    expectPhaseAAcceptsOne(phaseA);
+    expectPhaseBRejectsOne(phaseB, RejectCodes.PlutusScriptInvalid, probeHash);
   });
 
   it("rejects the MidgardV1 context probe when an expected receive redeemer-map key is absent", async () => {
@@ -2920,12 +2919,8 @@ describe("native transaction integration", () => {
         },
       });
 
-    expect(phaseA.rejected).toHaveLength(0);
-    expect(phaseA.accepted).toHaveLength(1);
-    expect(phaseB.accepted).toHaveLength(0);
-    expect(phaseB.rejected).toHaveLength(1);
-    expect(phaseB.rejected[0].code).toBe(RejectCodes.PlutusScriptInvalid);
-    expect(phaseB.rejected[0].detail).toContain(probeHash);
+    expectPhaseAAcceptsOne(phaseA);
+    expectPhaseBRejectsOne(phaseB, RejectCodes.PlutusScriptInvalid, probeHash);
   });
 
   it("accepts MidgardV1 spends with an inline raw UPLC witness", async () => {

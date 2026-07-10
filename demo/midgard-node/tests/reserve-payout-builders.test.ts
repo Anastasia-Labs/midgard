@@ -23,8 +23,6 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
-import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
-import { withRealStateQueueAndOperatorContracts } from "@/services/midgard-contracts.js";
 import {
   __reservePayoutTest,
   buildAbsorbConfirmedDepositToReserveTxProgram,
@@ -34,6 +32,7 @@ import {
   buildRefundInvalidWithdrawalTxProgram,
 } from "@/transactions/reserve-payout.js";
 
+import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 import {
   findRedeemerDataCbor,
   getRedeemerPointersInContextOrder,
@@ -116,21 +115,7 @@ const countedSingletonMembershipRoot = async (
   return { root, phasRoot };
 };
 
-const loadRealContracts = (oneShotOutRef: {
-  readonly txHash: string;
-  readonly outputIndex: number;
-}) =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const placeholder = yield* AlwaysSucceedsContract;
-      return yield* withRealStateQueueAndOperatorContracts(
-        "Preprod",
-        placeholder,
-        oneShotOutRef,
-        { referenceScriptAuth: placeholder.referenceScriptAuth },
-      );
-    }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
-  );
+const loadRealContracts = loadRealMidgardContractsForTest;
 
 const findUtxoWithUnit = (
   utxos: readonly UTxO[],

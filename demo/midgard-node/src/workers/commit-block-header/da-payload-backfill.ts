@@ -1,6 +1,6 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 
 import { DaPayloadsDB, PendingBlockFinalizationsDB } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
@@ -27,6 +27,13 @@ type BackfillDeps<R> = {
     DatabaseError,
     R
   >;
+  readonly retrieveJournalByHeaderHash?: (
+    headerHash: Buffer,
+  ) => Effect.Effect<
+    Option.Option<PendingBlockFinalizationsDB.Record>,
+    DatabaseError,
+    R
+  >;
   readonly upsertAvailable: (
     input: DaPayloadsDB.InsertInput,
   ) => Effect.Effect<void, DatabaseError, R>;
@@ -35,6 +42,7 @@ type BackfillDeps<R> = {
 const defaultDeps: BackfillDeps<Database> = {
   retrieveMissingRecords:
     PendingBlockFinalizationsDB.retrieveFinalizedMissingDaPayloads,
+  retrieveJournalByHeaderHash: PendingBlockFinalizationsDB.retrieveByHeaderHash,
   upsertAvailable: DaPayloadsDB.upsertAvailable,
 };
 
@@ -98,6 +106,23 @@ export const backfillMissingDaPayloadsFromFinalizedJournals = <R = Database>({
     const backfilled: string[] = [];
     const skipped: DaPayloadBackfillSkipped[] = [];
     if (records.length === 0) {
+      if (
+        headerHash !== undefined &&
+        deps.retrieveJournalByHeaderHash !== undefined
+      ) {
+        const journal = yield* deps.retrieveJournalByHeaderHash(headerHash);
+        if (Option.isSome(journal)) {
+          const status =
+            journal.value[PendingBlockFinalizationsDB.Columns.STATUS];
+          skipped.push({
+            headerHash: headerHash.toString("hex"),
+            reason:
+              status === PendingBlockFinalizationsDB.Status.Finalized
+                ? "finalized journal already has a DA payload or is not missing DA payload backfill"
+                : `journal excluded by status: ${status}; revive and complete local finalization before DA payload backfill`,
+          });
+        }
+      }
       return { scanned: 0, backfilled, skipped };
     }
 

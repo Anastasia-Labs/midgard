@@ -33,18 +33,6 @@ CREATE TABLE confirmed_ledger (
 CREATE INDEX idx_confirmed_ledger_address
   ON confirmed_ledger (address);
 
-CREATE TABLE latest_ledger (
-  tx_id BYTEA NOT NULL,
-  outref BYTEA NOT NULL,
-  output BYTEA NOT NULL,
-  address TEXT NOT NULL,
-  time_stamp_tz TIMESTAMPTZ NOT NULL DEFAULT(NOW()),
-  PRIMARY KEY (outref)
-);
-
-CREATE INDEX idx_latest_ledger_address
-  ON latest_ledger (address);
-
 CREATE TABLE deposits_utxos (
   event_id BYTEA NOT NULL,
   event_info BYTEA NOT NULL,
@@ -143,16 +131,6 @@ CREATE INDEX idx_tx_rejections_tx_id
 
 CREATE INDEX idx_tx_rejections_created_at
   ON tx_rejections (created_at);
-
-CREATE TABLE deposit_ingestion_cursor (
-  cursor_name TEXT PRIMARY KEY,
-  stable_tip_hash TEXT NOT NULL,
-  stable_tip_slot BIGINT NOT NULL,
-  stable_tip_time_ms BIGINT NOT NULL,
-  scan_upper_bound_time_ms BIGINT NOT NULL,
-  last_scanned_event_id BYTEA NOT NULL,
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
 
 CREATE TABLE pending_block_finalizations (
   header_hash BYTEA PRIMARY KEY,

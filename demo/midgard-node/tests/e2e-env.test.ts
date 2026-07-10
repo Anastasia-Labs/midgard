@@ -1,8 +1,7 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   buildE2EProcessEnv,
@@ -10,20 +9,9 @@ import {
   parseEnvOverride,
 } from "@/e2e/env.js";
 
-let tempDirs: string[] = [];
+import { createTrackedTempDirFactory } from "./helpers/temp-files.js";
 
-const makeTempDir = async (): Promise<string> => {
-  const dir = await mkdtemp(join(tmpdir(), "midgard-e2e-env-"));
-  tempDirs.push(dir);
-  return dir;
-};
-
-afterEach(async () => {
-  await Promise.all(
-    tempDirs.map((dir) => rm(dir, { recursive: true, force: true })),
-  );
-  tempDirs = [];
-});
+const makeTempDir = createTrackedTempDirFactory("midgard-e2e-env-");
 
 describe("e2e env helper", () => {
   it("parses dotenv quoting without shell syntax leaking into values", async () => {

@@ -686,6 +686,38 @@ pub fn plutarch_pexcludes(
   True
 }
 
+/// Raw variant of `plutarch_pexcludes` that takes the merkle root and key as
+/// pre-computed bytes rather than typed values. Use this when the trie key
+/// encoding must match an external producer (e.g. the node keys its ledger MPF
+/// by `CML.TransactionInput` CBOR, which does not equal `cbor.serialise` of an
+/// aiken `OutputReference`).
+pub fn plutarch_pexcludes_raw(
+  merkle_root: ByteArray,
+  key_bytes: ByteArray,
+  non_membership_proof: Proof,
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+  withdraw_redeemer_index: Int,
+) -> Bool {
+  expect _withdraw_redeemer_index = withdraw_redeemer_index
+  let pexcludes_validator_redeemer =
+    get_unique_withdraw_redeemer(
+      redeemers,
+      env.plutarch_pexcludes_validator_hash,
+    )
+  expect [redeemer_root_data,
+    redeemer_key_data,
+    redeemer_proof_data, ..] =
+    builtin.un_list_data(pexcludes_validator_redeemer)
+
+  let proof_data: Data = non_membership_proof
+
+  expect redeemer_root_data == builtin.b_data(merkle_root)
+  expect redeemer_key_data == builtin.b_data(key_bytes)
+  expect redeemer_proof_data == proof_data
+
+  True
+}
+
 fn get_unique_withdraw_redeemer(
   redeemers: Pairs<ScriptPurpose, Redeemer>,
   withdraw_script_hash: ScriptHash,

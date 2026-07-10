@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import { RejectedTx } from "@al-ft/midgard-validation/types";
 import { SqlClient } from "@effect/sql";
-import { Data, Effect } from "effect";
+import { Data, Duration, Effect, Metric } from "effect";
 
 import * as MempoolDB from "@/database/mempool.js";
 import * as TxRejectionsDB from "@/database/txRejections.js";
@@ -14,6 +14,21 @@ import { Database } from "@/services/database.js";
 import { ProcessedTx } from "@/utils.js";
 
 export const tableName = "tx_admissions";
+
+const txAdmissionAcceptedMempoolDurationTimer = Metric.timer(
+  "tx_admission_mark_accepted_mempool_duration",
+  "Duration of MempoolDB persistence inside TxAdmissionsDB.markAccepted",
+);
+
+const txAdmissionAcceptedTerminalDurationTimer = Metric.timer(
+  "tx_admission_mark_accepted_terminal_duration",
+  "Duration of accepted tx_admissions terminal status updates",
+);
+
+const txAdmissionAcceptedTotalDurationTimer = Metric.timer(
+  "tx_admission_mark_accepted_total_duration",
+  "Total duration of TxAdmissionsDB.markAccepted",
+);
 
 export const Status = {
   Queued: "queued",
@@ -323,11 +338,17 @@ export const markAccepted = ({
     if (processedTxs.length === 0) {
       return;
     }
+    const totalStartedAt = Date.now();
     const sql = yield* SqlClient.SqlClient;
     const txIds = processedTxs.map((tx) => tx.txId);
     yield* sql.withTransaction(
       Effect.gen(function* () {
+        const mempoolStartedAt = Date.now();
         yield* MempoolDB.insertMultiple([...processedTxs]);
+        yield* txAdmissionAcceptedMempoolDurationTimer(
+          Effect.succeed(Duration.millis(Date.now() - mempoolStartedAt)),
+        );
+        const terminalStartedAt = Date.now();
         const updated = yield* sql<Pick<RawEntry, Columns.TX_ID>>`
           UPDATE ${sql(tableName)}
           SET
@@ -350,7 +371,13 @@ export const markAccepted = ({
             }),
           );
         }
+        yield* txAdmissionAcceptedTerminalDurationTimer(
+          Effect.succeed(Duration.millis(Date.now() - terminalStartedAt)),
+        );
       }),
+    );
+    yield* txAdmissionAcceptedTotalDurationTimer(
+      Effect.succeed(Duration.millis(Date.now() - totalStartedAt)),
     );
   }).pipe(
     sqlErrorToDatabaseError(tableName, "Failed to mark admissions accepted"),

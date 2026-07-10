@@ -5,6 +5,14 @@ import { Effect, Ref, Schedule } from "effect";
 import { WithdrawalsDB } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import {
+  logReconciledVisibleUserEvents,
+  persistVisibleUserEventUTxOs,
+  repeatVisibleUserEventIngestionFiber,
+  runCommitTimeUserEventIngestionBarrier,
+  type UserEventFetchBounds,
+  type UserEventReconcileResult,
+} from "@/fibers/user-event-ingestion.js";
+import {
   Database,
   Globals,
   Lucid,
@@ -20,10 +28,7 @@ import {
  */
 const fetchWithdrawalUTxOs = (
   lucid: LucidEvolution,
-  config?: Pick<
-    SDK.UserEventFetchConfig,
-    "inclusionTimeLowerBound" | "inclusionTimeUpperBound"
-  >,
+  config?: UserEventFetchBounds,
 ): Effect.Effect<SDK.WithdrawalUTxO[], SDK.LucidError, MidgardContracts> =>
   Effect.gen(function* () {
     const { withdrawal } = yield* MidgardContracts;
@@ -98,40 +103,22 @@ const withdrawalUTxOToEntry = (
   });
 
 export const reconcileVisibleWithdrawalUTxOs = (
-  config?: Pick<
-    SDK.UserEventFetchConfig,
-    "inclusionTimeLowerBound" | "inclusionTimeUpperBound"
-  >,
+  config?: UserEventFetchBounds,
 ): Effect.Effect<
-  { readonly reconciledCount: number; readonly completedAt: Date },
+  UserEventReconcileResult,
   SDK.LucidError | DatabaseError,
   MidgardContracts | Lucid | Database
 > =>
   Effect.gen(function* () {
     const { api: lucid } = yield* Lucid;
     const withdrawalUTxOs = yield* fetchWithdrawalUTxOs(lucid, config);
-
-    if (withdrawalUTxOs.length <= 0) {
-      yield* Effect.logDebug("No withdrawal UTxOs found.");
-      return {
-        reconciledCount: 0,
-        completedAt: new Date(),
-      } as const;
-    }
-
-    yield* Effect.logInfo(
-      `${withdrawalUTxOs.length} withdrawal UTxO(s) found.`,
-    );
-
-    const entries = yield* Effect.forEach(
-      withdrawalUTxOs,
-      withdrawalUTxOToEntry,
-    );
-    yield* WithdrawalsDB.insertEntries(entries);
-    return {
-      reconciledCount: entries.length,
-      completedAt: new Date(),
-    } as const;
+    return yield* persistVisibleUserEventUTxOs({
+      visibleUtxos: withdrawalUTxOs,
+      toEntry: withdrawalUTxOToEntry,
+      insertEntries: WithdrawalsDB.insertEntries,
+      emptyLogMessage: "No withdrawal UTxOs found.",
+      foundLogMessage: (count) => `${count} withdrawal UTxO(s) found.`,
+    });
   });
 
 export const fetchAndInsertWithdrawalUTxOs: Effect.Effect<
@@ -144,12 +131,11 @@ export const fetchAndInsertWithdrawalUTxOs: Effect.Effect<
 
   yield* Effect.logDebug("fetching WithdrawalUTxOs...");
   const { reconciledCount } = yield* reconcileVisibleWithdrawalUTxOs();
-  if (reconciledCount <= 0) {
-    return;
-  }
-  yield* Effect.logInfo(
-    `Reconciled ${reconciledCount} visible withdrawal UTxO(s) into withdrawal_utxos.`,
-  );
+  yield* logReconciledVisibleUserEvents({
+    reconciledCount,
+    message: (count) =>
+      `Reconciled ${count} visible withdrawal UTxO(s) into withdrawal_utxos.`,
+  });
 });
 
 export const fetchAndInsertWithdrawalUTxOsForCommitBarrier = (
@@ -159,19 +145,18 @@ export const fetchAndInsertWithdrawalUTxOsForCommitBarrier = (
   SDK.LucidError | DatabaseError,
   MidgardContracts | Lucid | Database
 > =>
-  Effect.gen(function* () {
-    yield* Effect.logInfo(
-      `Running commit-time withdrawal ingestion barrier up to ${inclusionTimeUpperBound.toISOString()}.`,
-    );
-    const inclusiveUpperBound = BigInt(inclusionTimeUpperBound.getTime() + 1);
-    const { reconciledCount, completedAt } =
-      yield* reconcileVisibleWithdrawalUTxOs({
-        inclusionTimeUpperBound: inclusiveUpperBound,
-      });
-    yield* Effect.logInfo(
-      `Commit-time withdrawal barrier reconciled ${reconciledCount} withdrawal UTxO(s); fetch completed at ${completedAt.toISOString()} and locked the visibility barrier at ${inclusionTimeUpperBound.toISOString()}.`,
-    );
-    return inclusionTimeUpperBound;
+  runCommitTimeUserEventIngestionBarrier({
+    inclusionTimeUpperBound,
+    inclusionTimeUpperBoundOffsetMs: 1,
+    startLogMessage: (upperBound) =>
+      `Running commit-time withdrawal ingestion barrier up to ${upperBound.toISOString()}.`,
+    completedLogMessage: ({
+      reconciledCount,
+      completedAt,
+      inclusionTimeUpperBound: upperBound,
+    }) =>
+      `Commit-time withdrawal barrier reconciled ${reconciledCount} withdrawal UTxO(s); fetch completed at ${completedAt.toISOString()} and locked the visibility barrier at ${upperBound.toISOString()}.`,
+    reconcile: reconcileVisibleWithdrawalUTxOs,
   });
 
 export const fetchAndInsertWithdrawalUTxOsFiber = (
@@ -181,11 +166,9 @@ export const fetchAndInsertWithdrawalUTxOsFiber = (
   SDK.LucidError | DatabaseError,
   MidgardContracts | Lucid | Database | Globals
 > =>
-  Effect.gen(function* () {
-    yield* Effect.logInfo("Fetch and insert WithdrawalUTxOs.");
-    const action = fetchAndInsertWithdrawalUTxOs.pipe(
-      Effect.withSpan("fetch-and-insert-withdrawal-utxos-fiber"),
-      Effect.catchAllCause(Effect.logWarning),
-    );
-    yield* Effect.repeat(action, schedule);
+  repeatVisibleUserEventIngestionFiber({
+    schedule,
+    startLogMessage: "Fetch and insert WithdrawalUTxOs.",
+    spanName: "fetch-and-insert-withdrawal-utxos-fiber",
+    action: fetchAndInsertWithdrawalUTxOs,
   });

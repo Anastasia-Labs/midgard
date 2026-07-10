@@ -6,10 +6,10 @@
 import { createServer } from "node:http";
 
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import { SqlClient } from "@effect/sql";
 import { NodeSdk } from "@effect/opentelemetry";
 import { HttpServer } from "@effect/platform";
 import { NodeHttpServer } from "@effect/platform-node";
+import { SqlClient } from "@effect/sql";
 import { PrometheusExporter } from "@opentelemetry/exporter-prometheus";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
@@ -22,9 +22,9 @@ import {
   seedLatestLocalBlockBoundaryOnStartup,
 } from "@/commands/listen-startup.js";
 import { shouldRunGenesisOnStartup } from "@/commands/startup-policy.js";
+import { startDaLibp2pRetainedPayloadServerFromEnv } from "@/da/libp2p-producer.js";
 import { DaPayloadsDB, InitDB, MutationJobsDB } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
-import { startDaLibp2pRetainedPayloadServerFromEnv } from "@/da/libp2p-producer.js";
 import {
   blockCommitmentFiber,
   blockConfirmationFiber,
@@ -118,15 +118,15 @@ const runStartupProviderStepWithRetry = <A, E, R>(
   });
 
 const retainedPayloadServerThread = (
-  retrieveByHeaderHash: (headerHash: Buffer) => Promise<
-    DaPayloadsDB.Row | undefined
-  >,
+  retrieveByHeaderHash: (
+    headerHash: Buffer,
+  ) => Promise<DaPayloadsDB.Row | undefined>,
 ): Effect.Effect<void, never> =>
   Effect.tryPromise({
-      try: () =>
-        startDaLibp2pRetainedPayloadServerFromEnv({ retrieveByHeaderHash }),
-      catch: (cause) => cause,
-    }).pipe(
+    try: () =>
+      startDaLibp2pRetainedPayloadServerFromEnv({ retrieveByHeaderHash }),
+    catch: (cause) => cause,
+  }).pipe(
     Effect.tap((server) =>
       server.configured
         ? Effect.logInfo(

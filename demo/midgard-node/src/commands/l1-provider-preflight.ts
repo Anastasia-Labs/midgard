@@ -17,7 +17,6 @@ import {
 
 export type L1ProviderPreflightConfig = {
   readonly L1_PROVIDER: "Kupmios";
-  readonly L1_PROVIDER_FAILOVER: readonly never[];
   readonly L1_PROVIDER_PREFLIGHT_TIMEOUT_MS: number;
   readonly L1_PROVIDER_RATE_LIMIT_COOLDOWN_MS: number;
   readonly L1_OGMIOS_KEY: string;

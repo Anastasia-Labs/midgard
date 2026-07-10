@@ -28,14 +28,12 @@ import {
   CommonUtils,
   ConfirmedLedgerDB,
   DaPayloadsDB,
-  DepositIngestionCursorDB,
   DepositsDB,
   DepositSubmissionAttemptsDB,
   ForcedTransactionsDB,
   // Tx
   ImmutableDB,
   // Ledger
-  LatestLedgerDB,
   LedgerUtils,
   MempoolDB,
   MempoolLedgerDB,
@@ -55,7 +53,6 @@ import {
   deterministicFixtureBytes,
   deterministicFixtureOutputReferenceId,
   deterministicFixtureTxHash,
-  expectLedgerUtxos,
   provideDatabaseLayers,
 } from "./utils.js";
 
@@ -63,7 +60,6 @@ const flushAll = Effect.gen(function* () {
   yield* Effect.all(
     [
       MempoolLedgerDB.clear,
-      LatestLedgerDB.clear,
       ConfirmedLedgerDB.clear,
       BlocksDB.clear,
       ImmutableDB.clear,
@@ -73,7 +69,6 @@ const flushAll = Effect.gen(function* () {
       DepositsDB.clear,
       ForcedTransactionsDB.clear,
       DepositSubmissionAttemptsDB.clear,
-      DepositIngestionCursorDB.clear,
       PendingBlockFinalizationsDB.clear,
       DaPayloadsDB.clear,
       CommonUtils.clearTable(TxAdmissionsDB.tableName),
@@ -466,6 +461,81 @@ describe("PendingBlockFinalizationsDB", () => {
                 PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH
               ],
             ).toBeNull();
+          }
+        }),
+      ),
+  );
+
+  it.effect(
+    "only abandons pending-submission journals that still have no submitted tx hash",
+    (_) =>
+      isolatedDb(
+        Effect.gen(function* () {
+          const submittedHeaderHash = databaseFixtureBytes(
+            "submitted-cas-pending-header",
+            28,
+          );
+          const unsubmittedHeaderHash = databaseFixtureBytes(
+            "unsubmitted-cas-pending-header",
+            28,
+          );
+          const submittedTxHash = databaseTxHash("submitted-cas-tx");
+
+          yield* PendingBlockFinalizationsDB.preparePendingSubmission(
+            pendingSubmissionFixture(unsubmittedHeaderHash),
+          );
+          const unsubmittedAbandoned =
+            yield* PendingBlockFinalizationsDB.markUnsubmittedAbandoned(
+              unsubmittedHeaderHash,
+            );
+          expect(unsubmittedAbandoned).toBe(true);
+
+          const unsubmitted =
+            yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
+              unsubmittedHeaderHash,
+            );
+          expect(unsubmitted._tag).toBe("Some");
+          if (unsubmitted._tag === "Some") {
+            expect(
+              unsubmitted.value[PendingBlockFinalizationsDB.Columns.STATUS],
+            ).toBe(PendingBlockFinalizationsDB.Status.Abandoned);
+            expect(
+              unsubmitted.value[
+                PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH
+              ],
+            ).toBeNull();
+          }
+
+          yield* PendingBlockFinalizationsDB.preparePendingSubmission(
+            pendingSubmissionFixture(submittedHeaderHash),
+          );
+          yield* PendingBlockFinalizationsDB.markSubmitted(
+            submittedHeaderHash,
+            submittedTxHash,
+          );
+          const submittedAbandoned =
+            yield* PendingBlockFinalizationsDB.markUnsubmittedAbandoned(
+              submittedHeaderHash,
+            );
+          expect(submittedAbandoned).toBe(false);
+
+          const submitted =
+            yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
+              submittedHeaderHash,
+            );
+          expect(submitted._tag).toBe("Some");
+          if (submitted._tag === "Some") {
+            expect(
+              submitted.value[PendingBlockFinalizationsDB.Columns.STATUS],
+            ).toBe(
+              PendingBlockFinalizationsDB.Status
+                .SubmittedLocalFinalizationPending,
+            );
+            expect(
+              submitted.value[
+                PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH
+              ],
+            ).toEqual(submittedTxHash);
           }
         }),
       ),
@@ -1017,33 +1087,6 @@ describe("ImmutableDB", () => {
           expect(remaining).toHaveLength(0);
         }),
       ),
-  );
-});
-
-describe("LatestLedgerDB", () => {
-  it.effect("insert multiple, retrieve, clear UTxOs, clear all", () =>
-    isolatedDb(
-      Effect.gen(function* () {
-        // insert multiple
-        yield* LatestLedgerDB.insertMultiple([ledgerEntry1, ledgerEntry2]);
-
-        // retrieve all
-        const all = yield* LatestLedgerDB.retrieve;
-        expectLedgerUtxos(all, [ledgerEntry1, ledgerEntry2]);
-
-        // clear UTxOs
-        yield* LatestLedgerDB.clearUTxOs([
-          ledgerEntry1[LedgerUtils.Columns.OUTREF],
-        ]);
-        const afterClear = yield* LatestLedgerDB.retrieve;
-        expectLedgerUtxos(afterClear, [ledgerEntry2]);
-
-        // clear all
-        yield* LatestLedgerDB.clear;
-        const afterClearAll = yield* LatestLedgerDB.retrieve;
-        expect(afterClearAll.length).toEqual(0);
-      }),
-    ),
   );
 });
 

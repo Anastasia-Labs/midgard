@@ -1,6 +1,6 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { DaPayloadsDB, PendingBlockFinalizationsDB } from "@/database/index.js";
@@ -486,6 +486,43 @@ describe("DaPayloadV2 builder", () => {
       ],
     });
     expect(inserts).toEqual([]);
+  });
+
+  it("reports requested journals excluded from DA payload backfill by status", async () => {
+    const { pending, headerHash } = await buildJournalFixture({
+      depositEntries: [
+        [fixture("backfill-excluded-deposit", 34), fixture("info", 48)],
+      ],
+    });
+    const abandoned = {
+      ...pending,
+      [PendingBlockFinalizationsDB.Columns.STATUS]:
+        PendingBlockFinalizationsDB.Status.Abandoned,
+    };
+
+    const summary = await Effect.runPromise(
+      backfillMissingDaPayloadsFromFinalizedJournals({
+        headerHash,
+        deps: {
+          retrieveMissingRecords: () => Effect.succeed([]),
+          retrieveJournalByHeaderHash: () =>
+            Effect.succeed(Option.some(abandoned)),
+          upsertAvailable: () => Effect.void,
+        },
+      }),
+    );
+
+    expect(summary).toEqual({
+      scanned: 0,
+      backfilled: [],
+      skipped: [
+        {
+          headerHash: headerHash.toString("hex"),
+          reason:
+            "journal excluded by status: abandoned; revive and complete local finalization before DA payload backfill",
+        },
+      ],
+    });
   });
 
   it("rejects a payload whose recomputed roots do not match the journal", async () => {

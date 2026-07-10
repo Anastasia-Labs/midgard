@@ -113,6 +113,34 @@ describe("slot-aware due-work registry", () => {
     expect(registry.peek(entry.kind, entry.key)).toBeUndefined();
   });
 
+  it("invalidates stale merge work when callers pass current dependency evidence", () => {
+    const registry = createSlotAwareDueWorkRegistry();
+    const staleMergeEntry: SlotAwareDueWork = {
+      ...entry,
+      kind: "merge_submit_validity",
+      key: "merge:old-candidate:18:20",
+      dependencyKey: "merge:old-candidate:18:20",
+      invalidationKey: "merge:old-candidate:18:20",
+    };
+    registry.register(staleMergeEntry);
+
+    expect(
+      registry.check({
+        kind: "merge_submit_validity",
+        key: staleMergeEntry.key,
+        currentSlot: staleMergeEntry.observedSlot,
+        dependencyKey: "merge:new-candidate:18:20",
+        invalidationKey: "merge:new-candidate:18:20",
+      }),
+    ).toMatchObject({
+      status: "invalidated",
+      reason: "dependency_key_changed",
+    });
+    expect(
+      registry.peek("merge_submit_validity", staleMergeEntry.key),
+    ).toBeUndefined();
+  });
+
   it("converts not-due submit timing to due work without inventing evidence", () => {
     const plan = {
       status: "not_due",

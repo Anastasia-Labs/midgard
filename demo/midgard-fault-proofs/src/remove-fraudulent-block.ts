@@ -6,6 +6,7 @@ import {
   type ActiveOperatorMintRedeemer as ActiveOperatorMintRedeemerData,
   buildDoubleSpendFaultProofContracts,
   buildInvalidRangeFaultProofContracts,
+  buildNonExistentInputFaultProofContracts,
   buildTransitionTraceFaultProofContracts,
   type DoubleSpendFaultProofContracts,
   encodeLinkedListNodeView,
@@ -20,6 +21,7 @@ import {
   incompleteRemoveLastFraudulentBlockHeaderTxProgram,
   type InvalidRangeFaultProofContracts,
   type LinkedListNodeView,
+  type NonExistentInputFaultProofContracts,
   type OutputReference,
   outputReferenceFromUTxO,
   parseFaultProofBlueprint,
@@ -265,7 +267,7 @@ export type RemoveFraudulentBlockCliConfig = SubmitProviderConfig & {
 
 export type RemoveFraudulentBlockFraudCategory = Extract<
   FraudProofCatalogueCategoryName,
-  "doubleSpend" | "invalidRange" | "transitionTrace"
+  "doubleSpend" | "nonExistentInput" | "invalidRange" | "transitionTrace"
 >;
 
 export type StateQueueMutationLease = {
@@ -540,10 +542,12 @@ const buildRemovalContracts = async ({
   const parsedBlueprint = parseFaultProofBlueprint(blueprint);
   let categoryContracts:
     | DoubleSpendFaultProofContracts
+    | NonExistentInputFaultProofContracts
     | InvalidRangeFaultProofContracts
     | TransitionTraceFaultProofContracts;
   let expectedCategoryDeploymentEntry:
     | "fraudProofDoubleSpend"
+    | "fraudProofNonExistentInput"
     | "fraudProofInvalidRange"
     | "fraudProofTransitionTrace";
   let derivedCategoryFirstStepHash: string;
@@ -560,6 +564,19 @@ const buildRemovalContracts = async ({
     expectedCategoryDeploymentEntry = "fraudProofDoubleSpend";
     derivedCategoryFirstStepHash =
       doubleSpendContracts.doubleSpend.firstStep.spendingScriptHash;
+  } else if (fraudCategory === "nonExistentInput") {
+    const nonExistentInputContracts = await Effect.runPromise(
+      buildNonExistentInputFaultProofContracts({
+        blueprint: parsedBlueprint,
+        network,
+        hubOraclePolicyId,
+        fraudProofCataloguePolicyId,
+      }),
+    );
+    categoryContracts = nonExistentInputContracts;
+    expectedCategoryDeploymentEntry = "fraudProofNonExistentInput";
+    derivedCategoryFirstStepHash =
+      nonExistentInputContracts.nonExistentInput.firstStep.spendingScriptHash;
   } else if (fraudCategory === "invalidRange") {
     const invalidRangeContracts = await Effect.runPromise(
       buildInvalidRangeFaultProofContracts({

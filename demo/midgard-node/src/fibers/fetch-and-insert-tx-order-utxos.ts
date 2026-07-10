@@ -4,6 +4,14 @@ import { Effect, Schedule } from "effect";
 
 import { ForcedTransactionsDB } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
+import {
+  logReconciledVisibleUserEvents,
+  persistVisibleUserEventUTxOs,
+  repeatVisibleUserEventIngestionFiber,
+  runCommitTimeUserEventIngestionBarrier,
+  type UserEventFetchBounds,
+  type UserEventReconcileResult,
+} from "@/fibers/user-event-ingestion.js";
 import { Database, Lucid, MidgardContracts } from "@/services/index.js";
 
 const rawDatum = (
@@ -34,10 +42,7 @@ const rawDatum = (
  */
 const fetchTxOrderUTxOs = (
   lucid: LucidEvolution,
-  config?: Pick<
-    SDK.UserEventFetchConfig,
-    "inclusionTimeLowerBound" | "inclusionTimeUpperBound"
-  >,
+  config?: UserEventFetchBounds,
 ): Effect.Effect<SDK.TxOrderUTxO[], SDK.LucidError, MidgardContracts> =>
   Effect.gen(function* () {
     const { txOrder } = yield* MidgardContracts;
@@ -90,35 +95,22 @@ const txOrderUTxOToEntry = (
   });
 
 export const reconcileVisibleTxOrderUTxOs = (
-  config?: Pick<
-    SDK.UserEventFetchConfig,
-    "inclusionTimeLowerBound" | "inclusionTimeUpperBound"
-  >,
+  config?: UserEventFetchBounds,
 ): Effect.Effect<
-  { readonly reconciledCount: number; readonly completedAt: Date },
+  UserEventReconcileResult,
   SDK.LucidError | DatabaseError,
   MidgardContracts | Lucid | Database
 > =>
   Effect.gen(function* () {
     const { api: lucid } = yield* Lucid;
     const txOrderUTxOs = yield* fetchTxOrderUTxOs(lucid, config);
-
-    if (txOrderUTxOs.length <= 0) {
-      yield* Effect.logDebug("No tx-order UTxOs found.");
-      return {
-        reconciledCount: 0,
-        completedAt: new Date(),
-      } as const;
-    }
-
-    yield* Effect.logInfo(`${txOrderUTxOs.length} tx-order UTxO(s) found.`);
-
-    const entries = yield* Effect.forEach(txOrderUTxOs, txOrderUTxOToEntry);
-    yield* ForcedTransactionsDB.insertEntries(entries);
-    return {
-      reconciledCount: entries.length,
-      completedAt: new Date(),
-    } as const;
+    return yield* persistVisibleUserEventUTxOs({
+      visibleUtxos: txOrderUTxOs,
+      toEntry: txOrderUTxOToEntry,
+      insertEntries: ForcedTransactionsDB.insertEntries,
+      emptyLogMessage: "No tx-order UTxOs found.",
+      foundLogMessage: (count) => `${count} tx-order UTxO(s) found.`,
+    });
   });
 
 export const fetchAndInsertTxOrderUTxOs: Effect.Effect<
@@ -128,12 +120,11 @@ export const fetchAndInsertTxOrderUTxOs: Effect.Effect<
 > = Effect.gen(function* () {
   yield* Effect.logDebug("fetching TxOrderUTxOs...");
   const { reconciledCount } = yield* reconcileVisibleTxOrderUTxOs();
-  if (reconciledCount <= 0) {
-    return;
-  }
-  yield* Effect.logInfo(
-    `Reconciled ${reconciledCount} visible tx-order UTxO(s) into forced_transaction_utxos.`,
-  );
+  yield* logReconciledVisibleUserEvents({
+    reconciledCount,
+    message: (count) =>
+      `Reconciled ${count} visible tx-order UTxO(s) into forced_transaction_utxos.`,
+  });
 });
 
 export const fetchAndInsertTxOrderUTxOsForCommitBarrier = (
@@ -143,19 +134,18 @@ export const fetchAndInsertTxOrderUTxOsForCommitBarrier = (
   SDK.LucidError | DatabaseError,
   MidgardContracts | Lucid | Database
 > =>
-  Effect.gen(function* () {
-    yield* Effect.logInfo(
-      `Running commit-time tx-order ingestion barrier up to ${inclusionTimeUpperBound.toISOString()}.`,
-    );
-    const inclusiveUpperBound = BigInt(inclusionTimeUpperBound.getTime() + 1);
-    const { reconciledCount, completedAt } =
-      yield* reconcileVisibleTxOrderUTxOs({
-        inclusionTimeUpperBound: inclusiveUpperBound,
-      });
-    yield* Effect.logInfo(
-      `Commit-time tx-order barrier reconciled ${reconciledCount} tx-order UTxO(s); fetch completed at ${completedAt.toISOString()} and locked the visibility barrier at ${inclusionTimeUpperBound.toISOString()}.`,
-    );
-    return inclusionTimeUpperBound;
+  runCommitTimeUserEventIngestionBarrier({
+    inclusionTimeUpperBound,
+    inclusionTimeUpperBoundOffsetMs: 1,
+    startLogMessage: (upperBound) =>
+      `Running commit-time tx-order ingestion barrier up to ${upperBound.toISOString()}.`,
+    completedLogMessage: ({
+      reconciledCount,
+      completedAt,
+      inclusionTimeUpperBound: upperBound,
+    }) =>
+      `Commit-time tx-order barrier reconciled ${reconciledCount} tx-order UTxO(s); fetch completed at ${completedAt.toISOString()} and locked the visibility barrier at ${upperBound.toISOString()}.`,
+    reconcile: reconcileVisibleTxOrderUTxOs,
   });
 
 export const fetchAndInsertTxOrderUTxOsFiber = (
@@ -165,11 +155,9 @@ export const fetchAndInsertTxOrderUTxOsFiber = (
   SDK.LucidError | DatabaseError,
   MidgardContracts | Lucid | Database
 > =>
-  Effect.gen(function* () {
-    yield* Effect.logInfo("Fetch and insert TxOrderUTxOs.");
-    const action = fetchAndInsertTxOrderUTxOs.pipe(
-      Effect.withSpan("fetch-and-insert-tx-order-utxos-fiber"),
-      Effect.catchAllCause(Effect.logWarning),
-    );
-    yield* Effect.repeat(action, schedule);
+  repeatVisibleUserEventIngestionFiber({
+    schedule,
+    startLogMessage: "Fetch and insert TxOrderUTxOs.",
+    spanName: "fetch-and-insert-tx-order-utxos-fiber",
+    action: fetchAndInsertTxOrderUTxOs,
   });

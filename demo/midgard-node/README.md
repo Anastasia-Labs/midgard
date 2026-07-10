@@ -86,7 +86,7 @@ quite easily.
    ```
 
    1. Demo-node acceptance supports `L1_PROVIDER=Kupmios` only. Use local Kupo
-      and Ogmios endpoints, keep `L1_PROVIDER_FAILOVER` empty, and run
+      and Ogmios endpoints, and run
       `node dist/index.js l1-provider-preflight --json` before long-running
       deployment steps.
    2. If local Kupo or Ogmios is unhealthy, fix the local

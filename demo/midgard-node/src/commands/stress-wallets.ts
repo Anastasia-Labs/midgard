@@ -1,12 +1,4 @@
-import {
-  access,
-  chmod,
-  mkdir,
-  readFile,
-  rename,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { type Network } from "@lucid-evolution/lucid";
@@ -19,6 +11,7 @@ import {
   formatJson,
   type NodeUtxo,
 } from "@/commands/command-utils.js";
+import { writeTextFileAtomic } from "@/files/atomic-write.js";
 
 export const STRESS_WALLET_SCHEMA_VERSION = "midgard-stress-wallet-v1";
 export const STRESS_WALLET_PREPARE_SCHEMA_VERSION =
@@ -169,26 +162,10 @@ const fileExists = async (path: string): Promise<boolean> =>
     () => false,
   );
 
-const privateTempPath = (path: string): string =>
-  `${path}.tmp-${process.pid.toString()}-${Date.now().toString()}-${Math.random()
-    .toString(16)
-    .slice(2)}`;
-
 const writePrivateFileAtomic = async (
   path: string,
   contents: string,
-): Promise<void> => {
-  const tempPath = privateTempPath(path);
-  try {
-    await writeFile(tempPath, contents, { encoding: "utf8", mode: 0o600 });
-    await chmod(tempPath, 0o600);
-    await rename(tempPath, path);
-    await chmod(path, 0o600);
-  } catch (error) {
-    await rm(tempPath, { force: true }).catch(() => {});
-    throw error;
-  }
-};
+): Promise<void> => writeTextFileAtomic(path, contents, { mode: 0o600 });
 
 const requireSafePositiveInteger = (value: number, label: string): number => {
   if (!Number.isSafeInteger(value) || value <= 0) {

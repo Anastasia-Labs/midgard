@@ -14,8 +14,6 @@ import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
-import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
-import { withRealStateQueueAndOperatorContracts } from "@/services/midgard-contracts.js";
 import {
   buildAtomicProtocolInitTxProgram,
   ensureAtomicProtocolInitReferenceScriptsProgram,
@@ -29,27 +27,15 @@ import {
   registerOperatorProgram,
 } from "@/transactions/register-active-operator.js";
 
+import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
+
 const loadContracts = (
   oneShotOutRef: {
     txHash: string;
     outputIndex: number;
   },
   referenceScriptAuth?: SDK.MintingValidator,
-) =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const placeholder = yield* AlwaysSucceedsContract;
-      return yield* withRealStateQueueAndOperatorContracts(
-        "Preprod",
-        placeholder,
-        oneShotOutRef,
-        {
-          referenceScriptAuth:
-            referenceScriptAuth ?? placeholder.referenceScriptAuth,
-        },
-      );
-    }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
-  );
+) => loadRealMidgardContractsForTest(oneShotOutRef, referenceScriptAuth);
 
 const EMULATOR_PROTOCOL_PARAMETERS = {
   ...PROTOCOL_PARAMETERS_DEFAULT,

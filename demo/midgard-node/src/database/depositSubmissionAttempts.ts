@@ -317,18 +317,5 @@ export const markAmbiguous = (
     lastError: error,
   });
 
-export const markRetryAllowed = (
-  txHash: Buffer,
-  reason: string,
-  reconciledAt: Date = new Date(),
-): Effect.Effect<Row, DatabaseError, Database> =>
-  markStatus({
-    txHash,
-    status: Status.RetryAllowed,
-    confirmedAt: null,
-    lastReconciledAt: reconciledAt,
-    lastError: reason,
-  });
-
 export const clear: Effect.Effect<void, DatabaseError, Database> =
   clearTable(tableName);
