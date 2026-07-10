@@ -3,10 +3,11 @@ title: "ScriptContext Invariants"
 description: "Ledger and Aiken guarantees that Midgard validators may safely rely on when inspecting the Transaction / ScriptContext, and the non-guarantees they must not assume."
 ---
 
-This page mirrors `SCRIPT_CONTEXT_INVARIANTS.md`. It records exactly which
-properties of Aiken's `cardano/transaction.Transaction` a Midgard validator may
-treat as guaranteed. The document is intentionally strict: only ledger/runtime
-guarantees, or invariants enforced by Aiken's opaque on-chain types, are listed.
+Exactly which properties of Aiken's `cardano/transaction.Transaction` a Midgard
+validator may treat as guaranteed. The list is intentionally strict: only
+ledger/runtime guarantees, or invariants enforced by Aiken's opaque on-chain
+types, are included. Source:
+[`SCRIPT_CONTEXT_INVARIANTS.md`](https://github.com/Anastasia-Labs/midgard/blob/main/SCRIPT_CONTEXT_INVARIANTS.md).
 
 <Callout type="warn" title="Rule of thumb">
   If a property is not listed here, contracts and off-chain code must not treat

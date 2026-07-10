@@ -3,32 +3,10 @@ title: "Watcher Concept"
 description: "What a Midgard watcher is, its security role, and how a production watcher node should verify committed blocks and challenge fraud."
 ---
 
-<Callout type="warn" title="Status: design target, not shipped code">
-This page summarizes `demo/midgard-watcher/midgard-watcher-architecture.md`, a
-**design-only** note. The `demo/midgard-watcher` directory contains markdown and no
-implementation. Where this page says "a production watcher should", read it as target
-architecture.
-
-The working DA and watcher implementation lives in `demo/da-committee-node`, whose npm
-package `name` and `bin` are both `midgard-watcher`. For what runs today, see
-[DA committee node](/docs/watchers/da-committee-node) and
-[libp2p runtime](/docs/watchers/libp2p-runtime).
-</Callout>
-
-<Callout type="info" title="Fault proof vs fraud proof">
-Midgard uses `fraud proof` and `fault proof` for the same role: an on-chain proof that a
-committed rollup block, settlement claim, or proof-relevant statement violates the
-Midgard rules. The source note uses `fault proof` when talking about the watcher product
-and `fraud proof` when referring to the existing contract names.
-</Callout>
-
-<Callout type="warn" title="Block application order is not yet frozen">
-The written spec applies withdrawals first, then transactions (orders before requests),
-then deposits. The current node has evolved toward a different operational ordering.
-Read the verification pipeline below with that unresolved, because it decides what a
-watcher must re-execute. Until one canonical rule is deployed, model block application as
-a protocol-versioned rule bundle loaded from the manifest. See
-[offchain data architecture](/docs/spec/offchain-data-architecture).
+<Callout type="warn" title="Target architecture">
+The independent challenge watcher described here is a design target, not shipped
+code. For the running data-availability and watcher service, see the
+[DA committee node](/docs/watchers/da-committee-node).
 </Callout>
 
 ## What Midgard is
@@ -37,7 +15,7 @@ Midgard is an optimistic rollup on Cardano. Operators build L2 blocks off-chain,
 block data to a public data-availability (DA) layer, and commit fixed-size block headers to
 Cardano L1 through Midgard's state-queue contracts. Each committed block waits for a protocol
 `maturity_duration` before it can be merged into the confirmed L2 state. During that waiting
-period, anyone can verify the block. If the block is invalid, a challenger submits a fault proof
+period, anyone can verify the block. If the block is invalid, a challenger submits a fraud proof
 on L1, prevents the block from merging, removes the fraudulent header from the queue, and slashes
 the operator bond.
 
@@ -64,7 +42,7 @@ The key L1 protocol objects the watcher must track include:
 
 A Midgard watcher is an independent verifier and challenger. It follows Cardano L1, follows
 Midgard's state queue, retrieves the full block data from DA, locally evaluates every committed
-block under the Midgard ledger rules, and submits the corresponding fault proof if the committed
+block under the Midgard ledger rules, and submits the corresponding fraud proof if the committed
 header is wrong.
 
 A watcher is **not** an operator. It does not produce blocks, run a public mempool, or serve
@@ -117,6 +95,12 @@ authority.
 
 ## Block verification pipeline
 
+<Callout type="warn" title="Block application order must match deployment">
+A watcher must apply each block using the rule set declared by the deployed
+protocol version; the specified event order and the node's current order still
+differ. See [offchain data architecture](/docs/spec/offchain-data-architecture).
+</Callout>
+
 The watcher runs each committed queue block through an ordered pipeline:
 
 1. **Deployment and chain following**, verify local durable state belongs to the current
@@ -142,14 +126,7 @@ The watcher runs each committed queue block through an ordered pipeline:
 8. **Settlement, reserve, and payout watching**, track each settlement event until processed and
    submit the settlement disproof path if an operator attaches a false resolution claim.
 
-<Callout type="warn" title="One canonical order is required before release">
-Before a production watcher ships, Midgard needs one canonical deployed rule for block
-application order, reflected consistently across the spec, the Aiken proof categories,
-TypeScript validation, root construction, and proof tooling. See the warning at the top
-of this page.
-</Callout>
-
-## Fault-proof flow
+## Fraud-proof flow
 
 The watcher treats proof submission as a state machine with durable recovery: detect a concrete
 violation and choose a proof family; build a proof bundle; submit computation-thread `Init`; advance
@@ -158,11 +135,9 @@ thread through `Success`; submit `RemoveFraudulentBlockHeader` and slash the ope
 descendants; and verify the queue no longer contains the fraudulent block. For settlement claims, the
 analogous path is `Disprove Resolution Claim` plus operator slashing.
 
-The repository already contains computation-thread and fraud-proof token validators, a fraud-proof
-catalogue, a manual `midgard-fault-proofs` package, and Aiken proof families for double-spend,
-zero-input, no-input, no-reference-input, withdrawn-reference-input, invalid-range, min-fee,
-missing-signature, invalid-signature, and missing-native-script variants. However, public-readiness
-docs state the proof system is **not** production complete. See [fault proofs](/docs/fault-proofs/overview).
+Current [fault-proof tooling](/docs/fault-proofs/overview) covers the computation-thread
+machinery and a set of Aiken proof families, but production proof coverage is not
+complete; see [Project Status](/docs/getting-started/status).
 
 ## High-level architecture
 
@@ -205,13 +180,8 @@ For each queued block, the watcher should produce exactly one decision:
 | `fault_proven` | A fraud-proof token exists for the target block or settlement claim. |
 | `removed_or_resolved` | The bad block or claim has been removed and slashing completed or observed. |
 
-## Implementation roadmap
+## Related
 
-The design note stages the build as: (1) read-only watcher, (2) deterministic verifier, (3)
-proof-bundle store, (4) first live proof family (double-spend end to end), (5) coverage expansion,
-(6) autonomous challenger, and (7) public readiness with a signed manifest, public DA/proof-bundle
-exports, and documented security claims tied to the deployed proof matrix.
-
-The [adversarial review](/docs/watchers/adversarial-review) of this plan is essential reading: it
-argues that proof coverage, DA/header binding, transition-trace design, consensus feature gates, and
-finality/provider policy must move into the earliest milestones.
+- [Adversarial review](/docs/watchers/adversarial-review) of the watcher plan.
+- [Watcher design note](https://github.com/Anastasia-Labs/midgard/tree/main/demo/midgard-watcher),
+  the source plan for this target architecture.

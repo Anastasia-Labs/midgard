@@ -15,8 +15,9 @@ a single CLI, `midgard-fault-proofs`, that a watcher or prover drives by hand to
 fraud proof, walk it through its on-chain computation thread, and finalize it.
 
 The protocol concept is a **fraud proof**. The package, its binary, and its commands say
-**fault proof**. Both names refer to the same thing; see
-[watcher concept](/docs/watchers/concept) for why the two survive side by side.
+**fault proof**. Both names refer to the same thing: the tooling and watcher design
+adopted `fault proof`, while the deployed contracts and the protocol specification say
+`fraud proof`.
 
 <Callout type="info" title="Where this fits">
 This tooling is the challenge side of the optimistic model. The watchers that detect
@@ -35,13 +36,14 @@ then validates the command against a fixed allow-list and calls the matching
 module function, writing the result to stdout as JSON. Passing `--help` or `-h`
 prints the usage block and exits.
 
-The command is rejected unless it is exactly one of the eleven real commands
+The command is rejected unless it is exactly one of the sixteen real commands
 below, from the guard in `main()`:
 
 ```ts
 if (
   args.command !== "prepare-double-spend" &&
   args.command !== "prepare-invalid-range" &&
+  args.command !== "prepare-non-existent-input" &&
   args.command !== "inspect-contracts" &&
   args.command !== "submit-init" &&
   args.command !== "submit-step-01" &&
@@ -50,6 +52,10 @@ if (
   args.command !== "submit-step-04" &&
   args.command !== "submit-invalid-range-step-01" &&
   args.command !== "submit-invalid-range-step-02" &&
+  args.command !== "submit-non-existent-input-step-01" &&
+  args.command !== "submit-non-existent-input-step-02" &&
+  args.command !== "submit-non-existent-input-step-03" &&
+  args.command !== "submit-non-existent-input-step-04" &&
   args.command !== "remove-fraudulent-block"
 ) {
   throw new Error(/* Expected command "..." */);
@@ -62,18 +68,18 @@ surface stay in lock-step.
 
 ## The command groups
 
-The eleven commands fall into four groups.
+The sixteen commands fall into four groups.
 
 | Group | Commands | Module(s) | What it does |
 | --- | --- | --- | --- |
-| **Prepare** | `prepare-double-spend`, `prepare-invalid-range` | `prepare-double-spend.ts`, `prepare-invalid-range.ts` | Pull a block's transactions (from a node, a file, or a built-in sample), find the violating transaction(s), and emit the JSON artifacts later steps consume. |
+| **Prepare** | `prepare-double-spend`, `prepare-invalid-range`, `prepare-non-existent-input` | `prepare-double-spend.ts`, `prepare-invalid-range.ts`, `prepare-non-existent-input.ts` | Pull a block's transactions (from a node, a file, or a built-in sample), find the violating transaction(s), and emit the JSON artifacts later steps consume. |
 | **Inspect** | `inspect-contracts` | `inspect-contracts.ts` | Resolve a blueprint + deployment against the fraud-proof catalogue and report policy IDs, addresses, step hashes, and init-readiness. |
-| **Submit** | `submit-init`, `submit-step-01`…`submit-step-04`, `submit-invalid-range-step-01`, `submit-invalid-range-step-02` | `submit-init.ts`, `submit-step-0N.ts`, `submit-invalid-range-step-0N.ts` | Start a computation thread (`submit-init`) and drive it through its per-category steps, ending by minting a fraud-proof token. |
+| **Submit** | `submit-init`, `submit-step-01`…`submit-step-04`, `submit-invalid-range-step-01`, `submit-invalid-range-step-02`, `submit-non-existent-input-step-01`…`submit-non-existent-input-step-04` | `submit-init.ts`, `submit-step-0N.ts`, `submit-invalid-range-step-0N.ts`, `ne-submit-step-0N.ts` | Start a computation thread (`submit-init`) and drive it through its per-category steps, ending by minting a fraud-proof token. |
 | **Remove** | `remove-fraudulent-block` | `remove-fraudulent-block.ts` | After a successful proof exists, remove the fraudulent block from the state queue and slash the operator. |
 
 ## Fraud categories
 
-The tooling implements three of Midgard's fraud-proof categories, selected with
+The tooling implements four of Midgard's fraud-proof categories, selected with
 `--fraud-category`. The parser in `bin.ts` (`parseFraudCategory`) accepts exactly
 these values:
 
@@ -82,6 +88,9 @@ these values:
 - `invalidRange`: a transaction's validity range is incompatible with the
   block's declared validity window. Proven with `submit-invalid-range-step-01`
   and `-step-02`.
+- `nonExistentInput`: a transaction spends an input that is absent from the
+  previous ledger state and not produced within the block. Proven with
+  `submit-non-existent-input-step-01` through `-step-04`.
 - `transitionTrace`: state-transition-trace faults (the `transition-trace/`
   challenger module: `detect.ts`, `fetch.ts`, `reconstruct.ts`, `witnesses.ts`,
   `submit.ts`). The CLI exposes `submit-init` and `remove-fraudulent-block` for it, but
@@ -120,7 +129,7 @@ initializing a thread.
 ## Next steps
 
 <Cards>
-  <Card title="Preparing proofs" href="/docs/fault-proofs/preparing-proofs" description="Turn a block's transactions into fraud-proof artifacts with prepare-double-spend and prepare-invalid-range." />
+  <Card title="Preparing proofs" href="/docs/fault-proofs/preparing-proofs" description="Turn a block's transactions into fraud-proof artifacts with the prepare-* commands." />
   <Card title="Submitting steps" href="/docs/fault-proofs/submitting-steps" description="Walk a computation thread from submit-init through the per-category steps to a minted fraud-proof token." />
   <Card title="Removing blocks" href="/docs/fault-proofs/removing-blocks" description="Remove a fraudulent block after a successful proof, and inspect deployed contracts." />
   <Card title="Protocol spec" href="/docs/fault-proofs/protocol-spec" description="The catalogue, fraud-proof tokens, and the computation-thread state machine." />

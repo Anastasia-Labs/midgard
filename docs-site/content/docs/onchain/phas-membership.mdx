@@ -1,6 +1,6 @@
 ---
 title: "PHAS Membership"
-description: "The phas validator: a withdraw-purpose Merkle membership check that other validators invoke through a zero-value staking withdrawal."
+description: "The phas validator: a reusable Merkle membership check that other validators invoke through a staking withdrawal."
 ---
 
 `phas` is a reusable **membership check**. It proves that a key/value pair belongs to a
@@ -8,8 +8,8 @@ Merkle Patricia Forestry commitment, and it is invoked through a staking withdra
 rather than by spending a UTxO.
 
 <Callout type="info" title="On the name">
-The repository does not expand the `PHAS` acronym, and the technical specification does
-not define it. This page describes what `onchain/aiken/validators/phas.ak` does.
+`PHAS` is an opaque validator name in Midgard; the acronym is not expanded in the
+codebase (`onchain/aiken/validators/phas.ak`) or the specification.
 </Callout>
 
 ## What the validator checks

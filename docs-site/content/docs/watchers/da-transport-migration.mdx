@@ -1,15 +1,12 @@
 ---
 title: "libp2p DA Transport Migration"
-description: "Historical design context for the move of Midgard's data-availability transport to libp2p, and the protocol constants that migration froze."
+description: "Why Midgard's data-availability traffic moves over libp2p only, and the protocol decisions that rule fixed."
 ---
 
 <Callout type="info" title="Historical design context">
-This migration is complete. The plan document
-(`demo/da-committee-node/docs/LIBP2P_DA_TRANSPORT_MIGRATION_PLAN.md`) records the
-implementation as complete, with the Phase 0/1 decisions frozen on 2026-06-21.
-For the runtime that ships today, see
-[libp2p runtime](/docs/watchers/libp2p-runtime). This page is kept for the decisions the
-migration froze, which the DA protocol still depends on.
+This migration is complete; the decisions it froze on 2026-06-21 still govern the
+DA protocol. For the runtime that ships today, see
+[libp2p runtime](/docs/watchers/libp2p-runtime).
 </Callout>
 
 ## The decision
@@ -46,13 +43,15 @@ DA transport depends on. They are consumed from
 The deployment-scoped gossip topics and request-response protocols are listed on the
 [DA committee node](/docs/watchers/da-committee-node) page.
 
-<Callout type="warn" title="Wire schemas are not on this page">
+<Callout type="warn" title="Wire schemas live in the source">
 The exact CBOR wire schemas live in the plan document and in
-`@al-ft/midgard-core/da-transport`, not here. Read the source before implementing a
-peer.
+`@al-ft/midgard-core/da-transport`. Read the source before implementing a peer.
 </Callout>
 
 ## Related
+
+- [Migration plan document](https://github.com/Anastasia-Labs/midgard/blob/main/demo/da-committee-node/docs/LIBP2P_DA_TRANSPORT_MIGRATION_PLAN.md),
+  the source of the frozen decisions.
 
 - [libp2p Runtime](/docs/watchers/libp2p-runtime), what runs today.
 - [DA Committee Node](/docs/watchers/da-committee-node), the architecture it serves.

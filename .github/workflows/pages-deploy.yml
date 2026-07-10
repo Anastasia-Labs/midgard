@@ -1,0 +1,83 @@
+name: Deploy Docs Site to GitHub Pages
+
+# Deploys one combined Pages artifact: the docs-site static export at
+# /midgard/, with the compiled specification at /midgard/midgard.pdf so the
+# PDF's pre-existing URL keeps working.
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "docs-site/**"
+      - "technical-spec/**"
+      - "demo/lucid-midgard/**"
+      - "demo/midgard-core/**"
+      # Sources check-docs-facts.mjs derives from; a change here must rebuild.
+      - "demo/midgard-node/src/index.ts"
+      - "demo/pnpm-workspace.yaml"
+      - "l1-services/.env.example"
+      - ".github/workflows/pages-deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compile the specification PDF
+        uses: xu-cheng/latex-action@v3
+        with:
+          root_file: midgard.tex
+          working_directory: technical-spec/
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # The demo workspace pins pnpm 9; docs-site pins pnpm 10. Install the
+      # workspace deps first, so the SDK packages can be built, then switch.
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - name: Install demo workspace dependencies
+        run: pnpm --dir demo install --frozen-lockfile
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.11.0
+      - name: Install docs-site dependencies
+        run: pnpm --dir docs-site install --frozen-lockfile
+
+      # prebuild runs check:facts and check:voice; the build type-checks every
+      # MDX code sample against the built SDK packages.
+      - name: Build docs site
+        run: pnpm --dir docs-site run build
+        env:
+          NEXT_PUBLIC_BASE_PATH: /midgard
+
+      - name: Assemble the Pages artifact
+        run: |
+          cp technical-spec/midgard.pdf docs-site/out/
+          touch docs-site/out/.nojekyll
+
+      - uses: actions/configure-pages@v4
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs-site/out/
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

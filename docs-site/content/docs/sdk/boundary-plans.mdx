@@ -3,11 +3,12 @@ title: "SDK Boundary Plans"
 description: "Reference index of the SDK/node boundary plans that define where the SDK ends and the node begins for each transaction family."
 ---
 
-The [`docs/midgard-sdk-boundary-plans/`](https://github.com/Anastasia-Labs/midgard/tree/main/docs/midgard-sdk-boundary-plans)
-directory contains a set of plans that pin down the **boundary** between the
-`midgard-sdk` transaction builders and the [operator node](/docs/operators/node/overview)
-runtime for each transaction family, which side owns witness assembly, input
-selection, nonce preparation, and completion.
+Each transaction family has a pinned **boundary** between the `midgard-sdk`
+transaction builders and the [operator node](/docs/operators/node/overview)
+runtime: which side owns witness assembly, input selection, nonce preparation,
+and completion. The plans below record those decisions; their source is the
+[`docs/midgard-sdk-boundary-plans/`](https://github.com/Anastasia-Labs/midgard/tree/main/docs/midgard-sdk-boundary-plans)
+directory.
 
 <Callout type="info" title="Status">
 These boundary plans are marked complete as of 2026-06-19.

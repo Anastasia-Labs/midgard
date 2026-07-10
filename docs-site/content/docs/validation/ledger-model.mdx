@@ -11,14 +11,12 @@ canonical CBOR to the semantic model.
 
 ## Semantic transaction: `MidgardLedgerTx`
 
-`MidgardLedgerTx` (in `ledger-tx/types.ts`) is, per its JSDoc, the "fully decoded
-semantic transaction used by Midgard ledger validation." It is deliberately
-**not** the canonical codec/proof representation:
-
-> It contains the facts Phase A and Phase B validate against: body fields,
-> inputs, outputs, witnesses, scripts, redeemers, and minting information. Exact
-> CBOR bytes, hex encodings, queue metadata, and persistence rows should be
-> modeled by adjacent boundary types rather than mixed into this ledger model.
+`MidgardLedgerTx` (in `ledger-tx/types.ts`) is the fully decoded semantic
+transaction used by Midgard ledger validation. It is deliberately **not** the
+canonical codec/proof representation: it holds the facts Phase A and Phase B
+validate against (body fields, inputs, outputs, witnesses, scripts, redeemers,
+and minting information), while exact CBOR bytes, hex encodings, queue metadata,
+and persistence rows are modeled by adjacent boundary types.
 
 Key fields:
 

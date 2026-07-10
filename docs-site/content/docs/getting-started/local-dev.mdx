@@ -1,9 +1,29 @@
 ---
 title: "Local Development"
-description: "Toolchain versions and the commands for building, typechecking, testing, and linting the Midgard TypeScript workspace, on-chain contracts, and technical specification."
+description: "Getting the code, the toolchain, and the commands to build, test, and lint everything in the Midgard repository."
 ---
 
 This page lists the toolchain and the commands used to work on Midgard.
+
+## Getting the code
+
+All instructions in this documentation assume a local checkout of the Midgard
+monorepo:
+
+```sh
+git clone https://github.com/Anastasia-Labs/midgard.git
+cd midgard
+```
+
+Have these installed before you start:
+
+- **Git** and a **POSIX shell**.
+- **Node.js 18 or later** and **pnpm** (the workspace pins `pnpm@9.15.4`, see
+  below), for the TypeScript packages.
+- **Docker with the Compose v2 plugin**, for the
+  [L1 backend](/docs/getting-started/l1-backend) and the node images.
+- **[Aiken](https://aiken-lang.org/)**, only if you build the on-chain code.
+- **Nix**, only if you use the development shell or build the LaTeX spec.
 
 ## Toolchain
 

@@ -29,9 +29,12 @@ thread one step at a time, each verifying one part of the proof on-chain.</Step>
 <Step>**Conclude**, the final step mints the permanent `fraud_proof` token and burns
 the computation thread. The token is the record of a concluded proof, not a claim in
 progress.</Step>
-<Step>**Category variants**, some categories have their own step sequence, for example
-`submit-invalid-range-step-01` and `submit-invalid-range-step-02` for the
-`invalid-range` category.</Step>
+<Step>**Category variants**, some categories have their own step sequence:
+`submit-invalid-range-step-01` and `-02` for the `invalid-range` category, and
+`submit-non-existent-input-step-01` through `-04` for the `non-existent-input`
+category. The non-existent-input steps consume the `ne-*.json` artifacts in order:
+tx inclusion, inputs preimage, ledger non-membership, then txs non-membership on
+the concluding step.</Step>
 </Steps>
 
 <Callout type="warn" title="The two tokens are not the same">
@@ -57,7 +60,7 @@ Once a `fraud_proof` token exists, continue to
 
 <Callout type="info" title="Manual tooling">
 This is manual operator tooling (`bin: midgard-fault-proofs`) intended for producing
-and driving proofs. The command groups come from `src/bin.ts`.
+and driving proofs.
 </Callout>
 
 ## Related

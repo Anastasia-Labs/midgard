@@ -1,6 +1,6 @@
 ---
 title: "L1 Backend"
-description: "The Cardano Layer 1 dependency stack for Midgard, the Docker Compose services (Cardano node, Ogmios, Kupo, Mithril bootstrap) and how to bring them up."
+description: "Bring up the Cardano L1 stack Midgard depends on: a node bootstrapped from Mithril, with Ogmios and Kupo."
 ---
 
 Midgard needs a synced Cardano Layer 1 backend to read chain state and submit
@@ -50,7 +50,7 @@ volume holds the downloaded config and the Cardano DB.
 ## Environment variables
 
 Configuration is supplied through environment variables. `l1-services/.env.example`
-documents the following:
+documents the nine variables below:
 
 | Variable | Example / default | Purpose |
 | --- | --- | --- |
@@ -79,6 +79,12 @@ you must change that service's `NETWORK` value as well, not only `CARDANO_NETWOR
 
 ## Bringing it up
 
+Before starting, have a [checkout of the repository](/docs/getting-started/local-dev)
+and Docker with the Compose v2 plugin. Plan for tens of gigabytes of disk under
+`DATA_DIR` for the Cardano DB snapshot, and expect the first start to spend a
+while downloading it; later starts skip the bootstrap when a DB is already
+present.
+
 <Steps>
 
 <Step>
@@ -89,6 +95,13 @@ for your target network:
 cd l1-services
 cp .env.example .env
 ```
+
+For preprod, the two keys are published at
+[`genesis.vkey`](https://raw.githubusercontent.com/input-output-hk/mithril/main/mithril-infra/configuration/release-preprod/genesis.vkey)
+and
+[`ancillary.vkey`](https://raw.githubusercontent.com/input-output-hk/mithril/main/mithril-infra/configuration/release-preprod/ancillary.vkey);
+paste their contents into `GENESIS_VERIFICATION_KEY` and
+`ANCILLARY_VERIFICATION_KEY` in `.env`.
 </Step>
 
 <Step>

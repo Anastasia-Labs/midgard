@@ -76,6 +76,16 @@ you which page to update. To cover a new fact, extend
 
 It checks symbols and counts, not meaning. A page can still mislead while passing.
 
+### Voice is checked too
+
+`pnpm check:voice` (also run by `prebuild`) fails the build on lines that address
+the wrong audience: pages narrating their own sourcing, maintainer imperatives in
+reader prose, references to internal files, em-dashes, and named-chain
+comparisons. The three tests behind it are documented in
+`scripts/check-docs-voice.mjs`; legitimate exceptions go in its `ALLOW` list with
+a reason. It catches known phrasings, not the concept: a wrong-audience sentence
+in fresh words still needs review to catch.
+
 ### Three kinds of claim
 
 Every stale sentence found in the copy audit was a claim nothing could check. Sort a

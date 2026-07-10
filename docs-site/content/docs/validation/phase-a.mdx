@@ -111,10 +111,9 @@ When `requiresPlutusEvaluation` is set:
 ## Output: `PhaseAValidatedTx`
 
 On success, `buildPhaseAValidatedTx` (from `validation-candidate.ts`)
-materializes the candidate consumed by Phase B. Its JSDoc is explicit about
-authority: `ledgerTx` "is authoritative for transaction semantics", while the
-`graph` and `derived` projections "must be produced from `ledgerTx`, not
-authored independently by callers."
+materializes the candidate consumed by Phase B. `ledgerTx` is authoritative for
+transaction semantics; the `graph` and `derived` projections must be produced
+from `ledgerTx`, not authored independently by callers.
 
 ```ts
 type PhaseAValidatedTx = {

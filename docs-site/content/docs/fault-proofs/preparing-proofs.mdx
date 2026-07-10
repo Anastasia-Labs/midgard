@@ -1,6 +1,6 @@
 ---
 title: "Preparing Fraud Proofs"
-description: "Use prepare-double-spend and prepare-invalid-range to turn a Midgard block's transactions into the JSON inclusion proofs, input lists, and plan files the submit steps consume."
+description: "Turn a Midgard block's transactions into the proof artifacts the submit steps consume, using the prepare-* commands."
 ---
 
 The two `prepare-*` commands are the front of the fault-proof pipeline. They take
@@ -15,9 +15,9 @@ or more than one source is an error.
 
 ## `prepare-double-spend`
 
-Implemented in `demo/midgard-fault-proofs/src/prepare-double-spend.ts`. It finds two transactions in one block
-that spend the same input, then produces per-transaction inclusion proofs and
-input CBOR lists.
+Finds two transactions in one block that spend the same input, then produces
+per-transaction inclusion proofs and input CBOR lists. Source:
+`demo/midgard-fault-proofs/src/prepare-double-spend.ts`.
 
 ```sh
 midgard-fault-proofs prepare-double-spend \
@@ -75,8 +75,8 @@ quickest way to see the artifact shape without a running node.
 
 ## `prepare-invalid-range`
 
-Implemented in `demo/midgard-fault-proofs/src/prepare-invalid-range.ts`. It finds a transaction whose validity
-range violates the block's declared validity window.
+Finds a transaction whose validity range violates the block's declared validity
+window. Source: `demo/midgard-fault-proofs/src/prepare-invalid-range.ts`.
 
 ```sh
 midgard-fault-proofs prepare-invalid-range \
@@ -109,6 +109,54 @@ block window. The selected transaction is emitted with its
 | `plan.json` | Summary: header hash, block validity window, node tx id, normalized range, violation reason, compatibility, commitment encodings. |
 
 The same compatibility gate and `--allow-incompatible-output` override apply.
+
+## `prepare-non-existent-input`
+
+Targets a transaction that spends an input which does not exist: the input is
+absent from the previous ledger state and is not produced by any transaction in
+the same block. Source: `demo/midgard-fault-proofs/src/prepare-non-existent-input.ts`.
+
+```sh
+midgard-fault-proofs prepare-non-existent-input \
+  (--midgard-node-url <url> | --transactions-file <path>) \
+  --header-hash <hex> \
+  [--bad-tx-id <hex>] \
+  [--bad-input-index <n>] \
+  [--prev-utxos-root <hex>] \
+  [--prev-block-payload-file <path>] \
+  [--expected-transactions-root <hex>] \
+  [--output-dir <path>]
+```
+
+- `--bad-tx-id`: the transaction that spends the non-existent input. Optional only
+  when the block holds a single transaction; for a multi-transaction block the tool
+  errors rather than guessing.
+- `--bad-input-index` (optional, defaults to `0`), which of that transaction's
+  inputs is claimed non-existent.
+- `--prev-utxos-root` (optional, defaults to the empty-trie root), the previous
+  ledger's UTxO root that the ledger non-membership proof is built against.
+- `--prev-block-payload-file` (optional), a saved previous-block payload used to
+  reconstruct the prior ledger entries.
+- `--expected-transactions-root`: a 32-byte root to cross-check against the root
+  the tool recomputes from the block's native transactions.
+
+The tool builds one membership proof and two non-membership proofs: the offending
+transaction's inclusion in the block's transactions trie, the missing input's
+absence from the previous ledger state, and its absence from the outputs created
+within the block itself.
+
+### Files written with `--output-dir`
+
+| File | Consumed by |
+| --- | --- |
+| `ne-tx-inclusion.json` | `submit-non-existent-input-step-01` `--tx-inclusion` |
+| `ne-inputs-preimage.json` | `submit-non-existent-input-step-02` `--inputs-preimage` |
+| `ne-ledger-non-membership.json` | `submit-non-existent-input-step-03` `--ledger-non-membership-proof` |
+| `ne-txs-non-membership.json` | `submit-non-existent-input-step-04` `--txs-non-membership-proof` |
+| `ne-plan.json` | Summary: header hash, bad tx id and input index, the missing input, and the transactions and previous-UTxO roots. |
+
+Unlike the other two commands, there is no compatibility gate: on a root mismatch
+the command fails instead of writing diagnostics-only material.
 
 ## From artifacts to a proof
 

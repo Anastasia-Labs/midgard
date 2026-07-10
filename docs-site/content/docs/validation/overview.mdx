@@ -3,18 +3,17 @@ title: "Validation Engine Overview"
 description: "The two-phase validation pipeline (Phase A structural/native checks, Phase B script/ledger evaluation) the Midgard node uses to admit queued L2 transactions."
 ---
 
-The `@al-ft/midgard-validation` package is the **shared Midgard native
-transaction validation pipeline**. Its own module header describes it as the
-"public validation surface for queued Midgard L2 transactions", the code a
-Midgard node runs to decide which queued Layer 2 transactions may be admitted
-into a block.
+When a Midgard node receives a queued L2 transaction, this pipeline decides
+whether it may enter a block. **Phase A** is stateless and per-transaction: it
+decodes the transaction, checks structural invariants, and verifies signatures
+and native scripts. **Phase B** is dependency-aware and stateful: it orders
+transactions by their input/output dependencies, applies each against a UTxO
+state, evaluates Plutus and Midgard scripts locally, and enforces value
+preservation. A transaction that fails either phase is rejected with a stable
+code; one that passes both is admitted along with the UTxO changes it causes.
 
-Validation is split into two phases. **Phase A** is stateless and
-per-transaction: it decodes each queued transaction, checks structural
-invariants, and verifies signatures and native scripts. **Phase B** is
-dependency-aware and stateful: it orders transactions by their input/output
-dependencies, applies each against a UTxO state, evaluates Plutus and Midgard
-scripts locally, and enforces value preservation.
+The pipeline lives in the `@al-ft/midgard-validation` package, the shared
+validation surface a Midgard node runs at admission.
 
 <Callout type="info">
 This engine validates the *ledger* semantics of L2 transactions. It is the
@@ -63,9 +62,10 @@ exported types are the reference documentation.
 
 ## Rejection codes
 
-Both phases emit a canonical `RejectedTx` record, `{ txId, code, detail }`, using the stable `RejectCodes` map in `types.ts`. Its JSDoc notes that the
-pipeline "persists these codes for observability and replay, so they should
-change only when the corresponding rejection semantics change." Codes range from
+Both phases emit a canonical `RejectedTx` record, `{ txId, code, detail }`, using
+the stable `RejectCodes` map in `types.ts`. The pipeline persists these codes for
+observability and replay, so they change only when the corresponding rejection
+semantics change. Codes range from
 `E_CBOR_DESERIALIZATION` and `E_EMPTY_INPUTS` (Phase A) to `E_DOUBLE_SPEND`,
 `E_DEPENDENCY_CYCLE`, and `E_VALUE_NOT_PRESERVED` (Phase B).
 

@@ -1,6 +1,6 @@
 ---
 title: "End-to-End Testing Flow"
-description: "The full demo-node acceptance run: prerequisites, run modes, the deposit/L2/DA/merge sequence, artifacts, pass criteria, and failure routing."
+description: "The full acceptance run for a demo node: fresh deployment through deposit, transfers, attestation, and merge, with pass criteria."
 ---
 
 The end-to-end (E2E) acceptance flow verifies that a change has not broken the real
@@ -8,10 +8,8 @@ Midgard demo-node path: it drives a full deployment through deposit, L2 transfer
 block commit, data-availability attestation, and merge, then checks health, database
 state, balances, and logs.
 
-<Callout type="warn" title="Advanced / internal acceptance path">
-This is the operator acceptance runbook for the demo node, not a user quickstart. The
-canonical runbook is
-[`.agents/skills/midgard-e2e-acceptance/SKILL.md`](https://github.com/Anastasia-Labs/midgard/blob/main/.agents/skills/midgard-e2e-acceptance/SKILL.md).
+<Callout type="warn" title="Advanced acceptance path">
+This is the operator acceptance runbook for the demo node, not a user quickstart.
 A clean public-testnet acceptance gate is still a
 [project blocker](/docs/getting-started/status), so treat a green run as the current
 bar, not a production guarantee.
@@ -123,7 +121,8 @@ Keep `RUN_GENESIS_ON_STARTUP=false` and run protocol init explicitly. Use a fres
 funded operator-wallet UTxO for the hub-oracle one-shot. Host DB-backed commands need
 `POSTGRES_HOST=127.0.0.1 POSTGRES_PORT=5433`; `/tx-status` takes `tx_hash`. Do not use
 `attest-state-queue-once` as the acceptance path; the DA node must sign, submit, and
-apply the attestation. See the canonical runbook for the exact per-step commands.
+apply the attestation. Every command used in this flow is documented in the
+[CLI reference](/docs/operators/node/cli-reference).
 </Callout>
 
 ## What a green run proves
@@ -167,7 +166,7 @@ Classify a blocker and take the safe next action rather than resubmitting blindl
 
 | Blocker | Safe next action |
 |---------|------------------|
-| Local Kupmios unhealthy or failover configured | Run `l1-provider-preflight --json`; fix local Kupo/Ogmios/Cardano-node. Do not switch to a remote provider. |
+| Local Kupmios unhealthy | Run `l1-provider-preflight --json`; fix local Kupo/Ogmios/Cardano-node. Do not switch to a remote provider. |
 | Fresh one-shot mismatch | Stop. Attach/resume if already initialized; otherwise restart fresh with a new one-shot and matching manifest. |
 | Operator registered but not active | Reconcile operator lifecycle; use activate-only recovery only when chain state proves registration exists. |
 | Deposit not projected | Check `deposits_utxos.inclusion_time`; wait until due, then run `project-deposits-once`. |

@@ -54,6 +54,32 @@ const FACTS = [
     countPhrase: "The {n} commands",
   },
   {
+    label: "node command",
+    source: "demo/midgard-node/src/index.ts",
+    doc: "docs-site/content/docs/operators/node/cli-reference.mdx",
+    extract: (src) => [
+      ...new Set(
+        [...src.matchAll(/\.command\("([a-z0-9:._-]+)"/g)].map((m) => m[1]),
+      ),
+    ],
+    countPhrase: "The {n} commands",
+  },
+  {
+    label: "workspace member",
+    source: "demo/pnpm-workspace.yaml",
+    doc: "docs-site/content/docs/getting-started/repository-map.mdx",
+    extract: (src) =>
+      [...src.matchAll(/^\s*-\s+([\w-]+)\s*$/gm)].map((m) => m[1]),
+    countPhrase: "The {n} workspace members",
+  },
+  {
+    label: "L1 env variable",
+    source: "l1-services/.env.example",
+    doc: "docs-site/content/docs/getting-started/l1-backend.mdx",
+    extract: (src) => [...src.matchAll(/^([A-Z_]+)=/gm)].map((m) => m[1]),
+    countPhrase: "the {n} variables",
+  },
+  {
     label: "status",
     source: "demo/lucid-midgard/src/builder/status.ts",
     doc: "docs-site/content/docs/sdk/lucid-midgard/submission-observability.mdx",

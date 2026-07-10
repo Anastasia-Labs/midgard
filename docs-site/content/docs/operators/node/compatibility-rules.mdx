@@ -3,29 +3,45 @@ title: "Compatibility & State-Reset Rules"
 description: "Node compatibility rules, state-reset/redeploy rules, and the always-local-UPLC finalization rule."
 ---
 
-Operating a Midgard node in a shared/networked environment carries rules that keep
-operators, watchers, and the on-chain deployment consistent. These are documented in
-the repository's agent guidance and apply directly to `midgard-node`.
+Operating a Midgard node in a shared or networked environment carries rules that keep
+operators, watchers, and the on-chain deployment consistent.
 
-## Rules
+## No backward compatibility before launch
 
-- **Node compatibility** (`docs/agents/midgard-node.md`), the compatibility rules a
-  node must respect so it interoperates with the rest of the deployment.
-- **State reset &amp; redeploy** (`docs/agents/state-reset.md`), how to safely reset
-  state and redeploy contracts in networked environments without stranding peers or
-  funds.
-- **Transaction finalization** (`docs/agents/transaction-finalization.md`), always
-  finalize transactions using **local UPLC** evaluation, not a remote evaluator.
+Midgard has not launched, and the node ships no compatibility modes, fallback
+paths, alias lookups, legacy-format support, or migration shims. Do not expect an
+older database, configuration, or deployment shape to keep working across
+updates. "Compatibility" on this page means agreement between a node, its peers,
+and the deployed contracts, not compatibility with earlier versions of Midgard.
 
-<Callout type="warn" title="Production-grade L2 posture">
-These rules exist because Midgard is intended as a production-grade L2: correctness and
-safety take priority over convenience. See [Operators overview](/docs/operators) and
-[Project Status](/docs/getting-started/status).
-</Callout>
+## State reset & redeploy
 
-<Callout type="info" title="Backward compatibility is not a goal">
-Midgard has not launched. The rule is to prefer the current canonical design and delete
-the old one: do not add fallback paths, alias lookups, or legacy-format support to keep
-an older shape working. "Compatibility" on this page means agreement between a node, its
-peers, and the deployed contracts, not compatibility with earlier versions of Midgard.
-</Callout>
+In any environment connected to real or persistent Cardano network state, never
+wipe local durable state without a full, explicit on-chain redeploy of the
+corresponding protocol state. Wiping includes `docker compose down -v`, deleting or
+recreating Postgres volumes, clearing local ledger/MPT databases, and any reset
+script that discards node state.
+
+Never combine a clean local database with previously deployed on-chain protocol
+state: that creates split-brain state that can make deposits, scheduler alignment,
+commitments, and finalization appear broken for the wrong reason. If local state is
+wiped, redeploy the contracts, reference scripts, scheduler, state queue, hub
+oracle, and operator lists from a clean deployment flow before running deposits,
+L2 transactions, commitments, merges, benchmarks, or readiness checks.
+
+The one exception is a clearly labeled, read-only forensic diagnostic that submits
+no state-changing operations.
+
+## Transaction finalization
+
+Always finalize transactions with local UPLC evaluation:
+`.complete({ localUPLCEval: true })`, never `false`.
+
+Do not edge-trigger `validFrom` at the current wall-clock time or a tip-derived
+slot; node submit validation can lag, producing `OutsideValidityInterval` races.
+Where the semantics allow a current-time lower bound, backdate `validFrom` by at
+least 30 seconds (prefer 60 for production and e2e paths). Never backdate before a
+contract-required lower bound such as a scheduler shift boundary, and recompute
+`validTo` from the chosen `validFrom`. When a submit error carries authoritative
+provider slot evidence, wait against that slot delta instead of trusting a local
+tip estimate.

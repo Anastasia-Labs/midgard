@@ -1,6 +1,6 @@
 ---
 title: "Repository Map"
-description: "How the Midgard monorepo is laid out, on-chain validators, the demo TypeScript workspace, the technical specification, and supporting directories."
+description: "Where everything lives in the Midgard monorepo and which docs cover each part."
 ---
 
 Midgard is a single repository containing the on-chain protocol, the off-chain
@@ -23,8 +23,8 @@ specification.
 
 ## The `demo/` workspace
 
-The demo packages form a `pnpm` workspace. The workspace members declared in
-`demo/pnpm-workspace.yaml` are:
+The demo packages form a `pnpm` workspace. The seven workspace members declared
+in `demo/pnpm-workspace.yaml` are:
 
 | Package | Purpose | Docs |
 | --- | --- | --- |
@@ -42,7 +42,7 @@ Additional directories exist under `demo/` that are not workspace members in
 | Directory | Purpose |
 | --- | --- |
 | `midgard-manager` | CLI and transaction-generator tooling for operator workflows and demos. |
-| `midgard-watcher` | Watcher design notes. Markdown only, no implementation. The working watcher/DA service is `da-committee-node`. |
+| `midgard-watcher` | Design notes for the planned independent watcher; the working service is `da-committee-node`. |
 | `midgard-utxo-cache` | UTxO caching support. |
 | `schemes` | Shared scheme definitions. |
 

@@ -3,20 +3,14 @@ title: "DA Committee Node"
 description: "Architecture of the working Midgard DA committee node, a threshold committee that stores, verifies, signs, and serves block payloads over libp2p."
 ---
 
-The DA committee node is the repository's libp2p service for storing, verifying, signing,
-and serving Midgard block payloads. It is what makes a committed block's data
-retrievable, so that a watcher can check the block and, if it is invalid, prove it.
-
-<Callout type="warn" title="Directory and package names do not match">
-The implementation lives in `demo/da-committee-node`, but its `package.json` `name` and
-`bin` are both `midgard-watcher`. The separate `demo/midgard-watcher` directory is a
-design-only note with no code, see [watcher concept](/docs/watchers/concept). This page
-summarizes `demo/da-committee-node/docs/da-committee-node-architecture.md`. For how the
-code wires together, see [libp2p runtime](/docs/watchers/libp2p-runtime).
-</Callout>
+The DA committee node is Midgard's libp2p service for storing, verifying, signing,
+and serving block payloads. It is what makes a committed block's data retrievable,
+so that a watcher can check the block and, if it is invalid, prove it. Its npm
+package and bin are named `midgard-watcher`; the planned independent watcher is a
+separate [design target](/docs/watchers/concept).
 
 <Callout type="info" title="Status">
-**Implementation:** repository service, running today.
+**Implementation:** running today.
 **On-chain enforcement:** payload hash and threshold signature verification only.
 **Retention and retrieval:** obligations of the `threshold-mirror-v1` profile, enforced
 off-chain.
@@ -239,12 +233,9 @@ peers before the warning deadline, the block decision is `pending_da` and must e
 maturity, missing DA can prevent fraud-proof construction entirely.
 </Callout>
 
-## Implementation phases and open decisions
+## Open protocol decisions
 
-The doc stages the work as: **Phase 1**, libp2p public-testnet mirror (canonical producer payload
-codec, transport, header reconstruction, storage, retrieval, manifest peer fields); **Phase 2**, signature broadcast and attestation coordinator (generalizing `attest-state-queue-once`); **Phase 3**, committee accountability (runbooks, uptime, signed incident records, possible slashing).
-
-Open protocol decisions still to freeze include the exact producer and committee CBOR shapes,
+Decisions still to freeze include the exact producer and committee CBOR shapes,
 deterministic header reconstruction rules with trace commitments, the slot/deadline expression for
 the 14-day promise, coordinator peer discovery, whether committee members are bonded/slashable, and
 whether payload streams must be authenticated. For the transport-level answers already frozen, see

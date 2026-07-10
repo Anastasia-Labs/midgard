@@ -10,7 +10,10 @@ on:
       # Sources whose exported symbols the docs restate.
       # See docs-site/scripts/check-docs-facts.mjs.
       - "demo/midgard-node/src/fibers/index.ts"
+      - "demo/midgard-node/src/index.ts"
       - "demo/midgard-fault-proofs/src/bin.ts"
+      - "demo/pnpm-workspace.yaml"
+      - "l1-services/.env.example"
       - ".github/workflows/docs-site-ci.yml"
   pull_request:
     paths:
@@ -20,7 +23,10 @@ on:
       # Sources whose exported symbols the docs restate.
       # See docs-site/scripts/check-docs-facts.mjs.
       - "demo/midgard-node/src/fibers/index.ts"
+      - "demo/midgard-node/src/index.ts"
       - "demo/midgard-fault-proofs/src/bin.ts"
+      - "demo/pnpm-workspace.yaml"
+      - "l1-services/.env.example"
       - ".github/workflows/docs-site-ci.yml"
 
 jobs:

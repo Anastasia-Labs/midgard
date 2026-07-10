@@ -6,7 +6,8 @@
   "scripts": {
     "build:sdk": "pnpm --dir ../demo/midgard-core run build && pnpm --dir ../demo/lucid-midgard run build",
     "check:facts": "node scripts/check-docs-facts.mjs",
-    "prebuild": "pnpm run build:sdk && pnpm run check:facts",
+    "check:voice": "node scripts/check-docs-voice.mjs",
+    "prebuild": "pnpm run build:sdk && pnpm run check:facts && pnpm run check:voice",
     "build": "next build",
     "predev": "pnpm run build:sdk",
     "dev": "next dev",
@@ -28,7 +29,6 @@
     "next": "16.2.10",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "tailwind-merge": "^3.6.0",
     "twoslash": "^0.3.9"
   },
   "devDependencies": {
@@ -40,11 +40,5 @@
     "postcss": "^8.5.16",
     "tailwindcss": "^4.3.2",
     "typescript": "^5.9.3"
-  },
-  "pnpm": {
-    "overrides": {
-      "next>postcss": "^8.5.10",
-      "fumadocs-mdx>esbuild": "^0.28.1"
-    }
   }
 }

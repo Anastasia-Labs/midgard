@@ -3,9 +3,8 @@
   "root": true,
   "pages": [
     "index",
-    "---Getting Started---",
     "getting-started",
-    "---Developer SDK---",
+    "---Development---",
     "sdk",
     "validation",
     "---Operations---",

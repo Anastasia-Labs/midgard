@@ -1,6 +1,6 @@
 ---
-title: "Operators"
-description: "What it means to operate a Midgard deployment, the demo off-chain node, the management CLI, and the production-grade correctness and safety posture that governs every operational decision."
+title: "Overview"
+description: "Operating a Midgard deployment: the node, the management CLI, and the flows from initialization to recovery."
 ---
 
 An operator runs the off-chain machinery that keeps a Midgard L2 deployment
@@ -45,32 +45,7 @@ scripts, initializing protocol state), ongoing operator lifecycle actions
 (registering and activating an operator), and recovery procedures for
 interrupted flows.
 
-## The production-grade L2 posture
-
-Midgard is intended to be a production-grade L2. Interpret operational decisions,
-configuration, recovery, benchmarking, and state resets through that lens. The
-repository codifies a strict decision standard.
-
-<Callout type="warn" title="Priority order when tradeoffs are required">
-When operational tradeoffs are unavoidable, prioritize in this exact order:
-
-1. **Correctness**
-2. **Safety**
-3. **Liveness**
-4. **Performance**
-5. **Convenience**
-
-A change that improves benchmarks but weakens a production guarantee must never
-become the default. Keep strict behavior as the default and isolate any
-non-production behavior behind clearly named controls.
-</Callout>
-
-Operators should prefer options that maximize protocol correctness and state
-integrity, safety under adversarial conditions, determinism and
-reproducibility, operational reliability and failure recovery, auditability and
-clear observability, and explicit, auditable migrations and configuration.
-
-### Three rules that constrain operations
+## Three rules that constrain operations
 
 These rules are load-bearing for anyone running a node against real or
 persistent Cardano state. Each has its own reference in the
@@ -90,7 +65,7 @@ persistent Cardano state. Each has its own reference in the
   <Card
     title="No backward compatibility"
     href="/docs/operators/node/compatibility-rules"
-    description="Midgard has not launched. Prefer the current canonical design; do not add fallback paths, alias lookups, or legacy-format support."
+    description="Midgard has not launched; the node ships no compatibility modes, fallback paths, or legacy-format support."
   />
 </Cards>
 

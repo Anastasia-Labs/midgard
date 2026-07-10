@@ -1,6 +1,6 @@
 ---
 title: "Runtime Overview"
-description: "The demo/midgard-node runtime layout, HTTP API server, PostgreSQL-backed views, LevelDB Merkle Patricia Forestry state, and the background fibers started by the listen command."
+description: "How the Midgard node runs: the HTTP API, its persistent state, and the background workers started by listen."
 ---
 
 `demo/midgard-node` is a server application with GET and POST endpoints for
@@ -8,6 +8,10 @@ interacting with Midgard. It is the demo off-chain runtime that ties the
 protocol together: it serves the HTTP API, validates and enqueues submitted
 Midgard-native transactions, maintains durable database and MPF state, and runs
 the long-running background fibers that keep the node progressing.
+
+To stand up a node, start with
+[Initialization &amp; Deployment](/docs/operators/node/initialization-deployment);
+this page and the rest of the section describe how the running node works.
 
 ## Runtime layout
 
