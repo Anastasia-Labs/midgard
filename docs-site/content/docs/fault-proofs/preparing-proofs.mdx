@@ -15,7 +15,7 @@ or more than one source is an error.
 
 ## `prepare-double-spend`
 
-Grounded in `src/prepare-double-spend.ts`. It finds two transactions in one block
+Implemented in `demo/midgard-fault-proofs/src/prepare-double-spend.ts`. It finds two transactions in one block
 that spend the same input, then produces per-transaction inclusion proofs and
 input CBOR lists.
 
@@ -75,7 +75,7 @@ quickest way to see the artifact shape without a running node.
 
 ## `prepare-invalid-range`
 
-Grounded in `src/prepare-invalid-range.ts`. It finds a transaction whose validity
+Implemented in `demo/midgard-fault-proofs/src/prepare-invalid-range.ts`. It finds a transaction whose validity
 range violates the block's declared validity window.
 
 ```sh

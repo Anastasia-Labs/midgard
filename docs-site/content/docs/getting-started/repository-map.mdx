@@ -21,12 +21,6 @@ specification.
 | `scripts` | Repository helper scripts. | Source only |
 | `docs`, `docs-site` | Contributor documentation and this Fumadocs documentation site. | Source only |
 
-<Callout type="info" title="Source">
-The descriptions above come from the repository's `README.md` repository map and a
-listing of the repo root and `demo/`. Directories without a linked doc section
-(`offchain`, `cddl-files`, `scripts`) are listed for completeness.
-</Callout>
-
 ## The `demo/` workspace
 
 The demo packages form a `pnpm` workspace. The workspace members declared in
@@ -43,7 +37,7 @@ The demo packages form a `pnpm` workspace. The workspace members declared in
 | `da-committee-node` | Data-availability committee node that validates and exchanges block payloads over libp2p. | [Watchers & DA](/docs/watchers/concept) |
 
 Additional directories exist under `demo/` that are not workspace members in
-`pnpm-workspace.yaml` but are described in the `README.md` or present in the tree:
+`pnpm-workspace.yaml`:
 
 | Directory | Purpose |
 | --- | --- |
@@ -54,8 +48,8 @@ Additional directories exist under `demo/` that are not workspace members in
 
 ## Package documentation guides
 
-The `README.md` points to the following in-repo guides, each rendered elsewhere in
-this site or available as source:
+Individual parts of the repository carry their own guides, each rendered elsewhere
+in this site or available as source:
 
 - **Technical specification guide** (`technical-spec/README.md`), how to build and
   work on the LaTeX spec.

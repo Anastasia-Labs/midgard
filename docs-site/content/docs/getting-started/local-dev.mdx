@@ -3,8 +3,7 @@ title: "Local Development"
 description: "Toolchain versions and the commands for building, typechecking, testing, and linting the Midgard TypeScript workspace, on-chain contracts, and technical specification."
 ---
 
-This page lists the toolchain and the commands used to work on Midgard. They are taken
-from `AGENTS.md`, `demo/package.json`, `demo/Makefile`, and the root `README.md`.
+This page lists the toolchain and the commands used to work on Midgard.
 
 ## Toolchain
 
@@ -21,10 +20,7 @@ The on-chain Aiken code is built separately with the Aiken compiler. Install
 
 ## Demo workspace commands
 
-Run these from the `demo/` directory. They are the common commands documented in
-`AGENTS.md`:
-
-From `demo/`, run:
+Run these from the `demo/` directory:
 
 ```sh
 pnpm run build        # build all workspace packages
@@ -60,8 +56,7 @@ The underlying scripts are defined in `demo/package.json`:
 
 ## Per-package builds
 
-Per the `README.md`, the demo packages can also be built independently inside
-`demo/`. For example:
+The demo packages can also be built independently inside `demo/`. For example:
 
 ```sh
 pnpm install && pnpm build
@@ -72,7 +67,7 @@ This applies to `demo/midgard-sdk`, `demo/midgard-node`, and
 
 ## Building the on-chain code
 
-From the `README.md`, build the Aiken validators with:
+Build the Aiken validators with:
 
 ```sh
 aiken build
@@ -97,7 +92,7 @@ make shell   # runs: nix develop
 
 ## Building the technical specification
 
-From the `README.md` and `AGENTS.md`, build the LaTeX spec with:
+Build the LaTeX spec with:
 
 ```sh
 make spec
@@ -107,13 +102,14 @@ Then open `technical-spec/midgard.pdf`.
 
 ## Git hooks
 
-Contributors must enable the project's standardized git hooks (`README.md`):
+Contributors must enable the project's standardized git hooks:
 
 ```sh
 make enable-git-hooks
 ```
 
-See `CONTRIBUTING.md` for the full contribution workflow and review expectations.
+See [`CONTRIBUTING.md`](https://github.com/Anastasia-Labs/midgard/blob/main/CONTRIBUTING.md)
+for the full contribution workflow and review expectations.
 
 <Callout type="warn" title="Transaction validity windows">
 Do not edge-trigger `validFrom` at the current wall-clock or tip-derived slot when

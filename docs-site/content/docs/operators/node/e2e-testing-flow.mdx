@@ -10,8 +10,8 @@ state, balances, and logs.
 
 <Callout type="warn" title="Advanced / internal acceptance path">
 This is the operator acceptance runbook for the demo node, not a user quickstart. The
-canonical source in this repository is the skill at
-[`.agents/skills/midgard-e2e-acceptance/SKILL.md`](https://github.com/Anastasia-Labs/midgard/blob/tx-validation/.agents/skills/midgard-e2e-acceptance/SKILL.md).
+canonical runbook is
+[`.agents/skills/midgard-e2e-acceptance/SKILL.md`](https://github.com/Anastasia-Labs/midgard/blob/main/.agents/skills/midgard-e2e-acceptance/SKILL.md).
 A clean public-testnet acceptance gate is still a
 [project blocker](/docs/getting-started/status), so treat a green run as the current
 bar, not a production guarantee.
@@ -123,7 +123,7 @@ Keep `RUN_GENESIS_ON_STARTUP=false` and run protocol init explicitly. Use a fres
 funded operator-wallet UTxO for the hub-oracle one-shot. Host DB-backed commands need
 `POSTGRES_HOST=127.0.0.1 POSTGRES_PORT=5433`; `/tx-status` takes `tx_hash`. Do not use
 `attest-state-queue-once` as the acceptance path; the DA node must sign, submit, and
-apply the attestation. See the skill for the exact per-step commands.
+apply the attestation. See the canonical runbook for the exact per-step commands.
 </Callout>
 
 ## What a green run proves
