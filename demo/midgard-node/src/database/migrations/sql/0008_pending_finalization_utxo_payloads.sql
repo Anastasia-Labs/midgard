@@ -4,5 +4,5 @@ CREATE TABLE pending_block_finalization_utxos (
   ordinal INTEGER NOT NULL,
   output BYTEA NOT NULL,
   PRIMARY KEY (header_hash, outref),
-  UNIQUE (header_hash, ordinal)
+  CONSTRAINT unique_pending_block_finalization_utxo_ordinal UNIQUE (header_hash, ordinal)
 );

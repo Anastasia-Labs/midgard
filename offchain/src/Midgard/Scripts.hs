@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Midgard.Scripts (MidgardScripts (..), MidgardRefScripts (..), readAikenScripts) where
 
 import Cardano.Api qualified as C

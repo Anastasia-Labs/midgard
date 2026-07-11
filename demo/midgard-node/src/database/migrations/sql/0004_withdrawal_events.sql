@@ -19,7 +19,7 @@ CREATE TABLE withdrawal_utxos (
   status TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (withdrawal_l1_tx_hash, withdrawal_l1_output_index),
+  CONSTRAINT unique_withdrawal_utxo_l1_ref UNIQUE (withdrawal_l1_tx_hash, withdrawal_l1_output_index),
   CHECK (status IN ('awaiting', 'projected', 'finalized')),
   CHECK (validity IS NULL OR validity IN (
     'WithdrawalIsValid',
@@ -53,5 +53,5 @@ CREATE TABLE pending_block_finalization_withdrawals (
   member_id BYTEA NOT NULL REFERENCES withdrawal_utxos(event_id) ON DELETE RESTRICT,
   ordinal INTEGER NOT NULL,
   PRIMARY KEY (header_hash, member_id),
-  UNIQUE (header_hash, ordinal)
+  CONSTRAINT unique_pending_block_finalization_withdrawal_ordinal UNIQUE (header_hash, ordinal)
 );

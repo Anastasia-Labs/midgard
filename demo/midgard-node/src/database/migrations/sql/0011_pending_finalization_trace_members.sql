@@ -8,7 +8,7 @@ CREATE TABLE pending_block_finalization_transition_trace (
   source_id BYTEA NOT NULL,
   source_time_stamp_tz TIMESTAMPTZ NOT NULL,
   PRIMARY KEY (header_hash, member_id),
-  UNIQUE (header_hash, ordinal)
+  CONSTRAINT unique_pending_block_finalization_transition_trace_ordinal UNIQUE (header_hash, ordinal)
 );
 
 CREATE TABLE pending_block_finalization_event_to_step (
@@ -21,5 +21,5 @@ CREATE TABLE pending_block_finalization_event_to_step (
   source_id BYTEA NOT NULL,
   source_time_stamp_tz TIMESTAMPTZ NOT NULL,
   PRIMARY KEY (header_hash, member_id),
-  UNIQUE (header_hash, ordinal)
+  CONSTRAINT unique_pending_block_finalization_event_to_step_ordinal UNIQUE (header_hash, ordinal)
 );

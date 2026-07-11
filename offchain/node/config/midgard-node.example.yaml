@@ -1,0 +1,28 @@
+api:
+  port: 3000
+
+database: null
+database:
+  connectionString: "postgresql://yugabyte@192.168.1.138:5433/midgard"
+  poolSize: 5
+
+logLevel: info
+
+midgard:
+  network: Preview
+  adminApiKey: null
+
+protocol:
+  # These values feed /protocol-info and should match the deployed network
+  # configuration. Defaults are placeholders until provider/env wiring lands.
+  minFeeA: "0"
+  minFeeB: "0"
+  maxSubmitTxCborBytes: 32768
+  validationStrictnessProfile: phase1_midgard
+
+contracts:
+  midgardEnvFile: null
+  deploymentInfoFile: null
+
+features:
+  enableMutatingEndpoints: false
