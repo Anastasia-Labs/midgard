@@ -167,7 +167,9 @@ const getTxHandler = Effect.gen(function* () {
 
   const txHashBytes = Buffer.from(fromHex(txHashParam));
   return yield* lookupTxCbor(txHashBytes, txHashParam).pipe(
-    Effect.tap((foundCbor) => Effect.logInfo("foundCbor", bufferToHex(foundCbor))),
+    Effect.tap((foundCbor) =>
+      Effect.logInfo("foundCbor", bufferToHex(foundCbor)),
+    ),
     Effect.flatMap((foundCbor) =>
       HttpServerResponse.json({ tx: bufferToHex(foundCbor) }),
     ),
@@ -898,19 +900,17 @@ export const runNode = (withMonitoring?: boolean) =>
         ),
       }));
 
-      return pipe(
+      return yield* pipe(
         program,
         Effect.withSpan("midgard"),
         Effect.provide(MetricsLive),
         Effect.catchAllCause(Effect.logError),
-        Effect.runPromise,
       );
     } else {
-      return pipe(
+      return yield* pipe(
         program,
         Effect.withSpan("midgard"),
         Effect.catchAllCause(Effect.logError),
-        Effect.runPromise,
       );
     }
   });
