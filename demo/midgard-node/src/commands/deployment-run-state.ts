@@ -485,6 +485,7 @@ export const resolveReferenceScriptAuthPolicyProgram = ({
   network,
   hubOracleOneShotTxHash,
   hubOracleOneShotOutputIndex,
+  persistRunState = true,
   timelockDurationMs,
   manifestOutputPath,
 }: {
@@ -495,6 +496,8 @@ export const resolveReferenceScriptAuthPolicyProgram = ({
   readonly hubOracleOneShotOutputIndex: number;
   readonly timelockDurationMs: number;
   readonly manifestOutputPath?: string;
+  /** Diagnostic callers must resolve identity without mutating run state. */
+  readonly persistRunState?: boolean;
 }): Effect.Effect<ReferenceScriptAuthPolicy, RunStateError> =>
   Effect.tryPromise({
     try: async () => {
@@ -524,78 +527,94 @@ export const resolveReferenceScriptAuthPolicyProgram = ({
       let policySource: "run_state" | "manifest" | "created" | "fresh_created" =
         "created";
 
-      const nextState = await mutateDeploymentRunState(
-        options.runStatePath,
-        () =>
-          createDeploymentRunState({
-            mode: options.freshRedeploy ? "fresh" : "resume",
-            identity: currentIdentity,
-          }),
-        (state) => {
-          const runStatePolicy = authPolicyFromRunStateIdentity(state.identity);
-          if (runStatePolicy !== null && !options.freshRedeploy) {
-            assertDeploymentIdentityMatches(
-              state.identity,
-              currentIdentity,
-              "deployment run state",
-            );
-            assertPolicyIdsMatch({
-              leftPolicyId: state.identity.referenceScriptAuthPolicyId,
-              rightPolicyId: runStatePolicy.policyId,
-              source: "deployment run state",
-            });
-            assertPolicyIdsMatch({
-              leftPolicyId: manifestPolicy?.policyId,
-              rightPolicyId: runStatePolicy.policyId,
-              source: "deployment manifest and run state",
-            });
-            resolvedPolicy = runStatePolicy;
-            policySource = "run_state";
-          } else if (manifestPolicy !== null && !options.freshRedeploy) {
-            resolvedPolicy =
-              referenceScriptAuthPolicyFromDeploymentInfo(manifestPolicy);
-            policySource = "manifest";
-          } else {
-            resolvedPolicy = createReferenceScriptAuthPolicy(
-              lucid,
-              Date.now(),
-              timelockDurationMs,
-            );
-            policySource = options.freshRedeploy ? "fresh_created" : "created";
-          }
-          const policyInfo =
-            referenceScriptAuthPolicyDeploymentInfo(resolvedPolicy);
-          return transitionDeploymentStep(
-            {
-              ...state,
-              mode: options.freshRedeploy ? "fresh" : state.mode,
-              identity: {
-                ...state.identity,
-                ...currentIdentity,
-                referenceScriptAuthPolicyId: policyInfo.policyId,
-                referenceScriptAuthPolicy: {
-                  policyId: policyInfo.policyId,
-                  nativeScript: policyInfo.nativeScript,
-                },
+      const transitionState = (
+        state: DeploymentRunState,
+      ): DeploymentRunState => {
+        const runStatePolicy = authPolicyFromRunStateIdentity(state.identity);
+        if (runStatePolicy !== null && !options.freshRedeploy) {
+          assertDeploymentIdentityMatches(
+            state.identity,
+            currentIdentity,
+            "deployment run state",
+          );
+          assertPolicyIdsMatch({
+            leftPolicyId: state.identity.referenceScriptAuthPolicyId,
+            rightPolicyId: runStatePolicy.policyId,
+            source: "deployment run state",
+          });
+          assertPolicyIdsMatch({
+            leftPolicyId: manifestPolicy?.policyId,
+            rightPolicyId: runStatePolicy.policyId,
+            source: "deployment manifest and run state",
+          });
+          resolvedPolicy = runStatePolicy;
+          policySource = "run_state";
+        } else if (manifestPolicy !== null && !options.freshRedeploy) {
+          resolvedPolicy =
+            referenceScriptAuthPolicyFromDeploymentInfo(manifestPolicy);
+          policySource = "manifest";
+        } else {
+          resolvedPolicy = createReferenceScriptAuthPolicy(
+            lucid,
+            Date.now(),
+            timelockDurationMs,
+          );
+          policySource = options.freshRedeploy ? "fresh_created" : "created";
+        }
+        const policyInfo =
+          referenceScriptAuthPolicyDeploymentInfo(resolvedPolicy);
+        return transitionDeploymentStep(
+          {
+            ...state,
+            mode: options.freshRedeploy ? "fresh" : state.mode,
+            identity: {
+              ...state.identity,
+              ...currentIdentity,
+              referenceScriptAuthPolicyId: policyInfo.policyId,
+              referenceScriptAuthPolicy: {
+                policyId: policyInfo.policyId,
+                nativeScript: policyInfo.nativeScript,
               },
             },
-            "referenceScriptAuthPolicy",
-            "complete",
-            {
-              message:
-                policySource === "run_state"
-                  ? "loaded from run state"
-                  : policySource === "manifest"
-                    ? "imported from deployment manifest"
-                    : `created and persisted before publication${
-                        policySource === "fresh_created"
-                          ? `; fresh_redeploy_reason=${options.freshRedeployReason}`
-                          : ""
-                      }`,
-            },
-          );
-        },
-      );
+          },
+          "referenceScriptAuthPolicy",
+          "complete",
+          {
+            message:
+              policySource === "run_state"
+                ? "loaded from run state"
+                : policySource === "manifest"
+                  ? "imported from deployment manifest"
+                  : `created and persisted before publication${
+                      policySource === "fresh_created"
+                        ? `; fresh_redeploy_reason=${options.freshRedeployReason}`
+                        : ""
+                    }`,
+          },
+        );
+      };
+      const nextState = persistRunState
+        ? await mutateDeploymentRunState(
+            options.runStatePath,
+            () =>
+              createDeploymentRunState({
+                mode: options.freshRedeploy ? "fresh" : "resume",
+                identity: currentIdentity,
+              }),
+            transitionState,
+          )
+        : await (async () => {
+            const existingState = await loadDeploymentRunState(
+              options.runStatePath,
+            );
+            if (existingState === null) {
+              throw new RunStateError(
+                "Read-only reference-script capture requires an existing deployment run state.",
+              );
+            }
+            transitionState(existingState);
+            return existingState;
+          })();
       const policy =
         resolvedPolicy ?? authPolicyFromRunStateIdentity(nextState.identity);
       if (policy === null) {

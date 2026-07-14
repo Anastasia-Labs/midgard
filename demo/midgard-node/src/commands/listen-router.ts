@@ -14,13 +14,17 @@ import type { HttpBodyError } from "@effect/platform/HttpBody";
 import { ParsedSearchParams } from "@effect/platform/HttpServerRequest";
 import { SqlClient } from "@effect/sql/SqlClient";
 import { toHex } from "@lucid-evolution/lucid";
-import { Cause, Duration, Effect, Metric, Ref } from "effect";
+import { Cause, Duration, Effect, Exit, Metric, Option, Ref } from "effect";
 
 import {
   parseAddressArgument,
   parseTxOutRefCborHex,
 } from "@/commands/command-utils.js";
 import * as DepositStatusCommand from "@/commands/deposit-status.js";
+import {
+  type L1ProviderPreflightReport,
+  runL1ProviderPreflight,
+} from "@/commands/l1-provider-preflight.js";
 import {
   failWith500,
   handleStateQueueGetFailure,
@@ -38,6 +42,8 @@ import * as UtxosCommand from "@/commands/utxos.js";
 import {
   AddressHistoryDB,
   BlocksDB,
+  DaPayloadPublicationsDB,
+  ForeignTipReconciliationsDB,
   ImmutableDB,
   MempoolDB,
   MempoolLedgerDB,
@@ -47,22 +53,40 @@ import {
   TxAdmissionsDB,
   TxRejectionsDB,
 } from "@/database/index.js";
+import { DatabaseError } from "@/database/utils/common.js";
 import {
+  admissionFailureDefinitelyDidNotInsert,
   blockCommitmentAction,
+  commitAdmissionBacklogSlot,
   mergeAction,
+  releaseAdmissionBacklogSlot,
   requestTxQueueProcessorWakeup,
+  reserveAdmissionBacklogSlot,
 } from "@/fibers/index.js";
 import * as Genesis from "@/genesis.js";
 import {
   localOgmiosSubmitSlotEvidence,
   readLocalOgmiosSubmitSlot,
+  type SubmitSlotSnapshot,
 } from "@/local-ogmios-slot.js";
-import { Database } from "@/services/index.js";
+import {
+  AdmissionWriter,
+  type AdmissionWriterShutdownError,
+  BatchSql,
+  Database,
+  DEFAULT_L1_CONTROL_PLANE_MAX_HOLD_MS,
+  type L1ProviderHealthEvidence,
+  MempoolLedgerCache,
+  ValidationPool,
+  WriteBehind,
+} from "@/services/index.js";
 import {
   Globals,
   Lucid,
   MidgardContracts,
+  nextL1ProviderHealthEvidence,
   NodeConfig,
+  withL1ControlPlaneIfAvailable,
 } from "@/services/index.js";
 import {
   fetchStateQueueTopologyProgram,
@@ -93,6 +117,547 @@ const INIT_ENDPOINT: string = "init";
 const COMMIT_ENDPOINT: string = "commit";
 const SUBMIT_ENDPOINT: string = "submit";
 const DEPOSIT_BUILD_ENDPOINT: string = "deposit/build";
+const READINESS_L1_PROVIDER_LIVE_TIMEOUT_MS = 2_000;
+
+export type L1ProviderReadinessProbe =
+  | { readonly mode: "cached_fresh"; readonly baseRevision: number }
+  | { readonly mode: "busy"; readonly baseRevision: number }
+  | {
+      readonly mode: "live";
+      readonly healthy: true;
+      readonly ogmiosSlot: SubmitSlotSnapshot;
+      readonly publishedRevision: number;
+    }
+  | {
+      readonly mode: "live";
+      readonly healthy: false;
+      readonly error: string;
+      readonly publishedRevision: number;
+    }
+  | {
+      readonly mode: "live_preflight_control_plane_busy";
+      readonly healthy: true;
+      readonly ogmiosSlot: SubmitSlotSnapshot;
+      readonly publishedRevision: number;
+    }
+  | {
+      readonly mode: "live_preflight_control_plane_busy";
+      readonly healthy: false;
+      readonly error: string;
+      readonly publishedRevision: number;
+    };
+
+export const l1ProviderEvidenceIsFresh = ({
+  lastSuccessAtMs,
+  nowMs,
+  maxAgeMs,
+}: {
+  readonly lastSuccessAtMs: number;
+  readonly nowMs: number;
+  readonly maxAgeMs: number;
+}): boolean =>
+  lastSuccessAtMs > 0 && Math.max(0, nowMs - lastSuccessAtMs) <= maxAgeMs;
+
+export const l1ProviderReadinessEvidenceIsFresh = ({
+  evidence,
+  nowMs,
+  maxAgeMs,
+  maxExactAgeMs,
+}: {
+  readonly evidence: Pick<
+    L1ProviderHealthEvidence,
+    | "lastSuccessAtMs"
+    | "lastExactSuccessAtMs"
+    | "evidenceRevision"
+    | "lastExactEvidenceRevision"
+    | "lastObservationKind"
+    | "lastExactObservationKind"
+    | "lastSuccessKind"
+  >;
+  readonly nowMs: number;
+  readonly maxAgeMs: number;
+  readonly maxExactAgeMs: number;
+}): boolean =>
+  l1ProviderEvidenceIsFresh({
+    lastSuccessAtMs: evidence.lastSuccessAtMs,
+    nowMs,
+    maxAgeMs,
+  }) &&
+  (evidence.lastObservationKind === "exact_success" ||
+    evidence.lastObservationKind === "direct_success") &&
+  evidence.lastExactSuccessAtMs > 0 &&
+  evidence.lastExactEvidenceRevision > 0 &&
+  evidence.lastExactEvidenceRevision <= evidence.evidenceRevision &&
+  evidence.lastExactObservationKind === "exact_success" &&
+  (evidence.lastSuccessKind !== "direct" ||
+    l1ProviderEvidenceIsFresh({
+      lastSuccessAtMs: evidence.lastExactSuccessAtMs,
+      nowMs,
+      maxAgeMs: maxExactAgeMs,
+    }));
+
+export const localOgmiosSlotFromPreflight = (
+  report: L1ProviderPreflightReport,
+): SubmitSlotSnapshot => {
+  const localOgmiosSlot = report.sources.find(
+    (source) => source.healthy && source.localLedgerSlot !== undefined,
+  )?.localLedgerSlot;
+  if (!report.ok || localOgmiosSlot === undefined) {
+    const failures = report.sources
+      .filter((source) => !source.healthy)
+      .map((source) =>
+        [
+          `${source.source}:${source.failureKind ?? "unhealthy"}`,
+          source.latencyMs === undefined
+            ? undefined
+            : `latency_ms=${source.latencyMs.toString()}`,
+          source.bodySummary,
+        ]
+          .filter(
+            (part): part is string => part !== undefined && part.length > 0,
+          )
+          .join(":"),
+      )
+      .join(",");
+    throw new Error(
+      failures.length > 0
+        ? `Direct L1 provider preflight failed (${failures})`
+        : "Direct L1 provider preflight returned no local Ogmios slot evidence",
+    );
+  }
+  return localOgmiosSlot;
+};
+
+export const runBoundedDirectL1ProviderPreflight = ({
+  runPreflight,
+  timeoutMs,
+}: {
+  readonly runPreflight: (
+    signal: AbortSignal,
+  ) => Promise<L1ProviderPreflightReport>;
+  readonly timeoutMs: number;
+}): Effect.Effect<SubmitSlotSnapshot, unknown> =>
+  Effect.tryPromise({
+    try: runPreflight,
+    catch: (cause) => cause,
+  }).pipe(
+    Effect.flatMap((report) =>
+      Effect.try({
+        try: () => localOgmiosSlotFromPreflight(report),
+        catch: (cause) => cause,
+      }),
+    ),
+    Effect.timeoutFail({
+      duration: Duration.millis(timeoutMs),
+      onTimeout: () =>
+        new Error(
+          `Direct L1 provider preflight exceeded ${timeoutMs.toString()}ms`,
+        ),
+    }),
+  );
+
+const readinessProbeFromLatestExactObservation = (
+  evidence: L1ProviderHealthEvidence,
+): L1ProviderReadinessProbe => {
+  if (evidence.lastObservationKind === "exact_success") {
+    return {
+      mode: "cached_fresh",
+      baseRevision: evidence.evidenceRevision,
+    };
+  }
+  return {
+    mode: "live_preflight_control_plane_busy",
+    healthy: false,
+    error:
+      evidence.lastObservationKind === "exact_failure"
+        ? (evidence.lastExactFailure ??
+          "Exact HubOracle readiness probe failed")
+        : "L1 provider evidence changed while a direct probe was in flight",
+    publishedRevision: evidence.evidenceRevision,
+  };
+};
+
+export const reconcileReadinessProbeWithExactEvidence = ({
+  probe,
+  evidence,
+}: {
+  readonly probe: L1ProviderReadinessProbe;
+  readonly evidence: L1ProviderHealthEvidence;
+}): L1ProviderReadinessProbe => {
+  if (probe.mode !== "live_preflight_control_plane_busy") {
+    return probe;
+  }
+  if (
+    evidence.evidenceRevision > probe.publishedRevision &&
+    (evidence.lastObservationKind === "exact_success" ||
+      evidence.lastObservationKind === "exact_failure")
+  ) {
+    return readinessProbeFromLatestExactObservation(evidence);
+  }
+  return probe;
+};
+
+const recordDirectProbeFailure = ({
+  globals,
+  error,
+  observedAtMs,
+  expectedRevision,
+}: {
+  readonly globals: Globals;
+  readonly error: string;
+  readonly observedAtMs: number;
+  readonly expectedRevision: number;
+}): Effect.Effect<L1ProviderReadinessProbe> =>
+  Ref.modify(
+    globals.L1_PROVIDER_HEALTH,
+    (latest): readonly [L1ProviderReadinessProbe, L1ProviderHealthEvidence] => {
+      if (latest.evidenceRevision !== expectedRevision) {
+        return [readinessProbeFromLatestExactObservation(latest), latest];
+      }
+      const updated = nextL1ProviderHealthEvidence({
+        current: latest,
+        healthy: false,
+        error,
+        observedAtMs,
+        successKind: "direct",
+      });
+      return [
+        {
+          mode: "live_preflight_control_plane_busy",
+          healthy: false,
+          error,
+          publishedRevision: updated.evidenceRevision,
+        },
+        updated,
+      ];
+    },
+  );
+
+const recordDirectProbeSuccess = ({
+  globals,
+  ogmiosSlot,
+  observedAtMs,
+  expectedRevision,
+}: {
+  readonly globals: Globals;
+  readonly ogmiosSlot: SubmitSlotSnapshot;
+  readonly observedAtMs: number;
+  readonly expectedRevision: number;
+}): Effect.Effect<L1ProviderReadinessProbe> =>
+  Ref.modify(
+    globals.L1_PROVIDER_HEALTH,
+    (latest): readonly [L1ProviderReadinessProbe, L1ProviderHealthEvidence] => {
+      if (latest.evidenceRevision !== expectedRevision) {
+        return [readinessProbeFromLatestExactObservation(latest), latest];
+      }
+      const updated = nextL1ProviderHealthEvidence({
+        current: latest,
+        healthy: true,
+        observedAtMs,
+        ogmiosSlot,
+        successKind: "direct",
+      });
+      return [
+        {
+          mode: "live_preflight_control_plane_busy",
+          healthy: true,
+          ogmiosSlot,
+          publishedRevision: updated.evidenceRevision,
+        },
+        updated,
+      ];
+    },
+  );
+
+/**
+ * Deduplicated raw-provider fallback used only when the shared Lucid control
+ * plane is busy. It cannot bootstrap readiness: a recent exact HubOracle probe
+ * is required, and direct successes never refresh that exact timestamp.
+ */
+export const runBusyL1ProviderReadinessProbe = <E, R>({
+  globals,
+  directProbe,
+  now,
+  maxAgeMs,
+  maxExactAgeMs,
+}: {
+  readonly globals: Globals;
+  readonly directProbe: Effect.Effect<SubmitSlotSnapshot, E, R>;
+  readonly now: () => number;
+  readonly maxAgeMs: number;
+  readonly maxExactAgeMs: number;
+}): Effect.Effect<L1ProviderReadinessProbe, never, R> =>
+  Effect.gen(function* () {
+    const requestedRevision = (yield* Ref.get(globals.L1_PROVIDER_HEALTH))
+      .evidenceRevision;
+    const attempt =
+      yield* globals.L1_PROVIDER_DIRECT_PROBE.withPermitsIfAvailable(1)(
+        Effect.gen(function* () {
+          const observedAtMs = now();
+          const current = yield* Ref.get(globals.L1_PROVIDER_HEALTH);
+          if (
+            l1ProviderReadinessEvidenceIsFresh({
+              evidence: current,
+              nowMs: observedAtMs,
+              maxAgeMs,
+              maxExactAgeMs,
+            })
+          ) {
+            return {
+              mode: "cached_fresh",
+              baseRevision: current.evidenceRevision,
+            } as const;
+          }
+          if (
+            current.evidenceRevision > requestedRevision &&
+            current.lastObservationKind === "direct_failure" &&
+            current.lastFailure !== null
+          ) {
+            return {
+              mode: "live_preflight_control_plane_busy",
+              healthy: false,
+              error: current.lastFailure,
+              publishedRevision: current.evidenceRevision,
+            } as const;
+          }
+          if (
+            current.evidenceRevision > requestedRevision &&
+            (current.lastObservationKind === "exact_success" ||
+              current.lastObservationKind === "exact_failure")
+          ) {
+            return readinessProbeFromLatestExactObservation(current);
+          }
+
+          const exactEvidenceIsFresh =
+            current.lastExactSuccessAtMs > 0 &&
+            current.lastExactEvidenceRevision > 0 &&
+            current.lastExactEvidenceRevision <= current.evidenceRevision &&
+            current.lastExactObservationKind === "exact_success" &&
+            l1ProviderEvidenceIsFresh({
+              lastSuccessAtMs: current.lastExactSuccessAtMs,
+              nowMs: observedAtMs,
+              maxAgeMs: maxExactAgeMs,
+            });
+          if (!exactEvidenceIsFresh) {
+            const error =
+              current.lastExactSuccessAtMs <= 0
+                ? "Direct L1 provider fallback requires prior exact HubOracle evidence"
+                : current.lastExactObservationKind === "exact_failure"
+                  ? `Direct L1 provider fallback blocked by exact HubOracle failure: ${current.lastExactFailure ?? "unknown exact failure"}`
+                  : `Exact HubOracle evidence is ${Math.max(0, observedAtMs - current.lastExactSuccessAtMs).toString()}ms old (max ${maxExactAgeMs.toString()}ms)`;
+            if (current.lastExactObservationKind === "exact_failure") {
+              return {
+                mode: "live_preflight_control_plane_busy",
+                healthy: false,
+                error:
+                  current.lastExactFailure ??
+                  "Exact HubOracle readiness probe failed",
+                publishedRevision: current.evidenceRevision,
+              } as const;
+            }
+            if (current.lastExactObservationKind === "exact_success") {
+              return {
+                mode: "live_preflight_control_plane_busy",
+                healthy: false,
+                error,
+                publishedRevision: current.evidenceRevision,
+              } as const;
+            }
+            return yield* recordDirectProbeFailure({
+              globals,
+              error,
+              observedAtMs,
+              expectedRevision: current.evidenceRevision,
+            });
+          }
+
+          const startRevision = current.evidenceRevision;
+          const attempt = yield* Effect.either(directProbe);
+          const completedAtMs = now();
+          if (attempt._tag === "Left") {
+            const error = String(attempt.left);
+            return yield* recordDirectProbeFailure({
+              globals,
+              error,
+              observedAtMs: completedAtMs,
+              expectedRevision: startRevision,
+            });
+          }
+
+          if (
+            !l1ProviderEvidenceIsFresh({
+              lastSuccessAtMs: current.lastExactSuccessAtMs,
+              nowMs: completedAtMs,
+              maxAgeMs: maxExactAgeMs,
+            })
+          ) {
+            return yield* recordDirectProbeFailure({
+              globals,
+              error:
+                "Exact HubOracle evidence expired during direct L1 provider preflight",
+              observedAtMs: completedAtMs,
+              expectedRevision: startRevision,
+            });
+          }
+          return yield* recordDirectProbeSuccess({
+            globals,
+            ogmiosSlot: attempt.right,
+            observedAtMs: completedAtMs,
+            expectedRevision: startRevision,
+          });
+        }),
+      );
+    if (Option.isSome(attempt)) return attempt.value;
+
+    const current = yield* Ref.get(globals.L1_PROVIDER_HEALTH);
+    return {
+      mode: "busy",
+      baseRevision: current.evidenceRevision,
+    } as const;
+  });
+
+export const runCombinedL1ReadinessProbe = <A, E1, R1, E2, R2>(
+  hubOracleProbe: Effect.Effect<A, E1, R1>,
+  localOgmiosSlotProbe: Effect.Effect<SubmitSlotSnapshot, E2, R2>,
+): Effect.Effect<SubmitSlotSnapshot, E1 | E2, R1 | R2> =>
+  hubOracleProbe.pipe(Effect.zipRight(localOgmiosSlotProbe));
+
+export const resolveL1ProviderReadinessEvidence = ({
+  probe,
+  lastSuccessAtMs,
+  lastFailure,
+  cachedOgmiosSlot,
+  nowMs,
+  maxAgeMs,
+}: {
+  readonly probe: L1ProviderReadinessProbe;
+  readonly lastSuccessAtMs: number;
+  readonly lastFailure: string | null;
+  readonly cachedOgmiosSlot: SubmitSlotSnapshot | null;
+  readonly nowMs: number;
+  readonly maxAgeMs: number;
+}) => {
+  const evidenceAgeMs =
+    lastSuccessAtMs <= 0 ? null : Math.max(0, nowMs - lastSuccessAtMs);
+  if (probe.mode === "busy" || probe.mode === "cached_fresh") {
+    const healthy = evidenceAgeMs !== null && evidenceAgeMs <= maxAgeMs;
+    return {
+      healthy,
+      mode:
+        probe.mode === "cached_fresh"
+          ? ("cached_fresh" as const)
+          : ("cached_control_plane_busy" as const),
+      evidenceAgeMs,
+      ogmiosSlot: healthy ? cachedOgmiosSlot : null,
+      error: healthy
+        ? null
+        : (lastFailure ??
+          (evidenceAgeMs === null
+            ? "No successful cached L1 provider evidence"
+            : `Cached L1 provider evidence is ${evidenceAgeMs.toString()}ms old (max ${maxAgeMs.toString()}ms)`)),
+    };
+  }
+  return probe.healthy
+    ? {
+        healthy: true,
+        mode: probe.mode,
+        evidenceAgeMs: 0,
+        error: null,
+        ogmiosSlot: probe.ogmiosSlot,
+      }
+    : {
+        healthy: false,
+        mode: probe.mode,
+        evidenceAgeMs,
+        error: probe.error,
+        ogmiosSlot: null,
+      };
+};
+
+export const resolveL1ProviderReadinessSnapshot = ({
+  probe,
+  evidence,
+  nowMs,
+  maxAgeMs,
+  maxExactAgeMs,
+}: {
+  readonly probe: L1ProviderReadinessProbe;
+  readonly evidence: L1ProviderHealthEvidence;
+  readonly nowMs: number;
+  readonly maxAgeMs: number;
+  readonly maxExactAgeMs: number;
+}) => {
+  const evidenceAgeMs =
+    evidence.lastSuccessAtMs <= 0
+      ? null
+      : Math.max(0, nowMs - evidence.lastSuccessAtMs);
+  const exactEvidenceAgeMs =
+    evidence.lastExactSuccessAtMs <= 0
+      ? null
+      : Math.max(0, nowMs - evidence.lastExactSuccessAtMs);
+  const latestSuccessIsFresh =
+    evidenceAgeMs !== null && evidenceAgeMs <= maxAgeMs;
+  const exactPrerequisiteIsFresh =
+    evidence.lastExactObservationKind === "exact_success" &&
+    evidence.lastExactEvidenceRevision > 0 &&
+    evidence.lastExactEvidenceRevision <= evidence.evidenceRevision &&
+    exactEvidenceAgeMs !== null &&
+    exactEvidenceAgeMs <= maxExactAgeMs;
+
+  let healthy = false;
+  let error: string | null;
+  switch (evidence.lastObservationKind) {
+    case "exact_success":
+      healthy = latestSuccessIsFresh;
+      error = healthy
+        ? null
+        : `Exact HubOracle evidence is ${evidenceAgeMs?.toString() ?? "missing"}ms old (max ${maxAgeMs.toString()}ms)`;
+      break;
+    case "direct_success":
+      healthy = latestSuccessIsFresh && exactPrerequisiteIsFresh;
+      error = healthy
+        ? null
+        : !latestSuccessIsFresh
+          ? `Direct L1 provider evidence is ${evidenceAgeMs?.toString() ?? "missing"}ms old (max ${maxAgeMs.toString()}ms)`
+          : evidence.lastExactObservationKind !== "exact_success"
+            ? (evidence.lastExactFailure ??
+              "Direct L1 provider evidence has no active exact prerequisite")
+            : `Exact HubOracle prerequisite is ${exactEvidenceAgeMs?.toString() ?? "missing"}ms old (max ${maxExactAgeMs.toString()}ms)`;
+      break;
+    case "exact_failure":
+      error =
+        evidence.lastExactFailure ?? "Exact HubOracle readiness probe failed";
+      break;
+    case "direct_failure":
+      error = evidence.lastFailure ?? "Direct L1 provider preflight failed";
+      break;
+    case null:
+      error = "No L1 provider readiness evidence has been published";
+      break;
+  }
+
+  const probeRevision =
+    probe.mode === "cached_fresh" || probe.mode === "busy"
+      ? probe.baseRevision
+      : probe.publishedRevision;
+  const localMode =
+    probe.mode === "busy" ? "cached_control_plane_busy" : probe.mode;
+  const snapshotMode =
+    evidence.lastObservationKind === null
+      ? "snapshot_uninitialized"
+      : evidence.lastObservationKind.startsWith("exact_")
+        ? "snapshot_exact"
+        : "snapshot_direct";
+
+  return {
+    healthy,
+    mode:
+      probeRevision === evidence.evidenceRevision ? localMode : snapshotMode,
+    evidenceAgeMs,
+    error,
+    ogmiosSlot: healthy ? evidence.lastOgmiosSlot : null,
+  };
+};
 const STATE_QUEUE_ENDPOINT: string = "stateQueue";
 const TX_STATUS_ENDPOINT: string = "tx-status";
 const PIPELINE_STATUS_ENDPOINT: string = "pipeline-status";
@@ -111,27 +676,27 @@ const txCounter = Metric.counter("tx_count", {
   incremental: true,
 });
 
-const submitHandlerLatencyTimer = Metric.timer(
+export const submitHandlerLatencyTimer = Metric.timer(
   "submit_handler_latency",
   "Latency of POST /submit handler responses in milliseconds",
 );
 
-const submitBodyReadDurationTimer = Metric.timer(
+export const submitBodyReadDurationTimer = Metric.timer(
   "submit_body_read_duration",
   "Duration of POST /submit request body reads in milliseconds",
 );
 
-const submitNormalizeDurationTimer = Metric.timer(
+export const submitNormalizeDurationTimer = Metric.timer(
   "submit_normalize_duration",
   "Duration of POST /submit canonical CBOR validation and normalization in milliseconds",
 );
 
-const submitDurableAdmissionDurationTimer = Metric.timer(
+export const submitDurableAdmissionDurationTimer = Metric.timer(
   "submit_durable_admission_duration",
   "Duration of POST /submit durable admission writes in milliseconds",
 );
 
-const submitResponseDurationTimer = Metric.timer(
+export const submitResponseDurationTimer = Metric.timer(
   "submit_response_duration",
   "Duration of POST /submit response construction in milliseconds",
 );
@@ -973,10 +1538,16 @@ const getReadinessHandler = Effect.gen(function* () {
   const globals = yield* Globals;
   const nodeConfig = yield* NodeConfig;
   const sql = yield* SqlClient;
+  const validationPool = yield* ValidationPool;
+  const validationPoolStats = yield* validationPool.stats;
 
   const durableAdmissionBacklog = yield* TxAdmissionsDB.countBacklog;
   const durableAdmissionOldestAgeMs = yield* TxAdmissionsDB.oldestQueuedAgeMs;
   const unfinishedMutationJobs = yield* MutationJobsDB.countUnfinished;
+  const daPublicationConflicts =
+    yield* DaPayloadPublicationsDB.conflictCount(15);
+  const awaitingForeignTipReconciliations =
+    yield* ForeignTipReconciliationsDB.countAwaiting;
   const mempoolTxCount = yield* MempoolDB.retrieveTxCount;
   const nowMillis = Date.now();
   const stateQueueBlocksInQueue = yield* Ref.get(globals.BLOCKS_IN_QUEUE);
@@ -1016,15 +1587,117 @@ const getReadinessHandler = Effect.gen(function* () {
   const dbHealthy = dbProbe._tag === "Right";
   const lucid = yield* Lucid;
   const contracts = yield* MidgardContracts;
-  const providerProbe = yield* Effect.either(
-    Initialization.fetchHubOracleWitness(lucid.api, contracts),
+  const providerHealthBefore = yield* Ref.get(globals.L1_PROVIDER_HEALTH);
+  const cachedProviderEvidenceIsFresh = l1ProviderReadinessEvidenceIsFresh({
+    evidence: providerHealthBefore,
+    nowMs: nowMillis,
+    maxAgeMs: nodeConfig.READINESS_L1_PROVIDER_EVIDENCE_MAX_AGE_MS,
+    maxExactAgeMs: DEFAULT_L1_CONTROL_PLANE_MAX_HOLD_MS,
+  });
+  const liveProviderProbeTimeoutMs = Math.min(
+    nodeConfig.L1_PROVIDER_PREFLIGHT_TIMEOUT_MS,
+    READINESS_L1_PROVIDER_LIVE_TIMEOUT_MS,
   );
-  const localOgmiosSlotProbe = yield* Effect.either(
-    readLocalOgmiosSubmitSlot({
-      ogmiosUrl: nodeConfig.L1_OGMIOS_KEY,
-      timeoutMs: nodeConfig.L1_PROVIDER_PREFLIGHT_TIMEOUT_MS,
-    }),
-  );
+  let readinessProbe: L1ProviderReadinessProbe = {
+    mode: "cached_fresh",
+    baseRevision: providerHealthBefore.evidenceRevision,
+  };
+  if (!cachedProviderEvidenceIsFresh) {
+    const primaryProbeAttempt = yield* Effect.either(
+      withL1ControlPlaneIfAvailable(
+        globals,
+        {
+          scope: "readiness_l1_provider",
+          maxHoldMs: liveProviderProbeTimeoutMs,
+        },
+        runCombinedL1ReadinessProbe(
+          Initialization.fetchHubOracleWitness(lucid.api, contracts),
+          readLocalOgmiosSubmitSlot({
+            ogmiosUrl: nodeConfig.L1_OGMIOS_KEY,
+            timeoutMs: liveProviderProbeTimeoutMs,
+          }),
+        ),
+      ),
+    );
+    if (primaryProbeAttempt._tag === "Left") {
+      const observedAtMs = Date.now();
+      const error = String(primaryProbeAttempt.left);
+      const published = yield* Ref.modify(
+        globals.L1_PROVIDER_HEALTH,
+        (current) => {
+          const updated = nextL1ProviderHealthEvidence({
+            current,
+            healthy: false,
+            error,
+            observedAtMs,
+            successKind: "exact",
+          });
+          return [updated, updated] as const;
+        },
+      );
+      readinessProbe = {
+        mode: "live",
+        healthy: false,
+        error,
+        publishedRevision: published.evidenceRevision,
+      };
+    } else if (Option.isSome(primaryProbeAttempt.right)) {
+      const observedAtMs = Date.now();
+      const ogmiosSlot = primaryProbeAttempt.right.value;
+      const published = yield* Ref.modify(
+        globals.L1_PROVIDER_HEALTH,
+        (current) => {
+          const updated = nextL1ProviderHealthEvidence({
+            current,
+            healthy: true,
+            observedAtMs,
+            ogmiosSlot,
+            successKind: "exact",
+          });
+          return [updated, updated] as const;
+        },
+      );
+      readinessProbe = {
+        mode: "live",
+        healthy: true,
+        ogmiosSlot,
+        publishedRevision: published.evidenceRevision,
+      };
+    } else {
+      const directProbe = runBoundedDirectL1ProviderPreflight({
+        runPreflight: (signal) =>
+          runL1ProviderPreflight({
+            config: {
+              L1_PROVIDER: nodeConfig.L1_PROVIDER,
+              L1_PROVIDER_PREFLIGHT_TIMEOUT_MS: liveProviderProbeTimeoutMs,
+              L1_PROVIDER_RATE_LIMIT_COOLDOWN_MS:
+                nodeConfig.L1_PROVIDER_RATE_LIMIT_COOLDOWN_MS,
+              L1_OGMIOS_KEY: nodeConfig.L1_OGMIOS_KEY,
+              L1_KUPO_KEY: nodeConfig.L1_KUPO_KEY,
+              NETWORK: nodeConfig.NETWORK,
+            },
+            signal,
+          }),
+        timeoutMs: liveProviderProbeTimeoutMs,
+      });
+      readinessProbe = yield* runBusyL1ProviderReadinessProbe({
+        globals,
+        directProbe,
+        now: Date.now,
+        maxAgeMs: nodeConfig.READINESS_L1_PROVIDER_EVIDENCE_MAX_AGE_MS,
+        maxExactAgeMs: DEFAULT_L1_CONTROL_PLANE_MAX_HOLD_MS,
+      });
+    }
+  }
+  const providerHealthAfter = yield* Ref.get(globals.L1_PROVIDER_HEALTH);
+  const providerEvidenceObservedAtMs = Date.now();
+  const providerProbe = resolveL1ProviderReadinessSnapshot({
+    probe: readinessProbe,
+    evidence: providerHealthAfter,
+    nowMs: providerEvidenceObservedAtMs,
+    maxAgeMs: nodeConfig.READINESS_L1_PROVIDER_EVIDENCE_MAX_AGE_MS,
+    maxExactAgeMs: DEFAULT_L1_CONTROL_PLANE_MAX_HOLD_MS,
+  });
   const leaseInspection = yield* StateQueueMutationLeasesDB.inspect({
     recentLimit: 3,
   });
@@ -1054,6 +1727,14 @@ const getReadinessHandler = Effect.gen(function* () {
     unresolvedBlockSubmissionAgeMs,
     maxUnresolvedBlockSubmissionAgeMs: nodeConfig.UNCONFIRMED_BLOCK_MAX_AGE_MS,
     dbHealthy,
+    awaitingForeignTipReconciliations,
+    validationPool: {
+      configuredWorkers: validationPool.poolSize,
+      liveWorkers: validationPoolStats.liveWorkers,
+      restartingWorkers: validationPoolStats.restartingWorkers,
+      oldestInFlightAgeMs: validationPoolStats.oldestInFlightAgeMs,
+      jobTimeoutMs: nodeConfig.VALIDATION_WORKER_JOB_TIMEOUT_MS,
+    },
     stateQueueMutationLease: {
       active: activeLease !== undefined,
       stale:
@@ -1065,11 +1746,24 @@ const getReadinessHandler = Effect.gen(function* () {
     },
   });
   const reasons = [...baseReadiness.reasons];
-  if (providerProbe._tag === "Left") {
-    reasons.push("provider_query_unhealthy:hub-oracle");
+  const nativeMpfOwner = yield* Ref.get(globals.NATIVE_MPF_OWNER);
+  const nativeMpfDiagnostics =
+    nodeConfig.MPF_ENGINE !== "architecture_g"
+      ? undefined
+      : nativeMpfOwner === undefined
+        ? undefined
+        : yield* Effect.either(
+            Effect.promise(() => nativeMpfOwner.diagnostics()),
+          );
+  if (nodeConfig.MPF_ENGINE === "architecture_g") {
+    if (nativeMpfOwner === undefined) {
+      reasons.push("native_mpf_owner_unavailable");
+    } else if (nativeMpfDiagnostics?._tag === "Left") {
+      reasons.push("native_mpf_owner_unhealthy");
+    }
   }
-  if (localOgmiosSlotProbe._tag === "Left") {
-    reasons.push("provider_query_unhealthy:local-ogmios-slot");
+  if (!providerProbe.healthy) {
+    reasons.push("provider_query_unhealthy:l1-provider");
   }
   if (
     durableAdmissionOldestAgeMs >
@@ -1082,6 +1776,11 @@ const getReadinessHandler = Effect.gen(function* () {
   if (unfinishedMutationJobs > 0n) {
     reasons.push(
       `unfinished_local_mutation_jobs:${unfinishedMutationJobs.toString()}`,
+    );
+  }
+  if (daPublicationConflicts > 0) {
+    reasons.push(
+      `da_publication_conflict:${daPublicationConflicts.toString()}`,
     );
   }
   const mergeReadiness = planMergePreflight({
@@ -1104,22 +1803,54 @@ const getReadinessHandler = Effect.gen(function* () {
     durableAdmissionOldestAgeMs,
     mempoolTxCount: mempoolTxCount.toString(),
     unfinishedLocalMutationJobs: unfinishedMutationJobs.toString(),
+    daPublicationConflicts,
+    awaitingForeignTipReconciliations,
     unresolvedBlockSubmissionAgeMs,
-    providerQueryHealthy: providerProbe._tag === "Right",
+    providerQueryHealthy: providerProbe.healthy,
+    providerQueryMode: providerProbe.mode,
+    providerQueryEvidenceAgeMs: providerProbe.evidenceAgeMs,
+    providerQueryEvidenceRevision: providerHealthAfter.evidenceRevision,
+    providerQueryLastObservationKind: providerHealthAfter.lastObservationKind,
+    providerQueryLastExactEvidenceRevision:
+      providerHealthAfter.lastExactEvidenceRevision,
+    providerQueryLastExactObservationKind:
+      providerHealthAfter.lastExactObservationKind,
+    providerQueryEvidenceKind: providerHealthAfter.lastSuccessKind,
+    providerQueryExactEvidenceAgeMs:
+      providerHealthAfter.lastExactSuccessAtMs <= 0
+        ? null
+        : Math.max(0, Date.now() - providerHealthAfter.lastExactSuccessAtMs),
+    providerQueryError: providerProbe.error,
     localOgmiosSlot:
-      localOgmiosSlotProbe._tag === "Right"
+      providerProbe.ogmiosSlot !== null
         ? {
-            ...localOgmiosSlotProbe.right,
-            evidence: localOgmiosSubmitSlotEvidence(localOgmiosSlotProbe.right),
+            ...providerProbe.ogmiosSlot,
+            evidence: localOgmiosSubmitSlotEvidence(providerProbe.ogmiosSlot),
+            mode: providerProbe.mode,
+            evidenceAgeMs: providerProbe.evidenceAgeMs,
           }
         : {
-            error: String(localOgmiosSlotProbe.left),
+            mode: providerProbe.mode,
+            evidenceAgeMs: providerProbe.evidenceAgeMs,
+            error: providerProbe.error,
           },
     stateQueueMutationLease: encodedLeaseInspection,
     blockCommitmentCoordination: {
       commitWorkerActive,
       commitPipelinePhase,
     },
+    nativeMpfOwner:
+      nativeMpfDiagnostics === undefined
+        ? null
+        : nativeMpfDiagnostics._tag === "Left"
+          ? { healthy: false, error: String(nativeMpfDiagnostics.left) }
+          : {
+              healthy: true,
+              ...nativeMpfDiagnostics.right,
+              ownerEpoch: Buffer.from(
+                nativeMpfDiagnostics.right.ownerEpoch,
+              ).toString("hex"),
+            },
     mergeReadiness,
   };
 
@@ -1838,7 +2569,10 @@ const postDepositBuildHandler = Effect.gen(function* () {
  * `POST /submit`: validates, normalizes, and enqueues a submitted L2
  * transaction.
  */
-const postSubmitHandler = (withMonitoring?: boolean) =>
+const postSubmitHandler = <R>(
+  withMonitoring: boolean | undefined,
+  wakeTxQueueProcessor: Effect.Effect<void, never, R>,
+) =>
   Effect.gen(function* () {
     const startedAt = withMonitoring === true ? Date.now() : 0;
     const recordLatency = () =>
@@ -1918,17 +2652,59 @@ const postSubmitHandler = (withMonitoring?: boolean) =>
       );
 
       const durableAdmissionStartedAt = Date.now();
-      const admitted = yield* TxAdmissionsDB.admit({
-        txId: normalized.txId,
-        txCanonicalCbor: normalized.txCanonicalCbor,
-        submitSource: normalized.source,
-        maxBacklog: nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG,
-      });
+      const reservation = yield* reserveAdmissionBacklogSlot(
+        nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG,
+      );
+      const admissionWriter = yield* AdmissionWriter;
+      const admissionEffect: Effect.Effect<
+        TxAdmissionsDB.AdmitResult,
+        | DatabaseError
+        | TxAdmissionsDB.TxAdmissionConflictError
+        | TxAdmissionsDB.TxAdmissionBacklogFullError
+        | AdmissionWriterShutdownError,
+        SqlClient
+      > = reservation.reserved
+        ? admissionWriter.admitReserved({
+            txId: normalized.txId,
+            txCanonicalCbor: normalized.txCanonicalCbor,
+            submitSource: normalized.source,
+          })
+        : TxAdmissionsDB.admit({
+            txId: normalized.txId,
+            txCanonicalCbor: normalized.txCanonicalCbor,
+            submitSource: normalized.source,
+            currentBacklog: reservation.currentBacklog,
+            maxBacklog: nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG,
+          });
+      const admitted = yield* admissionEffect.pipe(
+        Effect.onExit((exit) => {
+          if (!reservation.reserved) return Effect.void;
+          if (Exit.isSuccess(exit)) {
+            return exit.value.kind === "new"
+              ? commitAdmissionBacklogSlot
+              : releaseAdmissionBacklogSlot;
+          }
+          const failure = Option.getOrUndefined(
+            Cause.failureOption(exit.cause),
+          );
+          // Conflict/backlog errors prove no row was inserted. A SqlError,
+          // interruption, or defect can be observed after PostgreSQL committed,
+          // so retain the slot conservatively until the next live-count refresh.
+          return admissionFailureDefinitelyDidNotInsert(failure)
+            ? releaseAdmissionBacklogSlot
+            : commitAdmissionBacklogSlot;
+        }),
+      );
       yield* submitDurableAdmissionDurationTimer(
         Effect.succeed(Duration.millis(Date.now() - durableAdmissionStartedAt)),
       );
       if (admitted.kind === "new") {
-        yield* requestTxQueueProcessorWakeup;
+        if (!reservation.reserved) {
+          return yield* Effect.dieMessage(
+            "Durable admission inserted without a reserved backlog slot",
+          );
+        }
+        yield* wakeTxQueueProcessor;
       }
 
       Effect.runSync(Metric.increment(txCounter));
@@ -1976,6 +2752,19 @@ const postSubmitHandler = (withMonitoring?: boolean) =>
           );
         }),
       ),
+      Effect.catchTag("AdmissionWriterShutdownError", (e) =>
+        Effect.gen(function* () {
+          yield* Metric.increment(submitQueueOfferFailureCounter);
+          yield* recordLatency();
+          return yield* HttpServerResponse.json(
+            {
+              error: "Durable submission admission writer is unavailable",
+              message: e.message,
+            },
+            { status: 503 },
+          );
+        }),
+      ),
       Effect.catchTag("DatabaseError", (e) =>
         Effect.gen(function* () {
           yield* recordLatency();
@@ -1994,6 +2783,23 @@ const postSubmitHandler = (withMonitoring?: boolean) =>
   });
 
 /**
+ * Focused router used by the admission integration harness. Keeping this as a
+ * real HttpRouter (rather than calling the handler as a function) makes route,
+ * request-body, status-code, and response-body compatibility executable while
+ * allowing the harness to hold validation wakeups at a deterministic boundary.
+ */
+export const buildSubmitRouter = <R>(
+  wakeTxQueueProcessor: Effect.Effect<void, never, R>,
+  withMonitoring?: boolean,
+) =>
+  HttpRouter.empty.pipe(
+    HttpRouter.post(
+      `/${SUBMIT_ENDPOINT}`,
+      postSubmitHandler(withMonitoring, wakeTxQueueProcessor),
+    ),
+  );
+
+/**
  * Builds the full HTTP router for the node command server.
  */
 export const buildListenRouter = (
@@ -2002,6 +2808,11 @@ export const buildListenRouter = (
   HttpServerResponse.HttpServerResponse,
   HttpBodyError,
   | Database
+  | AdmissionWriter
+  | BatchSql
+  | WriteBehind
+  | ValidationPool
+  | MempoolLedgerCache
   | Lucid
   | NodeConfig
   | MidgardContracts
@@ -2065,7 +2876,10 @@ export const buildListenRouter = (
       ),
       HttpRouter.post(`/${UTXOS_ENDPOINT}`, postUtxosByTxOutRefsHandler),
       HttpRouter.post(`/${DEPOSIT_BUILD_ENDPOINT}`, postDepositBuildHandler),
-      HttpRouter.post(`/${SUBMIT_ENDPOINT}`, postSubmitHandler(withMonitoring)),
+      HttpRouter.post(
+        `/${SUBMIT_ENDPOINT}`,
+        postSubmitHandler(withMonitoring, requestTxQueueProcessorWakeup),
+      ),
     )
     .pipe(
       Effect.catchAllCause((cause) =>

@@ -13,7 +13,6 @@ import { NodeRuntime } from "@effect/platform-node";
 import { SqlClient } from "@effect/sql";
 import { getAddressDetails, type Network } from "@lucid-evolution/lucid";
 import { Command } from "commander";
-import dotenv from "dotenv";
 import { Effect, Logger, pipe } from "effect";
 
 import * as AddressFromSeed from "@/commands/address-from-seed.js";
@@ -21,6 +20,7 @@ import { auditBlocksImmutableProgram } from "@/commands/audit-blocks-immutable.j
 import {
   DEFAULT_WALLET_SEED_ENV,
   defaultMidgardNodeEndpoint,
+  fetchNodeTxStatus,
   formatJson,
   parseAddressArgument,
   parseEventId,
@@ -31,6 +31,8 @@ import {
 import * as ContractDeploymentInfo from "@/commands/contract-deployment-info.js";
 import * as DeploymentRunStateCommand from "@/commands/deployment-run-state.js";
 import * as E2EFinalizeSummaryCommand from "@/commands/e2e-finalize-summary.js";
+import { runPipelinedCommitProcessAcceptance } from "@/commands/e2e-pipelined-commit-process-acceptance.js";
+import * as E2EProcessCleanupCommand from "@/commands/e2e-process-cleanup.js";
 import * as E2EServiceCommand from "@/commands/e2e-service.js";
 import * as E2EStressL2ThroughputCommand from "@/commands/e2e-stress-l2-throughput.js";
 import * as EventSettlementProofCommand from "@/commands/event-settlement-proof.js";
@@ -38,10 +40,18 @@ import * as FetchWithdrawalsOnceCommand from "@/commands/fetch-withdrawals-once.
 import * as L1ProviderPreflightCommand from "@/commands/l1-provider-preflight.js";
 import * as L1UtxosCommand from "@/commands/l1-utxos.js";
 import { runNode } from "@/commands/listen.js";
+import { runMpfAudit } from "@/commands/mpf-audit.js";
+import { mpfReplayProgram } from "@/commands/mpf-replay.js";
+import * as Phase4GenesisLedgerCommand from "@/commands/phase4-genesis-ledger.js";
+import * as Phase4T1RecoveryCommand from "@/commands/phase4-t1-recovery.js";
 import * as PrepareHubOracleNonce from "@/commands/prepare-hub-oracle-nonce.js";
 import * as ReconcileCommand from "@/commands/reconcile.js";
 import * as ReserveInspectionCommand from "@/commands/reserve-inspection.js";
 import * as ReservePayoutCommand from "@/commands/reserve-payout.js";
+import * as HistoricalStressCorpusCommand from "@/commands/stress-corpus/historical-extension-command.js";
+import * as StressCorpusCommand from "@/commands/stress-corpus-generate.js";
+import { collectGroundTruthMetricsFromSql } from "@/commands/stress-db-metrics.js";
+import { collectEnvironmentFingerprint } from "@/commands/stress-environment-fingerprint.js";
 import { collectStressStageMetricSourcesFromSql } from "@/commands/stress-stage-metrics.js";
 import * as StressWalletsCommand from "@/commands/stress-wallets.js";
 import * as SubmitL2Transfer from "@/commands/submit-l2-transfer.js";
@@ -70,6 +80,7 @@ import {
   fetchAndInsertDepositUTxOs,
   projectDepositsToMempoolLedger,
 } from "@/fibers/index.js";
+import { loadRuntimeDotenv } from "@/runtime-env.js";
 import * as Services from "@/services/index.js";
 import * as DaAttestation from "@/transactions/da-attestation.js";
 import * as Initialization from "@/transactions/initialization.js";
@@ -92,7 +103,7 @@ import { backfillMissingDaPayloadsFromFinalizedJournals } from "@/workers/commit
 
 import packageJson from "../package.json" with { type: "json" };
 
-dotenv.config();
+loadRuntimeDotenv();
 const VERSION = packageJson.version;
 
 const program = new Command();
@@ -456,6 +467,11 @@ const provideNodeRuntimeServices = <A, E>(
     E,
     | Services.NodeConfig
     | Services.Database
+    | Services.AdmissionWriter
+    | Services.AdmissionSql
+    | Services.BatchSql
+    | Services.WriteBehind
+    | Services.ContractDeploymentIdentity
     | Services.MidgardContracts
     | Services.Lucid
     | Services.Globals
@@ -467,9 +483,11 @@ const provideNodeRuntimeServices = <A, E>(
 > =>
   pipe(
     effect,
+    Effect.provide(Services.AdmissionWriterLive),
+    Effect.provide(Services.WriteBehindLive),
     Effect.provide(Services.NodeConfig.layer),
     Effect.provide(Services.Database.layer),
-    Effect.provide(Services.MidgardContracts.Default),
+    Effect.provide(Services.MidgardContractServices),
     Effect.provide(Services.Lucid.Default),
     Effect.provide(Services.Globals.Default),
   );
@@ -480,6 +498,7 @@ const provideDatabaseTxServices = <A, E>(
     E,
     | Services.NodeConfig
     | Services.Database
+    | Services.WriteBehind
     | Services.MidgardContracts
     | Services.Lucid
   >,
@@ -490,6 +509,7 @@ const provideDatabaseTxServices = <A, E>(
 > =>
   pipe(
     effect,
+    Effect.provide(Services.WriteBehindLive),
     Effect.provide(Services.NodeConfig.layer),
     Effect.provide(Services.Database.layer),
     Effect.provide(Services.MidgardContracts.Default),
@@ -904,6 +924,1163 @@ program
   );
 
 program
+  .command("stress-wallets:fanout")
+  .description(
+    "Fund persisted L2 stress wallets from one already-funded L2 treasury wallet through a bounded L2 fan-out tree",
+  )
+  .requiredOption("--count <count>", "Number of stress wallets to fund")
+  .requiredOption(
+    "--lovelace-per-wallet <amount>",
+    "Minimum verified lovelace per final stress wallet",
+  )
+  .option(
+    "--treasury-wallet-seed-phrase-env <envVar>",
+    "Environment variable containing the already-funded L2 treasury seed phrase",
+    DEFAULT_WALLET_SEED_ENV,
+  )
+  .option(
+    "--endpoint <url>",
+    "Midgard node endpoint used for /submit, /tx-status, and /utxos",
+    defaultMidgardNodeEndpoint(),
+  )
+  .option("--start-index <index>", "First wallet index to use", "1")
+  .option("--out-dir <path>", "Stress wallet directory", ".stress-wallets")
+  .option(
+    "--env-prefix <prefix>",
+    "Environment variable prefix for generated stress wallet records",
+    "STRESS_WALLET_SEED_PHRASE",
+  )
+  .option("--network <network>", "Wallet network; defaults to NETWORK env")
+  .option("--create-missing", "Create missing wallet records before fanout")
+  .option("--branch-factor <count>", "Fan-out tree branching factor", "16")
+  .option(
+    "--max-in-flight <count>",
+    "Maximum parent wallets funding children concurrently per level",
+    "32",
+  )
+  .option(
+    "--fee-headroom-lovelace <amount>",
+    "Per-transfer lovelace headroom reserved inside subtree budgets",
+    "500000",
+  )
+  .option(
+    "--acceptance-timeout-ms <ms>",
+    "Per-transfer timeout waiting for accepted-or-later tx status",
+    "300000",
+  )
+  .option(
+    "--poll-initial-interval-ms <ms>",
+    "Initial adaptive /tx-status poll interval",
+    "250",
+  )
+  .option(
+    "--poll-max-interval-ms <ms>",
+    "Maximum adaptive /tx-status poll interval",
+    "5000",
+  )
+  .action(
+    async (options: {
+      readonly count: string;
+      readonly lovelacePerWallet: string;
+      readonly treasuryWalletSeedPhraseEnv: string;
+      readonly endpoint: string;
+      readonly startIndex: string;
+      readonly outDir: string;
+      readonly envPrefix: string;
+      readonly network?: string;
+      readonly createMissing?: boolean;
+      readonly branchFactor: string;
+      readonly maxInFlight: string;
+      readonly feeHeadroomLovelace: string;
+      readonly acceptanceTimeoutMs: string;
+      readonly pollInitialIntervalMs: string;
+      readonly pollMaxIntervalMs: string;
+    }) => {
+      let treasurySeedPhrase: ResolvedWalletSeedPhrase;
+      try {
+        treasurySeedPhrase = resolveWalletSeedPhrase({
+          walletSeedPhraseEnv: options.treasuryWalletSeedPhraseEnv,
+        });
+      } catch (error) {
+        failCli("stress-wallets:fanout", error);
+        return;
+      }
+
+      try {
+        const result = await Effect.runPromise(
+          StressWalletsCommand.runWithSharedFanoutContext<
+            Awaited<
+              ReturnType<typeof StressWalletsCommand.fanoutStressWallets>
+            >,
+            | Services.Lucid
+            | SqlClient.SqlClient
+            | Services.BatchSql
+            | Services.AdmissionSql
+            | Services.WriteBehind
+            | Services.NodeConfig
+          >((runShared) =>
+            StressWalletsCommand.fanoutStressWallets(
+              {
+                count: StressWalletsCommand.parseStressWalletCount(
+                  options.count,
+                  "--count",
+                ),
+                lovelacePerWallet:
+                  StressWalletsCommand.parseStressWalletLovelace(
+                    options.lovelacePerWallet,
+                    "--lovelace-per-wallet",
+                  ),
+                treasurySeedPhrase: treasurySeedPhrase.seedPhrase,
+                nodeEndpoint: options.endpoint,
+                startIndex: StressWalletsCommand.parseStressWalletCount(
+                  options.startIndex,
+                  "--start-index",
+                ),
+                outDir: options.outDir,
+                envPrefix: options.envPrefix,
+                network: StressWalletsCommand.parseStressWalletNetwork(
+                  options.network,
+                ),
+                createMissing: options.createMissing === true,
+                branchFactor: StressWalletsCommand.parseStressWalletCount(
+                  options.branchFactor,
+                  "--branch-factor",
+                ),
+                maxInFlight: StressWalletsCommand.parseStressWalletCount(
+                  options.maxInFlight,
+                  "--max-in-flight",
+                ),
+                feeHeadroomLovelace:
+                  StressWalletsCommand.parseStressWalletNonNegativeLovelace(
+                    options.feeHeadroomLovelace,
+                    "--fee-headroom-lovelace",
+                  ),
+                acceptanceTimeoutMs:
+                  StressWalletsCommand.parseStressWalletNonNegativeMs(
+                    options.acceptanceTimeoutMs,
+                    "--acceptance-timeout-ms",
+                  ),
+                pollInitialIntervalMs:
+                  StressWalletsCommand.parseStressWalletCount(
+                    options.pollInitialIntervalMs,
+                    "--poll-initial-interval-ms",
+                  ),
+                pollMaxIntervalMs: StressWalletsCommand.parseStressWalletCount(
+                  options.pollMaxIntervalMs,
+                  "--poll-max-interval-ms",
+                ),
+              },
+              {
+                submitTransfer: async ({ source, destination, lovelace }) => {
+                  const sourceSeedPhrase =
+                    source.kind === "treasury"
+                      ? source.seedPhrase
+                      : source.wallet.seedPhrase;
+                  const sourceLabel =
+                    source.kind === "treasury"
+                      ? treasurySeedPhrase.resolvedFrom
+                      : source.wallet.envName;
+                  const transferConfig =
+                    SubmitL2Transfer.parseSubmitL2TransferConfig({
+                      l2Address: destination.l2Address,
+                      lovelace: lovelace.toString(10),
+                      assetSpecs: [],
+                      nodeEndpoint: options.endpoint,
+                      submissionMode: "api",
+                    });
+                  return runShared(
+                    Effect.gen(function* () {
+                      const lucidService = yield* Services.Lucid;
+                      const submitted =
+                        yield* SubmitL2Transfer.submitL2TransferProgram({
+                          config: transferConfig,
+                          apiSubmitRetryPolicy:
+                            SubmitL2Transfer.FANOUT_NATIVE_TRANSFER_SUBMIT_RETRY_POLICY,
+                          resolvedWalletSeedPhrase: {
+                            seedPhrase: sourceSeedPhrase,
+                            resolvedFrom: sourceLabel,
+                          },
+                          assertWalletAddress: (walletAddress) =>
+                            assertUserCliWalletIsOperationallyIsolated({
+                              commandName: "stress-wallets:fanout",
+                              walletAddress,
+                              operatorMainAddress:
+                                lucidService.operatorMainAddress,
+                              operatorMergeAddress:
+                                lucidService.operatorMergeAddress,
+                              referenceScriptsAddress:
+                                lucidService.referenceScriptsWalletAddress,
+                            }),
+                        });
+                      return {
+                        txHash: submitted.txId,
+                        status: submitted.status,
+                      };
+                    }),
+                  );
+                },
+                fetchTxStatus: async (nodeEndpoint, txHash) => {
+                  const response = await fetch(
+                    `${nodeEndpoint}/tx-status?tx_hash=${encodeURIComponent(txHash)}`,
+                  );
+                  const body = (await response.json()) as {
+                    readonly status?: unknown;
+                  };
+                  if (!response.ok || typeof body.status !== "string") {
+                    throw new Error(
+                      `Failed to read /tx-status for ${txHash}: ${response.status.toString()}`,
+                    );
+                  }
+                  return body.status;
+                },
+              },
+            ),
+          ).pipe(
+            Effect.provide(Services.WriteBehindLive),
+            Effect.provide(Services.Lucid.Default),
+            Effect.provide(Services.Database.layer),
+            Effect.provide(Services.NodeConfig.layer),
+          ),
+        );
+        writeJson(result);
+      } catch (error) {
+        failCli("stress-wallets:fanout", error);
+      }
+    },
+  );
+
+program
+  .command("stress-wallets:consolidate")
+  .description(
+    "Consolidate persisted L2 stress-wallet balances into a distinct L2 treasury with resumable, exact accounting",
+  )
+  .requiredOption("--count <count>", "Number of persisted stress wallets")
+  .option(
+    "--treasury-wallet-seed-phrase-env <envVar>",
+    "Environment variable containing the destination L2 treasury seed phrase",
+    DEFAULT_WALLET_SEED_ENV,
+  )
+  .option(
+    "--endpoint <url>",
+    "Midgard node endpoint used for /submit, /tx-status, and /utxos",
+    defaultMidgardNodeEndpoint(),
+  )
+  .option("--start-index <index>", "First wallet index to use", "1")
+  .option("--out-dir <path>", "Stress wallet directory", ".stress-wallets")
+  .option(
+    "--env-prefix <prefix>",
+    "Environment variable prefix recorded by the stress wallets",
+    "STRESS_WALLET_SEED_PHRASE",
+  )
+  .option("--network <network>", "Wallet network; defaults to NETWORK env")
+  .option(
+    "--reserve-lovelace <amount>",
+    "Amount excluded from each source transfer (fees are paid from that reserve)",
+    "100000",
+  )
+  .option(
+    "--required-treasury-lovelace <amount>",
+    "Fail before submission unless the projected treasury reaches this amount",
+  )
+  .option(
+    "--max-in-flight <count>",
+    "Maximum independent source transfers in flight",
+    "32",
+  )
+  .option(
+    "--acceptance-timeout-ms <ms>",
+    "Per-transfer timeout waiting for committed status",
+    "300000",
+  )
+  .option(
+    "--readiness-timeout-ms <ms>",
+    "Timeout waiting for full node readiness between batches",
+    "300000",
+  )
+  .option(
+    "--verification-timeout-ms <ms>",
+    "Timeout waiting for exact post-transfer UTxO accounting",
+    "300000",
+  )
+  .option(
+    "--request-timeout-ms <ms>",
+    "Per-request deadline for /readyz, /tx-status, /utxos, and /submit",
+    "30000",
+  )
+  .option(
+    "--poll-initial-interval-ms <ms>",
+    "Initial adaptive /tx-status poll interval",
+    "250",
+  )
+  .option(
+    "--poll-max-interval-ms <ms>",
+    "Maximum adaptive /tx-status poll interval",
+    "5000",
+  )
+  .action(
+    async (options: {
+      readonly count: string;
+      readonly treasuryWalletSeedPhraseEnv: string;
+      readonly endpoint: string;
+      readonly startIndex: string;
+      readonly outDir: string;
+      readonly envPrefix: string;
+      readonly network?: string;
+      readonly reserveLovelace: string;
+      readonly requiredTreasuryLovelace?: string;
+      readonly maxInFlight: string;
+      readonly acceptanceTimeoutMs: string;
+      readonly readinessTimeoutMs: string;
+      readonly verificationTimeoutMs: string;
+      readonly requestTimeoutMs: string;
+      readonly pollInitialIntervalMs: string;
+      readonly pollMaxIntervalMs: string;
+    }) => {
+      let treasurySeedPhrase: ResolvedWalletSeedPhrase;
+      try {
+        treasurySeedPhrase = resolveWalletSeedPhrase({
+          walletSeedPhraseEnv: options.treasuryWalletSeedPhraseEnv,
+        });
+      } catch (error) {
+        failCli("stress-wallets:consolidate", error);
+        return;
+      }
+      try {
+        const result = await Effect.runPromise(
+          StressWalletsCommand.runWithSharedFanoutContext<
+            Awaited<
+              ReturnType<typeof StressWalletsCommand.consolidateStressWallets>
+            >,
+            | Services.Lucid
+            | SqlClient.SqlClient
+            | Services.BatchSql
+            | Services.AdmissionSql
+            | Services.WriteBehind
+            | Services.NodeConfig
+          >((runShared) =>
+            StressWalletsCommand.consolidateStressWallets(
+              {
+                count: StressWalletsCommand.parseStressWalletCount(
+                  options.count,
+                  "--count",
+                ),
+                treasurySeedPhrase: treasurySeedPhrase.seedPhrase,
+                nodeEndpoint: options.endpoint,
+                startIndex: StressWalletsCommand.parseStressWalletCount(
+                  options.startIndex,
+                  "--start-index",
+                ),
+                outDir: options.outDir,
+                envPrefix: options.envPrefix,
+                network: StressWalletsCommand.parseStressWalletNetwork(
+                  options.network,
+                ),
+                reserveLovelace:
+                  StressWalletsCommand.parseStressWalletNonNegativeLovelace(
+                    options.reserveLovelace,
+                    "--reserve-lovelace",
+                  ),
+                requiredTreasuryLovelace:
+                  options.requiredTreasuryLovelace === undefined
+                    ? undefined
+                    : StressWalletsCommand.parseStressWalletLovelace(
+                        options.requiredTreasuryLovelace,
+                        "--required-treasury-lovelace",
+                      ),
+                maxInFlight: StressWalletsCommand.parseStressWalletCount(
+                  options.maxInFlight,
+                  "--max-in-flight",
+                ),
+                acceptanceTimeoutMs:
+                  StressWalletsCommand.parseStressWalletNonNegativeMs(
+                    options.acceptanceTimeoutMs,
+                    "--acceptance-timeout-ms",
+                  ),
+                readinessTimeoutMs:
+                  StressWalletsCommand.parseStressWalletNonNegativeMs(
+                    options.readinessTimeoutMs,
+                    "--readiness-timeout-ms",
+                  ),
+                verificationTimeoutMs:
+                  StressWalletsCommand.parseStressWalletNonNegativeMs(
+                    options.verificationTimeoutMs,
+                    "--verification-timeout-ms",
+                  ),
+                requestTimeoutMs: StressWalletsCommand.parseStressWalletCount(
+                  options.requestTimeoutMs,
+                  "--request-timeout-ms",
+                ),
+                pollInitialIntervalMs:
+                  StressWalletsCommand.parseStressWalletCount(
+                    options.pollInitialIntervalMs,
+                    "--poll-initial-interval-ms",
+                  ),
+                pollMaxIntervalMs: StressWalletsCommand.parseStressWalletCount(
+                  options.pollMaxIntervalMs,
+                  "--poll-max-interval-ms",
+                ),
+              },
+              {
+                prepareTransfer: async ({
+                  source,
+                  treasuryAddress,
+                  lovelace,
+                }) => {
+                  const transferConfig =
+                    SubmitL2Transfer.parseSubmitL2TransferConfig({
+                      l2Address: treasuryAddress,
+                      lovelace: lovelace.toString(10),
+                      assetSpecs: [],
+                      nodeEndpoint: options.endpoint,
+                      submissionMode: "api",
+                      submitRequestTimeoutMs:
+                        StressWalletsCommand.parseStressWalletCount(
+                          options.requestTimeoutMs,
+                          "--request-timeout-ms",
+                        ),
+                      utxoRequestTimeoutMs:
+                        StressWalletsCommand.parseStressWalletCount(
+                          options.requestTimeoutMs,
+                          "--request-timeout-ms",
+                        ),
+                    });
+                  return runShared(
+                    Effect.gen(function* () {
+                      const lucidService = yield* Services.Lucid;
+                      const prepared =
+                        yield* SubmitL2Transfer.prepareL2TransferProgram({
+                          config: transferConfig,
+                          resolvedWalletSeedPhrase: {
+                            seedPhrase: source.seedPhrase,
+                            resolvedFrom: source.envName,
+                          },
+                          assertWalletAddress: (walletAddress) =>
+                            assertUserCliWalletIsOperationallyIsolated({
+                              commandName: "stress-wallets:consolidate",
+                              walletAddress,
+                              operatorMainAddress:
+                                lucidService.operatorMainAddress,
+                              operatorMergeAddress:
+                                lucidService.operatorMergeAddress,
+                              referenceScriptsAddress:
+                                lucidService.referenceScriptsWalletAddress,
+                            }),
+                        });
+                      return {
+                        txHash: prepared.txId,
+                        signedTxCbor: prepared.signedTxCbor,
+                        selectedInputs: prepared.selectedInputs,
+                      };
+                    }),
+                  );
+                },
+                submitPreparedTransfer: async ({
+                  nodeEndpoint,
+                  txHash,
+                  signedTxCbor,
+                }) => {
+                  const submitted = await runShared(
+                    SubmitL2Transfer.submitNativeTransferTx(
+                      nodeEndpoint,
+                      signedTxCbor,
+                      txHash,
+                      StressWalletsCommand.parseStressWalletCount(
+                        options.requestTimeoutMs,
+                        "--request-timeout-ms",
+                      ),
+                      SubmitL2Transfer.FANOUT_NATIVE_TRANSFER_SUBMIT_RETRY_POLICY,
+                    ),
+                  );
+                  return {
+                    txHash: submitted.txId,
+                    status: submitted.status,
+                  };
+                },
+                fetchTxStatus: (nodeEndpoint, txHash) =>
+                  fetchNodeTxStatus(
+                    nodeEndpoint,
+                    txHash,
+                    StressWalletsCommand.parseStressWalletCount(
+                      options.requestTimeoutMs,
+                      "--request-timeout-ms",
+                    ),
+                  ),
+              },
+            ),
+          ).pipe(
+            Effect.provide(Services.WriteBehindLive),
+            Effect.provide(Services.Lucid.Default),
+            Effect.provide(Services.Database.layer),
+            Effect.provide(Services.NodeConfig.layer),
+          ),
+        );
+        writeJson(result);
+      } catch (error) {
+        failCli("stress-wallets:consolidate", error);
+      }
+    },
+  );
+
+program
+  .command("stress-wallets:terminal-drain")
+  .description(
+    "Prepare or execute a crash-safe exact-zero sweep of every persisted L2 stress wallet into a distinct L2 treasury",
+  )
+  .requiredOption("--count <count>", "Number of persisted stress wallets")
+  .option(
+    "--treasury-wallet-seed-phrase-env <envVar>",
+    "Environment variable containing the destination L2 treasury seed phrase",
+    DEFAULT_WALLET_SEED_ENV,
+  )
+  .option(
+    "--endpoint <url>",
+    "Midgard node endpoint",
+    defaultMidgardNodeEndpoint(),
+  )
+  .option("--start-index <index>", "First wallet index", "1")
+  .option("--out-dir <path>", "Stress wallet directory", ".stress-wallets")
+  .option(
+    "--env-prefix <prefix>",
+    "Stress wallet environment prefix",
+    "STRESS_WALLET_SEED_PHRASE",
+  )
+  .option("--network <network>", "Wallet network; defaults to NETWORK env")
+  .option(
+    "--fee-cap-lovelace <amount>",
+    "Maximum fee allowed for each terminal sweep",
+    "100000",
+  )
+  .option(
+    "--max-fee-iterations <count>",
+    "Maximum monotonic signed-byte fee convergence iterations",
+    "32",
+  )
+  .option(
+    "--max-in-flight <count>",
+    "Maximum parallel read/prepare operations",
+    "32",
+  )
+  .option(
+    "--prepare-only",
+    "Durably prepare and validate all wallet transactions, then stop before submission",
+  )
+  .option(
+    "--acceptance-timeout-ms <ms>",
+    "Per-transfer commitment timeout",
+    "300000",
+  )
+  .option(
+    "--verification-timeout-ms <ms>",
+    "Exact-zero/conservation verification timeout",
+    "300000",
+  )
+  .option("--request-timeout-ms <ms>", "Per-request deadline", "30000")
+  .option(
+    "--poll-initial-interval-ms <ms>",
+    "Initial status poll interval",
+    "250",
+  )
+  .option("--poll-max-interval-ms <ms>", "Maximum status poll interval", "5000")
+  .action(
+    async (options: {
+      readonly count: string;
+      readonly treasuryWalletSeedPhraseEnv: string;
+      readonly endpoint: string;
+      readonly startIndex: string;
+      readonly outDir: string;
+      readonly envPrefix: string;
+      readonly network?: string;
+      readonly feeCapLovelace: string;
+      readonly maxFeeIterations: string;
+      readonly maxInFlight: string;
+      readonly prepareOnly?: boolean;
+      readonly acceptanceTimeoutMs: string;
+      readonly verificationTimeoutMs: string;
+      readonly requestTimeoutMs: string;
+      readonly pollInitialIntervalMs: string;
+      readonly pollMaxIntervalMs: string;
+    }) => {
+      let treasurySeedPhrase: ResolvedWalletSeedPhrase;
+      try {
+        treasurySeedPhrase = resolveWalletSeedPhrase({
+          walletSeedPhraseEnv: options.treasuryWalletSeedPhraseEnv,
+        });
+      } catch (error) {
+        failCli("stress-wallets:terminal-drain", error);
+        return;
+      }
+      try {
+        const parsedNetwork = StressWalletsCommand.parseStressWalletNetwork(
+          options.network,
+        );
+        const requestTimeoutMs = StressWalletsCommand.parseStressWalletCount(
+          options.requestTimeoutMs,
+          "--request-timeout-ms",
+        );
+        const result = await Effect.runPromise(
+          StressWalletsCommand.runWithSharedFanoutContext<
+            Awaited<
+              ReturnType<typeof StressWalletsCommand.terminalDrainStressWallets>
+            >,
+            | Services.Lucid
+            | SqlClient.SqlClient
+            | Services.BatchSql
+            | Services.AdmissionSql
+            | Services.WriteBehind
+            | Services.NodeConfig
+          >(async (runShared) => {
+            const fees = await runShared(
+              Effect.gen(function* () {
+                const config = yield* Services.NodeConfig;
+                return { minFeeA: config.MIN_FEE_A, minFeeB: config.MIN_FEE_B };
+              }),
+            );
+            return StressWalletsCommand.terminalDrainStressWallets(
+              {
+                count: StressWalletsCommand.parseStressWalletCount(
+                  options.count,
+                  "--count",
+                ),
+                treasurySeedPhrase: treasurySeedPhrase.seedPhrase,
+                nodeEndpoint: options.endpoint,
+                startIndex: StressWalletsCommand.parseStressWalletCount(
+                  options.startIndex,
+                  "--start-index",
+                ),
+                outDir: options.outDir,
+                envPrefix: options.envPrefix,
+                network: parsedNetwork,
+                minFeeA: fees.minFeeA,
+                minFeeB: fees.minFeeB,
+                feeCapLovelace:
+                  StressWalletsCommand.parseStressWalletNonNegativeLovelace(
+                    options.feeCapLovelace,
+                    "--fee-cap-lovelace",
+                  ),
+                maxFeeIterations: StressWalletsCommand.parseStressWalletCount(
+                  options.maxFeeIterations,
+                  "--max-fee-iterations",
+                ),
+                maxInFlight: StressWalletsCommand.parseStressWalletCount(
+                  options.maxInFlight,
+                  "--max-in-flight",
+                ),
+                prepareOnly: options.prepareOnly ?? false,
+                acceptanceTimeoutMs:
+                  StressWalletsCommand.parseStressWalletNonNegativeMs(
+                    options.acceptanceTimeoutMs,
+                    "--acceptance-timeout-ms",
+                  ),
+                verificationTimeoutMs:
+                  StressWalletsCommand.parseStressWalletNonNegativeMs(
+                    options.verificationTimeoutMs,
+                    "--verification-timeout-ms",
+                  ),
+                requestTimeoutMs,
+                pollInitialIntervalMs:
+                  StressWalletsCommand.parseStressWalletCount(
+                    options.pollInitialIntervalMs,
+                    "--poll-initial-interval-ms",
+                  ),
+                pollMaxIntervalMs: StressWalletsCommand.parseStressWalletCount(
+                  options.pollMaxIntervalMs,
+                  "--poll-max-interval-ms",
+                ),
+              },
+              {
+                prepareTransfer: async ({ source, treasuryAddress }) => {
+                  const prepared = await runShared(
+                    Effect.gen(function* () {
+                      const lucidService = yield* Services.Lucid;
+                      return yield* SubmitL2Transfer.prepareL2TerminalDrainProgram(
+                        {
+                          destinationAddress: treasuryAddress,
+                          nodeEndpoint: options.endpoint,
+                          requestTimeoutMs,
+                          networkId: parsedNetwork === "Mainnet" ? 1n : 0n,
+                          feeCap:
+                            StressWalletsCommand.parseStressWalletNonNegativeLovelace(
+                              options.feeCapLovelace,
+                              "--fee-cap-lovelace",
+                            ),
+                          maxFeeIterations:
+                            StressWalletsCommand.parseStressWalletCount(
+                              options.maxFeeIterations,
+                              "--max-fee-iterations",
+                            ),
+                          resolvedWalletSeedPhrase: {
+                            seedPhrase: source.seedPhrase,
+                            resolvedFrom: source.envName,
+                          },
+                          assertWalletAddress: (walletAddress) =>
+                            assertUserCliWalletIsOperationallyIsolated({
+                              commandName: "stress-wallets:terminal-drain",
+                              walletAddress,
+                              operatorMainAddress:
+                                lucidService.operatorMainAddress,
+                              operatorMergeAddress:
+                                lucidService.operatorMergeAddress,
+                              referenceScriptsAddress:
+                                lucidService.referenceScriptsWalletAddress,
+                            }),
+                        },
+                      );
+                    }),
+                  );
+                  return {
+                    txHash: prepared.txId,
+                    signedTxCbor: prepared.signedTxCbor,
+                    selectedInputs: prepared.selectedInputs,
+                    requestedLovelace: prepared.requestedLovelace,
+                    feeLovelace: prepared.feeLovelace,
+                    signedTxBytes: prepared.signedTxBytes,
+                  };
+                },
+                submitPreparedTransfer: async ({
+                  nodeEndpoint,
+                  txHash,
+                  signedTxCbor,
+                }) => {
+                  const submitted = await runShared(
+                    SubmitL2Transfer.submitNativeTransferTx(
+                      nodeEndpoint,
+                      signedTxCbor,
+                      txHash,
+                      requestTimeoutMs,
+                      SubmitL2Transfer.FANOUT_NATIVE_TRANSFER_SUBMIT_RETRY_POLICY,
+                    ),
+                  );
+                  return { txHash: submitted.txId, status: submitted.status };
+                },
+                fetchTxStatus: (nodeEndpoint, txHash) =>
+                  fetchNodeTxStatus(nodeEndpoint, txHash, requestTimeoutMs),
+              },
+            );
+          }).pipe(
+            Effect.provide(Services.WriteBehindLive),
+            Effect.provide(Services.Lucid.Default),
+            Effect.provide(Services.Database.layer),
+            Effect.provide(Services.NodeConfig.layer),
+          ),
+        );
+        writeJson(result);
+      } catch (error) {
+        failCli("stress-wallets:terminal-drain", error);
+      }
+    },
+  );
+
+program
+  .command("stress-wallets:consolidate-verify-legacy-state")
+  .description(
+    "Read-only validation of an exact legacy consolidation journal with categorized output report",
+  )
+  .requiredOption("--count <count>", "Exact controlled wallet scope size")
+  .requiredOption("--expected-entry-count <count>", "Exact legacy entry count")
+  .requiredOption(
+    "--expected-preimage-sha256 <sha256>",
+    "Required journal SHA-256",
+  )
+  .requiredOption(
+    "--treasury-wallet-seed-phrase-env <name>",
+    "Environment variable containing the exact treasury wallet seed phrase",
+  )
+  .requiredOption(
+    "--report-path <path>",
+    "New immutable verification report path",
+  )
+  .option(
+    "--endpoint <url>",
+    "Midgard node endpoint",
+    defaultMidgardNodeEndpoint(),
+  )
+  .option("--start-index <index>", "First wallet index", "1")
+  .option("--out-dir <path>", "Stress wallet directory", ".stress-wallets")
+  .option(
+    "--env-prefix <prefix>",
+    "Stress wallet env prefix",
+    "STRESS_WALLET_SEED_PHRASE",
+  )
+  .option("--network <network>", "Wallet network; defaults to NETWORK env")
+  .option(
+    "--reserve-lovelace <amount>",
+    "Maximum allowed live source reserve",
+    "100000",
+  )
+  .option("--max-in-flight <count>", "Maximum concurrent validation reads", "8")
+  .option(
+    "--request-timeout-ms <ms>",
+    "Per-request validation deadline",
+    "30000",
+  )
+  .action(
+    async (options: {
+      readonly count: string;
+      readonly expectedEntryCount: string;
+      readonly expectedPreimageSha256: string;
+      readonly treasuryWalletSeedPhraseEnv: string;
+      readonly reportPath: string;
+      readonly endpoint: string;
+      readonly startIndex: string;
+      readonly outDir: string;
+      readonly envPrefix: string;
+      readonly network?: string;
+      readonly reserveLovelace: string;
+      readonly maxInFlight: string;
+      readonly requestTimeoutMs: string;
+    }) => {
+      try {
+        const treasurySeedPhrase = resolveWalletSeedPhrase({
+          walletSeedPhraseEnv: options.treasuryWalletSeedPhraseEnv,
+        });
+        const requestTimeoutMs = StressWalletsCommand.parseStressWalletCount(
+          options.requestTimeoutMs,
+          "--request-timeout-ms",
+        );
+        const result =
+          await StressWalletsCommand.verifyLegacyConsolidationState(
+            {
+              count: StressWalletsCommand.parseStressWalletCount(
+                options.count,
+                "--count",
+              ),
+              expectedEntryCount: StressWalletsCommand.parseStressWalletCount(
+                options.expectedEntryCount,
+                "--expected-entry-count",
+              ),
+              expectedPreimageSha256: options.expectedPreimageSha256,
+              treasurySeedPhrase: treasurySeedPhrase.seedPhrase,
+              reportPath: options.reportPath,
+              nodeEndpoint: options.endpoint,
+              startIndex: StressWalletsCommand.parseStressWalletCount(
+                options.startIndex,
+                "--start-index",
+              ),
+              outDir: options.outDir,
+              envPrefix: options.envPrefix,
+              network: StressWalletsCommand.parseStressWalletNetwork(
+                options.network,
+              ),
+              reserveLovelace:
+                StressWalletsCommand.parseStressWalletNonNegativeLovelace(
+                  options.reserveLovelace,
+                  "--reserve-lovelace",
+                ),
+              maxInFlight: StressWalletsCommand.parseStressWalletCount(
+                options.maxInFlight,
+                "--max-in-flight",
+              ),
+              requestTimeoutMs,
+            },
+            {
+              fetchTxStatus: async (nodeEndpoint, txHash) => {
+                const response = await fetch(
+                  nodeEndpoint +
+                    "/tx-status?tx_hash=" +
+                    encodeURIComponent(txHash),
+                  { signal: AbortSignal.timeout(requestTimeoutMs) },
+                );
+                const body = (await response.json()) as {
+                  readonly status?: unknown;
+                };
+                if (!response.ok || typeof body.status !== "string") {
+                  throw new Error(
+                    "Failed to read /tx-status for " +
+                      txHash +
+                      ": " +
+                      response.status.toString(),
+                  );
+                }
+                return body.status;
+              },
+            },
+          );
+        writeJson(result);
+      } catch (error) {
+        failCli("stress-wallets:consolidate-verify-legacy-state", error);
+      }
+    },
+  );
+
+program
+  .command("stress-wallets:consolidate-upgrade-state")
+  .description(
+    "One-shot audited upgrade of an exact legacy v1 consolidation journal to v2",
+  )
+  .requiredOption("--count <count>", "Exact controlled wallet scope size")
+  .requiredOption(
+    "--expected-entry-count <count>",
+    "Exact number of legacy journal entries that must be preserved",
+  )
+  .requiredOption(
+    "--expected-preimage-sha256 <sha256>",
+    "Required SHA-256 of the exact legacy consolidation-state.json bytes",
+  )
+  .requiredOption(
+    "--treasury-wallet-seed-phrase-env <name>",
+    "Environment variable containing the exact treasury wallet seed phrase",
+  )
+  .option(
+    "--endpoint <url>",
+    "Midgard node endpoint used for /tx-status and /utxos",
+    defaultMidgardNodeEndpoint(),
+  )
+  .option("--start-index <index>", "First wallet index in the exact scope", "1")
+  .option("--out-dir <path>", "Stress wallet directory", ".stress-wallets")
+  .option(
+    "--env-prefix <prefix>",
+    "Environment variable prefix recorded by the stress wallets",
+    "STRESS_WALLET_SEED_PHRASE",
+  )
+  .option("--network <network>", "Wallet network; defaults to NETWORK env")
+  .option(
+    "--reserve-lovelace <amount>",
+    "Maximum allowed live source reserve",
+    "100000",
+  )
+  .option("--max-in-flight <count>", "Maximum concurrent validation reads", "8")
+  .option(
+    "--request-timeout-ms <ms>",
+    "Per-request validation deadline",
+    "30000",
+  )
+  .action(
+    async (options: {
+      readonly count: string;
+      readonly expectedEntryCount: string;
+      readonly expectedPreimageSha256: string;
+      readonly treasuryWalletSeedPhraseEnv: string;
+      readonly endpoint: string;
+      readonly startIndex: string;
+      readonly outDir: string;
+      readonly envPrefix: string;
+      readonly network?: string;
+      readonly reserveLovelace: string;
+      readonly maxInFlight: string;
+      readonly requestTimeoutMs: string;
+    }) => {
+      try {
+        const treasurySeedPhrase = resolveWalletSeedPhrase({
+          walletSeedPhraseEnv: options.treasuryWalletSeedPhraseEnv,
+        });
+        const requestTimeoutMs = StressWalletsCommand.parseStressWalletCount(
+          options.requestTimeoutMs,
+          "--request-timeout-ms",
+        );
+        const result =
+          await StressWalletsCommand.upgradeLegacyConsolidationState(
+            {
+              count: StressWalletsCommand.parseStressWalletCount(
+                options.count,
+                "--count",
+              ),
+              expectedEntryCount: StressWalletsCommand.parseStressWalletCount(
+                options.expectedEntryCount,
+                "--expected-entry-count",
+              ),
+              expectedPreimageSha256: options.expectedPreimageSha256,
+              treasurySeedPhrase: treasurySeedPhrase.seedPhrase,
+              nodeEndpoint: options.endpoint,
+              startIndex: StressWalletsCommand.parseStressWalletCount(
+                options.startIndex,
+                "--start-index",
+              ),
+              outDir: options.outDir,
+              envPrefix: options.envPrefix,
+              network: StressWalletsCommand.parseStressWalletNetwork(
+                options.network,
+              ),
+              reserveLovelace:
+                StressWalletsCommand.parseStressWalletNonNegativeLovelace(
+                  options.reserveLovelace,
+                  "--reserve-lovelace",
+                ),
+              maxInFlight: StressWalletsCommand.parseStressWalletCount(
+                options.maxInFlight,
+                "--max-in-flight",
+              ),
+              requestTimeoutMs,
+            },
+            {
+              fetchTxStatus: async (nodeEndpoint, txHash) => {
+                const response = await fetch(
+                  `${nodeEndpoint}/tx-status?tx_hash=${encodeURIComponent(txHash)}`,
+                  { signal: AbortSignal.timeout(requestTimeoutMs) },
+                );
+                const body = (await response.json()) as {
+                  readonly status?: unknown;
+                };
+                if (!response.ok || typeof body.status !== "string") {
+                  throw new Error(
+                    `Failed to read /tx-status for ${txHash}: ${response.status.toString()}`,
+                  );
+                }
+                return body.status;
+              },
+            },
+          );
+        writeJson(result);
+      } catch (error) {
+        failCli("stress-wallets:consolidate-upgrade-state", error);
+      }
+    },
+  );
+
+program
+  .command("stress-corpus-generate")
+  .description(
+    "Pre-build and verify an offline NDJSON corpus of signed Midgard L2 stress transactions",
+  )
+  .requiredOption("--target-rate-tps <rate>", "Target offered TPS")
+  .requiredOption("--duration-ms <ms>", "Measured run duration in milliseconds")
+  .option("--warmup-count <count>", "Warmup rows to reserve", "0")
+  .option("--cooldown-count <count>", "Cooldown rows to reserve", "0")
+  .option("--wallet-count <count>", "Override generated chain count")
+  .option("--safety-factor <factor>", "Sizing safety factor", "1.1")
+  .option("--amount-lovelace <amount>", "Self-transfer amount", "1000000")
+  .option("--min-fee-a <amount>", "Midgard MIN_FEE_A; defaults to env")
+  .option("--min-fee-b <amount>", "Midgard MIN_FEE_B; defaults to env")
+  .option(
+    "--max-submit-tx-cbor-bytes <bytes>",
+    "Midgard MAX_SUBMIT_TX_CBOR_BYTES; defaults to env",
+  )
+  .option(
+    "--assumed-acceptance-latency-ms <ms>",
+    "Acceptance-latency bound used for wallet-count safety checks",
+    "1000",
+  )
+  .option("--wallets-dir <path>", "Prepared stress wallet directory")
+  .option("--out-dir <path>", "Output directory for corpus artifacts")
+  .option("--workers <count>", "Worker thread count")
+  .option("--slices <count>", "Number of corpus slice ids", "1")
+  .option(
+    "--slice-wallet-counts <counts>",
+    "Comma-separated wallet counts for ordered, dependency-isolated slices (must sum to --wallet-count)",
+  )
+  .option("--corpus-slice-id-prefix <id>", "Corpus slice id prefix", "default")
+  .option(
+    "--rebuild-sample-rate <rate>",
+    "Fraction of chains to rebuild and byte-compare during verification",
+    "0.001",
+  )
+  .option(
+    "--funding-source <source>",
+    "Funding source mode: existing or fanout",
+    "existing",
+  )
+  .option("--network <network>", "Mainnet or Preprod; defaults to NETWORK env")
+  .option("--yes", "Confirm generation")
+  .action(async (options) => {
+    try {
+      const config =
+        StressCorpusCommand.parseStressCorpusGenerateConfig(options);
+      const result = await StressCorpusCommand.generateStressCorpus(config);
+      writeJson(result);
+    } catch (error) {
+      failCli("stress-corpus-generate", error);
+    }
+  });
+
+program
+  .command("stress-corpus-historical-extension")
+  .description(
+    "Build a Phase-5-only offline historical corpus extension; never valid as fresh Phase 1/2 evidence",
+  )
+  .requiredOption("--base-corpus-path <path>", "Retained corpus NDJSON")
+  .requiredOption(
+    "--base-corpus-sha256 <sha256>",
+    "Expected retained corpus SHA-256",
+  )
+  .requiredOption("--base-index-path <path>", "Retained corpus index")
+  .requiredOption(
+    "--base-index-sha256 <sha256>",
+    "Expected retained index SHA-256",
+  )
+  .requiredOption("--base-manifest-path <path>", "Retained corpus manifest")
+  .requiredOption(
+    "--base-manifest-sha256 <sha256>",
+    "Expected retained manifest SHA-256",
+  )
+  .requiredOption(
+    "--base-verification-path <path>",
+    "Retained standalone corpus verification",
+  )
+  .requiredOption(
+    "--base-verification-sha256 <sha256>",
+    "Expected retained verification SHA-256",
+  )
+  .requiredOption("--base-binding-path <path>", "Retained Phase 1 live binding")
+  .requiredOption(
+    "--base-binding-sha256 <sha256>",
+    "Expected retained Phase 1 binding SHA-256",
+  )
+  .requiredOption("--fanout-report-path <path>", "Retained fanout report")
+  .requiredOption(
+    "--fanout-report-sha256 <sha256>",
+    "Expected retained fanout report SHA-256",
+  )
+  .requiredOption(
+    "--wallets-dir <path>",
+    "Controlled wallet records used only in memory to sign terminal-derived continuations",
+  )
+  .requiredOption("--out-dir <path>", "New immutable output directory")
+  .option("--base-chain-count <count>", "Retained chain count", "4096")
+  .option("--base-depth <count>", "Retained per-chain depth", "748")
+  .option("--target-row-count <count>", "Exact extended row count", "5000000")
+  .option("--workers <count>", "Worker thread count")
+  .option("--yes", "Confirm offline generation")
+  .action(async (options) => {
+    try {
+      const config =
+        HistoricalStressCorpusCommand.parseHistoricalExtensionConfig(options);
+      const result =
+        await HistoricalStressCorpusCommand.generateHistoricalCorpusExtension(
+          config,
+        );
+      writeJson(result);
+    } catch (error) {
+      failCli("stress-corpus-historical-extension", error);
+    }
+  });
+
+program
+  .command("stress-corpus-verify")
+  .description("Stream-verify a generated Midgard stress corpus and sidecars")
+  .requiredOption("--corpus-path <path>", "Corpus NDJSON path")
+  .option("--index-path <path>", "Corpus index path")
+  .option("--manifest-path <path>", "Corpus manifest path")
+  .option(
+    "--result-out <path>",
+    "Write a SHA-bindable standalone verification result artifact",
+  )
+  .option(
+    "--rebuild-wallets-dir <path>",
+    "Prepared stress wallet directory for rebuild-sample verification",
+  )
+  .option(
+    "--rebuild-sample-rate <rate>",
+    "Fraction of chains to rebuild and byte-compare when --rebuild-wallets-dir is set",
+    "0.001",
+  )
+  .option("--amount-lovelace <amount>", "Self-transfer amount", "1000000")
+  .option("--min-fee-a <amount>", "Midgard MIN_FEE_A; defaults to env")
+  .option("--min-fee-b <amount>", "Midgard MIN_FEE_B; defaults to env")
+  .option(
+    "--max-submit-tx-cbor-bytes <bytes>",
+    "Midgard MAX_SUBMIT_TX_CBOR_BYTES; defaults to env",
+  )
+  .option("--network <network>", "Mainnet or Preprod; defaults to NETWORK env")
+  .action(async (options) => {
+    try {
+      const config = StressCorpusCommand.parseStressCorpusVerifyConfig(options);
+      const result = await StressCorpusCommand.verifyStressCorpus(config);
+      writeJson(result);
+    } catch (error) {
+      failCli("stress-corpus-verify", error);
+    }
+  });
+
+program
   .command("listen")
   .option(
     "-m, --with-monitoring",
@@ -980,6 +2157,32 @@ program
   .description("Print the compiled schema migration manifest checksums")
   .action(async () => {
     process.stdout.write(`${MigrationRunner.formatChecksum()}\n`);
+  });
+
+program
+  .command("phase4-genesis-ledger")
+  .description(
+    "Explicitly seed or verify the complete configured L2 genesis set and A/B funding in an isolated Phase 4 local-devnet database",
+  )
+  .option("--seed", "Seed an empty run-scoped mempool ledger")
+  .option(
+    "--verify-only",
+    "Require the complete byte-identical configured genesis ledger without mutating it",
+  )
+  .action((opts) => {
+    const seed = opts.seed === true;
+    const verifyOnly = opts.verifyOnly === true;
+    if (seed === verifyOnly) {
+      failCli(
+        "phase4-genesis-ledger",
+        new Error("Specify exactly one of --seed or --verify-only"),
+      );
+      return;
+    }
+    const mainEffect = Phase4GenesisLedgerCommand.phase4GenesisLedgerProgram({
+      mode: seed ? "seed" : "verify",
+    }).pipe(Effect.provide(Services.Database.layerWithNodeConfig), tapJson());
+    runCliEffect(mainEffect);
   });
 
 program
@@ -1247,6 +2450,40 @@ reconcile
 
     runCliEffect(mainEffect);
   });
+
+reconcile
+  .command("local-finalization")
+  .description(
+    "Reconcile local finalization for a canonical committed block header",
+  )
+  .requiredOption("--header-hash <hex>", "28-byte block header hash")
+  .option(
+    "--repair",
+    "Replay local finalization from the durable pending-finalization journal",
+  )
+  .option("--json", "Print machine-readable JSON output", true)
+  .action(
+    async (options: {
+      readonly headerHash: string;
+      readonly repair?: boolean;
+    }) => {
+      let headerHash: Buffer;
+      try {
+        headerHash = parseHexBytes(options.headerHash, "headerHash", 28);
+      } catch (error) {
+        failCli("reconcile local-finalization", error);
+        return;
+      }
+      const mainEffect = provideDatabaseTxServices(
+        ReconcileCommand.reconcileLocalFinalizationProgram({
+          headerHash,
+          repair: options.repair === true,
+        }).pipe(tapJson()),
+      );
+
+      runCliEffect(mainEffect);
+    },
+  );
 
 reconcile
   .command("merge-complete")
@@ -1518,6 +2755,11 @@ program
     "1000000",
   )
   .option(
+    "--fee-headroom-lovelace <amount>",
+    "Extra lovelace required above --lovelace when preflighting parallel-fanout wallet funding",
+    "500000",
+  )
+  .option(
     "--wallet-seed-phrase <seedPhrase>",
     "Optional primary seed phrase used directly instead of reading from an environment variable",
   )
@@ -1538,7 +2780,20 @@ program
   )
   .option("--run-id <id>", "Stable e2e run id for stress artifacts")
   .option("--out-dir <path>", "Output directory for stress artifacts")
-  .option("--poll-interval-ms <ms>", "Polling interval for /tx-status", "2000")
+  .option(
+    "--poll-interval-ms <ms>",
+    "Fixed /tx-status polling interval; omit to use adaptive backoff (poll-initial-interval-ms to poll-max-interval-ms)",
+  )
+  .option(
+    "--poll-initial-interval-ms <ms>",
+    "Initial adaptive poll interval (ignored if --poll-interval-ms is set)",
+    "75",
+  )
+  .option(
+    "--poll-max-interval-ms <ms>",
+    "Adaptive poll interval cap (ignored if --poll-interval-ms is set)",
+    "1000",
+  )
   .option(
     "--submit-request-timeout-ms <ms>",
     "Per-transfer timeout for the submit request phase",
@@ -1562,6 +2817,11 @@ program
   .option(
     "--unsafe-allow-large-stress",
     "Explicitly allow count/concurrency above the default safety caps",
+  )
+  .option(
+    "--max-submission-failures <count>",
+    "Abort the run once this many transfer submissions/builds fail (default: 0, zero tolerance)",
+    "0",
   )
   .option("--json", "Print JSON result")
   .action(async (options) => {
@@ -1598,6 +2858,7 @@ program
         count: options.count,
         concurrency: options.concurrency,
         lovelace: options.lovelace,
+        feeHeadroomLovelace: options.feeHeadroomLovelace,
         walletSeedPhrase: options.walletSeedPhrase,
         walletSeedPhraseEnv: options.walletSeedPhraseEnv,
         stressWalletSeedPhraseEnvs: parseStringListOption(
@@ -1608,11 +2869,14 @@ program
         runId: options.runId,
         outDir: options.outDir,
         pollIntervalMs: options.pollIntervalMs,
+        pollInitialIntervalMs: options.pollInitialIntervalMs,
+        pollMaxIntervalMs: options.pollMaxIntervalMs,
         submitRequestTimeoutMs: options.submitRequestTimeoutMs,
         acceptanceTimeoutMs: options.acceptanceTimeoutMs,
         commitObservationTimeoutMs: options.commitObservationTimeoutMs,
         finalityObserverMaxConcurrentRequests:
           options.finalityObserverMaxConcurrentRequests,
+        maxSubmissionFailures: options.maxSubmissionFailures,
         network: process.env.NETWORK === "Mainnet" ? "Mainnet" : "Preprod",
         allowUnsafeBounds: options.unsafeAllowLargeStress === true,
       });
@@ -1620,6 +2884,7 @@ program
         const lucidService = yield* Services.Lucid;
         const sql = yield* SqlClient.SqlClient;
         const nodeConfig = yield* Services.NodeConfig;
+        const writeBehind = yield* Services.WriteBehind;
         return yield* Effect.tryPromise({
           try: () =>
             E2EStressL2ThroughputCommand.runE2EL2StressThroughput(
@@ -1645,6 +2910,7 @@ program
                       Effect.provideService(Services.Lucid, lucidService),
                       Effect.provideService(SqlClient.SqlClient, sql),
                       Effect.provideService(Services.NodeConfig, nodeConfig),
+                      Effect.provideService(Services.WriteBehind, writeBehind),
                     ),
                   ),
                 collectStageMetricSources: async ({ txHashes }) =>
@@ -1653,6 +2919,41 @@ program
                       Effect.provideService(SqlClient.SqlClient, sql),
                     ),
                   ),
+                collectGroundTruthMetrics: async ({
+                  windowStart,
+                  windowEnd,
+                  txHashSample,
+                  offeredCount,
+                  calibrationProofRef,
+                }) =>
+                  await Effect.runPromise(
+                    collectGroundTruthMetricsFromSql({
+                      windowStart,
+                      windowEnd,
+                      txHashSample,
+                      offeredCount,
+                      trimFraction: 0.1,
+                      calibrationProofRef,
+                    }).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
+                  ),
+                collectEnvironmentFingerprint: async ({
+                  calibrationProofRef,
+                }) =>
+                  await collectEnvironmentFingerprint({
+                    calibrationProofRef: calibrationProofRef ?? null,
+                    configProfile: {
+                      maxDurableAdmissionBacklog:
+                        nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG,
+                      waitBetweenBlockCommitment:
+                        nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENT,
+                      waitBetweenBlockConfirmation:
+                        nodeConfig.WAIT_BETWEEN_BLOCK_CONFIRMATION,
+                      waitBetweenMergeTxs: nodeConfig.WAIT_BETWEEN_MERGE_TXS,
+                      validationBatchSize: nodeConfig.VALIDATION_BATCH_SIZE,
+                      validationPhaseAConcurrency:
+                        nodeConfig.VALIDATION_PHASE_A_CONCURRENCY,
+                    },
+                  }),
                 collectAggregateObserverSample: async ({ at }) =>
                   await Effect.runPromise(
                     Effect.gen(function* () {
@@ -1713,6 +3014,7 @@ program
       const result = await Effect.runPromise(
         pipe(
           stressProgram,
+          Effect.provide(Services.WriteBehindLive),
           Effect.provide(Services.NodeConfig.layer),
           Effect.provide(Services.Database.layer),
           Effect.provide(Services.Lucid.Default),
@@ -1728,6 +3030,146 @@ program
     } finally {
       process.off("SIGINT", interrupt);
       process.off("SIGTERM", interrupt);
+    }
+  });
+
+program
+  .command("e2e-clean-owned-process-group")
+  .description(
+    "Fail-closed cleanup of a detached e2e process group after validating its durable /proc ownership record",
+  )
+  .requiredOption("--record <path>", "Owned process-group record path")
+  .requiredOption(
+    "--run-token-env <name>",
+    "Environment variable containing the private run token",
+  )
+  .action(
+    async (options: {
+      readonly record: string;
+      readonly runTokenEnv: string;
+    }) => {
+      try {
+        const result =
+          await E2EProcessCleanupCommand.cleanupOwnedProcessGroupFromEnv({
+            recordPath: options.record,
+            runTokenEnv: options.runTokenEnv,
+          });
+        writeJson(result);
+        if (!result.success) process.exitCode = 1;
+      } catch (error) {
+        failCli("e2e-clean-owned-process-group", error);
+      }
+    },
+  );
+
+program
+  .command("phase4-t1-probe")
+  .description(
+    "Gated read-only canonical state_queue probe for the matched local-devnet T1 recovery gate",
+  )
+  .requiredOption(
+    "--snapshot-identity-sha256 <hex>",
+    "Matched-snapshot identity SHA-256",
+  )
+  .requiredOption("--attempt-id <id>", "Fresh T1 recovery attempt identity")
+  .requiredOption(
+    "--evidence-out <absolute-path>",
+    "Fresh output file for exact probe evidence",
+  )
+  .option("--expected-tip-header-hash <hex>", "Expected 28-byte L2 tip hash")
+  .option(
+    "--expected-present-header-hash <hex>",
+    "28-byte L2 header hash that must be canonical",
+  )
+  .option(
+    "--expected-absent-header-hash <hex>",
+    "28-byte L2 header hash that must not be canonical",
+  )
+  .action((opts) => {
+    const mainEffect = provideTxServices(
+      Phase4T1RecoveryCommand.phase4T1ProbeProgram({
+        snapshotIdentitySha256: opts.snapshotIdentitySha256,
+        attemptId: opts.attemptId,
+        expectedTipHeaderHash: opts.expectedTipHeaderHash,
+        expectedPresentHeaderHash: opts.expectedPresentHeaderHash,
+        expectedAbsentHeaderHash: opts.expectedAbsentHeaderHash,
+      }).pipe(
+        Effect.tap((evidence) =>
+          Effect.promise(() =>
+            Phase4T1RecoveryCommand.writePhase4T1Evidence(
+              opts.evidenceOut,
+              evidence,
+            ),
+          ),
+        ),
+      ),
+    );
+    runCliEffect(mainEffect);
+  });
+
+program
+  .command("phase4-t1-advance")
+  .description(
+    "Gated authenticated no-op canonical L2 advance for the matched local-devnet T1 recovery gate",
+  )
+  .requiredOption(
+    "--snapshot-identity-sha256 <hex>",
+    "Matched-snapshot identity SHA-256",
+  )
+  .requiredOption("--attempt-id <id>", "Fresh T1 recovery attempt identity")
+  .requiredOption(
+    "--expected-base-header-hash <hex>",
+    "Expected 28-byte canonical L2 base B",
+  )
+  .requiredOption(
+    "--abandoned-header-hash <hex>",
+    "Submitted 28-byte L2 header N that must be absent",
+  )
+  .requiredOption(
+    "--minimum-end-time-ms <ms>",
+    "Minimum end time F must reach to advance past N",
+  )
+  .requiredOption(
+    "--evidence-out <absolute-path>",
+    "Fresh output file for exact canonical-advance evidence",
+  )
+  .action((opts) => {
+    const mainEffect = provideTxServices(
+      Phase4T1RecoveryCommand.phase4T1AdvanceProgram({
+        snapshotIdentitySha256: opts.snapshotIdentitySha256,
+        attemptId: opts.attemptId,
+        expectedBaseHeaderHash: opts.expectedBaseHeaderHash,
+        abandonedHeaderHash: opts.abandonedHeaderHash,
+        minimumEndTimeMs: parsePositiveIntegerOption(
+          opts.minimumEndTimeMs,
+          "--minimum-end-time-ms",
+        ),
+      }).pipe(
+        Effect.tap((evidence) =>
+          Effect.promise(() =>
+            Phase4T1RecoveryCommand.writePhase4T1Evidence(
+              opts.evidenceOut,
+              evidence,
+            ),
+          ),
+        ),
+      ),
+    );
+    runCliEffect(mainEffect);
+  });
+
+program
+  .command("e2e-pipelined-commit-process-acceptance")
+  .description(
+    "Run the operator-enabled Phase 4 crash/restart and two-node process acceptance matrix against a matched local-devnet snapshot",
+  )
+  .action(async () => {
+    try {
+      console.log(
+        JSON.stringify(await runPipelinedCommitProcessAcceptance(), null, 2),
+      );
+    } catch (error) {
+      failCli("e2e-pipelined-commit-process-acceptance", error);
     }
   });
 
@@ -2357,6 +3799,7 @@ for (const commandName of RegisterActiveOperator.REFERENCE_SCRIPT_COMMAND_NAMES)
                 timelockDurationMs:
                   nodeConfig.REFERENCE_SCRIPT_AUTH_TIMELOCK_MS,
                 manifestOutputPath,
+                persistRunState: planOnly !== true,
               },
             );
           const baseContracts = yield* Services.AlwaysSucceedsContract;
@@ -2693,10 +4136,7 @@ program
       eventToStepRoot:
         opts.eventToStepRoot === undefined
           ? undefined
-          : parseMerkleRootOption(
-              opts.eventToStepRoot,
-              "--event-to-step-root",
-            ),
+          : parseMerkleRootOption(opts.eventToStepRoot, "--event-to-step-root"),
       endTimeMs: parseOptionalEndTimeMs(opts.endTimeMs),
       awaitConfirmation: opts.awaitConfirmation !== false,
     };
@@ -2965,6 +4405,7 @@ program
             ),
           ),
         ),
+        Effect.provide(Services.WriteBehindLive),
         Effect.provide(Services.Lucid.Default),
         Effect.provide(Services.Database.layer),
         Effect.provide(Services.NodeConfig.layer),
@@ -3277,6 +4718,53 @@ program
     );
 
     runCliEffect(mainEffect);
+  });
+
+program
+  .command("mpf-audit")
+  .description(
+    "Recompute the confirmed-ledger MPF root and halt commits on divergence",
+  )
+  .option(
+    "--acknowledge-clean",
+    "clear a sticky divergence only after this invocation completes a clean audit",
+    false,
+  )
+  .action(async (opts: { acknowledgeClean: boolean }) => {
+    const mainEffect = pipe(
+      runMpfAudit({ acknowledgeClean: opts.acknowledgeClean }),
+      Effect.tap((result) =>
+        Effect.logInfo(`mpf-audit summary: ${JSON.stringify(result)}`),
+      ),
+      Effect.flatMap((result) =>
+        result.diverged
+          ? Effect.fail(
+              new Error(
+                `MPF audit divergence: persisted=${result.persistedRoot},recomputed=${result.recomputedRoot}`,
+              ),
+            )
+          : Effect.succeed(result),
+      ),
+      Effect.provide(Services.Database.layer),
+      Effect.provide(Services.NodeConfig.layer),
+    );
+    runCliEffect(mainEffect);
+  });
+
+program
+  .command("mpf-replay")
+  .description(
+    "Replay a recorded MPF NDJSON corpus through legacy, overlay, and Architecture G using insert/fromlist fixtures",
+  )
+  .argument("<corpus-path>", "NDJSON corpus path")
+  .action(async (corpusPath: string) => {
+    runCliEffect(
+      mpfReplayProgram(corpusPath).pipe(
+        Effect.tap((summary) =>
+          Effect.logInfo(`mpf-replay summary: ${JSON.stringify(summary)}`),
+        ),
+      ),
+    );
   });
 
 program

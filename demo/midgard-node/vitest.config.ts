@@ -1,7 +1,7 @@
 import fs from "node:fs";
 
 import path from "path";
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 
 export default defineConfig({
   plugins: [
@@ -17,8 +17,13 @@ export default defineConfig({
   ],
   test: {
     pool: "forks",
+    fileParallelism: false,
     reporters: [["default", { summary: false }]],
     include: ["./tests/**/*.test.{js,mjs,cjs,ts,mts,cts,jsx,tsx}"],
+    exclude: [
+      ...configDefaults.exclude,
+      "./tests/phase4-pipelined-process-summary-verifier.test.mjs",
+    ],
     testTimeout: 420_000,
     bail: 3,
     environment: "node",

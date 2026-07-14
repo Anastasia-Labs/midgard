@@ -9,9 +9,34 @@ import {
   summarizeCounterWindow,
   summarizeLatency,
   summarizeRollingRates,
+  summarizeSubmitSuccessStatuses,
 } from "../scripts/throughput-benchmark-utils.mjs";
 
 describe("throughput benchmark utilities", () => {
+  it("classifies every successful submit status for fail-closed gates", () => {
+    expect(
+      summarizeSubmitSuccessStatuses({
+        200: 2,
+        201: 3,
+        202: 97,
+        204: 5,
+        409: 1,
+        503: 4,
+      }),
+    ).toEqual({
+      passed: false,
+      reasons: ["duplicate_successes=2", "other_successes=8"],
+      durablyAdmitted: 97,
+      duplicateSuccesses: 2,
+      otherSuccesses: 8,
+    });
+    expect(summarizeSubmitSuccessStatuses({ 202: 100 })).toMatchObject({
+      passed: true,
+      reasons: [],
+      durablyAdmitted: 100,
+    });
+  });
+
   it("computes fixed rolling rates for monotonic counters", () => {
     const samples = [
       { timestampMs: 0, counters: { accept: 0, submit: 0 } },

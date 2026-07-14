@@ -4,6 +4,7 @@ import {
   AddressHistoryDB,
   DaPayloadsDB,
   DepositsDB,
+  MempoolTxDeltasDB,
   TxRejectionsDB,
   WithdrawalsDB,
 } from "@/database/index.js";
@@ -26,7 +27,13 @@ export const retentionSweepAction: Effect.Effect<
   Database | NodeConfig
 > = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
+  const prunedOrphanDeltas = yield* MempoolTxDeltasDB.deleteOrphans;
   if (!shouldPruneRetention(nodeConfig.RETENTION_DAYS)) {
+    if (prunedOrphanDeltas > 0) {
+      yield* Effect.logInfo(
+        `🧹 Orphan mempool tx delta sweep done: mempool_tx_deltas=${prunedOrphanDeltas.toString()}`,
+      );
+    }
     return;
   }
 
@@ -49,7 +56,7 @@ export const retentionSweepAction: Effect.Effect<
   );
 
   yield* Effect.logInfo(
-    `🧹 Retention sweep done (cutoff=${cutoff.toISOString()}): da_payloads=${prunedDaPayloads}, tx_rejections=${prunedTxRejections}, address_history=${prunedAddressHistory}, deposits_utxos=${prunedDeposits}, withdrawal_utxos=${prunedWithdrawals}`,
+    `🧹 Retention sweep done (cutoff=${cutoff.toISOString()}): da_payloads=${prunedDaPayloads}, tx_rejections=${prunedTxRejections}, address_history=${prunedAddressHistory}, deposits_utxos=${prunedDeposits}, withdrawal_utxos=${prunedWithdrawals}, mempool_tx_deltas=${prunedOrphanDeltas}`,
   );
 });
 

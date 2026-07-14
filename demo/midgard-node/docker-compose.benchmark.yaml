@@ -1,0 +1,111 @@
+# Benchmark-profile overlay. Apply on top of docker-compose.yaml, and add
+# docker-compose.kupmios.yaml for Class B/full-pipeline runs.
+#
+# Bare benchmark profile keeps observability services off. Add
+# `--profile observability` only when debugging observer-visible behavior.
+
+services:
+  midgard-node:
+    env_file:
+      - .env
+      - .env.benchmark
+    cpus: "4.0"
+    cpuset: "0-7"
+    mem_limit: "8g"
+    environment:
+      # 4 GiB V8 + 2 GiB native-owner cap + >=1 GiB runtime headroom fits 8 GiB.
+      NODE_OPTIONS: "--max-old-space-size=4096"
+      MIDGARD_NODE_URL: "http://127.0.0.1:3000"
+      STRESS_SUBMIT_ENDPOINT: "http://127.0.0.1:3000"
+
+  midgard-node-migrate:
+    env_file:
+      - .env
+      - .env.benchmark
+    environment:
+      MIDGARD_NODE_URL: "http://127.0.0.1:3000"
+      STRESS_SUBMIT_ENDPOINT: "http://127.0.0.1:3000"
+
+  postgres:
+    cpus: "4.0"
+    cpuset: "16-23"
+    mem_limit: "8g"
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=100"
+      - "-c"
+      - "shared_buffers=2GB"
+      - "-c"
+      - "effective_cache_size=6GB"
+      - "-c"
+      - "work_mem=16MB"
+      - "-c"
+      - "maintenance_work_mem=512MB"
+      - "-c"
+      - "log_min_duration_statement=250"
+
+  prometheus:
+    profiles: ["observability"]
+  loki:
+    profiles: ["observability"]
+  promtail:
+    profiles: ["observability"]
+  cadvisor:
+    profiles: ["observability"]
+  grafana:
+    profiles: ["observability"]
+  tempo-init:
+    profiles: ["observability"]
+  tempo:
+    profiles: ["observability"]
+
+  load-generator:
+    build:
+      context: ..
+      additional_contexts:
+        - onchain=../../onchain/aiken
+      dockerfile: midgard-node/Dockerfile
+    profiles: ["load-generator-cohosted"]
+    entrypoint: ["node", "scripts/throughput-valid-stress.mjs"]
+    env_file:
+      - .env.benchmark
+    environment:
+      MIDGARD_NODE_URL: "http://midgard-node:3000"
+      STRESS_SUBMIT_ENDPOINT: "http://midgard-node:3000"
+      STRESS_METRICS_ENDPOINT: "http://midgard-node:9464/metrics"
+      STRESS_NOOP_ENDPOINT: "http://noop-server:3099"
+      STRESS_LOAD_GENERATOR_PLACEMENT: "separate-container"
+      STRESS_LOADGEN_COHOSTED: "true"
+      STRESS_CLOCK_OFFSET_MS: "0"
+      STRESS_OBSERVABILITY_PROFILE: "off"
+    volumes:
+      - ./corpus:/corpus:ro
+      - ./logs:/app/logs
+    cpuset: "8-15"
+    cpus: "4.0"
+    mem_limit: "4g"
+    depends_on:
+      midgard-node:
+        condition: service_healthy
+      noop-server:
+        condition: service_started
+    networks:
+      midgard_net:
+
+  noop-server:
+    build:
+      context: ..
+      additional_contexts:
+        - onchain=../../onchain/aiken
+      dockerfile: midgard-node/Dockerfile
+    profiles: ["load-generator-cohosted"]
+    entrypoint: ["node", "scripts/stress-noop-echo-server.mjs"]
+    environment:
+      STRESS_NOOP_HOST: "0.0.0.0"
+      STRESS_NOOP_PORT: "3099"
+    cpuset: "24-25"
+    cpus: "1.0"
+    mem_limit: "512m"
+    networks:
+      midgard_net:

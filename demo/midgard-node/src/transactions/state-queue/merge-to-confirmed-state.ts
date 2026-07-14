@@ -77,6 +77,8 @@ import { breakDownTx } from "@/utils.js";
 import { synchronizeCommitMpfStoresFromConfirmedLedger } from "@/workers/utils/mpf.js";
 
 import {
+  applyConfirmedLedgerDelta,
+  decodeConfirmedLedgerDelta,
   materializeConfirmedLedgerSnapshot,
   replaceConfirmedLedgerWithEntries,
 } from "./confirmed-ledger-snapshot.js";
@@ -96,6 +98,8 @@ const mergeBlockCounter = Metric.counter("merge_block_count", {
   bigint: true,
   incremental: true,
 });
+
+export const MERGE_CONFIRMATION_PROVIDER_RETRIES = 12;
 
 const mergeFailureCounter = Metric.counter("merge_failure_count", {
   description: "A counter for tracking merge failures",
@@ -484,6 +488,7 @@ const mergeSubmitRecoveryOptions = (
   submitSlotSnapshot?: () => Effect.Effect<SubmitSlotSnapshot, unknown>,
 ): NoInlineSubmitRecoveryOptions => ({
   label: "merge",
+  confirmationRetries: MERGE_CONFIRMATION_PROVIDER_RETRIES,
   slotSnapshot:
     submitSlotSnapshot ??
     makeLocalOgmiosSubmitSlotSnapshotProvider({
@@ -1107,8 +1112,19 @@ export const buildAndSubmitMergeTx = (
             }),
           );
         }
+        const decodedLedgerDelta = yield* decodeConfirmedLedgerDelta(
+          finalizedJournal.value,
+        );
         const confirmedLedgerSnapshot =
-          yield* materializeConfirmedLedgerSnapshot(finalizedJournal.value);
+          decodedLedgerDelta === undefined
+            ? yield* materializeConfirmedLedgerSnapshot(finalizedJournal.value)
+            : {
+                entries: decodedLedgerDelta.produced,
+                root: finalizedJournal.value[
+                  PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT
+                ],
+                delta: decodedLedgerDelta,
+              };
         const confirmedLedgerSnapshotEntries = confirmedLedgerSnapshot.entries;
         const confirmedLedgerSnapshotRoot = confirmedLedgerSnapshot.root;
         const expectedSnapshotRoot =
@@ -1141,22 +1157,39 @@ export const buildAndSubmitMergeTx = (
             forcedTransactionEventCount:
               projectedForcedTransactionEventIds.length,
             withdrawalEventCount: projectedWithdrawalEventIds.length,
-            confirmedLedgerSnapshotCount: confirmedLedgerSnapshotEntries.length,
             confirmedLedgerSnapshotRoot,
+            ...(confirmedLedgerSnapshot.delta === undefined
+              ? {
+                  confirmedLedgerSnapshotCount:
+                    confirmedLedgerSnapshotEntries.length,
+                }
+              : {
+                  ledgerDeltaSpentCount:
+                    confirmedLedgerSnapshot.delta.spent.length,
+                  ledgerDeltaProducedCount:
+                    confirmedLedgerSnapshot.delta.produced.length,
+                }),
           },
         });
         const sql = yield* SqlClient.SqlClient;
-        // - Replace the confirmed ledger with the full finalized block snapshot
+        // - Replace from a legacy full snapshot or apply the finalized delta
         // - Remove all the tx hashes of the merged block from BlocksDB
         yield* sql
           .withTransaction(
             Effect.gen(function* () {
-              yield* Effect.logInfo(
-                `🔸 Replace confirmed ledger db from finalized UTxO snapshot (entries=${confirmedLedgerSnapshotEntries.length.toString()},root=${confirmedLedgerSnapshotRoot})...`,
-              );
-              yield* replaceConfirmedLedgerWithEntries(
-                confirmedLedgerSnapshotEntries,
-              );
+              if (confirmedLedgerSnapshot.delta === undefined) {
+                yield* Effect.logInfo(
+                  `🔸 Replace confirmed ledger db from legacy finalized UTxO snapshot (entries=${confirmedLedgerSnapshotEntries.length.toString()},root=${confirmedLedgerSnapshotRoot})...`,
+                );
+                yield* replaceConfirmedLedgerWithEntries(
+                  confirmedLedgerSnapshotEntries,
+                );
+              } else {
+                yield* Effect.logInfo(
+                  `🔸 Apply finalized confirmed-ledger delta (spent=${confirmedLedgerSnapshot.delta.spent.length.toString()},produced=${confirmedLedgerSnapshot.delta.produced.length.toString()},root=${confirmedLedgerSnapshotRoot})...`,
+                );
+                yield* applyConfirmedLedgerDelta(confirmedLedgerSnapshot.delta);
+              }
               yield* Effect.logInfo("🔸 Clear block from BlocksDB...");
               yield* BlocksDB.clearBlock(headerHash).pipe(
                 Effect.withSpan("clear-block-from-BlocksDB"),

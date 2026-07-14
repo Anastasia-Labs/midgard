@@ -1,8 +1,17 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { it } from "@effect/vitest";
 import { mintingPolicyToId } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { describe, expect } from "vitest";
+import { describe, expect, it as unitIt } from "vitest";
 
+import {
+  computeDeploymentManifestId,
+  DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
+  type DeploymentManifestV2Value,
+} from "@/deployment-manifest-v2.js";
 import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
 import {
   REAL_ACTIVE_OPERATORS_SCRIPT_TITLES,
@@ -16,6 +25,7 @@ import {
   REAL_STATE_QUEUE_SCRIPT_TITLES,
   REAL_TX_ORDER_SCRIPT_TITLES,
   REAL_WITHDRAWAL_SCRIPT_TITLES,
+  readRuntimeDeploymentManifestFile,
   withRealStateQueueAndOperatorContracts,
 } from "@/services/midgard-contracts.js";
 
@@ -140,5 +150,58 @@ describe("midgard contracts registry", () => {
       );
       expect(result._tag).toEqual("Left");
     }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
+  );
+
+  unitIt(
+    "fails closed for explicit manifests and only permits auto-discovered legacy fallback",
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), "midgard-runtime-manifest-"));
+      const missingPath = join(dir, "missing.json");
+      const legacyPath = join(dir, "legacy.json");
+      const tamperedPath = join(dir, "tampered.json");
+      try {
+        expect(() =>
+          readRuntimeDeploymentManifestFile(missingPath, true),
+        ).toThrow(/does not exist/);
+        await writeFile(
+          legacyPath,
+          JSON.stringify({ schemaVersion: "legacy", contracts: {} }),
+        );
+        expect(readRuntimeDeploymentManifestFile(legacyPath, false)).toBe(
+          undefined,
+        );
+        expect(() =>
+          readRuntimeDeploymentManifestFile(legacyPath, true),
+        ).toThrow(/schemaVersion must be midgard-deployment-manifest-v2/);
+
+        const identityInput: Omit<DeploymentManifestV2Value, "manifestId"> = {
+          schemaVersion: DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
+          network: "Preprod",
+          referenceScriptDeployAddress: "addr_test1reference",
+          hubOracleOneShot: {
+            txHash: "ab".repeat(32),
+            outputIndex: 0,
+            outRef: `${"ab".repeat(32)}#0`,
+          },
+          referenceScriptAuthPolicy: { policyId: "cd".repeat(28) },
+          contracts: {},
+          referenceScripts: {},
+          steps: {},
+        };
+        await writeFile(
+          tamperedPath,
+          JSON.stringify({
+            ...identityInput,
+            manifestId: computeDeploymentManifestId(identityInput),
+            network: "Preview",
+          }),
+        );
+        expect(() =>
+          readRuntimeDeploymentManifestFile(tamperedPath, false),
+        ).toThrow(/Deployment manifest id mismatch/);
+      } finally {
+        await rm(dir, { recursive: true });
+      }
+    },
   );
 });

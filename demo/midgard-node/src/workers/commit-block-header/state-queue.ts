@@ -1,4 +1,5 @@
 import * as SDK from "@al-ft/midgard-sdk";
+import { toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 // The sibling SDK is built in its own TypeScript program, so its exported
@@ -92,3 +93,77 @@ export const fetchLatestCommittedBlockLocal = (
   fetchConfig: SDK.StateQueueFetchConfig,
 ): Effect.Effect<SDK.StateQueueUTxO, SDK.StateQueueError | SDK.LucidError> =>
   localizeSdkEffect(SDK.fetchLatestCommittedBlockProgram(lucid, fetchConfig));
+
+/**
+ * Revalidates a known state-queue tail through its unique NFT instead of
+ * scanning every UTxO at the state-queue address. Appending or merging can
+ * recreate the same logical node at a new out-ref, so a replacement is still
+ * decoded and checked as a tail rather than being rejected solely by out-ref.
+ */
+export const fetchExpectedStateQueueTailLocal = (
+  lucid: Parameters<typeof SDK.fetchLatestCommittedBlockProgram>[0],
+  fetchConfig: SDK.StateQueueFetchConfig,
+  expectedTail: SDK.StateQueueUTxO,
+): Effect.Effect<SDK.StateQueueUTxO, SDK.StateQueueError | SDK.LucidError> =>
+  Effect.gen(function* () {
+    const expectedUnit = toUnit(
+      fetchConfig.stateQueuePolicyId,
+      expectedTail.assetName,
+    );
+    const candidates = yield* Effect.tryPromise({
+      try: () =>
+        lucid.utxosAtWithUnit(fetchConfig.stateQueueAddress, expectedUnit),
+      catch: (cause) =>
+        new SDK.LucidError({
+          message: `Failed to fetch expected state-queue tail unit at: ${fetchConfig.stateQueueAddress}`,
+          cause,
+        }),
+    });
+    if (candidates.length === 0) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message:
+            "Commit base is stale; aborting block build before creating a pending journal",
+          cause: `expected_unit=${expectedUnit},matches=0`,
+        }),
+      );
+    }
+    if (candidates.length !== 1) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message: "Expected state-queue tail unit is not unique",
+          cause: `unit=${expectedUnit},matches=${candidates.length.toString()}`,
+        }),
+      );
+    }
+
+    const candidate = candidates[0];
+    if (
+      candidate.txHash === expectedTail.utxo.txHash &&
+      candidate.outputIndex === expectedTail.utxo.outputIndex
+    ) {
+      return expectedTail;
+    }
+
+    const replacement = yield* localizeSdkEffect<SDK.StateQueueUTxO, unknown>(
+      SDK.utxoToStateQueueUTxO(candidate, fetchConfig.stateQueuePolicyId),
+    ).pipe(
+      Effect.mapError(
+        (cause) =>
+          new SDK.StateQueueError({
+            message: "Failed to authenticate replacement state-queue tail",
+            cause,
+          }),
+      ),
+    );
+    if (replacement.datum.next !== "Empty") {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message:
+            "Commit base is stale; aborting block build before creating a pending journal",
+          cause: `unit=${expectedUnit},outref=${stateQueueOutRef(replacement)}`,
+        }),
+      );
+    }
+    return replacement;
+  });

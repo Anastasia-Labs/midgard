@@ -60,8 +60,29 @@ export class DatabaseError extends Data.TaggedError("DatabaseError")<
   SDK.GenericErrorFields & { readonly table: string }
 > {}
 
-export const formatDatabaseError = (error: unknown): string =>
-  formatUnknownError(error, { includeCause: true });
+const collectDatabaseErrorCodes = (error: unknown): readonly string[] => {
+  const codes: string[] = [];
+  let current = error;
+  while (typeof current === "object" && current !== null) {
+    if ("code" in current) {
+      const code = (current as { readonly code?: unknown }).code;
+      if (typeof code === "string" || typeof code === "number") {
+        const normalized = String(code).slice(0, 128);
+        if (normalized.length > 0 && !codes.includes(normalized)) {
+          codes.push(normalized);
+        }
+      }
+    }
+    current = (current as { readonly cause?: unknown }).cause;
+  }
+  return codes;
+};
+
+export const formatDatabaseError = (error: unknown): string => {
+  const message = formatUnknownError(error, { includeCause: true });
+  const codes = collectDatabaseErrorCodes(error);
+  return codes.length === 0 ? message : `${message}; codes=${codes.join(",")}`;
+};
 
 export const logDatabaseError = (
   tableName: string,

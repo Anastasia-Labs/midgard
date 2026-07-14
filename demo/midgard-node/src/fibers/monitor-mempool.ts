@@ -16,13 +16,28 @@ const mempoolTxGauge = Metric.gauge("mempool_tx_count", {
   bigint: true,
 });
 
+const mempoolOldestTxAgeGauge = Metric.gauge("mempool_oldest_tx_age_ms", {
+  description: "Age of the oldest transaction currently in the mempool",
+});
+
 /**
  * Reads the current mempool transaction count and publishes it as a metric.
  */
 const monitorMempoolAction: Effect.Effect<void, DatabaseError, SqlClient> =
   Effect.gen(function* () {
-    const numTx = yield* MempoolDB.retrieveTxCount;
+    const [numTx, oldestPage] = yield* Effect.all(
+      [MempoolDB.retrieveTxCount, MempoolDB.retrievePage({ limit: 1 })],
+      { concurrency: "unbounded" },
+    );
     yield* mempoolTxGauge(Effect.succeed(numTx));
+    const oldest = oldestPage.entries[0];
+    yield* mempoolOldestTxAgeGauge(
+      Effect.succeed(
+        oldest === undefined
+          ? 0
+          : Math.max(0, Date.now() - oldest.time_stamp_tz.getTime()),
+      ),
+    );
   });
 
 /**

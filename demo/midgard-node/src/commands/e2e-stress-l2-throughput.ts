@@ -1,5 +1,8 @@
-import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { createReadStream, createWriteStream } from "node:fs";
+import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import readline from "node:readline";
 
 import { type Network, walletFromSeed } from "@lucid-evolution/lucid";
 
@@ -18,14 +21,14 @@ import {
   buildOpenLoopPlacementProof,
   type NoOpCalibrationSummary,
   type OpenLoopCorpusPlan,
+  type OpenLoopCorpusRow,
+  parseOpenLoopCorpusLine,
   type OpenLoopCorpusShape,
   type OpenLoopPlacementProof,
+  type OpenLoopSubmitRecord,
   type OpenLoopSubmitSummary,
   type OpenLoopWorkloadProfile,
-  parseOpenLoopCorpusNdjson,
-  planOpenLoopCorpus,
-  runNoOpSubmitCalibration,
-  runOpenLoopSubmitter,
+  summarizeOpenLoopSubmissions,
 } from "@/commands/stress-open-loop.js";
 import {
   buildStressMetrics,
@@ -34,13 +37,15 @@ import {
   type StressMetrics,
   type StressStageMetricDbSources,
 } from "@/commands/stress-stage-metrics.js";
+import type { GroundTruthMetrics } from "@/commands/stress-db-metrics.js";
+import type { EnvironmentFingerprint } from "@/commands/stress-environment-fingerprint.js";
 import {
   parseSubmitL2TransferConfig,
   type SubmitL2TransferConfig,
   type SubmitL2TransferResult,
 } from "@/commands/submit-l2-transfer.js";
 
-export const E2E_L2_STRESS_SCHEMA_VERSION = "midgard-e2e-l2-stress-v2";
+export const E2E_L2_STRESS_SCHEMA_VERSION = "midgard-e2e-l2-stress-v3";
 
 export type E2EL2StressMode = "serial-chain" | "parallel-fanout";
 export type E2EL2StressLoadModel =
@@ -57,7 +62,9 @@ export type E2EL2StressClassification =
   | "merge_bottleneck"
   | "provider_bottleneck"
   | "observer_overloaded"
-  | "client_overloaded";
+  | "client_overloaded"
+  | "corpus_exhausted"
+  | "duplicate_submission";
 export type E2EL2StressMeasurementPolicy = {
   readonly loadModel: E2EL2StressLoadModel;
   readonly workloadProfile: OpenLoopWorkloadProfile;
@@ -72,6 +79,9 @@ export type E2EL2StressMeasurementPolicy = {
   readonly submissionWindowExcludesCommitDrain: true;
   readonly fullFinalityRequiresDrainProof: true;
 };
+export type E2EL2StressRateSemantics =
+  | "burst_cycle_rate"
+  | "offered_tps_uncalibrated";
 
 export type E2EL2StressSubmissionState = {
   readonly status: "submitted" | "failed";
@@ -132,6 +142,8 @@ export type E2EL2StressSummary = {
   readonly workloadProfile: OpenLoopWorkloadProfile;
   readonly corpusShape?: OpenLoopCorpusShape;
   readonly classification: E2EL2StressClassification;
+  readonly rateSemantics: E2EL2StressRateSemantics;
+  readonly burstCycleRatePerSecond: number | null;
   readonly mode: E2EL2StressMode;
   readonly measurementPolicy: E2EL2StressMeasurementPolicy;
   readonly openLoop?: {
@@ -162,6 +174,8 @@ export type E2EL2StressSummary = {
   readonly submissionDurationMs: number;
   readonly durationMs: number;
   readonly metrics: StressMetrics;
+  readonly groundTruth?: GroundTruthMetrics;
+  readonly fingerprint?: EnvironmentFingerprint;
   readonly latencyMs: {
     readonly submitP50: number;
     readonly submitP95: number;
@@ -175,6 +189,10 @@ export type E2EL2StressSummary = {
     readonly eventsNdjson: string;
     readonly summaryJson: string;
     readonly summaryMarkdown: string;
+    readonly engineReportJson?: string;
+    readonly engineEventsNdjson?: string;
+    readonly submitRecordsNdjson?: string;
+    readonly noOpCalibrationJson?: string;
   };
   readonly transactions: readonly E2EL2StressTransaction[];
 };
@@ -215,6 +233,7 @@ export type E2EL2StressConfig = {
   readonly count: number;
   readonly concurrency: number;
   readonly lovelace: bigint;
+  readonly feeHeadroomLovelace: bigint;
   readonly nodeEndpoint: string;
   readonly corpusPath?: string;
   readonly corpusSliceId: string;
@@ -228,11 +247,14 @@ export type E2EL2StressConfig = {
   readonly noOpCalibrationDurationMs: number;
   readonly aggregateObserverIntervalMs: number;
   readonly destinationAddress?: string;
-  readonly pollIntervalMs: number;
+  readonly pollIntervalMs: number | undefined;
+  readonly pollInitialIntervalMs: number;
+  readonly pollMaxIntervalMs: number;
   readonly submitRequestTimeoutMs: number;
   readonly acceptanceTimeoutMs: number;
   readonly commitObservationTimeoutMs: number;
   readonly finalityObserverMaxConcurrentRequests: number;
+  readonly maxSubmissionFailures: number;
   readonly outDir: string;
   readonly network: Network;
   readonly allowUnsafeBounds: boolean;
@@ -260,6 +282,7 @@ export type ParseE2EL2StressOptions = {
   readonly count?: string;
   readonly concurrency?: string;
   readonly lovelace?: string;
+  readonly feeHeadroomLovelace?: string;
   readonly walletSeedPhrase?: string;
   readonly walletSeedPhraseEnv?: string;
   readonly stressWalletSeedPhraseEnvs?: readonly string[];
@@ -267,10 +290,13 @@ export type ParseE2EL2StressOptions = {
   readonly runId?: string;
   readonly outDir?: string;
   readonly pollIntervalMs?: string;
+  readonly pollInitialIntervalMs?: string;
+  readonly pollMaxIntervalMs?: string;
   readonly submitRequestTimeoutMs?: string;
   readonly acceptanceTimeoutMs?: string;
   readonly commitObservationTimeoutMs?: string;
   readonly finalityObserverMaxConcurrentRequests?: string;
+  readonly maxSubmissionFailures?: string;
   readonly network?: Network;
   readonly env?: NodeJS.ProcessEnv;
   readonly allowUnsafeBounds?: boolean;
@@ -289,22 +315,56 @@ export type E2EL2StressRuntime = {
   readonly collectStageMetricSources?: (input: {
     readonly txHashes: readonly string[];
   }) => Promise<StressStageMetricDbSources>;
+  readonly collectGroundTruthMetrics?: (input: {
+    readonly windowStart: string;
+    readonly windowEnd: string;
+    readonly txHashSample: readonly string[];
+    readonly offeredCount: number;
+    readonly calibrationProofRef?: string | null;
+  }) => Promise<GroundTruthMetrics>;
+  readonly collectEnvironmentFingerprint?: (input: {
+    readonly calibrationProofRef?: string | null;
+  }) => Promise<EnvironmentFingerprint>;
   readonly collectAggregateObserverSample?: (input: {
     readonly at: string;
     readonly runId: string;
     readonly loadModel: E2EL2StressLoadModel;
   }) => Promise<unknown>;
   readonly fullFinalityDrainProof?: StressFullFinalityDrainProof;
+  readonly runCanonicalEngine?: (input: {
+    readonly config: E2EL2StressConfig;
+    readonly paths: CanonicalEngineArtifactPaths;
+    readonly signal?: AbortSignal;
+  }) => Promise<CanonicalEngineRunResult>;
+};
+
+export type CanonicalEngineArtifactPaths = {
+  readonly engineReportJson: string;
+  readonly engineEventsNdjson: string;
+  readonly submitRecordsNdjson: string;
+  readonly noopCalibrationJson: string;
+  readonly stdoutLog: string;
+  readonly stderrLog: string;
+};
+
+export type CanonicalEngineRunResult = {
+  readonly exitCode: number;
+  readonly signal: NodeJS.Signals | null;
 };
 
 const DEFAULT_COUNT = 25;
 const DEFAULT_CONCURRENCY = 1;
 const DEFAULT_LOVELACE = 1_000_000n;
+const DEFAULT_FEE_HEADROOM_LOVELACE = 500_000n;
 const DEFAULT_POLL_INTERVAL_MS = 2_000;
+const DEFAULT_POLL_INITIAL_INTERVAL_MS = 75;
+const DEFAULT_POLL_MAX_INTERVAL_MS = 1_000;
+const DEFAULT_POLL_BACKOFF_MULTIPLIER = 2;
 const DEFAULT_SUBMIT_REQUEST_TIMEOUT_MS = 300_000;
 const DEFAULT_ACCEPTANCE_TIMEOUT_MS = 600_000;
 const DEFAULT_COMMIT_OBSERVATION_TIMEOUT_MS = 600_000;
 const DEFAULT_FINALITY_OBSERVER_MAX_CONCURRENT_REQUESTS = 4;
+const DEFAULT_MAX_SUBMISSION_FAILURES = 0;
 const MAX_DEFAULT_COUNT = 500;
 const MAX_DEFAULT_CONCURRENCY = 16;
 const DEFAULT_OPEN_LOOP_TARGET_RATE_TPS = 100;
@@ -401,6 +461,21 @@ const sleepWithAbort = async (
   throwIfAborted(signal);
 };
 
+const nextPollDelayMs = (
+  attempt: number,
+  config: Pick<
+    E2EL2StressConfig,
+    "pollIntervalMs" | "pollInitialIntervalMs" | "pollMaxIntervalMs"
+  >,
+): number => {
+  if (config.pollIntervalMs !== undefined) {
+    return config.pollIntervalMs;
+  }
+  const scaled =
+    config.pollInitialIntervalMs * DEFAULT_POLL_BACKOFF_MULTIPLIER ** attempt;
+  return Math.min(config.pollMaxIntervalMs, scaled);
+};
+
 const parsePositiveInteger = (
   value: string | undefined,
   label: string,
@@ -472,6 +547,21 @@ const parsePositiveBigInt = (
     throw new Error(`${label} must be greater than zero.`);
   }
   return parsed;
+};
+
+const parseNonNegativeBigInt = (
+  value: string | undefined,
+  label: string,
+  defaultValue: bigint,
+): bigint => {
+  const raw = value?.trim();
+  if (raw === undefined || raw.length === 0) {
+    return defaultValue;
+  }
+  if (!/^\d+$/.test(raw)) {
+    throw new Error(`${label} must be a non-negative integer.`);
+  }
+  return BigInt(raw);
 };
 
 const parseMode = (value: string | undefined): E2EL2StressMode => {
@@ -587,6 +677,57 @@ const resolveStressWallet = ({
   };
 };
 
+type StressWalletResolutionResult =
+  | {
+      readonly ok: true;
+      readonly wallet: StressWallet;
+    }
+  | {
+      readonly ok: false;
+      readonly envName: string;
+      readonly error: string;
+    };
+
+const resolveStressWallets = ({
+  envNames,
+  env,
+  network,
+}: {
+  readonly envNames: readonly string[];
+  readonly env: NodeJS.ProcessEnv;
+  readonly network: Network;
+}): readonly StressWallet[] => {
+  const results: readonly StressWalletResolutionResult[] = envNames.map(
+    (envName) => {
+      try {
+        return {
+          ok: true,
+          wallet: resolveStressWallet({
+            walletSeedPhraseEnv: envName,
+            env,
+            network,
+          }),
+        };
+      } catch (error) {
+        return { ok: false, envName, error: errorMessage(error) };
+      }
+    },
+  );
+  const failures = results.filter(
+    (result): result is Extract<StressWalletResolutionResult, { ok: false }> =>
+      !result.ok,
+  );
+  if (failures.length > 0) {
+    throw new Error(
+      `${failures.length.toString()}/${envNames.length.toString()} stress wallet env vars are unresolvable:\n` +
+        failures
+          .map((failure) => `  - ${failure.envName}: ${failure.error}`)
+          .join("\n"),
+    );
+  }
+  return results.flatMap((result) => (result.ok ? [result.wallet] : []));
+};
+
 const validateDistinctStressWallets = (
   wallets: readonly StressWallet[],
 ): void => {
@@ -628,6 +769,7 @@ export const parseE2EL2StressConfig = ({
   count: rawCount,
   concurrency: rawConcurrency,
   lovelace: rawLovelace,
+  feeHeadroomLovelace: rawFeeHeadroomLovelace,
   walletSeedPhrase,
   walletSeedPhraseEnv = DEFAULT_WALLET_SEED_ENV,
   stressWalletSeedPhraseEnvs = [],
@@ -635,11 +777,14 @@ export const parseE2EL2StressConfig = ({
   runId,
   outDir,
   pollIntervalMs: rawPollIntervalMs,
+  pollInitialIntervalMs: rawPollInitialIntervalMs,
+  pollMaxIntervalMs: rawPollMaxIntervalMs,
   submitRequestTimeoutMs: rawSubmitRequestTimeoutMs,
   acceptanceTimeoutMs: rawAcceptanceTimeoutMs,
   commitObservationTimeoutMs: rawCommitObservationTimeoutMs,
   finalityObserverMaxConcurrentRequests:
     rawFinalityObserverMaxConcurrentRequests,
+  maxSubmissionFailures: rawMaxSubmissionFailures,
   network = "Preprod",
   env = process.env,
   allowUnsafeBounds = false,
@@ -697,10 +842,28 @@ export const parseE2EL2StressConfig = ({
     "--lovelace",
     DEFAULT_LOVELACE,
   );
-  const pollIntervalMs = parsePositiveInteger(
-    rawPollIntervalMs,
-    "--poll-interval-ms",
-    DEFAULT_POLL_INTERVAL_MS,
+  const feeHeadroomLovelace = parseNonNegativeBigInt(
+    rawFeeHeadroomLovelace,
+    "--fee-headroom-lovelace",
+    DEFAULT_FEE_HEADROOM_LOVELACE,
+  );
+  const pollIntervalMs =
+    rawPollIntervalMs === undefined || rawPollIntervalMs.trim().length === 0
+      ? undefined
+      : parsePositiveInteger(
+          rawPollIntervalMs,
+          "--poll-interval-ms",
+          DEFAULT_POLL_INTERVAL_MS,
+        );
+  const pollInitialIntervalMs = parsePositiveInteger(
+    rawPollInitialIntervalMs,
+    "--poll-initial-interval-ms",
+    DEFAULT_POLL_INITIAL_INTERVAL_MS,
+  );
+  const pollMaxIntervalMs = parsePositiveInteger(
+    rawPollMaxIntervalMs,
+    "--poll-max-interval-ms",
+    DEFAULT_POLL_MAX_INTERVAL_MS,
   );
   const submitRequestTimeoutMs = parsePositiveInteger(
     rawSubmitRequestTimeoutMs,
@@ -722,6 +885,11 @@ export const parseE2EL2StressConfig = ({
     "--finality-observer-max-concurrent-requests",
     DEFAULT_FINALITY_OBSERVER_MAX_CONCURRENT_REQUESTS,
   );
+  const maxSubmissionFailures = parseNonNegativeInteger(
+    rawMaxSubmissionFailures,
+    "--max-submission-failures",
+    DEFAULT_MAX_SUBMISSION_FAILURES,
+  );
   const normalizedEndpoint = parseNodeEndpoint(
     endpoint ?? defaultMidgardNodeEndpoint(env),
   );
@@ -737,13 +905,11 @@ export const parseE2EL2StressConfig = ({
       : undefined;
   const stressWallets =
     loadModel === "closed-loop-smoke"
-      ? stressWalletSeedPhraseEnvs.map((envName) =>
-          resolveStressWallet({
-            walletSeedPhraseEnv: envName,
-            env,
-            network,
-          }),
-        )
+      ? resolveStressWallets({
+          envNames: stressWalletSeedPhraseEnvs,
+          env,
+          network,
+        })
       : [];
   validateDistinctStressWallets(stressWallets);
 
@@ -808,6 +974,7 @@ export const parseE2EL2StressConfig = ({
     count,
     concurrency,
     lovelace,
+    feeHeadroomLovelace,
     nodeEndpoint: normalizedEndpoint,
     ...(corpusPath === undefined || corpusPath.trim().length === 0
       ? {}
@@ -831,10 +998,13 @@ export const parseE2EL2StressConfig = ({
       ? {}
       : { destinationAddress: parseAddressArgument(l2Address) }),
     pollIntervalMs,
+    pollInitialIntervalMs,
+    pollMaxIntervalMs,
     submitRequestTimeoutMs,
     acceptanceTimeoutMs,
     commitObservationTimeoutMs,
     finalityObserverMaxConcurrentRequests,
+    maxSubmissionFailures,
     outDir: outDir?.trim() || join("logs", resolvedRunId, "stress"),
     network,
     allowUnsafeBounds,
@@ -854,6 +1024,7 @@ const artifactConfig = (config: E2EL2StressConfig) => ({
   count: config.count,
   concurrency: config.concurrency,
   lovelace: config.lovelace.toString(10),
+  feeHeadroomLovelace: config.feeHeadroomLovelace.toString(10),
   nodeEndpoint: config.nodeEndpoint,
   corpusPath: config.corpusPath ?? null,
   corpusSliceId: config.corpusSliceId,
@@ -871,11 +1042,14 @@ const artifactConfig = (config: E2EL2StressConfig) => ({
       ? { mode: "self" }
       : { mode: "explicit", address: config.destinationAddress },
   pollIntervalMs: config.pollIntervalMs,
+  pollInitialIntervalMs: config.pollInitialIntervalMs,
+  pollMaxIntervalMs: config.pollMaxIntervalMs,
   submitRequestTimeoutMs: config.submitRequestTimeoutMs,
   acceptanceTimeoutMs: config.acceptanceTimeoutMs,
   commitObservationTimeoutMs: config.commitObservationTimeoutMs,
   finalityObserverMaxConcurrentRequests:
     config.finalityObserverMaxConcurrentRequests,
+  maxSubmissionFailures: config.maxSubmissionFailures,
   network: config.network,
   allowUnsafeBounds: config.allowUnsafeBounds,
   wallets:
@@ -902,6 +1076,169 @@ const appendEvent = async (
 ): Promise<void> => {
   await appendFile(eventsNdjsonPath, `${JSON.stringify(event)}\n`, "utf8");
 };
+
+async function* readNdjsonLines(path: string): AsyncGenerator<string> {
+  const reader = readline.createInterface({
+    input: createReadStream(path, { encoding: "utf8" }),
+    crlfDelay: Infinity,
+  });
+  for await (const line of reader) {
+    const trimmed = line.trim();
+    if (trimmed.length > 0) {
+      yield trimmed;
+    }
+  }
+}
+
+const readJsonFile = async (path: string): Promise<unknown> => {
+  const chunks: string[] = [];
+  for await (const chunk of createReadStream(path, { encoding: "utf8" })) {
+    chunks.push(chunk);
+  }
+  return JSON.parse(chunks.join("")) as unknown;
+};
+
+const readSubmitRecords = async (
+  path: string,
+): Promise<readonly OpenLoopSubmitRecord[]> => {
+  const records: OpenLoopSubmitRecord[] = [];
+  let index = 0;
+  for await (const line of readNdjsonLines(path)) {
+    index += 1;
+    const parsed = JSON.parse(line) as Partial<OpenLoopSubmitRecord>;
+    if (
+      typeof parsed.txHash !== "string" ||
+      typeof parsed.scheduledAtMs !== "number" ||
+      typeof parsed.submittedAtMs !== "number" ||
+      typeof parsed.scheduleSlipMs !== "number" ||
+      typeof parsed.latencyMs !== "number" ||
+      !("statusCode" in parsed) ||
+      !("error" in parsed)
+    ) {
+      throw new Error(`submit-records row ${index.toString()} is invalid`);
+    }
+    records.push({
+      txHash: parsed.txHash.toLowerCase(),
+      scheduledAtMs: parsed.scheduledAtMs,
+      submittedAtMs: parsed.submittedAtMs,
+      scheduleSlipMs: parsed.scheduleSlipMs,
+      latencyMs: parsed.latencyMs,
+      statusCode:
+        typeof parsed.statusCode === "number" ? parsed.statusCode : null,
+      responseTxId:
+        typeof parsed.responseTxId === "string" ? parsed.responseTxId : null,
+      error: typeof parsed.error === "string" ? parsed.error : null,
+    });
+  }
+  return records;
+};
+
+const readCorpusRowsForRecords = async ({
+  corpusPath,
+  records,
+}: {
+  readonly corpusPath: string;
+  readonly records: readonly OpenLoopSubmitRecord[];
+}): Promise<ReadonlyMap<string, OpenLoopCorpusRow>> => {
+  const needed = new Set(records.map((record) => record.txHash.toLowerCase()));
+  const found = new Map<string, OpenLoopCorpusRow>();
+  if (needed.size === 0) {
+    return found;
+  }
+  let index = 0;
+  for await (const line of readNdjsonLines(corpusPath)) {
+    index += 1;
+    const row = parseOpenLoopCorpusLine(line, index);
+    if (needed.has(row.txHash)) {
+      found.set(row.txHash, row);
+      if (found.size === needed.size) {
+        break;
+      }
+    }
+  }
+  const missing = [...needed].filter((txHash) => !found.has(txHash));
+  if (missing.length > 0) {
+    throw new Error(
+      `corpus lookup missed ${missing.length.toString()} submitted tx hashes`,
+    );
+  }
+  return found;
+};
+
+const canonicalEnginePaths = (outDir: string): CanonicalEngineArtifactPaths => ({
+  engineReportJson: join(outDir, "engine-report.json"),
+  engineEventsNdjson: join(outDir, "engine-events.ndjson"),
+  submitRecordsNdjson: join(outDir, "submit-records.ndjson"),
+  noopCalibrationJson: join(outDir, "noop-calibration.json"),
+  stdoutLog: join(outDir, "engine.stdout.log"),
+  stderrLog: join(outDir, "engine.stderr.log"),
+});
+
+const runCanonicalEngineProcess = async ({
+  config,
+  paths,
+  signal,
+}: {
+  readonly config: E2EL2StressConfig;
+  readonly paths: CanonicalEngineArtifactPaths;
+  readonly signal?: AbortSignal;
+}): Promise<CanonicalEngineRunResult> =>
+  await new Promise((resolve, reject) => {
+    const child = spawn(
+      process.execPath,
+      ["scripts/throughput-valid-stress.mjs"],
+      {
+        cwd: process.cwd(),
+        env: {
+          ...process.env,
+          STRESS_SUBMIT_ENDPOINT: config.nodeEndpoint,
+          STRESS_MODE: "open",
+          STRESS_OPEN_LOOP_RATE_TPS: config.targetRateTps.toString(),
+          STRESS_MEASURED_SEC: (config.openLoopDurationMs / 1000).toString(),
+          STRESS_SUBMIT_CONCURRENCY: config.openLoopMaxInFlight.toString(),
+          STRESS_HTTP_CONNECTIONS: config.openLoopMaxInFlight.toString(),
+          STRESS_CORPUS_PATH: config.corpusPath ?? "",
+          STRESS_CORPUS_SHAPE: config.corpusShape,
+          STRESS_CORPUS_SLICE_ID: config.corpusSliceId,
+          STRESS_MAX_CHAINS: "auto",
+          STRESS_REPORT_PATH: paths.engineReportJson,
+          STRESS_ENGINE_EVENTS_PATH: paths.engineEventsNdjson,
+          STRESS_SUBMIT_RECORDS_PATH: paths.submitRecordsNdjson,
+          STRESS_NOOP_CALIBRATION_PATH: paths.noopCalibrationJson,
+          ...(config.noOpCalibrationEndpoint === undefined
+            ? {}
+            : { STRESS_NOOP_ENDPOINT: config.noOpCalibrationEndpoint }),
+          STRESS_REQUIRE_NOOP_CALIBRATION: config.requireNoOpCalibration
+            ? "true"
+            : "false",
+          STRESS_CALIBRATION_DURATION_SEC: (
+            config.noOpCalibrationDurationMs / 1000
+          ).toString(),
+          STRESS_CLIENT_SELF_CHECK: "false",
+          STRESS_REQUIRE_METRIC_PRESENCE: "false",
+        },
+      },
+    );
+    const stdout = createWriteStream(paths.stdoutLog, { flags: "w" });
+    const stderr = createWriteStream(paths.stderrLog, { flags: "w" });
+    child.stdout.pipe(stdout);
+    child.stderr.pipe(stderr);
+    const abort = (): void => {
+      child.kill("SIGTERM");
+      setTimeout(() => child.kill("SIGKILL"), 5_000).unref();
+    };
+    signal?.addEventListener("abort", abort, { once: true });
+    child.once("error", reject);
+    child.once("close", (exitCode, exitSignal) => {
+      signal?.removeEventListener("abort", abort);
+      stdout.end();
+      stderr.end();
+      resolve({
+        exitCode: exitCode ?? 1,
+        signal: exitSignal,
+      });
+    });
+  });
 
 const percentile = (values: readonly number[], quantile: number): number => {
   if (values.length === 0) {
@@ -934,6 +1271,12 @@ const renderStressSummaryMarkdown = (summary: E2EL2StressSummary): string => {
     `- loadModel: ${summary.loadModel}`,
     `- workloadProfile: ${summary.workloadProfile}`,
     `- classification: ${summary.classification}`,
+    `- rateSemantics: ${summary.rateSemantics}`,
+    ...(summary.rateSemantics !== "burst_cycle_rate"
+      ? []
+      : [
+          `- burstCycleRatePerSecond: ${summary.burstCycleRatePerSecond?.toString() ?? "n/a"} (bounded by concurrency=${summary.concurrency.toString()}; NOT a production throughput measurement; see docs/exec-plans/phase-0-stop-the-bleeding.md)`,
+        ]),
     `- mode: ${summary.mode}`,
     ...(summary.corpusShape === undefined
       ? []
@@ -960,13 +1303,15 @@ const renderStressSummaryMarkdown = (summary: E2EL2StressSummary): string => {
     "",
     "## Stage Metrics",
     "",
-    "| metric | status | count | missing | duration_s | rate_per_s | precision | source | notes |",
+    "| metric | status | count | missing | duration_s | rate_per_s* | precision | source | notes |",
     "| --- | --- | ---: | ---: | ---: | ---: | --- | --- | --- |",
     ...metricRows.map(([label, metric]) => {
       const durationSeconds =
         metric.durationMs === null ? null : metric.durationMs / 1000;
       return `| ${label} | ${metric.status} | ${metric.count.toString()} | ${metric.missingCount.toString()} | ${formatMetricValue(durationSeconds)} | ${formatMetricValue(metric.perSecond)} | ${metric.precision} | ${metric.source} | ${formatMetricNotes(metric.notes)} |`;
     }),
+    "",
+    "* rate_per_s is a raw count/duration ratio; read it together with rateSemantics above. It is not production throughput when rateSemantics=burst_cycle_rate.",
     "",
     "## Transactions",
     "",
@@ -1050,6 +1395,7 @@ const pollUntilAccepted = async ({
   readonly finality: E2EL2StressFinalityState;
 }> => {
   const deadlineMs = submittedAtMs + config.acceptanceTimeoutMs;
+  let attempt = 0;
   while (true) {
     throwIfAborted(signal);
     const polledAt = now();
@@ -1120,7 +1466,8 @@ const pollUntilAccepted = async ({
         },
       };
     }
-    await sleepWithAbort(sleepImpl, config.pollIntervalMs, signal);
+    await sleepWithAbort(sleepImpl, nextPollDelayMs(attempt, config), signal);
+    attempt += 1;
   }
 };
 
@@ -1167,7 +1514,7 @@ const observeFinalityBounded = async ({
     ...entry,
     deadlineMs: observerStartedAtMs + config.commitObservationTimeoutMs,
     nextPollAtMs: observerStartedAtMs,
-    pollIntervalMs: config.pollIntervalMs,
+    pollAttempt: 0,
   }));
   const completed: E2EL2StressTransaction[] = [];
   let maxObservedConcurrentRequests = 0;
@@ -1293,11 +1640,9 @@ const observeFinalityBounded = async ({
         pending[pendingIndex] = {
           ...outcome.entry,
           nextPollAtMs:
-            outcome.polledAt.getTime() + outcome.entry.pollIntervalMs,
-          pollIntervalMs: Math.min(
-            outcome.entry.pollIntervalMs * 2,
-            config.pollIntervalMs * 8,
-          ),
+            outcome.polledAt.getTime() +
+            nextPollDelayMs(outcome.entry.pollAttempt, config),
+          pollAttempt: outcome.entry.pollAttempt + 1,
         };
         continue;
       }
@@ -1332,11 +1677,10 @@ const observeFinalityBounded = async ({
       pendingCount += 1;
       pending[pendingIndex] = {
         ...outcome.entry,
-        nextPollAtMs: outcome.polledAt.getTime() + outcome.entry.pollIntervalMs,
-        pollIntervalMs: Math.min(
-          outcome.entry.pollIntervalMs * 2,
-          config.pollIntervalMs * 8,
-        ),
+        nextPollAtMs:
+          outcome.polledAt.getTime() +
+          nextPollDelayMs(outcome.entry.pollAttempt, config),
+        pollAttempt: outcome.entry.pollAttempt + 1,
       };
     }
     await appendEvent(eventsNdjsonPath, {
@@ -1537,7 +1881,6 @@ const runOpenLoopUpperBoundStress = async (
   if (config.corpusPath === undefined) {
     throw new Error("open-loop upper-bound stress requires a corpusPath");
   }
-  const fetchImpl = runtime.fetch ?? fetch;
   const sleepImpl = runtime.sleep ?? sleep;
   const now = runtime.now ?? (() => new Date());
   const signal = runtime.abortSignal;
@@ -1552,21 +1895,10 @@ const runOpenLoopUpperBoundStress = async (
     flag: "w",
   });
 
-  const corpusRows = parseOpenLoopCorpusNdjson(
-    await readFile(config.corpusPath, "utf8"),
-  );
-  const corpus = planOpenLoopCorpus({
-    rows: corpusRows,
-    targetRateTps: config.targetRateTps,
-    durationMs: config.openLoopDurationMs,
-    warmupCount: config.openLoopWarmupCount,
-    cooldownCount: config.openLoopCooldownCount,
-    corpusShape: config.corpusShape,
-    corpusSliceId: config.corpusSliceId,
-  });
   const placement = buildOpenLoopPlacementProof();
   const startedAtDate = now();
   const startedAt = startedAtDate.toISOString();
+  const enginePaths = canonicalEnginePaths(config.outDir);
   await appendEvent(eventsNdjsonPath, {
     event: "stress_started",
     at: startedAt,
@@ -1575,52 +1907,122 @@ const runOpenLoopUpperBoundStress = async (
     workloadProfile: config.workloadProfile,
     corpusShape: config.corpusShape,
     corpusSliceId: config.corpusSliceId,
-    corpusSelectedTransactionCount: corpus.selectedTransactionCount,
     placement,
   });
 
-  let calibration: NoOpCalibrationSummary | undefined;
-  if (config.noOpCalibrationEndpoint !== undefined) {
-    calibration = await runNoOpSubmitCalibration({
-      endpoint: config.noOpCalibrationEndpoint,
-      rows: corpus.rows,
-      targetRateTps: config.targetRateTps,
-      durationMs: config.noOpCalibrationDurationMs,
-      maxInFlight: config.openLoopMaxInFlight,
-      fetchImpl,
-      signal,
-    });
-    await appendEvent(eventsNdjsonPath, {
-      event: "stress.no_op_calibration.finished",
-      at: now().toISOString(),
-      calibration,
-    });
-    if (config.requireNoOpCalibration && !calibration.passed) {
-      throw new Error("no-op submit calibration failed required gate");
-    }
-  } else if (config.requireNoOpCalibration) {
-    throw new Error("no-op submit calibration was required but not configured");
-  }
-
-  const submitEndpoint = `${config.nodeEndpoint}/submit`;
-  const { result: submitResult, observer } = await runAggregateObserverDuring({
+  const { result: engineResult, observer } = await runAggregateObserverDuring({
     config,
     runtime,
     eventsNdjsonPath,
     sleepImpl,
     now,
     action: () =>
-      runOpenLoopSubmitter({
-        rows: corpus.rows,
-        endpoint: submitEndpoint,
-        targetRateTps: config.targetRateTps,
-        maxInFlight: config.openLoopMaxInFlight,
-        fetchImpl,
+      (runtime.runCanonicalEngine ?? runCanonicalEngineProcess)({
+        config,
+        paths: enginePaths,
         signal,
       }),
   });
   const submissionFinishedAtDate = now();
   const submissionFinishedAt = submissionFinishedAtDate.toISOString();
+  const engineReport = (await readJsonFile(
+    enginePaths.engineReportJson,
+  )) as {
+    readonly calibration?: { readonly noOp?: NoOpCalibrationSummary | null };
+    readonly summary?: { readonly firstErrors?: readonly string[] };
+  };
+  const submitRecords = await readSubmitRecords(enginePaths.submitRecordsNdjson);
+  const corpusRowsByTxHash = await readCorpusRowsForRecords({
+    corpusPath: config.corpusPath,
+    records: submitRecords,
+  });
+  const corpusRows = submitRecords.flatMap((record) => {
+    const row = corpusRowsByTxHash.get(record.txHash);
+    return row === undefined ? [] : [row];
+  });
+  const corpus: OpenLoopCorpusPlan = {
+    rows: corpusRows,
+    requiredTransactionCount: submitRecords.length,
+    selectedTransactionCount: submitRecords.length,
+    corpusShape: config.corpusShape,
+    corpusSliceId: config.corpusSliceId,
+  };
+  const summaryStartedAtMs =
+    submitRecords.length === 0
+      ? startedAtDate.getTime()
+      : Math.min(...submitRecords.map((record) => record.scheduledAtMs));
+  const summaryFinishedAtMs =
+    submitRecords.length === 0
+      ? submissionFinishedAtDate.getTime()
+      : Math.max(
+          ...submitRecords.map(
+            (record) => record.submittedAtMs + record.latencyMs,
+          ),
+        );
+  const submitResult = {
+    records: submitRecords,
+    summary: summarizeOpenLoopSubmissions({
+      records: submitRecords,
+      offeredCount: submitRecords.length,
+      targetRateTps: config.targetRateTps,
+      maxInFlight: config.openLoopMaxInFlight,
+      maxObservedInFlight: config.openLoopMaxInFlight,
+      startedAtMs: summaryStartedAtMs,
+      finishedAtMs: summaryFinishedAtMs,
+      startedAtIso: new Date(summaryStartedAtMs).toISOString(),
+      finishedAtIso: new Date(summaryFinishedAtMs).toISOString(),
+    }),
+  };
+  const calibration = engineReport.calibration?.noOp ?? undefined;
+  if (calibration !== undefined) {
+    await appendEvent(eventsNdjsonPath, {
+      event: "stress.no_op_calibration.finished",
+      at: now().toISOString(),
+      calibration,
+    });
+  }
+  if (engineResult.exitCode !== 0 && submitRecords.length === 0) {
+    throw new Error(
+      `canonical stress engine exited with ${engineResult.exitCode.toString()} before submitting records`,
+    );
+  }
+  let translatedStageIndex = 0;
+  for await (const line of readNdjsonLines(enginePaths.engineEventsNdjson)) {
+    const event = JSON.parse(line) as {
+      readonly event?: string;
+      readonly at?: string;
+      readonly [key: string]: unknown;
+    };
+    if (event.event === "stage_started") {
+      await appendEvent(eventsNdjsonPath, {
+        event: "stress.observer.started",
+        at: event.at ?? now().toISOString(),
+        stageName: event.name,
+        targetRateTps: event.targetRateTps,
+      });
+    } else if (event.event === "counter_sample") {
+      await appendEvent(eventsNdjsonPath, {
+        event: "stress.aggregate_observer.sample",
+        at: event.at ?? now().toISOString(),
+        source: "canonical_engine",
+        counters: event.counters,
+        phase: event.phase,
+      });
+    } else if (event.event === "stage_finished") {
+      translatedStageIndex += 1;
+      await appendEvent(eventsNdjsonPath, {
+        event:
+          translatedStageIndex === 1
+            ? "stress_submission_finished"
+            : "stress.observer.finished",
+        at: event.at ?? now().toISOString(),
+        stageName: event.name,
+        submitted: event.submitted,
+        submitErrors: event.submitErrors,
+        abortedCorpusExhausted: event.aborted_corpus_exhausted,
+      });
+    }
+  }
   const submittedTxHashes = submitResult.records.flatMap((record) =>
     record.statusCode !== null &&
     record.statusCode >= 200 &&
@@ -1723,13 +2125,39 @@ const runOpenLoopUpperBoundStress = async (
       ? {}
       : { fullFinalityDrainProof: runtime.fullFinalityDrainProof }),
   });
-  const classification = classifyOpenLoopRun({
+  const baseClassification = classifyOpenLoopRun({
     metrics,
     submission: submitResult.summary,
     calibration,
     placement,
     observer,
   });
+  const groundTruth =
+    runtime.collectGroundTruthMetrics === undefined
+      ? undefined
+      : await runtime.collectGroundTruthMetrics({
+          windowStart: startedAt,
+          windowEnd: finishedAt,
+          txHashSample: submittedTxHashes.slice(0, 1_000),
+          offeredCount: corpus.selectedTransactionCount,
+          calibrationProofRef: enginePaths.noopCalibrationJson,
+        });
+  const fingerprint =
+    groundTruth?.fingerprint ??
+    (runtime.collectEnvironmentFingerprint === undefined
+      ? undefined
+      : await runtime.collectEnvironmentFingerprint({
+          calibrationProofRef: enginePaths.noopCalibrationJson,
+        }));
+  const classification: E2EL2StressClassification =
+    submitRecords.some((record) =>
+      record.error?.includes("duplicate_or_mismatched_response"),
+    )
+      ? "duplicate_submission"
+      : engineResult.exitCode !== 0 &&
+          JSON.stringify(engineReport).includes("corpus_exhausted")
+        ? "corpus_exhausted"
+        : baseClassification;
   const summary: E2EL2StressSummary = {
     schemaVersion: E2E_L2_STRESS_SCHEMA_VERSION,
     runId: config.runId,
@@ -1741,6 +2169,8 @@ const runOpenLoopUpperBoundStress = async (
     workloadProfile: config.workloadProfile,
     corpusShape: config.corpusShape,
     classification,
+    rateSemantics: "offered_tps_uncalibrated",
+    burstCycleRatePerSecond: null,
     mode: config.mode,
     measurementPolicy: measurementPolicyForConfig(config),
     openLoop: {
@@ -1787,6 +2217,8 @@ const runOpenLoopUpperBoundStress = async (
     ),
     durationMs: Math.max(0, finishedAtDate.getTime() - startedAtDate.getTime()),
     metrics,
+    ...(groundTruth === undefined ? {} : { groundTruth }),
+    ...(fingerprint === undefined ? {} : { fingerprint }),
     latencyMs: {
       submitP50: submitResult.summary.scheduleSlipMs.p50,
       submitP95: submitResult.summary.scheduleSlipMs.p95,
@@ -1800,6 +2232,10 @@ const runOpenLoopUpperBoundStress = async (
       eventsNdjson: eventsNdjsonPath,
       summaryJson: summaryJsonPath,
       summaryMarkdown: summaryMarkdownPath,
+      engineReportJson: enginePaths.engineReportJson,
+      engineEventsNdjson: enginePaths.engineEventsNdjson,
+      submitRecordsNdjson: enginePaths.submitRecordsNdjson,
+      noOpCalibrationJson: enginePaths.noopCalibrationJson,
     },
     transactions,
   };
@@ -1860,6 +2296,7 @@ export const runE2EL2StressThroughput = async (
   });
 
   if (config.mode === "parallel-fanout") {
+    const requiredLovelace = config.lovelace + config.feeHeadroomLovelace;
     await Promise.all(
       config.stressWallets.slice(0, config.concurrency).map(async (wallet) => {
         const utxos = await fetchUtxos(config.nodeEndpoint, wallet.address);
@@ -1869,13 +2306,15 @@ export const runE2EL2StressThroughput = async (
           address: wallet.address,
           seedSource: wallet.resolvedWalletSeedPhrase.resolvedFrom,
           utxoCount: utxos.length,
-          spendableUtxoCount: spendableUtxosForLovelace(utxos, config.lovelace)
+          spendableUtxoCount: spendableUtxosForLovelace(utxos, requiredLovelace)
             .length,
-          requiredLovelace: config.lovelace.toString(10),
+          requiredLovelace: requiredLovelace.toString(10),
+          transferLovelace: config.lovelace.toString(10),
+          feeHeadroomLovelace: config.feeHeadroomLovelace.toString(10),
         });
-        if (spendableUtxosForLovelace(utxos, config.lovelace).length === 0) {
+        if (spendableUtxosForLovelace(utxos, requiredLovelace).length === 0) {
           throw new Error(
-            `Stress wallet ${wallet.resolvedWalletSeedPhrase.resolvedFrom} has no spendable L2 UTxO with at least ${config.lovelace.toString(10)} lovelace at ${wallet.address}. Fund independent stress wallets before rerunning parallel stress.`,
+            `Stress wallet ${wallet.resolvedWalletSeedPhrase.resolvedFrom} has no spendable L2 UTxO with at least ${requiredLovelace.toString(10)} lovelace (transfer ${config.lovelace.toString(10)} + fee headroom ${config.feeHeadroomLovelace.toString(10)}) at ${wallet.address}. Fund independent stress wallets before rerunning parallel stress.`,
           );
         }
       }),
@@ -1888,6 +2327,7 @@ export const runE2EL2StressThroughput = async (
   const acceptanceLatencies: number[] = [];
   const commitLatencies: number[] = [];
   let interruptedReason: string | undefined;
+  let submissionFailureCount = 0;
 
   const executeTransfer = async (
     index: number,
@@ -2103,6 +2543,23 @@ export const runE2EL2StressThroughput = async (
         workerIndex,
         error: message,
       });
+      submissionFailureCount += 1;
+      if (
+        interruptedReason === undefined &&
+        submissionFailureCount > config.maxSubmissionFailures
+      ) {
+        interruptedReason =
+          `submission/build failure threshold exceeded: ${submissionFailureCount.toString()} failure(s) > ` +
+          `allowed ${config.maxSubmissionFailures.toString()} (--max-submission-failures); aborting to avoid ` +
+          `silently shrinking the sample. Last error: ${message}`;
+        await appendEvent(eventsNdjsonPath, {
+          event: "stress.abort.max_submission_failures_exceeded",
+          at: now().toISOString(),
+          submissionFailureCount,
+          maxSubmissionFailures: config.maxSubmissionFailures,
+          reason: interruptedReason,
+        });
+      }
     }
   };
 
@@ -2228,11 +2685,11 @@ export const runE2EL2StressThroughput = async (
     0,
     submissionFinishedAtDate.getTime() - startedAtDate.getTime(),
   );
+  const stressTxHashes = sortedTransactions.flatMap((tx) =>
+    tx.txHash === null ? [] : [tx.txHash],
+  );
   let dbMetricSources: StressStageMetricDbSources | undefined;
   if (runtime.collectStageMetricSources !== undefined) {
-    const stressTxHashes = sortedTransactions.flatMap((tx) =>
-      tx.txHash === null ? [] : [tx.txHash],
-    );
     try {
       dbMetricSources = await runtime.collectStageMetricSources({
         txHashes: stressTxHashes,
@@ -2268,6 +2725,23 @@ export const runE2EL2StressThroughput = async (
       ? {}
       : { fullFinalityDrainProof: runtime.fullFinalityDrainProof }),
   });
+  const groundTruth =
+    runtime.collectGroundTruthMetrics === undefined
+      ? undefined
+      : await runtime.collectGroundTruthMetrics({
+          windowStart: startedAt,
+          windowEnd: finishedAt,
+          txHashSample: stressTxHashes.slice(0, 1_000),
+          offeredCount: config.count,
+          calibrationProofRef: null,
+        });
+  const fingerprint =
+    groundTruth?.fingerprint ??
+    (runtime.collectEnvironmentFingerprint === undefined
+      ? undefined
+      : await runtime.collectEnvironmentFingerprint({
+          calibrationProofRef: null,
+        }));
   const summary: E2EL2StressSummary = {
     schemaVersion: E2E_L2_STRESS_SCHEMA_VERSION,
     runId: config.runId,
@@ -2276,6 +2750,8 @@ export const runE2EL2StressThroughput = async (
     loadModel: config.loadModel,
     workloadProfile: config.workloadProfile,
     classification: "closed_loop_smoke",
+    rateSemantics: "burst_cycle_rate",
+    burstCycleRatePerSecond: metrics.l2Admission.perSecond,
     mode: config.mode,
     measurementPolicy: measurementPolicyForConfig(config),
     requestedCount: config.count,
@@ -2297,6 +2773,8 @@ export const runE2EL2StressThroughput = async (
     submissionDurationMs,
     durationMs,
     metrics,
+    ...(groundTruth === undefined ? {} : { groundTruth }),
+    ...(fingerprint === undefined ? {} : { fingerprint }),
     latencyMs: {
       submitP50: percentile(submitLatencies, 0.5),
       submitP95: percentile(submitLatencies, 0.95),

@@ -1,6 +1,6 @@
 import { SqlClient } from "@effect/sql";
 import { Address } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import { Duration, Effect, Metric } from "effect";
 
 import * as ImmutableDB from "@/database/immutable.js";
 import * as MempoolDB from "@/database/mempool.js";
@@ -14,8 +14,6 @@ import * as Ledger from "@/database/utils/ledger.js";
 import * as Tx from "@/database/utils/tx.js";
 import { Database } from "@/services/database.js";
 
-import { MempoolLedgerDB } from "./index.js";
-
 const tableName = "address_history";
 
 enum Columns {
@@ -26,6 +24,11 @@ export type Entry = {
   [Ledger.Columns.TX_ID]: Buffer;
   [Ledger.Columns.ADDRESS]: Address;
 };
+
+export const addressHistoryInsertSqlDurationTimer = Metric.timer(
+  "address_history_insert_sql_duration",
+  "Duration of the address-history insert SQL statement",
+);
 
 export const createTable: Effect.Effect<void, DatabaseError, Database> =
   Effect.gen(function* () {
@@ -59,40 +62,18 @@ export const insertEntries = (
       return;
     }
     const sql = yield* SqlClient.SqlClient;
+    const sqlStartedAt = performance.now();
     yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(entries)}
       ON CONFLICT (${sql(Ledger.Columns.TX_ID)}, ${sql(Ledger.Columns.ADDRESS)}) DO NOTHING`;
+    yield* addressHistoryInsertSqlDurationTimer(
+      Effect.succeed(Duration.millis(performance.now() - sqlStartedAt)),
+    );
   }).pipe(
     Effect.withLogSpan(`entries ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
       logDatabaseError(tableName, "insert entries", e),
     ),
     sqlErrorToDatabaseError(tableName, "Failed to insert given entries"),
-  );
-
-export const insert = (
-  spent: Buffer[],
-  produced: Ledger.Entry[],
-): Effect.Effect<void, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    if (spent.length <= 0 && produced.length <= 0) {
-      return;
-    }
-    const sql = yield* SqlClient.SqlClient;
-    const inputEntries =
-      spent.length === 0
-        ? []
-        : yield* sql<Entry>`SELECT ${sql(Ledger.Columns.TX_ID)}, ${sql(Ledger.Columns.ADDRESS)}
-          FROM ${sql(MempoolLedgerDB.tableName)}
-          WHERE ${sql(Ledger.Columns.TX_ID)} IN ${sql.in(spent)}`;
-    const outputEntries: Entry[] = produced.map((e) => ({
-      [Ledger.Columns.TX_ID]: e[Ledger.Columns.TX_ID],
-      [Ledger.Columns.ADDRESS]: e[Ledger.Columns.ADDRESS],
-    }));
-
-    yield* insertEntries([...inputEntries, ...outputEntries]);
-  }).pipe(
-    Effect.withLogSpan(`entries ${tableName}`),
-    sqlErrorToDatabaseError(tableName, "Failed to insert address history"),
   );
 
 export const delTxHash = (
@@ -131,9 +112,9 @@ export const retrieve = (
       `${tableName} db: attempt to retrieve value with address ${address}`,
     );
 
-    const result = yield* sql<
-      Pick<Tx.Entry, Tx.Columns.TX>
-    >`SELECT ${sql(Tx.Columns.TX)} FROM (
+    const result = yield* sql<Pick<Tx.Entry, Tx.Columns.TX>>`SELECT ${sql(
+      Tx.Columns.TX,
+    )} FROM (
       SELECT ${sql(Tx.Columns.TX_ID)}, ${sql(Tx.Columns.TX)}
       FROM ${sql(MempoolDB.tableName)}
       UNION

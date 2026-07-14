@@ -42,6 +42,16 @@ It is responsible for:
   the built SDK declarations before bundling the node.
 - `ADMIN_API_KEY` gates the admin-only HTTP surface; keep it set in any shared
   or remotely reachable environment.
+- Accepted `mempool` and `mempool_ledger` rows, spent-input deletion, consumed
+  deposit tracking, and the durable admission terminal update commit atomically.
+  `mempool_tx_deltas` and produced-side `address_history` rows are auxiliary
+  projections flushed by a bounded write-behind writer after that commit.
+- A crash can lose the unflushed auxiliary window. Missing tx deltas are safe:
+  the commit worker re-decodes transaction CBOR. Missing address-history rows
+  remain absent until an operator rebuilds that auxiliary index from retained
+  mempool/immutable transaction CBOR. The writer never drops live-process rows:
+  queue overflow falls back to an inline write, and graceful shutdown drains the
+  queue.
 
 ## Transaction Preparation Checks
 
@@ -242,9 +252,29 @@ pnpm listen
   seed records plus env/argument helper files for parallel fanout benchmarks.
 - `node dist/index.js stress-wallets:prepare`: fund, project, and verify
   persisted stress wallets before parallel fanout benchmarks.
+- `node dist/index.js stress-wallets:fanout`: create resumable funding edges
+  for a large prepared wallet set.
+- `node dist/index.js stress-corpus-generate` and `stress-corpus-verify`:
+  create and stream-verify the signed NDJSON transaction corpus used by
+  repeatable benchmarks.
 - `pnpm audit:blocks-immutable`: inspect immutable block state and related
   persistence.
 - `pnpm stress:valid`: run the high-throughput valid-transaction submitter.
+
+### Confirmation polling default
+
+As of the throughput Phase 4 work, `WAIT_BETWEEN_BLOCK_CONFIRMATION` defaults
+to `2000` ms instead of `10000` ms. Pending submissions use a targeted tx probe
+before a periodic full state-queue scan, so the shorter detection interval does
+not turn every poll into an O(queue length) provider request. Operators can set
+the variable back to `10000` as an operational rollback.
+
+`SPECULATIVE_COMMIT_BUILD` remains disabled by default until the Phase 3 MPF
+growth gate authorizes `MPF_ENGINE=overlay` as the default. Enabling speculation
+explicitly while using the legacy MPF engine fails configuration validation.
+
+- `pnpm bench:l2:scenario:<name>`: run a named benchmark scenario and write a
+  scenario artifact under `benchmark-results/<git-sha>/`.
 - `pnpm stress:nominal`: run the lower-rate sustained activity generator.
 
 ## Reconciliation Commands
@@ -564,39 +594,64 @@ node dist/index.js e2e-stress-l2-throughput \
 
 ## Valid Throughput Stress Test
 
-Run a high-throughput benchmark runner that builds and submits **valid
-Midgard-native** transactions (parallel dependent chains), then reports
-submitted, accepted, committed, and merged rates from Prometheus metrics. The
-runner separates setup, fanout, prebuild, warmup, measured steady-state,
-cooldown, and drain verification so the reported average TPS excludes setup and
-drain time.
+Run the high-throughput benchmark engine against a prebuilt, verified corpus of
+signed Midgard-native transactions. Corpus mode performs no `/utxos` lookup or
+transaction construction in the measured path. It reports offered, queued,
+accepted, committed, and merge rates from client and Prometheus evidence. The
+`e2e-stress-l2-throughput` CLI separately collects SQL-grounded stage metrics
+for functional/e2e stress runs.
+
+Generate the corpus from already prepared stress-wallet snapshots, then verify
+it before use:
 
 ```sh
-cd midgard-node
+cd demo/midgard-node
+
+node dist/index.js stress-corpus-generate \
+  --target-rate-tps 2500 \
+  --duration-ms 300000 \
+  --wallets-dir .stress-wallets \
+  --out-dir corpus/accept-2500 \
+  --yes
+
+node dist/index.js stress-corpus-verify \
+  --corpus-path corpus/accept-2500/corpus.ndjson \
+  --rebuild-wallets-dir .stress-wallets
+```
+
+Select a manifest slice and point the runner at the corpus:
+
+```sh
+STRESS_CORPUS_PATH=corpus/accept-2500/corpus.ndjson \
+STRESS_CORPUS_SLICE_ID=default \
+STRESS_CORPUS_SHAPE=fanout \
 pnpm stress:valid
 ```
 
-For stricter benchmark runs with client-capacity preflight enabled:
+Named scenarios set their rate, duration, and acceptance gates consistently:
 
 ```sh
-pnpm bench:l2:valid
-pnpm bench:l2:find-max
-pnpm bench:l2:profile
+pnpm bench:l2:scenario:find-max-ramp
+pnpm bench:l2:scenario:accept-2500-tps-gate
+pnpm bench:l2:scenario:soak-10min-at-max
+pnpm bench:l2:scenario:burst-2x-target
 ```
 
-Useful overrides:
+The scenario wrapper does not currently enforce corpus mode. Set both
+`STRESS_CORPUS_PATH` and `STRESS_CORPUS_SLICE_ID` for comparable Class A
+evidence; if they are absent, the engine falls back to the legacy transaction
+builder path. Use `--dry-run` directly with `scripts/benchmark-scenario.mjs` to
+inspect the resolved scenario environment before a run.
+The benchmark env also requires no-op calibration by default: start
+`pnpm stress:noop` separately and set `STRESS_NOOP_ENDPOINT` to that echo
+server, or explicitly disable the requirement for a non-gating diagnostic run.
 
-```sh
-STRESS_CHAIN_LENGTH=500 \
-STRESS_MAX_CHAINS=6 \
-STRESS_MODE=open \
-STRESS_OPEN_LOOP_RATE_TPS=800 \
-STRESS_MEASURED_SEC=60 \
-STRESS_TARGET_ACCEPTED_TPS=600 \
-pnpm stress:valid
-```
+For an isolated Compose run, layer `docker-compose.benchmark.yaml` over the
+normal stack and set deployment-specific values in `.env.benchmark`. The
+optional cohosted load generator is behind the `load-generator-cohosted`
+profile; a separate load-generator host is the preferred topology.
 
-Recommended run matrix:
+Additional run matrix:
 
 - `pnpm bench:l2:valid`: fixed-rate or closed-loop L2 admission run.
 - `pnpm bench:l2:find-max`: searches for the maximum sustainable accepted
@@ -612,8 +667,10 @@ Recommended run matrix:
 
 Notes:
 
-- This script reads `TESTNET_GENESIS_WALLET_SEED_PHRASE_A/B/C` from `.env`.
-- It uses `/utxos` to pick spendable UTxOs and submits to `/submit`.
+- Corpus mode reads canonical transaction bytes from NDJSON and submits raw
+  CBOR to `/submit` with `Content-Type: application/cbor`.
+- The legacy no-corpus mode still reads test wallets and `/utxos`; do not use
+  that mode for repeatable acceptance or regression evidence.
 - It uses pooled Undici HTTP clients and supports `STRESS_MODE=closed`,
   `STRESS_MODE=open`, `STRESS_MODE=ramp`, and `STRESS_MODE=find-max`.
 - `STRESS_MODE=find-max` is a candidate search, not a ramp average. It records
@@ -669,6 +726,51 @@ ACTIVITY_WALLET_MODE=random
 ACTIVITY_SUBMIT_ENDPOINT=http://127.0.0.1:3000
 ACTIVITY_METRICS_ENDPOINT=http://127.0.0.1:9464/metrics
 ```
+
+## DA Payload Hardening and Rollout
+
+DA payload storage and transport accept two durable formats: schema 2 is the
+historical raw canonical `DaPayloadV2` CBOR; schema 3 is a canonical envelope
+containing the exact inner schema-2 bytes, their decoded length and SHA-256,
+and either identity or zstd content.
+
+Both the stored/transmitted envelope and its declared and actual decoded
+content are capped by the pinned DA protocol limit. Zstd decoding uses
+`maxOutputLength`, then verifies exact length and inner SHA-256 before the
+existing strict payload validator runs. Midgard node and committee runtimes
+therefore require Node.js 22.15 or newer.
+
+Roll out decoder-first: deploy the schema-3 decoder to every producer,
+committee member, watcher, and proof reader; leave
+`MIDGARD_DA_PAYLOAD_ENVELOPE=off`; canary `identity`; then enable `zstd` only
+after committee capability is confirmed. The immediate producer rollback is
+`MIDGARD_DA_PAYLOAD_ENVELOPE=off`. Decoders remain schema-2/schema-3 capable so
+already stored envelopes stay readable.
+
+Retained-payload and fault-proof consumers preserve the stored artifact as the
+hash identity. They carry `payloadSchemaVersion` from retained metadata, verify
+the stored-byte SHA-256, and then use the pinned-bound envelope unwrap before
+strictly decoding the inner `DaPayloadV2`. Fault-proof callers should use
+`reconstructRetainedDaPayloadV2` when starting from a retained libp2p result;
+the package's decoder-first guard rejects new direct stored-byte V2 decoders.
+
+Publication returns once the manifest threshold accepts. Slow peers continue
+as detached, bounded stragglers. The `da_payload_publications` durable outbox
+records every current committee peer, is recovered from `da_payloads` after a
+process crash, and retries incomplete replication with exponential backoff.
+Terminal success is monotone; a late transport failure cannot downgrade it,
+while a payload conflict has evidence-preserving precedence and stops retry.
+Owner/token/expiry fencing also applies to completion: a detached foreground
+result may update only an unleased or expired row and cannot clear or overwrite
+an active reconciler claim. Fence loss is surfaced rather than treated as a
+successful durable write.
+Local block finalization remains durable when immediate DA publication is
+below threshold, but merge safety is unchanged: an on-chain DA attestation is
+still mandatory, and startup fails if transport threshold is lower than the
+on-chain threshold.
+
+The controls are documented in `.env.example`. Protocol byte limits and the
+acceptance threshold deliberately have no environment override.
 
 ## Related Documentation
 

@@ -18,15 +18,16 @@ import {
   DaPeerRegistry,
   peerIdFromMultiaddrString,
 } from "../src/da/libp2p/DaPeerRegistry.js";
-import { DaLibp2pPayloadSource } from "../src/da/libp2p/payload-source.js";
 import { createDaProtocolAllowlist } from "../src/da/libp2p/DaProtocols.js";
 import {
   decodeDaStreamFrames,
   encodeDaStreamFrame,
   readSingleDaStreamFrame,
+  writeDaStreamFrame,
 } from "../src/da/libp2p/DaStreamCodec.js";
 import { createDaTopicAllowlist } from "../src/da/libp2p/DaTopics.js";
 import { createDaConnectionGater } from "../src/da/libp2p/index.js";
+import { DaLibp2pPayloadSource } from "../src/da/libp2p/payload-source.js";
 
 const DEPLOYMENT_FINGERPRINT = "ab".repeat(32);
 const PEER_ID_A = "12D3KooWJzVqLz7QpLdfW6M5G2X1L8L6GQ9QJ3uCHZP8X8J6BC8u";
@@ -123,6 +124,96 @@ describe("DA libp2p stream framing", () => {
     ).resolves.toEqual(Buffer.from("payload"));
   });
 
+  it("assembles fragmented and adjacent frames with one bounded destination each", async () => {
+    const timing = vi.fn();
+    let now = 0;
+    const wire = Buffer.concat([
+      encodeDaStreamFrame(Buffer.alloc(257, 0xa1), { maxFrameBytes: 512 }),
+      encodeDaStreamFrame(Buffer.from("second"), { maxFrameBytes: 512 }),
+    ]);
+    const fragments = Array.from(wire, (byte) => Buffer.from([byte]));
+    const decoded = await collect(
+      decodeDaStreamFrames(fragments, {
+        maxFrameBytes: 512,
+        timing: {
+          monotonicNow: () => {
+            now += 1;
+            return now;
+          },
+          onStageTiming: timing,
+        },
+      }),
+    );
+
+    expect(decoded).toEqual([Buffer.alloc(257, 0xa1), Buffer.from("second")]);
+    expect(timing).toHaveBeenCalledTimes(2);
+    expect(timing.mock.calls.map(([stage]) => stage)).toEqual([
+      "frame_receive",
+      "frame_receive",
+    ]);
+  });
+
+  it("reports backpressure-aware frame writes without changing drain ordering", async () => {
+    const order: string[] = [];
+    const timings: Array<{
+      readonly stage: string;
+      readonly durationMs: number;
+    }> = [];
+    let now = 20;
+    await writeDaStreamFrame(
+      {
+        send: () => {
+          order.push("send");
+          return false;
+        },
+        onDrain: async () => {
+          order.push("drain");
+        },
+        close: () => {
+          order.push("close");
+        },
+      },
+      Buffer.from("response"),
+      {
+        close: true,
+        timing: {
+          monotonicNow: () => {
+            now += 3;
+            return now;
+          },
+          onStageTiming: (stage, durationMs) =>
+            timings.push({ stage, durationMs }),
+        },
+      },
+    );
+
+    expect(order).toEqual(["send", "drain", "close"]);
+    expect(timings).toEqual([{ stage: "frame_write", durationMs: 3 }]);
+  });
+
+  it("keeps framing semantics when the optional timing clock throws", async () => {
+    const frame = encodeDaStreamFrame(Buffer.from("payload"), {
+      maxFrameBytes: 16,
+    });
+    const timing = {
+      monotonicNow: () => {
+        throw new Error("clock unavailable");
+      },
+      onStageTiming: () => {
+        throw new Error("sink unavailable");
+      },
+    };
+    await expect(
+      collect(decodeDaStreamFrames([frame], { maxFrameBytes: 16, timing })),
+    ).resolves.toEqual([Buffer.from("payload")]);
+    await expect(
+      writeDaStreamFrame({ send: () => true }, Buffer.from("payload"), {
+        maxFrameBytes: 16,
+        timing,
+      }),
+    ).resolves.toBeUndefined();
+  });
+
   it("rejects oversized, empty, and incomplete frames", async () => {
     expect(() =>
       encodeDaStreamFrame(Buffer.alloc(17), { maxFrameBytes: 16 }),
@@ -141,6 +232,19 @@ describe("DA libp2p stream framing", () => {
         decodeDaStreamFrames([Buffer.from([0, 0])], { maxFrameBytes: 16 }),
       ),
     ).rejects.toThrow(/incomplete/);
+
+    const incompleteBody = Buffer.alloc(6);
+    incompleteBody.writeUInt32BE(4, 0);
+    await expect(
+      collect(decodeDaStreamFrames([incompleteBody], { maxFrameBytes: 16 })),
+    ).rejects.toThrow(/incomplete/);
+
+    const valid = encodeDaStreamFrame(Buffer.from("payload"), {
+      maxFrameBytes: 16,
+    });
+    await expect(
+      readSingleDaStreamFrame([valid, valid], { maxFrameBytes: 16 }),
+    ).rejects.toThrow(/exactly one/u);
   });
 });
 
@@ -204,6 +308,48 @@ describe("DA libp2p protocol and topic allowlists", () => {
 });
 
 describe("DA libp2p runtime service lifecycle", () => {
+  it("enforces one absolute deadline across stream write and close", async () => {
+    const config = libp2pConfig();
+    const protocolId = daRequestResponseProtocolId(
+      DEPLOYMENT_FINGERPRINT,
+      DaRequestResponseProtocol.payloadByHeader,
+    );
+    const abort = vi.fn();
+    const stream = {
+      send: () => true,
+      close: () => new Promise<void>(() => undefined),
+      abort,
+      async *[Symbol.asyncIterator]() {
+        await new Promise<void>(() => undefined);
+      },
+    };
+    const runtime: DaLibp2pRuntimeNode = {
+      start: vi.fn(),
+      stop: vi.fn(),
+      handle: vi.fn(),
+      unhandle: vi.fn(),
+      dialProtocol: vi.fn(async () => stream),
+    };
+    const service = new DaLibp2pNode({
+      config,
+      libp2pFactory: async () => runtime,
+    });
+    await service.start();
+    const peer = service.registry.getBySignerIndex(0);
+    if (peer === undefined) throw new Error("missing fixture peer");
+
+    await expect(
+      service.request({
+        peer,
+        protocolId,
+        payload: Buffer.from("request"),
+        timeoutMs: 10,
+      }),
+    ).rejects.toThrow(/exceeded the 10ms deadline/);
+    expect(abort).toHaveBeenCalledOnce();
+    await service.stop();
+  });
+
   it("builds the pinned stack and gracefully starts and stops mocked libp2p", async () => {
     const config = libp2pConfig();
     const protocolId = daRequestResponseProtocolId(

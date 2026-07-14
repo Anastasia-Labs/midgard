@@ -3,6 +3,7 @@ import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  awaitSubmittedTransactionConfirmation,
   handleSignSubmitNoConfirmation,
   inspectSignedTxValidityInterval,
   isNoInlineSubmitDefer,
@@ -802,6 +803,156 @@ describe("validity-window submit recovery", () => {
 });
 
 describe("sign/submit wrapper recovery options", () => {
+  it("spaces transient provider confirmation retries and recovers the exact submitted tx", async () => {
+    vi.useFakeTimers();
+    try {
+      let attempts = 0;
+      const awaitTx = vi.fn(async () => {
+        attempts += 1;
+        if (attempts <= 2) {
+          throw new Error("transient kupo transport error");
+        }
+        return true;
+      });
+      const confirmation = Effect.runPromise(
+        awaitSubmittedTransactionConfirmation(
+          {
+            awaitTx,
+            wallet: () => ({}),
+          } as never,
+          {
+            txHash: "tx-transient-confirmation-provider",
+            signedTxCbor: "00",
+            walletAddress: "addr_test1transientconfirmation",
+          },
+          {
+            confirmationTimeoutMs: 120_000,
+            confirmationRetries: 2,
+            confirmationPollIntervalMs: 100,
+          },
+        ),
+      );
+
+      await vi.advanceTimersByTimeAsync(0);
+      expect(awaitTx).toHaveBeenCalledTimes(1);
+      expect(awaitTx).toHaveBeenNthCalledWith(
+        1,
+        "tx-transient-confirmation-provider",
+        100,
+      );
+
+      await vi.advanceTimersByTimeAsync(99);
+      expect(awaitTx).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(awaitTx).toHaveBeenCalledTimes(2);
+      expect(awaitTx).toHaveBeenNthCalledWith(
+        2,
+        "tx-transient-confirmation-provider",
+        100,
+      );
+
+      await vi.advanceTimersByTimeAsync(99);
+      expect(awaitTx).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(awaitTx).toHaveBeenCalledTimes(3);
+      expect(awaitTx).toHaveBeenNthCalledWith(
+        3,
+        "tx-transient-confirmation-provider",
+        100,
+      );
+
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      await expect(confirmation).resolves.toBe(
+        "tx-transient-confirmation-provider",
+      );
+      expect(awaitTx).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("allows an exact submitted transaction to confirm after the legacy 90-second ceiling", async () => {
+    vi.useFakeTimers();
+    try {
+      const awaitTx = vi.fn(
+        () =>
+          new Promise<boolean>((resolve) => {
+            setTimeout(() => resolve(true), 100_000);
+          }),
+      );
+      const confirmation = Effect.runPromise(
+        awaitSubmittedTransactionConfirmation(
+          {
+            awaitTx,
+            wallet: () => ({}),
+          } as never,
+          {
+            txHash: "tx-long-confirmation",
+            signedTxCbor: "00",
+            walletAddress: "addr_test1longconfirmation",
+          },
+          {
+            confirmationTimeoutMs: 120_000,
+            confirmationRetries: 0,
+            confirmationPollIntervalMs: 1_000,
+          },
+        ),
+      );
+
+      await vi.advanceTimersByTimeAsync(90_001);
+      expect(awaitTx).toHaveBeenCalledWith("tx-long-confirmation", 1_000);
+      await vi.advanceTimersByTimeAsync(14_999);
+
+      await expect(confirmation).resolves.toBe("tx-long-confirmation");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("still fails when the configured exact transaction confirmation deadline expires", async () => {
+    vi.useFakeTimers();
+    try {
+      const confirmation = Effect.runPromise(
+        Effect.either(
+          awaitSubmittedTransactionConfirmation(
+            {
+              awaitTx: vi.fn(() => new Promise<boolean>(() => undefined)),
+              wallet: () => ({}),
+            } as never,
+            {
+              txHash: "tx-confirmation-timeout",
+              signedTxCbor: "00",
+              walletAddress: "addr_test1confirmationtimeout",
+            },
+            {
+              confirmationTimeoutMs: 120_000,
+              confirmationRetries: 0,
+              confirmationPollIntervalMs: 1_000,
+            },
+          ),
+        ),
+      );
+
+      await vi.advanceTimersByTimeAsync(120_000);
+      const result = await confirmation;
+
+      expect(result._tag).toBe("Left");
+      if (result._tag !== "Left") {
+        throw new Error("expected confirmation timeout");
+      }
+      expect(result.left).toMatchObject({
+        _tag: "TxConfirmError",
+        txHash: "tx-confirmation-timeout",
+      });
+      expect(String(result.left.cause)).toContain(
+        "timed out waiting for tx confirmation after 120000ms",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("forwards submit recovery options through signSubmitTransaction", async () => {
     const slots = [7, 12];
     const waits: number[] = [];

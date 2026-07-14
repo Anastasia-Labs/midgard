@@ -57,6 +57,7 @@ export type StressDbAdmissionRow = {
   readonly txHash: string;
   readonly status: string;
   readonly firstSeenAt: string;
+  readonly validationStartedAt: string | null;
   readonly terminalAt: string | null;
 };
 
@@ -76,6 +77,7 @@ export type StressDbImmutableRow = {
 export type StressDbResidueRow = {
   readonly txHash: string;
   readonly source: "mempool" | "processed_mempool";
+  readonly observedAt: string;
 };
 
 export type StressStageMetricDbSources = {
@@ -120,6 +122,7 @@ type SqlAdmissionRow = {
   readonly tx_hash: string;
   readonly status: string;
   readonly first_seen_at: Date;
+  readonly validation_started_at: Date | null;
   readonly terminal_at: Date | null;
 };
 
@@ -139,6 +142,7 @@ type SqlImmutableRow = {
 type SqlResidueRow = {
   readonly tx_hash: string;
   readonly source: "mempool" | "processed_mempool";
+  readonly observed_at: Date;
 };
 
 const TX_HASH_PATTERN = /^[0-9a-f]{64}$/i;
@@ -681,6 +685,7 @@ export const collectStressStageMetricSourcesFromSql = (
               encode(tx_id, 'hex') AS tx_hash,
               status,
               first_seen_at,
+              validation_started_at,
               terminal_at
             FROM tx_admissions
             WHERE ${sql.in("tx_id", txIds)}`,
@@ -701,12 +706,14 @@ export const collectStressStageMetricSourcesFromSql = (
             WHERE ${sql.in("tx_id", txIds)}`,
         sql<SqlResidueRow>`SELECT
               encode(tx_id, 'hex') AS tx_hash,
-              'mempool' AS source
+              'mempool' AS source,
+              time_stamp_tz AS observed_at
             FROM mempool
             WHERE ${sql.in("tx_id", txIds)}`,
         sql<SqlResidueRow>`SELECT
               encode(tx_id, 'hex') AS tx_hash,
-              'processed_mempool' AS source
+              'processed_mempool' AS source,
+              time_stamp_tz AS observed_at
             FROM processed_mempool
             WHERE ${sql.in("tx_id", txIds)}`,
       ],
@@ -718,6 +725,7 @@ export const collectStressStageMetricSourcesFromSql = (
         txHash: normalizeHash(row.tx_hash),
         status: row.status,
         firstSeenAt: row.first_seen_at.toISOString(),
+        validationStartedAt: isoFromDate(row.validation_started_at),
         terminalAt: isoFromDate(row.terminal_at),
       })),
       l1Commits: commitRows.map((row) => ({
@@ -734,6 +742,7 @@ export const collectStressStageMetricSourcesFromSql = (
       residue: [...mempoolRows, ...processedRows].map((row) => ({
         txHash: normalizeHash(row.tx_hash),
         source: row.source,
+        observedAt: row.observed_at.toISOString(),
       })),
     };
   }).pipe(Effect.orDie);

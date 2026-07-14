@@ -284,10 +284,12 @@ describe("deployment run-state command identity guards", () => {
     runStatePath,
     manifestPath,
     hubOracleOneShotTxHash,
+    persistRunState,
   }: {
     readonly runStatePath: string;
     readonly manifestPath: string;
     readonly hubOracleOneShotTxHash: string;
+    readonly persistRunState?: boolean;
   }) => {
     const options: DeploymentRunCliOptions = {
       runStatePath,
@@ -302,6 +304,7 @@ describe("deployment run-state command identity guards", () => {
         hubOracleOneShotOutputIndex: 0,
         timelockDurationMs: 10_000,
         manifestOutputPath: manifestPath,
+        persistRunState,
       }),
     );
   };
@@ -343,6 +346,65 @@ describe("deployment run-state command identity guards", () => {
     ).rejects.toThrow(
       "deployment run state deployment identity does not match",
     );
+  });
+
+  it("resolves a run-state auth policy without persisting diagnostic transitions", async () => {
+    const dir = await makeTempDir();
+    const runStatePath = join(dir, "run-state.json");
+    const manifestPath = join(dir, "contract-deployment-info.json");
+    const oneShotTxHash = "66".repeat(32);
+    const policy = createReferenceScriptAuthPolicy(lucid, 1_000, 10_000);
+    const policyInfo = referenceScriptAuthPolicyDeploymentInfo(policy);
+    await writeDeploymentRunStateAtomic(
+      runStatePath,
+      createDeploymentRunState({
+        mode: "resume",
+        runId: "run-read-only",
+        now: new Date("2026-01-01T00:00:00.000Z"),
+        identity: {
+          network: "Preprod",
+          hubOracleOneShot: { txHash: oneShotTxHash, outputIndex: 0 },
+          manifestPath,
+          referenceScriptAuthPolicyId: policyInfo.policyId,
+          referenceScriptAuthPolicy: {
+            policyId: policyInfo.policyId,
+            nativeScript: policyInfo.nativeScript,
+          },
+        },
+      }),
+    );
+    const beforeBytes = await readFile(runStatePath, "utf8");
+    const beforeState = await loadDeploymentRunState(runStatePath);
+    await expect(
+      resolveAuthPolicy({
+        runStatePath,
+        manifestPath,
+        hubOracleOneShotTxHash: oneShotTxHash,
+        persistRunState: false,
+      }),
+    ).resolves.toMatchObject({ policyId: policyInfo.policyId });
+    await expect(readFile(runStatePath, "utf8")).resolves.toBe(beforeBytes);
+    await expect(loadDeploymentRunState(runStatePath)).resolves.toEqual(
+      beforeState,
+    );
+  });
+
+  it("fails closed without creating run state during read-only resolution", async () => {
+    const dir = await makeTempDir();
+    const runStatePath = join(dir, "run-state.json");
+    const manifestPath = join(dir, "contract-deployment-info.json");
+
+    await expect(
+      resolveAuthPolicy({
+        runStatePath,
+        manifestPath,
+        hubOracleOneShotTxHash: "77".repeat(32),
+        persistRunState: false,
+      }),
+    ).rejects.toThrow(
+      "Read-only reference-script capture requires an existing deployment run state",
+    );
+    await expect(loadDeploymentRunState(runStatePath)).resolves.toBeNull();
   });
 
   it("refuses to import a manifest auth policy for a different one-shot identity", async () => {

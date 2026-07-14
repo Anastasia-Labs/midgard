@@ -432,12 +432,14 @@ export const resolveDaPayloadSave = (
 export const libp2pSubmittedDaPayloadRecord = (args: {
   readonly deploymentFingerprint: string;
   readonly headerHash: string;
+  readonly payloadSchemaVersion: number;
   readonly payloadCbor: Uint8Array;
   readonly payloadSha256: string;
   readonly receivedAt: Date;
 }): DaPayloadRecord => ({
   deploymentFingerprint: args.deploymentFingerprint,
   headerHash: args.headerHash,
+  payloadSchemaVersion: args.payloadSchemaVersion,
   payloadCborHex: Buffer.from(args.payloadCbor).toString("hex"),
   payloadSha256: args.payloadSha256,
   sourcePeerId: "libp2p:payload-submit",

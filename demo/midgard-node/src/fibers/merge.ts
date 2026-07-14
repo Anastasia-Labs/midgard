@@ -1,6 +1,6 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
-import { Effect, Ref, Schedule } from "effect";
+import { Effect, Option, Ref, Schedule } from "effect";
 
 import {
   MempoolDB,
@@ -15,6 +15,8 @@ import {
   Lucid,
   MidgardContracts,
   NodeConfig,
+  withL1ControlPlane,
+  withL1ControlPlaneWaitTimeout,
 } from "@/services/index.js";
 import {
   fetchStateQueueSnapshotProgram,
@@ -65,7 +67,8 @@ export type MergeActionResult =
   | {
       readonly status:
         | Exclude<MergeReadinessStatus, "ready">
-        | "skipped_state_queue_lease_busy";
+        | "skipped_state_queue_lease_busy"
+        | "skipped_l1_control_plane_busy";
       readonly reason: string;
       readonly headerHash?: string;
       readonly queueLength?: number;
@@ -82,6 +85,27 @@ type CurrentMergeDueWorkEvidence = {
   readonly validFromSlot: number;
   readonly targetSlot: number;
 };
+
+export const SCHEDULED_MERGE_CONTROL_PLANE_WAIT_MS = 30_000;
+
+export const withScheduledMergeControlPlaneWait = <A, E, R>({
+  globals,
+  effect,
+  waitTimeoutMs = SCHEDULED_MERGE_CONTROL_PLANE_WAIT_MS,
+}: {
+  readonly globals: Globals;
+  readonly effect: Effect.Effect<A, E, R>;
+  readonly waitTimeoutMs?: number;
+}): Effect.Effect<Option.Option<A>, E | Error, R> =>
+  withL1ControlPlaneWaitTimeout(
+    globals,
+    {
+      scope: "state_queue_merge",
+      waitTimeoutMs,
+      maxHoldMs: 180_000,
+    },
+    effect,
+  );
 
 const registeredMergeDueWorkSkip = (
   currentEvidence: CurrentMergeDueWorkEvidence,
@@ -222,7 +246,7 @@ const changedCandidateResult = ({
  * Runs one merge attempt, optionally bypassing the queue-length guard for
  * explicit recovery/administrative flows.
  */
-export const mergeAction = (
+const mergeActionWithL1ControlPlaneHeld = (
   force: boolean = false,
 ): Effect.Effect<
   MergeActionResult,
@@ -530,6 +554,40 @@ export const mergeAction = (
       } satisfies MergeActionResult;
     }
     return leaseResult.value;
+  });
+
+/**
+ * Runs one merge attempt under the process-wide L1 provider permit. Keeping
+ * the permit at this exported boundary serializes scheduled, manual, and
+ * reconciliation-triggered merges without requiring callers to remember a
+ * second wrapper.
+ */
+export const mergeAction = (force: boolean = false) =>
+  Effect.gen(function* () {
+    const globals = yield* Globals;
+    yield* Ref.set(globals.HEARTBEAT_MERGE, Date.now());
+    if (force) {
+      return yield* withL1ControlPlane(
+        globals,
+        { scope: "state_queue_merge", maxHoldMs: 180_000 },
+        mergeActionWithL1ControlPlaneHeld(true),
+      );
+    }
+    const attempt = yield* withScheduledMergeControlPlaneWait({
+      globals,
+      effect: mergeActionWithL1ControlPlaneHeld(false),
+    });
+    if (Option.isSome(attempt)) {
+      return attempt.value;
+    }
+    const reason = `l1_control_plane_wait_exceeded_ms=${SCHEDULED_MERGE_CONTROL_PLANE_WAIT_MS.toString()}`;
+    yield* Effect.logInfo(
+      `🔸 Skipping scheduled merge because the L1 control-plane remained busy (${reason}).`,
+    );
+    return {
+      status: "skipped_l1_control_plane_busy",
+      reason,
+    } satisfies MergeActionResult;
   });
 
 /**

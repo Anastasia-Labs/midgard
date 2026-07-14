@@ -1,7 +1,7 @@
 import { SqlClient } from "@effect/sql";
 import { Duration, Effect, Metric } from "effect";
 
-import * as AddressHistoryDB from "@/database/addressHistory.js";
+import type * as AddressHistoryDB from "@/database/addressHistory.js";
 import {
   clearTable,
   DatabaseError,
@@ -12,6 +12,7 @@ import {
 import * as Ledger from "@/database/utils/ledger.js";
 import * as Tx from "@/database/utils/tx.js";
 import { Database } from "@/services/database.js";
+import { WriteBehind } from "@/services/write-behind.js";
 import { ProcessedTx } from "@/utils.js";
 
 import * as DepositsDB from "./deposits.js";
@@ -30,22 +31,27 @@ const mempoolPersistProducedDurationTimer = Metric.timer(
   "Duration of accepted produced UTxO inserts into mempool_ledger",
 );
 
-const mempoolPersistDeltasDurationTimer = Metric.timer(
-  "mempool_persist_deltas_duration",
-  "Duration of accepted mempool tx delta upserts",
-);
-
 const mempoolPersistSpentDurationTimer = Metric.timer(
   "mempool_persist_spent_duration",
   "Duration of accepted spent-input deletion from mempool_ledger",
 );
 
-const mempoolPersistAddressHistoryDurationTimer = Metric.timer(
-  "mempool_persist_address_history_duration",
-  "Duration of accepted address-history persistence",
+const mempoolRetrievePageDurationTimer = Metric.timer(
+  "mempool_retrieve_page_duration",
+  "Duration of oldest-first mempool page retrieval",
 );
 
-const toTxDelta = (processedTx: ProcessedTx): MempoolTxDeltasDB.TxDelta => ({
+const mempoolRetrievePageRowsGauge = Metric.gauge(
+  "mempool_retrieve_page_rows",
+  {
+    description: "Rows returned by the latest mempool page retrieval",
+    bigint: true,
+  },
+);
+
+export const toTxDelta = (
+  processedTx: ProcessedTx,
+): MempoolTxDeltasDB.TxDelta => ({
   txId: processedTx.txId,
   spent: processedTx.spent.map((outRef) => Buffer.from(outRef)),
   produced: processedTx.produced.map((entry) => ({
@@ -54,92 +60,136 @@ const toTxDelta = (processedTx: ProcessedTx): MempoolTxDeltasDB.TxDelta => ({
   })),
 });
 
-export const insert = (
-  processedTx: ProcessedTx,
-): Effect.Effect<void, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    const { txId, txCbor, spent, produced } = processedTx;
-    yield* sql.withTransaction(
-      Effect.gen(function* () {
-        // Insert the tx itself in `MempoolDB`.
-        yield* Tx.insertEntry(tableName, {
-          tx_id: txId,
-          tx: txCbor,
-        });
-        // Insert produced UTxOs in `MempoolLedgerDB`.
-        yield* MempoolLedgerDB.insert(produced);
-        yield* MempoolTxDeltasDB.upsertMany([toTxDelta(processedTx)]);
-        // Remove spent inputs from MempoolLedgerDB.
-        const consumedDepositEventIds =
-          yield* MempoolLedgerDB.clearUTxOs(spent);
-        yield* DepositsDB.markConsumedByEventIds(consumedDepositEventIds);
-        // Add handled addresses to the lookup table
-        yield* AddressHistoryDB.insert(spent, produced);
-      }),
-    );
-  }).pipe(
-    Effect.withLogSpan(`insert ${tableName}`),
-    Effect.tapError((e) => logDatabaseError(tableName, "insert", e)),
-    sqlErrorToDatabaseError(tableName, "Failed to insert mempool transaction"),
-  );
+export const toAddressHistoryEntries = (
+  processedTxs: readonly ProcessedTx[],
+): readonly AddressHistoryDB.Entry[] => {
+  const unique = new Map<string, AddressHistoryDB.Entry>();
+  for (const processedTx of processedTxs) {
+    for (const entry of processedTx.produced) {
+      const address = entry[Ledger.Columns.ADDRESS];
+      unique.set(`${processedTx.txId.toString("hex")}:${address}`, {
+        [Ledger.Columns.TX_ID]: processedTx.txId,
+        [Ledger.Columns.ADDRESS]: address,
+      });
+    }
+  }
+  return [...unique.values()];
+};
 
-export const insertMultiple = (
-  processedTxs: ProcessedTx[],
+export const compactLedgerEffects = (
+  processedTxs: readonly ProcessedTx[],
+): {
+  readonly produced: readonly Ledger.Entry[];
+  readonly spent: readonly Buffer[];
+} => {
+  const produced = processedTxs.flatMap((tx) => tx.produced);
+  const producedOutRefs = new Set(
+    produced.map((entry) => entry[Ledger.Columns.OUTREF].toString("hex")),
+  );
+  const spentByOutRef = new Map<string, Buffer>();
+  for (const tx of processedTxs) {
+    for (const spent of tx.spent) {
+      const outRefHex = spent.toString("hex");
+      if (!producedOutRefs.has(outRefHex)) {
+        spentByOutRef.set(outRefHex, spent);
+      }
+    }
+  }
+  const spentOutRefs = new Set(
+    processedTxs.flatMap((tx) =>
+      tx.spent.map((spent) => spent.toString("hex")),
+    ),
+  );
+  return {
+    produced: produced.filter(
+      (entry) =>
+        !spentOutRefs.has(entry[Ledger.Columns.OUTREF].toString("hex")),
+    ),
+    spent: [...spentByOutRef.values()],
+  };
+};
+
+export const enqueueAcceptedWriteBehind = (
+  processedTxs: readonly ProcessedTx[],
+): Effect.Effect<void, DatabaseError, WriteBehind> =>
+  Effect.gen(function* () {
+    if (processedTxs.length === 0) {
+      return;
+    }
+    const writeBehind = yield* WriteBehind;
+    yield* writeBehind.enqueueTxDeltas(processedTxs.map(toTxDelta));
+    yield* writeBehind.enqueueAddressHistory(
+      toAddressHistoryEntries(processedTxs),
+    );
+  });
+
+export const insertMultipleCore = (
+  processedTxs: readonly ProcessedTx[],
 ): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
     if (processedTxs.length === 0) {
       return;
     }
-    const sql = yield* SqlClient.SqlClient;
     const txEntries = processedTxs.map((v) => ({
       tx_id: v.txId,
       tx: v.txCbor,
     }));
-    yield* sql.withTransaction(
-      Effect.gen(function* () {
-        // Insert the tx itself in `MempoolDB`.
-        const txRowsStartedAt = Date.now();
-        yield* Tx.insertEntries(tableName, txEntries);
-        yield* mempoolPersistTxRowsDurationTimer(
-          Effect.succeed(Duration.millis(Date.now() - txRowsStartedAt)),
-        );
-
-        const allProduced = processedTxs.flatMap((tx) => tx.produced);
-        const allSpent = processedTxs.flatMap((tx) => tx.spent);
-
-        // Insert produced UTxOs in `MempoolLedgerDB`.
-        const producedStartedAt = Date.now();
-        yield* MempoolLedgerDB.insert(allProduced);
-        yield* mempoolPersistProducedDurationTimer(
-          Effect.succeed(Duration.millis(Date.now() - producedStartedAt)),
-        );
-        const deltasStartedAt = Date.now();
-        yield* MempoolTxDeltasDB.upsertMany(processedTxs.map(toTxDelta));
-        yield* mempoolPersistDeltasDurationTimer(
-          Effect.succeed(Duration.millis(Date.now() - deltasStartedAt)),
-        );
-        // Remove spent inputs from MempoolLedgerDB.
-        const spentStartedAt = Date.now();
-        const consumedDepositEventIds =
-          yield* MempoolLedgerDB.clearUTxOs(allSpent);
-        yield* DepositsDB.markConsumedByEventIds(consumedDepositEventIds);
-        yield* mempoolPersistSpentDurationTimer(
-          Effect.succeed(Duration.millis(Date.now() - spentStartedAt)),
-        );
-        // Update AddressHistoryDB
-        const addressHistoryStartedAt = Date.now();
-        yield* AddressHistoryDB.insert(allSpent, allProduced);
-        yield* mempoolPersistAddressHistoryDurationTimer(
-          Effect.succeed(Duration.millis(Date.now() - addressHistoryStartedAt)),
-        );
-      }),
+    const txRowsStartedAt = Date.now();
+    yield* Tx.insertEntries(tableName, txEntries);
+    yield* mempoolPersistTxRowsDurationTimer(
+      Effect.succeed(Duration.millis(Date.now() - txRowsStartedAt)),
     );
+
+    yield* applyLedgerEffectsCore(processedTxs);
+  });
+
+export const applyLedgerEffectsCore = (
+  processedTxs: readonly ProcessedTx[],
+): Effect.Effect<void, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    if (processedTxs.length === 0) {
+      return;
+    }
+
+    // Phase B may accept dependency chains in one batch. Persist only the net
+    // ledger transition: intermediate outputs do not need to be inserted and
+    // immediately deleted inside the same transaction.
+    const { produced, spent } = compactLedgerEffects(processedTxs);
+
+    const producedStartedAt = Date.now();
+    yield* MempoolLedgerDB.insert(produced);
+    yield* mempoolPersistProducedDurationTimer(
+      Effect.succeed(Duration.millis(Date.now() - producedStartedAt)),
+    );
+
+    const spentStartedAt = Date.now();
+    const consumedDepositEventIds = yield* MempoolLedgerDB.clearUTxOs(spent);
+    yield* DepositsDB.markConsumedByEventIds(consumedDepositEventIds);
+    yield* mempoolPersistSpentDurationTimer(
+      Effect.succeed(Duration.millis(Date.now() - spentStartedAt)),
+    );
+  });
+
+export const insertMultiple = (
+  processedTxs: readonly ProcessedTx[],
+): Effect.Effect<void, DatabaseError, Database | WriteBehind> =>
+  Effect.gen(function* () {
+    if (processedTxs.length === 0) {
+      return;
+    }
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql.withTransaction(insertMultipleCore(processedTxs));
+    yield* enqueueAcceptedWriteBehind(processedTxs);
   }).pipe(
     Effect.withLogSpan(`insert ${tableName}`),
     Effect.tapError((e) => logDatabaseError(tableName, "insert", e)),
     sqlErrorToDatabaseError(tableName, "Failed to insert mempool transactions"),
   );
+
+export const insert = (
+  processedTx: ProcessedTx,
+): Effect.Effect<void, DatabaseError, Database | WriteBehind> =>
+  insertMultiple([processedTx]);
 
 /**
  * Retrieves mempool transaction CBOR by transaction hash.
@@ -150,26 +200,73 @@ export const retrieveTxCborByHash = (txHash: Buffer) =>
 /**
  * Retrieves mempool transaction CBOR blobs for a batch of hashes.
  */
-export const retrieveTxCborsByHashes = (txHashes: Buffer[]) =>
-  Tx.retrieveValues(tableName, txHashes);
+export const retrieveTxCborsByHashes = (
+  txHashes: Buffer[] | readonly Buffer[],
+) => Tx.retrieveValues(tableName, txHashes);
 
-export const retrieve: Effect.Effect<
-  readonly Tx.EntryWithTimeStamp[],
-  DatabaseError,
-  Database
-> = Effect.gen(function* () {
-  yield* Effect.logDebug(`${tableName} db: attempt to retrieve keyValues`);
-  const sql = yield* SqlClient.SqlClient;
-  return yield* sql<Tx.EntryWithTimeStamp>`SELECT ${sql(
-    Tx.Columns.TX_ID,
-  )}, ${sql(Tx.Columns.TX)}, ${sql(Tx.Columns.TIMESTAMPTZ)} FROM ${sql(tableName)} ORDER BY ${sql(Tx.Columns.TIMESTAMPTZ)} DESC LIMIT 100000`;
-}).pipe(
-  Effect.withLogSpan(`retrieve ${tableName}`),
-  Effect.tapErrorTag("SqlError", (e) =>
-    logDatabaseError(tableName, "retrieve", e),
-  ),
-  sqlErrorToDatabaseError(tableName, "Failed to retrieve given transactions"),
-);
+export type MempoolCursor = {
+  readonly timeStampTz: Date;
+  readonly txId: Buffer;
+};
+
+export type MempoolPage = {
+  readonly entries: readonly Tx.EntryWithTimeStamp[];
+  readonly nextCursor: MempoolCursor | null;
+};
+
+export const retrievePage = ({
+  after,
+  limit,
+  upTo,
+}: {
+  readonly after?: MempoolCursor;
+  readonly limit: number;
+  readonly upTo?: Date;
+}): Effect.Effect<MempoolPage, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    yield* Effect.logDebug(`${tableName} db: attempt to retrieve page`);
+    const startedAt = Date.now();
+    const sql = yield* SqlClient.SqlClient;
+    const pageLimit = Math.max(1, Math.floor(limit));
+    const afterTime = after?.timeStampTz ?? null;
+    const afterTxId = after?.txId ?? null;
+    const upperTime = upTo ?? null;
+    const rows = yield* sql<Tx.EntryWithTimeStamp>`
+      SELECT
+        ${sql(Tx.Columns.TX_ID)},
+        ${sql(Tx.Columns.TX)},
+        ${sql(Tx.Columns.TIMESTAMPTZ)}
+      FROM ${sql(tableName)}
+      WHERE ((${afterTime}::timestamptz IS NULL)
+        OR (${sql(Tx.Columns.TIMESTAMPTZ)}, ${sql(Tx.Columns.TX_ID)}) >
+           (${afterTime}::timestamptz, ${afterTxId}::bytea))
+        AND (${upperTime}::timestamptz IS NULL
+        OR ${sql(Tx.Columns.TIMESTAMPTZ)} <= ${upperTime}::timestamptz)
+      ORDER BY ${sql(Tx.Columns.TIMESTAMPTZ)} ASC, ${sql(Tx.Columns.TX_ID)} ASC
+      LIMIT ${pageLimit}`;
+    const entries: readonly Tx.EntryWithTimeStamp[] = rows;
+    yield* mempoolRetrievePageDurationTimer(
+      Effect.succeed(Duration.millis(Date.now() - startedAt)),
+    );
+    yield* mempoolRetrievePageRowsGauge(Effect.succeed(BigInt(entries.length)));
+    const last = entries.at(-1);
+    return {
+      entries,
+      nextCursor:
+        entries.length === pageLimit && last !== undefined
+          ? {
+              timeStampTz: last[Tx.Columns.TIMESTAMPTZ],
+              txId: last[Tx.Columns.TX_ID],
+            }
+          : null,
+    };
+  }).pipe(
+    Effect.withLogSpan(`retrievePage ${tableName}`),
+    Effect.tapErrorTag("SqlError", (e) =>
+      logDatabaseError(tableName, "retrievePage", e),
+    ),
+    sqlErrorToDatabaseError(tableName, "Failed to retrieve mempool page"),
+  );
 
 export const retrieveTxCount: Effect.Effect<bigint, DatabaseError, Database> =
   retrieveNumberOfEntries(tableName);

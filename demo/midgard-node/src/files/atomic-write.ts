@@ -1,4 +1,13 @@
-import { chmod, mkdir, rename, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  link,
+  mkdir,
+  open,
+  rename,
+  rm,
+  unlink,
+  type FileHandle,
+} from "node:fs/promises";
 import { dirname } from "node:path";
 
 export type AtomicWriteOptions = {
@@ -16,20 +25,68 @@ export const writeTextFileAtomic = async (
   options: AtomicWriteOptions = {},
 ): Promise<void> => {
   await mkdir(dirname(path), { recursive: true });
+  const parentPath = dirname(path);
   const tempPath = tempPathFor(path);
+  let tempHandle: FileHandle | undefined;
   try {
-    await writeFile(tempPath, contents, {
-      encoding: "utf8",
-      ...(options.mode === undefined ? {} : { mode: options.mode }),
-    });
+    tempHandle = await open(tempPath, "wx", options.mode ?? 0o666);
+    await tempHandle.writeFile(contents, { encoding: "utf8" });
     if (options.mode !== undefined) {
       await chmod(tempPath, options.mode);
     }
+    await tempHandle.sync();
+    await tempHandle.close();
+    tempHandle = undefined;
+
     await rename(tempPath, path);
-    if (options.mode !== undefined) {
-      await chmod(path, options.mode);
+    const parentHandle = await open(parentPath, "r");
+    try {
+      await parentHandle.sync();
+    } finally {
+      await parentHandle.close();
     }
   } catch (error) {
+    if (tempHandle !== undefined) {
+      await tempHandle.close().catch(() => {});
+    }
+    await rm(tempPath, { force: true }).catch(() => {});
+    throw error;
+  }
+};
+
+export const writeTextFileAtomicNoReplace = async (
+  path: string,
+  contents: string,
+  options: AtomicWriteOptions = {},
+): Promise<void> => {
+  await mkdir(dirname(path), { recursive: true });
+  const parentPath = dirname(path);
+  const tempPath = tempPathFor(path);
+  let tempHandle: FileHandle | undefined;
+  try {
+    tempHandle = await open(tempPath, "wx", options.mode ?? 0o666);
+    await tempHandle.writeFile(contents, { encoding: "utf8" });
+    if (options.mode !== undefined) {
+      await chmod(tempPath, options.mode);
+    }
+    await tempHandle.sync();
+    await tempHandle.close();
+    tempHandle = undefined;
+
+    // Hard-link publication is atomic and fails with EEXIST rather than
+    // replacing immutable evidence created by another writer.
+    await link(tempPath, path);
+    await unlink(tempPath);
+    const parentHandle = await open(parentPath, "r");
+    try {
+      await parentHandle.sync();
+    } finally {
+      await parentHandle.close();
+    }
+  } catch (error) {
+    if (tempHandle !== undefined) {
+      await tempHandle.close().catch(() => {});
+    }
     await rm(tempPath, { force: true }).catch(() => {});
     throw error;
   }

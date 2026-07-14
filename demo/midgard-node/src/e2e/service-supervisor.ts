@@ -7,7 +7,14 @@ import {
   type E2EEnvProvenance,
 } from "@/e2e/env.js";
 import { runLoggedChildProcessAttempt } from "@/e2e/logged-child-process.js";
+import type {
+  FileTerminationObservation,
+  FileTerminationSpec,
+  OutputTerminationObservation,
+  OutputTerminationSpec,
+} from "@/e2e/logged-child-process.js";
 import type { ChildProcessCleanupResult } from "@/e2e/process-cleanup.js";
+import type { OwnedProcessGroupSpec } from "@/e2e/process-ownership.js";
 import { redactArg, type RedactedCommand } from "@/e2e/runner.js";
 
 export const E2E_SERVICE_SUPERVISOR_SCHEMA_VERSION =
@@ -61,7 +68,10 @@ export type HostProcessServiceSpec = {
   readonly maxRestarts?: number;
   readonly restartBackoffMs?: number;
   readonly timeoutMs?: number;
+  readonly terminateOnOutput?: OutputTerminationSpec;
+  readonly terminateOnFile?: FileTerminationSpec;
   readonly sleep?: (milliseconds: number) => Promise<void>;
+  readonly ownership?: OwnedProcessGroupSpec;
 };
 
 export type ServiceAttemptSummary = {
@@ -75,6 +85,8 @@ export type ServiceAttemptSummary = {
   readonly timedOut: boolean;
   readonly classification: ServiceErrorClassification;
   readonly cleanup: ChildProcessCleanupResult | null;
+  readonly outputTermination: OutputTerminationObservation | null;
+  readonly fileTermination: FileTerminationObservation | null;
 };
 
 export type ServiceSupervisorSummary = {
@@ -306,6 +318,8 @@ const runAttempt = async (
     env: resolvedEnv.env,
     rawLogPath: spec.rawLogPath,
     timeoutMs: spec.timeoutMs,
+    terminateOnOutput: spec.terminateOnOutput,
+    terminateOnFile: spec.terminateOnFile,
     startedAtDate,
     startEvent: ({ pid, startedAt }) => ({
       event: "e2e_service_start",
@@ -322,27 +336,38 @@ const runAttempt = async (
       at,
       cleanup,
     }),
+    ownership: spec.ownership,
   });
   const classification: ServiceErrorClassification =
-    attemptResult.error !== null
+    attemptResult.outputTermination !== null ||
+    attemptResult.fileTermination !== null
       ? {
-          class: "supervisor_failure",
-          reason: attemptResult.error.message,
-          restartable: false,
+          class: "restartable_runtime",
+          reason:
+            attemptResult.outputTermination !== null
+              ? `service was externally terminated after output marker ${attemptResult.outputTermination.marker}`
+              : `service was externally terminated after stop file ${attemptResult.fileTermination!.path}`,
+          restartable: true,
         }
-      : attemptResult.timedOut
+      : attemptResult.error !== null
         ? {
-            class: "restartable_runtime",
-            reason: `service timed out after ${spec.timeoutMs?.toString()}ms`,
-            restartable: true,
+            class: "supervisor_failure",
+            reason: attemptResult.error.message,
+            restartable: false,
           }
-        : attemptResult.exitCode === 0
+        : attemptResult.timedOut
           ? {
-              class: "unknown",
-              reason: "service exited successfully",
-              restartable: false,
+              class: "restartable_runtime",
+              reason: `service timed out after ${spec.timeoutMs?.toString()}ms`,
+              restartable: true,
             }
-          : classifyServiceError({ text: attemptResult.combinedOutput });
+          : attemptResult.exitCode === 0
+            ? {
+                class: "unknown",
+                reason: "service exited successfully",
+                restartable: false,
+              }
+            : classifyServiceError({ text: attemptResult.combinedOutput });
   return {
     summary: {
       attempt,
@@ -355,6 +380,8 @@ const runAttempt = async (
       timedOut: attemptResult.timedOut,
       classification,
       cleanup: attemptResult.cleanup,
+      outputTermination: attemptResult.outputTermination,
+      fileTermination: attemptResult.fileTermination,
     },
     output: attemptResult.combinedOutput,
   };

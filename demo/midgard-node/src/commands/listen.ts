@@ -13,7 +13,16 @@ import { SqlClient } from "@effect/sql";
 import { PrometheusExporter } from "@opentelemetry/exporter-prometheus";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
-import { Cause, Duration, Effect, Layer, Option, pipe, Schedule } from "effect";
+import {
+  Cause,
+  Duration,
+  Effect,
+  Layer,
+  Option,
+  pipe,
+  Ref,
+  Schedule,
+} from "effect";
 
 import { buildListenRouter } from "@/commands/listen-router.js";
 import {
@@ -22,12 +31,30 @@ import {
   seedLatestLocalBlockBoundaryOnStartup,
 } from "@/commands/listen-startup.js";
 import { shouldRunGenesisOnStartup } from "@/commands/startup-policy.js";
-import { startDaLibp2pRetainedPayloadServerFromEnv } from "@/da/libp2p-producer.js";
-import { DaPayloadsDB, InitDB, MutationJobsDB } from "@/database/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
 import {
+  closeDaLibp2pPublicationTransport,
+  startDaLibp2pRetainedPayloadServerFromEnv,
+} from "@/da/libp2p-producer.js";
+import {
+  assertDaHardeningProviderStartup,
+  prepareDaHardeningStartup,
+  runDaIdentityGatedStartupSequence,
+} from "@/da/startup.js";
+import {
+  DaPayloadsDB,
+  InitDB,
+  MempoolLedgerDB,
+  MpfEngineStateDB,
+  MutationJobsDB,
+  PendingBlockFinalizationsDB,
+} from "@/database/index.js";
+import { DatabaseError } from "@/database/utils/common.js";
+import { assertPhase1AcceptCrashCheckpointConfiguration } from "@/e2e/phase1-accept-crash-checkpoint.js";
+import {
+  admissionBacklogGaugeFiber,
   blockCommitmentFiber,
   blockConfirmationFiber,
+  daPublicationReconcilerFiber,
   fetchAndInsertDepositUTxOs,
   fetchAndInsertDepositUTxOsFiber,
   fetchAndInsertTxOrderUTxOs,
@@ -36,22 +63,38 @@ import {
   fetchAndInsertWithdrawalUTxOsFiber,
   mergeFiber,
   monitorMempoolFiber,
+  mpfPayloadAuditFiber,
   projectDepositsToMempoolLedger,
   projectDepositsToMempoolLedgerFiber,
+  refreshAdmissionBacklogGauge,
   retentionSweeperFiber,
+  speculativeCommitBuilderFiber,
+  speculativeCommitSubmitterFiber,
   txQueueProcessorFiber,
+  userEventBarrierRefresherFiber,
 } from "@/fibers/index.js";
 import * as Genesis from "@/genesis.js";
 import {
+  admissionAsDefaultSqlLayer,
+  AdmissionSql,
+  AdmissionWriter,
+  BatchSql,
   ConfigError,
   Database,
   DatabaseInitializationError,
   Globals,
   Lucid,
+  mempoolLedgerCacheLayer,
   MidgardContracts,
   NodeConfig,
+  type NodeConfigDep,
+  ProductionNativeMpfOwnerService,
+  validationPoolLayer,
+  WriteBehind,
+  writeBehindFiber,
 } from "@/services/index.js";
 import { backfillMissingDaPayloadsFromFinalizedJournals } from "@/workers/commit-block-header/da-payload-backfill.js";
+import { MidgardMpf, utxoToInsertBatchOp } from "@/workers/utils/mpf.js";
 
 const logStartupFailure = (message: string) => (error: unknown) =>
   Effect.logError(`${message}: ${formatUnknownError(error)}`);
@@ -160,6 +203,126 @@ const retainedPayloadServerThread = (
     ),
   );
 
+const initializeArchitectureGOwner = (
+  globals: Globals,
+  nodeConfig: NodeConfigDep,
+): Effect.Effect<
+  ProductionNativeMpfOwnerService | undefined,
+  unknown,
+  Database
+> =>
+  Effect.gen(function* () {
+    if (nodeConfig.MPF_ENGINE !== "architecture_g") return undefined;
+
+    const bootstrap = yield* MidgardMpf.create(
+      "architecture-g-bootstrap",
+      nodeConfig.LEDGER_MPF_DB_PATH,
+      {
+        engine: "overlay",
+        spillThresholdBytes: nodeConfig.MPF_OVERLAY_SPILL_BYTES,
+      },
+    );
+    const initialized = yield* Effect.either(
+      Effect.gen(function* () {
+        if (yield* bootstrap.rootIsEmpty()) {
+          const genesisEntries = yield* Effect.forEach(
+            nodeConfig.GENESIS_UTXOS,
+            (utxo) =>
+              utxoToInsertBatchOp(utxo).pipe(
+                Effect.map((op) => ({
+                  op,
+                  ledgerEntry: {
+                    [MempoolLedgerDB.Columns.TX_ID]: Buffer.from(
+                      utxo.txHash,
+                      "hex",
+                    ),
+                    [MempoolLedgerDB.Columns.OUTREF]: op.key,
+                    [MempoolLedgerDB.Columns.OUTPUT]: op.value,
+                    [MempoolLedgerDB.Columns.ADDRESS]: utxo.address,
+                    [MempoolLedgerDB.Columns.SOURCE_EVENT_ID]: null,
+                  } satisfies MempoolLedgerDB.EntryNoTimeStamp,
+                })),
+              ),
+          );
+          if (genesisEntries.length === 0) {
+            return yield* Effect.fail(
+              new Error(
+                "Architecture G cannot initialize an empty ledger owner without genesis UTxOs",
+              ),
+            );
+          }
+          yield* MempoolLedgerDB.insert(
+            genesisEntries.map(({ ledgerEntry }) => ledgerEntry),
+          );
+          yield* bootstrap.applyBatch(genesisEntries.map(({ op }) => op));
+        }
+        const root = yield* bootstrap.rootHex();
+        yield* MpfEngineStateDB.stampLedgerMigration(root);
+      }),
+    );
+    yield* bootstrap.close().pipe(Effect.catchAll(() => Effect.void));
+    if (initialized._tag === "Left")
+      return yield* Effect.fail(initialized.left);
+
+    const owner = yield* Effect.tryPromise({
+      try: () =>
+        ProductionNativeMpfOwnerService.create({
+          levelPath: nodeConfig.LEDGER_MPF_DB_PATH,
+          binaryPath: nodeConfig.MPF_NATIVE_OWNER_BINARY_PATH,
+          binarySha256: nodeConfig.MPF_NATIVE_OWNER_BINARY_SHA256,
+          maxFrameBytes: nodeConfig.MPF_NATIVE_OWNER_MAX_FRAME_BYTES,
+          maxChunkBytes: nodeConfig.MPF_NATIVE_OWNER_MAX_CHUNK_BYTES,
+          requestTimeoutMs: nodeConfig.MPF_NATIVE_OWNER_REQUEST_TIMEOUT_MS,
+          restartLimit: nodeConfig.MPF_NATIVE_OWNER_RESTART_LIMIT,
+          sidecarPath: nodeConfig.MPF_NATIVE_OWNER_SIDECAR_PATH,
+        }),
+      catch: (cause) => cause,
+    });
+    const startup = yield* Effect.either(
+      Effect.gen(function* () {
+        const active = yield* PendingBlockFinalizationsDB.retrieveActive();
+        if (Option.isSome(active)) {
+          const journal = active.value;
+          const replay = journal.nativeMpfReplay;
+          const submitted =
+            journal[PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH] !==
+            null;
+          if (submitted && replay === undefined) {
+            return yield* Effect.fail(
+              new Error(
+                `Architecture G active submitted journal is missing replay data: header_hash=${journal[PendingBlockFinalizationsDB.Columns.HEADER_HASH].toString("hex")}`,
+              ),
+            );
+          }
+          if (submitted && replay !== undefined) {
+            yield* Effect.tryPromise({
+              try: () =>
+                owner.recover({
+                  schema: 1,
+                  ownerBinarySha256: replay.ownerBinarySha256.toString("hex"),
+                  baseRoot: replay.baseRoot.toString("hex"),
+                  candidateRoot: replay.candidateRoot.toString("hex"),
+                  eventLog: replay.eventLog,
+                  eventLogDigest: replay.eventLogDigest.toString("hex"),
+                  eventRoots: replay.eventRoots,
+                  eventCount: replay.eventCount,
+                }),
+              catch: (cause) => cause,
+            });
+          }
+        }
+        yield* Ref.set(globals.NATIVE_MPF_OWNER, owner);
+      }),
+    );
+    if (startup._tag === "Left") {
+      yield* Effect.promise(() => owner.close()).pipe(
+        Effect.catchAll(() => Effect.void),
+      );
+      return yield* Effect.fail(startup.left);
+    }
+    return owner;
+  });
+
 /**
  * Boots the long-running Midgard node runtime.
  *
@@ -171,18 +334,49 @@ export const runNode = (
   withMonitoring?: boolean,
 ): Effect.Effect<
   void,
-  ConfigError | DatabaseError | DatabaseInitializationError,
-  NodeConfig | Database | MidgardContracts | Lucid | Globals
+  | ConfigError
+  | DatabaseError
+  | DatabaseInitializationError
+  | import("@/services/validation-pool.js").ValidationWorkerError,
+  | NodeConfig
+  | Database
+  | AdmissionSql
+  | AdmissionWriter
+  | BatchSql
+  | import("@/services/midgard-contracts.js").ContractDeploymentIdentity
+  | MidgardContracts
+  | Lucid
+  | WriteBehind
+  | Globals
 > =>
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfig;
+    const globals = yield* Globals;
 
-    yield* InitDB.program.pipe(Effect.provide(Database.layer));
-    yield* ensureProtocolInitializedOnStartup;
+    yield* assertPhase1AcceptCrashCheckpointConfiguration;
     const startupProviderRetry = {
       maxAttempts: nodeConfig.STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS,
       retryDelayMs: nodeConfig.STARTUP_PROTOCOL_STATUS_QUERY_RETRY_DELAY_MS,
     } as const;
+    yield* runDaIdentityGatedStartupSequence({
+      localPreflight: prepareDaHardeningStartup.pipe(
+        Effect.tapError(
+          logStartupFailure("Startup DA identity preflight failed"),
+        ),
+      ),
+      initializeDatabase: InitDB.program.pipe(Effect.provide(Database.layer)),
+      initializeProtocol: ensureProtocolInitializedOnStartup,
+      providerAssertions: (preflight) =>
+        runStartupProviderStepWithRetry(
+          "Startup DA provider assertions",
+          assertDaHardeningProviderStartup(preflight),
+          startupProviderRetry,
+        ).pipe(
+          Effect.tapError(
+            logStartupFailure("Startup DA provider assertions failed"),
+          ),
+        ),
+    });
     yield* runStartupProviderStepWithRetry(
       "Startup state-queue boundary seed",
       seedLatestLocalBlockBoundaryOnStartup,
@@ -310,9 +504,26 @@ export const runNode = (
       );
     }
 
+    yield* refreshAdmissionBacklogGauge;
+    const nativeMpfOwner = yield* initializeArchitectureGOwner(
+      globals,
+      nodeConfig,
+    ).pipe(
+      Effect.mapError(
+        (cause) =>
+          new DatabaseInitializationError({
+            message: "Architecture G native owner startup failed",
+            cause,
+          }),
+      ),
+    );
+
+    const httpApplicationLayer = HttpServer.serve(
+      buildListenRouter(withMonitoring),
+    ).pipe(Layer.provide(admissionAsDefaultSqlLayer));
     const appThread = Layer.launch(
       Layer.provide(
-        HttpServer.serve(buildListenRouter(withMonitoring)),
+        httpApplicationLayer,
         NodeHttpServer.layer(createServer, { port: nodeConfig.PORT }),
       ),
     );
@@ -335,14 +546,32 @@ export const runNode = (
 
     const program = Effect.all(
       [
+        admissionBacklogGaugeFiber(
+          mkSchedule(nodeConfig.ADMISSION_BACKLOG_REFRESH_MS),
+        ),
+        writeBehindFiber,
         appThread,
         retainedPayloadServerThread(retrieveRetainedDaPayload),
+        daPublicationReconcilerFiber(
+          mkSchedule(nodeConfig.MIDGARD_DA_PUBLISH_RECONCILE_INTERVAL_MS),
+        ),
         blockCommitmentFiber(
           mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENT),
         ),
         blockConfirmationFiber(
           mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_CONFIRMATION),
         ),
+        nodeConfig.SPECULATIVE_COMMIT_BUILD
+          ? userEventBarrierRefresherFiber(
+              mkSchedule(nodeConfig.USER_EVENT_BARRIER_REFRESH_MS),
+            )
+          : Effect.void,
+        nodeConfig.SPECULATIVE_COMMIT_BUILD
+          ? speculativeCommitBuilderFiber
+          : Effect.void,
+        nodeConfig.SPECULATIVE_COMMIT_BUILD
+          ? speculativeCommitSubmitterFiber
+          : Effect.void,
         fetchAndInsertDepositUTxOsFiber(
           mkSchedule(nodeConfig.WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES),
         ),
@@ -359,13 +588,25 @@ export const runNode = (
           mkSchedule(nodeConfig.WAIT_BETWEEN_RETENTION_SWEEPS),
         ),
         mergeFiber(mkSchedule(nodeConfig.WAIT_BETWEEN_MERGE_TXS)),
+        mpfPayloadAuditFiber,
         withMonitoring ? monitorMempoolFiber(mkSchedule(1000)) : Effect.void,
-        txQueueProcessorFiber(mkSchedule(500)),
+        txQueueProcessorFiber(mkSchedule(nodeConfig.TX_QUEUE_POLL_INTERVAL_MS)),
       ],
       {
         concurrency: "unbounded",
       },
     );
+
+    const closeNativeMpfOwner =
+      nativeMpfOwner === undefined
+        ? Effect.void
+        : Effect.promise(() => nativeMpfOwner.close()).pipe(
+            Effect.catchAll((error) =>
+              Effect.logError(
+                `Architecture G native owner shutdown failed: ${formatUnknownError(error)}`,
+              ),
+            ),
+          );
 
     if (withMonitoring) {
       const prometheusExporter = new PrometheusExporter(
@@ -398,12 +639,37 @@ export const runNode = (
         Effect.withSpan("midgard"),
         Effect.provide(MetricsLive),
         Effect.catchAllCause(Effect.logError),
+        Effect.ensuring(
+          Effect.all(
+            [
+              Effect.promise(closeDaLibp2pPublicationTransport).pipe(
+                Effect.catchAll(() => Effect.void),
+              ),
+              closeNativeMpfOwner,
+            ],
+            { discard: true },
+          ),
+        ),
       );
     } else {
       yield* pipe(
         program,
         Effect.withSpan("midgard"),
         Effect.catchAllCause(Effect.logError),
+        Effect.ensuring(
+          Effect.all(
+            [
+              Effect.promise(closeDaLibp2pPublicationTransport).pipe(
+                Effect.catchAll(() => Effect.void),
+              ),
+              closeNativeMpfOwner,
+            ],
+            { discard: true },
+          ),
+        ),
       );
     }
-  });
+  }).pipe(
+    Effect.provide(validationPoolLayer),
+    Effect.provide(mempoolLedgerCacheLayer),
+  );

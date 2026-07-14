@@ -134,7 +134,10 @@ const parsePlanShape = (value: string): OpenLoopCorpusShape => {
   throw new Error(`unsupported corpus planShape ${value}`);
 };
 
-const parseCorpusLine = (line: string, index: number): OpenLoopCorpusRow => {
+export const parseOpenLoopCorpusLine = (
+  line: string,
+  index: number,
+): OpenLoopCorpusRow => {
   let parsed: unknown;
   try {
     parsed = JSON.parse(line) as unknown;
@@ -222,7 +225,7 @@ export const parseOpenLoopCorpusNdjson = (
     .split(/\r?\n/u)
     .map((line) => line.trim())
     .filter((line) => line.length > 0)
-    .map((line, index) => parseCorpusLine(line, index + 1));
+    .map((line, index) => parseOpenLoopCorpusLine(line, index + 1));
 
 export const planOpenLoopCorpus = ({
   rows,

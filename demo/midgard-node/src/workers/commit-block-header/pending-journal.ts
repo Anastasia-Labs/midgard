@@ -7,14 +7,21 @@ import {
   StateQueueMutationLeasesDB,
 } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
+import * as Ledger from "@/database/utils/ledger.js";
 import { type Database, Lucid } from "@/services/index.js";
 import {
   serializeStateQueueUTxO,
   type WorkerInput,
 } from "@/workers/utils/commit-block-header.js";
+import {
+  computeLedgerMpfRootFromLedgerEntries,
+  computeUtxoPayloadRoot,
+  type LedgerDelta,
+  type UtxoPayloadEntry,
+} from "@/workers/utils/mpf.js";
 
 import {
-  fetchLatestCommittedBlockLocal,
+  fetchExpectedStateQueueTailLocal,
   getConfirmedStateFromStateQueueDatumLocal,
   getHeaderFromStateQueueDatumLocal,
   stateQueueBaseHeaderHash,
@@ -49,6 +56,125 @@ const baseRootsFromStateQueueTail = (
       depositsRoot: header.depositsRoot,
       withdrawalsRoot: header.withdrawalsRoot,
     };
+  });
+
+export const resolvePendingJournalLedgerState = ({
+  recordedBaseUtxosRoot,
+  selectedBaseUtxosRoot,
+  expectedFinalUtxosRoot,
+  expectedFinalEntryCount,
+  implicitGenesisEntries,
+  transitionDelta,
+}: {
+  readonly recordedBaseUtxosRoot: string;
+  readonly selectedBaseUtxosRoot: string;
+  readonly expectedFinalUtxosRoot: string;
+  readonly expectedFinalEntryCount: number;
+  readonly implicitGenesisEntries: readonly Ledger.MinimalEntry[];
+  readonly transitionDelta: LedgerDelta;
+}): Effect.Effect<
+  | {
+      readonly ledgerDelta: LedgerDelta;
+      readonly utxoEntries: readonly [];
+    }
+  | {
+      readonly ledgerDelta: undefined;
+      readonly utxoEntries: readonly UtxoPayloadEntry[];
+    },
+  DatabaseError
+> =>
+  Effect.gen(function* () {
+    if (recordedBaseUtxosRoot === selectedBaseUtxosRoot) {
+      return { ledgerDelta: transitionDelta, utxoEntries: [] };
+    }
+    if (
+      recordedBaseUtxosRoot !== SDK.EMPTY_MERKLE_TREE_ROOT ||
+      implicitGenesisEntries.length === 0
+    ) {
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: PendingBlockFinalizationsDB.tableName,
+          message:
+            "Refusing to journal ledger state whose selected MPF base differs from the recorded state-queue base",
+          cause: `recorded_base_root=${recordedBaseUtxosRoot},selected_base_root=${selectedBaseUtxosRoot},implicit_genesis_entries=${implicitGenesisEntries.length.toString()}`,
+        }),
+      );
+    }
+    const implicitGenesisRoot = yield* computeLedgerMpfRootFromLedgerEntries(
+      implicitGenesisEntries,
+    ).pipe(
+      Effect.mapError(
+        (cause) =>
+          new DatabaseError({
+            table: PendingBlockFinalizationsDB.tableName,
+            message:
+              "Failed to verify the implicit genesis ledger base before journaling",
+            cause,
+          }),
+      ),
+    );
+    if (implicitGenesisRoot !== selectedBaseUtxosRoot) {
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: PendingBlockFinalizationsDB.tableName,
+          message:
+            "Implicit genesis entries do not reproduce the selected commit base root",
+          cause: `implicit_genesis_root=${implicitGenesisRoot},selected_base_root=${selectedBaseUtxosRoot}`,
+        }),
+      );
+    }
+
+    const finalEntries = new Map<string, UtxoPayloadEntry>(
+      implicitGenesisEntries.map((entry) => [
+        entry[Ledger.Columns.OUTREF].toString("hex"),
+        {
+          outref: Buffer.from(entry[Ledger.Columns.OUTREF]),
+          output: Buffer.from(entry[Ledger.Columns.OUTPUT]),
+        },
+      ]),
+    );
+    for (const spent of transitionDelta.spent) {
+      finalEntries.delete(spent.toString("hex"));
+    }
+    for (const produced of transitionDelta.produced) {
+      finalEntries.set(produced.outref.toString("hex"), {
+        outref: Buffer.from(produced.outref),
+        output: Buffer.from(produced.output),
+      });
+    }
+    const produced = [...finalEntries.values()];
+    if (produced.length !== expectedFinalEntryCount) {
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: PendingBlockFinalizationsDB.tableName,
+          message:
+            "Self-contained first-block journal snapshot has the wrong final UTxO count",
+          cause: `actual=${produced.length.toString()},expected=${expectedFinalEntryCount.toString()}`,
+        }),
+      );
+    }
+    const recoveredRoot = yield* computeUtxoPayloadRoot(produced).pipe(
+      Effect.mapError(
+        (cause) =>
+          new DatabaseError({
+            table: PendingBlockFinalizationsDB.tableName,
+            message:
+              "Failed to verify the self-contained first-block journal snapshot",
+            cause,
+          }),
+      ),
+    );
+    if (recoveredRoot !== expectedFinalUtxosRoot) {
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: PendingBlockFinalizationsDB.tableName,
+          message:
+            "Self-contained first-block journal snapshot does not reproduce the expected UTxO root",
+          cause: `recovered_root=${recoveredRoot},expected_root=${expectedFinalUtxosRoot}`,
+        }),
+      );
+    }
+    return { ledgerDelta: undefined, utxoEntries: produced };
   });
 
 export const buildPendingJournalMetadata = ({
@@ -118,10 +244,14 @@ export const assertLiveTailCommitBase = (
 ): Effect.Effect<void, SDK.LucidError | SDK.StateQueueError, Lucid> =>
   Effect.gen(function* () {
     const lucid = yield* Lucid;
-    const liveTail = yield* fetchLatestCommittedBlockLocal(lucid.api, {
-      stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
-      stateQueuePolicyId: contracts.stateQueue.policyId,
-    });
+    const liveTail = yield* fetchExpectedStateQueueTailLocal(
+      lucid.api,
+      {
+        stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
+        stateQueuePolicyId: contracts.stateQueue.policyId,
+      },
+      expectedTail,
+    );
     const expectedOutRef = stateQueueOutRef(expectedTail);
     const liveOutRef = stateQueueOutRef(liveTail);
     if (expectedOutRef !== liveOutRef) {
@@ -148,10 +278,14 @@ export const resolveLiveTailCommitBase = (
 > =>
   Effect.gen(function* () {
     const lucid = yield* Lucid;
-    const liveTail = yield* fetchLatestCommittedBlockLocal(lucid.api, {
-      stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
-      stateQueuePolicyId: contracts.stateQueue.policyId,
-    });
+    const liveTail = yield* fetchExpectedStateQueueTailLocal(
+      lucid.api,
+      {
+        stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
+        stateQueuePolicyId: contracts.stateQueue.policyId,
+      },
+      expectedTail,
+    );
     const expectedOutRef = stateQueueOutRef(expectedTail);
     const liveOutRef = stateQueueOutRef(liveTail);
     if (expectedOutRef === liveOutRef) {
@@ -179,6 +313,7 @@ export const resolveLiveTailCommitBase = (
 export const assertPendingJournalCompleteness = ({
   utxoRoot,
   utxoMemberCount,
+  hasLedgerDelta = false,
   txRoot,
   emptyTxRoot,
   txMemberCount,
@@ -195,6 +330,7 @@ export const assertPendingJournalCompleteness = ({
 }: {
   readonly utxoRoot: string;
   readonly utxoMemberCount: number;
+  readonly hasLedgerDelta?: boolean;
   readonly txRoot: string;
   readonly emptyTxRoot: string;
   readonly txMemberCount: number;
@@ -210,7 +346,7 @@ export const assertPendingJournalCompleteness = ({
   readonly eventToStepMemberCount: number;
 }): Effect.Effect<void, DatabaseError> =>
   Effect.gen(function* () {
-    if (utxoRoot !== emptyTxRoot && utxoMemberCount <= 0) {
+    if (utxoRoot !== emptyTxRoot && utxoMemberCount <= 0 && !hasLedgerDelta) {
       return yield* Effect.fail(
         new DatabaseError({
           table: PendingBlockFinalizationsDB.tableName,

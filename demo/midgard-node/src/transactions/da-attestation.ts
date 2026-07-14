@@ -93,7 +93,7 @@ const submitCompletedTx = (
 ): Effect.Effect<string, TxConfirmError | TxSignError | TxSubmitError> =>
   handleSignSubmit(lucid, tx);
 
-const fetchDaParamsUtxo = (
+export const fetchDaParamsUtxo = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
 ): Effect.Effect<

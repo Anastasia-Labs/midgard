@@ -1,18 +1,16 @@
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
-
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
   daAttestationValidatorsFromDeployment,
-  parseMidgardNodeDeploymentInfo,
+  type MidgardNodeDeployment,
 } from "../src/l1/deployment.js";
 import { fetchDaAttestationReferenceScripts } from "../src/l1/reference-scripts.js";
+import { loadDaDeploymentFixture } from "./helpers/deployment-fixture.js";
 
 describe("DA attestation reference script resolver", () => {
   it("resolves explicit reference script UTxOs from deployment info", async () => {
-    const deployment = await loadRealDeployment();
+    const deployment = await loadDaDeploymentFixture("Preview");
     const lucid = lucidWithReferenceScripts(referenceScriptUtxos(deployment));
 
     await expect(
@@ -30,7 +28,7 @@ describe("DA attestation reference script resolver", () => {
   });
 
   it("creates SDK validator objects from deployment info", async () => {
-    const deployment = await loadRealDeployment();
+    const deployment = await loadDaDeploymentFixture("Preview");
     const validators = daAttestationValidatorsFromDeployment(deployment);
 
     expect(validators.daAttestation).toMatchObject({
@@ -43,7 +41,7 @@ describe("DA attestation reference script resolver", () => {
   });
 
   it("fails closed when a resolved UTxO has the wrong scriptRef", async () => {
-    const deployment = await loadRealDeployment();
+    const deployment = await loadDaDeploymentFixture("Preview");
     const utxos = referenceScriptUtxos(deployment);
     const badStateQueueSpend = {
       ...utxos[3]!,
@@ -62,54 +60,7 @@ describe("DA attestation reference script resolver", () => {
   });
 });
 
-const loadRealDeployment = async () => {
-  const path = join(
-    process.cwd(),
-    "../midgard-node/deploymentInfo/contract-deployment-info.json",
-  );
-  const parsed = JSON.parse(await readFile(path, "utf8")) as Record<
-    string,
-    unknown
-  >;
-  const deployment = parseMidgardNodeDeploymentInfo(
-    withReferenceScriptOutRefs(parsed),
-    "Preview",
-  );
-  if (deployment === undefined) {
-    throw new Error("real Midgard deployment fixture did not parse");
-  }
-  return deployment;
-};
-
-const withReferenceScriptOutRefs = (
-  deploymentInfo: Record<string, unknown>,
-): Record<string, unknown> => {
-  const clone = structuredClone(deploymentInfo) as Record<string, unknown>;
-  const contracts = clone.contracts;
-  if (typeof contracts !== "object" || contracts === null) {
-    return clone;
-  }
-  [
-    "daAttestationMint",
-    "daAttestationSpend",
-    "daParamsGovernorMint",
-    "daParamsGovernorSpend",
-    "stateQueueMint",
-    "stateQueueSpend",
-  ].forEach((key, index) => {
-    const entry = (contracts as Record<string, unknown>)[key];
-    if (typeof entry !== "object" || entry === null) {
-      return;
-    }
-    (entry as Record<string, unknown>).refScriptUTxO = {
-      txHash: (index + 1).toString(16).padStart(2, "0").repeat(32),
-      outputIndex: index,
-    };
-  });
-  return clone;
-};
-
-type ParsedDeployment = Awaited<ReturnType<typeof loadRealDeployment>>;
+type ParsedDeployment = MidgardNodeDeployment;
 
 const referenceScriptUtxos = (deployment: ParsedDeployment): UTxO[] => [
   referenceScriptUtxo(

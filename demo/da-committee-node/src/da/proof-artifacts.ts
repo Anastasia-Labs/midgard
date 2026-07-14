@@ -1,7 +1,9 @@
 import { Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
+import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import {
   computeDaSha256Hash,
+  DA_TRANSPORT_LIMITS_V1,
   daDeploymentFingerprintFromHex,
   type DaEventToStepByEventRequestV1,
   type DaEventToStepByEventResponseV1,
@@ -397,7 +399,12 @@ export class DaProofArtifactDeriver {
     }
     let payload: SDK.DaPayloadV2;
     try {
-      payload = decodeDaPayloadV2Strict(payloadBytes);
+      const unwrapped = await unwrapDaPayload(payloadBytes, {
+        maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+        // Pre-V3 persisted records are raw DaPayloadV2 by construction.
+        schemaVersion: record.payloadSchemaVersion ?? 2,
+      });
+      payload = decodeDaPayloadV2Strict(unwrapped.innerBytes);
     } catch {
       return { kind: "rejected", reasonCode: "stored_payload_malformed" };
     }

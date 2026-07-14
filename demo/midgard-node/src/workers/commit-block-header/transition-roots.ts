@@ -3,6 +3,7 @@ import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
+  canonicalizeKeyValuePhasEntries,
   type KeyValuePhasEntry,
   keyValuePhasNonMembershipProof,
   keyValuePhasProof,
@@ -12,6 +13,10 @@ import {
   verifyKeyValuePhasMembershipProof,
   verifyKeyValuePhasNonMembershipProof,
 } from "@/workers/utils/mpf.js";
+import {
+  buildAuthenticatedMpfRootInWorker,
+  shouldBuildMpfRootInWorker,
+} from "@/workers/utils/mpf-root-pool.js";
 
 type DataSchema = Parameters<typeof LucidData.Nullable>[0];
 
@@ -64,6 +69,23 @@ export const buildAuthenticatedRootFromEncodedEntries = (
 ): Effect.Effect<BuiltAuthenticatedRoot, MpfError, never> =>
   Effect.gen(function* () {
     const { keys, values } = rootEntryVectors(entries);
+    if (shouldBuildMpfRootInWorker(entries.length)) {
+      const canonicalEntries = yield* canonicalizeKeyValuePhasEntries(
+        keys,
+        values,
+      );
+      const built = yield* Effect.tryPromise({
+        try: () => buildAuthenticatedMpfRootInWorker(domain, canonicalEntries),
+        catch: (cause) => MpfError.rootBuild("parallel event root", cause),
+      });
+      return {
+        root: built.rootHex,
+        phasRoot: built.phasRoot,
+        count: built.count,
+        entries: canonicalEntries,
+        domain,
+      };
+    }
     const phas = yield* keyValuePhasRootWithCount(keys, values);
     const root = yield* SDK.commitCountedRootProgram({
       domain,

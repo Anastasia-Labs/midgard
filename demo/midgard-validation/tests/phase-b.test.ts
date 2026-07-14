@@ -1,15 +1,22 @@
 import { Effect } from "effect";
+import { Constr } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
   applyUTxOStatePatch,
+  buildConflictComponents,
   LedgerColumns,
   RejectCodes,
   runPhaseBValidationWithPatch,
 } from "../src/index.js";
+import {
+  encodeScriptContextCbor,
+  evaluateScriptWithHarmonic,
+  evaluateUplcWithContextCbor,
+} from "../src/local-script-eval.js";
 import { MidgardRedeemerTag } from "../src/midgard-redeemers.js";
 import type { PhaseBResultWithPatch } from "../src/phase-b.js";
-import type { RejectCode, RejectedTx } from "../src/types.js";
+import type { PhaseBConfig, RejectCode, RejectedTx } from "../src/types.js";
 import {
   hashScriptWitness,
   makeOutput,
@@ -20,7 +27,7 @@ import {
   plutusV3ScriptWitness,
 } from "./validation-fixtures.js";
 
-const phaseBConfig = {
+const phaseBConfig: PhaseBConfig = {
   nowCardanoSlotNo: 100n,
   bucketConcurrency: 1,
 };
@@ -51,6 +58,75 @@ const expectSinglePhaseBRejection = (
 };
 
 describe("phase B validation", () => {
+  it("matches the pairwise conflict oracle on randomized ready waves", () => {
+    let seed = 0x5eed1234;
+    const random = () => {
+      seed = (seed * 1_664_525 + 1_013_904_223) >>> 0;
+      return seed / 0x1_0000_0000;
+    };
+    const conflicts = (
+      left: { spentOutRefs: Set<string>; referenceOutRefs: Set<string> },
+      right: { spentOutRefs: Set<string>; referenceOutRefs: Set<string> },
+    ) =>
+      [...left.spentOutRefs].some(
+        (outRef) =>
+          right.spentOutRefs.has(outRef) || right.referenceOutRefs.has(outRef),
+      ) ||
+      [...right.spentOutRefs].some((outRef) =>
+        left.referenceOutRefs.has(outRef),
+      );
+
+    for (let sample = 0; sample < 100; sample += 1) {
+      const nodes = Array.from(
+        { length: 2 + Math.floor(random() * 30) },
+        (_, id) => ({
+          id,
+          spentOutRefs: new Set(
+            Array.from({ length: Math.floor(random() * 4) }, () =>
+              Math.floor(random() * 20).toString(),
+            ),
+          ),
+          referenceOutRefs: new Set(
+            Array.from({ length: Math.floor(random() * 4) }, () =>
+              Math.floor(random() * 20).toString(),
+            ),
+          ),
+        }),
+      );
+      for (const node of nodes) {
+        for (const spent of node.spentOutRefs)
+          node.referenceOutRefs.delete(spent);
+      }
+
+      const expected: number[][] = [];
+      const unvisited = new Set(nodes.map((node) => node.id));
+      while (unvisited.size > 0) {
+        const first = unvisited.values().next().value as number;
+        const queue = [first];
+        const component: number[] = [];
+        unvisited.delete(first);
+        while (queue.length > 0) {
+          const current = queue.shift()!;
+          component.push(current);
+          for (const candidate of [...unvisited]) {
+            if (conflicts(nodes[current], nodes[candidate])) {
+              unvisited.delete(candidate);
+              queue.push(candidate);
+            }
+          }
+        }
+        expected.push(component.sort((left, right) => left - right));
+      }
+
+      const actual = buildConflictComponents(nodes)
+        .map((component) =>
+          component.map((node) => node.id).sort((a, b) => a - b),
+        )
+        .sort((left, right) => left[0] - right[0]);
+      expected.sort((left, right) => left[0] - right[0]);
+      expect(actual).toStrictEqual(expected);
+    }
+  });
   it("accepts a balanced candidate and returns a deterministic UTxO patch", async () => {
     const spent = outRefFromByte(0x21);
     const inputOutput = makeOutput(10n);
@@ -186,6 +262,34 @@ describe("phase B validation", () => {
     expect(result.rejected[0].code).toBe(RejectCodes.DoubleSpend);
   });
 
+  it("rejects a later reference input after an earlier component member spends it", async () => {
+    const spent = outRefFromByte(0x2f);
+    const other = outRefFromByte(0x30);
+    const spender = makePhaseBCandidate({
+      arrivalSeq: 0n,
+      spent: [spent],
+      outputLovelace: 10n,
+    });
+    const referencer = makePhaseBCandidate({
+      arrivalSeq: 1n,
+      spent: [other],
+      referenceInputs: [spent],
+      outputLovelace: 10n,
+    });
+    const result = await runPhaseB(
+      [spender, referencer],
+      preState([
+        [spent, makeOutput(10n)],
+        [other, makeOutput(10n)],
+      ]),
+    );
+    expect(txIds(result.accepted)).toStrictEqual([
+      spender.ledgerTx.txId.toString("hex"),
+    ]);
+    expect(result.rejected).toHaveLength(1);
+    expect(result.rejected[0].code).toBe(RejectCodes.InputNotFound);
+  });
+
   it("cascade-rejects descendants when an ancestor fails validation", async () => {
     const parentInput = outRefFromByte(0x29);
     const parent = makePhaseBCandidate({
@@ -295,5 +399,70 @@ describe("phase B validation", () => {
     expect(rejection.detail).toContain(
       "ReceivingScript requires MidgardV1 context",
     );
+  });
+
+  it("injects worker UPLC evaluation without changing coordinator-side context encoding", async () => {
+    const spent = outRefFromByte(0x2d);
+    const script = plutusV3ScriptWitness(Buffer.from("010203", "hex"));
+    const scriptHash = hashScriptWitness(script);
+    const candidate = makePhaseBCandidate({
+      spent: [spent],
+      outputLovelace: 10n,
+      scriptWitnesses: [script],
+      redeemerTxWitsPreimageCbor: makeRedeemersCbor([
+        { tag: MidgardRedeemerTag.Spend, index: 0n },
+      ]),
+      scriptLanguages: ["PlutusV3"],
+    });
+    let evaluatorCalls = 0;
+    const result = await runPhaseB(
+      [candidate],
+      preState([[spent, makeProtectedScriptOutput(scriptHash, 10n)]]),
+      {
+        ...phaseBConfig,
+        evaluateScript: (_scriptBytes, contextCbor) =>
+          Effect.sync(() => {
+            evaluatorCalls += 1;
+            expect(contextCbor.byteLength).toBeGreaterThan(0);
+            return { kind: "accepted", budget: { cpu: 1n, memory: 1n } };
+          }),
+      },
+    );
+    expect(evaluatorCalls).toBe(1);
+    expect(result.accepted).toHaveLength(1);
+    expect(result.rejected).toHaveLength(0);
+  });
+
+  it("propagates worker infrastructure failures instead of rejecting the tx", async () => {
+    const spent = outRefFromByte(0x2e);
+    const script = plutusV3ScriptWitness(Buffer.from("010203", "hex"));
+    const scriptHash = hashScriptWitness(script);
+    const candidate = makePhaseBCandidate({
+      spent: [spent],
+      outputLovelace: 10n,
+      scriptWitnesses: [script],
+      redeemerTxWitsPreimageCbor: makeRedeemersCbor([
+        { tag: MidgardRedeemerTag.Spend, index: 0n },
+      ]),
+      scriptLanguages: ["PlutusV3"],
+    });
+    await expect(
+      runPhaseB(
+        [candidate],
+        preState([[spent, makeProtectedScriptOutput(scriptHash, 10n)]]),
+        {
+          ...phaseBConfig,
+          evaluateScript: () => Effect.fail(new Error("worker crashed")),
+        },
+      ),
+    ).rejects.toThrow("worker crashed");
+  });
+
+  it("keeps the split evaluator bit-identical to the composed inline seam", () => {
+    const script = Buffer.from("010203", "hex");
+    const context = new Constr(0, []);
+    expect(
+      evaluateUplcWithContextCbor(script, encodeScriptContextCbor(context)),
+    ).toStrictEqual(evaluateScriptWithHarmonic(script, context));
   });
 });

@@ -8,7 +8,7 @@ import {
   TxSignBuilder,
   UTxO,
 } from "@lucid-evolution/lucid";
-import { Data, Effect, Schedule } from "effect";
+import { Data, Duration, Effect, Schedule } from "effect";
 
 import * as BlocksDB from "@/database/blocks.js";
 import { ImmutableDB } from "@/database/index.js";
@@ -472,6 +472,9 @@ export type SubmitRecoveryInlineOptions = {
   readonly slotSnapshot?: () => Effect.Effect<SubmitSlotSnapshot, unknown>;
   readonly requireSlotForBoundedTx?: boolean;
   readonly maxPreSubmitWaitMs?: number;
+  readonly confirmationTimeoutMs?: number;
+  readonly confirmationRetries?: number;
+  readonly confirmationPollIntervalMs?: number;
   readonly inlineWaitPolicy?: Extract<InlineWaitPolicy, "allow_inline_wait">;
   readonly noInlineSubmitDefer?: never;
 };
@@ -1216,7 +1219,11 @@ export function handleSignSubmit(
       signBuilder,
       options,
     );
-    return yield* awaitSubmittedTransactionConfirmation(lucid, submission);
+    return yield* awaitSubmittedTransactionConfirmation(
+      lucid,
+      submission,
+      options,
+    );
   }).pipe(
     Effect.tapErrorTag("TxSignError", (e) =>
       Effect.logError(`TxSignError: ${e}`),
@@ -1227,9 +1234,37 @@ export function handleSignSubmit(
 export const awaitSubmittedTransactionConfirmation = (
   lucid: LucidEvolution,
   submission: SignSubmitContext,
+  options: Pick<
+    SubmitRecoveryInlineOptions,
+    | "confirmationTimeoutMs"
+    | "confirmationRetries"
+    | "confirmationPollIntervalMs"
+  > = {},
 ): Effect.Effect<string, TxConfirmError> =>
   Effect.gen(function* () {
     const txHash = submission.txHash;
+    const confirmationTimeoutMs =
+      options.confirmationTimeoutMs ?? TX_CONFIRMATION_TIMEOUT_MS;
+    const confirmationRetries =
+      options.confirmationRetries ?? TX_CONFIRMATION_RETRIES;
+    const confirmationPollIntervalMs =
+      options.confirmationPollIntervalMs ?? TX_CONFIRMATION_POLL_INTERVAL_MS;
+    if (
+      !Number.isSafeInteger(confirmationTimeoutMs) ||
+      confirmationTimeoutMs <= 0 ||
+      !Number.isSafeInteger(confirmationRetries) ||
+      confirmationRetries < 0 ||
+      !Number.isSafeInteger(confirmationPollIntervalMs) ||
+      confirmationPollIntervalMs <= 0
+    ) {
+      return yield* Effect.fail(
+        new TxConfirmError({
+          message: "Invalid transaction confirmation options",
+          txHash,
+          cause: `timeout_ms=${confirmationTimeoutMs.toString()},retries=${confirmationRetries.toString()},poll_interval_ms=${confirmationPollIntervalMs.toString()}`,
+        }),
+      );
+    }
     yield* Effect.logInfo(`⏳ Confirming Transaction...`);
     const awaitWithTimeout = Effect.tryPromise({
       try: () =>
@@ -1237,13 +1272,13 @@ export const awaitSubmittedTransactionConfirmation = (
           const timeoutId = setTimeout(() => {
             reject(
               new Error(
-                `timed out waiting for tx confirmation after ${TX_CONFIRMATION_TIMEOUT_MS}ms`,
+                `timed out waiting for tx confirmation after ${confirmationTimeoutMs.toString()}ms`,
               ),
             );
-          }, TX_CONFIRMATION_TIMEOUT_MS);
+          }, confirmationTimeoutMs);
 
           lucid
-            .awaitTx(txHash, TX_CONFIRMATION_POLL_INTERVAL_MS)
+            .awaitTx(txHash, confirmationPollIntervalMs)
             .then((result) => {
               clearTimeout(timeoutId);
               resolve(result);
@@ -1259,7 +1294,14 @@ export const awaitSubmittedTransactionConfirmation = (
           txHash,
           cause: e,
         }),
-    }).pipe(Effect.retry(Schedule.recurs(TX_CONFIRMATION_RETRIES)));
+    }).pipe(
+      Effect.retry(
+        Schedule.intersect(
+          Schedule.fixed(Duration.millis(confirmationPollIntervalMs)),
+          Schedule.recurs(confirmationRetries),
+        ),
+      ),
+    );
 
     yield* awaitWithTimeout;
     yield* reconcileWalletUtxosFromSignedTx(lucid, submission);

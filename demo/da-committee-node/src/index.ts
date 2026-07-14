@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { runDaZstdStartupSelfTest } from "@al-ft/midgard-core/da-compression";
+
 import { createWatcherApiServer } from "./api/server.js";
 import { loadWatcherConfig } from "./config.js";
 import {
@@ -40,6 +42,9 @@ const main = async (): Promise<void> => {
     printHelp();
     return;
   }
+  // Decoder-first rollout means every committee node must be capable of
+  // safely decoding zstd envelopes before any producer is flipped.
+  await runDaZstdStartupSelfTest();
   const config = await loadWatcherConfig();
   const store = await openWatcherStore(config.localState);
   const signer =

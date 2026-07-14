@@ -12,8 +12,10 @@ import {
 } from "@/transactions/utils.js";
 import {
   COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+  type CommitTimingBudget,
   commitTimingBudget,
   formatCommitTimingBudget,
+  makeSubmitSlotAnchoredClock,
   resolveAlignedCommitEndTime,
 } from "@/workers/utils/commit-end-time.js";
 import {
@@ -74,6 +76,19 @@ export const buildUnsignedCommitTx = (
   Effect.gen(function* () {
     const lucid = yield* Lucid;
     const submitSlotSnapshot = lucid.submitSlotSnapshot;
+    const initialSubmitSlotSnapshot = yield* submitSlotSnapshot().pipe(
+      Effect.mapError(
+        (cause) =>
+          new SDK.LucidError({
+            message:
+              "Failed to acquire the submit-slot snapshot for commit timing",
+            cause,
+          }),
+      ),
+    );
+    const anchoredNowMs = makeSubmitSlotAnchoredClock(
+      initialSubmitSlotSnapshot.observedAtMs,
+    );
     const latestEndTime = Number(
       (yield* getLatestBlockDatumEndTime(latestBlock.datum)).getTime(),
     );
@@ -82,7 +97,7 @@ export const buildUnsignedCommitTx = (
     // operator wallet before any scheduler refresh or witness lookup that
     // depends on wallet address or spendable operator inputs.
     yield* lucid.switchToOperatorsMainWallet;
-    let commitWindowResolutionNow = Date.now();
+    let commitWindowResolutionNow = anchoredNowMs();
     const resolveCommitWindow = () =>
       resolveAlignedCommitEndTime({
         lucid: lucid.api,
@@ -108,6 +123,7 @@ export const buildUnsignedCommitTx = (
     let commitWindow = resolveCommitWindow();
     yield* enforceCommitWindowCap(commitWindow, "initial_resolution");
     let witnessContext: RealStateQueueWitnessContext | undefined;
+    let lastFailedBudget: CommitTimingBudget | undefined;
     for (
       let stabilizationAttempts = 1;
       stabilizationAttempts <= COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS;
@@ -116,9 +132,11 @@ export const buildUnsignedCommitTx = (
       const preWitnessBudget = commitTimingBudget({
         checkpoint: "pre_witness",
         resolvedEndTimeMs: commitWindow.resolvedEndTime,
+        nowMs: anchoredNowMs(),
       });
       if (!preWitnessBudget.satisfied) {
-        commitWindowResolutionNow = Date.now();
+        lastFailedBudget = preWitnessBudget;
+        commitWindowResolutionNow = anchoredNowMs();
         const refreshedCommitWindow = resolveCommitWindow();
         yield* Effect.logWarning(
           `Commit timing budget too low before witness assembly; rebuilding with refreshed window (${formatCommitTimingBudget(preWitnessBudget)},next=${refreshedCommitWindow.resolvedEndTime},attempt=${stabilizationAttempts}/${COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS}).`,
@@ -149,9 +167,11 @@ export const buildUnsignedCommitTx = (
       const preBuildBudget = commitTimingBudget({
         checkpoint: "pre_build",
         resolvedEndTimeMs: witnessEndTime,
+        nowMs: anchoredNowMs(),
       });
       if (!preBuildBudget.satisfied) {
-        commitWindowResolutionNow = Date.now();
+        lastFailedBudget = preBuildBudget;
+        commitWindowResolutionNow = anchoredNowMs();
         const refreshedCommitWindow = resolveCommitWindow();
         yield* Effect.logWarning(
           `Commit timing budget too low after witness assembly; rebuilding with refreshed window (${formatCommitTimingBudget(preBuildBudget)},previous=${commitWindow.resolvedEndTime},next=${refreshedCommitWindow.resolvedEndTime},attempt=${stabilizationAttempts}/${COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS}).`,
@@ -215,9 +235,11 @@ export const buildUnsignedCommitTx = (
       const preSubmitBudget = commitTimingBudget({
         checkpoint: "pre_submit",
         resolvedEndTimeMs: alignedEndTime,
+        nowMs: anchoredNowMs(),
       });
       if (!preSubmitBudget.satisfied) {
-        commitWindowResolutionNow = Date.now();
+        lastFailedBudget = preSubmitBudget;
+        commitWindowResolutionNow = anchoredNowMs();
         const refreshedCommitWindow = resolveCommitWindow();
         yield* Effect.logWarning(
           `Commit timing budget too low before submission; rebuilding before pending journal preparation (${formatCommitTimingBudget(preSubmitBudget)},previous=${commitWindow.resolvedEndTime},next=${refreshedCommitWindow.resolvedEndTime},attempt=${stabilizationAttempts}/${COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS}).`,
@@ -285,7 +307,7 @@ export const buildUnsignedCommitTx = (
       new SDK.StateQueueError({
         message:
           "Failed to stabilize the commit timing budget before building the block commitment transaction",
-        cause: `attempts=${COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS},last_selected_end_time=${commitWindow.resolvedEndTime},witness_context=${witnessContext === undefined ? "missing" : "present"}`,
+        cause: `attempts=${COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS},last_failed_checkpoint=${lastFailedBudget?.checkpoint ?? "none"},last_selected_end_time=${commitWindow.resolvedEndTime},last_budget=${lastFailedBudget === undefined ? "none" : formatCommitTimingBudget(lastFailedBudget)},witness_context=${witnessContext === undefined ? "missing" : "present"},clock_anchor_observed_at_ms=${initialSubmitSlotSnapshot.observedAtMs},clock_now_ms=${anchoredNowMs()}`,
       }),
     );
   });

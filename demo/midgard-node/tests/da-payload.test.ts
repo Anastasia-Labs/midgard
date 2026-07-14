@@ -1,3 +1,5 @@
+import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
+import { DA_TRANSPORT_LIMITS_V1 } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
@@ -410,6 +412,22 @@ describe("DaPayloadV2 builder", () => {
     expect(insert.total_event_count).toBe(2n);
     expect(insert.payload_sha256.toString("hex")).toBe(
       SDK.daPayloadHashHex(insert.payload_cbor),
+    );
+
+    const zstdInsert = await Effect.runPromise(
+      buildDaPayloadInsert({
+        record: pending,
+        envelope: { mode: "zstd", zstdLevel: 3 },
+      }),
+    );
+    const unwrapped = await unwrapDaPayload(zstdInsert.payload_cbor, {
+      maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+      schemaVersion: zstdInsert.version,
+    });
+    expect(zstdInsert.version).toBe(3);
+    expect(unwrapped.innerBytes).toEqual(insert.payload_cbor);
+    expect(zstdInsert.payload_sha256.toString("hex")).toBe(
+      SDK.daPayloadHashHex(zstdInsert.payload_cbor),
     );
   });
 

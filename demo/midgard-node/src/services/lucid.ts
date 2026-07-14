@@ -1,10 +1,12 @@
 import * as LE from "@lucid-evolution/lucid";
 import { Effect, Schedule } from "effect";
 
+import { fetchLocalOgmiosShelleyGenesisSlotConfig } from "@/local-ledger-slot.js";
 import {
   fetchLocalOgmiosSubmitSlotSnapshot,
   type SubmitSlotSnapshot,
 } from "@/local-ogmios-slot.js";
+import { configureCustomSlotConfigFromShelleyGenesis } from "@/lucid-time.js";
 import {
   L1_REWARD_ACCOUNT_REGISTRATION_SOURCES,
   type L1RewardAccountRegistrationSource,
@@ -52,6 +54,53 @@ const makeLucid: Effect.Effect<
   NodeConfig
 > = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
+  if (nodeConfig.NETWORK === "Custom") {
+    const snapshot = yield* fetchLocalOgmiosSubmitSlotSnapshot({
+      ogmiosUrl: nodeConfig.L1_OGMIOS_KEY,
+      timeoutMs: nodeConfig.L1_PROVIDER_PREFLIGHT_TIMEOUT_MS,
+    }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new ConfigError({
+            message: "Failed to initialize the Custom Lucid slot mapping",
+            cause,
+            fieldsAndValues: [
+              ["NETWORK", nodeConfig.NETWORK],
+              ["L1_OGMIOS_KEY", nodeConfig.L1_OGMIOS_KEY],
+            ],
+          }),
+      ),
+    );
+    const genesis = yield* fetchLocalOgmiosShelleyGenesisSlotConfig({
+      ogmiosUrl: nodeConfig.L1_OGMIOS_KEY,
+      timeoutMs: nodeConfig.L1_PROVIDER_PREFLIGHT_TIMEOUT_MS,
+    }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new ConfigError({
+            message:
+              "Failed to query the authoritative Custom network slot epoch",
+            cause,
+            fieldsAndValues: [
+              ["NETWORK", nodeConfig.NETWORK],
+              ["L1_OGMIOS_KEY", nodeConfig.L1_OGMIOS_KEY],
+            ],
+          }),
+      ),
+    );
+    yield* Effect.try({
+      try: () => configureCustomSlotConfigFromShelleyGenesis(genesis, snapshot),
+      catch: (cause) =>
+        new ConfigError({
+          message: "Failed to validate the Custom Lucid slot mapping",
+          cause,
+          fieldsAndValues: [
+            ["NETWORK", nodeConfig.NETWORK],
+            ["L1_OGMIOS_KEY", nodeConfig.L1_OGMIOS_KEY],
+          ],
+        }),
+    });
+  }
   const operatorMainAddress = LE.walletFromSeed(
     nodeConfig.L1_OPERATOR_SEED_PHRASE,
     {

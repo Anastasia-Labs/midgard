@@ -13,16 +13,23 @@ import {
   MintingPolicy,
   mintingPolicyToId,
   Network,
+  type Script,
   scriptHashToCredential,
   SpendingValidator,
   validatorToAddress,
   validatorToScriptHash,
   WithdrawalValidator,
 } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
+
+import {
+  DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
+  type DeploymentManifestV2Value,
+  parseDeploymentManifestV2Value,
+} from "@/deployment-manifest-v2.js";
 
 import { AlwaysSucceedsContract } from "./always-succeeds.js";
-import { NodeConfig } from "./config.js";
+import { NodeConfig, type NodeConfigDep } from "./config.js";
 
 /**
  * Contract-loading service for Midgard validators.
@@ -38,6 +45,29 @@ type BlueprintValidator = {
 
 type Blueprint = {
   validators: BlueprintValidator[];
+};
+
+type DeploymentManifestContractEntry = {
+  readonly contract?: {
+    readonly type?: unknown;
+    readonly cborHex?: unknown;
+  };
+  readonly scriptHash?: unknown;
+};
+
+type DeploymentManifestCandidate = DeploymentManifestV2Value & {
+  readonly contracts: Readonly<Record<string, DeploymentManifestContractEntry>>;
+};
+
+export type ContractDeploymentIdentityValue = {
+  readonly kind: "manifest" | "derived";
+  readonly manifestId?: string;
+  readonly path?: string;
+};
+
+type MidgardContractRuntimeValue = {
+  readonly contracts: SDK.MidgardValidators;
+  readonly identity: ContractDeploymentIdentityValue;
 };
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
@@ -137,17 +167,21 @@ const resolveDefaultContractDeploymentInfoPath = (): string => {
   );
 };
 
+const configuredContractDeploymentInfoPath = (): string => {
+  const configuredPath =
+    process.env.MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH?.trim();
+  return configuredPath === undefined || configuredPath.length === 0
+    ? resolveDefaultContractDeploymentInfoPath()
+    : path.resolve(configuredPath);
+};
+
 const loadReferenceScriptAuthValidator = (): Effect.Effect<
   SDK.MintingValidator,
   Error
 > =>
   Effect.try({
     try: () => {
-      const configuredPath =
-        process.env.MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH?.trim();
-      const deploymentInfoPath = configuredPath
-        ? configuredPath
-        : resolveDefaultContractDeploymentInfoPath();
+      const deploymentInfoPath = configuredContractDeploymentInfoPath();
       const parsed = JSON.parse(
         readFileSync(deploymentInfoPath, "utf8"),
       ) as unknown;
@@ -213,6 +247,483 @@ const loadReferenceScriptAuthValidator = (): Effect.Effect<
         )}`,
       ),
   });
+
+export const parseRuntimeDeploymentManifest = (
+  raw: unknown,
+): DeploymentManifestCandidate =>
+  parseDeploymentManifestV2Value(raw) as DeploymentManifestCandidate;
+
+export const readRuntimeDeploymentManifestFile = (
+  deploymentInfoPath: string,
+  required: boolean,
+):
+  | {
+      readonly path: string;
+      readonly manifest: DeploymentManifestCandidate;
+    }
+  | undefined => {
+  if (!existsSync(deploymentInfoPath)) {
+    if (required) {
+      throw new Error(
+        `Configured deployment manifest does not exist: ${deploymentInfoPath}`,
+      );
+    }
+    return undefined;
+  }
+  const parsed = JSON.parse(
+    readFileSync(deploymentInfoPath, "utf8"),
+  ) as unknown;
+  const claimsV2 =
+    typeof parsed === "object" &&
+    parsed !== null &&
+    !Array.isArray(parsed) &&
+    (parsed as { readonly schemaVersion?: unknown }).schemaVersion ===
+      DEPLOYMENT_MANIFEST_SCHEMA_VERSION;
+  if (!required && !claimsV2) {
+    return undefined;
+  }
+  return {
+    path: deploymentInfoPath,
+    manifest: parseRuntimeDeploymentManifest(parsed),
+  };
+};
+
+const readConfiguredDeploymentManifest = () => {
+  const explicitlyConfigured = Boolean(
+    process.env.MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH?.trim(),
+  );
+  return readRuntimeDeploymentManifestFile(
+    configuredContractDeploymentInfoPath(),
+    explicitlyConfigured,
+  );
+};
+
+const requireManifestString = (
+  value: unknown,
+  field: string,
+  sourcePath: string,
+): string => {
+  if (typeof value === "string" && value.length > 0) {
+    return value;
+  }
+  throw new Error(`Deployment manifest at "${sourcePath}" is missing ${field}`);
+};
+
+const requireManifestInteger = (
+  value: unknown,
+  field: string,
+  sourcePath: string,
+): number => {
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) {
+    return value;
+  }
+  throw new Error(
+    `Deployment manifest at "${sourcePath}" has invalid ${field}`,
+  );
+};
+
+const isManifestScriptType = (value: string): value is Script["type"] =>
+  value === "Native" ||
+  value === "PlutusV1" ||
+  value === "PlutusV2" ||
+  value === "PlutusV3";
+
+const requireManifestScriptType = (
+  value: unknown,
+  field: string,
+  sourcePath: string,
+): Script["type"] => {
+  const scriptType = requireManifestString(value, field, sourcePath);
+  if (isManifestScriptType(scriptType)) {
+    return scriptType;
+  }
+  throw new Error(
+    `Deployment manifest at "${sourcePath}" has invalid ${field}: ${scriptType}`,
+  );
+};
+
+const assertDeploymentManifestMatchesConfig = (
+  manifest: DeploymentManifestCandidate,
+  sourcePath: string,
+  nodeConfig: NodeConfigDep,
+): void => {
+  const mismatches: string[] = [];
+  const manifestNetwork = requireManifestString(
+    manifest.network,
+    "network",
+    sourcePath,
+  );
+  const manifestReferenceScriptAddress = requireManifestString(
+    manifest.referenceScriptDeployAddress,
+    "referenceScriptDeployAddress",
+    sourcePath,
+  );
+  const manifestOneShotTxHash = requireManifestString(
+    manifest.hubOracleOneShot?.txHash,
+    "hubOracleOneShot.txHash",
+    sourcePath,
+  ).toLowerCase();
+  const manifestOneShotOutputIndex = requireManifestInteger(
+    manifest.hubOracleOneShot?.outputIndex,
+    "hubOracleOneShot.outputIndex",
+    sourcePath,
+  );
+
+  if (manifestNetwork !== nodeConfig.NETWORK) {
+    mismatches.push(
+      `network manifest=${manifestNetwork} config=${nodeConfig.NETWORK}`,
+    );
+  }
+  if (
+    manifestReferenceScriptAddress !==
+    nodeConfig.L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS
+  ) {
+    mismatches.push(
+      `referenceScriptDeployAddress manifest=${manifestReferenceScriptAddress} config=${nodeConfig.L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS}`,
+    );
+  }
+  if (manifestOneShotTxHash !== nodeConfig.HUB_ORACLE_ONE_SHOT_TX_HASH) {
+    mismatches.push(
+      `hubOracleOneShot.txHash manifest=${manifestOneShotTxHash} config=${nodeConfig.HUB_ORACLE_ONE_SHOT_TX_HASH}`,
+    );
+  }
+  if (
+    manifestOneShotOutputIndex !== nodeConfig.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX
+  ) {
+    mismatches.push(
+      `hubOracleOneShot.outputIndex manifest=${manifestOneShotOutputIndex.toString()} config=${nodeConfig.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX.toString()}`,
+    );
+  }
+  if (mismatches.length > 0) {
+    throw new Error(
+      `Deployment manifest at "${sourcePath}" does not match node config: ${mismatches.join(
+        "; ",
+      )}`,
+    );
+  }
+};
+
+const manifestScript = (
+  manifest: DeploymentManifestCandidate,
+  sourcePath: string,
+  name: string,
+): {
+  readonly script: Script;
+  readonly scriptHash: string;
+  readonly cborHex: string;
+} => {
+  const entry = manifest.contracts?.[name];
+  if (entry === undefined) {
+    throw new Error(
+      `Deployment manifest at "${sourcePath}" is missing contracts.${name}`,
+    );
+  }
+  const type = requireManifestScriptType(
+    entry.contract?.type,
+    `contracts.${name}.contract.type`,
+    sourcePath,
+  );
+  const cborHex = requireManifestString(
+    entry.contract?.cborHex,
+    `contracts.${name}.contract.cborHex`,
+    sourcePath,
+  );
+  const scriptHash = requireManifestString(
+    entry.scriptHash,
+    `contracts.${name}.scriptHash`,
+    sourcePath,
+  ).toLowerCase();
+  if (!/^[0-9a-fA-F]+$/.test(cborHex)) {
+    throw new Error(
+      `Deployment manifest at "${sourcePath}" has non-hex contracts.${name}.contract.cborHex`,
+    );
+  }
+  return {
+    script: {
+      type,
+      script: cborHex,
+    },
+    scriptHash,
+    cborHex,
+  };
+};
+
+const assertManifestScriptHash = (
+  sourcePath: string,
+  name: string,
+  expected: string,
+  actual: string,
+): void => {
+  if (expected !== actual) {
+    throw new Error(
+      `Deployment manifest at "${sourcePath}" has invalid contracts.${name}.scriptHash: expected=${expected}, derived=${actual}`,
+    );
+  }
+};
+
+const mintingValidatorFromManifest = (
+  manifest: DeploymentManifestCandidate,
+  sourcePath: string,
+  name: string,
+): SDK.MintingValidator => {
+  const entry = manifestScript(manifest, sourcePath, name);
+  const mintingScript = entry.script as MintingPolicy;
+  const policyId = mintingPolicyToId(mintingScript);
+  assertManifestScriptHash(sourcePath, name, entry.scriptHash, policyId);
+  return {
+    mintingScriptCBOR: entry.cborHex,
+    mintingScript,
+    policyId,
+  };
+};
+
+const spendingValidatorFromManifest = (
+  network: Network,
+  manifest: DeploymentManifestCandidate,
+  sourcePath: string,
+  name: string,
+): SDK.SpendingValidator => {
+  const entry = manifestScript(manifest, sourcePath, name);
+  const spendingScript = entry.script as SpendingValidator;
+  const spendingScriptHash = validatorToScriptHash(spendingScript);
+  assertManifestScriptHash(
+    sourcePath,
+    name,
+    entry.scriptHash,
+    spendingScriptHash,
+  );
+  return {
+    spendingScriptCBOR: entry.cborHex,
+    spendingScript,
+    spendingScriptHash,
+    spendingScriptAddress: validatorToAddress(network, spendingScript),
+  };
+};
+
+const withdrawalValidatorFromManifest = (
+  manifest: DeploymentManifestCandidate,
+  sourcePath: string,
+  name: string,
+): SDK.WithdrawalValidator => {
+  const entry = manifestScript(manifest, sourcePath, name);
+  const withdrawalScript = entry.script as WithdrawalValidator;
+  const withdrawalScriptHash = validatorToScriptHash(withdrawalScript);
+  assertManifestScriptHash(
+    sourcePath,
+    name,
+    entry.scriptHash,
+    withdrawalScriptHash,
+  );
+  return {
+    withdrawalScriptCBOR: entry.cborHex,
+    withdrawalScript,
+    withdrawalScriptHash,
+  };
+};
+
+const authenticatedValidatorFromManifest = (
+  network: Network,
+  manifest: DeploymentManifestCandidate,
+  sourcePath: string,
+  spendName: string,
+  mintName: string,
+): SDK.AuthenticatedValidator => ({
+  ...spendingValidatorFromManifest(network, manifest, sourcePath, spendName),
+  ...mintingValidatorFromManifest(manifest, sourcePath, mintName),
+});
+
+export const midgardContractsFromDeploymentManifest = (
+  network: Network,
+  manifest: DeploymentManifestCandidate,
+  sourcePath: string,
+  baseContracts: SDK.MidgardValidators,
+): SDK.MidgardValidators => {
+  const referenceScriptAuth = mintingValidatorFromManifest(
+    manifest,
+    sourcePath,
+    "referenceScriptAuthMint",
+  );
+  const referenceScriptAuthPolicyId = requireManifestString(
+    manifest.referenceScriptAuthPolicy?.policyId,
+    "referenceScriptAuthPolicy.policyId",
+    sourcePath,
+  ).toLowerCase();
+  if (referenceScriptAuth.policyId !== referenceScriptAuthPolicyId) {
+    throw new Error(
+      `Deployment manifest at "${sourcePath}" reference-script auth policy mismatch: contracts.referenceScriptAuthMint=${referenceScriptAuth.policyId}, referenceScriptAuthPolicy.policyId=${referenceScriptAuthPolicyId}`,
+    );
+  }
+  const hubOracleMint = mintingValidatorFromManifest(
+    manifest,
+    sourcePath,
+    "hubOracleMint",
+  );
+  const hubOracle: SDK.AuthenticatedValidator = {
+    spendingScriptCBOR: baseContracts.hubOracle.spendingScriptCBOR,
+    spendingScript: baseContracts.hubOracle.spendingScript,
+    spendingScriptHash: hubOracleMint.policyId,
+    spendingScriptAddress: credentialToAddress(
+      network,
+      scriptHashToCredential(hubOracleMint.policyId),
+    ),
+    ...hubOracleMint,
+  };
+
+  return {
+    referenceScriptAuth,
+    hubOracle,
+    daParamsGovernor: authenticatedValidatorFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      "daParamsGovernorSpend",
+      "daParamsGovernorMint",
+    ),
+    daAttestation: authenticatedValidatorFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      "daAttestationSpend",
+      "daAttestationMint",
+    ),
+    stateQueue: authenticatedValidatorFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      "stateQueueSpend",
+      "stateQueueMint",
+    ),
+    scheduler: authenticatedValidatorFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      "schedulerSpend",
+      "schedulerMint",
+    ),
+    registeredOperators: authenticatedValidatorFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      "registeredOperatorsSpend",
+      "registeredOperatorsMint",
+    ),
+    activeOperators: authenticatedValidatorFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      "activeOperatorsSpend",
+      "activeOperatorsMint",
+    ),
+    retiredOperators: authenticatedValidatorFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      "retiredOperatorsSpend",
+      "retiredOperatorsMint",
+    ),
+    escapeHatch: authenticatedValidatorFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      "escapeHatchSpend",
+      "escapeHatchMint",
+    ),
+    fraudProofCatalogue: authenticatedValidatorFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      "fraudProofCatalogueSpend",
+      "fraudProofCatalogueMint",
+    ),
+    fraudProof: authenticatedValidatorFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      "fraudProofSpend",
+      "fraudProofMint",
+    ),
+    deposit: authenticatedValidatorFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      "depositSpend",
+      "depositMint",
+    ),
+    withdrawal: authenticatedValidatorFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      "withdrawalSpend",
+      "withdrawalMint",
+    ),
+    txOrder: authenticatedValidatorFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      "txOrderSpend",
+      "txOrderMint",
+    ),
+    settlement: authenticatedValidatorFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      "settlementSpend",
+      "settlementMint",
+    ),
+    reserve: {
+      ...spendingValidatorFromManifest(
+        network,
+        manifest,
+        sourcePath,
+        "reserveSpend",
+      ),
+      ...withdrawalValidatorFromManifest(
+        manifest,
+        sourcePath,
+        "reserveWithdraw",
+      ),
+    },
+    payout: authenticatedValidatorFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      "payoutSpend",
+      "payoutMint",
+    ),
+    fraudProofs: {
+      doubleSpend: spendingValidatorFromManifest(
+        network,
+        manifest,
+        sourcePath,
+        "fraudProofDoubleSpend",
+      ),
+      nonExistentInput: spendingValidatorFromManifest(
+        network,
+        manifest,
+        sourcePath,
+        "fraudProofNonExistentInput",
+      ),
+      nonExistentInputNoIndex: spendingValidatorFromManifest(
+        network,
+        manifest,
+        sourcePath,
+        "fraudProofNonExistentInputNoIndex",
+      ),
+      invalidRange: spendingValidatorFromManifest(
+        network,
+        manifest,
+        sourcePath,
+        "fraudProofInvalidRange",
+      ),
+      transitionTrace: spendingValidatorFromManifest(
+        network,
+        manifest,
+        sourcePath,
+        "fraudProofTransitionTrace",
+      ),
+    },
+  };
+};
 
 /**
  * Blueprint titles for the real state-queue scripts.
@@ -1103,9 +1614,63 @@ export const withRealStateQueueAndOperatorContracts = (
  * The effect fails fast if the one-shot hub-oracle parameters are missing so a
  * node cannot boot into an ambiguous real-contract configuration.
  */
-const makeMidgardContracts = Effect.gen(function* () {
+const makeMidgardContractRuntime = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
   const baseContracts = yield* AlwaysSucceedsContract;
+  const configuredManifest = yield* Effect.try({
+    try: () => readConfiguredDeploymentManifest(),
+    catch: (cause) =>
+      new Error(
+        `Failed to read configured deployment manifest: ${formatUnknownError(
+          cause,
+        )}`,
+      ),
+  });
+  if (configuredManifest !== undefined) {
+    yield* Effect.try({
+      try: () =>
+        assertDeploymentManifestMatchesConfig(
+          configuredManifest.manifest,
+          configuredManifest.path,
+          nodeConfig,
+        ),
+      catch: (cause) =>
+        new Error(
+          `Configured deployment manifest cannot be used as contract source: ${formatUnknownError(
+            cause,
+          )}`,
+        ),
+    });
+    const manifestContracts = yield* Effect.try({
+      try: () =>
+        midgardContractsFromDeploymentManifest(
+          nodeConfig.NETWORK,
+          configuredManifest.manifest,
+          configuredManifest.path,
+          baseContracts,
+        ),
+      catch: (cause) =>
+        new Error(
+          `Failed to derive contracts from configured deployment manifest: ${formatUnknownError(
+            cause,
+          )}`,
+        ),
+    });
+    yield* Effect.logInfo(
+      `🔐 Contract source selected: deployment-manifest path=${configuredManifest.path},manifestId=${String(
+        configuredManifest.manifest.manifestId ?? "unknown",
+      )}`,
+    );
+    const runtime: MidgardContractRuntimeValue = {
+      contracts: manifestContracts,
+      identity: {
+        kind: "manifest",
+        manifestId: configuredManifest.manifest.manifestId,
+        path: configuredManifest.path,
+      },
+    };
+    return runtime;
+  }
   const oneShotOutRef: HubOracleOneShotOutRef = {
     txHash: nodeConfig.HUB_ORACLE_ONE_SHOT_TX_HASH,
     outputIndex: nodeConfig.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX,
@@ -1122,8 +1687,20 @@ const makeMidgardContracts = Effect.gen(function* () {
   yield* Effect.logInfo(
     "🔐 Contract source selected: state_queue=real, da_attestation=real, da_params_governor=real, hub_oracle=real, deposit=real, tx_order=real, withdrawal=real, settlement=real, reserve=real, payout=real, registered_operators=real, active_operators=real, retired_operators=real, scheduler=real, fraud_proofs.double_spend=real, fraud_proofs.transition_trace=real, fraud_proofs.non_existent_input=real",
   );
-  return resolvedContracts;
+  const runtime: MidgardContractRuntimeValue = {
+    contracts: resolvedContracts,
+    identity: { kind: "derived" },
+  };
+  return runtime;
 }).pipe(Effect.orDie);
+
+class MidgardContractRuntime extends Effect.Service<MidgardContractRuntime>()(
+  "MidgardContractRuntime",
+  {
+    effect: makeMidgardContractRuntime,
+    dependencies: [AlwaysSucceedsContract.Default, NodeConfig.layer],
+  },
+) {}
 
 /**
  * Service providing the validator bundle used by the node.
@@ -1131,7 +1708,22 @@ const makeMidgardContracts = Effect.gen(function* () {
 export class MidgardContracts extends Effect.Service<MidgardContracts>()(
   "MidgardContracts",
   {
-    effect: makeMidgardContracts,
-    dependencies: [AlwaysSucceedsContract.Default, NodeConfig.layer],
+    effect: Effect.map(MidgardContractRuntime, ({ contracts }) => contracts),
+    dependencies: [MidgardContractRuntime.Default],
   },
 ) {}
+
+/** Identity of the exact contract source selected by {@link MidgardContracts}. */
+export class ContractDeploymentIdentity extends Effect.Service<ContractDeploymentIdentity>()(
+  "ContractDeploymentIdentity",
+  {
+    effect: Effect.map(MidgardContractRuntime, ({ identity }) => identity),
+    dependencies: [MidgardContractRuntime.Default],
+  },
+) {}
+
+/** Shared layer so contract bytes and their deployment identity resolve once. */
+export const MidgardContractServices = Layer.merge(
+  MidgardContracts.Default,
+  ContractDeploymentIdentity.Default,
+);

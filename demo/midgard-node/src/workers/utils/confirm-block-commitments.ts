@@ -61,6 +61,24 @@ export const pendingBlockHasSubmittedTx = (
   pendingBlock: PendingBlockConfirmation,
 ): boolean => pendingBlock.submittedTxHash.length > 0;
 
+export const TARGETED_MISS_FULL_SCAN_INTERVAL_MS = 20_000;
+
+export const shouldRunFullStateQueueConfirmationScan = ({
+  targetedTxConfirmed,
+  pendingAgeMs,
+  unconfirmedBlockMaxAgeMs,
+  validityExpired,
+}: {
+  readonly targetedTxConfirmed: boolean;
+  readonly pendingAgeMs: number;
+  readonly unconfirmedBlockMaxAgeMs: number;
+  readonly validityExpired: boolean;
+}): boolean =>
+  targetedTxConfirmed ||
+  validityExpired ||
+  pendingAgeMs >= unconfirmedBlockMaxAgeMs ||
+  pendingAgeMs % TARGETED_MISS_FULL_SCAN_INTERVAL_MS < 2_000;
+
 export const shouldDeferUnsubmittedPendingBlockRecovery = ({
   pendingBlock,
   nowMs,

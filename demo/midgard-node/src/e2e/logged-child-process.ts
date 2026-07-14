@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { createWriteStream } from "node:fs";
+import { createWriteStream, existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 
@@ -8,6 +8,11 @@ import {
   shouldSpawnDetachedProcessGroup,
   terminateChildProcessGroup,
 } from "@/e2e/process-cleanup.js";
+import {
+  type OwnedProcessGroupSpec,
+  removeOwnedProcessGroupRecord,
+  writeOwnedProcessGroupRecord,
+} from "@/e2e/process-ownership.js";
 
 export type LoggedChildProcessResult = {
   readonly pid: number | null;
@@ -18,9 +23,37 @@ export type LoggedChildProcessResult = {
   readonly signal: NodeJS.Signals | null;
   readonly timedOut: boolean;
   readonly cleanup: ChildProcessCleanupResult | null;
+  readonly outputTermination: OutputTerminationObservation | null;
+  readonly fileTermination: FileTerminationObservation | null;
   readonly stdout: string;
   readonly combinedOutput: string;
   readonly error: Error | null;
+};
+
+export type OutputTerminationSpec = {
+  readonly marker: string;
+  readonly additionalMarkers?: readonly string[];
+  readonly occurrence?: number;
+  readonly signal: NodeJS.Signals;
+};
+
+export type OutputTerminationObservation = {
+  readonly marker: string;
+  readonly occurrence: number;
+  readonly signal: NodeJS.Signals;
+  readonly at: string;
+};
+
+export type FileTerminationSpec = {
+  readonly path: string;
+  readonly signal: NodeJS.Signals;
+  readonly pollIntervalMs?: number;
+};
+
+export type FileTerminationObservation = {
+  readonly path: string;
+  readonly signal: NodeJS.Signals;
+  readonly at: string;
 };
 
 export type LoggedChildProcessInput = {
@@ -30,6 +63,9 @@ export type LoggedChildProcessInput = {
   readonly env: NodeJS.ProcessEnv;
   readonly rawLogPath: string;
   readonly timeoutMs?: number;
+  readonly terminateOnOutput?: OutputTerminationSpec;
+  readonly terminateOnFile?: FileTerminationSpec;
+  readonly ownership?: OwnedProcessGroupSpec;
   readonly startedAtDate?: Date;
   readonly startEvent: (input: {
     readonly pid: number | null;
@@ -51,6 +87,9 @@ export const runLoggedChildProcessAttempt = async ({
   startedAtDate = new Date(),
   startEvent,
   cleanupEvent,
+  terminateOnOutput,
+  terminateOnFile,
+  ownership,
 }: LoggedChildProcessInput): Promise<LoggedChildProcessResult> => {
   const startedAt = startedAtDate.toISOString();
   await mkdir(dirname(rawLogPath), { recursive: true });
@@ -60,9 +99,32 @@ export const runLoggedChildProcessAttempt = async ({
   let combinedOutput = "";
   let timedOut = false;
   let cleanup: ChildProcessCleanupResult | null = null;
+  let outputTermination: OutputTerminationObservation | null = null;
+  let fileTermination: FileTerminationObservation | null = null;
+  let outputScanTail = "";
+  const outputMarkerOccurrences = new Map<string, number>();
+
+  const outputTerminationMarkers =
+    terminateOnOutput === undefined
+      ? []
+      : [
+          terminateOnOutput.marker,
+          ...(terminateOnOutput.additionalMarkers ?? []),
+        ];
+  if (outputTerminationMarkers.some((marker) => marker.length === 0)) {
+    throw new Error("terminateOnOutput markers must not be empty");
+  }
+  const terminateOnOccurrence = terminateOnOutput?.occurrence ?? 1;
+  if (
+    !Number.isSafeInteger(terminateOnOccurrence) ||
+    terminateOnOccurrence <= 0
+  ) {
+    throw new Error("terminateOnOutput.occurrence must be a positive integer");
+  }
 
   return await new Promise<LoggedChildProcessResult>((resolve) => {
     let settled = false;
+    let filePoll: NodeJS.Timeout | undefined;
     const settle = (
       exitCode: number | null,
       signal: NodeJS.Signals | null,
@@ -72,6 +134,7 @@ export const runLoggedChildProcessAttempt = async ({
         return;
       }
       settled = true;
+      if (filePoll !== undefined) clearInterval(filePoll);
       const finishedAtDate = new Date();
       const result: LoggedChildProcessResult = {
         pid,
@@ -85,6 +148,8 @@ export const runLoggedChildProcessAttempt = async ({
         signal,
         timedOut,
         cleanup,
+        outputTermination,
+        fileTermination,
         stdout,
         combinedOutput,
         error,
@@ -100,6 +165,40 @@ export const runLoggedChildProcessAttempt = async ({
       stdio: ["ignore", "pipe", "pipe"],
     });
     pid = child.pid ?? null;
+    if (ownership !== undefined) {
+      if (pid === null || !shouldSpawnDetachedProcessGroup()) {
+        child.kill("SIGKILL");
+        settle(
+          null,
+          null,
+          new Error(
+            "owned process-group supervision requires a detached child pid on this platform",
+          ),
+        );
+        return;
+      }
+      try {
+        writeOwnedProcessGroupRecord({
+          spec: ownership,
+          pid,
+          command,
+          args,
+          cwd,
+        });
+      } catch (error) {
+        try {
+          process.kill(-pid, "SIGKILL");
+        } catch {
+          child.kill("SIGKILL");
+        }
+        settle(
+          null,
+          null,
+          error instanceof Error ? error : new Error(String(error)),
+        );
+        return;
+      }
+    }
     log.write(JSON.stringify(startEvent({ pid, startedAt })) + "\n");
 
     const timeout =
@@ -108,7 +207,11 @@ export const runLoggedChildProcessAttempt = async ({
         : setTimeout(
             () => {
               timedOut = true;
-              cleanup = terminateChildProcessGroup({ pid, signal: "SIGTERM" });
+              cleanup = terminateChildProcessGroup({
+                pid,
+                signal: "SIGTERM",
+                ownership,
+              });
               log.write(
                 JSON.stringify(
                   cleanupEvent({
@@ -121,16 +224,86 @@ export const runLoggedChildProcessAttempt = async ({
             Math.max(1, timeoutMs),
           );
 
+    if (terminateOnFile !== undefined) {
+      const pollIntervalMs = Math.max(
+        10,
+        Math.floor(terminateOnFile.pollIntervalMs ?? 50),
+      );
+      filePoll = setInterval(() => {
+        if (fileTermination !== null || !existsSync(terminateOnFile.path)) {
+          return;
+        }
+        fileTermination = {
+          path: terminateOnFile.path,
+          signal: terminateOnFile.signal,
+          at: new Date().toISOString(),
+        };
+        cleanup = terminateChildProcessGroup({
+          pid,
+          signal: terminateOnFile.signal,
+          ownership,
+        });
+        log.write(
+          JSON.stringify(cleanupEvent({ cleanup, at: fileTermination.at })) +
+            "\n",
+        );
+      }, pollIntervalMs);
+    }
+
+    const appendOutput = (text: string): void => {
+      combinedOutput += text;
+      log.write(text);
+      if (terminateOnOutput === undefined || outputTermination !== null) {
+        return;
+      }
+      const searchable = outputScanTail + text;
+      const matchedMarker = outputTerminationMarkers.find((marker) => {
+        let found = 0;
+        let fromIndex = 0;
+        while (true) {
+          const index = searchable.indexOf(marker, fromIndex);
+          if (index < 0) break;
+          found += 1;
+          fromIndex = index + marker.length;
+        }
+        const observed = (outputMarkerOccurrences.get(marker) ?? 0) + found;
+        outputMarkerOccurrences.set(marker, observed);
+        return observed >= terminateOnOccurrence;
+      });
+      if (matchedMarker !== undefined) {
+        outputTermination = {
+          marker: matchedMarker,
+          occurrence: outputMarkerOccurrences.get(matchedMarker) ?? 1,
+          signal: terminateOnOutput.signal,
+          at: new Date().toISOString(),
+        };
+        cleanup = terminateChildProcessGroup({
+          pid,
+          signal: terminateOnOutput.signal,
+          ownership,
+        });
+        log.write(
+          JSON.stringify(cleanupEvent({ cleanup, at: outputTermination.at })) +
+            "\n",
+        );
+        return;
+      }
+      const retainedCharacters = Math.max(
+        0,
+        Math.max(...outputTerminationMarkers.map((marker) => marker.length)) -
+          1,
+      );
+      outputScanTail = searchable.slice(-retainedCharacters);
+    };
+
     child.stdout.on("data", (chunk: Buffer) => {
       const text = chunk.toString("utf8");
       stdout += text;
-      combinedOutput += text;
-      log.write(text);
+      appendOutput(text);
     });
     child.stderr.on("data", (chunk: Buffer) => {
       const text = chunk.toString("utf8");
-      combinedOutput += text;
-      log.write(text);
+      appendOutput(text);
     });
     child.on("error", (error) => {
       if (timeout !== undefined) {
@@ -141,6 +314,9 @@ export const runLoggedChildProcessAttempt = async ({
     child.on("close", (exitCode, signal) => {
       if (timeout !== undefined) {
         clearTimeout(timeout);
+      }
+      if (ownership !== undefined) {
+        removeOwnedProcessGroupRecord(ownership.recordPath);
       }
       settle(exitCode, signal, null);
     });

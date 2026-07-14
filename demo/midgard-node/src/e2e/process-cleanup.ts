@@ -1,3 +1,8 @@
+import {
+  type OwnedProcessGroupSpec,
+  terminateOwnedProcessGroup,
+} from "@/e2e/process-ownership.js";
+
 export type ChildProcessCleanupResult = {
   readonly attempted: boolean;
   readonly pid: number | null;
@@ -5,6 +10,10 @@ export type ChildProcessCleanupResult = {
   readonly signal: NodeJS.Signals;
   readonly success: boolean;
   readonly error: string | null;
+  readonly ownershipValidation?: {
+    readonly valid: boolean;
+    readonly reason: string;
+  };
 };
 
 const errorMessage = (error: unknown): string =>
@@ -16,10 +25,27 @@ export const shouldSpawnDetachedProcessGroup = (): boolean =>
 export const terminateChildProcessGroup = ({
   pid,
   signal = "SIGTERM",
+  ownership,
 }: {
   readonly pid: number | null;
   readonly signal?: NodeJS.Signals;
+  readonly ownership?: OwnedProcessGroupSpec;
 }): ChildProcessCleanupResult => {
+  if (ownership !== undefined) {
+    const result = terminateOwnedProcessGroup({ spec: ownership, signal });
+    return {
+      attempted: result.attempted,
+      pid: result.pid,
+      target: result.target,
+      signal: result.signal,
+      success: result.success,
+      error: result.error,
+      ownershipValidation: {
+        valid: result.ownershipValidation.valid,
+        reason: result.ownershipValidation.reason,
+      },
+    };
+  }
   if (pid === null) {
     return {
       attempted: false,

@@ -3,6 +3,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import {
@@ -23,7 +24,14 @@ import {
   isDrainComplete,
   rateBetweenCounters,
   summarizeCounterWindow,
+  summarizeHistogramDelta,
+  summarizeL1Observation,
   summarizeLatency,
+  deriveCalibratedClientCapacity,
+  summarizeOpenLoopCheckpointProgress,
+  summarizePhase1StageAWindowGate,
+  summarizePhase1StarvationGate,
+  summarizeSubmitSuccessStatuses,
   summarizeRollingRates,
   terminalStatuses,
 } from "./throughput-benchmark-utils.mjs";
@@ -35,211 +43,458 @@ import {
   outputHasMultiAssets,
   parseEnv,
 } from "./native-tx-workload-utils.mjs";
+import {
+  corpusRowsForEntries,
+  defaultCorpusIndexPath,
+  defaultCorpusManifestPath,
+  loadCorpusIndex,
+  loadCorpusManifest,
+  openStreamingCorpusReader,
+  selectCorpusIndexEntries,
+  validateCorpusSlice,
+  verifyCorpusArtifactIdentity,
+} from "./throughput-valid-stress-corpus.mjs";
+import { consumePhase3SoakCorpusPreflight } from "./phase3-architecture-g-soak-preflight.mjs";
+import { consumePhase3LoadGeneratorIsolation } from "./phase3-architecture-g-load-generator-isolation.mjs";
+import {
+  loadPhase1FormalBindingSync,
+  PHASE1_FORMAL_SCENARIO,
+  sha256FileSync,
+  validatePhase1BindingEnvironment,
+  validatePhase1FormalCorpus,
+  verifyPhase1LivePreflight,
+} from "./phase1-formal-identity.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const pkgRoot = path.resolve(__dirname, "..");
 
 const envPath = process.env.STRESS_ENV_FILE ?? path.join(pkgRoot, ".env");
-const submitEndpoint =
-  process.env.STRESS_SUBMIT_ENDPOINT ?? "http://127.0.0.1:3000";
-const metricsEndpoint =
-  process.env.STRESS_METRICS_ENDPOINT ?? "http://127.0.0.1:9464/metrics";
-const chainLength = Number.parseInt(
-  process.env.STRESS_CHAIN_LENGTH ?? "500",
+const loadedStressEnv = fs.existsSync(envPath) ? parseEnv(envPath) : {};
+const stressEnv = { ...loadedStressEnv, ...process.env };
+const envValue = (name, fallback = undefined) => stressEnv[name] ?? fallback;
+const parsePositiveIntegerSetting = (name, fallback, sentinel = null) => {
+  const raw = String(envValue(name, fallback)).trim();
+  if (sentinel !== null && raw === sentinel) {
+    return { raw, value: Number(fallback), sentinel: true };
+  }
+  const value = Number.parseInt(raw, 10);
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`${name} must be a positive integer`);
+  }
+  return { raw, value, sentinel: false };
+};
+const parsePositiveFloatSetting = (name, fallback) => {
+  const value = Number.parseFloat(String(envValue(name, fallback)).trim());
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`${name} must be a positive number`);
+  }
+  return value;
+};
+const submitEndpoint = envValue(
+  "STRESS_SUBMIT_ENDPOINT",
+  "http://127.0.0.1:3000",
+);
+const metricsEndpoint = envValue(
+  "STRESS_METRICS_ENDPOINT",
+  "http://127.0.0.1:9464/metrics",
+);
+const corpusPath = envValue("STRESS_CORPUS_PATH", null);
+const corpusIndexPath =
+  envValue("STRESS_CORPUS_INDEX_PATH", null) ??
+  (corpusPath === null ? null : defaultCorpusIndexPath(corpusPath));
+const corpusManifestPath =
+  envValue("STRESS_CORPUS_MANIFEST_PATH", null) ??
+  (corpusPath === null ? null : defaultCorpusManifestPath(corpusPath));
+const corpusShape = envValue("STRESS_CORPUS_SHAPE", "mixed");
+const corpusSliceId = envValue("STRESS_CORPUS_SLICE_ID", null);
+const corpusReadAheadRows = Number.parseInt(
+  envValue("STRESS_CORPUS_READAHEAD_ROWS", "50"),
   10,
 );
-const maxChains = Number.parseInt(process.env.STRESS_MAX_CHAINS ?? "8", 10);
+const corpusPreflightRequired =
+  String(envValue("STRESS_CORPUS_PREFLIGHT_REQUIRED", "false"))
+    .trim()
+    .toLowerCase() === "true";
+const corpusPreflightPath = envValue("STRESS_CORPUS_PREFLIGHT_PATH", null);
+const corpusPreflightSha256 = envValue("STRESS_CORPUS_PREFLIGHT_SHA256", null);
+const corpusPreflightSourceIdentitySha256 = envValue(
+  "STRESS_CORPUS_PREFLIGHT_SOURCE_IDENTITY_SHA256",
+  null,
+);
+const corpusPreflightPhase1BindingSha256 = envValue(
+  "STRESS_CORPUS_PREFLIGHT_PHASE1_BINDING_SHA256",
+  null,
+);
+const loadGeneratorIsolationRequired =
+  String(envValue("STRESS_LOAD_GENERATOR_ISOLATION_REQUIRED", "false"))
+    .trim()
+    .toLowerCase() === "true";
+const loadGeneratorIsolationPath = envValue(
+  "STRESS_LOAD_GENERATOR_ISOLATION_PATH",
+  null,
+);
+const loadGeneratorIsolationSha256 = envValue(
+  "STRESS_LOAD_GENERATOR_ISOLATION_SHA256",
+  null,
+);
+const requireNoOpCalibration =
+  String(envValue("STRESS_REQUIRE_NOOP_CALIBRATION", "false"))
+    .trim()
+    .toLowerCase() === "true";
+const noOpEndpointValue = String(envValue("STRESS_NOOP_ENDPOINT", "")).trim();
+const noOpEndpoint = noOpEndpointValue.length === 0 ? null : noOpEndpointValue;
+const calibrationHeadroomMultiplier = parsePositiveFloatSetting(
+  "STRESS_CALIBRATION_HEADROOM_MULTIPLIER",
+  "2",
+);
+const calibrationDurationSec = parsePositiveFloatSetting(
+  "STRESS_CALIBRATION_DURATION_SEC",
+  "5",
+);
+const nodeSaturationMinRatio = parsePositiveFloatSetting(
+  "STRESS_NODE_SATURATION_MIN_RATIO",
+  "1.2",
+);
+const chainLength = Number.parseInt(envValue("STRESS_CHAIN_LENGTH", "500"), 10);
+const maxChainsSetting = parsePositiveIntegerSetting(
+  "STRESS_MAX_CHAINS",
+  "8",
+  "auto",
+);
+let maxChains = maxChainsSetting.sentinel ? null : maxChainsSetting.value;
 const utxosPerWallet = Number.parseInt(
-  process.env.STRESS_UTXOS_PER_WALLET ?? "3",
+  envValue("STRESS_UTXOS_PER_WALLET", "3"),
   10,
 );
-const minLovelace = BigInt(process.env.STRESS_MIN_LOVELACE ?? "0");
+const minLovelace = BigInt(envValue("STRESS_MIN_LOVELACE", "0"));
 const fanoutEnabled =
-  (process.env.STRESS_FANOUT_ENABLED ?? "true").trim().toLowerCase() !==
+  String(envValue("STRESS_FANOUT_ENABLED", "true")).trim().toLowerCase() !==
   "false";
 const fanoutMaxOutputsPerTx = Number.parseInt(
-  process.env.STRESS_FANOUT_MAX_OUTPUTS_PER_TX ?? "256",
+  envValue("STRESS_FANOUT_MAX_OUTPUTS_PER_TX", "256"),
   10,
 );
 const fanoutOutputLovelace =
-  process.env.STRESS_FANOUT_OUTPUT_LOVELACE === undefined
+  envValue("STRESS_FANOUT_OUTPUT_LOVELACE") === undefined
     ? null
-    : BigInt(process.env.STRESS_FANOUT_OUTPUT_LOVELACE);
+    : BigInt(envValue("STRESS_FANOUT_OUTPUT_LOVELACE"));
 const fanoutStatusTimeoutMs = Number.parseInt(
-  process.env.STRESS_FANOUT_STATUS_TIMEOUT_MS ?? "30000",
+  envValue("STRESS_FANOUT_STATUS_TIMEOUT_MS", "30000"),
   10,
 );
-const retry503 = Number.parseInt(process.env.STRESS_RETRY_503 ?? "3", 10);
+const retry503 = Number.parseInt(envValue("STRESS_RETRY_503", "3"), 10);
 const measuredRetry503 = Number.parseInt(
-  process.env.STRESS_MEASURED_RETRY_503 ?? "0",
+  envValue("STRESS_MEASURED_RETRY_503", "0"),
   10,
 );
 const retryDelayMs = Number.parseInt(
-  process.env.STRESS_RETRY_DELAY_MS ?? "25",
+  envValue("STRESS_RETRY_DELAY_MS", "25"),
   10,
 );
 const metricsPollMs = Number.parseInt(
-  process.env.STRESS_METRICS_POLL_MS ?? "1000",
+  envValue("STRESS_METRICS_POLL_MS", "1000"),
   10,
 );
 const observeAfterSubmitSec = Number.parseInt(
-  process.env.STRESS_OBSERVE_AFTER_SUBMIT_SEC ?? "15",
+  envValue("STRESS_OBSERVE_AFTER_SUBMIT_SEC", "15"),
   10,
 );
 const targetAcceptedTps = Number.parseFloat(
-  process.env.STRESS_TARGET_ACCEPTED_TPS ?? "600",
+  envValue("STRESS_TARGET_ACCEPTED_TPS", "600"),
 );
 const requireFreshChains =
-  (process.env.STRESS_REQUIRE_FRESH_CHAINS ?? "true").trim().toLowerCase() !==
-  "false";
+  String(envValue("STRESS_REQUIRE_FRESH_CHAINS", "true"))
+    .trim()
+    .toLowerCase() !== "false";
 const txStatusRetries = Number.parseInt(
-  process.env.STRESS_TX_STATUS_RETRIES ?? "5",
+  envValue("STRESS_TX_STATUS_RETRIES", "5"),
   10,
 );
 const txStatusRetryDelayMs = Number.parseInt(
-  process.env.STRESS_TX_STATUS_RETRY_DELAY_MS ?? "50",
+  envValue("STRESS_TX_STATUS_RETRY_DELAY_MS", "50"),
   10,
 );
-const benchmarkMode = (process.env.STRESS_MODE ?? "closed")
+const benchmarkMode = String(envValue("STRESS_MODE", "closed"))
   .trim()
   .toLowerCase();
-const measuredSec = Number.parseFloat(process.env.STRESS_MEASURED_SEC ?? "30");
-const warmupTxs = Number.parseInt(process.env.STRESS_WARMUP_TXS ?? "0", 10);
-const warmupSec = Number.parseFloat(process.env.STRESS_WARMUP_SEC ?? "0");
-const cooldownSec = Number.parseFloat(process.env.STRESS_COOLDOWN_SEC ?? "3");
+const scenarioClass = String(envValue("STRESS_SCENARIO_CLASS", "A"))
+  .trim()
+  .toUpperCase();
+const scenarioName = String(envValue("STRESS_SCENARIO_NAME", "custom")).trim();
+const formalBenchmark =
+  String(envValue("STRESS_FORMAL_BENCHMARK", "false")).trim().toLowerCase() ===
+  "true";
+const phase1FormalBinding =
+  formalBenchmark && scenarioName === PHASE1_FORMAL_SCENARIO
+    ? (() => {
+        const binding = loadPhase1FormalBindingSync(
+          envValue("STRESS_PHASE1_BINDING_PATH"),
+        );
+        return validatePhase1BindingEnvironment({
+          binding,
+          env: stressEnv,
+          scenarioId: sha256FileSync(
+            path.join(__dirname, "benchmark-scenario.mjs"),
+          ),
+          engineId: sha256FileSync(__filename),
+        });
+      })()
+    : null;
+const loadGeneratorPlacement = String(
+  envValue("STRESS_LOAD_GENERATOR_PLACEMENT", "unspecified"),
+).trim();
+const loadGeneratorCohostedRaw = String(
+  envValue("STRESS_LOADGEN_COHOSTED", "unspecified"),
+)
+  .trim()
+  .toLowerCase();
+const loadGeneratorCohosted =
+  loadGeneratorCohostedRaw === "true"
+    ? true
+    : loadGeneratorCohostedRaw === "false"
+      ? false
+      : null;
+const clockOffsetMsRaw = String(envValue("STRESS_CLOCK_OFFSET_MS", "")).trim();
+const clockOffsetMs =
+  clockOffsetMsRaw.length === 0 ? null : Number(clockOffsetMsRaw);
+const observabilityProfile = String(
+  envValue("STRESS_OBSERVABILITY_PROFILE", "unspecified"),
+)
+  .trim()
+  .toLowerCase();
+const measuredSec = Number.parseFloat(envValue("STRESS_MEASURED_SEC", "30"));
+const phase4BlockTxTarget = Number.parseInt(
+  envValue("STRESS_PHASE4_BLOCK_TX_TARGET", "0"),
+  10,
+);
+const configuredCommitMaxL2TxCount = Number.parseInt(
+  envValue("COMMIT_MAX_L2_TX_COUNT", "0"),
+  10,
+);
+const phase4EnvironmentFingerprintPath = envValue(
+  "STRESS_PHASE4_ENVIRONMENT_FINGERPRINT_PATH",
+  null,
+);
+const phase4EnvironmentFingerprint =
+  phase4EnvironmentFingerprintPath === null
+    ? null
+    : (() => {
+        const bytes = fs.readFileSync(phase4EnvironmentFingerprintPath);
+        const artifact = JSON.parse(bytes.toString("utf8"));
+        return {
+          path: path.resolve(phase4EnvironmentFingerprintPath),
+          sha256: createHash("sha256").update(bytes).digest("hex"),
+          artifactSchemaVersion: artifact.schemaVersion,
+          documentSha256: artifact.documentSha256,
+          document: artifact.document,
+        };
+      })();
+const warmupTxs = Number.parseInt(envValue("STRESS_WARMUP_TXS", "0"), 10);
+const warmupSec = Number.parseFloat(envValue("STRESS_WARMUP_SEC", "0"));
+const cooldownSec = Number.parseFloat(envValue("STRESS_COOLDOWN_SEC", "3"));
 const drainTimeoutSec = Number.parseFloat(
-  process.env.STRESS_DRAIN_TIMEOUT_SEC ?? "60",
+  envValue("STRESS_DRAIN_TIMEOUT_SEC", "60"),
 );
 const waitForCommit =
-  (process.env.STRESS_WAIT_FOR_COMMIT ?? "false").trim().toLowerCase() ===
+  String(envValue("STRESS_WAIT_FOR_COMMIT", "false")).trim().toLowerCase() ===
   "true";
 const waitForMerge =
-  (process.env.STRESS_WAIT_FOR_MERGE ?? "false").trim().toLowerCase() ===
+  String(envValue("STRESS_WAIT_FOR_MERGE", "false")).trim().toLowerCase() ===
   "true";
 const statusSampleSize = Number.parseInt(
-  process.env.STRESS_STATUS_SAMPLE_SIZE ?? "100",
+  envValue("STRESS_STATUS_SAMPLE_SIZE", "100"),
   10,
 );
-const submitConcurrency = Number.parseInt(
-  process.env.STRESS_SUBMIT_CONCURRENCY ?? "512",
-  10,
+const submitConcurrencySetting = parsePositiveIntegerSetting(
+  "STRESS_SUBMIT_CONCURRENCY",
+  "512",
+  "from-calibration",
 );
-const httpConnections = Number.parseInt(
-  process.env.STRESS_HTTP_CONNECTIONS ?? "128",
-  10,
+let submitConcurrency = submitConcurrencySetting.value;
+const httpConnectionsSetting = parsePositiveIntegerSetting(
+  "STRESS_HTTP_CONNECTIONS",
+  "256",
+  "from-calibration",
 );
+let httpConnections = httpConnectionsSetting.value;
 const httpPipelining = Number.parseInt(
-  process.env.STRESS_HTTP_PIPELINING ?? "1",
+  envValue("STRESS_HTTP_PIPELINING", "1"),
   10,
 );
 const httpTimeoutMs = Number.parseInt(
-  process.env.STRESS_HTTP_TIMEOUT_MS ?? "30000",
+  envValue("STRESS_HTTP_TIMEOUT_MS", "30000"),
   10,
 );
 const openLoopRate = Number.parseFloat(
-  process.env.STRESS_OPEN_LOOP_RATE_TPS ?? String(targetAcceptedTps),
+  envValue("STRESS_OPEN_LOOP_RATE_TPS", String(targetAcceptedTps)),
 );
 const rampStartTps = Number.parseFloat(
-  process.env.STRESS_RAMP_START_TPS ?? "100",
+  envValue("STRESS_RAMP_START_TPS", "100"),
 );
-const rampStepTps = Number.parseFloat(
-  process.env.STRESS_RAMP_STEP_TPS ?? "100",
-);
+const rampStepTps = Number.parseFloat(envValue("STRESS_RAMP_STEP_TPS", "100"));
 const rampMaxTps = Number.parseFloat(
-  process.env.STRESS_RAMP_MAX_TPS ??
+  envValue(
+    "STRESS_RAMP_MAX_TPS",
     String(targetAcceptedTps > 0 ? targetAcceptedTps : 1000),
+  ),
 );
-const rampStageSec = Number.parseFloat(
-  process.env.STRESS_RAMP_STAGE_SEC ?? "15",
-);
+const rampStageSec = Number.parseFloat(envValue("STRESS_RAMP_STAGE_SEC", "15"));
 const rampMinAcceptedRatio = Number.parseFloat(
-  process.env.STRESS_RAMP_MIN_ACCEPTED_RATIO ?? "0.99",
+  envValue("STRESS_RAMP_MIN_ACCEPTED_RATIO", "0.99"),
 );
 const offeredRateMinRatio = Number.parseFloat(
-  process.env.STRESS_OFFERED_RATE_MIN_RATIO ?? "0.98",
+  envValue("STRESS_OFFERED_RATE_MIN_RATIO", "0.98"),
 );
 const acceptedRateMinRatio = Number.parseFloat(
-  process.env.STRESS_ACCEPTED_RATE_MIN_RATIO ?? "0.99",
+  envValue("STRESS_ACCEPTED_RATE_MIN_RATIO", "0.99"),
 );
 const scheduleLagP95MaxMs = Number.parseFloat(
-  process.env.STRESS_SCHEDULE_LAG_P95_MAX_MS ?? "100",
+  envValue("STRESS_SCHEDULE_LAG_P95_MAX_MS", "100"),
 );
 const scheduleLagP99MaxMs = Number.parseFloat(
-  process.env.STRESS_SCHEDULE_LAG_P99_MAX_MS ?? "250",
+  envValue("STRESS_SCHEDULE_LAG_P99_MAX_MS", "250"),
+);
+const submitLatencyP99MaxMs = Number.parseFloat(
+  envValue("STRESS_SUBMIT_LATENCY_P99_MAX_MS", "1000"),
 );
 const missedStartMaxRatio = Number.parseFloat(
-  process.env.STRESS_MISSED_START_MAX_RATIO ?? "0.001",
+  envValue("STRESS_MISSED_START_MAX_RATIO", "0.001"),
 );
 const backlogSlopeMaxPerSec = Number.parseFloat(
-  process.env.STRESS_BACKLOG_SLOPE_MAX_PER_SEC ?? "0.1",
+  envValue("STRESS_BACKLOG_SLOPE_MAX_PER_SEC", "0.1"),
+);
+const phase1StarvationGateEnabled =
+  String(envValue("STRESS_PHASE1_STARVATION_GATE", "false"))
+    .trim()
+    .toLowerCase() === "true";
+const phase1StarvationMinDurationSec = parsePositiveFloatSetting(
+  "STRESS_PHASE1_STARVATION_MIN_DURATION_SEC",
+  "600",
+);
+const phase1StarvationMaxAgeMultiplier = parsePositiveFloatSetting(
+  "STRESS_PHASE1_STARVATION_MAX_AGE_MULTIPLIER",
+  "3",
+);
+const phase1StarvationMinOverloadRatio = parsePositiveFloatSetting(
+  "STRESS_PHASE1_STARVATION_MIN_OVERLOAD_RATIO",
+  "2",
+);
+const phase1StarvationBaselineTps = parsePositiveFloatSetting(
+  "STRESS_PHASE1_STARVATION_BASELINE_TPS",
+  "2500",
+);
+const phase1StageAWindowGateEnabled =
+  String(envValue("STRESS_PHASE1_STAGE_A_WINDOW_GATE", "false"))
+    .trim()
+    .toLowerCase() === "true";
+const phase1StageAWindowSec = parsePositiveFloatSetting(
+  "STRESS_PHASE1_STAGE_A_WINDOW_SEC",
+  "300",
+);
+const phase1StageACheckpointMaxJitterMs = parsePositiveFloatSetting(
+  "STRESS_PHASE1_STAGE_A_CHECKPOINT_MAX_JITTER_MS",
+  "1000",
 );
 const candidateCleanTimeoutSec = Number.parseFloat(
-  process.env.STRESS_CANDIDATE_CLEAN_TIMEOUT_SEC ?? "30",
+  envValue("STRESS_CANDIDATE_CLEAN_TIMEOUT_SEC", "30"),
 );
 const requireIdleNode =
-  (process.env.STRESS_REQUIRE_IDLE_NODE ?? "true").trim().toLowerCase() !==
+  String(envValue("STRESS_REQUIRE_IDLE_NODE", "true")).trim().toLowerCase() !==
   "false";
-const idleProbeSec = Number.parseFloat(
-  process.env.STRESS_IDLE_PROBE_SEC ?? "2",
-);
+const idleProbeSec = Number.parseFloat(envValue("STRESS_IDLE_PROBE_SEC", "2"));
 const requireMetricPresence =
-  (process.env.STRESS_REQUIRE_METRIC_PRESENCE ?? "true")
+  String(envValue("STRESS_REQUIRE_METRIC_PRESENCE", "true"))
     .trim()
     .toLowerCase() !== "false";
 const findMaxBinaryIterations = Number.parseInt(
-  process.env.STRESS_FIND_MAX_BINARY_ITERATIONS ?? "6",
+  envValue("STRESS_FIND_MAX_BINARY_ITERATIONS", "6"),
   10,
 );
 const findMaxConfirmationSec = Number.parseFloat(
-  process.env.STRESS_FIND_MAX_CONFIRMATION_SEC ?? String(measuredSec),
+  envValue("STRESS_FIND_MAX_CONFIRMATION_SEC", String(measuredSec)),
 );
 const findMaxRepeats = Number.parseInt(
-  process.env.STRESS_FIND_MAX_REPEATS ?? "2",
+  envValue("STRESS_FIND_MAX_REPEATS", "2"),
   10,
 );
 const findMaxMaxCandidates = Number.parseInt(
-  process.env.STRESS_FIND_MAX_MAX_CANDIDATES ?? "32",
+  envValue("STRESS_FIND_MAX_MAX_CANDIDATES", "32"),
   10,
 );
 const clientSelfCheckEnabled =
-  (process.env.STRESS_CLIENT_SELF_CHECK ?? "true").trim().toLowerCase() !==
+  String(envValue("STRESS_CLIENT_SELF_CHECK", "true")).trim().toLowerCase() !==
   "false";
 const clientSelfCheckRequired =
-  (process.env.STRESS_CLIENT_SELF_CHECK_REQUIRED ?? "false")
+  String(envValue("STRESS_CLIENT_SELF_CHECK_REQUIRED", "false"))
     .trim()
     .toLowerCase() !== "false";
 const clientSelfCheckMultiplier = Number.parseFloat(
-  process.env.STRESS_CLIENT_SELF_CHECK_MULTIPLIER ?? "2",
+  envValue("STRESS_CLIENT_SELF_CHECK_MULTIPLIER", "2"),
 );
 const clientSelfCheckMinRatio = Number.parseFloat(
-  process.env.STRESS_CLIENT_SELF_CHECK_MIN_RATIO ?? "0.95",
+  envValue("STRESS_CLIENT_SELF_CHECK_MIN_RATIO", "0.95"),
 );
 const clientSelfCheckDurationSec = Number.parseFloat(
-  process.env.STRESS_CLIENT_SELF_CHECK_DURATION_SEC ?? "2",
+  envValue("STRESS_CLIENT_SELF_CHECK_DURATION_SEC", "2"),
 );
 const reportPath =
-  process.env.STRESS_REPORT_PATH ??
+  envValue("STRESS_REPORT_PATH") ??
   path.join(
     pkgRoot,
     "benchmark-results",
     `l2-throughput-${new Date().toISOString().replace(/[:.]/g, "-")}.json`,
   );
+const engineEventsPath =
+  envValue("STRESS_ENGINE_EVENTS_PATH", null) ??
+  path.join(path.dirname(reportPath), "engine-events.ndjson");
+const submitRecordsPath =
+  envValue("STRESS_SUBMIT_RECORDS_PATH", null) ??
+  path.join(path.dirname(reportPath), "submit-records.ndjson");
+const noOpCalibrationPath =
+  envValue("STRESS_NOOP_CALIBRATION_PATH", null) ??
+  path.join(path.dirname(reportPath), "noop-calibration.json");
 const pgStatStatementsEnabled =
-  (process.env.STRESS_PG_STAT_STATEMENTS ?? "false").trim().toLowerCase() ===
-  "true";
+  String(envValue("STRESS_PG_STAT_STATEMENTS", "false"))
+    .trim()
+    .toLowerCase() === "true";
 const profileMode =
-  (process.env.STRESS_PROFILE_MODE ?? "false").trim().toLowerCase() === "true";
+  String(envValue("STRESS_PROFILE_MODE", "false")).trim().toLowerCase() ===
+  "true";
 const pyroscopeEnabled =
-  (process.env.STRESS_PYROSCOPE ?? "false").trim().toLowerCase() === "true";
+  String(envValue("STRESS_PYROSCOPE", "false")).trim().toLowerCase() === "true";
 
 const execFileAsync = promisify(execFile);
 
 if (!Number.isFinite(chainLength) || chainLength <= 0) {
   throw new Error("STRESS_CHAIN_LENGTH must be a positive integer");
 }
-if (!Number.isFinite(maxChains) || maxChains <= 0) {
+if (maxChains !== null && (!Number.isFinite(maxChains) || maxChains <= 0)) {
   throw new Error("STRESS_MAX_CHAINS must be a positive integer");
+}
+if (!["fanout", "chain", "mixed"].includes(corpusShape)) {
+  throw new Error("STRESS_CORPUS_SHAPE must be fanout, chain, or mixed");
+}
+if (!Number.isFinite(corpusReadAheadRows) || corpusReadAheadRows <= 0) {
+  throw new Error("STRESS_CORPUS_READAHEAD_ROWS must be a positive integer");
+}
+const corpusPreflightValues = [
+  corpusPreflightPath,
+  corpusPreflightSha256,
+  corpusPreflightSourceIdentitySha256,
+  corpusPreflightPhase1BindingSha256,
+];
+const corpusPreflightEnabled = corpusPreflightValues.every(
+  (value) => typeof value === "string" && value.trim().length > 0,
+);
+if (
+  (corpusPreflightRequired && !corpusPreflightEnabled) ||
+  (!corpusPreflightEnabled &&
+    corpusPreflightValues.some((value) => value !== null))
+) {
+  throw new Error(
+    "full corpus preflight requires path, artifact SHA-256, source-identity SHA-256, and Phase 1 binding SHA-256",
+  );
 }
 if (!Number.isFinite(utxosPerWallet) || utxosPerWallet <= 0) {
   throw new Error("STRESS_UTXOS_PER_WALLET must be a positive integer");
@@ -258,8 +513,70 @@ if (!Number.isFinite(metricsPollMs) || metricsPollMs <= 0) {
 if (!["closed", "open", "ramp", "find-max"].includes(benchmarkMode)) {
   throw new Error("STRESS_MODE must be one of: closed, open, ramp, find-max");
 }
+if (!["A", "B"].includes(scenarioClass)) {
+  throw new Error("STRESS_SCENARIO_CLASS must be A or B");
+}
+if (formalBenchmark) {
+  if (
+    !["separate-host", "separate-container", "measured-cgroup"].includes(
+      loadGeneratorPlacement,
+    )
+  ) {
+    throw new Error(
+      "formal benchmark requires STRESS_LOAD_GENERATOR_PLACEMENT=separate-host, separate-container, or measured-cgroup",
+    );
+  }
+  if (loadGeneratorCohosted === null) {
+    throw new Error(
+      "formal benchmark requires STRESS_LOADGEN_COHOSTED=true or false",
+    );
+  }
+  if (
+    (loadGeneratorPlacement === "separate-host" && loadGeneratorCohosted) ||
+    (["separate-container", "measured-cgroup"].includes(
+      loadGeneratorPlacement,
+    ) &&
+      !loadGeneratorCohosted)
+  ) {
+    throw new Error(
+      "STRESS_LOADGEN_COHOSTED is inconsistent with STRESS_LOAD_GENERATOR_PLACEMENT",
+    );
+  }
+  if (clockOffsetMs === null || !Number.isFinite(clockOffsetMs)) {
+    throw new Error("formal benchmark requires finite STRESS_CLOCK_OFFSET_MS");
+  }
+  if (!["on", "off"].includes(observabilityProfile)) {
+    throw new Error(
+      "formal benchmark requires STRESS_OBSERVABILITY_PROFILE=on or off",
+    );
+  }
+}
+const loadGeneratorIsolation = loadGeneratorIsolationRequired
+  ? consumePhase3LoadGeneratorIsolation({
+      artifactPath: loadGeneratorIsolationPath,
+      artifactSha256: loadGeneratorIsolationSha256,
+    })
+  : null;
 if (!Number.isFinite(measuredSec) || measuredSec <= 0) {
   throw new Error("STRESS_MEASURED_SEC must be a positive number");
+}
+if (!Number.isInteger(phase4BlockTxTarget) || phase4BlockTxTarget < 0) {
+  throw new Error(
+    "STRESS_PHASE4_BLOCK_TX_TARGET must be a non-negative integer",
+  );
+}
+if (
+  phase4BlockTxTarget > 0 &&
+  configuredCommitMaxL2TxCount !== phase4BlockTxTarget
+) {
+  throw new Error(
+    `Phase 4 block target ${phase4BlockTxTarget.toString()} does not match COMMIT_MAX_L2_TX_COUNT=${configuredCommitMaxL2TxCount.toString()}`,
+  );
+}
+if (phase4BlockTxTarget > 0 && phase4EnvironmentFingerprint === null) {
+  throw new Error(
+    "STRESS_PHASE4_ENVIRONMENT_FINGERPRINT_PATH is required for a Phase 4 gate",
+  );
 }
 if (!Number.isFinite(warmupTxs) || warmupTxs < 0) {
   throw new Error("STRESS_WARMUP_TXS must be a non-negative integer");
@@ -303,6 +620,7 @@ for (const [name, value] of [
 for (const [name, value] of [
   ["STRESS_SCHEDULE_LAG_P95_MAX_MS", scheduleLagP95MaxMs],
   ["STRESS_SCHEDULE_LAG_P99_MAX_MS", scheduleLagP99MaxMs],
+  ["STRESS_SUBMIT_LATENCY_P99_MAX_MS", submitLatencyP99MaxMs],
   ["STRESS_BACKLOG_SLOPE_MAX_PER_SEC", backlogSlopeMaxPerSec],
   ["STRESS_CANDIDATE_CLEAN_TIMEOUT_SEC", candidateCleanTimeoutSec],
   ["STRESS_IDLE_PROBE_SEC", idleProbeSec],
@@ -325,10 +643,38 @@ for (const [name, value] of [
   }
 }
 
-/** @typedef {{ outref: string; value: string }} NodeUtxo */
+/** @typedef {{ outref: string; outputCbor: string }} NodeUtxo */
 /** @typedef {{ txHex: string; txIdHex: string }} PrebuiltTx */
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const makeNdjsonWriter = (filePath) => {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  const stream = fs.createWriteStream(filePath, { flags: "w" });
+  return {
+    path: filePath,
+    write(value) {
+      stream.write(`${JSON.stringify(value)}\n`);
+    },
+    async close() {
+      await new Promise((resolve, reject) => {
+        stream.once("error", reject);
+        stream.end(resolve);
+      });
+    },
+  };
+};
+
+let engineEventWriter = null;
+let submitRecordWriter = null;
+
+const writeEngineEvent = (event, payload = {}) => {
+  engineEventWriter?.write({
+    event,
+    at: new Date().toISOString(),
+    ...payload,
+  });
+};
 
 class BenchmarkHttpClient {
   constructor({ connections, pipelining, timeoutMs }) {
@@ -383,11 +729,21 @@ class BenchmarkHttpClient {
   }
 }
 
-const httpClient = new BenchmarkHttpClient({
+let httpClient = new BenchmarkHttpClient({
   connections: httpConnections,
   pipelining: httpPipelining,
   timeoutMs: httpTimeoutMs,
 });
+
+const rebuildHttpClient = async ({ connections }) => {
+  await httpClient.close();
+  httpConnections = connections;
+  httpClient = new BenchmarkHttpClient({
+    connections: httpConnections,
+    pipelining: httpPipelining,
+    timeoutMs: httpTimeoutMs,
+  });
+};
 
 /**
  * Fetches raw Prometheus metrics text from the node.
@@ -419,6 +775,25 @@ const extractMetricValue = (text, names) => {
   return { value: 0, name: null };
 };
 
+const extractMetricSum = (text, names) => {
+  for (const name of names) {
+    const pattern = new RegExp(
+      `^${escapeRegex(name)}(?:\\{[^}]*\\})?\\s+([0-9]+(?:\\.[0-9]+)?)$`,
+      "gm",
+    );
+    const values = [];
+    let match = pattern.exec(text);
+    while (match !== null) {
+      values.push(Number(match[1]));
+      match = pattern.exec(text);
+    }
+    if (values.length > 0) {
+      return { value: values.reduce((sum, value) => sum + value, 0), name };
+    }
+  }
+  return { value: 0, name: null };
+};
+
 const metricSpecs = {
   submit: ["tx_count_total", "tx_count"],
   accept: ["validation_accept_count_total", "validation_accept_count"],
@@ -442,6 +817,8 @@ const metricSpecs = {
   ],
   commitBlock: ["commit_block_count_total", "commit_block_count"],
   commitBlockTx: ["commit_block_tx_count_total", "commit_block_tx_count"],
+  commitBlockNumTx: ["commit_block_num_tx_count"],
+  mempoolOldestTxAgeMs: ["mempool_oldest_tx_age_ms"],
   commitWorkerDurationCount: ["commit_worker_duration_count"],
   commitWorkerDurationSum: ["commit_worker_duration_sum"],
   mergeBlock: ["merge_block_count_total", "merge_block_count"],
@@ -453,6 +830,13 @@ const metricSpecs = {
   processedUnsubmittedTxsSizeBytes: ["processed_unsubmitted_txs_size_bytes"],
   unconfirmedSubmittedBlockPending: ["unconfirmed_submitted_block_pending"],
   unconfirmedSubmittedBlockAgeMs: ["unconfirmed_submitted_block_age_ms"],
+  speculationHit: ["speculation_hit_total", "speculation_hit"],
+  speculationInvalidations: [
+    "speculation_invalidations_total",
+    "speculation_invalidations",
+  ],
+  speculationOverlapEfficiency: ["speculation_overlap_efficiency"],
+  daPublicationBacklog: ["da_publish_reconciler_backlog"],
 };
 
 const requiredStageMetricKeys = [
@@ -504,7 +888,10 @@ const readCounters = async () => {
   const text = await fetchMetricsText();
   const counters = { metricNames: {}, missingMetrics: [], histograms: {} };
   for (const [key, names] of Object.entries(metricSpecs)) {
-    const extracted = extractMetricValue(text, names);
+    const extracted =
+      key === "speculationInvalidations"
+        ? extractMetricSum(text, names)
+        : extractMetricValue(text, names);
     counters[key] = extracted.value;
     counters.metricNames[key] = extracted.name;
     if (extracted.name === null) {
@@ -532,6 +919,39 @@ const readCounters = async () => {
     "commit_worker_duration",
   );
   counters.histograms.mergeDuration = extractHistogram(text, "merge_duration");
+  counters.histograms.commitCadenceMs = extractHistogram(
+    text,
+    "commit_cadence_ms",
+  );
+  counters.histograms.speculativeBuildDurationMs = extractHistogram(
+    text,
+    "speculative_build_duration_ms",
+  );
+  counters.histograms.submitAfterConfirmMs = extractHistogram(
+    text,
+    "submit_after_confirm_ms",
+  );
+  counters.histograms.confirmationDetectionLagMs = extractHistogram(
+    text,
+    "confirmation_detection_lag_ms",
+  );
+  counters.histograms.l1ConfirmationWaitMs = extractHistogram(
+    text,
+    "l1_confirmation_wait_ms",
+  );
+  counters.l1TipSlot = null;
+  if (scenarioClass === "B") {
+    try {
+      const readiness = await httpClient.request(`${submitEndpoint}/readyz`);
+      if (readiness.ok) {
+        const body = readiness.json();
+        const slot = Number(body?.localOgmiosSlot?.currentSlot);
+        counters.l1TipSlot = Number.isFinite(slot) ? slot : null;
+      }
+    } catch {
+      counters.l1TipSlot = null;
+    }
+  }
   return counters;
 };
 
@@ -625,20 +1045,57 @@ const prebuildChain = (chain, length, feeConfig) => {
 /**
  * Submits a CBOR transaction hex payload to the node.
  */
-const submitTxHex = async (txHex, { retryLimit = retry503 } = {}) => {
+const submitTxHex = async (
+  txHex,
+  {
+    retryLimit = retry503,
+    expectedTxIdHex = null,
+    calibrationMode = false,
+    endpoint = submitEndpoint,
+  } = {},
+) => {
   let attempt = 0;
   const attempts = [];
   while (attempt <= retryLimit) {
-    const resp = await httpClient.request(`${submitEndpoint}/submit`, {
+    const bodyBytes = Buffer.from(txHex, "hex");
+    const resp = await httpClient.request(`${endpoint}/submit`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ tx_cbor: txHex }),
+      headers: { "content-type": "application/cbor" },
+      body: bodyBytes,
     });
     attempts.push({
       status: resp.status,
       ok: resp.ok,
       latencyMs: resp.latencyMs,
     });
+
+    let responseTxId = null;
+    try {
+      const parsed = resp.json();
+      responseTxId =
+        typeof parsed?.txId === "string" ? parsed.txId.toLowerCase() : null;
+    } catch {
+      responseTxId = null;
+    }
+
+    if (
+      resp.ok &&
+      !calibrationMode &&
+      expectedTxIdHex !== null &&
+      responseTxId !== null &&
+      responseTxId !== expectedTxIdHex
+    ) {
+      return {
+        ok: false,
+        status: resp.status,
+        body: resp.body,
+        latencyMs: resp.latencyMs,
+        attempts,
+        physicalAttemptCount: attempts.length,
+        responseTxId,
+        error: "duplicate_or_mismatched_response",
+      };
+    }
 
     if (resp.ok) {
       return {
@@ -647,6 +1104,7 @@ const submitTxHex = async (txHex, { retryLimit = retry503 } = {}) => {
         latencyMs: resp.latencyMs,
         attempts,
         physicalAttemptCount: attempts.length,
+        responseTxId,
       };
     }
 
@@ -664,6 +1122,7 @@ const submitTxHex = async (txHex, { retryLimit = retry503 } = {}) => {
       latencyMs: resp.latencyMs,
       attempts,
       physicalAttemptCount: attempts.length,
+      responseTxId,
     };
   }
 
@@ -715,7 +1174,7 @@ const defaultFanoutOutputLovelace = (minFeeA, minFeeB) => {
  * Expands available source UTxOs into enough independent benchmark chains.
  */
 const ensureFanoutCandidates = async ({ candidates, minFeeA, minFeeB }) => {
-  if (!fanoutEnabled || candidates.length >= maxChains) {
+  if (!fanoutEnabled || maxChains === null || candidates.length >= maxChains) {
     return {
       candidates,
       fanoutTxCount: 0,
@@ -808,28 +1267,33 @@ const makeChainCursors = (chains) =>
     chainIndex,
     nextIndex: 0,
     stopped: false,
+    async takeNextTx() {
+      if (this.stopped || this.nextIndex >= this.chain.txs.length) {
+        return null;
+      }
+      const tx = this.chain.txs[this.nextIndex];
+      const txIndex = this.nextIndex;
+      this.nextIndex += 1;
+      return {
+        ...tx,
+        chainIndex: this.chainIndex,
+        txIndex,
+      };
+    },
   }));
 
 const remainingTxCount = (cursors) =>
   cursors.reduce(
     (acc, cursor) =>
-      acc + (cursor.stopped ? 0 : cursor.chain.txs.length - cursor.nextIndex),
+      acc +
+      (cursor.stopped
+        ? 0
+        : (cursor.entry?.rowCount ?? cursor.chain.txs.length) -
+          cursor.nextIndex),
     0,
   );
 
-const takeNextTx = (cursor) => {
-  if (cursor.stopped || cursor.nextIndex >= cursor.chain.txs.length) {
-    return null;
-  }
-  const tx = cursor.chain.txs[cursor.nextIndex];
-  const txIndex = cursor.nextIndex;
-  cursor.nextIndex += 1;
-  return {
-    ...tx,
-    chainIndex: cursor.chainIndex,
-    txIndex,
-  };
-};
+const takeNextTx = async (cursor) => await cursor.takeNextTx();
 
 const createStageStats = ({ name, mode, targetRateTps = null }) => ({
   name,
@@ -860,7 +1324,112 @@ const createStageStats = ({ name, mode, targetRateTps = null }) => ({
   bytesSent: 0,
   statusSampleTxIds: [],
   submittedAtByTxId: new Map(),
+  cursorPositionsAtStart: null,
+  cursorPositionsAtEnd: null,
+  phase1StageACheckpoint: null,
 });
+
+const snapshotCursorPositions = (cursors) =>
+  cursors.map((cursor) => ({
+    chainIndex: cursor.chainIndex,
+    nextIndex: cursor.nextIndex,
+  }));
+
+const cursorPositionDigest = (positions) =>
+  createHash("sha256")
+    .update(
+      positions
+        .map(({ chainIndex, nextIndex }) => `${chainIndex}|${nextIndex}`)
+        .join("\n"),
+    )
+    .digest("hex");
+
+const schedulePhase1StageACheckpoint = ({ stage, cursors }) => {
+  if (!phase1StageAWindowGateEnabled) {
+    return null;
+  }
+  const deadlineMs = stage.startedAtMs + phase1StageAWindowSec * 1_000;
+  let settled = false;
+  let resolveCheckpoint;
+  const promise = new Promise((resolve) => {
+    resolveCheckpoint = resolve;
+  });
+  const settle = (value) => {
+    if (settled) {
+      return;
+    }
+    settled = true;
+    resolveCheckpoint(value);
+  };
+  const timeout = setTimeout(
+    () => {
+      void (async () => {
+        const checkpointRequestedAtMs = Date.now();
+        const scheduleProgress = summarizeOpenLoopCheckpointProgress({
+          targetRateTps: stage.targetRateTps,
+          durationSec: phase1StageAWindowSec,
+          dispatchedStarts: stage.scheduledStarts,
+        });
+        const observedStageState = {
+          logicalSubmitAttempts: stage.logicalSubmitAttempts,
+          physicalSubmitAttempts: stage.physicalSubmitAttempts,
+          submitted: stage.submitted,
+          submitErrors: stage.submitErrors,
+          submitStatusCounts: { ...stage.submitStatusCounts },
+          physicalSubmitStatusCounts: {
+            ...stage.physicalSubmitStatusCounts,
+          },
+          queueFullResponses: stage.queueFullResponses,
+          expectedStarts: scheduleProgress.expectedStarts,
+          scheduledStarts: scheduleProgress.scheduledStarts,
+          sentStarts: stage.sentStarts,
+          missedStarts: scheduleProgress.missedStarts,
+          submitLatencySampleCount: stage.submitLatencyMs.length,
+          submitAttemptLatencySampleCount: stage.submitAttemptLatencyMs.length,
+          scheduleLagSampleCount: stage.scheduleLagMs.length,
+          cursorPositions: snapshotCursorPositions(cursors),
+        };
+        try {
+          const counters = await readCounters();
+          const observedAtMs = Date.now();
+          settle({
+            checkpointDeadlineMs: deadlineMs,
+            checkpointRequestedAtMs,
+            observedAtMs,
+            counters,
+            ...observedStageState,
+            error: null,
+          });
+        } catch (error) {
+          settle({
+            checkpointDeadlineMs: deadlineMs,
+            checkpointRequestedAtMs,
+            observedAtMs: Date.now(),
+            counters: null,
+            ...observedStageState,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      })();
+    },
+    Math.max(0, deadlineMs - Date.now()),
+  );
+
+  return {
+    finish: async (stageEndedAtMs) => {
+      if (!settled && stageEndedAtMs < deadlineMs) {
+        clearTimeout(timeout);
+        settle({
+          checkpointDeadlineMs: deadlineMs,
+          observedAtMs: stageEndedAtMs,
+          counters: null,
+          error: `stage ended before ${phase1StageAWindowSec}-second checkpoint`,
+        });
+      }
+      return await promise;
+    },
+  };
+};
 
 const recordSubmitResult = (stage, tx, result) => {
   stage.logicalSubmitAttempts += 1;
@@ -890,7 +1459,7 @@ const recordSubmitResult = (stage, tx, result) => {
   stage.submitErrors += 1;
   if (stage.firstErrors.length < 10) {
     stage.firstErrors.push(
-      `chain=${tx.chainIndex} index=${tx.txIndex} status=${result.status} body=${result.body ?? ""}`,
+      `chain=${tx.chainIndex} index=${tx.txIndex} status=${result.status} error=${result.error ?? "submit_failed"} body=${result.body ?? ""}`,
     );
   }
 };
@@ -900,16 +1469,40 @@ const submitOne = async (
   stage,
   { scheduledAtPerfMs = null, retryLimit = retry503 } = {},
 ) => {
-  const tx = takeNextTx(cursor);
+  const tx = await takeNextTx(cursor);
   if (tx === null) {
     return false;
   }
+  const submittedAtMs = Date.now();
+  const scheduledAtMs =
+    scheduledAtPerfMs === null
+      ? submittedAtMs
+      : Math.round(submittedAtMs - (performance.now() - scheduledAtPerfMs));
   if (scheduledAtPerfMs !== null) {
     stage.scheduleLagMs.push(performance.now() - scheduledAtPerfMs);
   }
   stage.sentStarts += 1;
-  const submittedResult = await submitTxHex(tx.txHex, { retryLimit });
+  const submittedResult = await submitTxHex(tx.txHex, {
+    retryLimit,
+    expectedTxIdHex: tx.txIdHex,
+  });
   recordSubmitResult(stage, tx, submittedResult);
+  submitRecordWriter?.write({
+    txHash: tx.txIdHex,
+    scheduledAtMs,
+    submittedAtMs,
+    scheduleSlipMs:
+      scheduledAtPerfMs === null
+        ? 0
+        : Math.max(0, performance.now() - scheduledAtPerfMs),
+    latencyMs: submittedResult.latencyMs ?? 0,
+    statusCode: submittedResult.status ?? null,
+    responseTxId: submittedResult.responseTxId ?? null,
+    error:
+      submittedResult.ok === true
+        ? null
+        : (submittedResult.error ?? `submit_failed_${submittedResult.status}`),
+  });
   if (!submittedResult.ok) {
     cursor.stopped = true;
   }
@@ -924,6 +1517,12 @@ const runClosedLoopStage = async ({
   retryLimit = retry503,
 }) => {
   const stage = createStageStats({ name, mode: "closed" });
+  writeEngineEvent("stage_started", {
+    name,
+    mode: "closed",
+    durationSec,
+    maxTxs: Number.isFinite(maxTxs) ? maxTxs : null,
+  });
   stage.counterStart = await readCounters();
   stage.startedAtMs = Date.now();
   const deadlineMs = stage.startedAtMs + durationSec * 1000;
@@ -946,6 +1545,13 @@ const runClosedLoopStage = async ({
 
   stage.endedAtMs = Date.now();
   stage.counterEnd = await readCounters();
+  writeEngineEvent("stage_finished", {
+    name,
+    mode: "closed",
+    submitted: stage.submitted,
+    submitErrors: stage.submitErrors,
+    exhausted: remainingTxCount(cursors) <= 0,
+  });
   return stage;
 };
 
@@ -956,6 +1562,115 @@ const waitForAnyInFlight = async (inFlight) => {
   await Promise.race(inFlight);
 };
 
+const scheduledStartCountDue = ({
+  nowPerfMs,
+  startedAtPerfMs,
+  intervalMs,
+  totalStarts,
+}) => {
+  if (nowPerfMs < startedAtPerfMs) {
+    return 0;
+  }
+  return Math.min(
+    totalStarts,
+    Math.floor((nowPerfMs - startedAtPerfMs) / intervalMs) + 1,
+  );
+};
+
+const runDeadlineBatchedSchedule = async ({
+  totalStarts,
+  startedAtPerfMs,
+  deadlinePerfMs,
+  intervalMs,
+  maxInFlight,
+  dispatchStart,
+  allowPostDeadlineCatchUp = false,
+}) => {
+  const inFlight = new Set();
+  let nextStartIndex = 0;
+  let maxObservedInFlight = 0;
+  let lastDispatchedAtPerfMs = null;
+  let stoppedWithoutCapacity = false;
+
+  while (nextStartIndex < totalStarts) {
+    while (
+      inFlight.size >= maxInFlight &&
+      (allowPostDeadlineCatchUp || performance.now() < deadlinePerfMs)
+    ) {
+      await waitForAnyInFlight(inFlight);
+    }
+
+    const nowPerfMs = performance.now();
+    const deadlineReached = nowPerfMs >= deadlinePerfMs;
+    const dueStarts = deadlineReached
+      ? totalStarts
+      : scheduledStartCountDue({
+          nowPerfMs,
+          startedAtPerfMs,
+          intervalMs,
+          totalStarts,
+        });
+    if (nextStartIndex >= dueStarts) {
+      const nextDueAtPerfMs = startedAtPerfMs + nextStartIndex * intervalMs;
+      const waitMs = Math.min(
+        nextDueAtPerfMs - nowPerfMs,
+        deadlinePerfMs - nowPerfMs,
+      );
+      if (waitMs > 0) {
+        // Node timers do not reliably resolve sub-millisecond deadlines. One
+        // coarse wake intentionally accumulates every start that becomes due;
+        // the next iteration dispatches that whole batch without more timers.
+        await sleep(Math.max(1, Math.ceil(waitMs)));
+      }
+      continue;
+    }
+
+    let dispatchedAny = false;
+    while (nextStartIndex < dueStarts && inFlight.size < maxInFlight) {
+      const startIndex = nextStartIndex;
+      const scheduledAtPerfMs = startedAtPerfMs + startIndex * intervalMs;
+      const dispatched = dispatchStart({ startIndex, scheduledAtPerfMs });
+      if (dispatched === null) {
+        break;
+      }
+      let tracked;
+      tracked = Promise.resolve(dispatched).finally(() => {
+        inFlight.delete(tracked);
+      });
+      inFlight.add(tracked);
+      nextStartIndex += 1;
+      dispatchedAny = true;
+      lastDispatchedAtPerfMs = performance.now();
+      maxObservedInFlight = Math.max(maxObservedInFlight, inFlight.size);
+    }
+
+    // A coarse timer may wake just beyond the hard deadline. Hard-deadline
+    // stages dispatch the already-due final batch only into immediately
+    // available capacity. Calibration may explicitly catch up instead: its
+    // last-dispatch rate and schedule-slip gates expose any real shortfall.
+    if (deadlineReached && !allowPostDeadlineCatchUp) {
+      break;
+    }
+
+    if (nextStartIndex < dueStarts && !dispatchedAny) {
+      if (inFlight.size === 0) {
+        stoppedWithoutCapacity = true;
+        break;
+      }
+      await waitForAnyInFlight(inFlight);
+    }
+  }
+
+  await Promise.all(inFlight);
+  return {
+    scheduledStarts: nextStartIndex,
+    missedStarts: totalStarts - nextStartIndex,
+    maxObservedInFlight,
+    lastDispatchedAtPerfMs,
+    stoppedWithoutCapacity,
+  };
+};
+
 const findAvailableCursor = (cursors, busy, startIndex) => {
   for (let offset = 0; offset < cursors.length; offset += 1) {
     const index = (startIndex + offset) % cursors.length;
@@ -963,7 +1678,7 @@ const findAvailableCursor = (cursors, busy, startIndex) => {
     if (
       !busy.has(cursor.chainIndex) &&
       !cursor.stopped &&
-      cursor.nextIndex < cursor.chain.txs.length
+      cursor.nextIndex < (cursor.entry?.rowCount ?? cursor.chain.txs.length)
     ) {
       return { cursor, nextIndex: (index + 1) % cursors.length };
     }
@@ -987,65 +1702,254 @@ const runOpenLoopStage = async ({
     mode: "open",
     targetRateTps: rateTps,
   });
+  writeEngineEvent("stage_started", {
+    name,
+    mode: "open",
+    targetRateTps: rateTps,
+    durationSec,
+    maxTxs: Number.isFinite(maxTxs) ? maxTxs : null,
+  });
   stage.counterStart = await readCounters();
   stage.startedAtMs = Date.now();
+  stage.cursorPositionsAtStart = snapshotCursorPositions(cursors);
+  const phase1StageACheckpoint = schedulePhase1StageACheckpoint({
+    stage,
+    cursors,
+  });
   const startedAt = performance.now();
   const deadline = startedAt + durationSec * 1000;
   const intervalMs = 1000 / rateTps;
-  const inFlight = new Set();
   const busy = new Set();
   let nextCursorIndex = 0;
-  let scheduled = 0;
+  const durationScheduledStarts = Math.ceil((durationSec * 1000) / intervalMs);
+  const totalStarts = Number.isFinite(maxTxs)
+    ? Math.min(durationScheduledStarts, Math.floor(maxTxs))
+    : durationScheduledStarts;
+  const schedule = await runDeadlineBatchedSchedule({
+    totalStarts,
+    startedAtPerfMs: startedAt,
+    deadlinePerfMs: deadline,
+    intervalMs,
+    maxInFlight: submitConcurrency,
+    dispatchStart: ({ scheduledAtPerfMs }) => {
+      const selected = findAvailableCursor(cursors, busy, nextCursorIndex);
+      if (selected === null) {
+        return null;
+      }
+      const { cursor } = selected;
+      nextCursorIndex = selected.nextIndex;
+      stage.scheduledStarts += 1;
+      busy.add(cursor.chainIndex);
+      return submitOne(cursor, stage, {
+        scheduledAtPerfMs,
+        retryLimit,
+      }).finally(() => {
+        busy.delete(cursor.chainIndex);
+      });
+    },
+  });
+  stage.missedStarts += schedule.missedStarts;
+  stage.inFlightHighWater = Math.max(
+    stage.inFlightHighWater,
+    schedule.maxObservedInFlight,
+  );
+  stage.endedAtMs = Date.now();
+  stage.cursorPositionsAtEnd = snapshotCursorPositions(cursors);
+  stage.phase1StageACheckpoint =
+    phase1StageACheckpoint === null
+      ? null
+      : await phase1StageACheckpoint.finish(stage.endedAtMs);
+  stage.counterEnd = await readCounters();
+  const exhausted =
+    remainingTxCount(cursors) <= 0 && performance.now() < deadline;
+  stage.abortedCorpusExhausted = exhausted;
+  writeEngineEvent("stage_finished", {
+    name,
+    mode: "open",
+    targetRateTps: rateTps,
+    submitted: stage.submitted,
+    submitErrors: stage.submitErrors,
+    aborted_corpus_exhausted: exhausted,
+  });
+  return stage;
+};
 
-  while (
-    performance.now() < deadline &&
-    scheduled < maxTxs &&
-    remainingTxCount(cursors) > 0
-  ) {
-    while (inFlight.size >= submitConcurrency) {
-      await waitForAnyInFlight(inFlight);
-    }
-
+const collectCalibrationRows = async (cursors, count) => {
+  const rows = [];
+  const busy = new Set();
+  let nextCursorIndex = 0;
+  while (rows.length < count) {
     const selected = findAvailableCursor(cursors, busy, nextCursorIndex);
     if (selected === null) {
-      if (inFlight.size === 0) {
-        break;
-      }
-      await waitForAnyInFlight(inFlight);
-      continue;
+      break;
     }
-    const { cursor } = selected;
     nextCursorIndex = selected.nextIndex;
-
-    let dueAt = startedAt + scheduled * intervalMs;
-    const waitMs = dueAt - performance.now();
-    if (waitMs > 0) {
-      await sleep(waitMs);
-    } else if (-waitMs >= intervalMs) {
-      const missed = Math.floor(-waitMs / intervalMs);
-      stage.missedStarts += missed;
-      scheduled += missed;
-      dueAt = startedAt + scheduled * intervalMs;
+    const tx = await takeNextTx(selected.cursor);
+    if (tx !== null) {
+      // Calibration needs only the request body. Retaining parsed corpus rows
+      // multiplies heap use by every metadata string and output array.
+      rows.push(tx.txHex);
     }
-
-    stage.scheduledStarts += 1;
-    busy.add(cursor.chainIndex);
-    const promise = submitOne(cursor, stage, {
-      scheduledAtPerfMs: dueAt,
-      retryLimit,
-    }).finally(() => {
-      busy.delete(cursor.chainIndex);
-      inFlight.delete(promise);
-    });
-    inFlight.add(promise);
-    stage.inFlightHighWater = Math.max(stage.inFlightHighWater, inFlight.size);
-    scheduled += 1;
   }
+  if (rows.length < count) {
+    throw new Error(
+      `no-op calibration needs ${count} corpus rows but only ${rows.length} were available`,
+    );
+  }
+  return rows;
+};
 
-  await Promise.all(inFlight);
-  stage.endedAtMs = Date.now();
-  stage.counterEnd = await readCounters();
-  return stage;
+const summarizeScheduleSlip = (values) => {
+  const summary = summarizeLatency(values);
+  return {
+    p50: summary.p50 ?? 0,
+    p95: summary.p95 ?? 0,
+    p99: summary.p99 ?? 0,
+    max: summary.max ?? 0,
+  };
+};
+
+const runNoOpCalibrationStage = async ({ cursors, targetRateTps }) => {
+  if (noOpEndpoint === null) {
+    if (requireNoOpCalibration) {
+      throw new Error(
+        "STRESS_REQUIRE_NOOP_CALIBRATION=true but STRESS_NOOP_ENDPOINT is unset",
+      );
+    }
+    return { enabled: false, required: false };
+  }
+  const calibrationRate = targetRateTps * calibrationHeadroomMultiplier;
+  const count = Math.max(
+    1,
+    Math.ceil(calibrationRate * calibrationDurationSec),
+  );
+  const rows = await collectCalibrationRows(cursors, count);
+  const warmupRequestCount = Math.min(
+    httpConnections,
+    submitConcurrency,
+    rows.length,
+  );
+  const warmupResults = await Promise.all(
+    rows.slice(0, warmupRequestCount).map((txHex) =>
+      submitTxHex(txHex, {
+        retryLimit: 0,
+        endpoint: noOpEndpoint,
+        calibrationMode: true,
+      }),
+    ),
+  );
+  const warmupFailures = warmupResults.filter((result) => !result.ok).length;
+  if (warmupFailures > 0) {
+    throw new Error(
+      `no-op calibration warmup failed: ${warmupFailures.toString()}/${warmupRequestCount.toString()} requests`,
+    );
+  }
+  const startedAtDate = new Date();
+  const startedAtMs = Date.now();
+  const startedPerfMs = performance.now();
+  const intervalMs = 1000 / calibrationRate;
+  const cpuBefore = process.cpuUsage();
+  const eluBefore = performance.eventLoopUtilization();
+  const scheduleSlipMs = [];
+  let submittedCount = 0;
+  let failedCount = 0;
+
+  writeEngineEvent("calibration_started", {
+    endpoint: noOpEndpoint,
+    targetRateTps,
+    calibrationRateTps: calibrationRate,
+    count,
+  });
+
+  const schedule = await runDeadlineBatchedSchedule({
+    totalStarts: rows.length,
+    startedAtPerfMs: startedPerfMs,
+    deadlinePerfMs: startedPerfMs + calibrationDurationSec * 1000,
+    intervalMs,
+    maxInFlight: submitConcurrency,
+    allowPostDeadlineCatchUp: true,
+    dispatchStart: ({ startIndex, scheduledAtPerfMs }) => {
+      const submittedPerfMs = performance.now();
+      scheduleSlipMs.push(Math.max(0, submittedPerfMs - scheduledAtPerfMs));
+      return submitTxHex(rows[startIndex], {
+        retryLimit: 0,
+        endpoint: noOpEndpoint,
+        calibrationMode: true,
+      })
+        .then((result) => {
+          if (result.ok) {
+            submittedCount += 1;
+          } else {
+            failedCount += 1;
+          }
+        })
+        .catch(() => {
+          failedCount += 1;
+        });
+    },
+  });
+  const finishedAtDate = new Date();
+  const finishedAtMs = Date.now();
+  const elapsedMs = Math.max(1, finishedAtMs - startedAtMs);
+  const cpuAfter = process.cpuUsage(cpuBefore);
+  const eluAfter = performance.eventLoopUtilization(eluBefore);
+  const schedulingElapsedMs = Math.max(
+    1,
+    (schedule.lastDispatchedAtPerfMs ?? startedPerfMs) - startedPerfMs,
+  );
+  const achievedRateTps = submittedCount / (schedulingElapsedMs / 1000);
+  // The hard count and zero-miss checks still require every calibration start.
+  // Apply the formal scheduler's 0.1% wall-clock tolerance to the rate only so
+  // a final coarse timer wake does not make an otherwise exact 2x run fail.
+  const minRequiredRateTps =
+    targetRateTps * calibrationHeadroomMultiplier * (1 - missedStartMaxRatio);
+  const p95ScheduleSlipLimitMs = scheduleLagP95MaxMs;
+  const p99ScheduleSlipLimitMs = scheduleLagP99MaxMs;
+  const slip = summarizeScheduleSlip(scheduleSlipMs);
+  const passed =
+    achievedRateTps >= minRequiredRateTps &&
+    slip.p95 <= p95ScheduleSlipLimitMs &&
+    slip.p99 <= p99ScheduleSlipLimitMs &&
+    schedule.missedStarts === 0 &&
+    failedCount === 0;
+  const summary = {
+    warmupRequestCount,
+    warmupFailures,
+    offeredCount: rows.length,
+    submittedCount,
+    failedCount,
+    targetRateTps: calibrationRate,
+    maxInFlight: submitConcurrency,
+    maxObservedInFlight: schedule.maxObservedInFlight,
+    scheduledStarts: schedule.scheduledStarts,
+    missedStarts: schedule.missedStarts,
+    startedAtIso: startedAtDate.toISOString(),
+    finishedAtIso: finishedAtDate.toISOString(),
+    durationMs: elapsedMs,
+    schedulingDurationMs: schedulingElapsedMs,
+    achievedRateTps,
+    submittedOfferedRatio: rows.length === 0 ? 0 : submittedCount / rows.length,
+    scheduleSlipMs: slip,
+    endpoint: noOpEndpoint,
+    minRequiredRateTps,
+    p95ScheduleSlipLimitMs,
+    p99ScheduleSlipLimitMs,
+    passed,
+    eventLoopUtilization: eluAfter.utilization,
+    cpuUserMicros: cpuAfter.user,
+    cpuSystemMicros: cpuAfter.system,
+    notes: passed ? [] : ["no_op_calibration_gate_failed"],
+  };
+  fs.mkdirSync(path.dirname(noOpCalibrationPath), { recursive: true });
+  fs.writeFileSync(
+    noOpCalibrationPath,
+    `${JSON.stringify(summary, null, 2)}\n`,
+  );
+  writeEngineEvent("calibration_finished", { calibration: summary });
+  if (requireNoOpCalibration && !passed) {
+    throw new Error("no-op calibration failed required gate");
+  }
+  return summary;
 };
 
 const waitForStageDrain = async (stage) => {
@@ -1183,6 +2087,11 @@ const startCounterMonitor = async (phaseNameRef) => {
       const nowTs = Date.now();
       const dt = (nowTs - prevTs) / 1000;
       samples.push({
+        timestampMs: nowTs,
+        phase: phaseNameRef.current,
+        counters: now,
+      });
+      writeEngineEvent("counter_sample", {
         timestampMs: nowTs,
         phase: phaseNameRef.current,
         counters: now,
@@ -1360,17 +2269,107 @@ const readPgStatStatements = async (env, label) => {
   }
 };
 
+const regularFilesUnder = (relativeDirectory) => {
+  const root = path.resolve(pkgRoot, relativeDirectory);
+  if (!fs.existsSync(root)) return [];
+  const files = [];
+  const visit = (absoluteDirectory) => {
+    for (const entry of fs.readdirSync(absoluteDirectory, {
+      withFileTypes: true,
+    })) {
+      const absolute = path.join(absoluteDirectory, entry.name);
+      if (entry.isDirectory()) visit(absolute);
+      else if (entry.isFile()) {
+        files.push(path.relative(pkgRoot, absolute).replaceAll(path.sep, "/"));
+      }
+    }
+  };
+  visit(root);
+  return files;
+};
+
+const updateFramedHash = (hash, relativePath, bytes) => {
+  const pathBytes = Buffer.from(relativePath);
+  const lengths = Buffer.allocUnsafe(12);
+  lengths.writeUInt32LE(pathBytes.length, 0);
+  lengths.writeBigUInt64LE(BigInt(bytes.length), 4);
+  hash.update(lengths).update(pathBytes).update(bytes);
+};
+
+const readSourceTreeIdentity = () => {
+  const sourceFiles = [
+    "../pnpm-lock.yaml",
+    "../lucid-midgard/package.json",
+    "../midgard-core/package.json",
+    "../midgard-sdk/package.json",
+    "../midgard-validation/package.json",
+    ".env.example",
+    ".env.benchmark",
+    "Dockerfile",
+    "docker-compose.benchmark.yaml",
+    "docker-compose.kupmios.yaml",
+    "docker-compose.yaml",
+    "package.json",
+    "native/mpf-event-flat-wasm/Cargo.lock",
+    "native/mpf-event-flat-wasm/Cargo.toml",
+    "tsconfig.json",
+    "tsup.config.ts",
+    "scripts/stress.benchmark.env",
+    ...regularFilesUnder("src"),
+    ...regularFilesUnder("scripts"),
+    ...regularFilesUnder("native/mpf-event-flat-wasm/src"),
+    ...regularFilesUnder("../patches"),
+    ...regularFilesUnder("../lucid-midgard/src"),
+    ...regularFilesUnder("../midgard-core/src"),
+    ...regularFilesUnder("../midgard-sdk/src"),
+    ...regularFilesUnder("../midgard-validation/src"),
+  ]
+    .filter((relativePath) =>
+      fs.existsSync(path.resolve(pkgRoot, relativePath)),
+    )
+    .sort();
+  const hash = createHash("sha256");
+  for (const relativePath of sourceFiles) {
+    updateFramedHash(
+      hash,
+      relativePath,
+      fs.readFileSync(path.resolve(pkgRoot, relativePath)),
+    );
+  }
+  return {
+    sourceTreeSha256: hash.digest("hex"),
+    sourceTreeFileCount: sourceFiles.length,
+  };
+};
+
 const readGitMetadata = async () => {
   try {
-    const [{ stdout: commitStdout }, { stdout: statusStdout }] =
-      await Promise.all([
-        execFileAsync("git", ["rev-parse", "HEAD"], { cwd: pkgRoot }),
-        execFileAsync("git", ["status", "--short"], { cwd: pkgRoot }),
-      ]);
+    const [
+      { stdout: commitStdout },
+      { stdout: statusStdout },
+      { stdout: diffStdout },
+    ] = await Promise.all([
+      execFileAsync("git", ["rev-parse", "HEAD"], { cwd: pkgRoot }),
+      execFileAsync("git", ["status", "--short"], { cwd: pkgRoot }),
+      execFileAsync(
+        "git",
+        ["diff", "--binary", "--no-ext-diff", "HEAD", "--"],
+        { cwd: pkgRoot, maxBuffer: 64 * 1024 * 1024 },
+      ),
+    ]);
+    const statusShort = statusStdout.trim().split("\n").filter(Boolean);
     return {
       commit: commitStdout.trim(),
       dirty: statusStdout.trim().length > 0,
-      statusShort: statusStdout.trim().split("\n").filter(Boolean),
+      statusShort,
+      statusSha256: createHash("sha256")
+        .update(`${statusShort.join("\n")}\n`)
+        .digest("hex"),
+      trackedDiffSha256: createHash("sha256").update(diffStdout).digest("hex"),
+      benchmarkScriptSha256: createHash("sha256")
+        .update(fs.readFileSync(__filename))
+        .digest("hex"),
+      ...readSourceTreeIdentity(),
     };
   } catch (error) {
     return {
@@ -1410,54 +2409,75 @@ const runClientSelfCheck = async () => {
         : 100;
   const targetRate = Math.max(1, baseRate * clientSelfCheckMultiplier);
   const intervalMs = 1000 / targetRate;
+  const endpoint =
+    noOpEndpoint === null
+      ? `${submitEndpoint}/readyz`
+      : `${noOpEndpoint}/submit`;
+  const requestOptions =
+    noOpEndpoint === null
+      ? undefined
+      : {
+          method: "POST",
+          headers: { "content-type": "application/cbor" },
+          body: Buffer.from([0]),
+        };
+  const warmupRequestCount = Math.min(httpConnections, submitConcurrency);
+  const warmupResponses = await Promise.all(
+    Array.from({ length: warmupRequestCount }, () =>
+      httpClient.request(endpoint, requestOptions),
+    ),
+  );
+  const warmupFailures = warmupResponses.filter(
+    (response) => response.ok !== true,
+  ).length;
+  if (warmupFailures > 0) {
+    throw new Error(
+      `benchmark client self-check warmup failed: ${warmupFailures}/${warmupRequestCount} requests`,
+    );
+  }
   const startedAt = performance.now();
   const deadline = startedAt + clientSelfCheckDurationSec * 1000;
-  const inFlight = new Set();
-  let scheduled = 0;
   let ok = 0;
   let failed = 0;
   const latencies = [];
-
-  while (performance.now() < deadline) {
-    while (inFlight.size >= submitConcurrency) {
-      await Promise.race(inFlight);
-    }
-    const dueAt = startedAt + scheduled * intervalMs;
-    const waitMs = dueAt - performance.now();
-    if (waitMs > 0) {
-      await sleep(waitMs);
-    }
-    const promise = httpClient
-      .request(`${submitEndpoint}/readyz`)
-      .then((resp) => {
-        latencies.push(resp.latencyMs);
-        if (resp.ok) {
-          ok += 1;
-        } else {
+  const totalStarts = Math.ceil(
+    (clientSelfCheckDurationSec * 1000) / intervalMs,
+  );
+  const schedule = await runDeadlineBatchedSchedule({
+    totalStarts,
+    startedAtPerfMs: startedAt,
+    deadlinePerfMs: deadline,
+    intervalMs,
+    maxInFlight: submitConcurrency,
+    dispatchStart: () =>
+      httpClient
+        .request(endpoint, requestOptions)
+        .then((resp) => {
+          latencies.push(resp.latencyMs);
+          if (resp.ok) {
+            ok += 1;
+          } else {
+            failed += 1;
+          }
+        })
+        .catch(() => {
           failed += 1;
-        }
-      })
-      .catch(() => {
-        failed += 1;
-      })
-      .finally(() => {
-        inFlight.delete(promise);
-      });
-    inFlight.add(promise);
-    scheduled += 1;
-  }
-
-  await Promise.all(inFlight);
+        }),
+  });
   const elapsedSec = (performance.now() - startedAt) / 1000;
   const achievedRate = ok / elapsedSec;
   const result = {
     enabled: true,
     required: clientSelfCheckRequired,
-    endpoint: `${submitEndpoint}/readyz`,
+    endpoint,
+    warmupRequestCount,
+    warmupFailures,
     targetRate,
     minRequiredRate: targetRate * clientSelfCheckMinRatio,
     achievedRate,
-    scheduled,
+    scheduled: schedule.scheduledStarts,
+    missed: schedule.missedStarts,
+    maxObservedInFlight: schedule.maxObservedInFlight,
     ok,
     failed,
     elapsedSec,
@@ -1474,6 +2494,150 @@ const runClientSelfCheck = async () => {
   return result;
 };
 
+const summarizeCursorContinuity = (stage, checkpoint) => {
+  const start = stage.cursorPositionsAtStart;
+  const middle = checkpoint?.cursorPositions;
+  const end = stage.cursorPositionsAtEnd;
+  if (!Array.isArray(start) || !Array.isArray(middle) || !Array.isArray(end)) {
+    return {
+      passed: false,
+      reason: "cursor position snapshot missing",
+    };
+  }
+  if (start.length !== middle.length || middle.length !== end.length) {
+    return {
+      passed: false,
+      reason: `cursor count changed start=${start.length} checkpoint=${middle.length} end=${end.length}`,
+    };
+  }
+  for (let index = 0; index < start.length; index += 1) {
+    const initial = start[index];
+    const observed = middle[index];
+    const final = end[index];
+    if (
+      initial.chainIndex !== observed.chainIndex ||
+      observed.chainIndex !== final.chainIndex
+    ) {
+      return {
+        passed: false,
+        reason: `cursor chain order changed at ordinal=${index}`,
+      };
+    }
+    if (
+      initial.nextIndex > observed.nextIndex ||
+      observed.nextIndex > final.nextIndex
+    ) {
+      return {
+        passed: false,
+        reason: `cursor regressed chain=${initial.chainIndex} start=${initial.nextIndex} checkpoint=${observed.nextIndex} end=${final.nextIndex}`,
+      };
+    }
+  }
+  const total = (positions) =>
+    positions.reduce((sum, position) => sum + position.nextIndex, 0);
+  return {
+    passed: true,
+    reason: null,
+    cursorCount: start.length,
+    startConsumedRows: total(start),
+    checkpointConsumedRows: total(middle),
+    endConsumedRows: total(end),
+    startPositionsSha256: cursorPositionDigest(start),
+    checkpointPositionsSha256: cursorPositionDigest(middle),
+    endPositionsSha256: cursorPositionDigest(end),
+    checkpointMode: "observer_only_no_cursor_mutation",
+  };
+};
+
+const buildPhase1StageAWindowGate = (stage) => {
+  if (!phase1StageAWindowGateEnabled) {
+    return { enabled: false };
+  }
+  const checkpoint = stage.phase1StageACheckpoint;
+  const checkpointAvailable =
+    checkpoint?.counters !== null && checkpoint?.counters !== undefined;
+  const measuredDurationSec =
+    checkpoint?.observedAtMs === undefined
+      ? Number.NaN
+      : (checkpoint.observedAtMs - stage.startedAtMs) / 1_000;
+  const submitLatencySampleCount = checkpoint?.submitLatencySampleCount ?? 0;
+  const scheduleLagSampleCount = checkpoint?.scheduleLagSampleCount ?? 0;
+  const statusCounts = checkpoint?.submitStatusCounts ?? {};
+  const { durablyAdmitted, duplicateSuccesses, otherSuccesses } =
+    summarizeSubmitSuccessStatuses(statusCounts);
+  const acceptedDelta = checkpointAvailable
+    ? counterDelta(stage.counterStart, checkpoint.counters, "accept")
+    : 0;
+  const rejectedDelta = checkpointAvailable
+    ? counterDelta(stage.counterStart, checkpoint.counters, "reject")
+    : 0;
+  const missingRequiredMetrics = checkpointAvailable
+    ? metricMissingKeys(checkpoint.counters)
+    : [];
+  const gate = summarizePhase1StageAWindowGate({
+    checkpointAvailable,
+    checkpointError: checkpoint?.error ?? null,
+    checkpointRequestedAfterMs:
+      checkpoint?.checkpointRequestedAtMs === undefined
+        ? Number.NaN
+        : checkpoint.checkpointRequestedAtMs - stage.startedAtMs,
+    checkpointObservedAfterMs:
+      checkpoint?.observedAtMs === undefined
+        ? Number.NaN
+        : checkpoint.observedAtMs - stage.startedAtMs,
+    checkpointMaxJitterMs: phase1StageACheckpointMaxJitterMs,
+    measuredDurationSec,
+    minDurationSec: phase1StageAWindowSec,
+    targetRateTps: Number(stage.targetRateTps ?? 0),
+    durablyAdmitted,
+    acceptedDelta,
+    rejectedDelta,
+    duplicateSuccesses,
+    otherSuccesses,
+    submitErrors: checkpoint?.submitErrors ?? 0,
+    queueFullResponses: checkpoint?.queueFullResponses ?? 0,
+    submitLatencyMs: summarizeLatency(
+      stage.submitLatencyMs.slice(0, submitLatencySampleCount),
+    ),
+    scheduleLagMs: summarizeLatency(
+      stage.scheduleLagMs.slice(0, scheduleLagSampleCount),
+    ),
+    scheduledStarts: checkpoint?.scheduledStarts ?? 0,
+    missedStarts: checkpoint?.missedStarts ?? 0,
+    offeredRateMinRatio,
+    acceptedRateMinRatio,
+    submitLatencyP99MaxMs,
+    scheduleLagP95MaxMs,
+    scheduleLagP99MaxMs,
+    missedStartMaxRatio,
+    missingRequiredMetrics,
+    streamContinuity: summarizeCursorContinuity(stage, checkpoint),
+  });
+  return {
+    ...gate,
+    stageName: stage.name,
+    stageStartedAtIso: new Date(stage.startedAtMs).toISOString(),
+    checkpointRequestedAtIso:
+      checkpoint?.checkpointRequestedAtMs === undefined
+        ? null
+        : new Date(checkpoint.checkpointRequestedAtMs).toISOString(),
+    checkpointObservedAtIso:
+      checkpoint?.observedAtMs === undefined
+        ? null
+        : new Date(checkpoint.observedAtMs).toISOString(),
+    stageEndedAtIso:
+      stage.endedAtMs === null ? null : new Date(stage.endedAtMs).toISOString(),
+    submitStatusCounts: statusCounts,
+    physicalSubmitStatusCounts: checkpoint?.physicalSubmitStatusCounts ?? {},
+    logicalSubmitAttempts: checkpoint?.logicalSubmitAttempts ?? 0,
+    physicalSubmitAttempts: checkpoint?.physicalSubmitAttempts ?? 0,
+    submittedSuccesses: checkpoint?.submitted ?? 0,
+    sentStarts: checkpoint?.sentStarts ?? 0,
+    checkpointSource:
+      "pre-request client/cursor snapshot plus asynchronous Prometheus counter snapshot inside one continuous open-loop stage; elapsed denominator ends at counter response for conservative rates",
+  };
+};
+
 const buildStageReport = (stage) => {
   const measuredElapsedMs = Math.max(1, stage.endedAtMs - stage.startedAtMs);
   const endCounters = stage.counterEnd ?? stage.counterStart;
@@ -1484,6 +2648,11 @@ const buildStageReport = (stage) => {
     stage.counterStart,
     endCounters,
     "commitBlockTx",
+  );
+  const commitBlockDelta = counterDelta(
+    stage.counterStart,
+    endCounters,
+    "commitBlock",
   );
   const mergeBlockDelta = counterDelta(
     stage.counterStart,
@@ -1532,6 +2701,7 @@ const buildStageReport = (stage) => {
         "submit",
         "accept",
         "reject",
+        "commitBlock",
         "commitBlockTx",
         "mergeBlock",
       ],
@@ -1553,6 +2723,7 @@ const buildStageReport = (stage) => {
     queuedSubmitSuccessPerSec: stage.submitted / (measuredElapsedMs / 1000),
     acceptedDelta,
     rejectedDelta,
+    commitBlockDelta,
     commitTxDelta,
     mergeBlockDelta,
     drainAcceptedDelta,
@@ -1566,12 +2737,50 @@ const buildStageReport = (stage) => {
     scheduleLagMs: summarizeLatency(stage.scheduleLagMs),
     scheduleLagSamplesMs: stage.scheduleLagMs,
     statusLatencyMs: summarizeLatency(stage.statusLatencyMs),
+    abortedCorpusExhausted: stage.abortedCorpusExhausted === true,
+    phase1StageAWindowGate: buildPhase1StageAWindowGate(stage),
+    phase4Metrics: {
+      speculationHitDelta: counterDelta(
+        stage.counterStart,
+        endCounters,
+        "speculationHit",
+      ),
+      speculationInvalidationDelta: counterDelta(
+        stage.counterStart,
+        endCounters,
+        "speculationInvalidations",
+      ),
+      histograms: {
+        commitCadenceMs: summarizeHistogramDelta(
+          stage.counterStart.histograms?.commitCadenceMs,
+          endCounters.histograms?.commitCadenceMs,
+        ),
+        speculativeBuildDurationMs: summarizeHistogramDelta(
+          stage.counterStart.histograms?.speculativeBuildDurationMs,
+          endCounters.histograms?.speculativeBuildDurationMs,
+        ),
+        submitAfterConfirmMs: summarizeHistogramDelta(
+          stage.counterStart.histograms?.submitAfterConfirmMs,
+          endCounters.histograms?.submitAfterConfirmMs,
+        ),
+        confirmationDetectionLagMs: summarizeHistogramDelta(
+          stage.counterStart.histograms?.confirmationDetectionLagMs,
+          endCounters.histograms?.confirmationDetectionLagMs,
+        ),
+        l1ConfirmationWaitMs: summarizeHistogramDelta(
+          stage.counterStart.histograms?.l1ConfirmationWaitMs,
+          endCounters.histograms?.l1ConfirmationWaitMs,
+        ),
+      },
+    },
   };
 };
 
 const activeCursorCount = (cursors) =>
   cursors.filter(
-    (cursor) => !cursor.stopped && cursor.nextIndex < cursor.chain.txs.length,
+    (cursor) =>
+      !cursor.stopped &&
+      cursor.nextIndex < (cursor.entry?.rowCount ?? cursor.chain.txs.length),
   ).length;
 
 const assertCandidateCapacity = ({
@@ -1599,6 +2808,40 @@ const assertCandidateCapacity = ({
       );
     }
   }
+};
+
+const estimateRequiredCorpusRows = () => {
+  const warmupRows = Math.max(0, warmupTxs);
+  if (benchmarkMode === "open") {
+    return warmupRows + Math.ceil(openLoopRate * measuredSec * 1.02);
+  }
+  if (benchmarkMode === "ramp") {
+    let rows = warmupRows;
+    for (
+      let targetRate = rampStartTps;
+      targetRate <= rampMaxTps;
+      targetRate += rampStepTps
+    ) {
+      rows += Math.ceil(targetRate * rampStageSec * 1.02);
+    }
+    return rows;
+  }
+  if (benchmarkMode === "find-max") {
+    const exploratoryCandidates =
+      Math.floor((rampMaxTps - rampStartTps) / rampStepTps) + 1;
+    const candidateCount = Math.min(
+      findMaxMaxCandidates,
+      Math.max(1, exploratoryCandidates) +
+        findMaxBinaryIterations +
+        3 * findMaxRepeats,
+    );
+    const longestDuration = Math.max(rampStageSec, findMaxConfirmationSec);
+    return (
+      warmupRows +
+      Math.ceil(rampMaxTps * longestDuration * candidateCount * 1.02)
+    );
+  }
+  return warmupRows + Math.ceil(targetAcceptedTps * measuredSec * 1.02);
 };
 
 const hasCounterActivity = (before, after) =>
@@ -1652,6 +2895,9 @@ const waitForCandidateCleanliness = async (label) => {
 
 const evaluateStagePass = ({ stage, stageReport, monitorSamples }) => {
   const reasons = [];
+  const submitSuccessGate = summarizeSubmitSuccessStatuses(
+    stageReport.submitStatusCounts,
+  );
   const measuredSamples = monitorSamples.filter(
     (sample) =>
       sample.timestampMs >= stage.startedAtMs &&
@@ -1664,6 +2910,8 @@ const evaluateStagePass = ({ stage, stageReport, monitorSamples }) => {
   const targetRate = Number(stageReport.targetRateTps ?? 0);
   const offeredRate = stageReport.queuedSubmitSuccessPerSec;
   const acceptedRate = stageReport.measuredAcceptedTps;
+  const nodeSaturationRatio =
+    acceptedRate > 0 ? offeredRate / acceptedRate : null;
   if (stageReport.missingRequiredMetrics.length > 0) {
     reasons.push(
       `missing_required_metrics=${stageReport.missingRequiredMetrics.join(",")}`,
@@ -1684,6 +2932,16 @@ const evaluateStagePass = ({ stage, stageReport, monitorSamples }) => {
   }
   if (stageReport.queueFullResponses > 0) {
     reasons.push(`queue_full_responses=${stageReport.queueFullResponses}`);
+  }
+  reasons.push(...submitSuccessGate.reasons);
+  if (
+    targetRate > 0 &&
+    nodeSaturationRatio !== null &&
+    nodeSaturationRatio < nodeSaturationMinRatio
+  ) {
+    reasons.push(
+      `node_saturation_ratio ${nodeSaturationRatio.toFixed(4)} < ${nodeSaturationMinRatio}`,
+    );
   }
   if (stageReport.rejectedDelta > 0 || stageReport.drainRejectedDelta > 0) {
     reasons.push(
@@ -1709,6 +2967,13 @@ const evaluateStagePass = ({ stage, stageReport, monitorSamples }) => {
       `schedule_lag_p99_ms ${stageReport.scheduleLagMs.p99.toFixed(2)} > ${scheduleLagP99MaxMs}`,
     );
   }
+  if (stageReport.submitLatencyMs.p99 === null) {
+    reasons.push("submit_latency_p99_ms missing");
+  } else if (stageReport.submitLatencyMs.p99 > submitLatencyP99MaxMs) {
+    reasons.push(
+      `submit_latency_p99_ms ${stageReport.submitLatencyMs.p99.toFixed(2)} > ${submitLatencyP99MaxMs}`,
+    );
+  }
   if (stageReport.missedStartRatio > missedStartMaxRatio) {
     reasons.push(
       `missed_start_ratio ${stageReport.missedStartRatio.toFixed(6)} > ${missedStartMaxRatio}`,
@@ -1718,6 +2983,103 @@ const evaluateStagePass = ({ stage, stageReport, monitorSamples }) => {
     reasons.push(
       `validation_queue_slope_per_sec ${backlogSlope.toFixed(4)} > ${backlogSlopeMaxPerSec}`,
     );
+  }
+  const phase1StarvationGate = phase1StarvationGateEnabled
+    ? summarizePhase1StarvationGate({
+        samples: monitorSamples,
+        stageStartedAtMs: stage.startedAtMs,
+        stageEndedAtMs: stage.endedAtMs,
+        targetRateTps: Number(stageReport.targetRateTps ?? 0),
+        overloadBaselineTps: phase1StarvationBaselineTps,
+        commitTxDelta: stageReport.commitTxDelta,
+        commitBlockDelta: stageReport.commitBlockDelta,
+        maxAgeMultiplier: phase1StarvationMaxAgeMultiplier,
+        minOverloadRatio: phase1StarvationMinOverloadRatio,
+        minDurationSec: phase1StarvationMinDurationSec,
+      })
+    : { enabled: false };
+  if (phase1StarvationGate.enabled && !phase1StarvationGate.passed) {
+    reasons.push(
+      ...phase1StarvationGate.reasons.map(
+        (reason) => `phase1_starvation_gate: ${reason}`,
+      ),
+    );
+  }
+  const phase1StageAWindowGate = stageReport.phase1StageAWindowGate ?? {
+    enabled: false,
+  };
+  if (phase1StageAWindowGate.enabled && !phase1StageAWindowGate.passed) {
+    reasons.push(
+      ...phase1StageAWindowGate.reasons.map(
+        (reason) => `phase1_stage_a_window_gate: ${reason}`,
+      ),
+    );
+  }
+  const l1Observation = summarizeL1Observation(measuredSamples);
+  const overlapEfficiency = summarizeLatency(
+    measuredSamples
+      .filter(
+        (sample) =>
+          sample.counters?.metricNames?.speculationOverlapEfficiency !== null,
+      )
+      .map((sample) => Number(sample.counters?.speculationOverlapEfficiency))
+      .filter(Number.isFinite),
+  );
+  const speculationDenominator =
+    stageReport.phase4Metrics.speculationHitDelta +
+    stageReport.phase4Metrics.speculationInvalidationDelta;
+  stageReport.phase4Metrics = {
+    ...stageReport.phase4Metrics,
+    overlapEfficiency,
+    hitRate:
+      speculationDenominator > 0
+        ? stageReport.phase4Metrics.speculationHitDelta / speculationDenominator
+        : null,
+    observedBlockTxCount: (() => {
+      const values = measuredSamples
+        .filter(
+          (sample) => sample.counters?.metricNames?.commitBlockNumTx !== null,
+        )
+        .map((sample) => Number(sample.counters?.commitBlockNumTx))
+        .filter((value) => Number.isFinite(value) && value > 0);
+      return {
+        sampleCount: values.length,
+        min: values.length === 0 ? null : Math.min(...values),
+        max: values.length === 0 ? null : Math.max(...values),
+        last: values.at(-1) ?? null,
+      };
+    })(),
+    queueSlopesPerSec: {
+      stateQueueBlocks: gaugeSlopePerSec(measuredSamples, "blocksInQueue"),
+      daPublicationBacklog: gaugeSlopePerSec(
+        measuredSamples,
+        "daPublicationBacklog",
+      ),
+    },
+    queueMetricPresence: {
+      stateQueueBlocks: measuredSamples.some(
+        (sample) => sample.counters?.metricNames?.blocksInQueue !== null,
+      ),
+      daPublicationBacklog: measuredSamples.some(
+        (sample) => sample.counters?.metricNames?.daPublicationBacklog !== null,
+      ),
+    },
+  };
+  if (scenarioClass === "B") {
+    if (
+      l1Observation.startTipSlot === null ||
+      l1Observation.endTipSlot === null
+    ) {
+      reasons.push("class_b_l1_observation: tip slots missing");
+    }
+    if (l1Observation.observedPreprodBlockCount < 2) {
+      reasons.push(
+        `class_b_l1_observation: observed block count ${l1Observation.observedPreprodBlockCount} < 2`,
+      );
+    }
+    if (l1Observation.interBlockTimeMs.p95 === null) {
+      reasons.push("class_b_l1_observation: inter-block p95 missing");
+    }
   }
   const bottleneck = classifyLikelyBottleneckWithEvidence({
     submitted: stageReport.submitted,
@@ -1744,6 +3106,20 @@ const evaluateStagePass = ({ stage, stageReport, monitorSamples }) => {
     passed: reasons.length === 0,
     reasons,
     backlogSlopePerSec: backlogSlope,
+    nodeSaturation: {
+      offeredRatePerSec: offeredRate,
+      acceptedRatePerSec: acceptedRate,
+      ratio: nodeSaturationRatio,
+      minRatio: nodeSaturationMinRatio,
+      passed:
+        targetRate <= 0 ||
+        nodeSaturationRatio === null ||
+        nodeSaturationRatio >= nodeSaturationMinRatio,
+    },
+    submitSuccessGate,
+    phase1StageAWindowGate,
+    phase1StarvationGate,
+    l1Observation,
     bottleneck,
   };
 };
@@ -1767,21 +3143,35 @@ const main = async () => {
 
   setPhase("setup");
   let monitor = null;
+  const corpusReaders = [];
+  const openCorpusReader = (options) => {
+    const reader = openStreamingCorpusReader(options);
+    corpusReaders.push(reader);
+    return reader;
+  };
 
   try {
-    const env = parseEnv(envPath);
-    const wallets = makeWalletsFromEnv(env);
-    const minFeeA = BigInt(
-      process.env.STRESS_MIN_FEE_A ?? env.MIN_FEE_A ?? "0",
-    );
-    const minFeeB = BigInt(
-      process.env.STRESS_MIN_FEE_B ?? env.MIN_FEE_B ?? "0",
-    );
+    const env = loadedStressEnv;
+    const usingCorpus = corpusPath !== null;
+    const wallets = usingCorpus ? [] : makeWalletsFromEnv(env);
+    const minFeeA = BigInt(envValue("STRESS_MIN_FEE_A", env.MIN_FEE_A ?? "0"));
+    const minFeeB = BigInt(envValue("STRESS_MIN_FEE_B", env.MIN_FEE_B ?? "0"));
     const pyroscope = await maybeStartPyroscope();
     const git = await readGitMetadata();
     const runtimeMetadata = await readRuntimeMetadata();
 
-    if (wallets.length === 0) {
+    engineEventWriter = makeNdjsonWriter(engineEventsPath);
+    submitRecordWriter = makeNdjsonWriter(submitRecordsPath);
+    writeEngineEvent("engine_started", {
+      benchmarkMode,
+      submitEndpoint,
+      metricsEndpoint,
+      corpusPath,
+      corpusSliceId,
+      corpusShape,
+    });
+
+    if (!usingCorpus && wallets.length === 0) {
       throw new Error(`No genesis wallet seeds found in ${envPath}`);
     }
 
@@ -1790,11 +3180,40 @@ const main = async () => {
       submitEndpoint,
       metricsEndpoint,
       benchmarkMode,
-      workload: "valid-native-chain",
+      workload: usingCorpus ? "prebuilt-corpus" : "valid-native-chain",
       chainLength,
-      maxChains,
+      scenarioName,
+      scenarioClass,
+      formalBenchmark,
+      phase1FormalIdentity: null,
+      loadGenerator: {
+        placement: loadGeneratorPlacement,
+        cohosted: loadGeneratorCohosted,
+        clockOffsetMs,
+        isolation: loadGeneratorIsolation,
+      },
+      observabilityProfile,
+      maxChains: maxChains ?? "auto",
+      maxChainsSetting: maxChainsSetting.raw,
       utxosPerWallet,
       minLovelace: minLovelace.toString(),
+      corpus: {
+        enabled: usingCorpus,
+        path: corpusPath,
+        indexPath: corpusIndexPath,
+        manifestPath: corpusManifestPath,
+        shape: corpusShape,
+        sliceId: corpusSliceId,
+        readAheadRows: corpusReadAheadRows,
+      },
+      calibration: {
+        requireNoOpCalibration,
+        noOpEndpoint,
+        headroomMultiplier: calibrationHeadroomMultiplier,
+        durationSec: calibrationDurationSec,
+        noopCalibrationPath: noOpCalibrationPath,
+      },
+      nodeSaturationMinRatio,
       fanoutEnabled,
       fanoutMaxOutputsPerTx,
       fanoutOutputLovelace:
@@ -1808,6 +3227,15 @@ const main = async () => {
       targetAcceptedTps,
       requireFreshChains,
       measuredSec,
+      phase4: {
+        blockTxTarget: phase4BlockTxTarget,
+        configuredCommitMaxL2TxCount,
+        speculativeCommitBuild:
+          String(envValue("SPECULATIVE_COMMIT_BUILD", "false"))
+            .trim()
+            .toLowerCase() === "true",
+        environmentFingerprint: phase4EnvironmentFingerprint,
+      },
       warmupTxs,
       warmupSec,
       cooldownSec,
@@ -1829,8 +3257,17 @@ const main = async () => {
       acceptedRateMinRatio,
       scheduleLagP95MaxMs,
       scheduleLagP99MaxMs,
+      submitLatencyP99MaxMs,
       missedStartMaxRatio,
       backlogSlopeMaxPerSec,
+      phase1StageAWindowGateEnabled,
+      phase1StageAWindowSec,
+      phase1StageACheckpointMaxJitterMs,
+      phase1StarvationGateEnabled,
+      phase1StarvationMinDurationSec,
+      phase1StarvationMaxAgeMultiplier,
+      phase1StarvationMinOverloadRatio,
+      phase1StarvationBaselineTps,
       candidateCleanTimeoutSec,
       requireIdleNode,
       idleProbeSec,
@@ -1850,6 +3287,8 @@ const main = async () => {
       minFeeA: minFeeA.toString(),
       minFeeB: minFeeB.toString(),
       reportPath,
+      engineEventsPath,
+      submitRecordsPath,
     };
 
     console.log("Starting Midgard L2 throughput benchmark with config:");
@@ -1864,122 +3303,305 @@ const main = async () => {
 
     setPhase("setup");
     const pgBefore = await readPgStatStatements(env, "before");
-    const candidates = [];
-    const seenOutRefs = new Set();
-    for (const wallet of wallets) {
-      const utxos = await fetchUtxos(wallet.address);
-      let selected = 0;
-      for (const utxo of utxos) {
-        if (selected >= utxosPerWallet) {
-          break;
-        }
-        const outRefHex = utxo.outref.toLowerCase();
-        if (seenOutRefs.has(outRefHex)) {
-          continue;
-        }
-        try {
-          const coin = decodeCoin(utxo.value);
-          if (coin < minLovelace) {
-            continue;
-          }
-          candidates.push({
-            walletKey: wallet.key,
-            address: wallet.address,
-            signer: wallet.signer,
-            spendOutRefCbor: Buffer.from(utxo.outref, "hex"),
-            outputCbor: Buffer.from(utxo.value, "hex"),
-            lovelace: coin,
-            outRefHex,
-          });
-          seenOutRefs.add(outRefHex);
-          selected += 1;
-        } catch {
-          // Skip malformed or non-decodable UTxOs.
-        }
-      }
-      console.log(
-        `wallet ${wallet.key} address=${wallet.address} selected_utxos=${selected}`,
-      );
-    }
-
-    if (candidates.length === 0) {
-      throw new Error("No spendable UTxOs found for configured wallets");
-    }
-
-    setPhase("fanout");
-    const fanout = await ensureFanoutCandidates({
-      candidates,
-      minFeeA,
-      minFeeB,
-    });
-    const effectiveCandidates = fanout.candidates;
-    console.log(
-      `Available benchmark source UTxOs after fanout: ${effectiveCandidates.length} (fanout_txs=${fanout.fanoutTxCount}, fanout_outputs=${fanout.fanoutOutputCount})`,
-    );
-
-    setPhase("prebuild");
-    /** @type {{ outRefHex: string; txs: PrebuiltTx[]; signer: any; outputCbor: Buffer; spendOutRefCbor: Buffer; walletKey: string; address: string; lovelace: bigint; }[]} */
-    const selectedChains = [];
-    const generatedTxIds = new Set();
+    /** @type {any[]} */
+    let candidates = [];
+    let fanout = {
+      candidates: [],
+      fanoutTxCount: 0,
+      fanoutOutputCount: 0,
+    };
+    let effectiveCandidates = [];
+    /** @type {{ outRefHex: string; txs: any; signer?: any; outputCbor?: Buffer; spendOutRefCbor?: Buffer; walletKey?: string; address?: string; lovelace?: bigint; }[]} */
+    let selectedChains = [];
+    let uniquePrebuiltTxIdCount = 0;
     let replaySkipped = 0;
     let duplicateSkipped = 0;
     let chainBuildSkipped = 0;
+    let cursors;
+    let corpusManifest = null;
+    let corpusArtifactIdentity = null;
+    let corpusIndexEntries = [];
+    let corpusValidation = null;
+    let corpusPreflightIdentity = null;
+    let phase1FormalIdentity = null;
+    let phase1FormalLivePreflight = null;
+    let noOpCalibration = { enabled: false, required: requireNoOpCalibration };
 
-    for (const candidate of effectiveCandidates) {
-      if (selectedChains.length >= maxChains) {
-        break;
-      }
-      let txs;
-      try {
-        txs = prebuildChain(candidate, chainLength, { minFeeA, minFeeB });
-      } catch (error) {
-        chainBuildSkipped += 1;
-        console.log(
-          `Skipping source UTxO that cannot fund requested chain: outref=${candidate.outRefHex} lovelace=${candidate.lovelace.toString()} reason=${error instanceof Error ? error.message : String(error)}`,
+    if (usingCorpus) {
+      if (corpusIndexPath === null || corpusManifestPath === null) {
+        throw new Error(
+          "STRESS_CORPUS_PATH requires corpus index and manifest paths",
         );
-        continue;
       }
-      if (txs.length === 0) {
-        continue;
+      if (corpusSliceId === null || String(corpusSliceId).trim().length === 0) {
+        throw new Error("STRESS_CORPUS_SLICE_ID is required in corpus mode");
       }
-      if (requireFreshChains) {
-        const firstStatus = await fetchTxStatus(txs[0].txIdHex);
-        if (firstStatus !== "not_found") {
-          replaySkipped += 1;
-          continue;
+      setPhase("corpus-preflight");
+      corpusManifest = await loadCorpusManifest(corpusManifestPath);
+      const fullIndex = await loadCorpusIndex(corpusIndexPath);
+      if (
+        maxChains === null &&
+        Number.isSafeInteger(corpusManifest.chainCount) &&
+        corpusManifest.chainCount > 0
+      ) {
+        maxChains = corpusManifest.chainCount;
+      }
+      corpusIndexEntries = selectCorpusIndexEntries({
+        index: fullIndex,
+        corpusSliceId,
+        corpusShape,
+        maxChains,
+      });
+      if (corpusPreflightEnabled) {
+        const consumed = consumePhase3SoakCorpusPreflight({
+          artifactPath: corpusPreflightPath,
+          artifactSha256: corpusPreflightSha256,
+          expectedSourceIdentitySha256: corpusPreflightSourceIdentitySha256,
+          expectedPhase1BindingSha256: corpusPreflightPhase1BindingSha256,
+          corpusPath,
+          indexPath: corpusIndexPath,
+          manifestPath: corpusManifestPath,
+          manifest: corpusManifest,
+          fullIndex,
+          selectedEntries: corpusIndexEntries,
+          corpusSliceId,
+          corpusShape,
+        });
+        corpusArtifactIdentity = consumed.corpusArtifactIdentity;
+        corpusValidation = consumed.validation;
+        corpusPreflightIdentity = consumed.artifactIdentity;
+      } else {
+        corpusArtifactIdentity = await verifyCorpusArtifactIdentity({
+          corpusPath,
+          indexPath: corpusIndexPath,
+          manifestPath: corpusManifestPath,
+          manifest: corpusManifest,
+        });
+        corpusValidation = await validateCorpusSlice({
+          corpusPath,
+          indexEntries: corpusIndexEntries,
+        });
+      }
+      configForReport.corpus.artifactIdentity = corpusArtifactIdentity;
+      configForReport.corpus.preflight = corpusPreflightIdentity;
+      if (phase1FormalBinding !== null) {
+        phase1FormalIdentity = validatePhase1FormalCorpus({
+          binding: phase1FormalBinding,
+          corpusManifest,
+          corpusArtifactIdentity,
+          selectedIndexEntries: corpusIndexEntries,
+        });
+        configForReport.phase1FormalIdentity = phase1FormalIdentity;
+      }
+      const availableRows = corpusRowsForEntries(corpusIndexEntries);
+      const requiredRows = estimateRequiredCorpusRows();
+      if (availableRows < requiredRows) {
+        throw new Error(
+          `corpus_exhausted_preflight: selected slice has ${availableRows} rows, estimated worst-case need is ${requiredRows}`,
+        );
+      }
+      if (phase1FormalIdentity !== null) {
+        setPhase("phase1-live-preflight");
+        phase1FormalLivePreflight = await verifyPhase1LivePreflight({
+          expected: phase1FormalIdentity.livePreflight,
+          fetchUtxos,
+        });
+        configForReport.phase1FormalLivePreflight = phase1FormalLivePreflight;
+      }
+      uniquePrebuiltTxIdCount = corpusValidation.uniqueTxHashes;
+      selectedChains = corpusIndexEntries.map((entry) => ({
+        outRefHex: entry.chainId,
+        txs: { length: entry.rowCount },
+      }));
+      effectiveCandidates = selectedChains;
+      fanout = {
+        candidates: effectiveCandidates,
+        fanoutTxCount: 0,
+        fanoutOutputCount: 0,
+      };
+      console.log(
+        `Using corpus slice ${corpusSliceId} with ${corpusIndexEntries.length} chains and ${availableRows} rows`,
+      );
+
+      setPhase("noop-calibration");
+      const calibrationSliceId = envValue(
+        "STRESS_CALIBRATION_CORPUS_SLICE_ID",
+        corpusSliceId,
+      );
+      let calibrationEntries = corpusIndexEntries;
+      if (calibrationSliceId !== corpusSliceId) {
+        calibrationEntries = selectCorpusIndexEntries({
+          index: fullIndex,
+          corpusSliceId: calibrationSliceId,
+          corpusShape,
+          maxChains,
+        });
+      }
+      noOpCalibration = await runNoOpCalibrationStage({
+        cursors: openCorpusReader({
+          corpusPath,
+          indexEntries: calibrationEntries,
+          // Calibration touches every chain round-robin. Keeping the measured
+          // reader's 50-row buffer here would retain 204,800 parsed rows for
+          // the formal 4,096-chain corpus before any node traffic begins.
+          readAheadRows: 1,
+        }),
+        targetRateTps:
+          benchmarkMode === "open"
+            ? openLoopRate
+            : benchmarkMode === "closed"
+              ? targetAcceptedTps
+              : rampMaxTps,
+      });
+      if ("maxObservedInFlight" in noOpCalibration) {
+        const calibratedCapacity = deriveCalibratedClientCapacity({
+          observedMaxInFlight: noOpCalibration.maxObservedInFlight,
+          targetRateTps:
+            benchmarkMode === "open"
+              ? openLoopRate
+              : benchmarkMode === "closed"
+                ? targetAcceptedTps
+                : rampMaxTps,
+          assumedAcceptanceLatencyMs: corpusManifest.assumedAcceptanceLatencyMs,
+          activeChainCount: corpusIndexEntries.length,
+          httpPipelining,
+        });
+        noOpCalibration.effectiveClientCapacity = calibratedCapacity;
+        configForReport.calibration.effectiveClientCapacity =
+          calibratedCapacity;
+        fs.writeFileSync(
+          noOpCalibrationPath,
+          `${JSON.stringify(noOpCalibration, null, 2)}\n`,
+        );
+        writeEngineEvent("calibration_capacity_selected", {
+          effectiveClientCapacity: calibratedCapacity,
+        });
+        if (submitConcurrencySetting.sentinel) {
+          submitConcurrency = calibratedCapacity.submitConcurrency;
+        }
+        if (httpConnectionsSetting.sentinel) {
+          await rebuildHttpClient({
+            connections: calibratedCapacity.httpConnections,
+          });
         }
       }
-      let hasDuplicate = false;
-      for (const tx of txs) {
-        if (generatedTxIds.has(tx.txIdHex)) {
-          hasDuplicate = true;
+      cursors = openCorpusReader({
+        corpusPath,
+        indexEntries: corpusIndexEntries,
+        readAheadRows: corpusReadAheadRows,
+      });
+    } else {
+      const seenOutRefs = new Set();
+      for (const wallet of wallets) {
+        const utxos = await fetchUtxos(wallet.address);
+        let selected = 0;
+        for (const utxo of utxos) {
+          if (selected >= utxosPerWallet) {
+            break;
+          }
+          const outRefHex = utxo.outref.toLowerCase();
+          if (seenOutRefs.has(outRefHex)) {
+            continue;
+          }
+          try {
+            const coin = decodeCoin(utxo.outputCbor);
+            if (coin < minLovelace) {
+              continue;
+            }
+            candidates.push({
+              walletKey: wallet.key,
+              address: wallet.address,
+              signer: wallet.signer,
+              spendOutRefCbor: Buffer.from(utxo.outref, "hex"),
+              outputCbor: Buffer.from(utxo.outputCbor, "hex"),
+              lovelace: coin,
+              outRefHex,
+            });
+            seenOutRefs.add(outRefHex);
+            selected += 1;
+          } catch {
+            // Skip malformed or non-decodable UTxOs.
+          }
+        }
+        console.log(
+          `wallet ${wallet.key} address=${wallet.address} selected_utxos=${selected}`,
+        );
+      }
+
+      if (candidates.length === 0) {
+        throw new Error("No spendable UTxOs found for configured wallets");
+      }
+
+      setPhase("fanout");
+      fanout = await ensureFanoutCandidates({
+        candidates,
+        minFeeA,
+        minFeeB,
+      });
+      effectiveCandidates = fanout.candidates;
+      console.log(
+        `Available benchmark source UTxOs after fanout: ${effectiveCandidates.length} (fanout_txs=${fanout.fanoutTxCount}, fanout_outputs=${fanout.fanoutOutputCount})`,
+      );
+
+      setPhase("prebuild");
+      const generatedTxIds = new Set();
+      for (const candidate of effectiveCandidates) {
+        if (maxChains !== null && selectedChains.length >= maxChains) {
           break;
         }
+        let txs;
+        try {
+          txs = prebuildChain(candidate, chainLength, { minFeeA, minFeeB });
+        } catch (error) {
+          chainBuildSkipped += 1;
+          console.log(
+            `Skipping source UTxO that cannot fund requested chain: outref=${candidate.outRefHex} lovelace=${candidate.lovelace.toString()} reason=${error instanceof Error ? error.message : String(error)}`,
+          );
+          continue;
+        }
+        if (txs.length === 0) {
+          continue;
+        }
+        if (requireFreshChains) {
+          const firstStatus = await fetchTxStatus(txs[0].txIdHex);
+          if (firstStatus !== "not_found") {
+            replaySkipped += 1;
+            continue;
+          }
+        }
+        let hasDuplicate = false;
+        for (const tx of txs) {
+          if (generatedTxIds.has(tx.txIdHex)) {
+            hasDuplicate = true;
+            break;
+          }
+        }
+        if (hasDuplicate) {
+          duplicateSkipped += 1;
+          continue;
+        }
+        for (const tx of txs) {
+          generatedTxIds.add(tx.txIdHex);
+        }
+        selectedChains.push({
+          ...candidate,
+          txs,
+        });
       }
-      if (hasDuplicate) {
-        duplicateSkipped += 1;
-        continue;
-      }
-      for (const tx of txs) {
-        generatedTxIds.add(tx.txIdHex);
-      }
-      selectedChains.push({
-        ...candidate,
-        txs,
-      });
-    }
+      uniquePrebuiltTxIdCount = generatedTxIds.size;
 
-    if (selectedChains.length === 0) {
-      throw new Error(
-        "No eligible fresh chains found. Increase STRESS_UTXOS_PER_WALLET or disable STRESS_REQUIRE_FRESH_CHAINS=false for diagnostics.",
+      if (selectedChains.length === 0) {
+        throw new Error(
+          "No eligible fresh chains found. Increase STRESS_UTXOS_PER_WALLET or disable STRESS_REQUIRE_FRESH_CHAINS=false for diagnostics.",
+        );
+      }
+
+      console.log(
+        `Using ${selectedChains.length} independent prebuilt chains (replay_skipped=${replaySkipped}, duplicate_skipped=${duplicateSkipped}, chain_build_skipped=${chainBuildSkipped})`,
       );
+
+      cursors = makeChainCursors(selectedChains);
     }
-
-    console.log(
-      `Using ${selectedChains.length} independent prebuilt chains (replay_skipped=${replaySkipped}, duplicate_skipped=${duplicateSkipped}, chain_build_skipped=${chainBuildSkipped})`,
-    );
-
-    const cursors = makeChainCursors(selectedChains);
     const stageReports = [];
     monitor = await startCounterMonitor(phaseNameRef);
 
@@ -2323,6 +3945,7 @@ const main = async () => {
         : monitorSamples,
       "validationQueueDepth",
     );
+    const l1Observation = summarizeL1Observation(measuredMonitorSamples);
     const bottleneck = classifyLikelyBottleneckWithEvidence({
       submitted: measuredSubmitted,
       submitErrors: measuredSubmitErrors,
@@ -2347,7 +3970,13 @@ const main = async () => {
       requiredMetricsMissing: missingRequiredMetrics,
     });
 
+    const corpusConsumption =
+      usingCorpus && typeof cursors.consumptionSnapshot === "function"
+        ? cursors.consumptionSnapshot()
+        : null;
     const summary = {
+      scenario: scenarioName,
+      scenarioClass,
       chainCount: selectedChains.length,
       chainLength,
       attempted: selectedChains.reduce(
@@ -2360,7 +3989,36 @@ const main = async () => {
       chainBuildSkipped,
       fanoutTxCount: fanout.fanoutTxCount,
       fanoutOutputCount: fanout.fanoutOutputCount,
-      uniquePrebuiltTxIds: generatedTxIds.size,
+      uniquePrebuiltTxIds: uniquePrebuiltTxIdCount,
+      corpus: usingCorpus
+        ? {
+            path: corpusPath,
+            indexPath: corpusIndexPath,
+            manifestPath: corpusManifestPath,
+            sliceId: corpusSliceId,
+            shape: corpusShape,
+            validation: corpusValidation,
+            artifactIdentity: corpusArtifactIdentity,
+            preflight: corpusPreflightIdentity,
+            consumption: corpusConsumption,
+          }
+        : null,
+      phase1FormalIdentity,
+      phase1FormalLivePreflight,
+      calibration:
+        "enabled" in noOpCalibration && noOpCalibration.enabled === false
+          ? null
+          : noOpCalibration,
+      nodeSaturationProof: primaryMeasuredStages.map((stage) => ({
+        stageName: stage.name,
+        offeredRatePerSec:
+          stage.evaluation?.nodeSaturation?.offeredRatePerSec ?? null,
+        acceptedRatePerSec:
+          stage.evaluation?.nodeSaturation?.acceptedRatePerSec ?? null,
+        ratio: stage.evaluation?.nodeSaturation?.ratio ?? null,
+        minRatio: nodeSaturationMinRatio,
+        passed: stage.evaluation?.nodeSaturation?.passed ?? false,
+      })),
       primaryStageNames: primaryMeasuredStages.map((stage) => stage.name),
       submitted: measuredSubmitted,
       physicalSubmitAttempts: measuredPhysicalSubmitAttempts,
@@ -2376,7 +4034,11 @@ const main = async () => {
           : 0,
       queuedSubmitSuccessPerSec:
         measuredElapsedSec > 0 ? measuredSubmitted / measuredElapsedSec : 0,
+      durablyAdmittedPerSecond:
+        measuredElapsedSec > 0 ? measuredSubmitted / measuredElapsedSec : 0,
       avgAcceptedTps:
+        measuredElapsedSec > 0 ? measuredAcceptedDelta / measuredElapsedSec : 0,
+      acceptedPerSecond:
         measuredElapsedSec > 0 ? measuredAcceptedDelta / measuredElapsedSec : 0,
       committedTxPerSec:
         measuredElapsedSec > 0 ? measuredCommitTxDelta / measuredElapsedSec : 0,
@@ -2397,6 +4059,15 @@ const main = async () => {
       bottleneckEvidence: bottleneck,
       missingRequiredMetrics,
       measuredBacklogSlopePerSec: measuredBacklogSlope,
+      l1Observation,
+      phase1StageAWindowGates: primaryMeasuredStages.map((stage) => ({
+        stageName: stage.name,
+        ...stage.evaluation?.phase1StageAWindowGate,
+      })),
+      phase1StarvationGates: primaryMeasuredStages.map((stage) => ({
+        stageName: stage.name,
+        ...stage.evaluation?.phase1StarvationGate,
+      })),
       reportPath,
       firstErrors: primaryMeasuredStages
         .flatMap((stage) => stage.firstErrors)
@@ -2406,13 +4077,32 @@ const main = async () => {
     const report = {
       benchmark: "midgard-l2-throughput",
       version: 2,
+      scenario: scenarioName,
+      scenarioClass,
       generatedAtIso: new Date().toISOString(),
       metadata: {
         git,
         runtime: runtimeMetadata,
       },
+      runIdentity: phase1FormalIdentity,
+      livePreflight: phase1FormalLivePreflight,
       config: configForReport,
       clientSelfCheck,
+      calibration: {
+        noOp:
+          "enabled" in noOpCalibration && noOpCalibration.enabled === false
+            ? null
+            : noOpCalibration,
+        nodeSaturationByStage: primaryMeasuredStages.map((stage) => ({
+          stageName: stage.name,
+          offeredRatePerSec:
+            stage.evaluation?.nodeSaturation?.offeredRatePerSec ?? null,
+          acceptedRatePerSec:
+            stage.evaluation?.nodeSaturation?.acceptedRatePerSec ?? null,
+          ratio: stage.evaluation?.nodeSaturation?.ratio ?? null,
+          passed: stage.evaluation?.nodeSaturation?.passed ?? false,
+        })),
+      },
       sourceUtxos: {
         selectedBeforeFanout: candidates.length,
         selectedAfterFanout: effectiveCandidates.length,
@@ -2420,10 +4110,12 @@ const main = async () => {
         fanoutOutputCount: fanout.fanoutOutputCount,
       },
       workload: {
-        name: "valid-native-chain",
+        name: usingCorpus ? "prebuilt-corpus" : "valid-native-chain",
         chainCount: selectedChains.length,
         chainLength,
-        uniquePrebuiltTxIds: generatedTxIds.size,
+        corpusManifest,
+        corpusArtifactIdentity,
+        uniquePrebuiltTxIds: uniquePrebuiltTxIdCount,
       },
       phases: phaseRecorder.list(),
       stages: stageReports,
@@ -2442,9 +4134,17 @@ const main = async () => {
         after: pgAfter,
       },
       summary,
+      l1Observation,
     };
 
     writeReport(report);
+    writeEngineEvent("engine_finished", {
+      reportPath,
+      submitted: measuredSubmitted,
+      accepted: measuredAcceptedDelta,
+      submitErrors: measuredSubmitErrors,
+      findMax: findMaxResult,
+    });
     console.log("Benchmark summary:");
     console.log(JSON.stringify(summary, null, 2));
 
@@ -2453,10 +4153,18 @@ const main = async () => {
         primaryMeasuredStages.includes(stage) &&
         (stage.drain === null || stage.drain.completed !== true),
     );
+    const failedEvaluation = primaryMeasuredStages.some(
+      (stage) => stage.evaluation?.passed !== true,
+    );
+    const corpusExhausted = measuredStages.some(
+      (stage) => stage.abortedCorpusExhausted === true,
+    );
     if (
       measuredAcceptedDelta <= 0 ||
       measuredSubmitErrors > 0 ||
+      corpusExhausted ||
       failedDrain ||
+      failedEvaluation ||
       (benchmarkMode === "find-max" && findMaxResult === null)
     ) {
       process.exitCode = 1;
@@ -2465,6 +4173,15 @@ const main = async () => {
     if (monitor !== null) {
       await monitor.stop();
     }
+    if (submitRecordWriter !== null) {
+      await submitRecordWriter.close();
+      submitRecordWriter = null;
+    }
+    if (engineEventWriter !== null) {
+      await engineEventWriter.close();
+      engineEventWriter = null;
+    }
+    await Promise.allSettled(corpusReaders.map((reader) => reader.close()));
     await httpClient.close();
   }
 };

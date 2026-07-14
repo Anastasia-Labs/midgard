@@ -27,6 +27,7 @@ const readinessInput = (
   queueDepth: 10,
   localFinalizationPending: false,
   dbHealthy: true,
+  awaitingForeignTipReconciliations: 0,
   ...overrides,
   workerHeartbeats: {
     ...readyHeartbeats,
@@ -62,6 +63,17 @@ describe("evaluateReadiness", () => {
 
     expect(readiness.ready).toBe(false);
     expect(readiness.reasons.some((r) => r.includes("queue_depth"))).toBe(true);
+  });
+
+  it("fails readiness while foreign-tip evidence is unresolved", () => {
+    const readiness = evaluateReadiness(
+      readinessInput({ awaitingForeignTipReconciliations: 2 }),
+    );
+
+    expect(readiness).toEqual({
+      ready: false,
+      reasons: ["foreign_tip_reconciliation_awaiting:2"],
+    });
   });
 
   it("fails readiness when local finalization is pending", () => {
@@ -116,5 +128,69 @@ describe("evaluateReadiness", () => {
     expect(readiness.reasons).toContain(
       "state_queue_lease_stale:state_queue_merge:-120000",
     );
+  });
+
+  it("keeps readiness healthy for a fully live validation pool", () => {
+    const readiness = evaluateReadiness(
+      readinessInput({
+        validationPool: {
+          configuredWorkers: 6,
+          liveWorkers: 6,
+          restartingWorkers: 0,
+          oldestInFlightAgeMs: 29_999,
+          jobTimeoutMs: 30_000,
+        },
+      }),
+    );
+    expect(readiness.ready).toBe(true);
+  });
+
+  it("fails readiness for timed-out validation work", () => {
+    const readiness = evaluateReadiness(
+      readinessInput({
+        validationPool: {
+          configuredWorkers: 6,
+          liveWorkers: 6,
+          restartingWorkers: 0,
+          oldestInFlightAgeMs: 30_001,
+          jobTimeoutMs: 30_000,
+        },
+      }),
+    );
+    expect(readiness.reasons).toContain(
+      "validation_worker_job_timeout:30001:30000",
+    );
+  });
+
+  it("fails readiness while validation workers are restarting", () => {
+    const readiness = evaluateReadiness(
+      readinessInput({
+        validationPool: {
+          configuredWorkers: 6,
+          liveWorkers: 4,
+          restartingWorkers: 2,
+          oldestInFlightAgeMs: 0,
+          jobTimeoutMs: 30_000,
+        },
+      }),
+    );
+    expect(readiness.reasons).toContain(
+      "validation_worker_pool_degraded:4:6:2",
+    );
+  });
+
+  it("treats the explicit inline rollback as a healthy disabled pool", () => {
+    const readiness = evaluateReadiness(
+      readinessInput({
+        validationPool: {
+          configuredWorkers: 0,
+          liveWorkers: 0,
+          restartingWorkers: 0,
+          oldestInFlightAgeMs: 0,
+          jobTimeoutMs: 30_000,
+        },
+      }),
+    );
+    expect(readiness.ready).toBe(true);
   });
 });

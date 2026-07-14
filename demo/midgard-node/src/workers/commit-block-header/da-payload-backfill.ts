@@ -5,6 +5,7 @@ import { Effect, Option } from "effect";
 import { DaPayloadsDB, PendingBlockFinalizationsDB } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { type Database } from "@/services/database.js";
+import { materializeConfirmedLedgerSnapshot } from "@/transactions/state-queue/confirmed-ledger-snapshot.js";
 import { buildDaPayloadInsert } from "@/workers/commit-block-header/da-payload.js";
 
 export type DaPayloadBackfillSkipped = {
@@ -37,6 +38,13 @@ type BackfillDeps<R> = {
   readonly upsertAvailable: (
     input: DaPayloadsDB.InsertInput,
   ) => Effect.Effect<void, DatabaseError, R>;
+  readonly materializeUtxos?: (
+    record: PendingBlockFinalizationsDB.Record,
+  ) => Effect.Effect<
+    readonly { readonly outref: Buffer; readonly output: Buffer }[],
+    DatabaseError,
+    R
+  >;
 };
 
 const defaultDeps: BackfillDeps<Database> = {
@@ -44,6 +52,15 @@ const defaultDeps: BackfillDeps<Database> = {
     PendingBlockFinalizationsDB.retrieveFinalizedMissingDaPayloads,
   retrieveJournalByHeaderHash: PendingBlockFinalizationsDB.retrieveByHeaderHash,
   upsertAvailable: DaPayloadsDB.upsertAvailable,
+  materializeUtxos: (record) =>
+    materializeConfirmedLedgerSnapshot(record).pipe(
+      Effect.map((snapshot) =>
+        snapshot.entries.map((entry) => ({
+          outref: entry.outref,
+          output: entry.output,
+        })),
+      ),
+    ),
 };
 
 const headerHashHex = (record: PendingBlockFinalizationsDB.Record): string =>
@@ -138,8 +155,13 @@ export const backfillMissingDaPayloadsFromFinalizedJournals = <R = Database>({
 
       const result = yield* Effect.either(
         Effect.gen(function* () {
+          const utxos =
+            record.ledgerDelta === undefined
+              ? undefined
+              : yield* deps.materializeUtxos!(record);
           const insert = yield* buildDaPayloadInsert({
             record,
+            utxos,
           });
           yield* deps.upsertAvailable(insert);
         }),

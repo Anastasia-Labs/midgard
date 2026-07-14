@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Option } from "effect";
@@ -9,6 +11,7 @@ import {
   DepositsDB,
   ImmutableDB,
   MempoolDB,
+  MutationJobsDB,
   PendingBlockFinalizationsDB,
   ProcessedMempoolDB,
   StateQueueMutationLeasesDB,
@@ -39,7 +42,12 @@ import {
   type DepositSubmissionReconciliationResult,
   reconcileDepositSubmissionAttemptProgram,
 } from "@/transactions/submit-deposit.js";
+import { runCommitBlockHeaderWorkerProgram } from "@/workers/commit-block-header.js";
 import { backfillMissingDaPayloadsFromFinalizedJournals } from "@/workers/commit-block-header/da-payload-backfill.js";
+import {
+  serializeStateQueueUTxO,
+  type WorkerInput as CommitBlockWorkerInput,
+} from "@/workers/utils/commit-block-header.js";
 
 export const RECONCILIATION_SCHEMA_VERSION =
   "midgard-e2e-reconciliation-v1" as const;
@@ -136,17 +144,66 @@ const optionRecordEvidence = (
         },
   );
 
-const fetchCanonicalStateQueueHeaderHashes = Effect.gen(function* () {
+type CanonicalStateQueueHeader = {
+  readonly headerHash: string;
+  readonly outRef: string;
+  readonly utxo: SDK.StateQueueUTxO;
+};
+
+const stateQueueOutRef = (utxo: SDK.StateQueueUTxO): string =>
+  `${utxo.utxo.txHash}#${utxo.utxo.outputIndex.toString()}`;
+
+const fetchCanonicalStateQueueHeaders = Effect.gen(function* () {
   const lucid = yield* Lucid;
   const contracts = yield* MidgardContracts;
   const sorted = yield* SDK.fetchSortedStateQueueUTxOsProgram(lucid.api, {
     stateQueuePolicyId: contracts.stateQueue.policyId,
     stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
   });
-  return sorted.flatMap((utxo) =>
-    utxo.datum.key === "Empty" ? [] : [utxo.datum.key.Key.key],
+  return sorted.flatMap((utxo): CanonicalStateQueueHeader[] =>
+    utxo.datum.key === "Empty"
+      ? []
+      : [
+          {
+            headerHash: utxo.datum.key.Key.key,
+            outRef: stateQueueOutRef(utxo),
+            utxo,
+          },
+        ],
   );
 });
+
+const fetchCanonicalStateQueueHeaderHashes =
+  fetchCanonicalStateQueueHeaders.pipe(
+    Effect.map((headers) => headers.map((header) => header.headerHash)),
+  );
+
+const localFinalizationJobId = (headerHashHex: string): string =>
+  `local_block_finalization:${headerHashHex}`;
+
+const unfinishedLocalFinalizationJobEvidence = (
+  headerHashHex: string,
+  jobs: readonly MutationJobsDB.Entry[],
+): ReconciliationEvidence => {
+  const jobId = localFinalizationJobId(headerHashHex);
+  const job = jobs.find(
+    (entry) => entry[MutationJobsDB.Columns.JOB_ID] === jobId,
+  );
+  return evidence(
+    "local_finalization_job",
+    job === undefined
+      ? { present: false, jobId }
+      : {
+          present: true,
+          jobId,
+          kind: job[MutationJobsDB.Columns.KIND],
+          status: job[MutationJobsDB.Columns.STATUS],
+          attempts: job[MutationJobsDB.Columns.ATTEMPTS],
+          lastError: job[MutationJobsDB.Columns.LAST_ERROR],
+          updatedAt: job[MutationJobsDB.Columns.UPDATED_AT].toISOString(),
+        },
+  );
+};
 
 export const reconcilePhasRegisteredProgram = ({
   repair,
@@ -177,6 +234,7 @@ export const reconcilePhasRegisteredProgram = ({
       queryPhasMembershipRewardAccountRegisteredProgram(
         lucid.api,
         identity.rewardAddress,
+        identity.scriptHash,
       ),
     );
     if (registeredAttempt._tag === "Left") {
@@ -764,6 +822,162 @@ export const reconcileBlockCommittedProgram = ({
           : status === "ambiguous"
             ? "No local journal or canonical state-queue evidence exists for this header."
             : null,
+    });
+  });
+
+export const reconcileLocalFinalizationProgram = ({
+  headerHash,
+  repair,
+}: {
+  readonly headerHash: Buffer;
+  readonly repair: boolean;
+}): Effect.Effect<
+  ReconciliationResult,
+  unknown,
+  Database | Lucid | MidgardContracts | NodeConfig
+> =>
+  Effect.gen(function* () {
+    const headerHashHex = headerHash.toString("hex");
+    const journal =
+      yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(headerHash);
+    let canonicalHeaders = yield* fetchCanonicalStateQueueHeaders;
+    let canonicalHeader = canonicalHeaders.find(
+      (entry) => entry.headerHash === headerHashHex,
+    );
+    let txHashes = yield* BlocksDB.retrieveTxHashesByHeaderHash(headerHash);
+    let unfinishedJobs = yield* MutationJobsDB.retrieveUnfinished;
+    const repairActions: string[] = [];
+    const evidenceEntries = (): ReconciliationEvidence[] => [
+      evidence("canonical_state_queue", {
+        containsHeader: canonicalHeader !== undefined,
+        headers: canonicalHeaders.map((entry) => entry.headerHash),
+        outRef: canonicalHeader?.outRef ?? null,
+      }),
+      optionRecordEvidence(journal),
+      unfinishedLocalFinalizationJobEvidence(headerHashHex, unfinishedJobs),
+      evidence("local_block_rows", { txCount: txHashes.length }),
+    ];
+
+    const journalStatus = Option.isSome(journal)
+      ? journal.value[PendingBlockFinalizationsDB.Columns.STATUS]
+      : null;
+    const alreadyFinalized =
+      journalStatus === PendingBlockFinalizationsDB.Status.Finalized &&
+      txHashes.length > 0 &&
+      !unfinishedJobs.some(
+        (entry) =>
+          entry[MutationJobsDB.Columns.JOB_ID] ===
+          localFinalizationJobId(headerHashHex),
+      );
+    if (alreadyFinalized) {
+      return result({
+        milestone: "local-finalization",
+        target: { headerHash: headerHashHex },
+        status: "satisfied",
+        evidence: evidenceEntries(),
+      });
+    }
+
+    if (!repair) {
+      const status: ReconciliationStatus =
+        canonicalHeader === undefined
+          ? "pending"
+          : Option.isNone(journal)
+            ? "ambiguous"
+            : "pending";
+      return result({
+        milestone: "local-finalization",
+        target: { headerHash: headerHashHex },
+        status,
+        evidence: evidenceEntries(),
+        nextAction:
+          canonicalHeader === undefined
+            ? "Wait for the header to become canonical before local finalization recovery."
+            : Option.isNone(journal)
+              ? "No durable pending-finalization journal exists for this canonical header."
+              : "Run with --repair to replay local finalization from the durable pending-finalization journal.",
+      });
+    }
+
+    repairActions.push("recover_local_finalization");
+    if (canonicalHeader === undefined) {
+      return result({
+        milestone: "local-finalization",
+        target: { headerHash: headerHashHex },
+        status: "blocked",
+        evidence: evidenceEntries(),
+        repairActions,
+        nextAction:
+          "Cannot recover local finalization until the header is present in canonical state_queue.",
+      });
+    }
+    if (Option.isNone(journal)) {
+      return result({
+        milestone: "local-finalization",
+        target: { headerHash: headerHashHex },
+        status: "ambiguous",
+        evidence: evidenceEntries(),
+        repairActions,
+        nextAction:
+          "Cannot recover local finalization without a durable pending-finalization journal.",
+      });
+    }
+
+    const serialized = yield* serializeStateQueueUTxO(canonicalHeader.utxo);
+    const workerInput = {
+      data: {
+        availableConfirmedBlock: "",
+        availableLocalFinalizationBlock: serialized,
+        currentBlockStartTimeMs: 0,
+        ledgerStoreLeaseOwner: `commit:${randomUUID()}`,
+        localFinalizationPending: true,
+        mempoolTxsCountSoFar: 0,
+        sizeOfProcessedTxsSoFar: 0,
+      },
+    } satisfies CommitBlockWorkerInput;
+    const workerOutput = yield* runCommitBlockHeaderWorkerProgram(workerInput);
+    canonicalHeaders = yield* fetchCanonicalStateQueueHeaders;
+    canonicalHeader = canonicalHeaders.find(
+      (entry) => entry.headerHash === headerHashHex,
+    );
+    txHashes = yield* BlocksDB.retrieveTxHashesByHeaderHash(headerHash);
+    unfinishedJobs = yield* MutationJobsDB.retrieveUnfinished;
+    const afterJournal =
+      yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(headerHash);
+    const recovered =
+      workerOutput.type === "SuccessfulLocalFinalizationRecoveryOutput" &&
+      Option.isSome(afterJournal) &&
+      afterJournal.value[PendingBlockFinalizationsDB.Columns.STATUS] ===
+        PendingBlockFinalizationsDB.Status.Finalized &&
+      txHashes.length > 0 &&
+      !unfinishedJobs.some(
+        (entry) =>
+          entry[MutationJobsDB.Columns.JOB_ID] ===
+          localFinalizationJobId(headerHashHex),
+      );
+
+    return result({
+      milestone: "local-finalization",
+      target: { headerHash: headerHashHex },
+      status: recovered ? "repaired" : "failed",
+      evidence: [
+        evidence(
+          "worker_output",
+          workerOutput as unknown as Record<string, unknown>,
+        ),
+        evidence("canonical_state_queue", {
+          containsHeader: canonicalHeader !== undefined,
+          headers: canonicalHeaders.map((entry) => entry.headerHash),
+          outRef: canonicalHeader?.outRef ?? null,
+        }),
+        optionRecordEvidence(afterJournal),
+        unfinishedLocalFinalizationJobEvidence(headerHashHex, unfinishedJobs),
+        evidence("local_block_rows", { txCount: txHashes.length }),
+      ],
+      repairActions,
+      nextAction: recovered
+        ? null
+        : "Local finalization repair did not reach finalized state; inspect worker_output and logs.",
     });
   });
 

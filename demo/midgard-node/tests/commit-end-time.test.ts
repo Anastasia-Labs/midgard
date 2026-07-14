@@ -3,13 +3,16 @@ import {
   generateEmulatorAccount,
   Lucid,
 } from "@lucid-evolution/lucid";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
+  alignedUnixTimeStrictlyAfter,
+  alignUnixTimeToSlotBoundary,
   COMMIT_MIN_PRE_SUBMIT_BUDGET_MS,
   COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
   commitTimingBudget,
   EXPLICIT_COMMIT_DEFAULT_CANDIDATE_FUTURE_BUFFER_MS,
+  makeSubmitSlotAnchoredClock,
   resolveAlignedCommitEndTime,
   resolveCommitEndTimeFit,
   resolveExplicitCommitCandidateEndTimeMs,
@@ -27,6 +30,142 @@ const makeLucid = async () => {
 };
 
 describe("commit end-time resolver", () => {
+  it("keeps submit-slot time monotonic across wall-clock jumps", () => {
+    let monotonicNow = 10_000;
+    const anchoredNow = makeSubmitSlotAnchoredClock(
+      1_779_150_000_000,
+      () => monotonicNow,
+    );
+    const wallNow = vi.spyOn(Date, "now");
+    try {
+      wallNow.mockReturnValue(1_999_999_999_999);
+      expect(anchoredNow()).toBe(1_779_150_000_000);
+
+      wallNow.mockReturnValue(1);
+      monotonicNow += 12_345.75;
+      expect(anchoredNow()).toBe(1_779_150_012_345);
+
+      monotonicNow -= 5_000;
+      expect(anchoredNow()).toBe(1_779_150_012_345);
+    } finally {
+      wallNow.mockRestore();
+    }
+  });
+
+  it("advances refreshed commit windows from the slot-backed clock", async () => {
+    const lucid = await makeLucid();
+    const provider = lucid.config().provider as unknown as {
+      time: number;
+      slot: number;
+    };
+    let monotonicNow = 5_000;
+    const anchoredNow = makeSubmitSlotAnchoredClock(
+      provider.time,
+      () => monotonicNow,
+    );
+    const first = resolveAlignedCommitEndTime({
+      lucid,
+      latestEndTime: provider.time,
+      candidateEndTime: provider.time,
+      nowMs: anchoredNow(),
+      minimumFutureBufferMs: COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+    });
+
+    vi.spyOn(Date, "now").mockReturnValue(provider.time + 86_400_000);
+    try {
+      monotonicNow += 45_000;
+      const refreshed = resolveAlignedCommitEndTime({
+        lucid,
+        latestEndTime: provider.time,
+        candidateEndTime: provider.time,
+        nowMs: anchoredNow(),
+        minimumFutureBufferMs: COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+      });
+      expect(refreshed.minimumCurrentTimeEndTime).toBeGreaterThan(
+        first.minimumCurrentTimeEndTime,
+      );
+      expect(refreshed.resolvedEndTime).toBeGreaterThan(first.resolvedEndTime);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("keeps Custom end-time floors forward after the emulator advances beyond the Lucid creation anchor", async () => {
+    const operator = generateEmulatorAccount({ lovelace: 50_000_000n });
+    const emulator = new Emulator([operator]);
+    const lucid = await Lucid(emulator, "Custom");
+    lucid.selectWallet.fromSeed(operator.seedPhrase);
+
+    await emulator.awaitSlot(16 * 60);
+    const firstNowMs = emulator.now();
+    const firstFloorMs =
+      firstNowMs + COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS;
+    expect(
+      alignUnixTimeToSlotBoundary(lucid, firstFloorMs),
+    ).toBeGreaterThanOrEqual(firstFloorMs - 999);
+    expect(alignedUnixTimeStrictlyAfter(lucid, firstFloorMs)).toBeGreaterThan(
+      firstFloorMs,
+    );
+    const first = resolveAlignedCommitEndTime({
+      lucid,
+      latestEndTime: firstNowMs - 1,
+      candidateEndTime: firstNowMs,
+      nowMs: firstNowMs,
+      minimumFutureBufferMs: COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+    });
+    expect(first.minimumCurrentTimeEndTime).toBeGreaterThan(firstFloorMs);
+    expect(first.resolvedEndTime).toBeGreaterThanOrEqual(
+      first.minimumCurrentTimeEndTime,
+    );
+
+    await emulator.awaitSlot(60);
+    const refreshedNowMs = emulator.now();
+    const refreshed = resolveAlignedCommitEndTime({
+      lucid,
+      latestEndTime: firstNowMs - 1,
+      candidateEndTime: firstNowMs,
+      nowMs: refreshedNowMs,
+      minimumFutureBufferMs: COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+    });
+    expect(refreshed.minimumCurrentTimeEndTime).toBeGreaterThan(
+      first.minimumCurrentTimeEndTime,
+    );
+    expect(refreshed.resolvedEndTime).toBeGreaterThan(first.resolvedEndTime);
+  });
+
+  it("evaluates budgets against slot-backed time when wall time is ahead or behind", () => {
+    let monotonicNow = 0;
+    const observedAtMs = 1_779_150_000_000;
+    const anchoredNow = makeSubmitSlotAnchoredClock(
+      observedAtMs,
+      () => monotonicNow,
+    );
+    const resolvedEndTimeMs = observedAtMs + COMMIT_MIN_PRE_SUBMIT_BUDGET_MS;
+    const wallNow = vi.spyOn(Date, "now");
+    try {
+      wallNow.mockReturnValue(observedAtMs + 86_400_000);
+      expect(
+        commitTimingBudget({
+          checkpoint: "pre_submit",
+          resolvedEndTimeMs,
+          nowMs: anchoredNow(),
+        }).satisfied,
+      ).toBe(true);
+
+      wallNow.mockReturnValue(observedAtMs - 86_400_000);
+      monotonicNow += 1;
+      expect(
+        commitTimingBudget({
+          checkpoint: "pre_submit",
+          resolvedEndTimeMs,
+          nowMs: anchoredNow(),
+        }).satisfied,
+      ).toBe(false);
+    } finally {
+      wallNow.mockRestore();
+    }
+  });
+
   it("defaults explicit commit candidate end-time five minutes into the future", () => {
     const nowMs = 1_779_150_000_000;
 

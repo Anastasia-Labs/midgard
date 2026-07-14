@@ -139,8 +139,13 @@ export type ActiveSchedulerState = {
   readonly startTime: bigint;
 };
 
+export type SchedulerRefreshStartTimeMode =
+  | "validity-lower-bound"
+  | "previous-shift-end";
+
 const SCHEDULER_REFRESH_POLL_INTERVAL = "2 seconds";
 const SCHEDULER_REFRESH_MAX_POLLS = 30;
+const SCHEDULER_ALIGNMENT_MAX_REFRESHES_PER_CALL = 96;
 export const SCHEDULER_SUBMISSION_CONFIRMATION_TIMEOUT_MS = 5 * 60_000;
 export const SCHEDULER_SUBMISSION_CONFIRMATION_POLL_INTERVAL_MS = 5_000;
 const SCHEDULER_SHIFT_DURATION_MS = SDK.SHIFT_DURATION_MS;
@@ -149,6 +154,20 @@ const SCHEDULER_TRANSITION_VALIDITY_WINDOW_MS = 8n * 60n * 1000n;
 const SCHEDULER_REFRESH_VALID_FROM_BACKDATE_MS = 30_000;
 const SCHEDULER_FIRST_APPOINTMENT_MIN_VALIDITY_GAP_MS = 30n * 1000n;
 const SCHEDULER_MAX_PRE_SUBMIT_WAIT_MS = 120_000;
+const PREVIOUS_SHIFT_END_SCHEDULER_SPENDING_SCRIPT_HASHES = new Set([
+  // Pre-2026-07-07 deployed preprod scheduler validators advance one shift at a
+  // time and require output start_time == previous shift end.
+  "adc0cb0642e888ec8f003ae71b5412bde1b31789c951597932f46712",
+]);
+
+export const schedulerRefreshStartTimeModeForSpendingScriptHash = (
+  schedulerSpendingScriptHash: string,
+): SchedulerRefreshStartTimeMode =>
+  PREVIOUS_SHIFT_END_SCHEDULER_SPENDING_SCRIPT_HASHES.has(
+    schedulerSpendingScriptHash.toLowerCase(),
+  )
+    ? "previous-shift-end"
+    : "validity-lower-bound";
 
 export const schedulerRefreshDueWorkFromNoInlineSubmitDefer = ({
   defer,
@@ -288,6 +307,26 @@ const activeSchedulerDatum = (
     start_time: startTime,
   },
 });
+
+export const schedulerStateCoversCommitTarget = ({
+  currentSchedulerState,
+  operatorKeyHash,
+  targetStartTime,
+}: {
+  readonly currentSchedulerState: ActiveSchedulerState | undefined;
+  readonly operatorKeyHash: string;
+  readonly targetStartTime: bigint;
+}): boolean => {
+  if (currentSchedulerState?.operator !== operatorKeyHash) {
+    return false;
+  }
+  const currentShiftEndTime =
+    currentSchedulerState.startTime + SCHEDULER_SHIFT_DURATION_MS;
+  return (
+    currentSchedulerState.startTime <= targetStartTime &&
+    targetStartTime <= currentShiftEndTime
+  );
+};
 
 const describeSchedulerDatum = (datum: SDK.SchedulerDatum): string => {
   const active = activeSchedulerState(datum);
@@ -519,11 +558,13 @@ export const resolveRefreshedSchedulerStartTime = ({
   currentSchedulerState,
   validFrom,
   validTo,
+  startTimeMode = "validity-lower-bound",
 }: {
   readonly selection: SchedulerRefreshWitnessSelection;
   readonly currentSchedulerState: ActiveSchedulerState | undefined;
   readonly validFrom: bigint;
   readonly validTo: bigint;
+  readonly startTimeMode?: SchedulerRefreshStartTimeMode;
 }): bigint => {
   if (selection.kind === "AppointFirst") {
     // Lucid's validTo is exclusive; Aiken sees the inclusive upper bound.
@@ -540,6 +581,9 @@ export const resolveRefreshedSchedulerStartTime = ({
     throw new Error(
       `Cannot refresh scheduler before previous shift end: valid_from=${validFrom.toString()},previous_shift_end=${previousShiftEnd.toString()}`,
     );
+  }
+  if (startTimeMode === "previous-shift-end") {
+    return previousShiftEnd;
   }
   return validFrom;
 };
@@ -999,11 +1043,10 @@ const ensureSchedulerAlignedForCommit = (
   SDK.StateQueueError | TxSignError | TxSubmitError
 > =>
   Effect.gen(function* () {
-    const resolveOperatorWalletView = (): Effect.Effect<
-      OperatorWalletView,
-      SDK.StateQueueError
-    > =>
-      operatorWalletView === undefined
+    const resolveOperatorWalletView = (
+      walletView?: OperatorWalletView,
+    ): Effect.Effect<OperatorWalletView, SDK.StateQueueError> =>
+      walletView === undefined
         ? Effect.tryPromise({
             try: () => fetchOperatorWalletView(lucid),
             catch: (cause) =>
@@ -1013,24 +1056,8 @@ const ensureSchedulerAlignedForCommit = (
                 cause,
               }),
           })
-        : Effect.succeed(operatorWalletView);
+        : Effect.succeed(walletView);
     const targetStartTime = BigInt(alignedEndTime);
-    const schedulerDatum = yield* getSchedulerDatumFromUTxO(schedulerRefInput);
-    const currentSchedulerState = activeSchedulerState(schedulerDatum);
-    const currentShiftEndTime =
-      currentSchedulerState === undefined
-        ? 0n
-        : currentSchedulerState.startTime + SCHEDULER_SHIFT_DURATION_MS;
-    if (
-      currentSchedulerState?.operator === operatorKeyHash &&
-      currentSchedulerState.startTime <= targetStartTime &&
-      targetStartTime <= currentShiftEndTime
-    ) {
-      return {
-        schedulerRefInput,
-        operatorWalletView: yield* resolveOperatorWalletView(),
-      };
-    }
     const activeNodes = yield* parseNodeSetUtxos(
       activeOperatorUtxos,
       "active-operators",
@@ -1039,295 +1066,361 @@ const ensureSchedulerAlignedForCommit = (
       registeredOperatorUtxos,
       "registered-operators",
     );
-    const currentOperator = currentSchedulerState?.operator ?? "";
-    const currentStartTime = currentSchedulerState?.startTime ?? 0n;
-    const allowGenesisRewind = currentSchedulerState === undefined;
-    const submitSlot =
-      submitSlotSnapshot === undefined
-        ? undefined
-        : yield* submitSlotSnapshot().pipe(
-            Effect.mapError(
-              (cause) =>
-                new SDK.StateQueueError({
-                  message:
-                    "Failed to capture local Ogmios slot for scheduler refresh validity",
-                  cause,
-                }),
-            ),
-          );
-    const schedulerSlotSnapshot =
-      submitSlot === undefined
-        ? captureSchedulerSlotSnapshot(lucid)
-        : schedulerSlotSnapshotFromSubmitSlot(lucid, submitSlot);
-    const selection = yield* Effect.try({
-      try: () =>
-        resolveSchedulerRefreshWitnessSelection({
-          currentOperator,
-          targetOperator: operatorKeyHash,
-          activeNodes,
-          registeredNodes,
-          allowGenesisRewind,
-        }),
-      catch: (cause) =>
-        new SDK.StateQueueError({
-          message:
-            "Current operator is not eligible to advance or rewind the scheduler for this commit window",
-          cause,
-        }),
-    });
-    const { validFrom, validTo } =
-      selection.kind === "AppointFirst"
-        ? yield* Effect.try({
-            try: () =>
-              resolveSchedulerFirstAppointmentValidityWindow(
-                lucid,
-                targetStartTime,
-                schedulerSlotSnapshot,
-              ),
-            catch: (cause) =>
-              new SDK.StateQueueError({
-                message:
-                  "Failed to resolve scheduler first-appointment validity window",
-                cause,
-              }),
-          })
-        : resolveSchedulerRefreshValidityWindow(
-            lucid,
-            currentStartTime,
-            schedulerSlotSnapshot,
-          );
-    if (targetStartTime < validFrom) {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message:
-            "Resolved commit end-time falls before the scheduler refresh window",
-          cause: `commit_end=${targetStartTime.toString()},scheduler_valid_from=${validFrom.toString()}`,
-        }),
+    let currentSchedulerRefInput = schedulerRefInput;
+    let currentOperatorWalletView = operatorWalletView;
+    const startTimeMode = schedulerRefreshStartTimeModeForSpendingScriptHash(
+      contracts.scheduler.spendingScriptHash,
+    );
+
+    for (
+      let refreshCount = 0;
+      refreshCount <= SCHEDULER_ALIGNMENT_MAX_REFRESHES_PER_CALL;
+      refreshCount += 1
+    ) {
+      const schedulerDatum = yield* getSchedulerDatumFromUTxO(
+        currentSchedulerRefInput,
       );
-    }
-    const submitTimingSnapshot: SubmitSlotSnapshot = submitSlot ?? {
-      source: "test",
-      currentSlot: schedulerSlotSnapshot.currentSlot,
-      observedAtMs: schedulerSlotSnapshot.observedAtMs,
-      slotLengthMs: 1_000,
-    };
-    const invalidBeforeSlot = Number(lucid.unixTimeToSlot(Number(validFrom)));
-    const invalidHereafterSlot = Number(lucid.unixTimeToSlot(Number(validTo)));
-    const schedulerDependencyKey = schedulerRefreshDependencyKey({
-      schedulerOutRef: outRefLabel(schedulerRefInput),
-      currentOperator,
-      currentStartTime,
-      targetOperator: operatorKeyHash,
-      selectionKind: selection.kind,
-    });
-    const submitTiming = planSubmitTiming({
-      callerLabel: "scheduler-refresh",
-      invalidBeforeSlot,
-      invalidHereafterSlot,
-      slotSnapshot: submitTimingSnapshot,
-      maxInlineWaitMs: SCHEDULER_MAX_PRE_SUBMIT_WAIT_MS,
-      inlineWaitPolicy: "defer_positive_wait",
-      dependencyKey: schedulerDependencyKey,
-      invalidationKey: schedulerDependencyKey,
-    });
-    if (submitTiming.status === "not_due") {
+      const currentSchedulerState = activeSchedulerState(schedulerDatum);
       if (
-        submitTiming.dependencyKey === undefined ||
-        submitTiming.invalidationKey === undefined
+        schedulerStateCoversCommitTarget({
+          currentSchedulerState,
+          operatorKeyHash,
+          targetStartTime,
+        })
       ) {
+        return {
+          schedulerRefInput: currentSchedulerRefInput,
+          operatorWalletView: yield* resolveOperatorWalletView(
+            currentOperatorWalletView,
+          ),
+        };
+      }
+      if (refreshCount === SCHEDULER_ALIGNMENT_MAX_REFRESHES_PER_CALL) {
         return yield* Effect.fail(
           new SDK.StateQueueError({
             message:
-              "Scheduler refresh due-work planning lost dependency evidence",
-            cause: `status=not_due,dependency_key=${submitTiming.dependencyKey ?? "missing"},invalidation_key=${submitTiming.invalidationKey ?? "missing"}`,
+              "Scheduler alignment exceeded the maximum refresh count for one block commitment attempt",
+            cause: `max_refreshes=${SCHEDULER_ALIGNMENT_MAX_REFRESHES_PER_CALL.toString()},target_commit_end=${targetStartTime.toString()},current_scheduler=${describeSchedulerDatum(schedulerDatum)}`,
           }),
         );
       }
-      const dueWorkOutput = schedulerRefreshDueWorkFromSubmitTiming({
-        plan: {
-          ...submitTiming,
-          dependencyKey: submitTiming.dependencyKey,
-          invalidationKey: submitTiming.invalidationKey,
-        },
-      });
-      const entry = dueWorkOutput.dueWork;
-      yield* Effect.logInfo(
-        `🔹 Scheduler refresh is not due yet; registering slot-aware due work discovery_stage=scheduler_refresh_deep (kind=${entry.kind},key=${entry.key},current_slot=${entry.observedSlot.toString()},due_slot=${entry.dueSlot.toString()},wait_ms=${entry.waitMs.toString()},slot_source=${entry.slotSource},dependency_key=${entry.dependencyKey}).`,
-      );
-      return dueWorkOutput;
-    }
-    if (!allowSchedulerRefresh) {
-      const dueWorkOutput =
-        schedulerRefreshRequiredOutsideMutationWorkerDueWork({
-          submitTimingSnapshot,
-          invalidBeforeSlot,
-          invalidHereafterSlot,
-          schedulerDependencyKey,
-        });
-      yield* Effect.logInfo(
-        `🔹 Scheduler refresh is required inside the commit mutation worker; deferring so refresh can run before COMMIT_WORKER_ACTIVE and block_commitment lease (kind=${dueWorkOutput.dueWork.kind},key=${dueWorkOutput.dueWork.key},current_slot=${dueWorkOutput.dueWork.observedSlot.toString()},due_slot=${dueWorkOutput.dueWork.dueSlot.toString()},wait_ms=${dueWorkOutput.dueWork.waitMs.toString()},dependency_key=${dueWorkOutput.dueWork.dependencyKey}).`,
-      );
-      return dueWorkOutput;
-    }
-    if (submitTiming.status !== "ready" && submitTiming.status !== "wait") {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message:
-            "Scheduler refresh validity planning failed before transaction build",
-          cause: `status=${submitTiming.status},current_slot=${"currentSlot" in submitTiming ? submitTiming.currentSlot.toString() : "none"},invalid_before_slot=${invalidBeforeSlot.toString()},invalid_hereafter_slot=${invalidHereafterSlot.toString()}`,
-        }),
-      );
-    }
-    const refreshedSchedulerStartTime = yield* Effect.try({
-      try: () =>
-        resolveRefreshedSchedulerStartTime({
-          selection,
-          currentSchedulerState,
-          validFrom,
-          validTo,
-        }),
-      catch: (cause) =>
-        new SDK.StateQueueError({
-          message: "Failed to resolve refreshed scheduler start time",
-          cause,
-        }),
-    });
-    const refreshedSchedulerDatum = activeSchedulerDatum(
-      operatorKeyHash,
-      refreshedSchedulerStartTime,
-    );
-    if (selection.kind !== "Advance") {
-      const registeredWitness = selection.registeredWitnessNode;
-      if (registeredWitness.datum.key !== "Empty") {
-        const activationKey = registeredWitness.datum.key.Key.key;
-        const activationTime = BigInt(
-          `0x${activationKey === "" ? "0" : activationKey}`,
-        );
-        if (validTo >= activationTime) {
-          return yield* Effect.fail(
-            new SDK.StateQueueError({
-              message:
-                "Scheduler rewind window overlaps the next registered operator activation time",
-              cause: `valid_to=${validTo.toString()},activation_time=${activationTime.toString()},registered_witness=${outRefLabel(registeredWitness.utxo)}`,
-            }),
-          );
-        }
-      }
-    }
-    const flowOperatorWalletView = yield* resolveOperatorWalletView();
-    const presetWalletInputs = yield* SDK.requireOperatorWalletInputs(
-      availableOperatorWalletUtxos(flowOperatorWalletView),
-      "scheduler refresh tx",
-    );
-    yield* Effect.logInfo(
-      `🔹 Refreshing scheduler witness datum for commit window via ${selection.kind} (from=${describeSchedulerDatum(schedulerDatum)} to=${describeSchedulerDatum(refreshedSchedulerDatum)}, validTo=${validTo.toString()}).`,
-    );
-    const refreshTxResult = yield* SDK.buildUnsignedSchedulerRefreshTxProgram({
-      lucid,
-      scheduler: contracts.scheduler,
-      operatorKeyHash,
-      presetWalletInputs,
-      schedulerInput: schedulerRefInput,
-      refreshedDatum: refreshedSchedulerDatum,
-      validFrom,
-      validTo,
-      selection: toSdkSchedulerRefreshWitnessSelection(selection),
-      schedulerSpendingScriptRef,
-    }).pipe(
-      Effect.mapError(
-        (cause) =>
-          new SDK.StateQueueError({
-            message: `Failed to build scheduler refresh transaction through SDK: ${formatUnknownError(
-              cause,
-              { includeCause: true },
-            )}`,
-            cause,
-          }),
-      ),
-    );
-    const refreshTx = refreshTxResult.tx;
 
-    const submitRecoveryOptions: NoInlineSubmitRecoveryOptions = {
-      label: "scheduler-refresh",
-      slotSnapshot: submitSlotSnapshot,
-      requireSlotForBoundedTx: submitSlotSnapshot !== undefined,
-      maxPreSubmitWaitMs: SCHEDULER_MAX_PRE_SUBMIT_WAIT_MS,
-      inlineWaitPolicy: "defer_positive_wait",
-      noInlineSubmitDefer: {
-        key: "block_commitment",
-        dependencyKey: schedulerDependencyKey,
-        invalidationKey: schedulerDependencyKey,
-      },
-    };
-    const refreshSubmitResult = yield* handleSignSubmitNoConfirmation(
-      lucid,
-      refreshTx,
-      submitRecoveryOptions,
-    );
-    if (refreshSubmitResult.status === "deferred") {
-      return schedulerRefreshDueWorkFromNoInlineSubmitDefer({
-        defer: refreshSubmitResult.defer,
-        localSubmitSlot: submitSlot,
-        nowMs: Date.now(),
-      });
-    }
-    const refreshTxHash = refreshSubmitResult.txHash;
-    const refreshedOperatorWalletView = applySubmittedTxToOperatorWalletView(
-      flowOperatorWalletView,
-      refreshTx.toTransaction(),
-      refreshTxHash,
-    );
-    yield* Effect.logInfo(
-      `🔹 Scheduler refresh transaction submitted: ${refreshTxHash}`,
-    );
-    yield* Effect.logInfo(
-      `🔹 Scheduler refresh tx updated operator wallet view: available_utxos=${refreshedOperatorWalletView.knownUtxos.length.toString()},consumed_outrefs=${refreshedOperatorWalletView.consumedOutRefs.length.toString()}.`,
-    );
-    yield* awaitSubmittedSchedulerTx(lucid, refreshTxHash, "refresh");
-
-    let pollCount = 0;
-    while (pollCount < SCHEDULER_REFRESH_MAX_POLLS) {
-      const schedulerWitnessUtxos = yield* Effect.tryPromise({
+      const currentOperator = currentSchedulerState?.operator ?? "";
+      const currentStartTime = currentSchedulerState?.startTime ?? 0n;
+      const allowGenesisRewind = currentSchedulerState === undefined;
+      const submitSlot =
+        submitSlotSnapshot === undefined
+          ? undefined
+          : yield* submitSlotSnapshot().pipe(
+              Effect.mapError(
+                (cause) =>
+                  new SDK.StateQueueError({
+                    message:
+                      "Failed to capture local Ogmios slot for scheduler refresh validity",
+                    cause,
+                  }),
+              ),
+            );
+      const schedulerSlotSnapshot =
+        submitSlot === undefined
+          ? captureSchedulerSlotSnapshot(lucid)
+          : schedulerSlotSnapshotFromSubmitSlot(lucid, submitSlot);
+      const selection = yield* Effect.try({
         try: () =>
-          lucid.utxosAtWithUnit(
-            contracts.scheduler.spendingScriptAddress,
-            schedulerWitnessUnit,
-          ),
+          resolveSchedulerRefreshWitnessSelection({
+            currentOperator,
+            targetOperator: operatorKeyHash,
+            activeNodes,
+            registeredNodes,
+            allowGenesisRewind,
+          }),
         catch: (cause) =>
           new SDK.StateQueueError({
             message:
-              "Failed to fetch scheduler witness UTxOs while waiting for scheduler refresh",
+              "Current operator is not eligible to advance or rewind the scheduler for this commit window",
             cause,
           }),
       });
-      for (const utxo of [...schedulerWitnessUtxos].sort(compareOutRefs)) {
-        const utxoDatumEither = yield* Effect.either(
-          getSchedulerDatumFromUTxO(utxo),
+      const { validFrom, validTo } =
+        selection.kind === "AppointFirst"
+          ? yield* Effect.try({
+              try: () =>
+                resolveSchedulerFirstAppointmentValidityWindow(
+                  lucid,
+                  targetStartTime,
+                  schedulerSlotSnapshot,
+                ),
+              catch: (cause) =>
+                new SDK.StateQueueError({
+                  message:
+                    "Failed to resolve scheduler first-appointment validity window",
+                  cause,
+                }),
+            })
+          : resolveSchedulerRefreshValidityWindow(
+              lucid,
+              currentStartTime,
+              schedulerSlotSnapshot,
+            );
+      const legacyOneShiftCatchUp =
+        startTimeMode === "previous-shift-end" &&
+        currentStartTime <= targetStartTime;
+      if (targetStartTime < validFrom && !legacyOneShiftCatchUp) {
+        return yield* Effect.fail(
+          new SDK.StateQueueError({
+            message:
+              "Resolved commit end-time falls before the scheduler refresh window",
+            cause: `commit_end=${targetStartTime.toString()},scheduler_valid_from=${validFrom.toString()}`,
+          }),
         );
-        if (utxoDatumEither._tag === "Left") {
-          continue;
-        }
-        const active = activeSchedulerState(utxoDatumEither.right);
+      }
+      const submitTimingSnapshot: SubmitSlotSnapshot = submitSlot ?? {
+        source: "test",
+        currentSlot: schedulerSlotSnapshot.currentSlot,
+        observedAtMs: schedulerSlotSnapshot.observedAtMs,
+        slotLengthMs: 1_000,
+      };
+      const invalidBeforeSlot = Number(lucid.unixTimeToSlot(Number(validFrom)));
+      const invalidHereafterSlot = Number(
+        lucid.unixTimeToSlot(Number(validTo)),
+      );
+      const schedulerDependencyKey = schedulerRefreshDependencyKey({
+        schedulerOutRef: outRefLabel(currentSchedulerRefInput),
+        currentOperator,
+        currentStartTime,
+        targetOperator: operatorKeyHash,
+        selectionKind: selection.kind,
+      });
+      const submitTiming = planSubmitTiming({
+        callerLabel: "scheduler-refresh",
+        invalidBeforeSlot,
+        invalidHereafterSlot,
+        slotSnapshot: submitTimingSnapshot,
+        maxInlineWaitMs: SCHEDULER_MAX_PRE_SUBMIT_WAIT_MS,
+        inlineWaitPolicy: "defer_positive_wait",
+        dependencyKey: schedulerDependencyKey,
+        invalidationKey: schedulerDependencyKey,
+      });
+      if (submitTiming.status === "not_due") {
         if (
-          active?.operator === operatorKeyHash &&
-          active.startTime === refreshedSchedulerStartTime
+          submitTiming.dependencyKey === undefined ||
+          submitTiming.invalidationKey === undefined
         ) {
-          return {
-            schedulerRefInput: utxo,
-            operatorWalletView: refreshedOperatorWalletView,
-          };
+          return yield* Effect.fail(
+            new SDK.StateQueueError({
+              message:
+                "Scheduler refresh due-work planning lost dependency evidence",
+              cause: `status=not_due,dependency_key=${submitTiming.dependencyKey ?? "missing"},invalidation_key=${submitTiming.invalidationKey ?? "missing"}`,
+            }),
+          );
+        }
+        const dueWorkOutput = schedulerRefreshDueWorkFromSubmitTiming({
+          plan: {
+            ...submitTiming,
+            dependencyKey: submitTiming.dependencyKey,
+            invalidationKey: submitTiming.invalidationKey,
+          },
+        });
+        const entry = dueWorkOutput.dueWork;
+        yield* Effect.logInfo(
+          `🔹 Scheduler refresh is not due yet; registering slot-aware due work discovery_stage=scheduler_refresh_deep (kind=${entry.kind},key=${entry.key},current_slot=${entry.observedSlot.toString()},due_slot=${entry.dueSlot.toString()},wait_ms=${entry.waitMs.toString()},slot_source=${entry.slotSource},dependency_key=${entry.dependencyKey}).`,
+        );
+        return dueWorkOutput;
+      }
+      if (!allowSchedulerRefresh) {
+        const dueWorkOutput =
+          schedulerRefreshRequiredOutsideMutationWorkerDueWork({
+            submitTimingSnapshot,
+            invalidBeforeSlot,
+            invalidHereafterSlot,
+            schedulerDependencyKey,
+          });
+        yield* Effect.logInfo(
+          `🔹 Scheduler refresh is required inside the commit mutation worker; deferring so refresh can run before COMMIT_WORKER_ACTIVE and block_commitment lease (kind=${dueWorkOutput.dueWork.kind},key=${dueWorkOutput.dueWork.key},current_slot=${dueWorkOutput.dueWork.observedSlot.toString()},due_slot=${dueWorkOutput.dueWork.dueSlot.toString()},wait_ms=${dueWorkOutput.dueWork.waitMs.toString()},dependency_key=${dueWorkOutput.dueWork.dependencyKey}).`,
+        );
+        return dueWorkOutput;
+      }
+      if (submitTiming.status !== "ready" && submitTiming.status !== "wait") {
+        return yield* Effect.fail(
+          new SDK.StateQueueError({
+            message:
+              "Scheduler refresh validity planning failed before transaction build",
+            cause: `status=${submitTiming.status},current_slot=${"currentSlot" in submitTiming ? submitTiming.currentSlot.toString() : "none"},invalid_before_slot=${invalidBeforeSlot.toString()},invalid_hereafter_slot=${invalidHereafterSlot.toString()}`,
+          }),
+        );
+      }
+      const refreshedSchedulerStartTime = yield* Effect.try({
+        try: () =>
+          resolveRefreshedSchedulerStartTime({
+            selection,
+            currentSchedulerState,
+            validFrom,
+            validTo,
+            startTimeMode,
+          }),
+        catch: (cause) =>
+          new SDK.StateQueueError({
+            message: "Failed to resolve refreshed scheduler start time",
+            cause,
+          }),
+      });
+      const refreshedSchedulerDatum = activeSchedulerDatum(
+        operatorKeyHash,
+        refreshedSchedulerStartTime,
+      );
+      if (selection.kind !== "Advance") {
+        const registeredWitness = selection.registeredWitnessNode;
+        if (registeredWitness.datum.key !== "Empty") {
+          const activationKey = registeredWitness.datum.key.Key.key;
+          const activationTime = BigInt(
+            `0x${activationKey === "" ? "0" : activationKey}`,
+          );
+          if (validTo >= activationTime) {
+            return yield* Effect.fail(
+              new SDK.StateQueueError({
+                message:
+                  "Scheduler rewind window overlaps the next registered operator activation time",
+                cause: `valid_to=${validTo.toString()},activation_time=${activationTime.toString()},registered_witness=${outRefLabel(registeredWitness.utxo)}`,
+              }),
+            );
+          }
         }
       }
+      const flowOperatorWalletView = yield* resolveOperatorWalletView(
+        currentOperatorWalletView,
+      );
+      const presetWalletInputs = yield* SDK.requireOperatorWalletInputs(
+        availableOperatorWalletUtxos(flowOperatorWalletView),
+        "scheduler refresh tx",
+      );
+      yield* Effect.logInfo(
+        `🔹 Refreshing scheduler witness datum for commit window via ${selection.kind} (attempt=${(
+          refreshCount + 1
+        ).toString()}/${SCHEDULER_ALIGNMENT_MAX_REFRESHES_PER_CALL.toString()}, from=${describeSchedulerDatum(schedulerDatum)} to=${describeSchedulerDatum(refreshedSchedulerDatum)}, target=${targetStartTime.toString()}, validTo=${validTo.toString()}).`,
+      );
+      const refreshTxResult = yield* SDK.buildUnsignedSchedulerRefreshTxProgram(
+        {
+          lucid,
+          scheduler: contracts.scheduler,
+          operatorKeyHash,
+          presetWalletInputs,
+          schedulerInput: currentSchedulerRefInput,
+          refreshedDatum: refreshedSchedulerDatum,
+          validFrom,
+          validTo,
+          selection: toSdkSchedulerRefreshWitnessSelection(selection),
+          schedulerSpendingScriptRef,
+        },
+      ).pipe(
+        Effect.mapError(
+          (cause) =>
+            new SDK.StateQueueError({
+              message: `Failed to build scheduler refresh transaction through SDK: ${formatUnknownError(
+                cause,
+                { includeCause: true },
+              )}`,
+              cause,
+            }),
+        ),
+      );
+      const refreshTx = refreshTxResult.tx;
 
-      pollCount += 1;
-      yield* Effect.sleep(SCHEDULER_REFRESH_POLL_INTERVAL);
+      const submitRecoveryOptions: NoInlineSubmitRecoveryOptions = {
+        label: "scheduler-refresh",
+        slotSnapshot: submitSlotSnapshot,
+        requireSlotForBoundedTx: submitSlotSnapshot !== undefined,
+        maxPreSubmitWaitMs: SCHEDULER_MAX_PRE_SUBMIT_WAIT_MS,
+        inlineWaitPolicy: "defer_positive_wait",
+        noInlineSubmitDefer: {
+          key: "block_commitment",
+          dependencyKey: schedulerDependencyKey,
+          invalidationKey: schedulerDependencyKey,
+        },
+      };
+      const refreshSubmitResult = yield* handleSignSubmitNoConfirmation(
+        lucid,
+        refreshTx,
+        submitRecoveryOptions,
+      );
+      if (refreshSubmitResult.status === "deferred") {
+        return schedulerRefreshDueWorkFromNoInlineSubmitDefer({
+          defer: refreshSubmitResult.defer,
+          localSubmitSlot: submitSlot,
+          nowMs: Date.now(),
+        });
+      }
+      const refreshTxHash = refreshSubmitResult.txHash;
+      const refreshedOperatorWalletView = applySubmittedTxToOperatorWalletView(
+        flowOperatorWalletView,
+        refreshTx.toTransaction(),
+        refreshTxHash,
+      );
+      yield* Effect.logInfo(
+        `🔹 Scheduler refresh transaction submitted: ${refreshTxHash}`,
+      );
+      yield* Effect.logInfo(
+        `🔹 Scheduler refresh tx updated operator wallet view: available_utxos=${refreshedOperatorWalletView.knownUtxos.length.toString()},consumed_outrefs=${refreshedOperatorWalletView.consumedOutRefs.length.toString()}.`,
+      );
+      yield* awaitSubmittedSchedulerTx(lucid, refreshTxHash, "refresh");
+
+      let refreshedSchedulerRefInput: UTxO | undefined;
+      let pollCount = 0;
+      while (pollCount < SCHEDULER_REFRESH_MAX_POLLS) {
+        const schedulerWitnessUtxos = yield* Effect.tryPromise({
+          try: () =>
+            lucid.utxosAtWithUnit(
+              contracts.scheduler.spendingScriptAddress,
+              schedulerWitnessUnit,
+            ),
+          catch: (cause) =>
+            new SDK.StateQueueError({
+              message:
+                "Failed to fetch scheduler witness UTxOs while waiting for scheduler refresh",
+              cause,
+            }),
+        });
+        for (const utxo of [...schedulerWitnessUtxos].sort(compareOutRefs)) {
+          const utxoDatumEither = yield* Effect.either(
+            getSchedulerDatumFromUTxO(utxo),
+          );
+          if (utxoDatumEither._tag === "Left") {
+            continue;
+          }
+          const active = activeSchedulerState(utxoDatumEither.right);
+          if (
+            active?.operator === operatorKeyHash &&
+            active.startTime === refreshedSchedulerStartTime
+          ) {
+            refreshedSchedulerRefInput = utxo;
+            break;
+          }
+        }
+        if (refreshedSchedulerRefInput !== undefined) {
+          break;
+        }
+
+        pollCount += 1;
+        yield* Effect.sleep(SCHEDULER_REFRESH_POLL_INTERVAL);
+      }
+
+      if (refreshedSchedulerRefInput === undefined) {
+        return yield* Effect.fail(
+          new SDK.StateQueueError({
+            message:
+              "Timed out waiting for refreshed scheduler UTxO to appear on-chain",
+            cause: refreshTxHash,
+          }),
+        );
+      }
+
+      currentSchedulerRefInput = refreshedSchedulerRefInput;
+      currentOperatorWalletView = refreshedOperatorWalletView;
     }
 
     return yield* Effect.fail(
       new SDK.StateQueueError({
-        message:
-          "Timed out waiting for refreshed scheduler UTxO to appear on-chain",
-        cause: refreshTxHash,
+        message: "Scheduler alignment loop exited unexpectedly",
+        cause: `target_commit_end=${targetStartTime.toString()}`,
       }),
     );
   });

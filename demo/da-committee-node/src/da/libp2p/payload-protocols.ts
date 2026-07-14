@@ -1,15 +1,22 @@
 import {
+  DaPayloadEnvelopeError,
+  unwrapDaPayload,
+} from "@al-ft/midgard-core/da-payload-envelope";
+import {
   computeDaSha256Hash,
+  DA_TRANSPORT_PROTOCOL_VERSION,
   DA_TRANSPORT_LIMITS_V1,
   daDeploymentFingerprintFromHex,
   type DaMetadataByHeaderResponseV1,
   type DaPayloadByHeaderResponseV1,
   type DaPayloadChunkManifestV1,
   type DaPayloadSubmitRequestV1,
+  decodeDaCapabilitiesRequestV1Cbor,
   decodeDaPayloadByHeaderRequestV1Cbor,
   decodeDaPayloadChunkRequestV1Cbor,
   decodeDaPayloadSubmitRequestV1Cbor,
   encodeDaMetadataByHeaderResponseV1Cbor,
+  encodeDaCapabilitiesResponseV1Cbor,
   encodeDaPayloadByHeaderResponseV1Cbor,
   encodeDaPayloadChunkResponseV1Cbor,
   encodeDaPayloadSubmitResponseV1Cbor,
@@ -34,6 +41,8 @@ export type DaLibp2pPayloadProtocolLimits = {
   readonly maxPayloadBytes: number;
   readonly maxInlineResponseBytes: number;
   readonly maxChunkBytes: number;
+  readonly maxStreamsPerPeer: number;
+  readonly requestTimeoutMs: number;
 };
 
 export type DaLibp2pPayloadProtocolHandlersOptions = {
@@ -74,9 +83,38 @@ export class DaLibp2pPayloadProtocolHandlers {
         DA_TRANSPORT_LIMITS_V1.maxInlineResponseBytes,
       maxChunkBytes:
         options.limits?.maxChunkBytes ?? DA_TRANSPORT_LIMITS_V1.maxChunkBytes,
+      maxStreamsPerPeer:
+        options.limits?.maxStreamsPerPeer ??
+        DA_TRANSPORT_LIMITS_V1.maxStreamsPerPeer,
+      requestTimeoutMs:
+        options.limits?.requestTimeoutMs ??
+        DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
     };
     this.now = options.now ?? (() => new Date());
     validateLimits(this.limits);
+  }
+
+  async handleCapabilities(requestCbor: Uint8Array): Promise<Buffer> {
+    const request = decodeRequest(
+      () => decodeDaCapabilitiesRequestV1Cbor(requestCbor),
+      "capabilities request",
+    );
+    if (!this.matchesDeployment(request.deploymentFingerprint)) {
+      throw new DaLibp2pPayloadProtocolError(
+        "capabilities request deployment fingerprint mismatch",
+      );
+    }
+    return encodeDaCapabilitiesResponseV1Cbor({
+      deploymentFingerprint: this.deploymentFingerprintBytes,
+      transportProtocolVersion: DA_TRANSPORT_PROTOCOL_VERSION,
+      payloadSchemaVersions: [2, 3],
+      envelopeContentEncodings: [0, 1],
+      maxPayloadBytes: this.limits.maxPayloadBytes,
+      maxInlineResponseBytes: this.limits.maxInlineResponseBytes,
+      maxChunkBytes: this.limits.maxChunkBytes,
+      maxStreamsPerPeer: this.limits.maxStreamsPerPeer,
+      requestTimeoutMs: this.limits.requestTimeoutMs,
+    });
   }
 
   async handlePayloadSubmit(requestCbor: Uint8Array): Promise<Buffer> {
@@ -115,7 +153,7 @@ export class DaLibp2pPayloadProtocolHandlers {
       return rejected("inline_submit_must_not_include_chunk_manifest");
     }
     const payloadBytes = Buffer.from(request.payloadBytes);
-    const checked = this.checkInlineSubmitPayload(request, payloadBytes);
+    const checked = await this.checkInlineSubmitPayload(request, payloadBytes);
     if (!checked.ok) {
       return rejected(checked.reasonCode);
     }
@@ -140,6 +178,7 @@ export class DaLibp2pPayloadProtocolHandlers {
         headerHashHex,
         payloadHashHex,
         payloadBytes,
+        request.payloadSchemaVersion,
       );
       return saved.validationStatus === "conflicted"
         ? encodeSubmitConflict(
@@ -154,6 +193,7 @@ export class DaLibp2pPayloadProtocolHandlers {
       headerHashHex,
       payloadHashHex,
       payloadBytes,
+      request.payloadSchemaVersion,
     );
     return saved.validationStatus === "conflicted"
       ? encodeSubmitConflict(
@@ -318,7 +358,7 @@ export class DaLibp2pPayloadProtocolHandlers {
       });
     }
 
-    const metadata = metadataForPayload(
+    const metadata = await metadataForPayload(
       headerHash,
       resolved.payloadHash,
       resolved.payloadBytes,
@@ -352,12 +392,12 @@ export class DaLibp2pPayloadProtocolHandlers {
     return { ok: true, reasonCode: "chunked_submit_deferred" };
   }
 
-  private checkInlineSubmitPayload(
+  private async checkInlineSubmitPayload(
     request: DaPayloadSubmitRequestV1,
     payloadBytes: Buffer,
-  ):
-    | { readonly ok: true }
-    | { readonly ok: false; readonly reasonCode: string } {
+  ): Promise<
+    { readonly ok: true } | { readonly ok: false; readonly reasonCode: string }
+  > {
     if (payloadBytes.length === 0) {
       return { ok: false, reasonCode: "empty_payload" };
     }
@@ -369,22 +409,29 @@ export class DaLibp2pPayloadProtocolHandlers {
       return { ok: false, reasonCode: "payload_hash_mismatch" };
     }
     try {
-      const payload = decodeDaPayloadV2Strict(payloadBytes);
+      const unwrapped = await unwrapDaPayload(payloadBytes, {
+        maxPayloadBytes: this.limits.maxPayloadBytes,
+        schemaVersion: request.payloadSchemaVersion,
+      });
+      const payload = decodeDaPayloadV2Strict(unwrapped.innerBytes);
       if (
         payload.block_body.header_hash !== request.headerHash.toString("hex")
       ) {
         return { ok: false, reasonCode: "payload_header_hash_mismatch" };
       }
-      if (Number(payload.version) !== request.payloadSchemaVersion) {
+      if (Number(payload.version) !== 2) {
         return { ok: false, reasonCode: "payload_schema_version_mismatch" };
       }
     } catch (cause) {
       return {
         ok: false,
         reasonCode:
-          cause instanceof Error && cause.name === "DaPayloadValidationError"
-            ? "malformed_payload"
-            : "payload_decode_failed",
+          cause instanceof DaPayloadEnvelopeError
+            ? cause.reasonCode
+            : cause instanceof Error &&
+                cause.name === "DaPayloadValidationError"
+              ? "malformed_payload"
+              : "payload_decode_failed",
       };
     }
     return { ok: true };
@@ -394,11 +441,13 @@ export class DaLibp2pPayloadProtocolHandlers {
     headerHash: string,
     payloadHash: string,
     payloadBytes: Buffer,
+    payloadSchemaVersion: number,
   ): Promise<DaPayloadRecord> {
     return this.store.saveDaPayload(
       libp2pSubmittedDaPayloadRecord({
         deploymentFingerprint: this.deploymentFingerprint,
         headerHash,
+        payloadSchemaVersion,
         payloadCbor: payloadBytes,
         payloadSha256: payloadHash,
         receivedAt: this.now(),
@@ -498,6 +547,18 @@ const validateLimits = (limits: DaLibp2pPayloadProtocolLimits): void => {
   }
   if (limits.maxChunkBytes > limits.maxPayloadBytes) {
     throw new Error("maxChunkBytes must not exceed maxPayloadBytes");
+  }
+  if (
+    !Number.isSafeInteger(limits.maxStreamsPerPeer) ||
+    limits.maxStreamsPerPeer <= 0
+  ) {
+    throw new Error("maxStreamsPerPeer must be a positive safe integer");
+  }
+  if (
+    !Number.isSafeInteger(limits.requestTimeoutMs) ||
+    limits.requestTimeoutMs <= 0
+  ) {
+    throw new Error("requestTimeoutMs must be a positive safe integer");
   }
 };
 
@@ -657,18 +718,23 @@ const metadataAbsentResponse = (
   }
 };
 
-const metadataForPayload = (
+const metadataForPayload = async (
   headerHash: Buffer,
   payloadHash: Buffer,
   payloadBytes: Buffer,
   record: DaPayloadRecord,
-): DaMetadataByHeaderResponseV1 => {
-  const payload = decodeDaPayloadV2Strict(payloadBytes);
+): Promise<DaMetadataByHeaderResponseV1> => {
+  const unwrapped = await unwrapDaPayload(payloadBytes, {
+    maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+    // Pre-V3 persisted records are raw DaPayloadV2 by construction.
+    schemaVersion: record.payloadSchemaVersion ?? 2,
+  });
+  decodeDaPayloadV2Strict(unwrapped.innerBytes);
   return {
     status: "found",
     headerHash,
     payloadHash,
-    payloadSchemaVersion: Number(payload.version),
+    payloadSchemaVersion: unwrapped.schemaVersion,
     payloadBytes: payloadBytes.length,
     rootSummaryHash:
       record.rootSummary === undefined

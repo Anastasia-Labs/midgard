@@ -9,7 +9,9 @@ import { vi } from "vitest";
 
 import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
 import {
+  type CapturedPhasMembershipRegistrationTransaction,
   ensurePhasMembershipRewardAccountRegisteredProgram,
+  inspectPhasMembershipRegistrationTransaction,
   isPhasMembershipAlreadyRegisteredError,
   queryPhasMembershipRewardAccountRegisteredProgram,
 } from "@/transactions/phas-membership-registration.js";
@@ -49,6 +51,25 @@ const mkKnownCredentialError = (scriptHash = phasIdentity.scriptHash) =>
 
 const response = (body: unknown, init?: ResponseInit): Response =>
   new Response(typeof body === "string" ? body : JSON.stringify(body), init);
+
+const capturedTransaction = (
+  txHash: string,
+): CapturedPhasMembershipRegistrationTransaction => ({
+  unsignedTransactionCborHex: "84a0a0f5f6",
+  evidence: {
+    schemaVersion: "midgard-phas-registration-transaction-body-v1",
+    txHash,
+    cborSha256: "cc".repeat(32),
+    cborSizeBytes: 5,
+    certificate: {
+      kind: "stake_registration",
+      index: 0,
+      count: 1,
+      credentialType: "script",
+      scriptHash: phasIdentity.scriptHash,
+    },
+  },
+});
 
 describe("PHAS membership reward registration", () => {
   it("treats Ogmios knownCredential stake registration failures as idempotent", () => {
@@ -99,7 +120,7 @@ describe("PHAS membership reward registration", () => {
 
     const result = await Effect.runPromise(
       ensurePhasMembershipRewardAccountRegisteredProgram(fakeLucid(), {
-        queryRegistration: () => Effect.succeed(true),
+        queryRegistration: () => Effect.succeed("registered"),
         buildRegistrationTx,
         submitRegistrationTx,
       }),
@@ -110,6 +131,7 @@ describe("PHAS membership reward registration", () => {
       rewardAddress: phasIdentity.rewardAddress,
       scriptHash: phasIdentity.scriptHash,
       txHash: null,
+      transactionBody: null,
     });
     expect(buildRegistrationTx).not.toHaveBeenCalled();
     expect(submitRegistrationTx).not.toHaveBeenCalled();
@@ -127,9 +149,10 @@ describe("PHAS membership reward registration", () => {
 
     const result = await Effect.runPromise(
       ensurePhasMembershipRewardAccountRegisteredProgram(lucid, {
-        queryRegistration: () => Effect.succeed(false),
+        queryRegistration: () => Effect.succeed("unregistered"),
         buildRegistrationTx,
         submitRegistrationTx,
+        inspectRegistrationTx: () => capturedTransaction("aa".repeat(32)),
       }),
     );
 
@@ -138,9 +161,46 @@ describe("PHAS membership reward registration", () => {
       rewardAddress: phasIdentity.rewardAddress,
       scriptHash: phasIdentity.scriptHash,
       txHash: "aa".repeat(32),
+      transactionBody: capturedTransaction("aa".repeat(32)).evidence,
     });
     expect(buildRegistrationTx).toHaveBeenCalledOnce();
     expect(submitRegistrationTx).toHaveBeenCalledWith(lucid, built);
+  });
+
+  it("rejects a built registration for any noncanonical PHAS identity", () => {
+    expect(() =>
+      inspectPhasMembershipRegistrationTransaction(
+        {
+          tx: {} as TxSignBuilder,
+          rewardAddress: `${phasIdentity.rewardAddress}x`,
+          scriptHash: phasIdentity.scriptHash,
+        },
+        phasIdentity,
+      ),
+    ).toThrow("Built PHAS registration identity mismatch");
+  });
+
+  it("rejects a provider hash that is unrelated to the inspected body", async () => {
+    const built = {
+      tx: {} as TxSignBuilder,
+      rewardAddress: phasIdentity.rewardAddress,
+      scriptHash: phasIdentity.scriptHash,
+    };
+
+    await expect(
+      Effect.runPromise(
+        ensurePhasMembershipRewardAccountRegisteredProgram(fakeLucid(), {
+          queryRegistration: () => Effect.succeed("unregistered"),
+          buildRegistrationTx: () => Effect.succeed(built),
+          inspectRegistrationTx: () => capturedTransaction("aa".repeat(32)),
+          submitRegistrationTx: () => Effect.succeed("bb".repeat(32)),
+        }),
+      ),
+    ).rejects.toMatchObject({
+      message: expect.stringContaining(
+        "does not match the verified unsigned transaction body",
+      ),
+    });
   });
 
   it("keeps the submit-error race fallback after an unregistered preflight", async () => {
@@ -152,8 +212,9 @@ describe("PHAS membership reward registration", () => {
 
     const result = await Effect.runPromise(
       ensurePhasMembershipRewardAccountRegisteredProgram(fakeLucid(), {
-        queryRegistration: () => Effect.succeed(false),
+        queryRegistration: () => Effect.succeed("unregistered"),
         buildRegistrationTx: () => Effect.succeed(built),
+        inspectRegistrationTx: () => capturedTransaction("00".repeat(32)),
         submitRegistrationTx: () =>
           Effect.fail(mkKnownCredentialError(phasIdentity.scriptHash)),
       }),
@@ -164,6 +225,7 @@ describe("PHAS membership reward registration", () => {
       rewardAddress: phasIdentity.rewardAddress,
       scriptHash: phasIdentity.scriptHash,
       txHash: null,
+      transactionBody: null,
     });
   });
 
@@ -207,20 +269,22 @@ describe("PHAS membership reward registration", () => {
           },
         }),
         phasIdentity.rewardAddress,
+        phasIdentity.scriptHash,
       ),
     );
     const unregistered = await Effect.runPromise(
       queryPhasMembershipRewardAccountRegisteredProgram(
         fakeLucid({ chain: {} }),
         phasIdentity.rewardAddress,
+        phasIdentity.scriptHash,
       ),
     );
 
-    expect(registered).toBe(true);
-    expect(unregistered).toBe(false);
+    expect(registered).toBe("registered");
+    expect(unregistered).toBe("unregistered");
   });
 
-  it("queries Ogmios reward account summaries for Kupmios providers", async () => {
+  it("queries Ogmios with the exact PHAS script hash and treats an empty summary as unknown", async () => {
     const fetchImpl = vi
       .fn()
       .mockResolvedValueOnce(
@@ -250,19 +314,87 @@ describe("PHAS membership reward registration", () => {
         queryPhasMembershipRewardAccountRegisteredProgram(
           fakeLucid({ ogmiosUrl: "http://ogmios.example" }),
           phasIdentity.rewardAddress,
+          phasIdentity.scriptHash,
           fetchImpl,
         ),
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe("registered");
     await expect(
       Effect.runPromise(
         queryPhasMembershipRewardAccountRegisteredProgram(
           fakeLucid({ ogmiosUrl: "http://ogmios.example" }),
           phasIdentity.rewardAddress,
+          phasIdentity.scriptHash,
           fetchImpl,
         ),
       ),
-    ).resolves.toBe(false);
+    ).resolves.toBe("unknown");
+
+    for (const call of fetchImpl.mock.calls) {
+      const init = call[1] as RequestInit;
+      expect(JSON.parse(String(init.body))).toEqual({
+        jsonrpc: "2.0",
+        method: "queryLedgerState/rewardAccountSummaries",
+        params: { scripts: [phasIdentity.scriptHash] },
+        id: null,
+      });
+    }
+  });
+
+  it.each([
+    { from: "script", credential: "ff".repeat(28) },
+    { from: "verificationKey", credential: phasIdentity.scriptHash },
+  ])("rejects a nonexact Ogmios summary: %o", async (summary) => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      response({
+        jsonrpc: "2.0",
+        id: null,
+        result: [{ ...summary, rewards: { ada: { lovelace: 0 } } }],
+      }),
+    );
+
+    await expect(
+      Effect.runPromise(
+        queryPhasMembershipRewardAccountRegisteredProgram(
+          fakeLucid({ ogmiosUrl: "http://ogmios.example" }),
+          phasIdentity.rewardAddress,
+          phasIdentity.scriptHash,
+          fetchImpl,
+        ),
+      ),
+    ).rejects.toMatchObject({
+      message: expect.stringContaining("credential_mismatch"),
+    });
+  });
+
+  it("idempotently submits when provider evidence is unknown", async () => {
+    const lucid = fakeLucid();
+    const built = {
+      tx: {} as TxSignBuilder,
+      rewardAddress: phasIdentity.rewardAddress,
+      scriptHash: phasIdentity.scriptHash,
+    };
+    const buildRegistrationTx = vi.fn(() => Effect.succeed(built));
+    const submitRegistrationTx = vi.fn(() => Effect.succeed("bb".repeat(32)));
+
+    const result = await Effect.runPromise(
+      ensurePhasMembershipRewardAccountRegisteredProgram(lucid, {
+        queryRegistration: () => Effect.succeed("unknown"),
+        buildRegistrationTx,
+        submitRegistrationTx,
+        inspectRegistrationTx: () => capturedTransaction("bb".repeat(32)),
+      }),
+    );
+
+    expect(result).toEqual({
+      status: "registration_submitted",
+      rewardAddress: phasIdentity.rewardAddress,
+      scriptHash: phasIdentity.scriptHash,
+      txHash: "bb".repeat(32),
+      transactionBody: capturedTransaction("bb".repeat(32)).evidence,
+    });
+    expect(buildRegistrationTx).toHaveBeenCalledOnce();
+    expect(submitRegistrationTx).toHaveBeenCalledWith(lucid, built);
   });
 
   it("tries configured local PHAS account lookup sources after retryable provider failures", async () => {
@@ -300,11 +432,12 @@ describe("PHAS membership reward registration", () => {
           ],
         }),
         phasIdentity.rewardAddress,
+        phasIdentity.scriptHash,
         fetchImpl,
       ),
     );
 
-    expect(result).toBe(true);
+    expect(result).toBe("registered");
     expect(fetchImpl).toHaveBeenCalledTimes(2);
     expect(fetchImpl.mock.calls[1]?.[0]).toBe("http://ogmios-b.example");
   });

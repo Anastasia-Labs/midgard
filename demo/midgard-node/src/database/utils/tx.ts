@@ -200,7 +200,7 @@ export const insertEntries = (
   );
 
 /**
- * Returns the full transaction table ordered from newest to oldest.
+ * Returns the full transaction table ordered deterministically oldest-first.
  */
 export const retrieveAllEntries = (
   tableName: string,
@@ -210,7 +210,9 @@ export const retrieveAllEntries = (
       `${tableName} db: attempt to retrieve all tx entries`,
     );
     const sql = yield* SqlClient.SqlClient;
-    return yield* sql<EntryWithTimeStamp>`SELECT * FROM ${sql(tableName)} ORDER BY ${Columns.TIMESTAMPTZ} DESC; `;
+    return yield* sql<EntryWithTimeStamp>`SELECT *
+      FROM ${sql(tableName)}
+      ORDER BY ${sql(Columns.TIMESTAMPTZ)} ASC, ${sql(Columns.TX_ID)} ASC`;
   }).pipe(
     Effect.withLogSpan(`retrieve ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>

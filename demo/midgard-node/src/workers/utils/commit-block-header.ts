@@ -1,20 +1,62 @@
+import type { MessagePort } from "node:worker_threads";
+
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML, coreToUtxo, UTxO, utxoToCore } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import type { SlotAwareDueWork } from "@/fibers/slot-aware-due-work.js";
+import type {
+  SpeculativeCandidateSummary,
+  SpeculativeInvalidationReason,
+  UserEventBarrierWatermarks,
+} from "@/fibers/speculative-commit-state.js";
+
+export type SpeculativeCommitBaseInput = {
+  readonly headerHash: string;
+  readonly utxosRoot: string;
+  readonly blockEndTimeMs: number;
+  readonly submittedTxHash: string;
+};
 
 export type WorkerInput = {
+  readonly nativeMpf?: {
+    readonly port: MessagePort;
+    readonly durableRoot: string;
+    readonly ownerBinarySha256: string;
+  };
   data: {
     availableConfirmedBlock: "" | SerializedStateQueueUTxO;
     availableLocalFinalizationBlock: "" | SerializedStateQueueUTxO;
     currentBlockStartTimeMs: number;
     localFinalizationPending: boolean;
+    /**
+     * Parent-generated identity for the logical PostgreSQL ledger-MPF lease.
+     * The parent uses the same identity to release a lease only after the
+     * worker thread has stopped, including timeout and interruption paths.
+     */
+    ledgerStoreLeaseOwner: string;
     mempoolTxsCountSoFar: number;
     sizeOfProcessedTxsSoFar: number;
     stateQueueLeaseToken?: string;
     baseSnapshotId?: string;
     stateQueueHasUnmergedTail?: boolean;
+    speculativeBuild?: {
+      readonly base: SpeculativeCommitBaseInput;
+      readonly watermarks: UserEventBarrierWatermarks;
+      /** Payload already committed by the submitted base block. */
+      readonly excludedMempoolTxIds: readonly string[];
+      readonly excludedDepositEventIds: readonly string[];
+      readonly excludedForcedTransactionEventIds: readonly string[];
+      readonly excludedWithdrawalEventIds: readonly string[];
+    };
+  };
+};
+
+export type NativeMpfPromotion = {
+  readonly handle: {
+    readonly ownerEpoch: Uint8Array;
+    readonly generationId: Uint8Array;
+    readonly baseRoot: string;
   };
 };
 
@@ -25,6 +67,8 @@ export type SuccessfulSubmissionOutput = {
   mempoolTxsCount: number;
   sizeOfBlocksTxs: number;
   blockEndTimeMs: number;
+  mempoolLedgerDeletedOutRefHexes: readonly string[];
+  nativeMpfPromotion?: NativeMpfPromotion;
 };
 
 export type SkippedSubmissionOutput = {
@@ -47,6 +91,12 @@ export type RegisteredDueWorkOutput = {
   dueWork: SlotAwareDueWork;
 };
 
+export type AwaitingForeignDaOutput = {
+  readonly type: "AwaitingForeignDaOutput";
+  readonly foreignHeaderHash: string;
+  readonly reason: string;
+};
+
 export type SubmittedAwaitingLocalFinalizationOutput = {
   type: "SubmittedAwaitingLocalFinalizationOutput";
   submittedTxHash: string;
@@ -55,6 +105,9 @@ export type SubmittedAwaitingLocalFinalizationOutput = {
   sizeOfBlocksTxs: number;
   blockEndTimeMs: number;
   error: string;
+  submittedHeaderHash: string;
+  submittedUtxosRoot: string;
+  nativeMpfPromotion?: NativeMpfPromotion;
 };
 
 export type SubmittedAwaitingConfirmationOutput = {
@@ -64,12 +117,49 @@ export type SubmittedAwaitingConfirmationOutput = {
   mempoolTxsCount: number;
   sizeOfBlocksTxs: number;
   blockEndTimeMs: number;
+  submittedHeaderHash: string;
+  submittedUtxosRoot: string;
+  nativeMpfPromotion?: NativeMpfPromotion;
+  speculativeExecution?: {
+    readonly candidateId: string;
+    readonly baseHydrationPassesBeforeReady: number;
+    readonly mpfProcessingPassesBeforeReady: number;
+    readonly baseHydrationPassesAfterReady: number;
+    readonly mpfProcessingPassesAfterReady: number;
+  };
 };
+
+export type SpeculativeCandidateReadyOutput = {
+  readonly type: "SpeculativeCandidateReadyOutput";
+  readonly candidate: SpeculativeCandidateSummary;
+};
+
+export type SpeculativeCandidateInvalidatedOutput = {
+  readonly type: "SpeculativeCandidateInvalidatedOutput";
+  readonly candidateId: string;
+  readonly reason: SpeculativeInvalidationReason;
+};
+
+export type SpeculativeCommitWorkerInstruction =
+  | {
+      readonly type: "SubmitSpeculativeCandidate";
+      readonly confirmedBlock: SerializedStateQueueUTxO;
+      readonly stateQueueLeaseToken: string;
+      readonly baseSnapshotId: string;
+      readonly stateQueueHasUnmergedTail: boolean;
+      readonly localFinalizationBlock?: SerializedStateQueueUTxO;
+    }
+  | {
+      readonly type: "InvalidateSpeculativeCandidate";
+      readonly reason: SpeculativeInvalidationReason;
+    };
 
 export type SuccessfulLocalFinalizationRecoveryOutput = {
   type: "SuccessfulLocalFinalizationRecoveryOutput";
+  finalizedHeaderHash: string;
   mempoolTxsCount: number;
   sizeOfBlocksTxs: number;
+  mempoolLedgerDeletedOutRefHexes: readonly string[];
 };
 
 export type WorkerOutput =
@@ -78,8 +168,11 @@ export type WorkerOutput =
   | NothingToCommitOutput
   | FailureOutput
   | RegisteredDueWorkOutput
+  | AwaitingForeignDaOutput
   | SubmittedAwaitingLocalFinalizationOutput
   | SubmittedAwaitingConfirmationOutput
+  | SpeculativeCandidateReadyOutput
+  | SpeculativeCandidateInvalidatedOutput
   | SuccessfulLocalFinalizationRecoveryOutput;
 
 // Datatype to use CBOR hex of state queue UTxOs instead of `UTxO` from LE for

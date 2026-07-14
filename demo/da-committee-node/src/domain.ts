@@ -49,6 +49,7 @@ export type StateQueueHeaderRecord = {
 export type DaPayloadRecord = {
   readonly deploymentFingerprint: string;
   readonly headerHash: string;
+  readonly payloadSchemaVersion?: number;
   readonly payloadCborHex: string;
   readonly payloadSha256: string;
   readonly sourcePeerId: string;

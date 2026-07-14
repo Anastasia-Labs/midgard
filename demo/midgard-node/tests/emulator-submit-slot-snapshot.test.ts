@@ -1,0 +1,69 @@
+import {
+  CML,
+  Emulator,
+  generateEmulatorAccount,
+  Lucid,
+} from "@lucid-evolution/lucid";
+import { describe, expect, it } from "vitest";
+
+import {
+  captureCustomSlotConfigRestore,
+  deriveEmulatorSubmitSlotSnapshot,
+  setEmulatorCustomSlotConfig,
+} from "./helpers/emulator-submit-slot-snapshot.js";
+
+describe("emulator submit-slot snapshot", () => {
+  it("advances observed time coherently with slots after Lucid creation", async () => {
+    const restoreCustomSlotConfig = captureCustomSlotConfigRestore();
+    try {
+      const account = generateEmulatorAccount({ lovelace: 50_000_000n });
+      const emulator = new Emulator([account]);
+      await Lucid(emulator, "Custom");
+      const baseSlot = emulator.slot;
+      const baseTimeMs = emulator.now();
+
+      await emulator.awaitSlot(16 * 60);
+      const snapshot = deriveEmulatorSubmitSlotSnapshot({
+        currentSlot: emulator.slot,
+        observedAtMs: emulator.now(),
+      });
+
+      expect(emulator.slot).toBe(baseSlot + 16 * 60);
+      expect(emulator.now()).toBe(baseTimeMs + 16 * 60 * 1_000);
+      expect(snapshot.currentSlot).toBe(baseSlot + 16 * 60);
+      expect(snapshot.observedAtMs).toBe(baseTimeMs + 16 * 60 * 1_000);
+    } finally {
+      restoreCustomSlotConfig();
+    }
+  });
+
+  it("maps builder validTo to the live absolute slot after a late Lucid creation", async () => {
+    const restoreCustomSlotConfig = captureCustomSlotConfigRestore();
+    try {
+      const account = generateEmulatorAccount({ lovelace: 50_000_000n });
+      const emulator = new Emulator([account]);
+      const creationTimeMs = emulator.now();
+      await emulator.awaitSlot(16 * 60);
+
+      // Lucid currently reinitializes the global Custom slot config with
+      // zeroSlot=0 even when the emulator has already advanced. The serialized
+      // harness restores the emulator creation anchor before building.
+      const lucid = await Lucid(emulator, "Custom");
+      lucid.selectWallet.fromSeed(account.seedPhrase);
+      setEmulatorCustomSlotConfig({ zeroTimeMs: creationTimeMs, zeroSlot: 0 });
+
+      const validToMs = emulator.now() + 8 * 60 * 1_000;
+      const address = await lucid.wallet().address();
+      const built = await lucid
+        .newTx()
+        .pay.ToAddress(address, { lovelace: 2_000_000n })
+        .validTo(validToMs)
+        .complete();
+      const ttl = CML.Transaction.from_cbor_hex(built.toCBOR()).body().ttl();
+
+      expect(Number(ttl)).toBe(emulator.slot + 8 * 60);
+    } finally {
+      restoreCustomSlotConfig();
+    }
+  });
+});

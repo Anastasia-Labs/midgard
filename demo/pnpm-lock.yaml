@@ -4,6 +4,14 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  '@lucid-evolution/provider@0.1.96':
+    hash: g3h32mtuyeynggkmduvxrvgqme
+    path: patches/@lucid-evolution__provider@0.1.96-ogmios-v7.patch
+  blake2b@2.1.4:
+    hash: amsgm2cgjjoucvcdg3i4tuosl4
+    path: patches/blake2b@2.1.4.patch
+
 importers:
 
   .:
@@ -27,8 +35,8 @@ importers:
   da-committee-node:
     dependencies:
       '@aiken-lang/merkle-patricia-forestry':
-        specifier: 1.2.0
-        version: 1.2.0
+        specifier: github:Anastasia-Labs/merkle-patricia-forestry#b139785f7c118854f9824c26cc443e2df95cb50e&path:/off-chain
+        version: https://codeload.github.com/Anastasia-Labs/merkle-patricia-forestry/tar.gz/b139785f7c118854f9824c26cc443e2df95cb50e#path:/off-chain
       '@al-ft/midgard-core':
         specifier: workspace:*
         version: link:../midgard-core
@@ -171,8 +179,8 @@ importers:
   midgard-fault-proofs:
     dependencies:
       '@aiken-lang/merkle-patricia-forestry':
-        specifier: ^1.2.0
-        version: 1.2.0
+        specifier: github:Anastasia-Labs/merkle-patricia-forestry#b139785f7c118854f9824c26cc443e2df95cb50e&path:/off-chain
+        version: https://codeload.github.com/Anastasia-Labs/merkle-patricia-forestry/tar.gz/b139785f7c118854f9824c26cc443e2df95cb50e#path:/off-chain
       '@al-ft/midgard-core':
         specifier: workspace:*
         version: link:../midgard-core
@@ -208,8 +216,8 @@ importers:
   midgard-node:
     dependencies:
       '@aiken-lang/merkle-patricia-forestry':
-        specifier: ^1.2.0
-        version: 1.2.0
+        specifier: github:Anastasia-Labs/merkle-patricia-forestry#b139785f7c118854f9824c26cc443e2df95cb50e&path:/off-chain
+        version: https://codeload.github.com/Anastasia-Labs/merkle-patricia-forestry/tar.gz/b139785f7c118854f9824c26cc443e2df95cb50e#path:/off-chain
       '@al-ft/lucid-midgard':
         specifier: workspace:*
         version: link:../lucid-midgard
@@ -318,6 +326,9 @@ importers:
       bip39:
         specifier: ^3.1.0
         version: 3.1.0
+      blake2b:
+        specifier: 2.1.4
+        version: 2.1.4(patch_hash=amsgm2cgjjoucvcdg3i4tuosl4)
       cborg:
         specifier: ^4.5.8
         version: 4.5.8
@@ -345,6 +356,9 @@ importers:
       rimraf:
         specifier: ^6.0.1
         version: 6.1.3
+      undici:
+        specifier: ^7.25.0
+        version: 7.25.0
       vitest:
         specifier: ^3.0.7
         version: 3.0.7(@types/node@22.19.17)
@@ -355,6 +369,9 @@ importers:
       '@types/node':
         specifier: ^22.17.0
         version: 22.19.17
+      esbuild:
+        specifier: 0.25.0
+        version: 0.25.0
       fast-check:
         specifier: ^4.5.3
         version: 4.7.0
@@ -367,9 +384,6 @@ importers:
       typescript:
         specifier: ^5.7.3
         version: 5.7.3
-      undici:
-        specifier: ^8.1.0
-        version: 8.1.0
       vite:
         specifier: ^6.3.5
         version: 6.4.2(@types/node@22.19.17)
@@ -387,8 +401,8 @@ importers:
         version: 2.2.0
     devDependencies:
       '@aiken-lang/merkle-patricia-forestry':
-        specifier: ^1.2.0
-        version: 1.2.0
+        specifier: github:Anastasia-Labs/merkle-patricia-forestry#b139785f7c118854f9824c26cc443e2df95cb50e&path:/off-chain
+        version: https://codeload.github.com/Anastasia-Labs/merkle-patricia-forestry/tar.gz/b139785f7c118854f9824c26cc443e2df95cb50e#path:/off-chain
       '@al-ft/midgard-core':
         specifier: workspace:*
         version: link:../midgard-core
@@ -480,8 +494,9 @@ importers:
 
 packages:
 
-  '@aiken-lang/merkle-patricia-forestry@1.2.0':
-    resolution: {integrity: sha512-yEie4HFRoQS+ShbEYGNcVEQKFvnClXHFEysYT7lqoL1FGVxwvWWTBsctsEXolUIvusslztzrnJyUG67KGljBKw==}
+  '@aiken-lang/merkle-patricia-forestry@https://codeload.github.com/Anastasia-Labs/merkle-patricia-forestry/tar.gz/b139785f7c118854f9824c26cc443e2df95cb50e#path:/off-chain':
+    resolution: {path: /off-chain, tarball: https://codeload.github.com/Anastasia-Labs/merkle-patricia-forestry/tar.gz/b139785f7c118854f9824c26cc443e2df95cb50e}
+    version: 1.3.1-midgard.0
 
   '@anastasia-labs/cardano-multiplatform-lib-browser@6.0.2-2':
     resolution: {integrity: sha512-sSPPjO1Zye82YVqrUGIKrli/Zt2pPkZkQd/jv9k6AzjIZdNPD3hvuB2yH6RHeZUO8+K57bu9r7Rlyf7VGbhhTQ==}
@@ -3496,10 +3511,6 @@ packages:
     resolution: {integrity: sha512-xXnp4kTyor2Zq+J1FfPI6Eq3ew5h6Vl0F/8d9XU5zZQf1tX9s2Su1/3PiMmUANFULpmksxkClamIZcaUqryHsQ==}
     engines: {node: '>=20.18.1'}
 
-  undici@8.1.0:
-    resolution: {integrity: sha512-E9MkTS4xXLnRPYqxH2e6Hr2/49e7WFDKczKcCaFH4VaZs2iNvHMqeIkyUAD9vM8kujy9TjVrRlQ5KkdEJxB2pw==}
-    engines: {node: '>=22.19.0'}
-
   unlimited-timeout@0.1.0:
     resolution: {integrity: sha512-D4g+mxFeQGQHzCfnvij+R35ukJ0658Zzudw7j16p4tBBbNasKkKM4SocYxqhwT5xA7a9JYWDzKkEFyMlRi5sng==}
     engines: {node: '>=20'}
@@ -3777,9 +3788,9 @@ packages:
 
 snapshots:
 
-  '@aiken-lang/merkle-patricia-forestry@1.2.0':
+  '@aiken-lang/merkle-patricia-forestry@https://codeload.github.com/Anastasia-Labs/merkle-patricia-forestry/tar.gz/b139785f7c118854f9824c26cc443e2df95cb50e#path:/off-chain':
     dependencies:
-      blake2b: 2.1.4
+      blake2b: 2.1.4(patch_hash=amsgm2cgjjoucvcdg3i4tuosl4)
       level: 8.0.1
 
   '@anastasia-labs/cardano-multiplatform-lib-browser@6.0.2-2': {}
@@ -3843,7 +3854,7 @@ snapshots:
   '@cardano-sdk/crypto@0.4.5':
     dependencies:
       '@cardano-sdk/util': 0.17.1
-      blake2b: 2.1.4
+      blake2b: 2.1.4(patch_hash=amsgm2cgjjoucvcdg3i4tuosl4)
       i: 0.3.7
       libsodium-wrappers-sumo: 0.7.10
       lodash: 4.18.1
@@ -4570,7 +4581,7 @@ snapshots:
       '@lucid-evolution/core-types': 0.2.1
       '@lucid-evolution/core-utils': 0.1.16
       '@lucid-evolution/plutus': 0.1.33
-      '@lucid-evolution/provider': 0.1.96(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
+      '@lucid-evolution/provider': 0.1.96(patch_hash=g3h32mtuyeynggkmduvxrvgqme)(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
       '@lucid-evolution/sign_data': 0.1.29
       '@lucid-evolution/tx-graph': 0.0.2(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
       '@lucid-evolution/uplc': 0.2.22
@@ -4600,7 +4611,7 @@ snapshots:
       '@lucid-evolution/core-types': 0.2.1
       '@lucid-evolution/core-utils': 0.1.16
       '@lucid-evolution/plutus': 0.1.33
-      '@lucid-evolution/provider': 0.1.96(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
+      '@lucid-evolution/provider': 0.1.96(patch_hash=g3h32mtuyeynggkmduvxrvgqme)(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
       '@lucid-evolution/sign_data': 0.1.29
       '@lucid-evolution/tx-graph': 0.0.2(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)
       '@lucid-evolution/uplc': 0.2.22
@@ -4629,7 +4640,7 @@ snapshots:
       '@lucid-evolution/core-utils': 0.1.16
       '@sinclair/typebox': 0.32.35
 
-  '@lucid-evolution/provider@0.1.96(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)':
+  '@lucid-evolution/provider@0.1.96(patch_hash=g3h32mtuyeynggkmduvxrvgqme)(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)':
     dependencies:
       '@anastasia-labs/cardano-multiplatform-lib-browser': 6.2.0-1
       '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.2.0-1
@@ -4653,7 +4664,7 @@ snapshots:
       - rxjs
       - utf-8-validate
 
-  '@lucid-evolution/provider@0.1.96(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)':
+  '@lucid-evolution/provider@0.1.96(patch_hash=g3h32mtuyeynggkmduvxrvgqme)(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)':
     dependencies:
       '@anastasia-labs/cardano-multiplatform-lib-browser': 6.2.0-1
       '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.2.0-1
@@ -5558,7 +5569,7 @@ snapshots:
       b4a: 1.6.7
       nanoassert: 2.0.0
 
-  blake2b@2.1.4:
+  blake2b@2.1.4(patch_hash=amsgm2cgjjoucvcdg3i4tuosl4):
     dependencies:
       blake2b-wasm: 2.4.0
       nanoassert: 2.0.0
@@ -7137,8 +7148,6 @@ snapshots:
   undici-types@6.21.0: {}
 
   undici@7.25.0: {}
-
-  undici@8.1.0: {}
 
   unlimited-timeout@0.1.0: {}
 

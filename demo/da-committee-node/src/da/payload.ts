@@ -3,6 +3,12 @@ import {
   decodeMidgardNativeTxFullFromCanonicalCbor,
   encodeMidgardNativeTxCompact,
 } from "@al-ft/midgard-core/codec";
+import { readCborBytes, readCborInteger } from "@al-ft/midgard-core/codec/cbor";
+import {
+  type DaPayloadEnvelopeTimingStage,
+  unwrapDaPayload,
+} from "@al-ft/midgard-core/da-payload-envelope";
+import { DA_TRANSPORT_LIMITS_V1 } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { sha256 } from "@noble/hashes/sha2.js";
@@ -24,13 +30,31 @@ export type TransactionRootValueProjector = (
 ) => Buffer | Promise<Buffer>;
 
 export type PayloadVerificationOptions = {
+  readonly payloadSchemaVersion?: number;
   readonly transactionProjector?: TransactionRootValueProjector;
   readonly stateQueueOutRef: string;
+  readonly timing?: DaPayloadVerificationTimingOptions;
+};
+
+export type DaPayloadVerificationTimingStage =
+  | DaPayloadEnvelopeTimingStage
+  | "stored_hash"
+  | "inner_decode"
+  | "payload_structure_validation"
+  | "semantic_validation";
+
+export type DaPayloadVerificationTimingOptions = {
+  readonly monotonicNow?: () => number;
+  readonly onStageTiming?: (
+    stage: DaPayloadVerificationTimingStage,
+    durationMs: number,
+  ) => void;
 };
 
 export type VerifiedDaPayload = {
   readonly payload: SDK.DaPayloadV2;
-  readonly payloadCbor: Buffer;
+  readonly storedPayloadCbor: Buffer;
+  readonly innerPayloadCbor: Buffer;
   readonly payloadSha256: string;
   readonly roots: PayloadRootSet;
   readonly counts: PayloadCountSet;
@@ -65,53 +89,66 @@ export class DaPayloadValidationError extends Error {
 
 export const decodeDaPayloadV2Strict = (
   payloadCbor: Uint8Array,
+  timing: DaPayloadVerificationTimingOptions = {},
 ): SDK.DaPayloadV2 => {
-  const payloadBuffer = Buffer.from(payloadCbor);
+  // The canonical reader is synchronous and never retains or mutates its
+  // input, so an already-owned Buffer can be borrowed without another full
+  // payload copy.
+  const payloadBuffer = Buffer.isBuffer(payloadCbor)
+    ? payloadCbor
+    : Buffer.from(payloadCbor);
   let payload: SDK.DaPayloadV2;
+  const decodeStartedAt = readMonotonicNow(timing);
   try {
-    payload = SDK.decodeDaPayloadV2(payloadBuffer);
+    payload = SDK.decodeDaPayloadV2Canonical(payloadBuffer);
   } catch (cause) {
     throw new DaPayloadValidationError(
-      "malformed_da",
-      "failed to decode DaPayloadV2 canonical CBOR",
+      cause instanceof SDK.DaPayloadV2NonCanonicalError
+        ? "non_canonical"
+        : "malformed_da",
+      cause instanceof SDK.DaPayloadV2NonCanonicalError
+        ? "payload CBOR was not canonical for DaPayloadV2"
+        : "failed to decode DaPayloadV2 canonical CBOR",
       { cause },
     );
+  } finally {
+    recordTiming(timing, "inner_decode", decodeStartedAt);
   }
-  const canonical = SDK.encodeDaPayloadV2(payload);
-  if (!canonical.equals(payloadBuffer)) {
-    throw new DaPayloadValidationError(
-      "non_canonical",
-      "payload CBOR was not canonical for DaPayloadV2",
-    );
+  // decodeDaPayloadV2Canonical proves the exact encoder framing while reading;
+  // re-encoding here would allocate and compare the complete inner payload.
+  const validationStartedAt = readMonotonicNow(timing);
+  try {
+    if (payload.version !== SDK.DA_PAYLOAD_V2_VERSION) {
+      throw new DaPayloadValidationError(
+        "wrong_version",
+        `expected DaPayloadV2 version ${SDK.DA_PAYLOAD_V2_VERSION.toString()}, got ${payload.version.toString()}`,
+      );
+    }
+    const body = payload.block_body;
+    normalizeHex(body.header_hash, {
+      fieldName: "payload header_hash",
+      byteLength: 28,
+    });
+    const embeddedHeaderHash = hashBlockHeader(body.header);
+    if (embeddedHeaderHash !== body.header_hash) {
+      throw new DaPayloadValidationError(
+        "header_hash_mismatch",
+        `embedded header hash ${embeddedHeaderHash} does not match payload header_hash ${body.header_hash}`,
+      );
+    }
+    validateEntries("utxos", body.utxos);
+    validateEntries("withdrawals", body.withdrawals);
+    validateEntries("forced_transactions", body.forced_transactions);
+    validateEntries("transactions", body.transactions);
+    validateEntries("deposits", body.deposits);
+    validateEntries("transition_trace", body.transition_trace);
+    validateEntries("event_to_step", body.event_to_step);
+    validateCounts(body.counts);
+    validateTraceCoverage(payload);
+    return payload;
+  } finally {
+    recordTiming(timing, "payload_structure_validation", validationStartedAt);
   }
-  if (payload.version !== SDK.DA_PAYLOAD_V2_VERSION) {
-    throw new DaPayloadValidationError(
-      "wrong_version",
-      `expected DaPayloadV2 version ${SDK.DA_PAYLOAD_V2_VERSION.toString()}, got ${payload.version.toString()}`,
-    );
-  }
-  const body = payload.block_body;
-  normalizeHex(body.header_hash, {
-    fieldName: "payload header_hash",
-    byteLength: 28,
-  });
-  const embeddedHeaderHash = hashBlockHeader(body.header);
-  if (embeddedHeaderHash !== body.header_hash) {
-    throw new DaPayloadValidationError(
-      "header_hash_mismatch",
-      `embedded header hash ${embeddedHeaderHash} does not match payload header_hash ${body.header_hash}`,
-    );
-  }
-  validateEntries("utxos", body.utxos);
-  validateEntries("withdrawals", body.withdrawals);
-  validateEntries("forced_transactions", body.forced_transactions);
-  validateEntries("transactions", body.transactions);
-  validateEntries("deposits", body.deposits);
-  validateEntries("transition_trace", body.transition_trace);
-  validateEntries("event_to_step", body.event_to_step);
-  validateCounts(body.counts);
-  validateTraceCoverage(payload);
-  return payload;
 };
 
 export const computeDaPayloadRoots = async (
@@ -166,80 +203,130 @@ export const computeDaPayloadRoots = async (
 };
 
 export const verifyDaPayloadAgainstHeader = async (
-  payloadCbor: Uint8Array,
+  storedPayloadCbor: Uint8Array,
   expectedHeaderHash: string,
   header: Header,
   options: PayloadVerificationOptions,
 ): Promise<VerifiedDaPayload> => {
+  const storedPayloadBuffer = Buffer.from(storedPayloadCbor);
+  const hashStartedAt = readMonotonicNow(options.timing);
+  const payloadSha256 = bytesToHex(sha256(storedPayloadBuffer));
+  recordTiming(options.timing, "stored_hash", hashStartedAt);
+  let payloadBuffer: Buffer;
+  try {
+    payloadBuffer = (
+      await unwrapDaPayload(storedPayloadBuffer, {
+        maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+        schemaVersion: options.payloadSchemaVersion,
+        timing: options.timing,
+      })
+    ).innerBytes;
+  } catch (cause) {
+    throw new DaPayloadValidationError(
+      "malformed_da",
+      "failed to unwrap versioned DA payload bytes",
+      { cause },
+    );
+  }
   const normalizedHeaderHash = normalizeHex(expectedHeaderHash, {
     fieldName: "expected header hash",
     byteLength: 28,
   });
-  const payload = decodeDaPayloadV2Strict(payloadCbor);
-  if (payload.block_body.header_hash !== normalizedHeaderHash) {
-    throw new DaPayloadValidationError(
-      "header_hash_mismatch",
-      `payload header_hash ${payload.block_body.header_hash} does not match L1 header hash ${normalizedHeaderHash}`,
+  const payload = decodeDaPayloadV2Strict(payloadBuffer, options.timing);
+  const semanticStartedAt = readMonotonicNow(options.timing);
+  try {
+    if (payload.block_body.header_hash !== normalizedHeaderHash) {
+      throw new DaPayloadValidationError(
+        "header_hash_mismatch",
+        `payload header_hash ${payload.block_body.header_hash} does not match L1 header hash ${normalizedHeaderHash}`,
+      );
+    }
+    if (hashBlockHeader(header) !== normalizedHeaderHash) {
+      throw new DaPayloadValidationError(
+        "header_hash_mismatch",
+        `L1 header body does not hash to expected header_hash ${normalizedHeaderHash}`,
+      );
+    }
+    if (headerCborHex(payload.block_body.header) !== headerCborHex(header)) {
+      throw new DaPayloadValidationError(
+        "header_mismatch",
+        "payload embedded header does not match the L1 header",
+      );
+    }
+    const roots = await computeDaPayloadRoots(
+      payload,
+      options.transactionProjector,
     );
-  }
-  if (hashBlockHeader(header) !== normalizedHeaderHash) {
-    throw new DaPayloadValidationError(
-      "header_hash_mismatch",
-      `L1 header body does not hash to expected header_hash ${normalizedHeaderHash}`,
-    );
-  }
-  if (headerCborHex(payload.block_body.header) !== headerCborHex(header)) {
-    throw new DaPayloadValidationError(
-      "header_mismatch",
-      "payload embedded header does not match the L1 header",
-    );
-  }
-  const roots = await computeDaPayloadRoots(
-    payload,
-    options.transactionProjector,
-  );
-  const counts = payload.block_body.counts;
-  const mismatches = rootMismatches(header, roots);
-  if (mismatches.length > 0) {
-    throw new DaPayloadValidationError(
-      "root_mismatch",
-      `payload roots do not match L1 header: ${mismatches.join(",")}`,
-    );
-  }
-  const countMismatchFields = countMismatches(headerCounts(header), counts);
-  if (countMismatchFields.length > 0) {
-    throw new DaPayloadValidationError(
-      "count_mismatch",
-      `payload counts do not match L1 header: ${countMismatchFields.join(",")}`,
-    );
-  }
-  const payloadBuffer = Buffer.from(payloadCbor);
-  return {
-    payload,
-    payloadCbor: payloadBuffer,
-    payloadSha256: bytesToHex(sha256(payloadBuffer)),
-    roots,
-    counts,
-    validation: {
-      payloadVersion: Number(payload.version),
-      rootsMatch: true,
-      stateQueueOutRef: options.stateQueueOutRef,
-      headerHash: normalizedHeaderHash,
-      rootSummary: roots,
-      countSummary: counts,
-      l1Header: {
-        startTime: header.startTime.toString(),
-        endTime: header.endTime.toString(),
-        operatorVkey: header.operatorVkey,
-        prevHeaderHash: header.prevHeaderHash,
-        protocolVersion: header.protocolVersion.toString(),
+    const counts = payload.block_body.counts;
+    const mismatches = rootMismatches(header, roots);
+    if (mismatches.length > 0) {
+      throw new DaPayloadValidationError(
+        "root_mismatch",
+        `payload roots do not match L1 header: ${mismatches.join(",")}`,
+      );
+    }
+    const countMismatchFields = countMismatches(headerCounts(header), counts);
+    if (countMismatchFields.length > 0) {
+      throw new DaPayloadValidationError(
+        "count_mismatch",
+        `payload counts do not match L1 header: ${countMismatchFields.join(",")}`,
+      );
+    }
+    return {
+      payload,
+      storedPayloadCbor: storedPayloadBuffer,
+      innerPayloadCbor: payloadBuffer,
+      payloadSha256,
+      roots,
+      counts,
+      validation: {
+        payloadVersion: Number(payload.version),
+        rootsMatch: true,
+        stateQueueOutRef: options.stateQueueOutRef,
+        headerHash: normalizedHeaderHash,
+        rootSummary: roots,
+        countSummary: counts,
+        l1Header: {
+          startTime: header.startTime.toString(),
+          endTime: header.endTime.toString(),
+          operatorVkey: header.operatorVkey,
+          prevHeaderHash: header.prevHeaderHash,
+          protocolVersion: header.protocolVersion.toString(),
+        },
       },
-    },
-  };
+    };
+  } finally {
+    recordTiming(options.timing, "semantic_validation", semanticStartedAt);
+  }
 };
 
 export const daPayloadSha256 = (payloadCbor: Uint8Array): string =>
   bytesToHex(sha256(payloadCbor));
+
+const readMonotonicNow = (
+  timing: DaPayloadVerificationTimingOptions | undefined,
+): number | undefined => {
+  try {
+    return (timing?.monotonicNow ?? (() => performance.now()))();
+  } catch {
+    return undefined;
+  }
+};
+
+const recordTiming = (
+  timing: DaPayloadVerificationTimingOptions | undefined,
+  stage: DaPayloadVerificationTimingStage,
+  startedAt: number | undefined,
+): void => {
+  if (startedAt === undefined) return;
+  const completedAt = readMonotonicNow(timing);
+  if (completedAt === undefined) return;
+  try {
+    timing?.onStageTiming?.(stage, completedAt - startedAt);
+  } catch {
+    // Observability must not change committee validation semantics.
+  }
+};
 
 const validateEntries = (
   fieldName: string,
@@ -332,6 +419,132 @@ const decodeCanonicalData = <A>(
 const dataHex = <A>(value: A, schema: DataSchema): string =>
   LucidData.to(value as never, schema as never);
 
+const L2_EVENT_KEY_PREFIX = "d87b9f5820";
+const L2_EVENT_KEY_SUFFIX = "ff";
+const L2_PHASE_CBOR = Buffer.from("d87b80", "hex");
+
+const l2EventKeyFingerprintFromTxId = (txId: string): string =>
+  `${L2_EVENT_KEY_PREFIX}${txId}${L2_EVENT_KEY_SUFFIX}`;
+
+const parseCanonicalL2EventKey = (
+  keyHex: string,
+):
+  | { readonly fingerprint: string; readonly phase: SDK.TransitionPhase }
+  | undefined =>
+  keyHex.length === 76 &&
+  keyHex.startsWith(L2_EVENT_KEY_PREFIX) &&
+  keyHex.endsWith(L2_EVENT_KEY_SUFFIX)
+    ? { fingerprint: keyHex, phase: "L2Transaction" }
+    : undefined;
+
+const bufferStartsWith = (
+  bytes: Buffer,
+  offset: number,
+  expected: Uint8Array,
+): boolean =>
+  offset + expected.length <= bytes.length &&
+  expected.every((value, index) => bytes[offset + index] === value);
+
+const parseCanonicalInteger = (bytes: Buffer): bigint | undefined => {
+  try {
+    const decoded = readCborInteger(bytes, 0, "transition integer");
+    return decoded.nextOffset === bytes.length ? decoded.value : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+const parseCanonicalL2TransitionStep = (
+  keyHex: string,
+  valueHex: string,
+):
+  | {
+      readonly stepIndex: bigint;
+      readonly schemaVersion: bigint;
+      readonly eventKey: string;
+      readonly phase: SDK.TransitionPhase;
+    }
+  | undefined => {
+  const key = parseCanonicalInteger(Buffer.from(keyHex, "hex"));
+  if (key === undefined) return undefined;
+  try {
+    const bytes = Buffer.from(valueHex, "hex");
+    if (!bufferStartsWith(bytes, 0, Buffer.from("d8799f", "hex"))) {
+      return undefined;
+    }
+    let offset = 3;
+    const schema = readCborInteger(bytes, offset, "transition schema_version");
+    offset = schema.nextOffset;
+    const step = readCborInteger(bytes, offset, "transition step_index");
+    offset = step.nextOffset;
+    const eventStart = offset;
+    if (!bufferStartsWith(bytes, offset, Buffer.from("d87b9f", "hex"))) {
+      return undefined;
+    }
+    offset += 3;
+    const txId = readCborBytes(bytes, offset, "transition event tx_id");
+    if (txId.value.length !== 32) return undefined;
+    offset = txId.nextOffset;
+    if (bytes[offset] !== 0xff) return undefined;
+    offset += 1;
+    const eventKey = bytes.toString("hex", eventStart, offset);
+    if (parseCanonicalL2EventKey(eventKey) === undefined) return undefined;
+    if (!bufferStartsWith(bytes, offset, L2_PHASE_CBOR)) return undefined;
+    offset += L2_PHASE_CBOR.length;
+    const preRoot = readCborBytes(bytes, offset, "transition pre root");
+    if (preRoot.value.length !== 32) return undefined;
+    offset = preRoot.nextOffset;
+    const postRoot = readCborBytes(bytes, offset, "transition post root");
+    if (postRoot.value.length !== 32) return undefined;
+    offset = postRoot.nextOffset;
+    if (bytes[offset] !== 0xff || offset + 1 !== bytes.length) {
+      return undefined;
+    }
+    if (key !== step.value) return undefined;
+    return {
+      stepIndex: step.value,
+      schemaVersion: schema.value,
+      eventKey,
+      phase: "L2Transaction",
+    };
+  } catch {
+    return undefined;
+  }
+};
+
+const parseCanonicalL2EventToStep = (
+  keyHex: string,
+  valueHex: string,
+):
+  | {
+      readonly eventKey: string;
+      readonly stepIndex: bigint;
+      readonly phase: SDK.TransitionPhase;
+    }
+  | undefined => {
+  const event = parseCanonicalL2EventKey(keyHex);
+  if (event === undefined) return undefined;
+  try {
+    const bytes = Buffer.from(valueHex, "hex");
+    if (!bufferStartsWith(bytes, 0, Buffer.from("d8799f", "hex"))) {
+      return undefined;
+    }
+    const step = readCborInteger(bytes, 3, "event_to_step step_index");
+    if (!bufferStartsWith(bytes, step.nextOffset, L2_PHASE_CBOR)) {
+      return undefined;
+    }
+    const end = step.nextOffset + L2_PHASE_CBOR.length;
+    if (bytes[end] !== 0xff || end + 1 !== bytes.length) return undefined;
+    return {
+      eventKey: event.fingerprint,
+      stepIndex: step.value,
+      phase: event.phase,
+    };
+  } catch {
+    return undefined;
+  }
+};
+
 const headerCborHex = (header: Header): string =>
   dataHex(header, SDK.Header as never);
 
@@ -394,7 +607,7 @@ const sourceEventFingerprints = (body: SDK.DaPayloadBodyV2): Set<string> => {
       byteLength: 32,
     });
     add(
-      eventKeyFingerprint({ L2TransactionEventKey: { tx_id: txId } }),
+      l2EventKeyFingerprintFromTxId(txId),
       `transactions[${index.toString()}]`,
     );
   }
@@ -454,16 +667,36 @@ const validateTraceCoverage = (payload: SDK.DaPayloadV2): void => {
     { readonly eventKey: string; readonly phase: SDK.TransitionPhase }
   >();
   for (const [index, [keyHex, valueHex]] of body.transition_trace.entries()) {
-    const key = decodeCanonicalData<bigint>(
-      keyHex,
-      LucidData.Integer() as never,
-      `transition_trace[${index.toString()}].key`,
-    );
-    const step = decodeCanonicalData<SDK.TransitionStep>(
-      valueHex,
-      SDK.TransitionStepSchema as never,
-      `transition_trace[${index.toString()}].value`,
-    );
+    const fast = parseCanonicalL2TransitionStep(keyHex, valueHex);
+    const step =
+      fast === undefined
+        ? decodeCanonicalData<SDK.TransitionStep>(
+            valueHex,
+            SDK.TransitionStepSchema as never,
+            `transition_trace[${index.toString()}].value`,
+          )
+        : ({
+            schema_version: fast.schemaVersion,
+            step_index: fast.stepIndex,
+            event_key: {
+              L2TransactionEventKey: {
+                tx_id: fast.eventKey.slice(
+                  L2_EVENT_KEY_PREFIX.length,
+                  -L2_EVENT_KEY_SUFFIX.length,
+                ),
+              },
+            },
+            phase: fast.phase,
+            pre_utxos_root: "00".repeat(32),
+            post_utxos_root: "00".repeat(32),
+          } satisfies SDK.TransitionStep);
+    const key =
+      fast?.stepIndex ??
+      decodeCanonicalData<bigint>(
+        keyHex,
+        LucidData.Integer() as never,
+        `transition_trace[${index.toString()}].key`,
+      );
     if (step.schema_version < 0n) {
       throw new DaPayloadValidationError(
         "malformed_trace",
@@ -489,7 +722,7 @@ const validateTraceCoverage = (payload: SDK.DaPayloadV2): void => {
       );
     }
     traceByIndex.set(step.step_index, {
-      eventKey: eventKeyFingerprint(step.event_key),
+      eventKey: fast?.eventKey ?? eventKeyFingerprint(step.event_key),
       phase: step.phase,
     });
   }
@@ -504,16 +737,30 @@ const validateTraceCoverage = (payload: SDK.DaPayloadV2): void => {
 
   const eventToStep = new Map<string, SDK.EventToStepValue>();
   for (const [index, [keyHex, valueHex]] of body.event_to_step.entries()) {
-    const eventKey = decodeCanonicalData<SDK.EventKey>(
-      keyHex,
-      SDK.EventKeySchema as never,
-      `event_to_step[${index.toString()}].key`,
-    );
-    const value = decodeCanonicalData<SDK.EventToStepValue>(
-      valueHex,
-      SDK.EventToStepValueSchema as never,
-      `event_to_step[${index.toString()}].value`,
-    );
+    const fast = parseCanonicalL2EventToStep(keyHex, valueHex);
+    const eventKey =
+      fast === undefined
+        ? decodeCanonicalData<SDK.EventKey>(
+            keyHex,
+            SDK.EventKeySchema as never,
+            `event_to_step[${index.toString()}].key`,
+          )
+        : ({
+            L2TransactionEventKey: {
+              tx_id: fast.eventKey.slice(
+                L2_EVENT_KEY_PREFIX.length,
+                -L2_EVENT_KEY_SUFFIX.length,
+              ),
+            },
+          } satisfies SDK.EventKey);
+    const value =
+      fast === undefined
+        ? decodeCanonicalData<SDK.EventToStepValue>(
+            valueHex,
+            SDK.EventToStepValueSchema as never,
+            `event_to_step[${index.toString()}].value`,
+          )
+        : { step_index: fast.stepIndex, phase: fast.phase };
     if (value.step_index < 0n) {
       throw new DaPayloadValidationError(
         "coverage_mismatch",
@@ -526,7 +773,7 @@ const validateTraceCoverage = (payload: SDK.DaPayloadV2): void => {
         "event_to_step phase does not match event key variant",
       );
     }
-    const fingerprint = eventKeyFingerprint(eventKey);
+    const fingerprint = fast?.eventKey ?? eventKeyFingerprint(eventKey);
     if (eventToStep.has(fingerprint)) {
       throw new DaPayloadValidationError(
         "duplicate_key",

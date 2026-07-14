@@ -2,8 +2,10 @@ import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  fetchLocalOgmiosShelleyGenesisSlotConfig,
   fetchLocalOgmiosSubmitSlotSnapshot,
   normalizeOgmiosHttpUrl,
+  parseOgmiosShelleyGenesisSlotConfig,
 } from "@/local-ledger-slot.js";
 
 const jsonResponse = (body: unknown, status = 200): Response =>
@@ -20,6 +22,58 @@ describe("local Ogmios submit slot snapshots", () => {
     expect(normalizeOgmiosHttpUrl("wss://ogmios.example/ws")).toBe(
       "https://ogmios.example/ws",
     );
+  });
+
+  it("queries the authoritative Shelley genesis slot epoch exactly once", async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse({
+        jsonrpc: "2.0",
+        result: {
+          startTime: "2026-07-14T04:56:19Z",
+          slotLength: { milliseconds: 1_000 },
+        },
+        id: "midgard-custom-slot-config",
+      }),
+    );
+
+    await expect(
+      Effect.runPromise(
+        fetchLocalOgmiosShelleyGenesisSlotConfig({
+          ogmiosUrl: "ws://127.0.0.1:1337/",
+          fetchImpl,
+        }),
+      ),
+    ).resolves.toEqual({
+      startTimeMs: 1_784_004_979_000,
+      slotLengthMs: 1_000,
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl.mock.calls[0]?.[0]).toBe("http://127.0.0.1:1337");
+    expect(JSON.parse(String(fetchImpl.mock.calls[0]?.[1]?.body))).toEqual({
+      jsonrpc: "2.0",
+      method: "queryNetwork/genesisConfiguration",
+      params: { era: "shelley" },
+      id: "midgard-custom-slot-config",
+    });
+  });
+
+  it("rejects invalid Shelley genesis time and slot length data", () => {
+    expect(() =>
+      parseOgmiosShelleyGenesisSlotConfig({
+        result: {
+          startTime: "2026-07-14 04:56:19",
+          slotLength: { milliseconds: 1_000 },
+        },
+      }),
+    ).toThrow(/startTime is invalid/);
+    expect(() =>
+      parseOgmiosShelleyGenesisSlotConfig({
+        result: {
+          startTime: "2026-07-14T04:56:19Z",
+          slotLength: { milliseconds: 1.5 },
+        },
+      }),
+    ).toThrow(/positive integer slotLength/);
   });
 
   it("derives a live submit slot from health freshness evidence", async () => {

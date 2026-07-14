@@ -52,17 +52,57 @@ describe("splitSqlStatements", () => {
     expect(statements[1]).toBe("SELECT 1");
   });
 
-  it("keeps the durable-admission guard statement intact", () => {
-    const migration = MIGRATIONS.find(({ version }) => version === 2);
-    expect(migration).toBeDefined();
+  it("exposes one fresh-install baseline with no historical migrations", () => {
+    expect(MIGRATIONS).toHaveLength(1);
+    expect(MIGRATIONS[0]).toMatchObject({
+      version: 1,
+      name: "initial_schema",
+      transactional: true,
+    });
+    expect(splitSqlStatements(MIGRATIONS[0]!.sql).length).toBeGreaterThan(100);
+  });
 
-    const statements = splitSqlStatements(migration!.sql);
-
-    expect(statements).toHaveLength(7);
-    expect(statements[0]).toContain(
-      "existing untracked tx state; restore a clean snapshot",
+  it("keeps Architecture G replay fields all-or-none and length bound", () => {
+    const sql = MIGRATIONS[0]!.sql;
+    expect(sql).toContain(
+      "pending_block_finalizations_mpf_replay_all_or_none_check",
     );
-    expect(statements[0]).toContain("END $$");
+    expect(sql).toContain("mpf_owner_schema = 1");
+    expect(sql).toContain("octet_length(mpf_owner_binary_sha256) = 32");
+    expect(sql).toContain("octet_length(mpf_replay_event_log) >= 92");
+    expect(sql).toMatch(
+      /octet_length\(mpf_replay_event_roots\) = \(?mpf_replay_event_count \* 32\)?/,
+    );
+  });
+
+  it("keeps active lease point lookups separate from expiry recovery", () => {
+    const sql = MIGRATIONS[0]!.sql;
+    expect(sql).toContain("idx_tx_admissions_active_lease");
+    expect(sql).toContain("(lease_owner, tx_id)");
+    expect(sql).toMatch(/WHERE \(status = 'validating'::/i);
+    expect(sql).toContain("idx_tx_admissions_lease");
+  });
+
+  it("makes only the rebuildable transaction-delta cache unlogged", () => {
+    const sql = MIGRATIONS[0]!.sql;
+    expect(sql).toMatch(/CREATE UNLOGGED TABLE public\.mempool_tx_deltas/i);
+    expect(sql).not.toMatch(/CREATE UNLOGGED TABLE public\.tx_admissions/i);
+    expect(sql).not.toMatch(
+      /CREATE UNLOGGED TABLE public\.tx_admission_payloads/i,
+    );
+  });
+
+  it("defines final inline payload constraints without transitional DML", () => {
+    const sql = MIGRATIONS[0]!.sql;
+    expect(sql).toMatch(
+      /CREATE TABLE public\.mempool \([\s\S]+?tx bytea NOT NULL,/i,
+    );
+    expect(sql).toMatch(
+      /CREATE TABLE public\.tx_admission_payloads \([\s\S]+?tx_canonical_cbor bytea NOT NULL,/i,
+    );
+    expect(sql).not.toContain("idx_tx_admission_payloads_tx_id_hash");
+    expect(sql).not.toMatch(/UPDATE mempool AS membership/i);
+    expect(sql).not.toMatch(/DROP INDEX/i);
   });
 
   it("fails closed on unterminated quoted SQL", () => {

@@ -4,7 +4,6 @@ import {
   asArray,
   asBigInt,
   asBytes,
-  assertCanonicalCborRoundTrip,
   decodeSingleCbor,
   encodeCbor,
 } from "./codec/cbor.js";
@@ -36,6 +35,14 @@ export const DA_TRANSPORT_LIMITS_V1 = {
 
 export const DA_ON_CHAIN_ATTESTATION_V1_DOMAIN = "MidgardDAAttestationV1";
 
+export type DaTransportTimingOptions = {
+  readonly monotonicNow?: () => number;
+  readonly onStageTiming?: (
+    stage: "submit_request_decode",
+    durationMs: number,
+  ) => void;
+};
+
 export const DaTransportSigningDomain = {
   payloadAnnouncement: "MidgardDALibp2pPayloadAnnouncementV1",
   payloadSubmit: "MidgardDALibp2pPayloadSubmitV1",
@@ -60,6 +67,7 @@ export type DaLibp2pRuntimeManifestDeploymentIdentity = {
 };
 
 export const DaRequestResponseProtocol = {
+  capabilities: "capabilities",
   payloadSubmit: "payload-submit",
   payloadByHeader: "payload-by-header",
   payloadChunk: "payload-chunk",
@@ -182,6 +190,22 @@ export type DaPayloadSubmitResponseV1 = {
   readonly payloadHash: Buffer;
   readonly reasonCode: string | null;
   readonly retryAfterMs: number | null;
+};
+
+export type DaCapabilitiesRequestV1 = {
+  readonly deploymentFingerprint: Buffer;
+};
+
+export type DaCapabilitiesResponseV1 = {
+  readonly deploymentFingerprint: Buffer;
+  readonly transportProtocolVersion: number;
+  readonly payloadSchemaVersions: readonly number[];
+  readonly envelopeContentEncodings: readonly number[];
+  readonly maxPayloadBytes: number;
+  readonly maxInlineResponseBytes: number;
+  readonly maxChunkBytes: number;
+  readonly maxStreamsPerPeer: number;
+  readonly requestTimeoutMs: number;
 };
 
 export type DaPayloadByHeaderRequestV1 = {
@@ -431,7 +455,12 @@ const ensureByteLength = (
 };
 
 const bytesValue = (value: unknown, fieldName: string): Buffer =>
-  Buffer.from(asBytes(value, fieldName));
+  asBufferView(asBytes(value, fieldName));
+
+const asBufferView = (value: Uint8Array): Buffer =>
+  Buffer.isBuffer(value)
+    ? value
+    : Buffer.from(value.buffer, value.byteOffset, value.byteLength);
 
 const optionalBytesValue = (
   value: unknown,
@@ -637,6 +666,39 @@ const optionalHashArrayValue = (
   fieldName: string,
 ): Buffer[] | null => (value == null ? null : hashArrayValue(value, fieldName));
 
+const sortedUintArrayValue = (value: unknown, fieldName: string): number[] => {
+  const result = asArray(value, fieldName).map((item, index) =>
+    ensureUint(item, `${fieldName}[${index}]`),
+  );
+  for (let index = 1; index < result.length; index += 1) {
+    if (result[index - 1]! >= result[index]!) {
+      fail(
+        MidgardTxCodecErrorCodes.SchemaMismatch,
+        `${fieldName} must be strictly increasing`,
+      );
+    }
+  }
+  return result;
+};
+
+const cborSortedUintArray = (
+  value: readonly number[],
+  fieldName: string,
+): bigint[] => {
+  const normalized = value.map((item, index) =>
+    ensureUint(item, `${fieldName}[${index}]`),
+  );
+  for (let index = 1; index < normalized.length; index += 1) {
+    if (normalized[index - 1]! >= normalized[index]!) {
+      fail(
+        MidgardTxCodecErrorCodes.InvalidFieldType,
+        `${fieldName} must be strictly increasing`,
+      );
+    }
+  }
+  return normalized.map(BigInt);
+};
+
 const encodePayloadChunkManifestValue = (
   manifest: DaPayloadChunkManifestV1,
 ): unknown[] => [
@@ -676,16 +738,11 @@ const decodeTupleCbor = <T>(
   bytes: Uint8Array,
   fieldName: string,
   decodeValue: (value: unknown, fieldName: string) => T,
-  encodeValue: (value: T) => Buffer,
 ): T => {
-  const decoded = decodeValue(decodeSingleCbor(bytes), fieldName);
-  assertCanonicalCborRoundTrip(
-    bytes,
-    decoded,
-    encodeValue,
-    `${fieldName} CBOR is not canonical`,
-  );
-  return decoded;
+  // decodeSingleCbor performs a complete canonical framing/trailing-byte pass
+  // before schema decoding. Re-encoding schema-validated transport messages is
+  // redundant and copies inline payload bodies at full DA scale.
+  return decodeValue(decodeSingleCbor(bytes), fieldName);
 };
 
 export const encodeDaPayloadChunkManifestCbor = (
@@ -699,7 +756,6 @@ export const decodeDaPayloadChunkManifestCbor = (
     bytes,
     "PayloadChunkManifestV1",
     decodePayloadChunkManifestValue,
-    encodeDaPayloadChunkManifestCbor,
   );
 
 const encodePayloadAnnouncementValue = (
@@ -755,7 +811,6 @@ export const decodeDaPayloadAnnouncementV1Cbor = (
     bytes,
     "DaPayloadAnnouncementV1",
     decodePayloadAnnouncementValue,
-    encodeDaPayloadAnnouncementV1Cbor,
   );
 
 const encodePayloadSubmitRequestValue = (
@@ -803,13 +858,39 @@ export const encodeDaPayloadSubmitRequestV1Cbor = (
 
 export const decodeDaPayloadSubmitRequestV1Cbor = (
   bytes: Uint8Array,
-): DaPayloadSubmitRequestV1 =>
-  decodeTupleCbor(
-    bytes,
-    "PayloadSubmitRequestV1",
-    decodePayloadSubmitRequestValue,
-    encodeDaPayloadSubmitRequestV1Cbor,
-  );
+  timing: DaTransportTimingOptions = {},
+): DaPayloadSubmitRequestV1 => {
+  const startedAt = readTransportTimingNow(timing);
+  try {
+    return decodeTupleCbor(
+      bytes,
+      "PayloadSubmitRequestV1",
+      decodePayloadSubmitRequestValue,
+    );
+  } finally {
+    const completedAt = readTransportTimingNow(timing);
+    try {
+      if (startedAt !== undefined && completedAt !== undefined) {
+        timing.onStageTiming?.(
+          "submit_request_decode",
+          completedAt - startedAt,
+        );
+      }
+    } catch {
+      // Observability must not change transport acceptance semantics.
+    }
+  }
+};
+
+const readTransportTimingNow = (
+  timing: DaTransportTimingOptions,
+): number | undefined => {
+  try {
+    return (timing.monotonicNow ?? (() => performance.now()))();
+  } catch {
+    return undefined;
+  }
+};
 
 const encodePayloadSubmitResponseValue = (
   message: DaPayloadSubmitResponseV1,
@@ -849,7 +930,6 @@ export const decodeDaPayloadSubmitResponseV1Cbor = (
     bytes,
     "PayloadSubmitResponseV1",
     decodePayloadSubmitResponseValue,
-    encodeDaPayloadSubmitResponseV1Cbor,
   );
 
 const encodePayloadByHeaderRequestValue = (
@@ -895,7 +975,6 @@ export const decodeDaPayloadByHeaderRequestV1Cbor = (
     bytes,
     "PayloadByHeaderRequestV1",
     decodePayloadByHeaderRequestValue,
-    encodeDaPayloadByHeaderRequestV1Cbor,
   );
 
 const encodePayloadByHeaderResponseValue = (
@@ -944,7 +1023,6 @@ export const decodeDaPayloadByHeaderResponseV1Cbor = (
     bytes,
     "PayloadByHeaderResponseV1",
     decodePayloadByHeaderResponseValue,
-    encodeDaPayloadByHeaderResponseV1Cbor,
   );
 
 const encodePayloadChunkRequestValue = (
@@ -983,7 +1061,6 @@ export const decodeDaPayloadChunkRequestV1Cbor = (
     bytes,
     "PayloadChunkRequestV1",
     decodePayloadChunkRequestValue,
-    encodeDaPayloadChunkRequestV1Cbor,
   );
 
 const encodePayloadChunkResponseValue = (
@@ -1027,7 +1104,6 @@ export const decodeDaPayloadChunkResponseV1Cbor = (
     bytes,
     "PayloadChunkResponseV1",
     decodePayloadChunkResponseValue,
-    encodeDaPayloadChunkResponseV1Cbor,
   );
 
 const encodeMetadataByHeaderResponseValue = (
@@ -1106,7 +1182,6 @@ export const decodeDaMetadataByHeaderResponseV1Cbor = (
     bytes,
     "MetadataByHeaderResponseV1",
     decodeMetadataByHeaderResponseValue,
-    encodeDaMetadataByHeaderResponseV1Cbor,
   );
 
 const encodeProofBundleByHeaderRequestValue = (
@@ -1143,7 +1218,6 @@ export const decodeDaProofBundleByHeaderRequestV1Cbor = (
     bytes,
     "ProofBundleByHeaderRequestV1",
     decodeProofBundleByHeaderRequestValue,
-    encodeDaProofBundleByHeaderRequestV1Cbor,
   );
 
 const encodeProofBundleByHeaderResponseValue = (
@@ -1196,7 +1270,6 @@ export const decodeDaProofBundleByHeaderResponseV1Cbor = (
     bytes,
     "ProofBundleByHeaderResponseV1",
     decodeProofBundleByHeaderResponseValue,
-    encodeDaProofBundleByHeaderResponseV1Cbor,
   );
 
 const encodeTraceStepByIndexRequestValue = (
@@ -1233,7 +1306,6 @@ export const decodeDaTraceStepByIndexRequestV1Cbor = (
     bytes,
     "TraceStepByIndexRequestV1",
     decodeTraceStepByIndexRequestValue,
-    encodeDaTraceStepByIndexRequestV1Cbor,
   );
 
 const encodeTraceStepByIndexResponseValue = (
@@ -1281,7 +1353,6 @@ export const decodeDaTraceStepByIndexResponseV1Cbor = (
     bytes,
     "TraceStepByIndexResponseV1",
     decodeTraceStepByIndexResponseValue,
-    encodeDaTraceStepByIndexResponseV1Cbor,
   );
 
 const encodeEventToStepByEventRequestValue = (
@@ -1318,7 +1389,6 @@ export const decodeDaEventToStepByEventRequestV1Cbor = (
     bytes,
     "EventToStepByEventRequestV1",
     decodeEventToStepByEventRequestValue,
-    encodeDaEventToStepByEventRequestV1Cbor,
   );
 
 const encodeEventToStepByEventResponseValue = (
@@ -1369,7 +1439,6 @@ export const decodeDaEventToStepByEventResponseV1Cbor = (
     bytes,
     "EventToStepByEventResponseV1",
     decodeEventToStepByEventResponseValue,
-    encodeDaEventToStepByEventResponseV1Cbor,
   );
 
 const encodeAttestationGossipValue = (
@@ -1420,12 +1489,7 @@ export const encodeDaAttestationGossipV1Cbor = (
 export const decodeDaAttestationGossipV1Cbor = (
   bytes: Uint8Array,
 ): DaAttestationGossipV1 =>
-  decodeTupleCbor(
-    bytes,
-    "DaAttestationGossipV1",
-    decodeAttestationGossipValue,
-    encodeDaAttestationGossipV1Cbor,
-  );
+  decodeTupleCbor(bytes, "DaAttestationGossipV1", decodeAttestationGossipValue);
 
 const encodeAttestationsByHeaderRequestValue = (
   message: DaAttestationsByHeaderRequestV1,
@@ -1480,7 +1544,6 @@ export const decodeDaAttestationsByHeaderRequestV1Cbor = (
     bytes,
     "AttestationsByHeaderRequestV1",
     decodeAttestationsByHeaderRequestValue,
-    encodeDaAttestationsByHeaderRequestV1Cbor,
   );
 
 const encodeAttestationsByHeaderResponseValue = (
@@ -1524,7 +1587,6 @@ export const decodeDaAttestationsByHeaderResponseV1Cbor = (
     bytes,
     "AttestationsByHeaderResponseV1",
     decodeAttestationsByHeaderResponseValue,
-    encodeDaAttestationsByHeaderResponseV1Cbor,
   );
 
 const encodeConflictEvidenceValue = (
@@ -1567,9 +1629,100 @@ export const encodeDaConflictEvidenceV1Cbor = (
 export const decodeDaConflictEvidenceV1Cbor = (
   bytes: Uint8Array,
 ): DaConflictEvidenceV1 =>
+  decodeTupleCbor(bytes, "ConflictEvidenceV1", decodeConflictEvidenceValue);
+
+const encodeCapabilitiesRequestValue = (
+  message: DaCapabilitiesRequestV1,
+): unknown[] => [ensureDaDeploymentFingerprint(message.deploymentFingerprint)];
+
+const decodeCapabilitiesRequestValue = (
+  value: unknown,
+  fieldName: string,
+): DaCapabilitiesRequestV1 => {
+  const fields = fixedArray(value, 1, fieldName);
+  return {
+    deploymentFingerprint: deploymentFingerprintValue(
+      fields[0],
+      `${fieldName}.deployment_fingerprint`,
+    ),
+  };
+};
+
+export const encodeDaCapabilitiesRequestV1Cbor = (
+  message: DaCapabilitiesRequestV1,
+): Buffer => encodeCbor(encodeCapabilitiesRequestValue(message));
+
+export const decodeDaCapabilitiesRequestV1Cbor = (
+  bytes: Uint8Array,
+): DaCapabilitiesRequestV1 =>
   decodeTupleCbor(
     bytes,
-    "ConflictEvidenceV1",
-    decodeConflictEvidenceValue,
-    encodeDaConflictEvidenceV1Cbor,
+    "DaCapabilitiesRequestV1",
+    decodeCapabilitiesRequestValue,
+  );
+
+const encodeCapabilitiesResponseValue = (
+  message: DaCapabilitiesResponseV1,
+): unknown[] => [
+  ensureDaDeploymentFingerprint(message.deploymentFingerprint),
+  cborUint(message.transportProtocolVersion, "transport_protocol_version"),
+  cborSortedUintArray(message.payloadSchemaVersions, "payload_schema_versions"),
+  cborSortedUintArray(
+    message.envelopeContentEncodings,
+    "envelope_content_encodings",
+  ),
+  cborUint(message.maxPayloadBytes, "max_payload_bytes"),
+  cborUint(message.maxInlineResponseBytes, "max_inline_response_bytes"),
+  cborUint(message.maxChunkBytes, "max_chunk_bytes"),
+  cborUint(message.maxStreamsPerPeer, "max_streams_per_peer"),
+  cborUint(message.requestTimeoutMs, "request_timeout_ms"),
+];
+
+const decodeCapabilitiesResponseValue = (
+  value: unknown,
+  fieldName: string,
+): DaCapabilitiesResponseV1 => {
+  const fields = fixedArray(value, 9, fieldName);
+  return {
+    deploymentFingerprint: deploymentFingerprintValue(
+      fields[0],
+      `${fieldName}.deployment_fingerprint`,
+    ),
+    transportProtocolVersion: ensureUint(
+      fields[1],
+      `${fieldName}.transport_protocol_version`,
+    ),
+    payloadSchemaVersions: sortedUintArrayValue(
+      fields[2],
+      `${fieldName}.payload_schema_versions`,
+    ),
+    envelopeContentEncodings: sortedUintArrayValue(
+      fields[3],
+      `${fieldName}.envelope_content_encodings`,
+    ),
+    maxPayloadBytes: ensureUint(fields[4], `${fieldName}.max_payload_bytes`),
+    maxInlineResponseBytes: ensureUint(
+      fields[5],
+      `${fieldName}.max_inline_response_bytes`,
+    ),
+    maxChunkBytes: ensureUint(fields[6], `${fieldName}.max_chunk_bytes`),
+    maxStreamsPerPeer: ensureUint(
+      fields[7],
+      `${fieldName}.max_streams_per_peer`,
+    ),
+    requestTimeoutMs: ensureUint(fields[8], `${fieldName}.request_timeout_ms`),
+  };
+};
+
+export const encodeDaCapabilitiesResponseV1Cbor = (
+  message: DaCapabilitiesResponseV1,
+): Buffer => encodeCbor(encodeCapabilitiesResponseValue(message));
+
+export const decodeDaCapabilitiesResponseV1Cbor = (
+  bytes: Uint8Array,
+): DaCapabilitiesResponseV1 =>
+  decodeTupleCbor(
+    bytes,
+    "DaCapabilitiesResponseV1",
+    decodeCapabilitiesResponseValue,
   );

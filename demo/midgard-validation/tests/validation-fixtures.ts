@@ -67,6 +67,7 @@ type NativeTxOptions = {
   readonly networkId?: bigint;
   readonly invalidVkeyWitness?: true;
   readonly omitVkeyWitness?: true;
+  readonly privateKey?: CML.PrivateKey;
 };
 
 export type NativeTxFixture = {
@@ -208,7 +209,7 @@ export const makeNativeTx = (opts: NativeTxOptions = {}): NativeTxFixture => {
           Buffer.from(
             CML.make_vkey_witness(
               CML.TransactionHash.from_raw_bytes(signedBodyHash),
-              TEST_PRIVATE_KEY,
+              opts.privateKey ?? TEST_PRIVATE_KEY,
             ).to_cbor_bytes(),
           ),
         ]);

@@ -591,6 +591,7 @@ export class WatcherService {
     const payloadRecord = await this.deps.store.saveDaPayload({
       deploymentFingerprint: this.deps.config.deploymentFingerprint,
       headerHash: record.headerHash,
+      payloadSchemaVersion: selectedPayload.payloadSchemaVersion,
       payloadCborHex: selectedPayload.payloadCbor.toString("hex"),
       payloadSha256: daPayloadSha256(selectedPayload.payloadCbor),
       sourcePeerId: selectedPayload.sourcePeerId,
@@ -664,7 +665,11 @@ export class WatcherService {
   ): Promise<DaPayloadCandidate> {
     const byHash = new Map<
       string,
-      { readonly payloadCbor: Buffer; readonly sourcePeerIds: string[] }
+      {
+        readonly payloadCbor: Buffer;
+        payloadSchemaVersion?: number;
+        readonly sourcePeerIds: string[];
+      }
     >();
     for (const candidate of candidates) {
       const hash = daPayloadSha256(candidate.payloadCbor);
@@ -672,9 +677,26 @@ export class WatcherService {
       if (existing === undefined) {
         byHash.set(hash, {
           payloadCbor: candidate.payloadCbor,
+          payloadSchemaVersion: candidate.payloadSchemaVersion,
           sourcePeerIds: [candidate.sourcePeerId],
         });
       } else {
+        if (
+          existing.payloadSchemaVersion !== undefined &&
+          candidate.payloadSchemaVersion !== undefined &&
+          existing.payloadSchemaVersion !== candidate.payloadSchemaVersion
+        ) {
+          byHash.set(
+            `${hash}:schema-${candidate.payloadSchemaVersion.toString()}`,
+            {
+              payloadCbor: candidate.payloadCbor,
+              payloadSchemaVersion: candidate.payloadSchemaVersion,
+              sourcePeerIds: [candidate.sourcePeerId],
+            },
+          );
+          continue;
+        }
+        existing.payloadSchemaVersion ??= candidate.payloadSchemaVersion;
         existing.sourcePeerIds.push(candidate.sourcePeerId);
       }
     }
@@ -683,6 +705,7 @@ export class WatcherService {
       return {
         sourcePeerId: entry.sourcePeerIds[0]!,
         payloadCbor: entry.payloadCbor,
+        payloadSchemaVersion: entry.payloadSchemaVersion,
       };
     }
     const conflictDetail = [...byHash.entries()]
@@ -691,6 +714,7 @@ export class WatcherService {
     await this.deps.store.saveDaPayload({
       deploymentFingerprint: this.deps.config.deploymentFingerprint,
       headerHash,
+      payloadSchemaVersion: candidates[0]?.payloadSchemaVersion,
       payloadCborHex: candidates[0]?.payloadCbor.toString("hex") ?? "",
       payloadSha256:
         candidates[0] === undefined
@@ -720,6 +744,10 @@ export class WatcherService {
         record.headerHash,
         record.header,
         {
+          // Records written before the V3 decoder field existed are historical
+          // raw DaPayloadV2 rows. This is storage decoding, not an operator
+          // compatibility mode.
+          payloadSchemaVersion: payloadRecord.payloadSchemaVersion ?? 2,
           stateQueueOutRef: record.stateQueueOutRef,
           transactionProjector: this.deps.transactionProjector,
         },

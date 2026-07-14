@@ -2,8 +2,9 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { Effect } from "effect";
+import { Trie } from "@aiken-lang/merkle-patricia-forestry";
 
-import { MidgardMpf, MpfError } from "../mpf.js";
+import { getMpfScratchBuild, MidgardMpf, MpfError } from "../mpf.js";
 
 export type KeyValuePhasEntry = {
   readonly key: Buffer;
@@ -17,12 +18,30 @@ export type KeyValuePhasRoot = {
 };
 
 const toPhasTrieItem = (keyCbor: Buffer, valueCbor: Buffer) => ({
-  key: Buffer.from(keyCbor),
-  value: Buffer.from(valueCbor),
+  key: keyCbor,
+  value: valueCbor,
 });
 
 const compareBuffer = (left: Buffer, right: Buffer): number =>
   Buffer.compare(left, right);
+
+const createPhasScratch = (
+  trieName: string,
+  entries: readonly KeyValuePhasEntry[],
+): Effect.Effect<MidgardMpf, MpfError> =>
+  getMpfScratchBuild() === "fromlist"
+    ? MidgardMpf.createScratchFromList(trieName, entries)
+    : Effect.gen(function* () {
+        const mpf = yield* MidgardMpf.createScratch(trieName);
+        yield* mpf.applyBatch(
+          entries.map((item) => ({
+            type: "insert" as const,
+            key: item.key,
+            value: item.value,
+          })),
+        );
+        return mpf;
+      });
 
 const canonicalizeKeyValuePhasEntriesSync = (
   keys: readonly Buffer[],
@@ -70,15 +89,19 @@ export const keyValuePhasRootWithCount = (
         entries,
       };
     }
-    const mpf = yield* MidgardMpf.createScratch("phas-root");
-    yield* mpf.applyBatch(
-      entries.map((item) => ({
-        type: "insert" as const,
-        key: item.key,
-        value: item.value,
-      })),
-    );
-    const root = yield* mpf.rootHex();
+    const root =
+      getMpfScratchBuild() === "fromlist"
+        ? yield* Effect.tryPromise({
+            try: async () => {
+              const trie = await Trie.fromList(entries);
+              return Buffer.from(trie.hash).toString("hex");
+            },
+            catch: (cause) => MpfError.phasRoot(cause),
+          })
+        : yield* Effect.gen(function* () {
+            const mpf = yield* createPhasScratch("phas-root", entries);
+            return yield* mpf.rootHex();
+          });
     return {
       root,
       count: BigInt(entries.length),
@@ -108,14 +131,7 @@ export const keyValuePhasProof = (
         ),
       );
     }
-    const mpf = yield* MidgardMpf.createScratch("phas-proof");
-    yield* mpf.applyBatch(
-      entries.map((item) => ({
-        type: "insert" as const,
-        key: item.key,
-        value: item.value,
-      })),
-    );
+    const mpf = yield* createPhasScratch("phas-proof", entries);
     const proof = yield* mpf.prove(key);
     const root = yield* mpf.rootHex();
     const verifiedRoot = yield* mpf
@@ -159,13 +175,9 @@ export const keyValuePhasNonMembershipProof = (
         ),
       );
     }
-    const mpf = yield* MidgardMpf.createScratch("phas-non-membership-proof");
-    yield* mpf.applyBatch(
-      entries.map((item) => ({
-        type: "insert" as const,
-        key: item.key,
-        value: item.value,
-      })),
+    const mpf = yield* createPhasScratch(
+      "phas-non-membership-proof",
+      entries,
     );
     const root = yield* mpf.rootHex();
     yield* mpf.insert(key, NON_MEMBERSHIP_DUMMY_VALUE);

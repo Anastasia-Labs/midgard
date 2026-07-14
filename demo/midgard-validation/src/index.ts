@@ -14,3 +14,4 @@ export * from "./tx-out-ref.js";
 export * from "./types.js";
 export * from "./validation-candidate.js";
 export * from "./value-accounting.js";
+export * from "./wire.js";

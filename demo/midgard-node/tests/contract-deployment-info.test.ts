@@ -21,6 +21,10 @@ import {
   verifyDeploymentManifestAgainstConfig,
 } from "@/commands/contract-deployment-info.js";
 import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
+import {
+  midgardContractsFromDeploymentManifest,
+  parseRuntimeDeploymentManifest,
+} from "@/services/midgard-contracts.js";
 
 const testReferenceScriptAuthPolicy = (
   policyId: string,
@@ -318,6 +322,129 @@ describe("contract deployment info", () => {
           },
         }),
       ).toThrow(/Deployment manifest id mismatch/);
+      expect(() =>
+        parseRuntimeDeploymentManifest({
+          ...manifest,
+          hubOracleOneShot: {
+            ...manifest.hubOracleOneShot,
+            outputIndex: 1,
+            outRef: `${ONE_SHOT_TX_HASH}#1`,
+          },
+        }),
+      ).toThrow(/Deployment manifest id mismatch/);
+    }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
+  );
+
+  it("rejects unsupported schemas in the runtime contract source", () => {
+    expect(() =>
+      parseRuntimeDeploymentManifest({
+        schemaVersion: "legacy-contract-deployment-info",
+        contracts: {},
+      }),
+    ).toThrow(/schemaVersion must be midgard-deployment-manifest-v2/);
+  });
+
+  it.effect("rejects a deployment manifest with an unknown network", () =>
+    Effect.gen(function* () {
+      const contracts = yield* AlwaysSucceedsContract;
+      const authPolicy = testReferenceScriptAuthPolicy(
+        contracts.referenceScriptAuth.policyId,
+      );
+      const manifest = buildDeploymentManifestV2(
+        buildContractDeploymentInfoFromContracts(contracts, authPolicy),
+        {
+          network: "Preprod",
+          referenceScriptDeployAddress: "addr_test1reference",
+          hubOracleOneShotTxHash: ONE_SHOT_TX_HASH,
+          hubOracleOneShotOutputIndex: 0,
+        },
+      );
+
+      expect(() =>
+        parseDeploymentManifestV2({ ...manifest, network: "Bogus" }),
+      ).toThrow(/Mainnet, Preprod, Preview, or Custom/);
+    }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
+  );
+
+  it.effect(
+    "reconstructs validators from deployment manifest contract bytes",
+    () =>
+      Effect.gen(function* () {
+        const contracts = yield* AlwaysSucceedsContract;
+        const authPolicy = testReferenceScriptAuthPolicy(
+          contracts.referenceScriptAuth.policyId,
+        );
+        const manifest = buildDeploymentManifestV2(
+          buildContractDeploymentInfoFromContracts(contracts, authPolicy),
+          {
+            network: "Preprod",
+            referenceScriptDeployAddress: "addr_test1reference",
+            hubOracleOneShotTxHash: ONE_SHOT_TX_HASH,
+            hubOracleOneShotOutputIndex: 0,
+          },
+        );
+
+        const reconstructed = midgardContractsFromDeploymentManifest(
+          "Preprod",
+          manifest,
+          "fixture-contract-deployment-info.json",
+          contracts,
+        );
+
+        expect(reconstructed.scheduler.spendingScriptHash).toEqual(
+          manifest.contracts.schedulerSpend.scriptHash,
+        );
+        expect(reconstructed.scheduler.spendingScript.script).toEqual(
+          manifest.contracts.schedulerSpend.contract.cborHex,
+        );
+        expect(reconstructed.scheduler.policyId).toEqual(
+          manifest.contracts.schedulerMint.scriptHash,
+        );
+        expect(reconstructed.activeOperators.spendingScriptHash).toEqual(
+          manifest.contracts.activeOperatorsSpend.scriptHash,
+        );
+        expect(reconstructed.fraudProofCatalogue.policyId).toEqual(
+          manifest.contracts.fraudProofCatalogueMint.scriptHash,
+        );
+        expect(
+          reconstructed.fraudProofs.transitionTrace.spendingScriptHash,
+        ).toEqual(manifest.contracts.fraudProofTransitionTrace.scriptHash);
+      }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
+  );
+
+  it.effect("rejects deployment manifest contract hash drift", () =>
+    Effect.gen(function* () {
+      const contracts = yield* AlwaysSucceedsContract;
+      const authPolicy = testReferenceScriptAuthPolicy(
+        contracts.referenceScriptAuth.policyId,
+      );
+      const manifest = buildDeploymentManifestV2(
+        buildContractDeploymentInfoFromContracts(contracts, authPolicy),
+        {
+          network: "Preprod",
+          referenceScriptDeployAddress: "addr_test1reference",
+          hubOracleOneShotTxHash: ONE_SHOT_TX_HASH,
+          hubOracleOneShotOutputIndex: 0,
+        },
+      );
+
+      expect(() =>
+        midgardContractsFromDeploymentManifest(
+          "Preprod",
+          {
+            ...manifest,
+            contracts: {
+              ...manifest.contracts,
+              schedulerSpend: {
+                ...manifest.contracts.schedulerSpend,
+                scriptHash: "aa".repeat(28),
+              },
+            },
+          },
+          "fixture-contract-deployment-info.json",
+          contracts,
+        ),
+      ).toThrow(/contracts\.schedulerSpend\.scriptHash/);
     }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
   );
 });

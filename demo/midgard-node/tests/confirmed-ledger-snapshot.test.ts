@@ -1,4 +1,5 @@
 import * as SDK from "@al-ft/midgard-sdk";
+import { SqlClient } from "@effect/sql";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -109,7 +110,12 @@ describe("confirmed ledger snapshot materialization", () => {
     } satisfies PendingBlockFinalizationsDB.Record;
 
     const snapshot = await Effect.runPromise(
-      materializeConfirmedLedgerSnapshot(record),
+      materializeConfirmedLedgerSnapshot(record).pipe(
+        Effect.provideService(
+          SqlClient.SqlClient,
+          {} as SqlClient.SqlClient,
+        ),
+      ),
     );
 
     expect(snapshot.root).not.toEqual(SDK.EMPTY_MERKLE_TREE_ROOT);

@@ -1,7 +1,12 @@
 import type { MidgardValue } from "@al-ft/midgard-core/codec";
+import type { Effect } from "effect";
 
 import type { LedgerEntry } from "./ledger.js";
-import type { MidgardLedgerTx } from "./ledger-tx/types.js";
+import type {
+  MidgardLedgerTx,
+  MidgardLedgerVKeyWitness,
+} from "./ledger-tx/types.js";
+import type { LocalScriptEvalResult } from "./local-script-eval.js";
 
 /**
  * Stable rejection codes used by Midgard phase-A and phase-B validation.
@@ -103,6 +108,7 @@ export type PhaseAValidatedTx = {
     readonly mintPolicyHashHexes: readonly string[];
     readonly redeemerWitnessHash: Buffer;
     readonly requiresScriptEvaluation: boolean;
+    readonly requiresLocalScriptDiscovery: boolean;
   };
 };
 
@@ -143,12 +149,30 @@ export type PhaseAConfig = {
 };
 
 /**
+ * Process-local Phase-A extension points.
+ *
+ * This context is deliberately separate from {@link PhaseAConfig}: functions
+ * must never enter the serializable worker configuration or wire protocol.
+ * Browser and inline callers omit it and retain the CML reference verifier.
+ */
+export type PhaseALocalContext = {
+  readonly verifyVKeyWitnessSignature?: (
+    txBodyHash: Buffer,
+    witness: MidgardLedgerVKeyWitness,
+  ) => boolean;
+};
+
+/**
  * Configuration knobs for phase-B validation.
  */
 export type PhaseBConfig = {
   readonly nowCardanoSlotNo: bigint;
   readonly bucketConcurrency: number;
   readonly enforceScriptBudget?: boolean;
+  readonly evaluateScript?: (
+    scriptBytes: Uint8Array,
+    contextCbor: Uint8Array,
+  ) => Effect.Effect<LocalScriptEvalResult, Error>;
 };
 
 /**

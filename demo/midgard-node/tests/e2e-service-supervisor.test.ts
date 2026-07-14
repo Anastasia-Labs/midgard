@@ -1,4 +1,4 @@
-import { writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
@@ -217,6 +217,74 @@ describe("e2e host process supervisor", () => {
     if (process.platform !== "win32") {
       await waitForFile(childTerminated);
     }
+  });
+
+  it("externally SIGKILLs a service when a checkpoint marker spans output chunks", async () => {
+    const dir = await makeTempDir();
+    const marker =
+      "pipeline_trace phase=e2e_crash_checkpoint checkpoint=speculative_mid_build";
+    const script = await writeScript(
+      dir,
+      "checkpoint-service.mjs",
+      [
+        `const marker = ${JSON.stringify(marker)};`,
+        "process.stdout.write(marker.slice(0, 23));",
+        "setTimeout(() => process.stdout.write(marker.slice(23) + '\\n'), 10);",
+        "setInterval(() => {}, 1000);",
+      ].join("\n"),
+    );
+
+    const summary = await superviseHostProcess({
+      service: "checkpoint-node",
+      command: process.execPath,
+      args: [script],
+      cwd: dir,
+      timeoutMs: 2_000,
+      rawLogPath: join(dir, "logs", "checkpoint-node.log"),
+      maxRestarts: 0,
+      terminateOnOutput: { marker, signal: "SIGKILL" },
+    });
+
+    expect(summary.status).toBe("restart_budget_exhausted");
+    expect(summary.attempts[0]?.signal).toBe("SIGKILL");
+    expect(summary.attempts[0]?.timedOut).toBe(false);
+    expect(summary.attempts[0]?.outputTermination).toMatchObject({
+      marker,
+      signal: "SIGKILL",
+    });
+    expect(summary.attempts[0]?.classification).toMatchObject({
+      class: "restartable_runtime",
+      restartable: true,
+    });
+  });
+
+  it("externally stops a supervised service when the operator creates a stop file", async () => {
+    const dir = await makeTempDir();
+    const stopFile = join(dir, "stop", "node.stop");
+    const script = await writeScript(
+      dir,
+      "stop-file-service.mjs",
+      ["console.log('ready');", "setInterval(() => {}, 1000);"].join("\n"),
+    );
+    const summaryPromise = superviseHostProcess({
+      service: "stop-file-node",
+      command: process.execPath,
+      args: [script],
+      cwd: dir,
+      timeoutMs: 2_000,
+      rawLogPath: join(dir, "logs", "stop-file-node.log"),
+      maxRestarts: 0,
+      terminateOnFile: { path: stopFile, signal: "SIGTERM" },
+    });
+    await mkdir(join(dir, "stop"), { recursive: true });
+    await writeFile(stopFile, "stop\n", "utf8");
+    const summary = await summaryPromise;
+
+    expect(summary.attempts[0]?.signal).toBe("SIGTERM");
+    expect(summary.attempts[0]?.fileTermination).toMatchObject({
+      path: stopFile,
+      signal: "SIGTERM",
+    });
   });
 });
 

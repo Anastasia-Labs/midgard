@@ -1,3 +1,5 @@
+import { dirname } from "node:path";
+
 import { Proof, Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { encodeMidgardTxOutput } from "@al-ft/lucid-midgard";
 import { encodeMidgardNativeTxCompact } from "@al-ft/midgard-core/codec";
@@ -7,7 +9,8 @@ import { decodeMidgardTxCommitmentsFromCanonicalCbor } from "@al-ft/midgard-vali
 import { SqlClient } from "@effect/sql";
 import type { UTxO } from "@lucid-evolution/lucid";
 import { CML, Data as LucidData } from "@lucid-evolution/lucid";
-import { Data, Effect, Option } from "effect";
+import { blake2b } from "@noble/hashes/blake2.js";
+import { Data, Effect, Fiber, Metric, Option } from "effect";
 import * as FS from "fs";
 import { Level } from "level";
 
@@ -17,6 +20,7 @@ import * as ForcedTransactionsDB from "@/database/forcedTransactions.js";
 import * as MempoolDB from "@/database/mempool.js";
 import * as MempoolLedgerDB from "@/database/mempoolLedger.js";
 import * as MempoolTxDeltasDB from "@/database/mempoolTxDeltas.js";
+import * as MpfEngineStateDB from "@/database/mpfEngineState.js";
 import * as TxRejectionsDB from "@/database/txRejections.js";
 import {
   DatabaseError,
@@ -25,7 +29,12 @@ import {
 import * as Ledger from "@/database/utils/ledger.js";
 import * as Tx from "@/database/utils/tx.js";
 import * as WithdrawalsDB from "@/database/withdrawals.js";
-import { Database, NodeConfig } from "@/services/index.js";
+import { Database, NodeConfig, type NodeConfigDep } from "@/services/index.js";
+import {
+  encodeNativeMpfEventLog,
+  type NativeMpfGenerationHandle,
+  type NativeMpfOwnerClient,
+} from "@/services/mpf-native-owner/index.js";
 import { FileSystemError, findSpentAndProducedUTxOs } from "@/utils.js";
 
 import { keyValuePhasRoot, keyValuePhasRootWithCount } from "./mpf/phas.js";
@@ -33,6 +42,25 @@ import {
   type ClassifiedWithdrawal,
   classifyWithdrawal,
 } from "./mpf/withdrawal-classification.js";
+import {
+  type AuthenticatedPackedMpfRecord,
+  authenticatePackedMpfRecord,
+  EventFlatMutationArena,
+  type EventFlatMutationDiagnostics,
+  type PackedMpfStoredValue,
+  type ParkedEventFlatOverlayV2,
+  ResumedEventFlatOverlayV2,
+} from "./mpf-event-flat.js";
+import {
+  eventFlatDigest,
+  prepareEventFlatDigest,
+} from "./mpf-event-flat-digest.js";
+import {
+  buildCountedMpfRootInWorker,
+  configureMpfRootWorkers,
+  prewarmMpfRootWorkers,
+  shouldBuildMpfRootInWorker,
+} from "./mpf-root-pool.js";
 
 export {
   canonicalizeKeyValuePhasEntries,
@@ -46,13 +74,16 @@ export {
   verifyKeyValuePhasMembershipProof,
   verifyKeyValuePhasNonMembershipProof,
 } from "./mpf/phas.js";
+export type { ParkedEventFlatOverlayV2 } from "./mpf-event-flat.js";
 
+const consumeMpfMutationProof = Trie.prototype.consumeMidgardMutationProof;
 const ROOT_KEY = "__root__";
 const JSON_LEVEL_ENCODING_OPTS = { valueEncoding: "json" as const };
 
 export const MPF_EMPTY_ROOT_HEX = SDK.EMPTY_MERKLE_TREE_ROOT;
 const MPF_EMPTY_ROOT = Buffer.from(MPF_EMPTY_ROOT_HEX, "hex");
 const MPF_INTERNAL_NULL_ROOT_HEX = "00".repeat(32);
+const MPF_INTERNAL_NULL_ROOT = Buffer.alloc(32);
 
 export type MpfBatchOp =
   | { readonly type: "insert"; readonly key: Buffer; readonly value: Buffer }
@@ -60,13 +91,324 @@ export type MpfBatchOp =
 
 export type MpfInsertBatchOp = Extract<MpfBatchOp, { readonly type: "insert" }>;
 
+export type LedgerDelta = {
+  readonly spent: readonly Buffer[];
+  readonly produced: readonly UtxoPayloadEntry[];
+};
+
+export type UtxoPayloadSizeAggregate = SDK.DaPayloadEntrySizeAggregate;
+
+export const utxoPayloadEntryEncodedSize = ({
+  outref,
+  output,
+}: UtxoPayloadEntry): number =>
+  SDK.daPayloadEntryEncodedSize([
+    outref.toString("hex"),
+    output.toString("hex"),
+  ]);
+
+export const utxoPayloadAggregateFromEntries = (
+  entries: readonly UtxoPayloadEntry[],
+): UtxoPayloadSizeAggregate => ({
+  entryCount: entries.length,
+  encodedTupleBytes: entries.reduce(
+    (total, entry) => total + utxoPayloadEntryEncodedSize(entry),
+    0,
+  ),
+});
+
+export const ledgerPayloadAggregateFromEntries = (
+  entries: readonly Ledger.MinimalEntry[],
+): UtxoPayloadSizeAggregate =>
+  utxoPayloadAggregateFromEntries(
+    entries.map((entry) => ({
+      outref: entry[Ledger.Columns.OUTREF],
+      output: entry[Ledger.Columns.OUTPUT],
+    })),
+  );
+
+export const collapseLedgerDelta = (
+  ops: readonly MpfBatchOp[],
+): LedgerDelta => {
+  const finalByOutref = new Map<string, MpfBatchOp>();
+  for (const op of ops) finalByOutref.set(op.key.toString("hex"), op);
+  const spent: Buffer[] = [];
+  const produced: UtxoPayloadEntry[] = [];
+  for (const op of finalByOutref.values()) {
+    if (op.type === "delete") spent.push(Buffer.from(op.key));
+    else
+      produced.push({
+        outref: Buffer.from(op.key),
+        output: Buffer.from(op.value),
+      });
+  }
+  return { spent, produced };
+};
+
 type MpfStoredValue = string | Record<string, unknown>;
+type MpfSerializableValue = { readonly serialise: () => MpfStoredValue };
+type MpfReadableValue = MpfStoredValue | MpfSerializableValue;
+
+export const estimateMpfStoredValueBytes = (value: MpfStoredValue): number => {
+  if (typeof value === "string") {
+    return 128 + 2 * Buffer.byteLength(value);
+  }
+  const kind = value.__kind;
+  const prefix = value.prefix;
+  if (kind === "Leaf") {
+    if (
+      typeof prefix !== "string" ||
+      typeof value.key !== "string" ||
+      typeof value.value !== "string"
+    ) {
+      throw new Error("Invalid serialized MPF leaf in block path cache");
+    }
+    return (
+      512 +
+      2 *
+        (Buffer.byteLength(prefix) +
+          Buffer.byteLength(value.key) +
+          Buffer.byteLength(value.value))
+    );
+  }
+  if (kind === "Branch") {
+    if (
+      typeof prefix !== "string" ||
+      !Array.isArray(value.children) ||
+      value.children.length !== 16 ||
+      !value.children.every(
+        (child) =>
+          child === undefined || child === null || typeof child === "string",
+      ) ||
+      !Number.isSafeInteger(value.size)
+    ) {
+      throw new Error("Invalid serialized MPF branch in block path cache");
+    }
+    const childBytes = value.children.reduce<number>(
+      (total, child) =>
+        total + (typeof child === "string" ? Buffer.byteLength(child) : 8),
+      0,
+    );
+    return 768 + 2 * (Buffer.byteLength(prefix) + childBytes);
+  }
+  throw new Error("Invalid serialized MPF node kind in block path cache");
+};
+
+export type MpfEngine = "legacy" | "overlay" | "event_flat";
+export type MpfScratchBuild = "insert" | "fromlist";
+export type MpfPathHydrationMode = "whole_block" | "chunked" | "chunked_arena";
+
+export type MpfArenaLimits = {
+  readonly pathCacheMaxNodes: number;
+  readonly pathCacheMaxBytes: number;
+  readonly liveArenaMaxNodes: number;
+  readonly liveArenaMaxBytes: number;
+};
+
+export type ParkedMpfOverlayV1 = {
+  readonly schemaVersion: 1;
+  readonly trieName: string;
+  readonly baseRoot: ArrayBuffer;
+  readonly candidateRoot: ArrayBuffer;
+  readonly closureDigest: ArrayBuffer;
+  readonly nodeCount: number;
+  readonly nodeHashes: ArrayBuffer;
+  readonly nodeValues: ArrayBuffer;
+  /** Uint32 pairs of JSON byte offset/length, one pair per node hash. */
+  readonly nodeValueOffsets: ArrayBuffer;
+  readonly encodedBytes: number;
+};
+
+const DEFAULT_MPF_ARENA_LIMITS: MpfArenaLimits = {
+  pathCacheMaxNodes: 1_000_000,
+  pathCacheMaxBytes: 1024 * 1024 * 1024,
+  liveArenaMaxNodes: 1_000_000,
+  liveArenaMaxBytes: 1024 * 1024 * 1024,
+};
+
+export type MpfPathHydrationConfig = {
+  readonly mode: MpfPathHydrationMode;
+  readonly chunkOps: number;
+  readonly retainDepth: number;
+};
+
+let configuredMpfScratchBuild: MpfScratchBuild = "insert";
+let configuredMpfPathHydration: MpfPathHydrationConfig = {
+  mode: "whole_block",
+  chunkOps: 512,
+  retainDepth: 2,
+};
+let configuredMpfArenaLimits: MpfArenaLimits = {
+  ...DEFAULT_MPF_ARENA_LIMITS,
+};
+
+export const setMpfScratchBuild = (mode: MpfScratchBuild): void => {
+  configuredMpfScratchBuild = mode;
+};
+
+export const getMpfScratchBuild = (): MpfScratchBuild =>
+  configuredMpfScratchBuild;
+
+export const configureMpfPathHydration = ({
+  mode,
+  chunkOps,
+  retainDepth,
+}: MpfPathHydrationConfig): void => {
+  if (!Number.isSafeInteger(chunkOps) || chunkOps <= 0) {
+    throw new Error("MPF hydration chunk ops must be a positive safe integer");
+  }
+  if (
+    !Number.isSafeInteger(retainDepth) ||
+    retainDepth < 0 ||
+    retainDepth > 8
+  ) {
+    throw new Error("MPF retained hydration depth must be between 0 and 8");
+  }
+  configuredMpfPathHydration = { mode, chunkOps, retainDepth };
+};
+
+export const getMpfPathHydrationConfig = (): MpfPathHydrationConfig => ({
+  ...configuredMpfPathHydration,
+});
+
+export const configureMpfArenaLimits = (limits: MpfArenaLimits): void => {
+  for (const [name, value] of Object.entries(limits)) {
+    if (!Number.isSafeInteger(value) || value <= 0) {
+      throw new Error(`${name} must be a positive safe integer`);
+    }
+  }
+  configuredMpfArenaLimits = { ...limits };
+};
+
+export const resetMpfArenaLimits = (): void => {
+  configuredMpfArenaLimits = { ...DEFAULT_MPF_ARENA_LIMITS };
+};
+
+const getMpfArenaLimits = (): MpfArenaLimits => ({
+  ...configuredMpfArenaLimits,
+});
+
+const exactArrayBuffer = (bytes: Uint8Array): ArrayBuffer =>
+  bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
+
+const parkedOverlayDigest = ({
+  trieName,
+  baseRoot,
+  candidateRoot,
+  nodeCount,
+  nodeHashes,
+  nodeValues,
+  nodeValueOffsets,
+}: Omit<
+  ParkedMpfOverlayV1,
+  "schemaVersion" | "closureDigest" | "encodedBytes"
+>): Buffer => {
+  const trieNameBytes = Buffer.from(trieName);
+  const header = Buffer.alloc(8);
+  header.writeUInt32BE(trieNameBytes.length, 0);
+  header.writeUInt32BE(nodeCount, 4);
+  const hash = blake2b.create({ dkLen: 32 });
+  hash.update(header);
+  hash.update(trieNameBytes);
+  hash.update(new Uint8Array(baseRoot));
+  hash.update(new Uint8Array(candidateRoot));
+  hash.update(new Uint8Array(nodeHashes));
+  hash.update(new Uint8Array(nodeValueOffsets));
+  hash.update(new Uint8Array(nodeValues));
+  return Buffer.from(hash.digest());
+};
+
+export type MpfStoreDiagnostics = {
+  readonly entries: number;
+  readonly storePuts: number;
+  readonly storeDels: number;
+  readonly serialiseCalls: number;
+  readonly serialiseMs: number;
+  readonly deferredMaterializedEstimatedBytes: number;
+  readonly deferredMaterializedActualBytes: number;
+  readonly deferredLazyReads: number;
+  readonly deferredLazySerialiseMs: number;
+  readonly deferredLazySerialisedBytes: number;
+  readonly arenaCheckpointCalls: number;
+  readonly arenaCheckpointMs: number;
+  readonly arenaCheckpointNodes: number;
+  readonly arenaCheckpointBytes: number;
+  readonly pathCacheEntries: number;
+  readonly pathCacheBytes: number;
+  readonly pathCacheHits: number;
+  readonly liveArenaPrunedNodes: number;
+  readonly liveArenaPromotedNodes: number;
+  readonly liveArenaPromotedBytes: number;
+  readonly retainedSnapshotAuthentications: number;
+  readonly retainedSnapshotAuthenticationMs: number;
+  readonly transientLiveNodes: number;
+  readonly transientLiveBytes: number;
+  readonly transientDirtyNodes: number;
+  readonly transientSnapshotsCaptured: number;
+  readonly eventAtomicFinalizations: number;
+  readonly eventAtomicDirtyNodes: number;
+  readonly eventAtomicMaxDirtyNodes: number;
+  readonly levelGets: number;
+  readonly levelGetManyCalls: number;
+  readonly levelGetManyMaxKeys: number;
+  readonly levelGetMs: number;
+  readonly jsonCodecMs: number;
+  readonly overlayHits: number;
+  readonly readCacheHits: number;
+  readonly levelBatchWrites: number;
+  readonly bytesFlushed: number;
+  readonly overlayEntries: number;
+  readonly overlayBytes: number;
+  readonly overlaySpills: number;
+  readonly overlaySpillMs: number;
+  readonly flushMs: number;
+};
+
+export type MpfPathHydrationDiagnostics = {
+  readonly prefetchMs: number;
+  readonly uniquePaths: number;
+  readonly nodesRequested: number;
+  readonly hydrationHits: number;
+  readonly hydrationMisses: number;
+  readonly loadedNodes: number;
+  readonly maxInFlight: number;
+  readonly maxBatchKeys: number;
+  readonly maxFrontierPaths: number;
+  readonly retainedBytesEstimate: number;
+  readonly chunkCount: number;
+  readonly checkpointMs: number;
+  readonly authenticationMs: number;
+  readonly materializeMs: number;
+  readonly collapseMs: number;
+  readonly checkpointSerializedNodes: number;
+  readonly checkpointSerializedBytes: number;
+  readonly verifiedUpperNodes: number;
+  readonly retainedUpperNodes: number;
+  readonly collapsedNodes: number;
+  readonly peakDecodedNodes: number;
+};
+
+export type MpfArenaCheckpointDiagnostics = {
+  readonly checkpointMs: number;
+  readonly authenticationMs: number;
+  readonly materializeMs: number;
+  readonly collapseMs: number;
+  readonly serializedNodes: number;
+  readonly serializedBytes: number;
+  readonly verifiedUpperNodes: number;
+  readonly retainedUpperNodes: number;
+  readonly collapsedNodes: number;
+};
 
 type LevelBatchOp =
   | {
       readonly type: "put";
       readonly key: string;
       readonly value: MpfStoredValue;
+      readonly encodedBytes?: number;
     }
   | { readonly type: "del"; readonly key: string };
 
@@ -101,10 +443,10 @@ const parseStoredRootHex = (rootHex: unknown): Buffer => {
 
 const applyPendingBatch = (
   key: string,
-  value: MpfStoredValue | undefined,
+  value: MpfReadableValue | undefined,
   ops: readonly LevelBatchOp[] | undefined,
-): MpfStoredValue | undefined =>
-  (ops ?? []).reduce<MpfStoredValue | undefined>((current, op) => {
+): MpfReadableValue | undefined =>
+  (ops ?? []).reduce<MpfReadableValue | undefined>((current, op) => {
     if (op.key !== key) {
       return current;
     }
@@ -133,6 +475,26 @@ export type ResolvedTxDeltaForCommit =
       readonly _tag: "Rejected";
       readonly rejection: TxRejectionsDB.EntryNoTimestamp;
     };
+
+export const commitTxDeltaCacheHitCounter = Metric.counter(
+  "commit_tx_delta_cache_hit_total",
+  {
+    description:
+      "Commit candidates resolved from the best-effort mempool tx-delta cache",
+    bigint: true,
+    incremental: true,
+  },
+);
+
+export const commitTxDeltaFallbackDecodedCounter = Metric.counter(
+  "commit_tx_delta_fallback_decoded_total",
+  {
+    description:
+      "Commit candidates successfully decoded from canonical CBOR after a tx-delta cache miss",
+    bigint: true,
+    incremental: true,
+  },
+);
 
 export const resolveTxDeltaForCommit = (
   entry: Tx.EntryWithTimeStamp,
@@ -178,19 +540,70 @@ export const resolveTxDeltaForCommit = (
     };
   });
 
+export const configureCommitMpfRuntime = (
+  nodeConfig: Pick<
+    NodeConfigDep,
+    | "MPF_SCRATCH_BUILD"
+    | "MPF_PATH_HYDRATION_MODE"
+    | "MPF_HYDRATION_CHUNK_OPS"
+    | "MPF_RETAIN_HYDRATED_DEPTH"
+    | "MPF_PARALLEL_ROOTS"
+    | "MPF_ROOT_WORKERS"
+    | "MPF_PARALLEL_ROOT_MIN_ENTRIES"
+  >,
+): Effect.Effect<void, MpfError> =>
+  Effect.gen(function* () {
+    setMpfScratchBuild(nodeConfig.MPF_SCRATCH_BUILD);
+    configureMpfPathHydration({
+      mode: nodeConfig.MPF_PATH_HYDRATION_MODE,
+      chunkOps: nodeConfig.MPF_HYDRATION_CHUNK_OPS,
+      retainDepth: nodeConfig.MPF_RETAIN_HYDRATED_DEPTH,
+    });
+    configureMpfRootWorkers({
+      enabled: nodeConfig.MPF_PARALLEL_ROOTS,
+      workers: nodeConfig.MPF_ROOT_WORKERS,
+      minEntries: nodeConfig.MPF_PARALLEL_ROOT_MIN_ENTRIES,
+    });
+    if (nodeConfig.MPF_PARALLEL_ROOTS) {
+      yield* Effect.tryPromise({
+        try: () => prewarmMpfRootWorkers(),
+        catch: (cause) => MpfError.rootBuild("MPF root worker warmup", cause),
+      });
+    }
+  });
+
 export const makeMpfs: Effect.Effect<
   { ledgerMpf: MidgardMpf; transactionsMpf: MidgardMpf },
   DatabaseError | MpfError,
   Database | NodeConfig
 > = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
+  if (nodeConfig.MPF_ENGINE === "architecture_g") {
+    return yield* Effect.fail(
+      MpfError.create(
+        "architecture-g-owner",
+        new Error(
+          "Architecture G ledger ownership must be supplied by the main-process native owner; refusing to open its Level path in a commit worker",
+        ),
+      ),
+    );
+  }
+  yield* configureCommitMpfRuntime(nodeConfig);
   const transactionsMpf = yield* MidgardMpf.create(
     "transactions",
     nodeConfig.TRANSACTIONS_MPF_DB_PATH,
+    {
+      engine: nodeConfig.MPF_ENGINE,
+      spillThresholdBytes: nodeConfig.MPF_OVERLAY_SPILL_BYTES,
+    },
   );
   const ledgerMpf = yield* MidgardMpf.create(
     "ledger",
     nodeConfig.LEDGER_MPF_DB_PATH,
+    {
+      engine: nodeConfig.MPF_ENGINE,
+      spillThresholdBytes: nodeConfig.MPF_OVERLAY_SPILL_BYTES,
+    },
   );
   const ledgerRootIsEmpty = yield* ledgerMpf.rootIsEmpty();
   if (ledgerRootIsEmpty) {
@@ -224,6 +637,7 @@ export const makeMpfs: Effect.Effect<
       `🔹 New ledger MPF root after inserting genesis utxos: ${rootAfterGenesis}`,
     );
   }
+  yield* MpfEngineStateDB.stampLedgerMigration(yield* ledgerMpf.rootHex());
   return {
     ledgerMpf,
     transactionsMpf,
@@ -373,12 +787,187 @@ export type ProcessMpfsConfig = {
   readonly withdrawalVisibilityBarrierTime?: Date;
   readonly initialLedgerEntries?: readonly Ledger.MinimalEntry[];
   readonly selectedBaseUtxoRoot?: string;
+  readonly payloadRootCheck?: "every_block" | "periodic" | "off";
+  readonly baseUtxoPayloadAggregate?: UtxoPayloadSizeAggregate;
+  readonly recordCorpusPath?: string;
+  readonly excludedDepositEventIds?: ReadonlySet<string>;
+  readonly excludedForcedTransactionEventIds?: ReadonlySet<string>;
+  readonly excludedWithdrawalEventIds?: ReadonlySet<string>;
+  /**
+   * A speculative build must leave every durable queue/event row untouched
+   * until the submitter owns the state-queue lease. The caller is responsible
+   * for applying the returned projection/rejection side effects immediately
+   * before submission.
+   */
+  readonly deferDatabaseWrites?: boolean;
+  readonly nativeMpf?: NativeMpfBuildContext;
+};
+
+export type NativeMpfBuildContext = {
+  readonly client: NativeMpfOwnerClient;
+  readonly handle: NativeMpfGenerationHandle;
+  readonly ownerBinarySha256: string;
+  eventLog?: Buffer;
+  eventLogDigest?: string;
+  eventRoots?: readonly string[];
+  candidateRoot?: string;
+};
+
+export type NativeMpfReplayBuild = {
+  readonly schema: 1;
+  readonly ownerBinarySha256: Buffer;
+  readonly baseRoot: Buffer;
+  readonly candidateRoot: Buffer;
+  readonly eventLog: Buffer;
+  readonly eventLogDigest: Buffer;
+  readonly eventRoots: Buffer;
+  readonly eventCount: number;
+};
+
+type CorpusHexEntry = { readonly key: string; readonly value: string };
+type CorpusLedgerOp =
+  | { readonly type: "insert"; readonly key: string; readonly value: string }
+  | { readonly type: "delete"; readonly key: string };
+
+export type MpfReplayCorpusBlock = {
+  readonly version: 1;
+  readonly label: string;
+  readonly initialLedgerEntries: readonly CorpusHexEntry[];
+  readonly sourceEvents: readonly {
+    readonly phase: SDK.TransitionPhase;
+    readonly eventKeyCbor: string;
+    readonly ledgerOps: readonly CorpusLedgerOp[];
+  }[];
+  readonly transactionOps: readonly CorpusHexEntry[];
+  readonly deposits: readonly CorpusHexEntry[];
+  readonly withdrawals: readonly CorpusHexEntry[];
+  readonly forcedTransactions: readonly CorpusHexEntry[];
+  readonly finalUtxoEntries: readonly CorpusHexEntry[];
+  readonly expected: {
+    readonly utxoRoot: string;
+    readonly rawTxRoot: string;
+    readonly txRoot: string;
+    readonly transitionTraceRoot: string;
+    readonly eventToStepRoot: string;
+    readonly depositsRoot: string;
+    readonly withdrawalsRoot: string;
+    readonly forcedTransactionsRoot: string;
+    readonly transitionRoots: readonly {
+      readonly pre: string;
+      readonly post: string;
+    }[];
+  };
 };
 
 export type UtxoPayloadEntry = {
   readonly outref: Buffer;
   readonly output: Buffer;
 };
+
+export const applyLedgerOpsToUtxoPayloadAggregate = (
+  ledgerMpf: MidgardMpf,
+  base: UtxoPayloadSizeAggregate,
+  ops: readonly MpfBatchOp[],
+): Effect.Effect<UtxoPayloadSizeAggregate, MpfError> =>
+  Effect.gen(function* () {
+    let entryCount = base.entryCount;
+    let encodedTupleBytes = base.encodedTupleBytes;
+    const currentValues = new Map<string, Buffer | null>();
+    for (const op of ops) {
+      const keyHex = op.key.toString("hex");
+      let current = currentValues.get(keyHex);
+      if (!currentValues.has(keyHex)) {
+        const existing = yield* ledgerMpf.get(op.key);
+        current = Option.isSome(existing) ? existing.value : null;
+        currentValues.set(keyHex, current);
+      }
+      if (current !== null && current !== undefined) {
+        entryCount -= 1;
+        encodedTupleBytes -= utxoPayloadEntryEncodedSize({
+          outref: op.key,
+          output: current,
+        });
+      } else if (op.type === "delete") {
+        return yield* Effect.fail(
+          MpfError.rootBuild(
+            "DA UTxO size aggregate",
+            new Error(
+              `Cannot size deletion of missing UTxO ${op.key.toString("hex")}`,
+            ),
+          ),
+        );
+      }
+      if (op.type === "insert") {
+        entryCount += 1;
+        encodedTupleBytes += utxoPayloadEntryEncodedSize({
+          outref: op.key,
+          output: op.value,
+        });
+        currentValues.set(keyHex, Buffer.from(op.value));
+      } else {
+        currentValues.set(keyHex, null);
+      }
+    }
+    const aggregate = { entryCount, encodedTupleBytes };
+    try {
+      SDK.daPayloadEntriesEncodedSizeFromAggregate(aggregate);
+    } catch (cause) {
+      return yield* Effect.fail(
+        MpfError.rootBuild("DA UTxO size aggregate", cause),
+      );
+    }
+    return aggregate;
+  });
+
+const applyLedgerOpsToUtxoPayloadAggregateFromValues = (
+  base: UtxoPayloadSizeAggregate,
+  ops: readonly MpfBatchOp[],
+  initialValues: ReadonlyMap<string, Buffer>,
+): Effect.Effect<UtxoPayloadSizeAggregate, MpfError> =>
+  Effect.gen(function* () {
+    let entryCount = base.entryCount;
+    let encodedTupleBytes = base.encodedTupleBytes;
+    const currentValues = new Map<string, Buffer | null>();
+    for (const op of ops) {
+      const keyHex = op.key.toString("hex");
+      const current = currentValues.has(keyHex)
+        ? currentValues.get(keyHex)
+        : (initialValues.get(keyHex) ?? null);
+      if (current !== null && current !== undefined) {
+        entryCount -= 1;
+        encodedTupleBytes -= utxoPayloadEntryEncodedSize({
+          outref: op.key,
+          output: current,
+        });
+      } else if (op.type === "delete") {
+        return yield* Effect.fail(
+          MpfError.rootBuild(
+            "DA UTxO size aggregate",
+            new Error(`Cannot size deletion of missing UTxO ${keyHex}`),
+          ),
+        );
+      }
+      if (op.type === "insert") {
+        entryCount += 1;
+        encodedTupleBytes += utxoPayloadEntryEncodedSize({
+          outref: op.key,
+          output: op.value,
+        });
+        currentValues.set(keyHex, Buffer.from(op.value));
+      } else {
+        currentValues.set(keyHex, null);
+      }
+    }
+    const aggregate = { entryCount, encodedTupleBytes };
+    try {
+      SDK.daPayloadEntriesEncodedSizeFromAggregate(aggregate);
+    } catch (cause) {
+      return yield* Effect.fail(
+        MpfError.rootBuild("DA UTxO size aggregate", cause),
+      );
+    }
+    return aggregate;
+  });
 
 export type TransitionTraceSourceEvent = {
   readonly eventKey: SDK.EventKey;
@@ -412,6 +1001,16 @@ export type TransitionTraceBuildResult = {
   readonly depositCount: number;
   readonly totalEventCount: number;
   readonly transitionStepCount: number;
+  readonly pathHydration: MpfPathHydrationDiagnostics;
+  readonly nativePhaseMs?: {
+    readonly validation: number;
+    readonly eventLogEncode: number;
+    readonly ownerApply: number;
+    readonly ownerProofArena: number;
+    readonly ownerMutation: number;
+    readonly memberAssembly: number;
+    readonly retainedRoots: number;
+  };
 };
 
 export type DecodedMempoolTxForCommit = {
@@ -421,6 +1020,17 @@ export type DecodedMempoolTxForCommit = {
   readonly spent: readonly Buffer[];
   readonly produced: readonly Ledger.MinimalEntry[];
 };
+
+export const establishEffectiveEndTimeFromDecodedMempool = (
+  decodedMempoolTxs: readonly {
+    readonly entry: Tx.EntryWithTimeStamp;
+  }[],
+  processedOnlyEndTime?: Date,
+  depositOnlyEndTime?: Date,
+): Date | undefined =>
+  decodedMempoolTxs.at(-1)?.entry[Tx.Columns.TIMESTAMPTZ] ??
+  processedOnlyEndTime ??
+  depositOnlyEndTime;
 
 const outputReferenceFromCbor = (
   cbor: Buffer,
@@ -648,7 +1258,7 @@ const materializeUtxoPayloadEntries = (
   );
 };
 
-const computeUtxoPayloadRoot = (
+export const computeUtxoPayloadRoot = (
   entries: readonly UtxoPayloadEntry[],
 ): Effect.Effect<string, MpfError> =>
   keyValuePhasRoot(
@@ -656,28 +1266,162 @@ const computeUtxoPayloadRoot = (
     entries.map((entry) => entry.output),
   );
 
-const encodePlutusData = <A>(
-  value: A,
-  schema: Parameters<typeof LucidData.Nullable>[0],
-  label: string,
-): Effect.Effect<Buffer, MpfError> =>
-  Effect.try({
-    try: () =>
-      Buffer.from(LucidData.to(value as never, schema as never), "hex"),
-    catch: (cause) =>
-      MpfError.rootBuild(
-        "transition trace",
-        new Error(`Failed to encode ${label} as canonical Plutus data`, {
-          cause,
-        }),
+const encodeCborHead = (major: number, value: bigint): Buffer => {
+  if (value < 0n) throw new Error("CBOR head value cannot be negative");
+  if (value < 24n) return Buffer.from([(major << 5) | Number(value)]);
+  if (value <= 0xffn) return Buffer.from([(major << 5) | 24, Number(value)]);
+  if (value <= 0xffffn) {
+    const encoded = Buffer.allocUnsafe(3);
+    encoded[0] = (major << 5) | 25;
+    encoded.writeUInt16BE(Number(value), 1);
+    return encoded;
+  }
+  if (value <= 0xffff_ffffn) {
+    const encoded = Buffer.allocUnsafe(5);
+    encoded[0] = (major << 5) | 26;
+    encoded.writeUInt32BE(Number(value), 1);
+    return encoded;
+  }
+  if (value <= 0xffff_ffff_ffff_ffffn) {
+    const encoded = Buffer.allocUnsafe(9);
+    encoded[0] = (major << 5) | 27;
+    encoded.writeBigUInt64BE(value, 1);
+    return encoded;
+  }
+  throw new Error("CBOR head value exceeds uint64");
+};
+
+const encodeCborBytes = (bytes: Buffer): Buffer =>
+  Buffer.concat([encodeCborHead(2, BigInt(bytes.length)), bytes]);
+
+const encodeUnsignedBigEndian = (value: bigint): Buffer => {
+  if (value <= 0n) return Buffer.from([0]);
+  const bytes: number[] = [];
+  for (let remaining = value; remaining > 0n; remaining >>= 8n) {
+    bytes.push(Number(remaining & 0xffn));
+  }
+  bytes.reverse();
+  return Buffer.from(bytes);
+};
+
+export const encodeTransitionIntegerCbor = (value: bigint): Buffer => {
+  const major = value >= 0n ? 0 : 1;
+  const magnitude = value >= 0n ? value : -1n - value;
+  if (magnitude <= 0xffff_ffff_ffff_ffffn) {
+    return encodeCborHead(major, magnitude);
+  }
+  return Buffer.concat([
+    Buffer.from([value >= 0n ? 0xc2 : 0xc3]),
+    encodeCborBytes(encodeUnsignedBigEndian(magnitude)),
+  ]);
+};
+
+const encodeTransitionConstr = (
+  alternative: 0 | 1 | 2 | 3,
+  fields: readonly Buffer[],
+): Buffer => {
+  const tag = Buffer.from([0xd8, 0x79 + alternative]);
+  return fields.length === 0
+    ? Buffer.concat([tag, Buffer.from([0x80])])
+    : Buffer.concat([tag, Buffer.from([0x9f]), ...fields, Buffer.from([0xff])]);
+};
+
+const encodeTransitionFixedBytes = (value: string, fieldName: string): Buffer =>
+  encodeCborBytes(
+    Buffer.from(normalizeHex(value, { fieldName, byteLength: 32 }), "hex"),
+  );
+
+const encodeTransitionOutputReference = (
+  outputReference: SDK.OutputReference,
+): Buffer =>
+  encodeTransitionConstr(0, [
+    encodeTransitionFixedBytes(
+      outputReference.transactionId,
+      "transition event transaction id",
+    ),
+    encodeTransitionIntegerCbor(outputReference.outputIndex),
+  ]);
+
+export const encodeTransitionPhaseCbor = (
+  phase: SDK.TransitionPhase,
+): Buffer => {
+  switch (phase) {
+    case "Withdrawal":
+      return encodeTransitionConstr(0, []);
+    case "ForcedTransaction":
+      return encodeTransitionConstr(1, []);
+    case "L2Transaction":
+      return encodeTransitionConstr(2, []);
+    case "Deposit":
+      return encodeTransitionConstr(3, []);
+  }
+};
+
+export const encodeTransitionEventKeyCbor = (
+  eventKey: SDK.EventKey,
+): Buffer => {
+  if ("WithdrawalEventKey" in eventKey) {
+    return encodeTransitionConstr(0, [
+      encodeTransitionOutputReference(
+        eventKey.WithdrawalEventKey.withdrawal_id,
       ),
-  });
+    ]);
+  }
+  if ("ForcedTransactionEventKey" in eventKey) {
+    return encodeTransitionConstr(1, [
+      encodeTransitionOutputReference(
+        eventKey.ForcedTransactionEventKey.tx_order_id,
+      ),
+    ]);
+  }
+  if ("L2TransactionEventKey" in eventKey) {
+    return encodeTransitionConstr(2, [
+      encodeTransitionFixedBytes(
+        eventKey.L2TransactionEventKey.tx_id,
+        "transition event transaction hash",
+      ),
+    ]);
+  }
+  return encodeTransitionConstr(3, [
+    encodeTransitionOutputReference(eventKey.DepositEventKey.deposit_id),
+  ]);
+};
+
+export const encodeTransitionStepCbor = (value: SDK.TransitionStep): Buffer =>
+  encodeTransitionConstr(0, [
+    encodeTransitionIntegerCbor(value.schema_version),
+    encodeTransitionIntegerCbor(value.step_index),
+    encodeTransitionEventKeyCbor(value.event_key),
+    encodeTransitionPhaseCbor(value.phase),
+    encodeTransitionFixedBytes(
+      value.pre_utxos_root,
+      "transition pre UTxO root",
+    ),
+    encodeTransitionFixedBytes(
+      value.post_utxos_root,
+      "transition post UTxO root",
+    ),
+  ]);
+
+export const encodeEventToStepValueCbor = (
+  value: SDK.EventToStepValue,
+): Buffer =>
+  encodeTransitionConstr(0, [
+    encodeTransitionIntegerCbor(value.step_index),
+    encodeTransitionPhaseCbor(value.phase),
+  ]);
 
 const countedRootFromEncodedEntries = (
   domain: SDK.RootDomain,
   entries: readonly { readonly key: Buffer; readonly value: Buffer }[],
 ): Effect.Effect<string, MpfError> =>
   Effect.gen(function* () {
+    if (shouldBuildMpfRootInWorker(entries.length)) {
+      return yield* Effect.tryPromise({
+        try: () => buildCountedMpfRootInWorker(domain, entries),
+        catch: (cause) => MpfError.rootBuild("parallel counted root", cause),
+      });
+    }
     const phas = yield* keyValuePhasRootWithCount(
       entries.map((entry) => entry.key),
       entries.map((entry) => entry.value),
@@ -704,7 +1448,14 @@ export const buildTransactionsSourceRoot = (
 const eventKeyCbor = (
   eventKey: SDK.EventKey,
 ): Effect.Effect<Buffer, MpfError> =>
-  encodePlutusData(eventKey, SDK.EventKeySchema, "transition event key");
+  Effect.try({
+    try: () => encodeTransitionEventKeyCbor(eventKey),
+    catch: (cause) =>
+      MpfError.rootBuild(
+        "transition trace",
+        new Error("Failed to encode transition event key", { cause }),
+      ),
+  });
 
 const eventKeyFingerprint = (
   eventKey: SDK.EventKey,
@@ -772,56 +1523,63 @@ export const applyTraceLedgerOpsToMpf = (
   eventKeyDescription: string,
 ): Effect.Effect<void, MpfError> =>
   Effect.gen(function* () {
-    const eventPreRoot = yield* ledgerMpf.root();
-    return yield* Effect.gen(function* () {
-      const eventPresenceOverlay = new Map<string, boolean>();
-      const isPresent = (key: Buffer): Effect.Effect<boolean, MpfError> => {
-        const keyHex = key.toString("hex");
-        const overlayPresence = eventPresenceOverlay.get(keyHex);
-        if (overlayPresence !== undefined) {
-          return Effect.succeed(overlayPresence);
-        }
-        return ledgerMpf.get(key).pipe(Effect.map(Option.isSome));
-      };
-
-      for (const op of ops) {
-        const keyHex = op.key.toString("hex");
-        const present = yield* isPresent(op.key);
-        if (op.type === "delete") {
-          if (!present) {
-            return yield* Effect.fail(
-              MpfError.rootBuild(
-                "transition trace",
-                new Error(
-                  `Transition event ${eventKeyDescription} deletes missing UTxO ${keyHex}`,
-                ),
+    if (ledgerMpf.usesStrictOverlayMutations()) {
+      yield* ledgerMpf
+        .applyBatch(ops)
+        .pipe(
+          Effect.mapError((cause) =>
+            MpfError.rootBuild(
+              "transition trace",
+              new Error(
+                `Transition event ${eventKeyDescription} failed strict ledger mutation`,
+                { cause },
               ),
-            );
-          }
-          eventPresenceOverlay.set(keyHex, false);
-          continue;
-        }
-        if (present) {
+            ),
+          ),
+        );
+      return;
+    }
+    const eventPresenceOverlay = new Map<string, boolean>();
+    const isPresent = (key: Buffer): Effect.Effect<boolean, MpfError> => {
+      const keyHex = key.toString("hex");
+      const overlayPresence = eventPresenceOverlay.get(keyHex);
+      if (overlayPresence !== undefined) {
+        return Effect.succeed(overlayPresence);
+      }
+      return ledgerMpf.get(key).pipe(Effect.map(Option.isSome));
+    };
+
+    for (const op of ops) {
+      const keyHex = op.key.toString("hex");
+      const present = yield* isPresent(op.key);
+      if (op.type === "delete") {
+        if (!present) {
           return yield* Effect.fail(
             MpfError.rootBuild(
               "transition trace",
               new Error(
-                `Transition event ${eventKeyDescription} inserts duplicate UTxO ${keyHex}`,
+                `Transition event ${eventKeyDescription} deletes missing UTxO ${keyHex}`,
               ),
             ),
           );
         }
-        eventPresenceOverlay.set(keyHex, true);
+        eventPresenceOverlay.set(keyHex, false);
+        continue;
       }
+      if (present) {
+        return yield* Effect.fail(
+          MpfError.rootBuild(
+            "transition trace",
+            new Error(
+              `Transition event ${eventKeyDescription} inserts duplicate UTxO ${keyHex}`,
+            ),
+          ),
+        );
+      }
+      eventPresenceOverlay.set(keyHex, true);
+    }
 
-      yield* ledgerMpf.applyBatch(ops);
-    }).pipe(
-      Effect.catchAll((error) =>
-        ledgerMpf
-          .resetToRoot(eventPreRoot)
-          .pipe(Effect.flatMap(() => Effect.fail(error))),
-      ),
-    );
+    yield* ledgerMpf.applyBatch(ops);
   });
 
 const validateTransitionTraceSourceEvents = ({
@@ -838,7 +1596,13 @@ const validateTransitionTraceSourceEvents = ({
   readonly l2TransactionCount: number;
   readonly depositCount: number;
   readonly expectedTotalEventCount?: number;
-}): Effect.Effect<number, MpfError> =>
+}): Effect.Effect<
+  {
+    readonly totalEventCount: number;
+    readonly eventKeyCbors: readonly Buffer[];
+  },
+  MpfError
+> =>
   Effect.gen(function* () {
     const totalEventCount =
       withdrawalCount +
@@ -868,9 +1632,26 @@ const validateTransitionTraceSourceEvents = ({
         ),
       );
     }
-    yield* assertUniqueTransitionSourceEvents(sourceEvents);
+    const eventKeyCbors: Buffer[] = [];
+    const seenEventKeys = new Set<string>();
+    for (const [index, event] of sourceEvents.entries()) {
+      const keyCbor = yield* eventKeyCbor(event.eventKey);
+      const fingerprint = keyCbor.toString("hex");
+      if (seenEventKeys.has(fingerprint)) {
+        return yield* Effect.fail(
+          MpfError.rootBuild(
+            "transition trace",
+            new Error(
+              `Duplicate source event key at source index ${index.toString()}: ${fingerprint}`,
+            ),
+          ),
+        );
+      }
+      seenEventKeys.add(fingerprint);
+      eventKeyCbors.push(keyCbor);
+    }
     yield* assertCanonicalTransitionPhaseOrder(sourceEvents);
-    return totalEventCount;
+    return { totalEventCount, eventKeyCbors };
   });
 
 export const buildEventToStepMembersFromTrace = ({
@@ -945,11 +1726,7 @@ export const buildEventToStepMembersFromTrace = ({
       members.push({
         eventKey: step.event_key,
         keyCbor: yield* eventKeyCbor(step.event_key),
-        valueCbor: yield* encodePlutusData(
-          value,
-          SDK.EventToStepValueSchema,
-          "event-to-step value",
-        ),
+        valueCbor: encodeEventToStepValueCbor(value),
         value,
       });
     }
@@ -985,82 +1762,252 @@ export const buildTransitionTraceResult = ({
   readonly expectedTotalEventCount?: number;
 }): Effect.Effect<TransitionTraceBuildResult, MpfError> =>
   Effect.gen(function* () {
-    const totalEventCount = yield* validateTransitionTraceSourceEvents({
-      sourceEvents,
-      withdrawalCount,
-      forcedTransactionCount,
-      l2TransactionCount,
-      depositCount,
-      expectedTotalEventCount,
-    });
-
+    const { totalEventCount, eventKeyCbors } =
+      yield* validateTransitionTraceSourceEvents({
+        sourceEvents,
+        withdrawalCount,
+        forcedTransactionCount,
+        l2TransactionCount,
+        depositCount,
+        expectedTotalEventCount,
+      });
+    const hydrationConfig = getMpfPathHydrationConfig();
+    const indexedEvents = sourceEvents.map((sourceEvent, index) => ({
+      index,
+      sourceEvent,
+    }));
+    const eventChunks: (typeof indexedEvents)[] = [];
+    if (hydrationConfig.mode === "whole_block") {
+      if (indexedEvents.length > 0) eventChunks.push(indexedEvents);
+    } else {
+      let chunk: typeof indexedEvents = [];
+      let chunkOps = 0;
+      for (const indexedEvent of indexedEvents) {
+        const eventOps = indexedEvent.sourceEvent.ledgerOps.length;
+        if (
+          chunk.length > 0 &&
+          chunkOps + eventOps > hydrationConfig.chunkOps
+        ) {
+          eventChunks.push(chunk);
+          chunk = [];
+          chunkOps = 0;
+        }
+        chunk.push(indexedEvent);
+        chunkOps += eventOps;
+      }
+      if (chunk.length > 0) eventChunks.push(chunk);
+    }
+    const uniqueTouchedPaths = new Set(
+      sourceEvents.flatMap((sourceEvent) =>
+        sourceEvent.ledgerOps.map((op) => op.key.toString("hex")),
+      ),
+    );
+    const pathHydration: {
+      -readonly [K in keyof MpfPathHydrationDiagnostics]: MpfPathHydrationDiagnostics[K];
+    } = {
+      prefetchMs: 0,
+      uniquePaths: uniqueTouchedPaths.size,
+      nodesRequested: 0,
+      hydrationHits: 0,
+      hydrationMisses: 0,
+      loadedNodes: 0,
+      maxInFlight: 0,
+      maxBatchKeys: 0,
+      maxFrontierPaths: 0,
+      retainedBytesEstimate: 0,
+      chunkCount: 0,
+      checkpointMs: 0,
+      authenticationMs: 0,
+      materializeMs: 0,
+      collapseMs: 0,
+      checkpointSerializedNodes: 0,
+      checkpointSerializedBytes: 0,
+      verifiedUpperNodes: 0,
+      retainedUpperNodes: 0,
+      collapsedNodes: 0,
+      peakDecodedNodes: 0,
+    };
     const transitionTraceMembers: RetainedTransitionTraceMember[] = [];
-    for (const [index, sourceEvent] of sourceEvents.entries()) {
-      const eventPreRoot = yield* ledgerMpf.root();
-      const member = yield* Effect.gen(function* () {
-        const preUtxosRoot = eventPreRoot.toString("hex");
-        const eventKeyDescription = yield* eventKeyFingerprint(
-          sourceEvent.eventKey,
+    let runningUtxosRoot = yield* ledgerMpf.rootHex();
+    let retainedUpperNodes = 0;
+    if (hydrationConfig.mode === "chunked_arena") {
+      const primed = yield* ledgerMpf.primeBlockPathArena(
+        sourceEvents.flatMap((sourceEvent) => sourceEvent.ledgerOps),
+        hydrationConfig.retainDepth,
+        false,
+      );
+      pathHydration.prefetchMs += primed.hydration.prefetchMs;
+      pathHydration.nodesRequested += primed.hydration.nodesRequested;
+      pathHydration.hydrationHits += primed.hydration.hydrationHits;
+      pathHydration.hydrationMisses += primed.hydration.hydrationMisses;
+      pathHydration.loadedNodes += primed.hydration.loadedNodes;
+      pathHydration.maxInFlight = primed.hydration.maxInFlight;
+      pathHydration.maxBatchKeys = primed.hydration.maxBatchKeys;
+      pathHydration.maxFrontierPaths = primed.hydration.maxFrontierPaths;
+      pathHydration.retainedBytesEstimate =
+        primed.hydration.retainedBytesEstimate;
+      pathHydration.authenticationMs +=
+        primed.authenticationMs + primed.checkpoint.authenticationMs;
+      pathHydration.checkpointMs += primed.checkpoint.checkpointMs;
+      pathHydration.collapseMs += primed.checkpoint.collapseMs;
+      pathHydration.verifiedUpperNodes +=
+        primed.verifiedNodes + primed.checkpoint.verifiedUpperNodes;
+      pathHydration.collapsedNodes += primed.checkpoint.collapsedNodes;
+      retainedUpperNodes = primed.checkpoint.retainedUpperNodes;
+      pathHydration.retainedUpperNodes = retainedUpperNodes;
+      pathHydration.peakDecodedNodes = Math.max(
+        pathHydration.peakDecodedNodes,
+        primed.hydration.loadedNodes,
+      );
+    }
+    for (const eventChunk of eventChunks) {
+      if (hydrationConfig.mode !== "chunked_arena") {
+        const hydration = yield* ledgerMpf.prefetchTouchedPaths(
+          eventChunk.flatMap(({ sourceEvent }) => sourceEvent.ledgerOps),
         );
-        yield* applyTraceLedgerOpsToMpf(
-          ledgerMpf,
-          sourceEvent.ledgerOps,
-          eventKeyDescription,
+        pathHydration.prefetchMs += hydration.prefetchMs;
+        pathHydration.nodesRequested += hydration.nodesRequested;
+        pathHydration.hydrationHits += hydration.hydrationHits;
+        pathHydration.hydrationMisses += hydration.hydrationMisses;
+        pathHydration.loadedNodes += hydration.loadedNodes;
+        pathHydration.maxInFlight = Math.max(
+          pathHydration.maxInFlight,
+          hydration.maxInFlight,
         );
-        const postUtxosRoot = yield* ledgerMpf.rootHex();
+        pathHydration.maxBatchKeys = Math.max(
+          pathHydration.maxBatchKeys,
+          hydration.maxBatchKeys,
+        );
+        pathHydration.maxFrontierPaths = Math.max(
+          pathHydration.maxFrontierPaths,
+          hydration.maxFrontierPaths,
+        );
+        pathHydration.retainedBytesEstimate = Math.max(
+          pathHydration.retainedBytesEstimate,
+          hydration.retainedBytesEstimate,
+        );
+        pathHydration.peakDecodedNodes = Math.max(
+          pathHydration.peakDecodedNodes,
+          retainedUpperNodes + hydration.loadedNodes,
+        );
+      }
+      pathHydration.chunkCount += 1;
+      if (
+        hydrationConfig.mode !== "whole_block" &&
+        !ledgerMpf.usesEventFlatEngine()
+      ) {
+        const authentication = yield* ledgerMpf.authenticateDecodedArena(
+          hydrationConfig.mode === "chunked_arena"
+            ? 0
+            : hydrationConfig.retainDepth,
+        );
+        pathHydration.verifiedUpperNodes += authentication.verifiedNodes;
+        pathHydration.authenticationMs += authentication.authenticationMs;
+      }
+      for (const { index, sourceEvent } of eventChunk) {
+        const preUtxosRoot = runningUtxosRoot;
+        const eventKeyDescription = eventKeyCbors[index]!.toString("hex");
+        if (ledgerMpf.usesStrictOverlayMutations()) {
+          const postUtxosRoot = yield* ledgerMpf
+            .applyBatch(sourceEvent.ledgerOps)
+            .pipe(
+              Effect.map((root) => root.toString("hex")),
+              Effect.mapError((cause) =>
+                MpfError.rootBuild(
+                  "transition trace",
+                  new Error(
+                    `Transition event ${eventKeyDescription} failed strict ledger mutation`,
+                    { cause },
+                  ),
+                ),
+              ),
+            );
+          runningUtxosRoot = postUtxosRoot;
+        } else {
+          yield* applyTraceLedgerOpsToMpf(
+            ledgerMpf,
+            sourceEvent.ledgerOps,
+            eventKeyDescription,
+          );
+          const postUtxosRoot = yield* ledgerMpf.rootHex();
+          runningUtxosRoot = postUtxosRoot;
+        }
         const value: SDK.TransitionStep = {
           schema_version: 1n,
           step_index: BigInt(index),
           event_key: sourceEvent.eventKey,
           phase: sourceEvent.phase,
           pre_utxos_root: preUtxosRoot,
-          post_utxos_root: postUtxosRoot,
+          post_utxos_root: runningUtxosRoot,
         };
-        return {
+        const member: RetainedTransitionTraceMember = {
           stepIndex: value.step_index,
-          keyCbor: yield* encodePlutusData(
-            value.step_index,
-            LucidData.Integer(),
-            "transition trace step index",
-          ),
-          valueCbor: yield* encodePlutusData(
-            value,
-            SDK.TransitionStepSchema,
-            "transition trace step",
-          ),
+          keyCbor: encodeTransitionIntegerCbor(value.step_index),
+          valueCbor: encodeTransitionStepCbor(value),
           value,
         };
-      }).pipe(
-        Effect.catchAll((error) =>
-          ledgerMpf
-            .resetToRoot(eventPreRoot)
-            .pipe(Effect.flatMap(() => Effect.fail(error))),
-        ),
-      );
-      transitionTraceMembers.push(member);
+        transitionTraceMembers.push(member);
+      }
+      if (
+        hydrationConfig.mode !== "whole_block" &&
+        !ledgerMpf.usesEventFlatEngine()
+      ) {
+        const checkpoint = yield* ledgerMpf.checkpointAndCollapseDecodedArena(
+          hydrationConfig.retainDepth,
+          hydrationConfig.mode !== "chunked_arena",
+          hydrationConfig.mode !== "chunked_arena",
+        );
+        pathHydration.checkpointMs += checkpoint.checkpointMs;
+        pathHydration.authenticationMs += checkpoint.authenticationMs;
+        pathHydration.materializeMs += checkpoint.materializeMs;
+        pathHydration.collapseMs += checkpoint.collapseMs;
+        pathHydration.checkpointSerializedNodes += checkpoint.serializedNodes;
+        pathHydration.checkpointSerializedBytes += checkpoint.serializedBytes;
+        pathHydration.verifiedUpperNodes += checkpoint.verifiedUpperNodes;
+        pathHydration.collapsedNodes += checkpoint.collapsedNodes;
+        retainedUpperNodes = checkpoint.retainedUpperNodes;
+        pathHydration.retainedUpperNodes = Math.max(
+          pathHydration.retainedUpperNodes,
+          retainedUpperNodes,
+        );
+      }
     }
 
-    const eventToStepMembers = yield* buildEventToStepMembersFromTrace({
-      sourceEvents,
-      transitionTraceMembers,
-    });
-    const transitionTraceRoot = yield* countedRootFromEncodedEntries(
-      SDK.ROOT_DOMAINS.transitionTrace,
-      transitionTraceMembers.map((member) => ({
-        key: member.keyCbor,
-        value: member.valueCbor,
-      })),
-    );
-    const eventToStepRoot = yield* countedRootFromEncodedEntries(
-      SDK.ROOT_DOMAINS.eventToStep,
-      eventToStepMembers.map((member) => ({
-        key: member.keyCbor,
-        value: member.valueCbor,
-      })),
+    const eventToStepMembers: RetainedEventToStepMember[] = [];
+    for (const [index, traceMember] of transitionTraceMembers.entries()) {
+      const value: SDK.EventToStepValue = {
+        step_index: traceMember.value.step_index,
+        phase: traceMember.value.phase,
+      };
+      eventToStepMembers.push({
+        eventKey: traceMember.value.event_key,
+        keyCbor: eventKeyCbors[index]!,
+        valueCbor: encodeEventToStepValueCbor(value),
+        value,
+      });
+    }
+    const [transitionTraceRoot, eventToStepRoot] = yield* Effect.all(
+      [
+        countedRootFromEncodedEntries(
+          SDK.ROOT_DOMAINS.transitionTrace,
+          transitionTraceMembers.map((member) => ({
+            key: member.keyCbor,
+            value: member.valueCbor,
+          })),
+        ),
+        countedRootFromEncodedEntries(
+          SDK.ROOT_DOMAINS.eventToStep,
+          eventToStepMembers.map((member) => ({
+            key: member.keyCbor,
+            value: member.valueCbor,
+          })),
+        ),
+      ],
+      { concurrency: "unbounded" },
     );
 
     return {
-      finalUtxosRoot: yield* ledgerMpf.rootHex(),
+      finalUtxosRoot: runningUtxosRoot,
       transitionTraceRoot,
       eventToStepRoot,
       transitionTraceMembers,
@@ -1071,15 +2018,335 @@ export const buildTransitionTraceResult = ({
       depositCount,
       totalEventCount,
       transitionStepCount: transitionTraceMembers.length,
+      pathHydration,
     };
   });
+
+export const buildNativeTransitionTraceResult = ({
+  nativeMpf,
+  sourceEvents,
+  withdrawalCount,
+  forcedTransactionCount,
+  l2TransactionCount,
+  depositCount,
+  expectedTotalEventCount,
+}: {
+  readonly nativeMpf: NativeMpfBuildContext;
+  readonly sourceEvents: readonly TransitionTraceSourceEvent[];
+  readonly withdrawalCount: number;
+  readonly forcedTransactionCount: number;
+  readonly l2TransactionCount: number;
+  readonly depositCount: number;
+  readonly expectedTotalEventCount?: number;
+}): Effect.Effect<TransitionTraceBuildResult, MpfError> =>
+  Effect.gen(function* () {
+    const validationStartedAt = performance.now();
+    const { totalEventCount, eventKeyCbors } =
+      yield* validateTransitionTraceSourceEvents({
+        sourceEvents,
+        withdrawalCount,
+        forcedTransactionCount,
+        l2TransactionCount,
+        depositCount,
+        expectedTotalEventCount,
+      });
+    const validationMs = performance.now() - validationStartedAt;
+    const eventLogEncodeStartedAt = performance.now();
+    const eventLog = yield* Effect.try({
+      try: () =>
+        encodeNativeMpfEventLog(
+          nativeMpf.handle.baseRoot,
+          sourceEvents.map((sourceEvent) => sourceEvent.ledgerOps),
+        ),
+      catch: (cause) => MpfError.rootBuild("Architecture G event log", cause),
+    });
+    const eventLogEncodeMs = performance.now() - eventLogEncodeStartedAt;
+    const ownerApplyStartedAt = performance.now();
+    const applied = yield* Effect.tryPromise({
+      try: () => nativeMpf.client.applyEvents(nativeMpf.handle, eventLog),
+      catch: (cause) =>
+        MpfError.rootBuild("Architecture G native owner", cause),
+    });
+    const ownerApplyMs = performance.now() - ownerApplyStartedAt;
+    if (applied.eventRoots.length !== sourceEvents.length) {
+      return yield* Effect.fail(
+        MpfError.rootBuild(
+          "Architecture G native owner",
+          new Error(
+            `Native owner returned the wrong event-root count: expected=${sourceEvents.length.toString()},actual=${applied.eventRoots.length.toString()}`,
+          ),
+        ),
+      );
+    }
+    nativeMpf.eventLog = eventLog;
+    nativeMpf.eventLogDigest = applied.eventLogDigest;
+    nativeMpf.eventRoots = applied.eventRoots;
+    nativeMpf.candidateRoot = applied.candidateRoot;
+
+    let runningUtxosRoot = nativeMpf.handle.baseRoot;
+    const transitionTraceMembers: RetainedTransitionTraceMember[] = [];
+    const eventToStepMembers: RetainedEventToStepMember[] = [];
+    const memberAssemblyStartedAt = performance.now();
+    for (const [index, sourceEvent] of sourceEvents.entries()) {
+      const preUtxosRoot = runningUtxosRoot;
+      runningUtxosRoot = applied.eventRoots[index]!;
+      const value: SDK.TransitionStep = {
+        schema_version: 1n,
+        step_index: BigInt(index),
+        event_key: sourceEvent.eventKey,
+        phase: sourceEvent.phase,
+        pre_utxos_root: preUtxosRoot,
+        post_utxos_root: runningUtxosRoot,
+      };
+      transitionTraceMembers.push({
+        stepIndex: value.step_index,
+        keyCbor: encodeTransitionIntegerCbor(value.step_index),
+        valueCbor: encodeTransitionStepCbor(value),
+        value,
+      });
+      const eventToStepValue: SDK.EventToStepValue = {
+        step_index: value.step_index,
+        phase: value.phase,
+      };
+      eventToStepMembers.push({
+        eventKey: value.event_key,
+        keyCbor: eventKeyCbors[index]!,
+        valueCbor: encodeEventToStepValueCbor(eventToStepValue),
+        value: eventToStepValue,
+      });
+    }
+    const memberAssemblyMs = performance.now() - memberAssemblyStartedAt;
+    const retainedRootsStartedAt = performance.now();
+    const [transitionTraceRoot, eventToStepRoot] = yield* Effect.all(
+      [
+        countedRootFromEncodedEntries(
+          SDK.ROOT_DOMAINS.transitionTrace,
+          transitionTraceMembers.map((member) => ({
+            key: member.keyCbor,
+            value: member.valueCbor,
+          })),
+        ),
+        countedRootFromEncodedEntries(
+          SDK.ROOT_DOMAINS.eventToStep,
+          eventToStepMembers.map((member) => ({
+            key: member.keyCbor,
+            value: member.valueCbor,
+          })),
+        ),
+      ],
+      { concurrency: "unbounded" },
+    );
+    const retainedRootsMs = performance.now() - retainedRootsStartedAt;
+    return {
+      finalUtxosRoot: runningUtxosRoot,
+      transitionTraceRoot,
+      eventToStepRoot,
+      transitionTraceMembers,
+      eventToStepMembers,
+      withdrawalCount,
+      forcedTransactionCount,
+      l2TransactionCount,
+      depositCount,
+      totalEventCount,
+      transitionStepCount: transitionTraceMembers.length,
+      nativePhaseMs: {
+        validation: validationMs,
+        eventLogEncode: eventLogEncodeMs,
+        ownerApply: ownerApplyMs,
+        ownerProofArena: applied.proofArenaDurationNs / 1_000_000,
+        ownerMutation: applied.mutationDurationNs / 1_000_000,
+        memberAssembly: memberAssemblyMs,
+        retainedRoots: retainedRootsMs,
+      },
+      pathHydration: {
+        prefetchMs: 0,
+        uniquePaths: new Set(
+          sourceEvents.flatMap((sourceEvent) =>
+            sourceEvent.ledgerOps.map((op) => op.key.toString("hex")),
+          ),
+        ).size,
+        nodesRequested: 0,
+        hydrationHits: 0,
+        hydrationMisses: 0,
+        loadedNodes: 0,
+        maxInFlight: 0,
+        maxBatchKeys: 0,
+        maxFrontierPaths: 0,
+        retainedBytesEstimate: 0,
+        chunkCount: sourceEvents.length === 0 ? 0 : 1,
+        checkpointMs: 0,
+        authenticationMs: 0,
+        materializeMs: 0,
+        collapseMs: 0,
+        checkpointSerializedNodes: 0,
+        checkpointSerializedBytes: 0,
+        verifiedUpperNodes: 0,
+        retainedUpperNodes: 0,
+        collapsedNodes: 0,
+        peakDecodedNodes: 0,
+      },
+    };
+  });
+
+export type NativeProductionRootProbeResult = {
+  readonly utxoRoot: string;
+  readonly rawTxRoot: string;
+  readonly txRoot: string;
+  readonly transitionTraceRoot: string;
+  readonly eventToStepRoot: string;
+  readonly depositsRoot: string;
+  readonly withdrawalsRoot: string;
+  readonly forcedTransactionsRoot: string;
+  readonly transitionRoots: readonly {
+    readonly pre: string;
+    readonly post: string;
+  }[];
+  readonly durationMs: number;
+  readonly phaseMs: {
+    readonly transactionSourceRoot: number;
+    readonly transitionTraceBuild: number;
+    readonly transactionMpfApply: number;
+    readonly auxiliaryRoots: number;
+  };
+  readonly transitionTraceBuild: TransitionTraceBuildResult;
+};
+
+/**
+ * Runs the complete root-building portion of the Architecture G production
+ * commit path without the database-specific transaction classification phase.
+ * Inputs are the exact encoded entries that processMpfs applies after decoding.
+ * This is intentionally colocated with processMpfs so benchmarks cannot replace
+ * production root algorithms with harness-specific approximations.
+ */
+export const buildNativeProductionRootProbe = ({
+  nativeMpf,
+  sourceEvents,
+  transactionOps,
+  deposits = [],
+  withdrawals = [],
+  forcedTransactions = [],
+}: {
+  readonly nativeMpf: NativeMpfBuildContext;
+  readonly sourceEvents: readonly TransitionTraceSourceEvent[];
+  readonly transactionOps: readonly MpfInsertBatchOp[];
+  readonly deposits?: readonly MpfInsertBatchOp[];
+  readonly withdrawals?: readonly MpfInsertBatchOp[];
+  readonly forcedTransactions?: readonly MpfInsertBatchOp[];
+}): Effect.Effect<NativeProductionRootProbeResult, MpfError> =>
+  Effect.acquireUseRelease(
+    MidgardMpf.createScratch("architecture-g-production-probe-transactions"),
+    (transactionsMpf) =>
+      Effect.gen(function* () {
+        const startedAt = performance.now();
+        const timedTransactionSourceRoot = yield* Effect.gen(function* () {
+          const phaseStartedAt = performance.now();
+          const root = yield* buildTransactionsSourceRoot(transactionOps);
+          return { root, durationMs: performance.now() - phaseStartedAt };
+        }).pipe(Effect.fork);
+        const timedTransactionMpfApply = yield* Effect.gen(function* () {
+          const phaseStartedAt = performance.now();
+          yield* transactionsMpf.applyBatch(transactionOps);
+          const rawTxRoot = yield* transactionsMpf.rootHex();
+          return {
+            rawTxRoot,
+            durationMs: performance.now() - phaseStartedAt,
+          };
+        }).pipe(Effect.fork);
+        const transitionTraceStartedAt = performance.now();
+        const transitionTraceBuild = yield* buildNativeTransitionTraceResult({
+          nativeMpf,
+          sourceEvents,
+          withdrawalCount: withdrawals.length,
+          forcedTransactionCount: forcedTransactions.length,
+          l2TransactionCount: transactionOps.length,
+          depositCount: deposits.length,
+        });
+        const transitionTraceBuildMs =
+          performance.now() - transitionTraceStartedAt;
+        const [timedTxRoot, timedRawTxRoot] = yield* Effect.all(
+          [
+            Fiber.join(timedTransactionSourceRoot),
+            Fiber.join(timedTransactionMpfApply),
+          ],
+          { concurrency: "unbounded" },
+        );
+
+        const auxiliaryRootsStartedAt = performance.now();
+        const productionEventRoot = (
+          domain: SDK.RootDomain,
+          entries: readonly MpfInsertBatchOp[],
+        ): Effect.Effect<string, MpfError> =>
+          entries.length === 0
+            ? Effect.succeed(SDK.EMPTY_MERKLE_TREE_ROOT)
+            : countedRootFromEncodedEntries(domain, entries);
+        const [depositsRoot, withdrawalsRoot, forcedTransactionsRoot] =
+          yield* Effect.all(
+            [
+              productionEventRoot(SDK.ROOT_DOMAINS.deposits, deposits),
+              productionEventRoot(SDK.ROOT_DOMAINS.withdrawals, withdrawals),
+              productionEventRoot(
+                SDK.ROOT_DOMAINS.forcedTransactions,
+                forcedTransactions,
+              ),
+            ],
+            { concurrency: "unbounded" },
+          );
+        const auxiliaryRootsMs = performance.now() - auxiliaryRootsStartedAt;
+        const utxoRoot = nativeMpf.candidateRoot;
+        if (utxoRoot === undefined) {
+          return yield* Effect.fail(
+            MpfError.rootBuild(
+              "Architecture G production probe",
+              new Error("Native owner did not return a candidate UTxO root"),
+            ),
+          );
+        }
+        if (transitionTraceBuild.finalUtxosRoot !== utxoRoot) {
+          return yield* Effect.fail(
+            MpfError.rootBuild(
+              "Architecture G production probe",
+              new Error(
+                `Transition trace final root mismatch: trace=${transitionTraceBuild.finalUtxosRoot},candidate=${utxoRoot}`,
+              ),
+            ),
+          );
+        }
+        return {
+          utxoRoot,
+          rawTxRoot: timedRawTxRoot.rawTxRoot,
+          txRoot: timedTxRoot.root,
+          transitionTraceRoot: transitionTraceBuild.transitionTraceRoot,
+          eventToStepRoot: transitionTraceBuild.eventToStepRoot,
+          depositsRoot,
+          withdrawalsRoot,
+          forcedTransactionsRoot,
+          transitionRoots: transitionTraceBuild.transitionTraceMembers.map(
+            (member) => ({
+              pre: member.value.pre_utxos_root,
+              post: member.value.post_utxos_root,
+            }),
+          ),
+          durationMs: performance.now() - startedAt,
+          phaseMs: {
+            transactionSourceRoot: timedTxRoot.durationMs,
+            transitionTraceBuild: transitionTraceBuildMs,
+            transactionMpfApply: timedRawTxRoot.durationMs,
+            auxiliaryRoots: auxiliaryRootsMs,
+          },
+          transitionTraceBuild,
+        };
+      }),
+    (transactionsMpf) => transactionsMpf.close().pipe(Effect.orDie),
+  );
 
 export const resolveIncludedDepositEntriesForWindow = ({
   currentBlockStartTime,
   effectiveEndTime,
+  persistProjection = true,
 }: {
   readonly currentBlockStartTime: Date;
   readonly effectiveEndTime: Date;
+  readonly persistProjection?: boolean;
 }): Effect.Effect<readonly DepositsDB.Entry[], DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -1136,7 +2403,7 @@ export const resolveIncludedDepositEntriesForWindow = ({
           (entry) =>
             entry[DepositsDB.Columns.STATUS] === DepositsDB.Status.Awaiting,
         );
-        if (awaitingEntries.length > 0) {
+        if (persistProjection && awaitingEntries.length > 0) {
           const mempoolEntries = yield* Effect.forEach(
             awaitingEntries,
             DepositsDB.toMempoolLedgerEntry,
@@ -1238,9 +2505,11 @@ export const resolveIncludedWithdrawalEntriesForWindow = ({
 export const resolveIncludedForcedTransactionEntriesForWindow = ({
   currentBlockStartTime,
   effectiveEndTime,
+  persistProjection = true,
 }: {
   readonly currentBlockStartTime: Date;
   readonly effectiveEndTime: Date;
+  readonly persistProjection?: boolean;
 }): Effect.Effect<
   readonly ForcedTransactionsDB.Entry[],
   DatabaseError,
@@ -1310,7 +2579,7 @@ export const resolveIncludedForcedTransactionEntriesForWindow = ({
             entry[ForcedTransactionsDB.Columns.STATUS] ===
             ForcedTransactionsDB.Status.Awaiting,
         );
-        if (awaitingEntries.length > 0) {
+        if (persistProjection && awaitingEntries.length > 0) {
           yield* ForcedTransactionsDB.markAwaitingAsProjected(
             awaitingEntries.map(
               (entry) => entry[ForcedTransactionsDB.Columns.TX_ORDER_ID],
@@ -1357,13 +2626,14 @@ const logCommitMpfPhaseTiming = (
 };
 
 export const processMpfs = (
-  ledgerMpf: MidgardMpf,
+  ledgerMpf: MidgardMpf | undefined,
   transactionsMpf: MidgardMpf,
   mempoolTxs: readonly Tx.EntryWithTimeStamp[],
   config?: ProcessMpfsConfig,
 ): Effect.Effect<
   {
     utxoRoot: string;
+    rawTxRoot: string;
     txRoot: string;
     transitionTraceRoot: string;
     eventToStepRoot: string;
@@ -1372,10 +2642,14 @@ export const processMpfs = (
     transitionStepCount: number;
     totalEventCount: number;
     utxoPayloadEntries: readonly UtxoPayloadEntry[];
+    ledgerDelta: LedgerDelta;
+    utxoPayloadAggregate: UtxoPayloadSizeAggregate;
     mempoolTxHashes: Buffer[];
     processedMempoolTxs: readonly Tx.EntryWithTimeStamp[];
     sizeOfProcessedTxs: number;
     rejectedMempoolTxsCount: number;
+    rejectedMempoolTxHashes: readonly Buffer[];
+    rejectionEntries: readonly TxRejectionsDB.EntryNoTimestamp[];
     includedDepositEntriesCount: number;
     includedDepositEntries: readonly DepositsDB.Entry[];
     includedDepositEventIds: readonly Buffer[];
@@ -1386,11 +2660,24 @@ export const processMpfs = (
     includedWithdrawalEntries: readonly WithdrawalsDB.Entry[];
     includedWithdrawalEventIds: readonly Buffer[];
     transitionTraceBuild: TransitionTraceBuildResult;
+    nativeMpfReplay?: NativeMpfReplayBuild;
+    nativeMpfHandle?: NativeMpfGenerationHandle;
   },
   MpfError | DatabaseError,
   Database
 > =>
   Effect.gen(function* () {
+    const nativeMpf = config?.nativeMpf;
+    if ((ledgerMpf === undefined) === (nativeMpf === undefined)) {
+      return yield* Effect.fail(
+        MpfError.rootBuild(
+          "ledger engine selection",
+          new Error(
+            "Exactly one of a local ledger MPF or Architecture G build context must be supplied",
+          ),
+        ),
+      );
+    }
     const processedMempoolTxs: Tx.EntryWithTimeStamp[] = [];
     const rejectedTxHashes: Buffer[] = [];
     const rejectionEntries: TxRejectionsDB.EntryNoTimestamp[] = [];
@@ -1398,6 +2685,8 @@ export const processMpfs = (
     const transactionOps: MpfBatchOp[] = [];
     const transactionSourceOps: MpfInsertBatchOp[] = [];
     const decodedMempoolTxs: DecodedMempoolTxForCommit[] = [];
+    let txDeltaCacheHitCount = 0;
+    let txDeltaFallbackDecodedCount = 0;
     let sizeOfProcessedTxs = 0;
     const txDeltaResolutionStartedAtMs = Date.now();
     const txDeltasByTxHash = yield* MempoolTxDeltasDB.retrieveByTxIds(
@@ -1422,6 +2711,11 @@ export const processMpfs = (
           );
           return;
         }
+        if (existingDelta === undefined) {
+          txDeltaFallbackDecodedCount += 1;
+        } else {
+          txDeltaCacheHitCount += 1;
+        }
         const { spent, produced } = resolved;
         decodedMempoolTxs.push({
           entry,
@@ -1432,20 +2726,31 @@ export const processMpfs = (
         });
       }),
     );
+    yield* Metric.incrementBy(
+      commitTxDeltaCacheHitCounter,
+      BigInt(txDeltaCacheHitCount),
+    );
+    yield* Metric.incrementBy(
+      commitTxDeltaFallbackDecodedCounter,
+      BigInt(txDeltaFallbackDecodedCount),
+    );
     yield* logCommitMpfPhaseTiming(
       "tx_delta_resolution",
       txDeltaResolutionStartedAtMs,
       {
         candidate_tx_count: mempoolTxs.length,
         decoded_tx_count: decodedMempoolTxs.length,
+        cache_hit_tx_count: txDeltaCacheHitCount,
+        fallback_decoded_tx_count: txDeltaFallbackDecodedCount,
         rejected_tx_count: rejectedTxHashes.length,
       },
     );
 
-    const effectiveEndTime =
-      decodedMempoolTxs[0]?.entry[Tx.Columns.TIMESTAMPTZ] ??
-      config?.processedOnlyEndTime ??
-      config?.depositOnlyEndTime;
+    const effectiveEndTime = establishEffectiveEndTimeFromDecodedMempool(
+      decodedMempoolTxs,
+      config?.processedOnlyEndTime,
+      config?.depositOnlyEndTime,
+    );
 
     if (
       effectiveEndTime !== undefined &&
@@ -1501,7 +2806,14 @@ export const processMpfs = (
       includedDepositEntries = yield* resolveIncludedDepositEntriesForWindow({
         currentBlockStartTime: config.currentBlockStartTime,
         effectiveEndTime,
+        persistProjection: config.deferDatabaseWrites !== true,
       });
+      includedDepositEntries = includedDepositEntries.filter(
+        (entry) =>
+          !config.excludedDepositEventIds?.has(
+            entry[DepositsDB.Columns.ID].toString("hex"),
+          ),
+      );
     }
     const includedDepositEntriesCount = includedDepositEntries.length;
     const includedDepositEventIds = includedDepositEntries.map((entry) =>
@@ -1528,7 +2840,15 @@ export const processMpfs = (
         yield* resolveIncludedForcedTransactionEntriesForWindow({
           currentBlockStartTime: config.currentBlockStartTime,
           effectiveEndTime,
+          persistProjection: config.deferDatabaseWrites !== true,
         });
+      includedForcedTransactionEntries =
+        includedForcedTransactionEntries.filter(
+          (entry) =>
+            !config.excludedForcedTransactionEventIds?.has(
+              entry[ForcedTransactionsDB.Columns.TX_ORDER_ID].toString("hex"),
+            ),
+        );
     }
     const includedForcedTransactionEntriesCount =
       includedForcedTransactionEntries.length;
@@ -1548,6 +2868,12 @@ export const processMpfs = (
           currentBlockStartTime: config.currentBlockStartTime,
           effectiveEndTime,
         });
+      includedWithdrawalEntries = includedWithdrawalEntries.filter(
+        (entry) =>
+          !config.excludedWithdrawalEventIds?.has(
+            entry[WithdrawalsDB.Columns.ID].toString("hex"),
+          ),
+      );
 
       const seenWithdrawalTarget = new Map<string, Buffer>();
       const mutableClassifiedWithdrawals: ClassifiedWithdrawal[] = [];
@@ -1571,7 +2897,23 @@ export const processMpfs = (
           );
         }
 
-        const mpfLedgerOutput = yield* ledgerMpf.get(ledgerOutRef);
+        const mpfLedgerOutput =
+          ledgerMpf === undefined
+            ? yield* MempoolLedgerDB.retrieveByTxOutRefs([ledgerOutRef]).pipe(
+                Effect.map((entries) => {
+                  const entry = entries.find((candidate) =>
+                    candidate[MempoolLedgerDB.Columns.OUTREF].equals(
+                      ledgerOutRef,
+                    ),
+                  );
+                  return entry === undefined
+                    ? Option.none<Buffer>()
+                    : Option.some(
+                        Buffer.from(entry[MempoolLedgerDB.Columns.OUTPUT]),
+                      );
+                }),
+              )
+            : yield* ledgerMpf.get(ledgerOutRef);
         const classifiedWithdrawal = yield* classifyWithdrawal({
           entry,
           ledgerOutRef,
@@ -1585,19 +2927,21 @@ export const processMpfs = (
       }
       classifiedWithdrawals = mutableClassifiedWithdrawals;
 
-      yield* WithdrawalsDB.setSettlementInfoForEventIds(
-        classifiedWithdrawals.map((classified) => ({
-          eventId: classified.entry[WithdrawalsDB.Columns.ID],
-          settlementEventInfo: classified.settlementEventInfo,
-          validity: classified.validity,
-          validityDetail: classified.validityDetail,
-        })),
-      );
-      yield* WithdrawalsDB.markAwaitingAsProjected(
-        classifiedWithdrawals.map(
-          (classified) => classified.entry[WithdrawalsDB.Columns.ID],
-        ),
-      );
+      if (config.deferDatabaseWrites !== true) {
+        yield* WithdrawalsDB.setSettlementInfoForEventIds(
+          classifiedWithdrawals.map((classified) => ({
+            eventId: classified.entry[WithdrawalsDB.Columns.ID],
+            settlementEventInfo: classified.settlementEventInfo,
+            validity: classified.validity,
+            validityDetail: classified.validityDetail,
+          })),
+        );
+        yield* WithdrawalsDB.markAwaitingAsProjected(
+          classifiedWithdrawals.map(
+            (classified) => classified.entry[WithdrawalsDB.Columns.ID],
+          ),
+        );
+      }
 
       includedWithdrawalEntries = classifiedWithdrawals.map((classified) => ({
         ...classified.entry,
@@ -1692,7 +3036,7 @@ export const processMpfs = (
       );
     }
 
-    if (rejectedTxHashes.length > 0) {
+    if (rejectedTxHashes.length > 0 && config?.deferDatabaseWrites !== true) {
       yield* Effect.logWarning(
         `Dropping ${rejectedTxHashes.length} transaction(s) from MempoolDB`,
       );
@@ -1706,15 +3050,23 @@ export const processMpfs = (
     }
 
     const transactionRootBeforeApply = yield* transactionsMpf.root();
-    const ledgerRootBeforeApply = yield* ledgerMpf.root();
+    const ledgerRootBeforeApply =
+      ledgerMpf === undefined
+        ? Buffer.from(nativeMpf!.handle.baseRoot, "hex")
+        : yield* ledgerMpf.root();
+    const shouldCheckPayloadRoot =
+      (config?.payloadRootCheck ?? "every_block") === "every_block";
     const initialLedgerEntries =
-      config?.initialLedgerEntries ?? (yield* ConfirmedLedgerDB.retrieve);
+      config?.initialLedgerEntries ??
+      (shouldCheckPayloadRoot ? yield* ConfirmedLedgerDB.retrieve : []);
     const ledgerRootBeforeApplyHex = ledgerRootBeforeApply.toString("hex");
     const selectedBaseUtxoRoot =
       config?.selectedBaseUtxoRoot ??
-      (yield* computeUtxoPayloadRoot(
-        materializeUtxoPayloadEntries(initialLedgerEntries, []),
-      ));
+      (shouldCheckPayloadRoot
+        ? yield* computeUtxoPayloadRoot(
+            materializeUtxoPayloadEntries(initialLedgerEntries, []),
+          )
+        : ledgerRootBeforeApplyHex);
     if (selectedBaseUtxoRoot !== ledgerRootBeforeApplyHex) {
       return yield* Effect.fail(
         new DatabaseError({
@@ -1840,21 +3192,90 @@ export const processMpfs = (
     const transitionLedgerOps = sourceEvents.flatMap((event) =>
       event.ledgerOps.map((op) => ({ ...op })),
     );
+    const baseUtxoPayloadAggregate =
+      config?.baseUtxoPayloadAggregate ??
+      ledgerPayloadAggregateFromEntries(initialLedgerEntries);
+    const utxoPayloadAggregate =
+      ledgerMpf === undefined
+        ? yield* MempoolLedgerDB.retrieveByTxOutRefs([
+            ...new Map(
+              transitionLedgerOps.map((op) => [op.key.toString("hex"), op.key]),
+            ).values(),
+          ]).pipe(
+            Effect.flatMap((entries) =>
+              applyLedgerOpsToUtxoPayloadAggregateFromValues(
+                baseUtxoPayloadAggregate,
+                transitionLedgerOps,
+                new Map(
+                  entries.map((entry) => [
+                    entry[MempoolLedgerDB.Columns.OUTREF].toString("hex"),
+                    Buffer.from(entry[MempoolLedgerDB.Columns.OUTPUT]),
+                  ]),
+                ),
+              ),
+            ),
+          )
+        : yield* applyLedgerOpsToUtxoPayloadAggregate(
+            ledgerMpf,
+            baseUtxoPayloadAggregate,
+            transitionLedgerOps,
+          );
+    const txRootFiber = yield* buildTransactionsSourceRoot(
+      transactionSourceOps,
+    ).pipe(Effect.fork);
+    const architectureGTransactionMpfFiber =
+      ledgerMpf === undefined
+        ? yield* Effect.gen(function* () {
+            const startedAtMs = Date.now();
+            yield* transactionsMpf.applyBatch(transactionOps).pipe(
+              Effect.catchAll((error) =>
+                transactionsMpf
+                  .resetToRoot(transactionRootBeforeApply)
+                  .pipe(
+                    Effect.catchAll(() => Effect.void),
+                    Effect.flatMap(() => Effect.fail(error)),
+                  ),
+              ),
+            );
+            return { durationMs: Date.now() - startedAtMs };
+          }).pipe(Effect.fork)
+        : undefined;
     const transitionTraceStartedAtMs = Date.now();
-    const transitionTraceBuild = yield* buildTransitionTraceResult({
-      ledgerMpf,
-      sourceEvents,
-      withdrawalCount: includedWithdrawalEntries.length,
-      forcedTransactionCount: includedForcedTransactionEntries.length,
-      l2TransactionCount: processedMempoolTxs.length,
-      depositCount: includedDepositEntries.length,
-    }).pipe(
-      Effect.catchAll((error) =>
-        ledgerMpf
-          .resetToRoot(ledgerRootBeforeApply)
-          .pipe(Effect.flatMap(() => Effect.fail(error))),
-      ),
-    );
+    const transitionTraceBuild = yield* ledgerMpf === undefined
+      ? buildNativeTransitionTraceResult({
+          nativeMpf: nativeMpf!,
+          sourceEvents,
+          withdrawalCount: includedWithdrawalEntries.length,
+          forcedTransactionCount: includedForcedTransactionEntries.length,
+          l2TransactionCount: processedMempoolTxs.length,
+          depositCount: includedDepositEntries.length,
+        }).pipe(
+          Effect.catchAll((error) =>
+            Effect.gen(function* () {
+              if (architectureGTransactionMpfFiber !== undefined) {
+                yield* Fiber.interrupt(architectureGTransactionMpfFiber);
+              }
+              yield* transactionsMpf
+                .resetToRoot(transactionRootBeforeApply)
+                .pipe(Effect.catchAll(() => Effect.void));
+              return yield* Effect.fail(error);
+            }),
+          ),
+        )
+      : buildTransitionTraceResult({
+          ledgerMpf,
+          sourceEvents,
+          withdrawalCount: includedWithdrawalEntries.length,
+          forcedTransactionCount: includedForcedTransactionEntries.length,
+          l2TransactionCount: processedMempoolTxs.length,
+          depositCount: includedDepositEntries.length,
+        }).pipe(
+          Effect.catchAll((error) =>
+            ledgerMpf
+              .resetToRoot(ledgerRootBeforeApply)
+              .pipe(Effect.flatMap(() => Effect.fail(error))),
+          ),
+        );
     yield* logCommitMpfPhaseTiming(
       "transition_trace_build",
       transitionTraceStartedAtMs,
@@ -1862,55 +3283,96 @@ export const processMpfs = (
         base_entry_count: initialLedgerEntries.length,
         source_event_count: sourceEvents.length,
         ledger_op_count: transitionLedgerOps.length,
+        prefetch_ms: transitionTraceBuild.pathHydration.prefetchMs,
+        prefetch_unique_paths: transitionTraceBuild.pathHydration.uniquePaths,
+        prefetch_nodes_requested:
+          transitionTraceBuild.pathHydration.nodesRequested,
+        prefetch_hydration_hits:
+          transitionTraceBuild.pathHydration.hydrationHits,
+        prefetch_hydration_misses:
+          transitionTraceBuild.pathHydration.hydrationMisses,
+        prefetch_max_in_flight: transitionTraceBuild.pathHydration.maxInFlight,
+        prefetch_max_batch_keys:
+          transitionTraceBuild.pathHydration.maxBatchKeys,
+        prefetch_retained_bytes_estimate:
+          transitionTraceBuild.pathHydration.retainedBytesEstimate,
+        hydration_chunk_count: transitionTraceBuild.pathHydration.chunkCount,
+        arena_checkpoint_ms: transitionTraceBuild.pathHydration.checkpointMs,
+        arena_authentication_ms:
+          transitionTraceBuild.pathHydration.authenticationMs,
+        arena_materialize_ms: transitionTraceBuild.pathHydration.materializeMs,
+        arena_collapse_ms: transitionTraceBuild.pathHydration.collapseMs,
+        arena_checkpoint_serialized_nodes:
+          transitionTraceBuild.pathHydration.checkpointSerializedNodes,
+        arena_checkpoint_serialized_bytes:
+          transitionTraceBuild.pathHydration.checkpointSerializedBytes,
+        arena_verified_upper_nodes:
+          transitionTraceBuild.pathHydration.verifiedUpperNodes,
+        arena_retained_upper_nodes:
+          transitionTraceBuild.pathHydration.retainedUpperNodes,
+        arena_collapsed_nodes:
+          transitionTraceBuild.pathHydration.collapsedNodes,
+        arena_peak_decoded_nodes:
+          transitionTraceBuild.pathHydration.peakDecodedNodes,
       },
     );
-    const utxoPayloadEntries = materializeUtxoPayloadEntries(
-      initialLedgerEntries,
-      transitionLedgerOps,
-    );
+    const utxoPayloadEntries = shouldCheckPayloadRoot
+      ? materializeUtxoPayloadEntries(initialLedgerEntries, transitionLedgerOps)
+      : [];
     const transactionMpfApplyStartedAtMs = Date.now();
-    yield* transactionsMpf.applyBatch(transactionOps).pipe(
-      Effect.catchAll((error) =>
-        Effect.gen(function* () {
-          yield* transactionsMpf
-            .resetToRoot(transactionRootBeforeApply)
-            .pipe(Effect.catchAll(() => Effect.void));
-          yield* ledgerMpf
-            .resetToRoot(ledgerRootBeforeApply)
-            .pipe(Effect.catchAll(() => Effect.void));
-          return yield* Effect.fail(error);
-        }),
-      ),
-    );
+    const transactionMpfApplyDurationMs =
+      architectureGTransactionMpfFiber === undefined
+        ? yield* transactionsMpf.applyBatch(transactionOps).pipe(
+            Effect.catchAll((error) =>
+              Effect.gen(function* () {
+                yield* transactionsMpf
+                  .resetToRoot(transactionRootBeforeApply)
+                  .pipe(Effect.catchAll(() => Effect.void));
+                yield* ledgerMpf!
+                  .resetToRoot(ledgerRootBeforeApply)
+                  .pipe(Effect.catchAll(() => Effect.void));
+                return yield* Effect.fail(error);
+              }),
+            ),
+            Effect.map(() => Date.now() - transactionMpfApplyStartedAtMs),
+          )
+        : (yield* Fiber.join(architectureGTransactionMpfFiber)).durationMs;
     yield* logCommitMpfPhaseTiming(
       "transaction_mpf_apply",
-      transactionMpfApplyStartedAtMs,
+      Date.now() - transactionMpfApplyDurationMs,
       {
         transaction_op_count: transactionOps.length,
+        overlapped_with_transition_trace:
+          architectureGTransactionMpfFiber === undefined ? 0 : 1,
       },
     );
 
     const rawTxRoot = yield* transactionsMpf.rootHex();
-    const txRoot = yield* buildTransactionsSourceRoot(transactionSourceOps);
-    const utxoRoot = yield* ledgerMpf.rootHex();
-    const payloadRootCheckStartedAtMs = Date.now();
-    const payloadUtxoRoot = yield* computeUtxoPayloadRoot(utxoPayloadEntries);
-    yield* logCommitMpfPhaseTiming(
-      "payload_root_check",
-      payloadRootCheckStartedAtMs,
-      {
-        payload_entry_count: utxoPayloadEntries.length,
-      },
-    );
-    if (payloadUtxoRoot !== utxoRoot) {
-      return yield* Effect.fail(
-        new DatabaseError({
-          table: MempoolLedgerDB.tableName,
-          message:
-            "Refusing to build a block because the DA payload UTxO snapshot root does not match the computed ledger MPF root",
-          cause: `payload_utxos_root=${payloadUtxoRoot},computed_utxos_root=${utxoRoot}`,
-        }),
+    const txRoot = yield* Fiber.join(txRootFiber);
+    const utxoRoot =
+      ledgerMpf === undefined
+        ? nativeMpf!.candidateRoot!
+        : yield* ledgerMpf.rootHex();
+    if (shouldCheckPayloadRoot) {
+      const payloadRootCheckStartedAtMs = Date.now();
+      const payloadUtxoRoot = yield* computeUtxoPayloadRoot(utxoPayloadEntries);
+      yield* logCommitMpfPhaseTiming(
+        "payload_root_check",
+        payloadRootCheckStartedAtMs,
+        {
+          payload_entry_count: utxoPayloadEntries.length,
+        },
       );
+      if (payloadUtxoRoot !== utxoRoot) {
+        return yield* Effect.fail(
+          new DatabaseError({
+            table: MempoolLedgerDB.tableName,
+            message:
+              "Refusing to build a block because the DA payload UTxO snapshot root does not match the computed ledger MPF root",
+            cause: `payload_utxos_root=${payloadUtxoRoot},computed_utxos_root=${utxoRoot}`,
+          }),
+        );
+      }
     }
     if (transitionTraceBuild.finalUtxosRoot !== utxoRoot) {
       return yield* Effect.fail(
@@ -1935,13 +3397,138 @@ export const processMpfs = (
       `🔹 New event-to-step root found: ${transitionTraceBuild.eventToStepRoot}`,
     );
 
+    const recordCorpusPath = config?.recordCorpusPath?.trim() ?? "";
+    if (recordCorpusPath.length > 0) {
+      const finalUtxoEntries = materializeUtxoPayloadEntries(
+        initialLedgerEntries,
+        transitionLedgerOps,
+      );
+      const deposits = includedDepositEntries.map((entry) => ({
+        key: Buffer.from(entry[DepositsDB.Columns.ID]),
+        value: Buffer.from(entry[DepositsDB.Columns.INFO]),
+      }));
+      const forcedTransactions = includedForcedTransactionEntries.map(
+        (entry) => ({
+          key: Buffer.from(entry[ForcedTransactionsDB.Columns.TX_ORDER_ID]),
+          value: Buffer.from(
+            entry[ForcedTransactionsDB.Columns.FORCED_INCLUSION_VALUE],
+          ),
+        }),
+      );
+      const withdrawals = includedWithdrawalEntries.flatMap((entry) => {
+        const value = entry[WithdrawalsDB.Columns.SETTLEMENT_EVENT_INFO];
+        return value === null
+          ? []
+          : [
+              {
+                key: Buffer.from(entry[WithdrawalsDB.Columns.ID]),
+                value: Buffer.from(value),
+              },
+            ];
+      });
+      const [depositsRoot, withdrawalsRoot, forcedTransactionsRoot] =
+        yield* Effect.all(
+          [
+            countedRootFromEncodedEntries(SDK.ROOT_DOMAINS.deposits, deposits),
+            countedRootFromEncodedEntries(
+              SDK.ROOT_DOMAINS.withdrawals,
+              withdrawals,
+            ),
+            countedRootFromEncodedEntries(
+              SDK.ROOT_DOMAINS.forcedTransactions,
+              forcedTransactions,
+            ),
+          ],
+          { concurrency: "unbounded" },
+        );
+      const encodeEntry = (entry: {
+        readonly key: Buffer;
+        readonly value: Buffer;
+      }): CorpusHexEntry => ({
+        key: entry.key.toString("hex"),
+        value: entry.value.toString("hex"),
+      });
+      const encodeOp = (op: MpfBatchOp): CorpusLedgerOp =>
+        op.type === "insert"
+          ? {
+              type: "insert",
+              key: op.key.toString("hex"),
+              value: op.value.toString("hex"),
+            }
+          : { type: "delete", key: op.key.toString("hex") };
+      const block: MpfReplayCorpusBlock = {
+        version: 1,
+        label: `commit-${Date.now().toString()}`,
+        initialLedgerEntries: initialLedgerEntries.map((entry) =>
+          encodeEntry({
+            key: entry[Ledger.Columns.OUTREF],
+            value: entry[Ledger.Columns.OUTPUT],
+          }),
+        ),
+        sourceEvents: yield* Effect.forEach(sourceEvents, (event) =>
+          eventKeyCbor(event.eventKey).pipe(
+            Effect.map((encoded) => ({
+              phase: event.phase,
+              eventKeyCbor: encoded.toString("hex"),
+              ledgerOps: event.ledgerOps.map(encodeOp),
+            })),
+          ),
+        ),
+        transactionOps: transactionSourceOps.map(encodeEntry),
+        deposits: deposits.map(encodeEntry),
+        withdrawals: withdrawals.map(encodeEntry),
+        forcedTransactions: forcedTransactions.map(encodeEntry),
+        finalUtxoEntries: finalUtxoEntries.map((entry) =>
+          encodeEntry({ key: entry.outref, value: entry.output }),
+        ),
+        expected: {
+          utxoRoot,
+          rawTxRoot,
+          txRoot,
+          transitionTraceRoot: transitionTraceBuild.transitionTraceRoot,
+          eventToStepRoot: transitionTraceBuild.eventToStepRoot,
+          depositsRoot,
+          withdrawalsRoot,
+          forcedTransactionsRoot,
+          transitionRoots: transitionTraceBuild.transitionTraceMembers.map(
+            (member) => ({
+              pre: member.value.pre_utxos_root,
+              post: member.value.post_utxos_root,
+            }),
+          ),
+        },
+      };
+      yield* Effect.try({
+        try: () => {
+          FS.mkdirSync(dirname(recordCorpusPath), { recursive: true });
+          FS.appendFileSync(recordCorpusPath, `${JSON.stringify(block)}\n`);
+        },
+        catch: (cause) =>
+          MpfError.rootBuild("MPF replay corpus record tap", cause),
+      });
+    }
+
     const includedWithdrawalEntriesCount = includedWithdrawalEntries.length;
     const includedWithdrawalEventIds = includedWithdrawalEntries.map((entry) =>
       Buffer.from(entry[WithdrawalsDB.Columns.ID]),
     );
+    const nativeMpfReplay: NativeMpfReplayBuild | undefined =
+      nativeMpf === undefined
+        ? undefined
+        : {
+            schema: 1,
+            ownerBinarySha256: Buffer.from(nativeMpf.ownerBinarySha256, "hex"),
+            baseRoot: Buffer.from(nativeMpf.handle.baseRoot, "hex"),
+            candidateRoot: Buffer.from(nativeMpf.candidateRoot!, "hex"),
+            eventLog: Buffer.from(nativeMpf.eventLog!),
+            eventLogDigest: Buffer.from(nativeMpf.eventLogDigest!, "hex"),
+            eventRoots: Buffer.from(nativeMpf.eventRoots!.join(""), "hex"),
+            eventCount: nativeMpf.eventRoots!.length,
+          };
 
     return {
       utxoRoot,
+      rawTxRoot,
       txRoot,
       transitionTraceRoot: transitionTraceBuild.transitionTraceRoot,
       eventToStepRoot: transitionTraceBuild.eventToStepRoot,
@@ -1950,10 +3537,14 @@ export const processMpfs = (
       transitionStepCount: transitionTraceBuild.transitionStepCount,
       totalEventCount: transitionTraceBuild.totalEventCount,
       utxoPayloadEntries,
+      ledgerDelta: collapseLedgerDelta(transitionLedgerOps),
+      utxoPayloadAggregate,
       mempoolTxHashes,
       processedMempoolTxs,
       sizeOfProcessedTxs,
       rejectedMempoolTxsCount: rejectedTxHashes.length,
+      rejectedMempoolTxHashes: rejectedTxHashes,
+      rejectionEntries,
       includedDepositEntriesCount,
       includedDepositEntries,
       includedDepositEventIds,
@@ -1964,6 +3555,8 @@ export const processMpfs = (
       includedWithdrawalEntries,
       includedWithdrawalEventIds,
       transitionTraceBuild,
+      nativeMpfReplay,
+      nativeMpfHandle: nativeMpf?.handle,
     };
   });
 
@@ -2012,6 +3605,45 @@ export const withMpfRootTransactions = <A, E, R>(
     return result.right;
   });
 
+export const withMpfBlockOverlays = <A, E, R>(
+  mpfs: readonly MidgardMpf[],
+  eff: Effect.Effect<A, E, R>,
+  shouldPromote: (value: A) => boolean,
+): Effect.Effect<A, E | MpfError, R> =>
+  Effect.gen(function* () {
+    yield* Effect.forEach(mpfs, (mpf) => mpf.beginBlockOverlay(), {
+      discard: true,
+      concurrency: "unbounded",
+    });
+    const discard = Effect.forEach(
+      mpfs,
+      (mpf) => mpf.discardBlockOverlayIfActive(),
+      {
+        discard: true,
+        concurrency: "unbounded",
+      },
+    );
+    const result = yield* Effect.either(eff);
+    if (result._tag === "Left") {
+      yield* discard;
+      return yield* Effect.fail(result.left);
+    }
+    if (shouldPromote(result.right)) {
+      yield* Effect.forEach(
+        mpfs,
+        (mpf) =>
+          Effect.gen(function* () {
+            const root = yield* mpf.root();
+            yield* mpf.flushBlockOverlay(root);
+          }),
+        { discard: true, concurrency: "unbounded" },
+      );
+    } else {
+      yield* discard;
+    }
+    return result.right;
+  });
+
 export type MpfProof = {
   readonly key: Buffer;
   readonly proof: Proof;
@@ -2021,28 +3653,122 @@ export type MpfProof = {
 };
 
 class MidgardMpfRootViewStore extends Store {
+  public readonly retainHydratedChildren: boolean;
   private readonly level?: Level<string, MpfStoredValue>;
   private readonly memory?: Map<string, MpfStoredValue>;
   private readonly persistRootMarker: boolean;
+  private readonly engine: MpfEngine;
+  private readonly spillThresholdBytes: number;
+  private readonly parentStore?: MidgardMpfRootViewStore;
+  private readonly parentOverlay?: ReadonlyMap<string, MpfStoredValue>;
   private currentRoot: Buffer;
   private batchOps: LevelBatchOp[] | undefined;
+  private deferredNodePuts: Map<string, MpfSerializableValue> | undefined;
+  private deferredNodeDeletes: Set<string> | undefined;
+  private deferredMutationRoot: Buffer | undefined;
+  private blockDeferredNodePuts: Map<string, MpfSerializableValue> | undefined;
+  private blockDeferredNodeDeletes: Set<string> | undefined;
+  private blockDeferredNodeEstimates: Map<string, number> | undefined;
+  private blockDeferredEstimatedBytes = 0;
+  private overlay: Map<string, MpfStoredValue> | undefined;
+  private overlayValueBytes = new Map<string, number>();
+  private readonly spillingOverlays: Map<string, MpfStoredValue>[] = [];
+  private spillChain: Promise<void> = Promise.resolve();
+  private spillError: unknown | undefined;
+  private pendingSpillBytes = 0;
+  private overlayBaseRoot: Buffer | undefined;
+  private overlayBytes = 0;
+  private readonly readCache = new Map<string, MpfStoredValue>();
+  private blockPathCache: Map<string, MpfStoredValue> | undefined;
+  private blockPathCacheBytes = 0;
+  private blockPathCacheSealed = false;
+  private authenticatedNodeObjects = new WeakSet<object>();
+  private readonly hydratedNodeSources = new WeakMap<object, object>();
+  private liveArenaEnabled = false;
+  private readonly transientLiveNodes = new Set<MpfSerializableValue>();
+  private readonly transientLiveNodeEstimates = new Map<
+    MpfSerializableValue,
+    number
+  >();
+  private readonly transientDirtyNodes = new Set<MpfSerializableValue>();
+  private readonly midgardDirtyNodes = new Set<Trie>();
+  private transientLiveBytes = 0;
+  private transientSnapshotsCaptured = 0;
+  private transientCurrentRootEnabled = false;
+  private midgardTransientArenaTokenValue: object = {};
+  private eventAtomicFinalizations = 0;
+  private eventAtomicDirtyNodes = 0;
+  private eventAtomicMaxDirtyNodes = 0;
+  private arenaLimits: MpfArenaLimits = { ...DEFAULT_MPF_ARENA_LIMITS };
+  private levelGets = 0;
+  private levelGetManyCalls = 0;
+  private levelGetManyMaxKeys = 0;
+  private storePuts = 0;
+  private storeDels = 0;
+  private serialiseCalls = 0;
+  private serialiseMs = 0;
+  private deferredMaterializedEstimatedBytes = 0;
+  private deferredMaterializedActualBytes = 0;
+  private deferredLazyReads = 0;
+  private deferredLazySerialiseMs = 0;
+  private deferredLazySerialisedBytes = 0;
+  private arenaCheckpointCalls = 0;
+  private arenaCheckpointMs = 0;
+  private arenaCheckpointNodes = 0;
+  private arenaCheckpointBytes = 0;
+  private pathCacheHits = 0;
+  private liveArenaPrunedNodes = 0;
+  private liveArenaPromotedNodes = 0;
+  private liveArenaPromotedBytes = 0;
+  private retainedSnapshotAuthentications = 0;
+  private retainedSnapshotAuthenticationMs = 0;
+  private overlayHits = 0;
+  private readCacheHits = 0;
+  private levelBatchWrites = 0;
+  private bytesFlushed = 0;
+  private overlaySpills = 0;
+  private levelGetMs = 0;
+  private jsonCodecMs = 0;
+  private overlaySpillMs = 0;
+  private flushMs = 0;
+  private openForks = 0;
+  private forkClosed = false;
+  private invalidatedByChildPromotion = false;
+  private promotionReserved = false;
+  private poisoned = false;
+  private ownsLevelLifecycle: boolean;
 
   constructor({
     level,
     memory,
     root,
     persistRootMarker,
+    engine = "legacy",
+    spillThresholdBytes = 512 * 1024 * 1024,
+    parentStore,
+    parentOverlay,
   }: {
     readonly level?: Level<string, MpfStoredValue>;
     readonly memory?: Map<string, MpfStoredValue>;
     readonly root: Buffer;
     readonly persistRootMarker: boolean;
+    readonly engine?: MpfEngine;
+    readonly spillThresholdBytes?: number;
+    readonly parentStore?: MidgardMpfRootViewStore;
+    readonly parentOverlay?: ReadonlyMap<string, MpfStoredValue>;
   }) {
     super(undefined);
     this.level = level;
     this.memory = memory;
     this.currentRoot = Buffer.from(root);
     this.persistRootMarker = persistRootMarker;
+    this.engine = engine;
+    this.retainHydratedChildren = engine !== "legacy";
+    this.spillThresholdBytes = spillThresholdBytes;
+    this.parentStore = parentStore;
+    this.parentOverlay = parentOverlay;
+    this.ownsLevelLifecycle = parentStore === undefined;
+    this.parentStore?.registerFork();
   }
 
   async ready() {
@@ -2050,6 +3776,9 @@ class MidgardMpfRootViewStore extends Store {
   }
 
   async batch(callback: () => Promise<unknown>) {
+    if (this.synchronousRetainedWrites) {
+      return callback();
+    }
     if (this.batchOps !== undefined) {
       throw new Error("MPF store batch already ongoing");
     }
@@ -2067,8 +3796,19 @@ class MidgardMpfRootViewStore extends Store {
     this.batchOps = undefined;
     try {
       if (ops.length > 0) {
-        if (this.level !== undefined) {
+        if (this.overlay !== undefined) {
+          for (const op of ops) {
+            if (op.key === ROOT_KEY) continue;
+            if (op.type === "put") {
+              this.setOverlayValue(op.key, op.value, op.encodedBytes);
+            } else if (this.overlay.has(op.key)) {
+              this.deleteOverlayValue(op.key);
+            }
+          }
+          await this.spillIfNeeded();
+        } else if (this.level !== undefined) {
           await this.level.batch(ops, JSON_LEVEL_ENCODING_OPTS);
+          this.levelBatchWrites += 1;
         } else {
           for (const op of ops) {
             if (op.type === "put") {
@@ -2087,28 +3827,232 @@ class MidgardMpfRootViewStore extends Store {
   }
 
   async get(key: unknown, deserialise: (...args: any[]) => unknown) {
+    this.assertUsable();
     if (key === ROOT_KEY) {
       return deserialise(key, this.currentRoot.toString("hex"), this);
     }
     const storageKey = this.storageKey(key);
-    const storedValue =
-      this.level === undefined
-        ? this.memory!.get(storageKey)
-        : await this.level.get(storageKey, JSON_LEVEL_ENCODING_OPTS);
+    let storedValue: MpfReadableValue | undefined;
+    const activeMutationValue = this.deferredNodePuts?.get(storageKey);
+    const deferredValue = this.blockDeferredNodePuts?.get(storageKey);
+    if (activeMutationValue !== undefined) {
+      storedValue = activeMutationValue;
+      if (this.liveArenaEnabled) {
+        this.assertLiveArenaNode(storageKey, activeMutationValue);
+      }
+    } else if (this.liveArenaEnabled && deferredValue !== undefined) {
+      storedValue = deferredValue;
+      this.assertLiveArenaNode(storageKey, deferredValue);
+    } else if (this.overlay?.has(storageKey)) {
+      this.overlayHits += 1;
+      storedValue = this.overlay.get(storageKey);
+    } else {
+      for (
+        let index = this.spillingOverlays.length - 1;
+        index >= 0;
+        index -= 1
+      ) {
+        const spilling = this.spillingOverlays[index]!;
+        if (spilling.has(storageKey)) {
+          this.overlayHits += 1;
+          storedValue = spilling.get(storageKey);
+          break;
+        }
+      }
+    }
+    if (storedValue !== undefined) {
+      // The active or in-flight overlay supplied the value.
+    } else if (this.parentOverlay?.has(storageKey)) {
+      storedValue = this.parentOverlay.get(storageKey);
+    } else if (this.parentStore !== undefined) {
+      storedValue = await this.parentStore.lookupStoredValue(storageKey);
+    } else if (this.blockPathCache?.has(storageKey)) {
+      this.pathCacheHits += 1;
+      storedValue = this.blockPathCache.get(storageKey);
+    } else if (this.readCache.has(storageKey)) {
+      this.readCacheHits += 1;
+      storedValue = this.readCache.get(storageKey);
+    } else if (this.liveArenaEnabled && this.blockPathCacheSealed) {
+      const durableValue =
+        this.level === undefined
+          ? this.memory?.get(storageKey)
+          : await this.level.get(storageKey, JSON_LEVEL_ENCODING_OPTS);
+      throw new Error(
+        `Sealed MPF block path cache missed node ${storageKey};durable_source=${durableValue === undefined ? "absent" : "present"}`,
+      );
+    } else if (this.level === undefined) {
+      storedValue = this.memory!.get(storageKey);
+    } else {
+      const startedAt = performance.now();
+      storedValue = await this.level.get(storageKey, JSON_LEVEL_ENCODING_OPTS);
+      this.levelGetMs += performance.now() - startedAt;
+      this.levelGets += 1;
+      if (storedValue !== undefined) {
+        this.cacheRead(storageKey, storedValue);
+        this.cacheBlockPathNode(storageKey, storedValue);
+      }
+    }
     const value = applyPendingBatch(storageKey, storedValue, this.batchOps);
-    return deserialise(key, value, this);
+    const decoded = await deserialise(key, value, this);
+    this.rememberHydratedNodeSource(decoded, value);
+    return decoded;
   }
 
-  async put(key: unknown, value: { serialise: () => MpfStoredValue }) {
+  async getMany(
+    keys: readonly unknown[],
+    deserialise: (...args: any[]) => unknown,
+  ) {
+    this.assertUsable();
+    const storageKeys = keys.map((key) => this.storageKey(key));
+    const values = new Array<MpfReadableValue | undefined>(keys.length);
+    const unresolvedIndexes: number[] = [];
+    const unresolvedStorageKeys: string[] = [];
+
+    for (let index = 0; index < storageKeys.length; index += 1) {
+      const storageKey = storageKeys[index]!;
+      let storedValue: MpfReadableValue | undefined;
+      let resolved = false;
+      const activeMutationValue = this.deferredNodePuts?.get(storageKey);
+      const deferredValue = this.blockDeferredNodePuts?.get(storageKey);
+      if (storageKey === ROOT_KEY) {
+        storedValue = this.currentRoot.toString("hex");
+        resolved = true;
+      } else if (activeMutationValue !== undefined) {
+        storedValue = activeMutationValue;
+        if (this.liveArenaEnabled) {
+          this.assertLiveArenaNode(storageKey, activeMutationValue);
+        }
+        resolved = true;
+      } else if (this.liveArenaEnabled && deferredValue !== undefined) {
+        storedValue = deferredValue;
+        this.assertLiveArenaNode(storageKey, deferredValue);
+        resolved = true;
+      } else if (this.overlay?.has(storageKey)) {
+        this.overlayHits += 1;
+        storedValue = this.overlay.get(storageKey);
+        resolved = true;
+      } else {
+        for (
+          let spillIndex = this.spillingOverlays.length - 1;
+          spillIndex >= 0;
+          spillIndex -= 1
+        ) {
+          const spilling = this.spillingOverlays[spillIndex]!;
+          if (spilling.has(storageKey)) {
+            this.overlayHits += 1;
+            storedValue = spilling.get(storageKey);
+            resolved = true;
+            break;
+          }
+        }
+      }
+      if (!resolved && this.parentOverlay?.has(storageKey)) {
+        storedValue = this.parentOverlay.get(storageKey);
+        resolved = true;
+      } else if (!resolved && this.parentStore !== undefined) {
+        storedValue = await this.parentStore.lookupStoredValue(storageKey);
+        resolved = true;
+      } else if (!resolved && this.blockPathCache?.has(storageKey)) {
+        this.pathCacheHits += 1;
+        storedValue = this.blockPathCache.get(storageKey);
+        resolved = true;
+      } else if (!resolved && this.readCache.has(storageKey)) {
+        this.readCacheHits += 1;
+        storedValue = this.readCache.get(storageKey);
+        resolved = true;
+      } else if (!resolved && this.level === undefined) {
+        storedValue = this.memory!.get(storageKey);
+        resolved = true;
+      }
+      if (resolved) {
+        values[index] = storedValue;
+      } else {
+        unresolvedIndexes.push(index);
+        unresolvedStorageKeys.push(storageKey);
+      }
+    }
+
+    if (unresolvedStorageKeys.length > 0) {
+      if (this.liveArenaEnabled && this.blockPathCacheSealed) {
+        const durableValues =
+          this.level === undefined
+            ? unresolvedStorageKeys.map((key) => this.memory?.get(key))
+            : await this.level.getMany(
+                unresolvedStorageKeys,
+                JSON_LEVEL_ENCODING_OPTS,
+              );
+        throw new Error(
+          `Sealed MPF block path cache missed ${unresolvedStorageKeys.length.toString()} nodes;durable_present=${durableValues.filter((value) => value !== undefined).length.toString()};keys=${unresolvedStorageKeys.join(",")}`,
+        );
+      }
+      const startedAt = performance.now();
+      const loaded = await this.level!.getMany(
+        unresolvedStorageKeys,
+        JSON_LEVEL_ENCODING_OPTS,
+      );
+      this.levelGetMs += performance.now() - startedAt;
+      this.levelGets += unresolvedStorageKeys.length;
+      this.levelGetManyCalls += 1;
+      this.levelGetManyMaxKeys = Math.max(
+        this.levelGetManyMaxKeys,
+        unresolvedStorageKeys.length,
+      );
+      for (let offset = 0; offset < unresolvedIndexes.length; offset += 1) {
+        const index = unresolvedIndexes[offset]!;
+        const storedValue = loaded[offset];
+        values[index] = storedValue;
+        if (storedValue !== undefined) {
+          this.cacheRead(storageKeys[index]!, storedValue);
+          this.cacheBlockPathNode(storageKeys[index]!, storedValue);
+        }
+      }
+    }
+
+    const decoded = await Promise.all(
+      values.map((storedValue, index) =>
+        deserialise(
+          keys[index],
+          applyPendingBatch(storageKeys[index]!, storedValue, this.batchOps),
+          this,
+        ),
+      ),
+    );
+    for (let index = 0; index < decoded.length; index += 1) {
+      this.rememberHydratedNodeSource(decoded[index], values[index]);
+    }
+    return decoded;
+  }
+
+  async put(key: unknown, value: MpfSerializableValue) {
+    this.assertUsable();
+    this.storePuts += 1;
     const storageKey = this.storageKey(key);
+    if (
+      storageKey !== ROOT_KEY &&
+      this.deferredNodePuts !== undefined &&
+      this.deferredNodeDeletes !== undefined
+    ) {
+      this.deferredNodePuts.set(storageKey, value);
+      this.deferredNodeDeletes.delete(storageKey);
+      return;
+    }
+    const serialiseStartedAt = performance.now();
     const rawSerialized = value.serialise();
+    this.serialiseMs += performance.now() - serialiseStartedAt;
+    this.serialiseCalls += 1;
     const serialized =
       storageKey === ROOT_KEY && typeof rawSerialized === "string"
         ? normalizeStoredRootHex(rawSerialized)
         : rawSerialized;
+    let encodedBytes: number | undefined;
+    if (this.level !== undefined) {
+      const jsonCodecStartedAt = performance.now();
+      encodedBytes = Buffer.byteLength(JSON.stringify(serialized));
+      this.jsonCodecMs += performance.now() - jsonCodecStartedAt;
+    }
     if (storageKey === ROOT_KEY) {
       this.currentRoot = Buffer.from(serialized as string, "hex");
-      if (!this.persistRootMarker) {
+      if (!this.persistRootMarker || this.overlay !== undefined) {
         return;
       }
     }
@@ -2116,9 +4060,13 @@ class MidgardMpfRootViewStore extends Store {
       type: "put",
       key: storageKey,
       value: serialized,
+      encodedBytes,
     };
     if (this.batchOps !== undefined) {
       this.batchOps.push(op);
+    } else if (this.overlay !== undefined) {
+      this.setOverlayValue(op.key, op.value, op.encodedBytes);
+      await this.spillIfNeeded();
     } else if (this.level !== undefined) {
       await this.level.put(op.key, op.value, JSON_LEVEL_ENCODING_OPTS);
     } else {
@@ -2126,8 +4074,153 @@ class MidgardMpfRootViewStore extends Store {
     }
   }
 
-  async del(key: unknown) {
+  get synchronousRetainedWrites() {
+    return this.retainHydratedChildren && this.deferredNodePuts !== undefined;
+  }
+
+  get midgardTransientArenaToken(): object | undefined {
+    return this.transientCurrentRootEnabled
+      ? this.midgardTransientArenaTokenValue
+      : undefined;
+  }
+
+  get deferMidgardBranchHashes(): boolean {
+    return (
+      this.transientCurrentRootEnabled && this.deferredNodePuts !== undefined
+    );
+  }
+
+  recordMidgardDirtyNode(node: Trie): void {
+    if (!this.deferMidgardBranchHashes || node.store !== this) {
+      throw new Error("Cannot retain a foreign MPF event mutation node");
+    }
+    this.midgardDirtyNodes.add(node);
+  }
+
+  takeMidgardDirtyNodes(): readonly Trie[] {
+    if (!this.deferMidgardBranchHashes) {
+      throw new Error("Cannot finalize an inactive MPF event mutation");
+    }
+    const dirtyNodes = [...this.midgardDirtyNodes];
+    this.midgardDirtyNodes.clear();
+    this.eventAtomicFinalizations += 1;
+    this.eventAtomicDirtyNodes += dirtyNodes.length;
+    this.eventAtomicMaxDirtyNodes = Math.max(
+      this.eventAtomicMaxDirtyNodes,
+      dirtyNodes.length,
+    );
+    return dirtyNodes;
+  }
+
+  putRetainedNode(key: unknown, value: MpfSerializableValue) {
+    this.assertUsable();
+    if (
+      this.deferredNodePuts === undefined ||
+      this.deferredNodeDeletes === undefined
+    ) {
+      throw new Error("Synchronous retained MPF write outside a mutation");
+    }
+    this.storePuts += 1;
     const storageKey = this.storageKey(key);
+    const proofCandidate = value as MpfSerializableValue & {
+      readonly consumeMidgardMutationProof?: () => boolean;
+    };
+    const trustedMutation =
+      this.liveArenaEnabled &&
+      this.transientCurrentRootEnabled &&
+      value instanceof Trie &&
+      proofCandidate.consumeMidgardMutationProof === consumeMpfMutationProof &&
+      consumeMpfMutationProof.call(value);
+    if (trustedMutation) {
+      const previousEstimate = this.transientLiveNodeEstimates.get(value) ?? 0;
+      const estimate = this.estimateDeferredNodeBytes(storageKey, value);
+      this.transientLiveNodes.add(value);
+      this.transientLiveNodeEstimates.set(value, estimate);
+      this.transientLiveBytes += estimate - previousEstimate;
+      this.transientDirtyNodes.add(value);
+      this.deferredNodeDeletes.delete(storageKey);
+      this.assertLiveArenaCaps();
+      return;
+    }
+    const retainedValue = this.liveArenaEnabled
+      ? (
+          value as MpfSerializableValue & {
+            readonly cloneDetached?: () => MpfSerializableValue;
+          }
+        ).cloneDetached?.()
+      : value;
+    if (
+      retainedValue === undefined ||
+      (this.liveArenaEnabled && retainedValue === value)
+    ) {
+      throw new Error(
+        "Live MPF arena requires an immutable detached node snapshot",
+      );
+    }
+    if (this.liveArenaEnabled) {
+      // A content key may already have been authenticated for a different
+      // object. Verify every new detached snapshot before it can replace that
+      // key; raw cache clones remain memoized by their immutable source object.
+      const authenticationStartedAt = performance.now();
+      this.authenticateHydratedNodeOnce(retainedValue);
+      this.retainedSnapshotAuthenticationMs +=
+        performance.now() - authenticationStartedAt;
+      this.retainedSnapshotAuthentications += 1;
+    }
+    this.deferredNodePuts.set(storageKey, retainedValue);
+    this.deferredNodeDeletes.delete(storageKey);
+  }
+
+  deleteRetainedNode(key: unknown) {
+    this.assertUsable();
+    if (
+      this.deferredNodePuts === undefined ||
+      this.deferredNodeDeletes === undefined
+    ) {
+      throw new Error("Synchronous retained MPF delete outside a mutation");
+    }
+    this.storeDels += 1;
+    if (this.liveArenaEnabled) {
+      // Content hashes can be shared by multiple parents. Retain immutable
+      // snapshots until the final current-root mark/sweep proves them orphaned.
+      return;
+    }
+    const storageKey = this.storageKey(key);
+    this.deferredNodePuts.delete(storageKey);
+    this.deferredNodeDeletes.add(storageKey);
+  }
+
+  putRetainedRoot(root: Buffer | null | undefined) {
+    this.assertUsable();
+    this.storePuts += 1;
+    const candidate = Buffer.from(root ?? MPF_EMPTY_ROOT);
+    this.currentRoot = candidate.equals(MPF_INTERNAL_NULL_ROOT)
+      ? Buffer.from(MPF_EMPTY_ROOT)
+      : candidate;
+  }
+
+  async del(key: unknown) {
+    this.assertUsable();
+    this.storeDels += 1;
+    const storageKey = this.storageKey(key);
+    if (
+      storageKey !== ROOT_KEY &&
+      this.deferredNodePuts !== undefined &&
+      this.deferredNodeDeletes !== undefined
+    ) {
+      if (this.liveArenaEnabled) return;
+      this.deferredNodePuts.delete(storageKey);
+      this.deferredNodeDeletes.add(storageKey);
+      return;
+    }
+    if (this.overlay !== undefined && storageKey !== ROOT_KEY) {
+      if (this.batchOps !== undefined) {
+        this.batchOps.push({ type: "del", key: storageKey });
+      } else if (this.overlay.has(storageKey)) {
+        this.deleteOverlayValue(storageKey);
+      }
+      return;
+    }
     if (storageKey !== ROOT_KEY || !this.persistRootMarker) {
       return;
     }
@@ -2152,11 +4245,1375 @@ class MidgardMpfRootViewStore extends Store {
   }
 
   root() {
+    this.assertUsable();
     return Buffer.from(this.currentRoot);
   }
 
   setRoot(root: Buffer) {
     this.currentRoot = Buffer.from(root);
+  }
+
+  beginOverlay() {
+    this.assertUsable();
+    if (this.engine === "legacy") {
+      throw new Error("Cannot begin an MPF overlay when MPF_ENGINE=legacy");
+    }
+    if (this.overlay !== undefined) {
+      throw new Error("MPF block overlay already active");
+    }
+    this.overlay = new Map();
+    this.overlayValueBytes = new Map();
+    this.blockDeferredNodePuts = new Map();
+    this.blockDeferredNodeDeletes = new Set();
+    this.blockDeferredNodeEstimates = new Map();
+    this.blockDeferredEstimatedBytes = 0;
+    this.overlayBaseRoot = Buffer.from(this.currentRoot);
+    this.overlayBytes = 0;
+    this.blockPathCache = undefined;
+    this.blockPathCacheBytes = 0;
+    this.blockPathCacheSealed = false;
+    this.liveArenaEnabled = false;
+    this.transientCurrentRootEnabled = false;
+    this.clearTransientLiveArena();
+    this.transientSnapshotsCaptured = 0;
+    this.eventAtomicFinalizations = 0;
+    this.eventAtomicDirtyNodes = 0;
+    this.eventAtomicMaxDirtyNodes = 0;
+    this.arenaLimits = { ...getMpfArenaLimits() };
+    this.authenticatedNodeObjects = new WeakSet<object>();
+  }
+
+  enableBlockPathArena(transientCurrentRoot = false) {
+    this.assertUsable();
+    if (this.overlay === undefined) {
+      throw new Error("Cannot enable an MPF path arena without an overlay");
+    }
+    if (this.liveArenaEnabled) {
+      throw new Error("MPF block path arena is already active");
+    }
+    this.liveArenaEnabled = true;
+    this.transientCurrentRootEnabled = transientCurrentRoot;
+    this.midgardTransientArenaTokenValue = {};
+    this.clearTransientLiveArena();
+    this.blockPathCache = new Map();
+    this.blockPathCacheBytes = 0;
+    this.blockPathCacheSealed = false;
+    this.arenaLimits = { ...getMpfArenaLimits() };
+    for (const [key, value] of this.readCache) {
+      this.cacheBlockPathNode(key, value);
+    }
+  }
+
+  sealBlockPathCache() {
+    if (!this.liveArenaEnabled || this.blockPathCache === undefined) {
+      throw new Error("Cannot seal an inactive MPF block path cache");
+    }
+    this.blockPathCacheSealed = true;
+  }
+
+  assertEventFlatArenaCaps(nodeCount: number, estimatedBytes: number) {
+    this.assertUsable();
+    if (
+      nodeCount > this.arenaLimits.liveArenaMaxNodes ||
+      estimatedBytes > this.arenaLimits.liveArenaMaxBytes
+    ) {
+      throw new Error(
+        `Event-flat arena limit exceeded: nodes=${nodeCount.toString()}/${this.arenaLimits.liveArenaMaxNodes.toString()},bytes=${estimatedBytes.toString()}/${this.arenaLimits.liveArenaMaxBytes.toString()}`,
+      );
+    }
+  }
+
+  assertEventFlatRawCaps(nodeCount: number, estimatedBytes: number) {
+    this.assertUsable();
+    if (
+      nodeCount > this.arenaLimits.pathCacheMaxNodes ||
+      estimatedBytes > this.arenaLimits.pathCacheMaxBytes
+    ) {
+      throw new Error(
+        `Event-flat raw path limit exceeded: nodes=${nodeCount.toString()}/${this.arenaLimits.pathCacheMaxNodes.toString()},bytes=${estimatedBytes.toString()}/${this.arenaLimits.pathCacheMaxBytes.toString()}`,
+      );
+    }
+  }
+
+  async loadEventFlatRawRecords(
+    hashes: readonly Buffer[],
+  ): Promise<readonly (PackedMpfStoredValue | undefined)[]> {
+    this.assertUsable();
+    const values = (await this.getMany(hashes, (_hash, value) =>
+      value === undefined
+        ? undefined
+        : typeof value === "object" &&
+            value !== null &&
+            "serialise" in value &&
+            typeof value.serialise === "function"
+          ? value.serialise()
+          : value,
+    )) as readonly unknown[];
+    return values.map((value) =>
+      typeof value === "object" &&
+      value !== null &&
+      "__kind" in value &&
+      (value.__kind === "Leaf" || value.__kind === "Branch")
+        ? (value as PackedMpfStoredValue)
+        : undefined,
+    );
+  }
+
+  handoffRawPathsToEventFlat() {
+    this.assertUsable();
+    if (this.overlay === undefined || this.liveArenaEnabled) {
+      throw new Error("Cannot hand off an inactive or mutable raw MPF view");
+    }
+    if (
+      this.deferredNodePuts !== undefined ||
+      this.deferredNodeDeletes !== undefined ||
+      this.midgardDirtyNodes.size !== 0 ||
+      this.transientDirtyNodes.size !== 0 ||
+      this.transientLiveNodes.size !== 0 ||
+      (this.blockDeferredNodePuts?.size ?? 0) !== 0 ||
+      (this.blockDeferredNodeDeletes?.size ?? 0) !== 0
+    ) {
+      throw new Error("Cannot hand off dirty raw MPF paths to event-flat");
+    }
+    this.readCache.clear();
+  }
+
+  private rememberHydratedNodeSource(
+    decoded: unknown,
+    source: MpfReadableValue | undefined,
+  ) {
+    if (
+      typeof decoded === "object" &&
+      decoded !== null &&
+      typeof source === "object" &&
+      source !== null
+    ) {
+      this.hydratedNodeSources.set(decoded, source);
+    }
+  }
+
+  authenticateHydratedNodeOnce(value: MpfSerializableValue) {
+    const hash = (value as MpfSerializableValue & { readonly hash?: Buffer })
+      .hash;
+    if (hash === undefined) {
+      throw new Error("Hydrated MPF node has no content hash");
+    }
+    const identity =
+      this.hydratedNodeSources.get(value as object) ?? (value as object);
+    if (this.authenticatedNodeObjects.has(identity)) return;
+    const authenticate = (
+      value as MpfSerializableValue & {
+        readonly assertHydratedNodeHashes?: (maxDepth: number) => unknown;
+      }
+    ).assertHydratedNodeHashes;
+    if (authenticate === undefined) {
+      throw new Error("Hydrated MPF node cannot authenticate its hash");
+    }
+    authenticate.call(value, 0);
+    this.authenticatedNodeObjects.add(identity);
+  }
+
+  authenticateDirtyLiveNodes(root?: MpfSerializableValue): {
+    readonly verifiedNodes: number;
+    readonly authenticationMs: number;
+  } {
+    if (
+      !this.liveArenaEnabled ||
+      !this.transientCurrentRootEnabled ||
+      this.transientDirtyNodes.size === 0
+    ) {
+      return { verifiedNodes: 0, authenticationMs: 0 };
+    }
+    const startedAt = performance.now();
+    const reachableNodes =
+      root === undefined ? undefined : new Set<MpfSerializableValue>();
+    const dirtyNodes: MpfSerializableValue[] = [];
+    if (root === undefined) {
+      dirtyNodes.push(...this.transientDirtyNodes);
+    } else {
+      const pending = [root];
+      while (pending.length > 0) {
+        const node = pending.pop()!;
+        if (reachableNodes!.has(node)) continue;
+        reachableNodes!.add(node);
+        if (this.transientDirtyNodes.has(node)) dirtyNodes.push(node);
+        const children = (
+          node as MpfSerializableValue & {
+            readonly children?: readonly unknown[];
+          }
+        ).children;
+        for (const child of children ?? []) {
+          if (
+            typeof child === "object" &&
+            child !== null &&
+            "serialise" in child
+          ) {
+            pending.push(child as MpfSerializableValue);
+          }
+        }
+      }
+    }
+    let verifiedNodes = 0;
+    for (const node of dirtyNodes) {
+      const authenticate = (
+        node as MpfSerializableValue & {
+          readonly assertHydratedNodeHashes?: (maxDepth: number) => unknown;
+        }
+      ).assertHydratedNodeHashes;
+      if (authenticate === undefined) {
+        throw new Error("Transient MPF node cannot authenticate its hash");
+      }
+      authenticate.call(node, 0);
+      verifiedNodes += 1;
+    }
+    if (reachableNodes !== undefined) {
+      for (const node of this.transientLiveNodes) {
+        if (reachableNodes.has(node)) continue;
+        this.transientLiveNodes.delete(node);
+        this.transientLiveBytes -=
+          this.transientLiveNodeEstimates.get(node) ?? 0;
+        this.transientLiveNodeEstimates.delete(node);
+        this.liveArenaPrunedNodes += 1;
+      }
+    }
+    this.transientDirtyNodes.clear();
+    const authenticationMs = performance.now() - startedAt;
+    this.retainedSnapshotAuthentications += verifiedNodes;
+    this.retainedSnapshotAuthenticationMs += authenticationMs;
+    return { verifiedNodes, authenticationMs };
+  }
+
+  captureCurrentLiveTrie(root: MpfSerializableValue): void {
+    try {
+      this.captureCurrentLiveTrieUnchecked(root);
+    } catch (cause) {
+      try {
+        this.abortDeferredMutation();
+        const baseRoot = this.discardOverlay();
+        this.currentRoot = Buffer.from(baseRoot);
+        this.poisoned = true;
+      } catch {
+        // Preserve the authentication/capture failure. The durable marker is
+        // unchanged and recovery reopens it in a fresh store.
+      }
+      throw cause;
+    }
+  }
+
+  private captureCurrentLiveTrieUnchecked(root: MpfSerializableValue): void {
+    if (
+      !this.liveArenaEnabled ||
+      !this.transientCurrentRootEnabled ||
+      this.transientLiveNodes.size === 0
+    ) {
+      return;
+    }
+    if (
+      this.blockDeferredNodePuts === undefined ||
+      this.blockDeferredNodeEstimates === undefined
+    ) {
+      throw new Error("Cannot capture an inactive transient MPF arena");
+    }
+    const pending = [root];
+    const visited = new Set<object>();
+    while (pending.length > 0) {
+      const node = pending.pop()!;
+      if (visited.has(node as object)) continue;
+      visited.add(node as object);
+      const children = (
+        node as MpfSerializableValue & {
+          readonly children?: readonly (
+            | MpfSerializableValue
+            | { readonly hash?: Buffer }
+            | undefined
+          )[];
+        }
+      ).children;
+      for (const child of children ?? []) {
+        if (
+          typeof child === "object" &&
+          child !== null &&
+          "serialise" in child
+        ) {
+          pending.push(child as MpfSerializableValue);
+        }
+      }
+      if (!this.transientLiveNodes.has(node)) continue;
+      const hash = (node as MpfSerializableValue & { readonly hash?: Buffer })
+        .hash;
+      const clone = (
+        node as MpfSerializableValue & {
+          readonly cloneDetached?: () => MpfSerializableValue;
+        }
+      ).cloneDetached?.();
+      if (hash === undefined || clone === undefined || clone === node) {
+        throw new Error("Cannot capture a mutable transient MPF node");
+      }
+      const key = this.storageKey(hash);
+      this.assertLiveArenaNode(key, clone);
+      const priorEstimate = this.blockDeferredNodeEstimates.get(key) ?? 0;
+      const estimate = this.estimateDeferredNodeBytes(key, clone);
+      this.blockDeferredNodePuts.set(key, clone);
+      this.blockDeferredNodeEstimates.set(key, estimate);
+      this.blockDeferredEstimatedBytes += estimate - priorEstimate;
+      this.transientSnapshotsCaptured += 1;
+    }
+    this.clearTransientLiveArena();
+    this.assertLiveArenaCaps();
+  }
+
+  async parkCurrentOverlay(
+    root: Buffer,
+    trieName: string,
+  ): Promise<ParkedMpfOverlayV1> {
+    this.assertUsable();
+    if (
+      this.overlay === undefined ||
+      this.overlayBaseRoot === undefined ||
+      !root.equals(this.currentRoot)
+    ) {
+      throw new Error("Cannot park an inactive or mismatched MPF overlay");
+    }
+    await this.waitForSpills();
+    const writesBefore = this.levelBatchWrites;
+    if (this.parentStore !== undefined) {
+      await this.waitForAncestorSpills();
+      this.importReachableParentCandidates(root);
+    }
+    this.pruneLiveArenaToRoot(root);
+    const parkedNodes = new Map<string, MpfStoredValue>();
+    const visited = new Set<string>();
+    const pending = root.equals(MPF_EMPTY_ROOT) ? [] : [this.storageKey(root)];
+    while (pending.length > 0) {
+      const key = pending.pop()!;
+      if (visited.has(key)) continue;
+      visited.add(key);
+      const live = this.blockDeferredNodePuts?.get(key);
+      const serialized = this.overlay.get(key);
+      const candidate = live ?? serialized;
+      if (candidate === undefined) {
+        // A missing local candidate is an unchanged durable subtree. A new
+        // descendant cannot be reachable through an unchanged content hash.
+        continue;
+      }
+      if (live !== undefined) this.assertLiveArenaNode(key, live);
+      parkedNodes.set(key, live === undefined ? serialized! : live.serialise());
+      for (const childKey of this.candidateChildKeys(candidate)) {
+        pending.push(childKey);
+      }
+    }
+    const ordered = [...parkedNodes].sort(([left], [right]) =>
+      left.localeCompare(right),
+    );
+    const nodeHashes = new Uint8Array(ordered.length * 32);
+    const encodedValues = ordered.map(([, value]) =>
+      Buffer.from(JSON.stringify(value)),
+    );
+    const nodeValueOffsets = new Uint32Array(ordered.length * 2);
+    const nodeValues = new Uint8Array(
+      encodedValues.reduce((total, value) => total + value.length, 0),
+    );
+    let valueOffset = 0;
+    for (const [index, [key]] of ordered.entries()) {
+      const hash = Buffer.from(key, "hex");
+      if (hash.length !== 32) {
+        throw new Error(`Cannot park invalid MPF content key ${key}`);
+      }
+      nodeHashes.set(hash, index * 32);
+      const encoded = encodedValues[index]!;
+      nodeValues.set(encoded, valueOffset);
+      nodeValueOffsets.set([valueOffset, encoded.length], index * 2);
+      valueOffset += encoded.length;
+    }
+    const baseRoot = exactArrayBuffer(this.overlayBaseRoot);
+    const candidateRoot = exactArrayBuffer(root);
+    const hashesBuffer = exactArrayBuffer(nodeHashes);
+    const valuesBuffer = exactArrayBuffer(nodeValues);
+    const offsetsBuffer = exactArrayBuffer(
+      new Uint8Array(nodeValueOffsets.buffer),
+    );
+    const digest = parkedOverlayDigest({
+      trieName,
+      baseRoot,
+      candidateRoot,
+      nodeCount: ordered.length,
+      nodeHashes: hashesBuffer,
+      nodeValues: valuesBuffer,
+      nodeValueOffsets: offsetsBuffer,
+    });
+    if (this.levelBatchWrites !== writesBefore) {
+      throw new Error("Parking an MPF overlay performed a Level write");
+    }
+    const artifact: ParkedMpfOverlayV1 = {
+      schemaVersion: 1,
+      trieName,
+      baseRoot,
+      candidateRoot,
+      closureDigest: exactArrayBuffer(digest),
+      nodeCount: ordered.length,
+      nodeHashes: hashesBuffer,
+      nodeValues: valuesBuffer,
+      nodeValueOffsets: offsetsBuffer,
+      encodedBytes:
+        hashesBuffer.byteLength +
+        valuesBuffer.byteLength +
+        offsetsBuffer.byteLength,
+    };
+    this.discardOverlay();
+    return artifact;
+  }
+
+  async importParkedOverlay(artifact: ParkedMpfOverlayV1): Promise<Buffer> {
+    this.assertUsable();
+    if (this.overlay === undefined || this.overlayBaseRoot === undefined) {
+      throw new Error("Cannot import a parked MPF without an active overlay");
+    }
+    const baseRoot = Buffer.from(artifact.baseRoot);
+    if (!baseRoot.equals(this.overlayBaseRoot)) {
+      throw new Error(
+        `Parked MPF base mismatch: durable=${this.overlayBaseRoot.toString("hex")},parked=${baseRoot.toString("hex")}`,
+      );
+    }
+    if (
+      artifact.schemaVersion !== 1 ||
+      !Number.isSafeInteger(artifact.nodeCount) ||
+      artifact.nodeCount < 0 ||
+      artifact.baseRoot.byteLength !== 32 ||
+      artifact.candidateRoot.byteLength !== 32 ||
+      artifact.closureDigest.byteLength !== 32 ||
+      artifact.nodeHashes.byteLength !== artifact.nodeCount * 32 ||
+      artifact.nodeValueOffsets.byteLength !== artifact.nodeCount * 8 ||
+      artifact.encodedBytes !==
+        artifact.nodeHashes.byteLength +
+          artifact.nodeValues.byteLength +
+          artifact.nodeValueOffsets.byteLength
+    ) {
+      throw new Error("Invalid parked MPF artifact shape");
+    }
+    const expectedDigest = parkedOverlayDigest({
+      trieName: artifact.trieName,
+      baseRoot: artifact.baseRoot,
+      candidateRoot: artifact.candidateRoot,
+      nodeCount: artifact.nodeCount,
+      nodeHashes: artifact.nodeHashes,
+      nodeValues: artifact.nodeValues,
+      nodeValueOffsets: artifact.nodeValueOffsets,
+    });
+    if (!expectedDigest.equals(Buffer.from(artifact.closureDigest))) {
+      throw new Error("Parked MPF closure digest mismatch");
+    }
+    const hashes = new Uint8Array(artifact.nodeHashes);
+    const values = new Uint8Array(artifact.nodeValues);
+    const offsets = new Uint32Array(artifact.nodeValueOffsets);
+    const artifactKeys = new Set<string>();
+    const deserialise = (
+      Trie as unknown as {
+        readonly deserialise: (
+          hash: Buffer,
+          value: MpfStoredValue,
+          store: MidgardMpfRootViewStore,
+        ) => Promise<MpfSerializableValue>;
+      }
+    ).deserialise;
+    for (let index = 0; index < artifact.nodeCount; index += 1) {
+      const hash = Buffer.from(hashes.subarray(index * 32, (index + 1) * 32));
+      const key = hash.toString("hex");
+      if (artifactKeys.has(key)) {
+        throw new Error(`Parked MPF contains duplicate node ${key}`);
+      }
+      artifactKeys.add(key);
+      const valueOffset = offsets[index * 2]!;
+      const valueLength = offsets[index * 2 + 1]!;
+      if (valueOffset + valueLength > values.length) {
+        throw new Error("Parked MPF node value exceeds its packed arena");
+      }
+      const value = JSON.parse(
+        Buffer.from(
+          values.subarray(valueOffset, valueOffset + valueLength),
+        ).toString(),
+      ) as MpfStoredValue;
+      const decoded = await deserialise(hash, value, this);
+      this.assertLiveArenaNode(key, decoded);
+      this.setOverlayValue(key, value);
+    }
+    const candidateRoot = Buffer.from(artifact.candidateRoot);
+    this.currentRoot = Buffer.from(candidateRoot);
+    const reachableArtifactKeys = new Set<string>();
+    const visited = new Set<string>();
+    const pending = candidateRoot.equals(MPF_EMPTY_ROOT)
+      ? []
+      : [this.storageKey(candidateRoot)];
+    while (pending.length > 0) {
+      const key = pending.pop()!;
+      if (visited.has(key)) continue;
+      visited.add(key);
+      const local = this.overlay.get(key);
+      if (local !== undefined) {
+        reachableArtifactKeys.add(key);
+        for (const childKey of this.candidateChildKeys(local)) {
+          pending.push(childKey);
+        }
+        continue;
+      }
+      if ((await this.lookupStoredValue(key)) === undefined) {
+        throw new Error(`Parked MPF closure is missing node ${key}`);
+      }
+    }
+    if (reachableArtifactKeys.size !== artifactKeys.size) {
+      throw new Error(
+        `Parked MPF contains unreachable nodes: reachable=${reachableArtifactKeys.size.toString()},packed=${artifactKeys.size.toString()}`,
+      );
+    }
+    return candidateRoot;
+  }
+
+  private clearTransientLiveArena() {
+    this.transientLiveNodes.clear();
+    this.transientLiveNodeEstimates.clear();
+    this.transientDirtyNodes.clear();
+    this.transientLiveBytes = 0;
+  }
+
+  beginDeferredMutation() {
+    if (!this.retainHydratedChildren || this.overlay === undefined) {
+      return false;
+    }
+    if (this.deferredNodePuts !== undefined) {
+      throw new Error("MPF deferred mutation already active");
+    }
+    if (this.openForks > 0) {
+      throw new Error("Cannot mutate an MPF overlay while a fork is active");
+    }
+    this.deferredNodePuts = new Map();
+    this.deferredNodeDeletes = new Set();
+    this.deferredMutationRoot = Buffer.from(this.currentRoot);
+    this.midgardDirtyNodes.clear();
+    return true;
+  }
+
+  async commitDeferredMutation() {
+    if (
+      this.deferredNodePuts === undefined ||
+      this.deferredNodeDeletes === undefined
+    ) {
+      throw new Error("MPF deferred mutation is not active");
+    }
+    if (
+      this.blockDeferredNodePuts === undefined ||
+      this.blockDeferredNodeDeletes === undefined ||
+      this.blockDeferredNodeEstimates === undefined
+    ) {
+      throw new Error("MPF block deferred mutation is not active");
+    }
+    if (!this.liveArenaEnabled) {
+      for (const key of this.deferredNodeDeletes) {
+        this.blockDeferredNodePuts.delete(key);
+        this.blockDeferredNodeDeletes.add(key);
+        this.blockDeferredEstimatedBytes -=
+          this.blockDeferredNodeEstimates.get(key) ?? 0;
+        this.blockDeferredNodeEstimates.delete(key);
+      }
+    }
+    for (const [key, value] of this.deferredNodePuts) {
+      this.blockDeferredEstimatedBytes -=
+        this.blockDeferredNodeEstimates.get(key) ?? 0;
+      const estimate = this.estimateDeferredNodeBytes(key, value);
+      this.blockDeferredNodePuts.set(key, value);
+      this.blockDeferredNodeEstimates.set(key, estimate);
+      this.blockDeferredEstimatedBytes += estimate;
+      this.blockDeferredNodeDeletes.delete(key);
+    }
+    this.deferredNodePuts = undefined;
+    this.deferredNodeDeletes = undefined;
+    this.deferredMutationRoot = undefined;
+    this.midgardDirtyNodes.clear();
+    await this.spillIfNeeded();
+  }
+
+  abortDeferredMutation() {
+    if (this.deferredNodePuts === undefined) return;
+    if (this.deferredMutationRoot !== undefined) {
+      this.currentRoot = Buffer.from(this.deferredMutationRoot);
+    }
+    this.deferredNodePuts = undefined;
+    this.deferredNodeDeletes = undefined;
+    this.deferredMutationRoot = undefined;
+    this.midgardDirtyNodes.clear();
+  }
+
+  overlayIsActive() {
+    return this.overlay !== undefined;
+  }
+
+  overlayStartingRoot() {
+    return this.overlayBaseRoot === undefined
+      ? undefined
+      : Buffer.from(this.overlayBaseRoot);
+  }
+
+  stageEventFlatCandidate(
+    root: Buffer,
+    records: ReadonlyMap<string, PackedMpfStoredValue>,
+  ) {
+    this.assertUsable();
+    if (this.overlay === undefined || this.overlayBaseRoot === undefined) {
+      throw new Error(
+        "Cannot stage an event-flat candidate without an overlay",
+      );
+    }
+    if (this.openForks > 0) {
+      throw new Error("Cannot stage an event-flat candidate with open forks");
+    }
+    this.abortDeferredMutation();
+    this.overlay = new Map();
+    this.overlayValueBytes = new Map();
+    this.overlayBytes = 0;
+    this.blockDeferredNodePuts?.clear();
+    this.blockDeferredNodeDeletes?.clear();
+    this.blockDeferredNodeEstimates?.clear();
+    this.blockDeferredEstimatedBytes = 0;
+    for (const [key, value] of records) this.setOverlayValue(key, value);
+    this.currentRoot = Buffer.from(root);
+    this.blockPathCache = undefined;
+    this.blockPathCacheBytes = 0;
+    this.blockPathCacheSealed = false;
+    this.liveArenaEnabled = false;
+    this.transientCurrentRootEnabled = false;
+    this.clearTransientLiveArena();
+  }
+
+  async resetOverlayRoot(root: Buffer) {
+    this.assertUsable();
+    if (this.overlay === undefined || this.overlayBaseRoot === undefined) {
+      throw new Error("Cannot reset an inactive MPF block overlay");
+    }
+    if (this.openForks > 0) {
+      throw new Error("Cannot reset an MPF overlay while a fork is active");
+    }
+    if (this.deferredNodePuts !== undefined) {
+      throw new Error("Cannot reset an MPF overlay during a mutation");
+    }
+    // A requested root may have been created earlier in this overlay and still
+    // be held as a deferred live node. Keep the overlay contents as harmless
+    // content-addressed candidates so that root remains readable; only the
+    // virtual working root changes. The original overlayBaseRoot continues to
+    // define discard/rollback and no durable marker is written here.
+    const candidate = Buffer.from(root);
+    if (
+      this.liveArenaEnabled &&
+      !candidate.equals(MPF_EMPTY_ROOT) &&
+      (await this.lookupStoredValue(this.storageKey(candidate))) === undefined
+    ) {
+      throw new Error(
+        `Cannot reset live MPF arena to unreadable root ${candidate.toString("hex")}`,
+      );
+    }
+    if (!this.liveArenaEnabled) {
+      await this.materializeDeferredNodes();
+    }
+    this.currentRoot = candidate.equals(MPF_INTERNAL_NULL_ROOT)
+      ? Buffer.from(MPF_EMPTY_ROOT)
+      : candidate;
+    return Buffer.from(this.currentRoot);
+  }
+
+  async flushOverlay(root: Buffer) {
+    this.assertUsable();
+    if (this.overlay === undefined) {
+      throw new Error("Cannot flush an inactive MPF block overlay");
+    }
+    if (this.openForks > 0) {
+      throw new Error("Cannot promote an MPF overlay while a fork is active");
+    }
+    if (!root.equals(this.currentRoot)) {
+      throw new Error(
+        `Refusing to promote mismatched MPF root: requested=${root.toString("hex")},current=${this.currentRoot.toString("hex")}`,
+      );
+    }
+    const promotionReservations = this.reservePromotionChain();
+    try {
+      if (this.parentStore !== undefined) {
+        await this.waitForAncestorSpills();
+        this.importReachableParentCandidates(root);
+      }
+      if (this.liveArenaEnabled) {
+        this.pruneLiveArenaToRoot(root);
+      }
+      await this.materializeDeferredNodes();
+      await this.waitForSpills();
+      const ops: LevelBatchOp[] = [...this.overlay].map(([key, value]) => ({
+        type: "put" as const,
+        key,
+        value,
+        encodedBytes: this.overlayValueBytes.get(key),
+      }));
+      if (this.level !== undefined) {
+        ops.push({
+          type: "put",
+          key: ROOT_KEY,
+          value: normalizeStoredRootHex(root.toString("hex")),
+        });
+        const flushStartedAt = performance.now();
+        await this.level.batch(ops, JSON_LEVEL_ENCODING_OPTS);
+        this.flushMs += performance.now() - flushStartedAt;
+        this.levelBatchWrites += 1;
+        this.bytesFlushed += ops.reduce(
+          (total, op) =>
+            total +
+            op.key.length +
+            (op.type === "put"
+              ? (op.encodedBytes ?? Buffer.byteLength(JSON.stringify(op.value)))
+              : 0),
+          0,
+        );
+      } else if (this.memory !== undefined) {
+        for (const [key, value] of this.overlay) {
+          this.memory.set(key, value);
+        }
+      }
+      this.currentRoot = Buffer.from(root);
+      this.overlay = undefined;
+      this.overlayValueBytes = new Map();
+      this.blockDeferredNodePuts = undefined;
+      this.blockDeferredNodeDeletes = undefined;
+      this.blockDeferredNodeEstimates = undefined;
+      this.blockDeferredEstimatedBytes = 0;
+      this.blockPathCache = undefined;
+      this.blockPathCacheBytes = 0;
+      this.blockPathCacheSealed = false;
+      this.liveArenaEnabled = false;
+      this.transientCurrentRootEnabled = false;
+      this.clearTransientLiveArena();
+      this.overlayBaseRoot = undefined;
+      this.overlayBytes = 0;
+      this.readCache.clear();
+      if (this.parentStore !== undefined) {
+        this.parentStore.transferOwnershipToChild(root);
+        this.ownsLevelLifecycle = true;
+      }
+      this.closeFork();
+    } finally {
+      this.releasePromotionChain(promotionReservations);
+    }
+  }
+
+  discardOverlay() {
+    this.assertUsable();
+    if (this.overlay === undefined || this.overlayBaseRoot === undefined) {
+      throw new Error("Cannot discard an inactive MPF block overlay");
+    }
+    if (this.openForks > 0) {
+      throw new Error("Cannot discard an MPF overlay while a fork is active");
+    }
+    const baseRoot = Buffer.from(this.overlayBaseRoot);
+    this.overlay = undefined;
+    this.overlayValueBytes = new Map();
+    this.blockDeferredNodePuts = undefined;
+    this.blockDeferredNodeDeletes = undefined;
+    this.blockDeferredNodeEstimates = undefined;
+    this.blockDeferredEstimatedBytes = 0;
+    this.blockPathCache = undefined;
+    this.blockPathCacheBytes = 0;
+    this.blockPathCacheSealed = false;
+    this.liveArenaEnabled = false;
+    this.transientCurrentRootEnabled = false;
+    this.clearTransientLiveArena();
+    this.overlayBaseRoot = undefined;
+    this.overlayBytes = 0;
+    this.readCache.clear();
+    this.currentRoot = Buffer.from(baseRoot);
+    this.closeFork();
+    return baseRoot;
+  }
+
+  async poisonOverlayAfterMutationFailure() {
+    this.abortDeferredMutation();
+    await this.waitForSpills();
+    const baseRoot = this.discardOverlay();
+    this.poisoned = true;
+    return baseRoot;
+  }
+
+  async spillIfNeeded() {
+    if (this.liveArenaEnabled) {
+      this.assertLiveArenaCaps();
+      return;
+    }
+    if (
+      this.level === undefined ||
+      this.overlay === undefined ||
+      this.overlayBytes + this.blockDeferredEstimatedBytes <=
+        this.spillThresholdBytes
+    ) {
+      return;
+    }
+    await this.materializeDeferredNodes();
+    const ops: LevelBatchOp[] = [...this.overlay].map(([key, value]) => ({
+      type: "put" as const,
+      key,
+      value,
+      encodedBytes: this.overlayValueBytes.get(key),
+    }));
+    const spillingOverlay = this.overlay;
+    const spillBytes = this.overlayBytes;
+    this.spillingOverlays.push(spillingOverlay);
+    this.pendingSpillBytes += spillBytes;
+    this.overlay = new Map();
+    this.overlayValueBytes = new Map();
+    this.overlayBytes = 0;
+    this.overlaySpills += 1;
+    this.spillChain = this.spillChain.then(async () => {
+      try {
+        if (this.spillError === undefined) {
+          const spillStartedAt = performance.now();
+          await this.level!.batch(ops, JSON_LEVEL_ENCODING_OPTS);
+          this.overlaySpillMs += performance.now() - spillStartedAt;
+          this.levelBatchWrites += 1;
+          this.bytesFlushed += spillBytes;
+        }
+      } catch (error) {
+        this.spillError = error;
+      } finally {
+        const index = this.spillingOverlays.indexOf(spillingOverlay);
+        if (index >= 0) this.spillingOverlays.splice(index, 1);
+        this.pendingSpillBytes -= spillBytes;
+      }
+    });
+  }
+
+  async waitForSpills() {
+    await this.spillChain;
+    if (this.spillError !== undefined) throw this.spillError;
+  }
+
+  private async waitForAncestorSpills() {
+    if (this.parentStore === undefined) return;
+    await this.parentStore.waitForSpills();
+    await this.parentStore.waitForAncestorSpills();
+  }
+
+  shouldCloseLevel() {
+    return this.ownsLevelLifecycle;
+  }
+
+  diagnostics(): Omit<MpfStoreDiagnostics, "entries"> {
+    return {
+      storePuts: this.storePuts,
+      storeDels: this.storeDels,
+      serialiseCalls: this.serialiseCalls,
+      serialiseMs: this.serialiseMs,
+      deferredMaterializedEstimatedBytes:
+        this.deferredMaterializedEstimatedBytes,
+      deferredMaterializedActualBytes: this.deferredMaterializedActualBytes,
+      deferredLazyReads: this.deferredLazyReads,
+      deferredLazySerialiseMs: this.deferredLazySerialiseMs,
+      deferredLazySerialisedBytes: this.deferredLazySerialisedBytes,
+      arenaCheckpointCalls: this.arenaCheckpointCalls,
+      arenaCheckpointMs: this.arenaCheckpointMs,
+      arenaCheckpointNodes: this.arenaCheckpointNodes,
+      arenaCheckpointBytes: this.arenaCheckpointBytes,
+      pathCacheEntries: this.blockPathCache?.size ?? 0,
+      pathCacheBytes: this.blockPathCacheBytes,
+      pathCacheHits: this.pathCacheHits,
+      liveArenaPrunedNodes: this.liveArenaPrunedNodes,
+      liveArenaPromotedNodes: this.liveArenaPromotedNodes,
+      liveArenaPromotedBytes: this.liveArenaPromotedBytes,
+      retainedSnapshotAuthentications: this.retainedSnapshotAuthentications,
+      retainedSnapshotAuthenticationMs: this.retainedSnapshotAuthenticationMs,
+      transientLiveNodes: this.transientLiveNodes.size,
+      transientLiveBytes: this.transientLiveBytes,
+      transientDirtyNodes: this.transientDirtyNodes.size,
+      transientSnapshotsCaptured: this.transientSnapshotsCaptured,
+      eventAtomicFinalizations: this.eventAtomicFinalizations,
+      eventAtomicDirtyNodes: this.eventAtomicDirtyNodes,
+      eventAtomicMaxDirtyNodes: this.eventAtomicMaxDirtyNodes,
+      levelGets: this.levelGets,
+      levelGetManyCalls: this.levelGetManyCalls,
+      levelGetManyMaxKeys: this.levelGetManyMaxKeys,
+      levelGetMs: this.levelGetMs,
+      jsonCodecMs: this.jsonCodecMs,
+      overlayHits: this.overlayHits,
+      readCacheHits: this.readCacheHits,
+      levelBatchWrites: this.levelBatchWrites,
+      bytesFlushed: this.bytesFlushed,
+      overlayEntries:
+        (this.overlay?.size ?? 0) +
+        (this.blockDeferredNodePuts?.size ?? 0) +
+        this.transientLiveNodes.size +
+        this.spillingOverlays.reduce((total, view) => total + view.size, 0),
+      overlayBytes:
+        this.overlayBytes +
+        this.pendingSpillBytes +
+        this.blockDeferredEstimatedBytes +
+        this.transientLiveBytes,
+      overlaySpills: this.overlaySpills,
+      overlaySpillMs: this.overlaySpillMs,
+      flushMs: this.flushMs,
+    };
+  }
+
+  async hasStoredNode(root: Buffer): Promise<boolean> {
+    const storageKey = root.toString("hex");
+    const deferredValue = this.blockDeferredNodePuts?.get(storageKey);
+    if (deferredValue !== undefined) {
+      const liveHash = (deferredValue as { readonly hash?: Buffer }).hash;
+      if (liveHash === undefined || this.storageKey(liveHash) !== storageKey) {
+        throw new Error(
+          `Deferred MPF root is not content-addressed: expected=${storageKey},actual=${liveHash === undefined ? "undefined" : this.storageKey(liveHash)}`,
+        );
+      }
+      return true;
+    }
+    if (this.blockDeferredNodeDeletes?.has(storageKey)) return false;
+    return (await this.lookupStoredValue(storageKey)) !== undefined;
+  }
+
+  async checkpointDeferredNodes(): Promise<{
+    readonly serializedNodes: number;
+    readonly serializedBytes: number;
+    readonly checkpointMs: number;
+  }> {
+    const serializedNodes = this.blockDeferredNodePuts?.size ?? 0;
+    const actualBytesBefore = this.deferredMaterializedActualBytes;
+    const startedAt = performance.now();
+    await this.materializeDeferredNodes();
+    const checkpointMs = performance.now() - startedAt;
+    const serializedBytes =
+      this.deferredMaterializedActualBytes - actualBytesBefore;
+    this.arenaCheckpointCalls += 1;
+    this.arenaCheckpointMs += checkpointMs;
+    this.arenaCheckpointNodes += serializedNodes;
+    this.arenaCheckpointBytes += serializedBytes;
+    return { serializedNodes, serializedBytes, checkpointMs };
+  }
+
+  recordLiveArenaCheckpoint(checkpointMs: number) {
+    this.arenaCheckpointCalls += 1;
+    this.arenaCheckpointMs += checkpointMs;
+  }
+
+  currentOverlayView(): ReadonlyMap<string, MpfStoredValue> | undefined {
+    return this.overlay;
+  }
+
+  private setOverlayValue(
+    key: string,
+    value: MpfStoredValue,
+    encodedBytes?: number,
+  ) {
+    const previous = this.overlay!.get(key);
+    if (previous !== undefined) {
+      this.overlayBytes -=
+        Buffer.byteLength(key) + (this.overlayValueBytes.get(key) ?? 0);
+    }
+    this.overlay!.set(key, value);
+    const valueBytes =
+      encodedBytes ??
+      (this.level === undefined ? 0 : Buffer.byteLength(JSON.stringify(value)));
+    this.overlayValueBytes.set(key, valueBytes);
+    this.overlayBytes += Buffer.byteLength(key) + valueBytes;
+    this.readCache.delete(key);
+  }
+
+  private async materializeDeferredNodes() {
+    if (
+      this.blockDeferredNodePuts === undefined ||
+      this.blockDeferredNodeDeletes === undefined ||
+      (this.blockDeferredNodePuts.size === 0 &&
+        this.blockDeferredNodeDeletes.size === 0)
+    ) {
+      return;
+    }
+    const puts: Extract<LevelBatchOp, { readonly type: "put" }>[] = [];
+    let actualBytes = 0;
+    for (const [key, value] of this.blockDeferredNodePuts) {
+      this.assertLiveArenaNode(key, value);
+      const serialiseStartedAt = performance.now();
+      const serialized = value.serialise();
+      this.serialiseMs += performance.now() - serialiseStartedAt;
+      this.serialiseCalls += 1;
+      let encodedBytes: number | undefined;
+      if (this.level !== undefined) {
+        const jsonCodecStartedAt = performance.now();
+        encodedBytes = Buffer.byteLength(JSON.stringify(serialized));
+        this.jsonCodecMs += performance.now() - jsonCodecStartedAt;
+      }
+      actualBytes +=
+        Buffer.byteLength(key) +
+        (encodedBytes ?? Buffer.byteLength(JSON.stringify(serialized)));
+      puts.push({ type: "put", key, value: serialized, encodedBytes });
+    }
+    for (const key of this.blockDeferredNodeDeletes) {
+      if (this.overlay!.has(key)) this.deleteOverlayValue(key);
+    }
+    for (const put of puts) {
+      this.setOverlayValue(put.key, put.value, put.encodedBytes);
+    }
+    this.deferredMaterializedEstimatedBytes += this.blockDeferredEstimatedBytes;
+    this.deferredMaterializedActualBytes += actualBytes;
+    if (this.liveArenaEnabled) {
+      this.liveArenaPromotedNodes += puts.length;
+      this.liveArenaPromotedBytes += actualBytes;
+    }
+    this.blockDeferredNodePuts.clear();
+    this.blockDeferredNodeDeletes.clear();
+    this.blockDeferredNodeEstimates?.clear();
+    this.blockDeferredEstimatedBytes = 0;
+  }
+
+  private estimateDeferredNodeBytes(
+    key: string,
+    value: MpfSerializableValue,
+  ): number {
+    const node = value as {
+      readonly prefix?: string;
+      readonly key?: Buffer;
+      readonly value?: Buffer;
+      readonly children?: readonly unknown[];
+    };
+    const keyBytes = Buffer.byteLength(key);
+    const prefixBytes = Buffer.byteLength(node.prefix ?? "");
+    if (Buffer.isBuffer(node.key) && Buffer.isBuffer(node.value)) {
+      return (
+        keyBytes +
+        prefixBytes +
+        256 +
+        2 * node.key.length +
+        2 * node.value.length
+      );
+    }
+    if (Array.isArray(node.children)) {
+      return keyBytes + prefixBytes + 2_048;
+    }
+    return keyBytes + 4_096;
+  }
+
+  private deleteOverlayValue(key: string) {
+    const previous = this.overlay!.get(key);
+    if (previous !== undefined) {
+      this.overlayBytes -=
+        Buffer.byteLength(key) + (this.overlayValueBytes.get(key) ?? 0);
+    }
+    this.overlay!.delete(key);
+    this.overlayValueBytes.delete(key);
+  }
+
+  private cacheRead(key: string, value: MpfStoredValue) {
+    this.readCache.delete(key);
+    this.readCache.set(key, value);
+    if (this.readCache.size > 4_096) {
+      const oldest = this.readCache.keys().next().value as string | undefined;
+      if (oldest !== undefined) this.readCache.delete(oldest);
+    }
+  }
+
+  private cacheBlockPathNode(key: string, value: MpfStoredValue) {
+    if (!this.liveArenaEnabled || this.blockPathCache === undefined) return;
+    if (this.blockPathCache.has(key)) return;
+    const bytes = Buffer.byteLength(key) + estimateMpfStoredValueBytes(value);
+    const nextNodes = this.blockPathCache.size + 1;
+    const nextBytes = this.blockPathCacheBytes + bytes;
+    if (
+      nextNodes > this.arenaLimits.pathCacheMaxNodes ||
+      nextBytes > this.arenaLimits.pathCacheMaxBytes
+    ) {
+      throw new Error(
+        `MPF block path cache limit exceeded: nodes=${nextNodes.toString()}/${this.arenaLimits.pathCacheMaxNodes.toString()},bytes=${nextBytes.toString()}/${this.arenaLimits.pathCacheMaxBytes.toString()}`,
+      );
+    }
+    this.blockPathCache.set(key, value);
+    this.blockPathCacheBytes = nextBytes;
+  }
+
+  private assertLiveArenaNode(key: string, value: MpfSerializableValue) {
+    const node = value as MpfSerializableValue & {
+      readonly hash?: Buffer;
+      readonly assertHydratedNodeHashes?: (maxDepth: number) => {
+        readonly verifiedNodes: number;
+      };
+    };
+    if (node.hash === undefined || this.storageKey(node.hash) !== key) {
+      throw new Error(
+        `Live MPF arena node is not content-addressed: expected=${key},actual=${node.hash === undefined ? "undefined" : this.storageKey(node.hash)}`,
+      );
+    }
+    this.authenticateHydratedNodeOnce(node);
+  }
+
+  private assertLiveArenaCaps() {
+    const nodes =
+      (this.blockDeferredNodePuts?.size ?? 0) + this.transientLiveNodes.size;
+    const bytes = this.blockDeferredEstimatedBytes + this.transientLiveBytes;
+    if (
+      nodes > this.arenaLimits.liveArenaMaxNodes ||
+      bytes > this.arenaLimits.liveArenaMaxBytes
+    ) {
+      throw new Error(
+        `MPF live arena limit exceeded: nodes=${nodes.toString()}/${this.arenaLimits.liveArenaMaxNodes.toString()},bytes=${bytes.toString()}/${this.arenaLimits.liveArenaMaxBytes.toString()}`,
+      );
+    }
+  }
+
+  private candidateChildKeys(value: MpfReadableValue): readonly string[] {
+    if (typeof value === "string") return [];
+    if ("serialise" in value) {
+      const children = (
+        value as MpfSerializableValue & {
+          readonly children?: readonly (
+            | { readonly hash?: Buffer }
+            | undefined
+          )[];
+        }
+      ).children;
+      return (
+        children?.flatMap((child) =>
+          child?.hash === undefined ? [] : [this.storageKey(child.hash)],
+        ) ?? []
+      );
+    }
+    if (value.__kind !== "Branch" || !Array.isArray(value.children)) return [];
+    return value.children.flatMap((child) =>
+      typeof child === "string" ? [child] : [],
+    );
+  }
+
+  private findNonDurableCandidate(key: string): MpfReadableValue | undefined {
+    const live = this.blockDeferredNodePuts?.get(key);
+    if (live !== undefined) {
+      this.assertLiveArenaNode(key, live);
+      return live;
+    }
+    const serialized = this.overlay?.get(key);
+    if (serialized !== undefined) return serialized;
+    for (let index = this.spillingOverlays.length - 1; index >= 0; index -= 1) {
+      const spilling = this.spillingOverlays[index]!;
+      const candidate = spilling.get(key);
+      if (candidate !== undefined) return candidate;
+    }
+    return this.parentStore?.findNonDurableCandidate(key);
+  }
+
+  private importReachableParentCandidates(root: Buffer) {
+    if (this.parentStore === undefined) return;
+    const visited = new Set<string>();
+    const pending = [this.storageKey(root)];
+    while (pending.length > 0) {
+      const key = pending.pop()!;
+      if (visited.has(key)) continue;
+      visited.add(key);
+      let candidate: MpfReadableValue | undefined =
+        this.blockDeferredNodePuts?.get(key) ?? this.overlay?.get(key);
+      if (candidate === undefined) {
+        candidate = this.parentStore.findNonDurableCandidate(key);
+        if (candidate === undefined) continue;
+        if (typeof candidate !== "string" && "serialise" in candidate) {
+          const clone = (
+            candidate as MpfSerializableValue & {
+              readonly cloneDetached?: () => MpfSerializableValue;
+            }
+          ).cloneDetached?.();
+          if (clone === undefined || clone === candidate) {
+            throw new Error(
+              `Cannot import mutable MPF parent arena node ${key}`,
+            );
+          }
+          const priorEstimate = this.blockDeferredNodeEstimates?.get(key) ?? 0;
+          const estimate = this.estimateDeferredNodeBytes(key, clone);
+          this.blockDeferredNodePuts!.set(key, clone);
+          this.blockDeferredNodeEstimates!.set(key, estimate);
+          this.blockDeferredEstimatedBytes += estimate - priorEstimate;
+          candidate = clone;
+        } else {
+          this.setOverlayValue(key, candidate as MpfStoredValue);
+        }
+      }
+      for (const childKey of this.candidateChildKeys(candidate)) {
+        pending.push(childKey);
+      }
+    }
+    if (this.liveArenaEnabled) this.assertLiveArenaCaps();
+  }
+
+  private pruneLiveArenaToRoot(root: Buffer) {
+    if (
+      this.blockDeferredNodePuts === undefined ||
+      this.blockDeferredNodeEstimates === undefined
+    ) {
+      return;
+    }
+    const reachable = new Set<string>();
+    const pending = [this.storageKey(root)];
+    while (pending.length > 0) {
+      const key = pending.pop()!;
+      if (reachable.has(key)) continue;
+      const value =
+        this.blockDeferredNodePuts.get(key) ??
+        this.overlay?.get(key) ??
+        this.blockPathCache?.get(key);
+      if (value === undefined) continue;
+      if (typeof value !== "string" && "serialise" in value) {
+        this.assertLiveArenaNode(key, value as MpfSerializableValue);
+        reachable.add(key);
+      }
+      for (const childKey of this.candidateChildKeys(value)) {
+        pending.push(childKey);
+      }
+    }
+    for (const key of [...this.blockDeferredNodePuts.keys()]) {
+      if (reachable.has(key)) continue;
+      this.blockDeferredNodePuts.delete(key);
+      this.blockDeferredNodeDeletes?.delete(key);
+      this.blockDeferredEstimatedBytes -=
+        this.blockDeferredNodeEstimates.get(key) ?? 0;
+      this.blockDeferredNodeEstimates.delete(key);
+      this.liveArenaPrunedNodes += 1;
+    }
+    this.assertLiveArenaCaps();
+  }
+
+  private async lookupStoredValue(
+    storageKey: string,
+  ): Promise<MpfReadableValue | undefined> {
+    const activeMutationValue = this.deferredNodePuts?.get(storageKey);
+    if (activeMutationValue !== undefined) {
+      if (this.liveArenaEnabled) {
+        this.assertLiveArenaNode(storageKey, activeMutationValue);
+        return activeMutationValue;
+      }
+      return activeMutationValue.serialise();
+    }
+    const deferredValue = this.blockDeferredNodePuts?.get(storageKey);
+    if (deferredValue !== undefined) {
+      this.assertLiveArenaNode(storageKey, deferredValue);
+      if (this.liveArenaEnabled) return deferredValue;
+      const startedAt = performance.now();
+      const serialized = deferredValue.serialise();
+      const elapsedMs = performance.now() - startedAt;
+      const serializedBytes = Buffer.byteLength(JSON.stringify(serialized));
+      this.deferredLazyReads += 1;
+      this.deferredLazySerialiseMs += elapsedMs;
+      this.deferredLazySerialisedBytes += serializedBytes;
+      this.serialiseCalls += 1;
+      this.serialiseMs += elapsedMs;
+      return serialized;
+    }
+    if (this.overlay?.has(storageKey)) {
+      return this.overlay.get(storageKey);
+    }
+    for (let index = this.spillingOverlays.length - 1; index >= 0; index -= 1) {
+      const spilling = this.spillingOverlays[index]!;
+      if (spilling.has(storageKey)) return spilling.get(storageKey);
+    }
+    if (this.parentOverlay?.has(storageKey)) {
+      return this.parentOverlay.get(storageKey);
+    }
+    if (this.parentStore !== undefined) {
+      return this.parentStore.lookupStoredValue(storageKey);
+    }
+    if (this.blockPathCache?.has(storageKey)) {
+      this.pathCacheHits += 1;
+      return this.blockPathCache.get(storageKey);
+    }
+    if (this.readCache.has(storageKey)) {
+      return this.readCache.get(storageKey);
+    }
+    if (this.level !== undefined) {
+      const startedAt = performance.now();
+      const value = await this.level.get(storageKey, JSON_LEVEL_ENCODING_OPTS);
+      this.levelGetMs += performance.now() - startedAt;
+      this.levelGets += 1;
+      this.cacheRead(storageKey, value);
+      this.cacheBlockPathNode(storageKey, value);
+      return value;
+    }
+    return this.memory?.get(storageKey);
+  }
+
+  private registerFork() {
+    this.assertUsable();
+    if (this.promotionReserved) {
+      throw new Error("Cannot fork an MPF overlay while promotion is reserved");
+    }
+    this.openForks += 1;
+  }
+
+  private reservePromotionChain(): readonly MidgardMpfRootViewStore[] {
+    const reserved: MidgardMpfRootViewStore[] = [];
+    let current: MidgardMpfRootViewStore | undefined = this;
+    try {
+      while (current !== undefined) {
+        if (current.promotionReserved) {
+          throw new Error("MPF promotion chain is already reserved");
+        }
+        if (current !== this && current.openForks !== 1) {
+          throw new Error(
+            `Cannot promote an MPF fork while an ancestor has ${current.openForks.toString()} open children`,
+          );
+        }
+        current.promotionReserved = true;
+        reserved.push(current);
+        current = current.parentStore;
+      }
+      return reserved;
+    } catch (cause) {
+      this.releasePromotionChain(reserved);
+      throw cause;
+    }
+  }
+
+  private releasePromotionChain(reserved: readonly MidgardMpfRootViewStore[]) {
+    for (const store of reserved) store.promotionReserved = false;
+  }
+
+  private transferOwnershipToChild(root: Buffer) {
+    if (this.openForks !== 1) {
+      throw new Error(
+        `Cannot transfer MPF ownership without exactly one active child: open_forks=${this.openForks.toString()}`,
+      );
+    }
+    this.parentStore?.transferOwnershipToChild(root);
+    this.closeFork();
+    this.currentRoot = Buffer.from(root);
+    this.overlay = undefined;
+    this.overlayValueBytes = new Map();
+    this.blockDeferredNodePuts = undefined;
+    this.blockDeferredNodeDeletes = undefined;
+    this.blockDeferredNodeEstimates = undefined;
+    this.blockDeferredEstimatedBytes = 0;
+    this.blockPathCache = undefined;
+    this.blockPathCacheBytes = 0;
+    this.blockPathCacheSealed = false;
+    this.liveArenaEnabled = false;
+    this.transientCurrentRootEnabled = false;
+    this.clearTransientLiveArena();
+    this.overlayBaseRoot = undefined;
+    this.overlayBytes = 0;
+    this.readCache.clear();
+    this.invalidatedByChildPromotion = true;
+    this.ownsLevelLifecycle = false;
+  }
+
+  private assertUsable() {
+    if (this.poisoned) {
+      throw new Error(
+        "MPF overlay is poisoned after a failed mutation and must be reloaded",
+      );
+    }
+    if (this.invalidatedByChildPromotion) {
+      throw new Error(
+        "MPF handle is stale because durable-root ownership transferred to a promoted child fork",
+      );
+    }
+    if (this.promotionReserved) {
+      throw new Error("MPF handle is reserved for promotion");
+    }
+  }
+
+  private closeFork() {
+    if (this.parentStore !== undefined && !this.forkClosed) {
+      this.forkClosed = true;
+      this.parentStore.openForks -= 1;
+    }
   }
 
   private storageKey(key: unknown): string {
@@ -2260,9 +5717,14 @@ export class MpfError extends Data.TaggedError(
 export class MidgardMpf {
   public readonly trie: Trie;
   public readonly trieName: string;
+  private eventFlatArena?: EventFlatMutationArena;
   private readonly store: MidgardMpfRootViewStore;
   private readonly level?: Level<string, MpfStoredValue>;
   private readonly memory?: Map<string, MpfStoredValue>;
+  private readonly engine: MpfEngine;
+  private readonly spillThresholdBytes: number;
+  private readonly parentStore?: MidgardMpfRootViewStore;
+  private readonly parentOverlay?: ReadonlyMap<string, MpfStoredValue>;
 
   private constructor({
     trie,
@@ -2270,27 +5732,43 @@ export class MidgardMpf {
     store,
     level,
     memory,
+    engine = "legacy",
+    spillThresholdBytes = 512 * 1024 * 1024,
+    parentStore,
+    parentOverlay,
   }: {
     readonly trie: Trie;
     readonly trieName: string;
     readonly store: MidgardMpfRootViewStore;
     readonly level?: Level<string, MpfStoredValue>;
     readonly memory?: Map<string, MpfStoredValue>;
+    readonly engine?: MpfEngine;
+    readonly spillThresholdBytes?: number;
+    readonly parentStore?: MidgardMpfRootViewStore;
+    readonly parentOverlay?: ReadonlyMap<string, MpfStoredValue>;
   }) {
     this.trie = trie;
     this.trieName = trieName;
     this.store = store;
     this.level = level;
     this.memory = memory;
+    this.engine = engine;
+    this.spillThresholdBytes = spillThresholdBytes;
+    this.parentStore = parentStore;
+    this.parentOverlay = parentOverlay;
   }
 
   public static create(
     trieName: string,
     levelDBFilePath?: string,
+    options: {
+      readonly engine?: MpfEngine;
+      readonly spillThresholdBytes?: number;
+    } = {},
   ): Effect.Effect<MidgardMpf, MpfError> {
     return Effect.gen(function* () {
       if (levelDBFilePath === undefined) {
-        return yield* MidgardMpf.createScratch(trieName);
+        return yield* MidgardMpf.createScratch(trieName, options);
       }
       const level = new Level<string, MpfStoredValue>(
         levelDBFilePath,
@@ -2306,17 +5784,129 @@ export class MidgardMpf {
         level,
         root,
         persistRootMarker: true,
+        engine: options.engine ?? "legacy",
+        spillThresholdBytes: options.spillThresholdBytes ?? 512 * 1024 * 1024,
       });
     });
   }
 
   public static createScratch(
     trieName: string,
+    options: {
+      readonly engine?: MpfEngine;
+      readonly spillThresholdBytes?: number;
+    } = {},
   ): Effect.Effect<MidgardMpf, MpfError> {
-    return MidgardMpf.loadFromMemory({
+    return MidgardMpf.loadFromRootView({
       trieName,
       root: MPF_EMPTY_ROOT,
       memory: new Map(),
+      persistRootMarker: false,
+      engine: options.engine ?? "legacy",
+      spillThresholdBytes: options.spillThresholdBytes ?? 512 * 1024 * 1024,
+    });
+  }
+
+  public static createScratchFromList(
+    trieName: string,
+    entries: readonly { readonly key: Buffer; readonly value: Buffer }[],
+    options: { readonly engine?: MpfEngine } = {},
+  ): Effect.Effect<MidgardMpf, MpfError> {
+    return Effect.gen(function* () {
+      const memory = new Map<string, MpfStoredValue>();
+      const store = new MidgardMpfRootViewStore({
+        memory,
+        root: MPF_EMPTY_ROOT,
+        persistRootMarker: false,
+        engine: options.engine ?? "legacy",
+      });
+      const trie = yield* Effect.tryPromise({
+        try: () =>
+          Trie.fromList(
+            entries.map(({ key, value }) => ({
+              key: Buffer.from(key),
+              value: Buffer.from(value),
+            })),
+            store,
+          ),
+        catch: (e) => MpfError.create(trieName, e),
+      });
+      return new MidgardMpf({
+        trie,
+        trieName,
+        store,
+        memory,
+        engine: options.engine ?? "legacy",
+      });
+    });
+  }
+
+  /** Builds a deterministic Level-backed fixture with `fromList`, then reopens
+   * only its root. This is intentionally benchmark-only: production bootstrap
+   * continues to use the audited confirmed-ledger migration path. */
+  public static createLevelFromListForBenchmark(
+    trieName: string,
+    levelDBFilePath: string,
+    entries: readonly { readonly key: Buffer; readonly value: Buffer }[],
+    options: {
+      readonly engine?: MpfEngine;
+      readonly spillThresholdBytes?: number;
+    } = {},
+  ): Effect.Effect<MidgardMpf, MpfError> {
+    return Effect.gen(function* () {
+      const memory = new Map<string, MpfStoredValue>();
+      const stagingStore = new MidgardMpfRootViewStore({
+        memory,
+        root: MPF_EMPTY_ROOT,
+        persistRootMarker: false,
+        engine: "legacy",
+      });
+      const trie = yield* Effect.tryPromise({
+        try: () =>
+          Trie.fromList(
+            entries.map(({ key, value }) => ({
+              key: Buffer.from(key),
+              value: Buffer.from(value),
+            })),
+            stagingStore,
+          ),
+        catch: (cause) => MpfError.create(trieName, cause),
+      });
+      const root = Buffer.from(trie.hash ?? MPF_EMPTY_ROOT);
+      const level = new Level<string, MpfStoredValue>(
+        levelDBFilePath,
+        JSON_LEVEL_ENCODING_OPTS,
+      );
+      yield* Effect.tryPromise({
+        try: async () => {
+          await level.open();
+          let batch: Extract<LevelBatchOp, { readonly type: "put" }>[] = [];
+          for (const [key, value] of memory) {
+            batch.push({ type: "put", key, value });
+            if (batch.length === 10_000) {
+              await level.batch(batch, JSON_LEVEL_ENCODING_OPTS);
+              batch = [];
+            }
+          }
+          if (batch.length > 0) {
+            await level.batch(batch, JSON_LEVEL_ENCODING_OPTS);
+          }
+          await level.put(
+            ROOT_KEY,
+            normalizeStoredRootHex(root.toString("hex")),
+            JSON_LEVEL_ENCODING_OPTS,
+          );
+        },
+        catch: (cause) => MpfError.create(trieName, cause),
+      });
+      return yield* MidgardMpf.loadFromLevel({
+        trieName,
+        level,
+        root,
+        persistRootMarker: true,
+        engine: options.engine ?? "overlay",
+        spillThresholdBytes: options.spillThresholdBytes ?? 512 * 1024 * 1024,
+      });
     });
   }
 
@@ -2343,39 +5933,28 @@ export class MidgardMpf {
     });
   }
 
-  private static loadFromMemory({
-    trieName,
-    root,
-    memory,
-  }: {
-    readonly trieName: string;
-    readonly root: Buffer;
-    readonly memory: Map<string, MpfStoredValue>;
-  }): Effect.Effect<MidgardMpf, MpfError> {
-    return MidgardMpf.loadFromRootView({
-      trieName,
-      root,
-      memory,
-      persistRootMarker: false,
-    });
-  }
-
   private static loadFromLevel({
     trieName,
     level,
     root,
     persistRootMarker,
+    engine = "legacy",
+    spillThresholdBytes = 512 * 1024 * 1024,
   }: {
     readonly trieName: string;
     readonly level?: Level<string, MpfStoredValue>;
     readonly root: Buffer;
     readonly persistRootMarker: boolean;
+    readonly engine?: MpfEngine;
+    readonly spillThresholdBytes?: number;
   }): Effect.Effect<MidgardMpf, MpfError> {
     return MidgardMpf.loadFromRootView({
       trieName,
       root,
       level,
       persistRootMarker,
+      engine,
+      spillThresholdBytes,
     });
   }
 
@@ -2385,12 +5964,20 @@ export class MidgardMpf {
     level,
     memory,
     persistRootMarker,
+    engine = "legacy",
+    spillThresholdBytes = 512 * 1024 * 1024,
+    parentStore,
+    parentOverlay,
   }: {
     readonly trieName: string;
     readonly root: Buffer;
     readonly level?: Level<string, MpfStoredValue>;
     readonly memory?: Map<string, MpfStoredValue>;
     readonly persistRootMarker: boolean;
+    readonly engine?: MpfEngine;
+    readonly spillThresholdBytes?: number;
+    readonly parentStore?: MidgardMpfRootViewStore;
+    readonly parentOverlay?: ReadonlyMap<string, MpfStoredValue>;
   }): Effect.Effect<MidgardMpf, MpfError> {
     return Effect.gen(function* () {
       const store = new MidgardMpfRootViewStore({
@@ -2398,6 +5985,10 @@ export class MidgardMpf {
         memory,
         root,
         persistRootMarker,
+        engine,
+        spillThresholdBytes,
+        parentStore,
+        parentOverlay,
       });
       const trie = yield* Effect.tryPromise({
         try: async () =>
@@ -2406,16 +5997,43 @@ export class MidgardMpf {
             : await Trie.load(store),
         catch: (e) => MpfError.create(trieName, e),
       });
-      return new MidgardMpf({ trie, trieName, store, level, memory });
+      return new MidgardMpf({
+        trie,
+        trieName,
+        store,
+        level,
+        memory,
+        engine,
+        spillThresholdBytes,
+        parentStore,
+        parentOverlay,
+      });
     });
   }
 
   public root(): Effect.Effect<Buffer, MpfError> {
-    return Effect.succeed(Buffer.from(this.trie.hash ?? MPF_EMPTY_ROOT));
+    return Effect.try({
+      try: () => {
+        this.store.root();
+        return (
+          this.eventFlatArena?.rootHash() ??
+          Buffer.from(this.trie.hash ?? MPF_EMPTY_ROOT)
+        );
+      },
+      catch: (cause) => MpfError.get(this.trieName, cause),
+    });
   }
 
   public rootHex(): Effect.Effect<string, MpfError> {
     return this.root().pipe(Effect.map((root) => root.toString("hex")));
+  }
+
+  public persistedRootHex(): Effect.Effect<string, MpfError> {
+    return this.level === undefined
+      ? this.rootHex()
+      : readPersistedRoot(this.level).pipe(
+          Effect.map((root) => root.toString("hex")),
+        );
   }
 
   public rootIsEmpty(): Effect.Effect<boolean, MpfError> {
@@ -2423,6 +6041,16 @@ export class MidgardMpf {
   }
 
   public get(key: Buffer): Effect.Effect<Option.Option<Buffer>, MpfError> {
+    if (this.eventFlatArena !== undefined) {
+      return Effect.try({
+        try: () => this.eventFlatArena!.get(key),
+        catch: (cause) => MpfError.get(this.trieName, cause),
+      }).pipe(
+        Effect.map((value) =>
+          value === undefined ? Option.none() : Option.some(value),
+        ),
+      );
+    }
     const trieName = this.trieName;
     return Effect.tryPromise({
       try: () => this.trie.get(key),
@@ -2436,25 +6064,109 @@ export class MidgardMpf {
     );
   }
 
-  public insert(key: Buffer, value: Buffer): Effect.Effect<Buffer, MpfError> {
+  public insert(key: Buffer, value: Buffer): Effect.Effect<void, MpfError> {
     const trieName = this.trieName;
     return Effect.tryPromise({
       try: () => this.trie.insert(key, value),
       catch: (e) => MpfError.insert(trieName, e),
-    }).pipe(Effect.andThen(() => this.root()));
+    });
   }
 
-  public delete(key: Buffer): Effect.Effect<Buffer, MpfError> {
+  public delete(key: Buffer): Effect.Effect<void, MpfError> {
     const trieName = this.trieName;
     return Effect.tryPromise({
       try: () => this.trie.delete(key),
       catch: (e) => MpfError.delete(trieName, e),
-    }).pipe(Effect.andThen(() => this.root()));
+    });
   }
 
   public applyBatch(
     ops: readonly MpfBatchOp[],
   ): Effect.Effect<Buffer, MpfError> {
+    if (
+      this.store.overlayIsActive() &&
+      this.engine === "event_flat" &&
+      this.eventFlatArena !== undefined
+    ) {
+      return Effect.gen(this, function* () {
+        const mutated = yield* Effect.either(
+          Effect.try({
+            try: () => this.eventFlatArena!.applyEvent(ops),
+            catch: (cause) => MpfError.batch(this.trieName, cause),
+          }),
+        );
+        if (mutated._tag === "Right") {
+          this.store.putRetainedRoot(mutated.right);
+          this.trie.hash = Buffer.from(mutated.right);
+          return mutated.right;
+        }
+        const poisoned = yield* Effect.either(
+          Effect.tryPromise({
+            try: () => this.store.poisonOverlayAfterMutationFailure(),
+            catch: (cause) => MpfError.batch(this.trieName, cause),
+          }),
+        );
+        this.eventFlatArena = undefined;
+        if (poisoned._tag === "Right") {
+          this.trie.hash = Buffer.from(poisoned.right);
+        }
+        return yield* Effect.fail(mutated.left);
+      });
+    }
+    if (this.store.overlayIsActive() && this.engine === "overlay") {
+      return Effect.tryPromise({
+        try: async () => {
+          const deferred = this.store.beginDeferredMutation();
+          try {
+            for (const op of ops) {
+              try {
+                if (op.type === "insert") {
+                  await this.trie.insert(op.key, op.value);
+                } else {
+                  await this.trie.delete(op.key);
+                }
+              } catch (cause) {
+                throw op.type === "insert"
+                  ? MpfError.insert(
+                      this.trieName,
+                      new Error(
+                        `Failed to insert MPF key ${op.key.toString("hex")}`,
+                        { cause },
+                      ),
+                    )
+                  : MpfError.delete(
+                      this.trieName,
+                      new Error(
+                        `Failed to delete MPF key ${op.key.toString("hex")}`,
+                        { cause },
+                      ),
+                    );
+              }
+            }
+            if (this.store.deferMidgardBranchHashes) {
+              this.trie.finalizeMidgardEventMutation();
+            }
+            if (deferred) await this.store.commitDeferredMutation();
+            return Buffer.from(this.trie.hash ?? MPF_EMPTY_ROOT);
+          } catch (error) {
+            this.store.abortDeferredMutation();
+            try {
+              const baseRoot =
+                await this.store.poisonOverlayAfterMutationFailure();
+              this.trie.hash = Buffer.from(baseRoot);
+            } catch {
+              // Preserve the original mutation error; recovery will reopen from
+              // the unchanged durable marker.
+            }
+            throw error;
+          }
+        },
+        catch: (cause) =>
+          cause instanceof MpfError
+            ? cause
+            : MpfError.batch(this.trieName, cause),
+      });
+    }
     return Effect.gen(this, function* () {
       const rootBefore = yield* this.root();
       yield* Effect.gen(this, function* () {
@@ -2473,7 +6185,9 @@ export class MidgardMpf {
         ),
       );
       const rootAfter = yield* this.root();
-      yield* this.persistRootMarker(rootAfter);
+      if (!this.store.overlayIsActive()) {
+        yield* this.persistRootMarker(rootAfter);
+      }
       return rootAfter;
     }).pipe(
       Effect.mapError((cause) =>
@@ -2523,14 +6237,40 @@ export class MidgardMpf {
     });
   }
 
+  /**
+   * Resets the working trie view. While a block overlay is active this is a
+   * logical reset only: the overlay's original rollback root remains intact
+   * and callers must explicitly flush/promote after their journal or recovery
+   * boundary. Legacy/no-overlay callers retain the historical immediate marker
+   * persistence used by standalone migration and recovery tooling.
+   */
   public resetToRoot(root: Buffer): Effect.Effect<void, MpfError> {
     return Effect.gen(this, function* () {
+      if (this.store.overlayIsActive()) {
+        const workingRoot = yield* Effect.tryPromise({
+          try: () => this.store.resetOverlayRoot(root),
+          catch: (e) => MpfError.batch(this.trieName, e),
+        });
+        const trie = yield* Effect.tryPromise({
+          try: async () =>
+            workingRoot.equals(MPF_EMPTY_ROOT)
+              ? new Trie(this.store)
+              : await Trie.load(this.store),
+          catch: (e) => MpfError.create(this.trieName, e),
+        });
+        Object.assign(this, { trie });
+        return;
+      }
       const reloaded = yield* MidgardMpf.loadFromRootView({
         trieName: this.trieName,
         level: this.level,
         memory: this.memory,
         root,
         persistRootMarker: this.level !== undefined,
+        engine: this.engine,
+        spillThresholdBytes: this.spillThresholdBytes,
+        parentStore: this.parentStore,
+        parentOverlay: this.parentOverlay,
       });
       Object.assign(this, reloaded);
       yield* this.persistRootMarker(root);
@@ -2543,15 +6283,1101 @@ export class MidgardMpf {
 
   public close(): Effect.Effect<void, MpfError> {
     return Effect.tryPromise({
-      try: () => this.level?.close() ?? Promise.resolve(),
+      try: async () => {
+        await this.store.waitForSpills();
+        if (this.store.shouldCloseLevel()) {
+          await (this.level?.close() ?? Promise.resolve());
+        }
+      },
       catch: (e) => MpfError.close(this.trieName, e),
     });
   }
 
-  public diagnostics(): Effect.Effect<{ readonly entries: number }, MpfError> {
+  public diagnostics(): Effect.Effect<MpfStoreDiagnostics, MpfError> {
     return Effect.tryPromise({
-      try: async () => ({ entries: await this.store.size() }),
+      try: async () => ({
+        entries: await this.store.size(),
+        ...this.store.diagnostics(),
+      }),
       catch: (e) => MpfError.get(this.trieName, e),
+    });
+  }
+
+  public prefetchTouchedPaths(
+    touched: readonly (Buffer | MpfBatchOp)[],
+    concurrency = 64,
+  ): Effect.Effect<MpfPathHydrationDiagnostics, MpfError> {
+    if (
+      this.level === undefined ||
+      !this.store.overlayIsActive() ||
+      touched.length === 0
+    ) {
+      return Effect.succeed({
+        prefetchMs: 0,
+        uniquePaths: new Set(
+          touched.map((item) =>
+            Buffer.isBuffer(item)
+              ? item.toString("hex")
+              : item.key.toString("hex"),
+          ),
+        ).size,
+        nodesRequested: 0,
+        hydrationHits: 0,
+        hydrationMisses: 0,
+        loadedNodes: 0,
+        maxInFlight: 0,
+        maxBatchKeys: 0,
+        maxFrontierPaths: 0,
+        retainedBytesEstimate: 0,
+        chunkCount: 0,
+        checkpointMs: 0,
+        authenticationMs: 0,
+        materializeMs: 0,
+        collapseMs: 0,
+        checkpointSerializedNodes: 0,
+        checkpointSerializedBytes: 0,
+        verifiedUpperNodes: 0,
+        retainedUpperNodes: 0,
+        collapsedNodes: 0,
+        peakDecodedNodes: 0,
+      });
+    }
+    const trie = this.trie as Trie & {
+      hydratePaths?: (
+        touchedItems: readonly (Buffer | MpfBatchOp)[],
+        options: {
+          readonly concurrency: number;
+          readonly nativeBatchSize: number;
+        },
+      ) => Promise<
+        Omit<
+          MpfPathHydrationDiagnostics,
+          | "prefetchMs"
+          | "chunkCount"
+          | "checkpointMs"
+          | "authenticationMs"
+          | "materializeMs"
+          | "collapseMs"
+          | "checkpointSerializedNodes"
+          | "checkpointSerializedBytes"
+          | "verifiedUpperNodes"
+          | "retainedUpperNodes"
+          | "collapsedNodes"
+          | "peakDecodedNodes"
+        >
+      >;
+    };
+    return Effect.tryPromise({
+      try: async () => {
+        if (trie.hydratePaths === undefined) {
+          throw new Error(
+            "Patched MPF trie does not expose bounded touched-path hydration",
+          );
+        }
+        const levelWritesBefore = this.store.diagnostics().levelBatchWrites;
+        const startedAt = performance.now();
+        const result = await trie.hydratePaths(touched, {
+          concurrency: Math.max(1, Math.min(256, Math.floor(concurrency))),
+          nativeBatchSize: 4_096,
+        });
+        const prefetchMs = performance.now() - startedAt;
+        if (this.store.diagnostics().levelBatchWrites !== levelWritesBefore) {
+          throw new Error(
+            "MPF touched-path hydration performed a durable write",
+          );
+        }
+        return {
+          prefetchMs,
+          ...result,
+          chunkCount: 1,
+          checkpointMs: 0,
+          authenticationMs: 0,
+          materializeMs: 0,
+          collapseMs: 0,
+          checkpointSerializedNodes: 0,
+          checkpointSerializedBytes: 0,
+          verifiedUpperNodes: 0,
+          retainedUpperNodes: 0,
+          collapsedNodes: 0,
+          peakDecodedNodes: result.loadedNodes,
+        };
+      },
+      catch: (cause) => MpfError.get(`${this.trieName} touched paths`, cause),
+    });
+  }
+
+  public primeBlockPathArena(
+    touched: readonly (Buffer | MpfBatchOp)[],
+    retainDepth = 2,
+    collapseDecodedArena = true,
+  ): Effect.Effect<
+    {
+      readonly hydration: MpfPathHydrationDiagnostics;
+      readonly authenticationMs: number;
+      readonly verifiedNodes: number;
+      readonly checkpoint: MpfArenaCheckpointDiagnostics;
+    },
+    MpfError
+  > {
+    return Effect.gen(this, function* () {
+      if (this.engine === "event_flat") {
+        const rawPrimed = yield* Effect.either(
+          this.primeEventFlatRawPaths(touched),
+        );
+        if (rawPrimed._tag === "Right") return rawPrimed.right;
+        this.eventFlatArena = undefined;
+        if (this.store.overlayIsActive()) {
+          yield* Effect.promise(async () => {
+            try {
+              const baseRoot =
+                await this.store.poisonOverlayAfterMutationFailure();
+              this.trie.hash = Buffer.from(baseRoot);
+            } catch {
+              // Preserve the raw hydration failure; restart uses the marker.
+            }
+          });
+        }
+        return yield* Effect.fail(rawPrimed.left);
+      }
+      const primed = yield* Effect.either(
+        Effect.gen(this, function* () {
+          yield* Effect.try({
+            try: () => this.store.enableBlockPathArena(!collapseDecodedArena),
+            catch: (cause) => MpfError.get(this.trieName, cause),
+          });
+          const hydration = yield* this.prefetchTouchedPaths(touched);
+          // Each fetched raw node is authenticated once in hydratePaths before
+          // attachment. Verify the already-resident root here; chunk reads then
+          // reuse the sealed content-hash authentication set.
+          const authenticated = yield* this.authenticateDecodedArena(0);
+          const checkpoint = yield* this.checkpointAndCollapseDecodedArena(
+            retainDepth,
+            false,
+            collapseDecodedArena,
+          );
+          yield* Effect.try({
+            try: () => this.store.sealBlockPathCache(),
+            catch: (cause) => MpfError.get(this.trieName, cause),
+          });
+          return {
+            hydration,
+            authenticationMs: authenticated.authenticationMs,
+            verifiedNodes: authenticated.verifiedNodes,
+            checkpoint,
+          };
+        }),
+      );
+      if (primed._tag === "Right") {
+        return primed.right;
+      }
+      this.eventFlatArena = undefined;
+      if (this.store.overlayIsActive()) {
+        yield* Effect.promise(async () => {
+          try {
+            const baseRoot =
+              await this.store.poisonOverlayAfterMutationFailure();
+            this.trie.hash = Buffer.from(baseRoot);
+          } catch {
+            // Preserve the prime failure; restart reads the durable marker.
+          }
+        });
+      }
+      return yield* Effect.fail(primed.left);
+    });
+  }
+
+  private primeEventFlatRawPaths(
+    touched: readonly (Buffer | MpfBatchOp)[],
+  ): Effect.Effect<
+    {
+      readonly hydration: MpfPathHydrationDiagnostics;
+      readonly authenticationMs: number;
+      readonly verifiedNodes: number;
+      readonly checkpoint: MpfArenaCheckpointDiagnostics;
+    },
+    MpfError
+  > {
+    return Effect.tryPromise({
+      try: async () => {
+        await prepareEventFlatDigest();
+        const startedAt = performance.now();
+        const root = this.store.root();
+        const overlayBase = this.store.overlayStartingRoot();
+        const trieRoot = Buffer.from(this.trie.hash ?? MPF_EMPTY_ROOT);
+        if (
+          overlayBase === undefined ||
+          !root.equals(overlayBase) ||
+          !root.equals(trieRoot)
+        ) {
+          throw new Error(
+            `Event-flat raw hydration base mismatch: root=${root.toString("hex")},overlay=${overlayBase?.toString("hex") ?? "absent"},trie=${trieRoot.toString("hex")}`,
+          );
+        }
+        type PathState = {
+          readonly id: number;
+          readonly path: string;
+          readonly deletePath: boolean;
+          readonly ix: number;
+        };
+        type RawNode = {
+          readonly hash: Buffer;
+          readonly value: PackedMpfStoredValue;
+          readonly states: readonly PathState[];
+        };
+        const uniqueByPath = new Map<
+          string,
+          { readonly key: Buffer; deletePath: boolean }
+        >();
+        for (const item of touched) {
+          const key = Buffer.isBuffer(item) ? item : item.key;
+          const path = eventFlatDigest(key).toString("hex");
+          const previous = uniqueByPath.get(path);
+          uniqueByPath.set(path, {
+            key,
+            deletePath:
+              (previous?.deletePath ?? false) ||
+              (!Buffer.isBuffer(item) && item.type === "delete"),
+          });
+        }
+        const states = [...uniqueByPath].map(
+          ([path, state], id): PathState => ({
+            id,
+            path,
+            deletePath: state.deletePath,
+            ix: 0,
+          }),
+        );
+        const authenticated = new Map<string, AuthenticatedPackedMpfRecord>();
+        let retainedBytesEstimate = 0;
+        let authenticationMs = 0;
+        const authenticate = (
+          hash: Buffer,
+          value: PackedMpfStoredValue,
+        ): AuthenticatedPackedMpfRecord => {
+          const hashHex = hash.toString("hex");
+          const existing = authenticated.get(hashHex);
+          if (existing !== undefined) return existing;
+          const authenticationStartedAt = performance.now();
+          const branchMerkleNodes = authenticatePackedMpfRecord(hash, value);
+          authenticationMs += performance.now() - authenticationStartedAt;
+          const record = { hash, value, branchMerkleNodes };
+          authenticated.set(hashHex, record);
+          retainedBytesEstimate +=
+            Buffer.byteLength(hashHex) + estimateMpfStoredValueBytes(value);
+          this.store.assertEventFlatRawCaps(
+            authenticated.size,
+            retainedBytesEstimate,
+          );
+          return record;
+        };
+        let frontier: RawNode[] = [];
+        let loadedNodes = 0;
+        let nodesRequested = 0;
+        let hydrationHits = 0;
+        let hydrationMisses = 0;
+        let maxInFlight = 0;
+        let maxBatchKeys = 0;
+        let maxFrontierPaths = states.length;
+        const resolved = new Set<number>();
+        if (!root.equals(MPF_EMPTY_ROOT)) {
+          const [rootValue] = await this.store.loadEventFlatRawRecords([root]);
+          if (rootValue === undefined) {
+            throw new Error(
+              `Event-flat durable base is missing root ${root.toString("hex")}`,
+            );
+          }
+          authenticate(root, rootValue);
+          loadedNodes += 1;
+          frontier = [{ hash: root, value: rootValue, states }];
+        } else {
+          for (const state of states) resolved.add(state.id);
+        }
+        while (frontier.length > 0) {
+          const requests: {
+            readonly hash: Buffer;
+            readonly states: readonly PathState[];
+          }[] = [];
+          const next: RawNode[] = [];
+          for (const node of frontier) {
+            if (node.value.__kind === "Leaf") {
+              for (const state of node.states) resolved.add(state.id);
+              continue;
+            }
+            const branch = node.value;
+            const groups = new Map<number, PathState[]>();
+            const deleteTargetChildIndexes = new Set<number>();
+            for (const state of node.states) {
+              if (!state.path.slice(state.ix).startsWith(branch.prefix)) {
+                resolved.add(state.id);
+                continue;
+              }
+              const childIndex = Number.parseInt(
+                state.path[state.ix + branch.prefix.length]!,
+                16,
+              );
+              if (state.deletePath) {
+                deleteTargetChildIndexes.add(childIndex);
+              }
+              const group = groups.get(childIndex);
+              if (group === undefined) groups.set(childIndex, [state]);
+              else group.push(state);
+            }
+            const nonEmptyChildIndexes = branch.children.flatMap(
+              (child, childIndex) => (child == null ? [] : [childIndex]),
+            );
+            const targetedExistingChildren = [
+              ...deleteTargetChildIndexes,
+            ].filter(
+              (childIndex) => branch.children[childIndex] != null,
+            ).length;
+            if (
+              targetedExistingChildren > 0 &&
+              nonEmptyChildIndexes.length - targetedExistingChildren <= 1
+            ) {
+              for (const siblingIndex of nonEmptyChildIndexes) {
+                if (!groups.has(siblingIndex)) groups.set(siblingIndex, []);
+              }
+            }
+            for (const [childIndex, childStates] of groups) {
+              const childHashHex = branch.children[childIndex];
+              if (childHashHex == null) {
+                hydrationMisses += 1;
+                for (const state of childStates) resolved.add(state.id);
+                continue;
+              }
+              nodesRequested += 1;
+              const nextStates = childStates.map((state) => ({
+                ...state,
+                ix: state.ix + branch.prefix.length + 1,
+              }));
+              const known = authenticated.get(childHashHex);
+              if (known !== undefined) {
+                hydrationHits += 1;
+                if (nextStates.length > 0) {
+                  next.push({
+                    hash: known.hash,
+                    value: known.value,
+                    states: nextStates,
+                  });
+                }
+                continue;
+              }
+              requests.push({
+                hash: Buffer.from(childHashHex, "hex"),
+                states: nextStates,
+              });
+            }
+          }
+          const uniqueRequests = new Map<
+            string,
+            { readonly hash: Buffer; readonly requests: typeof requests }
+          >();
+          for (const request of requests) {
+            const hashHex = request.hash.toString("hex");
+            const existing = uniqueRequests.get(hashHex);
+            if (existing === undefined) {
+              uniqueRequests.set(hashHex, {
+                hash: request.hash,
+                requests: [request],
+              });
+            } else {
+              existing.requests.push(request);
+            }
+          }
+          const pending = [...uniqueRequests.values()];
+          maxInFlight = Math.max(maxInFlight, pending.length);
+          for (let offset = 0; offset < pending.length; offset += 4_096) {
+            const batch = pending.slice(offset, offset + 4_096);
+            maxBatchKeys = Math.max(maxBatchKeys, batch.length);
+            const values = await this.store.loadEventFlatRawRecords(
+              batch.map((request) => request.hash),
+            );
+            for (const [index, request] of batch.entries()) {
+              const value = values[index];
+              if (value === undefined) {
+                throw new Error(
+                  `Event-flat touched path is missing node ${request.hash.toString("hex")}`,
+                );
+              }
+              const record = authenticate(request.hash, value);
+              loadedNodes += 1;
+              for (const relation of request.requests) {
+                if (relation.states.length > 0) {
+                  next.push({
+                    hash: record.hash,
+                    value: record.value,
+                    states: relation.states,
+                  });
+                }
+              }
+            }
+          }
+          maxFrontierPaths = Math.max(
+            maxFrontierPaths,
+            next.reduce((total, node) => total + node.states.length, 0),
+          );
+          frontier = next;
+        }
+        if (resolved.size !== states.length) {
+          throw new Error(
+            `Event-flat touched-path proof is incomplete: resolved=${resolved.size.toString()},expected=${states.length.toString()}`,
+          );
+        }
+        const arena = EventFlatMutationArena.fromAuthenticatedRecords(root, [
+          ...authenticated.values(),
+        ]);
+        this.store.assertEventFlatArenaCaps(
+          arena.nodeCount(),
+          arena.estimatedBytes(),
+        );
+        this.store.handoffRawPathsToEventFlat();
+        this.eventFlatArena = arena;
+        const elapsedMs = performance.now() - startedAt;
+        const checkpoint: MpfArenaCheckpointDiagnostics = {
+          checkpointMs: 0,
+          authenticationMs: 0,
+          materializeMs: 0,
+          collapseMs: 0,
+          serializedNodes: 0,
+          serializedBytes: 0,
+          verifiedUpperNodes: 0,
+          retainedUpperNodes: 0,
+          collapsedNodes: 0,
+        };
+        return {
+          hydration: {
+            prefetchMs: Math.max(0, elapsedMs - authenticationMs),
+            uniquePaths: states.length,
+            nodesRequested,
+            hydrationHits,
+            hydrationMisses,
+            loadedNodes,
+            maxInFlight,
+            maxBatchKeys,
+            maxFrontierPaths,
+            retainedBytesEstimate,
+            chunkCount: 1,
+            checkpointMs: 0,
+            authenticationMs: 0,
+            materializeMs: 0,
+            collapseMs: 0,
+            checkpointSerializedNodes: 0,
+            checkpointSerializedBytes: 0,
+            verifiedUpperNodes: 0,
+            retainedUpperNodes: 0,
+            collapsedNodes: 0,
+            peakDecodedNodes: loadedNodes,
+          },
+          authenticationMs,
+          verifiedNodes: authenticated.size,
+          checkpoint,
+        };
+      },
+      catch: (cause) => MpfError.get(`${this.trieName} event-flat raw`, cause),
+    });
+  }
+
+  public checkpointAndCollapseDecodedArena(
+    retainDepth = 2,
+    materialize = true,
+    collapseDecodedArena = true,
+  ): Effect.Effect<MpfArenaCheckpointDiagnostics, MpfError> {
+    const trie = this.trie as Trie & {
+      assertHydratedNodeHashes?: (maxDepth: number) => {
+        readonly verifiedNodes: number;
+      };
+      collapseHydratedChildren?: (retainedDepth: number) => {
+        readonly retainedNodes: number;
+        readonly collapsedNodes: number;
+      };
+    };
+    return Effect.tryPromise({
+      try: async () => {
+        try {
+          if (
+            trie.assertHydratedNodeHashes === undefined ||
+            trie.collapseHydratedChildren === undefined
+          ) {
+            throw new Error(
+              "Patched MPF trie does not expose authenticated arena collapse",
+            );
+          }
+          const boundedRetainDepth = Math.max(
+            0,
+            Math.min(8, Math.floor(retainDepth)),
+          );
+          const checkpointStartedAt = performance.now();
+          const rootBefore = Buffer.from(this.trie.hash ?? MPF_EMPTY_ROOT);
+          const writesBefore = this.store.diagnostics().levelBatchWrites;
+          const transientVerification = collapseDecodedArena
+            ? this.store.authenticateDirtyLiveNodes(
+                this.trie as unknown as MpfSerializableValue,
+              )
+            : { verifiedNodes: 0, authenticationMs: 0 };
+          const authenticationStartedAt = performance.now();
+          const verification = trie.assertHydratedNodeHashes(
+            collapseDecodedArena ? boundedRetainDepth : 0,
+          );
+          const authenticationMs =
+            transientVerification.authenticationMs +
+            performance.now() -
+            authenticationStartedAt;
+          const checkpoint = materialize
+            ? await this.store.checkpointDeferredNodes()
+            : { serializedNodes: 0, serializedBytes: 0, checkpointMs: 0 };
+          const collapseStartedAt = performance.now();
+          const collapsed = collapseDecodedArena
+            ? trie.collapseHydratedChildren(boundedRetainDepth)
+            : { retainedNodes: verification.verifiedNodes, collapsedNodes: 0 };
+          const collapseMs = collapseDecodedArena
+            ? performance.now() - collapseStartedAt
+            : 0;
+          const rootAfter = Buffer.from(this.trie.hash ?? MPF_EMPTY_ROOT);
+          if (!rootAfter.equals(rootBefore)) {
+            throw new Error(
+              `Decoded-arena collapse changed MPF root: before=${rootBefore.toString("hex")},after=${rootAfter.toString("hex")}`,
+            );
+          }
+          if (this.store.diagnostics().levelBatchWrites !== writesBefore) {
+            throw new Error(
+              "Decoded-arena checkpoint performed a durable Level write",
+            );
+          }
+          const checkpointMs = performance.now() - checkpointStartedAt;
+          if (!materialize) {
+            this.store.recordLiveArenaCheckpoint(checkpointMs);
+          }
+          return {
+            checkpointMs,
+            authenticationMs,
+            materializeMs: checkpoint.checkpointMs,
+            collapseMs,
+            serializedNodes: checkpoint.serializedNodes,
+            serializedBytes: checkpoint.serializedBytes,
+            verifiedUpperNodes:
+              transientVerification.verifiedNodes + verification.verifiedNodes,
+            retainedUpperNodes: collapsed.retainedNodes,
+            collapsedNodes: collapsed.collapsedNodes,
+          };
+        } catch (cause) {
+          try {
+            const baseRoot =
+              await this.store.poisonOverlayAfterMutationFailure();
+            this.trie.hash = Buffer.from(baseRoot);
+          } catch {
+            // Preserve the checkpoint error; recovery reopens from the durable marker.
+          }
+          throw cause;
+        }
+      },
+      catch: (cause) =>
+        MpfError.get(`${this.trieName} decoded arena checkpoint`, cause),
+    });
+  }
+
+  public authenticateDecodedArena(
+    retainDepth = 2,
+  ): Effect.Effect<
+    { readonly verifiedNodes: number; readonly authenticationMs: number },
+    MpfError
+  > {
+    const trie = this.trie as Trie & {
+      assertHydratedNodeHashes?: (maxDepth: number) => {
+        readonly verifiedNodes: number;
+      };
+    };
+    return Effect.tryPromise({
+      try: async () => {
+        try {
+          if (trie.assertHydratedNodeHashes === undefined) {
+            throw new Error(
+              "Patched MPF trie does not expose authenticated arena verification",
+            );
+          }
+          const startedAt = performance.now();
+          const verification = trie.assertHydratedNodeHashes(
+            Math.max(0, Math.min(64, Math.floor(retainDepth))),
+          );
+          return {
+            verifiedNodes: verification.verifiedNodes,
+            authenticationMs: performance.now() - startedAt,
+          };
+        } catch (cause) {
+          try {
+            const baseRoot =
+              await this.store.poisonOverlayAfterMutationFailure();
+            this.trie.hash = Buffer.from(baseRoot);
+          } catch {
+            // Preserve the authentication error; recovery uses the durable marker.
+          }
+          throw cause;
+        }
+      },
+      catch: (cause) =>
+        MpfError.get(`${this.trieName} decoded arena verification`, cause),
+    });
+  }
+
+  public beginBlockOverlay(): Effect.Effect<void, MpfError> {
+    return Effect.try({
+      try: () => {
+        this.eventFlatArena = undefined;
+        this.store.beginOverlay();
+      },
+      catch: (e) => MpfError.batch(this.trieName, e),
+    });
+  }
+
+  public flushBlockOverlay(root: Buffer): Effect.Effect<void, MpfError> {
+    return Effect.gen(this, function* () {
+      yield* Effect.try({
+        try: () => {
+          if (this.eventFlatArena !== undefined) {
+            if (!this.eventFlatArena.rootHash().equals(root)) {
+              throw new Error("Event-flat flush root does not match its arena");
+            }
+            this.store.stageEventFlatCandidate(
+              root,
+              this.eventFlatArena.reachableDirtyRecords(),
+            );
+            return;
+          }
+          this.store.captureCurrentLiveTrie(
+            this.trie as unknown as MpfSerializableValue,
+          );
+        },
+        catch: (e) => MpfError.batch(this.trieName, e),
+      });
+      yield* Effect.tryPromise({
+        try: () => this.store.flushOverlay(root),
+        catch: (e) => MpfError.batch(this.trieName, e),
+      });
+      const reloaded = yield* MidgardMpf.loadFromRootView({
+        trieName: this.trieName,
+        level: this.level,
+        memory: this.memory,
+        root,
+        persistRootMarker: this.level !== undefined,
+        engine: this.engine,
+        spillThresholdBytes: this.spillThresholdBytes,
+      });
+      Object.assign(this, reloaded);
+      this.eventFlatArena = undefined;
+    });
+  }
+
+  public parkBlockOverlay(): Effect.Effect<ParkedMpfOverlayV1, MpfError> {
+    return Effect.gen(this, function* () {
+      const root = yield* this.root();
+      yield* Effect.try({
+        try: () => {
+          if (this.eventFlatArena !== undefined) {
+            this.store.stageEventFlatCandidate(
+              root,
+              this.eventFlatArena.reachableDirtyRecords(),
+            );
+            return;
+          }
+          this.store.captureCurrentLiveTrie(
+            this.trie as unknown as MpfSerializableValue,
+          );
+        },
+        catch: (cause) => MpfError.batch(`${this.trieName}-park`, cause),
+      });
+      const artifact = yield* Effect.tryPromise({
+        try: () => this.store.parkCurrentOverlay(root, this.trieName),
+        catch: (cause) => MpfError.batch(`${this.trieName}-park`, cause),
+      });
+      yield* Effect.tryPromise({
+        try: () =>
+          this.store.shouldCloseLevel()
+            ? (this.level?.close() ?? Promise.resolve())
+            : Promise.resolve(),
+        catch: (cause) => MpfError.close(`${this.trieName}-park`, cause),
+      });
+      this.eventFlatArena = undefined;
+      return artifact;
+    });
+  }
+
+  public parkEventFlatOverlayV2(
+    shardCount = 4,
+  ): Effect.Effect<ParkedEventFlatOverlayV2, MpfError> {
+    return Effect.gen(this, function* () {
+      if (this.engine !== "event_flat" || this.eventFlatArena === undefined) {
+        return yield* Effect.fail(
+          MpfError.batch(
+            `${this.trieName}-event-flat-park`,
+            new Error("Event-flat V2 park requires an active packed arena"),
+          ),
+        );
+      }
+      const baseRoot = this.store.overlayStartingRoot();
+      if (baseRoot === undefined) {
+        return yield* Effect.fail(
+          MpfError.batch(
+            `${this.trieName}-event-flat-park`,
+            new Error("Event-flat V2 park requires an active overlay"),
+          ),
+        );
+      }
+      const writesBefore = this.store.diagnostics().levelBatchWrites;
+      const frozen = yield* Effect.either(
+        Effect.tryPromise({
+          try: () =>
+            this.eventFlatArena!.freezeParallel({
+              trieName: this.trieName,
+              baseRoot,
+              shardCount,
+            }),
+          catch: (cause) =>
+            MpfError.batch(`${this.trieName}-event-flat-park`, cause),
+        }),
+      );
+      if (frozen._tag === "Left") {
+        yield* Effect.tryPromise({
+          try: () => this.store.poisonOverlayAfterMutationFailure(),
+          catch: (cause) =>
+            MpfError.batch(`${this.trieName}-event-flat-park`, cause),
+        }).pipe(Effect.catchAll(() => Effect.void));
+        return yield* Effect.fail(frozen.left);
+      }
+      if (this.store.diagnostics().levelBatchWrites !== writesBefore) {
+        return yield* Effect.fail(
+          MpfError.batch(
+            `${this.trieName}-event-flat-park`,
+            new Error("Event-flat V2 park performed a Level write"),
+          ),
+        );
+      }
+      yield* Effect.try({
+        try: () => this.store.discardOverlay(),
+        catch: (cause) =>
+          MpfError.batch(`${this.trieName}-event-flat-park`, cause),
+      });
+      yield* Effect.tryPromise({
+        try: () =>
+          this.store.shouldCloseLevel()
+            ? (this.level?.close() ?? Promise.resolve())
+            : Promise.resolve(),
+        catch: (cause) =>
+          MpfError.close(`${this.trieName}-event-flat-park`, cause),
+      });
+      this.eventFlatArena = undefined;
+      return frozen.right;
+    });
+  }
+
+  public static resumeParkedEventFlatOverlayV2(
+    trieName: string,
+    levelDBFilePath: string | undefined,
+    artifact: ParkedEventFlatOverlayV2,
+  ): Effect.Effect<MidgardMpf, MpfError> {
+    return Effect.gen(function* () {
+      yield* Effect.tryPromise({
+        try: () => prepareEventFlatDigest(),
+        catch: (cause) =>
+          MpfError.create(`${trieName}-event-flat-digest`, cause),
+      });
+      if (artifact.trieName !== trieName) {
+        return yield* Effect.fail(
+          MpfError.create(
+            trieName,
+            new Error(
+              `Parked event-flat trie mismatch: expected=${trieName},actual=${artifact.trieName}`,
+            ),
+          ),
+        );
+      }
+      const resumedView = yield* Effect.try({
+        try: () => new ResumedEventFlatOverlayV2(artifact),
+        catch: (cause) =>
+          MpfError.create(`${trieName}-event-flat-resume`, cause),
+      });
+      const mpf = yield* MidgardMpf.create(trieName, levelDBFilePath, {
+        engine: "overlay",
+      });
+      const resumed = yield* Effect.either(
+        Effect.gen(function* () {
+          const durableRoot = yield* mpf.root();
+          const parkedBase = Buffer.from(artifact.baseRoot);
+          if (!durableRoot.equals(parkedBase)) {
+            return yield* Effect.fail(
+              MpfError.create(
+                trieName,
+                new Error(
+                  `Parked event-flat durable base changed: durable=${durableRoot.toString("hex")},parked=${parkedBase.toString("hex")}`,
+                ),
+              ),
+            );
+          }
+          yield* mpf.beginBlockOverlay();
+          const candidateRoot = resumedView.rootHash();
+          yield* Effect.try({
+            try: () =>
+              mpf.store.stageEventFlatCandidate(
+                candidateRoot,
+                resumedView.flushReadyRecords(),
+              ),
+            catch: (cause) =>
+              MpfError.batch(`${trieName}-event-flat-resume`, cause),
+          });
+          const candidateTrie = yield* Effect.tryPromise({
+            try: () =>
+              candidateRoot.equals(MPF_EMPTY_ROOT)
+                ? Promise.resolve(new Trie(mpf.store))
+                : Trie.load(mpf.store),
+            catch: (cause) =>
+              MpfError.create(`${trieName}-event-flat-resume`, cause),
+          });
+          Object.assign(mpf, { trie: candidateTrie });
+          if (!(yield* mpf.root()).equals(candidateRoot)) {
+            return yield* Effect.fail(
+              MpfError.create(
+                `${trieName}-event-flat-resume`,
+                new Error("Parked event-flat candidate root is unreadable"),
+              ),
+            );
+          }
+          return mpf;
+        }),
+      );
+      if (resumed._tag === "Right") return resumed.right;
+      yield* mpf.close().pipe(Effect.catchAll(() => Effect.void));
+      return yield* Effect.fail(resumed.left);
+    });
+  }
+
+  public static resumeParkedOverlay(
+    trieName: string,
+    levelDBFilePath: string | undefined,
+    artifact: ParkedMpfOverlayV1,
+  ): Effect.Effect<MidgardMpf, MpfError> {
+    return Effect.gen(function* () {
+      if (artifact.trieName !== trieName) {
+        return yield* Effect.fail(
+          MpfError.create(
+            trieName,
+            new Error(
+              `Parked MPF trie mismatch: expected=${trieName},actual=${artifact.trieName}`,
+            ),
+          ),
+        );
+      }
+      const mpf = yield* MidgardMpf.create(trieName, levelDBFilePath, {
+        engine: "overlay",
+      });
+      const resumed = yield* Effect.either(
+        Effect.gen(function* () {
+          const durableRoot = yield* mpf.root();
+          const parkedBase = Buffer.from(artifact.baseRoot);
+          if (!durableRoot.equals(parkedBase)) {
+            return yield* Effect.fail(
+              MpfError.create(
+                trieName,
+                new Error(
+                  `Parked MPF durable base changed: durable=${durableRoot.toString("hex")},parked=${parkedBase.toString("hex")}`,
+                ),
+              ),
+            );
+          }
+          yield* mpf.beginBlockOverlay();
+          const candidateRoot = yield* Effect.tryPromise({
+            try: () => mpf.store.importParkedOverlay(artifact),
+            catch: (cause) => MpfError.batch(`${trieName}-resume`, cause),
+          });
+          const candidateTrie = yield* Effect.tryPromise({
+            try: () =>
+              candidateRoot.equals(MPF_EMPTY_ROOT)
+                ? Promise.resolve(new Trie(mpf.store))
+                : Trie.load(mpf.store),
+            catch: (cause) => MpfError.create(`${trieName}-resume`, cause),
+          });
+          Object.assign(mpf, { trie: candidateTrie });
+          if (!(yield* mpf.root()).equals(candidateRoot)) {
+            return yield* Effect.fail(
+              MpfError.create(
+                `${trieName}-resume`,
+                new Error("Parked MPF candidate root is unreadable"),
+              ),
+            );
+          }
+          return mpf;
+        }),
+      );
+      if (resumed._tag === "Right") return resumed.right;
+      yield* mpf.close().pipe(Effect.catchAll(() => Effect.void));
+      return yield* Effect.fail(resumed.left);
+    });
+  }
+
+  public static promoteParkedOverlay(
+    trieName: string,
+    levelDBFilePath: string | undefined,
+    artifact: ParkedMpfOverlayV1,
+  ): Effect.Effect<void, MpfError> {
+    return Effect.gen(function* () {
+      const mpf = yield* MidgardMpf.resumeParkedOverlay(
+        trieName,
+        levelDBFilePath,
+        artifact,
+      );
+      const promoted = yield* Effect.either(
+        mpf.flushBlockOverlay(Buffer.from(artifact.candidateRoot)),
+      );
+      yield* mpf.close().pipe(Effect.catchAll(() => Effect.void));
+      if (promoted._tag === "Left") return yield* Effect.fail(promoted.left);
+    });
+  }
+
+  public discardBlockOverlay(): Effect.Effect<void, MpfError> {
+    return Effect.gen(this, function* () {
+      this.eventFlatArena = undefined;
+      yield* Effect.tryPromise({
+        try: () => this.store.waitForSpills(),
+        catch: (e) => MpfError.batch(this.trieName, e),
+      });
+      const root = yield* Effect.try({
+        try: () => this.store.discardOverlay(),
+        catch: (e) => MpfError.batch(this.trieName, e),
+      });
+      if (this.parentStore !== undefined) {
+        this.trie.hash = Buffer.from(root);
+        return;
+      }
+      const reloaded = yield* MidgardMpf.loadFromRootView({
+        trieName: this.trieName,
+        level: this.level,
+        memory: this.memory,
+        root,
+        persistRootMarker: this.level !== undefined,
+        engine: this.engine,
+        spillThresholdBytes: this.spillThresholdBytes,
+        parentStore: this.parentStore,
+        parentOverlay: this.parentOverlay,
+      });
+      Object.assign(this, reloaded);
+    });
+  }
+
+  public discardBlockOverlayIfActive(): Effect.Effect<void, MpfError> {
+    return this.store.overlayIsActive()
+      ? this.discardBlockOverlay()
+      : Effect.void;
+  }
+
+  public blockOverlayIsActive(): boolean {
+    return this.store.overlayIsActive();
+  }
+
+  public usesStrictOverlayMutations(): boolean {
+    return this.engine !== "legacy" && this.store.overlayIsActive();
+  }
+
+  public usesEventFlatEngine(): boolean {
+    return this.engine === "event_flat";
+  }
+
+  public eventFlatMutationDiagnostics():
+    | EventFlatMutationDiagnostics
+    | undefined {
+    return this.eventFlatArena?.diagnostics();
+  }
+
+  public spillIfNeeded(): Effect.Effect<void, MpfError> {
+    return Effect.tryPromise({
+      try: () => this.store.spillIfNeeded(),
+      catch: (e) => MpfError.batch(this.trieName, e),
+    });
+  }
+
+  public ledgerOverlayHandle(): Effect.Effect<LedgerOverlayHandle, MpfError> {
+    return Effect.gen(this, function* () {
+      if (!this.store.overlayIsActive()) {
+        yield* this.beginBlockOverlay();
+      }
+      return new MidgardLedgerOverlayHandle(this);
+    });
+  }
+
+  public forkBlockOverlay(): Effect.Effect<MidgardMpf, MpfError> {
+    return Effect.gen(this, function* () {
+      yield* Effect.try({
+        try: () =>
+          this.store.captureCurrentLiveTrie(
+            this.trie as unknown as MpfSerializableValue,
+          ),
+        catch: (e) => MpfError.batch(`${this.trieName}-fork`, e),
+      });
+      const root = yield* this.root();
+      const rootAvailable = yield* Effect.tryPromise({
+        try: () => this.store.hasStoredNode(root),
+        catch: (e) => MpfError.get(this.trieName, e),
+      });
+      if (!rootAvailable) {
+        return yield* Effect.fail(
+          MpfError.create(
+            `${this.trieName}-fork`,
+            new Error(
+              `Current overlay root ${root.toString("hex")} is not readable from its parent store`,
+            ),
+          ),
+        );
+      }
+      const forkStore = new MidgardMpfRootViewStore({
+        level: this.level,
+        memory: this.memory,
+        root,
+        persistRootMarker: false,
+        engine: this.engine,
+        spillThresholdBytes: this.spillThresholdBytes,
+        parentStore: this.store,
+        parentOverlay: this.store.currentOverlayView(),
+      });
+      const forkTrie = Object.assign(
+        Object.create(Object.getPrototypeOf(this.trie)) as Trie,
+        this.trie,
+        {
+          hash: Buffer.from(this.trie.hash ?? MPF_EMPTY_ROOT),
+          store: forkStore,
+        },
+      );
+      const mutableForkTrie = forkTrie as Trie & {
+        children?: Array<{ hash: Buffer } | undefined>;
+        key?: Buffer;
+        value?: Buffer;
+        __midgardMerkleNodes?: unknown;
+        __midgardDirtyChild?: unknown;
+      };
+      if (mutableForkTrie.children !== undefined) {
+        mutableForkTrie.children = mutableForkTrie.children.map((child) =>
+          child === undefined ? undefined : { hash: Buffer.from(child.hash) },
+        );
+      }
+      if (mutableForkTrie.key !== undefined) {
+        mutableForkTrie.key = Buffer.from(mutableForkTrie.key);
+      }
+      if (mutableForkTrie.value !== undefined) {
+        mutableForkTrie.value = Buffer.from(mutableForkTrie.value);
+      }
+      delete mutableForkTrie.__midgardMerkleNodes;
+      delete mutableForkTrie.__midgardDirtyChild;
+      const fork = new MidgardMpf({
+        trie: forkTrie,
+        // A fork is a lifecycle view of the same logical trie. Parked
+        // artifacts must retain the durable store identity so a fresh process
+        // can resume them after the owning parent closes.
+        trieName: this.trieName,
+        store: forkStore,
+        level: this.level,
+        memory: this.memory,
+        engine: this.engine,
+        spillThresholdBytes: this.spillThresholdBytes,
+        parentStore: this.store,
+        parentOverlay: this.store.currentOverlayView(),
+      });
+      yield* fork.beginBlockOverlay();
+      return fork;
     });
   }
 
@@ -2569,6 +7395,53 @@ export class MidgardMpf {
       },
       catch: (e) => MpfError.create(this.trieName, e),
     });
+  }
+}
+
+/**
+ * Block-scoped ledger overlay contract consumed by Phase 4 pipelining.
+ *
+ * G1: after `promote`, the durable root marker and retained working root equal
+ * the root returned by `rootHex`. G2: `fork` is O(1): the fork reads through
+ * its immutable parent overlay and owns only its subsequent delta. G3: block
+ * deltas are plain `MpfBatchOp` values and can cross a worker boundary.
+ */
+export interface LedgerOverlayHandle {
+  rootHex(): Effect.Effect<string, MpfError>;
+  fork(): Effect.Effect<LedgerOverlayHandle, MpfError>;
+  applyBlockDelta(ops: readonly MpfBatchOp[]): Effect.Effect<string, MpfError>;
+  promote(): Effect.Effect<void, MpfError>;
+  discard(): Effect.Effect<void, MpfError>;
+}
+
+class MidgardLedgerOverlayHandle implements LedgerOverlayHandle {
+  constructor(private readonly mpf: MidgardMpf) {}
+
+  rootHex() {
+    return this.mpf.rootHex();
+  }
+
+  fork(): Effect.Effect<LedgerOverlayHandle, MpfError> {
+    return this.mpf
+      .forkBlockOverlay()
+      .pipe(Effect.map((fork) => new MidgardLedgerOverlayHandle(fork)));
+  }
+
+  applyBlockDelta(ops: readonly MpfBatchOp[]) {
+    return this.mpf
+      .applyBatch(ops)
+      .pipe(Effect.map((root) => root.toString("hex")));
+  }
+
+  promote() {
+    return Effect.gen(this, function* () {
+      const root = yield* this.mpf.root();
+      yield* this.mpf.flushBlockOverlay(root);
+    });
+  }
+
+  discard() {
+    return this.mpf.discardBlockOverlay();
   }
 }
 

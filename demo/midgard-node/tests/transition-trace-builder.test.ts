@@ -25,6 +25,8 @@ import {
 } from "./helpers/transition-fixtures.js";
 
 const TRACE_PERSIST_DB = `test-transition-trace-builder-${process.pid}`;
+const TRACE_LEGACY_DB = `${TRACE_PERSIST_DB}-legacy`;
+const TRACE_OVERLAY_DB = `${TRACE_PERSIST_DB}-overlay`;
 
 const outRef = (byte: number) => Buffer.from([byte]);
 const output = (byte: number) => Buffer.from([byte, byte]);
@@ -244,13 +246,112 @@ const expectIncrementalTraceMatchesSnapshot = ({
 
 beforeAll(async () => {
   await Effect.runPromise(deleteMpfStore(TRACE_PERSIST_DB, "transition-trace"));
+  await Effect.runPromise(deleteMpfStore(TRACE_LEGACY_DB, "trace-legacy"));
+  await Effect.runPromise(deleteMpfStore(TRACE_OVERLAY_DB, "trace-overlay"));
 });
 
 afterAll(async () => {
   await Effect.runPromise(deleteMpfStore(TRACE_PERSIST_DB, "transition-trace"));
+  await Effect.runPromise(deleteMpfStore(TRACE_LEGACY_DB, "trace-legacy"));
+  await Effect.runPromise(deleteMpfStore(TRACE_OVERLAY_DB, "trace-overlay"));
 });
 
 describe("transition trace builder", () => {
+  it.effect(
+    "replays every transition step with byte-identical legacy and overlay roots",
+    () =>
+      Effect.gen(function* () {
+        const initialUtxos = [initialUtxo(10), initialUtxo(20)];
+        const sourceEvents: TransitionTraceSourceEvent[] = [
+          noOpEvent("Withdrawal", withdrawalEventKey(1)),
+          noOpEvent("ForcedTransaction", forcedTransactionEventKey(2)),
+          {
+            phase: "L2Transaction",
+            eventKey: l2TransactionEventKey(3),
+            ledgerOps: [
+              { type: "delete", key: outRef(10) },
+              { type: "insert", key: outRef(11), value: output(11) },
+            ],
+          },
+          {
+            phase: "Deposit",
+            eventKey: depositEventKey(4),
+            ledgerOps: [
+              { type: "insert", key: outRef(12), value: output(12) },
+            ],
+          },
+        ];
+        const initialOps: MpfBatchOp[] = initialUtxos.map((entry) => ({
+          type: "insert",
+          key: entry.outref,
+          value: entry.output,
+        }));
+        const legacy = yield* MidgardMpf.create("trace-legacy", TRACE_LEGACY_DB);
+        const overlay = yield* MidgardMpf.create(
+          "trace-overlay",
+          TRACE_OVERLAY_DB,
+          { engine: "overlay" },
+        );
+        yield* legacy.applyBatch(initialOps);
+        yield* overlay.applyBatch(initialOps);
+        yield* overlay.beginBlockOverlay();
+
+        const legacyResult = yield* buildTransitionTraceResultFromMpf({
+          ledgerMpf: legacy,
+          sourceEvents,
+          withdrawalCount: 1,
+          forcedTransactionCount: 1,
+          l2TransactionCount: 1,
+          depositCount: 1,
+        });
+        const overlayResult = yield* buildTransitionTraceResultFromMpf({
+          ledgerMpf: overlay,
+          sourceEvents,
+          withdrawalCount: 1,
+          forcedTransactionCount: 1,
+          l2TransactionCount: 1,
+          depositCount: 1,
+        });
+
+        expect(overlayResult.finalUtxosRoot).toBe(
+          legacyResult.finalUtxosRoot,
+        );
+        expect(overlayResult.transitionTraceRoot).toBe(
+          legacyResult.transitionTraceRoot,
+        );
+        expect(overlayResult.eventToStepRoot).toBe(
+          legacyResult.eventToStepRoot,
+        );
+        expect(
+          overlayResult.transitionTraceMembers.map((member) => ({
+            pre: member.value.pre_utxos_root,
+            post: member.value.post_utxos_root,
+          })),
+        ).toEqual(
+          legacyResult.transitionTraceMembers.map((member) => ({
+            pre: member.value.pre_utxos_root,
+            post: member.value.post_utxos_root,
+          })),
+        );
+
+        yield* overlay.flushBlockOverlay(
+          Buffer.from(overlayResult.finalUtxosRoot, "hex"),
+        );
+        yield* legacy.close();
+        yield* overlay.close();
+        const reopened = yield* MidgardMpf.create(
+          "trace-overlay",
+          TRACE_OVERLAY_DB,
+        );
+        expect(yield* reopened.rootHex()).toBe(legacyResult.finalUtxosRoot);
+        const proof = yield* reopened.prove(outRef(12));
+        expect((yield* reopened.verify(proof, true)).toString("hex")).toBe(
+          legacyResult.finalUtxosRoot,
+        );
+        yield* reopened.close();
+      }),
+  );
+
   it.effect(
     "incremental MPF builder matches the full-snapshot builder for a multi-event fixture",
     () =>

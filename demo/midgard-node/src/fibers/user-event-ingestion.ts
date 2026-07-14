@@ -2,7 +2,7 @@ import type * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Schedule } from "effect";
 
 import { DatabaseError } from "@/database/utils/common.js";
-import { Database } from "@/services/index.js";
+import { Database, Globals, withL1ControlPlane } from "@/services/index.js";
 
 export type UserEventFetchBounds = Pick<
   SDK.UserEventFetchConfig,
@@ -117,12 +117,14 @@ export const repeatVisibleUserEventIngestionFiber = <
   readonly startLogMessage: string;
   readonly spanName: string;
   readonly action: Effect.Effect<void, ActionError, ActionRequirements>;
-}): Effect.Effect<void, never, ActionRequirements> =>
+}): Effect.Effect<void, never, ActionRequirements | Globals> =>
   Effect.gen(function* () {
+    const globals = yield* Globals;
     yield* Effect.logInfo(startLogMessage);
-    const repeatableAction = action.pipe(
-      Effect.withSpan(spanName),
-      Effect.catchAllCause(Effect.logWarning),
-    );
+    const repeatableAction = withL1ControlPlane(
+      globals,
+      { scope: spanName, maxHoldMs: 30_000 },
+      action,
+    ).pipe(Effect.withSpan(spanName), Effect.catchAllCause(Effect.logWarning));
     yield* Effect.repeat(repeatableAction, schedule);
   });

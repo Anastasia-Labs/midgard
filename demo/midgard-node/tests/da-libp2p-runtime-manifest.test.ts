@@ -1,12 +1,22 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import {
+  REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
+  type ReferenceScriptAuthPolicyDeploymentInfo,
+} from "@al-ft/midgard-sdk";
+import { Effect } from "effect";
 import { afterEach, describe, expect, it } from "vitest";
 
+import {
+  buildContractDeploymentInfoFromContracts,
+  buildDeploymentManifestV2,
+} from "@/commands/contract-deployment-info.js";
 import { parseDaProducerPublicationManifest } from "@/da/libp2p-producer.js";
 import { generateDaLibp2pRuntimeManifest } from "@/da/libp2p-runtime-manifest.js";
+import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
 
 const PRODUCER_KEY = `seed:${"00".repeat(31)}01`;
 const WATCHER_KEY = `seed:${"00".repeat(31)}02`;
@@ -54,6 +64,7 @@ describe("DA libp2p runtime manifest profiles", () => {
     });
     expect(parsed).toMatchObject({
       deploymentFingerprint: deploymentInfo.manifestId,
+      contractDeploymentManifestId: deploymentInfo.manifestId,
       threshold: 1,
       committeePeers: [
         expect.objectContaining({
@@ -245,14 +256,33 @@ const writeFinalizedDeploymentInfo = async (
 }> => {
   const dir = await mkdtemp(join(tmpdir(), "midgard-da-runtime-manifest-"));
   tempDirs.push(dir);
-  const sourcePath = new URL(
-    "../deploymentInfo/contract-deployment-info.json",
-    import.meta.url,
+  const contracts = await Effect.runPromise(
+    AlwaysSucceedsContract.pipe(Effect.provide(AlwaysSucceedsContract.Default)),
   );
-  const manifest = JSON.parse(await readFile(sourcePath, "utf8")) as Record<
-    string,
-    unknown
-  >;
+  const referenceScriptAuthPolicy: ReferenceScriptAuthPolicyDeploymentInfo = {
+    policyId: contracts.referenceScriptAuth.policyId,
+    nativeScript: {
+      type: "Native",
+      cborHex: contracts.referenceScriptAuth.mintingScriptCBOR,
+      expiresAtSlot: 0,
+      expiresAtUnixTime: 0,
+      timelockDurationMs: 0,
+    },
+    tokenNames: REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
+    postTimelockAudit: { required: true, rule: "test fixture" },
+  };
+  const manifest = buildDeploymentManifestV2(
+    buildContractDeploymentInfoFromContracts(
+      contracts,
+      referenceScriptAuthPolicy,
+    ),
+    {
+      network: "Preprod",
+      referenceScriptDeployAddress: "addr_test1reference",
+      hubOracleOneShotTxHash: "ab".repeat(32),
+      hubOracleOneShotOutputIndex: 0,
+    },
+  ) as unknown as Record<string, unknown>;
   const hubOracleOneShot = manifest.hubOracleOneShot as Record<string, unknown>;
   hubOracleOneShot.status = "consumed_by_init";
   const steps = manifest.steps as Record<string, Record<string, unknown>>;

@@ -7,9 +7,9 @@ import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { fromHex } from "@lucid-evolution/lucid";
-import { Effect, Option, Schedule } from "effect";
+import { Duration, Effect, Metric, Option, Schedule } from "effect";
 
-import { publishDaPayloadInsertFromEnv } from "@/da/libp2p-producer.js";
+import { seedDaPayloadPublicationOutboxFromEnv } from "@/da/libp2p-producer.js";
 import {
   BlocksDB,
   DaPayloadsDB,
@@ -30,6 +30,7 @@ import {
 } from "@/database/utils/common.js";
 import { Columns as TxColumns } from "@/database/utils/tx.js";
 import { type Database, Lucid } from "@/services/index.js";
+import { materializeConfirmedLedgerSnapshot } from "@/transactions/state-queue/confirmed-ledger-snapshot.js";
 import type { TxSubmitError } from "@/transactions/utils.js";
 import { batchProgram } from "@/utils.js";
 import { buildDaPayloadInsert } from "@/workers/commit-block-header/da-payload.js";
@@ -46,6 +47,15 @@ import type { MidgardMpf, MpfError } from "@/workers/utils/mpf.js";
 const BATCH_SIZE = 100;
 const SKIPPED_SUBMISSION_TRANSFER_RETRIES = 2;
 const SKIPPED_SUBMISSION_TRANSFER_INITIAL_BACKOFF = "250 millis";
+
+const daPayloadBuildDurationTimer = Metric.timer(
+  "da_payload_build_duration_ms",
+  "Duration of full-state DA materialization and payload encoding before local-finalization SQL",
+);
+const localBlockFinalizationTransactionDurationTimer = Metric.timer(
+  "local_block_finalization_transaction_duration_ms",
+  "Duration of the local-finalization SQL transaction after DA payload bytes are complete",
+);
 
 const uniqueBuffersByHex = (buffers: readonly Buffer[]): readonly Buffer[] => [
   ...new Map(
@@ -98,10 +108,10 @@ const withLocalBlockFinalizationJob = <A, E, R>(
 
 const applyFinalizedWithdrawalLedgerEffects = (
   includedWithdrawalEventIds: readonly Buffer[],
-): Effect.Effect<void, DatabaseError, Database> =>
+): Effect.Effect<readonly string[], DatabaseError, Database> =>
   Effect.gen(function* () {
     if (includedWithdrawalEventIds.length <= 0) {
-      return;
+      return [];
     }
     const uniqueEventIds = uniqueBuffersByHex(includedWithdrawalEventIds);
     const withdrawals = yield* WithdrawalsDB.retrieveByEventIds(uniqueEventIds);
@@ -122,7 +132,7 @@ const applyFinalizedWithdrawalLedgerEffects = (
         WithdrawalsDB.Validity.WithdrawalIsValid,
     );
     if (validWithdrawals.length <= 0) {
-      return;
+      return [];
     }
 
     const consumedOutRefs = yield* Effect.forEach(
@@ -132,6 +142,7 @@ const applyFinalizedWithdrawalLedgerEffects = (
     const consumedDepositEventIds =
       yield* MempoolLedgerDB.clearUTxOs(consumedOutRefs);
     yield* DepositsDB.markConsumedByEventIds(consumedDepositEventIds);
+    return consumedOutRefs.map((outRef) => outRef.toString("hex"));
   });
 
 export const finalizeCommittedBlockLocally = (
@@ -144,8 +155,13 @@ export const finalizeCommittedBlockLocally = (
     readonly processedMempoolTxsOverride?: readonly TxTable.EntryWithTimeStamp[];
     readonly useAmbientProcessedMempool?: boolean;
     readonly daPayloadRecord?: PendingBlockFinalizationsDB.Record;
+    readonly beforeTransactionsMpfReset?: Effect.Effect<
+      void,
+      DatabaseError,
+      Database
+    >;
   } = {},
-): Effect.Effect<void, DatabaseError | MpfError, Database> =>
+): Effect.Effect<readonly string[], DatabaseError | MpfError, Database> =>
   Effect.gen(function* () {
     const filterAlreadyCommittedTxs = (
       candidateBatches: readonly SuccessfulCommitBatch[],
@@ -213,13 +229,36 @@ export const finalizeCommittedBlockLocally = (
       Math.floor(BATCH_SIZE / 2),
     );
     const filteredBatches = yield* filterAlreadyCommittedTxs(batches);
-    let persistedDaPayload: DaPayloadsDB.InsertInput | undefined;
+    const daPayloadBuildStartedAt = Date.now();
+    const persistedDaPayload =
+      options.daPayloadRecord === undefined
+        ? undefined
+        : yield* Effect.gen(function* () {
+            const record = options.daPayloadRecord!;
+            const snapshot =
+              record.ledgerDelta === undefined
+                ? undefined
+                : yield* materializeConfirmedLedgerSnapshot(record);
+            return yield* buildDaPayloadInsert({
+              record,
+              utxos: snapshot?.entries.map((entry) => ({
+                outref: entry.outref,
+                output: entry.output,
+              })),
+            });
+          });
+    if (persistedDaPayload !== undefined) {
+      yield* daPayloadBuildDurationTimer(
+        Effect.succeed(Duration.millis(Date.now() - daPayloadBuildStartedAt)),
+      );
+    }
 
     yield* Effect.logInfo(
       "🔹 Inserting included transactions into ImmutableDB and BlocksDB, clearing included txs from MempoolDB/ProcessedMempoolDB, and resetting the transactions MPF root marker...",
     );
     const sql = yield* SqlClient.SqlClient;
-    yield* sql
+    const transactionStartedAt = Date.now();
+    const mempoolLedgerDeletedOutRefHexes = yield* sql
       .withTransaction(
         Effect.gen(function* () {
           yield* Effect.forEach(
@@ -250,16 +289,14 @@ export const finalizeCommittedBlockLocally = (
           if (processedTxHashes.length > 0) {
             yield* ProcessedMempoolDB.clearTxs(processedTxHashes);
           }
-          yield* applyFinalizedWithdrawalLedgerEffects(
-            includedWithdrawalEventIds,
-          );
-          if (options.daPayloadRecord !== undefined) {
-            const daPayload = yield* buildDaPayloadInsert({
-              record: options.daPayloadRecord,
-            });
-            yield* DaPayloadsDB.upsertAvailable(daPayload);
-            persistedDaPayload = daPayload;
+          const deletedOutRefHexes =
+            yield* applyFinalizedWithdrawalLedgerEffects(
+              includedWithdrawalEventIds,
+            );
+          if (persistedDaPayload !== undefined) {
+            yield* DaPayloadsDB.upsertAvailable(persistedDaPayload);
           }
+          return deletedOutRefHexes;
         }),
       )
       .pipe(
@@ -267,21 +304,20 @@ export const finalizeCommittedBlockLocally = (
           "local_block_finalization",
           "Failed to finalize committed block locally",
         ),
+        Effect.ensuring(
+          localBlockFinalizationTransactionDurationTimer(
+            Effect.succeed(Duration.millis(Date.now() - transactionStartedAt)),
+          ),
+        ),
       );
     if (persistedDaPayload !== undefined) {
-      const publication =
-        yield* publishDaPayloadInsertFromEnv(persistedDaPayload);
-      if (publication.configured) {
-        yield* Effect.logInfo(
-          `🔹 Published DA payload over libp2p (header=${publication.headerHash},accepted_peers=${publication.acceptedPeers.toString()},threshold=${publication.threshold?.toString() ?? "unknown"})`,
-        );
-      } else {
-        yield* Effect.logInfo(
-          `🔹 Skipped DA payload libp2p publication for ${publication.headerHash}: ${publication.reason ?? "not configured"}`,
-        );
-      }
+      yield* seedDaPayloadPublicationOutboxFromEnv(persistedDaPayload);
+    }
+    if (options.beforeTransactionsMpfReset !== undefined) {
+      yield* options.beforeTransactionsMpfReset;
     }
     yield* transactionsMpf.resetToEmpty();
+    return mempoolLedgerDeletedOutRefHexes;
   }).pipe(
     Effect.tapError((error) =>
       Effect.gen(function* () {
@@ -299,6 +335,7 @@ export const successfulLocalFinalizationRecoveryProgram = (
   confirmedHeaderHash: string,
   workerInput: WorkerInput,
   _sizeOfProcessedTxs: number,
+  beforeTransactionsMpfReset?: Effect.Effect<void, DatabaseError, Database>,
 ): Effect.Effect<WorkerOutput, DatabaseError | MpfError, Database> =>
   Effect.gen(function* () {
     const confirmedHeaderHashBuffer = Buffer.from(fromHex(confirmedHeaderHash));
@@ -375,18 +412,20 @@ export const successfulLocalFinalizationRecoveryProgram = (
         includedWithdrawalCount: finalizedWithdrawalEventIds.length,
       },
       Effect.gen(function* () {
-        yield* finalizeCommittedBlockLocally(
-          transactionsMpf,
-          journalMempoolTxs,
-          journalMempoolTxHashes,
-          confirmedHeaderHash,
-          finalizedWithdrawalEventIds,
-          {
-            processedMempoolTxsOverride: journalProcessedMempoolTxs,
-            useAmbientProcessedMempool: false,
-            daPayloadRecord: record,
-          },
-        );
+        const mempoolLedgerDeletedOutRefHexes =
+          yield* finalizeCommittedBlockLocally(
+            transactionsMpf,
+            journalMempoolTxs,
+            journalMempoolTxHashes,
+            confirmedHeaderHash,
+            finalizedWithdrawalEventIds,
+            {
+              processedMempoolTxsOverride: journalProcessedMempoolTxs,
+              useAmbientProcessedMempool: false,
+              daPayloadRecord: record,
+              beforeTransactionsMpfReset,
+            },
+          );
         yield* WithdrawalsDB.markFinalizedByEventIds(
           finalizedWithdrawalEventIds,
           confirmedHeaderHashBuffer,
@@ -400,10 +439,12 @@ export const successfulLocalFinalizationRecoveryProgram = (
         );
         return {
           type: "SuccessfulLocalFinalizationRecoveryOutput" as const,
+          finalizedHeaderHash: confirmedHeaderHash,
           mempoolTxsCount:
             record.txMembers.length + workerInput.data.mempoolTxsCountSoFar,
           sizeOfBlocksTxs:
             journalTxsSize + workerInput.data.sizeOfProcessedTxsSoFar,
+          mempoolLedgerDeletedOutRefHexes,
         } satisfies WorkerOutput;
       }),
     );

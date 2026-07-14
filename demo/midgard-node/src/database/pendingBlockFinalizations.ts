@@ -54,6 +54,18 @@ export enum Columns {
   EXPECTED_DEPOSIT_COUNT = "expected_deposit_count",
   EXPECTED_TOTAL_EVENT_COUNT = "expected_total_event_count",
   EXPECTED_TRANSITION_STEP_COUNT = "expected_transition_step_count",
+  LEDGER_DELTA_SPENT = "ledger_delta_spent",
+  LEDGER_DELTA_PRODUCED = "ledger_delta_produced",
+  UTXO_PAYLOAD_ENTRY_COUNT = "utxo_payload_entry_count",
+  UTXO_PAYLOAD_ENCODED_TUPLE_BYTES = "utxo_payload_encoded_tuple_bytes",
+  MPF_OWNER_SCHEMA = "mpf_owner_schema",
+  MPF_OWNER_BINARY_SHA256 = "mpf_owner_binary_sha256",
+  MPF_REPLAY_BASE_ROOT = "mpf_replay_base_root",
+  MPF_REPLAY_CANDIDATE_ROOT = "mpf_replay_candidate_root",
+  MPF_REPLAY_EVENT_LOG = "mpf_replay_event_log",
+  MPF_REPLAY_EVENT_LOG_DIGEST = "mpf_replay_event_log_digest",
+  MPF_REPLAY_EVENT_ROOTS = "mpf_replay_event_roots",
+  MPF_REPLAY_EVENT_COUNT = "mpf_replay_event_count",
   STATUS = "status",
   OBSERVED_CONFIRMED_AT_MS = "observed_confirmed_at_ms",
   CREATED_AT = "created_at",
@@ -125,6 +137,18 @@ export type Row = {
   [Columns.EXPECTED_DEPOSIT_COUNT]: bigint;
   [Columns.EXPECTED_TOTAL_EVENT_COUNT]: bigint;
   [Columns.EXPECTED_TRANSITION_STEP_COUNT]: bigint;
+  [Columns.LEDGER_DELTA_SPENT]?: unknown | null;
+  [Columns.LEDGER_DELTA_PRODUCED]?: unknown | null;
+  [Columns.UTXO_PAYLOAD_ENTRY_COUNT]?: number | null;
+  [Columns.UTXO_PAYLOAD_ENCODED_TUPLE_BYTES]?: number | null;
+  [Columns.MPF_OWNER_SCHEMA]?: number | null;
+  [Columns.MPF_OWNER_BINARY_SHA256]?: Buffer | null;
+  [Columns.MPF_REPLAY_BASE_ROOT]?: Buffer | null;
+  [Columns.MPF_REPLAY_CANDIDATE_ROOT]?: Buffer | null;
+  [Columns.MPF_REPLAY_EVENT_LOG]?: Buffer | null;
+  [Columns.MPF_REPLAY_EVENT_LOG_DIGEST]?: Buffer | null;
+  [Columns.MPF_REPLAY_EVENT_ROOTS]?: Buffer | null;
+  [Columns.MPF_REPLAY_EVENT_COUNT]?: number | null;
   [Columns.STATUS]: Status;
   [Columns.OBSERVED_CONFIRMED_AT_MS]: bigint | null;
   [Columns.CREATED_AT]: Date;
@@ -141,6 +165,10 @@ type RawRow = Omit<
   | Columns.EXPECTED_DEPOSIT_COUNT
   | Columns.EXPECTED_TOTAL_EVENT_COUNT
   | Columns.EXPECTED_TRANSITION_STEP_COUNT
+  | Columns.UTXO_PAYLOAD_ENTRY_COUNT
+  | Columns.UTXO_PAYLOAD_ENCODED_TUPLE_BYTES
+  | Columns.MPF_OWNER_SCHEMA
+  | Columns.MPF_REPLAY_EVENT_COUNT
   | Columns.OBSERVED_CONFIRMED_AT_MS
 > & {
   [Columns.EXPECTED_WITHDRAWAL_COUNT]: PgBigInt;
@@ -149,6 +177,10 @@ type RawRow = Omit<
   [Columns.EXPECTED_DEPOSIT_COUNT]: PgBigInt;
   [Columns.EXPECTED_TOTAL_EVENT_COUNT]: PgBigInt;
   [Columns.EXPECTED_TRANSITION_STEP_COUNT]: PgBigInt;
+  [Columns.UTXO_PAYLOAD_ENTRY_COUNT]?: PgBigInt | null;
+  [Columns.UTXO_PAYLOAD_ENCODED_TUPLE_BYTES]?: PgBigInt | null;
+  [Columns.MPF_OWNER_SCHEMA]?: PgBigInt | null;
+  [Columns.MPF_REPLAY_EVENT_COUNT]?: PgBigInt | null;
   [Columns.OBSERVED_CONFIRMED_AT_MS]: PgBigInt | null;
 };
 
@@ -183,6 +215,17 @@ export type RetainedRootMemberInput = {
 const toBigInt = (value: PgBigInt): bigint =>
   typeof value === "bigint" ? value : BigInt(value);
 
+const toSafeNumber = (value: PgBigInt | null | undefined): number | null => {
+  if (value == null) return null;
+  const normalized = Number(value);
+  if (!Number.isSafeInteger(normalized) || normalized < 0) {
+    throw new Error(
+      `Database aggregate is not a non-negative safe integer: ${String(value)}`,
+    );
+  }
+  return normalized;
+};
+
 const normalizeRow = (row: RawRow): Row => ({
   ...row,
   [Columns.EXPECTED_WITHDRAWAL_COUNT]: toBigInt(
@@ -203,6 +246,16 @@ const normalizeRow = (row: RawRow): Row => ({
   [Columns.EXPECTED_TRANSITION_STEP_COUNT]: toBigInt(
     row[Columns.EXPECTED_TRANSITION_STEP_COUNT],
   ),
+  [Columns.UTXO_PAYLOAD_ENTRY_COUNT]: toSafeNumber(
+    row[Columns.UTXO_PAYLOAD_ENTRY_COUNT],
+  ),
+  [Columns.UTXO_PAYLOAD_ENCODED_TUPLE_BYTES]: toSafeNumber(
+    row[Columns.UTXO_PAYLOAD_ENCODED_TUPLE_BYTES],
+  ),
+  [Columns.MPF_OWNER_SCHEMA]: toSafeNumber(row[Columns.MPF_OWNER_SCHEMA]),
+  [Columns.MPF_REPLAY_EVENT_COUNT]: toSafeNumber(
+    row[Columns.MPF_REPLAY_EVENT_COUNT],
+  ),
   [Columns.OBSERVED_CONFIRMED_AT_MS]:
     row[Columns.OBSERVED_CONFIRMED_AT_MS] === null
       ? null
@@ -221,6 +274,30 @@ export type Record = Row & {
   readonly transitionTraceMembers: readonly MemberRecord[];
   readonly eventToStepMembers: readonly MemberRecord[];
   readonly utxoMembers: readonly UtxoRecord[];
+  readonly ledgerDelta?: LedgerDeltaInput;
+  readonly utxoPayloadAggregate?: UtxoPayloadSizeAggregate;
+  readonly nativeMpfReplay?: NativeMpfReplayInput;
+};
+
+export type UtxoPayloadSizeAggregate = {
+  readonly entryCount: number;
+  readonly encodedTupleBytes: number;
+};
+
+export type LedgerDeltaInput = {
+  readonly spent: readonly Buffer[];
+  readonly produced: readonly UtxoInput[];
+};
+
+export type NativeMpfReplayInput = {
+  readonly schema: 1;
+  readonly ownerBinarySha256: Buffer;
+  readonly baseRoot: Buffer;
+  readonly candidateRoot: Buffer;
+  readonly eventLog: Buffer;
+  readonly eventLogDigest: Buffer;
+  readonly eventRoots: Buffer;
+  readonly eventCount: number;
 };
 
 export type PendingBlockFinalizationMetadata = {
@@ -273,6 +350,100 @@ export type PrepareInput = {
   readonly transitionTraceMembers: readonly RetainedRootMemberInput[];
   readonly eventToStepMembers: readonly RetainedRootMemberInput[];
   readonly utxoEntries: readonly UtxoInput[];
+  readonly ledgerDelta?: LedgerDeltaInput;
+  readonly utxoPayloadAggregate?: UtxoPayloadSizeAggregate;
+  readonly nativeMpfReplay?: NativeMpfReplayInput;
+};
+
+const assertNativeMpfReplay = (replay: NativeMpfReplayInput): void => {
+  const exact = (value: Buffer, bytes: number, field: string): void => {
+    if (value.byteLength !== bytes) {
+      throw new Error(
+        `${field} must contain exactly ${bytes.toString()} bytes`,
+      );
+    }
+  };
+  if (replay.schema !== 1) throw new Error("mpf_owner_schema must equal 1");
+  exact(replay.ownerBinarySha256, 32, "mpf_owner_binary_sha256");
+  exact(replay.baseRoot, 32, "mpf_replay_base_root");
+  exact(replay.candidateRoot, 32, "mpf_replay_candidate_root");
+  exact(replay.eventLogDigest, 32, "mpf_replay_event_log_digest");
+  if (replay.eventLog.byteLength < 92) {
+    throw new Error("mpf_replay_event_log is truncated");
+  }
+  if (
+    !Number.isSafeInteger(replay.eventCount) ||
+    replay.eventCount < 0 ||
+    replay.eventRoots.byteLength !== replay.eventCount * 32
+  ) {
+    throw new Error("mpf_replay_event_roots/count mismatch");
+  }
+};
+
+const decodeNativeMpfReplay = (row: Row): NativeMpfReplayInput | undefined => {
+  const values = [
+    row[Columns.MPF_OWNER_SCHEMA],
+    row[Columns.MPF_OWNER_BINARY_SHA256],
+    row[Columns.MPF_REPLAY_BASE_ROOT],
+    row[Columns.MPF_REPLAY_CANDIDATE_ROOT],
+    row[Columns.MPF_REPLAY_EVENT_LOG],
+    row[Columns.MPF_REPLAY_EVENT_LOG_DIGEST],
+    row[Columns.MPF_REPLAY_EVENT_ROOTS],
+    row[Columns.MPF_REPLAY_EVENT_COUNT],
+  ];
+  if (values.every((value) => value == null)) return undefined;
+  if (values.some((value) => value == null)) {
+    throw new Error("Architecture G replay journal fields are partially null");
+  }
+  const replay: NativeMpfReplayInput = {
+    schema: row[Columns.MPF_OWNER_SCHEMA] as 1,
+    ownerBinarySha256: Buffer.from(row[Columns.MPF_OWNER_BINARY_SHA256]!),
+    baseRoot: Buffer.from(row[Columns.MPF_REPLAY_BASE_ROOT]!),
+    candidateRoot: Buffer.from(row[Columns.MPF_REPLAY_CANDIDATE_ROOT]!),
+    eventLog: Buffer.from(row[Columns.MPF_REPLAY_EVENT_LOG]!),
+    eventLogDigest: Buffer.from(row[Columns.MPF_REPLAY_EVENT_LOG_DIGEST]!),
+    eventRoots: Buffer.from(row[Columns.MPF_REPLAY_EVENT_ROOTS]!),
+    eventCount: row[Columns.MPF_REPLAY_EVENT_COUNT]!,
+  };
+  assertNativeMpfReplay(replay);
+  return replay;
+};
+
+const decodeHexArray = (value: unknown, label: string): readonly Buffer[] => {
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+    throw new Error(`${label} must be an array of hex strings`);
+  }
+  return value.map((item) => Buffer.from(item as string, "hex"));
+};
+
+const decodeLedgerDelta = (row: Row): LedgerDeltaInput | undefined => {
+  const parseJson = (value: unknown): unknown =>
+    typeof value === "string" ? JSON.parse(value) : value;
+  const spent = parseJson(row[Columns.LEDGER_DELTA_SPENT]);
+  const produced = parseJson(row[Columns.LEDGER_DELTA_PRODUCED]);
+  if (spent == null && produced == null) return undefined;
+  if (!Array.isArray(produced)) {
+    throw new Error("ledger_delta_produced must be an array");
+  }
+  return {
+    spent: decodeHexArray(spent, "ledger_delta_spent"),
+    produced: produced.map((entry) => {
+      if (
+        typeof entry !== "object" ||
+        entry === null ||
+        !("outref" in entry) ||
+        !("output" in entry) ||
+        typeof entry.outref !== "string" ||
+        typeof entry.output !== "string"
+      ) {
+        throw new Error("Invalid ledger_delta_produced entry");
+      }
+      return {
+        [UtxoColumns.OUTREF]: Buffer.from(entry.outref, "hex"),
+        [UtxoColumns.OUTPUT]: Buffer.from(entry.output, "hex"),
+      };
+    }),
+  };
 };
 
 const sha256 = (payload: Buffer): Buffer =>
@@ -502,6 +673,17 @@ const retrieveRecord = (
     );
     return {
       ...normalizedRow,
+      ledgerDelta: decodeLedgerDelta(normalizedRow),
+      nativeMpfReplay: decodeNativeMpfReplay(normalizedRow),
+      utxoPayloadAggregate:
+        normalizedRow[Columns.UTXO_PAYLOAD_ENTRY_COUNT] == null ||
+        normalizedRow[Columns.UTXO_PAYLOAD_ENCODED_TUPLE_BYTES] == null
+          ? undefined
+          : {
+              entryCount: normalizedRow[Columns.UTXO_PAYLOAD_ENTRY_COUNT],
+              encodedTupleBytes:
+                normalizedRow[Columns.UTXO_PAYLOAD_ENCODED_TUPLE_BYTES],
+            },
       depositEventIds: depositEventIds.map(
         (member) => member[MemberColumns.MEMBER_ID],
       ),
@@ -546,6 +728,21 @@ export const retrieveActive = (): Effect.Effect<
     ),
   );
 
+export const hasActive: Effect.Effect<boolean, DatabaseError, Database> =
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const [row] = yield* sql<{ readonly present: boolean }>`SELECT EXISTS (
+      SELECT 1 FROM ${sql(tableName)}
+      WHERE ${sql(Columns.STATUS)} IN ${sql.in(ACTIVE_STATUSES)}
+    ) AS present`;
+    return row?.present === true;
+  }).pipe(
+    sqlErrorToDatabaseError(
+      tableName,
+      "Failed to check active pending-finalization state",
+    ),
+  );
+
 export const retrieveByHeaderHash = (
   headerHash: Buffer,
 ): Effect.Effect<Option.Option<Record>, DatabaseError, Database> =>
@@ -580,6 +777,23 @@ export const retrieveActiveByStateQueueLeaseToken = (
     sqlErrorToDatabaseError(
       tableName,
       "Failed to retrieve active pending-finalization records by state-queue lease token",
+    ),
+  );
+
+export const retrieveByStateQueueLeaseToken = (
+  stateQueueLeaseToken: string,
+): Effect.Effect<readonly Row[], DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql<RawRow>`SELECT * FROM ${sql(tableName)}
+      WHERE ${sql(Columns.STATE_QUEUE_LEASE_TOKEN)} = ${stateQueueLeaseToken}
+      ORDER BY ${sql(Columns.CREATED_AT)} ASC`;
+    return rows.map(normalizeRow);
+  }).pipe(
+    Effect.withLogSpan(`retrieveByStateQueueLeaseToken ${tableName}`),
+    sqlErrorToDatabaseError(
+      tableName,
+      "Failed to retrieve pending-finalization records by state-queue lease token",
     ),
   );
 
@@ -631,6 +845,14 @@ export const retrieveFinalizedMissingDaPayloads = ({
 
 export const preparePendingSubmission = (
   input: PrepareInput,
+  options?: {
+    /**
+     * Runs after the active-journal guard and inside the same SQL transaction
+     * as the pending journal insert. Used by speculative submission to lock,
+     * revalidate, and project its exact source snapshot atomically.
+     */
+    readonly beforeJournalInsert?: Effect.Effect<void, DatabaseError, Database>;
+  },
 ): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -660,6 +882,18 @@ export const preparePendingSubmission = (
       input.mempoolTxIds,
       input.mempoolTxs.map((entry) => entry[TxTable.Columns.TX_ID]),
     );
+    if (input.nativeMpfReplay !== undefined) {
+      yield* Effect.try({
+        try: () => assertNativeMpfReplay(input.nativeMpfReplay!),
+        catch: (cause) =>
+          new DatabaseError({
+            table: tableName,
+            message:
+              "Refusing to prepare an invalid Architecture G replay journal",
+            cause,
+          }),
+      });
+    }
     const depositMembers = input.depositEntries.map((entry, ordinal) =>
       depositMemberEntry(input.headerHash, entry, ordinal),
     );
@@ -723,6 +957,9 @@ export const preparePendingSubmission = (
             }),
           );
         }
+        if (options?.beforeJournalInsert !== undefined) {
+          yield* options.beforeJournalInsert;
+        }
         if (active !== undefined) {
           yield* sql`DELETE FROM ${sql(tableName)}
             WHERE ${sql(Columns.HEADER_HASH)} = ${input.headerHash}
@@ -777,6 +1014,42 @@ export const preparePendingSubmission = (
             input.metadata.expectedCounts.totalEventCount,
           [Columns.EXPECTED_TRANSITION_STEP_COUNT]:
             input.metadata.expectedCounts.transitionStepCount,
+          [Columns.LEDGER_DELTA_SPENT]:
+            input.ledgerDelta === undefined
+              ? null
+              : JSON.stringify(
+                  input.ledgerDelta.spent.map((outref) =>
+                    outref.toString("hex"),
+                  ),
+                ),
+          [Columns.LEDGER_DELTA_PRODUCED]:
+            input.ledgerDelta === undefined
+              ? null
+              : JSON.stringify(
+                  input.ledgerDelta.produced.map((entry) => ({
+                    outref: entry[UtxoColumns.OUTREF].toString("hex"),
+                    output: entry[UtxoColumns.OUTPUT].toString("hex"),
+                  })),
+                ),
+          [Columns.UTXO_PAYLOAD_ENTRY_COUNT]:
+            input.utxoPayloadAggregate?.entryCount ?? null,
+          [Columns.UTXO_PAYLOAD_ENCODED_TUPLE_BYTES]:
+            input.utxoPayloadAggregate?.encodedTupleBytes ?? null,
+          [Columns.MPF_OWNER_SCHEMA]: input.nativeMpfReplay?.schema ?? null,
+          [Columns.MPF_OWNER_BINARY_SHA256]:
+            input.nativeMpfReplay?.ownerBinarySha256 ?? null,
+          [Columns.MPF_REPLAY_BASE_ROOT]:
+            input.nativeMpfReplay?.baseRoot ?? null,
+          [Columns.MPF_REPLAY_CANDIDATE_ROOT]:
+            input.nativeMpfReplay?.candidateRoot ?? null,
+          [Columns.MPF_REPLAY_EVENT_LOG]:
+            input.nativeMpfReplay?.eventLog ?? null,
+          [Columns.MPF_REPLAY_EVENT_LOG_DIGEST]:
+            input.nativeMpfReplay?.eventLogDigest ?? null,
+          [Columns.MPF_REPLAY_EVENT_ROOTS]:
+            input.nativeMpfReplay?.eventRoots ?? null,
+          [Columns.MPF_REPLAY_EVENT_COUNT]:
+            input.nativeMpfReplay?.eventCount ?? null,
           [Columns.STATUS]: Status.PendingSubmission,
           [Columns.OBSERVED_CONFIRMED_AT_MS]: null,
         })}`;

@@ -1,0 +1,26 @@
+diff --git a/dist/index.cjs b/dist/index.cjs
+index 978920f..dfec29f 100755
+--- a/dist/index.cjs
++++ b/dist/index.cjs
+@@ -534,7 +534,7 @@ var ProtocolParametersSchema = import_effect2.Schema.Struct({
+     range: import_effect2.Schema.Number,
+     multiplier: import_effect2.Schema.Number
+   }),
+-  maxReferenceScriptsSize: import_effect2.Schema.Struct({
++  maxReferenceScriptsSizePerTransaction: import_effect2.Schema.Struct({
+     bytes: import_effect2.Schema.Number
+   }),
+   stakePoolVotingThresholds: import_effect2.Schema.Struct({
+diff --git a/dist/index.js b/dist/index.js
+index f099466..951ee1c 100755
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -493,7 +493,7 @@ var ProtocolParametersSchema = S.Struct({
+     range: S.Number,
+     multiplier: S.Number
+   }),
+-  maxReferenceScriptsSize: S.Struct({
++  maxReferenceScriptsSizePerTransaction: S.Struct({
+     bytes: S.Number
+   }),
+   stakePoolVotingThresholds: S.Struct({

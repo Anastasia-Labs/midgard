@@ -12,6 +12,7 @@ import {
 } from "../src/config.js";
 import { parseMidgardNodeDeploymentInfo } from "../src/l1/deployment.js";
 import { tempDir } from "./helpers.js";
+import { writeDaDeploymentFixture } from "./helpers/deployment-fixture.js";
 
 describe("loadWatcherConfig", () => {
   it("loads deployment files and DA params from the manifest", async () => {
@@ -279,7 +280,7 @@ describe("loadWatcherConfig", () => {
     const dir = await tempDir();
     const member = "01".repeat(32);
     const manifestPath = join(dir, "manifest.json");
-    const deploymentInfoPath = await writeRealDeploymentFixture(dir);
+    const deploymentInfoPath = await writeDaContractDeploymentFixture(dir);
     const manifest = libp2pManifest(
       member,
       ["committee", "retrieval"],
@@ -336,7 +337,7 @@ describe("loadWatcherConfig", () => {
     const dir = await tempDir();
     const member = "01".repeat(32);
     const manifestPath = join(dir, "manifest.json");
-    const deploymentInfoPath = await writeRealDeploymentFixture(dir);
+    const deploymentInfoPath = await writeDaContractDeploymentFixture(dir);
     await writeFile(
       manifestPath,
       JSON.stringify(
@@ -361,7 +362,7 @@ describe("loadWatcherConfig", () => {
     const dir = await tempDir();
     const member = "01".repeat(32);
     const manifestPath = join(dir, "manifest.json");
-    const deploymentInfoPath = await writeRealDeploymentFixture(dir);
+    const deploymentInfoPath = await writeDaContractDeploymentFixture(dir);
     await writeFile(
       manifestPath,
       JSON.stringify(
@@ -408,7 +409,7 @@ describe("loadWatcherConfig", () => {
     const dir = await tempDir();
     const member = "01".repeat(32);
     const manifestPath = join(dir, "manifest.json");
-    const deploymentInfoPath = await writeRealDeploymentFixture(dir);
+    const deploymentInfoPath = await writeDaContractDeploymentFixture(dir);
     await writeFile(
       manifestPath,
       JSON.stringify(
@@ -451,7 +452,7 @@ describe("loadWatcherConfig", () => {
     const dir = await tempDir();
     const member = "01".repeat(32);
     const manifestPath = join(dir, "manifest.json");
-    const deploymentInfoPath = await writeRealDeploymentFixture(dir);
+    const deploymentInfoPath = await writeDaContractDeploymentFixture(dir);
     await writeFile(
       manifestPath,
       JSON.stringify(
@@ -494,7 +495,7 @@ describe("loadWatcherConfig", () => {
     const dir = await tempDir();
     const member = "01".repeat(32);
     const manifestPath = join(dir, "manifest.json");
-    const deploymentInfoPath = await writeRealDeploymentFixture(dir);
+    const deploymentInfoPath = await writeDaContractDeploymentFixture(dir);
     await writeFile(
       manifestPath,
       JSON.stringify(
@@ -549,7 +550,7 @@ describe("loadWatcherConfig", () => {
     const dir = await tempDir();
     const member = "01".repeat(32);
     const manifestPath = join(dir, "manifest.json");
-    const deploymentInfoPath = await writeRealDeploymentFixture(dir);
+    const deploymentInfoPath = await writeDaContractDeploymentFixture(dir);
     await writeFile(
       manifestPath,
       JSON.stringify(
@@ -752,45 +753,10 @@ const expectLibp2pManifestRejects = async (
   ).rejects.toThrow(error);
 };
 
-const writeRealDeploymentFixture = async (dir: string): Promise<string> => {
-  const sourcePath = join(
-    process.cwd(),
-    "../midgard-node/deploymentInfo/contract-deployment-info.json",
-  );
-  const parsed = JSON.parse(await readFile(sourcePath, "utf8")) as Record<
-    string,
-    unknown
-  >;
-  const fixture = withReferenceScriptOutRefs(parsed);
+const writeDaContractDeploymentFixture = async (
+  dir: string,
+): Promise<string> => {
   const fixturePath = join(dir, "contract-deployment-info.with-refs.json");
-  await writeFile(fixturePath, JSON.stringify(fixture));
+  await writeDaDeploymentFixture(fixturePath);
   return fixturePath;
-};
-
-const withReferenceScriptOutRefs = (
-  deploymentInfo: Record<string, unknown>,
-): Record<string, unknown> => {
-  const clone = structuredClone(deploymentInfo) as Record<string, unknown>;
-  const contracts = clone.contracts;
-  if (typeof contracts !== "object" || contracts === null) {
-    return clone;
-  }
-  [
-    "daAttestationMint",
-    "daAttestationSpend",
-    "daParamsGovernorMint",
-    "daParamsGovernorSpend",
-    "stateQueueMint",
-    "stateQueueSpend",
-  ].forEach((key, index) => {
-    const entry = (contracts as Record<string, unknown>)[key];
-    if (typeof entry !== "object" || entry === null) {
-      return;
-    }
-    (entry as Record<string, unknown>).refScriptUTxO = {
-      txHash: (index + 1).toString(16).padStart(2, "0").repeat(32),
-      outputIndex: index,
-    };
-  });
-  return clone;
 };

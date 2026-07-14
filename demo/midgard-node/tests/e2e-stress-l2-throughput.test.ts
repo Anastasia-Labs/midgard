@@ -160,6 +160,50 @@ describe("e2e-stress-l2-throughput config", () => {
     ).toBe(2);
   });
 
+  it("resolves unpadded stress wallet env names through canonical padded names", () => {
+    const config = parseE2EL2StressConfig({
+      mode: "parallel-fanout",
+      count: "1",
+      concurrency: "1",
+      stressWalletSeedPhraseEnvs: ["STRESS_A_1"],
+      env: {
+        STRESS_A_0001: OTHER_TEST_SEED,
+      },
+    });
+
+    expect(config.stressWallets[0]?.resolvedWalletSeedPhrase.resolvedFrom).toBe(
+      "STRESS_A_0001",
+    );
+  });
+
+  it("reports every unresolvable stress wallet env var at once", () => {
+    expect(() =>
+      parseE2EL2StressConfig({
+        mode: "parallel-fanout",
+        count: "2",
+        concurrency: "2",
+        stressWalletSeedPhraseEnvs: ["MISSING_A", "MISSING_B_01"],
+        env: {},
+      }),
+    ).toThrow(
+      /2\/2 stress wallet env vars are unresolvable:[\s\S]*MISSING_A[\s\S]*MISSING_B_01[\s\S]*MISSING_B_0001/,
+    );
+  });
+
+  it("keeps duplicate detection when malformed names resolve to the same padded env", () => {
+    expect(() =>
+      parseE2EL2StressConfig({
+        mode: "parallel-fanout",
+        count: "2",
+        concurrency: "2",
+        stressWalletSeedPhraseEnvs: ["STRESS_A_1", "STRESS_A_01"],
+        env: {
+          STRESS_A_0001: OTHER_TEST_SEED,
+        },
+      }),
+    ).toThrow("Duplicate stress wallet seed source STRESS_A_0001");
+  });
+
   it("requires a prebuilt corpus for open-loop upper-bound runs", () => {
     expect(() =>
       parseE2EL2StressConfig({
@@ -171,6 +215,8 @@ describe("e2e-stress-l2-throughput config", () => {
   });
 });
 
+// Existing pollIntervalMs: "1" runner fixtures deliberately exercise the
+// legacy fixed-interval override path; adaptive backoff has dedicated tests.
 describe("e2e-stress-l2-throughput runner", () => {
   it("runs serial stress, polls tx-status, and writes all artifacts", async () => {
     const outDir = await makeTempDir();
@@ -213,6 +259,8 @@ describe("e2e-stress-l2-throughput runner", () => {
     expect(result.summary.loadModel).toBe("closed-loop-smoke");
     expect(result.summary.workloadProfile).toBe("production-end-user");
     expect(result.summary.classification).toBe("closed_loop_smoke");
+    expect(result.summary.rateSemantics).toBe("burst_cycle_rate");
+    expect(result.summary.burstCycleRatePerSecond).not.toBeNull();
     expect(result.summary.requestedCount).toBe(2);
     expect(result.summary.measurementPolicy).toMatchObject({
       loadModel: "closed-loop-smoke",
@@ -263,9 +311,11 @@ describe("e2e-stress-l2-throughput runner", () => {
     expect(summaryJson).not.toContain("committedCount");
     expect(summaryJson).not.toContain("timedOutCount");
     expect(summaryJson).not.toContain("unknownCount");
-    await expect(
-      readFile(result.summaryMarkdownPath, "utf8"),
-    ).resolves.toContain("# Midgard L2 Stress Summary");
+    const summaryMarkdown = await readFile(result.summaryMarkdownPath, "utf8");
+    expect(summaryMarkdown).toContain("# Midgard L2 Stress Summary");
+    expect(summaryMarkdown).toContain("burstCycleRatePerSecond");
+    expect(summaryMarkdown).not.toMatch(/\bTPS\b/);
+    expect(summaryMarkdown).not.toMatch(/\btx\/s\b/);
   });
 
   it("submits the next chained tx after accepted without waiting for committed", async () => {
@@ -622,6 +672,7 @@ describe("e2e-stress-l2-throughput runner", () => {
       count: "1",
       concurrency: "1",
       lovelace: "1000",
+      feeHeadroomLovelace: "0",
       stressWalletSeedPhraseEnvs: ["STRESS_A"],
       env: {
         STRESS_A: OTHER_TEST_SEED,
@@ -643,6 +694,185 @@ describe("e2e-stress-l2-throughput runner", () => {
       }),
     ).rejects.toThrow("at least 1000 lovelace");
     expect(submitTransfer).not.toHaveBeenCalled();
+  });
+
+  it("rejects parallel fanout wallets funded without fee headroom", async () => {
+    const outDir = await makeTempDir();
+    const clock = makeClock();
+    const config = parseE2EL2StressConfig({
+      mode: "parallel-fanout",
+      count: "1",
+      concurrency: "1",
+      lovelace: "1000",
+      stressWalletSeedPhraseEnvs: ["STRESS_A"],
+      env: {
+        STRESS_A: OTHER_TEST_SEED,
+      },
+      outDir,
+    });
+    const submitTransfer = vi.fn<StressSubmitTransfer>(async () => {
+      throw new Error("underfunded preflight must fail before submission");
+    });
+
+    await expect(
+      runE2EL2StressThroughput(config, {
+        submitTransfer,
+        fetch: (async () =>
+          responseJson({ status: "committed" })) as typeof fetch,
+        fetchUtxos: async () => [{ ...fakeUtxo, assets: { lovelace: 1_000n } }],
+        now: clock.now,
+        sleep: clock.sleep,
+      }),
+    ).rejects.toThrow(
+      "at least 501000 lovelace (transfer 1000 + fee headroom 500000)",
+    );
+    expect(submitTransfer).not.toHaveBeenCalled();
+  });
+
+  it("allows parallel fanout wallets that satisfy transfer plus fee headroom", async () => {
+    const outDir = await makeTempDir();
+    const clock = makeClock();
+    const config = parseE2EL2StressConfig({
+      mode: "parallel-fanout",
+      count: "1",
+      concurrency: "1",
+      lovelace: "1000",
+      feeHeadroomLovelace: "500",
+      stressWalletSeedPhraseEnvs: ["STRESS_A"],
+      env: {
+        STRESS_A: OTHER_TEST_SEED,
+      },
+      outDir,
+      pollIntervalMs: "1",
+      acceptanceTimeoutMs: "1000",
+      commitObservationTimeoutMs: "1000",
+    });
+    const submitTransfer = vi.fn<StressSubmitTransfer>(async (request) => ({
+      txId: txHashForIndex(10),
+      status: "queued",
+      senderAddress: request.walletAddress,
+      destinationAddress: request.destinationAddress,
+      selectedInputs: [`${"aa".repeat(32)}#0`],
+      requestedAssets: { lovelace: 1_000n },
+      changeAssets: { lovelace: 500n },
+      walletSeedSource: request.walletSeedSource,
+      nodeEndpoint: request.config.nodeEndpoint,
+    }));
+
+    const result = await runE2EL2StressThroughput(config, {
+      submitTransfer,
+      fetch: (async () =>
+        responseJson({ status: "committed" })) as typeof fetch,
+      fetchUtxos: async () => [{ ...fakeUtxo, assets: { lovelace: 1_500n } }],
+      now: clock.now,
+      sleep: clock.sleep,
+    });
+
+    expect(result.summary.status).toBe("completed");
+    expect(result.summary.submittedCount).toBe(1);
+    expect(submitTransfer).toHaveBeenCalledTimes(1);
+  });
+
+  it("interrupts after the first submission failure by default", async () => {
+    const outDir = await makeTempDir();
+    const clock = makeClock();
+    const config = parseE2EL2StressConfig({
+      walletSeedPhrase: TEST_SEED,
+      count: "3",
+      outDir,
+      acceptanceTimeoutMs: "1000",
+      commitObservationTimeoutMs: "1000",
+    });
+    const submitTransfer = vi.fn<StressSubmitTransfer>(async () => {
+      throw new Error("builder ran out of lovelace");
+    });
+
+    const result = await runE2EL2StressThroughput(config, {
+      submitTransfer,
+      fetch: (async () =>
+        responseJson({ status: "committed" })) as typeof fetch,
+      now: clock.now,
+      sleep: clock.sleep,
+    });
+
+    expect(result.summary.status).toBe("interrupted");
+    expect(result.summary.interruptedReason).toContain(
+      "submission/build failure threshold exceeded",
+    );
+    expect(result.summary.submissionFailedCount).toBe(1);
+    expect(result.summary.notStartedCount).toBe(2);
+    expect(submitTransfer).toHaveBeenCalledTimes(1);
+  });
+
+  it("allows the configured number of submission failures before interrupting", async () => {
+    const outDir = await makeTempDir();
+    const clock = makeClock();
+    const config = parseE2EL2StressConfig({
+      walletSeedPhrase: TEST_SEED,
+      count: "5",
+      maxSubmissionFailures: "2",
+      outDir,
+      acceptanceTimeoutMs: "1000",
+      commitObservationTimeoutMs: "1000",
+    });
+    const submitTransfer = vi.fn<StressSubmitTransfer>(async () => {
+      throw new Error("submit endpoint unavailable");
+    });
+
+    const result = await runE2EL2StressThroughput(config, {
+      submitTransfer,
+      fetch: (async () =>
+        responseJson({ status: "committed" })) as typeof fetch,
+      now: clock.now,
+      sleep: clock.sleep,
+    });
+
+    expect(result.summary.status).toBe("interrupted");
+    expect(result.summary.submissionFailedCount).toBe(3);
+    expect(result.summary.notStartedCount).toBe(2);
+    expect(submitTransfer).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not count acceptance rejections toward submission failure aborts", async () => {
+    const outDir = await makeTempDir();
+    const clock = makeClock();
+    const config = parseE2EL2StressConfig({
+      walletSeedPhrase: TEST_SEED,
+      count: "3",
+      maxSubmissionFailures: "0",
+      outDir,
+      pollIntervalMs: "1",
+      acceptanceTimeoutMs: "1000",
+      commitObservationTimeoutMs: "1000",
+    });
+    const submitTransfer = vi.fn<StressSubmitTransfer>(async (request) => ({
+      txId: txHashForIndex(request.index + 70),
+      status: "queued",
+      senderAddress: request.walletAddress,
+      destinationAddress: request.destinationAddress,
+      selectedInputs: [`${"bb".repeat(32)}#${request.index.toString()}`],
+      requestedAssets: { lovelace: 1_000_000n },
+      changeAssets: { lovelace: 9_000_000n },
+      walletSeedSource: request.walletSeedSource,
+      nodeEndpoint: request.config.nodeEndpoint,
+    }));
+
+    const result = await runE2EL2StressThroughput(config, {
+      submitTransfer,
+      fetch: (async () =>
+        responseJson({
+          status: "rejected",
+          reasonCode: "phase_b_rejected",
+        })) as typeof fetch,
+      fetchUtxos: async () => [fakeUtxo],
+      now: clock.now,
+      sleep: clock.sleep,
+    });
+
+    expect(result.summary.status).toBe("completed");
+    expect(result.summary.submissionFailedCount).toBe(0);
+    expect(result.summary.rejectedCount).toBe(3);
+    expect(submitTransfer).toHaveBeenCalledTimes(3);
   });
 
   it("records rejected stress transactions as failed evidence", async () => {
@@ -689,6 +919,97 @@ describe("e2e-stress-l2-throughput runner", () => {
     });
   });
 
+  it("uses adaptive poll backoff when no fixed poll interval is configured", async () => {
+    const outDir = await makeTempDir();
+    const clock = makeClock();
+    const config = parseE2EL2StressConfig({
+      walletSeedPhrase: TEST_SEED,
+      count: "1",
+      outDir,
+      pollInitialIntervalMs: "50",
+      pollMaxIntervalMs: "200",
+      acceptanceTimeoutMs: "100000",
+      commitObservationTimeoutMs: "1000",
+    });
+    const submitTransfer = vi.fn<StressSubmitTransfer>(async (request) => ({
+      txId: txHashForIndex(80),
+      status: "queued",
+      senderAddress: request.walletAddress,
+      destinationAddress: request.destinationAddress,
+      selectedInputs: [`${"cc".repeat(32)}#0`],
+      requestedAssets: { lovelace: 1_000_000n },
+      changeAssets: { lovelace: 9_000_000n },
+      walletSeedSource: request.walletSeedSource,
+      nodeEndpoint: request.config.nodeEndpoint,
+    }));
+    let polls = 0;
+    const fetchImpl = vi.fn(async () => {
+      polls += 1;
+      return responseJson({
+        status: polls <= 4 ? "pending" : "committed",
+      });
+    });
+    const sleepSpy = vi.fn(async (ms: number) => {
+      await clock.sleep(ms);
+    });
+
+    const result = await runE2EL2StressThroughput(config, {
+      submitTransfer,
+      fetch: fetchImpl as typeof fetch,
+      now: clock.now,
+      sleep: sleepSpy,
+    });
+
+    expect(result.summary.acceptedCount).toBe(1);
+    expect(sleepSpy.mock.calls.map(([ms]) => ms)).toEqual([50, 100, 200, 200]);
+  });
+
+  it("keeps the legacy fixed poll interval when explicitly configured", async () => {
+    const outDir = await makeTempDir();
+    const clock = makeClock();
+    const config = parseE2EL2StressConfig({
+      walletSeedPhrase: TEST_SEED,
+      count: "1",
+      outDir,
+      pollIntervalMs: "37",
+      pollInitialIntervalMs: "50",
+      pollMaxIntervalMs: "200",
+      acceptanceTimeoutMs: "100000",
+      commitObservationTimeoutMs: "1000",
+    });
+    const submitTransfer = vi.fn<StressSubmitTransfer>(async (request) => ({
+      txId: txHashForIndex(81),
+      status: "queued",
+      senderAddress: request.walletAddress,
+      destinationAddress: request.destinationAddress,
+      selectedInputs: [`${"cd".repeat(32)}#0`],
+      requestedAssets: { lovelace: 1_000_000n },
+      changeAssets: { lovelace: 9_000_000n },
+      walletSeedSource: request.walletSeedSource,
+      nodeEndpoint: request.config.nodeEndpoint,
+    }));
+    let polls = 0;
+    const fetchImpl = vi.fn(async () => {
+      polls += 1;
+      return responseJson({
+        status: polls <= 4 ? "pending" : "committed",
+      });
+    });
+    const sleepSpy = vi.fn(async (ms: number) => {
+      await clock.sleep(ms);
+    });
+
+    const result = await runE2EL2StressThroughput(config, {
+      submitTransfer,
+      fetch: fetchImpl as typeof fetch,
+      now: clock.now,
+      sleep: sleepSpy,
+    });
+
+    expect(result.summary.acceptedCount).toBe(1);
+    expect(sleepSpy.mock.calls.map(([ms]) => ms)).toEqual([37, 37, 37, 37]);
+  });
+
   it("runs open-loop upper-bound from a corpus without wallet or tx-status work", async () => {
     const outDir = await makeTempDir();
     const rows = [corpusRow(1), corpusRow(2)];
@@ -705,27 +1026,64 @@ describe("e2e-stress-l2-throughput runner", () => {
     const submitTransfer = vi.fn<StressSubmitTransfer>(async () => {
       throw new Error("open-loop must not call submit-l2-transfer");
     });
-    const fetchImpl = vi.fn(
-      async (input: RequestInfo | URL, init?: RequestInit) => {
-        expect(String(input)).toBe(`${config.nodeEndpoint}/submit`);
-        expect(String(input)).not.toContain("/tx-status");
-        expect(init?.method).toBe("POST");
-        expect(init?.headers).toEqual({ "content-type": "application/cbor" });
-        const body = Buffer.from(init?.body as Buffer);
-        const row = rows.find(
-          (candidate) => candidate.canonicalCborHex === body.toString("hex"),
-        );
-        expect(row).toBeDefined();
-        return responseJson({ txId: row!.txHash }, 202);
-      },
-    );
     const observedSamples: unknown[] = [];
 
     const result = await runE2EL2StressThroughput(config, {
       submitTransfer,
-      fetch: fetchImpl as typeof fetch,
       fetchUtxos: async () => {
         throw new Error("open-loop must not fetch /utxos");
+      },
+      runCanonicalEngine: async ({ paths }) => {
+        await writeFile(
+          paths.submitRecordsNdjson,
+          rows
+            .map((row, index) =>
+              JSON.stringify({
+                txHash: row.txHash,
+                scheduledAtMs: Date.parse("2026-01-01T00:00:00.000Z") + index,
+                submittedAtMs: Date.parse("2026-01-01T00:00:00.000Z") + index,
+                scheduleSlipMs: 0,
+                latencyMs: 1,
+                statusCode: 202,
+                responseTxId: row.txHash,
+                error: null,
+              }),
+            )
+            .join("\n") + "\n",
+          "utf8",
+        );
+        await writeFile(
+          paths.engineEventsNdjson,
+          [
+            {
+              event: "engine_started",
+              at: "2026-01-01T00:00:00.000Z",
+            },
+            {
+              event: "stage_started",
+              at: "2026-01-01T00:00:00.000Z",
+              name: "measured-open",
+              targetRateTps: 2,
+            },
+            {
+              event: "stage_finished",
+              at: "2026-01-01T00:00:01.000Z",
+              name: "measured-open",
+              submitted: 2,
+              submitErrors: 0,
+            },
+          ]
+            .map((event) => JSON.stringify(event))
+            .join("\n") + "\n",
+          "utf8",
+        );
+        await writeFile(
+          paths.engineReportJson,
+          JSON.stringify({ calibration: { noOp: null } }),
+          "utf8",
+        );
+        await writeFile(paths.noopCalibrationJson, "{}\n", "utf8");
+        return { exitCode: 0, signal: null };
       },
       collectAggregateObserverSample: async (sample) => {
         observedSamples.push(sample);
@@ -736,6 +1094,7 @@ describe("e2e-stress-l2-throughput runner", () => {
           txHash,
           status: "accepted",
           firstSeenAt: `2026-01-01T00:00:0${index.toString()}.000Z`,
+          validationStartedAt: `2026-01-01T00:00:0${index.toString()}.500Z`,
           terminalAt: `2026-01-01T00:00:0${(index + 1).toString()}.000Z`,
         })),
         l1Commits: [],
@@ -746,10 +1105,11 @@ describe("e2e-stress-l2-throughput runner", () => {
     });
 
     expect(submitTransfer).not.toHaveBeenCalled();
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
     expect(observedSamples.length).toBeGreaterThanOrEqual(0);
     expect(result.summary.loadModel).toBe("open-loop-upper-bound");
     expect(result.summary.workloadProfile).toBe("synthetic-admission");
+    expect(result.summary.rateSemantics).toBe("offered_tps_uncalibrated");
+    expect(result.summary.burstCycleRatePerSecond).toBeNull();
     expect(result.summary.measurementPolicy).toMatchObject({
       advanceOn: "scheduled_submit",
       finalityObservation: "aggregate-window",
@@ -759,6 +1119,9 @@ describe("e2e-stress-l2-throughput runner", () => {
     expect(result.summary.metrics.durableAdmission.count).toBe(2);
     expect(result.summary.metrics.l2Admission.count).toBe(2);
     expect(result.summary.classification).toBe("ingress_ok_commit_failed");
+    expect(result.summary.artifactPaths.engineReportJson).toContain(
+      "engine-report.json",
+    );
   });
 });
 
@@ -851,6 +1214,7 @@ describe("stress stage metrics", () => {
             txHash: firstTxHash,
             status: "accepted",
             firstSeenAt: "2026-01-01T00:00:01.000Z",
+            validationStartedAt: "2026-01-01T00:00:01.500Z",
             terminalAt: "2026-01-01T00:00:02.000Z",
           },
         ],
