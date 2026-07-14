@@ -407,7 +407,7 @@ describe("double-spend fault-proof contract builder", () => {
 });
 
 describe("fault-proof contract builder", () => {
-  it("builds double-spend, invalid-range, and transition-trace chains from the Aiken blueprint", async () => {
+  it("builds every implemented fault-proof chain from the Aiken blueprint", async () => {
     const blueprint = loadBlueprint();
 
     const contracts = await Effect.runPromise(
@@ -420,6 +420,10 @@ describe("fault-proof contract builder", () => {
     );
 
     expect(contracts.doubleSpend.steps).toHaveLength(4);
+    expect(contracts.nonExistentInput.firstStep).toBe(
+      contracts.nonExistentInput.steps[0],
+    );
+    expect(contracts.nonExistentInput.steps).toHaveLength(4);
     expect(contracts.invalidRange.firstStep).toBe(
       contracts.invalidRange.steps[0],
     );
@@ -432,11 +436,12 @@ describe("fault-proof contract builder", () => {
       new Set(
         [
           ...contracts.doubleSpend.steps,
+          ...contracts.nonExistentInput.steps,
           ...contracts.invalidRange.steps,
           ...contracts.transitionTrace.steps,
         ].map((step) => step.spendingScriptHash),
       ).size,
-    ).toBe(7);
+    ).toBe(11);
   });
 
   it("builds invalid-range with the validator parameter order from the blueprint", async () => {

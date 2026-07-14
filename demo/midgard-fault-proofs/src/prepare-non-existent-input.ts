@@ -10,12 +10,15 @@ import {
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
 import {
+  commitCountedRootProgram,
   EMPTY_MERKLE_TREE_ROOT,
   type MidgardTxInput,
   type NativeTxCompact as NativeTxCompactData,
   Proof,
+  ROOT_DOMAINS,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
 
 import { parseHex, stringifyJson } from "./json-file.js";
 import {
@@ -76,7 +79,10 @@ export type PreparedNeTxInclusionJson = {
 export type PreparedNonExistentInputOutput = {
   readonly headerHash: string;
   readonly txCount: number;
+  /** Raw MPF root used by the transaction membership/non-membership proofs. */
   readonly transactionsRoot: string;
+  /** Counted root committed in the state-queue block header. */
+  readonly committedTransactionsRoot: string;
   readonly prevUtxosRoot: string;
   readonly badTxId: string;
   readonly badInputIndex: number;
@@ -256,7 +262,9 @@ export const prepareNonExistentInputFromTransactions = async ({
           const normalized = parseHex(badTxId, "--bad-tx-id", 32);
           const found = decoded.find((tx) => tx.nodeTxId === normalized);
           if (found === undefined) {
-            throw new Error(`--bad-tx-id ${normalized} not found in the block.`);
+            throw new Error(
+              `--bad-tx-id ${normalized} not found in the block.`,
+            );
           }
           return found;
         })();
@@ -294,6 +302,14 @@ export const prepareNonExistentInputFromTransactions = async ({
     prevBlockPayloadCbor,
   });
 
+  const committedTransactionsRoot = await Effect.runPromise(
+    commitCountedRootProgram({
+      domain: ROOT_DOMAINS.transactions,
+      phasRoot: transactionsRoot,
+      count: BigInt(decoded.length),
+    }),
+  );
+
   const expectedCheck =
     expectedTransactionsRoot === undefined
       ? undefined
@@ -303,11 +319,11 @@ export const prepareNonExistentInputFromTransactions = async ({
             "--expected-transactions-root",
             32,
           );
-          return { value, matches: value === transactionsRoot };
+          return { value, matches: value === committedTransactionsRoot };
         })();
   if (expectedCheck !== undefined && !expectedCheck.matches) {
     throw new Error(
-      `Reconstructed transactions root ${transactionsRoot} does not match the committed --expected-transactions-root ${expectedCheck.value}. The prepared proofs would not verify against this block.`,
+      `Reconstructed raw transactions root ${transactionsRoot} commits to counted root ${committedTransactionsRoot}, which does not match --expected-transactions-root ${expectedCheck.value}. The prepared proofs would not verify against this block.`,
     );
   }
 
@@ -319,6 +335,7 @@ export const prepareNonExistentInputFromTransactions = async ({
     headerHash: normalizedHeaderHash,
     txCount: decoded.length,
     transactionsRoot,
+    committedTransactionsRoot,
     prevUtxosRoot: normalizedPrevUtxosRoot,
     badTxId: bad.nodeTxId,
     badInputIndex: resolvedBadInputIndex,
@@ -367,6 +384,7 @@ export const prepareNonExistentInputFromTransactions = async ({
         badInputIndex: base.badInputIndex,
         missingInput: base.missingInput,
         transactionsRoot: base.transactionsRoot,
+        committedTransactionsRoot: base.committedTransactionsRoot,
         prevUtxosRoot: base.prevUtxosRoot,
         expectedTransactionsRoot: base.expectedTransactionsRoot,
       }),
