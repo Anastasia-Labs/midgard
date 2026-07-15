@@ -20,6 +20,8 @@ const DECODER_OPTIONS = {
   rejectDuplicateMapKeys: true,
 };
 
+const FATAL_UTF8_DECODER = new TextDecoder("utf-8", { fatal: true });
+
 const err = (message: string, detail?: string): MidgardTxCodecError =>
   new MidgardTxCodecError(MidgardTxCodecErrorCodes.CborDecode, message, detail);
 
@@ -221,6 +223,24 @@ export const skipCborItem = (
       const end = header.nextOffset + length;
       if (end > bytes.length) {
         throw err("CBOR string exceeds input length", `offset=${offset}`);
+      }
+      if (header.major === 3) {
+        if (
+          length >= 3 &&
+          bytes[header.nextOffset] === 0xef &&
+          bytes[header.nextOffset + 1] === 0xbb &&
+          bytes[header.nextOffset + 2] === 0xbf
+        ) {
+          throw err(
+            "CBOR text string must not begin with a UTF-8 BOM",
+            `offset=${offset}`,
+          );
+        }
+        try {
+          FATAL_UTF8_DECODER.decode(bytes.subarray(header.nextOffset, end));
+        } catch {
+          throw err("CBOR text string is not valid UTF-8", `offset=${offset}`);
+        }
       }
       return { start, end, major: header.major };
     }

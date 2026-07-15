@@ -28,6 +28,11 @@ import {
 import { Effect } from "effect";
 
 import { writeJsonFileAtomic } from "@/files/atomic-write.js";
+import {
+  computeDeploymentManifestId,
+  DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
+  parseDeploymentManifestV2Value,
+} from "@/deployment-manifest-v2.js";
 import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
 import { Lucid, MidgardContracts, NodeConfig } from "@/services/index.js";
 import {
@@ -61,8 +66,7 @@ export type ContractDeploymentInfo = {
   readonly contracts: Readonly<Record<string, ContractDeploymentInfoEntry>>;
 };
 
-export const DEPLOYMENT_MANIFEST_SCHEMA_VERSION =
-  "midgard-deployment-manifest-v2";
+export { computeDeploymentManifestId, DEPLOYMENT_MANIFEST_SCHEMA_VERSION };
 
 export type DeploymentManifestStepStatus =
   | "pending"
@@ -450,59 +454,6 @@ const collectScriptDescriptors = (
   ),
 ];
 
-const stableJson = (value: unknown): string => {
-  if (value === null || typeof value !== "object") {
-    return JSON.stringify(value);
-  }
-  if (Array.isArray(value)) {
-    return `[${value.map(stableJson).join(",")}]`;
-  }
-  const entries = Object.entries(value as Record<string, unknown>)
-    .filter(([, entryValue]) => entryValue !== undefined)
-    .sort(([left], [right]) => left.localeCompare(right));
-  return `{${entries
-    .map(
-      ([key, entryValue]) => `${JSON.stringify(key)}:${stableJson(entryValue)}`,
-    )
-    .join(",")}}`;
-};
-
-const sha256Hex = (value: string): string =>
-  createHash("sha256").update(value).digest("hex");
-
-const deploymentManifestIdentityInput = (
-  manifest: Omit<DeploymentManifestV2, "manifestId">,
-): unknown => ({
-  schemaVersion: manifest.schemaVersion,
-  network: manifest.network,
-  referenceScriptDeployAddress: manifest.referenceScriptDeployAddress,
-  hubOracleOneShot: {
-    txHash: manifest.hubOracleOneShot.txHash,
-    outputIndex: manifest.hubOracleOneShot.outputIndex,
-    outRef: manifest.hubOracleOneShot.outRef,
-  },
-  referenceScriptAuthPolicy: {
-    policyId: manifest.referenceScriptAuthPolicy.policyId,
-    nativeScript: manifest.referenceScriptAuthPolicy.nativeScript,
-    tokenNames: manifest.referenceScriptAuthPolicy.tokenNames,
-  },
-  contracts: Object.fromEntries(
-    Object.entries(manifest.contracts)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([name, entry]) => [
-        name,
-        {
-          scriptHash: entry.scriptHash,
-          contract: entry.contract,
-        },
-      ]),
-  ),
-});
-
-export const computeDeploymentManifestId = (
-  manifest: Omit<DeploymentManifestV2, "manifestId">,
-): string => sha256Hex(stableJson(deploymentManifestIdentityInput(manifest)));
-
 const defaultSteps = (): DeploymentManifestV2["steps"] => ({
   prepareHubOracleNonce: { status: "pending" },
   deployNodeRuntimeReferenceScripts: { status: "pending" },
@@ -556,9 +507,6 @@ export type DeploymentManifestBuildContext = {
   readonly existingManifest?: DeploymentManifestV2;
   readonly steps?: Partial<DeploymentManifestV2["steps"]>;
 };
-
-const isNonEmptyString = (value: unknown): value is string =>
-  typeof value === "string" && value.length > 0;
 
 const assertOutRefFields = (txHash: string, outputIndex: number): void => {
   if (!/^[0-9a-fA-F]{64}$/.test(txHash)) {
@@ -626,73 +574,8 @@ export const buildDeploymentManifestV2 = (
 
 export const parseDeploymentManifestV2 = (
   value: unknown,
-): DeploymentManifestV2 => {
-  if (typeof value !== "object" || value === null) {
-    throw new Error("Deployment manifest must be a JSON object");
-  }
-  const candidate = value as Partial<DeploymentManifestV2>;
-  if (candidate.schemaVersion !== DEPLOYMENT_MANIFEST_SCHEMA_VERSION) {
-    throw new Error(
-      `Deployment manifest schemaVersion must be ${DEPLOYMENT_MANIFEST_SCHEMA_VERSION}`,
-    );
-  }
-  if (!isNonEmptyString(candidate.network)) {
-    throw new Error("Deployment manifest network must be a non-empty string");
-  }
-  if (!isNonEmptyString(candidate.referenceScriptDeployAddress)) {
-    throw new Error(
-      "Deployment manifest referenceScriptDeployAddress must be a non-empty string",
-    );
-  }
-  if (
-    typeof candidate.hubOracleOneShot !== "object" ||
-    candidate.hubOracleOneShot === null
-  ) {
-    throw new Error("Deployment manifest is missing hubOracleOneShot");
-  }
-  assertOutRefFields(
-    candidate.hubOracleOneShot.txHash,
-    candidate.hubOracleOneShot.outputIndex,
-  );
-  const expectedOutRef = `${candidate.hubOracleOneShot.txHash.toLowerCase()}#${candidate.hubOracleOneShot.outputIndex.toString()}`;
-  if (candidate.hubOracleOneShot.outRef !== expectedOutRef) {
-    throw new Error(
-      `Deployment manifest hubOracleOneShot.outRef mismatch: expected ${expectedOutRef}`,
-    );
-  }
-  if (
-    typeof candidate.referenceScriptAuthPolicy !== "object" ||
-    candidate.referenceScriptAuthPolicy === null ||
-    !isNonEmptyString(candidate.referenceScriptAuthPolicy.policyId)
-  ) {
-    throw new Error(
-      "Deployment manifest is missing referenceScriptAuthPolicy.policyId",
-    );
-  }
-  if (typeof candidate.contracts !== "object" || candidate.contracts === null) {
-    throw new Error("Deployment manifest contracts must be an object");
-  }
-  if (
-    typeof candidate.referenceScripts !== "object" ||
-    candidate.referenceScripts === null
-  ) {
-    throw new Error("Deployment manifest referenceScripts must be an object");
-  }
-  if (typeof candidate.steps !== "object" || candidate.steps === null) {
-    throw new Error("Deployment manifest steps must be an object");
-  }
-  const { manifestId: _manifestId, ...identityInput } =
-    candidate as DeploymentManifestV2;
-  const expectedManifestId = computeDeploymentManifestId(identityInput);
-  if (candidate.manifestId !== expectedManifestId) {
-    throw new Error(
-      `Deployment manifest id mismatch: expected ${expectedManifestId}, found ${String(
-        candidate.manifestId,
-      )}`,
-    );
-  }
-  return candidate as DeploymentManifestV2;
-};
+): DeploymentManifestV2 =>
+  parseDeploymentManifestV2Value(value) as DeploymentManifestV2;
 
 export const readDeploymentManifestV2File = (
   outputPath: string,

@@ -1,17 +1,6 @@
 import { createHash } from "node:crypto";
 
 import initialSchemaSql from "./sql/0001_initial_schema.sql";
-import durableTxAdmissionsSql from "./sql/0002_durable_tx_admissions.sql";
-import localMutationJobsSql from "./sql/0003_local_mutation_jobs.sql";
-import withdrawalEventsSql from "./sql/0004_withdrawal_events.sql";
-import pendingFinalizationJournalPayloadsSql from "./sql/0005_pending_finalization_journal_payloads.sql";
-import stateQueueMutationLeasesSql from "./sql/0006_state_queue_mutation_leases.sql";
-import daPayloadsV2Sql from "./sql/0007_da_payloads_v2.sql";
-import pendingFinalizationUtxoPayloadsSql from "./sql/0008_pending_finalization_utxo_payloads.sql";
-import depositSubmissionAttemptsSql from "./sql/0009_deposit_submission_attempts.sql";
-import forcedTransactionsSql from "./sql/0010_forced_transactions.sql";
-import pendingFinalizationTraceMembersSql from "./sql/0011_pending_finalization_trace_members.sql";
-import pendingFinalizationTracePayloadsSql from "./sql/0012_pending_finalization_trace_payloads.sql";
 
 export type Migration = {
   readonly version: number;
@@ -32,83 +21,6 @@ export const MIGRATIONS: readonly Migration[] = [
     sql: initialSchemaSql,
     transactional: true,
   },
-  {
-    version: 2,
-    name: "durable_tx_admissions",
-    checksumSha256: sha256Hex(durableTxAdmissionsSql),
-    sql: durableTxAdmissionsSql,
-    transactional: true,
-  },
-  {
-    version: 3,
-    name: "local_mutation_jobs",
-    checksumSha256: sha256Hex(localMutationJobsSql),
-    sql: localMutationJobsSql,
-    transactional: true,
-  },
-  {
-    version: 4,
-    name: "withdrawal_events",
-    checksumSha256: sha256Hex(withdrawalEventsSql),
-    sql: withdrawalEventsSql,
-    transactional: true,
-  },
-  {
-    version: 5,
-    name: "pending_finalization_journal_payloads",
-    checksumSha256: sha256Hex(pendingFinalizationJournalPayloadsSql),
-    sql: pendingFinalizationJournalPayloadsSql,
-    transactional: true,
-  },
-  {
-    version: 6,
-    name: "state_queue_mutation_leases",
-    checksumSha256: sha256Hex(stateQueueMutationLeasesSql),
-    sql: stateQueueMutationLeasesSql,
-    transactional: true,
-  },
-  {
-    version: 7,
-    name: "da_payloads_v2",
-    checksumSha256: sha256Hex(daPayloadsV2Sql),
-    sql: daPayloadsV2Sql,
-    transactional: true,
-  },
-  {
-    version: 8,
-    name: "pending_finalization_utxo_payloads",
-    checksumSha256: sha256Hex(pendingFinalizationUtxoPayloadsSql),
-    sql: pendingFinalizationUtxoPayloadsSql,
-    transactional: true,
-  },
-  {
-    version: 9,
-    name: "deposit_submission_attempts",
-    checksumSha256: sha256Hex(depositSubmissionAttemptsSql),
-    sql: depositSubmissionAttemptsSql,
-    transactional: true,
-  },
-  {
-    version: 10,
-    name: "forced_transactions",
-    checksumSha256: sha256Hex(forcedTransactionsSql),
-    sql: forcedTransactionsSql,
-    transactional: true,
-  },
-  {
-    version: 11,
-    name: "pending_finalization_trace_members",
-    checksumSha256: sha256Hex(pendingFinalizationTraceMembersSql),
-    sql: pendingFinalizationTraceMembersSql,
-    transactional: true,
-  },
-  {
-    version: 12,
-    name: "pending_finalization_trace_payloads",
-    checksumSha256: sha256Hex(pendingFinalizationTracePayloadsSql),
-    sql: pendingFinalizationTracePayloadsSql,
-    transactional: true,
-  },
 ] as const;
 
 export const EXPECTED_SCHEMA_VERSION =
@@ -125,14 +37,17 @@ export const APPLICATION_TABLE_NAMES = [
   "address_history",
   "blocks",
   "confirmed_ledger",
+  "commit_build_calibration",
   "deposits_utxos",
   "forced_transaction_utxos",
+  "foreign_tip_reconciliations",
   "withdrawal_utxos",
   "immutable",
   "mempool",
   "processed_mempool",
   "mempool_ledger",
   "mempool_tx_deltas",
+  "mpf_engine_state",
   "tx_rejections",
   "pending_block_finalizations",
   "pending_block_finalization_deposits",
@@ -143,9 +58,12 @@ export const APPLICATION_TABLE_NAMES = [
   "pending_block_finalization_transition_trace",
   "pending_block_finalization_event_to_step",
   "tx_admissions",
+  "tx_admission_payloads",
   "local_mutation_jobs",
   "state_queue_mutation_leases",
   "da_payloads",
+  "da_payload_publications",
+  "da_payload_announcements",
   "deposit_submission_attempts",
 ] as const;
 
@@ -160,28 +78,31 @@ export const APPLICATION_INDEX_NAMES = [
   "idx_forced_transaction_utxos_status_inclusion_time_tx_order_id",
   "idx_forced_transaction_utxos_projected_header_hash",
   "idx_forced_transaction_utxos_tx_id",
+  "idx_foreign_tip_reconciliations_status_updated",
+  "idx_foreign_tip_reconciliations_window",
   "idx_withdrawal_utxos_status_inclusion_time_event_id",
   "idx_withdrawal_utxos_projected_header_hash",
   "idx_withdrawal_utxos_withdrawal_l1_tx_hash",
   "idx_withdrawal_utxos_l2_outref",
   "idx_immutable_time_stamp_tz",
-  "idx_mempool_time_stamp_tz",
-  "idx_processed_mempool_time_stamp_tz",
+  "idx_mempool_time_stamp_tz_tx_id",
+  "idx_processed_mempool_time_stamp_tz_tx_id",
   "idx_mempool_ledger_address",
-  "idx_mempool_ledger_source_event_id",
   "uniq_mempool_ledger_source_event_id",
   "idx_tx_rejections_tx_id",
   "idx_tx_rejections_created_at",
   "uniq_pending_block_finalizations_single_active",
   "idx_pending_block_finalizations_status",
-  "idx_tx_admissions_dequeue",
-  "idx_tx_admissions_status_updated",
   "idx_tx_admissions_lease",
+  "idx_tx_admissions_active_lease",
+  "idx_tx_admissions_queued_arrival",
   "uniq_tx_rejections_tx_id",
   "idx_local_mutation_jobs_status_updated",
   "uniq_state_queue_mutation_leases_active_scope",
   "idx_state_queue_mutation_leases_status_updated",
   "idx_da_payloads_created_at",
+  "idx_da_payload_publications_retry",
+  "idx_da_payload_announcements_retry",
   "idx_deposit_submission_attempts_deposit_event_id",
   "idx_deposit_submission_attempts_status_submitted_at",
 ] as const;

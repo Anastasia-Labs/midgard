@@ -3,9 +3,12 @@
 This document defines the first public Midgard data-availability mechanism for deployments that cannot use Cardano Leios blobs.
 The mechanism is a threshold committee of DA nodes that independently store, verify, sign, broadcast, and publicly serve Midgard block payloads.
 
-The current on-chain `da_attestation.ak` design provides the attestation control plane.
-It records that a threshold of configured committee keys attested to a Midgard block header.
-This document defines the missing data plane: where the full block data is published, how committee nodes decide whether to sign, how signatures are broadcast, and how watchers retrieve the bytes without trusting operator-local APIs.
+The on-chain `da_attestation.ak` design provides the attestation control plane.
+It records that a threshold of configured committee keys attested to a Midgard
+block header. The companion implementation under `demo/da-committee-node`
+provides the current data plane: manifest-bound libp2p retrieval, canonical
+payload validation, durable storage, committee signing and exchange, and an
+optional L1 attestation coordinator.
 
 ## Current Contract Boundary
 
@@ -28,30 +31,39 @@ As implemented in this repository:
 The current node implementation also has a demo/default path: protocol initialization derives a one-key committee from the operator payment key with threshold `1`, and `attest-state-queue-once` creates, signs with signer index `0`, and applies attestations itself.
 The public committee architecture below is the generalized profile that should replace or wrap that operator-local path for production deployments.
 
-## Current Demo Node Compatibility
+## Current Implementation Boundary
 
-As of the current `demo` implementation, the demo node is not yet a DA committee
-node.
-It provides useful building blocks, but production committee support still requires new node, SDK, and deployment-surface work.
+`demo/midgard-node` remains the block producer, not a committee signer. It
+persists either historical raw canonical `DaPayloadV2` bytes (schema 2) or a
+canonical `DaPayloadEnvelopeV3` containing those exact bytes (schema 3), and
+serves the stored artifact over the same manifest-bound libp2p transport.
+The stored/wire SHA-256 always binds the stored artifact; schema 3 additionally
+binds the decoded content with an inner length and SHA-256.
 
-Reusable pieces:
+`demo/da-committee-node` currently:
 
-- State-queue header construction, local header hashing, and root commitment logic already exist in the demo node and SDK.
-- Pending block finalization journals already persist base block metadata and included transaction, deposit, and withdrawal member payloads before submission.
-- The one-key `attest-state-queue-once` path already exercises the DA attestation UTxO lifecycle against the current contracts.
+- fails closed on deployment-manifest and contract-deployment identity drift;
+- scans finalized state-queue headers through the configured Cardano provider;
+- fetches payload, metadata, chunks, proof artifacts, and attestations over
+  allowlisted libp2p V1 protocols;
+- unwraps schema 2/3 with a dual compressed/decoded size cap, canonical-decodes
+  the inner `DaPayloadV2`, recomputes all seven roots and the committed
+  counts, and compares the embedded header and header hash with L1;
+- stores deployment, header, payload, signature, peer, and L1 submission state
+  in a JSON-file or PostgreSQL store;
+- signs `MidgardDAAttestationV1 || header_hash` only after the payload is
+  verified and the signer belongs to the configured committee;
+- exchanges signatures with committee peers and, when L1 submission is
+  enabled, reconciles the `Init`, `AddSignatures`, and `ApplyToStateQueue`
+  lifecycle; and
+- exposes only `/healthz`, `/readyz`, and `/v1/manifest` over HTTP. DA payload
+  and attestation transport has no HTTP fallback.
 
-Required changes before this architecture is implemented by Midgard nodes:
-
-- Protocol initialization must accept configured DA params and signed deployment-manifest DA metadata instead of always deriving a threshold-1 committee from the operator key.
-- The Midgard producer payload and committee DA payload must become shared
-  canonical SDK/core codecs. Current pending-finalization tables are
-  implementation journals, not protocol payload formats.
-- Block commitment must publish or hand off the canonical payload to the configured DA committee over the DA libp2p network and track publication/attestation state by `header_hash`.
-- DA signing must be gated on durable payload storage, libp2p retrieval readiness, L1 header matching, and retention eligibility.
-- `AddSignatures` transaction building must accept arbitrary sorted external witnesses and compute bitmap/count updates from the existing datum instead of hard-coding signer index `0` and count `1`.
-- The node or a companion DA service must run the manifest-bound libp2p protocols defined below.
-- Watcher and merge policies must require payload retrieval and header reconstruction when operating in DA-verifying mode, not only the on-chain DA-attestation marker.
-- DA payload retention must be managed independently of the demo node's ordinary database retention sweeper.
+The remaining production boundary is broader than transport implementation:
+signed deployment-manifest distribution, independently exercised multi-member
+operations, retention enforcement/monitoring, public runbooks, and autonomous
+challenger integration are still launch work. A threshold signature is an
+availability trust statement; it is not full optimistic-rollup verification.
 
 ## Security Claim
 
@@ -81,18 +93,13 @@ This is the only required DA attestation in the V1 committee profile.
 On chain, the signature preimage is exactly the UTF-8 bytes of `MidgardDAAttestationV1` concatenated with the 28-byte `header_hash`.
 
 `MidgardDAAttestationV1` is the attestation profile and signing domain, not a separately served payload format.
-Semantically, it means: "for this `header_hash`, the signer has the raw Midgard
-block data and any required derived trace/proof artifacts needed to
-independently reconstruct the committed `transactions_root`, `deposits_root`,
-`withdrawals_root`, `utxos_root`, and related proof-critical commitments from
-Cardano L1 state plus data retrievable from the DA libp2p network."
-The Midgard producer payload is the source data bundle used to make the block
-roots independently checkable by watchers. It must not be required to include
-`transition_proof_data`. When transition trace roots are enabled, DA committee
-nodes may derive trace/proof artifacts from that producer payload and propagate
-an enriched committee DA payload containing `transition_proof_data` to other
-committee peers. Receivers must recompute or verify the derived data before
-signing. The chain still verifies only a signature over
+In the current implementation, it means the signer fetched and durably stored a
+canonical `DaPayloadV2`, matched its embedded header to L1, and recomputed the
+UTxO, withdrawal, forced-transaction, transaction, deposit, transition-trace,
+and event-to-step roots and counts. Proof bundles are served through separate
+protocols and are not yet a prerequisite enforced by the signer, so the
+signature must not be described as proof that every challenger witness exists.
+The chain verifies only the signature over
 `MidgardDAAttestationV1 || header_hash`.
 
 The public identifier for DA retrieval is the state-queue `header_hash`.
@@ -131,8 +138,7 @@ transport, including as fallback, debug, gateway, or local development transport
 Transport responsibilities:
 
 - Accept canonical Midgard producer payload bytes from operators.
-- Accept canonical committee DA payload bytes from peer committee nodes, including
-  derived `transition_proof_data` when trace roots are enabled.
+- Accept canonical `DaPayloadV2` bytes from producer or committee peers.
 - Authenticate peers by deployment-manifest peer id and configured signing key.
 - Reject oversized payloads before expensive validation.
 - Store an immutable staging record before any signature is produced.
@@ -147,16 +153,18 @@ Validates that the payload is complete and reconstructs the committed block head
 Validation responsibilities:
 
 - Decode canonical CBOR with no trailing bytes, duplicate keys, or unknown required fields.
-- Verify `deployment_fingerprint`, `network_id`, `protocol_version`, and `schema_version`.
-- Recompute `transactions_root`, `deposits_root`, `withdrawals_root`, `utxos_root`, and all proof-critical member counts from the payload.
-- Derive transition trace entries, event-to-step entries, and proof-bundle indexes when the L1 header commits to trace roots.
-- Reconstruct the exact Midgard `Header` value from the payload and reconstructed roots.
+- Verify deployment fingerprint and peer identity through the runtime manifest
+  and transport envelope; verify payload version and the protocol version in
+  the embedded header.
+- Recompute the seven committed roots and all header counts from the payload.
+- Validate transition-trace and event-to-step coverage carried by the payload.
+- Decode the exact Midgard `Header` value embedded in the payload.
 - Compute `header_hash = blake2b_224(serialise_data(reconstructed_header))`.
 - Resolve the matching state-queue node from Cardano L1 before signing.
 - Verify the reconstructed header equals the state-queue header datum observed on L1.
 - Verify the reconstructed `header_hash` equals the state-queue linked-list key and block asset suffix.
-- Verify that all required preimages and committee-derived proof-bundle inputs needed for launch-scope proof families are present.
-- Verify the local retention policy can keep the payload for 14 days from attestation.
+- Require the configured transport retention to be at least 15 days. Automated
+  per-payload retention expiry enforcement remains production work.
 
 The validator may store a payload before the L1 header exists, but it must not sign until the L1 header is observed and matched.
 
@@ -164,7 +172,7 @@ The validator may store a payload before the L1 header exists, but it must not s
 
 Stores immutable payload bytes and metadata by `header_hash`.
 
-Required object keys:
+Conceptual retrieval keys:
 
 ```text
 payload:{deployment_fingerprint}:{header_hash}
@@ -175,8 +183,11 @@ event_to_step:{deployment_fingerprint}:{header_hash}:{event_key}
 attestations:{deployment_fingerprint}:{header_hash}
 ```
 
-The content keys are the DA retrieval identifiers used by libp2p request-response protocols.
-Payload bytes are immutable after the node signs the header.
+The current JSON/PostgreSQL store models these as deployment, header, payload,
+signature, peer, attestation-candidate, and L1-submission records. The libp2p
+protocols expose header-, step-, and event-keyed retrieval without requiring a
+particular storage-engine key syntax. Payload conflict checks prevent replacing
+verified bytes for a header hash.
 
 Store requirements:
 
@@ -292,6 +303,8 @@ Required request-response protocols:
 /midgard/{deployment_fingerprint}/da/payload-chunk/1
 /midgard/{deployment_fingerprint}/da/metadata-by-header/1
 /midgard/{deployment_fingerprint}/da/proof-bundle-by-header/1
+/midgard/{deployment_fingerprint}/da/trace-step-by-index/1
+/midgard/{deployment_fingerprint}/da/event-to-step-by-event/1
 /midgard/{deployment_fingerprint}/da/attestations-by-header/1
 ```
 
@@ -346,39 +359,51 @@ The manifest is not currently authenticated by the DA contracts; deployments mus
 
 ## Payload Schema
 
-The Midgard producer payload should be a canonical CBOR object with enough source
-data to reconstruct the full state-queue header. It should not include
-`transition_proof_data`; that data is derived and propagated by DA committee
-nodes.
+The inner shared payload codec is `DaPayloadV2` in
+`demo/midgard-sdk/src/da-payload.ts`. Its canonical Plutus-data CBOR shape is:
 
-The committee-propagated DA payload may wrap the producer payload plus derived
-`transition_proof_data`. Successful retrieval and validation of the producer
-payload and any required committee-derived proof data justifies a committee
-member's `MidgardDAAttestationV1 || header_hash` signature.
-At minimum:
+```text
+DaPayloadV2 {
+  version,
+  block_body: {
+    header_hash,
+    header,
+    utxos,
+    withdrawals,
+    forced_transactions,
+    transactions,
+    deposits,
+    transition_trace,
+    event_to_step,
+    counts: {
+      withdrawalCount,
+      forcedTransactionCount,
+      l2TransactionCount,
+      depositCount,
+      totalEventCount,
+      transitionStepCount
+    }
+  }
+}
+```
 
-- `network_id`.
-- `deployment_fingerprint`.
-- `schema_version`.
-- `protocol_version`.
-- `prev_utxos_root`.
-- `start_time`.
-- `end_time`.
-- `prev_header_hash`.
-- `operator_vkey`.
-- Ordered transaction envelopes and compact transaction members.
-- Full transaction field-list preimages needed by fraud proofs.
-- Deposit event members and preimages.
-- Withdrawal event members and preimages.
-- Included transaction members and preimages.
-- Root member counts and byte lengths.
-- Enough source data for a committee node to derive transition trace data once
-  state-transition proofs are in scope.
-- Enough source data for a committee node to derive proof-bundle metadata needed
-  by every launch-scope proof family.
+Each member list contains `(key_bytes, value_bytes)` tuples. The committee
+validator requires a byte-for-byte canonical re-encoding, validates the
+embedded header hash and header against L1, recomputes the UTxO, withdrawal,
+forced-transaction, transaction, deposit, transition-trace, and event-to-step
+roots, and checks all committed counts before signing.
 
-The payload does not need to carry a claimed `header_hash`.
-The DA node derives `transactions_root`, `deposits_root`, `withdrawals_root`, `utxos_root`, builds the header, computes `header_hash`, and compares the result to Cardano L1 before signing.
+Inbound payload submission is admitted through one process-wide FIFO slot
+before any frame read or decompression. One absolute request deadline starts
+before that queue, spans frame read, bounded unwrap/decompression, validation,
+store, response backpressure, and stream close, and aborts the stream on
+expiry. A timed-out waiter is removed from the queue, so a stalled manifested
+peer cannot monopolize the only decode slot.
+
+Deployment identity is bound by the libp2p runtime manifest and protocol
+envelopes rather than duplicated inside `DaPayloadV2`. Proof bundles, trace
+steps, and event-to-step records have separate request-response protocols; the
+payload alone is not a claim that every launch-scope proof witness is available.
 
 ## Publish And Attest Workflow
 
@@ -424,7 +449,7 @@ For every queued block, a watcher should:
 8. Cache the payload and all proof-critical preimages locally.
 
 If the state queue is DA-attested but the watcher cannot retrieve a valid payload from the configured committee peers before the warning deadline, the block decision is `pending_da` and should escalate.
-Near maturity this is an emergency, because missing DA can prevent fraud proof construction.
+Near maturity this is an emergency, because missing DA can prevent fault proof construction.
 
 ## Committee Node State Machine
 
@@ -541,38 +566,31 @@ Required alerts:
 - Retention deadline is close while block is still in challenge window.
 - Libp2p payload request error rate exceeds threshold.
 
-## Implementation Phases
+## Implementation Status
 
-### Phase 1: Libp2p Public-Testnet Mirror
+The repository implements the original transport and coordinator milestones:
+canonical `DaPayloadV2`, manifest-bound libp2p V1 transport, header/root/count
+validation, JSON/PostgreSQL stores, signer membership checks, peer signature
+exchange, and optional on-chain `Init`/`AddSignatures`/`ApplyToStateQueue`
+reconciliation. The focused package checks are `pnpm build`, `pnpm typecheck`,
+`pnpm test`, and `pnpm guard:no-http-da-transport` in
+`demo/da-committee-node`.
 
-- Implement the canonical Midgard producer payload codec.
-- Implement DA libp2p transport, header reconstruction, L1 header matching, header-keyed storage, and libp2p retrieval protocols.
-- Add deployment manifest DA peer id and multiaddr fields.
-- Produce indexed `OnChainDaSignatureWitness` values only after local payload storage, libp2p retrieval readiness, and L1 header matching are ready.
-- Keep using current `da_attestation.ak` on-chain signatures.
-- Watchers require on-chain DA attestation plus successful payload retrieval and header reconstruction.
+Production work remains for committee accountability and operations:
 
-### Phase 2: Signature Broadcast And Attestation Coordinator
-
-- Add signature broadcaster in each DA committee node.
-- Generalize the current operator-local `attest-state-queue-once` flow into a coordinator service for the DA attestation UTxO lifecycle.
-- Collect indexed signatures from committee nodes.
-- Submit `Init`, `AddSignatures`, and `ApplyToStateQueue`.
-- Expose final attestation sets for watchers.
-
-### Phase 3: Committee Accountability
-
-- Add committee operator runbooks and uptime requirements.
-- Add signed incident records for unavailable data.
-- If the protocol later supports committee slashing, bind signatures to slashable DA commitments.
+- publish signed deployment manifests and committee operator runbooks;
+- exercise multi-member threshold behavior, failover, rollback, restart, and
+  retention in clean preprod acceptance;
+- expose and alert on the operational metrics described above;
+- define signed incident evidence for unavailable or conflicting data; and
+- integrate a full independent watcher/challenger that consumes the proof
+  protocols before the maturity deadline.
 
 ## Open Protocol Decisions
 
-- Exact Midgard producer payload CBOR shape.
-- Exact committee DA payload CBOR shape, including optional
-  `transition_proof_data`.
-- Exact deterministic header reconstruction rules, including transition trace commitments once enabled.
-- Exact slot/deadline expression for the 14-day retention promise.
+- Exact slot/deadline expression and enforcement mechanism for the 14-day
+  availability promise. The runtime currently requires at least 15 configured
+  retention days as a safety margin.
 - How committee nodes discover coordinator peers.
 - Whether committee members are bonded and slashable for false availability claims.
 - Whether DA nodes should require authenticated operator payload streams or accept public payload streams with rate limits.

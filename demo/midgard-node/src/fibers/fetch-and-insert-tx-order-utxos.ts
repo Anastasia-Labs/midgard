@@ -12,7 +12,12 @@ import {
   type UserEventFetchBounds,
   type UserEventReconcileResult,
 } from "@/fibers/user-event-ingestion.js";
-import { Database, Lucid, MidgardContracts } from "@/services/index.js";
+import {
+  Database,
+  Globals,
+  Lucid,
+  MidgardContracts,
+} from "@/services/index.js";
 
 const rawDatum = (
   txOrderUTxO: SDK.TxOrderUTxO,
@@ -153,7 +158,7 @@ export const fetchAndInsertTxOrderUTxOsFiber = (
 ): Effect.Effect<
   void,
   SDK.LucidError | DatabaseError,
-  MidgardContracts | Lucid | Database
+  MidgardContracts | Lucid | Database | Globals
 > =>
   repeatVisibleUserEventIngestionFiber({
     schedule,

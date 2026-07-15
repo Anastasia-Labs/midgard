@@ -1,13 +1,25 @@
 import { createHash } from "node:crypto";
 
 import * as SDK from "@al-ft/midgard-sdk";
+import { SqlClient } from "@effect/sql";
 import { type Address, Data as LucidData } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import { expect } from "vitest";
 
+import * as TxAdmissionsDB from "@/database/txAdmissions.js";
 import * as LedgerUtils from "@/database/utils/ledger.js";
+import {
+  ADMISSION_WRITE_BATCH_MAX_ROWS,
+  ADMISSION_WRITE_BATCH_TARGET_ROWS,
+  ADMISSION_WRITE_QUEUE_CAPACITY,
+  ADMISSION_WRITE_SHARD_COUNT,
+  AdmissionWriter,
+  AdmissionWriterLive,
+  makeAdmissionWriterWithOptions,
+} from "@/services/admission-writer.js";
 import { NodeConfig } from "@/services/config.js";
-import { Database } from "@/services/database.js";
+import { AdmissionSql, Database } from "@/services/database.js";
+import { WriteBehindLive } from "@/services/write-behind.js";
 
 const explicitPostgresDb =
   process.env.POSTGRES_DB !== undefined && process.env.POSTGRES_DB !== "";
@@ -56,8 +68,38 @@ if (
   );
 }
 
+const AdmissionWriterTestLive = Layer.scoped(
+  AdmissionWriter,
+  Effect.gen(function* () {
+    const admissionSql = yield* AdmissionSql;
+    return yield* makeAdmissionWriterWithOptions(
+      (requests) =>
+        TxAdmissionsDB.admitReservedBatch(requests).pipe(
+          Effect.provideService(SqlClient.SqlClient, admissionSql),
+        ),
+      {
+        shardCount: ADMISSION_WRITE_SHARD_COUNT,
+        batchMaxRows: ADMISSION_WRITE_BATCH_MAX_ROWS,
+        batchTargetRows: ADMISSION_WRITE_BATCH_TARGET_ROWS,
+        batchDeadlineMs: 0,
+        queueCapacity: ADMISSION_WRITE_QUEUE_CAPACITY,
+      },
+    );
+  }),
+);
+
+const admissionWriterLayer =
+  process.env.PHASE1_ADMISSION_OPERATOR === "1"
+    ? AdmissionWriterLive
+    : AdmissionWriterTestLive;
+
 export const provideDatabaseLayers = <A, E, R>(eff: Effect.Effect<A, E, R>) =>
-  eff.pipe(Effect.provide(Database.layer), Effect.provide(NodeConfig.layer));
+  eff.pipe(
+    Effect.provide(WriteBehindLive),
+    Effect.provide(admissionWriterLayer),
+    Effect.provide(Database.layer),
+    Effect.provide(NodeConfig.layer),
+  );
 
 export const deterministicFixtureBytes = (
   label: string,

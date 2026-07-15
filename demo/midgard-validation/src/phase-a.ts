@@ -17,6 +17,7 @@ import type {
 } from "./ledger-tx/types.js";
 import {
   PhaseAConfig,
+  PhaseALocalContext,
   PhaseAResult,
   PhaseAValidatedTx,
   QueuedTx,
@@ -51,8 +52,71 @@ const codecErrorDetail = (error: unknown): string => {
   return String(error);
 };
 
+const EMPTY_HASH_HEXES: readonly string[] = [];
+const DEFAULT_PUBLIC_KEY_CACHE_MAX_ENTRIES = 4_096;
+const publicKeyCache = new Map<string, CML.PublicKey>();
+let publicKeyCacheMaxEntries = DEFAULT_PUBLIC_KEY_CACHE_MAX_ENTRIES;
+let publicKeyCacheHits = 0;
+let publicKeyCacheMisses = 0;
+let publicKeyCacheEvictions = 0;
+
+export const phaseAPublicKeyCacheStats = (): {
+  readonly size: number;
+  readonly maxEntries: number;
+  readonly hits: number;
+  readonly misses: number;
+  readonly evictions: number;
+} => ({
+  size: publicKeyCache.size,
+  maxEntries: publicKeyCacheMaxEntries,
+  hits: publicKeyCacheHits,
+  misses: publicKeyCacheMisses,
+  evictions: publicKeyCacheEvictions,
+});
+
+/** Test/process-shutdown hook; production validation uses the 4096-key cap. */
+export const resetPhaseAPublicKeyCache = (
+  maxEntries = DEFAULT_PUBLIC_KEY_CACHE_MAX_ENTRIES,
+): void => {
+  for (const publicKey of publicKeyCache.values()) {
+    publicKey.free();
+  }
+  publicKeyCache.clear();
+  publicKeyCacheMaxEntries = Math.max(1, Math.floor(maxEntries));
+  publicKeyCacheHits = 0;
+  publicKeyCacheMisses = 0;
+  publicKeyCacheEvictions = 0;
+};
+
+const cachedPublicKey = (vkey: Buffer): CML.PublicKey => {
+  const cacheKey = vkey.toString("hex");
+  const cached = publicKeyCache.get(cacheKey);
+  if (cached !== undefined) {
+    publicKeyCache.delete(cacheKey);
+    publicKeyCache.set(cacheKey, cached);
+    publicKeyCacheHits += 1;
+    return cached;
+  }
+
+  const publicKey = CML.PublicKey.from_bytes(vkey);
+  publicKeyCacheMisses += 1;
+  if (publicKeyCache.size >= publicKeyCacheMaxEntries) {
+    const oldestKey = publicKeyCache.keys().next().value as string | undefined;
+    if (oldestKey !== undefined) {
+      const evicted = publicKeyCache.get(oldestKey);
+      publicKeyCache.delete(oldestKey);
+      evicted?.free();
+      publicKeyCacheEvictions += 1;
+    }
+  }
+  publicKeyCache.set(cacheKey, publicKey);
+  return publicKey;
+};
+
 const hashHexes = (hashes: readonly Buffer[]): readonly string[] =>
-  hashes.map((hash) => hash.toString("hex"));
+  hashes.length === 0
+    ? EMPTY_HASH_HEXES
+    : hashes.map((hash) => hash.toString("hex"));
 
 const firstDuplicate = (values: readonly string[]): string | undefined => {
   const seen = new Set<string>();
@@ -65,34 +129,62 @@ const firstDuplicate = (values: readonly string[]): string | undefined => {
   return undefined;
 };
 
+const outRefIdentity = (
+  outRef: MidgardLedgerTx["spendInputs"][number],
+): string => `${outRef.txId.toString("hex")}#${outRef.index.toString()}`;
+
 const validateInputSets = (tx: MidgardLedgerTx): RejectedTx | null => {
   if (tx.spendInputs.length === 0) {
     return reject(tx.txId, RejectCodes.EmptyInputs);
   }
 
-  const spendOutRefs = tx.spendInputs.map(midgardOutRefToCborHex);
-  const duplicateSpend = firstDuplicate(spendOutRefs);
-  if (duplicateSpend !== undefined) {
-    return reject(tx.txId, RejectCodes.DuplicateInputInTx, duplicateSpend);
+  if (tx.spendInputs.length === 1 && tx.referenceInputs.length === 0) {
+    return null;
   }
 
-  const spent = new Set(spendOutRefs);
-  const referenceOutRefs = tx.referenceInputs.map(midgardOutRefToCborHex);
-  const duplicateReference = firstDuplicate(referenceOutRefs);
-  if (duplicateReference !== undefined) {
-    return reject(
-      tx.txId,
-      RejectCodes.DuplicateInputInTx,
-      `duplicate reference input ${duplicateReference}`,
-    );
-  }
-
-  for (const referenceOutRef of referenceOutRefs) {
-    if (spent.has(referenceOutRef)) {
+  const spendOutRefIdentities = tx.spendInputs.map(outRefIdentity);
+  if (spendOutRefIdentities.length > 1) {
+    const duplicateSpend = firstDuplicate(spendOutRefIdentities);
+    if (duplicateSpend !== undefined) {
+      const duplicate = tx.spendInputs.find(
+        (outRef) => outRefIdentity(outRef) === duplicateSpend,
+      )!;
       return reject(
         tx.txId,
         RejectCodes.DuplicateInputInTx,
-        `outref appears in both spend and reference inputs ${referenceOutRef}`,
+        midgardOutRefToCborHex(duplicate),
+      );
+    }
+  }
+
+  if (tx.referenceInputs.length === 0) {
+    return null;
+  }
+
+  const spent = new Set(spendOutRefIdentities);
+  const referenceOutRefs = tx.referenceInputs.map(outRefIdentity);
+  if (referenceOutRefs.length > 1) {
+    const duplicateReference = firstDuplicate(referenceOutRefs);
+    if (duplicateReference !== undefined) {
+      const duplicate = tx.referenceInputs.find(
+        (outRef) => outRefIdentity(outRef) === duplicateReference,
+      )!;
+      return reject(
+        tx.txId,
+        RejectCodes.DuplicateInputInTx,
+        `duplicate reference input ${midgardOutRefToCborHex(duplicate)}`,
+      );
+    }
+  }
+
+  for (let index = 0; index < referenceOutRefs.length; index += 1) {
+    if (spent.has(referenceOutRefs[index]!)) {
+      return reject(
+        tx.txId,
+        RejectCodes.DuplicateInputInTx,
+        `outref appears in both spend and reference inputs ${midgardOutRefToCborHex(
+          tx.referenceInputs[index]!,
+        )}`,
       );
     }
   }
@@ -127,11 +219,27 @@ const validateValidityInterval = (tx: MidgardLedgerTx): RejectedTx | null => {
   return null;
 };
 
+const verifyVKeyWitnessWithCml = (
+  txBodyHash: Buffer,
+  witness: MidgardLedgerVKeyWitness,
+): boolean => {
+  const publicKey = cachedPublicKey(witness.vkey);
+  const signature = CML.Ed25519Signature.from_raw_bytes(witness.signature);
+  try {
+    return publicKey.verify(txBodyHash, signature);
+  } finally {
+    signature.free();
+  }
+};
+
 const verifyVKeyWitnessSignatures = (
   tx: MidgardLedgerTx,
+  verifySignature: NonNullable<
+    PhaseALocalContext["verifyVKeyWitnessSignature"]
+  > = verifyVKeyWitnessWithCml,
 ): RejectedTx | null => {
   for (const witness of tx.vkeyWitnesses) {
-    if (!verifyVKeyWitness(tx.txId, witness)) {
+    if (!verifySignature(tx.txId, witness)) {
       return reject(
         tx.txId,
         RejectCodes.InvalidSignature,
@@ -142,16 +250,10 @@ const verifyVKeyWitnessSignatures = (
   return null;
 };
 
-const verifyVKeyWitness = (
-  txBodyHash: Buffer,
-  witness: MidgardLedgerVKeyWitness,
-): boolean => {
-  const publicKey = CML.PublicKey.from_bytes(witness.vkey);
-  const signature = CML.Ed25519Signature.from_raw_bytes(witness.signature);
-  return publicKey.verify(txBodyHash, signature);
-};
-
 const validateRequiredSigners = (tx: MidgardLedgerTx): RejectedTx | null => {
+  if (tx.requiredSignerHashes.length === 0) {
+    return null;
+  }
   const witnessSignerSet = new Set(hashHexes(tx.witnessKeyHashes));
   for (const requiredSigner of hashHexes(tx.requiredSignerHashes)) {
     if (!witnessSignerSet.has(requiredSigner)) {
@@ -168,11 +270,12 @@ const validateRequiredSigners = (tx: MidgardLedgerTx): RejectedTx | null => {
 const validateNativeScriptWitnesses = (
   tx: MidgardLedgerTx,
 ): RejectedTx | null => {
-  const witnessSigners = new Set(hashHexes(tx.witnessKeyHashes));
+  let witnessSigners: ReadonlySet<string> | undefined;
   for (const witness of tx.scriptWitnesses) {
     if (witness.script.language !== "NativeCardano") {
       continue;
     }
+    witnessSigners ??= new Set(hashHexes(tx.witnessKeyHashes));
     if (
       !verifyMidgardNativeScript(witness.script.nativeScript, {
         validityIntervalStart: tx.validityIntervalStart,
@@ -191,6 +294,9 @@ const validateNativeScriptWitnesses = (
 };
 
 const validateRequiredObservers = (tx: MidgardLedgerTx): RejectedTx | null => {
+  if (tx.requiredObserverHashes.length < 2) {
+    return null;
+  }
   const duplicateObserver = firstDuplicate(
     hashHexes(tx.requiredObserverHashes),
   );
@@ -207,10 +313,10 @@ const validateRequiredObservers = (tx: MidgardLedgerTx): RejectedTx | null => {
 const validateScriptEvaluationPreconditions = (
   tx: MidgardLedgerTx,
 ): RejectedTx | null => {
-  if (
-    tx.requiresPlutusEvaluation &&
-    Buffer.from(tx.scriptIntegrityHash).equals(EMPTY_NULL_ROOT)
-  ) {
+  if (!tx.requiresPlutusEvaluation) {
+    return null;
+  }
+  if (Buffer.from(tx.scriptIntegrityHash).equals(EMPTY_NULL_ROOT)) {
     return reject(
       tx.txId,
       RejectCodes.InvalidFieldType,
@@ -218,11 +324,7 @@ const validateScriptEvaluationPreconditions = (
     );
   }
 
-  if (
-    tx.requiresPlutusEvaluation &&
-    tx.requiredObserverHashes.length > 0 &&
-    tx.networkId === undefined
-  ) {
+  if (tx.requiredObserverHashes.length > 0 && tx.networkId === undefined) {
     return reject(
       tx.txId,
       RejectCodes.InvalidFieldType,
@@ -233,9 +335,10 @@ const validateScriptEvaluationPreconditions = (
   return null;
 };
 
-const validateNativeOne = (
+export const validatePhaseASingle = (
   queuedTx: QueuedTx,
   config: PhaseAConfig,
+  localContext: PhaseALocalContext = {},
 ): PhaseAValidatedTx | RejectedTx => {
   let submittedTx: MidgardSubmittedTx;
   try {
@@ -293,19 +396,22 @@ const validateNativeOne = (
     );
   }
 
-  for (const validation of [
-    validateInputSets,
-    validateValidityInterval,
-    validateRequiredSigners,
-    verifyVKeyWitnessSignatures,
-    validateNativeScriptWitnesses,
-    validateRequiredObservers,
-    validateScriptEvaluationPreconditions,
-  ]) {
-    const rejection = validation(ledgerTx);
-    if (rejection !== null) {
-      return rejection;
-    }
+  let rejection = validateInputSets(ledgerTx);
+  if (rejection === null) rejection = validateValidityInterval(ledgerTx);
+  if (rejection === null) rejection = validateRequiredSigners(ledgerTx);
+  if (rejection === null) {
+    rejection = verifyVKeyWitnessSignatures(
+      ledgerTx,
+      localContext.verifyVKeyWitnessSignature,
+    );
+  }
+  if (rejection === null) rejection = validateNativeScriptWitnesses(ledgerTx);
+  if (rejection === null) rejection = validateRequiredObservers(ledgerTx);
+  if (rejection === null) {
+    rejection = validateScriptEvaluationPreconditions(ledgerTx);
+  }
+  if (rejection !== null) {
+    return rejection;
   }
 
   try {
@@ -328,11 +434,13 @@ const validateNativeOne = (
 export const runPhaseAValidation = (
   queuedTxs: readonly QueuedTx[],
   config: PhaseAConfig,
+  localContext: PhaseALocalContext = {},
 ): Effect.Effect<PhaseAResult> =>
   Effect.gen(function* () {
     const orderedResults = yield* Effect.forEach(
       queuedTxs,
-      (queuedTx) => Effect.sync(() => validateNativeOne(queuedTx, config)),
+      (queuedTx) =>
+        Effect.sync(() => validatePhaseASingle(queuedTx, config, localContext)),
       {
         concurrency: config.concurrency <= 0 ? "unbounded" : config.concurrency,
       },

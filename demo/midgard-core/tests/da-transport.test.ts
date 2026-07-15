@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import { encodeCborMapRaw, encodeCborUnsigned } from "../src/codec/cbor.js";
+import {
+  decodeSingleCbor,
+  encodeCborMapRaw,
+  encodeCborUnsigned,
+} from "../src/codec/cbor.js";
 import {
   DA_ON_CHAIN_ATTESTATION_V1_DOMAIN,
   DA_TRANSPORT_LIMITS_V1,
   DA_TRANSPORT_PROTOCOL_VERSION,
   type DaAttestationGossipV1,
+  type DaCapabilitiesResponseV1,
   DaConflictEvidenceKind,
   type DaConflictEvidenceV1,
   DaGossipTopic,
@@ -21,12 +26,16 @@ import {
   DaRequestResponseProtocol,
   daRequestResponseProtocolId,
   decodeDaAttestationGossipV1Cbor,
+  decodeDaCapabilitiesRequestV1Cbor,
+  decodeDaCapabilitiesResponseV1Cbor,
   decodeDaConflictEvidenceV1Cbor,
   decodeDaMetadataByHeaderResponseV1Cbor,
   decodeDaPayloadByHeaderResponseV1Cbor,
   decodeDaPayloadChunkManifestCbor,
   decodeDaPayloadSubmitRequestV1Cbor,
   encodeDaAttestationGossipV1Cbor,
+  encodeDaCapabilitiesRequestV1Cbor,
+  encodeDaCapabilitiesResponseV1Cbor,
   encodeDaConflictEvidenceV1Cbor,
   encodeDaMetadataByHeaderResponseV1Cbor,
   encodeDaPayloadByHeaderResponseV1Cbor,
@@ -49,6 +58,18 @@ const chunkManifest: DaPayloadChunkManifestV1 = {
 };
 
 describe("DA libp2p transport protocol freeze", () => {
+  it("rejects malformed UTF-8 and decoder-stripped BOMs structurally", () => {
+    for (const malformed of ["61ff", "62c0af", "63eda080", "62e282"]) {
+      expect(() => decodeSingleCbor(Buffer.from(malformed, "hex"))).toThrow(
+        /valid UTF-8/u,
+      );
+    }
+    expect(decodeSingleCbor(Buffer.from("63efbfbd", "hex"))).toBe("�");
+    expect(() => decodeSingleCbor(Buffer.from("63efbbbf", "hex"))).toThrow(
+      /UTF-8 BOM/u,
+    );
+  });
+
   it("freezes protocol IDs, topics, domains, limits, and enum codes", () => {
     expect(DA_TRANSPORT_PROTOCOL_VERSION).toBe(1);
     expect(DA_ON_CHAIN_ATTESTATION_V1_DOMAIN).toBe("MidgardDAAttestationV1");
@@ -269,6 +290,93 @@ describe("DA libp2p transport protocol freeze", () => {
     expect(() =>
       decodeDaPayloadByHeaderResponseV1Cbor(unsupportedStatus),
     ).toThrow(/unsupported enum code/);
+
+    const malformedUtf8Reason = Buffer.concat([
+      Buffer.from("86", "hex"),
+      Buffer.from("02", "hex"),
+      Buffer.from(`581c${h("02", 28)}`, "hex"),
+      Buffer.from("f6f6f6", "hex"),
+      Buffer.from("6780697373696e67", "hex"),
+    ]);
+    expect(() =>
+      decodeDaPayloadByHeaderResponseV1Cbor(malformedUtf8Reason),
+    ).toThrow(/valid UTF-8/u);
+  });
+
+  it("reports submit-request decode timing without changing canonical bytes", () => {
+    const stages: Array<{
+      readonly stage: string;
+      readonly durationMs: number;
+    }> = [];
+    let now = 10;
+    const encoded = encodeDaPayloadSubmitRequestV1Cbor({
+      deploymentFingerprint: deployment,
+      headerHash: header,
+      payloadHash: payload,
+      payloadSchemaVersion: 2,
+      mode: "chunked",
+      payloadBytes: null,
+      chunkManifest,
+    });
+    const decoded = decodeDaPayloadSubmitRequestV1Cbor(encoded, {
+      monotonicNow: () => {
+        now += 5;
+        return now;
+      },
+      onStageTiming: (stage, durationMs) => stages.push({ stage, durationMs }),
+    });
+
+    expect(encodeDaPayloadSubmitRequestV1Cbor(decoded)).toEqual(encoded);
+    expect(stages).toEqual([{ stage: "submit_request_decode", durationMs: 5 }]);
+    expect(() =>
+      decodeDaPayloadSubmitRequestV1Cbor(encoded, {
+        monotonicNow: () => {
+          throw new Error("clock unavailable");
+        },
+        onStageTiming: () => {
+          throw new Error("sink unavailable");
+        },
+      }),
+    ).not.toThrow();
+
+    const nonMinimalArray = Buffer.concat([
+      Buffer.from([0x98, 0x07]),
+      encoded.subarray(1),
+    ]);
+    expect(() => decodeDaPayloadSubmitRequestV1Cbor(nonMinimalArray)).toThrow(
+      /Non-minimal/u,
+    );
+  });
+
+  it("round-trips deployment-scoped decoder capabilities canonically", () => {
+    const request = { deploymentFingerprint: deployment };
+    expect(
+      decodeDaCapabilitiesRequestV1Cbor(
+        encodeDaCapabilitiesRequestV1Cbor(request),
+      ),
+    ).toEqual(request);
+    const response: DaCapabilitiesResponseV1 = {
+      deploymentFingerprint: deployment,
+      transportProtocolVersion: DA_TRANSPORT_PROTOCOL_VERSION,
+      payloadSchemaVersions: [2, 3],
+      envelopeContentEncodings: [0, 1],
+      maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+      maxInlineResponseBytes: DA_TRANSPORT_LIMITS_V1.maxInlineResponseBytes,
+      maxChunkBytes: DA_TRANSPORT_LIMITS_V1.maxChunkBytes,
+      maxStreamsPerPeer: DA_TRANSPORT_LIMITS_V1.maxStreamsPerPeer,
+      requestTimeoutMs: DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
+    };
+    expect(
+      decodeDaCapabilitiesResponseV1Cbor(
+        encodeDaCapabilitiesResponseV1Cbor(response),
+      ),
+    ).toEqual(response);
+    expect(() =>
+      encodeDaCapabilitiesResponseV1Cbor({
+        ...response,
+        payloadSchemaVersions: [3, 2],
+      }),
+    ).toThrow(/strictly increasing/);
   });
 });
 

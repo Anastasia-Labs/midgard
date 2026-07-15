@@ -104,58 +104,105 @@ const ensureMetadataTables: Effect.Effect<void, MigrationError, Database> =
     sqlError("schema_metadata_create_failed", "Failed to create metadata"),
   );
 
-const setSessionOptions = (
-  mode: "migrate" | "verify",
-): Effect.Effect<void, MigrationError, Database> =>
+/**
+ * Runs schema work on one transaction-pinned connection. Session-level SETs
+ * are unsafe through a pool: each statement may land on a different backend
+ * and the setting then leaks to unrelated borrowers. SET LOCAL scopes every
+ * option to this transaction. Migration/compatibility operations reserve one
+ * physical connection and take the session lock before BEGIN, so a waiter
+ * starts its serializable snapshot only after the previous migrator commits.
+ * The same reserved connection performs the matching unlock.
+ */
+const withMigrationTransaction = <A, E, R>({
+  mode,
+  lock,
+  effect,
+}: {
+  readonly mode: "migrate" | "verify";
+  readonly lock: boolean;
+  readonly effect: Effect.Effect<A, E, R>;
+}): Effect.Effect<A, E | MigrationError, R | Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    yield* sql.unsafe("SET client_min_messages = 'error'");
-    yield* sql.unsafe("SET default_transaction_isolation TO 'serializable'");
-    yield* sql.unsafe(
-      mode === "migrate"
-        ? "SET lock_timeout = '30s'"
-        : "SET lock_timeout = '5s'",
+    const transaction = sql.withTransaction(
+      Effect.gen(function* () {
+        // This must precede every migration read in the transaction.
+        yield* sql.unsafe("SET LOCAL transaction_isolation = 'serializable'");
+        yield* sql.unsafe("SET LOCAL client_min_messages = 'error'");
+        yield* sql.unsafe(
+          mode === "migrate"
+            ? "SET LOCAL lock_timeout = '30s'"
+            : "SET LOCAL lock_timeout = '5s'",
+        );
+        yield* sql.unsafe(
+          mode === "migrate"
+            ? "SET LOCAL statement_timeout = '15min'"
+            : "SET LOCAL statement_timeout = '30s'",
+        );
+        return yield* effect;
+      }),
     );
-    yield* sql.unsafe(
-      mode === "migrate"
-        ? "SET statement_timeout = '15min'"
-        : "SET statement_timeout = '30s'",
+    if (!lock) {
+      return yield* transaction;
+    }
+
+    return yield* Effect.scoped(
+      Effect.gen(function* () {
+        const connection = yield* sql.reserve.pipe(
+          sqlError(
+            "schema_lock_failed",
+            "Failed to reserve schema migration connection",
+          ),
+        );
+        const lockRows = yield* connection
+          .execute(
+            "SELECT pg_try_advisory_lock($1) AS acquired",
+            [MIGRATION_ADVISORY_LOCK_KEY],
+            undefined,
+          )
+          .pipe(
+            sqlError(
+              "schema_lock_failed",
+              "Failed to acquire schema migration lock",
+            ),
+          );
+        if (lockRows[0]?.acquired !== true) {
+          return yield* Effect.fail(
+            migrationError(
+              "schema_migration_in_progress",
+              "Could not acquire Midgard schema migration advisory lock",
+            ),
+          );
+        }
+        return yield* transaction.pipe(
+          // A depth of -1 makes withTransaction start the outer transaction
+          // on this already-reserved connection instead of a pool borrower.
+          Effect.provideService(SqlClient.TransactionConnection, [
+            connection,
+            -1,
+          ]),
+          Effect.ensuring(
+            connection
+              .execute(
+                "SELECT pg_advisory_unlock($1)",
+                [MIGRATION_ADVISORY_LOCK_KEY],
+                undefined,
+              )
+              .pipe(Effect.orDie),
+          ),
+        );
+      }),
     );
   }).pipe(
-    sqlError("schema_session_setup_failed", "Failed to configure DB session"),
-  );
-
-const acquireMigrationLock: Effect.Effect<void, MigrationError, Database> =
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    const rows = yield* sql<{
-      readonly acquired: boolean;
-    }>`SELECT pg_try_advisory_lock(${MIGRATION_ADVISORY_LOCK_KEY}) AS acquired`.pipe(
-      sqlError("schema_lock_failed", "Failed to acquire schema migration lock"),
-    );
-    if (rows[0]?.acquired !== true) {
-      return yield* Effect.fail(
-        migrationError(
-          "schema_migration_in_progress",
-          "Could not acquire Midgard schema migration advisory lock",
-        ),
-      );
-    }
-  });
-
-const releaseMigrationLock: Effect.Effect<void, never, Database> = Effect.gen(
-  function* () {
-    const sql = yield* SqlClient.SqlClient;
-    yield* sql`SELECT pg_advisory_unlock(${MIGRATION_ADVISORY_LOCK_KEY})`;
-  },
-).pipe(Effect.ignore);
-
-const withMigrationLock = <A, E, R>(
-  effect: Effect.Effect<A, E, R>,
-): Effect.Effect<A, E | MigrationError, R | Database> =>
-  acquireMigrationLock.pipe(
-    Effect.andThen(effect),
-    Effect.ensuring(releaseMigrationLock),
+    Effect.mapError((error) =>
+      error instanceof MigrationError
+        ? error
+        : migrationError(
+            "schema_session_setup_failed",
+            "Failed to configure schema transaction",
+            error,
+          ),
+    ),
   );
 
 const readAppliedMigrations: Effect.Effect<
@@ -662,35 +709,50 @@ export const migrate = ({
   readonly appVersion?: string;
   readonly actor?: string;
 } = {}): Effect.Effect<MigrationStatus, MigrationError, Database> =>
-  setSessionOptions("migrate").pipe(
-    Effect.andThen(
-      withMigrationLock(
-        Effect.gen(function* () {
-          yield* ensureMetadataTables;
-          const applied = yield* readAppliedMigrations;
-          const existingTables = yield* readApplicationTables;
-          if (applied.length === 0 && existingTables.length > 0) {
-            return yield* Effect.fail(
-              migrationError(
-                "schema_unversioned_database",
-                `Refusing to migrate unversioned database with existing application tables: ${existingTables.join(",")}`,
-              ),
-            );
-          }
-          yield* validateAppliedLedgerEffect(applied, "allowBehind");
-          const actualVersion = applied.at(-1)?.version ?? 0;
-          const pending = MIGRATIONS.filter(
-            (migration) => migration.version > actualVersion,
-          );
-          for (const migration of pending) {
-            yield* applyMigration({ migration, appVersion, actor });
-          }
-          const finalApplied = yield* readAppliedMigrations;
-          yield* validateAppliedLedgerEffect(finalApplied, "exact");
-          yield* verifyApplicationShape;
-          return yield* getStatusUnsafe;
-        }),
-      ),
+  withMigrationTransaction({
+    mode: "migrate",
+    lock: true,
+    effect: Effect.gen(function* () {
+      yield* ensureMetadataTables;
+      const applied = yield* readAppliedMigrations;
+      const existingTables = yield* readApplicationTables;
+      if (applied.length === 0 && existingTables.length > 0) {
+        return yield* Effect.fail(
+          migrationError(
+            "schema_unversioned_database",
+            `Refusing to migrate unversioned database with existing application tables: ${existingTables.join(",")}`,
+          ),
+        );
+      }
+      yield* validateAppliedLedgerEffect(applied, "allowBehind");
+      const actualVersion = applied.at(-1)?.version ?? 0;
+      const pending = MIGRATIONS.filter(
+        (migration) => migration.version > actualVersion,
+      );
+      for (const migration of pending) {
+        const result = yield* Effect.either(
+          applyMigration({ migration, appVersion, actor }),
+        );
+        if (result._tag === "Left") {
+          // Commit the per-migration `started`/`failed` audit events and all
+          // earlier successful migrations before surfacing this failure. The
+          // failing migration itself was rolled back to its nested savepoint.
+          return { _tag: "Failure", error: result.left } as const;
+        }
+      }
+      const finalApplied = yield* readAppliedMigrations;
+      yield* validateAppliedLedgerEffect(finalApplied, "exact");
+      yield* verifyApplicationShape;
+      return {
+        _tag: "Success",
+        status: yield* getStatusUnsafe,
+      } as const;
+    }),
+  }).pipe(
+    Effect.flatMap((result) =>
+      result._tag === "Failure"
+        ? Effect.fail(result.error)
+        : Effect.succeed(result.status),
     ),
   );
 
@@ -767,44 +829,43 @@ export const getStatus: Effect.Effect<
   MigrationStatus,
   MigrationError,
   Database
-> = setSessionOptions("verify").pipe(
-  Effect.andThen(ensureMetadataTables),
-  Effect.andThen(getStatusUnsafe),
-);
+> = withMigrationTransaction({
+  mode: "verify",
+  lock: false,
+  effect: ensureMetadataTables.pipe(Effect.andThen(getStatusUnsafe)),
+});
 
 export const assertCompatible: Effect.Effect<void, MigrationError, Database> =
-  setSessionOptions("verify").pipe(
-    Effect.andThen(
-      withMigrationLock(
-        Effect.gen(function* () {
-          yield* ensureMetadataTables;
-          const applied = yield* readAppliedMigrations;
-          const existingTables = yield* readApplicationTables;
-          if (applied.length === 0 && existingTables.length === 0) {
-            return yield* Effect.fail(
-              migrationError(
-                "schema_not_migrated",
-                "Database has no applied migrations; run `midgard-node db:migrate` before starting the node",
-              ),
-            );
-          }
-          if (applied.length === 0 && existingTables.length > 0) {
-            return yield* Effect.fail(
-              migrationError(
-                "schema_unversioned_database",
-                `Database contains unversioned application tables: ${existingTables.join(",")}`,
-              ),
-            );
-          }
-          yield* validateAppliedLedgerEffect(applied, "exact");
-          yield* verifyApplicationShape;
-          yield* Effect.logInfo(
-            `schema compatibility verified: expected_version=${EXPECTED_SCHEMA_VERSION}, actual_version=${applied.at(-1)?.version}, manifest_hash=${MIGRATION_MANIFEST_HASH}`,
-          );
-        }),
-      ),
-    ),
-  );
+  withMigrationTransaction({
+    mode: "verify",
+    lock: true,
+    effect: Effect.gen(function* () {
+      yield* ensureMetadataTables;
+      const applied = yield* readAppliedMigrations;
+      const existingTables = yield* readApplicationTables;
+      if (applied.length === 0 && existingTables.length === 0) {
+        return yield* Effect.fail(
+          migrationError(
+            "schema_not_migrated",
+            "Database has no applied migrations; run `midgard-node db:migrate` before starting the node",
+          ),
+        );
+      }
+      if (applied.length === 0 && existingTables.length > 0) {
+        return yield* Effect.fail(
+          migrationError(
+            "schema_unversioned_database",
+            `Database contains unversioned application tables: ${existingTables.join(",")}`,
+          ),
+        );
+      }
+      yield* validateAppliedLedgerEffect(applied, "exact");
+      yield* verifyApplicationShape;
+      yield* Effect.logInfo(
+        `schema compatibility verified: expected_version=${EXPECTED_SCHEMA_VERSION}, actual_version=${applied.at(-1)?.version}, manifest_hash=${MIGRATION_MANIFEST_HASH}`,
+      );
+    }),
+  });
 export const formatStatus = (status: MigrationStatus): string =>
   JSON.stringify(
     {

@@ -8,6 +8,8 @@ import {
 import { shouldShortCircuitIdleCommitAttempt } from "@/workers/commit-block-header.js";
 import {
   buildSuccessfulCommitBatches,
+  calibratedCommitBuildMsPerTx,
+  clampCommitBuildMsPerTx,
   type CommitSchedulerStateQueueEvidence,
   establishEndTimeFromTxRequests,
   planCommitBatchBudgets,
@@ -15,7 +17,9 @@ import {
   planSchedulerAwareCommitSelection,
   selectCommitRoots,
   selectCommitTxCandidates,
+  updateCommitBuildEwma,
 } from "@/workers/utils/commit-block-planner.js";
+import { establishEffectiveEndTimeFromDecodedMempool } from "@/workers/utils/mpf.js";
 
 const mkTxEntry = (
   seed: number,
@@ -73,6 +77,25 @@ const stateQueueEvidence: CommitSchedulerStateQueueEvidence = {
 };
 
 describe("commit block planner", () => {
+  it("clamps and updates measured commit-build EWMA deterministically", () => {
+    expect(clampCommitBuildMsPerTx(0)).toBe(0.05);
+    expect(clampCommitBuildMsPerTx(100)).toBe(50);
+    expect(
+      updateCommitBuildEwma({
+        previousMsPerTx: 1,
+        measuredBuildMs: 400,
+        processedTxCount: 100,
+        alpha: 0.2,
+      }),
+    ).toBeCloseTo(1.6);
+    expect(
+      calibratedCommitBuildMsPerTx({
+        msPerTxEwma: 40,
+        safetyFactor: 1.5,
+      }),
+    ).toBe(50);
+  });
+
   it("includes processed mempool txs even when mempool is empty", () => {
     const processed = [mkTxEntry(1), mkTxEntry(2), mkTxEntry(3)];
     const batches = buildSuccessfulCommitBatches([], [], processed, 2);
@@ -200,15 +223,34 @@ describe("commit block planner", () => {
     expect(planned.candidateSelection.candidateTxHashes).toHaveLength(2);
   });
 
-  it("uses the first candidate tx timestamp as the shared tx-backed candidate end-time source", () => {
+  it("uses the maximum candidate tx timestamp as the shared tx-backed candidate end-time source", () => {
     const first = mkTxEntry(1, new Date("2026-01-01T00:03:00.000Z"));
     const second = mkTxEntry(2, new Date("2026-01-01T00:04:00.000Z"));
     const candidateEndTime = establishEndTimeFromTxRequests([first, second]);
 
     expect(Option.isSome(candidateEndTime)).toBe(true);
     expect(Option.getOrThrow(candidateEndTime).getTime()).toBe(
-      first[TxColumns.TIMESTAMPTZ].getTime(),
+      second[TxColumns.TIMESTAMPTZ].getTime(),
     );
+  });
+
+  it("anchors MPF end time to the maximum included timestamp after edge rejections", () => {
+    const first = mkTxEntry(1, new Date("2026-01-01T00:03:00.000Z"));
+    const middle = mkTxEntry(2, new Date("2026-01-01T00:04:00.000Z"));
+    const last = mkTxEntry(3, new Date("2026-01-01T00:05:00.000Z"));
+
+    expect(
+      establishEffectiveEndTimeFromDecodedMempool([
+        { entry: first },
+        { entry: middle },
+      ])?.getTime(),
+    ).toBe(middle[TxColumns.TIMESTAMPTZ].getTime());
+    expect(
+      establishEffectiveEndTimeFromDecodedMempool([
+        { entry: middle },
+        { entry: last },
+      ])?.getTime(),
+    ).toBe(last[TxColumns.TIMESTAMPTZ].getTime());
   });
 
   it("short-circuits idle commitment only when no recoverable work remains", () => {

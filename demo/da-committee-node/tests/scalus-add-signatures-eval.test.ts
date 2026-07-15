@@ -1,6 +1,3 @@
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
-
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   Data,
@@ -18,12 +15,12 @@ import { describe, it } from "vitest";
 import { buildAddSignaturesTx } from "../src/coordinator/tx-builders.js";
 import {
   daAttestationValidatorsFromDeployment,
-  parseMidgardNodeDeploymentInfo,
   type MidgardNodeDeployment,
 } from "../src/l1/deployment.js";
 import type { DaAttestationReferenceScripts } from "../src/l1/reference-scripts.js";
 import { loadDaSigner, signDaAttestation } from "../src/signer.js";
 import { bytesToHex } from "../src/utils/hex.js";
+import { loadDaDeploymentFixture } from "./helpers/deployment-fixture.js";
 
 const EMULATOR_PROTOCOL_PARAMETERS = {
   ...PROTOCOL_PARAMETERS_DEFAULT,
@@ -32,7 +29,7 @@ const EMULATOR_PROTOCOL_PARAMETERS = {
 
 describe("Scalus DA add-signatures evaluation", () => {
   it("completes the one-signature AddSignatures transaction with local UPLC", async () => {
-    const deployment = await loadRealDeployment();
+    const deployment = await loadDaDeploymentFixture("Preprod");
     const contracts = daAttestationValidatorsFromDeployment(deployment);
     const signer = await loadDaSigner(`hex:${"00".repeat(31)}01`);
     const committeeSignersHash = bytesToHex(
@@ -117,22 +114,6 @@ const formatErrorChain = (error: unknown): string => {
     parts.push(String(current));
   }
   return parts.join(" -> ");
-};
-
-const loadRealDeployment = async (): Promise<MidgardNodeDeployment> => {
-  const path = join(
-    process.cwd(),
-    "../midgard-node/deploymentInfo/contract-deployment-info.json",
-  );
-  const parsed = JSON.parse(await readFile(path, "utf8")) as Record<
-    string,
-    unknown
-  >;
-  const deployment = parseMidgardNodeDeploymentInfo(parsed, "Preprod");
-  if (deployment === undefined) {
-    throw new Error("real Midgard deployment fixture did not parse");
-  }
-  return deployment;
 };
 
 const referenceScriptUtxos = (

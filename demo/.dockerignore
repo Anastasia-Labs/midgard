@@ -1,6 +1,7 @@
 **/node_modules
 **/dist
 **/coverage
+**/target
 **/*.tgz
 **/*.log
 
@@ -10,4 +11,5 @@ midgard-node/.env.*
 midgard-node/cardano
 midgard-node/db
 midgard-node/deploymentInfo
+midgard-node/logs
 midgard-node/tempo-data

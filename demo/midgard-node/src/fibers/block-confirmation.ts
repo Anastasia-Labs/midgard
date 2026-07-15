@@ -1,19 +1,40 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import { Data, Effect, Option, Ref, Schedule } from "effect";
+import {
+  Data,
+  Duration,
+  Effect,
+  Metric,
+  Option,
+  Queue,
+  Ref,
+  Schedule,
+} from "effect";
 import { Worker } from "worker_threads";
 
 import {
   DepositsDB,
   ForcedTransactionsDB,
+  MempoolLedgerDB,
   PendingBlockFinalizationsDB,
   WithdrawalsDB,
 } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import {
+  type KupoConfirmationMetadata,
+  resolveKupoConfirmationMetadata,
+} from "@/kupo-confirmation-metadata.js";
+import {
   reviveEarliestCanonicalPayloadJournal,
   withCanonicalHeaderJournals,
 } from "@/services/canonical-journal-recovery.js";
-import { Database, Globals } from "@/services/index.js";
+import {
+  Database,
+  Globals,
+  Lucid,
+  NodeConfig,
+  publishMempoolLedgerDelta,
+  withL1ControlPlane,
+} from "@/services/index.js";
 import { deserializeStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
 import { WorkerError } from "@/workers/utils/common.js";
 import {
@@ -24,6 +45,79 @@ import {
 
 import { emitQueueStateMetrics } from "./queue-metrics.js";
 import { resolveWorkerEntry } from "./resolve-worker-entry.js";
+import { invalidateSpeculativeCommitCandidate } from "./speculative-commit-builder.js";
+import { makeAwaitedWorkerTerminator } from "./worker-lifecycle.js";
+
+const confirmationDetectionLagTimer = Metric.timer(
+  "confirmation_detection_lag_ms",
+  "Milliseconds from the authoritative Kupo creation slot to AVAILABLE_CONFIRMED_BLOCK publication",
+);
+const confirmationDetectionLagUnavailableCounter = Metric.counter(
+  "confirmation_detection_lag_unavailable_total",
+  {
+    description:
+      "First confirmation observations without valid authoritative Kupo creation metadata",
+  },
+);
+
+/**
+ * Computes milliseconds from the authoritative Kupo creation slot to the
+ * instant AVAILABLE_CONFIRMED_BLOCK is published. Provider clock skew can put
+ * the slot slightly in the future, so negative samples clamp to zero.
+ */
+export const resolveConfirmationDetectionLagMs = ({
+  confirmationSlotUnixMs,
+  availableConfirmedSetAtMs,
+}: {
+  readonly confirmationSlotUnixMs: number;
+  readonly availableConfirmedSetAtMs: number;
+}): number => Math.max(0, availableConfirmedSetAtMs - confirmationSlotUnixMs);
+
+export const shouldObserveConfirmationDetectionLag = (
+  observedConfirmedAtMs: bigint | null,
+): boolean => observedConfirmedAtMs === null;
+
+export type ActivePendingFinalizationIdentity = {
+  readonly headerHash: string;
+  readonly submittedTxHash: string | null;
+  readonly status: PendingBlockFinalizationsDB.Status;
+};
+
+const activePendingFinalizationIdentity = (
+  pending: Option.Option<PendingBlockFinalizationsDB.Row>,
+): ActivePendingFinalizationIdentity | null =>
+  Option.match(pending, {
+    onNone: () => null,
+    onSome: (row) => ({
+      headerHash:
+        row[PendingBlockFinalizationsDB.Columns.HEADER_HASH].toString("hex"),
+      submittedTxHash:
+        row[PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH]?.toString(
+          "hex",
+        ) ?? null,
+      status: row[PendingBlockFinalizationsDB.Columns.STATUS],
+    }),
+  });
+
+export const confirmationPendingSnapshotChanged = ({
+  captured,
+  current,
+}: {
+  readonly captured: ActivePendingFinalizationIdentity | null;
+  readonly current: ActivePendingFinalizationIdentity | null;
+}): boolean =>
+  captured?.headerHash !== current?.headerHash ||
+  captured?.submittedTxHash !== current?.submittedTxHash ||
+  captured?.status !== current?.status;
+
+export const staleRecoveryMustPreserveNewActiveJournal = ({
+  captured,
+  current,
+}: {
+  readonly captured: ActivePendingFinalizationIdentity | null;
+  readonly current: ActivePendingFinalizationIdentity | null;
+}): boolean =>
+  current !== null && confirmationPendingSnapshotChanged({ captured, current });
 
 type ConfirmationWorkerRunner = (
   input: BlockConfirmationWorkerInput,
@@ -105,9 +199,10 @@ const pendingRecordRequiresLocalFinalizationRecovery = (
 const observeConfirmedPendingBlock = (
   record: PendingBlockFinalizationsDB.Record,
   recoveredSubmittedTxHash: Buffer | null,
-): Effect.Effect<boolean, DatabaseError, Database | Globals> =>
+): Effect.Effect<boolean, DatabaseError, Database | Globals | NodeConfig> =>
   Effect.gen(function* () {
     const globals = yield* Globals;
+    const config = yield* NodeConfig;
     const journalHeaderHash =
       record[PendingBlockFinalizationsDB.Columns.HEADER_HASH];
     yield* DepositsDB.markProjectedByEventIds(
@@ -123,9 +218,20 @@ const observeConfirmedPendingBlock = (
       journalHeaderHash,
     );
     if (record.depositEventIds.length > 0) {
-      yield* Ref.update(
-        globals.MEMPOOL_LEDGER_VERSION,
-        (version) => version + 1,
+      const projectedEntries = yield* MempoolLedgerDB.retrieveBySourceEventIds(
+        record.depositEventIds,
+      );
+      yield* publishMempoolLedgerDelta(
+        globals,
+        {
+          full: false,
+          upserts: projectedEntries.map((entry) => [
+            entry[MempoolLedgerDB.Columns.OUTREF].toString("hex"),
+            entry[MempoolLedgerDB.Columns.OUTPUT],
+          ]),
+          deletes: [],
+        },
+        config.VALIDATION_LEDGER_DELTA_LOG_MAX,
       );
     }
     const requiresLocalFinalizationRecovery =
@@ -221,9 +327,36 @@ const runConfirmationWorkerInThread: ConfirmationWorkerRunner = (input) =>
         workerData: input,
       },
     );
-    worker.on("message", (output: BlockConfirmationWorkerOutput) => {
+    const terminate = makeAwaitedWorkerTerminator(worker);
+    let settled = false;
+    const cleanup = () => {
+      worker.off("message", onMessage);
+      worker.off("error", onError);
+      worker.off("exit", onExit);
+    };
+    const settle = (
+      result: Effect.Effect<BlockConfirmationWorkerOutput, WorkerError>,
+    ) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      void terminate().then(
+        () => resume(result),
+        (cause) =>
+          resume(
+            Effect.fail(
+              new WorkerError({
+                worker: "confirm-block-commitments",
+                message: "Failed to terminate confirmation worker.",
+                cause,
+              }),
+            ),
+          ),
+      );
+    };
+    const onMessage = (output: BlockConfirmationWorkerOutput) => {
       if (output.type === "FailedConfirmationOutput") {
-        resume(
+        settle(
           Effect.fail(
             new WorkerError({
               worker: "confirm-block-commitments",
@@ -233,12 +366,11 @@ const runConfirmationWorkerInThread: ConfirmationWorkerRunner = (input) =>
           ),
         );
       } else {
-        resume(Effect.succeed(output));
+        settle(Effect.succeed(output));
       }
-      worker.terminate();
-    });
-    worker.on("error", (error: Error) => {
-      resume(
+    };
+    const onError = (error: Error) => {
+      settle(
         Effect.fail(
           new WorkerError({
             worker: "confirm-block-commitments",
@@ -247,38 +379,50 @@ const runConfirmationWorkerInThread: ConfirmationWorkerRunner = (input) =>
           }),
         ),
       );
-      worker.terminate();
-    });
-    worker.on("exit", (code: number) => {
-      if (code !== 0) {
-        resume(
-          Effect.fail(
-            new WorkerError({
-              worker: "confirm-block-commitments",
-              message: `Confirmation worker exited with code: ${code}`,
-              cause: `exit code ${code}`,
-            }),
-          ),
-        );
+    };
+    const onExit = (code: number) => {
+      settle(
+        Effect.fail(
+          new WorkerError({
+            worker: "confirm-block-commitments",
+            message: `Confirmation worker exited before producing output with code: ${code}`,
+            cause: `exit code ${code}`,
+          }),
+        ),
+      );
+    };
+    worker.on("message", onMessage);
+    worker.on("error", onError);
+    worker.on("exit", onExit);
+    return Effect.promise(async () => {
+      if (!settled) {
+        settled = true;
+        cleanup();
       }
-    });
-    return Effect.sync(() => {
-      worker.terminate();
+      await terminate();
     });
   });
 
 export const buildBlockConfirmationAction = (
   runWorker: ConfirmationWorkerRunner = runConfirmationWorkerInThread,
+  options: {
+    readonly afterPendingSnapshotGuard?: () => Effect.Effect<void>;
+    readonly afterStaleRecoveryJournalTransition?: () => Effect.Effect<void>;
+  } = {},
 ): Effect.Effect<
   void,
   WorkerError | DatabaseError | ConfirmationInvariantError,
-  Globals | Database
+  Globals | Database | NodeConfig
 > =>
   Effect.gen(function* () {
     const globals = yield* Globals;
+    const config = yield* NodeConfig;
     yield* Ref.set(globals.HEARTBEAT_BLOCK_CONFIRMATION, Date.now());
     const resetInProgress = yield* Ref.get(globals.RESET_IN_PROGRESS);
     if (resetInProgress) {
+      if (config.SPECULATIVE_COMMIT_BUILD) {
+        yield* invalidateSpeculativeCommitCandidate(globals, config, "T5");
+      }
       return;
     }
 
@@ -294,8 +438,44 @@ export const buildBlockConfirmationAction = (
         pendingBlock: toPendingWorkerInput(pending),
       },
     });
+    const currentPending = yield* PendingBlockFinalizationsDB.retrieveActive();
+    const capturedPendingIdentity = activePendingFinalizationIdentity(pending);
+    const currentPendingIdentity =
+      activePendingFinalizationIdentity(currentPending);
+    if (
+      confirmationPendingSnapshotChanged({
+        captured: capturedPendingIdentity,
+        current: currentPendingIdentity,
+      })
+    ) {
+      yield* Effect.logWarning(
+        `🔍 Discarding stale confirmation worker output because the active pending-finalization journal changed while the worker was running (captured=${JSON.stringify(capturedPendingIdentity)},current=${JSON.stringify(currentPendingIdentity)}).`,
+      );
+      return;
+    }
+    yield* options.afterPendingSnapshotGuard?.() ?? Effect.void;
+    const postGuardPending =
+      yield* PendingBlockFinalizationsDB.retrieveActive();
+    const postGuardPendingIdentity =
+      activePendingFinalizationIdentity(postGuardPending);
+    if (
+      confirmationPendingSnapshotChanged({
+        captured: capturedPendingIdentity,
+        current: postGuardPendingIdentity,
+      })
+    ) {
+      yield* Effect.logWarning(
+        `🔍 Discarding stale confirmation worker output because the active pending-finalization journal changed after the initial snapshot guard (captured=${JSON.stringify(capturedPendingIdentity)},current=${JSON.stringify(postGuardPendingIdentity)}).`,
+      );
+      return;
+    }
     switch (workerOutput.type) {
       case "SuccessfulConfirmationOutput": {
+        const confirmationObservedAtMs = Date.now();
+        let confirmationMetadata: KupoConfirmationMetadata | undefined;
+        const submittedAtMs = yield* Ref.get(
+          globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS,
+        );
         const metadata = yield* stateQueueTipMetadata(
           workerOutput.latestBlocksUTxO,
         ).pipe(Effect.orDie);
@@ -385,6 +565,41 @@ export const buildBlockConfirmationAction = (
               }),
             );
           }
+          if (
+            shouldObserveConfirmationDetectionLag(
+              pending.value[
+                PendingBlockFinalizationsDB.Columns.OBSERVED_CONFIRMED_AT_MS
+              ],
+            )
+          ) {
+            const lucid = yield* Effect.serviceOption(Lucid);
+            if (Option.isNone(lucid)) {
+              yield* Metric.increment(
+                confirmationDetectionLagUnavailableCounter,
+              );
+              yield* Effect.logWarning(
+                `Confirmation detection lag unavailable for ${matchedBlock.utxo.txHash}#${matchedBlock.utxo.outputIndex.toString()}: lucid_service_unavailable`,
+              );
+            } else {
+              const metadataResolution = yield* Effect.promise(() =>
+                resolveKupoConfirmationMetadata({
+                  lucid: lucid.value.api,
+                  txHash: matchedBlock.utxo.txHash,
+                  outputIndex: matchedBlock.utxo.outputIndex,
+                }),
+              );
+              if (metadataResolution.type === "Available") {
+                confirmationMetadata = metadataResolution.metadata;
+              } else {
+                yield* Metric.increment(
+                  confirmationDetectionLagUnavailableCounter,
+                );
+                yield* Effect.logWarning(
+                  `Confirmation detection lag unavailable for ${matchedBlock.utxo.txHash}#${matchedBlock.utxo.outputIndex.toString()}: ${metadataResolution.reason}`,
+                );
+              }
+            }
+          }
           const localFinalizationRecoveryPending =
             yield* observeConfirmedPendingBlock(
               pending.value,
@@ -443,21 +658,43 @@ export const buildBlockConfirmationAction = (
               globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK,
               recoveryBlock,
             );
-          } else {
-            yield* Ref.set(globals.LOCAL_FINALIZATION_PENDING, false);
-            yield* Ref.set(globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK, "");
           }
         }
-        yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH, "");
-        yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS, 0);
+        if (Option.isSome(pending)) {
+          yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH, "");
+          yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS, 0);
+        }
         yield* Ref.set(
           globals.LATEST_LOCAL_BLOCK_END_TIME_MS,
           nextLocalBlockBoundaryMs,
         );
+        const availableConfirmedSetAtMs = Date.now();
         yield* Ref.set(
           globals.AVAILABLE_CONFIRMED_BLOCK,
           workerOutput.latestBlocksUTxO,
         );
+        if (confirmationMetadata !== undefined) {
+          yield* Metric.update(
+            confirmationDetectionLagTimer,
+            Duration.millis(
+              resolveConfirmationDetectionLagMs({
+                confirmationSlotUnixMs: confirmationMetadata.confirmedAtMs,
+                availableConfirmedSetAtMs,
+              }),
+            ),
+          );
+        }
+        if (config.SPECULATIVE_COMMIT_BUILD && metadata.headerHash !== null) {
+          yield* Queue.offer(globals.COMMIT_SUBMIT_WAKE_QUEUE, {
+            confirmedHeaderHash: metadata.headerHash.toString("hex"),
+            confirmedTip: workerOutput.latestBlocksUTxO,
+            confirmationObservedAtMs,
+            confirmationWaitMs:
+              submittedAtMs === 0
+                ? 0
+                : Math.max(0, confirmationObservedAtMs - submittedAtMs),
+          });
+        }
         yield* Effect.logInfo(
           Option.isSome(pending)
             ? "🔍 ☑️  Submitted block confirmed."
@@ -491,6 +728,22 @@ export const buildBlockConfirmationAction = (
           );
           break;
         }
+        yield* options.afterStaleRecoveryJournalTransition?.() ?? Effect.void;
+        const activeAfterStaleRecovery =
+          yield* PendingBlockFinalizationsDB.retrieveActive();
+        const activeAfterStaleRecoveryIdentity =
+          activePendingFinalizationIdentity(activeAfterStaleRecovery);
+        if (
+          staleRecoveryMustPreserveNewActiveJournal({
+            captured: capturedPendingIdentity,
+            current: activeAfterStaleRecoveryIdentity,
+          })
+        ) {
+          yield* Effect.logWarning(
+            `🔍 Preserving newer submission globals after stale recovery transitioned the captured journal (captured=${JSON.stringify(capturedPendingIdentity)},current=${JSON.stringify(activeAfterStaleRecoveryIdentity)}).`,
+          );
+          break;
+        }
         yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH, "");
         yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS, 0);
         yield* Ref.set(globals.LOCAL_FINALIZATION_PENDING, false);
@@ -504,6 +757,9 @@ export const buildBlockConfirmationAction = (
           globals.AVAILABLE_CONFIRMED_BLOCK,
           workerOutput.latestBlocksUTxO,
         );
+        if (config.SPECULATIVE_COMMIT_BUILD) {
+          yield* invalidateSpeculativeCommitCandidate(globals, config, "T1");
+        }
         yield* Effect.logWarning(
           `🔍 ⚠️  Abandoning stale pending block submission ${workerOutput.stalePendingHeaderHash} (submitted_tx=${workerOutput.staleSubmittedTxHash || "unknown"}); recovered canonical chain tip and resumed commitment flow.`,
         );
@@ -524,10 +780,15 @@ export const blockConfirmationAction = buildBlockConfirmationAction();
 
 export const blockConfirmationFiber = (
   schedule: Schedule.Schedule<number>,
-): Effect.Effect<void, never, Globals | Database> =>
+): Effect.Effect<void, never, Globals | Database | NodeConfig> =>
   Effect.gen(function* () {
+    const globals = yield* Globals;
     yield* Effect.logInfo("🟫 Block confirmation fiber started.");
-    const action = blockConfirmationAction.pipe(
+    const action = withL1ControlPlane(
+      globals,
+      { scope: "block_confirmation", maxHoldMs: 180_000 },
+      blockConfirmationAction,
+    ).pipe(
       Effect.withSpan("block-confirmation-fiber"),
       Effect.catchAllCause(Effect.logWarning),
     );

@@ -1,11 +1,18 @@
 import { computeHash32 } from "@al-ft/midgard-core/codec";
+import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
   LedgerColumns,
+  midgardOutRefToCbor,
+  phaseAAddressCacheStats,
+  phaseAPublicKeyCacheStats,
   RejectCodes,
+  resetPhaseAAddressCache,
+  resetPhaseAPublicKeyCache,
   runPhaseAValidation,
+  validatePhaseASingle,
 } from "../src/index.js";
 import type {
   PhaseAValidatedTx,
@@ -30,6 +37,25 @@ const phaseAConfig = {
   concurrency: 1,
   strictnessProfile: "phase-a-unit",
 };
+
+describe("outref projection", () => {
+  it.each([0n, 23n, 24n, 255n, 256n, 65_535n, 65_536n, 0xffff_ffff_ffff_ffffn])(
+    "matches CML canonical TransactionInput CBOR for index %s",
+    (index) => {
+      const txId = Buffer.alloc(32, Number(index & 0xffn));
+      const hash = CML.TransactionHash.from_raw_bytes(txId);
+      const input = CML.TransactionInput.new(hash, index);
+      try {
+        expect(midgardOutRefToCbor({ txId, index })).toStrictEqual(
+          Buffer.from(input.to_cbor_bytes()),
+        );
+      } finally {
+        input.free();
+        hash.free();
+      }
+    },
+  );
+});
 
 const runPhaseA = (
   queued: Parameters<typeof runPhaseAValidation>[0],
@@ -62,6 +88,125 @@ const expectSinglePhaseARejection = async (
 };
 
 describe("phase A validation", () => {
+  it("reuses address projections and evicts them at the configured bound", async () => {
+    const firstKey = CML.PrivateKey.generate_ed25519();
+    const secondKey = CML.PrivateKey.generate_ed25519();
+    const firstAddress = CML.EnterpriseAddress.new(
+      0,
+      CML.Credential.new_pub_key(firstKey.to_public().hash()),
+    ).to_address();
+    const secondAddress = CML.EnterpriseAddress.new(
+      0,
+      CML.Credential.new_pub_key(secondKey.to_public().hash()),
+    ).to_address();
+    try {
+      resetPhaseAAddressCache(1);
+      const first = makeNativeTx({
+        outputs: [makeOutput(10n, Buffer.from(firstAddress.to_raw_bytes()))],
+      });
+      const second = makeNativeTx({
+        outputs: [makeOutput(10n, Buffer.from(secondAddress.to_raw_bytes()))],
+      });
+      await expectSinglePhaseAAcceptance(first);
+      await expectSinglePhaseAAcceptance(first);
+      expect(phaseAAddressCacheStats()).toMatchObject({
+        size: 1,
+        hits: 1,
+        misses: 1,
+        evictions: 0,
+      });
+      await expectSinglePhaseAAcceptance(second);
+      expect(phaseAAddressCacheStats()).toMatchObject({
+        size: 1,
+        misses: 2,
+        evictions: 1,
+      });
+    } finally {
+      resetPhaseAAddressCache();
+      firstAddress.free();
+      secondAddress.free();
+      firstKey.free();
+      secondKey.free();
+    }
+  });
+
+  it("reuses public keys and frees the least-recently-used key on eviction", async () => {
+    const firstKey = CML.PrivateKey.generate_ed25519();
+    const secondKey = CML.PrivateKey.generate_ed25519();
+    try {
+      resetPhaseAPublicKeyCache(1);
+      const first = makeNativeTx({ privateKey: firstKey });
+      const second = makeNativeTx({ privateKey: secondKey });
+      await expectSinglePhaseAAcceptance(first);
+      await expectSinglePhaseAAcceptance(first);
+      expect(phaseAPublicKeyCacheStats()).toMatchObject({
+        size: 1,
+        hits: 1,
+        misses: 1,
+        evictions: 0,
+      });
+
+      await expectSinglePhaseAAcceptance(second);
+      expect(phaseAPublicKeyCacheStats()).toMatchObject({
+        size: 1,
+        hits: 1,
+        misses: 2,
+        evictions: 1,
+      });
+      await expectSinglePhaseAAcceptance(first);
+      expect(phaseAPublicKeyCacheStats()).toMatchObject({
+        size: 1,
+        misses: 3,
+        evictions: 2,
+      });
+    } finally {
+      resetPhaseAPublicKeyCache();
+      firstKey.free();
+      secondKey.free();
+    }
+  });
+
+  it("keeps the exported single-tx validator identical to the batch reference", async () => {
+    const fixture = makeNativeTx();
+    const queued = makeQueued(fixture.txId, fixture.txCbor);
+    const config = {
+      expectedNetworkId: 0n,
+      minFeeA: 0n,
+      minFeeB: 0n,
+      concurrency: 1,
+      strictnessProfile: "phase1_midgard",
+    };
+    const single = validatePhaseASingle(queued, config);
+    const batch = await Effect.runPromise(
+      runPhaseAValidation([queued], config),
+    );
+    expect(
+      "ledgerTx" in single ? batch.accepted[0] : batch.rejected[0],
+    ).toStrictEqual(single);
+  });
+
+  it("keeps the process-local signature verifier outside serializable config", () => {
+    const fixture = makeNativeTx({ invalidVkeyWitness: true });
+    const queued = makeQueued(fixture.txId, fixture.txCbor);
+    const reference = validatePhaseASingle(queued, phaseAConfig);
+    expect("ledgerTx" in reference).toBe(false);
+    if (!("ledgerTx" in reference)) {
+      expect(reference.code).toBe(RejectCodes.InvalidSignature);
+    }
+
+    let calls = 0;
+    const injected = validatePhaseASingle(queued, phaseAConfig, {
+      verifyVKeyWitnessSignature: (txBodyHash, value) => {
+        calls += 1;
+        expect(txBodyHash).toStrictEqual(fixture.txId);
+        expect(value.vkey).toHaveLength(32);
+        expect(value.signature).toHaveLength(64);
+        return true;
+      },
+    });
+    expect(calls).toBe(1);
+    expect("ledgerTx" in injected).toBe(true);
+  });
   it("accepts canonical native transactions", async () => {
     const fixture = makeNativeTx();
 

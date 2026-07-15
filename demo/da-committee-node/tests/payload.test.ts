@@ -7,6 +7,8 @@ import {
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
 } from "@al-ft/midgard-core/codec";
+import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
+import { DA_TRANSPORT_LIMITS_V1 } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
@@ -25,9 +27,30 @@ import {
 } from "./helpers.js";
 
 describe("DA payload verification", () => {
+  it("does not misclassify canonical raw DaPayloadV2 when schema is omitted", async () => {
+    const { payloadCbor } = await makePayloadFixture();
+    const unwrapped = await unwrapDaPayload(payloadCbor, {
+      maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+    });
+    expect(unwrapped.schemaVersion).toBe(2);
+    expect(unwrapped.innerBytes).toEqual(payloadCbor);
+  });
+
   it("strictly decodes and verifies roots against the L1 header", async () => {
     const { payloadCbor, header, headerHash } = await makePayloadFixture();
-    const decoded = decodeDaPayloadV2Strict(payloadCbor);
+    const stages: string[] = [];
+    let now = 0;
+    const timing = {
+      monotonicNow: () => {
+        now += 1;
+        return now;
+      },
+      onStageTiming: (stage: string, durationMs: number) => {
+        expect(durationMs).toBe(1);
+        stages.push(stage);
+      },
+    };
+    const decoded = decodeDaPayloadV2Strict(payloadCbor, timing);
     expect(decoded.block_body.header_hash).toBe(headerHash);
     expect(decoded.block_body.forced_transactions).toHaveLength(1);
     const verified = await verifyDaPayloadAgainstHeader(
@@ -37,6 +60,7 @@ describe("DA payload verification", () => {
       {
         stateQueueOutRef: "tx#0",
         transactionProjector: IDENTITY_TX_PROJECTOR,
+        timing,
       },
     );
     expect(verified.validation.rootsMatch).toBe(true);
@@ -46,6 +70,45 @@ describe("DA payload verification", () => {
       header.forcedTransactionsRoot,
     );
     expect(verified.counts.totalEventCount).toBe(header.totalEventCount);
+    expect(stages).toEqual([
+      "inner_decode",
+      "payload_structure_validation",
+      "stored_hash",
+      "inner_decode",
+      "payload_structure_validation",
+      "semantic_validation",
+    ]);
+  });
+
+  it("strictly rejects non-minimal inner payload CBOR without re-encoding", async () => {
+    const { payloadCbor } = await makePayloadFixture();
+    const nonMinimalVersion = Buffer.concat([
+      payloadCbor.subarray(0, 3),
+      Buffer.from([0x18, 0x02]),
+      payloadCbor.subarray(4),
+    ]);
+
+    try {
+      decodeDaPayloadV2Strict(nonMinimalVersion);
+      throw new Error("expected strict decode to reject");
+    } catch (error) {
+      expect(error).toBeInstanceOf(DaPayloadValidationError);
+      expect((error as DaPayloadValidationError).code).toBe("non_canonical");
+    }
+  });
+
+  it("keeps strict validation semantics when the optional timing clock throws", async () => {
+    const { payloadCbor } = await makePayloadFixture();
+    expect(() =>
+      decodeDaPayloadV2Strict(payloadCbor, {
+        monotonicNow: () => {
+          throw new Error("clock unavailable");
+        },
+        onStageTiming: () => {
+          throw new Error("sink unavailable");
+        },
+      }),
+    ).not.toThrow();
   });
 
   it("verifies transaction roots with the production Midgard-native projector", async () => {

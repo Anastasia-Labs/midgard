@@ -13,15 +13,17 @@ export type LocalScriptEvalResult =
     }
   | { readonly kind: "script_invalid"; readonly detail: string };
 
-export const evaluateScriptWithHarmonic = (
-  scriptBytes: Uint8Array,
+export const encodeScriptContextCbor = (
   scriptContext: Constr<unknown>,
+): Uint8Array => fromHex(Data.to(scriptContext as any)) as Uint8Array;
+
+export const evaluateUplcWithContextCbor = (
+  scriptBytes: Uint8Array,
+  contextCbor: Uint8Array,
 ): LocalScriptEvalResult => {
   try {
     const uplc = parseUPLC(scriptBytes, "cbor").body;
-    const context = UPLCConst.data(
-      dataFromCbor(fromHex(Data.to(scriptContext as any)) as Uint8Array),
-    );
+    const context = UPLCConst.data(dataFromCbor(contextCbor));
     const result = Machine.eval(new Application(uplc, context));
 
     if (result.result instanceof CEKConst) {
@@ -45,3 +47,12 @@ export const evaluateScriptWithHarmonic = (
     };
   }
 };
+
+export const evaluateScriptWithHarmonic = (
+  scriptBytes: Uint8Array,
+  scriptContext: Constr<unknown>,
+): LocalScriptEvalResult =>
+  evaluateUplcWithContextCbor(
+    scriptBytes,
+    encodeScriptContextCbor(scriptContext),
+  );

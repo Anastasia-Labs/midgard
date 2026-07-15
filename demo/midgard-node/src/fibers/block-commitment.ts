@@ -1,15 +1,34 @@
+import { randomUUID } from "node:crypto";
+
 import * as SDK from "@al-ft/midgard-sdk";
-import { Duration, Effect, Metric, Ref, Schedule } from "effect";
+import {
+  Duration,
+  Effect,
+  Metric,
+  Option,
+  Queue,
+  Ref,
+  Runtime,
+  Schedule,
+} from "effect";
 import { Worker } from "worker_threads";
 
 import {
   DepositsDB,
   ForcedTransactionsDB,
+  ForeignTipReconciliationsDB,
   MempoolDB,
+  MpfEngineStateDB,
+  PendingBlockFinalizationsDB,
   StateQueueMutationLeasesDB,
   WithdrawalsDB,
 } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
+import {
+  reduceSpeculativeCommitState,
+  type SpeculativeCommitState,
+} from "@/fibers/speculative-commit-state.js";
+import { publishMempoolLedgerDelta } from "@/services/globals.js";
 import {
   type CommitPipelinePhase,
   Database,
@@ -17,13 +36,20 @@ import {
   Lucid,
   MidgardContracts,
   NodeConfig,
+  withL1ControlPlane,
 } from "@/services/index.js";
+import type {
+  NativeMpfGenerationHandle,
+  NativeMpfOwnerService,
+  PersistedNativeMpfReplay,
+} from "@/services/mpf-native-owner/index.js";
 import {
   fetchStateQueueSnapshotProgram,
   refreshStateQueueGlobalsFromSnapshot,
   type StateQueueSnapshot,
 } from "@/services/state-queue-topology.js";
 import {
+  type SerializedStateQueueUTxO,
   WorkerInput,
   WorkerOutput,
 } from "@/workers/utils/commit-block-header.js";
@@ -38,6 +64,11 @@ import {
   resolveEarliestCommitSchedulerDueWorkPlan,
 } from "@/workers/utils/scheduler-refresh.js";
 
+import { classifyCommitWorkerOutputForMutationLease } from "./commit-worker-failure-classification.js";
+import {
+  publishFinalizedDaPayloadBestEffort,
+  runAfterL1ControlPlaneRelease,
+} from "./da-publication-trigger.js";
 import { emitQueueStateMetrics } from "./queue-metrics.js";
 import { resolveWorkerEntry } from "./resolve-worker-entry.js";
 import {
@@ -47,6 +78,7 @@ import {
   registerSlotAwareDueWork,
   type SlotAwareDueWork,
 } from "./slot-aware-due-work.js";
+import { makeAwaitedWorkerTerminator } from "./worker-lifecycle.js";
 
 /**
  * Background block-commitment loop that packages processed L2 transactions into
@@ -89,8 +121,233 @@ const commitWorkerDurationTimer = Metric.timer(
   "Duration of one block commitment worker attempt in milliseconds",
 );
 
+export const resolveAuthoritativeLocalFinalizationPreflight = ({
+  localFinalizationPending,
+  availableLocalFinalizationBlock,
+  activeJournalHeaderHash,
+  activeJournalSubmittedTxHash,
+  activeJournalStatus,
+  tailHeaderHash,
+  tailBlock,
+}: {
+  readonly localFinalizationPending: boolean;
+  readonly availableLocalFinalizationBlock: SerializedStateQueueUTxO | "";
+  readonly activeJournalHeaderHash: string | null;
+  readonly activeJournalSubmittedTxHash: string | null;
+  readonly activeJournalStatus: PendingBlockFinalizationsDB.Status | null;
+  readonly tailHeaderHash: string | null;
+  readonly tailBlock: SerializedStateQueueUTxO;
+}): {
+  readonly localFinalizationPending: boolean;
+  readonly availableLocalFinalizationBlock: SerializedStateQueueUTxO | "";
+  readonly recoveredRacedJournal: boolean;
+} => {
+  const hasSubmittedActiveJournal =
+    activeJournalSubmittedTxHash !== null &&
+    (activeJournalStatus ===
+      PendingBlockFinalizationsDB.Status.SubmittedUnconfirmed ||
+      activeJournalStatus ===
+        PendingBlockFinalizationsDB.Status.SubmittedLocalFinalizationPending ||
+      activeJournalStatus ===
+        PendingBlockFinalizationsDB.Status.ObservedWaitingStability);
+  const journalIsConfirmedTail =
+    hasSubmittedActiveJournal &&
+    activeJournalHeaderHash !== null &&
+    tailHeaderHash === activeJournalHeaderHash;
+  if (!hasSubmittedActiveJournal) {
+    return {
+      localFinalizationPending,
+      availableLocalFinalizationBlock,
+      recoveredRacedJournal: false,
+    };
+  }
+  return {
+    localFinalizationPending: true,
+    availableLocalFinalizationBlock: journalIsConfirmedTail ? tailBlock : "",
+    recoveredRacedJournal:
+      journalIsConfirmedTail &&
+      (!localFinalizationPending || availableLocalFinalizationBlock === ""),
+  };
+};
+
+const foreignTipReconciliationAwaitingGauge = Metric.gauge(
+  "foreign_tip_reconciliation_awaiting",
+  {
+    description:
+      "Number of durable foreign-tip evidence windows still blocking commit reconciliation",
+  },
+);
+
 const BLOCK_COMMITMENT_DUE_WORK_KIND = "commit_scheduler_refresh" as const;
 const BLOCK_COMMITMENT_DUE_WORK_KEY = "block_commitment";
+
+export const recoverNativeMpfFromSubmittedJournal = async ({
+  owner,
+  handle,
+  submitted,
+  replay,
+}: {
+  readonly owner: NativeMpfOwnerService;
+  readonly handle: NativeMpfGenerationHandle;
+  readonly submitted: boolean;
+  readonly replay?: PersistedNativeMpfReplay;
+}): Promise<void> => {
+  if (
+    !submitted ||
+    replay === undefined ||
+    replay.baseRoot !== handle.baseRoot
+  ) {
+    throw new Error(
+      `Architecture G restarted-child journal mismatch: handle_base=${handle.baseRoot},journal_base=${replay?.baseRoot ?? "missing"},submitted=${String(submitted)}`,
+    );
+  }
+  await owner.recover(replay);
+};
+
+/**
+ * Live-process recovery used when a commit worker exits after its submission
+ * journal became durable but before it could return the promotion handle. The
+ * journal replay is sufficient to reconstruct and atomically promote the
+ * candidate; a node restart is not required.
+ */
+export const recoverNativeMpfAfterCommitWorkerFailure = async ({
+  owner,
+  submitted,
+  replay,
+}: {
+  readonly owner: NativeMpfOwnerService;
+  readonly submitted: boolean;
+  readonly replay?: PersistedNativeMpfReplay;
+}): Promise<boolean> => {
+  if (!submitted) return false;
+  if (replay === undefined) {
+    throw new Error(
+      "Architecture G submitted journal is missing native replay data after commit worker failure",
+    );
+  }
+  await owner.recover(replay);
+  return true;
+};
+
+const recoverNativeMpfFromActiveJournalAfterWorkerFailure = (
+  owner: NativeMpfOwnerService,
+): Effect.Effect<boolean, unknown, Database> =>
+  Effect.gen(function* () {
+    const active = yield* PendingBlockFinalizationsDB.retrieveActive();
+    if (Option.isNone(active)) return false;
+    const journal = active.value;
+    const replay = journal.nativeMpfReplay;
+    const persistedReplay =
+      replay === undefined
+        ? undefined
+        : {
+            schema: 1 as const,
+            ownerBinarySha256: replay.ownerBinarySha256.toString("hex"),
+            baseRoot: replay.baseRoot.toString("hex"),
+            candidateRoot: replay.candidateRoot.toString("hex"),
+            eventLog: replay.eventLog,
+            eventLogDigest: replay.eventLogDigest.toString("hex"),
+            eventRoots: replay.eventRoots,
+            eventCount: replay.eventCount,
+          };
+    return yield* Effect.tryPromise(() =>
+      recoverNativeMpfAfterCommitWorkerFailure({
+        owner,
+        submitted:
+          journal[PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH] !==
+          null,
+        replay: persistedReplay,
+      }),
+    );
+  });
+
+export const promoteOrRecoverNativeMpf = ({
+  owner,
+  handle,
+}: {
+  readonly owner: NativeMpfOwnerService;
+  readonly handle: NativeMpfGenerationHandle;
+}): Effect.Effect<void, unknown, Database> =>
+  Effect.tryPromise(() => owner.promote(handle)).pipe(
+    Effect.catchAll((promotionError) =>
+      Effect.gen(function* () {
+        const diagnostics = yield* Effect.tryPromise(() => owner.diagnostics());
+        if (
+          Buffer.from(diagnostics.ownerEpoch).equals(
+            Buffer.from(handle.ownerEpoch),
+          )
+        ) {
+          return yield* Effect.fail(promotionError);
+        }
+        const active = yield* PendingBlockFinalizationsDB.retrieveActive();
+        if (Option.isNone(active)) {
+          return yield* Effect.fail(
+            new Error(
+              `Architecture G child restarted after submit but no active recovery journal exists: ${String(promotionError)}`,
+            ),
+          );
+        }
+        const journal = active.value;
+        const replay = journal.nativeMpfReplay;
+        const persistedReplay =
+          replay === undefined
+            ? undefined
+            : {
+                schema: 1 as const,
+                ownerBinarySha256: replay.ownerBinarySha256.toString("hex"),
+                baseRoot: replay.baseRoot.toString("hex"),
+                candidateRoot: replay.candidateRoot.toString("hex"),
+                eventLog: replay.eventLog,
+                eventLogDigest: replay.eventLogDigest.toString("hex"),
+                eventRoots: replay.eventRoots,
+                eventCount: replay.eventCount,
+              };
+        yield* Effect.tryPromise(() =>
+          recoverNativeMpfFromSubmittedJournal({
+            owner,
+            handle,
+            submitted:
+              journal[PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH] !==
+              null,
+            replay: persistedReplay,
+          }),
+        );
+        yield* Effect.logWarning(
+          `Architecture G recovered post-submit promotion after native child restart base_root=${handle.baseRoot},candidate_root=${persistedReplay?.candidateRoot ?? "missing"}`,
+        );
+      }),
+    ),
+  );
+
+export const publishCommitMempoolLedgerMutation = (
+  globals: Globals,
+  workerOutput: WorkerOutput,
+  deltaLogMax: number,
+): Effect.Effect<void> => {
+  switch (workerOutput.type) {
+    case "SuccessfulSubmissionOutput":
+    case "SuccessfulLocalFinalizationRecoveryOutput":
+      return workerOutput.mempoolLedgerDeletedOutRefHexes.length === 0
+        ? Effect.void
+        : publishMempoolLedgerDelta(
+            globals,
+            {
+              full: false,
+              upserts: [],
+              deletes: workerOutput.mempoolLedgerDeletedOutRefHexes,
+            },
+            deltaLogMax,
+          ).pipe(Effect.asVoid);
+    case "SubmittedAwaitingLocalFinalizationOutput":
+      return publishMempoolLedgerDelta(
+        globals,
+        { full: true, upserts: [], deletes: [] },
+        deltaLogMax,
+      ).pipe(Effect.asVoid);
+    default:
+      return Effect.void;
+  }
+};
 
 const stateQueueEvidenceFromSnapshot = (
   snapshot: StateQueueSnapshot,
@@ -165,28 +422,74 @@ const pendingUserEventCountUpTo = (
     );
   });
 
+export const shouldDeferCommitWorkerForLocalFinalization = ({
+  localFinalizationPending,
+  availableLocalFinalizationBlock,
+}: {
+  readonly localFinalizationPending: boolean;
+  readonly availableLocalFinalizationBlock: SerializedStateQueueUTxO | "";
+}): boolean =>
+  localFinalizationPending && availableLocalFinalizationBlock === "";
+
 export const shouldAttemptCommitPipeline = ({
   localFinalizationPending,
+  availableLocalFinalizationBlock,
   mempoolTxCount,
   processedUnsubmittedTxCount,
   pendingUserEventCount,
 }: {
   readonly localFinalizationPending: boolean;
+  readonly availableLocalFinalizationBlock: SerializedStateQueueUTxO | "";
   readonly mempoolTxCount: bigint;
   readonly processedUnsubmittedTxCount: number;
   readonly pendingUserEventCount: number;
 }): boolean =>
-  localFinalizationPending ||
-  mempoolTxCount > 0n ||
-  processedUnsubmittedTxCount > 0 ||
-  pendingUserEventCount > 0;
+  !shouldDeferCommitWorkerForLocalFinalization({
+    localFinalizationPending,
+    availableLocalFinalizationBlock,
+  }) &&
+  (localFinalizationPending ||
+    mempoolTxCount > 0n ||
+    processedUnsubmittedTxCount > 0 ||
+    pendingUserEventCount > 0);
 
-const shouldSkipIdleCommitPipelineBeforeSchedulerAlignment =
-  Effect.gen(function* () {
+export const shouldSkipScheduledLegacyCommitForSpeculation = ({
+  enabled,
+  state,
+  recoveryMustRun,
+}: {
+  readonly enabled: boolean;
+  readonly state: SpeculativeCommitState;
+  readonly recoveryMustRun: boolean;
+}): boolean =>
+  enabled &&
+  !recoveryMustRun &&
+  (state._tag === "Building" ||
+    state._tag === "ReadyToSubmit" ||
+    state._tag === "Submitting" ||
+    state._tag === "Invalidated");
+
+const shouldSkipIdleCommitPipelineBeforeSchedulerAlignment = Effect.gen(
+  function* () {
     const globals = yield* Globals;
     const localFinalizationPending = yield* Ref.get(
       globals.LOCAL_FINALIZATION_PENDING,
     );
+    const availableLocalFinalizationBlock = yield* Ref.get(
+      globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK,
+    );
+    if (
+      shouldDeferCommitWorkerForLocalFinalization({
+        localFinalizationPending,
+        availableLocalFinalizationBlock,
+      })
+    ) {
+      yield* Effect.logInfo(
+        "🔹 Local finalization is pending without a confirmed recovery block; skipping the commit worker until confirmation advances recovery.",
+      );
+      yield* emitQueueStateMetrics;
+      return true;
+    }
     const processedUnsubmittedTxCount = yield* Ref.get(
       globals.PROCESSED_UNSUBMITTED_TXS_COUNT,
     );
@@ -197,6 +500,7 @@ const shouldSkipIdleCommitPipelineBeforeSchedulerAlignment =
     if (
       shouldAttemptCommitPipeline({
         localFinalizationPending,
+        availableLocalFinalizationBlock,
         mempoolTxCount,
         processedUnsubmittedTxCount,
         pendingUserEventCount,
@@ -209,7 +513,8 @@ const shouldSkipIdleCommitPipelineBeforeSchedulerAlignment =
     );
     yield* emitQueueStateMetrics;
     return true;
-  });
+  },
+);
 
 const isDetailedSchedulerAlignmentDueWork = (
   entry: SlotAwareDueWork,
@@ -377,9 +682,9 @@ const registerPreLeaseCommitSchedulerDueWorkIfProven = Effect.gen(function* () {
   const plan = yield* Effect.either(planPreLeaseCommitSchedulerDueWork);
   if (plan._tag === "Left") {
     yield* Effect.logWarning(
-      `🔹 Earliest block commitment scheduler preflight failed; continuing to full planner: ${String(plan.left)}`,
+      `🔹 Earliest block commitment scheduler preflight failed; skipping this tick before the mutation lease: ${String(plan.left)}`,
     );
-    return false;
+    return true;
   }
   if (plan.right.status === "register_due_work") {
     yield* registerPreLeaseCommitSchedulerDueWork(plan.right);
@@ -406,9 +711,9 @@ const alignCommitSchedulerBeforeMutationWorker = Effect.gen(function* () {
   const plan = yield* Effect.either(planPreLeaseCommitSchedulerDueWork);
   if (plan._tag === "Left") {
     yield* Effect.logWarning(
-      `🔹 Pre-lease scheduler alignment probe failed; continuing to mutation worker guard where scheduler refresh is disabled: ${String(plan.left)}`,
+      `🔹 Pre-lease scheduler alignment probe failed; skipping this tick before the mutation lease: ${String(plan.left)}`,
     );
-    return false;
+    return true;
   }
   if (plan.right.status === "register_due_work") {
     yield* registerPreLeaseCommitSchedulerDueWork(plan.right);
@@ -434,9 +739,9 @@ const alignCommitSchedulerBeforeMutationWorker = Effect.gen(function* () {
   );
   if (alignment._tag === "Left") {
     yield* Effect.logWarning(
-      `🔹 Pre-lease scheduler alignment failed; continuing to mutation worker guard where scheduler refresh is disabled: ${String(alignment.left)}`,
+      `🔹 Pre-lease scheduler alignment failed; skipping this tick before the mutation lease: ${String(alignment.left)}`,
     );
-    return false;
+    return true;
   }
   if ("dueWork" in alignment.right) {
     registerSlotAwareDueWork(alignment.right.dueWork);
@@ -530,12 +835,12 @@ export const buildAndSubmitCommitmentBlockAction = (
   Effect.gen(function* () {
     const workerStartedAt = Date.now();
     const globals = yield* Globals;
+    const nodeConfig = yield* NodeConfig;
     const lucid = yield* Lucid;
     const contracts = yield* MidgardContracts;
-    const AVAILABLE_LOCAL_FINALIZATION_BLOCK =
+    let AVAILABLE_LOCAL_FINALIZATION_BLOCK =
       yield* globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK;
-    const LOCAL_FINALIZATION_PENDING =
-      yield* globals.LOCAL_FINALIZATION_PENDING;
+    let LOCAL_FINALIZATION_PENDING = yield* globals.LOCAL_FINALIZATION_PENDING;
     let AVAILABLE_CONFIRMED_BLOCK = yield* Ref.get(
       globals.AVAILABLE_CONFIRMED_BLOCK,
     );
@@ -556,6 +861,49 @@ export const buildAndSubmitCommitmentBlockAction = (
       BASE_SNAPSHOT_ID = snapshot.snapshotId;
       STATE_QUEUE_HAS_UNMERGED_TAIL =
         snapshot.root.outRef !== snapshot.tailCommitBase.outRef;
+      const activePending = yield* PendingBlockFinalizationsDB.retrieveActive();
+      const activeJournalHeaderHash = Option.match(activePending, {
+        onNone: () => null,
+        onSome: (row) =>
+          row[PendingBlockFinalizationsDB.Columns.HEADER_HASH].toString("hex"),
+      });
+      const activeJournalSubmittedTxHash = Option.match(activePending, {
+        onNone: () => null,
+        onSome: (row) =>
+          row[PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH]?.toString(
+            "hex",
+          ) ?? null,
+      });
+      const activeJournalStatus = Option.match(activePending, {
+        onNone: () => null,
+        onSome: (row) => row[PendingBlockFinalizationsDB.Columns.STATUS],
+      });
+      const finalizationPreflight =
+        resolveAuthoritativeLocalFinalizationPreflight({
+          localFinalizationPending: LOCAL_FINALIZATION_PENDING,
+          availableLocalFinalizationBlock: AVAILABLE_LOCAL_FINALIZATION_BLOCK,
+          activeJournalHeaderHash,
+          activeJournalSubmittedTxHash,
+          activeJournalStatus,
+          tailHeaderHash: snapshot.tailCommitBase.headerHash,
+          tailBlock: snapshot.tailCommitBase.utxo,
+        });
+      LOCAL_FINALIZATION_PENDING =
+        finalizationPreflight.localFinalizationPending;
+      AVAILABLE_LOCAL_FINALIZATION_BLOCK =
+        finalizationPreflight.availableLocalFinalizationBlock;
+      if (finalizationPreflight.localFinalizationPending) {
+        yield* Ref.set(globals.LOCAL_FINALIZATION_PENDING, true);
+        yield* Ref.set(
+          globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK,
+          AVAILABLE_LOCAL_FINALIZATION_BLOCK,
+        );
+        yield* Effect.logWarning(
+          finalizationPreflight.recoveredRacedJournal
+            ? `🔹 Recovered raced local-finalization preflight from authoritative journal and confirmed state-queue tail (header=${activeJournalHeaderHash ?? "unknown"}).`
+            : `🔹 Deferred commitment from authoritative submitted journal that is not yet the confirmed state-queue tail (header=${activeJournalHeaderHash ?? "unknown"}).`,
+        );
+      }
       yield* Effect.logInfo(
         `🔹 Using live state-queue tail commit base ${snapshot.tailCommitBase.outRef} from snapshot ${snapshot.snapshotId}.`,
       );
@@ -564,6 +912,42 @@ export const buildAndSubmitCommitmentBlockAction = (
       yield* globals.PROCESSED_UNSUBMITTED_TXS_COUNT;
     const PROCESSED_UNSUBMITTED_TXS_SIZE =
       yield* globals.PROCESSED_UNSUBMITTED_TXS_SIZE;
+    const nativeMpfOwner = yield* Ref.get(globals.NATIVE_MPF_OWNER);
+    if (
+      nodeConfig.MPF_ENGINE === "architecture_g" &&
+      nativeMpfOwner === undefined
+    ) {
+      return yield* Effect.fail(
+        new WorkerError({
+          worker: "commit-block-header",
+          message: "Architecture G native owner is not initialized",
+          cause: "NATIVE_MPF_OWNER is absent",
+        }),
+      );
+    }
+    const nativeMpfInput =
+      nativeMpfOwner === undefined
+        ? undefined
+        : {
+            port: nativeMpfOwner.createWorkerPort(),
+            durableRoot: (yield* Effect.promise(() =>
+              nativeMpfOwner.diagnostics(),
+            )).durableRoot,
+            ownerBinarySha256: nodeConfig.MPF_NATIVE_OWNER_BINARY_SHA256,
+          };
+    const ledgerStoreLeaseOwner = `commit:${randomUUID()}`;
+    const databaseRuntime = yield* Effect.runtime<Database>();
+    const releaseTerminatedWorkerLedgerLease = () =>
+      Runtime.runPromise(databaseRuntime)(
+        MpfEngineStateDB.releaseLedgerStoreLease(ledgerStoreLeaseOwner).pipe(
+          Effect.catchAll((cause) =>
+            Effect.logError(
+              "Failed to release the terminated commitment worker ledger MPF lease; its bounded TTL remains the fallback.",
+              cause,
+            ),
+          ),
+        ),
+      );
 
     const worker = Effect.async<WorkerOutput, WorkerError, never>((resume) => {
       Effect.runSync(Effect.logInfo(`👷 Starting block commitment worker...`));
@@ -571,12 +955,14 @@ export const buildAndSubmitCommitmentBlockAction = (
         resolveWorkerEntry(import.meta.url, "commit-block-header.js"),
         {
           workerData: {
+            nativeMpf: nativeMpfInput,
             data: {
               availableConfirmedBlock: AVAILABLE_CONFIRMED_BLOCK,
               availableLocalFinalizationBlock:
                 AVAILABLE_LOCAL_FINALIZATION_BLOCK,
               currentBlockStartTimeMs: CURRENT_BLOCK_START_TIME_MS,
               localFinalizationPending: LOCAL_FINALIZATION_PENDING,
+              ledgerStoreLeaseOwner,
               mempoolTxsCountSoFar: PROCESSED_UNSUBMITTED_TXS_COUNT,
               sizeOfProcessedTxsSoFar: PROCESSED_UNSUBMITTED_TXS_SIZE,
               stateQueueLeaseToken,
@@ -584,26 +970,43 @@ export const buildAndSubmitCommitmentBlockAction = (
               stateQueueHasUnmergedTail: STATE_QUEUE_HAS_UNMERGED_TAIL,
             },
           } as WorkerInput, // TODO: Consider other approaches to avoid type assertion here.
+          transferList:
+            nativeMpfInput === undefined ? [] : [nativeMpfInput.port],
         },
       );
-      worker.on("message", (output: WorkerOutput) => {
-        if (output.type === "FailureOutput") {
-          resume(
-            Effect.fail(
-              new WorkerError({
-                worker: "commit-block-header",
-                message: `Commitment worker failed`,
-                cause: output.error,
-              }),
+      const terminate = makeAwaitedWorkerTerminator(
+        worker,
+        releaseTerminatedWorkerLedgerLease,
+      );
+      let settled = false;
+      const cleanup = () => {
+        worker.off("message", onMessage);
+        worker.off("error", onError);
+        worker.off("exit", onExit);
+      };
+      const settle = (result: Effect.Effect<WorkerOutput, WorkerError>) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        void terminate().then(
+          () => resume(result),
+          (cause) =>
+            resume(
+              Effect.fail(
+                new WorkerError({
+                  worker: "commit-block-header",
+                  message: "Failed to terminate commitment worker.",
+                  cause,
+                }),
+              ),
             ),
-          );
-        } else {
-          resume(Effect.succeed(output));
-        }
-        worker.terminate();
-      });
-      worker.on("error", (e: Error) => {
-        resume(
+        );
+      };
+      const onMessage = (output: WorkerOutput) => {
+        settle(Effect.succeed(output));
+      };
+      const onError = (e: Error) => {
+        settle(
           Effect.fail(
             new WorkerError({
               worker: "commit-block-header",
@@ -612,29 +1015,115 @@ export const buildAndSubmitCommitmentBlockAction = (
             }),
           ),
         );
-        worker.terminate();
-      });
-      worker.on("exit", (code: number) => {
-        if (code !== 0) {
-          resume(
-            Effect.fail(
-              new WorkerError({
-                worker: "commit-block-header",
-                message: `Commitment worker exited with code: ${code}`,
-                cause: `exit code ${code}`,
-              }),
-            ),
-          );
+      };
+      const onExit = (code: number) => {
+        settle(
+          Effect.fail(
+            new WorkerError({
+              worker: "commit-block-header",
+              message: `Commitment worker exited before producing output with code: ${code}`,
+              cause: `exit code ${code}`,
+            }),
+          ),
+        );
+      };
+      worker.on("message", onMessage);
+      worker.on("error", onError);
+      worker.on("exit", onExit);
+      return Effect.promise(async () => {
+        if (!settled) {
+          settled = true;
+          cleanup();
         }
-      });
-      return Effect.sync(() => {
-        worker.terminate();
+        await terminate();
       });
     });
 
-    const workerOutput: WorkerOutput = yield* worker;
+    const workerOutput: WorkerOutput = yield* worker.pipe(
+      Effect.flatMap((output) =>
+        classifyCommitWorkerOutputForMutationLease({
+          output,
+          stateQueueLeaseToken,
+          retrieveJournalEvidence: (token) =>
+            PendingBlockFinalizationsDB.retrieveByStateQueueLeaseToken(
+              token,
+            ).pipe(
+              Effect.map((rows) =>
+                rows.map((row) => ({
+                  headerHash:
+                    row[PendingBlockFinalizationsDB.Columns.HEADER_HASH],
+                  submittedTxHash:
+                    row[PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH],
+                  status: row[PendingBlockFinalizationsDB.Columns.STATUS],
+                })),
+              ),
+            ),
+        }),
+      ),
+      Effect.catchAll((workerError) =>
+        nodeConfig.MPF_ENGINE !== "architecture_g" ||
+        nativeMpfOwner === undefined
+          ? Effect.fail(workerError)
+          : recoverNativeMpfFromActiveJournalAfterWorkerFailure(
+              nativeMpfOwner,
+            ).pipe(
+              Effect.tap((recovered) =>
+                recovered
+                  ? Effect.logWarning(
+                      "Architecture G recovered the submitted native generation from the durable journal after the commit worker failed before returning its promotion handle.",
+                    )
+                  : Effect.void,
+              ),
+              Effect.matchEffect({
+                onFailure: (recoveryError) =>
+                  Effect.fail(
+                    new WorkerError({
+                      worker: "commit-block-header",
+                      message:
+                        "Commit worker failed and live Architecture G journal recovery also failed",
+                      cause: { workerError, recoveryError },
+                    }),
+                  ),
+                onSuccess: () => Effect.fail(workerError),
+              }),
+            ),
+      ),
+    );
+    const nativeMpfPromotion =
+      "nativeMpfPromotion" in workerOutput
+        ? workerOutput.nativeMpfPromotion
+        : undefined;
+    if (nativeMpfPromotion !== undefined) {
+      if (nativeMpfOwner === undefined) {
+        return yield* Effect.fail(
+          new WorkerError({
+            worker: "commit-block-header",
+            message: "Native MPF promotion returned without an owner",
+            cause: nativeMpfPromotion.handle.baseRoot,
+          }),
+        );
+      }
+      yield* promoteOrRecoverNativeMpf({
+        owner: nativeMpfOwner,
+        handle: nativeMpfPromotion.handle,
+      }).pipe(
+        Effect.mapError(
+          (cause) =>
+            new WorkerError({
+              worker: "commit-block-header",
+              message: "Architecture G post-submit promotion failed",
+              cause,
+            }),
+        ),
+      );
+    }
     yield* commitWorkerDurationTimer(
       Effect.succeed(Duration.millis(Date.now() - workerStartedAt)),
+    );
+    yield* publishCommitMempoolLedgerMutation(
+      globals,
+      workerOutput,
+      nodeConfig.VALIDATION_LEDGER_DELTA_LOG_MAX,
     );
 
     switch (workerOutput.type) {
@@ -691,6 +1180,23 @@ export const buildAndSubmitCommitmentBlockAction = (
         yield* Effect.logWarning(
           `🔹 Block submitted but local finalization is pending recovery: ${workerOutput.error}`,
         );
+        if (nodeConfig.SPECULATIVE_COMMIT_BUILD) {
+          yield* Ref.update(globals.SPECULATIVE_COMMIT_STATE, (state) =>
+            reduceSpeculativeCommitState(
+              state,
+              {
+                _tag: "SubmittedBase",
+                baseHeaderHash: workerOutput.submittedHeaderHash,
+                atMs: Date.now(),
+              },
+              nodeConfig.SPECULATIVE_REBUILD_MAX_ATTEMPTS,
+            ),
+          );
+          yield* Queue.offer(
+            globals.SPECULATIVE_BUILD_WAKE_QUEUE,
+            workerOutput.submittedHeaderHash,
+          );
+        }
         break;
       }
       case "SubmittedAwaitingConfirmationOutput": {
@@ -713,6 +1219,23 @@ export const buildAndSubmitCommitmentBlockAction = (
         yield* Effect.logInfo(
           "🔹 Block submitted; local finalization is intentionally deferred until L1 confirmation.",
         );
+        if (nodeConfig.SPECULATIVE_COMMIT_BUILD) {
+          yield* Ref.update(globals.SPECULATIVE_COMMIT_STATE, (state) =>
+            reduceSpeculativeCommitState(
+              state,
+              {
+                _tag: "SubmittedBase",
+                baseHeaderHash: workerOutput.submittedHeaderHash,
+                atMs: Date.now(),
+              },
+              nodeConfig.SPECULATIVE_REBUILD_MAX_ATTEMPTS,
+            ),
+          );
+          yield* Queue.offer(
+            globals.SPECULATIVE_BUILD_WAKE_QUEUE,
+            workerOutput.submittedHeaderHash,
+          );
+        }
         break;
       }
       case "SuccessfulLocalFinalizationRecoveryOutput": {
@@ -746,12 +1269,28 @@ export const buildAndSubmitCommitmentBlockAction = (
         );
         break;
       }
+      case "AwaitingForeignDaOutput": {
+        yield* Effect.logWarning(
+          `🔹 Commit deferred awaiting verified foreign DA header_hash=${workerOutput.foreignHeaderHash} reason=${workerOutput.reason}`,
+        );
+        break;
+      }
       case "FailureOutput": {
+        break;
+      }
+      case "SpeculativeCandidateReadyOutput":
+      case "SpeculativeCandidateInvalidatedOutput": {
         break;
       }
     }
 
+    const awaitingForeignTipReconciliations =
+      yield* ForeignTipReconciliationsDB.countAwaiting;
+    yield* foreignTipReconciliationAwaitingGauge(
+      Effect.succeed(awaitingForeignTipReconciliations),
+    );
     yield* emitQueueStateMetrics;
+    return workerOutput;
   });
 
 /**
@@ -767,7 +1306,8 @@ export const blockCommitmentAction: Effect.Effect<
   | SDK.HashingError
   | SDK.CmlUnexpectedError
   | SDK.CborSerializationError
-  | DatabaseError,
+  | DatabaseError
+  | Error,
   Globals | Lucid | MidgardContracts | Database | NodeConfig
 > = Effect.gen(function* () {
   const globals = yield* Globals;
@@ -775,46 +1315,81 @@ export const blockCommitmentAction: Effect.Effect<
   yield* Ref.set(globals.HEARTBEAT_BLOCK_COMMITMENT, Date.now());
   const RESET_IN_PROGRESS = yield* Ref.get(globals.RESET_IN_PROGRESS);
   if (!RESET_IN_PROGRESS) {
+    if (nodeConfig.SPECULATIVE_COMMIT_BUILD) {
+      const speculativeState = yield* Ref.get(globals.SPECULATIVE_COMMIT_STATE);
+      const localFinalizationPending = yield* Ref.get(
+        globals.LOCAL_FINALIZATION_PENDING,
+      );
+      const localFinalizationBlock = yield* Ref.get(
+        globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK,
+      );
+      const recoveryMustRun =
+        localFinalizationPending && localFinalizationBlock !== "";
+      if (
+        shouldSkipScheduledLegacyCommitForSpeculation({
+          enabled: true,
+          state: speculativeState,
+          recoveryMustRun,
+        })
+      ) {
+        return;
+      }
+    }
     if (yield* shouldSkipIdleCommitPipelineBeforeSchedulerAlignment) {
       return;
     }
-    if (yield* shouldSkipForRegisteredCommitDueWork) {
-      return;
-    }
-    if (yield* registerPreLeaseCommitSchedulerDueWorkIfProven) {
-      return;
-    }
-    if (yield* alignCommitSchedulerBeforeMutationWorkerIfIdle) {
-      return;
-    }
-    const acquired = yield* tryAcquireCommitMutationWorkerPhase(globals);
-    if (!acquired.acquired) {
-      yield* Effect.logInfo(
-        `🔹 Skipping block commitment trigger because commit pipeline phase is already active (phase=${acquired.activePhase}).`,
-      );
-      return;
-    }
+    yield* runAfterL1ControlPlaneRelease(
+      withL1ControlPlane(
+        globals,
+        { scope: "block_commitment", maxHoldMs: 180_000 },
+        Effect.gen(function* () {
+          if (yield* shouldSkipForRegisteredCommitDueWork) {
+            return;
+          }
+          if (yield* registerPreLeaseCommitSchedulerDueWorkIfProven) {
+            return;
+          }
+          if (yield* alignCommitSchedulerBeforeMutationWorkerIfIdle) {
+            return;
+          }
+          const acquired = yield* tryAcquireCommitMutationWorkerPhase(globals);
+          if (!acquired.acquired) {
+            yield* Effect.logInfo(
+              `🔹 Skipping block commitment trigger because commit pipeline phase is already active (phase=${acquired.activePhase}).`,
+            );
+            return;
+          }
 
-    yield* Effect.logInfo("🔹 New block commitment process started.");
-    const leaseResult = yield* StateQueueMutationLeasesDB.tryWithLease(
-      "block_commitment",
-      (leaseToken) =>
-        buildAndSubmitCommitmentBlockAction(leaseToken).pipe(
-          Effect.withSpan("buildAndSubmitCommitmentBlockAction"),
-        ),
-      {
-        ttlMs: nodeConfig.STATE_QUEUE_MUTATION_LEASE_TTL_MS,
-        renewIntervalMs:
-          nodeConfig.STATE_QUEUE_MUTATION_LEASE_RENEW_INTERVAL_MS,
-      },
-    ).pipe(Effect.ensuring(releaseCommitMutationWorkerPhase(globals)));
-    if (leaseResult._tag === "Busy") {
-      yield* Effect.logInfo(
-        `🔹 Skipping block commitment trigger because the state-queue mutation lease is busy (${StateQueueMutationLeasesDB.describeActiveLease(
-          leaseResult.activeLease,
-        )}).`,
-      );
-    }
+          yield* Effect.logInfo("🔹 New block commitment process started.");
+          const leaseResult = yield* StateQueueMutationLeasesDB.tryWithLease(
+            "block_commitment",
+            (leaseToken) =>
+              buildAndSubmitCommitmentBlockAction(leaseToken).pipe(
+                Effect.withSpan("buildAndSubmitCommitmentBlockAction"),
+              ),
+            {
+              ttlMs: nodeConfig.STATE_QUEUE_MUTATION_LEASE_TTL_MS,
+              renewIntervalMs:
+                nodeConfig.STATE_QUEUE_MUTATION_LEASE_RENEW_INTERVAL_MS,
+            },
+          ).pipe(Effect.ensuring(releaseCommitMutationWorkerPhase(globals)));
+          if (leaseResult._tag === "Busy") {
+            yield* Effect.logInfo(
+              `🔹 Skipping block commitment trigger because the state-queue mutation lease is busy (${StateQueueMutationLeasesDB.describeActiveLease(
+                leaseResult.activeLease,
+              )}).`,
+            );
+            return undefined;
+          }
+          return leaseResult.value;
+        }),
+      ),
+      (workerOutput) =>
+        workerOutput?.type === "SuccessfulLocalFinalizationRecoveryOutput"
+          ? workerOutput.finalizedHeaderHash
+          : undefined,
+      publishFinalizedDaPayloadBestEffort,
+    );
   }
 });
 

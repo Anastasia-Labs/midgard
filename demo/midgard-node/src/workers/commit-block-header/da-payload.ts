@@ -1,9 +1,11 @@
 import { encodeMidgardNativeTxCompact } from "@al-ft/midgard-core/codec";
+import { wrapDaPayloadV3 } from "@al-ft/midgard-core/da-payload-envelope";
 import * as SDK from "@al-ft/midgard-sdk";
 import { decodeMidgardTxCommitmentsFromCanonicalCbor } from "@al-ft/midgard-validation";
 import { Data as LucidData } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import { Duration, Effect, Metric } from "effect";
 
+import { readDaHardeningConfig } from "@/da/hardening-config.js";
 import { DaPayloadsDB, PendingBlockFinalizationsDB } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { keyValuePhasRoot, type MpfError } from "@/workers/utils/mpf.js";
@@ -33,6 +35,22 @@ type PayloadUtxoEntry = {
   readonly outref: Buffer;
   readonly output: Buffer;
 };
+
+const daPayloadBytesUncompressedGauge = Metric.gauge(
+  "da_payload_bytes_uncompressed",
+  { description: "Uncompressed canonical DaPayloadV2 bytes per block" },
+);
+const daPayloadBytesEnvelopeGauge = Metric.gauge("da_payload_bytes_envelope", {
+  description: "Stored/transmitted DA payload bytes per block",
+});
+const daPayloadCompressionRatioGauge = Metric.gauge(
+  "da_payload_compression_ratio",
+  { description: "Uncompressed bytes divided by stored DA payload bytes" },
+);
+const daPayloadCompressDurationTimer = Metric.timer(
+  "da_payload_compress_duration_ms",
+  "Duration of DA payload envelope construction and compression",
+);
 
 const bufferEntry = (key: Buffer, value: Buffer): SDK.DaPayloadEntry => [
   key.toString("hex"),
@@ -342,11 +360,28 @@ const verifyPayloadCommitments = ({
 export const buildDaPayloadInsert = ({
   record,
   utxos,
+  envelope,
 }: {
   readonly record: PendingBlockFinalizationsDB.Record;
   readonly utxos?: readonly PayloadUtxoEntry[];
+  readonly envelope?: {
+    readonly mode: "off" | "identity" | "zstd";
+    readonly zstdLevel: number;
+  };
 }): Effect.Effect<DaPayloadsDB.InsertInput, DatabaseError | MpfError> =>
   Effect.gen(function* () {
+    if (utxos === undefined && record.ledgerDelta !== undefined) {
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: DaPayloadsDB.tableName,
+          message:
+            "Delta-backed DA payload construction requires a pre-materialized full UTxO snapshot",
+          cause: `header_hash=${record[
+            PendingBlockFinalizationsDB.Columns.HEADER_HASH
+          ].toString("hex")}`,
+        }),
+      );
+    }
     const payloadUtxos =
       utxos ??
       record.utxoMembers.map((member) => ({
@@ -419,11 +454,46 @@ export const buildDaPayloadInsert = ({
     };
     const roots = yield* computeDaPayloadRoots(payload);
     yield* verifyPayloadCommitments({ record, header, payload, roots });
-    const payloadCbor = SDK.encodeDaPayloadV2(payload);
+    const innerPayloadCbor = SDK.encodeDaPayloadV2Protocol(payload);
+    const envelopeConfig =
+      envelope ??
+      (() => {
+        const config = readDaHardeningConfig();
+        return { mode: config.envelopeMode, zstdLevel: config.zstdLevel };
+      })();
+    const compressionStartedAt = Date.now();
+    const payloadCbor =
+      envelopeConfig.mode === "off"
+        ? innerPayloadCbor
+        : yield* Effect.tryPromise({
+            try: () =>
+              wrapDaPayloadV3(innerPayloadCbor, {
+                mode: envelopeConfig.mode === "identity" ? "identity" : "zstd",
+                zstdLevel: envelopeConfig.zstdLevel,
+              }),
+            catch: (cause) =>
+              new DatabaseError({
+                table: DaPayloadsDB.tableName,
+                message: "Failed to encode versioned DA payload envelope",
+                cause,
+              }),
+          });
+    yield* daPayloadBytesUncompressedGauge(
+      Effect.succeed(innerPayloadCbor.length),
+    );
+    yield* daPayloadBytesEnvelopeGauge(Effect.succeed(payloadCbor.length));
+    yield* daPayloadCompressionRatioGauge(
+      Effect.succeed(innerPayloadCbor.length / payloadCbor.length),
+    );
+    yield* Metric.update(
+      daPayloadCompressDurationTimer,
+      Duration.millis(Date.now() - compressionStartedAt),
+    );
     return {
       [DaPayloadsDB.Columns.HEADER_HASH]:
         record[PendingBlockFinalizationsDB.Columns.HEADER_HASH],
-      [DaPayloadsDB.Columns.VERSION]: Number(SDK.DA_PAYLOAD_V2_VERSION),
+      [DaPayloadsDB.Columns.VERSION]:
+        envelopeConfig.mode === "off" ? Number(SDK.DA_PAYLOAD_V2_VERSION) : 3,
       [DaPayloadsDB.Columns.PAYLOAD_CBOR]: payloadCbor,
       [DaPayloadsDB.Columns.PAYLOAD_SHA256]: Buffer.from(
         SDK.daPayloadHashHex(payloadCbor),

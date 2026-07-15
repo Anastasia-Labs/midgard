@@ -428,6 +428,70 @@ describe("WatcherService", () => {
     ).resolves.toBeUndefined();
   });
 
+  it("treats conflicting schema metadata for identical stored bytes as a conflict", async () => {
+    const dir = await tempDir();
+    const { header, headerHash, payloadCbor } = await makePayloadFixture();
+    const seed = "00".repeat(31) + "01";
+    const signer = await loadDaSigner(`hex:${seed}`);
+    const config = minimalConfig({
+      dir,
+      manifestPath: `${dir}/manifest.json`,
+      deploymentInfoPath: `${dir}/deployment.json`,
+      signerSeed: seed,
+      signerPublicKey: signer.publicKeyHex,
+    });
+    const configWithDaHash = {
+      ...config,
+      daParams: {
+        ...config.daParams,
+        committeeSignersHash: bytesToHex(
+          blake2b(Buffer.from(signer.publicKeyHex, "hex"), { dkLen: 32 }),
+        ),
+      },
+    };
+    const store = await JsonFileWatcherStore.open(dir);
+    const service = new WatcherService({
+      config: configWithDaHash,
+      store,
+      stateQueueProvider: {
+        fetchStateQueueNodes: async () => [
+          makeObservedNode({ header, headerHash, depth: 10 }),
+        ],
+      },
+      payloadSource: payloadSourceFromCandidates([
+        {
+          sourcePeerId: "da-peer-v2",
+          payloadCbor,
+          payloadSchemaVersion: 2,
+        },
+        {
+          sourcePeerId: "da-peer-v3",
+          payloadCbor,
+          payloadSchemaVersion: 3,
+        },
+      ]),
+      signer,
+      signerValidation: validateDaSignerMembership({
+        daParams: configWithDaHash.daParams,
+        signer,
+        signerIndex: 0,
+      }),
+      transactionProjector: IDENTITY_TX_PROJECTOR,
+    });
+
+    await service.initialize();
+    await expect(service.tick()).resolves.toMatchObject({
+      scannedHeaders: 1,
+      signedHeaders: 0,
+      skippedHeaders: 1,
+      errors: [`conflicting DA payload bytes for ${headerHash}`],
+    });
+    await expect(store.getDaPayload(headerHash)).resolves.toMatchObject({
+      validationStatus: "conflicted",
+      conflictStatus: "conflicting_bytes",
+    });
+  });
+
   it("signs after a transient missing DA payload becomes available", async () => {
     const dir = await tempDir();
     const { header, headerHash, payloadCbor } = await makePayloadFixture();

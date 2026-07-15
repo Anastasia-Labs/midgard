@@ -2,10 +2,11 @@ import {
   asArray,
   asBytes,
   decodeSingleCbor,
-  encodeCbor,
+  encodeCborArrayRaw,
+  encodeCborBytes,
 } from "@al-ft/midgard-core/codec";
 import { SqlClient } from "@effect/sql";
-import { Effect } from "effect";
+import { Duration, Effect, Metric } from "effect";
 
 import {
   clearTable,
@@ -36,8 +37,18 @@ export type TxDelta = {
   readonly produced: readonly Ledger.MinimalEntry[];
 };
 
+export const mempoolTxDeltasPreparationDurationTimer = Metric.timer(
+  "mempool_tx_deltas_preparation_duration",
+  "Duration of deterministic tx-delta row preparation and CBOR encoding",
+);
+
+export const mempoolTxDeltasSqlDurationTimer = Metric.timer(
+  "mempool_tx_deltas_sql_duration",
+  "Duration of the tx-delta upsert SQL statement",
+);
+
 const encodeSpentCbor = (spent: readonly Buffer[]): Buffer =>
-  encodeCbor(spent.map((item) => Buffer.from(item)));
+  encodeCborArrayRaw(spent.map(encodeCborBytes));
 
 const decodeSpentCbor = (bytes: Uint8Array): Buffer[] => {
   const decoded = decodeSingleCbor(bytes);
@@ -46,11 +57,13 @@ const decodeSpentCbor = (bytes: Uint8Array): Buffer[] => {
 };
 
 const encodeProducedCbor = (produced: readonly Ledger.MinimalEntry[]): Buffer =>
-  encodeCbor(
-    produced.map((entry) => [
-      Buffer.from(entry[Ledger.Columns.OUTREF]),
-      Buffer.from(entry[Ledger.Columns.OUTPUT]),
-    ]),
+  encodeCborArrayRaw(
+    produced
+      .map((entry) => [
+        encodeCborBytes(entry[Ledger.Columns.OUTREF]),
+        encodeCborBytes(entry[Ledger.Columns.OUTPUT]),
+      ])
+      .map(encodeCborArrayRaw),
   );
 
 const decodeProducedCbor = (
@@ -85,7 +98,7 @@ const fromEntry = (entry: Entry): TxDelta => ({
 export const createTable: Effect.Effect<void, DatabaseError, Database> =
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    yield* sql`CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
+    yield* sql`CREATE UNLOGGED TABLE IF NOT EXISTS ${sql(tableName)} (
       ${sql(Columns.TX_ID)} BYTEA NOT NULL,
       ${sql(Columns.SPENT_CBOR)} BYTEA NOT NULL,
       ${sql(Columns.PRODUCED_CBOR)} BYTEA NOT NULL,
@@ -104,12 +117,19 @@ export const upsertMany = (
       return;
     }
     const sql = yield* SqlClient.SqlClient;
+    const preparationStartedAt = performance.now();
     const entries = deltas.map(toEntry);
-    const txIds = entries.map((entry) => entry[Columns.TX_ID]);
-    yield* sql`DELETE FROM ${sql(tableName)} WHERE ${sql(
-      Columns.TX_ID,
-    )} IN ${sql.in(txIds)}`;
-    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(entries)}`;
+    yield* mempoolTxDeltasPreparationDurationTimer(
+      Effect.succeed(Duration.millis(performance.now() - preparationStartedAt)),
+    );
+    const sqlStartedAt = performance.now();
+    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(entries)}
+      ON CONFLICT (${sql(Columns.TX_ID)}) DO UPDATE SET
+        ${sql(Columns.SPENT_CBOR)} = EXCLUDED.${sql(Columns.SPENT_CBOR)},
+        ${sql(Columns.PRODUCED_CBOR)} = EXCLUDED.${sql(Columns.PRODUCED_CBOR)}`;
+    yield* mempoolTxDeltasSqlDurationTimer(
+      Effect.succeed(Duration.millis(performance.now() - sqlStartedAt)),
+    );
   }).pipe(
     Effect.withLogSpan(`upsertMany ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
@@ -170,6 +190,23 @@ export const clearTxs = (
       logDatabaseError(tableName, "clearTxs", e),
     ),
     sqlErrorToDatabaseError(tableName, "Failed to clear tx deltas"),
+  );
+
+export const deleteOrphans: Effect.Effect<number, DatabaseError, Database> =
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const deleted = yield* sql<Pick<Entry, Columns.TX_ID>>`
+      DELETE FROM ${sql(tableName)} AS delta
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM ${sql("mempool")} AS mempool_tx
+        WHERE mempool_tx.${sql(Columns.TX_ID)} = delta.${sql(Columns.TX_ID)}
+      )
+      RETURNING delta.${sql(Columns.TX_ID)}`;
+    return deleted.length;
+  }).pipe(
+    Effect.withLogSpan(`deleteOrphans ${tableName}`),
+    sqlErrorToDatabaseError(tableName, "Failed to delete orphan tx deltas"),
   );
 
 export const clear = clearTable(tableName);

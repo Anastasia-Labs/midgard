@@ -107,6 +107,60 @@ export const defaultMidgardNodeEndpoint = (
       `http://127.0.0.1:${env.PORT?.trim() || DEFAULT_MIDGARD_NODE_PORT}`,
   );
 
+export const fetchNodeTxStatus = async (
+  nodeEndpoint: string,
+  txHash: string,
+  timeoutMs?: number,
+): Promise<string> => {
+  const response = await fetch(
+    parseNodeEndpoint(nodeEndpoint) +
+      "/tx-status?tx_hash=" +
+      encodeURIComponent(txHash),
+    timeoutMs === undefined
+      ? undefined
+      : { signal: AbortSignal.timeout(timeoutMs) },
+  );
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch (cause) {
+    throw new Error(
+      "Failed to read /tx-status for " +
+        txHash +
+        ": HTTP " +
+        response.status.toString() +
+        " returned malformed JSON.",
+      { cause },
+    );
+  }
+  const record =
+    typeof body === "object" && body !== null
+      ? (body as { readonly txId?: unknown; readonly status?: unknown })
+      : undefined;
+  if (
+    response.status === 404 &&
+    record?.txId === txHash &&
+    record.status === "not_found"
+  ) {
+    return "not_found";
+  }
+  if (
+    !response.ok ||
+    record?.txId !== txHash ||
+    typeof record.status !== "string" ||
+    record.status === "not_found"
+  ) {
+    throw new Error(
+      "Failed to read /tx-status for " +
+        txHash +
+        ": HTTP " +
+        response.status.toString() +
+        " returned an invalid or mismatched status body.",
+    );
+  }
+  return record.status;
+};
+
 export const networkIdFromName = (network: Network): bigint =>
   network === "Mainnet" ? 1n : 0n;
 
@@ -176,6 +230,18 @@ export const parseEventId = (value: unknown, fieldName = "eventId"): Buffer => {
   }
 };
 
+const ENV_TRAILING_INDEX = /^(.+?)_(\d+)$/;
+
+const candidateWalletSeedPhraseEnvNames = (name: string): readonly string[] => {
+  const match = ENV_TRAILING_INDEX.exec(name);
+  if (match === null) {
+    return [name];
+  }
+  const [, prefix, digits] = match;
+  const padded = `${prefix}_${digits.padStart(4, "0")}`;
+  return padded === name ? [name] : [name, padded];
+};
+
 export const resolveWalletSeedPhrase = ({
   walletSeedPhrase,
   walletSeedPhraseEnv,
@@ -193,13 +259,23 @@ export const resolveWalletSeedPhrase = ({
   if (normalizedEnv.length === 0) {
     throw new Error("Wallet seed phrase env var name must not be empty.");
   }
-  const seedPhrase = env[normalizedEnv]?.trim() ?? "";
-  if (seedPhrase.length === 0) {
-    throw new Error(
-      `Environment variable "${normalizedEnv}" does not contain a wallet seed phrase.`,
-    );
+  const candidates = candidateWalletSeedPhraseEnvNames(normalizedEnv);
+  for (const candidate of candidates) {
+    const seedPhrase = env[candidate]?.trim() ?? "";
+    if (seedPhrase.length > 0) {
+      return { seedPhrase, resolvedFrom: candidate };
+    }
   }
-  return { seedPhrase, resolvedFrom: normalizedEnv };
+  const triedCandidates =
+    candidates.length === 1
+      ? `"${normalizedEnv}"`
+      : `"${normalizedEnv}" (also tried ${candidates
+          .slice(1)
+          .map((candidate) => `"${candidate}"`)
+          .join(", ")})`;
+  throw new Error(
+    `Environment variable ${triedCandidates} does not contain a wallet seed phrase.`,
+  );
 };
 
 export const deriveWalletInfo = (
@@ -274,9 +350,13 @@ const parseUtxoResponseText = (responseText: string): readonly NodeUtxo[] =>
 export const fetchNodeUtxosByAddress = async (
   nodeEndpoint: string,
   address: string,
+  options?: { readonly timeoutMs?: number },
 ): Promise<readonly NodeUtxo[]> => {
   const response = await fetch(
     `${nodeEndpoint}/utxos?address=${encodeURIComponent(address)}`,
+    options?.timeoutMs === undefined
+      ? undefined
+      : { signal: AbortSignal.timeout(options.timeoutMs) },
   );
   const responseText = await response.text();
   if (!response.ok) {

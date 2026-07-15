@@ -108,6 +108,7 @@ export type FaultProofContracts = {
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
   readonly doubleSpend: DoubleSpendFaultProofContracts["doubleSpend"];
+  readonly nonExistentInput: NonExistentInputFaultProofContracts["nonExistentInput"];
   readonly invalidRange: InvalidRangeFaultProofContracts["invalidRange"];
   readonly transitionTrace: TransitionTraceFaultProofContracts["transitionTrace"];
 };
@@ -580,6 +581,10 @@ export const buildFaultProofContracts = (
       ...params,
       ...shared,
     });
+    const nonExistentInput = yield* buildNonExistentInputChain({
+      ...params,
+      ...shared,
+    });
     const invalidRange = yield* buildInvalidRangeChain({
       ...params,
       ...shared,
@@ -593,6 +598,7 @@ export const buildFaultProofContracts = (
       computationThread: shared.computationThread,
       fraudProof: shared.fraudProof,
       doubleSpend,
+      nonExistentInput,
       invalidRange,
       transitionTrace,
     };

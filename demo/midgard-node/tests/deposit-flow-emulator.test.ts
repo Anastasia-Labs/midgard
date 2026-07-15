@@ -5,6 +5,13 @@ import { randomUUID } from "node:crypto";
 import * as SDK from "@al-ft/midgard-sdk";
 import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
 import {
+  processedTxFromValidatedTx,
+  type QueuedTx,
+  runPhaseAValidation,
+  runPhaseBValidationWithPatch,
+} from "@al-ft/midgard-validation";
+import { SqlClient } from "@effect/sql";
+import {
   CML,
   coreToTxOutput,
   Data,
@@ -19,9 +26,10 @@ import {
   type UTxO,
   walletFromSeed,
 } from "@lucid-evolution/lucid";
-import { Effect, Ref } from "effect";
+import { Effect, Metric, Option, Queue, Ref } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { NodeUtxo } from "@/commands/command-utils.js";
 import { resolveEventSettlementProofProgram } from "@/commands/event-settlement-proof.js";
 import { fetchWithdrawalsOnceProgram } from "@/commands/fetch-withdrawals-once.js";
 import { seedLatestLocalBlockBoundaryOnStartup } from "@/commands/listen-startup.js";
@@ -35,6 +43,7 @@ import {
   concludePayoutProgram,
   initializePayoutProgram,
 } from "@/commands/reserve-payout.js";
+import { buildTransferTx } from "@/commands/submit-l2-transfer.js";
 import { withdrawalEventIdFromBuildMetadata } from "@/commands/submit-withdrawal.js";
 import { utxosProgram } from "@/commands/utxos.js";
 import { withdrawalStatusProgram } from "@/commands/withdrawal-status.js";
@@ -46,7 +55,9 @@ import {
   DaPayloadsDB,
   DepositsDB,
   DepositSubmissionAttemptsDB,
+  ForeignTipReconciliationsDB,
   ImmutableDB,
+  LedgerUtils,
   MempoolDB,
   MempoolLedgerDB,
   MempoolTxDeltasDB,
@@ -57,15 +68,23 @@ import {
   StateQueueMutationLeasesDB,
   TxAdmissionsDB,
   TxRejectionsDB,
+  TxUtils,
   UserEventsUtils,
   WithdrawalsDB,
 } from "@/database/index.js";
+import { DatabaseError } from "@/database/utils/common.js";
 import { buildBlockConfirmationAction } from "@/fibers/block-confirmation.js";
 import { reconcileVisibleDepositUTxOs } from "@/fibers/fetch-and-insert-deposit-utxos.js";
 import { mergeAction } from "@/fibers/merge.js";
 import { projectDepositsToMempoolLedger } from "@/fibers/project-deposits-to-mempool-ledger.js";
 import type { SlotAwareDueWork } from "@/fibers/slot-aware-due-work.js";
-import type { SubmitSlotSnapshot } from "@/local-ledger-slot.js";
+import { decideSpeculativeInstructionForLiveTip } from "@/fibers/speculative-commit-builder.js";
+import type {
+  SpeculativeCandidateSummary,
+  UserEventBarrierWatermarks,
+} from "@/fibers/speculative-commit-state.js";
+import { runUserEventBarrierRefresherPass } from "@/fibers/user-event-barrier-refresher.js";
+import type { NodeConfigDep } from "@/services/config.js";
 import {
   Database,
   Globals,
@@ -73,6 +92,7 @@ import {
   MidgardContracts,
   NodeConfig,
 } from "@/services/index.js";
+import { fetchStateQueueSnapshotProgram } from "@/services/state-queue-topology.js";
 import { attestStateQueueOnceProgram } from "@/transactions/da-attestation.js";
 import {
   type AtomicProtocolInitReferenceScripts,
@@ -87,6 +107,7 @@ import {
   registerOperatorProgram,
 } from "@/transactions/register-active-operator.js";
 import { assetsToValue } from "@/transactions/reserve-payout.js";
+import { materializeConfirmedLedgerSnapshot } from "@/transactions/state-queue/confirmed-ledger-snapshot.js";
 import {
   buildUnsignedDepositTxFromFundingContextProgram,
   buildUnsignedDepositTxProgram,
@@ -98,25 +119,46 @@ import {
 } from "@/transactions/submit-withdrawal.js";
 import { outRefLabel } from "@/tx-context.js";
 import { signWithdrawalBody } from "@/withdrawal-signature.js";
-import { runCommitBlockHeaderWorkerProgram } from "@/workers/commit-block-header.js";
+import {
+  commitExplicitBlockHeaderProgram,
+  runCommitBlockHeaderWorkerProgram,
+} from "@/workers/commit-block-header.js";
 import { buildAuthenticatedRootFromEncodedEntries } from "@/workers/commit-block-header/transition-roots.js";
 import { runConfirmBlockCommitmentsWorkerProgram } from "@/workers/confirm-block-commitments.js";
 import {
   serializeStateQueueUTxO,
+  type SpeculativeCommitWorkerInstruction,
   type WorkerInput as CommitWorkerInput,
   type WorkerOutput as CommitWorkerOutput,
 } from "@/workers/utils/commit-block-header.js";
-import { COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS } from "@/workers/utils/commit-end-time.js";
+import {
+  COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+  commitTimingBudget,
+} from "@/workers/utils/commit-end-time.js";
 import { WorkerError } from "@/workers/utils/common.js";
 import {
   type WorkerInput as ConfirmationWorkerInput,
   type WorkerOutput as ConfirmationWorkerOutput,
 } from "@/workers/utils/confirm-block-commitments.js";
-import { deleteMpfStore } from "@/workers/utils/mpf.js";
-import { fetchRealStateQueueWitnessContext } from "@/workers/utils/scheduler-refresh.js";
+import {
+  commitTxDeltaCacheHitCounter,
+  commitTxDeltaFallbackDecodedCounter,
+  deleteMpfStore,
+  MidgardMpf,
+} from "@/workers/utils/mpf.js";
+import {
+  fetchRealStateQueueWitnessContext,
+  resolveCurrentOperatorSchedulerWindow,
+} from "@/workers/utils/scheduler-refresh.js";
 
+import {
+  captureCustomSlotConfigRestore,
+  deriveEmulatorSubmitSlotSnapshot,
+  setEmulatorCustomSlotConfig,
+} from "./helpers/emulator-submit-slot-snapshot.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 import { collectSortedInputOutRefs } from "./helpers/tx-inspection.js";
+import { makeMidgardTxOutput } from "./midgard-output-helpers.js";
 
 const EMULATOR_PROTOCOL_PARAMETERS = {
   ...PROTOCOL_PARAMETERS_DEFAULT,
@@ -159,6 +201,7 @@ type DepositFlowReferenceScripts = {
 
 type EmulatorFixture = {
   readonly emulator: Emulator;
+  readonly emulatorCreationTimeMs: number;
   readonly contracts: SDK.MidgardValidators;
   readonly referenceScripts: DepositFlowReferenceScripts;
   readonly operatorAccount: ReturnType<typeof generateEmulatorAccount>;
@@ -239,6 +282,9 @@ const publishDepositFlowReferenceScripts = async ({
 };
 
 const makeFixture = async (): Promise<EmulatorFixture> => {
+  if (restoreCustomSlotConfig === null) {
+    restoreCustomSlotConfig = captureCustomSlotConfigRestore();
+  }
   const operatorAccount = generateEmulatorAccount({
     lovelace: 60_000_000_000n,
   });
@@ -252,9 +298,14 @@ const makeFixture = async (): Promise<EmulatorFixture> => {
     [operatorAccount, depositorAccount, referenceScriptsAccount],
     EMULATOR_PROTOCOL_PARAMETERS,
   );
+  const emulatorCreationTimeMs = emulator.now();
   const operatorLucid = await makeLucid(emulator, "Custom");
   const depositorLucid = await makeLucid(emulator, "Custom");
   const referenceScriptsLucid = await makeLucid(emulator, "Custom");
+  setEmulatorCustomSlotConfig({
+    zeroTimeMs: emulatorCreationTimeMs,
+    zeroSlot: 0,
+  });
   operatorLucid.selectWallet.fromSeed(operatorAccount.seedPhrase);
   depositorLucid.selectWallet.fromSeed(depositorAccount.seedPhrase);
   referenceScriptsLucid.selectWallet.fromSeed(
@@ -287,6 +338,7 @@ const makeFixture = async (): Promise<EmulatorFixture> => {
 
   return {
     emulator,
+    emulatorCreationTimeMs,
     contracts,
     referenceScripts,
     operatorAccount,
@@ -389,6 +441,7 @@ const clearNodeTables = Effect.all(
     PendingBlockFinalizationsDB.clear,
     DaPayloadsDB.clear,
     DepositSubmissionAttemptsDB.clear,
+    ForeignTipReconciliationsDB.clear,
     TxRejectionsDB.clear,
     CommonUtils.clearTable(TxAdmissionsDB.tableName),
     CommonUtils.clearTable(MutationJobsDB.tableName),
@@ -406,6 +459,17 @@ const runNodeDatabaseEffect = <A, E>(
       Effect.provide(Database.layer),
       Effect.provide(NodeConfig.layer),
     ),
+  );
+
+const countDaPayloadRows = (): Promise<number> =>
+  runNodeDatabaseEffect(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const rows = yield* sql<{ readonly count: string }>`
+        SELECT COUNT(*)::text AS count FROM ${sql(DaPayloadsDB.tableName)}
+      `;
+      return Number(rows[0]?.count ?? "0");
+    }),
   );
 
 /**
@@ -964,6 +1028,7 @@ const submitWithdrawalWithDiagnostics = async (
 
 const makeLucidRuntimeService = async ({
   emulator,
+  emulatorCreationTimeMs,
   operatorLucid,
   referenceScriptsLucid,
   operatorAccount,
@@ -971,40 +1036,46 @@ const makeLucidRuntimeService = async ({
 }: Pick<
   EmulatorFixture,
   | "emulator"
+  | "emulatorCreationTimeMs"
   | "operatorLucid"
   | "referenceScriptsLucid"
   | "operatorAccount"
   | "referenceScriptsAccount"
->) => ({
-  api: operatorLucid,
-  referenceScriptsApi: referenceScriptsLucid,
-  referenceScriptsAddress: await referenceScriptsLucid.wallet().address(),
-  switchToOperatorsMainWallet: Effect.sync(() =>
-    operatorLucid.selectWallet.fromSeed(operatorAccount.seedPhrase),
-  ),
-  switchToOperatorsMergingWallet: Effect.sync(() =>
-    operatorLucid.selectWallet.fromSeed(operatorAccount.seedPhrase),
-  ),
-  switchToReferenceScriptWallet: Effect.sync(() =>
-    referenceScriptsLucid.selectWallet.fromSeed(
-      referenceScriptsAccount.seedPhrase,
+>) => {
+  setEmulatorCustomSlotConfig({
+    zeroTimeMs: emulatorCreationTimeMs,
+    zeroSlot: 0,
+  });
+  return {
+    api: operatorLucid,
+    referenceScriptsApi: referenceScriptsLucid,
+    referenceScriptsAddress: await referenceScriptsLucid.wallet().address(),
+    switchToOperatorsMainWallet: Effect.sync(() =>
+      operatorLucid.selectWallet.fromSeed(operatorAccount.seedPhrase),
     ),
-  ),
-  submitSlotSnapshot: () =>
-    Effect.sync(
-      (): SubmitSlotSnapshot => ({
-        source: "emulator",
-        currentSlot: Number(operatorLucid.unixTimeToSlot(emulator.now())),
-        observedAtMs: emulator.now(),
-        slotLengthMs: 1_000,
-      }),
+    switchToOperatorsMergingWallet: Effect.sync(() =>
+      operatorLucid.selectWallet.fromSeed(operatorAccount.seedPhrase),
     ),
-});
+    switchToReferenceScriptWallet: Effect.sync(() =>
+      referenceScriptsLucid.selectWallet.fromSeed(
+        referenceScriptsAccount.seedPhrase,
+      ),
+    ),
+    submitSlotSnapshot: () =>
+      Effect.sync(() =>
+        deriveEmulatorSubmitSlotSnapshot({
+          currentSlot: emulator.slot,
+          observedAtMs: emulator.now(),
+        }),
+      ),
+  };
+};
 
 const runCommitWorker = async (
   contracts: SDK.MidgardValidators,
   lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>,
   latestBlock: SDK.StateQueueUTxO,
+  nodeConfig?: NodeConfigDep,
 ) => {
   const currentBlockStartTimeMs = await getStateQueueDatumEndTime(
     latestBlock.datum,
@@ -1016,6 +1087,7 @@ const runCommitWorker = async (
       ),
       availableLocalFinalizationBlock: "",
       currentBlockStartTimeMs,
+      ledgerStoreLeaseOwner: `commit:${randomUUID()}`,
       localFinalizationPending: false,
       mempoolTxsCountSoFar: 0,
       sizeOfProcessedTxsSoFar: 0,
@@ -1025,12 +1097,18 @@ const runCommitWorker = async (
     StateQueueMutationLeasesDB.tryWithLease(
       "deposit-flow-emulator",
       (stateQueueLeaseToken) =>
-        commitWorkerProgram(contracts, lucidService, {
-          data: {
-            ...workerInput.data,
-            stateQueueLeaseToken,
+        commitWorkerProgram(
+          contracts,
+          lucidService,
+          {
+            data: {
+              ...workerInput.data,
+              stateQueueLeaseToken,
+            },
           },
-        }),
+          undefined,
+          nodeConfig,
+        ),
     ).pipe(Effect.provide(Database.layer)),
   );
   if (leaseResult._tag === "Busy") {
@@ -1095,11 +1173,13 @@ const runCommitWorkerUntilSubmitted = async ({
   lucidService,
   latestBlock,
   maxAttempts = 4,
+  nodeConfig,
 }: {
   readonly fixture: EmulatorFixture;
   readonly lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>;
   readonly latestBlock: SDK.StateQueueUTxO;
   readonly maxAttempts?: number;
+  readonly nodeConfig?: NodeConfigDep;
 }): Promise<
   Extract<
     CommitWorkerOutput,
@@ -1118,6 +1198,7 @@ const runCommitWorkerUntilSubmitted = async ({
       fixture.contracts,
       lucidService,
       latestBlock,
+      nodeConfig,
     );
     if (output?.type === "SubmittedAwaitingConfirmationOutput") {
       return output;
@@ -1135,12 +1216,24 @@ const commitWorkerProgram = (
   contracts: SDK.MidgardValidators,
   lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>,
   workerInput: CommitWorkerInput,
-) =>
-  runCommitBlockHeaderWorkerProgram(workerInput).pipe(
-    Effect.provideService(LucidService, lucidService as any),
-    Effect.provideService(MidgardContracts, contracts as any),
-    Effect.provide(NodeConfig.layer),
-  );
+  awaitSpeculativeInstruction?: Parameters<
+    typeof runCommitBlockHeaderWorkerProgram
+  >[1],
+  nodeConfig?: NodeConfigDep,
+  commitLucidFactory: Parameters<
+    typeof runCommitBlockHeaderWorkerProgram
+  >[3] = () => Effect.succeed(lucidService as any),
+) => {
+  const program = runCommitBlockHeaderWorkerProgram(
+    workerInput,
+    awaitSpeculativeInstruction,
+    undefined,
+    commitLucidFactory,
+  ).pipe(Effect.provideService(MidgardContracts, contracts as any));
+  return nodeConfig === undefined
+    ? program.pipe(Effect.provide(NodeConfig.layer))
+    : program.pipe(Effect.provideService(NodeConfig, nodeConfig));
+};
 
 const makeGlobalsService = () =>
   Effect.runPromise(
@@ -1160,6 +1253,568 @@ const makeNodeConfigForFixture = async (fixture: EmulatorFixture) => {
     L1_OPERATOR_SEED_PHRASE: fixture.operatorAccount.seedPhrase,
     L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: fixture.operatorAccount.seedPhrase,
   };
+};
+
+const runBarrierRefresherForTest = (
+  globals: Globals,
+  fixture: EmulatorFixture,
+  lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>,
+) =>
+  Effect.runPromise(
+    runUserEventBarrierRefresherPass.pipe(
+      Effect.provideService(LucidService, lucidService as any),
+      Effect.provideService(MidgardContracts, fixture.contracts as any),
+      Effect.provideService(Globals, globals),
+      Effect.provide(Database.layer),
+      Effect.provide(NodeConfig.layer),
+    ),
+  );
+
+const speculativeWorkerInputFromActiveJournal = async (
+  watermarks: UserEventBarrierWatermarks,
+): Promise<CommitWorkerInput> => {
+  const pending = await runNodeDatabaseEffect(
+    PendingBlockFinalizationsDB.retrieveActive(),
+  );
+  if (Option.isNone(pending)) {
+    throw new Error("Expected an active submitted journal for speculation");
+  }
+  const record = pending.value;
+  const submittedTxHash =
+    record[PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH];
+  if (submittedTxHash === null) {
+    throw new Error("Expected the speculative base journal to be submitted");
+  }
+  const headerHash =
+    record[PendingBlockFinalizationsDB.Columns.HEADER_HASH].toString("hex");
+  return {
+    data: {
+      availableConfirmedBlock: "",
+      availableLocalFinalizationBlock: "",
+      currentBlockStartTimeMs:
+        record[PendingBlockFinalizationsDB.Columns.BLOCK_END_TIME].getTime(),
+      ledgerStoreLeaseOwner: `commit:${randomUUID()}`,
+      localFinalizationPending: false,
+      mempoolTxsCountSoFar: 0,
+      sizeOfProcessedTxsSoFar: 0,
+      baseSnapshotId: `speculative:${headerHash}`,
+      stateQueueHasUnmergedTail: true,
+      speculativeBuild: {
+        base: {
+          headerHash,
+          utxosRoot:
+            record[PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT],
+          blockEndTimeMs:
+            record[
+              PendingBlockFinalizationsDB.Columns.BLOCK_END_TIME
+            ].getTime(),
+          submittedTxHash: submittedTxHash.toString("hex"),
+        },
+        watermarks,
+        excludedMempoolTxIds: record.mempoolTxIds.map((txId) =>
+          txId.toString("hex"),
+        ),
+        excludedDepositEventIds: record.depositEventIds.map((eventId) =>
+          eventId.toString("hex"),
+        ),
+        excludedForcedTransactionEventIds: record.forcedTransactionEventIds.map(
+          (eventId) => eventId.toString("hex"),
+        ),
+        excludedWithdrawalEventIds: record.withdrawalEventIds.map((eventId) =>
+          eventId.toString("hex"),
+        ),
+      },
+    },
+  };
+};
+
+const runSpeculativeWorkerWithInstruction = async ({
+  fixture,
+  lucidService,
+  watermarks,
+  onReady,
+}: {
+  readonly fixture: EmulatorFixture;
+  readonly lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>;
+  readonly watermarks: UserEventBarrierWatermarks;
+  readonly onReady: (
+    candidate: SpeculativeCandidateSummary,
+  ) => Effect.Effect<SpeculativeCommitWorkerInstruction, unknown, Database>;
+}) => {
+  const workerInput = await speculativeWorkerInputFromActiveJournal(watermarks);
+  let candidate: SpeculativeCandidateSummary | undefined;
+  let acquiredLeaseToken: string | undefined;
+  let lucidAcquisitions = 0;
+  const output = await Effect.runPromise(
+    commitWorkerProgram(
+      fixture.contracts,
+      lucidService,
+      workerInput,
+      (readyCandidate) => {
+        candidate = readyCandidate;
+        expect(lucidAcquisitions).toBe(0);
+        return onReady(readyCandidate).pipe(
+          Effect.tap((instruction) =>
+            instruction.type === "SubmitSpeculativeCandidate"
+              ? Effect.sync(() => {
+                  acquiredLeaseToken = instruction.stateQueueLeaseToken;
+                })
+              : Effect.void,
+          ),
+        );
+      },
+      undefined,
+      () =>
+        Effect.sync(() => {
+          lucidAcquisitions += 1;
+          return lucidService as any;
+        }),
+    ).pipe(
+      Effect.ensuring(
+        Effect.suspend(() =>
+          acquiredLeaseToken === undefined
+            ? Effect.void
+            : StateQueueMutationLeasesDB.release(acquiredLeaseToken).pipe(
+                Effect.catchAll(() => Effect.void),
+              ),
+        ),
+      ),
+      Effect.provide(Database.layer),
+    ),
+  );
+  if (candidate === undefined) {
+    throw new Error(
+      `Speculative worker completed without a ready candidate: ${JSON.stringify(output)}`,
+    );
+  }
+  return { candidate, output, lucidAcquisitions };
+};
+
+const assertSpeculativeDepositSnapshotIsMemoryOnly = ({
+  baseBlockEndTimeMs,
+  candidateEndTimeMs,
+}: {
+  readonly baseBlockEndTimeMs: number;
+  readonly candidateEndTimeMs: number;
+}): Effect.Effect<void, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const readyDeposits = yield* DepositsDB.retrievePendingHeaderEntriesUpTo(
+      new Date(candidateEndTimeMs),
+    );
+    const speculativeDeposits = readyDeposits.filter(
+      (entry) =>
+        entry[DepositsDB.Columns.INCLUSION_TIME].getTime() > baseBlockEndTimeMs,
+    );
+    expect(speculativeDeposits).toHaveLength(1);
+    expect(speculativeDeposits[0]?.[DepositsDB.Columns.STATUS]).toBe(
+      DepositsDB.Status.Awaiting,
+    );
+    expect(
+      speculativeDeposits[0]?.[DepositsDB.Columns.PROJECTED_HEADER_HASH],
+    ).toBeNull();
+  });
+
+type NormalizedT1RecoveryState = {
+  readonly activeJournal: boolean;
+  readonly deposits: readonly {
+    readonly status: string;
+    readonly hasProjectedHeader: boolean;
+  }[];
+  readonly mempool: readonly { readonly txId: string; readonly tx: string }[];
+  readonly processed: readonly {
+    readonly txId: string;
+    readonly tx: string;
+  }[];
+};
+
+type NormalizedT1RecoveryGlobals = {
+  readonly availableConfirmedBlockPresent: boolean;
+  readonly availableLocalFinalizationBlockPresent: boolean;
+  readonly blocksInQueue: number;
+  readonly latestLocalBlockBoundaryPresent: boolean;
+  readonly localFinalizationPending: boolean;
+  readonly unconfirmedSubmittedBlockSinceMs: number;
+  readonly unconfirmedSubmittedBlockTxHash: string;
+};
+
+const normalizeT1RecoveryState = (): Promise<NormalizedT1RecoveryState> =>
+  runNodeDatabaseEffect(
+    Effect.gen(function* () {
+      const [activeJournal, deposits, mempool, processed] = yield* Effect.all([
+        PendingBlockFinalizationsDB.retrieveActive(),
+        DepositsDB.retrieveAllEntries(),
+        TxUtils.retrieveAllEntries(MempoolDB.tableName),
+        ProcessedMempoolDB.retrieve,
+      ]);
+      const normalizeTxs = (entries: readonly TxUtils.Entry[]) =>
+        entries
+          .map((entry) => ({
+            txId: entry[TxUtils.Columns.TX_ID].toString("hex"),
+            tx: entry[TxUtils.Columns.TX].toString("hex"),
+          }))
+          .sort((left, right) => left.txId.localeCompare(right.txId));
+      return {
+        activeJournal: Option.isSome(activeJournal),
+        deposits: [...deposits]
+          .sort(
+            (left, right) =>
+              left[DepositsDB.Columns.INCLUSION_TIME].getTime() -
+              right[DepositsDB.Columns.INCLUSION_TIME].getTime(),
+          )
+          .map((entry) => ({
+            status: entry[DepositsDB.Columns.STATUS],
+            hasProjectedHeader:
+              entry[DepositsDB.Columns.PROJECTED_HEADER_HASH] !== null,
+          })),
+        mempool: normalizeTxs(mempool),
+        processed: normalizeTxs(processed),
+      };
+    }),
+  );
+
+const normalizeT1RecoveryGlobals = (
+  globals: Globals,
+): Promise<NormalizedT1RecoveryGlobals> =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const availableConfirmedBlock = yield* Ref.get(
+        globals.AVAILABLE_CONFIRMED_BLOCK,
+      );
+      const availableLocalFinalizationBlock = yield* Ref.get(
+        globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK,
+      );
+      return {
+        availableConfirmedBlockPresent: availableConfirmedBlock !== "",
+        availableLocalFinalizationBlockPresent:
+          availableLocalFinalizationBlock !== "",
+        blocksInQueue: yield* Ref.get(globals.BLOCKS_IN_QUEUE),
+        latestLocalBlockBoundaryPresent: Number.isFinite(
+          yield* Ref.get(globals.LATEST_LOCAL_BLOCK_END_TIME_MS),
+        ),
+        localFinalizationPending: yield* Ref.get(
+          globals.LOCAL_FINALIZATION_PENDING,
+        ),
+        unconfirmedSubmittedBlockSinceMs: yield* Ref.get(
+          globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS,
+        ),
+        unconfirmedSubmittedBlockTxHash: yield* Ref.get(
+          globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
+        ),
+      };
+    }),
+  );
+
+const runT1RecoveryScenario = async (
+  speculationEnabled: boolean,
+): Promise<{
+  readonly normalizedState: NormalizedT1RecoveryState;
+  readonly normalizedGlobals: NormalizedT1RecoveryGlobals;
+  readonly speculativeOutput?: CommitWorkerOutput;
+}> => {
+  const previousMpfEngine = process.env.MPF_ENGINE;
+  const previousSpeculativeCommitBuild = process.env.SPECULATIVE_COMMIT_BUILD;
+  process.env.MPF_ENGINE = "overlay";
+  process.env.SPECULATIVE_COMMIT_BUILD = speculationEnabled ? "true" : "false";
+  try {
+    vi.useRealTimers();
+    if (activeRuntimePaths !== null) {
+      await cleanupRuntimePaths(activeRuntimePaths);
+      activeRuntimePaths = null;
+    }
+    activeRuntimePaths = makeRuntimePaths();
+    await cleanupRuntimePaths(activeRuntimePaths);
+    await initializeNodeRuntime();
+    const fixture = await makeFixture();
+    await initializeProtocol(fixture);
+    const lucidService = await makeLucidRuntimeService(fixture);
+    const globals = await makeGlobalsService();
+    const testNodeConfig = await makeNodeConfigForFixture(fixture);
+    await advanceEmulatorPastLatestBlockEndTime(fixture);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(fixture.emulator.now()));
+
+    await submitDepositAndRefreshBarriers({
+      fixture,
+      lucidService,
+      globals,
+      lovelace: 12_000_000n,
+    });
+    const recoveredBase = await fetchLatestCommittedBlock(
+      fixture.operatorLucid,
+      fixture.contracts,
+    );
+    const blockN = await runCommitWorkerUntilSubmitted({
+      fixture,
+      lucidService,
+      latestBlock: recoveredBase,
+    });
+    await advanceEmulatorPastUnixTime(fixture, blockN.blockEndTimeMs);
+    vi.setSystemTime(new Date(fixture.emulator.now()));
+    const { watermarks } = await submitDepositAndRefreshBarriers({
+      fixture,
+      lucidService,
+      globals,
+      lovelace: 13_000_000n,
+      projectToLedger: false,
+    });
+
+    const retainedMempoolTx = {
+      [TxUtils.Columns.TX_ID]: Buffer.alloc(32, 0xa1),
+      [TxUtils.Columns.TX]: Buffer.from("a1".repeat(96), "hex"),
+    };
+    const retainedProcessedTx = {
+      [TxUtils.Columns.TX_ID]: Buffer.alloc(32, 0xa2),
+      [TxUtils.Columns.TX]: Buffer.from("a2".repeat(96), "hex"),
+    };
+    const seedRetainedPayload = () =>
+      runNodeDatabaseEffect(
+        Effect.all(
+          [
+            TxUtils.insertEntry(MempoolDB.tableName, retainedMempoolTx),
+            ProcessedMempoolDB.insertTx(retainedProcessedTx),
+          ],
+          { discard: true },
+        ),
+      );
+    const applyStaleRecovery = () =>
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const serializedRecoveredBase =
+            yield* serializeStateQueueUTxO(recoveredBase);
+          yield* buildBlockConfirmationAction(() =>
+            Effect.succeed({
+              type: "StaleUnconfirmedRecoveryOutput",
+              stalePendingHeaderHash: blockN.submittedHeaderHash,
+              staleSubmittedTxHash: blockN.submittedTxHash,
+              latestBlocksUTxO: serializedRecoveredBase,
+              canonicalHeaders: [],
+            }),
+          );
+        }).pipe(
+          Effect.provideService(Globals, globals),
+          Effect.provideService(NodeConfig, testNodeConfig),
+          Effect.provide(Database.layer),
+        ),
+      );
+
+    let speculativeOutput: CommitWorkerOutput | undefined;
+    if (speculationEnabled) {
+      const speculative = await runSpeculativeWorkerWithInstruction({
+        fixture,
+        lucidService,
+        watermarks,
+        onReady: (candidate) =>
+          assertSpeculativeDepositSnapshotIsMemoryOnly({
+            baseBlockEndTimeMs: blockN.blockEndTimeMs,
+            candidateEndTimeMs: candidate.endTimeMs,
+          }).pipe(
+            Effect.andThen(Effect.promise(seedRetainedPayload)),
+            Effect.andThen(Effect.promise(applyStaleRecovery)),
+            Effect.as({
+              type: "InvalidateSpeculativeCandidate",
+              reason: "T1",
+            } satisfies SpeculativeCommitWorkerInstruction),
+          ),
+      });
+      speculativeOutput = speculative.output;
+      expect(speculative.lucidAcquisitions).toBe(0);
+      expect(speculative.output).toEqual({
+        type: "SpeculativeCandidateInvalidatedOutput",
+        candidateId: speculative.candidate.candidateId,
+        reason: "T1",
+      });
+    } else {
+      await seedRetainedPayload();
+      await applyStaleRecovery();
+    }
+
+    const normalizedState = await normalizeT1RecoveryState();
+    const normalizedGlobals = await normalizeT1RecoveryGlobals(globals);
+    const serializedRecoveredBase = await Effect.runPromise(
+      serializeStateQueueUTxO(recoveredBase),
+    );
+    expect(
+      await Effect.runPromise(Ref.get(globals.AVAILABLE_CONFIRMED_BLOCK)),
+    ).toEqual(serializedRecoveredBase);
+    expect(normalizedState.activeJournal).toBe(false);
+    expect(normalizedState.mempool).toEqual([
+      {
+        txId: retainedMempoolTx[TxUtils.Columns.TX_ID].toString("hex"),
+        tx: retainedMempoolTx[TxUtils.Columns.TX].toString("hex"),
+      },
+    ]);
+    expect(normalizedState.processed).toEqual([
+      {
+        txId: retainedProcessedTx[TxUtils.Columns.TX_ID].toString("hex"),
+        tx: retainedProcessedTx[TxUtils.Columns.TX].toString("hex"),
+      },
+    ]);
+    expect(normalizedGlobals).toMatchObject({
+      availableConfirmedBlockPresent: true,
+      availableLocalFinalizationBlockPresent: false,
+      blocksInQueue: 0,
+      latestLocalBlockBoundaryPresent: true,
+      localFinalizationPending: false,
+      unconfirmedSubmittedBlockSinceMs: 0,
+      unconfirmedSubmittedBlockTxHash: "",
+    });
+    return {
+      normalizedState,
+      normalizedGlobals,
+      speculativeOutput,
+    };
+  } finally {
+    if (previousMpfEngine === undefined) delete process.env.MPF_ENGINE;
+    else process.env.MPF_ENGINE = previousMpfEngine;
+    if (previousSpeculativeCommitBuild === undefined) {
+      delete process.env.SPECULATIVE_COMMIT_BUILD;
+    } else {
+      process.env.SPECULATIVE_COMMIT_BUILD = previousSpeculativeCommitBuild;
+    }
+  }
+};
+
+const runConfirmationJournalInsertionRace = async (
+  insertionPoint: "during_worker" | "after_snapshot_guard",
+) => {
+  vi.useRealTimers();
+  if (activeRuntimePaths !== null) {
+    await cleanupRuntimePaths(activeRuntimePaths);
+    activeRuntimePaths = null;
+  }
+  activeRuntimePaths = makeRuntimePaths();
+  await cleanupRuntimePaths(activeRuntimePaths);
+  await initializeNodeRuntime();
+  const fixture = await makeFixture();
+  await initializeProtocol(fixture);
+  const lucidService = await makeLucidRuntimeService(fixture);
+  const globals = await makeGlobalsService();
+  const testNodeConfig = await makeNodeConfigForFixture(fixture);
+  await advanceEmulatorPastLatestBlockEndTime(fixture);
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date(fixture.emulator.now()));
+
+  await submitDepositAndRefreshBarriers({
+    fixture,
+    lucidService,
+    globals,
+    lovelace: 12_000_000n,
+  });
+  const recoveredBase = await fetchLatestCommittedBlock(
+    fixture.operatorLucid,
+    fixture.contracts,
+  );
+  const serializedRecoveredBase = await Effect.runPromise(
+    serializeStateQueueUTxO(recoveredBase),
+  );
+  let insertedSubmission:
+    | Extract<
+        CommitWorkerOutput,
+        { readonly type: "SubmittedAwaitingConfirmationOutput" }
+      >
+    | undefined;
+  let insertedJournalStatus: PendingBlockFinalizationsDB.Status | undefined;
+  const insertSubmission = async () => {
+    insertedSubmission = await runCommitWorkerUntilSubmitted({
+      fixture,
+      lucidService,
+      latestBlock: recoveredBase,
+      nodeConfig: testNodeConfig,
+    });
+    const insertedJournal = await runNodeDatabaseEffect(
+      PendingBlockFinalizationsDB.retrieveActive(),
+    );
+    if (Option.isNone(insertedJournal)) {
+      throw new Error("Submitted race fixture is missing its active journal.");
+    }
+    insertedJournalStatus =
+      insertedJournal.value[PendingBlockFinalizationsDB.Columns.STATUS];
+    await Effect.runPromise(
+      Effect.all(
+        [
+          Ref.set(globals.LOCAL_FINALIZATION_PENDING, true),
+          Ref.set(
+            globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK,
+            serializedRecoveredBase,
+          ),
+          Ref.set(globals.AVAILABLE_CONFIRMED_BLOCK, ""),
+          Ref.set(
+            globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
+            insertedSubmission.submittedTxHash,
+          ),
+          Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS, 123_456),
+        ],
+        { discard: true },
+      ),
+    );
+  };
+  const staleOutput: ConfirmationWorkerOutput = {
+    type: "SuccessfulConfirmationOutput",
+    latestBlocksUTxO: serializedRecoveredBase,
+    matchedPendingBlocksUTxO: null,
+    canonicalHeaders: [],
+  };
+
+  await Effect.runPromise(
+    buildBlockConfirmationAction(
+      () =>
+        insertionPoint === "during_worker"
+          ? Effect.promise(async () => {
+              await insertSubmission();
+              return staleOutput;
+            })
+          : Effect.succeed(staleOutput),
+      insertionPoint === "after_snapshot_guard"
+        ? {
+            afterPendingSnapshotGuard: () => Effect.promise(insertSubmission),
+          }
+        : {},
+    ).pipe(
+      Effect.provideService(Globals, globals),
+      Effect.provideService(NodeConfig, testNodeConfig),
+      Effect.provide(Database.layer),
+    ),
+  );
+
+  if (insertedSubmission === undefined) {
+    throw new Error("Race fixture did not create the submitted journal.");
+  }
+  const confirmedInsertedSubmission = insertedSubmission;
+  if (insertedJournalStatus === undefined) {
+    throw new Error(
+      "Race fixture did not capture the inserted journal status.",
+    );
+  }
+  const confirmedInsertedJournalStatus = insertedJournalStatus;
+  const active = await runNodeDatabaseEffect(
+    PendingBlockFinalizationsDB.retrieveActive(),
+  );
+  expect(Option.isSome(active)).toBe(true);
+  if (Option.isSome(active)) {
+    expect(
+      active.value[
+        PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH
+      ]?.toString("hex"),
+    ).toBe(confirmedInsertedSubmission.submittedTxHash);
+    expect(active.value[PendingBlockFinalizationsDB.Columns.STATUS]).toBe(
+      confirmedInsertedJournalStatus,
+    );
+  }
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      expect(yield* Ref.get(globals.LOCAL_FINALIZATION_PENDING)).toBe(true);
+      expect(
+        yield* Ref.get(globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK),
+      ).toEqual(serializedRecoveredBase);
+      expect(yield* Ref.get(globals.AVAILABLE_CONFIRMED_BLOCK)).toBe("");
+      expect(yield* Ref.get(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH)).toBe(
+        confirmedInsertedSubmission.submittedTxHash,
+      );
+      expect(yield* Ref.get(globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS)).toBe(
+        123_456,
+      );
+    }),
+  );
 };
 
 const withEmulatorExtraneousScriptRetry = async <A>(
@@ -1252,6 +1907,7 @@ const runBlockConfirmation = (
     ).pipe(
       Effect.provideService(Globals, globals),
       Effect.provide(Database.layer),
+      Effect.provide(NodeConfig.layer),
     ),
   );
 
@@ -1273,6 +1929,7 @@ const runLocalFinalizationRecoveryWorker = async (
           currentBlockStartTimeMs: yield* Ref.get(
             globals.LATEST_LOCAL_BLOCK_END_TIME_MS,
           ),
+          ledgerStoreLeaseOwner: `commit:${randomUUID()}`,
           localFinalizationPending: yield* Ref.get(
             globals.LOCAL_FINALIZATION_PENDING,
           ),
@@ -1284,8 +1941,9 @@ const runLocalFinalizationRecoveryWorker = async (
   );
 
   const output = await Effect.runPromise(
-    runCommitBlockHeaderWorkerProgram(workerInput).pipe(
-      Effect.provideService(LucidService, lucidService as any),
+    runCommitBlockHeaderWorkerProgram(workerInput, undefined, undefined, () =>
+      Effect.succeed(lucidService as any),
+    ).pipe(
       Effect.provideService(MidgardContracts, contracts as any),
       Effect.provide(Database.layer),
       Effect.provide(NodeConfig.layer),
@@ -1390,6 +2048,52 @@ const advanceEmulatorPastUnixTime = async (
   while (fixture.emulator.now() <= unixTimeMs) {
     await fixture.emulator.awaitSlot(1);
   }
+};
+
+const submitDepositAndRefreshBarriers = async ({
+  fixture,
+  lucidService,
+  globals,
+  lovelace,
+  projectToLedger = true,
+}: {
+  readonly fixture: EmulatorFixture;
+  readonly lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>;
+  readonly globals: Globals;
+  readonly lovelace: bigint;
+  readonly projectToLedger?: boolean;
+}) => {
+  const l2Address = await fixture.depositorLucid.wallet().address();
+  const submittedTxHash = await submitDepositWithDiagnostics(fixture, {
+    l2Address,
+    l2Datum: null,
+    lovelace,
+    additionalAssets: {},
+  });
+  const visibleDeposits = await Effect.runPromise(
+    SDK.fetchDepositUTxOsProgram(fixture.depositorLucid, {
+      eventAddress: fixture.contracts.deposit.spendingScriptAddress,
+      eventPolicyId: fixture.contracts.deposit.policyId,
+    }),
+  );
+  const latestInclusionTimeMs = Math.max(
+    ...visibleDeposits.map((deposit) => Number(deposit.datum.inclusion_time)),
+  );
+  await advanceEmulatorPastUnixTime(fixture, latestInclusionTimeMs);
+  vi.setSystemTime(new Date(fixture.emulator.now()));
+  const watermarks = await runBarrierRefresherForTest(
+    globals,
+    fixture,
+    lucidService,
+  );
+  if (projectToLedger) {
+    await runNodeCommandProgram(projectDepositsToMempoolLedger, {
+      fixture,
+      lucidService,
+      globals,
+    });
+  }
+  return { submittedTxHash, watermarks };
 };
 
 const fetchSchedulerDatum = async ({
@@ -1517,21 +2221,42 @@ const expectedAuthenticatedEventRoot = (
     ),
   );
 
+const expectHeaderRootsToMatchCandidate = (
+  header: SDK.Header,
+  candidate: SpeculativeCandidateSummary,
+): void => {
+  expect(header.utxosRoot).toBe(candidate.roots.utxos);
+  expect(header.transactionsRoot).toBe(candidate.roots.transactions);
+  expect(header.depositsRoot).toBe(candidate.roots.deposits);
+  expect(header.forcedTransactionsRoot).toBe(
+    candidate.roots.forcedTransactions,
+  );
+  expect(header.withdrawalsRoot).toBe(candidate.roots.withdrawals);
+  expect(header.transitionTraceRoot).toBe(candidate.roots.transitionTrace);
+  expect(header.eventToStepRoot).toBe(candidate.roots.eventToStep);
+};
+
 let activeRuntimePaths: {
   readonly ledgerMpfPath: string;
   readonly transactionsMpfPath: string;
 } | null = null;
+let restoreCustomSlotConfig: (() => void) | null = null;
 
 afterEach(async () => {
   vi.useRealTimers();
   try {
-    await initializeNodeRuntime();
-  } catch {
-    // Leave cleanup best-effort so a failed test can still report the primary error.
-  }
-  if (activeRuntimePaths !== null) {
-    await cleanupRuntimePaths(activeRuntimePaths);
-    activeRuntimePaths = null;
+    try {
+      await initializeNodeRuntime();
+    } catch {
+      // Leave cleanup best-effort so a failed test can still report the primary error.
+    }
+    if (activeRuntimePaths !== null) {
+      await cleanupRuntimePaths(activeRuntimePaths);
+      activeRuntimePaths = null;
+    }
+  } finally {
+    restoreCustomSlotConfig?.();
+    restoreCustomSlotConfig = null;
   }
 });
 
@@ -1911,6 +2636,1138 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
           : undefined,
     ).toEqual(fixture.operatorKeyHash);
   }, 180_000);
+
+  it("commits the globally oldest transactions from a backlog deeper than three retrieval pages and anchors max endTime", async () => {
+    const previousPageSize = process.env.MEMPOOL_RETRIEVE_PAGE_SIZE;
+    process.env.MEMPOOL_RETRIEVE_PAGE_SIZE = "2";
+    try {
+      activeRuntimePaths = makeRuntimePaths();
+      await cleanupRuntimePaths(activeRuntimePaths);
+      await initializeNodeRuntime();
+
+      const fixture = await makeFixture();
+      await initializeProtocol(fixture);
+      const lucidService = await makeLucidRuntimeService(fixture);
+      await advanceEmulatorPastLatestBlockEndTime(fixture);
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(fixture.emulator.now()));
+
+      const sender = walletFromSeed(
+        "cupboard digital guitar diesel critic will afford salon game dolphin phrase baby dad urban machine barely rack acoustic blood vote misery enemy salute depart",
+        { network: "Preprod" },
+      );
+      const destination = walletFromSeed(
+        "panther fly crawl express smile lend company blue slogan dawn wall tip angle tomorrow battle myth category vanish misery ocean include salon wood rail",
+        { network: "Preprod" },
+      );
+      const sourceUtxos: NodeUtxo[] = [];
+      const sourceLedger: LedgerUtils.Entry[] = [];
+      for (let index = 0; index < 8; index += 1) {
+        const txHash = (index + 1).toString(16).padStart(64, "0");
+        const outrefCbor = Buffer.from(
+          CML.TransactionInput.new(
+            CML.TransactionHash.from_hex(txHash),
+            0n,
+          ).to_cbor_bytes(),
+        );
+        const outputCbor = Buffer.from(
+          makeMidgardTxOutput(
+            CML.Address.from_bech32(sender.address),
+            CML.Value.from_coin(10_000_000n),
+          ).to_cbor_bytes(),
+        );
+        sourceUtxos.push({
+          txHash,
+          outputIndex: 0,
+          outrefCbor,
+          outputCbor,
+          address: sender.address,
+          assets: { lovelace: 10_000_000n },
+        });
+        sourceLedger.push({
+          [LedgerUtils.Columns.TX_ID]: Buffer.from(txHash, "hex"),
+          [LedgerUtils.Columns.OUTREF]: outrefCbor,
+          [LedgerUtils.Columns.OUTPUT]: outputCbor,
+          [LedgerUtils.Columns.ADDRESS]: sender.address,
+        });
+      }
+      const baseNodeConfig = await makeNodeConfigForFixture(fixture);
+      const nodeConfig: NodeConfigDep = {
+        ...baseNodeConfig,
+        GENESIS_UTXOS: sourceUtxos.map(
+          ({ txHash, outputIndex, address, assets }) => ({
+            txHash,
+            outputIndex,
+            address,
+            assets,
+          }),
+        ),
+      };
+      const built = await Promise.all(
+        sourceUtxos.map((source) =>
+          buildTransferTx({
+            senderAddress: sender.address,
+            destinationAddress: destination.address,
+            signer: CML.PrivateKey.from_bech32(sender.paymentKey),
+            selectedInputs: [source],
+            requestedAssets: { lovelace: 1_000_000n },
+            networkId: 0n,
+          }),
+        ),
+      );
+      const queued: QueuedTx[] = built.map((tx, index) => ({
+        txId: tx.txId,
+        txCbor: tx.txCbor,
+        arrivalSeq: BigInt(index),
+        createdAt: new Date(Date.now() - 10_000 + index),
+      }));
+      const phaseA = await Effect.runPromise(
+        runPhaseAValidation(queued, {
+          expectedNetworkId: 0n,
+          minFeeA: 0n,
+          minFeeB: 0n,
+          concurrency: 1,
+          strictnessProfile: "phase1_midgard",
+        }),
+      );
+      expect(phaseA.rejected).toEqual([]);
+      const initialLedger = new Map(
+        sourceUtxos.map((source) => [
+          source.outrefCbor.toString("hex"),
+          source.outputCbor,
+        ]),
+      );
+      const phaseB = await Effect.runPromise(
+        runPhaseBValidationWithPatch(phaseA.accepted, initialLedger, {
+          nowCardanoSlotNo: 0n,
+          bucketConcurrency: 1,
+          enforceScriptBudget: true,
+        }),
+      );
+      expect(phaseB.rejected).toEqual([]);
+      const processed = phaseB.accepted.map(processedTxFromValidatedTx);
+      const timestamps = processed.map(
+        (_tx, index) => new Date(Date.now() - 8_000 + index * 1_000),
+      );
+      await runNodeDatabaseEffect(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* MempoolLedgerDB.insert(sourceLedger);
+          yield* sql.withTransaction(MempoolDB.insertMultipleCore(processed));
+          for (let index = 0; index < processed.length; index += 1) {
+            yield* sql`UPDATE ${sql(MempoolDB.tableName)}
+              SET time_stamp_tz = ${timestamps[index]!}
+              WHERE tx_id = ${processed[index]!.txId}`;
+          }
+        }),
+      );
+
+      const latestBlock = await fetchLatestCommittedBlock(
+        fixture.operatorLucid,
+        fixture.contracts,
+      );
+      const cacheHitsBefore = await Effect.runPromise(
+        Metric.value(commitTxDeltaCacheHitCounter),
+      );
+      const fallbackBefore = await Effect.runPromise(
+        Metric.value(commitTxDeltaFallbackDecodedCounter),
+      );
+      const output = await runCommitWorkerUntilSubmitted({
+        fixture,
+        lucidService,
+        latestBlock,
+        nodeConfig,
+      });
+      const cacheHitsAfter = await Effect.runPromise(
+        Metric.value(commitTxDeltaCacheHitCounter),
+      );
+      const fallbackAfter = await Effect.runPromise(
+        Metric.value(commitTxDeltaFallbackDecodedCounter),
+      );
+      expect(output.mempoolTxsCount).toBe(2);
+      expect(cacheHitsAfter.count - cacheHitsBefore.count).toBe(0n);
+      expect(fallbackAfter.count - fallbackBefore.count).toBe(2n);
+      const active = await runNodeDatabaseEffect(
+        PendingBlockFinalizationsDB.retrieveActive(),
+      );
+      expect(Option.isSome(active)).toBe(true);
+      if (Option.isSome(active)) {
+        expect(active.value.mempoolTxIds).toStrictEqual(
+          processed.slice(0, 2).map((tx) => tx.txId),
+        );
+      }
+      expect(output.blockEndTimeMs).toBeGreaterThanOrEqual(
+        timestamps[1]!.getTime(),
+      );
+    } finally {
+      if (previousPageSize === undefined) {
+        delete process.env.MEMPOOL_RETRIEVE_PAGE_SIZE;
+      } else {
+        process.env.MEMPOOL_RETRIEVE_PAGE_SIZE = previousPageSize;
+      }
+    }
+  }, 180_000);
+
+  it("builds N+1 before N confirmation and submits the exact ready candidate on the direct wake path", async () => {
+    const previousMpfEngine = process.env.MPF_ENGINE;
+    const previousSpeculativeCommitBuild = process.env.SPECULATIVE_COMMIT_BUILD;
+    process.env.MPF_ENGINE = "overlay";
+    process.env.SPECULATIVE_COMMIT_BUILD = "true";
+    try {
+      activeRuntimePaths = makeRuntimePaths();
+      await cleanupRuntimePaths(activeRuntimePaths);
+      await initializeNodeRuntime();
+
+      const fixture = await makeFixture();
+      await initializeProtocol(fixture);
+      const lucidService = await makeLucidRuntimeService(fixture);
+      const globals = await makeGlobalsService();
+      await advanceEmulatorPastLatestBlockEndTime(fixture);
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(fixture.emulator.now()));
+
+      await submitDepositAndRefreshBarriers({
+        fixture,
+        lucidService,
+        globals,
+        lovelace: 12_000_000n,
+      });
+      const blockNBase = await fetchLatestCommittedBlock(
+        fixture.operatorLucid,
+        fixture.contracts,
+      );
+      const blockN = await runCommitWorkerUntilSubmitted({
+        fixture,
+        lucidService,
+        latestBlock: blockNBase,
+      });
+
+      await advanceEmulatorPastUnixTime(fixture, blockN.blockEndTimeMs);
+      vi.setSystemTime(new Date(fixture.emulator.now()));
+      const { watermarks } = await submitDepositAndRefreshBarriers({
+        fixture,
+        lucidService,
+        globals,
+        lovelace: 13_000_000n,
+        projectToLedger: false,
+      });
+
+      const speculative = await runSpeculativeWorkerWithInstruction({
+        fixture,
+        lucidService,
+        watermarks,
+        onReady: () =>
+          Effect.gen(function* () {
+            yield* Effect.promise(() =>
+              fixture.operatorLucid.awaitTx(blockN.submittedTxHash),
+            );
+            yield* Effect.promise(() =>
+              runBlockConfirmation(globals, fixture.contracts, lucidService),
+            );
+            const leaseToken = yield* StateQueueMutationLeasesDB.acquire({
+              holder: "speculative-emulator-happy",
+            });
+            const snapshot = yield* fetchStateQueueSnapshotProgram(
+              lucidService.api,
+              fixture.contracts.stateQueue,
+              "commit_preflight",
+            );
+            const localFinalizationBlock = yield* Ref.get(
+              globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK,
+            );
+            return {
+              type: "SubmitSpeculativeCandidate",
+              confirmedBlock: snapshot.tailCommitBase.utxo,
+              stateQueueLeaseToken: leaseToken,
+              baseSnapshotId: snapshot.snapshotId,
+              stateQueueHasUnmergedTail:
+                snapshot.root.outRef !== snapshot.tailCommitBase.outRef,
+              localFinalizationBlock:
+                localFinalizationBlock === ""
+                  ? undefined
+                  : localFinalizationBlock,
+            } satisfies SpeculativeCommitWorkerInstruction;
+          }),
+      });
+
+      expect(speculative.candidate.baseHeaderHash).toBe(
+        blockN.submittedHeaderHash,
+      );
+      expect(speculative.candidate.expectedUserEventCounts.deposits).toBe(1);
+      expect(speculative.lucidAcquisitions).toBe(1);
+      expect(speculative.output.type).toBe(
+        "SubmittedAwaitingConfirmationOutput",
+      );
+      if (speculative.output.type !== "SubmittedAwaitingConfirmationOutput") {
+        throw new Error(
+          `Expected speculative submission, got ${speculative.output.type}`,
+        );
+      }
+      expect(speculative.output.submittedUtxosRoot).toBe(
+        speculative.candidate.roots.utxos,
+      );
+      expect(speculative.output.speculativeExecution).toEqual({
+        candidateId: speculative.candidate.candidateId,
+        baseHydrationPassesBeforeReady: 1,
+        mpfProcessingPassesBeforeReady: 1,
+        baseHydrationPassesAfterReady: 0,
+        mpfProcessingPassesAfterReady: 0,
+      });
+
+      const tailBeforeCandidateConfirmation = await fetchLatestCommittedBlock(
+        fixture.operatorLucid,
+        fixture.contracts,
+      );
+      const tailHeaderBeforeCandidateConfirmation = await Effect.runPromise(
+        SDK.getHeaderFromStateQueueDatum(tailBeforeCandidateConfirmation.datum),
+      );
+      expect(
+        await Effect.runPromise(
+          SDK.hashBlockHeader(tailHeaderBeforeCandidateConfirmation),
+        ),
+      ).toBe(blockN.submittedHeaderHash);
+
+      const activeJournal = await runNodeDatabaseEffect(
+        PendingBlockFinalizationsDB.retrieveActive(),
+      );
+      expect(Option.isSome(activeJournal)).toBe(true);
+      if (Option.isNone(activeJournal)) {
+        throw new Error("Expected submitted N+1 journal before confirmation");
+      }
+      expect(
+        activeJournal.value[
+          PendingBlockFinalizationsDB.Columns.HEADER_HASH
+        ].toString("hex"),
+      ).toBe(speculative.output.submittedHeaderHash);
+      expect(
+        activeJournal.value[
+          PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH
+        ]?.toString("hex"),
+      ).toBe(speculative.output.submittedTxHash);
+      expect(
+        activeJournal.value[PendingBlockFinalizationsDB.Columns.STATUS],
+      ).toBe(
+        PendingBlockFinalizationsDB.Status.SubmittedLocalFinalizationPending,
+      );
+      const durableSubmittedHeader = Data.from(
+        activeJournal.value[
+          PendingBlockFinalizationsDB.Columns.HEADER_CBOR
+        ].toString("hex"),
+        SDK.Header as never,
+      ) as SDK.Header;
+      expectHeaderRootsToMatchCandidate(
+        durableSubmittedHeader,
+        speculative.candidate,
+      );
+      const independentlyMaterializedPostState = await runNodeDatabaseEffect(
+        materializeConfirmedLedgerSnapshot(activeJournal.value),
+      );
+      expect(independentlyMaterializedPostState.root).toBe(
+        speculative.candidate.roots.utxos,
+      );
+
+      await fixture.operatorLucid.awaitTx(speculative.output.submittedTxHash);
+      const latestBlock = await fetchLatestCommittedBlock(
+        fixture.operatorLucid,
+        fixture.contracts,
+      );
+      const latestHeader = await Effect.runPromise(
+        SDK.getHeaderFromStateQueueDatum(latestBlock.datum),
+      );
+      expectHeaderRootsToMatchCandidate(latestHeader, speculative.candidate);
+
+      const directWake = await Effect.runPromise(
+        Queue.poll(globals.COMMIT_SUBMIT_WAKE_QUEUE),
+      );
+      expect(Option.isSome(directWake)).toBe(true);
+      if (Option.isSome(directWake)) {
+        expect(directWake.value.confirmedHeaderHash).toBe(
+          blockN.submittedHeaderHash,
+        );
+      }
+      const submittedCandidateDeposits = await runNodeDatabaseEffect(
+        DepositsDB.retrievePendingHeaderEntriesUpTo(
+          new Date(speculative.candidate.endTimeMs),
+        ),
+      );
+      const submittedCandidateDeposit = submittedCandidateDeposits.find(
+        (entry) =>
+          entry[DepositsDB.Columns.INCLUSION_TIME].getTime() >
+          blockN.blockEndTimeMs,
+      );
+      expect(submittedCandidateDeposit?.[DepositsDB.Columns.STATUS]).toBe(
+        DepositsDB.Status.Projected,
+      );
+      expect(
+        submittedCandidateDeposit?.[DepositsDB.Columns.PROJECTED_HEADER_HASH],
+      ).toBeNull();
+    } finally {
+      if (previousMpfEngine === undefined) delete process.env.MPF_ENGINE;
+      else process.env.MPF_ENGINE = previousMpfEngine;
+      if (previousSpeculativeCommitBuild === undefined) {
+        delete process.env.SPECULATIVE_COMMIT_BUILD;
+      } else {
+        process.env.SPECULATIVE_COMMIT_BUILD = previousSpeculativeCommitBuild;
+      }
+    }
+  }, 240_000);
+
+  it("preserves a newer submitted journal when a delayed confirmation worker captured no pending journal", async () => {
+    await runConfirmationJournalInsertionRace("during_worker");
+  }, 240_000);
+
+  it("preserves a newer submitted journal inserted after the initial confirmation snapshot guard", async () => {
+    await runConfirmationJournalInsertionRace("after_snapshot_guard");
+  }, 240_000);
+
+  it("discards a ready candidate and preserves payload when confirmation reports T1 stale recovery", async () => {
+    const previousMpfEngine = process.env.MPF_ENGINE;
+    const previousSpeculativeCommitBuild = process.env.SPECULATIVE_COMMIT_BUILD;
+    process.env.MPF_ENGINE = "overlay";
+    process.env.SPECULATIVE_COMMIT_BUILD = "true";
+    try {
+      activeRuntimePaths = makeRuntimePaths();
+      await cleanupRuntimePaths(activeRuntimePaths);
+      await initializeNodeRuntime();
+      const fixture = await makeFixture();
+      await initializeProtocol(fixture);
+      const lucidService = await makeLucidRuntimeService(fixture);
+      const globals = await makeGlobalsService();
+      const testNodeConfig = await makeNodeConfigForFixture(fixture);
+      await advanceEmulatorPastLatestBlockEndTime(fixture);
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(fixture.emulator.now()));
+
+      await submitDepositAndRefreshBarriers({
+        fixture,
+        lucidService,
+        globals,
+        lovelace: 12_000_000n,
+      });
+      const recoveredBase = await fetchLatestCommittedBlock(
+        fixture.operatorLucid,
+        fixture.contracts,
+      );
+      const blockN = await runCommitWorkerUntilSubmitted({
+        fixture,
+        lucidService,
+        latestBlock: recoveredBase,
+      });
+      await advanceEmulatorPastUnixTime(fixture, blockN.blockEndTimeMs);
+      vi.setSystemTime(new Date(fixture.emulator.now()));
+      const { watermarks } = await submitDepositAndRefreshBarriers({
+        fixture,
+        lucidService,
+        globals,
+        lovelace: 13_000_000n,
+        projectToLedger: false,
+      });
+
+      const speculative = await runSpeculativeWorkerWithInstruction({
+        fixture,
+        lucidService,
+        watermarks,
+        onReady: (candidate) =>
+          Effect.gen(function* () {
+            yield* assertSpeculativeDepositSnapshotIsMemoryOnly({
+              baseBlockEndTimeMs: blockN.blockEndTimeMs,
+              candidateEndTimeMs: candidate.endTimeMs,
+            });
+            const serializedRecoveredBase =
+              yield* serializeStateQueueUTxO(recoveredBase);
+            yield* buildBlockConfirmationAction(() =>
+              Effect.succeed({
+                type: "StaleUnconfirmedRecoveryOutput",
+                stalePendingHeaderHash: blockN.submittedHeaderHash,
+                staleSubmittedTxHash: blockN.submittedTxHash,
+                latestBlocksUTxO: serializedRecoveredBase,
+                canonicalHeaders: [],
+              }),
+            ).pipe(
+              Effect.provideService(Globals, globals),
+              Effect.provideService(NodeConfig, testNodeConfig),
+            );
+            return {
+              type: "InvalidateSpeculativeCandidate",
+              reason: "T1",
+            } satisfies SpeculativeCommitWorkerInstruction;
+          }),
+      });
+      expect(speculative.output).toEqual({
+        type: "SpeculativeCandidateInvalidatedOutput",
+        candidateId: speculative.candidate.candidateId,
+        reason: "T1",
+      });
+      expect(
+        Option.isNone(
+          await runNodeDatabaseEffect(
+            PendingBlockFinalizationsDB.retrieveActive(),
+          ),
+        ),
+      ).toBe(true);
+      const pendingDeposits = await runNodeDatabaseEffect(
+        DepositsDB.retrievePendingHeaderEntriesUpTo(new Date(Date.now())),
+      );
+      expect(pendingDeposits).toHaveLength(2);
+      expect(
+        pendingDeposits.every(
+          (entry) => entry[DepositsDB.Columns.PROJECTED_HEADER_HASH] === null,
+        ),
+      ).toBe(true);
+    } finally {
+      if (previousMpfEngine === undefined) delete process.env.MPF_ENGINE;
+      else process.env.MPF_ENGINE = previousMpfEngine;
+      if (previousSpeculativeCommitBuild === undefined) {
+        delete process.env.SPECULATIVE_COMMIT_BUILD;
+      } else {
+        process.env.SPECULATIVE_COMMIT_BUILD = previousSpeculativeCommitBuild;
+      }
+    }
+  }, 240_000);
+
+  it("recovers T1 and matches flag-off database and global state", async () => {
+    const flagOn = await runT1RecoveryScenario(true);
+    const flagOff = await runT1RecoveryScenario(false);
+
+    expect(flagOn.normalizedState).toEqual(flagOff.normalizedState);
+    expect(flagOn.normalizedGlobals).toEqual(flagOff.normalizedGlobals);
+    expect(flagOn.normalizedState.deposits).toHaveLength(2);
+    expect(
+      flagOn.normalizedState.deposits.every(
+        (deposit) => !deposit.hasProjectedHeader,
+      ),
+    ).toBe(true);
+  }, 480_000);
+
+  it("keeps T7 restart invalidation memory-only with the submitted base journal intact", async () => {
+    const previousMpfEngine = process.env.MPF_ENGINE;
+    const previousSpeculativeCommitBuild = process.env.SPECULATIVE_COMMIT_BUILD;
+    process.env.MPF_ENGINE = "overlay";
+    process.env.SPECULATIVE_COMMIT_BUILD = "true";
+    try {
+      activeRuntimePaths = makeRuntimePaths();
+      await cleanupRuntimePaths(activeRuntimePaths);
+      await initializeNodeRuntime();
+      const fixture = await makeFixture();
+      await initializeProtocol(fixture);
+      const lucidService = await makeLucidRuntimeService(fixture);
+      const globals = await makeGlobalsService();
+      await advanceEmulatorPastLatestBlockEndTime(fixture);
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(fixture.emulator.now()));
+
+      await submitDepositAndRefreshBarriers({
+        fixture,
+        lucidService,
+        globals,
+        lovelace: 12_000_000n,
+      });
+      const blockNBase = await fetchLatestCommittedBlock(
+        fixture.operatorLucid,
+        fixture.contracts,
+      );
+      const blockN = await runCommitWorkerUntilSubmitted({
+        fixture,
+        lucidService,
+        latestBlock: blockNBase,
+      });
+      await advanceEmulatorPastUnixTime(fixture, blockN.blockEndTimeMs);
+      vi.setSystemTime(new Date(fixture.emulator.now()));
+      const { watermarks } = await submitDepositAndRefreshBarriers({
+        fixture,
+        lucidService,
+        globals,
+        lovelace: 13_000_000n,
+        projectToLedger: false,
+      });
+
+      const speculative = await runSpeculativeWorkerWithInstruction({
+        fixture,
+        lucidService,
+        watermarks,
+        onReady: (candidate) =>
+          assertSpeculativeDepositSnapshotIsMemoryOnly({
+            baseBlockEndTimeMs: blockN.blockEndTimeMs,
+            candidateEndTimeMs: candidate.endTimeMs,
+          }).pipe(
+            Effect.as({
+              type: "InvalidateSpeculativeCandidate",
+              reason: "T7",
+            } satisfies SpeculativeCommitWorkerInstruction),
+          ),
+      });
+      expect(speculative.output).toEqual({
+        type: "SpeculativeCandidateInvalidatedOutput",
+        candidateId: speculative.candidate.candidateId,
+        reason: "T7",
+      });
+      const activeJournal = await runNodeDatabaseEffect(
+        PendingBlockFinalizationsDB.retrieveActive(),
+      );
+      expect(Option.isSome(activeJournal)).toBe(true);
+      if (Option.isSome(activeJournal)) {
+        expect(
+          activeJournal.value[
+            PendingBlockFinalizationsDB.Columns.HEADER_HASH
+          ].toString("hex"),
+        ).toBe(blockN.submittedHeaderHash);
+      }
+    } finally {
+      if (previousMpfEngine === undefined) delete process.env.MPF_ENGINE;
+      else process.env.MPF_ENGINE = previousMpfEngine;
+      if (previousSpeculativeCommitBuild === undefined) {
+        delete process.env.SPECULATIVE_COMMIT_BUILD;
+      } else {
+        process.env.SPECULATIVE_COMMIT_BUILD = previousSpeculativeCommitBuild;
+      }
+    }
+  }, 240_000);
+
+  it("invalidates T2 when an independently submitted header advances the confirmed tail", async () => {
+    const previousMpfEngine = process.env.MPF_ENGINE;
+    const previousSpeculativeCommitBuild = process.env.SPECULATIVE_COMMIT_BUILD;
+    process.env.MPF_ENGINE = "overlay";
+    process.env.SPECULATIVE_COMMIT_BUILD = "true";
+    try {
+      activeRuntimePaths = makeRuntimePaths();
+      await cleanupRuntimePaths(activeRuntimePaths);
+      await initializeNodeRuntime();
+      const fixture = await makeFixture();
+      await initializeProtocol(fixture);
+      const lucidService = await makeLucidRuntimeService(fixture);
+      const globals = await makeGlobalsService();
+      const testNodeConfig = await makeNodeConfigForFixture(fixture);
+      await advanceEmulatorPastLatestBlockEndTime(fixture);
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(fixture.emulator.now()));
+
+      await submitDepositAndRefreshBarriers({
+        fixture,
+        lucidService,
+        globals,
+        lovelace: 12_000_000n,
+      });
+      const blockNBase = await fetchLatestCommittedBlock(
+        fixture.operatorLucid,
+        fixture.contracts,
+      );
+      const blockN = await runCommitWorkerUntilSubmitted({
+        fixture,
+        lucidService,
+        latestBlock: blockNBase,
+      });
+      await advanceEmulatorPastUnixTime(fixture, blockN.blockEndTimeMs);
+      vi.setSystemTime(new Date(fixture.emulator.now()));
+      const { watermarks } = await submitDepositAndRefreshBarriers({
+        fixture,
+        lucidService,
+        globals,
+        lovelace: 13_000_000n,
+        projectToLedger: false,
+      });
+
+      // The scheduler authorizes one active credential for this window. A
+      // genuinely different key cannot produce a valid competing commit until
+      // it is registered, activated, and appointed. Use a distinct Lucid
+      // instance (the independent submitter identity) with the currently
+      // authorized credential so T2 still exercises a real competing tx.
+      const independentOperatorLucid = await makeLucid(
+        fixture.emulator,
+        "Custom",
+      );
+      independentOperatorLucid.selectWallet.fromSeed(
+        fixture.operatorAccount.seedPhrase,
+      );
+      expect(independentOperatorLucid).not.toBe(fixture.operatorLucid);
+      expect(await readKeyHash(independentOperatorLucid)).toBe(
+        fixture.operatorKeyHash,
+      );
+      expect(await readKeyHash(fixture.depositorLucid)).not.toBe(
+        fixture.operatorKeyHash,
+      );
+      expect(
+        await Effect.runPromise(
+          resolveCurrentOperatorSchedulerWindow(
+            fixture.depositorLucid,
+            fixture.contracts,
+          ),
+        ),
+      ).toBeUndefined();
+      const schedulerBeforeIndependentSubmit =
+        await fetchSchedulerDatum(fixture);
+      expect(
+        typeof schedulerBeforeIndependentSubmit === "object" &&
+          schedulerBeforeIndependentSubmit !== null &&
+          "ActiveOperator" in schedulerBeforeIndependentSubmit
+          ? schedulerBeforeIndependentSubmit.ActiveOperator.operator
+          : undefined,
+      ).toBe(fixture.operatorKeyHash);
+      const independentLucidService = await makeLucidRuntimeService({
+        ...fixture,
+        operatorLucid: independentOperatorLucid,
+      });
+
+      const daPayloadCountBeforeCandidate = await countDaPayloadRows();
+      const resumeV1Spy = vi.spyOn(MidgardMpf, "resumeParkedOverlay");
+      const resumeV2Spy = vi.spyOn(
+        MidgardMpf,
+        "resumeParkedEventFlatOverlayV2",
+      );
+      const discardSpy = vi.spyOn(
+        MidgardMpf.prototype,
+        "discardBlockOverlayIfActive",
+      );
+      const closeSpy = vi.spyOn(MidgardMpf.prototype, "close");
+      let independentlySubmittedHeaderHash = "";
+      let independentlySubmittedBlockEndTimeMs = 0;
+      let daPayloadCountBeforeT2Decision = -1;
+      let resumeV1Calls = 0;
+      let resumeV2Calls = 0;
+      let discardInstances: readonly MidgardMpf[] = [];
+      let closeInstances: readonly MidgardMpf[] = [];
+      const speculative = await (async () => {
+        try {
+          return await runSpeculativeWorkerWithInstruction({
+            fixture,
+            lucidService,
+            watermarks,
+            onReady: (candidate) =>
+              Effect.gen(function* () {
+                yield* assertSpeculativeDepositSnapshotIsMemoryOnly({
+                  baseBlockEndTimeMs: blockN.blockEndTimeMs,
+                  candidateEndTimeMs: candidate.endTimeMs,
+                });
+                expect(yield* Effect.promise(countDaPayloadRows)).toBe(
+                  daPayloadCountBeforeCandidate,
+                );
+                const confirmedNHeader = yield* Effect.promise(async () => {
+                  await fixture.operatorLucid.awaitTx(blockN.submittedTxHash);
+                  await runBlockConfirmation(
+                    globals,
+                    fixture.contracts,
+                    lucidService,
+                  );
+                  await runLocalFinalizationRecoveryWorker(
+                    globals,
+                    fixture.contracts,
+                    lucidService,
+                  );
+                  const confirmedN = await fetchLatestCommittedBlock(
+                    fixture.operatorLucid,
+                    fixture.contracts,
+                  );
+                  return Effect.runPromise(
+                    SDK.getHeaderFromStateQueueDatum(confirmedN.datum),
+                  );
+                });
+                daPayloadCountBeforeT2Decision =
+                  yield* Effect.promise(countDaPayloadRows);
+                // Confirmation and local finalization advance the emulator beyond
+                // the candidate's original scheduler evidence. T2 only requires a
+                // real foreign tail, so align the independent submitter and let the
+                // explicit drill use that same fresh valid end time.
+                let independentEndTimeMs = 0;
+                yield* Effect.promise(async () => {
+                  for (let attempt = 1; attempt <= 3; attempt += 1) {
+                    const beforeAlignment = await Effect.runPromise(
+                      independentLucidService.submitSlotSnapshot(),
+                    );
+                    independentEndTimeMs =
+                      beforeAlignment.observedAtMs +
+                      COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS +
+                      30_000;
+                    await alignCommitSchedulerBeforeTestWorker({
+                      fixture,
+                      lucidService: independentLucidService,
+                      targetEndTimeMs: independentEndTimeMs,
+                    });
+                    const afterAlignment = await Effect.runPromise(
+                      independentLucidService.submitSlotSnapshot(),
+                    );
+                    vi.setSystemTime(new Date(afterAlignment.observedAtMs));
+                    if (
+                      commitTimingBudget({
+                        checkpoint: "pre_witness",
+                        resolvedEndTimeMs: independentEndTimeMs,
+                        nowMs: afterAlignment.observedAtMs,
+                      }).satisfied
+                    ) {
+                      return;
+                    }
+                  }
+                  throw new Error(
+                    "T2 independent scheduler alignment repeatedly eroded the pre-witness budget",
+                  );
+                });
+                expect(
+                  commitTimingBudget({
+                    checkpoint: "pre_witness",
+                    resolvedEndTimeMs: independentEndTimeMs,
+                    nowMs: (yield* independentLucidService.submitSlotSnapshot())
+                      .observedAtMs,
+                  }).satisfied,
+                ).toBe(true);
+                const independent = yield* commitExplicitBlockHeaderProgram({
+                  utxosRoot: confirmedNHeader.utxosRoot,
+                  transactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+                  depositsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+                  withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+                  endTimeMs: independentEndTimeMs,
+                  l2TransactionCount: 0n,
+                  awaitConfirmation: true,
+                }).pipe(
+                  Effect.provideService(
+                    LucidService,
+                    independentLucidService as any,
+                  ),
+                  Effect.provideService(
+                    MidgardContracts,
+                    fixture.contracts as any,
+                  ),
+                  Effect.provideService(NodeConfig, testNodeConfig),
+                );
+                independentlySubmittedHeaderHash = independent.headerHash;
+                independentlySubmittedBlockEndTimeMs =
+                  independent.blockEndTimeMs;
+                const snapshot = yield* fetchStateQueueSnapshotProgram(
+                  lucidService.api,
+                  fixture.contracts.stateQueue,
+                  "commit_preflight",
+                );
+                const leaseResult =
+                  yield* StateQueueMutationLeasesDB.tryWithLease(
+                    "block_commitment",
+                    (leaseToken) =>
+                      decideSpeculativeInstructionForLiveTip({
+                        expectedHeaderHash: candidate.baseHeaderHash,
+                        liveTail: snapshot.tailCommitBase.utxo,
+                        submitInstruction: {
+                          type: "SubmitSpeculativeCandidate",
+                          confirmedBlock: snapshot.tailCommitBase.utxo,
+                          stateQueueLeaseToken: leaseToken,
+                          baseSnapshotId: snapshot.snapshotId,
+                          stateQueueHasUnmergedTail:
+                            snapshot.root.outRef !==
+                            snapshot.tailCommitBase.outRef,
+                        },
+                      }),
+                  );
+                if (leaseResult._tag === "Busy") {
+                  return yield* Effect.fail(
+                    new Error("T2 production decision could not acquire lease"),
+                  );
+                }
+                expect(leaseResult.value).toEqual({
+                  type: "InvalidateSpeculativeCandidate",
+                  reason: "T2",
+                });
+                return leaseResult.value;
+              }),
+          });
+        } finally {
+          resumeV1Calls = resumeV1Spy.mock.calls.length;
+          resumeV2Calls = resumeV2Spy.mock.calls.length;
+          discardInstances = [
+            ...(discardSpy.mock.contexts as readonly MidgardMpf[]),
+          ];
+          closeInstances = [
+            ...(closeSpy.mock.contexts as readonly MidgardMpf[]),
+          ];
+          resumeV1Spy.mockRestore();
+          resumeV2Spy.mockRestore();
+          discardSpy.mockRestore();
+          closeSpy.mockRestore();
+        }
+      })();
+      expect(resumeV1Calls).toBe(0);
+      expect(resumeV2Calls).toBe(0);
+      expect(discardInstances).toHaveLength(1);
+      expect(discardInstances[0]?.trieName).toBe("ledger");
+      expect(new Set(discardInstances).size).toBe(discardInstances.length);
+      expect(new Set(closeInstances).size).toBe(closeInstances.length);
+      expect(closeInstances.some((mpf) => mpf.trieName === "ledger")).toBe(
+        true,
+      );
+      expect(
+        closeInstances.some((mpf) => mpf.trieName === "transactions"),
+      ).toBe(true);
+      expect(
+        closeInstances.some(
+          (mpf) => mpf.trieName === "speculative-transactions",
+        ),
+      ).toBe(true);
+      expect(independentlySubmittedHeaderHash).not.toBe(
+        speculative.candidate.baseHeaderHash,
+      );
+      expect(speculative.output).toEqual({
+        type: "SpeculativeCandidateInvalidatedOutput",
+        candidateId: speculative.candidate.candidateId,
+        reason: "T2",
+      });
+      const pendingDeposits = await runNodeDatabaseEffect(
+        DepositsDB.retrievePendingHeaderEntriesUpTo(new Date(Date.now())),
+      );
+      expect(pendingDeposits).toHaveLength(1);
+      expect(
+        Option.isNone(
+          await runNodeDatabaseEffect(
+            PendingBlockFinalizationsDB.retrieveActive(),
+          ),
+        ),
+      ).toBe(true);
+      expect(daPayloadCountBeforeT2Decision).toBeGreaterThanOrEqual(0);
+      expect(await countDaPayloadRows()).toBe(daPayloadCountBeforeT2Decision);
+
+      const foreignTip = await fetchLatestCommittedBlock(
+        independentOperatorLucid,
+        fixture.contracts,
+      );
+      const foreignTipHeader = await Effect.runPromise(
+        SDK.getHeaderFromStateQueueDatum(foreignTip.datum),
+      );
+      expect(
+        await Effect.runPromise(SDK.hashBlockHeader(foreignTipHeader)),
+      ).toBe(independentlySubmittedHeaderHash);
+      await advanceEmulatorPastUnixTime(
+        fixture,
+        independentlySubmittedBlockEndTimeMs,
+      );
+      vi.setSystemTime(new Date(fixture.emulator.now()));
+      await submitDepositAndRefreshBarriers({
+        fixture,
+        lucidService,
+        globals,
+        lovelace: 14_000_000n,
+        projectToLedger: false,
+      });
+      const rebuilt = await runCommitWorkerUntilSubmitted({
+        fixture,
+        lucidService,
+        latestBlock: foreignTip,
+      });
+      const rebuiltJournal = await runNodeDatabaseEffect(
+        PendingBlockFinalizationsDB.retrieveByHeaderHash(
+          Buffer.from(rebuilt.submittedHeaderHash, "hex"),
+        ),
+      );
+      expect(
+        Option.isNone(
+          await runNodeDatabaseEffect(
+            ForeignTipReconciliationsDB.retrieveAwaitingByForeignHeaderHash(
+              independentlySubmittedHeaderHash,
+            ),
+          ),
+        ),
+      ).toBe(true);
+      const retainedForeignEvidence = await runNodeDatabaseEffect(
+        ForeignTipReconciliationsDB.retrieveByForeignHeaderHash(
+          independentlySubmittedHeaderHash,
+        ),
+      );
+      expect(Option.isSome(retainedForeignEvidence)).toBe(true);
+      if (Option.isSome(retainedForeignEvidence)) {
+        expect(
+          retainedForeignEvidence.value[
+            ForeignTipReconciliationsDB.Columns.STATUS
+          ],
+        ).toBe(ForeignTipReconciliationsDB.Status.Resolved);
+        expect(
+          retainedForeignEvidence.value[
+            ForeignTipReconciliationsDB.Columns.BLOCK_START_TIME
+          ].getTime(),
+        ).toBe(Number(foreignTipHeader.startTime));
+        expect(
+          retainedForeignEvidence.value[
+            ForeignTipReconciliationsDB.Columns.BLOCK_END_TIME
+          ].getTime(),
+        ).toBe(Number(foreignTipHeader.endTime));
+        expect(
+          retainedForeignEvidence.value[
+            ForeignTipReconciliationsDB.Columns.VERIFIED_DA_PAYLOAD_CBOR
+          ],
+        ).toBeNull();
+      }
+      expect(Option.isSome(rebuiltJournal)).toBe(true);
+      if (Option.isSome(rebuiltJournal)) {
+        expect(
+          rebuiltJournal.value[
+            PendingBlockFinalizationsDB.Columns.BASE_TAIL_HEADER_HASH
+          ].toString("hex"),
+        ).toBe(independentlySubmittedHeaderHash);
+        expect(
+          rebuiltJournal.value[
+            PendingBlockFinalizationsDB.Columns.BASE_UTXOS_ROOT
+          ],
+        ).toBe(foreignTipHeader.utxosRoot);
+      }
+    } finally {
+      if (previousMpfEngine === undefined) delete process.env.MPF_ENGINE;
+      else process.env.MPF_ENGINE = previousMpfEngine;
+      if (previousSpeculativeCommitBuild === undefined) {
+        delete process.env.SPECULATIVE_COMMIT_BUILD;
+      } else {
+        process.env.SPECULATIVE_COMMIT_BUILD = previousSpeculativeCommitBuild;
+      }
+    }
+  }, 300_000);
+
+  it("invalidates T3 for a late-visible deposit and includes it on rebuild", async () => {
+    const previousMpfEngine = process.env.MPF_ENGINE;
+    const previousSpeculativeCommitBuild = process.env.SPECULATIVE_COMMIT_BUILD;
+    process.env.MPF_ENGINE = "overlay";
+    process.env.SPECULATIVE_COMMIT_BUILD = "true";
+    try {
+      activeRuntimePaths = makeRuntimePaths();
+      await cleanupRuntimePaths(activeRuntimePaths);
+      await initializeNodeRuntime();
+      const fixture = await makeFixture();
+      await initializeProtocol(fixture);
+      const lucidService = await makeLucidRuntimeService(fixture);
+      const globals = await makeGlobalsService();
+      await advanceEmulatorPastLatestBlockEndTime(fixture);
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(fixture.emulator.now()));
+
+      await submitDepositAndRefreshBarriers({
+        fixture,
+        lucidService,
+        globals,
+        lovelace: 12_000_000n,
+      });
+      const blockNBase = await fetchLatestCommittedBlock(
+        fixture.operatorLucid,
+        fixture.contracts,
+      );
+      const blockN = await runCommitWorkerUntilSubmitted({
+        fixture,
+        lucidService,
+        latestBlock: blockNBase,
+      });
+      await advanceEmulatorPastUnixTime(fixture, blockN.blockEndTimeMs);
+      vi.setSystemTime(new Date(fixture.emulator.now()));
+      const { watermarks } = await submitDepositAndRefreshBarriers({
+        fixture,
+        lucidService,
+        globals,
+        lovelace: 13_000_000n,
+        projectToLedger: false,
+      });
+
+      const lateEventId = Buffer.from(
+        Data.to(
+          {
+            transactionId: "f3".repeat(32),
+            outputIndex: 0n,
+          },
+          SDK.OutputReference,
+        ),
+        "hex",
+      );
+      const speculative = await runSpeculativeWorkerWithInstruction({
+        fixture,
+        lucidService,
+        watermarks,
+        onReady: (candidate) =>
+          Effect.gen(function* () {
+            yield* assertSpeculativeDepositSnapshotIsMemoryOnly({
+              baseBlockEndTimeMs: blockN.blockEndTimeMs,
+              candidateEndTimeMs: candidate.endTimeMs,
+            });
+            const existingDeposits = yield* DepositsDB.retrieveAllEntries();
+            const template = existingDeposits.find(
+              (entry) =>
+                entry[DepositsDB.Columns.INCLUSION_TIME].getTime() >
+                blockN.blockEndTimeMs,
+            );
+            if (template === undefined) {
+              return yield* Effect.fail(
+                new Error("Missing N+1 deposit template for T3 injection"),
+              );
+            }
+            yield* DepositsDB.insertEntries([
+              {
+                ...template,
+                [DepositsDB.Columns.ID]: lateEventId,
+                [DepositsDB.Columns.INCLUSION_TIME]: new Date(
+                  candidate.endTimeMs - 1,
+                ),
+                [DepositsDB.Columns.DEPOSIT_L1_TX_HASH]: Buffer.alloc(32, 0xf3),
+                [DepositsDB.Columns.LEDGER_TX_ID]: Buffer.alloc(32, 0xf3),
+                [DepositsDB.Columns.PROJECTED_HEADER_HASH]: null,
+                [DepositsDB.Columns.STATUS]: DepositsDB.Status.Awaiting,
+              },
+            ]);
+            yield* Effect.promise(() =>
+              fixture.operatorLucid.awaitTx(blockN.submittedTxHash),
+            );
+            yield* Effect.promise(() =>
+              runBlockConfirmation(globals, fixture.contracts, lucidService),
+            );
+            const leaseToken = yield* StateQueueMutationLeasesDB.acquire({
+              holder: "speculative-emulator-t3",
+            });
+            const snapshot = yield* fetchStateQueueSnapshotProgram(
+              lucidService.api,
+              fixture.contracts.stateQueue,
+              "commit_preflight",
+            );
+            const localFinalizationBlock = yield* Ref.get(
+              globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK,
+            );
+            return {
+              type: "SubmitSpeculativeCandidate",
+              confirmedBlock: snapshot.tailCommitBase.utxo,
+              stateQueueLeaseToken: leaseToken,
+              baseSnapshotId: snapshot.snapshotId,
+              stateQueueHasUnmergedTail:
+                snapshot.root.outRef !== snapshot.tailCommitBase.outRef,
+              localFinalizationBlock:
+                localFinalizationBlock === ""
+                  ? undefined
+                  : localFinalizationBlock,
+            } satisfies SpeculativeCommitWorkerInstruction;
+          }),
+      });
+      expect(speculative.candidate.expectedUserEventCounts.deposits).toBe(1);
+      expect(speculative.output).toEqual({
+        type: "SpeculativeCandidateInvalidatedOutput",
+        candidateId: speculative.candidate.candidateId,
+        reason: "T3",
+      });
+
+      const confirmedN = await fetchLatestCommittedBlock(
+        fixture.operatorLucid,
+        fixture.contracts,
+      );
+      const rebuilt = await runCommitWorkerUntilSubmitted({
+        fixture,
+        lucidService,
+        latestBlock: confirmedN,
+      });
+      const rebuiltJournal = await runNodeDatabaseEffect(
+        PendingBlockFinalizationsDB.retrieveByHeaderHash(
+          Buffer.from(rebuilt.submittedHeaderHash, "hex"),
+        ),
+      );
+      expect(Option.isSome(rebuiltJournal)).toBe(true);
+      if (Option.isSome(rebuiltJournal)) {
+        expect(rebuiltJournal.value.depositEventIds).toHaveLength(2);
+        expect(
+          rebuiltJournal.value.depositEventIds.some((eventId) =>
+            eventId.equals(lateEventId),
+          ),
+        ).toBe(true);
+      }
+    } finally {
+      if (previousMpfEngine === undefined) delete process.env.MPF_ENGINE;
+      else process.env.MPF_ENGINE = previousMpfEngine;
+      if (previousSpeculativeCommitBuild === undefined) {
+        delete process.env.SPECULATIVE_COMMIT_BUILD;
+      } else {
+        process.env.SPECULATIVE_COMMIT_BUILD = previousSpeculativeCommitBuild;
+      }
+    }
+  }, 300_000);
 
   it("merges a committed deposit-only block into confirmed state and spawns settlement with real contracts", async () => {
     activeRuntimePaths = makeRuntimePaths();

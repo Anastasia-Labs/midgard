@@ -4,6 +4,7 @@ import {
   Data,
   fromHex,
   getAddressDetails,
+  Kupmios,
   LucidEvolution,
   PolicyId,
   Script,
@@ -44,6 +45,52 @@ export type BeaconUTxO = {
   assetName: string;
 };
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const validateProviderUtxos = (value: unknown): UTxO[] => {
+  if (!Array.isArray(value)) {
+    throw new Error("Provider UTxO result must be an array");
+  }
+  for (const [index, entry] of value.entries()) {
+    if (
+      !isRecord(entry) ||
+      typeof entry.txHash !== "string" ||
+      entry.txHash.length === 0 ||
+      typeof entry.outputIndex !== "number" ||
+      !Number.isSafeInteger(entry.outputIndex) ||
+      entry.outputIndex < 0 ||
+      typeof entry.address !== "string" ||
+      entry.address.length === 0 ||
+      !isRecord(entry.assets)
+    ) {
+      throw new Error(`Provider UTxO result has an invalid entry at ${index}`);
+    }
+    for (const [unit, quantity] of Object.entries(entry.assets)) {
+      if (unit.length === 0 || typeof quantity !== "bigint") {
+        throw new Error(
+          `Provider UTxO result has invalid assets at entry ${index}`,
+        );
+      }
+    }
+  }
+  return value as UTxO[];
+};
+
+const supportsKupmiosPolicyQuery = (lucid: LucidEvolution): boolean => {
+  const config = (lucid as { readonly config?: unknown }).config;
+  if (typeof config !== "function") {
+    return false;
+  }
+  const configured = (config as () => unknown).call(lucid);
+  return (
+    isRecord(configured) &&
+    configured.provider instanceof Kupmios &&
+    typeof (lucid as { readonly utxosAtWithUnit?: unknown }).utxosAtWithUnit ===
+      "function"
+  );
+};
+
 /**
  * Silently drops the UTxOs without proper authentication NFTs.
  */
@@ -53,22 +100,30 @@ export const utxosAtByNFTPolicyId = (
   policyId: PolicyId,
 ): Effect.Effect<BeaconUTxO[], LucidError> =>
   Effect.gen(function* () {
-    // Filter by the authentication NFT policy at the provider (Kupo
-    // `?policy_id=`) instead of fetching every UTxO at the address and
-    // filtering in memory. The linked-list spending addresses (e.g. the
-    // fraud-proof catalogue) are shared/unparametrised and accumulate nodes
-    // from every historical deployment; fetching all of them forces the
-    // provider to resolve hundreds of datums and blows its per-request
-    // timeout. A policy-scoped query only returns this deployment's nodes and
-    // only resolves their datums.
-    const allUTxOs = yield* Effect.tryPromise({
-      try: () => lucid.utxosAtWithUnit(addressOrCred, policyId),
+    // Kupmios deliberately supports a policy-only unit query (`?policy_id=`),
+    // which avoids resolving every historical datum at shared addresses.
+    // Other providers expose exact-unit semantics through the same Lucid
+    // method, so method presence alone must never select this optimization.
+    const policyScoped = supportsKupmiosPolicyQuery(lucid);
+    const providerResult: unknown = yield* Effect.tryPromise({
+      try: () =>
+        policyScoped
+          ? lucid.utxosAtWithUnit(addressOrCred, policyId)
+          : lucid.utxosAt(addressOrCred),
       catch: (e) => {
         return new LucidError({
           message: `Failed to fetch UTxOs at: ${addressOrCred}`,
           cause: e,
         });
       },
+    });
+    const allUTxOs = yield* Effect.try({
+      try: () => validateProviderUtxos(providerResult),
+      catch: (e) =>
+        new LucidError({
+          message: `Failed to fetch UTxOs at: ${addressOrCred}`,
+          cause: e,
+        }),
     });
 
     const nftEffects: Effect.Effect<BeaconUTxO, UnauthenticUtxoError>[] =

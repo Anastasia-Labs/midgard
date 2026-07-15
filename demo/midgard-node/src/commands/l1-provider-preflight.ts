@@ -53,6 +53,15 @@ export type L1ProviderPreflightReport = {
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
+const summarizeFetchFailure = (cause: unknown): string => {
+  const primary =
+    cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause);
+  const nested = cause instanceof Error ? cause.cause : undefined;
+  return summarizeProviderBody(
+    nested === undefined ? primary : `${primary}; cause=${String(nested)}`,
+  );
+};
+
 const joinUrl = (base: string, path: string): string =>
   `${base.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 
@@ -63,11 +72,21 @@ const fetchWithTimeout = async (
   timeoutMs: number,
 ): Promise<Response> => {
   const controller = new AbortController();
+  const upstreamSignal = init.signal;
+  const abortFromUpstream = () => controller.abort(upstreamSignal?.reason);
+  if (upstreamSignal?.aborted === true) {
+    abortFromUpstream();
+  } else {
+    upstreamSignal?.addEventListener("abort", abortFromUpstream, {
+      once: true,
+    });
+  }
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetchImpl(url, { ...init, signal: controller.signal });
   } finally {
     clearTimeout(timeout);
+    upstreamSignal?.removeEventListener("abort", abortFromUpstream);
   }
 };
 
@@ -170,7 +189,7 @@ const checkHttpOk = async ({
       degraded: false,
       latencyMs: Date.now() - startedAt,
       failureKind: "network_error",
-      bodySummary: summarizeProviderBody(String(cause)),
+      bodySummary: summarizeFetchFailure(cause),
     };
   }
 };
@@ -179,13 +198,14 @@ const checkKupmios = async (
   config: L1ProviderPreflightConfig,
   fetchImpl: FetchLike,
   nowMs: number,
+  signal?: AbortSignal,
 ): Promise<L1ProviderHealth> => {
   const kupo = await checkHttpOk({
     fetchImpl,
     source: "kupmios",
     endpoint: config.L1_KUPO_KEY,
     url: joinUrl(config.L1_KUPO_KEY, "/health"),
-    init: {},
+    init: { signal },
     timeoutMs: config.L1_PROVIDER_PREFLIGHT_TIMEOUT_MS,
     cooldownMs: config.L1_PROVIDER_RATE_LIMIT_COOLDOWN_MS,
     nowMs,
@@ -198,7 +218,7 @@ const checkKupmios = async (
     source: "kupmios",
     endpoint: config.L1_OGMIOS_KEY,
     url: joinUrl(config.L1_OGMIOS_KEY, "/health"),
-    init: {},
+    init: { signal },
     timeoutMs: config.L1_PROVIDER_PREFLIGHT_TIMEOUT_MS,
     cooldownMs: config.L1_PROVIDER_RATE_LIMIT_COOLDOWN_MS,
     nowMs,
@@ -219,6 +239,7 @@ const checkKupmios = async (
         fetchImpl,
         nowMs,
         timeoutMs: config.L1_PROVIDER_PREFLIGHT_TIMEOUT_MS,
+        signal,
       }),
     );
   } catch (cause) {
@@ -252,13 +273,15 @@ export const runL1ProviderPreflight = async ({
   config,
   fetchImpl = fetch,
   nowMs = Date.now(),
+  signal,
 }: {
   readonly config: L1ProviderPreflightConfig;
   readonly fetchImpl?: FetchLike;
   readonly nowMs?: number;
+  readonly signal?: AbortSignal;
 }): Promise<L1ProviderPreflightReport> => {
   const checks: Promise<L1ProviderHealth>[] = [
-    checkKupmios(config, fetchImpl, nowMs),
+    checkKupmios(config, fetchImpl, nowMs, signal),
   ];
 
   const sources = await Promise.all(checks);

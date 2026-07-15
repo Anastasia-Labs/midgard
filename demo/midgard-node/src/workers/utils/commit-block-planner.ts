@@ -82,6 +82,57 @@ export const DEFAULT_COMMIT_BATCH_BUDGET_LIMITS: CommitBatchBudgetLimits = {
   estimatedCommitBuildMsPerTx: 1,
 };
 
+export const MIN_COMMIT_BUILD_MS_PER_TX = 0.05;
+export const MAX_COMMIT_BUILD_MS_PER_TX = 50;
+
+export const clampCommitBuildMsPerTx = (value: number): number =>
+  Math.min(
+    MAX_COMMIT_BUILD_MS_PER_TX,
+    Math.max(MIN_COMMIT_BUILD_MS_PER_TX, value),
+  );
+
+export const updateCommitBuildEwma = ({
+  previousMsPerTx,
+  measuredBuildMs,
+  processedTxCount,
+  alpha,
+}: {
+  readonly previousMsPerTx: number;
+  readonly measuredBuildMs: number;
+  readonly processedTxCount: number;
+  readonly alpha: number;
+}): number => {
+  if (
+    !Number.isFinite(alpha) ||
+    alpha <= 0 ||
+    alpha > 1 ||
+    !Number.isFinite(measuredBuildMs) ||
+    measuredBuildMs < 0 ||
+    !Number.isSafeInteger(processedTxCount) ||
+    processedTxCount <= 0
+  ) {
+    return clampCommitBuildMsPerTx(previousMsPerTx);
+  }
+  const sample = clampCommitBuildMsPerTx(
+    measuredBuildMs / processedTxCount,
+  );
+  return clampCommitBuildMsPerTx(
+    alpha * sample + (1 - alpha) * previousMsPerTx,
+  );
+};
+
+export const calibratedCommitBuildMsPerTx = ({
+  msPerTxEwma,
+  safetyFactor,
+}: {
+  readonly msPerTxEwma: number;
+  readonly safetyFactor: number;
+}): number =>
+  clampCommitBuildMsPerTx(
+    msPerTxEwma *
+      (Number.isFinite(safetyFactor) && safetyFactor > 0 ? safetyFactor : 1),
+  );
+
 export type CurrentOperatorSchedulerWindow = {
   readonly schedulerOutRef: string;
   readonly operatorKeyHash: string;
@@ -309,7 +360,7 @@ export const establishEndTimeFromTxRequests = (
   candidateTxs: readonly EntryWithTimeStamp[],
 ): Option.Option<Date> =>
   candidateTxs.length > 0
-    ? Option.some(candidateTxs[0][TxColumns.TIMESTAMPTZ])
+    ? Option.some(candidateTxs[candidateTxs.length - 1][TxColumns.TIMESTAMPTZ])
     : Option.none();
 
 export const selectCommitTxCandidates = ({
@@ -419,16 +470,35 @@ export const planCommitBatchBudgets = ({
 }): PlannedCommitBatchSelection => {
   const selected: EntryWithTimeStamp[] = [];
   let stopReason: CommitBatchStopReason = "mempool_exhausted";
+  let selectedTxBytes = 0;
 
   for (const candidate of candidateSelection.candidateTxs) {
-    const next = [...selected, candidate];
-    const nextPlan = estimateCommitBatchPlan(next, limits, "mempool_exhausted");
+    const selectedTxCount = selected.length + 1;
+    const nextSelectedTxBytes =
+      selectedTxBytes + candidate[TxColumns.TX].length;
+    const nextPlan: CommitBatchPlan = {
+      selectedTxCount,
+      selectedTxBytes: nextSelectedTxBytes,
+      selectedLedgerOpCount:
+        selectedTxCount * limits.estimatedLedgerOpsPerTx,
+      selectedTransitionStepCount:
+        selectedTxCount * limits.estimatedTransitionStepsPerTx,
+      estimatedDaPayloadBytes:
+        nextSelectedTxBytes +
+        selectedTxCount * limits.estimatedDaOverheadBytesPerTx,
+      estimatedCommitTxBytes:
+        limits.estimatedCommitTxOverheadBytes + selectedTxCount * 32,
+      estimatedCommitBuildMs:
+        selectedTxCount * limits.estimatedCommitBuildMsPerTx,
+      stopReason: "mempool_exhausted",
+    };
     const exceeded = firstExceededBudget(nextPlan, limits);
     if (exceeded !== null) {
       stopReason = exceeded;
       break;
     }
     selected.push(candidate);
+    selectedTxBytes = nextSelectedTxBytes;
   }
 
   const candidateTxs =

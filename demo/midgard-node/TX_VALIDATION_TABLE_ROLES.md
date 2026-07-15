@@ -1,19 +1,20 @@
 # Tx-Validation Table Roles
 
-This document describes the tables that exist on the current `tx-validation`
-branch but were not present on `staging`.
+This document describes the core transaction-validation, pending-finalization,
+and migration tables in the current node schema. It is a focused map rather
+than a complete list of every table added by the versioned migration set.
 
-The goal is to make their current roles explicit for developers working on
-the node state machine. This is descriptive documentation for the current
-implementation. Where a table is only partially wired, or where production
-readiness plans identify missing invariants, those gaps are called out
-separately.
+The goal is to make their current roles explicit for developers working on the
+node state machine. Where a table is only partially wired, the gap is called
+out directly and linked to current code instead of retired implementation-plan
+documents.
 
 ## Scope
 
 Covered tables:
 
 - `blocks`
+- `mempool`
 - `processed_mempool`
 - `mempool_tx_deltas`
 - `tx_rejections`
@@ -21,51 +22,62 @@ Covered tables:
 - `pending_block_finalization_deposits`
 - `pending_block_finalization_txs`
 - `tx_admissions`
+- `tx_admission_payloads`
 - `local_mutation_jobs`
 - `schema_migrations`
 - `schema_migration_events`
 
 ## High-Level Model
 
-These tables mostly support four changes from the staging model:
+These tables support four runtime concerns:
 
 - durable transaction admission and validation tracking;
 - durable pending block submission and local-finalization recovery;
 - explicit migration metadata and fail-closed schema verification;
 - local mutation accountability after L1 submission or merge side effects.
 
-The current branch no longer relies on startup-time `CREATE TABLE IF NOT
+The current node no longer relies on startup-time `CREATE TABLE IF NOT
 EXISTS` as the production schema path. The long-running node verifies that
 explicit migrations have already installed the exact expected schema
-([init.ts](src/database/init.ts#L6)). The migration manifest lists the
+([init.ts](src/database/init.ts)). The migration manifest lists the
 application tables and indexes that must exist
-([migrations/index.ts](src/database/migrations/index.ts#L51)).
+([migrations/index.ts](src/database/migrations/index.ts)).
 
 The initial schema creates most of the application tables
-([0001_initial_schema.sql](src/database/migrations/sql/0001_initial_schema.sql#L11)).
+([0001_initial_schema.sql](src/database/migrations/sql/0001_initial_schema.sql)).
 Durable transaction admissions are added in migration 2
-([0002_durable_tx_admissions.sql](src/database/migrations/sql/0002_durable_tx_admissions.sql#L13)).
+([0002_durable_tx_admissions.sql](src/database/migrations/sql/0002_durable_tx_admissions.sql)).
 Local mutation jobs are added in migration 3
-([0003_local_mutation_jobs.sql](src/database/migrations/sql/0003_local_mutation_jobs.sql#L1)).
+([0003_local_mutation_jobs.sql](src/database/migrations/sql/0003_local_mutation_jobs.sql)).
+Migrations 4 through 12 add withdrawal events, richer pending-finalization
+payloads, state-queue leases, DA payloads, deposit submission attempts, forced
+transactions, and transition-trace journals. Those later tables are outside
+this focused map; the authoritative versioned list is `MIGRATIONS` in
+[`migrations/index.ts`](src/database/migrations/index.ts).
+Migrations 20 and 22 separate immutable admission payloads from hot lifecycle
+rows and make accepted `mempool` rows payload references while preserving the
+legacy/direct payload column.
 The migration runner creates `schema_migrations` and
 `schema_migration_events` as metadata tables
-([runner.ts](src/database/migrations/runner.ts#L64)).
+([runner.ts](src/database/migrations/runner.ts)).
 
 ## Table Map
 
-| Table                                 | Primary role                                                                                                                       |
-| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `blocks`                              | Local index from submitted state-queue header hash to included L2 tx ids.                                                          |
-| `processed_mempool`                   | Durable holding area for tx payloads already incorporated into the mempool MPT while waiting for a later submit/finalization path. |
-| `mempool_tx_deltas`                   | Per-tx spent/produced delta cache used to build MPT roots from accepted mempool txs.                                               |
-| `tx_rejections`                       | Durable rejection evidence for validation, malformed preprocessing, and tx-status responses.                                       |
-| `pending_block_finalizations`         | Single-active journal for submitted or potentially submitted block finalization and recovery.                                      |
-| `pending_block_finalization_deposits` | Ordered deposit-event membership for a pending block journal.                                                                      |
-| `pending_block_finalization_txs`      | Ordered tx-id membership for a pending block journal.                                                                              |
-| `tx_admissions`                       | Durable `/submit` admission queue and validation state ledger.                                                                     |
-| `local_mutation_jobs`                 | Durable record of local side-effect jobs that must not be silently lost after L1 submission or merge.                              |
-| `schema_migrations`                   | Ledger of successfully applied schema migrations.                                                                                  |
-| `schema_migration_events`             | Audit trail of migration attempts and outcomes.                                                                                    |
+| Table                                 | Primary role                                                                                                                             |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `blocks`                              | Local index from submitted state-queue header hash to included L2 tx ids.                                                                |
+| `mempool`                             | Live accepted-tx membership; legacy/direct rows may carry bytes, while admission-backed rows resolve bytes from `tx_admission_payloads`. |
+| `processed_mempool`                   | Durable holding area for tx payloads already incorporated into the mempool MPT while waiting for a later submit/finalization path.       |
+| `mempool_tx_deltas`                   | Per-tx spent/produced delta cache used to build MPT roots from accepted mempool txs.                                                     |
+| `tx_rejections`                       | Durable rejection evidence for validation, malformed preprocessing, and tx-status responses.                                             |
+| `pending_block_finalizations`         | Single-active journal for submitted or potentially submitted block finalization and recovery.                                            |
+| `pending_block_finalization_deposits` | Ordered deposit-event membership for a pending block journal.                                                                            |
+| `pending_block_finalization_txs`      | Ordered tx-id membership for a pending block journal.                                                                                    |
+| `tx_admissions`                       | Durable `/submit` admission queue and validation state ledger.                                                                           |
+| `tx_admission_payloads`               | Immutable canonical bytes and content hash for durable admissions; also the normal payload source for accepted `mempool` membership.     |
+| `local_mutation_jobs`                 | Durable record of local side-effect jobs that must not be silently lost after L1 submission or merge.                                    |
+| `schema_migrations`                   | Ledger of successfully applied schema migrations.                                                                                        |
+| `schema_migration_events`             | Audit trail of migration attempts and outcomes.                                                                                          |
 
 ## `blocks`
 
@@ -77,10 +89,10 @@ transaction ids that were locally finalized for that header.
 
 The merge flow uses this table to find the tx payloads for the oldest queued
 state-queue block before updating `confirmed_ledger`
-([merge-to-confirmed-state.ts](src/transactions/state-queue/merge-to-confirmed-state.ts#L521)).
+([merge-to-confirmed-state.ts](src/transactions/state-queue/merge-to-confirmed-state.ts)).
 After the merge side effects update `confirmed_ledger`, the block links for
 that header are removed
-([merge-to-confirmed-state.ts](src/transactions/state-queue/merge-to-confirmed-state.ts#L1475)).
+([merge-to-confirmed-state.ts](src/transactions/state-queue/merge-to-confirmed-state.ts)).
 
 ### Stored Information
 
@@ -97,34 +109,34 @@ Indexes:
 - `idx_blocks_tx_id` on `tx_id`
 
 Defined in
-[0001_initial_schema.sql](src/database/migrations/sql/0001_initial_schema.sql#L11).
+[0001_initial_schema.sql](src/database/migrations/sql/0001_initial_schema.sql).
 
 The database adapter rejects inserting a tx id under a different header if the
 tx id is already present
-([blocks.ts](src/database/blocks.ts#L33)). Inserts de-duplicate input tx ids
+([blocks.ts](src/database/blocks.ts)). Inserts de-duplicate input tx ids
 and use `ON CONFLICT (tx_id) DO NOTHING` only after checking that an existing
 row is linked to the same header
-([blocks.ts](src/database/blocks.ts#L89)).
+([blocks.ts](src/database/blocks.ts)).
 
 ### Writers
 
 `blocks` is written during local commit finalization, in the same SQL
 transaction that inserts accepted txs into `immutable` and clears the
 corresponding `mempool` rows
-([commit-submission.ts](src/workers/utils/commit-submission.ts#L157),
-[commit-submission.ts](src/workers/utils/commit-submission.ts#L177)).
+([commit-submission.ts](src/workers/utils/commit-submission.ts),
+[commit-submission.ts](src/workers/utils/commit-submission.ts)).
 
 ### Readers
 
 Readers include:
 
 - merge replay, through `fetchFirstBlockTxs`
-  ([transactions/utils.ts](src/transactions/utils.ts#L472));
+  ([transactions/utils.ts](src/transactions/utils.ts));
 - the listen router block lookup path
-  ([listen-router.ts](src/commands/listen-router.ts#L555));
+  ([listen-router.ts](src/commands/listen-router.ts));
 - the `audit-blocks-immutable` command, which validates `blocks` to
   `immutable` linkage
-  ([audit-blocks-immutable.ts](src/commands/audit-blocks-immutable.ts#L59)).
+  ([audit-blocks-immutable.ts](src/commands/audit-blocks-immutable.ts)).
 
 ### Lifecycle
 
@@ -158,11 +170,51 @@ Known gaps:
 - `blocks` has no per-header `ordinal`. `height` is insertion order, not an
   explicit block-local ordering primitive.
 - `retrieveTxHashesByHeaderHash` has no `ORDER BY`
-  ([blocks.ts](src/database/blocks.ts#L123)), so block tx order is not
-  durably represented by this table.
-- Production readiness notes call out the need for explicit ordinals and
-  deterministic retrieval
-  ([02-atomic-recoverable-ledger-mutations.md](production-readiness-plans/02-atomic-recoverable-ledger-mutations.md#L972)).
+  ([blocks.ts](src/database/blocks.ts)), so block tx order is not
+  durably represented by this table. A future schema change needs explicit
+  per-header ordinals and deterministic retrieval.
+
+## `mempool`
+
+### Purpose
+
+`mempool` is the live membership set for accepted L2 transactions awaiting a
+commit path. Migration 22 makes its legacy `tx` column nullable. Normal durable
+admission acceptance writes only `tx_id`; canonical bytes remain in
+`tx_admission_payloads`. Legacy and direct administrative writers keep storing
+physical bytes in `mempool.tx`.
+
+Every adapter read resolves
+`COALESCE(mempool.tx, tx_admission_payloads.tx_canonical_cbor)` through a left
+join. A row with neither source is an integrity failure, including page,
+single-id, batch-id, commit-candidate, and address-history reads. Acceptance is
+also fail-closed: membership insertion and the terminal admission update both
+require the durable payload row and verify exact affected-row counts inside the
+same transaction.
+
+### Stored Information
+
+- `tx_id BYTEA PRIMARY KEY`
+- `tx BYTEA` for legacy/direct payloads; normally `NULL` for admission-backed
+  accepted rows
+- `time_stamp_tz TIMESTAMPTZ NOT NULL DEFAULT NOW()`
+
+The keyset index is `(time_stamp_tz, tx_id)`. Migration 22 changes only column
+nullability; it deliberately preserves the table shape for rolling-upgrade and
+direct-writer compatibility.
+
+### Relationships And Invariants
+
+- An admission-backed membership row must have a matching
+  `tx_admission_payloads` row.
+- A direct/legacy row may have no admission row, but must carry `mempool.tx`.
+- If both payload sources exist, the legacy physical value has precedence for
+  compatibility.
+- Missing both payload sources is not an empty or skipped transaction; readers
+  fail closed.
+- Accepted membership, ledger effects, consumed-deposit updates, and terminal
+  admission state remain one synchronous SQL transaction. Derived delta and
+  address-history projection use the bounded write-behind path.
 
 ## `processed_mempool`
 
@@ -189,22 +241,22 @@ Index:
 - `idx_processed_mempool_time_stamp_tz` on `time_stamp_tz`
 
 Defined in
-[0001_initial_schema.sql](src/database/migrations/sql/0001_initial_schema.sql#L95).
+[0001_initial_schema.sql](src/database/migrations/sql/0001_initial_schema.sql).
 The adapter is a thin wrapper around the generic tx table helpers
-([processedMempool.ts](src/database/processedMempool.ts#L6)).
+([processedMempool.ts](src/database/processedMempool.ts)).
 
 ### Writers
 
 `processed_mempool` is written by `skippedSubmissionProgram`, which transfers
 processed txs from `mempool` when a commit cannot yet be submitted because no
 confirmed predecessor block is available
-([commit-submission.ts](src/workers/utils/commit-submission.ts#L289)).
+([commit-submission.ts](src/workers/utils/commit-submission.ts)).
 
 The main commit worker reaches this path after `processMpts` has already
 applied the txs to the persistent mempool MPT and discovered that
 `availableConfirmedBlock === ""`
-([commit-block-header.ts](src/workers/commit-block-header.ts#L922),
-[commit-block-header.ts](src/workers/commit-block-header.ts#L958)).
+([commit-block-header.ts](src/workers/commit-block-header.ts),
+[commit-block-header.ts](src/workers/commit-block-header.ts)).
 
 ### Readers
 
@@ -212,12 +264,12 @@ Readers include:
 
 - `establishEndTimeFromTxRequests`, which uses the oldest deferred payload when
   there are no live `mempool` rows
-  ([commit-block-header.ts](src/workers/commit-block-header.ts#L203));
+  ([commit-block-header.ts](src/workers/commit-block-header.ts));
 - local block finalization, which folds deferred payloads into successful
   commit batches
-  ([commit-submission.ts](src/workers/utils/commit-submission.ts#L148));
+  ([commit-submission.ts](src/workers/utils/commit-submission.ts));
 - `/tx-status`, which reports whether a tx is in processed mempool
-  ([listen-router.ts](src/commands/listen-router.ts#L355)).
+  ([listen-router.ts](src/commands/listen-router.ts)).
 
 ### Lifecycle
 
@@ -228,7 +280,7 @@ Readers include:
 4. On a later successful submission/local finalization path, deferred rows are
    combined with current mempool rows and inserted into `immutable`/`blocks`.
 5. `processed_mempool` is cleared after local finalization
-   ([commit-submission.ts](src/workers/utils/commit-submission.ts#L186)).
+   ([commit-submission.ts](src/workers/utils/commit-submission.ts)).
 
 ### Relationships
 
@@ -252,9 +304,8 @@ Known gaps:
 
 - There is no per-header or root fingerprint in `processed_mempool`.
 - The finalization path clears the whole table rather than only planned tx ids.
-- Readiness plans call out the need to compare persistent mempool trie state
-  with `processed_mempool`
-  ([04-startup-fail-closed-integrity.md](production-readiness-plans/04-startup-fail-closed-integrity.md#L592)).
+- Startup integrity still needs to compare persistent mempool trie state with
+  `processed_mempool` explicitly.
 
 ## `mempool_tx_deltas`
 
@@ -273,30 +324,30 @@ Schema:
 - `produced_cbor BYTEA NOT NULL`
 
 Defined in
-[0001_initial_schema.sql](src/database/migrations/sql/0001_initial_schema.sql#L127).
+[0001_initial_schema.sql](src/database/migrations/sql/0001_initial_schema.sql).
 
 `spent_cbor` encodes an array of outref bytes. `produced_cbor` encodes an array
 of `[outref, output]` byte pairs. The adapter decodes CBOR strictly and rejects
 trailing bytes, undefined values, indefinite encoding, and duplicate map keys
-([mempoolTxDeltas.ts](src/database/mempoolTxDeltas.ts#L12),
-[mempoolTxDeltas.ts](src/database/mempoolTxDeltas.ts#L40)).
+([mempoolTxDeltas.ts](src/database/mempoolTxDeltas.ts),
+[mempoolTxDeltas.ts](src/database/mempoolTxDeltas.ts)).
 
 ### Writers
 
 `MempoolDB.insert` and `MempoolDB.insertMultiple` write deltas in the same SQL
 transaction that inserts the tx into `mempool`, updates `mempool_ledger`, marks
 consumed deposits, and writes address history
-([mempool.ts](src/database/mempool.ts#L29),
-[mempool.ts](src/database/mempool.ts#L61)).
+([mempool.ts](src/database/mempool.ts),
+[mempool.ts](src/database/mempool.ts)).
 
 ### Readers
 
 `processMpfs` reads deltas for the mempool tx ids it is about to include in an
 MPF build
-([mpf.ts](src/workers/utils/mpf.ts#L297)). If a delta is missing or invalid,
+([mpf.ts](src/workers/utils/mpf.ts)). If a delta is missing or invalid,
 the commit path has to fall back to resolving the tx effect, or reject the tx
 depending on the decoding outcome
-([mpf.ts](src/workers/utils/mpf.ts#L307)).
+([mpf.ts](src/workers/utils/mpf.ts)).
 
 ### Lifecycle
 
@@ -305,9 +356,9 @@ depending on the decoding outcome
 3. Its delta is upserted into `mempool_tx_deltas`.
 4. The commitment worker reads the delta to apply MPT batch operations.
 5. When txs are cleared from `mempool`, their deltas are also cleared
-   ([mempool.ts](src/database/mempool.ts#L138)).
+   ([mempool.ts](src/database/mempool.ts)).
 6. A full `mempool` clear also clears all deltas
-   ([mempool.ts](src/database/mempool.ts#L146)).
+   ([mempool.ts](src/database/mempool.ts)).
 
 ### Relationships
 
@@ -331,8 +382,8 @@ Known gaps:
 - When a tx is transferred into `processed_mempool`, the delta is cleared
   because the MPT already contains the tx effects. That leaves no SQL delta
   evidence for replay unless it can be reconstructed from payloads.
-- Production readiness plans classify orphan deltas as ambiguous/corrupt state
-  ([06-empty-ledger-mpt-authority-revision-plan.md](production-readiness-plans/06-empty-ledger-mpt-authority-revision-plan.md#L337)).
+- Orphan deltas remain ambiguous state and should fail closed during integrity
+  checking.
 
 ## `tx_rejections`
 
@@ -357,12 +408,12 @@ Indexes:
 - `idx_tx_rejections_created_at`
 
 Migration 2 adds a unique index on `tx_id`
-([0002_durable_tx_admissions.sql](src/database/migrations/sql/0002_durable_tx_admissions.sql#L75)).
+([0002_durable_tx_admissions.sql](src/database/migrations/sql/0002_durable_tx_admissions.sql)).
 
 Defined initially in
-[0001_initial_schema.sql](src/database/migrations/sql/0001_initial_schema.sql#L134).
+[0001_initial_schema.sql](src/database/migrations/sql/0001_initial_schema.sql).
 The adapter supports insert, insertMany, lookup by tx id, pruning, and clear
-([txRejections.ts](src/database/txRejections.ts#L52)).
+([txRejections.ts](src/database/txRejections.ts)).
 
 ### Writers
 
@@ -370,19 +421,19 @@ Writers include:
 
 - `TxAdmissionsDB.markRejected`, which writes `tx_rejections` and transitions
   `tx_admissions` in one transaction
-  ([txAdmissions.ts](src/database/txAdmissions.ts#L371));
+  ([txAdmissions.ts](src/database/txAdmissions.ts));
 - commitment preprocessing for malformed mempool txs
-  ([mpf.ts](src/workers/utils/mpf.ts#L399));
+  ([mpf.ts](src/workers/utils/mpf.ts));
 - local submit tooling that records immediate local rejection evidence
-  ([submit-l2-transfer.ts](src/commands/submit-l2-transfer.ts#L888)).
+  ([submit-l2-transfer.ts](src/commands/submit-l2-transfer.ts)).
 
 ### Readers
 
 `/tx-status` reads `tx_rejections` first to report rejection metadata
-([listen-router.ts](src/commands/listen-router.ts#L355)).
+([listen-router.ts](src/commands/listen-router.ts)).
 
 The retention sweeper prunes old rejection rows
-([retention-sweeper.ts](src/fibers/retention-sweeper.ts#L26)).
+([retention-sweeper.ts](src/fibers/retention-sweeper.ts)).
 
 ### Lifecycle
 
@@ -412,9 +463,8 @@ Known gaps:
 - `TxAdmissionsDB.markRejected` has stricter idempotent conflict semantics than
   direct `TxRejectionsDB.insertMany` callers. Direct callers can hit uniqueness
   conflicts unless their call path already prevents duplicates.
-- Startup readiness plans call contradictory rejection state an integrity
-  problem
-  ([04-startup-fail-closed-integrity.md](production-readiness-plans/04-startup-fail-closed-integrity.md#L516)).
+- Contradictory accepted/rejected placement is an integrity error and should
+  block a clean startup classification.
 
 ## `pending_block_finalizations`
 
@@ -430,14 +480,20 @@ state machine tying together:
 - crash recovery after submission or confirmation.
 
 At most one active pending-finalization record may exist at a time
-([pendingBlockFinalizations.ts](src/database/pendingBlockFinalizations.ts#L41)).
+([pendingBlockFinalizations.ts](src/database/pendingBlockFinalizations.ts)).
 
 ### Stored Information
 
-Schema:
+Principal lifecycle columns:
 
 - `header_hash BYTEA PRIMARY KEY`
+- `header_cbor BYTEA NOT NULL`
 - `submitted_tx_hash BYTEA UNIQUE`
+- `state_queue_lease_token`, base snapshot/tail identity, and base root columns
+- expected UTxO, forced-transaction, transaction, deposit, withdrawal,
+  transition-trace, and event-to-step roots
+- expected per-source, total-event, and transition-step counts
+- `block_start_time TIMESTAMPTZ NOT NULL`
 - `block_end_time TIMESTAMPTZ NOT NULL`
 - `status TEXT NOT NULL`
 - `observed_confirmed_at_ms BIGINT`
@@ -459,51 +515,54 @@ Indexes:
   active statuses;
 - `idx_pending_block_finalizations_status`.
 
-Defined in
-[0001_initial_schema.sql](src/database/migrations/sql/0001_initial_schema.sql#L157).
+The base table is defined in
+[0001_initial_schema.sql](src/database/migrations/sql/0001_initial_schema.sql);
+migrations 5, 10, and 12 add the current snapshot, payload, forced-root,
+trace-root, header-CBOR, and count commitments.
 
 ### Writers And Transitions
 
 The adapter owns the status transitions:
 
 - `preparePendingSubmission`: creates a pending record before submission and
-  inserts ordered deposit/tx members
-  ([pendingBlockFinalizations.ts](src/database/pendingBlockFinalizations.ts#L226));
+  inserts the full ordered source-event, L2 transaction, UTxO, transition-trace,
+  and event-to-step snapshot
+  ([pendingBlockFinalizations.ts](src/database/pendingBlockFinalizations.ts));
 - `markSubmitted`: `pending_submission` to
   `submitted_local_finalization_pending`
-  ([pendingBlockFinalizations.ts](src/database/pendingBlockFinalizations.ts#L294));
+  ([pendingBlockFinalizations.ts](src/database/pendingBlockFinalizations.ts));
 - `markLocalFinalizationComplete`:
   `submitted_local_finalization_pending` to `submitted_unconfirmed`
-  ([pendingBlockFinalizations.ts](src/database/pendingBlockFinalizations.ts#L324));
+  ([pendingBlockFinalizations.ts](src/database/pendingBlockFinalizations.ts));
 - `markObservedWaitingStability`: active states to
   `observed_waiting_stability`
-  ([pendingBlockFinalizations.ts](src/database/pendingBlockFinalizations.ts#L356));
+  ([pendingBlockFinalizations.ts](src/database/pendingBlockFinalizations.ts));
 - `reviveAbandonedCanonical`: abandoned to observed when L1 proves it canonical
-  ([pendingBlockFinalizations.ts](src/database/pendingBlockFinalizations.ts#L399));
+  ([pendingBlockFinalizations.ts](src/database/pendingBlockFinalizations.ts));
 - `markFinalized`: submitted/observed to `finalized`
-  ([pendingBlockFinalizations.ts](src/database/pendingBlockFinalizations.ts#L432));
+  ([pendingBlockFinalizations.ts](src/database/pendingBlockFinalizations.ts));
 - `markAbandoned`: active states to `abandoned`
-  ([pendingBlockFinalizations.ts](src/database/pendingBlockFinalizations.ts#L463)).
+  ([pendingBlockFinalizations.ts](src/database/pendingBlockFinalizations.ts)).
 
 Commit construction prepares the journal before signing/submission
-([commit-block-header.ts](src/workers/commit-block-header.ts#L537),
-[commit-block-header.ts](src/workers/commit-block-header.ts#L641)).
+([commit-block-header.ts](src/workers/commit-block-header.ts),
+[commit-block-header.ts](src/workers/commit-block-header.ts)).
 Submission success marks it submitted
-([commit-block-header.ts](src/workers/commit-block-header.ts#L721)).
+([commit-block-header.ts](src/workers/commit-block-header.ts)).
 Local finalization marks it locally complete
-([commit-submission.ts](src/workers/utils/commit-submission.ts#L232)).
+([commit-submission.ts](src/workers/utils/commit-submission.ts)).
 Confirmation observes, finalizes, or abandons it
-([block-confirmation.ts](src/fibers/block-confirmation.ts#L90)).
+([block-confirmation.ts](src/fibers/block-confirmation.ts)).
 
 ### Readers
 
 Readers include:
 
 - confirmation, which passes the active pending block to the worker
-  ([block-confirmation.ts](src/fibers/block-confirmation.ts#L198));
+  ([block-confirmation.ts](src/fibers/block-confirmation.ts));
 - startup, which hydrates active recovery state and revives canonical abandoned
   rows where needed
-  ([listen-startup.ts](src/commands/listen-startup.ts#L95));
+  ([listen-startup.ts](src/commands/listen-startup.ts));
 - readiness, indirectly through local-finalization globals and active recovery
   state.
 
@@ -525,8 +584,8 @@ Typical successful tx-backed path:
 
 ### Relationships
 
-- Parent table for `pending_block_finalization_deposits`.
-- Parent table for `pending_block_finalization_txs`.
+- Parent table for the deposit, withdrawal, forced-transaction, L2 transaction,
+  UTxO, transition-trace, and event-to-step journal tables.
 - References L1 state queue through `header_hash` and `submitted_tx_hash`.
 - Coordinates local SQL state in `immutable`, `blocks`, `deposits_utxos`,
   `mempool`, and `processed_mempool`.
@@ -543,10 +602,9 @@ Expected invariants:
 
 Known gaps:
 
-- The journal is a partial lifecycle record, not a complete mutation plan.
-  Production readiness notes call for richer fingerprints and replay/adoption
-  evidence
-  ([02-atomic-recoverable-ledger-mutations.md](production-readiness-plans/02-atomic-recoverable-ledger-mutations.md#L175)).
+- The journal now carries base/expected roots, the full header, source payload
+  hashes, UTxOs, and transition records, but it is not a complete executable
+  mutation plan for every SQL and MPF side effect.
 - It does not by itself prove MPT/SQL root consistency.
 
 ## `pending_block_finalization_deposits`
@@ -564,6 +622,11 @@ Schema:
 - `header_hash BYTEA NOT NULL`
 - `member_id BYTEA NOT NULL`
 - `ordinal INTEGER NOT NULL`
+- `payload_cbor BYTEA NOT NULL`
+- `payload_sha256 BYTEA NOT NULL`
+- `source_table TEXT NOT NULL`
+- `source_id BYTEA NOT NULL`
+- `source_time_stamp_tz TIMESTAMPTZ NOT NULL`
 - primary key `(header_hash, member_id)`
 - unique `(header_hash, ordinal)`
 
@@ -573,23 +636,24 @@ Foreign keys:
   `ON DELETE CASCADE`;
 - `member_id` references `deposits_utxos(event_id)` with `ON DELETE RESTRICT`.
 
-Defined in
-[0001_initial_schema.sql](src/database/migrations/sql/0001_initial_schema.sql#L175).
+The base membership is defined in
+[0001_initial_schema.sql](src/database/migrations/sql/0001_initial_schema.sql),
+and migration 5 adds the immutable payload/source snapshot columns.
 
 ### Writers
 
 Rows are inserted by `preparePendingSubmission` from `depositEventIds`
-([pendingBlockFinalizations.ts](src/database/pendingBlockFinalizations.ts#L266)).
+([pendingBlockFinalizations.ts](src/database/pendingBlockFinalizations.ts)).
 
 ### Readers
 
 Rows are read through `retrieveRecord`, which loads member ids ordered by
 `ordinal`
-([pendingBlockFinalizations.ts](src/database/pendingBlockFinalizations.ts#L75)).
+([pendingBlockFinalizations.ts](src/database/pendingBlockFinalizations.ts)).
 
 Deposit retention checks this table to avoid deleting deposit rows that are
 still referenced by pending-finalization membership
-([deposits.ts](src/database/deposits.ts#L637)).
+([deposits.ts](src/database/deposits.ts)).
 
 ### Lifecycle
 
@@ -617,9 +681,7 @@ Known gaps:
 
 - Deposit-only blocks may have deposit members but no `blocks` rows, so terminal
   retention cannot infer deposit lifecycle from `blocks`.
-- Retention planning explicitly calls out active pending-finalization membership
-  as a pruning blocker
-  ([08-state-aware-retention.md](production-readiness-plans/08-state-aware-retention.md#L695)).
+- Active pending-finalization membership is therefore a pruning blocker.
 
 ## `pending_block_finalization_txs`
 
@@ -635,6 +697,11 @@ Schema:
 - `header_hash BYTEA NOT NULL`
 - `member_id BYTEA NOT NULL`
 - `ordinal INTEGER NOT NULL`
+- `payload_cbor BYTEA NOT NULL`
+- `payload_sha256 BYTEA NOT NULL`
+- `source_table TEXT NOT NULL`
+- `source_id BYTEA NOT NULL`
+- `source_time_stamp_tz TIMESTAMPTZ NOT NULL`
 - primary key `(header_hash, member_id)`
 - unique `(header_hash, ordinal)`
 
@@ -646,20 +713,21 @@ Foreign key:
 There is intentionally no database foreign key to `mempool`,
 `processed_mempool`, or `immutable`.
 
-Defined in
-[0001_initial_schema.sql](src/database/migrations/sql/0001_initial_schema.sql#L183).
+The base membership is defined in
+[0001_initial_schema.sql](src/database/migrations/sql/0001_initial_schema.sql),
+and migration 5 adds the immutable payload/source snapshot columns.
 
 ### Writers
 
 Rows are inserted by `preparePendingSubmission` from `mempoolTxIds`
-([pendingBlockFinalizations.ts](src/database/pendingBlockFinalizations.ts#L275)).
+([pendingBlockFinalizations.ts](src/database/pendingBlockFinalizations.ts)).
 Tx-backed commit preparation passes ids from `processedMempoolTxs`
-([commit-block-header.ts](src/workers/commit-block-header.ts#L641)).
+([commit-block-header.ts](src/workers/commit-block-header.ts)).
 
 ### Readers
 
 Rows are read through `retrieveRecord`, ordered by `ordinal`
-([pendingBlockFinalizations.ts](src/database/pendingBlockFinalizations.ts#L75)).
+([pendingBlockFinalizations.ts](src/database/pendingBlockFinalizations.ts)).
 
 ### Lifecycle
 
@@ -697,8 +765,10 @@ Known gaps:
 ### Purpose
 
 `tx_admissions` is the durable `/submit` admission queue and validation status
-ledger. It replaced the older in-memory-only submission queue for production
-reliability.
+ledger. Its immutable transaction bytes live in `tx_admission_payloads`, so
+queued → validating → terminal lease updates do not rewrite the large payload.
+Together they replaced the older in-memory-only submission queue for
+production reliability.
 
 It answers questions such as:
 
@@ -711,14 +781,15 @@ It answers questions such as:
 ### Stored Information
 
 Migration 2 creates enum `tx_admission_status` and table `tx_admissions`
-([0002_durable_tx_admissions.sql](src/database/migrations/sql/0002_durable_tx_admissions.sql#L13)).
+([0002_durable_tx_admissions.sql](src/database/migrations/sql/0002_durable_tx_admissions.sql)).
+Migration 20 moves the immutable payload columns to
+`tx_admission_payloads`
+([0020_tx_admission_payloads.sql](src/database/migrations/sql/0020_tx_admission_payloads.sql)).
 
 Columns:
 
 - `tx_id BYTEA PRIMARY KEY CHECK (octet_length(tx_id) = 32)`
-- `tx_canonical_cbor BYTEA NOT NULL`
-- `tx_canonical_cbor_sha256 BYTEA NOT NULL`
-- `arrival_seq BIGSERIAL UNIQUE NOT NULL`
+- `arrival_seq BIGSERIAL NOT NULL`
 - `status tx_admission_status NOT NULL`
 - `first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`
 - `last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`
@@ -734,6 +805,12 @@ Columns:
 - `submit_source TEXT NOT NULL`
 - `request_count BIGINT NOT NULL DEFAULT 1`
 
+`tx_admission_payloads` columns:
+
+- `tx_id BYTEA PRIMARY KEY REFERENCES tx_admissions(tx_id) ON DELETE CASCADE`
+- `tx_canonical_cbor BYTEA NOT NULL`
+- `tx_canonical_cbor_sha256 BYTEA NOT NULL`
+
 Statuses:
 
 - `queued`
@@ -746,58 +823,58 @@ Submit sources:
 - `native`
 - `backfill`
 
-Indexes:
+Indexes after migration 21:
 
-- `idx_tx_admissions_dequeue` on `(next_attempt_at, arrival_seq)` for queued
-  or validating rows;
-- `idx_tx_admissions_status_updated` on `(status, updated_at)`;
-- `idx_tx_admissions_lease` on `lease_expires_at` for validating rows.
+- `idx_tx_admissions_queued_arrival` on `(arrival_seq, tx_id)` for queued rows;
+- `idx_tx_admissions_lease` on `lease_expires_at` for validating rows;
+- the primary-key index on `tx_id`.
 
 Important check constraints enforce lease/status consistency, terminal status
 timestamps, and rejection metadata consistency
-([0002_durable_tx_admissions.sql](src/database/migrations/sql/0002_durable_tx_admissions.sql#L20)).
+([0002_durable_tx_admissions.sql](src/database/migrations/sql/0002_durable_tx_admissions.sql)).
 
 ### Writers
 
 `/submit` writes admissions through `TxAdmissionsDB.admit`
-([listen-router.ts](src/commands/listen-router.ts#L1056)).
+([listen-router.ts](src/commands/listen-router.ts)).
 `admit` is idempotent for the same tx id and same normalized bytes, increments
 `request_count` on duplicates, and rejects same tx id with different bytes
-([txAdmissions.ts](src/database/txAdmissions.ts#L127)).
+([txAdmissions.ts](src/database/txAdmissions.ts)).
 
 The tx queue processor:
 
 - requeues expired leases
-  ([tx-queue-processor.ts](src/fibers/tx-queue-processor.ts#L368));
+  ([tx-queue-processor.ts](src/fibers/tx-queue-processor.ts));
 - claims ordered batches with a lease
-  ([tx-queue-processor.ts](src/fibers/tx-queue-processor.ts#L412));
+  ([tx-queue-processor.ts](src/fibers/tx-queue-processor.ts));
 - marks accepted txs and writes them to `mempool`
-  ([tx-queue-processor.ts](src/fibers/tx-queue-processor.ts#L522),
-  [txAdmissions.ts](src/database/txAdmissions.ts#L325));
+  ([tx-queue-processor.ts](src/fibers/tx-queue-processor.ts),
+  [txAdmissions.ts](src/database/txAdmissions.ts));
 - marks rejected txs and writes `tx_rejections`
-  ([tx-queue-processor.ts](src/fibers/tx-queue-processor.ts#L506),
-  [txAdmissions.ts](src/database/txAdmissions.ts#L371));
+  ([tx-queue-processor.ts](src/fibers/tx-queue-processor.ts),
+  [txAdmissions.ts](src/database/txAdmissions.ts));
 - releases leased rows for retry after processor failure
-  ([tx-queue-processor.ts](src/fibers/tx-queue-processor.ts#L549)).
+  ([tx-queue-processor.ts](src/fibers/tx-queue-processor.ts)).
 
 ### Readers
 
 Readers include:
 
 - queue processor backlog and oldest queued age metrics
-  ([txAdmissions.ts](src/database/txAdmissions.ts#L456));
+  ([txAdmissions.ts](src/database/txAdmissions.ts));
 - readiness, which reports durable admission backlog and oldest age
-  ([listen-router.ts](src/commands/listen-router.ts#L455));
+  ([listen-router.ts](src/commands/listen-router.ts));
 - `/tx-status`, which includes admission status
-  ([listen-router.ts](src/commands/listen-router.ts#L356)).
+  ([listen-router.ts](src/commands/listen-router.ts)).
 
 ### Lifecycle
 
 1. `/submit` inserts a row with `status='queued'`.
 2. The queue processor claims a batch, moving rows to `validating` under a lease.
 3. Phase A and Phase B validation run.
-4. Accepted rows transition to `accepted`, and their txs are inserted into
-   `mempool`.
+4. Accepted rows transition to `accepted`, and a `tx_id` membership row is
+   inserted into `mempool`; the canonical bytes remain in
+   `tx_admission_payloads` and are resolved by joined reads.
 5. Rejected rows transition to `rejected`, with rejection metadata also written
    to `tx_rejections`.
 6. If validation infrastructure fails, rows are released back to `queued` with
@@ -827,10 +904,9 @@ Known gaps:
 
 - Some local submission paths can still bypass durable admission and write
   directly to mempool/rejection tables
-  ([submit-l2-transfer.ts](src/commands/submit-l2-transfer.ts#L856)).
-- Production readiness planning says admission history should not be generically
-  pruned
-  ([01-durable-submission-admission.md](production-readiness-plans/01-durable-submission-admission.md#L213)).
+  ([submit-l2-transfer.ts](src/commands/submit-l2-transfer.ts)).
+- Admission history should not be generically pruned while it remains canonical
+  status evidence.
 
 ## `local_mutation_jobs`
 
@@ -872,30 +948,30 @@ Index:
 - `idx_local_mutation_jobs_status_updated` on `(status, updated_at)`
 
 Defined in
-[0003_local_mutation_jobs.sql](src/database/migrations/sql/0003_local_mutation_jobs.sql#L1).
+[0003_local_mutation_jobs.sql](src/database/migrations/sql/0003_local_mutation_jobs.sql).
 
 The adapter supports start, complete, fail, retrieve unfinished, and count
 unfinished
-([mutationJobs.ts](src/database/mutationJobs.ts#L52)).
+([mutationJobs.ts](src/database/mutationJobs.ts)).
 `start` is idempotent for the same incomplete job id and increments attempts
-([mutationJobs.ts](src/database/mutationJobs.ts#L52)).
+([mutationJobs.ts](src/database/mutationJobs.ts)).
 
 ### Writers
 
 Local block finalization is wrapped in a local mutation job
-([commit-submission.ts](src/workers/utils/commit-submission.ts#L46)).
+([commit-submission.ts](src/workers/utils/commit-submission.ts)).
 
 Confirmed merge finalization starts, completes, or fails a merge finalization
 job around the local `confirmed_ledger` and `blocks` updates
-([merge-to-confirmed-state.ts](src/transactions/state-queue/merge-to-confirmed-state.ts#L1440),
-[merge-to-confirmed-state.ts](src/transactions/state-queue/merge-to-confirmed-state.ts#L1487)).
+([merge-to-confirmed-state.ts](src/transactions/state-queue/merge-to-confirmed-state.ts),
+[merge-to-confirmed-state.ts](src/transactions/state-queue/merge-to-confirmed-state.ts)).
 
 ### Readers
 
 Readiness reports unfinished jobs
-([listen-router.ts](src/commands/listen-router.ts#L456)).
+([listen-router.ts](src/commands/listen-router.ts)).
 Startup checks unfinished jobs before serving
-([listen.ts](src/commands/listen.ts#L74)).
+([listen.ts](src/commands/listen.ts)).
 
 ### Lifecycle
 
@@ -925,9 +1001,7 @@ Known gaps:
 
 - `plan_hash` exists in the schema but is not populated by the adapter.
 - There is no automated replay/adoption executor for unfinished jobs.
-- Production readiness plans call unfinished mutation jobs a blocker for
-  clean-empty startup classification
-  ([06-empty-ledger-mpt-authority-revision-plan.md](production-readiness-plans/06-empty-ledger-mpt-authority-revision-plan.md#L337)).
+- Unfinished mutation jobs block listener startup until recovery is performed.
 
 ## `schema_migrations`
 
@@ -939,12 +1013,12 @@ schema migrations. It is part of the production fail-closed schema model.
 The node does not repair application schema at startup. It checks this ledger,
 checks migration checksums, checks expected version, and verifies the expected
 application table/index shape
-([runner.ts](src/database/migrations/runner.ts#L767)).
+([runner.ts](src/database/migrations/runner.ts)).
 
 ### Stored Information
 
 Created by the migration runner metadata setup
-([runner.ts](src/database/migrations/runner.ts#L64)).
+([runner.ts](src/database/migrations/runner.ts)).
 
 Columns:
 
@@ -965,17 +1039,17 @@ Unique constraint:
 
 `db:migrate` applies pending migrations under an advisory lock and inserts a
 `schema_migrations` row after a migration's SQL succeeds
-([runner.ts](src/database/migrations/runner.ts#L575),
-[runner.ts](src/database/migrations/runner.ts#L598)).
+([runner.ts](src/database/migrations/runner.ts),
+[runner.ts](src/database/migrations/runner.ts)).
 
 ### Readers
 
 The runner reads applied rows ordered by version
-([runner.ts](src/database/migrations/runner.ts#L160)).
+([runner.ts](src/database/migrations/runner.ts)).
 `migrate`, `getStatus`, and startup compatibility verification all use the
 ledger
-([runner.ts](src/database/migrations/runner.ts#L650),
-[runner.ts](src/database/migrations/runner.ts#L758)).
+([runner.ts](src/database/migrations/runner.ts),
+[runner.ts](src/database/migrations/runner.ts)).
 
 ### Lifecycle
 
@@ -991,7 +1065,7 @@ ledger
 ### Relationships
 
 - Tied to the static `MIGRATIONS` manifest and manifest hash
-  ([migrations/index.ts](src/database/migrations/index.ts#L17)).
+  ([migrations/index.ts](src/database/migrations/index.ts)).
 - Used by startup schema compatibility checks.
 
 ### Invariants And Gaps
@@ -1007,9 +1081,7 @@ Known gaps:
 
 - Append-only behavior is enforced by code and operational discipline, not by a
   database trigger.
-- The production readiness plan explicitly warns not to mutate this ledger by
-  hand except under audited recovery
-  ([05-versioned-schema-migrations.md](production-readiness-plans/05-versioned-schema-migrations.md#L554)).
+- Do not mutate this ledger by hand except under an explicit audited recovery.
 
 ## `schema_migration_events`
 
@@ -1024,7 +1096,7 @@ successful migrations.
 ### Stored Information
 
 Created by the migration runner metadata setup
-([runner.ts](src/database/migrations/runner.ts#L75)).
+([runner.ts](src/database/migrations/runner.ts)).
 
 Columns:
 
@@ -1048,11 +1120,11 @@ Allowed event types:
 ### Writers
 
 The runner inserts a `started` event before executing a migration
-([runner.ts](src/database/migrations/runner.ts#L585)).
+([runner.ts](src/database/migrations/runner.ts)).
 On success it inserts `succeeded` with the `schema_migrations` row
-([runner.ts](src/database/migrations/runner.ts#L615)).
+([runner.ts](src/database/migrations/runner.ts)).
 On failure it records failure details after rollback
-([runner.ts](src/database/migrations/runner.ts#L629)).
+([runner.ts](src/database/migrations/runner.ts)).
 
 ### Readers
 
@@ -1060,7 +1132,7 @@ There is no dedicated application command that exposes the full event history.
 Operators can inspect the table directly when diagnosing migration attempts.
 `db:status` reports migration ledger state, expected/pending versions, checksum
 mismatches, and application shape, but not the event log itself
-([runner.ts](src/database/migrations/runner.ts#L803)).
+([runner.ts](src/database/migrations/runner.ts)).
 
 ### Lifecycle
 
@@ -1106,10 +1178,9 @@ The durable tx lifecycle spans:
 - `tx_rejections`
 
 The intended invariant is that a tx id has one explainable lifecycle at any
-time. It may be queued/validating, accepted into mempool, deferred in
-processed mempool, committed into immutable/block history, or rejected. Startup
-integrity plans call contradictory placements a fail-closed condition
-([04-startup-fail-closed-integrity.md](production-readiness-plans/04-startup-fail-closed-integrity.md#L201)).
+time. It may be queued/validating, accepted into mempool, deferred in processed
+mempool, committed into immutable/block history, or rejected. Contradictory
+placements are a fail-closed integrity condition.
 
 ### Pending block recovery
 
@@ -1125,9 +1196,8 @@ The pending block recovery model spans:
 - L1 state queue headers
 
 `pending_block_finalizations` records lifecycle status, but it is not a complete
-mutation plan. Current production readiness plans call for stronger fingerprints
-and replay/adoption metadata
-([02-atomic-recoverable-ledger-mutations.md](production-readiness-plans/02-atomic-recoverable-ledger-mutations.md#L521)).
+mutation plan. Stronger fingerprints and replay/adoption metadata remain needed
+for complete crash-boundary evidence.
 
 ### MPT relationship
 

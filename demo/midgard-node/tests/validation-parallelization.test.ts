@@ -25,6 +25,13 @@ import { encode } from "cborg";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
+import {
+  hasUnseenTxQueueWake,
+  sampleValidationQueueWaits,
+} from "@/fibers/tx-queue-processor.js";
+import { resolveValidationWorkerPoolSize } from "@/services/config.js";
+import { packPhaseAJob } from "@/workers/utils/validation-pool.js";
+
 import { makeMidgardTxOutput } from "./midgard-output-helpers.js";
 
 /**
@@ -60,6 +67,19 @@ const testAddress = CML.EnterpriseAddress.new(
 const EMPTY_CBOR_LIST = Buffer.from([0x80]);
 const EMPTY_CBOR_NULL = Buffer.from([0xf6]);
 const EMPTY_NULL_ROOT = computeHash32(EMPTY_CBOR_NULL);
+
+describe("validation queue-wait metric sampling", () => {
+  it("keeps a bounded uniform sample with endpoints and the exact max", () => {
+    const waits = Array.from({ length: 2_048 }, (_, index) => index);
+    waits[123] = 99_999;
+    const sampled = sampleValidationQueueWaits(waits);
+    expect(sampled).toHaveLength(64);
+    expect(sampled).toContain(waits[0]);
+    expect(sampled).toContain(waits.at(-1));
+    expect(sampled).toContain(99_999);
+    expect(sampleValidationQueueWaits([3, 1, 2])).toEqual([3, 1, 2]);
+  });
+});
 
 const encodeByteList = (items: readonly Uint8Array[]): Buffer =>
   Buffer.from(encode(items.map((item) => Buffer.from(item))));
@@ -153,6 +173,50 @@ const makeCandidate = ({
 };
 
 describe("validation parallelization", () => {
+  it("distinguishes auto pool sizing from the explicit inline rollback", () => {
+    expect(resolveValidationWorkerPoolSize(undefined, 8)).toBe(6);
+    expect(resolveValidationWorkerPoolSize(undefined, 1)).toBe(1);
+    expect(resolveValidationWorkerPoolSize(0, 8)).toBe(0);
+    expect(resolveValidationWorkerPoolSize(3, 8)).toBe(3);
+    expect(() => resolveValidationWorkerPoolSize(-1, 8)).toThrow(
+      "non-negative safe integer",
+    );
+  });
+
+  it("packs an isolated transferable arena and rejects corrupt tx ids", () => {
+    const tx = {
+      txId: Buffer.alloc(32, 0x11),
+      txCbor: Buffer.from("010203", "hex"),
+      arrivalSeq: 9n,
+      createdAt: new Date(1234),
+    };
+    const request = packPhaseAJob(7, [tx]);
+    expect(request.txs[0]).toStrictEqual({
+      txIdOffset: 0,
+      cborOffset: 32,
+      cborLength: 3,
+      arrivalSeq: 9n,
+      createdAtMs: 1234,
+    });
+    expect(Buffer.from(request.arena, 0, 32)).toStrictEqual(tx.txId);
+    expect(Buffer.from(request.arena, 32, 3)).toStrictEqual(tx.txCbor);
+    expect(() => packPhaseAJob(8, [{ ...tx, txId: Buffer.alloc(31) }])).toThrow(
+      "must be 32 bytes",
+    );
+  });
+
+  it("cannot lose a coalesced wake while two drain loops finalize", () => {
+    const loopAHandled = 41n;
+    const loopBHandled = 41n;
+    const generationAfterWake = 42n;
+    expect(hasUnseenTxQueueWake(loopAHandled, generationAfterWake)).toBe(true);
+    expect(hasUnseenTxQueueWake(loopBHandled, generationAfterWake)).toBe(true);
+    // Whichever finalizer reserves the replacement loop handles generation 42;
+    // the other may coalesce without stranding the durable row.
+    expect(hasUnseenTxQueueWake(generationAfterWake, generationAfterWake)).toBe(
+      false,
+    );
+  });
   it("keeps phase-A verdicts and order stable across concurrency levels", async () => {
     const queued: QueuedTx[] = Array.from({ length: 64 }, (_, index) => {
       const spent = outRefFromHash(hex32(index + 1), 0n);

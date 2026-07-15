@@ -14,7 +14,10 @@ import type {
   MidgardLedgerOutput,
   MidgardLedgerTx,
 } from "./ledger-tx/types.js";
-import { evaluateScriptWithHarmonic } from "./local-script-eval.js";
+import {
+  encodeScriptContextCbor,
+  evaluateScriptWithHarmonic,
+} from "./local-script-eval.js";
 import {
   findRedeemerByPointer,
   MidgardRedeemerPointer,
@@ -155,17 +158,6 @@ const reject = (
   detail,
 });
 
-const hasIntersection = (left: Set<string>, right: Set<string>): boolean => {
-  const smaller = left.size <= right.size ? left : right;
-  const larger = left.size <= right.size ? right : left;
-  for (const entry of smaller) {
-    if (larger.has(entry)) {
-      return true;
-    }
-  }
-  return false;
-};
-
 const resolveReferenceInputs = (
   node: CandidateNode,
   stateValue: (outRefHex: string) => Buffer | undefined,
@@ -212,11 +204,6 @@ const resolveReferenceInputs = (
 
   return { inputs, scriptSources, scriptHashes };
 };
-
-const conflict = (left: CandidateNode, right: CandidateNode): boolean =>
-  hasIntersection(left.spentOutRefs, right.spentOutRefs) ||
-  hasIntersection(left.spentOutRefs, right.referenceOutRefs) ||
-  hasIntersection(right.spentOutRefs, left.referenceOutRefs);
 
 type RequiredScriptExecution = {
   readonly purpose: MidgardScriptPurpose;
@@ -474,152 +461,210 @@ const runLocalScriptEvaluation = (
   stateValue: (outRefHex: string) => Buffer | undefined,
   resolvedReferenceInputs: ResolvedReferenceInputs,
   witnessKeyHashes: ReadonlySet<string>,
-  enforceScriptBudget: boolean,
-): LocalScriptValidationResult => {
-  const candidate = node.candidate;
-  const { ledgerTx } = candidate;
-  const inlineSources = collectInlineScriptSources(ledgerTx);
-  const sources = [...inlineSources, ...resolvedReferenceInputs.scriptSources];
-  const discovered = discoverLocalScriptExecutions(
-    node,
-    stateValue,
-    sources,
-    resolvedReferenceInputs.inputs,
-    witnessKeyHashes,
-  );
-  if (discovered.kind === "rejected") {
-    return discovered;
-  }
+  config: PhaseBConfig,
+): Effect.Effect<LocalScriptValidationResult, Error> =>
+  Effect.gen(function* () {
+    const candidate = node.candidate;
+    const { ledgerTx } = candidate;
+    const inlineSources = collectInlineScriptSources(ledgerTx);
+    const sources = [
+      ...inlineSources,
+      ...resolvedReferenceInputs.scriptSources,
+    ];
+    const discovered = discoverLocalScriptExecutions(
+      node,
+      stateValue,
+      sources,
+      resolvedReferenceInputs.inputs,
+      witnessKeyHashes,
+    );
+    if (discovered.kind === "rejected") {
+      return discovered;
+    }
 
-  const usedInlineSourceIds = new Set(
-    discovered.executions
-      .filter((execution) => execution.resolved.source.origin === "inline")
-      .map((execution) => execution.resolved.source.sourceId),
-  );
-  for (const source of inlineSources) {
-    if (!usedInlineSourceIds.has(source.sourceId)) {
-      const kind = source.nativeScript === undefined ? "non-native" : "native";
+    const usedInlineSourceIds = new Set(
+      discovered.executions
+        .filter((execution) => execution.resolved.source.origin === "inline")
+        .map((execution) => execution.resolved.source.sourceId),
+    );
+    for (const source of inlineSources) {
+      if (!usedInlineSourceIds.has(source.sourceId)) {
+        const kind =
+          source.nativeScript === undefined ? "non-native" : "native";
+        return {
+          kind: "rejected",
+          code: RejectCodes.InvalidFieldType,
+          detail: `extraneous ${kind} script witness ${source.sourceId}`,
+        };
+      }
+    }
+
+    for (const execution of discovered.executions) {
+      if (execution.resolved.version !== "NativeCardano") {
+        continue;
+      }
+      const nativeScript = execution.resolved.source.nativeScript!;
+      if (
+        !verifyMidgardNativeScript(nativeScript, {
+          validityIntervalStart: ledgerTx.validityIntervalStart,
+          validityIntervalEnd: ledgerTx.validityIntervalEnd,
+          witnessSigners: witnessKeyHashes,
+        })
+      ) {
+        return {
+          kind: "rejected",
+          code: RejectCodes.NativeScriptInvalid,
+          detail: `native script verification failed for ${execution.purpose.kind} ${execution.purpose.scriptHash}`,
+        };
+      }
+    }
+
+    const nonNativeExecutions = discovered.executions.filter(
+      (execution) => execution.resolved.version !== "NativeCardano",
+    );
+
+    const languages = requiredScriptLanguages(discovered.executions);
+    const expectedScriptIntegrityHash = computeScriptIntegrityHashForLanguages(
+      candidate.derived.redeemerWitnessHash,
+      languages,
+    );
+    if (!ledgerTx.scriptIntegrityHash.equals(expectedScriptIntegrityHash)) {
+      const expectedHex = expectedScriptIntegrityHash.toString("hex");
+      const actualHex = ledgerTx.scriptIntegrityHash.toString("hex");
       return {
         kind: "rejected",
         code: RejectCodes.InvalidFieldType,
-        detail: `extraneous ${kind} script witness ${source.sourceId}`,
-      };
-    }
-  }
-
-  for (const execution of discovered.executions) {
-    if (execution.resolved.version !== "NativeCardano") {
-      continue;
-    }
-    const nativeScript = execution.resolved.source.nativeScript!;
-    if (
-      !verifyMidgardNativeScript(nativeScript, {
-        validityIntervalStart: ledgerTx.validityIntervalStart,
-        validityIntervalEnd: ledgerTx.validityIntervalEnd,
-        witnessSigners: witnessKeyHashes,
-      })
-    ) {
-      return {
-        kind: "rejected",
-        code: RejectCodes.NativeScriptInvalid,
-        detail: `native script verification failed for ${execution.purpose.kind} ${execution.purpose.scriptHash}`,
-      };
-    }
-  }
-
-  const nonNativeExecutions = discovered.executions.filter(
-    (execution) => execution.resolved.version !== "NativeCardano",
-  );
-
-  const languages = requiredScriptLanguages(discovered.executions);
-  const expectedScriptIntegrityHash = computeScriptIntegrityHashForLanguages(
-    candidate.derived.redeemerWitnessHash,
-    languages,
-  );
-  if (!ledgerTx.scriptIntegrityHash.equals(expectedScriptIntegrityHash)) {
-    const expectedHex = expectedScriptIntegrityHash.toString("hex");
-    const actualHex = ledgerTx.scriptIntegrityHash.toString("hex");
-    return {
-      kind: "rejected",
-      code: RejectCodes.InvalidFieldType,
-      detail: `script_integrity_hash mismatch: expected ${expectedHex} actual ${actualHex} required_languages=${languages.join(",")}`,
-    };
-  }
-
-  for (const execution of nonNativeExecutions) {
-    const redeemer = findRedeemerByPointer(
-      discovered.contextView.redeemers.map((entry) => entry.redeemer),
-      execution.pointer,
-    )!;
-
-    if (
-      execution.resolved.version === "PlutusV3" &&
-      execution.purpose.kind === "receive"
-    ) {
-      return {
-        kind: "rejected",
-        code: RejectCodes.PlutusScriptInvalid,
-        detail: "ReceivingScript requires MidgardV1 context",
+        detail: `script_integrity_hash mismatch: expected ${expectedHex} actual ${actualHex} required_languages=${languages.join(",")}`,
       };
     }
 
-    const context =
-      execution.resolved.version === "MidgardV1"
-        ? buildMidgardV1ScriptContext(
-            discovered.contextView,
-            execution.purpose,
-            redeemer,
-          )
-        : buildPlutusV3ScriptContext(
-            discovered.contextView,
-            execution.purpose,
-            redeemer,
-          );
-    const result = evaluateScriptWithHarmonic(
-      execution.resolved.source.scriptBytes,
-      context,
-    );
-    if (result.kind === "script_invalid") {
-      return {
-        kind: "rejected",
-        code: RejectCodes.PlutusScriptInvalid,
-        detail: `${execution.purpose.kind} ${execution.purpose.scriptHash}: ${result.detail}`,
-      };
-    }
-    if (
-      enforceScriptBudget &&
-      (result.budget.cpu > redeemer.exUnits.steps ||
-        result.budget.memory > redeemer.exUnits.memory)
-    ) {
-      return {
-        kind: "rejected",
-        code: RejectCodes.PlutusScriptInvalid,
-        detail: `${execution.purpose.kind} ${execution.purpose.scriptHash}: budget exceeded (spent mem=${result.budget.memory} cpu=${result.budget.cpu}, declared mem=${redeemer.exUnits.memory} cpu=${redeemer.exUnits.steps})`,
-      };
-    }
-  }
+    for (const execution of nonNativeExecutions) {
+      const redeemer = findRedeemerByPointer(
+        discovered.contextView.redeemers.map((entry) => entry.redeemer),
+        execution.pointer,
+      )!;
 
-  return { kind: "accepted" };
+      if (
+        execution.resolved.version === "PlutusV3" &&
+        execution.purpose.kind === "receive"
+      ) {
+        return {
+          kind: "rejected",
+          code: RejectCodes.PlutusScriptInvalid,
+          detail: "ReceivingScript requires MidgardV1 context",
+        };
+      }
+
+      const context =
+        execution.resolved.version === "MidgardV1"
+          ? buildMidgardV1ScriptContext(
+              discovered.contextView,
+              execution.purpose,
+              redeemer,
+            )
+          : buildPlutusV3ScriptContext(
+              discovered.contextView,
+              execution.purpose,
+              redeemer,
+            );
+      const result =
+        config.evaluateScript === undefined
+          ? evaluateScriptWithHarmonic(
+              execution.resolved.source.scriptBytes,
+              context,
+            )
+          : yield* config.evaluateScript(
+              execution.resolved.source.scriptBytes,
+              encodeScriptContextCbor(context),
+            );
+      if (result.kind === "script_invalid") {
+        return {
+          kind: "rejected",
+          code: RejectCodes.PlutusScriptInvalid,
+          detail: `${execution.purpose.kind} ${execution.purpose.scriptHash}: ${result.detail}`,
+        };
+      }
+      if (
+        config.enforceScriptBudget !== false &&
+        (result.budget.cpu > redeemer.exUnits.steps ||
+          result.budget.memory > redeemer.exUnits.memory)
+      ) {
+        return {
+          kind: "rejected",
+          code: RejectCodes.PlutusScriptInvalid,
+          detail: `${execution.purpose.kind} ${execution.purpose.scriptHash}: budget exceeded (spent mem=${result.budget.memory} cpu=${result.budget.cpu}, declared mem=${redeemer.exUnits.memory} cpu=${redeemer.exUnits.steps})`,
+        };
+      }
+    }
+
+    return { kind: "accepted" };
+  });
+
+type ConflictNode = {
+  readonly spentOutRefs: ReadonlySet<string>;
+  readonly referenceOutRefs: ReadonlySet<string>;
 };
 
-const buildConflictBuckets = (
-  readyNodes: readonly CandidateNode[],
-): CandidateNode[][] => {
-  const buckets: CandidateNode[][] = [];
-
-  for (const node of readyNodes) {
-    const bucket = buckets.find(
-      (candidateBucket) =>
-        !candidateBucket.some((bucketNode) => conflict(node, bucketNode)),
-    );
-    if (bucket === undefined) {
-      buckets.push([node]);
-    } else {
-      bucket.push(node);
+/**
+ * Builds transitive conflict components in near-linear time. Ref/ref overlap is
+ * intentionally not a conflict; spend/spend and spend/ref overlap are.
+ */
+export const buildConflictComponents = <T extends ConflictNode>(
+  readyNodes: readonly T[],
+): T[][] => {
+  const parent = readyNodes.map((_, index) => index);
+  const rank = readyNodes.map(() => 0);
+  const find = (index: number): number => {
+    let root = index;
+    while (parent[root] !== root) {
+      root = parent[root];
     }
-  }
+    while (parent[index] !== index) {
+      const next = parent[index];
+      parent[index] = root;
+      index = next;
+    }
+    return root;
+  };
+  const union = (left: number, right: number): void => {
+    let leftRoot = find(left);
+    let rightRoot = find(right);
+    if (leftRoot === rightRoot) return;
+    if (rank[leftRoot] < rank[rightRoot]) {
+      [leftRoot, rightRoot] = [rightRoot, leftRoot];
+    }
+    parent[rightRoot] = leftRoot;
+    if (rank[leftRoot] === rank[rightRoot]) rank[leftRoot] += 1;
+  };
 
-  return buckets;
+  const spenderByOutRef = new Map<string, number>();
+  const referencersByOutRef = new Map<string, number[]>();
+  readyNodes.forEach((node, nodeIndex) => {
+    for (const outRef of node.spentOutRefs) {
+      const spender = spenderByOutRef.get(outRef);
+      if (spender !== undefined) union(nodeIndex, spender);
+      for (const referencer of referencersByOutRef.get(outRef) ?? []) {
+        union(nodeIndex, referencer);
+      }
+      spenderByOutRef.set(outRef, nodeIndex);
+    }
+    for (const outRef of node.referenceOutRefs) {
+      const spender = spenderByOutRef.get(outRef);
+      if (spender !== undefined) union(nodeIndex, spender);
+      const referencers = referencersByOutRef.get(outRef) ?? [];
+      referencers.push(nodeIndex);
+      referencersByOutRef.set(outRef, referencers);
+    }
+  });
+
+  const componentByRoot = new Map<number, T[]>();
+  readyNodes.forEach((node, index) => {
+    const root = find(index);
+    const component = componentByRoot.get(root) ?? [];
+    component.push(node);
+    componentByRoot.set(root, component);
+  });
+  return Array.from(componentByRoot.values());
 };
 
 const buildNodes = (
@@ -712,7 +757,7 @@ const validateCandidateAgainstState = (
   stateValue: (outRefHex: string) => Buffer | undefined,
   spentByAccepted: Set<string>,
   config: PhaseBConfig,
-): Effect.Effect<CandidateDecision> =>
+): Effect.Effect<CandidateDecision, Error> =>
   Effect.gen(function* () {
     const candidate = node.candidate;
     const { ledgerTx } = candidate;
@@ -743,6 +788,7 @@ const validateCandidateAgainstState = (
     }
 
     const inputValues: MidgardValue[] = [];
+    let sawScriptInput = false;
 
     const witnessKeyHashes = new Set(candidate.derived.witnessKeyHashHexes);
     const inlineNativeScriptHashes = new Set(
@@ -826,6 +872,7 @@ const validateCandidateAgainstState = (
             );
           }
         } else {
+          sawScriptInput = true;
           const inputScriptHash = paymentCred.hash.toString("hex");
           const inputScriptSatisfied = hasSatisfiedScriptMaterial(
             inputScriptHash,
@@ -845,15 +892,17 @@ const validateCandidateAgainstState = (
       }
     }
 
-    const localScriptEvaluation = runLocalScriptEvaluation(
-      node,
-      stateValue,
-      resolvedReferenceInputs,
-      witnessKeyHashes,
-      config.enforceScriptBudget !== false,
-    );
-    if (localScriptEvaluation.kind === "rejected") {
-      return fail(localScriptEvaluation.code, localScriptEvaluation.detail);
+    if (sawScriptInput || candidate.derived.requiresLocalScriptDiscovery) {
+      const localScriptEvaluation = yield* runLocalScriptEvaluation(
+        node,
+        stateValue,
+        resolvedReferenceInputs,
+        witnessKeyHashes,
+        config,
+      );
+      if (localScriptEvaluation.kind === "rejected") {
+        return fail(localScriptEvaluation.code, localScriptEvaluation.detail);
+      }
     }
 
     const delta = valuePreservationDelta(
@@ -874,6 +923,124 @@ const validateCandidateAgainstState = (
       accepted: true,
     };
   });
+
+const validatePlainCandidateAgainstState = (
+  node: CandidateNode,
+  stateValue: (outRefHex: string) => Buffer | undefined,
+  spentByAccepted: Set<string>,
+  config: PhaseBConfig,
+): CandidateDecision | undefined => {
+  const candidate = node.candidate;
+  if (candidate.derived.requiresLocalScriptDiscovery) return undefined;
+  const { ledgerTx } = candidate;
+  const fail = (code: RejectedTx["code"], detail: string | null = null) => ({
+    index: node.index,
+    accepted: false as const,
+    rejection: reject(ledgerTx.txId, code, detail),
+  });
+
+  if (
+    ledgerTx.validityIntervalStart !== undefined &&
+    config.nowCardanoSlotNo < ledgerTx.validityIntervalStart
+  ) {
+    return fail(
+      RejectCodes.ValidityIntervalMismatch,
+      `${config.nowCardanoSlotNo} < ${ledgerTx.validityIntervalStart}`,
+    );
+  }
+  if (
+    ledgerTx.validityIntervalEnd !== undefined &&
+    config.nowCardanoSlotNo > ledgerTx.validityIntervalEnd
+  ) {
+    return fail(
+      RejectCodes.ValidityIntervalMismatch,
+      `${config.nowCardanoSlotNo} > ${ledgerTx.validityIntervalEnd}`,
+    );
+  }
+
+  const resolvedReferenceInputs = resolveReferenceInputs(node, stateValue);
+  if ("code" in resolvedReferenceInputs) {
+    return {
+      index: node.index,
+      accepted: false,
+      rejection: resolvedReferenceInputs,
+    };
+  }
+
+  const witnessKeyHashes = new Set(candidate.derived.witnessKeyHashHexes);
+  const inputValues: MidgardValue[] = [];
+  for (const inputOutRefHex of node.spentOutRefs) {
+    if (spentByAccepted.has(inputOutRefHex)) {
+      return fail(RejectCodes.DoubleSpend, inputOutRefHex);
+    }
+    const inputOutput = stateValue(inputOutRefHex);
+    if (inputOutput === undefined) {
+      return fail(RejectCodes.InputNotFound, inputOutRefHex);
+    }
+    try {
+      const output = decodeMidgardTxOutput(inputOutput);
+      const paymentCred = decodeMidgardAddressBytes(
+        output.address,
+      ).paymentCredential;
+      if (paymentCred.kind === "Script") return undefined;
+      const inputSigner = paymentCred.hash.toString("hex");
+      if (!witnessKeyHashes.has(inputSigner)) {
+        return fail(
+          RejectCodes.MissingRequiredWitness,
+          `missing witness for input signer ${inputSigner} (outref ${inputOutRefHex})`,
+        );
+      }
+      inputValues.push(output.value);
+    } catch (error) {
+      return fail(
+        RejectCodes.InvalidOutput,
+        `failed to decode input output: ${String(error)}`,
+      );
+    }
+  }
+
+  const delta = valuePreservationDelta(
+    sumMidgardValues(inputValues),
+    ledgerTx.fee,
+    candidate.derived.mintDelta,
+    candidate.derived.outputSum,
+  );
+  if (!isZeroValueDelta(delta)) {
+    return fail(
+      RejectCodes.ValueNotPreserved,
+      `equation mismatch: inputs - fee + mint - outputs = ${describeValueDelta(delta)}`,
+    );
+  }
+  return { index: node.index, accepted: true };
+};
+
+const validatePlainComponentAgainstState = (
+  component: readonly CandidateNode[],
+  stateValue: (outRefHex: string) => Buffer | undefined,
+  spentByAccepted: Set<string>,
+  statusByIndex: readonly CandidateStatus[],
+  config: PhaseBConfig,
+): readonly CandidateDecision[] | undefined => {
+  const componentSpent = new Set(spentByAccepted);
+  const componentStateValue = (outRefHex: string): Buffer | undefined =>
+    componentSpent.has(outRefHex) ? undefined : stateValue(outRefHex);
+  const decisions: CandidateDecision[] = [];
+  for (const node of component) {
+    if (statusByIndex[node.index] !== "pending") continue;
+    const decision = validatePlainCandidateAgainstState(
+      node,
+      componentStateValue,
+      componentSpent,
+      config,
+    );
+    if (decision === undefined) return undefined;
+    decisions.push(decision);
+    if (decision.accepted) {
+      for (const outRef of node.spentOutRefs) componentSpent.add(outRef);
+    }
+  }
+  return decisions;
+};
 
 const cascadeRejectDescendants = (
   nodes: readonly CandidateNode[],
@@ -906,7 +1073,7 @@ export const runPhaseBValidationWithPatch = (
   phaseACandidates: readonly PhaseAValidatedTx[],
   preStateEntries: PreState,
   config: PhaseBConfig,
-): Effect.Effect<PhaseBResultWithPatch> =>
+): Effect.Effect<PhaseBResultWithPatch, Error> =>
   Effect.gen(function* () {
     const accepted: PhaseAValidatedTx[] = [];
     const rejected: RejectedTx[] = [];
@@ -968,78 +1135,98 @@ export const runPhaseBValidationWithPatch = (
         continue;
       }
 
-      const buckets = buildConflictBuckets(readyNodes);
+      const components = buildConflictComponents(readyNodes);
       const nextReady: number[] = [];
-      for (const bucket of buckets) {
-        const pendingBucket = bucket.filter(
-          (node) => statusByIndex[node.index] === "pending",
+      const plainDecisions: CandidateDecision[][] = [];
+      const effectfulComponents: CandidateNode[][] = [];
+      for (const component of components) {
+        const decisions = validatePlainComponentAgainstState(
+          component,
+          stateValue,
+          spentByAccepted,
+          statusByIndex,
+          config,
         );
-        if (pendingBucket.length === 0) {
+        if (decisions === undefined) effectfulComponents.push(component);
+        else plainDecisions.push([...decisions]);
+      }
+      const decisionsByComponent = yield* Effect.forEach(
+        effectfulComponents,
+        (component) =>
+          Effect.gen(function* () {
+            const componentSpent = new Set(spentByAccepted);
+            const componentStateValue = (
+              outRefHex: string,
+            ): Buffer | undefined =>
+              componentSpent.has(outRefHex) ? undefined : stateValue(outRefHex);
+            const decisions: CandidateDecision[] = [];
+            for (const node of component) {
+              if (statusByIndex[node.index] !== "pending") continue;
+              const decision = yield* validateCandidateAgainstState(
+                node,
+                componentStateValue,
+                componentSpent,
+                config,
+              );
+              decisions.push(decision);
+              if (decision.accepted) {
+                for (const outRef of node.spentOutRefs) {
+                  componentSpent.add(outRef);
+                }
+              }
+            }
+            return decisions;
+          }),
+        {
+          concurrency:
+            config.bucketConcurrency <= 0
+              ? "unbounded"
+              : config.bucketConcurrency,
+        },
+      );
+      const decisions = [...plainDecisions, ...decisionsByComponent]
+        .flat()
+        .sort((left, right) => left.index - right.index);
+
+      for (const decision of decisions) {
+        const node = nodes[decision.index];
+        if (statusByIndex[node.index] !== "pending") {
           continue;
         }
 
-        const decisions = yield* Effect.forEach(
-          pendingBucket,
-          (node) =>
-            validateCandidateAgainstState(
-              node,
-              stateValue,
-              spentByAccepted,
-              config,
-            ),
-          {
-            concurrency:
-              config.bucketConcurrency <= 0
-                ? "unbounded"
-                : config.bucketConcurrency,
-          },
-        );
+        if (!decision.accepted) {
+          statusByIndex[node.index] = "rejected";
+          if (decision.rejection !== undefined) {
+            rejected.push(decision.rejection);
+          }
+          cascadeRejectDescendants(nodes, node.index, statusByIndex, rejected);
+          continue;
+        }
 
-        for (const decision of decisions) {
-          const node = nodes[decision.index];
-          if (statusByIndex[node.index] !== "pending") {
+        statusByIndex[node.index] = "accepted";
+        accepted.push(node.candidate);
+
+        for (const outRefHex of node.candidate.graph.spentOutRefHexes) {
+          spentByAccepted.add(outRefHex);
+          statePatch.deletedOutRefs.add(outRefHex);
+          statePatch.upsertedOutRefs.delete(outRefHex);
+        }
+        for (const produced of node.candidate.graph.produced) {
+          const outRefHex = produced[LedgerColumns.OUTREF].toString("hex");
+          statePatch.upsertedOutRefs.set(
+            outRefHex,
+            Buffer.from(produced[LedgerColumns.OUTPUT]),
+          );
+          statePatch.deletedOutRefs.delete(outRefHex);
+        }
+
+        for (const child of node.children) {
+          if (statusByIndex[child] !== "pending") {
             continue;
           }
-
-          if (!decision.accepted) {
-            statusByIndex[node.index] = "rejected";
-            if (decision.rejection !== undefined) {
-              rejected.push(decision.rejection);
-            }
-            cascadeRejectDescendants(
-              nodes,
-              node.index,
-              statusByIndex,
-              rejected,
-            );
-            continue;
-          }
-
-          statusByIndex[node.index] = "accepted";
-          accepted.push(node.candidate);
-
-          for (const outRefHex of node.candidate.graph.spentOutRefHexes) {
-            spentByAccepted.add(outRefHex);
-            statePatch.deletedOutRefs.add(outRefHex);
-            statePatch.upsertedOutRefs.delete(outRefHex);
-          }
-          for (const produced of node.candidate.graph.produced) {
-            const outRefHex = produced[LedgerColumns.OUTREF].toString("hex");
-            statePatch.upsertedOutRefs.set(
-              outRefHex,
-              Buffer.from(produced[LedgerColumns.OUTPUT]),
-            );
-            statePatch.deletedOutRefs.delete(outRefHex);
-          }
-
-          for (const child of node.children) {
-            if (statusByIndex[child] !== "pending") {
-              continue;
-            }
-            indegree[child] = Math.max(indegree[child] - 1, 0);
-            if (indegree[child] === 0) {
-              nextReady.push(child);
-            }
+          indegree[child] = Math.max(indegree[child] - 1, 0);
+          if (indegree[child] === 0) {
+            nextReady.push(child);
           }
         }
       }

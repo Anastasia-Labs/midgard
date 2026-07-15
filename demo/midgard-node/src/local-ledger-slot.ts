@@ -24,7 +24,18 @@ export type LocalOgmiosSubmitSlotOptions = {
   readonly timeoutMs?: number;
   readonly nowMs?: number;
   readonly maxHealthAgeMs?: number;
+  readonly signal?: AbortSignal;
 };
+
+export type ShelleyGenesisSlotConfig = {
+  readonly startTimeMs: number;
+  readonly slotLengthMs: number;
+};
+
+export type LocalOgmiosShelleyGenesisSlotOptions = Pick<
+  LocalOgmiosSubmitSlotOptions,
+  "ogmiosUrl" | "fetchImpl" | "timeoutMs" | "signal"
+>;
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -92,6 +103,15 @@ const fetchTextWithTimeout = async (
   timeoutMs: number,
 ): Promise<string> => {
   const controller = new AbortController();
+  const upstreamSignal = init.signal;
+  const abortFromUpstream = () => controller.abort(upstreamSignal?.reason);
+  if (upstreamSignal?.aborted === true) {
+    abortFromUpstream();
+  } else {
+    upstreamSignal?.addEventListener("abort", abortFromUpstream, {
+      once: true,
+    });
+  }
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetchImpl(url, {
@@ -107,6 +127,7 @@ const fetchTextWithTimeout = async (
     return body;
   } finally {
     clearTimeout(timeout);
+    upstreamSignal?.removeEventListener("abort", abortFromUpstream);
   }
 };
 
@@ -138,6 +159,38 @@ export const parseOgmiosTipSlot = (payload: unknown): number => {
     throw new Error("Ogmios queryNetwork/tip response did not include a slot");
   }
   return slot;
+};
+
+export const parseOgmiosShelleyGenesisSlotConfig = (
+  payload: unknown,
+): ShelleyGenesisSlotConfig => {
+  const root = record(payload);
+  const result = record(root?.result);
+  const startTime = result?.startTime;
+  if (typeof startTime !== "string" || startTime.trim().length === 0) {
+    throw new Error(
+      "Ogmios Shelley genesis response did not include a startTime",
+    );
+  }
+  const startTimeMs = Date.parse(startTime);
+  if (
+    !Number.isSafeInteger(startTimeMs) ||
+    startTimeMs < 0 ||
+    !/(?:Z|[+-]\d{2}:\d{2})$/i.test(startTime)
+  ) {
+    throw new Error(
+      `Ogmios Shelley genesis startTime is invalid: ${startTime}`,
+    );
+  }
+
+  const slotLength = record(result?.slotLength);
+  const slotLengthMs = numberFromUnknown(slotLength?.milliseconds);
+  if (slotLengthMs === null || slotLengthMs <= 0) {
+    throw new Error(
+      "Ogmios Shelley genesis response did not include a positive integer slotLength.milliseconds",
+    );
+  }
+  return { startTimeMs, slotLengthMs };
 };
 
 export const parseOgmiosHealthEvidence = (
@@ -232,12 +285,13 @@ export const queryLocalOgmiosSubmitSlotSnapshot = async ({
   timeoutMs = 5_000,
   nowMs = Date.now(),
   maxHealthAgeMs = DEFAULT_OGMIOS_HEALTH_MAX_AGE_MS,
+  signal,
 }: LocalOgmiosSubmitSlotOptions): Promise<SubmitSlotSnapshot> => {
   const baseUrl = normalizeOgmiosHttpUrl(ogmiosUrl);
   const healthBody = await fetchTextWithTimeout(
     fetchImpl,
     joinUrl(baseUrl, "/health"),
-    {},
+    { signal },
     timeoutMs,
   );
   const health = parseOgmiosHealthEvidence(
@@ -256,6 +310,7 @@ export const queryLocalOgmiosSubmitSlotSnapshot = async ({
         method: "queryNetwork/tip",
         id: "midgard-submit-slot",
       }),
+      signal,
     },
     timeoutMs,
   );
@@ -274,11 +329,66 @@ export const fetchLocalOgmiosSubmitSlotSnapshot = (
   options: LocalOgmiosSubmitSlotOptions,
 ): Effect.Effect<SubmitSlotSnapshot, Error> =>
   Effect.tryPromise({
-    try: () => queryLocalOgmiosSubmitSlotSnapshot(options),
+    try: (effectSignal) =>
+      queryLocalOgmiosSubmitSlotSnapshot({
+        ...options,
+        signal:
+          options.signal === undefined
+            ? effectSignal
+            : AbortSignal.any([options.signal, effectSignal]),
+      }),
     catch: (cause) =>
       cause instanceof Error
         ? cause
         : new Error("Failed to fetch local Ogmios submit slot", { cause }),
+  });
+
+export const queryLocalOgmiosShelleyGenesisSlotConfig = async ({
+  ogmiosUrl,
+  fetchImpl = fetch,
+  timeoutMs = 5_000,
+  signal,
+}: LocalOgmiosShelleyGenesisSlotOptions): Promise<ShelleyGenesisSlotConfig> => {
+  const baseUrl = normalizeOgmiosHttpUrl(ogmiosUrl);
+  const body = await fetchTextWithTimeout(
+    fetchImpl,
+    baseUrl,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "queryNetwork/genesisConfiguration",
+        params: { era: "shelley" },
+        id: "midgard-custom-slot-config",
+      }),
+      signal,
+    },
+    timeoutMs,
+  );
+  return parseOgmiosShelleyGenesisSlotConfig(
+    parseJson(body, "Ogmios Shelley genesis"),
+  );
+};
+
+export const fetchLocalOgmiosShelleyGenesisSlotConfig = (
+  options: LocalOgmiosShelleyGenesisSlotOptions,
+): Effect.Effect<ShelleyGenesisSlotConfig, Error> =>
+  Effect.tryPromise({
+    try: (effectSignal) =>
+      queryLocalOgmiosShelleyGenesisSlotConfig({
+        ...options,
+        signal:
+          options.signal === undefined
+            ? effectSignal
+            : AbortSignal.any([options.signal, effectSignal]),
+      }),
+    catch: (cause) =>
+      cause instanceof Error
+        ? cause
+        : new Error("Failed to fetch local Ogmios Shelley genesis", {
+            cause,
+          }),
   });
 
 export const makeLocalOgmiosSubmitSlotSnapshotProvider = (

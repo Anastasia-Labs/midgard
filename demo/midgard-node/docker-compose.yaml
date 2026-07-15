@@ -33,6 +33,17 @@ services:
     volumes:
       - ./db:/app/db
       - ./deploymentInfo:/app/deploymentInfo
+    mem_limit: "8g"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:3000/readyz').then((response)=>process.exit(response.ok?0:1)).catch(()=>process.exit(1))
+      interval: 5s
+      timeout: 3s
+      retries: 60
+      start_period: 30s
     depends_on:
       postgres:
         condition: service_healthy

@@ -136,6 +136,8 @@ const stressSummary = (
     loadModel: "closed-loop-smoke",
     workloadProfile: "production-end-user",
     classification: "closed_loop_smoke",
+    rateSemantics: "burst_cycle_rate",
+    burstCycleRatePerSecond: 2,
     mode: "serial-chain",
     measurementPolicy: {
       loadModel: "closed-loop-smoke",
@@ -951,6 +953,11 @@ describe("e2e run summary", () => {
       expect.objectContaining({
         label: "stress_l2_acceptance",
         status: "satisfied",
+        details: expect.objectContaining({
+          rateSemantics: "burst_cycle_rate",
+          burstCycleRatePerSecond: "2",
+          interruptedReason: "",
+        }),
       }),
     );
     expect(evidence.cleanRunGates).toContainEqual(
@@ -982,6 +989,9 @@ describe("e2e run summary", () => {
     expect(summary.cleanRunVerdict).toBe("success");
     expect(renderSummaryMarkdown(summary)).toContain(
       "stress_l2_acceptance accepted=2/2 l2AdmissionStatus=complete",
+    );
+    expect(renderSummaryMarkdown(summary)).toContain(
+      "rateSemantics=burst_cycle_rate",
     );
   });
 

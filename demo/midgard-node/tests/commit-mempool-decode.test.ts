@@ -1,15 +1,53 @@
+import {
+  cardanoTxBytesToMidgardNativeTxCanonicalCbor,
+  computeMidgardNativeTxId,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+} from "@al-ft/midgard-core/codec";
 import { it } from "@effect/vitest";
-import { Effect } from "effect";
+import { Effect, Metric } from "effect";
 import { describe, expect } from "vitest";
 
 import * as Ledger from "@/database/utils/ledger.js";
 import * as Tx from "@/database/utils/tx.js";
 import {
   COMMIT_REJECT_CODE_DECODE_FAILED,
+  commitTxDeltaFallbackDecodedCounter,
   resolveTxDeltaForCommit,
 } from "@/workers/utils/mpf.js";
 
+import { makeCardanoSignedMapOutputTxBytes } from "./helpers/cardano-native-fixtures.js";
+
 describe("resolveTxDeltaForCommit", () => {
+  it.effect("positively decodes valid canonical CBOR after a cache miss", (_) =>
+    Effect.gen(function* () {
+      const txCbor = cardanoTxBytesToMidgardNativeTxCanonicalCbor(
+        makeCardanoSignedMapOutputTxBytes(),
+      );
+      const txId = computeMidgardNativeTxId(
+        decodeMidgardNativeTxFullFromCanonicalCbor(txCbor),
+      );
+      const before = yield* Metric.value(commitTxDeltaFallbackDecodedCounter);
+      const result = yield* resolveTxDeltaForCommit(
+        {
+          [Tx.Columns.TX_ID]: txId,
+          [Tx.Columns.TX]: txCbor,
+          [Tx.Columns.TIMESTAMPTZ]: new Date(0),
+        },
+        undefined,
+      );
+      const after = yield* Metric.value(commitTxDeltaFallbackDecodedCounter);
+
+      expect(result._tag).toBe("Decoded");
+      if (result._tag === "Decoded") {
+        expect(result.spent.length).toBeGreaterThan(0);
+        expect(result.produced.length).toBeGreaterThan(0);
+      }
+      // The MPF loop owns the production counter increment. This direct
+      // resolver proof must not manufacture a cache-fallback observation.
+      expect(after.count).toBe(before.count);
+    }),
+  );
+
   it.effect("marks malformed mempool tx as rejected instead of throwing", (_) =>
     Effect.gen(function* () {
       const txId = Buffer.alloc(32, 7);

@@ -12,10 +12,12 @@ import {
   DaRequestResponseProtocol,
   daRequestResponseProtocolId,
   decodeDaMetadataByHeaderResponseV1Cbor,
+  decodeDaCapabilitiesRequestV1Cbor,
   decodeDaPayloadAnnouncementV1Cbor,
   decodeDaPayloadByHeaderResponseV1Cbor,
   decodeDaPayloadSubmitRequestV1Cbor,
   encodeDaMetadataByHeaderResponseV1Cbor,
+  encodeDaCapabilitiesResponseV1Cbor,
   encodeDaPayloadByHeaderRequestV1Cbor,
   encodeDaPayloadSubmitResponseV1Cbor,
 } from "@al-ft/midgard-core/da-transport";
@@ -23,6 +25,8 @@ import { describe, expect, it } from "vitest";
 
 import { loadDaLibp2pIdentity } from "@/da/libp2p-identity.js";
 import {
+  closeDaLibp2pPublicationTransport,
+  assertDaEnvelopeCapabilityQuorum,
   createDaLibp2pProducerProbeTransport,
   createDaLibp2pRetainedPayloadRequestHandlers,
   type DaProducerProbeTransport,
@@ -30,10 +34,12 @@ import {
   type DaProducerTransport,
   decodeLengthPrefixedDaFrameForTest,
   encodeLengthPrefixedDaFrameForTest,
+  getDaPublicationTransportForTest,
   parseDaProducerPublicationManifest,
   publishDaPayloadInsert,
   runDaLibp2pPreflight,
   runDaLibp2pPreflightFromEnv,
+  writeSharedDaFrameChunksForTest,
 } from "@/da/libp2p-producer.js";
 import { DaPayloadsDB } from "@/database/index.js";
 
@@ -47,6 +53,54 @@ const PAYLOAD_HASH = computeDaSha256Hash(PAYLOAD_CBOR);
 const PRODUCER_PRIVATE_KEY_SOURCE = `seed:${"00".repeat(31)}01`;
 
 describe("DA payload libp2p producer publication", () => {
+  it("requires a threshold of exact V3 envelope capabilities", async () => {
+    const manifest = parseThreeCommitteePeerManifest();
+    let incapablePeers = new Set([PEER_C]);
+    const transport: DaProducerProbeTransport = {
+      localPeerId: () => PEER_C,
+      request: async (peer, protocolId, payload) => {
+        expect(protocolId).toBe(
+          daRequestResponseProtocolId(
+            DEPLOYMENT,
+            DaRequestResponseProtocol.capabilities,
+          ),
+        );
+        expect(
+          decodeDaCapabilitiesRequestV1Cbor(payload).deploymentFingerprint,
+        ).toEqual(Buffer.from(DEPLOYMENT, "hex"));
+        return encodeDaCapabilitiesResponseV1Cbor({
+          deploymentFingerprint: Buffer.from(DEPLOYMENT, "hex"),
+          transportProtocolVersion: 1,
+          payloadSchemaVersions: incapablePeers.has(peer.peerId) ? [2] : [2, 3],
+          envelopeContentEncodings: incapablePeers.has(peer.peerId)
+            ? [0]
+            : [0, 1],
+          maxPayloadBytes: manifest.maxPayloadBytes,
+          maxInlineResponseBytes: manifest.maxInlineResponseBytes,
+          maxChunkBytes: manifest.maxChunkBytes,
+          maxStreamsPerPeer: manifest.maxStreamsPerPeer,
+          requestTimeoutMs: manifest.requestTimeoutMs,
+        });
+      },
+    };
+
+    await expect(
+      assertDaEnvelopeCapabilityQuorum({
+        manifest,
+        mode: "zstd",
+        transport,
+      }),
+    ).resolves.toHaveLength(3);
+    incapablePeers = new Set([PEER_B, PEER_C]);
+    await expect(
+      assertDaEnvelopeCapabilityQuorum({
+        manifest,
+        mode: "zstd",
+        transport,
+      }),
+    ).rejects.toThrow(/capability quorum failed/);
+  });
+
   it("sends payload-submit/1 to manifest committee peers and gossips an announcement", async () => {
     const manifest = parseManifestFixture();
     if (manifest === null) {
@@ -235,6 +289,114 @@ describe("DA payload libp2p producer publication", () => {
       },
     });
     expect(publishCalled).toBe(false);
+  });
+
+  it("returns at threshold without waiting for a slow peer and safely records the straggler", async () => {
+    const manifest = parseThreeCommitteePeerManifest();
+    let releaseSlowPeer!: () => void;
+    const slowPeer = new Promise<void>((resolve) => {
+      releaseSlowPeer = resolve;
+    });
+    const transport: DaProducerTransport = {
+      localPeerId: () => "producer-peer",
+      sign: () => Buffer.alloc(64, 0x0b),
+      request: async () => {
+        throw new Error("framed request path expected");
+      },
+      requestFramed: async (peer) => {
+        if (peer.peerId === PEER_C) {
+          await slowPeer;
+        }
+        return encodeDaPayloadSubmitResponseV1Cbor({
+          status: "accepted",
+          headerHash: HEADER_HASH,
+          payloadHash: PAYLOAD_HASH,
+          reasonCode: null,
+          retryAfterMs: null,
+        });
+      },
+      publish: async () => ({ recipients: [PEER_A, PEER_B] }),
+    };
+
+    const publication = publishDaPayloadInsert({
+      insert: insertFixture(),
+      manifest,
+      transport,
+      onPeerResult: async () => {
+        throw new Error("durable result callback failed");
+      },
+    });
+    const report = await Promise.race([
+      publication,
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error("publication waited for straggler")),
+          100,
+        ),
+      ),
+    ]);
+    expect(report.acceptedPeers).toBe(2);
+    expect(report.peerResults).toHaveLength(2);
+    releaseSlowPeer();
+    const allPeerResults = await report.allPeerResults;
+    expect(report.peerResults).toHaveLength(2);
+    expect(allPeerResults).toHaveLength(3);
+    expect(allPeerResults).toEqual(
+      expect.arrayContaining([expect.objectContaining({ peerId: PEER_C })]),
+    );
+  });
+
+  it("succeeds with decoder-capable peers when an old peer structurally rejects schema v3", async () => {
+    const manifest = parseThreeCommitteePeerManifest();
+    const transport: DaProducerTransport = {
+      localPeerId: () => "producer-peer",
+      sign: () => Buffer.alloc(64, 0x0b),
+      request: async (peer) =>
+        encodeDaPayloadSubmitResponseV1Cbor({
+          status: peer.peerId === PEER_C ? "rejected" : "accepted",
+          headerHash: HEADER_HASH,
+          payloadHash: PAYLOAD_HASH,
+          reasonCode: peer.peerId === PEER_C ? "payload_decode_failed" : null,
+          retryAfterMs: null,
+        }),
+      publish: async () => ({ recipients: [PEER_A, PEER_B] }),
+    };
+    const report = await publishDaPayloadInsert({
+      insert: { ...insertFixture(), [DaPayloadsDB.Columns.VERSION]: 3 },
+      manifest,
+      transport,
+    });
+    expect(report.acceptedPeers).toBeGreaterThanOrEqual(2);
+    expect(await report.allPeerResults).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          peerId: PEER_C,
+          status: "rejected",
+          error: "payload_decode_failed",
+        }),
+      ]),
+    );
+  });
+
+  it("writes one shared frame in zero-copy chunks and honors backpressure", async () => {
+    const chunks: Uint8Array[] = [];
+    let drains = 0;
+    const frame = Buffer.from("0123456789abcdef", "utf8");
+    const stream: DaProducerStream = {
+      async *[Symbol.asyncIterator]() {},
+      send: (chunk) => {
+        chunks.push(chunk);
+        return chunks.length !== 2;
+      },
+      onDrain: async () => {
+        drains += 1;
+      },
+    };
+    await writeSharedDaFrameChunksForTest(stream, frame, 5);
+    expect(Buffer.concat(chunks)).toEqual(frame);
+    expect(chunks.map((chunk) => chunk.length)).toEqual([5, 5, 5, 1]);
+    expect(drains).toBe(1);
+    expect(chunks.every((chunk) => chunk.buffer === frame.buffer)).toBe(true);
   });
 
   it("preflights committee reachability with metadata-by-header probes", async () => {
@@ -465,6 +627,26 @@ describe("DA payload libp2p producer publication", () => {
     }
   });
 
+  it("clears a rejected cached transport creation so a corrected retry can recover", async () => {
+    const identity = await loadDaLibp2pIdentity(PRODUCER_PRIVATE_KEY_SOURCE);
+    const valid = parseDaProducerPublicationManifest(
+      runtimeManifestFixture(identity.peerId, 0),
+      { DA_LIBP2P_PRIVATE_KEY_SOURCE: PRODUCER_PRIVATE_KEY_SOURCE },
+    );
+    if (valid === null) {
+      throw new Error("expected valid retry manifest");
+    }
+    await expect(
+      getDaPublicationTransportForTest({
+        ...valid,
+        localPrivateKeySource: "seed:not-hex",
+      }),
+    ).rejects.toThrow();
+    const recovered = await getDaPublicationTransportForTest(valid);
+    expect(await recovered.localPeerId()).toBe(identity.peerId);
+    await closeDaLibp2pPublicationTransport();
+  });
+
   it("does not count accepted responses for the wrong payload hash", async () => {
     const manifest = parseManifestFixture();
     if (manifest === null) {
@@ -629,6 +811,20 @@ const parseManifestFixture = () =>
   parseDaProducerPublicationManifest(manifestFixture(), {
     DA_LIBP2P_PRIVATE_KEY_SOURCE: PRODUCER_PRIVATE_KEY_SOURCE,
   });
+
+const parseThreeCommitteePeerManifest = () => {
+  const fixture = manifestFixture();
+  const committee = fixture.da_committee as Record<string, unknown>;
+  const members = committee.members as Record<string, unknown>[];
+  members[2] = { ...members[2], roles: ["committee", "watcher"] };
+  const parsed = parseDaProducerPublicationManifest(fixture, {
+    DA_LIBP2P_PRIVATE_KEY_SOURCE: PRODUCER_PRIVATE_KEY_SOURCE,
+  });
+  if (parsed === null) {
+    throw new Error("expected three-peer DA manifest");
+  }
+  return parsed;
+};
 
 const listenOnLoopback = (): Promise<Server> =>
   new Promise((resolve, reject) => {

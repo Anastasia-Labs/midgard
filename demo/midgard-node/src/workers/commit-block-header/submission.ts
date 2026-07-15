@@ -1,18 +1,28 @@
+import {
+  type DaPayloadEmissionMode,
+  maxDaPayloadV1InnerBytes,
+  projectDaPayloadV1Sizes,
+} from "@al-ft/midgard-core/da-payload-sizing";
+import { DA_TRANSPORT_LIMITS_V1 } from "@al-ft/midgard-core/da-transport";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
 import { fromHex } from "@lucid-evolution/lucid";
 import { Data, Effect, Option } from "effect";
 
+import { readDaHardeningConfig } from "@/da/hardening-config.js";
 import {
   DepositsDB,
   ForcedTransactionsDB,
+  MpfEngineStateDB,
   PendingBlockFinalizationsDB,
   ProcessedMempoolDB,
   TxUtils as TxTable,
   WithdrawalsDB,
 } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
+import type * as Ledger from "@/database/utils/ledger.js";
 import { Columns as TxColumns } from "@/database/utils/tx.js";
+import { reachPipelinedCommitCrashCheckpoint } from "@/e2e/pipelined-commit-crash-checkpoint.js";
 import {
   fetchOperatorWalletView,
   isPotentiallyStaleOperatorWalletViewError,
@@ -38,10 +48,13 @@ import {
 } from "@/workers/utils/commit-submission.js";
 import {
   emptyRootHexProgram,
+  type LedgerDelta,
   type MidgardMpf,
+  type NativeMpfReplayBuild,
   type RetainedEventToStepMember,
   type RetainedTransitionTraceMember,
   type UtxoPayloadEntry,
+  type UtxoPayloadSizeAggregate,
 } from "@/workers/utils/mpf.js";
 
 import { buildUnsignedCommitTx } from "./build-unsigned-tx.js";
@@ -54,6 +67,7 @@ import {
   assertLiveTailCommitBase,
   assertPendingJournalCompleteness,
   buildPendingJournalMetadata,
+  resolvePendingJournalLedgerState,
   resolveLiveTailCommitBase,
   revalidateStateQueueLease,
 } from "./pending-journal.js";
@@ -65,6 +79,118 @@ import {
 import { makeEventCommitments } from "./transition-commitments.js";
 
 const COMMIT_STALE_OPERATOR_WALLET_VIEW_RETRIES = 1;
+
+const daEntry = (key: Buffer, value: Buffer): SDK.DaPayloadEntry => [
+  key.toString("hex"),
+  value.toString("hex"),
+];
+
+export const assertPreSubmitDaPayloadSize = ({
+  headerHash,
+  header,
+  utxoPayloadAggregate,
+  includedDepositEntries,
+  includedForcedTransactionEntries,
+  includedWithdrawalEntries,
+  processedMempoolTxs,
+  transitionTraceMembers,
+  eventToStepMembers,
+  envelopeMode = readDaHardeningConfig().envelopeMode,
+}: {
+  readonly headerHash: string;
+  readonly header: SDK.Header;
+  readonly utxoPayloadAggregate: UtxoPayloadSizeAggregate;
+  readonly includedDepositEntries: readonly DepositsDB.Entry[];
+  readonly includedForcedTransactionEntries: readonly ForcedTransactionsDB.Entry[];
+  readonly includedWithdrawalEntries: readonly WithdrawalsDB.Entry[];
+  readonly processedMempoolTxs: readonly TxTable.EntryWithTimeStamp[];
+  readonly transitionTraceMembers: readonly RetainedTransitionTraceMember[];
+  readonly eventToStepMembers: readonly RetainedEventToStepMember[];
+  readonly envelopeMode?: DaPayloadEmissionMode;
+}): Effect.Effect<number, DatabaseError> =>
+  Effect.gen(function* () {
+    const withdrawals = yield* Effect.forEach(
+      includedWithdrawalEntries,
+      (entry) => {
+        const value = entry[WithdrawalsDB.Columns.SETTLEMENT_EVENT_INFO];
+        return value === null
+          ? Effect.fail(
+              new DatabaseError({
+                table: PendingBlockFinalizationsDB.tableName,
+                message:
+                  "Cannot size DA payload for an unclassified withdrawal",
+                cause: `withdrawal_event_id=${entry[
+                  WithdrawalsDB.Columns.ID
+                ].toString("hex")}`,
+              }),
+            )
+          : Effect.succeed(
+              daEntry(entry[WithdrawalsDB.Columns.ID], Buffer.from(value)),
+            );
+      },
+    );
+    const payload: SDK.DaPayloadV2 = {
+      version: SDK.DA_PAYLOAD_V2_VERSION,
+      block_body: {
+        header_hash: headerHash,
+        header,
+        // The exact aggregate replaces this list in the sizing function.
+        utxos: [],
+        withdrawals,
+        forced_transactions: includedForcedTransactionEntries.map((entry) =>
+          daEntry(
+            entry[ForcedTransactionsDB.Columns.TX_ORDER_ID],
+            entry[ForcedTransactionsDB.Columns.FORCED_INCLUSION_VALUE],
+          ),
+        ),
+        transactions: processedMempoolTxs.map((entry) =>
+          daEntry(entry[TxColumns.TX_ID], entry[TxColumns.TX]),
+        ),
+        deposits: includedDepositEntries.map((entry) =>
+          daEntry(entry[DepositsDB.Columns.ID], entry[DepositsDB.Columns.INFO]),
+        ),
+        transition_trace: transitionTraceMembers.map((entry) =>
+          daEntry(entry.keyCbor, entry.valueCbor),
+        ),
+        event_to_step: eventToStepMembers.map((entry) =>
+          daEntry(entry.keyCbor, entry.valueCbor),
+        ),
+        counts: {
+          withdrawalCount: header.withdrawalCount,
+          forcedTransactionCount: header.forcedTransactionCount,
+          l2TransactionCount: header.l2TransactionCount,
+          depositCount: header.depositCount,
+          totalEventCount: header.totalEventCount,
+          transitionStepCount: header.transitionStepCount,
+        },
+      },
+    };
+    const encodedBytes = SDK.daPayloadV2EncodedSizeFromUtxoAggregate(
+      payload,
+      utxoPayloadAggregate,
+    );
+    const projection = projectDaPayloadV1Sizes(encodedBytes, envelopeMode);
+    const effectiveInnerLimit = maxDaPayloadV1InnerBytes(envelopeMode);
+    if (
+      encodedBytes > effectiveInnerLimit ||
+      projection.storedBytesUpperBound >
+        DA_TRANSPORT_LIMITS_V1.maxPayloadBytes ||
+      projection.requestBytesUpperBound > DA_TRANSPORT_LIMITS_V1.maxPayloadBytes
+    ) {
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: PendingBlockFinalizationsDB.tableName,
+          message:
+            "Refusing to prepare or submit a block whose DA payload cannot fit the V1 submit frame",
+          cause: `header_hash=${headerHash},envelope_mode=${envelopeMode},inner_bytes=${encodedBytes.toString()},stored_bytes_upper_bound=${projection.storedBytesUpperBound.toString()},request_bytes_upper_bound=${projection.requestBytesUpperBound.toString()},effective_inner_limit=${effectiveInnerLimit.toString()},max_frame_bytes=${DA_TRANSPORT_LIMITS_V1.maxPayloadBytes.toString()},utxo_entry_count=${utxoPayloadAggregate.entryCount.toString()},utxo_encoded_tuple_bytes=${utxoPayloadAggregate.encodedTupleBytes.toString()}`,
+        }),
+      );
+    }
+    yield* Effect.logInfo(
+      `da_payload_pre_submit_inner_bytes=${encodedBytes.toString()} da_payload_stored_bytes_upper_bound=${projection.storedBytesUpperBound.toString()} da_payload_request_bytes_upper_bound=${projection.requestBytesUpperBound.toString()} da_payload_effective_inner_limit=${effectiveInnerLimit.toString()} da_payload_envelope_mode=${envelopeMode} da_payload_frame_limit_bytes=${DA_TRANSPORT_LIMITS_V1.maxPayloadBytes.toString()} utxo_entry_count=${utxoPayloadAggregate.entryCount.toString()} utxo_encoded_tuple_bytes=${utxoPayloadAggregate.encodedTupleBytes.toString()}`,
+    );
+    return encodedBytes;
+  });
 
 class StaleOperatorWalletRetrySignal extends Data.TaggedError(
   "StaleOperatorWalletRetrySignal",
@@ -332,6 +458,12 @@ export const submitDepositOnlyCommit = ({
   eventToStepMembers,
   transitionStepCount,
   utxoPayloadEntries,
+  ledgerDelta,
+  utxoPayloadAggregate,
+  selectedBaseUtxosRoot,
+  implicitGenesisEntries,
+  beforePendingJournalInsert,
+  nativeMpfReplay,
 }: {
   readonly contracts: SDK.MidgardValidators;
   readonly latestBlock: SDK.StateQueueUTxO;
@@ -352,15 +484,27 @@ export const submitDepositOnlyCommit = ({
   readonly eventToStepMembers: readonly RetainedEventToStepMember[];
   readonly transitionStepCount: number;
   readonly utxoPayloadEntries: readonly UtxoPayloadEntry[];
+  readonly ledgerDelta: LedgerDelta;
+  readonly utxoPayloadAggregate: UtxoPayloadSizeAggregate;
+  readonly selectedBaseUtxosRoot: string;
+  readonly implicitGenesisEntries: readonly Ledger.MinimalEntry[];
+  readonly nativeMpfReplay?: NativeMpfReplayBuild;
+  readonly beforePendingJournalInsert?: Effect.Effect<
+    void,
+    DatabaseError,
+    Database
+  >;
 }) =>
   Effect.gen(function* () {
-    const optDepositsRoot = yield* resolveDepositsRoot(includedDepositEntries);
-    const optForcedTransactionsRoot = yield* resolveForcedTransactionsRoot(
-      includedForcedTransactionEntries,
-    );
-    const optWithdrawalsRoot = yield* resolveWithdrawalsRoot(
-      includedWithdrawalEntries,
-    );
+    const [optDepositsRoot, optForcedTransactionsRoot, optWithdrawalsRoot] =
+      yield* Effect.all(
+        [
+          resolveDepositsRoot(includedDepositEntries),
+          resolveForcedTransactionsRoot(includedForcedTransactionEntries),
+          resolveWithdrawalsRoot(includedWithdrawalEntries),
+        ],
+        { concurrency: "unbounded" },
+      );
     if (
       Option.isNone(optDepositsRoot) &&
       Option.isNone(optForcedTransactionsRoot) &&
@@ -391,6 +535,7 @@ export const submitDepositOnlyCommit = ({
       submittedTxHash: string,
       txSize: number,
       blockEndTimeMs: number,
+      submittedHeaderHash: string,
     ) =>
       Effect.succeed({
         type: "SubmittedAwaitingConfirmationOutput",
@@ -399,6 +544,8 @@ export const submitDepositOnlyCommit = ({
         mempoolTxsCount: workerInput.data.mempoolTxsCountSoFar,
         sizeOfBlocksTxs: workerInput.data.sizeOfProcessedTxsSoFar,
         blockEndTimeMs,
+        submittedHeaderHash,
+        submittedUtxosRoot: roots.utxoRoot,
       } satisfies WorkerOutput);
     const roots = selectCommitRoots({
       hasTxRequests: false,
@@ -409,6 +556,7 @@ export const submitDepositOnlyCommit = ({
     yield* assertPendingJournalCompleteness({
       utxoRoot: roots.utxoRoot,
       utxoMemberCount: utxoPayloadEntries.length,
+      hasLedgerDelta: true,
       txRoot: roots.txRoot,
       emptyTxRoot: emptyRoot,
       txMemberCount: 0,
@@ -472,6 +620,7 @@ export const submitDepositOnlyCommit = ({
               }
               const {
                 newHeaderHash,
+                newHeader,
                 newHeaderCbor,
                 blockEndTimeMs,
                 signAndSubmitProgram,
@@ -479,46 +628,71 @@ export const submitDepositOnlyCommit = ({
               } = buildResult;
               return Effect.gen(function* () {
                 const headerHashBuffer = Buffer.from(fromHex(newHeaderHash));
+                yield* assertPreSubmitDaPayloadSize({
+                  headerHash: newHeaderHash,
+                  header: newHeader,
+                  utxoPayloadAggregate,
+                  includedDepositEntries,
+                  includedForcedTransactionEntries,
+                  includedWithdrawalEntries,
+                  processedMempoolTxs: [],
+                  transitionTraceMembers,
+                  eventToStepMembers,
+                });
                 yield* maybeAbandonPreviousStaleAttempt(
                   previousPendingHeaderHash,
                   headerHashBuffer,
                 );
+                yield* MpfEngineStateDB.stampLedgerPayloadAggregate({
+                  rootHex: roots.utxoRoot,
+                  aggregate: utxoPayloadAggregate,
+                });
                 yield* assertCommitInputsWithinBlockEndTime({
                   blockEndTimeMs,
                   includedDepositEntries,
                   includedForcedTransactionEntries,
                   includedWithdrawalEntries,
                 });
+                const metadata = yield* buildPendingJournalMetadata({
+                  latestBlock: commitBaseTail,
+                  workerInput,
+                  blockEndTimeMs,
+                  expectedRoots: {
+                    utxosRoot: roots.utxoRoot,
+                    forcedTransactionsRoot,
+                    transactionsRoot: roots.txRoot,
+                    depositsRoot,
+                    withdrawalsRoot,
+                    transitionTraceRoot:
+                      transitionCommitments.transitionTraceRoot,
+                    eventToStepRoot: transitionCommitments.eventToStepRoot,
+                  },
+                  expectedCounts: {
+                    withdrawalCount: transitionCommitments.withdrawalCount,
+                    forcedTransactionCount:
+                      transitionCommitments.forcedTransactionCount,
+                    l2TransactionCount:
+                      transitionCommitments.l2TransactionCount,
+                    depositCount: transitionCommitments.depositCount,
+                    totalEventCount: transitionCommitments.totalEventCount,
+                    transitionStepCount:
+                      transitionCommitments.transitionStepCount,
+                  },
+                });
+                const journalLedgerState =
+                  yield* resolvePendingJournalLedgerState({
+                    recordedBaseUtxosRoot: metadata.baseRoots.utxosRoot,
+                    selectedBaseUtxosRoot,
+                    expectedFinalUtxosRoot: roots.utxoRoot,
+                    expectedFinalEntryCount: utxoPayloadAggregate.entryCount,
+                    implicitGenesisEntries,
+                    transitionDelta: ledgerDelta,
+                  });
                 return yield* PendingBlockFinalizationsDB.preparePendingSubmission(
                   {
                     headerHash: headerHashBuffer,
                     headerCbor: newHeaderCbor,
-                    metadata: yield* buildPendingJournalMetadata({
-                      latestBlock: commitBaseTail,
-                      workerInput,
-                      blockEndTimeMs,
-                      expectedRoots: {
-                        utxosRoot: roots.utxoRoot,
-                        forcedTransactionsRoot,
-                        transactionsRoot: roots.txRoot,
-                        depositsRoot,
-                        withdrawalsRoot,
-                        transitionTraceRoot:
-                          transitionCommitments.transitionTraceRoot,
-                        eventToStepRoot: transitionCommitments.eventToStepRoot,
-                      },
-                      expectedCounts: {
-                        withdrawalCount: transitionCommitments.withdrawalCount,
-                        forcedTransactionCount:
-                          transitionCommitments.forcedTransactionCount,
-                        l2TransactionCount:
-                          transitionCommitments.l2TransactionCount,
-                        depositCount: transitionCommitments.depositCount,
-                        totalEventCount: transitionCommitments.totalEventCount,
-                        transitionStepCount:
-                          transitionCommitments.transitionStepCount,
-                      },
-                    }),
+                    metadata,
                     blockEndTime: new Date(blockEndTimeMs),
                     depositEventIds: includedDepositEventIds,
                     depositEntries: includedDepositEntries,
@@ -532,9 +706,30 @@ export const submitDepositOnlyCommit = ({
                     mempoolTxSourceTable: "none",
                     transitionTraceMembers,
                     eventToStepMembers,
-                    utxoEntries: journalUtxoEntries(utxoPayloadEntries),
+                    utxoEntries: journalUtxoEntries(
+                      journalLedgerState.utxoEntries,
+                    ),
+                    ledgerDelta:
+                      journalLedgerState.ledgerDelta === undefined
+                        ? undefined
+                        : {
+                            spent: journalLedgerState.ledgerDelta.spent,
+                            produced: journalUtxoEntries(
+                              journalLedgerState.ledgerDelta.produced,
+                            ),
+                          },
+                    utxoPayloadAggregate,
+                    nativeMpfReplay,
                   },
+                  beforePendingJournalInsert === undefined
+                    ? undefined
+                    : { beforeJournalInsert: beforePendingJournalInsert },
                 ).pipe(
+                  Effect.andThen(
+                    reachPipelinedCommitCrashCheckpoint(
+                      "journal_prepared_before_submit",
+                    ),
+                  ),
                   Effect.andThen(
                     Effect.matchEffect(
                       revalidateStateQueueLease(workerInput).pipe(
@@ -561,6 +756,7 @@ export const submitDepositOnlyCommit = ({
                                 txHash,
                                 txSize,
                                 blockEndTimeMs,
+                                newHeaderHash,
                               ),
                             ),
                           ),
@@ -657,6 +853,10 @@ export const submitTxBackedCommit = ({
   eventToStepMembers,
   transitionStepCount,
   utxoPayloadEntries,
+  ledgerDelta,
+  utxoPayloadAggregate,
+  selectedBaseUtxosRoot,
+  implicitGenesisEntries,
   transactionsMpf,
   processedMempoolTxs,
   mempoolTxHashes,
@@ -664,6 +864,8 @@ export const submitTxBackedCommit = ({
   workerInput,
   sizeOfProcessedTxs,
   blockEndTimeCapMs,
+  beforePendingJournalInsert,
+  nativeMpfReplay,
 }: {
   readonly contracts: SDK.MidgardValidators;
   readonly latestBlock: SDK.StateQueueUTxO;
@@ -682,6 +884,11 @@ export const submitTxBackedCommit = ({
   readonly eventToStepMembers: readonly RetainedEventToStepMember[];
   readonly transitionStepCount: number;
   readonly utxoPayloadEntries: readonly UtxoPayloadEntry[];
+  readonly ledgerDelta: LedgerDelta;
+  readonly utxoPayloadAggregate: UtxoPayloadSizeAggregate;
+  readonly selectedBaseUtxosRoot: string;
+  readonly implicitGenesisEntries: readonly Ledger.MinimalEntry[];
+  readonly nativeMpfReplay?: NativeMpfReplayBuild;
   readonly transactionsMpf: MidgardMpf;
   readonly processedMempoolTxs: readonly TxTable.EntryWithTimeStamp[];
   readonly mempoolTxHashes: Buffer[];
@@ -689,16 +896,23 @@ export const submitTxBackedCommit = ({
   readonly workerInput: WorkerInput;
   readonly sizeOfProcessedTxs: number;
   readonly blockEndTimeCapMs?: number;
+  readonly beforePendingJournalInsert?: Effect.Effect<
+    void,
+    DatabaseError,
+    Database
+  >;
 }) =>
   Effect.gen(function* () {
     const emptyRoot = yield* emptyRootHexProgram;
-    const optDepositsRoot = yield* resolveDepositsRoot(includedDepositEntries);
-    const optForcedTransactionsRoot = yield* resolveForcedTransactionsRoot(
-      includedForcedTransactionEntries,
-    );
-    const optWithdrawalsRoot = yield* resolveWithdrawalsRoot(
-      includedWithdrawalEntries,
-    );
+    const [optDepositsRoot, optForcedTransactionsRoot, optWithdrawalsRoot] =
+      yield* Effect.all(
+        [
+          resolveDepositsRoot(includedDepositEntries),
+          resolveForcedTransactionsRoot(includedForcedTransactionEntries),
+          resolveWithdrawalsRoot(includedWithdrawalEntries),
+        ],
+        { concurrency: "unbounded" },
+      );
     const depositsRoot = Option.isSome(optDepositsRoot)
       ? optDepositsRoot.value
       : SDK.EMPTY_MERKLE_TREE_ROOT;
@@ -722,6 +936,7 @@ export const submitTxBackedCommit = ({
     yield* assertPendingJournalCompleteness({
       utxoRoot,
       utxoMemberCount: utxoPayloadEntries.length,
+      hasLedgerDelta: true,
       txRoot,
       emptyTxRoot: emptyRoot,
       txMemberCount: currentBlockMempoolTxsCount,
@@ -759,6 +974,7 @@ export const submitTxBackedCommit = ({
       submittedTxHash: string,
       txSize: number,
       blockEndTimeMs: number,
+      submittedHeaderHash: string,
     ) =>
       Effect.succeed({
         type: "SubmittedAwaitingConfirmationOutput",
@@ -769,6 +985,8 @@ export const submitTxBackedCommit = ({
         sizeOfBlocksTxs:
           sizeOfProcessedTxs + workerInput.data.sizeOfProcessedTxsSoFar,
         blockEndTimeMs,
+        submittedHeaderHash,
+        submittedUtxosRoot: utxoRoot,
       } satisfies WorkerOutput);
     const selectedPayloadAlreadyDeferred =
       mempoolTxSourceTable === ProcessedMempoolDB.tableName;
@@ -855,6 +1073,7 @@ export const submitTxBackedCommit = ({
               }
               const {
                 newHeaderHash,
+                newHeader,
                 newHeaderCbor,
                 blockEndTimeMs,
                 signAndSubmitProgram,
@@ -862,10 +1081,25 @@ export const submitTxBackedCommit = ({
               } = buildResult;
               return Effect.gen(function* () {
                 const headerHashBuffer = Buffer.from(fromHex(newHeaderHash));
+                yield* assertPreSubmitDaPayloadSize({
+                  headerHash: newHeaderHash,
+                  header: newHeader,
+                  utxoPayloadAggregate,
+                  includedDepositEntries,
+                  includedForcedTransactionEntries,
+                  includedWithdrawalEntries,
+                  processedMempoolTxs,
+                  transitionTraceMembers,
+                  eventToStepMembers,
+                });
                 yield* maybeAbandonPreviousStaleAttempt(
                   previousPendingHeaderHash,
                   headerHashBuffer,
                 );
+                yield* MpfEngineStateDB.stampLedgerPayloadAggregate({
+                  rootHex: utxoRoot,
+                  aggregate: utxoPayloadAggregate,
+                });
                 yield* assertCommitInputsWithinBlockEndTime({
                   blockEndTimeMs,
                   processedMempoolTxs,
@@ -873,36 +1107,46 @@ export const submitTxBackedCommit = ({
                   includedForcedTransactionEntries,
                   includedWithdrawalEntries,
                 });
+                const metadata = yield* buildPendingJournalMetadata({
+                  latestBlock: commitBaseTail,
+                  workerInput,
+                  blockEndTimeMs,
+                  expectedRoots: {
+                    utxosRoot: utxoRoot,
+                    forcedTransactionsRoot,
+                    transactionsRoot: txRoot,
+                    depositsRoot,
+                    withdrawalsRoot,
+                    transitionTraceRoot:
+                      transitionCommitments.transitionTraceRoot,
+                    eventToStepRoot: transitionCommitments.eventToStepRoot,
+                  },
+                  expectedCounts: {
+                    withdrawalCount: transitionCommitments.withdrawalCount,
+                    forcedTransactionCount:
+                      transitionCommitments.forcedTransactionCount,
+                    l2TransactionCount:
+                      transitionCommitments.l2TransactionCount,
+                    depositCount: transitionCommitments.depositCount,
+                    totalEventCount: transitionCommitments.totalEventCount,
+                    transitionStepCount:
+                      transitionCommitments.transitionStepCount,
+                  },
+                });
+                const journalLedgerState =
+                  yield* resolvePendingJournalLedgerState({
+                    recordedBaseUtxosRoot: metadata.baseRoots.utxosRoot,
+                    selectedBaseUtxosRoot,
+                    expectedFinalUtxosRoot: utxoRoot,
+                    expectedFinalEntryCount: utxoPayloadAggregate.entryCount,
+                    implicitGenesisEntries,
+                    transitionDelta: ledgerDelta,
+                  });
                 return yield* PendingBlockFinalizationsDB.preparePendingSubmission(
                   {
                     headerHash: headerHashBuffer,
                     headerCbor: newHeaderCbor,
-                    metadata: yield* buildPendingJournalMetadata({
-                      latestBlock: commitBaseTail,
-                      workerInput,
-                      blockEndTimeMs,
-                      expectedRoots: {
-                        utxosRoot: utxoRoot,
-                        forcedTransactionsRoot,
-                        transactionsRoot: txRoot,
-                        depositsRoot,
-                        withdrawalsRoot,
-                        transitionTraceRoot:
-                          transitionCommitments.transitionTraceRoot,
-                        eventToStepRoot: transitionCommitments.eventToStepRoot,
-                      },
-                      expectedCounts: {
-                        withdrawalCount: transitionCommitments.withdrawalCount,
-                        forcedTransactionCount:
-                          transitionCommitments.forcedTransactionCount,
-                        l2TransactionCount:
-                          transitionCommitments.l2TransactionCount,
-                        depositCount: transitionCommitments.depositCount,
-                        totalEventCount: transitionCommitments.totalEventCount,
-                        transitionStepCount:
-                          transitionCommitments.transitionStepCount,
-                      },
-                    }),
+                    metadata,
                     blockEndTime: new Date(blockEndTimeMs),
                     depositEventIds: includedDepositEventIds,
                     depositEntries: includedDepositEntries,
@@ -918,9 +1162,30 @@ export const submitTxBackedCommit = ({
                     mempoolTxSourceTable,
                     transitionTraceMembers,
                     eventToStepMembers,
-                    utxoEntries: journalUtxoEntries(utxoPayloadEntries),
+                    utxoEntries: journalUtxoEntries(
+                      journalLedgerState.utxoEntries,
+                    ),
+                    ledgerDelta:
+                      journalLedgerState.ledgerDelta === undefined
+                        ? undefined
+                        : {
+                            spent: journalLedgerState.ledgerDelta.spent,
+                            produced: journalUtxoEntries(
+                              journalLedgerState.ledgerDelta.produced,
+                            ),
+                          },
+                    utxoPayloadAggregate,
+                    nativeMpfReplay,
                   },
+                  beforePendingJournalInsert === undefined
+                    ? undefined
+                    : { beforeJournalInsert: beforePendingJournalInsert },
                 ).pipe(
+                  Effect.andThen(
+                    reachPipelinedCommitCrashCheckpoint(
+                      "journal_prepared_before_submit",
+                    ),
+                  ),
                   Effect.andThen(
                     Effect.matchEffect(
                       revalidateStateQueueLease(workerInput).pipe(
@@ -1018,6 +1283,7 @@ export const submitTxBackedCommit = ({
                                     recoveredTxHash.value,
                                     txSize,
                                     blockEndTimeMs,
+                                    newHeaderHash,
                                   ),
                                 ),
                               );
@@ -1041,6 +1307,7 @@ export const submitTxBackedCommit = ({
                                 txHash,
                                 txSize,
                                 blockEndTimeMs,
+                                newHeaderHash,
                               ),
                             ),
                           ),
@@ -1102,6 +1369,7 @@ export const recoverLocalFinalizationAgainstConfirmedBlock = ({
   mempoolTxHashes,
   workerInput,
   sizeOfProcessedTxs,
+  beforeTransactionsMpfReset,
 }: {
   readonly latestBlock: SDK.StateQueueUTxO;
   readonly transactionsMpf: MidgardMpf;
@@ -1109,6 +1377,11 @@ export const recoverLocalFinalizationAgainstConfirmedBlock = ({
   readonly mempoolTxHashes: Buffer[];
   readonly workerInput: WorkerInput;
   readonly sizeOfProcessedTxs: number;
+  readonly beforeTransactionsMpfReset?: Effect.Effect<
+    void,
+    DatabaseError,
+    Database
+  >;
 }): Effect.Effect<WorkerOutput, unknown, Database> =>
   Effect.gen(function* () {
     yield* Effect.logInfo(
@@ -1163,5 +1436,6 @@ export const recoverLocalFinalizationAgainstConfirmedBlock = ({
       confirmedHeaderHash,
       workerInput,
       sizeOfProcessedTxs,
+      beforeTransactionsMpfReset,
     );
   });

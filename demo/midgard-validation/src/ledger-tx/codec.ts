@@ -38,6 +38,7 @@ import {
   redeemerDataFromCborHex,
 } from "../midgard-redeemers.js";
 import { plutusDataToCborHex } from "../plutus-data.js";
+import { decodeCanonicalTransactionInput } from "./canonical-cardano-fast-path.js";
 import type {
   MidgardAssetName,
   MidgardCredentialHash,
@@ -223,30 +224,41 @@ const copyNativeWitnessSetCompact = (
 const encodeByteList = (items: readonly Uint8Array[]): Buffer =>
   encodeCbor(items.map((item) => copyBuffer(item)));
 
-const decodeOutRef = (inputBytes: Uint8Array): MidgardOutRef => {
+const decodeOutRefWithCml = (inputBytes: Uint8Array): MidgardOutRef => {
   const input = CML.TransactionInput.from_cbor_bytes(inputBytes);
-  return {
-    txId: Buffer.from(input.transaction_id().to_raw_bytes()),
-    index: BigInt(input.index()),
-  };
+  try {
+    const transactionId = input.transaction_id();
+    try {
+      return {
+        txId: Buffer.from(transactionId.to_raw_bytes()),
+        index: BigInt(input.index()),
+      };
+    } finally {
+      transactionId.free();
+    }
+  } finally {
+    input.free();
+  }
 };
 
+export const decodeMidgardOutRefBytes = (
+  inputBytes: Uint8Array,
+): MidgardOutRef =>
+  decodeCanonicalTransactionInput(inputBytes) ??
+  decodeOutRefWithCml(inputBytes);
+
 const encodeOutRef = (outRef: MidgardOutRef, fieldName: string): Buffer =>
-  Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_raw_bytes(
-        assertHash32(outRef.txId, `${fieldName}.txId`),
-      ),
-      outRef.index,
-    ).to_cbor_bytes(),
-  );
+  encodeCbor([
+    copyBuffer(assertHash32(outRef.txId, `${fieldName}.txId`)),
+    outRef.index,
+  ]);
 
 const decodeOutRefList = (
   preimageCbor: Uint8Array,
   fieldName: string,
 ): MidgardOutRef[] =>
   decodeMidgardNativeByteListPreimage(preimageCbor, fieldName).map(
-    decodeOutRef,
+    decodeMidgardOutRefBytes,
   );
 
 const encodeOutRefList = (
@@ -346,23 +358,49 @@ const decodeVKeyWitnesses = (
   const seenKeyHashes = new Set<string>();
 
   for (let index = 0; index < witnessBytes.length; index += 1) {
-    const witness = CML.Vkeywitness.from_cbor_bytes(witnessBytes[index]);
-    const vkey = witness.vkey();
-    const keyHash = Buffer.from(vkey.hash().to_raw_bytes());
+    const decoded = decodeVKeyWitnessWithCml(witnessBytes[index], index);
+    const keyHash = decoded.keyHash;
     const keyHashHex = keyHash.toString("hex");
     if (!seenKeyHashes.has(keyHashHex)) {
       seenKeyHashes.add(keyHashHex);
       witnessKeyHashes.push(keyHash);
     }
-    vkeyWitnesses.push({
-      index,
-      keyHash,
-      vkey: Buffer.from(vkey.to_raw_bytes()),
-      signature: Buffer.from(witness.ed25519_signature().to_raw_bytes()),
-    });
+    vkeyWitnesses.push(decoded);
   }
 
   return { vkeyWitnesses, witnessKeyHashes };
+};
+
+const decodeVKeyWitnessWithCml = (
+  witnessBytes: Uint8Array,
+  index: number,
+): MidgardLedgerVKeyWitness => {
+  const witness = CML.Vkeywitness.from_cbor_bytes(witnessBytes);
+  try {
+    const vkey = witness.vkey();
+    try {
+      const keyHash = vkey.hash();
+      try {
+        const signature = witness.ed25519_signature();
+        try {
+          return {
+            index,
+            keyHash: Buffer.from(keyHash.to_raw_bytes()),
+            vkey: Buffer.from(vkey.to_raw_bytes()),
+            signature: Buffer.from(signature.to_raw_bytes()),
+          };
+        } finally {
+          signature.free();
+        }
+      } finally {
+        keyHash.free();
+      }
+    } finally {
+      vkey.free();
+    }
+  } finally {
+    witness.free();
+  }
 };
 
 const orderByIndex = <T extends { readonly index: number }>(

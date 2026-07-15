@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
+import { withDaRequestDeadline } from "@al-ft/midgard-core/da-request-deadline";
 import {
   computeDaSha256Hash,
   DA_TRANSPORT_LIMITS_V1,
   DA_TRANSPORT_PROTOCOL_VERSION,
+  type DaCapabilitiesResponseV1,
   daDeploymentFingerprintFromHex,
   DaGossipTopic,
   daGossipTopic,
@@ -15,10 +17,12 @@ import {
   DaRequestResponseProtocol,
   daRequestResponseProtocolId,
   DaTransportSigningDomain,
+  decodeDaCapabilitiesResponseV1Cbor,
   decodeDaMetadataByHeaderResponseV1Cbor,
   decodeDaPayloadByHeaderRequestV1Cbor,
   decodeDaPayloadChunkRequestV1Cbor,
   decodeDaPayloadSubmitResponseV1Cbor,
+  encodeDaCapabilitiesRequestV1Cbor,
   encodeDaMetadataByHeaderResponseV1Cbor,
   encodeDaPayloadAnnouncementV1Cbor,
   encodeDaPayloadByHeaderRequestV1Cbor,
@@ -28,16 +32,44 @@ import {
   parseDaLibp2pRuntimeManifestDeploymentIdentity,
 } from "@al-ft/midgard-core/da-transport";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import { Effect } from "effect";
+import { SqlClient } from "@effect/sql";
+import { Duration, Effect, Metric } from "effect";
 
+import { readDaHardeningConfig } from "@/da/hardening-config.js";
 import { loadDaLibp2pIdentity } from "@/da/libp2p-identity.js";
-import { DaPayloadsDB } from "@/database/index.js";
+import {
+  DaPayloadAnnouncementsDB,
+  DaPayloadPublicationsDB,
+  DaPayloadsDB,
+} from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
+import type { Database } from "@/services/database.js";
 
 const MANIFEST_PATH_ENV = "MIDGARD_DEPLOYMENT_MANIFEST_PATH";
 const FALLBACK_MANIFEST_PATH_ENV = "MIDGARD_DA_DEPLOYMENT_MANIFEST_PATH";
 const LIBP2P_PRIVATE_KEY_SOURCE_ENV = "DA_LIBP2P_PRIVATE_KEY_SOURCE";
 const ACCEPTED_RESPONSE_STATUSES = new Set(["accepted", "duplicate"]);
+const daPublishPeerDurationTimer = Metric.timer(
+  "da_publish_peer_duration_ms",
+  "Per-peer DA payload submit duration",
+);
+const daPublishThresholdDurationTimer = Metric.timer(
+  "da_publish_threshold_duration_ms",
+  "Time until the DA transport acceptance threshold is reached",
+);
+const daPublishAllPeerDurationTimer = Metric.timer(
+  "da_publish_all_peer_duration_ms",
+  "Time until all DA peer submit attempts settle",
+);
+const daPublishStragglerCounter = Metric.counter("da_publish_straggler_total", {
+  description: "Detached DA peer submit attempts by eventual outcome",
+});
+const daPublishRejectedCounter = Metric.counter("da_publish_rejected_total", {
+  description: "DA payload submit rejections by reason code",
+});
+const daPublishConflictCounter = Metric.counter("da_publish_conflict_total", {
+  description: "Sticky DA payload conflicts reported by committee peers",
+});
 const FORBIDDEN_LIBP2P_DA_CONFIG_KEYS = new Set([
   "baseUrl",
   "base_url",
@@ -70,6 +102,7 @@ export type DaProducerCommitteePeer = {
 
 export type DaProducerPublicationManifest = {
   readonly deploymentFingerprint: string;
+  readonly contractDeploymentManifestId: string;
   readonly localPrivateKeySource: string;
   readonly threshold: number;
   readonly requestTimeoutMs: number;
@@ -107,6 +140,8 @@ export type DaProducerPublicationReport = {
   readonly threshold?: number;
   readonly acceptedPeers: number;
   readonly peerResults: readonly DaProducerPeerResult[];
+  /** Stable completion handle; peerResults/acceptedPeers are threshold-time snapshots. */
+  readonly allPeerResults?: Promise<readonly DaProducerPeerResult[]>;
   readonly announcement?: DaProducerAnnouncementResult;
   readonly reason?: string;
 };
@@ -192,12 +227,29 @@ export type DaProducerProbeTransport = {
   readonly close?: () => Promise<void>;
 };
 
+export type DaEnvelopeCapabilityMode = "identity" | "zstd";
+
+export type DaEnvelopeCapabilityPeerResult = {
+  readonly peerId: string;
+  readonly signerIndex: number;
+  readonly capable: boolean;
+  readonly capabilities?: DaCapabilitiesResponseV1;
+  readonly error?: string;
+};
+
 export type DaProducerTransport = DaProducerProbeTransport & {
   readonly sign: (message: Uint8Array) => Uint8Array | Promise<Uint8Array>;
   readonly publish: (
     topic: string,
     payload: Uint8Array,
   ) => Promise<{ readonly recipients: readonly string[] }>;
+  readonly requestFramed?: (
+    peer: DaProducerCommitteePeer,
+    protocolId: string,
+    frame: Uint8Array,
+    timeoutMs: number,
+    maxChunkBytes: number,
+  ) => Promise<Uint8Array>;
 };
 
 export type DaProducerStream = AsyncIterable<
@@ -278,6 +330,8 @@ export const parseDaProducerPublicationManifest = (
   const limits = objectAt(daTransport, ["limits"]);
   return {
     deploymentFingerprint: deploymentIdentity.fingerprint,
+    contractDeploymentManifestId:
+      deploymentIdentity.contractDeploymentManifestId,
     localPrivateKeySource: requiredLibp2pPrivateKeySource(env),
     threshold,
     requestTimeoutMs: exactLimit(
@@ -573,7 +627,7 @@ export const startDaLibp2pRetainedPayloadServerFromEnv = async ({
   };
 };
 
-export const publishDaPayloadInsert = async ({
+export const publishDaPayloadAnnouncement = async ({
   insert,
   manifest,
   transport,
@@ -583,68 +637,17 @@ export const publishDaPayloadInsert = async ({
   readonly manifest: DaProducerPublicationManifest;
   readonly transport: DaProducerTransport;
   readonly announcedAtSlot?: number;
-}): Promise<DaProducerPublicationReport> => {
+}): Promise<DaProducerAnnouncementResult> => {
   const headerHash = insert[DaPayloadsDB.Columns.HEADER_HASH];
   const payloadBytes = insert[DaPayloadsDB.Columns.PAYLOAD_CBOR];
   const payloadHash = verifyPayloadHash(insert);
-  if (payloadBytes.length > manifest.maxPayloadBytes) {
-    throw new Error(
-      `DA payload ${headerHash.toString(
-        "hex",
-      )} is ${payloadBytes.length.toString()} bytes, exceeding max_payload_bytes=${manifest.maxPayloadBytes.toString()}`,
-    );
-  }
   const deploymentFingerprint = daDeploymentFingerprintFromHex(
     manifest.deploymentFingerprint,
-  );
-  const protocolId = daRequestResponseProtocolId(
-    manifest.deploymentFingerprint,
-    DaRequestResponseProtocol.payloadSubmit,
   );
   const topic = daGossipTopic(
     manifest.deploymentFingerprint,
     DaGossipTopic.payloadAnnouncements,
   );
-  const request = encodeDaPayloadSubmitRequestV1Cbor({
-    deploymentFingerprint,
-    headerHash,
-    payloadHash,
-    payloadSchemaVersion: insert[DaPayloadsDB.Columns.VERSION],
-    mode: "inline",
-    payloadBytes,
-    chunkManifest: null,
-  });
-  const peerResults = await Promise.all(
-    manifest.committeePeers.map((peer) =>
-      submitPayloadToPeer({
-        peer,
-        headerHash,
-        protocolId,
-        request,
-        timeoutMs: manifest.requestTimeoutMs,
-        payloadHash,
-        transport,
-      }),
-    ),
-  );
-  const acceptedPeers = peerResults.filter((result) =>
-    ACCEPTED_RESPONSE_STATUSES.has(result.status),
-  ).length;
-  const reportWithoutAnnouncement: DaProducerPublicationReport = {
-    configured: true,
-    headerHash: headerHash.toString("hex"),
-    payloadHash: payloadHash.toString("hex"),
-    deploymentFingerprint: manifest.deploymentFingerprint,
-    threshold: manifest.threshold,
-    acceptedPeers,
-    peerResults,
-  };
-  if (acceptedPeers < manifest.threshold) {
-    throw new DaPayloadPublicationError(
-      `DA payload publication accepted by ${acceptedPeers.toString()} peer(s), below threshold ${manifest.threshold.toString()}`,
-      reportWithoutAnnouncement,
-    );
-  }
   const localPeerId = await transport.localPeerId();
   const announcementWithoutSignature = {
     deploymentFingerprint,
@@ -674,53 +677,422 @@ export const publishDaPayloadInsert = async ({
   }
   const published = await transport.publish(topic, announcementBytes);
   return {
-    ...reportWithoutAnnouncement,
-    announcement: {
-      topic,
-      payloadHash: payloadHash.toString("hex"),
-      recipients: published.recipients,
-    },
+    topic,
+    payloadHash: payloadHash.toString("hex"),
+    recipients: published.recipients,
   };
 };
 
+export const publishDaPayloadInsert = async ({
+  insert,
+  manifest,
+  transport,
+  announcedAtSlot = 0,
+  onPeerResult,
+}: {
+  readonly insert: DaPayloadsDB.InsertInput;
+  readonly manifest: DaProducerPublicationManifest;
+  readonly transport: DaProducerTransport;
+  readonly announcedAtSlot?: number;
+  readonly onPeerResult?: (args: {
+    readonly peer: DaProducerCommitteePeer;
+    readonly result: DaProducerPeerResult;
+  }) => Promise<void>;
+}): Promise<DaProducerPublicationReport> => {
+  const headerHash = insert[DaPayloadsDB.Columns.HEADER_HASH];
+  const payloadBytes = insert[DaPayloadsDB.Columns.PAYLOAD_CBOR];
+  const payloadHash = verifyPayloadHash(insert);
+  if (payloadBytes.length > manifest.maxPayloadBytes) {
+    throw new Error(
+      `DA payload ${headerHash.toString(
+        "hex",
+      )} is ${payloadBytes.length.toString()} bytes, exceeding max_payload_bytes=${manifest.maxPayloadBytes.toString()}`,
+    );
+  }
+  const deploymentFingerprint = daDeploymentFingerprintFromHex(
+    manifest.deploymentFingerprint,
+  );
+  const protocolId = daRequestResponseProtocolId(
+    manifest.deploymentFingerprint,
+    DaRequestResponseProtocol.payloadSubmit,
+  );
+  const request = encodeDaPayloadSubmitRequestV1Cbor({
+    deploymentFingerprint,
+    headerHash,
+    payloadHash,
+    payloadSchemaVersion: insert[DaPayloadsDB.Columns.VERSION],
+    mode: "inline",
+    payloadBytes,
+    chunkManifest: null,
+  });
+  const sharedRequestFrame = encodeFrame(request, manifest.maxPayloadBytes);
+  const publishStartedAt = Date.now();
+  const peerResults: DaProducerPeerResult[] = [];
+  let acceptedPeers = 0;
+  let settledPeers = 0;
+  let nextPeerIndex = 0;
+  let activePeers = 0;
+  let thresholdReached = false;
+  const configuredConcurrency = readDaHardeningConfig().publishConcurrency;
+  const concurrency = Math.max(
+    1,
+    Math.min(configuredConcurrency, manifest.committeePeers.length),
+  );
+  let resolveDecision!: (reached: boolean) => void;
+  let resolveAll!: () => void;
+  const decision = new Promise<boolean>((resolve) => {
+    resolveDecision = resolve;
+  });
+  const allSettled = new Promise<void>((resolve) => {
+    resolveAll = resolve;
+  });
+  const launch = (): void => {
+    while (
+      activePeers < concurrency &&
+      nextPeerIndex < manifest.committeePeers.length
+    ) {
+      const peer = manifest.committeePeers[nextPeerIndex++]!;
+      activePeers += 1;
+      const peerStartedAt = Date.now();
+      void submitPayloadToPeer({
+        peer,
+        headerHash,
+        protocolId,
+        request,
+        requestFrame: sharedRequestFrame,
+        timeoutMs: manifest.requestTimeoutMs,
+        maxChunkBytes: manifest.maxChunkBytes,
+        payloadHash,
+        transport,
+      }).then((result) => {
+        activePeers -= 1;
+        settledPeers += 1;
+        peerResults.push(result);
+        void Promise.resolve(onPeerResult?.({ peer, result })).catch(
+          () => undefined,
+        );
+        const wasStraggler = thresholdReached;
+        Effect.runSync(
+          Metric.update(
+            Metric.tagged(
+              Metric.tagged(
+                daPublishPeerDurationTimer,
+                "peer_id",
+                result.peerId,
+              ),
+              "status",
+              result.status,
+            ),
+            Duration.millis(Date.now() - peerStartedAt),
+          ),
+        );
+        if (result.status === "rejected") {
+          Effect.runSync(
+            Metric.increment(
+              Metric.tagged(
+                daPublishRejectedCounter,
+                "reason_code",
+                result.error ?? "unknown",
+              ),
+            ),
+          );
+        }
+        if (result.status === "conflict") {
+          Effect.runSync(Metric.increment(daPublishConflictCounter));
+          console.error(
+            `DA publication conflict header=${headerHash.toString("hex")},peer=${result.peerId}; durable conflict evidence retained`,
+          );
+        }
+        if (wasStraggler) {
+          Effect.runSync(
+            Metric.increment(
+              Metric.tagged(daPublishStragglerCounter, "status", result.status),
+            ),
+          );
+        }
+        if (ACCEPTED_RESPONSE_STATUSES.has(result.status)) {
+          acceptedPeers += 1;
+          if (!thresholdReached && acceptedPeers >= manifest.threshold) {
+            thresholdReached = true;
+            resolveDecision(true);
+          }
+        }
+        launch();
+        if (settledPeers === manifest.committeePeers.length) {
+          if (!thresholdReached) {
+            resolveDecision(false);
+          }
+          resolveAll();
+        }
+      });
+    }
+  };
+  launch();
+  const reachedThreshold = await decision;
+  const allPeerResults = allSettled.then(() => [...peerResults]);
+  void allSettled.then(() => {
+    Effect.runSync(
+      Metric.update(
+        daPublishAllPeerDurationTimer,
+        Duration.millis(Date.now() - publishStartedAt),
+      ),
+    );
+  });
+  const reportWithoutAnnouncement: DaProducerPublicationReport = {
+    configured: true,
+    headerHash: headerHash.toString("hex"),
+    payloadHash: payloadHash.toString("hex"),
+    deploymentFingerprint: manifest.deploymentFingerprint,
+    threshold: manifest.threshold,
+    acceptedPeers,
+    peerResults: [...peerResults],
+    allPeerResults,
+  };
+  if (!reachedThreshold) {
+    throw new DaPayloadPublicationError(
+      `DA payload publication accepted by ${acceptedPeers.toString()} peer(s), below threshold ${manifest.threshold.toString()}`,
+      reportWithoutAnnouncement,
+    );
+  }
+  Effect.runSync(
+    Metric.update(
+      daPublishThresholdDurationTimer,
+      Duration.millis(Date.now() - publishStartedAt),
+    ),
+  );
+  const announcement = await publishDaPayloadAnnouncement({
+    insert,
+    manifest,
+    transport,
+    announcedAtSlot,
+  });
+  return {
+    ...reportWithoutAnnouncement,
+    announcement,
+  };
+};
+
+let cachedPublicationTransport:
+  | Promise<{
+      readonly key: string;
+      readonly transport: DaProducerTransport;
+    }>
+  | undefined;
+
+const publicationTransportKey = (
+  manifest: DaProducerPublicationManifest,
+): string =>
+  JSON.stringify({
+    deploymentFingerprint: manifest.deploymentFingerprint,
+    localPrivateKeySource: manifest.localPrivateKeySource,
+    committeePeers: manifest.committeePeers,
+  });
+
+const getPublicationTransport = async (
+  manifest: DaProducerPublicationManifest,
+): Promise<DaProducerTransport> => {
+  const key = publicationTransportKey(manifest);
+  const existing = cachedPublicationTransport;
+  if (existing !== undefined) {
+    const resolved = await existing;
+    if (resolved.key === key) {
+      return resolved.transport;
+    }
+    await resolved.transport.close?.();
+  }
+  const created = createDaLibp2pProducerTransport(manifest, {
+    mode: "dial-only",
+  }).then((transport) => ({ key, transport }));
+  cachedPublicationTransport = created;
+  try {
+    return (await created).transport;
+  } catch (error) {
+    if (cachedPublicationTransport === created) {
+      cachedPublicationTransport = undefined;
+    }
+    throw error;
+  }
+};
+
+const invalidatePublicationTransport = async (
+  transport: DaProducerTransport,
+): Promise<void> => {
+  const cached = cachedPublicationTransport;
+  if (cached === undefined) {
+    return;
+  }
+  const resolved = await cached.catch(() => undefined);
+  if (resolved?.transport !== transport) {
+    return;
+  }
+  cachedPublicationTransport = undefined;
+  await transport.close?.().catch(() => undefined);
+};
+
+export const closeDaLibp2pPublicationTransport = async (): Promise<void> => {
+  const cached = cachedPublicationTransport;
+  cachedPublicationTransport = undefined;
+  const resolved = await cached?.catch(() => undefined);
+  await resolved?.transport.close?.();
+};
+
+export const getDaPublicationTransportForTest = getPublicationTransport;
+
+/**
+ * Persist the durable peer-delivery and gossip outboxes without performing
+ * network I/O. Local block finalization calls this before marking its mutation
+ * job complete so a crash cannot leave publication dependent on the direct
+ * best-effort publish path.
+ */
+export const seedDaPayloadPublicationOutboxFromEnv = (
+  insert: DaPayloadsDB.InsertInput,
+): Effect.Effect<void, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const manifest = yield* Effect.tryPromise({
+      try: () => loadDaProducerPublicationManifestFromEnv(),
+      catch: (cause) =>
+        new DatabaseError({
+          table: DaPayloadPublicationsDB.tableName,
+          message:
+            "Failed to load DA manifest while seeding publication outbox",
+          cause,
+        }),
+    });
+    if (manifest === null) {
+      return;
+    }
+    yield* Effect.all(
+      [
+        DaPayloadPublicationsDB.seedForPayload(
+          insert[DaPayloadsDB.Columns.HEADER_HASH],
+          manifest.committeePeers,
+        ),
+        DaPayloadAnnouncementsDB.seedForPayload(
+          insert[DaPayloadsDB.Columns.HEADER_HASH],
+        ),
+      ],
+      { concurrency: 1, discard: true },
+    );
+  });
+
 export const publishDaPayloadInsertFromEnv = (
   insert: DaPayloadsDB.InsertInput,
-): Effect.Effect<DaProducerPublicationReport, DatabaseError> =>
-  Effect.tryPromise({
-    try: async () => {
-      const manifest = await loadDaProducerPublicationManifestFromEnv();
-      const headerHash =
-        insert[DaPayloadsDB.Columns.HEADER_HASH].toString("hex");
-      const payloadHash = verifyPayloadHash(insert).toString("hex");
-      if (manifest === null) {
-        return {
-          configured: false,
-          headerHash,
-          payloadHash,
-          acceptedPeers: 0,
-          peerResults: [],
-          reason: "no libp2p DA manifest configured",
-        };
-      }
-      const transport = await createDaLibp2pProducerTransport(manifest, {
-        mode: "dial-only",
-      });
-      try {
-        return await publishDaPayloadInsert({
-          insert,
-          manifest,
-          transport,
-        });
-      } finally {
-        await transport.close?.();
-      }
-    },
-    catch: (cause) =>
-      new DatabaseError({
-        table: DaPayloadsDB.tableName,
-        message: "Failed to publish DA payload over libp2p",
-        cause,
-      }),
+): Effect.Effect<DaProducerPublicationReport, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const hardeningConfig = readDaHardeningConfig();
+    return yield* Effect.tryPromise({
+      try: async () => {
+        const manifest = await loadDaProducerPublicationManifestFromEnv();
+        const headerHash =
+          insert[DaPayloadsDB.Columns.HEADER_HASH].toString("hex");
+        const payloadHash = verifyPayloadHash(insert).toString("hex");
+        if (manifest === null) {
+          return {
+            configured: false,
+            headerHash,
+            payloadHash,
+            acceptedPeers: 0,
+            peerResults: [],
+            reason: "no libp2p DA manifest configured",
+          };
+        }
+        await Effect.runPromise(
+          Effect.all(
+            [
+              DaPayloadPublicationsDB.seedForPayload(
+                insert[DaPayloadsDB.Columns.HEADER_HASH],
+                manifest.committeePeers,
+              ),
+              DaPayloadAnnouncementsDB.seedForPayload(
+                insert[DaPayloadsDB.Columns.HEADER_HASH],
+              ),
+            ],
+            { concurrency: 1, discard: true },
+          ).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
+        );
+        const transport = await getPublicationTransport(manifest);
+        try {
+          const report = await publishDaPayloadInsert({
+            insert,
+            manifest,
+            transport,
+            onPeerResult: async ({ peer, result }) => {
+              const status: Exclude<
+                DaPayloadPublicationsDB.PublicationStatus,
+                "pending"
+              > = result.status === "deferred" ? "rejected" : result.status;
+              const recorded = await Effect.runPromise(
+                DaPayloadPublicationsDB.recordAttempt({
+                  headerHash: insert[DaPayloadsDB.Columns.HEADER_HASH],
+                  peer,
+                  status,
+                  error: result.error,
+                  retryBackoffMs: hardeningConfig.retryBackoffMs,
+                  retryBackoffMaxMs: hardeningConfig.retryBackoffMaxMs,
+                }).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
+              ).catch((error) => {
+                console.warn(
+                  `Failed to persist DA publication result header=${headerHash},peer=${peer.peerId}: ${formatUnknownError(error)}`,
+                );
+                return false;
+              });
+              if (!recorded) {
+                console.warn(
+                  `Ignored unfenced DA publication result because an active reconciler claim owns the row header=${headerHash},peer=${peer.peerId}`,
+                );
+              }
+            },
+          });
+          const recipients = report.announcement?.recipients.length ?? 0;
+          const announcementRecorded = await Effect.runPromise(
+            DaPayloadAnnouncementsDB.recordAttempt({
+              headerHash: insert[DaPayloadsDB.Columns.HEADER_HASH],
+              published: recipients > 0,
+              ...(recipients > 0
+                ? {}
+                : { error: "gossip publication reached zero recipients" }),
+              retryBackoffMs: hardeningConfig.retryBackoffMs,
+              retryBackoffMaxMs: hardeningConfig.retryBackoffMaxMs,
+            }).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
+          );
+          if (!announcementRecorded) {
+            console.warn(
+              `Ignored unfenced DA announcement result because an active reconciler claim owns the row header=${headerHash}`,
+            );
+          }
+          return report;
+        } catch (error) {
+          const announcementRecorded = await Effect.runPromise(
+            DaPayloadAnnouncementsDB.recordAttempt({
+              headerHash: insert[DaPayloadsDB.Columns.HEADER_HASH],
+              published: false,
+              error: formatUnknownError(error),
+              retryBackoffMs: hardeningConfig.retryBackoffMs,
+              retryBackoffMaxMs: hardeningConfig.retryBackoffMaxMs,
+            }).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
+          ).catch((recordError) => {
+            console.warn(
+              `Failed to persist DA announcement failure header=${headerHash}: ${formatUnknownError(recordError)}`,
+            );
+            return false;
+          });
+          if (!announcementRecorded) {
+            console.warn(
+              `Ignored unfenced DA announcement failure because an active reconciler claim owns the row header=${headerHash}`,
+            );
+          }
+          await invalidatePublicationTransport(transport);
+          throw error;
+        }
+      },
+      catch: (cause) =>
+        new DatabaseError({
+          table: DaPayloadsDB.tableName,
+          message: "Failed to publish DA payload over libp2p",
+          cause,
+        }),
+    });
   });
 
 export const publicationSatisfied = (
@@ -729,6 +1101,112 @@ export const publicationSatisfied = (
   report.configured &&
   report.threshold !== undefined &&
   report.acceptedPeers >= report.threshold;
+
+export const reconcileDaPayloadPeerFromEnv = (
+  insert: DaPayloadsDB.InsertInput,
+  peerId: string,
+  lease?: { readonly owner: string; readonly token: string },
+): Effect.Effect<DaProducerPeerResult | null, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const config = readDaHardeningConfig();
+    return yield* Effect.tryPromise({
+      try: async () => {
+        const manifest = await loadDaProducerPublicationManifestFromEnv();
+        if (manifest === null) {
+          return null;
+        }
+        const peer = manifest.committeePeers.find(
+          (candidate) => candidate.peerId === peerId,
+        );
+        if (peer === undefined) {
+          throw new Error(
+            `DA reconciliation peer ${peerId} is not in the current committee manifest`,
+          );
+        }
+        const headerHash = insert[DaPayloadsDB.Columns.HEADER_HASH];
+        const payloadBytes = insert[DaPayloadsDB.Columns.PAYLOAD_CBOR];
+        const payloadHash = verifyPayloadHash(insert);
+        const protocolId = daRequestResponseProtocolId(
+          manifest.deploymentFingerprint,
+          DaRequestResponseProtocol.payloadSubmit,
+        );
+        const request = encodeDaPayloadSubmitRequestV1Cbor({
+          deploymentFingerprint: daDeploymentFingerprintFromHex(
+            manifest.deploymentFingerprint,
+          ),
+          headerHash,
+          payloadHash,
+          payloadSchemaVersion: insert[DaPayloadsDB.Columns.VERSION],
+          mode: "inline",
+          payloadBytes,
+          chunkManifest: null,
+        });
+        const transport = await getPublicationTransport(manifest);
+        const result = await submitPayloadToPeer({
+          peer,
+          headerHash,
+          protocolId,
+          request,
+          requestFrame: encodeFrame(request, manifest.maxPayloadBytes),
+          timeoutMs: manifest.requestTimeoutMs,
+          maxChunkBytes: manifest.maxChunkBytes,
+          payloadHash,
+          transport,
+        });
+        const status: Exclude<
+          DaPayloadPublicationsDB.PublicationStatus,
+          "pending"
+        > = result.status === "deferred" ? "rejected" : result.status;
+        const recorded = await Effect.runPromise(
+          DaPayloadPublicationsDB.recordAttempt({
+            headerHash,
+            peer,
+            status,
+            error: result.error,
+            retryBackoffMs: config.retryBackoffMs,
+            retryBackoffMaxMs: config.retryBackoffMaxMs,
+            lease,
+          }).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
+        );
+        if (!recorded) {
+          throw new Error(
+            `DA publication claim fence was lost for header=${headerHash.toString("hex")},peer=${peer.peerId}`,
+          );
+        }
+        return result;
+      },
+      catch: (cause) =>
+        new DatabaseError({
+          table: DaPayloadPublicationsDB.tableName,
+          message: "Failed to reconcile DA payload publication peer",
+          cause,
+        }),
+    });
+  });
+
+export const publishDaPayloadAnnouncementFromEnv = (
+  insert: DaPayloadsDB.InsertInput,
+): Effect.Effect<DaProducerAnnouncementResult | null, DatabaseError> =>
+  Effect.tryPromise({
+    try: async () => {
+      const manifest = await loadDaProducerPublicationManifestFromEnv();
+      if (manifest === null) {
+        return null;
+      }
+      return publishDaPayloadAnnouncement({
+        insert,
+        manifest,
+        transport: await getPublicationTransport(manifest),
+      });
+    },
+    catch: (cause) =>
+      new DatabaseError({
+        table: DaPayloadAnnouncementsDB.tableName,
+        message: "Failed to reconcile DA payload announcement",
+        cause,
+      }),
+  });
 
 export const runDaLibp2pPreflightFromEnv = async (
   env: NodeJS.ProcessEnv = process.env,
@@ -766,6 +1244,149 @@ export const runDaLibp2pPreflightFromEnv = async (
     return await runDaLibp2pPreflight({ manifest, transport, mode });
   } finally {
     await transport.close?.();
+  }
+};
+
+const capabilityMismatch = (
+  manifest: DaProducerPublicationManifest,
+  mode: DaEnvelopeCapabilityMode,
+  response: DaCapabilitiesResponseV1,
+): string | undefined => {
+  if (
+    !response.deploymentFingerprint.equals(
+      daDeploymentFingerprintFromHex(manifest.deploymentFingerprint),
+    )
+  ) {
+    return "deployment fingerprint mismatch";
+  }
+  if (response.transportProtocolVersion !== DA_TRANSPORT_PROTOCOL_VERSION) {
+    return `transport protocol version ${response.transportProtocolVersion.toString()} is not ${DA_TRANSPORT_PROTOCOL_VERSION.toString()}`;
+  }
+  if (!response.payloadSchemaVersions.includes(3)) {
+    return "payload schema version 3 is not supported";
+  }
+  const requiredEncoding = mode === "identity" ? 0 : 1;
+  if (!response.envelopeContentEncodings.includes(requiredEncoding)) {
+    return `${mode} envelope content encoding is not supported`;
+  }
+  const limitMismatches = [
+    ["max_payload_bytes", response.maxPayloadBytes, manifest.maxPayloadBytes],
+    [
+      "max_inline_response_bytes",
+      response.maxInlineResponseBytes,
+      manifest.maxInlineResponseBytes,
+    ],
+    ["max_chunk_bytes", response.maxChunkBytes, manifest.maxChunkBytes],
+    [
+      "max_streams_per_peer",
+      response.maxStreamsPerPeer,
+      manifest.maxStreamsPerPeer,
+    ],
+    [
+      "request_timeout_ms",
+      response.requestTimeoutMs,
+      manifest.requestTimeoutMs,
+    ],
+  ] as const;
+  const mismatch = limitMismatches.find(
+    ([, actual, expected]) => actual !== expected,
+  );
+  return mismatch === undefined
+    ? undefined
+    : `${mismatch[0]}=${mismatch[1].toString()} does not match manifest ${mismatch[2].toString()}`;
+};
+
+export const probeDaEnvelopeCapabilities = async ({
+  manifest,
+  mode,
+  transport,
+}: {
+  readonly manifest: DaProducerPublicationManifest;
+  readonly mode: DaEnvelopeCapabilityMode;
+  readonly transport: DaProducerProbeTransport;
+}): Promise<readonly DaEnvelopeCapabilityPeerResult[]> => {
+  const protocolId = daRequestResponseProtocolId(
+    manifest.deploymentFingerprint,
+    DaRequestResponseProtocol.capabilities,
+  );
+  const request = encodeDaCapabilitiesRequestV1Cbor({
+    deploymentFingerprint: daDeploymentFingerprintFromHex(
+      manifest.deploymentFingerprint,
+    ),
+  });
+  return Promise.all(
+    manifest.committeePeers.map(async (peer) => {
+      try {
+        const capabilities = decodeDaCapabilitiesResponseV1Cbor(
+          await transport.request(
+            peer,
+            protocolId,
+            request,
+            manifest.requestTimeoutMs,
+          ),
+        );
+        const mismatch = capabilityMismatch(manifest, mode, capabilities);
+        return {
+          peerId: peer.peerId,
+          signerIndex: peer.signerIndex,
+          capable: mismatch === undefined,
+          capabilities,
+          ...(mismatch === undefined ? {} : { error: mismatch }),
+        };
+      } catch (cause) {
+        return {
+          peerId: peer.peerId,
+          signerIndex: peer.signerIndex,
+          capable: false,
+          error: formatUnknownError(cause),
+        };
+      }
+    }),
+  );
+};
+
+export const assertDaEnvelopeCapabilityQuorum = async ({
+  manifest,
+  mode,
+  transport: providedTransport,
+}: {
+  readonly manifest: DaProducerPublicationManifest;
+  readonly mode: DaEnvelopeCapabilityMode;
+  readonly transport?: DaProducerProbeTransport;
+}): Promise<readonly DaEnvelopeCapabilityPeerResult[]> => {
+  const transport =
+    providedTransport ??
+    (await createDaLibp2pProducerProbeTransport(manifest, {
+      mode: "dial-only",
+    }));
+  try {
+    const results = await probeDaEnvelopeCapabilities({
+      manifest,
+      mode,
+      transport,
+    });
+    const capableSignerIndexes = new Set(
+      results
+        .filter((result) => result.capable)
+        .map((result) => result.signerIndex),
+    );
+    if (capableSignerIndexes.size < manifest.threshold) {
+      const details = results
+        .filter((result) => !result.capable)
+        .map(
+          (result) =>
+            `${result.peerId}[${result.signerIndex.toString()}]=${result.error ?? "incapable"}`,
+        )
+        .join(",");
+      throw new Error(
+        `DA ${mode} envelope capability quorum failed: capable_signers=${capableSignerIndexes.size.toString()},threshold=${manifest.threshold.toString()},peers=${details}`,
+      );
+    }
+    return results;
+  } finally {
+    if (providedTransport === undefined) {
+      await transport.close?.();
+    }
   }
 };
 
@@ -943,16 +1564,37 @@ export const createDaLibp2pProducerTransport = async (
   return {
     localPeerId: () => localPeerId,
     sign: (message) => privateKey.sign(message),
-    request: async (peer, protocolId, payload, timeoutMs) => {
-      const stream = await node.dialProtocol(
-        peer.multiaddrs.map((address) => multiaddr(address)),
-        protocolId,
-        { signal: AbortSignal.timeout(timeoutMs) },
-      );
-      stream.send(encodeFrame(payload, manifest.maxPayloadBytes));
-      await stream.close();
-      return readSingleFrame(stream, manifest.maxPayloadBytes, timeoutMs);
-    },
+    request: async (peer, protocolId, payload, timeoutMs) =>
+      withDaRequestDeadline({
+        timeoutMs,
+        open: (signal) =>
+          node.dialProtocol(
+            peer.multiaddrs.map((address) => multiaddr(address)),
+            protocolId,
+            { signal },
+          ),
+        run: async (stream) => {
+          await writeSingleFrame(stream, payload, manifest.maxPayloadBytes);
+          return readSingleFrame(stream, manifest.maxPayloadBytes, timeoutMs);
+        },
+        abort: (stream, error) => stream.abort?.(error),
+      }),
+    requestFramed: async (peer, protocolId, frame, timeoutMs, maxChunkBytes) =>
+      withDaRequestDeadline({
+        timeoutMs,
+        open: (signal) =>
+          node.dialProtocol(
+            peer.multiaddrs.map((address) => multiaddr(address)),
+            protocolId,
+            { signal },
+          ),
+        run: async (stream) => {
+          await writeSharedFrameChunks(stream, frame, maxChunkBytes);
+          await stream.close();
+          return readSingleFrame(stream, manifest.maxPayloadBytes, timeoutMs);
+        },
+        abort: (stream, error) => stream.abort?.(error),
+      }),
     publish: async (topic, payload) => {
       const result = await node.services.pubsub.publish(topic, payload);
       return {
@@ -1015,16 +1657,21 @@ export const createDaLibp2pProducerProbeTransport = async (
   });
   return {
     localPeerId: () => localPeerId,
-    request: async (peer, protocolId, payload, timeoutMs) => {
-      const stream = await node.dialProtocol(
-        peer.multiaddrs.map((address) => multiaddr(address)),
-        protocolId,
-        { signal: AbortSignal.timeout(timeoutMs) },
-      );
-      stream.send(encodeFrame(payload, manifest.maxPayloadBytes));
-      await stream.close();
-      return readSingleFrame(stream, manifest.maxPayloadBytes, timeoutMs);
-    },
+    request: async (peer, protocolId, payload, timeoutMs) =>
+      withDaRequestDeadline({
+        timeoutMs,
+        open: (signal) =>
+          node.dialProtocol(
+            peer.multiaddrs.map((address) => multiaddr(address)),
+            protocolId,
+            { signal },
+          ),
+        run: async (stream) => {
+          await writeSingleFrame(stream, payload, manifest.maxPayloadBytes);
+          return readSingleFrame(stream, manifest.maxPayloadBytes, timeoutMs);
+        },
+        abort: (stream, error) => stream.abort?.(error),
+      }),
     close: async () => {
       await node.stop();
     },
@@ -1237,7 +1884,9 @@ const submitPayloadToPeer = async ({
   headerHash,
   protocolId,
   request,
+  requestFrame,
   timeoutMs,
+  maxChunkBytes,
   payloadHash,
   transport,
 }: {
@@ -1245,17 +1894,25 @@ const submitPayloadToPeer = async ({
   readonly headerHash: Buffer;
   readonly protocolId: string;
   readonly request: Uint8Array;
+  readonly requestFrame?: Uint8Array;
   readonly timeoutMs: number;
+  readonly maxChunkBytes?: number;
   readonly payloadHash: Buffer;
   readonly transport: DaProducerTransport;
 }): Promise<DaProducerPeerResult> => {
   try {
-    const responseBytes = await transport.request(
-      peer,
-      protocolId,
-      request,
-      timeoutMs,
-    );
+    const responseBytes =
+      requestFrame !== undefined &&
+      maxChunkBytes !== undefined &&
+      transport.requestFramed !== undefined
+        ? await transport.requestFramed(
+            peer,
+            protocolId,
+            requestFrame,
+            timeoutMs,
+            maxChunkBytes,
+          )
+        : await transport.request(peer, protocolId, request, timeoutMs);
     const response = decodeDaPayloadSubmitResponseV1Cbor(responseBytes);
     if (!response.headerHash.equals(headerHash)) {
       throw new Error("payload-submit response header_hash mismatch");
@@ -1753,6 +2410,27 @@ const writeSingleFrame = async (
   await stream.close?.();
 };
 
+const writeSharedFrameChunks = async (
+  stream: DaProducerStream,
+  frame: Uint8Array,
+  maxChunkBytes: number,
+): Promise<void> => {
+  if (!Number.isSafeInteger(maxChunkBytes) || maxChunkBytes <= 0) {
+    throw new Error("maxChunkBytes must be a positive safe integer");
+  }
+  for (let offset = 0; offset < frame.length; offset += maxChunkBytes) {
+    const accepted = stream.send(
+      frame.subarray(offset, Math.min(offset + maxChunkBytes, frame.length)),
+    );
+    if (!accepted) {
+      if (stream.onDrain === undefined) {
+        throw new Error("DA stream backpressure requires onDrain support");
+      }
+      await stream.onDrain();
+    }
+  }
+};
+
 const withTimeout = async <T>(
   promise: Promise<T>,
   timeoutMs: number,
@@ -1926,6 +2604,7 @@ const normalizeHexBytes = (
 };
 
 export const encodeLengthPrefixedDaFrameForTest = encodeFrame;
+export const writeSharedDaFrameChunksForTest = writeSharedFrameChunks;
 export const decodeLengthPrefixedDaFrameForTest = (
   frame: Buffer,
   maxBytes = DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,

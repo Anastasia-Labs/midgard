@@ -23,6 +23,14 @@ export type ReadinessInput = {
   readonly unresolvedBlockSubmissionAgeMs: number;
   readonly maxUnresolvedBlockSubmissionAgeMs: number;
   readonly dbHealthy: boolean;
+  readonly awaitingForeignTipReconciliations: number;
+  readonly validationPool?: {
+    readonly configuredWorkers: number;
+    readonly liveWorkers: number;
+    readonly restartingWorkers: number;
+    readonly oldestInFlightAgeMs: number;
+    readonly jobTimeoutMs: number;
+  };
   readonly stateQueueMutationLease?: {
     readonly active: boolean;
     readonly stale: boolean;
@@ -50,6 +58,12 @@ export const evaluateReadiness = (input: ReadinessInput): ReadinessResult => {
     reasons.push("db_unhealthy");
   }
 
+  if (input.awaitingForeignTipReconciliations > 0) {
+    reasons.push(
+      `foreign_tip_reconciliation_awaiting:${input.awaitingForeignTipReconciliations.toString()}`,
+    );
+  }
+
   const heartbeatThreshold = Math.max(1, input.maxHeartbeatAgeMs);
   const heartbeatEntries: readonly [string, number][] = [
     ["blockCommitment", input.workerHeartbeats.blockCommitment],
@@ -74,6 +88,23 @@ export const evaluateReadiness = (input: ReadinessInput): ReadinessResult => {
 
   if (input.localFinalizationPending) {
     reasons.push("local_finalization_pending");
+  }
+
+  if (input.validationPool !== undefined) {
+    const pool = input.validationPool;
+    if (
+      pool.configuredWorkers > 0 &&
+      pool.liveWorkers < pool.configuredWorkers
+    ) {
+      reasons.push(
+        `validation_worker_pool_degraded:${pool.liveWorkers}:${pool.configuredWorkers}:${pool.restartingWorkers}`,
+      );
+    }
+    if (pool.oldestInFlightAgeMs > Math.max(1, pool.jobTimeoutMs)) {
+      reasons.push(
+        `validation_worker_job_timeout:${pool.oldestInFlightAgeMs}:${pool.jobTimeoutMs}`,
+      );
+    }
   }
 
   if (

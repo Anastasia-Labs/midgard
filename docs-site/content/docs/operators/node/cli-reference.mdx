@@ -4,7 +4,7 @@ description: "The midgard-node command-line interface, grouped by function."
 ---
 
 `midgard-node` is a Commander CLI (`bin: midgard-node`). Run `midgard-node --help`
-for the authoritative, version-specific list. The 53 commands below are grouped
+for the authoritative, version-specific list. The 69 commands below are grouped
 by function.
 
 <Callout type="info" title="The server">
@@ -41,7 +41,7 @@ by function.
 
 `commit-explicit-block-header` · `block-committed` · `tx-committed` ·
 `attest-state-queue-once` · `da-attested` · `merge-complete` ·
-`resolve-event-settlement-proof` · `reconcile`
+`resolve-event-settlement-proof` · `reconcile` · `local-finalization`
 
 ## Reserve & payout
 
@@ -54,9 +54,24 @@ by function.
 `prepare-hub-oracle-one-shot-nonce` · `create-l2-wallet` · `address-from-seed` ·
 `utxos` · `l1-utxos` · `l1-provider-preflight`
 
-## Audit, DA transport & e2e
+## Stress wallets & corpus
 
-`audit-blocks-immutable` · `da-libp2p-preflight` · `da-libp2p-generate-manifest` ·
+`stress-wallets:prepare` · `stress-wallets:fanout` ·
+`stress-wallets:consolidate` · `stress-wallets:terminal-drain` ·
+`stress-wallets:consolidate-verify-legacy-state` ·
+`stress-wallets:consolidate-upgrade-state` · `stress-corpus-generate` ·
+`stress-corpus-historical-extension` · `stress-corpus-verify`, see
+[Benchmarks &amp; Stress Testing](/docs/operators/node/benchmarks).
+
+## Audit & DA transport
+
+`audit-blocks-immutable` · `mpf-audit` · `mpf-replay` ·
+`da-libp2p-preflight` · `da-libp2p-generate-manifest`
+
+## E2E & local-devnet acceptance
+
 `e2e-start-service` · `e2e-run-step` · `e2e-finalize-summary` ·
-`e2e-stress-l2-throughput` · `stress-wallets:prepare`, see
+`e2e-stress-l2-throughput` · `e2e-clean-owned-process-group` ·
+`phase4-genesis-ledger` · `phase4-t1-probe` · `phase4-t1-advance` ·
+`e2e-pipelined-commit-process-acceptance`, see
 [Benchmarks &amp; Stress Testing](/docs/operators/node/benchmarks).

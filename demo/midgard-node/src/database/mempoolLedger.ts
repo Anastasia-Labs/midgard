@@ -13,6 +13,7 @@ import * as Ledger from "@/database/utils/ledger.js";
 import { Database } from "@/services/database.js";
 
 export const tableName = "mempool_ledger";
+const INSERT_ROW_CHUNK_SIZE = 10_000;
 
 export enum Columns {
   TX_ID = Ledger.Columns.TX_ID,
@@ -72,15 +73,10 @@ export const createTable: Effect.Effect<void, DatabaseError, Database> =
         yield* sql`CREATE INDEX IF NOT EXISTS ${sql(
           `idx_${tableName}_${Columns.ADDRESS}`,
         )} ON ${sql(tableName)} (${sql(Columns.ADDRESS)});`;
-        yield* sql`CREATE INDEX IF NOT EXISTS ${sql(
-          `idx_${tableName}_${Columns.SOURCE_EVENT_ID}`,
-        )} ON ${sql(tableName)} (${sql(Columns.SOURCE_EVENT_ID)});`;
-        yield* sql`DROP INDEX IF EXISTS ${sql(
-          `uniq_${tableName}_${Columns.SOURCE_EVENT_ID}`,
-        )};`;
         yield* sql`CREATE UNIQUE INDEX IF NOT EXISTS ${sql(
           `uniq_${tableName}_${Columns.SOURCE_EVENT_ID}`,
-        )} ON ${sql(tableName)} (${sql(Columns.SOURCE_EVENT_ID)});`;
+        )} ON ${sql(tableName)} (${sql(Columns.SOURCE_EVENT_ID)})
+          WHERE ${sql(Columns.SOURCE_EVENT_ID)} IS NOT NULL;`;
       }),
     );
   }).pipe(
@@ -97,10 +93,16 @@ export const insert = (
       return;
     }
     const sql = yield* SqlClient.SqlClient;
-    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(
-      entries.map(normalizeEntry),
-    )}
-      ON CONFLICT (${sql(Columns.OUTREF)}) DO NOTHING`;
+    const normalized = entries.map(normalizeEntry);
+    for (
+      let offset = 0;
+      offset < normalized.length;
+      offset += INSERT_ROW_CHUNK_SIZE
+    ) {
+      const chunk = normalized.slice(offset, offset + INSERT_ROW_CHUNK_SIZE);
+      yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(chunk)}
+        ON CONFLICT (${sql(Columns.OUTREF)}) DO NOTHING`;
+    }
   }).pipe(
     Effect.withLogSpan(`insertEntries ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
@@ -149,7 +151,9 @@ export const reconcileDepositEntries = (
     const sql = yield* SqlClient.SqlClient;
     const rows = yield* sql<Pick<EntryWithTimeStamp, Columns.SOURCE_EVENT_ID>>`
       INSERT INTO ${sql(tableName)} ${sql.insert(entries)}
-      ON CONFLICT (${sql(Columns.SOURCE_EVENT_ID)}) DO UPDATE SET
+      ON CONFLICT (${sql(Columns.SOURCE_EVENT_ID)})
+        WHERE ${sql(Columns.SOURCE_EVENT_ID)} IS NOT NULL
+      DO UPDATE SET
         ${sql(Columns.SOURCE_EVENT_ID)} =
           ${sql(tableName)}.${sql(Columns.SOURCE_EVENT_ID)}
       WHERE ${sql(tableName)}.${sql(Columns.TX_ID)} = EXCLUDED.${sql(
@@ -349,21 +353,24 @@ export const retrieveBySourceEventIds = (
   );
 
 export const clearUTxOs = (
-  refs: Buffer[],
+  refs: readonly Buffer[],
 ): Effect.Effect<readonly Buffer[], DatabaseError, Database> =>
   Effect.gen(function* () {
     if (refs.length === 0) {
       return [];
     }
     const sql = yield* SqlClient.SqlClient;
-    const deleted = yield* sql<{ [Columns.SOURCE_EVENT_ID]: Buffer | null }>`
-      DELETE FROM ${sql(tableName)}
-      WHERE ${sql(Columns.OUTREF)} IN ${sql.in(refs)}
-      RETURNING ${sql(Columns.SOURCE_EVENT_ID)}
+    const deleted = yield* sql<{ [Columns.SOURCE_EVENT_ID]: Buffer }>`
+      WITH deleted AS (
+        DELETE FROM ${sql(tableName)}
+        WHERE ${sql(Columns.OUTREF)} IN ${sql.in(refs)}
+        RETURNING ${sql(Columns.SOURCE_EVENT_ID)}
+      )
+      SELECT ${sql(Columns.SOURCE_EVENT_ID)}
+      FROM deleted
+      WHERE ${sql(Columns.SOURCE_EVENT_ID)} IS NOT NULL
     `;
-    return deleted
-      .map((row) => row[Columns.SOURCE_EVENT_ID])
-      .filter((eventId): eventId is Buffer => eventId !== null);
+    return deleted.map((row) => row[Columns.SOURCE_EVENT_ID]);
   }).pipe(sqlErrorToDatabaseError(tableName, "Failed to delete given UTxOs"));
 
 export const clear = clearTable(tableName);

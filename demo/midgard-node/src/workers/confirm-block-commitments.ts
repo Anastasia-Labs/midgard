@@ -15,6 +15,7 @@ import {
   pendingBlockHasSubmittedTx,
   resolveStateQueueBlockEndTimeMs,
   serializeCanonicalCommittedHeaders,
+  shouldRunFullStateQueueConfirmationScan,
   WorkerInput,
   WorkerOutput,
 } from "@/workers/utils/confirm-block-commitments.js";
@@ -26,6 +27,32 @@ class TxConfirmAwaitError extends Data.TaggedError("TxConfirmAwaitError")<{
   readonly headerHash: string;
   readonly cause: string;
 }> {}
+
+const TARGETED_CONFIRMATION_PROBE_TIMEOUT_MS = 1_500;
+const TARGETED_CONFIRMATION_PROBE_POLL_MS = 250;
+export const probeSubmittedTx = (
+  lucid: Pick<LucidEvolution, "awaitTx">,
+  txHash: string,
+): Effect.Effect<boolean, never> =>
+  Effect.promise(
+    () =>
+      new Promise<boolean>((resolve) => {
+        const timeout = setTimeout(
+          () => resolve(false),
+          TARGETED_CONFIRMATION_PROBE_TIMEOUT_MS,
+        );
+        lucid
+          .awaitTx(txHash, TARGETED_CONFIRMATION_PROBE_POLL_MS)
+          .then((confirmed) => {
+            clearTimeout(timeout);
+            resolve(confirmed);
+          })
+          .catch(() => {
+            clearTimeout(timeout);
+            resolve(false);
+          });
+      }),
+  );
 
 const awaitPendingBlockResolution = (
   lucid: LucidEvolution,
@@ -247,6 +274,31 @@ export const runConfirmBlockCommitmentsWorkerProgram = (
         pendingBlock.submittedTxHash,
       );
     }
+    const targetedTxConfirmed = yield* probeSubmittedTx(
+      lucid.api,
+      pendingBlock.submittedTxHash,
+    );
+    const expiryRecoveryGraceMs = Math.max(
+      nodeConfig.BLOCK_CONFIRMATION_AWAIT_TIMEOUT_MS,
+      30_000,
+    );
+    const validityExpired =
+      Date.now() > pendingBlock.blockEndTimeMs + expiryRecoveryGraceMs;
+    if (
+      !shouldRunFullStateQueueConfirmationScan({
+        targetedTxConfirmed,
+        pendingAgeMs,
+        unconfirmedBlockMaxAgeMs: nodeConfig.UNCONFIRMED_BLOCK_MAX_AGE_MS,
+        validityExpired,
+      })
+    ) {
+      yield* Effect.logDebug(
+        `🔍 Targeted submitted-tx probe has not observed ${pendingBlock.submittedTxHash}; deferring the periodic full state_queue scan.`,
+      );
+      return {
+        type: "NoTxForConfirmationOutput",
+      } satisfies WorkerOutput;
+    }
     const confirmationResult = yield* Effect.either(
       awaitPendingBlockResolution(
         lucid.api,
@@ -259,10 +311,6 @@ export const runConfirmBlockCommitmentsWorkerProgram = (
     if (confirmationResult._tag === "Left") {
       yield* Effect.logWarning(
         `🔍 Pending block header ${pendingBlock.expectedHeaderHash} not resolved yet (submitted_tx=${pendingBlock.submittedTxHash || "unknown"}, age_ms=${pendingAgeMs}, timeout_ms=${nodeConfig.BLOCK_CONFIRMATION_AWAIT_TIMEOUT_MS}).`,
-      );
-      const expiryRecoveryGraceMs = Math.max(
-        nodeConfig.BLOCK_CONFIRMATION_AWAIT_TIMEOUT_MS,
-        30_000,
       );
       if (Date.now() > pendingBlock.blockEndTimeMs + expiryRecoveryGraceMs) {
         yield* Effect.logWarning(

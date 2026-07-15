@@ -1,6 +1,9 @@
+import { createHash } from "node:crypto";
+
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
+  CML,
   type LucidEvolution,
   type Script,
   type TxSignBuilder,
@@ -31,18 +34,45 @@ export type PhasMembershipRewardRegistrationResult = {
   | {
       readonly status: "registration_submitted";
       readonly txHash: string;
+      readonly transactionBody: PhasMembershipRegistrationTransactionBodyEvidence;
     }
   | {
       readonly status: "already_registered";
       readonly txHash: null;
+      readonly transactionBody: null;
     }
 );
+
+export type PhasMembershipRegistrationTransactionBodyEvidence = {
+  readonly schemaVersion: "midgard-phas-registration-transaction-body-v1";
+  readonly txHash: string;
+  readonly cborSha256: string;
+  readonly cborSizeBytes: number;
+  readonly certificate: {
+    readonly kind: "stake_registration";
+    readonly index: 0;
+    readonly count: 1;
+    readonly credentialType: "script";
+    readonly scriptHash: string;
+  };
+};
+
+export type CapturedPhasMembershipRegistrationTransaction = {
+  readonly evidence: PhasMembershipRegistrationTransactionBodyEvidence;
+  /** Complete unsigned transaction CBOR; it contains no witnesses or secrets. */
+  readonly unsignedTransactionCborHex: string;
+};
 
 export type PhasMembershipRegistrationQuery = (input: {
   readonly lucid: LucidEvolution;
   readonly rewardAddress: string;
   readonly scriptHash: string;
-}) => Effect.Effect<boolean, SDK.LucidError>;
+}) => Effect.Effect<PhasMembershipRegistrationStatus, SDK.LucidError>;
+
+export type PhasMembershipRegistrationStatus =
+  | "registered"
+  | "unregistered"
+  | "unknown";
 
 export type PhasMembershipRegistrationOptions = {
   readonly queryRegistration?: PhasMembershipRegistrationQuery;
@@ -58,6 +88,84 @@ export type PhasMembershipRegistrationOptions = {
     built: SDK.BuiltPhasMembershipRewardRegistrationTx,
   ) => Effect.Effect<string, TxConfirmError | TxSignError | TxSubmitError>;
   readonly fetchImpl?: FetchLike;
+  readonly inspectRegistrationTx?: (
+    built: SDK.BuiltPhasMembershipRewardRegistrationTx,
+    expected: { readonly rewardAddress: string; readonly scriptHash: string },
+  ) => CapturedPhasMembershipRegistrationTransaction;
+  readonly onSubmittedRegistrationTx?: (
+    capture: CapturedPhasMembershipRegistrationTransaction,
+  ) => void;
+};
+
+export const inspectPhasMembershipRegistrationTransaction = (
+  built: SDK.BuiltPhasMembershipRewardRegistrationTx,
+  expected: { readonly rewardAddress: string; readonly scriptHash: string },
+): CapturedPhasMembershipRegistrationTransaction => {
+  if (
+    built.rewardAddress !== expected.rewardAddress ||
+    built.scriptHash !== expected.scriptHash
+  ) {
+    throw new Error(
+      `Built PHAS registration identity mismatch: expected=${expected.rewardAddress}:${expected.scriptHash},actual=${built.rewardAddress}:${built.scriptHash}`,
+    );
+  }
+  const unsignedTransactionCborHex = built.tx.toCBOR().toLowerCase();
+  if (
+    unsignedTransactionCborHex.length === 0 ||
+    unsignedTransactionCborHex.length % 2 !== 0 ||
+    !/^[a-f0-9]+$/u.test(unsignedTransactionCborHex)
+  ) {
+    throw new Error("PHAS registration unsigned transaction CBOR is invalid");
+  }
+  const transaction = CML.Transaction.from_cbor_hex(unsignedTransactionCborHex);
+  if (
+    transaction.to_canonical_cbor_hex() !== unsignedTransactionCborHex ||
+    transaction.witness_set().to_cbor_hex() !== "a0"
+  ) {
+    throw new Error(
+      "PHAS registration evidence must be canonical unsigned transaction CBOR with an empty witness set",
+    );
+  }
+  const body = transaction.body();
+  const certificates = body.certs();
+  if (certificates === undefined || certificates.len() !== 1) {
+    throw new Error(
+      `PHAS registration transaction must contain exactly one certificate; found ${certificates?.len().toString() ?? "0"}`,
+    );
+  }
+  const certificate = certificates.get(0);
+  if (certificate.kind() !== CML.CertificateKind.StakeRegistration) {
+    throw new Error(
+      `PHAS registration transaction certificate kind is not StakeRegistration: ${certificate.kind().toString()}`,
+    );
+  }
+  const credential = certificate.as_stake_registration()?.stake_credential();
+  const certificateScriptHash = credential?.as_script()?.to_hex();
+  if (
+    credential?.kind() !== CML.CredentialKind.Script ||
+    certificateScriptHash !== expected.scriptHash
+  ) {
+    throw new Error(
+      `PHAS registration transaction certificate credential mismatch: expected script ${expected.scriptHash}, found ${String(certificateScriptHash)}`,
+    );
+  }
+  const bytes = Buffer.from(unsignedTransactionCborHex, "hex");
+  return {
+    evidence: {
+      schemaVersion: "midgard-phas-registration-transaction-body-v1",
+      txHash: CML.hash_transaction(body).to_hex(),
+      cborSha256: createHash("sha256").update(bytes).digest("hex"),
+      cborSizeBytes: bytes.length,
+      certificate: {
+        kind: "stake_registration",
+        index: 0,
+        count: 1,
+        credentialType: "script",
+        scriptHash: certificateScriptHash,
+      },
+    },
+    unsignedTransactionCborHex,
+  };
 };
 
 export const isPhasMembershipAlreadyRegisteredError = (
@@ -142,31 +250,59 @@ const readProviderJson = async <A>({
   }
 };
 
-const ogmiosSummaryProvesRegistered = (result: unknown): boolean => {
-  if (result === null || result === undefined) {
-    return false;
+const parseOgmiosRewardAccountSummary = (
+  result: unknown,
+  scriptHash: string,
+  source: string,
+): PhasMembershipRegistrationStatus => {
+  if (!Array.isArray(result)) {
+    throw providerQueryError({
+      message: `Failed PHAS reward-account registration query: source=${source},query=reward-account-registration,result=unexpected_result_shape`,
+      source,
+      retryable: false,
+      cause: "Expected Ogmios v7 rewardAccountSummaries to return a list.",
+    });
   }
-  if (Array.isArray(result)) {
-    return result.length > 0;
+  if (result.length === 0) {
+    return "unknown";
   }
-  if (hasObjectShape(result)) {
-    return Object.keys(result).length > 0;
+  if (result.length !== 1) {
+    throw providerQueryError({
+      message: `Failed PHAS reward-account registration query: source=${source},query=reward-account-registration,result=unexpected_summary_count`,
+      source,
+      retryable: false,
+      cause: `Expected exactly one summary for PHAS script ${scriptHash}, received ${result.length.toString()}.`,
+    });
   }
-  return false;
+  const [summary] = result;
+  if (
+    !hasObjectShape(summary) ||
+    summary.from !== "script" ||
+    summary.credential !== scriptHash
+  ) {
+    throw providerQueryError({
+      message: `Failed PHAS reward-account registration query: source=${source},query=reward-account-registration,result=credential_mismatch`,
+      source,
+      retryable: false,
+      cause:
+        "Ogmios returned a reward-account summary that did not exactly match the requested PHAS script credential.",
+    });
+  }
+  return "registered";
 };
 
 const queryOgmiosRewardAccountRegistered = async ({
   source,
-  rewardAddress,
+  scriptHash,
   fetchImpl,
 }: {
   readonly source: Extract<
     L1RewardAccountRegistrationSource,
     { readonly kind: "ogmios" }
   >;
-  readonly rewardAddress: string;
+  readonly scriptHash: string;
   readonly fetchImpl: FetchLike;
-}): Promise<boolean> => {
+}): Promise<PhasMembershipRegistrationStatus> => {
   const response = await fetchImpl(source.url, {
     method: "POST",
     headers: {
@@ -176,7 +312,7 @@ const queryOgmiosRewardAccountRegistered = async ({
     body: JSON.stringify({
       jsonrpc: "2.0",
       method: "queryLedgerState/rewardAccountSummaries",
-      params: { keys: [rewardAddress] },
+      params: { scripts: [scriptHash] },
       id: null,
     }),
   });
@@ -193,19 +329,21 @@ const queryOgmiosRewardAccountRegistered = async ({
       cause: body.error,
     });
   }
-  return ogmiosSummaryProvesRegistered(
+  return parseOgmiosRewardAccountSummary(
     hasObjectShape(body) && "result" in body ? body.result : body,
+    scriptHash,
+    source.source,
   );
 };
 
 const queryRewardAccountRegistrationSource = (
   source: L1RewardAccountRegistrationSource,
-  rewardAddress: string,
+  scriptHash: string,
   fetchImpl: FetchLike,
-): Promise<boolean> => {
+): Promise<PhasMembershipRegistrationStatus> => {
   return queryOgmiosRewardAccountRegistered({
     source,
-    rewardAddress,
+    scriptHash,
     fetchImpl,
   });
 };
@@ -243,22 +381,23 @@ const providerRewardAccountSources = (
 const queryEmulatorRewardAccountRegistered = (
   provider: unknown,
   rewardAddress: string,
-): boolean | null => {
+): PhasMembershipRegistrationStatus | null => {
   if (!hasObjectShape(provider) || !hasObjectShape(provider.chain)) {
     return null;
   }
   const entry = provider.chain[rewardAddress];
   if (!hasObjectShape(entry)) {
-    return false;
+    return "unregistered";
   }
-  return entry.registeredStake === true;
+  return entry.registeredStake === true ? "registered" : "unregistered";
 };
 
 export const queryPhasMembershipRewardAccountRegisteredProgram = (
   lucid: LucidEvolution,
   rewardAddress: string,
+  scriptHash: string,
   fetchImpl: FetchLike = fetch,
-): Effect.Effect<boolean, SDK.LucidError> =>
+): Effect.Effect<PhasMembershipRegistrationStatus, SDK.LucidError> =>
   Effect.tryPromise({
     try: async () => {
       const provider = lucid.config().provider;
@@ -283,13 +422,18 @@ export const queryPhasMembershipRewardAccountRegisteredProgram = (
       }
 
       let lastError: unknown;
+      let sawUnknown = false;
       for (const [index, source] of sources.entries()) {
         try {
-          return await queryRewardAccountRegistrationSource(
+          const status = await queryRewardAccountRegistrationSource(
             source,
-            rewardAddress,
+            scriptHash,
             fetchImpl,
           );
+          if (status === "registered") {
+            return status;
+          }
+          sawUnknown ||= status === "unknown";
         } catch (cause) {
           lastError = cause;
           const canTryNext =
@@ -298,6 +442,9 @@ export const queryPhasMembershipRewardAccountRegisteredProgram = (
             throw cause;
           }
         }
+      }
+      if (sawUnknown) {
+        return "unknown";
       }
       throw lastError;
     },
@@ -357,6 +504,7 @@ export const ensurePhasMembershipRewardAccountRegisteredProgram = (
         queryPhasMembershipRewardAccountRegisteredProgram(
           input.lucid,
           input.rewardAddress,
+          input.scriptHash,
           options.fetchImpl ?? fetch,
         ))
     )({
@@ -365,7 +513,7 @@ export const ensurePhasMembershipRewardAccountRegisteredProgram = (
       scriptHash: identity.scriptHash,
     });
 
-    if (registered) {
+    if (registered === "registered") {
       yield* Effect.logInfo(
         `PHAS membership reward account is already registered before submission: scriptHash=${identity.scriptHash},rewardAddress=${identity.rewardAddress}`,
       );
@@ -374,12 +522,32 @@ export const ensurePhasMembershipRewardAccountRegisteredProgram = (
         rewardAddress: identity.rewardAddress,
         scriptHash: identity.scriptHash,
         txHash: null,
+        transactionBody: null,
       } satisfies PhasMembershipRewardRegistrationResult;
+    }
+
+    if (registered === "unknown") {
+      yield* Effect.logInfo(
+        `PHAS membership reward-account registration status is unknown; proceeding with explicit idempotent registration: scriptHash=${identity.scriptHash},rewardAddress=${identity.rewardAddress}`,
+      );
     }
 
     const built = yield* (
       options.buildRegistrationTx ?? defaultBuildRegistrationTx
     )(lucid, { script });
+    const capturedTransaction = yield* Effect.try({
+      try: () =>
+        (
+          options.inspectRegistrationTx ??
+          inspectPhasMembershipRegistrationTransaction
+        )(built, identity),
+      catch: (cause) =>
+        new SDK.LucidError({
+          message:
+            "Failed to verify the exact PHAS registration transaction body",
+          cause,
+        }),
+    });
     const submitted = yield* Effect.either(
       (options.submitRegistrationTx ?? defaultSubmitRegistrationTx)(
         lucid,
@@ -399,14 +567,27 @@ export const ensurePhasMembershipRewardAccountRegisteredProgram = (
           rewardAddress: built.rewardAddress,
           scriptHash: built.scriptHash,
           txHash: null,
+          transactionBody: null,
         } satisfies PhasMembershipRewardRegistrationResult;
       }
       return yield* Effect.fail(submitted.left);
     }
+    if (submitted.right !== capturedTransaction.evidence.txHash) {
+      return yield* Effect.fail(
+        new TxSubmitError({
+          message:
+            "Submitted PHAS registration transaction hash does not match the verified unsigned transaction body",
+          txHash: submitted.right,
+          cause: `expected=${capturedTransaction.evidence.txHash},actual=${submitted.right}`,
+        }),
+      );
+    }
+    options.onSubmittedRegistrationTx?.(capturedTransaction);
     return {
       status: "registration_submitted",
       rewardAddress: built.rewardAddress,
       scriptHash: built.scriptHash,
       txHash: submitted.right,
+      transactionBody: capturedTransaction.evidence,
     } satisfies PhasMembershipRewardRegistrationResult;
   });

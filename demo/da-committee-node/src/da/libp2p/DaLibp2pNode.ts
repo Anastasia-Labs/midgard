@@ -1,4 +1,5 @@
 import type { DaGossipTopic } from "@al-ft/midgard-core/da-transport";
+import { withDaRequestDeadline } from "@al-ft/midgard-core/da-request-deadline";
 import { noise } from "@chainsafe/libp2p-noise";
 import { yamux } from "@chainsafe/libp2p-yamux";
 import { bootstrap } from "@libp2p/bootstrap";
@@ -201,17 +202,25 @@ export class DaLibp2pNode {
     if (this.node.dialProtocol === undefined) {
       throw new Error("DA libp2p node does not support request/response dials");
     }
-    const stream = await this.node.dialProtocol(
-      peer.multiaddrs.map((addr) => multiaddr(addr)),
-      protocolId,
-      { signal: AbortSignal.timeout(timeoutMs) },
-    );
-    await writeDaStreamFrame(stream, payload, {
-      maxFrameBytes: this.config.limits.maxPayloadBytes,
-    });
-    await stream.close?.();
-    return readSingleDaStreamFrame(stream, {
-      maxFrameBytes: this.config.limits.maxPayloadBytes,
+    const node = this.node;
+    return withDaRequestDeadline({
+      timeoutMs,
+      open: (signal) =>
+        node.dialProtocol!(
+          peer.multiaddrs.map((addr) => multiaddr(addr)),
+          protocolId,
+          { signal },
+        ),
+      run: async (stream) => {
+        await writeDaStreamFrame(stream, payload, {
+          maxFrameBytes: this.config.limits.maxPayloadBytes,
+        });
+        await stream.close?.();
+        return readSingleDaStreamFrame(stream, {
+          maxFrameBytes: this.config.limits.maxPayloadBytes,
+        });
+      },
+      abort: (stream, error) => stream.abort?.(error),
     });
   }
 

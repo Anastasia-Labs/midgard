@@ -178,6 +178,26 @@ describe("provider diagnostics", () => {
     });
   });
 
+  it("preserves the nested network cause needed to diagnose local provider failures", async () => {
+    const failure = new TypeError("fetch failed", {
+      cause: new Error("getaddrinfo EAI_AGAIN kupo"),
+    });
+    const report = await runL1ProviderPreflight({
+      config,
+      fetchImpl: async () => {
+        throw failure;
+      },
+    });
+
+    expect(report.sources[0]).toMatchObject({
+      source: "kupmios",
+      healthy: false,
+      failureKind: "network_error",
+      bodySummary:
+        "TypeError: fetch failed; cause=Error: getaddrinfo EAI_AGAIN kupo",
+    });
+  });
+
   it("keeps forbidden remote provider wiring out of node runtime sources", async () => {
     const runtimeFiles = [
       "src/services/config.ts",

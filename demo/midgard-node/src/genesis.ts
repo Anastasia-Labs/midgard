@@ -1,6 +1,6 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { TxSubmitError, UTxO, utxoToCore } from "@lucid-evolution/lucid";
-import { Effect, Ref } from "effect";
+import { Effect } from "effect";
 
 import * as MempoolLedgerDB from "@/database/mempoolLedger.js";
 import { DatabaseError } from "@/database/utils/common.js";
@@ -11,6 +11,7 @@ import {
   Lucid,
   MidgardContracts,
   NodeConfig,
+  publishMempoolLedgerDelta,
 } from "@/services/index.js";
 import {
   buildUnsignedDepositTxProgram,
@@ -54,7 +55,11 @@ const insertGenesisUtxos: Effect.Effect<
   );
 
   yield* MempoolLedgerDB.insert(ledgerEntries);
-  yield* Ref.update(globals.MEMPOOL_LEDGER_VERSION, (version) => version + 1);
+  yield* publishMempoolLedgerDelta(
+    globals,
+    { full: true, upserts: [], deletes: [] },
+    config.VALIDATION_LEDGER_DELTA_LOG_MAX,
+  );
 
   yield* Effect.logInfo(
     `🟣 Successfully inserted ${ledgerEntries.length} genesis UTxOs. Funded addresses are:

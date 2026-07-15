@@ -28,7 +28,7 @@
   "author": "Anastasia Labs",
   "license": "ISC",
   "dependencies": {
-    "@aiken-lang/merkle-patricia-forestry": "^1.2.0",
+    "@aiken-lang/merkle-patricia-forestry": "github:Anastasia-Labs/merkle-patricia-forestry#b139785f7c118854f9824c26cc443e2df95cb50e&path:/off-chain",
     "@al-ft/midgard-core": "workspace:*",
     "@al-ft/midgard-sdk": "workspace:*",
     "@harmoniclabs/cbor": "1.6.6",

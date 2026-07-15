@@ -24,8 +24,12 @@ import {
   schedulerRefreshDueWorkFromNoInlineSubmitDefer,
   schedulerRefreshDueWorkFromSubmitTiming,
   schedulerRefreshRequiredOutsideMutationWorkerDueWork,
+  schedulerRefreshStartTimeModeForSpendingScriptHash,
   schedulerSlotSnapshotFromSubmitSlot,
+  schedulerStateCoversCommitTarget,
 } from "@/workers/utils/scheduler-refresh.js";
+
+import { captureCustomSlotConfigRestore } from "./helpers/emulator-submit-slot-snapshot.js";
 
 const mkUtxo = (txHash: string, outputIndex: number): UTxO =>
   ({
@@ -191,16 +195,21 @@ describe("scheduler refresh witness selection", () => {
   });
 
   it("captures a single current-slot snapshot for scheduler validity resolution", async () => {
-    const operator = generateEmulatorAccount({ lovelace: 50_000_000n });
-    const emulator = new Emulator([operator]);
-    const lucid = await Lucid(emulator, "Custom");
-    lucid.selectWallet.fromSeed(operator.seedPhrase);
+    const restoreCustomSlotConfig = captureCustomSlotConfigRestore();
+    try {
+      const operator = generateEmulatorAccount({ lovelace: 50_000_000n });
+      const emulator = new Emulator([operator]);
+      const lucid = await Lucid(emulator, "Custom");
+      lucid.selectWallet.fromSeed(operator.seedPhrase);
 
-    const snapshot = captureSchedulerSlotSnapshot(lucid, 1_779_150_000_000);
+      const snapshot = captureSchedulerSlotSnapshot(lucid, 1_779_150_000_000);
 
-    expect(snapshot.currentSlot).toBe(lucid.currentSlot());
-    expect(snapshot.currentSlotStartMs).toEqual(expect.any(Number));
-    expect(snapshot.observedAtMs).toBe(1_779_150_000_000);
+      expect(snapshot.currentSlot).toBe(lucid.currentSlot());
+      expect(snapshot.currentSlotStartMs).toEqual(expect.any(Number));
+      expect(snapshot.observedAtMs).toBe(1_779_150_000_000);
+    } finally {
+      restoreCustomSlotConfig();
+    }
   });
 
   it("captures production scheduler slots from local submit-ledger snapshots", () => {
@@ -290,6 +299,72 @@ describe("scheduler refresh witness selection", () => {
         validTo: validFrom + 8n * 60n * 1000n,
       }),
     ).toBe(validFrom);
+  });
+
+  it("uses previous shift end for deployed pre-fix scheduler validators", () => {
+    const previousStart = 1_000_000n;
+    const previousShiftEnd = previousStart + SDK.SHIFT_DURATION_MS;
+    const validFrom = previousShiftEnd + 30_000n;
+    const registeredRoot = mkNode("66".repeat(32), 0, {
+      key: "Empty",
+      next: "Empty",
+      data: "00" as SDK.LinkedListNodeView["data"],
+    });
+
+    expect(
+      resolveRefreshedSchedulerStartTime({
+        selection: {
+          kind: "Rewind",
+          activeNode: activeTail,
+          activeRootNode: activeRoot,
+          registeredWitnessNode: registeredRoot,
+        },
+        currentSchedulerState: {
+          operator: "aa",
+          startTime: previousStart,
+        },
+        validFrom,
+        validTo: validFrom + 8n * 60n * 1000n,
+        startTimeMode: "previous-shift-end",
+      }),
+    ).toBe(previousShiftEnd);
+  });
+
+  it("selects previous-shift-end start mode for the deployed pre-fix scheduler hash", () => {
+    expect(
+      schedulerRefreshStartTimeModeForSpendingScriptHash(
+        "adc0cb0642e888ec8f003ae71b5412bde1b31789c951597932f46712",
+      ),
+    ).toBe("previous-shift-end");
+    expect(
+      schedulerRefreshStartTimeModeForSpendingScriptHash("bdc0ed9e90d6"),
+    ).toBe("validity-lower-bound");
+  });
+
+  it("keeps refreshing until the scheduler window covers the commit target", () => {
+    const startTime = 1_000_000n;
+    const operatorKeyHash = "aa";
+
+    expect(
+      schedulerStateCoversCommitTarget({
+        currentSchedulerState: {
+          operator: operatorKeyHash,
+          startTime,
+        },
+        operatorKeyHash,
+        targetStartTime: startTime + SDK.SHIFT_DURATION_MS,
+      }),
+    ).toBe(true);
+    expect(
+      schedulerStateCoversCommitTarget({
+        currentSchedulerState: {
+          operator: operatorKeyHash,
+          startTime,
+        },
+        operatorKeyHash,
+        targetStartTime: startTime + SDK.SHIFT_DURATION_MS + 1n,
+      }),
+    ).toBe(false);
   });
 
   it("rejects end-of-shift refresh starts before the previous shift end", () => {

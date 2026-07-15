@@ -1,4 +1,5 @@
 import {
+  decodeMidgardAddressBytes,
   encodeMidgardAddressText,
   encodeMidgardTxOutput,
   type MidgardTxOutput,
@@ -14,13 +15,84 @@ import type {
 import type { PhaseAValidatedTx } from "./types.js";
 import { mintToValueDelta, sumMidgardValues } from "./value-accounting.js";
 
-export const midgardOutRefToCbor = (outRef: MidgardOutRef): Buffer =>
-  Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_raw_bytes(outRef.txId),
-      outRef.index,
-    ).to_cbor_bytes(),
-  );
+const DEFAULT_ADDRESS_CACHE_MAX_ENTRIES = 4_096;
+type AddressProjection = {
+  readonly text: string;
+  readonly protected: boolean;
+};
+const addressProjectionCache = new Map<string, AddressProjection>();
+let addressCacheMaxEntries = DEFAULT_ADDRESS_CACHE_MAX_ENTRIES;
+let addressCacheHits = 0;
+let addressCacheMisses = 0;
+let addressCacheEvictions = 0;
+
+export const phaseAAddressCacheStats = (): {
+  readonly size: number;
+  readonly maxEntries: number;
+  readonly hits: number;
+  readonly misses: number;
+  readonly evictions: number;
+} => ({
+  size: addressProjectionCache.size,
+  maxEntries: addressCacheMaxEntries,
+  hits: addressCacheHits,
+  misses: addressCacheMisses,
+  evictions: addressCacheEvictions,
+});
+
+export const resetPhaseAAddressCache = (
+  maxEntries = DEFAULT_ADDRESS_CACHE_MAX_ENTRIES,
+): void => {
+  addressProjectionCache.clear();
+  addressCacheMaxEntries = Math.max(1, Math.floor(maxEntries));
+  addressCacheHits = 0;
+  addressCacheMisses = 0;
+  addressCacheEvictions = 0;
+};
+
+const projectAddress = (address: Buffer): AddressProjection => {
+  const cacheKey = address.toString("hex");
+  const cached = addressProjectionCache.get(cacheKey);
+  if (cached !== undefined) {
+    addressProjectionCache.delete(cacheKey);
+    addressProjectionCache.set(cacheKey, cached);
+    addressCacheHits += 1;
+    return cached;
+  }
+
+  // Populate only after both canonical text encoding and protected-bit
+  // decoding succeed, so invalid addresses can never poison the cache.
+  const projection = {
+    text: encodeMidgardAddressText(address),
+    protected: decodeMidgardAddressBytes(address).protected,
+  } satisfies AddressProjection;
+  addressCacheMisses += 1;
+  if (addressProjectionCache.size >= addressCacheMaxEntries) {
+    const oldestKey = addressProjectionCache.keys().next().value as
+      | string
+      | undefined;
+    if (oldestKey !== undefined) {
+      addressProjectionCache.delete(oldestKey);
+      addressCacheEvictions += 1;
+    }
+  }
+  addressProjectionCache.set(cacheKey, projection);
+  return projection;
+};
+
+export const midgardOutRefToCbor = (outRef: MidgardOutRef): Buffer => {
+  const transactionId = CML.TransactionHash.from_raw_bytes(outRef.txId);
+  try {
+    const input = CML.TransactionInput.new(transactionId, outRef.index);
+    try {
+      return Buffer.from(input.to_cbor_bytes());
+    } finally {
+      input.free();
+    }
+  } finally {
+    transactionId.free();
+  }
+};
 
 export const midgardOutRefToCborHex = (outRef: MidgardOutRef): string =>
   midgardOutRefToCbor(outRef).toString("hex");
@@ -41,6 +113,9 @@ const hashHexes = (hashes: readonly Buffer[]): readonly string[] =>
   hashes.map((hash) => hash.toString("hex"));
 
 const mintPolicyHashHexes = (tx: MidgardLedgerTx): readonly string[] => {
+  if (tx.mint.assets.length === 0) {
+    return [];
+  }
   const seen = new Set<string>();
   const policyIds: string[] = [];
   for (const asset of tx.mint.assets) {
@@ -68,6 +143,9 @@ export const buildPhaseAValidatedTx = ({
   createdAt,
   redeemerWitnessHash,
 }: BuildPhaseAValidatedTxArgs): PhaseAValidatedTx => {
+  const outputAddresses = ledgerTx.outputs.map((output) =>
+    projectAddress(output.address),
+  );
   const produced: LedgerEntry[] = ledgerTx.outputs.map((output, index) => {
     const outputCbor = ledgerOutputToCbor(output);
     return {
@@ -77,7 +155,7 @@ export const buildPhaseAValidatedTx = ({
         index: BigInt(index),
       }),
       [LedgerColumns.OUTPUT]: outputCbor,
-      [LedgerColumns.ADDRESS]: encodeMidgardAddressText(output.address),
+      [LedgerColumns.ADDRESS]: outputAddresses[index]!.text,
     };
   });
 
@@ -107,6 +185,12 @@ export const buildPhaseAValidatedTx = ({
       mintPolicyHashHexes: mintPolicyHashHexes(ledgerTx),
       redeemerWitnessHash: Buffer.from(redeemerWitnessHash),
       requiresScriptEvaluation: ledgerTx.requiresPlutusEvaluation,
+      requiresLocalScriptDiscovery:
+        ledgerTx.scriptWitnesses.length > 0 ||
+        ledgerTx.redeemers.length > 0 ||
+        ledgerTx.requiredObserverHashes.length > 0 ||
+        ledgerTx.mint.assets.length > 0 ||
+        outputAddresses.some((address) => address.protected),
     },
   };
 };

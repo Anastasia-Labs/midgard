@@ -1,5 +1,5 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import { LucidEvolution } from "@lucid-evolution/lucid";
+import { LucidEvolution, toUnit } from "@lucid-evolution/lucid";
 import { Effect, Ref } from "effect";
 
 import type { Globals } from "@/services/globals.js";
@@ -137,6 +137,98 @@ export const fetchStateQueueTopologyProgram = (
     return summarizeStateQueueTopology(policyUtxos.length, parsed);
   });
 
+const MAX_OPERATIONAL_STATE_QUEUE_NODES = 10_000;
+
+/**
+ * Follows the authenticated state-queue list from its fixed root NFT using
+ * exact-unit provider queries. Operational commit/merge paths need the live
+ * canonical chain, not an address-wide superset, and must remain available
+ * when unrelated L1 queries are busy. Full topology/status gates retain the
+ * address-wide scan so orphan or malformed policy UTxOs are still surfaced.
+ */
+export const fetchCanonicalStateQueueNodesProgram = (
+  lucid: LucidEvolution,
+  stateQueue: SDK.AuthenticatedValidator,
+): Effect.Effect<
+  readonly SDK.StateQueueUTxO[],
+  SDK.LucidError | SDK.StateQueueError
+> =>
+  Effect.gen(function* () {
+    const nodes: SDK.StateQueueUTxO[] = [];
+    const seenAssetNames = new Set<string>();
+    let assetName = SDK.STATE_QUEUE_ROOT_ASSET_NAME;
+
+    while (nodes.length < MAX_OPERATIONAL_STATE_QUEUE_NODES) {
+      if (seenAssetNames.has(assetName)) {
+        return yield* Effect.fail(
+          new SDK.StateQueueError({
+            message: "Cannot derive state-queue snapshot from cyclic topology",
+            cause: `asset_name=${assetName},visited=${nodes.length.toString()}`,
+          }),
+        );
+      }
+      seenAssetNames.add(assetName);
+      const unit = toUnit(stateQueue.policyId, assetName);
+      const matches = yield* Effect.tryPromise({
+        try: () =>
+          lucid.utxosAtWithUnit(stateQueue.spendingScriptAddress, unit),
+        catch: (cause) =>
+          new SDK.LucidError({
+            message: `Failed to fetch state-queue linked-list unit at: ${stateQueue.spendingScriptAddress}`,
+            cause,
+          }),
+      });
+      if (matches.length !== 1) {
+        return yield* Effect.fail(
+          new SDK.StateQueueError({
+            message: "State-queue linked-list unit is missing or not unique",
+            cause: `unit=${unit},matches=${matches.length.toString()}`,
+          }),
+        );
+      }
+      const node = yield* SDK.utxoToStateQueueUTxO(
+        matches[0],
+        stateQueue.policyId,
+      ).pipe(
+        Effect.mapError(
+          (cause) =>
+            new SDK.StateQueueError({
+              message: "Failed to authenticate state-queue linked-list node",
+              cause,
+            }),
+        ),
+      );
+      if (node.assetName !== assetName) {
+        return yield* Effect.fail(
+          new SDK.StateQueueError({
+            message: "State-queue linked-list unit returned the wrong node",
+            cause: `expected_asset_name=${assetName},actual_asset_name=${node.assetName}`,
+          }),
+        );
+      }
+      nodes.push(node);
+      if (node.datum.next === "Empty") {
+        return nodes;
+      }
+      assetName =
+        SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + node.datum.next.Key.key;
+    }
+
+    return yield* Effect.fail(
+      new SDK.StateQueueError({
+        message: "State-queue linked-list traversal exceeded its safety bound",
+        cause: `max_nodes=${MAX_OPERATIONAL_STATE_QUEUE_NODES.toString()}`,
+      }),
+    );
+  });
+
+const usesExactOperationalTraversal = (
+  reason: StateQueueSnapshotReason,
+): boolean =>
+  reason === "commit_preflight" ||
+  reason === "commit_revalidation" ||
+  reason === "post_merge";
+
 const outRef = (node: SDK.StateQueueUTxO): string =>
   `${node.utxo.txHash}#${node.utxo.outputIndex.toString()}`;
 
@@ -200,16 +292,31 @@ export const fetchStateQueueSnapshotProgram = (
   | SDK.CborSerializationError
 > =>
   Effect.gen(function* () {
-    const policyUtxos = yield* SDK.utxosAtByNFTPolicyId(
-      lucid,
-      stateQueue.spendingScriptAddress,
-      stateQueue.policyId,
+    const operationalNodes = usesExactOperationalTraversal(reason)
+      ? yield* fetchCanonicalStateQueueNodesProgram(lucid, stateQueue)
+      : undefined;
+    const policyUtxos =
+      operationalNodes === undefined
+        ? yield* SDK.utxosAtByNFTPolicyId(
+            lucid,
+            stateQueue.spendingScriptAddress,
+            stateQueue.policyId,
+          )
+        : operationalNodes.map(({ utxo, assetName }) => ({
+            utxo,
+            policyId: stateQueue.policyId,
+            assetName,
+          }));
+    const nodes =
+      operationalNodes ??
+      (yield* SDK.utxosToStateQueueUTxOs(
+        policyUtxos.map(({ utxo }) => utxo),
+        stateQueue.policyId,
+      ));
+    const topology = summarizeStateQueueTopology(
+      operationalNodes === undefined ? policyUtxos.length : nodes.length,
+      nodes,
     );
-    const nodes = yield* SDK.utxosToStateQueueUTxOs(
-      policyUtxos.map(({ utxo }) => utxo),
-      stateQueue.policyId,
-    );
-    const topology = summarizeStateQueueTopology(policyUtxos.length, nodes);
     if (!topology.healthy) {
       return yield* Effect.fail(
         new SDK.StateQueueError({

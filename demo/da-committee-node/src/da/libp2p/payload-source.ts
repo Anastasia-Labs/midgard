@@ -1,3 +1,4 @@
+import { withDaRequestDeadline } from "@al-ft/midgard-core/da-request-deadline";
 import {
   computeDaSha256Hash,
   daDeploymentFingerprintFromHex,
@@ -120,10 +121,12 @@ export class DaLibp2pPayloadSource implements DaPayloadSource {
         }
         const payloadCbor = Buffer.from(byHeaderResponse.payloadBytes);
         assertPayloadHash(payloadCbor, byHeaderResponse.payloadHash);
+        const metadata = await this.fetchMetadata(peer, headerHash);
         return {
           sourcePeerId: peer.peerId,
           payloadCbor,
-          metadata: await this.fetchMetadata(peer, headerHash),
+          payloadSchemaVersion: metadata?.payloadSchemaVersion ?? undefined,
+          metadata,
         };
       }
       case "found_chunked": {
@@ -147,10 +150,12 @@ export class DaLibp2pPayloadSource implements DaPayloadSource {
           );
         }
         assertPayloadHash(payloadCbor, byHeaderResponse.payloadHash);
+        const metadata = await this.fetchMetadata(peer, headerHash);
         return {
           sourcePeerId: peer.peerId,
           payloadCbor,
-          metadata: await this.fetchMetadata(peer, headerHash),
+          payloadSchemaVersion: metadata?.payloadSchemaVersion ?? undefined,
+          metadata,
         };
       }
       case "not_found":
@@ -217,7 +222,9 @@ export class DaLibp2pPayloadSource implements DaPayloadSource {
   private async fetchMetadata(
     peer: DaPeerRegistryEntry,
     headerHash: Buffer,
-  ): Promise<unknown> {
+  ): Promise<
+    ReturnType<typeof decodeDaMetadataByHeaderResponseV1Cbor> | undefined
+  > {
     const response = decodeDaMetadataByHeaderResponseV1Cbor(
       await this.node.request({
         peer,
@@ -243,10 +250,12 @@ export const createDaLibp2pPayloadRequestHandlers = ({
   deploymentFingerprint,
   store,
   limits,
+  payloadSubmitAdmission = processWideDaPayloadSubmitAdmission,
 }: {
   readonly deploymentFingerprint: string;
   readonly store: Pick<WatcherStore, "getDaPayload" | "saveDaPayload">;
   readonly limits: Libp2pDaTransportLimits;
+  readonly payloadSubmitAdmission?: DaPayloadSubmitAdmission;
 }): ReadonlyMap<string, DaLibp2pStreamHandler> => {
   const protocolIds = createDaProtocolAllowlist(deploymentFingerprint);
   const handlers = new DaLibp2pPayloadProtocolHandlers({
@@ -258,21 +267,51 @@ export const createDaLibp2pPayloadRequestHandlers = ({
   const addHandler = (
     protocol: DaRequestResponseProtocol,
     handle: (requestCbor: Uint8Array) => Promise<Buffer>,
+    options: { readonly payloadAdmission?: boolean } = {},
   ): void => {
     const protocolId = protocolIds.protocolIdByName.get(protocol)!;
-    handlerMap.set(protocolId, async ({ stream }) => {
+    const execute = async (
+      { stream }: Parameters<DaLibp2pStreamHandler>[0],
+      signal?: AbortSignal,
+    ): Promise<void> => {
+      signal?.throwIfAborted();
       const requestCbor = await readSingleDaStreamFrame(stream, {
         maxFrameBytes: limits.maxPayloadBytes,
       });
+      signal?.throwIfAborted();
       const responseCbor = await handle(requestCbor);
+      signal?.throwIfAborted();
       await writeDaStreamFrame(stream, responseCbor, {
         maxFrameBytes: limits.maxPayloadBytes,
         close: true,
       });
-    });
+      signal?.throwIfAborted();
+    };
+    handlerMap.set(
+      protocolId,
+      options.payloadAdmission
+        ? (context) =>
+            withDaRequestDeadline({
+              timeoutMs: limits.requestTimeoutMs,
+              open: async (signal) => ({ context, signal }),
+              run: ({ context: admittedContext, signal }) =>
+                payloadSubmitAdmission.run(
+                  () => execute(admittedContext, signal),
+                  { signal },
+                ),
+              abort: ({ context: admittedContext }, error) =>
+                admittedContext.stream.abort?.(error),
+            })
+        : (context) => execute(context),
+    );
   };
-  addHandler(DaRequestResponseProtocol.payloadSubmit, (request) =>
-    handlers.handlePayloadSubmit(request),
+  addHandler(DaRequestResponseProtocol.capabilities, (request) =>
+    handlers.handleCapabilities(request),
+  );
+  addHandler(
+    DaRequestResponseProtocol.payloadSubmit,
+    (request) => handlers.handlePayloadSubmit(request),
+    { payloadAdmission: true },
   );
   addHandler(DaRequestResponseProtocol.payloadByHeader, (request) =>
     handlers.handlePayloadByHeader(request),
@@ -285,6 +324,98 @@ export const createDaLibp2pPayloadRequestHandlers = ({
   );
   return handlerMap;
 };
+
+export class DaPayloadSubmitAdmission {
+  readonly limit: number;
+  #active = 0;
+  #maxObservedActive = 0;
+  readonly #waiters: Array<{
+    readonly grant: () => void;
+    readonly signal?: AbortSignal;
+  }> = [];
+
+  constructor(limit = 1) {
+    if (!Number.isSafeInteger(limit) || limit <= 0) {
+      throw new RangeError(
+        "DA payload-submit admission limit must be a positive integer",
+      );
+    }
+    this.limit = limit;
+  }
+
+  get active(): number {
+    return this.#active;
+  }
+
+  get maxObservedActive(): number {
+    return this.#maxObservedActive;
+  }
+
+  async run<T>(
+    operation: () => Promise<T> | T,
+    { signal }: { readonly signal?: AbortSignal } = {},
+  ): Promise<T> {
+    await this.acquire(signal);
+    try {
+      signal?.throwIfAborted();
+      return await operation();
+    } finally {
+      this.release();
+    }
+  }
+
+  private async acquire(signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted();
+    if (this.#active < this.limit && this.#waiters.length === 0) {
+      this.#active += 1;
+      this.#maxObservedActive = Math.max(this.#maxObservedActive, this.#active);
+      return;
+    }
+    await new Promise<void>((resolve, reject) => {
+      const onAbort = (): void => {
+        const index = this.#waiters.indexOf(waiter);
+        if (index >= 0) {
+          this.#waiters.splice(index, 1);
+        }
+        reject(signal?.reason ?? new Error("DA payload admission cancelled"));
+      };
+      const waiter = {
+        signal,
+        grant: (): void => {
+          signal?.removeEventListener("abort", onAbort);
+          this.#active += 1;
+          this.#maxObservedActive = Math.max(
+            this.#maxObservedActive,
+            this.#active,
+          );
+          resolve();
+        },
+      };
+      this.#waiters.push(waiter);
+      signal?.addEventListener("abort", onAbort, { once: true });
+      if (signal?.aborted === true) {
+        onAbort();
+      }
+    });
+  }
+
+  private release(): void {
+    this.#active -= 1;
+    while (this.#waiters.length > 0) {
+      const waiter = this.#waiters.shift()!;
+      if (waiter.signal?.aborted === true) {
+        continue;
+      }
+      waiter.grant();
+      break;
+    }
+  }
+}
+
+/** Shared by every handler map created in this process. */
+export const processWideDaPayloadSubmitAdmission = new DaPayloadSubmitAdmission(
+  1,
+);
 
 class InvalidDaPayloadSourceResponseError extends Error {
   constructor(message: string) {

@@ -288,6 +288,10 @@ export const stressEvidenceFromSummary = ({
           finalityTimedOut: stressSummary.finalityTimedOutCount.toString(),
           rejected: stressSummary.rejectedCount.toString(),
           unresolved: unresolvedCount.toString(),
+          rateSemantics: stressSummary.rateSemantics,
+          burstCycleRatePerSecond:
+            stressSummary.burstCycleRatePerSecond?.toString() ?? "",
+          interruptedReason: stressSummary.interruptedReason ?? "",
           ...stressMetricDetails(
             stressSummary.metrics.clientSubmission,
             "clientSubmission",
@@ -344,6 +348,7 @@ export const stressEvidenceFromSummary = ({
           finalityTimedOut: stressSummary.finalityTimedOutCount.toString(),
           rejected: stressSummary.rejectedCount.toString(),
           unresolved: unresolvedCount.toString(),
+          interruptedReason: stressSummary.interruptedReason ?? "",
         },
       },
     ],
@@ -372,7 +377,7 @@ export const stressEvidenceFromSummary = ({
             },
           ],
     notes: [
-      `stress_l2_acceptance accepted=${l2Admission.count.toString()}/${stressSummary.requestedCount.toString()} l2AdmissionStatus=${l2Admission.status} l2AdmissionRatePerSecond=${l2Admission.perSecond?.toString() ?? "unavailable"} immutableObservation=${stressSummary.metrics.immutableObservation.count.toString()}/${l2Admission.count.toString()} fullFinality=${fullFinality.status}`,
+      `stress_l2_acceptance accepted=${l2Admission.count.toString()}/${stressSummary.requestedCount.toString()} l2AdmissionStatus=${l2Admission.status} l2AdmissionRatePerSecond=${l2Admission.perSecond?.toString() ?? "unavailable"} rateSemantics=${stressSummary.rateSemantics} immutableObservation=${stressSummary.metrics.immutableObservation.count.toString()}/${l2Admission.count.toString()} fullFinality=${fullFinality.status}`,
     ],
   };
 };

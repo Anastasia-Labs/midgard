@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+
 import type { ProductionCommitBlockHeaderParams } from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -6,6 +8,7 @@ import {
   releaseCommitMutationWorkerPhase,
   releaseCommitSchedulerAlignmentPhase,
   shouldAttemptCommitPipeline,
+  shouldDeferCommitWorkerForLocalFinalization,
   shouldRunPreLeaseSchedulerAlignment,
   tryAcquireCommitMutationWorkerPhase,
   tryAcquireCommitSchedulerAlignmentPhase,
@@ -16,7 +19,10 @@ import {
   shouldShortCircuitIdleCommitAttempt,
   workerPreIngestionDueWorkOutputFromPlan,
 } from "@/workers/commit-block-header.js";
-import type { WorkerOutput } from "@/workers/utils/commit-block-header.js";
+import type {
+  SerializedStateQueueUTxO,
+  WorkerOutput,
+} from "@/workers/utils/commit-block-header.js";
 import { MidgardMpf, withMpfRootTransactions } from "@/workers/utils/mpf.js";
 
 const dueWork = {
@@ -32,6 +38,8 @@ const dueWork = {
   dependencyKey: "dep",
   invalidationKey: "dep",
 } as const;
+
+const confirmedRecoveryBlock = {} as SerializedStateQueueUTxO;
 
 const assertRootTransactionHandling = (
   output: WorkerOutput,
@@ -185,6 +193,7 @@ describe("commit block worker output handling", () => {
   it("skips the pre-lease commit pipeline only when all commit work sources are empty", () => {
     const base = {
       localFinalizationPending: false,
+      availableLocalFinalizationBlock: "" as const,
       mempoolTxCount: 0n,
       processedUnsubmittedTxCount: 0,
       pendingUserEventCount: 0,
@@ -195,6 +204,7 @@ describe("commit block worker output handling", () => {
       shouldAttemptCommitPipeline({
         ...base,
         localFinalizationPending: true,
+        availableLocalFinalizationBlock: confirmedRecoveryBlock,
       }),
     ).toBe(true);
     expect(
@@ -215,6 +225,66 @@ describe("commit block worker output handling", () => {
         pendingUserEventCount: 1,
       }),
     ).toBe(true);
+  });
+
+  it("does not reacquire the commit lease while local finalization awaits a confirmed recovery block", () => {
+    const pendingWithoutConfirmedBlock = {
+      localFinalizationPending: true,
+      availableLocalFinalizationBlock: "",
+    } as const;
+
+    // The v17 failure had 127 mempool transactions, but they cannot form a new
+    // commitment until the submitted predecessor is confirmed and finalized.
+    expect(
+      shouldAttemptCommitPipeline({
+        localFinalizationPending: true,
+        availableLocalFinalizationBlock: "",
+        mempoolTxCount: 127n,
+        processedUnsubmittedTxCount: 127,
+        pendingUserEventCount: 0,
+      }),
+    ).toBe(false);
+    expect(
+      shouldDeferCommitWorkerForLocalFinalization(pendingWithoutConfirmedBlock),
+    ).toBe(true);
+    // Confirmation is the bounded wake-up: once it publishes the matching
+    // block, the next scheduled tick may run the local recovery worker.
+    expect(
+      shouldDeferCommitWorkerForLocalFinalization({
+        localFinalizationPending: true,
+        availableLocalFinalizationBlock: confirmedRecoveryBlock,
+      }),
+    ).toBe(false);
+    expect(
+      shouldAttemptCommitPipeline({
+        localFinalizationPending: true,
+        availableLocalFinalizationBlock: confirmedRecoveryBlock,
+        mempoolTxCount: 127n,
+        processedUnsubmittedTxCount: 127,
+        pendingUserEventCount: 0,
+      }),
+    ).toBe(true);
+  });
+
+  it("evaluates the pending-finalization gate before acquiring the commit mutation lease", async () => {
+    const source = await readFile(
+      new URL("../src/fibers/block-commitment.ts", import.meta.url),
+      "utf8",
+    );
+    const action = source.slice(
+      source.indexOf("export const blockCommitmentAction"),
+      source.indexOf("export const blockCommitmentFiber"),
+    );
+    const pendingFinalizationGate = action.indexOf(
+      "shouldSkipIdleCommitPipelineBeforeSchedulerAlignment",
+    );
+    const mutationLease = action.indexOf(
+      "StateQueueMutationLeasesDB.tryWithLease",
+    );
+
+    expect(pendingFinalizationGate).toBeGreaterThanOrEqual(0);
+    expect(mutationLease).toBeGreaterThanOrEqual(0);
+    expect(pendingFinalizationGate).toBeLessThan(mutationLease);
   });
 
   it("short-circuits idle attempts only after tx, event, and recovery work are absent", () => {
@@ -274,6 +344,8 @@ describe("commit block worker output handling", () => {
         mempoolTxsCount: 1,
         sizeOfBlocksTxs: 1,
         blockEndTimeMs: 1,
+        submittedHeaderHash: "aa".repeat(28),
+        submittedUtxosRoot: "bb".repeat(32),
       },
       {
         type: "SubmittedAwaitingLocalFinalizationOutput",
@@ -283,6 +355,8 @@ describe("commit block worker output handling", () => {
         sizeOfBlocksTxs: 1,
         blockEndTimeMs: 1,
         error: "local finalization pending",
+        submittedHeaderHash: "aa".repeat(28),
+        submittedUtxosRoot: "bb".repeat(32),
       },
       {
         type: "SuccessfulSubmissionOutput",
@@ -291,6 +365,7 @@ describe("commit block worker output handling", () => {
         mempoolTxsCount: 1,
         sizeOfBlocksTxs: 1,
         blockEndTimeMs: 1,
+        mempoolLedgerDeletedOutRefHexes: [],
       },
       {
         type: "SkippedSubmissionOutput",
@@ -299,8 +374,10 @@ describe("commit block worker output handling", () => {
       },
       {
         type: "SuccessfulLocalFinalizationRecoveryOutput",
+        finalizedHeaderHash: "cc".repeat(28),
         mempoolTxsCount: 1,
         sizeOfBlocksTxs: 1,
+        mempoolLedgerDeletedOutRefHexes: [],
       },
     ];
 

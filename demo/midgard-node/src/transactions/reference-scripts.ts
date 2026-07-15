@@ -76,6 +76,11 @@ const REFERENCE_SCRIPT_PROVIDER_FETCH_RETRY = {
   maxDelayMs: 8_000,
   jitterRatio: 0.25,
 } as const;
+export const REFERENCE_SCRIPT_CONFIRMATION_TIMEOUT_MS = 30 * 60 * 1_000;
+const REFERENCE_SCRIPT_CONFIRMATION_OPTIONS = {
+  confirmationTimeoutMs: REFERENCE_SCRIPT_CONFIRMATION_TIMEOUT_MS,
+  confirmationRetries: 0,
+} as const;
 
 type KupoMatchUtxo = {
   readonly transaction_id: string;
@@ -88,6 +93,18 @@ type KupoMatchUtxo = {
   readonly datum_hash?: string | null;
   readonly datum_type?: string | null;
   readonly script_hash?: string | null;
+};
+
+const parseKupoQuantity = (value: unknown, field: string): string => {
+  if (typeof value === "string" && /^\d+$/.test(value)) {
+    return value;
+  }
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) {
+    return value.toString();
+  }
+  throw new Error(
+    `Kupo match entry ${field} must be a decimal string or safe non-negative integer`,
+  );
 };
 
 export const REFERENCE_SCRIPT_COMMAND_NAMES = [
@@ -227,24 +244,17 @@ const parseKupoMatchUtxo = (value: unknown): KupoMatchUtxo => {
   if (typeof address !== "string" || address.length === 0) {
     throw new Error("Kupo match entry is missing address");
   }
-  if (typeof coins !== "string" || !/^\d+$/.test(coins)) {
-    throw new Error("Kupo match entry value.coins must be a decimal string");
-  }
+  const parsedCoins = parseKupoQuantity(coins, "value.coins");
   const assets: Record<string, string> = {};
   for (const [unit, amount] of Object.entries(rawAssets)) {
-    if (typeof amount !== "string" || !/^\d+$/.test(amount)) {
-      throw new Error(
-        `Kupo match entry asset ${unit} must be a decimal string`,
-      );
-    }
-    assets[unit] = amount;
+    assets[unit] = parseKupoQuantity(amount, `asset ${unit}`);
   }
   return {
     transaction_id: transactionId,
     output_index: outputIndex,
     address,
     value: {
-      coins,
+      coins: parsedCoins,
       assets,
     },
     ...(typeof value.datum_hash === "string" || value.datum_hash === null
@@ -586,6 +596,79 @@ const summarizeReferenceScriptWalletBucket = (
     lovelace: sumWalletLovelace(sorted),
     outRefs: sorted.map(outRefLabel),
     nonLovelaceAssetUnitCount: countNonLovelaceAssetUnits(sorted),
+  };
+};
+
+const kupoMatchOutRefKey = (match: KupoMatchUtxo): string =>
+  `${match.transaction_id}#${match.output_index.toString()}`;
+
+const isPlainAdaOnlyKupoMatch = (match: KupoMatchUtxo): boolean =>
+  match.datum_hash == null &&
+  match.datum_type == null &&
+  match.script_hash == null &&
+  Object.keys(match.value.assets).length === 0 &&
+  BigInt(match.value.coins) > 0n;
+
+const isReferenceScriptSweepKupoMatch = (match: KupoMatchUtxo): boolean =>
+  match.script_hash != null ||
+  Object.values(match.value.assets).some((amount) => BigInt(amount) > 0n);
+
+const summarizeKupoWalletBucket = (
+  matches: readonly KupoMatchUtxo[],
+): ReferenceScriptWalletBucketSummary => {
+  const sorted = [...matches].sort((left, right) =>
+    left.transaction_id === right.transaction_id
+      ? left.output_index - right.output_index
+      : left.transaction_id.localeCompare(right.transaction_id),
+  );
+  return {
+    utxoCount: sorted.length,
+    lovelace: sorted.reduce(
+      (total, match) => total + BigInt(match.value.coins),
+      0n,
+    ),
+    outRefs: sorted.map(kupoMatchOutRefKey),
+    nonLovelaceAssetUnitCount: new Set(
+      sorted.flatMap((match) =>
+        Object.entries(match.value.assets)
+          .filter(([, amount]) => BigInt(amount) > 0n)
+          .map(([unit]) => unit),
+      ),
+    ).size,
+  };
+};
+
+const buildReferenceScriptWalletStatusFromKupoMatches = ({
+  matches,
+  referenceScriptsAddress,
+}: {
+  readonly matches: readonly KupoMatchUtxo[];
+  readonly referenceScriptsAddress: string;
+}): ReferenceScriptWalletStatusSummary => {
+  for (const match of matches) {
+    assertKupoMatchAddress(match, referenceScriptsAddress);
+  }
+  const plainAdaOnly = matches.filter(isPlainAdaOnlyKupoMatch);
+  const scriptRefOrTokenBearing = matches.filter(
+    isReferenceScriptSweepKupoMatch,
+  );
+  const accounted = new Set([
+    ...plainAdaOnly.map(kupoMatchOutRefKey),
+    ...scriptRefOrTokenBearing.map(kupoMatchOutRefKey),
+  ]);
+  const otherIgnored = matches.filter(
+    (match) => !accounted.has(kupoMatchOutRefKey(match)),
+  );
+  const trappedSummary = summarizeKupoWalletBucket(scriptRefOrTokenBearing);
+  return {
+    referenceScriptsAddress,
+    total: summarizeKupoWalletBucket(matches),
+    plainAdaOnly: summarizeKupoWalletBucket(plainAdaOnly),
+    scriptRefOrTokenBearing: trappedSummary,
+    otherIgnored: summarizeKupoWalletBucket(otherIgnored),
+    ...(trappedSummary.lovelace > 0n
+      ? { sweepHint: referenceScriptSweepHint() }
+      : {}),
   };
 };
 
@@ -1235,7 +1318,11 @@ const ensureReferenceScriptWalletWorkingCapital = (
         referenceScriptAddress,
         topUpAmount,
       });
-    const txHash = yield* handleSignSubmit(fundingLucid, unsigned);
+    const txHash = yield* handleSignSubmit(
+      fundingLucid,
+      unsigned,
+      REFERENCE_SCRIPT_CONFIRMATION_OPTIONS,
+    );
     yield* refreshWalletUtxosFromOwnAddress(referenceScriptsLucid, {
       scopeName: `${scopeName} reference scripts after replenishment`,
       failureMessage: `Failed to refresh reference-script wallet after replenishing ${scopeName} reference scripts`,
@@ -1297,7 +1384,11 @@ const publishMissingReferenceScriptTargets = (
                   missingTargets,
                   authPolicy,
                 });
-              const txHash = yield* handleSignSubmit(lucid, unsigned);
+              const txHash = yield* handleSignSubmit(
+                lucid,
+                unsigned,
+                REFERENCE_SCRIPT_CONFIRMATION_OPTIONS,
+              );
               return [
                 txHash,
                 layout.localReferenceOutputs,
@@ -2059,6 +2150,24 @@ export const referenceScriptWalletStatusProgram = (
   referenceScriptsAddress: string,
 ): Effect.Effect<ReferenceScriptWalletStatusSummary, SDK.StateQueueError> =>
   Effect.gen(function* () {
+    const kupoUrl = kupmiosKupoUrlFromLucid(referenceScriptsLucid);
+    if (kupoUrl !== undefined) {
+      const failureMessage = `Failed to fetch reference-script wallet status UTxOs at ${referenceScriptsAddress}`;
+      const matches = yield* runProviderStepWithRetry(
+        `reference-script wallet status UTxO fetch at ${referenceScriptsAddress}`,
+        fetchKupoMatches(kupoUrl, referenceScriptsAddress, failureMessage),
+        REFERENCE_SCRIPT_PROVIDER_FETCH_RETRY,
+      );
+      return yield* Effect.try({
+        try: () =>
+          buildReferenceScriptWalletStatusFromKupoMatches({
+            matches,
+            referenceScriptsAddress,
+          }),
+        catch: (cause) =>
+          new SDK.StateQueueError({ message: failureMessage, cause }),
+      });
+    }
     const utxos = yield* fetchReferenceScriptUtxosAt(
       referenceScriptsLucid,
       referenceScriptsAddress,
@@ -2169,7 +2278,11 @@ export const sweepReferenceScriptWalletProgram = (
           cause,
         }),
     });
-    const txHash = yield* handleSignSubmit(referenceScriptsLucid, unsigned);
+    const txHash = yield* handleSignSubmit(
+      referenceScriptsLucid,
+      unsigned,
+      REFERENCE_SCRIPT_CONFIRMATION_OPTIONS,
+    );
     return {
       ...plan.summary,
       dryRun: false,

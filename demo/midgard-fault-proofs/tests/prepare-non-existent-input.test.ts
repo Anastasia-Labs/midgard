@@ -182,10 +182,10 @@ describe("prepare-non-existent-input", () => {
       tx_id: PHANTOM_TX_ID,
       output_index: 0n,
     });
-    expect(output.inputsPreimage).toEqual([
-      { txId: PHANTOM_TX_ID, index: 0n },
-    ]);
+    expect(output.inputsPreimage).toEqual([{ txId: PHANTOM_TX_ID, index: 0n }]);
     expect(output.transactionsRoot).toMatch(/^[0-9a-f]{64}$/);
+    expect(output.committedTransactionsRoot).toMatch(/^[0-9a-f]{64}$/);
+    expect(output.committedTransactionsRoot).not.toBe(output.transactionsRoot);
     expect(output.txInclusion.nativeTxId).toBe(badTxPayload.nodeTxId);
     expect(output.txInclusion.txMembershipProofCbor.length).toBeGreaterThan(0);
     expect(output.ledgerNonMembershipProofCbor.length).toBeGreaterThan(0);
@@ -227,7 +227,34 @@ describe("prepare-non-existent-input", () => {
         transactions: [badTxPayload],
         expectedTransactionsRoot: h32("00"),
       }),
-    ).rejects.toThrow("does not match the committed");
+    ).rejects.toThrow("does not match --expected-transactions-root");
+  });
+
+  it("accepts the counted transactions root committed by the block header", async () => {
+    const prepared = await prepareNonExistentInputFromTransactions({
+      headerHash: h28("ef"),
+      transactions: [badTxPayload],
+    });
+    const committedRoot = await Effect.runPromise(
+      SDK.commitCountedRootProgram({
+        domain: SDK.ROOT_DOMAINS.transactions,
+        phasRoot: prepared.transactionsRoot,
+        count: 1n,
+      }),
+    );
+
+    const verified = await prepareNonExistentInputFromTransactions({
+      headerHash: h28("ef"),
+      transactions: [badTxPayload],
+      expectedTransactionsRoot: committedRoot,
+    });
+
+    expect(verified.expectedTransactionsRoot).toEqual({
+      value: committedRoot,
+      matches: true,
+    });
+    expect(verified.committedTransactionsRoot).toBe(committedRoot);
+    expect(verified.transactionsRoot).not.toBe(committedRoot);
   });
 
   it("refuses to build a ledger non-membership proof over a non-empty prev-utxos root", async () => {

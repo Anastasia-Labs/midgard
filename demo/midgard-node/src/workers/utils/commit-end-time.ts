@@ -27,6 +27,25 @@ export type CommitTimingBudget = {
   readonly satisfied: boolean;
 };
 
+/**
+ * Anchors a build attempt to one provider-observed submit-slot time while
+ * allowing time to advance monotonically during witness assembly and submit.
+ * Wall-clock changes after the anchor cannot move the build backward or jump
+ * it into a different clock domain.
+ */
+export const makeSubmitSlotAnchoredClock = (
+  observedAtMs: number,
+  monotonicNow: () => number = () => performance.now(),
+): (() => number) => {
+  const startedAt = monotonicNow();
+  let lastNowMs = observedAtMs;
+  return () => {
+    const elapsedMs = Math.max(0, Math.floor(monotonicNow() - startedAt));
+    lastNowMs = Math.max(lastNowMs, observedAtMs + elapsedMs);
+    return lastNowMs;
+  };
+};
+
 type CommitEndTimeResolution = {
   readonly alignedCandidateEndTime: number;
   readonly minimumMonotonicEndTime: number;
@@ -57,12 +76,23 @@ export const alignUnixTimeToSlotBoundary = (
     };
     if (
       typeof provider.time === "number" &&
-      typeof provider.slot === "number"
+      Number.isSafeInteger(provider.time) &&
+      typeof provider.slot === "number" &&
+      Number.isSafeInteger(provider.slot) &&
+      provider.slot >= 0 &&
+      Number.isSafeInteger(unixTime)
     ) {
       const slotLength = 1000;
-      const zeroTime = provider.time - provider.slot * slotLength;
-      const slot = lucid.unixTimeToSlot(unixTime);
-      return zeroTime + slot * slotLength;
+      const slotOffset = Math.floor((unixTime - provider.time) / slotLength);
+      const targetSlot = provider.slot + slotOffset;
+      const aligned = provider.time + (targetSlot - provider.slot) * slotLength;
+      if (
+        Number.isSafeInteger(targetSlot) &&
+        targetSlot >= 0 &&
+        Number.isSafeInteger(aligned)
+      ) {
+        return aligned;
+      }
     }
     return unixTime;
   }
@@ -82,12 +112,28 @@ export const alignedUnixTimeStrictlyAfter = (
     };
     if (
       typeof provider.time === "number" &&
-      typeof provider.slot === "number"
+      Number.isSafeInteger(provider.time) &&
+      typeof provider.slot === "number" &&
+      Number.isSafeInteger(provider.slot) &&
+      provider.slot >= 0 &&
+      Number.isSafeInteger(unixTimeExclusive)
     ) {
       const slotLength = 1000;
-      const zeroTime = provider.time - provider.slot * slotLength;
-      const slot = lucid.unixTimeToSlot(unixTimeExclusive);
-      return zeroTime + (slot + 1) * slotLength;
+      const slotOffset = Math.floor(
+        (unixTimeExclusive - provider.time) / slotLength,
+      );
+      const targetSlot = provider.slot + slotOffset;
+      const aligned = provider.time + (targetSlot - provider.slot) * slotLength;
+      const strictlyAfter =
+        aligned > unixTimeExclusive ? aligned : aligned + slotLength;
+      if (
+        Number.isSafeInteger(targetSlot) &&
+        targetSlot >= 0 &&
+        Number.isSafeInteger(aligned) &&
+        Number.isSafeInteger(strictlyAfter)
+      ) {
+        return strictlyAfter;
+      }
     }
     return unixTimeExclusive + 1;
   }
