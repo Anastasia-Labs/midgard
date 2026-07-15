@@ -20,6 +20,9 @@ import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
 import { runProviderStepWithRetry } from "@/provider-retry.js";
 import {
   handleSignSubmit,
+  type SignedTxPreSubmitBatchContext,
+  type SignedTxPreSubmitCapture,
+  signTransactionForPreSubmitCapture,
   TxConfirmError,
   TxSignError,
   TxSubmitError,
@@ -1216,6 +1219,7 @@ const ensureReferenceScriptWalletWorkingCapital = (
   scopeName: string,
   requiredPlainBalance: bigint,
   reservedFundingOutRefKeys: ReadonlySet<string> = new Set<string>(),
+  preSubmitDiagnosticCapture?: SignedTxPreSubmitCapture,
 ): Effect.Effect<
   void,
   | SDK.StateQueueError
@@ -1241,6 +1245,18 @@ const ensureReferenceScriptWalletWorkingCapital = (
         : REFERENCE_SCRIPT_WALLET_WORKING_CAPITAL_LOVELACE;
     if (currentPlainBalance >= targetPlainBalance) {
       return;
+    }
+
+    if (preSubmitDiagnosticCapture !== undefined) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message:
+            "Pre-submit diagnostic capture refuses automatic reference-script wallet replenishment",
+          cause: `scope=${scopeName},current_plain_balance=${currentPlainBalance.toString()},required_plain_balance=${targetPlainBalance.toString()},top_up_lovelace=${(
+            targetPlainBalance - currentPlainBalance
+          ).toString()},abort_before_submit=${String(preSubmitDiagnosticCapture.abortBeforeSubmit)}`,
+        }),
+      );
     }
 
     const referenceScriptAddress = yield* Effect.tryPromise({
@@ -1333,6 +1349,19 @@ const ensureReferenceScriptWalletWorkingCapital = (
     );
   });
 
+type ReferenceScriptDiagnosticPublicationContext = {
+  readonly capture: SignedTxPreSubmitCapture;
+  readonly ordinal: number;
+  readonly plannedBatchIndex: number;
+  readonly splitPath: string;
+  readonly syntheticOutRefKeys: ReadonlySet<string>;
+  readonly updateWalletShadow: (args: {
+    readonly walletUtxos: readonly UTxO[];
+    readonly spentFundingInputs: readonly UTxO[];
+    readonly txHash: string;
+  }) => void;
+};
+
 const publishMissingReferenceScriptTargets = (
   lucid: LucidEvolution,
   walletAddress: string,
@@ -1341,6 +1370,7 @@ const publishMissingReferenceScriptTargets = (
   fundingCandidateUtxos: readonly UTxO[],
   missingTargets: readonly ReferenceScriptTarget[],
   authPolicy: ReferenceScriptAuthMintingPolicy,
+  diagnostic?: ReferenceScriptDiagnosticPublicationContext,
 ): Effect.Effect<
   readonly ReferenceScriptResolved[],
   | SDK.StateQueueError
@@ -1384,11 +1414,83 @@ const publishMissingReferenceScriptTargets = (
                   missingTargets,
                   authPolicy,
                 });
-              const txHash = yield* handleSignSubmit(
-                lucid,
-                unsigned,
-                REFERENCE_SCRIPT_CONFIRMATION_OPTIONS,
-              );
+              const label = `reference-script publication: ${missingTargets
+                .map(({ name }) => name)
+                .join(", ")}`;
+              const txHash =
+                diagnostic === undefined
+                  ? yield* handleSignSubmit(
+                      lucid,
+                      unsigned,
+                      REFERENCE_SCRIPT_CONFIRMATION_OPTIONS,
+                    )
+                  : yield* Effect.gen(function* () {
+                      const targets = yield* Effect.forEach(
+                        missingTargets,
+                        (target) => {
+                          const output = layout.localReferenceOutputs.get(
+                            target.name,
+                          );
+                          return output === undefined
+                            ? Effect.fail(
+                                new SDK.StateQueueError({
+                                  message:
+                                    "Diagnostic reference-script transaction layout is missing a target output",
+                                  cause: target.name,
+                                }),
+                              )
+                            : Effect.succeed({
+                                name: target.name,
+                                scriptHash: validatorToScriptHash(
+                                  target.script,
+                                ),
+                                outputIndex: output.outputIndex,
+                              });
+                        },
+                      );
+                      const batch: SignedTxPreSubmitBatchContext = {
+                        ordinal: diagnostic.ordinal,
+                        plannedBatchIndex: diagnostic.plannedBatchIndex,
+                        splitPath: diagnostic.splitPath,
+                        targets,
+                        inputs: selectedFundingInputs.map((utxo) => ({
+                          outRef: utxoOutRefKey(utxo),
+                          lineage: diagnostic.syntheticOutRefKeys.has(
+                            utxoOutRefKey(utxo),
+                          )
+                            ? ("synthetic_change" as const)
+                            : ("live_seed" as const),
+                        })),
+                        walletChangeOutputIndexes: layout.walletOutputs
+                          .map(({ outputIndex }) => outputIndex)
+                          .filter(
+                            (outputIndex) =>
+                              !targets.some(
+                                (target) => target.outputIndex === outputIndex,
+                              ),
+                          ),
+                      };
+                      const captured =
+                        yield* signTransactionForPreSubmitCapture(
+                          lucid,
+                          unsigned,
+                          {
+                            capture: diagnostic.capture,
+                            batch,
+                            label,
+                          },
+                        );
+                      if (captured.status !== "captured_not_submitted") {
+                        return yield* Effect.fail(
+                          new SDK.StateQueueError({
+                            message:
+                              "Diagnostic reference-script publication returned an unexpected submit outcome",
+                            cause: String(captured),
+                          }),
+                        );
+                      }
+                      return captured.txHash;
+                    });
               return [
                 txHash,
                 layout.localReferenceOutputs,
@@ -1442,6 +1544,15 @@ const publishMissingReferenceScriptTargets = (
       })),
     ];
     yield* Effect.sync(() => lucid.overrideUTxOs(restoredWalletUtxos));
+    if (diagnostic !== undefined) {
+      yield* Effect.sync(() =>
+        diagnostic.updateWalletShadow({
+          walletUtxos: restoredWalletUtxos,
+          spentFundingInputs: selectedFundingInputs,
+          txHash,
+        }),
+      );
+    }
     return yield* Effect.forEach(missingTargets, (target) =>
       Effect.gen(function* () {
         const localReferenceOutput = localReferenceOutputs.get(target.name);
@@ -1458,6 +1569,15 @@ const publishMissingReferenceScriptTargets = (
           txHash,
           ...localReferenceOutput,
         };
+        if (diagnostic !== undefined) {
+          return {
+            name: target.name,
+            utxo: {
+              ...localReferenceUtxo,
+              scriptRef: target.script,
+            },
+          };
+        }
         const liveReference = yield* Effect.either(
           resolveLiveWalletUtxo(lucid, localReferenceUtxo),
         );
@@ -1800,6 +1920,7 @@ export const ensureReferenceScriptTargetsProgram = (
   configuredReferenceScriptsAddress?: string,
   minAuthPolicyRemainingMs: number = REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS,
   reservedFundingOutRefKeys: ReadonlySet<string> = new Set<string>(),
+  preSubmitDiagnosticCapture?: SignedTxPreSubmitCapture,
 ): Effect.Effect<
   readonly ReferenceScriptResolved[],
   | SDK.StateQueueError
@@ -1809,6 +1930,20 @@ export const ensureReferenceScriptTargetsProgram = (
   | TxSubmitError
 > =>
   Effect.gen(function* () {
+    if (
+      preSubmitDiagnosticCapture !== undefined &&
+      (preSubmitDiagnosticCapture.session.commandName !== scopeName ||
+        preSubmitDiagnosticCapture.session.referenceScriptAuthPolicyId !==
+          authPolicy.policyId)
+    ) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message:
+            "Pre-submit diagnostic capture session does not match the reference-script command or auth policy",
+          cause: `capture_command=${preSubmitDiagnosticCapture.session.commandName},scope=${scopeName},capture_auth_policy=${preSubmitDiagnosticCapture.session.referenceScriptAuthPolicyId},resolved_auth_policy=${authPolicy.policyId}`,
+        }),
+      );
+    }
     const walletAddress = yield* Effect.tryPromise({
       try: () => referenceScriptsLucid.wallet().address(),
       catch: (cause) =>
@@ -1819,14 +1954,28 @@ export const ensureReferenceScriptTargetsProgram = (
     });
     const referenceScriptsAddress =
       configuredReferenceScriptsAddress ?? walletAddress;
+    let diagnosticWalletShadow: readonly UTxO[] | undefined;
+    let diagnosticSyntheticOutRefKeys = new Set<string>();
+    let diagnosticCaptureOrdinal = 0;
     const fetchReferenceScriptWalletUtxos = (): Effect.Effect<
       readonly UTxO[],
       SDK.StateQueueError
     > =>
-      refreshWalletUtxosFromOwnAddress(referenceScriptsLucid, {
-        scopeName: `${scopeName} reference scripts`,
-        failureMessage: `Failed to fetch wallet UTxOs while resolving ${scopeName} reference scripts`,
-      });
+      preSubmitDiagnosticCapture !== undefined &&
+      diagnosticWalletShadow !== undefined
+        ? Effect.succeed(diagnosticWalletShadow)
+        : refreshWalletUtxosFromOwnAddress(referenceScriptsLucid, {
+            scopeName: `${scopeName} reference scripts`,
+            failureMessage: `Failed to fetch wallet UTxOs while resolving ${scopeName} reference scripts`,
+          }).pipe(
+            Effect.tap((utxos) =>
+              preSubmitDiagnosticCapture === undefined
+                ? Effect.void
+                : Effect.sync(() => {
+                    diagnosticWalletShadow = utxos;
+                  }),
+            ),
+          );
     const fetchReferenceScriptPublicationUtxos = (): Effect.Effect<
       readonly UTxO[],
       SDK.StateQueueError
@@ -1843,6 +1992,8 @@ export const ensureReferenceScriptTargetsProgram = (
     const publishMissingTargetsInBatches = (
       missingTargets: readonly ReferenceScriptTarget[],
       ensureWorkingCapital: boolean,
+      plannedBatchIndex: number,
+      splitPath: string,
     ): Effect.Effect<
       readonly ReferenceScriptResolved[],
       | SDK.StateQueueError
@@ -1874,13 +2025,17 @@ export const ensureReferenceScriptTargetsProgram = (
         let requiredPlainBalance =
           resolveReferenceScriptPublicationFundingTarget(missingTargets.length);
         while (true) {
-          if (ensureWorkingCapital) {
+          if (
+            ensureWorkingCapital &&
+            preSubmitDiagnosticCapture === undefined
+          ) {
             yield* ensureReferenceScriptWalletWorkingCapital(
               fundingLucid,
               referenceScriptsLucid,
               scopeName,
               requiredPlainBalance,
               reservedFundingOutRefKeys,
+              preSubmitDiagnosticCapture,
             );
           }
           const walletUtxos = yield* fetchReferenceScriptWalletUtxos();
@@ -1927,6 +2082,35 @@ export const ensureReferenceScriptTargetsProgram = (
               plainFundingCandidateUtxos,
               missingTargets,
               authPolicy,
+              preSubmitDiagnosticCapture === undefined
+                ? undefined
+                : {
+                    capture: preSubmitDiagnosticCapture,
+                    ordinal: diagnosticCaptureOrdinal,
+                    plannedBatchIndex,
+                    splitPath,
+                    syntheticOutRefKeys: diagnosticSyntheticOutRefKeys,
+                    updateWalletShadow: ({
+                      walletUtxos,
+                      spentFundingInputs,
+                      txHash,
+                    }) => {
+                      const nextSynthetic = new Set(
+                        diagnosticSyntheticOutRefKeys,
+                      );
+                      for (const spent of spentFundingInputs) {
+                        nextSynthetic.delete(utxoOutRefKey(spent));
+                      }
+                      for (const utxo of walletUtxos) {
+                        if (utxo.txHash === txHash) {
+                          nextSynthetic.add(utxoOutRefKey(utxo));
+                        }
+                      }
+                      diagnosticSyntheticOutRefKeys = nextSynthetic;
+                      diagnosticWalletShadow = walletUtxos;
+                      diagnosticCaptureOrdinal += 1;
+                    },
+                  },
             ),
           );
           if (publishAttempt._tag === "Right") {
@@ -1977,16 +2161,23 @@ export const ensureReferenceScriptTargetsProgram = (
           const leftPublications = yield* publishMissingTargetsInBatches(
             leftTargets,
             ensureWorkingCapital,
+            plannedBatchIndex,
+            `${splitPath}.L`,
           );
           const rightPublications = yield* publishMissingTargetsInBatches(
             rightTargets,
             ensureWorkingCapital,
+            plannedBatchIndex,
+            `${splitPath}.R`,
           );
           return [...leftPublications, ...rightPublications];
         }
       });
 
-    const walletUtxos = yield* fetchReferenceScriptPublicationUtxos();
+    const walletUtxos =
+      preSubmitDiagnosticCapture === undefined
+        ? yield* fetchReferenceScriptPublicationUtxos()
+        : [];
     const existingPublications = yield* Effect.forEach(targets, (target) =>
       resolveExistingReferenceScriptPublication(
         referenceScriptsLucid,
@@ -2018,13 +2209,27 @@ export const ensureReferenceScriptTargetsProgram = (
       yield* Effect.logInfo(
         `Reference-script deployment plan for ${scopeName}: existing=${deploymentPlan.existingTargetNames.length.toString()},missing=${deploymentPlan.missingTargetNames.length.toString()},batches=${deploymentPlan.batches.length.toString()},submit_count=${deploymentPlan.submitCount.toString()},current_plain_lovelace=${deploymentPlan.currentPlainBalance.toString()},required_plain_lovelace=${deploymentPlan.requiredPlainBalance.toString()},top_up_lovelace=${deploymentPlan.topUpLovelace.toString()},max_targets_per_batch=${deploymentPlan.maxTargetsPerBatch.toString()}`,
       );
-      yield* ensureReferenceScriptWalletWorkingCapital(
-        fundingLucid,
-        referenceScriptsLucid,
-        scopeName,
-        deploymentPlan.requiredPlainBalance,
-        reservedFundingOutRefKeys,
-      );
+      if (
+        preSubmitDiagnosticCapture !== undefined &&
+        deploymentPlan.topUpLovelace > 0n
+      ) {
+        return yield* Effect.fail(
+          new SDK.StateQueueError({
+            message:
+              "Pre-submit diagnostic capture refuses automatic reference-script wallet replenishment",
+            cause: `scope=${scopeName},current_plain_balance=${deploymentPlan.currentPlainBalance.toString()},required_plain_balance=${deploymentPlan.requiredPlainBalance.toString()},top_up_lovelace=${deploymentPlan.topUpLovelace.toString()},abort_before_submit=true`,
+          }),
+        );
+      }
+      if (preSubmitDiagnosticCapture === undefined) {
+        yield* ensureReferenceScriptWalletWorkingCapital(
+          fundingLucid,
+          referenceScriptsLucid,
+          scopeName,
+          deploymentPlan.requiredPlainBalance,
+          reservedFundingOutRefKeys,
+        );
+      }
       const created: ReferenceScriptResolved[] = [];
       for (const batch of deploymentPlan.batches) {
         const batchTargetNames = new Set(batch.targetNames);
@@ -2035,7 +2240,12 @@ export const ensureReferenceScriptTargetsProgram = (
           `Publishing planned reference-script batch for ${scopeName}: batch_index=${batch.batchIndex.toString()},target_count=${batch.targetCount.toString()},targets=[${batch.targetNames.join(",")}]`,
         );
         created.push(
-          ...(yield* publishMissingTargetsInBatches(batchTargets, true)),
+          ...(yield* publishMissingTargetsInBatches(
+            batchTargets,
+            true,
+            batch.batchIndex,
+            `batch-${batch.batchIndex.toString()}`,
+          )),
         );
       }
       createdByName = new Map(
@@ -2068,6 +2278,7 @@ export const deployReferenceScriptCommandProgram = (
   referenceScriptsAddress?: string,
   minAuthPolicyRemainingMs: number = REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS,
   reservedFundingOutRefKeys: ReadonlySet<string> = new Set<string>(),
+  preSubmitDiagnosticCapture?: SignedTxPreSubmitCapture,
 ): Effect.Effect<
   readonly ReferenceScriptResolved[],
   | SDK.StateQueueError
@@ -2085,6 +2296,7 @@ export const deployReferenceScriptCommandProgram = (
     referenceScriptsAddress,
     minAuthPolicyRemainingMs,
     reservedFundingOutRefKeys,
+    preSubmitDiagnosticCapture,
   );
 
 export const planReferenceScriptCommandProgram = (
