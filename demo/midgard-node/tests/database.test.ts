@@ -5416,15 +5416,15 @@ describe("AddressHistoryDB", () => {
 
 describe("DepositSubmissionAttemptsDB", () => {
   it.effect(
-    "stores submitted attempts idempotently and rejects tx hash payload drift",
+    "persists exact signed bytes before submission and rejects immutable payload drift",
     (_) =>
       isolatedDb(
         Effect.gen(function* () {
           const attempt = makeDepositSubmissionAttempt();
           const first =
-            yield* DepositSubmissionAttemptsDB.insertSubmitted(attempt);
+            yield* DepositSubmissionAttemptsDB.insertPrepared(attempt);
           const second =
-            yield* DepositSubmissionAttemptsDB.insertSubmitted(attempt);
+            yield* DepositSubmissionAttemptsDB.insertPrepared(attempt);
 
           expect(
             first[DepositSubmissionAttemptsDB.Columns.TX_HASH].equals(
@@ -5432,18 +5432,50 @@ describe("DepositSubmissionAttemptsDB", () => {
             ),
           ).toEqual(true);
           expect(
-            first[DepositSubmissionAttemptsDB.Columns.CONFIRMATION_STATUS],
-          ).toEqual(
-            DepositSubmissionAttemptsDB.Status.SubmittedConfirmationUnknown,
+            first[DepositSubmissionAttemptsDB.Columns.SIGNED_TX_CBOR].equals(
+              attempt[DepositSubmissionAttemptsDB.Columns.SIGNED_TX_CBOR],
+            ),
+          ).toEqual(true);
+          expect(first[DepositSubmissionAttemptsDB.Columns.STATUS]).toEqual(
+            DepositSubmissionAttemptsDB.Status.Prepared,
           );
+          expect(
+            first[DepositSubmissionAttemptsDB.Columns.ATTEMPT_COUNT],
+          ).toEqual(0);
+          expect(
+            first[DepositSubmissionAttemptsDB.Columns.LAST_SUBMISSION_AT],
+          ).toBeNull();
 
-          const conflict = yield* Effect.either(
-            DepositSubmissionAttemptsDB.insertSubmitted({
+          const signedBytesConflict = yield* Effect.either(
+            DepositSubmissionAttemptsDB.insertPrepared({
+              ...attempt,
+              [DepositSubmissionAttemptsDB.Columns.SIGNED_TX_CBOR]:
+                databaseFixtureBytes("deposit-submission.different-signed", 96),
+            }),
+          );
+          expect(signedBytesConflict._tag).toEqual("Left");
+
+          const payloadConflict = yield* Effect.either(
+            DepositSubmissionAttemptsDB.insertPrepared({
               ...attempt,
               [DepositSubmissionAttemptsDB.Columns.EXPECTED_LOVELACE]: "2",
             }),
           );
-          expect(conflict._tag).toEqual("Left");
+          expect(payloadConflict._tag).toEqual("Left");
+
+          const stored = Option.getOrThrow(
+            yield* DepositSubmissionAttemptsDB.retrieveByTxHash(
+              attempt[DepositSubmissionAttemptsDB.Columns.TX_HASH],
+            ),
+          );
+          expect(
+            stored[DepositSubmissionAttemptsDB.Columns.SIGNED_TX_CBOR].equals(
+              attempt[DepositSubmissionAttemptsDB.Columns.SIGNED_TX_CBOR],
+            ),
+          ).toEqual(true);
+          expect(
+            stored[DepositSubmissionAttemptsDB.Columns.EXPECTED_LOVELACE],
+          ).toEqual("1000000");
         }),
       ),
   );
@@ -5453,24 +5485,23 @@ describe("DepositSubmissionAttemptsDB", () => {
       Effect.gen(function* () {
         const attempt = makeDepositSubmissionAttempt();
         const metadata = attempt[DepositSubmissionAttemptsDB.Columns.METADATA];
-        const bigintAttempt: DepositSubmissionAttemptsDB.InsertSubmittedInput =
-          {
-            ...attempt,
-            [DepositSubmissionAttemptsDB.Columns.METADATA]: {
-              ...metadata,
-              nonceInput: {
-                ...metadata.nonceInput,
-                outputIndex: 1n as unknown as number,
-              },
-              validTo: 1_800_000_000_000n as unknown as number,
-              inclusionTime: 1_800_000_060_000n as unknown as number,
+        const bigintAttempt: DepositSubmissionAttemptsDB.InsertPreparedInput = {
+          ...attempt,
+          [DepositSubmissionAttemptsDB.Columns.METADATA]: {
+            ...metadata,
+            nonceInput: {
+              ...metadata.nonceInput,
+              outputIndex: 1n as unknown as number,
             },
-          };
+            validTo: 1_800_000_000_000n as unknown as number,
+            inclusionTime: 1_800_000_060_000n as unknown as number,
+          },
+        };
 
         const first =
-          yield* DepositSubmissionAttemptsDB.insertSubmitted(bigintAttempt);
+          yield* DepositSubmissionAttemptsDB.insertPrepared(bigintAttempt);
         const second =
-          yield* DepositSubmissionAttemptsDB.insertSubmitted(bigintAttempt);
+          yield* DepositSubmissionAttemptsDB.insertPrepared(bigintAttempt);
         const rawStoredMetadata = first[
           DepositSubmissionAttemptsDB.Columns.METADATA
         ] as unknown;
@@ -5496,11 +5527,80 @@ describe("DepositSubmissionAttemptsDB", () => {
     ),
   );
 
+  it.effect("atomically claims one provider submission attempt", (_) =>
+    isolatedDb(
+      Effect.gen(function* () {
+        const attempt = makeDepositSubmissionAttempt();
+        yield* DepositSubmissionAttemptsDB.insertPrepared(attempt);
+        const txHash = attempt[DepositSubmissionAttemptsDB.Columns.TX_HASH];
+
+        const claims = yield* Effect.all(
+          [
+            DepositSubmissionAttemptsDB.beginSubmission(txHash).pipe(
+              Effect.either,
+            ),
+            DepositSubmissionAttemptsDB.beginSubmission(txHash).pipe(
+              Effect.either,
+            ),
+          ],
+          { concurrency: "unbounded" },
+        );
+        expect(claims.filter((claim) => claim._tag === "Right")).toHaveLength(
+          1,
+        );
+        expect(claims.filter((claim) => claim._tag === "Left")).toHaveLength(1);
+
+        const claimed = Option.getOrThrow(
+          yield* DepositSubmissionAttemptsDB.retrieveByTxHash(txHash),
+        );
+        expect(claimed[DepositSubmissionAttemptsDB.Columns.STATUS]).toEqual(
+          DepositSubmissionAttemptsDB.Status.SubmissionUnknown,
+        );
+        expect(
+          claimed[DepositSubmissionAttemptsDB.Columns.ATTEMPT_COUNT],
+        ).toEqual(1);
+        expect(
+          claimed[DepositSubmissionAttemptsDB.Columns.LAST_SUBMISSION_AT],
+        ).not.toBeNull();
+
+        const submitted = yield* DepositSubmissionAttemptsDB.markSubmitted(
+          txHash,
+          `tx:${txHash.toString("hex")}`,
+        );
+        expect(submitted[DepositSubmissionAttemptsDB.Columns.STATUS]).toEqual(
+          DepositSubmissionAttemptsDB.Status.Submitted,
+        );
+        expect(
+          submitted[
+            DepositSubmissionAttemptsDB.Columns.PROVIDER_ACKNOWLEDGEMENT
+          ],
+        ).toEqual(`tx:${txHash.toString("hex")}`);
+        expect(
+          yield* Effect.either(
+            DepositSubmissionAttemptsDB.beginSubmission(txHash),
+          ),
+        ).toMatchObject({ _tag: "Left" });
+      }),
+    ),
+  );
+
   it.effect(
-    "tracks confirmation, reconciliation, ambiguity, and open attempts",
+    "retrieves every unresolved lifecycle state and excludes terminal states",
     (_) =>
       isolatedDb(
         Effect.gen(function* () {
+          const prepared = makeDepositSubmissionAttempt({
+            txHash: databaseTxHash("deposit-submission.prepared"),
+            eventId: databaseOutputReferenceId("deposit-submission.prepared"),
+          });
+          const unknown = makeDepositSubmissionAttempt({
+            txHash: databaseTxHash("deposit-submission.unknown"),
+            eventId: databaseOutputReferenceId("deposit-submission.unknown"),
+          });
+          const submitted = makeDepositSubmissionAttempt({
+            txHash: databaseTxHash("deposit-submission.submitted"),
+            eventId: databaseOutputReferenceId("deposit-submission.submitted"),
+          });
           const confirmed = makeDepositSubmissionAttempt({
             txHash: databaseTxHash("deposit-submission.confirmed"),
             eventId: databaseOutputReferenceId("deposit-submission.confirmed"),
@@ -5513,11 +5613,44 @@ describe("DepositSubmissionAttemptsDB", () => {
             txHash: databaseTxHash("deposit-submission.ambiguous"),
             eventId: databaseOutputReferenceId("deposit-submission.ambiguous"),
           });
+          const expired = makeDepositSubmissionAttempt({
+            txHash: databaseTxHash("deposit-submission.expired"),
+            eventId: databaseOutputReferenceId("deposit-submission.expired"),
+          });
 
-          yield* DepositSubmissionAttemptsDB.insertSubmitted(confirmed);
-          yield* DepositSubmissionAttemptsDB.insertSubmitted(reconciled);
-          yield* DepositSubmissionAttemptsDB.insertSubmitted(ambiguous);
+          yield* Effect.forEach(
+            [
+              prepared,
+              unknown,
+              submitted,
+              confirmed,
+              reconciled,
+              ambiguous,
+              expired,
+            ],
+            DepositSubmissionAttemptsDB.insertPrepared,
+            { discard: true },
+          );
 
+          yield* DepositSubmissionAttemptsDB.beginSubmission(
+            unknown[DepositSubmissionAttemptsDB.Columns.TX_HASH],
+          );
+          yield* DepositSubmissionAttemptsDB.beginSubmission(
+            submitted[DepositSubmissionAttemptsDB.Columns.TX_HASH],
+          );
+          yield* DepositSubmissionAttemptsDB.beginSubmission(
+            confirmed[DepositSubmissionAttemptsDB.Columns.TX_HASH],
+          );
+          yield* DepositSubmissionAttemptsDB.beginSubmission(
+            reconciled[DepositSubmissionAttemptsDB.Columns.TX_HASH],
+          );
+          yield* DepositSubmissionAttemptsDB.beginSubmission(
+            ambiguous[DepositSubmissionAttemptsDB.Columns.TX_HASH],
+          );
+          yield* DepositSubmissionAttemptsDB.markSubmitted(
+            submitted[DepositSubmissionAttemptsDB.Columns.TX_HASH],
+            "provider accepted",
+          );
           yield* DepositSubmissionAttemptsDB.markConfirmed(
             confirmed[DepositSubmissionAttemptsDB.Columns.TX_HASH],
           );
@@ -5528,13 +5661,159 @@ describe("DepositSubmissionAttemptsDB", () => {
             ambiguous[DepositSubmissionAttemptsDB.Columns.TX_HASH],
             "confirmation timed out",
           );
+          yield* DepositSubmissionAttemptsDB.markExpired(
+            expired[DepositSubmissionAttemptsDB.Columns.TX_HASH],
+            "validity interval expired while transaction remained absent",
+          );
 
           const open =
             yield* DepositSubmissionAttemptsDB.retrieveOpenAttempts();
-          expect(open).toHaveLength(1);
+          expect(open).toHaveLength(4);
           expect(
-            open[0]?.[DepositSubmissionAttemptsDB.Columns.CONFIRMATION_STATUS],
-          ).toEqual(DepositSubmissionAttemptsDB.Status.Ambiguous);
+            new Set(
+              open.map(
+                (attempt) =>
+                  attempt[DepositSubmissionAttemptsDB.Columns.STATUS],
+              ),
+            ),
+          ).toEqual(
+            new Set([
+              DepositSubmissionAttemptsDB.Status.Prepared,
+              DepositSubmissionAttemptsDB.Status.SubmissionUnknown,
+              DepositSubmissionAttemptsDB.Status.Submitted,
+              DepositSubmissionAttemptsDB.Status.Ambiguous,
+            ]),
+          );
+        }),
+      ),
+  );
+
+  it.effect("rejects invalid transitions and malformed durable payloads", (_) =>
+    isolatedDb(
+      Effect.gen(function* () {
+        const prepared = makeDepositSubmissionAttempt();
+        const txHash = prepared[DepositSubmissionAttemptsDB.Columns.TX_HASH];
+        yield* DepositSubmissionAttemptsDB.insertPrepared(prepared);
+
+        expect(
+          yield* Effect.either(
+            DepositSubmissionAttemptsDB.markSubmitted(txHash, "accepted"),
+          ),
+        ).toMatchObject({ _tag: "Left" });
+
+        yield* DepositSubmissionAttemptsDB.markConfirmed(txHash);
+        expect(
+          yield* Effect.either(
+            DepositSubmissionAttemptsDB.beginSubmission(txHash),
+          ),
+        ).toMatchObject({ _tag: "Left" });
+        const preservedConfirmed =
+          yield* DepositSubmissionAttemptsDB.markAmbiguous(
+            txHash,
+            "a stale response-loss writer must preserve stronger evidence",
+          );
+        expect(
+          preservedConfirmed[DepositSubmissionAttemptsDB.Columns.STATUS],
+        ).toBe(DepositSubmissionAttemptsDB.Status.Confirmed);
+
+        const expired = makeDepositSubmissionAttempt({
+          txHash: databaseTxHash("deposit-submission.terminal-expired"),
+          eventId: databaseOutputReferenceId(
+            "deposit-submission.terminal-expired",
+          ),
+        });
+        const expiredTxHash =
+          expired[DepositSubmissionAttemptsDB.Columns.TX_HASH];
+        yield* DepositSubmissionAttemptsDB.insertPrepared(expired);
+        yield* DepositSubmissionAttemptsDB.markExpired(
+          expiredTxHash,
+          "validity interval expired",
+        );
+        expect(
+          yield* Effect.either(
+            DepositSubmissionAttemptsDB.beginSubmission(expiredTxHash),
+          ),
+        ).toMatchObject({ _tag: "Left" });
+        expect(
+          yield* Effect.either(
+            DepositSubmissionAttemptsDB.markConfirmed(expiredTxHash),
+          ),
+        ).toMatchObject({ _tag: "Left" });
+
+        const emptySignedBytes = makeDepositSubmissionAttempt({
+          txHash: databaseTxHash("deposit-submission.empty-signed"),
+          eventId: databaseOutputReferenceId("deposit-submission.empty-signed"),
+        });
+        expect(
+          yield* Effect.either(
+            DepositSubmissionAttemptsDB.insertPrepared({
+              ...emptySignedBytes,
+              [DepositSubmissionAttemptsDB.Columns.SIGNED_TX_CBOR]:
+                Buffer.alloc(0),
+            }),
+          ),
+        ).toMatchObject({ _tag: "Left" });
+
+        const malformedEvent = makeDepositSubmissionAttempt({
+          txHash: databaseTxHash("deposit-submission.bad-event"),
+          eventId: Buffer.alloc(0),
+        });
+        expect(
+          yield* Effect.either(
+            DepositSubmissionAttemptsDB.insertPrepared(malformedEvent),
+          ),
+        ).toMatchObject({ _tag: "Left" });
+      }),
+    ),
+  );
+
+  it.effect(
+    "keeps an event unique while active and permits a new operation after a never-claimed expiry",
+    (_) =>
+      isolatedDb(
+        Effect.gen(function* () {
+          const eventId = databaseOutputReferenceId(
+            "deposit-submission.variable-event",
+            24,
+          );
+          expect(eventId).toHaveLength(40);
+          const first = makeDepositSubmissionAttempt({
+            txHash: databaseTxHash("deposit-submission.active-event.first"),
+            eventId,
+          });
+          const second = makeDepositSubmissionAttempt({
+            txHash: databaseTxHash("deposit-submission.active-event.second"),
+            eventId,
+          });
+
+          yield* DepositSubmissionAttemptsDB.insertPrepared(first);
+          expect(
+            yield* DepositSubmissionAttemptsDB.insertPrepared(second).pipe(
+              Effect.either,
+            ),
+          ).toMatchObject({ _tag: "Left" });
+
+          yield* DepositSubmissionAttemptsDB.markExpired(
+            first[DepositSubmissionAttemptsDB.Columns.TX_HASH],
+            "never-claimed transaction expired",
+          );
+          const replacement =
+            yield* DepositSubmissionAttemptsDB.insertPrepared(second);
+          expect(replacement[DepositSubmissionAttemptsDB.Columns.STATUS]).toBe(
+            DepositSubmissionAttemptsDB.Status.Prepared,
+          );
+
+          const sameEvent =
+            yield* DepositSubmissionAttemptsDB.retrieveByEventId(eventId);
+          expect(sameEvent).toHaveLength(2);
+          expect(
+            sameEvent.map(
+              (attempt) => attempt[DepositSubmissionAttemptsDB.Columns.STATUS],
+            ),
+          ).toEqual([
+            DepositSubmissionAttemptsDB.Status.Expired,
+            DepositSubmissionAttemptsDB.Status.Prepared,
+          ]);
         }),
       ),
   );
@@ -6101,9 +6380,13 @@ const makeDepositSubmissionAttempt = ({
 }: {
   readonly txHash?: Buffer;
   readonly eventId?: Buffer;
-} = {}): DepositSubmissionAttemptsDB.InsertSubmittedInput => ({
+} = {}): DepositSubmissionAttemptsDB.InsertPreparedInput => ({
   [DepositSubmissionAttemptsDB.Columns.TX_HASH]: txHash,
   [DepositSubmissionAttemptsDB.Columns.DEPOSIT_EVENT_ID]: eventId,
+  [DepositSubmissionAttemptsDB.Columns.SIGNED_TX_CBOR]: databaseFixtureBytes(
+    `deposit-submission.signed.${txHash.toString("hex")}`,
+    96,
+  ),
   [DepositSubmissionAttemptsDB.Columns.EXPECTED_DEPOSIT_OUT_REF]:
     `${txHash.toString("hex")}#0`,
   [DepositSubmissionAttemptsDB.Columns.EXPECTED_L2_ADDRESS]: address1,
@@ -6123,9 +6406,15 @@ const makeDepositSubmissionAttempt = ({
     validTo: 1_800_000_000_000,
     inclusionTime: 1_800_000_060_000,
   },
-  [DepositSubmissionAttemptsDB.Columns.FUNDING_OUT_REFS]: [
-    `${databaseTxHash("deposit-submission.funding").toString("hex")}#0`,
-  ],
+  [DepositSubmissionAttemptsDB.Columns.DEPENDENCY_OUT_REFS]: {
+    spend: [`${databaseTxHash("deposit-submission.spend").toString("hex")}#0`],
+    collateral: [
+      `${databaseTxHash("deposit-submission.collateral").toString("hex")}#1`,
+    ],
+    reference: [
+      `${databaseTxHash("deposit-submission.reference").toString("hex")}#2`,
+    ],
+  },
 });
 
 describe("Phase 3 MPF durable state", () => {

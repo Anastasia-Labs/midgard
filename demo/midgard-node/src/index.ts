@@ -4285,7 +4285,7 @@ program
 program
   .command("reconcile-deposit-submission")
   .description(
-    "Reconcile a previously submitted deposit transaction before retrying after a confirmation timeout",
+    "Observe chain and mempool evidence for a durable deposit attempt without submitting it",
   )
   .requiredOption("--tx-hash <hex>", "32-byte Cardano transaction hash")
   .option("--json", "Print machine-readable JSON output", true)
@@ -4304,6 +4304,36 @@ program
 
       const mainEffect = provideDatabaseTxServices(
         SubmitDeposit.reconcileDepositSubmissionAttemptProgram(txHash).pipe(
+          tapJson(),
+        ),
+      );
+
+      runCliEffect(mainEffect);
+    },
+  );
+
+program
+  .command("resume-deposit-submission")
+  .description(
+    "Status-check and, only for a never-claimed prepared row, make its one initial submission from exact signed bytes stored in PostgreSQL",
+  )
+  .requiredOption("--tx-hash <hex>", "32-byte Cardano transaction hash")
+  .option("--json", "Print machine-readable JSON output", true)
+  .action(
+    async (options: { readonly txHash: string; readonly json?: boolean }) => {
+      let txHash: string;
+      try {
+        txHash = normalizeHex(options.txHash, {
+          byteLength: 32,
+          trim: false,
+        });
+      } catch (error) {
+        failCli("resume-deposit-submission: invalid --tx-hash", error);
+        return;
+      }
+
+      const mainEffect = provideDatabaseTxServices(
+        SubmitDeposit.resumeDepositSubmissionAttemptProgram(txHash).pipe(
           tapJson(),
         ),
       );

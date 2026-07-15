@@ -53,6 +53,75 @@ It is responsible for:
   queue overflow falls back to an inline write, and graceful shutdown drains the
   queue.
 
+## Durable Deposit Submission and Recovery
+
+Midgard persists the exact signed Cardano transaction before making the first
+provider submission call. The durable row binds the transaction hash, signed
+CBOR, deposit event identity, expected deposit output, and every spend,
+collateral, and reference-input dependency. Recovery never rebuilds or re-signs
+that transaction.
+
+Submission is status-first. Before any provider call, the node checks the
+durable attempt against historical Kupo results and an acquired Ogmios mempool
+snapshot. A provider call is permitted only while the row is still `prepared`,
+which durably proves that no submission has ever been claimed, and current
+evidence says the exact transaction is unseen, every recorded dependency
+remains unspent, and the signed validity interval still has a safe submission
+window. The one-way compare-and-set transition to `submission_unknown` happens
+before the provider receives the exact persisted CBOR.
+
+Historical chain presence and mempool acceptance always block submission. Once
+a provider call has been claimed, `submission_unknown`, `submitted`, and
+`ambiguous` attempts are observation-only and are never automatically
+resubmitted—even when the transaction is not currently visible. Only a
+never-claimed prepared transaction can become terminal `expired`; expiry after
+a possible provider call remains ambiguous until positive chain evidence is
+found. Provider disagreement, stale indexer evidence, changed dependencies, or
+an unknown submission response also fails closed without another provider call.
+Kupo evidence is accepted as committed only after both its checkpoint
+(`X-Most-Recent-Checkpoint` plus `ETag`) and the deposit creation point intersect
+the current Ogmios chain. Absence is usable only when that checkpoint also
+covers the final queried Ogmios chain-tip slot; wall-clock slot extrapolation
+cannot prove indexer coverage. The default pruned Kupo deployment may no longer
+expose an old consumed output; that case deliberately remains ambiguous and
+cannot reopen submission.
+
+Node runtime starts a bounded background observation sweep after L1 deposit
+catch-up without gating the HTTP server: at most 32 open attempts, four at a
+time, with a 15-second budget per attempt. It may advance journal state from
+positive provider evidence, but it never submits a transaction. Ambiguous and
+deferred attempts remain available for explicit operator reconciliation; they
+do not become background retries.
+
+Inspect an attempt without any possibility of submission:
+
+```sh
+node dist/index.js reconcile-deposit-submission --tx-hash <64-hex-tx-hash>
+```
+
+The result includes the observed state and `nextSafeAction`. Use this command
+first when investigating a timeout or restart.
+
+Explicitly resume the exact persisted transaction:
+
+```sh
+node dist/index.js resume-deposit-submission --tx-hash <64-hex-tx-hash>
+```
+
+This command requires database and L1 provider access, but it does not take a
+seed phrase and does not invoke the deposit builder or signer. It observes
+status again before acting. Only a synchronized unseen result for a
+never-claimed `prepared` row can enter the one-way compare-and-set transition
+and make its initial exact-byte provider call. Concurrent invocations cannot
+both claim that transition, and no post-call state can transition back to a
+submittable state.
+
+Never work around an `ambiguous` post-call result by rerunning
+`submit-deposit`; first establish provider/indexer health and inspect the stored
+attempt. A never-claimed transaction that reached terminal `expired` is
+different: after confirming the stored attempt did not commit, a still-desired
+deposit may be started as an explicit new `submit-deposit` operation.
+
 ## Transaction Preparation Checks
 
 Before using live preprod e2e as a debugging loop for builder, wallet,
@@ -243,8 +312,14 @@ pnpm listen
   generated reference-script auth policy, and any published reference-script
   UTxOs visible at the configured reference-script deploy address.
 - `node dist/index.js submit-deposit`: build and submit an L1 deposit into the
-  Midgard deposit contract for a target L2 address. Submitted deposits are
-  journaled before confirmation wait so timeouts can be reconciled by tx hash.
+  Midgard deposit contract for a target L2 address. The exact signed
+  transaction is durably journaled before the first provider submission.
+- `node dist/index.js reconcile-deposit-submission --tx-hash <hex>`: observe a
+  durable deposit attempt without submitting it.
+- `node dist/index.js resume-deposit-submission --tx-hash <hex>`: resume a
+  durable attempt from its exact stored signed bytes. See
+  [Durable Deposit Submission and Recovery](#durable-deposit-submission-and-recovery)
+  for the fail-closed recovery procedure.
 - `pnpm submit:l2-transfer`: build and submit a Midgard-native user transfer.
 - `node dist/index.js project-deposits-once`: fetch L1 deposit events once and
   project newly visible deposits into the local Midgard ledger view.

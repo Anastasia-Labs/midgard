@@ -185,19 +185,34 @@ CREATE TABLE public.da_payloads (
 CREATE TABLE public.deposit_submission_attempts (
     tx_hash bytea NOT NULL,
     deposit_event_id bytea NOT NULL,
+    signed_tx_cbor bytea NOT NULL,
     expected_deposit_out_ref text NOT NULL,
     expected_l2_address text NOT NULL,
     expected_lovelace text NOT NULL,
     expected_assets jsonb NOT NULL,
     metadata jsonb NOT NULL,
-    funding_out_refs jsonb NOT NULL,
-    submitted_at timestamp with time zone DEFAULT now() NOT NULL,
-    confirmation_status text NOT NULL,
+    dependency_out_refs jsonb NOT NULL,
+    status text DEFAULT 'prepared'::text NOT NULL,
+    prepared_at timestamp with time zone DEFAULT now() NOT NULL,
+    attempt_count integer DEFAULT 0 NOT NULL,
+    last_submission_at timestamp with time zone,
+    submitted_at timestamp with time zone,
+    provider_acknowledgement text,
     confirmed_at timestamp with time zone,
     last_reconciled_at timestamp with time zone,
     last_error text,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT deposit_submission_attempts_confirmation_status_check CHECK ((confirmation_status = ANY (ARRAY['submitted_confirmation_unknown'::text, 'confirmed'::text, 'reconciled_after_timeout'::text, 'ambiguous'::text, 'retry_allowed'::text]))),
+    CONSTRAINT deposit_submission_attempts_attempt_count_check CHECK ((attempt_count >= 0)),
+    CONSTRAINT deposit_submission_attempts_attempt_timestamp_check CHECK ((((attempt_count = 0) AND (last_submission_at IS NULL)) OR ((attempt_count > 0) AND (last_submission_at IS NOT NULL)))),
+    CONSTRAINT deposit_submission_attempts_deposit_event_id_check CHECK ((octet_length(deposit_event_id) > 0)),
+    CONSTRAINT deposit_submission_attempts_error_check CHECK (((last_error IS NULL) OR (btrim(last_error) <> ''::text))),
+    CONSTRAINT deposit_submission_attempts_dependency_out_refs_check CHECK ((jsonb_typeof(dependency_out_refs) = 'object'::text) AND (jsonb_typeof((dependency_out_refs -> 'spend'::text)) = 'array'::text) AND (jsonb_typeof((dependency_out_refs -> 'collateral'::text)) = 'array'::text) AND (jsonb_typeof((dependency_out_refs -> 'reference'::text)) = 'array'::text) AND ((dependency_out_refs - ARRAY['spend'::text, 'collateral'::text, 'reference'::text]) = '{}'::jsonb)),
+    CONSTRAINT deposit_submission_attempts_lifecycle_check CHECK (((status = 'prepared'::text) AND (attempt_count = 0) AND (last_submission_at IS NULL) AND (submitted_at IS NULL) AND (provider_acknowledgement IS NULL) AND (confirmed_at IS NULL) AND (last_reconciled_at IS NULL) AND (last_error IS NULL)) OR ((status = 'submission_unknown'::text) AND (attempt_count > 0) AND (last_submission_at IS NOT NULL) AND (submitted_at IS NULL) AND (provider_acknowledgement IS NULL) AND (confirmed_at IS NULL)) OR ((status = 'submitted'::text) AND (attempt_count > 0) AND (last_submission_at IS NOT NULL) AND (submitted_at IS NOT NULL) AND (provider_acknowledgement IS NOT NULL) AND (confirmed_at IS NULL)) OR ((status = 'confirmed'::text) AND (confirmed_at IS NOT NULL) AND (last_error IS NULL)) OR ((status = 'reconciled_after_timeout'::text) AND (confirmed_at IS NOT NULL) AND (last_reconciled_at IS NOT NULL) AND (last_error IS NULL)) OR ((status = 'ambiguous'::text) AND (confirmed_at IS NULL) AND (last_reconciled_at IS NOT NULL) AND (last_error IS NOT NULL)) OR ((status = 'expired'::text) AND (confirmed_at IS NULL) AND (last_reconciled_at IS NOT NULL) AND (last_error IS NOT NULL))),
+    CONSTRAINT deposit_submission_attempts_provider_acknowledgement_check CHECK (((provider_acknowledgement IS NULL) OR (btrim(provider_acknowledgement) <> ''::text))),
+    CONSTRAINT deposit_submission_attempts_provider_timestamp_check CHECK ((((submitted_at IS NULL) AND (provider_acknowledgement IS NULL)) OR ((submitted_at IS NOT NULL) AND (provider_acknowledgement IS NOT NULL)))),
+    CONSTRAINT deposit_submission_attempts_signed_tx_cbor_check CHECK ((octet_length(signed_tx_cbor) > 0)),
+    CONSTRAINT deposit_submission_attempts_status_check CHECK ((status = ANY (ARRAY['prepared'::text, 'submission_unknown'::text, 'submitted'::text, 'confirmed'::text, 'reconciled_after_timeout'::text, 'ambiguous'::text, 'expired'::text]))),
+    CONSTRAINT deposit_submission_attempts_timestamp_check CHECK (((last_submission_at IS NULL) OR (last_submission_at >= prepared_at)) AND ((submitted_at IS NULL) OR ((last_submission_at IS NOT NULL) AND (submitted_at >= last_submission_at))) AND ((confirmed_at IS NULL) OR (confirmed_at >= prepared_at)) AND ((last_reconciled_at IS NULL) OR (last_reconciled_at >= prepared_at)) AND (updated_at >= prepared_at)),
     CONSTRAINT deposit_submission_attempts_tx_hash_check CHECK ((octet_length(tx_hash) = 32))
 );
 
@@ -1104,17 +1119,17 @@ CREATE INDEX idx_da_payloads_created_at ON public.da_payloads USING btree (creat
 
 
 --
--- Name: idx_deposit_submission_attempts_deposit_event_id; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_deposit_submission_attempts_active_event_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_deposit_submission_attempts_deposit_event_id ON public.deposit_submission_attempts USING btree (deposit_event_id);
+CREATE UNIQUE INDEX idx_deposit_submission_attempts_active_event_id ON public.deposit_submission_attempts USING btree (deposit_event_id) WHERE (status <> 'expired'::text);
 
 
 --
--- Name: idx_deposit_submission_attempts_status_submitted_at; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_deposit_submission_attempts_status_prepared_at; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_deposit_submission_attempts_status_submitted_at ON public.deposit_submission_attempts USING btree (confirmation_status, submitted_at);
+CREATE INDEX idx_deposit_submission_attempts_status_prepared_at ON public.deposit_submission_attempts USING btree (status, prepared_at);
 
 
 --

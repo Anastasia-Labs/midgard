@@ -8,6 +8,8 @@ const DEFAULT_OGMIOS_HEALTH_MAX_AGE_MS = 120_000;
 export type SubmitSlotSnapshot = {
   readonly source: "local_ogmios_tip" | "emulator" | "test";
   readonly currentSlot: number;
+  /** Slot of the actual queried chain tip, without wall-clock extrapolation. */
+  readonly chainTipSlot?: number;
   readonly observedAtMs: number;
   readonly slotLengthMs: number;
   readonly health?: {
@@ -319,6 +321,7 @@ export const queryLocalOgmiosSubmitSlotSnapshot = async ({
   return {
     source: "local_ogmios_tip",
     currentSlot: Math.max(queriedTipSlot, derivedLiveSlot),
+    chainTipSlot: queriedTipSlot,
     observedAtMs: nowMs,
     slotLengthMs: SUBMIT_SLOT_LENGTH_MS,
     health,

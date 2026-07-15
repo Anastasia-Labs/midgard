@@ -279,6 +279,30 @@ describe("validity-window submit recovery", () => {
     expect(waits).toEqual([2_000]);
   });
 
+  it("performs no generic provider retry when the caller owns durable recovery", async () => {
+    const waits: number[] = [];
+    const submitProgram = vi.fn(() => Effect.fail(new Error("fetch failed")));
+
+    const result = await Effect.runPromise(
+      Effect.either(
+        submitSignedTxWithRecovery(
+          fakeLucid as never,
+          { submitProgram } as never,
+          "tx-durable-recovery",
+          {
+            maxProviderRetryAttempts: 0,
+            sleep: (milliseconds) =>
+              Effect.sync(() => waits.push(milliseconds)),
+          },
+        ),
+      ),
+    );
+
+    expect(result._tag).toBe("Left");
+    expect(submitProgram).toHaveBeenCalledTimes(1);
+    expect(waits).toEqual([]);
+  });
+
   it("recovers lower-bound-only Ogmios 3118 without generic provider retry", async () => {
     const waits: number[] = [];
     let calls = 0;

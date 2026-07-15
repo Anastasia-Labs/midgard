@@ -472,6 +472,17 @@ export type SubmitRecoveryInlineOptions = {
   readonly slotSnapshot?: () => Effect.Effect<SubmitSlotSnapshot, unknown>;
   readonly requireSlotForBoundedTx?: boolean;
   readonly maxPreSubmitWaitMs?: number;
+  /**
+   * Number of retries permitted after an unclassified provider submission
+   * error. Callers with a durable exact-CBOR journal can set this to zero and
+   * reconcile authoritative chain evidence before any later resubmission.
+   */
+  readonly maxProviderRetryAttempts?: number;
+  /**
+   * Number of retries permitted after an OutsideValidityInterval provider
+   * response. A durable one-call journal sets this to zero.
+   */
+  readonly maxOutsideValidityRecoveryAttempts?: number;
   readonly confirmationTimeoutMs?: number;
   readonly confirmationRetries?: number;
   readonly confirmationPollIntervalMs?: number;
@@ -813,15 +824,36 @@ export const submitSignedTxWithRecovery = (
 ): Effect.Effect<void, unknown> =>
   Effect.gen(function* () {
     const sleep = options.sleep ?? submitRecoverySleep(lucid);
+    const maxProviderRetryAttempts =
+      options.maxProviderRetryAttempts ?? RETRY_ATTEMPTS;
+    if (
+      !Number.isSafeInteger(maxProviderRetryAttempts) ||
+      maxProviderRetryAttempts < 0
+    ) {
+      return yield* Effect.fail(
+        new Error(
+          `Invalid maxProviderRetryAttempts=${maxProviderRetryAttempts.toString()}`,
+        ),
+      );
+    }
     let providerRetryAttempts = 0;
     let outsideValidityRecoveryAttempts = 0;
     let outsideValidityRecoveryWaitedMs = 0;
     const maxOutsideValidityRecoveryWaitMs =
       options.maxPreSubmitWaitMs ?? DEFAULT_SIGNED_TX_INLINE_WAIT_MS;
-    const maxOutsideValidityRecoveryAttempts = Math.max(
-      1,
-      Math.ceil(maxOutsideValidityRecoveryWaitMs / SLOT_LENGTH_MS),
-    );
+    const maxOutsideValidityRecoveryAttempts =
+      options.maxOutsideValidityRecoveryAttempts ??
+      Math.max(1, Math.ceil(maxOutsideValidityRecoveryWaitMs / SLOT_LENGTH_MS));
+    if (
+      !Number.isSafeInteger(maxOutsideValidityRecoveryAttempts) ||
+      maxOutsideValidityRecoveryAttempts < 0
+    ) {
+      return yield* Effect.fail(
+        new Error(
+          `Invalid maxOutsideValidityRecoveryAttempts=${maxOutsideValidityRecoveryAttempts.toString()}`,
+        ),
+      );
+    }
 
     for (;;) {
       const preSubmitValidity = yield* preSubmitValidityCheck(
@@ -1171,11 +1203,11 @@ export const submitSignedTxWithRecovery = (
         );
       }
 
-      if (providerRetryAttempts < RETRY_ATTEMPTS) {
+      if (providerRetryAttempts < maxProviderRetryAttempts) {
         const waitMs = INIT_RETRY_AFTER_MILLIS * 2 ** providerRetryAttempts;
         providerRetryAttempts += 1;
         yield* Effect.logWarning(
-          `Tx ${txHash} submit failed with provider error; waiting ${waitMs}ms before retry ${providerRetryAttempts}/${RETRY_ATTEMPTS}: ${submitError}`,
+          `Tx ${txHash} submit failed with provider error; waiting ${waitMs}ms before retry ${providerRetryAttempts}/${maxProviderRetryAttempts.toString()}: ${submitError}`,
         );
         yield* sleep(waitMs);
         continue;

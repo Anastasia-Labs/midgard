@@ -93,6 +93,7 @@ import {
   WriteBehind,
   writeBehindFiber,
 } from "@/services/index.js";
+import { reconcileOpenDepositSubmissionAttemptsProgram } from "@/transactions/submit-deposit.js";
 import { backfillMissingDaPayloadsFromFinalizedJournals } from "@/workers/commit-block-header/da-payload-backfill.js";
 import { MidgardMpf, utxoToInsertBatchOp } from "@/workers/utils/mpf.js";
 
@@ -544,6 +545,27 @@ export const runNode = (
     const mkSchedule = (millisBetweenRuns: number) =>
       Schedule.spaced(Duration.millis(millisBetweenRuns));
 
+    const backgroundDepositSubmissionReconciliation =
+      reconcileOpenDepositSubmissionAttemptsProgram().pipe(
+        Effect.tap(({ open, inspected, deferred, results }) => {
+          const statuses = results.reduce<Record<string, number>>(
+            (counts, result) => ({
+              ...counts,
+              [result.status]: (counts[result.status] ?? 0) + 1,
+            }),
+            {},
+          );
+          return Effect.logInfo(
+            `Background durable deposit submission reconciliation open=${open.toString()},inspected=${inspected.toString()},deferred=${deferred.toString()},statuses=${JSON.stringify(statuses)}; no transactions were submitted.`,
+          );
+        }),
+        Effect.catchAll(
+          logStartupFailure(
+            "Background durable deposit submission reconciliation failed",
+          ),
+        ),
+      );
+
     const program = Effect.all(
       [
         admissionBacklogGaugeFiber(
@@ -551,6 +573,7 @@ export const runNode = (
         ),
         writeBehindFiber,
         appThread,
+        backgroundDepositSubmissionReconciliation,
         retainedPayloadServerThread(retrieveRetainedDaPayload),
         daPublicationReconcilerFiber(
           mkSchedule(nodeConfig.MIDGARD_DA_PUBLISH_RECONCILE_INTERVAL_MS),
