@@ -443,6 +443,12 @@ publishing reference scripts or running `init`.
 node dist/index.js deploy-reference-script-node-runtime
 ```
 
+To inspect the exact signed publication CBOR without submitting it, use the
+explicit diagnostic capture mode documented in
+[`REFERENCE_SCRIPT_PRE_SUBMIT_CAPTURE.md`](REFERENCE_SCRIPT_PRE_SUBMIT_CAPTURE.md).
+The mode binds to an existing persisted deployment identity, writes private and
+durable artifacts, and never updates the live deployment manifest.
+
 Before publishing or republishing reference scripts, inspect the deploy wallet:
 
 ```sh
