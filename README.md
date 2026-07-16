@@ -35,7 +35,10 @@ implementations, and the LaTeX technical specification in a single repository.
 - [Midgard SDK guide](./demo/midgard-sdk/README.md): packaging, conventions,
   and SDK module layout.
 - [Documentation site](./docs-site/README.md): the full guides and reference,
-  runnable locally with `pnpm dev`.
+  runnable locally with `pnpm dev`. CI checks the pages against the source
+  files they describe, so a PR that changes a documented CLI command, fiber,
+  or transaction status also updates the matching page; the check's error
+  message names both files.
 
 ## Build the On-Chain Code
 
