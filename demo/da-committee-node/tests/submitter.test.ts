@@ -191,11 +191,16 @@ describe("L1 submitter helpers", () => {
       },
     } as unknown as TxSignBuilder;
     const lucid = {
-      awaitTx: async (txHash: string, pollInterval?: number) => {
-        calls.push(`await:${txHash}:${pollInterval?.toString() ?? ""}`);
-        return true;
+      awaitTxConfirmation: async (
+        txHash: string,
+        options?: { readonly checkInterval?: number },
+      ) => {
+        calls.push(
+          `await:${txHash}:${options?.checkInterval?.toString() ?? ""}`,
+        );
+        return { txHash };
       },
-    } as Pick<LucidEvolution, "awaitTx">;
+    } as Pick<LucidEvolution, "awaitTxConfirmation">;
 
     await expect(
       signSubmitAndConfirm(lucid, tx, { confirmationPollIntervalMs: 250 }),
@@ -229,9 +234,9 @@ describe("L1 submitter helpers", () => {
     });
     const livePlainInput = utxo("33", 1, { lovelace: 8_000_000n });
     const lucid = {
-      awaitTx: async (txHash: string) => {
+      awaitTxConfirmation: async (txHash: string) => {
         calls.push(`await:${txHash}`);
-        return true;
+        return { txHash };
       },
       wallet: () => ({
         address: async () => {
@@ -247,7 +252,7 @@ describe("L1 submitter helpers", () => {
       overrideUTxOs: (utxos: UTxO[]) => {
         overrides.push(utxos);
       },
-    } as unknown as Pick<LucidEvolution, "awaitTx"> &
+    } as unknown as Pick<LucidEvolution, "awaitTxConfirmation"> &
       Pick<LucidEvolution, "wallet"> & {
         readonly utxosAt: (address: string) => Promise<UTxO[]>;
         readonly overrideUTxOs: (utxos: UTxO[]) => void;
@@ -283,7 +288,7 @@ describe("L1 submitter helpers", () => {
       },
     } as unknown as TxSignBuilder;
     const lucid = {
-      awaitTx: async () => true,
+      awaitTxConfirmation: async (txHash: string) => ({ txHash }),
       wallet: () => ({
         address: async () => "addr_test1submitter",
         getUtxos: async () => [],
@@ -295,7 +300,7 @@ describe("L1 submitter helpers", () => {
       overrideUTxOs: (utxos: UTxO[]) => {
         overrides.push(utxos);
       },
-    } as unknown as Pick<LucidEvolution, "awaitTx"> &
+    } as unknown as Pick<LucidEvolution, "awaitTxConfirmation"> &
       Pick<LucidEvolution, "wallet"> & {
         readonly utxosAt: (address: string) => Promise<UTxO[]>;
         readonly overrideUTxOs: (utxos: UTxO[]) => void;
@@ -397,9 +402,9 @@ describe("L1 submitter helpers", () => {
           },
         },
       }),
-      awaitTx: async (txHash: string) => {
+      awaitTxConfirmation: async (txHash: string) => {
         calls.push(`await:${txHash}`);
-        return true;
+        return { txHash };
       },
     } as unknown as LucidEvolution;
 
@@ -444,7 +449,7 @@ describe("L1 submitter helpers", () => {
       newTx: () => {
         throw new Error("must not build self-funding transaction");
       },
-      awaitTx: async () => true,
+      awaitTxConfirmation: async (txHash: string) => ({ txHash }),
     } as unknown as LucidEvolution;
 
     await selectL1SubmitterWallet(lucid, "private-key:submitter");

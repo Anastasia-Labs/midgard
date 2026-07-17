@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 
-import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
@@ -12,20 +11,11 @@ import { Effect } from "effect";
 
 import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
 import {
-  classifyProviderHttpResponse,
-  L1_REWARD_ACCOUNT_REGISTRATION_SOURCES,
-  type L1RewardAccountRegistrationSource,
-  redactEndpoint,
-  summarizeProviderBody,
-} from "@/provider-diagnostics.js";
-import {
   handleSignSubmit,
   TxConfirmError,
   TxSignError,
   TxSubmitError,
 } from "@/transactions/utils.js";
-
-type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
 export type PhasMembershipRewardRegistrationResult = {
   readonly rewardAddress: string;
@@ -69,10 +59,7 @@ export type PhasMembershipRegistrationQuery = (input: {
   readonly scriptHash: string;
 }) => Effect.Effect<PhasMembershipRegistrationStatus, SDK.LucidError>;
 
-export type PhasMembershipRegistrationStatus =
-  | "registered"
-  | "unregistered"
-  | "unknown";
+export type PhasMembershipRegistrationStatus = "registered" | "unregistered";
 
 export type PhasMembershipRegistrationOptions = {
   readonly queryRegistration?: PhasMembershipRegistrationQuery;
@@ -87,7 +74,6 @@ export type PhasMembershipRegistrationOptions = {
     lucid: LucidEvolution,
     built: SDK.BuiltPhasMembershipRewardRegistrationTx,
   ) => Effect.Effect<string, TxConfirmError | TxSignError | TxSubmitError>;
-  readonly fetchImpl?: FetchLike;
   readonly inspectRegistrationTx?: (
     built: SDK.BuiltPhasMembershipRewardRegistrationTx,
     expected: { readonly rewardAddress: string; readonly scriptHash: string },
@@ -172,282 +158,52 @@ export const isPhasMembershipAlreadyRegisteredError = (
   error: TxSubmitError,
   scriptHash: string,
 ): boolean => {
-  const message = formatUnknownError(error, {
-    includeCause: true,
-  }).toLowerCase();
   const normalizedScriptHash = scriptHash.toLowerCase();
-  return (
-    (message.includes("stakekeyregistereddeleg") ||
-      message.includes("already known credential") ||
-      message.includes("knowncredential")) &&
-    message.includes(normalizedScriptHash)
-  );
-};
+  const seen = new Set<unknown>();
 
-const hasObjectShape = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
+  const hasKnownCredential = (value: unknown): boolean => {
+    if (typeof value !== "object" || value === null || seen.has(value)) {
+      return false;
+    }
+    seen.add(value);
+    const record = value as Record<string, unknown>;
+    if (
+      typeof record.knownCredential === "string" &&
+      record.knownCredential.toLowerCase() === normalizedScriptHash &&
+      (record.from === undefined || record.from === "script")
+    ) {
+      return true;
+    }
+    return Object.values(record).some(hasKnownCredential);
+  };
 
-const providerQueryError = ({
-  message,
-  source,
-  retryable,
-  cause,
-}: {
-  readonly message: string;
-  readonly source: string;
-  readonly retryable: boolean;
-  readonly cause: unknown;
-}): SDK.LucidError =>
-  new SDK.LucidError({
-    message,
-    cause: {
-      source,
-      retryable,
-      cause,
-    },
-  });
+  const findTypedOgmiosError = (value: unknown): boolean => {
+    if (typeof value !== "object" || value === null || seen.has(value)) {
+      return false;
+    }
+    const record = value as Record<string, unknown>;
+    if (record._tag === "OgmiosJsonRpcError") {
+      seen.clear();
+      return hasKnownCredential(record.data);
+    }
+    seen.add(value);
+    return [record.cause, record.error, record.failure].some(
+      findTypedOgmiosError,
+    );
+  };
 
-const isRetryableProviderQueryError = (error: unknown): boolean => {
-  if (!hasObjectShape(error)) {
-    return false;
-  }
-  const cause = error.cause;
-  return hasObjectShape(cause) && cause.retryable === true;
-};
-
-const readProviderJson = async <A>({
-  response,
-  source,
-  query,
-}: {
-  readonly response: Response;
-  readonly source: string;
-  readonly query: string;
-}): Promise<A> => {
-  const body = await response.text();
-  if (!response.ok) {
-    const classification = classifyProviderHttpResponse({
-      status: response.status,
-      body,
-      retryAfter: response.headers.get("retry-after"),
-    });
-    throw providerQueryError({
-      message: `Failed PHAS reward-account registration query: source=${source},query=${query},status=${response.status.toString()},result=${classification.kind},endpoint=${redactEndpoint(response.url)}`,
-      source,
-      retryable: classification.retryable,
-      cause: classification.summary,
-    });
-  }
-  try {
-    return JSON.parse(body) as A;
-  } catch (cause) {
-    throw providerQueryError({
-      message: `Failed PHAS reward-account registration query: source=${source},query=${query},status=${response.status.toString()},result=malformed_json,endpoint=${redactEndpoint(response.url)}`,
-      source,
-      retryable: true,
-      cause: summarizeProviderBody(body),
-    });
-  }
-};
-
-const parseOgmiosRewardAccountSummary = (
-  result: unknown,
-  scriptHash: string,
-  source: string,
-): PhasMembershipRegistrationStatus => {
-  if (!Array.isArray(result)) {
-    throw providerQueryError({
-      message: `Failed PHAS reward-account registration query: source=${source},query=reward-account-registration,result=unexpected_result_shape`,
-      source,
-      retryable: false,
-      cause: "Expected Ogmios v7 rewardAccountSummaries to return a list.",
-    });
-  }
-  if (result.length === 0) {
-    return "unknown";
-  }
-  if (result.length !== 1) {
-    throw providerQueryError({
-      message: `Failed PHAS reward-account registration query: source=${source},query=reward-account-registration,result=unexpected_summary_count`,
-      source,
-      retryable: false,
-      cause: `Expected exactly one summary for PHAS script ${scriptHash}, received ${result.length.toString()}.`,
-    });
-  }
-  const [summary] = result;
-  if (
-    !hasObjectShape(summary) ||
-    summary.from !== "script" ||
-    summary.credential !== scriptHash
-  ) {
-    throw providerQueryError({
-      message: `Failed PHAS reward-account registration query: source=${source},query=reward-account-registration,result=credential_mismatch`,
-      source,
-      retryable: false,
-      cause:
-        "Ogmios returned a reward-account summary that did not exactly match the requested PHAS script credential.",
-    });
-  }
-  return "registered";
-};
-
-const queryOgmiosRewardAccountRegistered = async ({
-  source,
-  scriptHash,
-  fetchImpl,
-}: {
-  readonly source: Extract<
-    L1RewardAccountRegistrationSource,
-    { readonly kind: "ogmios" }
-  >;
-  readonly scriptHash: string;
-  readonly fetchImpl: FetchLike;
-}): Promise<PhasMembershipRegistrationStatus> => {
-  const response = await fetchImpl(source.url, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      ...(source.headers ?? {}),
-    },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      method: "queryLedgerState/rewardAccountSummaries",
-      params: { scripts: [scriptHash] },
-      id: null,
-    }),
-  });
-  const body = await readProviderJson<unknown>({
-    response,
-    source: source.source,
-    query: "reward-account-registration",
-  });
-  if (hasObjectShape(body) && "error" in body) {
-    throw providerQueryError({
-      message: `Failed PHAS reward-account registration query: source=${source.source},query=reward-account-registration,result=ogmios_json_rpc_error,endpoint=${redactEndpoint(source.url)}`,
-      source: source.source,
-      retryable: false,
-      cause: body.error,
-    });
-  }
-  return parseOgmiosRewardAccountSummary(
-    hasObjectShape(body) && "result" in body ? body.result : body,
-    scriptHash,
-    source.source,
-  );
-};
-
-const queryRewardAccountRegistrationSource = (
-  source: L1RewardAccountRegistrationSource,
-  scriptHash: string,
-  fetchImpl: FetchLike,
-): Promise<PhasMembershipRegistrationStatus> => {
-  return queryOgmiosRewardAccountRegistered({
-    source,
-    scriptHash,
-    fetchImpl,
-  });
-};
-
-const providerRewardAccountSources = (
-  provider: unknown,
-): readonly L1RewardAccountRegistrationSource[] => {
-  if (!hasObjectShape(provider)) {
-    return [];
-  }
-  const configured = provider[L1_REWARD_ACCOUNT_REGISTRATION_SOURCES];
-  if (Array.isArray(configured)) {
-    return configured.filter(
-      hasObjectShape,
-    ) as L1RewardAccountRegistrationSource[];
-  }
-  if (typeof provider.ogmiosUrl === "string") {
-    const headers = hasObjectShape(provider.headers)
-      ? provider.headers.ogmiosHeader
-      : undefined;
-    return [
-      {
-        kind: "ogmios",
-        source: "kupmios",
-        url: provider.ogmiosUrl,
-        ...(hasObjectShape(headers)
-          ? { headers: headers as Record<string, string> }
-          : {}),
-      },
-    ];
-  }
-  return [];
-};
-
-const queryEmulatorRewardAccountRegistered = (
-  provider: unknown,
-  rewardAddress: string,
-): PhasMembershipRegistrationStatus | null => {
-  if (!hasObjectShape(provider) || !hasObjectShape(provider.chain)) {
-    return null;
-  }
-  const entry = provider.chain[rewardAddress];
-  if (!hasObjectShape(entry)) {
-    return "unregistered";
-  }
-  return entry.registeredStake === true ? "registered" : "unregistered";
+  return findTypedOgmiosError(error);
 };
 
 export const queryPhasMembershipRewardAccountRegisteredProgram = (
   lucid: LucidEvolution,
   rewardAddress: string,
-  scriptHash: string,
-  fetchImpl: FetchLike = fetch,
 ): Effect.Effect<PhasMembershipRegistrationStatus, SDK.LucidError> =>
   Effect.tryPromise({
-    try: async () => {
-      const provider = lucid.config().provider;
-      const emulatorResult = queryEmulatorRewardAccountRegistered(
-        provider,
-        rewardAddress,
-      );
-      if (emulatorResult !== null) {
-        return emulatorResult;
-      }
-
-      const sources = providerRewardAccountSources(provider);
-      if (sources.length === 0) {
-        throw providerQueryError({
-          message:
-            "Cannot determine PHAS reward-account registration status before submission: unsupported L1 provider shape",
-          source: "unsupported",
-          retryable: false,
-          cause:
-            "Expected emulator chain state, Kupmios Ogmios URL, or Midgard Ogmios reward-account source metadata.",
-        });
-      }
-
-      let lastError: unknown;
-      let sawUnknown = false;
-      for (const [index, source] of sources.entries()) {
-        try {
-          const status = await queryRewardAccountRegistrationSource(
-            source,
-            scriptHash,
-            fetchImpl,
-          );
-          if (status === "registered") {
-            return status;
-          }
-          sawUnknown ||= status === "unknown";
-        } catch (cause) {
-          lastError = cause;
-          const canTryNext =
-            index < sources.length - 1 && isRetryableProviderQueryError(cause);
-          if (!canTryNext) {
-            throw cause;
-          }
-        }
-      }
-      if (sawUnknown) {
-        return "unknown";
-      }
-      throw lastError;
-    },
+    try: async () =>
+      (await lucid.rewardAccountAt(rewardAddress)).registered
+        ? "registered"
+        : "unregistered",
     catch: (cause) =>
       cause instanceof SDK.LucidError
         ? cause
@@ -504,8 +260,6 @@ export const ensurePhasMembershipRewardAccountRegisteredProgram = (
         queryPhasMembershipRewardAccountRegisteredProgram(
           input.lucid,
           input.rewardAddress,
-          input.scriptHash,
-          options.fetchImpl ?? fetch,
         ))
     )({
       lucid,
@@ -524,12 +278,6 @@ export const ensurePhasMembershipRewardAccountRegisteredProgram = (
         txHash: null,
         transactionBody: null,
       } satisfies PhasMembershipRewardRegistrationResult;
-    }
-
-    if (registered === "unknown") {
-      yield* Effect.logInfo(
-        `PHAS membership reward-account registration status is unknown; proceeding with explicit idempotent registration: scriptHash=${identity.scriptHash},rewardAddress=${identity.rewardAddress}`,
-      );
     }
 
     const built = yield* (

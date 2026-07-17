@@ -79,7 +79,7 @@ const makeLucidService = (params: {
   const newTx = vi.fn(() => tx);
   const walletAddress = vi.fn(async () => OPERATOR_ADDRESS);
   const wallet = vi.fn(() => ({ address: walletAddress }));
-  const awaitTx = vi.fn(async () => true);
+  const awaitTxConfirmation = vi.fn(async (txHash: string) => ({ txHash }));
   const utxosAt = vi.fn(async () => {
     const inlineDatum = payments[0]?.datum.value ?? "";
     return Array.from({ length: params.matchingOutputCount }, (_, index) =>
@@ -88,9 +88,10 @@ const makeLucidService = (params: {
   });
   const switchToOperatorsMainWallet = vi.fn(() => Effect.void);
   const lucid = {
+    config: () => ({ provider: undefined }),
     newTx,
     wallet,
-    awaitTx,
+    awaitTxConfirmation,
     utxosAt,
   } as unknown as LucidEvolution;
   const lucidService = {
@@ -109,7 +110,7 @@ const makeLucidService = (params: {
       newTx,
       wallet,
       walletAddress,
-      awaitTx,
+      awaitTxConfirmation,
       utxosAt,
       switchToOperatorsMainWallet,
     },
@@ -312,7 +313,10 @@ describe("prepare hub-oracle one-shot nonce command boundary", () => {
 
     const result = await runPrepare(amountLovelace, lucidService);
 
-    expect(record.awaitTx).toHaveBeenCalledWith(TX_HASH, 5_000);
+    expect(record.awaitTxConfirmation).toHaveBeenCalledWith(TX_HASH, {
+      timeout: 300_000,
+      checkInterval: 5_000,
+    });
     expect(result).toMatchObject({
       txHash: TX_HASH,
       outRef: `${TX_HASH}#7`,
@@ -340,7 +344,10 @@ describe("prepare hub-oracle one-shot nonce command boundary", () => {
     });
 
     expect(record.newTx).not.toHaveBeenCalled();
-    expect(record.awaitTx).toHaveBeenCalledWith(TX_HASH, 5_000);
+    expect(record.awaitTxConfirmation).toHaveBeenCalledWith(TX_HASH, {
+      timeout: 300_000,
+      checkInterval: 5_000,
+    });
     expect(result).toEqual({
       txHash: TX_HASH,
       outputIndex: 9,

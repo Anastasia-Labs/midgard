@@ -1,9 +1,4 @@
-import {
-  LucidEvolution,
-  Network,
-  slotToUnixTime,
-  unixTimeToSlot,
-} from "@lucid-evolution/lucid";
+import { LucidEvolution } from "@lucid-evolution/lucid";
 
 export const EXPLICIT_COMMIT_DEFAULT_CANDIDATE_FUTURE_BUFFER_MS = 5 * 60 * 1000;
 
@@ -68,80 +63,35 @@ export const alignUnixTimeToSlotBoundary = (
   lucid: LucidEvolution,
   unixTime: number,
 ): number => {
-  const network = lucid.config().network;
-  if (network === "Custom") {
-    const provider = lucid.config().provider as {
-      time?: number;
-      slot?: number;
-    };
-    if (
-      typeof provider.time === "number" &&
-      Number.isSafeInteger(provider.time) &&
-      typeof provider.slot === "number" &&
-      Number.isSafeInteger(provider.slot) &&
-      provider.slot >= 0 &&
-      Number.isSafeInteger(unixTime)
-    ) {
-      const slotLength = 1000;
-      const slotOffset = Math.floor((unixTime - provider.time) / slotLength);
-      const targetSlot = provider.slot + slotOffset;
-      const aligned = provider.time + (targetSlot - provider.slot) * slotLength;
-      if (
-        Number.isSafeInteger(targetSlot) &&
-        targetSlot >= 0 &&
-        Number.isSafeInteger(aligned)
-      ) {
-        return aligned;
-      }
-    }
-    return unixTime;
+  if (!Number.isSafeInteger(unixTime)) {
+    throw new Error(`Cannot align invalid unix time ${String(unixTime)}`);
   }
-  const slot = unixTimeToSlot(network as Exclude<Network, "Custom">, unixTime);
-  return slotToUnixTime(network as Exclude<Network, "Custom">, slot);
+  const slot = Number(lucid.unixTimeToSlot(unixTime));
+  const aligned = lucid.slotToUnixTime(slot);
+  if (!Number.isSafeInteger(slot) || !Number.isSafeInteger(aligned)) {
+    throw new Error(
+      `Lucid returned an invalid slot boundary for unix time ${unixTime.toString()}`,
+    );
+  }
+  return aligned;
 };
 
 export const alignedUnixTimeStrictlyAfter = (
   lucid: LucidEvolution,
   unixTimeExclusive: number,
 ): number => {
-  const network = lucid.config().network;
-  if (network === "Custom") {
-    const provider = lucid.config().provider as {
-      time?: number;
-      slot?: number;
-    };
-    if (
-      typeof provider.time === "number" &&
-      Number.isSafeInteger(provider.time) &&
-      typeof provider.slot === "number" &&
-      Number.isSafeInteger(provider.slot) &&
-      provider.slot >= 0 &&
-      Number.isSafeInteger(unixTimeExclusive)
-    ) {
-      const slotLength = 1000;
-      const slotOffset = Math.floor(
-        (unixTimeExclusive - provider.time) / slotLength,
-      );
-      const targetSlot = provider.slot + slotOffset;
-      const aligned = provider.time + (targetSlot - provider.slot) * slotLength;
-      const strictlyAfter =
-        aligned > unixTimeExclusive ? aligned : aligned + slotLength;
-      if (
-        Number.isSafeInteger(targetSlot) &&
-        targetSlot >= 0 &&
-        Number.isSafeInteger(aligned) &&
-        Number.isSafeInteger(strictlyAfter)
-      ) {
-        return strictlyAfter;
-      }
-    }
-    return unixTimeExclusive + 1;
+  const aligned = alignUnixTimeToSlotBoundary(lucid, unixTimeExclusive);
+  if (aligned > unixTimeExclusive) {
+    return aligned;
   }
-  const slot = unixTimeToSlot(
-    network as Exclude<Network, "Custom">,
-    unixTimeExclusive,
-  );
-  return slotToUnixTime(network as Exclude<Network, "Custom">, slot + 1);
+  const slot = Number(lucid.unixTimeToSlot(unixTimeExclusive));
+  const strictlyAfter = lucid.slotToUnixTime(slot + 1);
+  if (!Number.isSafeInteger(strictlyAfter)) {
+    throw new Error(
+      `Lucid returned an invalid slot boundary after unix time ${unixTimeExclusive.toString()}`,
+    );
+  }
+  return strictlyAfter;
 };
 
 export const resolveAlignedCommitEndTime = ({

@@ -1,35 +1,20 @@
 import { readFile } from "node:fs/promises";
 
 import * as SDK from "@al-ft/midgard-sdk";
-import { Lucid, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
-import * as LucidRuntime from "@lucid-evolution/lucid";
+import {
+  Blockfrost,
+  Kupmios,
+  Lucid,
+  type LucidEvolution,
+  type UTxO,
+} from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import type { WatcherConfig } from "../config.js";
 import type { ChainPoint, ObservedStateQueueNode } from "../domain.js";
 import type { StateQueueProvider } from "./state-queue-scanner.js";
 
-type LucidProviderRuntime = {
-  readonly Blockfrost: new (url: string, projectId?: string) => unknown;
-  readonly Kupmios: new (
-    kupoUrl: string,
-    ogmiosUrl: string,
-    headers?: Record<string, string>,
-  ) => unknown;
-};
-
 type CardanoNetwork = "Mainnet" | "Preprod" | "Preview" | "Custom";
-
-type KupoCreatedAt = {
-  readonly slot_no?: number;
-  readonly header_hash?: string;
-};
-
-type KupoMatch = {
-  readonly transaction_id?: string;
-  readonly output_index?: number;
-  readonly created_at?: KupoCreatedAt | null;
-};
 
 export class FixtureStateQueueProvider implements StateQueueProvider {
   private readonly path: string;
@@ -187,35 +172,34 @@ export const providerFromUrl = async (
   }
   if (url.startsWith("blockfrost:")) {
     const { apiUrl, projectId } = parseBlockfrostUrl(url);
-    const runtime = LucidRuntime as unknown as LucidProviderRuntime;
     const lucid = await Lucid(
-      new runtime.Blockfrost(apiUrl, projectId) as never,
-      normalizeNetwork(config.network) as never,
+      new Blockfrost(apiUrl, projectId),
+      normalizeNetwork(config.network),
     );
     return new LucidStateQueueProvider({
       lucid,
       stateQueueAddress: config.stateQueueAddress,
       stateQueuePolicyId: config.stateQueuePolicyId,
       providerSource: `blockfrost:${apiUrl}`,
-      chainPointResolver: blockfrostChainPointResolver(apiUrl, projectId),
+      chainPointResolver: blockfrostChainPointResolver(
+        lucid,
+        apiUrl,
+        projectId,
+      ),
     });
   }
   if (url.startsWith("kupmios:")) {
     const { kupoUrl, ogmiosUrl, headers } = parseKupmiosUrl(url);
-    const runtime = LucidRuntime as unknown as LucidProviderRuntime;
     const lucid = await Lucid(
-      new runtime.Kupmios(kupoUrl, ogmiosUrl, headers) as never,
-      normalizeNetwork(config.network) as never,
+      new Kupmios(kupoUrl, ogmiosUrl, headers),
+      normalizeNetwork(config.network),
     );
     return new LucidStateQueueProvider({
       lucid,
       stateQueueAddress: config.stateQueueAddress,
       stateQueuePolicyId: config.stateQueuePolicyId,
       providerSource: `kupmios:${kupoUrl}|${ogmiosUrl}`,
-      chainPointResolver: kupoChainPointResolver(
-        kupoUrl,
-        config.stateQueueAddress,
-      ),
+      chainPointResolver: kupmiosChainPointResolver(lucid, kupoUrl),
     });
   }
   throw new Error(
@@ -256,55 +240,53 @@ const parseKupmiosUrl = (
   return { kupoUrl, ogmiosUrl };
 };
 
-export const kupoChainPointResolver = (
-  kupoUrl: string,
-  address: string,
-  fetchFn: typeof fetch = fetch,
+export const lucidChainPointResolver = (
+  lucid: LucidEvolution,
 ): ((utxo: UTxO) => Promise<ChainPoint>) => {
   return async (utxo) => {
-    const [entries, tip] = await Promise.all([
-      fetchKupoMatches(kupoUrl, address, fetchFn),
-      fetchKupoTipSlot(kupoUrl, fetchFn),
-    ]);
-    const entry = entries.find(
-      (candidate) =>
-        candidate.transaction_id?.toLowerCase() === utxo.txHash.toLowerCase() &&
-        candidate.output_index === utxo.outputIndex,
-    );
-    const slot = numberOrUndefined(entry?.created_at?.slot_no);
-    const blockHash = entry?.created_at?.header_hash;
-    const depth =
-      slot === undefined || tip === undefined
-        ? undefined
-        : Math.max(0, tip - slot);
+    const status = await lucid.transactionStatus(utxo.txHash);
+    if (status.status !== "confirmed") {
+      throw new Error(
+        `state-queue transaction ${utxo.txHash} is not confirmed: ${status.status}`,
+      );
+    }
+    const { slot, blockHash, blockHeight, confirmations } = status.confirmation;
+    // Lucid counts the inclusion block; Midgard depth counts descendants.
     return {
       ...(slot === undefined ? {} : { slot }),
-      ...(typeof blockHash === "string" && blockHash.length > 0
-        ? { blockHash }
-        : {}),
-      ...(depth === undefined ? {} : { depth }),
+      ...(blockHash === undefined ? {} : { blockHash }),
+      ...(blockHeight === undefined ? {} : { blockHeight }),
+      ...(confirmations === undefined
+        ? {}
+        : { depth: Math.max(0, confirmations - 1) }),
     };
   };
 };
 
-const fetchKupoMatches = async (
+/**
+ * Kupmios transaction status currently exposes inclusion slot/hash but not a
+ * confirmation count. Preserve the existing slot-depth finality semantics
+ * with the narrowest possible Kupo fallback until the provider supplies it.
+ */
+export const kupmiosChainPointResolver = (
+  lucid: LucidEvolution,
   kupoUrl: string,
-  address: string,
-  fetchFn: typeof fetch,
-): Promise<readonly KupoMatch[]> => {
-  const response = await fetchFn(
-    `${kupoUrl.replace(/\/+$/, "")}/matches/${encodeURIComponent(address)}?unspent`,
-  );
-  if (!response.ok) {
-    throw new Error(
-      `Kupo state-queue match lookup failed: ${response.status.toString()} ${await response.text()}`,
-    );
-  }
-  const parsed = (await response.json()) as unknown;
-  if (!Array.isArray(parsed)) {
-    throw new Error("Kupo state-queue match response must be an array");
-  }
-  return parsed as readonly KupoMatch[];
+  fetchFn: typeof fetch = fetch,
+): ((utxo: UTxO) => Promise<ChainPoint>) => {
+  const resolveInclusion = lucidChainPointResolver(lucid);
+  return async (utxo) => {
+    const inclusion = await resolveInclusion(utxo);
+    if (inclusion.depth !== undefined || inclusion.slot === undefined) {
+      return inclusion;
+    }
+    const tipSlot = await fetchKupoTipSlot(kupoUrl, fetchFn);
+    return {
+      ...inclusion,
+      ...(tipSlot === undefined
+        ? {}
+        : { depth: Math.max(0, tipSlot - inclusion.slot) }),
+    };
+  };
 };
 
 const fetchKupoTipSlot = async (
@@ -321,29 +303,28 @@ const fetchKupoTipSlot = async (
   const match =
     body.match(/^kupo_most_recent_node_tip\s+([0-9]+(?:\.[0-9]+)?)/m) ??
     body.match(/^kupo_most_recent_checkpoint\s+([0-9]+(?:\.[0-9]+)?)/m);
-  return match === null ? undefined : numberOrUndefined(Number(match[1]));
+  if (match === null) {
+    return undefined;
+  }
+  const slot = Number(match[1]);
+  return Number.isFinite(slot) ? slot : undefined;
 };
 
-const numberOrUndefined = (value: unknown): number | undefined =>
-  typeof value === "number" && Number.isFinite(value) ? value : undefined;
-
 const blockfrostChainPointResolver =
-  (apiUrl: string, projectId: string) =>
+  (lucid: LucidEvolution, apiUrl: string, projectId: string) =>
   async (utxo: UTxO): Promise<ChainPoint> => {
-    const [tx, latest] = await Promise.all([
-      blockfrostJson<BlockfrostTx>(apiUrl, projectId, `/txs/${utxo.txHash}`),
+    const [inclusion, latest] = await Promise.all([
+      lucidChainPointResolver(lucid)(utxo),
       blockfrostJson<BlockfrostLatestBlock>(
         apiUrl,
         projectId,
         "/blocks/latest",
       ),
     ]);
-    const blockHeight = tx.block_height;
+    const blockHeight = inclusion.blockHeight;
     const latestHeight = latest.height;
     return {
-      slot: tx.slot,
-      blockHash: tx.block,
-      blockHeight,
+      ...inclusion,
       depth:
         typeof blockHeight === "number" && typeof latestHeight === "number"
           ? Math.max(0, latestHeight - blockHeight)
@@ -366,12 +347,6 @@ const blockfrostJson = async <T>(
     );
   }
   return (await response.json()) as T;
-};
-
-type BlockfrostTx = {
-  readonly block?: string;
-  readonly block_height?: number;
-  readonly slot?: number;
 };
 
 type BlockfrostLatestBlock = {

@@ -3,50 +3,14 @@
  * This module centralizes network-aware time conversion and emulator fallback
  * behavior so transaction code does not guess about clock semantics.
  */
-import {
-  type LucidEvolution,
-  type Network,
-  SLOT_CONFIG_NETWORK,
-  slotToUnixTime,
-} from "@lucid-evolution/lucid";
+import { type LucidEvolution, type SlotConfig } from "@lucid-evolution/lucid";
 
 import {
   type ShelleyGenesisSlotConfig,
-  SUBMIT_SLOT_LENGTH_MS,
   SUBMIT_SLOT_VALIDITY_BUFFER,
   type SubmitSlotSnapshot,
 } from "@/local-ledger-slot.js";
-export type CustomSlotConfig = {
-  readonly zeroTime: number;
-  readonly zeroSlot: number;
-  readonly slotLength: number;
-};
-
-const isDefaultCustomSlotConfig = (config: CustomSlotConfig): boolean =>
-  config.zeroTime === 0 && config.zeroSlot === 0 && config.slotLength === 0;
-
-const customSlotConfigOrigin = (config: CustomSlotConfig): number =>
-  config.zeroTime - config.zeroSlot * config.slotLength;
-
-const slotToUnixTimeFromConfiguredCustomMapping = (
-  slot: number,
-): number | undefined => {
-  const config = SLOT_CONFIG_NETWORK.Custom;
-  if (
-    isDefaultCustomSlotConfig(config) ||
-    !Number.isSafeInteger(slot) ||
-    !Number.isSafeInteger(config.zeroTime) ||
-    !Number.isSafeInteger(config.zeroSlot) ||
-    config.zeroSlot < 0 ||
-    !Number.isSafeInteger(config.slotLength) ||
-    config.slotLength <= 0
-  ) {
-    return undefined;
-  }
-  const unixTime =
-    config.zeroTime + (slot - config.zeroSlot) * config.slotLength;
-  return Number.isSafeInteger(unixTime) ? unixTime : undefined;
-};
+export type CustomSlotConfig = SlotConfig;
 
 const assertValidSubmitSlotSnapshot = ({
   currentSlot,
@@ -129,73 +93,21 @@ export const customSlotConfigFromShelleyGenesis = (
 };
 
 /**
- * Installs the process-wide Custom mapping used by both Lucid clients.
- * Existing equivalent mappings are preserved; conflicting mappings fail
- * closed so one client cannot silently use a different clock domain.
- */
-export const configureCustomSlotConfigFromShelleyGenesis = (
-  genesis: ShelleyGenesisSlotConfig,
-  snapshot: Pick<
-    SubmitSlotSnapshot,
-    "currentSlot" | "observedAtMs" | "slotLengthMs"
-  >,
-): CustomSlotConfig => {
-  const next = customSlotConfigFromShelleyGenesis(genesis, snapshot);
-  const current = SLOT_CONFIG_NETWORK.Custom;
-  if (!isDefaultCustomSlotConfig(current)) {
-    const currentIsValid =
-      Number.isFinite(current.zeroTime) &&
-      Number.isSafeInteger(current.zeroSlot) &&
-      current.zeroSlot >= 0 &&
-      Number.isFinite(current.slotLength) &&
-      Number.isInteger(current.slotLength) &&
-      current.slotLength > 0;
-    const equivalent =
-      currentIsValid &&
-      current.slotLength === next.slotLength &&
-      customSlotConfigOrigin(current) === customSlotConfigOrigin(next);
-    if (!equivalent) {
-      throw new Error(
-        "Refusing to replace a conflicting preinitialized Lucid Custom slot mapping",
-      );
-    }
-    return current;
-  }
-  SLOT_CONFIG_NETWORK.Custom = next;
-  return next;
-};
-
-/**
  * Converts a slot to unix time using the active Lucid network configuration.
  *
- * Custom/emulator networks derive the mapping from the provider's current
- * `time` and `slot` snapshot instead of Cardano's static network tables.
+ * Custom networks receive their authoritative mapping when each Lucid client
+ * is constructed, avoiding process-global slot configuration.
  */
 export const slotToUnixTimeForLucid = (
   lucid: LucidEvolution,
   slot: number,
 ): number | undefined => {
-  const network = lucid.config().network;
-  if (network === "Custom") {
-    const configuredUnixTime = slotToUnixTimeFromConfiguredCustomMapping(slot);
-    if (configuredUnixTime !== undefined) {
-      return configuredUnixTime;
-    }
-    const provider = lucid.config().provider as {
-      time?: number;
-      slot?: number;
-    };
-    if (
-      typeof provider.time === "number" &&
-      typeof provider.slot === "number"
-    ) {
-      const unixTime =
-        provider.time + (slot - provider.slot) * SUBMIT_SLOT_LENGTH_MS;
-      return Number.isSafeInteger(unixTime) ? unixTime : undefined;
-    }
+  try {
+    const unixTime = lucid.slotToUnixTime(slot);
+    return Number.isSafeInteger(unixTime) ? unixTime : undefined;
+  } catch {
     return undefined;
   }
-  return slotToUnixTime(network as Exclude<Network, "Custom">, slot);
 };
 
 /**

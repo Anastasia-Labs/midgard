@@ -6,7 +6,6 @@ import {
   type LucidEvolution,
   toUnit,
   type UTxO,
-  validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
@@ -17,12 +16,10 @@ import {
   buildReferenceScriptSweepPlan,
   buildReferenceScriptWalletStatus,
   nodeRuntimeReferenceScriptTargets,
-  plainAdaOnlyUtxosFromKupoMatches,
   REFERENCE_SCRIPT_COMMAND_NAMES,
   REFERENCE_SCRIPT_CONFIRMATION_TIMEOUT_MS,
   REFERENCE_SCRIPT_SWEEP_DEFAULT_TOKEN_OUTPUT_LOVELACE,
   referenceScriptTargetsByCommand,
-  referenceScriptUtxosFromKupoMatches,
   referenceScriptWalletStatusProgram,
   resolveSpendableWalletUtxos,
   verifyNodeRuntimeReferenceScriptsProgram,
@@ -439,249 +436,47 @@ describe("reference-script deployment planner", () => {
     expect(REFERENCE_SCRIPT_CONFIRMATION_TIMEOUT_MS).toBeGreaterThan(90_000);
   });
 
-  it("parses only plain ADA UTxOs from raw Kupo address matches", () => {
-    const parsed = plainAdaOnlyUtxosFromKupoMatches(
-      [
-        {
-          transaction_id: txHashFixture("60"),
-          output_index: 0,
-          address: REFERENCE_SCRIPT_ADDRESS,
-          value: { coins: "12000000", assets: {} },
-          datum_hash: null,
-          datum_type: null,
-          script_hash: null,
-        },
-        {
-          transaction_id: txHashFixture("61"),
-          output_index: 1,
-          address: REFERENCE_SCRIPT_ADDRESS,
-          value: { coins: "4000000", assets: {} },
-          datum_hash: null,
-          datum_type: null,
-          script_hash: "ab".repeat(28),
-        },
-        {
-          transaction_id: txHashFixture("62"),
-          output_index: 2,
-          address: REFERENCE_SCRIPT_ADDRESS,
-          value: { coins: "5000000", assets: { [`${"a".repeat(56)}01`]: "1" } },
-          datum_hash: null,
-          datum_type: null,
-          script_hash: null,
-        },
-        {
-          transaction_id: txHashFixture("63"),
-          output_index: 3,
-          address: REFERENCE_SCRIPT_ADDRESS,
-          value: { coins: "6000000", assets: {} },
-          datum_hash: "cd".repeat(32),
-          datum_type: "hash",
-          script_hash: null,
-        },
-      ],
-      REFERENCE_SCRIPT_ADDRESS,
-    );
-
-    expect(parsed).toEqual([
-      {
-        txHash: txHashFixture("60"),
-        outputIndex: 0,
-        address: REFERENCE_SCRIPT_ADDRESS,
-        assets: { lovelace: 12_000_000n },
-      },
-    ]);
-  });
-
-  it("rejects Kupo matches from an unexpected address", () => {
-    expect(() =>
-      plainAdaOnlyUtxosFromKupoMatches(
-        [
-          {
-            transaction_id: txHashFixture("64"),
-            output_index: 0,
-            address: "addr_test1unexpected",
-            value: { coins: "12000000", assets: {} },
-            datum_hash: null,
-            datum_type: null,
-            script_hash: null,
-          },
-        ],
-        REFERENCE_SCRIPT_ADDRESS,
-      ),
-    ).toThrow("Kupo match address mismatch");
-  });
-
-  it("resolves targeted reference scripts from raw Kupo matches by role token and script hash", async () => {
-    const contracts = await Effect.runPromise(
-      Effect.gen(function* () {
-        return yield* AlwaysSucceedsContract;
-      }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
-    );
-    const targets = nodeRuntimeReferenceScriptTargets(contracts);
-    const target = targets[0]!;
-    const authPolicy = contracts.referenceScriptAuth;
-    const roleUnit = `${authPolicy.policyId}.${referenceScriptAuthTokenName(
-      target.name,
-    )}`;
-    const matches = [
-      {
-        transaction_id: txHashFixture("65"),
-        output_index: 0,
-        address: REFERENCE_SCRIPT_ADDRESS,
-        value: { coins: "4000000", assets: { [roleUnit]: "1" } },
-        datum_hash: null,
-        datum_type: null,
-        script_hash: validatorToScriptHash(target.script),
-      },
-      {
-        transaction_id: txHashFixture("66"),
-        output_index: 1,
-        address: REFERENCE_SCRIPT_ADDRESS,
-        value: { coins: "4000000", assets: { [roleUnit]: "1" } },
-        datum_hash: null,
-        datum_type: null,
-        script_hash: "ff".repeat(28),
-      },
+  it("builds wallet status from Lucid's provider-neutral hydrated UTxOs", async () => {
+    const utxos = [
+      mkUtxo({ txHash: "73", assets: { lovelace: 9_000_000n } }),
+      mkUtxo({
+        txHash: "74",
+        outputIndex: 1,
+        assets: { lovelace: 4_000_000n, [`${"e".repeat(56)}04`]: 1n },
+        scriptRef: true,
+      }),
+      mkUtxo({
+        txHash: "75",
+        outputIndex: 2,
+        assets: { lovelace: 5_000_000n },
+        datumHash: "ab".repeat(32),
+      }),
     ];
+    const utxosAt = vi.fn(async () => utxos);
+    const lucid = { utxosAt } as unknown as LucidEvolution;
 
-    const resolved = referenceScriptUtxosFromKupoMatches(
-      matches,
-      REFERENCE_SCRIPT_ADDRESS,
-      [target],
-      authPolicy,
+    const status = await Effect.runPromise(
+      referenceScriptWalletStatusProgram(lucid, REFERENCE_SCRIPT_ADDRESS),
     );
 
-    expect(resolved).toHaveLength(1);
-    expect(resolved[0]).toMatchObject({
-      txHash: txHashFixture("65"),
-      outputIndex: 0,
-      address: REFERENCE_SCRIPT_ADDRESS,
-      assets: {
-        lovelace: 4_000_000n,
-        [`${authPolicy.policyId}${referenceScriptAuthTokenName(target.name)}`]:
-          1n,
-      },
-      scriptRef: target.script,
+    expect(status.total).toMatchObject({
+      utxoCount: 3,
+      lovelace: 18_000_000n,
     });
-  });
-
-  it("resolves Kupo asset quantities for reference scripts", async () => {
-    const contracts = await Effect.runPromise(
-      Effect.gen(function* () {
-        return yield* AlwaysSucceedsContract;
-      }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
-    );
-    const targets = nodeRuntimeReferenceScriptTargets(contracts);
-    const target = targets[0]!;
-    const authPolicy = contracts.referenceScriptAuth;
-    const roleUnit = `${authPolicy.policyId}.${referenceScriptAuthTokenName(
-      target.name,
-    )}`;
-    const matches = [
-      {
-        transaction_id: txHashFixture("67"),
-        output_index: 0,
-        address: REFERENCE_SCRIPT_ADDRESS,
-        value: { coins: "4000000", assets: { [roleUnit]: "1" } },
-        datum_hash: null,
-        datum_type: null,
-        script_hash: validatorToScriptHash(target.script),
-      },
-    ];
-
-    const resolved = referenceScriptUtxosFromKupoMatches(
-      matches,
-      REFERENCE_SCRIPT_ADDRESS,
-      [target],
-      authPolicy,
-    );
-
-    expect(resolved).toHaveLength(1);
-    expect(resolved[0]?.assets).toMatchObject({
+    expect(status.plainAdaOnly).toMatchObject({
+      utxoCount: 1,
+      lovelace: 9_000_000n,
+    });
+    expect(status.scriptRefOrTokenBearing).toMatchObject({
+      utxoCount: 1,
       lovelace: 4_000_000n,
-      [`${authPolicy.policyId}${referenceScriptAuthTokenName(target.name)}`]:
-        1n,
+      nonLovelaceAssetUnitCount: 1,
     });
-  });
-
-  it("builds wallet status from raw Kupo matches without hydrating script bodies", async () => {
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify([
-          {
-            transaction_id: txHashFixture("73"),
-            output_index: 0,
-            address: REFERENCE_SCRIPT_ADDRESS,
-            value: { coins: "9000000", assets: {} },
-            datum_hash: null,
-            datum_type: null,
-            script_hash: null,
-          },
-          {
-            transaction_id: txHashFixture("74"),
-            output_index: 1,
-            address: REFERENCE_SCRIPT_ADDRESS,
-            value: {
-              coins: "4000000",
-              assets: { [`${"e".repeat(56)}.04`]: "1" },
-            },
-            datum_hash: null,
-            datum_type: null,
-            script_hash: "cd".repeat(28),
-          },
-          {
-            transaction_id: txHashFixture("75"),
-            output_index: 2,
-            address: REFERENCE_SCRIPT_ADDRESS,
-            value: { coins: "5000000", assets: {} },
-            datum_hash: "ab".repeat(32),
-            datum_type: "hash",
-            script_hash: null,
-          },
-        ]),
-        { status: 200, headers: { "content-type": "application/json" } },
-      ),
-    );
-    const utxosAt = vi.fn(() =>
-      Promise.reject(new Error("Lucid hydration must not run")),
-    );
-    const lucid = {
-      config: () => ({ provider: { kupoUrl: "http://kupo.test" } }),
-      utxosAt,
-    } as unknown as LucidEvolution;
-
-    try {
-      const status = await Effect.runPromise(
-        referenceScriptWalletStatusProgram(lucid, REFERENCE_SCRIPT_ADDRESS),
-      );
-
-      expect(status.total).toMatchObject({
-        utxoCount: 3,
-        lovelace: 18_000_000n,
-      });
-      expect(status.plainAdaOnly).toMatchObject({
-        utxoCount: 1,
-        lovelace: 9_000_000n,
-      });
-      expect(status.scriptRefOrTokenBearing).toMatchObject({
-        utxoCount: 1,
-        lovelace: 4_000_000n,
-        nonLovelaceAssetUnitCount: 1,
-      });
-      expect(status.otherIgnored).toMatchObject({
-        utxoCount: 1,
-        lovelace: 5_000_000n,
-      });
-      expect(utxosAt).not.toHaveBeenCalled();
-      expect(fetchSpy).toHaveBeenCalledTimes(1);
-      const requestedUrl = String(fetchSpy.mock.calls[0]?.[0]);
-      expect(requestedUrl).toEqual(
-        `http://kupo.test/matches/${encodeURIComponent(REFERENCE_SCRIPT_ADDRESS)}?unspent`,
-      );
-      expect(requestedUrl).not.toContain("/scripts/");
-    } finally {
-      fetchSpy.mockRestore();
-    }
+    expect(status.otherIgnored).toMatchObject({
+      utxoCount: 1,
+      lovelace: 5_000_000n,
+    });
+    expect(utxosAt).toHaveBeenCalledWith(REFERENCE_SCRIPT_ADDRESS);
   });
 
   it("excludes reserved outrefs from spendable funding UTxOs", async () => {

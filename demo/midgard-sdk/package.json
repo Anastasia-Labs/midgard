@@ -28,7 +28,7 @@
     "@aiken-lang/merkle-patricia-forestry": "github:Anastasia-Labs/merkle-patricia-forestry#b139785f7c118854f9824c26cc443e2df95cb50e&path:/off-chain",
     "@al-ft/midgard-core": "workspace:*",
     "@effect/vitest": "^0.17.8",
-    "@lucid-evolution/lucid": "0.5.5",
+    "@lucid-evolution/lucid": "0.6.0",
     "@sinclair/typebox": "^0.34.28",
     "@types/node": "^22.13.5",
     "@typescript-eslint/eslint-plugin": "^8.25.0",
@@ -52,7 +52,7 @@
     "@noble/hashes": "^2.0.1"
   },
   "peerDependencies": {
-    "@lucid-evolution/lucid": "0.5.5",
+    "@lucid-evolution/lucid": "0.6.0",
     "effect": "^3.14.22"
   }
 }

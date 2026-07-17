@@ -9,6 +9,8 @@ import {
 } from "@lucid-evolution/lucid";
 import { Data as EffectData, Effect } from "effect";
 
+import { awaitExactTransactionConfirmation } from "@/transactions/utils.js";
+
 export type SubmitWithdrawalReferenceScripts =
   SDK.SubmitWithdrawalReferenceScripts;
 export type SubmitWithdrawalConfig = SDK.SubmitWithdrawalConfig;
@@ -90,7 +92,7 @@ export const submitWithdrawalProgram = (
         }),
     });
     yield* Effect.tryPromise({
-      try: () => lucid.awaitTx(txHash),
+      try: () => awaitExactTransactionConfirmation(lucid, txHash),
       catch: (cause) =>
         new SubmitWithdrawalError({
           message: "Failed to confirm withdrawal transaction",

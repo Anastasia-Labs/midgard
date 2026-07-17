@@ -1,9 +1,4 @@
-import {
-  Emulator,
-  Kupmios,
-  type LucidEvolution,
-  type UTxO,
-} from "@lucid-evolution/lucid";
+import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
@@ -29,99 +24,39 @@ const utxo = (
   },
 });
 
-const lucidFixture = ({
-  provider,
-  addressResult,
-  policyResult,
-}: {
-  readonly provider: unknown;
-  readonly addressResult: unknown;
-  readonly policyResult: unknown;
-}) => {
-  const utxosAt = vi.fn(async () => addressResult);
-  const utxosAtWithUnit = vi.fn(async () => policyResult);
+const lucidFixture = (policyResult: unknown) => {
+  const utxosAtWithPolicy = vi.fn(async () => policyResult);
   return {
-    lucid: {
-      config: () => ({ provider }),
-      utxosAt,
-      utxosAtWithUnit,
-    } as unknown as LucidEvolution,
-    utxosAt,
-    utxosAtWithUnit,
+    lucid: { utxosAtWithPolicy } as unknown as LucidEvolution,
+    utxosAtWithPolicy,
   };
 };
 
 describe("utxosAtByNFTPolicyId", () => {
-  it("uses address-wide filtering for Emulator providers", async () => {
+  it("uses Lucid's provider-neutral policy query and reauthenticates results", async () => {
     const matching = utxo("11", policyId, "01");
     const foreign = utxo("22", foreignPolicyId, "02", 1);
-    const fixture = lucidFixture({
-      provider: new Emulator([]),
-      addressResult: [foreign, matching],
-      policyResult: [],
-    });
+    const fixture = lucidFixture([foreign, matching]);
 
     const result = await Effect.runPromise(
       utxosAtByNFTPolicyId(fixture.lucid, address, policyId),
     );
 
-    expect(fixture.utxosAt).toHaveBeenCalledWith(address);
-    expect(fixture.utxosAtWithUnit).not.toHaveBeenCalled();
+    expect(fixture.utxosAtWithPolicy).toHaveBeenCalledWith(address, policyId);
     expect(result).toEqual([{ utxo: matching, policyId, assetName: "01" }]);
   });
 
-  it("retains the Kupmios policy-scoped fast path", async () => {
-    const matching = utxo("33", policyId, "03");
-    const fixture = lucidFixture({
-      provider: new Kupmios("http://kupo.test", "ws://ogmios.test"),
-      addressResult: new Error("address-wide query must not run"),
-      policyResult: [matching],
+  it("wraps provider failures as LucidError", async () => {
+    const utxosAtWithPolicy = vi.fn(() =>
+      Promise.reject(new Error("provider unavailable")),
+    );
+    const lucid = { utxosAtWithPolicy } as unknown as LucidEvolution;
+
+    await expect(
+      Effect.runPromise(utxosAtByNFTPolicyId(lucid, address, policyId)),
+    ).rejects.toMatchObject({
+      message: `Failed to fetch UTxOs at: ${address}`,
     });
-
-    const result = await Effect.runPromise(
-      utxosAtByNFTPolicyId(fixture.lucid, address, policyId),
-    );
-
-    expect(fixture.utxosAtWithUnit).toHaveBeenCalledWith(address, policyId);
-    expect(fixture.utxosAt).not.toHaveBeenCalled();
-    expect(result).toEqual([{ utxo: matching, policyId, assetName: "03" }]);
-  });
-
-  it("does not infer policy-query support from exact-unit method presence", async () => {
-    const matching = utxo("44", policyId, "04");
-    const fixture = lucidFixture({
-      provider: { kind: "non-kupmios-exact-unit-provider" },
-      addressResult: [matching],
-      // An exact-unit provider interprets the policy id as a complete unit and
-      // would return a false empty result if this method were selected.
-      policyResult: [],
-    });
-
-    const result = await Effect.runPromise(
-      utxosAtByNFTPolicyId(fixture.lucid, address, policyId),
-    );
-
-    expect(fixture.utxosAt).toHaveBeenCalledWith(address);
-    expect(fixture.utxosAtWithUnit).not.toHaveBeenCalled();
-    expect(result).toEqual([{ utxo: matching, policyId, assetName: "04" }]);
-  });
-
-  it("falls back when Kupmios is configured without the Lucid policy-query method", async () => {
-    const matching = utxo("66", policyId, "06");
-    const utxosAt = vi.fn(async () => [matching]);
-    const lucid = {
-      config: () => ({
-        provider: new Kupmios("http://kupo.test", "ws://ogmios.test"),
-      }),
-      utxosAt,
-    } as unknown as LucidEvolution;
-
-    const result = await Effect.runPromise(
-      utxosAtByNFTPolicyId(lucid, address, policyId),
-    );
-
-    expect(utxosAt).toHaveBeenCalledWith(address);
-    expect(result).toEqual([{ utxo: matching, policyId, assetName: "06" }]);
   });
 
   it("fails with LucidError when a provider returns malformed UTxOs", async () => {
@@ -129,11 +64,7 @@ describe("utxosAtByNFTPolicyId", () => {
       ...utxo("55", policyId, "05"),
       assets: { [`${policyId}05`]: "1" },
     };
-    const fixture = lucidFixture({
-      provider: new Emulator([]),
-      addressResult: [malformed],
-      policyResult: [],
-    });
+    const fixture = lucidFixture([malformed]);
 
     const result = await Effect.runPromise(
       Effect.either(utxosAtByNFTPolicyId(fixture.lucid, address, policyId)),

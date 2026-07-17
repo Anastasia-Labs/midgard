@@ -1,9 +1,10 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import { Data } from "@lucid-evolution/lucid";
-import { describe, expect, it } from "vitest";
+import { Data, type LucidEvolution } from "@lucid-evolution/lucid";
+import { describe, expect, it, vi } from "vitest";
 
 import {
-  kupoChainPointResolver,
+  kupmiosChainPointResolver,
+  lucidChainPointResolver,
   MultiStateQueueProvider,
   providerFromUrl,
   stateQueueUtxosToObservedNodes,
@@ -108,86 +109,104 @@ describe("L1 provider adapters", () => {
     ]);
   });
 
-  it("resolves Kupmios chain depth from Kupo created_at metadata", async () => {
-    const calls: string[] = [];
-    const fetchFn = async (url: string | URL | Request) => {
-      const href = String(url);
-      calls.push(href);
-      if (href.endsWith("/health")) {
-        return new Response("kupo_most_recent_node_tip  126197688\n");
-      }
-      return Response.json([
-        {
-          transaction_id: "aa".repeat(32),
-          output_index: 1,
-          created_at: {
-            slot_no: 126197476,
-            header_hash: "bb".repeat(32),
-          },
-        },
-      ]);
-    };
-    const resolve = kupoChainPointResolver(
-      "http://127.0.0.1:1442/",
-      "addr_test1statequeue",
-      fetchFn as typeof fetch,
-    );
+  it("resolves chain points from provider-neutral transaction status", async () => {
+    const txHash = "aa".repeat(32);
+    const statusQuery = vi.fn(async () => ({
+      status: "confirmed" as const,
+      txHash,
+      confirmation: {
+        txHash,
+        slot: 126197476,
+        blockHash: "bb".repeat(32),
+        blockHeight: 3_000_000,
+        confirmations: 7,
+      },
+    }));
+    const resolve = lucidChainPointResolver({
+      transactionStatus: statusQuery,
+    } as unknown as LucidEvolution);
 
     await expect(
       resolve({
-        txHash: "aa".repeat(32),
+        txHash,
         outputIndex: 1,
       } as never),
     ).resolves.toMatchObject({
       slot: 126197476,
       blockHash: "bb".repeat(32),
-      depth: 212,
+      blockHeight: 3_000_000,
+      depth: 6,
     });
-    expect(calls).toEqual([
-      "http://127.0.0.1:1442/matches/addr_test1statequeue?unspent",
-      "http://127.0.0.1:1442/health",
-    ]);
+    expect(statusQuery).toHaveBeenCalledWith(txHash);
   });
 
-  it("refreshes Kupmios chain depth across scans", async () => {
-    let tip = 126197476;
-    const fetchFn = async (url: string | URL | Request) => {
-      const href = String(url);
-      if (href.endsWith("/health")) {
-        return new Response(`kupo_most_recent_node_tip  ${tip}\n`);
-      }
-      return Response.json([
-        {
-          transaction_id: "aa".repeat(32),
-          output_index: 1,
-          created_at: {
-            slot_no: 126197476,
-            header_hash: "bb".repeat(32),
-          },
+  it("does not fabricate block depth when the provider omits confirmations", async () => {
+    const txHash = "aa".repeat(32);
+    const resolve = lucidChainPointResolver({
+      transactionStatus: async () => ({
+        status: "confirmed",
+        txHash,
+        confirmation: {
+          txHash,
+          slot: 126197476,
+          blockHash: "bb".repeat(32),
         },
-      ]);
-    };
-    const resolve = kupoChainPointResolver(
+      }),
+    } as unknown as LucidEvolution);
+
+    const point = await resolve({
+      txHash,
+      outputIndex: 1,
+    } as never);
+    expect(point).toMatchObject({
+      slot: 126197476,
+      blockHash: "bb".repeat(32),
+    });
+    expect(point).not.toHaveProperty("depth");
+  });
+
+  it("retains Kupo tip depth when Kupmios omits confirmations", async () => {
+    const txHash = "aa".repeat(32);
+    const statusQuery = vi.fn(async () => ({
+      status: "confirmed" as const,
+      txHash,
+      confirmation: {
+        txHash,
+        slot: 126197476,
+        blockHash: "bb".repeat(32),
+      },
+    }));
+    const fetchFn = vi.fn(
+      async () => new Response("kupo_most_recent_node_tip  126197688\n"),
+    );
+    const resolve = kupmiosChainPointResolver(
+      { transactionStatus: statusQuery } as unknown as LucidEvolution,
       "http://127.0.0.1:1442/",
-      "addr_test1statequeue",
       fetchFn as typeof fetch,
     );
 
     await expect(
-      resolve({
-        txHash: "aa".repeat(32),
-        outputIndex: 1,
-      } as never),
-    ).resolves.toMatchObject({ depth: 0 });
+      resolve({ txHash, outputIndex: 1 } as never),
+    ).resolves.toMatchObject({
+      slot: 126197476,
+      blockHash: "bb".repeat(32),
+      depth: 212,
+    });
+    expect(fetchFn).toHaveBeenCalledWith("http://127.0.0.1:1442/health");
+  });
 
-    tip = 126197479;
+  it("fails closed when transaction status is not confirmed", async () => {
+    const txHash = "aa".repeat(32);
+    const resolve = lucidChainPointResolver({
+      transactionStatus: async () => ({ status: "not_found", txHash }),
+    } as unknown as LucidEvolution);
 
     await expect(
       resolve({
-        txHash: "aa".repeat(32),
+        txHash,
         outputIndex: 1,
       } as never),
-    ).resolves.toMatchObject({ depth: 3 });
+    ).rejects.toThrow(/is not confirmed: not_found/);
   });
 
   it("fails closed on L1 provider state-queue disagreement", async () => {

@@ -68,10 +68,7 @@ const baseProtocolParameters = {
 } as const;
 
 const responseWith = (
-  referenceScriptSize:
-    | { readonly maxReferenceScriptsSizePerTransaction: unknown }
-    | { readonly maxReferenceScriptsSize: unknown }
-    | Record<string, never>,
+  referenceScriptSize: Readonly<Record<string, unknown>>,
 ) => ({
   jsonrpc: "2.0",
   method: "queryLedgerState/protocolParameters",
@@ -115,17 +112,33 @@ describe("Kupmios canonical Ogmios v7 protocol parameters", () => {
     });
   });
 
-  it("rejects the obsolete Ogmios v6 field instead of aliasing it", async () => {
+  it("normalizes the legacy Ogmios v6 field", async () => {
     await expect(
       protocolParametersFrom(
         responseWith({ maxReferenceScriptsSize: { bytes: 204_800 } }),
       ),
-    ).rejects.toThrow(/maxReferenceScriptsSizePerTransaction/);
+    ).resolves.toMatchObject({
+      minFeeA: 44,
+      minFeeB: 155_381,
+      maxTxSize: 16_384,
+      minFeeRefScriptCostPerByte: 15,
+    });
+  });
+
+  it("fails closed when legacy and canonical fields conflict", async () => {
+    await expect(
+      protocolParametersFrom(
+        responseWith({
+          maxReferenceScriptsSize: { bytes: 102_400 },
+          maxReferenceScriptsSizePerTransaction: { bytes: 204_800 },
+        }),
+      ),
+    ).rejects.toThrow(/Conflicting Ogmios protocol parameters/);
   });
 
   it("fails closed when the canonical field is missing", async () => {
     await expect(protocolParametersFrom(responseWith({}))).rejects.toThrow(
-      /maxReferenceScriptsSizePerTransaction/,
+      /maxReferenceScriptsSize/,
     );
   });
 
@@ -136,6 +149,6 @@ describe("Kupmios canonical Ogmios v7 protocol parameters", () => {
           maxReferenceScriptsSizePerTransaction: { bytes: "204800" },
         }),
       ),
-    ).rejects.toThrow(/maxReferenceScriptsSizePerTransaction/);
+    ).rejects.toThrow(/Expected number/);
   });
 });

@@ -1,24 +1,16 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import {
+  Blockfrost,
   Data,
+  Kupmios,
   Lucid,
   type LucidEvolution,
   toUnit,
   type UTxO,
 } from "@lucid-evolution/lucid";
-import * as LucidRuntime from "@lucid-evolution/lucid";
 
 import type { WatcherConfig } from "../config.js";
 import type { DaAttestationCandidateRecord } from "../domain.js";
-
-type LucidProviderRuntime = {
-  readonly Blockfrost: new (url: string, projectId?: string) => unknown;
-  readonly Kupmios: new (
-    kupoUrl: string,
-    ogmiosUrl: string,
-    headers?: Record<string, string>,
-  ) => unknown;
-};
 
 export type OnChainDaParams = {
   readonly outRef: string;
@@ -232,13 +224,12 @@ const lucidFromProviderUrl = async (
   readonly lucid: LucidEvolution;
   readonly providerSource: string;
 }> => {
-  const runtime = LucidRuntime as unknown as LucidProviderRuntime;
   if (url.startsWith("blockfrost:")) {
     const { apiUrl, projectId } = parseBlockfrostUrl(url);
     return {
       lucid: await Lucid(
-        new runtime.Blockfrost(apiUrl, projectId) as never,
-        normalizeNetwork(network) as never,
+        new Blockfrost(apiUrl, projectId),
+        normalizeNetwork(network),
       ),
       providerSource: `blockfrost:${apiUrl}`,
     };
@@ -247,8 +238,8 @@ const lucidFromProviderUrl = async (
     const { kupoUrl, ogmiosUrl } = parseKupmiosUrl(url);
     return {
       lucid: await Lucid(
-        new runtime.Kupmios(kupoUrl, ogmiosUrl) as never,
-        normalizeNetwork(network) as never,
+        new Kupmios(kupoUrl, ogmiosUrl),
+        normalizeNetwork(network),
       ),
       providerSource: `kupmios:${kupoUrl}|${ogmiosUrl}`,
     };

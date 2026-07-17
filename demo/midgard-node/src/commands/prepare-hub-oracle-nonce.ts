@@ -7,6 +7,7 @@ import { Effect } from "effect";
 
 import { Lucid } from "@/services/lucid.js";
 import {
+  awaitExactTransactionConfirmation,
   awaitSubmittedTransactionConfirmation,
   signSubmitTransaction,
   TxConfirmError,
@@ -95,8 +96,8 @@ const boundedMs = (value: number | undefined, fallback: number): number =>
     : Math.trunc(value);
 
 const isConfirmationTimeout = (error: TxConfirmError): boolean =>
-  formatUnknownError(error.cause, { includeCause: true }).includes(
-    "timed out waiting for tx confirmation",
+  /timed out waiting for (?:(?:nonce )?tx confirmation|transaction)/i.test(
+    formatUnknownError(error.cause, { includeCause: true }),
   );
 
 const awaitTxHashConfirmation = ({
@@ -112,25 +113,10 @@ const awaitTxHashConfirmation = ({
 }): Effect.Effect<void, TxConfirmError> =>
   Effect.tryPromise({
     try: () =>
-      new Promise<void>((resolve, reject) => {
-        const timeoutId = setTimeout(() => {
-          reject(
-            new Error(
-              `timed out waiting for nonce tx confirmation after ${timeoutMs.toString()}ms`,
-            ),
-          );
-        }, timeoutMs);
-        lucid
-          .awaitTx(txHash, pollIntervalMs)
-          .then(() => {
-            clearTimeout(timeoutId);
-            resolve();
-          })
-          .catch((error) => {
-            clearTimeout(timeoutId);
-            reject(error);
-          });
-      }),
+      awaitExactTransactionConfirmation(lucid, txHash, {
+        timeout: timeoutMs,
+        checkInterval: pollIntervalMs,
+      }).then(() => undefined),
     catch: (cause) =>
       new TxConfirmError({
         message:

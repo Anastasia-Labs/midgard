@@ -39,7 +39,6 @@ import { formatLayout } from "@/reserve-payout/diagnostics.js";
 import { fail, ReservePayoutTxError } from "@/reserve-payout/errors.js";
 import {
   disposableFeeInputCandidates,
-  isProviderSpendableUtxo,
   selectFeeInputProgram,
 } from "@/reserve-payout/inputs.js";
 import {
@@ -282,17 +281,14 @@ const fetchHubOracleReferenceProgram = (
           cause,
         }),
     });
-    const spendableHubOracleUtxos = hubOracleUtxos.filter((utxo) =>
-      isProviderSpendableUtxo(lucid, utxo),
-    );
-    if (spendableHubOracleUtxos.length !== 1) {
+    if (hubOracleUtxos.length !== 1) {
       return yield* fail("Failed to fetch the hub oracle reference UTxO", {
         address: hubOracleAddress,
         unit: hubOracleUnit,
-        found: spendableHubOracleUtxos.map(outRefLabel),
+        found: hubOracleUtxos.map(outRefLabel),
       });
     }
-    const actual = spendableHubOracleUtxos[0]!;
+    const actual = hubOracleUtxos[0]!;
     return yield* validateHubOracleReferenceProgram(contracts, actual);
   });
 

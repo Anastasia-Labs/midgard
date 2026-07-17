@@ -29,6 +29,9 @@ const makeLucid = async () => {
   return lucid;
 };
 
+const currentSlotStartMs = (lucid: Awaited<ReturnType<typeof makeLucid>>) =>
+  lucid.slotToUnixTime(lucid.currentSlot());
+
 describe("commit end-time resolver", () => {
   it("keeps submit-slot time monotonic across wall-clock jumps", () => {
     let monotonicNow = 10_000;
@@ -54,30 +57,27 @@ describe("commit end-time resolver", () => {
 
   it("advances refreshed commit windows from the slot-backed clock", async () => {
     const lucid = await makeLucid();
-    const provider = lucid.config().provider as unknown as {
-      time: number;
-      slot: number;
-    };
+    const slotStartMs = currentSlotStartMs(lucid);
     let monotonicNow = 5_000;
     const anchoredNow = makeSubmitSlotAnchoredClock(
-      provider.time,
+      slotStartMs,
       () => monotonicNow,
     );
     const first = resolveAlignedCommitEndTime({
       lucid,
-      latestEndTime: provider.time,
-      candidateEndTime: provider.time,
+      latestEndTime: slotStartMs,
+      candidateEndTime: slotStartMs,
       nowMs: anchoredNow(),
       minimumFutureBufferMs: COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
     });
 
-    vi.spyOn(Date, "now").mockReturnValue(provider.time + 86_400_000);
+    vi.spyOn(Date, "now").mockReturnValue(slotStartMs + 86_400_000);
     try {
       monotonicNow += 45_000;
       const refreshed = resolveAlignedCommitEndTime({
         lucid,
-        latestEndTime: provider.time,
-        candidateEndTime: provider.time,
+        latestEndTime: slotStartMs,
+        candidateEndTime: slotStartMs,
         nowMs: anchoredNow(),
         minimumFutureBufferMs: COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
       });
@@ -179,12 +179,7 @@ describe("commit end-time resolver", () => {
 
   it("forces end-time to advance when candidate is stale", async () => {
     const lucid = await makeLucid();
-    const provider = lucid.config().provider as unknown as {
-      time: number;
-      slot: number;
-    };
-    const zeroTime = provider.time - provider.slot * 1000;
-    const latestEndTime = zeroTime + provider.slot * 1000;
+    const latestEndTime = currentSlotStartMs(lucid);
 
     const {
       alignedCandidateEndTime,
@@ -204,12 +199,7 @@ describe("commit end-time resolver", () => {
 
   it("can raise stale candidates to the production live-chain safety floor", async () => {
     const lucid = await makeLucid();
-    const provider = lucid.config().provider as unknown as {
-      time: number;
-      slot: number;
-    };
-    const zeroTime = provider.time - provider.slot * 1000;
-    const latestEndTime = zeroTime + provider.slot * 1000;
+    const latestEndTime = currentSlotStartMs(lucid);
     const nowMs = latestEndTime + 10_000;
 
     const { resolvedEndTime } = resolveAlignedCommitEndTime({
@@ -227,12 +217,7 @@ describe("commit end-time resolver", () => {
 
   it("reports a cap-aware fit when the production resolved end-time stays inside the scheduler window", async () => {
     const lucid = await makeLucid();
-    const provider = lucid.config().provider as unknown as {
-      time: number;
-      slot: number;
-    };
-    const zeroTime = provider.time - provider.slot * 1000;
-    const latestEndTime = zeroTime + provider.slot * 1000;
+    const latestEndTime = currentSlotStartMs(lucid);
     const nowMs = latestEndTime + 10_000;
     const maximumEndTimeMs =
       nowMs + COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS + 5_000;
@@ -256,12 +241,7 @@ describe("commit end-time resolver", () => {
 
   it("reports cap overflow when the production current-time floor crosses the scheduler window", async () => {
     const lucid = await makeLucid();
-    const provider = lucid.config().provider as unknown as {
-      time: number;
-      slot: number;
-    };
-    const zeroTime = provider.time - provider.slot * 1000;
-    const latestEndTime = zeroTime + provider.slot * 1000;
+    const latestEndTime = currentSlotStartMs(lucid);
     const nowMs = latestEndTime + 10_000;
     const maximumEndTimeMs =
       nowMs + COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS - 60_000;
@@ -285,12 +265,7 @@ describe("commit end-time resolver", () => {
 
   it("keeps the monotonic latest-block lower bound when it is later than the production current-time floor", async () => {
     const lucid = await makeLucid();
-    const provider = lucid.config().provider as unknown as {
-      time: number;
-      slot: number;
-    };
-    const zeroTime = provider.time - provider.slot * 1000;
-    const nowMs = zeroTime + provider.slot * 1000;
+    const nowMs = currentSlotStartMs(lucid);
     const latestEndTime =
       nowMs + COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS + 30_000;
 
@@ -312,12 +287,7 @@ describe("commit end-time resolver", () => {
 
   it("reports slot-aligned current-time floors that exceed a cap by one slot", async () => {
     const lucid = await makeLucid();
-    const provider = lucid.config().provider as unknown as {
-      time: number;
-      slot: number;
-    };
-    const zeroTime = provider.time - provider.slot * 1000;
-    const latestEndTime = zeroTime + provider.slot * 1000;
+    const latestEndTime = currentSlotStartMs(lucid);
     const nowMs = latestEndTime + 10_000;
     const maximumEndTimeMs = nowMs + COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS;
 
@@ -355,12 +325,7 @@ describe("commit end-time resolver", () => {
 
   it("keeps a forward candidate end-time when already monotonic", async () => {
     const lucid = await makeLucid();
-    const provider = lucid.config().provider as unknown as {
-      time: number;
-      slot: number;
-    };
-    const zeroTime = provider.time - provider.slot * 1000;
-    const latestEndTime = zeroTime + provider.slot * 1000;
+    const latestEndTime = currentSlotStartMs(lucid);
     const candidateEndTime = latestEndTime + 2_500;
 
     const {

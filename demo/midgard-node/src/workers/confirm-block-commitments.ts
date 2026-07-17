@@ -31,7 +31,7 @@ class TxConfirmAwaitError extends Data.TaggedError("TxConfirmAwaitError")<{
 const TARGETED_CONFIRMATION_PROBE_TIMEOUT_MS = 1_500;
 const TARGETED_CONFIRMATION_PROBE_POLL_MS = 250;
 export const probeSubmittedTx = (
-  lucid: Pick<LucidEvolution, "awaitTx">,
+  lucid: Pick<LucidEvolution, "awaitTxConfirmation">,
   txHash: string,
 ): Effect.Effect<boolean, never> =>
   Effect.promise(
@@ -42,10 +42,13 @@ export const probeSubmittedTx = (
           TARGETED_CONFIRMATION_PROBE_TIMEOUT_MS,
         );
         lucid
-          .awaitTx(txHash, TARGETED_CONFIRMATION_PROBE_POLL_MS)
-          .then((confirmed) => {
+          .awaitTxConfirmation(txHash, {
+            timeout: TARGETED_CONFIRMATION_PROBE_TIMEOUT_MS,
+            checkInterval: TARGETED_CONFIRMATION_PROBE_POLL_MS,
+          })
+          .then(() => {
             clearTimeout(timeout);
-            resolve(confirmed);
+            resolve(true);
           })
           .catch(() => {
             clearTimeout(timeout);

@@ -14,7 +14,6 @@ import {
   type Network,
   PolicyId,
   scriptHashToCredential,
-  slotToUnixTime,
   toUnit,
   type TxSignBuilder,
   UTxO,
@@ -238,26 +237,12 @@ export const slotToUnixTimeForLucid = (
   lucid: LucidEvolution,
   slot: number,
 ): number | undefined => {
-  const network = lucid.config().network;
-  if (network === undefined) {
+  try {
+    const unixTime = lucid.slotToUnixTime(slot);
+    return Number.isSafeInteger(unixTime) ? unixTime : undefined;
+  } catch {
     return undefined;
   }
-  if (network === "Custom") {
-    const provider = lucid.config().provider as {
-      time?: number;
-      slot?: number;
-    };
-    if (
-      typeof provider.time !== "number" ||
-      typeof provider.slot !== "number"
-    ) {
-      return undefined;
-    }
-    const slotLength = 1000;
-    const zeroTime = provider.time - provider.slot * slotLength;
-    return zeroTime + slot * slotLength;
-  }
-  return slotToUnixTime(network as Exclude<Network, "Custom">, slot);
 };
 
 export const slotToUnixTimeForLucidOrEmulatorFallback = (
