@@ -151,11 +151,7 @@ import {
   resolveCurrentOperatorSchedulerWindow,
 } from "@/workers/utils/scheduler-refresh.js";
 
-import {
-  captureCustomSlotConfigRestore,
-  deriveEmulatorSubmitSlotSnapshot,
-  setEmulatorCustomSlotConfig,
-} from "./helpers/emulator-submit-slot-snapshot.js";
+import { deriveEmulatorSubmitSlotSnapshot } from "./helpers/emulator-submit-slot-snapshot.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 import { collectSortedInputOutRefs } from "./helpers/tx-inspection.js";
 import { makeMidgardTxOutput } from "./midgard-output-helpers.js";
@@ -282,9 +278,6 @@ const publishDepositFlowReferenceScripts = async ({
 };
 
 const makeFixture = async (): Promise<EmulatorFixture> => {
-  if (restoreCustomSlotConfig === null) {
-    restoreCustomSlotConfig = captureCustomSlotConfigRestore();
-  }
   const operatorAccount = generateEmulatorAccount({
     lovelace: 60_000_000_000n,
   });
@@ -302,10 +295,6 @@ const makeFixture = async (): Promise<EmulatorFixture> => {
   const operatorLucid = await makeLucid(emulator, "Custom");
   const depositorLucid = await makeLucid(emulator, "Custom");
   const referenceScriptsLucid = await makeLucid(emulator, "Custom");
-  setEmulatorCustomSlotConfig({
-    zeroTimeMs: emulatorCreationTimeMs,
-    zeroSlot: 0,
-  });
   operatorLucid.selectWallet.fromSeed(operatorAccount.seedPhrase);
   depositorLucid.selectWallet.fromSeed(depositorAccount.seedPhrase);
   referenceScriptsLucid.selectWallet.fromSeed(
@@ -1028,7 +1017,6 @@ const submitWithdrawalWithDiagnostics = async (
 
 const makeLucidRuntimeService = async ({
   emulator,
-  emulatorCreationTimeMs,
   operatorLucid,
   referenceScriptsLucid,
   operatorAccount,
@@ -1036,16 +1024,11 @@ const makeLucidRuntimeService = async ({
 }: Pick<
   EmulatorFixture,
   | "emulator"
-  | "emulatorCreationTimeMs"
   | "operatorLucid"
   | "referenceScriptsLucid"
   | "operatorAccount"
   | "referenceScriptsAccount"
 >) => {
-  setEmulatorCustomSlotConfig({
-    zeroTimeMs: emulatorCreationTimeMs,
-    zeroSlot: 0,
-  });
   return {
     api: operatorLucid,
     referenceScriptsApi: referenceScriptsLucid,
@@ -2240,23 +2223,17 @@ let activeRuntimePaths: {
   readonly ledgerMpfPath: string;
   readonly transactionsMpfPath: string;
 } | null = null;
-let restoreCustomSlotConfig: (() => void) | null = null;
 
 afterEach(async () => {
   vi.useRealTimers();
   try {
-    try {
-      await initializeNodeRuntime();
-    } catch {
-      // Leave cleanup best-effort so a failed test can still report the primary error.
-    }
-    if (activeRuntimePaths !== null) {
-      await cleanupRuntimePaths(activeRuntimePaths);
-      activeRuntimePaths = null;
-    }
-  } finally {
-    restoreCustomSlotConfig?.();
-    restoreCustomSlotConfig = null;
+    await initializeNodeRuntime();
+  } catch {
+    // Leave cleanup best-effort so a failed test can still report the primary error.
+  }
+  if (activeRuntimePaths !== null) {
+    await cleanupRuntimePaths(activeRuntimePaths);
+    activeRuntimePaths = null;
   }
 });
 
@@ -2914,18 +2891,20 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
         mpfProcessingPassesAfterReady: 0,
       });
 
-      const tailBeforeCandidateConfirmation = await fetchLatestCommittedBlock(
-        fixture.operatorLucid,
-        fixture.contracts,
-      );
-      const tailHeaderBeforeCandidateConfirmation = await Effect.runPromise(
-        SDK.getHeaderFromStateQueueDatum(tailBeforeCandidateConfirmation.datum),
-      );
+      // Lucid 0.6's Emulator correctly hides a confirmed UTxO as soon as a
+      // pending transaction spends it. Assert the public transaction states
+      // instead of depending on the old spent-ledger visibility bug.
       expect(
-        await Effect.runPromise(
-          SDK.hashBlockHeader(tailHeaderBeforeCandidateConfirmation),
-        ),
-      ).toBe(blockN.submittedHeaderHash);
+        (await fixture.operatorLucid.transactionStatus(blockN.submittedTxHash))
+          .status,
+      ).toBe("confirmed");
+      expect(
+        (
+          await fixture.operatorLucid.transactionStatus(
+            speculative.output.submittedTxHash,
+          )
+        ).status,
+      ).toBe("pending");
 
       const activeJournal = await runNodeDatabaseEffect(
         PendingBlockFinalizationsDB.retrieveActive(),
@@ -4245,5 +4224,5 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
         (utxo) => utxo.assets.lovelace === 12_000_000n,
       ),
     ).toBe(true);
-  }, 360_000);
+  }, 420_000);
 });

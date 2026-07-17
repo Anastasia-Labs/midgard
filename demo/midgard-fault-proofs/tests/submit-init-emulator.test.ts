@@ -32,12 +32,12 @@ import {
   buildNonExistentInputFaultProofContracts,
   buildPhasMembershipRewardRegistrationTxProgram,
   buildTransitionTraceFaultProofContracts,
+  commitCountedRootProgram,
   ConfirmedState,
   DA_PAYLOAD_V2_VERSION,
   DoubleSpendStep02Datum,
   DoubleSpendStep03Datum,
   DoubleSpendStep04Datum,
-  commitCountedRootProgram,
   EMPTY_HEADER_TRANSITION_COMMITMENTS,
   EMPTY_MERKLE_TREE_ROOT,
   encodeDaPayloadV2,
@@ -153,10 +153,7 @@ import {
   submitStep04,
   submitTransitionTraceProof,
 } from "../src/index.js";
-import {
-  buildNonMembershipProof,
-  type TrieEntry,
-} from "../src/ne-proofs.js";
+import { buildNonMembershipProof, type TrieEntry } from "../src/ne-proofs.js";
 import type { NeInputPreimageEntry } from "../src/ne-submit-step-02.js";
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
@@ -615,18 +612,7 @@ const ledgerOrderedIndex = (
 const alignUnixTimeToEmulatorSlotBoundary = (
   lucid: Awaited<ReturnType<typeof Lucid>>,
   unixTime: number,
-): number => {
-  const provider = lucid.config().provider as {
-    readonly time?: number;
-    readonly slot?: number;
-  };
-  if (typeof provider.time !== "number" || typeof provider.slot !== "number") {
-    return unixTime;
-  }
-  return (
-    provider.time - provider.slot * 1000 + lucid.unixTimeToSlot(unixTime) * 1000
-  );
-};
+): number => lucid.slotToUnixTime(lucid.unixTimeToSlot(unixTime));
 
 const firstWalletUtxo = async (
   lucid: Awaited<ReturnType<typeof Lucid>>,
@@ -1022,7 +1008,9 @@ const buildNonExistentInputFixture = async (): Promise<{
     witnessByte: "c5",
   });
   const otherTx = compactTxEntry(otherTxNative);
-  const otherTxCompactCbor = encodeMidgardNativeTxCompact(otherTxNative.compact);
+  const otherTxCompactCbor = encodeMidgardNativeTxCompact(
+    otherTxNative.compact,
+  );
 
   const store = new Store(undefined);
   await store.ready();

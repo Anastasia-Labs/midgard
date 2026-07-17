@@ -20,10 +20,6 @@ import {
 } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import {
-  type KupoConfirmationMetadata,
-  resolveKupoConfirmationMetadata,
-} from "@/kupo-confirmation-metadata.js";
-import {
   reviveEarliestCanonicalPayloadJournal,
   withCanonicalHeaderJournals,
 } from "@/services/canonical-journal-recovery.js";
@@ -35,6 +31,10 @@ import {
   publishMempoolLedgerDelta,
   withL1ControlPlane,
 } from "@/services/index.js";
+import {
+  resolveTransactionConfirmationMetadata,
+  type TransactionConfirmationMetadata,
+} from "@/transaction-confirmation-metadata.js";
 import { deserializeStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
 import { WorkerError } from "@/workers/utils/common.js";
 import {
@@ -472,7 +472,7 @@ export const buildBlockConfirmationAction = (
     switch (workerOutput.type) {
       case "SuccessfulConfirmationOutput": {
         const confirmationObservedAtMs = Date.now();
-        let confirmationMetadata: KupoConfirmationMetadata | undefined;
+        let confirmationMetadata: TransactionConfirmationMetadata | undefined;
         const submittedAtMs = yield* Ref.get(
           globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS,
         );
@@ -582,10 +582,9 @@ export const buildBlockConfirmationAction = (
               );
             } else {
               const metadataResolution = yield* Effect.promise(() =>
-                resolveKupoConfirmationMetadata({
+                resolveTransactionConfirmationMetadata({
                   lucid: lucid.value.api,
                   txHash: matchedBlock.utxo.txHash,
-                  outputIndex: matchedBlock.utxo.outputIndex,
                 }),
               );
               if (metadataResolution.type === "Available") {

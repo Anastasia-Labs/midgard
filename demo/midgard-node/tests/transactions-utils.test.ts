@@ -1,4 +1,4 @@
-import { CML } from "@lucid-evolution/lucid";
+import { CML, Emulator, OgmiosJsonRpcError } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
@@ -16,14 +16,22 @@ import {
 } from "@/transactions/utils.js";
 
 describe("parseOutsideValidityIntervalDetails", () => {
-  it("parses escaped Kupmios/Ogmios early-validity submit errors", () => {
-    const message =
-      'KupmiosError: ResponseError: {"jsonrpc":"2.0","method":"submitTransaction","error":{"code":3118,"message":"The transaction is outside of its validity interval.","data":{"validityInterval":{"invalidBefore":123415253,"invalidAfter":123415372},"currentSlot":123415249}},"id":null}'.replace(
-        /"/g,
-        '\\"',
-      );
+  it("parses typed Kupmios/Ogmios early-validity submit errors", () => {
+    const error = new OgmiosJsonRpcError({
+      code: 3118,
+      message: "The transaction is outside of its validity interval.",
+      data: {
+        validityInterval: {
+          invalidBefore: 123415253,
+          invalidAfter: 123415372,
+        },
+        currentSlot: 123415249,
+      },
+      method: "submitTransaction",
+      id: null,
+    });
 
-    expect(parseOutsideValidityIntervalDetails(message)).toEqual({
+    expect(parseOutsideValidityIntervalDetails(error)).toEqual({
       invalidBeforeSlot: 123415253,
       invalidHereafterSlot: 123415372,
       currentSlot: 123415249,
@@ -80,8 +88,34 @@ describe("validity-window submit recovery", () => {
     "OutsideValidityIntervalUTxO (ValidityInterval {invalidBefore = SJust (SlotNo 10), invalidHereafter = SJust (SlotNo 20)}) (SlotNo 7)",
   );
 
+  const ogmiosOutsideValidityError = ({
+    invalidBefore,
+    invalidAfter,
+    currentSlot,
+  }: {
+    readonly invalidBefore: number;
+    readonly invalidAfter?: number;
+    readonly currentSlot: number;
+  }): OgmiosJsonRpcError =>
+    new OgmiosJsonRpcError({
+      code: 3118,
+      message: "The transaction is outside of its validity interval.",
+      data: {
+        validityInterval: {
+          invalidBefore,
+          ...(invalidAfter === undefined ? {} : { invalidAfter }),
+        },
+        currentSlot,
+      },
+      method: "submitTransaction",
+      id: null,
+    });
+
   const fakeLucid = {
-    awaitTx: vi.fn(),
+    config: () => ({ provider: undefined }),
+    awaitTxConfirmation: vi.fn(() =>
+      Promise.reject(new Error("transaction not confirmed")),
+    ),
   };
 
   it("computes bounded retry delays for early-validity provider errors", () => {
@@ -158,9 +192,10 @@ describe("validity-window submit recovery", () => {
   it("allows a provider-reported wait that fits the configured bounded recovery budget", async () => {
     const waits: number[] = [];
     let calls = 0;
-    const providerLagError = new Error(
-      'KupmiosError: ResponseError: {"jsonrpc":"2.0","method":"submitTransaction","error":{"code":3118,"message":"The transaction is outside of its validity interval.","data":{"validityInterval":{"invalidBefore":40},"currentSlot":10}},"id":null}',
-    );
+    const providerLagError = ogmiosOutsideValidityError({
+      invalidBefore: 40,
+      currentSlot: 10,
+    });
     const submitProgram = vi.fn(() => {
       calls += 1;
       return calls === 1 ? Effect.fail(providerLagError) : Effect.void;
@@ -190,9 +225,11 @@ describe("validity-window submit recovery", () => {
   it("does not exhaust stale-provider attempts before the configured wait budget", async () => {
     const waits: number[] = [];
     let calls = 0;
-    const staleProviderSlotError = new Error(
-      'KupmiosError: ResponseError: {"jsonrpc":"2.0","method":"submitTransaction","error":{"code":3118,"message":"The transaction is outside of its validity interval.","data":{"validityInterval":{"invalidBefore":10,"invalidAfter":100},"currentSlot":8}},"id":null}',
-    );
+    const staleProviderSlotError = ogmiosOutsideValidityError({
+      invalidBefore: 10,
+      invalidAfter: 100,
+      currentSlot: 8,
+    });
     const submitProgram = vi.fn(() => {
       calls += 1;
       return calls <= 10 ? Effect.fail(staleProviderSlotError) : Effect.void;
@@ -222,9 +259,11 @@ describe("validity-window submit recovery", () => {
   it("recovers a longer stale-provider lag when the caller provides a larger bounded budget", async () => {
     const waits: number[] = [];
     let calls = 0;
-    const staleProviderSlotError = new Error(
-      'KupmiosError: ResponseError: {"jsonrpc":"2.0","method":"submitTransaction","error":{"code":3118,"message":"The transaction is outside of its validity interval.","data":{"validityInterval":{"invalidBefore":100,"invalidAfter":600},"currentSlot":88}},"id":null}',
-    );
+    const staleProviderSlotError = ogmiosOutsideValidityError({
+      invalidBefore: 100,
+      invalidAfter: 600,
+      currentSlot: 88,
+    });
     const submitProgram = vi.fn(() => {
       calls += 1;
       return calls <= 5 ? Effect.fail(staleProviderSlotError) : Effect.void;
@@ -282,9 +321,10 @@ describe("validity-window submit recovery", () => {
   it("recovers lower-bound-only Ogmios 3118 without generic provider retry", async () => {
     const waits: number[] = [];
     let calls = 0;
-    const lowerBoundOnlyError = new Error(
-      'KupmiosError: ResponseError: {"jsonrpc":"2.0","method":"submitTransaction","error":{"code":3118,"message":"The transaction is outside of its validity interval.","data":{"validityInterval":{"invalidBefore":126544954},"currentSlot":126544938}},"id":null}',
-    );
+    const lowerBoundOnlyError = ogmiosOutsideValidityError({
+      invalidBefore: 126544954,
+      currentSlot: 126544938,
+    });
     const submitProgram = vi.fn(() => {
       calls += 1;
       return calls === 1 ? Effect.fail(lowerBoundOnlyError) : Effect.void;
@@ -739,9 +779,15 @@ describe("validity-window submit recovery", () => {
 
   it("does not retry the same signed body for unknown input submit errors", async () => {
     const waits: number[] = [];
-    const unknownInputError = new Error(
-      '{"jsonrpc":"2.0","error":{"data":{"unknownOutputReferences":[{"transaction":{"id":"abc"},"index":0}]}}}',
-    );
+    const unknownInputError = new OgmiosJsonRpcError({
+      code: 3102,
+      message: "Unknown inputs",
+      data: {
+        unknownOutputReferences: [{ transaction: { id: "abc" }, index: 0 }],
+      },
+      method: "submitTransaction",
+      id: null,
+    });
     const submitProgram = vi.fn(() => Effect.fail(unknownInputError));
     const signed = { submitProgram };
 
@@ -762,9 +808,40 @@ describe("validity-window submit recovery", () => {
     expect(result._tag).toBe("Left");
     expect(submitProgram).toHaveBeenCalledTimes(1);
     expect(waits).toEqual([]);
-    expect(isUnknownOutputReferenceSubmitError(unknownInputMessage())).toBe(
-      true,
+    expect(isUnknownOutputReferenceSubmitError(unknownInputError)).toBe(true);
+  });
+
+  it("accepts an unknown-input submit race only after exact status confirmation", async () => {
+    const txHash = "tx-confirmed-submit-race";
+    const unknownInputError = new OgmiosJsonRpcError({
+      code: 3102,
+      message: "Unknown inputs",
+      data: { unknownOutputReferences: [{ index: 0 }] },
+      method: "submitTransaction",
+      id: null,
+    });
+    const submitProgram = vi.fn(() => Effect.fail(unknownInputError));
+    const awaitTxConfirmation = vi.fn(async () => ({ txHash }));
+
+    const result = await Effect.runPromise(
+      Effect.either(
+        submitSignedTxWithRecovery(
+          {
+            config: () => ({ provider: undefined }),
+            awaitTxConfirmation,
+          } as never,
+          { submitProgram } as never,
+          txHash,
+        ),
+      ),
     );
+
+    expect(result._tag).toBe("Right");
+    expect(submitProgram).toHaveBeenCalledTimes(1);
+    expect(awaitTxConfirmation).toHaveBeenCalledWith(txHash, {
+      timeout: 90_000,
+      checkInterval: 5_000,
+    });
   });
 
   it("does not sleep for generic provider retries in no-inline mode", async () => {
@@ -803,21 +880,62 @@ describe("validity-window submit recovery", () => {
 });
 
 describe("sign/submit wrapper recovery options", () => {
+  it("advances the Lucid emulator before exact status confirmation", async () => {
+    vi.useFakeTimers();
+    try {
+      const provider = new Emulator([]);
+      const awaitTx = vi.fn(async () => true);
+      const awaitTxConfirmation = vi.fn(async (txHash: string) => ({ txHash }));
+      const confirmation = Effect.runPromise(
+        awaitSubmittedTransactionConfirmation(
+          {
+            config: () => ({ provider }),
+            awaitTx,
+            awaitTxConfirmation,
+            wallet: () => ({}),
+          } as never,
+          {
+            txHash: "tx-emulator-confirmation",
+            signedTxCbor: "00",
+            walletAddress: "addr_test1emulatorconfirmation",
+          },
+          {
+            confirmationTimeoutMs: 120_000,
+            confirmationRetries: 0,
+            confirmationPollIntervalMs: 100,
+          },
+        ),
+      );
+
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      await expect(confirmation).resolves.toBe("tx-emulator-confirmation");
+      expect(awaitTx).toHaveBeenCalledWith("tx-emulator-confirmation", 100);
+      expect(awaitTxConfirmation).toHaveBeenCalledWith(
+        "tx-emulator-confirmation",
+        { timeout: 120_000, checkInterval: 100 },
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("spaces transient provider confirmation retries and recovers the exact submitted tx", async () => {
     vi.useFakeTimers();
     try {
       let attempts = 0;
-      const awaitTx = vi.fn(async () => {
+      const awaitTxConfirmation = vi.fn(async (txHash: string) => {
         attempts += 1;
         if (attempts <= 2) {
           throw new Error("transient kupo transport error");
         }
-        return true;
+        return { txHash };
       });
       const confirmation = Effect.runPromise(
         awaitSubmittedTransactionConfirmation(
           {
-            awaitTx,
+            config: () => ({ provider: undefined }),
+            awaitTxConfirmation,
             wallet: () => ({}),
           } as never,
           {
@@ -834,31 +952,31 @@ describe("sign/submit wrapper recovery options", () => {
       );
 
       await vi.advanceTimersByTimeAsync(0);
-      expect(awaitTx).toHaveBeenCalledTimes(1);
-      expect(awaitTx).toHaveBeenNthCalledWith(
+      expect(awaitTxConfirmation).toHaveBeenCalledTimes(1);
+      expect(awaitTxConfirmation).toHaveBeenNthCalledWith(
         1,
         "tx-transient-confirmation-provider",
-        100,
+        { timeout: 120_000, checkInterval: 100 },
       );
 
       await vi.advanceTimersByTimeAsync(99);
-      expect(awaitTx).toHaveBeenCalledTimes(1);
+      expect(awaitTxConfirmation).toHaveBeenCalledTimes(1);
       await vi.advanceTimersByTimeAsync(1);
-      expect(awaitTx).toHaveBeenCalledTimes(2);
-      expect(awaitTx).toHaveBeenNthCalledWith(
+      expect(awaitTxConfirmation).toHaveBeenCalledTimes(2);
+      expect(awaitTxConfirmation).toHaveBeenNthCalledWith(
         2,
         "tx-transient-confirmation-provider",
-        100,
+        { timeout: 120_000, checkInterval: 100 },
       );
 
       await vi.advanceTimersByTimeAsync(99);
-      expect(awaitTx).toHaveBeenCalledTimes(2);
+      expect(awaitTxConfirmation).toHaveBeenCalledTimes(2);
       await vi.advanceTimersByTimeAsync(1);
-      expect(awaitTx).toHaveBeenCalledTimes(3);
-      expect(awaitTx).toHaveBeenNthCalledWith(
+      expect(awaitTxConfirmation).toHaveBeenCalledTimes(3);
+      expect(awaitTxConfirmation).toHaveBeenNthCalledWith(
         3,
         "tx-transient-confirmation-provider",
-        100,
+        { timeout: 120_000, checkInterval: 100 },
       );
 
       await vi.advanceTimersByTimeAsync(5_000);
@@ -866,7 +984,7 @@ describe("sign/submit wrapper recovery options", () => {
       await expect(confirmation).resolves.toBe(
         "tx-transient-confirmation-provider",
       );
-      expect(awaitTx).toHaveBeenCalledTimes(3);
+      expect(awaitTxConfirmation).toHaveBeenCalledTimes(3);
     } finally {
       vi.useRealTimers();
     }
@@ -875,16 +993,17 @@ describe("sign/submit wrapper recovery options", () => {
   it("allows an exact submitted transaction to confirm after the legacy 90-second ceiling", async () => {
     vi.useFakeTimers();
     try {
-      const awaitTx = vi.fn(
-        () =>
-          new Promise<boolean>((resolve) => {
-            setTimeout(() => resolve(true), 100_000);
+      const awaitTxConfirmation = vi.fn(
+        (txHash: string) =>
+          new Promise<{ readonly txHash: string }>((resolve) => {
+            setTimeout(() => resolve({ txHash }), 100_000);
           }),
       );
       const confirmation = Effect.runPromise(
         awaitSubmittedTransactionConfirmation(
           {
-            awaitTx,
+            config: () => ({ provider: undefined }),
+            awaitTxConfirmation,
             wallet: () => ({}),
           } as never,
           {
@@ -901,7 +1020,10 @@ describe("sign/submit wrapper recovery options", () => {
       );
 
       await vi.advanceTimersByTimeAsync(90_001);
-      expect(awaitTx).toHaveBeenCalledWith("tx-long-confirmation", 1_000);
+      expect(awaitTxConfirmation).toHaveBeenCalledWith("tx-long-confirmation", {
+        timeout: 120_000,
+        checkInterval: 1_000,
+      });
       await vi.advanceTimersByTimeAsync(14_999);
 
       await expect(confirmation).resolves.toBe("tx-long-confirmation");
@@ -917,7 +1039,24 @@ describe("sign/submit wrapper recovery options", () => {
         Effect.either(
           awaitSubmittedTransactionConfirmation(
             {
-              awaitTx: vi.fn(() => new Promise<boolean>(() => undefined)),
+              config: () => ({ provider: undefined }),
+              awaitTxConfirmation: vi.fn(
+                (
+                  _txHash: string,
+                  options: { readonly timeout?: number } = {},
+                ) =>
+                  new Promise<never>((_resolve, reject) => {
+                    setTimeout(
+                      () =>
+                        reject(
+                          new Error(
+                            `timed out waiting for tx confirmation after ${options.timeout?.toString()}ms`,
+                          ),
+                        ),
+                      options.timeout,
+                    );
+                  }),
+              ),
               wallet: () => ({}),
             } as never,
             {
@@ -1148,9 +1287,6 @@ const expectNoInlineSubmitDefer = (value: unknown): NoInlineSubmitDefer => {
   expect(isNoInlineSubmitDefer(value)).toBe(true);
   return value as NoInlineSubmitDefer;
 };
-
-const unknownInputMessage = () =>
-  'KupmiosError: {"error":{"data":{"unknownOutputReferences":[{"transaction":{"id":"abc"},"index":0}]}}}';
 
 const signedTxCbor = ({
   invalidBeforeSlot,

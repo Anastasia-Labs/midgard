@@ -85,6 +85,7 @@ const fakeLucid = {
     network: "Custom",
     provider: {},
   }),
+  slotToUnixTime: (slot: number) => slot * 1_000,
   unixTimeToSlot: (unixTime: number) => Math.floor(unixTime / 1_000),
   utxosAt: fakeLucidUtxosAt,
 } as never;
@@ -198,7 +199,7 @@ describe("merge builder maturity preflight", () => {
     expect(result).toMatchObject({
       status: "skipped_oldest_block_not_mature",
       headerHash,
-      readyAfterUnixTime: 520_030,
+      readyAfterUnixTime: 521_000,
       nowUnixTime: 510_000,
     });
     expect(fetchFirstBlockTxsMock).not.toHaveBeenCalled();
@@ -234,7 +235,7 @@ describe("merge builder maturity preflight", () => {
       status: "skipped_oldest_block_local_ledger_not_ready",
       headerHash,
       reason: expect.stringContaining("local_ledger_slot=0"),
-      readyAfterUnixTime: 520_030,
+      readyAfterUnixTime: 521_000,
     });
     expect(fetchFirstBlockTxsMock).toHaveBeenCalledTimes(1);
     expect(breakDownTxMock).not.toHaveBeenCalled();

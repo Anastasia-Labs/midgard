@@ -6,10 +6,7 @@ import {
   resolveConfirmationDetectionLagMs,
   shouldObserveConfirmationDetectionLag,
 } from "@/fibers/block-confirmation.js";
-import {
-  parseExactKupoConfirmationMatch,
-  resolveKupoConfirmationMetadata,
-} from "@/kupo-confirmation-metadata.js";
+import { resolveTransactionConfirmationMetadata } from "@/transaction-confirmation-metadata.js";
 import { probeSubmittedTx } from "@/workers/confirm-block-commitments.js";
 import {
   decideUnsubmittedPendingBlockRecovery,
@@ -28,20 +25,28 @@ const pendingBlock = (
   updatedAtMs: Date.now(),
 });
 
-const customKupmiosLucid = ({
-  kupoUrl = "http://kupo.test///",
-  time = 1_000,
-  slot = 1,
+const confirmationLucid = ({
+  status = "confirmed",
+  slot = 5,
 }: {
-  readonly kupoUrl?: string;
-  readonly time?: number;
+  readonly status?: "confirmed" | "not_found" | "pending" | "failed";
   readonly slot?: number;
 } = {}): LucidEvolution =>
   ({
-    config: () => ({
-      network: "Custom",
-      provider: { kupoUrl, time, slot },
-    }),
+    transactionStatus: async (txHash: string) =>
+      status === "confirmed"
+        ? {
+            status,
+            txHash,
+            confirmation: {
+              txHash,
+              slot,
+              blockHash: "cd".repeat(32),
+              confirmations: 7,
+            },
+          }
+        : { status, txHash },
+    slotToUnixTime: (value: number) => value * 1_000,
   }) as unknown as LucidEvolution;
 
 describe("confirm-block-commitments utilities", () => {
@@ -62,139 +67,72 @@ describe("confirm-block-commitments utilities", () => {
     expect(shouldObserveConfirmationDetectionLag(10_000n)).toBe(false);
   });
 
-  it("strictly parses one exact Kupo output creation point", () => {
+  it("uses provider-neutral transaction status as confirmation evidence", async () => {
     const txHash = "ab".repeat(32);
-    const blockHeaderHash = "cd".repeat(32);
-    expect(
-      parseExactKupoConfirmationMatch({
-        body: [
-          {
-            transaction_id: txHash,
-            output_index: 2,
-            created_at: {
-              slot_no: 5,
-              header_hash: blockHeaderHash.toUpperCase(),
-            },
-          },
-        ],
-        txHash,
-        outputIndex: 2,
-      }),
-    ).toEqual({ slotNo: 5, blockHeaderHash });
-    expect(() =>
-      parseExactKupoConfirmationMatch({
-        body: [],
-        txHash,
-        outputIndex: 2,
-      }),
-    ).toThrow("must return one row");
-    expect(() =>
-      parseExactKupoConfirmationMatch({
-        body: [
-          {
-            transaction_id: txHash,
-            output_index: 3,
-            created_at: { slot_no: 5, header_hash: blockHeaderHash },
-          },
-        ],
-        txHash,
-        outputIndex: 2,
-      }),
-    ).toThrow("does not match the requested output");
-  });
-
-  it("uses an injected exact Kupo match as authoritative confirmation time", async () => {
-    const txHash = "ab".repeat(32);
-    const requested: string[] = [];
-    const resolution = await resolveKupoConfirmationMetadata({
-      lucid: customKupmiosLucid(),
+    const resolution = await resolveTransactionConfirmationMetadata({
+      lucid: confirmationLucid(),
       txHash,
-      outputIndex: 2,
-      fetchImpl: async (input) => {
-        requested.push(String(input));
-        return {
-          ok: true,
-          status: 200,
-          statusText: "OK",
-          json: async () => [
-            {
-              transaction_id: txHash,
-              output_index: 2,
-              created_at: {
-                slot_no: 5,
-                header_hash: "cd".repeat(32),
-              },
-            },
-          ],
-        };
-      },
     });
-    expect(requested).toEqual([
-      `http://kupo.test/matches/${encodeURIComponent(`2@${txHash}`)}`,
-    ]);
     expect(resolution).toEqual({
       type: "Available",
       metadata: {
         slotNo: 5,
         blockHeaderHash: "cd".repeat(32),
+        confirmations: 7,
         confirmedAtMs: 5_000,
       },
     });
   });
 
-  it("returns unavailable for missing, invalid, and failed Kupo metadata", async () => {
+  it("returns unavailable for non-confirmed, incomplete, and failed status", async () => {
     const txHash = "ab".repeat(32);
-    const missingProvider = await resolveKupoConfirmationMetadata({
+    const notFound = await resolveTransactionConfirmationMetadata({
+      lucid: confirmationLucid({ status: "not_found" }),
+      txHash,
+    });
+    expect(notFound).toEqual({
+      type: "Unavailable",
+      reason: "transaction_not_found",
+    });
+
+    const invalid = await resolveTransactionConfirmationMetadata({
+      lucid: confirmationLucid({ slot: -1 }),
+      txHash,
+    });
+    expect(invalid).toEqual({
+      type: "Unavailable",
+      reason: "confirmation_slot_unavailable",
+    });
+
+    const failed = await resolveTransactionConfirmationMetadata({
       lucid: {
-        config: () => ({ network: "Custom", provider: {} }),
+        transactionStatus: () =>
+          Promise.reject(new Error("provider unavailable")),
       } as unknown as LucidEvolution,
       txHash,
-      outputIndex: 2,
-    });
-    expect(missingProvider).toEqual({
-      type: "Unavailable",
-      reason: "kupo_url_unavailable",
-    });
-
-    const invalid = await resolveKupoConfirmationMetadata({
-      lucid: customKupmiosLucid(),
-      txHash,
-      outputIndex: 2,
-      fetchImpl: async () => ({
-        ok: true,
-        status: 200,
-        statusText: "OK",
-        json: async () => [],
-      }),
-    });
-    expect(invalid.type).toBe("Unavailable");
-    if (invalid.type === "Unavailable") {
-      expect(invalid.reason).toContain("must return one row");
-    }
-
-    const failed = await resolveKupoConfirmationMetadata({
-      lucid: customKupmiosLucid(),
-      txHash,
-      outputIndex: 2,
-      fetchImpl: () => Promise.reject(new Error("provider unavailable")),
     });
     expect(failed).toEqual({
       type: "Unavailable",
-      reason: "kupo_metadata_error:provider unavailable",
+      reason: "transaction_status_error:provider unavailable",
     });
   });
 
-  it("executes the real targeted awaitTx probe and fails closed on provider errors", async () => {
-    const observed: Array<readonly [string, number]> = [];
+  it("executes the provider-neutral targeted confirmation probe and fails closed on provider errors", async () => {
+    const observed: Array<
+      readonly [
+        string,
+        { readonly timeout?: number; readonly checkInterval?: number },
+      ]
+    > = [];
     const confirmed = await Effect.runPromise(
       probeSubmittedTx(
         {
-          awaitTx: async (txHash, pollMs) => {
-            if (pollMs === undefined) {
-              throw new Error("Targeted confirmation probe omitted pollMs");
+          awaitTxConfirmation: async (txHash, options) => {
+            if (options?.checkInterval === undefined) {
+              throw new Error("Targeted confirmation probe omitted options");
             }
-            observed.push([txHash, pollMs]);
-            return true;
+            observed.push([txHash, options]);
+            return { txHash };
           },
         },
         "ab".repeat(32),
@@ -203,14 +141,17 @@ describe("confirm-block-commitments utilities", () => {
     const providerFailure = await Effect.runPromise(
       probeSubmittedTx(
         {
-          awaitTx: () => Promise.reject(new Error("provider unavailable")),
+          awaitTxConfirmation: () =>
+            Promise.reject(new Error("provider unavailable")),
         },
         "cd".repeat(32),
       ),
     );
     expect(confirmed).toBe(true);
     expect(providerFailure).toBe(false);
-    expect(observed).toEqual([["ab".repeat(32), 250]]);
+    expect(observed).toEqual([
+      ["ab".repeat(32), { timeout: 1_500, checkInterval: 250 }],
+    ]);
   });
 
   it("classifies pending journals without submitted tx hashes as unsubmitted", () => {

@@ -54,7 +54,11 @@ import {
   NodeConfig,
 } from "@/services/index.js";
 import { materializeConfirmedLedgerSnapshot } from "@/transactions/state-queue/confirmed-ledger-snapshot.js";
-import { type TxSignError, type TxSubmitError } from "@/transactions/utils.js";
+import {
+  awaitExactTransactionConfirmation,
+  type TxSignError,
+  type TxSubmitError,
+} from "@/transactions/utils.js";
 import { outRefLabel } from "@/tx-context.js";
 import { buildUnsignedCommitTx } from "@/workers/commit-block-header/build-unsigned-tx.js";
 import {
@@ -1230,29 +1234,10 @@ const waitForTxConfirmation = (
 ): Effect.Effect<void, SDK.LucidError> =>
   Effect.tryPromise({
     try: () =>
-      new Promise<void>((resolve, reject) => {
-        const timeoutId = setTimeout(() => {
-          reject(
-            new Error(
-              `timed out waiting for explicit block-header commit confirmation after ${EXPLICIT_COMMIT_CONFIRMATION_TIMEOUT_MS}ms`,
-            ),
-          );
-        }, EXPLICIT_COMMIT_CONFIRMATION_TIMEOUT_MS);
-        lucid
-          .awaitTx(txHash, EXPLICIT_COMMIT_CONFIRMATION_POLL_INTERVAL_MS)
-          .then((confirmed) => {
-            clearTimeout(timeoutId);
-            if (confirmed) {
-              resolve();
-            } else {
-              reject(new Error(`provider returned unconfirmed for ${txHash}`));
-            }
-          })
-          .catch((error) => {
-            clearTimeout(timeoutId);
-            reject(error);
-          });
-      }),
+      awaitExactTransactionConfirmation(lucid, txHash, {
+        timeout: EXPLICIT_COMMIT_CONFIRMATION_TIMEOUT_MS,
+        checkInterval: EXPLICIT_COMMIT_CONFIRMATION_POLL_INTERVAL_MS,
+      }).then(() => undefined),
     catch: (cause) =>
       new SDK.LucidError({
         message: "Failed to confirm explicit block-header commit transaction",

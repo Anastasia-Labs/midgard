@@ -234,7 +234,6 @@ export const reconcilePhasRegisteredProgram = ({
       queryPhasMembershipRewardAccountRegisteredProgram(
         lucid.api,
         identity.rewardAddress,
-        identity.scriptHash,
       ),
     );
     if (registeredAttempt._tag === "Left") {

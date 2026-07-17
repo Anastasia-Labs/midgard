@@ -88,7 +88,7 @@ type UtxoOverrideLucid = Pick<LucidEvolution, "wallet"> & {
 
 type L1SubmitterPreflightLucid = Pick<
   LucidEvolution,
-  "awaitTx" | "newTx" | "selectWallet"
+  "awaitTxConfirmation" | "newTx" | "selectWallet"
 > &
   UtxoOverrideLucid;
 
@@ -368,7 +368,8 @@ export const l1SubmitterPreflightResultToJson = (
 });
 
 export const signSubmitAndConfirm = async (
-  lucid: Pick<LucidEvolution, "awaitTx"> & Partial<UtxoOverrideLucid>,
+  lucid: Pick<LucidEvolution, "awaitTxConfirmation"> &
+    Partial<UtxoOverrideLucid>,
   tx: TxSignBuilder,
   options: L1SubmitOptions = {},
 ): Promise<string> => {
@@ -378,7 +379,11 @@ export const signSubmitAndConfirm = async (
   const txHash = await signed.submit();
   rememberSpentOutRefs(lucid, signedCbor);
   if (options.awaitConfirmation !== false) {
-    await lucid.awaitTx(txHash, options.confirmationPollIntervalMs);
+    await lucid.awaitTxConfirmation(txHash, {
+      ...(options.confirmationPollIntervalMs === undefined
+        ? {}
+        : { checkInterval: options.confirmationPollIntervalMs }),
+    });
     await refreshL1SubmitterPlainAdaUtxos(lucid);
   }
   return txHash;
@@ -489,7 +494,7 @@ const submitAutoFundPayment = async ({
   lovelace,
   confirmationPollIntervalMs,
 }: {
-  readonly lucid: Pick<LucidEvolution, "awaitTx" | "newTx"> &
+  readonly lucid: Pick<LucidEvolution, "awaitTxConfirmation" | "newTx"> &
     Partial<UtxoOverrideLucid>;
   readonly submitterAddress: string;
   readonly lovelace: bigint;

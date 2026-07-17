@@ -472,15 +472,12 @@ export const completeAndSubmit = (
  * transactions.
  */
 const resolveDeploymentStartTime = (lucid?: LucidEvolution): bigint => {
-  if (lucid !== undefined && lucid.config().network === "Custom") {
-    const provider = lucid.config().provider as {
-      time?: number;
-    };
-    if (typeof provider.time === "number") {
-      return BigInt(provider.time);
-    }
+  if (lucid === undefined) {
+    return BigInt(Date.now());
   }
-  return BigInt(Date.now());
+  return BigInt(
+    slotToUnixTimeForLucidOrEmulatorFallback(lucid, lucid.currentSlot()),
+  );
 };
 
 const resolveDefaultDeploymentDeadline = (lucid?: LucidEvolution): bigint => {

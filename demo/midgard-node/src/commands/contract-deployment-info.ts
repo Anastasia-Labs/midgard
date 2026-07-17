@@ -27,12 +27,12 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { writeJsonFileAtomic } from "@/files/atomic-write.js";
 import {
   computeDeploymentManifestId,
   DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
   parseDeploymentManifestV2Value,
 } from "@/deployment-manifest-v2.js";
+import { writeJsonFileAtomic } from "@/files/atomic-write.js";
 import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
 import { Lucid, MidgardContracts, NodeConfig } from "@/services/index.js";
 import {
@@ -40,10 +40,7 @@ import {
   fetchProtocolDeploymentStatus,
   fraudProofsToIndexedValidators,
 } from "@/transactions/initialization.js";
-import {
-  fetchReferenceScriptUtxosForTargets,
-  type ReferenceScriptTarget,
-} from "@/transactions/reference-scripts.js";
+import { fetchReferenceScriptUtxosAt } from "@/transactions/reference-scripts.js";
 import { compareOutRefs } from "@/tx-context.js";
 
 export type ContractDeploymentInfoRefScriptUTxO = {
@@ -262,34 +259,18 @@ const phasMembershipDescriptor = (
   };
 };
 
-const referenceScriptTargetsFromDescriptors = (
-  descriptors: readonly ScriptDescriptor[],
-): readonly ReferenceScriptTarget[] =>
-  descriptors.flatMap((descriptor) =>
-    descriptor.referenceScriptTargetName === undefined
-      ? []
-      : [
-          {
-            name: descriptor.referenceScriptTargetName,
-            script: descriptor.script,
-          } satisfies ReferenceScriptTarget,
-        ],
-  );
-
-const fetchLiveReferenceScriptUtxos = (
-  descriptors: readonly ScriptDescriptor[],
-  authPolicy: ReferenceScriptAuthPolicyRef,
-): Effect.Effect<readonly UTxO[], Error, Lucid> =>
+const fetchLiveReferenceScriptUtxos = (): Effect.Effect<
+  readonly UTxO[],
+  Error,
+  Lucid
+> =>
   Effect.gen(function* () {
     const lucidService = yield* Lucid;
     const referenceScriptsLucid = lucidService.referenceScriptsApi;
     const referenceScriptsAddress = lucidService.referenceScriptsAddress;
-    const targets = referenceScriptTargetsFromDescriptors(descriptors);
-    return yield* fetchReferenceScriptUtxosForTargets(
+    return yield* fetchReferenceScriptUtxosAt(
       referenceScriptsLucid,
       referenceScriptsAddress,
-      targets,
-      authPolicy,
       "contract deployment info reference-script UTxO fetch",
       `Failed to fetch reference-script UTxOs at ${referenceScriptsAddress}`,
     ).pipe(
@@ -780,10 +761,7 @@ const resolveLiveContractDeploymentInfoProgram = (
   Effect.gen(function* () {
     const contracts = yield* MidgardContracts;
     const descriptors = collectScriptDescriptors(contracts);
-    const referenceScriptWalletUtxos = yield* fetchLiveReferenceScriptUtxos(
-      descriptors,
-      referenceScriptAuthPolicy,
-    );
+    const referenceScriptWalletUtxos = yield* fetchLiveReferenceScriptUtxos();
     const referenceScriptOutRefs = buildReferenceScriptOutRefMap(
       referenceScriptWalletUtxos,
       descriptors,

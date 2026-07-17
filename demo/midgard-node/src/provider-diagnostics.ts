@@ -2,16 +2,6 @@ import type { Network } from "@lucid-evolution/lucid";
 
 export type L1ProviderSource = "kupmios";
 
-export const L1_REWARD_ACCOUNT_REGISTRATION_SOURCES =
-  "__midgardRewardAccountRegistrationSources";
-
-export type L1RewardAccountRegistrationSource = {
-  readonly kind: "ogmios";
-  readonly source: "kupmios";
-  readonly url: string;
-  readonly headers?: Record<string, string>;
-};
-
 export type L1ProviderFailureKind =
   | "rate_limited"
   | "html_response"

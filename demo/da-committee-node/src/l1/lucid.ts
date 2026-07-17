@@ -1,15 +1,10 @@
-import { Lucid, type LucidEvolution } from "@lucid-evolution/lucid";
-import * as LucidRuntime from "@lucid-evolution/lucid";
+import {
+  Blockfrost,
+  Kupmios,
+  Lucid,
+  type LucidEvolution,
+} from "@lucid-evolution/lucid";
 import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
-
-type LucidProviderRuntime = {
-  readonly Blockfrost: new (url: string, projectId?: string) => unknown;
-  readonly Kupmios: new (
-    kupoUrl: string,
-    ogmiosUrl: string,
-    headers?: Record<string, string>,
-  ) => unknown;
-};
 
 type CardanoNetwork = "Mainnet" | "Preprod" | "Preview" | "Custom";
 
@@ -24,13 +19,12 @@ export const lucidFromProviderUrl = async (
   readonly lucid: LucidEvolution;
   readonly providerSource: string;
 }> => {
-  const runtime = LucidRuntime as unknown as LucidProviderRuntime;
   if (url.startsWith("blockfrost:")) {
     const { apiUrl, projectId } = parseBlockfrostUrl(url);
     return {
       lucid: await Lucid(
-        new runtime.Blockfrost(apiUrl, projectId) as never,
-        normalizeNetwork(network) as never,
+        new Blockfrost(apiUrl, projectId),
+        normalizeNetwork(network),
         lucidOptions,
       ),
       providerSource: `blockfrost:${apiUrl}`,
@@ -40,8 +34,8 @@ export const lucidFromProviderUrl = async (
     const { kupoUrl, ogmiosUrl, headers } = parseKupmiosUrl(url);
     return {
       lucid: await Lucid(
-        new runtime.Kupmios(kupoUrl, ogmiosUrl, headers) as never,
-        normalizeNetwork(network) as never,
+        new Kupmios(kupoUrl, ogmiosUrl, headers),
+        normalizeNetwork(network),
         lucidOptions,
       ),
       providerSource: `kupmios:${kupoUrl}|${ogmiosUrl}`,

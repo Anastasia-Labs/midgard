@@ -4,6 +4,7 @@ import {
   CML,
   coreToTxOutput,
   fromHex,
+  isEmulatorProvider,
   LucidEvolution,
   TxSignBuilder,
   UTxO,
@@ -50,26 +51,27 @@ const DEFAULT_STALE_PROVIDER_VALIDITY_RETRY_MAX_ATTEMPTS = Math.ceil(
   DEFAULT_SIGNED_TX_INLINE_WAIT_MS / SLOT_LENGTH_MS,
 );
 
-const ALREADY_INCLUDED_ERROR_PATTERNS = [
-  "All inputs are spent. Transaction has probably already been included",
-] as const;
-
-/**
- * Returns whether a provider error looks like a transaction that may already
- * have landed on-chain despite the submit call failing.
- */
-const isPotentiallyAlreadyIncludedError = (message: string): boolean =>
-  ALREADY_INCLUDED_ERROR_PATTERNS.some((pattern) => message.includes(pattern));
-
 export const isUnknownOutputReferenceSubmitError = (
-  message: string,
+  error: unknown,
 ): boolean => {
-  const normalizedMessage = message.replace(/\\"/g, '"');
-  return (
-    normalizedMessage.includes("unknownOutputReferences") ||
-    normalizedMessage.includes("badInputs") ||
-    normalizedMessage.includes("BadInputsUTxO") ||
-    normalizedMessage.includes("UnknownInput")
+  const seen = new Set<unknown>();
+  const hasStructuredUnknownInput = (value: unknown): boolean => {
+    if (typeof value !== "object" || value === null || seen.has(value)) {
+      return false;
+    }
+    seen.add(value);
+    const record = value as Record<string, unknown>;
+    if ("unknownOutputReferences" in record || "badInputs" in record) {
+      return true;
+    }
+    return Object.values(record).some(hasStructuredUnknownInput);
+  };
+  if (hasStructuredUnknownInput(error)) {
+    return true;
+  }
+  return errorTextSearchStrings(error).some(
+    (message) =>
+      message.includes("BadInputsUTxO") || message.includes("UnknownInput"),
   );
 };
 
@@ -77,9 +79,6 @@ const OUTSIDE_VALIDITY_INTERVAL_REGEX =
   /OutsideValidityIntervalUTxO \(ValidityInterval \{invalidBefore = SJust \(SlotNo (\d+)\), invalidHereafter = SJust \(SlotNo (\d+)\)\}\) \(SlotNo (\d+)\)/;
 const EMULATOR_LOWER_BOUND_OUTSIDE_VALIDITY_REGEX =
   /Lower bound \((\d+)\) not in slot range \((\d+)\)/;
-const OGMIOS_OUTSIDE_VALIDITY_INTERVAL_REGEX =
-  /"validityInterval"\s*:\s*\{\s*"invalidBefore"\s*:\s*(\d+)(?:\s*,\s*"(?:invalidAfter|invalidHereafter)"\s*:\s*(\d+))?\s*\}\s*,\s*"currentSlot"\s*:\s*(\d+)/;
-
 export type OutsideValidityIntervalDetails = {
   readonly invalidBeforeSlot: number;
   readonly invalidHereafterSlot?: number;
@@ -133,15 +132,6 @@ export const parseOutsideValidityIntervalDetails = (
         Number(emulatorLowerBoundMatch[1]),
         Number.MAX_SAFE_INTEGER,
         Number(emulatorLowerBoundMatch[2]),
-      );
-    }
-    const ogmiosMatch =
-      OGMIOS_OUTSIDE_VALIDITY_INTERVAL_REGEX.exec(normalizedMessage);
-    if (ogmiosMatch !== null) {
-      return outsideValidityDetails(
-        Number(ogmiosMatch[1]),
-        ogmiosMatch[2] === undefined ? undefined : Number(ogmiosMatch[2]),
-        Number(ogmiosMatch[3]),
       );
     }
   }
@@ -219,12 +209,6 @@ const parseStructuredOutsideValidityIntervalDetails = (
   if (value === null || value === undefined) {
     return null;
   }
-  if (typeof value === "string") {
-    const parsed = parseJsonObjectFromString(value);
-    return parsed === null
-      ? null
-      : parseStructuredOutsideValidityIntervalDetails(parsed, seen);
-  }
   if (typeof value !== "object") {
     return null;
   }
@@ -286,20 +270,6 @@ const detailsFromStructuredRecord = (
     invalidHereafterSlot ?? undefined,
     currentSlot,
   );
-};
-
-const parseJsonObjectFromString = (value: string): unknown | null => {
-  const normalized = value.replace(/\\"/g, '"');
-  const firstBrace = normalized.indexOf("{");
-  const lastBrace = normalized.lastIndexOf("}");
-  if (firstBrace === -1 || lastBrace <= firstBrace) {
-    return null;
-  }
-  try {
-    return JSON.parse(normalized.slice(firstBrace, lastBrace + 1));
-  } catch {
-    return null;
-  }
 };
 
 const errorTextSearchStrings = (
@@ -390,6 +360,32 @@ export type SignSubmitContext = {
   readonly txHash: string;
   readonly signedTxCbor: string;
   readonly walletAddress: string;
+};
+
+type AwaitTxConfirmationOptions = {
+  readonly timeout?: number;
+  readonly checkInterval?: number;
+};
+
+/**
+ * Waits for exact transaction confirmation through Lucid's typed status API.
+ *
+ * Lucid's Emulator is the one provider whose public `awaitTx` call also
+ * produces the next block. Advance it first, then retain the same exact-hash
+ * status confirmation used by live providers.
+ */
+export const awaitExactTransactionConfirmation = async (
+  lucid: LucidEvolution,
+  txHash: string,
+  options?: AwaitTxConfirmationOptions,
+) => {
+  if (isEmulatorProvider(lucid.config().provider)) {
+    const included = await lucid.awaitTx(txHash, options?.checkInterval);
+    if (!included) {
+      throw new Error(`Emulator did not include transaction ${txHash}`);
+    }
+  }
+  return lucid.awaitTxConfirmation(txHash, options);
 };
 
 /**
@@ -911,48 +907,6 @@ export const submitSignedTxWithRecovery = (
 
       const e = submitResult.left;
       const submitError = formatUnknownError(e, { includeCause: true });
-      if (isPotentiallyAlreadyIncludedError(submitError)) {
-        yield* Effect.logWarning(
-          `Tx submit returned an already-included style error for ${txHash}; verifying on-chain confirmation before failing: ${submitError}`,
-        );
-        const confirmed = yield* Effect.tryPromise({
-          try: () =>
-            new Promise<boolean>((resolve, reject) => {
-              const timeoutId = setTimeout(() => {
-                reject(
-                  new Error(
-                    `submit-recovery confirmation timeout after ${SUBMIT_RECOVERY_AWAIT_TIMEOUT_MS}ms`,
-                  ),
-                );
-              }, SUBMIT_RECOVERY_AWAIT_TIMEOUT_MS);
-              lucid
-                .awaitTx(txHash, SUBMIT_RECOVERY_POLL_INTERVAL_MS)
-                .then((result) => {
-                  clearTimeout(timeoutId);
-                  resolve(result);
-                })
-                .catch((error) => {
-                  clearTimeout(timeoutId);
-                  reject(error);
-                });
-            }),
-          catch: (cause) =>
-            new Error(
-              `submit-recovery confirmation check failed for ${txHash}: ${formatUnknownError(
-                cause,
-                { includeCause: true },
-              )}`,
-            ),
-        });
-        if (!confirmed) {
-          return yield* Effect.fail(e);
-        }
-        yield* Effect.logInfo(
-          `Tx ${txHash} confirmed after submit race; treating submission as successful.`,
-        );
-        return;
-      }
-
       const outsideValidityDetails =
         parseOutsideValidityIntervalDetails(e) ??
         parseOutsideValidityIntervalDetails(submitError);
@@ -1159,7 +1113,24 @@ export const submitSignedTxWithRecovery = (
         continue;
       }
 
-      if (isUnknownOutputReferenceSubmitError(submitError)) {
+      if (isUnknownOutputReferenceSubmitError(e)) {
+        yield* Effect.logWarning(
+          `Tx submit reported unknown inputs for ${txHash}; verifying the exact transaction through provider-neutral status before failing: ${submitError}`,
+        );
+        const confirmation = yield* Effect.either(
+          Effect.tryPromise(() =>
+            awaitExactTransactionConfirmation(lucid, txHash, {
+              timeout: SUBMIT_RECOVERY_AWAIT_TIMEOUT_MS,
+              checkInterval: SUBMIT_RECOVERY_POLL_INTERVAL_MS,
+            }),
+          ),
+        );
+        if (confirmation._tag === "Right") {
+          yield* Effect.logInfo(
+            `Tx ${txHash} confirmed after submit race; treating submission as successful.`,
+          );
+          return;
+        }
         return yield* Effect.fail(e);
       }
 
@@ -1268,25 +1239,9 @@ export const awaitSubmittedTransactionConfirmation = (
     yield* Effect.logInfo(`⏳ Confirming Transaction...`);
     const awaitWithTimeout = Effect.tryPromise({
       try: () =>
-        new Promise<boolean>((resolve, reject) => {
-          const timeoutId = setTimeout(() => {
-            reject(
-              new Error(
-                `timed out waiting for tx confirmation after ${confirmationTimeoutMs.toString()}ms`,
-              ),
-            );
-          }, confirmationTimeoutMs);
-
-          lucid
-            .awaitTx(txHash, confirmationPollIntervalMs)
-            .then((result) => {
-              clearTimeout(timeoutId);
-              resolve(result);
-            })
-            .catch((error) => {
-              clearTimeout(timeoutId);
-              reject(error);
-            });
+        awaitExactTransactionConfirmation(lucid, txHash, {
+          timeout: confirmationTimeoutMs,
+          checkInterval: confirmationPollIntervalMs,
         }),
       catch: (e) =>
         new TxConfirmError({

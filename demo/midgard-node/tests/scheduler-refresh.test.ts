@@ -15,8 +15,8 @@ import {
   filterLocallyConsumedUtxos,
   type NodeUtxoWithDatum,
   requireExistingSchedulerWitnessUtxo,
-  resolveSchedulerFirstAppointmentValidityWindow,
   resolveRefreshedSchedulerStartTime,
+  resolveSchedulerFirstAppointmentValidityWindow,
   resolveSchedulerRefreshValidityWindow,
   resolveSchedulerRefreshWitnessSelection,
   SCHEDULER_SUBMISSION_CONFIRMATION_TIMEOUT_MS,
@@ -28,8 +28,6 @@ import {
   schedulerSlotSnapshotFromSubmitSlot,
   schedulerStateCoversCommitTarget,
 } from "@/workers/utils/scheduler-refresh.js";
-
-import { captureCustomSlotConfigRestore } from "./helpers/emulator-submit-slot-snapshot.js";
 
 const mkUtxo = (txHash: string, outputIndex: number): UTxO =>
   ({
@@ -52,10 +50,7 @@ const mkNode = (
 });
 
 const customSlotLucid = {
-  config: () => ({
-    network: "Custom",
-    provider: { time: 0, slot: 0 },
-  }),
+  slotToUnixTime: (slot: number) => slot * 1_000,
   unixTimeToSlot: (unixTime: number) => Math.floor(unixTime / 1_000),
 };
 
@@ -195,21 +190,16 @@ describe("scheduler refresh witness selection", () => {
   });
 
   it("captures a single current-slot snapshot for scheduler validity resolution", async () => {
-    const restoreCustomSlotConfig = captureCustomSlotConfigRestore();
-    try {
-      const operator = generateEmulatorAccount({ lovelace: 50_000_000n });
-      const emulator = new Emulator([operator]);
-      const lucid = await Lucid(emulator, "Custom");
-      lucid.selectWallet.fromSeed(operator.seedPhrase);
+    const operator = generateEmulatorAccount({ lovelace: 50_000_000n });
+    const emulator = new Emulator([operator]);
+    const lucid = await Lucid(emulator, "Custom");
+    lucid.selectWallet.fromSeed(operator.seedPhrase);
 
-      const snapshot = captureSchedulerSlotSnapshot(lucid, 1_779_150_000_000);
+    const snapshot = captureSchedulerSlotSnapshot(lucid, 1_779_150_000_000);
 
-      expect(snapshot.currentSlot).toBe(lucid.currentSlot());
-      expect(snapshot.currentSlotStartMs).toEqual(expect.any(Number));
-      expect(snapshot.observedAtMs).toBe(1_779_150_000_000);
-    } finally {
-      restoreCustomSlotConfig();
-    }
+    expect(snapshot.currentSlot).toBe(lucid.currentSlot());
+    expect(snapshot.currentSlotStartMs).toEqual(expect.any(Number));
+    expect(snapshot.observedAtMs).toBe(1_779_150_000_000);
   });
 
   it("captures production scheduler slots from local submit-ledger snapshots", () => {
@@ -217,10 +207,7 @@ describe("scheduler refresh witness selection", () => {
       currentSlot: () => {
         throw new Error("wall-clock Lucid slot must not be used");
       },
-      config: () => ({
-        network: "Custom",
-        provider: { time: 20_000, slot: 20 },
-      }),
+      slotToUnixTime: (slot: number) => slot * 1_000,
     };
 
     const snapshot = schedulerSlotSnapshotFromSubmitSlot(lucid as never, {

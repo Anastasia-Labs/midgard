@@ -6,36 +6,16 @@ import {
   fetchLocalOgmiosSubmitSlotSnapshot,
   type SubmitSlotSnapshot,
 } from "@/local-ogmios-slot.js";
-import { configureCustomSlotConfigFromShelleyGenesis } from "@/lucid-time.js";
-import {
-  L1_REWARD_ACCOUNT_REGISTRATION_SOURCES,
-  type L1RewardAccountRegistrationSource,
-  providerRouteSummary,
-} from "@/provider-diagnostics.js";
+import { customSlotConfigFromShelleyGenesis } from "@/lucid-time.js";
+import { providerRouteSummary } from "@/provider-diagnostics.js";
 
 import { ConfigError, NodeConfig } from "./config.js";
 
 /**
- * Lucid-provider construction for the Midgard node.
- *
- * Acceptance and live runtime use only the local Kupmios provider route so
- * remote provider availability cannot decide e2e progress.
- */
-const attachRewardAccountRegistrationSources = <T extends object>(
-  provider: T,
-  sources: readonly L1RewardAccountRegistrationSource[],
-): T => {
-  Object.defineProperty(provider, L1_REWARD_ACCOUNT_REGISTRATION_SOURCES, {
-    value: sources,
-    enumerable: false,
-    configurable: true,
-  });
-  return provider;
-};
-
-/**
  * Builds the Lucid service bundle used by the node, including reference-script
- * and operator-wallet specializations.
+ * and operator-wallet specializations. Live runtime uses only the configured
+ * local Kupmios route, and Custom networks use an authoritative per-instance
+ * slot mapping shared by both clients.
  */
 const makeLucid: Effect.Effect<
   {
@@ -54,6 +34,7 @@ const makeLucid: Effect.Effect<
   NodeConfig
 > = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
+  let slotConfig: LE.SlotConfig | undefined;
   if (nodeConfig.NETWORK === "Custom") {
     const snapshot = yield* fetchLocalOgmiosSubmitSlotSnapshot({
       ogmiosUrl: nodeConfig.L1_OGMIOS_KEY,
@@ -88,8 +69,8 @@ const makeLucid: Effect.Effect<
           }),
       ),
     );
-    yield* Effect.try({
-      try: () => configureCustomSlotConfigFromShelleyGenesis(genesis, snapshot),
+    slotConfig = yield* Effect.try({
+      try: () => customSlotConfigFromShelleyGenesis(genesis, snapshot),
       catch: (cause) =>
         new ConfigError({
           message: "Failed to validate the Custom Lucid slot mapping",
@@ -124,17 +105,15 @@ const makeLucid: Effect.Effect<
   );
   const lucid: LE.LucidEvolution = yield* Effect.tryPromise({
     try: () => {
-      const kupmiosProvider = attachRewardAccountRegistrationSources(
-        new LE.Kupmios(nodeConfig.L1_KUPO_KEY, nodeConfig.L1_OGMIOS_KEY),
-        [
-          {
-            kind: "ogmios",
-            source: "kupmios",
-            url: nodeConfig.L1_OGMIOS_KEY,
-          },
-        ],
+      const kupmiosProvider = new LE.Kupmios(
+        nodeConfig.L1_KUPO_KEY,
+        nodeConfig.L1_OGMIOS_KEY,
       );
-      return LE.Lucid(kupmiosProvider, nodeConfig.NETWORK);
+      return LE.Lucid(
+        kupmiosProvider,
+        nodeConfig.NETWORK,
+        slotConfig === undefined ? undefined : { slotConfig },
+      );
     },
     catch: (e) =>
       new ConfigError({
@@ -150,7 +129,12 @@ const makeLucid: Effect.Effect<
     Effect.retry(Schedule.fixed("1000 millis")),
   );
   const referenceScriptsApi: LE.LucidEvolution = yield* Effect.tryPromise({
-    try: () => LE.Lucid(lucid.config().provider, nodeConfig.NETWORK),
+    try: () =>
+      LE.Lucid(
+        lucid.config().provider,
+        nodeConfig.NETWORK,
+        slotConfig === undefined ? undefined : { slotConfig },
+      ),
     catch: (e) =>
       new ConfigError({
         message: "An error occurred while initializing reference-scripts Lucid",

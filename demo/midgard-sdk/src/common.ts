@@ -4,7 +4,6 @@ import {
   Data,
   fromHex,
   getAddressDetails,
-  Kupmios,
   LucidEvolution,
   PolicyId,
   Script,
@@ -77,20 +76,6 @@ const validateProviderUtxos = (value: unknown): UTxO[] => {
   return value as UTxO[];
 };
 
-const supportsKupmiosPolicyQuery = (lucid: LucidEvolution): boolean => {
-  const config = (lucid as { readonly config?: unknown }).config;
-  if (typeof config !== "function") {
-    return false;
-  }
-  const configured = (config as () => unknown).call(lucid);
-  return (
-    isRecord(configured) &&
-    configured.provider instanceof Kupmios &&
-    typeof (lucid as { readonly utxosAtWithUnit?: unknown }).utxosAtWithUnit ===
-      "function"
-  );
-};
-
 /**
  * Silently drops the UTxOs without proper authentication NFTs.
  */
@@ -100,16 +85,10 @@ export const utxosAtByNFTPolicyId = (
   policyId: PolicyId,
 ): Effect.Effect<BeaconUTxO[], LucidError> =>
   Effect.gen(function* () {
-    // Kupmios deliberately supports a policy-only unit query (`?policy_id=`),
-    // which avoids resolving every historical datum at shared addresses.
-    // Other providers expose exact-unit semantics through the same Lucid
-    // method, so method presence alone must never select this optimization.
-    const policyScoped = supportsKupmiosPolicyQuery(lucid);
     const providerResult: unknown = yield* Effect.tryPromise({
-      try: () =>
-        policyScoped
-          ? lucid.utxosAtWithUnit(addressOrCred, policyId)
-          : lucid.utxosAt(addressOrCred),
+      // Lucid 0.6 provides a provider-neutral policy query with a native
+      // Kupmios fast path and a correct address-wide fallback.
+      try: () => lucid.utxosAtWithPolicy(addressOrCred, policyId),
       catch: (e) => {
         return new LucidError({
           message: `Failed to fetch UTxOs at: ${addressOrCred}`,

@@ -36,6 +36,7 @@ import {
   type SubmitTimingNotDuePlanWithDueWorkEvidence,
 } from "@/transactions/submit-timing-due-work.js";
 import {
+  awaitExactTransactionConfirmation,
   handleSignSubmitNoConfirmation,
   type NoInlineSubmitDefer,
   type NoInlineSubmitRecoveryOptions,
@@ -522,7 +523,8 @@ export const resolveSchedulerFirstAppointmentValidityWindow = (
       lucid,
       Math.max(
         0,
-        slotSnapshot.observedAtMs - SCHEDULER_REFRESH_VALID_FROM_BACKDATE_MS,
+        slotSnapshot.currentSlotStartMs -
+          SCHEDULER_REFRESH_VALID_FROM_BACKDATE_MS,
       ),
     ),
   );
@@ -594,26 +596,11 @@ const awaitSubmittedSchedulerTx = (
   purpose: "refresh",
 ): Effect.Effect<void, SDK.StateQueueError> =>
   Effect.gen(function* () {
-    const confirmed = yield* Effect.tryPromise({
+    yield* Effect.tryPromise({
       try: () =>
-        new Promise<boolean>((resolve, reject) => {
-          const timeoutId = setTimeout(() => {
-            reject(
-              new Error(
-                `scheduler ${purpose} confirmation timeout after ${SCHEDULER_SUBMISSION_CONFIRMATION_TIMEOUT_MS}ms`,
-              ),
-            );
-          }, SCHEDULER_SUBMISSION_CONFIRMATION_TIMEOUT_MS);
-          lucid
-            .awaitTx(txHash, SCHEDULER_SUBMISSION_CONFIRMATION_POLL_INTERVAL_MS)
-            .then((result) => {
-              clearTimeout(timeoutId);
-              resolve(result);
-            })
-            .catch((error) => {
-              clearTimeout(timeoutId);
-              reject(error);
-            });
+        awaitExactTransactionConfirmation(lucid, txHash, {
+          timeout: SCHEDULER_SUBMISSION_CONFIRMATION_TIMEOUT_MS,
+          checkInterval: SCHEDULER_SUBMISSION_CONFIRMATION_POLL_INTERVAL_MS,
         }),
       catch: (cause) =>
         new SDK.StateQueueError({
@@ -621,14 +608,6 @@ const awaitSubmittedSchedulerTx = (
           cause,
         }),
     });
-    if (!confirmed) {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message: `Scheduler ${purpose} tx did not confirm`,
-          cause: txHash,
-        }),
-      );
-    }
   });
 
 const getOperatorKeyHash = (

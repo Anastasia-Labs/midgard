@@ -63,11 +63,12 @@ Cardano-node 11.0.1, Ogmios v7.0.0, Kupo v2.11.0, and Postgres 15.15 are all
 fixed to official immutable image digests. The generated run records the
 effective image IDs; reset refuses any image or artifact drift.
 
-The workspace pins `@lucid-evolution/provider@0.1.96` with a narrow schema
-patch for Ogmios v7's canonical
-`maxReferenceScriptsSizePerTransaction` protocol-parameter field. The obsolete
-v6 `maxReferenceScriptsSize` spelling is intentionally rejected rather than
-aliased. Verify the success and fail-closed fixtures with:
+The workspace uses Lucid Evolution 0.6, whose provider package natively
+supports Ogmios v7's canonical `maxReferenceScriptsSizePerTransaction`
+protocol-parameter field. No local provider patch is applied. The provider
+normalizes the legacy v6 `maxReferenceScriptsSize` spelling for compatibility
+and fails closed when both spellings conflict or the value is missing or
+malformed. Verify the released behavior and fail-closed fixtures with:
 
 ```bash
 pnpm exec vitest run tests/kupmios-ogmios-v7-protocol-parameters.test.ts

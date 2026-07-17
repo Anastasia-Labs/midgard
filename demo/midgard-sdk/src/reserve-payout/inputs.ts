@@ -10,16 +10,6 @@ import { isPureAdaUtxo } from "@/reserve-payout/assets.js";
 import { fail, ReservePayoutTxError } from "@/reserve-payout/errors.js";
 import * as SDK from "@/reserve-payout/primitives.js";
 
-type ProviderLedgerEntry = {
-  readonly utxo?: UTxO;
-  readonly spent?: boolean;
-};
-
-type ProviderWithVisibleLedger = {
-  readonly ledger?: Record<string, ProviderLedgerEntry | undefined>;
-  readonly mempool?: Record<string, ProviderLedgerEntry | undefined>;
-};
-
 type FeeInputRejection = {
   readonly message: string;
   readonly cause: unknown;
@@ -98,42 +88,12 @@ const fetchWalletAddressProgram = (
       }),
   });
 
-export const isProviderSpendableUtxo = (
-  lucid: LucidEvolution,
-  utxo: UTxO,
-): boolean => {
-  const provider = lucid.config().provider as ProviderWithVisibleLedger;
-  const outRefKey = `${utxo.txHash}${utxo.outputIndex.toString()}`;
-  const hasVisibleProviderState =
-    provider.ledger !== undefined || provider.mempool !== undefined;
-  const entry = provider.ledger?.[outRefKey] ?? provider.mempool?.[outRefKey];
-  if (entry === undefined) {
-    return !hasVisibleProviderState;
-  }
-  return entry.spent !== true;
-};
-
 export const fetchProviderVisibleWalletInputsProgram = (
   lucid: LucidEvolution,
 ): Effect.Effect<readonly UTxO[], SDK.LucidError> =>
   Effect.gen(function* () {
     const walletAddress = yield* fetchWalletAddressProgram(lucid);
-    const provider = lucid.config().provider as ProviderWithVisibleLedger;
-    const visibleProviderEntries = [
-      ...Object.values(provider.ledger ?? {}),
-      ...Object.values(provider.mempool ?? {}),
-    ];
-    if (visibleProviderEntries.length > 0) {
-      return visibleProviderEntries.flatMap((entry) =>
-        entry === undefined ||
-        entry.spent === true ||
-        entry.utxo === undefined ||
-        entry.utxo.address !== walletAddress
-          ? []
-          : [entry.utxo],
-      );
-    }
-    const walletUtxos = yield* Effect.tryPromise({
+    return yield* Effect.tryPromise({
       try: () => lucid.utxosAt(walletAddress),
       catch: (cause) =>
         new SDK.LucidError({
@@ -142,7 +102,6 @@ export const fetchProviderVisibleWalletInputsProgram = (
           cause,
         }),
     });
-    return walletUtxos.filter((utxo) => isProviderSpendableUtxo(lucid, utxo));
   });
 
 export const selectFeeInputProgram = (
