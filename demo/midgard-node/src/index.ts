@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
-import { mkdir, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { createHash } from "node:crypto";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { normalizeHex } from "@al-ft/midgard-core/hex";
@@ -85,6 +86,13 @@ import * as Services from "@/services/index.js";
 import * as DaAttestation from "@/transactions/da-attestation.js";
 import * as Initialization from "@/transactions/initialization.js";
 import * as PhasMembershipRegistration from "@/transactions/phas-membership-registration.js";
+import {
+  assertPersistedSignedTxPreSubmitCaptureIdentity,
+  assertSignedTxPreSubmitCaptureCliSafety,
+  finalizeSignedTxPreSubmitCapture,
+  prepareSignedTxPreSubmitCaptureDirectory,
+  type SignedTxPreSubmitCapture,
+} from "@/transactions/pre-submit-capture.js";
 import {
   fetchReferenceScriptUtxosProgram,
   planReferenceScriptCommandProgram,
@@ -3770,13 +3778,42 @@ for (const commandName of RegisterActiveOperator.REFERENCE_SCRIPT_COMMAND_NAMES)
       "--fresh-redeploy-reason <text>",
       "Required reason when --fresh-redeploy is used",
     )
+    .option(
+      "--capture-signed-tx-pre-submit <directory>",
+      "Explicit diagnostic mode: capture every signed publication batch into a fresh directory without provider submit",
+    )
+    .option(
+      "--ledger-protocol-major <integer>",
+      "Required in capture mode: independently observed ledger protocol major for the external script decoder gate",
+    )
     .action(async (_args, options) => {
       const commandOptions = options.opts();
       const { contractDeploymentInfoOutput, planOnly } = commandOptions;
+      const captureOutputDirectory =
+        typeof commandOptions.captureSignedTxPreSubmit === "string"
+          ? resolve(commandOptions.captureSignedTxPreSubmit)
+          : undefined;
       const runOptions =
         DeploymentRunStateCommand.resolveDeploymentRunCliOptions(
           commandOptions,
         );
+      if (captureOutputDirectory !== undefined && runOptions.freshRedeploy) {
+        throw new Error(
+          "--capture-signed-tx-pre-submit cannot be combined with --fresh-redeploy because capture must use an already-persisted auth policy identity",
+        );
+      }
+      if (captureOutputDirectory !== undefined && planOnly === true) {
+        throw new Error(
+          "--capture-signed-tx-pre-submit cannot be combined with --plan-only",
+        );
+      }
+      const ledgerProtocolMajor =
+        captureOutputDirectory === undefined
+          ? undefined
+          : parsePositiveIntegerOption(
+              commandOptions.ledgerProtocolMajor,
+              "--ledger-protocol-major",
+            );
       const mainEffect = provideReferenceScriptDeploymentServices(
         Effect.gen(function* () {
           const nodeConfig = yield* Services.NodeConfig;
@@ -3799,9 +3836,58 @@ for (const commandName of RegisterActiveOperator.REFERENCE_SCRIPT_COMMAND_NAMES)
                 timelockDurationMs:
                   nodeConfig.REFERENCE_SCRIPT_AUTH_TIMELOCK_MS,
                 manifestOutputPath,
-                persistRunState: planOnly !== true,
+                persistRunState:
+                  planOnly !== true && captureOutputDirectory === undefined,
               },
             );
+          const preSubmitDiagnosticCapture =
+            captureOutputDirectory === undefined
+              ? undefined
+              : yield* Effect.tryPromise({
+                  try: async (): Promise<SignedTxPreSubmitCapture> => {
+                    const blueprintPath = resolve(
+                      process.env.MIDGARD_REAL_BLUEPRINT_PATH?.trim() ||
+                        resolve(
+                          import.meta.dirname,
+                          "../../../onchain/aiken/plutus.json",
+                        ),
+                    );
+                    const blueprintBytes = await readFile(blueprintPath);
+                    const capture: SignedTxPreSubmitCapture = {
+                      outputDirectory: captureOutputDirectory,
+                      invocation: "phase4-live-pre-submit-capture",
+                      abortBeforeSubmit: true,
+                      session: {
+                        commandName,
+                        runStatePath: resolve(runOptions.runStatePath),
+                        blueprintPath,
+                        blueprintSha256: createHash("sha256")
+                          .update(blueprintBytes)
+                          .digest("hex"),
+                        ledgerProtocolMajor: ledgerProtocolMajor!,
+                        network: nodeConfig.NETWORK,
+                        hubOracleOneShotOutRef: `${nodeConfig.HUB_ORACLE_ONE_SHOT_TX_HASH}#${nodeConfig.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX.toString()}`,
+                        referenceScriptAuthPolicyId: authPolicy.policyId,
+                      },
+                    };
+                    assertSignedTxPreSubmitCaptureCliSafety({
+                      capture,
+                      freshRedeploy: runOptions.freshRedeploy,
+                      planOnly: planOnly === true,
+                    });
+                    await assertPersistedSignedTxPreSubmitCaptureIdentity(
+                      capture,
+                    );
+                    await prepareSignedTxPreSubmitCaptureDirectory(capture);
+                    return capture;
+                  },
+                  catch: (cause) =>
+                    cause instanceof Error
+                      ? cause
+                      : new Error(
+                          `Failed to prepare pre-submit diagnostic capture: ${String(cause)}`,
+                        ),
+                });
           const baseContracts = yield* Services.AlwaysSucceedsContract;
           const contracts =
             yield* Services.withRealStateQueueAndOperatorContracts(
@@ -3857,7 +3943,30 @@ for (const commandName of RegisterActiveOperator.REFERENCE_SCRIPT_COMMAND_NAMES)
               new Set([
                 `${nodeConfig.HUB_ORACLE_ONE_SHOT_TX_HASH}#${nodeConfig.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX.toString()}`,
               ]),
+              preSubmitDiagnosticCapture,
             );
+          if (preSubmitDiagnosticCapture !== undefined) {
+            const captureComplete = yield* Effect.tryPromise({
+              try: () =>
+                finalizeSignedTxPreSubmitCapture({
+                  capture: preSubmitDiagnosticCapture,
+                  expectedTargetNames: referenceScriptTargetsByCommand(
+                    contracts,
+                  )[commandName].map(({ name }) => name),
+                }),
+              catch: (cause) =>
+                cause instanceof Error
+                  ? cause
+                  : new Error(
+                      `Failed to finalize pre-submit diagnostic capture: ${String(cause)}`,
+                    ),
+            });
+            return {
+              mode: "diagnostic-capture" as const,
+              published,
+              captureComplete,
+            };
+          }
           const liveReferenceScripts = yield* fetchReferenceScriptUtxosProgram(
             lucidService.referenceScriptsApi,
             lucidService.referenceScriptsAddress,
@@ -3894,6 +4003,11 @@ for (const commandName of RegisterActiveOperator.REFERENCE_SCRIPT_COMMAND_NAMES)
             if (result.mode === "plan") {
               return Effect.logInfo(
                 `deploy-reference-script-${commandName} plan-only completed: ${formatJson(result.plan)}`,
+              );
+            }
+            if (result.mode === "diagnostic-capture") {
+              return Effect.logInfo(
+                `deploy-reference-script-${commandName} diagnostic capture completed without provider submission: ${formatJson(result.captureComplete)}`,
               );
             }
             return Effect.logInfo(

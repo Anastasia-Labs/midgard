@@ -21,6 +21,17 @@ import {
 } from "@/local-ledger-slot.js";
 import { Database } from "@/services/index.js";
 import {
+  type CapturedSignedTxNotSubmitted,
+  captureSignedTxPreSubmit,
+  type SignedTxPreSubmitBatchContext,
+  type SignedTxPreSubmitCapture,
+} from "@/transactions/pre-submit-capture.js";
+export type {
+  CapturedSignedTxNotSubmitted,
+  SignedTxPreSubmitBatchContext,
+  SignedTxPreSubmitCapture,
+} from "@/transactions/pre-submit-capture.js";
+import {
   type InlineWaitPolicy,
   planSubmitTiming,
   planSubmitTimingAfterInlineWait,
@@ -388,6 +399,12 @@ export const awaitExactTransactionConfirmation = async (
   return lucid.awaitTxConfirmation(txHash, options);
 };
 
+export type CaptureSignedTransactionOptions = {
+  readonly capture: SignedTxPreSubmitCapture;
+  readonly batch: SignedTxPreSubmitBatchContext;
+  readonly label?: string;
+};
+
 /**
  * Formats an outref into a stable map key.
  */
@@ -473,6 +490,8 @@ export type SubmitRecoveryInlineOptions = {
   readonly confirmationPollIntervalMs?: number;
   readonly inlineWaitPolicy?: Extract<InlineWaitPolicy, "allow_inline_wait">;
   readonly noInlineSubmitDefer?: never;
+  /** Explicit diagnostic mode. It always aborts before provider submit. */
+  readonly preSubmitDiagnosticCapture?: SignedTxPreSubmitCapture;
 };
 
 export type NoInlineSubmitDeferKind =
@@ -1354,6 +1373,59 @@ export function signSubmitTransaction(
   return signSubmitTransactionWithDefer(lucid, signBuilder, options);
 }
 
+/**
+ * Signs and durably captures one explicitly described reference-script
+ * publication transaction. This function has no provider submit or
+ * confirmation branch; callers must handle the captured-not-submitted result.
+ */
+export const signTransactionForPreSubmitCapture = (
+  lucid: LucidEvolution,
+  signBuilder: TxSignBuilder,
+  options: CaptureSignedTransactionOptions,
+): Effect.Effect<CapturedSignedTxNotSubmitted, TxSubmitError | TxSignError> =>
+  Effect.gen(function* () {
+    const walletAddr = yield* Effect.tryPromise(() =>
+      lucid.wallet().address(),
+    ).pipe(Effect.catchAll(() => Effect.succeed("<unknown>")));
+    yield* Effect.logInfo(`✍  Signing diagnostic tx with ${walletAddr}`);
+    const txHash = signBuilder.toHash();
+    const signed = yield* signBuilder.sign
+      .withWallet()
+      .completeProgram()
+      .pipe(
+        Effect.tapError((error) => Effect.logError(error)),
+        Effect.mapError(
+          (cause) =>
+            new TxSignError({
+              message: "Failed to sign diagnostic transaction",
+              cause,
+              txHash,
+            }),
+        ),
+      );
+    const signedTxCbor = signed.toCBOR();
+    yield* Effect.logInfo(
+      `✍  Signed diagnostic tx prepared: txHash=${txHash}, cborBytes=${signedTxCbor.length / 2}`,
+    );
+    return yield* Effect.tryPromise({
+      try: () =>
+        captureSignedTxPreSubmit({
+          signedTxCbor,
+          txHash,
+          walletAddress: walletAddr,
+          label: options.label,
+          capture: options.capture,
+          batch: options.batch,
+        }),
+      catch: (cause) =>
+        new TxSubmitError({
+          message: `Pre-submit diagnostic capture failed closed: ${formatUnknownError(cause, { includeCause: true })}`,
+          cause,
+          txHash,
+        }),
+    });
+  });
+
 const signSubmitTransactionWithDefer = (
   lucid: LucidEvolution,
   signBuilder: TxSignBuilder,
@@ -1363,6 +1435,16 @@ const signSubmitTransactionWithDefer = (
   TxSubmitError | TxSignError | NoInlineSubmitDefer
 > =>
   Effect.gen(function* () {
+    if (options.preSubmitDiagnosticCapture !== undefined) {
+      return yield* Effect.fail(
+        new TxSubmitError({
+          message:
+            "Generic submit helpers reject captured-not-submitted outcomes; use the explicit reference-script diagnostic capture path",
+          cause: "pre_submit_diagnostic_capture_not_supported_here",
+          txHash: signBuilder.toHash(),
+        }),
+      );
+    }
     const walletAddr = yield* Effect.tryPromise(() =>
       lucid.wallet().address(),
     ).pipe(Effect.catchAll((_e) => Effect.succeed("<unknown>")));

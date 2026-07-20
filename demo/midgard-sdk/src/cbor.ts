@@ -317,3 +317,97 @@ export const normalizeRootIndefiniteArrayEncoding = (
     );
   }
 };
+
+/**
+ * Normalizes Lucid's parameterized-script output, which contains exactly two
+ * definite bytestring layers. The outer wrapper is stripped while the inner
+ * wrapper is retained as the canonical one-layer ledger script.
+ */
+export const normalizeAikenParameterizedPlutusScript = (
+  cborHex: string,
+): string => {
+  if (!/^[0-9a-fA-F]+$/.test(cborHex) || cborHex.length % 2 !== 0) {
+    throw new CborDeserializationError({
+      message: "Failed to normalize parameterized Aiken Plutus script",
+      cause: "Script must be a non-empty even-length hexadecimal string",
+    });
+  }
+  const bytes = fromHex(cborHex);
+  const first = bytes[0];
+  if (first === undefined || first >> 5 !== 2 || (first & 0x1f) < 24) {
+    throw new CborDeserializationError({
+      message: "Failed to normalize parameterized Aiken Plutus script",
+      cause: "Expected a two-layer definite CBOR bytestring script",
+    });
+  }
+  const outerLengthBytes = first & 0x1f;
+  const outerHeaderLength =
+    outerLengthBytes === 24
+      ? 2
+      : outerLengthBytes === 25
+        ? 3
+        : outerLengthBytes === 26
+          ? 5
+          : 0;
+  if (outerHeaderLength === 0) {
+    throw new CborDeserializationError({
+      message: "Failed to normalize parameterized Aiken Plutus script",
+      cause: "Unsupported outer CBOR bytestring length header",
+    });
+  }
+  const readLength = (offset: number, width: number): number => {
+    let value = 0;
+    for (let index = 0; index < width; index += 1) {
+      value = value * 256 + (bytes[offset + index] ?? 0);
+    }
+    return value;
+  };
+  const outerLength = readLength(1, outerHeaderLength - 1);
+  if (outerLength <= 0 || outerHeaderLength + outerLength !== bytes.length) {
+    throw new CborDeserializationError({
+      message: "Failed to normalize parameterized Aiken Plutus script",
+      cause: "Outer CBOR bytestring length does not match script payload",
+    });
+  }
+  const inner = bytes.slice(outerHeaderLength);
+  if (inner[0] === undefined || inner[0] >> 5 !== 2 || (inner[0] & 0x1f) < 24) {
+    throw new CborDeserializationError({
+      message: "Failed to normalize parameterized Aiken Plutus script",
+      cause: "Expected exactly one retained inner CBOR bytestring layer",
+    });
+  }
+  const innerHeaderLength =
+    (inner[0] & 0x1f) === 24
+      ? 2
+      : (inner[0] & 0x1f) === 25
+        ? 3
+        : (inner[0] & 0x1f) === 26
+          ? 5
+          : 0;
+  if (innerHeaderLength === 0) {
+    throw new CborDeserializationError({
+      message: "Failed to normalize parameterized Aiken Plutus script",
+      cause: "Unsupported inner CBOR bytestring length header",
+    });
+  }
+  const innerLength = (() => {
+    let value = 0;
+    for (let index = 1; index < innerHeaderLength; index += 1) {
+      value = value * 256 + (inner[index] ?? 0);
+    }
+    return value;
+  })();
+  if (innerLength <= 0 || innerHeaderLength + innerLength !== inner.length) {
+    throw new CborDeserializationError({
+      message: "Failed to normalize parameterized Aiken Plutus script",
+      cause: "Inner CBOR bytestring length does not match script payload",
+    });
+  }
+  if (inner[innerHeaderLength]! >> 5 === 2) {
+    throw new CborDeserializationError({
+      message: "Failed to normalize parameterized Aiken Plutus script",
+      cause: "Script contains more than two CBOR bytestring layers",
+    });
+  }
+  return toHex(inner);
+};
