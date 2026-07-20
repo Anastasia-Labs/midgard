@@ -142,6 +142,11 @@ describe("contract deployment info", () => {
                 contracts.fraudProofs.transitionTrace.spendingScriptHash,
               membershipProofCbor: "80",
             },
+            zeroInput: {
+              categoryId: "00000005",
+              scriptHash: contracts.fraudProofs.zeroInput.spendingScriptHash,
+              membershipProofCbor: "80",
+            },
           },
         },
       );

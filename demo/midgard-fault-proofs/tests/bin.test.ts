@@ -132,8 +132,20 @@ describe("fault-proof CLI argument parsing", () => {
         "invalid-range",
       ]),
     ).toThrow(
-      '--fraud-category must be one of "doubleSpend", "invalidRange", "transitionTrace", or "nonExistentInput"',
+      '--fraud-category must be one of "doubleSpend", "invalidRange", "transitionTrace", "nonExistentInput", or "zeroInput"',
     );
+  });
+
+  it("accepts the zeroInput fault-proof category", () => {
+    expect(
+      parseArgs([
+        "node",
+        "midgard-fault-proofs",
+        "submit-init",
+        "--fraud-category",
+        "zeroInput",
+      ]).fraudCategory,
+    ).toBe("zeroInput");
   });
 
   it("parses non-existent-input prepare, init category, and submit-step arguments", () => {

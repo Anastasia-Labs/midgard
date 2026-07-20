@@ -6,8 +6,7 @@ use aiken/merkle_patricia_forestry as mpf
 use aiken/primitive/bytearray
 use aiken_design_patterns/validity_range_normalization as vrn
 use cardano/address.{
-  Address, Credential, Inline, Pointer, Script, StakeCredential,
-  VerificationKey,
+  Address, Credential, Inline, Pointer, Script, StakeCredential, VerificationKey,
 }
 use cardano/assets.{AssetName, Value}
 use cardano/transaction.{
@@ -1138,13 +1137,15 @@ fn validate_l2_transaction_transition(
   let outputs =
     native_preimages.decode_midgard_tx_outputs_preimage_cbor(outputs_preimage)
   let after_spends =
-    apply_l2_spends(
-      trace_proof.value.pre_utxos_root,
-      spend_inputs,
-      spent_utxos,
-    )
+    apply_l2_spends(trace_proof.value.pre_utxos_root, spend_inputs, spent_utxos)
   let expected_post_root =
-    apply_l2_outputs(after_spends, source_membership.key, 0, outputs, produced_utxos)
+    apply_l2_outputs(
+      after_spends,
+      source_membership.key,
+      0,
+      outputs,
+      produced_utxos,
+    )
   and {
     validate_l2_one_step_binding(
       header,
@@ -1304,10 +1305,7 @@ fn get_deposit_event_with_nft(
       event_asset_name,
       event_ref_input_index,
     )
-  TimedDepositEvent {
-    event,
-    inclusion_time,
-  }
+  TimedDepositEvent { event, inclusion_time }
 }
 
 fn get_withdrawal_datum_with_nft(
