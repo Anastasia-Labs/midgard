@@ -15,14 +15,14 @@ and completion.
 
 ## Implemented boundaries
 
-| Family                          | SDK source of truth                                                                            | Node responsibility                                                                      |
-| ------------------------------- | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| Scheduler bootstrap and refresh | `demo/midgard-sdk/src/scheduler.ts`, `scheduler-refresh.ts`                                    | Select live inputs, provide runtime witnesses, submit and confirm.                       |
-| DA attestation                  | `demo/midgard-sdk/src/da-attestation.ts`                                                       | Resolve committee/runtime state and drive the attestation lifecycle.                     |
-| Operator registration           | `demo/midgard-sdk/src/operator-lifecycle.ts`, `active-operators.ts`, `registered-operators.ts` | Supply funding inputs and operator credentials.                                          |
-| Reference-script publication    | `demo/midgard-sdk/src/reference-scripts.ts`                                                    | Plan batches, select deployment identity and funding, then submit or explicitly capture. |
-| PHAS membership registration    | `demo/midgard-sdk/src/phas-membership.ts`                                                      | Resolve the configured script, inspect registration state, submit and confirm.           |
-| Hub-oracle nonce preparation    | `demo/midgard-sdk/src/hub-oracle.ts`                                                           | Select and persist the one-shot out-ref used by deployment.                              |
+| Family                          | SDK source of truth                                                                            | Node responsibility                                                            |
+| ------------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Scheduler bootstrap and refresh | `demo/midgard-sdk/src/scheduler.ts`, `scheduler-refresh.ts`                                    | Select live inputs, provide runtime witnesses, submit and confirm.             |
+| DA attestation                  | `demo/midgard-sdk/src/da-attestation.ts`                                                       | Resolve committee/runtime state and drive the attestation lifecycle.           |
+| Operator registration           | `demo/midgard-sdk/src/operator-lifecycle.ts`, `active-operators.ts`, `registered-operators.ts` | Supply funding inputs and operator credentials.                                |
+| Reference-script publication    | `demo/midgard-sdk/src/reference-scripts.ts`                                                    | Plan batches, select deployment identity and funding, then submit and confirm. |
+| PHAS membership registration    | `demo/midgard-sdk/src/phas-membership.ts`                                                      | Resolve the configured script, inspect registration state, submit and confirm. |
+| Hub-oracle nonce preparation    | `demo/midgard-sdk/src/hub-oracle.ts`                                                           | Select and persist the one-shot out-ref used by deployment.                    |
 
 The SDK owns deterministic transaction construction. The node owns environment
 configuration, live input discovery, wallet selection, retries, submission,
