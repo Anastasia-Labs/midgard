@@ -1384,11 +1384,18 @@ export const signTransactionForPreSubmitCapture = (
   options: CaptureSignedTransactionOptions,
 ): Effect.Effect<CapturedSignedTxNotSubmitted, TxSubmitError | TxSignError> =>
   Effect.gen(function* () {
-    const walletAddr = yield* Effect.tryPromise(() =>
-      lucid.wallet().address(),
-    ).pipe(Effect.catchAll(() => Effect.succeed("<unknown>")));
-    yield* Effect.logInfo(`✍  Signing diagnostic tx with ${walletAddr}`);
     const txHash = signBuilder.toHash();
+    const walletAddr = yield* Effect.tryPromise({
+      try: () => lucid.wallet().address(),
+      catch: (cause) =>
+        new TxSignError({
+          message:
+            "Failed to resolve the signing wallet address for diagnostic capture",
+          cause,
+          txHash,
+        }),
+    });
+    yield* Effect.logInfo(`✍  Signing diagnostic tx with ${walletAddr}`);
     const signed = yield* signBuilder.sign
       .withWallet()
       .completeProgram()

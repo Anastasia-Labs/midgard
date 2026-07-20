@@ -333,81 +333,55 @@ export const normalizeAikenParameterizedPlutusScript = (
     });
   }
   const bytes = fromHex(cborHex);
-  const first = bytes[0];
-  if (first === undefined || first >> 5 !== 2 || (first & 0x1f) < 24) {
-    throw new CborDeserializationError({
-      message: "Failed to normalize parameterized Aiken Plutus script",
-      cause: "Expected a two-layer definite CBOR bytestring script",
-    });
-  }
-  const outerLengthBytes = first & 0x1f;
-  const outerHeaderLength =
-    outerLengthBytes === 24
-      ? 2
-      : outerLengthBytes === 25
-        ? 3
-        : outerLengthBytes === 26
-          ? 5
-          : 0;
-  if (outerHeaderLength === 0) {
-    throw new CborDeserializationError({
-      message: "Failed to normalize parameterized Aiken Plutus script",
-      cause: "Unsupported outer CBOR bytestring length header",
-    });
-  }
-  const readLength = (offset: number, width: number): number => {
-    let value = 0;
-    for (let index = 0; index < width; index += 1) {
-      value = value * 256 + (bytes[offset + index] ?? 0);
+  const readLayer = (
+    offset: number,
+    expectedEnd: number,
+    label: "outer" | "inner",
+  ): { readonly payloadStart: number; readonly payloadEnd: number } => {
+    const header = readHeader(bytes, offset);
+    const length = header.value;
+    const canonicalLength =
+      length !== null &&
+      (header.additionalInfo < 24 ||
+        (header.additionalInfo === 24 && length >= 24) ||
+        (header.additionalInfo === 25 && length >= 0x100) ||
+        (header.additionalInfo === 26 && length >= 0x1_0000) ||
+        (header.additionalInfo === 27 && length >= 0x1_0000_0000));
+    const payloadEnd =
+      length === null ? header.nextOffset : header.nextOffset + length;
+    if (
+      header.majorType !== 2 ||
+      header.isIndefinite ||
+      length === null ||
+      length === 0 ||
+      !canonicalLength ||
+      payloadEnd !== expectedEnd
+    ) {
+      throw new CborDeserializationError({
+        message: "Failed to normalize parameterized Aiken Plutus script",
+        cause: `Expected a canonical definite ${label} CBOR bytestring layer with no trailing bytes`,
+      });
     }
-    return value;
+    return { payloadStart: header.nextOffset, payloadEnd };
   };
-  const outerLength = readLength(1, outerHeaderLength - 1);
-  if (outerLength <= 0 || outerHeaderLength + outerLength !== bytes.length) {
-    throw new CborDeserializationError({
-      message: "Failed to normalize parameterized Aiken Plutus script",
-      cause: "Outer CBOR bytestring length does not match script payload",
-    });
+  const outer = readLayer(0, bytes.length, "outer");
+  const inner = readLayer(outer.payloadStart, outer.payloadEnd, "inner");
+  let containsExactThirdLayer = false;
+  try {
+    const thirdHeader = readHeader(bytes, inner.payloadStart);
+    containsExactThirdLayer =
+      thirdHeader.majorType === 2 &&
+      !thirdHeader.isIndefinite &&
+      thirdHeader.value !== null &&
+      thirdHeader.nextOffset + thirdHeader.value === inner.payloadEnd;
+  } catch {
+    // The retained script payload is Flat bytes, not another CBOR item.
   }
-  const inner = bytes.slice(outerHeaderLength);
-  if (inner[0] === undefined || inner[0] >> 5 !== 2 || (inner[0] & 0x1f) < 24) {
-    throw new CborDeserializationError({
-      message: "Failed to normalize parameterized Aiken Plutus script",
-      cause: "Expected exactly one retained inner CBOR bytestring layer",
-    });
-  }
-  const innerHeaderLength =
-    (inner[0] & 0x1f) === 24
-      ? 2
-      : (inner[0] & 0x1f) === 25
-        ? 3
-        : (inner[0] & 0x1f) === 26
-          ? 5
-          : 0;
-  if (innerHeaderLength === 0) {
-    throw new CborDeserializationError({
-      message: "Failed to normalize parameterized Aiken Plutus script",
-      cause: "Unsupported inner CBOR bytestring length header",
-    });
-  }
-  const innerLength = (() => {
-    let value = 0;
-    for (let index = 1; index < innerHeaderLength; index += 1) {
-      value = value * 256 + (inner[index] ?? 0);
-    }
-    return value;
-  })();
-  if (innerLength <= 0 || innerHeaderLength + innerLength !== inner.length) {
-    throw new CborDeserializationError({
-      message: "Failed to normalize parameterized Aiken Plutus script",
-      cause: "Inner CBOR bytestring length does not match script payload",
-    });
-  }
-  if (inner[innerHeaderLength]! >> 5 === 2) {
+  if (containsExactThirdLayer) {
     throw new CborDeserializationError({
       message: "Failed to normalize parameterized Aiken Plutus script",
       cause: "Script contains more than two CBOR bytestring layers",
     });
   }
-  return toHex(inner);
+  return toHex(bytes.slice(outer.payloadStart, outer.payloadEnd));
 };

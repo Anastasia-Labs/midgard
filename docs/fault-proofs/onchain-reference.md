@@ -92,31 +92,26 @@ logic lives under `validators/`. Exceptions with real logic in `lib/`:
 | `min-fee`                   | 2                    | ⚠️ `bad_tx_body_fee < get_min_transaction_fee(bad_tx)` (`step-02.ak:64`) with the stub `fn get_min_transaction_fee(_) { 0 }` (`:78-80`, TODO `:77`) — unsatisfiable                                          |
 | `transition-trace`          | single proof         | dispatch `lib/.../transition-trace/proof.ak:1618-1657`; header binding + category prefix `#"00000004"` (`:1659-1680`); families per [`catalogue-status.md`](catalogue-status.md) §2; disabled branch `:1201` |
 
-## 5. Environment parameters (`env/default.ak`, `env/testnet.ak`, `env/emulator.ak`)
+## 5. Environment parameters (`env/default.ak`, `env/testnet.ak`)
 
-Three envs, selected via `aiken {build,check} --env <name>` (no flag ⇒ `default`):
+Two environments exist on clean base `55afdc54`, selected via
+`aiken {build,check} --env <name>` (no flag ⇒ `default`). Both still hold the
+legacy 30 ms maturity value. The decided 7 day production and 10 minute testnet
+values are **not yet applied** (each is compiled into script hashes, so the cut
+requires redeployment). The same cut should add an explicitly non-deployable,
+short-window `emulator` environment for fast tests.
 
-- **`emulator`** (`env/emulator.ak`, added 2026-07-11) — ultra-short timing for fast
-  emulator/unit tests; near-instant `maturity_duration`. Never deploy.
-- **`testnet`** — preprod; target `maturity_duration = 10 minutes` so multi-step proofs
-  are exercisable against a realistic window (see F9).
-- **production** — target `maturity_duration = 7 days`.
-
-`env/default.ak` still holds the legacy 30 ms dev values; the 7 day / 10 min targets are
-**not yet applied** to `default`/`testnet` (each is compiled into script hashes ⇒ a
-redeploy, deferred to the env-cut). Emulator keeps the ultra-short values permanently.
-
-| Param                               | emulator                   | default                 | testnet                                                            | Note                                                                                                                                                                 |
-| ----------------------------------- | -------------------------- | ----------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `maturity_duration`                 | 30 (`emulator.ak:38`)      | 30 (`default.ak:19`)    | 30 (`testnet.ak:18`)                                               | PosixTimeDuration (ms). Emulator stays ~30 ms. **Targets (decided 2026-07-11, not yet applied): production `604_800_000` (7 days); testnet `600_000` (10 minutes).** |
-| `slashing_penalty`                  | 0 (`:21`)                  | 0 (`:20`)               | TODO on fee-payment design `default.ak:27-34`                      |
-| `fault_prover_reward`               | 0 (`:23`)                  | 0 (`:22`)               |                                                                    |
-| `required_bond`                     | penalty+reward = 0 (`:25`) | 0 (`:24`)               |                                                                    |
-| `inactivity_slashing_penalty`       | 0 (`:35`)                  | 0 (`:26`)               |                                                                    |
-| `empty_list_hash`                   | `default.ak:57`            | —                       | used by zero-input                                                 |
-| `plutarch_phas_validator_hash`      | `default.ak:62-63`         | present                 | matches Aiken-native `phas.ak` in `plutus.json` (the deployed one) |
-| `plutarch_pexcludes_validator_hash` | `default.ak:65-66`         | `testnet.ak:50-51`      | matches `pexcludes.ak`                                             |
-| `plutarch_pdelete_validator_hash`   | `#""` (`default.ak:68`)    | `#""` (`testnet.ak:53`) | delete delegation unusable                                         |
+| Param                               | default                    | testnet                 | Note                                                                                                                                                                              |
+| ----------------------------------- | -------------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `maturity_duration`                 | 30 (`default.ak:19`)       | 30 (`testnet.ak:18`)    | PosixTimeDuration (ms). **Targets (decided 2026-07-11, not yet applied): production `604_800_000` (7 days); testnet `600_000` (10 minutes), plus a separate short emulator env.** |
+| `slashing_penalty`                  | 0 (`:21`)                  | 0 (`:20`)               | TODO on fee-payment design `default.ak:27-34`                                                                                                                                     |
+| `fraud_prover_reward`               | 0 (`:23`)                  | 0 (`:22`)               | Historical identifier retained in source                                                                                                                                          |
+| `required_bond`                     | penalty+reward = 0 (`:25`) | 0 (`:24`)               |                                                                                                                                                                                   |
+| `inactivity_slashing_penalty`       | 0 (`:35`)                  | 0 (`:26`)               |                                                                                                                                                                                   |
+| `empty_list_hash`                   | `default.ak:57`            | —                       | used by zero-input                                                                                                                                                                |
+| `plutarch_phas_validator_hash`      | `default.ak:62-63`         | present                 | matches Aiken-native `phas.ak` in `plutus.json` (the deployed one)                                                                                                                |
+| `plutarch_pexcludes_validator_hash` | `default.ak:65-66`         | `testnet.ak:50-51`      | matches `pexcludes.ak`                                                                                                                                                            |
+| `plutarch_pdelete_validator_hash`   | `#""` (`default.ak:68`)    | `#""` (`testnet.ak:53`) | delete delegation unusable                                                                                                                                                        |
 
 Environment selected via `aiken build --env <name>`
 (`.github/workflows/midgard-node-ci.yml:82-84`).
@@ -136,7 +131,8 @@ Environment selected via `aiken build --env <name>`
 `fault-proof.ak`, `fault-proof-catalogue.ak`, or any step validator other than
 invalid-range step-01 — at the Aiken level these are exercised only indirectly via the
 TypeScript emulator suite (`demo/midgard-fault-proofs/tests/submit-init-emulator.test.ts`),
-which is not CI-wired ([`testing-status.md`](testing-status.md)).
+which is CI-wired through the fault-proof package job
+([`testing-status.md`](testing-status.md)).
 
 Build/test: `aiken fmt --check && aiken check` in `onchain/aiken` (CI:
 `.github/workflows/aiken-ci.yml:31,33`), compiler pinned `v1.1.21` (`aiken.toml:3`);

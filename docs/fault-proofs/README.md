@@ -61,7 +61,11 @@ several are directly exploitable for **fund theft** in an adversarial setting. S
 **2. Delivered but _not_ functional** (present but stubbed/inert/disabled):
 
 - `min-fee` proof — its `get_min_transaction_fee` is a `0`-returning stub, making its decisive check unsatisfiable. Cannot conclude. (`onchain/aiken/validators/fraud-proofs/min-fee/step-02.ak:64,78-80`)
-- Slashing **economics** — `slashing_penalty`, `fault_prover_reward`, `required_bond`, `inactivity_slashing_penalty` are all `0` in `env/default.ak` and `env/testnet.ak`. A successful proof slashes and rewards nothing. `maturity_duration` is likewise a dev value (`30` — i.e. ~30 ms — in both envs), so the on-chain challenge window is effectively zero.
+- Slashing **economics** — `slashing_penalty`, historical source identifier
+  `fraud_prover_reward`, `required_bond`, and `inactivity_slashing_penalty` are all
+  `0` in `env/default.ak` and `env/testnet.ak`. A successful proof slashes and
+  rewards nothing. `maturity_duration` is likewise a dev value (`30` — i.e.
+  ~30 ms — in both envs), so the on-chain challenge window is effectively zero.
 - `transition-trace` `ValidForcedTransactionUnsupported` branch is hard-wired to `False` — valid-forced-transaction omission faults are unprovable via that path. (`.../transition-trace/proof.ak:1201`)
 - `transition-trace` value/authorization semantics — the L2 one-step verifier authenticates the _shape_ of the UTxO delta but never checks value conservation or spend authorization (see bucket 4).
 
@@ -71,7 +75,10 @@ several are directly exploitable for **fund theft** in an adversarial setting. S
 - Fabricated deposit / fabricated withdrawal (spec asserts "detectable" but provides no construction).
 - Mis-tagged (valid→invalid) withdrawal proof.
 - Offchain tooling for 8 of the 12 already-implemented onchain types; CLI wiring for `transition-trace`.
-- Preprod end-to-end (documented blocker: a canonical-root mismatch, per the 2026-05-08 gap report; that report predates the counted-root work of PR #458 and the MPF rewrite of the proof builders, so it may be stale — unconfirmed either way until a preprod re-run; see [`testing-status.md`](testing-status.md)).
+- Preprod end-to-end (an operator-local 2026-05-08 report recorded a canonical-root
+  mismatch, but it is intentionally untracked and predates the counted-root work of PR
+  #458 and the MPF rewrite of the proof builders; readiness remains unconfirmed until a
+  new, publishable preprod run; see [`testing-status.md`](testing-status.md)).
 - Autonomous watcher/challenger (design docs exist; zero code).
 
 **4. Missing and undocumented** (no working proof _and_ no clear spec construction):

@@ -1,16 +1,20 @@
 import { createHash } from "node:crypto";
+import { constants } from "node:fs";
 import {
   chmod,
+  link,
+  lstat,
   mkdir,
   open,
   readdir,
   readFile,
-  rename,
+  realpath,
+  unlink,
 } from "node:fs/promises";
-import { dirname, isAbsolute, join } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 
 import { compileUPLC, parseUPLC } from "@harmoniclabs/uplc";
-import { CML } from "@lucid-evolution/lucid";
+import { CML, getAddressDetails } from "@lucid-evolution/lucid";
 
 type ByteStringLayer = {
   readonly headerHex: string;
@@ -24,6 +28,21 @@ type CmlScript = {
   readonly to_cbor_hex?: () => string;
   readonly to_raw_bytes?: () => Uint8Array;
   readonly hash?: () => { to_hex: () => string };
+};
+
+type CmlVkeyWitness = {
+  readonly vkey: () => {
+    readonly hash: () => { readonly to_hex: () => string };
+    readonly verify: (message: Uint8Array, signature: unknown) => boolean;
+  };
+  readonly ed25519_signature: () => unknown;
+};
+
+type InspectedVkeyWitness = {
+  readonly location: string;
+  readonly keyHash?: string;
+  readonly signatureValid: boolean;
+  readonly signatureError?: string;
 };
 
 type InspectedScript = {
@@ -64,6 +83,14 @@ const readByteStringLayer = (inputHex: string): ByteStringLayer | undefined => {
     payloadLength = Number.parseInt(lengthHex, 16);
     if (!Number.isSafeInteger(payloadLength)) return undefined;
   } else {
+    return undefined;
+  }
+  if (
+    (additional === 24 && payloadLength < 24) ||
+    (additional === 25 && payloadLength < 0x100) ||
+    (additional === 26 && payloadLength < 0x1_0000) ||
+    (additional === 27 && payloadLength < 0x1_0000_0000)
+  ) {
     return undefined;
   }
   const payloadStart = headerLength * 2;
@@ -107,6 +134,77 @@ const inspectByteStringLayers = (cborHex: string) => {
 
 const bytesToHex = (bytes: Uint8Array): string =>
   Buffer.from(bytes).toString("hex");
+
+const CAPTURE_SESSION_BASENAME = ".CAPTURE_SESSION.json";
+
+let privateFileTemporaryOrdinal = 0;
+
+const writePrivateFileAtomically = async (
+  path: string,
+  content: string | Buffer,
+): Promise<void> => {
+  privateFileTemporaryOrdinal += 1;
+  const temporaryPath = join(
+    dirname(path),
+    `.${basename(path)}.${process.pid.toString()}.${Date.now().toString()}.${privateFileTemporaryOrdinal.toString()}.tmp`,
+  );
+  try {
+    const handle = await open(temporaryPath, "wx", 0o600);
+    try {
+      await handle.writeFile(content);
+      await handle.chmod(0o600);
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    // link(2) installs the completed inode atomically and refuses to replace an
+    // existing destination. rename(2) would silently overwrite it.
+    await link(temporaryPath, path);
+  } catch (error) {
+    try {
+      await unlink(temporaryPath);
+    } catch {
+      // A crash may still leave a temporary inode. Finalization rejects every
+      // unrecognized entry, so cleanup failure can never produce COMPLETE.
+    }
+    throw error;
+  }
+  try {
+    await unlink(temporaryPath);
+  } catch (error) {
+    throw new Error(
+      `Installed pre-submit capture artifact but failed to unlink temporary path ${temporaryPath}: ${String(error)}`,
+    );
+  }
+};
+
+const syncDirectory = async (path: string): Promise<void> => {
+  const handle = await open(path, "r");
+  try {
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+};
+
+const readPrivateRegularFile = async (path: string): Promise<Buffer> => {
+  const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const fileStat = await handle.stat();
+    if (
+      !fileStat.isFile() ||
+      fileStat.nlink !== 1 ||
+      (fileStat.mode & 0o777) !== 0o600
+    ) {
+      throw new Error(
+        `Pre-submit capture artifact must be a single-link private regular file with mode 0600: ${path}`,
+      );
+    }
+    return await handle.readFile();
+  } finally {
+    await handle.close();
+  }
+};
 
 const expectedUplcVersion = (languageTag: number): string => {
   switch (languageTag) {
@@ -246,11 +344,46 @@ const collectionEntries = (collection: unknown): unknown[] => {
   return Array.from({ length: value.len() }, (_, index) => value.get!(index));
 };
 
+const inspectVkeyWitness = (
+  witness: CmlVkeyWitness,
+  index: number,
+  bodyHash: Uint8Array,
+): InspectedVkeyWitness => {
+  try {
+    const vkey = witness.vkey();
+    return {
+      location: `witness.vkeywitnesses[${index.toString()}]`,
+      keyHash: vkey.hash().to_hex(),
+      signatureValid: vkey.verify(bodyHash, witness.ed25519_signature()),
+    };
+  } catch (error) {
+    return {
+      location: `witness.vkeywitnesses[${index.toString()}]`,
+      signatureValid: false,
+      signatureError: String(error),
+    };
+  }
+};
+
 const inspectTransaction = (signedTxCbor: string) => {
   const tx = CML.Transaction.from_cbor_hex(signedTxCbor);
   const body = tx.body();
+  const bodyHash = CML.hash_transaction(body).to_hex();
+  const bodyHashBytes = Buffer.from(bodyHash, "hex");
+  const bodyInputs = body.inputs();
+  const bodyInputOutRefs = Array.from(
+    { length: bodyInputs.len() },
+    (_, index) => {
+      const input = bodyInputs.get(index);
+      return `${input.transaction_id().to_hex()}#${input.index().toString()}`;
+    },
+  );
   const scriptRefs = [];
   const outputs = body.outputs();
+  const bodyOutputAddresses = Array.from(
+    { length: outputs.len() },
+    (_, index) => bytesToHex(outputs.get(index).address().to_raw_bytes()),
+  );
   for (let index = 0; index < outputs.len(); index += 1) {
     const scriptRef = outputs.get(index).script_ref();
     if (scriptRef === null || scriptRef === undefined) continue;
@@ -288,6 +421,10 @@ const inspectTransaction = (signedTxCbor: string) => {
     );
   }
   const witnesses = tx.witness_set();
+  const vkeyWitnesses = collectionEntries(witnesses.vkeywitnesses()).map(
+    (witness, index) =>
+      inspectVkeyWitness(witness as CmlVkeyWitness, index, bodyHashBytes),
+  );
   const witnessScripts = [
     ...collectionEntries(witnesses.plutus_v1_scripts()).map((script, index) =>
       inspectPlutusScript(
@@ -322,8 +459,12 @@ const inspectTransaction = (signedTxCbor: string) => {
   ];
   return {
     cmlTransactionType: "Transaction",
-    bodyHash: CML.hash_transaction(body).to_hex(),
+    canonicalCborRoundTrip: tx.to_cbor_hex() === signedTxCbor.toLowerCase(),
+    bodyHash,
+    bodyInputOutRefs,
+    bodyOutputAddresses,
     bodyScriptRefs: scriptRefs,
+    vkeyWitnesses,
     witnessScripts,
   };
 };
@@ -379,8 +520,13 @@ export type SignedTxPreSubmitCaptureComplete = {
 };
 
 const assertCaptureConfig = (capture: SignedTxPreSubmitCapture): void => {
-  if (!isAbsolute(capture.outputDirectory)) {
-    throw new Error("Pre-submit capture output directory must be absolute");
+  if (
+    !isAbsolute(capture.outputDirectory) ||
+    resolve(capture.outputDirectory) !== capture.outputDirectory
+  ) {
+    throw new Error(
+      "Pre-submit capture output directory must be absolute and lexically canonical",
+    );
   }
   if (
     capture.invocation !== "phase4-live-pre-submit-capture" ||
@@ -392,12 +538,14 @@ const assertCaptureConfig = (capture: SignedTxPreSubmitCapture): void => {
   }
   if (
     !isAbsolute(capture.session.runStatePath) ||
+    resolve(capture.session.runStatePath) !== capture.session.runStatePath ||
     !isAbsolute(capture.session.blueprintPath) ||
-    !/^[0-9a-f]{64}$/i.test(capture.session.blueprintSha256) ||
+    resolve(capture.session.blueprintPath) !== capture.session.blueprintPath ||
+    !/^[0-9a-f]{64}$/.test(capture.session.blueprintSha256) ||
     !Number.isSafeInteger(capture.session.ledgerProtocolMajor) ||
     capture.session.ledgerProtocolMajor <= 0 ||
-    !/^[0-9a-f]{56}$/i.test(capture.session.referenceScriptAuthPolicyId) ||
-    !/^[0-9a-f]{64}#\d+$/i.test(capture.session.hubOracleOneShotOutRef) ||
+    !/^[0-9a-f]{56}$/.test(capture.session.referenceScriptAuthPolicyId) ||
+    !/^[0-9a-f]{64}#\d+$/.test(capture.session.hubOracleOneShotOutRef) ||
     capture.session.commandName.length === 0 ||
     capture.session.network.length === 0
   ) {
@@ -424,20 +572,6 @@ export const assertSignedTxPreSubmitCaptureCliSafety = ({
     throw new Error(
       "--capture-signed-tx-pre-submit cannot be combined with --plan-only",
     );
-  }
-};
-
-export const prepareSignedTxPreSubmitCaptureDirectory = async (
-  capture: SignedTxPreSubmitCapture,
-): Promise<void> => {
-  assertCaptureConfig(capture);
-  await mkdir(capture.outputDirectory, { recursive: false, mode: 0o700 });
-  await chmod(capture.outputDirectory, 0o700);
-  const parent = await open(dirname(capture.outputDirectory), "r");
-  try {
-    await parent.sync();
-  } finally {
-    await parent.close();
   }
 };
 
@@ -482,13 +616,116 @@ export const assertPersistedSignedTxPreSubmitCaptureIdentity = async (
   }
 };
 
+const assertSignedTxPreSubmitCaptureSourceIdentity = async (
+  capture: SignedTxPreSubmitCapture,
+): Promise<void> => {
+  await assertPersistedSignedTxPreSubmitCaptureIdentity(capture);
+  const blueprintBytes = await readFile(capture.session.blueprintPath);
+  const blueprintSha256 = createHash("sha256")
+    .update(blueprintBytes)
+    .digest("hex");
+  if (blueprintSha256 !== capture.session.blueprintSha256) {
+    throw new Error(
+      `Pre-submit capture blueprint hash mismatch: expected=${capture.session.blueprintSha256},actual=${blueprintSha256}`,
+    );
+  }
+};
+
+const captureSessionPath = (capture: SignedTxPreSubmitCapture): string =>
+  join(capture.outputDirectory, CAPTURE_SESSION_BASENAME);
+
+const sameSession = (
+  left: SignedTxPreSubmitCapture["session"],
+  right: SignedTxPreSubmitCapture["session"],
+): boolean => JSON.stringify(left) === JSON.stringify(right);
+
+const assertPreparedCaptureDirectory = async (
+  capture: SignedTxPreSubmitCapture,
+): Promise<void> => {
+  const resolvedDirectory = await realpath(capture.outputDirectory);
+  const directoryStat = await lstat(capture.outputDirectory);
+  if (
+    resolvedDirectory !== capture.outputDirectory ||
+    !directoryStat.isDirectory() ||
+    (directoryStat.mode & 0o777) !== 0o700
+  ) {
+    throw new Error(
+      "Pre-submit capture directory must remain a canonical private directory with mode 0700",
+    );
+  }
+  const sessionPath = captureSessionPath(capture);
+  const parsed = JSON.parse(
+    (await readPrivateRegularFile(sessionPath)).toString("utf8"),
+  ) as {
+    readonly schemaVersion?: unknown;
+    readonly status?: unknown;
+    readonly invocation?: unknown;
+    readonly abortBeforeSubmit?: unknown;
+    readonly outputDirectory?: unknown;
+    readonly session?: SignedTxPreSubmitCapture["session"];
+  };
+  if (
+    parsed.schemaVersion !== 1 ||
+    parsed.status !== "prepared" ||
+    parsed.invocation !== capture.invocation ||
+    parsed.abortBeforeSubmit !== true ||
+    parsed.outputDirectory !== capture.outputDirectory ||
+    parsed.session === undefined ||
+    !sameSession(parsed.session, capture.session)
+  ) {
+    throw new Error(
+      "Pre-submit capture session manifest does not match the prepared capture identity",
+    );
+  }
+};
+
+export const prepareSignedTxPreSubmitCaptureDirectory = async (
+  capture: SignedTxPreSubmitCapture,
+): Promise<void> => {
+  assertCaptureConfig(capture);
+  await assertSignedTxPreSubmitCaptureSourceIdentity(capture);
+  const parentPath = dirname(capture.outputDirectory);
+  if ((await realpath(parentPath)) !== parentPath) {
+    throw new Error(
+      "Pre-submit capture parent directory must use its canonical physical path",
+    );
+  }
+  await mkdir(capture.outputDirectory, { recursive: false, mode: 0o700 });
+  await chmod(capture.outputDirectory, 0o700);
+  if ((await realpath(capture.outputDirectory)) !== capture.outputDirectory) {
+    throw new Error(
+      "Pre-submit capture output directory did not resolve to its requested path",
+    );
+  }
+  await writePrivateFileAtomically(
+    captureSessionPath(capture),
+    `${JSON.stringify(
+      {
+        schemaVersion: 1,
+        status: "prepared",
+        preparedAt: new Date().toISOString(),
+        invocation: capture.invocation,
+        abortBeforeSubmit: true,
+        outputDirectory: capture.outputDirectory,
+        session: capture.session,
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  await syncDirectory(capture.outputDirectory);
+  await syncDirectory(parentPath);
+};
+
 const assertBatchContext = (batch: SignedTxPreSubmitBatchContext): void => {
+  const splitPathMatch = /^batch-(\d+)(?:\.[LR])*$/.exec(batch.splitPath);
   if (
     !Number.isSafeInteger(batch.ordinal) ||
     batch.ordinal < 0 ||
     !Number.isSafeInteger(batch.plannedBatchIndex) ||
     batch.plannedBatchIndex < 0 ||
-    batch.splitPath.length === 0 ||
+    splitPathMatch === null ||
+    splitPathMatch[1] !== batch.plannedBatchIndex.toString() ||
     batch.targets.length === 0
   ) {
     throw new Error("Pre-submit capture batch context is incomplete");
@@ -501,7 +738,7 @@ const assertBatchContext = (batch: SignedTxPreSubmitBatchContext): void => {
     batch.targets.some(
       ({ name, scriptHash, outputIndex }) =>
         name.length === 0 ||
-        !/^[0-9a-f]{56}$/i.test(scriptHash) ||
+        !/^[0-9a-f]{56}$/.test(scriptHash) ||
         !Number.isSafeInteger(outputIndex) ||
         outputIndex < 0,
     )
@@ -516,7 +753,7 @@ const assertBatchContext = (batch: SignedTxPreSubmitBatchContext): void => {
       batch.inputs.length ||
     batch.inputs.some(
       ({ outRef, lineage }) =>
-        !/^[0-9a-f]{64}#\d+$/i.test(outRef) ||
+        !/^[0-9a-f]{64}#\d+$/.test(outRef) ||
         (lineage !== "live_seed" && lineage !== "synthetic_change"),
     ) ||
     new Set(batch.walletChangeOutputIndexes).size !==
@@ -544,10 +781,44 @@ const inspectedScriptOutputIndex = (script: InspectedScript): number => {
   return Number(match[1]);
 };
 
-const assertInspectedScriptsValid = (
+const assertInspectedTransactionValid = (
   tx: ReturnType<typeof inspectTransaction>,
   batch: SignedTxPreSubmitBatchContext,
+  walletAddress: string,
 ): void => {
+  if (!tx.canonicalCborRoundTrip) {
+    throw new Error(
+      "Captured signed transaction CBOR is not the canonical CML round-trip encoding",
+    );
+  }
+  if (
+    tx.vkeyWitnesses.length === 0 ||
+    tx.vkeyWitnesses.some(
+      ({ keyHash, signatureValid }) =>
+        keyHash === undefined || signatureValid !== true,
+    ) ||
+    new Set(tx.vkeyWitnesses.map(({ keyHash }) => keyHash)).size !==
+      tx.vkeyWitnesses.length
+  ) {
+    throw new Error(
+      `Captured transaction vkey witness validation failed: ${tx.vkeyWitnesses
+        .map(
+          ({ location, keyHash, signatureValid, signatureError }) =>
+            `${location}{key_hash=${keyHash ?? "missing"},valid=${String(signatureValid)},error=${signatureError ?? "none"}}`,
+        )
+        .join(",")}`,
+    );
+  }
+  const declaredInputOutRefs = batch.inputs.map(({ outRef }) => outRef);
+  if (
+    new Set(tx.bodyInputOutRefs).size !== tx.bodyInputOutRefs.length ||
+    tx.bodyInputOutRefs.length !== declaredInputOutRefs.length ||
+    tx.bodyInputOutRefs.some((outRef) => !declaredInputOutRefs.includes(outRef))
+  ) {
+    throw new Error(
+      `Captured transaction inputs do not match declared lineage: actual=[${tx.bodyInputOutRefs.join(",")}],declared=[${declaredInputOutRefs.join(",")}]`,
+    );
+  }
   const inspectedByOutput = new Map(
     tx.bodyScriptRefs.map((script) => [
       inspectedScriptOutputIndex(script),
@@ -568,6 +839,53 @@ const assertInspectedScriptsValid = (
   ) {
     throw new Error(
       "Captured transaction body reference scripts do not exactly match the declared batch targets",
+    );
+  }
+  const declaredOutputIndexes = new Set([
+    ...expectedOutputs,
+    ...batch.walletChangeOutputIndexes,
+  ]);
+  if (
+    declaredOutputIndexes.size !== tx.bodyOutputAddresses.length ||
+    tx.bodyOutputAddresses.some(
+      (_, outputIndex) => !declaredOutputIndexes.has(outputIndex),
+    )
+  ) {
+    throw new Error(
+      "Captured transaction target and wallet-change outputs do not exactly partition the transaction body outputs",
+    );
+  }
+  let walletAddressHex: string;
+  let walletPaymentKeyHash: string;
+  try {
+    const paymentCredential =
+      getAddressDetails(walletAddress).paymentCredential;
+    if (paymentCredential?.type !== "Key") {
+      throw new Error("wallet address does not have a key payment credential");
+    }
+    walletPaymentKeyHash = paymentCredential.hash;
+    walletAddressHex = bytesToHex(
+      CML.Address.from_bech32(walletAddress).to_raw_bytes(),
+    );
+  } catch (error) {
+    throw new Error(
+      `Captured transaction wallet address is invalid: ${String(error)}`,
+    );
+  }
+  if (
+    !tx.vkeyWitnesses.some(({ keyHash }) => keyHash === walletPaymentKeyHash)
+  ) {
+    throw new Error(
+      "Captured transaction witness set does not contain the signing wallet payment key",
+    );
+  }
+  if (
+    batch.walletChangeOutputIndexes.some(
+      (outputIndex) => tx.bodyOutputAddresses[outputIndex] !== walletAddressHex,
+    )
+  ) {
+    throw new Error(
+      "Captured transaction has a declared wallet-change output at a different address",
     );
   }
   const allScripts = [...tx.bodyScriptRefs, ...tx.witnessScripts];
@@ -610,6 +928,7 @@ export const captureSignedTxPreSubmit = async ({
 }): Promise<CapturedSignedTxNotSubmitted> => {
   assertCaptureConfig(capture);
   assertBatchContext(batch);
+  await assertPreparedCaptureDirectory(capture);
   if ((await readdir(capture.outputDirectory)).includes("COMPLETE.json")) {
     throw new Error("Pre-submit capture directory is already complete");
   }
@@ -626,7 +945,7 @@ export const captureSignedTxPreSubmit = async ({
       `Signed transaction body hash ${tx.bodyHash} does not match precomputed txHash ${txHash}`,
     );
   }
-  assertInspectedScriptsValid(tx, batch);
+  assertInspectedTransactionValid(tx, batch, walletAddress);
   const captureBasename = `signed-${txHash}.cbor`;
   const cborPath = join(capture.outputDirectory, captureBasename);
   const metadataPath = join(capture.outputDirectory, `${captureBasename}.json`);
@@ -705,34 +1024,19 @@ export const captureSignedTxPreSubmit = async ({
       ),
     },
   };
-  const writePrivateFile = async (path: string, content: string | Buffer) => {
-    const handle = await open(path, "wx", 0o600);
-    try {
-      await handle.writeFile(content);
-      await handle.sync();
-    } finally {
-      await handle.close();
-    }
-    await chmod(path, 0o600);
-  };
   for (let index = 0; index < payloads.length; index += 1) {
-    await writePrivateFile(
+    await writePrivateFileAtomically(
       payloads[index]!.payloadPath,
       payloads[index]!.payload,
     );
   }
-  await writePrivateFile(cborPath, bytes);
+  await writePrivateFileAtomically(cborPath, bytes);
   // Keep the CBOR if metadata persistence fails: it is the primary forensic artifact.
-  await writePrivateFile(
+  await writePrivateFileAtomically(
     metadataPath,
     `${JSON.stringify(metadata, null, 2)}\n`,
   );
-  const directoryHandle = await open(capture.outputDirectory, "r");
-  try {
-    await directoryHandle.sync();
-  } finally {
-    await directoryHandle.close();
-  }
+  await syncDirectory(capture.outputDirectory);
   return {
     status: "captured_not_submitted",
     txHash,
@@ -751,6 +1055,7 @@ type PersistedCaptureMetadata = {
   readonly txHash: string;
   readonly bodyHash: string;
   readonly signedTxSha256: string;
+  readonly walletAddress: string;
   readonly cborPath: string;
   readonly session: SignedTxPreSubmitCapture["session"];
   readonly batch: SignedTxPreSubmitBatchContext;
@@ -778,15 +1083,14 @@ type PersistedCaptureMetadata = {
   }[];
 };
 
-const sameSession = (
-  left: SignedTxPreSubmitCapture["session"],
-  right: SignedTxPreSubmitCapture["session"],
-): boolean => JSON.stringify(left) === JSON.stringify(right);
-
 const readCaptureMetadata = async (
   path: string,
-): Promise<PersistedCaptureMetadata> => {
-  const parsed = JSON.parse(await readFile(path, "utf8")) as unknown;
+): Promise<{
+  readonly metadata: PersistedCaptureMetadata;
+  readonly sha256: string;
+}> => {
+  const bytes = await readPrivateRegularFile(path);
+  const parsed = JSON.parse(bytes.toString("utf8")) as unknown;
   if (
     typeof parsed !== "object" ||
     parsed === null ||
@@ -798,7 +1102,10 @@ const readCaptureMetadata = async (
   ) {
     throw new Error(`Invalid pre-submit capture metadata: ${path}`);
   }
-  return parsed as PersistedCaptureMetadata;
+  return {
+    metadata: parsed as PersistedCaptureMetadata,
+    sha256: createHash("sha256").update(bytes).digest("hex"),
+  };
 };
 
 export const finalizeSignedTxPreSubmitCapture = async ({
@@ -809,6 +1116,8 @@ export const finalizeSignedTxPreSubmitCapture = async ({
   readonly expectedTargetNames: readonly string[];
 }): Promise<SignedTxPreSubmitCaptureComplete> => {
   assertCaptureConfig(capture);
+  await assertPreparedCaptureDirectory(capture);
+  await assertSignedTxPreSubmitCaptureSourceIdentity(capture);
   if (
     expectedTargetNames.length === 0 ||
     new Set(expectedTargetNames).size !== expectedTargetNames.length
@@ -828,13 +1137,19 @@ export const finalizeSignedTxPreSubmitCapture = async ({
   if (metadataPaths.length === 0) {
     throw new Error("Pre-submit capture has no captured transactions");
   }
-  const metadata = await Promise.all(metadataPaths.map(readCaptureMetadata));
+  const metadataRecords = await Promise.all(
+    metadataPaths.map(readCaptureMetadata),
+  );
   const seenTxHashes = new Set<string>();
   const seenOrdinals = new Set<number>();
+  const seenSplitPaths = new Set<string>();
   const targetCounts = new Map<string, number>();
+  const expectedArtifactBasenames = new Set<string>([CAPTURE_SESSION_BASENAME]);
   const completeCaptures = [];
-  for (let index = 0; index < metadata.length; index += 1) {
-    const entry = metadata[index]!;
+  for (let index = 0; index < metadataRecords.length; index += 1) {
+    const { metadata: entry, sha256: metadataSha256 } = metadataRecords[index]!;
+    const metadataPath = metadataPaths[index]!;
+    expectedArtifactBasenames.add(basename(metadataPath));
     assertBatchContext(entry.batch);
     if (!sameSession(entry.session, capture.session)) {
       throw new Error(
@@ -842,10 +1157,14 @@ export const finalizeSignedTxPreSubmitCapture = async ({
       );
     }
     if (
-      !/^[0-9a-f]{64}$/i.test(entry.txHash) ||
+      !/^[0-9a-f]{64}$/.test(entry.txHash) ||
       entry.bodyHash !== entry.txHash ||
+      !/^[0-9a-f]{64}$/.test(entry.signedTxSha256) ||
+      typeof entry.walletAddress !== "string" ||
+      basename(metadataPath) !== `signed-${entry.txHash}.cbor.json` ||
       seenTxHashes.has(entry.txHash) ||
-      seenOrdinals.has(entry.batch.ordinal)
+      seenOrdinals.has(entry.batch.ordinal) ||
+      seenSplitPaths.has(entry.batch.splitPath)
     ) {
       throw new Error(
         `Pre-submit capture has invalid or duplicate transaction identity in ${metadataPaths[index]}`,
@@ -853,18 +1172,24 @@ export const finalizeSignedTxPreSubmitCapture = async ({
     }
     seenTxHashes.add(entry.txHash);
     seenOrdinals.add(entry.batch.ordinal);
-    const signedBytes = await readFile(entry.cborPath);
+    seenSplitPaths.add(entry.batch.splitPath);
     const expectedCborPath = join(
       capture.outputDirectory,
       `signed-${entry.txHash}.cbor`,
     );
+    expectedArtifactBasenames.add(basename(expectedCborPath));
+    if (entry.cborPath !== expectedCborPath) {
+      throw new Error(
+        `Pre-submit capture signed CBOR path mismatch for ${entry.txHash}`,
+      );
+    }
+    const signedBytes = await readPrivateRegularFile(expectedCborPath);
     if (
-      entry.cborPath !== expectedCborPath ||
       createHash("sha256").update(signedBytes).digest("hex") !==
-        entry.signedTxSha256
+      entry.signedTxSha256
     ) {
       throw new Error(
-        `Pre-submit capture signed CBOR hash/path mismatch for ${entry.txHash}`,
+        `Pre-submit capture signed CBOR hash mismatch for ${entry.txHash}`,
       );
     }
     const reinspected = inspectTransaction(signedBytes.toString("hex"));
@@ -873,10 +1198,24 @@ export const finalizeSignedTxPreSubmitCapture = async ({
         `Pre-submit capture body hash changed before completion for ${entry.txHash}`,
       );
     }
-    assertInspectedScriptsValid(reinspected, entry.batch);
+    assertInspectedTransactionValid(
+      reinspected,
+      entry.batch,
+      entry.walletAddress,
+    );
     if (
       entry.payloads.length !== entry.batch.targets.length ||
-      entry.outputs.referenceScripts.length !== entry.batch.targets.length
+      entry.outputs.referenceScripts.length !== entry.batch.targets.length ||
+      entry.outputs.walletChange.length !==
+        entry.batch.walletChangeOutputIndexes.length ||
+      entry.batch.walletChangeOutputIndexes.some(
+        (outputIndex) =>
+          !entry.outputs.walletChange.some(
+            (output) =>
+              output.outputIndex === outputIndex &&
+              output.outRef === `${entry.txHash}#${outputIndex.toString()}`,
+          ),
+      )
     ) {
       throw new Error(
         `Pre-submit capture payload/output coverage mismatch for ${entry.txHash}`,
@@ -910,12 +1249,15 @@ export const finalizeSignedTxPreSubmitCapture = async ({
           `Pre-submit capture target identity mismatch for ${target.name}`,
         );
       }
-      const payloadBytes = await readFile(payload.payloadPath);
+      expectedArtifactBasenames.add(basename(payload.payloadPath));
+      const payloadBytes = await readPrivateRegularFile(payload.payloadPath);
       const reinspectedScript = reinspected.bodyScriptRefs.find(
         (candidate) =>
           inspectedScriptOutputIndex(candidate) === target.outputIndex,
       )!;
       if (
+        payload.cmlType !== reinspectedScript.cmlType ||
+        payload.languageTag !== reinspectedScript.languageTag ||
         payloadBytes.length !== payload.payloadBytes ||
         createHash("sha256").update(payloadBytes).digest("hex") !==
           payload.payloadSha256 ||
@@ -933,6 +1275,8 @@ export const finalizeSignedTxPreSubmitCapture = async ({
       txHash: entry.txHash,
       signedTxSha256: entry.signedTxSha256,
       cborPath: entry.cborPath,
+      metadataPath,
+      metadataSha256,
       inputs: entry.batch.inputs,
       outputs: entry.outputs,
       targets: entry.batch.targets.map((target) => {
@@ -954,6 +1298,58 @@ export const finalizeSignedTxPreSubmitCapture = async ({
   if (ordinals.some((ordinal, index) => ordinal !== index)) {
     throw new Error("Pre-submit capture ordinals are not contiguous from zero");
   }
+  const unexpectedArtifacts = entries.filter(
+    (entry) => !expectedArtifactBasenames.has(entry),
+  );
+  if (unexpectedArtifacts.length > 0) {
+    throw new Error(
+      `Pre-submit capture contains orphan or temporary artifacts: [${unexpectedArtifacts.join(",")}]`,
+    );
+  }
+  const capturesByOrdinal = [...completeCaptures].sort(
+    (left, right) => left.ordinal - right.ordinal,
+  );
+  const producedWalletChange = new Map<string, number>();
+  for (const completeCapture of capturesByOrdinal) {
+    for (const output of completeCapture.outputs.walletChange) {
+      if (producedWalletChange.has(output.outRef)) {
+        throw new Error(
+          `Pre-submit capture declares duplicate wallet-change output ${output.outRef}`,
+        );
+      }
+      producedWalletChange.set(output.outRef, completeCapture.ordinal);
+    }
+  }
+  const consumedInputs = new Set<string>();
+  for (const completeCapture of capturesByOrdinal) {
+    for (const input of completeCapture.inputs) {
+      if (consumedInputs.has(input.outRef)) {
+        throw new Error(
+          `Pre-submit capture spends input more than once: ${input.outRef}`,
+        );
+      }
+      consumedInputs.add(input.outRef);
+      const producerOrdinal = producedWalletChange.get(input.outRef);
+      const inputTxHash = input.outRef.slice(0, 64);
+      if (
+        input.lineage === "synthetic_change" &&
+        (producerOrdinal === undefined ||
+          producerOrdinal >= completeCapture.ordinal)
+      ) {
+        throw new Error(
+          `Pre-submit capture synthetic input does not reference prior captured wallet change: ${input.outRef}`,
+        );
+      }
+      if (
+        input.lineage === "live_seed" &&
+        (producerOrdinal !== undefined || seenTxHashes.has(inputTxHash))
+      ) {
+        throw new Error(
+          `Pre-submit capture live input incorrectly references captured output: ${input.outRef}`,
+        );
+      }
+    }
+  }
   const expected = new Set(expectedTargetNames);
   const missingOrDuplicate = expectedTargetNames.filter(
     (name) => targetCounts.get(name) !== 1,
@@ -967,10 +1363,6 @@ export const finalizeSignedTxPreSubmitCapture = async ({
     );
   }
   const completePath = join(capture.outputDirectory, "COMPLETE.json");
-  const temporaryPath = join(
-    capture.outputDirectory,
-    `.COMPLETE.${process.pid.toString()}.${Date.now().toString()}.tmp`,
-  );
   const complete = {
     schemaVersion: 1 as const,
     status: "complete" as const,
@@ -981,25 +1373,13 @@ export const finalizeSignedTxPreSubmitCapture = async ({
     expectedTargetCount: expectedTargetNames.length,
     captureCount: completeCaptures.length,
     targetNames: [...expectedTargetNames],
-    captures: completeCaptures.sort(
-      (left, right) => left.ordinal - right.ordinal,
-    ),
+    captures: capturesByOrdinal,
   };
-  const handle = await open(temporaryPath, "wx", 0o600);
-  try {
-    await handle.writeFile(`${JSON.stringify(complete, null, 2)}\n`);
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
-  await rename(temporaryPath, completePath);
-  await chmod(completePath, 0o600);
-  const directoryHandle = await open(capture.outputDirectory, "r");
-  try {
-    await directoryHandle.sync();
-  } finally {
-    await directoryHandle.close();
-  }
+  await writePrivateFileAtomically(
+    completePath,
+    `${JSON.stringify(complete, null, 2)}\n`,
+  );
+  await syncDirectory(capture.outputDirectory);
   return {
     schemaVersion: 1,
     status: "complete",

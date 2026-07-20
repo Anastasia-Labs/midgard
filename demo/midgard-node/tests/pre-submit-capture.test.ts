@@ -1,12 +1,15 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import {
+  chmod,
   mkdir,
   mkdtemp,
   readdir,
   readFile,
+  rename,
   rm,
   stat,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -43,6 +46,7 @@ import {
 } from "@/transactions/utils.js";
 
 const testTempRoot = resolve(import.meta.dirname, "../.tmp-pre-submit");
+const testBlueprintBytes = Buffer.from('{"validators":[]}\n');
 
 const capture: SignedTxPreSubmitCapture = {
   outputDirectory: "/tmp/unused",
@@ -50,9 +54,11 @@ const capture: SignedTxPreSubmitCapture = {
   abortBeforeSubmit: true,
   session: {
     commandName: "node-runtime",
-    runStatePath: "/tmp/deployment-run-state.json",
-    blueprintPath: "/tmp/plutus.json",
-    blueprintSha256: "11".repeat(32),
+    runStatePath: join(testTempRoot, "deployment-run-state.json"),
+    blueprintPath: join(testTempRoot, "plutus.json"),
+    blueprintSha256: createHash("sha256")
+      .update(testBlueprintBytes)
+      .digest("hex"),
     ledgerProtocolMajor: 11,
     network: "Preprod",
     hubOracleOneShotOutRef: `${"22".repeat(32)}#0`,
@@ -62,6 +68,25 @@ const capture: SignedTxPreSubmitCapture = {
 
 const freshCaptureDirectory = async (prefix: string): Promise<string> => {
   await mkdir(testTempRoot, { recursive: true });
+  await writeFile(capture.session.blueprintPath, testBlueprintBytes);
+  await writeFile(
+    capture.session.runStatePath,
+    JSON.stringify({
+      schemaVersion: "midgard-deployment-run-state-v1",
+      identity: {
+        network: capture.session.network,
+        hubOracleOneShot: {
+          txHash: "22".repeat(32),
+          outputIndex: 0,
+        },
+        referenceScriptAuthPolicyId:
+          capture.session.referenceScriptAuthPolicyId,
+        referenceScriptAuthPolicy: {
+          policyId: capture.session.referenceScriptAuthPolicyId,
+        },
+      },
+    }),
+  );
   const outputDirectory = await mkdtemp(join(testTempRoot, prefix));
   await rm(outputDirectory, { recursive: true });
   await prepareSignedTxPreSubmitCaptureDirectory({
@@ -203,13 +228,16 @@ describe("pre-submit signed transaction capture", () => {
           outputIndex: referenceScriptOutputIndex!,
         },
       ],
-      inputs: [
-        {
-          outRef:
-            "3b0eba06cac1ad33e97ca9a25553d24e17ab21d46d4922e039e348511646ab75#2",
-          lineage: "live_seed",
+      inputs: Array.from(
+        { length: transaction.body().inputs().len() },
+        (_, index) => {
+          const input = transaction.body().inputs().get(index);
+          return {
+            outRef: `${input.transaction_id().to_hex()}#${input.index().toString()}`,
+            lineage: "live_seed" as const,
+          };
         },
-      ],
+      ),
       walletChangeOutputIndexes,
     };
 
@@ -245,6 +273,8 @@ describe("pre-submit signed transaction capture", () => {
     const metadata = JSON.parse(await readFile(metadataPath, "utf8")) as {
       bodyHash: string;
       signedTxSha256: string;
+      canonicalCborRoundTrip: boolean;
+      vkeyWitnesses: Array<{ keyHash: string; signatureValid: boolean }>;
       bodyScriptRefs: Array<{
         flatDecodeValid: boolean;
         nestedCborLayers: { layerCount: number };
@@ -262,6 +292,14 @@ describe("pre-submit signed transaction capture", () => {
         .update(Buffer.from(signedTxCbor, "hex"))
         .digest("hex"),
     );
+    expect(metadata.canonicalCborRoundTrip).toBe(true);
+    expect(metadata.vkeyWitnesses.length).toBeGreaterThan(0);
+    expect(
+      metadata.vkeyWitnesses.every(
+        ({ keyHash, signatureValid }) =>
+          /^[0-9a-f]{56}$/.test(keyHash) && signatureValid,
+      ),
+    ).toBe(true);
     expect(metadata.bodyScriptRefs).toHaveLength(1);
     expect(metadata.bodyScriptRefs[0]?.nestedCborLayers.layerCount).toBe(2);
     expect(metadata.bodyScriptRefs[0]?.flatDecodeValid).toBe(true);
@@ -281,6 +319,166 @@ describe("pre-submit signed transaction capture", () => {
     expect(createHash("sha256").update(payloadBytes).digest("hex")).toBe(
       metadata.payloads[0]?.payloadSha256,
     );
+
+    const sessionPath = resolve(outputDirectory, ".CAPTURE_SESSION.json");
+    expect((await stat(sessionPath)).mode & 0o777).toBe(0o600);
+    expect(JSON.parse(await readFile(sessionPath, "utf8"))).toMatchObject({
+      schemaVersion: 1,
+      status: "prepared",
+      outputDirectory,
+      session: capture.session,
+    });
+
+    const wrongInputDirectory = await freshCaptureDirectory("wrong-input-");
+    await expect(
+      captureSignedTxPreSubmit({
+        signedTxCbor,
+        txHash,
+        walletAddress: account.address,
+        capture: { ...capture, outputDirectory: wrongInputDirectory },
+        batch: {
+          ...batch,
+          inputs: [{ outRef: `${"ff".repeat(32)}#999`, lineage: "live_seed" }],
+        },
+      }),
+    ).rejects.toThrow(/inputs do not match declared lineage/);
+
+    const wrongOutputDirectory = await freshCaptureDirectory("wrong-output-");
+    await expect(
+      captureSignedTxPreSubmit({
+        signedTxCbor,
+        txHash,
+        walletAddress: account.address,
+        capture: { ...capture, outputDirectory: wrongOutputDirectory },
+        batch: { ...batch, walletChangeOutputIndexes: [999] },
+      }),
+    ).rejects.toThrow(/do not exactly partition/);
+
+    const invalidWitnessSet = transaction.witness_set();
+    const validVkeys = invalidWitnessSet.vkeywitnesses();
+    if (validVkeys === undefined || validVkeys.len() === 0)
+      throw new Error("missing test vkey witness");
+    const invalidVkeys = CML.VkeywitnessList.new();
+    invalidVkeys.add(
+      CML.Vkeywitness.new(
+        validVkeys.get(0).vkey(),
+        CML.Ed25519Signature.from_raw_bytes(Buffer.alloc(64)),
+      ),
+    );
+    invalidWitnessSet.set_vkeywitnesses(invalidVkeys);
+    const invalidSignedTxCbor = CML.Transaction.new(
+      transaction.body(),
+      invalidWitnessSet,
+      transaction.is_valid(),
+      transaction.auxiliary_data(),
+    ).to_cbor_hex();
+    const invalidSignatureDirectory =
+      await freshCaptureDirectory("invalid-signature-");
+    await expect(
+      captureSignedTxPreSubmit({
+        signedTxCbor: invalidSignedTxCbor,
+        txHash,
+        walletAddress: account.address,
+        capture: { ...capture, outputDirectory: invalidSignatureDirectory },
+        batch,
+      }),
+    ).rejects.toThrow(/vkey witness validation failed/);
+
+    const otherAccount = generateEmulatorAccount({ lovelace: 10_000_000n });
+    const wrongSignerDirectory = await freshCaptureDirectory("wrong-signer-");
+    await expect(
+      captureSignedTxPreSubmit({
+        signedTxCbor,
+        txHash,
+        walletAddress: otherAccount.address,
+        capture: { ...capture, outputDirectory: wrongSignerDirectory },
+        batch,
+      }),
+    ).rejects.toThrow(/does not contain the signing wallet payment key/);
+
+    const originalSession = await readFile(sessionPath, "utf8");
+    await writeFile(
+      sessionPath,
+      originalSession.replace('"status": "prepared"', '"status": "tampered"'),
+    );
+    await expect(
+      finalizeSignedTxPreSubmitCapture({
+        capture: { ...capture, outputDirectory },
+        expectedTargetNames: ["hub-oracle minting"],
+      }),
+    ).rejects.toThrow(/session manifest does not match/);
+    await writeFile(sessionPath, originalSession);
+
+    await writeFile(capture.session.blueprintPath, "tampered blueprint");
+    await expect(
+      finalizeSignedTxPreSubmitCapture({
+        capture: { ...capture, outputDirectory },
+        expectedTargetNames: ["hub-oracle minting"],
+      }),
+    ).rejects.toThrow(/blueprint hash mismatch/);
+    await writeFile(capture.session.blueprintPath, testBlueprintBytes);
+
+    const originalMetadata = await readFile(metadataPath, "utf8");
+    const syntheticMetadata = JSON.parse(originalMetadata) as {
+      batch: { inputs: Array<{ lineage: string }> };
+    };
+    syntheticMetadata.batch.inputs[0]!.lineage = "synthetic_change";
+    await writeFile(metadataPath, `${JSON.stringify(syntheticMetadata)}\n`);
+    await expect(
+      finalizeSignedTxPreSubmitCapture({
+        capture: { ...capture, outputDirectory },
+        expectedTargetNames: ["hub-oracle minting"],
+      }),
+    ).rejects.toThrow(/synthetic input does not reference prior/);
+    await writeFile(metadataPath, originalMetadata);
+
+    const redirectedMetadata = JSON.parse(originalMetadata) as {
+      cborPath: string;
+    };
+    redirectedMetadata.cborPath = "/capture-artifact-must-not-be-opened";
+    await writeFile(metadataPath, `${JSON.stringify(redirectedMetadata)}\n`);
+    await expect(
+      finalizeSignedTxPreSubmitCapture({
+        capture: { ...capture, outputDirectory },
+        expectedTargetNames: ["hub-oracle minting"],
+      }),
+    ).rejects.toThrow(/signed CBOR path mismatch/);
+    await writeFile(metadataPath, originalMetadata);
+
+    const renamedMetadataPath = resolve(
+      outputDirectory,
+      `signed-${"ab".repeat(32)}.cbor.json`,
+    );
+    await rename(metadataPath, renamedMetadataPath);
+    await expect(
+      finalizeSignedTxPreSubmitCapture({
+        capture: { ...capture, outputDirectory },
+        expectedTargetNames: ["hub-oracle minting"],
+      }),
+    ).rejects.toThrow(/invalid or duplicate transaction identity/);
+    await rename(renamedMetadataPath, metadataPath);
+
+    await rm(metadataPath);
+    await symlink(capture.session.blueprintPath, metadataPath);
+    await expect(
+      finalizeSignedTxPreSubmitCapture({
+        capture: { ...capture, outputDirectory },
+        expectedTargetNames: ["hub-oracle minting"],
+      }),
+    ).rejects.toThrow();
+    await rm(metadataPath);
+    await writeFile(metadataPath, originalMetadata, { mode: 0o600 });
+    await chmod(metadataPath, 0o600);
+
+    const orphanPath = resolve(outputDirectory, ".orphan.tmp");
+    await writeFile(orphanPath, "orphan");
+    await expect(
+      finalizeSignedTxPreSubmitCapture({
+        capture: { ...capture, outputDirectory },
+        expectedTargetNames: ["hub-oracle minting"],
+      }),
+    ).rejects.toThrow(/orphan or temporary artifacts/);
+    await rm(orphanPath);
 
     await expect(
       finalizeSignedTxPreSubmitCapture({
@@ -325,6 +523,153 @@ describe("pre-submit signed transaction capture", () => {
     ).toThrow();
   });
 
+  it("finalizes a real two-transaction synthetic-change dependency chain", async () => {
+    const account = generateEmulatorAccount({ lovelace: 30_000_000n });
+    const lucid = await Lucid(new Emulator([account]), "Custom");
+    lucid.selectWallet.fromSeed(account.seedPhrase);
+    const scripts = [
+      {
+        type: "Native" as const,
+        script:
+          CML.NativeScript.new_script_invalid_hereafter(900_001n).to_cbor_hex(),
+      },
+      {
+        type: "Native" as const,
+        script:
+          CML.NativeScript.new_script_invalid_hereafter(900_002n).to_cbor_hex(),
+      },
+    ];
+    const outputDirectory = await freshCaptureDirectory("synthetic-chain-");
+    const captureConfig = { ...capture, outputDirectory };
+    const buildBatch = (
+      signedTxCbor: string,
+      ordinal: number,
+      targetName: string,
+      expectedScriptHash: string,
+      lineage: "live_seed" | "synthetic_change",
+    ): SignedTxPreSubmitBatchContext => {
+      const tx = CML.Transaction.from_cbor_hex(signedTxCbor);
+      const inputs = tx.body().inputs();
+      const outputs = tx.body().outputs();
+      const targetOutputIndex = Array.from(
+        { length: outputs.len() },
+        (_, index) => index,
+      ).find((index) => {
+        const scriptRef = outputs.get(index).script_ref();
+        const native = scriptRef?.as_native();
+        return native?.hash().to_hex() === expectedScriptHash;
+      });
+      if (targetOutputIndex === undefined)
+        throw new Error(`missing ${targetName} output`);
+      return {
+        ordinal,
+        plannedBatchIndex: ordinal,
+        splitPath: `batch-${ordinal.toString()}`,
+        targets: [
+          {
+            name: targetName,
+            scriptHash: expectedScriptHash,
+            outputIndex: targetOutputIndex,
+          },
+        ],
+        inputs: Array.from({ length: inputs.len() }, (_, index) => {
+          const input = inputs.get(index);
+          return {
+            outRef: `${input.transaction_id().to_hex()}#${input.index().toString()}`,
+            lineage,
+          };
+        }),
+        walletChangeOutputIndexes: Array.from(
+          { length: outputs.len() },
+          (_, index) => index,
+        ).filter((index) => index !== targetOutputIndex),
+      };
+    };
+
+    const firstBuilder = await lucid
+      .newTx()
+      .pay.ToAddressWithData(
+        account.address,
+        undefined,
+        { lovelace: 2_000_000n },
+        scripts[0],
+      )
+      .complete();
+    const firstSigned = await Effect.runPromise(
+      firstBuilder.sign.withWallet().completeProgram(),
+    );
+    const firstCbor = firstSigned.toCBOR();
+    const firstHash = firstBuilder.toHash();
+    const firstBatch = buildBatch(
+      firstCbor,
+      0,
+      "first native target",
+      validatorToScriptHash(scripts[0]),
+      "live_seed",
+    );
+    await captureSignedTxPreSubmit({
+      signedTxCbor: firstCbor,
+      txHash: firstHash,
+      walletAddress: account.address,
+      capture: captureConfig,
+      batch: firstBatch,
+    });
+
+    await lucid.awaitTx(await firstSigned.submit());
+    const syntheticChange = (await lucid.wallet().getUtxos()).find(
+      (utxo) => utxo.txHash === firstHash && utxo.scriptRef === undefined,
+    );
+    if (syntheticChange === undefined)
+      throw new Error("missing first transaction wallet change");
+    lucid.overrideUTxOs([syntheticChange]);
+
+    const secondBuilder = await lucid
+      .newTx()
+      .pay.ToAddressWithData(
+        account.address,
+        undefined,
+        { lovelace: 2_000_000n },
+        scripts[1],
+      )
+      .complete();
+    const secondSigned = await Effect.runPromise(
+      secondBuilder.sign.withWallet().completeProgram(),
+    );
+    const secondCbor = secondSigned.toCBOR();
+    const secondHash = secondBuilder.toHash();
+    const secondBatch = buildBatch(
+      secondCbor,
+      1,
+      "second native target",
+      validatorToScriptHash(scripts[1]),
+      "synthetic_change",
+    );
+    expect(secondBatch.inputs).toEqual([
+      {
+        outRef: `${syntheticChange.txHash}#${syntheticChange.outputIndex.toString()}`,
+        lineage: "synthetic_change",
+      },
+    ]);
+    await captureSignedTxPreSubmit({
+      signedTxCbor: secondCbor,
+      txHash: secondHash,
+      walletAddress: account.address,
+      capture: captureConfig,
+      batch: secondBatch,
+    });
+
+    await expect(
+      finalizeSignedTxPreSubmitCapture({
+        capture: captureConfig,
+        expectedTargetNames: ["first native target", "second native target"],
+      }),
+    ).resolves.toMatchObject({
+      status: "complete",
+      captureCount: 2,
+      expectedTargetCount: 2,
+    });
+  });
+
   it("rejects missing, empty, extra, and malformed ledger CBOR layers", () => {
     expect(() => validateLedgerSerializedFlat("010100", 3)).toThrow(
       /exactly one definite CBOR byte-string layer/,
@@ -339,6 +684,9 @@ describe("pre-submit signed transaction capture", () => {
       /trailing bytes/,
     );
     expect(() => validateLedgerSerializedFlat("4201", 3)).toThrow(
+      /exactly one definite CBOR byte-string layer/,
+    );
+    expect(() => validateLedgerSerializedFlat("580401010061", 3)).toThrow(
       /exactly one definite CBOR byte-string layer/,
     );
   });
@@ -439,7 +787,7 @@ describe("pre-submit signed transaction capture", () => {
           },
         }),
       ).rejects.toThrow(/does not match precomputed txHash/);
-      expect(await readdir(outputDirectory)).toEqual([]);
+      expect(await readdir(outputDirectory)).toEqual([".CAPTURE_SESSION.json"]);
     } finally {
       await rm(outputDirectory, { recursive: true, force: true });
     }
@@ -480,7 +828,7 @@ describe("pre-submit signed transaction capture", () => {
           /Pre-submit capture batch input lineage is missing or duplicated/,
         );
       }
-      expect(await readdir(outputDirectory)).toEqual([]);
+      expect(await readdir(outputDirectory)).toEqual([".CAPTURE_SESSION.json"]);
     } finally {
       await rm(outputDirectory, { recursive: true, force: true });
     }

@@ -65,9 +65,8 @@ step-04 mints token).
 ### transition-trace (library-only)
 
 `transition-trace/detect.ts` (fault detection over reconstructed payloads),
-`reconstruct.ts` (rebuild ledger/roots from raw DA payload CBOR; the only sanctioned
-direct `SDK.decodeDaPayloadV2` caller — enforced by
-`tests/da-decoder-first-guard.test.ts`), `witnesses.ts` (PHAS membership/non-membership
+`reconstruct.ts` (rebuild ledger/roots from raw DA payload CBOR and centralize direct
+`SDK.decodeDaPayloadV2` use), `witnesses.ts` (PHAS membership/non-membership
 builders), `phas.ts` (MPF root/proof library shared across families), `fetch.ts`
 (`DaLibp2pRetainedDaSource` — the only real libp2p DA retrieval in the package,
 hash-verifying every response), `submit.ts` (terminal step: burns thread, mints token).
@@ -124,7 +123,8 @@ datum in the same txs; non-tail removals require the node's admin-gated
 - **Committee store**: single JSON file, atomic tmp+rename
   (`src/store.ts:87-371`); Postgres variant exists; **no delete/expiry capability**
   (`WatcherStore` interface `store.ts:43-85`). The 14-day retention promise is
-  documentation, not code (`docs/da-committee-node-architecture.md:72,166-167,199`).
+  documentation, not code
+  (`demo/da-committee-node/docs/da-committee-node-architecture.md:72,166-167,199`).
 - **Node DB**: raw tx CBOR in `immutable` (never pruned,
   `demo/midgard-node/src/database/immutable.ts:120-131`); payload bytes + roots in
   `da_payloads` (prunable — hourly sweeper, off unless `RETENTION_DAYS > 0`, floor 8 days:
@@ -144,14 +144,13 @@ datum in the same txs; non-tail removals require the node's admin-gated
   script-integrity-hash recomputation, value preservation
   (`value-accounting.ts:111-133`), slot-interval enforcement; cascade rejection; UTxO
   state patch output.
-- **Classification**: 22-code `RejectCodes` (`src/types.ts:17-42`); four codes defined but
+- **Classification**: 25-code `RejectCodes` (`src/types.ts:17-42`); four codes defined but
   never raised (`UnsupportedFieldNonEmpty`, `PlutusEvaluationUnavailable`,
   `CertificatesForbidden`, `NonZeroWithdrawal`). Rejections persist verbatim to
   `tx_admissions`/`tx_rejections`
   (`demo/midgard-node/src/database/txAdmissions.ts:1054-1153`).
-- **Deliberately unmapped to fault categories**
-  (`demo/midgard-node/docs/FAULT_PROOF_DECISION_RECOMMENDATIONS.md` D9): admission rejects
-  concern pre-block txs; fault proofs concern committed blocks. Zero references to
+- **Deliberately unmapped to fault categories**: admission rejects concern pre-block
+  transactions; fault proofs concern committed blocks. Zero references to
   `RejectCode` in `demo/midgard-fault-proofs`. Consequence: nothing today classifies a
   _committed_ block's violation into a proof family — that selection is fully manual.
 - **Watcher**: no autonomous detection loop anywhere

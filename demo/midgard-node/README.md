@@ -782,5 +782,5 @@ acceptance threshold deliberately have no environment override.
 
 - [Root repository guide](../../README.md)
 - [Midgard SDK guide](../midgard-sdk/README.md)
-- [Preprod deposit and send-tx runbook](./PREPROD_DEPOSIT_AND_SEND_TX.md)
+- [Preprod deposit and send-tx runbook](./docs/PREPROD_DEPOSIT_AND_SEND_TX.md)
 - [Technical specification guide](../../technical-spec/README.md)

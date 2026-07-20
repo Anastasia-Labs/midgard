@@ -34,7 +34,7 @@ the implementation** — see [`coverage-matrix.md`](coverage-matrix.md) for the 
 | **Computation thread**                   | CPS-style state machine splitting a proof into sequential spend-validator steps; a thread NFT named `category_id ‖ header_hash(28B)` traverses them. Redeemers: `Init` / `Success` / `BurnForCancellation`.                                                         | `technical-spec/4-proof-protocol/3-computation-thread.tex:8-9,44-46`; `onchain/aiken/validators/computation-thread.ak:20-149`       |
 | **State queue**                          | L1 linked list of committed block headers awaiting confirmation; FIFO merge after maturity. `RemoveFaultyBlockHeader` is the correction path.                                                                                                                       | `technical-spec/3-consensus-protocol/4-state-queue.tex:8,106-153`; `onchain/aiken/validators/state-queue.ak:524-712`                |
 | **Maturity period**                      | The challenge window gating merge (spec: 3–7 days expected). **Both Aiken envs currently set `maturity_duration = 30` (ms) — a dev value.**                                                                                                                         | `technical-spec/C-considerations/2-protocol-parameters.tex:24-26`; `onchain/aiken/env/default.ak:19`, `env/testnet.ak:18`           |
-| **Operator bond / slashing**             | Bond forfeited when a block is proven faulty; split `fault_prover_reward` + `slashing_penalty` = `required_bond`. **All four economics params are `0` in both envs.**                                                                                               | `technical-spec/3-consensus-protocol/2-operator-directory.tex:19-24`; `onchain/aiken/env/default.ak:21-35`                          |
+| **Operator bond / slashing**             | Bond forfeited when a block is proven faulty; split historical source identifier `fraud_prover_reward` + `slashing_penalty` = `required_bond`. **All four economics params are `0` in both envs.**                                                                  | `technical-spec/3-consensus-protocol/2-operator-directory.tex:19-24`; `onchain/aiken/env/default.ak:21-35`                          |
 | **Transition trace**                     | Per-block dense map `step_index → TransitionStep{event_key, phase, pre/post_utxos_root}` committed via `transition_trace_root` + `event_to_step_root`; enables one-step re-execution disputes.                                                                      | `technical-spec/1-ledger-state/1-block.tex:186-234`                                                                                 |
 | **Counted / domain-tagged root**         | `blake2b_256(tag ‖ cbor(domain) ‖ raw_root ‖ cbor(count))` — commits member count and domain alongside an MPF root, so proofs can open membership, non-membership, and count.                                                                                       | `onchain/aiken/lib/midgard/transition-trace.ak:9-16,64-80`                                                                          |
 | **phas / pexcludes**                     | Withdraw-zero "merkelized validator" scripts performing MPF membership (`mpf.has`) and non-membership (`mpf.insert` must succeed) checks, invoked by proof steps via reference scripts.                                                                             | `onchain/aiken/validators/phas.ak:15`, `pexcludes.ak:22`; `lib/midgard/common/utils.ak:597-719`                                     |
@@ -62,8 +62,9 @@ the implementation** — see [`coverage-matrix.md`](coverage-matrix.md) for the 
    `@al-ft/midgard-fault-proofs`. The closest challenger logic is
    `demo/midgard-fault-proofs/src/transition-trace/detect.ts`, a pure function library with
    no polling loop. Mempool rejections (`RejectCodes`) are deliberately **not** mapped to
-   fault categories (`demo/midgard-node/docs/FAULT_PROOF_DECISION_RECOMMENDATIONS.md`, D9):
-   fault proofs target committed blocks, not rejected transactions.
+   fault categories: admission handles rejected transactions, while fault proofs target
+   committed blocks. The resulting committed-block classifier gap is tracked in
+   [`coverage-matrix.md`](coverage-matrix.md) §11.
 2. **Evidence construction** — MPF tries and proofs built off-chain with
    `@aiken-lang/merkle-patricia-forestry` (`prepare-*.ts`, `ne-proofs.ts`,
    `transition-trace/phas.ts`). Data sources: live midgard-node REST (`GET /block`, `/tx`),
@@ -105,7 +106,7 @@ the implementation** — see [`coverage-matrix.md`](coverage-matrix.md) for the 
   says a descendant needs no fault proof of its own. With scheduler shift rotation, a
   descendant committed by a different operator fails this check and the cascade cannot
   proceed on-chain.
-- **Slashing economics are inert.** `slashing_penalty`, `fault_prover_reward`,
+- **Slashing economics are inert.** `slashing_penalty`, `fraud_prover_reward`,
   `required_bond`, `inactivity_slashing_penalty` are all `0`
   (`onchain/aiken/env/default.ak:21-35`, `env/testnet.ak:20-26`); the penalty is enforced
   only as `fee >= env.slashing_penalty`, and nothing on-chain routes the bond remainder to

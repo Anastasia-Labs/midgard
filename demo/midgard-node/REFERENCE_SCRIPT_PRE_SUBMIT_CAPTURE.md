@@ -7,9 +7,9 @@ a provider submit API.
 
 This mode is for inspecting the exact transactions that the configured
 deployment identity would produce. It is not a deployment, dry-run estimate,
-or transaction recovery mechanism. Some captured transactions are independently
-submit-ready, so keep the capture directory private and never broadcast its
-contents as a batch.
+or transaction recovery mechanism. The artifacts contain live wallet signatures
+and broadcastable transaction bytes, so keep the capture directory private and
+never broadcast their contents.
 
 ## Preconditions
 
@@ -20,11 +20,14 @@ contents as a batch.
 - Fund the reference-script wallet before capture. Diagnostic mode refuses to
   run the automatic funding-wallet top-up path.
 - Obtain the active ledger protocol major independently from the capture
-  transaction. It gates the external ledger script decoder and must be passed
-  explicitly rather than inferred from the bytes being inspected.
+  transaction. It is recorded as provenance and must be passed explicitly
+  rather than inferred from the bytes being inspected; capture does not query a
+  node or claim that the reported protocol version accepted the transaction.
 - Create the parent of the capture directory, but leave the capture directory
-  itself absent. The command creates it with mode `0700` and refuses to reuse an
-  existing or non-canonical path.
+  itself absent. Pass the directory and any `MIDGARD_REAL_BLUEPRINT_PATH`
+  override as absolute, canonical paths. The command creates the capture
+  directory with mode `0700` and refuses to reuse an existing or non-canonical
+  path.
 
 For example:
 
@@ -40,6 +43,11 @@ MIDGARD_REAL_BLUEPRINT_PATH=/absolute/path/to/onchain/aiken/plutus.json \
 Capture mode cannot be combined with `--plan-only` or `--fresh-redeploy`.
 Unlike normal publication, it does not persist deployment run-state changes,
 query for newly published reference scripts, or write a deployment manifest.
+It deliberately treats every target for the selected command as a publication
+candidate even when a matching reference script already exists on-chain, so the
+bundle covers the complete command surface. This is safe only because the mode
+never submits; broadcasting a captured transaction could duplicate live role
+tokens and is unsupported.
 
 ## Safety boundary
 
@@ -49,8 +57,10 @@ The capture path is separate from the generic sign-and-submit helper:
    existing strict local-evaluation behavior.
 2. `signTransactionForPreSubmitCapture` signs once and extracts that signed
    object's exact CBOR. Every vkey witness signature is verified over the exact
-   transaction body hash. The helper has no provider submit or confirmation
-   branch.
+   transaction body hash. The exact transaction must round-trip through CML
+   without re-encoding drift; CML and the Flat/UPLC decoder then independently
+   inspect each script's ledger serialization. The helper has no provider submit
+   or confirmation branch.
 3. The generic submit helper rejects diagnostic capture options, preventing a
    captured-not-submitted result from being treated as a successful submit.
 4. Multi-batch publication uses an in-memory wallet shadow. Later batches

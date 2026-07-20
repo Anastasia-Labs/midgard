@@ -227,8 +227,3 @@ reserve backing** (the standard optimistic assumption, matrix §14); `header_has
 transitively binds every root (linked-list key = `blake2b_224(serialise_data(header))`),
 so signature-only attestation is **not** a root-integrity hole and must not be
 "hardened" with redundant per-root checks.
-
-Verified non-gaps from the same sweep (recorded in matrix §11c): deposits have **no
-refund path** (`deposit.ak` spend is absorb-to-reserve only), so an included deposit
-cannot also be reclaimed on L1; tx-order and withdrawal refunds are settlement-gated
-(`tx-order.ak:93-97`, `withdrawal.ak:326-349`) and adjudicated by the trace proofs.

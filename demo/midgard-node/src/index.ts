@@ -2,7 +2,7 @@
 
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { dirname, isAbsolute, resolve } from "node:path";
 
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { normalizeHex } from "@al-ft/midgard-core/hex";
@@ -3784,15 +3784,34 @@ for (const commandName of RegisterActiveOperator.REFERENCE_SCRIPT_COMMAND_NAMES)
     )
     .option(
       "--ledger-protocol-major <integer>",
-      "Required in capture mode: independently observed ledger protocol major for the external script decoder gate",
+      "Required in capture mode: independently observed ledger protocol major recorded as capture provenance",
     )
     .action(async (_args, options) => {
       const commandOptions = options.opts();
       const { contractDeploymentInfoOutput, planOnly } = commandOptions;
-      const captureOutputDirectory =
+      const captureOutputDirectoryOption =
         typeof commandOptions.captureSignedTxPreSubmit === "string"
-          ? resolve(commandOptions.captureSignedTxPreSubmit)
+          ? commandOptions.captureSignedTxPreSubmit
           : undefined;
+      if (
+        captureOutputDirectoryOption !== undefined &&
+        (!isAbsolute(captureOutputDirectoryOption) ||
+          resolve(captureOutputDirectoryOption) !==
+            captureOutputDirectoryOption)
+      ) {
+        throw new Error(
+          "--capture-signed-tx-pre-submit must be an absolute, lexically canonical path",
+        );
+      }
+      const captureOutputDirectory = captureOutputDirectoryOption;
+      if (
+        captureOutputDirectory === undefined &&
+        commandOptions.ledgerProtocolMajor !== undefined
+      ) {
+        throw new Error(
+          "--ledger-protocol-major is only valid with --capture-signed-tx-pre-submit",
+        );
+      }
       const runOptions =
         DeploymentRunStateCommand.resolveDeploymentRunCliOptions(
           commandOptions,
@@ -3845,13 +3864,25 @@ for (const commandName of RegisterActiveOperator.REFERENCE_SCRIPT_COMMAND_NAMES)
               ? undefined
               : yield* Effect.tryPromise({
                   try: async (): Promise<SignedTxPreSubmitCapture> => {
-                    const blueprintPath = resolve(
-                      process.env.MIDGARD_REAL_BLUEPRINT_PATH?.trim() ||
-                        resolve(
-                          import.meta.dirname,
-                          "../../../onchain/aiken/plutus.json",
-                        ),
-                    );
+                    const configuredBlueprintPath =
+                      process.env.MIDGARD_REAL_BLUEPRINT_PATH?.trim();
+                    if (
+                      configuredBlueprintPath !== undefined &&
+                      configuredBlueprintPath.length > 0 &&
+                      (!isAbsolute(configuredBlueprintPath) ||
+                        resolve(configuredBlueprintPath) !==
+                          configuredBlueprintPath)
+                    ) {
+                      throw new Error(
+                        "MIDGARD_REAL_BLUEPRINT_PATH must be absolute and lexically canonical in pre-submit capture mode",
+                      );
+                    }
+                    const blueprintPath =
+                      configuredBlueprintPath ||
+                      resolve(
+                        import.meta.dirname,
+                        "../../../onchain/aiken/plutus.json",
+                      );
                     const blueprintBytes = await readFile(blueprintPath);
                     const capture: SignedTxPreSubmitCapture = {
                       outputDirectory: captureOutputDirectory,

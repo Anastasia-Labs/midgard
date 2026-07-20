@@ -359,4 +359,78 @@ describe("reference-script diagnostic submission safety", () => {
     expect(fundingWalletAccess).not.toHaveBeenCalled();
     expect(handleSignSubmitMock).not.toHaveBeenCalled();
   });
+
+  it("fails once instead of retrying forever when actual diagnostic balancing is underfunded", async () => {
+    completePublicationMock.mockReset();
+    handleSignSubmitMock.mockReset();
+    signCaptureMock.mockReset();
+    const fundedUtxo: UTxO = {
+      ...plainUtxo,
+      assets: { lovelace: 1_000_000_000n },
+    };
+    let walletUtxos = [fundedUtxo];
+    const lucid = {
+      wallet: () => ({
+        address: async () => REFERENCE_SCRIPT_ADDRESS,
+        getUtxos: async () => [...walletUtxos],
+      }),
+      utxosAt: async () => [...walletUtxos],
+      utxosByOutRef: async () => [...walletUtxos],
+      overrideUTxOs: (next: UTxO[]) => {
+        walletUtxos = [...next];
+      },
+    } as unknown as LucidEvolution;
+    const fundingWalletAccess = vi.fn();
+    const fundingLucid = {
+      wallet: () => {
+        fundingWalletAccess();
+        return {
+          address: async () => FUNDING_ADDRESS,
+          getUtxos: async () => [],
+        };
+      },
+    } as unknown as LucidEvolution;
+    completePublicationMock.mockReturnValue(
+      Effect.fail(
+        new Error(
+          "UTxO Balance Insufficient. Inputs: Value { coin: 100 } Outputs: Value { coin: 200 }",
+        ),
+      ),
+    );
+
+    await expect(
+      Effect.runPromise(
+        ensureReferenceScriptTargetsProgram(
+          lucid,
+          "diagnostic",
+          [target],
+          authPolicy,
+          fundingLucid,
+          REFERENCE_SCRIPT_ADDRESS,
+          1,
+          new Set(),
+          {
+            outputDirectory: "/tmp/reference-script-underfunded-capture",
+            invocation: "phase4-live-pre-submit-capture",
+            abortBeforeSubmit: true,
+            session: {
+              commandName: "diagnostic",
+              runStatePath: "/tmp/run-state.json",
+              blueprintPath: "/tmp/plutus.json",
+              blueprintSha256: "11".repeat(32),
+              ledgerProtocolMajor: 11,
+              network: "Preprod",
+              hubOracleOneShotOutRef: `${"22".repeat(32)}#0`,
+              referenceScriptAuthPolicyId: authPolicy.policyId,
+            },
+          },
+        ),
+      ),
+    ).rejects.toThrow(/underfunded and refuses automatic wallet replenishment/);
+
+    expect(completePublicationMock).toHaveBeenCalledTimes(1);
+    expect(signCaptureMock).not.toHaveBeenCalled();
+    expect(handleSignSubmitMock).not.toHaveBeenCalled();
+    expect(fundingWalletAccess).not.toHaveBeenCalled();
+  });
 });

@@ -845,7 +845,6 @@ const ensureReferenceScriptWalletWorkingCapital = (
   scopeName: string,
   requiredPlainBalance: bigint,
   reservedFundingOutRefKeys: ReadonlySet<string> = new Set<string>(),
-  preSubmitDiagnosticCapture?: SignedTxPreSubmitCapture,
 ): Effect.Effect<
   void,
   | SDK.StateQueueError
@@ -871,18 +870,6 @@ const ensureReferenceScriptWalletWorkingCapital = (
         : REFERENCE_SCRIPT_WALLET_WORKING_CAPITAL_LOVELACE;
     if (currentPlainBalance >= targetPlainBalance) {
       return;
-    }
-
-    if (preSubmitDiagnosticCapture !== undefined) {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message:
-            "Pre-submit diagnostic capture refuses automatic reference-script wallet replenishment",
-          cause: `scope=${scopeName},current_plain_balance=${currentPlainBalance.toString()},required_plain_balance=${targetPlainBalance.toString()},top_up_lovelace=${(
-            targetPlainBalance - currentPlainBalance
-          ).toString()},abort_before_submit=${String(preSubmitDiagnosticCapture.abortBeforeSubmit)}`,
-        }),
-      );
     }
 
     const referenceScriptAddress = yield* Effect.tryPromise({
@@ -1659,7 +1646,6 @@ export const ensureReferenceScriptTargetsProgram = (
               scopeName,
               requiredPlainBalance,
               reservedFundingOutRefKeys,
-              preSubmitDiagnosticCapture,
             );
           }
           const walletUtxos = yield* fetchReferenceScriptWalletUtxos();
@@ -1743,6 +1729,15 @@ export const ensureReferenceScriptTargetsProgram = (
           if (
             isReferenceScriptPublicationBalanceInsufficient(publishAttempt.left)
           ) {
+            if (preSubmitDiagnosticCapture !== undefined) {
+              return yield* Effect.fail(
+                new SDK.StateQueueError({
+                  message:
+                    "Pre-submit diagnostic capture is underfunded and refuses automatic wallet replenishment",
+                  cause: `scope=${scopeName},targets=[${missingTargets.map(({ name }) => name).join(",")}],balance_error=${formatUnknownError(publishAttempt.left)}`,
+                }),
+              );
+            }
             if (!ensureWorkingCapital) {
               return yield* Effect.fail(
                 new SDK.StateQueueError({

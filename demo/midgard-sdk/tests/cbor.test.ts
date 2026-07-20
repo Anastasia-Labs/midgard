@@ -169,6 +169,9 @@ describe("Aiken Plutus script CBOR normalizers", () => {
       "59045902590101",
       "5902590101ff",
       "5f590101ff",
+      "5803580142",
+      "43580142",
+      "43424100",
     ])
       expect(() =>
         normalizeAikenParameterizedPlutusScript(malformed),
