@@ -2,7 +2,7 @@
 
 This document describes the core transaction-validation, pending-finalization,
 and migration tables in the current node schema. It is a focused map rather
-than a complete list of every table added by the versioned migration set.
+than a complete list of every table in the consolidated initial schema.
 
 The goal is to make their current roles explicit for developers working on the
 node state machine. Where a table is only partially wired, the gap is called
@@ -43,20 +43,14 @@ explicit migrations have already installed the exact expected schema
 application tables and indexes that must exist
 ([migrations/index.ts](src/database/migrations/index.ts)).
 
-The initial schema creates most of the application tables
+The application schema is deliberately squashed into one migration
 ([0001_initial_schema.sql](src/database/migrations/sql/0001_initial_schema.sql)).
-Durable transaction admissions are added in migration 2
-([0002_durable_tx_admissions.sql](src/database/migrations/sql/0002_durable_tx_admissions.sql)).
-Local mutation jobs are added in migration 3
-([0003_local_mutation_jobs.sql](src/database/migrations/sql/0003_local_mutation_jobs.sql)).
-Migrations 4 through 12 add withdrawal events, richer pending-finalization
-payloads, state-queue leases, DA payloads, deposit submission attempts, forced
-transactions, and transition-trace journals. Those later tables are outside
-this focused map; the authoritative versioned list is `MIGRATIONS` in
-[`migrations/index.ts`](src/database/migrations/index.ts).
-Migrations 20 and 22 separate immutable admission payloads from hot lifecycle
-rows and make accepted `mempool` rows payload references while preserving the
-legacy/direct payload column.
+It includes durable transaction admissions, immutable admission payloads,
+local mutation jobs, withdrawal and forced-transaction events, pending
+finalization journals, state-queue leases, and DA tables. The authoritative
+manifest is `MIGRATIONS` in
+[`migrations/index.ts`](src/database/migrations/index.ts); documentation must
+not refer to pre-squash migration files that are no longer shipped.
 The migration runner creates `schema_migrations` and
 `schema_migration_events` as metadata tables
 ([runner.ts](src/database/migrations/runner.ts)).
@@ -179,8 +173,8 @@ Known gaps:
 ### Purpose
 
 `mempool` is the live membership set for accepted L2 transactions awaiting a
-commit path. Migration 22 makes its legacy `tx` column nullable. Normal durable
-admission acceptance writes only `tx_id`; canonical bytes remain in
+commit path. Its legacy `tx` column is nullable. Normal durable admission
+acceptance writes only `tx_id`; canonical bytes remain in
 `tx_admission_payloads`. Legacy and direct administrative writers keep storing
 physical bytes in `mempool.tx`.
 
@@ -199,9 +193,9 @@ same transaction.
   accepted rows
 - `time_stamp_tz TIMESTAMPTZ NOT NULL DEFAULT NOW()`
 
-The keyset index is `(time_stamp_tz, tx_id)`. Migration 22 changes only column
-nullability; it deliberately preserves the table shape for rolling-upgrade and
-direct-writer compatibility.
+The keyset index is `(time_stamp_tz, tx_id)`. Nullable legacy payload storage
+preserves direct-writer compatibility while admission-backed rows use the
+immutable payload table.
 
 ### Relationships And Invariants
 
@@ -395,7 +389,7 @@ and `/tx-status` responses.
 
 ### Stored Information
 
-Schema from migration 1:
+Schema from the consolidated initial migration:
 
 - `tx_id BYTEA NOT NULL`
 - `reject_code TEXT NOT NULL`
@@ -407,10 +401,7 @@ Indexes:
 - `idx_tx_rejections_tx_id`
 - `idx_tx_rejections_created_at`
 
-Migration 2 adds a unique index on `tx_id`
-([0002_durable_tx_admissions.sql](src/database/migrations/sql/0002_durable_tx_admissions.sql)).
-
-Defined initially in
+The unique `uniq_tx_rejections_tx_id` index and the base table are defined in
 [0001_initial_schema.sql](src/database/migrations/sql/0001_initial_schema.sql).
 The adapter supports insert, insertMany, lookup by tx id, pruning, and clear
 ([txRejections.ts](src/database/txRejections.ts)).
@@ -515,10 +506,9 @@ Indexes:
   active statuses;
 - `idx_pending_block_finalizations_status`.
 
-The base table is defined in
-[0001_initial_schema.sql](src/database/migrations/sql/0001_initial_schema.sql);
-migrations 5, 10, and 12 add the current snapshot, payload, forced-root,
-trace-root, header-CBOR, and count commitments.
+The complete current table, including snapshot, payload, forced-root,
+trace-root, header-CBOR, and count commitments, is defined in
+[0001_initial_schema.sql](src/database/migrations/sql/0001_initial_schema.sql).
 
 ### Writers And Transitions
 
@@ -636,9 +626,8 @@ Foreign keys:
   `ON DELETE CASCADE`;
 - `member_id` references `deposits_utxos(event_id)` with `ON DELETE RESTRICT`.
 
-The base membership is defined in
-[0001_initial_schema.sql](src/database/migrations/sql/0001_initial_schema.sql),
-and migration 5 adds the immutable payload/source snapshot columns.
+The membership and immutable payload/source snapshot columns are defined in
+[0001_initial_schema.sql](src/database/migrations/sql/0001_initial_schema.sql).
 
 ### Writers
 
@@ -713,9 +702,8 @@ Foreign key:
 There is intentionally no database foreign key to `mempool`,
 `processed_mempool`, or `immutable`.
 
-The base membership is defined in
-[0001_initial_schema.sql](src/database/migrations/sql/0001_initial_schema.sql),
-and migration 5 adds the immutable payload/source snapshot columns.
+The membership and immutable payload/source snapshot columns are defined in
+[0001_initial_schema.sql](src/database/migrations/sql/0001_initial_schema.sql).
 
 ### Writers
 
@@ -780,11 +768,9 @@ It answers questions such as:
 
 ### Stored Information
 
-Migration 2 creates enum `tx_admission_status` and table `tx_admissions`
-([0002_durable_tx_admissions.sql](src/database/migrations/sql/0002_durable_tx_admissions.sql)).
-Migration 20 moves the immutable payload columns to
-`tx_admission_payloads`
-([0020_tx_admission_payloads.sql](src/database/migrations/sql/0020_tx_admission_payloads.sql)).
+The consolidated initial migration creates enum `tx_admission_status`, table
+`tx_admissions`, and the separate immutable `tx_admission_payloads` table
+([0001_initial_schema.sql](src/database/migrations/sql/0001_initial_schema.sql)).
 
 Columns:
 
@@ -823,7 +809,7 @@ Submit sources:
 - `native`
 - `backfill`
 
-Indexes after migration 21:
+Current indexes:
 
 - `idx_tx_admissions_queued_arrival` on `(arrival_seq, tx_id)` for queued rows;
 - `idx_tx_admissions_lease` on `lease_expires_at` for validating rows;
@@ -831,7 +817,7 @@ Indexes after migration 21:
 
 Important check constraints enforce lease/status consistency, terminal status
 timestamps, and rejection metadata consistency
-([0002_durable_tx_admissions.sql](src/database/migrations/sql/0002_durable_tx_admissions.sql)).
+([0001_initial_schema.sql](src/database/migrations/sql/0001_initial_schema.sql)).
 
 ### Writers
 
@@ -948,7 +934,7 @@ Index:
 - `idx_local_mutation_jobs_status_updated` on `(status, updated_at)`
 
 Defined in
-[0003_local_mutation_jobs.sql](src/database/migrations/sql/0003_local_mutation_jobs.sql).
+[0001_initial_schema.sql](src/database/migrations/sql/0001_initial_schema.sql).
 
 The adapter supports start, complete, fail, retrieve unfinished, and count
 unfinished
