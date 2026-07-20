@@ -1,7 +1,8 @@
 # lucid-midgard Design Pack
 
-This directory is the design workspace for `lucid-midgard`, a Midgard-native
-transaction builder library with an API style inspired by lucid-evolution.
+This directory records the architecture and protocol boundaries of the
+implemented `@al-ft/lucid-midgard` package, a Midgard-native transaction
+builder library with an API style inspired by lucid-evolution.
 
 The library must be designed as production L2 infrastructure. It must preserve
 Midgard native transaction semantics, Phase A/Phase B validation boundaries,
@@ -11,7 +12,6 @@ builder with Midgard names.
 
 ## Architecture Documents
 
-- [T00 Execution Decisions](./T00-execution-decisions.md)
 - [00 Context and Non-Goals](./00-context-and-non-goals.md)
 - [01 Public API](./01-public-api.md)
 - [02 Native Transaction Model](./02-native-transaction-model.md)
@@ -24,34 +24,6 @@ builder with Midgard names.
 - [09 Testing and Conformance](./09-testing-and-conformance.md)
 - [10 Subagent Orchestration](./10-subagent-orchestration.md)
 
-## Task Documents
-
-- [T01 Package Scaffold](./tasks/T01-package-scaffold.md)
-- [T02 Native Codec Surface](./tasks/T02-native-codec-surface.md)
-- [T03 Core Types](./tasks/T03-core-types.md)
-- [T04 Provider Client](./tasks/T04-provider-client.md)
-- [T05 Wallet and Signers](./tasks/T05-wallet-and-signers.md)
-- [T06 Builder Fluent API](./tasks/T06-builder-fluent-api.md)
-- [T07 Finalization and Canonicalization](./tasks/T07-finalization-and-canonicalization.md)
-- [T08 Balancing and Fees](./tasks/T08-balancing-and-fees.md)
-- [T09 Script and Redeemer Builders](./tasks/T09-script-and-redeemer-builders.md)
-- [T10 Local Validation](./tasks/T10-local-validation.md)
-- [T11 Submit, Status, and Chain](./tasks/T11-submit-status-chain.md)
-- [T12 Migration and Assurance](./tasks/T12-migration-and-assurance.md)
-- [T14 Provider Switching and Overrides](./tasks/T14-provider-switching-and-overrides.md)
-- [T15 Provider Convenience Methods](./tasks/T15-provider-convenience-methods.md)
-- [T16 Observer Validator Surface](./tasks/T16-observer-validator-surface.md)
-- [T17 FromTx Round Trip](./tasks/T17-from-tx-round-trip.md)
-- [T18 Sign Builder Layer](./tasks/T18-sign-builder-layer.md)
-- [T19 Partial Signing](./tasks/T19-partial-signing.md)
-- [T20 Compose Builders](./tasks/T20-compose-builders.md)
-- [T21 Chain Local Outputs](./tasks/T21-chain-local-outputs.md)
-- [T22 Safe and Effect APIs](./tasks/T22-safe-and-effect-apis.md)
-- [T23 Submitted and Signed Object Ergonomics](./tasks/T23-submitted-and-signed-object-ergonomics.md)
-- [T24 Provider Conformance and Hardening](./tasks/T24-provider-conformance-and-hardening.md)
-- [T25 Documentation and Examples](./tasks/T25-documentation-and-examples.md)
-- [T26 API Hardening and Regression Guards](./tasks/T26-api-hardening-and-regression-guards.md)
-
 ## Current Source of Truth
 
 These docs intentionally treat implementation and focused tests as the current
@@ -61,17 +33,18 @@ authority:
 - `demo/midgard-core/src/codec/cbor.ts`
 - `demo/midgard-core/src/codec/hash.ts`
 - `demo/midgard-core/src/codec/output.ts`
-- `demo/midgard-node/src/validation/phase-a.ts`
-- `demo/midgard-node/src/validation/phase-b.ts`
-- `demo/midgard-node/src/validation/types.ts`
+- `demo/midgard-validation/src/phase-a.ts`
+- `demo/midgard-validation/src/phase-b.ts`
+- `demo/midgard-validation/src/types.ts`
 - `demo/midgard-node/src/commands/listen-router.ts`
 - `demo/midgard-node/src/commands/listen-utils.ts`
 - `demo/midgard-node/src/commands/submit-l2-transfer.ts`
-- `L2_TX_EVALUATION_CURRENT.md`
+- `demo/lucid-midgard/src/`
+- `demo/lucid-midgard/tests/`
 
-`MIDGARD_TX_FORMAT_V1.md`, `technical-spec`, and `cddl-files/codec.cddl` are
-useful background, but they are not assumed to be authoritative where they
-drift from implementation.
+`technical-spec` and `cddl-files/codec.cddl` provide protocol background, but
+the shared codec and validation packages are authoritative for the currently
+accepted native-v1 bytes.
 
 ## Known Format Drift To Resolve
 

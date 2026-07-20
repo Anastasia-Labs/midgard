@@ -49,7 +49,7 @@ address witness can be derived from the body alone.
 
 ## Fluent Surface
 
-Initial required methods:
+Implemented builder methods include:
 
 - `collectFrom(utxos, redeemer?)`
 - `readFrom(utxos, { trustedReferenceScripts? })`
@@ -57,15 +57,22 @@ Initial required methods:
 - `pay.ToContract(address, datum, assets, options?)`
 - `pay.ToProtectedAddress(address, assets, options?)`
 - `addSigner(keyHashOrAddress)`
+- `addSignerKey(keyHash)`
 - `validFrom(slotOrPosix)`
 - `validTo(slotOrPosix)`
 - `attach.Script(script)`
 - `attach.NativeScript(nativeScript)`
+- `attach.SpendingValidator(validator)`
+- `attach.MintingPolicy(policy)`
+- `attach.ObserverValidator(validator)`
 - `attach.ReferenceScriptMetadata(metadata)`
 - `attach.Datum(datum)`
-- `mintAssets(assets, redeemer?)`
+- `mintAssets(policyId, assets, redeemer?)`
+- `mint(mints, redeemer?)`
 - `observe(scriptHash, redeemer?)`
+- `receiveRedeemer(scriptHash, redeemer)`
 - `compose(other, ...others)`
+- `setMinFee(fee)`
 - `complete(options?)`
 - `completeSafe(options?)`
 - `completeProgram(options?)`
@@ -73,9 +80,8 @@ Initial required methods:
 - `chainSafe(options?)`
 - `chainProgram(options?)`
 
-Names may be adjusted during implementation, but the API must distinguish
-ordinary outputs from protected outputs because protected outputs affect Phase B
-receive validation.
+The API distinguishes ordinary outputs from protected outputs because
+protected outputs affect Phase B receive validation.
 
 `compose` merges compatible builder fragments left-to-right and recomputes all
 derived roots, redeemer indexes, language views, and script integrity during
@@ -95,8 +101,15 @@ provider or wallet calls until the effect is run.
 
 ```ts
 type CompleteOptions = {
+  readonly fee?: bigint | number;
   readonly changeAddress?: Address;
+  readonly presetWalletInputs?: readonly MidgardUtxo[];
   readonly localValidation?: "none" | "phase-a" | "phase-b";
+  readonly localPreState?: LocalValidationPreState;
+  readonly localPreStateSource?: LocalValidationPreStateSource;
+  readonly nowCardanoSlotNo?: bigint | number;
+  readonly validationConcurrency?: number;
+  readonly enforceScriptBudget?: boolean;
   readonly feePolicy?: "provider" | { minFeeA: bigint; minFeeB: bigint };
   readonly maxFeeIterations?: number;
 };
@@ -210,14 +223,15 @@ already-admitted same-byte transaction and must carry `duplicate=true`.
 
 Errors should be structured:
 
+- `LucidMidgardError`
 - `BuilderInvariantError`
-- `CanonicalizationError`
 - `InsufficientFundsError`
-- `FeeConvergenceError`
 - `SigningError`
-- `LocalValidationError`
-- `SubmitError`
-- `StatusError`
+- `ProviderError`
+- `ProviderCapabilityError`
+- `ProviderPayloadError`
+- `ProviderHttpError`
+- `ProviderTransportError`
 
 Where node validation rejects with stable reject codes, `lucid-midgard` should
 preserve those codes verbatim.

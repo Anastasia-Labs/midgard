@@ -167,9 +167,9 @@ are deployment-scoped:
 `payload-submit` is the producer-to-committee write path; `payload-by-header` returns canonical CBOR
 or a chunk manifest for large payloads; `payload-chunk` returns byte ranges. Metadata, proof bundle,
 and attestation payloads use canonical CBOR, not JSON. The transport constants and size limits are
-exported from `@al-ft/midgard-core/da-transport`; the exact CBOR wire schemas live in
-`demo/da-committee-node/docs/LIBP2P_DA_TRANSPORT_MIGRATION_PLAN.md`. For the decisions that
-migration froze, see [DA transport migration](/docs/watchers/da-transport-migration).
+exported from `@al-ft/midgard-core/da-transport`; the exact CBOR wire schemas and limits live with
+that source module and its tests. For the decisions that the completed migration froze, see
+[DA transport migration](/docs/watchers/da-transport-migration).
 
 ## Publish and attest workflow
 

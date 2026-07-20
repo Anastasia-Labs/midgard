@@ -102,10 +102,10 @@ sources. Native-only and no-script transactions use the empty null hash.
 
 ## Cardano Bridge
 
-The existing node can attempt Cardano-to-native conversion during ingress, but
-`lucid-midgard` must not depend on that path. Its normal output is native v1
-bytes. Cardano conversion may be exposed only as a diagnostic/import tool and
-must reject lossy conversion.
+The node's `/submit` ingress accepts canonical Midgard-native transaction CBOR
+only. It does not convert Cardano transaction CBOR. `lucid-midgard` likewise
+builds and imports native-v1 transactions only; Cardano transaction, body, and
+witness bytes are rejected rather than converted.
 
 ## Doc Drift
 
