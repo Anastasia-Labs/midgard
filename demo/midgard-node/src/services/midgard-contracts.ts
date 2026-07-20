@@ -721,6 +721,12 @@ export const midgardContractsFromDeploymentManifest = (
         sourcePath,
         "fraudProofTransitionTrace",
       ),
+      zeroInput: spendingValidatorFromManifest(
+        network,
+        manifest,
+        sourcePath,
+        "fraudProofZeroInput",
+      ),
     },
   };
 };
