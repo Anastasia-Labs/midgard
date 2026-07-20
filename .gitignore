@@ -3,10 +3,12 @@ artifacts/
 # Aiken's project working directory
 build/
 # Aiken's default documentation export
-docs/
+docs/*
 .env
 !docs/lucid-midgard/
 !docs/lucid-midgard/**
+!docs/fault-proofs/
+!docs/fault-proofs/**
 !docs/agents/
 !docs/agents/**
 # The docs/ rule above also matches docs-site/content/docs (documentation source)
