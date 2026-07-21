@@ -204,6 +204,7 @@ export type FraudProofs = {
   invalidRange: SpendingValidator;
   transitionTrace: SpendingValidator;
   zeroInput: SpendingValidator;
+  noReferenceInput: SpendingValidator;
 };
 
 export type MidgardValidators = {
@@ -310,12 +311,15 @@ export const AddressSchema = Data.Object({
 export type AddressData = Data.Static<typeof AddressSchema>;
 export const AddressData = AddressSchema as unknown as AddressData;
 
+// Mirrors the on-chain `merkle_patricia_forestry.Neighbor` record
+// (`Neighbor { nibble, prefix, root }`), which encodes as a flat `Constr 0`
+// with three fields — matching the raw proof CBOR emitted by the MPF library.
+// (Previously this double-wrapped the fields under a `Neighbor` key, so any
+// proof containing a `Fork` step failed to decode.)
 export const NeighborSchema = Data.Object({
-  Neighbor: Data.Object({
-    nibble: Data.Integer(),
-    prefix: Data.Bytes(),
-    root: Data.Bytes(),
-  }),
+  nibble: Data.Integer(),
+  prefix: Data.Bytes(),
+  root: Data.Bytes(),
 });
 export type Neighbor = Data.Static<typeof NeighborSchema>;
 export const Neighbor = NeighborSchema as unknown as Neighbor;

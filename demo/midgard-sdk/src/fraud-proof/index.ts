@@ -4,6 +4,7 @@ export * from "./contracts.js";
 export * from "./double-spend.js";
 export * from "./invalid-range.js";
 export * from "./native.js";
+export * from "./no-reference-input.js";
 export * from "./non-existent-input.js";
 export * from "./tokens.js";
 export * from "./zero-input.js";

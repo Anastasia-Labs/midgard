@@ -246,6 +246,7 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
     const invalidRange = yield* mkFP("invalid_range");
     const transitionTrace = yield* mkFP("transition_trace");
     const zeroInput = yield* mkFP("zero_input");
+    const noReferenceInput = yield* mkFP("no_reference_input");
 
     const fraudProofs: SDK.FraudProofs = {
       doubleSpend,
@@ -254,6 +255,7 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       invalidRange,
       transitionTrace,
       zeroInput,
+      noReferenceInput,
     };
 
     return {

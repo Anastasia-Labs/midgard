@@ -1,10 +1,10 @@
 use aiken/collection/list
-use aiken/crypto.{ScriptHash}
+use aiken/crypto.{ScriptHash, blake2b_256}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
-use midgard/common/utils
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
+use midgard/fraud_proofs/native_tx/preimages
 use midgard/fraud_proofs/no_reference_input/step_02.{
   Args, Datum, SpendRedeemer, State,
 }
@@ -66,11 +66,12 @@ validator main(
         }) = m_input_state_data
 
         // 2. Target reference input must be included in the verified
-        //    transaction reference inputs.
+        //    transaction's native reference-inputs preimage, hashed via
+        //    `encode_input_preimage` (the node's `TransactionInput` CBOR per
+        //    input) — NOT `cbor.serialise` of the aiken `OutputReference` list.
         expect
-          reference_inputs_preimage
-            |> utils.verify_hash_32(bad_tx_reference_inputs_hash)
-        let missing_reference_input_outref =
+          blake2b_256(preimages.encode_input_preimage(reference_inputs_preimage)) == bad_tx_reference_inputs_hash
+        let missing_reference_input =
           reference_inputs_preimage |> list.expect_at(bad_reference_input_index)
 
         // 3. Target reference input, plus the relevant block roots, must be
@@ -78,7 +79,7 @@ validator main(
         expect output_script_hash == step_03_validator_script_hash
         let expected_output_state: Data =
           step_03.State {
-            missing_reference_input_outref,
+            missing_reference_input,
             blocks_prev_utxos_root,
             blocks_transactions_root,
           }

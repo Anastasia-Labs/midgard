@@ -8,7 +8,7 @@ use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{TxBodyProvided, cancel, pass_tx_to_next_step}
+use midgard/fraud_proofs/common.{cancel, pass_native_tx_to_next_step}
 use midgard/fraud_proofs/no_reference_input/step_01.{Datum, SpendRedeemer}
 use midgard/fraud_proofs/no_reference_input/step_02
 use midgard/ledger_state
@@ -46,10 +46,9 @@ validator main(
           output_state_data,
           header,
           _bad_tx_id,
-          _bad_tx,
-          bad_tx_field_preimage,
+          bad_tx_view,
         <-
-          pass_tx_to_next_step(
+          pass_native_tx_to_next_step(
             computation_thread_token_policy_id,
             hub_oracle,
             datum,
@@ -58,20 +57,20 @@ validator main(
             tx,
           )
 
-        // 2. Bad transaction's body must be provided.
-        expect TxBodyProvided(bad_tx_body) = bad_tx_field_preimage
+        let ledger_state.Header { prev_utxos_root, .. } = header
 
-        let ledger_state.Header { prev_utxos_root, transactions_root, .. } =
-          header
-
-        // 3. The UTxO must be produced at next step's script hash with reference
-        //    inputs hash of the bad transaction, and relevant block roots.
+        // 2. The UTxO must be produced at next step's script hash with the
+        //    native reference-inputs hash of the bad transaction, and relevant
+        //    block roots. The authenticated raw transactions phas root (verified
+        //    against the header's counted `transactions_root` inside
+        //    `pass_native_tx_to_next_step`) is threaded forward so step-04's
+        //    non-membership check runs against a real MPF root.
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data =
           step_02.State {
-            bad_tx_reference_inputs_hash: bad_tx_body.reference_inputs,
+            bad_tx_reference_inputs_hash: bad_tx_view.tx_compact.body.reference_inputs_hash,
             blocks_prev_utxos_root: prev_utxos_root,
-            blocks_transactions_root: transactions_root,
+            blocks_transactions_root: tx_inclusion_args.transactions_phas_root,
           }
         expect output_state_data == expected_output_state
 
