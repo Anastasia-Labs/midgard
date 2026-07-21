@@ -934,19 +934,36 @@ export const loadClaimedPayloads = ({
     ),
   );
 
+/**
+ * Requeues admissions after an infrastructure failure without converting the
+ * failure into a ledger verdict. The persisted claim count drives capped
+ * exponential backoff across worker and process restarts; retry exhaustion is
+ * intentionally non-terminal and prolonged stalls are surfaced by readiness.
+ */
 export const releaseForRetry = ({
   txIds,
   leaseOwner,
-  delayMs,
+  baseDelayMs,
+  maxDelayMs,
 }: {
   readonly txIds: readonly Buffer[];
   readonly leaseOwner: string;
-  readonly delayMs: number;
+  readonly baseDelayMs: number;
+  readonly maxDelayMs: number;
 }): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
     if (txIds.length === 0) {
       return;
     }
+    const normalizedBaseDelayMs =
+      Number.isSafeInteger(baseDelayMs) && baseDelayMs > 0 ? baseDelayMs : 0;
+    const normalizedMaxDelayMs =
+      Number.isSafeInteger(maxDelayMs) && maxDelayMs > 0 ? maxDelayMs : 0;
+    const retryBackoffExponentCap =
+      normalizedBaseDelayMs === 0 ||
+      normalizedMaxDelayMs <= normalizedBaseDelayMs
+        ? 0
+        : Math.ceil(Math.log2(normalizedMaxDelayMs / normalizedBaseDelayMs));
     const sql = yield* SqlClient.SqlClient;
     yield* sql`UPDATE ${sql(tableName)}
       SET
@@ -958,7 +975,18 @@ export const releaseForRetry = ({
           ${sql(Columns.FIRST_SEEN_AT)},
           ${sql(Columns.LAST_SEEN_AT)},
           ${sql(Columns.UPDATED_AT)}
-        ) + (${Math.max(0, delayMs)} * INTERVAL '1 millisecond'),
+        ) + (
+          LEAST(
+            ${normalizedMaxDelayMs}::double precision,
+            ${normalizedBaseDelayMs}::double precision * POWER(
+              2::double precision,
+              LEAST(
+                GREATEST(${sql(Columns.ATTEMPT_COUNT)} - 1, 0),
+                ${retryBackoffExponentCap}
+              )
+            )
+          ) * INTERVAL '1 millisecond'
+        ),
         ${sql(Columns.UPDATED_AT)} = GREATEST(
           NOW(),
           ${sql(Columns.FIRST_SEEN_AT)},

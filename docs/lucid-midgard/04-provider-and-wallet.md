@@ -18,10 +18,11 @@ type MidgardProvider = {
   getCurrentSlot(): Promise<bigint>;
   submitTx(txCborHex: string): Promise<SubmitTxResult>;
   getTxStatus(txId: string): Promise<TxStatus>;
+  diagnostics(): ProviderDiagnostics;
 };
 ```
 
-The initial concrete implementation should be `MidgardNodeProvider`, backed by
+The concrete HTTP implementation is `MidgardNodeProvider`, backed by
 the node HTTP API:
 
 - `GET /utxos?address=...`
@@ -111,7 +112,7 @@ type MidgardWallet = {
 };
 ```
 
-Initial wallet adapters:
+Implemented wallet adapters:
 
 - `fromSeed(seedPhrase)`
 - `fromPrivateKey(privateKey)`
@@ -142,6 +143,8 @@ conversion as a normal submission method.
 The provider or explicit configuration must determine expected network id. The
 builder must reject address/network mismatches before producing bytes.
 
-Network id may be omitted by using Midgard native network id `255`, but any
-script bundle requiring observer reconstruction must provide an explicit
-network id because Phase A rejects observer-bearing Plutus bundles without it.
+The native wire codec reserves network id `255` as the absent-network sentinel,
+but `LucidMidgard` resolves an explicit provider/configured network and writes
+that network id into transactions it builds. Any script bundle requiring
+observer reconstruction must provide an explicit network id because Phase A
+rejects observer-bearing non-native bundles without it.

@@ -1841,7 +1841,8 @@ describe("TxAdmissionsDB", () => {
           yield* TxAdmissionsDB.releaseForRetry({
             txIds: claimed.map((entry) => entry.tx_id),
             leaseOwner,
-            delayMs: 0,
+            baseDelayMs: 0,
+            maxDelayMs: 0,
           });
           const recovered = yield* TxAdmissionsDB.getByTxId(inputs[0]!.txId);
           expect(recovered?.status).toBe(TxAdmissionsDB.Status.Queued);
@@ -1974,7 +1975,8 @@ describe("TxAdmissionsDB", () => {
               TxAdmissionsDB.releaseForRetry({
                 txIds: claimed.map((entry) => entry.tx_id),
                 leaseOwner,
-                delayMs: 0,
+                baseDelayMs: 0,
+                maxDelayMs: 0,
               }),
             ),
           );

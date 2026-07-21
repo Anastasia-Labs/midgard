@@ -2,19 +2,9 @@
 artifacts/
 # Aiken's project working directory
 build/
-# Aiken's default documentation export
-docs/
+# Aiken documentation exports are ignored by each Aiken project's local
+# .gitignore; repository documentation directories remain trackable here.
 .env
-!docs/lucid-midgard/
-!docs/lucid-midgard/**
-!docs/agents/
-!docs/agents/**
-# The docs/ rule above also matches docs-site/content/docs (documentation source)
-# and docs-site/app/docs (a Next.js route). Neither is generated output.
-!docs-site/content/docs/
-!docs-site/content/docs/**
-!docs-site/app/docs/
-!docs-site/app/docs/**
 .direnv
 utils.log
 .codex

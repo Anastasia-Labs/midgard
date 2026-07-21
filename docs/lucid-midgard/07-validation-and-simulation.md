@@ -61,17 +61,28 @@ away.
 Expose:
 
 ```ts
-type ValidationReport = {
-  readonly kind: "local-preflight";
-  readonly phaseA?: PhaseValidationResult;
-  readonly phaseB?: PhaseValidationResult;
-  readonly warnings: readonly ValidationWarning[];
-  readonly authoritative: false;
+type LocalValidationReport = {
+  readonly phase: "phase-a" | "phase-b";
+  readonly acceptedTxIds: readonly string[];
+  readonly rejected: readonly {
+    readonly txId: string;
+    readonly code: string;
+    readonly detail: string | null;
+  }[];
+  readonly preStateSource?:
+    | "explicit"
+    | "instance-override"
+    | "completion-preset";
+  readonly preStateAuthoritative?: false;
+  readonly statePatch?: {
+    readonly deletedOutRefs: readonly string[];
+    readonly upsertedOutRefs: readonly (readonly [string, string])[];
+  };
 };
 ```
 
-Warnings must never be used to hide rejection conditions. If a condition would
-reject in the node, local validation must return an error.
+If a condition would reject in the node, local validation returns the shared
+reject code and detail rather than downgrading it to a warning.
 
 Local validation cannot claim final validity. Submission followed by node status
 remains authoritative.
@@ -79,9 +90,9 @@ remains authoritative.
 ## Current Surface
 
 `lucid-midgard` imports `runPhaseAValidation` and
-`runPhaseBValidationWithPatch` from `@al-ft/midgard-validation`. Node validation
-modules re-export the same shared package paths, so preflight and node queue
-processing share reject codes and rule implementation.
+`runPhaseBValidationWithPatch` from `@al-ft/midgard-validation`. The node queue
+processor imports the same shared package directly; the former node-local
+validation compatibility modules have been removed.
 
 `complete({ localValidation: "phase-a" | "phase-b" })` fails completion when
 the shared validator rejects. `CompleteTx.validate(...)` returns the same

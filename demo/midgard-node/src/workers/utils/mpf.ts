@@ -2,7 +2,12 @@ import { dirname } from "node:path";
 
 import { Proof, Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { encodeMidgardTxOutput } from "@al-ft/lucid-midgard";
-import { encodeMidgardNativeTxCompact } from "@al-ft/midgard-core/codec";
+import {
+  encodeCborBytes,
+  encodeCborInteger,
+  encodeCborTagRaw,
+  encodeMidgardNativeTxCompact,
+} from "@al-ft/midgard-core/codec";
 import { normalizeHex } from "@al-ft/midgard-core/hex";
 import * as SDK from "@al-ft/midgard-sdk";
 import { decodeMidgardTxCommitmentsFromCanonicalCbor } from "@al-ft/midgard-validation";
@@ -1266,34 +1271,6 @@ export const computeUtxoPayloadRoot = (
     entries.map((entry) => entry.output),
   );
 
-const encodeCborHead = (major: number, value: bigint): Buffer => {
-  if (value < 0n) throw new Error("CBOR head value cannot be negative");
-  if (value < 24n) return Buffer.from([(major << 5) | Number(value)]);
-  if (value <= 0xffn) return Buffer.from([(major << 5) | 24, Number(value)]);
-  if (value <= 0xffffn) {
-    const encoded = Buffer.allocUnsafe(3);
-    encoded[0] = (major << 5) | 25;
-    encoded.writeUInt16BE(Number(value), 1);
-    return encoded;
-  }
-  if (value <= 0xffff_ffffn) {
-    const encoded = Buffer.allocUnsafe(5);
-    encoded[0] = (major << 5) | 26;
-    encoded.writeUInt32BE(Number(value), 1);
-    return encoded;
-  }
-  if (value <= 0xffff_ffff_ffff_ffffn) {
-    const encoded = Buffer.allocUnsafe(9);
-    encoded[0] = (major << 5) | 27;
-    encoded.writeBigUInt64BE(value, 1);
-    return encoded;
-  }
-  throw new Error("CBOR head value exceeds uint64");
-};
-
-const encodeCborBytes = (bytes: Buffer): Buffer =>
-  Buffer.concat([encodeCborHead(2, BigInt(bytes.length)), bytes]);
-
 const encodeUnsignedBigEndian = (value: bigint): Buffer => {
   if (value <= 0n) return Buffer.from([0]);
   const bytes: number[] = [];
@@ -1305,15 +1282,14 @@ const encodeUnsignedBigEndian = (value: bigint): Buffer => {
 };
 
 export const encodeTransitionIntegerCbor = (value: bigint): Buffer => {
-  const major = value >= 0n ? 0 : 1;
   const magnitude = value >= 0n ? value : -1n - value;
   if (magnitude <= 0xffff_ffff_ffff_ffffn) {
-    return encodeCborHead(major, magnitude);
+    return encodeCborInteger(value);
   }
-  return Buffer.concat([
-    Buffer.from([value >= 0n ? 0xc2 : 0xc3]),
+  return encodeCborTagRaw(
+    value >= 0n ? 2n : 3n,
     encodeCborBytes(encodeUnsignedBigEndian(magnitude)),
-  ]);
+  );
 };
 
 const encodeTransitionConstr = (
@@ -3229,12 +3205,10 @@ export const processMpfs = (
             const startedAtMs = Date.now();
             yield* transactionsMpf.applyBatch(transactionOps).pipe(
               Effect.catchAll((error) =>
-                transactionsMpf
-                  .resetToRoot(transactionRootBeforeApply)
-                  .pipe(
-                    Effect.catchAll(() => Effect.void),
-                    Effect.flatMap(() => Effect.fail(error)),
-                  ),
+                transactionsMpf.resetToRoot(transactionRootBeforeApply).pipe(
+                  Effect.catchAll(() => Effect.void),
+                  Effect.flatMap(() => Effect.fail(error)),
+                ),
               ),
             );
             return { durationMs: Date.now() - startedAtMs };

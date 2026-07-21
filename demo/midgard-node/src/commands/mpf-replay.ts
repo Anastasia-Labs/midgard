@@ -18,6 +18,8 @@ import {
   buildTransactionsSourceRoot,
   buildTransitionTraceResult,
   computeUtxoPayloadRoot,
+  configureMpfPathHydration,
+  getMpfPathHydrationConfig,
   hydrateLedgerMpfFromLedgerEntries,
   keyValuePhasNonMembershipProof,
   keyValuePhasProof,
@@ -38,10 +40,16 @@ export type MpfReplaySummary = {
   readonly blocks: number;
   readonly runs: number;
   readonly proofChecks: number;
-  readonly engines: readonly ["legacy", "overlay", "architecture_g"];
+  readonly engines: readonly [
+    "legacy",
+    "overlay",
+    "event_flat",
+    "architecture_g",
+  ];
   readonly runsByEngine: {
     readonly legacy: number;
     readonly overlay: number;
+    readonly event_flat: number;
     readonly architecture_g: number;
   };
   readonly scratchBuilds: readonly ["insert", "fromlist"];
@@ -61,7 +69,7 @@ export type MpfReplayOptions = {
   readonly nativeOwnerBinaryPath?: string;
 };
 
-const ENGINES = ["legacy", "overlay", "architecture_g"] as const;
+const ENGINES = ["legacy", "overlay", "event_flat", "architecture_g"] as const;
 const SCRATCH_BUILDS = ["insert", "fromlist"] as const;
 const DEFAULT_NATIVE_OWNER_BINARY_PATH =
   "native/mpf-event-flat-wasm/target/release/architecture-g-owner";
@@ -149,14 +157,20 @@ const verifyIndependentFinalProofs = (
 
 const replayOne = (
   block: MpfReplayCorpusBlock,
-  engine: "legacy" | "overlay",
+  engine: "legacy" | "overlay" | "event_flat",
   scratchBuild: "insert" | "fromlist",
 ): Effect.Effect<
   { readonly roots: ReplayRoots; readonly proofChecks: number },
   unknown
-> =>
-  Effect.gen(function* () {
+> => {
+  const previousPathHydration = getMpfPathHydrationConfig();
+  return Effect.gen(function* () {
     setMpfScratchBuild(scratchBuild);
+    configureMpfPathHydration({
+      mode: engine === "event_flat" ? "chunked_arena" : "whole_block",
+      chunkOps: 512,
+      retainDepth: 2,
+    });
     const initial = block.initialLedgerEntries.map(decodeEntry);
     const ledger = yield* MidgardMpf.createScratch(
       `${block.label}-${engine}-${scratchBuild}-ledger`,
@@ -169,7 +183,7 @@ const replayOne = (
         [Ledger.Columns.OUTPUT]: entry.value,
       })),
     );
-    if (engine === "overlay") yield* ledger.beginBlockOverlay();
+    if (engine !== "legacy") yield* ledger.beginBlockOverlay();
     const sourceEvents = decodeSourceEvents(block);
     const count = (phase: SDK.TransitionPhase): number =>
       sourceEvents.filter((event) => event.phase === phase).length;
@@ -187,14 +201,17 @@ const replayOne = (
       `${block.label}-${engine}-${scratchBuild}-transactions`,
       { engine },
     );
-    if (engine === "overlay") yield* transactions.beginBlockOverlay();
-    yield* transactions.applyBatch(
-      transactionOps.map((entry) => ({ type: "insert", ...entry })),
-    );
+    const transactionBatch = transactionOps.map((entry) => ({
+      type: "insert" as const,
+      ...entry,
+    }));
+    if (engine !== "legacy") yield* transactions.beginBlockOverlay();
+    if (engine === "event_flat") {
+      yield* transactions.primeBlockPathArena(transactionBatch, 2, false);
+    }
+    yield* transactions.applyBatch(transactionBatch);
     const rawTxRoot = yield* transactions.rootHex();
-    const txRoot = yield* buildTransactionsSourceRoot(
-      transactionOps.map((entry) => ({ type: "insert", ...entry })),
-    );
+    const txRoot = yield* buildTransactionsSourceRoot(transactionBatch);
     const counted = (
       domain: SDK.RootDomain,
       entries: readonly { readonly key: string; readonly value: string }[],
@@ -229,6 +246,11 @@ const replayOne = (
       );
     }
 
+    if (engine !== "legacy") {
+      yield* ledger.flushBlockOverlay(yield* ledger.root());
+      yield* transactions.flushBlockOverlay(yield* transactions.root());
+    }
+
     let proofChecks = 0;
     const sample = finalEntries[0];
     if (sample !== undefined) {
@@ -259,10 +281,6 @@ const replayOne = (
       proofChecks += 1;
     }
 
-    if (engine === "overlay") {
-      yield* ledger.flushBlockOverlay(yield* ledger.root());
-      yield* transactions.flushBlockOverlay(yield* transactions.root());
-    }
     yield* ledger.close();
     yield* transactions.close();
     return {
@@ -282,7 +300,12 @@ const replayOne = (
       },
       proofChecks,
     };
-  });
+  }).pipe(
+    Effect.ensuring(
+      Effect.sync(() => configureMpfPathHydration(previousPathHydration)),
+    ),
+  );
+};
 
 const seedNativeOwnerFixture = async ({
   block,
@@ -713,7 +736,12 @@ export const replayMpfCorpusBlocks = (
   Effect.gen(function* () {
     let runs = 0;
     let proofChecks = 0;
-    const runsByEngine = { legacy: 0, overlay: 0, architecture_g: 0 };
+    const runsByEngine = {
+      legacy: 0,
+      overlay: 0,
+      event_flat: 0,
+      architecture_g: 0,
+    };
     const adversarialCoverage = {
       emptyEvents: 0,
       deleteReinsertEvents: 0,
@@ -738,7 +766,7 @@ export const replayMpfCorpusBlocks = (
         blockCoverage.longestHashedPrefixNibbles,
       );
       let baseline: ReplayRoots | undefined;
-      for (const engine of ["legacy", "overlay"] as const) {
+      for (const engine of ["legacy", "overlay", "event_flat"] as const) {
         for (const scratchBuild of SCRATCH_BUILDS) {
           const result = yield* replayOne(block, engine, scratchBuild);
           baseline ??= result.roots;
