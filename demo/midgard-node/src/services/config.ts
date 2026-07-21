@@ -538,12 +538,19 @@ const makeConfig = Effect.gen(function* () {
   const validationLeaseMs = yield* Config.integer("VALIDATION_LEASE_MS").pipe(
     Config.withDefault(30_000),
   );
-  const validationRetryBackoffBaseMs = yield* Config.integer(
+  const validationRetryBackoffBaseMs = yield* positiveSafeIntegerConfig(
     "VALIDATION_RETRY_BACKOFF_BASE_MS",
-  ).pipe(Config.withDefault(250));
-  const validationRetryBackoffMaxMs = yield* Config.integer(
+    250,
+  );
+  const validationRetryBackoffMaxMs = yield* positiveSafeIntegerConfig(
     "VALIDATION_RETRY_BACKOFF_MAX_MS",
-  ).pipe(Config.withDefault(10_000));
+    10_000,
+  );
+  if (validationRetryBackoffMaxMs < validationRetryBackoffBaseMs) {
+    throw new Error(
+      "VALIDATION_RETRY_BACKOFF_MAX_MS must not be less than VALIDATION_RETRY_BACKOFF_BASE_MS",
+    );
+  }
   const validationExpiredLeaseReadinessThreshold = yield* Config.integer(
     "VALIDATION_EXPIRED_LEASE_READINESS_THRESHOLD",
   ).pipe(Config.withDefault(1));

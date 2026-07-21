@@ -363,9 +363,14 @@ The pre-state comes from `MempoolLedgerDB.retrieve` and is cached until the
 If validation returns ordinary rejected transactions, those are terminal
 validation results. If the queue-processing action throws after rows are
 claimed, the processor releases the entire claimed set for retry, resets them
-to `queued`, clears the lease, and delays the next attempt by
-`VALIDATION_RETRY_BACKOFF_BASE_MS` (`txAdmissions.ts:293-323`,
-`tx-queue-processor.ts:529-535`).
+to `queued`, and clears the lease. Its next attempt is delayed by
+`VALIDATION_RETRY_BACKOFF_BASE_MS * 2^(attempt_count - 1)`, capped at
+`VALIDATION_RETRY_BACKOFF_MAX_MS`. The persisted attempt count keeps this
+schedule stable across worker and process restarts. Infrastructure failures do
+not have a retry-exhaustion transition because they do not prove that a
+transaction is invalid; a persistent stall instead makes `/readyz` fail once
+the oldest queued admission exceeds
+`READINESS_MAX_DURABLE_ADMISSION_AGE_MS`.
 
 ## Phase A Validation
 
