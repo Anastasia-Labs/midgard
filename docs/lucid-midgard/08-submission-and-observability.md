@@ -8,7 +8,8 @@ validity.
 `CompleteTx.submit()` on a witness-complete signed `CompleteTx` should:
 
 1. Verify signatures locally.
-2. Submit native tx hex to `/submit`.
+2. Pass native tx hex to the provider API, which decodes it and sends the
+   canonical bytes to `/submit` as `application/cbor`.
 3. Parse durable admission response.
 4. Return a `SubmittedTx` object.
 
@@ -30,15 +31,14 @@ The response may be:
 
 ## SubmittedTx
 
-`SubmittedTx` should expose:
+`SubmittedTx` exposes the submitted transaction, immutable admission metadata,
+CBOR/hash/JSON projections, produced-output helpers, and:
 
-- `txId`
-- `admissionStatus`
-- `duplicate`
-- `firstSeenAt`
-- `lastSeenAt`
+- `txIdHex`
+- `admission`
 - `awaitStatus(options?)`
 - `status()`
+- safe-result and lazy Effect variants of the status methods
 
 If the node status endpoint is unavailable, `awaitStatus` should fail with a
 capability error rather than spin on unavailable functionality.
@@ -84,6 +84,9 @@ Status APIs should distinguish:
 - Validating.
 - Accepted into mempool.
 - Rejected with code/detail.
-- Included/finalized if future APIs expose that state.
+- Pending commitment.
+- Awaiting local recovery.
+- Committed.
+- Not found.
 
 Never label durable admission as confirmed validity.

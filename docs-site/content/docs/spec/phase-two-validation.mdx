@@ -25,7 +25,15 @@ protocol because it must be reproducible both off-chain (to detect fraud) and on
 - **Verification Process**: how the on-chain check consumes the proof data structure
   to reach a verdict.
 - **Security Considerations**: the assumptions that make single-step verification
-  sound.
+sound.
+
+<Callout type="warn" title="Design coverage is incomplete">
+This chapter describes the target proof architecture. The current on-chain
+catalogue covers only part of the required violation surface, and several
+compiled families do not bind to the current native-v1 counted-root block format.
+See the [fault-proof audit](/docs/fault-proofs/overview) before relying on a
+single-step proof claim.
+</Callout>
 
 ## In the codebase
 

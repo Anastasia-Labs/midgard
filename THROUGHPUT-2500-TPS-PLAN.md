@@ -1,10 +1,27 @@
 # Midgard Throughput Plan: Reaching 2,500 Sustained TPS
 
-**Status:** Historical parent analysis from 2026-07-08; the phase ExecPlans contain subsequent source-verified corrections.
-**Goal:** Sustain ≥2,500 L2 tx/s in a production deployment — matching Base's max sustained mainnet TPS.
+**Status:** Historical parent analysis from 2026-07-08; do not execute it as a
+current runbook. The phase ExecPlans contain subsequent source-verified
+corrections.
+
+**Last reviewed:** 2026-07-22
+
+**Goal:** Demonstrate ≥2,500 sustained L2 tx/s on a declared workload and
+production-shaped deployment without weakening protocol safety or recovery.
 **Method:** Fresh analysis of `demo/midgard-node` and `demo/midgard-sdk` source (no reliance on prior docs). All findings cite file:line and were spot-verified.
 
 ---
+
+## Non-negotiable protocol gates
+
+Throughput evidence is inadmissible if a run disables local UPLC evaluation,
+proof-relevant commitments, DA validation/retention, durable journals,
+deployment identity checks, or finality/rollback handling. Larger blocks and
+new payload versions require proof-witness worst-case-fit analysis, challenger
+deadline analysis, independent DA retrieval, deterministic root/vector
+conformance across TypeScript/Aiken, and crash/rollback recovery evidence before
+they are enabled. An acceptance TPS number is not a settlement-throughput or
+security claim; report each pipeline stage separately.
 
 ## 1. Throughput model
 
@@ -64,7 +81,12 @@ A tx must pass four pipeline stages. Sustained TPS is the minimum of the four st
 
 **D3. Serialized merges.** One queued block merged per L1 tx, 10 s pacing, gated on DA attestation + ~20 s maturity buffer (`transactions/state-queue/merge-to-confirmed-state.ts`, `merge-readiness.ts:15-20, 394-422`). Queue drain rate caps sustained (not just burst) throughput.
 
-Positive findings: core mempool/ledger inserts are properly bulk multi-row; indexes on hot tables are adequate; `SKIP LOCKED` claiming already supports multiple consumers; L1 header txs are O(1) size (roots only) so Cardano's ~16 KB tx limit is never a scaling factor.
+Positive findings at the reviewed revision: core mempool/ledger inserts are
+bulk multi-row, indexes cover the observed hot paths, and `SKIP LOCKED` claiming
+supports multiple consumers. Header size is largely independent of L2
+transaction count, but every deployment must check the current Cardano protocol
+parameters and the complete commit/proof transaction shape rather than assuming
+a permanent L1 byte limit.
 
 ---
 

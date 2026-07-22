@@ -1,5 +1,10 @@
 # Phase 5 exact-50k DA publication distribution gate
 
+**Status:** Active V1 acceptance procedure. Passing it does not authorize a
+larger payload version or establish permissionless DA.
+
+**Last reviewed:** 2026-07-22
+
 This is the formal closeout command for the Phase 5 `<=2 s` threshold-ACK p99
 criterion. It measures 100 semantically independent 50,000-transaction V3
 envelopes over one long-lived producer transport and three long-lived,

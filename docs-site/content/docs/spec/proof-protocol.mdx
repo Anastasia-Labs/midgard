@@ -7,6 +7,13 @@ Chapter 4 defines Midgard's **optimistic security core**: how an invalid block i
 challenged and resolved on L1. Each piece is specified as a minting policy plus one
 or more spending validators.
 
+<Callout type="warn" title="Target protocol, partial implementation">
+Generic computation-thread machinery is implemented, but the deployed catalogue,
+proof binding, economics, and end-to-end proof-family coverage are not yet
+production complete. The [fault-proof audit](/docs/fault-proofs/overview) is the
+current coverage source of truth.
+</Callout>
+
 ## Components
 
 - **Fraud proof computation threads**: the single-threaded on-chain state machine

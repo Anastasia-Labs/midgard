@@ -184,7 +184,6 @@ export const buildPhaseAValidatedTx = ({
       requiredObserverHashHexes: hashHexes(ledgerTx.requiredObserverHashes),
       mintPolicyHashHexes: mintPolicyHashHexes(ledgerTx),
       redeemerWitnessHash: Buffer.from(redeemerWitnessHash),
-      requiresScriptEvaluation: ledgerTx.requiresPlutusEvaluation,
       requiresLocalScriptDiscovery:
         ledgerTx.scriptWitnesses.length > 0 ||
         ledgerTx.redeemers.length > 0 ||

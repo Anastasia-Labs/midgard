@@ -1049,7 +1049,7 @@ describe("native transaction integration", () => {
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
-    expect(phaseA.accepted[0].derived.requiresScriptEvaluation).toBe(true);
+    expect(phaseA.accepted[0].ledgerTx.requiresPlutusEvaluation).toBe(true);
     expect(phaseA.accepted[0].derived.plutusScriptHashHexes).toHaveLength(1);
     expect(phaseB.accepted).toHaveLength(0);
     expect(phaseB.rejected).toHaveLength(1);
@@ -1872,7 +1872,7 @@ describe("native transaction integration", () => {
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
-    expect(phaseA.accepted[0].derived.requiresScriptEvaluation).toBe(true);
+    expect(phaseA.accepted[0].ledgerTx.requiresPlutusEvaluation).toBe(true);
     expect(phaseB.accepted).toHaveLength(0);
     expect(phaseB.rejected).toHaveLength(1);
     expect(phaseB.rejected[0].code).toBe(RejectCodes.PlutusScriptInvalid);
@@ -1921,7 +1921,7 @@ describe("native transaction integration", () => {
     expect(phaseA.accepted[0].derived.mintPolicyHashHexes).toStrictEqual([
       policyId.toString("hex"),
     ]);
-    expect(phaseA.accepted[0].derived.requiresScriptEvaluation).toBe(true);
+    expect(phaseA.accepted[0].ledgerTx.requiresPlutusEvaluation).toBe(true);
     expect(phaseB.accepted).toHaveLength(0);
     expect(phaseB.rejected).toHaveLength(1);
     expect(phaseB.rejected[0].code).toBe(RejectCodes.PlutusScriptInvalid);
@@ -2665,7 +2665,7 @@ describe("native transaction integration", () => {
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
-    expect(phaseA.accepted[0].derived.requiresScriptEvaluation).toBe(true);
+    expect(phaseA.accepted[0].ledgerTx.requiresPlutusEvaluation).toBe(true);
     expect(phaseB.rejected).toHaveLength(0);
     expect(phaseB.accepted).toHaveLength(1);
   });
@@ -2960,7 +2960,7 @@ describe("native transaction integration", () => {
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
-    expect(phaseA.accepted[0].derived.requiresScriptEvaluation).toBe(true);
+    expect(phaseA.accepted[0].ledgerTx.requiresPlutusEvaluation).toBe(true);
     expect(plutusV3Hash(MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX)).not.toBe(
       scriptHash,
     );

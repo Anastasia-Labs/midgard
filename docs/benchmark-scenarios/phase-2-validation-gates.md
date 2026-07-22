@@ -1,5 +1,10 @@
 # Phase 2 validation gate matrix
 
+**Status:** Active acceptance procedure; only a retained report from the exact
+revision/configuration is evidence that the gate passed.
+
+**Last reviewed:** 2026-07-22
+
 This runbook is the repeatable evidence surface for
 `docs/exec-plans/throughput/phase-2-parallel-validation.md`. Every asserted run
 is fail-closed: the benchmark inspects the node and PostgreSQL containers, and

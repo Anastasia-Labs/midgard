@@ -5,28 +5,40 @@ on:
     branches: ["main"]
     paths:
       - "docs-site/**"
+      - "**/*.md"
+      - "**/*.mdx"
       - "demo/lucid-midgard/**"
       - "demo/midgard-core/**"
       # Sources whose exported symbols the docs restate.
       # See docs-site/scripts/check-docs-facts.mjs.
       - "demo/midgard-node/src/fibers/index.ts"
       - "demo/midgard-node/src/index.ts"
+      - "demo/midgard-node/src/workers/utils/mpf.ts"
       - "demo/midgard-fault-proofs/src/bin.ts"
+      - "demo/package.json"
       - "demo/pnpm-workspace.yaml"
       - "l1-services/.env.example"
+      - "onchain/aiken/plutus.json"
+      - "technical-spec/1-ledger-state/1-block.tex"
       - ".github/workflows/docs-site-ci.yml"
   pull_request:
     paths:
       - "docs-site/**"
+      - "**/*.md"
+      - "**/*.mdx"
       - "demo/lucid-midgard/**"
       - "demo/midgard-core/**"
       # Sources whose exported symbols the docs restate.
       # See docs-site/scripts/check-docs-facts.mjs.
       - "demo/midgard-node/src/fibers/index.ts"
       - "demo/midgard-node/src/index.ts"
+      - "demo/midgard-node/src/workers/utils/mpf.ts"
       - "demo/midgard-fault-proofs/src/bin.ts"
+      - "demo/package.json"
       - "demo/pnpm-workspace.yaml"
       - "l1-services/.env.example"
+      - "onchain/aiken/plutus.json"
+      - "technical-spec/1-ledger-state/1-block.tex"
       - ".github/workflows/docs-site-ci.yml"
 
 jobs:
@@ -57,6 +69,9 @@ jobs:
       # no longer matches the source it is drawn from.
       - name: Check documented facts against source
         run: pnpm --dir docs-site run check:facts
+
+      - name: Check repository-local documentation links
+        run: pnpm --dir docs-site run check:links
 
       # `prebuild` builds midgard-core and lucid-midgard. The MDX code samples are
       # type-checked against them, so a sample naming a nonexistent export fails here.

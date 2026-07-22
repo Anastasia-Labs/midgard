@@ -1,7 +1,18 @@
 # Throughput ExecPlans — Index, Bottleneck→Solution Map & Review Status
 
+**Status:** Active index. Individual phase status and checked-in acceptance
+evidence control completion; the historical parent plan does not.
+
+**Last reviewed:** 2026-07-22
+
 Parent plan: `../../../THROUGHPUT-2500-TPS-PLAN.md` (target: ≥2,500 sustained L2 TPS).
 Every phase plan was source-verified on 2026-07-09; corrections to the historical parent analysis are flagged inline as **Correction:** notes in each document.
+
+All phases inherit the repository documentation policy and the parent plan's
+non-negotiable protocol gates. A performance phase is not releasable merely
+because its throughput gate passes: deterministic root equivalence, proof-data
+availability and witness bounds, deployment/version identity, crash recovery,
+rollback behavior, and strict production defaults remain mandatory.
 
 ## ExecPlan index
 

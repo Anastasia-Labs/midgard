@@ -1,9 +1,9 @@
 # Context and Non-Goals
 
-`lucid-midgard` is a proposed TypeScript library for constructing,
-signing, validating, and submitting Midgard-native L2 transactions. Its public
-interface should feel familiar to lucid-evolution users, but its semantics must
-come from Midgard's native transaction format and validation pipeline.
+`@al-ft/lucid-midgard` is the TypeScript library for constructing, signing,
+validating, and submitting Midgard-native L2 transactions. Its public
+interface feels familiar to lucid-evolution users, but its semantics come
+from Midgard's native transaction format and validation pipeline.
 
 ## Goals
 
@@ -12,8 +12,8 @@ come from Midgard's native transaction format and validation pipeline.
 - Sign the Midgard-native body hash, not a Cardano transaction body hash.
 - Make Phase A failures unlikely by construction and easy to diagnose.
 - Provide optional Phase A and Phase B local validation helpers.
-- Support simple pubkey transfers first, then scripts, observers, minting,
-  protected receive outputs, and transaction chaining.
+- Support pubkey transfers, scripts, observers, minting, protected receive
+  outputs, transaction composition, and local output chaining.
 - Reduce duplication in `submit-l2-transfer` and future user-facing tools.
 
 ## Non-Goals
@@ -52,21 +52,22 @@ The current repository has two transaction domains:
 utilities where appropriate, but it must not blur L1 Cardano transaction rules
 with Midgard L2 validation rules.
 
-The initial migration target is the native L2 transfer flow in
-`demo/midgard-node/src/commands/submit-l2-transfer.ts`. Deposit and protocol
-L1 builders remain out of scope unless a later task explicitly introduces an
-adapter layer.
+The node's native L2 transfer flow in
+`demo/midgard-node/src/commands/submit-l2-transfer.ts` uses the package's
+shared transfer build core. Deposit and protocol L1 builders remain separate
+because they construct Cardano L1 transactions.
 
 ## Current Validation Boundary
 
-Durable admission is not full validation. `/submit` validates hex and size,
-normalizes bytes, derives tx id, and stores a queued admission. Phase A and
-Phase B run later in the queue processor. `lucid-midgard` may provide local
+Durable admission is not full validation. `/submit` requires raw
+`application/cbor`, checks non-empty and maximum byte size, decodes canonical
+Midgard-native CBOR, derives the tx id, and stores a queued admission. Phase A
+and Phase B run later in the queue processor. `lucid-midgard` may provide local
 preflight checks, but node validation remains authoritative.
 
 ## Documentation Requirements
 
-Before implementation, every component must have:
+Every component should continue to document:
 
 - Its responsibility and explicit non-responsibilities.
 - Required inputs and outputs.

@@ -2,19 +2,9 @@
 artifacts/
 # Aiken's project working directory
 build/
-# Aiken's default documentation export
-docs/
+# Aiken documentation exports are ignored by each Aiken project's local
+# .gitignore; repository documentation directories remain trackable here.
 .env
-!docs/lucid-midgard/
-!docs/lucid-midgard/**
-!docs/agents/
-!docs/agents/**
-# The docs/ rule above also matches docs-site/content/docs (documentation source)
-# and docs-site/app/docs (a Next.js route). Neither is generated output.
-!docs-site/content/docs/
-!docs-site/content/docs/**
-!docs-site/app/docs/
-!docs-site/app/docs/**
 .direnv
 utils.log
 .codex
@@ -29,3 +19,7 @@ demo/midgard-node/docs/tasks/MPF_MIGRATION_B_ROOT_REGISTRY_TX_ID.md
 demo/midgard-node/docs/tasks/MPF_MIGRATION_C_NODE_INTEGRATION.md
 demo/midgard-node/docs/tasks/MPF_MIGRATION_D_ACCEPTANCE_TESTS.md
 .agents/skills/midgard-e2e-acceptance/SKILL.md
+
+# Point-in-time local review artifacts (durable policy/status docs stay tracked)
+/docs/DOCUMENTATION_AUDIT_*.md
+/MIDGARD_PR_*_DIFFERENTIAL_REVIEW_*.md

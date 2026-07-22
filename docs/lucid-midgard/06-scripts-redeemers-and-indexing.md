@@ -56,11 +56,12 @@ order.
 
 ## Datums
 
-The builder must support inline datum outputs and datum witnesses needed for
-script spends. Current validation rejects unsupported MidgardV1 datum-hash
-spends and expects datum witnesses to decode as CML Plutus data.
-
-Datum witness de-duplication must use datum hash and reject duplicates.
+Midgard-native outputs support absent or inline datums only. Datum-hash outputs
+and a transaction-level datum-witness bucket are not part of native v1.
+`pay.ToContract` and output options encode inline datums. Although
+`attach.Datum` remains on the builder surface for explicit validation and API
+compatibility, completion rejects attached datum witnesses with instructions to
+use inline datums.
 
 ## Script Integrity Hash
 

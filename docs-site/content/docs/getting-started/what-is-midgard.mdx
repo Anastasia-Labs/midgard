@@ -3,11 +3,11 @@ title: "What is Midgard?"
 description: "Learn what Midgard is, how L2 transactions are batched off-chain, how block headers are committed to L1, and how fraud proofs challenge invalid blocks."
 ---
 
-**Midgard is the first optimistic rollup protocol on Cardano.** It offloads
-transaction processing from Layer 1 (L1) to Layer 2 (L2) while maintaining L1's
-security and decentralization properties for those transactions. As a result, it
-can handle a significantly higher volume of transactions without compromising on
-security.
+**Midgard is the first optimistic rollup protocol on Cardano.** It is designed to
+execute transactions on Layer 2 (L2), publish commitments to Cardano Layer 1
+(L1), and resolve covered disputes through L1 validators. The intended result is
+higher throughput with explicit security conditions, not an unconditional
+inheritance of every L1 guarantee.
 
 Optimistic rollups process blocks of transactions off-chain and commit those
 blocks' *headers* on-chain to the L1 ledger. Each block is committed by a Midgard
@@ -25,19 +25,20 @@ When an operator commits a block, they must:
 
 - **Collateralize their guarantee with a bond deposit**: a slashable stake that
   backs the claim that the block is valid.
-- **Publish the full contents of the block** on the publicly accessible data
-  availability (DA) layer, so anyone can inspect it.
+- **Make the full block contents available** through the configured data
+  availability (DA) network for the complete challenge and recovery horizon.
 
-While a committed block is queued, anyone can inspect its contents on the DA layer
-and determine whether it is valid. If someone detects that the block is invalid,
-they can submit a **fraud proof** to prevent it from being merged into the
-confirmed state, slash the operator's bond, and receive a portion of the forfeited
-bond as a reward.
+In the target protocol, any independent watcher can retrieve a queued block,
+deterministically verify it, and submit a **fraud proof** for a covered violation
+before maturity. A successful proof prevents the invalid state from merging and
+drives the configured slashing/reward path.
 
-<Callout type="info" title="Why fraud is not worth it">
-Because a disqualified block never affects the confirmed state, there are no
-fraudulent revenues to offset a forfeited bond. An operator cannot treat the lost
-bond as a cost of doing business; the fraud fails and the stake is gone.
+<Callout type="info" title="When the economic deterrent holds">
+A disqualified block does not affect confirmed state. Fraud is deterred only if
+data is available, an independent watcher detects the fault, a sound proof path
+can complete before maturity, and the expected slash exceeds the maximum benefit
+of the attack. Bond and reward sizing must include detection probability, watcher
+costs, congestion, and value at risk.
 </Callout>
 
 <Callout type="warn" title="Intended protocol model, not current deployment state">
@@ -47,8 +48,8 @@ environment carries zero bond, slash, and reward values. Public-testnet readines
 is tracked on [Project Status](/docs/getting-started/status).
 </Callout>
 
-The security guarantees hold as long as the protocol's parameters are calibrated
-correctly. The whitepaper states these conditions directly:
+The target security guarantees depend on more than parameter calibration. The
+design requires at least these conditions:
 
 - The bond requirement is large enough to discourage fraud.
 - The reward for preventing an invalid block from merging is large enough to
@@ -90,38 +91,38 @@ correctly. The whitepaper states these conditions directly:
 
 Only the compact block **header** goes on-chain in the state queue; the full block
 body lives on the DA layer. The L2 executes off-chain, and L1 is only asked to
-re-examine a transaction when a fraud proof challenges it.
+adjudicate bounded proof claims rather than re-execute every block.
 
 ## Efficient fraud proofs on the UTxO model
 
-The deterministic nature of Cardano transactions lets Midgard fraud proofs pinpoint the
-exact site of a ledger-rule violation. A proof does not need to inspect the rest of that
-transaction, any unrelated transaction in the block, or any other block. This keeps
-fraud proofs and their on-chain validation small and cheap.
+Deterministic encoding, typed commitments, and authenticated state witnesses let
+many Midgard proofs localize a ledger-rule violation. Some families still require
+transaction-wide material, adjacent transition steps, prior committed state, or
+authenticated L1 events. Each deployed proof family must bind all of that context
+to the challenged header.
 
 Midgard's rollup blocks use **sparse Merkle trees** and compact state
-representations to enhance efficiency further, enabling a large transaction volume
-without overburdening L1. Compared with optimistic rollups on account-based
-ledgers, where a much larger part of global state must be inspected to construct
-and verify a fraud proof, Midgard significantly reduces fraud-proof size.
+representations so proof procedures can authenticate bounded evidence. The
+intended reduction in proof size and L1 cost must be demonstrated per family with
+worst-case transaction-size and execution-budget measurements.
 
 ## Censorship resistance and the escape hatch
 
-The optimistic mechanism assures the *validity* of committed blocks, but on its
-own it does not stop operators from *censoring* users. Midgard's consensus
-protocol adds smart-contract mechanisms for this:
+The target optimistic mechanism protects the *validity* of covered committed
+blocks, but on its own it does not stop operators from *censoring* users.
+Midgard's design adds smart-contract mechanisms for this:
 
 - **Deposits and withdrawals** are initiated via L1 smart contracts that assign
   definite inclusion times. A block is invalid if its event interval spans one of
   these inclusion times but omits the associated event, so operators who keep
   committing blocks cannot ignore deposits and withdrawals.
 - **L2 transaction orders** let any user escalate an ignored transaction by posting
-  it on L1, which also assigns an inclusion time guaranteeing inclusion in a
-  subsequent valid block.
-- **The escape hatch** covers the extreme case where operators stop committing
-  blocks entirely. It temporarily lowers the bond requirement for new operators,
-  making it easier for honest actors to step in so that user funds cannot be
-  stranded on Midgard.
+  it on L1, which assigns an inclusion time and makes omission from a covering
+  block provable while valid block production continues.
+- **The target escape hatch** lowers the bond requirement for replacement
+  operators if block production stops. It is not a direct user force-exit and is
+  not implemented as a production recovery guarantee today; public deployments
+  need deployed contracts, viable replacement operators, and a tested runbook.
 
 ## Where to go next
 
@@ -139,7 +140,7 @@ protocol adds smart-contract mechanisms for this:
   <Card
     title="Protocol specification"
     href="/docs/spec/building"
-    description="The authoritative written architecture reference for the protocol."
+    description="The normative design target, with explicit implementation and conformance caveats."
   />
   <Card
     title="Project status"

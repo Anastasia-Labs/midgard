@@ -1,6 +1,10 @@
 # E2E Stress Test: Evaluation & Execution Plan
 
-**Status:** Historical benchmark parent analysis from 2026-07-08; executable phase plans contain subsequent source-verified corrections.
+**Status:** Historical benchmark parent analysis from 2026-07-08; do not execute
+this file as a current runbook. The throughput phase plans and
+`demo/midgard-node/scripts/throughput-valid-stress.mjs` own the current workflow.
+
+**Last reviewed:** 2026-07-22
 **Verdict:** **Fix, don't scrap** — but the fix is a redesign of _which component is the benchmark_, not a patch to the component currently reporting "TPS."
 **Companion doc:** `THROUGHPUT-2500-TPS-PLAN.md` (node-side bottlenecks; this plan provides the measurement instrument that plan needs).
 
@@ -18,7 +22,7 @@ Your suspicion is confirmed by both code and run artifacts. The node was never s
 
 **What the low "committed TPS" actually measured:** real node-side problems, not throughput — commit windows of 35–60 s for any batch size (L1-confirmation-gated single commit worker; see companion doc), a state-queue mutation lease held up to 10 minutes starving merges, and in the one 500-tx run, the commitment/confirmation workers **crashed** (`DatabaseInitializationError`, Kupmios timeouts) leaving 500 accepted / 0 committed. These are genuine defects the new benchmark must keep surfacing — but they are pipeline-latency and reliability findings, not a 10 TPS capacity measurement.
 
-**The repo already knows.** `e2e-stress-l2-throughput.ts` and its focused tests now separate acceptance from finality and preserve the measured closed-loop ceiling evidence (1.88 tx/s = 4 workers × 2.13 s cycles); `docs/e2e-reliability-plans/42-stress-open-loop-upper-bound-benchmark.md` remains the active open-loop design this execution plan is completing.
+**The repo already knows.** `e2e-stress-l2-throughput.ts` and its focused tests now separate acceptance from finality and preserve the measured closed-loop ceiling evidence (1.88 tx/s = 4 workers × 2.13 s cycles). The formerly referenced reliability plan is no longer retained; the executable throughput phase plans supersede it.
 
 ## 2. Why fix rather than scrap
 
@@ -28,7 +32,7 @@ The correct architecture already exists in the repo in two partially-finished pi
 | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `e2e-stress-l2-throughput.ts` closed-loop (`serial-chain`, `parallel-fanout`)     | Working, but structurally a smoke test                                                                                                                                   | Keep **as smoke test only**; stop reporting TPS from it                                                                                                   |
 | `stress-open-loop.ts` (`--load-model open-loop-upper-bound`)                      | Real open-loop: fixed-rate scheduler, `maxInFlight` window (`:361-497`)                                                                                                  | Keep — but unusable today: requires a pre-built CBOR corpus and **no corpus generator exists anywhere** (grep confirms only consumers reference `corpus`) |
-| `scripts/throughput-valid-stress.mjs`                                             | Most capable engine: undici connection pool, prebuilt tx chains, `closed/open/ramp/find-max` modes, offered-rate guard (`chainCapacityTps` check `:1596`), 503/429 retry | Keep — promote to canonical benchmark engine; defaults are tiny (`maxChains=8`, closed mode)                                                              |
+| `demo/midgard-node/scripts/throughput-valid-stress.mjs`                           | Most capable engine: undici connection pool, prebuilt tx chains, `closed/open/ramp/find-max` modes, offered-rate guard, 503/429 retry | Canonical benchmark engine; use the current phase plans for configuration and acceptance criteria. |
 | `stress-stage-metrics.ts`                                                         | Right stage model (durable admission → l2 admission → L1 commit → finality), honest caveat notes                                                                         | Keep — but primary metric falls back to client-observed poll timestamps when DB sources aren't wired (`:404-423`); must be DB-grounded                    |
 | e2e orchestration (`.agents/skills/midgard-e2e-acceptance/SKILL.md`, `src/e2e/*`) | Solid runbook/step-runner; environment is single-host with load-gen, node, Postgres, cardano-node, Kupo/Ogmios and full observability stack sharing one machine          | Keep runbook; fix environment isolation for benchmark runs                                                                                                |
 
@@ -52,7 +56,7 @@ New command `stress-corpus-generate`:
 
 ### Phase 2 — One canonical benchmark engine (weeks 1–3)
 
-Promote `throughput-valid-stress.mjs` to the canonical engine (it already has the pool, modes, and guard rails) and close its gaps:
+Promote `demo/midgard-node/scripts/throughput-valid-stress.mjs` to the canonical engine (it already has the pool, modes, and guard rails) and close its gaps:
 
 1. Consume the Phase 1 corpus (drop inline building entirely from the timed path).
 2. Client calibration stage per plan 42: measure generator max rate against a no-op/echo endpoint first; refuse to report node TPS unless offered load ≥ 1.2× measured node rate (proves the client wasn't the ceiling).

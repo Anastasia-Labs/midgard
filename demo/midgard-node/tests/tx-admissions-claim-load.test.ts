@@ -374,7 +374,8 @@ describe("durable admission lightweight claim and payload load", () => {
         yield* TxAdmissionsDB.releaseForRetry({
           txIds: crashed.map((entry) => entry.tx_id),
           leaseOwner: crashedOwner,
-          delayMs: 0,
+          baseDelayMs: 0,
+          maxDelayMs: 0,
         });
 
         const retryOwner = "claim-load:worker-retry";
@@ -398,5 +399,56 @@ describe("durable admission lightweight claim and payload load", () => {
         });
       }),
     ),
+  );
+
+  it.effect(
+    "backs off worker retries exponentially per admission and caps the delay",
+    () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          const input = admissionInput("worker-retry-backoff");
+          yield* insertAdmissions([input]);
+          const sql = yield* SqlClient.SqlClient;
+          const expectedRetryDelaysMs = [250, 500, 1_000, 1_000];
+
+          for (const [
+            index,
+            expectedRetryDelayMs,
+          ] of expectedRetryDelaysMs.entries()) {
+            const leaseOwner = `claim-load:worker-retry-backoff:${index}`;
+            const claimed = yield* TxAdmissionsDB.claimBatchLease({
+              limit: 1,
+              leaseOwner,
+              leaseDurationMs: 30_000,
+            });
+            expect(claimed).toHaveLength(1);
+
+            yield* TxAdmissionsDB.releaseForRetry({
+              txIds: [input.txId],
+              leaseOwner,
+              baseDelayMs: 250,
+              maxDelayMs: 1_000,
+            });
+
+            const scheduled = yield* sql<{
+              readonly attempt_count: number;
+              readonly retry_delay_ms: number | string;
+            }>`SELECT
+                attempt_count,
+                EXTRACT(EPOCH FROM (next_attempt_at - updated_at)) * 1000
+                  AS retry_delay_ms
+              FROM tx_admissions
+              WHERE tx_id = ${input.txId}`;
+            expect(scheduled[0]?.attempt_count).toBe(index + 1);
+            expect(Number(scheduled[0]?.retry_delay_ms)).toBe(
+              expectedRetryDelayMs,
+            );
+
+            yield* sql`UPDATE tx_admissions
+              SET next_attempt_at = NOW()
+              WHERE tx_id = ${input.txId}`;
+          }
+        }),
+      ),
   );
 });

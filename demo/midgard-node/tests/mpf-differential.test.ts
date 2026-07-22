@@ -7,7 +7,7 @@ import { expect } from "vitest";
 import { mpfReplayProgram } from "@/commands/mpf-replay.js";
 
 it.effect(
-  "binds the seeded adversarial MPF corpus to legacy and Architecture G",
+  "binds the seeded adversarial MPF corpus to every configured engine",
   () =>
     Effect.gen(function* () {
       const corpusPath = fileURLToPath(
@@ -17,12 +17,13 @@ it.effect(
       expect(summary).toMatchObject({
         corpusPath,
         blocks: 1,
-        runs: 6,
-        proofChecks: 12,
-        engines: ["legacy", "overlay", "architecture_g"],
+        runs: 8,
+        proofChecks: 16,
+        engines: ["legacy", "overlay", "event_flat", "architecture_g"],
         runsByEngine: {
           legacy: 2,
           overlay: 2,
+          event_flat: 2,
           architecture_g: 2,
         },
         scratchBuilds: ["insert", "fromlist"],

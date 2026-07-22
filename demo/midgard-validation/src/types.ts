@@ -107,7 +107,6 @@ export type PhaseAValidatedTx = {
     readonly requiredObserverHashHexes: readonly string[];
     readonly mintPolicyHashHexes: readonly string[];
     readonly redeemerWitnessHash: Buffer;
-    readonly requiresScriptEvaluation: boolean;
     readonly requiresLocalScriptDiscovery: boolean;
   };
 };

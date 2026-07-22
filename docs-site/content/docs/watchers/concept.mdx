@@ -95,10 +95,12 @@ authority.
 
 ## Block verification pipeline
 
-<Callout type="warn" title="Block application order must match deployment">
-A watcher must apply each block using the rule set declared by the deployed
-protocol version; the specified event order and the node's current order still
-differ. See [offchain data architecture](/docs/spec/offchain-data-architecture).
+<Callout type="info" title="Canonical block application order">
+The current specification and node apply withdrawals, forced transaction orders,
+normal L2 transactions, then deposits. Same-block spending of a deposit is
+therefore invalid. A watcher must still load this rule from the deployed protocol
+version and reject any unversioned order change. See
+[offchain data architecture](/docs/spec/offchain-data-architecture).
 </Callout>
 
 The watcher runs each committed queue block through an ordered pipeline:

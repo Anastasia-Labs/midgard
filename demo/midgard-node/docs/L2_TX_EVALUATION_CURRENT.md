@@ -1,8 +1,11 @@
 # Midgard L2 Transaction Evaluation Specification
 
 This specification describes the current Midgard L2 transaction validity
-evaluation path in `demo/midgard-node`. It is descriptive current-state
-documentation, not a target design.
+evaluation path across `demo/midgard-node`, `demo/midgard-core`, and
+`demo/midgard-validation`. It is descriptive current-state documentation, not a
+target design.
+
+Last reviewed: 2026-07-22
 
 Existing Markdown and TeX documents are not used as authority for this
 specification. The source of truth is the implementation and the focused tests
@@ -41,18 +44,17 @@ Primary implementation evidence:
 - `demo/midgard-node/src/database/txAdmissions.ts`
 - `demo/midgard-node/src/database/mempoolLedger.ts`
 - `demo/midgard-node/src/fibers/tx-queue-processor.ts`
-- `demo/midgard-node/src/midgard-tx-codec/cbor.ts`
-- `demo/midgard-node/src/midgard-tx-codec/hash.ts`
-- `demo/midgard-node/src/midgard-tx-codec/native.ts`
-- `demo/midgard-node/src/midgard-tx-codec/output.ts`
-- `demo/midgard-node/src/validation/local-script-eval.ts`
-- `demo/midgard-node/src/validation/midgard-output.ts`
-- `demo/midgard-node/src/validation/midgard-redeemers.ts`
-- `demo/midgard-node/src/validation/phase-a.ts`
-- `demo/midgard-node/src/validation/phase-b.ts`
-- `demo/midgard-node/src/validation/script-context.ts`
-- `demo/midgard-node/src/validation/script-source.ts`
-- `demo/midgard-node/src/validation/types.ts`
+- `demo/midgard-core/src/codec/cbor.ts`
+- `demo/midgard-core/src/codec/hash.ts`
+- `demo/midgard-core/src/codec/native.ts`
+- `demo/midgard-core/src/codec/output.ts`
+- `demo/midgard-validation/src/local-script-eval.ts`
+- `demo/midgard-validation/src/midgard-redeemers.ts`
+- `demo/midgard-validation/src/phase-a.ts`
+- `demo/midgard-validation/src/phase-b.ts`
+- `demo/midgard-validation/src/script-context.ts`
+- `demo/midgard-validation/src/script-source.ts`
+- `demo/midgard-validation/src/types.ts`
 
 Focused test cross-checks:
 
@@ -363,9 +365,14 @@ The pre-state comes from `MempoolLedgerDB.retrieve` and is cached until the
 If validation returns ordinary rejected transactions, those are terminal
 validation results. If the queue-processing action throws after rows are
 claimed, the processor releases the entire claimed set for retry, resets them
-to `queued`, clears the lease, and delays the next attempt by
-`VALIDATION_RETRY_BACKOFF_BASE_MS` (`txAdmissions.ts:293-323`,
-`tx-queue-processor.ts:529-535`).
+to `queued`, and clears the lease. Its next attempt is delayed by
+`VALIDATION_RETRY_BACKOFF_BASE_MS * 2^(attempt_count - 1)`, capped at
+`VALIDATION_RETRY_BACKOFF_MAX_MS`. The persisted attempt count keeps this
+schedule stable across worker and process restarts. Infrastructure failures do
+not have a retry-exhaustion transition because they do not prove that a
+transaction is invalid; a persistent stall instead makes `/readyz` fail once
+the oldest queued admission exceeds
+`READINESS_MAX_DURABLE_ADMISSION_AGE_MS`.
 
 ## Phase A Validation
 

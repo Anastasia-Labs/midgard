@@ -4,6 +4,12 @@ This directory contains the written protocol specification, shared LaTeX
 styling, and rendered diagrams for Midgard. The numbered chapter directories
 match the order in which content is assembled into `midgard.pdf`.
 
+The specification is the normative **design target**, not evidence that every
+described feature is implemented or production-ready. Read its conformance
+notice together with `public_testnet_readiness.md`, the proof-coverage audit in
+`docs/fault-proofs/`, and the repository
+[documentation policy](../docs/DOCUMENTATION_POLICY.md).
+
 ## Directory overview
 
 - `0-frontmatter`: cover page, abstract, table of contents, and introduction.

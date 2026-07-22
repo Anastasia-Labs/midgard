@@ -1,29 +1,29 @@
 ---
-title: "SDK Boundary Plans"
-description: "Reference index of the SDK/node boundary plans that define where the SDK ends and the node begins for each transaction family."
+title: "SDK Boundaries"
+description: "Implemented boundaries between Midgard SDK transaction builders and operator-node orchestration."
 ---
 
 Each transaction family has a pinned **boundary** between the `midgard-sdk`
 transaction builders and the [operator node](/docs/operators/node/overview)
 runtime: which side owns witness assembly, input selection, nonce preparation,
-and completion. The plans below record those decisions; their source is the
-[`docs/midgard-sdk-boundary-plans/`](https://github.com/Anastasia-Labs/midgard/tree/main/docs/midgard-sdk-boundary-plans)
-directory.
+and completion.
 
 <Callout type="info" title="Status">
-These boundary plans are marked complete as of 2026-06-19.
+  The implementation plans were completed and retired. The production source and
+  tests are now authoritative; this page preserves the resulting ownership map.
 </Callout>
 
-## Plans
+## Implemented boundaries
 
-1. **Scheduler witness bootstrap**, bootstrapping the scheduler witness.
-2. **Scheduler refresh builder**, the scheduler-refresh transaction boundary.
-3. **DA attestation builders**, the DA attestation transaction boundary.
-4. **Operator registration funding inputs**, funding inputs for operator
-   registration.
-5. **Reference script publication**, publishing reference scripts.
-6. **PHAS membership registration**, the PHAS membership registration boundary.
-7. **Hub oracle nonce preparation**, preparing the hub-oracle one-shot nonce.
+| Family                          | SDK source of truth                                                                            | Node responsibility                                                            |
+| ------------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Scheduler bootstrap and refresh | `demo/midgard-sdk/src/scheduler.ts`, `scheduler-refresh.ts`                                    | Select live inputs, provide runtime witnesses, submit and confirm.             |
+| DA attestation                  | `demo/midgard-sdk/src/da-attestation.ts`                                                       | Resolve committee/runtime state and drive the attestation lifecycle.           |
+| Operator registration           | `demo/midgard-sdk/src/operator-lifecycle.ts`, `active-operators.ts`, `registered-operators.ts` | Supply funding inputs and operator credentials.                                |
+| Reference-script publication    | `demo/midgard-sdk/src/reference-scripts.ts`                                                    | Plan batches, select deployment identity and funding, then submit and confirm. |
+| PHAS membership registration    | `demo/midgard-sdk/src/phas-membership.ts`                                                      | Resolve the configured script, inspect registration state, submit and confirm. |
+| Hub-oracle nonce preparation    | `demo/midgard-sdk/src/hub-oracle.ts`                                                           | Select and persist the one-shot out-ref used by deployment.                    |
 
-Read the individual plan files for the exact input/witness/completion split each one
-specifies.
+The SDK owns deterministic transaction construction. The node owns environment
+configuration, live input discovery, wallet selection, retries, submission,
+confirmation, and durable operational state.

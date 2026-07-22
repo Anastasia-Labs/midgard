@@ -19,8 +19,8 @@ implementations, and the LaTeX technical specification in a single repository.
   scripts, and integration tests.
 - `demo/midgard-manager`: CLI and transaction-generator tooling for operator
   workflows and demos.
-- `technical-spec`: authoritative written specification and diagrams for the
-  protocol.
+- `technical-spec`: normative protocol design target and diagrams. Its
+  conformance status is tracked separately from the implementation.
 - `docs-site`: documentation site covering the SDK, node, watchers, fault
   proofs, and on-chain validators.
 
@@ -39,23 +39,27 @@ implementations, and the LaTeX technical specification in a single repository.
   files they describe, so a PR that changes a documented CLI command, fiber,
   or transaction status also updates the matching page; the check's error
   message names both files.
+- [Documentation policy](./docs/DOCUMENTATION_POLICY.md): source-of-truth,
+  evidence, security-claim, and plan-lifecycle rules.
 
 ## Build the On-Chain Code
 
-Install [Aiken](https://aiken-lang.org/) and run 
+Install [Aiken](https://aiken-lang.org/) and run:
 
-``` 
+```sh
+cd onchain/aiken
 aiken build
 ```
 
 ## Technical Specification
 
-Run 
-```
+Run:
+
+```sh
 make spec
 ```
 
- and open `technical-spec/midgard.pdf`.
+Then open `technical-spec/midgard.pdf`.
 
 ## Demo Packages
 

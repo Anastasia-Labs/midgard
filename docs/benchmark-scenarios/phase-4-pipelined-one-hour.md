@@ -1,5 +1,10 @@
 # Phase 4 pipelined-commit one-hour gate
 
+**Status:** Active acceptance procedure; only a retained, fingerprinted one-hour
+report is evidence that the gate passed.
+
+**Last reviewed:** 2026-07-22
+
 This is the canonical fail-closed evidence surface for throughput Phase 4
 §6.5. It runs one production-shaped Class B stage for exactly one measured
 hour and verifies the resulting report. Run it only after the actual-process

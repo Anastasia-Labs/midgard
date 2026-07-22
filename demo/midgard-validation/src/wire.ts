@@ -101,7 +101,6 @@ export type WirePhaseACandidate = {
     readonly requiredObserverHashHexes: readonly string[];
     readonly mintPolicyHashHexes: readonly string[];
     readonly redeemerWitnessHash: Bytes;
-    readonly requiresScriptEvaluation: boolean;
     readonly requiresLocalScriptDiscovery: boolean;
   };
 };
@@ -128,7 +127,6 @@ type DerivedWireFields =
   | "requiredObserverHashHexes"
   | "mintPolicyHashHexes"
   | "redeemerWitnessHash"
-  | "requiresScriptEvaluation"
   | "requiresLocalScriptDiscovery";
 const derivedWireIsExhaustive: Exclude<
   keyof PhaseAValidatedTx["derived"],
@@ -316,7 +314,6 @@ export const serializePhaseACandidate = (
       requiredObserverHashHexes: candidate.derived.requiredObserverHashHexes,
       mintPolicyHashHexes: candidate.derived.mintPolicyHashHexes,
       redeemerWitnessHash: bytesView(candidate.derived.redeemerWitnessHash),
-      requiresScriptEvaluation: candidate.derived.requiresScriptEvaluation,
       requiresLocalScriptDiscovery:
         candidate.derived.requiresLocalScriptDiscovery,
     },
@@ -391,7 +388,6 @@ export const deserializePhaseACandidate = (
     requiredObserverHashHexes: candidate.derived.requiredObserverHashHexes,
     mintPolicyHashHexes: candidate.derived.mintPolicyHashHexes,
     redeemerWitnessHash: bufferView(candidate.derived.redeemerWitnessHash),
-    requiresScriptEvaluation: candidate.derived.requiresScriptEvaluation,
     requiresLocalScriptDiscovery:
       candidate.derived.requiresLocalScriptDiscovery,
   },

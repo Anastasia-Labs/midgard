@@ -1,5 +1,9 @@
 # Phase 3 Architecture G operator closure
 
+**Status:** Active acceptance procedure; not itself evidence of closure.
+
+**Last reviewed:** 2026-07-22
+
 This runbook closes the three Architecture G operator surfaces that are not
 performance or soak measurements: the combined final-tree safety suite, the
 release-image boundary, and one clean live functional/recovery run. A pass from

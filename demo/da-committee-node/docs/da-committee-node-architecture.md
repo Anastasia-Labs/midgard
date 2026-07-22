@@ -1,6 +1,17 @@
 # Midgard DA Committee Node Architecture
 
-This document defines the first public Midgard data-availability mechanism for deployments that cannot use Cardano Leios blobs.
+Status: Implemented architecture reference for `demo/da-committee-node`, not a
+claim of permissionless or trustless data availability.
+
+Last reviewed: 2026-07-22
+
+The committee is a deployment trust assumption until independent retrieval,
+retention through the full challenge/recovery horizon, committee governance and
+accountability, and an on-chain remedy for unavailable data are accepted end to
+end. See `../../../docs/fault-proofs/` and
+`../../../public_testnet_readiness.md` for current blockers.
+
+This document defines Midgard's current committee data-availability mechanism for deployments that cannot use Cardano Leios blobs.
 The mechanism is a threshold committee of DA nodes that independently store, verify, sign, broadcast, and publicly serve Midgard block payloads.
 
 The on-chain `da_attestation.ak` design provides the attestation control plane.

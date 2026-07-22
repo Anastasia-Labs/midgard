@@ -666,7 +666,8 @@ const txQueueProcessorAction = (
             TxAdmissionsDB.releaseForRetry({
               txIds: claimedLeases.map((row) => row.tx_id),
               leaseOwner,
-              delayMs: nodeConfig.VALIDATION_RETRY_BACKOFF_BASE_MS,
+              baseDelayMs: nodeConfig.VALIDATION_RETRY_BACKOFF_BASE_MS,
+              maxDelayMs: nodeConfig.VALIDATION_RETRY_BACKOFF_MAX_MS,
             }).pipe(Effect.catchAllCause(Effect.logWarning)),
           ),
           Effect.ensuring(
