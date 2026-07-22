@@ -1,47 +1,43 @@
-# Midgard Merkle Proofs
+# Midgard Plutarch Merkle Helpers
 
-This library contains all the utilities required for the construction and onchain verification of the merkle proofs required to interact with 
-Midgard fraud proof system.  
+Status: Legacy supporting package. Aiken under `onchain/aiken` is the primary
+on-chain implementation; this package supplies Plutarch Merkle Patricia
+Forestry helpers and generated membership/non-membership scripts used by proof
+work.
 
-## Features
+Last reviewed: 2026-07-22
 
-- TODO
-- TODO
+## Code map
 
-## How It Works
+- `src/Validators/Membership.hs`: membership and non-membership validators.
+- `src/Types/`: block, state-commitment, membership, and shared Plutarch types.
+- `tests/Testing/`: MPF, validator, transaction-proof, crypto, and evaluation
+  tests.
+- `generated/`: generated Plutus JSON for the membership staking scripts.
+- `app/Main.hs`: script-generation executable.
 
-1. 
+## Build and test
 
-### Creating the Merkle Patricia Forestry for a State Commitment
+The package is built independently from the Aiken project. From this directory:
 
-Here's an example using the `@aiken-lang/merkle-patricia-forestry` library:
-
-```javascript
-import { Store, Trie } from '@aiken-lang/merkle-patricia-forestry';
-const rawData = [
-    { key: '0x049b3472ebe63bff0f092d7e3c464169829c4369', value: '168285894526485760' },
-    { key: '0x4b4dc012894fa59917b1155f348e639059ed6238', value: '204169096277495776' },
-    // ... more key-value pairs ...
-    ];
-console.log("Building Merkle Patricia Trie...");
-const data = rawData.map(item => ({
-    key: Buffer.from(item.key.slice(2), 'hex'),
-    value: item.value
-    }));
-const trie = await Trie.fromList(data);
+```sh
+nix develop
+cabal build all
+cabal test all --test-show-details=direct
 ```
 
-# Set up nix config 
-Put the following lines in your nix configuration file (usually located at /etc/nix/nix.conf)
+The Plutarch suite is not currently part of the primary Midgard node CI
+workflow. A proof or release claim that depends on these helpers must record a
+successful run and verify the generated script hashes against the deployment
+manifest. Regenerating files under `generated/` requires review of the resulting
+script bytes and hashes; do not treat generated changes as formatting output.
 
-extra-experimental-features = nix-command flakes ca-derivations
-extra-trusted-substituters = https://cache.iog.io https://cache.nixos.org/ https://public-plutonomicon.cachix.org https://cache.zw3rk
-extra-trusted-public-keys = cache.iog.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= public-plutonomicon.cachix.org-1:3AKJMhCLn32gri1drGuaZmFrmnue+KkKrhhubQk/CWc=
+## Scope and safety
 
-# Installation 
-After setting up nix config, restart your computer or VM. 
-Then run:
-    nix develop 
+These helpers prove MPF membership properties. They do not establish complete
+Midgard fraud-proof coverage, data availability, transition validity, or safe
+challenge timing. See `../../docs/fault-proofs/` for the current coverage audit.
 
-# License
-See the [LICENSE](LICENSE) file for license rights and limitations (MIT).
+## License
+
+See [LICENSE](LICENSE) for the MIT license.

@@ -1,21 +1,18 @@
 ---
 title: "Formal Models (Lean4)"
-description: "The Lean4 formalization of parts of the Midgard protocol under technical-spec/Lean4Midgard."
+description: "Status and acceptance criteria for the planned Lean 4 formalization of Midgard."
 ---
 
-Alongside the prose specification, the repository contains a
-[`technical-spec/Lean4Midgard/`](https://github.com/Anastasia-Labs/midgard/tree/main/technical-spec/Lean4Midgard)
-directory with **formal models** written in [Lean 4](https://leanprover.github.io/).
+Lean 4 formalization is a **planned verification surface**. The repository does
+not currently track Lean source files or machine-checked Midgard theorems under
+`technical-spec/Lean4Midgard/`.
 
-These models encode selected protocol structures and properties in a proof
-assistant, so that key definitions and arguments can be machine-checked rather than
-relying on prose alone.
+The intended work is to encode selected protocol structures and properties in a
+proof assistant so key definitions and arguments can be machine-checked rather
+than relying on prose alone.
 
-<Callout type="info" title="Scope">
-The formal models cover selected parts of the protocol, not the entire system. Treat
-them as a rigorous complement to the prose spec and the executable code, not a
-replacement for either.
+<Callout type="warn" title="No current formal-verification claim">
+Do not cite this page as evidence that Midgard is formally verified. A future
+model must pin the protocol version, state its trusted base, link definitions to
+executable encodings, and run in CI before it supports a conformance claim.
 </Callout>
-
-See the `Lean4Midgard` sources for the exact definitions and lemmas that are
-currently formalized.

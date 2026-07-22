@@ -1,5 +1,14 @@
 # Midgard Watcher Node Architecture
 
+Status: Proposed target architecture; no independent production watcher is
+implemented in this directory.
+
+Last reviewed: 2026-07-22
+
+The working DA/watcher service is `demo/da-committee-node`. Proof coverage and
+binding gaps are tracked in `../../docs/fault-proofs/`; this design must not be
+used as evidence that independent challenges are production-ready.
+
 This note summarizes what a Midgard watcher is, why it exists, and how a production watcher node should work.
 It is based on a review of the Midgard protocol specification, Aiken
 validators, demo node runtime, validation package, SDK, and current fault-proof
@@ -11,7 +20,7 @@ This document uses `fault proof` when talking about the watcher product and `fra
 ## What Midgard Is
 
 Midgard is an optimistic rollup on Cardano.
-Operators build L2 blocks off-chain, publish full block data to a public data-availability layer, and commit fixed-size block headers to Cardano L1 through Midgard's state-queue contracts.
+Operators build L2 blocks off-chain, submit block data to the configured data-availability network, and commit fixed-size block headers to Cardano L1 through Midgard's state-queue contracts.
 Each committed block waits for a protocol `maturity_duration` before it can be merged into the confirmed L2 state.
 During that waiting period, anyone can verify the block.
 If the block is invalid, a challenger submits a fault proof on L1, prevents the block from merging, removes the fraudulent header from the queue, and slashes the operator bond.

@@ -18,7 +18,7 @@ cd midgard
 Have these installed before you start:
 
 - **Git** and a **POSIX shell**.
-- **Node.js 18 or later** and **pnpm** (the workspace pins `pnpm@9.15.4`, see
+- **Node.js 22.16 or later** and **pnpm** (the workspace pins `pnpm@9.15.4`, see
   below), for the TypeScript packages.
 - **Docker with the Compose v2 plugin**, for the
   [L1 backend](/docs/getting-started/l1-backend) and the node images.
@@ -31,7 +31,7 @@ The TypeScript workspace under `demo/` uses `pnpm`:
 
 - **Package manager:** `pnpm@9.15.4` (pinned via `packageManager` in
   `demo/package.json`).
-- **Node.js:** `>=18` (declared in the `engines` field of `demo/package.json`).
+- **Node.js:** `>=22.16.0` (declared in the `engines` field of `demo/package.json`).
 
 <Callout type="info" title="On-chain toolchain">
 The on-chain Aiken code is built separately with the Aiken compiler. Install
@@ -90,6 +90,7 @@ This applies to `demo/midgard-sdk`, `demo/midgard-node`, and
 Build the Aiken validators with:
 
 ```sh
+cd onchain/aiken
 aiken build
 ```
 

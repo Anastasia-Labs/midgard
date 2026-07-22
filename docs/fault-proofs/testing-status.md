@@ -5,6 +5,9 @@
 > paths and CI claims below were reconciled to that clean base. What is tested,
 > at which fidelity (pure unit → emulator → integration → real network), and what
 > CI actually runs.
+>
+> Commands, CI wiring, and top-level gaps were revalidated 2026-07-22 against
+> `tx-validation` HEAD `0aeaa700`; the full proof audit date remains 2026-07-10.
 
 ## 1. Fidelity ladder for the fault-proof system
 

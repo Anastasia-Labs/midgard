@@ -1,5 +1,18 @@
 # Midgard UTxO Cache Library Design
 
+Status: Proposed and unimplemented. This directory contains no package or source
+code.
+
+Last reviewed: 2026-07-22
+
+The cache must be an optimization, never protocol or wallet authority. A safe
+implementation needs durable leases with fencing, crash recovery, rollback and
+provider reconciliation, ownership separation between processes, and tests that
+prove stale cache state cannot authorize a spend. The USDCX paths below are
+historical discovery inputs from one development machine, not portable Midgard
+dependencies; any adopted behavior must be restated in this repository and
+covered by Midgard tests.
+
 ## Purpose
 
 Midgard should replace flow-local wallet overlays and ad hoc provider refreshes

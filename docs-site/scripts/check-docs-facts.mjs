@@ -116,6 +116,40 @@ for (const { label, source, doc, extract, countPhrase } of FACTS) {
   }
 }
 
+const demoPackage = JSON.parse(read("demo/package.json"));
+const localDev = read("docs-site/content/docs/getting-started/local-dev.mdx");
+if (!localDev.includes(`\`${demoPackage.engines.node}\``)) {
+  fail(
+    `docs-site/content/docs/getting-started/local-dev.mdx: expected Node engine \`${demoPackage.engines.node}\` from demo/package.json.`,
+  );
+}
+
+const blueprint = read("onchain/aiken/plutus.json");
+const daDocs = read("docs-site/content/docs/onchain/da-validators.mdx");
+for (const entrypoint of ["da_attestation", "da_params_governor"]) {
+  if (!blueprint.includes(`\"title\": \"${entrypoint}.`)) {
+    fail(`onchain/aiken/plutus.json: missing documented ${entrypoint} entrypoint.`);
+  }
+  if (!daDocs.includes(`\`${entrypoint}\``)) {
+    fail(`docs-site/content/docs/onchain/da-validators.mdx: missing \`${entrypoint}\`.`);
+  }
+}
+
+const phaseOrder = ["Withdrawal", "ForcedTransaction", "L2Transaction", "Deposit"];
+const mpf = read("demo/midgard-node/src/workers/utils/mpf.ts");
+let previous = -1;
+for (const phase of phaseOrder) {
+  const position = mpf.indexOf(`case \"${phase}\":`, previous + 1);
+  if (position <= previous) {
+    fail(`demo/midgard-node/src/workers/utils/mpf.ts: canonical phase ${phase} is missing or out of order.`);
+  }
+  previous = position;
+}
+const blockSpec = read("technical-spec/1-ledger-state/1-block.tex");
+if (!blockSpec.includes("withdrawals, forced transactions, L2 transaction requests, and deposits")) {
+  fail("technical-spec/1-ledger-state/1-block.tex: canonical transition phase order changed.");
+}
+
 if (failures.length > 0) {
   console.error("Documentation has drifted from source:\n");
   for (const failure of failures) console.error(`  - ${failure}`);
@@ -123,4 +157,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log(`Docs facts check passed: ${FACTS.length} facts documented and counted.`);
+console.log(`Docs facts check passed: ${FACTS.length + 3} fact groups.`);

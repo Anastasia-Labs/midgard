@@ -22,7 +22,9 @@ representation.
   withdrawals.
 - **Midgard hub oracle**: the central config/nonce authority, with its own minting
   policy and spending validator.
-- **Escape hatch**: the fallback that lets users exit safely if operators stall.
+- **Escape hatch**: a target liveness mechanism that lowers the bond for
+  replacement operators if production stalls. It is not a direct user force-exit
+  and is not currently a production-ready recovery guarantee.
 
 ## In the codebase
 

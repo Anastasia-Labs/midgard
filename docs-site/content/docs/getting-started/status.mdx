@@ -1,6 +1,6 @@
 ---
 title: "Project Status"
-description: "Midgard's readiness against a public-testnet bar: the go/no-go verdict and the launch blockers, as of the 2026-07-02 review."
+description: "Midgard's readiness against a public-testnet bar: the go/no-go verdict and the launch blockers, as of the 2026-07-22 review."
 ---
 
 Midgard's readiness is tracked in
@@ -16,11 +16,11 @@ behavior, public client ergonomics, monitoring, and runbooks. It is deliberately
 stricter than "the local happy path works."
 
 <Callout type="warn" title="Verdict: no-go for an open public testnet">
-As of the 2026-07-02 review, the decision is **no-go for an open public testnet.** The core happy-path
+As of the 2026-07-22 review, the decision is **no-go for an open public testnet.** The core happy-path
 L2 pipeline is materially implemented, but public readiness blockers remain:
-public fraud-proof / data-availability completion, deterministic deployment
-fingerprinting, ingress and ops hardening, full public acceptance gates,
-restart/recovery acceptance, and withdrawal/payout surface hardening. Public
+complete and correctly bound fraud proofs, permissionless data retrieval and
+retention, production challenge timing/economics, L1 finality and rollback,
+ingress and ops hardening, full public acceptance, and operator-halt recovery. Public
 messaging must not claim full fraud-proof readiness until the proof families and
 proof-bundle / data-availability surfaces are complete.
 </Callout>
@@ -37,10 +37,9 @@ builders, and SDK/provider primitives.
 
 The checklist enumerates the blockers that keep the decision at no-go. In brief:
 
-- **Deployment fingerprint**: every node must store and verify a full deployment
-  identity (network id, one-shot out-ref, script hashes, reference-script
-  out-refs, fraud-proof catalogue root, compiler and blueprint hashes, protocol
-  parameter hash, era/version) and fail closed on a mismatch.
+- **Deployment provenance hardening**: the v2 manifest identity and fail-closed
+  node/DA attachment are implemented; compiler, lock, blueprint, protocol-
+  parameter and release provenance hashes plus signing/rotation policy remain.
 - **Public fraud-proof / proof-DA milestone**: at least the intended public
   fraud-proof family must run end-to-end on preprod, with persisted proof bundles
   and public endpoints an external watcher can use without privileged DB access.
@@ -52,7 +51,8 @@ The checklist enumerates the blockers that keep the decision at no-go. In brief:
   and attributable, replay-protected admin identities.
 - **Operator liveness, Sybil, and incentives**: either permissionless operation
   with slashing/inactivity enforcement, or an explicitly declared curated model.
-- **A clean public-testnet acceptance gate** and **CI aligned to it**.
+- **A clean public-testnet acceptance gate** covering restart/rollback and a real
+  preprod challenge. Package-level CI is broad, but does not prove that gate.
 - **Removing placeholder economics / demo parameters** from public-testnet config.
 - **Public release, support, and data-retention posture** (SBOMs, `SECURITY.md`,
   status surfaces, retention policy).

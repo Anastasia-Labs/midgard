@@ -6,8 +6,9 @@
   "scripts": {
     "build:sdk": "pnpm --dir ../demo/midgard-core run build && pnpm --dir ../demo/lucid-midgard run build",
     "check:facts": "node scripts/check-docs-facts.mjs",
+    "check:links": "node scripts/check-docs-links.mjs",
     "check:voice": "node scripts/check-docs-voice.mjs",
-    "prebuild": "pnpm run build:sdk && pnpm run check:facts && pnpm run check:voice",
+    "prebuild": "pnpm run build:sdk && pnpm run check:facts && pnpm run check:links && pnpm run check:voice",
     "build": "next build",
     "predev": "pnpm run build:sdk",
     "dev": "next dev",

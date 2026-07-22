@@ -1,18 +1,22 @@
 ---
 title: "Building the Specification"
-description: "How the Midgard protocol specification is assembled from LaTeX sources into the authoritative midgard.pdf."
+description: "How the Midgard normative design specification is assembled from LaTeX sources into midgard.pdf."
 ---
 
-The authoritative Midgard protocol specification lives under
+The Midgard normative protocol design target lives under
 [`technical-spec/`](https://github.com/Anastasia-Labs/midgard/tree/main/technical-spec)
 as a set of numbered LaTeX chapters that are assembled, in order, into a single
 `midgard.pdf`. The build is driven by `latexmk` (packaged with Nix); see
 [`technical-spec/README.md`](https://github.com/Anastasia-Labs/midgard/blob/main/technical-spec/README.md)
 for the exact invocation.
 
-<Callout type="info" title="Source of truth">
-For precise definitions, equations, and transaction diagrams, read the compiled
-`midgard.pdf`; each chapter page here links the corresponding code.
+<Callout type="warn" title="Design target is not conformance evidence">
+For intended definitions, equations, and transaction diagrams, read the compiled
+`midgard.pdf`. The document contains unfinished sections and future mechanisms.
+Current implementation and launch claims must also be checked against
+[Project Status](/docs/getting-started/status), the
+[fault-proof audit](/docs/fault-proofs/overview), code, generated blueprints, and
+acceptance evidence.
 </Callout>
 
 ## Chapter layout
@@ -32,5 +36,5 @@ The spec is organized into a numbered main body and lettered appendices:
 | B | L1 transactions | [L1 Transactions](/docs/spec/l1-transactions) |
 | C | Considerations | [Considerations](/docs/spec/considerations) |
 
-A companion `Lean4Midgard/` directory holds [formal models](/docs/spec/formal-models)
-of parts of the protocol.
+The [formal-models page](/docs/spec/formal-models) tracks a planned Lean 4
+formalization. No Lean source files are currently tracked in the repository.

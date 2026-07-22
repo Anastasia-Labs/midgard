@@ -1,5 +1,12 @@
 # Execution Plan — Complete State-Correction Coverage
 
+> **Status:** Active, launch-blocking plan. No production security claim may
+> treat its unchecked fund-safety or proof-binding items as optional.
+>
+> **Last reviewed:** 2026-07-22. Top-level decisions and paths were revalidated
+> against `tx-validation` HEAD `0aeaa700`; historical line anchors still require
+> confirmation when implementing an item.
+
 > Created 2026-07-10 against branch `tx-validation` (HEAD `269bf6b3`). Target property:
 > **for every transaction or state transition that violates Midgard's protocol rules,
 > there is a defined evidence format, an L1 verification procedure, and a state-correction

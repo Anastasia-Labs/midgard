@@ -11,18 +11,18 @@
 
 \begin{abstract}[-0.5em]{1.5cm}
 Midgard is the first optimistic rollup protocol on Cardano.
-It offloads transaction processing from Layer~1 (L1) to Layer~2 (L2) while maintaining L1's security and decentralization properties for those transactions.
-As a result, it can handle a significantly higher volume of transactions without compromising on security.
+It is designed to move transaction execution from Layer~1 (L1) to Layer~2 (L2), while settling commitments and disputes through Cardano L1.
+Its intended security depends on complete fraud-proof coverage, timely independent challengers, available block data, sound economic parameters, and Cardano settlement assumptions; those conditions must be verified for each deployment.
 
 This whitepaper outlines the interactions between L1 and L2, the role of operators and watchers, and the processes for managing state transitions and resolving disputes.
-The optimistic rollup model implemented in Midgard represents a significant advancement in the scalability and security of general-purpose Layer 2 solutions on Cardano.
+The document presents a design for increasing throughput while preserving explicit L1-enforced safety conditions.
 
 We discuss the economic incentives that ensure the protocol's integrity and efficiency.
 Operators guarantee the validity of their committed blocks by posting bonds, which are slashable if the blocks are proven invalid.
 Members of the public are incentivized to watch the operators' blocks, and they are rewarded with a portion of the slashed bonds when their fraud proofs prevent invalid blocks from merging into Midgard's confirmed state.
 
 Midgard's architecture leverages a family of smart contracts on Cardano's L1 to manage state transitions and enforce the security of the L2 operations.
-Key components include a robust operator management system, efficient storage for transaction blocks committed from the L2, and a comprehensive mechanism for submitting and validating fraud proofs.
+Key components include operator management, compact L1 commitments to L2 blocks, data availability, and a catalogue of fraud-proof procedures.
 Overall, Midgard's design aims to provide a scalable and secure solution for the growing needs of the Cardano ecosystem.
 \end{abstract}
 

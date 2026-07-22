@@ -1,5 +1,9 @@
 # Midgard Off-Chain SDK
 
+Status: Internal/workspace package under active development. The package name is
+not evidence of a public registry release; the instructions below use a local
+tarball intentionally.
+
 Midgard TypeScript library for building operator and watcher transactions. Each
 transaction family has a reference page in the
 [documentation site](../../docs-site/content/docs/sdk/midgard-sdk).

@@ -1,5 +1,10 @@
 # Phase 3 Architecture G 24-hour live soak gate
 
+**Status:** Active acceptance procedure; only a retained, fingerprinted 24-hour
+report is evidence that the gate passed.
+
+**Last reviewed:** 2026-07-22
+
 This is the formal live-soak closure gate for Throughput Phase 3. It observes
 one already initialized, production-shaped `MPF_ENGINE=architecture_g`
 deployment while the canonical L2 workload runs for exactly 86,400 measured

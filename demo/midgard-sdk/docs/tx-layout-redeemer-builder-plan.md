@@ -1,5 +1,16 @@
 # Tx Layout Redeemer Builder Plan
 
+Status: Proposed and unimplemented. No `createTxLayoutRedeemerFactory` export is
+present in the SDK.
+
+Last reviewed: 2026-07-22
+
+Before implementation, bind resolution to the exact active `TxBuilderConfig`,
+reject ambiguous selectors and any layout mutation after resolution, define
+change-output behavior explicitly, and add golden tests against the final CML
+transaction body. The helper remains incomplete until local UPLC evaluation and
+negative ambiguity/mutation tests pass.
+
 ## Purpose
 
 Add generic SDK infrastructure for Lucid transaction redeemers that need indexes

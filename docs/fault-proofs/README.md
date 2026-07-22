@@ -10,6 +10,12 @@ plus its contemporaneous working tree. Reconstructed on `tx-validation` HEAD
 `55afdc54`; paths were reconciled to that clean base, but line anchors must be
 rechecked when implementing an item.
 
+Documentation and top-level conclusions revalidated **2026-07-22** against
+`tx-validation` HEAD `0aeaa700`. No intervening change closes the catalogue,
+native-v1 binding, fee, economics, DA-remedy, or preprod-acceptance gaps. This was
+not a replacement for the full line-by-line audit, so historical line anchors
+remain advisory.
+
 Terminology note: these were historically called **fraud proofs**. Public-facing
 documentation now generally says **fault proofs**, while the clean source tree still
 contains historical `fraud-proof` path names. They are the same mechanism. This

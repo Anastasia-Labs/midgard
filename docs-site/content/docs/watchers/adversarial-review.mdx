@@ -65,12 +65,14 @@ architecture's requirement for at least two independent L1 sources and first-vis
 finalization. **Disposition:** make multi-provider same-chain-point validation, explicit finality
 depth, rollback quarantine, and provider-disagreement tests mandatory for production.
 
-### 5. High: Spec, implementation, and proof roots are still divergent
+### 5. High: Spec, implementation, and proof roots required one conformance rule
 
-The spec says withdrawals, then transactions, then deposits. Current node code inserts deposits
-before transaction ops and applies valid-withdrawal deletes after transaction ops. Aiken uses typed
-roots and native compact transaction proofs. **Disposition:** strengthen Milestone 0 from "document
-exists" to generated TypeScript/Aiken/live-block golden vectors plus clean redeploy criteria.
+The original review found inconsistent transition order and root representations.
+The current spec and node now agree on withdrawals, forced transaction orders,
+normal L2 transactions, then deposits, and reject same-block spending of a
+deposit. Aiken proof binding is still incomplete. **Disposition:** keep generated
+TypeScript/Aiken/live-block golden vectors and clean-redeploy criteria as a
+release gate so order or root schemas cannot drift again.
 
 ### 6. High: Double-spend E2E can pass without proving acceptedness
 

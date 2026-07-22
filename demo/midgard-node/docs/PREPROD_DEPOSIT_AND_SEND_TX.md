@@ -25,7 +25,7 @@ This document does not cover contract deployment or operator lifecycle setup.
 
 ## Required Environment
 
-Start from [`demo/midgard-node/.env.example`](./.env.example) and fill in the preprod-specific values.
+Start from [`demo/midgard-node/.env.example`](../.env.example) and fill in the preprod-specific values.
 
 At minimum, verify these fields are set correctly:
 

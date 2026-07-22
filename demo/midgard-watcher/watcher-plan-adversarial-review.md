@@ -1,11 +1,17 @@
 # Adversarial Review Of Watcher Implementation Plan
 
-Reviewer: delegated adversarial production-readiness review agent
+Status: Historical review input. Its findings were incorporated into
+`midgard-watcher-architecture.md`; it is not a current implementation plan.
+
+Last reviewed: 2026-07-22
+
+Reviewer: historical adversarial production-readiness review
 
 Reviewed files:
 
-- `docs/midgard-watcher-architecture.md`
-- `docs/watcher-implementation-plan.md`
+- `demo/midgard-watcher/midgard-watcher-architecture.md`
+- the former watcher implementation plan, which is not retained as a current
+  repository artifact
 
 Additional context consulted by reviewer:
 
@@ -76,15 +82,19 @@ Disposition:
 
 - Incorporated into Tasks 2.1 and 2.2.
 
-### 5. High: Spec, implementation, and proof roots are still divergent
+### 5. High: Spec, implementation, and proof roots required one conformance rule
 
-The TeX block spec says withdrawals, then transactions, then deposits.
-Current node code inserts deposits before transaction ops and applies valid withdrawal deletes after transaction ops.
-Aiken uses typed roots and native compact transaction proofs.
+The original review found divergent transition order and root representations.
+The current TeX block spec and node agree on withdrawals, forced transaction
+orders, normal L2 transactions, then deposits; same-block deposit spending is
+rejected. Aiken proof binding to the current typed/counted roots is still
+incomplete.
 
 Recommendation:
 
-- Strengthen Milestone 0 from "document exists" to generated TypeScript/Aiken/live-block golden vectors, plus clean redeploy criteria.
+- Keep Milestone 0 stronger than "document exists": require generated
+  TypeScript/Aiken/live-block golden vectors and clean redeploy criteria so
+  transition order and roots cannot drift again.
 
 Disposition:
 

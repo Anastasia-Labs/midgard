@@ -85,11 +85,11 @@ datum/redeemer intent.
 | `fraud_proofs/<category>/step-0N` | Per-category multi-step fraud-proof validators. | [Fraud-proof machines](/docs/onchain/fraud-proof-machines) |
 | `phas` | PHAS membership staking validator (Merkle membership check). | [PHAS membership](/docs/onchain/phas-membership) |
 
-<Callout type="warn" title="DA validators and the committed blueprint">
+<Callout type="info" title="DA validators and the committed blueprint">
   `da_attestation` and `da_params_governor` are present in the source tree under
-  `onchain/aiken/validators/` and are compiled by `aiken build`. Depending on the
-  checked-in state of `plutus.json`, their entrypoints may not yet appear in the
-  committed blueprint, rebuild locally to regenerate it.
+  `onchain/aiken/validators/` and their entrypoints are present in the checked-in
+  `onchain/aiken/plutus.json`. Rebuild the blueprint after any validator or
+  parameter change and review the generated diff before deployment.
 </Callout>
 
 ## Reading order
@@ -97,7 +97,8 @@ datum/redeemer intent.
 Start with the [Conventions](/docs/onchain/conventions) and
 [ScriptContext invariants](/docs/onchain/script-context-invariants) so the
 per-validator pages read cleanly, then work through the domain groups. The
-[protocol specification](/docs/spec/building) is the authoritative source for the
-consensus rules these validators enforce, and
+[protocol specification](/docs/spec/building) is the normative design target for
+the consensus rules. Code, generated blueprints, and acceptance tests show current
+conformance, and
 [Fault proofs](/docs/fault-proofs/overview) explains the dispute game at the protocol
 level.
