@@ -22,6 +22,9 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
+  buildTrieView,
+  decodeTransactionMaterial,
+  nativeTrieItem,
   type NodeTransactionPayload,
   prepareZeroInputFromTransactions,
 } from "../src/index.js";
@@ -84,6 +87,29 @@ const spendingTx = (fee: bigint): NodeTransactionPayload =>
 const zeroInputTx = (fee: bigint): NodeTransactionPayload =>
   payloadFromTx(makeNativeTx({ spendInputCbors: [], fee }));
 
+const transactionRoots = async (
+  transactions: readonly NodeTransactionPayload[],
+): Promise<{
+  readonly transactionsPhasRoot: string;
+  readonly committedTransactionsRoot: string;
+}> => {
+  const decoded = await Promise.all(
+    transactions.map(decodeTransactionMaterial),
+  );
+  const trie = await buildTrieView(decoded.map(nativeTrieItem));
+  const committedTransactionsRoot = await Effect.runPromise(
+    commitCountedRootProgram({
+      domain: ROOT_DOMAINS.transactions,
+      phasRoot: trie.root,
+      count: BigInt(decoded.length),
+    }),
+  );
+  return {
+    transactionsPhasRoot: trie.root,
+    committedTransactionsRoot,
+  };
+};
+
 const withTempDir = async <A>(run: (dir: string) => Promise<A>): Promise<A> => {
   const dir = await mkdtemp(join(tmpdir(), "midgard-zero-input-"));
   try {
@@ -97,10 +123,13 @@ describe("prepare-zero-input", () => {
   it("selects the transaction that spends no inputs", async () => {
     const validTx = spendingTx(1n);
     const badTx = zeroInputTx(2n);
+    const transactions = [validTx, badTx];
+    const roots = await transactionRoots(transactions);
 
     const output = await prepareZeroInputFromTransactions({
       headerHash: h28("aa"),
-      transactions: [validTx, badTx],
+      transactions,
+      expectedTransactionsRoot: roots.committedTransactionsRoot,
     });
 
     expect(output.headerHash).toBe(h28("aa"));
@@ -125,27 +154,27 @@ describe("prepare-zero-input", () => {
     expect(output.transactionsPhasRoot).not.toBe(
       output.committedTransactionsRoot,
     );
-    expect(output.expectedTransactionsRoot).toBeUndefined();
+    expect(output.expectedTransactionsRoot).toEqual({
+      value: roots.committedTransactionsRoot,
+      matches: true,
+    });
   });
 
   it("accepts the counted transactions root committed by the block header", async () => {
     const transactions = [spendingTx(1n), zeroInputTx(2n)];
-    const prepared = await prepareZeroInputFromTransactions({
-      headerHash: h28("aa"),
-      transactions,
-    });
+    const roots = await transactionRoots(transactions);
 
     const verified = await prepareZeroInputFromTransactions({
       headerHash: h28("aa"),
       transactions,
-      expectedTransactionsRoot: prepared.committedTransactionsRoot,
+      expectedTransactionsRoot: roots.committedTransactionsRoot,
     });
 
     expect(verified.expectedTransactionsRoot).toEqual({
-      value: prepared.committedTransactionsRoot,
+      value: roots.committedTransactionsRoot,
       matches: true,
     });
-    expect(verified.transactionsPhasRoot).toBe(prepared.transactionsPhasRoot);
+    expect(verified.transactionsPhasRoot).toBe(roots.transactionsPhasRoot);
     expect(verified.transactionsPhasRoot).not.toBe(
       verified.committedTransactionsRoot,
     );
@@ -153,16 +182,13 @@ describe("prepare-zero-input", () => {
 
   it("rejects the raw PHAS root where the counted header root is required", async () => {
     const transactions = [spendingTx(1n), zeroInputTx(2n)];
-    const prepared = await prepareZeroInputFromTransactions({
-      headerHash: h28("aa"),
-      transactions,
-    });
+    const roots = await transactionRoots(transactions);
 
     await expect(
       prepareZeroInputFromTransactions({
         headerHash: h28("aa"),
         transactions,
-        expectedTransactionsRoot: prepared.transactionsPhasRoot,
+        expectedTransactionsRoot: roots.transactionsPhasRoot,
       }),
     ).rejects.toThrow("does not match --expected-transactions-root");
   });
@@ -178,20 +204,26 @@ describe("prepare-zero-input", () => {
   });
 
   it("throws when every transaction in the block spends at least one input", async () => {
+    const transactions = [spendingTx(1n), spendingTx(2n)];
+    const roots = await transactionRoots(transactions);
     await expect(
       prepareZeroInputFromTransactions({
         headerHash: h28("aa"),
-        transactions: [spendingTx(1n), spendingTx(2n)],
+        transactions,
+        expectedTransactionsRoot: roots.committedTransactionsRoot,
       }),
     ).rejects.toThrow("No zero-input transaction found in the selected block.");
   });
 
   it("rejects an explicitly requested tx that does spend inputs", async () => {
     const validTx = spendingTx(1n);
+    const transactions = [validTx, zeroInputTx(2n)];
+    const roots = await transactionRoots(transactions);
     await expect(
       prepareZeroInputFromTransactions({
         headerHash: h28("aa"),
-        transactions: [validTx, zeroInputTx(2n)],
+        transactions,
+        expectedTransactionsRoot: roots.committedTransactionsRoot,
         txId: validTx.nodeTxId,
       }),
     ).rejects.toThrow("spends at least one input");
@@ -199,10 +231,13 @@ describe("prepare-zero-input", () => {
 
   it("writes tx-inclusion and plan artifacts the submit steps consume", async () => {
     const badTx = zeroInputTx(2n);
+    const transactions = [spendingTx(1n), badTx];
+    const roots = await transactionRoots(transactions);
     await withTempDir(async (dir) => {
       const output = await prepareZeroInputFromTransactions({
         headerHash: h28("aa"),
-        transactions: [spendingTx(1n), badTx],
+        transactions,
+        expectedTransactionsRoot: roots.committedTransactionsRoot,
         outputDir: dir,
       });
 

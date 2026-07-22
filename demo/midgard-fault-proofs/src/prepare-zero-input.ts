@@ -26,7 +26,7 @@ import {
 export type PrepareZeroInputCliConfig = {
   readonly midgardNodeUrl: string;
   readonly headerHash: string;
-  readonly expectedTransactionsRoot?: string;
+  readonly expectedTransactionsRoot: string;
   readonly txId?: string;
   readonly outputDir?: string;
   readonly fetchImpl?: FetchLike;
@@ -35,7 +35,7 @@ export type PrepareZeroInputCliConfig = {
 export type PrepareZeroInputFromFileConfig = {
   readonly transactionsPath: string;
   readonly headerHash: string;
-  readonly expectedTransactionsRoot?: string;
+  readonly expectedTransactionsRoot: string;
   readonly txId?: string;
   readonly outputDir?: string;
 };
@@ -55,7 +55,7 @@ export type PreparedZeroInputOutput = {
   readonly transactionsPhasRoot: string;
   /** Counted, domain-separated transactions root committed by the block header. */
   readonly committedTransactionsRoot: string;
-  readonly expectedTransactionsRoot?: {
+  readonly expectedTransactionsRoot: {
     readonly value: string;
     readonly matches: boolean;
   };
@@ -104,15 +104,16 @@ export const prepareZeroInputFromTransactions = async ({
 }: {
   readonly headerHash: string;
   readonly transactions: readonly NodeTransactionPayload[];
-  readonly expectedTransactionsRoot?: string;
+  readonly expectedTransactionsRoot: string;
   readonly txId?: string;
   readonly outputDir?: string;
 }): Promise<PreparedZeroInputOutput> => {
   const normalizedHeaderHash = parseHex(headerHash, "--header-hash", 28);
-  const normalizedExpectedRoot =
-    expectedTransactionsRoot === undefined
-      ? undefined
-      : parseHex(expectedTransactionsRoot, "--expected-transactions-root", 32);
+  const normalizedExpectedRoot = parseHex(
+    expectedTransactionsRoot,
+    "--expected-transactions-root",
+    32,
+  );
   const normalizedTxId =
     txId === undefined ? undefined : parseHex(txId, "--tx-id", 32);
   const decoded = await Promise.all(
@@ -151,14 +152,11 @@ export const prepareZeroInputFromTransactions = async ({
       count: BigInt(decoded.length),
     }),
   );
-  const expectedCheck =
-    normalizedExpectedRoot === undefined
-      ? undefined
-      : {
-          value: normalizedExpectedRoot,
-          matches: normalizedExpectedRoot === committedTransactionsRoot,
-        };
-  if (expectedCheck !== undefined && !expectedCheck.matches) {
+  const expectedCheck = {
+    value: normalizedExpectedRoot,
+    matches: normalizedExpectedRoot === committedTransactionsRoot,
+  };
+  if (!expectedCheck.matches) {
     throw new Error(
       `Reconstructed raw transactions root ${nativeTrie.root} commits to counted root ${committedTransactionsRoot}, which does not match --expected-transactions-root ${expectedCheck.value}. The prepared proof would not verify against this block.`,
     );
@@ -168,9 +166,7 @@ export const prepareZeroInputFromTransactions = async ({
     txCount: decoded.length,
     transactionsPhasRoot: nativeTrie.root,
     committedTransactionsRoot,
-    ...(expectedCheck === undefined
-      ? {}
-      : { expectedTransactionsRoot: expectedCheck }),
+    expectedTransactionsRoot: expectedCheck,
     tx: {
       nodeTxId: selected.nodeTxId,
       nativeTx: selected.nativeTxCompact,

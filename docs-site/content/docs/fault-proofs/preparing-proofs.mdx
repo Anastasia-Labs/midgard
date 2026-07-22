@@ -170,15 +170,16 @@ steps. Source: `demo/midgard-fault-proofs/src/prepare-zero-input.ts`.
 midgard-fault-proofs prepare-zero-input \
   (--midgard-node-url <url> | --transactions-file <path>) \
   --header-hash <hex> \
+  --expected-transactions-root <hex> \
   [--tx-id <hex>] \
-  [--expected-transactions-root <hex>] \
   [--output-dir <path>]
 ```
 
 - `--tx-id` optionally pins the exact zero-input transaction. Without it, the
   first violating transaction is selected. A pinned transaction that has one or
   more spend inputs is rejected.
-- `--expected-transactions-root` is the 32-byte **counted, domain-separated**
+- `--expected-transactions-root` is required. It is the 32-byte **counted,
+  domain-separated**
   transactions root committed by the state-queue block header. It is not the raw
   PHAS root carried in the membership proof.
 
@@ -188,18 +189,18 @@ The output exposes both commitments explicitly:
   `tx-inclusion.json` and passed to step 01.
 - `committedTransactionsRoot` is
   `commit_counted_root(TransactionsRootDomain, transactionsPhasRoot, txCount)`
-  and must equal the selected header's `transactions_root` when
-  `--expected-transactions-root` is supplied.
+  and must equal the selected header's `transactions_root`.
 
-The root check is strict. A raw PHAS root, stale counted root, or root from a
-different block aborts preparation before any submit-step files are written.
+The root check is mandatory and strict. A missing expected root, raw PHAS root,
+stale counted root, or root from a different block aborts preparation before any
+submit-step files are written.
 
 ### Files written with `--output-dir`
 
 | File                | Consumed by                                                                                                                                         |
 | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `tx-inclusion.json` | `submit-zero-input-step-01` `--tx-inclusion`                                                                                                        |
-| `plan.json`         | Summary: header hash, zero-input tx id, spend-inputs hash, raw transactions PHAS root, counted header commitment, and optional expected-root check. |
+| `plan.json`         | Summary: header hash, zero-input tx id, spend-inputs hash, raw transactions PHAS root, counted header commitment, and required expected-root check. |
 
 ## From artifacts to a proof
 

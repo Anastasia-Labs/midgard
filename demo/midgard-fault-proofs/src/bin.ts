@@ -98,7 +98,7 @@ const usage = `Usage:
   midgard-fault-proofs prepare-double-spend (--midgard-node-url <url> | --transactions-file <path> | --sample-double-spend) --header-hash <hex> [--expected-transactions-root <hex>] [--tx1-id <hex> --tx2-id <hex>] [--output-dir <path>] [--allow-incompatible-output]
   midgard-fault-proofs prepare-invalid-range (--midgard-node-url <url> | --transactions-file <path>) --header-hash <hex> --block-valid-from <posixMs> --block-valid-to <posixMs> [--expected-transactions-root <hex>] [--tx-id <hex>] [--output-dir <path>] [--allow-incompatible-output]
   midgard-fault-proofs prepare-non-existent-input (--midgard-node-url <url> | --transactions-file <path>) --header-hash <hex> [--bad-tx-id <hex>] [--bad-input-index <n>] [--prev-utxos-root <hex> --prev-block-payload-file <daPayloadV2.hex>] [--expected-transactions-root <hex>] [--output-dir <path>]
-  midgard-fault-proofs prepare-zero-input (--midgard-node-url <url> | --transactions-file <path>) --header-hash <hex> [--tx-id <hex>] [--expected-transactions-root <hex>] [--output-dir <path>]
+  midgard-fault-proofs prepare-zero-input (--midgard-node-url <url> | --transactions-file <path>) --header-hash <hex> --expected-transactions-root <hex> [--tx-id <hex>] [--output-dir <path>]
   midgard-fault-proofs inspect-contracts --blueprint <path> --deployment-info <path> [--network <Mainnet|Preview|Preprod>]
   midgard-fault-proofs submit-init --blueprint <path> --deployment-info <path> --fraudulent-block-out-ref <txHash#outputIndex> [--fraud-category <doubleSpend|invalidRange|transitionTrace|nonExistentInput|zeroInput>] [--fraudulent-header-hash <hex>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-step-01 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
@@ -618,19 +618,25 @@ export const main = async (): Promise<void> => {
         `Provide exactly one of --midgard-node-url or --transactions-file.\n${usage}`,
       );
     }
+    if (args.expectedTransactionsRoot === undefined) {
+      throw new Error(
+        `Missing required --expected-transactions-root <hex>.\n${usage}`,
+      );
+    }
+    const expectedTransactionsRoot = args.expectedTransactionsRoot;
     const output =
       args.midgardNodeUrl !== undefined
         ? await prepareZeroInputFromNode({
             midgardNodeUrl: args.midgardNodeUrl,
             headerHash: args.headerHash,
-            expectedTransactionsRoot: args.expectedTransactionsRoot,
+            expectedTransactionsRoot,
             txId: args.txId,
             outputDir: args.outputDir,
           })
         : await prepareZeroInputFromFile({
             transactionsPath: args.transactionsPath!,
             headerHash: args.headerHash,
-            expectedTransactionsRoot: args.expectedTransactionsRoot,
+            expectedTransactionsRoot,
             txId: args.txId,
             outputDir: args.outputDir,
           });

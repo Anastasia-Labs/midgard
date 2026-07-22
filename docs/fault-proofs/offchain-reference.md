@@ -19,13 +19,14 @@
 
 ## 2. CLI surface (`demo/midgard-fault-proofs/src/bin.ts:441-462`)
 
-`prepare-double-spend` · `prepare-invalid-range` · `prepare-non-existent-input` ·
+`prepare-double-spend` · `prepare-invalid-range` · `prepare-non-existent-input` · `prepare-zero-input` ·
 `inspect-contracts` · `submit-init` · `submit-step-01..04` ·
 `submit-invalid-range-step-01..02` · `submit-non-existent-input-step-01..04` ·
+`submit-zero-input-step-01..02` ·
 `remove-fraudulent-block`.
 
-`submit-init --fault-category` accepts only four values — `doubleSpend | nonExistentInput
-| invalidRange | transitionTrace` (`bin.ts:96,107,117-126`; `nonExistentInputNoIndex` is
+`submit-init --fraud-category` accepts five values — `doubleSpend | nonExistentInput |
+invalidRange | transitionTrace | zeroInput`; `nonExistentInputNoIndex` is
 registered in the catalogue but rejected by the CLI parser) — and
 **no transition-trace proof-submission command exists** — `bin.ts` never imports
 `./transition-trace/`; `submitTransitionTraceProofFromFiles`
@@ -61,6 +62,16 @@ commands are offline.
 genesis trie or `reconstructDaPayloadV2` + `keyValuePhasNonMembershipProof`) →
 `submit-init` → `ne-submit-step-01..04` (step-03 uses the `pexcludes` withdrawal carrier;
 step-04 mints token).
+
+### zero-input (4 manual steps)
+
+`prepare-zero-input` reconstructs the raw native transaction trie from node/file input,
+selects a transaction whose native spend-input list is empty, and emits the step-01
+membership witness. `--expected-transactions-root` is mandatory: the preparer derives
+the counted/domain-tagged root using the block transaction count and fails before
+writing submit-ready artifacts if it differs from the authoritative header root.
+`submit-init --fraud-category zeroInput` → `submit-zero-input-step-01` →
+`submit-zero-input-step-02` concludes the thread and mints the fault-proof token.
 
 ### transition-trace (library-only)
 
@@ -162,11 +173,12 @@ datum in the same txs; non-tail removals require the node's admin-gated
 
 | Family             | Commands to conclude a proof                   | Then removal                    |
 | ------------------ | ---------------------------------------------- | ------------------------------- |
-| double-spend       | 5 (prepare + init + 4 steps)                   | +1 per descendant link +1 final |
+| double-spend       | 6 (prepare + init + 4 steps)                   | +1 per descendant link +1 final |
 | invalid-range      | 4                                              | same                            |
 | non-existent-input | 6                                              | same                            |
+| zero-input         | 4 (prepare + init + 2 steps)                   | same                            |
 | transition-trace   | not possible via CLI (library calls only)      | same                            |
-| other 8 types      | not possible (no tooling; 7 also unregistered) | —                               |
+| other 7 types      | not possible (no tooling; 6 also unregistered) | —                               |
 
 Each command needs env/config (Blockfrost or Kupmios keys, deployment-info JSON, out-ref
 plumbing between steps via JSON files). There is no single-command orchestration.
