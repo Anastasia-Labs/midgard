@@ -2,15 +2,17 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
+  commitCountedRootProgram,
   EMPTY_SPEND_INPUTS_HASH,
   nativeTxBodyHasZeroInputViolation,
   type NativeTxCompact as NativeTxCompactData,
+  ROOT_DOMAINS,
 } from "@al-ft/midgard-sdk";
+import { Effect } from "effect";
 
 import { parseHex, stringifyJson } from "./json-file.js";
 import {
   buildTrieView,
-  compatibilityReasons,
   decodeTransactionMaterial,
   type FetchLike,
   fetchNodeBlockTransactions,
@@ -27,7 +29,6 @@ export type PrepareZeroInputCliConfig = {
   readonly expectedTransactionsRoot?: string;
   readonly txId?: string;
   readonly outputDir?: string;
-  readonly allowIncompatibleOutput?: boolean;
   readonly fetchImpl?: FetchLike;
 };
 
@@ -37,7 +38,6 @@ export type PrepareZeroInputFromFileConfig = {
   readonly expectedTransactionsRoot?: string;
   readonly txId?: string;
   readonly outputDir?: string;
-  readonly allowIncompatibleOutput?: boolean;
 };
 
 export type PreparedZeroInputTx = {
@@ -51,18 +51,13 @@ export type PreparedZeroInputTx = {
 export type PreparedZeroInputOutput = {
   readonly headerHash: string;
   readonly txCount: number;
-  readonly compatibility: {
-    readonly canUseSubmitStepCommands: boolean;
-    readonly reasons: readonly string[];
-  };
-  readonly commitmentEncodings: {
-    readonly nativeNode: {
-      readonly transactionsRoot: string;
-    };
-    readonly expectedTransactionsRoot?: {
-      readonly value: string;
-      readonly matchesNativeNodeRoot: boolean;
-    };
+  /** Raw MPF root opened by the transaction membership proof. */
+  readonly transactionsPhasRoot: string;
+  /** Counted, domain-separated transactions root committed by the block header. */
+  readonly committedTransactionsRoot: string;
+  readonly expectedTransactionsRoot?: {
+    readonly value: string;
+    readonly matches: boolean;
   };
   readonly tx: PreparedZeroInputTx;
   readonly files?: {
@@ -74,20 +69,10 @@ export type PreparedZeroInputOutput = {
 const writePreparedFiles = async ({
   output,
   outputDir,
-  allowIncompatibleOutput,
 }: {
   readonly output: PreparedZeroInputOutput;
   readonly outputDir: string;
-  readonly allowIncompatibleOutput: boolean;
 }): Promise<PreparedZeroInputOutput["files"]> => {
-  if (
-    !output.compatibility.canUseSubmitStepCommands &&
-    !allowIncompatibleOutput
-  ) {
-    throw new Error(
-      "Refusing to write submit-step material because the selected block is not compatible with the current fault-proof ABI. Pass --allow-incompatible-output to write diagnostic files anyway.",
-    );
-  }
   await mkdir(outputDir, { recursive: true });
   const paths = {
     txInclusionPath: join(outputDir, "tx-inclusion.json"),
@@ -101,8 +86,9 @@ const writePreparedFiles = async ({
         headerHash: output.headerHash,
         txNodeTxId: output.tx.nodeTxId,
         spendInputsHash: output.tx.spendInputsHash,
-        compatibility: output.compatibility,
-        commitmentEncodings: output.commitmentEncodings,
+        transactionsPhasRoot: output.transactionsPhasRoot,
+        committedTransactionsRoot: output.committedTransactionsRoot,
+        expectedTransactionsRoot: output.expectedTransactionsRoot,
       }),
     ),
   ]);
@@ -115,14 +101,12 @@ export const prepareZeroInputFromTransactions = async ({
   expectedTransactionsRoot,
   txId,
   outputDir,
-  allowIncompatibleOutput = false,
 }: {
   readonly headerHash: string;
   readonly transactions: readonly NodeTransactionPayload[];
   readonly expectedTransactionsRoot?: string;
   readonly txId?: string;
   readonly outputDir?: string;
-  readonly allowIncompatibleOutput?: boolean;
 }): Promise<PreparedZeroInputOutput> => {
   const normalizedHeaderHash = parseHex(headerHash, "--header-hash", 28);
   const normalizedExpectedRoot =
@@ -160,30 +144,33 @@ export const prepareZeroInputFromTransactions = async ({
     nativeTrieItem(selected).key,
     "zero-input tx",
   );
-  const reasons = compatibilityReasons({
-    nativeRoot: nativeTrie.root,
-    expectedTransactionsRoot: normalizedExpectedRoot,
-  });
+  const committedTransactionsRoot = await Effect.runPromise(
+    commitCountedRootProgram({
+      domain: ROOT_DOMAINS.transactions,
+      phasRoot: nativeTrie.root,
+      count: BigInt(decoded.length),
+    }),
+  );
+  const expectedCheck =
+    normalizedExpectedRoot === undefined
+      ? undefined
+      : {
+          value: normalizedExpectedRoot,
+          matches: normalizedExpectedRoot === committedTransactionsRoot,
+        };
+  if (expectedCheck !== undefined && !expectedCheck.matches) {
+    throw new Error(
+      `Reconstructed raw transactions root ${nativeTrie.root} commits to counted root ${committedTransactionsRoot}, which does not match --expected-transactions-root ${expectedCheck.value}. The prepared proof would not verify against this block.`,
+    );
+  }
   const baseOutput: PreparedZeroInputOutput = {
     headerHash: normalizedHeaderHash,
     txCount: decoded.length,
-    compatibility: {
-      canUseSubmitStepCommands: reasons.length === 0,
-      reasons,
-    },
-    commitmentEncodings: {
-      nativeNode: {
-        transactionsRoot: nativeTrie.root,
-      },
-      ...(normalizedExpectedRoot === undefined
-        ? {}
-        : {
-            expectedTransactionsRoot: {
-              value: normalizedExpectedRoot,
-              matchesNativeNodeRoot: normalizedExpectedRoot === nativeTrie.root,
-            },
-          }),
-    },
+    transactionsPhasRoot: nativeTrie.root,
+    committedTransactionsRoot,
+    ...(expectedCheck === undefined
+      ? {}
+      : { expectedTransactionsRoot: expectedCheck }),
     tx: {
       nodeTxId: selected.nodeTxId,
       nativeTx: selected.nativeTxCompact,
@@ -204,7 +191,6 @@ export const prepareZeroInputFromTransactions = async ({
   const files = await writePreparedFiles({
     output: baseOutput,
     outputDir,
-    allowIncompatibleOutput,
   });
   return { ...baseOutput, files };
 };
@@ -224,7 +210,6 @@ export const prepareZeroInputFromNode = async (
     expectedTransactionsRoot: config.expectedTransactionsRoot,
     txId: config.txId,
     outputDir: config.outputDir,
-    allowIncompatibleOutput: config.allowIncompatibleOutput,
   });
 };
 
@@ -240,6 +225,5 @@ export const prepareZeroInputFromFile = async (
     expectedTransactionsRoot: config.expectedTransactionsRoot,
     txId: config.txId,
     outputDir: config.outputDir,
-    allowIncompatibleOutput: config.allowIncompatibleOutput,
   });
 };

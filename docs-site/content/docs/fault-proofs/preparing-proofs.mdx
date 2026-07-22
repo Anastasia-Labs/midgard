@@ -3,7 +3,7 @@ title: "Preparing Fraud Proofs"
 description: "Turn a Midgard block's transactions into the proof artifacts the submit steps consume, using the prepare-* commands."
 ---
 
-The two `prepare-*` commands are the front of the fault-proof pipeline. They take
+The four `prepare-*` commands are the front of the fault-proof pipeline. They take
 a Midgard block, find the transaction(s) that violate a ledger rule, build the
 membership proofs against the block's transactions Merkle-Patricia Trie, and emit
 the JSON artifacts that the `submit-*` commands later feed on-chain. They touch no
@@ -50,23 +50,24 @@ shared `doubleSpentInput`, each transaction's `doubleSpentInputIndex`, and a
 `submit-step` commands.
 
 <Callout type="warn" title="Compatibility gate">
-If `--expected-transactions-root` is supplied and does not match the root the tool
-recomputes, `compatibility.canUseSubmitStepCommands` is `false`. When writing
-files, the tool then **refuses** to emit submit-step material unless you pass
-`--allow-incompatible-output` (which writes them for diagnostics only).
+  If `--expected-transactions-root` is supplied and does not match the root the
+  tool recomputes, `compatibility.canUseSubmitStepCommands` is `false`. When
+  writing files, the tool then **refuses** to emit submit-step material unless
+  you pass `--allow-incompatible-output` (which writes them for diagnostics
+  only).
 </Callout>
 
 ### Files written with `--output-dir`
 
 From `writePreparedFiles`:
 
-| File | Consumed by |
-| --- | --- |
-| `tx1-inclusion.json` | `submit-step-01` `--tx-inclusion` |
-| `tx2-inclusion.json` | `submit-step-02` `--tx-inclusion` |
-| `tx1-inputs.json` | `submit-step-03` `--tx1-inputs` |
-| `tx2-inputs.json` | `submit-step-04` `--tx2-inputs` |
-| `plan.json` | Human-readable summary: header hash, double-spent input, both node tx ids, both input indices, compatibility, commitment encodings. |
+| File                 | Consumed by                                                                                                                         |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `tx1-inclusion.json` | `submit-step-01` `--tx-inclusion`                                                                                                   |
+| `tx2-inclusion.json` | `submit-step-02` `--tx-inclusion`                                                                                                   |
+| `tx1-inputs.json`    | `submit-step-03` `--tx1-inputs`                                                                                                     |
+| `tx2-inputs.json`    | `submit-step-04` `--tx2-inputs`                                                                                                     |
+| `plan.json`          | Human-readable summary: header hash, double-spent input, both node tx ids, both input indices, compatibility, commitment encodings. |
 
 With `--sample-double-spend` and `--output-dir`, an extra
 `block-transactions.json` is written from `makeSampleDoubleSpendTransactions`, a
@@ -103,10 +104,10 @@ block window. The selected transaction is emitted with its
 
 ### Files written with `--output-dir`
 
-| File | Consumed by |
-| --- | --- |
-| `tx-inclusion.json` | `submit-invalid-range-step-01` `--tx-inclusion` |
-| `plan.json` | Summary: header hash, block validity window, node tx id, normalized range, violation reason, compatibility, commitment encodings. |
+| File                | Consumed by                                                                                                                       |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `tx-inclusion.json` | `submit-invalid-range-step-01` `--tx-inclusion`                                                                                   |
+| `plan.json`         | Summary: header hash, block validity window, node tx id, normalized range, violation reason, compatibility, commitment encodings. |
 
 The same compatibility gate and `--allow-incompatible-output` override apply.
 
@@ -147,16 +148,58 @@ within the block itself.
 
 ### Files written with `--output-dir`
 
-| File | Consumed by |
-| --- | --- |
-| `ne-tx-inclusion.json` | `submit-non-existent-input-step-01` `--tx-inclusion` |
-| `ne-inputs-preimage.json` | `submit-non-existent-input-step-02` `--inputs-preimage` |
-| `ne-ledger-non-membership.json` | `submit-non-existent-input-step-03` `--ledger-non-membership-proof` |
-| `ne-txs-non-membership.json` | `submit-non-existent-input-step-04` `--txs-non-membership-proof` |
-| `ne-plan.json` | Summary: header hash, bad tx id and input index, the missing input, and the transactions and previous-UTxO roots. |
+| File                            | Consumed by                                                                                                       |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `ne-tx-inclusion.json`          | `submit-non-existent-input-step-01` `--tx-inclusion`                                                              |
+| `ne-inputs-preimage.json`       | `submit-non-existent-input-step-02` `--inputs-preimage`                                                           |
+| `ne-ledger-non-membership.json` | `submit-non-existent-input-step-03` `--ledger-non-membership-proof`                                               |
+| `ne-txs-non-membership.json`    | `submit-non-existent-input-step-04` `--txs-non-membership-proof`                                                  |
+| `ne-plan.json`                  | Summary: header hash, bad tx id and input index, the missing input, and the transactions and previous-UTxO roots. |
 
-Unlike the other two commands, there is no compatibility gate: on a root mismatch
-the command fails instead of writing diagnostics-only material.
+Unlike double-spend and invalid-range preparation, there is no compatibility
+override: on a root mismatch the command fails instead of writing
+diagnostics-only material.
+
+## `prepare-zero-input`
+
+Finds a transaction whose native body commits an empty spend-input list and
+produces the transaction inclusion proof consumed by the two zero-input proof
+steps. Source: `demo/midgard-fault-proofs/src/prepare-zero-input.ts`.
+
+```sh
+midgard-fault-proofs prepare-zero-input \
+  (--midgard-node-url <url> | --transactions-file <path>) \
+  --header-hash <hex> \
+  [--tx-id <hex>] \
+  [--expected-transactions-root <hex>] \
+  [--output-dir <path>]
+```
+
+- `--tx-id` optionally pins the exact zero-input transaction. Without it, the
+  first violating transaction is selected. A pinned transaction that has one or
+  more spend inputs is rejected.
+- `--expected-transactions-root` is the 32-byte **counted, domain-separated**
+  transactions root committed by the state-queue block header. It is not the raw
+  PHAS root carried in the membership proof.
+
+The output exposes both commitments explicitly:
+
+- `transactionsPhasRoot` is the raw MPF root opened by
+  `tx-inclusion.json` and passed to step 01.
+- `committedTransactionsRoot` is
+  `commit_counted_root(TransactionsRootDomain, transactionsPhasRoot, txCount)`
+  and must equal the selected header's `transactions_root` when
+  `--expected-transactions-root` is supplied.
+
+The root check is strict. A raw PHAS root, stale counted root, or root from a
+different block aborts preparation before any submit-step files are written.
+
+### Files written with `--output-dir`
+
+| File                | Consumed by                                                                                                                                         |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tx-inclusion.json` | `submit-zero-input-step-01` `--tx-inclusion`                                                                                                        |
+| `plan.json`         | Summary: header hash, zero-input tx id, spend-inputs hash, raw transactions PHAS root, counted header commitment, and optional expected-root check. |
 
 ## From artifacts to a proof
 
@@ -164,5 +207,9 @@ the command fails instead of writing diagnostics-only material.
 files and drives them through the on-chain computation thread.
 
 <Cards>
-  <Card title="Submitting steps" href="/docs/fault-proofs/submitting-steps" description="Feed the inclusion proofs and input lists into submit-init and the per-category steps." />
+  <Card
+    title="Submitting steps"
+    href="/docs/fault-proofs/submitting-steps"
+    description="Feed the inclusion proofs and input lists into submit-init and the per-category steps."
+  />
 </Cards>

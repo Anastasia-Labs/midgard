@@ -488,6 +488,8 @@ describe("fault-proof contract builder", () => {
       contracts.invalidRange.steps[0],
     );
     expect(contracts.invalidRange.steps).toHaveLength(2);
+    expect(contracts.zeroInput.firstStep).toBe(contracts.zeroInput.steps[0]);
+    expect(contracts.zeroInput.steps).toHaveLength(2);
     expect(contracts.transitionTrace.firstStep).toBe(
       contracts.transitionTrace.steps[0],
     );
@@ -498,10 +500,11 @@ describe("fault-proof contract builder", () => {
           ...contracts.doubleSpend.steps,
           ...contracts.nonExistentInput.steps,
           ...contracts.invalidRange.steps,
+          ...contracts.zeroInput.steps,
           ...contracts.transitionTrace.steps,
         ].map((step) => step.spendingScriptHash),
       ).size,
-    ).toBe(11);
+    ).toBe(13);
   });
 
   it("builds invalid-range with the validator parameter order from the blueprint", async () => {

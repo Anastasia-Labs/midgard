@@ -12,8 +12,13 @@ import {
   MIDGARD_POSIX_TIME_NONE,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
-import { EMPTY_SPEND_INPUTS_HASH } from "@al-ft/midgard-sdk";
+import {
+  commitCountedRootProgram,
+  EMPTY_SPEND_INPUTS_HASH,
+  ROOT_DOMAINS,
+} from "@al-ft/midgard-sdk";
 import { CML } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -109,7 +114,67 @@ describe("prepare-zero-input", () => {
     expect(output.tx.txInclusion.txMembershipProofCbor.length).toBeGreaterThan(
       0,
     );
-    expect(output.compatibility.canUseSubmitStepCommands).toBe(true);
+    const expectedCommittedRoot = await Effect.runPromise(
+      commitCountedRootProgram({
+        domain: ROOT_DOMAINS.transactions,
+        phasRoot: output.transactionsPhasRoot,
+        count: BigInt(output.txCount),
+      }),
+    );
+    expect(output.committedTransactionsRoot).toBe(expectedCommittedRoot);
+    expect(output.transactionsPhasRoot).not.toBe(
+      output.committedTransactionsRoot,
+    );
+    expect(output.expectedTransactionsRoot).toBeUndefined();
+  });
+
+  it("accepts the counted transactions root committed by the block header", async () => {
+    const transactions = [spendingTx(1n), zeroInputTx(2n)];
+    const prepared = await prepareZeroInputFromTransactions({
+      headerHash: h28("aa"),
+      transactions,
+    });
+
+    const verified = await prepareZeroInputFromTransactions({
+      headerHash: h28("aa"),
+      transactions,
+      expectedTransactionsRoot: prepared.committedTransactionsRoot,
+    });
+
+    expect(verified.expectedTransactionsRoot).toEqual({
+      value: prepared.committedTransactionsRoot,
+      matches: true,
+    });
+    expect(verified.transactionsPhasRoot).toBe(prepared.transactionsPhasRoot);
+    expect(verified.transactionsPhasRoot).not.toBe(
+      verified.committedTransactionsRoot,
+    );
+  });
+
+  it("rejects the raw PHAS root where the counted header root is required", async () => {
+    const transactions = [spendingTx(1n), zeroInputTx(2n)];
+    const prepared = await prepareZeroInputFromTransactions({
+      headerHash: h28("aa"),
+      transactions,
+    });
+
+    await expect(
+      prepareZeroInputFromTransactions({
+        headerHash: h28("aa"),
+        transactions,
+        expectedTransactionsRoot: prepared.transactionsPhasRoot,
+      }),
+    ).rejects.toThrow("does not match --expected-transactions-root");
+  });
+
+  it("rejects a transactions root that is not committed by the block header", async () => {
+    await expect(
+      prepareZeroInputFromTransactions({
+        headerHash: h28("aa"),
+        transactions: [spendingTx(1n), zeroInputTx(2n)],
+        expectedTransactionsRoot: h32("ff"),
+      }),
+    ).rejects.toThrow("The prepared proof would not verify against this block");
   });
 
   it("throws when every transaction in the block spends at least one input", async () => {
@@ -141,7 +206,9 @@ describe("prepare-zero-input", () => {
         outputDir: dir,
       });
 
-      expect(output.files?.txInclusionPath).toBe(join(dir, "tx-inclusion.json"));
+      expect(output.files?.txInclusionPath).toBe(
+        join(dir, "tx-inclusion.json"),
+      );
       const txInclusion = JSON.parse(
         await readFile(output.files!.txInclusionPath, "utf8"),
       ) as { readonly nativeTxId: string };
@@ -149,8 +216,16 @@ describe("prepare-zero-input", () => {
 
       const plan = JSON.parse(
         await readFile(output.files!.planPath, "utf8"),
-      ) as { readonly spendInputsHash: string };
+      ) as {
+        readonly spendInputsHash: string;
+        readonly transactionsPhasRoot: string;
+        readonly committedTransactionsRoot: string;
+      };
       expect(plan.spendInputsHash).toBe(EMPTY_SPEND_INPUTS_HASH);
+      expect(plan.transactionsPhasRoot).toBe(output.transactionsPhasRoot);
+      expect(plan.committedTransactionsRoot).toBe(
+        output.committedTransactionsRoot,
+      );
     });
   });
 });

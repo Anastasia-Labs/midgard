@@ -123,6 +123,7 @@ export type FaultProofContracts = {
   readonly doubleSpend: DoubleSpendFaultProofContracts["doubleSpend"];
   readonly nonExistentInput: NonExistentInputFaultProofContracts["nonExistentInput"];
   readonly invalidRange: InvalidRangeFaultProofContracts["invalidRange"];
+  readonly zeroInput: ZeroInputFaultProofContracts["zeroInput"];
   readonly transitionTrace: TransitionTraceFaultProofContracts["transitionTrace"];
 };
 
@@ -659,6 +660,10 @@ export const buildFaultProofContracts = (
       ...params,
       ...shared,
     });
+    const zeroInput = yield* buildZeroInputChain({
+      ...params,
+      ...shared,
+    });
     const transitionTrace = yield* buildTransitionTraceChain({
       ...params,
       ...shared,
@@ -670,6 +675,7 @@ export const buildFaultProofContracts = (
       doubleSpend,
       nonExistentInput,
       invalidRange,
+      zeroInput,
       transitionTrace,
     };
   });
