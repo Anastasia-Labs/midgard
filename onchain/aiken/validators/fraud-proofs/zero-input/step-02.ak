@@ -4,13 +4,10 @@
 //// inputs.
 
 use aiken/crypto.{blake2b_256}
-use cardano/address.{Address, Script}
-use cardano/assets.{PolicyId, add, from_lovelace}
-use cardano/transaction.{
-  InlineDatum, Input, Mint, Output, OutputReference, Transaction,
-}
+use cardano/address.{Address}
+use cardano/assets.{PolicyId}
+use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proof
 use midgard/fraud_proofs/common.{cancel, finalize}
 use midgard/fraud_proofs/native_tx/codec.{encode_native_byte_list}
 use midgard/fraud_proofs/native_tx/preimages.{verify_spend_inputs_preimage}
@@ -26,11 +23,6 @@ use midgard/ledger_state.{MidgardInputsHash}
 /// > of an empty list. Native bodies are committed under the native codec.
 const empty_spend_inputs_hash: MidgardInputsHash =
   [] |> encode_native_byte_list |> blake2b_256
-
-const non_empty_spend_inputs_hash: MidgardInputsHash =
-  [#"d8799f581c00000000000000000000000000000000000000000000000000000000ff"]
-    |> encode_native_byte_list
-    |> blake2b_256
 
 validator main(
   fraud_proof_token_policy_id: PolicyId,
@@ -62,30 +54,35 @@ validator main(
 
         expect Some(step_datum) = datum
 
-        finalize(
-          computation_thread_token_policy_id,
-          fraud_proof_token_policy_id,
-          fraud_proof_token_address,
-          step_datum,
-          input_index,
-          output_index,
-          fraud_proof_mint_redeemer_index,
-          own_out_ref,
-          inputs,
-          outputs,
-          redeemers,
-          fn(
-            _own_script_hash,
-            _computation_thread_token_asset_name,
-            _fraud_prover,
-            m_input_state_data,
-          ) {
-            expect Some(State { bad_tx_spend_inputs_hash }) = m_input_state_data
+        // 1. Specified input must be authentic and properly reproduced at the
+        //    fraud proof's spending address.
+        let
+          _own_script_hash,
+          _computation_thread_token_asset_name,
+          _fraud_prover,
+          m_input_state_data,
+        <-
+          finalize(
+            computation_thread_token_policy_id,
+            fraud_proof_token_policy_id,
+            fraud_proof_token_address,
+            step_datum,
+            input_index,
+            output_index,
+            fraud_proof_mint_redeemer_index,
+            own_out_ref,
+            inputs,
+            outputs,
+            redeemers,
+          )
 
-            // The spend inputs list must be empty.
-            bad_tx_spend_inputs_hash == empty_spend_inputs_hash
-          },
-        )
+        expect Some(State { bad_tx_spend_inputs_hash }) = m_input_state_data
+
+        // 2. The spend inputs list must be empty.
+        expect bad_tx_spend_inputs_hash == empty_spend_inputs_hash
+
+        // Done.
+        True
       }
     }
   }
@@ -107,7 +104,19 @@ test empty_spend_inputs_hash_matches_the_offchain_constant() {
 }
 
 test empty_spend_inputs_hash_rejects_a_non_empty_input_list() {
-  non_empty_spend_inputs_hash != empty_spend_inputs_hash
+  !verify_spend_inputs_preimage(
+    [#"d8799f581c00000000000000000000000000000000000000000000000000000000ff"],
+    empty_spend_inputs_hash,
+  )
+}
+
+type TestFraudProofDatum {
+  fraud_prover: ByteArray,
+}
+
+type TestFraudProofMintRedeemer {
+  computation_thread_token_asset_name: ByteArray,
+  computation_thread_mint_redeemer_index: Int,
 }
 
 const test_fraud_proof_policy: PolicyId =
@@ -125,6 +134,11 @@ const test_fraud_prover =
 const test_computation_thread_asset_name =
   #"00000005aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
+const test_non_empty_spend_inputs_hash: MidgardInputsHash =
+  [#"d8799f581c00000000000000000000000000000000000000000000000000000000ff"]
+    |> encode_native_byte_list
+    |> blake2b_256
+
 const test_own_out_ref =
   OutputReference {
     transaction_id: #"5555555555555555555555555555555555555555555555555555555555555555",
@@ -132,7 +146,10 @@ const test_own_out_ref =
   }
 
 fn test_script_address(script_hash) -> Address {
-  Address { payment_credential: Script(script_hash), stake_credential: None }
+  Address {
+    payment_credential: address.Script(script_hash),
+    stake_credential: None,
+  }
 }
 
 fn test_step_datum(spend_inputs_hash: MidgardInputsHash) -> Datum {
@@ -151,41 +168,48 @@ fn test_continue_redeemer() -> SpendRedeemer {
 fn test_finalize_tx(spend_inputs_hash: MidgardInputsHash) -> Transaction {
   let input_datum_data: Data = test_step_datum(spend_inputs_hash)
   let fraud_proof_datum_data: Data =
-    fraud_proof.Datum { fraud_prover: test_fraud_prover }
+    TestFraudProofDatum { fraud_prover: test_fraud_prover }
   let fraud_proof_mint_redeemer_data: Data =
-    fraud_proof.MintRedeemer {
+    TestFraudProofMintRedeemer {
       computation_thread_token_asset_name: test_computation_thread_asset_name,
       computation_thread_mint_redeemer_index: 1,
     }
   Transaction {
     ..transaction.placeholder,
     inputs: [
-      Input {
+      transaction.Input {
         output_reference: test_own_out_ref,
-        output: Output {
+        output: transaction.Output {
           address: test_script_address(test_step_script_hash),
-          value: from_lovelace(2)
-            |> add(
+          value: assets.from_lovelace(2)
+            |> assets.add(
                 test_computation_thread_policy,
                 test_computation_thread_asset_name,
                 1,
               ),
-          datum: InlineDatum(input_datum_data),
+          datum: transaction.InlineDatum(input_datum_data),
           reference_script: None,
         },
       },
     ],
     outputs: [
-      Output {
+      transaction.Output {
         address: test_script_address(test_fraud_proof_policy),
-        value: from_lovelace(2)
-          |> add(test_fraud_proof_policy, test_computation_thread_asset_name, 1),
-        datum: InlineDatum(fraud_proof_datum_data),
+        value: assets.from_lovelace(2)
+          |> assets.add(
+              test_fraud_proof_policy,
+              test_computation_thread_asset_name,
+              1,
+            ),
+        datum: transaction.InlineDatum(fraud_proof_datum_data),
         reference_script: None,
       },
     ],
     redeemers: [
-      Pair(Mint(test_fraud_proof_policy), fraud_proof_mint_redeemer_data),
+      Pair(
+        transaction.Mint(test_fraud_proof_policy),
+        fraud_proof_mint_redeemer_data,
+      ),
     ],
   }
 }
@@ -207,9 +231,9 @@ test validator_rejects_a_non_empty_native_input_hash() fail {
     test_fraud_proof_policy,
     test_script_address(test_fraud_proof_policy),
     test_computation_thread_policy,
-    Some(test_step_datum(non_empty_spend_inputs_hash)),
+    Some(test_step_datum(test_non_empty_spend_inputs_hash)),
     test_continue_redeemer(),
     test_own_out_ref,
-    test_finalize_tx(non_empty_spend_inputs_hash),
+    test_finalize_tx(test_non_empty_spend_inputs_hash),
   )
 }
