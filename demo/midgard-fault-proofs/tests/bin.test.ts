@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildRemoveFraudulentBlockCliConfig,
   isCliEntrypoint,
+  main,
   parseArgs,
 } from "../src/bin.js";
 
@@ -132,8 +133,40 @@ describe("fault-proof CLI argument parsing", () => {
         "invalid-range",
       ]),
     ).toThrow(
-      '--fraud-category must be one of "doubleSpend", "invalidRange", "transitionTrace", or "nonExistentInput"',
+      '--fraud-category must be one of "doubleSpend", "invalidRange", "transitionTrace", "nonExistentInput", or "zeroInput"',
     );
+  });
+
+  it("accepts the zeroInput fault-proof category", () => {
+    expect(
+      parseArgs([
+        "node",
+        "midgard-fault-proofs",
+        "submit-init",
+        "--fraud-category",
+        "zeroInput",
+      ]).fraudCategory,
+    ).toBe("zeroInput");
+  });
+
+  it("requires the counted header root for zero-input preparation", async () => {
+    const previousArgv = process.argv;
+    process.argv = [
+      "node",
+      "midgard-fault-proofs",
+      "prepare-zero-input",
+      "--transactions-file",
+      "block-transactions.json",
+      "--header-hash",
+      "33".repeat(28),
+    ];
+    try {
+      await expect(main()).rejects.toThrow(
+        "Missing required --expected-transactions-root <hex>.",
+      );
+    } finally {
+      process.argv = previousArgv;
+    }
   });
 
   it("parses non-existent-input prepare, init category, and submit-step arguments", () => {

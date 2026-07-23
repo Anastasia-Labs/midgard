@@ -69,6 +69,7 @@ export type InspectContractsOutput = {
     readonly doubleSpend: InspectContractsCatalogueCategoryOutput;
     readonly nonExistentInput: InspectContractsCatalogueCategoryOutput;
     readonly invalidRange: InspectContractsCatalogueCategoryOutput;
+    readonly zeroInput: InspectContractsCatalogueCategoryOutput;
     readonly transitionTrace: InspectContractsCatalogueCategoryOutput;
   };
   readonly doubleSpend: {
@@ -97,6 +98,15 @@ export type InspectContractsOutput = {
     readonly categoryFirstStepHash: string;
     readonly deploymentInvalidRangeScriptHash: string | null;
     readonly deploymentInvalidRangeMatchesFirstStep: boolean | null;
+    readonly steps: readonly [
+      InspectContractsStepOutput,
+      InspectContractsStepOutput,
+    ];
+  };
+  readonly zeroInput: {
+    readonly categoryFirstStepHash: string;
+    readonly deploymentZeroInputScriptHash: string | null;
+    readonly deploymentZeroInputMatchesFirstStep: boolean | null;
     readonly steps: readonly [
       InspectContractsStepOutput,
       InspectContractsStepOutput,
@@ -131,6 +141,7 @@ export type ImplementedFraudProofCategoryName =
   | "doubleSpend"
   | "nonExistentInput"
   | "invalidRange"
+  | "zeroInput"
   | "transitionTrace";
 
 export const expectedFraudProofCategoryId = (
@@ -551,6 +562,7 @@ const inspectFraudProofCatalogue = (
       doubleSpend: emptyCatalogueCategoryInspection(),
       nonExistentInput: emptyCatalogueCategoryInspection(),
       invalidRange: emptyCatalogueCategoryInspection(),
+      zeroInput: emptyCatalogueCategoryInspection(),
       transitionTrace: emptyCatalogueCategoryInspection(),
     });
   }
@@ -603,13 +615,24 @@ const inspectFraudProofCatalogue = (
       const doubleSpend = await inspectCategory("doubleSpend");
       const nonExistentInput = await inspectCategory("nonExistentInput");
       const invalidRange = await inspectCategory("invalidRange");
+      const zeroInput = await inspectCategory("zeroInput");
       const transitionTrace = await inspectCategory("transitionTrace");
       const implementedCategories: readonly ImplementedFraudProofCategoryName[] =
-        ["doubleSpend", "nonExistentInput", "invalidRange", "transitionTrace"];
+        [
+          "doubleSpend",
+          "nonExistentInput",
+          "invalidRange",
+          "zeroInput",
+          "transitionTrace",
+        ];
       const implementedCategoriesReady = implementedCategories.every((name) => {
-        return { doubleSpend, nonExistentInput, invalidRange, transitionTrace }[
-          name
-        ].ready;
+        return {
+          doubleSpend,
+          nonExistentInput,
+          invalidRange,
+          zeroInput,
+          transitionTrace,
+        }[name].ready;
       });
 
       return {
@@ -620,6 +643,7 @@ const inspectFraudProofCatalogue = (
         doubleSpend,
         nonExistentInput,
         invalidRange,
+        zeroInput,
         transitionTrace,
       };
     },
@@ -666,6 +690,10 @@ export const inspectContracts = ({
     const deploymentInvalidRangeScriptHash = optionalDeploymentScriptHash(
       parsedDeploymentInfo,
       "fraudProofInvalidRange",
+    );
+    const deploymentZeroInputScriptHash = optionalDeploymentScriptHash(
+      parsedDeploymentInfo,
+      "fraudProofZeroInput",
     );
     const deploymentTransitionTraceScriptHash = optionalDeploymentScriptHash(
       parsedDeploymentInfo,
@@ -719,6 +747,8 @@ export const inspectContracts = ({
       contracts.nonExistentInput.firstStep.spendingScriptHash;
     const invalidRangeCategoryFirstStepHash =
       contracts.invalidRange.firstStep.spendingScriptHash;
+    const zeroInputCategoryFirstStepHash =
+      contracts.zeroInput.firstStep.spendingScriptHash;
     const transitionTraceCategoryFirstStepHash =
       contracts.transitionTrace.firstStep.spendingScriptHash;
     const deploymentDoubleSpendMatchesFirstStep =
@@ -735,6 +765,10 @@ export const inspectContracts = ({
         ? null
         : deploymentInvalidRangeScriptHash ===
           invalidRangeCategoryFirstStepHash;
+    const deploymentZeroInputMatchesFirstStep =
+      deploymentZeroInputScriptHash === null
+        ? null
+        : deploymentZeroInputScriptHash === zeroInputCategoryFirstStepHash;
     const deploymentTransitionTraceMatchesFirstStep =
       deploymentTransitionTraceScriptHash === null
         ? null
@@ -746,12 +780,14 @@ export const inspectContracts = ({
         doubleSpend: categoryFirstStepHash,
         nonExistentInput: nonExistentInputCategoryFirstStepHash,
         invalidRange: invalidRangeCategoryFirstStepHash,
+        zeroInput: zeroInputCategoryFirstStepHash,
         transitionTrace: transitionTraceCategoryFirstStepHash,
       },
       {
         doubleSpend: deploymentDoubleSpendMatchesFirstStep,
         nonExistentInput: deploymentNonExistentInputMatchesFirstStep,
         invalidRange: deploymentInvalidRangeMatchesFirstStep,
+        zeroInput: deploymentZeroInputMatchesFirstStep,
         transitionTrace: deploymentTransitionTraceMatchesFirstStep,
       },
     );
@@ -791,6 +827,15 @@ export const inspectContracts = ({
         steps: [
           stepOutput("step01", contracts.invalidRange.steps[0]),
           stepOutput("step02", contracts.invalidRange.steps[1]),
+        ],
+      },
+      zeroInput: {
+        categoryFirstStepHash: zeroInputCategoryFirstStepHash,
+        deploymentZeroInputScriptHash,
+        deploymentZeroInputMatchesFirstStep,
+        steps: [
+          stepOutput("step01", contracts.zeroInput.steps[0]),
+          stepOutput("step02", contracts.zeroInput.steps[1]),
         ],
       },
       transitionTrace: {

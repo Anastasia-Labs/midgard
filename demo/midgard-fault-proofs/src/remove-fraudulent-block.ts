@@ -8,6 +8,7 @@ import {
   buildInvalidRangeFaultProofContracts,
   buildNonExistentInputFaultProofContracts,
   buildTransitionTraceFaultProofContracts,
+  buildZeroInputFaultProofContracts,
   type DoubleSpendFaultProofContracts,
   encodeLinkedListNodeView,
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
@@ -51,6 +52,7 @@ import {
   type StateQueueUTxO,
   type TransitionTraceFaultProofContracts,
   utxoToStateQueueUTxO,
+  type ZeroInputFaultProofContracts,
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
@@ -267,7 +269,11 @@ export type RemoveFraudulentBlockCliConfig = SubmitProviderConfig & {
 
 export type RemoveFraudulentBlockFraudCategory = Extract<
   FraudProofCatalogueCategoryName,
-  "doubleSpend" | "nonExistentInput" | "invalidRange" | "transitionTrace"
+  | "doubleSpend"
+  | "nonExistentInput"
+  | "invalidRange"
+  | "transitionTrace"
+  | "zeroInput"
 >;
 
 export type StateQueueMutationLease = {
@@ -544,12 +550,14 @@ const buildRemovalContracts = async ({
     | DoubleSpendFaultProofContracts
     | NonExistentInputFaultProofContracts
     | InvalidRangeFaultProofContracts
-    | TransitionTraceFaultProofContracts;
+    | TransitionTraceFaultProofContracts
+    | ZeroInputFaultProofContracts;
   let expectedCategoryDeploymentEntry:
     | "fraudProofDoubleSpend"
     | "fraudProofNonExistentInput"
     | "fraudProofInvalidRange"
-    | "fraudProofTransitionTrace";
+    | "fraudProofTransitionTrace"
+    | "fraudProofZeroInput";
   let derivedCategoryFirstStepHash: string;
   if (fraudCategory === "doubleSpend") {
     const doubleSpendContracts = await Effect.runPromise(
@@ -590,7 +598,7 @@ const buildRemovalContracts = async ({
     expectedCategoryDeploymentEntry = "fraudProofInvalidRange";
     derivedCategoryFirstStepHash =
       invalidRangeContracts.invalidRange.firstStep.spendingScriptHash;
-  } else {
+  } else if (fraudCategory === "transitionTrace") {
     const transitionTraceContracts = await Effect.runPromise(
       buildTransitionTraceFaultProofContracts({
         blueprint: parsedBlueprint,
@@ -603,6 +611,19 @@ const buildRemovalContracts = async ({
     expectedCategoryDeploymentEntry = "fraudProofTransitionTrace";
     derivedCategoryFirstStepHash =
       transitionTraceContracts.transitionTrace.firstStep.spendingScriptHash;
+  } else {
+    const zeroInputContracts = await Effect.runPromise(
+      buildZeroInputFaultProofContracts({
+        blueprint: parsedBlueprint,
+        network,
+        hubOraclePolicyId,
+        fraudProofCataloguePolicyId,
+      }),
+    );
+    categoryContracts = zeroInputContracts;
+    expectedCategoryDeploymentEntry = "fraudProofZeroInput";
+    derivedCategoryFirstStepHash =
+      zeroInputContracts.zeroInput.firstStep.spendingScriptHash;
   }
   requireMatchingScriptHash({
     label: "fraudProofMint policy",

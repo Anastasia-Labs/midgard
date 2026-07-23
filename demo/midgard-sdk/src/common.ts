@@ -203,6 +203,7 @@ export type FraudProofs = {
   nonExistentInputNoIndex: SpendingValidator;
   invalidRange: SpendingValidator;
   transitionTrace: SpendingValidator;
+  zeroInput: SpendingValidator;
 };
 
 export type MidgardValidators = {

@@ -124,11 +124,14 @@ if (!localDev.includes(`\`${demoPackage.engines.node}\``)) {
   );
 }
 
-const blueprint = read("onchain/aiken/plutus.json");
 const daDocs = read("docs-site/content/docs/onchain/da-validators.mdx");
-for (const entrypoint of ["da_attestation", "da_params_governor"]) {
-  if (!blueprint.includes(`\"title\": \"${entrypoint}.`)) {
-    fail(`onchain/aiken/plutus.json: missing documented ${entrypoint} entrypoint.`);
+for (const [entrypoint, source] of [
+  ["da_attestation", "onchain/aiken/validators/da-attestation.ak"],
+  ["da_params_governor", "onchain/aiken/validators/da-params-governor.ak"],
+]) {
+  const validator = read(source);
+  if (!validator.includes(`validator ${entrypoint}(`)) {
+    fail(`${source}: missing documented ${entrypoint} entrypoint.`);
   }
   if (!daDocs.includes(`\`${entrypoint}\``)) {
     fail(`docs-site/content/docs/onchain/da-validators.mdx: missing \`${entrypoint}\`.`);

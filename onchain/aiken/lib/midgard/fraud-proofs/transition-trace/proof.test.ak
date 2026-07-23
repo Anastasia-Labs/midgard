@@ -9,11 +9,11 @@ use cardano/assets
 use cardano/transaction.{InlineDatum, Input, NoDatum, Output, OutputReference}
 use env
 use midgard/common/utils
-use midgard/fraud_proofs/transition_trace/proof
 use midgard/fraud_proofs/native_tx/compact as native_compact
 use midgard/fraud_proofs/native_tx/components as native_components
 use midgard/fraud_proofs/native_tx/preimages as native_preimages
 use midgard/fraud_proofs/native_tx/types as native_types
+use midgard/fraud_proofs/transition_trace/proof
 use midgard/hub_oracle
 use midgard/ledger_state
 use midgard/transition_trace
@@ -319,7 +319,10 @@ fn ledger_outref_key(out_ref: OutputReference) -> ByteArray {
   )
 }
 
-fn native_input(tx_id: ByteArray, output_index: Int) -> native_types.MidgardTxInput {
+fn native_input(
+  tx_id: ByteArray,
+  output_index: Int,
+) -> native_types.MidgardTxInput {
   native_types.MidgardTxInput { tx_id, output_index }
 }
 
@@ -439,7 +442,9 @@ fn compact_body() -> ledger_state.MidgardTxBodyCompact {
   }
 }
 
-fn forced_tx(validity: ledger_state.MidgardTxValidity) -> ledger_state.ForcedInclusionTx {
+fn forced_tx(
+  validity: ledger_state.MidgardTxValidity,
+) -> ledger_state.ForcedInclusionTx {
   ledger_state.ForcedInclusionTx {
     tx_compact: ledger_state.MidgardTxCompactWithoutValidity {
       body: compact_body(),
@@ -636,8 +641,7 @@ test accepts_source_membership_mismatch_fault() {
 test accepts_l2_mapped_event_missing_from_source_fault() {
   let tx_id = h32_c
   let event_key = ledger_state.L2TransactionEventKey { tx_id }
-  let opened_step =
-    step(0, event_key, ledger_state.L2Transaction, h32_a, h32_b)
+  let opened_step = step(0, event_key, ledger_state.L2Transaction, h32_a, h32_b)
   let trace_proof = trace_membership(opened_step)
   let event_to_step =
     event_to_step_membership(event_key, 0, ledger_state.L2Transaction)
@@ -721,8 +725,7 @@ test accepts_valid_withdrawal_delete_transition_fault() {
   let pre_root = mpf.root(mpf.insert(mpf.empty, spent_key, spent_value, []))
   let expected_post_root =
     proof.delete_root(pre_root, spent_key, spent_value, [])
-  let opened_step =
-    step(0, event_key, ledger_state.Withdrawal, pre_root, h32_b)
+  let opened_step = step(0, event_key, ledger_state.Withdrawal, pre_root, h32_b)
   let trace_proof = trace_membership(opened_step)
   let event_to_step =
     event_to_step_membership(event_key, 0, ledger_state.Withdrawal)
@@ -1049,9 +1052,12 @@ test accepts_l2_transaction_transition_fault() {
   let produced_output = native_output()
   let produced_key =
     native_components.encode_midgard_tx_input(native_input(tx_id, 0))
-  let produced_value = native_components.encode_midgard_tx_output(produced_output)
-  let spend_inputs_preimage = native_preimages.encode_input_preimage([spent_input])
-  let outputs_preimage = native_preimages.encode_output_preimage([produced_output])
+  let produced_value =
+    native_components.encode_midgard_tx_output(produced_output)
+  let spend_inputs_preimage =
+    native_preimages.encode_input_preimage([spent_input])
+  let outputs_preimage =
+    native_preimages.encode_output_preimage([produced_output])
   let source_membership =
     raw_l2_source_membership(
       tx_id,
@@ -1107,9 +1113,12 @@ test rejects_l2_transaction_when_trace_matches_expected_post_root() {
   let produced_output = native_output()
   let produced_key =
     native_components.encode_midgard_tx_input(native_input(tx_id, 0))
-  let produced_value = native_components.encode_midgard_tx_output(produced_output)
-  let spend_inputs_preimage = native_preimages.encode_input_preimage([spent_input])
-  let outputs_preimage = native_preimages.encode_output_preimage([produced_output])
+  let produced_value =
+    native_components.encode_midgard_tx_output(produced_output)
+  let spend_inputs_preimage =
+    native_preimages.encode_input_preimage([spent_input])
+  let outputs_preimage =
+    native_preimages.encode_output_preimage([produced_output])
   let source_membership =
     raw_l2_source_membership(
       tx_id,
@@ -1226,8 +1235,7 @@ test accepts_count_fault() {
 }
 
 test accepts_omitted_due_deposit_fault() {
-  let deposit_info =
-    sample_deposit_info(0)
+  let deposit_info = sample_deposit_info(0)
   let deposit_datum =
     deposit.Datum {
       event: ledger_state.DepositEvent { id: out_ref(0), info: deposit_info },
@@ -1269,8 +1277,7 @@ test accepts_omitted_due_deposit_fault() {
 }
 
 test accepts_out_of_window_deposit_fault() {
-  let deposit_info =
-    sample_deposit_info(0)
+  let deposit_info = sample_deposit_info(0)
   let deposit_datum =
     deposit.Datum {
       event: ledger_state.DepositEvent { id: out_ref(0), info: deposit_info },

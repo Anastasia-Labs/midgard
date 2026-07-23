@@ -11,10 +11,13 @@ plus its contemporaneous working tree. Reconstructed on `tx-validation` HEAD
 rechecked when implementing an item.
 
 Documentation and top-level conclusions revalidated **2026-07-22** against
-`tx-validation` HEAD `0aeaa700`. No intervening change closes the catalogue,
-native-v1 binding, fee, economics, DA-remedy, or preprod-acceptance gaps. This was
-not a replacement for the full line-by-line audit, so historical line anchors
-remain advisory.
+the PR #461 production-readiness tree. The zero-input family is now
+catalogue-registered, bound to native-v1 counted roots, CLI-complete, and
+emulator-proven through faulty-block removal. Its preparer requires the authoritative
+header `transactions_root` and fails closed on a mismatch. The remaining catalogue,
+binding, fee, economics, DA-remedy, and system-wide preprod-acceptance gaps remain.
+This was not a replacement for the full line-by-line audit, so historical line
+anchors remain advisory.
 
 Terminology note: these were historically called **fraud proofs**. Public-facing
 documentation now generally says **fault proofs**, while the clean source tree still
@@ -61,8 +64,13 @@ several are directly exploitable for **fund theft** in an adversarial setting. S
 - Generic machinery: catalogue, computation-thread minting policy (`Init`/`Success`/`BurnForCancellation`), step transition helpers, permanent fault-proof token, state-queue removal + operator slashing wiring, Plutarch MPF membership/non-membership (`phas`/`pexcludes`) primitives, counted/domain-tagged roots.
 - 10 of 12 proof types with real verification logic: `zero-input`, `no-input`, `double-spend`, `input-no-idx`, `invalid-range`, `invalid-signature`, `missing-native-script-tx`, `missing-signature`, `no-reference-input`, `withdrawn-reference-input`.
 - The `transition-trace` state-transition engine (9 top-level fault families: boundary, link, event-to-step, source-membership — incl. its phase-mismatch sub-variant — invalid one-step transition, duplicate-event, count, omitted-due-L1-event, out-of-window).
-- Offchain tooling for 4 families (double-spend, invalid-range, non-existent-input, transition-trace), **emulator-proven end-to-end** through faulty-block removal.
-- ⚠️ Reachability caveat: only **5 of the 12** proof types are registered in the deployment catalogue (`demo/midgard-sdk/src/fraud-proof/catalogue.ts:23-29`) — the other 7 compile but cannot `Init` a computation thread against a deployed instance. See [`catalogue-status.md`](catalogue-status.md).
+- Offchain tooling for 5 families (double-spend, invalid-range, non-existent-input,
+  transition-trace, zero-input); all five are **emulator-proven end-to-end** through
+  faulty-block removal, although transition-trace remains library-only rather than
+  CLI-wired.
+- ⚠️ Reachability caveat: only **6 of the 12** proof types are registered in the
+  deployment catalogue — the other 6 compile but cannot `Init` a computation thread
+  against a deployed instance. See [`catalogue-status.md`](catalogue-status.md).
 
 **2. Delivered but _not_ functional** (present but stubbed/inert/disabled):
 
@@ -80,7 +88,8 @@ several are directly exploitable for **fund theft** in an adversarial setting. S
 - Value conservation (`VALUE-NOT-PRESERVED`), ADA minting (`ADA-MINTED`), negative output value (`NEGATIVE-OUTPUT-VALUE`), required-signer-set correctness (`MISSING-REQ-SIGNER-*`, `NON-REQ-SIGNER`), spend-side withdrawn/double-withdraw, reference-input-no-idx, missing-native-script-utxo, native-script-invalid, min-ada, network-id.
 - Fabricated deposit / fabricated withdrawal (spec asserts "detectable" but provides no construction).
 - Mis-tagged (valid→invalid) withdrawal proof.
-- Offchain tooling for 8 of the 12 already-implemented onchain types; CLI wiring for `transition-trace`.
+- Offchain tooling for 7 of the 12 already-implemented onchain types; CLI wiring for
+  `transition-trace`.
 - Preprod end-to-end (an operator-local 2026-05-08 report recorded a canonical-root
   mismatch, but it is intentionally untracked and predates the counted-root work of PR
   #458 and the MPF rewrite of the proof builders; readiness remains unconfirmed until a

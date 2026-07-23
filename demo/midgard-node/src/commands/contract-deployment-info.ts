@@ -433,6 +433,7 @@ const collectScriptDescriptors = (
     "fraudProofTransitionTrace",
     contracts.fraudProofs.transitionTrace,
   ),
+  spendDescriptor("fraudProofZeroInput", contracts.fraudProofs.zeroInput),
 ];
 
 const defaultSteps = (): DeploymentManifestV2["steps"] => ({

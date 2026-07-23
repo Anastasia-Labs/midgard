@@ -43,6 +43,7 @@ import {
   resolveNonExistentInputDeploymentContracts,
   resolveProverSigner,
   resolveTransitionTraceDeploymentContracts,
+  resolveZeroInputDeploymentContracts,
   type SubmitProviderConfig,
 } from "./runtime.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
@@ -65,7 +66,8 @@ export type SubmitInitFraudCategory =
   | "doubleSpend"
   | "nonExistentInput"
   | "invalidRange"
-  | "transitionTrace";
+  | "transitionTrace"
+  | "zeroInput";
 
 export type SubmitInitResult = {
   readonly txHash: string;
@@ -106,6 +108,8 @@ const fraudCategoryLabel = (category: SubmitInitFraudCategory): string => {
       return "invalid-range";
     case "transitionTrace":
       return "transition-trace";
+    case "zeroInput":
+      return "zero-input";
   }
 };
 
@@ -217,7 +221,7 @@ export const submitInit = async ({
       resolvedDeployment.contracts.invalidRange.firstStep.spendingScriptAddress;
     firstStepHash =
       resolvedDeployment.contracts.invalidRange.firstStep.spendingScriptHash;
-  } else {
+  } else if (fraudCategory === "transitionTrace") {
     const resolvedDeployment = await resolveTransitionTraceDeploymentContracts({
       blueprint,
       deploymentInfo,
@@ -235,6 +239,23 @@ export const submitInit = async ({
         .spendingScriptAddress;
     firstStepHash =
       resolvedDeployment.contracts.transitionTrace.firstStep.spendingScriptHash;
+  } else {
+    const resolvedDeployment = await resolveZeroInputDeploymentContracts({
+      blueprint,
+      deploymentInfo,
+      network,
+      requireStateQueueMint: true,
+    });
+    category = resolvedDeployment.zeroInputCategory;
+    stateQueuePolicyId = resolvedDeployment.stateQueuePolicyId!;
+    computationThreadPolicyId =
+      resolvedDeployment.contracts.computationThread.policyId;
+    computationThreadMintingScript =
+      resolvedDeployment.contracts.computationThread.mintingScript;
+    firstStepAddress =
+      resolvedDeployment.contracts.zeroInput.firstStep.spendingScriptAddress;
+    firstStepHash =
+      resolvedDeployment.contracts.zeroInput.firstStep.spendingScriptHash;
   }
   const fraudProofCataloguePolicyId = requireDeploymentScriptHash(
     parsedDeploymentInfo,

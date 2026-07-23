@@ -721,6 +721,12 @@ export const midgardContractsFromDeploymentManifest = (
         sourcePath,
         "fraudProofTransitionTrace",
       ),
+      zeroInput: spendingValidatorFromManifest(
+        network,
+        manifest,
+        sourcePath,
+        "fraudProofZeroInput",
+      ),
     },
   };
 };
@@ -1206,6 +1212,40 @@ const buildRealNonExistentInputFirstStepValidator = (
     return nonExistentInputContracts.nonExistentInput.firstStep;
   });
 
+const buildRealZeroInputFirstStepValidator = (
+  network: Network,
+  contracts: SDK.MidgardValidators,
+  computationThread: SDK.MintingValidator,
+  fraudProof: SDK.AuthenticatedValidator,
+): Effect.Effect<SDK.SpendingValidator, Error> =>
+  Effect.gen(function* () {
+    const blueprint = SDK.parseFaultProofBlueprint(yield* loadRealBlueprint());
+    const zeroInputContracts = yield* SDK.buildZeroInputFaultProofContracts({
+      blueprint,
+      network,
+      hubOraclePolicyId: contracts.hubOracle.policyId,
+      fraudProofCataloguePolicyId: contracts.fraudProofCatalogue.policyId,
+    });
+
+    yield* expectDerivedScriptHash(
+      "computation-thread policy",
+      computationThread.policyId,
+      zeroInputContracts.computationThread.policyId,
+    );
+    yield* expectDerivedScriptHash(
+      "fraud-proof policy",
+      fraudProof.policyId,
+      zeroInputContracts.fraudProof.policyId,
+    );
+    yield* expectDerivedScriptHash(
+      "fraud-proof spend",
+      fraudProof.spendingScriptHash,
+      zeroInputContracts.fraudProof.spendingScriptHash,
+    );
+
+    return zeroInputContracts.zeroInput.firstStep;
+  });
+
 /**
  * Builds the real state-queue authenticated validator.
  */
@@ -1474,6 +1514,12 @@ export const withRealStateQueueAndOperatorContracts = (
         realComputationThread,
         realFraudProof,
       );
+    const realZeroInput = yield* buildRealZeroInputFirstStepValidator(
+      network,
+      withRealFraudProofCatalogue,
+      realComputationThread,
+      realFraudProof,
+    );
     const withRealFraudProof: SDK.MidgardValidators = {
       ...withRealFraudProofCatalogue,
       fraudProof: realFraudProof,
@@ -1482,6 +1528,7 @@ export const withRealStateQueueAndOperatorContracts = (
         doubleSpend: realDoubleSpendFirstStep,
         transitionTrace: realTransitionTrace,
         nonExistentInput: realNonExistentInput,
+        zeroInput: realZeroInput,
       },
     };
 

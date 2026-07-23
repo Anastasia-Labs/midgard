@@ -13,8 +13,7 @@ use midgard/da_attestation_types.{
   AddSignatures, ApplyToStateQueue, BurnForStateQueue, DaAttestationDatum,
   DaParamsDatum, Init, MintRedeemer, SpendRedeemer,
   attestation_asset_name_prefix, attested_signer_bitmap_byte_count,
-  da_params_asset_name,
-  empty_attested_signer_bitmap, signature_byte_count,
+  da_params_asset_name, empty_attested_signer_bitmap, signature_byte_count,
   signature_witness_byte_count, state_queue_mint_reference_script_asset_name,
   verification_key_byte_count,
 }
@@ -43,7 +42,7 @@ fn signer_bit_mask(signer_index: Int) -> Int {
 
 fn signer_bit_is_clear(byte: Int, mask: Int) -> Bool {
   let high_bit_window = byte / mask
-  let next_window = byte / (mask * 2)
+  let next_window = byte / ( mask * 2 )
   high_bit_window - next_window * 2 == 0
 }
 
