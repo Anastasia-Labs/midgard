@@ -3,7 +3,7 @@ title: "Preparing Fraud Proofs"
 description: "Turn a Midgard block's transactions into the proof artifacts the submit steps consume, using the prepare-* commands."
 ---
 
-The four `prepare-*` commands are the front of the fault-proof pipeline. They take
+The five `prepare-*` commands are the front of the fault-proof pipeline. They take
 a Midgard block, find the transaction(s) that violate a ledger rule, build the
 membership proofs against the block's transactions Merkle-Patricia Trie, and emit
 the JSON artifacts that the `submit-*` commands later feed on-chain. They touch no
@@ -159,6 +159,48 @@ within the block itself.
 Unlike double-spend and invalid-range preparation, there is no compatibility
 override: on a root mismatch the command fails instead of writing
 diagnostics-only material.
+
+## `prepare-no-reference-input`
+
+The reference-input mirror of `prepare-non-existent-input`: it targets a
+transaction that *reads* a reference input which is absent from the previous
+ledger state and is not produced by any transaction in the same block. Source:
+`demo/midgard-fault-proofs/src/prepare-no-reference-input.ts`.
+
+```sh
+midgard-fault-proofs prepare-no-reference-input \
+  (--midgard-node-url <url> | --transactions-file <path>) \
+  --header-hash <hex> \
+  [--bad-tx-id <hex>] \
+  [--bad-reference-input-index <n>] \
+  [--prev-utxos-root <hex>] \
+  [--prev-block-payload-file <path>] \
+  [--expected-transactions-root <hex>] \
+  [--output-dir <path>]
+```
+
+The flags carry the same meaning as the non-existent-input ones, with
+`--bad-reference-input-index` (optional, defaults to `0`) selecting which of the
+transaction's **reference** inputs is claimed missing. A transaction that reads
+no reference inputs at all is rejected as out of bounds.
+
+The proof shape is identical too, one membership proof and two non-membership
+proofs, because the missing reference input is keyed exactly like a spend input:
+by the node's `TransactionInput` CBOR in the ledger trie, and by the raw 32-byte
+producing tx id in the block's transactions trie.
+
+### Files written with `--output-dir`
+
+| File                                    | Consumed by                                                                                                                 |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `nri-tx-inclusion.json`                 | `submit-no-reference-input-step-01` `--tx-inclusion`                                                                        |
+| `nri-reference-inputs-preimage.json`    | `submit-no-reference-input-step-02` `--reference-inputs-preimage`                                                           |
+| `nri-ledger-non-membership.json`        | `submit-no-reference-input-step-03` `--ledger-non-membership-proof`                                                         |
+| `nri-txs-non-membership.json`           | `submit-no-reference-input-step-04` `--txs-non-membership-proof`                                                            |
+| `nri-plan.json`                         | Summary: header hash, bad tx id and reference-input index, the missing reference input, and the transactions and previous-UTxO roots. |
+
+As with non-existent-input, there is no compatibility override: a root mismatch
+fails the command.
 
 ## `prepare-zero-input`
 

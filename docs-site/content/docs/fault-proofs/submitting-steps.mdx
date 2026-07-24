@@ -41,10 +41,14 @@ L1 connection:
   <Step>
     **Category variants**, some categories have their own step sequence:
     `submit-invalid-range-step-01` and `-02` for the `invalid-range` category,
-    and `submit-non-existent-input-step-01` through `-04` for the
-    `non-existent-input` category. The non-existent-input steps consume the
-    `ne-*.json` artifacts in order: tx inclusion, inputs preimage, ledger
-    non-membership, then txs non-membership on the concluding step.
+    `submit-non-existent-input-step-01` through `-04` for the
+    `non-existent-input` category, and `submit-no-reference-input-step-01`
+    through `-04` for the `no-reference-input` category. The non-existent-input
+    steps consume the `ne-*.json` artifacts in order: tx inclusion, inputs
+    preimage, ledger non-membership, then txs non-membership on the concluding
+    step. The no-reference-input steps mirror that order with the `nri-*.json`
+    artifacts, taking `--reference-inputs-preimage` and
+    `--bad-reference-input-index` on step 02.
   </Step>
 </Steps>
 

@@ -36,7 +36,7 @@ then validates the command against a fixed allow-list and calls the matching
 module function, writing the result to stdout as JSON. Passing `--help` or `-h`
 prints the usage block and exits.
 
-The command is rejected unless it is exactly one of the nineteen real commands
+The command is rejected unless it is exactly one of the 24 real commands
 below, from the guard in `main()`:
 
 ```ts
@@ -44,6 +44,7 @@ if (
   args.command !== "prepare-double-spend" &&
   args.command !== "prepare-invalid-range" &&
   args.command !== "prepare-non-existent-input" &&
+  args.command !== "prepare-no-reference-input" &&
   args.command !== "prepare-zero-input" &&
   args.command !== "inspect-contracts" &&
   args.command !== "submit-init" &&
@@ -57,6 +58,10 @@ if (
   args.command !== "submit-non-existent-input-step-02" &&
   args.command !== "submit-non-existent-input-step-03" &&
   args.command !== "submit-non-existent-input-step-04" &&
+  args.command !== "submit-no-reference-input-step-01" &&
+  args.command !== "submit-no-reference-input-step-02" &&
+  args.command !== "submit-no-reference-input-step-03" &&
+  args.command !== "submit-no-reference-input-step-04" &&
   args.command !== "submit-zero-input-step-01" &&
   args.command !== "submit-zero-input-step-02" &&
   args.command !== "remove-fraudulent-block"
@@ -71,18 +76,18 @@ surface stay in lock-step.
 
 ## The command groups
 
-The nineteen commands fall into four groups.
+The 24 commands fall into four groups.
 
 | Group | Commands | Module(s) | What it does |
 | --- | --- | --- | --- |
-| **Prepare** | `prepare-double-spend`, `prepare-invalid-range`, `prepare-non-existent-input`, `prepare-zero-input` | `prepare-double-spend.ts`, `prepare-invalid-range.ts`, `prepare-non-existent-input.ts`, `prepare-zero-input.ts` | Pull a block's transactions (from a node, a file, or a built-in sample), find the violating transaction(s), and emit the JSON artifacts later steps consume. |
+| **Prepare** | `prepare-double-spend`, `prepare-invalid-range`, `prepare-non-existent-input`, `prepare-no-reference-input`, `prepare-zero-input` | `prepare-double-spend.ts`, `prepare-invalid-range.ts`, `prepare-non-existent-input.ts`, `prepare-no-reference-input.ts`, `prepare-zero-input.ts` | Pull a block's transactions (from a node, a file, or a built-in sample), find the violating transaction(s), and emit the JSON artifacts later steps consume. |
 | **Inspect** | `inspect-contracts` | `inspect-contracts.ts` | Resolve a blueprint + deployment against the fraud-proof catalogue and report policy IDs, addresses, step hashes, and init-readiness. |
-| **Submit** | `submit-init`, `submit-step-01`…`submit-step-04`, `submit-invalid-range-step-01`, `submit-invalid-range-step-02`, `submit-non-existent-input-step-01`…`submit-non-existent-input-step-04`, `submit-zero-input-step-01`, `submit-zero-input-step-02` | `submit-init.ts`, `submit-step-0N.ts`, `submit-invalid-range-step-0N.ts`, `ne-submit-step-0N.ts`, `submit-zero-input-step-0N.ts` | Start a computation thread (`submit-init`) and drive it through its per-category steps, ending by minting a fraud-proof token. |
+| **Submit** | `submit-init`, `submit-step-01`…`submit-step-04`, `submit-invalid-range-step-01`, `submit-invalid-range-step-02`, `submit-non-existent-input-step-01`…`submit-non-existent-input-step-04`, `submit-no-reference-input-step-01`…`submit-no-reference-input-step-04`, `submit-zero-input-step-01`, `submit-zero-input-step-02` | `submit-init.ts`, `submit-step-0N.ts`, `submit-invalid-range-step-0N.ts`, `ne-submit-step-0N.ts`, `nri-submit-step-0N.ts`, `submit-zero-input-step-0N.ts` | Start a computation thread (`submit-init`) and drive it through its per-category steps, ending by minting a fraud-proof token. |
 | **Remove** | `remove-fraudulent-block` | `remove-fraudulent-block.ts` | After a successful proof exists, remove the fraudulent block from the state queue and slash the operator. |
 
 ## Fraud categories
 
-The tooling implements five of Midgard's fraud-proof categories, selected with
+The tooling implements six of Midgard's fraud-proof categories, selected with
 `--fraud-category`. The parser in `bin.ts` (`parseFraudCategory`) accepts exactly
 these values:
 
@@ -94,6 +99,10 @@ these values:
 - `nonExistentInput`: a transaction spends an input that is absent from the
   previous ledger state and not produced within the block. Proven with
   `submit-non-existent-input-step-01` through `-step-04`.
+- `noReferenceInput`: a transaction *reads* a reference input that is absent
+  from the previous ledger state and not produced within the block. This is the
+  reference-input mirror of `nonExistentInput`. Proven with
+  `submit-no-reference-input-step-01` through `-step-04`.
 - `zeroInput`: a transaction declares an empty spend-input set, which the
   ledger rules forbid. Proven with `submit-zero-input-step-01` and `-step-02`.
 - `transitionTrace`: state-transition-trace faults (the `transition-trace/`
@@ -121,7 +130,7 @@ Every submit/remove command shares the same L1 wiring, resolved in `src/runtime.
   `resolveProverSigner` falls back to the `USER_WALLET` seed-phrase env var.
 - **Contracts**: every command needs `--blueprint <path>` (the compiled
   `plutus.json`) and `--deployment-info <path>` (the deployed script hashes and
-  fraud-proof catalogue). The four `prepare-*` commands are the exception: they
+  fraud-proof catalogue). The five `prepare-*` commands are the exception: they
   work purely off transaction data and need neither.
 
 <Callout type="warn" title="Manual tooling">
