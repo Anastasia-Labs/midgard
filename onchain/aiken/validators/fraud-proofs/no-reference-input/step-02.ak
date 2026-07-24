@@ -70,7 +70,9 @@ validator main(
         //    `encode_input_preimage` (the node's `TransactionInput` CBOR per
         //    input) — NOT `cbor.serialise` of the aiken `OutputReference` list.
         expect
-          blake2b_256(preimages.encode_input_preimage(reference_inputs_preimage)) == bad_tx_reference_inputs_hash
+          blake2b_256(
+            preimages.encode_input_preimage(reference_inputs_preimage),
+          ) == bad_tx_reference_inputs_hash
         let missing_reference_input =
           reference_inputs_preimage |> list.expect_at(bad_reference_input_index)
 

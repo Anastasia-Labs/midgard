@@ -142,6 +142,7 @@ export type FaultProofContracts = {
   readonly fraudProof: AuthenticatedValidator;
   readonly doubleSpend: DoubleSpendFaultProofContracts["doubleSpend"];
   readonly nonExistentInput: NonExistentInputFaultProofContracts["nonExistentInput"];
+  readonly noReferenceInput: NoReferenceInputFaultProofContracts["noReferenceInput"];
   readonly invalidRange: InvalidRangeFaultProofContracts["invalidRange"];
   readonly zeroInput: ZeroInputFaultProofContracts["zeroInput"];
   readonly transitionTrace: TransitionTraceFaultProofContracts["transitionTrace"];
@@ -772,6 +773,10 @@ export const buildFaultProofContracts = (
       ...params,
       ...shared,
     });
+    const noReferenceInput = yield* buildNoReferenceInputChain({
+      ...params,
+      ...shared,
+    });
     const invalidRange = yield* buildInvalidRangeChain({
       ...params,
       ...shared,
@@ -790,6 +795,7 @@ export const buildFaultProofContracts = (
       fraudProof: shared.fraudProof,
       doubleSpend,
       nonExistentInput,
+      noReferenceInput,
       invalidRange,
       zeroInput,
       transitionTrace,
