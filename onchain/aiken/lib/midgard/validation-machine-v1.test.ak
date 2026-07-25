@@ -428,6 +428,25 @@ fn indexed_inline_source_leaves(
   }
 }
 
+fn indexed_spend_purpose_leaves(
+  purpose_index: Int,
+  purpose_count: Int,
+) -> List<ByteArray> {
+  if purpose_index == purpose_count {
+    []
+  } else {
+    [
+      script_proof_v1.purpose_leaf_hash(
+        0,
+        purpose_index,
+        h_28_a,
+        cbor.serialise(purpose_index),
+      ),
+      ..indexed_spend_purpose_leaves(purpose_index + 1, purpose_count)
+    ]
+  }
+}
+
 fn input_sets_scan_witness(
   tx: MidgardTransaction,
   spend_count: Int,
@@ -4159,6 +4178,54 @@ test script_sources_appends_canonical_observer_purposes() {
       },
       auxiliary: validation_machine_v1.TransactionFieldPreimageWitness {
         preimage_cbor: encode_native_byte_list(tx.body.required_observers),
+      },
+    },
+  )
+}
+
+test script_sources_prepares_more_than_sixteen_purposes_for_discovery() {
+  let tx = empty_v1_transaction()
+  let empty_frontier = validation_merkle_v1.build_frontier([])
+  let purpose_frontier = validation_merkle_v1.build_frontier(
+    indexed_spend_purpose_leaves(0, 17),
+  )
+  let accumulator = validation_machine_v1.initial_resolution_accumulator()
+  let Pair(pre, work_witness_cbor) = script_sources_output_step_fixture(
+    tx,
+    0,
+    accumulator,
+    7,
+    empty_frontier,
+    empty_frontier,
+    0,
+    accumulator,
+    validation_machine_v1.empty_resolution_schedule_hash(),
+    0,
+    purpose_frontier,
+    0,
+    empty_frontier,
+    [],
+    18,
+  )
+  let Pair(post, _) = script_discovery_step_fixture(
+    tx,
+    8,
+    empty_frontier,
+    empty_frontier,
+    purpose_frontier,
+    [],
+    validation_machine_v1.empty_script_discovery_control(),
+    19,
+  )
+  validation_machine_v1.verify_one_step_evidence(
+    pre,
+    validation_machine_v1.ValidationOneStepEvidenceV1 {
+      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor,
+        claimed_successor: post,
+      },
+      auxiliary: validation_machine_v1.TransactionFieldPreimageWitness {
+        preimage_cbor: encode_native_byte_list([]),
       },
     },
   )

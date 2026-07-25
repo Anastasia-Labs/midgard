@@ -922,9 +922,6 @@ pub fn encode_terminal_rejection_witness(
     |> bytearray.concat(encode_definite_bytes(#"80"))
 }
 
-const reject_script_execution_count =
-  #"455f5343524950545f455845435554494f4e5f434f554e54"
-
 const reject_field_preimage_size = #"455f4649454c445f505245494d4147455f53495a45"
 
 const reject_ledger_output_size = #"455f4c45444745525f4f55545055545f53495a45"
@@ -7615,33 +7612,25 @@ fn script_sources_stage_seven(
       next_purposes.count,
       next_purposes.peaks,
     )
-    if final_purposes.count > 16 {
-      rejected_successor_is_exact(
-        pre,
-        witness.claimed_successor,
-        reject_script_execution_count,
-      )
-    } else {
-      let discovery_base = ScriptSourcesControlV1 {
-        ..control,
-        stage: 8,
-        purpose_count: final_purposes.count,
-        purpose_peaks: final_purposes.peaks,
-        receive_hashes: [],
-      }
-      let next_control = encode_script_sources_discovery_witness(
-        discovery_base,
-        8,
-        empty_script_discovery_control(),
-      )
-      and {
-        witness.claimed_successor.phase == validation_trace_v1.ScriptSources,
-        witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
-          validation_trace_v1.ScriptSources,
-          pre.program_counter + 1,
-          next_control,
-        ),
-      }
+    let discovery_base = ScriptSourcesControlV1 {
+      ..control,
+      stage: 8,
+      purpose_count: final_purposes.count,
+      purpose_peaks: final_purposes.peaks,
+      receive_hashes: [],
+    }
+    let next_control = encode_script_sources_discovery_witness(
+      discovery_base,
+      8,
+      empty_script_discovery_control(),
+    )
+    and {
+      witness.claimed_successor.phase == validation_trace_v1.ScriptSources,
+      witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
+        validation_trace_v1.ScriptSources,
+        pre.program_counter + 1,
+        next_control,
+      ),
     }
   } else {
     False

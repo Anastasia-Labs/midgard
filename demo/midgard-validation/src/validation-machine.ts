@@ -3295,20 +3295,7 @@ export const buildDeterministicValidationMachineTrace = (
                   purposeEntry.leaf,
                 );
               }
-              if (scriptPurposeEntries.length > 16) {
-                if (
-                  rejection === null ||
-                  terminalPhase !== "scriptSources" ||
-                  rejection.code !== RejectCodes.ScriptExecutionCount
-                ) {
-                  return yield* Effect.fail(
-                    new Error(
-                      "V1 discovered more than sixteen script executions without the exact ScriptExecutionCount rejection",
-                    ),
-                  );
-                }
-                stoppedAtRejection = true;
-              } else {
+              {
                 const sourceLeaves = scriptSourceEntries.map(
                   (entry) => entry.leaf,
                 );
