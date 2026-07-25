@@ -52,11 +52,13 @@ import {
   verifyMidgardNativeScript,
 } from "@al-ft/midgard-core/codec";
 import {
+  readCborArrayHeader,
   readCborBytes,
   readCborInteger,
   readCborMapHeader,
 } from "@al-ft/midgard-core/codec/cbor";
 import { blake2b } from "@noble/hashes/blake2.js";
+import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
@@ -211,6 +213,16 @@ export type ValidationMachineWorkWitness = {
         readonly kind: "transactionFieldChunk";
         readonly collectionProof: MidgardBoundedCollectionItemProofV1;
         readonly chunkProof: MidgardBoundedItemChunkProofV1;
+      }
+    | {
+        readonly kind: "requiredSignerItem";
+        readonly collectionProof: MidgardBoundedCollectionItemProofV1;
+        readonly chunkProof: MidgardBoundedItemChunkProofV1;
+        readonly signerProof: ValidationMachineSignerSetProof;
+      }
+    | {
+        readonly kind: "signerSetPreimage";
+        readonly signerHashesCbor: Buffer;
       }
     | {
         readonly kind: "transactionFieldPairPreimage";
@@ -918,6 +930,14 @@ export const buildDeterministicValidationMachineTrace = (
       fieldIndex: 1,
       preimageCbor: fieldPreimages[1]!.preimageCbor,
     });
+    const requiredSignersCollection = deriveMidgardNativeFieldCollectionV1({
+      fieldIndex: 4,
+      preimageCbor: fieldPreimages[4]!.preimageCbor,
+    });
+    const addressWitnessesCollection = deriveMidgardNativeFieldCollectionV1({
+      fieldIndex: 6,
+      preimageCbor: fieldPreimages[6]!.preimageCbor,
+    });
     const inputSetScanItems = [
       ...spendInputsCollection.items.map((item) => ({
         sourceKind: "spend" as const,
@@ -1018,8 +1038,62 @@ export const buildDeterministicValidationMachineTrace = (
         control.previousKey,
         control.resolutionScheduleHash,
       ]);
-    const canonicalSignerHashes = [...(phaseALedgerTx?.witnessKeyHashes ?? [])]
-      .map((hash) => Buffer.from(hash))
+    const decodeAddressWitnessItem = (
+      witnessCbor: Buffer,
+    ): {
+      readonly verificationKey: Buffer;
+      readonly signature: Buffer;
+      readonly signerHash: Buffer;
+    } => {
+      const header = readCborArrayHeader(
+        witnessCbor,
+        0,
+        "address_witness",
+      );
+      if (header.length !== 2) {
+        throw new Error("address witness must contain [vkey, signature]");
+      }
+      const verificationKey = readCborBytes(
+        witnessCbor,
+        header.nextOffset,
+        "address_witness.vkey",
+      );
+      const signature = readCborBytes(
+        witnessCbor,
+        verificationKey.nextOffset,
+        "address_witness.signature",
+      );
+      if (
+        verificationKey.value.length !== 32 ||
+        signature.value.length !== 64 ||
+        signature.nextOffset !== witnessCbor.length
+      ) {
+        throw new Error("address witness has a non-canonical shape");
+      }
+      return {
+        verificationKey: verificationKey.value,
+        signature: signature.value,
+        signerHash: Buffer.from(
+          blake2b(verificationKey.value, { dkLen: 28 }),
+        ),
+      };
+    };
+    const addressWitnessScanItems = addressWitnessesCollection.items
+      .map((item) => {
+        const decoded = decodeAddressWitnessItem(item.bytes);
+        return {
+          item,
+          decoded,
+          orderKey: Buffer.concat([
+            decoded.signerHash,
+            item.bytes,
+            encodeCbor(BigInt(item.itemIndex)),
+          ]),
+        };
+      })
+      .sort((left, right) => Buffer.compare(left.orderKey, right.orderKey));
+    const canonicalSignerHashes = addressWitnessScanItems
+      .map(({ decoded }) => decoded.signerHash)
       .sort(Buffer.compare)
       .filter(
         (hash, index, hashes) =>
@@ -1117,6 +1191,50 @@ export const buildDeterministicValidationMachineTrace = (
     ): readonly (readonly [bigint, Buffer])[] =>
       frontier.peaks.map((peak) => [BigInt(peak.height), peak.hash]);
     const emptyValidationFrontier = buildMidgardValidationMerkleFrontierV1([]);
+    type SignatureScanControl = {
+      readonly stage: 0 | 1 | 2;
+      readonly addressCount: number;
+      readonly requiredCount: number;
+      readonly addressSeen: number;
+      readonly requiredSeen: number;
+      readonly previousOrderKey: Buffer;
+      readonly previousSignerHash: Buffer;
+      readonly signerFrontier: MidgardValidationMerkleFrontierV1;
+      readonly invalidSignatureSeen: 0 | 1;
+    };
+    const signaturesScanWitnessCbor = (
+      control: SignatureScanControl,
+    ): Buffer =>
+      encodeCbor([
+        proofSource.compactCbor,
+        proofSource.witnessSetCompactCbor,
+        proofSource.fieldPreimageLengthsCbor,
+        contextCbor,
+        resolutionScheduleHash,
+        BigInt(control.stage),
+        BigInt(control.addressCount),
+        BigInt(control.requiredCount),
+        BigInt(control.addressSeen),
+        BigInt(control.requiredSeen),
+        control.previousOrderKey,
+        control.previousSignerHash,
+        BigInt(control.signerFrontier.count),
+        encodeFrontierPeaks(control.signerFrontier),
+        BigInt(control.invalidSignatureSeen),
+      ]);
+    const initialSignatureScanControl: SignatureScanControl = {
+      stage: 0,
+      addressCount:
+        addressWitnessesCollection.items.length === 0 ? 0 : -1,
+      requiredCount:
+        requiredSignersCollection.items.length === 0 ? 0 : -1,
+      addressSeen: 0,
+      requiredSeen: 0,
+      previousOrderKey: Buffer.alloc(0),
+      previousSignerHash: Buffer.alloc(0),
+      signerFrontier: emptyValidationFrontier,
+      invalidSignatureSeen: 0,
+    };
     let resolvedItemFrontier = emptyValidationFrontier;
     type ScriptDiscoveryTraceControl = {
       readonly purposeCursor: number;
@@ -1298,13 +1416,6 @@ export const buildDeterministicValidationMachineTrace = (
       }
       return signerProofForHash(Buffer.from(address.paymentCredential.hash));
     };
-    const signaturesWitnessCbor = encodeCbor([
-      proofSource.compactCbor,
-      proofSource.witnessSetCompactCbor,
-      proofSource.fieldPreimageLengthsCbor,
-      contextCbor,
-      resolutionScheduleHash,
-    ]);
     const phaseANativeScriptsWitnessCbor = encodeCbor([
       proofSource.compactCbor,
       proofSource.witnessSetCompactCbor,
@@ -1340,7 +1451,6 @@ export const buildDeterministicValidationMachineTrace = (
         ]),
       ],
       ["staticLedgerRules", sourceContextWitnessCbor],
-      ["signatures", signaturesWitnessCbor],
       ["valueAndMint", transactionContextWitnessCbor],
       ["nativeScripts", transactionContextWitnessCbor],
       ["phaseANativeScripts", phaseANativeScriptsWitnessCbor],
@@ -1353,16 +1463,6 @@ export const buildDeterministicValidationMachineTrace = (
       MidgardValidationPhaseName,
       ValidationMachineWorkWitness["auxiliary"]
     >([
-      [
-        "signatures",
-        {
-          kind: "transactionFieldPairPreimage",
-          firstFieldIndex: 4,
-          firstPreimageCbor: fieldPreimages[4]!.preimageCbor,
-          secondFieldIndex: 6,
-          secondPreimageCbor: fieldPreimages[6]!.preimageCbor,
-        },
-      ],
       [
         "phaseANativeScripts",
         {
@@ -1635,8 +1735,218 @@ export const buildDeterministicValidationMachineTrace = (
       }
     }
 
+    if (!stoppedAtRejection) {
+      let signatureControl = initialSignatureScanControl;
+      const pushSignatureWitness = (
+        auxiliary: ValidationMachineWorkWitness["auxiliary"] = null,
+      ): void => {
+        pushWitness(
+          "signatures",
+          signaturesScanWitnessCbor(signatureControl),
+          auxiliary,
+        );
+      };
+      if (signatureControl.addressCount === 0) {
+        pushSignatureWitness();
+        signatureControl = { ...signatureControl, stage: 1 };
+      } else {
+        for (
+          let index = 0;
+          index < addressWitnessScanItems.length;
+          index += 1
+        ) {
+          const scan = addressWitnessScanItems[index]!;
+          pushSignatureWitness({
+            kind: "transactionFieldChunk",
+            collectionProof: buildMidgardBoundedCollectionItemProofV1(
+              addressWitnessesCollection,
+              scan.item.itemIndex,
+            ),
+            chunkProof: buildMidgardBoundedItemChunkProofV1(scan.item, 0),
+          });
+          if (
+            signatureControl.previousOrderKey.length > 0 &&
+            Buffer.compare(
+              signatureControl.previousOrderKey,
+              scan.orderKey,
+            ) >= 0
+          ) {
+            return yield* Effect.fail(
+              new Error("address-witness scan is not strictly ordered"),
+            );
+          }
+          const newSigner =
+            !scan.decoded.signerHash.equals(
+              signatureControl.previousSignerHash,
+            );
+          const signerFrontier = newSigner
+            ? appendMidgardValidationMerkleLeafV1(
+                signatureControl.signerFrontier,
+                hashMidgardSignerLeafV1(scan.decoded.signerHash),
+              )
+            : signatureControl.signerFrontier;
+          let signatureIsValid = false;
+          try {
+            const publicKey = CML.PublicKey.from_bytes(
+              scan.decoded.verificationKey,
+            );
+            const signature = CML.Ed25519Signature.from_raw_bytes(
+              scan.decoded.signature,
+            );
+            try {
+              signatureIsValid = publicKey.verify(
+                input.transactionId,
+                signature,
+              );
+            } finally {
+              publicKey.free();
+              signature.free();
+            }
+          } catch {
+            signatureIsValid = false;
+          }
+          const addressSeen = signatureControl.addressSeen + 1;
+          const addressCount =
+            signatureControl.addressCount === -1
+              ? addressWitnessesCollection.items.length
+              : signatureControl.addressCount;
+          signatureControl =
+            addressSeen === addressCount
+              ? {
+                  ...signatureControl,
+                  stage: 1,
+                  addressCount,
+                  addressSeen,
+                  previousOrderKey: Buffer.alloc(0),
+                  previousSignerHash: Buffer.alloc(0),
+                  signerFrontier,
+                  invalidSignatureSeen:
+                    signatureControl.invalidSignatureSeen === 1 ||
+                    !signatureIsValid
+                      ? 1
+                      : 0,
+                }
+              : {
+                  ...signatureControl,
+                  addressCount,
+                  addressSeen,
+                  previousOrderKey: scan.orderKey,
+                  previousSignerHash: scan.decoded.signerHash,
+                  signerFrontier,
+                  invalidSignatureSeen:
+                    signatureControl.invalidSignatureSeen === 1 ||
+                    !signatureIsValid
+                      ? 1
+                      : 0,
+                };
+        }
+      }
+      if (signatureControl.stage !== 1) {
+        return yield* Effect.fail(
+          new Error("address-witness scan did not reach required signers"),
+        );
+      }
+      if (signatureControl.requiredCount === 0) {
+        pushSignatureWitness();
+        if (signatureControl.invalidSignatureSeen === 1) {
+          if (
+            terminalPhase !== "signatures" ||
+            rejectionCode !== RejectCodes.InvalidSignature
+          ) {
+            return yield* Effect.fail(
+              new Error(
+                `signature scan found an invalid signature but replay rejected at ${terminalPhase}/${rejectionCode ?? "none"}`,
+              ),
+            );
+          }
+          stoppedAtRejection = true;
+        } else {
+          signatureControl = { ...signatureControl, stage: 2 };
+        }
+      } else {
+        for (
+          let index = 0;
+          index < requiredSignersCollection.items.length;
+          index += 1
+        ) {
+          const item = requiredSignersCollection.items[index]!;
+          const signerProof = signerProofForHash(item.bytes);
+          pushSignatureWitness({
+            kind: "requiredSignerItem",
+            collectionProof: buildMidgardBoundedCollectionItemProofV1(
+              requiredSignersCollection,
+              item.itemIndex,
+            ),
+            chunkProof: buildMidgardBoundedItemChunkProofV1(item, 0),
+            signerProof,
+          });
+          if (signerProof.kind !== "membership") {
+            if (
+              terminalPhase !== "signatures" ||
+              rejectionCode !== RejectCodes.MissingRequiredWitness
+            ) {
+              return yield* Effect.fail(
+                new Error(
+                  `required signer is absent but replay rejected at ${terminalPhase}/${rejectionCode ?? "none"}`,
+                ),
+              );
+            }
+            stoppedAtRejection = true;
+            break;
+          }
+          const requiredSeen = signatureControl.requiredSeen + 1;
+          const requiredCount =
+            signatureControl.requiredCount === -1
+              ? requiredSignersCollection.items.length
+              : signatureControl.requiredCount;
+          signatureControl = {
+            ...signatureControl,
+            requiredCount,
+            requiredSeen,
+          };
+          if (
+            requiredSeen === requiredCount &&
+            signatureControl.invalidSignatureSeen === 1
+          ) {
+            if (
+              terminalPhase !== "signatures" ||
+              rejectionCode !== RejectCodes.InvalidSignature
+            ) {
+              return yield* Effect.fail(
+                new Error(
+                  `signature scan found an invalid signature but replay rejected at ${terminalPhase}/${rejectionCode ?? "none"}`,
+                ),
+              );
+            }
+            stoppedAtRejection = true;
+            break;
+          }
+          if (requiredSeen === requiredCount) {
+            signatureControl = { ...signatureControl, stage: 2 };
+          }
+        }
+      }
+      if (!stoppedAtRejection) {
+        if (signatureControl.stage !== 2) {
+          return yield* Effect.fail(
+            new Error("required-signer scan did not reach its handoff"),
+          );
+        }
+        pushSignatureWitness({
+          kind: "signerSetPreimage",
+          signerHashesCbor: witnessSignerHashesCbor,
+        });
+        if (terminalPhase === "signatures") {
+          return yield* Effect.fail(
+            new Error(
+              `signature scan cannot prove rejection ${rejectionCode ?? "none"}`,
+            ),
+          );
+        }
+      }
+    }
+
     for (const phase of [
-      "signatures",
       "phaseANativeScripts",
       "phaseAScriptPreconditions",
     ] as const) {

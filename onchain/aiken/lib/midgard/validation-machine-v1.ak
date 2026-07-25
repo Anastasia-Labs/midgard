@@ -22,12 +22,12 @@ use midgard/fraud_proofs/native_tx/compact.{
   verify_native_tx_proof_source_v1,
 }
 use midgard/fraud_proofs/native_tx/components.{
-  decode_midgard_tx_input_cbor, encode_midgard_tx_input,
+  decode_midgard_address_witness_cbor, decode_midgard_tx_input_cbor,
+  encode_midgard_tx_input,
 }
 use midgard/fraud_proofs/native_tx/preimages.{
   canonical_bytes_key_precedes, decode_canonical_bytes_at,
   decode_canonical_map_header_at,
-  decode_midgard_tx_address_witnesses_preimage_cbor,
   decode_midgard_tx_byte_list_preimage_cbor,
   decode_midgard_tx_inputs_preimage_cbor, decode_midgard_tx_mint_preimage_cbor,
   decode_midgard_tx_redeemer_witnesses_preimage_cbor,
@@ -38,7 +38,7 @@ use midgard/fraud_proofs/native_tx/transaction.{
   verify_midgard_transaction_mint_preimage_commitment_v1,
 }
 use midgard/fraud_proofs/native_tx/types.{
-  CertRedeemer, MidgardAddressWitness, MidgardRedeemerWitness,
+  CertRedeemer, MidgardRedeemerWitness,
   MidgardScriptWitness, MidgardTxInput, MidgardTxOutput, MidgardValue,
   MintRedeemer, NativeCardanoScript, NativeTxBodyCompact, NativeTxCompact,
   NativeTxFieldPreimageLengthsV1, NativeTxWitnessSetCompact, ProposeRedeemer,
@@ -138,6 +138,12 @@ pub type ValidationAuxiliaryWitnessV1 {
     collection_proof: bounded_collection_v1.ItemProofV1,
     chunk_proof: bounded_item_v1.ChunkProofV1,
   }
+  RequiredSignerItemWitness {
+    collection_proof: bounded_collection_v1.ItemProofV1,
+    chunk_proof: bounded_item_v1.ChunkProofV1,
+    signer_proof: SignerSetProofV1,
+  }
+  SignerSetPreimageWitness { signer_hashes_cbor: ByteArray }
   TransactionFieldPairPreimageWitness {
     first_field_index: Int,
     first_preimage_cbor: ByteArray,
@@ -560,20 +566,50 @@ pub fn encode_phase_a_native_scripts_witness(
     |> bytearray.concat(encode_definite_bytes(signer_frontier_commitment))
 }
 
-pub fn encode_signatures_witness(
+pub fn encode_signatures_scan_witness(
   compact_cbor: ByteArray,
   witness_set_compact_cbor: ByteArray,
   field_preimage_lengths_cbor: ByteArray,
   context_cbor: ByteArray,
   resolution_schedule_hash: ByteArray,
+  stage: Int,
+  address_count: Int,
+  required_count: Int,
+  address_seen: Int,
+  required_seen: Int,
+  previous_order_key: ByteArray,
+  previous_signer_hash: ByteArray,
+  signer_count: Int,
+  signer_peaks: List<validation_merkle_v1.FrontierPeak>,
+  invalid_signature_seen: Int,
 ) -> ByteArray {
   expect bytearray.length(resolution_schedule_hash) == 32
-  #"85"
+  expect stage >= 0
+  expect stage <= 2
+  expect address_count >= -1
+  expect required_count >= -1
+  expect address_seen >= 0
+  expect required_seen >= 0
+  expect bytearray.length(previous_signer_hash) == 0 || bytearray.length(previous_signer_hash) == 28
+  expect signer_count >= 0
+  expect validation_merkle_v1.frontier_is_well_formed(signer_count, signer_peaks)
+  expect invalid_signature_seen == 0 || invalid_signature_seen == 1
+  encode_definite_array_header(15)
     |> bytearray.concat(encode_definite_bytes(compact_cbor))
     |> bytearray.concat(encode_definite_bytes(witness_set_compact_cbor))
     |> bytearray.concat(encode_definite_bytes(field_preimage_lengths_cbor))
     |> bytearray.concat(encode_definite_bytes(context_cbor))
     |> bytearray.concat(encode_definite_bytes(resolution_schedule_hash))
+    |> bytearray.concat(cbor.serialise(stage))
+    |> bytearray.concat(cbor.serialise(address_count))
+    |> bytearray.concat(cbor.serialise(required_count))
+    |> bytearray.concat(cbor.serialise(address_seen))
+    |> bytearray.concat(cbor.serialise(required_seen))
+    |> bytearray.concat(encode_definite_bytes(previous_order_key))
+    |> bytearray.concat(encode_definite_bytes(previous_signer_hash))
+    |> bytearray.concat(cbor.serialise(signer_count))
+    |> bytearray.concat(validation_merkle_v1.encode_frontier(signer_peaks))
+    |> bytearray.concat(cbor.serialise(invalid_signature_seen))
 }
 
 pub fn encode_phase_a_script_preconditions_witness(
@@ -1639,6 +1675,7 @@ fn input_sets_item_successor_is_exact(
   post: validation_trace_v1.ValidationMachineStateV1,
   control: InputSetsControlV1,
   body: NativeTxBodyCompact,
+  witness_set: NativeTxWitnessSetCompact,
   spend_count: Int,
   reference_count: Int,
   spend_seen: Int,
@@ -1669,17 +1706,43 @@ fn input_sets_item_successor_is_exact(
         reject_invalid_validity_interval_format,
       )
     } else {
+      let address_count = if witness_set.addr_tx_wits_hash == bounded_collection_v1.from_items(
+        6,
+        [],
+      ) {
+        0
+      } else {
+        -1
+      }
+      let required_count = if body.required_signers_hash == bounded_collection_v1.from_items(
+        4,
+        [],
+      ) {
+        0
+      } else {
+        -1
+      }
       and {
         post.phase == validation_trace_v1.Signatures,
         post.work_root == validation_trace_v1.hash_work_witness(
           validation_trace_v1.Signatures,
           pre.program_counter + 1,
-          encode_signatures_witness(
+          encode_signatures_scan_witness(
             control.compact_cbor,
             control.witness_set_compact_cbor,
             control.field_preimage_lengths_cbor,
             control.context_cbor,
             resolution_schedule_hash,
+            0,
+            address_count,
+            required_count,
+            0,
+            0,
+            #"",
+            #"",
+            0,
+            [],
+            0,
           ),
         ),
       }
@@ -1819,6 +1882,7 @@ fn verify_input_sets_item(
           witness.claimed_successor,
           control,
           verified.tx_compact.body,
+          witness_set,
           next_spend_count,
           next_reference_count,
           next_spend_seen,
@@ -1999,22 +2063,6 @@ const reject_missing_required_witness =
 
 const reject_invalid_signature = #"455f494e56414c49445f5349474e4154555245"
 
-fn witness_key_hashes(witnesses: List<MidgardAddressWitness>) -> List<ByteArray> {
-  when witnesses is {
-    [] -> []
-    [witness, ..rest] ->
-      [blake2b_224(witness.verification_key), ..witness_key_hashes(rest)]
-  }
-}
-
-fn canonical_signer_hashes(
-  witnesses: List<MidgardAddressWitness>,
-) -> List<ByteArray> {
-  witness_key_hashes(witnesses)
-    |> list.sort(bytearray.compare)
-    |> list.unique
-}
-
 fn signer_frontier(
   signer_hashes: List<ByteArray>,
 ) -> validation_merkle_v1.BuiltFrontier {
@@ -2023,50 +2071,549 @@ fn signer_frontier(
     |> validation_merkle_v1.build_frontier
 }
 
-fn required_signers_are_witnessed(
-  required_signers: List<ByteArray>,
-  witnessed_signers: List<ByteArray>,
-) -> Bool {
-  when required_signers is {
-    [] -> True
-    [required_signer, ..rest] -> and {
-        list.has(witnessed_signers, required_signer),
-        required_signers_are_witnessed(rest, witnessed_signers),
-      }
+pub type SignaturesControlV1 {
+  compact_cbor: ByteArray,
+  witness_set_compact_cbor: ByteArray,
+  field_preimage_lengths_cbor: ByteArray,
+  context_cbor: ByteArray,
+  resolution_schedule_hash: ByteArray,
+  stage: Int,
+  address_count: Int,
+  required_count: Int,
+  address_seen: Int,
+  required_seen: Int,
+  previous_order_key: ByteArray,
+  previous_signer_hash: ByteArray,
+  signer_count: Int,
+  signer_peaks: List<validation_merkle_v1.FrontierPeak>,
+  invalid_signature_seen: Int,
+}
+
+fn signatures_control_from_witness(
+  witness_cbor: ByteArray,
+) -> SignaturesControlV1 {
+  expect Some(data) = cbor.deserialise(witness_cbor)
+  expect
+      [
+        compact_cbor_data, witness_set_compact_cbor_data,
+        field_preimage_lengths_cbor_data, context_cbor_data,
+        resolution_schedule_hash_data, stage_data, address_count_data,
+        required_count_data, address_seen_data, required_seen_data,
+        previous_order_key_data, previous_signer_hash_data, signer_count_data,
+        signer_peaks_data, invalid_signature_seen_data,
+      ]
+    = builtin.un_list_data(data)
+  SignaturesControlV1 {
+    compact_cbor: builtin.un_b_data(compact_cbor_data),
+    witness_set_compact_cbor: builtin.un_b_data(
+      witness_set_compact_cbor_data,
+    ),
+    field_preimage_lengths_cbor: builtin.un_b_data(
+      field_preimage_lengths_cbor_data,
+    ),
+    context_cbor: builtin.un_b_data(context_cbor_data),
+    resolution_schedule_hash: builtin.un_b_data(
+      resolution_schedule_hash_data,
+    ),
+    stage: builtin.un_i_data(stage_data),
+    address_count: builtin.un_i_data(address_count_data),
+    required_count: builtin.un_i_data(required_count_data),
+    address_seen: builtin.un_i_data(address_seen_data),
+    required_seen: builtin.un_i_data(required_seen_data),
+    previous_order_key: builtin.un_b_data(previous_order_key_data),
+    previous_signer_hash: builtin.un_b_data(previous_signer_hash_data),
+    signer_count: builtin.un_i_data(signer_count_data),
+    signer_peaks: decode_frontier_peaks(signer_peaks_data),
+    invalid_signature_seen: builtin.un_i_data(invalid_signature_seen_data),
   }
 }
 
-fn every_address_signature_is_valid(
-  transaction_id: ByteArray,
-  witnesses: List<MidgardAddressWitness>,
+fn signatures_control_is_bound(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: SignaturesControlV1,
+  verified: VerifiedMidgardNativeTxCompact,
+  witness_set: NativeTxWitnessSetCompact,
 ) -> Bool {
-  when witnesses is {
-    [] -> True
-    [witness, ..rest] -> and {
-        verify_ed25519_signature(
-          witness.verification_key,
-          transaction_id,
-          witness.signature,
-        ),
-        every_address_signature_is_valid(transaction_id, rest),
+  let address_is_empty = witness_set.addr_tx_wits_hash == bounded_collection_v1.from_items(
+    6,
+    [],
+  )
+  let required_is_empty = verified.tx_compact.body.required_signers_hash == bounded_collection_v1.from_items(
+    4,
+    [],
+  )
+  let address_complete = and {
+    control.address_count >= 0,
+    control.address_seen == control.address_count,
+  }
+  let required_complete = and {
+    control.required_count >= 0,
+    control.required_seen == control.required_count,
+  }
+  and {
+    verified.version == 1,
+    native_tx_proof_commitment_v1(
+      control.compact_cbor,
+      control.witness_set_compact_cbor,
+      control.field_preimage_lengths_cbor,
+    ) == pre.transaction_commitment,
+    validation_trace_v1.hash_validation_context(control.context_cbor) == pre.validation_context_hash,
+    bytearray.length(control.resolution_schedule_hash) == 32,
+    control.stage >= 0,
+    control.stage <= 2,
+    control.address_count >= -1,
+    control.address_count <= max_tx_size_derived_collection_item_count,
+    control.required_count >= -1,
+    control.required_count <= max_tx_size_derived_collection_item_count,
+    control.address_seen >= 0,
+    control.required_seen >= 0,
+    if address_is_empty {
+      control.address_count == 0 && control.address_seen == 0
+    } else if control.address_count == -1 {
+      control.address_seen == 0
+    } else {
+      control.address_count > 0 && control.address_seen <= control.address_count
+    },
+    if required_is_empty {
+      control.required_count == 0 && control.required_seen == 0
+    } else if control.required_count == -1 {
+      control.required_seen == 0
+    } else {
+      control.required_count > 0 && control.required_seen <= control.required_count
+    },
+    control.signer_count >= 0,
+    control.signer_count <= control.address_seen,
+    validation_merkle_v1.frontier_is_well_formed(
+      control.signer_count,
+      control.signer_peaks,
+    ),
+    control.invalid_signature_seen == 0 || control.invalid_signature_seen == 1,
+    control.invalid_signature_seen <= control.address_seen,
+    if control.stage == 0 {
+      and {
+        control.required_seen == 0,
+        if control.address_seen == 0 {
+          and {
+            control.previous_order_key == #"",
+            control.previous_signer_hash == #"",
+            control.signer_count == 0,
+          }
+        } else {
+          and {
+            bytearray.length(control.previous_order_key) > 0,
+            bytearray.length(control.previous_signer_hash) == 28,
+            control.signer_count > 0,
+          }
+        },
       }
+    } else {
+      and {
+        address_complete,
+        control.previous_order_key == #"",
+        control.previous_signer_hash == #"",
+        if control.stage == 2 {
+          required_complete
+        } else {
+          True
+        },
+      }
+    },
+    witness.work_witness_cbor == encode_signatures_scan_witness(
+      control.compact_cbor,
+      control.witness_set_compact_cbor,
+      control.field_preimage_lengths_cbor,
+      control.context_cbor,
+      control.resolution_schedule_hash,
+      control.stage,
+      control.address_count,
+      control.required_count,
+      control.address_seen,
+      control.required_seen,
+      control.previous_order_key,
+      control.previous_signer_hash,
+      control.signer_count,
+      control.signer_peaks,
+      control.invalid_signature_seen,
+    ),
   }
 }
 
-fn signatures_rejection(
-  transaction_id: ByteArray,
-  required_signers: List<ByteArray>,
-  address_witnesses: List<MidgardAddressWitness>,
-) -> Option<ByteArray> {
-  if !required_signers_are_witnessed(
-    required_signers,
-    witness_key_hashes(address_witnesses),
-  ) {
-    Some(reject_missing_required_witness)
-  } else if !every_address_signature_is_valid(transaction_id, address_witnesses) {
-    Some(reject_invalid_signature)
+fn signatures_successor_is_exact(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  post: validation_trace_v1.ValidationMachineStateV1,
+  control: SignaturesControlV1,
+) -> Bool {
+  and {
+    post.phase == validation_trace_v1.Signatures,
+    post.work_root == validation_trace_v1.hash_work_witness(
+      validation_trace_v1.Signatures,
+      pre.program_counter + 1,
+      encode_signatures_scan_witness(
+        control.compact_cbor,
+        control.witness_set_compact_cbor,
+        control.field_preimage_lengths_cbor,
+        control.context_cbor,
+        control.resolution_schedule_hash,
+        control.stage,
+        control.address_count,
+        control.required_count,
+        control.address_seen,
+        control.required_seen,
+        control.previous_order_key,
+        control.previous_signer_hash,
+        control.signer_count,
+        control.signer_peaks,
+        control.invalid_signature_seen,
+      ),
+    ),
+  }
+}
+
+fn signatures_after_required_successor_is_exact(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  post: validation_trace_v1.ValidationMachineStateV1,
+  control: SignaturesControlV1,
+) -> Bool {
+  if control.invalid_signature_seen == 1 {
+    rejected_successor_is_exact(pre, post, reject_invalid_signature)
   } else {
-    None
+    signatures_successor_is_exact(
+      pre,
+      post,
+      SignaturesControlV1 { ..control, stage: 2 },
+    )
+  }
+}
+
+fn signature_address_order_key(
+  signer_hash: ByteArray,
+  witness_cbor: ByteArray,
+  item_index: Int,
+) -> ByteArray {
+  signer_hash
+    |> bytearray.concat(witness_cbor)
+    |> bytearray.concat(cbor.serialise(item_index))
+}
+
+fn verify_signature_address_item(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: SignaturesControlV1,
+  collection_proof: bounded_collection_v1.ItemProofV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+) -> Bool {
+  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+    pre.transaction_id,
+    control.compact_cbor,
+    control.witness_set_compact_cbor,
+    control.field_preimage_lengths_cbor,
+  )
+  let active_count = if control.address_count == -1 {
+    collection_proof.item_count
+  } else {
+    control.address_count
+  }
+  let address_witness = decode_midgard_address_witness_cbor(chunk_proof.chunk)
+  let signer_hash = blake2b_224(address_witness.verification_key)
+  let order_key = signature_address_order_key(
+    signer_hash,
+    chunk_proof.chunk,
+    collection_proof.item_index,
+  )
+  let new_signer = control.previous_signer_hash != signer_hash
+  let next_signer_count = if new_signer {
+    control.signer_count + 1
+  } else {
+    control.signer_count
+  }
+  let next_signer_peaks = if new_signer {
+    validation_merkle_v1.append_leaf(
+      control.signer_count,
+      control.signer_peaks,
+      script_proof_v1.signer_leaf_hash(signer_hash),
+    )
+  } else {
+    control.signer_peaks
+  }
+  let next_invalid_signature_seen = if and {
+    control.invalid_signature_seen == 0,
+    !verify_ed25519_signature(
+      address_witness.verification_key,
+      pre.transaction_id,
+      address_witness.signature,
+    ),
+  } {
+    1
+  } else {
+    control.invalid_signature_seen
+  }
+  let next_address_seen = control.address_seen + 1
+  let next_control = if next_address_seen == active_count {
+    SignaturesControlV1 {
+      ..control,
+      stage: 1,
+      address_count: active_count,
+      address_seen: next_address_seen,
+      previous_order_key: #"",
+      previous_signer_hash: #"",
+      signer_count: next_signer_count,
+      signer_peaks: next_signer_peaks,
+      invalid_signature_seen: next_invalid_signature_seen,
+    }
+  } else {
+    SignaturesControlV1 {
+      ..control,
+      address_count: active_count,
+      address_seen: next_address_seen,
+      previous_order_key: order_key,
+      previous_signer_hash: signer_hash,
+      signer_count: next_signer_count,
+      signer_peaks: next_signer_peaks,
+      invalid_signature_seen: next_invalid_signature_seen,
+    }
+  }
+  and {
+    signatures_control_is_bound(pre, witness, control, verified, witness_set),
+    control.stage == 0,
+    control.address_count != 0,
+    collection_proof.field_index == 6,
+    chunk_proof.field_index == 6,
+    control.address_count == -1 || control.address_count == collection_proof.item_count,
+    active_count > 0,
+    active_count <= max_tx_size_derived_collection_item_count,
+    control.address_seen < active_count,
+    collection_proof.item_count == active_count,
+    collection_proof.item_length == chunk_proof.total_length,
+    chunk_proof.item_index == collection_proof.item_index,
+    chunk_proof.chunk_index == 0,
+    bounded_item_v1.chunk_count(chunk_proof.total_length) == 1,
+    bounded_collection_v1.verify_item(
+      witness_set.addr_tx_wits_hash,
+      collection_proof,
+    ),
+    bounded_item_v1.verify_chunk(
+      collection_proof.item_commitment,
+      chunk_proof,
+    ),
+    or {
+      control.previous_order_key == #"",
+      bytearray.compare(control.previous_order_key, order_key) == Less,
+    },
+    signatures_successor_is_exact(
+      pre,
+      witness.claimed_successor,
+      next_control,
+    ),
+  }
+}
+
+fn verify_signatures_advance(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: SignaturesControlV1,
+) -> Bool {
+  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+    pre.transaction_id,
+    control.compact_cbor,
+    control.witness_set_compact_cbor,
+    control.field_preimage_lengths_cbor,
+  )
+  and {
+    signatures_control_is_bound(pre, witness, control, verified, witness_set),
+    if control.stage == 0 {
+      and {
+        control.address_count == 0,
+        signatures_successor_is_exact(
+          pre,
+          witness.claimed_successor,
+          SignaturesControlV1 { ..control, stage: 1 },
+        ),
+      }
+    } else if control.stage == 1 {
+      and {
+        control.required_count == 0,
+        signatures_after_required_successor_is_exact(
+          pre,
+          witness.claimed_successor,
+          control,
+        ),
+      }
+    } else {
+      False
+    },
+  }
+}
+
+fn required_signer_membership_is_valid(
+  signer_hash: ByteArray,
+  control: SignaturesControlV1,
+  proof: SignerSetProofV1,
+) -> Bool {
+  when proof is {
+    SignerMembershipProof { peaks, signer_index, siblings } -> and {
+        peaks == control.signer_peaks,
+        signer_membership_is_valid(
+          signer_hash,
+          control.signer_count,
+          validation_merkle_v1.frontier_commitment(
+            control.signer_count,
+            control.signer_peaks,
+          ),
+          peaks,
+          signer_index,
+          siblings,
+        ),
+      }
+    _ -> False
+  }
+}
+
+fn required_signer_non_membership_is_valid(
+  signer_hash: ByteArray,
+  control: SignaturesControlV1,
+  proof: SignerSetProofV1,
+) -> Bool {
+  signer_non_membership_is_valid(
+    signer_hash,
+    control.signer_count,
+    validation_merkle_v1.frontier_commitment(
+      control.signer_count,
+      control.signer_peaks,
+    ),
+    proof,
+  )
+}
+
+fn verify_required_signer_item(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: SignaturesControlV1,
+  collection_proof: bounded_collection_v1.ItemProofV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  signer_proof: SignerSetProofV1,
+) -> Bool {
+  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+    pre.transaction_id,
+    control.compact_cbor,
+    control.witness_set_compact_cbor,
+    control.field_preimage_lengths_cbor,
+  )
+  let active_count = if control.required_count == -1 {
+    collection_proof.item_count
+  } else {
+    control.required_count
+  }
+  let signer_hash = chunk_proof.chunk
+  let next_required_seen = control.required_seen + 1
+  let next_control = SignaturesControlV1 {
+    ..control,
+    required_count: active_count,
+    required_seen: next_required_seen,
+  }
+  let present = required_signer_membership_is_valid(
+    signer_hash,
+    control,
+    signer_proof,
+  )
+  let absent = required_signer_non_membership_is_valid(
+    signer_hash,
+    control,
+    signer_proof,
+  )
+  and {
+    signatures_control_is_bound(pre, witness, control, verified, witness_set),
+    control.stage == 1,
+    control.required_count != 0,
+    collection_proof.field_index == 4,
+    chunk_proof.field_index == 4,
+    control.required_count == -1 || control.required_count == collection_proof.item_count,
+    active_count > 0,
+    active_count <= max_tx_size_derived_collection_item_count,
+    control.required_seen < active_count,
+    collection_proof.item_count == active_count,
+    collection_proof.item_index == control.required_seen,
+    collection_proof.item_length == 28,
+    chunk_proof.total_length == 28,
+    chunk_proof.item_index == collection_proof.item_index,
+    chunk_proof.chunk_index == 0,
+    bytearray.length(signer_hash) == 28,
+    bounded_collection_v1.verify_item(
+      verified.tx_compact.body.required_signers_hash,
+      collection_proof,
+    ),
+    bounded_item_v1.verify_chunk(
+      collection_proof.item_commitment,
+      chunk_proof,
+    ),
+    if absent {
+      rejected_successor_is_exact(
+        pre,
+        witness.claimed_successor,
+        reject_missing_required_witness,
+      )
+    } else if present {
+      if next_required_seen == active_count {
+        signatures_after_required_successor_is_exact(
+          pre,
+          witness.claimed_successor,
+          next_control,
+        )
+      } else {
+        signatures_successor_is_exact(
+          pre,
+          witness.claimed_successor,
+          next_control,
+        )
+      }
+    } else {
+      False
+    },
+  }
+}
+
+fn verify_signatures_handoff(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: SignaturesControlV1,
+  signer_hashes_cbor: ByteArray,
+) -> Bool {
+  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+    pre.transaction_id,
+    control.compact_cbor,
+    control.witness_set_compact_cbor,
+    control.field_preimage_lengths_cbor,
+  )
+  let signer_hashes = decode_midgard_tx_byte_list_preimage_cbor(
+    signer_hashes_cbor,
+  )
+  let built_frontier = signer_frontier(signer_hashes)
+  and {
+    signatures_control_is_bound(pre, witness, control, verified, witness_set),
+    control.stage == 2,
+    list.all(signer_hashes, fn(hash) { bytearray.length(hash) == 28 }),
+    signer_hashes == list.sort(signer_hashes, bytearray.compare),
+    signer_hashes == list.unique(signer_hashes),
+    built_frontier.count == control.signer_count,
+    built_frontier.peaks == control.signer_peaks,
+    witness.claimed_successor.phase == validation_trace_v1.PhaseANativeScripts,
+    witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
+      validation_trace_v1.PhaseANativeScripts,
+      pre.program_counter + 1,
+      encode_phase_a_native_scripts_witness(
+        control.compact_cbor,
+        control.witness_set_compact_cbor,
+        control.field_preimage_lengths_cbor,
+        control.context_cbor,
+        control.resolution_schedule_hash,
+        signer_hashes_cbor,
+        control.signer_count,
+        validation_merkle_v1.frontier_commitment(
+          control.signer_count,
+          control.signer_peaks,
+        ),
+      ),
+    ),
   }
 }
 
@@ -2075,108 +2622,95 @@ fn verify_signatures(
   witness: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
 ) -> Bool {
-  expect Some(data) = cbor.deserialise(witness.work_witness_cbor)
-  expect
-      [
-        compact_cbor_data, witness_set_compact_cbor_data,
-        field_preimage_lengths_cbor_data, context_cbor_data,
-        resolution_schedule_hash_data,
-      ]
-    = builtin.un_list_data(data)
-  let compact_cbor = builtin.un_b_data(compact_cbor_data)
-  let witness_set_compact_cbor = builtin.un_b_data(
-    witness_set_compact_cbor_data,
-  )
-  let field_preimage_lengths_cbor = builtin.un_b_data(
-    field_preimage_lengths_cbor_data,
-  )
-  let context_cbor = builtin.un_b_data(context_cbor_data)
-  let resolution_schedule_hash = builtin.un_b_data(
-    resolution_schedule_hash_data,
-  )
-  expect bytearray.length(resolution_schedule_hash) == 32
-  expect
-      TransactionFieldPairPreimageWitness {
-        first_field_index,
-        first_preimage_cbor,
-        second_field_index,
-        second_preimage_cbor,
-      }
-    = auxiliary
-  expect first_field_index == 4
-  expect second_field_index == 6
-  let first_verified = verify_midgard_transaction_field_preimage_v1(
-    pre.transaction_id,
-    pre.transaction_commitment,
-    compact_cbor,
-    witness_set_compact_cbor,
-    field_preimage_lengths_cbor,
-    first_field_index,
-    first_preimage_cbor,
-  )
-  let second_verified = verify_midgard_transaction_field_preimage_v1(
-    pre.transaction_id,
-    pre.transaction_commitment,
-    compact_cbor,
-    witness_set_compact_cbor,
-    field_preimage_lengths_cbor,
-    second_field_index,
-    second_preimage_cbor,
-  )
-  let required_signers = decode_midgard_tx_byte_list_preimage_cbor(
-    first_preimage_cbor,
-  )
-  let address_witnesses = decode_midgard_tx_address_witnesses_preimage_cbor(
-    second_preimage_cbor,
-  )
-  let canonical_signers = canonical_signer_hashes(address_witnesses)
-  let built_signer_frontier = signer_frontier(canonical_signers)
-  and {
-    first_verified,
-    second_verified,
-    validation_trace_v1.hash_validation_context(context_cbor) == pre.validation_context_hash,
-    witness.work_witness_cbor == encode_signatures_witness(
-      compact_cbor,
-      witness_set_compact_cbor,
-      field_preimage_lengths_cbor,
-      context_cbor,
-      resolution_schedule_hash,
-    ),
-    when
-      signatures_rejection(
-        pre.transaction_id,
-        required_signers,
-        address_witnesses,
+  let control = signatures_control_from_witness(witness.work_witness_cbor)
+  when auxiliary is {
+    NoAuxiliaryWitness -> verify_signatures_advance(pre, witness, control)
+    TransactionFieldChunkWitness { collection_proof, chunk_proof } ->
+      verify_signature_address_item(
+        pre,
+        witness,
+        control,
+        collection_proof,
+        chunk_proof,
       )
-    is {
-      Some(rejection_code) ->
-        rejected_successor_is_exact(
-          pre,
-          witness.claimed_successor,
-          rejection_code,
-        )
-      None -> and {
-          witness.claimed_successor.phase == validation_trace_v1.PhaseANativeScripts,
-          witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
-            validation_trace_v1.PhaseANativeScripts,
-            pre.program_counter + 1,
-            encode_phase_a_native_scripts_witness(
-              compact_cbor,
-              witness_set_compact_cbor,
-              field_preimage_lengths_cbor,
-              context_cbor,
-              resolution_schedule_hash,
-              encode_native_byte_list(canonical_signers),
-              built_signer_frontier.count,
-              validation_merkle_v1.frontier_commitment(
-                built_signer_frontier.count,
-                built_signer_frontier.peaks,
-              ),
-            ),
-          ),
-        }
-    },
+    RequiredSignerItemWitness {
+      collection_proof,
+      chunk_proof,
+      signer_proof,
+    } ->
+      verify_required_signer_item(
+        pre,
+        witness,
+        control,
+        collection_proof,
+        chunk_proof,
+        signer_proof,
+      )
+    SignerSetPreimageWitness { signer_hashes_cbor } ->
+      verify_signatures_handoff(
+        pre,
+        witness,
+        control,
+        signer_hashes_cbor,
+      )
+    _ -> False
   }
+}
+
+pub fn verify_signatures_advance_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+) -> Bool {
+  verify_signatures_advance(
+    pre,
+    witness,
+    signatures_control_from_witness(witness.work_witness_cbor),
+  )
+}
+
+pub fn verify_signature_address_item_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  collection_proof: bounded_collection_v1.ItemProofV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+) -> Bool {
+  verify_signature_address_item(
+    pre,
+    witness,
+    signatures_control_from_witness(witness.work_witness_cbor),
+    collection_proof,
+    chunk_proof,
+  )
+}
+
+pub fn verify_required_signer_item_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  collection_proof: bounded_collection_v1.ItemProofV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  signer_proof: SignerSetProofV1,
+) -> Bool {
+  verify_required_signer_item(
+    pre,
+    witness,
+    signatures_control_from_witness(witness.work_witness_cbor),
+    collection_proof,
+    chunk_proof,
+    signer_proof,
+  )
+}
+
+pub fn verify_signatures_handoff_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  signer_hashes_cbor: ByteArray,
+) -> Bool {
+  verify_signatures_handoff(
+    pre,
+    witness,
+    signatures_control_from_witness(witness.work_witness_cbor),
+    signer_hashes_cbor,
+  )
 }
 
 const reject_native_script_invalid =
@@ -2910,6 +3444,8 @@ fn resolve_lookup_step(
     ValueMintAssetWitness { .. } -> False
     LedgerDeltaReplayWitness { .. } -> False
     LedgerDeltaOutputWitness { .. } -> False
+    RequiredSignerItemWitness { .. } -> False
+    SignerSetPreimageWitness { .. } -> False
   }
 }
 
@@ -10409,13 +10945,6 @@ pub fn verify_signatures_one_step_v1(
     structural_transition_is_valid(pre, evidence.transition),
     verify_signatures(pre, evidence.transition, evidence.auxiliary),
   }
-}
-
-pub fn verify_signatures_semantics_v1(
-  pre: validation_trace_v1.ValidationMachineStateV1,
-  evidence: ValidationOneStepEvidenceV1,
-) -> Bool {
-  verify_signatures(pre, evidence.transition, evidence.auxiliary)
 }
 
 pub fn verify_phase_a_native_scripts_one_step_v1(

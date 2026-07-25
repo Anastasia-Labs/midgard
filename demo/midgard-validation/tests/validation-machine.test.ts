@@ -40,6 +40,7 @@ import {
   outRefFromTxId,
   plutusV3ScriptWitness,
   TEST_ADDRESS_BYTES,
+  TEST_SIGNER_HASH,
 } from "./validation-fixtures.js";
 
 const root = (byte: number): string => Buffer.alloc(32, byte).toString("hex");
@@ -174,6 +175,8 @@ describe("deterministic validation machine", () => {
       "compactBinding",
       "staticLedgerRules",
       "inputSets",
+      "signatures",
+      "signatures",
       "signatures",
       "phaseANativeScripts",
       "phaseAScriptPreconditions",
@@ -916,6 +919,118 @@ describe("deterministic validation machine", () => {
       false,
     );
     expect(
+      trace.witnesses
+        .filter((witness) => witness.phase === "signatures")
+        .map((witness) => witness.auxiliary?.kind ?? null),
+    ).toEqual(["transactionFieldChunk", null]);
+    expect(
+      validateBoundaryAbiAndCollectAuxiliaryKinds(trace).maxArgumentsBytes,
+    ).toBeLessThan(16 * 1024);
+  });
+
+  it("authenticates a required signer against the streamed signer frontier", async () => {
+    const spent = outRefFromByte(0x11);
+    const output = makeOutput(10n);
+    const transaction = makeNativeTx({
+      version: 1n,
+      spendInputs: [spent],
+      outputs: [output],
+      requiredSignerItems: [Buffer.from(TEST_SIGNER_HASH, "hex")],
+    });
+    const expectedLedgerOps = [
+      { type: "delete" as const, key: spent },
+      {
+        type: "insert" as const,
+        key: outRefFromTxId(transaction.txId),
+        value: output,
+      },
+    ];
+    const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps(
+      {
+        initialEntries: [{ outRef: spent, output }],
+        operations: expectedLedgerOps,
+      },
+    );
+    const trace = await Effect.runPromise(
+      buildDeterministicValidationMachineTrace({
+        ...context,
+        transactionId: transaction.txId,
+        canonicalTransactionCbor: transaction.txCbor,
+        priorUtxosRoot: ledgerMutationSteps[0]!.preRoot.toString("hex"),
+        postUtxosRoot: ledgerMutationSteps.at(-1)!.postRoot.toString("hex"),
+        ledgerWitnessEntries: [{ outRef: spent, output }],
+        expectedLedgerOps,
+        ledgerMutationSteps,
+        expectedVerdict: "accepted",
+        expectedRejectionCode: null,
+      }),
+    );
+
+    const signatureWitnesses = trace.witnesses.filter(
+      (witness) => witness.phase === "signatures",
+    );
+    expect(
+      signatureWitnesses.map(
+        (witness) => witness.auxiliary?.kind ?? null,
+      ),
+    ).toEqual([
+      "transactionFieldChunk",
+      "requiredSignerItem",
+      "signerSetPreimage",
+    ]);
+    expect(
+      signatureWitnesses[1]?.auxiliary?.kind === "requiredSignerItem"
+        ? signatureWitnesses[1].auxiliary.signerProof.kind
+        : null,
+    ).toBe("membership");
+    expect(trace.verdict).toBe("accepted");
+    expect(
+      validateBoundaryAbiAndCollectAuxiliaryKinds(trace).maxArgumentsBytes,
+    ).toBeLessThan(16 * 1024);
+  });
+
+  it("proves a missing required signer before an invalid-signature rejection", async () => {
+    const spent = outRefFromByte(0x11);
+    const output = makeOutput(10n);
+    const transaction = makeNativeTx({
+      version: 1n,
+      invalidVkeyWitness: true,
+      spendInputs: [spent],
+      outputs: [output],
+      requiredSignerItems: [Buffer.alloc(28, 0xa7)],
+    });
+    const trace = await Effect.runPromise(
+      buildDeterministicValidationMachineTrace({
+        ...context,
+        sourceKind: "forced",
+        transactionId: transaction.txId,
+        canonicalTransactionCbor: transaction.txCbor,
+        priorUtxosRoot: root(3),
+        postUtxosRoot: root(3),
+        ledgerWitnessEntries: [{ outRef: spent, output }],
+        expectedLedgerOps: [],
+        expectedVerdict: "rejected",
+        expectedRejectionCode: RejectCodes.MissingRequiredWitness,
+      }),
+    );
+
+    const signatureWitnesses = trace.witnesses.filter(
+      (witness) => witness.phase === "signatures",
+    );
+    expect(
+      signatureWitnesses.map(
+        (witness) => witness.auxiliary?.kind ?? null,
+      ),
+    ).toEqual(["transactionFieldChunk", "requiredSignerItem"]);
+    expect(
+      signatureWitnesses[1]?.auxiliary?.kind === "requiredSignerItem"
+        ? signatureWitnesses[1].auxiliary.signerProof.kind
+        : "membership",
+    ).not.toBe("membership");
+    expect(trace.tree.descriptor.rejectionCodeHash).toEqual(
+      trace.states.at(-1)!.rejectionCodeHash,
+    );
+    expect(
       validateBoundaryAbiAndCollectAuxiliaryKinds(trace).maxArgumentsBytes,
     ).toBeLessThan(16 * 1024);
   });
@@ -1089,6 +1204,8 @@ describe("deterministic validation machine", () => {
       "compactBinding",
       "staticLedgerRules",
       "inputSets",
+      "signatures",
+      "signatures",
       "signatures",
       "phaseANativeScripts",
       "phaseAScriptPreconditions",

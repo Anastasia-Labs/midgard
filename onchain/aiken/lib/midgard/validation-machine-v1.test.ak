@@ -18,12 +18,13 @@ use midgard/fraud_proofs/native_tx/compact.{
   encode_native_tx_body_compact, native_tx_id_for_version,
 }
 use midgard/fraud_proofs/native_tx/components.{
-  encode_midgard_tx_input, encode_midgard_tx_output,
+  encode_midgard_address_witness, encode_midgard_tx_input,
+  encode_midgard_tx_output,
   encode_midgard_versioned_script,
 }
 use midgard/fraud_proofs/native_tx/preimages.{
-  decode_midgard_tx_mint_preimage_cbor, encode_address_witness_preimage,
-  encode_input_preimage, encode_mint_preimage, encode_output_preimage,
+  decode_midgard_tx_mint_preimage_cbor, encode_input_preimage,
+  encode_mint_preimage, encode_output_preimage,
   encode_redeemer_witness_preimage, encode_script_witness_preimage,
 }
 use midgard/fraud_proofs/native_tx/transaction.{
@@ -141,17 +142,20 @@ fn contains_non_native_script(scripts: List<MidgardVersionedScript>) -> Bool {
   }
 }
 
-fn signatures_step_fixture(
+fn signatures_scan_witness(
   tx: MidgardTransaction,
-  ledger_delta_root: ByteArray,
-) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
-  let compact = midgard_transaction_to_compact(tx)
+  stage: Int,
+  address_count: Int,
+  required_count: Int,
+  address_seen: Int,
+  required_seen: Int,
+  previous_order_key: ByteArray,
+  previous_signer_hash: ByteArray,
+  signer_frontier: validation_merkle_v1.BuiltFrontier,
+  invalid_signature_seen: Int,
+) -> ByteArray {
   let proof_source = midgard_transaction_proof_source_v1(tx)
-  let tx_id = native_tx_id_for_version(
-    native_tx_version_v1,
-    encode_native_tx_body_compact(compact.body),
-  )
-  let work_witness_cbor = validation_machine_v1.encode_signatures_witness(
+  validation_machine_v1.encode_signatures_scan_witness(
     proof_source.compact_cbor,
     proof_source.witness_set_compact_cbor,
     proof_source.field_preimage_lengths_cbor,
@@ -160,7 +164,52 @@ fn signatures_step_fixture(
       tx.body.inputs,
       tx.body.reference_inputs,
     ),
+    stage,
+    address_count,
+    required_count,
+    address_seen,
+    required_seen,
+    previous_order_key,
+    previous_signer_hash,
+    signer_frontier.count,
+    signer_frontier.peaks,
+    invalid_signature_seen,
   )
+}
+
+fn initial_signatures_witness(tx: MidgardTransaction) -> ByteArray {
+  signatures_scan_witness(
+    tx,
+    0,
+    if tx.witness_set.addr_tx_wits == [] {
+      0
+    } else {
+      -1
+    },
+    if tx.body.required_signers == [] {
+      0
+    } else {
+      -1
+    },
+    0,
+    0,
+    #"",
+    #"",
+    validation_merkle_v1.build_frontier([]),
+    0,
+  )
+}
+
+fn signatures_step_fixture(
+  tx: MidgardTransaction,
+  ledger_delta_root: ByteArray,
+) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
+  let compact = midgard_transaction_to_compact(tx)
+  let tx_id = native_tx_id_for_version(
+    native_tx_version_v1,
+    encode_native_tx_body_compact(compact.body),
+  )
+  let work_witness_cbor = initial_signatures_witness(tx)
   Pair(
     validation_trace_v1.ValidationMachineStateV1 {
       machine_version: validation_trace_v1.machine_version,
@@ -246,7 +295,7 @@ fn input_field_pair_auxiliary(
   }
 }
 
-fn singleton_input_item_proofs(
+fn singleton_field_item_proofs(
   field_index: Int,
   key: ByteArray,
 ) -> Pair<bounded_collection_v1.ItemProofV1, bounded_item_v1.ChunkProofV1> {
@@ -369,19 +418,6 @@ fn exact_rejection_post(
     ),
     verdict: validation_trace_v1.Rejected,
     rejection_code_hash: validation_trace_v1.hash_rejection_code(rejection_code),
-  }
-}
-
-fn signatures_auxiliary(
-  tx: MidgardTransaction,
-) -> validation_machine_v1.ValidationAuxiliaryWitnessV1 {
-  validation_machine_v1.TransactionFieldPairPreimageWitness {
-    first_field_index: 4,
-    first_preimage_cbor: encode_native_byte_list(tx.body.required_signers),
-    second_field_index: 6,
-    second_preimage_cbor: encode_address_witness_preimage(
-      tx.witness_set.addr_tx_wits,
-    ),
   }
 }
 
@@ -1528,11 +1564,14 @@ test static_rules_accept_the_exact_proof_context_and_advance_to_input_sets() {
       ),
     ),
   }
-  validation_machine_v1.verify_one_step(
+  validation_machine_v1.verify_static_ledger_rules_semantics_v1(
     pre,
-    validation_machine_v1.ValidationOneStepWitnessV1 {
-      work_witness_cbor,
-      claimed_successor: post,
+    validation_machine_v1.ValidationOneStepEvidenceV1 {
+      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor,
+        claimed_successor: post,
+      },
+      auxiliary: validation_machine_v1.NoAuxiliaryWitness,
     },
   )
 }
@@ -1666,7 +1705,6 @@ test input_sets_accepts_bounded_disjoint_spend_and_reference_inputs() {
       reference_inputs: [reference_input],
     },
   }
-  let proof_source = midgard_transaction_proof_source_v1(tx)
   let initial_schedule = validation_machine_v1.empty_resolution_schedule_hash()
   let first_schedule = validation_machine_v1.resolution_schedule_node_hash(
     1,
@@ -1707,7 +1745,7 @@ test input_sets_accepts_bounded_disjoint_spend_and_reference_inputs() {
     ),
   }
   let Pair(reference_collection_proof, reference_chunk_proof) =
-    singleton_input_item_proofs(1, reference_key)
+    singleton_field_item_proofs(1, reference_key)
   let first_is_valid = validation_machine_v1.verify_input_sets_item_semantics_v1(
     first_pre,
     validation_machine_v1.ValidationOneStepWitnessV1 {
@@ -1717,13 +1755,7 @@ test input_sets_accepts_bounded_disjoint_spend_and_reference_inputs() {
     reference_collection_proof,
     reference_chunk_proof,
   )
-  let signatures_witness_cbor = validation_machine_v1.encode_signatures_witness(
-    proof_source.compact_cbor,
-    proof_source.witness_set_compact_cbor,
-    proof_source.field_preimage_lengths_cbor,
-    validation_context_cbor,
-    full_schedule,
-  )
+  let signatures_witness_cbor = initial_signatures_witness(tx)
   let signatures_post = validation_trace_v1.ValidationMachineStateV1 {
     ..second_pre,
     phase: validation_trace_v1.Signatures,
@@ -1735,7 +1767,7 @@ test input_sets_accepts_bounded_disjoint_spend_and_reference_inputs() {
     ),
   }
   let Pair(spend_collection_proof, spend_chunk_proof) =
-    singleton_input_item_proofs(0, spend_key)
+    singleton_field_item_proofs(0, spend_key)
   and {
     first_is_valid,
     validation_machine_v1.verify_input_sets_item_semantics_v1(
@@ -1801,9 +1833,9 @@ test input_sets_proves_spend_reference_overlap_unilaterally() {
     ),
   }
   let Pair(reference_collection_proof, reference_chunk_proof) =
-    singleton_input_item_proofs(1, key)
+    singleton_field_item_proofs(1, key)
   let Pair(spend_collection_proof, spend_chunk_proof) =
-    singleton_input_item_proofs(0, key)
+    singleton_field_item_proofs(0, key)
   let first_is_valid = validation_machine_v1.verify_input_sets_item_semantics_v1(
     first_pre,
     validation_machine_v1.ValidationOneStepWitnessV1 {
@@ -1852,7 +1884,7 @@ test input_sets_proves_a_malformed_validity_interval_after_the_final_item() {
   )
   let pre = input_sets_pre(tx, 2, work_witness_cbor)
   let Pair(collection_proof, chunk_proof) =
-    singleton_input_item_proofs(0, key)
+    singleton_field_item_proofs(0, key)
   let rejection_code =
     #"455f494e56414c49445f56414c49444954595f494e54455256414c5f464f524d4154"
   validation_machine_v1.verify_input_sets_item_semantics_v1(
@@ -1877,7 +1909,50 @@ test signatures_accepts_an_empty_required_signer_and_witness_set() {
   }
   let Pair(pre, work_witness_cbor) = signatures_step_fixture(tx, h_a)
   let proof_source = midgard_transaction_proof_source_v1(tx)
-  let signer_frontier = signer_frontier_for_tx(tx)
+  let signer_frontier = validation_merkle_v1.build_frontier([])
+  let required_witness_cbor = signatures_scan_witness(
+    tx,
+    1,
+    0,
+    0,
+    0,
+    0,
+    #"",
+    #"",
+    signer_frontier,
+    0,
+  )
+  let required_pre = validation_trace_v1.ValidationMachineStateV1 {
+    ..pre,
+    program_counter: 5,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.Signatures,
+      5,
+      required_witness_cbor,
+    ),
+  }
+  let handoff_witness_cbor = signatures_scan_witness(
+    tx,
+    2,
+    0,
+    0,
+    0,
+    0,
+    #"",
+    #"",
+    signer_frontier,
+    0,
+  )
+  let handoff_pre = validation_trace_v1.ValidationMachineStateV1 {
+    ..required_pre,
+    program_counter: 6,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.Signatures,
+      6,
+      handoff_witness_cbor,
+    ),
+  }
+  let signer_hashes_cbor = encode_native_byte_list([])
   let next_work_witness_cbor = validation_machine_v1.encode_phase_a_native_scripts_witness(
     proof_source.compact_cbor,
     proof_source.witness_set_compact_cbor,
@@ -1887,7 +1962,7 @@ test signatures_accepts_an_empty_required_signer_and_witness_set() {
       tx.body.inputs,
       tx.body.reference_inputs,
     ),
-    encode_native_byte_list([]),
+    signer_hashes_cbor,
     signer_frontier.count,
     validation_merkle_v1.frontier_commitment(
       signer_frontier.count,
@@ -1895,25 +1970,39 @@ test signatures_accepts_an_empty_required_signer_and_witness_set() {
     ),
   )
   let post = validation_trace_v1.ValidationMachineStateV1 {
-    ..pre,
+    ..handoff_pre,
     phase: validation_trace_v1.PhaseANativeScripts,
-    program_counter: 5,
+    program_counter: 7,
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.PhaseANativeScripts,
-      5,
+      7,
       next_work_witness_cbor,
     ),
   }
-  validation_machine_v1.verify_one_step_evidence(
-    pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+  and {
+    validation_machine_v1.verify_signatures_advance_semantics_v1(
+      pre,
+      validation_machine_v1.ValidationOneStepWitnessV1 {
         work_witness_cbor,
+        claimed_successor: required_pre,
+      },
+    ),
+    validation_machine_v1.verify_signatures_advance_semantics_v1(
+      required_pre,
+      validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor: required_witness_cbor,
+        claimed_successor: handoff_pre,
+      },
+    ),
+    validation_machine_v1.verify_signatures_handoff_semantics_v1(
+      handoff_pre,
+      validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor: handoff_witness_cbor,
         claimed_successor: post,
       },
-      auxiliary: signatures_auxiliary(tx),
-    },
-  )
+      signer_hashes_cbor,
+    ),
+  }
 }
 
 test signatures_proves_a_missing_required_signer_is_an_exact_no_op() {
@@ -1930,32 +2019,53 @@ test signatures_proves_a_missing_required_signer_is_an_exact_no_op() {
     tx,
     validation_trace_v1.hash_ledger_delta(#"80"),
   )
-  let rejection_code = #"455f4d495353494e475f52455155495245445f5749544e455353"
-  let terminal = validation_trace_v1.ValidationMachineStateV1 {
+  let signer_frontier = validation_merkle_v1.build_frontier([])
+  let required_witness_cbor = signatures_scan_witness(
+    tx,
+    1,
+    0,
+    -1,
+    0,
+    0,
+    #"",
+    #"",
+    signer_frontier,
+    0,
+  )
+  let required_pre = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
-    phase: validation_trace_v1.Terminal,
     program_counter: 5,
     work_root: validation_trace_v1.hash_work_witness(
-      validation_trace_v1.Terminal,
+      validation_trace_v1.Signatures,
       5,
-      validation_machine_v1.encode_terminal_rejection_witness(
-        rejection_code,
-        pre.prior_ledger_root,
-      ),
+      required_witness_cbor,
     ),
-    verdict: validation_trace_v1.Rejected,
-    rejection_code_hash: validation_trace_v1.hash_rejection_code(rejection_code),
   }
-  validation_machine_v1.verify_one_step_evidence(
-    pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+  let rejection_code = #"455f4d495353494e475f52455155495245445f5749544e455353"
+  let Pair(collection_proof, chunk_proof) =
+    singleton_field_item_proofs(4, h_28_a)
+  and {
+    validation_machine_v1.verify_signatures_advance_semantics_v1(
+      pre,
+      validation_machine_v1.ValidationOneStepWitnessV1 {
         work_witness_cbor,
-        claimed_successor: terminal,
+        claimed_successor: required_pre,
       },
-      auxiliary: signatures_auxiliary(tx),
-    },
-  )
+    ),
+    validation_machine_v1.verify_required_signer_item_semantics_v1(
+      required_pre,
+      validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor: required_witness_cbor,
+        claimed_successor: exact_rejection_post(
+          required_pre,
+          rejection_code,
+        ),
+      },
+      collection_proof,
+      chunk_proof,
+      validation_machine_v1.EmptySignerSetProof { peaks: [] },
+    ),
+  }
 }
 
 test signatures_proves_an_invalid_address_signature_is_an_exact_no_op() {
@@ -1980,32 +2090,60 @@ test signatures_proves_an_invalid_address_signature_is_an_exact_no_op() {
     tx,
     validation_trace_v1.hash_ledger_delta(#"80"),
   )
-  let rejection_code = #"455f494e56414c49445f5349474e4154555245"
-  let terminal = validation_trace_v1.ValidationMachineStateV1 {
+  let address_witness = MidgardAddressWitness {
+    verification_key: zero,
+    signature: zero |> bytearray.concat(zero),
+  }
+  let address_witness_cbor = encode_midgard_address_witness(address_witness)
+  let signer_hash = blake2b_224(address_witness.verification_key)
+  let signer_frontier = validation_merkle_v1.build_frontier([
+    script_proof_v1.signer_leaf_hash(signer_hash),
+  ])
+  let required_witness_cbor = signatures_scan_witness(
+    tx,
+    1,
+    1,
+    0,
+    1,
+    0,
+    #"",
+    #"",
+    signer_frontier,
+    1,
+  )
+  let required_pre = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
-    phase: validation_trace_v1.Terminal,
     program_counter: 5,
     work_root: validation_trace_v1.hash_work_witness(
-      validation_trace_v1.Terminal,
+      validation_trace_v1.Signatures,
       5,
-      validation_machine_v1.encode_terminal_rejection_witness(
-        rejection_code,
-        pre.prior_ledger_root,
-      ),
+      required_witness_cbor,
     ),
-    verdict: validation_trace_v1.Rejected,
-    rejection_code_hash: validation_trace_v1.hash_rejection_code(rejection_code),
   }
-  validation_machine_v1.verify_one_step_evidence(
-    pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+  let Pair(collection_proof, chunk_proof) =
+    singleton_field_item_proofs(6, address_witness_cbor)
+  let rejection_code = #"455f494e56414c49445f5349474e4154555245"
+  and {
+    validation_machine_v1.verify_signature_address_item_semantics_v1(
+      pre,
+      validation_machine_v1.ValidationOneStepWitnessV1 {
         work_witness_cbor,
-        claimed_successor: terminal,
+        claimed_successor: required_pre,
       },
-      auxiliary: signatures_auxiliary(tx),
-    },
-  )
+      collection_proof,
+      chunk_proof,
+    ),
+    validation_machine_v1.verify_signatures_advance_semantics_v1(
+      required_pre,
+      validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor: required_witness_cbor,
+        claimed_successor: exact_rejection_post(
+          required_pre,
+          rejection_code,
+        ),
+      },
+    ),
+  }
 }
 
 test phase_a_native_scripts_evaluates_a_valid_timelock_on_l1() {
