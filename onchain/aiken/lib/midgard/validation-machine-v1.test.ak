@@ -447,6 +447,30 @@ fn indexed_spend_purpose_leaves(
   }
 }
 
+fn merkle_parent_layer(leaves: List<ByteArray>) -> List<ByteArray> {
+  when leaves is {
+    [] -> []
+    [left, right, ..rest] -> [
+        validation_merkle_v1.hash_branch(left, right),
+        ..merkle_parent_layer(rest)
+      ]
+    _ -> fail @"power-of-two membership layer must contain complete pairs"
+  }
+}
+
+fn first_leaf_power_of_two_siblings(
+  leaves: List<ByteArray>,
+) -> List<ByteArray> {
+  when leaves is {
+    [_leaf] -> []
+    [_leaf, sibling, .._] -> [
+        sibling,
+        ..first_leaf_power_of_two_siblings(merkle_parent_layer(leaves))
+      ]
+    _ -> fail @"membership tree must be a non-empty power of two"
+  }
+}
+
 fn input_sets_scan_witness(
   tx: MidgardTransaction,
   spend_count: Int,
@@ -4298,6 +4322,60 @@ test script_sources_prepares_more_than_sixteen_purposes_for_discovery() {
         claimed_successor: post,
       },
       auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+    },
+  )
+}
+
+test script_sources_discovers_more_than_sixteen_purposes() {
+  let tx = empty_v1_transaction()
+  let empty_frontier = validation_merkle_v1.build_frontier([])
+  let first_peak_leaves = indexed_spend_purpose_leaves(0, 16)
+  let purpose_frontier = validation_merkle_v1.build_frontier(
+    indexed_spend_purpose_leaves(0, 17),
+  )
+  let empty_discovery =
+    validation_machine_v1.empty_script_discovery_control()
+  let selected_purpose = validation_machine_v1.ScriptDiscoveryControlV1 {
+    ..empty_discovery,
+    current_purpose_kind: 0,
+    current_purpose_index: 0,
+    current_script_hash: h_28_a,
+    current_subject: cbor.serialise(0),
+  }
+  let Pair(stage_eight, stage_eight_cbor) = script_discovery_step_fixture(
+    tx,
+    8,
+    empty_frontier,
+    empty_frontier,
+    purpose_frontier,
+    [],
+    empty_discovery,
+    19,
+  )
+  let Pair(stage_nine, _) = script_discovery_step_fixture(
+    tx,
+    9,
+    empty_frontier,
+    empty_frontier,
+    purpose_frontier,
+    [],
+    selected_purpose,
+    20,
+  )
+  validation_machine_v1.verify_one_step_evidence(
+    stage_eight,
+    validation_machine_v1.ValidationOneStepEvidenceV1 {
+      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor: stage_eight_cbor,
+        claimed_successor: stage_nine,
+      },
+      auxiliary: validation_machine_v1.ScriptPurposeScanWitness {
+        purpose_kind: 0,
+        purpose_index: 0,
+        script_hash: h_28_a,
+        subject: cbor.serialise(0),
+        siblings: first_leaf_power_of_two_siblings(first_peak_leaves),
+      },
     },
   )
 }

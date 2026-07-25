@@ -8292,7 +8292,6 @@ fn script_discovery_stage_is_well_formed(
   } else {
     and {
       control.stage <= 12,
-      control.purpose_count <= 16,
       discovery.purpose_cursor <= control.purpose_count,
       discovery.source_cursor <= control.source_count,
       discovery.redeemer_cursor <= control.redeemer_count,
