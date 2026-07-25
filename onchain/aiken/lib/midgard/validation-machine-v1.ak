@@ -14,7 +14,6 @@ use midgard/cek_machine_v1
 use midgard/cek_proof_v1
 use midgard/fraud_proofs/native_tx/codec.{
   decode_canonical_int_at, encode_definite_array_header, encode_definite_bytes,
-  encode_native_byte_list,
 }
 use midgard/fraud_proofs/native_tx/compact.{
   decode_native_tx_compact_v1, decode_native_tx_field_preimage_lengths_v1,
@@ -843,6 +842,64 @@ pub fn encode_observer_purpose_scan_control(
     |> bytearray.concat(cbor.serialise(control.seen))
 }
 
+pub type ReceivePurposeScanControlV1 {
+  source_count: Int,
+  source_peaks: List<validation_merkle_v1.FrontierPeak>,
+  receive_count: Int,
+  previous_hash: ByteArray,
+  candidate_hash: ByteArray,
+}
+
+pub fn empty_receive_purpose_scan_control() -> ReceivePurposeScanControlV1 {
+  ReceivePurposeScanControlV1 {
+    source_count: 0,
+    source_peaks: [],
+    receive_count: 0,
+    previous_hash: #"",
+    candidate_hash: #"",
+  }
+}
+
+pub fn encode_receive_purpose_scan_control(
+  control: ReceivePurposeScanControlV1,
+) -> ByteArray {
+  expect control.source_count >= 0
+  expect
+    validation_merkle_v1.frontier_is_well_formed(
+      control.source_count,
+      control.source_peaks,
+    )
+  expect control.receive_count >= 0
+  expect
+    if control.receive_count == 0 {
+      control.previous_hash == #""
+    } else {
+      bytearray.length(control.previous_hash) == 28
+    }
+  expect
+    or {
+      control.candidate_hash == #"",
+      and {
+        bytearray.length(control.candidate_hash) == 28,
+        or {
+          control.previous_hash == #"",
+          bytearray.compare(
+            control.previous_hash,
+            control.candidate_hash,
+          ) == Less,
+        },
+      },
+    }
+  #"85"
+    |> bytearray.concat(cbor.serialise(control.source_count))
+    |> bytearray.concat(
+        validation_merkle_v1.encode_frontier(control.source_peaks),
+      )
+    |> bytearray.concat(cbor.serialise(control.receive_count))
+    |> bytearray.concat(encode_definite_bytes(control.previous_hash))
+    |> bytearray.concat(encode_definite_bytes(control.candidate_hash))
+}
+
 pub fn encode_script_sources_witness(
   compact_cbor: ByteArray,
   witness_set_compact_cbor: ByteArray,
@@ -868,7 +925,7 @@ pub fn encode_script_sources_witness(
   output_count: Int,
   output_peaks: List<validation_merkle_v1.FrontierPeak>,
   output_total_count: Int,
-  receive_hashes: List<ByteArray>,
+  receive_scan: ReceivePurposeScanControlV1,
   source_total_count: Int,
   redeemer_total_count: Int,
   observer_scan: ObserverPurposeScanControlV1,
@@ -931,7 +988,7 @@ pub fn encode_script_sources_witness(
     |> bytearray.concat(cbor.serialise(output_count))
     |> bytearray.concat(validation_merkle_v1.encode_frontier(output_peaks))
     |> bytearray.concat(cbor.serialise(output_total_count))
-    |> bytearray.concat(encode_native_byte_list(receive_hashes))
+    |> bytearray.concat(encode_receive_purpose_scan_control(receive_scan))
     |> bytearray.concat(cbor.serialise(source_total_count))
     |> bytearray.concat(cbor.serialise(redeemer_total_count))
     |> bytearray.concat(encode_observer_purpose_scan_control(observer_scan))
@@ -5931,7 +5988,7 @@ fn verify_resolve_inputs(
             0,
             validation_merkle_v1.empty_frontier(),
             0,
-            [],
+            empty_receive_purpose_scan_control(),
             0,
             0,
             empty_observer_purpose_scan_control(),
@@ -6031,7 +6088,7 @@ pub fn verify_resolve_inputs_finish_semantics_v1(
         0,
         validation_merkle_v1.empty_frontier(),
         0,
-        [],
+        empty_receive_purpose_scan_control(),
         0,
         0,
         empty_observer_purpose_scan_control(),
@@ -6119,7 +6176,7 @@ pub type ScriptSourcesControlV1 {
   output_count: Int,
   output_peaks: List<validation_merkle_v1.FrontierPeak>,
   output_total_count: Int,
-  receive_hashes: List<ByteArray>,
+  receive_scan: ReceivePurposeScanControlV1,
   source_total_count: Int,
   redeemer_total_count: Int,
   observer_scan: ObserverPurposeScanControlV1,
@@ -6265,7 +6322,7 @@ fn script_sources_control_from_data_items(
         replay_remaining_schedule_hash_data, spend_index_data,
         purpose_count_data, purpose_peaks_data, output_cursor_data,
         output_count_data, output_peaks_data, output_total_count_data,
-        receive_hashes_data,
+        receive_scan_data,
         source_total_count_data, redeemer_total_count_data,
         observer_scan_data,
       ]
@@ -6276,6 +6333,13 @@ fn script_sources_control_from_data_items(
         observer_seen_data,
       ]
     = builtin.un_list_data(observer_scan_data)
+  expect
+      [
+        receive_source_count_data, receive_source_peaks_data,
+        receive_count_data, receive_previous_hash_data,
+        receive_candidate_hash_data,
+      ]
+    = builtin.un_list_data(receive_scan_data)
   ScriptSourcesControlV1 {
     compact_cbor: builtin.un_b_data(compact_cbor_data),
     witness_set_compact_cbor: builtin.un_b_data(witness_set_compact_cbor_data),
@@ -6309,9 +6373,13 @@ fn script_sources_control_from_data_items(
     output_count: builtin.un_i_data(output_count_data),
     output_peaks: decode_frontier_peaks(output_peaks_data),
     output_total_count: builtin.un_i_data(output_total_count_data),
-    receive_hashes: receive_hashes_data
-      |> builtin.un_list_data
-      |> list.map(builtin.un_b_data),
+    receive_scan: ReceivePurposeScanControlV1 {
+      source_count: builtin.un_i_data(receive_source_count_data),
+      source_peaks: decode_frontier_peaks(receive_source_peaks_data),
+      receive_count: builtin.un_i_data(receive_count_data),
+      previous_hash: builtin.un_b_data(receive_previous_hash_data),
+      candidate_hash: builtin.un_b_data(receive_candidate_hash_data),
+    },
     source_total_count: builtin.un_i_data(source_total_count_data),
     redeemer_total_count: builtin.un_i_data(redeemer_total_count_data),
     observer_scan: ObserverPurposeScanControlV1 {
@@ -6402,7 +6470,7 @@ pub fn encode_script_sources_discovery_witness(
     control.output_count,
     control.output_peaks,
     control.output_total_count,
-    control.receive_hashes,
+    control.receive_scan,
     control.source_total_count,
     control.redeemer_total_count,
     control.observer_scan,
@@ -6475,7 +6543,7 @@ fn exact_script_sources_control(control: ScriptSourcesControlV1) -> ByteArray {
       control.output_count,
       control.output_peaks,
       control.output_total_count,
-      control.receive_hashes,
+      control.receive_scan,
       control.source_total_count,
       control.redeemer_total_count,
       control.observer_scan,
@@ -6528,7 +6596,7 @@ fn script_sources_stage_zero(
     control.purpose_count == 0,
     control.output_cursor == 0,
     control.output_count == 0,
-    control.receive_hashes == [],
+    control.receive_scan == empty_receive_purpose_scan_control(),
   }
   if script_commitment == empty_script_commitment {
     and {
@@ -6626,7 +6694,7 @@ fn script_sources_stage_one(
     control.purpose_count == 0,
     control.output_cursor == 0,
     control.output_count == 0,
-    control.receive_hashes == [],
+    control.receive_scan == empty_receive_purpose_scan_control(),
   }
   if redeemer_commitment == empty_redeemer_commitment {
     and {
@@ -6778,7 +6846,7 @@ fn script_sources_stage_two(
     0,
     validation_merkle_v1.empty_frontier(),
     0,
-    [],
+    empty_receive_purpose_scan_control(),
     control.source_total_count,
     control.redeemer_total_count,
     control.observer_scan,
@@ -6988,7 +7056,7 @@ fn script_sources_replay_item(
               control.output_count,
               control.output_peaks,
               control.output_total_count,
-              control.receive_hashes,
+              control.receive_scan,
               control.source_total_count,
               control.redeemer_total_count,
               control.observer_scan,
@@ -7041,7 +7109,7 @@ fn script_sources_stage_three(
       control.output_count,
       control.output_peaks,
       control.output_total_count,
-      control.receive_hashes,
+      control.receive_scan,
       control.source_total_count,
       control.redeemer_total_count,
       control.observer_scan,
@@ -7095,7 +7163,7 @@ fn script_sources_stage_four(
       control.output_count == 0,
       control.output_total_count == 0,
       control.output_peaks == [],
-      control.receive_hashes == [],
+      control.receive_scan == empty_receive_purpose_scan_control(),
       script_sources_control_successor_is_exact(
         pre,
         witness,
@@ -7109,7 +7177,7 @@ fn script_sources_stage_four(
     and {
       auxiliary == NoAuxiliaryWitness,
       control.output_cursor == 0,
-      control.receive_hashes == [],
+      control.receive_scan == empty_receive_purpose_scan_control(),
       script_sources_control_successor_is_exact(
         pre,
         witness,
@@ -7125,7 +7193,7 @@ fn script_sources_stage_four(
     }
     and {
       control.output_cursor == 0,
-      control.receive_hashes == [],
+      control.receive_scan == empty_receive_purpose_scan_control(),
       active_total_count > 0,
       active_total_count <= max_tx_size_derived_collection_item_count,
       collection_proof.field_index == 2,
@@ -7157,29 +7225,6 @@ fn script_sources_stage_four(
   }
 }
 
-fn receive_hashes_are_canonical(hashes: List<ByteArray>) -> Bool {
-  when hashes is {
-    [] -> True
-    [hash, ..rest] -> and {
-        bytearray.length(hash) == 28,
-        when rest is {
-          [] -> True
-          [next, ..] -> bytearray.compare(hash, next) == Less
-        },
-        receive_hashes_are_canonical(rest),
-      }
-  }
-}
-
-fn insert_receive_hash(
-  hashes: List<ByteArray>,
-  script_hash: ByteArray,
-) -> List<ByteArray> {
-  [script_hash, ..hashes]
-    |> list.sort(bytearray.compare)
-    |> list.unique
-}
-
 fn protected_output_authorization(
   output: MidgardTxOutput,
   signer_count: Int,
@@ -7201,30 +7246,31 @@ fn protected_output_authorization(
   }
 }
 
-fn receive_purpose_frontier(
-  hashes: List<ByteArray>,
-  receive_index: Int,
-  count: Int,
-  peaks: List<validation_merkle_v1.FrontierPeak>,
-) -> validation_merkle_v1.BuiltFrontier {
-  when hashes is {
-    [] -> validation_merkle_v1.BuiltFrontier { count, peaks }
-    [script_hash, ..rest] ->
-      receive_purpose_frontier(
-        rest,
-        receive_index + 1,
-        count + 1,
-        validation_merkle_v1.append_leaf(
-          count,
-          peaks,
-          script_proof_v1.purpose_leaf_hash(
-            3,
-            receive_index,
-            script_hash,
-            script_hash,
+fn receive_source_successor(
+  scan: ReceivePurposeScanControlV1,
+  output: MidgardTxOutput,
+) -> ReceivePurposeScanControlV1 {
+  if output.address.protected {
+    when output.address.payment_credential is {
+      PubKeyCredential(_) -> scan
+      ScriptCredential(script_hash) ->
+        ReceivePurposeScanControlV1 {
+          ..scan,
+          source_count: scan.source_count + 1,
+          source_peaks: validation_merkle_v1.append_leaf(
+            scan.source_count,
+            scan.source_peaks,
+            script_proof_v1.purpose_leaf_hash(
+              3,
+              scan.source_count,
+              script_hash,
+              script_hash,
+            ),
           ),
-        ),
-      )
+        }
+    }
+  } else {
+    scan
   }
 }
 
@@ -7286,18 +7332,10 @@ fn script_sources_output_item(
                   )
                 InputSignerProofMalformed -> False
                 InputSignerAuthorized -> {
-                  let next_receive_hashes = if output.address.protected {
-                    when output.address.payment_credential is {
-                      ScriptCredential(script_hash) ->
-                        insert_receive_hash(
-                          control.receive_hashes,
-                          script_hash,
-                        )
-                      PubKeyCredential(_) -> control.receive_hashes
-                    }
-                  } else {
-                    control.receive_hashes
-                  }
+                  let next_receive_scan = receive_source_successor(
+                    control.receive_scan,
+                    output,
+                  )
                   let next_control = encode_script_sources_witness(
                     control.compact_cbor,
                     control.witness_set_compact_cbor,
@@ -7323,7 +7361,7 @@ fn script_sources_output_item(
                     control.output_count,
                     control.output_peaks,
                     control.output_total_count,
-                    next_receive_hashes,
+                    next_receive_scan,
                     control.source_total_count,
                     control.redeemer_total_count,
                     control.observer_scan,
@@ -7378,7 +7416,7 @@ fn script_sources_stage_five(
       control.output_count,
       control.output_peaks,
       control.output_total_count,
-      control.receive_hashes,
+      control.receive_scan,
       control.source_total_count,
       control.redeemer_total_count,
       control.observer_scan,
@@ -7589,11 +7627,11 @@ fn script_sources_stage_six(
       control.spend_index,
       next_purposes.count,
       next_purposes.peaks,
-      control.output_cursor,
+      0,
       control.output_count,
       control.output_peaks,
       control.output_total_count,
-      control.receive_hashes,
+      control.receive_scan,
       control.source_total_count,
       control.redeemer_total_count,
       control.observer_scan,
@@ -7636,59 +7674,198 @@ fn observer_purpose_scan_is_well_formed(
   }
 }
 
-fn script_sources_stage_seven_finalize(
-  pre: validation_trace_v1.ValidationMachineStateV1,
-  witness: ValidationOneStepWitnessV1,
-  control: ScriptSourcesControlV1,
+fn receive_purpose_scan_is_well_formed(
+  stage: Int,
+  output_count: Int,
+  scan: ReceivePurposeScanControlV1,
 ) -> Bool {
-  let final_purposes = receive_purpose_frontier(
-    control.receive_hashes,
-    0,
-    control.purpose_count,
-    control.purpose_peaks,
-  )
-  script_sources_control_successor_is_exact(
-    pre,
-    witness,
-    ScriptSourcesControlV1 {
-      ..control,
-      stage: 8,
-      purpose_count: final_purposes.count,
-      purpose_peaks: final_purposes.peaks,
-      receive_hashes: [],
-      observer_scan: empty_observer_purpose_scan_control(),
-      discovery: empty_script_discovery_control(),
+  and {
+    scan.source_count >= 0,
+    scan.source_count <= output_count,
+    validation_merkle_v1.frontier_is_well_formed(
+      scan.source_count,
+      scan.source_peaks,
+    ),
+    scan.receive_count >= 0,
+    scan.receive_count <= scan.source_count,
+    if scan.receive_count == 0 {
+      scan.previous_hash == #""
+    } else {
+      bytearray.length(scan.previous_hash) == 28
     },
-  )
+    or {
+      scan.candidate_hash == #"",
+      and {
+        bytearray.length(scan.candidate_hash) == 28,
+        or {
+          scan.previous_hash == #"",
+          bytearray.compare(
+            scan.previous_hash,
+            scan.candidate_hash,
+          ) == Less,
+        },
+      },
+    },
+    if stage < 5 {
+      scan == empty_receive_purpose_scan_control()
+    } else if stage < 7 {
+      and {
+        scan.receive_count == 0,
+        scan.previous_hash == #"",
+        scan.candidate_hash == #"",
+      }
+    } else if stage == 7 {
+      True
+    } else {
+      scan == empty_receive_purpose_scan_control()
+    },
+  }
 }
 
-fn script_sources_stage_seven(
+fn next_receive_candidate(
+  scan: ReceivePurposeScanControlV1,
+  script_hash: ByteArray,
+) -> ByteArray {
+  if and {
+    or {
+      scan.previous_hash == #"",
+      bytearray.compare(scan.previous_hash, script_hash) == Less,
+    },
+    or {
+      scan.candidate_hash == #"",
+      bytearray.compare(script_hash, scan.candidate_hash) == Less,
+    },
+  } {
+    script_hash
+  } else {
+    scan.candidate_hash
+  }
+}
+
+fn script_sources_receive_scan_item(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
   control: ScriptSourcesControlV1,
 ) -> Bool {
-  let Pair(verified_source, _) = verify_native_tx_proof_source_v1(
-    pre.transaction_id,
-    control.compact_cbor,
-    control.witness_set_compact_cbor,
-    control.field_preimage_lengths_cbor,
-  )
-  let observer_commitment = verified_source.tx_compact.body.required_observers_hash
+  expect
+      ScriptPurposeScanWitness {
+        purpose_kind,
+        purpose_index,
+        script_hash,
+        subject,
+        siblings,
+      }
+    = auxiliary
+  and {
+    purpose_kind == 3,
+    purpose_index == control.output_cursor,
+    bytearray.length(script_hash) == 28,
+    subject == script_hash,
+    validation_merkle_v1.verify_membership(
+      control.receive_scan.source_count,
+      control.receive_scan.source_peaks,
+      purpose_index,
+      script_proof_v1.purpose_leaf_hash(
+        purpose_kind,
+        purpose_index,
+        script_hash,
+        subject,
+      ),
+      siblings,
+    ),
+    script_sources_control_successor_is_exact(
+      pre,
+      witness,
+      ScriptSourcesControlV1 {
+        ..control,
+        output_cursor: control.output_cursor + 1,
+        receive_scan: ReceivePurposeScanControlV1 {
+          ..control.receive_scan,
+          candidate_hash: next_receive_candidate(
+            control.receive_scan,
+            script_hash,
+          ),
+        },
+      },
+    ),
+  }
+}
+
+fn script_sources_receive_scan_finish(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+  control: ScriptSourcesControlV1,
+) -> Bool {
+  and {
+    auxiliary == NoAuxiliaryWitness,
+    if control.receive_scan.candidate_hash == #"" {
+      script_sources_control_successor_is_exact(
+        pre,
+        witness,
+        ScriptSourcesControlV1 {
+          ..control,
+          stage: 8,
+          output_cursor: control.output_count,
+          receive_scan: empty_receive_purpose_scan_control(),
+          observer_scan: empty_observer_purpose_scan_control(),
+          discovery: empty_script_discovery_control(),
+        },
+      )
+    } else {
+      let script_hash = control.receive_scan.candidate_hash
+      script_sources_control_successor_is_exact(
+        pre,
+        witness,
+        ScriptSourcesControlV1 {
+          ..control,
+          output_cursor: 0,
+          purpose_count: control.purpose_count + 1,
+          purpose_peaks: validation_merkle_v1.append_leaf(
+            control.purpose_count,
+            control.purpose_peaks,
+            script_proof_v1.purpose_leaf_hash(
+              3,
+              control.receive_scan.receive_count,
+              script_hash,
+              script_hash,
+            ),
+          ),
+          receive_scan: ReceivePurposeScanControlV1 {
+            source_count: control.receive_scan.source_count,
+            source_peaks: control.receive_scan.source_peaks,
+            receive_count: control.receive_scan.receive_count + 1,
+            previous_hash: script_hash,
+            candidate_hash: #"",
+          },
+        },
+      )
+    },
+  }
+}
+
+fn script_sources_stage_seven_with_observer_commitment(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+  control: ScriptSourcesControlV1,
+  observer_commitment: ByteArray,
+) -> Bool {
   let empty_observer_commitment = bounded_collection_v1.from_items(3, [])
-  if observer_commitment == empty_observer_commitment {
+  let observer_scan_is_complete = if observer_commitment == empty_observer_commitment {
+    control.observer_scan == empty_observer_purpose_scan_control()
+  } else {
     and {
-      auxiliary == NoAuxiliaryWitness,
-      control.observer_scan == empty_observer_purpose_scan_control(),
-      script_sources_stage_seven_finalize(pre, witness, control),
+      control.observer_scan.total_count > 0,
+      control.observer_scan.seen == control.observer_scan.total_count,
     }
-  } else if and {
-    control.observer_scan.total_count > 0,
-    control.observer_scan.seen == control.observer_scan.total_count,
-  } {
-    and {
-      auxiliary == NoAuxiliaryWitness,
-      script_sources_stage_seven_finalize(pre, witness, control),
+  }
+  if observer_scan_is_complete {
+    if control.output_cursor == control.receive_scan.source_count {
+      script_sources_receive_scan_finish(pre, witness, auxiliary, control)
+    } else {
+      script_sources_receive_scan_item(pre, witness, auxiliary, control)
     }
   } else {
     expect TransactionFieldChunkWitness { collection_proof, chunk_proof } =
@@ -7700,6 +7877,10 @@ fn script_sources_stage_seven(
     }
     let observer_hash = chunk_proof.chunk
     and {
+      control.output_cursor == 0,
+      control.receive_scan.receive_count == 0,
+      control.receive_scan.previous_hash == #"",
+      control.receive_scan.candidate_hash == #"",
       active_count > 0,
       active_count <= max_tx_size_derived_collection_item_count,
       collection_proof.field_index == 3,
@@ -7758,6 +7939,27 @@ fn script_sources_stage_seven(
       },
     }
   }
+}
+
+fn script_sources_stage_seven(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+  control: ScriptSourcesControlV1,
+) -> Bool {
+  let Pair(verified_source, _) = verify_native_tx_proof_source_v1(
+    pre.transaction_id,
+    control.compact_cbor,
+    control.witness_set_compact_cbor,
+    control.field_preimage_lengths_cbor,
+  )
+  script_sources_stage_seven_with_observer_commitment(
+    pre,
+    witness,
+    auxiliary,
+    control,
+    verified_source.tx_compact.body.required_observers_hash,
+  )
 }
 
 fn script_discovery_successor_is_exact(
@@ -8422,10 +8624,25 @@ fn script_sources_control_is_bound(
       }
     } else if control.stage == 4 {
       control.output_cursor == 0
+    } else if control.stage == 5 {
+      True
+    } else if control.stage == 6 {
+      control.output_cursor == control.output_count
+    } else if control.stage == 7 {
+      True
+    } else {
+      control.output_cursor == control.output_count
+    },
+    if control.stage == 4 {
+      True
     } else {
       control.output_total_count == control.output_count
     },
-    receive_hashes_are_canonical(control.receive_hashes),
+    receive_purpose_scan_is_well_formed(
+      control.stage,
+      control.output_count,
+      control.receive_scan,
+    ),
     observer_purpose_scan_is_well_formed(control.stage, control.observer_scan),
     script_discovery_control_is_well_formed(control.discovery),
     script_discovery_stage_is_well_formed(control),
@@ -8463,7 +8680,7 @@ pub fn verify_script_sources_stage_three_finish_semantics_v1(
     control.output_count,
     control.output_peaks,
     control.output_total_count,
-    control.receive_hashes,
+    control.receive_scan,
     control.source_total_count,
     control.redeemer_total_count,
     control.observer_scan,
@@ -8566,7 +8783,7 @@ pub fn verify_script_sources_stage_five_finish_semantics_v1(
     control.output_count,
     control.output_peaks,
     control.output_total_count,
-    control.receive_hashes,
+    control.receive_scan,
     control.source_total_count,
     control.redeemer_total_count,
     control.observer_scan,
@@ -8866,7 +9083,13 @@ fn verify_script_sources(
     } else if control.stage == 6 {
       script_sources_stage_six(pre, witness, auxiliary, control)
     } else if control.stage == 7 {
-      script_sources_stage_seven(pre, witness, auxiliary, control)
+      script_sources_stage_seven_with_observer_commitment(
+        pre,
+        witness,
+        auxiliary,
+        control,
+        verified_source.tx_compact.body.required_observers_hash,
+      )
     } else if control.stage == 8 {
       script_sources_stage_eight(pre, witness, auxiliary, control)
     } else if control.stage == 9 {

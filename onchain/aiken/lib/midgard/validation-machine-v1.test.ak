@@ -740,7 +740,7 @@ fn script_sources_output_step_fixture_with_resolved_items(
   output_cursor: Int,
   output_frontier: validation_merkle_v1.BuiltFrontier,
   output_total_count: Int,
-  receive_hashes: List<ByteArray>,
+  receive_scan: validation_machine_v1.ReceivePurposeScanControlV1,
   observer_scan: validation_machine_v1.ObserverPurposeScanControlV1,
   program_counter: Int,
 ) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
@@ -779,7 +779,7 @@ fn script_sources_output_step_fixture_with_resolved_items(
     output_frontier.count,
     output_frontier.peaks,
     output_total_count,
-    receive_hashes,
+    receive_scan,
     source_frontier.count,
     redeemer_frontier.count,
     observer_scan,
@@ -825,6 +825,13 @@ test observer_purpose_scan_control_cbor_is_canonical() {
   }
 }
 
+test receive_purpose_scan_control_cbor_is_canonical() {
+  let encoded = validation_machine_v1.encode_receive_purpose_scan_control(
+    validation_machine_v1.empty_receive_purpose_scan_control(),
+  )
+  encoded == #"850080004040"
+}
+
 fn script_sources_output_step_fixture(
   tx: MidgardTransaction,
   resolved_input_count: Int,
@@ -839,7 +846,6 @@ fn script_sources_output_step_fixture(
   purpose_frontier: validation_merkle_v1.BuiltFrontier,
   output_cursor: Int,
   output_frontier: validation_merkle_v1.BuiltFrontier,
-  receive_hashes: List<ByteArray>,
   program_counter: Int,
 ) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
   script_sources_output_step_fixture_with_resolved_items(
@@ -858,7 +864,7 @@ fn script_sources_output_step_fixture(
     output_cursor,
     output_frontier,
     output_frontier.count,
-    receive_hashes,
+    validation_machine_v1.empty_receive_purpose_scan_control(),
     validation_machine_v1.empty_observer_purpose_scan_control(),
     program_counter,
   )
@@ -895,7 +901,38 @@ fn script_sources_step_fixture_with_resolved_items(
     0,
     validation_merkle_v1.build_frontier([]),
     0,
-    [],
+    validation_machine_v1.empty_receive_purpose_scan_control(),
+    validation_machine_v1.empty_observer_purpose_scan_control(),
+    program_counter,
+  )
+}
+
+fn script_sources_receive_scan_step_fixture(
+  tx: MidgardTransaction,
+  purpose_frontier: validation_merkle_v1.BuiltFrontier,
+  output_cursor: Int,
+  output_frontier: validation_merkle_v1.BuiltFrontier,
+  receive_scan: validation_machine_v1.ReceivePurposeScanControlV1,
+  program_counter: Int,
+) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
+  let accumulator = validation_machine_v1.initial_resolution_accumulator()
+  script_sources_output_step_fixture_with_resolved_items(
+    tx,
+    0,
+    accumulator,
+    7,
+    validation_merkle_v1.build_frontier([]),
+    validation_merkle_v1.build_frontier([]),
+    0,
+    validation_merkle_v1.build_frontier([]),
+    accumulator,
+    validation_machine_v1.empty_resolution_schedule_hash(),
+    0,
+    purpose_frontier,
+    output_cursor,
+    output_frontier,
+    output_frontier.count,
+    receive_scan,
     validation_machine_v1.empty_observer_purpose_scan_control(),
     program_counter,
   )
@@ -932,13 +969,14 @@ fn script_sources_step_fixture(
   )
 }
 
-fn script_discovery_step_fixture(
+fn script_discovery_step_fixture_with_output_frontier(
   tx: MidgardTransaction,
   stage: Int,
   source_frontier: validation_merkle_v1.BuiltFrontier,
   redeemer_frontier: validation_merkle_v1.BuiltFrontier,
   purpose_frontier: validation_merkle_v1.BuiltFrontier,
-  receive_hashes: List<ByteArray>,
+  output_cursor: Int,
+  output_frontier: validation_merkle_v1.BuiltFrontier,
   discovery: validation_machine_v1.ScriptDiscoveryControlV1,
   program_counter: Int,
 ) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
@@ -973,11 +1011,11 @@ fn script_discovery_step_fixture(
     spend_index: 0,
     purpose_count: purpose_frontier.count,
     purpose_peaks: purpose_frontier.peaks,
-    output_cursor: 0,
-    output_count: 0,
-    output_peaks: validation_merkle_v1.empty_frontier(),
-    output_total_count: 0,
-    receive_hashes,
+    output_cursor,
+    output_count: output_frontier.count,
+    output_peaks: output_frontier.peaks,
+    output_total_count: output_frontier.count,
+    receive_scan: validation_machine_v1.empty_receive_purpose_scan_control(),
     source_total_count: source_frontier.count,
     redeemer_total_count: redeemer_frontier.count,
     observer_scan: validation_machine_v1.empty_observer_purpose_scan_control(),
@@ -1013,6 +1051,28 @@ fn script_discovery_step_fixture(
       ledger_delta_root: validation_trace_v1.hash_ledger_delta(#"80"),
     },
     work_witness_cbor,
+  )
+}
+
+fn script_discovery_step_fixture(
+  tx: MidgardTransaction,
+  stage: Int,
+  source_frontier: validation_merkle_v1.BuiltFrontier,
+  redeemer_frontier: validation_merkle_v1.BuiltFrontier,
+  purpose_frontier: validation_merkle_v1.BuiltFrontier,
+  discovery: validation_machine_v1.ScriptDiscoveryControlV1,
+  program_counter: Int,
+) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
+  script_discovery_step_fixture_with_output_frontier(
+    tx,
+    stage,
+    source_frontier,
+    redeemer_frontier,
+    purpose_frontier,
+    0,
+    validation_merkle_v1.build_frontier([]),
+    discovery,
+    program_counter,
   )
 }
 
@@ -3356,7 +3416,7 @@ test resolve_inputs_finalizes_into_script_source_resolution() {
         0,
         validation_merkle_v1.empty_frontier(),
         0,
-        [],
+        validation_machine_v1.empty_receive_purpose_scan_control(),
         0,
         0,
         validation_machine_v1.empty_observer_purpose_scan_control(),
@@ -3892,7 +3952,6 @@ fn canonical_output_commitment_step(step_to_verify: Int) -> Bool {
       empty_frontier,
       0,
       output_frontier,
-      [],
       15,
     )
   let Pair(post, _) = script_sources_output_step_fixture(
@@ -3909,7 +3968,6 @@ fn canonical_output_commitment_step(step_to_verify: Int) -> Bool {
     empty_frontier,
     0,
     output_frontier,
-    [],
     16,
   )
   let Pair(collection_proof, _) =
@@ -3952,6 +4010,97 @@ test script_sources_finishes_authenticated_output_commitment() {
   canonical_output_commitment_step(1)
 }
 
+test script_sources_collects_protected_receive_source() {
+  let output = MidgardTxOutput {
+    address: MidgardAddress {
+      protected: True,
+      network_id: 0,
+      payment_credential: ScriptCredential(h_28_a),
+      stake_credential: None,
+    },
+    value: MidgardValue { lovelace: 0, assets: [] },
+    datum_cbor: None,
+    script_ref: None,
+  }
+  let output_cbor = encode_midgard_tx_output(output)
+  let base = empty_v1_transaction()
+  let tx = MidgardTransaction {
+    ..base,
+    body: MidgardTransactionBody { ..base.body, outputs: [output] },
+  }
+  let empty_frontier = validation_merkle_v1.build_frontier([])
+  let output_frontier = validation_merkle_v1.build_frontier(
+    [script_proof_v1.output_leaf_hash(0, output_cbor)],
+  )
+  let receive_source_frontier = validation_merkle_v1.build_frontier(
+    [script_proof_v1.purpose_leaf_hash(3, 0, h_28_a, h_28_a)],
+  )
+  let accumulator = validation_machine_v1.initial_resolution_accumulator()
+  let Pair(pre, work_witness_cbor) =
+    script_sources_output_step_fixture_with_resolved_items(
+      tx,
+      0,
+      accumulator,
+      5,
+      empty_frontier,
+      empty_frontier,
+      0,
+      empty_frontier,
+      accumulator,
+      validation_machine_v1.empty_resolution_schedule_hash(),
+      0,
+      empty_frontier,
+      0,
+      output_frontier,
+      1,
+      validation_machine_v1.empty_receive_purpose_scan_control(),
+      validation_machine_v1.empty_observer_purpose_scan_control(),
+      14,
+    )
+  let Pair(post, _) =
+    script_sources_output_step_fixture_with_resolved_items(
+      tx,
+      0,
+      accumulator,
+      5,
+      empty_frontier,
+      empty_frontier,
+      0,
+      empty_frontier,
+      accumulator,
+      validation_machine_v1.empty_resolution_schedule_hash(),
+      0,
+      empty_frontier,
+      1,
+      output_frontier,
+      1,
+      validation_machine_v1.ReceivePurposeScanControlV1 {
+        source_count: receive_source_frontier.count,
+        source_peaks: receive_source_frontier.peaks,
+        receive_count: 0,
+        previous_hash: #"",
+        candidate_hash: #"",
+      },
+      validation_machine_v1.empty_observer_purpose_scan_control(),
+      15,
+    )
+  validation_machine_v1.verify_one_step_evidence(
+    pre,
+    validation_machine_v1.ValidationOneStepEvidenceV1 {
+      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor,
+        claimed_successor: post,
+      },
+      auxiliary: validation_machine_v1.OutputReplayWitness {
+        output_index: 0,
+        output_cbor,
+        siblings: [],
+        signer_proof: validation_machine_v1.NoSignerSetProof,
+      },
+    },
+  )
+}
+
 fn protected_receive_purpose_step(step_to_verify: Int) -> Bool {
   let output = MidgardTxOutput {
     address: MidgardAddress {
@@ -3974,74 +4123,82 @@ fn protected_receive_purpose_step(step_to_verify: Int) -> Bool {
   let output_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.output_leaf_hash(0, output_cbor)],
   )
-  let accumulator = validation_machine_v1.initial_resolution_accumulator()
-  let Pair(pre, work_witness_cbor) = script_sources_output_step_fixture(
-    tx,
-    0,
-    accumulator,
-    5,
-    empty_frontier,
-    empty_frontier,
-    0,
-    accumulator,
-    validation_machine_v1.empty_resolution_schedule_hash(),
-    0,
-    empty_frontier,
-    0,
-    output_frontier,
-    [],
-    15,
+  let receive_source_frontier = validation_merkle_v1.build_frontier(
+    [script_proof_v1.purpose_leaf_hash(3, 0, h_28_a, h_28_a)],
   )
-  let Pair(after_output, _) = script_sources_output_step_fixture(
+  let empty_receive_scan =
+    validation_machine_v1.ReceivePurposeScanControlV1 {
+      source_count: receive_source_frontier.count,
+      source_peaks: receive_source_frontier.peaks,
+      receive_count: 0,
+      previous_hash: #"",
+      candidate_hash: #"",
+    }
+  let selected_receive_scan =
+    validation_machine_v1.ReceivePurposeScanControlV1 {
+      source_count: receive_source_frontier.count,
+      source_peaks: receive_source_frontier.peaks,
+      receive_count: 0,
+      previous_hash: #"",
+      candidate_hash: h_28_a,
+    }
+  let committed_receive_scan =
+    validation_machine_v1.ReceivePurposeScanControlV1 {
+      source_count: receive_source_frontier.count,
+      source_peaks: receive_source_frontier.peaks,
+      receive_count: 1,
+      previous_hash: h_28_a,
+      candidate_hash: #"",
+    }
+  let receive_purpose_frontier = validation_merkle_v1.build_frontier(
+    [script_proof_v1.purpose_leaf_hash(3, 0, h_28_a, h_28_a)],
+  )
+  let Pair(pre, work_witness_cbor) =
+    script_sources_receive_scan_step_fixture(
+      tx,
+      empty_frontier,
+      0,
+      output_frontier,
+      empty_receive_scan,
+      15,
+    )
+  let Pair(after_candidate, after_candidate_work_witness_cbor) =
+    script_sources_receive_scan_step_fixture(
+      tx,
+      empty_frontier,
+      1,
+      output_frontier,
+      selected_receive_scan,
+      16,
+    )
+  let Pair(after_append, after_append_work_witness_cbor) =
+    script_sources_receive_scan_step_fixture(
+      tx,
+      receive_purpose_frontier,
+      0,
+      output_frontier,
+      committed_receive_scan,
+      17,
+    )
+  let Pair(after_rescan, after_rescan_work_witness_cbor) =
+    script_sources_receive_scan_step_fixture(
+      tx,
+      receive_purpose_frontier,
+      1,
+      output_frontier,
+      committed_receive_scan,
+      18,
+    )
+  let Pair(post, _) = script_discovery_step_fixture_with_output_frontier(
     tx,
-    0,
-    accumulator,
-    5,
+    8,
     empty_frontier,
     empty_frontier,
-    0,
-    accumulator,
-    validation_machine_v1.empty_resolution_schedule_hash(),
-    0,
-    empty_frontier,
+    receive_purpose_frontier,
     1,
     output_frontier,
-    [h_28_a],
-    16,
-  )
-  let Pair(final_pre, final_work_witness_cbor) = script_sources_output_step_fixture(
-    tx,
-    0,
-    accumulator,
-    5,
-    empty_frontier,
-    empty_frontier,
-    0,
-    accumulator,
-    validation_machine_v1.empty_resolution_schedule_hash(),
-    0,
-    empty_frontier,
-    1,
-    output_frontier,
-    [h_28_a],
-    16,
-  )
-  let Pair(stage_six, _) = script_sources_output_step_fixture(
-    tx,
-    0,
-    accumulator,
-    6,
-    empty_frontier,
-    empty_frontier,
-    0,
-    accumulator,
-    validation_machine_v1.empty_resolution_schedule_hash(),
-    0,
-    empty_frontier,
-    1,
-    output_frontier,
-    [h_28_a],
-    17,
+    validation_machine_v1.empty_script_discovery_control(),
+    19,
   )
   if step_to_verify == 0 {
     validation_machine_v1.verify_one_step_evidence(
@@ -4049,25 +4206,54 @@ fn protected_receive_purpose_step(step_to_verify: Int) -> Bool {
       validation_machine_v1.ValidationOneStepEvidenceV1 {
         transition: validation_machine_v1.ValidationOneStepWitnessV1 {
           work_witness_cbor,
-          claimed_successor: after_output,
+          claimed_successor: after_candidate,
         },
-        auxiliary: validation_machine_v1.OutputReplayWitness {
-          output_index: 0,
-          output_cbor,
+        auxiliary: validation_machine_v1.ScriptPurposeScanWitness {
+          purpose_kind: 3,
+          purpose_index: 0,
+          script_hash: h_28_a,
+          subject: h_28_a,
           siblings: [],
-          signer_proof: validation_machine_v1.NoSignerSetProof,
+        },
+      },
+    )
+  } else if step_to_verify == 1 {
+    validation_machine_v1.verify_one_step_evidence(
+      after_candidate,
+      validation_machine_v1.ValidationOneStepEvidenceV1 {
+        transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+          work_witness_cbor: after_candidate_work_witness_cbor,
+          claimed_successor: after_append,
+        },
+        auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+      },
+    )
+  } else if step_to_verify == 2 {
+    validation_machine_v1.verify_one_step_evidence(
+      after_append,
+      validation_machine_v1.ValidationOneStepEvidenceV1 {
+        transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+          work_witness_cbor: after_append_work_witness_cbor,
+          claimed_successor: after_rescan,
+        },
+        auxiliary: validation_machine_v1.ScriptPurposeScanWitness {
+          purpose_kind: 3,
+          purpose_index: 0,
+          script_hash: h_28_a,
+          subject: h_28_a,
+          siblings: [],
         },
       },
     )
   } else {
     and {
-      step_to_verify == 1,
+      step_to_verify == 3,
       validation_machine_v1.verify_one_step_evidence(
-        final_pre,
+        after_rescan,
         validation_machine_v1.ValidationOneStepEvidenceV1 {
           transition: validation_machine_v1.ValidationOneStepWitnessV1 {
-            work_witness_cbor: final_work_witness_cbor,
-            claimed_successor: stage_six,
+            work_witness_cbor: after_rescan_work_witness_cbor,
+            claimed_successor: post,
           },
           auxiliary: validation_machine_v1.NoAuxiliaryWitness,
         },
@@ -4076,12 +4262,20 @@ fn protected_receive_purpose_step(step_to_verify: Int) -> Bool {
   }
 }
 
-test script_sources_collects_protected_receive_purpose() {
+test script_sources_selects_canonical_protected_receive_purpose() {
   protected_receive_purpose_step(0)
 }
 
-test script_sources_finishes_protected_receive_purpose_replay() {
+test script_sources_appends_protected_receive_purpose() {
   protected_receive_purpose_step(1)
+}
+
+test script_sources_rescans_receive_sources_for_distinctness() {
+  protected_receive_purpose_step(2)
+}
+
+test script_sources_finishes_protected_receive_purpose_scan() {
+  protected_receive_purpose_step(3)
 }
 
 test script_sources_rejects_an_unsigned_protected_pubkey_output() {
@@ -4121,7 +4315,6 @@ test script_sources_rejects_an_unsigned_protected_pubkey_output() {
     empty_frontier,
     0,
     output_frontier,
-    [],
     15,
   )
   let rejection_code = #"455f4d495353494e475f52455155495245445f5749544e455353"
@@ -4186,7 +4379,6 @@ test script_sources_appends_mint_and_burn_policy_purposes() {
     empty_frontier,
     0,
     empty_frontier,
-    [],
     17,
   )
   let Pair(post, _) = script_sources_output_step_fixture(
@@ -4203,7 +4395,6 @@ test script_sources_appends_mint_and_burn_policy_purposes() {
     mint_purpose_frontier,
     0,
     empty_frontier,
-    [],
     18,
   )
   validation_machine_v1.verify_one_step_evidence(
@@ -4231,10 +4422,7 @@ fn canonical_observer_purpose_step(step_to_verify: Int) -> Bool {
     [script_proof_v1.purpose_leaf_hash(2, 0, h_28_a, h_28_a)],
   )
   let final_purpose_frontier = validation_merkle_v1.build_frontier(
-    [
-      script_proof_v1.purpose_leaf_hash(2, 0, h_28_a, h_28_a),
-      script_proof_v1.purpose_leaf_hash(3, 0, h_28_b, h_28_b),
-    ],
+    [script_proof_v1.purpose_leaf_hash(2, 0, h_28_a, h_28_a)],
   )
   let accumulator = validation_machine_v1.initial_resolution_accumulator()
   let Pair(pre, work_witness_cbor) = script_sources_output_step_fixture(
@@ -4251,7 +4439,6 @@ fn canonical_observer_purpose_step(step_to_verify: Int) -> Bool {
     empty_frontier,
     0,
     empty_frontier,
-    [h_28_b],
     18,
   )
   let Pair(after_observer, after_observer_work_witness_cbor) =
@@ -4271,7 +4458,7 @@ fn canonical_observer_purpose_step(step_to_verify: Int) -> Bool {
       0,
       empty_frontier,
       0,
-      [h_28_b],
+      validation_machine_v1.empty_receive_purpose_scan_control(),
       validation_machine_v1.ObserverPurposeScanControlV1 {
         total_count: 1,
         seen: 1,
@@ -4285,7 +4472,6 @@ fn canonical_observer_purpose_step(step_to_verify: Int) -> Bool {
     empty_frontier,
     empty_frontier,
     final_purpose_frontier,
-    [],
     validation_machine_v1.empty_script_discovery_control(),
     20,
   )
@@ -4351,7 +4537,6 @@ test script_sources_prepares_more_than_sixteen_purposes_for_discovery() {
     purpose_frontier,
     0,
     empty_frontier,
-    [],
     18,
   )
   let Pair(post, _) = script_discovery_step_fixture(
@@ -4360,7 +4545,6 @@ test script_sources_prepares_more_than_sixteen_purposes_for_discovery() {
     empty_frontier,
     empty_frontier,
     purpose_frontier,
-    [],
     validation_machine_v1.empty_script_discovery_control(),
     19,
   )
@@ -4398,7 +4582,6 @@ test script_sources_discovers_more_than_sixteen_purposes() {
     empty_frontier,
     empty_frontier,
     purpose_frontier,
-    [],
     empty_discovery,
     19,
   )
@@ -4408,7 +4591,6 @@ test script_sources_discovers_more_than_sixteen_purposes() {
     empty_frontier,
     empty_frontier,
     purpose_frontier,
-    [],
     selected_purpose,
     20,
   )
@@ -4502,7 +4684,6 @@ test script_sources_discovers_an_exact_non_native_execution() {
     source_frontier,
     redeemer_frontier,
     purpose_frontier,
-    [],
     empty_discovery,
     20,
   )
@@ -4512,7 +4693,6 @@ test script_sources_discovers_an_exact_non_native_execution() {
     source_frontier,
     redeemer_frontier,
     purpose_frontier,
-    [],
     selected_purpose,
     21,
   )
@@ -4522,7 +4702,6 @@ test script_sources_discovers_an_exact_non_native_execution() {
     source_frontier,
     redeemer_frontier,
     purpose_frontier,
-    [],
     selected_source,
     22,
   )
@@ -4532,7 +4711,6 @@ test script_sources_discovers_an_exact_non_native_execution() {
     source_frontier,
     redeemer_frontier,
     purpose_frontier,
-    [],
     completed,
     23,
   )
@@ -4606,7 +4784,6 @@ test script_sources_proves_a_missing_script_source_exactly() {
     empty_frontier,
     empty_frontier,
     purpose_frontier,
-    [],
     discovery,
     24,
   )
@@ -7154,7 +7331,6 @@ test maximum_script_program_instruction_evidence_is_bounded() {
     empty_frontier,
     empty_frontier,
     empty_frontier,
-    [],
     validation_machine_v1.empty_script_discovery_control(),
     52,
   )
@@ -7209,7 +7385,7 @@ test maximum_script_program_instruction_evidence_is_bounded() {
     output_count: 63,
     output_peaks: dense_frontier_six.peaks,
     output_total_count: 63,
-    receive_hashes: [],
+    receive_scan: validation_machine_v1.empty_receive_purpose_scan_control(),
     source_total_count: 15,
     redeemer_total_count: 15,
     observer_scan: validation_machine_v1.empty_observer_purpose_scan_control(),

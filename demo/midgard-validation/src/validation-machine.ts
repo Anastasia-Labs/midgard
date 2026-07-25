@@ -1576,7 +1576,12 @@ export const buildDeterministicValidationMachineTrace = (
       readonly outputCursor?: number;
       readonly outputFrontier?: MidgardValidationMerkleFrontierV1;
       readonly outputTotalCount?: number;
-      readonly receiveHashes?: readonly Buffer[];
+      readonly receiveScan?: {
+        readonly sourceFrontier: MidgardValidationMerkleFrontierV1;
+        readonly receiveCount: number;
+        readonly previousHash: Buffer;
+        readonly candidateHash: Buffer;
+      };
       readonly sourceTotalCount?: number;
       readonly redeemerTotalCount?: number;
       readonly observerScan?: {
@@ -1590,6 +1595,12 @@ export const buildDeterministicValidationMachineTrace = (
         totalCount: 0,
         seen: 0,
         previousHash: Buffer.alloc(0),
+      };
+      const receiveScan = input.receiveScan ?? {
+        sourceFrontier: emptyValidationFrontier,
+        receiveCount: 0,
+        previousHash: Buffer.alloc(0),
+        candidateHash: Buffer.alloc(0),
       };
       const fields: unknown[] = [
         proofSource.compactCbor,
@@ -1619,7 +1630,13 @@ export const buildDeterministicValidationMachineTrace = (
         BigInt(
           input.outputTotalCount ?? input.outputFrontier?.count ?? 0,
         ),
-        input.receiveHashes ?? [],
+        [
+          BigInt(receiveScan.sourceFrontier.count),
+          encodeFrontierPeaks(receiveScan.sourceFrontier),
+          BigInt(receiveScan.receiveCount),
+          receiveScan.previousHash,
+          receiveScan.candidateHash,
+        ],
         BigInt(input.sourceTotalCount ?? input.sourceFrontier.count),
         BigInt(input.redeemerTotalCount ?? input.redeemerFrontier.count),
         [
@@ -3033,7 +3050,14 @@ export const buildDeterministicValidationMachineTrace = (
               );
             }
             let outputCursor = 0;
-            let receiveHashes: Buffer[] = [];
+            let receiveSourceFrontier = emptyValidationFrontier;
+            const receiveSourceEntries: ScriptPurposeProofEntry[] = [];
+            const receiveSourceScan = () => ({
+              sourceFrontier: receiveSourceFrontier,
+              receiveCount: 0,
+              previousHash: Buffer.alloc(0),
+              candidateHash: Buffer.alloc(0),
+            });
             const protectedSignerRejection =
               rejection !== null &&
               terminalPhase === "scriptSources" &&
@@ -3057,7 +3081,7 @@ export const buildDeterministicValidationMachineTrace = (
                   purposeFrontier: replayPurposeFrontier,
                   outputCursor,
                   outputFrontier,
-                  receiveHashes,
+                  receiveScan: receiveSourceScan(),
                 }),
                 {
                   kind: "outputReplay",
@@ -3082,14 +3106,26 @@ export const buildDeterministicValidationMachineTrace = (
                 address.protected &&
                 address.paymentCredential.kind === "Script"
               ) {
-                receiveHashes = [
-                  ...receiveHashes,
-                  Buffer.from(address.paymentCredential.hash),
-                ]
-                  .sort(Buffer.compare)
-                  .filter(
-                    (hash, index, hashes) =>
-                      index === 0 || !hash.equals(hashes[index - 1]!),
+                const scriptHash = Buffer.from(
+                  address.paymentCredential.hash,
+                );
+                const purposeEntry: ScriptPurposeProofEntry = {
+                  purposeKind: 3,
+                  purposeIndex: BigInt(receiveSourceFrontier.count),
+                  scriptHash,
+                  subject: scriptHash,
+                  leaf: hashMidgardScriptPurposeLeafV1({
+                    purposeKind: 3,
+                    purposeIndex: BigInt(receiveSourceFrontier.count),
+                    scriptHash,
+                    subject: scriptHash,
+                  }),
+                };
+                receiveSourceEntries.push(purposeEntry);
+                receiveSourceFrontier =
+                  appendMidgardValidationMerkleLeafV1(
+                    receiveSourceFrontier,
+                    purposeEntry.leaf,
                   );
               }
               outputCursor += 1;
@@ -3109,7 +3145,7 @@ export const buildDeterministicValidationMachineTrace = (
                   purposeFrontier: replayPurposeFrontier,
                   outputCursor,
                   outputFrontier,
-                  receiveHashes,
+                  receiveScan: receiveSourceScan(),
                 }),
               );
               pushWitness(
@@ -3126,7 +3162,7 @@ export const buildDeterministicValidationMachineTrace = (
                   purposeFrontier: replayPurposeFrontier,
                   outputCursor,
                   outputFrontier,
-                  receiveHashes,
+                  receiveScan: receiveSourceScan(),
                 }),
                 {
                   kind: "transactionFieldPreimage",
@@ -3180,9 +3216,9 @@ export const buildDeterministicValidationMachineTrace = (
                   replayRemainingScheduleHash,
                   spendIndex: replaySpendIndex,
                   purposeFrontier: observerPurposeFrontier,
-                  outputCursor,
+                  outputCursor: 0,
                   outputFrontier,
-                  receiveHashes,
+                  receiveScan: receiveSourceScan(),
                   observerScan: {
                     totalCount: observerTotalCount,
                     seen: observerSeen,
@@ -3222,31 +3258,105 @@ export const buildDeterministicValidationMachineTrace = (
                 observerSeen += 1;
                 previousObserverHash = observerHash;
               }
-              pushWitness("scriptSources", currentObserverPurposeWitness());
               let allPurposeFrontier = observerPurposeFrontier;
-              for (
-                let receiveIndex = 0;
-                receiveIndex < receiveHashes.length;
-                receiveIndex += 1
-              ) {
-                const scriptHash = receiveHashes[receiveIndex]!;
-                const purposeEntry: ScriptPurposeProofEntry = {
-                  purposeKind: 3,
-                  purposeIndex: BigInt(receiveIndex),
-                  scriptHash,
-                  subject: scriptHash,
-                  leaf: hashMidgardScriptPurposeLeafV1({
+              const receiveSourceLeaves = receiveSourceEntries.map(
+                (entry) => entry.leaf,
+              );
+              const receiveSourceMembership = (sourceIndex: number) =>
+                buildMidgardValidationMerkleMembershipV1(
+                  receiveSourceLeaves,
+                  sourceIndex,
+                );
+              let receiveSourceCursor = 0;
+              let receiveCount = 0;
+              let receivePreviousHash = Buffer.alloc(0);
+              let receiveCandidateHash = Buffer.alloc(0);
+              const currentReceivePurposeWitness = (): Buffer =>
+                scriptSourcesWitnessCbor({
+                  ...scriptSourceControl,
+                  stage: 7,
+                  sourceFrontier: replaySourceFrontier,
+                  redeemerFrontier,
+                  replayCursor,
+                  replayAccumulator,
+                  replayRemainingScheduleHash,
+                  spendIndex: replaySpendIndex,
+                  purposeFrontier: allPurposeFrontier,
+                  outputCursor: receiveSourceCursor,
+                  outputFrontier,
+                  receiveScan: {
+                    sourceFrontier: receiveSourceFrontier,
+                    receiveCount,
+                    previousHash: receivePreviousHash,
+                    candidateHash: receiveCandidateHash,
+                  },
+                  observerScan: {
+                    totalCount: observerTotalCount,
+                    seen: observerSeen,
+                    previousHash: previousObserverHash,
+                  },
+                });
+              while (true) {
+                if (
+                  receiveSourceCursor === receiveSourceEntries.length
+                ) {
+                  pushWitness(
+                    "scriptSources",
+                    currentReceivePurposeWitness(),
+                  );
+                  if (receiveCandidateHash.length === 0) {
+                    break;
+                  }
+                  const scriptHash = receiveCandidateHash;
+                  const purposeEntry: ScriptPurposeProofEntry = {
                     purposeKind: 3,
-                    purposeIndex: BigInt(receiveIndex),
+                    purposeIndex: BigInt(receiveCount),
                     scriptHash,
                     subject: scriptHash,
-                  }),
-                };
-                scriptPurposeEntries.push(purposeEntry);
-                allPurposeFrontier = appendMidgardValidationMerkleLeafV1(
-                  allPurposeFrontier,
-                  purposeEntry.leaf,
+                    leaf: hashMidgardScriptPurposeLeafV1({
+                      purposeKind: 3,
+                      purposeIndex: BigInt(receiveCount),
+                      scriptHash,
+                      subject: scriptHash,
+                    }),
+                  };
+                  scriptPurposeEntries.push(purposeEntry);
+                  allPurposeFrontier =
+                    appendMidgardValidationMerkleLeafV1(
+                      allPurposeFrontier,
+                      purposeEntry.leaf,
+                    );
+                  receiveCount += 1;
+                  receivePreviousHash = scriptHash;
+                  receiveCandidateHash = Buffer.alloc(0);
+                  receiveSourceCursor = 0;
+                  continue;
+                }
+                const receiveSource =
+                  receiveSourceEntries[receiveSourceCursor]!;
+                pushWitness(
+                  "scriptSources",
+                  currentReceivePurposeWitness(),
+                  {
+                    kind: "scriptPurposeScan",
+                    purposeKind: 3,
+                    purposeIndex: BigInt(receiveSourceCursor),
+                    scriptHash: receiveSource.scriptHash,
+                    subject: receiveSource.subject,
+                    siblings:
+                      receiveSourceMembership(receiveSourceCursor).siblings,
+                  },
                 );
+                const scriptHash = receiveSource.scriptHash;
+                if (
+                  (receivePreviousHash.length === 0 ||
+                    Buffer.compare(receivePreviousHash, scriptHash) < 0) &&
+                  (receiveCandidateHash.length === 0 ||
+                    Buffer.compare(scriptHash, receiveCandidateHash) < 0)
+                ) {
+                  receiveCandidateHash = scriptHash;
+                }
+                receiveSourceCursor += 1;
               }
               {
                 const sourceLeaves = scriptSourceEntries.map(
@@ -3270,9 +3380,8 @@ export const buildDeterministicValidationMachineTrace = (
                     replayRemainingScheduleHash,
                     spendIndex: replaySpendIndex,
                     purposeFrontier: allPurposeFrontier,
-                    outputCursor,
+                    outputCursor: outputFrontier.count,
                     outputFrontier,
-                    receiveHashes: [],
                     discovery,
                   });
                 const sourceMembership = (sourceIndex: number) =>
