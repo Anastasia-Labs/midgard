@@ -14,7 +14,7 @@ import {
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { inspectContracts } from "../src/index.js";
 
@@ -128,6 +128,12 @@ const buildInspectionFixture = async () => {
   return { blueprintJson, contracts, fraudProofCatalogue };
 };
 
+let inspectionFixture: Awaited<ReturnType<typeof buildInspectionFixture>>;
+
+beforeAll(async () => {
+  inspectionFixture = await buildInspectionFixture();
+}, 30_000);
+
 const deploymentInfoFor = (
   {
     contracts,
@@ -158,15 +164,14 @@ const deploymentInfoFor = (
     fraudProofInvalidRange: { scriptHash: invalidRangeScriptHash },
     fraudProofTransitionTrace: { scriptHash: transitionTraceScriptHash },
     validationTraceDispute: {
-      scriptHash:
-        contracts.validationTraceDispute.firstStep.spendingScriptHash,
+      scriptHash: contracts.validationTraceDispute.firstStep.spendingScriptHash,
     },
   },
 });
 
 describe("inspect-contracts", () => {
   it("emits stable implemented-category inspection JSON with catalogue readiness", async () => {
-    const fixture = await buildInspectionFixture();
+    const fixture = inspectionFixture;
     const { blueprintJson, contracts, fraudProofCatalogue } = fixture;
 
     const output = await Effect.runPromise(
@@ -227,7 +232,15 @@ describe("inspect-contracts", () => {
       contracts.transitionTrace.firstStep.spendingScriptHash,
     );
     expect(output.transitionTrace.steps.map((step) => step.name)).toEqual([
-      "proof",
+      "route",
+      "control",
+      "source",
+      "withdrawal",
+      "forced",
+      "accepted",
+      "deposit",
+      "l1Event",
+      "duplicate",
     ]);
     expect(output.transitionTrace.deploymentTransitionTraceScriptHash).toBe(
       contracts.transitionTrace.firstStep.spendingScriptHash,
@@ -235,6 +248,19 @@ describe("inspect-contracts", () => {
     expect(
       output.transitionTrace.deploymentTransitionTraceMatchesFirstStep,
     ).toBe(true);
+    expect(
+      output.validationTraceDispute.steps.map((step) => step.name),
+    ).toEqual([
+      "dispute",
+      "source",
+      "game",
+      "boundary",
+      "timeout",
+      "award",
+      ...Array.from({ length: 25 }, (_, index) => `semantic-resolver-${index}`),
+      ...Array.from({ length: 7 }, (_, index) => `prepare-resolver-${index}`),
+      ...Array.from({ length: 7 }, (_, index) => `direct-resolver-${index}`),
+    ]);
     expect(output.fraudProofCatalogue.root).toBe(fraudProofCatalogue.root);
     expect(output.fraudProofCatalogue.rootMatchesDerived).toBe(true);
     expect(output.fraudProofCatalogue.doubleSpend.categoryId).toBe("00000000");
@@ -297,14 +323,12 @@ describe("inspect-contracts", () => {
       output.fraudProofCatalogue.transitionTrace.membershipProofMatchesDerived,
     ).toBe(true);
     expect(output.fraudProofCatalogue.transitionTrace.ready).toBe(true);
-    expect(
-      output.fraudProofCatalogue.validationTraceDispute.ready,
-    ).toBe(true);
+    expect(output.fraudProofCatalogue.validationTraceDispute.ready).toBe(true);
     expect(output.fraudProofCatalogue.initReady).toBe(true);
   });
 
   it("marks catalogue init as not ready when deployment still points at the placeholder", async () => {
-    const fixture = await buildInspectionFixture();
+    const fixture = inspectionFixture;
 
     const output = await Effect.runPromise(
       inspectContracts({
@@ -346,7 +370,7 @@ describe("inspect-contracts", () => {
   });
 
   it("rejects a contracts-only deployment-info object", async () => {
-    const fixture = await buildInspectionFixture();
+    const fixture = inspectionFixture;
     await expect(
       Effect.runPromise(
         inspectContracts({
@@ -361,7 +385,7 @@ describe("inspect-contracts", () => {
   });
 
   it("marks catalogue init as not ready when invalid-range deployment is stale", async () => {
-    const fixture = await buildInspectionFixture();
+    const fixture = inspectionFixture;
 
     const output = await Effect.runPromise(
       inspectContracts({
@@ -387,7 +411,7 @@ describe("inspect-contracts", () => {
   });
 
   it("marks catalogue init as not ready when non-existent-input deployment is stale", async () => {
-    const fixture = await buildInspectionFixture();
+    const fixture = inspectionFixture;
 
     const output = await Effect.runPromise(
       inspectContracts({
@@ -415,7 +439,7 @@ describe("inspect-contracts", () => {
   });
 
   it("rejects deployment info with non-canonical fraud-proof category IDs", async () => {
-    const fixture = await buildInspectionFixture();
+    const fixture = inspectionFixture;
     const deploymentInfo = deploymentInfoFor(fixture);
     const invalidCatalogue: FraudProofCatalogueDeploymentInfo = {
       ...fixture.fraudProofCatalogue,
@@ -451,7 +475,7 @@ describe("inspect-contracts", () => {
   });
 
   it("rejects deployment info with duplicated fraud-proof category IDs", async () => {
-    const fixture = await buildInspectionFixture();
+    const fixture = inspectionFixture;
     const deploymentInfo = deploymentInfoFor(fixture);
     const invalidCatalogue: FraudProofCatalogueDeploymentInfo = {
       ...fixture.fraudProofCatalogue,

@@ -149,7 +149,10 @@ export type InspectContractsStepOutput = {
     | "game"
     | "boundary"
     | "timeout"
-    | `resolver-${number}`;
+    | "award"
+    | `semantic-resolver-${number}`
+    | `prepare-resolver-${number}`
+    | `direct-resolver-${number}`;
   readonly scriptHash: string;
   readonly address: string;
 };
@@ -260,10 +263,7 @@ const parseFraudProofCatalogueDeploymentInfo = (
     candidate.categories,
     "fraudProofCatalogue.categories",
   );
-  const seenCategoryIds = new Map<
-    string,
-    FraudProofCatalogueCategoryName
-  >();
+  const seenCategoryIds = new Map<string, FraudProofCatalogueCategoryName>();
   const categories = Object.fromEntries(
     FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((name) => {
       const category = rawCategories[name];
@@ -924,9 +924,18 @@ export const inspectContracts = ({
           stepOutput("game", contracts.validationTraceDispute.game),
           stepOutput("boundary", contracts.validationTraceDispute.boundary),
           stepOutput("timeout", contracts.validationTraceDispute.timeout),
-          ...contracts.validationTraceDispute.resolvers.map(
+          stepOutput("award", contracts.validationTraceDispute.award),
+          ...contracts.validationTraceDispute.semanticResolvers.map(
             (resolver, resolverIndex) =>
-              stepOutput(`resolver-${resolverIndex}`, resolver),
+              stepOutput(`semantic-resolver-${resolverIndex}`, resolver),
+          ),
+          ...contracts.validationTraceDispute.prepareResolvers.map(
+            (resolver, resolverIndex) =>
+              stepOutput(`prepare-resolver-${resolverIndex}`, resolver),
+          ),
+          ...contracts.validationTraceDispute.directResolvers.map(
+            (resolver, resolverIndex) =>
+              stepOutput(`direct-resolver-${resolverIndex}`, resolver),
           ),
         ],
       },

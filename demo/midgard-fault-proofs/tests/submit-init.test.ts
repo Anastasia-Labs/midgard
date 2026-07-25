@@ -395,7 +395,11 @@ describe("fault-proof deployment contract resolution", () => {
     });
 
     expect(resolved.transitionTraceCategory.categoryId).toBe("00000004");
-    expect(resolved.contracts.transitionTrace.steps).toHaveLength(1);
+    expect(resolved.contracts.transitionTrace.steps).toHaveLength(9);
+    expect(resolved.contracts.transitionTrace.finals).toHaveLength(8);
+    expect(resolved.contracts.transitionTrace.steps[0]).toBe(
+      resolved.contracts.transitionTrace.route,
+    );
   });
 
   it("resolves the required V1 validation-dispute category and rejects an incomplete catalogue", async () => {
@@ -407,12 +411,8 @@ describe("fault-proof deployment contract resolution", () => {
       VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.boundary,
       VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.timeout,
       VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.award,
-      ...Object.values(
-        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.prepares,
-      ),
-      ...Object.values(
-        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics,
-      ),
+      ...Object.values(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.prepares),
+      ...Object.values(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics),
       ...Object.values(
         VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.directResolvers,
       ),
@@ -442,21 +442,28 @@ describe("fault-proof deployment contract resolution", () => {
       },
     });
 
-    const resolved =
-      await resolveValidationTraceDisputeDeploymentContracts({
-        blueprint,
-        deploymentInfo,
-        network: "Preprod",
-      });
-    expect(resolved.validationTraceDisputeCategory.categoryId).toBe(
-      "00000005",
+    const resolved = await resolveValidationTraceDisputeDeploymentContracts({
+      blueprint,
+      deploymentInfo,
+      network: "Preprod",
+    });
+    expect(resolved.validationTraceDisputeCategory.categoryId).toBe("00000005");
+    expect(resolved.contracts.validationTraceDispute.steps).toHaveLength(45);
+    expect(
+      resolved.contracts.validationTraceDispute.semanticResolvers,
+    ).toHaveLength(25);
+    expect(
+      resolved.contracts.validationTraceDispute.prepareResolvers,
+    ).toHaveLength(7);
+    expect(
+      resolved.contracts.validationTraceDispute.directResolvers,
+    ).toHaveLength(7);
+    expect(resolved.contracts.validationTraceDispute.resolvers).toHaveLength(
+      14,
     );
-    expect(resolved.contracts.validationTraceDispute.steps).toHaveLength(1);
 
-    const {
-      validationTraceDispute: _omitted,
-      ...incompleteCategories
-    } = proofCatalogue.categories;
+    const { validationTraceDispute: _omitted, ...incompleteCategories } =
+      proofCatalogue.categories;
     await expect(
       resolveValidationTraceDisputeDeploymentContracts({
         blueprint,
@@ -473,7 +480,7 @@ describe("fault-proof deployment contract resolution", () => {
         network: "Preprod",
       }),
     ).rejects.toThrow(/categories\.validationTraceDispute/u);
-  });
+  }, 15_000);
 
   it("does not gate double-spend submit-init on stale invalid-range deployment readiness", async () => {
     const blueprint = readBlueprint();
