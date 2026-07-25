@@ -646,11 +646,11 @@ serialized worst-case transaction test.
 \subsection{Rule: Maximum reference script size}
 \label{rule:maximum-reference-script-size}
 
-Reference scripts are supported in canonical V1. A reference script contained in a
-ledger output shares that output preimage's concrete membership-proof
-envelope; when a script program is revealed by a script-execution instruction,
-it also satisfies that instruction's program-preimage envelope. There is no
-zero-byte canonical V1 limit.
+Reference scripts are supported in canonical V1. A reference script contained
+in a ledger output shares that output preimage's concrete membership-proof
+envelope. Its executable envelope and content-addressed program material are
+authenticated and revealed through independently bounded proof steps; the
+script itself is not disabled or replaced by an empty placeholder.
 
 \subsection{Rule: Maximum value size}
 \label{rule:maximum-value-size}

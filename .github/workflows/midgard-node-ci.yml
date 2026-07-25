@@ -94,6 +94,8 @@ jobs:
         run: pnpm --dir demo/lucid-midgard run build
       - name: Build and test Midgard core DA transport
         run: pnpm --dir demo/midgard-core run build && pnpm --dir demo/midgard-core test
+      - name: Check canonical V1 profile documentation
+        run: pnpm --dir demo/midgard-core run docs:consensus-profile-v1:check
       - name: Build, typecheck, and test Midgard validation
         run: pnpm --dir demo/midgard-validation run build && pnpm --dir demo/midgard-validation run typecheck && pnpm --dir demo/midgard-validation test
       - name: Build, typecheck, and test Midgard SDK

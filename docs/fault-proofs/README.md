@@ -61,6 +61,11 @@ several are directly exploitable for **fund theft** in an adversarial setting. S
 - Generic machinery: catalogue, computation-thread minting policy (`Init`/`Success`/`BurnForCancellation`), step transition helpers, permanent fault-proof token, state-queue removal + operator slashing wiring, Plutarch MPF membership/non-membership (`phas`/`pexcludes`) primitives, counted/domain-tagged roots.
 - 10 of 12 proof types with real verification logic: `zero-input`, `no-input`, `double-spend`, `input-no-idx`, `invalid-range`, `invalid-signature`, `missing-native-script-tx`, `missing-signature`, `no-reference-input`, `withdrawn-reference-input`.
 - The `transition-trace` state-transition engine (9 top-level fault families: boundary, link, event-to-step, source-membership — incl. its phase-mismatch sub-variant — invalid one-step transition, duplicate-event, count, omitted-due-L1-event, out-of-window).
+- Canonical V1 valid forced transactions use the same accepted ledger-delta
+  validation claim as normal transactions; invalid forced transactions use an
+  exact rejected no-op. Wrong verdicts, wrong roots, and either source-phase
+  misclassification direction are represented. Concrete validator-hash-bound
+  release evidence remains pending.
 - Offchain tooling for 4 families (double-spend, invalid-range, non-existent-input, transition-trace), **emulator-proven end-to-end** through faulty-block removal.
 - ⚠️ Reachability caveat: only **5 of the 12** proof types are registered in the deployment catalogue (`demo/midgard-sdk/src/fraud-proof/catalogue.ts:23-29`) — the other 7 compile but cannot `Init` a computation thread against a deployed instance. See [`catalogue-status.md`](catalogue-status.md).
 
@@ -72,7 +77,6 @@ several are directly exploitable for **fund theft** in an adversarial setting. S
   `0` in `env/default.ak` and `env/testnet.ak`. A successful proof slashes and
   rewards nothing. `maturity_duration` is likewise a dev value (`30` — i.e.
   ~30 ms — in both envs), so the on-chain challenge window is effectively zero.
-- `transition-trace` `ValidForcedTransactionUnsupported` branch is hard-wired to `False` — valid-forced-transaction omission faults are unprovable via that path. (`.../transition-trace/proof.ak:1201`)
 - `transition-trace` value/authorization semantics — the L2 one-step verifier authenticates the _shape_ of the UTxO delta but never checks value conservation or spend authorization (see bucket 4).
 
 **3. Missing but documented** (spec/gap-reports define it as fault; no working verifier):

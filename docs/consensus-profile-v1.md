@@ -19,23 +19,23 @@ that exceed a compiled proof bound fail closed.
 
 The canonical deployment uses one indivisible version tuple:
 
-| Surface | V1 value |
-| --- | ---: |
-| consensus profile id | `midgard-consensus-v1` |
-| `Header.protocol_version` | `1` |
-| native transaction version | `1` |
-| transition-step schema | `1` |
-| validation-machine version | `1` |
-| validation-trace descriptor version | `1` |
-| validation-dispute version | `1` |
-| DA inner payload schema | `1` |
-| CEK program envelope | `1` |
-| CEK constant-value schema | `1` |
-| CEK program-material schema | `1` |
-| CEK material sidecar | `1` |
-| proof submission envelope | `1` |
-| deployment manifest schema | `midgard-deployment-manifest-v1` |
-| protocol-info API | `1` |
+| Surface                             |                         V1 value |
+| ----------------------------------- | -------------------------------: |
+| consensus profile id                |           `midgard-consensus-v1` |
+| `Header.protocol_version`           |                              `1` |
+| native transaction version          |                              `1` |
+| transition-step schema              |                              `1` |
+| validation-machine version          |                              `1` |
+| validation-trace descriptor version |                              `1` |
+| validation-dispute version          |                              `1` |
+| DA inner payload schema             |                              `1` |
+| CEK program envelope                |                              `1` |
+| CEK constant-value schema           |                              `1` |
+| CEK program-material schema         |                              `1` |
+| CEK material sidecar                |                              `1` |
+| proof submission envelope           |                              `1` |
+| deployment manifest schema          | `midgard-deployment-manifest-v1` |
+| protocol-info API                   |                              `1` |
 
 No component may negotiate individual members of the tuple. A deployment
 either matches the complete tuple and profile digest or refuses to start,
@@ -272,9 +272,11 @@ requires `pre_utxos_root == post_utxos_root`.
 
 V1 requires the same accepted-transaction transition witness for valid forced
 transactions as for normal L2 transactions, with forced-source membership and
-full-transaction binding. The current
-`ValidForcedTransactionUnsupported` proof gap keeps release activation closed
-until the mandatory proof-completion follow-up replaces it.
+full-transaction binding. Canonical block construction and DA verification
+retain the complete forced transaction preimage and apply its validated
+delete/insert frontier. Release activation remains closed until the complete
+validator-hash-bound normal and forced proof paths satisfy the release-evidence
+gate.
 
 ## 9. Feature surface
 
@@ -298,60 +300,60 @@ No 8 KiB aggregate transaction ceiling exists in V1. The effective transaction
 bound is derived by summing every bounded dynamic field in the canonical
 encoding and then adding its fixed-size fields and CBOR framing.
 
-| Item | Maximum |
-| --- | ---: |
-| supported L1 fault-proof transaction floor | 16 KiB |
-| supported L1 fault-proof execution floor | 16,500,000 memory / 10,000,000,000 CPU |
-| supported Midgard transaction execution floor | 16,500,000 memory / 10,000,000,000 CPU; validation may span multiple proofs |
-| transaction-field proof overhead reservation | 7 KiB |
-| each aggregate dynamic transaction field | 32,768 bytes, consumed through authenticated chunks |
-| each independently revealed transaction-field chunk | 4,095 bytes |
-| measured maximum field-publication datum | 4,574 bytes |
-| measured maximum unsigned field-publication transaction | 4,675 bytes |
-| maximum CEK-material publication datum | 4,268 bytes |
-| measured one-node unsigned CEK-material publication transaction | 4,369 bytes |
-| measured maximum field-chunk receipt publication | 3,398,228 memory / 1,209,745,039 CPU |
-| measured canonical receipt-order verification | 1,233,800 memory / 432,521,347 CPU |
-| ledger-membership proof overhead reservation | 12 KiB |
-| each ledger output preimage | 16,384 bytes, retained and authenticated incrementally |
-| serialized Cardano output `Value` | 5,000 bytes; no lower independent Midgard cap |
-| consensus script envelope | 50 bytes |
-| canonical CEK material nodes per program | at most 1,597,819 within the DA envelope |
-| canonical CEK material per program | at most 67,108,418 structural bytes; exact encoded aggregate must fit DA |
-| canonical CEK blob chunk | 4,095 bytes |
-| pinned CEK builtin tags | 0 through 86 |
-| derived canonical full transaction | 295,041 bytes |
-| canonical datum | no independent cap; contained by its output/field preimage |
-| reference script | supported as a real output reference script with separately authenticated/chunked program material |
-| spend-inputs aggregate field | 32,768 bytes |
-| reference-inputs aggregate field | 32,768 bytes |
-| outputs aggregate field | 32,768 bytes |
-| required-observers aggregate field | 32,768 bytes |
-| required-signers aggregate field | 32,768 bytes |
-| mint aggregate field | 32,768 bytes |
-| address-witnesses aggregate field | 32,768 bytes |
-| script-witnesses aggregate field | 32,768 bytes |
-| redeemers aggregate field | 32,768 bytes |
-| spend-input count guardrail | 16,384; aggregate bytes are effective |
-| reference-input count guardrail | 16,384; aggregate bytes are effective |
-| output count guardrail | 16,384; aggregate bytes are effective |
-| address-witness count guardrail | 16,384; aggregate bytes are effective |
-| required-signer count guardrail | 16,384; aggregate bytes are effective |
-| script-execution/redeemer count guardrail | 16,384; bytes and execution units are effective |
-| required-observer count guardrail | 16,384; aggregate bytes are effective |
-| distinct non-ADA asset count guardrail | 16,384; `Value` bytes are effective |
-| native-script depth/node guardrail | 16,384 each; transaction bytes are effective |
-| each transaction-bearing source class per block | 10,000 |
-| total source events / transition steps per block | 40,000 |
-| validation trace descriptors per block | 20,000 |
-| ledger operations per block | 40,000 |
-| validation-machine steps | `2^32 - 1` |
-| bisection rounds | 32 |
-| dispute response window | 300,000 ms |
-| derived minimum maturity for this dispute schedule | 39,600,000 ms |
-| exact V1 block maturity | 604,800,000 ms (7 days) |
-| canonical transactions per block | 16 MiB |
-| DA payload | 64 MiB |
+| Item                                                            |                                                                                            Maximum |
+| --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------: |
+| supported L1 fault-proof transaction floor                      |                                                                                             16 KiB |
+| supported L1 fault-proof execution floor                        |                                                             16,500,000 memory / 10,000,000,000 CPU |
+| supported Midgard transaction execution floor                   |                        16,500,000 memory / 10,000,000,000 CPU; validation may span multiple proofs |
+| transaction-field proof overhead reservation                    |                                                                                              7 KiB |
+| each aggregate dynamic transaction field                        |                                                32,768 bytes, consumed through authenticated chunks |
+| each independently revealed transaction-field chunk             |                                                                                        4,095 bytes |
+| measured maximum field-publication datum                        |                                                                                        4,574 bytes |
+| measured maximum unsigned field-publication transaction         |                                                                                        4,675 bytes |
+| maximum CEK-material publication datum                          |                                                                                        4,268 bytes |
+| measured one-node unsigned CEK-material publication transaction |                                                                                        4,369 bytes |
+| measured maximum field-chunk receipt publication                |                                                               3,398,228 memory / 1,209,745,039 CPU |
+| measured canonical receipt-order verification                   |                                                                 1,233,800 memory / 432,521,347 CPU |
+| ledger-membership proof overhead reservation                    |                                                                                             12 KiB |
+| each ledger output preimage                                     |                                             16,384 bytes, retained and authenticated incrementally |
+| serialized Cardano output `Value`                               |                                                      5,000 bytes; no lower independent Midgard cap |
+| consensus script envelope                                       |                                                                                           50 bytes |
+| canonical CEK material nodes per program                        |                                                           at most 1,597,819 within the DA envelope |
+| canonical CEK material per program                              |                           at most 67,108,418 structural bytes; exact encoded aggregate must fit DA |
+| canonical CEK blob chunk                                        |                                                                                        4,095 bytes |
+| pinned CEK builtin tags                                         |                                                                                       0 through 86 |
+| derived canonical full transaction                              |                                                                                      295,041 bytes |
+| canonical datum                                                 |                                         no independent cap; contained by its output/field preimage |
+| reference script                                                | supported as a real output reference script with separately authenticated/chunked program material |
+| spend-inputs aggregate field                                    |                                                                                       32,768 bytes |
+| reference-inputs aggregate field                                |                                                                                       32,768 bytes |
+| outputs aggregate field                                         |                                                                                       32,768 bytes |
+| required-observers aggregate field                              |                                                                                       32,768 bytes |
+| required-signers aggregate field                                |                                                                                       32,768 bytes |
+| mint aggregate field                                            |                                                                                       32,768 bytes |
+| address-witnesses aggregate field                               |                                                                                       32,768 bytes |
+| script-witnesses aggregate field                                |                                                                                       32,768 bytes |
+| redeemers aggregate field                                       |                                                                                       32,768 bytes |
+| spend-input count guardrail                                     |                                                              16,384; aggregate bytes are effective |
+| reference-input count guardrail                                 |                                                              16,384; aggregate bytes are effective |
+| output count guardrail                                          |                                                              16,384; aggregate bytes are effective |
+| address-witness count guardrail                                 |                                                              16,384; aggregate bytes are effective |
+| required-signer count guardrail                                 |                                                              16,384; aggregate bytes are effective |
+| script-execution/redeemer count guardrail                       |                                                    16,384; bytes and execution units are effective |
+| required-observer count guardrail                               |                                                              16,384; aggregate bytes are effective |
+| distinct non-ADA asset count guardrail                          |                                                                16,384; `Value` bytes are effective |
+| native-script depth/node guardrail                              |                                                       16,384 each; transaction bytes are effective |
+| each transaction-bearing source class per block                 |                                                                                             10,000 |
+| total source events / transition steps per block                |                                                                                             40,000 |
+| validation trace descriptors per block                          |                                                                                             20,000 |
+| ledger operations per block                                     |                                                                                             40,000 |
+| validation-machine steps                                        |                                                                                         `2^32 - 1` |
+| bisection rounds                                                |                                                                                                 32 |
+| dispute response window                                         |                                                                                         300,000 ms |
+| derived minimum maturity for this dispute schedule              |                                                                                      39,600,000 ms |
+| exact V1 block maturity                                         |                                                                            604,800,000 ms (7 days) |
+| canonical transactions per block                                |                                                                                             16 MiB |
+| DA payload                                                      |                                                                                             64 MiB |
 
 The 32,768-byte aggregate-field reservation is not an independently revealed
 preimage or an L1 transaction claim. It accommodates canonical Midgard wrapper
@@ -447,3 +449,128 @@ The support claim requires:
 
 No documentation or API may report a V1 feature as supported before all of
 that evidence is present for the deployed validator hashes.
+
+## Appendix A — Exact compiled profile
+
+This block is generated from the compiled canonical profile. CI checks it
+byte-for-byte so documented limits, features, schema identities, proof
+families, and the profile digest cannot drift from source.
+
+<!-- BEGIN MIDGARD_CONSENSUS_PROFILE_V1_GENERATED: do not edit -->
+
+Profile digest: `e81d6fdc21527a875099951e70a0634d8b16e1efa9bec89a2ab04d826ee4aaed`
+
+```json
+{
+  "cekProgramEnvelopeVersion": 1,
+  "cekProgramMaterialSidecarVersion": 1,
+  "cekProgramMaterialVersion": 1,
+  "cekValueSchemaVersion": 1,
+  "daEnvelopeVersion": 1,
+  "daPayloadVersion": 1,
+  "daRuntimeManifestSchemaVersion": "midgard-da-libp2p-runtime-manifest-v1",
+  "daTransportProtocolVersion": 1,
+  "deploymentManifestSchemaVersion": "midgard-deployment-manifest-v1",
+  "features": [
+    "mint_burn",
+    "reference_inputs",
+    "native_cardano_scripts",
+    "plutus_v3_scripts",
+    "midgard_v1_scripts",
+    "script_witnesses",
+    "redeemers",
+    "reference_scripts",
+    "l1_program_material_publication",
+    "script_payment_credentials",
+    "protected_outputs",
+    "required_observers",
+    "valid_forced_transactions",
+    "invalid_forced_transactions"
+  ],
+  "forcedTransactionJournalVersion": 1,
+  "headerSchemaVersion": 1,
+  "ledgerOutputSchemaVersion": 1,
+  "limits": {
+    "blockMaturityMs": 604800000,
+    "maxAddressWitnessCount": 16384,
+    "maxAddressWitnessesPreimageBytes": 32768,
+    "maxCanonicalTransactionBytesPerBlock": 16777216,
+    "maxCekBlobChunkBytes": 4095,
+    "maxCekBuiltinTag": 86,
+    "maxCekDirectBlsExpressionDepth": 10,
+    "maxCekDirectBlsMillerLoopLeaves": 10,
+    "maxCekProgramEnvelopeBytes": 50,
+    "maxCekProgramMaterialBytes": 67108418,
+    "maxCekProgramNodeCount": 1597819,
+    "maxDaPayloadBytes": 67108864,
+    "maxDepositCount": 10000,
+    "maxDistinctAssetCount": 16384,
+    "maxForcedTransactionCount": 10000,
+    "maxL2TransactionCount": 10000,
+    "maxLedgerMembershipProofOverheadBytes": 12288,
+    "maxLedgerOperationCount": 40000,
+    "maxLedgerOutputPreimageBytes": 16384,
+    "maxMintPreimageBytes": 32768,
+    "maxNativeScriptDepth": 16384,
+    "maxNativeScriptNodeCount": 16384,
+    "maxOutputCount": 16384,
+    "maxOutputsPreimageBytes": 32768,
+    "maxOutputValueCborBytes": 5000,
+    "maxRedeemersPreimageBytes": 32768,
+    "maxReferenceInputCount": 16384,
+    "maxReferenceInputsPreimageBytes": 32768,
+    "maxRequiredObserverCount": 16384,
+    "maxRequiredObserversPreimageBytes": 32768,
+    "maxRequiredSignerCount": 16384,
+    "maxRequiredSignersPreimageBytes": 32768,
+    "maxScriptExecutionCount": 16384,
+    "maxScriptWitnessesPreimageBytes": 32768,
+    "maxSpendInputCount": 16384,
+    "maxSpendInputsPreimageBytes": 32768,
+    "maxTotalEventCount": 40000,
+    "maxTransactionAggregateFieldBytes": 32768,
+    "maxTransactionFieldChunkBytes": 4095,
+    "maxTransactionFieldProofOverheadBytes": 7168,
+    "maxTransitionStepCount": 40000,
+    "maxTxCanonicalCborBytes": 295041,
+    "maxValidationBisectionRounds": 32,
+    "maxValidationMachineStepCount": 4294967295,
+    "maxValidationTraceCount": 20000,
+    "maxWithdrawalCount": 10000,
+    "minSupportedL1MaxTxBytes": 16384,
+    "minSupportedL1MaxTxCpuUnits": 10000000000,
+    "minSupportedL1MaxTxMemoryUnits": 16500000,
+    "minSupportedTransactionExecutionCpuUnits": 10000000000,
+    "minSupportedTransactionExecutionMemoryUnits": 16500000,
+    "minValidationDisputeMaturityMs": 39600000,
+    "validationDisputeResponseWindowMs": 300000
+  },
+  "mpfProofSchemaVersion": 1,
+  "nativeTransactionProofSourceVersion": 1,
+  "nativeTransactionVersion": 1,
+  "profileId": "midgard-consensus-v1",
+  "proofSubmissionEnvelopeVersion": 1,
+  "protocolInfoApiVersion": 1,
+  "protocolVersion": 1,
+  "requiredProofFamilies": [
+    "validation-trace-endpoint",
+    "validation-trace-bisection",
+    "validation-machine-one-step",
+    "validation-dispute-timeout",
+    "transition-trace-accepted-transaction",
+    "transition-trace-rejected-no-op",
+    "forced-transaction-verdict-mismatch",
+    "forced-program-material-availability"
+  ],
+  "scriptProofSchemaVersion": 1,
+  "stateQueueSchemaVersion": 1,
+  "transactionFieldPublicationSchemaVersion": 1,
+  "transactionOrderSchemaVersion": 1,
+  "transitionStepSchemaVersion": 1,
+  "validationDisputeVersion": 1,
+  "validationMachineVersion": 1,
+  "validationTraceDescriptorVersion": 1
+}
+```
+
+<!-- END MIDGARD_CONSENSUS_PROFILE_V1_GENERATED -->

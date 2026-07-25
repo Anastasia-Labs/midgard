@@ -14,12 +14,13 @@ transaction merely because Midgard's fault proof is easier to implement with a
 smaller transaction, value, script, redeemer set, or cardinality.
 
 Canonical V1 uses independently authenticated field and program preimages and
-has no independent aggregate 8KiB transaction limit. Some provisional V1
-limits are nevertheless still below what a Cardano mainnet
-transaction can use. Examples include the 4,095-byte output preimage,
-9,215-byte general field preimage, 64-element input/output/witness limits,
-16 script executions, 128 distinct assets, and native-script depth/node
-limits.
+has no independent aggregate 8KiB transaction limit. When this decision was
+adopted, provisional V1 limits were nevertheless below what a Cardano mainnet
+transaction can use. Those historical limits included a 4,095-byte output
+preimage, a 9,215-byte general field preimage, 64-element
+input/output/witness limits, 16 script executions, 128 distinct assets, and
+low native-script depth/node limits. The current compiled values that replace
+them are recorded below and checked into the canonical profile documentation.
 
 Those restrictions came from fitting a complete witness into one L1 proof
 transaction. They are proof-layout constraints, not acceptable user-facing L2
@@ -30,24 +31,24 @@ capability constraints.
 The following values were observed for Cardano mainnet Conway epoch 645 on
 2026-07-24:
 
-| Parameter | Mainnet value | Transaction effect |
-| --- | ---: | --- |
-| protocol version | `11.0` | Identifies the active ledger rules |
-| `maxTxSize` | 16,384 bytes | Maximum complete serialized transaction |
-| `maxValueSize` | 5,000 bytes | Maximum serialized `Value` in an output |
-| `maxTxExecutionUnits.memory` | 16,500,000 | Aggregate Plutus memory per transaction |
-| `maxTxExecutionUnits.steps` | 10,000,000,000 | Aggregate Plutus CPU steps per transaction |
-| `maxCollateralInputs` | 3 | Maximum collateral inputs |
-| `collateralPercentage` | 150% | Required collateral relative to the fee |
-| `txFeePerByte` | 44 lovelace | Linear transaction-size fee coefficient |
-| `txFeeFixed` | 155,381 lovelace | Fixed transaction fee component |
-| execution price, memory | 0.0577 lovelace/unit | Plutus memory fee |
-| execution price, steps | 0.0000721 lovelace/unit | Plutus CPU fee |
-| `utxoCostPerByte` | 4,310 lovelace | UTxO storage charge |
-| `minFeeRefScriptCoinsPerByte` | 15 lovelace | Reference-script fee input |
-| `maxBlockBodySize` | 90,112 bytes | Block-level context, not a per-transaction allowance |
-| `maxBlockExecutionUnits.memory` | 72,000,000 | Block-level Plutus memory |
-| `maxBlockExecutionUnits.steps` | 20,000,000,000 | Block-level Plutus CPU steps |
+| Parameter                       |           Mainnet value | Transaction effect                                   |
+| ------------------------------- | ----------------------: | ---------------------------------------------------- |
+| protocol version                |                  `11.0` | Identifies the active ledger rules                   |
+| `maxTxSize`                     |            16,384 bytes | Maximum complete serialized transaction              |
+| `maxValueSize`                  |             5,000 bytes | Maximum serialized `Value` in an output              |
+| `maxTxExecutionUnits.memory`    |              16,500,000 | Aggregate Plutus memory per transaction              |
+| `maxTxExecutionUnits.steps`     |          10,000,000,000 | Aggregate Plutus CPU steps per transaction           |
+| `maxCollateralInputs`           |                       3 | Maximum collateral inputs                            |
+| `collateralPercentage`          |                    150% | Required collateral relative to the fee              |
+| `txFeePerByte`                  |             44 lovelace | Linear transaction-size fee coefficient              |
+| `txFeeFixed`                    |        155,381 lovelace | Fixed transaction fee component                      |
+| execution price, memory         |    0.0577 lovelace/unit | Plutus memory fee                                    |
+| execution price, steps          | 0.0000721 lovelace/unit | Plutus CPU fee                                       |
+| `utxoCostPerByte`               |          4,310 lovelace | UTxO storage charge                                  |
+| `minFeeRefScriptCoinsPerByte`   |             15 lovelace | Reference-script fee input                           |
+| `maxBlockBodySize`              |            90,112 bytes | Block-level context, not a per-transaction allowance |
+| `maxBlockExecutionUnits.memory` |              72,000,000 | Block-level Plutus memory                            |
+| `maxBlockExecutionUnits.steps`  |          20,000,000,000 | Block-level Plutus CPU steps                         |
 
 The live snapshot was read from:
 
@@ -70,20 +71,20 @@ are governable; the current values must not be confused with the wider
 
 ## Comparison with canonical V1
 
-| Dimension | Cardano mainnet | Midgard canonical V1 | Comparison |
-| --- | ---: | ---: | --- |
-| Total transaction bytes | 16,384 | 51,110 derived | Midgard higher |
-| Serialized output preimage | Transaction-size constrained; `Value` alone may be 5,000 | 4,095 | Midgard lower |
-| General dynamic field | May consume nearly the remaining L1 transaction | 9,215 | Midgard lower |
-| Aggregate transaction execution | 16.5M memory / 10B steps | L1 proof floor matches; L2 aggregate parity is not yet demonstrated | Must demonstrate parity |
-| Spend inputs | No separate ledger count; transaction-size limited | 64 | Midgard can be lower |
-| Reference inputs | No separate ledger count; transaction-size limited | 64 | Midgard can be lower |
-| Outputs | No separate ledger count; transaction-size limited | 64 | Midgard can be lower |
-| Vkey witnesses and required signers | No equivalent 64 consensus cap | 64 each | Midgard can be lower |
-| Script executions and redeemers | Transaction-size and execution-unit limited | 16 | Midgard can be lower |
-| Distinct assets | 5,000-byte serialized output `Value` | 128 | Midgard lower for compact assets |
-| Native-script complexity | Primarily transaction-size constrained | Depth 16, 32 nodes | Midgard lower |
-| Reference scripts | Creation is transaction-size/UTxO constrained; use is ledger- and fee-constrained | Content-addressed programs, but some containing preimages are lower | Parity must be demonstrated |
+| Dimension                           |                                                                                   Cardano mainnet |                                                                            Midgard canonical V1 | Comparison                                              |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------: | ----------------------------------------------------------------------------------------------: | ------------------------------------------------------- |
+| Total transaction bytes             |                                                                                            16,384 |                                      295,041 derived from all bounded fields plus fixed framing | Midgard higher                                          |
+| Serialized output preimage          |                                          Transaction-size constrained; `Value` alone may be 5,000 |                                                                                          16,384 | Equal byte floor                                        |
+| General dynamic field               |                                                   May consume nearly the remaining L1 transaction |                                        32,768, consumed through authenticated 4,095-byte chunks | Midgard higher                                          |
+| Aggregate transaction execution     |                                                                          16.5M memory / 10B steps |                16.5M memory / 10B steps capability floor; execution may span proof transactions | Equal floor                                             |
+| Spend inputs                        |                                                No separate ledger count; transaction-size limited |                                      16,384 one-byte-floor guardrail; field bytes are effective | No lower count for an L1-sized transaction              |
+| Reference inputs                    |                                                No separate ledger count; transaction-size limited |                                      16,384 one-byte-floor guardrail; field bytes are effective | No lower count for an L1-sized transaction              |
+| Outputs                             |                                                No separate ledger count; transaction-size limited |                                      16,384 one-byte-floor guardrail; field bytes are effective | No lower count for an L1-sized transaction              |
+| Vkey witnesses and required signers |                                                No separate ledger count; transaction-size limited |                                                          16,384 each; field bytes are effective | No lower count for an L1-sized transaction              |
+| Script executions and redeemers     |                                                       Transaction-size and execution-unit limited |                                   16,384 one-byte-floor guardrail plus matching execution floor | No lower independent count                              |
+| Distinct assets                     |                                                              5,000-byte serialized output `Value` |                                     16,384 one-byte-floor guardrail plus 5,000-byte Value bound | No lower independent count                              |
+| Native-script complexity            |                                                            Primarily transaction-size constrained |                                                                Depth and node guardrails 16,384 | No lower bound for an L1-sized transaction              |
+| Reference scripts                   | 200 KiB aggregate use limit in Conway ledger rules; creation is transaction-size/UTxO constrained | 50-byte executable envelope plus up to 67,108,418 bytes of content-addressed material within DA | Midgard higher; individual proof reveals remain bounded |
 
 “No separate count” does not mean unbounded. Cardano's complete transaction
 size, canonical encoding, ledger rules, and execution budget still impose a
@@ -179,25 +180,21 @@ equivalent is forbidden.
 
 ## Consequences for canonical V1
 
-The canonical V1 architecture—independent field commitments,
+The canonical V1 source now uses independent field commitments,
 content-addressed program material, deterministic validation traces, and
-interactive one-step disputes—is the correct foundation, but the lower limits
-identified in the comparison table are provisional and do not satisfy this
-decision.
+interactive one-step disputes. Its compiled capability values remove the lower
+round-number limits identified when this decision was adopted.
 
 Before canonical V1 is production-activated:
 
-- replace the 4,095-byte output and 9,215-byte general-field ceilings with
-  publication/reference or authenticated chunking sufficient for Cardano
-  parity;
-- remove or raise the 64-element input/output/witness/signer limits based on
-  generated Cardano-valid maximum shapes;
-- remove or raise the 16-execution, 128-asset, and native-script depth/node
-  limits;
-- demonstrate aggregate L2 script execution parity with the live mainnet
-  transaction execution budget; and
-- regenerate proof-size, execution-unit, transaction-count, DA, fee, and
-  timing evidence against the final compiled validators.
+- generate a trusted effective-and-pending target-network snapshot;
+- generate Cardano boundary and adjacent-boundary fixtures for every mapped
+  capability;
+- execute complete normal and forced proof paths for those fixtures;
+- construct and measure actual applied/parameterized publication, resolution,
+  and settlement transactions; and
+- bind the resulting validator hashes, parameters, measurements, DA framing,
+  fees, transaction counts, and timing evidence into the release digest.
 
 The existing fail-closed proof-profile release gate must remain closed until
 that evidence is complete.

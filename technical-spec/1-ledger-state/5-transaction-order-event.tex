@@ -66,10 +66,11 @@ ledger delta, while an invalid forced transaction commits an exact no-op.
 An operator verdict that differs from the L1-computed terminal verdict is a
 fault in either direction.
 
-The temporary \code{ValidForcedTransactionUnsupported} implementation gate is
-fail-closed scaffolding only. It must be removed and replaced by complete
-accepted-effectful and rejected-no-op L1 proof paths before canonical V1
-activation.
+Canonical V1 contains no valid-forced rejection gate. The accepted-effectful
+and rejected-no-op paths are both part of the canonical validation machine and
+are bound to the forced source, terminal verdict, and resulting ledger root.
+Activation remains fail closed until concrete validator-hash-bound release
+evidence covers both paths.
 
 \Cref{h:transaction-order} describes the lifecycle of a transaction order request in further detail.
 

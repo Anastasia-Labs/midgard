@@ -331,13 +331,13 @@ from the operator's execution classification. `tx_compact` is validity-free;
 `operator_validity` is the operator's claim about how that ordered transaction
 processed against the block state, and is challengeable by one-step fraud proofs.
 
-The launch-gate implementation supports invalid forced transactions as no-op
-trace steps and deliberately fails closed for effectful valid forced
-transactions. Production block construction refuses `TxIsValid` forced
-transaction traces until forced transaction ledger deltas and preimages are
-available, and the Aiken proof validator rejects the unsupported
-valid-forced-transaction redeemer path. This is a safety restriction, not a
-compatibility mode.
+Canonical V1 supports both forced outcomes. Production block construction
+applies the exact validated ledger delta for a `TxIsValid` forced transaction,
+using the same deterministic transaction-validation machine as a normal L2
+transaction. A rejected forced transaction consumes its ordered event as an
+exact no-op. The validation descriptor, terminal witness, source membership,
+and accepted-transition proof make a wrong verdict or post-root challengeable
+on L1.
 
 Production forced-transaction no-op classifications include at least:
 
