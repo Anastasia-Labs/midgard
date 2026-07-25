@@ -235,7 +235,7 @@ fn phase_a_native_step_fixture(
   )
 }
 
-fn input_sets_auxiliary(
+fn input_field_pair_auxiliary(
   tx: MidgardTransaction,
 ) -> validation_machine_v1.ValidationAuxiliaryWitnessV1 {
   validation_machine_v1.TransactionFieldPairPreimageWitness {
@@ -243,6 +243,132 @@ fn input_sets_auxiliary(
     first_preimage_cbor: encode_input_preimage(tx.body.inputs),
     second_field_index: 1,
     second_preimage_cbor: encode_input_preimage(tx.body.reference_inputs),
+  }
+}
+
+fn singleton_input_item_proofs(
+  field_index: Int,
+  key: ByteArray,
+) -> Pair<bounded_collection_v1.ItemProofV1, bounded_item_v1.ChunkProofV1> {
+  let item_commitment = bounded_item_v1.from_bytes(field_index, 0, key)
+  let chunk_frontier = [
+    validation_merkle_v1.FrontierPeak {
+      height: 0,
+      hash: bounded_item_v1.hash_chunk(field_index, 0, 0, key),
+    },
+  ]
+  let collection_frontier = [
+    validation_merkle_v1.FrontierPeak {
+      height: 0,
+      hash: bounded_collection_v1.hash_item(
+        field_index,
+        0,
+        bytearray.length(key),
+        item_commitment,
+      ),
+    },
+  ]
+  Pair(
+    bounded_collection_v1.ItemProofV1 {
+      version: bounded_collection_v1.version,
+      field_index,
+      item_count: 1,
+      item_index: 0,
+      item_length: bytearray.length(key),
+      item_commitment,
+      frontier: collection_frontier,
+      siblings: [],
+    },
+    bounded_item_v1.ChunkProofV1 {
+      version: bounded_item_v1.version,
+      field_index,
+      item_index: 0,
+      total_length: bytearray.length(key),
+      chunk_index: 0,
+      chunk: key,
+      frontier: chunk_frontier,
+      siblings: [],
+    },
+  )
+}
+
+fn input_sets_scan_witness(
+  tx: MidgardTransaction,
+  spend_count: Int,
+  reference_count: Int,
+  spend_seen: Int,
+  reference_seen: Int,
+  previous_key: ByteArray,
+  schedule_hash: ByteArray,
+) -> ByteArray {
+  let proof_source = midgard_transaction_proof_source_v1(tx)
+  validation_machine_v1.encode_input_sets_scan_witness(
+    proof_source.compact_cbor,
+    proof_source.witness_set_compact_cbor,
+    proof_source.field_preimage_lengths_cbor,
+    validation_context_cbor,
+    spend_count,
+    reference_count,
+    spend_seen,
+    reference_seen,
+    previous_key,
+    schedule_hash,
+  )
+}
+
+fn input_sets_pre(
+  tx: MidgardTransaction,
+  program_counter: Int,
+  work_witness_cbor: ByteArray,
+) -> validation_trace_v1.ValidationMachineStateV1 {
+  let compact = midgard_transaction_to_compact(tx)
+  let tx_id = native_tx_id_for_version(
+    native_tx_version_v1,
+    encode_native_tx_body_compact(compact.body),
+  )
+  validation_trace_v1.ValidationMachineStateV1 {
+    machine_version: validation_trace_v1.machine_version,
+    event_key_hash: h_a,
+    transaction_id: tx_id,
+    transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+    validation_context_hash: validation_trace_v1.hash_validation_context(
+      validation_context_cbor,
+    ),
+    source_kind: validation_trace_v1.Forced,
+    prior_ledger_root: h_c,
+    phase: validation_trace_v1.InputSets,
+    program_counter,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.InputSets,
+      program_counter,
+      work_witness_cbor,
+    ),
+    execution_cpu: 0,
+    execution_memory: 0,
+    verdict: validation_trace_v1.Pending,
+    rejection_code_hash: zero,
+    ledger_delta_root: validation_trace_v1.hash_ledger_delta(#"80"),
+  }
+}
+
+fn exact_rejection_post(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  rejection_code: ByteArray,
+) -> validation_trace_v1.ValidationMachineStateV1 {
+  validation_trace_v1.ValidationMachineStateV1 {
+    ..pre,
+    phase: validation_trace_v1.Terminal,
+    program_counter: pre.program_counter + 1,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.Terminal,
+      pre.program_counter + 1,
+      validation_machine_v1.encode_terminal_rejection_witness(
+        rejection_code,
+        pre.prior_ledger_root,
+      ),
+    ),
+    verdict: validation_trace_v1.Rejected,
+    rejection_code_hash: validation_trace_v1.hash_rejection_code(rejection_code),
   }
 }
 
@@ -1388,7 +1514,18 @@ test static_rules_accept_the_exact_proof_context_and_advance_to_input_sets() {
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.InputSets,
       3,
-      work_witness_cbor,
+      validation_machine_v1.encode_input_sets_scan_witness(
+        proof_source.compact_cbor,
+        proof_source.witness_set_compact_cbor,
+        proof_source.field_preimage_lengths_cbor,
+        validation_context_cbor,
+        0,
+        0,
+        0,
+        0,
+        #"",
+        validation_machine_v1.empty_resolution_schedule_hash(),
+      ),
     ),
   }
   validation_machine_v1.verify_one_step(
@@ -1467,174 +1604,265 @@ test static_rules_prove_a_network_mismatch_is_an_exact_no_op() {
 }
 
 test input_sets_rejects_a_successor_in_the_wrong_phase() {
-  let Pair(_pre, canonical_witness) = canonical_step_fixture()
-  let compact_pre = canonical_witness.transition.claimed_successor
   let tx = empty_v1_transaction()
-  let proof_source = midgard_transaction_proof_source_v1(tx)
-  let context_cbor = validation_context_cbor
-  let input_sets_witness_cbor = validation_machine_v1.encode_static_rules_witness(
-    proof_source.compact_cbor,
-    proof_source.witness_set_compact_cbor,
-    proof_source.field_preimage_lengths_cbor,
-    context_cbor,
+  let work_witness_cbor = input_sets_scan_witness(
+    tx,
+    0,
+    0,
+    0,
+    0,
+    #"",
+    validation_machine_v1.empty_resolution_schedule_hash(),
   )
-  let input_pre = validation_trace_v1.ValidationMachineStateV1 {
-    ..compact_pre,
-    phase: validation_trace_v1.InputSets,
-    program_counter: 2,
-    work_root: validation_trace_v1.hash_work_witness(
-      validation_trace_v1.InputSets,
-      2,
-      input_sets_witness_cbor,
-    ),
-  }
+  let input_pre = input_sets_pre(tx, 2, work_witness_cbor)
   let static_post = validation_trace_v1.ValidationMachineStateV1 {
     ..input_pre,
     phase: validation_trace_v1.StaticLedgerRules,
     program_counter: 3,
     work_root: h_c,
   }
-  !validation_machine_v1.verify_one_step_evidence(
+  !validation_machine_v1.verify_input_sets_empty_semantics_v1(
     input_pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
-        work_witness_cbor: input_sets_witness_cbor,
-        claimed_successor: static_post,
-      },
-      auxiliary: input_sets_auxiliary(tx),
+    validation_machine_v1.ValidationOneStepWitnessV1 {
+      work_witness_cbor,
+      claimed_successor: static_post,
     },
   )
 }
 
 test input_sets_proves_an_empty_input_forced_transaction_is_an_exact_no_op() {
-  let Pair(_pre, canonical_witness) = canonical_step_fixture()
-  let compact_pre = canonical_witness.transition.claimed_successor
   let tx = empty_v1_transaction()
-  let proof_source = midgard_transaction_proof_source_v1(tx)
-  let context_cbor = validation_context_cbor
-  let input_sets_witness_cbor = validation_machine_v1.encode_static_rules_witness(
-    proof_source.compact_cbor,
-    proof_source.witness_set_compact_cbor,
-    proof_source.field_preimage_lengths_cbor,
-    context_cbor,
+  let work_witness_cbor = input_sets_scan_witness(
+    tx,
+    0,
+    0,
+    0,
+    0,
+    #"",
+    validation_machine_v1.empty_resolution_schedule_hash(),
   )
-  let input_pre = validation_trace_v1.ValidationMachineStateV1 {
-    ..compact_pre,
-    phase: validation_trace_v1.InputSets,
-    program_counter: 2,
-    work_root: validation_trace_v1.hash_work_witness(
-      validation_trace_v1.InputSets,
-      2,
-      input_sets_witness_cbor,
-    ),
-  }
+  let input_pre = input_sets_pre(tx, 2, work_witness_cbor)
   let rejection_code = #"455f454d5054595f494e50555453"
-  let input_pre = validation_trace_v1.ValidationMachineStateV1 {
-    ..input_pre,
-    ledger_delta_root: validation_trace_v1.hash_ledger_delta(#"80"),
-  }
-  let terminal = validation_trace_v1.ValidationMachineStateV1 {
-    ..input_pre,
-    phase: validation_trace_v1.Terminal,
-    program_counter: 3,
-    work_root: validation_trace_v1.hash_work_witness(
-      validation_trace_v1.Terminal,
-      3,
-      validation_machine_v1.encode_terminal_rejection_witness(
-        rejection_code,
-        input_pre.prior_ledger_root,
-      ),
-    ),
-    verdict: validation_trace_v1.Rejected,
-    rejection_code_hash: validation_trace_v1.hash_rejection_code(rejection_code),
-  }
-  validation_machine_v1.verify_one_step_evidence(
+  validation_machine_v1.verify_input_sets_empty_semantics_v1(
     input_pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
-        work_witness_cbor: input_sets_witness_cbor,
-        claimed_successor: terminal,
-      },
-      auxiliary: input_sets_auxiliary(tx),
+    validation_machine_v1.ValidationOneStepWitnessV1 {
+      work_witness_cbor,
+      claimed_successor: exact_rejection_post(input_pre, rejection_code),
     },
   )
 }
 
 test input_sets_accepts_bounded_disjoint_spend_and_reference_inputs() {
+  let spend_input = MidgardTxInput { tx_id: h_a, output_index: 0 }
+  let reference_input = MidgardTxInput { tx_id: h_b, output_index: 1 }
+  let spend_key = encode_midgard_tx_input(spend_input)
+  let reference_key = encode_midgard_tx_input(reference_input)
   let base = empty_v1_transaction()
   let tx = MidgardTransaction {
     ..base,
     body: MidgardTransactionBody {
       ..base.body,
-      inputs: [MidgardTxInput { tx_id: h_a, output_index: 0 }],
-      reference_inputs: [MidgardTxInput { tx_id: h_b, output_index: 1 }],
+      inputs: [spend_input],
+      reference_inputs: [reference_input],
     },
   }
-  let context_cbor = validation_context_cbor
-  let compact = midgard_transaction_to_compact(tx)
   let proof_source = midgard_transaction_proof_source_v1(tx)
-  let tx_id = native_tx_id_for_version(
-    native_tx_version_v1,
-    encode_native_tx_body_compact(compact.body),
+  let initial_schedule = validation_machine_v1.empty_resolution_schedule_hash()
+  let first_schedule = validation_machine_v1.resolution_schedule_node_hash(
+    1,
+    reference_key,
+    initial_schedule,
   )
-  let input_sets_witness_cbor = validation_machine_v1.encode_static_rules_witness(
-    proof_source.compact_cbor,
-    proof_source.witness_set_compact_cbor,
-    proof_source.field_preimage_lengths_cbor,
-    context_cbor,
+  let full_schedule = validation_machine_v1.resolution_schedule_node_hash(
+    0,
+    spend_key,
+    first_schedule,
   )
-  let input_pre = validation_trace_v1.ValidationMachineStateV1 {
-    machine_version: validation_trace_v1.machine_version,
-    event_key_hash: h_a,
-    transaction_id: tx_id,
-    transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
-    validation_context_hash: validation_trace_v1.hash_validation_context(
-      context_cbor,
-    ),
-    source_kind: validation_trace_v1.Forced,
-    prior_ledger_root: h_c,
-    phase: validation_trace_v1.InputSets,
-    program_counter: 2,
+  let first_witness_cbor = input_sets_scan_witness(
+    tx,
+    -1,
+    -1,
+    0,
+    0,
+    #"",
+    initial_schedule,
+  )
+  let first_pre = input_sets_pre(tx, 2, first_witness_cbor)
+  let second_witness_cbor = input_sets_scan_witness(
+    tx,
+    -1,
+    1,
+    0,
+    1,
+    reference_key,
+    first_schedule,
+  )
+  let second_pre = validation_trace_v1.ValidationMachineStateV1 {
+    ..first_pre,
+    program_counter: 3,
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.InputSets,
-      2,
-      input_sets_witness_cbor,
+      3,
+      second_witness_cbor,
     ),
-    execution_cpu: 0,
-    execution_memory: 0,
-    verdict: validation_trace_v1.Pending,
-    rejection_code_hash: zero,
-    ledger_delta_root: h_a,
   }
+  let Pair(reference_collection_proof, reference_chunk_proof) =
+    singleton_input_item_proofs(1, reference_key)
+  let first_is_valid = validation_machine_v1.verify_input_sets_item_semantics_v1(
+    first_pre,
+    validation_machine_v1.ValidationOneStepWitnessV1 {
+      work_witness_cbor: first_witness_cbor,
+      claimed_successor: second_pre,
+    },
+    reference_collection_proof,
+    reference_chunk_proof,
+  )
   let signatures_witness_cbor = validation_machine_v1.encode_signatures_witness(
     proof_source.compact_cbor,
     proof_source.witness_set_compact_cbor,
     proof_source.field_preimage_lengths_cbor,
-    context_cbor,
-    validation_machine_v1.transaction_resolution_schedule_hash(
-      tx.body.inputs,
-      tx.body.reference_inputs,
-    ),
+    validation_context_cbor,
+    full_schedule,
   )
   let signatures_post = validation_trace_v1.ValidationMachineStateV1 {
-    ..input_pre,
+    ..second_pre,
     phase: validation_trace_v1.Signatures,
-    program_counter: 3,
+    program_counter: 4,
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.Signatures,
-      3,
+      4,
       signatures_witness_cbor,
     ),
   }
-  validation_machine_v1.verify_one_step_evidence(
-    input_pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
-        work_witness_cbor: input_sets_witness_cbor,
+  let Pair(spend_collection_proof, spend_chunk_proof) =
+    singleton_input_item_proofs(0, spend_key)
+  and {
+    first_is_valid,
+    validation_machine_v1.verify_input_sets_item_semantics_v1(
+      second_pre,
+      validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor: second_witness_cbor,
         claimed_successor: signatures_post,
       },
-      auxiliary: input_sets_auxiliary(tx),
+      spend_collection_proof,
+      spend_chunk_proof,
+    ),
+    full_schedule == validation_machine_v1.transaction_resolution_schedule_hash(
+      tx.body.inputs,
+      tx.body.reference_inputs,
+    ),
+  }
+}
+
+test input_sets_proves_spend_reference_overlap_unilaterally() {
+  let input = MidgardTxInput { tx_id: h_a, output_index: 0 }
+  let key = encode_midgard_tx_input(input)
+  let base = empty_v1_transaction()
+  let tx = MidgardTransaction {
+    ..base,
+    body: MidgardTransactionBody {
+      ..base.body,
+      inputs: [input],
+      reference_inputs: [input],
     },
+  }
+  let initial_schedule = validation_machine_v1.empty_resolution_schedule_hash()
+  let first_schedule = validation_machine_v1.resolution_schedule_node_hash(
+    1,
+    key,
+    initial_schedule,
+  )
+  let first_witness_cbor = input_sets_scan_witness(
+    tx,
+    -1,
+    -1,
+    0,
+    0,
+    #"",
+    initial_schedule,
+  )
+  let first_pre = input_sets_pre(tx, 2, first_witness_cbor)
+  let second_witness_cbor = input_sets_scan_witness(
+    tx,
+    -1,
+    1,
+    0,
+    1,
+    key,
+    first_schedule,
+  )
+  let second_pre = validation_trace_v1.ValidationMachineStateV1 {
+    ..first_pre,
+    program_counter: 3,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.InputSets,
+      3,
+      second_witness_cbor,
+    ),
+  }
+  let Pair(reference_collection_proof, reference_chunk_proof) =
+    singleton_input_item_proofs(1, key)
+  let Pair(spend_collection_proof, spend_chunk_proof) =
+    singleton_input_item_proofs(0, key)
+  let first_is_valid = validation_machine_v1.verify_input_sets_item_semantics_v1(
+    first_pre,
+    validation_machine_v1.ValidationOneStepWitnessV1 {
+      work_witness_cbor: first_witness_cbor,
+      claimed_successor: second_pre,
+    },
+    reference_collection_proof,
+    reference_chunk_proof,
+  )
+  let rejection_code = #"455f4455504c49434154455f494e5055545f494e5f5458"
+  and {
+    first_is_valid,
+    validation_machine_v1.verify_input_sets_item_semantics_v1(
+      second_pre,
+      validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor: second_witness_cbor,
+        claimed_successor: exact_rejection_post(second_pre, rejection_code),
+      },
+      spend_collection_proof,
+      spend_chunk_proof,
+    ),
+  }
+}
+
+test input_sets_proves_a_malformed_validity_interval_after_the_final_item() {
+  let input = MidgardTxInput { tx_id: h_a, output_index: 0 }
+  let key = encode_midgard_tx_input(input)
+  let base = empty_v1_transaction()
+  let tx = MidgardTransaction {
+    ..base,
+    body: MidgardTransactionBody {
+      ..base.body,
+      inputs: [input],
+      validity_interval_start: 10,
+      validity_interval_end: 9,
+    },
+  }
+  let work_witness_cbor = input_sets_scan_witness(
+    tx,
+    -1,
+    0,
+    0,
+    0,
+    #"",
+    validation_machine_v1.empty_resolution_schedule_hash(),
+  )
+  let pre = input_sets_pre(tx, 2, work_witness_cbor)
+  let Pair(collection_proof, chunk_proof) =
+    singleton_input_item_proofs(0, key)
+  let rejection_code =
+    #"455f494e56414c49445f56414c49444954595f494e54455256414c5f464f524d4154"
+  validation_machine_v1.verify_input_sets_item_semantics_v1(
+    pre,
+    validation_machine_v1.ValidationOneStepWitnessV1 {
+      work_witness_cbor,
+      claimed_successor: exact_rejection_post(pre, rejection_code),
+    },
+    collection_proof,
+    chunk_proof,
   )
 }
 
@@ -2546,7 +2774,7 @@ test script_sources_binds_resolved_input_replay_schedule() {
         work_witness_cbor,
         claimed_successor: post,
       },
-      auxiliary: input_sets_auxiliary(tx),
+      auxiliary: input_field_pair_auxiliary(tx),
     },
   )
 }

@@ -89,8 +89,10 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
       "fraud_proofs/validation_trace/compact_binding_semantic_v1.main.spend",
     staticLedgerRules:
       "fraud_proofs/validation_trace/static_ledger_rules_semantic_v1.main.spend",
-    inputSets:
-      "fraud_proofs/validation_trace/input_sets_semantic_v1.main.spend",
+    inputSetsEmpty:
+      "fraud_proofs/validation_trace/input_sets_empty_semantic_v1.main.spend",
+    inputSetsItem:
+      "fraud_proofs/validation_trace/input_sets_item_semantic_v1.main.spend",
     signatures:
       "fraud_proofs/validation_trace/signatures_semantic_v1.main.spend",
     phaseANativeScripts:
@@ -206,6 +208,7 @@ export type ValidationTraceDisputeFaultProofContracts = {
       SpendingValidator,
     ];
     readonly semanticResolvers: readonly [
+      SpendingValidator,
       SpendingValidator,
       SpendingValidator,
       SpendingValidator,
@@ -830,7 +833,7 @@ const buildValidationTraceDisputeChain = ({
         ),
       );
     }
-    if (builtSemanticResolvers.length !== 8) {
+    if (builtSemanticResolvers.length !== 9) {
       return yield* Effect.fail(
         new Error("Validation-trace semantic resolver set is incomplete"),
       );
@@ -844,15 +847,16 @@ const buildValidationTraceDisputeChain = ({
       builtSemanticResolvers[5]!,
       builtSemanticResolvers[6]!,
       builtSemanticResolvers[7]!,
+      builtSemanticResolvers[8]!,
     ] as const;
     const semanticResolverGroups = [
       [semanticResolvers[0], semanticResolvers[1]],
       [semanticResolvers[2]],
       [semanticResolvers[3]],
-      [semanticResolvers[4]],
-      [semanticResolvers[5]],
+      [semanticResolvers[4], semanticResolvers[5]],
       [semanticResolvers[6]],
       [semanticResolvers[7]],
+      [semanticResolvers[8]],
     ] as const;
     const semanticResolverHashesSchema = Data.Array(Data.Bytes());
     type SemanticResolverHashes = Data.Static<

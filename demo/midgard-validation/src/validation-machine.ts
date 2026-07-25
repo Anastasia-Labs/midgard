@@ -910,23 +910,30 @@ export const buildDeterministicValidationMachineTrace = (
     const fieldPreimages = deriveMidgardV1TxFieldPreimages(
       input.canonicalTransactionCbor,
     );
-    const resolutionItems =
-      phaseALedgerTx === null
-        ? []
-        : [
-            ...phaseALedgerTx.spendInputs
-              .map((outRef) => ({
-                sourceKind: "spend" as const,
-                key: encodeCbor([outRef.txId, outRef.index]),
-              }))
-              .sort((left, right) => Buffer.compare(left.key, right.key)),
-            ...phaseALedgerTx.referenceInputs
-              .map((outRef) => ({
-                sourceKind: "reference" as const,
-                key: encodeCbor([outRef.txId, outRef.index]),
-              }))
-              .sort((left, right) => Buffer.compare(left.key, right.key)),
-          ];
+    const spendInputsCollection = deriveMidgardNativeFieldCollectionV1({
+      fieldIndex: 0,
+      preimageCbor: fieldPreimages[0]!.preimageCbor,
+    });
+    const referenceInputsCollection = deriveMidgardNativeFieldCollectionV1({
+      fieldIndex: 1,
+      preimageCbor: fieldPreimages[1]!.preimageCbor,
+    });
+    const inputSetScanItems = [
+      ...spendInputsCollection.items.map((item) => ({
+        sourceKind: "spend" as const,
+        collection: spendInputsCollection,
+        item,
+      })),
+      ...referenceInputsCollection.items.map((item) => ({
+        sourceKind: "reference" as const,
+        collection: referenceInputsCollection,
+        item,
+      })),
+    ].sort((left, right) => Buffer.compare(left.item.bytes, right.item.bytes));
+    const resolutionItems = inputSetScanItems.map(({ sourceKind, item }) => ({
+      sourceKind,
+      key: item.bytes,
+    }));
     const resolutionScheduleNodes: {
       sourceKind: "spend" | "reference";
       key: Buffer;
@@ -991,6 +998,26 @@ export const buildDeterministicValidationMachineTrace = (
       proofSource.fieldPreimageLengthsCbor,
       contextCbor,
     ]);
+    const inputSetsWitnessCbor = (control: {
+      readonly spendCount: number;
+      readonly referenceCount: number;
+      readonly spendSeen: number;
+      readonly referenceSeen: number;
+      readonly previousKey: Buffer;
+      readonly resolutionScheduleHash: Buffer;
+    }): Buffer =>
+      encodeCbor([
+        proofSource.compactCbor,
+        proofSource.witnessSetCompactCbor,
+        proofSource.fieldPreimageLengthsCbor,
+        contextCbor,
+        BigInt(control.spendCount),
+        BigInt(control.referenceCount),
+        BigInt(control.spendSeen),
+        BigInt(control.referenceSeen),
+        control.previousKey,
+        control.resolutionScheduleHash,
+      ]);
     const canonicalSignerHashes = [...(phaseALedgerTx?.witnessKeyHashes ?? [])]
       .map((hash) => Buffer.from(hash))
       .sort(Buffer.compare)
@@ -1312,7 +1339,6 @@ export const buildDeterministicValidationMachineTrace = (
           contextCbor,
         ]),
       ],
-      ["inputSets", sourceContextWitnessCbor],
       ["staticLedgerRules", sourceContextWitnessCbor],
       ["signatures", signaturesWitnessCbor],
       ["valueAndMint", transactionContextWitnessCbor],
@@ -1327,16 +1353,6 @@ export const buildDeterministicValidationMachineTrace = (
       MidgardValidationPhaseName,
       ValidationMachineWorkWitness["auxiliary"]
     >([
-      [
-        "inputSets",
-        {
-          kind: "transactionFieldPairPreimage",
-          firstFieldIndex: 0,
-          firstPreimageCbor: fieldPreimages[0]!.preimageCbor,
-          secondFieldIndex: 1,
-          secondPreimageCbor: fieldPreimages[1]!.preimageCbor,
-        },
-      ],
       [
         "signatures",
         {
@@ -1409,7 +1425,6 @@ export const buildDeterministicValidationMachineTrace = (
     ): ValidationMachineWorkWitness["auxiliary"] =>
       macroAuxiliaryByPhase.get(phase) ?? null;
 
-    const resolveIndex = orderedPhases.indexOf("resolveInputs");
     let stoppedAtRejection = false;
     let authenticatedNativeScriptsWitnessCbor: Buffer | null = null;
     let authenticatedNativeScriptsBaseFields: unknown[] | null = null;
@@ -1490,7 +1505,141 @@ export const buildDeterministicValidationMachineTrace = (
         ),
       );
     }
-    for (const phase of orderedPhases.slice(1, resolveIndex)) {
+    for (const phase of ["compactBinding", "staticLedgerRules"] as const) {
+      if (stoppedAtRejection) break;
+      pushWitness(phase, macroWitness(phase), macroAuxiliary(phase));
+      if (rejection !== null && phase === terminalPhase) {
+        stoppedAtRejection = true;
+        break;
+      }
+    }
+
+    if (!stoppedAtRejection) {
+      let spendCount = spendInputsCollection.items.length === 0 ? 0 : -1;
+      let referenceCount =
+        referenceInputsCollection.items.length === 0 ? 0 : -1;
+      let spendSeen = 0;
+      let referenceSeen = 0;
+      let previousKey = Buffer.alloc(0);
+      let inputScheduleHash = emptyMidgardInputResolutionScheduleV1();
+      const currentInputSetsWitness = (): Buffer =>
+        inputSetsWitnessCbor({
+          spendCount,
+          referenceCount,
+          spendSeen,
+          referenceSeen,
+          previousKey,
+          resolutionScheduleHash: inputScheduleHash,
+        });
+
+      if (spendCount === 0) {
+        pushWitness("inputSets", currentInputSetsWitness());
+        if (
+          terminalPhase !== "inputSets" ||
+          rejectionCode !== RejectCodes.EmptyInputs
+        ) {
+          return yield* Effect.fail(
+            new Error(
+              `bounded input scan found no spend inputs but replay rejected at ${terminalPhase}/${rejectionCode ?? "none"}`,
+            ),
+          );
+        }
+        stoppedAtRejection = true;
+      } else {
+        for (
+          let index = inputSetScanItems.length - 1;
+          index >= 0;
+          index -= 1
+        ) {
+          const scan = inputSetScanItems[index]!;
+          const key = scan.item.bytes;
+          pushWitness("inputSets", currentInputSetsWitness(), {
+            kind: "transactionFieldChunk",
+            collectionProof: buildMidgardBoundedCollectionItemProofV1(
+              scan.collection,
+              scan.item.itemIndex,
+            ),
+            chunkProof: buildMidgardBoundedItemChunkProofV1(scan.item, 0),
+          });
+          if (previousKey.length > 0 && key.equals(previousKey)) {
+            if (
+              terminalPhase !== "inputSets" ||
+              rejectionCode !== RejectCodes.DuplicateInputInTx
+            ) {
+              return yield* Effect.fail(
+                new Error(
+                  `bounded input scan found a duplicate but replay rejected at ${terminalPhase}/${rejectionCode ?? "none"}`,
+                ),
+              );
+            }
+            stoppedAtRejection = true;
+            break;
+          }
+          if (previousKey.length > 0 && Buffer.compare(key, previousKey) >= 0) {
+            return yield* Effect.fail(
+              new Error("bounded input scan is not strictly descending"),
+            );
+          }
+          if (scan.sourceKind === "spend") {
+            if (spendCount === -1) {
+              spendCount = scan.collection.items.length;
+            }
+            spendSeen += 1;
+          } else {
+            if (referenceCount === -1) {
+              referenceCount = scan.collection.items.length;
+            }
+            referenceSeen += 1;
+          }
+          previousKey = key;
+          inputScheduleHash = prependMidgardInputResolutionScheduleV1({
+            sourceKind: scan.sourceKind,
+            key,
+            nextHash: inputScheduleHash,
+          });
+        }
+        if (!stoppedAtRejection) {
+          if (spendCount <= 0 || referenceCount < 0) {
+            return yield* Effect.fail(
+              new Error("bounded input scan did not reveal both input counts"),
+            );
+          }
+          if (
+            spendSeen !== spendCount ||
+            referenceSeen !== referenceCount
+          ) {
+            return yield* Effect.fail(
+              new Error("bounded input scan did not reveal every input"),
+            );
+          }
+          if (!inputScheduleHash.equals(resolutionScheduleHash)) {
+            return yield* Effect.fail(
+              new Error(
+                `bounded input scan schedule ${inputScheduleHash.toString("hex")} differs from committed ${resolutionScheduleHash.toString("hex")}`,
+              ),
+            );
+          }
+          if (terminalPhase === "inputSets") {
+            if (
+              rejectionCode !== RejectCodes.InvalidValidityIntervalFormat
+            ) {
+              return yield* Effect.fail(
+                new Error(
+                  `bounded input scan cannot prove rejection ${rejectionCode ?? "none"}`,
+                ),
+              );
+            }
+            stoppedAtRejection = true;
+          }
+        }
+      }
+    }
+
+    for (const phase of [
+      "signatures",
+      "phaseANativeScripts",
+      "phaseAScriptPreconditions",
+    ] as const) {
       if (stoppedAtRejection) break;
       pushWitness(phase, macroWitness(phase), macroAuxiliary(phase));
       if (rejection !== null && phase === terminalPhase) {

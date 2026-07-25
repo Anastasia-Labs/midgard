@@ -21,7 +21,9 @@ use midgard/fraud_proofs/native_tx/compact.{
   native_tx_canonical_size_v1, native_tx_proof_commitment_v1,
   verify_native_tx_proof_source_v1,
 }
-use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_input}
+use midgard/fraud_proofs/native_tx/components.{
+  decode_midgard_tx_input_cbor, encode_midgard_tx_input,
+}
 use midgard/fraud_proofs/native_tx/preimages.{
   canonical_bytes_key_precedes, decode_canonical_bytes_at,
   decode_canonical_map_header_at,
@@ -503,6 +505,37 @@ pub fn encode_static_rules_witness(
     |> bytearray.concat(encode_definite_bytes(context_cbor))
 }
 
+pub fn encode_input_sets_scan_witness(
+  compact_cbor: ByteArray,
+  witness_set_compact_cbor: ByteArray,
+  field_preimage_lengths_cbor: ByteArray,
+  context_cbor: ByteArray,
+  spend_count: Int,
+  reference_count: Int,
+  spend_seen: Int,
+  reference_seen: Int,
+  previous_key: ByteArray,
+  resolution_schedule_hash: ByteArray,
+) -> ByteArray {
+  expect spend_count >= -1
+  expect reference_count >= -1
+  expect spend_seen >= 0
+  expect reference_seen >= 0
+  expect bytearray.length(previous_key) == 0 || bytearray.length(previous_key) == 36
+  expect bytearray.length(resolution_schedule_hash) == 32
+  encode_definite_array_header(10)
+    |> bytearray.concat(encode_definite_bytes(compact_cbor))
+    |> bytearray.concat(encode_definite_bytes(witness_set_compact_cbor))
+    |> bytearray.concat(encode_definite_bytes(field_preimage_lengths_cbor))
+    |> bytearray.concat(encode_definite_bytes(context_cbor))
+    |> bytearray.concat(cbor.serialise(spend_count))
+    |> bytearray.concat(cbor.serialise(reference_count))
+    |> bytearray.concat(cbor.serialise(spend_seen))
+    |> bytearray.concat(cbor.serialise(reference_seen))
+    |> bytearray.concat(encode_definite_bytes(previous_key))
+    |> bytearray.concat(encode_definite_bytes(resolution_schedule_hash))
+}
+
 pub fn encode_phase_a_native_scripts_witness(
   compact_cbor: ByteArray,
   witness_set_compact_cbor: ByteArray,
@@ -603,42 +636,58 @@ pub fn resolution_schedule_node_hash(
     |> blake2b_256
 }
 
-fn input_resolution_schedule_hash(
-  inputs: List<MidgardTxInput>,
+pub type ScheduledInputV1 {
   source_kind: Int,
-  tail_hash: ByteArray,
+  key: ByteArray,
+}
+
+fn scheduled_input_resolution_hash(
+  inputs: List<ScheduledInputV1>,
 ) -> ByteArray {
   when inputs is {
-    [] -> tail_hash
+    [] -> empty_resolution_schedule_hash()
     [input, ..rest] ->
       resolution_schedule_node_hash(
-        source_kind,
-        encode_midgard_tx_input(input),
-        input_resolution_schedule_hash(rest, source_kind, tail_hash),
+        input.source_kind,
+        input.key,
+        scheduled_input_resolution_hash(rest),
       )
   }
 }
 
-fn compare_inputs(left: MidgardTxInput, right: MidgardTxInput) -> Ordering {
-  bytearray.compare(
-    encode_midgard_tx_input(left),
-    encode_midgard_tx_input(right),
-  )
+fn compare_scheduled_inputs(
+  left: ScheduledInputV1,
+  right: ScheduledInputV1,
+) -> Ordering {
+  bytearray.compare(left.key, right.key)
 }
 
 pub fn transaction_resolution_schedule_hash(
   spend_inputs: List<MidgardTxInput>,
   reference_inputs: List<MidgardTxInput>,
 ) -> ByteArray {
-  input_resolution_schedule_hash(
-    spend_inputs |> list.sort(compare_inputs),
-    0,
-    input_resolution_schedule_hash(
-      reference_inputs |> list.sort(compare_inputs),
-      1,
-      empty_resolution_schedule_hash(),
-    ),
+  list.concat(
+    spend_inputs
+      |> list.map(
+          fn(input) {
+            ScheduledInputV1 {
+              source_kind: 0,
+              key: encode_midgard_tx_input(input),
+            }
+          },
+        ),
+    reference_inputs
+      |> list.map(
+          fn(input) {
+            ScheduledInputV1 {
+              source_kind: 1,
+              key: encode_midgard_tx_input(input),
+            }
+          },
+        ),
   )
+    |> list.sort(compare_scheduled_inputs)
+    |> scheduled_input_resolution_hash
 }
 
 pub fn encode_resolve_inputs_witness(
@@ -1420,46 +1469,6 @@ fn decode_validation_context(context_cbor: ByteArray) -> ValidationContextV1 {
   }
 }
 
-fn no_duplicate_inputs(inputs: List<MidgardTxInput>) -> Bool {
-  when inputs is {
-    [] -> True
-    [input, ..rest] -> and {
-        !list.has(rest, input),
-        no_duplicate_inputs(rest),
-      }
-  }
-}
-
-fn input_sets_do_not_overlap(
-  spend_inputs: List<MidgardTxInput>,
-  reference_inputs: List<MidgardTxInput>,
-) -> Bool {
-  when spend_inputs is {
-    [] -> True
-    [input, ..rest] -> and {
-        !list.has(reference_inputs, input),
-        input_sets_do_not_overlap(rest, reference_inputs),
-      }
-  }
-}
-
-fn input_sets_rejection(
-  spend_inputs: List<MidgardTxInput>,
-  reference_inputs: List<MidgardTxInput>,
-) -> Option<ByteArray> {
-  if spend_inputs == [] {
-    Some(reject_empty_inputs)
-  } else if or {
-    !no_duplicate_inputs(spend_inputs),
-    !no_duplicate_inputs(reference_inputs),
-    !input_sets_do_not_overlap(spend_inputs, reference_inputs),
-  } {
-    Some(reject_duplicate_input)
-  } else {
-    None
-  }
-}
-
 fn rejected_successor_is_exact(
   pre: validation_trace_v1.ValidationMachineStateV1,
   post: validation_trace_v1.ValidationMachineStateV1,
@@ -1483,93 +1492,391 @@ fn rejected_successor_is_exact(
   }
 }
 
+const max_tx_size_derived_collection_item_count: Int = 16384
+
+const reject_invalid_validity_interval_format =
+  #"455f494e56414c49445f56414c49444954595f494e54455256414c5f464f524d4154"
+
+pub type InputSetsControlV1 {
+  compact_cbor: ByteArray,
+  witness_set_compact_cbor: ByteArray,
+  field_preimage_lengths_cbor: ByteArray,
+  context_cbor: ByteArray,
+  spend_count: Int,
+  reference_count: Int,
+  spend_seen: Int,
+  reference_seen: Int,
+  previous_key: ByteArray,
+  resolution_schedule_hash: ByteArray,
+}
+
+fn input_sets_control_from_witness(
+  witness_cbor: ByteArray,
+) -> InputSetsControlV1 {
+  expect Some(data) = cbor.deserialise(witness_cbor)
+  expect
+      [
+        compact_cbor_data, witness_set_compact_cbor_data,
+        field_preimage_lengths_cbor_data, context_cbor_data, spend_count_data,
+        reference_count_data, spend_seen_data, reference_seen_data,
+        previous_key_data, resolution_schedule_hash_data,
+      ]
+    = builtin.un_list_data(data)
+  InputSetsControlV1 {
+    compact_cbor: builtin.un_b_data(compact_cbor_data),
+    witness_set_compact_cbor: builtin.un_b_data(
+      witness_set_compact_cbor_data,
+    ),
+    field_preimage_lengths_cbor: builtin.un_b_data(
+      field_preimage_lengths_cbor_data,
+    ),
+    context_cbor: builtin.un_b_data(context_cbor_data),
+    spend_count: builtin.un_i_data(spend_count_data),
+    reference_count: builtin.un_i_data(reference_count_data),
+    spend_seen: builtin.un_i_data(spend_seen_data),
+    reference_seen: builtin.un_i_data(reference_seen_data),
+    previous_key: builtin.un_b_data(previous_key_data),
+    resolution_schedule_hash: builtin.un_b_data(
+      resolution_schedule_hash_data,
+    ),
+  }
+}
+
+fn input_sets_control_is_bound(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: InputSetsControlV1,
+  verified: VerifiedMidgardNativeTxCompact,
+) -> Bool {
+  let body = verified.tx_compact.body
+  let spend_is_empty = body.spend_inputs_hash == bounded_collection_v1.from_items(
+    0,
+    [],
+  )
+  let reference_is_empty = body.reference_inputs_hash == bounded_collection_v1.from_items(
+    1,
+    [],
+  )
+  let seen = control.spend_seen + control.reference_seen
+  and {
+    verified.version == 1,
+    native_tx_proof_commitment_v1(
+      control.compact_cbor,
+      control.witness_set_compact_cbor,
+      control.field_preimage_lengths_cbor,
+    ) == pre.transaction_commitment,
+    validation_trace_v1.hash_validation_context(control.context_cbor) == pre.validation_context_hash,
+    control.spend_count >= -1,
+    control.spend_count <= max_tx_size_derived_collection_item_count,
+    control.reference_count >= -1,
+    control.reference_count <= max_tx_size_derived_collection_item_count,
+    control.spend_seen >= 0,
+    control.reference_seen >= 0,
+    if spend_is_empty {
+      control.spend_count == 0 && control.spend_seen == 0
+    } else if control.spend_count == -1 {
+      control.spend_seen == 0
+    } else {
+      control.spend_count > 0 && control.spend_seen <= control.spend_count
+    },
+    if reference_is_empty {
+      control.reference_count == 0 && control.reference_seen == 0
+    } else if control.reference_count == -1 {
+      control.reference_seen == 0
+    } else {
+      control.reference_count > 0 && control.reference_seen <= control.reference_count
+    },
+    if seen == 0 {
+      and {
+        control.previous_key == #"",
+        control.resolution_schedule_hash == empty_resolution_schedule_hash(),
+      }
+    } else {
+      bytearray.length(control.previous_key) == 36
+    },
+    bytearray.length(control.resolution_schedule_hash) == 32,
+    witness.work_witness_cbor == encode_input_sets_scan_witness(
+      control.compact_cbor,
+      control.witness_set_compact_cbor,
+      control.field_preimage_lengths_cbor,
+      control.context_cbor,
+      control.spend_count,
+      control.reference_count,
+      control.spend_seen,
+      control.reference_seen,
+      control.previous_key,
+      control.resolution_schedule_hash,
+    ),
+  }
+}
+
+fn verify_input_sets_empty(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: InputSetsControlV1,
+) -> Bool {
+  let Pair(verified, _) = verify_native_tx_proof_source_v1(
+    pre.transaction_id,
+    control.compact_cbor,
+    control.witness_set_compact_cbor,
+    control.field_preimage_lengths_cbor,
+  )
+  and {
+    input_sets_control_is_bound(pre, witness, control, verified),
+    control.spend_count == 0,
+    control.spend_seen == 0,
+    control.reference_seen == 0,
+    rejected_successor_is_exact(
+      pre,
+      witness.claimed_successor,
+      reject_empty_inputs,
+    ),
+  }
+}
+
+fn input_sets_item_successor_is_exact(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  post: validation_trace_v1.ValidationMachineStateV1,
+  control: InputSetsControlV1,
+  body: NativeTxBodyCompact,
+  spend_count: Int,
+  reference_count: Int,
+  spend_seen: Int,
+  reference_seen: Int,
+  key: ByteArray,
+  resolution_schedule_hash: ByteArray,
+) -> Bool {
+  let complete = and {
+    spend_count > 0,
+    reference_count >= 0,
+    spend_seen == spend_count,
+    reference_seen == reference_count,
+  }
+  if complete {
+    let malformed_validity_interval = or {
+      body.validity_interval_start < -1,
+      body.validity_interval_end < -1,
+      and {
+        body.validity_interval_start >= 0,
+        body.validity_interval_end >= 0,
+        body.validity_interval_start > body.validity_interval_end,
+      },
+    }
+    if malformed_validity_interval {
+      rejected_successor_is_exact(
+        pre,
+        post,
+        reject_invalid_validity_interval_format,
+      )
+    } else {
+      and {
+        post.phase == validation_trace_v1.Signatures,
+        post.work_root == validation_trace_v1.hash_work_witness(
+          validation_trace_v1.Signatures,
+          pre.program_counter + 1,
+          encode_signatures_witness(
+            control.compact_cbor,
+            control.witness_set_compact_cbor,
+            control.field_preimage_lengths_cbor,
+            control.context_cbor,
+            resolution_schedule_hash,
+          ),
+        ),
+      }
+    }
+  } else {
+    and {
+      post.phase == validation_trace_v1.InputSets,
+      post.work_root == validation_trace_v1.hash_work_witness(
+        validation_trace_v1.InputSets,
+        pre.program_counter + 1,
+        encode_input_sets_scan_witness(
+          control.compact_cbor,
+          control.witness_set_compact_cbor,
+          control.field_preimage_lengths_cbor,
+          control.context_cbor,
+          spend_count,
+          reference_count,
+          spend_seen,
+          reference_seen,
+          key,
+          resolution_schedule_hash,
+        ),
+      ),
+    }
+  }
+}
+
+fn verify_input_sets_item(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: InputSetsControlV1,
+  collection_proof: bounded_collection_v1.ItemProofV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+) -> Bool {
+  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+    pre.transaction_id,
+    control.compact_cbor,
+    control.witness_set_compact_cbor,
+    control.field_preimage_lengths_cbor,
+  )
+  let field_index = collection_proof.field_index
+  let source_kind = field_index
+  let expected_field_commitment = transaction_field_commitment(
+    verified.tx_compact,
+    witness_set,
+    field_index,
+  )
+  let prior_count = if field_index == 0 {
+    control.spend_count
+  } else {
+    control.reference_count
+  }
+  let active_count = if prior_count == -1 {
+    collection_proof.item_count
+  } else {
+    prior_count
+  }
+  let prior_seen = if field_index == 0 {
+    control.spend_seen
+  } else {
+    control.reference_seen
+  }
+  let key = chunk_proof.chunk
+  let input = decode_midgard_tx_input_cbor(key)
+  let next_schedule_hash = resolution_schedule_node_hash(
+    source_kind,
+    key,
+    control.resolution_schedule_hash,
+  )
+  let next_spend_count = if field_index == 0 {
+    active_count
+  } else {
+    control.spend_count
+  }
+  let next_reference_count = if field_index == 1 {
+    active_count
+  } else {
+    control.reference_count
+  }
+  let next_spend_seen = if field_index == 0 {
+    control.spend_seen + 1
+  } else {
+    control.spend_seen
+  }
+  let next_reference_seen = if field_index == 1 {
+    control.reference_seen + 1
+  } else {
+    control.reference_seen
+  }
+  let duplicate = and {
+    bytearray.length(control.previous_key) > 0,
+    bytearray.compare(key, control.previous_key) == Equal,
+  }
+  let correctly_ordered = or {
+    control.previous_key == #"",
+    bytearray.compare(key, control.previous_key) == Less,
+  }
+  and {
+    input_sets_control_is_bound(pre, witness, control, verified),
+    control.spend_count != 0,
+    or {
+      field_index == 0,
+      field_index == 1,
+    },
+    prior_count == -1 || prior_count == collection_proof.item_count,
+    active_count > 0,
+    active_count <= max_tx_size_derived_collection_item_count,
+    prior_seen < active_count,
+    collection_proof.item_count == active_count,
+    collection_proof.item_index >= 0,
+    collection_proof.item_index < active_count,
+    collection_proof.item_length == chunk_proof.total_length,
+    chunk_proof.field_index == field_index,
+    chunk_proof.item_index == collection_proof.item_index,
+    chunk_proof.chunk_index == 0,
+    bounded_item_v1.chunk_count(chunk_proof.total_length) == 1,
+    encode_midgard_tx_input(input) == key,
+    bounded_collection_v1.verify_item(
+      expected_field_commitment,
+      collection_proof,
+    ),
+    bounded_item_v1.verify_chunk(
+      collection_proof.item_commitment,
+      chunk_proof,
+    ),
+    if duplicate {
+      rejected_successor_is_exact(
+        pre,
+        witness.claimed_successor,
+        reject_duplicate_input,
+      )
+    } else {
+      and {
+        correctly_ordered,
+        input_sets_item_successor_is_exact(
+          pre,
+          witness.claimed_successor,
+          control,
+          verified.tx_compact.body,
+          next_spend_count,
+          next_reference_count,
+          next_spend_seen,
+          next_reference_seen,
+          key,
+          next_schedule_hash,
+        ),
+      }
+    },
+  }
+}
+
+pub fn verify_input_sets_empty_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+) -> Bool {
+  verify_input_sets_empty(
+    pre,
+    witness,
+    input_sets_control_from_witness(witness.work_witness_cbor),
+  )
+}
+
+pub fn verify_input_sets_item_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  collection_proof: bounded_collection_v1.ItemProofV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+) -> Bool {
+  verify_input_sets_item(
+    pre,
+    witness,
+    input_sets_control_from_witness(witness.work_witness_cbor),
+    collection_proof,
+    chunk_proof,
+  )
+}
+
 fn verify_input_sets(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
 ) -> Bool {
-  expect Some(data) = cbor.deserialise(witness.work_witness_cbor)
-  expect
-      [
-        compact_cbor_data, witness_set_compact_cbor_data,
-        field_preimage_lengths_cbor_data, context_cbor_data,
-      ]
-    = builtin.un_list_data(data)
-  let compact_cbor = builtin.un_b_data(compact_cbor_data)
-  let witness_set_compact_cbor = builtin.un_b_data(
-    witness_set_compact_cbor_data,
+  let control = input_sets_control_from_witness(
+    witness.work_witness_cbor,
   )
-  let field_preimage_lengths_cbor = builtin.un_b_data(
-    field_preimage_lengths_cbor_data,
-  )
-  let context_cbor = builtin.un_b_data(context_cbor_data)
-  expect
-      TransactionFieldPairPreimageWitness {
-        first_field_index,
-        first_preimage_cbor,
-        second_field_index,
-        second_preimage_cbor,
-      }
-    = auxiliary
-  expect first_field_index == 0
-  expect second_field_index == 1
-  let first_verified = verify_midgard_transaction_field_preimage_v1(
-    pre.transaction_id,
-    pre.transaction_commitment,
-    compact_cbor,
-    witness_set_compact_cbor,
-    field_preimage_lengths_cbor,
-    first_field_index,
-    first_preimage_cbor,
-  )
-  let second_verified = verify_midgard_transaction_field_preimage_v1(
-    pre.transaction_id,
-    pre.transaction_commitment,
-    compact_cbor,
-    witness_set_compact_cbor,
-    field_preimage_lengths_cbor,
-    second_field_index,
-    second_preimage_cbor,
-  )
-  let spend_inputs = decode_midgard_tx_inputs_preimage_cbor(first_preimage_cbor)
-  let reference_inputs = decode_midgard_tx_inputs_preimage_cbor(
-    second_preimage_cbor,
-  )
-  and {
-    first_verified,
-    second_verified,
-    validation_trace_v1.hash_validation_context(context_cbor) == pre.validation_context_hash,
-    witness.work_witness_cbor == encode_static_rules_witness(
-      compact_cbor,
-      witness_set_compact_cbor,
-      field_preimage_lengths_cbor,
-      context_cbor,
-    ),
-    when input_sets_rejection(spend_inputs, reference_inputs) is {
-      Some(rejection_code) ->
-        rejected_successor_is_exact(
-          pre,
-          witness.claimed_successor,
-          rejection_code,
-        )
-      None -> and {
-          witness.claimed_successor.phase == validation_trace_v1.Signatures,
-          witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
-            validation_trace_v1.Signatures,
-            pre.program_counter + 1,
-            encode_signatures_witness(
-              compact_cbor,
-              witness_set_compact_cbor,
-              field_preimage_lengths_cbor,
-              context_cbor,
-              transaction_resolution_schedule_hash(
-                spend_inputs,
-                reference_inputs,
-              ),
-            ),
-          ),
-        }
-    },
+  when auxiliary is {
+    NoAuxiliaryWitness ->
+      verify_input_sets_empty(pre, witness, control)
+    TransactionFieldChunkWitness { collection_proof, chunk_proof } ->
+      verify_input_sets_item(
+        pre,
+        witness,
+        control,
+        collection_proof,
+        chunk_proof,
+      )
+    _ -> False
   }
 }
 
@@ -1645,14 +1952,44 @@ fn verify_static_rules(
           witness.claimed_successor,
           rejection_code,
         )
-      None -> and {
+      None -> {
+        let body = verified.tx_compact.body
+        let spend_count = if body.spend_inputs_hash == bounded_collection_v1.from_items(
+          0,
+          [],
+        ) {
+          0
+        } else {
+          -1
+        }
+        let reference_count = if body.reference_inputs_hash == bounded_collection_v1.from_items(
+          1,
+          [],
+        ) {
+          0
+        } else {
+          -1
+        }
+        and {
           witness.claimed_successor.phase == validation_trace_v1.InputSets,
           witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
             validation_trace_v1.InputSets,
             pre.program_counter + 1,
-            witness.work_witness_cbor,
+            encode_input_sets_scan_witness(
+              compact_cbor,
+              witness_set_compact_cbor,
+              field_preimage_lengths_cbor,
+              context_cbor,
+              spend_count,
+              reference_count,
+              0,
+              0,
+              #"",
+              empty_resolution_schedule_hash(),
+            ),
           ),
         }
+      }
     },
   }
 }

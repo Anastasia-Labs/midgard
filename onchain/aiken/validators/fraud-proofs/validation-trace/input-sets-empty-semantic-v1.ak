@@ -4,19 +4,17 @@ use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel}
 use midgard/validation_machine_v1.{
-  TransactionFieldPairPreimageWitness, ValidationOneStepEvidenceV1,
-  ValidationOneStepWitnessV1, verify_input_sets_semantics_v1,
+  NoAuxiliaryWitness, ValidationOneStepWitnessV1,
+  verify_input_sets_empty_semantics_v1,
 }
 use midgard/validation_semantic_v1.{Datum, continue_winning}
 use midgard/validation_trace_v1.{InputSets}
 
 pub type ActionV1 {
-  Verify {
+  VerifyEmpty {
     input_index: Int,
     output_index: Int,
     transition: ValidationOneStepWitnessV1,
-    spend_inputs_cbor: ByteArray,
-    reference_inputs_cbor: ByteArray,
   }
 }
 
@@ -43,21 +41,8 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(Verify {
-        input_index,
-        output_index,
-        transition,
-        spend_inputs_cbor,
-        reference_inputs_cbor,
-      }) -> {
-        let auxiliary = TransactionFieldPairPreimageWitness {
-          first_field_index: 0,
-          first_preimage_cbor: spend_inputs_cbor,
-          second_field_index: 1,
-          second_preimage_cbor: reference_inputs_cbor,
-        }
-        let auxiliary_data: Data = auxiliary
-        let evidence = ValidationOneStepEvidenceV1 { transition, auxiliary }
+      ct.Continue(VerifyEmpty { input_index, output_index, transition }) -> {
+        let auxiliary_data: Data = NoAuxiliaryWitness
         continue_winning(
           InputSets,
           award_script_hash,
@@ -67,7 +52,10 @@ validator main(
           output_index,
           transition,
           auxiliary_data,
-          verify_input_sets_semantics_v1(datum |> semantic_pre_state, evidence),
+          verify_input_sets_empty_semantics_v1(
+            datum |> semantic_pre_state,
+            transition,
+          ),
           own_out_ref,
           tx,
         )

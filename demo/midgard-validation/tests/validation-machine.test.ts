@@ -464,6 +464,15 @@ describe("deterministic validation machine", () => {
       originKind: "reference",
     });
     expect(
+      trace.witnesses
+        .filter((witness) => witness.phase === "inputSets")
+        .map((witness) =>
+          witness.auxiliary?.kind === "transactionFieldChunk"
+            ? witness.auxiliary.collectionProof.fieldIndex
+            : null,
+        ),
+    ).toEqual([1, 0]);
+    expect(
       trace.witnesses.some(
         (witness) =>
           witness.auxiliary?.kind === "cekResolvedContextItem" &&
@@ -910,6 +919,93 @@ describe("deterministic validation machine", () => {
       validateBoundaryAbiAndCollectAuxiliaryKinds(trace).maxArgumentsBytes,
     ).toBeLessThan(16 * 1024);
   });
+
+  it.each([
+    {
+      name: "empty spend set",
+      transaction: () =>
+        makeNativeTx({
+          version: 1n,
+          spendInputs: [],
+          outputs: [makeOutput(10n)],
+        }),
+      rejectionCode: RejectCodes.EmptyInputs,
+      expectedInputSteps: 1,
+      expectedInputFieldIndexes: [null],
+    },
+    {
+      name: "spend/reference overlap",
+      transaction: () => {
+        const input = outRefFromByte(0x21);
+        return makeNativeTx({
+          version: 1n,
+          spendInputs: [input],
+          referenceInputs: [input],
+          outputs: [makeOutput(10n)],
+        });
+      },
+      rejectionCode: RejectCodes.DuplicateInputInTx,
+      expectedInputSteps: 2,
+      expectedInputFieldIndexes: [1, 0],
+    },
+    {
+      name: "malformed validity interval",
+      transaction: () =>
+        makeNativeTx({
+          version: 1n,
+          spendInputs: [outRefFromByte(0x22)],
+          outputs: [makeOutput(10n)],
+          validityIntervalStart: 10n,
+          validityIntervalEnd: 9n,
+        }),
+      rejectionCode: RejectCodes.InvalidValidityIntervalFormat,
+      expectedInputSteps: 1,
+      expectedInputFieldIndexes: [0],
+    },
+  ])(
+    "proves $name at the bounded input-set step",
+    async ({
+      transaction: makeTransaction,
+      rejectionCode,
+      expectedInputSteps,
+      expectedInputFieldIndexes,
+    }) => {
+      const transaction = makeTransaction();
+      const trace = await Effect.runPromise(
+        buildDeterministicValidationMachineTrace({
+          ...context,
+          sourceKind: "forced",
+          transactionId: transaction.txId,
+          canonicalTransactionCbor: transaction.txCbor,
+          priorUtxosRoot: root(3),
+          postUtxosRoot: root(3),
+          ledgerWitnessEntries: [],
+          expectedLedgerOps: [],
+          expectedVerdict: "rejected",
+          expectedRejectionCode: rejectionCode,
+        }),
+      );
+
+      const inputWitnesses = trace.witnesses.filter(
+        (witness) => witness.phase === "inputSets",
+      );
+      expect(inputWitnesses).toHaveLength(expectedInputSteps);
+      expect(
+        inputWitnesses.map((witness) =>
+          witness.auxiliary?.kind === "transactionFieldChunk"
+            ? witness.auxiliary.collectionProof.fieldIndex
+            : null,
+        ),
+      ).toEqual(expectedInputFieldIndexes);
+      expect(trace.states.at(-1)).toMatchObject({
+        phase: "terminal",
+        verdict: "rejected",
+      });
+      expect(
+        validateBoundaryAbiAndCollectAuxiliaryKinds(trace).maxArgumentsBytes,
+      ).toBeLessThan(16 * 1024);
+    },
+  );
 
   it("streams an aggregate field above 8 KiB as ordered L1-sized item proofs", async () => {
     const spent = outRefFromByte(0x12);
