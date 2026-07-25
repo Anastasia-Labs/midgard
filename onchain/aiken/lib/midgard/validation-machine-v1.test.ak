@@ -3898,7 +3898,7 @@ test script_sources_appends_canonical_observer_purposes() {
     empty_frontier,
     empty_frontier,
     final_purpose_frontier,
-    [h_28_b],
+    [],
     validation_machine_v1.empty_script_discovery_control(),
     19,
   )
