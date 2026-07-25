@@ -273,7 +273,7 @@ export const validationOneStepEvidenceHashV1 = ({
   );
 
 const VALIDATION_SEMANTIC_RESOLVER_COUNTS_V1 = [
-  2, 1, 1, 2, 4, 14, 1,
+  2, 1, 1, 2, 4, 14, 2,
 ] as const;
 const VALIDATION_SEMANTIC_RESOLVER_OFFSETS_V1 = [
   0, 2, 3, 4, 6, 10, 24,
@@ -315,7 +315,9 @@ const auxiliaryShapeV1 = ({
                     ? [5, 1]
                     : [4, 3]
               : resolverIndex === 6
-                ? [6, 4]
+                ? semanticResolverIndex === 0
+                  ? [0, 0]
+                  : [2, 2]
                 : null;
   if (expected === null) {
     throw new Error(
@@ -2170,13 +2172,21 @@ const semanticActionFieldsV1 = ({
   ) {
     return [...base, auxiliary.fields[0]!];
   }
-  if (
-    resolverIndex === 6 &&
-    semanticResolverIndex === 0 &&
-    auxiliary.index === 6 &&
-    auxiliary.fields.length === 4
-  ) {
-    return [...base, auxiliary.fields[1]!, auxiliary.fields[3]!];
+  if (resolverIndex === 6) {
+    if (
+      semanticResolverIndex === 0 &&
+      auxiliary.index === 0 &&
+      auxiliary.fields.length === 0
+    ) {
+      return base;
+    }
+    if (
+      semanticResolverIndex === 1 &&
+      auxiliary.index === 2 &&
+      auxiliary.fields.length === 2
+    ) {
+      return [...base, ...auxiliary.fields];
+    }
   }
   throw new Error(
     "Validation auxiliary witness cannot construct the selected semantic redeemer",

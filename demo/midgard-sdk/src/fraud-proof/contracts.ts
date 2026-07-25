@@ -131,6 +131,8 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
       "fraud_proofs/validation_trace/phase_a_native_scripts_frame_semantic_v1.main.spend",
     phaseAScriptPreconditions:
       "fraud_proofs/validation_trace/phase_a_script_preconditions_semantic_v1.main.spend",
+    phaseAScriptPreconditionsItem:
+      "fraud_proofs/validation_trace/phase_a_script_preconditions_item_semantic_v1.main.spend",
   },
   directResolvers: {
     resolveInputs: "fraud_proofs/validation_trace/resolve_inputs_v1.main.spend",
@@ -240,6 +242,7 @@ export type ValidationTraceDisputeFaultProofContracts = {
       SpendingValidator,
     ];
     readonly semanticResolvers: readonly [
+      SpendingValidator,
       SpendingValidator,
       SpendingValidator,
       SpendingValidator,
@@ -881,7 +884,7 @@ const buildValidationTraceDisputeChain = ({
         ),
       );
     }
-    if (builtSemanticResolvers.length !== 25) {
+    if (builtSemanticResolvers.length !== 26) {
       return yield* Effect.fail(
         new Error("Validation-trace semantic resolver set is incomplete"),
       );
@@ -912,6 +915,7 @@ const buildValidationTraceDisputeChain = ({
       builtSemanticResolvers[22]!,
       builtSemanticResolvers[23]!,
       builtSemanticResolvers[24]!,
+      builtSemanticResolvers[25]!,
     ] as const;
     const semanticResolverGroups = [
       [semanticResolvers[0], semanticResolvers[1]],
@@ -940,7 +944,7 @@ const buildValidationTraceDisputeChain = ({
         semanticResolvers[22],
         semanticResolvers[23],
       ],
-      [semanticResolvers[24]],
+      [semanticResolvers[24], semanticResolvers[25]],
     ] as const;
     const semanticResolverHashesSchema = Data.Array(Data.Bytes());
     type SemanticResolverHashes = Data.Static<

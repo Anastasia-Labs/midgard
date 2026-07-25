@@ -485,19 +485,6 @@ fn exact_rejection_post(
   }
 }
 
-fn phase_a_script_preconditions_auxiliary(
-  tx: MidgardTransaction,
-) -> validation_machine_v1.ValidationAuxiliaryWitnessV1 {
-  validation_machine_v1.TransactionFieldPairPreimageWitness {
-    first_field_index: 3,
-    first_preimage_cbor: encode_native_byte_list(tx.body.required_observers),
-    second_field_index: 8,
-    second_preimage_cbor: encode_redeemer_witness_preimage(
-      tx.witness_set.redeemer_tx_wits,
-    ),
-  }
-}
-
 fn phase_a_script_preconditions_fixture(
   tx: MidgardTransaction,
   ledger_delta_root: ByteArray,
@@ -523,6 +510,9 @@ fn phase_a_script_preconditions_fixture(
       signer_frontier.peaks,
     ),
     contains_non_native_script(tx.witness_set.script_tx_wits),
+    0,
+    0,
+    #"",
   )
   Pair(
     validation_trace_v1.ValidationMachineStateV1 {
@@ -536,6 +526,77 @@ fn phase_a_script_preconditions_fixture(
       ),
     },
     work_witness_cbor,
+  )
+}
+
+test phase_a_script_preconditions_control_cbor_is_canonical() {
+  let tx = empty_v1_transaction()
+  let Pair(_pre, witness_cbor) = phase_a_script_preconditions_fixture(
+    tx,
+    h_a,
+  )
+  when cbor.deserialise(witness_cbor) is {
+    None -> False
+    Some(data) -> list.length(builtin.un_list_data(data)) == 11
+  }
+}
+
+fn duplicate_observer_field_item_proofs(
+  item_index: Int,
+) -> Pair<bounded_collection_v1.ItemProofV1, bounded_item_v1.ChunkProofV1> {
+  expect item_index == 0 || item_index == 1
+  let first_item_commitment = bounded_item_v1.from_bytes(3, 0, h_28_a)
+  let second_item_commitment = bounded_item_v1.from_bytes(3, 1, h_28_a)
+  let first_leaf = bounded_collection_v1.hash_item(
+    3,
+    0,
+    28,
+    first_item_commitment,
+  )
+  let second_leaf = bounded_collection_v1.hash_item(
+    3,
+    1,
+    28,
+    second_item_commitment,
+  )
+  let collection_frontier = validation_merkle_v1.build_frontier([
+    first_leaf,
+    second_leaf,
+  ])
+  let item_commitment = if item_index == 0 {
+    first_item_commitment
+  } else {
+    second_item_commitment
+  }
+  let collection_sibling = if item_index == 0 {
+    second_leaf
+  } else {
+    first_leaf
+  }
+  let chunk_frontier = validation_merkle_v1.build_frontier([
+    bounded_item_v1.hash_chunk(3, item_index, 0, h_28_a),
+  ])
+  Pair(
+    bounded_collection_v1.ItemProofV1 {
+      version: bounded_collection_v1.version,
+      field_index: 3,
+      item_count: 2,
+      item_index,
+      item_length: 28,
+      item_commitment,
+      frontier: collection_frontier.peaks,
+      siblings: [collection_sibling],
+    },
+    bounded_item_v1.ChunkProofV1 {
+      version: bounded_item_v1.version,
+      field_index: 3,
+      item_index,
+      total_length: 28,
+      chunk_index: 0,
+      chunk: h_28_a,
+      frontier: chunk_frontier.peaks,
+      siblings: [],
+    },
   )
 }
 
@@ -1186,7 +1247,7 @@ fn canonical_step_fixture() -> Pair<
     0,
     0,
     0,
-    -1,
+    0,
     0,
   )
   let pre = validation_trace_v1.ValidationMachineStateV1 {
@@ -2303,6 +2364,9 @@ test phase_a_native_scripts_evaluates_a_valid_timelock_on_l1() {
       signer_frontier.peaks,
     ),
     False,
+    0,
+    0,
+    #"",
   )
   let post = validation_trace_v1.ValidationMachineStateV1 {
     ..finalize_pre,
@@ -2741,7 +2805,7 @@ test phase_a_script_preconditions_advances_an_empty_bundle_to_resolution() {
         work_witness_cbor,
         claimed_successor: post,
       },
-      auxiliary: phase_a_script_preconditions_auxiliary(tx),
+      auxiliary: validation_machine_v1.NoAuxiliaryWitness,
     },
   )
 }
@@ -2760,32 +2824,73 @@ test phase_a_script_preconditions_proves_duplicate_observers_are_a_no_op() {
     tx,
     validation_trace_v1.hash_ledger_delta(#"80"),
   )
-  let rejection_code = #"455f494e56414c49445f4649454c445f54595045"
-  let terminal = validation_trace_v1.ValidationMachineStateV1 {
+  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let signer_frontier = signer_frontier_for_tx(tx)
+  let next_work_witness_cbor = validation_machine_v1.encode_phase_a_script_preconditions_witness(
+    proof_source.compact_cbor,
+    proof_source.witness_set_compact_cbor,
+    proof_source.field_preimage_lengths_cbor,
+    validation_context_cbor,
+    validation_machine_v1.transaction_resolution_schedule_hash(
+      tx.body.inputs,
+      tx.body.reference_inputs,
+    ),
+    signer_frontier.count,
+    validation_merkle_v1.frontier_commitment(
+      signer_frontier.count,
+      signer_frontier.peaks,
+    ),
+    contains_non_native_script(tx.witness_set.script_tx_wits),
+    2,
+    1,
+    h_28_a,
+  )
+  let next = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
-    phase: validation_trace_v1.Terminal,
+    phase: validation_trace_v1.PhaseAScriptPreconditions,
     program_counter: 7,
     work_root: validation_trace_v1.hash_work_witness(
-      validation_trace_v1.Terminal,
+      validation_trace_v1.PhaseAScriptPreconditions,
       7,
-      validation_machine_v1.encode_terminal_rejection_witness(
-        rejection_code,
-        pre.prior_ledger_root,
-      ),
+      next_work_witness_cbor,
     ),
-    verdict: validation_trace_v1.Rejected,
-    rejection_code_hash: validation_trace_v1.hash_rejection_code(rejection_code),
   }
-  validation_machine_v1.verify_one_step_evidence(
-    pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
-        work_witness_cbor,
-        claimed_successor: terminal,
-      },
-      auxiliary: phase_a_script_preconditions_auxiliary(tx),
+  let rejection_code = #"455f494e56414c49445f4649454c445f54595045"
+  let terminal = exact_rejection_post(next, rejection_code)
+  let Pair(first_collection_proof, first_chunk_proof) =
+    duplicate_observer_field_item_proofs(0)
+  let Pair(second_collection_proof, second_chunk_proof) =
+    duplicate_observer_field_item_proofs(1)
+  let first_evidence = validation_machine_v1.ValidationOneStepEvidenceV1 {
+    transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+      work_witness_cbor,
+      claimed_successor: next,
     },
-  )
+    auxiliary: validation_machine_v1.TransactionFieldChunkWitness {
+      collection_proof: first_collection_proof,
+      chunk_proof: first_chunk_proof,
+    },
+  }
+  let second_evidence = validation_machine_v1.ValidationOneStepEvidenceV1 {
+    transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+      work_witness_cbor: next_work_witness_cbor,
+      claimed_successor: terminal,
+    },
+    auxiliary: validation_machine_v1.TransactionFieldChunkWitness {
+      collection_proof: second_collection_proof,
+      chunk_proof: second_chunk_proof,
+    },
+  }
+  and {
+    validation_machine_v1.verify_one_step_evidence(
+      pre,
+      first_evidence,
+    ),
+    validation_machine_v1.verify_one_step_evidence(
+      next,
+      second_evidence,
+    ),
+  }
 }
 
 test phase_a_script_preconditions_require_integrity_for_plutus_bytes() {
@@ -2833,7 +2938,7 @@ test phase_a_script_preconditions_require_integrity_for_plutus_bytes() {
         work_witness_cbor,
         claimed_successor: terminal,
       },
-      auxiliary: phase_a_script_preconditions_auxiliary(tx),
+      auxiliary: validation_machine_v1.NoAuxiliaryWitness,
     },
   )
 }

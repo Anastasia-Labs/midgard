@@ -1,20 +1,24 @@
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
+use midgard/bounded_collection_v1.{ItemProofV1}
+use midgard/bounded_item_v1.{ChunkProofV1}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel}
 use midgard/validation_machine_v1.{
-  NoAuxiliaryWitness, ValidationOneStepEvidenceV1, ValidationOneStepWitnessV1,
-  verify_phase_a_script_preconditions_semantics_v1,
+  TransactionFieldChunkWitness, ValidationOneStepEvidenceV1,
+  ValidationOneStepWitnessV1, verify_phase_a_script_preconditions_semantics_v1,
 }
 use midgard/validation_semantic_v1.{Datum, continue_winning}
 use midgard/validation_trace_v1.{PhaseAScriptPreconditions}
 
 pub type ActionV1 {
-  Verify {
+  VerifyItem {
     input_index: Int,
     output_index: Int,
     transition: ValidationOneStepWitnessV1,
+    collection_proof: ItemProofV1,
+    chunk_proof: ChunkProofV1,
   }
 }
 
@@ -41,12 +45,17 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(Verify {
+      ct.Continue(VerifyItem {
         input_index,
         output_index,
         transition,
+        collection_proof,
+        chunk_proof,
       }) -> {
-        let auxiliary = NoAuxiliaryWitness
+        let auxiliary = TransactionFieldChunkWitness {
+          collection_proof,
+          chunk_proof,
+        }
         let auxiliary_data: Data = auxiliary
         let evidence = ValidationOneStepEvidenceV1 { transition, auxiliary }
         continue_winning(

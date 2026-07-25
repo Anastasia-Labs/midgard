@@ -390,8 +390,10 @@ fn phase_successor_is_valid(
           post.phase == validation_trace_v1.PhaseANativeScripts
         validation_trace_v1.PhaseANativeScripts ->
           post.phase == validation_trace_v1.PhaseAScriptPreconditions
-        validation_trace_v1.PhaseAScriptPreconditions ->
-          post.phase == validation_trace_v1.ResolveInputs
+        validation_trace_v1.PhaseAScriptPreconditions -> or {
+            post.phase == validation_trace_v1.PhaseAScriptPreconditions,
+            post.phase == validation_trace_v1.ResolveInputs,
+          }
         validation_trace_v1.ResolveInputs -> or {
             post.phase == validation_trace_v1.ResolveInputs,
             post.phase == validation_trace_v1.ScriptSources,
@@ -661,11 +663,17 @@ pub fn encode_phase_a_script_preconditions_witness(
   signer_count: Int,
   signer_frontier_commitment: ByteArray,
   has_non_native_script: Bool,
+  observer_count: Int,
+  observer_seen: Int,
+  previous_observer: ByteArray,
 ) -> ByteArray {
   expect bytearray.length(resolution_schedule_hash) == 32
   expect signer_count >= 0
   expect bytearray.length(signer_frontier_commitment) == 32
-  #"88"
+  expect observer_count >= 0
+  expect observer_seen >= 0
+  expect bytearray.length(previous_observer) == 0 || bytearray.length(previous_observer) == 28
+  encode_definite_array_header(11)
     |> bytearray.concat(encode_definite_bytes(compact_cbor))
     |> bytearray.concat(encode_definite_bytes(witness_set_compact_cbor))
     |> bytearray.concat(encode_definite_bytes(field_preimage_lengths_cbor))
@@ -682,6 +690,9 @@ pub fn encode_phase_a_script_preconditions_witness(
           },
         ),
       )
+    |> bytearray.concat(encode_definite_bytes(previous_observer))
+    |> bytearray.concat(cbor.serialise(observer_count))
+    |> bytearray.concat(cbor.serialise(observer_seen))
 }
 
 const resolution_accumulator_domain =
@@ -2646,7 +2657,7 @@ fn verify_signatures_handoff(
         #"",
         0,
         0,
-        -1,
+        0,
         control.signer_count,
         control.signer_peaks,
       ),
@@ -2983,6 +2994,9 @@ fn phase_a_native_to_preconditions_is_exact(
           control.signer_peaks,
         ),
         control.contains_non_native_script == 1,
+        0,
+        0,
+        #"",
       ),
     ),
   }
@@ -5082,43 +5096,214 @@ pub fn verify_phase_a_native_frame_semantics_v1(
   )
 }
 
-fn no_duplicate_bytes(items: List<ByteArray>) -> Bool {
-  when items is {
-    [] -> True
-    [item, ..rest] -> and {
-        !list.has(rest, item),
-        no_duplicate_bytes(rest),
-      }
-  }
-}
-
 fn phase_a_script_preconditions_rejection(
-  required_observers: List<ByteArray>,
-  redeemers: List<MidgardRedeemerWitness>,
+  observer_count: Int,
+  has_redeemers: Bool,
   contains_non_native_script: Bool,
   script_integrity_hash: ByteArray,
   network_id: Int,
 ) -> Option<ByteArray> {
-  if !no_duplicate_bytes(required_observers) {
+  let requires_plutus_evaluation = or {
+    contains_non_native_script,
+    has_redeemers,
+    script_integrity_hash != #"0000000000000000000000000000000000000000000000000000000000000000",
+  }
+  if !requires_plutus_evaluation {
+    None
+  } else if script_integrity_hash == #"0000000000000000000000000000000000000000000000000000000000000000" {
+    Some(reject_invalid_field_type)
+  } else if and {
+    observer_count > 0,
+    network_id == 255,
+  } {
     Some(reject_invalid_field_type)
   } else {
-    let requires_plutus_evaluation = or {
-      contains_non_native_script,
-      redeemers != [],
-      script_integrity_hash != #"0000000000000000000000000000000000000000000000000000000000000000",
-    }
-    if !requires_plutus_evaluation {
-      None
-    } else if script_integrity_hash == #"0000000000000000000000000000000000000000000000000000000000000000" {
-      Some(reject_invalid_field_type)
-    } else if and {
-      required_observers != [],
-      network_id == 255,
-    } {
-      Some(reject_invalid_field_type)
+    None
+  }
+}
+
+pub type PhaseAScriptPreconditionsControlV1 {
+  compact_cbor: ByteArray,
+  witness_set_compact_cbor: ByteArray,
+  field_preimage_lengths_cbor: ByteArray,
+  context_cbor: ByteArray,
+  resolution_schedule_hash: ByteArray,
+  signer_count: Int,
+  signer_frontier_commitment: ByteArray,
+  contains_non_native_script: Int,
+  observer_count: Int,
+  observer_seen: Int,
+  previous_observer: ByteArray,
+}
+
+fn phase_a_script_preconditions_control_from_witness(
+  witness_cbor: ByteArray,
+) -> PhaseAScriptPreconditionsControlV1 {
+  expect Some(data) = cbor.deserialise(witness_cbor)
+  expect
+      [
+        compact_cbor_data, witness_set_compact_cbor_data,
+        field_preimage_lengths_cbor_data, context_cbor_data,
+        resolution_schedule_hash_data, signer_count_data,
+        signer_frontier_commitment_data, contains_non_native_script_data,
+        previous_observer_data, observer_count_data, observer_seen_data,
+      ]
+    = builtin.un_list_data(data)
+  PhaseAScriptPreconditionsControlV1 {
+    compact_cbor: builtin.un_b_data(compact_cbor_data),
+    witness_set_compact_cbor: builtin.un_b_data(
+      witness_set_compact_cbor_data,
+    ),
+    field_preimage_lengths_cbor: builtin.un_b_data(
+      field_preimage_lengths_cbor_data,
+    ),
+    context_cbor: builtin.un_b_data(context_cbor_data),
+    resolution_schedule_hash: builtin.un_b_data(
+      resolution_schedule_hash_data,
+    ),
+    signer_count: builtin.un_i_data(signer_count_data),
+    signer_frontier_commitment: builtin.un_b_data(
+      signer_frontier_commitment_data,
+    ),
+    contains_non_native_script: builtin.un_i_data(
+      contains_non_native_script_data,
+    ),
+    observer_count: builtin.un_i_data(observer_count_data),
+    observer_seen: builtin.un_i_data(observer_seen_data),
+    previous_observer: builtin.un_b_data(previous_observer_data),
+  }
+}
+
+fn phase_a_script_preconditions_control_is_bound(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: PhaseAScriptPreconditionsControlV1,
+  observer_commitment: ByteArray,
+) -> Bool {
+  let observers_are_empty = observer_commitment == bounded_collection_v1.from_items(
+    3,
+    [],
+  )
+  and {
+    native_tx_proof_commitment_v1(
+      control.compact_cbor,
+      control.witness_set_compact_cbor,
+      control.field_preimage_lengths_cbor,
+    ) == pre.transaction_commitment,
+    validation_trace_v1.hash_validation_context(control.context_cbor) == pre.validation_context_hash,
+    bytearray.length(control.resolution_schedule_hash) == 32,
+    control.signer_count >= 0,
+    bytearray.length(control.signer_frontier_commitment) == 32,
+    control.contains_non_native_script == 0 || control.contains_non_native_script == 1,
+    control.observer_count >= 0,
+    control.observer_count <= max_tx_size_derived_collection_item_count,
+    control.observer_seen >= 0,
+    if observers_are_empty {
+      and {
+        control.observer_count == 0,
+        control.observer_seen == 0,
+        control.previous_observer == #"",
+      }
+    } else if control.observer_count == 0 {
+      and {
+        control.observer_seen == 0,
+        control.previous_observer == #"",
+      }
     } else {
-      None
-    }
+      and {
+        control.observer_count > 0,
+        control.observer_seen <= control.observer_count,
+        if control.observer_seen == 0 {
+          control.previous_observer == #""
+        } else {
+          bytearray.length(control.previous_observer) == 28
+        },
+      }
+    },
+    witness.work_witness_cbor == encode_phase_a_script_preconditions_witness(
+      control.compact_cbor,
+      control.witness_set_compact_cbor,
+      control.field_preimage_lengths_cbor,
+      control.context_cbor,
+      control.resolution_schedule_hash,
+      control.signer_count,
+      control.signer_frontier_commitment,
+      control.contains_non_native_script == 1,
+      control.observer_count,
+      control.observer_seen,
+      control.previous_observer,
+    ),
+  }
+}
+
+fn phase_a_script_preconditions_successor_is_exact(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  post: validation_trace_v1.ValidationMachineStateV1,
+  control: PhaseAScriptPreconditionsControlV1,
+) -> Bool {
+  and {
+    post.phase == validation_trace_v1.PhaseAScriptPreconditions,
+    post.work_root == validation_trace_v1.hash_work_witness(
+      validation_trace_v1.PhaseAScriptPreconditions,
+      pre.program_counter + 1,
+      encode_phase_a_script_preconditions_witness(
+        control.compact_cbor,
+        control.witness_set_compact_cbor,
+        control.field_preimage_lengths_cbor,
+        control.context_cbor,
+        control.resolution_schedule_hash,
+        control.signer_count,
+        control.signer_frontier_commitment,
+        control.contains_non_native_script == 1,
+        control.observer_count,
+        control.observer_seen,
+        control.previous_observer,
+      ),
+    ),
+  }
+}
+
+fn phase_a_script_preconditions_finalize(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: PhaseAScriptPreconditionsControlV1,
+  verified_source: VerifiedMidgardNativeTxCompact,
+  has_redeemers: Bool,
+  observer_count: Int,
+) -> Bool {
+  when
+    phase_a_script_preconditions_rejection(
+      observer_count,
+      has_redeemers,
+      control.contains_non_native_script == 1,
+      verified_source.tx_compact.body.script_integrity_hash,
+      verified_source.tx_compact.body.network_id,
+    )
+  is {
+    Some(rejection_code) ->
+      rejected_successor_is_exact(
+        pre,
+        witness.claimed_successor,
+        rejection_code,
+      )
+    None -> and {
+        witness.claimed_successor.phase == validation_trace_v1.ResolveInputs,
+        witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
+          validation_trace_v1.ResolveInputs,
+          pre.program_counter + 1,
+          encode_resolve_inputs_witness(
+            control.compact_cbor,
+            control.witness_set_compact_cbor,
+            control.field_preimage_lengths_cbor,
+            control.context_cbor,
+            0,
+            initial_resolution_accumulator(),
+            control.resolution_schedule_hash,
+            control.signer_count,
+            control.signer_frontier_commitment,
+          ),
+        ),
+      }
   }
 }
 
@@ -5127,128 +5312,104 @@ fn verify_phase_a_script_preconditions(
   witness: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
 ) -> Bool {
-  expect Some(data) = cbor.deserialise(witness.work_witness_cbor)
-  expect
-      [
-        compact_cbor_data, witness_set_compact_cbor_data,
-        field_preimage_lengths_cbor_data, context_cbor_data,
-        resolution_schedule_hash_data, signer_count_data,
-        signer_frontier_commitment_data, contains_non_native_script_data,
-      ]
-    = builtin.un_list_data(data)
-  let compact_cbor = builtin.un_b_data(compact_cbor_data)
-  let witness_set_compact_cbor = builtin.un_b_data(
-    witness_set_compact_cbor_data,
+  let control = phase_a_script_preconditions_control_from_witness(
+    witness.work_witness_cbor,
   )
-  let field_preimage_lengths_cbor = builtin.un_b_data(
-    field_preimage_lengths_cbor_data,
-  )
-  let context_cbor = builtin.un_b_data(context_cbor_data)
-  let resolution_schedule_hash = builtin.un_b_data(
-    resolution_schedule_hash_data,
-  )
-  expect bytearray.length(resolution_schedule_hash) == 32
-  let signer_count = builtin.un_i_data(signer_count_data)
-  expect signer_count >= 0
-  let signer_frontier_commitment = builtin.un_b_data(
-    signer_frontier_commitment_data,
-  )
-  expect bytearray.length(signer_frontier_commitment) == 32
-  let contains_non_native_script_code = builtin.un_i_data(
-    contains_non_native_script_data,
-  )
-  expect or {
-      contains_non_native_script_code == 0,
-      contains_non_native_script_code == 1,
-    }
-  let contains_non_native_script = contains_non_native_script_code == 1
-  expect
-      TransactionFieldPairPreimageWitness {
-        first_field_index,
-        first_preimage_cbor,
-        second_field_index,
-        second_preimage_cbor,
-      }
-    = auxiliary
-  expect first_field_index == 3
-  expect second_field_index == 8
-  let first_verified = verify_midgard_transaction_field_preimage_v1(
+  let Pair(verified_source, witness_set) = verify_native_tx_proof_source_v1(
     pre.transaction_id,
-    pre.transaction_commitment,
-    compact_cbor,
-    witness_set_compact_cbor,
-    field_preimage_lengths_cbor,
-    first_field_index,
-    first_preimage_cbor,
+    control.compact_cbor,
+    control.witness_set_compact_cbor,
+    control.field_preimage_lengths_cbor,
   )
-  let second_verified = verify_midgard_transaction_field_preimage_v1(
-    pre.transaction_id,
-    pre.transaction_commitment,
-    compact_cbor,
-    witness_set_compact_cbor,
-    field_preimage_lengths_cbor,
-    second_field_index,
-    second_preimage_cbor,
-  )
-  let required_observers = decode_midgard_tx_byte_list_preimage_cbor(
-    first_preimage_cbor,
-  )
-  let redeemers = decode_midgard_tx_redeemer_witnesses_preimage_cbor(
-    second_preimage_cbor,
-  )
-  let Pair(verified_source, _) = verify_native_tx_proof_source_v1(
-    pre.transaction_id,
-    compact_cbor,
-    witness_set_compact_cbor,
-    field_preimage_lengths_cbor,
+  let observer_commitment = verified_source.tx_compact.body.required_observers_hash
+  let empty_observer_commitment = bounded_collection_v1.from_items(3, [])
+  let has_redeemers = witness_set.redeemer_tx_wits_hash != bounded_collection_v1.from_items(
+    8,
+    [],
   )
   and {
-    first_verified,
-    second_verified,
-    validation_trace_v1.hash_validation_context(context_cbor) == pre.validation_context_hash,
-    witness.work_witness_cbor == encode_phase_a_script_preconditions_witness(
-      compact_cbor,
-      witness_set_compact_cbor,
-      field_preimage_lengths_cbor,
-      context_cbor,
-      resolution_schedule_hash,
-      signer_count,
-      signer_frontier_commitment,
-      contains_non_native_script,
+    verified_source.version == 1,
+    phase_a_script_preconditions_control_is_bound(
+      pre,
+      witness,
+      control,
+      observer_commitment,
     ),
-    when
-      phase_a_script_preconditions_rejection(
-        required_observers,
-        redeemers,
-        contains_non_native_script,
-        verified_source.tx_compact.body.script_integrity_hash,
-        verified_source.tx_compact.body.network_id,
-      )
-    is {
-      Some(rejection_code) ->
-        rejected_successor_is_exact(
+    if observer_commitment == empty_observer_commitment {
+      and {
+        auxiliary == NoAuxiliaryWitness,
+        phase_a_script_preconditions_finalize(
           pre,
-          witness.claimed_successor,
-          rejection_code,
-        )
-      None -> and {
-          witness.claimed_successor.phase == validation_trace_v1.ResolveInputs,
-          witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
-            validation_trace_v1.ResolveInputs,
-            pre.program_counter + 1,
-            encode_resolve_inputs_witness(
-              compact_cbor,
-              witness_set_compact_cbor,
-              field_preimage_lengths_cbor,
-              context_cbor,
-              0,
-              initial_resolution_accumulator(),
-              resolution_schedule_hash,
-              signer_count,
-              signer_frontier_commitment,
-            ),
-          ),
-        }
+          witness,
+          control,
+          verified_source,
+          has_redeemers,
+          0,
+        ),
+      }
+    } else if control.observer_count > 0 && control.observer_seen == control.observer_count {
+      and {
+        auxiliary == NoAuxiliaryWitness,
+        phase_a_script_preconditions_finalize(
+          pre,
+          witness,
+          control,
+          verified_source,
+          has_redeemers,
+          control.observer_count,
+        ),
+      }
+    } else {
+      expect TransactionFieldChunkWitness { collection_proof, chunk_proof } =
+        auxiliary
+      let active_count = if control.observer_count == 0 {
+        collection_proof.item_count
+      } else {
+        control.observer_count
+      }
+      let observer_hash = chunk_proof.chunk
+      and {
+        active_count > 0,
+        active_count <= max_tx_size_derived_collection_item_count,
+        collection_proof.field_index == 3,
+        collection_proof.item_count == active_count,
+        collection_proof.item_index == control.observer_seen,
+        collection_proof.item_length == 28,
+        chunk_proof.field_index == 3,
+        chunk_proof.item_index == collection_proof.item_index,
+        chunk_proof.total_length == 28,
+        chunk_proof.chunk_index == 0,
+        bounded_item_v1.chunk_count(chunk_proof.total_length) == 1,
+        bounded_collection_v1.verify_item(
+          observer_commitment,
+          collection_proof,
+        ),
+        bounded_item_v1.verify_chunk(
+          collection_proof.item_commitment,
+          chunk_proof,
+        ),
+        if and {
+          control.observer_seen > 0,
+          bytearray.compare(control.previous_observer, observer_hash) != Less,
+        } {
+          rejected_successor_is_exact(
+            pre,
+            witness.claimed_successor,
+            reject_invalid_field_type,
+          )
+        } else {
+          phase_a_script_preconditions_successor_is_exact(
+            pre,
+            witness.claimed_successor,
+            PhaseAScriptPreconditionsControlV1 {
+              ..control,
+              observer_count: active_count,
+              observer_seen: control.observer_seen + 1,
+              previous_observer: observer_hash,
+            },
+          )
+        },
+      }
     },
   }
 }

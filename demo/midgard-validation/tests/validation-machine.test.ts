@@ -79,6 +79,7 @@ const semanticResolverDefinitionsV1 = [
   "phase_a_native_scripts_signature_between_payload_semantic_v1",
   "phase_a_native_scripts_frame_semantic_v1",
   "phase_a_script_preconditions_semantic_v1",
+  "phase_a_script_preconditions_item_semantic_v1",
 ] as const;
 const semanticResolverOffsetsV1 = [0, 2, 3, 4, 6, 10, 24] as const;
 
@@ -827,6 +828,17 @@ describe("deterministic validation machine", () => {
         (witness) => witness.auxiliary?.kind === "cekCoreStep",
       ),
     ).toBe(true);
+    const preconditionWitnesses = trace.witnesses.filter(
+      (witness) => witness.phase === "phaseAScriptPreconditions",
+    );
+    expect(
+      preconditionWitnesses.map(
+        (witness) => witness.auxiliary?.kind ?? "none",
+      ),
+    ).toEqual(["transactionFieldChunk", "none"]);
+    expect(
+      preconditionWitnesses.map(validationSemanticResolverIndexV1),
+    ).toEqual([1, 0]);
     expect(trace.verdict).toBe("accepted");
     expect([...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds]).toEqual(
       expect.arrayContaining([
@@ -834,6 +846,51 @@ describe("deterministic validation machine", () => {
         "cekRedeemerContextSelect",
         "cekCoreStep",
       ]),
+    );
+  });
+
+  it("proves duplicate observers at the second authenticated item", async () => {
+    const spent = outRefFromByte(0x35);
+    const observerHash = Buffer.alloc(28, 0x71);
+    const transaction = makeNativeTx({
+      version: 1n,
+      spendInputs: [spent],
+      outputs: [makeOutput(10n)],
+      requiredObserverItems: [observerHash, observerHash],
+    });
+    const unchangedRoot = root(0x35);
+    const trace = await Effect.runPromise(
+      buildDeterministicValidationMachineTrace({
+        ...context,
+        transactionId: transaction.txId,
+        canonicalTransactionCbor: transaction.txCbor,
+        priorUtxosRoot: unchangedRoot,
+        postUtxosRoot: unchangedRoot,
+        ledgerWitnessEntries: [],
+        expectedLedgerOps: [],
+        expectedVerdict: "rejected",
+        expectedRejectionCode: RejectCodes.InvalidFieldType,
+      }),
+    );
+
+    const preconditionWitnesses = trace.witnesses.filter(
+      (witness) => witness.phase === "phaseAScriptPreconditions",
+    );
+    expect(preconditionWitnesses).toHaveLength(2);
+    expect(
+      preconditionWitnesses.map(
+        (witness) => witness.auxiliary?.kind,
+      ),
+    ).toEqual(["transactionFieldChunk", "transactionFieldChunk"]);
+    expect(
+      preconditionWitnesses.map(validationSemanticResolverIndexV1),
+    ).toEqual([1, 1]);
+    expect(trace.states.at(-1)).toMatchObject({
+      phase: "terminal",
+      verdict: "rejected",
+    });
+    expect(validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds).toContain(
+      "transactionFieldChunk",
     );
   });
 

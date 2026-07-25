@@ -1152,6 +1152,10 @@ export const buildDeterministicValidationMachineTrace = (
       fieldIndex: 1,
       preimageCbor: fieldPreimages[1]!.preimageCbor,
     });
+    const requiredObserversCollection = deriveMidgardNativeFieldCollectionV1({
+      fieldIndex: 3,
+      preimageCbor: fieldPreimages[3]!.preimageCbor,
+    });
     const requiredSignersCollection = deriveMidgardNativeFieldCollectionV1({
       fieldIndex: 4,
       preimageCbor: fieldPreimages[4]!.preimageCbor,
@@ -1702,7 +1706,12 @@ export const buildDeterministicValidationMachineTrace = (
       return signerProofForHash(Buffer.from(address.paymentCredential.hash));
     };
     const phaseAScriptPreconditionsWitnessCbor = (
-      containsNonNativeScript: 0 | 1,
+      control: {
+        readonly containsNonNativeScript: 0 | 1;
+        readonly observerCount: number;
+        readonly observerSeen: number;
+        readonly previousObserver: Buffer;
+      },
     ): Buffer =>
       encodeCbor([
         proofSource.compactCbor,
@@ -1712,7 +1721,10 @@ export const buildDeterministicValidationMachineTrace = (
         resolutionScheduleHash,
         BigInt(signerFrontier.count),
         signerFrontierCommitment,
-        BigInt(containsNonNativeScript),
+        BigInt(control.containsNonNativeScript),
+        control.previousObserver,
+        BigInt(control.observerCount),
+        BigInt(control.observerSeen),
       ]);
     const macroWitnessByPhase = new Map<MidgardValidationPhaseName, Buffer>([
       [
@@ -2597,24 +2609,66 @@ export const buildDeterministicValidationMachineTrace = (
     }
 
     if (!stoppedAtRejection) {
-      pushWitness(
-        "phaseAScriptPreconditions",
-        phaseAScriptPreconditionsWitnessCbor(
-          phaseANativeControl.containsNonNativeScript,
-        ),
-        {
-          kind: "transactionFieldPairPreimage",
-          firstFieldIndex: 3,
-          firstPreimageCbor: fieldPreimages[3]!.preimageCbor,
-          secondFieldIndex: 8,
-          secondPreimageCbor: fieldPreimages[8]!.preimageCbor,
-        },
-      );
-      if (
-        rejection !== null &&
-        terminalPhase === "phaseAScriptPreconditions"
-      ) {
-        stoppedAtRejection = true;
+      let observerCount = 0;
+      let observerSeen = 0;
+      let previousObserver = Buffer.alloc(0);
+      const currentPreconditionsWitness = (): Buffer =>
+        phaseAScriptPreconditionsWitnessCbor({
+          containsNonNativeScript:
+            phaseANativeControl.containsNonNativeScript,
+          observerCount,
+          observerSeen,
+          previousObserver,
+        });
+      for (const observer of requiredObserversCollection.items) {
+        pushWitness(
+          "phaseAScriptPreconditions",
+          currentPreconditionsWitness(),
+          {
+            kind: "transactionFieldChunk",
+            collectionProof:
+              buildMidgardBoundedCollectionItemProofV1(
+                requiredObserversCollection,
+                observer.itemIndex,
+              ),
+            chunkProof: buildMidgardBoundedItemChunkProofV1(observer, 0),
+          },
+        );
+        if (
+          observerSeen > 0 &&
+          Buffer.compare(previousObserver, observer.bytes) >= 0
+        ) {
+          if (
+            rejection === null ||
+            terminalPhase !== "phaseAScriptPreconditions" ||
+            rejection.code !== RejectCodes.InvalidFieldType
+          ) {
+            return yield* Effect.fail(
+              new Error(
+                "bounded observer scan found a duplicate or noncanonical ordering without the exact InvalidFieldType rejection",
+              ),
+            );
+          }
+          stoppedAtRejection = true;
+          break;
+        }
+        if (observerCount === 0) {
+          observerCount = requiredObserversCollection.items.length;
+        }
+        observerSeen += 1;
+        previousObserver = observer.bytes;
+      }
+      if (!stoppedAtRejection) {
+        pushWitness(
+          "phaseAScriptPreconditions",
+          currentPreconditionsWitness(),
+        );
+        if (
+          rejection !== null &&
+          terminalPhase === "phaseAScriptPreconditions"
+        ) {
+          stoppedAtRejection = true;
+        }
       }
     }
 

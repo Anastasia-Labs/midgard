@@ -542,11 +542,8 @@ export const validationSemanticResolverIndexV1 = (
       break;
     }
     case "phaseAScriptPreconditions":
-      if (
-        auxiliary?.kind === "transactionFieldPairPreimage"
-      ) {
-        return 0;
-      }
+      if (auxiliary === null) return 0;
+      if (auxiliary.kind === "transactionFieldChunk") return 1;
       break;
     case "resolveInputs":
     case "scriptSources":
