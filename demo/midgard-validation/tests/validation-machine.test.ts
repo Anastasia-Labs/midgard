@@ -755,7 +755,15 @@ describe("deterministic validation machine", () => {
   it("replays signed mint through an authenticated mint leaf", async () => {
     const spent = outRefFromByte(0x21);
     const spentOutput = makeOutput(10n);
-    const script = nativeScriptWitness({ type: "all", scripts: [] });
+    const script = nativeScriptWitness({
+      type: "all",
+      scripts: [
+        {
+          type: "sig",
+          keyHash: Buffer.from(TEST_SIGNER_HASH, "hex"),
+        },
+      ],
+    });
     const policyId = Buffer.from(hashScriptWitness(script), "hex");
     const assetName = Buffer.from("cafe", "hex");
     const mintedOutput = makeOutput(
@@ -808,6 +816,17 @@ describe("deterministic validation machine", () => {
         (witness) => witness.auxiliary?.kind === "valueMintAsset",
       ),
     ).toHaveLength(1);
+    expect(
+      trace.witnesses
+        .filter((witness) => witness.phase === "phaseANativeScripts")
+        .map((witness) => witness.auxiliary?.kind ?? null),
+    ).toEqual([
+      "transactionFieldChunk",
+      "nativeScriptToken",
+      "nativeScriptToken",
+      "nativeScriptFrame",
+      null,
+    ]);
     expect(trace.verdict).toBe("accepted");
     expect([...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds]).toEqual(
       expect.arrayContaining([
@@ -976,7 +995,7 @@ describe("deterministic validation machine", () => {
     ).toEqual([
       "transactionFieldChunk",
       "requiredSignerItem",
-      "signerSetPreimage",
+      null,
     ]);
     expect(
       signatureWitnesses[1]?.auxiliary?.kind === "requiredSignerItem"

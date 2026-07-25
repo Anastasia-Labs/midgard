@@ -101,8 +101,20 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
       "fraud_proofs/validation_trace/signatures_required_item_semantic_v1.main.spend",
     signaturesHandoff:
       "fraud_proofs/validation_trace/signatures_handoff_semantic_v1.main.spend",
-    phaseANativeScripts:
-      "fraud_proofs/validation_trace/phase_a_native_scripts_semantic_v1.main.spend",
+    phaseANativeScriptsAdvance:
+      "fraud_proofs/validation_trace/phase_a_native_scripts_advance_semantic_v1.main.spend",
+    phaseANativeScriptsItem:
+      "fraud_proofs/validation_trace/phase_a_native_scripts_item_semantic_v1.main.spend",
+    phaseANativeScriptsContainerFrameToken:
+      "fraud_proofs/validation_trace/phase_a_native_scripts_container_frame_token_semantic_v1.main.spend",
+    phaseANativeScriptsEmptyContainerToken:
+      "fraud_proofs/validation_trace/phase_a_native_scripts_empty_container_token_semantic_v1.main.spend",
+    phaseANativeScriptsTimelockToken:
+      "fraud_proofs/validation_trace/phase_a_native_scripts_timelock_token_semantic_v1.main.spend",
+    phaseANativeScriptsSignatureToken:
+      "fraud_proofs/validation_trace/phase_a_native_scripts_signature_token_semantic_v1.main.spend",
+    phaseANativeScriptsFrame:
+      "fraud_proofs/validation_trace/phase_a_native_scripts_frame_semantic_v1.main.spend",
     phaseAScriptPreconditions:
       "fraud_proofs/validation_trace/phase_a_script_preconditions_semantic_v1.main.spend",
   },
@@ -214,6 +226,12 @@ export type ValidationTraceDisputeFaultProofContracts = {
       SpendingValidator,
     ];
     readonly semanticResolvers: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
       SpendingValidator,
       SpendingValidator,
       SpendingValidator,
@@ -842,7 +860,7 @@ const buildValidationTraceDisputeChain = ({
         ),
       );
     }
-    if (builtSemanticResolvers.length !== 12) {
+    if (builtSemanticResolvers.length !== 18) {
       return yield* Effect.fail(
         new Error("Validation-trace semantic resolver set is incomplete"),
       );
@@ -860,6 +878,12 @@ const buildValidationTraceDisputeChain = ({
       builtSemanticResolvers[9]!,
       builtSemanticResolvers[10]!,
       builtSemanticResolvers[11]!,
+      builtSemanticResolvers[12]!,
+      builtSemanticResolvers[13]!,
+      builtSemanticResolvers[14]!,
+      builtSemanticResolvers[15]!,
+      builtSemanticResolvers[16]!,
+      builtSemanticResolvers[17]!,
     ] as const;
     const semanticResolverGroups = [
       [semanticResolvers[0], semanticResolvers[1]],
@@ -872,8 +896,16 @@ const buildValidationTraceDisputeChain = ({
         semanticResolvers[8],
         semanticResolvers[9],
       ],
-      [semanticResolvers[10]],
-      [semanticResolvers[11]],
+      [
+        semanticResolvers[10],
+        semanticResolvers[11],
+        semanticResolvers[12],
+        semanticResolvers[13],
+        semanticResolvers[14],
+        semanticResolvers[15],
+        semanticResolvers[16],
+      ],
+      [semanticResolvers[17]],
     ] as const;
     const semanticResolverHashesSchema = Data.Array(Data.Bytes());
     type SemanticResolverHashes = Data.Static<

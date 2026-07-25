@@ -31,6 +31,7 @@ import {
   hashMidgardValidationMachineStateV1,
   hashMidgardValidationRejectionCodeV1,
   hashMidgardValidationWorkWitnessV1,
+  MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
   MIDGARD_VALIDATION_MACHINE_V1_VERSION,
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
   midgardBoundedItemChunkCountV1,
@@ -45,6 +46,7 @@ import {
 import {
   decodeMidgardAddressBytes,
   decodeMidgardNativeByteListPreimage,
+  decodeMidgardNativeTxCompactV1,
   decodeMidgardTxOutput,
   hashMidgardVersionedScript,
   type MidgardValue,
@@ -56,6 +58,7 @@ import {
   readCborBytes,
   readCborInteger,
   readCborMapHeader,
+  readCborUnsigned,
 } from "@al-ft/midgard-core/codec/cbor";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { CML } from "@lucid-evolution/lucid";
@@ -221,8 +224,14 @@ export type ValidationMachineWorkWitness = {
         readonly signerProof: ValidationMachineSignerSetProof;
       }
     | {
-        readonly kind: "signerSetPreimage";
-        readonly signerHashesCbor: Buffer;
+        readonly kind: "nativeScriptToken";
+        readonly chunkProof: MidgardBoundedItemChunkProofV1;
+        readonly nextChunkProof: MidgardBoundedItemChunkProofV1 | null;
+        readonly signerProof: ValidationMachineSignerSetProof;
+      }
+    | {
+        readonly kind: "nativeScriptFrame";
+        readonly frame: ValidationMachineNativeScriptFrameV1;
       }
     | {
         readonly kind: "transactionFieldPairPreimage";
@@ -475,6 +484,202 @@ const INPUT_RESOLUTION_SCHEDULE_DOMAIN = Buffer.from(
 );
 const hash32 = (bytes: Uint8Array): Buffer =>
   Buffer.from(blake2b(Buffer.from(bytes), { dkLen: 32 }));
+
+const NATIVE_SCRIPT_SCAN_FRAME_DOMAIN_V1 = Buffer.from(
+  "MidgardNativeScriptScanFrameV1",
+  "ascii",
+);
+const MAX_NATIVE_SCRIPT_SCAN_NODES_V1 = 16_384;
+const MAX_NATIVE_SCRIPT_SCAN_DEPTH_V1 = 16_384;
+
+type ValidationMachineNativeScriptTokenV1 = {
+  readonly kind: 0 | 1 | 2 | 3 | 4 | 5;
+  readonly nextOffset: number;
+  readonly childCount: number;
+  readonly required: bigint;
+  readonly keyHash: Buffer;
+  readonly slot: bigint;
+};
+
+export type ValidationMachineNativeScriptFrameV1 = {
+  readonly tail: Buffer;
+  readonly kind: 1 | 2 | 3;
+  readonly childCount: number;
+  readonly remaining: number;
+  readonly validCount: number;
+  readonly required: bigint;
+};
+
+type ValidationMachineVersionedScriptHeaderV1 = {
+  readonly languageTag: 0 | 3 | 128;
+  readonly payloadOffset: number;
+  readonly payloadLength: number;
+};
+
+const readValidationMachineVersionedScriptHeaderV1 = (
+  item: Buffer,
+): ValidationMachineVersionedScriptHeaderV1 => {
+  const outer = readCborArrayHeader(item, 0, "versioned_script");
+  if (outer.length !== 2) {
+    throw new Error("versioned script must contain exactly two fields");
+  }
+  const language = readCborUnsigned(
+    item,
+    outer.nextOffset,
+    "versioned_script.language",
+  );
+  const payload = readCborBytes(
+    item,
+    language.nextOffset,
+    "versioned_script.payload",
+  );
+  if (
+    (language.value !== 0n &&
+      language.value !== 3n &&
+      language.value !== 128n) ||
+    payload.nextOffset !== item.length
+  ) {
+    throw new Error("versioned script has an invalid language or length");
+  }
+  return {
+    languageTag: Number(language.value) as 0 | 3 | 128,
+    payloadOffset: payload.nextOffset - payload.value.length,
+    payloadLength: payload.value.length,
+  };
+};
+
+const readValidationMachineNativeScriptTokenV1 = (
+  item: Buffer,
+  offset: number,
+): ValidationMachineNativeScriptTokenV1 => {
+  const outer = readCborArrayHeader(item, offset, "native_script");
+  const tag = readCborUnsigned(
+    item,
+    outer.nextOffset,
+    "native_script.tag",
+  );
+  if (tag.value === 0n) {
+    const keyHash = readCborBytes(
+      item,
+      tag.nextOffset,
+      "native_script.key_hash",
+    );
+    if (outer.length !== 2 || keyHash.value.length !== 28) {
+      throw new Error("native signature script has an invalid shape");
+    }
+    return {
+      kind: 0,
+      nextOffset: keyHash.nextOffset,
+      childCount: 0,
+      required: 0n,
+      keyHash: keyHash.value,
+      slot: 0n,
+    };
+  }
+  if (tag.value === 1n || tag.value === 2n) {
+    const children = readCborArrayHeader(
+      item,
+      tag.nextOffset,
+      "native_script.children",
+    );
+    if (
+      outer.length !== 2 ||
+      children.length > MAX_NATIVE_SCRIPT_SCAN_NODES_V1
+    ) {
+      throw new Error("native all/any script has an invalid shape");
+    }
+    return {
+      kind: Number(tag.value) as 1 | 2,
+      nextOffset: children.nextOffset,
+      childCount: children.length,
+      required: 0n,
+      keyHash: Buffer.alloc(0),
+      slot: 0n,
+    };
+  }
+  if (tag.value === 3n) {
+    const required = readCborUnsigned(
+      item,
+      tag.nextOffset,
+      "native_script.required",
+    );
+    const children = readCborArrayHeader(
+      item,
+      required.nextOffset,
+      "native_script.children",
+    );
+    if (
+      outer.length !== 3 ||
+      children.length > MAX_NATIVE_SCRIPT_SCAN_NODES_V1
+    ) {
+      throw new Error("native at-least script has an invalid shape");
+    }
+    return {
+      kind: 3,
+      nextOffset: children.nextOffset,
+      childCount: children.length,
+      required: required.value,
+      keyHash: Buffer.alloc(0),
+      slot: 0n,
+    };
+  }
+  if (tag.value === 4n || tag.value === 5n) {
+    const slot = readCborUnsigned(
+      item,
+      tag.nextOffset,
+      "native_script.slot",
+    );
+    if (outer.length !== 2) {
+      throw new Error("native timelock script has an invalid shape");
+    }
+    return {
+      kind: Number(tag.value) as 4 | 5,
+      nextOffset: slot.nextOffset,
+      childCount: 0,
+      required: 0n,
+      keyHash: Buffer.alloc(0),
+      slot: slot.value,
+    };
+  }
+  throw new Error("native script has an unsupported tag");
+};
+
+const validationMachineNativeScriptFrameIsWellFormedV1 = (
+  frame: ValidationMachineNativeScriptFrameV1,
+): boolean => {
+  const processed = frame.childCount - frame.remaining;
+  return (
+    (frame.tail.length === 0 || frame.tail.length === 32) &&
+    frame.childCount > 0 &&
+    frame.childCount <= MAX_NATIVE_SCRIPT_SCAN_NODES_V1 &&
+    frame.remaining > 0 &&
+    frame.remaining <= frame.childCount &&
+    frame.validCount >= 0 &&
+    frame.validCount <= processed &&
+    (frame.kind === 3 ? frame.required >= 0n : frame.required === 0n)
+  );
+};
+
+const hashValidationMachineNativeScriptFrameV1 = (
+  frame: ValidationMachineNativeScriptFrameV1,
+): Buffer => {
+  if (!validationMachineNativeScriptFrameIsWellFormedV1(frame)) {
+    throw new Error("cannot hash a malformed native-script frame");
+  }
+  return hash32(
+    Buffer.concat([
+      NATIVE_SCRIPT_SCAN_FRAME_DOMAIN_V1,
+      encodeCbor([
+        frame.tail,
+        BigInt(frame.kind),
+        BigInt(frame.childCount),
+        BigInt(frame.remaining),
+        BigInt(frame.validCount),
+        frame.required,
+      ]),
+    ]),
+  );
+};
 
 const canonicalCborArgumentHeaderSize = (value: number): number => {
   if (!Number.isSafeInteger(value) || value < 0) {
@@ -917,6 +1122,9 @@ export const buildDeterministicValidationMachineTrace = (
     const proofSource = deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(
       input.canonicalTransactionCbor,
     );
+    const compactProofTransaction = decodeMidgardNativeTxCompactV1(
+      proofSource.compactCbor,
+    );
     const transactionCommitment =
       computeMidgardNativeTxProofCommitmentV1(proofSource);
     const fieldPreimages = deriveMidgardV1TxFieldPreimages(
@@ -937,6 +1145,10 @@ export const buildDeterministicValidationMachineTrace = (
     const addressWitnessesCollection = deriveMidgardNativeFieldCollectionV1({
       fieldIndex: 6,
       preimageCbor: fieldPreimages[6]!.preimageCbor,
+    });
+    const scriptWitnessesCollection = deriveMidgardNativeFieldCollectionV1({
+      fieldIndex: 7,
+      preimageCbor: fieldPreimages[7]!.preimageCbor,
     });
     const inputSetScanItems = [
       ...spendInputsCollection.items.map((item) => ({
@@ -1099,7 +1311,6 @@ export const buildDeterministicValidationMachineTrace = (
         (hash, index, hashes) =>
           index === 0 || !hash.equals(hashes[index - 1]!),
       );
-    const witnessSignerHashesCbor = encodeCbor(canonicalSignerHashes);
     const signerLeafHashes = canonicalSignerHashes.map((signerHash) =>
       hashMidgardSignerLeafV1(signerHash),
     );
@@ -1235,6 +1446,66 @@ export const buildDeterministicValidationMachineTrace = (
       signerFrontier: emptyValidationFrontier,
       invalidSignatureSeen: 0,
     };
+    type PhaseANativeScriptsScanControl = {
+      readonly stage: 0 | 1 | 2;
+      readonly scriptCount: number;
+      readonly scriptSeen: number;
+      readonly containsNonNativeScript: 0 | 1;
+      readonly itemLength: number;
+      readonly itemCommitment: Buffer;
+      readonly cursor: number;
+      readonly stackRoot: Buffer;
+      readonly stackDepth: number;
+      readonly nodeCount: number;
+      readonly result: -1 | 0 | 1;
+    };
+    const phaseANativeScriptsScanWitnessCbor = (
+      control: PhaseANativeScriptsScanControl,
+    ): Buffer =>
+      encodeCbor([
+        proofSource.compactCbor,
+        proofSource.witnessSetCompactCbor,
+        proofSource.fieldPreimageLengthsCbor,
+        contextCbor,
+        resolutionScheduleHash,
+        BigInt(control.stage),
+        BigInt(control.scriptCount),
+        BigInt(control.scriptSeen),
+        BigInt(control.containsNonNativeScript),
+        BigInt(control.itemLength),
+        control.itemCommitment,
+        BigInt(control.cursor),
+        control.stackRoot,
+        BigInt(control.stackDepth),
+        BigInt(control.nodeCount),
+        BigInt(control.result),
+        BigInt(signerFrontier.count),
+        encodeFrontierPeaks(signerFrontier),
+      ]);
+    const resetPhaseANativeScriptsScanControl = (input: {
+      readonly scriptCount: number;
+      readonly scriptSeen: number;
+      readonly containsNonNativeScript: 0 | 1;
+    }): PhaseANativeScriptsScanControl => ({
+      stage: 0,
+      scriptCount: input.scriptCount,
+      scriptSeen: input.scriptSeen,
+      containsNonNativeScript: input.containsNonNativeScript,
+      itemLength: 0,
+      itemCommitment: Buffer.alloc(0),
+      cursor: 0,
+      stackRoot: Buffer.alloc(0),
+      stackDepth: 0,
+      nodeCount: 0,
+      result: -1,
+    });
+    const initialPhaseANativeScriptsScanControl =
+      resetPhaseANativeScriptsScanControl({
+        scriptCount:
+          scriptWitnessesCollection.items.length === 0 ? 0 : -1,
+        scriptSeen: 0,
+        containsNonNativeScript: 0,
+      });
     let resolvedItemFrontier = emptyValidationFrontier;
     type ScriptDiscoveryTraceControl = {
       readonly purposeCursor: number;
@@ -1416,28 +1687,19 @@ export const buildDeterministicValidationMachineTrace = (
       }
       return signerProofForHash(Buffer.from(address.paymentCredential.hash));
     };
-    const phaseANativeScriptsWitnessCbor = encodeCbor([
-      proofSource.compactCbor,
-      proofSource.witnessSetCompactCbor,
-      proofSource.fieldPreimageLengthsCbor,
-      contextCbor,
-      resolutionScheduleHash,
-      witnessSignerHashesCbor,
-      BigInt(signerFrontier.count),
-      signerFrontierCommitment,
-    ]);
-    const phaseAScriptPreconditionsWitnessCbor = encodeCbor([
-      proofSource.compactCbor,
-      proofSource.witnessSetCompactCbor,
-      proofSource.fieldPreimageLengthsCbor,
-      contextCbor,
-      resolutionScheduleHash,
-      BigInt(signerFrontier.count),
-      signerFrontierCommitment,
-      phaseALedgerTx !== null && phaseALedgerTx.plutusScriptHashes.length > 0
-        ? 1n
-        : 0n,
-    ]);
+    const phaseAScriptPreconditionsWitnessCbor = (
+      containsNonNativeScript: 0 | 1,
+    ): Buffer =>
+      encodeCbor([
+        proofSource.compactCbor,
+        proofSource.witnessSetCompactCbor,
+        proofSource.fieldPreimageLengthsCbor,
+        contextCbor,
+        resolutionScheduleHash,
+        BigInt(signerFrontier.count),
+        signerFrontierCommitment,
+        BigInt(containsNonNativeScript),
+      ]);
     const macroWitnessByPhase = new Map<MidgardValidationPhaseName, Buffer>([
       [
         "compactBinding",
@@ -1453,8 +1715,6 @@ export const buildDeterministicValidationMachineTrace = (
       ["staticLedgerRules", sourceContextWitnessCbor],
       ["valueAndMint", transactionContextWitnessCbor],
       ["nativeScripts", transactionContextWitnessCbor],
-      ["phaseANativeScripts", phaseANativeScriptsWitnessCbor],
-      ["phaseAScriptPreconditions", phaseAScriptPreconditionsWitnessCbor],
       ["scriptIntegrity", transactionContextWitnessCbor],
       ["cek", transactionContextWitnessCbor],
       ["ledgerDelta", transactionContextWitnessCbor],
@@ -1463,23 +1723,6 @@ export const buildDeterministicValidationMachineTrace = (
       MidgardValidationPhaseName,
       ValidationMachineWorkWitness["auxiliary"]
     >([
-      [
-        "phaseANativeScripts",
-        {
-          kind: "transactionFieldPreimage",
-          preimageCbor: fieldPreimages[7]!.preimageCbor,
-        },
-      ],
-      [
-        "phaseAScriptPreconditions",
-        {
-          kind: "transactionFieldPairPreimage",
-          firstFieldIndex: 3,
-          firstPreimageCbor: fieldPreimages[3]!.preimageCbor,
-          secondFieldIndex: 8,
-          secondPreimageCbor: fieldPreimages[8]!.preimageCbor,
-        },
-      ],
     ]);
 
     const terminalPhase =
@@ -1932,10 +2175,7 @@ export const buildDeterministicValidationMachineTrace = (
             new Error("required-signer scan did not reach its handoff"),
           );
         }
-        pushSignatureWitness({
-          kind: "signerSetPreimage",
-          signerHashesCbor: witnessSignerHashesCbor,
-        });
+        pushSignatureWitness();
         if (terminalPhase === "signatures") {
           return yield* Effect.fail(
             new Error(
@@ -1946,15 +2186,353 @@ export const buildDeterministicValidationMachineTrace = (
       }
     }
 
-    for (const phase of [
-      "phaseANativeScripts",
-      "phaseAScriptPreconditions",
-    ] as const) {
-      if (stoppedAtRejection) break;
-      pushWitness(phase, macroWitness(phase), macroAuxiliary(phase));
-      if (rejection !== null && phase === terminalPhase) {
+    let phaseANativeControl = initialPhaseANativeScriptsScanControl;
+    if (!stoppedAtRejection) {
+      const nativeScriptFrames: ValidationMachineNativeScriptFrameV1[] = [];
+      const expectedPhaseANativeRejection = (code: RejectCode): boolean =>
+        rejection !== null &&
+        terminalPhase === "phaseANativeScripts" &&
+        rejectionCode === code;
+      const failUnexpectedPhaseANativeRejection = (
+        actual: RejectCode,
+      ): Effect.Effect<never, Error> =>
+        Effect.fail(
+          new Error(
+            `bounded native-script scan found ${actual} but replay rejected at ${terminalPhase}/${rejectionCode ?? "none"}`,
+          ),
+        );
+      const pushPhaseANativeWitness = (
+        auxiliary: ValidationMachineWorkWitness["auxiliary"] = null,
+      ): void => {
+        pushWitness(
+          "phaseANativeScripts",
+          phaseANativeScriptsScanWitnessCbor(phaseANativeControl),
+          auxiliary,
+        );
+      };
+
+      if (phaseANativeControl.scriptCount === 0) {
+        pushPhaseANativeWitness();
+      } else {
+        for (const item of scriptWitnessesCollection.items) {
+          const activeScriptCount =
+            phaseANativeControl.scriptCount === -1
+              ? scriptWitnessesCollection.items.length
+              : phaseANativeControl.scriptCount;
+          pushPhaseANativeWitness({
+            kind: "transactionFieldChunk",
+            collectionProof: buildMidgardBoundedCollectionItemProofV1(
+              scriptWitnessesCollection,
+              item.itemIndex,
+            ),
+            chunkProof: buildMidgardBoundedItemChunkProofV1(item, 0),
+          });
+
+          let header: ValidationMachineVersionedScriptHeaderV1;
+          try {
+            header = readValidationMachineVersionedScriptHeaderV1(
+              item.bytes,
+            );
+          } catch {
+            if (
+              !expectedPhaseANativeRejection(
+                RejectCodes.InvalidFieldType,
+              )
+            ) {
+              return yield* failUnexpectedPhaseANativeRejection(
+                RejectCodes.InvalidFieldType,
+              );
+            }
+            stoppedAtRejection = true;
+            break;
+          }
+
+          if (header.languageTag !== 0) {
+            phaseANativeControl =
+              resetPhaseANativeScriptsScanControl({
+                scriptCount: activeScriptCount,
+                scriptSeen: phaseANativeControl.scriptSeen + 1,
+                containsNonNativeScript: 1,
+              });
+            continue;
+          }
+
+          phaseANativeControl = {
+            ...phaseANativeControl,
+            stage: 1,
+            scriptCount: activeScriptCount,
+            itemLength: item.bytes.length,
+            itemCommitment: item.commitment,
+            cursor: header.payloadOffset,
+          };
+          while (!stoppedAtRejection) {
+            if (phaseANativeControl.stage === 1) {
+              const chunkIndex = Math.floor(
+                phaseANativeControl.cursor /
+                  MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
+              );
+              const chunkCount = midgardBoundedItemChunkCountV1(
+                item.bytes.length,
+              );
+              let token: ValidationMachineNativeScriptTokenV1 | null =
+                null;
+              try {
+                token = readValidationMachineNativeScriptTokenV1(
+                  item.bytes,
+                  phaseANativeControl.cursor,
+                );
+              } catch {
+                // The authenticated token witness still proves the exact
+                // malformed bytes to the one-step resolver.
+              }
+              const signerProof =
+                token?.kind === 0
+                  ? signerProofForHash(token.keyHash)
+                  : ({ kind: "none" } as const);
+              pushPhaseANativeWitness({
+                kind: "nativeScriptToken",
+                chunkProof: buildMidgardBoundedItemChunkProofV1(
+                  item,
+                  chunkIndex,
+                ),
+                nextChunkProof:
+                  chunkIndex + 1 < chunkCount
+                    ? buildMidgardBoundedItemChunkProofV1(
+                        item,
+                        chunkIndex + 1,
+                      )
+                    : null,
+                signerProof,
+              });
+              if (token === null) {
+                if (
+                  !expectedPhaseANativeRejection(
+                    RejectCodes.InvalidFieldType,
+                  )
+                ) {
+                  return yield* failUnexpectedPhaseANativeRejection(
+                    RejectCodes.InvalidFieldType,
+                  );
+                }
+                stoppedAtRejection = true;
+                break;
+              }
+
+              const nextNodeCount =
+                phaseANativeControl.nodeCount + 1;
+              if (
+                nextNodeCount >
+                MAX_NATIVE_SCRIPT_SCAN_NODES_V1
+              ) {
+                if (
+                  !expectedPhaseANativeRejection(
+                    RejectCodes.NativeScriptNodeCount,
+                  )
+                ) {
+                  return yield* failUnexpectedPhaseANativeRejection(
+                    RejectCodes.NativeScriptNodeCount,
+                  );
+                }
+                stoppedAtRejection = true;
+                break;
+              }
+
+              if (
+                token.kind >= 1 &&
+                token.kind <= 3 &&
+                token.childCount > 0
+              ) {
+                const nextDepth =
+                  phaseANativeControl.stackDepth + 1;
+                if (
+                  nextDepth >
+                  MAX_NATIVE_SCRIPT_SCAN_DEPTH_V1
+                ) {
+                  if (
+                    !expectedPhaseANativeRejection(
+                      RejectCodes.NativeScriptDepth,
+                    )
+                  ) {
+                    return yield* failUnexpectedPhaseANativeRejection(
+                      RejectCodes.NativeScriptDepth,
+                    );
+                  }
+                  stoppedAtRejection = true;
+                  break;
+                }
+                const frame: ValidationMachineNativeScriptFrameV1 = {
+                  tail: phaseANativeControl.stackRoot,
+                  kind: token.kind as 1 | 2 | 3,
+                  childCount: token.childCount,
+                  remaining: token.childCount,
+                  validCount: 0,
+                  required: token.required,
+                };
+                nativeScriptFrames.push(frame);
+                phaseANativeControl = {
+                  ...phaseANativeControl,
+                  cursor: token.nextOffset,
+                  stackRoot:
+                    hashValidationMachineNativeScriptFrameV1(frame),
+                  stackDepth: nextDepth,
+                  nodeCount: nextNodeCount,
+                };
+                continue;
+              }
+
+              let valid: boolean;
+              if (token.kind === 0) {
+                valid = signerProof.kind === "membership";
+              } else if (token.kind === 4) {
+                valid =
+                  compactProofTransaction.transactionBody
+                    .validityIntervalStart >= 0n &&
+                  compactProofTransaction.transactionBody
+                    .validityIntervalStart >= token.slot;
+              } else if (token.kind === 5) {
+                valid =
+                  compactProofTransaction.transactionBody
+                    .validityIntervalEnd >= 0n &&
+                  compactProofTransaction.transactionBody
+                    .validityIntervalEnd <= token.slot;
+              } else if (token.kind === 1) {
+                valid = true;
+              } else if (token.kind === 2) {
+                valid = false;
+              } else {
+                valid = token.required === 0n;
+              }
+              phaseANativeControl = {
+                ...phaseANativeControl,
+                stage: 2,
+                cursor: token.nextOffset,
+                nodeCount: nextNodeCount,
+                result: valid ? 1 : 0,
+              };
+              continue;
+            }
+
+            const frame =
+              nativeScriptFrames[nativeScriptFrames.length - 1];
+            if (frame !== undefined) {
+              pushPhaseANativeWitness({
+                kind: "nativeScriptFrame",
+                frame,
+              });
+              const validCount =
+                frame.validCount +
+                (phaseANativeControl.result === 1 ? 1 : 0);
+              if (frame.remaining === 1) {
+                nativeScriptFrames.pop();
+                const valid =
+                  frame.kind === 1
+                    ? validCount === frame.childCount
+                    : frame.kind === 2
+                      ? validCount > 0
+                      : BigInt(validCount) >= frame.required;
+                phaseANativeControl = {
+                  ...phaseANativeControl,
+                  stackRoot: frame.tail,
+                  stackDepth:
+                    phaseANativeControl.stackDepth - 1,
+                  result: valid ? 1 : 0,
+                };
+              } else {
+                const nextFrame: ValidationMachineNativeScriptFrameV1 =
+                  {
+                    ...frame,
+                    remaining: frame.remaining - 1,
+                    validCount,
+                  };
+                nativeScriptFrames[nativeScriptFrames.length - 1] =
+                  nextFrame;
+                phaseANativeControl = {
+                  ...phaseANativeControl,
+                  stage: 1,
+                  stackRoot:
+                    hashValidationMachineNativeScriptFrameV1(
+                      nextFrame,
+                    ),
+                  result: -1,
+                };
+              }
+              continue;
+            }
+
+            pushPhaseANativeWitness();
+            if (
+              phaseANativeControl.cursor !==
+              phaseANativeControl.itemLength
+            ) {
+              if (
+                !expectedPhaseANativeRejection(
+                  RejectCodes.InvalidFieldType,
+                )
+              ) {
+                return yield* failUnexpectedPhaseANativeRejection(
+                  RejectCodes.InvalidFieldType,
+                );
+              }
+              stoppedAtRejection = true;
+              break;
+            }
+            if (phaseANativeControl.result === 0) {
+              if (
+                !expectedPhaseANativeRejection(
+                  RejectCodes.NativeScriptInvalid,
+                )
+              ) {
+                return yield* failUnexpectedPhaseANativeRejection(
+                  RejectCodes.NativeScriptInvalid,
+                );
+              }
+              stoppedAtRejection = true;
+              break;
+            }
+            phaseANativeControl =
+              resetPhaseANativeScriptsScanControl({
+                scriptCount: activeScriptCount,
+                scriptSeen: phaseANativeControl.scriptSeen + 1,
+                containsNonNativeScript:
+                  phaseANativeControl.containsNonNativeScript,
+              });
+            break;
+          }
+          if (stoppedAtRejection) break;
+        }
+      }
+
+      if (
+        !stoppedAtRejection &&
+        terminalPhase === "phaseANativeScripts"
+      ) {
+        return yield* Effect.fail(
+          new Error(
+            `bounded native-script scan cannot prove rejection ${rejectionCode ?? "none"}`,
+          ),
+        );
+      }
+    }
+
+    if (!stoppedAtRejection) {
+      pushWitness(
+        "phaseAScriptPreconditions",
+        phaseAScriptPreconditionsWitnessCbor(
+          phaseANativeControl.containsNonNativeScript,
+        ),
+        {
+          kind: "transactionFieldPairPreimage",
+          firstFieldIndex: 3,
+          firstPreimageCbor: fieldPreimages[3]!.preimageCbor,
+          secondFieldIndex: 8,
+          secondPreimageCbor: fieldPreimages[8]!.preimageCbor,
+        },
+      );
+      if (
+        rejection !== null &&
+        terminalPhase === "phaseAScriptPreconditions"
+      ) {
         stoppedAtRejection = true;
-        break;
       }
     }
 

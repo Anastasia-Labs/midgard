@@ -48,6 +48,7 @@ use midgard/fraud_proofs/native_tx/types.{
 use midgard/ledger_output_v1
 use midgard/mpf_proof_v1
 use midgard/native_script_v1
+use midgard/native_script_scan_v1
 use midgard/script_context_v1
 use midgard/script_language_views_v1
 use midgard/script_proof_v1
@@ -143,7 +144,14 @@ pub type ValidationAuxiliaryWitnessV1 {
     chunk_proof: bounded_item_v1.ChunkProofV1,
     signer_proof: SignerSetProofV1,
   }
-  SignerSetPreimageWitness { signer_hashes_cbor: ByteArray }
+  NativeScriptTokenWitness {
+    chunk_proof: bounded_item_v1.ChunkProofV1,
+    next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+    signer_proof: SignerSetProofV1,
+  }
+  NativeScriptFrameWitness {
+    frame: native_script_scan_v1.NativeScriptFrameV1,
+  }
   TransactionFieldPairPreimageWitness {
     first_field_index: Int,
     first_preimage_cbor: ByteArray,
@@ -542,28 +550,60 @@ pub fn encode_input_sets_scan_witness(
     |> bytearray.concat(encode_definite_bytes(resolution_schedule_hash))
 }
 
-pub fn encode_phase_a_native_scripts_witness(
+pub fn encode_phase_a_native_scripts_scan_witness(
   compact_cbor: ByteArray,
   witness_set_compact_cbor: ByteArray,
   field_preimage_lengths_cbor: ByteArray,
   context_cbor: ByteArray,
   resolution_schedule_hash: ByteArray,
-  witness_signer_hashes_cbor: ByteArray,
+  stage: Int,
+  script_count: Int,
+  script_seen: Int,
+  contains_non_native_script: Int,
+  item_length: Int,
+  item_commitment: ByteArray,
+  cursor: Int,
+  stack_root: ByteArray,
+  stack_depth: Int,
+  node_count: Int,
+  result: Int,
   signer_count: Int,
-  signer_frontier_commitment: ByteArray,
+  signer_peaks: List<validation_merkle_v1.FrontierPeak>,
 ) -> ByteArray {
   expect bytearray.length(resolution_schedule_hash) == 32
+  expect stage >= 0
+  expect stage <= 2
+  expect script_count >= -1
+  expect script_seen >= 0
+  expect contains_non_native_script == 0 || contains_non_native_script == 1
+  expect item_length >= 0
+  expect bytearray.length(item_commitment) == 0 || bytearray.length(item_commitment) == 32
+  expect cursor >= 0
+  expect bytearray.length(stack_root) == 0 || bytearray.length(stack_root) == 32
+  expect stack_depth >= 0
+  expect node_count >= 0
+  expect result >= -1
+  expect result <= 1
   expect signer_count >= 0
-  expect bytearray.length(signer_frontier_commitment) == 32
-  #"88"
+  encode_definite_array_header(18)
     |> bytearray.concat(encode_definite_bytes(compact_cbor))
     |> bytearray.concat(encode_definite_bytes(witness_set_compact_cbor))
     |> bytearray.concat(encode_definite_bytes(field_preimage_lengths_cbor))
     |> bytearray.concat(encode_definite_bytes(context_cbor))
     |> bytearray.concat(encode_definite_bytes(resolution_schedule_hash))
-    |> bytearray.concat(encode_definite_bytes(witness_signer_hashes_cbor))
+    |> bytearray.concat(cbor.serialise(stage))
+    |> bytearray.concat(cbor.serialise(script_count))
+    |> bytearray.concat(cbor.serialise(script_seen))
+    |> bytearray.concat(cbor.serialise(contains_non_native_script))
+    |> bytearray.concat(cbor.serialise(item_length))
+    |> bytearray.concat(encode_definite_bytes(item_commitment))
+    |> bytearray.concat(cbor.serialise(cursor))
+    |> bytearray.concat(encode_definite_bytes(stack_root))
+    |> bytearray.concat(cbor.serialise(stack_depth))
+    |> bytearray.concat(cbor.serialise(node_count))
+    |> bytearray.concat(cbor.serialise(result))
     |> bytearray.concat(cbor.serialise(signer_count))
-    |> bytearray.concat(encode_definite_bytes(signer_frontier_commitment))
+    |> bytearray.concat(validation_merkle_v1.encode_frontier(signer_peaks))
 }
 
 pub fn encode_signatures_scan_witness(
@@ -2063,14 +2103,6 @@ const reject_missing_required_witness =
 
 const reject_invalid_signature = #"455f494e56414c49445f5349474e4154555245"
 
-fn signer_frontier(
-  signer_hashes: List<ByteArray>,
-) -> validation_merkle_v1.BuiltFrontier {
-  signer_hashes
-    |> list.map(script_proof_v1.signer_leaf_hash)
-    |> validation_merkle_v1.build_frontier
-}
-
 pub type SignaturesControlV1 {
   compact_cbor: ByteArray,
   witness_set_compact_cbor: ByteArray,
@@ -2576,7 +2608,6 @@ fn verify_signatures_handoff(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   control: SignaturesControlV1,
-  signer_hashes_cbor: ByteArray,
 ) -> Bool {
   let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
     pre.transaction_id,
@@ -2584,34 +2615,40 @@ fn verify_signatures_handoff(
     control.witness_set_compact_cbor,
     control.field_preimage_lengths_cbor,
   )
-  let signer_hashes = decode_midgard_tx_byte_list_preimage_cbor(
-    signer_hashes_cbor,
-  )
-  let built_frontier = signer_frontier(signer_hashes)
+  let script_count = if witness_set.script_tx_wits_hash == bounded_collection_v1.from_items(
+    7,
+    [],
+  ) {
+    0
+  } else {
+    -1
+  }
   and {
     signatures_control_is_bound(pre, witness, control, verified, witness_set),
     control.stage == 2,
-    list.all(signer_hashes, fn(hash) { bytearray.length(hash) == 28 }),
-    signer_hashes == list.sort(signer_hashes, bytearray.compare),
-    signer_hashes == list.unique(signer_hashes),
-    built_frontier.count == control.signer_count,
-    built_frontier.peaks == control.signer_peaks,
     witness.claimed_successor.phase == validation_trace_v1.PhaseANativeScripts,
     witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
       validation_trace_v1.PhaseANativeScripts,
       pre.program_counter + 1,
-      encode_phase_a_native_scripts_witness(
+      encode_phase_a_native_scripts_scan_witness(
         control.compact_cbor,
         control.witness_set_compact_cbor,
         control.field_preimage_lengths_cbor,
         control.context_cbor,
         control.resolution_schedule_hash,
-        signer_hashes_cbor,
+        0,
+        script_count,
+        0,
+        0,
+        0,
+        #"",
+        0,
+        #"",
+        0,
+        0,
+        -1,
         control.signer_count,
-        validation_merkle_v1.frontier_commitment(
-          control.signer_count,
-          control.signer_peaks,
-        ),
+        control.signer_peaks,
       ),
     ),
   }
@@ -2624,7 +2661,12 @@ fn verify_signatures(
 ) -> Bool {
   let control = signatures_control_from_witness(witness.work_witness_cbor)
   when auxiliary is {
-    NoAuxiliaryWitness -> verify_signatures_advance(pre, witness, control)
+    NoAuxiliaryWitness ->
+      if control.stage == 2 {
+        verify_signatures_handoff(pre, witness, control)
+      } else {
+        verify_signatures_advance(pre, witness, control)
+      }
     TransactionFieldChunkWitness { collection_proof, chunk_proof } ->
       verify_signature_address_item(
         pre,
@@ -2645,13 +2687,6 @@ fn verify_signatures(
         collection_proof,
         chunk_proof,
         signer_proof,
-      )
-    SignerSetPreimageWitness { signer_hashes_cbor } ->
-      verify_signatures_handoff(
-        pre,
-        witness,
-        control,
-        signer_hashes_cbor,
       )
     _ -> False
   }
@@ -2703,13 +2738,11 @@ pub fn verify_required_signer_item_semantics_v1(
 pub fn verify_signatures_handoff_semantics_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
-  signer_hashes_cbor: ByteArray,
 ) -> Bool {
   verify_signatures_handoff(
     pre,
     witness,
     signatures_control_from_witness(witness.work_witness_cbor),
-    signer_hashes_cbor,
   )
 }
 
@@ -2719,161 +2752,1413 @@ const reject_native_script_invalid =
 const reject_plutus_script_invalid =
   #"455f504c555455535f5343524950545f494e56414c4944"
 
-fn phase_a_native_scripts_rejection(
-  scripts: List<MidgardScriptWitness>,
-  validity_interval_start: Int,
-  validity_interval_end: Int,
-  witness_signers: List<ByteArray>,
-) -> Option<ByteArray> {
-  when scripts is {
-    [] -> None
-    [script, ..rest] ->
-      if script.language == NativeCardanoScript {
-        when
-          native_script_v1.inspect_native_script(
-            script.script_bytes,
-            validity_interval_start,
-            validity_interval_end,
-            witness_signers,
-          )
-        is {
-          None -> Some(reject_invalid_field_type)
-          Some(checked) ->
-            if checked.depth > native_script_v1.max_native_script_depth {
-              Some(reject_native_script_depth)
-            } else if checked.node_count > native_script_v1.max_native_script_node_count {
-              Some(reject_native_script_node_count)
-            } else if !checked.valid {
-              Some(reject_native_script_invalid)
-            } else {
-              phase_a_native_scripts_rejection(
-                rest,
-                validity_interval_start,
-                validity_interval_end,
-                witness_signers,
-              )
-            }
-        }
-      } else {
-        phase_a_native_scripts_rejection(
-          rest,
-          validity_interval_start,
-          validity_interval_end,
-          witness_signers,
-        )
-      }
-  }
+const max_aggregate_field_preimage_bytes: Int = 32768
+
+pub type PhaseANativeScriptsControlV1 {
+  compact_cbor: ByteArray,
+  witness_set_compact_cbor: ByteArray,
+  field_preimage_lengths_cbor: ByteArray,
+  context_cbor: ByteArray,
+  resolution_schedule_hash: ByteArray,
+  stage: Int,
+  script_count: Int,
+  script_seen: Int,
+  contains_non_native_script: Int,
+  item_length: Int,
+  item_commitment: ByteArray,
+  cursor: Int,
+  stack_root: ByteArray,
+  stack_depth: Int,
+  node_count: Int,
+  result: Int,
+  signer_count: Int,
+  signer_peaks: List<validation_merkle_v1.FrontierPeak>,
 }
 
-fn verify_phase_a_native_scripts(
-  pre: validation_trace_v1.ValidationMachineStateV1,
-  witness: ValidationOneStepWitnessV1,
-  auxiliary: ValidationAuxiliaryWitnessV1,
-) -> Bool {
-  expect Some(data) = cbor.deserialise(witness.work_witness_cbor)
+type NativeChunkWindowV1 {
+  bytes: ByteArray,
+  offset: Int,
+}
+
+fn phase_a_native_control_from_witness(
+  witness_cbor: ByteArray,
+) -> PhaseANativeScriptsControlV1 {
+  expect Some(data) = cbor.deserialise(witness_cbor)
   expect
       [
         compact_cbor_data, witness_set_compact_cbor_data,
         field_preimage_lengths_cbor_data, context_cbor_data,
-        resolution_schedule_hash_data, witness_signer_hashes_cbor_data,
-        signer_count_data, signer_frontier_commitment_data,
+        resolution_schedule_hash_data, stage_data, script_count_data,
+        script_seen_data, contains_non_native_script_data, item_length_data,
+        item_commitment_data, cursor_data, stack_root_data, stack_depth_data,
+        node_count_data, result_data, signer_count_data, signer_peaks_data,
       ]
     = builtin.un_list_data(data)
-  let compact_cbor = builtin.un_b_data(compact_cbor_data)
-  let witness_set_compact_cbor = builtin.un_b_data(
-    witness_set_compact_cbor_data,
-  )
-  let field_preimage_lengths_cbor = builtin.un_b_data(
-    field_preimage_lengths_cbor_data,
-  )
-  let context_cbor = builtin.un_b_data(context_cbor_data)
-  let resolution_schedule_hash = builtin.un_b_data(
-    resolution_schedule_hash_data,
-  )
-  expect bytearray.length(resolution_schedule_hash) == 32
-  let witness_signer_hashes_cbor = builtin.un_b_data(
-    witness_signer_hashes_cbor_data,
-  )
-  let witness_signers = decode_midgard_tx_byte_list_preimage_cbor(
-    witness_signer_hashes_cbor,
-  )
-  let signer_count = builtin.un_i_data(signer_count_data)
-  let signer_frontier_commitment = builtin.un_b_data(
-    signer_frontier_commitment_data,
-  )
-  let built_signer_frontier = signer_frontier(witness_signers)
-  expect TransactionFieldPreimageWitness { preimage_cbor } = auxiliary
-  let field_verified = verify_midgard_transaction_field_preimage_v1(
-    pre.transaction_id,
-    pre.transaction_commitment,
-    compact_cbor,
-    witness_set_compact_cbor,
-    field_preimage_lengths_cbor,
+  PhaseANativeScriptsControlV1 {
+    compact_cbor: builtin.un_b_data(compact_cbor_data),
+    witness_set_compact_cbor: builtin.un_b_data(
+      witness_set_compact_cbor_data,
+    ),
+    field_preimage_lengths_cbor: builtin.un_b_data(
+      field_preimage_lengths_cbor_data,
+    ),
+    context_cbor: builtin.un_b_data(context_cbor_data),
+    resolution_schedule_hash: builtin.un_b_data(
+      resolution_schedule_hash_data,
+    ),
+    stage: builtin.un_i_data(stage_data),
+    script_count: builtin.un_i_data(script_count_data),
+    script_seen: builtin.un_i_data(script_seen_data),
+    contains_non_native_script: builtin.un_i_data(
+      contains_non_native_script_data,
+    ),
+    item_length: builtin.un_i_data(item_length_data),
+    item_commitment: builtin.un_b_data(item_commitment_data),
+    cursor: builtin.un_i_data(cursor_data),
+    stack_root: builtin.un_b_data(stack_root_data),
+    stack_depth: builtin.un_i_data(stack_depth_data),
+    node_count: builtin.un_i_data(node_count_data),
+    result: builtin.un_i_data(result_data),
+    signer_count: builtin.un_i_data(signer_count_data),
+    signer_peaks: decode_frontier_peaks(signer_peaks_data),
+  }
+}
+
+fn phase_a_native_control_is_bound(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: PhaseANativeScriptsControlV1,
+  verified: VerifiedMidgardNativeTxCompact,
+  witness_set: NativeTxWitnessSetCompact,
+) -> Bool {
+  let scripts_are_empty = witness_set.script_tx_wits_hash == bounded_collection_v1.from_items(
     7,
-    preimage_cbor,
-  )
-  let scripts = decode_midgard_tx_script_witnesses_preimage_cbor(preimage_cbor)
-  let Pair(verified_source, _) = verify_native_tx_proof_source_v1(
-    pre.transaction_id,
-    compact_cbor,
-    witness_set_compact_cbor,
-    field_preimage_lengths_cbor,
+    [],
   )
   and {
-    field_verified,
-    list.all(witness_signers, fn(hash) { bytearray.length(hash) == 28 }),
-    witness_signers == (
-      witness_signers |> list.sort(bytearray.compare) |> list.unique
+    verified.version == 1,
+    native_tx_proof_commitment_v1(
+      control.compact_cbor,
+      control.witness_set_compact_cbor,
+      control.field_preimage_lengths_cbor,
+    ) == pre.transaction_commitment,
+    validation_trace_v1.hash_validation_context(control.context_cbor) == pre.validation_context_hash,
+    bytearray.length(control.resolution_schedule_hash) == 32,
+    control.stage >= 0,
+    control.stage <= 2,
+    control.script_count >= -1,
+    control.script_count <= max_tx_size_derived_collection_item_count,
+    control.script_seen >= 0,
+    if scripts_are_empty {
+      control.script_count == 0 && control.script_seen == 0
+    } else if control.script_count == -1 {
+      control.script_seen == 0
+    } else {
+      control.script_count > 0 && control.script_seen <= control.script_count
+    },
+    control.contains_non_native_script == 0 || control.contains_non_native_script == 1,
+    control.signer_count >= 0,
+    control.signer_count <= max_tx_size_derived_collection_item_count,
+    validation_merkle_v1.frontier_is_well_formed(
+      control.signer_count,
+      control.signer_peaks,
     ),
-    signer_count == built_signer_frontier.count,
-    signer_frontier_commitment == validation_merkle_v1.frontier_commitment(
-      built_signer_frontier.count,
-      built_signer_frontier.peaks,
+    control.item_length >= 0,
+    control.item_length <= max_aggregate_field_preimage_bytes,
+    control.cursor >= 0,
+    control.cursor <= control.item_length,
+    control.stack_depth >= 0,
+    control.stack_depth <= native_script_scan_v1.max_native_script_depth,
+    control.node_count >= 0,
+    control.node_count <= native_script_scan_v1.max_native_script_nodes,
+    control.result >= -1,
+    control.result <= 1,
+    if control.stage == 0 {
+      and {
+        control.item_length == 0,
+        control.item_commitment == #"",
+        control.cursor == 0,
+        control.stack_root == #"",
+        control.stack_depth == 0,
+        control.node_count == 0,
+        control.result == -1,
+      }
+    } else {
+      and {
+        control.script_count > 0,
+        control.script_seen < control.script_count,
+        control.item_length > 0,
+        bytearray.length(control.item_commitment) == 32,
+        if control.stack_root == #"" {
+          control.stack_depth == 0
+        } else {
+          and {
+            bytearray.length(control.stack_root) == 32,
+            control.stack_depth > 0,
+          }
+        },
+        if control.stage == 1 {
+          control.result == -1
+        } else {
+          control.result >= 0
+        },
+      }
+    },
+    witness.work_witness_cbor == encode_phase_a_native_scripts_scan_witness(
+      control.compact_cbor,
+      control.witness_set_compact_cbor,
+      control.field_preimage_lengths_cbor,
+      control.context_cbor,
+      control.resolution_schedule_hash,
+      control.stage,
+      control.script_count,
+      control.script_seen,
+      control.contains_non_native_script,
+      control.item_length,
+      control.item_commitment,
+      control.cursor,
+      control.stack_root,
+      control.stack_depth,
+      control.node_count,
+      control.result,
+      control.signer_count,
+      control.signer_peaks,
     ),
-    validation_trace_v1.hash_validation_context(context_cbor) == pre.validation_context_hash,
-    witness.work_witness_cbor == encode_phase_a_native_scripts_witness(
-      compact_cbor,
-      witness_set_compact_cbor,
-      field_preimage_lengths_cbor,
-      context_cbor,
-      resolution_schedule_hash,
-      witness_signer_hashes_cbor,
-      signer_count,
-      signer_frontier_commitment,
+  }
+}
+
+fn phase_a_native_successor_is_exact(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  post: validation_trace_v1.ValidationMachineStateV1,
+  control: PhaseANativeScriptsControlV1,
+) -> Bool {
+  and {
+    post.phase == validation_trace_v1.PhaseANativeScripts,
+    post.work_root == validation_trace_v1.hash_work_witness(
+      validation_trace_v1.PhaseANativeScripts,
+      pre.program_counter + 1,
+      encode_phase_a_native_scripts_scan_witness(
+        control.compact_cbor,
+        control.witness_set_compact_cbor,
+        control.field_preimage_lengths_cbor,
+        control.context_cbor,
+        control.resolution_schedule_hash,
+        control.stage,
+        control.script_count,
+        control.script_seen,
+        control.contains_non_native_script,
+        control.item_length,
+        control.item_commitment,
+        control.cursor,
+        control.stack_root,
+        control.stack_depth,
+        control.node_count,
+        control.result,
+        control.signer_count,
+        control.signer_peaks,
+      ),
     ),
-    when
-      phase_a_native_scripts_rejection(
-        scripts,
-        verified_source.tx_compact.body.validity_interval_start,
-        verified_source.tx_compact.body.validity_interval_end,
-        witness_signers,
-      )
-    is {
-      Some(rejection_code) ->
+  }
+}
+
+fn phase_a_native_to_preconditions_is_exact(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  post: validation_trace_v1.ValidationMachineStateV1,
+  control: PhaseANativeScriptsControlV1,
+) -> Bool {
+  and {
+    post.phase == validation_trace_v1.PhaseAScriptPreconditions,
+    post.work_root == validation_trace_v1.hash_work_witness(
+      validation_trace_v1.PhaseAScriptPreconditions,
+      pre.program_counter + 1,
+      encode_phase_a_script_preconditions_witness(
+        control.compact_cbor,
+        control.witness_set_compact_cbor,
+        control.field_preimage_lengths_cbor,
+        control.context_cbor,
+        control.resolution_schedule_hash,
+        control.signer_count,
+        validation_merkle_v1.frontier_commitment(
+          control.signer_count,
+          control.signer_peaks,
+        ),
+        control.contains_non_native_script == 1,
+      ),
+    ),
+  }
+}
+
+fn reset_phase_a_native_control(
+  control: PhaseANativeScriptsControlV1,
+  script_count: Int,
+  script_seen: Int,
+  contains_non_native_script: Int,
+) -> PhaseANativeScriptsControlV1 {
+  PhaseANativeScriptsControlV1 {
+    ..control,
+    stage: 0,
+    script_count,
+    script_seen,
+    contains_non_native_script,
+    item_length: 0,
+    item_commitment: #"",
+    cursor: 0,
+    stack_root: #"",
+    stack_depth: 0,
+    node_count: 0,
+    result: -1,
+  }
+}
+
+fn phase_a_native_complete_script_is_exact(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  post: validation_trace_v1.ValidationMachineStateV1,
+  control: PhaseANativeScriptsControlV1,
+  script_count: Int,
+  script_seen: Int,
+  contains_non_native_script: Int,
+) -> Bool {
+  let next_control = reset_phase_a_native_control(
+    control,
+    script_count,
+    script_seen,
+    contains_non_native_script,
+  )
+  if script_seen == script_count {
+    phase_a_native_to_preconditions_is_exact(pre, post, next_control)
+  } else {
+    phase_a_native_successor_is_exact(pre, post, next_control)
+  }
+}
+
+fn verify_phase_a_native_advance_scan(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: PhaseANativeScriptsControlV1,
+) -> Bool {
+  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+    pre.transaction_id,
+    control.compact_cbor,
+    control.witness_set_compact_cbor,
+    control.field_preimage_lengths_cbor,
+  )
+  and {
+    phase_a_native_control_is_bound(
+      pre,
+      witness,
+      control,
+      verified,
+      witness_set,
+    ),
+    control.stage == 0,
+    control.script_count == 0,
+    phase_a_native_to_preconditions_is_exact(
+      pre,
+      witness.claimed_successor,
+      control,
+    ),
+  }
+}
+
+fn verify_phase_a_native_item_scan(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: PhaseANativeScriptsControlV1,
+  collection_proof: bounded_collection_v1.ItemProofV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+) -> Bool {
+  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+    pre.transaction_id,
+    control.compact_cbor,
+    control.witness_set_compact_cbor,
+    control.field_preimage_lengths_cbor,
+  )
+  let active_count = if control.script_count == -1 {
+    collection_proof.item_count
+  } else {
+    control.script_count
+  }
+  let header = native_script_scan_v1.versioned_script_header_v1(
+    chunk_proof.chunk,
+    collection_proof.item_length,
+  )
+  and {
+    phase_a_native_control_is_bound(
+      pre,
+      witness,
+      control,
+      verified,
+      witness_set,
+    ),
+    control.stage == 0,
+    control.script_count != 0,
+    control.script_count == -1 || control.script_count == collection_proof.item_count,
+    active_count > 0,
+    active_count <= max_tx_size_derived_collection_item_count,
+    collection_proof.field_index == 7,
+    collection_proof.item_count == active_count,
+    collection_proof.item_index == control.script_seen,
+    collection_proof.item_length > 0,
+    collection_proof.item_length <= max_aggregate_field_preimage_bytes,
+    chunk_proof.field_index == 7,
+    chunk_proof.item_index == collection_proof.item_index,
+    chunk_proof.total_length == collection_proof.item_length,
+    chunk_proof.chunk_index == 0,
+    bounded_collection_v1.verify_item(
+      witness_set.script_tx_wits_hash,
+      collection_proof,
+    ),
+    bounded_item_v1.verify_chunk(
+      collection_proof.item_commitment,
+      chunk_proof,
+    ),
+    when header is {
+      None ->
         rejected_successor_is_exact(
           pre,
           witness.claimed_successor,
-          rejection_code,
+          reject_invalid_field_type,
         )
-      None -> and {
-          witness.claimed_successor.phase == validation_trace_v1.PhaseAScriptPreconditions,
-          witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
-            validation_trace_v1.PhaseAScriptPreconditions,
-            pre.program_counter + 1,
-            encode_phase_a_script_preconditions_witness(
-              compact_cbor,
-              witness_set_compact_cbor,
-              field_preimage_lengths_cbor,
-              context_cbor,
-              resolution_schedule_hash,
-              signer_count,
-              signer_frontier_commitment,
-              has_non_native_script(scripts),
-            ),
-          ),
+      Some(item_header) ->
+        if item_header.language_tag == 0 {
+          phase_a_native_successor_is_exact(
+            pre,
+            witness.claimed_successor,
+            PhaseANativeScriptsControlV1 {
+              ..control,
+              stage: 1,
+              script_count: active_count,
+              item_length: collection_proof.item_length,
+              item_commitment: collection_proof.item_commitment,
+              cursor: item_header.payload_offset,
+            },
+          )
+        } else {
+          phase_a_native_complete_script_is_exact(
+            pre,
+            witness.claimed_successor,
+            control,
+            active_count,
+            control.script_seen + 1,
+            1,
+          )
         }
     },
   }
+}
+
+fn phase_a_native_chunk_window(
+  control: PhaseANativeScriptsControlV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+) -> Option<NativeChunkWindowV1> {
+  let expected_chunk_index = control.cursor / bounded_item_v1.chunk_bytes
+  let count = bounded_item_v1.chunk_count(control.item_length)
+  let current_matches = and {
+    chunk_proof.field_index == 7,
+    chunk_proof.item_index == control.script_seen,
+    chunk_proof.total_length == control.item_length,
+    chunk_proof.chunk_index == expected_chunk_index,
+    bounded_item_v1.verify_chunk(control.item_commitment, chunk_proof),
+  }
+  if !current_matches {
+    None
+  } else if expected_chunk_index + 1 < count {
+    when next_chunk_proof is {
+      None -> None
+      Some(next) ->
+        if and {
+          next.field_index == 7,
+          next.item_index == control.script_seen,
+          next.total_length == control.item_length,
+          next.chunk_index == expected_chunk_index + 1,
+          bounded_item_v1.verify_chunk(control.item_commitment, next),
+        } {
+          Some(
+            NativeChunkWindowV1 {
+              bytes: bytearray.concat(chunk_proof.chunk, next.chunk),
+              offset: control.cursor - expected_chunk_index * bounded_item_v1.chunk_bytes,
+            },
+          )
+        } else {
+          None
+        }
+    }
+  } else if next_chunk_proof == None {
+    Some(
+      NativeChunkWindowV1 {
+        bytes: chunk_proof.chunk,
+        offset: control.cursor - expected_chunk_index * bounded_item_v1.chunk_bytes,
+      },
+    )
+  } else {
+    None
+  }
+}
+
+fn phase_a_native_signature_result(
+  key_hash: ByteArray,
+  control: PhaseANativeScriptsControlV1,
+  proof: SignerSetProofV1,
+) -> Option<Bool> {
+  let frontier_commitment = validation_merkle_v1.frontier_commitment(
+    control.signer_count,
+    control.signer_peaks,
+  )
+  when proof is {
+    SignerMembershipProof { peaks, signer_index, siblings } ->
+      if signer_membership_is_valid(
+        key_hash,
+        control.signer_count,
+        frontier_commitment,
+        peaks,
+        signer_index,
+        siblings,
+      ) {
+        Some(True)
+      } else {
+        None
+      }
+    _ ->
+      if signer_non_membership_is_valid(
+        key_hash,
+        control.signer_count,
+        frontier_commitment,
+        proof,
+      ) {
+        Some(False)
+      } else {
+        None
+      }
+  }
+}
+
+fn verify_phase_a_native_token_scan(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: PhaseANativeScriptsControlV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+  signer_proof: SignerSetProofV1,
+  token_mode: Int,
+) -> Bool {
+  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+    pre.transaction_id,
+    control.compact_cbor,
+    control.witness_set_compact_cbor,
+    control.field_preimage_lengths_cbor,
+  )
+  let window = phase_a_native_chunk_window(
+    control,
+    chunk_proof,
+    next_chunk_proof,
+  )
+  and {
+    phase_a_native_control_is_bound(
+      pre,
+      witness,
+      control,
+      verified,
+      witness_set,
+    ),
+    control.stage == 1,
+    when window is {
+      None -> False
+      Some(authenticated) ->
+        when
+          native_script_scan_v1.token_at_v1(
+            authenticated.bytes,
+            authenticated.offset,
+            control.cursor,
+          )
+        is {
+          None ->
+            rejected_successor_is_exact(
+              pre,
+              witness.claimed_successor,
+              reject_invalid_field_type,
+            )
+          Some(token) -> {
+            let next_node_count = control.node_count + 1
+            if next_node_count > native_script_scan_v1.max_native_script_nodes {
+              rejected_successor_is_exact(
+                pre,
+                witness.claimed_successor,
+                reject_native_script_node_count,
+              )
+            } else if and {
+              token.kind >= native_script_scan_v1.all_node,
+              token.kind <= native_script_scan_v1.at_least_node,
+              token.child_count > 0,
+            } {
+              when
+                native_script_scan_v1.frame_for_token_v1(
+                  token,
+                  control.stack_root,
+                )
+              is {
+                None -> False
+                Some(frame) -> {
+                  let next_depth = control.stack_depth + 1
+                  if next_depth > native_script_scan_v1.max_native_script_depth {
+                    rejected_successor_is_exact(
+                      pre,
+                      witness.claimed_successor,
+                      reject_native_script_depth,
+                    )
+                  } else {
+                    and {
+                      token_mode != 1,
+                      signer_proof == NoSignerSetProof,
+                      token.next_offset <= control.item_length,
+                      phase_a_native_successor_is_exact(
+                        pre,
+                        witness.claimed_successor,
+                        PhaseANativeScriptsControlV1 {
+                          ..control,
+                          cursor: token.next_offset,
+                          stack_root: native_script_scan_v1.hash_frame_v1(frame),
+                          stack_depth: next_depth,
+                          node_count: next_node_count,
+                        },
+                      ),
+                    }
+                  }
+                }
+              }
+            } else {
+              let result = if token.kind == native_script_scan_v1.signature_node {
+                if token_mode != 0 {
+                  phase_a_native_signature_result(
+                    token.key_hash,
+                    control,
+                    signer_proof,
+                  )
+                } else {
+                  None
+                }
+              } else if token.kind == native_script_scan_v1.after_node {
+                if and {
+                  token_mode != 1,
+                  signer_proof == NoSignerSetProof,
+                } {
+                  Some(
+                    and {
+                      verified.tx_compact.body.validity_interval_start >= 0,
+                      verified.tx_compact.body.validity_interval_start >= token.slot,
+                    },
+                  )
+                } else {
+                  None
+                }
+              } else if token.kind == native_script_scan_v1.before_node {
+                if and {
+                  token_mode != 1,
+                  signer_proof == NoSignerSetProof,
+                } {
+                  Some(
+                    and {
+                      verified.tx_compact.body.validity_interval_end >= 0,
+                      verified.tx_compact.body.validity_interval_end <= token.slot,
+                    },
+                  )
+                } else {
+                  None
+                }
+              } else if and {
+                token_mode != 1,
+                signer_proof == NoSignerSetProof,
+              } {
+                native_script_scan_v1.empty_container_result_v1(token)
+              } else {
+                None
+              }
+              when result is {
+                None -> False
+                Some(valid) -> and {
+                    token.next_offset <= control.item_length,
+                    phase_a_native_successor_is_exact(
+                      pre,
+                      witness.claimed_successor,
+                      PhaseANativeScriptsControlV1 {
+                        ..control,
+                        stage: 2,
+                        cursor: token.next_offset,
+                        node_count: next_node_count,
+                        result: if valid {
+                          1
+                        } else {
+                          0
+                        },
+                      },
+                    ),
+                  }
+              }
+            }
+          }
+        }
+    },
+  }
+}
+
+fn verify_phase_a_native_frame_scan(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: PhaseANativeScriptsControlV1,
+  frame: native_script_scan_v1.NativeScriptFrameV1,
+) -> Bool {
+  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+    pre.transaction_id,
+    control.compact_cbor,
+    control.witness_set_compact_cbor,
+    control.field_preimage_lengths_cbor,
+  )
+  and {
+    phase_a_native_control_is_bound(
+      pre,
+      witness,
+      control,
+      verified,
+      witness_set,
+    ),
+    control.stage == 2,
+    bytearray.length(control.stack_root) == 32,
+    control.stack_depth > 0,
+    native_script_scan_v1.hash_frame_v1(frame) == control.stack_root,
+    when
+      native_script_scan_v1.apply_child_v1(
+        frame,
+        control.result == 1,
+      )
+    is {
+      None -> False
+      Some(native_script_scan_v1.NativeFramePending { frame: next_frame }) ->
+        phase_a_native_successor_is_exact(
+          pre,
+          witness.claimed_successor,
+          PhaseANativeScriptsControlV1 {
+            ..control,
+            stage: 1,
+            stack_root: native_script_scan_v1.hash_frame_v1(next_frame),
+            result: -1,
+          },
+        )
+      Some(
+        native_script_scan_v1.NativeFrameComplete {
+          tail,
+          valid,
+        },
+      ) ->
+        phase_a_native_successor_is_exact(
+          pre,
+          witness.claimed_successor,
+          PhaseANativeScriptsControlV1 {
+            ..control,
+            stack_root: tail,
+            stack_depth: control.stack_depth - 1,
+            result: if valid {
+              1
+            } else {
+              0
+            },
+          },
+        )
+    },
+  }
+}
+
+fn verify_phase_a_native_finalize_scan(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: PhaseANativeScriptsControlV1,
+) -> Bool {
+  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+    pre.transaction_id,
+    control.compact_cbor,
+    control.witness_set_compact_cbor,
+    control.field_preimage_lengths_cbor,
+  )
+  and {
+    phase_a_native_control_is_bound(
+      pre,
+      witness,
+      control,
+      verified,
+      witness_set,
+    ),
+    control.stage == 2,
+    control.stack_root == #"",
+    control.stack_depth == 0,
+    if control.cursor != control.item_length {
+      rejected_successor_is_exact(
+        pre,
+        witness.claimed_successor,
+        reject_invalid_field_type,
+      )
+    } else if control.result == 0 {
+      rejected_successor_is_exact(
+        pre,
+        witness.claimed_successor,
+        reject_native_script_invalid,
+      )
+    } else {
+      phase_a_native_complete_script_is_exact(
+        pre,
+        witness.claimed_successor,
+        control,
+        control.script_count,
+        control.script_seen + 1,
+        control.contains_non_native_script,
+      )
+    },
+  }
+}
+
+fn verify_phase_a_native_scripts_scan(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+) -> Bool {
+  let control = phase_a_native_control_from_witness(
+    witness.work_witness_cbor,
+  )
+  when auxiliary is {
+    NoAuxiliaryWitness ->
+      if control.stage == 2 {
+        verify_phase_a_native_finalize_scan(pre, witness, control)
+      } else {
+        verify_phase_a_native_advance_scan(pre, witness, control)
+      }
+    TransactionFieldChunkWitness { collection_proof, chunk_proof } ->
+      verify_phase_a_native_item_scan(
+        pre,
+        witness,
+        control,
+        collection_proof,
+        chunk_proof,
+      )
+    NativeScriptTokenWitness {
+      chunk_proof,
+      next_chunk_proof,
+      signer_proof,
+    } ->
+      verify_phase_a_native_token_scan(
+        pre,
+        witness,
+        control,
+        chunk_proof,
+        next_chunk_proof,
+        signer_proof,
+        2,
+      )
+    NativeScriptFrameWitness { frame } ->
+      verify_phase_a_native_frame_scan(pre, witness, control, frame)
+    _ -> False
+  }
+}
+
+pub fn verify_phase_a_native_advance_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+) -> Bool {
+  let control = phase_a_native_control_from_witness(
+    witness.work_witness_cbor,
+  )
+  if control.stage == 2 {
+    verify_phase_a_native_finalize_scan(pre, witness, control)
+  } else {
+    verify_phase_a_native_advance_scan(pre, witness, control)
+  }
+}
+
+pub fn verify_phase_a_native_item_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  collection_proof: bounded_collection_v1.ItemProofV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+) -> Bool {
+  verify_phase_a_native_item_scan(
+    pre,
+    witness,
+    phase_a_native_control_from_witness(witness.work_witness_cbor),
+    collection_proof,
+    chunk_proof,
+  )
+}
+
+pub fn verify_phase_a_native_token_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+  signer_proof: SignerSetProofV1,
+) -> Bool {
+  verify_phase_a_native_token_scan(
+    pre,
+    witness,
+    phase_a_native_control_from_witness(witness.work_witness_cbor),
+    chunk_proof,
+    next_chunk_proof,
+    signer_proof,
+    2,
+  )
+}
+
+type AuthenticatedNativeScriptTokenHeadV1 {
+  verified: VerifiedMidgardNativeTxCompact,
+  window: NativeChunkWindowV1,
+  head: Option<native_script_scan_v1.NativeScriptTokenHeadV1>,
+}
+
+fn authenticated_phase_a_native_token_head_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: PhaseANativeScriptsControlV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+) -> Option<AuthenticatedNativeScriptTokenHeadV1> {
+  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+    pre.transaction_id,
+    control.compact_cbor,
+    control.witness_set_compact_cbor,
+    control.field_preimage_lengths_cbor,
+  )
+  if and {
+    phase_a_native_control_is_bound(
+      pre,
+      witness,
+      control,
+      verified,
+      witness_set,
+    ),
+    control.stage == 1,
+  } {
+    when
+      phase_a_native_chunk_window(
+        control,
+        chunk_proof,
+        next_chunk_proof,
+      )
+    is {
+      None -> None
+      Some(authenticated) ->
+        Some(
+          AuthenticatedNativeScriptTokenHeadV1 {
+            verified,
+            window: authenticated,
+            head: native_script_scan_v1.token_head_at_v1(
+              authenticated.bytes,
+              authenticated.offset,
+            ),
+          },
+        )
+    }
+  } else {
+    None
+  }
+}
+
+fn phase_a_native_container_frame_successor_is_exact_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: PhaseANativeScriptsControlV1,
+  token: native_script_scan_v1.NativeScriptTokenV1,
+) -> Bool {
+  let next_node_count = control.node_count + 1
+  if next_node_count > native_script_scan_v1.max_native_script_nodes {
+    rejected_successor_is_exact(
+      pre,
+      witness.claimed_successor,
+      reject_native_script_node_count,
+    )
+  } else if token.child_count <= 0 {
+    False
+  } else {
+    when
+      native_script_scan_v1.frame_for_token_v1(
+        token,
+        control.stack_root,
+      )
+    is {
+      None -> False
+      Some(frame) -> {
+        let next_depth = control.stack_depth + 1
+        if next_depth > native_script_scan_v1.max_native_script_depth {
+          rejected_successor_is_exact(
+            pre,
+            witness.claimed_successor,
+            reject_native_script_depth,
+          )
+        } else {
+          and {
+            token.next_offset <= control.item_length,
+            phase_a_native_successor_is_exact(
+              pre,
+              witness.claimed_successor,
+              PhaseANativeScriptsControlV1 {
+                ..control,
+                cursor: token.next_offset,
+                stack_root: native_script_scan_v1.hash_frame_v1(frame),
+                stack_depth: next_depth,
+                node_count: next_node_count,
+              },
+            ),
+          }
+        }
+      }
+    }
+  }
+}
+
+fn phase_a_native_empty_container_successor_is_exact_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: PhaseANativeScriptsControlV1,
+  token: native_script_scan_v1.NativeScriptTokenV1,
+) -> Bool {
+  let next_node_count = control.node_count + 1
+  if next_node_count > native_script_scan_v1.max_native_script_nodes {
+    rejected_successor_is_exact(
+      pre,
+      witness.claimed_successor,
+      reject_native_script_node_count,
+    )
+  } else if token.child_count != 0 {
+    False
+  } else {
+    when native_script_scan_v1.empty_container_result_v1(token) is {
+      None -> False
+      Some(valid) -> and {
+          token.next_offset <= control.item_length,
+          phase_a_native_successor_is_exact(
+            pre,
+            witness.claimed_successor,
+            PhaseANativeScriptsControlV1 {
+              ..control,
+              stage: 2,
+              cursor: token.next_offset,
+              node_count: next_node_count,
+              result: if valid {
+                1
+              } else {
+                0
+              },
+            },
+          ),
+        }
+    }
+  }
+}
+
+fn verify_phase_a_native_container_frame_token_scan_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: PhaseANativeScriptsControlV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+) -> Bool {
+  when
+    authenticated_phase_a_native_token_head_v1(
+      pre,
+      witness,
+      control,
+      chunk_proof,
+      next_chunk_proof,
+    )
+  is {
+    None -> False
+    Some(authenticated) ->
+      when authenticated.head is {
+        None ->
+          rejected_successor_is_exact(
+            pre,
+            witness.claimed_successor,
+            reject_invalid_field_type,
+          )
+        Some(head) ->
+          if and {
+            head.tag >= native_script_scan_v1.all_node,
+            head.tag <= native_script_scan_v1.at_least_node,
+          } {
+            when
+              native_script_scan_v1.container_token_from_head_v1(
+                authenticated.window.bytes,
+                authenticated.window.offset,
+                control.cursor,
+                head,
+              )
+            is {
+              None ->
+                rejected_successor_is_exact(
+                  pre,
+                  witness.claimed_successor,
+                  reject_invalid_field_type,
+                )
+              Some(token) ->
+                phase_a_native_container_frame_successor_is_exact_v1(
+                  pre,
+                  witness,
+                  control,
+                  token,
+                )
+            }
+          } else if or {
+            head.tag == native_script_scan_v1.signature_node,
+            head.tag == native_script_scan_v1.after_node,
+            head.tag == native_script_scan_v1.before_node,
+          } {
+            False
+          } else {
+            rejected_successor_is_exact(
+              pre,
+              witness.claimed_successor,
+              reject_invalid_field_type,
+            )
+          }
+      }
+  }
+}
+
+fn verify_phase_a_native_empty_container_token_scan_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: PhaseANativeScriptsControlV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+) -> Bool {
+  when
+    authenticated_phase_a_native_token_head_v1(
+      pre,
+      witness,
+      control,
+      chunk_proof,
+      next_chunk_proof,
+    )
+  is {
+    None -> False
+    Some(authenticated) ->
+      when authenticated.head is {
+        None ->
+          rejected_successor_is_exact(
+            pre,
+            witness.claimed_successor,
+            reject_invalid_field_type,
+          )
+        Some(head) ->
+          if and {
+            head.tag >= native_script_scan_v1.all_node,
+            head.tag <= native_script_scan_v1.at_least_node,
+          } {
+            when
+              native_script_scan_v1.container_token_from_head_v1(
+                authenticated.window.bytes,
+                authenticated.window.offset,
+                control.cursor,
+                head,
+              )
+            is {
+              None ->
+                rejected_successor_is_exact(
+                  pre,
+                  witness.claimed_successor,
+                  reject_invalid_field_type,
+                )
+              Some(token) ->
+                phase_a_native_empty_container_successor_is_exact_v1(
+                  pre,
+                  witness,
+                  control,
+                  token,
+                )
+            }
+          } else if or {
+            head.tag == native_script_scan_v1.signature_node,
+            head.tag == native_script_scan_v1.after_node,
+            head.tag == native_script_scan_v1.before_node,
+          } {
+            False
+          } else {
+            rejected_successor_is_exact(
+              pre,
+              witness.claimed_successor,
+              reject_invalid_field_type,
+            )
+          }
+      }
+  }
+}
+
+fn verify_phase_a_native_timelock_token_scan_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: PhaseANativeScriptsControlV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+) -> Bool {
+  when
+    authenticated_phase_a_native_token_head_v1(
+      pre,
+      witness,
+      control,
+      chunk_proof,
+      next_chunk_proof,
+    )
+  is {
+    None -> False
+    Some(authenticated) ->
+      when authenticated.head is {
+        None ->
+          rejected_successor_is_exact(
+            pre,
+            witness.claimed_successor,
+            reject_invalid_field_type,
+          )
+        Some(head) ->
+          if or {
+            head.tag == native_script_scan_v1.after_node,
+            head.tag == native_script_scan_v1.before_node,
+          } {
+            when
+              native_script_scan_v1.timelock_token_from_head_v1(
+                authenticated.window.bytes,
+                authenticated.window.offset,
+                control.cursor,
+                head,
+              )
+            is {
+              None ->
+                rejected_successor_is_exact(
+                  pre,
+                  witness.claimed_successor,
+                  reject_invalid_field_type,
+                )
+              Some(token) -> {
+                let next_node_count = control.node_count + 1
+                if next_node_count > native_script_scan_v1.max_native_script_nodes {
+                  rejected_successor_is_exact(
+                    pre,
+                    witness.claimed_successor,
+                    reject_native_script_node_count,
+                  )
+                } else {
+                  let valid = if token.kind == native_script_scan_v1.after_node {
+                    and {
+                      authenticated.verified.tx_compact.body.validity_interval_start >= 0,
+                      authenticated.verified.tx_compact.body.validity_interval_start >= token.slot,
+                    }
+                  } else {
+                    and {
+                      authenticated.verified.tx_compact.body.validity_interval_end >= 0,
+                      authenticated.verified.tx_compact.body.validity_interval_end <= token.slot,
+                    }
+                  }
+                  and {
+                    token.next_offset <= control.item_length,
+                    phase_a_native_successor_is_exact(
+                      pre,
+                      witness.claimed_successor,
+                      PhaseANativeScriptsControlV1 {
+                        ..control,
+                        stage: 2,
+                        cursor: token.next_offset,
+                        node_count: next_node_count,
+                        result: if valid {
+                          1
+                        } else {
+                          0
+                        },
+                      },
+                    ),
+                  }
+                }
+              }
+            }
+          } else if and {
+            head.tag >= native_script_scan_v1.signature_node,
+            head.tag <= native_script_scan_v1.at_least_node,
+          } {
+            False
+          } else {
+            rejected_successor_is_exact(
+              pre,
+              witness.claimed_successor,
+              reject_invalid_field_type,
+            )
+          }
+      }
+  }
+}
+
+fn verify_phase_a_native_signature_token_scan_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: PhaseANativeScriptsControlV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+  signer_proof: SignerSetProofV1,
+) -> Bool {
+  when
+    authenticated_phase_a_native_token_head_v1(
+      pre,
+      witness,
+      control,
+      chunk_proof,
+      next_chunk_proof,
+    )
+  is {
+    None -> False
+    Some(authenticated) ->
+      when authenticated.head is {
+        None ->
+          rejected_successor_is_exact(
+            pre,
+            witness.claimed_successor,
+            reject_invalid_field_type,
+          )
+        Some(head) ->
+          if head.tag == native_script_scan_v1.signature_node {
+            when
+              native_script_scan_v1.signature_token_from_head_v1(
+                authenticated.window.bytes,
+                authenticated.window.offset,
+                control.cursor,
+                head,
+              )
+            is {
+              None ->
+                rejected_successor_is_exact(
+                  pre,
+                  witness.claimed_successor,
+                  reject_invalid_field_type,
+                )
+              Some(token) -> {
+                let next_node_count = control.node_count + 1
+                if next_node_count > native_script_scan_v1.max_native_script_nodes {
+                  rejected_successor_is_exact(
+                    pre,
+                    witness.claimed_successor,
+                    reject_native_script_node_count,
+                  )
+                } else {
+                  when
+                    phase_a_native_signature_result(
+                      token.key_hash,
+                      control,
+                      signer_proof,
+                    )
+                  is {
+                    None -> False
+                    Some(valid) -> and {
+                        token.next_offset <= control.item_length,
+                        phase_a_native_successor_is_exact(
+                          pre,
+                          witness.claimed_successor,
+                          PhaseANativeScriptsControlV1 {
+                            ..control,
+                            stage: 2,
+                            cursor: token.next_offset,
+                            node_count: next_node_count,
+                            result: if valid {
+                              1
+                            } else {
+                              0
+                            },
+                          },
+                        ),
+                      }
+                  }
+                }
+              }
+            }
+          } else if and {
+            head.tag >= native_script_scan_v1.all_node,
+            head.tag <= native_script_scan_v1.before_node,
+          } {
+            False
+          } else {
+            rejected_successor_is_exact(
+              pre,
+              witness.claimed_successor,
+              reject_invalid_field_type,
+            )
+          }
+      }
+  }
+}
+
+pub fn verify_phase_a_native_container_frame_token_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+) -> Bool {
+  verify_phase_a_native_container_frame_token_scan_v1(
+    pre,
+    witness,
+    phase_a_native_control_from_witness(witness.work_witness_cbor),
+    chunk_proof,
+    next_chunk_proof,
+  )
+}
+
+pub fn verify_phase_a_native_empty_container_token_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+) -> Bool {
+  verify_phase_a_native_empty_container_token_scan_v1(
+    pre,
+    witness,
+    phase_a_native_control_from_witness(witness.work_witness_cbor),
+    chunk_proof,
+    next_chunk_proof,
+  )
+}
+
+pub fn verify_phase_a_native_timelock_token_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+) -> Bool {
+  verify_phase_a_native_timelock_token_scan_v1(
+    pre,
+    witness,
+    phase_a_native_control_from_witness(witness.work_witness_cbor),
+    chunk_proof,
+    next_chunk_proof,
+  )
+}
+
+pub fn verify_phase_a_native_signature_token_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+  signer_proof: SignerSetProofV1,
+) -> Bool {
+  verify_phase_a_native_signature_token_scan_v1(
+    pre,
+    witness,
+    phase_a_native_control_from_witness(witness.work_witness_cbor),
+    chunk_proof,
+    next_chunk_proof,
+    signer_proof,
+  )
+}
+
+pub fn verify_phase_a_native_frame_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  frame: native_script_scan_v1.NativeScriptFrameV1,
+) -> Bool {
+  verify_phase_a_native_frame_scan(
+    pre,
+    witness,
+    phase_a_native_control_from_witness(witness.work_witness_cbor),
+    frame,
+  )
 }
 
 fn no_duplicate_bytes(items: List<ByteArray>) -> Bool {
@@ -2882,16 +4167,6 @@ fn no_duplicate_bytes(items: List<ByteArray>) -> Bool {
     [item, ..rest] -> and {
         !list.has(rest, item),
         no_duplicate_bytes(rest),
-      }
-  }
-}
-
-fn has_non_native_script(scripts: List<MidgardScriptWitness>) -> Bool {
-  when scripts is {
-    [] -> False
-    [script, ..rest] -> or {
-        script.language != NativeCardanoScript,
-        has_non_native_script(rest),
       }
   }
 }
@@ -3445,7 +4720,8 @@ fn resolve_lookup_step(
     LedgerDeltaReplayWitness { .. } -> False
     LedgerDeltaOutputWitness { .. } -> False
     RequiredSignerItemWitness { .. } -> False
-    SignerSetPreimageWitness { .. } -> False
+    NativeScriptTokenWitness { .. } -> False
+    NativeScriptFrameWitness { .. } -> False
   }
 }
 
@@ -10827,7 +12103,7 @@ fn verify_one_step_with_auxiliary(
       validation_trace_v1.NativeScripts ->
         verify_native_scripts(pre, witness, auxiliary)
       validation_trace_v1.PhaseANativeScripts ->
-        verify_phase_a_native_scripts(pre, witness, auxiliary)
+        verify_phase_a_native_scripts_scan(pre, witness, auxiliary)
       validation_trace_v1.PhaseAScriptPreconditions ->
         verify_phase_a_script_preconditions(pre, witness, auxiliary)
       validation_trace_v1.ScriptIntegrity ->
@@ -10954,7 +12230,11 @@ pub fn verify_phase_a_native_scripts_one_step_v1(
   and {
     pre.phase == validation_trace_v1.PhaseANativeScripts,
     structural_transition_is_valid(pre, evidence.transition),
-    verify_phase_a_native_scripts(pre, evidence.transition, evidence.auxiliary),
+    verify_phase_a_native_scripts_scan(
+      pre,
+      evidence.transition,
+      evidence.auxiliary,
+    ),
   }
 }
 
@@ -10962,7 +12242,11 @@ pub fn verify_phase_a_native_scripts_semantics_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   evidence: ValidationOneStepEvidenceV1,
 ) -> Bool {
-  verify_phase_a_native_scripts(pre, evidence.transition, evidence.auxiliary)
+  verify_phase_a_native_scripts_scan(
+    pre,
+    evidence.transition,
+    evidence.auxiliary,
+  )
 }
 
 pub fn verify_phase_a_script_preconditions_one_step_v1(

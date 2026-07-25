@@ -19,7 +19,7 @@ validator main(
     prepare_selected(
       PhaseANativeScripts,
       semantic_resolver_script_hashes,
-      1,
+      7,
       computation_thread_policy_id,
       datum,
       redeemer,

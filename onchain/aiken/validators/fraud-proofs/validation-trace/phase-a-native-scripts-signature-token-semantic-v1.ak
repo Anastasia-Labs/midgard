@@ -1,21 +1,24 @@
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
+use midgard/bounded_item_v1.{ChunkProofV1}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel}
 use midgard/validation_machine_v1.{
-  TransactionFieldPreimageWitness, ValidationOneStepEvidenceV1,
-  ValidationOneStepWitnessV1, verify_phase_a_native_scripts_semantics_v1,
+  NativeScriptTokenWitness, SignerSetProofV1, ValidationOneStepWitnessV1,
+  verify_phase_a_native_signature_token_semantics_v1,
 }
 use midgard/validation_semantic_v1.{Datum, continue_winning}
 use midgard/validation_trace_v1.{PhaseANativeScripts}
 
 pub type ActionV1 {
-  Verify {
+  VerifyToken {
     input_index: Int,
     output_index: Int,
     transition: ValidationOneStepWitnessV1,
-    script_witnesses_cbor: ByteArray,
+    chunk_proof: ChunkProofV1,
+    next_chunk_proof: Option<ChunkProofV1>,
+    signer_proof: SignerSetProofV1,
   }
 }
 
@@ -42,17 +45,20 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(Verify {
+      ct.Continue(VerifyToken {
         input_index,
         output_index,
         transition,
-        script_witnesses_cbor,
+        chunk_proof,
+        next_chunk_proof,
+        signer_proof,
       }) -> {
-        let auxiliary = TransactionFieldPreimageWitness {
-          preimage_cbor: script_witnesses_cbor,
+        let auxiliary = NativeScriptTokenWitness {
+          chunk_proof,
+          next_chunk_proof,
+          signer_proof,
         }
         let auxiliary_data: Data = auxiliary
-        let evidence = ValidationOneStepEvidenceV1 { transition, auxiliary }
         continue_winning(
           PhaseANativeScripts,
           award_script_hash,
@@ -62,9 +68,12 @@ validator main(
           output_index,
           transition,
           auxiliary_data,
-          verify_phase_a_native_scripts_semantics_v1(
+          verify_phase_a_native_signature_token_semantics_v1(
             datum |> semantic_pre_state,
-            evidence,
+            transition,
+            chunk_proof,
+            next_chunk_proof,
+            signer_proof,
           ),
           own_out_ref,
           tx,

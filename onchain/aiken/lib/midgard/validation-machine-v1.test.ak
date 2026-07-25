@@ -39,6 +39,7 @@ use midgard/fraud_proofs/native_tx/types.{
   RewardRedeemer, ScriptCredential, SpendRedeemer, TxIsValid,
   native_tx_version_v1,
 }
+use midgard/native_script_scan_v1
 use midgard/script_context_v1
 use midgard/script_proof_v1
 use midgard/validation_machine_v1
@@ -248,7 +249,12 @@ fn phase_a_native_step_fixture(
   )
   let proof_source = midgard_transaction_proof_source_v1(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
-  let work_witness_cbor = validation_machine_v1.encode_phase_a_native_scripts_witness(
+  let script_count = if tx.witness_set.script_tx_wits == [] {
+    0
+  } else {
+    -1
+  }
+  let work_witness_cbor = validation_machine_v1.encode_phase_a_native_scripts_scan_witness(
     proof_source.compact_cbor,
     proof_source.witness_set_compact_cbor,
     proof_source.field_preimage_lengths_cbor,
@@ -257,17 +263,19 @@ fn phase_a_native_step_fixture(
       tx.body.inputs,
       tx.body.reference_inputs,
     ),
-    encode_native_byte_list(
-      tx.witness_set.addr_tx_wits
-        |> address_witness_key_hashes
-        |> list.sort(bytearray.compare)
-        |> list.unique,
-    ),
+    0,
+    script_count,
+    0,
+    0,
+    0,
+    #"",
+    0,
+    #"",
+    0,
+    0,
+    -1,
     signer_frontier.count,
-    validation_merkle_v1.frontier_commitment(
-      signer_frontier.count,
-      signer_frontier.peaks,
-    ),
+    signer_frontier.peaks,
   )
   Pair(
     validation_trace_v1.ValidationMachineStateV1 {
@@ -282,6 +290,62 @@ fn phase_a_native_step_fixture(
     },
     work_witness_cbor,
   )
+}
+
+fn phase_a_native_scan_witness(
+  tx: MidgardTransaction,
+  stage: Int,
+  script_count: Int,
+  script_seen: Int,
+  contains_non_native_script: Int,
+  item_length: Int,
+  item_commitment: ByteArray,
+  cursor: Int,
+  stack_root: ByteArray,
+  stack_depth: Int,
+  node_count: Int,
+  result: Int,
+) -> ByteArray {
+  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let signer_frontier = signer_frontier_for_tx(tx)
+  validation_machine_v1.encode_phase_a_native_scripts_scan_witness(
+    proof_source.compact_cbor,
+    proof_source.witness_set_compact_cbor,
+    proof_source.field_preimage_lengths_cbor,
+    validation_context_cbor,
+    validation_machine_v1.transaction_resolution_schedule_hash(
+      tx.body.inputs,
+      tx.body.reference_inputs,
+    ),
+    stage,
+    script_count,
+    script_seen,
+    contains_non_native_script,
+    item_length,
+    item_commitment,
+    cursor,
+    stack_root,
+    stack_depth,
+    node_count,
+    result,
+    signer_frontier.count,
+    signer_frontier.peaks,
+  )
+}
+
+fn next_phase_a_native_state(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  work_witness_cbor: ByteArray,
+) -> validation_trace_v1.ValidationMachineStateV1 {
+  validation_trace_v1.ValidationMachineStateV1 {
+    ..pre,
+    program_counter: pre.program_counter + 1,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.PhaseANativeScripts,
+      pre.program_counter + 1,
+      work_witness_cbor,
+    ),
+  }
 }
 
 fn input_field_pair_auxiliary(
@@ -418,14 +482,6 @@ fn exact_rejection_post(
     ),
     verdict: validation_trace_v1.Rejected,
     rejection_code_hash: validation_trace_v1.hash_rejection_code(rejection_code),
-  }
-}
-
-fn phase_a_native_scripts_auxiliary(
-  tx: MidgardTransaction,
-) -> validation_machine_v1.ValidationAuxiliaryWitnessV1 {
-  validation_machine_v1.TransactionFieldPreimageWitness {
-    preimage_cbor: encode_script_witness_preimage(tx.witness_set.script_tx_wits),
   }
 }
 
@@ -1952,8 +2008,7 @@ test signatures_accepts_an_empty_required_signer_and_witness_set() {
       handoff_witness_cbor,
     ),
   }
-  let signer_hashes_cbor = encode_native_byte_list([])
-  let next_work_witness_cbor = validation_machine_v1.encode_phase_a_native_scripts_witness(
+  let next_work_witness_cbor = validation_machine_v1.encode_phase_a_native_scripts_scan_witness(
     proof_source.compact_cbor,
     proof_source.witness_set_compact_cbor,
     proof_source.field_preimage_lengths_cbor,
@@ -1962,12 +2017,19 @@ test signatures_accepts_an_empty_required_signer_and_witness_set() {
       tx.body.inputs,
       tx.body.reference_inputs,
     ),
-    signer_hashes_cbor,
+    0,
+    0,
+    0,
+    0,
+    0,
+    #"",
+    0,
+    #"",
+    0,
+    0,
+    -1,
     signer_frontier.count,
-    validation_merkle_v1.frontier_commitment(
-      signer_frontier.count,
-      signer_frontier.peaks,
-    ),
+    signer_frontier.peaks,
   )
   let post = validation_trace_v1.ValidationMachineStateV1 {
     ..handoff_pre,
@@ -2000,7 +2062,6 @@ test signatures_accepts_an_empty_required_signer_and_witness_set() {
         work_witness_cbor: handoff_witness_cbor,
         claimed_successor: post,
       },
-      signer_hashes_cbor,
     ),
   }
 }
@@ -2166,6 +2227,47 @@ test phase_a_native_scripts_evaluates_a_valid_timelock_on_l1() {
     },
   }
   let Pair(pre, work_witness_cbor) = phase_a_native_step_fixture(tx, h_a)
+  let item_cbor = encode_midgard_versioned_script(
+    MidgardVersionedScript {
+      language: NativeCardanoScript,
+      script_bytes: #"82041864",
+    },
+  )
+  let Pair(collection_proof, chunk_proof) =
+    singleton_field_item_proofs(7, item_cbor)
+  let token_work_witness_cbor = phase_a_native_scan_witness(
+    tx,
+    1,
+    1,
+    0,
+    0,
+    bytearray.length(item_cbor),
+    collection_proof.item_commitment,
+    3,
+    #"",
+    0,
+    0,
+    -1,
+  )
+  let token_pre = next_phase_a_native_state(pre, token_work_witness_cbor)
+  let finalize_work_witness_cbor = phase_a_native_scan_witness(
+    tx,
+    2,
+    1,
+    0,
+    0,
+    bytearray.length(item_cbor),
+    collection_proof.item_commitment,
+    bytearray.length(item_cbor),
+    #"",
+    0,
+    1,
+    1,
+  )
+  let finalize_pre = next_phase_a_native_state(
+    token_pre,
+    finalize_work_witness_cbor,
+  )
   let proof_source = midgard_transaction_proof_source_v1(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
   let next_work_witness_cbor = validation_machine_v1.encode_phase_a_script_preconditions_witness(
@@ -2185,25 +2287,193 @@ test phase_a_native_scripts_evaluates_a_valid_timelock_on_l1() {
     False,
   )
   let post = validation_trace_v1.ValidationMachineStateV1 {
-    ..pre,
+    ..finalize_pre,
     phase: validation_trace_v1.PhaseAScriptPreconditions,
-    program_counter: 6,
+    program_counter: finalize_pre.program_counter + 1,
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.PhaseAScriptPreconditions,
-      6,
+      finalize_pre.program_counter + 1,
       next_work_witness_cbor,
     ),
   }
-  validation_machine_v1.verify_one_step_evidence(
-    pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+  and {
+    validation_machine_v1.verify_phase_a_native_item_semantics_v1(
+      pre,
+      validation_machine_v1.ValidationOneStepWitnessV1 {
         work_witness_cbor,
+        claimed_successor: token_pre,
+      },
+      collection_proof,
+      chunk_proof,
+    ),
+    validation_machine_v1.verify_phase_a_native_timelock_token_semantics_v1(
+      token_pre,
+      validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor: token_work_witness_cbor,
+        claimed_successor: finalize_pre,
+      },
+      chunk_proof,
+      None,
+    ),
+    validation_machine_v1.verify_phase_a_native_advance_semantics_v1(
+      finalize_pre,
+      validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor: finalize_work_witness_cbor,
         claimed_successor: post,
       },
-      auxiliary: phase_a_native_scripts_auxiliary(tx),
+    ),
+  }
+}
+
+test phase_a_native_scripts_resolves_a_nested_signature_one_step_at_a_time() {
+  let base = empty_v1_transaction()
+  let address_witness = MidgardAddressWitness {
+    verification_key: zero,
+    signature: zero |> bytearray.concat(zero),
+  }
+  let signer_hash = blake2b_224(address_witness.verification_key)
+  let script_bytes = #"8201818200581c"
+    |> bytearray.concat(signer_hash)
+  let script = MidgardVersionedScript {
+    language: NativeCardanoScript,
+    script_bytes,
+  }
+  let tx = MidgardTransaction {
+    ..base,
+    body: MidgardTransactionBody {
+      ..base.body,
+      inputs: [MidgardTxInput { tx_id: h_a, output_index: 0 }],
     },
+    witness_set: MidgardTransactionWitnessSet {
+      ..base.witness_set,
+      addr_tx_wits: [address_witness],
+      script_tx_wits: [script],
+    },
+  }
+  let Pair(pre, _initial_work_witness_cbor) =
+    phase_a_native_step_fixture(tx, h_a)
+  let item_cbor = encode_midgard_versioned_script(script)
+  let Pair(collection_proof, chunk_proof) =
+    singleton_field_item_proofs(7, item_cbor)
+  let payload_offset = bytearray.length(item_cbor) - bytearray.length(script_bytes)
+  let child_offset = payload_offset + 3
+  let item_length = bytearray.length(item_cbor)
+  let item_commitment = collection_proof.item_commitment
+  let container_work_witness_cbor = phase_a_native_scan_witness(
+    tx,
+    1,
+    1,
+    0,
+    0,
+    item_length,
+    item_commitment,
+    payload_offset,
+    #"",
+    0,
+    0,
+    -1,
   )
+  let container_pre = next_phase_a_native_state(
+    pre,
+    container_work_witness_cbor,
+  )
+  let frame = native_script_scan_v1.NativeScriptFrameV1 {
+    tail: #"",
+    kind: native_script_scan_v1.all_node,
+    child_count: 1,
+    remaining: 1,
+    valid_count: 0,
+    required: 0,
+  }
+  let stack_root = native_script_scan_v1.hash_frame_v1(frame)
+  let signature_work_witness_cbor = phase_a_native_scan_witness(
+    tx,
+    1,
+    1,
+    0,
+    0,
+    item_length,
+    item_commitment,
+    child_offset,
+    stack_root,
+    1,
+    1,
+    -1,
+  )
+  let signature_pre = next_phase_a_native_state(
+    container_pre,
+    signature_work_witness_cbor,
+  )
+  let frame_work_witness_cbor = phase_a_native_scan_witness(
+    tx,
+    2,
+    1,
+    0,
+    0,
+    item_length,
+    item_commitment,
+    item_length,
+    stack_root,
+    1,
+    2,
+    1,
+  )
+  let frame_pre = next_phase_a_native_state(
+    signature_pre,
+    frame_work_witness_cbor,
+  )
+  let complete_work_witness_cbor = phase_a_native_scan_witness(
+    tx,
+    2,
+    1,
+    0,
+    0,
+    item_length,
+    item_commitment,
+    item_length,
+    #"",
+    0,
+    2,
+    1,
+  )
+  let complete_pre = next_phase_a_native_state(
+    frame_pre,
+    complete_work_witness_cbor,
+  )
+  let signer_frontier = signer_frontier_for_tx(tx)
+  and {
+    validation_machine_v1.verify_phase_a_native_container_frame_token_semantics_v1(
+      container_pre,
+      validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor: container_work_witness_cbor,
+        claimed_successor: signature_pre,
+      },
+      chunk_proof,
+      None,
+    ),
+    validation_machine_v1.verify_phase_a_native_signature_token_semantics_v1(
+      signature_pre,
+      validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor: signature_work_witness_cbor,
+        claimed_successor: frame_pre,
+      },
+      chunk_proof,
+      None,
+      validation_machine_v1.SignerMembershipProof {
+        peaks: signer_frontier.peaks,
+        signer_index: 0,
+        siblings: [],
+      },
+    ),
+    validation_machine_v1.verify_phase_a_native_frame_semantics_v1(
+      frame_pre,
+      validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor: frame_work_witness_cbor,
+        claimed_successor: complete_pre,
+      },
+      frame,
+    ),
+  }
 }
 
 test phase_a_native_scripts_proves_an_unsatisfied_script_is_an_exact_no_op() {
@@ -2229,32 +2499,92 @@ test phase_a_native_scripts_proves_an_unsatisfied_script_is_an_exact_no_op() {
     tx,
     validation_trace_v1.hash_ledger_delta(#"80"),
   )
+  let item_cbor = encode_midgard_versioned_script(
+    MidgardVersionedScript {
+      language: NativeCardanoScript,
+      script_bytes: #"8200581c"
+        |> bytearray.concat(h_28_a),
+    },
+  )
+  let Pair(collection_proof, chunk_proof) =
+    singleton_field_item_proofs(7, item_cbor)
+  let token_work_witness_cbor = phase_a_native_scan_witness(
+    tx,
+    1,
+    1,
+    0,
+    0,
+    bytearray.length(item_cbor),
+    collection_proof.item_commitment,
+    4,
+    #"",
+    0,
+    0,
+    -1,
+  )
+  let token_pre = next_phase_a_native_state(pre, token_work_witness_cbor)
+  let finalize_work_witness_cbor = phase_a_native_scan_witness(
+    tx,
+    2,
+    1,
+    0,
+    0,
+    bytearray.length(item_cbor),
+    collection_proof.item_commitment,
+    bytearray.length(item_cbor),
+    #"",
+    0,
+    1,
+    0,
+  )
+  let finalize_pre = next_phase_a_native_state(
+    token_pre,
+    finalize_work_witness_cbor,
+  )
   let rejection_code = #"455f4e41544956455f5343524950545f494e56414c4944"
   let terminal = validation_trace_v1.ValidationMachineStateV1 {
-    ..pre,
+    ..finalize_pre,
     phase: validation_trace_v1.Terminal,
-    program_counter: 6,
+    program_counter: finalize_pre.program_counter + 1,
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.Terminal,
-      6,
+      finalize_pre.program_counter + 1,
       validation_machine_v1.encode_terminal_rejection_witness(
         rejection_code,
-        pre.prior_ledger_root,
+        finalize_pre.prior_ledger_root,
       ),
     ),
     verdict: validation_trace_v1.Rejected,
     rejection_code_hash: validation_trace_v1.hash_rejection_code(rejection_code),
   }
-  validation_machine_v1.verify_one_step_evidence(
-    pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+  and {
+    validation_machine_v1.verify_phase_a_native_item_semantics_v1(
+      pre,
+      validation_machine_v1.ValidationOneStepWitnessV1 {
         work_witness_cbor,
+        claimed_successor: token_pre,
+      },
+      collection_proof,
+      chunk_proof,
+    ),
+    validation_machine_v1.verify_phase_a_native_signature_token_semantics_v1(
+      token_pre,
+      validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor: token_work_witness_cbor,
+        claimed_successor: finalize_pre,
+      },
+      chunk_proof,
+      None,
+      validation_machine_v1.EmptySignerSetProof { peaks: [] },
+    ),
+    validation_machine_v1.verify_phase_a_native_advance_semantics_v1(
+      finalize_pre,
+      validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor: finalize_work_witness_cbor,
         claimed_successor: terminal,
       },
-      auxiliary: phase_a_native_scripts_auxiliary(tx),
-    },
-  )
+    ),
+  }
 }
 
 test phase_a_script_preconditions_advances_an_empty_bundle_to_resolution() {

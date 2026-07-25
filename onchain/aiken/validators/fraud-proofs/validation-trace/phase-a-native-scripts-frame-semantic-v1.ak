@@ -3,18 +3,20 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel}
+use midgard/native_script_scan_v1.{NativeScriptFrameV1}
 use midgard/validation_machine_v1.{
-  NoAuxiliaryWitness, ValidationOneStepWitnessV1,
-  verify_signatures_handoff_semantics_v1,
+  NativeScriptFrameWitness, ValidationOneStepWitnessV1,
+  verify_phase_a_native_frame_semantics_v1,
 }
 use midgard/validation_semantic_v1.{Datum, continue_winning}
-use midgard/validation_trace_v1.{Signatures}
+use midgard/validation_trace_v1.{PhaseANativeScripts}
 
 pub type ActionV1 {
-  VerifyHandoff {
+  VerifyFrame {
     input_index: Int,
     output_index: Int,
     transition: ValidationOneStepWitnessV1,
+    frame: NativeScriptFrameV1,
   }
 }
 
@@ -41,15 +43,16 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(VerifyHandoff {
+      ct.Continue(VerifyFrame {
         input_index,
         output_index,
         transition,
+        frame,
       }) -> {
-        let auxiliary = NoAuxiliaryWitness
+        let auxiliary = NativeScriptFrameWitness { frame }
         let auxiliary_data: Data = auxiliary
         continue_winning(
-          Signatures,
+          PhaseANativeScripts,
           award_script_hash,
           computation_thread_policy_id,
           datum,
@@ -57,9 +60,10 @@ validator main(
           output_index,
           transition,
           auxiliary_data,
-          verify_signatures_handoff_semantics_v1(
+          verify_phase_a_native_frame_semantics_v1(
             datum |> semantic_pre_state,
             transition,
+            frame,
           ),
           own_out_ref,
           tx,
