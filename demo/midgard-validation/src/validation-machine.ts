@@ -1588,6 +1588,8 @@ export const buildDeterministicValidationMachineTrace = (
       readonly outputCursor?: number;
       readonly outputFrontier?: MidgardValidationMerkleFrontierV1;
       readonly receiveHashes?: readonly Buffer[];
+      readonly sourceTotalCount?: number;
+      readonly redeemerTotalCount?: number;
       readonly discovery?: ScriptDiscoveryTraceControl;
     }): Buffer => {
       const fields: unknown[] = [
@@ -1616,6 +1618,8 @@ export const buildDeterministicValidationMachineTrace = (
         BigInt(input.outputFrontier?.count ?? 0),
         encodeFrontierPeaks(input.outputFrontier ?? emptyValidationFrontier),
         input.receiveHashes ?? [],
+        BigInt(input.sourceTotalCount ?? input.sourceFrontier.count),
+        BigInt(input.redeemerTotalCount ?? input.redeemerFrontier.count),
       ];
       if (input.stage >= 8) {
         fields.push(
@@ -2794,19 +2798,60 @@ export const buildDeterministicValidationMachineTrace = (
             resolvedInputCount: resolutionItems.length,
             resolvedInputsAccumulator: resolutionAccumulator,
           };
-          pushWitness(
-            "scriptSources",
+          let authenticatedInlineSourceFrontier = emptyValidationFrontier;
+          let inlineSourceTotalCount = 0;
+          const currentInlineSourceWitness = (): Buffer =>
             scriptSourcesWitnessCbor({
               ...scriptSourceControl,
               stage: 0,
-              sourceFrontier: emptyValidationFrontier,
+              sourceFrontier: authenticatedInlineSourceFrontier,
               redeemerFrontier: emptyValidationFrontier,
-            }),
-            {
-              kind: "transactionFieldPreimage",
-              preimageCbor: fieldPreimages[7]!.preimageCbor,
-            },
+              sourceTotalCount: inlineSourceTotalCount,
+              redeemerTotalCount: 0,
+            });
+          for (const item of scriptWitnessesCollection.items) {
+            pushWitness(
+              "scriptSources",
+              currentInlineSourceWitness(),
+              {
+                kind: "transactionFieldChunk",
+                collectionProof:
+                  buildMidgardBoundedCollectionItemProofV1(
+                    scriptWitnessesCollection,
+                    item.itemIndex,
+                  ),
+                chunkProof: buildMidgardBoundedItemChunkProofV1(item, 0),
+              },
+            );
+            if (inlineSourceTotalCount === 0) {
+              inlineSourceTotalCount =
+                scriptWitnessesCollection.items.length;
+            }
+            authenticatedInlineSourceFrontier =
+              appendMidgardValidationMerkleLeafV1(
+                authenticatedInlineSourceFrontier,
+                inlineScriptSourceLeafHashes[item.itemIndex]!,
+              );
+          }
+          pushWitness(
+            "scriptSources",
+            currentInlineSourceWitness(),
           );
+          if (
+            !commitMidgardValidationMerkleFrontierV1(
+              authenticatedInlineSourceFrontier,
+            ).equals(
+              commitMidgardValidationMerkleFrontierV1(
+                inlineScriptSourceFrontier,
+              ),
+            )
+          ) {
+            return yield* Effect.fail(
+              new Error(
+                "authenticated inline source fold diverged from the canonical source frontier",
+              ),
+            );
+          }
           pushWitness(
             "scriptSources",
             scriptSourcesWitnessCbor({

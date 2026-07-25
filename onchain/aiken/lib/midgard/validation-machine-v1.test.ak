@@ -405,6 +405,29 @@ fn singleton_field_item_proofs(
   )
 }
 
+fn indexed_inline_source_leaves(
+  script: MidgardVersionedScript,
+  source_index: Int,
+  source_count: Int,
+) -> List<ByteArray> {
+  if source_index == source_count {
+    []
+  } else {
+    [
+      script_proof_v1.source_leaf_hash(
+        0,
+        cbor.serialise(source_index),
+        script,
+      ),
+      ..indexed_inline_source_leaves(
+        script,
+        source_index + 1,
+        source_count,
+      )
+    ]
+  }
+}
+
 fn input_sets_scan_witness(
   tx: MidgardTransaction,
   spend_count: Int,
@@ -712,6 +735,8 @@ fn script_sources_output_step_fixture_with_resolved_items(
     output_frontier.count,
     output_frontier.peaks,
     receive_hashes,
+    source_frontier.count,
+    redeemer_frontier.count,
   )
   Pair(
     validation_trace_v1.ValidationMachineStateV1 {
@@ -889,6 +914,8 @@ fn script_discovery_step_fixture(
     output_count: 0,
     output_peaks: validation_merkle_v1.empty_frontier(),
     receive_hashes,
+    source_total_count: source_frontier.count,
+    redeemer_total_count: redeemer_frontier.count,
     discovery,
   }
   let work_witness_cbor = validation_machine_v1.encode_script_sources_discovery_witness(
@@ -3264,6 +3291,8 @@ test resolve_inputs_finalizes_into_script_source_resolution() {
         0,
         validation_merkle_v1.empty_frontier(),
         [],
+        0,
+        0,
       ),
     ),
   }
@@ -3296,6 +3325,9 @@ test script_sources_commits_inline_reference_script_candidates() {
   let source_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.source_leaf_hash(0, #"00", script)],
   )
+  let item_cbor = encode_midgard_versioned_script(script)
+  let Pair(collection_proof, chunk_proof) =
+    singleton_field_item_proofs(7, item_cbor)
   let accumulator = validation_machine_v1.initial_resolution_accumulator()
   let Pair(pre, work_witness_cbor) = script_sources_step_fixture(
     tx,
@@ -3311,7 +3343,21 @@ test script_sources_commits_inline_reference_script_candidates() {
     empty_frontier,
     9,
   )
-  let Pair(post_base, _) = script_sources_step_fixture(
+  let Pair(item_post, item_work_witness_cbor) = script_sources_step_fixture(
+    tx,
+    0,
+    accumulator,
+    0,
+    source_frontier,
+    empty_frontier,
+    0,
+    accumulator,
+    validation_machine_v1.empty_resolution_schedule_hash(),
+    0,
+    empty_frontier,
+    10,
+  )
+  let Pair(final_post, _) = script_sources_step_fixture(
     tx,
     0,
     accumulator,
@@ -3323,22 +3369,33 @@ test script_sources_commits_inline_reference_script_candidates() {
     validation_machine_v1.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
-    10,
+    11,
   )
-  validation_machine_v1.verify_one_step_evidence(
-    pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
-        work_witness_cbor,
-        claimed_successor: post_base,
+  and {
+    validation_machine_v1.verify_one_step_evidence(
+      pre,
+      validation_machine_v1.ValidationOneStepEvidenceV1 {
+        transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+          work_witness_cbor,
+          claimed_successor: item_post,
+        },
+        auxiliary: validation_machine_v1.TransactionFieldChunkWitness {
+          collection_proof,
+          chunk_proof,
+        },
       },
-      auxiliary: validation_machine_v1.TransactionFieldPreimageWitness {
-        preimage_cbor: encode_script_witness_preimage(
-          tx.witness_set.script_tx_wits,
-        ),
+    ),
+    validation_machine_v1.verify_one_step_evidence(
+      item_post,
+      validation_machine_v1.ValidationOneStepEvidenceV1 {
+        transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+          work_witness_cbor: item_work_witness_cbor,
+          claimed_successor: final_post,
+        },
+        auxiliary: validation_machine_v1.NoAuxiliaryWitness,
       },
-    },
-  )
+    ),
+  }
 }
 
 test script_sources_commits_unique_supported_redeemers() {
@@ -3400,6 +3457,66 @@ test script_sources_commits_unique_supported_redeemers() {
         preimage_cbor: encode_redeemer_witness_preimage(
           tx.witness_set.redeemer_tx_wits,
         ),
+      },
+    },
+  )
+}
+
+test script_sources_stage_one_accepts_more_than_sixteen_sources() {
+  let base = empty_v1_transaction()
+  let script = MidgardVersionedScript {
+    language: PlutusV3Script,
+    script_bytes: v1_program_envelope(),
+  }
+  let tx = MidgardTransaction {
+    ..base,
+    witness_set: MidgardTransactionWitnessSet {
+      ..base.witness_set,
+      script_tx_wits: list.repeat(script, 17),
+    },
+  }
+  let source_frontier = validation_merkle_v1.build_frontier(
+    indexed_inline_source_leaves(script, 0, 17),
+  )
+  let empty_frontier = validation_merkle_v1.build_frontier([])
+  let accumulator = validation_machine_v1.initial_resolution_accumulator()
+  let Pair(pre, work_witness_cbor) = script_sources_step_fixture(
+    tx,
+    0,
+    accumulator,
+    1,
+    source_frontier,
+    empty_frontier,
+    0,
+    accumulator,
+    validation_machine_v1.empty_resolution_schedule_hash(),
+    0,
+    empty_frontier,
+    10,
+  )
+  let Pair(post, _) = script_sources_step_fixture(
+    tx,
+    0,
+    accumulator,
+    2,
+    source_frontier,
+    empty_frontier,
+    0,
+    accumulator,
+    validation_machine_v1.empty_resolution_schedule_hash(),
+    0,
+    empty_frontier,
+    11,
+  )
+  validation_machine_v1.verify_one_step_evidence(
+    pre,
+    validation_machine_v1.ValidationOneStepEvidenceV1 {
+      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor,
+        claimed_successor: post,
+      },
+      auxiliary: validation_machine_v1.TransactionFieldPreimageWitness {
+        preimage_cbor: encode_redeemer_witness_preimage([]),
       },
     },
   )
@@ -6800,6 +6917,8 @@ test maximum_script_program_instruction_evidence_is_bounded() {
     output_count: 63,
     output_peaks: dense_frontier_six.peaks,
     receive_hashes: [],
+    source_total_count: 15,
+    redeemer_total_count: 15,
     discovery,
   }
   let work_witness_cbor = validation_machine_v1.encode_script_sources_discovery_witness(

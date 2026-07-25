@@ -1,8 +1,12 @@
 use aiken/cbor
+use aiken/builtin
 use aiken/crypto.{blake2b_224, blake2b_256}
 use aiken/primitive/bytearray
+use midgard/bounded_item_v1
 use midgard/fraud_proofs/native_tx/codec.{encode_definite_bytes}
-use midgard/fraud_proofs/native_tx/components.{encode_midgard_redeemer_witness}
+use midgard/fraud_proofs/native_tx/components.{
+  encode_midgard_redeemer_witness, encode_midgard_versioned_script,
+}
 use midgard/fraud_proofs/native_tx/types.{
   CertRedeemer, MidgardRedeemerPurpose, MidgardRedeemerWitness,
   MidgardScriptLanguage, MidgardV1Script, MidgardVersionedScript, MintRedeemer,
@@ -12,6 +16,9 @@ use midgard/fraud_proofs/native_tx/types.{
 
 /// Canonical Midgard V1 script-proof commitments.
 const source_leaf_domain = #"4d696467617264536372697074536f757263654c6561665631"
+
+const inline_source_leaf_domain =
+  #"4d696467617264496e6c696e65536372697074536f757263654c6561665631"
 
 const redeemer_leaf_domain = #"4d69646761726452656465656d65724c6561665631"
 
@@ -48,6 +55,18 @@ pub fn versioned_script_hash(script: MidgardVersionedScript) -> ByteArray {
 
 /// `origin_kind` is 0 for an inline witness and 1 for a reference input.
 /// `source_key` is the inline index encoding or canonical reference out-ref.
+pub fn inline_source_leaf_hash(
+  source_index: Int,
+  item_commitment: ByteArray,
+) -> ByteArray {
+  expect source_index >= 0
+  expect bytearray.length(item_commitment) == 32
+  inline_source_leaf_domain
+    |> bytearray.concat(cbor.serialise(source_index))
+    |> bytearray.concat(encode_definite_bytes(item_commitment))
+    |> blake2b_256
+}
+
 pub fn source_leaf_hash(
   origin_kind: Int,
   source_key: ByteArray,
@@ -57,12 +76,27 @@ pub fn source_leaf_hash(
       origin_kind == 0,
       origin_kind == 1,
     }
-  source_leaf_domain
-    |> bytearray.concat(cbor.serialise(origin_kind))
-    |> bytearray.concat(encode_definite_bytes(source_key))
-    |> bytearray.concat(cbor.serialise(language_tag(script.language)))
-    |> bytearray.concat(encode_definite_bytes(versioned_script_hash(script)))
-    |> blake2b_256
+  if origin_kind == 0 {
+    expect Some(source_index_data) = cbor.deserialise(source_key)
+    let source_index = builtin.un_i_data(source_index_data)
+    expect source_index >= 0
+    expect cbor.serialise(source_index) == source_key
+    inline_source_leaf_hash(
+      source_index,
+      bounded_item_v1.from_bytes(
+        7,
+        source_index,
+        encode_midgard_versioned_script(script),
+      ),
+    )
+  } else {
+    source_leaf_domain
+      |> bytearray.concat(cbor.serialise(origin_kind))
+      |> bytearray.concat(encode_definite_bytes(source_key))
+      |> bytearray.concat(cbor.serialise(language_tag(script.language)))
+      |> bytearray.concat(encode_definite_bytes(versioned_script_hash(script)))
+      |> blake2b_256
+  }
 }
 
 pub fn redeemer_purpose_tag(purpose: MidgardRedeemerPurpose) -> Int {

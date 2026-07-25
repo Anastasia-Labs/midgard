@@ -311,13 +311,10 @@ describe("deterministic validation machine", () => {
       (witness) => witness.phase === "scriptSources",
     );
     expect(scriptSourceWitnesses).toHaveLength(13);
-    expect(
-      scriptSourceWitnesses
-        .slice(0, 2)
-        .every(
-          (witness) => witness.auxiliary?.kind === "transactionFieldPreimage",
-        ),
-    ).toBe(true);
+    expect(scriptSourceWitnesses[0]?.auxiliary).toBeNull();
+    expect(scriptSourceWitnesses[1]?.auxiliary?.kind).toBe(
+      "transactionFieldPreimage",
+    );
     expect(scriptSourceWitnesses[2]?.auxiliary?.kind).toBe(
       "transactionFieldPairPreimage",
     );
@@ -453,6 +450,23 @@ describe("deterministic validation machine", () => {
     const cekWitnesses = trace.witnesses.filter(
       (witness) => witness.phase === "cek",
     );
+    const scriptSourceWitnesses = trace.witnesses.filter(
+      (witness) => witness.phase === "scriptSources",
+    );
+    expect(scriptSourceWitnesses[0]?.auxiliary).toMatchObject({
+      kind: "transactionFieldChunk",
+      collectionProof: {
+        fieldIndex: 7,
+        itemCount: 1,
+        itemIndex: 0,
+      },
+      chunkProof: {
+        fieldIndex: 7,
+        itemIndex: 0,
+        chunkIndex: 0,
+      },
+    });
+    expect(scriptSourceWitnesses[1]?.auxiliary).toBeNull();
     expect(cekWitnesses.map((witness) => witness.auxiliary?.kind)).toEqual(
       expect.arrayContaining([
         "nativeExecutionScan",

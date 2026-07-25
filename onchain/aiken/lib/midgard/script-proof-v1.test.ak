@@ -25,7 +25,7 @@ test script_proof_source_and_redeemer_vectors_are_stable() {
   )
   and {
     script_proof_v1.versioned_script_hash(script) == #"8b8c11dcad0af38c40d742ed155b4c938acc5507a0ecbcfcea36496a",
-    source_leaf == #"d1a1572b0d9583dc4be2105105a14004f7c62c0d6e5cea47e29d3110b894c80a",
+    source_leaf == #"2c9ab7fdad80a258a767c571df2f733df4eab1ddc6fab016656ad73bbf993700",
     redeemer_leaf == #"1f0c84fb8982a20eac3f594ee864837af122e746d3365813222428b78f4555fc",
     purpose_leaf == #"24c90c22834ab9ec656bee1db27d5421515010ec4c6b8928a63f65aecb5e367b",
     script_proof_v1.execution_leaf_hash(
@@ -33,7 +33,7 @@ test script_proof_source_and_redeemer_vectors_are_stable() {
       purpose_leaf,
       source_leaf,
       redeemer_leaf,
-    ) == #"1afbae568bdc11197a45ec838e96651e2985fd1311ba7f70d36ed9ae349a4ef5",
+    ) == #"2ad00150dee534ba648d823da23dbab30a2a3f7d2e1835ec70c6d4f389a155c7",
     script_proof_v1.output_leaf_hash(2, #"0102") == #"37c53f847e2610c1b9f1b514b4b086784720f68c425afab606afb8d9dde5d3b9",
     script_proof_v1.context_item_leaf_hash(
       0,

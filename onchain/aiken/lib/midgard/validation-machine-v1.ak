@@ -31,7 +31,7 @@ use midgard/fraud_proofs/native_tx/preimages.{
   decode_midgard_tx_byte_list_preimage_cbor,
   decode_midgard_tx_inputs_preimage_cbor, decode_midgard_tx_mint_preimage_cbor,
   decode_midgard_tx_redeemer_witnesses_preimage_cbor,
-  decode_midgard_tx_script_witnesses_preimage_cbor, encode_mint_preimage,
+  encode_mint_preimage,
 }
 use midgard/fraud_proofs/native_tx/transaction.{
   verify_midgard_transaction_field_preimage_v1,
@@ -830,6 +830,8 @@ pub fn encode_script_sources_witness(
   output_count: Int,
   output_peaks: List<validation_merkle_v1.FrontierPeak>,
   receive_hashes: List<ByteArray>,
+  source_total_count: Int,
+  redeemer_total_count: Int,
 ) -> ByteArray {
   expect resolved_input_count >= 0
   expect bytearray.length(resolved_inputs_accumulator) == 32
@@ -859,7 +861,9 @@ pub fn encode_script_sources_witness(
   expect
     validation_merkle_v1.frontier_is_well_formed(output_count, output_peaks)
   expect output_cursor <= output_count
-  encode_definite_array_header(24)
+  expect source_total_count >= source_count
+  expect redeemer_total_count >= redeemer_count
+  encode_definite_array_header(26)
     |> bytearray.concat(encode_definite_bytes(compact_cbor))
     |> bytearray.concat(encode_definite_bytes(witness_set_compact_cbor))
     |> bytearray.concat(encode_definite_bytes(field_preimage_lengths_cbor))
@@ -886,6 +890,8 @@ pub fn encode_script_sources_witness(
     |> bytearray.concat(cbor.serialise(output_count))
     |> bytearray.concat(validation_merkle_v1.encode_frontier(output_peaks))
     |> bytearray.concat(encode_native_byte_list(receive_hashes))
+    |> bytearray.concat(cbor.serialise(source_total_count))
+    |> bytearray.concat(cbor.serialise(redeemer_total_count))
 }
 
 pub fn resolved_input_accumulator_successor(
@@ -916,9 +922,6 @@ pub fn encode_terminal_rejection_witness(
 const reject_script_execution_count =
   #"455f5343524950545f455845435554494f4e5f434f554e54"
 
-const reject_script_program_encoding =
-  #"455f5343524950545f50524f4752414d5f454e434f44494e47"
-
 const reject_field_preimage_size = #"455f4649454c445f505245494d4147455f53495a45"
 
 const reject_ledger_output_size = #"455f4c45444745525f4f55545055545f53495a45"
@@ -931,40 +934,6 @@ const reject_native_script_depth = #"455f4e41544956455f5343524950545f4445505448"
 
 const reject_native_script_node_count =
   #"455f4e41544956455f5343524950545f4e4f44455f434f554e54"
-
-fn first_native_script_bound_rejection(
-  scripts: List<MidgardScriptWitness>,
-) -> Option<ByteArray> {
-  when scripts is {
-    [] -> None
-    [script, ..rest] ->
-      if script.language == NativeCardanoScript {
-        when
-          native_script_v1.inspect_native_script(
-            script.script_bytes,
-            -1,
-            -1,
-            [],
-          )
-        is {
-          None -> Some(reject_invalid_field_type)
-          Some(checked) ->
-            if checked.depth > native_script_v1.max_native_script_depth {
-              Some(reject_native_script_depth)
-            } else if checked.node_count > native_script_v1.max_native_script_node_count {
-              Some(reject_native_script_node_count)
-            } else {
-              first_native_script_bound_rejection(rest)
-            }
-        }
-      } else {
-        when cek_proof_v1.inspect_program_envelope_v1(script.script_bytes) is {
-          None -> Some(reject_script_program_encoding)
-          Some(_) -> first_native_script_bound_rejection(rest)
-        }
-      }
-  }
-}
 
 fn canonical_argument_header_size(value: Int) -> Int {
   expect value >= 0
@@ -5920,6 +5889,8 @@ fn verify_resolve_inputs(
             0,
             validation_merkle_v1.empty_frontier(),
             [],
+            0,
+            0,
           ),
         ),
       }
@@ -6016,6 +5987,8 @@ pub fn verify_resolve_inputs_finish_semantics_v1(
         0,
         validation_merkle_v1.empty_frontier(),
         [],
+        0,
+        0,
       ),
     ),
   }
@@ -6100,6 +6073,8 @@ pub type ScriptSourcesControlV1 {
   output_count: Int,
   output_peaks: List<validation_merkle_v1.FrontierPeak>,
   receive_hashes: List<ByteArray>,
+  source_total_count: Int,
+  redeemer_total_count: Int,
   discovery: ScriptDiscoveryControlV1,
 }
 
@@ -6242,6 +6217,7 @@ fn script_sources_control_from_data_items(
         replay_remaining_schedule_hash_data, spend_index_data,
         purpose_count_data, purpose_peaks_data, output_cursor_data,
         output_count_data, output_peaks_data, receive_hashes_data,
+        source_total_count_data, redeemer_total_count_data,
       ]
     = items
   ScriptSourcesControlV1 {
@@ -6279,6 +6255,8 @@ fn script_sources_control_from_data_items(
     receive_hashes: receive_hashes_data
       |> builtin.un_list_data
       |> list.map(builtin.un_b_data),
+    source_total_count: builtin.un_i_data(source_total_count_data),
+    redeemer_total_count: builtin.un_i_data(redeemer_total_count_data),
     discovery,
   }
 }
@@ -6288,13 +6266,13 @@ fn script_sources_control_from_witness(
 ) -> ScriptSourcesControlV1 {
   expect Some(data) = cbor.deserialise(work_witness_cbor)
   let items = builtin.un_list_data(data)
-  if list.length(items) == 24 {
+  if list.length(items) == 26 {
     script_sources_control_from_data_items(
       items,
       empty_script_discovery_control(),
     )
   } else {
-    expect list.length(items) == 25
+    expect list.length(items) == 27
     let Pair(base_items, discovery_data) = split_last_data(items)
     script_sources_control_from_data_items(
       base_items,
@@ -6302,43 +6280,6 @@ fn script_sources_control_from_witness(
         |> builtin.un_b_data
         |> script_discovery_control_from_cbor,
     )
-  }
-}
-
-fn inline_script_source_leaves(
-  scripts: List<MidgardScriptWitness>,
-  source_index: Int,
-) -> List<ByteArray> {
-  when scripts is {
-    [] -> []
-    [script, ..rest] ->
-      [
-        script_proof_v1.source_leaf_hash(
-          0,
-          cbor.serialise(source_index),
-          script,
-        ),
-        ..inline_script_source_leaves(rest, source_index + 1)
-      ]
-  }
-}
-
-fn inline_script_source_frontier(
-  scripts: List<MidgardScriptWitness>,
-) -> validation_merkle_v1.BuiltFrontier {
-  inline_script_source_leaves(scripts, 0)
-    |> validation_merkle_v1.build_frontier
-}
-
-fn script_sources_stage_zero_rejection(
-  scripts: List<MidgardScriptWitness>,
-) -> Option<ByteArray> {
-  if list.length(scripts) > 16 {
-    // At most sixteen inline sources can be used by the bounded execution
-    // schedule. A seventeenth source is necessarily an extraneous witness.
-    Some(reject_invalid_field_type)
-  } else {
-    first_native_script_bound_rejection(scripts)
   }
 }
 
@@ -6428,9 +6369,11 @@ pub fn encode_script_sources_discovery_witness(
     control.output_count,
     control.output_peaks,
     control.receive_hashes,
+    control.source_total_count,
+    control.redeemer_total_count,
   )
-  encode_definite_array_header(25)
-    |> bytearray.concat(bytearray.slice(base, 1, bytearray.length(base) - 1))
+  encode_definite_array_header(27)
+    |> bytearray.concat(bytearray.slice(base, 2, bytearray.length(base) - 1))
     |> bytearray.concat(
         encode_definite_bytes(encode_script_discovery_control(discovery)),
       )
@@ -6497,6 +6440,8 @@ fn exact_script_sources_control(control: ScriptSourcesControlV1) -> ByteArray {
       control.output_count,
       control.output_peaks,
       control.receive_hashes,
+      control.source_total_count,
+      control.redeemer_total_count,
     )
   } else {
     encode_script_sources_discovery_witness(
@@ -6507,75 +6452,118 @@ fn exact_script_sources_control(control: ScriptSourcesControlV1) -> ByteArray {
   }
 }
 
+fn script_sources_control_successor_is_exact(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  next_control: ScriptSourcesControlV1,
+) -> Bool {
+  and {
+    witness.claimed_successor.phase == validation_trace_v1.ScriptSources,
+    witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
+      validation_trace_v1.ScriptSources,
+      pre.program_counter + 1,
+      exact_script_sources_control(next_control),
+    ),
+  }
+}
+
 fn script_sources_stage_zero(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
   control: ScriptSourcesControlV1,
 ) -> Bool {
-  expect TransactionFieldPreimageWitness { preimage_cbor } = auxiliary
-  let field_verified = verify_midgard_transaction_field_preimage_v1(
+  let Pair(_, witness_set) = verify_native_tx_proof_source_v1(
     pre.transaction_id,
-    pre.transaction_commitment,
     control.compact_cbor,
     control.witness_set_compact_cbor,
     control.field_preimage_lengths_cbor,
-    7,
-    preimage_cbor,
   )
-  let scripts = decode_midgard_tx_script_witnesses_preimage_cbor(preimage_cbor)
-  let built_sources = inline_script_source_frontier(scripts)
-  and {
-    field_verified,
-    control.source_count == 0,
-    control.source_peaks == [],
+  let script_commitment = witness_set.script_tx_wits_hash
+  let empty_script_commitment = bounded_collection_v1.from_items(7, [])
+  let common_control_is_initial = and {
     control.redeemer_count == 0,
+    control.redeemer_total_count == 0,
     control.redeemer_peaks == [],
     control.resolved_item_peaks == [],
-    when script_sources_stage_zero_rejection(scripts) is {
-      Some(rejection_code) ->
-        rejected_successor_is_exact(
-          pre,
-          witness.claimed_successor,
-          rejection_code,
-        )
-      None -> {
-        let next_control = encode_script_sources_witness(
-          control.compact_cbor,
-          control.witness_set_compact_cbor,
-          control.field_preimage_lengths_cbor,
-          control.context_cbor,
-          control.resolved_input_count,
-          control.resolved_inputs_accumulator,
-          control.signer_count,
-          control.signer_frontier_commitment,
-          control.resolved_item_peaks,
-          1,
-          built_sources.count,
-          built_sources.peaks,
-          0,
-          validation_merkle_v1.empty_frontier(),
-          0,
-          initial_resolution_accumulator(),
-          empty_resolution_schedule_hash(),
-          0,
-          0,
-          validation_merkle_v1.empty_frontier(),
-          0,
-          0,
-          validation_merkle_v1.empty_frontier(),
-          [],
-        )
-        and {
-          witness.claimed_successor.phase == validation_trace_v1.ScriptSources,
-          witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
-            validation_trace_v1.ScriptSources,
-            pre.program_counter + 1,
-            next_control,
+    control.replay_cursor == 0,
+    control.spend_index == 0,
+    control.purpose_count == 0,
+    control.output_cursor == 0,
+    control.output_count == 0,
+    control.receive_hashes == [],
+  }
+  if script_commitment == empty_script_commitment {
+    and {
+      common_control_is_initial,
+      auxiliary == NoAuxiliaryWitness,
+      control.source_count == 0,
+      control.source_total_count == 0,
+      control.source_peaks == [],
+      script_sources_control_successor_is_exact(
+        pre,
+        witness,
+        ScriptSourcesControlV1 { ..control, stage: 1 },
+      ),
+    }
+  } else if and {
+    control.source_total_count > 0,
+    control.source_count == control.source_total_count,
+  } {
+    and {
+      common_control_is_initial,
+      auxiliary == NoAuxiliaryWitness,
+      script_sources_control_successor_is_exact(
+        pre,
+        witness,
+        ScriptSourcesControlV1 { ..control, stage: 1 },
+      ),
+    }
+  } else {
+    expect TransactionFieldChunkWitness { collection_proof, chunk_proof } =
+      auxiliary
+    let active_total_count = if control.source_total_count == 0 {
+      collection_proof.item_count
+    } else {
+      control.source_total_count
+    }
+    and {
+      common_control_is_initial,
+      active_total_count > 0,
+      active_total_count <= max_tx_size_derived_collection_item_count,
+      collection_proof.field_index == 7,
+      collection_proof.item_count == active_total_count,
+      collection_proof.item_index == control.source_count,
+      chunk_proof.field_index == 7,
+      chunk_proof.item_index == collection_proof.item_index,
+      chunk_proof.total_length == collection_proof.item_length,
+      chunk_proof.chunk_index == 0,
+      bounded_collection_v1.verify_item(
+        script_commitment,
+        collection_proof,
+      ),
+      bounded_item_v1.verify_chunk(
+        collection_proof.item_commitment,
+        chunk_proof,
+      ),
+      script_sources_control_successor_is_exact(
+        pre,
+        witness,
+        ScriptSourcesControlV1 {
+          ..control,
+          source_count: control.source_count + 1,
+          source_peaks: validation_merkle_v1.append_leaf(
+            control.source_count,
+            control.source_peaks,
+            script_proof_v1.inline_source_leaf_hash(
+              control.source_count,
+              collection_proof.item_commitment,
+            ),
           ),
-        }
-      }
-    },
+          source_total_count: active_total_count,
+        },
+      ),
+    }
   }
 }
 
@@ -6608,7 +6596,6 @@ fn script_sources_stage_one(
   }
   and {
     field_verified,
-    control.source_count <= 16,
     control.redeemer_count == 0,
     control.redeemer_peaks == [],
     control.resolved_item_peaks == [],
@@ -6641,6 +6628,8 @@ fn script_sources_stage_one(
           0,
           validation_merkle_v1.empty_frontier(),
           [],
+          control.source_total_count,
+          built_redeemers.count,
         )
         and {
           witness.claimed_successor.phase == validation_trace_v1.ScriptSources,
@@ -6724,6 +6713,8 @@ fn script_sources_stage_two(
     0,
     validation_merkle_v1.empty_frontier(),
     [],
+    control.source_total_count,
+    control.redeemer_total_count,
   )
   and {
     fields_verified,
@@ -6930,6 +6921,8 @@ fn script_sources_replay_item(
               control.output_count,
               control.output_peaks,
               control.receive_hashes,
+              control.source_total_count,
+              control.redeemer_total_count,
             )
             and {
               witness.claimed_successor.phase == validation_trace_v1.ScriptSources,
@@ -6979,6 +6972,8 @@ fn script_sources_stage_three(
       control.output_count,
       control.output_peaks,
       control.receive_hashes,
+      control.source_total_count,
+      control.redeemer_total_count,
     )
     and {
       auxiliary == NoAuxiliaryWitness,
@@ -7104,6 +7099,8 @@ fn script_sources_stage_four(
           built_outputs.count,
           built_outputs.peaks,
           [],
+          control.source_total_count,
+          control.redeemer_total_count,
         )
         and {
           witness.claimed_successor.phase == validation_trace_v1.ScriptSources,
@@ -7262,6 +7259,8 @@ fn script_sources_output_item(
               control.output_count,
               control.output_peaks,
               next_receive_hashes,
+              control.source_total_count,
+              control.redeemer_total_count,
             )
             and {
               witness.claimed_successor.phase == validation_trace_v1.ScriptSources,
@@ -7311,6 +7310,8 @@ fn script_sources_stage_five(
       control.output_count,
       control.output_peaks,
       control.receive_hashes,
+      control.source_total_count,
+      control.redeemer_total_count,
     )
     and {
       auxiliary == NoAuxiliaryWitness,
@@ -7522,6 +7523,8 @@ fn script_sources_stage_six(
       control.output_count,
       control.output_peaks,
       control.receive_hashes,
+      control.source_total_count,
+      control.redeemer_total_count,
     )
     and {
       witness.claimed_successor.phase == validation_trace_v1.ScriptSources,
@@ -8269,10 +8272,12 @@ fn script_sources_control_is_bound(
       control.source_count,
       control.source_peaks,
     ),
+    control.source_total_count >= control.source_count,
     validation_merkle_v1.frontier_is_well_formed(
       control.redeemer_count,
       control.redeemer_peaks,
     ),
+    control.redeemer_total_count >= control.redeemer_count,
     bytearray.length(control.replay_accumulator) == 32,
     bytearray.length(control.replay_remaining_schedule_hash) == 32,
     control.replay_cursor >= 0,
@@ -8329,6 +8334,8 @@ pub fn verify_script_sources_stage_three_finish_semantics_v1(
     control.output_count,
     control.output_peaks,
     control.receive_hashes,
+    control.source_total_count,
+    control.redeemer_total_count,
   )
   and {
     script_sources_control_is_bound(pre, witness, control),
@@ -8428,6 +8435,8 @@ pub fn verify_script_sources_stage_five_finish_semantics_v1(
     control.output_count,
     control.output_peaks,
     control.receive_hashes,
+    control.source_total_count,
+    control.redeemer_total_count,
   )
   and {
     script_sources_control_is_bound(pre, witness, control),

@@ -4,6 +4,7 @@ import {
   decodeMidgardCekProgramEnvelopeV1,
   type MidgardCekProgramEnvelopeV1,
 } from "./cek-proof.js";
+import { buildMidgardBoundedItemV1 } from "./bounded-item-v1.js";
 import { decodeSingleCbor, encodeCbor } from "./codec/cbor.js";
 import { ensureHash32, type Hash32 } from "./codec/hash.js";
 import {
@@ -13,6 +14,7 @@ import {
 import { decodeMidgardTxOutput } from "./codec/output.js";
 import {
   decodeMidgardVersionedScriptListPreimage,
+  encodeMidgardVersionedScript,
   hashMidgardVersionedScript,
   type MidgardVersionedScript,
   MidgardVersionedScriptTags,
@@ -20,6 +22,10 @@ import {
 
 const SOURCE_LEAF_DOMAIN = Buffer.from(
   "MidgardScriptSourceLeafV1",
+  "ascii",
+);
+const INLINE_SOURCE_LEAF_DOMAIN = Buffer.from(
+  "MidgardInlineScriptSourceLeafV1",
   "ascii",
 );
 const REDEEMER_LEAF_DOMAIN = Buffer.from("MidgardRedeemerLeafV1", "ascii");
@@ -138,6 +144,31 @@ export const hashMidgardScriptSourceLeafV1 = (input: {
   readonly sourceKey: Uint8Array;
   readonly script: MidgardVersionedScript;
 }): Hash32 => {
+  if (input.originKind === "inline") {
+    const decodedSourceIndex = decodeSingleCbor(input.sourceKey);
+    const sourceIndex =
+      typeof decodedSourceIndex === "number" &&
+      Number.isSafeInteger(decodedSourceIndex)
+        ? BigInt(decodedSourceIndex)
+        : decodedSourceIndex;
+    if (
+      typeof sourceIndex !== "bigint" ||
+      sourceIndex < 0n ||
+      sourceIndex > BigInt(Number.MAX_SAFE_INTEGER) ||
+      !encodeCbor(sourceIndex).equals(Buffer.from(input.sourceKey))
+    ) {
+      throw new Error("inline script source key is not a canonical index");
+    }
+    const item = buildMidgardBoundedItemV1({
+      fieldIndex: 7,
+      itemIndex: Number(sourceIndex),
+      bytes: encodeMidgardVersionedScript(input.script),
+    });
+    return hashMidgardInlineScriptSourceLeafV1({
+      sourceIndex,
+      itemCommitment: item.commitment,
+    });
+  }
   const scriptHash = Buffer.from(
     hashMidgardVersionedScript(input.script),
     "hex",
@@ -145,10 +176,30 @@ export const hashMidgardScriptSourceLeafV1 = (input: {
   return hash32(
     Buffer.concat([
       SOURCE_LEAF_DOMAIN,
-      encodeCbor(input.originKind === "inline" ? 0n : 1n),
+      encodeCbor(1n),
       encodeCbor(Buffer.from(input.sourceKey)),
       encodeCbor(MidgardVersionedScriptTags[input.script.language]),
       encodeCbor(scriptHash),
+    ]),
+  );
+};
+
+export const hashMidgardInlineScriptSourceLeafV1 = (input: {
+  readonly sourceIndex: bigint;
+  readonly itemCommitment: Uint8Array;
+}): Hash32 => {
+  if (input.sourceIndex < 0n) {
+    throw new Error("inline script source index must be non-negative");
+  }
+  const itemCommitment = ensureHash32(
+    input.itemCommitment,
+    "inline script source item commitment",
+  );
+  return hash32(
+    Buffer.concat([
+      INLINE_SOURCE_LEAF_DOMAIN,
+      encodeCbor(input.sourceIndex),
+      encodeCbor(itemCommitment),
     ]),
   );
 };
