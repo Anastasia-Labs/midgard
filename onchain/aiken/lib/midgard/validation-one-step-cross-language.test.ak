@@ -19,6 +19,9 @@ const transition_cbor =
 const auxiliary_cbor =
   #"d87980"
 
+const evidence_hash =
+  #"0a6a5e3efddfcc04a6cffdc76fcea6544d2135cb75d45c28460d022236e172c0"
+
 test typescript_generated_one_step_boundary_is_authenticated() {
   expect Some(dispute_data) = cbor.deserialise(dispute_cbor)
   expect dispute: validation_dispute_v1.ValidationDisputeV1 = dispute_data
@@ -64,5 +67,9 @@ test typescript_generated_canonical_decode_step_is_exact() {
       transition,
     ),
     auxiliary == validation_machine_v1.NoAuxiliaryWitness,
+    validation_resolution_v1.hash_one_step_evidence(
+      transition_data,
+      auxiliary_data,
+    ) == evidence_hash,
   }
 }

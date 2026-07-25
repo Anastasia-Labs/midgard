@@ -1,14 +1,31 @@
+import { readFileSync } from "node:fs";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
+import {
+  ValidationAwardSpendRedeemerV1,
+  ValidationDirectResolveSpendRedeemerV1,
+  type ValidationMachineStateV1,
+  ValidationPrepareSelectedSpendRedeemerV1,
+} from "@al-ft/midgard-sdk";
+import { Constr, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { parseExactAikenDataCbor } from "../src/aiken-blueprint-data.js";
 import { readValidationDisputeCborFile } from "../src/validation-dispute/from-files.js";
 import {
   validationDisputeTimeoutValidityRange,
   validationDisputeValidityRange,
+  validationOneStepEvidenceHashV1,
 } from "../src/validation-dispute/submit.js";
+
+const blueprint = JSON.parse(
+  readFileSync(
+    resolve(process.cwd(), "../../onchain/aiken/plutus.json"),
+    "utf8",
+  ),
+) as unknown;
 
 describe("validation-dispute transaction validity", () => {
   it("uses a bounded closed range with the validator timestamp at its upper bound", () => {
@@ -26,6 +43,122 @@ describe("validation-dispute transaction validity", () => {
     expect(() =>
       validationDisputeTimeoutValidityRange(1_000_000, 1_000_000),
     ).toThrow(/has not passed/);
+  });
+
+  it("hashes exact canonical one-step evidence and rejects ambiguous data", () => {
+    const emptyConstructor = Buffer.from("d87980", "hex");
+    expect(
+      validationOneStepEvidenceHashV1({
+        transitionCbor: emptyConstructor,
+        auxiliaryCbor: emptyConstructor,
+      }),
+    ).toBe(
+      "a9ee2618651193d3a6c6c658f3f3d19f6a296103ac660e0071b45d903bc1e192",
+    );
+    expect(() =>
+      validationOneStepEvidenceHashV1({
+        transitionCbor: Buffer.from("d8799fff", "hex"),
+        auxiliaryCbor: emptyConstructor,
+      }),
+    ).toThrow(/not exact canonical V1 Plutus Data/u);
+    expect(() =>
+      validationOneStepEvidenceHashV1({
+        transitionCbor: new Uint8Array(),
+        auxiliaryCbor: emptyConstructor,
+      }),
+    ).toThrow(/non-empty/u);
+    expect(() =>
+      validationOneStepEvidenceHashV1({
+        transitionCbor: new Uint8Array(16 * 1024),
+        auxiliaryCbor: emptyConstructor,
+      }),
+    ).toThrow(/strictly below the L1 proof envelope/u);
+  });
+
+  it("matches the exact prepare, direct, and award Aiken redeemer ABIs", () => {
+    const state: ValidationMachineStateV1 = {
+      machine_version: 1n,
+      event_key_hash: "01".repeat(32),
+      transaction_id: "02".repeat(32),
+      transaction_commitment: "03".repeat(32),
+      validation_context_hash: "04".repeat(32),
+      source_kind: "Forced",
+      prior_ledger_root: "05".repeat(32),
+      phase: "CanonicalDecode",
+      program_counter: 0n,
+      work_root: "06".repeat(32),
+      execution_cpu: 0n,
+      execution_memory: 0n,
+      verdict: "Pending",
+      rejection_code_hash: "00".repeat(32),
+      ledger_delta_root: "07".repeat(32),
+    };
+    const transition = {
+      work_witness_cbor: "8100",
+      claimed_successor: { ...state, program_counter: 1n },
+    };
+    const auxiliary = new Constr(0, []);
+    const redeemers = [
+      {
+        definition:
+          "midgard/validation_resolver_v1/PrepareSelectedSpendRedeemer",
+        cbor: Data.to(
+          {
+            Continue: [
+              {
+                input_index: 0n,
+                output_index: 0n,
+                semantic_resolver_index: 0n,
+                transition,
+                auxiliary,
+              },
+            ],
+          },
+          ValidationPrepareSelectedSpendRedeemerV1,
+        ),
+      },
+      {
+        definition: "midgard/validation_resolver_v1/SpendRedeemer",
+        cbor: Data.to(
+          {
+            Continue: [
+              {
+                input_index: 0n,
+                output_index: 0n,
+                fraud_proof_mint_redeemer_index: 0n,
+                challenger_evidence: { transition, auxiliary },
+              },
+            ],
+          },
+          ValidationDirectResolveSpendRedeemerV1,
+        ),
+      },
+      {
+        definition: "midgard/validation_award_v1/SpendRedeemer",
+        cbor: Data.to(
+          {
+            Continue: [
+              {
+                input_index: 0n,
+                output_index: 0n,
+                fraud_proof_mint_redeemer_index: 0n,
+              },
+            ],
+          },
+          ValidationAwardSpendRedeemerV1,
+        ),
+      },
+    ] as const;
+    for (const redeemer of redeemers) {
+      expect(
+        parseExactAikenDataCbor({
+          blueprint,
+          definitionName: redeemer.definition,
+          cbor: redeemer.cbor,
+          maxBytes: 16 * 1024 - 1,
+        }),
+      ).toBeInstanceOf(Constr);
+    }
   });
 
   it("reads exact lowercase CBOR files and rejects ambiguous wrappers", async () => {

@@ -21,7 +21,7 @@ import {
   MIDGARD_CONSENSUS_PROFILE_V1,
   MIDGARD_VALIDATION_DISPUTE_V1_VERSION,
 } from "../../midgard-core/dist/index.js";
-import { CML } from "@lucid-evolution/lucid";
+import { CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
@@ -192,6 +192,18 @@ const oneStepArgument = buildValidationOneStepArgumentV1({
   trace,
   stateIndex: lowIndex,
 });
+const evidenceHash = computeHash32(
+  Buffer.concat([
+    Buffer.from("MidgardValidationOneStepEvidenceV1", "ascii"),
+    Buffer.from(
+      Data.to([
+        Data.from(oneStepArgument.transitionCbor.toString("hex")),
+        Data.from(oneStepArgument.auxiliaryCbor.toString("hex")),
+      ]),
+      "hex",
+    ),
+  ]),
+);
 if (
   oneStepArgument.resolverIndex !== 0 ||
   oneStepArgument.semanticResolverIndex !== 0
@@ -226,6 +238,9 @@ const transition_cbor =
 
 const auxiliary_cbor =
   #"${oneStepArgument.auxiliaryCbor.toString("hex")}"
+
+const evidence_hash =
+  #"${evidenceHash.toString("hex")}"
 
 test typescript_generated_one_step_boundary_is_authenticated() {
   expect Some(dispute_data) = cbor.deserialise(dispute_cbor)
@@ -272,6 +287,10 @@ test typescript_generated_canonical_decode_step_is_exact() {
       transition,
     ),
     auxiliary == validation_machine_v1.NoAuxiliaryWitness,
+    validation_resolution_v1.hash_one_step_evidence(
+      transition_data,
+      auxiliary_data,
+    ) == evidence_hash,
   }
 }
 `;
@@ -284,6 +303,7 @@ process.stdout.write(
       boundaryEvidenceBytes: boundaryEvidenceCbor.length,
       transitionBytes: oneStepArgument.transitionCbor.length,
       auxiliaryBytes: oneStepArgument.auxiliaryCbor.length,
+      evidenceHash: evidenceHash.toString("hex"),
       operatorTraceSteps: trace.tree.descriptor.stepCount,
       operatorTraceRoot: trace.tree.descriptor.traceRoot.toString("hex"),
       challengerTraceRoot: challengerTree.descriptor.traceRoot.toString("hex"),

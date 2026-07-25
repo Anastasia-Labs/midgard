@@ -5,6 +5,7 @@ type AikenSchema = {
   readonly $ref?: string;
   readonly anyOf?: readonly AikenSchema[];
   readonly dataType?: "bytes" | "constructor" | "integer" | "list";
+  readonly description?: string;
   readonly index?: number;
   readonly fields?: readonly AikenSchema[];
   readonly items?: AikenSchema;
@@ -46,6 +47,52 @@ const dataKind = (value: unknown): string => {
   if (typeof value === "bigint") return "integer";
   if (typeof value === "string") return "bytes";
   return typeof value;
+};
+
+const validateAnyPlutusData = (
+  value: unknown,
+  path: string,
+  depth: number,
+): void => {
+  if (depth > 2_048) {
+    throw new Error(`${path} exceeds the Aiken data nesting bound`);
+  }
+  if (typeof value === "bigint") return;
+  if (
+    typeof value === "string" &&
+    value.length % 2 === 0 &&
+    /^[0-9a-f]*$/u.test(value)
+  ) {
+    return;
+  }
+  if (value instanceof Constr) {
+    value.fields.forEach((field, index) =>
+      validateAnyPlutusData(
+        field,
+        `${path}.${index.toString()}`,
+        depth + 1,
+      ),
+    );
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item, index) =>
+      validateAnyPlutusData(
+        item,
+        `${path}[${index.toString()}]`,
+        depth + 1,
+      ),
+    );
+    return;
+  }
+  if (value instanceof Map) {
+    for (const [key, item] of value.entries()) {
+      validateAnyPlutusData(key, `${path}.key`, depth + 1);
+      validateAnyPlutusData(item, `${path}.value`, depth + 1);
+    }
+    return;
+  }
+  throw new Error(`${path} must be Plutus Data, got ${dataKind(value)}`);
 };
 
 const validate = ({
@@ -158,6 +205,13 @@ const validate = ({
       return;
     }
     default:
+      if (
+        schema.title === "Data" &&
+        schema.description === "Any Plutus data."
+      ) {
+        validateAnyPlutusData(value, path, depth + 1);
+        return;
+      }
       throw new Error(
         `${path} uses unsupported Aiken schema type ${String(schema.dataType)}`,
       );

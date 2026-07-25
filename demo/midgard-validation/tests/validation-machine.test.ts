@@ -18,6 +18,7 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { parseExactAikenDataCbor } from "../../midgard-fault-proofs/src/aiken-blueprint-data.js";
+import { encodeValidationSemanticResolutionRedeemerV1 } from "../../midgard-fault-proofs/src/validation-dispute/submit.js";
 import {
   advanceMidgardResolvedInputsAccumulatorV1,
   buildDeterministicValidationMachineTrace,
@@ -52,6 +53,34 @@ const validationDisputeBlueprint = JSON.parse(
     "utf8",
   ),
 ) as unknown;
+const semanticResolverDefinitionsV1 = [
+  "canonical_decode_empty_semantic_v1",
+  "canonical_decode_chunk_semantic_v1",
+  "compact_binding_semantic_v1",
+  "static_ledger_rules_semantic_v1",
+  "input_sets_empty_semantic_v1",
+  "input_sets_item_semantic_v1",
+  "signatures_advance_semantic_v1",
+  "signatures_address_item_semantic_v1",
+  "signatures_required_item_semantic_v1",
+  "signatures_handoff_semantic_v1",
+  "phase_a_native_scripts_advance_semantic_v1",
+  "phase_a_native_scripts_item_semantic_v1",
+  "phase_a_native_scripts_token_head_semantic_v1",
+  "phase_a_native_scripts_all_or_any_container_frame_payload_semantic_v1",
+  "phase_a_native_scripts_all_or_any_empty_container_payload_semantic_v1",
+  "phase_a_native_scripts_at_least_container_frame_payload_semantic_v1",
+  "phase_a_native_scripts_at_least_empty_container_payload_semantic_v1",
+  "phase_a_native_scripts_timelock_payload_semantic_v1",
+  "phase_a_native_scripts_signature_membership_payload_semantic_v1",
+  "phase_a_native_scripts_signature_empty_payload_semantic_v1",
+  "phase_a_native_scripts_signature_below_first_payload_semantic_v1",
+  "phase_a_native_scripts_signature_above_last_payload_semantic_v1",
+  "phase_a_native_scripts_signature_between_payload_semantic_v1",
+  "phase_a_native_scripts_frame_semantic_v1",
+  "phase_a_script_preconditions_semantic_v1",
+] as const;
+const semanticResolverOffsetsV1 = [0, 2, 3, 4, 6, 10, 24] as const;
 
 const validateBoundaryAbiAndCollectAuxiliaryKinds = (
   trace: DeterministicValidationMachineTrace,
@@ -132,6 +161,34 @@ const validateBoundaryAbiAndCollectAuxiliaryKinds = (
         maxBytes: 16 * 1024 - 1,
       });
       maxArgumentsBytes = Math.max(maxArgumentsBytes, cbor.length);
+    }
+    if (oneStepArgument.semanticResolverIndex !== null) {
+      const globalIndex =
+        semanticResolverOffsetsV1[oneStepArgument.resolverIndex]! +
+        oneStepArgument.semanticResolverIndex;
+      const moduleName =
+        semanticResolverDefinitionsV1[globalIndex];
+      if (moduleName === undefined) {
+        throw new Error(
+          `semantic resolver ${globalIndex.toString()} has no ABI definition`,
+        );
+      }
+      const semanticRedeemer =
+        encodeValidationSemanticResolutionRedeemerV1({
+          oneStepArgument,
+          inputIndex: 0n,
+          outputIndex: 0n,
+        });
+      parseExactAikenDataCbor({
+        blueprint: validationDisputeBlueprint,
+        definitionName: `fraud_proofs/validation_trace/${moduleName}/SpendRedeemer`,
+        cbor: semanticRedeemer.toString("hex"),
+        maxBytes: 16 * 1024 - 1,
+      });
+      maxArgumentsBytes = Math.max(
+        maxArgumentsBytes,
+        semanticRedeemer.length,
+      );
     }
     maxArgumentsBytes = Math.max(maxArgumentsBytes, argumentsCbor.length);
     validated.add(auxiliaryKind);

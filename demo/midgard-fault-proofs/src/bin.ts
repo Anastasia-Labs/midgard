@@ -40,11 +40,15 @@ import { submitStep02FromFiles } from "./submit-step-02.js";
 import { submitStep03FromFiles } from "./submit-step-03.js";
 import { submitStep04FromFiles } from "./submit-step-04.js";
 import {
+  submitValidationDisputeAwardFromFiles,
+  submitValidationDisputeDirectResolutionFromFiles,
   submitValidationDisputeEnterResolutionFromFiles,
   submitValidationDisputeEnterTimeoutFromFiles,
   submitValidationDisputeOpenFromFiles,
   submitValidationDisputePrepareResolutionFromFiles,
+  submitValidationDisputePrepareSelectedFromFiles,
   submitValidationDisputeRevealFromFiles,
+  submitValidationDisputeSemanticResolutionFromFiles,
   submitValidationDisputeTimeoutFromFiles,
   submitValidationDisputeVerifySourceFromFiles,
 } from "./validation-dispute/from-files.js";
@@ -98,6 +102,10 @@ export type ParsedArgs = {
   readonly challengerDescriptorCborPath: string | undefined;
   readonly validationTraceProofCborPath: string | undefined;
   readonly validationBoundaryEvidenceCborPath: string | undefined;
+  readonly validationTransitionCborPath: string | undefined;
+  readonly validationAuxiliaryCborPath: string | undefined;
+  readonly validationResolverIndex: string | undefined;
+  readonly validationSemanticResolverIndex: string | undefined;
   readonly validationDisputeRole: "operator" | "challenger" | undefined;
 };
 
@@ -122,6 +130,10 @@ const usage = `Usage:
   midgard-fault-proofs submit-validation-dispute-reveal --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --validation-dispute-role <operator|challenger> --validation-trace-proof-cbor <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-validation-dispute-enter-resolution --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-validation-dispute-prepare-resolution --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --validation-boundary-evidence-cbor <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-validation-dispute-prepare-selected --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --validation-transition-cbor <path> --validation-auxiliary-cbor <path> --validation-resolver-index <0..6> --validation-semantic-resolver-index <n> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [wallet options]
+  midgard-fault-proofs submit-validation-dispute-semantic-resolution --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --validation-transition-cbor <path> --validation-auxiliary-cbor <path> --validation-resolver-index <0..6> --validation-semantic-resolver-index <n> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [wallet options]
+  midgard-fault-proofs submit-validation-dispute-award --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [wallet options]
+  midgard-fault-proofs submit-validation-dispute-direct-resolution --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --validation-transition-cbor <path> --validation-auxiliary-cbor <path> --validation-resolver-index <7..13> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [wallet options]
   midgard-fault-proofs submit-validation-dispute-enter-timeout --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-validation-dispute-timeout --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs remove-fraudulent-block --blueprint <path> --deployment-info <path> --fraudulent-header-hash <hex> [--fraud-category <doubleSpend|invalidRange|transitionTrace|validationTraceDispute|nonExistentInput>] [--midgard-node-url <url> --midgard-node-admin-key <key> | --midgard-node-admin-key-env <envVar>] [--state-queue-lease-ttl-ms <n>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
@@ -200,6 +212,10 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
   let challengerDescriptorCborPath: string | undefined;
   let validationTraceProofCborPath: string | undefined;
   let validationBoundaryEvidenceCborPath: string | undefined;
+  let validationTransitionCborPath: string | undefined;
+  let validationAuxiliaryCborPath: string | undefined;
+  let validationResolverIndex: string | undefined;
+  let validationSemanticResolverIndex: string | undefined;
   let validationDisputeRole: "operator" | "challenger" | undefined;
 
   for (let index = 0; index < rest.length; index += 1) {
@@ -350,6 +366,18 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
       case "--validation-boundary-evidence-cbor":
         validationBoundaryEvidenceCborPath = rest[++index];
         break;
+      case "--validation-transition-cbor":
+        validationTransitionCborPath = rest[++index];
+        break;
+      case "--validation-auxiliary-cbor":
+        validationAuxiliaryCborPath = rest[++index];
+        break;
+      case "--validation-resolver-index":
+        validationResolverIndex = rest[++index];
+        break;
+      case "--validation-semantic-resolver-index":
+        validationSemanticResolverIndex = rest[++index];
+        break;
       case "--validation-dispute-role": {
         const role = rest[++index];
         if (role !== "operator" && role !== "challenger") {
@@ -421,6 +449,10 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
     challengerDescriptorCborPath,
     validationTraceProofCborPath,
     validationBoundaryEvidenceCborPath,
+    validationTransitionCborPath,
+    validationAuxiliaryCborPath,
+    validationResolverIndex,
+    validationSemanticResolverIndex,
     validationDisputeRole,
   };
 };
@@ -467,6 +499,55 @@ const writeJson = (value: unknown): void => {
   process.stdout.write(stringifyJson(value));
 };
 
+const requireValidationOneStepCliArguments = (
+  args: ParsedArgs,
+  staged: boolean,
+) => {
+  if (args.validationTransitionCborPath === undefined) {
+    throw new Error(
+      `Missing required --validation-transition-cbor <path>.\n${usage}`,
+    );
+  }
+  if (args.validationAuxiliaryCborPath === undefined) {
+    throw new Error(
+      `Missing required --validation-auxiliary-cbor <path>.\n${usage}`,
+    );
+  }
+  if (
+    args.validationResolverIndex === undefined ||
+    !/^(?:0|[1-9][0-9]*)$/u.test(args.validationResolverIndex)
+  ) {
+    throw new Error(
+      `Missing or invalid --validation-resolver-index <n>.\n${usage}`,
+    );
+  }
+  const resolverIndex = Number(args.validationResolverIndex);
+  const semanticText = args.validationSemanticResolverIndex;
+  if (
+    staged &&
+    (semanticText === undefined ||
+      !/^(?:0|[1-9][0-9]*)$/u.test(semanticText))
+  ) {
+    throw new Error(
+      `Missing or invalid --validation-semantic-resolver-index <n>.\n${usage}`,
+    );
+  }
+  if (!staged && semanticText !== undefined) {
+    throw new Error(
+      "Direct validation resolution must not select a semantic resolver",
+    );
+  }
+  return {
+    validationTransitionCborPath:
+      args.validationTransitionCborPath,
+    validationAuxiliaryCborPath:
+      args.validationAuxiliaryCborPath,
+    validationResolverIndex: resolverIndex,
+    validationSemanticResolverIndex:
+      semanticText === undefined ? null : Number(semanticText),
+  };
+};
+
 export const isCliEntrypoint = ({
   moduleUrl,
   argvPath,
@@ -507,6 +588,11 @@ export const main = async (): Promise<void> => {
     args.command !== "submit-validation-dispute-reveal" &&
     args.command !== "submit-validation-dispute-enter-resolution" &&
     args.command !== "submit-validation-dispute-prepare-resolution" &&
+    args.command !== "submit-validation-dispute-prepare-selected" &&
+    args.command !==
+      "submit-validation-dispute-semantic-resolution" &&
+    args.command !== "submit-validation-dispute-award" &&
+    args.command !== "submit-validation-dispute-direct-resolution" &&
     args.command !== "submit-validation-dispute-enter-timeout" &&
     args.command !== "submit-validation-dispute-timeout" &&
     args.command !== "remove-fraudulent-block"
@@ -838,6 +924,85 @@ export const main = async (): Promise<void> => {
       walletPrivateKeyEnv: args.walletPrivateKeyEnv,
       threadOutRef: args.threadOutRef,
       boundaryEvidenceCborPath: args.validationBoundaryEvidenceCborPath,
+      awaitConfirmation: args.awaitConfirmation,
+    });
+    writeJson(output);
+    return;
+  }
+
+  if (
+    args.command === "submit-validation-dispute-prepare-selected" ||
+    args.command ===
+      "submit-validation-dispute-semantic-resolution" ||
+    args.command === "submit-validation-dispute-direct-resolution"
+  ) {
+    if (args.threadOutRef === undefined) {
+      throw new Error(
+        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    const staged =
+      args.command !==
+      "submit-validation-dispute-direct-resolution";
+    const oneStep = requireValidationOneStepCliArguments(
+      args,
+      staged,
+    );
+    const config = {
+      blueprintPath: args.blueprintPath,
+      deploymentInfoPath: args.deploymentInfoPath,
+      network: parseNetwork(args.network),
+      provider: args.provider,
+      blockfrostApiUrl: args.blockfrostApiUrl,
+      blockfrostKey: args.blockfrostKey,
+      kupoUrl: args.kupoUrl,
+      ogmiosUrl: args.ogmiosUrl,
+      walletSeedPhrase: args.walletSeedPhrase,
+      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
+      walletPrivateKey: args.walletPrivateKey,
+      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
+      threadOutRef: args.threadOutRef,
+      awaitConfirmation: args.awaitConfirmation,
+      ...oneStep,
+    };
+    const output =
+      args.command ===
+      "submit-validation-dispute-prepare-selected"
+        ? await submitValidationDisputePrepareSelectedFromFiles(
+            config,
+          )
+        : args.command ===
+            "submit-validation-dispute-semantic-resolution"
+          ? await submitValidationDisputeSemanticResolutionFromFiles(
+              config,
+            )
+          : await submitValidationDisputeDirectResolutionFromFiles(
+              config,
+            );
+    writeJson(output);
+    return;
+  }
+
+  if (args.command === "submit-validation-dispute-award") {
+    if (args.threadOutRef === undefined) {
+      throw new Error(
+        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    const output = await submitValidationDisputeAwardFromFiles({
+      blueprintPath: args.blueprintPath,
+      deploymentInfoPath: args.deploymentInfoPath,
+      network: parseNetwork(args.network),
+      provider: args.provider,
+      blockfrostApiUrl: args.blockfrostApiUrl,
+      blockfrostKey: args.blockfrostKey,
+      kupoUrl: args.kupoUrl,
+      ogmiosUrl: args.ogmiosUrl,
+      walletSeedPhrase: args.walletSeedPhrase,
+      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
+      walletPrivateKey: args.walletPrivateKey,
+      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
+      threadOutRef: args.threadOutRef,
       awaitConfirmation: args.awaitConfirmation,
     });
     writeJson(output);

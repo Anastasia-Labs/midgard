@@ -204,6 +204,45 @@ describe("fault-proof CLI argument parsing", () => {
       validationBoundaryEvidenceCborPath: "boundary.cbor",
     });
 
+    const stagedResolution = parseArgs([
+      "node",
+      "midgard-fault-proofs",
+      "submit-validation-dispute-semantic-resolution",
+      "--validation-transition-cbor",
+      "transition.cbor",
+      "--validation-auxiliary-cbor",
+      "auxiliary.cbor",
+      "--validation-resolver-index",
+      "5",
+      "--validation-semantic-resolver-index",
+      "13",
+    ]);
+    expect(stagedResolution).toMatchObject({
+      command: "submit-validation-dispute-semantic-resolution",
+      validationTransitionCborPath: "transition.cbor",
+      validationAuxiliaryCborPath: "auxiliary.cbor",
+      validationResolverIndex: "5",
+      validationSemanticResolverIndex: "13",
+    });
+
+    const directResolution = parseArgs([
+      "node",
+      "midgard-fault-proofs",
+      "submit-validation-dispute-direct-resolution",
+      "--validation-transition-cbor",
+      "transition.cbor",
+      "--validation-auxiliary-cbor",
+      "auxiliary.cbor",
+      "--validation-resolver-index",
+      "12",
+    ]);
+    expect(directResolution).toMatchObject({
+      command: "submit-validation-dispute-direct-resolution",
+      validationTransitionCborPath: "transition.cbor",
+      validationAuxiliaryCborPath: "auxiliary.cbor",
+      validationResolverIndex: "12",
+    });
+
     expect(() =>
       parseArgs([
         "node",

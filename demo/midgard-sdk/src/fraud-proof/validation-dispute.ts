@@ -158,6 +158,66 @@ export type ValidationResolutionDatumV1 = Data.Static<
 export const ValidationResolutionDatumV1 =
   ValidationResolutionDatumV1Schema as unknown as ValidationResolutionDatumV1;
 
+export const PreparedValidationResolutionStateV1Schema = Data.Object({
+  version: Data.Integer(),
+  resolution: ValidationResolutionStateV1Schema,
+  evidence_hash: H32Schema,
+});
+export type PreparedValidationResolutionStateV1 = Data.Static<
+  typeof PreparedValidationResolutionStateV1Schema
+>;
+export const PreparedValidationResolutionStateV1 =
+  PreparedValidationResolutionStateV1Schema as unknown as PreparedValidationResolutionStateV1;
+
+export const PreparedValidationResolutionDatumV1Schema = Data.Object({
+  fraud_prover: PubKeyHashSchema,
+  data: Data.Nullable(PreparedValidationResolutionStateV1Schema),
+});
+export type PreparedValidationResolutionDatumV1 = Data.Static<
+  typeof PreparedValidationResolutionDatumV1Schema
+>;
+export const PreparedValidationResolutionDatumV1 =
+  PreparedValidationResolutionDatumV1Schema as unknown as PreparedValidationResolutionDatumV1;
+
+export const WinningValidationResolutionStateV1Schema = Data.Object({
+  version: Data.Integer(),
+});
+export type WinningValidationResolutionStateV1 = Data.Static<
+  typeof WinningValidationResolutionStateV1Schema
+>;
+export const WinningValidationResolutionStateV1 =
+  WinningValidationResolutionStateV1Schema as unknown as WinningValidationResolutionStateV1;
+
+export const WinningValidationResolutionDatumV1Schema = Data.Object({
+  fraud_prover: PubKeyHashSchema,
+  data: Data.Nullable(WinningValidationResolutionStateV1Schema),
+});
+export type WinningValidationResolutionDatumV1 = Data.Static<
+  typeof WinningValidationResolutionDatumV1Schema
+>;
+export const WinningValidationResolutionDatumV1 =
+  WinningValidationResolutionDatumV1Schema as unknown as WinningValidationResolutionDatumV1;
+
+export const ValidationOneStepWitnessV1Schema = Data.Object({
+  work_witness_cbor: Data.Bytes(),
+  claimed_successor: ValidationMachineStateV1Schema,
+});
+export type ValidationOneStepWitnessV1 = Data.Static<
+  typeof ValidationOneStepWitnessV1Schema
+>;
+export const ValidationOneStepWitnessV1 =
+  ValidationOneStepWitnessV1Schema as unknown as ValidationOneStepWitnessV1;
+
+export const ValidationOneStepEvidenceV1Schema = Data.Object({
+  transition: ValidationOneStepWitnessV1Schema,
+  auxiliary: Data.Any(),
+});
+export type ValidationOneStepEvidenceV1 = Data.Static<
+  typeof ValidationOneStepEvidenceV1Schema
+>;
+export const ValidationOneStepEvidenceV1 =
+  ValidationOneStepEvidenceV1Schema as unknown as ValidationOneStepEvidenceV1;
+
 const ValidationDescriptorMembershipV1Schema = rootMembershipProofSchema(
   EventKeySchema,
   ValidationTraceDescriptorV1Schema,
@@ -374,6 +434,81 @@ export type ValidationBoundarySpendRedeemerV1 = Data.Static<
 >;
 export const ValidationBoundarySpendRedeemerV1 =
   ValidationBoundarySpendRedeemerV1Schema as unknown as ValidationBoundarySpendRedeemerV1;
+
+// A one-constructor Aiken type has the same wire shape as this record. Lucid's
+// Data.Enum intentionally unwraps a one-member enum, so model the constructor
+// fields directly to keep both encoding and decoding canonical.
+export const ValidationPrepareSelectedActionV1Schema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  semantic_resolver_index: Data.Integer(),
+  transition: ValidationOneStepWitnessV1Schema,
+  auxiliary: Data.Any(),
+});
+export type ValidationPrepareSelectedActionV1 = Data.Static<
+  typeof ValidationPrepareSelectedActionV1Schema
+>;
+export const ValidationPrepareSelectedActionV1 =
+  ValidationPrepareSelectedActionV1Schema as unknown as ValidationPrepareSelectedActionV1;
+
+export const ValidationPrepareSelectedSpendRedeemerV1Schema = Data.Enum([
+  cancelActionSchema,
+  Data.Object({
+    Continue: Data.Tuple([ValidationPrepareSelectedActionV1Schema]),
+  }),
+]);
+export type ValidationPrepareSelectedSpendRedeemerV1 = Data.Static<
+  typeof ValidationPrepareSelectedSpendRedeemerV1Schema
+>;
+export const ValidationPrepareSelectedSpendRedeemerV1 =
+  ValidationPrepareSelectedSpendRedeemerV1Schema as unknown as ValidationPrepareSelectedSpendRedeemerV1;
+
+export const ValidationDirectResolveActionV1Schema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  fraud_proof_mint_redeemer_index: Data.Integer(),
+  challenger_evidence: ValidationOneStepEvidenceV1Schema,
+});
+export type ValidationDirectResolveActionV1 = Data.Static<
+  typeof ValidationDirectResolveActionV1Schema
+>;
+export const ValidationDirectResolveActionV1 =
+  ValidationDirectResolveActionV1Schema as unknown as ValidationDirectResolveActionV1;
+
+export const ValidationDirectResolveSpendRedeemerV1Schema = Data.Enum([
+  cancelActionSchema,
+  Data.Object({
+    Continue: Data.Tuple([ValidationDirectResolveActionV1Schema]),
+  }),
+]);
+export type ValidationDirectResolveSpendRedeemerV1 = Data.Static<
+  typeof ValidationDirectResolveSpendRedeemerV1Schema
+>;
+export const ValidationDirectResolveSpendRedeemerV1 =
+  ValidationDirectResolveSpendRedeemerV1Schema as unknown as ValidationDirectResolveSpendRedeemerV1;
+
+export const ValidationAwardArgsV1Schema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  fraud_proof_mint_redeemer_index: Data.Integer(),
+});
+export type ValidationAwardArgsV1 = Data.Static<
+  typeof ValidationAwardArgsV1Schema
+>;
+export const ValidationAwardArgsV1 =
+  ValidationAwardArgsV1Schema as unknown as ValidationAwardArgsV1;
+
+export const ValidationAwardSpendRedeemerV1Schema = Data.Enum([
+  cancelActionSchema,
+  Data.Object({
+    Continue: Data.Tuple([ValidationAwardArgsV1Schema]),
+  }),
+]);
+export type ValidationAwardSpendRedeemerV1 = Data.Static<
+  typeof ValidationAwardSpendRedeemerV1Schema
+>;
+export const ValidationAwardSpendRedeemerV1 =
+  ValidationAwardSpendRedeemerV1Schema as unknown as ValidationAwardSpendRedeemerV1;
 
 export const ValidationTimeoutActionV1Schema = Data.Enum([
   Data.Object({

@@ -1,8 +1,8 @@
 import { readFile } from "node:fs/promises";
 
 import {
-  ValidationClaimWitnessV1,
   ValidationBoundaryEvidenceV1,
+  ValidationClaimWitnessV1,
   ValidationTraceDescriptorV1,
   validationTraceProofCoreFromData,
   ValidationTraceProofV1,
@@ -17,20 +17,29 @@ import {
   type SubmitProviderConfig,
 } from "../runtime.js";
 import {
-  submitValidationDisputeOpen,
-  type SubmitValidationDisputeOpenResult,
+  submitValidationDisputeAward,
+  type SubmitValidationDisputeAwardResult,
+  submitValidationDisputeDirectResolution,
+  type SubmitValidationDisputeDirectResolutionResult,
   submitValidationDisputeEnterResolution,
   type SubmitValidationDisputeEnterResolutionResult,
   submitValidationDisputeEnterTimeout,
   type SubmitValidationDisputeEnterTimeoutResult,
+  submitValidationDisputeOpen,
+  type SubmitValidationDisputeOpenResult,
   submitValidationDisputePrepareResolution,
   type SubmitValidationDisputePrepareResolutionResult,
+  submitValidationDisputePrepareSelected,
+  type SubmitValidationDisputePrepareSelectedResult,
   submitValidationDisputeReveal,
   type SubmitValidationDisputeRevealResult,
+  submitValidationDisputeSemanticResolution,
+  type SubmitValidationDisputeSemanticResolutionResult,
   submitValidationDisputeTimeout,
   type SubmitValidationDisputeTimeoutResult,
   submitValidationDisputeVerifySource,
   type SubmitValidationDisputeVerifySourceResult,
+  type ValidationOneStepSubmissionArgumentV1,
 } from "./submit.js";
 
 type ValidationDisputeFromFilesBase = Omit<
@@ -96,6 +105,55 @@ const runtimeFromFiles = async (config: ValidationDisputeFromFilesBase) => {
     deploymentInfo,
     lucid,
     signer: resolveProverSigner(config),
+  };
+};
+
+type ValidationOneStepArgumentFromFiles = {
+  readonly validationTransitionCborPath: string;
+  readonly validationAuxiliaryCborPath: string;
+  readonly validationResolverIndex: number;
+  readonly validationSemanticResolverIndex: number | null;
+};
+
+const validationOneStepArgumentFromFiles = async (
+  config: ValidationOneStepArgumentFromFiles,
+): Promise<ValidationOneStepSubmissionArgumentV1> => {
+  if (
+    !Number.isSafeInteger(config.validationResolverIndex) ||
+    config.validationResolverIndex < 0 ||
+    config.validationResolverIndex >= 14
+  ) {
+    throw new Error(
+      "validation resolver index must be an integer from 0 through 13",
+    );
+  }
+  if (
+    config.validationSemanticResolverIndex !== null &&
+    (!Number.isSafeInteger(
+      config.validationSemanticResolverIndex,
+    ) ||
+      config.validationSemanticResolverIndex < 0)
+  ) {
+    throw new Error(
+      "validation semantic resolver index must be null or a non-negative integer",
+    );
+  }
+  const [transitionCbor, auxiliaryCbor] = await Promise.all([
+    readValidationDisputeCborFile(
+      config.validationTransitionCborPath,
+      "validation one-step transition",
+    ),
+    readValidationDisputeCborFile(
+      config.validationAuxiliaryCborPath,
+      "validation one-step auxiliary witness",
+    ),
+  ]);
+  return {
+    resolverIndex: config.validationResolverIndex,
+    semanticResolverIndex:
+      config.validationSemanticResolverIndex,
+    transitionCbor: Buffer.from(transitionCbor, "hex"),
+    auxiliaryCbor: Buffer.from(auxiliaryCbor, "hex"),
   };
 };
 
@@ -207,6 +265,71 @@ export const submitValidationDisputePrepareResolutionFromFiles = async (
     awaitConfirmation: config.awaitConfirmation,
   });
 };
+
+export const submitValidationDisputePrepareSelectedFromFiles = async (
+  config: ValidationDisputeFromFilesBase &
+    ValidationOneStepArgumentFromFiles,
+): Promise<SubmitValidationDisputePrepareSelectedResult> => {
+  const [runtime, oneStepArgument] = await Promise.all([
+    runtimeFromFiles(config),
+    validationOneStepArgumentFromFiles(config),
+  ]);
+  return await submitValidationDisputePrepareSelected({
+    ...runtime,
+    network: config.network,
+    threadOutRef: config.threadOutRef,
+    oneStepArgument,
+    awaitConfirmation: config.awaitConfirmation,
+  });
+};
+
+export const submitValidationDisputeSemanticResolutionFromFiles =
+  async (
+    config: ValidationDisputeFromFilesBase &
+      ValidationOneStepArgumentFromFiles,
+  ): Promise<SubmitValidationDisputeSemanticResolutionResult> => {
+    const [runtime, oneStepArgument] = await Promise.all([
+      runtimeFromFiles(config),
+      validationOneStepArgumentFromFiles(config),
+    ]);
+    return await submitValidationDisputeSemanticResolution({
+      ...runtime,
+      network: config.network,
+      threadOutRef: config.threadOutRef,
+      oneStepArgument,
+      awaitConfirmation: config.awaitConfirmation,
+    });
+  };
+
+export const submitValidationDisputeAwardFromFiles = async (
+  config: ValidationDisputeFromFilesBase,
+): Promise<SubmitValidationDisputeAwardResult> => {
+  const runtime = await runtimeFromFiles(config);
+  return await submitValidationDisputeAward({
+    ...runtime,
+    network: config.network,
+    threadOutRef: config.threadOutRef,
+    awaitConfirmation: config.awaitConfirmation,
+  });
+};
+
+export const submitValidationDisputeDirectResolutionFromFiles =
+  async (
+    config: ValidationDisputeFromFilesBase &
+      ValidationOneStepArgumentFromFiles,
+  ): Promise<SubmitValidationDisputeDirectResolutionResult> => {
+    const [runtime, oneStepArgument] = await Promise.all([
+      runtimeFromFiles(config),
+      validationOneStepArgumentFromFiles(config),
+    ]);
+    return await submitValidationDisputeDirectResolution({
+      ...runtime,
+      network: config.network,
+      threadOutRef: config.threadOutRef,
+      oneStepArgument,
+      awaitConfirmation: config.awaitConfirmation,
+    });
+  };
 
 export const submitValidationDisputeEnterTimeoutFromFiles = async (
   config: ValidationDisputeFromFilesBase,
