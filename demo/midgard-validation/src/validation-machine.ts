@@ -563,11 +563,7 @@ const readValidationMachineNativeScriptTokenHeadV1 = (
   offset: number,
 ): ValidationMachineNativeScriptTokenHeadV1 => {
   const outer = readCborArrayHeader(item, offset, "native_script");
-  const tag = readCborUnsigned(
-    item,
-    outer.nextOffset,
-    "native_script.tag",
-  );
+  const tag = readCborUnsigned(item, outer.nextOffset, "native_script.tag");
   if (tag.value < 0n || tag.value > 5n) {
     throw new Error("native script has an unsupported tag");
   }
@@ -587,11 +583,7 @@ const readValidationMachineNativeScriptPayloadV1 = (
   kind: 0 | 1 | 2 | 3 | 4 | 5,
 ): ValidationMachineNativeScriptTokenV1 => {
   if (kind === 0) {
-    const keyHash = readCborBytes(
-      item,
-      offset,
-      "native_script.key_hash",
-    );
+    const keyHash = readCborBytes(item, offset, "native_script.key_hash");
     if (keyHash.value.length !== 28) {
       throw new Error("native signature script has an invalid shape");
     }
@@ -623,11 +615,7 @@ const readValidationMachineNativeScriptPayloadV1 = (
     };
   }
   if (kind === 3) {
-    const required = readCborUnsigned(
-      item,
-      offset,
-      "native_script.required",
-    );
+    const required = readCborUnsigned(item, offset, "native_script.required");
     const children = readCborArrayHeader(
       item,
       required.nextOffset,
@@ -646,11 +634,7 @@ const readValidationMachineNativeScriptPayloadV1 = (
     };
   }
   if (kind === 4 || kind === 5) {
-    const slot = readCborUnsigned(
-      item,
-      offset,
-      "native_script.slot",
-    );
+    const slot = readCborUnsigned(item, offset, "native_script.slot");
     return {
       kind,
       nextOffset: slot.nextOffset,
@@ -1284,11 +1268,7 @@ export const buildDeterministicValidationMachineTrace = (
       readonly signature: Buffer;
       readonly signerHash: Buffer;
     } => {
-      const header = readCborArrayHeader(
-        witnessCbor,
-        0,
-        "address_witness",
-      );
+      const header = readCborArrayHeader(witnessCbor, 0, "address_witness");
       if (header.length !== 2) {
         throw new Error("address witness must contain [vkey, signature]");
       }
@@ -1312,9 +1292,7 @@ export const buildDeterministicValidationMachineTrace = (
       return {
         verificationKey: verificationKey.value,
         signature: signature.value,
-        signerHash: Buffer.from(
-          blake2b(verificationKey.value, { dkLen: 28 }),
-        ),
+        signerHash: Buffer.from(blake2b(verificationKey.value, { dkLen: 28 })),
       };
     };
     const addressWitnessScanItems = addressWitnessesCollection.items
@@ -1419,9 +1397,8 @@ export const buildDeterministicValidationMachineTrace = (
           canonicalRedeemerWitnessCbor,
         }),
     );
-    const redeemerFrontier = buildMidgardValidationMerkleFrontierV1(
-      redeemerLeafHashes,
-    );
+    const redeemerFrontier =
+      buildMidgardValidationMerkleFrontierV1(redeemerLeafHashes);
     const encodeFrontierPeaks = (
       frontier: MidgardValidationMerkleFrontierV1,
     ): readonly (readonly [bigint, Buffer])[] =>
@@ -1438,9 +1415,7 @@ export const buildDeterministicValidationMachineTrace = (
       readonly signerFrontier: MidgardValidationMerkleFrontierV1;
       readonly invalidSignatureSeen: 0 | 1;
     };
-    const signaturesScanWitnessCbor = (
-      control: SignatureScanControl,
-    ): Buffer =>
+    const signaturesScanWitnessCbor = (control: SignatureScanControl): Buffer =>
       encodeCbor([
         proofSource.compactCbor,
         proofSource.witnessSetCompactCbor,
@@ -1460,10 +1435,8 @@ export const buildDeterministicValidationMachineTrace = (
       ]);
     const initialSignatureScanControl: SignatureScanControl = {
       stage: 0,
-      addressCount:
-        addressWitnessesCollection.items.length === 0 ? 0 : -1,
-      requiredCount:
-        requiredSignersCollection.items.length === 0 ? 0 : -1,
+      addressCount: addressWitnessesCollection.items.length === 0 ? 0 : -1,
+      requiredCount: requiredSignersCollection.items.length === 0 ? 0 : -1,
       addressSeen: 0,
       requiredSeen: 0,
       previousOrderKey: Buffer.alloc(0),
@@ -1526,8 +1499,7 @@ export const buildDeterministicValidationMachineTrace = (
     });
     const initialPhaseANativeScriptsScanControl =
       resetPhaseANativeScriptsScanControl({
-        scriptCount:
-          scriptWitnessesCollection.items.length === 0 ? 0 : -1,
+        scriptCount: scriptWitnessesCollection.items.length === 0 ? 0 : -1,
         scriptSeen: 0,
         containsNonNativeScript: 0,
       });
@@ -1597,8 +1569,18 @@ export const buildDeterministicValidationMachineTrace = (
       readonly receiveHashes?: readonly Buffer[];
       readonly sourceTotalCount?: number;
       readonly redeemerTotalCount?: number;
+      readonly observerScan?: {
+        readonly totalCount: number;
+        readonly seen: number;
+        readonly previousHash: Buffer;
+      };
       readonly discovery?: ScriptDiscoveryTraceControl;
     }): Buffer => {
+      const observerScan = input.observerScan ?? {
+        totalCount: 0,
+        seen: 0,
+        previousHash: Buffer.alloc(0),
+      };
       const fields: unknown[] = [
         proofSource.compactCbor,
         proofSource.witnessSetCompactCbor,
@@ -1627,6 +1609,11 @@ export const buildDeterministicValidationMachineTrace = (
         input.receiveHashes ?? [],
         BigInt(input.sourceTotalCount ?? input.sourceFrontier.count),
         BigInt(input.redeemerTotalCount ?? input.redeemerFrontier.count),
+        [
+          BigInt(observerScan.totalCount),
+          observerScan.previousHash,
+          BigInt(observerScan.seen),
+        ],
       ];
       if (input.stage >= 8) {
         fields.push(
@@ -1716,14 +1703,12 @@ export const buildDeterministicValidationMachineTrace = (
       }
       return signerProofForHash(Buffer.from(address.paymentCredential.hash));
     };
-    const phaseAScriptPreconditionsWitnessCbor = (
-      control: {
-        readonly containsNonNativeScript: 0 | 1;
-        readonly observerCount: number;
-        readonly observerSeen: number;
-        readonly previousObserver: Buffer;
-      },
-    ): Buffer =>
+    const phaseAScriptPreconditionsWitnessCbor = (control: {
+      readonly containsNonNativeScript: 0 | 1;
+      readonly observerCount: number;
+      readonly observerSeen: number;
+      readonly previousObserver: Buffer;
+    }): Buffer =>
       encodeCbor([
         proofSource.compactCbor,
         proofSource.witnessSetCompactCbor,
@@ -1759,8 +1744,7 @@ export const buildDeterministicValidationMachineTrace = (
     const macroAuxiliaryByPhase = new Map<
       MidgardValidationPhaseName,
       ValidationMachineWorkWitness["auxiliary"]
-    >([
-    ]);
+    >([]);
 
     const terminalPhase =
       rejection === null ? "ledgerDelta" : rejectionPhase(rejection);
@@ -1833,11 +1817,10 @@ export const buildDeterministicValidationMachineTrace = (
       let itemCount = -1;
       let encodedLength = 0;
       for (const item of collection.items) {
-        const collectionProof =
-          buildMidgardBoundedCollectionItemProofV1(
-            collection,
-            item.itemIndex,
-          );
+        const collectionProof = buildMidgardBoundedCollectionItemProofV1(
+          collection,
+          item.itemIndex,
+        );
         const chunkCount = midgardBoundedItemChunkCountV1(item.bytes.length);
         for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex += 1) {
           pushWitness(
@@ -1856,10 +1839,7 @@ export const buildDeterministicValidationMachineTrace = (
             {
               kind: "transactionFieldChunk",
               collectionProof,
-              chunkProof: buildMidgardBoundedItemChunkProofV1(
-                item,
-                chunkIndex,
-              ),
+              chunkProof: buildMidgardBoundedItemChunkProofV1(item, chunkIndex),
             },
           );
           if (itemCount === -1) {
@@ -1875,10 +1855,7 @@ export const buildDeterministicValidationMachineTrace = (
         }
       }
     }
-    if (
-      rejection !== null &&
-      terminalPhase === "canonicalDecode"
-    ) {
+    if (rejection !== null && terminalPhase === "canonicalDecode") {
       return yield* Effect.fail(
         new Error(
           `V1 canonical rejection ${rejection.code} is not representable by the bounded canonical source`,
@@ -1926,11 +1903,7 @@ export const buildDeterministicValidationMachineTrace = (
         }
         stoppedAtRejection = true;
       } else {
-        for (
-          let index = inputSetScanItems.length - 1;
-          index >= 0;
-          index -= 1
-        ) {
+        for (let index = inputSetScanItems.length - 1; index >= 0; index -= 1) {
           const scan = inputSetScanItems[index]!;
           const key = scan.item.bytes;
           pushWitness("inputSets", currentInputSetsWitness(), {
@@ -1984,10 +1957,7 @@ export const buildDeterministicValidationMachineTrace = (
               new Error("bounded input scan did not reveal both input counts"),
             );
           }
-          if (
-            spendSeen !== spendCount ||
-            referenceSeen !== referenceCount
-          ) {
+          if (spendSeen !== spendCount || referenceSeen !== referenceCount) {
             return yield* Effect.fail(
               new Error("bounded input scan did not reveal every input"),
             );
@@ -2000,9 +1970,7 @@ export const buildDeterministicValidationMachineTrace = (
             );
           }
           if (terminalPhase === "inputSets") {
-            if (
-              rejectionCode !== RejectCodes.InvalidValidityIntervalFormat
-            ) {
+            if (rejectionCode !== RejectCodes.InvalidValidityIntervalFormat) {
               return yield* Effect.fail(
                 new Error(
                   `bounded input scan cannot prove rejection ${rejectionCode ?? "none"}`,
@@ -2046,19 +2014,16 @@ export const buildDeterministicValidationMachineTrace = (
           });
           if (
             signatureControl.previousOrderKey.length > 0 &&
-            Buffer.compare(
-              signatureControl.previousOrderKey,
-              scan.orderKey,
-            ) >= 0
+            Buffer.compare(signatureControl.previousOrderKey, scan.orderKey) >=
+              0
           ) {
             return yield* Effect.fail(
               new Error("address-witness scan is not strictly ordered"),
             );
           }
-          const newSigner =
-            !scan.decoded.signerHash.equals(
-              signatureControl.previousSignerHash,
-            );
+          const newSigner = !scan.decoded.signerHash.equals(
+            signatureControl.previousSignerHash,
+          );
           const signerFrontier = newSigner
             ? appendMidgardValidationMerkleLeafV1(
                 signatureControl.signerFrontier,
@@ -2267,15 +2232,9 @@ export const buildDeterministicValidationMachineTrace = (
 
           let header: ValidationMachineVersionedScriptHeaderV1;
           try {
-            header = readValidationMachineVersionedScriptHeaderV1(
-              item.bytes,
-            );
+            header = readValidationMachineVersionedScriptHeaderV1(item.bytes);
           } catch {
-            if (
-              !expectedPhaseANativeRejection(
-                RejectCodes.InvalidFieldType,
-              )
-            ) {
+            if (!expectedPhaseANativeRejection(RejectCodes.InvalidFieldType)) {
               return yield* failUnexpectedPhaseANativeRejection(
                 RejectCodes.InvalidFieldType,
               );
@@ -2285,12 +2244,11 @@ export const buildDeterministicValidationMachineTrace = (
           }
 
           if (header.languageTag !== 0) {
-            phaseANativeControl =
-              resetPhaseANativeScriptsScanControl({
-                scriptCount: activeScriptCount,
-                scriptSeen: phaseANativeControl.scriptSeen + 1,
-                containsNonNativeScript: 1,
-              });
+            phaseANativeControl = resetPhaseANativeScriptsScanControl({
+              scriptCount: activeScriptCount,
+              scriptSeen: phaseANativeControl.scriptSeen + 1,
+              containsNonNativeScript: 1,
+            });
             continue;
           }
 
@@ -2311,8 +2269,7 @@ export const buildDeterministicValidationMachineTrace = (
               const chunkCount = midgardBoundedItemChunkCountV1(
                 item.bytes.length,
               );
-              let head: ValidationMachineNativeScriptTokenHeadV1 | null =
-                null;
+              let head: ValidationMachineNativeScriptTokenHeadV1 | null = null;
               try {
                 head = readValidationMachineNativeScriptTokenHeadV1(
                   item.bytes,
@@ -2330,18 +2287,13 @@ export const buildDeterministicValidationMachineTrace = (
                 ),
                 nextChunkProof:
                   chunkIndex + 1 < chunkCount
-                    ? buildMidgardBoundedItemChunkProofV1(
-                        item,
-                        chunkIndex + 1,
-                      )
+                    ? buildMidgardBoundedItemChunkProofV1(item, chunkIndex + 1)
                     : null,
                 signerProof: { kind: "none" },
               });
               if (head === null) {
                 if (
-                  !expectedPhaseANativeRejection(
-                    RejectCodes.InvalidFieldType,
-                  )
+                  !expectedPhaseANativeRejection(RejectCodes.InvalidFieldType)
                 ) {
                   return yield* failUnexpectedPhaseANativeRejection(
                     RejectCodes.InvalidFieldType,
@@ -2351,12 +2303,8 @@ export const buildDeterministicValidationMachineTrace = (
                 break;
               }
 
-              const nextNodeCount =
-                phaseANativeControl.nodeCount + 1;
-              if (
-                nextNodeCount >
-                MAX_NATIVE_SCRIPT_SCAN_NODES_V1
-              ) {
+              const nextNodeCount = phaseANativeControl.nodeCount + 1;
+              if (nextNodeCount > MAX_NATIVE_SCRIPT_SCAN_NODES_V1) {
                 if (
                   !expectedPhaseANativeRejection(
                     RejectCodes.NativeScriptNodeCount,
@@ -2394,8 +2342,7 @@ export const buildDeterministicValidationMachineTrace = (
               const chunkCount = midgardBoundedItemChunkCountV1(
                 item.bytes.length,
               );
-              let token: ValidationMachineNativeScriptTokenV1 | null =
-                null;
+              let token: ValidationMachineNativeScriptTokenV1 | null = null;
               let payloadParseFailure = "none";
               try {
                 token = readValidationMachineNativeScriptPayloadV1(
@@ -2420,18 +2367,13 @@ export const buildDeterministicValidationMachineTrace = (
                 ),
                 nextChunkProof:
                   chunkIndex + 1 < chunkCount
-                    ? buildMidgardBoundedItemChunkProofV1(
-                        item,
-                        chunkIndex + 1,
-                      )
+                    ? buildMidgardBoundedItemChunkProofV1(item, chunkIndex + 1)
                     : null,
                 signerProof,
               });
               if (token === null) {
                 if (
-                  !expectedPhaseANativeRejection(
-                    RejectCodes.InvalidFieldType,
-                  )
+                  !expectedPhaseANativeRejection(RejectCodes.InvalidFieldType)
                 ) {
                   return yield* Effect.fail(
                     new Error(
@@ -2443,17 +2385,9 @@ export const buildDeterministicValidationMachineTrace = (
                 break;
               }
 
-              if (
-                token.kind >= 1 &&
-                token.kind <= 3 &&
-                token.childCount > 0
-              ) {
-                const nextDepth =
-                  phaseANativeControl.stackDepth + 1;
-                if (
-                  nextDepth >
-                  MAX_NATIVE_SCRIPT_SCAN_DEPTH_V1
-                ) {
+              if (token.kind >= 1 && token.kind <= 3 && token.childCount > 0) {
+                const nextDepth = phaseANativeControl.stackDepth + 1;
+                if (nextDepth > MAX_NATIVE_SCRIPT_SCAN_DEPTH_V1) {
                   if (
                     !expectedPhaseANativeRejection(
                       RejectCodes.NativeScriptDepth,
@@ -2479,8 +2413,7 @@ export const buildDeterministicValidationMachineTrace = (
                   ...phaseANativeControl,
                   stage: 1,
                   cursor: token.nextOffset,
-                  stackRoot:
-                    hashValidationMachineNativeScriptFrameV1(frame),
+                  stackRoot: hashValidationMachineNativeScriptFrameV1(frame),
                   stackDepth: nextDepth,
                 };
                 continue;
@@ -2497,10 +2430,10 @@ export const buildDeterministicValidationMachineTrace = (
                     .validityIntervalStart >= token.slot;
               } else if (token.kind === 5) {
                 valid =
-                  compactProofTransaction.transactionBody
-                    .validityIntervalEnd >= 0n &&
-                  compactProofTransaction.transactionBody
-                    .validityIntervalEnd <= token.slot;
+                  compactProofTransaction.transactionBody.validityIntervalEnd >=
+                    0n &&
+                  compactProofTransaction.transactionBody.validityIntervalEnd <=
+                    token.slot;
               } else if (token.kind === 1) {
                 valid = true;
               } else if (token.kind === 2) {
@@ -2517,16 +2450,14 @@ export const buildDeterministicValidationMachineTrace = (
               continue;
             }
 
-            const frame =
-              nativeScriptFrames[nativeScriptFrames.length - 1];
+            const frame = nativeScriptFrames[nativeScriptFrames.length - 1];
             if (frame !== undefined) {
               pushPhaseANativeWitness({
                 kind: "nativeScriptFrame",
                 frame,
               });
               const validCount =
-                frame.validCount +
-                (phaseANativeControl.result === 1 ? 1 : 0);
+                frame.validCount + (phaseANativeControl.result === 1 ? 1 : 0);
               if (frame.remaining === 1) {
                 nativeScriptFrames.pop();
                 const valid =
@@ -2538,26 +2469,21 @@ export const buildDeterministicValidationMachineTrace = (
                 phaseANativeControl = {
                   ...phaseANativeControl,
                   stackRoot: frame.tail,
-                  stackDepth:
-                    phaseANativeControl.stackDepth - 1,
+                  stackDepth: phaseANativeControl.stackDepth - 1,
                   result: valid ? 1 : 0,
                 };
               } else {
-                const nextFrame: ValidationMachineNativeScriptFrameV1 =
-                  {
-                    ...frame,
-                    remaining: frame.remaining - 1,
-                    validCount,
-                  };
-                nativeScriptFrames[nativeScriptFrames.length - 1] =
-                  nextFrame;
+                const nextFrame: ValidationMachineNativeScriptFrameV1 = {
+                  ...frame,
+                  remaining: frame.remaining - 1,
+                  validCount,
+                };
+                nativeScriptFrames[nativeScriptFrames.length - 1] = nextFrame;
                 phaseANativeControl = {
                   ...phaseANativeControl,
                   stage: 1,
                   stackRoot:
-                    hashValidationMachineNativeScriptFrameV1(
-                      nextFrame,
-                    ),
+                    hashValidationMachineNativeScriptFrameV1(nextFrame),
                   result: -1,
                 };
               }
@@ -2565,14 +2491,9 @@ export const buildDeterministicValidationMachineTrace = (
             }
 
             pushPhaseANativeWitness();
-            if (
-              phaseANativeControl.cursor !==
-              phaseANativeControl.itemLength
-            ) {
+            if (phaseANativeControl.cursor !== phaseANativeControl.itemLength) {
               if (
-                !expectedPhaseANativeRejection(
-                  RejectCodes.InvalidFieldType,
-                )
+                !expectedPhaseANativeRejection(RejectCodes.InvalidFieldType)
               ) {
                 return yield* failUnexpectedPhaseANativeRejection(
                   RejectCodes.InvalidFieldType,
@@ -2583,9 +2504,7 @@ export const buildDeterministicValidationMachineTrace = (
             }
             if (phaseANativeControl.result === 0) {
               if (
-                !expectedPhaseANativeRejection(
-                  RejectCodes.NativeScriptInvalid,
-                )
+                !expectedPhaseANativeRejection(RejectCodes.NativeScriptInvalid)
               ) {
                 return yield* failUnexpectedPhaseANativeRejection(
                   RejectCodes.NativeScriptInvalid,
@@ -2594,23 +2513,19 @@ export const buildDeterministicValidationMachineTrace = (
               stoppedAtRejection = true;
               break;
             }
-            phaseANativeControl =
-              resetPhaseANativeScriptsScanControl({
-                scriptCount: activeScriptCount,
-                scriptSeen: phaseANativeControl.scriptSeen + 1,
-                containsNonNativeScript:
-                  phaseANativeControl.containsNonNativeScript,
-              });
+            phaseANativeControl = resetPhaseANativeScriptsScanControl({
+              scriptCount: activeScriptCount,
+              scriptSeen: phaseANativeControl.scriptSeen + 1,
+              containsNonNativeScript:
+                phaseANativeControl.containsNonNativeScript,
+            });
             break;
           }
           if (stoppedAtRejection) break;
         }
       }
 
-      if (
-        !stoppedAtRejection &&
-        terminalPhase === "phaseANativeScripts"
-      ) {
+      if (!stoppedAtRejection && terminalPhase === "phaseANativeScripts") {
         return yield* Effect.fail(
           new Error(
             `bounded native-script scan cannot prove rejection ${rejectionCode ?? "none"}`,
@@ -2625,8 +2540,7 @@ export const buildDeterministicValidationMachineTrace = (
       let previousObserver = Buffer.alloc(0);
       const currentPreconditionsWitness = (): Buffer =>
         phaseAScriptPreconditionsWitnessCbor({
-          containsNonNativeScript:
-            phaseANativeControl.containsNonNativeScript,
+          containsNonNativeScript: phaseANativeControl.containsNonNativeScript,
           observerCount,
           observerSeen,
           previousObserver,
@@ -2637,11 +2551,10 @@ export const buildDeterministicValidationMachineTrace = (
           currentPreconditionsWitness(),
           {
             kind: "transactionFieldChunk",
-            collectionProof:
-              buildMidgardBoundedCollectionItemProofV1(
-                requiredObserversCollection,
-                observer.itemIndex,
-              ),
+            collectionProof: buildMidgardBoundedCollectionItemProofV1(
+              requiredObserversCollection,
+              observer.itemIndex,
+            ),
             chunkProof: buildMidgardBoundedItemChunkProofV1(observer, 0),
           },
         );
@@ -2670,10 +2583,7 @@ export const buildDeterministicValidationMachineTrace = (
         previousObserver = observer.bytes;
       }
       if (!stoppedAtRejection) {
-        pushWitness(
-          "phaseAScriptPreconditions",
-          currentPreconditionsWitness(),
-        );
+        pushWitness("phaseAScriptPreconditions", currentPreconditionsWitness());
         if (
           rejection !== null &&
           terminalPhase === "phaseAScriptPreconditions"
@@ -2817,22 +2727,16 @@ export const buildDeterministicValidationMachineTrace = (
               redeemerTotalCount: 0,
             });
           for (const item of scriptWitnessesCollection.items) {
-            pushWitness(
-              "scriptSources",
-              currentInlineSourceWitness(),
-              {
-                kind: "transactionFieldChunk",
-                collectionProof:
-                  buildMidgardBoundedCollectionItemProofV1(
-                    scriptWitnessesCollection,
-                    item.itemIndex,
-                  ),
-                chunkProof: buildMidgardBoundedItemChunkProofV1(item, 0),
-              },
-            );
+            pushWitness("scriptSources", currentInlineSourceWitness(), {
+              kind: "transactionFieldChunk",
+              collectionProof: buildMidgardBoundedCollectionItemProofV1(
+                scriptWitnessesCollection,
+                item.itemIndex,
+              ),
+              chunkProof: buildMidgardBoundedItemChunkProofV1(item, 0),
+            });
             if (inlineSourceTotalCount === 0) {
-              inlineSourceTotalCount =
-                scriptWitnessesCollection.items.length;
+              inlineSourceTotalCount = scriptWitnessesCollection.items.length;
             }
             authenticatedInlineSourceFrontier =
               appendMidgardValidationMerkleLeafV1(
@@ -2840,10 +2744,7 @@ export const buildDeterministicValidationMachineTrace = (
                 inlineScriptSourceLeafHashes[item.itemIndex]!,
               );
           }
-          pushWitness(
-            "scriptSources",
-            currentInlineSourceWitness(),
-          );
+          pushWitness("scriptSources", currentInlineSourceWitness());
           if (
             !commitMidgardValidationMerkleFrontierV1(
               authenticatedInlineSourceFrontier,
@@ -2885,44 +2786,30 @@ export const buildDeterministicValidationMachineTrace = (
                 ),
               );
             }
-            pushWitness(
-              "scriptSources",
-              currentRedeemerWitness(),
-              {
-                kind: "transactionRedeemerItem",
-                collectionProof:
-                  buildMidgardBoundedCollectionItemProofV1(
-                    redeemerWitnessesCollection,
-                    item.itemIndex,
-                  ),
-                redeemer,
-              },
-            );
+            pushWitness("scriptSources", currentRedeemerWitness(), {
+              kind: "transactionRedeemerItem",
+              collectionProof: buildMidgardBoundedCollectionItemProofV1(
+                redeemerWitnessesCollection,
+                item.itemIndex,
+              ),
+              redeemer,
+            });
             if (redeemerTotalCount === 0) {
-              redeemerTotalCount =
-                redeemerWitnessesCollection.items.length;
+              redeemerTotalCount = redeemerWitnessesCollection.items.length;
             }
-            authenticatedRedeemerFrontier =
-              appendMidgardValidationMerkleLeafV1(
-                authenticatedRedeemerFrontier,
-                hashMidgardRedeemerItemLeafV1({
-                  redeemerIndex: item.itemIndex,
-                  itemCommitment: item.commitment,
-                }),
-              );
+            authenticatedRedeemerFrontier = appendMidgardValidationMerkleLeafV1(
+              authenticatedRedeemerFrontier,
+              hashMidgardRedeemerItemLeafV1({
+                redeemerIndex: item.itemIndex,
+                itemCommitment: item.commitment,
+              }),
+            );
           }
-          pushWitness(
-            "scriptSources",
-            currentRedeemerWitness(),
-          );
+          pushWitness("scriptSources", currentRedeemerWitness());
           if (
             !commitMidgardValidationMerkleFrontierV1(
               authenticatedRedeemerFrontier,
-            ).equals(
-              commitMidgardValidationMerkleFrontierV1(
-                redeemerFrontier,
-              ),
-            )
+            ).equals(commitMidgardValidationMerkleFrontierV1(redeemerFrontier))
           ) {
             return yield* Effect.fail(
               new Error(
@@ -3219,8 +3106,11 @@ export const buildDeterministicValidationMachineTrace = (
                   purposeEntry.leaf,
                 );
               }
-              pushWitness(
-                "scriptSources",
+              let observerPurposeFrontier = mintPurposeFrontier;
+              let observerTotalCount = 0;
+              let observerSeen = 0;
+              let previousObserverHash = Buffer.alloc(0);
+              const currentObserverPurposeWitness = (): Buffer =>
                 scriptSourcesWitnessCbor({
                   ...scriptSourceControl,
                   stage: 7,
@@ -3230,36 +3120,37 @@ export const buildDeterministicValidationMachineTrace = (
                   replayAccumulator,
                   replayRemainingScheduleHash,
                   spendIndex: replaySpendIndex,
-                  purposeFrontier: mintPurposeFrontier,
+                  purposeFrontier: observerPurposeFrontier,
                   outputCursor,
                   outputFrontier,
                   receiveHashes,
-                }),
-                {
-                  kind: "transactionFieldPreimage",
-                  preimageCbor: fieldPreimages[3]!.preimageCbor,
-                },
-              );
-              const observerHashes = [
-                ...(phaseALedgerTx?.requiredObserverHashes ?? []),
-              ]
-                .map((hash) => Buffer.from(hash))
-                .sort(Buffer.compare);
-              let observerPurposeFrontier = mintPurposeFrontier;
-              for (
-                let observerIndex = 0;
-                observerIndex < observerHashes.length;
-                observerIndex += 1
-              ) {
-                const observerHash = observerHashes[observerIndex]!;
+                  observerScan: {
+                    totalCount: observerTotalCount,
+                    seen: observerSeen,
+                    previousHash: previousObserverHash,
+                  },
+                });
+              for (const observer of requiredObserversCollection.items) {
+                pushWitness("scriptSources", currentObserverPurposeWitness(), {
+                  kind: "transactionFieldChunk",
+                  collectionProof: buildMidgardBoundedCollectionItemProofV1(
+                    requiredObserversCollection,
+                    observer.itemIndex,
+                  ),
+                  chunkProof: buildMidgardBoundedItemChunkProofV1(observer, 0),
+                });
+                if (observerTotalCount === 0) {
+                  observerTotalCount = requiredObserversCollection.items.length;
+                }
+                const observerHash = observer.bytes;
                 const purposeEntry: ScriptPurposeProofEntry = {
                   purposeKind: 2,
-                  purposeIndex: BigInt(observerIndex),
+                  purposeIndex: BigInt(observerSeen),
                   scriptHash: observerHash,
                   subject: observerHash,
                   leaf: hashMidgardScriptPurposeLeafV1({
                     purposeKind: 2,
-                    purposeIndex: BigInt(observerIndex),
+                    purposeIndex: BigInt(observerSeen),
                     scriptHash: observerHash,
                     subject: observerHash,
                   }),
@@ -3269,7 +3160,10 @@ export const buildDeterministicValidationMachineTrace = (
                   observerPurposeFrontier,
                   purposeEntry.leaf,
                 );
+                observerSeen += 1;
+                previousObserverHash = observerHash;
               }
+              pushWitness("scriptSources", currentObserverPurposeWitness());
               let allPurposeFrontier = observerPurposeFrontier;
               for (
                 let receiveIndex = 0;
@@ -4411,11 +4305,7 @@ export const buildDeterministicValidationMachineTrace = (
                 mintSummary: contextParts.mint,
               };
             } else {
-              const header = readCborMapHeader(
-                mintPreimage,
-                0,
-                "v1.cek.mint",
-              );
+              const header = readCborMapHeader(mintPreimage, 0, "v1.cek.mint");
               contextControl = {
                 ...contextControl,
                 stage: 7,
@@ -5414,9 +5304,7 @@ export const buildDeterministicValidationMachineTrace = (
                 rejection.code !== RejectCodes.ValueNotPreserved
               ) {
                 return yield* Effect.fail(
-                  new Error(
-                    "V1 value equation disagrees with validation",
-                  ),
+                  new Error("V1 value equation disagrees with validation"),
                 );
               }
               stoppedAtRejection = true;
@@ -5617,9 +5505,7 @@ export const buildDeterministicValidationMachineTrace = (
     }
     if (rejection !== null && !stoppedAtRejection) {
       return yield* Effect.fail(
-        new Error(
-          `V1 trace did not reach rejection phase ${terminalPhase}`,
-        ),
+        new Error(`V1 trace did not reach rejection phase ${terminalPhase}`),
       );
     }
 

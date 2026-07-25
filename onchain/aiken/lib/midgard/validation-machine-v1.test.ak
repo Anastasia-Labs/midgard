@@ -717,6 +717,7 @@ fn script_sources_output_step_fixture_with_resolved_items(
   output_cursor: Int,
   output_frontier: validation_merkle_v1.BuiltFrontier,
   receive_hashes: List<ByteArray>,
+  observer_scan: validation_machine_v1.ObserverPurposeScanControlV1,
   program_counter: Int,
 ) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
   let proof_source = midgard_transaction_proof_source_v1(tx)
@@ -756,6 +757,7 @@ fn script_sources_output_step_fixture_with_resolved_items(
     receive_hashes,
     source_frontier.count,
     redeemer_frontier.count,
+    observer_scan,
   )
   Pair(
     validation_trace_v1.ValidationMachineStateV1 {
@@ -783,6 +785,19 @@ fn script_sources_output_step_fixture_with_resolved_items(
     },
     work_witness_cbor,
   )
+}
+
+test observer_purpose_scan_control_cbor_is_canonical() {
+  let encoded = validation_machine_v1.encode_observer_purpose_scan_control(
+    validation_machine_v1.empty_observer_purpose_scan_control(),
+  )
+  and {
+    encoded == #"83004000",
+    when cbor.deserialise(encoded) is {
+      None -> False
+      Some(data) -> list.length(builtin.un_list_data(data)) == 3
+    },
+  }
 }
 
 fn script_sources_output_step_fixture(
@@ -818,6 +833,7 @@ fn script_sources_output_step_fixture(
     output_cursor,
     output_frontier,
     receive_hashes,
+    validation_machine_v1.empty_observer_purpose_scan_control(),
     program_counter,
   )
 }
@@ -853,6 +869,7 @@ fn script_sources_step_fixture_with_resolved_items(
     0,
     validation_merkle_v1.build_frontier([]),
     [],
+    validation_machine_v1.empty_observer_purpose_scan_control(),
     program_counter,
   )
 }
@@ -935,6 +952,7 @@ fn script_discovery_step_fixture(
     receive_hashes,
     source_total_count: source_frontier.count,
     redeemer_total_count: redeemer_frontier.count,
+    observer_scan: validation_machine_v1.empty_observer_purpose_scan_control(),
     discovery,
   }
   let work_witness_cbor = validation_machine_v1.encode_script_sources_discovery_witness(
@@ -3312,6 +3330,7 @@ test resolve_inputs_finalizes_into_script_source_resolution() {
         [],
         0,
         0,
+        validation_machine_v1.empty_observer_purpose_scan_control(),
       ),
     ),
   }
@@ -4128,13 +4147,16 @@ test script_sources_appends_mint_and_burn_policy_purposes() {
   )
 }
 
-test script_sources_appends_canonical_observer_purposes() {
+fn canonical_observer_purpose_step(step_to_verify: Int) -> Bool {
   let base = empty_v1_transaction()
   let tx = MidgardTransaction {
     ..base,
     body: MidgardTransactionBody { ..base.body, required_observers: [h_28_a] },
   }
   let empty_frontier = validation_merkle_v1.build_frontier([])
+  let observer_purpose_frontier = validation_merkle_v1.build_frontier(
+    [script_proof_v1.purpose_leaf_hash(2, 0, h_28_a, h_28_a)],
+  )
   let final_purpose_frontier = validation_merkle_v1.build_frontier(
     [
       script_proof_v1.purpose_leaf_hash(2, 0, h_28_a, h_28_a),
@@ -4159,6 +4181,30 @@ test script_sources_appends_canonical_observer_purposes() {
     [h_28_b],
     18,
   )
+  let Pair(after_observer, after_observer_work_witness_cbor) =
+    script_sources_output_step_fixture_with_resolved_items(
+      tx,
+      0,
+      accumulator,
+      7,
+      empty_frontier,
+      empty_frontier,
+      0,
+      empty_frontier,
+      accumulator,
+      validation_machine_v1.empty_resolution_schedule_hash(),
+      0,
+      observer_purpose_frontier,
+      0,
+      empty_frontier,
+      [h_28_b],
+      validation_machine_v1.ObserverPurposeScanControlV1 {
+        total_count: 1,
+        seen: 1,
+        previous_hash: h_28_a,
+      },
+      19,
+    )
   let Pair(post, _) = script_discovery_step_fixture(
     tx,
     8,
@@ -4167,20 +4213,47 @@ test script_sources_appends_canonical_observer_purposes() {
     final_purpose_frontier,
     [],
     validation_machine_v1.empty_script_discovery_control(),
-    19,
+    20,
   )
-  validation_machine_v1.verify_one_step_evidence(
-    pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
-        work_witness_cbor,
-        claimed_successor: post,
+  let Pair(collection_proof, chunk_proof) =
+    singleton_field_item_proofs(3, h_28_a)
+  if step_to_verify == 0 {
+    validation_machine_v1.verify_one_step_evidence(
+      pre,
+      validation_machine_v1.ValidationOneStepEvidenceV1 {
+        transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+          work_witness_cbor,
+          claimed_successor: after_observer,
+        },
+        auxiliary: validation_machine_v1.TransactionFieldChunkWitness {
+          collection_proof,
+          chunk_proof,
+        },
       },
-      auxiliary: validation_machine_v1.TransactionFieldPreimageWitness {
-        preimage_cbor: encode_native_byte_list(tx.body.required_observers),
-      },
-    },
-  )
+    )
+  } else {
+    and {
+      step_to_verify == 1,
+      validation_machine_v1.verify_one_step_evidence(
+        after_observer,
+        validation_machine_v1.ValidationOneStepEvidenceV1 {
+          transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+            work_witness_cbor: after_observer_work_witness_cbor,
+            claimed_successor: post,
+          },
+          auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+        },
+      ),
+    }
+  }
+}
+
+test script_sources_appends_canonical_observer_purposes() {
+  canonical_observer_purpose_step(0)
+}
+
+test script_sources_finishes_canonical_observer_purposes() {
+  canonical_observer_purpose_step(1)
 }
 
 test script_sources_prepares_more_than_sixteen_purposes_for_discovery() {
@@ -4224,9 +4297,7 @@ test script_sources_prepares_more_than_sixteen_purposes_for_discovery() {
         work_witness_cbor,
         claimed_successor: post,
       },
-      auxiliary: validation_machine_v1.TransactionFieldPreimageWitness {
-        preimage_cbor: encode_native_byte_list([]),
-      },
+      auxiliary: validation_machine_v1.NoAuxiliaryWitness,
     },
   )
 }
@@ -7012,6 +7083,7 @@ test maximum_script_program_instruction_evidence_is_bounded() {
     receive_hashes: [],
     source_total_count: 15,
     redeemer_total_count: 15,
+    observer_scan: validation_machine_v1.empty_observer_purpose_scan_control(),
     discovery,
   }
   let work_witness_cbor = validation_machine_v1.encode_script_sources_discovery_witness(

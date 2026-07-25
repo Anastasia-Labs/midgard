@@ -167,29 +167,24 @@ const validateBoundaryAbiAndCollectAuxiliaryKinds = (
       const globalIndex =
         semanticResolverOffsetsV1[oneStepArgument.resolverIndex]! +
         oneStepArgument.semanticResolverIndex;
-      const moduleName =
-        semanticResolverDefinitionsV1[globalIndex];
+      const moduleName = semanticResolverDefinitionsV1[globalIndex];
       if (moduleName === undefined) {
         throw new Error(
           `semantic resolver ${globalIndex.toString()} has no ABI definition`,
         );
       }
-      const semanticRedeemer =
-        encodeValidationSemanticResolutionRedeemerV1({
-          oneStepArgument,
-          inputIndex: 0n,
-          outputIndex: 0n,
-        });
+      const semanticRedeemer = encodeValidationSemanticResolutionRedeemerV1({
+        oneStepArgument,
+        inputIndex: 0n,
+        outputIndex: 0n,
+      });
       parseExactAikenDataCbor({
         blueprint: validationDisputeBlueprint,
         definitionName: `fraud_proofs/validation_trace/${moduleName}/SpendRedeemer`,
         cbor: semanticRedeemer.toString("hex"),
         maxBytes: 16 * 1024 - 1,
       });
-      maxArgumentsBytes = Math.max(
-        maxArgumentsBytes,
-        semanticRedeemer.length,
-      );
+      maxArgumentsBytes = Math.max(maxArgumentsBytes, semanticRedeemer.length);
     }
     maxArgumentsBytes = Math.max(maxArgumentsBytes, argumentsCbor.length);
     validated.add(auxiliaryKind);
@@ -294,18 +289,15 @@ describe("deterministic validation machine", () => {
     );
     expect(canonicalWitnesses).toHaveLength(9);
     expect(
-      canonicalWitnesses.every(
-        (witness) => {
-          if (witness.auxiliary === null) return witness.cbor.length < 16 * 1024;
-          return (
-            witness.auxiliary.kind === "transactionFieldChunk" &&
-            witness.auxiliary.chunkProof.chunk.length <= 4_095 &&
-            witness.cbor.length +
-              witness.auxiliary.chunkProof.chunk.length <
-              16 * 1024
-          );
-        },
-      ),
+      canonicalWitnesses.every((witness) => {
+        if (witness.auxiliary === null) return witness.cbor.length < 16 * 1024;
+        return (
+          witness.auxiliary.kind === "transactionFieldChunk" &&
+          witness.auxiliary.chunkProof.chunk.length <= 4_095 &&
+          witness.cbor.length + witness.auxiliary.chunkProof.chunk.length <
+            16 * 1024
+        );
+      }),
     ).toBe(true);
     const scriptSourceWitnesses = trace.witnesses.filter(
       (witness) => witness.phase === "scriptSources",
@@ -328,23 +320,19 @@ describe("deterministic validation machine", () => {
     expect(scriptSourceWitnesses[8]?.auxiliary?.kind).toBe(
       "transactionFieldPreimage",
     );
-    expect(scriptSourceWitnesses[9]?.auxiliary?.kind).toBe(
-      "transactionFieldPreimage",
-    );
+    expect(scriptSourceWitnesses[9]?.auxiliary).toBeNull();
     expect(scriptSourceWitnesses[10]?.auxiliary).toBeNull();
     expect(scriptSourceWitnesses[11]?.auxiliary).toBeNull();
     expect(scriptSourceWitnesses[12]?.auxiliary).toBeNull();
     expect(
-      canonicalWitnesses.every(
-        (witness) => {
-          if (witness.cbor.includes(transaction.txCbor)) return false;
-          return (
-            witness.auxiliary === null ||
-            (witness.auxiliary.kind === "transactionFieldChunk" &&
-              !witness.auxiliary.chunkProof.chunk.includes(transaction.txCbor))
-          );
-        },
-      ),
+      canonicalWitnesses.every((witness) => {
+        if (witness.cbor.includes(transaction.txCbor)) return false;
+        return (
+          witness.auxiliary === null ||
+          (witness.auxiliary.kind === "transactionFieldChunk" &&
+            !witness.auxiliary.chunkProof.chunk.includes(transaction.txCbor))
+        );
+      }),
     ).toBe(true);
     const compactBindingWitness = trace.witnesses.find(
       (witness) => witness.phase === "compactBinding",
@@ -595,7 +583,9 @@ describe("deterministic validation machine", () => {
       ),
     ).toBe(true);
     expect(trace.verdict).toBe("accepted");
-    expect([...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds]).toEqual(
+    expect([
+      ...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds,
+    ]).toEqual(
       expect.arrayContaining([
         "scriptSourceScan",
         "cekResolvedContextItem",
@@ -684,7 +674,9 @@ describe("deterministic validation machine", () => {
         ),
       ).toBe(true);
       expect(trace.verdict).toBe("accepted");
-      expect([...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds]).toEqual(
+      expect([
+        ...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds,
+      ]).toEqual(
         expect.arrayContaining([
           "cekMintContextItem",
           "valueMintAsset",
@@ -768,7 +760,9 @@ describe("deterministic validation machine", () => {
       ),
     ).toBe(true);
     expect(trace.verdict).toBe("accepted");
-    expect([...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds]).toEqual(
+    expect([
+      ...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds,
+    ]).toEqual(
       expect.arrayContaining([
         "nativeExecutionScan",
         "cekOutputContextItem",
@@ -853,15 +847,23 @@ describe("deterministic validation machine", () => {
       (witness) => witness.phase === "phaseAScriptPreconditions",
     );
     expect(
-      preconditionWitnesses.map(
-        (witness) => witness.auxiliary?.kind ?? "none",
-      ),
+      preconditionWitnesses.map((witness) => witness.auxiliary?.kind ?? "none"),
     ).toEqual(["transactionFieldChunk", "none"]);
     expect(
       preconditionWitnesses.map(validationSemanticResolverIndexV1),
     ).toEqual([1, 0]);
+    expect(
+      trace.witnesses.some(
+        (witness) =>
+          witness.phase === "scriptSources" &&
+          witness.auxiliary?.kind === "transactionFieldChunk" &&
+          witness.auxiliary.collectionProof.fieldIndex === 3,
+      ),
+    ).toBe(true);
     expect(trace.verdict).toBe("accepted");
-    expect([...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds]).toEqual(
+    expect([
+      ...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds,
+    ]).toEqual(
       expect.arrayContaining([
         "nativeExecutionScan",
         "cekRedeemerContextSelect",
@@ -899,9 +901,7 @@ describe("deterministic validation machine", () => {
     );
     expect(preconditionWitnesses).toHaveLength(2);
     expect(
-      preconditionWitnesses.map(
-        (witness) => witness.auxiliary?.kind,
-      ),
+      preconditionWitnesses.map((witness) => witness.auxiliary?.kind),
     ).toEqual(["transactionFieldChunk", "transactionFieldChunk"]);
     expect(
       preconditionWitnesses.map(validationSemanticResolverIndexV1),
@@ -998,7 +998,9 @@ describe("deterministic validation machine", () => {
         .map(validationSemanticResolverIndexV1),
     ).toEqual([1, 2, 3, 2, 8, 13, 0]);
     expect(trace.verdict).toBe("accepted");
-    expect([...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds]).toEqual(
+    expect([
+      ...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds,
+    ]).toEqual(
       expect.arrayContaining([
         "valueOutputAsset",
         "valueMintAsset",
@@ -1065,7 +1067,9 @@ describe("deterministic validation machine", () => {
       )?.auxiliary,
     ).toMatchObject({ kind: "valueMintAsset", quantity: -5n });
     expect(trace.verdict).toBe("accepted");
-    expect([...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds]).toEqual(
+    expect([
+      ...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds,
+    ]).toEqual(
       expect.arrayContaining([
         "valueInputAsset",
         "valueMintAsset",
@@ -1159,14 +1163,8 @@ describe("deterministic validation machine", () => {
       (witness) => witness.phase === "signatures",
     );
     expect(
-      signatureWitnesses.map(
-        (witness) => witness.auxiliary?.kind ?? null,
-      ),
-    ).toEqual([
-      "transactionFieldChunk",
-      "requiredSignerItem",
-      null,
-    ]);
+      signatureWitnesses.map((witness) => witness.auxiliary?.kind ?? null),
+    ).toEqual(["transactionFieldChunk", "requiredSignerItem", null]);
     expect(
       signatureWitnesses[1]?.auxiliary?.kind === "requiredSignerItem"
         ? signatureWitnesses[1].auxiliary.signerProof.kind
@@ -1207,9 +1205,7 @@ describe("deterministic validation machine", () => {
       (witness) => witness.phase === "signatures",
     );
     expect(
-      signatureWitnesses.map(
-        (witness) => witness.auxiliary?.kind ?? null,
-      ),
+      signatureWitnesses.map((witness) => witness.auxiliary?.kind ?? null),
     ).toEqual(["transactionFieldChunk", "requiredSignerItem"]);
     expect(
       signatureWitnesses[1]?.auxiliary?.kind === "requiredSignerItem"
