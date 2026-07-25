@@ -12970,7 +12970,7 @@ fn verify_ledger_delta(
     control.output_cursor >= 0,
     control.output_cursor <= native_control.output_count,
     control.operation_count >= 0,
-    control.operation_count <= 128,
+    control.operation_count <= max_tx_size_derived_collection_item_count,
     validation_merkle_v1.frontier_is_well_formed(
       control.operation_count,
       control.operation_peaks,

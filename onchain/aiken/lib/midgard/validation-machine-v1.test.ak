@@ -4420,15 +4420,32 @@ test ledger_delta_operation_frontier_vectors_are_stable() {
   )
   let frontier = validation_merkle_v1.build_frontier([deletion, insertion])
   and {
-    deletion == #"51c42aeb84dd425e93bb0238422677a4d97e57702f3ad4e77fcd1aeb0037d107",
-    insertion == #"4de61a76fc75a19efd570dc3666f9f8438d0f742c875c0837edaba8a593d3de7",
-    validation_merkle_v1.frontier_commitment(frontier.count, frontier.peaks) == #"f0dfa1163ab84405f2ac41b4af371fdb19ec52bb67ce53a343e1b65abdd6c6e7",
+    deletion == #"ec29850954b571d525f5aa50102eb7c52b3411c559ea671cfbc2b649772105ef",
+    insertion == #"d0db5df4d5d20483cae1bbfa97fc7dda0bd605684e9a0023211b822cb35cecc1",
+    validation_merkle_v1.frontier_commitment(frontier.count, frontier.peaks) == #"f930a92b68f2c321c138796f4a73d3d3155f76c51617eba6212ca6d1d43f04c7",
   }
 }
 
-test ledger_delta_terminal_step_binds_post_root_and_operation_frontier() {
+test ledger_delta_terminal_step_binds_more_than_128_operations() {
   let tx = empty_v1_transaction()
   let native_control = empty_native_control_fixture(tx)
+  // This is the off-chain-built frontier for 129 identical authenticated
+  // deletions. Supplying the compact peaks measures only the actual terminal
+  // resolver; constructing 129 leaves inside the test would charge fixture
+  // setup to the transition.
+  let operation_frontier = validation_merkle_v1.BuiltFrontier {
+    count: 129,
+    peaks: [
+      validation_merkle_v1.FrontierPeak {
+        height: 0,
+        hash: #"ec29850954b571d525f5aa50102eb7c52b3411c559ea671cfbc2b649772105ef",
+      },
+      validation_merkle_v1.FrontierPeak {
+        height: 7,
+        hash: #"684fdf60c9a98dfe6a58909a327994e95a5f742775c4e5e85bccea387f2ea320",
+      },
+    ],
+  }
   let control = validation_machine_v1.LedgerDeltaControlV1 {
     native_control,
     stage: 3,
@@ -4438,8 +4455,8 @@ test ledger_delta_terminal_step_binds_post_root_and_operation_frontier() {
     replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
     current_ledger_root: h_b,
     output_cursor: 0,
-    operation_count: 0,
-    operation_peaks: validation_merkle_v1.empty_frontier(),
+    operation_count: operation_frontier.count,
+    operation_peaks: operation_frontier.peaks,
   }
   let work_witness_cbor = validation_machine_v1.encode_ledger_delta_control_v1(
     control,
@@ -4470,7 +4487,10 @@ test ledger_delta_terminal_step_binds_post_root_and_operation_frontier() {
     execution_memory: 0,
     verdict: validation_trace_v1.Pending,
     rejection_code_hash: zero,
-    ledger_delta_root: validation_merkle_v1.frontier_commitment(0, []),
+    ledger_delta_root: validation_merkle_v1.frontier_commitment(
+      operation_frontier.count,
+      operation_frontier.peaks,
+    ),
   }
   let post = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
@@ -4479,7 +4499,11 @@ test ledger_delta_terminal_step_binds_post_root_and_operation_frontier() {
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.Terminal,
       47,
-      validation_machine_v1.encode_terminal_acceptance_witness_v1(h_b, 0, []),
+      validation_machine_v1.encode_terminal_acceptance_witness_v1(
+        h_b,
+        operation_frontier.count,
+        operation_frontier.peaks,
+      ),
     ),
     verdict: validation_trace_v1.Accepted,
   }
