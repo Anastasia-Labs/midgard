@@ -1,22 +1,25 @@
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
-use midgard/validation_resolver_v1.{Datum, PrepareSpendRedeemer, prepare}
+use midgard/validation_resolver_v1.{
+  Datum, PrepareSelectedSpendRedeemer, prepare_selected,
+}
 use midgard/validation_trace_v1.{CanonicalDecode}
 
 validator main(
-  semantic_resolver_script_hash: ScriptHash,
+  semantic_resolver_script_hashes: List<ScriptHash>,
   computation_thread_policy_id: PolicyId,
 ) {
   spend(
     datum: Option<Datum>,
-    redeemer: PrepareSpendRedeemer,
+    redeemer: PrepareSelectedSpendRedeemer,
     own_out_ref: OutputReference,
     tx: Transaction,
   ) {
-    prepare(
+    prepare_selected(
       CanonicalDecode,
-      semantic_resolver_script_hash,
+      semantic_resolver_script_hashes,
+      2,
       computation_thread_policy_id,
       datum,
       redeemer,

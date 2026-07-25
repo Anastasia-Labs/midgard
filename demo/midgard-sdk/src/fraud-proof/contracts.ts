@@ -81,8 +81,10 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
       "fraud_proofs/validation_trace/phase_a_script_preconditions_v1.main.spend",
   },
   semantics: {
-    canonicalDecode:
-      "fraud_proofs/validation_trace/canonical_decode_semantic_v1.main.spend",
+    canonicalDecodeEmpty:
+      "fraud_proofs/validation_trace/canonical_decode_empty_semantic_v1.main.spend",
+    canonicalDecodeChunk:
+      "fraud_proofs/validation_trace/canonical_decode_chunk_semantic_v1.main.spend",
     compactBinding:
       "fraud_proofs/validation_trace/compact_binding_semantic_v1.main.spend",
     staticLedgerRules:
@@ -204,6 +206,7 @@ export type ValidationTraceDisputeFaultProofContracts = {
       SpendingValidator,
     ];
     readonly semanticResolvers: readonly [
+      SpendingValidator,
       SpendingValidator,
       SpendingValidator,
       SpendingValidator,
@@ -827,7 +830,7 @@ const buildValidationTraceDisputeChain = ({
         ),
       );
     }
-    if (builtSemanticResolvers.length !== 7) {
+    if (builtSemanticResolvers.length !== 8) {
       return yield* Effect.fail(
         new Error("Validation-trace semantic resolver set is incomplete"),
       );
@@ -840,13 +843,37 @@ const buildValidationTraceDisputeChain = ({
       builtSemanticResolvers[4]!,
       builtSemanticResolvers[5]!,
       builtSemanticResolvers[6]!,
+      builtSemanticResolvers[7]!,
     ] as const;
+    const semanticResolverGroups = [
+      [semanticResolvers[0], semanticResolvers[1]],
+      [semanticResolvers[2]],
+      [semanticResolvers[3]],
+      [semanticResolvers[4]],
+      [semanticResolvers[5]],
+      [semanticResolvers[6]],
+      [semanticResolvers[7]],
+    ] as const;
+    const semanticResolverHashesSchema = Data.Array(Data.Bytes());
+    type SemanticResolverHashes = Data.Static<
+      typeof semanticResolverHashesSchema
+    >;
+    const SemanticResolverHashes =
+      semanticResolverHashesSchema as unknown as SemanticResolverHashes;
 
     const prepareTitles = Object.values(
       VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.prepares,
     );
     const builtPrepareResolvers: SpendingValidator[] = [];
     for (const [index, title] of prepareTitles.entries()) {
+      const semanticResolverHashesData = Data.from(
+        Data.to(
+          semanticResolverGroups[index]!.map(
+            ({ spendingScriptHash }) => spendingScriptHash,
+          ),
+          SemanticResolverHashes,
+        ),
+      ) as Data;
       builtPrepareResolvers.push(
         yield* tryBuild(
           `Failed to build validation-trace prepare resolver ${index.toString()}`,
@@ -854,7 +881,7 @@ const buildValidationTraceDisputeChain = ({
             makeSpendingValidator(
               network,
               applyParamsToScript(getCompiledScript(blueprint, title), [
-                semanticResolvers[index]!.spendingScriptHash,
+                semanticResolverHashesData,
                 computationThread.policyId,
               ]),
             ),

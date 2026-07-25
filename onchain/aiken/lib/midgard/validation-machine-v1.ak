@@ -41,7 +41,7 @@ use midgard/fraud_proofs/native_tx/types.{
   MintRedeemer, NativeCardanoScript, NativeTxBodyCompact, NativeTxCompact,
   NativeTxFieldPreimageLengthsV1, NativeTxWitnessSetCompact, ProposeRedeemer,
   PubKeyCredential, ReceiveRedeemer, RewardRedeemer, ScriptCredential,
-  SpendRedeemer, VoteRedeemer,
+  SpendRedeemer, VerifiedMidgardNativeTxCompact, VoteRedeemer,
 }
 use midgard/ledger_output_v1
 use midgard/mpf_proof_v1
@@ -990,12 +990,22 @@ fn canonical_scan_field_successor_is_exact(
   }
 }
 
-fn verify_canonical_decode(
-  pre: validation_trace_v1.ValidationMachineStateV1,
-  witness: ValidationOneStepWitnessV1,
-  auxiliary: ValidationAuxiliaryWitnessV1,
-) -> Bool {
-  expect Some(data) = cbor.deserialise(witness.work_witness_cbor)
+pub type CanonicalDecodeControlV1 {
+  compact_cbor: ByteArray,
+  witness_set_compact_cbor: ByteArray,
+  field_preimage_lengths_cbor: ByteArray,
+  context_cbor: ByteArray,
+  field_index: Int,
+  item_index: Int,
+  chunk_index: Int,
+  item_count: Int,
+  encoded_length: Int,
+}
+
+fn canonical_decode_control_from_witness(
+  witness_cbor: ByteArray,
+) -> CanonicalDecodeControlV1 {
+  expect Some(data) = cbor.deserialise(witness_cbor)
   expect
       [
         compact_cbor_data, witness_set_compact_cbor_data,
@@ -1003,199 +1013,297 @@ fn verify_canonical_decode(
         item_index_data, chunk_index_data, item_count_data, encoded_length_data,
       ]
     = builtin.un_list_data(data)
-  let compact_cbor = builtin.un_b_data(compact_cbor_data)
-  let witness_set_compact_cbor = builtin.un_b_data(
-    witness_set_compact_cbor_data,
-  )
-  let field_preimage_lengths_cbor = builtin.un_b_data(
-    field_preimage_lengths_cbor_data,
-  )
-  let context_cbor = builtin.un_b_data(context_cbor_data)
-  let field_index = builtin.un_i_data(field_index_data)
-  let item_index = builtin.un_i_data(item_index_data)
-  let chunk_index = builtin.un_i_data(chunk_index_data)
-  let item_count = builtin.un_i_data(item_count_data)
-  let encoded_length = builtin.un_i_data(encoded_length_data)
+  CanonicalDecodeControlV1 {
+    compact_cbor: builtin.un_b_data(compact_cbor_data),
+    witness_set_compact_cbor: builtin.un_b_data(
+      witness_set_compact_cbor_data,
+    ),
+    field_preimage_lengths_cbor: builtin.un_b_data(
+      field_preimage_lengths_cbor_data,
+    ),
+    context_cbor: builtin.un_b_data(context_cbor_data),
+    field_index: builtin.un_i_data(field_index_data),
+    item_index: builtin.un_i_data(item_index_data),
+    chunk_index: builtin.un_i_data(chunk_index_data),
+    item_count: builtin.un_i_data(item_count_data),
+    encoded_length: builtin.un_i_data(encoded_length_data),
+  }
+}
+
+fn canonical_decode_control_is_bound(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: CanonicalDecodeControlV1,
+  verified: VerifiedMidgardNativeTxCompact,
+) -> Bool {
   let exact_witness = encode_transaction_field_scan_witness(
-    compact_cbor,
-    witness_set_compact_cbor,
-    field_preimage_lengths_cbor,
-    context_cbor,
-    field_index,
-    item_index,
-    chunk_index,
-    item_count,
-    encoded_length,
+    control.compact_cbor,
+    control.witness_set_compact_cbor,
+    control.field_preimage_lengths_cbor,
+    control.context_cbor,
+    control.field_index,
+    control.item_index,
+    control.chunk_index,
+    control.item_count,
+    control.encoded_length,
   )
+  and {
+    verified.version == 1,
+    control.field_index >= 0,
+    control.field_index <= 8,
+    control.item_index >= 0,
+    control.chunk_index >= 0,
+    control.item_count >= -1,
+    control.encoded_length >= 0,
+    native_tx_proof_commitment_v1(
+      control.compact_cbor,
+      control.witness_set_compact_cbor,
+      control.field_preimage_lengths_cbor,
+    ) == pre.transaction_commitment,
+    validation_trace_v1.hash_validation_context(control.context_cbor) == pre.validation_context_hash,
+    witness.work_witness_cbor == exact_witness,
+  }
+}
+
+fn verify_canonical_decode_empty(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: CanonicalDecodeControlV1,
+) -> Bool {
   let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
     pre.transaction_id,
-    compact_cbor,
-    witness_set_compact_cbor,
-    field_preimage_lengths_cbor,
+    control.compact_cbor,
+    control.witness_set_compact_cbor,
+    control.field_preimage_lengths_cbor,
   )
   let field_lengths = decode_native_tx_field_preimage_lengths_v1(
-    field_preimage_lengths_cbor,
+    control.field_preimage_lengths_cbor,
   )
   let expected_field_length = transaction_field_preimage_length(
     field_lengths,
-    field_index,
+    control.field_index,
   )
   let expected_field_commitment = transaction_field_commitment(
     verified.tx_compact,
     witness_set,
-    field_index,
+    control.field_index,
   )
-  let empty_field_commitment = bounded_collection_v1.from_items(field_index, [])
   and {
-    field_index >= 0,
-    field_index <= 8,
-    item_index >= 0,
-    chunk_index >= 0,
-    item_count >= -1,
-    encoded_length >= 0,
-    native_tx_proof_commitment_v1(
-      compact_cbor,
-      witness_set_compact_cbor,
-      field_preimage_lengths_cbor,
-    ) == pre.transaction_commitment,
-    validation_trace_v1.hash_validation_context(context_cbor) == pre.validation_context_hash,
-    witness.work_witness_cbor == exact_witness,
-    if expected_field_commitment == empty_field_commitment {
-      and {
-        auxiliary == NoAuxiliaryWitness,
-        item_index == 0,
-        chunk_index == 0,
-        item_count == -1,
-        encoded_length == 0,
-        if expected_field_length != 1 {
+    canonical_decode_control_is_bound(pre, witness, control, verified),
+    expected_field_commitment == bounded_collection_v1.from_items(
+      control.field_index,
+      [],
+    ),
+    control.item_index == 0,
+    control.chunk_index == 0,
+    control.item_count == -1,
+    control.encoded_length == 0,
+    if expected_field_length != 1 {
+      rejected_successor_is_exact(
+        pre,
+        witness.claimed_successor,
+        reject_field_preimage_size,
+      )
+    } else {
+      canonical_scan_field_successor_is_exact(
+        pre,
+        witness.claimed_successor,
+        control.compact_cbor,
+        control.witness_set_compact_cbor,
+        control.field_preimage_lengths_cbor,
+        control.context_cbor,
+        control.field_index,
+      )
+    },
+  }
+}
+
+fn verify_canonical_decode_chunk(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: CanonicalDecodeControlV1,
+  collection_proof: bounded_collection_v1.ItemProofV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+) -> Bool {
+  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
+    pre.transaction_id,
+    control.compact_cbor,
+    control.witness_set_compact_cbor,
+    control.field_preimage_lengths_cbor,
+  )
+  let expected_field_commitment = transaction_field_commitment(
+    verified.tx_compact,
+    witness_set,
+    control.field_index,
+  )
+  let field_lengths = decode_native_tx_field_preimage_lengths_v1(
+    control.field_preimage_lengths_cbor,
+  )
+  let expected_field_length = transaction_field_preimage_length(
+    field_lengths,
+    control.field_index,
+  )
+  let first_chunk = and {
+    control.item_index == 0,
+    control.chunk_index == 0,
+    control.item_count == -1,
+    control.encoded_length == 0,
+  }
+  let continuing_chunk = and {
+    control.item_count > 0,
+    control.item_index < control.item_count,
+    collection_proof.item_count == control.item_count,
+  }
+  let active_item_count = if first_chunk {
+    collection_proof.item_count
+  } else {
+    control.item_count
+  }
+  let length_before_item = if first_chunk {
+    canonical_argument_header_size(active_item_count)
+  } else {
+    control.encoded_length
+  }
+  let chunk_count = bounded_item_v1.chunk_count(chunk_proof.total_length)
+  let item_finished = control.chunk_index + 1 == chunk_count
+  and {
+    canonical_decode_control_is_bound(pre, witness, control, verified),
+    expected_field_commitment != bounded_collection_v1.from_items(
+      control.field_index,
+      [],
+    ),
+    or {
+      first_chunk,
+      continuing_chunk,
+    },
+    active_item_count > 0,
+    collection_proof.field_index == control.field_index,
+    collection_proof.item_count == active_item_count,
+    collection_proof.item_index == control.item_index,
+    collection_proof.item_length == chunk_proof.total_length,
+    chunk_proof.field_index == control.field_index,
+    chunk_proof.item_index == control.item_index,
+    chunk_proof.chunk_index == control.chunk_index,
+    bounded_collection_v1.verify_item(
+      expected_field_commitment,
+      collection_proof,
+    ),
+    bounded_item_v1.verify_chunk(
+      collection_proof.item_commitment,
+      chunk_proof,
+    ),
+    if !item_finished {
+      canonical_scan_successor_is_exact(
+        pre,
+        witness.claimed_successor,
+        control.compact_cbor,
+        control.witness_set_compact_cbor,
+        control.field_preimage_lengths_cbor,
+        control.context_cbor,
+        control.field_index,
+        control.item_index,
+        control.chunk_index + 1,
+        active_item_count,
+        length_before_item,
+      )
+    } else {
+      when
+        transaction_field_item_encoded_length(
+          control.field_index,
+          chunk_proof.total_length,
+        )
+      is {
+        None ->
           rejected_successor_is_exact(
             pre,
             witness.claimed_successor,
-            reject_field_preimage_size,
+            reject_invalid_field_type,
           )
-        } else {
-          canonical_scan_field_successor_is_exact(
-            pre,
-            witness.claimed_successor,
-            compact_cbor,
-            witness_set_compact_cbor,
-            field_preimage_lengths_cbor,
-            context_cbor,
-            field_index,
-          )
-        },
-      }
-    } else {
-      expect TransactionFieldChunkWitness { collection_proof, chunk_proof } = auxiliary
-      let first_chunk = and {
-        item_index == 0,
-        chunk_index == 0,
-        item_count == -1,
-        encoded_length == 0,
-      }
-      let continuing_chunk = and {
-        item_count > 0,
-        item_index < item_count,
-        collection_proof.item_count == item_count,
-      }
-      let active_item_count = if first_chunk {
-        collection_proof.item_count
-      } else {
-        item_count
-      }
-      let length_before_item = if first_chunk {
-        canonical_argument_header_size(active_item_count)
-      } else {
-        encoded_length
-      }
-      let chunk_count = bounded_item_v1.chunk_count(chunk_proof.total_length)
-      let item_finished = chunk_index + 1 == chunk_count
-      and {
-        or {
-          first_chunk,
-          continuing_chunk,
-        },
-        active_item_count > 0,
-        collection_proof.field_index == field_index,
-        collection_proof.item_count == active_item_count,
-        collection_proof.item_index == item_index,
-        collection_proof.item_length == chunk_proof.total_length,
-        chunk_proof.field_index == field_index,
-        chunk_proof.item_index == item_index,
-        chunk_proof.chunk_index == chunk_index,
-        bounded_collection_v1.verify_item(
-          expected_field_commitment,
-          collection_proof,
-        ),
-        bounded_item_v1.verify_chunk(
-          collection_proof.item_commitment,
-          chunk_proof,
-        ),
-        if !item_finished {
-          canonical_scan_successor_is_exact(
-            pre,
-            witness.claimed_successor,
-            compact_cbor,
-            witness_set_compact_cbor,
-            field_preimage_lengths_cbor,
-            context_cbor,
-            field_index,
-            item_index,
-            chunk_index + 1,
-            active_item_count,
-            length_before_item,
-          )
-        } else {
-          when
-            transaction_field_item_encoded_length(
-              field_index,
-              chunk_proof.total_length,
+        Some(item_encoded_length) -> {
+          let next_encoded_length = length_before_item + item_encoded_length
+          if control.item_index + 1 < active_item_count {
+            canonical_scan_successor_is_exact(
+              pre,
+              witness.claimed_successor,
+              control.compact_cbor,
+              control.witness_set_compact_cbor,
+              control.field_preimage_lengths_cbor,
+              control.context_cbor,
+              control.field_index,
+              control.item_index + 1,
+              0,
+              active_item_count,
+              next_encoded_length,
             )
-          is {
-            None ->
-              rejected_successor_is_exact(
-                pre,
-                witness.claimed_successor,
-                reject_invalid_field_type,
-              )
-            Some(item_encoded_length) -> {
-              let next_encoded_length = length_before_item + item_encoded_length
-              if item_index + 1 < active_item_count {
-                canonical_scan_successor_is_exact(
-                  pre,
-                  witness.claimed_successor,
-                  compact_cbor,
-                  witness_set_compact_cbor,
-                  field_preimage_lengths_cbor,
-                  context_cbor,
-                  field_index,
-                  item_index + 1,
-                  0,
-                  active_item_count,
-                  next_encoded_length,
-                )
-              } else if next_encoded_length != expected_field_length {
-                rejected_successor_is_exact(
-                  pre,
-                  witness.claimed_successor,
-                  reject_field_preimage_size,
-                )
-              } else {
-                canonical_scan_field_successor_is_exact(
-                  pre,
-                  witness.claimed_successor,
-                  compact_cbor,
-                  witness_set_compact_cbor,
-                  field_preimage_lengths_cbor,
-                  context_cbor,
-                  field_index,
-                )
-              }
-            }
+          } else if next_encoded_length != expected_field_length {
+            rejected_successor_is_exact(
+              pre,
+              witness.claimed_successor,
+              reject_field_preimage_size,
+            )
+          } else {
+            canonical_scan_field_successor_is_exact(
+              pre,
+              witness.claimed_successor,
+              control.compact_cbor,
+              control.witness_set_compact_cbor,
+              control.field_preimage_lengths_cbor,
+              control.context_cbor,
+              control.field_index,
+            )
           }
-        },
+        }
       }
     },
+  }
+}
+
+pub fn verify_canonical_decode_empty_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+) -> Bool {
+  verify_canonical_decode_empty(
+    pre,
+    witness,
+    canonical_decode_control_from_witness(witness.work_witness_cbor),
+  )
+}
+
+pub fn verify_canonical_decode_chunk_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  collection_proof: bounded_collection_v1.ItemProofV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+) -> Bool {
+  verify_canonical_decode_chunk(
+    pre,
+    witness,
+    canonical_decode_control_from_witness(witness.work_witness_cbor),
+    collection_proof,
+    chunk_proof,
+  )
+}
+
+fn verify_canonical_decode(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+) -> Bool {
+  let control = canonical_decode_control_from_witness(
+    witness.work_witness_cbor,
+  )
+  when auxiliary is {
+    NoAuxiliaryWitness ->
+      verify_canonical_decode_empty(pre, witness, control)
+    TransactionFieldChunkWitness { collection_proof, chunk_proof } ->
+      verify_canonical_decode_chunk(
+        pre,
+        witness,
+        control,
+        collection_proof,
+        chunk_proof,
+      )
+    _ -> False
   }
 }
 

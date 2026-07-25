@@ -4,18 +4,17 @@ use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel}
 use midgard/validation_machine_v1.{
-  ValidationAuxiliaryWitnessV1, ValidationOneStepEvidenceV1,
-  ValidationOneStepWitnessV1, verify_canonical_decode_semantics_v1,
+  NoAuxiliaryWitness, ValidationOneStepWitnessV1,
+  verify_canonical_decode_empty_semantics_v1,
 }
 use midgard/validation_semantic_v1.{Datum, continue_winning}
 use midgard/validation_trace_v1.{CanonicalDecode}
 
 pub type ActionV1 {
-  Verify {
+  VerifyEmpty {
     input_index: Int,
     output_index: Int,
     transition: ValidationOneStepWitnessV1,
-    auxiliary: ValidationAuxiliaryWitnessV1,
   }
 }
 
@@ -42,9 +41,8 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(Verify { input_index, output_index, transition, auxiliary }) -> {
-        let auxiliary_data: Data = auxiliary
-        let evidence = ValidationOneStepEvidenceV1 { transition, auxiliary }
+      ct.Continue(VerifyEmpty { input_index, output_index, transition }) -> {
+        let auxiliary_data: Data = NoAuxiliaryWitness
         continue_winning(
           CanonicalDecode,
           award_script_hash,
@@ -54,9 +52,9 @@ validator main(
           output_index,
           transition,
           auxiliary_data,
-          verify_canonical_decode_semantics_v1(
+          verify_canonical_decode_empty_semantics_v1(
             datum |> semantic_pre_state,
-            evidence,
+            transition,
           ),
           own_out_ref,
           tx,

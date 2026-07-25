@@ -438,7 +438,7 @@ describe("fault-proof contract builder", () => {
     expect(contracts.validationTraceDispute.firstStep).toBe(
       contracts.validationTraceDispute.steps[0],
     );
-    expect(contracts.validationTraceDispute.steps).toHaveLength(27);
+    expect(contracts.validationTraceDispute.steps).toHaveLength(28);
     expect(contracts.validationTraceDispute.resolvers).toHaveLength(
       VALIDATION_TRACE_RESOLVER_COUNT_V1,
     );
@@ -452,7 +452,7 @@ describe("fault-proof contract builder", () => {
           ...contracts.validationTraceDispute.steps,
         ].map((step) => step.spendingScriptHash),
       ).size,
-    ).toBe(46);
+    ).toBe(47);
   });
 
   it("builds invalid-range with the validator parameter order from the blueprint", async () => {
@@ -663,11 +663,30 @@ describe("fault-proof contract builder", () => {
         contracts.computationThread.policyId,
       ]),
     );
+    const expectedSemanticResolverGroups = [
+      [expectedSemanticResolvers[0]!, expectedSemanticResolvers[1]!],
+      [expectedSemanticResolvers[2]!],
+      [expectedSemanticResolvers[3]!],
+      [expectedSemanticResolvers[4]!],
+      [expectedSemanticResolvers[5]!],
+      [expectedSemanticResolvers[6]!],
+      [expectedSemanticResolvers[7]!],
+    ] as const;
+    const resolverHashesSchema = Data.Array(Data.Bytes());
+    type ResolverHashes = Data.Static<typeof resolverHashesSchema>;
+    const ResolverHashes = resolverHashesSchema as unknown as ResolverHashes;
+    const expectedSemanticResolverHashParams =
+      expectedSemanticResolverGroups.map(
+        (group) =>
+          Data.from(
+            Data.to(group.map(spendingScriptHash), ResolverHashes),
+          ) as Data,
+      );
     const expectedPrepareResolvers = Object.values(
       VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.prepares,
     ).map((title, index) =>
       applyParamsToScript(compiledScript(blueprint, title), [
-        spendingScriptHash(expectedSemanticResolvers[index]!),
+        expectedSemanticResolverHashParams[index]!,
         contracts.computationThread.policyId,
       ]),
     );
@@ -685,9 +704,6 @@ describe("fault-proof contract builder", () => {
       ...expectedDirectResolvers,
     ];
     expect(expectedResolvers).toHaveLength(VALIDATION_TRACE_RESOLVER_COUNT_V1);
-    const resolverHashesSchema = Data.Array(Data.Bytes());
-    type ResolverHashes = Data.Static<typeof resolverHashesSchema>;
-    const ResolverHashes = resolverHashesSchema as unknown as ResolverHashes;
     const resolverHashesData = Data.from(
       Data.to(
         expectedResolvers.map((cbor) => spendingScriptHash(cbor)),
@@ -763,7 +779,7 @@ describe("fault-proof contract builder", () => {
       ).toBeLessThan(14 * 1024);
     }
 
-    expect(contracts.validationTraceDispute.steps).toHaveLength(27);
+    expect(contracts.validationTraceDispute.steps).toHaveLength(28);
     expect(contracts.validationTraceDispute.award.spendingScriptCBOR).toBe(
       expectedAward,
     );

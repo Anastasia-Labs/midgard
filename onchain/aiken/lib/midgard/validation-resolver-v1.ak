@@ -1,3 +1,4 @@
+use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use cardano/address.{Address}
 use cardano/assets.{PolicyId}
@@ -34,6 +35,19 @@ pub type PrepareActionV1 {
 
 pub type PrepareSpendRedeemer =
   ct.StepRedeemer<PrepareActionV1>
+
+pub type PrepareSelectedActionV1 {
+  PrepareSelected {
+    input_index: Int,
+    output_index: Int,
+    semantic_resolver_index: Int,
+    transition: validation_machine_v1.ValidationOneStepWitnessV1,
+    auxiliary: Data,
+  }
+}
+
+pub type PrepareSelectedSpendRedeemer =
+  ct.StepRedeemer<PrepareSelectedActionV1>
 
 pub fn prepare(
   expected_phase: validation_trace_v1.ValidationPhase,
@@ -80,6 +94,81 @@ pub fn prepare(
             auxiliary,
           )
           and {
+            state.pre_state.phase == expected_phase,
+            output_script_hash == semantic_resolver_script_hash,
+            output_state == expected_output_state,
+          }
+        },
+      )
+    }
+  }
+}
+
+/// Routes one authenticated phase-level boundary to exactly one narrow
+/// semantic proof family. The selector is intentionally not part of the
+/// evidence hash: the selected validator reconstructs and authenticates the
+/// complete transition/auxiliary evidence, so choosing the wrong family
+/// cannot produce a winning resolution.
+pub fn prepare_selected(
+  expected_phase: validation_trace_v1.ValidationPhase,
+  semantic_resolver_script_hashes: List<ScriptHash>,
+  expected_semantic_resolver_count: Int,
+  computation_thread_token_policy_id: PolicyId,
+  datum: Option<Datum>,
+  redeemer: PrepareSelectedSpendRedeemer,
+  own_out_ref: OutputReference,
+  tx: Transaction,
+) -> Bool {
+  when redeemer is {
+    ct.Cancel { input_index, computation_thread_mint_redeemer_index } ->
+      cancel(
+        computation_thread_token_policy_id,
+        datum,
+        input_index,
+        own_out_ref,
+        computation_thread_mint_redeemer_index,
+        tx,
+      )
+    ct.Continue(PrepareSelected {
+      input_index,
+      output_index,
+      semantic_resolver_index,
+      transition,
+      auxiliary,
+    }) -> {
+      let Transaction { inputs, outputs, .. } = tx
+      expect Some(step_datum) = datum
+      expect Some(semantic_resolver_script_hash) = list.at(
+        semantic_resolver_script_hashes,
+        semantic_resolver_index,
+      )
+      continue(
+        computation_thread_token_policy_id,
+        step_datum,
+        input_index,
+        output_index,
+        own_out_ref,
+        inputs,
+        outputs,
+        fn(
+          _input_script_hash,
+          _computation_thread_token_asset_name,
+          _fraud_prover,
+          input_state,
+          output_script_hash,
+          output_state,
+        ) {
+          expect Some(state) = input_state
+          let expected_output_state: Data = validation_resolution_v1.prepare_semantic_resolution(
+            state,
+            transition,
+            auxiliary,
+          )
+          and {
+            expected_semantic_resolver_count > 0,
+            list.length(semantic_resolver_script_hashes) == expected_semantic_resolver_count,
+            semantic_resolver_index >= 0,
+            semantic_resolver_index < expected_semantic_resolver_count,
             state.pre_state.phase == expected_phase,
             output_script_hash == semantic_resolver_script_hash,
             output_state == expected_output_state,
