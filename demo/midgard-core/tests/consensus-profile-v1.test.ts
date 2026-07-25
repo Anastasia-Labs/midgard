@@ -27,8 +27,7 @@ describe("canonical V1 consensus profile", () => {
       daPayloadVersion: 1,
       daEnvelopeVersion: 1,
       daTransportProtocolVersion: 1,
-      daRuntimeManifestSchemaVersion:
-        "midgard-da-libp2p-runtime-manifest-v1",
+      daRuntimeManifestSchemaVersion: "midgard-da-libp2p-runtime-manifest-v1",
       validationMachineVersion: 1,
       validationTraceDescriptorVersion: 1,
       validationDisputeVersion: 1,
@@ -54,28 +53,24 @@ describe("canonical V1 consensus profile", () => {
     ).toBeLessThan(MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes);
     expect(
       MIDGARD_CONSENSUS_LIMITS_V1.maxTransactionAggregateFieldBytes,
-    ).toBeGreaterThan(
-      MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes,
+    ).toBeGreaterThan(MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes);
+    expect(MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes).toBeGreaterThan(
+      51_110,
     );
-    expect(
-      MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes,
-    ).toBeGreaterThan(51_110);
     expect(MIDGARD_CONSENSUS_LIMITS_V1.maxOutputValueCborBytes).toBe(5_000);
-    expect(MIDGARD_CONSENSUS_LIMITS_V1.maxCekProgramNodeCount).toBe(
-      1_597_819,
-    );
+    expect(MIDGARD_CONSENSUS_LIMITS_V1.maxCekProgramNodeCount).toBe(1_597_819);
     expect(MIDGARD_CONSENSUS_LIMITS_V1.maxCekProgramEnvelopeBytes).toBe(50);
     expect(
       MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxScriptEnvelopeResolverArgumentsBytes,
     ).toBe(7_546);
     expect(MIDGARD_CONSENSUS_LIMITS_V1.maxCekProgramMaterialBytes).toBe(
-      67_108_422,
+      67_108_418,
     );
     expect(MIDGARD_CONSENSUS_LIMITS_V1.maxCekBlobChunkBytes).toBe(4_095);
     expect(MIDGARD_CONSENSUS_LIMITS_V1.maxCekBuiltinTag).toBe(86);
-    expect(
-      MIDGARD_CONSENSUS_LIMITS_V1.maxCekDirectBlsMillerLoopLeaves,
-    ).toBe(10);
+    expect(MIDGARD_CONSENSUS_LIMITS_V1.maxCekDirectBlsMillerLoopLeaves).toBe(
+      10,
+    );
     expect(
       MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxBlsFinalBuiltinTransitionCpuUnits,
     ).toBeLessThan(
@@ -102,42 +97,37 @@ describe("canonical V1 consensus profile", () => {
       MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxCpuUnits * 0.8,
     );
     expect(
-      MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes,
-    ).toBeGreaterThan(8 * 1024);
+      MIDGARD_CONSENSUS_LIMITS_V1.minSupportedTransactionExecutionMemoryUnits,
+    ).toBe(16_500_000);
+    expect(
+      MIDGARD_CONSENSUS_LIMITS_V1.minSupportedTransactionExecutionCpuUnits,
+    ).toBe(10_000_000_000);
+    expect(MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes).toBeGreaterThan(
+      8 * 1024,
+    );
     expect(
       MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxFieldPublicationUnsignedTransactionBytes,
     ).toBeLessThan(MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes);
     expect(
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS
-        .maxFieldChunkReceiptPublicationMemoryUnits,
-    ).toBeLessThan(
-      MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxMemoryUnits,
-    );
+      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxFieldChunkReceiptPublicationMemoryUnits,
+    ).toBeLessThan(MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxMemoryUnits);
     expect(
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS
-        .maxFieldChunkReceiptPublicationCpuUnits,
+      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxFieldChunkReceiptPublicationCpuUnits,
     ).toBeLessThan(MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxCpuUnits);
     expect(
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS
-        .canonicalReceiptOrderVerificationMemoryUnits,
-    ).toBeLessThan(
-      MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxMemoryUnits,
-    );
-    expect(MIDGARD_CONSENSUS_LIMITS_V1.maxValidationBisectionRounds).toBe(
-      32,
-    );
+      MIDGARD_V1_ENVELOPE_MEASUREMENTS.canonicalReceiptOrderVerificationMemoryUnits,
+    ).toBeLessThan(MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxMemoryUnits);
+    expect(MIDGARD_CONSENSUS_LIMITS_V1.maxValidationBisectionRounds).toBe(32);
     expect(MIDGARD_CONSENSUS_LIMITS_V1.maxValidationMachineStepCount).toBe(
       0xffff_ffff,
     );
-    expect(
-      MIDGARD_CONSENSUS_LIMITS_V1.validationDisputeResponseWindowMs,
-    ).toBe(300_000);
-    expect(
-      MIDGARD_CONSENSUS_LIMITS_V1.minValidationDisputeMaturityMs,
-    ).toBe(39_600_000);
-    expect(MIDGARD_CONSENSUS_LIMITS_V1.blockMaturityMs).toBe(
-      604_800_000,
+    expect(MIDGARD_CONSENSUS_LIMITS_V1.validationDisputeResponseWindowMs).toBe(
+      300_000,
     );
+    expect(MIDGARD_CONSENSUS_LIMITS_V1.minValidationDisputeMaturityMs).toBe(
+      39_600_000,
+    );
+    expect(MIDGARD_CONSENSUS_LIMITS_V1.blockMaturityMs).toBe(604_800_000);
   });
 
   it("fits a worst-case one-step redeemer inside a concrete Conway proof transaction", () => {
@@ -244,9 +234,7 @@ describe("canonical V1 consensus profile", () => {
   });
 
   it("accepts only the exact compiled V1 profile", () => {
-    const roundTrip = JSON.parse(
-      JSON.stringify(MIDGARD_CONSENSUS_PROFILE_V1),
-    );
+    const roundTrip = JSON.parse(JSON.stringify(MIDGARD_CONSENSUS_PROFILE_V1));
     expect(isMidgardConsensusProfileV1(roundTrip)).toBe(true);
     expect(
       isMidgardConsensusProfileV1({
@@ -271,9 +259,7 @@ describe("canonical V1 consensus profile", () => {
 
   it("deep-freezes consensus arrays and bounds", () => {
     expect(Object.isFrozen(MIDGARD_CONSENSUS_PROFILE_V1)).toBe(true);
-    expect(Object.isFrozen(MIDGARD_CONSENSUS_PROFILE_V1.features)).toBe(
-      true,
-    );
+    expect(Object.isFrozen(MIDGARD_CONSENSUS_PROFILE_V1.features)).toBe(true);
     expect(
       Object.isFrozen(MIDGARD_CONSENSUS_PROFILE_V1.requiredProofFamilies),
     ).toBe(true);

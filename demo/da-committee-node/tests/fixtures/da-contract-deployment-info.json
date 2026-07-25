@@ -41,7 +41,7 @@
       "maxOutputValueCborBytes": 5000,
       "maxCekProgramEnvelopeBytes": 50,
       "maxCekProgramNodeCount": 1597819,
-      "maxCekProgramMaterialBytes": 67108422,
+      "maxCekProgramMaterialBytes": 67108418,
       "maxCekBlobChunkBytes": 4095,
       "maxCekBuiltinTag": 86,
       "maxCekDirectBlsMillerLoopLeaves": 10,

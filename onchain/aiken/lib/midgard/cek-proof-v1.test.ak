@@ -73,7 +73,7 @@ test cross_language_cek_commitment_vectors() {
       4,
       5,
     ) == #"9d83a7edc397becce073970978dff4d6bae2c0334f0dc7c3525e35d901f47a13",
-    cek_proof_v1.hash_program_envelope_v1(1, 1, 0, term, 3, 144) == #"e7b2c64b1b3223dc60ec955a7d6ae2d5f865d9a510c2faa3ca5c9b4823e4ef3a",
+    cek_proof_v1.hash_program_envelope_v1(1, 1, 0, term, 3, 144) == #"e9d2696eff22d8078ae7bd71c83f6058e0db4d938a016314a2cd35feaccfdefa",
     cek_proof_v1.hash_blob_chunk_v1(#"010203") == #"0bb4f6f24cd0080e59e98d57a13c6453e07991452b80f14ff1d9791c02db1fc9",
     cek_proof_v1.hash_bls_miller_loop_expression_v1(h_01, h_02) == #"6bd7d80222a87e5a09102534274099c501f82c5d898fe75f24fdc951c2fb3cc0",
     cek_proof_v1.hash_bls_multiply_expression_v1(h_01, h_02) == #"be5de65e45ff867ca8394e227ee30e4f8cfaee0d4cb1d2834fe1af943b806082",

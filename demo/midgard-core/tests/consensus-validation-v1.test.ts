@@ -559,7 +559,7 @@ describe("canonical V1 consensus transaction bounds", () => {
     const aboveOldLimit = encodeMidgardVersionedScriptListPreimage([
       ...Array.from({ length: 220 }, () => ({
         language: "PlutusV3" as const,
-        scriptBytes: cekProgramEnvelope(1_597_819n, 67_108_422n),
+        scriptBytes: cekProgramEnvelope(1_597_819n, 67_108_418n),
       })),
     ]);
     const malformed = Buffer.alloc(40_000, 0x80);

@@ -32,8 +32,7 @@ export const MIDGARD_CEK_VALUE_V1_SCHEMA_VERSION = 1 as const;
 export const MIDGARD_DEPLOYMENT_MANIFEST_V1_SCHEMA_VERSION =
   "midgard-deployment-manifest-v1" as const;
 export const MIDGARD_PROTOCOL_INFO_V1_API_VERSION = 1 as const;
-export const MIDGARD_CONSENSUS_PROFILE_V1_ID =
-  "midgard-consensus-v1" as const;
+export const MIDGARD_CONSENSUS_PROFILE_V1_ID = "midgard-consensus-v1" as const;
 
 const cborByteStringSize = (payloadBytes: number): number => {
   if (payloadBytes < 24) return 1 + payloadBytes;
@@ -51,8 +50,7 @@ const MAX_TRANSACTION_FIELD_PROOF_OVERHEAD_BYTES = 7 * 1024;
 // Midgard's canonical nested wrappers can expand that representation, so V1
 // reserves twice the live L1 transaction envelope per aggregate field. Proofs
 // consume it only through the bounded chunks below.
-const MAX_TRANSACTION_AGGREGATE_FIELD_BYTES =
-  2 * MAX_L1_FAULT_PROOF_TX_BYTES;
+const MAX_TRANSACTION_AGGREGATE_FIELD_BYTES = 2 * MAX_L1_FAULT_PROOF_TX_BYTES;
 const MAX_TRANSACTION_FIELD_CHUNK_BYTES = 4_095;
 const MAX_LEDGER_MEMBERSHIP_PROOF_OVERHEAD_BYTES = 12 * 1024;
 const MAX_LEDGER_OUTPUT_PREIMAGE_BYTES = MAX_L1_FAULT_PROOF_TX_BYTES;
@@ -103,17 +101,13 @@ export const MIDGARD_V1_ENVELOPE_MEASUREMENTS = Object.freeze({
 // Cardano transaction. Real items are larger, so these derived guardrails can
 // never reject a shape Cardano could fit; field bytes remain the effective
 // constraint.
-const MAX_TX_SIZE_DERIVED_COLLECTION_ITEM_COUNT =
-  MAX_L1_FAULT_PROOF_TX_BYTES;
+const MAX_TX_SIZE_DERIVED_COLLECTION_ITEM_COUNT = MAX_L1_FAULT_PROOF_TX_BYTES;
 const MAX_SPEND_INPUT_COUNT = MAX_TX_SIZE_DERIVED_COLLECTION_ITEM_COUNT;
 const MAX_REFERENCE_INPUT_COUNT = MAX_TX_SIZE_DERIVED_COLLECTION_ITEM_COUNT;
 const MAX_OUTPUT_COUNT = MAX_TX_SIZE_DERIVED_COLLECTION_ITEM_COUNT;
-const MAX_ADDRESS_WITNESS_COUNT =
-  MAX_TX_SIZE_DERIVED_COLLECTION_ITEM_COUNT;
-const MAX_REQUIRED_SIGNER_COUNT =
-  MAX_TX_SIZE_DERIVED_COLLECTION_ITEM_COUNT;
-const MAX_REQUIRED_OBSERVER_COUNT =
-  MAX_TX_SIZE_DERIVED_COLLECTION_ITEM_COUNT;
+const MAX_ADDRESS_WITNESS_COUNT = MAX_TX_SIZE_DERIVED_COLLECTION_ITEM_COUNT;
+const MAX_REQUIRED_SIGNER_COUNT = MAX_TX_SIZE_DERIVED_COLLECTION_ITEM_COUNT;
+const MAX_REQUIRED_OBSERVER_COUNT = MAX_TX_SIZE_DERIVED_COLLECTION_ITEM_COUNT;
 const VALIDATION_DISPUTE_RESPONSE_WINDOW_MS = 300_000;
 const MAX_VALIDATION_BISECTION_ROUNDS = 32;
 const PROOF_BLOCK_MATURITY_MS = 7 * 24 * 60 * 60 * 1000;
@@ -138,8 +132,7 @@ const MAX_OUTPUTS_PREIMAGE_BYTES = MAX_TRANSACTION_AGGREGATE_FIELD_BYTES;
 const MAX_MINT_PREIMAGE_BYTES = MAX_TRANSACTION_AGGREGATE_FIELD_BYTES;
 const MAX_SCRIPT_WITNESSES_PREIMAGE_BYTES =
   MAX_TRANSACTION_AGGREGATE_FIELD_BYTES;
-const MAX_REDEEMERS_PREIMAGE_BYTES =
-  MAX_TRANSACTION_AGGREGATE_FIELD_BYTES;
+const MAX_REDEEMERS_PREIMAGE_BYTES = MAX_TRANSACTION_AGGREGATE_FIELD_BYTES;
 
 // This is not an independently chosen transaction cap. It is the exact upper
 // bound obtained by wrapping every bounded dynamic preimage in the canonical
@@ -171,10 +164,14 @@ export const MIDGARD_CONSENSUS_LIMITS_V1 = Object.freeze({
   minSupportedL1MaxTxBytes: MAX_L1_FAULT_PROOF_TX_BYTES,
   minSupportedL1MaxTxMemoryUnits: 16_500_000,
   minSupportedL1MaxTxCpuUnits: 10_000_000_000,
+  // These are capability floors, not execution caps. Midgard must admit at
+  // least the aggregate execution budget of any transaction admitted by the
+  // target Cardano network; validation may span more L1 proof transactions.
+  minSupportedTransactionExecutionMemoryUnits: 16_500_000,
+  minSupportedTransactionExecutionCpuUnits: 10_000_000_000,
   maxTransactionFieldProofOverheadBytes:
     MAX_TRANSACTION_FIELD_PROOF_OVERHEAD_BYTES,
-  maxTransactionAggregateFieldBytes:
-    MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
+  maxTransactionAggregateFieldBytes: MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
   maxTransactionFieldChunkBytes: MAX_TRANSACTION_FIELD_CHUNK_BYTES,
   maxLedgerMembershipProofOverheadBytes:
     MAX_LEDGER_MEMBERSHIP_PROOF_OVERHEAD_BYTES,
@@ -291,20 +288,24 @@ export const MIDGARD_CONSENSUS_PROFILE_V1 = Object.freeze({
   daPayloadVersion: MIDGARD_DA_INNER_V1_SCHEMA_VERSION,
   daEnvelopeVersion: 1,
   daTransportProtocolVersion: 1,
-  daRuntimeManifestSchemaVersion:
-    "midgard-da-libp2p-runtime-manifest-v1",
+  daRuntimeManifestSchemaVersion: "midgard-da-libp2p-runtime-manifest-v1",
   validationMachineVersion: MIDGARD_VALIDATION_MACHINE_V1_VERSION,
-  validationTraceDescriptorVersion: MIDGARD_VALIDATION_TRACE_DESCRIPTOR_V1_VERSION,
+  validationTraceDescriptorVersion:
+    MIDGARD_VALIDATION_TRACE_DESCRIPTOR_V1_VERSION,
   validationDisputeVersion: MIDGARD_VALIDATION_DISPUTE_V1_VERSION,
-  cekProgramEnvelopeVersion:
-    Number(MIDGARD_CEK_PROGRAM_ENVELOPE_V1_VERSION) as 1,
+  cekProgramEnvelopeVersion: Number(
+    MIDGARD_CEK_PROGRAM_ENVELOPE_V1_VERSION,
+  ) as 1,
   cekValueSchemaVersion: MIDGARD_CEK_VALUE_V1_SCHEMA_VERSION,
-  cekProgramMaterialVersion:
-    Number(MIDGARD_CEK_PROGRAM_MATERIAL_V1_VERSION) as 1,
-  cekProgramMaterialSidecarVersion:
-    Number(MIDGARD_CEK_PROGRAM_MATERIAL_SIDECAR_V1_VERSION) as 1,
-  proofSubmissionEnvelopeVersion:
-    Number(MIDGARD_PROOF_SUBMISSION_ENVELOPE_V1_VERSION) as 1,
+  cekProgramMaterialVersion: Number(
+    MIDGARD_CEK_PROGRAM_MATERIAL_V1_VERSION,
+  ) as 1,
+  cekProgramMaterialSidecarVersion: Number(
+    MIDGARD_CEK_PROGRAM_MATERIAL_SIDECAR_V1_VERSION,
+  ) as 1,
+  proofSubmissionEnvelopeVersion: Number(
+    MIDGARD_PROOF_SUBMISSION_ENVELOPE_V1_VERSION,
+  ) as 1,
   scriptProofSchemaVersion: 1,
   ledgerOutputSchemaVersion: 1,
   mpfProofSchemaVersion: 1,
@@ -316,8 +317,7 @@ export const MIDGARD_CONSENSUS_PROFILE_V1 = Object.freeze({
   requiredProofFamilies: MIDGARD_V1_REQUIRED_PROOF_FAMILIES,
 });
 
-export type MidgardConsensusProfileV1 =
-  typeof MIDGARD_CONSENSUS_PROFILE_V1;
+export type MidgardConsensusProfileV1 = typeof MIDGARD_CONSENSUS_PROFILE_V1;
 
 const stableJsonValue = (value: unknown): unknown => {
   if (
@@ -329,9 +329,7 @@ const stableJsonValue = (value: unknown): unknown => {
   }
   if (typeof value === "number") {
     if (!Number.isSafeInteger(value)) {
-      throw new TypeError(
-        "V1 consensus profile numbers must be safe integers",
-      );
+      throw new TypeError("V1 consensus profile numbers must be safe integers");
     }
     return value;
   }
@@ -342,15 +340,11 @@ const stableJsonValue = (value: unknown): unknown => {
     return value.map(stableJsonValue);
   }
   if (typeof value !== "object") {
-    throw new TypeError(
-      "V1 consensus profile contains an unsupported value",
-    );
+    throw new TypeError("V1 consensus profile contains an unsupported value");
   }
   const prototype = Object.getPrototypeOf(value);
   if (prototype !== Object.prototype && prototype !== null) {
-    throw new TypeError(
-      "V1 consensus profile objects must be plain records",
-    );
+    throw new TypeError("V1 consensus profile objects must be plain records");
   }
   if (Reflect.ownKeys(value).length !== Object.keys(value).length) {
     throw new TypeError("V1 consensus profile contains a non-string key");

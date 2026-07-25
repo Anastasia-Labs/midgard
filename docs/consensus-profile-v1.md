@@ -302,6 +302,7 @@ encoding and then adding its fixed-size fields and CBOR framing.
 | --- | ---: |
 | supported L1 fault-proof transaction floor | 16 KiB |
 | supported L1 fault-proof execution floor | 16,500,000 memory / 10,000,000,000 CPU |
+| supported Midgard transaction execution floor | 16,500,000 memory / 10,000,000,000 CPU; validation may span multiple proofs |
 | transaction-field proof overhead reservation | 7 KiB |
 | each aggregate dynamic transaction field | 32,768 bytes, consumed through authenticated chunks |
 | each independently revealed transaction-field chunk | 4,095 bytes |
@@ -309,14 +310,14 @@ encoding and then adding its fixed-size fields and CBOR framing.
 | measured maximum unsigned field-publication transaction | 4,675 bytes |
 | maximum CEK-material publication datum | 4,268 bytes |
 | measured one-node unsigned CEK-material publication transaction | 4,369 bytes |
-| measured maximum receipt-policy execution | 11,408,043 memory / 3,497,630,466 CPU |
-| measured nine-receipt final-order verification | 3,204,296 memory / 1,246,065,449 CPU |
+| measured maximum field-chunk receipt publication | 3,398,228 memory / 1,209,745,039 CPU |
+| measured canonical receipt-order verification | 1,233,800 memory / 432,521,347 CPU |
 | ledger-membership proof overhead reservation | 12 KiB |
 | each ledger output preimage | 16,384 bytes, retained and authenticated incrementally |
 | serialized Cardano output `Value` | 5,000 bytes; no lower independent Midgard cap |
 | consensus script envelope | 50 bytes |
 | canonical CEK material nodes per program | at most 1,597,819 within the DA envelope |
-| canonical CEK material per program | at most 67,108,422 structural bytes; exact encoded aggregate must fit DA |
+| canonical CEK material per program | at most 67,108,418 structural bytes; exact encoded aggregate must fit DA |
 | canonical CEK blob chunk | 4,095 bytes |
 | pinned CEK builtin tags | 0 through 86 |
 | derived canonical full transaction | 295,041 bytes |
@@ -383,12 +384,12 @@ those paths and the capability-parity corpus pass.
 CEK graph material is not capped by the former 6,911-byte raw-script limit.
 Raw Flat/CBOR is an authoring input; consensus carries a 50-byte program
 envelope plus independently content-addressed nodes. An otherwise-empty,
-structurally valid canonical V1 payload is 441 bytes. Switching its material
-list from empty to non-empty leaves 442 fixed bytes outside the tuples. The
+structurally valid canonical V1 payload is 445 bytes. Switching its material
+list from empty to non-empty leaves 446 fixed bytes outside the tuples. The
 smallest possible tuple is 42 bytes (tuple framing, a 32-byte content root,
 and a versioned typed one-byte preimage). Therefore the 64 MiB DA envelope
-admits no more than `floor((67,108,864 - 442) / 42) = 1,597,819` material
-nodes. The corresponding structural preimage-byte upper bound is 67,108,422
+admits no more than `floor((67,108,864 - 446) / 42) = 1,597,819` material
+nodes. The corresponding structural preimage-byte upper bound is 67,108,418
 bytes. Actual tuple framing and typed preimages consume additional bytes, so
 the exact canonical V1 encoded-size gate is authoritative and generally
 tighter. These bounds remove the arbitrary raw-script cap without allowing a

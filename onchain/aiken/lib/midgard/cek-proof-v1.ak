@@ -34,14 +34,14 @@ pub const max_blob_chunk_bytes = 4095
 
 pub const max_builtin_tag = 86
 
-/// Exact maximum of `[3, [1, 1, 0], h32, uint32, uint32]`.
+/// Exact maximum of `[1, [1, 1, 0], h32, uint32, uint32]`.
 pub const max_program_envelope_cbor_bytes = 50
 
-/// `floor((64 MiB - 442 fixed V1 DA bytes) / 42 minimum tuple bytes)`.
+/// `floor((64 MiB - 446 fixed V1 DA bytes) / 42 minimum tuple bytes)`.
 pub const max_program_node_count = 1597819
 
-/// Structural DA upper bound after the exact 442-byte fixed V1 framing.
-pub const max_program_material_byte_length = 67108422
+/// Structural DA upper bound after the exact 446-byte fixed V1 framing.
+pub const max_program_material_byte_length = 67108418
 
 pub type ProgramEnvelopeV1 {
   term_root: ByteArray,
@@ -542,7 +542,7 @@ pub fn encode_program_envelope_v1(
   material_byte_length: Int,
 ) -> ByteArray {
   #"85"
-    |> bytearray.concat(cbor.serialise(3))
+    |> bytearray.concat(cbor.serialise(1))
     |> bytearray.concat(
         #"83"
           |> bytearray.concat(cbor.serialise(expect_uint32(version_major)))
