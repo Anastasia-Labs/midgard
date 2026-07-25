@@ -105,14 +105,28 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
       "fraud_proofs/validation_trace/phase_a_native_scripts_advance_semantic_v1.main.spend",
     phaseANativeScriptsItem:
       "fraud_proofs/validation_trace/phase_a_native_scripts_item_semantic_v1.main.spend",
-    phaseANativeScriptsContainerFrameToken:
-      "fraud_proofs/validation_trace/phase_a_native_scripts_container_frame_token_semantic_v1.main.spend",
-    phaseANativeScriptsEmptyContainerToken:
-      "fraud_proofs/validation_trace/phase_a_native_scripts_empty_container_token_semantic_v1.main.spend",
-    phaseANativeScriptsTimelockToken:
-      "fraud_proofs/validation_trace/phase_a_native_scripts_timelock_token_semantic_v1.main.spend",
-    phaseANativeScriptsSignatureToken:
-      "fraud_proofs/validation_trace/phase_a_native_scripts_signature_token_semantic_v1.main.spend",
+    phaseANativeScriptsTokenHead:
+      "fraud_proofs/validation_trace/phase_a_native_scripts_token_head_semantic_v1.main.spend",
+    phaseANativeScriptsAllOrAnyContainerFramePayload:
+      "fraud_proofs/validation_trace/phase_a_native_scripts_all_or_any_container_frame_payload_semantic_v1.main.spend",
+    phaseANativeScriptsAllOrAnyEmptyContainerPayload:
+      "fraud_proofs/validation_trace/phase_a_native_scripts_all_or_any_empty_container_payload_semantic_v1.main.spend",
+    phaseANativeScriptsAtLeastContainerFramePayload:
+      "fraud_proofs/validation_trace/phase_a_native_scripts_at_least_container_frame_payload_semantic_v1.main.spend",
+    phaseANativeScriptsAtLeastEmptyContainerPayload:
+      "fraud_proofs/validation_trace/phase_a_native_scripts_at_least_empty_container_payload_semantic_v1.main.spend",
+    phaseANativeScriptsTimelockPayload:
+      "fraud_proofs/validation_trace/phase_a_native_scripts_timelock_payload_semantic_v1.main.spend",
+    phaseANativeScriptsSignatureMembershipPayload:
+      "fraud_proofs/validation_trace/phase_a_native_scripts_signature_membership_payload_semantic_v1.main.spend",
+    phaseANativeScriptsSignatureEmptyPayload:
+      "fraud_proofs/validation_trace/phase_a_native_scripts_signature_empty_payload_semantic_v1.main.spend",
+    phaseANativeScriptsSignatureBelowFirstPayload:
+      "fraud_proofs/validation_trace/phase_a_native_scripts_signature_below_first_payload_semantic_v1.main.spend",
+    phaseANativeScriptsSignatureAboveLastPayload:
+      "fraud_proofs/validation_trace/phase_a_native_scripts_signature_above_last_payload_semantic_v1.main.spend",
+    phaseANativeScriptsSignatureBetweenPayload:
+      "fraud_proofs/validation_trace/phase_a_native_scripts_signature_between_payload_semantic_v1.main.spend",
     phaseANativeScriptsFrame:
       "fraud_proofs/validation_trace/phase_a_native_scripts_frame_semantic_v1.main.spend",
     phaseAScriptPreconditions:
@@ -226,6 +240,13 @@ export type ValidationTraceDisputeFaultProofContracts = {
       SpendingValidator,
     ];
     readonly semanticResolvers: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
       SpendingValidator,
       SpendingValidator,
       SpendingValidator,
@@ -860,7 +881,7 @@ const buildValidationTraceDisputeChain = ({
         ),
       );
     }
-    if (builtSemanticResolvers.length !== 18) {
+    if (builtSemanticResolvers.length !== 25) {
       return yield* Effect.fail(
         new Error("Validation-trace semantic resolver set is incomplete"),
       );
@@ -884,6 +905,13 @@ const buildValidationTraceDisputeChain = ({
       builtSemanticResolvers[15]!,
       builtSemanticResolvers[16]!,
       builtSemanticResolvers[17]!,
+      builtSemanticResolvers[18]!,
+      builtSemanticResolvers[19]!,
+      builtSemanticResolvers[20]!,
+      builtSemanticResolvers[21]!,
+      builtSemanticResolvers[22]!,
+      builtSemanticResolvers[23]!,
+      builtSemanticResolvers[24]!,
     ] as const;
     const semanticResolverGroups = [
       [semanticResolvers[0], semanticResolvers[1]],
@@ -904,8 +932,15 @@ const buildValidationTraceDisputeChain = ({
         semanticResolvers[14],
         semanticResolvers[15],
         semanticResolvers[16],
+        semanticResolvers[17],
+        semanticResolvers[18],
+        semanticResolvers[19],
+        semanticResolvers[20],
+        semanticResolvers[21],
+        semanticResolvers[22],
+        semanticResolvers[23],
       ],
-      [semanticResolvers[17]],
+      [semanticResolvers[24]],
     ] as const;
     const semanticResolverHashesSchema = Data.Array(Data.Bytes());
     type SemanticResolverHashes = Data.Static<

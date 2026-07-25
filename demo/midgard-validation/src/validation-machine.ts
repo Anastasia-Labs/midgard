@@ -501,6 +501,11 @@ type ValidationMachineNativeScriptTokenV1 = {
   readonly slot: bigint;
 };
 
+type ValidationMachineNativeScriptTokenHeadV1 = {
+  readonly kind: 0 | 1 | 2 | 3 | 4 | 5;
+  readonly payloadOffset: number;
+};
+
 export type ValidationMachineNativeScriptFrameV1 = {
   readonly tail: Buffer;
   readonly kind: 1 | 2 | 3;
@@ -548,23 +553,41 @@ const readValidationMachineVersionedScriptHeaderV1 = (
   };
 };
 
-const readValidationMachineNativeScriptTokenV1 = (
+const readValidationMachineNativeScriptTokenHeadV1 = (
   item: Buffer,
   offset: number,
-): ValidationMachineNativeScriptTokenV1 => {
+): ValidationMachineNativeScriptTokenHeadV1 => {
   const outer = readCborArrayHeader(item, offset, "native_script");
   const tag = readCborUnsigned(
     item,
     outer.nextOffset,
     "native_script.tag",
   );
-  if (tag.value === 0n) {
+  if (tag.value < 0n || tag.value > 5n) {
+    throw new Error("native script has an unsupported tag");
+  }
+  const kind = Number(tag.value) as 0 | 1 | 2 | 3 | 4 | 5;
+  if (
+    (kind === 3 && outer.length !== 3) ||
+    (kind !== 3 && outer.length !== 2)
+  ) {
+    throw new Error("native script has an invalid outer shape");
+  }
+  return { kind, payloadOffset: tag.nextOffset };
+};
+
+const readValidationMachineNativeScriptPayloadV1 = (
+  item: Buffer,
+  offset: number,
+  kind: 0 | 1 | 2 | 3 | 4 | 5,
+): ValidationMachineNativeScriptTokenV1 => {
+  if (kind === 0) {
     const keyHash = readCborBytes(
       item,
-      tag.nextOffset,
+      offset,
       "native_script.key_hash",
     );
-    if (outer.length !== 2 || keyHash.value.length !== 28) {
+    if (keyHash.value.length !== 28) {
       throw new Error("native signature script has an invalid shape");
     }
     return {
@@ -576,20 +599,17 @@ const readValidationMachineNativeScriptTokenV1 = (
       slot: 0n,
     };
   }
-  if (tag.value === 1n || tag.value === 2n) {
+  if (kind === 1 || kind === 2) {
     const children = readCborArrayHeader(
       item,
-      tag.nextOffset,
+      offset,
       "native_script.children",
     );
-    if (
-      outer.length !== 2 ||
-      children.length > MAX_NATIVE_SCRIPT_SCAN_NODES_V1
-    ) {
+    if (children.length > MAX_NATIVE_SCRIPT_SCAN_NODES_V1) {
       throw new Error("native all/any script has an invalid shape");
     }
     return {
-      kind: Number(tag.value) as 1 | 2,
+      kind,
       nextOffset: children.nextOffset,
       childCount: children.length,
       required: 0n,
@@ -597,10 +617,10 @@ const readValidationMachineNativeScriptTokenV1 = (
       slot: 0n,
     };
   }
-  if (tag.value === 3n) {
+  if (kind === 3) {
     const required = readCborUnsigned(
       item,
-      tag.nextOffset,
+      offset,
       "native_script.required",
     );
     const children = readCborArrayHeader(
@@ -608,10 +628,7 @@ const readValidationMachineNativeScriptTokenV1 = (
       required.nextOffset,
       "native_script.children",
     );
-    if (
-      outer.length !== 3 ||
-      children.length > MAX_NATIVE_SCRIPT_SCAN_NODES_V1
-    ) {
+    if (children.length > MAX_NATIVE_SCRIPT_SCAN_NODES_V1) {
       throw new Error("native at-least script has an invalid shape");
     }
     return {
@@ -623,17 +640,14 @@ const readValidationMachineNativeScriptTokenV1 = (
       slot: 0n,
     };
   }
-  if (tag.value === 4n || tag.value === 5n) {
+  if (kind === 4 || kind === 5) {
     const slot = readCborUnsigned(
       item,
-      tag.nextOffset,
+      offset,
       "native_script.slot",
     );
-    if (outer.length !== 2) {
-      throw new Error("native timelock script has an invalid shape");
-    }
     return {
-      kind: Number(tag.value) as 4 | 5,
+      kind,
       nextOffset: slot.nextOffset,
       childCount: 0,
       required: 0n,
@@ -641,7 +655,7 @@ const readValidationMachineNativeScriptTokenV1 = (
       slot: slot.value,
     };
   }
-  throw new Error("native script has an unsupported tag");
+  throw new Error("native script payload has an unsupported tag");
 };
 
 const validationMachineNativeScriptFrameIsWellFormedV1 = (
@@ -1447,7 +1461,7 @@ export const buildDeterministicValidationMachineTrace = (
       invalidSignatureSeen: 0,
     };
     type PhaseANativeScriptsScanControl = {
-      readonly stage: 0 | 1 | 2;
+      readonly stage: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
       readonly scriptCount: number;
       readonly scriptSeen: number;
       readonly containsNonNativeScript: 0 | 1;
@@ -2198,7 +2212,7 @@ export const buildDeterministicValidationMachineTrace = (
       ): Effect.Effect<never, Error> =>
         Effect.fail(
           new Error(
-            `bounded native-script scan found ${actual} but replay rejected at ${terminalPhase}/${rejectionCode ?? "none"}`,
+            `bounded native-script scan found ${actual} at stage=${phaseANativeControl.stage},cursor=${phaseANativeControl.cursor} but replay rejected at ${terminalPhase}/${rejectionCode ?? "none"}`,
           ),
         );
       const pushPhaseANativeWitness = (
@@ -2274,10 +2288,10 @@ export const buildDeterministicValidationMachineTrace = (
               const chunkCount = midgardBoundedItemChunkCountV1(
                 item.bytes.length,
               );
-              let token: ValidationMachineNativeScriptTokenV1 | null =
+              let head: ValidationMachineNativeScriptTokenHeadV1 | null =
                 null;
               try {
-                token = readValidationMachineNativeScriptTokenV1(
+                head = readValidationMachineNativeScriptTokenHeadV1(
                   item.bytes,
                   phaseANativeControl.cursor,
                 );
@@ -2285,10 +2299,6 @@ export const buildDeterministicValidationMachineTrace = (
                 // The authenticated token witness still proves the exact
                 // malformed bytes to the one-step resolver.
               }
-              const signerProof =
-                token?.kind === 0
-                  ? signerProofForHash(token.keyHash)
-                  : ({ kind: "none" } as const);
               pushPhaseANativeWitness({
                 kind: "nativeScriptToken",
                 chunkProof: buildMidgardBoundedItemChunkProofV1(
@@ -2302,9 +2312,9 @@ export const buildDeterministicValidationMachineTrace = (
                         chunkIndex + 1,
                       )
                     : null,
-                signerProof,
+                signerProof: { kind: "none" },
               });
-              if (token === null) {
+              if (head === null) {
                 if (
                   !expectedPhaseANativeRejection(
                     RejectCodes.InvalidFieldType,
@@ -2331,6 +2341,79 @@ export const buildDeterministicValidationMachineTrace = (
                 ) {
                   return yield* failUnexpectedPhaseANativeRejection(
                     RejectCodes.NativeScriptNodeCount,
+                  );
+                }
+                stoppedAtRejection = true;
+                break;
+              }
+
+              phaseANativeControl = {
+                ...phaseANativeControl,
+                stage: (head.kind + 3) as 3 | 4 | 5 | 6 | 7 | 8,
+                cursor: head.payloadOffset,
+                nodeCount: nextNodeCount,
+              };
+              continue;
+            }
+
+            if (phaseANativeControl.stage >= 3) {
+              const kind = (phaseANativeControl.stage - 3) as
+                | 0
+                | 1
+                | 2
+                | 3
+                | 4
+                | 5;
+              const chunkIndex = Math.floor(
+                phaseANativeControl.cursor /
+                  MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
+              );
+              const chunkCount = midgardBoundedItemChunkCountV1(
+                item.bytes.length,
+              );
+              let token: ValidationMachineNativeScriptTokenV1 | null =
+                null;
+              let payloadParseFailure = "none";
+              try {
+                token = readValidationMachineNativeScriptPayloadV1(
+                  item.bytes,
+                  phaseANativeControl.cursor,
+                  kind,
+                );
+              } catch (cause) {
+                payloadParseFailure = String(cause);
+                // The authenticated payload witness proves the exact
+                // malformed bytes to the selected one-step resolver.
+              }
+              const signerProof =
+                token?.kind === 0
+                  ? signerProofForHash(token.keyHash)
+                  : ({ kind: "none" } as const);
+              pushPhaseANativeWitness({
+                kind: "nativeScriptToken",
+                chunkProof: buildMidgardBoundedItemChunkProofV1(
+                  item,
+                  chunkIndex,
+                ),
+                nextChunkProof:
+                  chunkIndex + 1 < chunkCount
+                    ? buildMidgardBoundedItemChunkProofV1(
+                        item,
+                        chunkIndex + 1,
+                      )
+                    : null,
+                signerProof,
+              });
+              if (token === null) {
+                if (
+                  !expectedPhaseANativeRejection(
+                    RejectCodes.InvalidFieldType,
+                  )
+                ) {
+                  return yield* Effect.fail(
+                    new Error(
+                      `bounded native-script payload failed at stage=${phaseANativeControl.stage},cursor=${phaseANativeControl.cursor},bytes=${item.bytes.subarray(phaseANativeControl.cursor).toString("hex")}: ${payloadParseFailure}`,
+                    ),
                   );
                 }
                 stoppedAtRejection = true;
@@ -2371,11 +2454,11 @@ export const buildDeterministicValidationMachineTrace = (
                 nativeScriptFrames.push(frame);
                 phaseANativeControl = {
                   ...phaseANativeControl,
+                  stage: 1,
                   cursor: token.nextOffset,
                   stackRoot:
                     hashValidationMachineNativeScriptFrameV1(frame),
                   stackDepth: nextDepth,
-                  nodeCount: nextNodeCount,
                 };
                 continue;
               }
@@ -2406,7 +2489,6 @@ export const buildDeterministicValidationMachineTrace = (
                 ...phaseANativeControl,
                 stage: 2,
                 cursor: token.nextOffset,
-                nodeCount: nextNodeCount,
                 result: valid ? 1 : 0,
               };
               continue;

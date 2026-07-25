@@ -824,6 +824,8 @@ describe("deterministic validation machine", () => {
       "transactionFieldChunk",
       "nativeScriptToken",
       "nativeScriptToken",
+      "nativeScriptToken",
+      "nativeScriptToken",
       "nativeScriptFrame",
       null,
     ]);

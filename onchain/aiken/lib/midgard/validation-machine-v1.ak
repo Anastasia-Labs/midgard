@@ -572,7 +572,7 @@ pub fn encode_phase_a_native_scripts_scan_witness(
 ) -> ByteArray {
   expect bytearray.length(resolution_schedule_hash) == 32
   expect stage >= 0
-  expect stage <= 2
+  expect stage <= 8
   expect script_count >= -1
   expect script_seen >= 0
   expect contains_non_native_script == 0 || contains_non_native_script == 1
@@ -2845,7 +2845,7 @@ fn phase_a_native_control_is_bound(
     validation_trace_v1.hash_validation_context(control.context_cbor) == pre.validation_context_hash,
     bytearray.length(control.resolution_schedule_hash) == 32,
     control.stage >= 0,
-    control.stage <= 2,
+    control.stage <= 8,
     control.script_count >= -1,
     control.script_count <= max_tx_size_derived_collection_item_count,
     control.script_seen >= 0,
@@ -2897,10 +2897,10 @@ fn phase_a_native_control_is_bound(
             control.stack_depth > 0,
           }
         },
-        if control.stage == 1 {
-          control.result == -1
-        } else {
+        if control.stage == 2 {
           control.result >= 0
+        } else {
+          control.result == -1
         },
       }
     },
@@ -3542,15 +3542,86 @@ fn verify_phase_a_native_scripts_scan(
       next_chunk_proof,
       signer_proof,
     } ->
-      verify_phase_a_native_token_scan(
-        pre,
-        witness,
-        control,
-        chunk_proof,
-        next_chunk_proof,
-        signer_proof,
-        2,
-      )
+      if control.stage == 1 {
+        and {
+          signer_proof == NoSignerSetProof,
+          verify_phase_a_native_token_head_scan_v1(
+            pre,
+            witness,
+            control,
+            chunk_proof,
+            next_chunk_proof,
+          ),
+        }
+      } else if control.stage == 3 {
+        verify_phase_a_native_signature_payload_scan_v1(
+          pre,
+          witness,
+          control,
+          chunk_proof,
+          next_chunk_proof,
+          signer_proof,
+        )
+      } else if or {
+        control.stage == 4,
+        control.stage == 5,
+      } {
+        and {
+          signer_proof == NoSignerSetProof,
+          or {
+            verify_phase_a_native_all_or_any_container_frame_payload_scan_v1(
+              pre,
+              witness,
+              control,
+              chunk_proof,
+              next_chunk_proof,
+            ),
+            verify_phase_a_native_all_or_any_empty_container_payload_scan_v1(
+              pre,
+              witness,
+              control,
+              chunk_proof,
+              next_chunk_proof,
+            ),
+          },
+        }
+      } else if control.stage == 6 {
+        and {
+          signer_proof == NoSignerSetProof,
+          or {
+            verify_phase_a_native_at_least_container_frame_payload_scan_v1(
+              pre,
+              witness,
+              control,
+              chunk_proof,
+              next_chunk_proof,
+            ),
+            verify_phase_a_native_at_least_empty_container_payload_scan_v1(
+              pre,
+              witness,
+              control,
+              chunk_proof,
+              next_chunk_proof,
+            ),
+          },
+        }
+      } else if or {
+        control.stage == 7,
+        control.stage == 8,
+      } {
+        and {
+          signer_proof == NoSignerSetProof,
+          verify_phase_a_native_timelock_payload_scan_v1(
+            pre,
+            witness,
+            control,
+            chunk_proof,
+            next_chunk_proof,
+          ),
+        }
+      } else {
+        False
+      }
     NativeScriptFrameWitness { frame } ->
       verify_phase_a_native_frame_scan(pre, witness, control, frame)
     _ -> False
@@ -3610,29 +3681,33 @@ type AuthenticatedNativeScriptTokenHeadV1 {
   head: Option<native_script_scan_v1.NativeScriptTokenHeadV1>,
 }
 
-fn authenticated_phase_a_native_token_head_v1(
+type AuthenticatedNativeScriptWindowV1 {
+  verified: VerifiedMidgardNativeTxCompact,
+  window: NativeChunkWindowV1,
+}
+
+fn authenticated_phase_a_native_window_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   control: PhaseANativeScriptsControlV1,
   chunk_proof: bounded_item_v1.ChunkProofV1,
   next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
-) -> Option<AuthenticatedNativeScriptTokenHeadV1> {
+) -> Option<AuthenticatedNativeScriptWindowV1> {
   let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
     pre.transaction_id,
     control.compact_cbor,
     control.witness_set_compact_cbor,
     control.field_preimage_lengths_cbor,
   )
-  if and {
+  if
     phase_a_native_control_is_bound(
       pre,
       witness,
       control,
       verified,
       witness_set,
-    ),
-    control.stage == 1,
-  } {
+    )
+  {
     when
       phase_a_native_chunk_window(
         control,
@@ -3643,18 +3718,387 @@ fn authenticated_phase_a_native_token_head_v1(
       None -> None
       Some(authenticated) ->
         Some(
-          AuthenticatedNativeScriptTokenHeadV1 {
+          AuthenticatedNativeScriptWindowV1 {
             verified,
             window: authenticated,
-            head: native_script_scan_v1.token_head_at_v1(
-              authenticated.bytes,
-              authenticated.offset,
-            ),
           },
         )
     }
   } else {
     None
+  }
+}
+
+fn authenticated_phase_a_native_token_head_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: PhaseANativeScriptsControlV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+) -> Option<AuthenticatedNativeScriptTokenHeadV1> {
+  when
+    authenticated_phase_a_native_window_v1(
+      pre,
+      witness,
+      control,
+      chunk_proof,
+      next_chunk_proof,
+    )
+  is {
+    None -> None
+    Some(authenticated) ->
+      if control.stage != 1 {
+        None
+      } else {
+        Some(
+          AuthenticatedNativeScriptTokenHeadV1 {
+            verified: authenticated.verified,
+            window: authenticated.window,
+            head: native_script_scan_v1.token_head_at_v1(
+              authenticated.window.bytes,
+              authenticated.window.offset,
+            ),
+          },
+        )
+      }
+  }
+}
+
+fn verify_phase_a_native_token_head_scan_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: PhaseANativeScriptsControlV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+) -> Bool {
+  when
+    authenticated_phase_a_native_token_head_v1(
+      pre,
+      witness,
+      control,
+      chunk_proof,
+      next_chunk_proof,
+    )
+  is {
+    None -> False
+    Some(authenticated) ->
+      when authenticated.head is {
+        None ->
+          rejected_successor_is_exact(
+            pre,
+            witness.claimed_successor,
+            reject_invalid_field_type,
+          )
+        Some(head) ->
+          if !native_script_scan_v1.token_head_is_well_formed_v1(head) {
+            rejected_successor_is_exact(
+              pre,
+              witness.claimed_successor,
+              reject_invalid_field_type,
+            )
+          } else {
+            let next_node_count = control.node_count + 1
+            let next_offset = control.cursor + head.next_offset - authenticated.window.offset
+            if next_node_count > native_script_scan_v1.max_native_script_nodes {
+              rejected_successor_is_exact(
+                pre,
+                witness.claimed_successor,
+                reject_native_script_node_count,
+              )
+            } else {
+              and {
+                next_offset <= control.item_length,
+                phase_a_native_successor_is_exact(
+                  pre,
+                  witness.claimed_successor,
+                  PhaseANativeScriptsControlV1 {
+                    ..control,
+                    stage: head.tag + 3,
+                    cursor: next_offset,
+                    node_count: next_node_count,
+                  },
+                ),
+              }
+            }
+          }
+      }
+  }
+}
+
+fn phase_a_native_container_frame_payload_successor_is_exact_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: PhaseANativeScriptsControlV1,
+  token: native_script_scan_v1.NativeScriptTokenV1,
+) -> Bool {
+  if token.child_count <= 0 {
+    False
+  } else {
+    when
+      native_script_scan_v1.frame_for_token_v1(
+        token,
+        control.stack_root,
+      )
+    is {
+      None -> False
+      Some(frame) -> {
+        let next_depth = control.stack_depth + 1
+        if next_depth > native_script_scan_v1.max_native_script_depth {
+          rejected_successor_is_exact(
+            pre,
+            witness.claimed_successor,
+            reject_native_script_depth,
+          )
+        } else {
+          and {
+            token.next_offset <= control.item_length,
+            phase_a_native_successor_is_exact(
+              pre,
+              witness.claimed_successor,
+              PhaseANativeScriptsControlV1 {
+                ..control,
+                stage: 1,
+                cursor: token.next_offset,
+                stack_root: native_script_scan_v1.hash_frame_v1(frame),
+                stack_depth: next_depth,
+              },
+            ),
+          }
+        }
+      }
+    }
+  }
+}
+
+fn phase_a_native_empty_container_payload_successor_is_exact_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: PhaseANativeScriptsControlV1,
+  token: native_script_scan_v1.NativeScriptTokenV1,
+) -> Bool {
+  if token.child_count != 0 {
+    False
+  } else {
+    when native_script_scan_v1.empty_container_result_v1(token) is {
+      None -> False
+      Some(valid) -> and {
+          token.next_offset <= control.item_length,
+          phase_a_native_successor_is_exact(
+            pre,
+            witness.claimed_successor,
+            PhaseANativeScriptsControlV1 {
+              ..control,
+              stage: 2,
+              cursor: token.next_offset,
+              result: if valid {
+                1
+              } else {
+                0
+              },
+            },
+          ),
+        }
+    }
+  }
+}
+
+fn authenticated_phase_a_native_all_or_any_payload_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: PhaseANativeScriptsControlV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+) -> Option<Option<native_script_scan_v1.NativeScriptTokenV1>> {
+  when
+    authenticated_phase_a_native_window_v1(
+      pre,
+      witness,
+      control,
+      chunk_proof,
+      next_chunk_proof,
+    )
+  is {
+    None -> None
+    Some(authenticated) ->
+      if and {
+        control.stage != 4,
+        control.stage != 5,
+      } {
+        None
+      } else {
+        Some(
+          native_script_scan_v1.all_or_any_payload_at_v1(
+            authenticated.window.bytes,
+            authenticated.window.offset,
+            control.cursor,
+            control.stage - 3,
+          ),
+        )
+      }
+  }
+}
+
+fn authenticated_phase_a_native_at_least_payload_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: PhaseANativeScriptsControlV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+) -> Option<Option<native_script_scan_v1.NativeScriptTokenV1>> {
+  when
+    authenticated_phase_a_native_window_v1(
+      pre,
+      witness,
+      control,
+      chunk_proof,
+      next_chunk_proof,
+    )
+  is {
+    None -> None
+    Some(authenticated) ->
+      if control.stage != 6 {
+        None
+      } else {
+        Some(
+          native_script_scan_v1.at_least_payload_at_v1(
+            authenticated.window.bytes,
+            authenticated.window.offset,
+            control.cursor,
+          ),
+        )
+      }
+  }
+}
+
+fn verify_phase_a_native_all_or_any_container_frame_payload_scan_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: PhaseANativeScriptsControlV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+) -> Bool {
+  when
+    authenticated_phase_a_native_all_or_any_payload_v1(
+      pre,
+      witness,
+      control,
+      chunk_proof,
+      next_chunk_proof,
+    )
+  is {
+    None -> False
+    Some(None) ->
+      rejected_successor_is_exact(
+        pre,
+        witness.claimed_successor,
+        reject_invalid_field_type,
+      )
+    Some(Some(token)) ->
+      phase_a_native_container_frame_payload_successor_is_exact_v1(
+        pre,
+        witness,
+        control,
+        token,
+      )
+  }
+}
+
+fn verify_phase_a_native_all_or_any_empty_container_payload_scan_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: PhaseANativeScriptsControlV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+) -> Bool {
+  when
+    authenticated_phase_a_native_all_or_any_payload_v1(
+      pre,
+      witness,
+      control,
+      chunk_proof,
+      next_chunk_proof,
+    )
+  is {
+    None -> False
+    Some(None) ->
+      rejected_successor_is_exact(
+        pre,
+        witness.claimed_successor,
+        reject_invalid_field_type,
+      )
+    Some(Some(token)) ->
+      phase_a_native_empty_container_payload_successor_is_exact_v1(
+        pre,
+        witness,
+        control,
+        token,
+      )
+  }
+}
+
+fn verify_phase_a_native_at_least_container_frame_payload_scan_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: PhaseANativeScriptsControlV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+) -> Bool {
+  when
+    authenticated_phase_a_native_at_least_payload_v1(
+      pre,
+      witness,
+      control,
+      chunk_proof,
+      next_chunk_proof,
+    )
+  is {
+    None -> False
+    Some(None) ->
+      rejected_successor_is_exact(
+        pre,
+        witness.claimed_successor,
+        reject_invalid_field_type,
+      )
+    Some(Some(token)) ->
+      phase_a_native_container_frame_payload_successor_is_exact_v1(
+        pre,
+        witness,
+        control,
+        token,
+      )
+  }
+}
+
+fn verify_phase_a_native_at_least_empty_container_payload_scan_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: PhaseANativeScriptsControlV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+) -> Bool {
+  when
+    authenticated_phase_a_native_at_least_payload_v1(
+      pre,
+      witness,
+      control,
+      chunk_proof,
+      next_chunk_proof,
+    )
+  is {
+    None -> False
+    Some(None) ->
+      rejected_successor_is_exact(
+        pre,
+        witness.claimed_successor,
+        reject_invalid_field_type,
+      )
+    Some(Some(token)) ->
+      phase_a_native_empty_container_payload_successor_is_exact_v1(
+        pre,
+        witness,
+        control,
+        token,
+      )
   }
 }
 
@@ -4084,6 +4528,483 @@ fn verify_phase_a_native_signature_token_scan_v1(
           }
       }
   }
+}
+
+fn verify_phase_a_native_timelock_payload_scan_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: PhaseANativeScriptsControlV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+) -> Bool {
+  when
+    authenticated_phase_a_native_window_v1(
+      pre,
+      witness,
+      control,
+      chunk_proof,
+      next_chunk_proof,
+    )
+  is {
+    None -> False
+    Some(authenticated) ->
+      if and {
+        control.stage != 7,
+        control.stage != 8,
+      } {
+        False
+      } else {
+        when
+          native_script_scan_v1.timelock_payload_at_v1(
+            authenticated.window.bytes,
+            authenticated.window.offset,
+            control.cursor,
+            control.stage - 3,
+          )
+        is {
+          None ->
+            rejected_successor_is_exact(
+              pre,
+              witness.claimed_successor,
+              reject_invalid_field_type,
+            )
+          Some(token) -> {
+            let valid = if token.kind == native_script_scan_v1.after_node {
+              and {
+                authenticated.verified.tx_compact.body.validity_interval_start >= 0,
+                authenticated.verified.tx_compact.body.validity_interval_start >= token.slot,
+              }
+            } else {
+              and {
+                authenticated.verified.tx_compact.body.validity_interval_end >= 0,
+                authenticated.verified.tx_compact.body.validity_interval_end <= token.slot,
+              }
+            }
+            and {
+              token.next_offset <= control.item_length,
+              phase_a_native_successor_is_exact(
+                pre,
+                witness.claimed_successor,
+                PhaseANativeScriptsControlV1 {
+                  ..control,
+                  stage: 2,
+                  cursor: token.next_offset,
+                  result: if valid {
+                    1
+                  } else {
+                    0
+                  },
+                },
+              ),
+            }
+          }
+        }
+      }
+  }
+}
+
+fn verify_phase_a_native_signature_payload_with_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: PhaseANativeScriptsControlV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+  signer_result: fn(
+    ByteArray,
+    PhaseANativeScriptsControlV1,
+  ) -> Option<Bool>,
+) -> Bool {
+  when
+    authenticated_phase_a_native_window_v1(
+      pre,
+      witness,
+      control,
+      chunk_proof,
+      next_chunk_proof,
+    )
+  is {
+    None -> False
+    Some(authenticated) ->
+      if control.stage != 3 {
+        False
+      } else {
+        when
+          native_script_scan_v1.signature_payload_at_v1(
+            authenticated.window.bytes,
+            authenticated.window.offset,
+            control.cursor,
+          )
+        is {
+          None ->
+            rejected_successor_is_exact(
+              pre,
+              witness.claimed_successor,
+              reject_invalid_field_type,
+            )
+          Some(token) ->
+            when
+              signer_result(
+                token.key_hash,
+                control,
+              )
+            is {
+              None -> False
+              Some(valid) -> and {
+                  token.next_offset <= control.item_length,
+                  phase_a_native_successor_is_exact(
+                    pre,
+                    witness.claimed_successor,
+                    PhaseANativeScriptsControlV1 {
+                      ..control,
+                      stage: 2,
+                      cursor: token.next_offset,
+                      result: if valid {
+                        1
+                      } else {
+                        0
+                      },
+                    },
+                  ),
+                }
+            }
+        }
+      }
+  }
+}
+
+fn verify_phase_a_native_signature_payload_scan_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: PhaseANativeScriptsControlV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+  signer_proof: SignerSetProofV1,
+) -> Bool {
+  verify_phase_a_native_signature_payload_with_v1(
+    pre,
+    witness,
+    control,
+    chunk_proof,
+    next_chunk_proof,
+    fn(key_hash, bound_control) {
+      phase_a_native_signature_result(
+        key_hash,
+        bound_control,
+        signer_proof,
+      )
+    },
+  )
+}
+
+pub fn verify_phase_a_native_token_head_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+) -> Bool {
+  verify_phase_a_native_token_head_scan_v1(
+    pre,
+    witness,
+    phase_a_native_control_from_witness(witness.work_witness_cbor),
+    chunk_proof,
+    next_chunk_proof,
+  )
+}
+
+pub fn verify_phase_a_native_all_or_any_container_frame_payload_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+) -> Bool {
+  verify_phase_a_native_all_or_any_container_frame_payload_scan_v1(
+    pre,
+    witness,
+    phase_a_native_control_from_witness(witness.work_witness_cbor),
+    chunk_proof,
+    next_chunk_proof,
+  )
+}
+
+pub fn verify_phase_a_native_all_or_any_empty_container_payload_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+) -> Bool {
+  verify_phase_a_native_all_or_any_empty_container_payload_scan_v1(
+    pre,
+    witness,
+    phase_a_native_control_from_witness(witness.work_witness_cbor),
+    chunk_proof,
+    next_chunk_proof,
+  )
+}
+
+pub fn verify_phase_a_native_at_least_container_frame_payload_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+) -> Bool {
+  verify_phase_a_native_at_least_container_frame_payload_scan_v1(
+    pre,
+    witness,
+    phase_a_native_control_from_witness(witness.work_witness_cbor),
+    chunk_proof,
+    next_chunk_proof,
+  )
+}
+
+pub fn verify_phase_a_native_at_least_empty_container_payload_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+) -> Bool {
+  verify_phase_a_native_at_least_empty_container_payload_scan_v1(
+    pre,
+    witness,
+    phase_a_native_control_from_witness(witness.work_witness_cbor),
+    chunk_proof,
+    next_chunk_proof,
+  )
+}
+
+pub fn verify_phase_a_native_timelock_payload_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+) -> Bool {
+  verify_phase_a_native_timelock_payload_scan_v1(
+    pre,
+    witness,
+    phase_a_native_control_from_witness(witness.work_witness_cbor),
+    chunk_proof,
+    next_chunk_proof,
+  )
+}
+
+pub fn verify_phase_a_native_signature_payload_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+  signer_proof: SignerSetProofV1,
+) -> Bool {
+  verify_phase_a_native_signature_payload_scan_v1(
+    pre,
+    witness,
+    phase_a_native_control_from_witness(witness.work_witness_cbor),
+    chunk_proof,
+    next_chunk_proof,
+    signer_proof,
+  )
+}
+
+pub fn verify_phase_a_native_signature_membership_payload_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+  peaks: List<validation_merkle_v1.FrontierPeak>,
+  signer_index: Int,
+  siblings: List<ByteArray>,
+) -> Bool {
+  verify_phase_a_native_signature_payload_with_v1(
+    pre,
+    witness,
+    phase_a_native_control_from_witness(witness.work_witness_cbor),
+    chunk_proof,
+    next_chunk_proof,
+    fn(key_hash, control) {
+      let frontier_commitment = validation_merkle_v1.frontier_commitment(
+        control.signer_count,
+        control.signer_peaks,
+      )
+      if
+        signer_membership_is_valid(
+          key_hash,
+          control.signer_count,
+          frontier_commitment,
+          peaks,
+          signer_index,
+          siblings,
+        )
+      {
+        Some(True)
+      } else {
+        None
+      }
+    },
+  )
+}
+
+pub fn verify_phase_a_native_signature_empty_payload_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+  peaks: List<validation_merkle_v1.FrontierPeak>,
+) -> Bool {
+  verify_phase_a_native_signature_payload_with_v1(
+    pre,
+    witness,
+    phase_a_native_control_from_witness(witness.work_witness_cbor),
+    chunk_proof,
+    next_chunk_proof,
+    fn(_key_hash, control) {
+      let frontier_commitment = validation_merkle_v1.frontier_commitment(
+        control.signer_count,
+        control.signer_peaks,
+      )
+      if and {
+        control.signer_count == 0,
+        signer_frontier_matches(
+          control.signer_count,
+          frontier_commitment,
+          peaks,
+        ),
+      } {
+        Some(False)
+      } else {
+        None
+      }
+    },
+  )
+}
+
+pub fn verify_phase_a_native_signature_below_first_payload_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+  peaks: List<validation_merkle_v1.FrontierPeak>,
+  first_signer_hash: ByteArray,
+  siblings: List<ByteArray>,
+) -> Bool {
+  verify_phase_a_native_signature_payload_with_v1(
+    pre,
+    witness,
+    phase_a_native_control_from_witness(witness.work_witness_cbor),
+    chunk_proof,
+    next_chunk_proof,
+    fn(key_hash, control) {
+      let frontier_commitment = validation_merkle_v1.frontier_commitment(
+        control.signer_count,
+        control.signer_peaks,
+      )
+      if and {
+        bytearray.compare(key_hash, first_signer_hash) == Less,
+        signer_membership_is_valid(
+          first_signer_hash,
+          control.signer_count,
+          frontier_commitment,
+          peaks,
+          0,
+          siblings,
+        ),
+      } {
+        Some(False)
+      } else {
+        None
+      }
+    },
+  )
+}
+
+pub fn verify_phase_a_native_signature_above_last_payload_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+  peaks: List<validation_merkle_v1.FrontierPeak>,
+  last_signer_hash: ByteArray,
+  siblings: List<ByteArray>,
+) -> Bool {
+  verify_phase_a_native_signature_payload_with_v1(
+    pre,
+    witness,
+    phase_a_native_control_from_witness(witness.work_witness_cbor),
+    chunk_proof,
+    next_chunk_proof,
+    fn(key_hash, control) {
+      let frontier_commitment = validation_merkle_v1.frontier_commitment(
+        control.signer_count,
+        control.signer_peaks,
+      )
+      if and {
+        control.signer_count > 0,
+        bytearray.compare(last_signer_hash, key_hash) == Less,
+        signer_membership_is_valid(
+          last_signer_hash,
+          control.signer_count,
+          frontier_commitment,
+          peaks,
+          control.signer_count - 1,
+          siblings,
+        ),
+      } {
+        Some(False)
+      } else {
+        None
+      }
+    },
+  )
+}
+
+pub fn verify_phase_a_native_signature_between_payload_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+  peaks: List<validation_merkle_v1.FrontierPeak>,
+  lower_index: Int,
+  lower_signer_hash: ByteArray,
+  lower_siblings: List<ByteArray>,
+  upper_signer_hash: ByteArray,
+  upper_siblings: List<ByteArray>,
+) -> Bool {
+  verify_phase_a_native_signature_payload_with_v1(
+    pre,
+    witness,
+    phase_a_native_control_from_witness(witness.work_witness_cbor),
+    chunk_proof,
+    next_chunk_proof,
+    fn(key_hash, control) {
+      let frontier_commitment = validation_merkle_v1.frontier_commitment(
+        control.signer_count,
+        control.signer_peaks,
+      )
+      if and {
+        lower_index >= 0,
+        lower_index + 1 < control.signer_count,
+        bytearray.compare(lower_signer_hash, key_hash) == Less,
+        bytearray.compare(key_hash, upper_signer_hash) == Less,
+        signer_membership_is_valid(
+          lower_signer_hash,
+          control.signer_count,
+          frontier_commitment,
+          peaks,
+          lower_index,
+          lower_siblings,
+        ),
+        signer_membership_is_valid(
+          upper_signer_hash,
+          control.signer_count,
+          frontier_commitment,
+          peaks,
+          lower_index + 1,
+          upper_siblings,
+        ),
+      } {
+        Some(False)
+      } else {
+        None
+      }
+    },
+  )
 }
 
 pub fn verify_phase_a_native_container_frame_token_semantics_v1(

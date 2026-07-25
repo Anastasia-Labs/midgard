@@ -6,7 +6,7 @@ use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel}
 use midgard/validation_machine_v1.{
   NativeScriptTokenWitness, NoSignerSetProof, ValidationOneStepWitnessV1,
-  verify_phase_a_native_timelock_token_semantics_v1,
+  verify_phase_a_native_all_or_any_empty_container_payload_semantics_v1,
 }
 use midgard/validation_semantic_v1.{Datum, continue_winning}
 use midgard/validation_trace_v1.{PhaseANativeScripts}
@@ -66,7 +66,7 @@ validator main(
           output_index,
           transition,
           auxiliary_data,
-          verify_phase_a_native_timelock_token_semantics_v1(
+          verify_phase_a_native_all_or_any_empty_container_payload_semantics_v1(
             datum |> semantic_pre_state,
             transition,
             chunk_proof,

@@ -2250,6 +2250,24 @@ test phase_a_native_scripts_evaluates_a_valid_timelock_on_l1() {
     -1,
   )
   let token_pre = next_phase_a_native_state(pre, token_work_witness_cbor)
+  let payload_work_witness_cbor = phase_a_native_scan_witness(
+    tx,
+    7,
+    1,
+    0,
+    0,
+    bytearray.length(item_cbor),
+    collection_proof.item_commitment,
+    5,
+    #"",
+    0,
+    1,
+    -1,
+  )
+  let payload_pre = next_phase_a_native_state(
+    token_pre,
+    payload_work_witness_cbor,
+  )
   let finalize_work_witness_cbor = phase_a_native_scan_witness(
     tx,
     2,
@@ -2265,7 +2283,7 @@ test phase_a_native_scripts_evaluates_a_valid_timelock_on_l1() {
     1,
   )
   let finalize_pre = next_phase_a_native_state(
-    token_pre,
+    payload_pre,
     finalize_work_witness_cbor,
   )
   let proof_source = midgard_transaction_proof_source_v1(tx)
@@ -2306,10 +2324,19 @@ test phase_a_native_scripts_evaluates_a_valid_timelock_on_l1() {
       collection_proof,
       chunk_proof,
     ),
-    validation_machine_v1.verify_phase_a_native_timelock_token_semantics_v1(
+    validation_machine_v1.verify_phase_a_native_token_head_semantics_v1(
       token_pre,
       validation_machine_v1.ValidationOneStepWitnessV1 {
         work_witness_cbor: token_work_witness_cbor,
+        claimed_successor: payload_pre,
+      },
+      chunk_proof,
+      None,
+    ),
+    validation_machine_v1.verify_phase_a_native_timelock_payload_semantics_v1(
+      payload_pre,
+      validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor: payload_work_witness_cbor,
         claimed_successor: finalize_pre,
       },
       chunk_proof,
@@ -2377,6 +2404,24 @@ test phase_a_native_scripts_resolves_a_nested_signature_one_step_at_a_time() {
     pre,
     container_work_witness_cbor,
   )
+  let container_payload_work_witness_cbor = phase_a_native_scan_witness(
+    tx,
+    4,
+    1,
+    0,
+    0,
+    item_length,
+    item_commitment,
+    payload_offset + 2,
+    #"",
+    0,
+    1,
+    -1,
+  )
+  let container_payload_pre = next_phase_a_native_state(
+    container_pre,
+    container_payload_work_witness_cbor,
+  )
   let frame = native_script_scan_v1.NativeScriptFrameV1 {
     tail: #"",
     kind: native_script_scan_v1.all_node,
@@ -2401,8 +2446,26 @@ test phase_a_native_scripts_resolves_a_nested_signature_one_step_at_a_time() {
     -1,
   )
   let signature_pre = next_phase_a_native_state(
-    container_pre,
+    container_payload_pre,
     signature_work_witness_cbor,
+  )
+  let signature_payload_work_witness_cbor = phase_a_native_scan_witness(
+    tx,
+    3,
+    1,
+    0,
+    0,
+    item_length,
+    item_commitment,
+    child_offset + 2,
+    stack_root,
+    1,
+    2,
+    -1,
+  )
+  let signature_payload_pre = next_phase_a_native_state(
+    signature_pre,
+    signature_payload_work_witness_cbor,
   )
   let frame_work_witness_cbor = phase_a_native_scan_witness(
     tx,
@@ -2419,7 +2482,7 @@ test phase_a_native_scripts_resolves_a_nested_signature_one_step_at_a_time() {
     1,
   )
   let frame_pre = next_phase_a_native_state(
-    signature_pre,
+    signature_payload_pre,
     frame_work_witness_cbor,
   )
   let complete_work_witness_cbor = phase_a_native_scan_witness(
@@ -2442,28 +2505,44 @@ test phase_a_native_scripts_resolves_a_nested_signature_one_step_at_a_time() {
   )
   let signer_frontier = signer_frontier_for_tx(tx)
   and {
-    validation_machine_v1.verify_phase_a_native_container_frame_token_semantics_v1(
+    validation_machine_v1.verify_phase_a_native_token_head_semantics_v1(
       container_pre,
       validation_machine_v1.ValidationOneStepWitnessV1 {
         work_witness_cbor: container_work_witness_cbor,
+        claimed_successor: container_payload_pre,
+      },
+      chunk_proof,
+      None,
+    ),
+    validation_machine_v1.verify_phase_a_native_all_or_any_container_frame_payload_semantics_v1(
+      container_payload_pre,
+      validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor: container_payload_work_witness_cbor,
         claimed_successor: signature_pre,
       },
       chunk_proof,
       None,
     ),
-    validation_machine_v1.verify_phase_a_native_signature_token_semantics_v1(
+    validation_machine_v1.verify_phase_a_native_token_head_semantics_v1(
       signature_pre,
       validation_machine_v1.ValidationOneStepWitnessV1 {
         work_witness_cbor: signature_work_witness_cbor,
+        claimed_successor: signature_payload_pre,
+      },
+      chunk_proof,
+      None,
+    ),
+    validation_machine_v1.verify_phase_a_native_signature_membership_payload_semantics_v1(
+      signature_payload_pre,
+      validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor: signature_payload_work_witness_cbor,
         claimed_successor: frame_pre,
       },
       chunk_proof,
       None,
-      validation_machine_v1.SignerMembershipProof {
-        peaks: signer_frontier.peaks,
-        signer_index: 0,
-        siblings: [],
-      },
+      signer_frontier.peaks,
+      0,
+      [],
     ),
     validation_machine_v1.verify_phase_a_native_frame_semantics_v1(
       frame_pre,
@@ -2523,6 +2602,24 @@ test phase_a_native_scripts_proves_an_unsatisfied_script_is_an_exact_no_op() {
     -1,
   )
   let token_pre = next_phase_a_native_state(pre, token_work_witness_cbor)
+  let payload_work_witness_cbor = phase_a_native_scan_witness(
+    tx,
+    3,
+    1,
+    0,
+    0,
+    bytearray.length(item_cbor),
+    collection_proof.item_commitment,
+    6,
+    #"",
+    0,
+    1,
+    -1,
+  )
+  let payload_pre = next_phase_a_native_state(
+    token_pre,
+    payload_work_witness_cbor,
+  )
   let finalize_work_witness_cbor = phase_a_native_scan_witness(
     tx,
     2,
@@ -2538,7 +2635,7 @@ test phase_a_native_scripts_proves_an_unsatisfied_script_is_an_exact_no_op() {
     0,
   )
   let finalize_pre = next_phase_a_native_state(
-    token_pre,
+    payload_pre,
     finalize_work_witness_cbor,
   )
   let rejection_code = #"455f4e41544956455f5343524950545f494e56414c4944"
@@ -2567,15 +2664,24 @@ test phase_a_native_scripts_proves_an_unsatisfied_script_is_an_exact_no_op() {
       collection_proof,
       chunk_proof,
     ),
-    validation_machine_v1.verify_phase_a_native_signature_token_semantics_v1(
+    validation_machine_v1.verify_phase_a_native_token_head_semantics_v1(
       token_pre,
       validation_machine_v1.ValidationOneStepWitnessV1 {
         work_witness_cbor: token_work_witness_cbor,
+        claimed_successor: payload_pre,
+      },
+      chunk_proof,
+      None,
+    ),
+    validation_machine_v1.verify_phase_a_native_signature_empty_payload_semantics_v1(
+      payload_pre,
+      validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor: payload_work_witness_cbor,
         claimed_successor: finalize_pre,
       },
       chunk_proof,
       None,
-      validation_machine_v1.EmptySignerSetProof { peaks: [] },
+      [],
     ),
     validation_machine_v1.verify_phase_a_native_advance_semantics_v1(
       finalize_pre,

@@ -5,8 +5,8 @@ use midgard/bounded_item_v1.{ChunkProofV1}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel}
 use midgard/validation_machine_v1.{
-  NativeScriptTokenWitness, NoSignerSetProof, ValidationOneStepWitnessV1,
-  verify_phase_a_native_empty_container_token_semantics_v1,
+  NativeScriptTokenWitness, SignerSetProofV1, ValidationOneStepWitnessV1,
+  verify_phase_a_native_signature_between_payload_semantics_v1,
 }
 use midgard/validation_semantic_v1.{Datum, continue_winning}
 use midgard/validation_trace_v1.{PhaseANativeScripts}
@@ -18,6 +18,7 @@ pub type ActionV1 {
     transition: ValidationOneStepWitnessV1,
     chunk_proof: ChunkProofV1,
     next_chunk_proof: Option<ChunkProofV1>,
+    signer_proof: SignerSetProofV1,
   }
 }
 
@@ -50,13 +51,22 @@ validator main(
         transition,
         chunk_proof,
         next_chunk_proof,
+        signer_proof,
       }) -> {
         let auxiliary = NativeScriptTokenWitness {
           chunk_proof,
           next_chunk_proof,
-          signer_proof: NoSignerSetProof,
+          signer_proof,
         }
         let auxiliary_data: Data = auxiliary
+        expect SignerSetProofV1.SignerBetweenProof {
+          peaks,
+          lower_index,
+          lower_signer_hash,
+          lower_siblings,
+          upper_signer_hash,
+          upper_siblings,
+        } = signer_proof
         continue_winning(
           PhaseANativeScripts,
           award_script_hash,
@@ -66,11 +76,17 @@ validator main(
           output_index,
           transition,
           auxiliary_data,
-          verify_phase_a_native_empty_container_token_semantics_v1(
+          verify_phase_a_native_signature_between_payload_semantics_v1(
             datum |> semantic_pre_state,
             transition,
             chunk_proof,
             next_chunk_proof,
+            peaks,
+            lower_index,
+            lower_signer_hash,
+            lower_siblings,
+            upper_signer_hash,
+            upper_siblings,
           ),
           own_out_ref,
           tx,

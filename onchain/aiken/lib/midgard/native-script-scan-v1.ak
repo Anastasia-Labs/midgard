@@ -231,6 +231,141 @@ pub fn token_head_at_v1(
   }
 }
 
+pub fn token_head_is_well_formed_v1(head: NativeScriptTokenHeadV1) -> Bool {
+  and {
+    head.tag >= signature_node,
+    head.tag <= before_node,
+    if head.tag == at_least_node {
+      head.outer_length == 3
+    } else {
+      head.outer_length == 2
+    },
+  }
+}
+
+pub fn signature_payload_at_v1(
+  window: ByteArray,
+  window_offset: Int,
+  absolute_offset: Int,
+) -> Option<NativeScriptTokenV1> {
+  when canonical_head(window, window_offset, 2) is {
+    Some(key_hash) ->
+      if and {
+        key_hash.value == 28,
+        key_hash.next_offset + 28 <= bytearray.length(window),
+      } {
+        Some(
+          NativeScriptTokenV1 {
+            ..empty_token(
+              signature_node,
+              absolute_offset + key_hash.next_offset + 28 - window_offset,
+            ),
+            key_hash: slice_len(window, key_hash.next_offset, 28),
+          },
+        )
+      } else {
+        None
+      }
+    None -> None
+  }
+}
+
+pub fn all_or_any_payload_at_v1(
+  window: ByteArray,
+  window_offset: Int,
+  absolute_offset: Int,
+  kind: Int,
+) -> Option<NativeScriptTokenV1> {
+  if and {
+    kind != all_node,
+    kind != any_node,
+  } {
+    None
+  } else {
+    when canonical_head(window, window_offset, 4) is {
+      Some(children) ->
+        if and {
+          children.value >= 0,
+          children.value <= max_native_script_nodes,
+        } {
+          Some(
+            NativeScriptTokenV1 {
+              ..empty_token(
+                kind,
+                absolute_offset + children.next_offset - window_offset,
+              ),
+              child_count: children.value,
+            },
+          )
+        } else {
+          None
+        }
+      None -> None
+    }
+  }
+}
+
+pub fn at_least_payload_at_v1(
+  window: ByteArray,
+  window_offset: Int,
+  absolute_offset: Int,
+) -> Option<NativeScriptTokenV1> {
+  when canonical_head(window, window_offset, 0) is {
+    None -> None
+    Some(required) ->
+      when canonical_head(window, required.next_offset, 4) is {
+        Some(children) ->
+          if and {
+            required.value >= 0,
+            children.value >= 0,
+            children.value <= max_native_script_nodes,
+          } {
+            Some(
+              NativeScriptTokenV1 {
+                ..empty_token(
+                  at_least_node,
+                  absolute_offset + children.next_offset - window_offset,
+                ),
+                child_count: children.value,
+                required: required.value,
+              },
+            )
+          } else {
+            None
+          }
+        None -> None
+      }
+  }
+}
+
+pub fn timelock_payload_at_v1(
+  window: ByteArray,
+  window_offset: Int,
+  absolute_offset: Int,
+  kind: Int,
+) -> Option<NativeScriptTokenV1> {
+  if and {
+    kind != after_node,
+    kind != before_node,
+  } {
+    None
+  } else {
+    when canonical_head(window, window_offset, 0) is {
+      Some(slot) ->
+        Some(
+          NativeScriptTokenV1 {
+            ..empty_token(
+              kind,
+              absolute_offset + slot.next_offset - window_offset,
+            ),
+            slot: slot.value,
+          },
+        )
+      None -> None
+    }
+  }
+}
+
 pub fn signature_token_from_head_v1(
   window: ByteArray,
   window_offset: Int,
