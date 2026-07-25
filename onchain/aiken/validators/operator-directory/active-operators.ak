@@ -11,6 +11,7 @@ use env
 use midgard/common/types.{PosixTime}
 use midgard/common/utils
 use midgard/hub_oracle as hub
+use midgard/ledger_state
 use midgard/operator_directory.{
   deinit, init, slash_fraudulent_operator_and_get_info,
   validate_transferred_operator_insertion,
@@ -629,7 +630,7 @@ fn spend_for_updating_bond_unlock_time(
     //    validity range upper bound plus the maturity duration.
     //    TODO: Does inclusivity of the upper bound matter here?
     let valid_to = utils.get_inclusive_upper_bound_of_interval(validity_range)
-    let new_bond_unlock_time = valid_to + env.maturity_duration
+    let new_bond_unlock_time = valid_to + ledger_state.block_maturity_duration_v1
 
     // 6. Transaction must have the hub oracle's UTxO referenced.
     let hub_datum = hub.get_datum(

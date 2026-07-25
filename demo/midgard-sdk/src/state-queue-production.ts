@@ -1,5 +1,8 @@
 import { assetsEqual } from "@al-ft/midgard-core/assets";
-import { MIDGARD_PROTOCOL_V1_VERSION } from "@al-ft/midgard-core/consensus-profile-v1";
+import {
+  MIDGARD_CONSENSUS_PROFILE_V1,
+  MIDGARD_PROTOCOL_V1_VERSION,
+} from "@al-ft/midgard-core/consensus-profile-v1";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { outRefLabel } from "@al-ft/midgard-core/out-ref";
 import {
@@ -70,7 +73,9 @@ import {
 import { outputDatumCborMatches } from "@/tx-output-utils.js";
 
 const STATE_QUEUE_HEADER_NODE_LOVELACE = 5_000_000n;
-const ACTIVE_OPERATOR_MATURITY_DURATION_MS = 30n;
+const ACTIVE_OPERATOR_MATURITY_DURATION_MS = BigInt(
+  MIDGARD_CONSENSUS_PROFILE_V1.limits.blockMaturityMs,
+);
 const MIN_SETTLEMENT_OUTPUT_LOVELACE = 5_000_000n;
 
 export type OperatorWalletViewLike = {

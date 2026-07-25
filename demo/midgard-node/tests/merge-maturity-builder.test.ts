@@ -199,7 +199,7 @@ describe("merge builder maturity preflight", () => {
     expect(result).toMatchObject({
       status: "skipped_oldest_block_not_mature",
       headerHash,
-      readyAfterUnixTime: 521_000,
+      readyAfterUnixTime: 605_320_000,
       nowUnixTime: 510_000,
     });
     expect(fetchFirstBlockTxsMock).not.toHaveBeenCalled();
@@ -212,7 +212,7 @@ describe("merge builder maturity preflight", () => {
       daAttestation: "11".repeat(28),
       endTime: 500_000n,
     });
-    vi.setSystemTime(530_000);
+    vi.setSystemTime(605_330_000);
 
     const result = await runBuilder();
 
@@ -227,7 +227,7 @@ describe("merge builder maturity preflight", () => {
   });
 
   it("lets a semantically ready candidate proceed to the local submit-ledger gate", async () => {
-    vi.setSystemTime(530_000);
+    vi.setSystemTime(605_330_000);
 
     const result = await runBuilder();
 
@@ -235,7 +235,7 @@ describe("merge builder maturity preflight", () => {
       status: "skipped_oldest_block_local_ledger_not_ready",
       headerHash,
       reason: expect.stringContaining("local_ledger_slot=0"),
-      readyAfterUnixTime: 521_000,
+      readyAfterUnixTime: 605_320_000,
     });
     expect(fetchFirstBlockTxsMock).toHaveBeenCalledTimes(1);
     expect(breakDownTxMock).not.toHaveBeenCalled();

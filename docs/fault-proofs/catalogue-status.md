@@ -117,8 +117,7 @@ evidence rather than a disabled protocol branch.
   invalid-signature, missing-signature, missing-native-script-tx, no-reference-input,
   withdrawn-reference-input (real logic, not catalogue-registered, no tooling).
 - **Delivered but inert**: min-fee (stub), slashing economics (zeroed),
-  `plutarch_pdelete` (empty env hash),
-  `maturity_duration = 30 ms` (dev value).
+  `plutarch_pdelete` (empty env hash).
 - **Registered but untooled**: input-no-idx (`nonExistentInputNoIndex`).
 - **Documented but missing / required but undocumented**: see §6 below for the proposed
   catalogue identifiers, and [`coverage-matrix.md`](coverage-matrix.md) for the

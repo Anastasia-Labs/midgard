@@ -95,23 +95,21 @@ logic lives under `validators/`. Exceptions with real logic in `lib/`:
 ## 5. Environment parameters (`env/default.ak`, `env/testnet.ak`)
 
 Two environments exist on clean base `55afdc54`, selected via
-`aiken {build,check} --env <name>` (no flag ⇒ `default`). Both still hold the
-legacy 30 ms maturity value. The decided 7 day production and 10 minute testnet
-values are **not yet applied** (each is compiled into script hashes, so the cut
-requires redeployment). The same cut should add an explicitly non-deployable,
-short-window `emulator` environment for fast tests.
+`aiken {build,check} --env <name>` (no flag ⇒ `default`). Canonical V1 does not
+select maturity by environment: `ledger_state.block_maturity_duration_v1`
+fixes the challenge, merge, and operator bond-hold window at seven days.
 
-| Param                               | default                    | testnet                 | Note                                                                                                                                                                              |
-| ----------------------------------- | -------------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `maturity_duration`                 | 30 (`default.ak:19`)       | 30 (`testnet.ak:18`)    | PosixTimeDuration (ms). **Targets (decided 2026-07-11, not yet applied): production `604_800_000` (7 days); testnet `600_000` (10 minutes), plus a separate short emulator env.** |
-| `slashing_penalty`                  | 0 (`:21`)                  | 0 (`:20`)               | TODO on fee-payment design `default.ak:27-34`                                                                                                                                     |
-| `fraud_prover_reward`               | 0 (`:23`)                  | 0 (`:22`)               | Historical identifier retained in source                                                                                                                                          |
-| `required_bond`                     | penalty+reward = 0 (`:25`) | 0 (`:24`)               |                                                                                                                                                                                   |
-| `inactivity_slashing_penalty`       | 0 (`:35`)                  | 0 (`:26`)               |                                                                                                                                                                                   |
-| `empty_list_hash`                   | `default.ak:57`            | —                       | used by zero-input                                                                                                                                                                |
-| `plutarch_phas_validator_hash`      | `default.ak:62-63`         | present                 | matches Aiken-native `phas.ak` in `plutus.json` (the deployed one)                                                                                                                |
-| `plutarch_pexcludes_validator_hash` | `default.ak:65-66`         | `testnet.ak:50-51`      | matches `pexcludes.ak`                                                                                                                                                            |
-| `plutarch_pdelete_validator_hash`   | `#""` (`default.ak:68`)    | `#""` (`testnet.ak:53`) | delete delegation unusable                                                                                                                                                        |
+| Param                               | default                 | testnet                 | Note                                                                                                    |
+| ----------------------------------- | ----------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------- |
+| canonical block maturity            | seven days              | seven days              | `ledger-state.ak`; shared by merge, dispute opening, SDK/node readiness, and active-operator bond holds |
+| `slashing_penalty`                  | 0                       | 0                       | TODO on fee-payment design                                                                              |
+| `fraud_prover_reward`               | 0                       | 0                       | Historical identifier retained in source                                                                |
+| `required_bond`                     | penalty+reward = 0      | 0                       |                                                                                                         |
+| `inactivity_slashing_penalty`       | 0                       | 0                       |                                                                                                         |
+| `empty_list_hash`                   | `default.ak:57`         | —                       | used by zero-input                                                                                      |
+| `plutarch_phas_validator_hash`      | `default.ak:62-63`      | present                 | matches Aiken-native `phas.ak` in `plutus.json` (the deployed one)                                      |
+| `plutarch_pexcludes_validator_hash` | `default.ak:65-66`      | `testnet.ak:50-51`      | matches `pexcludes.ak`                                                                                  |
+| `plutarch_pdelete_validator_hash`   | `#""` (`default.ak:68`) | `#""` (`testnet.ak:53`) | delete delegation unusable                                                                              |
 
 Environment selected via `aiken build --env <name>`
 (`.github/workflows/midgard-node-ci.yml:82-84`).

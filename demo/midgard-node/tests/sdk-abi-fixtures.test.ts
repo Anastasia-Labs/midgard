@@ -47,6 +47,10 @@ const testnetEnv = readFileSync(
   path.join(repoRoot, "onchain/aiken/env/testnet.ak"),
   "utf8",
 );
+const ledgerStateSource = readFileSync(
+  path.join(repoRoot, "onchain/aiken/lib/midgard/ledger-state.ak"),
+  "utf8",
+);
 const transitionTraceAbiGolden = JSON.parse(
   readFileSync(
     path.join(testDir, "fixtures/transition-trace-abi.json"),
@@ -77,11 +81,15 @@ const constructor = (
 const fields = (ctor: BlueprintConstructor): readonly string[] =>
   (ctor.fields ?? []).map((field) => field.title ?? "");
 
-const testnetIntegerConst = (name: string): bigint => {
-  const match = testnetEnv.match(
+const aikenIntegerConst = (
+  source: string,
+  sourceLabel: string,
+  name: string,
+): bigint => {
+  const match = source.match(
     new RegExp(`pub const ${name}: [^=]+=([\\d_\\s*]+)`, "m"),
   );
-  expect(match, `missing testnet Aiken const ${name}`).toBeDefined();
+  expect(match, `missing ${sourceLabel} Aiken const ${name}`).toBeDefined();
   const expression = match![1]!.trim().replace(/\s+/g, " ");
   expect(expression, `unsupported expression for ${name}`).toMatch(
     /^[\d_]+(?: \* [\d_]+)*$/,
@@ -91,6 +99,12 @@ const testnetIntegerConst = (name: string): bigint => {
     .map((term) => BigInt(term.replaceAll("_", "")))
     .reduce((acc, term) => acc * term, 1n);
 };
+
+const testnetIntegerConst = (name: string): bigint =>
+  aikenIntegerConst(testnetEnv, "testnet", name);
+
+const ledgerStateIntegerConst = (name: string): bigint =>
+  aikenIntegerConst(ledgerStateSource, "ledger-state", name);
 
 const h28 = "11".repeat(28);
 const h32 = "22".repeat(32);
@@ -682,13 +696,13 @@ const buildTransitionTraceAbiFixtures = (): Record<string, AbiFixtureValue> => {
 };
 
 describe("SDK canonical ABI fixtures", () => {
-  it("keeps SDK protocol timing constants aligned with the testnet Aiken env used by e2e", () => {
+  it("keeps SDK protocol timing constants aligned with canonical Aiken values", () => {
     expect(SDK.SHIFT_DURATION_MS).toBe(testnetIntegerConst("shift_duration"));
     expect(SDK.REGISTRATION_DURATION_MS).toBe(
       testnetIntegerConst("registration_duration"),
     );
     expect(SDK.MATURITY_DURATION_MS).toBe(
-      testnetIntegerConst("maturity_duration"),
+      ledgerStateIntegerConst("block_maturity_duration_v1"),
     );
     expect(SDK.USER_EVENTS_NEGLIGENCE_TIMEOUT_MS).toBe(
       testnetIntegerConst("user_events_negligence_timeout"),

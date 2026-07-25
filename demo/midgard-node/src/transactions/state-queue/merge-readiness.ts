@@ -1,3 +1,4 @@
+import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 
 import {
@@ -16,7 +17,8 @@ export const DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING = 8;
 
 // Keep these values in one place so diagnostics and transaction construction
 // agree on the exact maturity boundary.
-export const STATE_QUEUE_MATURITY_DURATION_MS = 30;
+export const STATE_QUEUE_MATURITY_DURATION_MS =
+  MIDGARD_CONSENSUS_PROFILE_V1.limits.blockMaturityMs;
 export const MERGE_MATURITY_DELAY_BUFFER_MS = 20_000;
 
 export type MergeReadinessStatus =

@@ -75,8 +75,9 @@ several are directly exploitable for **fund theft** in an adversarial setting. S
 - Slashing **economics** — `slashing_penalty`, historical source identifier
   `fraud_prover_reward`, `required_bond`, and `inactivity_slashing_penalty` are all
   `0` in `env/default.ak` and `env/testnet.ak`. A successful proof slashes and
-  rewards nothing. `maturity_duration` is likewise a dev value (`30` — i.e.
-  ~30 ms — in both envs), so the on-chain challenge window is effectively zero.
+  rewards nothing. The canonical challenge and bond-hold maturity is seven
+  days; it is compiled once in `ledger-state.ak` rather than selected by an
+  environment.
 - `transition-trace` value/authorization semantics — the L2 one-step verifier authenticates the _shape_ of the UTxO delta but never checks value conservation or spend authorization (see bucket 4).
 
 **3. Missing but documented** (spec/gap-reports define it as fault; no working verifier):
