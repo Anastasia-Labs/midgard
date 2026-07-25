@@ -1,4 +1,7 @@
-import { computeHash32, encodeCbor } from "@al-ft/midgard-core";
+import {
+  deriveMidgardNativeFieldCollectionV1,
+  encodeCbor,
+} from "@al-ft/midgard-core";
 import {
   DoubleSpendStep03Datum,
   DoubleSpendStep03SpendRedeemer,
@@ -102,9 +105,12 @@ export const parseSpendInputCbors = (
 };
 
 export const hashSpendInputCbors = (inputCbors: readonly string[]): string =>
-  computeHash32(
-    encodeCbor(inputCbors.map((inputCbor) => Buffer.from(inputCbor, "hex"))),
-  ).toString("hex");
+  deriveMidgardNativeFieldCollectionV1({
+    fieldIndex: 0,
+    preimageCbor: encodeCbor(
+      inputCbors.map((inputCbor) => Buffer.from(inputCbor, "hex")),
+    ),
+  }).commitment.toString("hex");
 
 type Step03DatumWithState = DoubleSpendStep03Datum & {
   readonly data: NonNullable<DoubleSpendStep03Datum["data"]>;

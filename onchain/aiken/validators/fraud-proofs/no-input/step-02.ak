@@ -1,10 +1,11 @@
 use aiken/collection/list
-use aiken/crypto.{ScriptHash, blake2b_256}
+use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
+use midgard/bounded_collection_v1
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
-use midgard/fraud_proofs/native_tx/preimages
+use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_input}
 use midgard/fraud_proofs/no_input/step_02.{Args, Datum, SpendRedeemer, State}
 use midgard/fraud_proofs/no_input/step_03
 
@@ -65,11 +66,14 @@ validator main(
           = m_input_state_data
 
         // 2. Target input must be included in the verified transaction's native
-        //    spend-inputs preimage, hashed via `encode_input_preimage` (the
-        //    node's `TransactionInput` CBOR per input) — NOT `cbor.serialise` of
-        //    the aiken `OutputReference` list.
+        //    spend-inputs collection. Each item is the node's canonical
+        //    `TransactionInput` CBOR, not `cbor.serialise` of the Aiken
+        //    `OutputReference` list.
         expect
-          blake2b_256(preimages.encode_input_preimage(inputs_preimage)) == bad_tx_inputs_hash
+          bounded_collection_v1.from_items(
+            0,
+            list.map(inputs_preimage, encode_midgard_tx_input),
+          ) == bad_tx_inputs_hash
         let missing_input = inputs_preimage |> list.expect_at(bad_input_index)
 
         // 3. Target input, plus the relevant block roots, must be passed to the

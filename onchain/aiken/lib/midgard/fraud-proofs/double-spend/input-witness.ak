@@ -1,7 +1,7 @@
 use aiken/collection/list
-use aiken/crypto.{blake2b_256}
 use cardano/transaction.{InlineDatum, Input, Output}
-use midgard/fraud_proofs/native_tx/preimages
+use midgard/bounded_collection_v1
+use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_input}
 use midgard/fraud_proofs/native_tx/types.{MidgardTxInput}
 
 pub fn verified_spend_inputs_at(
@@ -18,7 +18,10 @@ pub fn verified_spend_inputs_at(
 
   expect spend_inputs: List<MidgardTxInput> = spend_inputs_data
   expect
-    blake2b_256(preimages.encode_input_preimage(spend_inputs)) == expected_spend_inputs_hash
+    bounded_collection_v1.from_items(
+      0,
+      list.map(spend_inputs, encode_midgard_tx_input),
+    ) == expected_spend_inputs_hash
 
   spend_inputs
 }
