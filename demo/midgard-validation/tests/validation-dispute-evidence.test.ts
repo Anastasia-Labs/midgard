@@ -162,6 +162,32 @@ const expectExactBundle = (
     cbor: bundle.boundaryEvidenceCbor.toString("hex"),
     maxBytes: 16 * 1024 - 1,
   });
+  parseExactAikenDataCbor({
+    blueprint,
+    definitionName:
+      "midgard/validation_machine_v1/ValidationOneStepWitnessV1",
+    cbor: bundle.oneStepArgument.transitionCbor.toString("hex"),
+    maxBytes: 16 * 1024 - 1,
+  });
+  parseExactAikenDataCbor({
+    blueprint,
+    definitionName:
+      "midgard/validation_machine_v1/ValidationAuxiliaryWitnessV1",
+    cbor: bundle.oneStepArgument.auxiliaryCbor.toString("hex"),
+    maxBytes: 16 * 1024 - 1,
+  });
+  parseExactAikenDataCbor({
+    blueprint,
+    definitionName:
+      "midgard/validation_machine_v1/ValidationOneStepEvidenceV1",
+    cbor: bundle.oneStepArgument.evidenceCbor.toString("hex"),
+    maxBytes: 16 * 1024 - 1,
+  });
+  expect(bundle.oneStepArgument.resolverIndex).toBeGreaterThanOrEqual(0);
+  expect(bundle.oneStepArgument.resolverIndex).toBeLessThan(14);
+  expect(
+    bundle.oneStepArgument.semanticResolverIndex === null,
+  ).toBe(bundle.oneStepArgument.resolverIndex >= 7);
 };
 
 describe("validation dispute evidence construction", () => {
@@ -181,6 +207,10 @@ describe("validation dispute evidence construction", () => {
     expect(bundle.finalDispute.highIndex).toBe(
       challengerTrace.states.length - 1,
     );
+    expect(bundle.oneStepArgument).toMatchObject({
+      resolverIndex: 13,
+      semanticResolverIndex: null,
+    });
   });
 
   it("challenges an invalid forced no-op falsely classified as effectful", async () => {
@@ -199,6 +229,10 @@ describe("validation dispute evidence construction", () => {
     expect(bundle.finalDispute.highIndex).toBe(
       challengerTrace.states.length - 1,
     );
+    expect(bundle.oneStepArgument).toMatchObject({
+      resolverIndex: 3,
+      semanticResolverIndex: 0,
+    });
   });
 
   it("fails closed when the two trace descriptors do not conflict", async () => {

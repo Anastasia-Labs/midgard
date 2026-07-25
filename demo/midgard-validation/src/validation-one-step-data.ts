@@ -1,9 +1,6 @@
 import {
   hashMidgardValidationMachineStateV1,
   type MidgardValidationDisputeV1,
-  type MidgardValidationMachineStateV1,
-  MidgardValidationPhase,
-  MidgardValidationSourceKind,
   type MidgardValidationTraceDescriptorV1,
   type MidgardValidationTraceProofV1,
   MidgardValidationVerdict,
@@ -13,6 +10,7 @@ import { Constr, Data } from "@lucid-evolution/lucid";
 import type {
   DeterministicValidationMachineTrace,
 } from "./validation-machine.js";
+import { validationMachineStateDataV1 } from "./validation-machine-data.js";
 
 type PlutusData = unknown;
 
@@ -31,27 +29,6 @@ export const validationTraceDescriptorDataV1 = (
     bytes(descriptor.terminalStateHash),
     new Constr(MidgardValidationVerdict[descriptor.verdict], []),
     bytes(descriptor.rejectionCodeHash),
-  ]);
-
-const machineStateData = (
-  state: MidgardValidationMachineStateV1,
-): Constr<PlutusData> =>
-  new Constr(0, [
-    int(state.machineVersion),
-    bytes(state.eventKeyHash),
-    bytes(state.transactionId),
-    bytes(state.transactionCommitment),
-    bytes(state.validationContextHash),
-    new Constr(MidgardValidationSourceKind[state.sourceKind], []),
-    bytes(state.priorLedgerRoot),
-    new Constr(MidgardValidationPhase[state.phase], []),
-    int(state.programCounter),
-    bytes(state.workRoot),
-    state.executionCpu,
-    state.executionMemory,
-    new Constr(MidgardValidationVerdict[state.verdict], []),
-    bytes(state.rejectionCodeHash),
-    bytes(state.ledgerDeltaRoot),
   ]);
 
 export const validationTraceProofDataV1 = (
@@ -123,7 +100,7 @@ export const buildValidationBoundaryEvidenceDataV1 = ({
     );
   }
   return new Constr(0, [
-    machineStateData(pre),
+    validationMachineStateDataV1(pre),
     validationTraceProofDataV1(operatorPost),
     validationTraceProofDataV1(challengerPost),
   ]);

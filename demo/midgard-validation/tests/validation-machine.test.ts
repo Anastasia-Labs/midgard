@@ -23,11 +23,13 @@ import {
   buildDeterministicValidationMachineTrace,
   buildMidgardCanonicalCekProgramV1,
   buildValidationMachineLedgerMutationSteps,
+  buildValidationOneStepArgumentV1,
   type DeterministicValidationMachineTrace,
   encodeValidationBoundaryEvidenceCborV1,
   initialMidgardResolvedInputsAccumulatorV1,
   MidgardRedeemerTag,
   RejectCodes,
+  validationSemanticResolverIndexV1,
 } from "../src/index.js";
 import {
   hashScriptWitness,
@@ -105,6 +107,32 @@ const validateBoundaryAbiAndCollectAuxiliaryKinds = (
       cbor: argumentsCbor.toString("hex"),
       maxBytes: 16 * 1024 - 1,
     });
+    const oneStepArgument = buildValidationOneStepArgumentV1({
+      trace,
+      stateIndex: lowIndex,
+    });
+    for (const [definitionName, cbor] of [
+      [
+        "midgard/validation_machine_v1/ValidationOneStepWitnessV1",
+        oneStepArgument.transitionCbor,
+      ],
+      [
+        "midgard/validation_machine_v1/ValidationAuxiliaryWitnessV1",
+        oneStepArgument.auxiliaryCbor,
+      ],
+      [
+        "midgard/validation_machine_v1/ValidationOneStepEvidenceV1",
+        oneStepArgument.evidenceCbor,
+      ],
+    ] as const) {
+      parseExactAikenDataCbor({
+        blueprint: validationDisputeBlueprint,
+        definitionName,
+        cbor: cbor.toString("hex"),
+        maxBytes: 16 * 1024 - 1,
+      });
+      maxArgumentsBytes = Math.max(maxArgumentsBytes, cbor.length);
+    }
     maxArgumentsBytes = Math.max(maxArgumentsBytes, argumentsCbor.length);
     validated.add(auxiliaryKind);
   }
@@ -829,6 +857,11 @@ describe("deterministic validation machine", () => {
       "nativeScriptFrame",
       null,
     ]);
+    expect(
+      trace.witnesses
+        .filter((witness) => witness.phase === "phaseANativeScripts")
+        .map(validationSemanticResolverIndexV1),
+    ).toEqual([1, 2, 3, 2, 8, 13, 0]);
     expect(trace.verdict).toBe("accepted");
     expect([...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds]).toEqual(
       expect.arrayContaining([

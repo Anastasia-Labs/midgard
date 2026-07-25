@@ -9,8 +9,12 @@ import {
 
 import type { DeterministicValidationMachineTrace } from "./validation-machine.js";
 import {
-  encodeValidationDisputeDataCborV1,
+  buildValidationOneStepArgumentV1,
+  type ValidationOneStepArgumentV1,
+} from "./validation-machine-data.js";
+import {
   encodeValidationBoundaryEvidenceCborV1,
+  encodeValidationDisputeDataCborV1,
   encodeValidationTraceDescriptorDataCborV1,
   encodeValidationTraceProofDataCborV1,
 } from "./validation-one-step-data.js";
@@ -33,6 +37,7 @@ export type ValidationDisputeEvidenceBundleV1 = {
   readonly finalDispute: MidgardValidationDisputeV1;
   readonly finalDisputeCbor: Buffer;
   readonly boundaryEvidenceCbor: Buffer;
+  readonly oneStepArgument: ValidationOneStepArgumentV1;
 };
 
 const requireProofEnvelope = (bytes: Uint8Array, label: string): void => {
@@ -127,6 +132,10 @@ export const buildValidationDisputeEvidenceBundleV1 = ({
       operatorTrace,
       challengerTrace,
     });
+  const oneStepArgument = buildValidationOneStepArgumentV1({
+    trace: challengerTrace,
+    stateIndex: dispute.lowIndex,
+  });
   requireProofEnvelope(operatorDescriptorCbor, "operator descriptor");
   requireProofEnvelope(challengerDescriptorCbor, "challenger descriptor");
   requireProofEnvelope(openingDisputeCbor, "opening validation dispute");
@@ -145,5 +154,6 @@ export const buildValidationDisputeEvidenceBundleV1 = ({
     finalDispute: dispute,
     finalDisputeCbor,
     boundaryEvidenceCbor,
+    oneStepArgument,
   };
 };
