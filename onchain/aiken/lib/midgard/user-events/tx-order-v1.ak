@@ -370,7 +370,7 @@ pub fn verify_order_receipts(
   when payload.terminal_receipt_reference is {
     None -> next_non_empty_field(commitments, lengths, 0) == 9
     Some(receipt_reference) -> {
-      expect  
+      expect
           Some(Input {
             output_reference,
             output: Output {
@@ -482,7 +482,7 @@ pub fn get_datum(
   tx_order_policy_id: PolicyId,
   tx_order_input_index: Int,
 ) -> Datum {
-  expect  
+  expect
       Input {
         output: Output { datum: InlineDatum(tx_order_datum_data), .. },
         ..

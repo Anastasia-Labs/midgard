@@ -34,7 +34,7 @@ fn verify_publication(
   transaction_id: ByteArray,
   source: NativeTxProofSourceV1,
 ) -> Bool {
-  expect  
+  expect
       Some(Input {
         output_reference: field_reference,
         output: Output {
@@ -50,7 +50,7 @@ fn verify_publication(
   expect field: TxFieldPreimageV1 = field_data
   expect field.field_receipt_policy_id == own_policy
 
-  expect  
+  expect
       Some(Output {
         address: receipt_address,
         value: receipt_value,
@@ -73,7 +73,7 @@ fn verify_publication(
     expect receipt.predecessor_receipt_reference == None
     None
   } else {
-    expect  
+    expect
         Some(Input {
           output_reference: predecessor_reference,
           output: Output {
@@ -160,7 +160,7 @@ fn verify_receipt_burns(
     [Pair(asset_name, quantity), ..rest_tokens] -> {
       expect quantity == -1
       expect [input_index, ..rest_indices] = receipt_input_indices
-      expect  
+      expect
           Some(Input {
             output: Output {
               address,

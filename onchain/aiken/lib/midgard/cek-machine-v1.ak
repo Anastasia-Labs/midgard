@@ -644,7 +644,7 @@ fn list_sequence_from_node_v1(
 fn map_sequence_from_node_v1(
   node: cek_data_v1.DataNodeV1,
 ) -> cek_data_v1.DataSequenceSummaryV1 {
-  expect  
+  expect
       cek_data_v1.MapData { entries_count, entries_root, cbor_length, memory }
     = node
   let header_length = if entries_count < 24 {

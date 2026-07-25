@@ -150,7 +150,7 @@ fn bool_from_data(data: Data) -> Bool {
 
 pub fn control_from_cbor_v1(control_cbor: ByteArray) -> DataScanControlV1 {
   expect Some(data) = cbor.deserialise(control_cbor)
-  expect  
+  expect
       [
         raw_hash_data, raw_length_data, offset_data, frame_root_data,
         frame_closed_data, result_data,

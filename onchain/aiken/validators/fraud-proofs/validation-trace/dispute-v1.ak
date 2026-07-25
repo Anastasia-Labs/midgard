@@ -63,7 +63,7 @@ validator main(
         claim,
         challenger_descriptor,
       }) -> {
-        let  
+        let
             Transaction {
               inputs,
               outputs,

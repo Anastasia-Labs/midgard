@@ -22,7 +22,7 @@ validator spend(hub_oracle: ScriptHash) {
   ) {
     let Transaction { inputs, outputs, reference_inputs, redeemers, .. } = tx
 
-    let  
+    let
         SpendRedeemer {
           input_index,
           output_index,
@@ -35,7 +35,7 @@ validator spend(hub_oracle: ScriptHash) {
         }
       = redeemer
 
-    let  
+    let
         hub.Datum {
           tx_order: tx_order_policy_id,
           settlement: settlement_policy_id,
@@ -50,7 +50,7 @@ validator spend(hub_oracle: ScriptHash) {
     )
 
     expect Some(tx_order_datum) = datum
-    let  
+    let
         user_events.OptimisticDatum {
           event: tx_order_event,
           inclusion_time: _inclusion_time,
@@ -60,7 +60,7 @@ validator spend(hub_oracle: ScriptHash) {
         }
       = tx_order_datum
 
-    expect  
+    expect
         user_events.BurnEventNFT { nonce_asset_name: burn_asset_name, .. }: user_events.MintRedeemer
       = utils.get_redeemer_at(
       redeemers,
@@ -78,7 +78,7 @@ validator spend(hub_oracle: ScriptHash) {
     )
 
     let Input { output: Output { value: own_value, .. }, .. } = input
-    expect  
+    expect
         Output {
           address: output_address,
           value: output_value,

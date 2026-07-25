@@ -16,7 +16,7 @@ test typescript_generated_one_step_boundary_is_authenticated() {
   expect Some(dispute_data) = cbor.deserialise(dispute_cbor)
   expect dispute: validation_dispute_v1.ValidationDisputeV1 = dispute_data
   expect Some(boundary_evidence_data) = cbor.deserialise(boundary_evidence_cbor)
-  expect  
+  expect
       boundary_evidence: validation_resolution_v1.ValidationBoundaryEvidenceV1
     = boundary_evidence_data
   and {

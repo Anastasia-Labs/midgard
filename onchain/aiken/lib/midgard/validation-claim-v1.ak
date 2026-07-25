@@ -59,7 +59,7 @@ fn validation_context_is_exact(
   initial: validation_trace_v1.ValidationMachineStateV1,
 ) -> Bool {
   expect Some(context_data) = cbor.deserialise(context_cbor)
-  expect  
+  expect
       [
         version_data, profile_id_data, block_end_time_data,
         expected_network_id_data, min_fee_a_data, min_fee_b_data,

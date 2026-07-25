@@ -435,7 +435,7 @@ fn data_constant_summary_v1(value: ValueWitnessV1) -> cek_data_v1.DataSummaryV1 
 fn data_sequence_from_list_node_v1(
   node: cek_data_v1.DataNodeV1,
 ) -> cek_data_v1.DataSequenceSummaryV1 {
-  expect  
+  expect
       cek_data_v1.ListData { items_count, items_root, cbor_length: _, memory }
     = node
   cek_data_v1.DataSequenceSummaryV1 {
@@ -490,7 +490,7 @@ fn canonical_bytes_leaf_v1(
   node: cek_data_v1.DataNodeV1,
   bytes: ByteArray,
 ) -> ByteArray {
-  expect  
+  expect
       cek_data_v1.BytesData {
         bytes_root,
         bytes_length,

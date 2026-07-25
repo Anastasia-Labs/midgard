@@ -996,7 +996,7 @@ fn verify_canonical_decode(
   auxiliary: ValidationAuxiliaryWitnessV1,
 ) -> Bool {
   expect Some(data) = cbor.deserialise(witness.work_witness_cbor)
-  expect  
+  expect
       [
         compact_cbor_data, witness_set_compact_cbor_data,
         field_preimage_lengths_cbor_data, context_cbor_data, field_index_data,
@@ -1204,7 +1204,7 @@ fn verify_compact_binding(
   witness: ValidationOneStepWitnessV1,
 ) -> Bool {
   expect Some(data) = cbor.deserialise(witness.work_witness_cbor)
-  expect  
+  expect
       [
         transaction_id_data, commitment_data, compact_cbor_data,
         witness_set_compact_cbor_data, field_preimage_lengths_cbor_data,
@@ -1281,7 +1281,7 @@ pub type ValidationContextV1 {
 
 fn decode_validation_context(context_cbor: ByteArray) -> ValidationContextV1 {
   expect Some(data) = cbor.deserialise(context_cbor)
-  expect  
+  expect
       [
         version_data, profile_id_data, block_end_time_data,
         expected_network_id_data, min_fee_a_data, min_fee_b_data,
@@ -1381,7 +1381,7 @@ fn verify_input_sets(
   auxiliary: ValidationAuxiliaryWitnessV1,
 ) -> Bool {
   expect Some(data) = cbor.deserialise(witness.work_witness_cbor)
-  expect  
+  expect
       [
         compact_cbor_data, witness_set_compact_cbor_data,
         field_preimage_lengths_cbor_data, context_cbor_data,
@@ -1395,7 +1395,7 @@ fn verify_input_sets(
     field_preimage_lengths_cbor_data,
   )
   let context_cbor = builtin.un_b_data(context_cbor_data)
-  expect  
+  expect
       TransactionFieldPairPreimageWitness {
         first_field_index,
         first_preimage_cbor,
@@ -1487,7 +1487,7 @@ fn verify_static_rules(
   witness: ValidationOneStepWitnessV1,
 ) -> Bool {
   expect Some(data) = cbor.deserialise(witness.work_witness_cbor)
-  expect  
+  expect
       [
         compact_cbor_data, witness_set_compact_cbor_data,
         field_preimage_lengths_cbor_data, context_cbor_data,
@@ -1631,7 +1631,7 @@ fn verify_signatures(
   auxiliary: ValidationAuxiliaryWitnessV1,
 ) -> Bool {
   expect Some(data) = cbor.deserialise(witness.work_witness_cbor)
-  expect  
+  expect
       [
         compact_cbor_data, witness_set_compact_cbor_data,
         field_preimage_lengths_cbor_data, context_cbor_data,
@@ -1650,7 +1650,7 @@ fn verify_signatures(
     resolution_schedule_hash_data,
   )
   expect bytearray.length(resolution_schedule_hash) == 32
-  expect  
+  expect
       TransactionFieldPairPreimageWitness {
         first_field_index,
         first_preimage_cbor,
@@ -1792,7 +1792,7 @@ fn verify_phase_a_native_scripts(
   auxiliary: ValidationAuxiliaryWitnessV1,
 ) -> Bool {
   expect Some(data) = cbor.deserialise(witness.work_witness_cbor)
-  expect  
+  expect
       [
         compact_cbor_data, witness_set_compact_cbor_data,
         field_preimage_lengths_cbor_data, context_cbor_data,
@@ -1953,7 +1953,7 @@ fn verify_phase_a_script_preconditions(
   auxiliary: ValidationAuxiliaryWitnessV1,
 ) -> Bool {
   expect Some(data) = cbor.deserialise(witness.work_witness_cbor)
-  expect  
+  expect
       [
         compact_cbor_data, witness_set_compact_cbor_data,
         field_preimage_lengths_cbor_data, context_cbor_data,
@@ -1987,7 +1987,7 @@ fn verify_phase_a_script_preconditions(
       contains_non_native_script_code == 1,
     }
   let contains_non_native_script = contains_non_native_script_code == 1
-  expect  
+  expect
       TransactionFieldPairPreimageWitness {
         first_field_index,
         first_preimage_cbor,
@@ -2094,7 +2094,7 @@ fn resolve_inputs_control_from_witness(
   witness_cbor: ByteArray,
 ) -> ResolveInputsControlV1 {
   expect Some(data) = cbor.deserialise(witness_cbor)
-  expect  
+  expect
       [
         compact_cbor_data, witness_set_compact_cbor_data,
         field_preimage_lengths_cbor_data, context_cbor_data, cursor_data,
@@ -2826,7 +2826,7 @@ fn script_discovery_control_from_cbor(
   discovery_cbor: ByteArray,
 ) -> ScriptDiscoveryControlV1 {
   expect Some(data) = cbor.deserialise(discovery_cbor)
-  expect  
+  expect
       [
         purpose_cursor_data, source_cursor_data, redeemer_cursor_data,
         current_purpose_kind_data, current_purpose_index_data,
@@ -2891,7 +2891,7 @@ fn script_sources_control_from_data_items(
   items: List<Data>,
   discovery: ScriptDiscoveryControlV1,
 ) -> ScriptSourcesControlV1 {
-  expect  
+  expect
       [
         compact_cbor_data, witness_set_compact_cbor_data,
         field_preimage_lengths_cbor_data, context_cbor_data,
@@ -3322,7 +3322,7 @@ fn script_sources_stage_two(
   auxiliary: ValidationAuxiliaryWitnessV1,
   control: ScriptSourcesControlV1,
 ) -> Bool {
-  expect  
+  expect
       TransactionFieldPairPreimageWitness {
         first_field_index,
         first_preimage_cbor,
@@ -4383,7 +4383,7 @@ fn script_sources_stage_eight(
       ),
     }
   } else {
-    expect  
+    expect
         ScriptPurposeScanWitness {
           purpose_kind,
           purpose_index,
@@ -4477,7 +4477,7 @@ fn script_sources_stage_nine(
       ),
     }
   } else {
-    expect  
+    expect
         ScriptSourceScanWitness {
           source_index,
           origin_kind,
@@ -4729,7 +4729,7 @@ fn script_sources_stage_eleven(
       ),
     }
   } else {
-    expect  
+    expect
         ScriptSourceScanWitness {
           source_index,
           origin_kind,
@@ -5431,7 +5431,7 @@ fn native_scripts_control_from_witness(
   work_witness_cbor: ByteArray,
 ) -> NativeScriptsControlV1 {
   expect Some(data) = cbor.deserialise(work_witness_cbor)
-  expect  
+  expect
       [
         compact_cbor_data, witness_set_compact_cbor_data,
         field_preimage_lengths_cbor_data, context_cbor_data,
@@ -5603,7 +5603,7 @@ fn verify_native_execution_step(
   control: NativeScriptsControlV1,
   body: NativeTxBodyCompact,
 ) -> Bool {
-  expect  
+  expect
       NativeExecutionScanWitness {
         execution_index,
         language_tag,
@@ -5928,7 +5928,7 @@ pub fn encode_cek_context_control_v1(control: CekContextControlV1) -> ByteArray 
 
 fn cek_context_control_from_cbor(control_cbor: ByteArray) -> CekContextControlV1 {
   expect Some(data) = cbor.deserialise(control_cbor)
-  expect  
+  expect
       [
         stage_data, language_tag_data, program_term_root_data, purpose_kind_data,
         purpose_index_data, script_hash_data, subject_data, redeemer_leaf_data,
@@ -6454,7 +6454,7 @@ fn value_accumulator_from_cbor(
   accumulator_cbor: ByteArray,
 ) -> ValueAccumulatorV1 {
   expect Some(data) = cbor.deserialise(accumulator_cbor)
-  expect  
+  expect
       [
         lovelace_data, asset_root_data, seen_asset_count_data,
         nonzero_asset_count_data,
@@ -6680,7 +6680,7 @@ fn value_and_mint_control_from_witness(
   work_witness_cbor: ByteArray,
 ) -> ValueAndMintControlV1 {
   expect Some(data) = cbor.deserialise(work_witness_cbor)
-  expect  
+  expect
       [
         native_control_cbor_data, stage_data, replay_schedule_hash_data,
         replay_cursor_data, replay_asset_cursor_data, replay_value_hash_data,
@@ -6808,7 +6808,7 @@ fn ledger_delta_control_from_witness(
   work_witness_cbor: ByteArray,
 ) -> LedgerDeltaControlV1 {
   expect Some(data) = cbor.deserialise(work_witness_cbor)
-  expect  
+  expect
       [
         native_control_cbor_data, stage_data, replay_schedule_hash_data,
         replay_cursor_data, replay_accumulator_data,
@@ -7191,7 +7191,7 @@ fn verify_cek_execution_selection(
   completed_cpu: Int,
   completed_memory: Int,
 ) -> Bool {
-  expect  
+  expect
       NativeExecutionScanWitness {
         execution_index,
         language_tag,
@@ -7371,7 +7371,7 @@ fn verify_cek_reference_context_step(
       ),
     }
   } else {
-    expect  
+    expect
         CekResolvedContextItemWitness {
           source_kind,
           item_index,
@@ -7431,7 +7431,7 @@ fn verify_cek_spend_context_step(
       ),
     }
   } else {
-    expect  
+    expect
         CekResolvedContextItemWitness {
           source_kind,
           item_index,
@@ -7537,7 +7537,7 @@ fn verify_cek_signer_context_step(
       ),
     }
   } else {
-    expect  
+    expect
         CekSignerContextItemWitness {
           peaks,
           signer_index,
@@ -7700,7 +7700,7 @@ fn mint_scan_successor(
 ) -> CekContextControlV1 {
   expect bytearray.length(preimage_cbor) == control.mint_preimage_length
   expect blake2b_256(preimage_cbor) == control.mint_preimage_hash
-  let  
+  let
       MintScanDecodedV1 {
         policy_id,
         asset_name,
@@ -7886,7 +7886,7 @@ fn verify_cek_mint_context_item(
       ),
     }
   } else {
-    expect  
+    expect
         CekMintContextItemWitness {
           mint_index,
           policy_id,
@@ -8362,7 +8362,7 @@ fn verify_cek_context_finalize(
     !midgard_encoding,
     context_control.purpose_kind == 0,
   } {
-    expect  
+    expect
         CekContextFinalizeSpendWitness {
           redeemer_control,
           item_index,
@@ -8739,7 +8739,7 @@ fn verify_cek(
   auxiliary: ValidationAuxiliaryWitnessV1,
 ) -> Bool {
   expect Some(data) = cbor.deserialise(witness.work_witness_cbor)
-  expect  
+  expect
       [
         native_control_cbor_data, context_control_cbor_data,
         execution_cursor_data, completed_cpu_data, completed_memory_data,
@@ -8902,7 +8902,7 @@ fn value_and_mint_stage_zero(
   auxiliary: ValidationAuxiliaryWitnessV1,
   control: ValueAndMintControlV1,
 ) -> Bool {
-  expect  
+  expect
       TransactionFieldPairPreimageWitness {
         first_field_index,
         first_preimage_cbor,
@@ -9048,7 +9048,7 @@ fn value_and_mint_stage_two(
       ),
     }
   } else if control.replay_asset_cursor == 0 {
-    expect  
+    expect
         ResolvedInputReplayWitness {
           source_kind,
           key,
@@ -9100,7 +9100,7 @@ fn value_and_mint_stage_two(
       False
     }
   } else {
-    expect  
+    expect
         ValueInputAssetWitness {
           source_kind,
           key,
@@ -9185,7 +9185,7 @@ fn value_and_mint_stage_three(
       ),
     }
   } else if control.output_asset_cursor == 0 {
-    expect  
+    expect
         OutputReplayWitness {
           output_index,
           output_cbor,
@@ -9231,7 +9231,7 @@ fn value_and_mint_stage_three(
       False
     }
   } else {
-    expect  
+    expect
         ValueOutputAssetWitness {
           output_index,
           output_cbor,
@@ -9316,7 +9316,7 @@ fn value_and_mint_stage_four(
       ),
     }
   } else {
-    expect  
+    expect
         ValueMintAssetWitness {
           mint_index,
           policy_id,
@@ -9506,7 +9506,7 @@ fn ledger_delta_stage_zero(
   auxiliary: ValidationAuxiliaryWitnessV1,
   control: LedgerDeltaControlV1,
 ) -> Bool {
-  expect  
+  expect
       TransactionFieldPairPreimageWitness {
         first_field_index,
         first_preimage_cbor,
@@ -9570,7 +9570,7 @@ fn ledger_delta_replay_step(
   auxiliary: ValidationAuxiliaryWitnessV1,
   control: LedgerDeltaControlV1,
 ) -> Bool {
-  expect  
+  expect
       LedgerDeltaReplayWitness {
         source_kind,
         key,
@@ -9677,7 +9677,7 @@ fn ledger_delta_stage_two(
       ),
     }
   } else {
-    expect  
+    expect
         LedgerDeltaOutputWitness { output_index, output_cbor, siblings, proof }
       = auxiliary
     let key = encode_midgard_tx_input(

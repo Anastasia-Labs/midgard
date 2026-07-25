@@ -51,7 +51,7 @@ validator main(
           tx,
         )
       ct.Continue(action) -> {
-        let  
+        let
             Transaction {
               inputs,
               outputs,
