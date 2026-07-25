@@ -27,7 +27,8 @@ const purpose_leaf_domain =
 
 const signer_leaf_domain = #"4d6964676172645369676e65724c6561665631"
 
-const output_leaf_domain = #"4d6964676172644f75747075744c6561665631"
+const output_item_leaf_domain =
+  #"4d6964676172644f75747075744974656d4c6561665631"
 
 const execution_leaf_domain =
   #"4d696467617264536372697074457865637574696f6e4c6561665631"
@@ -144,12 +145,23 @@ pub fn signer_leaf_hash(signer_hash: ByteArray) -> ByteArray {
     |> blake2b_256
 }
 
-pub fn output_leaf_hash(output_index: Int, output_cbor: ByteArray) -> ByteArray {
+pub fn output_item_leaf_hash(
+  output_index: Int,
+  item_commitment: ByteArray,
+) -> ByteArray {
   expect output_index >= 0
-  output_leaf_domain
+  expect bytearray.length(item_commitment) == 32
+  output_item_leaf_domain
     |> bytearray.concat(cbor.serialise(output_index))
-    |> bytearray.concat(encode_definite_bytes(output_cbor))
+    |> bytearray.concat(encode_definite_bytes(item_commitment))
     |> blake2b_256
+}
+
+pub fn output_leaf_hash(output_index: Int, output_cbor: ByteArray) -> ByteArray {
+  output_item_leaf_hash(
+    output_index,
+    bounded_item_v1.from_bytes(2, output_index, output_cbor),
+  )
 }
 
 /// Commits the exact purpose/source/redeemer tuple discovered for one script

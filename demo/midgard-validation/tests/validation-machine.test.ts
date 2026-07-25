@@ -13,6 +13,7 @@ import {
   MIDGARD_VALIDATION_DISPUTE_V1_VERSION,
   verifyMidgardValidationTraceProofV1,
 } from "@al-ft/midgard-core";
+import { protectMidgardAddress } from "@al-ft/midgard-core/codec";
 import { Lambda, UPLCEncoder, UPLCProgram, UPLCVar } from "@harmoniclabs/uplc";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -277,6 +278,7 @@ describe("deterministic validation machine", () => {
       "scriptSources",
       "scriptSources",
       "scriptSources",
+      "scriptSources",
       "nativeScripts",
       "scriptIntegrity",
       "cek",
@@ -302,7 +304,7 @@ describe("deterministic validation machine", () => {
     const scriptSourceWitnesses = trace.witnesses.filter(
       (witness) => witness.phase === "scriptSources",
     );
-    expect(scriptSourceWitnesses).toHaveLength(13);
+    expect(scriptSourceWitnesses).toHaveLength(14);
     expect(scriptSourceWitnesses[0]?.auxiliary).toBeNull();
     expect(scriptSourceWitnesses[1]?.auxiliary).toBeNull();
     expect(scriptSourceWitnesses[2]?.auxiliary?.kind).toBe(
@@ -313,17 +315,18 @@ describe("deterministic validation machine", () => {
     );
     expect(scriptSourceWitnesses[4]?.auxiliary).toBeNull();
     expect(scriptSourceWitnesses[5]?.auxiliary?.kind).toBe(
+      "transactionFieldItem",
+    );
+    expect(scriptSourceWitnesses[6]?.auxiliary).toBeNull();
+    expect(scriptSourceWitnesses[7]?.auxiliary?.kind).toBe("outputReplay");
+    expect(scriptSourceWitnesses[8]?.auxiliary).toBeNull();
+    expect(scriptSourceWitnesses[9]?.auxiliary?.kind).toBe(
       "transactionFieldPreimage",
     );
-    expect(scriptSourceWitnesses[6]?.auxiliary?.kind).toBe("outputReplay");
-    expect(scriptSourceWitnesses[7]?.auxiliary).toBeNull();
-    expect(scriptSourceWitnesses[8]?.auxiliary?.kind).toBe(
-      "transactionFieldPreimage",
-    );
-    expect(scriptSourceWitnesses[9]?.auxiliary).toBeNull();
     expect(scriptSourceWitnesses[10]?.auxiliary).toBeNull();
     expect(scriptSourceWitnesses[11]?.auxiliary).toBeNull();
     expect(scriptSourceWitnesses[12]?.auxiliary).toBeNull();
+    expect(scriptSourceWitnesses[13]?.auxiliary).toBeNull();
     expect(
       canonicalWitnesses.every((witness) => {
         if (witness.cbor.includes(transaction.txCbor)) return false;
@@ -1310,12 +1313,16 @@ describe("deterministic validation machine", () => {
   it("streams an aggregate field above 8 KiB as ordered L1-sized item proofs", async () => {
     const spent = outRefFromByte(0x12);
     const spentOutput = makeOutput(10n);
-    const outputs = Array.from({ length: 300 }, (_, index) =>
-      makeOutput(BigInt(index + 1)),
-    );
+    const protectedRecipient = Buffer.from(TEST_ADDRESS_BYTES);
+    protectedRecipient[1] = protectedRecipient[1]! ^ 0x01;
+    const outputs = [
+      ...Array.from({ length: 299 }, (_, index) =>
+        makeOutput(BigInt(index + 1)),
+      ),
+      makeOutput(300n, protectMidgardAddress(protectedRecipient)),
+    ];
     const transaction = makeNativeTx({
       version: 1n,
-      invalidVkeyWitness: true,
       spendInputs: [spent],
       outputs,
     });
@@ -1333,7 +1340,7 @@ describe("deterministic validation machine", () => {
         ledgerWitnessEntries: [{ outRef: spent, output: spentOutput }],
         expectedLedgerOps: [],
         expectedVerdict: "rejected",
-        expectedRejectionCode: RejectCodes.InvalidSignature,
+        expectedRejectionCode: RejectCodes.MissingRequiredWitness,
       }),
     );
 
@@ -1354,6 +1361,22 @@ describe("deterministic validation machine", () => {
           chunkProof.itemIndex === itemIndex &&
           chunkProof.chunkIndex === 0 &&
           chunkProof.chunk.length <= 4_095,
+      ),
+    ).toBe(true);
+    const outputItems = trace.witnesses
+      .filter((witness) => witness.phase === "scriptSources")
+      .flatMap((witness) =>
+        witness.auxiliary?.kind === "transactionFieldItem"
+          ? [witness.auxiliary.collectionProof]
+          : [],
+      );
+    expect(outputItems).toHaveLength(outputs.length);
+    expect(
+      outputItems.every(
+        (proof, itemIndex) =>
+          proof.itemCount === outputs.length &&
+          proof.itemIndex === itemIndex &&
+          proof.itemLength < 16 * 1024,
       ),
     ).toBe(true);
     expect(trace.verdict).toBe("rejected");

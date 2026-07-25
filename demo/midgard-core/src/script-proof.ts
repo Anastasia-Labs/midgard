@@ -1,10 +1,10 @@
 import { blake2b } from "@noble/hashes/blake2.js";
 
+import { buildMidgardBoundedItemV1 } from "./bounded-item-v1.js";
 import {
   decodeMidgardCekProgramEnvelopeV1,
   type MidgardCekProgramEnvelopeV1,
 } from "./cek-proof.js";
-import { buildMidgardBoundedItemV1 } from "./bounded-item-v1.js";
 import { decodeSingleCbor, encodeCbor } from "./codec/cbor.js";
 import { ensureHash32, type Hash32 } from "./codec/hash.js";
 import {
@@ -34,7 +34,10 @@ const PURPOSE_LEAF_DOMAIN = Buffer.from(
   "ascii",
 );
 const SIGNER_LEAF_DOMAIN = Buffer.from("MidgardSignerLeafV1", "ascii");
-const OUTPUT_LEAF_DOMAIN = Buffer.from("MidgardOutputLeafV1", "ascii");
+const OUTPUT_ITEM_LEAF_DOMAIN = Buffer.from(
+  "MidgardOutputItemLeafV1",
+  "ascii",
+);
 const EXECUTION_LEAF_DOMAIN = Buffer.from(
   "MidgardScriptExecutionLeafV1",
   "ascii",
@@ -275,20 +278,39 @@ export const hashMidgardSignerLeafV1 = (
   );
 };
 
-export const hashMidgardOutputLeafV1 = (input: {
+export const hashMidgardOutputItemLeafV1 = (input: {
   readonly outputIndex: number;
-  readonly outputCbor: Uint8Array;
+  readonly itemCommitment: Uint8Array;
 }): Hash32 => {
   if (!Number.isSafeInteger(input.outputIndex) || input.outputIndex < 0) {
     throw new Error("output index must be a non-negative safe integer");
   }
+  const itemCommitment = ensureHash32(
+    input.itemCommitment,
+    "output item commitment",
+  );
   return hash32(
     Buffer.concat([
-      OUTPUT_LEAF_DOMAIN,
+      OUTPUT_ITEM_LEAF_DOMAIN,
       encodeCbor(BigInt(input.outputIndex)),
-      encodeCbor(Buffer.from(input.outputCbor)),
+      encodeCbor(itemCommitment),
     ]),
   );
+};
+
+export const hashMidgardOutputLeafV1 = (input: {
+  readonly outputIndex: number;
+  readonly outputCbor: Uint8Array;
+}): Hash32 => {
+  const item = buildMidgardBoundedItemV1({
+    fieldIndex: 2,
+    itemIndex: input.outputIndex,
+    bytes: input.outputCbor,
+  });
+  return hashMidgardOutputItemLeafV1({
+    outputIndex: input.outputIndex,
+    itemCommitment: item.commitment,
+  });
 };
 
 export const hashMidgardScriptExecutionLeafV1 = (input: {

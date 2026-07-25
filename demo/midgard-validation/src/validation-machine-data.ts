@@ -864,6 +864,10 @@ export const validationAuxiliaryWitnessDataV1 = (
         collectionProofData(auxiliary.collectionProof),
         redeemerData(auxiliary.redeemer),
       ]);
+    case "transactionFieldItem":
+      return new Constr(35, [
+        collectionProofData(auxiliary.collectionProof),
+      ]);
   }
 };
 

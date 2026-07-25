@@ -315,6 +315,9 @@ pub type ValidationAuxiliaryWitnessV1 {
     collection_proof: bounded_collection_v1.ItemProofV1,
     redeemer: MidgardRedeemerWitness,
   }
+  TransactionFieldItemWitness {
+    collection_proof: bounded_collection_v1.ItemProofV1,
+  }
 }
 
 pub type SignerSetProofV1 {
@@ -864,6 +867,7 @@ pub fn encode_script_sources_witness(
   output_cursor: Int,
   output_count: Int,
   output_peaks: List<validation_merkle_v1.FrontierPeak>,
+  output_total_count: Int,
   receive_hashes: List<ByteArray>,
   source_total_count: Int,
   redeemer_total_count: Int,
@@ -897,9 +901,10 @@ pub fn encode_script_sources_witness(
   expect
     validation_merkle_v1.frontier_is_well_formed(output_count, output_peaks)
   expect output_cursor <= output_count
+  expect output_total_count >= output_count
   expect source_total_count >= source_count
   expect redeemer_total_count >= redeemer_count
-  encode_definite_array_header(27)
+  encode_definite_array_header(28)
     |> bytearray.concat(encode_definite_bytes(compact_cbor))
     |> bytearray.concat(encode_definite_bytes(witness_set_compact_cbor))
     |> bytearray.concat(encode_definite_bytes(field_preimage_lengths_cbor))
@@ -925,6 +930,7 @@ pub fn encode_script_sources_witness(
     |> bytearray.concat(cbor.serialise(output_cursor))
     |> bytearray.concat(cbor.serialise(output_count))
     |> bytearray.concat(validation_merkle_v1.encode_frontier(output_peaks))
+    |> bytearray.concat(cbor.serialise(output_total_count))
     |> bytearray.concat(encode_native_byte_list(receive_hashes))
     |> bytearray.concat(cbor.serialise(source_total_count))
     |> bytearray.concat(cbor.serialise(redeemer_total_count))
@@ -1506,8 +1512,6 @@ fn verify_compact_binding(
   }
 }
 
-const reject_output_count = #"455f4f55545055545f434f554e54"
-
 const reject_empty_inputs = #"455f454d5054595f494e50555453"
 
 const reject_duplicate_input = #"455f4455504c49434154455f494e5055545f494e5f5458"
@@ -1583,6 +1587,8 @@ fn rejected_successor_is_exact(
 }
 
 const max_tx_size_derived_collection_item_count: Int = 16384
+
+const max_serialized_output_preimage_bytes: Int = 16384
 
 const reject_invalid_validity_interval_format =
   #"455f494e56414c49445f56414c49444954595f494e54455256414c5f464f524d4154"
@@ -5805,6 +5811,7 @@ fn resolve_lookup_step(
     LedgerDeltaReplayWitness { .. } -> False
     LedgerDeltaOutputWitness { .. } -> False
     TransactionRedeemerItemWitness { .. } -> False
+    TransactionFieldItemWitness { .. } -> False
     RequiredSignerItemWitness { .. } -> False
     NativeScriptTokenWitness { .. } -> False
     NativeScriptFrameWitness { .. } -> False
@@ -5923,6 +5930,7 @@ fn verify_resolve_inputs(
             0,
             0,
             validation_merkle_v1.empty_frontier(),
+            0,
             [],
             0,
             0,
@@ -6022,6 +6030,7 @@ pub fn verify_resolve_inputs_finish_semantics_v1(
         0,
         0,
         validation_merkle_v1.empty_frontier(),
+        0,
         [],
         0,
         0,
@@ -6109,6 +6118,7 @@ pub type ScriptSourcesControlV1 {
   output_cursor: Int,
   output_count: Int,
   output_peaks: List<validation_merkle_v1.FrontierPeak>,
+  output_total_count: Int,
   receive_hashes: List<ByteArray>,
   source_total_count: Int,
   redeemer_total_count: Int,
@@ -6254,7 +6264,8 @@ fn script_sources_control_from_data_items(
         replay_cursor_data, replay_accumulator_data,
         replay_remaining_schedule_hash_data, spend_index_data,
         purpose_count_data, purpose_peaks_data, output_cursor_data,
-        output_count_data, output_peaks_data, receive_hashes_data,
+        output_count_data, output_peaks_data, output_total_count_data,
+        receive_hashes_data,
         source_total_count_data, redeemer_total_count_data,
         observer_scan_data,
       ]
@@ -6297,6 +6308,7 @@ fn script_sources_control_from_data_items(
     output_cursor: builtin.un_i_data(output_cursor_data),
     output_count: builtin.un_i_data(output_count_data),
     output_peaks: decode_frontier_peaks(output_peaks_data),
+    output_total_count: builtin.un_i_data(output_total_count_data),
     receive_hashes: receive_hashes_data
       |> builtin.un_list_data
       |> list.map(builtin.un_b_data),
@@ -6316,13 +6328,13 @@ fn script_sources_control_from_witness(
 ) -> ScriptSourcesControlV1 {
   expect Some(data) = cbor.deserialise(work_witness_cbor)
   let items = builtin.un_list_data(data)
-  if list.length(items) == 27 {
+  if list.length(items) == 28 {
     script_sources_control_from_data_items(
       items,
       empty_script_discovery_control(),
     )
   } else {
-    expect list.length(items) == 28
+    expect list.length(items) == 29
     let Pair(base_items, discovery_data) = split_last_data(items)
     script_sources_control_from_data_items(
       base_items,
@@ -6389,12 +6401,13 @@ pub fn encode_script_sources_discovery_witness(
     control.output_cursor,
     control.output_count,
     control.output_peaks,
+    control.output_total_count,
     control.receive_hashes,
     control.source_total_count,
     control.redeemer_total_count,
     control.observer_scan,
   )
-  encode_definite_array_header(28)
+  encode_definite_array_header(29)
     |> bytearray.concat(bytearray.slice(base, 2, bytearray.length(base) - 1))
     |> bytearray.concat(
         encode_definite_bytes(encode_script_discovery_control(discovery)),
@@ -6461,6 +6474,7 @@ fn exact_script_sources_control(control: ScriptSourcesControlV1) -> ByteArray {
       control.output_cursor,
       control.output_count,
       control.output_peaks,
+      control.output_total_count,
       control.receive_hashes,
       control.source_total_count,
       control.redeemer_total_count,
@@ -6763,6 +6777,7 @@ fn script_sources_stage_two(
     0,
     0,
     validation_merkle_v1.empty_frontier(),
+    0,
     [],
     control.source_total_count,
     control.redeemer_total_count,
@@ -6972,6 +6987,7 @@ fn script_sources_replay_item(
               control.output_cursor,
               control.output_count,
               control.output_peaks,
+              control.output_total_count,
               control.receive_hashes,
               control.source_total_count,
               control.redeemer_total_count,
@@ -7024,6 +7040,7 @@ fn script_sources_stage_three(
       control.output_cursor,
       control.output_count,
       control.output_peaks,
+      control.output_total_count,
       control.receive_hashes,
       control.source_total_count,
       control.redeemer_total_count,
@@ -7057,116 +7074,86 @@ fn script_sources_stage_three(
   }
 }
 
-fn output_leaf_hashes(
-  output_cbors: List<ByteArray>,
-  output_index: Int,
-) -> List<ByteArray> {
-  when output_cbors is {
-    [] -> []
-    [output_cbor, ..rest] ->
-      [
-        script_proof_v1.output_leaf_hash(output_index, output_cbor),
-        ..output_leaf_hashes(rest, output_index + 1)
-      ]
-  }
-}
-
-fn output_field_rejection(output_cbors: List<ByteArray>) -> Option<ByteArray> {
-  when output_cbors is {
-    [] -> None
-    [output_cbor, ..rest] ->
-      if bytearray.length(output_cbor) > 4095 {
-        Some(reject_ledger_output_size)
-      } else {
-        when ledger_output_v1.decode_canonical_output(output_cbor) is {
-          None -> Some(reject_invalid_output)
-          Some(output) ->
-            when reference_script_bound_rejection(output) is {
-              Some(rejection_code) -> Some(rejection_code)
-              None -> output_field_rejection(rest)
-            }
-        }
-      }
-  }
-}
-
 fn script_sources_stage_four(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
   control: ScriptSourcesControlV1,
 ) -> Bool {
-  expect TransactionFieldPreimageWitness { preimage_cbor } = auxiliary
-  let field_verified = verify_midgard_transaction_field_preimage_v1(
+  let Pair(verified_source, _) = verify_native_tx_proof_source_v1(
     pre.transaction_id,
-    pre.transaction_commitment,
     control.compact_cbor,
     control.witness_set_compact_cbor,
     control.field_preimage_lengths_cbor,
-    2,
-    preimage_cbor,
   )
-  let output_cbors = decode_midgard_tx_byte_list_preimage_cbor(preimage_cbor)
-  let built_outputs = output_leaf_hashes(output_cbors, 0)
-    |> validation_merkle_v1.build_frontier
-  let rejection = if list.length(output_cbors) > 64 {
-    Some(reject_output_count)
+  let output_commitment = verified_source.tx_compact.body.outputs_hash
+  let empty_output_commitment = bounded_collection_v1.from_items(2, [])
+  if output_commitment == empty_output_commitment {
+    and {
+      auxiliary == NoAuxiliaryWitness,
+      control.output_cursor == 0,
+      control.output_count == 0,
+      control.output_total_count == 0,
+      control.output_peaks == [],
+      control.receive_hashes == [],
+      script_sources_control_successor_is_exact(
+        pre,
+        witness,
+        ScriptSourcesControlV1 { ..control, stage: 5 },
+      ),
+    }
+  } else if and {
+    control.output_total_count > 0,
+    control.output_count == control.output_total_count,
+  } {
+    and {
+      auxiliary == NoAuxiliaryWitness,
+      control.output_cursor == 0,
+      control.receive_hashes == [],
+      script_sources_control_successor_is_exact(
+        pre,
+        witness,
+        ScriptSourcesControlV1 { ..control, stage: 5 },
+      ),
+    }
   } else {
-    output_field_rejection(output_cbors)
-  }
-  and {
-    field_verified,
-    control.output_cursor == 0,
-    control.output_count == 0,
-    control.output_peaks == [],
-    control.receive_hashes == [],
-    when rejection is {
-      Some(rejection_code) ->
-        rejected_successor_is_exact(
-          pre,
-          witness.claimed_successor,
-          rejection_code,
-        )
-      None -> {
-        let next_control = encode_script_sources_witness(
-          control.compact_cbor,
-          control.witness_set_compact_cbor,
-          control.field_preimage_lengths_cbor,
-          control.context_cbor,
-          control.resolved_input_count,
-          control.resolved_inputs_accumulator,
-          control.signer_count,
-          control.signer_frontier_commitment,
-          control.resolved_item_peaks,
-          5,
-          control.source_count,
-          control.source_peaks,
-          control.redeemer_count,
-          control.redeemer_peaks,
-          control.replay_cursor,
-          control.replay_accumulator,
-          control.replay_remaining_schedule_hash,
-          control.spend_index,
-          control.purpose_count,
-          control.purpose_peaks,
-          0,
-          built_outputs.count,
-          built_outputs.peaks,
-          [],
-          control.source_total_count,
-          control.redeemer_total_count,
-          control.observer_scan,
-        )
-        and {
-          witness.claimed_successor.phase == validation_trace_v1.ScriptSources,
-          witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
-            validation_trace_v1.ScriptSources,
-            pre.program_counter + 1,
-            next_control,
+    expect TransactionFieldItemWitness { collection_proof } = auxiliary
+    let active_total_count = if control.output_total_count == 0 {
+      collection_proof.item_count
+    } else {
+      control.output_total_count
+    }
+    and {
+      control.output_cursor == 0,
+      control.receive_hashes == [],
+      active_total_count > 0,
+      active_total_count <= max_tx_size_derived_collection_item_count,
+      collection_proof.field_index == 2,
+      collection_proof.item_count == active_total_count,
+      collection_proof.item_index == control.output_count,
+      collection_proof.item_length <= max_serialized_output_preimage_bytes,
+      bounded_collection_v1.verify_item(
+        output_commitment,
+        collection_proof,
+      ),
+      script_sources_control_successor_is_exact(
+        pre,
+        witness,
+        ScriptSourcesControlV1 {
+          ..control,
+          output_count: control.output_count + 1,
+          output_peaks: validation_merkle_v1.append_leaf(
+            control.output_count,
+            control.output_peaks,
+            script_proof_v1.output_item_leaf_hash(
+              control.output_count,
+              collection_proof.item_commitment,
+            ),
           ),
-        }
-      }
-    },
+          output_total_count: active_total_count,
+        },
+      ),
+    }
   }
 }
 
@@ -7252,7 +7239,6 @@ fn script_sources_output_item(
 ) -> Bool {
   if and {
     output_index == control.output_cursor,
-    bytearray.length(output_cbor) <= 4095,
     validation_merkle_v1.verify_membership(
       control.output_count,
       control.output_peaks,
@@ -7261,73 +7247,99 @@ fn script_sources_output_item(
       siblings,
     ),
   } {
-    when ledger_output_v1.decode_canonical_output(output_cbor) is {
-      None -> False
-      Some(output) ->
-        when
-          protected_output_authorization(
-            output,
-            control.signer_count,
-            control.signer_frontier_commitment,
-            signer_proof,
+    if bytearray.length(output_cbor) > 4095 {
+      rejected_successor_is_exact(
+        pre,
+        witness.claimed_successor,
+        reject_ledger_output_size,
+      )
+    } else {
+      when ledger_output_v1.decode_canonical_output(output_cbor) is {
+        None ->
+          rejected_successor_is_exact(
+            pre,
+            witness.claimed_successor,
+            reject_invalid_output,
           )
-        is {
-          InputSignerMissing ->
-            rejected_successor_is_exact(
-              pre,
-              witness.claimed_successor,
-              reject_missing_required_witness,
-            )
-          InputSignerProofMalformed -> False
-          InputSignerAuthorized -> {
-            let next_receive_hashes = if output.address.protected {
-              when output.address.payment_credential is {
-                ScriptCredential(script_hash) ->
-                  insert_receive_hash(control.receive_hashes, script_hash)
-                PubKeyCredential(_) -> control.receive_hashes
+        Some(output) ->
+          when reference_script_bound_rejection(output) is {
+            Some(rejection_code) ->
+              rejected_successor_is_exact(
+                pre,
+                witness.claimed_successor,
+                rejection_code,
+              )
+            None ->
+              when
+                protected_output_authorization(
+                  output,
+                  control.signer_count,
+                  control.signer_frontier_commitment,
+                  signer_proof,
+                )
+              is {
+                InputSignerMissing ->
+                  rejected_successor_is_exact(
+                    pre,
+                    witness.claimed_successor,
+                    reject_missing_required_witness,
+                  )
+                InputSignerProofMalformed -> False
+                InputSignerAuthorized -> {
+                  let next_receive_hashes = if output.address.protected {
+                    when output.address.payment_credential is {
+                      ScriptCredential(script_hash) ->
+                        insert_receive_hash(
+                          control.receive_hashes,
+                          script_hash,
+                        )
+                      PubKeyCredential(_) -> control.receive_hashes
+                    }
+                  } else {
+                    control.receive_hashes
+                  }
+                  let next_control = encode_script_sources_witness(
+                    control.compact_cbor,
+                    control.witness_set_compact_cbor,
+                    control.field_preimage_lengths_cbor,
+                    control.context_cbor,
+                    control.resolved_input_count,
+                    control.resolved_inputs_accumulator,
+                    control.signer_count,
+                    control.signer_frontier_commitment,
+                    control.resolved_item_peaks,
+                    5,
+                    control.source_count,
+                    control.source_peaks,
+                    control.redeemer_count,
+                    control.redeemer_peaks,
+                    control.replay_cursor,
+                    control.replay_accumulator,
+                    control.replay_remaining_schedule_hash,
+                    control.spend_index,
+                    control.purpose_count,
+                    control.purpose_peaks,
+                    control.output_cursor + 1,
+                    control.output_count,
+                    control.output_peaks,
+                    control.output_total_count,
+                    next_receive_hashes,
+                    control.source_total_count,
+                    control.redeemer_total_count,
+                    control.observer_scan,
+                  )
+                  and {
+                    witness.claimed_successor.phase == validation_trace_v1.ScriptSources,
+                    witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
+                      validation_trace_v1.ScriptSources,
+                      pre.program_counter + 1,
+                      next_control,
+                    ),
+                  }
+                }
               }
-            } else {
-              control.receive_hashes
-            }
-            let next_control = encode_script_sources_witness(
-              control.compact_cbor,
-              control.witness_set_compact_cbor,
-              control.field_preimage_lengths_cbor,
-              control.context_cbor,
-              control.resolved_input_count,
-              control.resolved_inputs_accumulator,
-              control.signer_count,
-              control.signer_frontier_commitment,
-              control.resolved_item_peaks,
-              5,
-              control.source_count,
-              control.source_peaks,
-              control.redeemer_count,
-              control.redeemer_peaks,
-              control.replay_cursor,
-              control.replay_accumulator,
-              control.replay_remaining_schedule_hash,
-              control.spend_index,
-              control.purpose_count,
-              control.purpose_peaks,
-              control.output_cursor + 1,
-              control.output_count,
-              control.output_peaks,
-              next_receive_hashes,
-              control.source_total_count,
-              control.redeemer_total_count,
-              control.observer_scan,
-            )
-            and {
-              witness.claimed_successor.phase == validation_trace_v1.ScriptSources,
-              witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
-                validation_trace_v1.ScriptSources,
-                pre.program_counter + 1,
-                next_control,
-              ),
-            }
           }
-        }
+      }
     }
   } else {
     False
@@ -7365,6 +7377,7 @@ fn script_sources_stage_five(
       control.output_cursor,
       control.output_count,
       control.output_peaks,
+      control.output_total_count,
       control.receive_hashes,
       control.source_total_count,
       control.redeemer_total_count,
@@ -7579,6 +7592,7 @@ fn script_sources_stage_six(
       control.output_cursor,
       control.output_count,
       control.output_peaks,
+      control.output_total_count,
       control.receive_hashes,
       control.source_total_count,
       control.redeemer_total_count,
@@ -8399,6 +8413,18 @@ fn script_sources_control_is_bound(
       control.output_count,
       control.output_peaks,
     ),
+    control.output_total_count >= control.output_count,
+    control.output_total_count <= max_tx_size_derived_collection_item_count,
+    if control.stage < 4 {
+      and {
+        control.output_count == 0,
+        control.output_total_count == 0,
+      }
+    } else if control.stage == 4 {
+      control.output_cursor == 0
+    } else {
+      control.output_total_count == control.output_count
+    },
     receive_hashes_are_canonical(control.receive_hashes),
     observer_purpose_scan_is_well_formed(control.stage, control.observer_scan),
     script_discovery_control_is_well_formed(control.discovery),
@@ -8436,6 +8462,7 @@ pub fn verify_script_sources_stage_three_finish_semantics_v1(
     control.output_cursor,
     control.output_count,
     control.output_peaks,
+    control.output_total_count,
     control.receive_hashes,
     control.source_total_count,
     control.redeemer_total_count,
@@ -8538,6 +8565,7 @@ pub fn verify_script_sources_stage_five_finish_semantics_v1(
     control.output_cursor,
     control.output_count,
     control.output_peaks,
+    control.output_total_count,
     control.receive_hashes,
     control.source_total_count,
     control.redeemer_total_count,

@@ -85,7 +85,7 @@ describe("script proof primitives", () => {
         outputCbor: Buffer.from("0102", "hex"),
       }).toString("hex"),
     ).toBe(
-      "37c53f847e2610c1b9f1b514b4b086784720f68c425afab606afb8d9dde5d3b9",
+      "f9a3fa502da0ee4fe7048a78088ca4b89a72fe3aa0d313e12fbae7305e171727",
     );
     expect(
       hashMidgardMintAssetLeafV1({

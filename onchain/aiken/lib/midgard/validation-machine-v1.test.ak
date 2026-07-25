@@ -24,8 +24,7 @@ use midgard/fraud_proofs/native_tx/components.{
 }
 use midgard/fraud_proofs/native_tx/preimages.{
   decode_midgard_tx_mint_preimage_cbor, encode_input_preimage,
-  encode_mint_preimage, encode_output_preimage,
-  encode_redeemer_witness_preimage, encode_script_witness_preimage,
+  encode_mint_preimage,
 }
 use midgard/fraud_proofs/native_tx/transaction.{
   midgard_transaction_proof_commitment_v1, midgard_transaction_proof_source_v1,
@@ -740,6 +739,7 @@ fn script_sources_output_step_fixture_with_resolved_items(
   purpose_frontier: validation_merkle_v1.BuiltFrontier,
   output_cursor: Int,
   output_frontier: validation_merkle_v1.BuiltFrontier,
+  output_total_count: Int,
   receive_hashes: List<ByteArray>,
   observer_scan: validation_machine_v1.ObserverPurposeScanControlV1,
   program_counter: Int,
@@ -778,6 +778,7 @@ fn script_sources_output_step_fixture_with_resolved_items(
     output_cursor,
     output_frontier.count,
     output_frontier.peaks,
+    output_total_count,
     receive_hashes,
     source_frontier.count,
     redeemer_frontier.count,
@@ -856,6 +857,7 @@ fn script_sources_output_step_fixture(
     purpose_frontier,
     output_cursor,
     output_frontier,
+    output_frontier.count,
     receive_hashes,
     validation_machine_v1.empty_observer_purpose_scan_control(),
     program_counter,
@@ -892,6 +894,7 @@ fn script_sources_step_fixture_with_resolved_items(
     purpose_frontier,
     0,
     validation_merkle_v1.build_frontier([]),
+    0,
     [],
     validation_machine_v1.empty_observer_purpose_scan_control(),
     program_counter,
@@ -973,6 +976,7 @@ fn script_discovery_step_fixture(
     output_cursor: 0,
     output_count: 0,
     output_peaks: validation_merkle_v1.empty_frontier(),
+    output_total_count: 0,
     receive_hashes,
     source_total_count: source_frontier.count,
     redeemer_total_count: redeemer_frontier.count,
@@ -3351,6 +3355,7 @@ test resolve_inputs_finalizes_into_script_source_resolution() {
         0,
         0,
         validation_merkle_v1.empty_frontier(),
+        0,
         [],
         0,
         0,
@@ -3835,7 +3840,7 @@ test script_sources_replay_appends_script_credential_spend_purposes() {
   )
 }
 
-test script_sources_commits_outputs_for_bounded_replay() {
+fn canonical_output_commitment_step(step_to_verify: Int) -> Bool {
   let output = MidgardTxOutput {
     address: MidgardAddress {
       protected: False,
@@ -3872,6 +3877,24 @@ test script_sources_commits_outputs_for_bounded_replay() {
     empty_frontier,
     14,
   )
+  let Pair(after_item, after_item_work_witness_cbor) =
+    script_sources_output_step_fixture(
+      tx,
+      0,
+      accumulator,
+      4,
+      empty_frontier,
+      empty_frontier,
+      0,
+      accumulator,
+      validation_machine_v1.empty_resolution_schedule_hash(),
+      0,
+      empty_frontier,
+      0,
+      output_frontier,
+      [],
+      15,
+    )
   let Pair(post, _) = script_sources_output_step_fixture(
     tx,
     0,
@@ -3887,20 +3910,46 @@ test script_sources_commits_outputs_for_bounded_replay() {
     0,
     output_frontier,
     [],
-    15,
+    16,
   )
-  validation_machine_v1.verify_one_step_evidence(
-    pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
-        work_witness_cbor,
-        claimed_successor: post,
+  let Pair(collection_proof, _) =
+    singleton_field_item_proofs(2, output_cbor)
+  if step_to_verify == 0 {
+    validation_machine_v1.verify_one_step_evidence(
+      pre,
+      validation_machine_v1.ValidationOneStepEvidenceV1 {
+        transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+          work_witness_cbor,
+          claimed_successor: after_item,
+        },
+        auxiliary: validation_machine_v1.TransactionFieldItemWitness {
+          collection_proof,
+        },
       },
-      auxiliary: validation_machine_v1.TransactionFieldPreimageWitness {
-        preimage_cbor: encode_output_preimage(tx.body.outputs),
-      },
-    },
-  )
+    )
+  } else {
+    and {
+      step_to_verify == 1,
+      validation_machine_v1.verify_one_step_evidence(
+        after_item,
+        validation_machine_v1.ValidationOneStepEvidenceV1 {
+          transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+            work_witness_cbor: after_item_work_witness_cbor,
+            claimed_successor: post,
+          },
+          auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+        },
+      ),
+    }
+  }
+}
+
+test script_sources_commits_an_authenticated_output_item() {
+  canonical_output_commitment_step(0)
+}
+
+test script_sources_finishes_authenticated_output_commitment() {
+  canonical_output_commitment_step(1)
 }
 
 fn protected_receive_purpose_step(step_to_verify: Int) -> Bool {
@@ -4221,6 +4270,7 @@ fn canonical_observer_purpose_step(step_to_verify: Int) -> Bool {
       observer_purpose_frontier,
       0,
       empty_frontier,
+      0,
       [h_28_b],
       validation_machine_v1.ObserverPurposeScanControlV1 {
         total_count: 1,
@@ -7158,6 +7208,7 @@ test maximum_script_program_instruction_evidence_is_bounded() {
     output_cursor: 63,
     output_count: 63,
     output_peaks: dense_frontier_six.peaks,
+    output_total_count: 63,
     receive_hashes: [],
     source_total_count: 15,
     redeemer_total_count: 15,

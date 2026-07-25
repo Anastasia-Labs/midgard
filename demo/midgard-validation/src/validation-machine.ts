@@ -11,13 +11,14 @@ import {
   computeMidgardNativeTxProofCommitmentV1,
   decodeMidgardCekProgramEnvelopeV1,
   decodeMidgardCekProgramMaterialSidecarV1,
-  deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
   deriveMidgardNativeFieldCollectionV1,
+  deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
   deriveMidgardV1TxFieldPreimages,
   encodeCbor,
   encodeMidgardCekProgramMaterialSidecarV1,
   hashMidgardCekMachineStateV1,
   hashMidgardMintAssetLeafV1,
+  hashMidgardOutputItemLeafV1,
   hashMidgardOutputLeafV1,
   hashMidgardRedeemerItemLeafV1,
   hashMidgardRedeemerLeafV1,
@@ -35,8 +36,8 @@ import {
   MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
   MIDGARD_VALIDATION_MACHINE_V1_VERSION,
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
-  midgardBoundedItemChunkCountV1,
   type MidgardBoundedCollectionItemProofV1,
+  midgardBoundedItemChunkCountV1,
   type MidgardBoundedItemChunkProofV1,
   type MidgardConsensusProfileV1,
   type MidgardValidationMachineStateV1,
@@ -61,8 +62,8 @@ import {
   readCborMapHeader,
   readCborUnsigned,
 } from "@al-ft/midgard-core/codec/cbor";
-import { blake2b } from "@noble/hashes/blake2.js";
 import { CML } from "@lucid-evolution/lucid";
+import { blake2b } from "@noble/hashes/blake2.js";
 import { Effect } from "effect";
 
 import {
@@ -216,6 +217,10 @@ export type ValidationMachineWorkWitness = {
         readonly kind: "transactionFieldChunk";
         readonly collectionProof: MidgardBoundedCollectionItemProofV1;
         readonly chunkProof: MidgardBoundedItemChunkProofV1;
+      }
+    | {
+        readonly kind: "transactionFieldItem";
+        readonly collectionProof: MidgardBoundedCollectionItemProofV1;
       }
     | {
         readonly kind: "requiredSignerItem";
@@ -1141,6 +1146,10 @@ export const buildDeterministicValidationMachineTrace = (
       fieldIndex: 1,
       preimageCbor: fieldPreimages[1]!.preimageCbor,
     });
+    const outputsCollection = deriveMidgardNativeFieldCollectionV1({
+      fieldIndex: 2,
+      preimageCbor: fieldPreimages[2]!.preimageCbor,
+    });
     const requiredObserversCollection = deriveMidgardNativeFieldCollectionV1({
       fieldIndex: 3,
       preimageCbor: fieldPreimages[3]!.preimageCbor,
@@ -1566,6 +1575,7 @@ export const buildDeterministicValidationMachineTrace = (
       readonly purposeFrontier?: MidgardValidationMerkleFrontierV1;
       readonly outputCursor?: number;
       readonly outputFrontier?: MidgardValidationMerkleFrontierV1;
+      readonly outputTotalCount?: number;
       readonly receiveHashes?: readonly Buffer[];
       readonly sourceTotalCount?: number;
       readonly redeemerTotalCount?: number;
@@ -1606,6 +1616,9 @@ export const buildDeterministicValidationMachineTrace = (
         BigInt(input.outputCursor ?? 0),
         BigInt(input.outputFrontier?.count ?? 0),
         encodeFrontierPeaks(input.outputFrontier ?? emptyValidationFrontier),
+        BigInt(
+          input.outputTotalCount ?? input.outputFrontier?.count ?? 0,
+        ),
         input.receiveHashes ?? [],
         BigInt(input.sourceTotalCount ?? input.sourceFrontier.count),
         BigInt(input.redeemerTotalCount ?? input.redeemerFrontier.count),
@@ -2955,8 +2968,9 @@ export const buildDeterministicValidationMachineTrace = (
                 purposeFrontier: replayPurposeFrontier,
               }),
             );
-            pushWitness(
-              "scriptSources",
+            let authenticatedOutputFrontier = emptyValidationFrontier;
+            let outputTotalCount = 0;
+            const currentOutputCommitmentWitness = (): Buffer =>
               scriptSourcesWitnessCbor({
                 ...scriptSourceControl,
                 stage: 4,
@@ -2967,12 +2981,57 @@ export const buildDeterministicValidationMachineTrace = (
                 replayRemainingScheduleHash,
                 spendIndex: replaySpendIndex,
                 purposeFrontier: replayPurposeFrontier,
-              }),
-              {
-                kind: "transactionFieldPreimage",
-                preimageCbor: fieldPreimages[2]!.preimageCbor,
-              },
+                outputFrontier: authenticatedOutputFrontier,
+                outputTotalCount,
+              });
+            for (const item of outputsCollection.items) {
+              const outputCbor = outputCbors[item.itemIndex];
+              if (
+                outputCbor === undefined ||
+                !item.bytes.equals(outputCbor)
+              ) {
+                return yield* Effect.fail(
+                  new Error(
+                    "bounded output item diverged from its canonical decoded output",
+                  ),
+                );
+              }
+              pushWitness("scriptSources", currentOutputCommitmentWitness(), {
+                kind: "transactionFieldItem",
+                collectionProof: buildMidgardBoundedCollectionItemProofV1(
+                  outputsCollection,
+                  item.itemIndex,
+                ),
+              });
+              if (outputTotalCount === 0) {
+                outputTotalCount = outputsCollection.items.length;
+              }
+              authenticatedOutputFrontier =
+                appendMidgardValidationMerkleLeafV1(
+                  authenticatedOutputFrontier,
+                  hashMidgardOutputItemLeafV1({
+                    outputIndex: item.itemIndex,
+                    itemCommitment: item.commitment,
+                  }),
+                );
+            }
+            pushWitness(
+              "scriptSources",
+              currentOutputCommitmentWitness(),
             );
+            if (
+              !commitMidgardValidationMerkleFrontierV1(
+                authenticatedOutputFrontier,
+              ).equals(
+                commitMidgardValidationMerkleFrontierV1(outputFrontier),
+              )
+            ) {
+              return yield* Effect.fail(
+                new Error(
+                  "authenticated output fold diverged from the canonical output frontier",
+                ),
+              );
+            }
             let outputCursor = 0;
             let receiveHashes: Buffer[] = [];
             const protectedSignerRejection =
