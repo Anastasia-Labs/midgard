@@ -2885,7 +2885,7 @@ const forcedValidityForRejection = (
   }
 };
 
-type ClassifiedForcedTransactionV1 = {
+export type ClassifiedForcedTransactionV1 = {
   readonly entry: ForcedTransactionsDB.Entry;
   readonly ledgerOps: readonly MpfBatchOp[];
   readonly ledgerWitnessEntries: readonly ValidationMachineLedgerEntry[];
@@ -2893,6 +2893,10 @@ type ClassifiedForcedTransactionV1 = {
   readonly rejectionCode: RejectCode | null;
   readonly programMaterialSidecarCbor: Buffer;
 };
+
+export type ForcedProgramMaterialSidecarResolverV1<R> = (
+  envelopes: readonly MidgardCekProgramEnvelopeV1[],
+) => Effect.Effect<Buffer, DatabaseError, R>;
 
 const transientTrieRoot = (trie: Trie): Buffer =>
   trie.hash == null ? Buffer.alloc(32) : Buffer.from(trie.hash);
@@ -2945,23 +2949,21 @@ const programMaterialSidecarForEnvelopes = (
     Effect.map((entries) => encodeMidgardCekProgramMaterialSidecarV1(entries)),
   );
 
-const classifyForcedTransactionsV1 = ({
+export const classifyForcedTransactionsV1 = <R>({
   entries,
   initialState,
   effectiveEndTime,
   consensusProfile,
   validation,
+  resolveProgramMaterialSidecar,
 }: {
   readonly entries: readonly ForcedTransactionsDB.Entry[];
   readonly initialState: Map<string, Buffer>;
   readonly effectiveEndTime: Date;
   readonly consensusProfile: MidgardConsensusProfileV1;
   readonly validation: NonNullable<ProcessMpfsConfig["forcedValidation"]>;
-}): Effect.Effect<
-  readonly ClassifiedForcedTransactionV1[],
-  DatabaseError,
-  Database
-> =>
+  readonly resolveProgramMaterialSidecar: ForcedProgramMaterialSidecarResolverV1<R>;
+}): Effect.Effect<readonly ClassifiedForcedTransactionV1[], DatabaseError, R> =>
   Effect.gen(function* () {
     const state = new Map(
       [...initialState.entries()].map(([key, value]) => [
@@ -2990,7 +2992,8 @@ const classifyForcedTransactionsV1 = ({
     let arrivalSeq = 0n;
     for (const entry of entries) {
       const nativeTxCbor = entry[ForcedTransactionsDB.Columns.NATIVE_TX_CBOR];
-      const transactionCommitment = entry[ForcedTransactionsDB.Columns.TRANSACTION_COMMITMENT];
+      const transactionCommitment =
+        entry[ForcedTransactionsDB.Columns.TRANSACTION_COMMITMENT];
       const profileId =
         entry[ForcedTransactionsDB.Columns.CONSENSUS_PROFILE_ID];
       if (
@@ -3030,7 +3033,7 @@ const classifyForcedTransactionsV1 = ({
         }
       })();
       let programMaterialSidecarCbor =
-        yield* programMaterialSidecarForEnvelopes(attachedEnvelopes);
+        yield* resolveProgramMaterialSidecar(attachedEnvelopes);
       const phaseA = yield* runPhaseAValidation(
         [
           {
@@ -3091,11 +3094,10 @@ const classifyForcedTransactionsV1 = ({
             }
           })();
           if (referencedEnvelopes.length > 0) {
-            programMaterialSidecarCbor =
-              yield* programMaterialSidecarForEnvelopes([
-                ...attachedEnvelopes,
-                ...referencedEnvelopes,
-              ]);
+            programMaterialSidecarCbor = yield* resolveProgramMaterialSidecar([
+              ...attachedEnvelopes,
+              ...referencedEnvelopes,
+            ]);
             acceptedCandidate = {
               ...acceptedCandidate,
               submission: {
@@ -3566,8 +3568,7 @@ export const processMpfs = (
     if (
       (includedForcedTransactionEntries.length > 0 ||
         orderedDecodedMempoolTxs.length > 0) &&
-      (config?.forcedValidation === undefined ||
-        effectiveEndTime === undefined)
+      (config?.forcedValidation === undefined || effectiveEndTime === undefined)
     ) {
       return yield* Effect.fail(
         new DatabaseError({
@@ -3585,12 +3586,9 @@ export const processMpfs = (
       ]),
     );
     for (const classifiedWithdrawal of validWithdrawalClassifications) {
-      forcedPreState.delete(
-        classifiedWithdrawal.ledgerOutRef.toString("hex"),
-      );
+      forcedPreState.delete(classifiedWithdrawal.ledgerOutRef.toString("hex"));
     }
-    const classifiedForcedTransactionsV1:
-      readonly ClassifiedForcedTransactionV1[] =
+    const classifiedForcedTransactionsV1: readonly ClassifiedForcedTransactionV1[] =
       includedForcedTransactionEntries.length === 0
         ? []
         : yield* classifyForcedTransactionsV1({
@@ -3599,6 +3597,7 @@ export const processMpfs = (
             effectiveEndTime: effectiveEndTime!,
             consensusProfile,
             validation: config!.forcedValidation!,
+            resolveProgramMaterialSidecar: programMaterialSidecarForEnvelopes,
           });
     includedForcedTransactionEntries = classifiedForcedTransactionsV1.map(
       ({ entry }) => entry,
@@ -4297,8 +4296,7 @@ export const processMpfs = (
     const validationTraceBuild: ValidationTraceBuildResult = yield* Effect.gen(
       function* () {
         const expectedValidationTraceCount =
-          includedForcedTransactionEntries.length +
-          processedMempoolTxs.length;
+          includedForcedTransactionEntries.length + processedMempoolTxs.length;
         if (expectedValidationTraceCount === 0) {
           return {
             validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
@@ -4310,175 +4308,175 @@ export const processMpfs = (
         const validationTraceBuilder =
           config?.validationTraceBuilder ??
           buildDeterministicValidationTraceMembers;
-      const traceByEventKey = new Map(
-        transitionTraceBuild.transitionTraceMembers.map((member) => [
-          member.keyCbor.toString("hex"),
-          member,
-        ]),
-      );
-      const forcedByOrderId = new Map(
-        classifiedForcedTransactionsV1.map((classified) => [
-          classified.entry[ForcedTransactionsDB.Columns.TX_ORDER_ID].toString(
-            "hex",
-          ),
-          classified,
-        ]),
-      );
-      const forcedValidationInputs = yield* Effect.forEach(
-        includedForcedTransactionEntries,
-        (entry) =>
-          Effect.gen(function* () {
-            const eventKey = yield* forcedTransactionTraceEventKey(entry);
-            const keyCbor = yield* eventKeyCbor(eventKey);
-            const trace = traceByEventKey.get(keyCbor.toString("hex"));
-            const classified = forcedByOrderId.get(
-              entry[ForcedTransactionsDB.Columns.TX_ORDER_ID].toString("hex"),
-            );
-            const canonicalTransactionCbor =
-              entry[ForcedTransactionsDB.Columns.NATIVE_TX_CBOR];
-            if (
-              trace === undefined ||
-              classified === undefined ||
-              canonicalTransactionCbor == null
-            ) {
-              return yield* Effect.fail(
-                new DatabaseError({
-                  table: ForcedTransactionsDB.tableName,
-                  message:
-                    "V1 forced transaction is missing validation-trace source material",
-                  cause: `tx_order_id=${entry[
-                    ForcedTransactionsDB.Columns.TX_ORDER_ID
-                  ].toString("hex")}`,
-                }),
+        const traceByEventKey = new Map(
+          transitionTraceBuild.transitionTraceMembers.map((member) => [
+            member.keyCbor.toString("hex"),
+            member,
+          ]),
+        );
+        const forcedByOrderId = new Map(
+          classifiedForcedTransactionsV1.map((classified) => [
+            classified.entry[ForcedTransactionsDB.Columns.TX_ORDER_ID].toString(
+              "hex",
+            ),
+            classified,
+          ]),
+        );
+        const forcedValidationInputs = yield* Effect.forEach(
+          includedForcedTransactionEntries,
+          (entry) =>
+            Effect.gen(function* () {
+              const eventKey = yield* forcedTransactionTraceEventKey(entry);
+              const keyCbor = yield* eventKeyCbor(eventKey);
+              const trace = traceByEventKey.get(keyCbor.toString("hex"));
+              const classified = forcedByOrderId.get(
+                entry[ForcedTransactionsDB.Columns.TX_ORDER_ID].toString("hex"),
               );
-            }
-            return {
-              eventKey,
-              transactionId: Buffer.from(
-                entry[ForcedTransactionsDB.Columns.TX_ID],
-              ),
-              canonicalTransactionCbor: Buffer.from(canonicalTransactionCbor),
-              programMaterialSidecarCbor: Buffer.from(
-                classified.programMaterialSidecarCbor,
-              ),
-              sourceKind: "forced" as const,
-              priorUtxosRoot: trace.value.pre_utxos_root,
-              postUtxosRoot: trace.value.post_utxos_root,
-              ledgerOps: classified.ledgerOps,
-              ledgerWitnessEntries: classified.ledgerWitnessEntries,
-              ledgerMutationSteps: classified.ledgerMutationSteps,
-              verdict:
-                classified.rejectionCode === null
-                  ? ("accepted" as const)
-                  : ("rejected" as const),
-              rejectionCode: classified.rejectionCode,
-            };
-          }),
-      );
-      const normalValidationInputs = yield* Effect.forEach(
-        processedMempoolTxs,
-        (entry) =>
-          Effect.gen(function* () {
-            const eventKey = l2TransactionTraceEventKey(
-              entry[Tx.Columns.TX_ID],
-            );
-            const keyCbor = yield* eventKeyCbor(eventKey);
-            const trace = traceByEventKey.get(keyCbor.toString("hex"));
-            const ledgerOps = proofNormalLedgerOpsByTxId.get(
-              entry[Tx.Columns.TX_ID].toString("hex"),
-            );
-            const ledgerWitnessEntries = proofNormalLedgerWitnessesByTxId.get(
-              entry[Tx.Columns.TX_ID].toString("hex"),
-            );
-            const ledgerMutationSteps = proofNormalLedgerMutationsByTxId.get(
-              entry[Tx.Columns.TX_ID].toString("hex"),
-            );
-            const programMaterialSidecarCbor =
-              proofNormalProgramMaterialByTxId.get(
+              const canonicalTransactionCbor =
+                entry[ForcedTransactionsDB.Columns.NATIVE_TX_CBOR];
+              if (
+                trace === undefined ||
+                classified === undefined ||
+                canonicalTransactionCbor == null
+              ) {
+                return yield* Effect.fail(
+                  new DatabaseError({
+                    table: ForcedTransactionsDB.tableName,
+                    message:
+                      "V1 forced transaction is missing validation-trace source material",
+                    cause: `tx_order_id=${entry[
+                      ForcedTransactionsDB.Columns.TX_ORDER_ID
+                    ].toString("hex")}`,
+                  }),
+                );
+              }
+              return {
+                eventKey,
+                transactionId: Buffer.from(
+                  entry[ForcedTransactionsDB.Columns.TX_ID],
+                ),
+                canonicalTransactionCbor: Buffer.from(canonicalTransactionCbor),
+                programMaterialSidecarCbor: Buffer.from(
+                  classified.programMaterialSidecarCbor,
+                ),
+                sourceKind: "forced" as const,
+                priorUtxosRoot: trace.value.pre_utxos_root,
+                postUtxosRoot: trace.value.post_utxos_root,
+                ledgerOps: classified.ledgerOps,
+                ledgerWitnessEntries: classified.ledgerWitnessEntries,
+                ledgerMutationSteps: classified.ledgerMutationSteps,
+                verdict:
+                  classified.rejectionCode === null
+                    ? ("accepted" as const)
+                    : ("rejected" as const),
+                rejectionCode: classified.rejectionCode,
+              };
+            }),
+        );
+        const normalValidationInputs = yield* Effect.forEach(
+          processedMempoolTxs,
+          (entry) =>
+            Effect.gen(function* () {
+              const eventKey = l2TransactionTraceEventKey(
+                entry[Tx.Columns.TX_ID],
+              );
+              const keyCbor = yield* eventKeyCbor(eventKey);
+              const trace = traceByEventKey.get(keyCbor.toString("hex"));
+              const ledgerOps = proofNormalLedgerOpsByTxId.get(
                 entry[Tx.Columns.TX_ID].toString("hex"),
               );
-            if (
-              trace === undefined ||
-              ledgerOps === undefined ||
-              ledgerWitnessEntries === undefined ||
-              ledgerMutationSteps === undefined ||
-              programMaterialSidecarCbor === undefined
-            ) {
-              return yield* Effect.fail(
-                new DatabaseError({
-                  table: MempoolDB.tableName,
-                  message:
-                    "V1 normal transaction is missing validation-trace source material",
-                  cause: `tx_id=${entry[Tx.Columns.TX_ID].toString("hex")}`,
-                }),
+              const ledgerWitnessEntries = proofNormalLedgerWitnessesByTxId.get(
+                entry[Tx.Columns.TX_ID].toString("hex"),
               );
-            }
-            return {
-              eventKey,
-              transactionId: Buffer.from(entry[Tx.Columns.TX_ID]),
-              canonicalTransactionCbor: Buffer.from(entry[Tx.Columns.TX]),
-              programMaterialSidecarCbor: Buffer.from(
-                programMaterialSidecarCbor,
-              ),
-              sourceKind: "normal" as const,
-              priorUtxosRoot: trace.value.pre_utxos_root,
-              postUtxosRoot: trace.value.post_utxos_root,
-              ledgerOps,
-              ledgerWitnessEntries,
-              ledgerMutationSteps,
-              verdict: "accepted" as const,
-              rejectionCode: null,
-            };
-          }),
-      );
-      const validationTraceMembers = yield* validationTraceBuilder({
-        consensusProfile,
-        blockEndTime: effectiveEndTime!,
-        expectedNetworkId: validation.expectedNetworkId,
-        minFeeA: validation.minFeeA,
-        minFeeB: validation.minFeeB,
-        blockSlot: validation.slotForUnixTime(effectiveEndTime!.getTime()),
-        transactions: [...forcedValidationInputs, ...normalValidationInputs],
-      });
-      if (validationTraceMembers.length !== expectedValidationTraceCount) {
-        return yield* Effect.fail(
-          new DatabaseError({
-            table: PendingBlockFinalizationsDB.tableName,
-            message:
-              "Validation trace provider returned the wrong descriptor count",
-            cause: `expected=${expectedValidationTraceCount.toString()},actual=${validationTraceMembers.length.toString()}`,
-          }),
+              const ledgerMutationSteps = proofNormalLedgerMutationsByTxId.get(
+                entry[Tx.Columns.TX_ID].toString("hex"),
+              );
+              const programMaterialSidecarCbor =
+                proofNormalProgramMaterialByTxId.get(
+                  entry[Tx.Columns.TX_ID].toString("hex"),
+                );
+              if (
+                trace === undefined ||
+                ledgerOps === undefined ||
+                ledgerWitnessEntries === undefined ||
+                ledgerMutationSteps === undefined ||
+                programMaterialSidecarCbor === undefined
+              ) {
+                return yield* Effect.fail(
+                  new DatabaseError({
+                    table: MempoolDB.tableName,
+                    message:
+                      "V1 normal transaction is missing validation-trace source material",
+                    cause: `tx_id=${entry[Tx.Columns.TX_ID].toString("hex")}`,
+                  }),
+                );
+              }
+              return {
+                eventKey,
+                transactionId: Buffer.from(entry[Tx.Columns.TX_ID]),
+                canonicalTransactionCbor: Buffer.from(entry[Tx.Columns.TX]),
+                programMaterialSidecarCbor: Buffer.from(
+                  programMaterialSidecarCbor,
+                ),
+                sourceKind: "normal" as const,
+                priorUtxosRoot: trace.value.pre_utxos_root,
+                postUtxosRoot: trace.value.post_utxos_root,
+                ledgerOps,
+                ledgerWitnessEntries,
+                ledgerMutationSteps,
+                verdict: "accepted" as const,
+                rejectionCode: null,
+              };
+            }),
         );
-      }
-      const seenEventKeys = new Set<string>();
-      for (const member of validationTraceMembers) {
-        const keyHex = member.keyCbor.toString("hex");
-        if (
-          seenEventKeys.has(keyHex) ||
-          !traceByEventKey.has(keyHex) ||
-          !member.keyCbor.equals(yield* eventKeyCbor(member.eventKey))
-        ) {
+        const validationTraceMembers = yield* validationTraceBuilder({
+          consensusProfile,
+          blockEndTime: effectiveEndTime!,
+          expectedNetworkId: validation.expectedNetworkId,
+          minFeeA: validation.minFeeA,
+          minFeeB: validation.minFeeB,
+          blockSlot: validation.slotForUnixTime(effectiveEndTime!.getTime()),
+          transactions: [...forcedValidationInputs, ...normalValidationInputs],
+        });
+        if (validationTraceMembers.length !== expectedValidationTraceCount) {
           return yield* Effect.fail(
             new DatabaseError({
               table: PendingBlockFinalizationsDB.tableName,
               message:
-                "Validation trace provider returned a duplicate, foreign, or non-canonical event key",
-              cause: `event_key_cbor=${keyHex}`,
+                "Validation trace provider returned the wrong descriptor count",
+              cause: `expected=${expectedValidationTraceCount.toString()},actual=${validationTraceMembers.length.toString()}`,
             }),
           );
         }
-        seenEventKeys.add(keyHex);
-      }
-      const validationTracesRoot =
-        validationTraceMembers.length === 0
-          ? SDK.EMPTY_MERKLE_TREE_ROOT
-          : yield* countedRootFromEncodedEntries(
-              SDK.ROOT_DOMAINS.validationTraces,
-              validationTraceMembers.map((member) => ({
-                key: member.keyCbor,
-                value: member.valueCbor,
-              })),
+        const seenEventKeys = new Set<string>();
+        for (const member of validationTraceMembers) {
+          const keyHex = member.keyCbor.toString("hex");
+          if (
+            seenEventKeys.has(keyHex) ||
+            !traceByEventKey.has(keyHex) ||
+            !member.keyCbor.equals(yield* eventKeyCbor(member.eventKey))
+          ) {
+            return yield* Effect.fail(
+              new DatabaseError({
+                table: PendingBlockFinalizationsDB.tableName,
+                message:
+                  "Validation trace provider returned a duplicate, foreign, or non-canonical event key",
+                cause: `event_key_cbor=${keyHex}`,
+              }),
             );
+          }
+          seenEventKeys.add(keyHex);
+        }
+        const validationTracesRoot =
+          validationTraceMembers.length === 0
+            ? SDK.EMPTY_MERKLE_TREE_ROOT
+            : yield* countedRootFromEncodedEntries(
+                SDK.ROOT_DOMAINS.validationTraces,
+                validationTraceMembers.map((member) => ({
+                  key: member.keyCbor,
+                  value: member.valueCbor,
+                })),
+              );
         return {
           validationTracesRoot,
           validationTraceMembers,

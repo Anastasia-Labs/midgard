@@ -128,8 +128,7 @@ const nativeMaterial = (byte: number) => {
     canonicalCbor,
     source: {
       compact_cbor: source.compactCbor.toString("hex"),
-      witness_set_compact_cbor:
-        source.witnessSetCompactCbor.toString("hex"),
+      witness_set_compact_cbor: source.witnessSetCompactCbor.toString("hex"),
       field_preimage_lengths_cbor:
         source.fieldPreimageLengthsCbor.toString("hex"),
     },
@@ -377,10 +376,9 @@ const buildPayloadFixture = async ({
   };
   return {
     payload,
-    payloadEnvelopeCbor: await wrapDaPayloadV1(
-      SDK.encodeDaPayloadV1(payload),
-      { mode: "identity" },
-    ),
+    payloadEnvelopeCbor: await wrapDaPayloadV1(SDK.encodeDaPayloadV1(payload), {
+      mode: "identity",
+    }),
     header,
     headerHash,
   };
@@ -1156,6 +1154,92 @@ describe("transition-trace challenger tooling", () => {
     });
   });
 
+  it("builds both normal/forced classification fault directions", async () => {
+    const forcedId = outRef(13);
+    const forcedKey = forcedEventKey(forcedId);
+    const forcedFixture = await buildPayloadFixture({
+      forcedTransactions: [
+        encodedEntry({
+          key: forcedId,
+          keySchema: SDK.OutputReference as never,
+          value: forcedTx(13, "TxIsValid"),
+          valueSchema: SDK.ForcedInclusionTxV1Schema,
+        }),
+      ],
+      steps: [
+        {
+          schema_version: 1n,
+          step_index: 0n,
+          event_key: forcedKey,
+          phase: "L2Transaction",
+          pre_utxos_root: SDK.EMPTY_MERKLE_TREE_ROOT,
+          post_utxos_root: SDK.EMPTY_MERKLE_TREE_ROOT,
+        },
+      ],
+      eventToStep: [
+        eventToStepEntry(forcedKey, {
+          step_index: 0n,
+          phase: "L2Transaction",
+        }),
+      ],
+    });
+    const material = nativeMaterial(14);
+    const normalSource: SDK.L2TransactionSourceV1 = {
+      tx_id: material.txId,
+      transaction_commitment: material.transactionCommitment,
+      source: material.source,
+    };
+    const normalKey: SDK.EventKey = {
+      L2TransactionEventKey: { tx_id: material.txId },
+    };
+    const normalFixture = await buildPayloadFixture({
+      transactions: [
+        entry(
+          Buffer.from(material.txId, "hex"),
+          Buffer.from(Data.to(normalSource, SDK.L2TransactionSourceV1), "hex"),
+        ),
+      ],
+      transactionPreimages: [
+        entry(Buffer.from(material.txId, "hex"), material.canonicalCbor),
+      ],
+      steps: [
+        {
+          schema_version: 1n,
+          step_index: 0n,
+          event_key: normalKey,
+          phase: "ForcedTransaction",
+          pre_utxos_root: SDK.EMPTY_MERKLE_TREE_ROOT,
+          post_utxos_root: SDK.EMPTY_MERKLE_TREE_ROOT,
+        },
+      ],
+      eventToStep: [
+        eventToStepEntry(normalKey, {
+          step_index: 0n,
+          phase: "ForcedTransaction",
+        }),
+      ],
+    });
+
+    for (const fixture of [forcedFixture, normalFixture]) {
+      const reconstruction = await reconstruct(fixture);
+      const detections = await detectTransitionTraceFaults(reconstruction);
+      expectBuildableDetection(detections, {
+        kind: "sourceMembershipMismatch",
+        invariant: "source_phase_matches_trace_phase",
+      });
+      const fault = await buildSourcePhaseMismatchFault({
+        reconstruction,
+        stepIndex: 0n,
+      });
+      expect(() =>
+        Data.from(
+          Data.to(fault as never, SDK.TransitionFault as never),
+          SDK.TransitionFault as never,
+        ),
+      ).not.toThrow();
+    }
+  });
+
   it("fetches retained DA payloads and proof material over libp2p protocols", async () => {
     const fixture = await buildPayloadFixture({});
     const deploymentFingerprint = "11".repeat(32);
@@ -1268,7 +1352,9 @@ describe("transition-trace challenger tooling", () => {
 
     expect(result.sourceId).toBe("committee-libp2p");
     expect(result.sourcePeerId).toBe("peer-a");
-    expect(result.payloadEnvelopeCbor.equals(fixture.payloadEnvelopeCbor)).toBe(true);
+    expect(result.payloadEnvelopeCbor.equals(fixture.payloadEnvelopeCbor)).toBe(
+      true,
+    );
     expect(result.metadata).toMatchObject({
       status: "found",
       payloadBytes: fixture.payloadEnvelopeCbor.length,

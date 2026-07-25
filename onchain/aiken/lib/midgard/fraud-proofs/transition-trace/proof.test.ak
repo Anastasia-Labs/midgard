@@ -924,6 +924,72 @@ test accepts_invalid_forced_transaction_no_op_transition_fault() {
   )
 }
 
+test accepts_forced_transaction_classified_as_normal_fault() {
+  let event_key = ledger_state.ForcedTransactionEventKey {
+    tx_order_id: out_ref(0),
+  }
+  let opened_step = step(0, event_key, ledger_state.L2Transaction, h32_a, h32_b)
+  let trace_proof = trace_membership(opened_step)
+  let source_membership = forced_source_membership(
+    out_ref(0),
+    forced_tx(ledger_state.TxIsValid, #""),
+  )
+  let header = ledger_state.HeaderV1 {
+    ..base_header(),
+    forced_transactions_root: source_membership.root,
+    transition_trace_root: trace_proof.root,
+    forced_transaction_count: 1,
+    l2_transaction_count: 0,
+    total_event_count: 1,
+    transition_step_count: 1,
+  }
+
+  valid_against_header(
+    header,
+    proof.SourceMembershipMismatch {
+      witness: proof.SourcePhaseMismatch {
+        trace_proof,
+        source_membership: proof.ForcedTransactionSourceMembership {
+          membership: source_membership,
+        },
+      },
+    },
+  )
+}
+
+test accepts_normal_transaction_classified_as_forced_fault() {
+  let event_key = ledger_state.L2TransactionEventKey { tx_id: h32_a }
+  let opened_step = step(
+    0,
+    event_key,
+    ledger_state.ForcedTransaction,
+    h32_a,
+    h32_b,
+  )
+  let trace_proof = trace_membership(opened_step)
+  let source_membership = raw_l2_source_membership(h32_a, #"d87980")
+  let header = ledger_state.HeaderV1 {
+    ..base_header(),
+    transactions_root: source_membership.root,
+    transition_trace_root: trace_proof.root,
+    l2_transaction_count: 1,
+    total_event_count: 1,
+    transition_step_count: 1,
+  }
+
+  valid_against_header(
+    header,
+    proof.SourceMembershipMismatch {
+      witness: proof.SourcePhaseMismatch {
+        trace_proof,
+        source_membership: proof.L2TransactionSourceMembership {
+          membership: source_membership,
+        },
+      },
+    },
+  )
+}
+
 test rejects_unknown_transition_step_schema_version() {
   let event_key = ledger_state.ForcedTransactionEventKey {
     tx_order_id: out_ref(0),

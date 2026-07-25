@@ -555,8 +555,8 @@ export const buildInvalidForcedTransactionNoOpWitness = async ({
   }
   if (source.entry.value.operator_validity === "TxIsValid") {
     throw transitionTraceError(
-      "unsupportedWitness",
-      "Valid forced transaction transition proofs remain fail-closed until forced transaction ledger deltas/preimages exist.",
+      "missingWitnessData",
+      "InvalidForcedTransactionNoOpTransition requires a forced source classified as invalid; TxIsValid sources use the accepted-transition or validation-verdict proof path.",
     );
   }
   return {
