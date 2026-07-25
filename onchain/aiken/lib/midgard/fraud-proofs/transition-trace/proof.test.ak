@@ -1,4 +1,5 @@
 use aiken/cbor
+use aiken/crypto.{blake2b_256}
 use aiken/merkle_patricia_forestry.{Leaf}
 use aiken/merkle_patricia_forestry as mpf
 use aiken/primitive/bytearray
@@ -10,12 +11,16 @@ use midgard/bounded_blob_v1
 use midgard/common/utils
 use midgard/fraud_proofs/native_tx/compact as native_compact
 use midgard/fraud_proofs/native_tx/components as native_components
+use midgard/fraud_proofs/native_tx/transaction as native_transaction
 use midgard/fraud_proofs/native_tx/types as native_types
 use midgard/fraud_proofs/transition_trace/proof
 use midgard/hub_oracle
 use midgard/ledger_state
 use midgard/transition_trace
 use midgard/user_events/deposit
+use midgard/validation_claim_v1
+use midgard/validation_machine_v1
+use midgard/validation_trace_v1
 
 const h28_a = #"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
@@ -34,6 +39,12 @@ const h64_a =
   #"44444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444"
 
 const fraud_category_id = #"00000004"
+
+const zero_hash =
+  #"0000000000000000000000000000000000000000000000000000000000000000"
+
+const validation_context_cbor =
+  #"9f01546d6964676172642d636f6e73656e7375732d76311400000000ff"
 
 fn out_ref(ix: Int) -> OutputReference {
   OutputReference { transaction_id: h32_a, output_index: ix }
@@ -294,6 +305,31 @@ fn forced_source_membership(
   }
 }
 
+fn validation_descriptor_membership(
+  event_key: ledger_state.EventKey,
+  descriptor: validation_trace_v1.ValidationTraceDescriptorV1,
+) -> transition_trace.RootMembershipProof<
+  ledger_state.EventKey,
+  validation_trace_v1.ValidationTraceDescriptorV1,
+> {
+  let key_bytes = cbor.serialise(event_key)
+  let value_bytes = cbor.serialise(descriptor)
+  let phas_root = mpf.root(mpf.insert(mpf.empty, key_bytes, value_bytes, []))
+  transition_trace.RootMembershipProof {
+    domain: transition_trace.ValidationTracesRootDomain,
+    root: transition_trace.commit_counted_root(
+      transition_trace.ValidationTracesRootDomain,
+      phas_root,
+      1,
+    ),
+    phas_root,
+    count: 1,
+    key: event_key,
+    value: descriptor,
+    proof: [],
+  }
+}
+
 fn raw_l2_source_membership(
   tx_id: ByteArray,
   compact_cbor: ByteArray,
@@ -436,6 +472,201 @@ fn forced_tx(
     },
     operator_validity: validity,
   }
+}
+
+fn empty_native_transaction() -> native_types.MidgardTransaction {
+  let empty_mint: Data = []
+  native_types.MidgardTransaction {
+    version: native_types.native_tx_version_v1,
+    validity: native_types.TxIsValid,
+    body: native_types.MidgardTransactionBody {
+      inputs: [],
+      reference_inputs: [],
+      outputs: [],
+      fee: 0,
+      validity_interval_start: -1,
+      validity_interval_end: -1,
+      required_observers: [],
+      required_signers: [],
+      mint: empty_mint,
+      script_integrity_hash: zero_hash,
+      auxiliary_data_hash: zero_hash,
+      network_id: 0,
+    },
+    witness_set: native_types.MidgardTransactionWitnessSet {
+      addr_tx_wits: [],
+      script_tx_wits: [],
+      redeemer_tx_wits: [],
+    },
+  }
+}
+
+fn authenticated_forced_tx(
+  operator_validity: ledger_state.MidgardTxValidity,
+) -> ledger_state.ForcedInclusionTxV1 {
+  let tx = empty_native_transaction()
+  let compact = native_transaction.midgard_transaction_to_compact(tx)
+  let proof_source = native_transaction.midgard_transaction_proof_source_v1(tx)
+  let transaction_commitment = native_transaction.midgard_transaction_proof_commitment_v1(
+    tx,
+  )
+  let tx_id = native_compact.native_tx_id_for_version(
+    native_types.native_tx_version_v1,
+    native_compact.encode_native_tx_body_compact(compact.body),
+  )
+  ledger_state.ForcedInclusionTxV1 {
+    tx_id,
+    transaction_commitment,
+    source: ledger_state.NativeTxProofSourceV1 {
+      compact_cbor: proof_source.compact_cbor,
+      witness_set_compact_cbor: proof_source.witness_set_compact_cbor,
+      field_preimage_lengths_cbor: proof_source.field_preimage_lengths_cbor,
+    },
+    operator_validity,
+  }
+}
+
+fn accepted_forced_transition_case(
+  operator_validity: ledger_state.MidgardTxValidity,
+  claimed_post_root: ByteArray,
+  terminal_post_root: ByteArray,
+) -> Pair<
+  ledger_state.HeaderV1,
+  proof.AcceptedTransactionTransitionMismatchWitness,
+> {
+  let event_key = ledger_state.ForcedTransactionEventKey {
+    tx_order_id: out_ref(0),
+  }
+  let source = authenticated_forced_tx(operator_validity)
+  let source_membership = forced_source_membership(out_ref(0), source)
+  let opened_step = step(
+    0,
+    event_key,
+    ledger_state.ForcedTransaction,
+    h32_a,
+    claimed_post_root,
+  )
+  let transition_membership = trace_membership(opened_step)
+  let event_to_step = event_to_step_membership(
+    event_key,
+    0,
+    ledger_state.ForcedTransaction,
+  )
+  let event_key_hash = blake2b_256(cbor.serialise(event_key))
+  let validation_context_hash = validation_trace_v1.hash_validation_context(
+    validation_context_cbor,
+  )
+  let initial_work_witness = validation_machine_v1.encode_transaction_field_scan_witness(
+    source.source.compact_cbor,
+    source.source.witness_set_compact_cbor,
+    source.source.field_preimage_lengths_cbor,
+    validation_context_cbor,
+    0,
+    0,
+    0,
+    -1,
+    0,
+  )
+  let initial_state = validation_trace_v1.ValidationMachineStateV1 {
+    machine_version: validation_trace_v1.machine_version,
+    event_key_hash,
+    transaction_id: source.tx_id,
+    transaction_commitment: source.transaction_commitment,
+    validation_context_hash,
+    source_kind: validation_trace_v1.Forced,
+    prior_ledger_root: h32_a,
+    phase: validation_trace_v1.CanonicalDecode,
+    program_counter: 0,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.CanonicalDecode,
+      0,
+      initial_work_witness,
+    ),
+    execution_cpu: 0,
+    execution_memory: 0,
+    verdict: validation_trace_v1.Pending,
+    rejection_code_hash: zero_hash,
+    ledger_delta_root: h32_c,
+  }
+  let terminal_acceptance_witness_cbor = validation_machine_v1.encode_terminal_acceptance_witness_v1(
+    terminal_post_root,
+    0,
+    [],
+  )
+  let terminal_state = validation_trace_v1.ValidationMachineStateV1 {
+    ..initial_state,
+    phase: validation_trace_v1.Terminal,
+    program_counter: 1,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.Terminal,
+      1,
+      terminal_acceptance_witness_cbor,
+    ),
+    verdict: validation_trace_v1.Accepted,
+  }
+  let initial_state_hash = validation_trace_v1.hash_machine_state(initial_state)
+  let terminal_state_hash = validation_trace_v1.hash_machine_state(
+    terminal_state,
+  )
+  let initial_leaf = validation_trace_v1.trace_leaf_hash(initial_state_hash)
+  let terminal_leaf = validation_trace_v1.trace_leaf_hash(terminal_state_hash)
+  let descriptor = validation_trace_v1.ValidationTraceDescriptorV1 {
+    schema_version: validation_trace_v1.descriptor_version,
+    machine_version: validation_trace_v1.machine_version,
+    trace_root: validation_trace_v1.trace_branch_hash(
+      initial_leaf,
+      terminal_leaf,
+    ),
+    step_count: 1,
+    initial_state_hash,
+    terminal_state_hash,
+    verdict: validation_trace_v1.Accepted,
+    rejection_code_hash: zero_hash,
+  }
+  let descriptor_membership = validation_descriptor_membership(
+    event_key,
+    descriptor,
+  )
+  let header = ledger_state.HeaderV1 {
+    ..base_header(),
+    utxos_root: claimed_post_root,
+    forced_transactions_root: source_membership.root,
+    transition_trace_root: transition_membership.root,
+    event_to_step_root: event_to_step.root,
+    validation_traces_root: descriptor_membership.root,
+    forced_transaction_count: 1,
+    total_event_count: 1,
+    transition_step_count: 1,
+    validation_trace_count: 1,
+  }
+  Pair(
+    header,
+    proof.AcceptedTransactionTransitionMismatchWitness {
+      claim: validation_claim_v1.ValidationClaimWitnessV1 {
+        version: validation_claim_v1.claim_version,
+        descriptor_membership,
+        transition_step_membership: transition_membership,
+        event_to_step_membership: event_to_step,
+        source_membership: validation_claim_v1.ForcedValidationSource {
+          membership: source_membership,
+        },
+        validation_context_cbor,
+        initial_state,
+        terminal_state,
+        initial_state_proof: validation_trace_v1.ValidationTraceProof {
+          state_index: 0,
+          state_hash: initial_state_hash,
+          siblings: [terminal_leaf],
+        },
+        terminal_state_proof: validation_trace_v1.ValidationTraceProof {
+          state_index: 1,
+          state_hash: terminal_state_hash,
+          siblings: [initial_leaf],
+        },
+      },
+      terminal_acceptance_witness_cbor,
+    },
+  )
 }
 
 fn native_l2_compact_cbor(
@@ -921,6 +1152,42 @@ test accepts_invalid_forced_transaction_no_op_transition_fault() {
         source_membership,
       },
     },
+  )
+}
+
+test accepts_valid_forced_transaction_wrong_accepted_post_root_fault() {
+  let Pair(header, witness) = accepted_forced_transition_case(
+    ledger_state.TxIsValid,
+    h32_b,
+    h32_c,
+  )
+  proof.validate_accepted_transaction_fault_proof(
+    prove(header, proof.AcceptedTransactionTransitionMismatch { witness }),
+    asset_name_for(header),
+  )
+}
+
+test rejects_valid_forced_transaction_matching_accepted_post_root_fault() {
+  let Pair(header, witness) = accepted_forced_transition_case(
+    ledger_state.TxIsValid,
+    h32_b,
+    h32_b,
+  )
+  !proof.validate_accepted_transaction_fault_proof(
+    prove(header, proof.AcceptedTransactionTransitionMismatch { witness }),
+    asset_name_for(header),
+  )
+}
+
+test rejects_invalid_forced_source_with_accepted_validation_claim() {
+  let Pair(header, witness) = accepted_forced_transition_case(
+    ledger_state.FailedScript,
+    h32_b,
+    h32_c,
+  )
+  !proof.validate_accepted_transaction_fault_proof(
+    prove(header, proof.AcceptedTransactionTransitionMismatch { witness }),
+    asset_name_for(header),
   )
 }
 
