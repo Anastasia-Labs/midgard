@@ -53,9 +53,12 @@ describe("script proof primitives", () => {
     expect(sourceLeaf.toString("hex")).toBe(
       "2c9ab7fdad80a258a767c571df2f733df4eab1ddc6fab016656ad73bbf993700",
     );
-    const redeemerLeaf = hashMidgardRedeemerLeafV1(redeemerCbor);
+    const redeemerLeaf = hashMidgardRedeemerLeafV1({
+      redeemerIndex: 0,
+      canonicalRedeemerWitnessCbor: redeemerCbor,
+    });
     expect(redeemerLeaf.toString("hex")).toBe(
-      "1f0c84fb8982a20eac3f594ee864837af122e746d3365813222428b78f4555fc",
+      "e42aed2342a26c9334ac80aea22c66b8f649cf6be5a5a4a70c6f33cbd8bda8ab",
     );
     const purposeLeaf = hashMidgardScriptPurposeLeafV1({
         purposeKind: 0,
@@ -74,7 +77,7 @@ describe("script proof primitives", () => {
         redeemerLeaf,
       }).toString("hex"),
     ).toBe(
-      "2ad00150dee534ba648d823da23dbab30a2a3f7d2e1835ec70c6d4f389a155c7",
+      "76121c2a1da2a92f2f114199ff6c3905bb8d7fb3dfcf48ca4f2a447883c9d845",
     );
     expect(
       hashMidgardOutputLeafV1({

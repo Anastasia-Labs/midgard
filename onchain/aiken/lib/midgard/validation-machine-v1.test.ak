@@ -19,7 +19,7 @@ use midgard/fraud_proofs/native_tx/compact.{
 }
 use midgard/fraud_proofs/native_tx/components.{
   encode_midgard_address_witness, encode_midgard_tx_input,
-  encode_midgard_tx_output,
+  encode_midgard_redeemer_witness, encode_midgard_tx_output,
   encode_midgard_versioned_script,
 }
 use midgard/fraud_proofs/native_tx/preimages.{
@@ -3415,8 +3415,11 @@ test script_sources_commits_unique_supported_redeemers() {
   }
   let empty_frontier = validation_merkle_v1.build_frontier([])
   let redeemer_frontier = validation_merkle_v1.build_frontier(
-    [script_proof_v1.redeemer_leaf_hash(redeemer)],
+    [script_proof_v1.redeemer_leaf_hash(0, redeemer)],
   )
+  let redeemer_cbor = encode_midgard_redeemer_witness(redeemer)
+  let Pair(collection_proof, _) =
+    singleton_field_item_proofs(8, redeemer_cbor)
   let accumulator = validation_machine_v1.initial_resolution_accumulator()
   let Pair(pre, work_witness_cbor) = script_sources_step_fixture(
     tx,
@@ -3432,7 +3435,21 @@ test script_sources_commits_unique_supported_redeemers() {
     empty_frontier,
     10,
   )
-  let Pair(post_base, _) = script_sources_step_fixture(
+  let Pair(item_post, item_work_witness_cbor) = script_sources_step_fixture(
+    tx,
+    0,
+    accumulator,
+    1,
+    empty_frontier,
+    redeemer_frontier,
+    0,
+    accumulator,
+    validation_machine_v1.empty_resolution_schedule_hash(),
+    0,
+    empty_frontier,
+    11,
+  )
+  let Pair(final_post, _) = script_sources_step_fixture(
     tx,
     0,
     accumulator,
@@ -3444,22 +3461,33 @@ test script_sources_commits_unique_supported_redeemers() {
     validation_machine_v1.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
-    11,
+    12,
   )
-  validation_machine_v1.verify_one_step_evidence(
-    pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
-        work_witness_cbor,
-        claimed_successor: post_base,
+  and {
+    validation_machine_v1.verify_one_step_evidence(
+      pre,
+      validation_machine_v1.ValidationOneStepEvidenceV1 {
+        transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+          work_witness_cbor,
+          claimed_successor: item_post,
+        },
+        auxiliary: validation_machine_v1.TransactionRedeemerItemWitness {
+          collection_proof,
+          redeemer,
+        },
       },
-      auxiliary: validation_machine_v1.TransactionFieldPreimageWitness {
-        preimage_cbor: encode_redeemer_witness_preimage(
-          tx.witness_set.redeemer_tx_wits,
-        ),
+    ),
+    validation_machine_v1.verify_one_step_evidence(
+      item_post,
+      validation_machine_v1.ValidationOneStepEvidenceV1 {
+        transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+          work_witness_cbor: item_work_witness_cbor,
+          claimed_successor: final_post,
+        },
+        auxiliary: validation_machine_v1.NoAuxiliaryWitness,
       },
-    },
-  )
+    ),
+  }
 }
 
 test script_sources_stage_one_accepts_more_than_sixteen_sources() {
@@ -3515,9 +3543,7 @@ test script_sources_stage_one_accepts_more_than_sixteen_sources() {
         work_witness_cbor,
         claimed_successor: post,
       },
-      auxiliary: validation_machine_v1.TransactionFieldPreimageWitness {
-        preimage_cbor: encode_redeemer_witness_preimage([]),
-      },
+      auxiliary: validation_machine_v1.NoAuxiliaryWitness,
     },
   )
 }
@@ -4160,7 +4186,7 @@ test script_sources_discovers_an_exact_non_native_execution() {
   }
   let source_leaf = script_proof_v1.source_leaf_hash(0, #"00", script)
   let source_frontier = validation_merkle_v1.build_frontier([source_leaf])
-  let redeemer_leaf = script_proof_v1.redeemer_leaf_hash(redeemer)
+  let redeemer_leaf = script_proof_v1.redeemer_leaf_hash(0, redeemer)
   let redeemer_frontier = validation_merkle_v1.build_frontier([redeemer_leaf])
   let script_hash = script_proof_v1.versioned_script_hash(script)
   let purpose_leaf = script_proof_v1.purpose_leaf_hash(
@@ -4993,7 +5019,7 @@ test cek_redeemer_selection_binds_the_data_scan_initial_state() {
       redeemer_tx_wits: [redeemer],
     },
   }
-  let redeemer_leaf = script_proof_v1.redeemer_leaf_hash(redeemer)
+  let redeemer_leaf = script_proof_v1.redeemer_leaf_hash(0, redeemer)
   let redeemer_frontier = validation_merkle_v1.build_frontier([redeemer_leaf])
   let native_control = validation_machine_v1.NativeScriptsControlV1 {
     ..cek_context_native_control_fixture(tx),
@@ -5481,7 +5507,7 @@ test cek_context_redeemer_scalar_scan_is_content_addressed() {
   let subject = encode_midgard_tx_input(
     MidgardTxInput { tx_id: h_b, output_index: 0 },
   )
-  let redeemer_leaf = script_proof_v1.redeemer_leaf_hash(redeemer)
+  let redeemer_leaf = script_proof_v1.redeemer_leaf_hash(0, redeemer)
   let purpose_leaf = script_proof_v1.purpose_leaf_hash(0, 0, h_28_a, subject)
   let redeemer_frontier = validation_merkle_v1.build_frontier([redeemer_leaf])
   let purpose_frontier = validation_merkle_v1.build_frontier([purpose_leaf])
@@ -5606,7 +5632,7 @@ test cek_context_redeemer_map_selection_authenticates_purpose_and_redeemer() {
   let subject = encode_midgard_tx_input(
     MidgardTxInput { tx_id: h_b, output_index: 0 },
   )
-  let redeemer_leaf = script_proof_v1.redeemer_leaf_hash(redeemer)
+  let redeemer_leaf = script_proof_v1.redeemer_leaf_hash(0, redeemer)
   let purpose_leaf = script_proof_v1.purpose_leaf_hash(0, 0, h_28_a, subject)
   let redeemer_frontier = validation_merkle_v1.build_frontier([redeemer_leaf])
   let purpose_frontier = validation_merkle_v1.build_frontier([purpose_leaf])
@@ -5711,7 +5737,7 @@ test cek_context_finalize_seeds_the_exact_semantic_context_application() {
       redeemer_tx_wits: [redeemer],
     },
   }
-  let redeemer_leaf = script_proof_v1.redeemer_leaf_hash(redeemer)
+  let redeemer_leaf = script_proof_v1.redeemer_leaf_hash(0, redeemer)
   let purpose_leaf = script_proof_v1.purpose_leaf_hash(2, 0, h_28_a, h_28_a)
   let native_control = validation_machine_v1.NativeScriptsControlV1 {
     ..cek_context_native_control_fixture(tx),

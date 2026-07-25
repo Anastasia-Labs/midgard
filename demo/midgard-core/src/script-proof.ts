@@ -204,15 +204,40 @@ export const hashMidgardInlineScriptSourceLeafV1 = (input: {
   );
 };
 
-export const hashMidgardRedeemerLeafV1 = (
-  canonicalRedeemerWitnessCbor: Uint8Array,
-): Hash32 =>
-  hash32(
+export const hashMidgardRedeemerItemLeafV1 = (input: {
+  readonly redeemerIndex: number;
+  readonly itemCommitment: Uint8Array;
+}): Hash32 => {
+  if (!Number.isSafeInteger(input.redeemerIndex) || input.redeemerIndex < 0) {
+    throw new Error("redeemer item index must be a non-negative safe integer");
+  }
+  const itemCommitment = ensureHash32(
+    input.itemCommitment,
+    "redeemer item commitment",
+  );
+  return hash32(
     Buffer.concat([
       REDEEMER_LEAF_DOMAIN,
-      encodeCbor(Buffer.from(canonicalRedeemerWitnessCbor)),
+      encodeCbor(BigInt(input.redeemerIndex)),
+      encodeCbor(itemCommitment),
     ]),
   );
+};
+
+export const hashMidgardRedeemerLeafV1 = (input: {
+  readonly redeemerIndex: number;
+  readonly canonicalRedeemerWitnessCbor: Uint8Array;
+}): Hash32 => {
+  const item = buildMidgardBoundedItemV1({
+    fieldIndex: 8,
+    itemIndex: input.redeemerIndex,
+    bytes: input.canonicalRedeemerWitnessCbor,
+  });
+  return hashMidgardRedeemerItemLeafV1({
+    redeemerIndex: input.redeemerIndex,
+    itemCommitment: item.commitment,
+  });
+};
 
 export const hashMidgardScriptPurposeLeafV1 = (input: {
   readonly purposeKind: 0 | 1 | 2 | 3;

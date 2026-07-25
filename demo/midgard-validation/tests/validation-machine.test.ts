@@ -312,9 +312,7 @@ describe("deterministic validation machine", () => {
     );
     expect(scriptSourceWitnesses).toHaveLength(13);
     expect(scriptSourceWitnesses[0]?.auxiliary).toBeNull();
-    expect(scriptSourceWitnesses[1]?.auxiliary?.kind).toBe(
-      "transactionFieldPreimage",
-    );
+    expect(scriptSourceWitnesses[1]?.auxiliary).toBeNull();
     expect(scriptSourceWitnesses[2]?.auxiliary?.kind).toBe(
       "transactionFieldPairPreimage",
     );
@@ -467,6 +465,15 @@ describe("deterministic validation machine", () => {
       },
     });
     expect(scriptSourceWitnesses[1]?.auxiliary).toBeNull();
+    expect(scriptSourceWitnesses[2]?.auxiliary).toMatchObject({
+      kind: "transactionRedeemerItem",
+      collectionProof: {
+        fieldIndex: 8,
+        itemCount: 1,
+        itemIndex: 0,
+      },
+    });
+    expect(scriptSourceWitnesses[3]?.auxiliary).toBeNull();
     expect(cekWitnesses.map((witness) => witness.auxiliary?.kind)).toEqual(
       expect.arrayContaining([
         "nativeExecutionScan",

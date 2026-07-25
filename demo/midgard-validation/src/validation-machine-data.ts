@@ -859,6 +859,11 @@ export const validationAuxiliaryWitnessDataV1 = (
         byteList(auxiliary.siblings),
         proofData(auxiliary.mutationStep.proofCbor),
       ]);
+    case "transactionRedeemerItem":
+      return new Constr(34, [
+        collectionProofData(auxiliary.collectionProof),
+        redeemerData(auxiliary.redeemer),
+      ]);
   }
 };
 

@@ -111,12 +111,30 @@ pub fn redeemer_purpose_tag(purpose: MidgardRedeemerPurpose) -> Int {
   }
 }
 
-pub fn redeemer_leaf_hash(redeemer: MidgardRedeemerWitness) -> ByteArray {
+pub fn redeemer_item_leaf_hash(
+  redeemer_index: Int,
+  item_commitment: ByteArray,
+) -> ByteArray {
+  expect redeemer_index >= 0
+  expect bytearray.length(item_commitment) == 32
   redeemer_leaf_domain
-    |> bytearray.concat(
-        encode_definite_bytes(encode_midgard_redeemer_witness(redeemer)),
-      )
+    |> bytearray.concat(cbor.serialise(redeemer_index))
+    |> bytearray.concat(encode_definite_bytes(item_commitment))
     |> blake2b_256
+}
+
+pub fn redeemer_leaf_hash(
+  redeemer_index: Int,
+  redeemer: MidgardRedeemerWitness,
+) -> ByteArray {
+  redeemer_item_leaf_hash(
+    redeemer_index,
+    bounded_item_v1.from_bytes(
+      8,
+      redeemer_index,
+      encode_midgard_redeemer_witness(redeemer),
+    ),
+  )
 }
 
 pub fn signer_leaf_hash(signer_hash: ByteArray) -> ByteArray {

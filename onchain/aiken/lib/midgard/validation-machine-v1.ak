@@ -23,14 +23,13 @@ use midgard/fraud_proofs/native_tx/compact.{
 }
 use midgard/fraud_proofs/native_tx/components.{
   decode_midgard_address_witness_cbor, decode_midgard_tx_input_cbor,
-  encode_midgard_tx_input,
+  encode_midgard_redeemer_witness, encode_midgard_tx_input,
 }
 use midgard/fraud_proofs/native_tx/preimages.{
   canonical_bytes_key_precedes, decode_canonical_bytes_at,
   decode_canonical_map_header_at,
   decode_midgard_tx_byte_list_preimage_cbor,
   decode_midgard_tx_inputs_preimage_cbor, decode_midgard_tx_mint_preimage_cbor,
-  decode_midgard_tx_redeemer_witnesses_preimage_cbor,
   encode_mint_preimage,
 }
 use midgard/fraud_proofs/native_tx/transaction.{
@@ -311,6 +310,10 @@ pub type ValidationAuxiliaryWitnessV1 {
     output_cbor: ByteArray,
     siblings: List<ByteArray>,
     proof: Proof,
+  }
+  TransactionRedeemerItemWitness {
+    collection_proof: bounded_collection_v1.ItemProofV1,
+    redeemer: MidgardRedeemerWitness,
   }
 }
 
@@ -5770,6 +5773,7 @@ fn resolve_lookup_step(
     ValueMintAssetWitness { .. } -> False
     LedgerDeltaReplayWitness { .. } -> False
     LedgerDeltaOutputWitness { .. } -> False
+    TransactionRedeemerItemWitness { .. } -> False
     RequiredSignerItemWitness { .. } -> False
     NativeScriptTokenWitness { .. } -> False
     NativeScriptFrameWitness { .. } -> False
@@ -6302,40 +6306,11 @@ fn redeemer_data_is_canonical(redeemer: MidgardRedeemerWitness) -> Bool {
   }
 }
 
-fn redeemer_pointer_is_absent(
-  redeemer: MidgardRedeemerWitness,
-  remaining: List<MidgardRedeemerWitness>,
-) -> Bool {
-  when remaining is {
-    [] -> True
-    [other, ..rest] -> and {
-        or {
-          other.purpose != redeemer.purpose,
-          other.index != redeemer.index,
-        },
-        redeemer_pointer_is_absent(redeemer, rest),
-      }
+fn redeemer_is_well_formed(redeemer: MidgardRedeemerWitness) -> Bool {
+  and {
+    redeemer_purpose_is_supported(redeemer),
+    redeemer_data_is_canonical(redeemer),
   }
-}
-
-fn redeemers_are_well_formed(redeemers: List<MidgardRedeemerWitness>) -> Bool {
-  when redeemers is {
-    [] -> True
-    [redeemer, ..rest] -> and {
-        redeemer_purpose_is_supported(redeemer),
-        redeemer_data_is_canonical(redeemer),
-        redeemer_pointer_is_absent(redeemer, rest),
-        redeemers_are_well_formed(rest),
-      }
-  }
-}
-
-fn redeemer_frontier(
-  redeemers: List<MidgardRedeemerWitness>,
-) -> validation_merkle_v1.BuiltFrontier {
-  redeemers
-    |> list.map(script_proof_v1.redeemer_leaf_hash)
-    |> validation_merkle_v1.build_frontier
 }
 
 pub fn encode_script_sources_discovery_witness(
@@ -6573,74 +6548,102 @@ fn script_sources_stage_one(
   auxiliary: ValidationAuxiliaryWitnessV1,
   control: ScriptSourcesControlV1,
 ) -> Bool {
-  expect TransactionFieldPreimageWitness { preimage_cbor } = auxiliary
-  let field_verified = verify_midgard_transaction_field_preimage_v1(
+  let Pair(_, witness_set) = verify_native_tx_proof_source_v1(
     pre.transaction_id,
-    pre.transaction_commitment,
     control.compact_cbor,
     control.witness_set_compact_cbor,
     control.field_preimage_lengths_cbor,
-    8,
-    preimage_cbor,
   )
-  let redeemers = decode_midgard_tx_redeemer_witnesses_preimage_cbor(
-    preimage_cbor,
-  )
-  let built_redeemers = redeemer_frontier(redeemers)
-  let rejection_code = if list.length(redeemers) > 16 {
-    Some(reject_script_execution_count)
-  } else if !redeemers_are_well_formed(redeemers) {
-    Some(reject_invalid_field_type)
-  } else {
-    None
-  }
-  and {
-    field_verified,
-    control.redeemer_count == 0,
-    control.redeemer_peaks == [],
+  let redeemer_commitment = witness_set.redeemer_tx_wits_hash
+  let empty_redeemer_commitment = bounded_collection_v1.from_items(8, [])
+  let common_control_is_initial = and {
+    control.source_total_count == control.source_count,
     control.resolved_item_peaks == [],
-    when rejection_code is {
-      Some(code) ->
-        rejected_successor_is_exact(pre, witness.claimed_successor, code)
-      None -> {
-        let next_control = encode_script_sources_witness(
-          control.compact_cbor,
-          control.witness_set_compact_cbor,
-          control.field_preimage_lengths_cbor,
-          control.context_cbor,
-          control.resolved_input_count,
-          control.resolved_inputs_accumulator,
-          control.signer_count,
-          control.signer_frontier_commitment,
-          control.resolved_item_peaks,
-          2,
-          control.source_count,
-          control.source_peaks,
-          built_redeemers.count,
-          built_redeemers.peaks,
-          0,
-          initial_resolution_accumulator(),
-          empty_resolution_schedule_hash(),
-          0,
-          0,
-          validation_merkle_v1.empty_frontier(),
-          0,
-          0,
-          validation_merkle_v1.empty_frontier(),
-          [],
-          control.source_total_count,
-          built_redeemers.count,
+    control.replay_cursor == 0,
+    control.spend_index == 0,
+    control.purpose_count == 0,
+    control.output_cursor == 0,
+    control.output_count == 0,
+    control.receive_hashes == [],
+  }
+  if redeemer_commitment == empty_redeemer_commitment {
+    and {
+      common_control_is_initial,
+      auxiliary == NoAuxiliaryWitness,
+      control.redeemer_count == 0,
+      control.redeemer_total_count == 0,
+      control.redeemer_peaks == [],
+      script_sources_control_successor_is_exact(
+        pre,
+        witness,
+        ScriptSourcesControlV1 { ..control, stage: 2 },
+      ),
+    }
+  } else if and {
+    control.redeemer_total_count > 0,
+    control.redeemer_count == control.redeemer_total_count,
+  } {
+    and {
+      common_control_is_initial,
+      auxiliary == NoAuxiliaryWitness,
+      script_sources_control_successor_is_exact(
+        pre,
+        witness,
+        ScriptSourcesControlV1 { ..control, stage: 2 },
+      ),
+    }
+  } else {
+    expect
+        TransactionRedeemerItemWitness { collection_proof, redeemer }
+      = auxiliary
+    let active_total_count = if control.redeemer_total_count == 0 {
+      collection_proof.item_count
+    } else {
+      control.redeemer_total_count
+    }
+    let item_commitment = bounded_item_v1.from_bytes(
+      8,
+      collection_proof.item_index,
+      encode_midgard_redeemer_witness(redeemer),
+    )
+    and {
+      common_control_is_initial,
+      active_total_count > 0,
+      active_total_count <= max_tx_size_derived_collection_item_count,
+      collection_proof.field_index == 8,
+      collection_proof.item_count == active_total_count,
+      collection_proof.item_index == control.redeemer_count,
+      collection_proof.item_commitment == item_commitment,
+      bounded_collection_v1.verify_item(
+        redeemer_commitment,
+        collection_proof,
+      ),
+      if !redeemer_is_well_formed(redeemer) {
+        rejected_successor_is_exact(
+          pre,
+          witness.claimed_successor,
+          reject_invalid_field_type,
         )
-        and {
-          witness.claimed_successor.phase == validation_trace_v1.ScriptSources,
-          witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
-            validation_trace_v1.ScriptSources,
-            pre.program_counter + 1,
-            next_control,
-          ),
-        }
-      }
-    },
+      } else {
+        script_sources_control_successor_is_exact(
+          pre,
+          witness,
+          ScriptSourcesControlV1 {
+            ..control,
+            redeemer_count: control.redeemer_count + 1,
+            redeemer_peaks: validation_merkle_v1.append_leaf(
+              control.redeemer_count,
+              control.redeemer_peaks,
+              script_proof_v1.redeemer_item_leaf_hash(
+                control.redeemer_count,
+                item_commitment,
+              ),
+            ),
+            redeemer_total_count: active_total_count,
+          },
+        )
+      },
+    }
   }
 }
 
@@ -7950,7 +7953,8 @@ fn script_sources_stage_ten(
     }
   } else {
     expect RedeemerScanWitness { redeemer_index, redeemer, siblings } = auxiliary
-    let redeemer_leaf = script_proof_v1.redeemer_leaf_hash(redeemer)
+    let redeemer_leaf =
+      script_proof_v1.redeemer_leaf_hash(redeemer_index, redeemer)
     if and {
       redeemer_index == discovery.redeemer_cursor,
       validation_merkle_v1.verify_membership(
@@ -8142,7 +8146,8 @@ fn script_sources_stage_twelve(
     }
   } else {
     expect RedeemerScanWitness { redeemer_index, redeemer, siblings } = auxiliary
-    let redeemer_leaf = script_proof_v1.redeemer_leaf_hash(redeemer)
+    let redeemer_leaf =
+      script_proof_v1.redeemer_leaf_hash(redeemer_index, redeemer)
     if and {
       redeemer_index == discovery.redeemer_cursor,
       validation_merkle_v1.verify_membership(
@@ -10657,7 +10662,7 @@ fn verify_cek_redeemer_selection(
   completed_memory: Int,
 ) -> Bool {
   expect RedeemerScanWitness { redeemer_index, redeemer, siblings } = auxiliary
-  let leaf = script_proof_v1.redeemer_leaf_hash(redeemer)
+  let leaf = script_proof_v1.redeemer_leaf_hash(redeemer_index, redeemer)
   let selected = CekContextControlV1 {
     ..context_control,
     stage: 1,
@@ -11477,7 +11482,8 @@ fn verify_cek_redeemer_data_step(
       subject,
       purpose_siblings,
     } -> {
-      let redeemer_leaf = script_proof_v1.redeemer_leaf_hash(redeemer)
+      let redeemer_leaf =
+        script_proof_v1.redeemer_leaf_hash(redeemer_index, redeemer)
       let purpose_leaf = script_proof_v1.purpose_leaf_hash(
         purpose_kind,
         purpose_index,

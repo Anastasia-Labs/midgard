@@ -19,6 +19,7 @@ import {
   hashMidgardCekMachineStateV1,
   hashMidgardMintAssetLeafV1,
   hashMidgardOutputLeafV1,
+  hashMidgardRedeemerItemLeafV1,
   hashMidgardRedeemerLeafV1,
   hashMidgardResolvedContextItemLeafV1,
   hashMidgardScriptExecutionLeafV1,
@@ -100,7 +101,6 @@ import {
   cardanoScriptPurposeData,
   type DecodedMidgardRedeemer,
   decodeMidgardRedeemers,
-  midgardRedeemerPointerKey,
   type MidgardScriptPurpose,
   midgardScriptPurposeData,
 } from "./midgard-redeemers.js";
@@ -284,6 +284,11 @@ export type ValidationMachineWorkWitness = {
         readonly redeemerIndex: number;
         readonly redeemer: DecodedMidgardRedeemer;
         readonly siblings: readonly Buffer[];
+      }
+    | {
+        readonly kind: "transactionRedeemerItem";
+        readonly collectionProof: MidgardBoundedCollectionItemProofV1;
+        readonly redeemer: DecodedMidgardRedeemer;
       }
     | {
         readonly kind: "nativeExecutionScan";
@@ -1168,6 +1173,10 @@ export const buildDeterministicValidationMachineTrace = (
       fieldIndex: 7,
       preimageCbor: fieldPreimages[7]!.preimageCbor,
     });
+    const redeemerWitnessesCollection = deriveMidgardNativeFieldCollectionV1({
+      fieldIndex: 8,
+      preimageCbor: fieldPreimages[8]!.preimageCbor,
+    });
     const inputSetScanItems = [
       ...spendInputsCollection.items.map((item) => ({
         sourceKind: "spend" as const,
@@ -1403,18 +1412,16 @@ export const buildDeterministicValidationMachineTrace = (
           [redeemer.exUnits.memory, redeemer.exUnits.steps],
         ]),
     );
-    const redeemerFrontier = buildMidgardValidationMerkleFrontierV1(
-      canonicalRedeemerWitnessCbors.map(hashMidgardRedeemerLeafV1),
+    const redeemerLeafHashes = canonicalRedeemerWitnessCbors.map(
+      (canonicalRedeemerWitnessCbor, redeemerIndex) =>
+        hashMidgardRedeemerLeafV1({
+          redeemerIndex,
+          canonicalRedeemerWitnessCbor,
+        }),
     );
-    const duplicateRedeemerPointer = (() => {
-      const seen = new Set<string>();
-      for (const redeemer of decodedProofRedeemers) {
-        const pointer = midgardRedeemerPointerKey(redeemer);
-        if (seen.has(pointer)) return pointer;
-        seen.add(pointer);
-      }
-      return null;
-    })();
+    const redeemerFrontier = buildMidgardValidationMerkleFrontierV1(
+      redeemerLeafHashes,
+    );
     const encodeFrontierPeaks = (
       frontier: MidgardValidationMerkleFrontierV1,
     ): readonly (readonly [bigint, Buffer])[] =>
@@ -2852,26 +2859,78 @@ export const buildDeterministicValidationMachineTrace = (
               ),
             );
           }
-          pushWitness(
-            "scriptSources",
+          let authenticatedRedeemerFrontier = emptyValidationFrontier;
+          let redeemerTotalCount = 0;
+          const currentRedeemerWitness = (): Buffer =>
             scriptSourcesWitnessCbor({
               ...scriptSourceControl,
               stage: 1,
               sourceFrontier: inlineScriptSourceFrontier,
-              redeemerFrontier: emptyValidationFrontier,
-            }),
-            {
-              kind: "transactionFieldPreimage",
-              preimageCbor: fieldPreimages[8]!.preimageCbor,
-            },
+              redeemerFrontier: authenticatedRedeemerFrontier,
+              sourceTotalCount: inlineSourceTotalCount,
+              redeemerTotalCount,
+            });
+          for (const item of redeemerWitnessesCollection.items) {
+            const redeemer = decodedProofRedeemers[item.itemIndex];
+            const canonicalRedeemerWitnessCbor =
+              canonicalRedeemerWitnessCbors[item.itemIndex];
+            if (
+              redeemer === undefined ||
+              canonicalRedeemerWitnessCbor === undefined ||
+              !item.bytes.equals(canonicalRedeemerWitnessCbor)
+            ) {
+              return yield* Effect.fail(
+                new Error(
+                  "bounded redeemer item diverged from its canonical decoded witness",
+                ),
+              );
+            }
+            pushWitness(
+              "scriptSources",
+              currentRedeemerWitness(),
+              {
+                kind: "transactionRedeemerItem",
+                collectionProof:
+                  buildMidgardBoundedCollectionItemProofV1(
+                    redeemerWitnessesCollection,
+                    item.itemIndex,
+                  ),
+                redeemer,
+              },
+            );
+            if (redeemerTotalCount === 0) {
+              redeemerTotalCount =
+                redeemerWitnessesCollection.items.length;
+            }
+            authenticatedRedeemerFrontier =
+              appendMidgardValidationMerkleLeafV1(
+                authenticatedRedeemerFrontier,
+                hashMidgardRedeemerItemLeafV1({
+                  redeemerIndex: item.itemIndex,
+                  itemCommitment: item.commitment,
+                }),
+              );
+          }
+          pushWitness(
+            "scriptSources",
+            currentRedeemerWitness(),
           );
           if (
-            rejection !== null &&
-            terminalPhase === "scriptSources" &&
-            duplicateRedeemerPointer !== null
+            !commitMidgardValidationMerkleFrontierV1(
+              authenticatedRedeemerFrontier,
+            ).equals(
+              commitMidgardValidationMerkleFrontierV1(
+                redeemerFrontier,
+              ),
+            )
           ) {
-            stoppedAtRejection = true;
-          } else {
+            return yield* Effect.fail(
+              new Error(
+                "authenticated redeemer fold diverged from the canonical redeemer frontier",
+              ),
+            );
+          }
+          {
             pushWitness(
               "scriptSources",
               scriptSourcesWitnessCbor({
@@ -3256,9 +3315,7 @@ export const buildDeterministicValidationMachineTrace = (
                 const purposeLeaves = scriptPurposeEntries.map(
                   (entry) => entry.leaf,
                 );
-                const redeemerLeaves = canonicalRedeemerWitnessCbors.map(
-                  hashMidgardRedeemerLeafV1,
-                );
+                const redeemerLeaves = redeemerLeafHashes;
                 const discoveryWitnessCbor = (
                   stage: number,
                   discovery: ScriptDiscoveryTraceControl,
@@ -3823,9 +3880,7 @@ export const buildDeterministicValidationMachineTrace = (
         } else {
           const sourceLeaves = scriptSourceEntries.map((entry) => entry.leaf);
           const purposeLeaves = scriptPurposeEntries.map((entry) => entry.leaf);
-          const redeemerLeaves = canonicalRedeemerWitnessCbors.map(
-            hashMidgardRedeemerLeafV1,
-          );
+          const redeemerLeaves = redeemerLeafHashes;
           const resolvedLeaves = resolutionScheduleNodes.map(
             (node, itemIndex) => {
               const value = ledgerState.get(node.key.toString("hex"));
