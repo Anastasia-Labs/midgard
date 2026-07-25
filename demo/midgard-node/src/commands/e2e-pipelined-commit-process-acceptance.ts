@@ -73,7 +73,7 @@ const CRASH_MATRIX_CHECKPOINTS = [
 ] as const satisfies readonly PipelinedCommitCrashCheckpoint[];
 
 const RESET_ATTESTATION_SCHEMA =
-  "midgard-phase4-local-devnet-reset-attestation-v3";
+  "midgard-phase4-local-devnet-reset-attestation-v1";
 const ISOLATED_DATABASE_PREFIX = "midgard_phase4_process_";
 const ISOLATED_COMPOSE_PREFIX = "midgard_phase4_process_";
 
@@ -333,7 +333,7 @@ const journalHeaderEndTimeMs = (
   if (state.activeJournal === null) {
     throw new Error("T1 recovery cannot decode a missing active journal");
   }
-  const header = Data.from(state.activeJournal.headerCbor, SDK.Header);
+  const header = Data.from(state.activeJournal.headerCbor, SDK.HeaderV1);
   const endTimeMs = Number(header.endTime);
   if (!Number.isSafeInteger(endTimeMs) || endTimeMs <= 0) {
     throw new Error("T1 pending journal header has an invalid end time");
@@ -485,9 +485,6 @@ export const validatePhase4ProcessIsolationValues = (
   }
   if (requiredValue(values, "L1_PROVIDER") !== "Kupmios") {
     throw new Error("Phase 4 process acceptance requires L1_PROVIDER=Kupmios");
-  }
-  if ((values.L1_PROVIDER_FAILOVER ?? "").trim().length > 0) {
-    throw new Error("Phase 4 process acceptance forbids L1 provider failover");
   }
   if (
     requiredValue(values, "MIN_FEE_A") !== "0" ||
@@ -908,7 +905,7 @@ const loadPhase4ProcessIsolation = async (
   };
   if (
     snapshotIdentity.schemaVersion !==
-      "midgard-phase4-matched-snapshot-identity-v2" ||
+      "midgard-phase4-matched-snapshot-identity-v1" ||
     snapshotIdentity.composeProject !== validated.composeProject ||
     snapshotIdentity.networkMagic !== validated.networkMagic ||
     snapshotIdentity.postgresDatabase !== validated.postgresDatabase ||

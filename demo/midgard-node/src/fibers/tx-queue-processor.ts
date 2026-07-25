@@ -286,6 +286,7 @@ const admissionToQueuedTx = (
 ): QueuedTx => ({
   txId: admission.tx_id,
   txCbor: admission.tx_canonical_cbor,
+  programMaterialSidecarCbor: admission.cek_program_material_sidecar_cbor,
   arrivalSeq: admission.arrival_seq,
   createdAt: admission.first_seen_at,
 });
@@ -366,6 +367,7 @@ const runPhaseAForBatch = (
     minFeeB: nodeConfig.MIN_FEE_B,
     concurrency: nodeConfig.VALIDATION_PHASE_A_CONCURRENCY,
     strictnessProfile: nodeConfig.VALIDATION_STRICTNESS_PROFILE,
+    consensusProfile: pool.consensusProfile,
   };
   if (
     pool.poolSize === 0 ||

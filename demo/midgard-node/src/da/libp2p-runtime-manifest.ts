@@ -2,7 +2,7 @@ import { writeFile } from "node:fs/promises";
 
 import {
   DA_LIBP2P_RUNTIME_MANIFEST_IDENTITY_SOURCE,
-  DA_LIBP2P_RUNTIME_MANIFEST_SCHEMA_VERSION,
+  DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
   DA_TRANSPORT_LIMITS_V1,
   normalizeDaDeploymentFingerprintHex,
 } from "@al-ft/midgard-core/da-transport";
@@ -34,7 +34,7 @@ export type DaLibp2pRuntimeManifestOptions = {
   readonly target: DaLibp2pRuntimeManifestTarget;
   readonly profile: DaLibp2pRuntimeProfile;
   readonly contractDeploymentInfoPath: string;
-  readonly network?: string;
+  readonly network: string;
   readonly producerPrivateKeySource: string;
   readonly committeeMembers: readonly DaLibp2pRuntimeCommitteeMemberInput[];
   readonly threshold: number;
@@ -121,8 +121,8 @@ export const generateDaLibp2pRuntimeManifest = async (
       : [producerAddr];
 
   return {
-    schemaVersion: DA_LIBP2P_RUNTIME_MANIFEST_SCHEMA_VERSION,
-    ...(options.network === undefined ? {} : { network: options.network }),
+    schemaVersion: DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
+    network: options.network,
     deployment: {
       fingerprint: deploymentFingerprint,
       contract_deployment_manifest_id: deploymentFingerprint,

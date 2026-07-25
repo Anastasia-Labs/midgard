@@ -52,7 +52,7 @@ export MIDGARD_DOTENV_MODE=disabled
 # bootstrap must derive identity only from this run and its newly created
 # nonce/manifest; stale coordinates must never redirect output or select an
 # existing one-shot UTxO.
-unset L1_PROVIDER_FAILOVER HUB_ORACLE_ONE_SHOT_TX_HASH HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX
+unset HUB_ORACLE_ONE_SHOT_TX_HASH HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX
 unset MIDGARD_DEPLOYMENT_MANIFEST_PATH MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH
 export NETWORK=Custom L1_PROVIDER=Kupmios RUN_GENESIS_ON_STARTUP=false MIN_FEE_A=0 MIN_FEE_B=0
 upsert_private_env MIN_FEE_A 0 "$node_env"

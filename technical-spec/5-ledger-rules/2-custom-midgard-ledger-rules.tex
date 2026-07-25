@@ -7,7 +7,12 @@
 
 \subsection{Rule: Is valid}
 
-% must be true! until we have scripts
+Every normal canonical V1 L2 transaction has the canonical \code{TxIsValid} tag.
+A forced transaction carries the operator's claimed validity, which is checked
+by the same deterministic validation machine used for normal transactions.
+A valid forced transaction applies the accepted ledger delta; an invalid
+forced transaction is an exact no-op. Either misclassification is
+challengeable on L1 (see \cref{h:transaction-order-event}).
 
 \subsection{Rule: No auxiliary data}
 
@@ -19,8 +24,46 @@
 
 \subsection{Rule: Only zero withdrawals}
 
-\subsection{Rule: No mints}
+\subsection{Rule: Mint and burn authorization}
 
-% TODO: clarify
+For every canonical V1 transaction (t), the multi-asset conservation equation is:
+\begin{equation*}
+    \T{inputs}(t) + \T{mint}(t) -
+    \T{fee}(t) - \T{outputs}(t) = 0.
+\end{equation*}
+Every non-zero policy in \code{mint} must be authorized by the corresponding
+native, PlutusV3, or MidgardV1 policy execution. Both the conservation equation
+and the policy verdict are instructions in the L1-disputable validation
+machine. Mint/burn APIs are therefore retained across the SDK, admission, DA,
+and proof surfaces.
+
+\subsection{Rule: Canonical V1 script surface}
+
+Canonical V1 supports reference inputs, inline and reference scripts, script
+witnesses, redeemers, required observers, script payment credentials, and
+protected outputs. Their source resolution, purpose construction, integrity
+binding, execution, and resulting ledger delta are deterministic
+validation-machine instructions independently verifiable on L1.
+
+Unknown languages, program versions, purposes, redeemer encodings, reference
+sources, or instructions fail closed.
+
+\subsection{Rule: Forced program-material availability}
+
+A canonical V1 forced submitter may publish each canonical CEK material node at
+the permissionless program-material validator before publishing the
+transaction order. Each inline datum contains the material kind, its
+32-byte typed content root, and one bounded preimage. The validator has no
+successful spending path, so published material is append-only. The program
+envelope in the transaction commits the term root, reachable-node count, and
+material-byte count; no unbounded list of publication references is added to
+the order datum.
+
+The node recomputes every typed root, traverses the graph from the committed
+term root, and persists only canonical nodes. Missing or malformed material
+cannot be interpreted as a script failure: a due canonical V1 block build fails
+closed until the complete authenticated graph is available. A challenger may
+reveal the same independently bounded node preimages to the L1 validation
+machine.
 
 \end{document}

@@ -4,7 +4,7 @@ import {
   writeTextFileAtomic,
 } from "@/files/atomic-write.js";
 
-export const E2E_SUMMARY_SCHEMA_VERSION = "midgard-e2e-summary-v2";
+export const E2E_SUMMARY_SCHEMA_VERSION = "midgard-e2e-summary-v1";
 
 export type RunVerdict =
   | "success"

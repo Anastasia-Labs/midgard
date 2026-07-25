@@ -1141,10 +1141,10 @@ const ensureSchedulerAlignedForCommit = (
               currentStartTime,
               schedulerSlotSnapshot,
             );
-      const legacyOneShiftCatchUp =
+      const previousShiftCatchUp =
         startTimeMode === "previous-shift-end" &&
         currentStartTime <= targetStartTime;
-      if (targetStartTime < validFrom && !legacyOneShiftCatchUp) {
+      if (targetStartTime < validFrom && !previousShiftCatchUp) {
         return yield* Effect.fail(
           new SDK.StateQueueError({
             message:

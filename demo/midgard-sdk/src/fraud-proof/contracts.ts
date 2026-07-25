@@ -48,8 +48,67 @@ export const INVALID_RANGE_FAULT_PROOF_TITLES = {
 } as const;
 
 export const TRANSITION_TRACE_FAULT_PROOF_TITLES = {
-  proof: "fraud_proofs/transition_trace/proof.main.spend",
+  route: "fraud_proofs/transition_trace/route_v1.main.spend",
+  control: "fraud_proofs/transition_trace/control_v1.main.spend",
+  source: "fraud_proofs/transition_trace/source_v1.main.spend",
+  withdrawal: "fraud_proofs/transition_trace/withdrawal_v1.main.spend",
+  forced: "fraud_proofs/transition_trace/forced_v1.main.spend",
+  accepted: "fraud_proofs/transition_trace/accepted_transaction_v1.main.spend",
+  deposit: "fraud_proofs/transition_trace/deposit_v1.main.spend",
+  l1Event: "fraud_proofs/transition_trace/l1_event_v1.main.spend",
+  duplicate: "fraud_proofs/transition_trace/duplicate_v1.main.spend",
 } as const;
+
+export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
+  dispute: "fraud_proofs/validation_trace/dispute_v1.main.spend",
+  source: "fraud_proofs/validation_trace/source_v1.main.spend",
+  game: "fraud_proofs/validation_trace/game_v1.main.spend",
+  boundary: "fraud_proofs/validation_trace/boundary_v1.main.spend",
+  timeout: "fraud_proofs/validation_trace/timeout_v1.main.spend",
+  award: "fraud_proofs/validation_trace/award_v1.main.spend",
+  prepares: {
+    canonicalDecode:
+      "fraud_proofs/validation_trace/canonical_decode_v1.main.spend",
+    compactBinding:
+      "fraud_proofs/validation_trace/compact_binding_v1.main.spend",
+    staticLedgerRules:
+      "fraud_proofs/validation_trace/static_ledger_rules_v1.main.spend",
+    inputSets: "fraud_proofs/validation_trace/input_sets_v1.main.spend",
+    signatures: "fraud_proofs/validation_trace/signatures_v1.main.spend",
+    phaseANativeScripts:
+      "fraud_proofs/validation_trace/phase_a_native_scripts_v1.main.spend",
+    phaseAScriptPreconditions:
+      "fraud_proofs/validation_trace/phase_a_script_preconditions_v1.main.spend",
+  },
+  semantics: {
+    canonicalDecode:
+      "fraud_proofs/validation_trace/canonical_decode_semantic_v1.main.spend",
+    compactBinding:
+      "fraud_proofs/validation_trace/compact_binding_semantic_v1.main.spend",
+    staticLedgerRules:
+      "fraud_proofs/validation_trace/static_ledger_rules_semantic_v1.main.spend",
+    inputSets:
+      "fraud_proofs/validation_trace/input_sets_semantic_v1.main.spend",
+    signatures:
+      "fraud_proofs/validation_trace/signatures_semantic_v1.main.spend",
+    phaseANativeScripts:
+      "fraud_proofs/validation_trace/phase_a_native_scripts_semantic_v1.main.spend",
+    phaseAScriptPreconditions:
+      "fraud_proofs/validation_trace/phase_a_script_preconditions_semantic_v1.main.spend",
+  },
+  directResolvers: {
+    resolveInputs: "fraud_proofs/validation_trace/resolve_inputs_v1.main.spend",
+    scriptSources: "fraud_proofs/validation_trace/script_sources_v1.main.spend",
+    nativeScripts: "fraud_proofs/validation_trace/native_scripts_v1.main.spend",
+    scriptIntegrity:
+      "fraud_proofs/validation_trace/script_integrity_v1.main.spend",
+    cek: "fraud_proofs/validation_trace/cek_v1.main.spend",
+    valueAndMint: "fraud_proofs/validation_trace/value_and_mint_v1.main.spend",
+    ledgerDelta: "fraud_proofs/validation_trace/ledger_delta_v1.main.spend",
+  },
+} as const;
+
+export const VALIDATION_TRACE_RESOLVER_COUNT_V1 = 14;
 
 export const FAULT_PROOF_SHARED_TITLES = {
   computationThreadMint: "computation_thread.mint.mint",
@@ -100,7 +159,84 @@ export type TransitionTraceFaultProofContracts = {
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
   readonly transitionTrace: FraudProofChain & {
-    readonly steps: readonly [SpendingValidator];
+    readonly route: SpendingValidator;
+    readonly finals: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+    readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+  };
+};
+
+export type ValidationTraceDisputeFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly validationTraceDispute: FraudProofChain & {
+    readonly opener: SpendingValidator;
+    readonly source: SpendingValidator;
+    readonly game: SpendingValidator;
+    readonly boundary: SpendingValidator;
+    readonly timeout: SpendingValidator;
+    readonly award: SpendingValidator;
+    readonly prepareResolvers: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+    readonly semanticResolvers: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+    readonly directResolvers: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+    readonly resolvers: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
   };
 };
 
@@ -111,6 +247,7 @@ export type FaultProofContracts = {
   readonly nonExistentInput: NonExistentInputFaultProofContracts["nonExistentInput"];
   readonly invalidRange: InvalidRangeFaultProofContracts["invalidRange"];
   readonly transitionTrace: TransitionTraceFaultProofContracts["transitionTrace"];
+  readonly validationTraceDispute: ValidationTraceDisputeFaultProofContracts["validationTraceDispute"];
 };
 
 type SharedFaultProofContracts = {
@@ -136,6 +273,9 @@ export type BuildInvalidRangeFaultProofContractsParams =
   BuildFaultProofContractsParams;
 
 export type BuildTransitionTraceFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+
+export type BuildValidationTraceDisputeFaultProofContractsParams =
   BuildFaultProofContractsParams;
 
 export const parseFaultProofBlueprint = (
@@ -546,20 +686,330 @@ const buildTransitionTraceChain = ({
   Error
 > =>
   Effect.gen(function* () {
-    const proof = yield* tryBuild(
-      "Failed to build transition-trace proof validator",
+    const finalSpecs = [
+      ["control", false],
+      ["source", false],
+      ["withdrawal", false],
+      ["forced", false],
+      ["accepted", false],
+      ["deposit", true],
+      ["l1Event", true],
+      ["duplicate", false],
+    ] as const;
+    const builtFinals: SpendingValidator[] = [];
+    for (const [name, needsHub] of finalSpecs) {
+      builtFinals.push(
+        yield* tryBuild(
+          `Failed to build transition-trace ${name} final validator`,
+          () =>
+            makeSpendingValidator(
+              network,
+              applyParamsToScript(
+                getCompiledScript(
+                  blueprint,
+                  TRANSITION_TRACE_FAULT_PROOF_TITLES[name],
+                ),
+                [
+                  computationThread.policyId,
+                  fraudProof.policyId,
+                  fraudProofTokenAddressData,
+                  ...(needsHub ? [hubOraclePolicyId] : []),
+                ],
+              ),
+            ),
+        ),
+      );
+    }
+    const finals = [
+      builtFinals[0]!,
+      builtFinals[1]!,
+      builtFinals[2]!,
+      builtFinals[3]!,
+      builtFinals[4]!,
+      builtFinals[5]!,
+      builtFinals[6]!,
+      builtFinals[7]!,
+    ] as const;
+    if (
+      new Set(finals.map(({ spendingScriptHash }) => spendingScriptHash))
+        .size !== finals.length
+    ) {
+      return yield* Effect.fail(
+        new Error("Transition-trace final validator hashes must be distinct"),
+      );
+    }
+    const finalHashesSchema = Data.Array(Data.Bytes());
+    type FinalHashes = Data.Static<typeof finalHashesSchema>;
+    const FinalHashes = finalHashesSchema as unknown as FinalHashes;
+    const finalHashesData = Data.from(
+      Data.to(
+        finals.map(({ spendingScriptHash }) => spendingScriptHash),
+        FinalHashes,
+      ),
+    );
+    const route = yield* tryBuild(
+      "Failed to build transition-trace route validator",
       () =>
         makeSpendingValidator(
           network,
           applyParamsToScript(
             getCompiledScript(
               blueprint,
-              TRANSITION_TRACE_FAULT_PROOF_TITLES.proof,
+              TRANSITION_TRACE_FAULT_PROOF_TITLES.route,
+            ),
+            [finalHashesData, computationThread.policyId],
+          ),
+        ),
+    );
+
+    return {
+      firstStep: route,
+      route,
+      finals,
+      steps: [route, ...finals],
+    };
+  });
+
+const buildValidationTraceDisputeChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+}: {
+  readonly blueprint: FaultProofBlueprint;
+  readonly network: Network;
+  readonly hubOraclePolicyId: string;
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fraudProofTokenAddressData: Data;
+}): Effect.Effect<
+  ValidationTraceDisputeFaultProofContracts["validationTraceDispute"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const award = yield* tryBuild(
+      "Failed to build validation-trace award validator",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(
+            getCompiledScript(
+              blueprint,
+              VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.award,
             ),
             [
               computationThread.policyId,
               fraudProof.policyId,
               fraudProofTokenAddressData,
+            ],
+          ),
+        ),
+    );
+
+    const semanticTitles = Object.values(
+      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics,
+    );
+    const builtSemanticResolvers: SpendingValidator[] = [];
+    for (const [index, title] of semanticTitles.entries()) {
+      builtSemanticResolvers.push(
+        yield* tryBuild(
+          `Failed to build validation-trace semantic resolver ${index.toString()}`,
+          () =>
+            makeSpendingValidator(
+              network,
+              applyParamsToScript(getCompiledScript(blueprint, title), [
+                award.spendingScriptHash,
+                computationThread.policyId,
+              ]),
+            ),
+        ),
+      );
+    }
+    if (builtSemanticResolvers.length !== 7) {
+      return yield* Effect.fail(
+        new Error("Validation-trace semantic resolver set is incomplete"),
+      );
+    }
+    const semanticResolvers = [
+      builtSemanticResolvers[0]!,
+      builtSemanticResolvers[1]!,
+      builtSemanticResolvers[2]!,
+      builtSemanticResolvers[3]!,
+      builtSemanticResolvers[4]!,
+      builtSemanticResolvers[5]!,
+      builtSemanticResolvers[6]!,
+    ] as const;
+
+    const prepareTitles = Object.values(
+      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.prepares,
+    );
+    const builtPrepareResolvers: SpendingValidator[] = [];
+    for (const [index, title] of prepareTitles.entries()) {
+      builtPrepareResolvers.push(
+        yield* tryBuild(
+          `Failed to build validation-trace prepare resolver ${index.toString()}`,
+          () =>
+            makeSpendingValidator(
+              network,
+              applyParamsToScript(getCompiledScript(blueprint, title), [
+                semanticResolvers[index]!.spendingScriptHash,
+                computationThread.policyId,
+              ]),
+            ),
+        ),
+      );
+    }
+    if (builtPrepareResolvers.length !== 7) {
+      return yield* Effect.fail(
+        new Error("Validation-trace prepare resolver set is incomplete"),
+      );
+    }
+    const prepareResolvers = [
+      builtPrepareResolvers[0]!,
+      builtPrepareResolvers[1]!,
+      builtPrepareResolvers[2]!,
+      builtPrepareResolvers[3]!,
+      builtPrepareResolvers[4]!,
+      builtPrepareResolvers[5]!,
+      builtPrepareResolvers[6]!,
+    ] as const;
+
+    const directTitles = Object.values(
+      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.directResolvers,
+    );
+    const builtDirectResolvers: SpendingValidator[] = [];
+    for (const [index, title] of directTitles.entries()) {
+      builtDirectResolvers.push(
+        yield* tryBuild(
+          `Failed to build validation-trace direct resolver ${index.toString()}`,
+          () =>
+            makeSpendingValidator(
+              network,
+              applyParamsToScript(getCompiledScript(blueprint, title), [
+                computationThread.policyId,
+                fraudProof.policyId,
+                fraudProofTokenAddressData,
+              ]),
+            ),
+        ),
+      );
+    }
+    if (builtDirectResolvers.length !== 7) {
+      return yield* Effect.fail(
+        new Error("Validation-trace direct resolver set is incomplete"),
+      );
+    }
+    const directResolvers = [
+      builtDirectResolvers[0]!,
+      builtDirectResolvers[1]!,
+      builtDirectResolvers[2]!,
+      builtDirectResolvers[3]!,
+      builtDirectResolvers[4]!,
+      builtDirectResolvers[5]!,
+      builtDirectResolvers[6]!,
+    ] as const;
+    const resolvers = [...prepareResolvers, ...directResolvers] as const;
+    if (
+      new Set(resolvers.map(({ spendingScriptHash }) => spendingScriptHash))
+        .size !== VALIDATION_TRACE_RESOLVER_COUNT_V1
+    ) {
+      return yield* Effect.fail(
+        new Error("Validation-trace resolver hashes must be distinct"),
+      );
+    }
+    const resolverHashesSchema = Data.Array(Data.Bytes());
+    type ResolverHashes = Data.Static<typeof resolverHashesSchema>;
+    const ResolverHashes = resolverHashesSchema as unknown as ResolverHashes;
+    const resolverHashesData = Data.from(
+      Data.to(
+        resolvers.map(({ spendingScriptHash }) => spendingScriptHash),
+        ResolverHashes,
+      ),
+    );
+
+    const boundary = yield* tryBuild(
+      "Failed to build validation-trace boundary validator",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(
+            getCompiledScript(
+              blueprint,
+              VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.boundary,
+            ),
+            [resolverHashesData, computationThread.policyId],
+          ),
+        ),
+    );
+    const timeout = yield* tryBuild(
+      "Failed to build validation-trace timeout validator",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(
+            getCompiledScript(
+              blueprint,
+              VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.timeout,
+            ),
+            [
+              computationThread.policyId,
+              fraudProof.policyId,
+              fraudProofTokenAddressData,
+            ],
+          ),
+        ),
+    );
+    const game = yield* tryBuild(
+      "Failed to build validation-trace midpoint game validator",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(
+            getCompiledScript(
+              blueprint,
+              VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.game,
+            ),
+            [
+              boundary.spendingScriptHash,
+              timeout.spendingScriptHash,
+              computationThread.policyId,
+            ],
+          ),
+        ),
+    );
+    const source = yield* tryBuild(
+      "Failed to build validation-trace source validator",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(
+            getCompiledScript(
+              blueprint,
+              VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.source,
+            ),
+            [
+              game.spendingScriptHash,
+              award.spendingScriptHash,
+              computationThread.policyId,
+            ],
+          ),
+        ),
+    );
+    const dispute = yield* tryBuild(
+      "Failed to build validation-trace dispute opener",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(
+            getCompiledScript(
+              blueprint,
+              VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.dispute,
+            ),
+            [
+              source.spendingScriptHash,
+              computationThread.policyId,
               hubOraclePolicyId,
             ],
           ),
@@ -567,8 +1017,28 @@ const buildTransitionTraceChain = ({
     );
 
     return {
-      firstStep: proof,
-      steps: [proof],
+      firstStep: dispute,
+      steps: [
+        dispute,
+        source,
+        game,
+        boundary,
+        timeout,
+        award,
+        ...semanticResolvers,
+        ...prepareResolvers,
+        ...directResolvers,
+      ],
+      opener: dispute,
+      source,
+      game,
+      boundary,
+      timeout,
+      award,
+      prepareResolvers,
+      semanticResolvers,
+      directResolvers,
+      resolvers,
     };
   });
 
@@ -593,6 +1063,10 @@ export const buildFaultProofContracts = (
       ...params,
       ...shared,
     });
+    const validationTraceDispute = yield* buildValidationTraceDisputeChain({
+      ...params,
+      ...shared,
+    });
 
     return {
       computationThread: shared.computationThread,
@@ -601,6 +1075,7 @@ export const buildFaultProofContracts = (
       nonExistentInput,
       invalidRange,
       transitionTrace,
+      validationTraceDispute,
     };
   });
 
@@ -665,5 +1140,21 @@ export const buildTransitionTraceFaultProofContracts = (
       computationThread: shared.computationThread,
       fraudProof: shared.fraudProof,
       transitionTrace,
+    };
+  });
+
+export const buildValidationTraceDisputeFaultProofContracts = (
+  params: BuildValidationTraceDisputeFaultProofContractsParams,
+): Effect.Effect<ValidationTraceDisputeFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const validationTraceDispute = yield* buildValidationTraceDisputeChain({
+      ...params,
+      ...shared,
+    });
+    return {
+      computationThread: shared.computationThread,
+      fraudProof: shared.fraudProof,
+      validationTraceDispute,
     };
   });

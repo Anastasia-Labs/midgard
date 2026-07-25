@@ -9,7 +9,7 @@ import type { DaPayloadCandidate, DaPayloadSource } from "../src/da/source.js";
 import type {
   DaAttestationCandidateRecord,
   DaSignatureRecord,
-  Header,
+  HeaderV1,
   PayloadCountSet,
   PayloadRootSet,
 } from "../src/domain.js";
@@ -24,7 +24,6 @@ import { JsonFileWatcherStore } from "../src/store.js";
 import { bytesToHex } from "../src/utils/hex.js";
 import { WatcherService } from "../src/watcher.js";
 import {
-  IDENTITY_TX_PROJECTOR,
   makeObservedNode,
   makePayloadFixture,
   minimalConfig,
@@ -32,7 +31,7 @@ import {
   tempDir,
 } from "./helpers.js";
 
-const rootSummaryFromHeader = (header: Header): PayloadRootSet => ({
+const rootSummaryFromHeader = (header: HeaderV1): PayloadRootSet => ({
   utxosRoot: header.utxosRoot,
   withdrawalsRoot: header.withdrawalsRoot,
   forcedTransactionsRoot: header.forcedTransactionsRoot,
@@ -42,7 +41,7 @@ const rootSummaryFromHeader = (header: Header): PayloadRootSet => ({
   eventToStepRoot: header.eventToStepRoot,
 });
 
-const countSummaryFromHeader = (header: Header): PayloadCountSet => ({
+const countSummaryFromHeader = (header: HeaderV1): PayloadCountSet => ({
   withdrawalCount: header.withdrawalCount,
   forcedTransactionCount: header.forcedTransactionCount,
   l2TransactionCount: header.l2TransactionCount,
@@ -91,7 +90,6 @@ describe("WatcherService", () => {
       payloadSource,
       signer,
       signerValidation,
-      transactionProjector: IDENTITY_TX_PROJECTOR,
     });
     await service.initialize();
     await expect(service.readinessSnapshot()).resolves.toMatchObject({
@@ -154,7 +152,6 @@ describe("WatcherService", () => {
         },
       },
       payloadSource: failPayloadSource("payload should not be fetched"),
-      transactionProjector: IDENTITY_TX_PROJECTOR,
     });
     await service.initialize();
 
@@ -207,7 +204,6 @@ describe("WatcherService", () => {
       payloadSource: payloadSourceFromBytes(payloadCbor, "producer-peer"),
       signer,
       signerValidation,
-      transactionProjector: IDENTITY_TX_PROJECTOR,
     });
 
     await service.initialize();
@@ -257,6 +253,7 @@ describe("WatcherService", () => {
     await store.saveDaPayload({
       deploymentFingerprint: configWithDaHash.deploymentFingerprint,
       headerHash,
+      payloadSchemaVersion: 1,
       payloadCborHex: payloadCbor.toString("hex"),
       payloadSha256: daPayloadSha256(payloadCbor),
       sourcePeerId: "libp2p:payload-submit",
@@ -274,7 +271,6 @@ describe("WatcherService", () => {
       payloadSource: failPayloadSource("payload source must not be used"),
       signer,
       signerValidation,
-      transactionProjector: IDENTITY_TX_PROJECTOR,
     });
 
     await service.initialize();
@@ -327,6 +323,7 @@ describe("WatcherService", () => {
     await store.saveDaPayload({
       deploymentFingerprint: configWithDaHash.deploymentFingerprint,
       headerHash,
+      payloadSchemaVersion: 1,
       payloadCborHex: invalidPayload.toString("hex"),
       payloadSha256: daPayloadSha256(invalidPayload),
       sourcePeerId: "libp2p:payload-submit",
@@ -344,7 +341,6 @@ describe("WatcherService", () => {
       payloadSource: failPayloadSource("payload source must not be used"),
       signer,
       signerValidation,
-      transactionProjector: IDENTITY_TX_PROJECTOR,
     });
 
     await service.initialize();
@@ -407,7 +403,6 @@ describe("WatcherService", () => {
       ]),
       signer,
       signerValidation,
-      transactionProjector: IDENTITY_TX_PROJECTOR,
     });
 
     await service.initialize();
@@ -426,70 +421,6 @@ describe("WatcherService", () => {
     await expect(
       store.getDaSignature({ headerHash, signerIndex: 0 }),
     ).resolves.toBeUndefined();
-  });
-
-  it("treats conflicting schema metadata for identical stored bytes as a conflict", async () => {
-    const dir = await tempDir();
-    const { header, headerHash, payloadCbor } = await makePayloadFixture();
-    const seed = "00".repeat(31) + "01";
-    const signer = await loadDaSigner(`hex:${seed}`);
-    const config = minimalConfig({
-      dir,
-      manifestPath: `${dir}/manifest.json`,
-      deploymentInfoPath: `${dir}/deployment.json`,
-      signerSeed: seed,
-      signerPublicKey: signer.publicKeyHex,
-    });
-    const configWithDaHash = {
-      ...config,
-      daParams: {
-        ...config.daParams,
-        committeeSignersHash: bytesToHex(
-          blake2b(Buffer.from(signer.publicKeyHex, "hex"), { dkLen: 32 }),
-        ),
-      },
-    };
-    const store = await JsonFileWatcherStore.open(dir);
-    const service = new WatcherService({
-      config: configWithDaHash,
-      store,
-      stateQueueProvider: {
-        fetchStateQueueNodes: async () => [
-          makeObservedNode({ header, headerHash, depth: 10 }),
-        ],
-      },
-      payloadSource: payloadSourceFromCandidates([
-        {
-          sourcePeerId: "da-peer-v2",
-          payloadCbor,
-          payloadSchemaVersion: 2,
-        },
-        {
-          sourcePeerId: "da-peer-v3",
-          payloadCbor,
-          payloadSchemaVersion: 3,
-        },
-      ]),
-      signer,
-      signerValidation: validateDaSignerMembership({
-        daParams: configWithDaHash.daParams,
-        signer,
-        signerIndex: 0,
-      }),
-      transactionProjector: IDENTITY_TX_PROJECTOR,
-    });
-
-    await service.initialize();
-    await expect(service.tick()).resolves.toMatchObject({
-      scannedHeaders: 1,
-      signedHeaders: 0,
-      skippedHeaders: 1,
-      errors: [`conflicting DA payload bytes for ${headerHash}`],
-    });
-    await expect(store.getDaPayload(headerHash)).resolves.toMatchObject({
-      validationStatus: "conflicted",
-      conflictStatus: "conflicting_bytes",
-    });
   });
 
   it("signs after a transient missing DA payload becomes available", async () => {
@@ -536,7 +467,6 @@ describe("WatcherService", () => {
       },
       signer,
       signerValidation,
-      transactionProjector: IDENTITY_TX_PROJECTOR,
     });
 
     await service.initialize();
@@ -629,7 +559,6 @@ describe("WatcherService", () => {
       },
       signer,
       signerValidation,
-      transactionProjector: IDENTITY_TX_PROJECTOR,
     });
 
     await service.initialize();
@@ -698,7 +627,6 @@ describe("WatcherService", () => {
           return "posted";
         },
       },
-      transactionProjector: IDENTITY_TX_PROJECTOR,
     });
     await service.initialize();
     await expect(service.tick()).resolves.toMatchObject({
@@ -759,7 +687,6 @@ describe("WatcherService", () => {
           return "post_failed";
         },
       },
-      transactionProjector: IDENTITY_TX_PROJECTOR,
     });
 
     await service.initialize();
@@ -826,7 +753,7 @@ describe("WatcherService", () => {
       verifiedAt: new Date().toISOString(),
       l1ChainPoint: {},
       validation: {
-        payloadVersion: Number(SDK.DA_PAYLOAD_V2_VERSION),
+        payloadVersion: Number(SDK.DA_PAYLOAD_V1_VERSION),
         rootsMatch: true,
         stateQueueOutRef: "ab".repeat(32) + "#0",
         headerHash,
@@ -869,7 +796,6 @@ describe("WatcherService", () => {
           return "posted";
         },
       },
-      transactionProjector: IDENTITY_TX_PROJECTOR,
     });
 
     await service.initialize();
@@ -952,7 +878,6 @@ describe("WatcherService", () => {
       signer,
       signerValidation,
       coordinator,
-      transactionProjector: IDENTITY_TX_PROJECTOR,
     });
 
     await service.initialize();
@@ -1063,7 +988,6 @@ describe("WatcherService", () => {
       signer,
       signerValidation,
       coordinator,
-      transactionProjector: IDENTITY_TX_PROJECTOR,
     });
 
     await service.initialize();
@@ -1136,7 +1060,7 @@ describe("WatcherService", () => {
       broadcastStatus: "posted",
       l1ChainPoint: {},
       validation: {
-        payloadVersion: Number(SDK.DA_PAYLOAD_V2_VERSION),
+        payloadVersion: Number(SDK.DA_PAYLOAD_V1_VERSION),
         rootsMatch: true,
         stateQueueOutRef: "peer#0",
         headerHash,
@@ -1166,7 +1090,7 @@ describe("WatcherService", () => {
       broadcastStatus: "posted",
       l1ChainPoint: {},
       validation: {
-        payloadVersion: Number(SDK.DA_PAYLOAD_V2_VERSION),
+        payloadVersion: Number(SDK.DA_PAYLOAD_V1_VERSION),
         rootsMatch: true,
         stateQueueOutRef: "stale#0",
         headerHash,
@@ -1233,7 +1157,6 @@ describe("WatcherService", () => {
       signer,
       signerValidation,
       coordinator,
-      transactionProjector: IDENTITY_TX_PROJECTOR,
     });
 
     await service.initialize();
@@ -1297,7 +1220,7 @@ describe("WatcherService", () => {
         broadcastStatus: "posted",
         l1ChainPoint: {},
         validation: {
-          payloadVersion: Number(SDK.DA_PAYLOAD_V2_VERSION),
+          payloadVersion: Number(SDK.DA_PAYLOAD_V1_VERSION),
           rootsMatch: true,
           stateQueueOutRef: "peer#0",
           headerHash,
@@ -1327,7 +1250,7 @@ describe("WatcherService", () => {
         broadcastStatus: "posted",
         l1ChainPoint: {},
         validation: {
-          payloadVersion: Number(SDK.DA_PAYLOAD_V2_VERSION),
+          payloadVersion: Number(SDK.DA_PAYLOAD_V1_VERSION),
           rootsMatch: true,
           stateQueueOutRef: "peer#1",
           headerHash,
@@ -1422,7 +1345,6 @@ describe("WatcherService", () => {
       },
       payloadSource: payloadSourceFromBytes(payloadCbor),
       submitterReconciler,
-      transactionProjector: IDENTITY_TX_PROJECTOR,
     });
 
     await service.initialize();
@@ -1534,7 +1456,6 @@ describe("WatcherService", () => {
       signer,
       signerValidation,
       coordinator: firstCoordinator,
-      transactionProjector: IDENTITY_TX_PROJECTOR,
     });
 
     await firstService.initialize();
@@ -1585,7 +1506,6 @@ describe("WatcherService", () => {
       signer,
       signerValidation,
       coordinator: restartedCoordinator,
-      transactionProjector: IDENTITY_TX_PROJECTOR,
     });
 
     await restartedService.initialize();
@@ -1618,17 +1538,24 @@ const submitted = (txHash: string) => ({
   txHash,
 });
 
+type V1CandidateFixture = Omit<DaPayloadCandidate, "payloadSchemaVersion"> & {
+  readonly payloadSchemaVersion?: 1;
+};
+
 const payloadSourceFromCandidates = (
-  candidates: readonly DaPayloadCandidate[],
+  candidates: readonly V1CandidateFixture[],
 ): DaPayloadSource => ({
   fetchPayloadCandidates: async () => payloadCandidates(candidates),
 });
 
 const payloadCandidates = (
-  candidates: readonly DaPayloadCandidate[],
+  candidates: readonly V1CandidateFixture[],
 ): Awaited<ReturnType<DaPayloadSource["fetchPayloadCandidates"]>> => ({
   ok: true,
-  candidates,
+  candidates: candidates.map((candidate) => ({
+    ...candidate,
+    payloadSchemaVersion: 1,
+  })),
   attempts: [],
 });
 

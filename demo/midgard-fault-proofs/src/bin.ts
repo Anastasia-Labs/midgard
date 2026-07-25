@@ -39,6 +39,15 @@ import { submitStep01FromFiles } from "./submit-step-01.js";
 import { submitStep02FromFiles } from "./submit-step-02.js";
 import { submitStep03FromFiles } from "./submit-step-03.js";
 import { submitStep04FromFiles } from "./submit-step-04.js";
+import {
+  submitValidationDisputeEnterResolutionFromFiles,
+  submitValidationDisputeEnterTimeoutFromFiles,
+  submitValidationDisputeOpenFromFiles,
+  submitValidationDisputePrepareResolutionFromFiles,
+  submitValidationDisputeRevealFromFiles,
+  submitValidationDisputeTimeoutFromFiles,
+  submitValidationDisputeVerifySourceFromFiles,
+} from "./validation-dispute/from-files.js";
 
 export type ParsedArgs = {
   readonly command: string | undefined;
@@ -73,7 +82,6 @@ export type ParsedArgs = {
   readonly tx1Id: string | undefined;
   readonly tx2Id: string | undefined;
   readonly outputDir: string | undefined;
-  readonly allowIncompatibleOutput: boolean;
   readonly awaitConfirmation: boolean;
   readonly fraudCategory: SubmitInitFraudCategory | undefined;
   readonly blockValidFrom: string | undefined;
@@ -86,14 +94,19 @@ export type ParsedArgs = {
   readonly inputsPreimagePath: string | undefined;
   readonly ledgerNonMembershipProofPath: string | undefined;
   readonly txsNonMembershipProofPath: string | undefined;
+  readonly validationClaimCborPath: string | undefined;
+  readonly challengerDescriptorCborPath: string | undefined;
+  readonly validationTraceProofCborPath: string | undefined;
+  readonly validationBoundaryEvidenceCborPath: string | undefined;
+  readonly validationDisputeRole: "operator" | "challenger" | undefined;
 };
 
 const usage = `Usage:
-  midgard-fault-proofs prepare-double-spend (--midgard-node-url <url> | --transactions-file <path> | --sample-double-spend) --header-hash <hex> [--expected-transactions-root <hex>] [--tx1-id <hex> --tx2-id <hex>] [--output-dir <path>] [--allow-incompatible-output]
-  midgard-fault-proofs prepare-invalid-range (--midgard-node-url <url> | --transactions-file <path>) --header-hash <hex> --block-valid-from <posixMs> --block-valid-to <posixMs> [--expected-transactions-root <hex>] [--tx-id <hex>] [--output-dir <path>] [--allow-incompatible-output]
-  midgard-fault-proofs prepare-non-existent-input (--midgard-node-url <url> | --transactions-file <path>) --header-hash <hex> [--bad-tx-id <hex>] [--bad-input-index <n>] [--prev-utxos-root <hex> --prev-block-payload-file <daPayloadV2.hex>] [--expected-transactions-root <hex>] [--output-dir <path>]
+  midgard-fault-proofs prepare-double-spend (--midgard-node-url <url> | --transactions-file <path> | --sample-double-spend) --header-hash <hex> [--expected-transactions-root <hex>] [--tx1-id <hex> --tx2-id <hex>] [--output-dir <path>]
+  midgard-fault-proofs prepare-invalid-range (--midgard-node-url <url> | --transactions-file <path>) --header-hash <hex> --block-valid-from <posixMs> --block-valid-to <posixMs> [--expected-transactions-root <hex>] [--tx-id <hex>] [--output-dir <path>]
+  midgard-fault-proofs prepare-non-existent-input (--midgard-node-url <url> | --transactions-file <path>) --header-hash <hex> [--bad-tx-id <hex>] [--bad-input-index <n>] [--prev-utxos-root <hex> --prev-block-payload-file <daPayloadV1.hex>] [--expected-transactions-root <hex>] [--output-dir <path>]
   midgard-fault-proofs inspect-contracts --blueprint <path> --deployment-info <path> [--network <Mainnet|Preview|Preprod>]
-  midgard-fault-proofs submit-init --blueprint <path> --deployment-info <path> --fraudulent-block-out-ref <txHash#outputIndex> [--fraud-category <doubleSpend|invalidRange|transitionTrace|nonExistentInput>] [--fraudulent-header-hash <hex>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-init --blueprint <path> --deployment-info <path> --fraudulent-block-out-ref <txHash#outputIndex> [--fraud-category <doubleSpend|invalidRange|transitionTrace|validationTraceDispute|nonExistentInput>] [--fraudulent-header-hash <hex>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-step-01 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-step-03 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --tx1-inputs <raw-input-cbor-list.json> --double-spent-input-index <n> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
@@ -104,7 +117,14 @@ const usage = `Usage:
   midgard-fault-proofs submit-non-existent-input-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --inputs-preimage <path> --bad-input-index <n> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-non-existent-input-step-03 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --ledger-non-membership-proof <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-non-existent-input-step-04 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --txs-non-membership-proof <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
-  midgard-fault-proofs remove-fraudulent-block --blueprint <path> --deployment-info <path> --fraudulent-header-hash <hex> [--fraud-category <doubleSpend|invalidRange|transitionTrace|nonExistentInput>] [--midgard-node-url <url> --midgard-node-admin-key <key> | --midgard-node-admin-key-env <envVar>] [--state-queue-lease-ttl-ms <n>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-validation-dispute-open --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --validation-claim-cbor <path> --challenger-descriptor-cbor <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-validation-dispute-verify-source --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-validation-dispute-reveal --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --validation-dispute-role <operator|challenger> --validation-trace-proof-cbor <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-validation-dispute-enter-resolution --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-validation-dispute-prepare-resolution --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --validation-boundary-evidence-cbor <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-validation-dispute-enter-timeout --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-validation-dispute-timeout --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs remove-fraudulent-block --blueprint <path> --deployment-info <path> --fraudulent-header-hash <hex> [--fraud-category <doubleSpend|invalidRange|transitionTrace|validationTraceDispute|nonExistentInput>] [--midgard-node-url <url> --midgard-node-admin-key <key> | --midgard-node-admin-key-env <envVar>] [--state-queue-lease-ttl-ms <n>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
 `;
 
 export const parseFraudCategory = (
@@ -117,12 +137,13 @@ export const parseFraudCategory = (
     value === "doubleSpend" ||
     value === "invalidRange" ||
     value === "transitionTrace" ||
+    value === "validationTraceDispute" ||
     value === "nonExistentInput"
   ) {
     return value;
   }
   throw new Error(
-    '--fraud-category must be one of "doubleSpend", "invalidRange", "transitionTrace", or "nonExistentInput".',
+    '--fraud-category must be one of "doubleSpend", "invalidRange", "transitionTrace", "validationTraceDispute", or "nonExistentInput".',
   );
 };
 
@@ -163,7 +184,6 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
   let tx1Id: string | undefined;
   let tx2Id: string | undefined;
   let outputDir: string | undefined;
-  let allowIncompatibleOutput = false;
   let awaitConfirmation = true;
   let fraudCategory: SubmitInitFraudCategory | undefined;
   let blockValidFrom: string | undefined;
@@ -176,6 +196,11 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
   let inputsPreimagePath: string | undefined;
   let ledgerNonMembershipProofPath: string | undefined;
   let txsNonMembershipProofPath: string | undefined;
+  let validationClaimCborPath: string | undefined;
+  let challengerDescriptorCborPath: string | undefined;
+  let validationTraceProofCborPath: string | undefined;
+  let validationBoundaryEvidenceCborPath: string | undefined;
+  let validationDisputeRole: "operator" | "challenger" | undefined;
 
   for (let index = 0; index < rest.length; index += 1) {
     const arg = rest[index];
@@ -280,9 +305,6 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
       case "--output-dir":
         outputDir = rest[++index];
         break;
-      case "--allow-incompatible-output":
-        allowIncompatibleOutput = true;
-        break;
       case "--fraud-category":
         fraudCategory = parseFraudCategory(rest[++index]);
         break;
@@ -316,6 +338,28 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
       case "--txs-non-membership-proof":
         txsNonMembershipProofPath = rest[++index];
         break;
+      case "--validation-claim-cbor":
+        validationClaimCborPath = rest[++index];
+        break;
+      case "--challenger-descriptor-cbor":
+        challengerDescriptorCborPath = rest[++index];
+        break;
+      case "--validation-trace-proof-cbor":
+        validationTraceProofCborPath = rest[++index];
+        break;
+      case "--validation-boundary-evidence-cbor":
+        validationBoundaryEvidenceCborPath = rest[++index];
+        break;
+      case "--validation-dispute-role": {
+        const role = rest[++index];
+        if (role !== "operator" && role !== "challenger") {
+          throw new Error(
+            '--validation-dispute-role must be either "operator" or "challenger".',
+          );
+        }
+        validationDisputeRole = role;
+        break;
+      }
       case "--no-await-confirmation":
         awaitConfirmation = false;
         break;
@@ -361,7 +405,6 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
     tx1Id,
     tx2Id,
     outputDir,
-    allowIncompatibleOutput,
     awaitConfirmation,
     fraudCategory,
     blockValidFrom,
@@ -374,6 +417,11 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
     inputsPreimagePath,
     ledgerNonMembershipProofPath,
     txsNonMembershipProofPath,
+    validationClaimCborPath,
+    challengerDescriptorCborPath,
+    validationTraceProofCborPath,
+    validationBoundaryEvidenceCborPath,
+    validationDisputeRole,
   };
 };
 
@@ -454,10 +502,17 @@ export const main = async (): Promise<void> => {
     args.command !== "submit-non-existent-input-step-02" &&
     args.command !== "submit-non-existent-input-step-03" &&
     args.command !== "submit-non-existent-input-step-04" &&
+    args.command !== "submit-validation-dispute-open" &&
+    args.command !== "submit-validation-dispute-verify-source" &&
+    args.command !== "submit-validation-dispute-reveal" &&
+    args.command !== "submit-validation-dispute-enter-resolution" &&
+    args.command !== "submit-validation-dispute-prepare-resolution" &&
+    args.command !== "submit-validation-dispute-enter-timeout" &&
+    args.command !== "submit-validation-dispute-timeout" &&
     args.command !== "remove-fraudulent-block"
   ) {
     throw new Error(
-      `Expected command "prepare-double-spend", "prepare-invalid-range", "prepare-non-existent-input", "inspect-contracts", "submit-init", "submit-step-01", "submit-step-02", "submit-step-03", "submit-step-04", "submit-invalid-range-step-01", "submit-invalid-range-step-02", "submit-non-existent-input-step-01", "submit-non-existent-input-step-02", "submit-non-existent-input-step-03", "submit-non-existent-input-step-04", or "remove-fraudulent-block".\n${usage}`,
+      `Expected a supported prepare, inspect, submit, validation-dispute, or removal command.\n${usage}`,
     );
   }
 
@@ -484,7 +539,6 @@ export const main = async (): Promise<void> => {
             tx1Id: args.tx1Id,
             tx2Id: args.tx2Id,
             outputDir: args.outputDir,
-            allowIncompatibleOutput: args.allowIncompatibleOutput,
           })
         : args.transactionsPath !== undefined
           ? await prepareDoubleSpendFromFile({
@@ -494,13 +548,11 @@ export const main = async (): Promise<void> => {
               tx1Id: args.tx1Id,
               tx2Id: args.tx2Id,
               outputDir: args.outputDir,
-              allowIncompatibleOutput: args.allowIncompatibleOutput,
             })
           : await prepareSampleDoubleSpend({
               headerHash: args.headerHash,
               expectedTransactionsRoot: args.expectedTransactionsRoot,
               outputDir: args.outputDir,
-              allowIncompatibleOutput: args.allowIncompatibleOutput,
             });
     writeJson(output);
     return;
@@ -537,7 +589,6 @@ export const main = async (): Promise<void> => {
             expectedTransactionsRoot: args.expectedTransactionsRoot,
             txId: args.txId,
             outputDir: args.outputDir,
-            allowIncompatibleOutput: args.allowIncompatibleOutput,
           })
         : await prepareInvalidRangeFromFile({
             transactionsPath: args.transactionsPath!,
@@ -547,7 +598,6 @@ export const main = async (): Promise<void> => {
             expectedTransactionsRoot: args.expectedTransactionsRoot,
             txId: args.txId,
             outputDir: args.outputDir,
-            allowIncompatibleOutput: args.allowIncompatibleOutput,
           });
     writeJson(output);
     return;
@@ -624,6 +674,224 @@ export const main = async (): Promise<void> => {
       awaitConfirmation: args.awaitConfirmation,
     });
 
+    writeJson(output);
+    return;
+  }
+
+  if (args.command === "submit-validation-dispute-open") {
+    if (args.threadOutRef === undefined) {
+      throw new Error(
+        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    if (args.stateQueueBlockOutRef === undefined) {
+      throw new Error(
+        `Missing required --state-queue-block-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    if (args.validationClaimCborPath === undefined) {
+      throw new Error(
+        `Missing required --validation-claim-cbor <path>.\n${usage}`,
+      );
+    }
+    if (args.challengerDescriptorCborPath === undefined) {
+      throw new Error(
+        `Missing required --challenger-descriptor-cbor <path>.\n${usage}`,
+      );
+    }
+    const output = await submitValidationDisputeOpenFromFiles({
+      blueprintPath: args.blueprintPath,
+      deploymentInfoPath: args.deploymentInfoPath,
+      network: parseNetwork(args.network),
+      provider: args.provider,
+      blockfrostApiUrl: args.blockfrostApiUrl,
+      blockfrostKey: args.blockfrostKey,
+      kupoUrl: args.kupoUrl,
+      ogmiosUrl: args.ogmiosUrl,
+      walletSeedPhrase: args.walletSeedPhrase,
+      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
+      walletPrivateKey: args.walletPrivateKey,
+      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
+      threadOutRef: args.threadOutRef,
+      stateQueueBlockOutRef: args.stateQueueBlockOutRef,
+      claimCborPath: args.validationClaimCborPath,
+      challengerDescriptorCborPath: args.challengerDescriptorCborPath,
+      awaitConfirmation: args.awaitConfirmation,
+    });
+    writeJson(output);
+    return;
+  }
+
+  if (args.command === "submit-validation-dispute-verify-source") {
+    if (args.threadOutRef === undefined) {
+      throw new Error(
+        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    const output = await submitValidationDisputeVerifySourceFromFiles({
+      blueprintPath: args.blueprintPath,
+      deploymentInfoPath: args.deploymentInfoPath,
+      network: parseNetwork(args.network),
+      provider: args.provider,
+      blockfrostApiUrl: args.blockfrostApiUrl,
+      blockfrostKey: args.blockfrostKey,
+      kupoUrl: args.kupoUrl,
+      ogmiosUrl: args.ogmiosUrl,
+      walletSeedPhrase: args.walletSeedPhrase,
+      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
+      walletPrivateKey: args.walletPrivateKey,
+      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
+      threadOutRef: args.threadOutRef,
+      awaitConfirmation: args.awaitConfirmation,
+    });
+    writeJson(output);
+    return;
+  }
+
+  if (args.command === "submit-validation-dispute-reveal") {
+    if (args.threadOutRef === undefined) {
+      throw new Error(
+        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    if (args.validationDisputeRole === undefined) {
+      throw new Error(
+        `Missing required --validation-dispute-role <operator|challenger>.\n${usage}`,
+      );
+    }
+    if (args.validationTraceProofCborPath === undefined) {
+      throw new Error(
+        `Missing required --validation-trace-proof-cbor <path>.\n${usage}`,
+      );
+    }
+    const output = await submitValidationDisputeRevealFromFiles({
+      blueprintPath: args.blueprintPath,
+      deploymentInfoPath: args.deploymentInfoPath,
+      network: parseNetwork(args.network),
+      provider: args.provider,
+      blockfrostApiUrl: args.blockfrostApiUrl,
+      blockfrostKey: args.blockfrostKey,
+      kupoUrl: args.kupoUrl,
+      ogmiosUrl: args.ogmiosUrl,
+      walletSeedPhrase: args.walletSeedPhrase,
+      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
+      walletPrivateKey: args.walletPrivateKey,
+      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
+      threadOutRef: args.threadOutRef,
+      role: args.validationDisputeRole,
+      proofCborPath: args.validationTraceProofCborPath,
+      awaitConfirmation: args.awaitConfirmation,
+    });
+    writeJson(output);
+    return;
+  }
+
+  if (args.command === "submit-validation-dispute-enter-resolution") {
+    if (args.threadOutRef === undefined) {
+      throw new Error(
+        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    const output = await submitValidationDisputeEnterResolutionFromFiles({
+      blueprintPath: args.blueprintPath,
+      deploymentInfoPath: args.deploymentInfoPath,
+      network: parseNetwork(args.network),
+      provider: args.provider,
+      blockfrostApiUrl: args.blockfrostApiUrl,
+      blockfrostKey: args.blockfrostKey,
+      kupoUrl: args.kupoUrl,
+      ogmiosUrl: args.ogmiosUrl,
+      walletSeedPhrase: args.walletSeedPhrase,
+      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
+      walletPrivateKey: args.walletPrivateKey,
+      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
+      threadOutRef: args.threadOutRef,
+      awaitConfirmation: args.awaitConfirmation,
+    });
+    writeJson(output);
+    return;
+  }
+
+  if (args.command === "submit-validation-dispute-prepare-resolution") {
+    if (args.threadOutRef === undefined) {
+      throw new Error(
+        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    if (args.validationBoundaryEvidenceCborPath === undefined) {
+      throw new Error(
+        `Missing required --validation-boundary-evidence-cbor <path>.\n${usage}`,
+      );
+    }
+    const output = await submitValidationDisputePrepareResolutionFromFiles({
+      blueprintPath: args.blueprintPath,
+      deploymentInfoPath: args.deploymentInfoPath,
+      network: parseNetwork(args.network),
+      provider: args.provider,
+      blockfrostApiUrl: args.blockfrostApiUrl,
+      blockfrostKey: args.blockfrostKey,
+      kupoUrl: args.kupoUrl,
+      ogmiosUrl: args.ogmiosUrl,
+      walletSeedPhrase: args.walletSeedPhrase,
+      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
+      walletPrivateKey: args.walletPrivateKey,
+      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
+      threadOutRef: args.threadOutRef,
+      boundaryEvidenceCborPath: args.validationBoundaryEvidenceCborPath,
+      awaitConfirmation: args.awaitConfirmation,
+    });
+    writeJson(output);
+    return;
+  }
+
+  if (args.command === "submit-validation-dispute-enter-timeout") {
+    if (args.threadOutRef === undefined) {
+      throw new Error(
+        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    const output = await submitValidationDisputeEnterTimeoutFromFiles({
+      blueprintPath: args.blueprintPath,
+      deploymentInfoPath: args.deploymentInfoPath,
+      network: parseNetwork(args.network),
+      provider: args.provider,
+      blockfrostApiUrl: args.blockfrostApiUrl,
+      blockfrostKey: args.blockfrostKey,
+      kupoUrl: args.kupoUrl,
+      ogmiosUrl: args.ogmiosUrl,
+      walletSeedPhrase: args.walletSeedPhrase,
+      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
+      walletPrivateKey: args.walletPrivateKey,
+      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
+      threadOutRef: args.threadOutRef,
+      awaitConfirmation: args.awaitConfirmation,
+    });
+    writeJson(output);
+    return;
+  }
+
+  if (args.command === "submit-validation-dispute-timeout") {
+    if (args.threadOutRef === undefined) {
+      throw new Error(
+        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    const output = await submitValidationDisputeTimeoutFromFiles({
+      blueprintPath: args.blueprintPath,
+      deploymentInfoPath: args.deploymentInfoPath,
+      network: parseNetwork(args.network),
+      provider: args.provider,
+      blockfrostApiUrl: args.blockfrostApiUrl,
+      blockfrostKey: args.blockfrostKey,
+      kupoUrl: args.kupoUrl,
+      ogmiosUrl: args.ogmiosUrl,
+      walletSeedPhrase: args.walletSeedPhrase,
+      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
+      walletPrivateKey: args.walletPrivateKey,
+      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
+      threadOutRef: args.threadOutRef,
+      awaitConfirmation: args.awaitConfirmation,
+    });
     writeJson(output);
     return;
   }

@@ -4,14 +4,15 @@ import { join } from "node:path";
 
 import {
   computeHash32,
-  computeMidgardNativeTxId,
+  computeMidgardNativeTxIdV1,
   encodeCbor,
-  encodeMidgardNativeTxCanonical,
-  materializeMidgardNativeTxFromCanonical,
-  MIDGARD_NATIVE_TX_VERSION,
+  encodeMidgardNativeTxCanonicalV1,
+  materializeMidgardNativeTxFromCanonicalV1,
+  MIDGARD_NATIVE_TX_V1_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  type MidgardNativeTxFull,
+  type MidgardNativeTxFullV1,
 } from "@al-ft/midgard-core";
+import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
 import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk";
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML } from "@lucid-evolution/lucid";
@@ -46,9 +47,9 @@ const makeNativeTx = ({
 }: {
   readonly spendInputs: readonly Buffer[];
   readonly fee: bigint;
-}): MidgardNativeTxFull =>
-  materializeMidgardNativeTxFromCanonical({
-    version: MIDGARD_NATIVE_TX_VERSION,
+}): MidgardNativeTxFullV1 =>
+  materializeMidgardNativeTxFromCanonicalV1({
+    version: MIDGARD_NATIVE_TX_V1_VERSION,
     validity: "TxIsValid",
     body: {
       spendInputsPreimageCbor: encodeCbor(spendInputs),
@@ -71,9 +72,9 @@ const makeNativeTx = ({
     },
   });
 
-const payloadFromTx = (tx: MidgardNativeTxFull): NodeTransactionPayload => ({
-  nodeTxId: computeMidgardNativeTxId(tx).toString("hex"),
-  txCbor: encodeMidgardNativeTxCanonical(tx).toString("hex"),
+const payloadFromTx = (tx: MidgardNativeTxFullV1): NodeTransactionPayload => ({
+  nodeTxId: computeMidgardNativeTxIdV1(tx).toString("hex"),
+  txCbor: encodeMidgardNativeTxCanonicalV1(tx).toString("hex"),
 });
 
 // Phantom input the bad tx spends (absent from an empty-genesis ledger and
@@ -103,24 +104,25 @@ const ZERO_COUNTS = {
   depositCount: 0n,
   totalEventCount: 0n,
   transitionStepCount: 0n,
+  validationTraceCount: 0n,
 };
 
 /**
- * Builds a minimal `DaPayloadV2` whose body carries only a `utxos` set (the
+ * Builds a minimal `DaPayloadV1` whose body carries only a `utxos` set (the
  * ledger snapshot), with every other body root empty. Returns its canonical CBOR
  * and the raw `utxos_root` — which is what the *next* block commits as its
  * `prev_utxos_root`.
  */
 const buildPrevBlockPayload = async (
   utxos: readonly (readonly [string, string])[],
-): Promise<{ readonly payloadCbor: Buffer; readonly utxosRoot: string }> => {
+): Promise<{ readonly payloadEnvelopeCbor: Buffer; readonly utxosRoot: string }> => {
   const utxoRoot = await keyValuePhasRootWithCount(
     utxos.map(([key, value]) => ({
       key: Buffer.from(key, "hex"),
       value: Buffer.from(value, "hex"),
     })),
   );
-  const header: SDK.Header = {
+  const header: SDK.HeaderV1 = {
     prevUtxosRoot: EMPTY_MERKLE_TREE_ROOT,
     utxosRoot: utxoRoot.root,
     withdrawalsRoot: EMPTY_MERKLE_TREE_ROOT,
@@ -129,16 +131,21 @@ const buildPrevBlockPayload = async (
     depositsRoot: EMPTY_MERKLE_TREE_ROOT,
     transitionTraceRoot: EMPTY_MERKLE_TREE_ROOT,
     eventToStepRoot: EMPTY_MERKLE_TREE_ROOT,
+    validationTracesRoot: EMPTY_MERKLE_TREE_ROOT,
     ...ZERO_COUNTS,
     startTime: 10n,
     endTime: 20n,
+    blockSlot: 0n,
+    expectedNetworkId: 0n,
+    minFeeA: 0n,
+    minFeeB: 0n,
     prevHeaderHash: h28("90"),
     operatorVkey: h28("91"),
     protocolVersion: 1n,
   };
-  const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
-  const payload: SDK.DaPayloadV2 = {
-    version: SDK.DA_PAYLOAD_V2_VERSION,
+  const headerHash = await Effect.runPromise(SDK.hashBlockHeaderV1(header));
+  const payload: SDK.DaPayloadV1 = {
+    version: SDK.DA_PAYLOAD_V1_VERSION,
     block_body: {
       header_hash: headerHash,
       header,
@@ -151,11 +158,18 @@ const buildPrevBlockPayload = async (
       deposits: [],
       transition_trace: [],
       event_to_step: [],
+      transaction_preimages: [],
+      forced_transaction_preimages: [],
+      cek_program_material: [],
+      validation_traces: [],
       counts: ZERO_COUNTS,
     },
   };
   return {
-    payloadCbor: SDK.encodeDaPayloadV2(payload),
+    payloadEnvelopeCbor: await wrapDaPayloadV1(
+      SDK.encodeDaPayloadV1(payload),
+      { mode: "identity" },
+    ),
     utxosRoot: utxoRoot.root,
   };
 };
@@ -237,7 +251,7 @@ describe("prepare-non-existent-input", () => {
     });
     const committedRoot = await Effect.runPromise(
       SDK.commitCountedRootProgram({
-        domain: SDK.ROOT_DOMAINS.transactions,
+        domain: SDK.ROOT_DOMAINS.transactionsV1,
         phasRoot: prepared.transactionsRoot,
         count: 1n,
       }),
@@ -344,7 +358,7 @@ describe("prepare-non-existent-input", () => {
   });
 
   it("reconstructs the ledger from the previous block's DA payload for a non-first block", async () => {
-    const { payloadCbor, utxosRoot } = await buildPrevBlockPayload([
+    const { payloadEnvelopeCbor, utxosRoot } = await buildPrevBlockPayload([
       [LEDGER_UTXO_KEY, "abcd"],
     ]);
     expect(utxosRoot).not.toBe(EMPTY_MERKLE_TREE_ROOT);
@@ -353,7 +367,7 @@ describe("prepare-non-existent-input", () => {
       headerHash: h28("aa"),
       transactions: [badTxPayload],
       prevUtxosRoot: utxosRoot,
-      prevBlockPayloadCbor: payloadCbor,
+      prevBlockPayloadEnvelopeCbor: payloadEnvelopeCbor,
     });
 
     expect(output.prevUtxosRoot).toBe(utxosRoot);
@@ -363,7 +377,7 @@ describe("prepare-non-existent-input", () => {
   });
 
   it("rejects a prev-block payload whose utxos_root does not match --prev-utxos-root", async () => {
-    const { payloadCbor } = await buildPrevBlockPayload([
+    const { payloadEnvelopeCbor } = await buildPrevBlockPayload([
       [LEDGER_UTXO_KEY, "abcd"],
     ]);
     await expect(
@@ -371,13 +385,13 @@ describe("prepare-non-existent-input", () => {
         headerHash: h28("aa"),
         transactions: [badTxPayload],
         prevUtxosRoot: h32("bb"),
-        prevBlockPayloadCbor: payloadCbor,
+        prevBlockPayloadEnvelopeCbor: payloadEnvelopeCbor,
       }),
     ).rejects.toThrow("does not match --prev-utxos-root");
   });
 
   it("refuses to prove non-membership when the input is present in the reconstructed ledger", async () => {
-    const { payloadCbor, utxosRoot } = await buildPrevBlockPayload([
+    const { payloadEnvelopeCbor, utxosRoot } = await buildPrevBlockPayload([
       [LEDGER_UTXO_KEY, "abcd"],
       [PHANTOM_LEDGER_KEY, "ef01"],
     ]);
@@ -386,7 +400,7 @@ describe("prepare-non-existent-input", () => {
         headerHash: h28("aa"),
         transactions: [badTxPayload],
         prevUtxosRoot: utxosRoot,
-        prevBlockPayloadCbor: payloadCbor,
+        prevBlockPayloadEnvelopeCbor: payloadEnvelopeCbor,
       }),
     ).rejects.toThrow(/present key/i);
   });

@@ -24,6 +24,7 @@ import { mergeAction } from "@/fibers/merge.js";
 import { projectDepositsToMempoolLedger } from "@/fibers/project-deposits-to-mempool-ledger.js";
 import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
 import {
+  ContractDeploymentIdentity,
   Database,
   Globals,
   Lucid,
@@ -833,7 +834,11 @@ export const reconcileLocalFinalizationProgram = ({
 }): Effect.Effect<
   ReconciliationResult,
   unknown,
-  Database | Lucid | MidgardContracts | NodeConfig
+  | Database
+  | Lucid
+  | MidgardContracts
+  | ContractDeploymentIdentity
+  | NodeConfig
 > =>
   Effect.gen(function* () {
     const headerHashHex = headerHash.toString("hex");
@@ -1040,7 +1045,7 @@ export const reconcileMergeCompleteProgram = ({
       ],
       repairActions,
       nextAction: canonical
-        ? "Header is still queued; run with --repair only after DA/finality gates are satisfied."
+        ? "HeaderV1 is still queued; run with --repair only after DA/finality gates are satisfied."
         : "Local block rows are missing for this header; inspect local finalization before claiming merge complete.",
     });
   });

@@ -141,7 +141,14 @@ Build a repeatable soak benchmark (extend existing stress scripts in `demo/midga
 
 1. zstd-compress DA payloads before publish (D2) — ~3–6× byte reduction on CBOR.
 2. Chunked, streaming publish with per-peer parallelism; return at threshold-ACK rather than all-peer completion.
-3. Bind the operational 50k envelope gate described in [`demo/midgard-node/docs/DA_PHASE5_OPERATIONAL_ENVELOPE.md`](demo/midgard-node/docs/DA_PHASE5_OPERATIONAL_ENVELOPE.md). The measured 100k zstd envelope fits on the wire, but its 84,506,373-byte declared inner payload exceeds the V1 67,108,864-byte limit; 100k support remains an external protocol-policy/versioning prerequisite, not a fallback or a claim of current V1 support.
+3. Re-establish an operational 50k envelope gate after the canonical V1
+   capability-floor/proof-completion follow-up supplies bounded publication or
+   continuation support. Canonical consolidation measured the complete newest
+   V1 inner shape at 71,049,618 bytes, above the retained 67,108,864-byte DA
+   bound, so the pre-consolidation V3/V2 fixture and active runner were
+   invalidated rather than relabeled or accepted through a compatibility path.
+   The historical procedure remains documented in
+   [`docs/benchmark-scenarios/phase-5-da-50k-distribution.md`](docs/benchmark-scenarios/phase-5-da-50k-distribution.md).
 
 ### Phase 6 — Verification & soak (weeks 14–16)
 

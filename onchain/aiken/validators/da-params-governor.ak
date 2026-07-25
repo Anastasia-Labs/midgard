@@ -105,22 +105,20 @@ fn valid_datum(
   expect max_owner_count > 0
 
   expect datum.da_threshold > 0
-  let committee_len =
-    sorted_unique_packed_len_at_most(
-      datum.committee,
-      max_committee_size,
-      verification_key_byte_count,
-    )
+  let committee_len = sorted_unique_packed_len_at_most(
+    datum.committee,
+    max_committee_size,
+    verification_key_byte_count,
+  )
   expect datum.committee_signers_hash == blake2b_256(datum.committee)
   expect datum.da_threshold <= committee_len
 
   expect datum.update_threshold > 0
-  let owner_len =
-    sorted_unique_len_at_most(
-      datum.owners,
-      max_owner_count,
-      verification_key_hash_byte_count,
-    )
+  let owner_len = sorted_unique_len_at_most(
+    datum.owners,
+    max_owner_count,
+    verification_key_hash_byte_count,
+  )
   expect datum.update_threshold <= owner_len
 
   True
@@ -161,8 +159,11 @@ fn only_output_with_nft(
       output
     }
     [output, ..rest] -> {
-      let quantity =
-        assets.quantity_of(output.value, policy_id, da_params_asset_name)
+      let quantity = assets.quantity_of(
+        output.value,
+        policy_id,
+        da_params_asset_name,
+      )
 
       if quantity == 0 {
         only_output_with_nft(rest, policy_id, found)
@@ -181,12 +182,14 @@ fn params_output_datum_at_script(
   max_committee_size: Int,
   max_owner_count: Int,
 ) -> DaParamsDatum {
-  expect Output {
-    address,
-    datum: InlineDatum(datum_data),
-    reference_script: None,
-    ..
-  } = output
+  expect
+      Output {
+        address,
+        datum: InlineDatum(datum_data),
+        reference_script: None,
+        ..
+      }
+    = output
   expect Script(output_script_hash) = address.payment_credential
   expect output_script_hash == policy_id
   expect datum: DaParamsDatum = datum_data
@@ -200,12 +203,14 @@ fn params_output_datum_at_address(
   max_committee_size: Int,
   max_owner_count: Int,
 ) -> DaParamsDatum {
-  expect Output {
-    address: output_address,
-    datum: InlineDatum(datum_data),
-    reference_script: None,
-    ..
-  } = output
+  expect
+      Output {
+        address: output_address,
+        datum: InlineDatum(datum_data),
+        reference_script: None,
+        ..
+      }
+    = output
   expect output_address == address
   expect datum: DaParamsDatum = datum_data
   expect valid_datum(datum, max_committee_size, max_owner_count)
@@ -245,12 +250,11 @@ fn owner_quorum_met(
     when owners is {
       [] -> False
       [owner, ..rest] -> {
-        let next_count =
-          if has_key(signers, owner) {
-            count + 1
-          } else {
-            count
-          }
+        let next_count = if has_key(signers, owner) {
+          count + 1
+        } else {
+          count
+        }
         owner_quorum_met(rest, signers, threshold, next_count)
       }
     }
@@ -263,23 +267,21 @@ validator da_params_governor(
   max_owner_count: Int,
 ) {
   mint(_redeemer: Data, policy_id: PolicyId, tx: Transaction) {
-    expect [Pair(asset_name, minted_quantity)] =
-      tx.mint
-        |> assets.tokens(policy_id)
-        |> dict.to_pairs
+    expect [Pair(asset_name, minted_quantity)] = tx.mint
+      |> assets.tokens(policy_id)
+      |> dict.to_pairs
     expect asset_name == da_params_asset_name
     expect minted_quantity == 1
 
     expect has_input_ref(tx.inputs, init_ref)
 
-    expect _output_datum =
-      tx.outputs
-        |> only_output_with_nft(policy_id, None)
-        |> params_output_datum_at_script(
-            policy_id,
-            max_committee_size,
-            max_owner_count,
-          )
+    expect _output_datum = tx.outputs
+      |> only_output_with_nft(policy_id, None)
+      |> params_output_datum_at_script(
+          policy_id,
+          max_committee_size,
+          max_owner_count,
+        )
 
     True
   }
@@ -294,12 +296,14 @@ validator da_params_governor(
     expect valid_datum(input_datum, max_committee_size, max_owner_count)
 
     let own_input = input_at_ref(tx.inputs, own_ref)
-    expect Output {
-      address: input_address,
-      value: input_value,
-      datum: InlineDatum(input_datum_data),
-      reference_script: None,
-    } = own_input.output
+    expect
+        Output {
+          address: input_address,
+          value: input_value,
+          datum: InlineDatum(input_datum_data),
+          reference_script: None,
+        }
+      = own_input.output
     let expected_input_datum_data: Data = input_datum
     expect input_datum_data == expected_input_datum_data
     expect Script(policy_id) = input_address.payment_credential
@@ -315,13 +319,12 @@ validator da_params_governor(
 
     let continued_output = tx.outputs |> only_output_with_nft(policy_id, None)
 
-    expect _continued_datum =
-      continued_output
-        |> params_output_datum_at_address(
-            input_address,
-            max_committee_size,
-            max_owner_count,
-          )
+    expect _continued_datum = continued_output
+      |> params_output_datum_at_address(
+          input_address,
+          max_committee_size,
+          max_owner_count,
+        )
     expect value_not_drained(input_value, continued_output.value)
 
     True

@@ -12,8 +12,8 @@ import {
   decompressDaPayloadZstd,
 } from "./da-compression.js";
 
-export const DA_PAYLOAD_ENVELOPE_V3_VERSION = 3 as const;
-export const DA_PAYLOAD_INNER_SCHEMA_VERSION = 2 as const;
+export const DA_PAYLOAD_ENVELOPE_V1_VERSION = 1 as const;
+export const DA_PAYLOAD_INNER_V1_SCHEMA_VERSION = 1 as const;
 
 export const DaPayloadContentEncoding = {
   identity: 0,
@@ -23,8 +23,8 @@ export const DaPayloadContentEncoding = {
 export type DaPayloadContentEncoding =
   (typeof DaPayloadContentEncoding)[keyof typeof DaPayloadContentEncoding];
 
-export type DaPayloadEnvelopeV3 = {
-  readonly version: typeof DA_PAYLOAD_ENVELOPE_V3_VERSION;
+export type DaPayloadEnvelopeV1 = {
+  readonly version: typeof DA_PAYLOAD_ENVELOPE_V1_VERSION;
   readonly contentEncoding: DaPayloadContentEncoding;
   readonly innerBytes: number;
   readonly innerSha256: Buffer;
@@ -46,8 +46,8 @@ export type DaPayloadEnvelopeTimingOptions = {
   ) => void;
 };
 
-export type UnwrappedDaPayload = {
-  readonly schemaVersion: 2 | 3;
+export type UnwrappedDaPayloadV1 = {
+  readonly schemaVersion: typeof DA_PAYLOAD_INNER_V1_SCHEMA_VERSION;
   readonly innerBytes: Buffer;
   readonly storedBytes: Buffer;
   readonly contentEncoding: DaPayloadContentEncoding;
@@ -133,7 +133,7 @@ const recordTiming = (
   }
 };
 
-const encodeValue = (envelope: DaPayloadEnvelopeV3): Buffer =>
+const encodeValue = (envelope: DaPayloadEnvelopeV1): Buffer =>
   encodeCbor([
     BigInt(envelope.version),
     BigInt(envelope.contentEncoding),
@@ -142,14 +142,14 @@ const encodeValue = (envelope: DaPayloadEnvelopeV3): Buffer =>
     envelope.body,
   ]);
 
-export const encodeDaPayloadEnvelopeV3 = (
-  envelope: DaPayloadEnvelopeV3,
+export const encodeDaPayloadEnvelopeV1 = (
+  envelope: DaPayloadEnvelopeV1,
 ): Buffer => encodeValue(envelope);
 
-export const decodeDaPayloadEnvelopeV3 = (
+export const decodeDaPayloadEnvelopeV1 = (
   bytes: Uint8Array,
   timing: DaPayloadEnvelopeTimingOptions = {},
-): DaPayloadEnvelopeV3 => {
+): DaPayloadEnvelopeV1 => {
   const startedAt = readMonotonicNow(timing);
   try {
     let decoded: unknown;
@@ -166,7 +166,7 @@ export const decodeDaPayloadEnvelopeV3 = (
     }
     let fields: unknown[];
     try {
-      fields = asArray(decoded, "DaPayloadEnvelopeV3");
+      fields = asArray(decoded, "DaPayloadEnvelopeV1");
     } catch (cause) {
       return fail(
         "malformed_envelope",
@@ -182,13 +182,13 @@ export const decodeDaPayloadEnvelopeV3 = (
         `DA payload envelope must contain 5 fields, got ${fields.length.toString()}`,
       );
     }
-    let envelope: DaPayloadEnvelopeV3;
+    let envelope: DaPayloadEnvelopeV1;
     try {
       const version = Number(asBigInt(fields[0], "envelope.version"));
-      if (version !== DA_PAYLOAD_ENVELOPE_V3_VERSION) {
+      if (version !== DA_PAYLOAD_ENVELOPE_V1_VERSION) {
         return fail(
           "wrong_envelope_version",
-          `expected DA payload envelope version 3, got ${version.toString()}`,
+          `expected DA payload envelope version 1, got ${version.toString()}`,
         );
       }
       const contentEncoding = Number(
@@ -218,7 +218,7 @@ export const decodeDaPayloadEnvelopeV3 = (
       }
       const body = asBufferView(asBytes(fields[4], "envelope.body"));
       envelope = {
-        version: DA_PAYLOAD_ENVELOPE_V3_VERSION,
+        version: DA_PAYLOAD_ENVELOPE_V1_VERSION,
         contentEncoding,
         innerBytes,
         innerSha256,
@@ -242,7 +242,7 @@ export const decodeDaPayloadEnvelopeV3 = (
   }
 };
 
-export const wrapDaPayloadV3 = async (
+export const wrapDaPayloadV1 = async (
   innerBytes: Uint8Array,
   {
     mode,
@@ -262,8 +262,8 @@ export const wrapDaPayloadV3 = async (
       : DaPayloadContentEncoding.zstd;
   const body =
     mode === "identity" ? inner : await compressDaPayloadZstd(inner, zstdLevel);
-  return encodeDaPayloadEnvelopeV3({
-    version: DA_PAYLOAD_ENVELOPE_V3_VERSION,
+  return encodeDaPayloadEnvelopeV1({
+    version: DA_PAYLOAD_ENVELOPE_V1_VERSION,
     contentEncoding,
     innerBytes: inner.length,
     innerSha256: hash(inner),
@@ -271,38 +271,21 @@ export const wrapDaPayloadV3 = async (
   });
 };
 
-const inferredSchemaVersion = (bytes: Uint8Array): 2 | 3 => {
-  try {
-    const decoded = decodeSingleCbor(bytes);
-    if (Array.isArray(decoded) && decoded.length === 5) {
-      const first = asBigInt(decoded[0], "payload.version");
-      if (first === BigInt(DA_PAYLOAD_ENVELOPE_V3_VERSION)) {
-        return 3;
-      }
-    }
-  } catch {
-    // Raw DaPayloadV2 uses Plutus Data CBOR, so its decoder owns validation.
-  }
-  return 2;
-};
-
-export const unwrapDaPayload = async (
+export const unwrapDaPayloadV1 = async (
   bytes: Uint8Array,
   {
     maxPayloadBytes,
-    schemaVersion,
     decompress = decompressDaPayloadZstd,
     timing = {},
   }: {
     readonly maxPayloadBytes: number;
-    readonly schemaVersion?: number;
     readonly decompress?: (
       bytes: Uint8Array,
       maxOutputLength: number,
     ) => Promise<Buffer>;
     readonly timing?: DaPayloadEnvelopeTimingOptions;
   },
-): Promise<UnwrappedDaPayload> => {
+): Promise<UnwrappedDaPayloadV1> => {
   const storedBytes = Buffer.from(bytes);
   if (storedBytes.length === 0) {
     return fail("empty_payload", "DA payload is empty");
@@ -313,22 +296,7 @@ export const unwrapDaPayload = async (
       `DA payload bytes ${storedBytes.length.toString()} exceed ${maxPayloadBytes.toString()}`,
     );
   }
-  const selectedVersion = schemaVersion ?? inferredSchemaVersion(storedBytes);
-  if (selectedVersion === 2) {
-    return {
-      schemaVersion: 2,
-      innerBytes: storedBytes,
-      storedBytes,
-      contentEncoding: DaPayloadContentEncoding.identity,
-    };
-  }
-  if (selectedVersion !== 3) {
-    return fail(
-      "wrong_envelope_version",
-      `unsupported DA payload schema version ${selectedVersion.toString()}`,
-    );
-  }
-  const envelope = decodeDaPayloadEnvelopeV3(storedBytes, timing);
+  const envelope = decodeDaPayloadEnvelopeV1(storedBytes, timing);
   if (envelope.innerBytes > maxPayloadBytes) {
     return fail(
       "declared_inner_too_large",
@@ -365,7 +333,7 @@ export const unwrapDaPayload = async (
     return fail("inner_hash_mismatch", "DA payload inner SHA-256 mismatch");
   }
   return {
-    schemaVersion: 3,
+    schemaVersion: DA_PAYLOAD_INNER_V1_SCHEMA_VERSION,
     innerBytes,
     storedBytes,
     contentEncoding: envelope.contentEncoding,

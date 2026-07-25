@@ -51,7 +51,7 @@ export type Phase4GenesisLedgerPlan = {
   readonly wallets: Readonly<
     Record<Phase4WalletLabel, Phase4GenesisWalletSummary>
   >;
-  readonly compatibilityRowCount: number;
+  readonly supplementalWalletRowCount: number;
 };
 
 export type Phase4GenesisLedgerReport = {
@@ -61,7 +61,7 @@ export type Phase4GenesisLedgerReport = {
   readonly status: "seeded" | "already_present";
   readonly rowCount: number;
   readonly wallets: Phase4GenesisLedgerPlan["wallets"];
-  readonly compatibilityRowCount: number;
+  readonly supplementalWalletRowCount: number;
   readonly minimumTransferLovelace: string;
 };
 
@@ -336,7 +336,7 @@ export const makePhase4GenesisLedgerPlan = ({
   return {
     rows,
     wallets,
-    compatibilityRowCount: genesisUtxosByWallet.C.length,
+    supplementalWalletRowCount: genesisUtxosByWallet.C.length,
   };
 };
 
@@ -470,7 +470,7 @@ export const phase4GenesisLedgerProgram = ({
       status,
       rowCount: plan.rows.length,
       wallets: plan.wallets,
-      compatibilityRowCount: plan.compatibilityRowCount,
+      supplementalWalletRowCount: plan.supplementalWalletRowCount,
       minimumTransferLovelace:
         PHASE4_PROCESS_DEFAULT_TRANSFER_LOVELACE.toString(),
     } satisfies Phase4GenesisLedgerReport;

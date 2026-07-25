@@ -38,10 +38,8 @@ export const phase1AcceptCrashCheckpointMarker = (
 
 const resolveCheckpoint = (): ArmedCheckpoint | null => {
   const token = process.env[PHASE1_ACCEPT_CRASH_CHECKPOINT_TOKEN_ENV];
-  const acknowledgement =
-    process.env[PHASE1_ACCEPT_CRASH_CHECKPOINT_ACK_ENV];
-  const expectedTxId =
-    process.env[PHASE1_ACCEPT_CRASH_CHECKPOINT_TX_ID_ENV];
+  const acknowledgement = process.env[PHASE1_ACCEPT_CRASH_CHECKPOINT_ACK_ENV];
+  const expectedTxId = process.env[PHASE1_ACCEPT_CRASH_CHECKPOINT_TX_ID_ENV];
   const configured = [token, acknowledgement, expectedTxId].filter(
     (value) => value !== undefined && value !== "",
   ).length;
@@ -59,7 +57,9 @@ const resolveCheckpoint = (): ArmedCheckpoint | null => {
     );
   }
   if (acknowledgement !== PHASE1_ACCEPT_CRASH_CHECKPOINT_ACK) {
-    throw new Error("Phase 1 accept-crash checkpoint acknowledgement is invalid");
+    throw new Error(
+      "Phase 1 accept-crash checkpoint acknowledgement is invalid",
+    );
   }
   if (token === undefined || !/^[A-Za-z0-9_-]{32,128}$/u.test(token)) {
     throw new Error(

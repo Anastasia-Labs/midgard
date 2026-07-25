@@ -42,22 +42,21 @@ validator main(
 
         // 1. Specified input must be authentic and properly reproduced.
         let
-          _own_script_hash,
-          _computation_thread_token_asset_name,
-          _fraud_prover,
-          m_input_state_data,
-          output_script_hash,
-          output_state_data,
-        <-
-          continue(
-            computation_thread_token_policy_id,
-            step_datum,
-            input_index,
-            output_index,
-            own_out_ref,
-            inputs,
-            outputs,
-          )
+            _own_script_hash,
+            _computation_thread_token_asset_name,
+            _fraud_prover,
+            m_input_state_data,
+            output_script_hash,
+            output_state_data
+          <- continue(
+          computation_thread_token_policy_id,
+          step_datum,
+          input_index,
+          output_index,
+          own_out_ref,
+          inputs,
+          outputs,
+        )
 
         expect Some(State { verified_tx_inputs_hash }) = m_input_state_data
 
@@ -65,19 +64,18 @@ validator main(
         //    along hash.
         expect inputs_preimage |> verify_hash_32(verified_tx_inputs_hash)
 
-        let bad_inputs_outref =
-          inputs_preimage |> list.expect_at(bad_inputs_index)
+        let bad_inputs_outref = inputs_preimage
+          |> list.expect_at(bad_inputs_index)
 
         // 3. The fetched inputs tx id and output index must be passed to the
         //    next step so that its producing transaction can be verified
         //    against the included hash.
         expect output_script_hash == step_03_validator_script_hash
         let OutputReference { transaction_id, output_index } = bad_inputs_outref
-        let expected_output_state: Data =
-          step_03.State {
-            bad_input_tx_id: transaction_id,
-            bad_input_output_index: output_index,
-          }
+        let expected_output_state: Data = step_03.State {
+          bad_input_tx_id: transaction_id,
+          bad_input_output_index: output_index,
+        }
         expect output_state_data == expected_output_state
 
         // Done.

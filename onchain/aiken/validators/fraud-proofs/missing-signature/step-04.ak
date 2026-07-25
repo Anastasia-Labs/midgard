@@ -43,29 +43,30 @@ validator main(
         // 1. Specified input must be authentic and properly reproduced at the
         //    fraud proof's spending address.
         let
-          _own_script_hash,
-          _computation_thread_token_asset_name,
-          _fraud_prover,
-          m_input_state_data,
-        <-
-          finalize(
-            computation_thread_token_policy_id,
-            fraud_proof_token_policy_id,
-            fraud_proof_token_address,
-            step_datum,
-            input_index,
-            output_index,
-            fraud_proof_mint_redeemer_index,
-            own_out_ref,
-            inputs,
-            outputs,
-            redeemers,
-          )
+            _own_script_hash,
+            _computation_thread_token_asset_name,
+            _fraud_prover,
+            m_input_state_data
+          <- finalize(
+          computation_thread_token_policy_id,
+          fraud_proof_token_policy_id,
+          fraud_proof_token_address,
+          step_datum,
+          input_index,
+          output_index,
+          fraud_proof_mint_redeemer_index,
+          own_out_ref,
+          inputs,
+          outputs,
+          redeemers,
+        )
 
-        expect Some(State {
-          missing_required_signer_vkey,
-          verified_addr_tx_wits_hash,
-        }) = m_input_state_data
+        expect
+            Some(State {
+              missing_required_signer_vkey,
+              verified_addr_tx_wits_hash,
+            })
+          = m_input_state_data
 
         // 2. Address witnesses preimage must match the hash carried from the
         //    previous steps.
@@ -73,8 +74,8 @@ validator main(
           addr_tx_wits_preimage |> verify_hash_32(verified_addr_tx_wits_hash)
 
         // 3. Required signer's verification key must not be in addr_tx_wits.
-        let required_signature_is_present =
-          addr_tx_wits_preimage |> pairs.has_key(missing_required_signer_vkey)
+        let required_signature_is_present = addr_tx_wits_preimage
+          |> pairs.has_key(missing_required_signer_vkey)
         expect required_signature_is_present == False
 
         // Done.

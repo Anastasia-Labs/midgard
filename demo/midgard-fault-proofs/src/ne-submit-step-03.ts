@@ -40,7 +40,8 @@ import {
 } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
 
-export const PEXCLUDES_EXCLUSION_WITHDRAW_TITLE = "pexcludes.exclusion.withdraw";
+export const PEXCLUDES_EXCLUSION_WITHDRAW_TITLE =
+  "pexcludes.exclusion.withdraw";
 
 /**
  * Encodes a `MidgardTxInput` as the node's ledger MPF key: the Cardano

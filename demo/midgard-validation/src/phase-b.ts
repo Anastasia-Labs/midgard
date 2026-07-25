@@ -1,3 +1,9 @@
+import type { MidgardValidationPhaseName } from "@al-ft/midgard-core";
+import {
+  decodeMidgardCekProgramEnvelopeV1,
+  decodeMidgardCekProgramMaterialSidecarV1,
+  verifyMidgardCekProgramMaterialV1,
+} from "@al-ft/midgard-core/cek-proof";
 import {
   computeScriptIntegrityHashForLanguages,
   decodeMidgardAddressBytes,
@@ -7,8 +13,18 @@ import {
   type ScriptLanguageName,
   verifyMidgardNativeScript,
 } from "@al-ft/midgard-core/codec";
+import {
+  MIDGARD_CONSENSUS_LIMITS_V1,
+} from "@al-ft/midgard-core/consensus-profile-v1";
+import {
+  decodeMidgardV1ScriptProgramEnvelope,
+} from "@al-ft/midgard-core/script-proof";
 import { Effect } from "effect";
 
+import {
+  buildMidgardCekExecutionGraphV1,
+  executeMidgardCekStructuralProgramV1,
+} from "./cek-executor.js";
 import { LedgerColumns, type LedgerEntry } from "./ledger.js";
 import type {
   MidgardLedgerOutput,
@@ -17,6 +33,7 @@ import type {
 import {
   encodeScriptContextCbor,
   evaluateScriptWithHarmonic,
+  type LocalScriptEvalResult,
 } from "./local-script-eval.js";
 import {
   findRedeemerByPointer,
@@ -152,10 +169,12 @@ const reject = (
   txId: Buffer,
   code: RejectedTx["code"],
   detail: string | null = null,
+  consensusPhase: MidgardValidationPhaseName = "resolveInputs",
 ): RejectedTx => ({
   txId,
   code,
   detail,
+  consensusPhase,
 });
 
 const resolveReferenceInputs = (
@@ -202,6 +221,33 @@ const resolveReferenceInputs = (
     scriptHashes.add(source.scriptHash);
   }
 
+  const sidecar =
+    node.candidate.submission.programMaterialSidecarCbor;
+  if (sidecar !== null) {
+    try {
+      const material =
+        decodeMidgardCekProgramMaterialSidecarV1(sidecar);
+      for (const input of inputs) {
+        if (input.output.script_ref === undefined) continue;
+        const envelope = decodeMidgardV1ScriptProgramEnvelope(
+          input.output.script_ref,
+        );
+        if (envelope !== null) {
+          verifyMidgardCekProgramMaterialV1(envelope, material, {
+            allowUnreachable: true,
+          });
+        }
+      }
+    } catch (cause) {
+      return reject(
+        node.candidate.ledgerTx.txId,
+        RejectCodes.CekProgramMaterial,
+        `invalid reference-script CEK material: ${String(cause)}`,
+        "scriptSources",
+      );
+    }
+  }
+
   return { inputs, scriptSources, scriptHashes };
 };
 
@@ -217,6 +263,7 @@ type LocalScriptValidationResult =
       readonly kind: "rejected";
       readonly code: RejectedTx["code"];
       readonly detail: string;
+      readonly consensusPhase: MidgardValidationPhaseName;
     };
 
 const ledgerOutputToTxOutput = (
@@ -288,6 +335,7 @@ const discoverLocalScriptExecutions = (
         kind: "rejected",
         code: RejectCodes.InvalidFieldType,
         detail: `duplicate redeemer ${key}`,
+        consensusPhase: "scriptSources",
       };
     }
     seenRedeemerPointers.add(key);
@@ -317,6 +365,7 @@ const discoverLocalScriptExecutions = (
         kind: "rejected",
         code: RejectCodes.MissingRequiredWitness,
         detail: `missing script source for ${purpose.kind} ${purpose.scriptHash}`,
+        consensusPhase: "scriptSources",
       };
     }
     if (resolved.version !== "NativeCardano") {
@@ -326,6 +375,7 @@ const discoverLocalScriptExecutions = (
           kind: "rejected",
           code: RejectCodes.MissingRequiredWitness,
           detail: `missing redeemer for ${purpose.kind} ${purpose.scriptHash}`,
+          consensusPhase: "scriptSources",
         };
       }
     }
@@ -342,6 +392,7 @@ const discoverLocalScriptExecutions = (
         kind: "rejected",
         code: RejectCodes.InputNotFound,
         detail: outRefHex,
+        consensusPhase: "resolveInputs",
       };
     }
     const output = decodeMidgardTxOutput(outputBytes);
@@ -402,6 +453,7 @@ const discoverLocalScriptExecutions = (
           kind: "rejected",
           code: RejectCodes.MissingRequiredWitness,
           detail: `missing witness for protected output signer ${pubKey}`,
+          consensusPhase: "scriptSources",
         };
       }
       continue;
@@ -428,6 +480,7 @@ const discoverLocalScriptExecutions = (
         kind: "rejected",
         code: RejectCodes.InvalidFieldType,
         detail: `extraneous redeemer ${midgardRedeemerPointerKey(redeemer)}`,
+        consensusPhase: "scriptSources",
       };
     }
   }
@@ -481,6 +534,24 @@ const runLocalScriptEvaluation = (
     if (discovered.kind === "rejected") {
       return discovered;
     }
+    let proofProgramMaterial:
+      | ReturnType<typeof decodeMidgardCekProgramMaterialSidecarV1>
+      | null = null;
+    if (candidate.submission.programMaterialSidecarCbor !== null) {
+      try {
+        proofProgramMaterial =
+          decodeMidgardCekProgramMaterialSidecarV1(
+            candidate.submission.programMaterialSidecarCbor,
+          );
+      } catch (cause) {
+        return {
+          kind: "rejected",
+          code: RejectCodes.CekProgramMaterial,
+          detail: `invalid V1 CEK material during execution: ${String(cause)}`,
+          consensusPhase: "scriptSources",
+        };
+      }
+    }
 
     const usedInlineSourceIds = new Set(
       discovered.executions
@@ -495,6 +566,7 @@ const runLocalScriptEvaluation = (
           kind: "rejected",
           code: RejectCodes.InvalidFieldType,
           detail: `extraneous ${kind} script witness ${source.sourceId}`,
+          consensusPhase: "scriptSources",
         };
       }
     }
@@ -515,6 +587,7 @@ const runLocalScriptEvaluation = (
           kind: "rejected",
           code: RejectCodes.NativeScriptInvalid,
           detail: `native script verification failed for ${execution.purpose.kind} ${execution.purpose.scriptHash}`,
+          consensusPhase: "nativeScripts",
         };
       }
     }
@@ -535,6 +608,7 @@ const runLocalScriptEvaluation = (
         kind: "rejected",
         code: RejectCodes.InvalidFieldType,
         detail: `script_integrity_hash mismatch: expected ${expectedHex} actual ${actualHex} required_languages=${languages.join(",")}`,
+        consensusPhase: "scriptIntegrity",
       };
     }
 
@@ -552,6 +626,7 @@ const runLocalScriptEvaluation = (
           kind: "rejected",
           code: RejectCodes.PlutusScriptInvalid,
           detail: "ReceivingScript requires MidgardV1 context",
+          consensusPhase: "cek",
         };
       }
 
@@ -567,21 +642,70 @@ const runLocalScriptEvaluation = (
               execution.purpose,
               redeemer,
             );
-      const result =
-        config.evaluateScript === undefined
-          ? evaluateScriptWithHarmonic(
+      const contextCbor = encodeScriptContextCbor(context);
+      let result: LocalScriptEvalResult;
+      if (proofProgramMaterial !== null) {
+        if (config.evaluateProofScript !== undefined) {
+          result = yield* config.evaluateProofScript(
+            execution.resolved.source.scriptBytes,
+            contextCbor,
+          );
+        } else {
+          try {
+            const envelope = decodeMidgardCekProgramEnvelopeV1(
               execution.resolved.source.scriptBytes,
-              context,
-            )
-          : yield* config.evaluateScript(
-              execution.resolved.source.scriptBytes,
-              encodeScriptContextCbor(context),
             );
+            const graph = buildMidgardCekExecutionGraphV1(
+              envelope,
+              proofProgramMaterial,
+              contextCbor,
+            );
+            const cek = executeMidgardCekStructuralProgramV1({
+              root: graph.root,
+              material: graph.material.values(),
+              constantWitnesses: graph.constantWitnesses,
+              maxSteps:
+                MIDGARD_CONSENSUS_LIMITS_V1
+                  .maxValidationMachineStepCount,
+            });
+            result =
+              cek.terminalState.mode === "haltSuccess"
+                ? {
+                    kind: "accepted",
+                    budget: {
+                      cpu: cek.terminalState.cpu,
+                      memory: cek.terminalState.memory,
+                    },
+                  }
+                : {
+                    kind: "script_invalid",
+                    detail: `V1 CEK halted with error ${cek.terminalState.auxiliary.toString(10)}`,
+                  };
+          } catch (cause) {
+            result = {
+              kind: "script_invalid",
+              detail: `V1 CEK execution failed closed: ${String(cause)}`,
+            };
+          }
+        }
+      } else {
+        result =
+          config.evaluateScript === undefined
+            ? evaluateScriptWithHarmonic(
+                execution.resolved.source.scriptBytes,
+                context,
+              )
+            : yield* config.evaluateScript(
+                execution.resolved.source.scriptBytes,
+                contextCbor,
+              );
+      }
       if (result.kind === "script_invalid") {
         return {
           kind: "rejected",
           code: RejectCodes.PlutusScriptInvalid,
           detail: `${execution.purpose.kind} ${execution.purpose.scriptHash}: ${result.detail}`,
+          consensusPhase: "cek",
         };
       }
       if (
@@ -593,6 +717,7 @@ const runLocalScriptEvaluation = (
           kind: "rejected",
           code: RejectCodes.PlutusScriptInvalid,
           detail: `${execution.purpose.kind} ${execution.purpose.scriptHash}: budget exceeded (spent mem=${result.budget.memory} cpu=${result.budget.cpu}, declared mem=${redeemer.exUnits.memory} cpu=${redeemer.exUnits.steps})`,
+          consensusPhase: "cek",
         };
       }
     }
@@ -761,10 +886,14 @@ const validateCandidateAgainstState = (
   Effect.gen(function* () {
     const candidate = node.candidate;
     const { ledgerTx } = candidate;
-    const fail = (code: RejectedTx["code"], detail: string | null = null) => ({
+    const fail = (
+      code: RejectedTx["code"],
+      detail: string | null = null,
+      consensusPhase: MidgardValidationPhaseName = "resolveInputs",
+    ) => ({
       index: node.index,
       accepted: false as const,
-      rejection: reject(ledgerTx.txId, code, detail),
+      rejection: reject(ledgerTx.txId, code, detail, consensusPhase),
     });
 
     if (
@@ -824,6 +953,7 @@ const validateCandidateAgainstState = (
       return fail(
         RejectCodes.MissingRequiredWitness,
         `missing script witness ${scriptHash} for ${context}`,
+        "scriptSources",
       );
     };
 
@@ -901,7 +1031,11 @@ const validateCandidateAgainstState = (
         config,
       );
       if (localScriptEvaluation.kind === "rejected") {
-        return fail(localScriptEvaluation.code, localScriptEvaluation.detail);
+        return fail(
+          localScriptEvaluation.code,
+          localScriptEvaluation.detail,
+          localScriptEvaluation.consensusPhase,
+        );
       }
     }
 
@@ -915,6 +1049,7 @@ const validateCandidateAgainstState = (
       return fail(
         RejectCodes.ValueNotPreserved,
         `equation mismatch: inputs - fee + mint - outputs = ${describeValueDelta(delta)}`,
+        "valueAndMint",
       );
     }
 
@@ -933,10 +1068,14 @@ const validatePlainCandidateAgainstState = (
   const candidate = node.candidate;
   if (candidate.derived.requiresLocalScriptDiscovery) return undefined;
   const { ledgerTx } = candidate;
-  const fail = (code: RejectedTx["code"], detail: string | null = null) => ({
+  const fail = (
+    code: RejectedTx["code"],
+    detail: string | null = null,
+    consensusPhase: MidgardValidationPhaseName = "resolveInputs",
+  ) => ({
     index: node.index,
     accepted: false as const,
-    rejection: reject(ledgerTx.txId, code, detail),
+    rejection: reject(ledgerTx.txId, code, detail, consensusPhase),
   });
 
   if (
@@ -1009,6 +1148,7 @@ const validatePlainCandidateAgainstState = (
     return fail(
       RejectCodes.ValueNotPreserved,
       `equation mismatch: inputs - fee + mint - outputs = ${describeValueDelta(delta)}`,
+      "valueAndMint",
     );
   }
   return { index: node.index, accepted: true };

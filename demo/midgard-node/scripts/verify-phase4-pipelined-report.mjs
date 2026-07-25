@@ -104,7 +104,7 @@ const validateEnvironmentFingerprint = (fingerprint, config, reasons) => {
 
 export const evaluatePhase4PipelinedReport = (report) => {
   const reasons = [];
-  if (report?.benchmark !== "midgard-l2-throughput" || report?.version !== 2) {
+  if (report?.benchmark !== "midgard-l2-throughput" || report?.version !== 1) {
     reasons.push("unexpected benchmark schema");
   }
   if (report?.scenario !== PHASE4_ONE_HOUR_SCENARIO) {

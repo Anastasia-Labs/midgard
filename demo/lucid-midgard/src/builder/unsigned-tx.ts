@@ -2,9 +2,9 @@ import {
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
-  MIDGARD_NATIVE_TX_VERSION,
+  MIDGARD_NATIVE_TX_V1_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  type MidgardNativeTxCanonical,
+  type MidgardNativeTxCanonicalV1,
 } from "@al-ft/midgard-core/codec";
 import { hexToBytes } from "@al-ft/midgard-core/hex";
 
@@ -51,8 +51,9 @@ export const buildCanonicalUnsignedTx = (
   state: BuilderState,
   fee: bigint,
   scriptMaterialization: ScriptMaterialization,
-): MidgardNativeTxCanonical => ({
-  version: MIDGARD_NATIVE_TX_VERSION,
+  nativeTxVersion: bigint = MIDGARD_NATIVE_TX_V1_VERSION,
+): MidgardNativeTxCanonicalV1 => ({
+  version: nativeTxVersion,
   validity: "TxIsValid",
   body: {
     spendInputsPreimageCbor: encodeByteListPreimage(

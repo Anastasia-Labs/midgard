@@ -1,4 +1,4 @@
-import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
+import { unwrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS_V1 } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
@@ -49,8 +49,8 @@ const normalizedIds = (ids: readonly string[]): readonly string[] =>
   [...new Set(ids.map((id) => id.toLowerCase()))].sort();
 
 const countsMatchHeader = (
-  payload: SDK.DaPayloadV2,
-  header: SDK.Header,
+  payload: SDK.DaPayloadV1,
+  header: SDK.HeaderV1,
 ): boolean => {
   const body = payload.block_body;
   const counts = body.counts;
@@ -65,7 +65,9 @@ const countsMatchHeader = (
     counts.withdrawalCount === header.withdrawalCount &&
     counts.l2TransactionCount === header.l2TransactionCount &&
     counts.totalEventCount === header.totalEventCount &&
-    counts.transitionStepCount === header.transitionStepCount
+    counts.transitionStepCount === header.transitionStepCount &&
+    counts.validationTraceCount === header.validationTraceCount &&
+    BigInt(body.validation_traces.length) === header.validationTraceCount
   );
 };
 
@@ -75,14 +77,14 @@ const verifyForeignPayload = ({
   payload,
 }: {
   readonly foreignHeaderHash: string;
-  readonly header: SDK.Header;
-  readonly payload: SDK.DaPayloadV2;
+  readonly header: SDK.HeaderV1;
+  readonly payload: SDK.DaPayloadV1;
 }): Effect.Effect<boolean> =>
   Effect.gen(function* () {
     const [computedHeaderHash, payloadHeaderHash, roots] = yield* Effect.all(
       [
-        SDK.hashBlockHeader(header),
-        SDK.hashBlockHeader(payload.block_body.header),
+        SDK.hashBlockHeaderV1(header),
+        SDK.hashBlockHeaderV1(payload.block_body.header),
         computeDaPayloadRoots(payload),
       ],
       { concurrency: "unbounded" },
@@ -98,6 +100,7 @@ const verifyForeignPayload = ({
       roots.utxosRoot === header.utxosRoot &&
       roots.transitionTraceRoot === header.transitionTraceRoot &&
       roots.eventToStepRoot === header.eventToStepRoot &&
+      roots.validationTracesRoot === header.validationTracesRoot &&
       countsMatchHeader(payload, header)
     );
   }).pipe(Effect.catchAll(() => Effect.succeed(false)));
@@ -145,13 +148,13 @@ export const resolveT2ForeignEventEvidence = ({
   payloadError,
 }: {
   readonly foreignHeaderHash: string;
-  readonly header: SDK.Header;
+  readonly header: SDK.HeaderV1;
   readonly candidateIds: T2CandidateEventIds;
-  readonly payload?: SDK.DaPayloadV2;
+  readonly payload?: SDK.DaPayloadV1;
   readonly payloadError?: string;
 }): Effect.Effect<T2ForeignEventResolution> =>
   Effect.gen(function* () {
-    const boundHeaderHash = yield* SDK.hashBlockHeader(header).pipe(
+    const boundHeaderHash = yield* SDK.hashBlockHeaderV1(header).pipe(
       Effect.catchAll(() => Effect.succeed("")),
     );
     if (boundHeaderHash !== foreignHeaderHash) {
@@ -283,21 +286,24 @@ const decodeStoredPayload = ({
 }: {
   readonly payloadCbor: Buffer;
   readonly schemaVersion: number;
-}): Promise<SDK.DaPayloadV2> =>
-  unwrapDaPayload(payloadCbor, {
-    maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
-    schemaVersion,
-  }).then((unwrapped) => SDK.decodeDaPayloadV2Canonical(unwrapped.innerBytes));
+}): Promise<SDK.DaPayloadV1> =>
+  schemaVersion !== Number(SDK.DA_PAYLOAD_V1_VERSION)
+    ? Promise.reject(
+        new Error("Stored DA payload schema version must equal canonical V1"),
+      )
+    : unwrapDaPayloadV1(payloadCbor, {
+        maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+      }).then((unwrapped) => SDK.decodeDaPayloadV1(unwrapped.innerBytes));
 
 export const reconcileOverdueAwaitingEventsAgainstForeignTip = ({
   foreignHeaderHash,
   header,
 }: {
   readonly foreignHeaderHash: string;
-  readonly header: SDK.Header;
+  readonly header: SDK.HeaderV1;
 }): Effect.Effect<T2ForeignEventResolution, DatabaseError, Database> =>
   Effect.gen(function* () {
-    const suppliedHash = yield* SDK.hashBlockHeader(header).pipe(
+    const suppliedHash = yield* SDK.hashBlockHeaderV1(header).pipe(
       Effect.mapError(
         (cause) =>
           new DatabaseError({
@@ -337,7 +343,7 @@ export const reconcileOverdueAwaitingEventsAgainstForeignTip = ({
 
 const decodeRetainedHeader = (
   entry: ForeignTipReconciliationsDB.Entry,
-): Effect.Effect<SDK.Header, DatabaseError> =>
+): Effect.Effect<SDK.HeaderV1, DatabaseError> =>
   Effect.gen(function* () {
     const header = yield* Effect.try({
       try: () =>
@@ -345,8 +351,8 @@ const decodeRetainedHeader = (
           entry[
             ForeignTipReconciliationsDB.Columns.FOREIGN_HEADER_CBOR
           ].toString("hex"),
-          SDK.Header as never,
-        ) as SDK.Header,
+          SDK.HeaderV1 as never,
+        ) as SDK.HeaderV1,
       catch: (cause) =>
         new DatabaseError({
           table: ForeignTipReconciliationsDB.tableName,
@@ -358,7 +364,7 @@ const decodeRetainedHeader = (
       entry[ForeignTipReconciliationsDB.Columns.FOREIGN_HEADER_HASH].toString(
         "hex",
       );
-    const recomputedHash = yield* SDK.hashBlockHeader(header).pipe(
+    const recomputedHash = yield* SDK.hashBlockHeaderV1(header).pipe(
       Effect.mapError(
         (cause) =>
           new DatabaseError({
@@ -493,7 +499,7 @@ const reconcileRetainedForeignTipEntry = (
             : "schemaVersion" in availablePayload
               ? availablePayload.schemaVersion
               : availablePayload[DaPayloadsDB.Columns.VERSION];
-        let payload: SDK.DaPayloadV2 | undefined;
+        let payload: SDK.DaPayloadV1 | undefined;
         let payloadError: string | undefined;
         if (payloadCbor !== undefined && schemaVersion !== undefined) {
           const decoded = yield* Effect.either(
@@ -549,11 +555,11 @@ const reconcileRetainedForeignTipEntry = (
         }
         yield* ForeignTipReconciliationsDB.markResolved({
           foreignHeaderHash,
-          ...(payloadCbor === undefined || schemaVersion === undefined
+          ...(payloadCbor === undefined || payload === undefined
             ? {}
             : {
                 verifiedDaPayloadCbor: payloadCbor,
-                verifiedDaSchemaVersion: schemaVersion,
+                verifiedDaSchemaVersion: 1,
               }),
         });
         return resolution;

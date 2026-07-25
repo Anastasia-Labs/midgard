@@ -122,6 +122,8 @@ const buildInspectionFixture = async () => {
     nonExistentInput: contracts.nonExistentInput.firstStep.spendingScriptHash,
     invalidRange: contracts.invalidRange.firstStep.spendingScriptHash,
     transitionTrace: contracts.transitionTrace.firstStep.spendingScriptHash,
+    validationTraceDispute:
+      contracts.validationTraceDispute.firstStep.spendingScriptHash,
   });
   return { blueprintJson, contracts, fraudProofCatalogue };
 };
@@ -155,6 +157,10 @@ const deploymentInfoFor = (
     },
     fraudProofInvalidRange: { scriptHash: invalidRangeScriptHash },
     fraudProofTransitionTrace: { scriptHash: transitionTraceScriptHash },
+    validationTraceDispute: {
+      scriptHash:
+        contracts.validationTraceDispute.firstStep.spendingScriptHash,
+    },
   },
 });
 
@@ -291,6 +297,9 @@ describe("inspect-contracts", () => {
       output.fraudProofCatalogue.transitionTrace.membershipProofMatchesDerived,
     ).toBe(true);
     expect(output.fraudProofCatalogue.transitionTrace.ready).toBe(true);
+    expect(
+      output.fraudProofCatalogue.validationTraceDispute.ready,
+    ).toBe(true);
     expect(output.fraudProofCatalogue.initReady).toBe(true);
   });
 
@@ -336,7 +345,7 @@ describe("inspect-contracts", () => {
     ).rejects.toThrow("fraudProofMint.scriptHash mismatch");
   });
 
-  it("rejects the legacy flat deployment-info shape", async () => {
+  it("rejects a contracts-only deployment-info object", async () => {
     const fixture = await buildInspectionFixture();
     await expect(
       Effect.runPromise(

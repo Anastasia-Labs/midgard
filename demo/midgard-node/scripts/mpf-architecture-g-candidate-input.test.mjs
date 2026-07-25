@@ -58,7 +58,7 @@ test("candidate input binds fixture creation identity and payload aggregate", as
       engineId: sha256File(resolve("scripts/throughput-valid-stress.mjs")),
     };
     const binding = {
-      schemaVersion: "midgard-phase1-live-corpus-binding-v2",
+      schemaVersion: "midgard-phase1-live-corpus-binding-v1",
       deploymentManifestId: "deployment-id",
       nodeImageId: "sha256:node-image",
       nodeContainerId: "node-container-id",

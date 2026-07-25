@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { cpus, hostname, totalmem } from "node:os";
 import { readFile } from "node:fs/promises";
+import { cpus, hostname, totalmem } from "node:os";
 import { join } from "node:path";
 
 export type EnvironmentFingerprint = {

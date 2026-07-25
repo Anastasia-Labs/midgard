@@ -39,14 +39,12 @@ fn validate_initial_payout_accumulator_value(
   payout_asset_name: AssetName,
   target: ledger_state.MidgardValue,
 ) -> Bool {
-  let initial_accumulator_value =
-    output_value
-      |> assets.add(payout_policy_id, payout_asset_name, -1)
-  let remaining_target =
-    assets.merge(
-      assets.from_asset_list(target),
-      assets.negate(initial_accumulator_value),
-    )
+  let initial_accumulator_value = output_value
+    |> assets.add(payout_policy_id, payout_asset_name, -1)
+  let remaining_target = assets.merge(
+    assets.from_asset_list(target),
+    assets.negate(initial_accumulator_value),
+  )
   value_is_nonnegative(remaining_target)
 }
 
@@ -84,12 +82,14 @@ fn validate_refund_branch(
   redeemers: Pairs<ScriptPurpose, Redeemer>,
   inclusion_proof_script_withdraw_redeemer_index: Int,
 ) -> Bool {
-  let user_events.OptimisticDatum {
-    event: withdrawal_event,
-    refund_address,
-    refund_datum,
-    ..
-  } = withdrawal_datum
+  let
+      user_events.OptimisticDatum {
+        event: withdrawal_event,
+        refund_address,
+        refund_datum,
+        ..
+      }
+    = withdrawal_datum
 
   expect validity_override != ledger_state.WithdrawalIsValid
   expect
@@ -104,16 +104,15 @@ fn validate_refund_branch(
       refund_datum,
     )
 
-  let Pair(withdrawal_event_id, withdrawal_event_info) =
-    ledger_state.unsafe_event_to_key_value_pair(withdrawal_event)
+  let Pair(withdrawal_event_id, withdrawal_event_info) = ledger_state.unsafe_event_to_key_value_pair(
+    withdrawal_event,
+  )
   expect withdrawal_id: ledger_state.WithdrawalId = withdrawal_event_id
-  expect coerced_withdrawal_info: ledger_state.WithdrawalInfo =
-    withdrawal_event_info
-  let overridden_withdrawal_info =
-    ledger_state.WithdrawalInfo {
-      ..coerced_withdrawal_info,
-      validity: validity_override,
-    }
+  expect coerced_withdrawal_info: ledger_state.WithdrawalInfo = withdrawal_event_info
+  let overridden_withdrawal_info = ledger_state.WithdrawalInfo {
+    ..coerced_withdrawal_info,
+    validity: validity_override,
+  }
 
   settlement.valid_counted_membership(
     expected_domain: transition_trace.WithdrawalsRootDomain,
@@ -131,21 +130,26 @@ fn get_settlement_withdrawals_root(
   settlement_policy_id: PolicyId,
   settlement_ref_input_index: Int,
 ) -> ledger_state.WithdrawalsRoot {
-  expect Input {
-    output: Output { datum: InlineDatum(settlement_datum_data), .. },
-    ..
-  } =
-    utils.get_authentic_input_with_policy_at(
-      reference_inputs,
-      settlement_policy_id,
-      settlement_ref_input_index,
-    )
-  expect Pair(0, settlement_fields) =
-    builtin.un_constr_data(settlement_datum_data)
-  expect [
-    _deposits_root_data, withdrawals_root_data, _forced_transactions_root_data,
-    _transactions_root_data, _resolution_claim_data,
-  ] = settlement_fields
+  expect
+      Input {
+        output: Output { datum: InlineDatum(settlement_datum_data), .. },
+        ..
+      }
+    = utils.get_authentic_input_with_policy_at(
+    reference_inputs,
+    settlement_policy_id,
+    settlement_ref_input_index,
+  )
+  expect Pair(0, settlement_fields) = builtin.un_constr_data(
+    settlement_datum_data,
+  )
+  expect
+      [
+        _deposits_root_data, withdrawals_root_data,
+        _forced_transactions_root_data, _transactions_root_data,
+        _resolution_claim_data,
+      ]
+    = settlement_fields
   builtin.un_b_data(withdrawals_root_data)
 }
 
@@ -158,71 +162,72 @@ validator spend(hub_oracle: ScriptHash) {
   ) {
     let Transaction { inputs, outputs, reference_inputs, redeemers, .. } = tx
 
-    let SpendRedeemer {
-      input_index,
-      output_index,
-      hub_ref_input_index,
+    let
+        SpendRedeemer {
+          input_index,
+          output_index,
+          hub_ref_input_index,
+          settlement_ref_input_index,
+          burn_redeemer_index,
+          payout_mint_redeemer_index,
+          membership_proof,
+          inclusion_proof_script_withdraw_redeemer_index,
+          purpose,
+        }
+      = redeemer
+
+    let
+        hub.Datum {
+          withdrawal: withdrawal_policy_id,
+          settlement: settlement_policy_id,
+          payout: payout_policy_id,
+          payout_addr,
+          ..
+        }
+      = hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
+
+    let withdrawals_root = get_settlement_withdrawals_root(
+      reference_inputs,
+      settlement_policy_id,
       settlement_ref_input_index,
-      burn_redeemer_index,
-      payout_mint_redeemer_index,
-      membership_proof,
-      inclusion_proof_script_withdraw_redeemer_index,
-      purpose,
-    } = redeemer
-
-    let hub.Datum {
-      withdrawal: withdrawal_policy_id,
-      settlement: settlement_policy_id,
-      payout: payout_policy_id,
-      payout_addr,
-      ..
-    } = hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
-
-    let withdrawals_root =
-      get_settlement_withdrawals_root(
-        reference_inputs,
-        settlement_policy_id,
-        settlement_ref_input_index,
-      )
+    )
 
     expect Some(withdrawal_datum) = datum
-    let user_events.OptimisticDatum { event: withdrawal_event, .. } =
-      withdrawal_datum
+    let user_events.OptimisticDatum { event: withdrawal_event, .. } = withdrawal_datum
 
     // 1. Spending a user event UTxO must also be accompanied by the burning of
     //    its NFT (and consequently deregistration of its witness staking
     //    script).
-    expect user_events.BurnEventNFT { nonce_asset_name: burn_asset_name, .. }: user_events.MintRedeemer =
-      utils.get_redeemer_at(
-        redeemers,
-        Mint(withdrawal_policy_id),
-        burn_redeemer_index,
-      )
+    expect
+        user_events.BurnEventNFT { nonce_asset_name: burn_asset_name, .. }: user_events.MintRedeemer
+      = utils.get_redeemer_at(
+      redeemers,
+      Mint(withdrawal_policy_id),
+      burn_redeemer_index,
+    )
 
-    let
-      input,
-      output,
-    <-
-      singular_utxo_indexer.one_to_one(
-        input_index,
-        output_index,
-        own_out_ref,
-        inputs,
-        outputs,
-        // Double satisfaction prevented by the requirement for unregistration of
-        // the witness staking script.
-        True,
-      )
+    let input, output <- singular_utxo_indexer.one_to_one(
+      input_index,
+      output_index,
+      own_out_ref,
+      inputs,
+      outputs,
+      // Double satisfaction prevented by the requirement for unregistration of
+      // the witness staking script.
+      True,
+    )
 
     let Input { output: Output { value: own_value, .. }, .. } = input
 
     // 2. The produced UTxO must not have any scripts attached to it.
-    expect Output {
-      address: output_address,
-      value: output_value,
-      datum: output_datum,
-      reference_script: None,
-    } = output
+    expect
+        Output {
+          address: output_address,
+          value: output_value,
+          datum: output_datum,
+          reference_script: None,
+        }
+      = output
 
     when purpose is {
       InitializePayout -> {
@@ -235,48 +240,53 @@ validator spend(hub_oracle: ScriptHash) {
               |> assets.add(payout_policy_id, burn_asset_name, 1)
           )
 
-        expect payout.MintPayout {
-          withdrawal_utxo_out_ref,
-          withdrawal_input_index,
-          withdrawal_spend_redeemer_index,
-          hub_ref_input_index: payout_mint_hub_ref_input_index,
-        }: payout.MintRedeemer =
-          utils.get_redeemer_at(
-            redeemers,
-            Mint(payout_policy_id),
-            payout_mint_redeemer_index,
-          )
+        expect
+            payout.MintPayout {
+              withdrawal_utxo_out_ref,
+              withdrawal_input_index,
+              withdrawal_spend_redeemer_index,
+              hub_ref_input_index: payout_mint_hub_ref_input_index,
+            }: payout.MintRedeemer
+          = utils.get_redeemer_at(
+          redeemers,
+          Mint(payout_policy_id),
+          payout_mint_redeemer_index,
+        )
         expect withdrawal_utxo_out_ref == own_out_ref
         expect withdrawal_input_index == input_index
         expect payout_mint_hub_ref_input_index == hub_ref_input_index
-        expect SpendRedeemer {
-          input_index: withdrawal_redeemer_input_index,
-          payout_mint_redeemer_index: withdrawal_redeemer_payout_mint_index,
-          hub_ref_input_index: withdrawal_redeemer_hub_ref_input_index,
-          purpose: InitializePayout,
-          ..
-        }: SpendRedeemer =
-          utils.get_redeemer_at(
-            redeemers,
-            Spend(own_out_ref),
-            withdrawal_spend_redeemer_index,
-          )
+        expect
+            SpendRedeemer {
+              input_index: withdrawal_redeemer_input_index,
+              payout_mint_redeemer_index: withdrawal_redeemer_payout_mint_index,
+              hub_ref_input_index: withdrawal_redeemer_hub_ref_input_index,
+              purpose: InitializePayout,
+              ..
+            }: SpendRedeemer
+          = utils.get_redeemer_at(
+          redeemers,
+          Spend(own_out_ref),
+          withdrawal_spend_redeemer_index,
+        )
         expect withdrawal_redeemer_input_index == input_index
         expect
           withdrawal_redeemer_payout_mint_index == payout_mint_redeemer_index
         expect withdrawal_redeemer_hub_ref_input_index == hub_ref_input_index
 
-        let Pair(withdrawal_event_id, withdrawal_event_info) =
-          ledger_state.unsafe_event_to_key_value_pair(withdrawal_event)
+        let Pair(withdrawal_event_id, withdrawal_event_info) = ledger_state.unsafe_event_to_key_value_pair(
+          withdrawal_event,
+        )
         expect withdrawal_id: ledger_state.WithdrawalId = withdrawal_event_id
 
         // 5. Initiation of a payout accumulator can only happen for valid
         //    withdrawals.
-        expect ledger_state.WithdrawalInfo {
-          body: withdrawal_body,
-          validity: ledger_state.WithdrawalIsValid,
-          ..
-        } = withdrawal_event_info
+        expect
+            ledger_state.WithdrawalInfo {
+              body: withdrawal_body,
+              validity: ledger_state.WithdrawalIsValid,
+              ..
+            }
+          = withdrawal_event_info
 
         // 6. The referenced settlement UTxO's withdrawal tree must contain
         //    the subject withdrawal event.
@@ -291,8 +301,7 @@ validator spend(hub_oracle: ScriptHash) {
             inclusion_proof_script_withdraw_redeemer_index: inclusion_proof_script_withdraw_redeemer_index,
           )
 
-        let ledger_state.WithdrawalBody { l2_value, l1_address, l1_datum, .. } =
-          withdrawal_body
+        let ledger_state.WithdrawalBody { l2_value, l1_address, l1_datum, .. } = withdrawal_body
 
         // 7. The initial payout accumulator value must not exceed the withdrawal
         //    target for any asset. Otherwise the exact-value conclusion path
@@ -308,11 +317,13 @@ validator spend(hub_oracle: ScriptHash) {
         // 8. Assert payout datum properly carries over all the required
         //    info.
         expect InlineDatum(output_datum_data) = output_datum
-        expect payout.Datum {
-          l2_value: output_l2_value,
-          l1_address: output_l1_address,
-          l1_datum: output_l1_datum,
-        }: payout.Datum = output_datum_data
+        expect
+            payout.Datum {
+              l2_value: output_l2_value,
+              l1_address: output_l1_address,
+              l1_datum: output_l1_datum,
+            }: payout.Datum
+          = output_datum_data
         expect output_l2_value == l2_value
         expect output_l1_address == l1_address
         expect output_l1_datum == l1_datum
@@ -468,14 +479,16 @@ test withdrawal_refund_hub_fixture_decodes() {
 }
 
 test withdrawal_refund_tx_hub_decodes() {
-  let Transaction { reference_inputs, .. } =
-    test_refund_tx(test_valid_refund_output())
+  let Transaction { reference_inputs, .. } = test_refund_tx(
+    test_valid_refund_output(),
+  )
   hub.get_datum(reference_inputs, test_hub_policy, 0) == test_hub_datum()
 }
 
 test withdrawal_refund_tx_settlement_decodes() {
-  let Transaction { reference_inputs, .. } =
-    test_refund_tx(test_valid_refund_output())
+  let Transaction { reference_inputs, .. } = test_refund_tx(
+    test_valid_refund_output(),
+  )
   settlement.get_datum(reference_inputs, test_settlement_policy, 1) == settlement.Datum {
     deposits_root: test_deposits_root,
     withdrawals_root: test_withdrawals_root,
@@ -486,10 +499,9 @@ test withdrawal_refund_tx_settlement_decodes() {
 }
 
 test settlement_sdk_fixture_decodes() {
-  expect Some(settlement_datum_data) =
-    cbor.deserialise(
-      #"d8799f58209199f6a06dd054c176b03f971663fb08eab680f330c53f03a7c2a7a4f7e2deb35820a0a6bfacf243dca6d2adbae4e8846841e74c90f17d7602cefc2375dad3ae56eb58200e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a858207777777777777777777777777777777777777777777777777777777777777777d87a80ff",
-    )
+  expect Some(settlement_datum_data) = cbor.deserialise(
+    #"d8799f58209199f6a06dd054c176b03f971663fb08eab680f330c53f03a7c2a7a4f7e2deb35820a0a6bfacf243dca6d2adbae4e8846841e74c90f17d7602cefc2375dad3ae56eb58200e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a858207777777777777777777777777777777777777777777777777777777777777777d87a80ff",
+  )
   expect decoded: settlement.Datum = settlement_datum_data
   decoded == settlement.Datum {
     deposits_root: #"9199f6a06dd054c176b03f971663fb08eab680f330c53f03a7c2a7a4f7e2deb3",
@@ -501,24 +513,19 @@ test settlement_sdk_fixture_decodes() {
 }
 
 test settlement_sdk_fixture_get_datum_decodes() {
-  expect Some(settlement_datum_data) =
-    cbor.deserialise(
-      #"d8799f58209199f6a06dd054c176b03f971663fb08eab680f330c53f03a7c2a7a4f7e2deb35820a0a6bfacf243dca6d2adbae4e8846841e74c90f17d7602cefc2375dad3ae56eb58200e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a858207777777777777777777777777777777777777777777777777777777777777777d87a80ff",
-    )
+  expect Some(settlement_datum_data) = cbor.deserialise(
+    #"d8799f58209199f6a06dd054c176b03f971663fb08eab680f330c53f03a7c2a7a4f7e2deb35820a0a6bfacf243dca6d2adbae4e8846841e74c90f17d7602cefc2375dad3ae56eb58200e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a858207777777777777777777777777777777777777777777777777777777777777777d87a80ff",
+  )
   let settlement_policy = #"7079358dfbe98ea1a3b7afac27d1d99d140979eaa28dac13"
-  let settlement_input =
-    Input {
-      output_reference: OutputReference {
-        transaction_id: #"00",
-        output_index: 8,
-      },
-      output: Output {
-        address: address.from_script(settlement_policy),
-        value: assets.from_asset(settlement_policy, #"cc", 1),
-        datum: InlineDatum(settlement_datum_data),
-        reference_script: None,
-      },
-    }
+  let settlement_input = Input {
+    output_reference: OutputReference { transaction_id: #"00", output_index: 8 },
+    output: Output {
+      address: address.from_script(settlement_policy),
+      value: assets.from_asset(settlement_policy, #"cc", 1),
+      datum: InlineDatum(settlement_datum_data),
+      reference_script: None,
+    },
+  }
   settlement.get_datum([settlement_input], settlement_policy, 0) == settlement.Datum {
     deposits_root: #"9199f6a06dd054c176b03f971663fb08eab680f330c53f03a7c2a7a4f7e2deb3",
     withdrawals_root: #"a0a6bfacf243dca6d2adbae4e8846841e74c90f17d7602cefc2375dad3ae56eb",
@@ -529,13 +536,15 @@ test settlement_sdk_fixture_get_datum_decodes() {
 }
 
 test withdrawal_refund_redeemer_indexes_are_stable() {
-  let SpendRedeemer {
-    hub_ref_input_index,
-    settlement_ref_input_index,
-    burn_redeemer_index,
-    inclusion_proof_script_withdraw_redeemer_index,
-    ..
-  } = test_refund_spend_redeemer(0)
+  let
+      SpendRedeemer {
+        hub_ref_input_index,
+        settlement_ref_input_index,
+        burn_redeemer_index,
+        inclusion_proof_script_withdraw_redeemer_index,
+        ..
+      }
+    = test_refund_spend_redeemer(0)
   and {
     hub_ref_input_index == 0,
     settlement_ref_input_index == 1,
@@ -545,8 +554,9 @@ test withdrawal_refund_redeemer_indexes_are_stable() {
 }
 
 test withdrawal_refund_event_info_fixture_decodes() {
-  let user_events.OptimisticDatum { event, .. } =
-    test_withdrawal_order_datum(ledger_state.WithdrawalIsValid)
+  let user_events.OptimisticDatum { event, .. } = test_withdrawal_order_datum(
+    ledger_state.WithdrawalIsValid,
+  )
   let Pair(_, info_data) = ledger_state.unsafe_event_to_key_value_pair(event)
   expect info: ledger_state.WithdrawalInfo = info_data
   info == test_withdrawal_info(ledger_state.WithdrawalIsValid)
@@ -561,25 +571,28 @@ test withdrawal_info_cbor_matches_sdk_default_encoding() {
 }
 
 test withdrawal_refund_hub_settlement_policy_matches_fixture() {
-  let Transaction { reference_inputs, .. } =
-    test_refund_tx(test_valid_refund_output())
-  let hub.Datum { settlement: settlement_policy_id, .. } =
-    hub.get_datum(reference_inputs, test_hub_policy, 0)
+  let Transaction { reference_inputs, .. } = test_refund_tx(
+    test_valid_refund_output(),
+  )
+  let hub.Datum { settlement: settlement_policy_id, .. } = hub.get_datum(
+    reference_inputs,
+    test_hub_policy,
+    0,
+  )
   settlement_policy_id == test_settlement_policy
 }
 
 fn test_settlement_ref_input() -> Input {
-  let settlement_datum_data: Data =
-    builtin.constr_data(
-      0,
-      [
-        builtin.b_data(test_deposits_root),
-        builtin.b_data(test_withdrawals_root),
-        builtin.b_data(env.empty_merkle_tree_root),
-        builtin.b_data(test_transactions_root),
-        builtin.constr_data(1, []),
-      ],
-    )
+  let settlement_datum_data: Data = builtin.constr_data(
+    0,
+    [
+      builtin.b_data(test_deposits_root),
+      builtin.b_data(test_withdrawals_root),
+      builtin.b_data(env.empty_merkle_tree_root),
+      builtin.b_data(test_transactions_root),
+      builtin.constr_data(1, []),
+    ],
+  )
   Input {
     output_reference: OutputReference {
       transaction_id: #"0404040404040404040404040404040404040404040404040404040404040404",
@@ -745,13 +758,13 @@ test initialize_payout_rejects_multi_asset_surplus() fail {
 
 fn test_refund_tx(output: Output) -> Transaction {
   let spend_redeemer_data: Data = test_refund_spend_redeemer(0)
-  let burn_redeemer_data: Data =
-    user_events.BurnEventNFT {
-      nonce_asset_name: test_asset_name,
-      witness_unregistration_redeemer_index: 2,
-    }
-  let invalid_withdrawal_info: Data =
-    test_withdrawal_info(ledger_state.UnpayableWithdrawalValue)
+  let burn_redeemer_data: Data = user_events.BurnEventNFT {
+    nonce_asset_name: test_asset_name,
+    witness_unregistration_redeemer_index: 2,
+  }
+  let invalid_withdrawal_info: Data = test_withdrawal_info(
+    ledger_state.UnpayableWithdrawalValue,
+  )
   Transaction {
     ..tx.placeholder,
     inputs: [test_withdrawal_input()],
@@ -785,54 +798,53 @@ fn validate_refund_branch_for_test(
   own_out_ref: OutputReference,
   transaction: Transaction,
 ) -> Bool {
-  let Transaction { inputs, outputs, reference_inputs, redeemers, .. } =
-    transaction
-  let SpendRedeemer {
-    input_index,
-    output_index,
-    hub_ref_input_index,
-    settlement_ref_input_index,
-    burn_redeemer_index,
-    membership_proof,
-    inclusion_proof_script_withdraw_redeemer_index,
-    purpose,
-    ..
-  } = redeemer
+  let Transaction { inputs, outputs, reference_inputs, redeemers, .. } = transaction
+  let
+      SpendRedeemer {
+        input_index,
+        output_index,
+        hub_ref_input_index,
+        settlement_ref_input_index,
+        burn_redeemer_index,
+        membership_proof,
+        inclusion_proof_script_withdraw_redeemer_index,
+        purpose,
+        ..
+      }
+    = redeemer
   expect hub_ref_input_index == 0
   let withdrawal_policy_id = test_withdrawal_policy
   let settlement_policy_id = test_settlement_policy
-  let withdrawals_root =
-    get_settlement_withdrawals_root(
-      reference_inputs,
-      settlement_policy_id,
-      settlement_ref_input_index,
-    )
-  expect user_events.BurnEventNFT { nonce_asset_name: burn_asset_name, .. }: user_events.MintRedeemer =
-    utils.get_redeemer_at(
-      redeemers,
-      Mint(withdrawal_policy_id),
-      burn_redeemer_index,
-    )
-  let
-    input,
-    indexed_output,
-  <-
-    singular_utxo_indexer.one_to_one(
-      input_index,
-      output_index,
-      own_out_ref,
-      inputs,
-      outputs,
-      True,
-    )
+  let withdrawals_root = get_settlement_withdrawals_root(
+    reference_inputs,
+    settlement_policy_id,
+    settlement_ref_input_index,
+  )
+  expect
+      user_events.BurnEventNFT { nonce_asset_name: burn_asset_name, .. }: user_events.MintRedeemer
+    = utils.get_redeemer_at(
+    redeemers,
+    Mint(withdrawal_policy_id),
+    burn_redeemer_index,
+  )
+  let input, indexed_output <- singular_utxo_indexer.one_to_one(
+    input_index,
+    output_index,
+    own_out_ref,
+    inputs,
+    outputs,
+    True,
+  )
   expect indexed_output == output
   let Input { output: Output { value: own_value, .. }, .. } = input
-  expect Output {
-    address: output_address,
-    value: output_value,
-    datum: output_datum,
-    reference_script: None,
-  } = output
+  expect
+      Output {
+        address: output_address,
+        value: output_value,
+        datum: output_datum,
+        reference_script: None,
+      }
+    = output
   expect Refund { validity_override } = purpose
   validate_refund_branch(
     own_value,
@@ -862,11 +874,10 @@ test invalid_withdrawal_refund_branch_accepts_recorded_target() {
 }
 
 test invalid_withdrawal_refund_branch_rejects_wrong_address() fail {
-  let bad_output =
-    Output {
-      ..test_valid_refund_output(),
-      address: address.from_script(test_reserve_policy),
-    }
+  let bad_output = Output {
+    ..test_valid_refund_output(),
+    address: address.from_script(test_reserve_policy),
+  }
   validate_refund_branch_for_test(
     bad_output,
     test_withdrawal_order_datum(ledger_state.WithdrawalIsValid),
@@ -877,13 +888,12 @@ test invalid_withdrawal_refund_branch_rejects_wrong_address() fail {
 }
 
 test invalid_withdrawal_refund_branch_rejects_wrong_datum() fail {
-  let bad_output =
-    Output {
-      ..test_valid_refund_output(),
-      datum: DatumHash(
-        #"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
-      ),
-    }
+  let bad_output = Output {
+    ..test_valid_refund_output(),
+    datum: DatumHash(
+      #"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    ),
+  }
   validate_refund_branch_for_test(
     bad_output,
     test_withdrawal_order_datum(ledger_state.WithdrawalIsValid),
@@ -894,11 +904,10 @@ test invalid_withdrawal_refund_branch_rejects_wrong_datum() fail {
 }
 
 test invalid_withdrawal_refund_branch_rejects_wrong_value() fail {
-  let bad_output =
-    Output {
-      ..test_valid_refund_output(),
-      value: assets.from_lovelace(2_999_999),
-    }
+  let bad_output = Output {
+    ..test_valid_refund_output(),
+    value: assets.from_lovelace(2_999_999),
+  }
   validate_refund_branch_for_test(
     bad_output,
     test_withdrawal_order_datum(ledger_state.WithdrawalIsValid),
@@ -910,11 +919,10 @@ test invalid_withdrawal_refund_branch_rejects_wrong_value() fail {
 
 test invalid_withdrawal_refund_branch_rejects_valid_withdrawal_marker() fail {
   let output = test_valid_refund_output()
-  let redeemer =
-    SpendRedeemer {
-      ..test_refund_spend_redeemer(0),
-      purpose: Refund { validity_override: ledger_state.WithdrawalIsValid },
-    }
+  let redeemer = SpendRedeemer {
+    ..test_refund_spend_redeemer(0),
+    purpose: Refund { validity_override: ledger_state.WithdrawalIsValid },
+  }
   validate_refund_branch_for_test(
     output,
     test_withdrawal_order_datum(ledger_state.WithdrawalIsValid),
@@ -993,26 +1001,20 @@ validator mint(hub_oracle: ScriptHash) {
     //    - The `WithdrawalInfo` as `Data`, which we are ignoring here (TODO:
     //      try remodeling the types to avoid inclusion of `WithdrawalValidity`
     //      on L1 datum).
-    let
-      l1_id,
-      output_withdrawal_order_value,
-      withdrawal_info_data,
-    <-
-      user_events.validate_mint(
-        hub_oracle,
-        fn(hub_datum) {
-          let hub.Datum { withdrawal_addr, .. } = hub_datum
-          withdrawal_addr
-        },
-        redeemer,
-        own_policy,
-        tx,
-      )
+    let l1_id, output_withdrawal_order_value, withdrawal_info_data <- user_events.validate_mint(
+      hub_oracle,
+      fn(hub_datum) {
+        let hub.Datum { withdrawal_addr, .. } = hub_datum
+        withdrawal_addr
+      },
+      redeemer,
+      own_policy,
+      tx,
+    )
 
-    let output_withdrawal_order_nft_triplet =
-      utils.get_single_asset_from_value_apart_from_ada(
-        output_withdrawal_order_value,
-      )
+    let output_withdrawal_order_nft_triplet = utils.get_single_asset_from_value_apart_from_ada(
+      output_withdrawal_order_value,
+    )
 
     // 2. The output value of the UTxO at the withdrawal address must contain
     //    only ADA and the authentication NFT.
@@ -1020,10 +1022,12 @@ validator mint(hub_oracle: ScriptHash) {
 
     // 3. The withdrawal event must be marked as valid. This is needed since
     //    only valid withdrawals can initialize payout accumulators.
-    expect ledger_state.WithdrawalInfo {
-      validity: ledger_state.WithdrawalIsValid,
-      ..
-    } = withdrawal_info_data
+    expect
+        ledger_state.WithdrawalInfo {
+          validity: ledger_state.WithdrawalIsValid,
+          ..
+        }
+      = withdrawal_info_data
 
     // Done.
     True

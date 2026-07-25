@@ -1,3 +1,5 @@
+import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_TRANSITION_STEP_V1_SCHEMA_VERSION } from "@al-ft/midgard-core/consensus-profile-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { it } from "@effect/vitest";
 import { Data as LucidData } from "@lucid-evolution/lucid";
@@ -257,6 +259,27 @@ afterAll(async () => {
 });
 
 describe("transition trace builder", () => {
+  it.effect("emits the exact V1 transition-step schema when selected", () =>
+    Effect.gen(function* () {
+      const ledgerMpf = yield* makeLedgerMpf([initialUtxo(10)]);
+      const result = yield* buildTransitionTraceResultFromMpf({
+        ledgerMpf,
+        sourceEvents: [
+          noOpEvent("ForcedTransaction", forcedTransactionEventKey(2)),
+        ],
+        withdrawalCount: 0,
+        forcedTransactionCount: 1,
+        l2TransactionCount: 0,
+        depositCount: 0,
+        transitionStepSchemaVersion:
+          MIDGARD_TRANSITION_STEP_V1_SCHEMA_VERSION,
+      });
+
+      expect(result.transitionTraceMembers).toHaveLength(1);
+      expect(result.transitionTraceMembers[0]!.value.schema_version).toBe(1n);
+    }),
+  );
+
   it.effect(
     "replays every transition step with byte-identical legacy and overlay roots",
     () =>
@@ -276,9 +299,7 @@ describe("transition trace builder", () => {
           {
             phase: "Deposit",
             eventKey: depositEventKey(4),
-            ledgerOps: [
-              { type: "insert", key: outRef(12), value: output(12) },
-            ],
+            ledgerOps: [{ type: "insert", key: outRef(12), value: output(12) }],
           },
         ];
         const initialOps: MpfBatchOp[] = initialUtxos.map((entry) => ({
@@ -286,7 +307,10 @@ describe("transition trace builder", () => {
           key: entry.outref,
           value: entry.output,
         }));
-        const legacy = yield* MidgardMpf.create("trace-legacy", TRACE_LEGACY_DB);
+        const legacy = yield* MidgardMpf.create(
+          "trace-legacy",
+          TRACE_LEGACY_DB,
+        );
         const overlay = yield* MidgardMpf.create(
           "trace-overlay",
           TRACE_OVERLAY_DB,
@@ -313,9 +337,7 @@ describe("transition trace builder", () => {
           depositCount: 1,
         });
 
-        expect(overlayResult.finalUtxosRoot).toBe(
-          legacyResult.finalUtxosRoot,
-        );
+        expect(overlayResult.finalUtxosRoot).toBe(legacyResult.finalUtxosRoot);
         expect(overlayResult.transitionTraceRoot).toBe(
           legacyResult.transitionTraceRoot,
         );
@@ -732,6 +754,45 @@ describe("transition trace builder", () => {
 
       expect(result._tag).toBe("Left");
     }),
+  );
+
+  it.effect(
+    "rejects source counts and actual ledger operations above the V1 consensus profile",
+    () =>
+      Effect.gen(function* () {
+        const excessiveSourceCount = yield* buildTransitionTraceResult({
+          initialUtxos: [],
+          sourceEvents: [],
+          withdrawalCount:
+            MIDGARD_CONSENSUS_LIMITS_V1.maxWithdrawalCount + 1,
+          forcedTransactionCount: 0,
+          l2TransactionCount: 0,
+          depositCount: 0,
+        }).pipe(Effect.either);
+        expect(excessiveSourceCount._tag).toBe("Left");
+
+        const excessiveOperations = yield* buildTransitionTraceResult({
+          initialUtxos: [],
+          sourceEvents: [
+            {
+              phase: "L2Transaction",
+              eventKey: l2TransactionEventKey(99),
+              ledgerOps: Array.from(
+                {
+                  length:
+                    MIDGARD_CONSENSUS_LIMITS_V1.maxLedgerOperationCount + 1,
+                },
+                () => ({ type: "delete" as const, key: outRef(1) }),
+              ),
+            },
+          ],
+          withdrawalCount: 0,
+          forcedTransactionCount: 0,
+          l2TransactionCount: 1,
+          depositCount: 0,
+        }).pipe(Effect.either);
+        expect(excessiveOperations._tag).toBe("Left");
+      }),
   );
 
   it.effect("rejects duplicate forced transaction order event keys", () =>

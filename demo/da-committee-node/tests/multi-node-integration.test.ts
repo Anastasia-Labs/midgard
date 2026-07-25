@@ -8,7 +8,6 @@ import { JsonFileWatcherStore } from "../src/store.js";
 import { bytesToHex } from "../src/utils/hex.js";
 import { WatcherService } from "../src/watcher.js";
 import {
-  IDENTITY_TX_PROJECTOR,
   makeObservedNode,
   makePayloadFixture,
   minimalConfig,
@@ -91,7 +90,6 @@ describe("multi-node DA committee integration", () => {
           return "posted";
         },
       },
-      transactionProjector: IDENTITY_TX_PROJECTOR,
     });
     await peerService.initialize();
     await expect(peerService.tick()).resolves.toMatchObject({
@@ -161,7 +159,6 @@ describe("multi-node DA committee integration", () => {
       signer: coordinatorSigner,
       signerValidation: coordinatorValidation,
       coordinator,
-      transactionProjector: IDENTITY_TX_PROJECTOR,
     });
     await coordinatorService.initialize();
     await expect(coordinatorService.tick()).resolves.toMatchObject({

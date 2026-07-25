@@ -10,14 +10,14 @@ export type ChainPoint = {
   readonly providerSource?: string;
 };
 
-export type Header = SDK.Header;
+export type HeaderV1 = SDK.HeaderV1;
 
 export type ObservedStateQueueNode = {
   readonly outRef: string;
   readonly assetName: string;
   readonly linkedListKey: string | "Empty";
   readonly rawDatumCbor?: string;
-  readonly header: Header;
+  readonly header: HeaderV1;
   readonly daAttestation: string;
   readonly chainPoint: ChainPoint;
 };
@@ -36,7 +36,7 @@ export type StateQueueHeaderRecord = {
   readonly stateQueueOutRef: string;
   readonly blockAssetName: string;
   readonly rawStateQueueDatumCbor?: string;
-  readonly header: Header;
+  readonly header: HeaderV1;
   readonly computedHeaderHash: string;
   readonly daAttestation: string;
   readonly observedChainPoint: ChainPoint;
@@ -49,7 +49,7 @@ export type StateQueueHeaderRecord = {
 export type DaPayloadRecord = {
   readonly deploymentFingerprint: string;
   readonly headerHash: string;
-  readonly payloadSchemaVersion?: number;
+  readonly payloadSchemaVersion: 1;
   readonly payloadCborHex: string;
   readonly payloadSha256: string;
   readonly sourcePeerId: string;
@@ -116,7 +116,7 @@ export type DaSignatureRecord = {
   readonly committeeSignersHash: string;
   readonly signedAt: string;
   readonly broadcastStatus: "local" | "posted" | "post_failed";
-  readonly source?: "local" | "peer" | "legacy";
+  readonly source?: "local" | "peer";
   readonly sourcePeer?: string;
   readonly receivedAt?: string;
   readonly verifiedAt?: string;

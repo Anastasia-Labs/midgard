@@ -25,11 +25,10 @@ pub fn get_proven_fraudulent_blocks_header_hash(
   fraud_proof_policy_id: PolicyId,
   fraud_proof_ref_input_index: Int,
 ) -> HeaderHash {
-  let fraud_proof_asset_name =
-    utils.get_authentic_input_asset_name_with_policy_at(
-      reference_inputs,
-      fraud_proof_policy_id,
-      fraud_proof_ref_input_index,
-    )
+  let fraud_proof_asset_name = utils.get_authentic_input_asset_name_with_policy_at(
+    reference_inputs,
+    fraud_proof_policy_id,
+    fraud_proof_ref_input_index,
+  )
   asset_name_to_header_hash(fraud_proof_asset_name)
 }

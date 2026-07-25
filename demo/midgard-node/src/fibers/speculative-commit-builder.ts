@@ -1,5 +1,8 @@
 import { randomUUID } from "node:crypto";
 
+import {
+  type MidgardConsensusProfileV1,
+} from "@al-ft/midgard-core/consensus-profile-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Duration, Effect, Metric, Option, Queue, Ref, Runtime } from "effect";
 import { Worker } from "worker_threads";
@@ -142,6 +145,7 @@ type SubmitSpeculativeCandidateInstruction = Extract<
 
 const authenticateForeignTipEvidence = (
   liveTail: SubmitSpeculativeCandidateInstruction["confirmedBlock"],
+  _consensusProfile: MidgardConsensusProfileV1,
 ) =>
   Effect.gen(function* () {
     const tail = yield* deserializeStateQueueUTxO(liveTail);
@@ -155,8 +159,8 @@ const authenticateForeignTipEvidence = (
         }),
       );
     }
-    const header = yield* SDK.getHeaderFromStateQueueDatum(tail.datum);
-    const recomputedHeaderHash = yield* SDK.hashBlockHeader(header);
+    const header = yield* SDK.getHeaderV1FromStateQueueDatum(tail.datum);
+    const recomputedHeaderHash = yield* SDK.hashBlockHeaderV1(header);
     if (recomputedHeaderHash !== headerHash) {
       return yield* Effect.fail(
         new DatabaseError({
@@ -178,13 +182,20 @@ export const persistAuthenticatedForeignTipMismatch = ({
   expectedHeaderHash,
   liveTail,
   assertedForeignHeaderHash,
+  consensusProfile,
 }: {
   readonly expectedHeaderHash: string;
   readonly liveTail: SubmitSpeculativeCandidateInstruction["confirmedBlock"];
   readonly assertedForeignHeaderHash?: string;
+  readonly consensusProfile:
+    | MidgardConsensusProfileV1
+    | MidgardConsensusProfileV1;
 }) =>
   Effect.gen(function* () {
-    const evidence = yield* authenticateForeignTipEvidence(liveTail);
+    const evidence = yield* authenticateForeignTipEvidence(
+      liveTail,
+      consensusProfile,
+    );
     if (
       assertedForeignHeaderHash !== undefined &&
       evidence.headerHash !== assertedForeignHeaderHash
@@ -203,6 +214,7 @@ export const persistAuthenticatedForeignTipMismatch = ({
       foreignHeaderHash: evidence.headerHash,
       replacedBaseHeaderHash: expectedHeaderHash,
       foreignHeader: evidence.header,
+      consensusProfile,
     });
     return true;
   });
@@ -211,11 +223,15 @@ export const recordForeignTipMismatchBeforeInvalidation = <E, R>({
   expectedHeaderHash,
   confirmedHeaderHash,
   confirmedTip,
+  consensusProfile,
   invalidateCandidate,
 }: {
   readonly expectedHeaderHash: string;
   readonly confirmedHeaderHash: string;
   readonly confirmedTip: SubmitSpeculativeCandidateInstruction["confirmedBlock"];
+  readonly consensusProfile:
+    | MidgardConsensusProfileV1
+    | MidgardConsensusProfileV1;
   readonly invalidateCandidate: Effect.Effect<void, E, R>;
 }) =>
   Effect.gen(function* () {
@@ -223,6 +239,7 @@ export const recordForeignTipMismatchBeforeInvalidation = <E, R>({
       expectedHeaderHash,
       liveTail: confirmedTip,
       assertedForeignHeaderHash: confirmedHeaderHash,
+      consensusProfile,
     });
     if (!recorded) {
       return yield* Effect.fail(
@@ -245,15 +262,20 @@ export const decideSpeculativeInstructionForLiveTip = ({
   expectedHeaderHash,
   liveTail,
   submitInstruction,
+  consensusProfile,
 }: {
   readonly expectedHeaderHash: string;
   readonly liveTail: SubmitSpeculativeCandidateInstruction["confirmedBlock"];
   readonly submitInstruction: SubmitSpeculativeCandidateInstruction;
+  readonly consensusProfile:
+    | MidgardConsensusProfileV1
+    | MidgardConsensusProfileV1;
 }) =>
   Effect.gen(function* () {
     const mismatchRecorded = yield* persistAuthenticatedForeignTipMismatch({
       expectedHeaderHash,
       liveTail,
+      consensusProfile,
     });
     if (!mismatchRecorded) return submitInstruction;
     return {
@@ -1017,10 +1039,12 @@ export const submitSpeculativeCandidateOnConfirmation = (
             config.SPECULATIVE_REBUILD_MAX_ATTEMPTS,
           );
           if (nextState._tag === "Invalidated") {
+            const contracts = yield* MidgardContracts;
             yield* recordForeignTipMismatchBeforeInvalidation({
               expectedHeaderHash: state.baseHeaderHash,
               confirmedHeaderHash,
               confirmedTip,
+              consensusProfile: contracts.consensusProfile,
               invalidateCandidate: invalidateSpeculativeCommitCandidate(
                 globals,
                 config,
@@ -1073,6 +1097,7 @@ export const submitSpeculativeCandidateOnConfirmation = (
                   yield* decideSpeculativeInstructionForLiveTip({
                     expectedHeaderHash: confirmedHeaderHash,
                     liveTail: snapshot.tailCommitBase.utxo,
+                    consensusProfile: contracts.consensusProfile,
                     submitInstruction: {
                       type: "SubmitSpeculativeCandidate",
                       confirmedBlock: snapshot.tailCommitBase.utxo,

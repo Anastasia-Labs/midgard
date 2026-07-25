@@ -12,6 +12,7 @@ import { createInterface } from "node:readline";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
+import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   deserializePhaseACandidate,
@@ -883,6 +884,7 @@ const drainReplica = async (
   const phaseAStats = { durationMs: 0, serializationMs: 0 };
   const validationPool: ValidationPoolService = {
     poolSize,
+    consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
     ready: Effect.void,
     stats: Effect.sync(() => pool.stats()),
     runPhaseAChunk: (txs) =>
@@ -1427,6 +1429,7 @@ describe("Phase 2 sustained real-Postgres Stage B operator benchmark", () => {
         minFeeB: BigInt(manifest.feeParams.minFeeB),
         concurrency: 1,
         strictnessProfile: "phase2_stage_b_operator",
+        consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
       } as const;
       const probeRows = await readCorpusRows(corpusPath, batchSize);
       const probeQueued = probeRows.map((row, index) =>

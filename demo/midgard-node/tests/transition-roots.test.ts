@@ -59,7 +59,7 @@ describe("transition root primitives", () => {
     () =>
       Effect.gen(function* () {
         const root = yield* buildAuthenticatedRootFromDataEntries({
-          domain: SDK.ROOT_DOMAINS.transactions,
+          domain: SDK.ROOT_DOMAINS.transactionsV1,
           entries: [
             { key: h32(1), value: h32(11) },
             { key: h32(2), value: h32(12) },
@@ -85,7 +85,7 @@ describe("transition root primitives", () => {
           keySchema: SDK.H32Schema,
           valueSchema: SDK.H32Schema,
           options: {
-            expectedDomain: SDK.ROOT_DOMAINS.transactions,
+            expectedDomain: SDK.ROOT_DOMAINS.transactionsV1,
             expectedRoot: root.root,
             expectedCount: 2n,
           },
@@ -94,7 +94,7 @@ describe("transition root primitives", () => {
           witness: nonMembership,
           keySchema: SDK.H32Schema,
           options: {
-            expectedDomain: SDK.ROOT_DOMAINS.transactions,
+            expectedDomain: SDK.ROOT_DOMAINS.transactionsV1,
             expectedRoot: root.root,
             expectedCount: 2n,
           },

@@ -16,11 +16,11 @@ use midgard/common/utils.{
 use midgard/computation_thread as ct
 use midgard/fraud_proof
 use midgard/fraud_proof_catalogue
-use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_compact_cbor}
+use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_compact_cbor_v1}
 use midgard/fraud_proofs/native_tx/types.{VerifiedMidgardNativeTxCompact} as native_tx_types
 use midgard/hub_oracle as hub
 use midgard/ledger_state.{
-  Header, MidgardTxBodyCompact, MidgardTxCompact, MidgardTxId,
+  HeaderV1, MidgardTxBodyCompact, MidgardTxCompact, MidgardTxId,
   MidgardTxWitnessSetCompact,
 }
 use midgard/state_queue
@@ -78,24 +78,26 @@ pub fn pass_tx_to_next_step(
     Option<input_state>,
     ScriptHash,
     Data<output_state>,
-    Header,
+    HeaderV1,
     MidgardTxId,
     MidgardTxCompact,
     TxFieldPreimage,
   ) ->
     Bool,
 ) -> Bool {
-  let TxInclusionArgs {
-    input_index,
-    output_index,
-    hub_ref_input_index,
-    state_queue_node_ref_input_index,
-    tx_id,
-    tx,
-    tx_field_preimage,
-    tx_membership_proof,
-    inclusion_proof_script_withdraw_redeemer_index,
-  } = tx_inclusion_args
+  let
+      TxInclusionArgs {
+        input_index,
+        output_index,
+        hub_ref_input_index,
+        state_queue_node_ref_input_index,
+        tx_id,
+        tx,
+        tx_field_preimage,
+        tx_membership_proof,
+        inclusion_proof_script_withdraw_redeemer_index,
+      }
+    = tx_inclusion_args
 
   let Transaction { inputs, outputs, reference_inputs, redeemers, .. } = l1_tx
 
@@ -103,42 +105,37 @@ pub fn pass_tx_to_next_step(
 
   // 1. Specified input must be authentic and properly reproduced.
   let
-    own_script_hash,
-    computation_thread_token_asset_name,
-    fraud_prover,
-    m_input_state_data,
-    output_script_hash,
-    output_state_data,
-  <-
-    continue(
-      computation_thread_token_policy_id,
-      step_datum,
-      input_index,
-      output_index,
-      own_out_ref,
-      inputs,
-      outputs,
-    )
+      own_script_hash,
+      computation_thread_token_asset_name,
+      fraud_prover,
+      m_input_state_data,
+      output_script_hash,
+      output_state_data
+    <- continue(
+    computation_thread_token_policy_id,
+    step_datum,
+    input_index,
+    output_index,
+    own_out_ref,
+    inputs,
+    outputs,
+  )
 
   // 2. The provided transaction must be valid, and must be included in the
   //    specified state queue node.
-  let
-    _verified_tx_id,
-    header,
-  <-
-    verify_tx_in_state_queue_node(
-      tx_id,
-      tx,
-      tx_field_preimage,
-      tx_membership_proof,
-      computation_thread_token_asset_name,
-      hub_oracle,
-      hub_ref_input_index,
-      state_queue_node_ref_input_index,
-      inclusion_proof_script_withdraw_redeemer_index,
-      reference_inputs,
-      redeemers,
-    )
+  let _verified_tx_id, header <- verify_tx_in_state_queue_node(
+    tx_id,
+    tx,
+    tx_field_preimage,
+    tx_membership_proof,
+    computation_thread_token_asset_name,
+    hub_oracle,
+    hub_ref_input_index,
+    state_queue_node_ref_input_index,
+    inclusion_proof_script_withdraw_redeemer_index,
+    reference_inputs,
+    redeemers,
+  )
 
   // 3. Custom validation must pass.
   expect
@@ -176,64 +173,60 @@ pub fn pass_native_tx_to_next_step(
     Option<input_state>,
     ScriptHash,
     Data<output_state>,
-    Header,
+    HeaderV1,
     ByteArray,
     VerifiedMidgardNativeTxCompact,
   ) ->
     Bool,
 ) -> Bool {
-  let NativeTxInclusionArgs {
-    input_index,
-    output_index,
-    hub_ref_input_index,
-    state_queue_node_ref_input_index,
-    native_tx_id,
-    native_tx_compact_cbor,
-    transactions_phas_root,
-    tx_membership_proof,
-    inclusion_proof_script_withdraw_redeemer_index,
-  } = tx_inclusion_args
+  let
+      NativeTxInclusionArgs {
+        input_index,
+        output_index,
+        hub_ref_input_index,
+        state_queue_node_ref_input_index,
+        native_tx_id,
+        native_tx_compact_cbor,
+        transactions_phas_root,
+        tx_membership_proof,
+        inclusion_proof_script_withdraw_redeemer_index,
+      }
+    = tx_inclusion_args
 
   let Transaction { inputs, outputs, reference_inputs, redeemers, .. } = l1_tx
 
   expect Some(step_datum) = datum
 
   let
-    own_script_hash,
-    computation_thread_token_asset_name,
-    fraud_prover,
-    m_input_state_data,
-    output_script_hash,
-    output_state_data,
-  <-
-    continue(
-      computation_thread_token_policy_id,
-      step_datum,
-      input_index,
-      output_index,
-      own_out_ref,
-      inputs,
-      outputs,
-    )
-
-  let
-    _verified_tx_id,
-    header,
-    native_tx_view,
-  <-
-    verify_native_tx_in_state_queue_node(
-      native_tx_id,
-      native_tx_compact_cbor,
-      transactions_phas_root,
-      tx_membership_proof,
+      own_script_hash,
       computation_thread_token_asset_name,
-      hub_oracle,
-      hub_ref_input_index,
-      state_queue_node_ref_input_index,
-      inclusion_proof_script_withdraw_redeemer_index,
-      reference_inputs,
-      redeemers,
-    )
+      fraud_prover,
+      m_input_state_data,
+      output_script_hash,
+      output_state_data
+    <- continue(
+    computation_thread_token_policy_id,
+    step_datum,
+    input_index,
+    output_index,
+    own_out_ref,
+    inputs,
+    outputs,
+  )
+
+  let _verified_tx_id, header, native_tx_view <- verify_native_tx_in_state_queue_node(
+    native_tx_id,
+    native_tx_compact_cbor,
+    transactions_phas_root,
+    tx_membership_proof,
+    computation_thread_token_asset_name,
+    hub_oracle,
+    hub_ref_input_index,
+    state_queue_node_ref_input_index,
+    inclusion_proof_script_withdraw_redeemer_index,
+    reference_inputs,
+    redeemers,
+  )
 
   expect
     validation(
@@ -263,24 +256,25 @@ pub fn cancel(
   // 1. Validate the `Cancel` redeemer from the computation thread policy is
   //    invoked (this in turn validates the burning of the specified computation
   //    thread token).
-  let mint_redeemer_data =
-    get_redeemer_at(
-      redeemers: redeemers,
-      expected_purpose: Mint(computation_thread_token_policy_id),
-      redeemer_index: mint_redeemer_index,
-    )
-  expect ct.BurnForCancellation {
-    burning_token_asset_name: redeemer_burning_asset_name,
-  } = mint_redeemer_data
+  let mint_redeemer_data = get_redeemer_at(
+    redeemers: redeemers,
+    expected_purpose: Mint(computation_thread_token_policy_id),
+    redeemer_index: mint_redeemer_index,
+  )
+  expect
+      ct.BurnForCancellation {
+        burning_token_asset_name: redeemer_burning_asset_name,
+      }
+    = mint_redeemer_data
 
   // 2. Input UTxO must be authentic.
-  expect Some(Input {
-    output: Output { value: input_value, .. },
-    output_reference,
-  }) = list.at(inputs, input_index)
+  expect
+      Some(Input { output: Output { value: input_value, .. }, output_reference })
+    = list.at(inputs, input_index)
   expect output_reference == own_out_ref
-  let input_nft_triplet =
-    get_single_asset_from_value_apart_from_ada(input_value)
+  let input_nft_triplet = get_single_asset_from_value_apart_from_ada(
+    input_value,
+  )
   expect
     input_nft_triplet == (
       computation_thread_token_policy_id,
@@ -333,21 +327,20 @@ pub fn continue(
     Bool,
 ) -> Bool {
   let
-    input_script_hash,
-    computation_thread_token_asset_name,
-    fraud_prover,
-    m_input_state_data,
-    output,
-  <-
-    validate_input_and_provide_output(
-      computation_thread_token_policy_id,
-      step_datum,
-      input_index,
-      output_index,
-      own_out_ref,
-      inputs,
-      outputs,
-    )
+      input_script_hash,
+      computation_thread_token_asset_name,
+      fraud_prover,
+      m_input_state_data,
+      output
+    <- validate_input_and_provide_output(
+    computation_thread_token_policy_id,
+    step_datum,
+    input_index,
+    output_index,
+    own_out_ref,
+    inputs,
+    outputs,
+  )
 
   // 1. Output UTxO must:
   //    - Go to an address which its payment credential is a script.
@@ -355,14 +348,17 @@ pub fn continue(
   //      (consequently preventing double satisfaction).
   //    - Have an inline datum attached.
   //    - Not have a reference script attached.
-  expect Output {
-    address: Address { payment_credential: Script(output_script_hash), .. },
-    value: output_value,
-    datum: InlineDatum(output_datum_data),
-    reference_script: None,
-  } = output
-  let output_nft_triplet =
-    get_single_asset_from_value_apart_from_ada(output_value)
+  expect
+      Output {
+        address: Address { payment_credential: Script(output_script_hash), .. },
+        value: output_value,
+        datum: InlineDatum(output_datum_data),
+        reference_script: None,
+      }
+    = output
+  let output_nft_triplet = get_single_asset_from_value_apart_from_ada(
+    output_value,
+  )
   expect
     output_nft_triplet == (
       computation_thread_token_policy_id,
@@ -371,10 +367,12 @@ pub fn continue(
     )
 
   // 2. Fraud prover must not change during the transition.
-  expect ct.StepDatum {
-    fraud_prover: output_fraud_prover,
-    data: Some(output_state_data),
-  }: ct.StepDatum<Data> = output_datum_data
+  expect
+      ct.StepDatum {
+        fraud_prover: output_fraud_prover,
+        data: Some(output_state_data),
+      }: ct.StepDatum<Data>
+    = output_datum_data
   expect output_fraud_prover == fraud_prover
 
   // 3. Custom validation for each fraud proof must pass.
@@ -409,31 +407,32 @@ pub fn finalize(
     Bool,
 ) -> Bool {
   let
-    input_script_hash,
-    computation_thread_token_asset_name,
-    fraud_prover,
-    m_input_state_data,
-    output,
-  <-
-    validate_input_and_provide_output(
-      computation_thread_token_policy_id,
-      step_datum,
-      input_index,
-      output_index,
-      own_out_ref,
-      inputs,
-      outputs,
-    )
+      input_script_hash,
+      computation_thread_token_asset_name,
+      fraud_prover,
+      m_input_state_data,
+      output
+    <- validate_input_and_provide_output(
+    computation_thread_token_policy_id,
+    step_datum,
+    input_index,
+    output_index,
+    own_out_ref,
+    inputs,
+    outputs,
+  )
 
   // 1. Output UTxO must:
   //    - Have an inline datum attached.
   //    - Not have a reference script attached.
-  expect Output {
-    address: output_address,
-    value: output_value,
-    datum: InlineDatum(output_datum_data),
-    reference_script: None,
-  } = output
+  expect
+      Output {
+        address: output_address,
+        value: output_value,
+        datum: InlineDatum(output_datum_data),
+        reference_script: None,
+      }
+    = output
 
   // 2. Successful fraud proofs must be reserved at fraud proof's spending
   //    script which is an always fails script.
@@ -441,8 +440,9 @@ pub fn finalize(
 
   // 3. Produced UTxO at `fraud_proof` must have only 1 NFT of `fraud_proof`
   //    policy, with the same asset name as the input NFT's.
-  let output_nft_triplet =
-    get_single_asset_from_value_apart_from_ada(output_value)
+  let output_nft_triplet = get_single_asset_from_value_apart_from_ada(
+    output_value,
+  )
   expect
     output_nft_triplet == (
       fraud_proof_token_policy_id,
@@ -456,16 +456,17 @@ pub fn finalize(
 
   // 5. Fraud proof's minting script must be invoked (which also validates the
   //    burning of the computation thread token).
-  let fraud_proof_mint_redeemer_data =
-    get_redeemer_at(
-      redeemers: redeemers,
-      expected_purpose: Mint(fraud_proof_token_policy_id),
-      redeemer_index: fraud_proof_mint_redeemer_index,
-    )
-  expect fraud_proof.MintRedeemer {
-    computation_thread_token_asset_name: fraud_proof_redeemer_burning_asset_name,
-    ..
-  } = fraud_proof_mint_redeemer_data
+  let fraud_proof_mint_redeemer_data = get_redeemer_at(
+    redeemers: redeemers,
+    expected_purpose: Mint(fraud_proof_token_policy_id),
+    redeemer_index: fraud_proof_mint_redeemer_index,
+  )
+  expect
+      fraud_proof.MintRedeemer {
+        computation_thread_token_asset_name: fraud_proof_redeemer_burning_asset_name,
+        ..
+      }
+    = fraud_proof_mint_redeemer_data
 
   // 6. The asset name specified in fraud proof's redeemer must match the token
   //    included in the spending input.
@@ -527,25 +528,24 @@ pub fn verify_tx_in_state_queue_node(
   inclusion_proof_script_withdraw_redeemer_index: Int,
   reference_inputs: List<Input>,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
-  return: fn(MidgardTxId, Header) -> result,
+  return: fn(MidgardTxId, HeaderV1) -> result,
 ) -> result {
   // 1. Verify authenticity of the provided tx and its field preimage against
   //    its ID, and the field's hash.
   expect verify_tx_and_its_provided_field_preimage(tx_id, tx, tx_field_preimage)
 
   // 2. Hub oracle must be provided as a reference input.
-  let hub.Datum { state_queue: state_queue_policy, .. } =
-    hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
+  let hub.Datum { state_queue: state_queue_policy, .. } = hub.get_datum(
+    reference_inputs,
+    hub_oracle,
+    hub_ref_input_index,
+  )
 
-  let
-    state_queue_datum,
-    state_queue_node_key,
-  <-
-    state_queue.get_block_datum(
-      reference_inputs,
-      state_queue_policy,
-      state_queue_node_ref_input_index,
-    )
+  let state_queue_datum, state_queue_node_key <- state_queue.get_block_datum_v1(
+    reference_inputs,
+    state_queue_policy,
+    state_queue_node_ref_input_index,
+  )
 
   // 3. The asset name of the computation thread token must match the state
   //    queue node key (after dropping the fraud category ID prefix), which is
@@ -584,23 +584,24 @@ pub fn verify_native_tx_in_state_queue_node(
   inclusion_proof_script_withdraw_redeemer_index: Int,
   reference_inputs: List<Input>,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
-  return: fn(ByteArray, Header, VerifiedMidgardNativeTxCompact) -> result,
+  return: fn(ByteArray, HeaderV1, VerifiedMidgardNativeTxCompact) -> result,
 ) -> result {
-  let native_tx_view =
-    verify_native_tx_compact_cbor(native_tx_id, native_tx_compact_cbor)
+  let native_tx_view = verify_native_tx_compact_cbor_v1(
+    native_tx_id,
+    native_tx_compact_cbor,
+  )
 
-  let hub.Datum { state_queue: state_queue_policy, .. } =
-    hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
+  let hub.Datum { state_queue: state_queue_policy, .. } = hub.get_datum(
+    reference_inputs,
+    hub_oracle,
+    hub_ref_input_index,
+  )
 
-  let
-    state_queue_datum,
-    state_queue_node_key,
-  <-
-    state_queue.get_block_datum(
-      reference_inputs,
-      state_queue_policy,
-      state_queue_node_ref_input_index,
-    )
+  let state_queue_datum, state_queue_node_key <- state_queue.get_block_datum_v1(
+    reference_inputs,
+    state_queue_policy,
+    state_queue_node_ref_input_index,
+  )
 
   expect
     state_queue_node_key == bytearray.drop(
@@ -614,7 +615,7 @@ pub fn verify_native_tx_in_state_queue_node(
   // root is as trustworthy as the header commitment.
   expect
     transition_trace.commit_counted_root(
-      transition_trace.TransactionsRootDomain,
+      transition_trace.TransactionsV1RootDomain,
       transactions_phas_root,
       state_queue_datum.l2_transaction_count,
     ) == state_queue_datum.transactions_root
@@ -671,34 +672,32 @@ fn validate_input_and_provide_output(
   ) ->
     Bool,
 ) -> Bool {
-  let
-    input,
-    output,
-  <-
-    singular_utxo_indexer.one_to_one(
-      input_index,
-      output_index,
-      own_out_ref,
-      inputs,
-      outputs,
-      // Double satisfaction prevented by validating the output UTxO carries the
-      // same computation thread token as the input's. This is _NOT_ carried out
-      // in this function though, hence this helper itself not being exposed.
-      True,
-    )
+  let input, output <- singular_utxo_indexer.one_to_one(
+    input_index,
+    output_index,
+    own_out_ref,
+    inputs,
+    outputs,
+    // Double satisfaction prevented by validating the output UTxO carries the
+    // same computation thread token as the input's. This is _NOT_ carried out
+    // in this function though, hence this helper itself not being exposed.
+    True,
+  )
 
   // 1. Input UTxO must carry exactly one computation thread token and no other
   //    tokens.
-  expect Input {
-    output: Output {
-      address: Address { payment_credential: Script(input_script_hash), .. },
-      value: input_value,
-      ..
-    },
-    ..
-  } = input
-  let (input_nft_policy_id, computation_thread_token_asset_name, input_nft_qty) =
-    get_single_asset_from_value_apart_from_ada(input_value)
+  expect
+      Input {
+        output: Output {
+          address: Address { payment_credential: Script(input_script_hash), .. },
+          value: input_value,
+          ..
+        },
+        ..
+      }
+    = input
+  let (input_nft_policy_id, computation_thread_token_asset_name, input_nft_qty)
+    = get_single_asset_from_value_apart_from_ada(input_value)
   expect input_nft_policy_id == computation_thread_token_policy_id
   expect input_nft_qty == 1
 

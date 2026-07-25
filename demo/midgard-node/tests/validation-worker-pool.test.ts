@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
   deserializePhaseACandidate,
   encodeScriptContextCbor,
@@ -45,6 +46,7 @@ const init = {
     minFeeA: 0n,
     minFeeB: 0n,
     strictnessProfile: "phase2_worker_test",
+    consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
   },
 } as const;
 const nodeVerifierInit = {

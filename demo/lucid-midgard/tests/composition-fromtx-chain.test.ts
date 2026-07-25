@@ -1,10 +1,11 @@
 import {
   decodeMidgardNativeByteListPreimage,
-  deriveMidgardNativeTxCompact,
+  deriveMidgardNativeTxCompactV1,
   encodeCbor,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
-  type MidgardNativeTxFull,
+  type MidgardNativeTxFullV1,
 } from "@al-ft/midgard-core/codec";
+import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -18,7 +19,6 @@ import {
   type MidgardProtocolInfo,
   type MidgardProvider,
   type MidgardUtxo,
-  outputAddressProtected,
   type OutRef,
   outRefToCbor,
   SigningError,
@@ -31,9 +31,11 @@ const protocolInfo = (
   network: "Preview",
   midgardNativeTxVersion: 1,
   currentSlot: 0n,
+  consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
   supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+  codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   protocolFeeParameters: { minFeeA: 0n, minFeeB: 0n },
-  submissionLimits: { maxSubmitTxCborBytes: 32768 },
+  submissionLimits: { maxSubmitTxCborBytes: MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes },
   validation: {
     strictnessProfile: "phase1_midgard",
     localValidationIsAuthoritative: false,
@@ -215,10 +217,10 @@ describe("fromTx, compose, and local chaining", () => {
       ...completed.tx.witnessSet,
       addrTxWitsPreimageCbor,
     };
-    const staleTx: MidgardNativeTxFull = {
+    const staleTx: MidgardNativeTxFullV1 = {
       ...completed.tx,
       witnessSet,
-      compact: deriveMidgardNativeTxCompact(
+      compact: deriveMidgardNativeTxCompactV1(
         completed.tx.body,
         witnessSet,
         completed.tx.validity,
@@ -341,7 +343,7 @@ describe("fromTx, compose, and local chaining", () => {
 
     const [newWalletUtxos, derivedOutputs, completed] = await midgard
       .newTx()
-      .pay.ToProtectedAddress(otherAddress, { lovelace: 2_000_000n })
+      .pay.ToAddress(otherAddress, { lovelace: 2_000_000n })
       .chain({ fee: 0n });
     const outputBytes = decodeMidgardNativeByteListPreimage(
       completed.tx.body.outputsPreimageCbor,
@@ -353,9 +355,7 @@ describe("fromTx, compose, and local chaining", () => {
         Buffer.from(utxo.cbor!.output!).toString("hex"),
       ),
     ).toEqual(outputBytes.map((bytes) => bytes.toString("hex")));
-    expect(outputAddressProtected(derivedOutputs[0]!.output.address)).toBe(
-      true,
-    );
+    expect(derivedOutputs[0]!.output.address).toBe(otherAddress);
     expect(
       Buffer.from(completed.producedOutput(0).cbor!.outRef!).toString("hex"),
     ).toBe(

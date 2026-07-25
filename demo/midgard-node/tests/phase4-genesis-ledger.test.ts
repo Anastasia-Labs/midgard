@@ -122,7 +122,7 @@ describe("Phase 4 explicit genesis ledger gate", () => {
 });
 
 describe("Phase 4 configured genesis plan", () => {
-  it("seeds the complete fallback set while proving A/B funding and reporting compatibility C", () => {
+  it("seeds the complete fallback set while proving A/B funding and reporting supplemental wallet C", () => {
     const addressA = walletFromSeed(SEED_A, { network: "Custom" }).address;
     const addressB = walletFromSeed(SEED_B, { network: "Custom" }).address;
     const a = configuredUtxo({
@@ -137,7 +137,7 @@ describe("Phase 4 configured genesis plan", () => {
       address: addressB,
       lovelace: 126_943n,
     });
-    // Phase 4 deliberately aliases the unused compatibility wallet C to A.
+    // The isolated Phase 4 harness maps its unused supplemental wallet C to A.
     const c = configuredUtxo({
       txByte: "33",
       outputIndex: 0,
@@ -164,7 +164,7 @@ describe("Phase 4 configured genesis plan", () => {
       A: { utxoCount: 1, totalLovelace: "4000000000" },
       B: { utxoCount: 1, totalLovelace: "126943" },
     });
-    expect(plan.compatibilityRowCount).toBe(1);
+    expect(plan.supplementalWalletRowCount).toBe(1);
     expect(PHASE4_PROCESS_DEFAULT_TRANSFER_LOVELACE).toBe(50_000n);
   });
 

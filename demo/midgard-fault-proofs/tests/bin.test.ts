@@ -120,6 +120,23 @@ describe("fault-proof CLI argument parsing", () => {
     ]);
 
     expect(transitionTraceInit.fraudCategory).toBe("transitionTrace");
+
+    const validationTraceDisputeInit = parseArgs([
+      "node",
+      "bin",
+      "submit-init",
+      "--blueprint",
+      "plutus.json",
+      "--deployment-info",
+      "deployment.json",
+      "--fraudulent-block-out-ref",
+      `${"ef".repeat(32)}#0`,
+      "--fraud-category",
+      "validationTraceDispute",
+    ]);
+    expect(validationTraceDisputeInit.fraudCategory).toBe(
+      "validationTraceDispute",
+    );
   });
 
   it("rejects unknown fault-proof categories", () => {
@@ -132,8 +149,70 @@ describe("fault-proof CLI argument parsing", () => {
         "invalid-range",
       ]),
     ).toThrow(
-      '--fraud-category must be one of "doubleSpend", "invalidRange", "transitionTrace", or "nonExistentInput"',
+      '--fraud-category must be one of "doubleSpend", "invalidRange", "transitionTrace", "validationTraceDispute", or "nonExistentInput"',
     );
+  });
+
+  it("parses fail-closed validation-dispute submission inputs", () => {
+    const open = parseArgs([
+      "node",
+      "midgard-fault-proofs",
+      "submit-validation-dispute-open",
+      "--blueprint",
+      "plutus.json",
+      "--deployment-info",
+      "deployment.json",
+      "--thread-out-ref",
+      `${"11".repeat(32)}#0`,
+      "--state-queue-block-out-ref",
+      `${"22".repeat(32)}#1`,
+      "--validation-claim-cbor",
+      "claim.cbor",
+      "--challenger-descriptor-cbor",
+      "challenger.cbor",
+    ]);
+    expect(open).toMatchObject({
+      command: "submit-validation-dispute-open",
+      validationClaimCborPath: "claim.cbor",
+      challengerDescriptorCborPath: "challenger.cbor",
+    });
+
+    const reveal = parseArgs([
+      "node",
+      "midgard-fault-proofs",
+      "submit-validation-dispute-reveal",
+      "--validation-dispute-role",
+      "challenger",
+      "--validation-trace-proof-cbor",
+      "midpoint.cbor",
+    ]);
+    expect(reveal).toMatchObject({
+      command: "submit-validation-dispute-reveal",
+      validationDisputeRole: "challenger",
+      validationTraceProofCborPath: "midpoint.cbor",
+    });
+
+    const prepareResolution = parseArgs([
+      "node",
+      "midgard-fault-proofs",
+      "submit-validation-dispute-prepare-resolution",
+      "--validation-boundary-evidence-cbor",
+      "boundary.cbor",
+    ]);
+    expect(prepareResolution).toMatchObject({
+      command: "submit-validation-dispute-prepare-resolution",
+      validationBoundaryEvidenceCborPath: "boundary.cbor",
+    });
+
+    expect(() =>
+      parseArgs([
+        "node",
+        "midgard-fault-proofs",
+        "submit-validation-dispute-reveal",
+        "--validation-dispute-role",
+        "either",
+      ]),
+    ).toThrow(/must be either "operator" or "challenger"/u);
   });
 
   it("parses non-existent-input prepare, init category, and submit-step arguments", () => {

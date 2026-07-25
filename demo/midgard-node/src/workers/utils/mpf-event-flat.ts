@@ -49,7 +49,7 @@ export type AuthenticatedPackedMpfRecord = PackedMpfProofNode & {
   readonly branchMerkleNodes?: readonly Buffer[];
 };
 
-export type ParkedEventFlatShardV2 = {
+export type ParkedEventFlatShardV1 = {
   readonly nodeCount: number;
   readonly nodeHashes: ArrayBuffer;
   readonly nodeValues: ArrayBuffer;
@@ -58,14 +58,14 @@ export type ParkedEventFlatShardV2 = {
   readonly encodedBytes: number;
 };
 
-export type ParkedEventFlatOverlayV2 = {
-  readonly schemaVersion: 2;
+export type ParkedEventFlatOverlayV1 = {
+  readonly schemaVersion: 1;
   readonly trieName: string;
   readonly baseRoot: ArrayBuffer;
   readonly candidateRoot: ArrayBuffer;
   readonly closureDigest: ArrayBuffer;
   readonly nodeCount: number;
-  readonly shards: readonly ParkedEventFlatShardV2[];
+  readonly shards: readonly ParkedEventFlatShardV1[];
   readonly encodedBytes: number;
 };
 
@@ -240,7 +240,7 @@ const eventFlatClosureDigest = ({
   readonly trieName: string;
   readonly baseRoot: ArrayBuffer;
   readonly candidateRoot: ArrayBuffer;
-  readonly shards: readonly ParkedEventFlatShardV2[];
+  readonly shards: readonly ParkedEventFlatShardV1[];
 }): Buffer => {
   const trieNameBytes = Buffer.from(trieName);
   const header = Buffer.alloc(12);
@@ -265,7 +265,7 @@ const eventFlatClosureDigest = ({
 
 const packEventFlatShard = (
   records: readonly (readonly [string, PackedMpfStoredValue])[],
-): Omit<ParkedEventFlatShardV2, "digest" | "encodedBytes"> => {
+): Omit<ParkedEventFlatShardV1, "digest" | "encodedBytes"> => {
   const nodeHashes = new Uint8Array(records.length * HASH_BYTES);
   const encodedValues = records.map(([, value]) =>
     Buffer.from(JSON.stringify(value)),
@@ -292,14 +292,14 @@ const packEventFlatShard = (
   };
 };
 
-type EventFlatWorkerShard = ParkedEventFlatShardV2 & {
+type EventFlatWorkerShard = ParkedEventFlatShardV1 & {
   readonly branchMerkleNodes?: ArrayBuffer;
   readonly branchMerkleDigest?: ArrayBuffer;
 };
 
 const runEventFlatFreezeWorker = (
   shardIndex: number,
-  packed: Omit<ParkedEventFlatShardV2, "digest" | "encodedBytes">,
+  packed: Omit<ParkedEventFlatShardV1, "digest" | "encodedBytes">,
   includeMerkleNodes = false,
 ): Promise<EventFlatWorkerShard> => {
   const require = createRequire(import.meta.url);
@@ -482,7 +482,7 @@ blake2b.ready(() => {
       "message",
       (
         response:
-          | (Omit<ParkedEventFlatShardV2, "encodedBytes"> & {
+          | (Omit<ParkedEventFlatShardV1, "encodedBytes"> & {
               readonly shardIndex: number;
               readonly branchMerkleNodes?: ArrayBuffer;
               readonly branchMerkleDigest?: ArrayBuffer;
@@ -595,13 +595,13 @@ export class PackedMpfProof {
   }
 }
 
-export class ResumedEventFlatOverlayV2 {
+export class ResumedEventFlatOverlayV1 {
   private readonly arena: AuthenticatedPackedMpfArena;
   private readonly records: ReadonlyMap<string, PackedMpfStoredValue>;
 
-  public constructor(public readonly artifact: ParkedEventFlatOverlayV2) {
+  public constructor(public readonly artifact: ParkedEventFlatOverlayV1) {
     if (
-      artifact.schemaVersion !== 2 ||
+      artifact.schemaVersion !== 1 ||
       artifact.baseRoot.byteLength !== HASH_BYTES ||
       artifact.candidateRoot.byteLength !== HASH_BYTES ||
       artifact.closureDigest.byteLength !== HASH_BYTES ||
@@ -610,7 +610,7 @@ export class ResumedEventFlatOverlayV2 {
       artifact.shards.length < 1 ||
       artifact.shards.length > 16
     ) {
-      throw new Error("Invalid event-flat V2 artifact shape");
+      throw new Error("Invalid event-flat V1 artifact shape");
     }
     const expectedClosure = eventFlatClosureDigest({
       trieName: artifact.trieName,
@@ -619,7 +619,7 @@ export class ResumedEventFlatOverlayV2 {
       shards: artifact.shards,
     });
     if (!expectedClosure.equals(Buffer.from(artifact.closureDigest))) {
-      throw new Error("Event-flat V2 closure digest mismatch");
+      throw new Error("Event-flat V1 closure digest mismatch");
     }
     const records = new Map<string, PackedMpfStoredValue>();
     let nodeCount = 0;
@@ -636,7 +636,7 @@ export class ResumedEventFlatOverlayV2 {
             shard.nodeValues.byteLength +
             shard.nodeValueOffsets.byteLength
       ) {
-        throw new Error("Invalid event-flat V2 shard shape");
+        throw new Error("Invalid event-flat V1 shard shape");
       }
       const expectedDigest = eventFlatShardDigest({
         shardIndex,
@@ -646,7 +646,7 @@ export class ResumedEventFlatOverlayV2 {
         nodeValueOffsets: shard.nodeValueOffsets,
       });
       if (!expectedDigest.equals(Buffer.from(shard.digest))) {
-        throw new Error("Event-flat V2 shard digest mismatch");
+        throw new Error("Event-flat V1 shard digest mismatch");
       }
       const hashes = new Uint8Array(shard.nodeHashes);
       const values = new Uint8Array(shard.nodeValues);
@@ -655,7 +655,7 @@ export class ResumedEventFlatOverlayV2 {
         const offset = offsets[index * 2]!;
         const length = offsets[index * 2 + 1]!;
         if (offset + length > values.length) {
-          throw new Error("Event-flat V2 node exceeds its shard arena");
+          throw new Error("Event-flat V1 node exceeds its shard arena");
         }
         const hash = Buffer.from(
           hashes.subarray(index * HASH_BYTES, (index + 1) * HASH_BYTES),
@@ -666,7 +666,7 @@ export class ResumedEventFlatOverlayV2 {
         authenticatePackedMpfRecord(hash, value);
         const key = hash.toString("hex");
         if (records.has(key)) {
-          throw new Error(`Event-flat V2 contains duplicate node ${key}`);
+          throw new Error(`Event-flat V1 contains duplicate node ${key}`);
         }
         records.set(key, value);
       }
@@ -677,7 +677,7 @@ export class ResumedEventFlatOverlayV2 {
       nodeCount !== artifact.nodeCount ||
       encodedBytes !== artifact.encodedBytes
     ) {
-      throw new Error("Event-flat V2 aggregate counts do not match shards");
+      throw new Error("Event-flat V1 aggregate counts do not match shards");
     }
     const candidateRoot = Buffer.from(artifact.candidateRoot);
     const reachable = new Set<string>();
@@ -697,7 +697,7 @@ export class ResumedEventFlatOverlayV2 {
     }
     if (reachable.size !== records.size) {
       throw new Error(
-        `Event-flat V2 contains unreachable nodes: reachable=${reachable.size.toString()},packed=${records.size.toString()}`,
+        `Event-flat V1 contains unreachable nodes: reachable=${reachable.size.toString()},packed=${records.size.toString()}`,
       );
     }
     this.records = records;
@@ -1828,8 +1828,8 @@ export class EventFlatMutationArena {
     readonly trieName: string;
     readonly baseRoot: Buffer;
     readonly shardCount?: number;
-  }): Promise<ParkedEventFlatOverlayV2> {
-    assertHash(baseRoot, "Event-flat V2 base root");
+  }): Promise<ParkedEventFlatOverlayV1> {
+    assertHash(baseRoot, "Event-flat V1 base root");
     const boundedShardCount = Math.max(1, Math.min(16, Math.floor(shardCount)));
     const records = [...this.reachableDirtyRecords()].sort(([left], [right]) =>
       left.localeCompare(right),
@@ -1862,7 +1862,7 @@ export class EventFlatMutationArena {
       shards,
     });
     return {
-      schemaVersion: 2,
+      schemaVersion: 1,
       trieName,
       baseRoot: baseRootBuffer,
       candidateRoot,

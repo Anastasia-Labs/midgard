@@ -100,6 +100,9 @@ describe("splitSqlStatements", () => {
     expect(sql).toMatch(
       /CREATE TABLE public\.tx_admission_payloads \([\s\S]+?tx_canonical_cbor bytea NOT NULL,/i,
     );
+    expect(sql).toMatch(
+      /CREATE TABLE public\.tx_admission_payloads \([\s\S]+?cek_program_material_sidecar_cbor bytea NOT NULL,[\s\S]+?cek_program_material_sidecar_sha256 bytea NOT NULL,/i,
+    );
     expect(sql).not.toContain("idx_tx_admission_payloads_tx_id_hash");
     expect(sql).not.toMatch(/UPDATE mempool AS membership/i);
     expect(sql).not.toMatch(/DROP INDEX/i);

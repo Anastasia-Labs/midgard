@@ -1,4 +1,9 @@
 import {
+  isMidgardConsensusProfileV1,
+  MIDGARD_PROTOCOL_V1_VERSION,
+  type MidgardConsensusProfileV1,
+} from "@al-ft/midgard-core/consensus-profile-v1";
+import {
   credentialToAddress,
   Data,
   LucidEvolution,
@@ -37,7 +42,6 @@ import {
 import {
   EMPTY_MERKLE_TREE_ROOT,
   GENESIS_HEADER_HASH,
-  GENESIS_PROTOCOL_VERSION,
 } from "@/ledger-constants.js";
 import { castConfirmedStateToData, ConfirmedState } from "@/ledger-state.js";
 import { encodeLinkedListNodeView, LinkedListNodeView } from "@/linked-list.js";
@@ -73,6 +77,7 @@ export type AtomicProtocolInitReferenceScripts = {
 
 export type InitializationParams = {
   midgardValidators: MidgardValidators;
+  consensusProfile: MidgardConsensusProfileV1;
   fraudProofCatalogueMerkleRoot: string;
   daParams: DaParamsDatumType;
   oneShotNonceUTxO: UTxO;
@@ -123,6 +128,11 @@ export const incompleteInitializationTxProgram = (
     }
 
     const { midgardValidators } = params;
+    if (!isMidgardConsensusProfileV1(params.consensusProfile)) {
+      throw new Error(
+        "Protocol initialization requires an exact compiled consensus profile",
+      );
+    }
     const hubOracleDatum = yield* makeHubOracleDatum(midgardValidators);
     const encodedHubOracleDatum = Data.to(hubOracleDatum, HubOracleDatum);
     const stateQueueGenesisTime = params.validityRange.validTo - 1n;
@@ -132,7 +142,7 @@ export const incompleteInitializationTxProgram = (
       utxoRoot: EMPTY_MERKLE_TREE_ROOT,
       startTime: stateQueueGenesisTime,
       endTime: stateQueueGenesisTime,
-      protocolVersion: GENESIS_PROTOCOL_VERSION,
+      protocolVersion: BigInt(MIDGARD_PROTOCOL_V1_VERSION),
     };
 
     const hubOracleUnit = toUnit(
@@ -210,7 +220,7 @@ export const incompleteInitializationTxProgram = (
       )
       .mintAssets(
         stateQueueAssets,
-        encodeInitOutputRedeemer(3n, StateQueueRedeemer),
+        Data.to({ InitV1: { output_index: 3n } }, StateQueueRedeemer),
       )
       .pay.ToContract(
         midgardValidators.stateQueue.spendingScriptAddress,

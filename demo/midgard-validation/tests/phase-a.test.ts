@@ -1,4 +1,6 @@
+import { encodeMidgardCekProgramMaterialSidecarV1 } from "@al-ft/midgard-core/cek-proof";
 import { computeHash32 } from "@al-ft/midgard-core/codec";
+import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -218,11 +220,9 @@ describe("phase A validation", () => {
 
   it("materializes Phase B candidate metadata from accepted native transaction CBOR", async () => {
     const spent = outRefFromByte(0x01);
-    const referenceInput = outRefFromByte(0x02, 1n);
     const output = makeOutput(8n);
     const fixture = makeNativeTx({
       spendInputs: [spent],
-      referenceInputs: [referenceInput],
       outputs: [output],
       fee: 2n,
       validityIntervalStart: 10n,
@@ -233,9 +233,7 @@ describe("phase A validation", () => {
     const accepted = await expectSinglePhaseAAcceptance(fixture);
 
     expect(accepted.graph.spentOutRefHexes).toEqual([spent.toString("hex")]);
-    expect(accepted.graph.referenceOutRefHexes).toEqual([
-      referenceInput.toString("hex"),
-    ]);
+    expect(accepted.graph.referenceOutRefHexes).toEqual([]);
     expect(accepted.ledgerTx.fee).toBe(2n);
     expect(accepted.derived.outputSum.lovelace).toBe(8n);
     expect(
@@ -359,7 +357,7 @@ describe("phase A validation", () => {
     await expectSinglePhaseARejection(fixture, RejectCodes.InvalidSignature);
   });
 
-  it("rejects native script witnesses that fail their signer policy", async () => {
+  it("rejects an unsatisfied native script before Phase B", async () => {
     const fixture = makeNativeTx({
       scriptWitnesses: [
         nativeScriptWitness({
@@ -368,7 +366,10 @@ describe("phase A validation", () => {
         }),
       ],
     });
-    await expectSinglePhaseARejection(fixture, RejectCodes.NativeScriptInvalid);
+    await expectSinglePhaseARejection(
+      fixture,
+      RejectCodes.NativeScriptInvalid,
+    );
   });
 
   it("rejects malformed redeemer witness preimages as invalid field data", async () => {
@@ -383,5 +384,45 @@ describe("phase A validation", () => {
       },
     });
     await expectSinglePhaseARejection(fixture, RejectCodes.InvalidFieldType);
+  });
+
+  it("requires V1 material and rejects a non-canonical profile tuple", async () => {
+    const fixture = makeNativeTx();
+    const queued = makeQueued(fixture.txId, fixture.txCbor);
+    const v1Config = {
+      ...phaseAConfig,
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+    };
+    const missing = validatePhaseASingle(
+      { ...queued, programMaterialSidecarCbor: undefined },
+      v1Config,
+    );
+    expect(missing).toMatchObject({
+      code: RejectCodes.CekProgramMaterial,
+    });
+
+    const sidecar = encodeMidgardCekProgramMaterialSidecarV1([]);
+    const accepted = validatePhaseASingle(
+      { ...queued, programMaterialSidecarCbor: sidecar },
+      v1Config,
+    );
+    expect("ledgerTx" in accepted).toBe(true);
+    if ("ledgerTx" in accepted) {
+      expect(accepted.submission.programMaterialSidecarCbor).toEqual(sidecar);
+    }
+
+    const unsupportedProfile = validatePhaseASingle(
+      queued,
+      {
+        ...phaseAConfig,
+        consensusProfile: {
+          ...MIDGARD_CONSENSUS_PROFILE_V1,
+          protocolVersion: 2,
+        } as unknown as typeof MIDGARD_CONSENSUS_PROFILE_V1,
+      },
+    );
+    expect(unsupportedProfile).toMatchObject({
+      code: RejectCodes.TxVersion,
+    });
   });
 });

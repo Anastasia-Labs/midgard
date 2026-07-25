@@ -24,16 +24,12 @@ import {
   DaLibp2pProofProtocolHandlers,
 } from "../src/da/libp2p/proof-protocols.js";
 import type {
-  Header,
+  HeaderV1,
   PayloadRootSet,
   StateQueueHeaderRecord,
 } from "../src/domain.js";
 import { JsonFileWatcherStore } from "../src/store.js";
-import {
-  IDENTITY_TX_PROJECTOR,
-  makePayloadFixture,
-  tempDir,
-} from "./helpers.js";
+import { makePayloadFixture, tempDir } from "./helpers.js";
 
 const deploymentFingerprint = "01".repeat(32);
 const deploymentFingerprintBytes = Buffer.from(deploymentFingerprint, "hex");
@@ -177,6 +173,7 @@ describe("DA libp2p proof protocol handlers", () => {
     await store.saveDaPayload({
       deploymentFingerprint,
       headerHash,
+      payloadSchemaVersion: 1,
       payloadCborHex: payloadCbor.toString("hex"),
       payloadSha256: payloadHash.toString("hex"),
       sourcePeerId: "libp2p-fixture",
@@ -369,7 +366,6 @@ const makeHandlers = async (): Promise<{
   const handlers = new DaLibp2pProofProtocolHandlers({
     deploymentFingerprint,
     store,
-    transactionProjector: IDENTITY_TX_PROJECTOR,
   });
   return { handlers, store };
 };
@@ -416,13 +412,14 @@ const saveVerifiedPayload = async ({
   readonly store: JsonFileWatcherStore;
   readonly payloadCbor: Buffer;
   readonly payloadHash: Buffer;
-  readonly header: Header;
+  readonly header: HeaderV1;
   readonly headerHash: string;
   readonly rootSummary?: PayloadRootSet;
 }): Promise<void> => {
   await store.saveDaPayload({
     deploymentFingerprint,
     headerHash,
+    payloadSchemaVersion: 1,
     payloadCborHex: payloadCbor.toString("hex"),
     payloadSha256: payloadHash.toString("hex"),
     sourcePeerId: "libp2p-fixture",
@@ -440,7 +437,7 @@ const stateQueueHeaderRecord = ({
   header,
   headerHash,
 }: {
-  readonly header: Header;
+  readonly header: HeaderV1;
   readonly headerHash: string;
 }): StateQueueHeaderRecord => ({
   deploymentFingerprint,
@@ -462,7 +459,7 @@ const stateQueueHeaderRecord = ({
   updatedAt: "2026-06-21T00:00:02.000Z",
 });
 
-const rootSummaryFromHeader = (header: Header): PayloadRootSet => ({
+const rootSummaryFromHeader = (header: HeaderV1): PayloadRootSet => ({
   utxosRoot: header.utxosRoot,
   withdrawalsRoot: header.withdrawalsRoot,
   forcedTransactionsRoot: header.forcedTransactionsRoot,

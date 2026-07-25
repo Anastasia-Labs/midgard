@@ -1,3 +1,4 @@
+import { MIDGARD_CONSENSUS_PROFILE_V1_ID } from "@al-ft/midgard-core/consensus-profile-v1";
 import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
 
@@ -12,6 +13,7 @@ export const tableName = "da_payloads";
 
 export enum Columns {
   HEADER_HASH = "header_hash",
+  CONSENSUS_PROFILE_ID = "consensus_profile_id",
   VERSION = "version",
   PAYLOAD_CBOR = "payload_cbor",
   PAYLOAD_SHA256 = "payload_sha256",
@@ -22,12 +24,14 @@ export enum Columns {
   WITHDRAWALS_ROOT = "withdrawals_root",
   TRANSITION_TRACE_ROOT = "transition_trace_root",
   EVENT_TO_STEP_ROOT = "event_to_step_root",
+  VALIDATION_TRACES_ROOT = "validation_traces_root",
   WITHDRAWAL_COUNT = "withdrawal_count",
   FORCED_TRANSACTION_COUNT = "forced_transaction_count",
   L2_TRANSACTION_COUNT = "l2_transaction_count",
   DEPOSIT_COUNT = "deposit_count",
   TOTAL_EVENT_COUNT = "total_event_count",
   TRANSITION_STEP_COUNT = "transition_step_count",
+  VALIDATION_TRACE_COUNT = "validation_trace_count",
   BLOCK_START_TIME = "block_start_time",
   BLOCK_END_TIME = "block_end_time",
   CREATED_AT = "created_at",
@@ -36,7 +40,8 @@ export enum Columns {
 
 export type Row = {
   [Columns.HEADER_HASH]: Buffer;
-  [Columns.VERSION]: number;
+  [Columns.CONSENSUS_PROFILE_ID]: typeof MIDGARD_CONSENSUS_PROFILE_V1_ID;
+  [Columns.VERSION]: 1;
   [Columns.PAYLOAD_CBOR]: Buffer;
   [Columns.PAYLOAD_SHA256]: Buffer;
   [Columns.UTXOS_ROOT]: string;
@@ -46,12 +51,14 @@ export type Row = {
   [Columns.WITHDRAWALS_ROOT]: string;
   [Columns.TRANSITION_TRACE_ROOT]: string;
   [Columns.EVENT_TO_STEP_ROOT]: string;
+  [Columns.VALIDATION_TRACES_ROOT]: string;
   [Columns.WITHDRAWAL_COUNT]: bigint;
   [Columns.FORCED_TRANSACTION_COUNT]: bigint;
   [Columns.L2_TRANSACTION_COUNT]: bigint;
   [Columns.DEPOSIT_COUNT]: bigint;
   [Columns.TOTAL_EVENT_COUNT]: bigint;
   [Columns.TRANSITION_STEP_COUNT]: bigint;
+  [Columns.VALIDATION_TRACE_COUNT]: bigint;
   [Columns.BLOCK_START_TIME]: Date;
   [Columns.BLOCK_END_TIME]: Date;
   [Columns.CREATED_AT]: Date;
@@ -68,6 +75,7 @@ type RawRow = Omit<
   | Columns.DEPOSIT_COUNT
   | Columns.TOTAL_EVENT_COUNT
   | Columns.TRANSITION_STEP_COUNT
+  | Columns.VALIDATION_TRACE_COUNT
 > & {
   [Columns.WITHDRAWAL_COUNT]: PgBigInt;
   [Columns.FORCED_TRANSACTION_COUNT]: PgBigInt;
@@ -75,6 +83,7 @@ type RawRow = Omit<
   [Columns.DEPOSIT_COUNT]: PgBigInt;
   [Columns.TOTAL_EVENT_COUNT]: PgBigInt;
   [Columns.TRANSITION_STEP_COUNT]: PgBigInt;
+  [Columns.VALIDATION_TRACE_COUNT]: PgBigInt;
 };
 
 const toBigInt = (value: PgBigInt): bigint =>
@@ -90,11 +99,15 @@ const normalizeRow = (row: RawRow): Row => ({
   [Columns.DEPOSIT_COUNT]: toBigInt(row[Columns.DEPOSIT_COUNT]),
   [Columns.TOTAL_EVENT_COUNT]: toBigInt(row[Columns.TOTAL_EVENT_COUNT]),
   [Columns.TRANSITION_STEP_COUNT]: toBigInt(row[Columns.TRANSITION_STEP_COUNT]),
+  [Columns.VALIDATION_TRACE_COUNT]: toBigInt(
+    row[Columns.VALIDATION_TRACE_COUNT],
+  ),
 });
 
 export type InsertInput = Pick<
   Row,
   | Columns.HEADER_HASH
+  | Columns.CONSENSUS_PROFILE_ID
   | Columns.VERSION
   | Columns.PAYLOAD_CBOR
   | Columns.PAYLOAD_SHA256
@@ -105,12 +118,14 @@ export type InsertInput = Pick<
   | Columns.WITHDRAWALS_ROOT
   | Columns.TRANSITION_TRACE_ROOT
   | Columns.EVENT_TO_STEP_ROOT
+  | Columns.VALIDATION_TRACES_ROOT
   | Columns.WITHDRAWAL_COUNT
   | Columns.FORCED_TRANSACTION_COUNT
   | Columns.L2_TRANSACTION_COUNT
   | Columns.DEPOSIT_COUNT
   | Columns.TOTAL_EVENT_COUNT
   | Columns.TRANSITION_STEP_COUNT
+  | Columns.VALIDATION_TRACE_COUNT
   | Columns.BLOCK_START_TIME
   | Columns.BLOCK_END_TIME
 >;
@@ -154,6 +169,9 @@ export const upsertAvailable = (
         AND ${sql(tableName)}.${sql(Columns.EVENT_TO_STEP_ROOT)} = EXCLUDED.${sql(
           Columns.EVENT_TO_STEP_ROOT,
         )}
+        AND ${sql(tableName)}.${sql(
+          Columns.VALIDATION_TRACES_ROOT,
+        )} = EXCLUDED.${sql(Columns.VALIDATION_TRACES_ROOT)}
         AND ${sql(tableName)}.${sql(Columns.WITHDRAWAL_COUNT)} = EXCLUDED.${sql(
           Columns.WITHDRAWAL_COUNT,
         )}
@@ -172,6 +190,12 @@ export const upsertAvailable = (
         AND ${sql(tableName)}.${sql(
           Columns.TRANSITION_STEP_COUNT,
         )} = EXCLUDED.${sql(Columns.TRANSITION_STEP_COUNT)}
+        AND ${sql(tableName)}.${sql(
+          Columns.VALIDATION_TRACE_COUNT,
+        )} = EXCLUDED.${sql(Columns.VALIDATION_TRACE_COUNT)}
+        AND ${sql(tableName)}.${sql(
+          Columns.CONSENSUS_PROFILE_ID,
+        )} = EXCLUDED.${sql(Columns.CONSENSUS_PROFILE_ID)}
         AND ${sql(tableName)}.${sql(Columns.BLOCK_START_TIME)} = EXCLUDED.${sql(
           Columns.BLOCK_START_TIME,
         )}

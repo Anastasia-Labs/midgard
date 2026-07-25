@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import {
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardNativeTxFullV1FromCanonicalCbor,
 } from "@al-ft/midgard-core/codec";
 import { CML, type Network } from "@lucid-evolution/lucid";
 
@@ -137,7 +137,7 @@ export const buildCorpusChain = async (
       );
     }
     const outputs = decodeMidgardNativeByteListPreimage(
-      decodeMidgardNativeTxFullFromCanonicalCbor(built.txCbor).body
+      decodeMidgardNativeTxFullV1FromCanonicalCbor(built.txCbor).body
         .outputsPreimageCbor,
       "native.outputs",
     );

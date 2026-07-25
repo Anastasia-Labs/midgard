@@ -465,8 +465,12 @@ Each entry has the shape:
 
 ```json
 {
-  "schemaVersion": "midgard-deployment-manifest-v2",
+  "schemaVersion": "midgard-deployment-manifest-v1",
   "manifestId": "...",
+  "consensusProfile": {
+    "profileId": "midgard-consensus-v1",
+    "protocolVersion": 1
+  },
   "network": "Preprod",
   "referenceScriptDeployAddress": "addr_test...",
   "hubOracleOneShot": {
@@ -523,7 +527,7 @@ deployment must be audited before production use: for every token name listed in
 `referenceScriptAuthPolicy.tokenNames`, exactly one token under
 `referenceScriptAuthPolicy.policyId` must exist.
 
-`deployment-status` reports both the v2 manifest verification result and live
+`deployment-status` reports both the V1 manifest verification result and live
 protocol deployment status. If a present manifest disagrees with configured
 network, one-shot outref, or reference-script deploy address, startup refuses to
 attach until config is corrected or a fresh redeploy is explicit.
@@ -729,10 +733,10 @@ ACTIVITY_METRICS_ENDPOINT=http://127.0.0.1:9464/metrics
 
 ## DA Payload Hardening and Rollout
 
-DA payload storage and transport accept two durable formats: schema 2 is the
-historical raw canonical `DaPayloadV2` CBOR; schema 3 is a canonical envelope
-containing the exact inner schema-2 bytes, their decoded length and SHA-256,
-and either identity or zstd content.
+DA payload storage and transport accept one durable format:
+`DaPayloadEnvelopeV1`. It contains exact `DaPayloadV1` bytes, their decoded
+length and SHA-256, and an explicit `identity` or `zstd` content encoding.
+Raw payload storage, an `off` mode, and format inference are rejected.
 
 Both the stored/transmitted envelope and its declared and actual decoded
 content are capped by the pinned DA protocol limit. Zstd decoding uses
@@ -740,19 +744,12 @@ content are capped by the pinned DA protocol limit. Zstd decoding uses
 existing strict payload validator runs. Midgard node and committee runtimes
 therefore require Node.js 22.15 or newer.
 
-Roll out decoder-first: deploy the schema-3 decoder to every producer,
-committee member, watcher, and proof reader; leave
-`MIDGARD_DA_PAYLOAD_ENVELOPE=off`; canary `identity`; then enable `zstd` only
-after committee capability is confirmed. The immediate producer rollback is
-`MIDGARD_DA_PAYLOAD_ENVELOPE=off`. Decoders remain schema-2/schema-3 capable so
-already stored envelopes stay readable.
-
 Retained-payload and fault-proof consumers preserve the stored artifact as the
 hash identity. They carry `payloadSchemaVersion` from retained metadata, verify
 the stored-byte SHA-256, and then use the pinned-bound envelope unwrap before
-strictly decoding the inner `DaPayloadV2`. Fault-proof callers should use
-`reconstructRetainedDaPayloadV2` when starting from a retained libp2p result;
-the package's decoder-first guard rejects new direct stored-byte V2 decoders.
+strictly decoding the inner `DaPayloadV1`. Fault-proof callers should use
+`fetchRetainedDaPayloadByHeaderHash` followed by `reconstructDaPayloadV1`;
+unsupported or malformed envelope and payload versions fail closed.
 
 Publication returns once the manifest threshold accepts. Slow peers continue
 as detached, bounded stragglers. The `da_payload_publications` durable outbox

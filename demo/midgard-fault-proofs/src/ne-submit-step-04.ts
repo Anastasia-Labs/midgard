@@ -295,7 +295,10 @@ export const neSubmitStep04 = async ({
     .attach.MintingPolicy(contracts.computationThread.mintingScript)
     .attach.MintingPolicy(contracts.fraudProof.mintingScript)
     .complete({ localUPLCEval: true });
-  if (spendLayout === undefined || computationThreadMintRedeemerIndex === undefined) {
+  if (
+    spendLayout === undefined ||
+    computationThreadMintRedeemerIndex === undefined
+  ) {
     throw new Error(
       "BuildTxWithRedeemer did not resolve non-existent-input step 04 layout.",
     );
@@ -331,7 +334,9 @@ export const neSubmitStep04 = async ({
     computationThreadMintRedeemerIndex: Number(
       computationThreadMintRedeemerIndex,
     ),
-    fraudProofMintRedeemerIndex: Number(spendLayout.fraudProofMintRedeemerIndex),
+    fraudProofMintRedeemerIndex: Number(
+      spendLayout.fraudProofMintRedeemerIndex,
+    ),
     awaitedConfirmation: awaitConfirmation,
   };
 };

@@ -14,6 +14,7 @@ import {
 import { fileURLToPath } from "node:url";
 import { CML } from "@lucid-evolution/lucid";
 import { Pool } from "undici";
+import { encodeMidgardProofSubmissionV1 } from "@al-ft/midgard-core/cek-proof";
 import {
   BENCHMARK_WINDOWS_MS,
   acceptedStatuses,
@@ -1057,10 +1058,13 @@ const submitTxHex = async (
   let attempt = 0;
   const attempts = [];
   while (attempt <= retryLimit) {
-    const bodyBytes = Buffer.from(txHex, "hex");
+    const bodyBytes = encodeMidgardProofSubmissionV1({
+      transactionCbor: Buffer.from(txHex, "hex"),
+      programMaterial: [],
+    });
     const resp = await httpClient.request(`${endpoint}/submit`, {
       method: "POST",
-      headers: { "content-type": "application/cbor" },
+      headers: { "content-type": "application/vnd.midgard.v1+cbor" },
       body: bodyBytes,
     });
     attempts.push({
@@ -2418,7 +2422,9 @@ const runClientSelfCheck = async () => {
       ? undefined
       : {
           method: "POST",
-          headers: { "content-type": "application/cbor" },
+          headers: {
+            "content-type": "application/vnd.midgard.v1+cbor",
+          },
           body: Buffer.from([0]),
         };
   const warmupRequestCount = Math.min(httpConnections, submitConcurrency);
@@ -4076,7 +4082,7 @@ const main = async () => {
 
     const report = {
       benchmark: "midgard-l2-throughput",
-      version: 2,
+      version: 1,
       scenario: scenarioName,
       scenarioClass,
       generatedAtIso: new Date().toISOString(),

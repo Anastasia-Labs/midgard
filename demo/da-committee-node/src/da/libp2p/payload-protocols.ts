@@ -1,11 +1,11 @@
 import {
   DaPayloadEnvelopeError,
-  unwrapDaPayload,
+  unwrapDaPayloadV1,
 } from "@al-ft/midgard-core/da-payload-envelope";
 import {
   computeDaSha256Hash,
-  DA_TRANSPORT_PROTOCOL_VERSION,
   DA_TRANSPORT_LIMITS_V1,
+  DA_TRANSPORT_V1_PROTOCOL_VERSION,
   daDeploymentFingerprintFromHex,
   type DaMetadataByHeaderResponseV1,
   type DaPayloadByHeaderResponseV1,
@@ -15,13 +15,14 @@ import {
   decodeDaPayloadByHeaderRequestV1Cbor,
   decodeDaPayloadChunkRequestV1Cbor,
   decodeDaPayloadSubmitRequestV1Cbor,
-  encodeDaMetadataByHeaderResponseV1Cbor,
   encodeDaCapabilitiesResponseV1Cbor,
+  encodeDaMetadataByHeaderResponseV1Cbor,
   encodeDaPayloadByHeaderResponseV1Cbor,
   encodeDaPayloadChunkResponseV1Cbor,
   encodeDaPayloadSubmitResponseV1Cbor,
   normalizeDaDeploymentFingerprintHex,
 } from "@al-ft/midgard-core/da-transport";
+import * as SDK from "@al-ft/midgard-sdk";
 
 import type { DaPayloadRecord, PayloadRootSet } from "../../domain.js";
 import {
@@ -30,7 +31,7 @@ import {
   type WatcherStore,
 } from "../../store.js";
 import { bytesToHex, hexToBytes, normalizeHex } from "../../utils/hex.js";
-import { decodeDaPayloadV2Strict } from "../payload.js";
+import { decodeDaPayloadV1Strict } from "../payload.js";
 
 export type DaLibp2pPayloadProtocolStore = Pick<
   WatcherStore,
@@ -106,8 +107,8 @@ export class DaLibp2pPayloadProtocolHandlers {
     }
     return encodeDaCapabilitiesResponseV1Cbor({
       deploymentFingerprint: this.deploymentFingerprintBytes,
-      transportProtocolVersion: DA_TRANSPORT_PROTOCOL_VERSION,
-      payloadSchemaVersions: [2, 3],
+      transportProtocolVersion: DA_TRANSPORT_V1_PROTOCOL_VERSION,
+      payloadSchemaVersions: [1],
       envelopeContentEncodings: [0, 1],
       maxPayloadBytes: this.limits.maxPayloadBytes,
       maxInlineResponseBytes: this.limits.maxInlineResponseBytes,
@@ -404,22 +405,26 @@ export class DaLibp2pPayloadProtocolHandlers {
     if (payloadBytes.length > this.limits.maxPayloadBytes) {
       return { ok: false, reasonCode: "payload_too_large" };
     }
+    if (
+      request.payloadSchemaVersion !== Number(SDK.DA_PAYLOAD_V1_VERSION)
+    ) {
+      return { ok: false, reasonCode: "payload_schema_version_mismatch" };
+    }
     const actualPayloadHash = computeDaSha256Hash(payloadBytes);
     if (!actualPayloadHash.equals(request.payloadHash)) {
       return { ok: false, reasonCode: "payload_hash_mismatch" };
     }
     try {
-      const unwrapped = await unwrapDaPayload(payloadBytes, {
+      const unwrapped = await unwrapDaPayloadV1(payloadBytes, {
         maxPayloadBytes: this.limits.maxPayloadBytes,
-        schemaVersion: request.payloadSchemaVersion,
       });
-      const payload = decodeDaPayloadV2Strict(unwrapped.innerBytes);
+      const payload = decodeDaPayloadV1Strict(unwrapped.innerBytes);
       if (
         payload.block_body.header_hash !== request.headerHash.toString("hex")
       ) {
         return { ok: false, reasonCode: "payload_header_hash_mismatch" };
       }
-      if (Number(payload.version) !== 2) {
+      if (payload.version !== SDK.DA_PAYLOAD_V1_VERSION) {
         return { ok: false, reasonCode: "payload_schema_version_mismatch" };
       }
     } catch (cause) {
@@ -441,7 +446,7 @@ export class DaLibp2pPayloadProtocolHandlers {
     headerHash: string,
     payloadHash: string,
     payloadBytes: Buffer,
-    payloadSchemaVersion: number,
+    payloadSchemaVersion: 1,
   ): Promise<DaPayloadRecord> {
     return this.store.saveDaPayload(
       libp2pSubmittedDaPayloadRecord({
@@ -724,17 +729,20 @@ const metadataForPayload = async (
   payloadBytes: Buffer,
   record: DaPayloadRecord,
 ): Promise<DaMetadataByHeaderResponseV1> => {
-  const unwrapped = await unwrapDaPayload(payloadBytes, {
+  if (record.payloadSchemaVersion !== Number(SDK.DA_PAYLOAD_V1_VERSION)) {
+    throw new DaLibp2pPayloadProtocolError(
+      "stored payload schema version is not canonical V1",
+    );
+  }
+  const unwrapped = await unwrapDaPayloadV1(payloadBytes, {
     maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
-    // Pre-V3 persisted records are raw DaPayloadV2 by construction.
-    schemaVersion: record.payloadSchemaVersion ?? 2,
   });
-  decodeDaPayloadV2Strict(unwrapped.innerBytes);
+  decodeDaPayloadV1Strict(unwrapped.innerBytes);
   return {
     status: "found",
     headerHash,
     payloadHash,
-    payloadSchemaVersion: unwrapped.schemaVersion,
+    payloadSchemaVersion: 1,
     payloadBytes: payloadBytes.length,
     rootSummaryHash:
       record.rootSummary === undefined

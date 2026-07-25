@@ -1,8 +1,9 @@
 import {
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardNativeTxFullV1FromCanonicalCbor,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
+import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import { CML, valueToAssets } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -56,9 +57,11 @@ const makeProvider = (
     network: "Preview",
     midgardNativeTxVersion: 1,
     currentSlot: 0n,
+    consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
     supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+    codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     protocolFeeParameters: feePolicy,
-    submissionLimits: { maxSubmitTxCborBytes: 32768 },
+    submissionLimits: { maxSubmitTxCborBytes: MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes },
     validation: {
       strictnessProfile: "phase1_midgard",
       localValidationIsAuthoritative: false,
@@ -181,7 +184,7 @@ describe("TxBuilder balancing and fees", () => {
       .newTx()
       .pay.ToAddress(address, { lovelace: 2_000_000n, [unit]: 4n })
       .complete({ changeAddress: address, feePolicy: "provider" });
-    const tx = decodeMidgardNativeTxFullFromCanonicalCbor(completed.txCbor);
+    const tx = decodeMidgardNativeTxFullV1FromCanonicalCbor(completed.txCbor);
     const outputs = decodeMidgardNativeByteListPreimage(
       tx.body.outputsPreimageCbor,
     );
@@ -322,7 +325,7 @@ describe("TxBuilder balancing and fees", () => {
       .newTx()
       .pay.ToAddress(address, { lovelace: 1_000_000n, [unit]: 1n })
       .complete({ changeAddress: address, feePolicy: "provider" });
-    const tx = decodeMidgardNativeTxFullFromCanonicalCbor(completed.txCbor);
+    const tx = decodeMidgardNativeTxFullV1FromCanonicalCbor(completed.txCbor);
     const inputs = decodeMidgardNativeByteListPreimage(
       tx.body.spendInputsPreimageCbor,
     ).map((bytes) => CML.TransactionInput.from_cbor_bytes(bytes));

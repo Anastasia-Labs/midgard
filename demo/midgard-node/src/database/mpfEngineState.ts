@@ -179,7 +179,11 @@ export const tryWithLedgerStoreLease = <A, E, R>(
     readonly ttlMs?: number;
     readonly renewIntervalMs?: number;
   } = {},
-): Effect.Effect<LedgerStoreLeaseRunResult<A>, E | DatabaseError, R | Database> =>
+): Effect.Effect<
+  LedgerStoreLeaseRunResult<A>,
+  E | DatabaseError,
+  R | Database
+> =>
   Effect.gen(function* () {
     const normalizedTtlMs = Math.max(1, Math.floor(ttlMs));
     const acquired = yield* acquireLedgerStoreLease({
@@ -300,7 +304,11 @@ export const stampLedgerPayloadAggregate = ({
 
 export const retrieveLedgerPayloadAggregate = (
   rootHex: string,
-): Effect.Effect<UtxoPayloadSizeAggregate | undefined, DatabaseError, Database> =>
+): Effect.Effect<
+  UtxoPayloadSizeAggregate | undefined,
+  DatabaseError,
+  Database
+> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const rows = yield* sql<{

@@ -13,8 +13,7 @@ use midgard/da_attestation_types.{
   AddSignatures, ApplyToStateQueue, BurnForStateQueue, DaAttestationDatum,
   DaParamsDatum, Init, MintRedeemer, SpendRedeemer,
   attestation_asset_name_prefix, attested_signer_bitmap_byte_count,
-  da_params_asset_name,
-  empty_attested_signer_bitmap, signature_byte_count,
+  da_params_asset_name, empty_attested_signer_bitmap, signature_byte_count,
   signature_witness_byte_count, state_queue_mint_reference_script_asset_name,
   verification_key_byte_count,
 }
@@ -43,7 +42,7 @@ fn signer_bit_mask(signer_index: Int) -> Int {
 
 fn signer_bit_is_clear(byte: Int, mask: Int) -> Bool {
   let high_bit_window = byte / mask
-  let next_window = byte / (mask * 2)
+  let next_window = byte / ( mask * 2 )
   high_bit_window - next_window * 2 == 0
 }
 
@@ -71,15 +70,17 @@ fn get_da_params(
   da_params_policy_id: PolicyId,
   da_params_ref_input_index: Int,
 ) -> DaParamsDatum {
-  expect Some(Input {
-    output: Output {
-      address,
-      value,
-      datum: InlineDatum(datum_data),
-      reference_script: None,
-    },
-    ..
-  }) = reference_inputs |> list.at(da_params_ref_input_index)
+  expect
+      Some(Input {
+        output: Output {
+          address,
+          value,
+          datum: InlineDatum(datum_data),
+          reference_script: None,
+        },
+        ..
+      })
+    = reference_inputs |> list.at(da_params_ref_input_index)
 
   expect Script(params_script_hash) = address.payment_credential
   expect params_script_hash == da_params_policy_id
@@ -95,10 +96,16 @@ fn get_authenticated_state_queue_policy_id(
   reference_script_auth_policy_id: PolicyId,
   state_queue_mint_ref_script_input_index: Int,
 ) -> PolicyId {
-  expect Some(Input {
-    output: Output { value, reference_script: Some(state_queue_policy_id), .. },
-    ..
-  }) = reference_inputs |> list.at(state_queue_mint_ref_script_input_index)
+  expect
+      Some(Input {
+        output: Output {
+          value,
+          reference_script: Some(state_queue_policy_id),
+          ..
+        },
+        ..
+      })
+    = reference_inputs |> list.at(state_queue_mint_ref_script_input_index)
 
   expect
     assets.has_nft_strict(
@@ -130,12 +137,14 @@ fn validate_init_output(
   params: DaParamsDatum,
   expected_header_hash: HeaderHash,
 ) -> AssetName {
-  expect Output {
-    address,
-    value,
-    datum: InlineDatum(datum_data),
-    reference_script: None,
-  } = output
+  expect
+      Output {
+        address,
+        value,
+        datum: InlineDatum(datum_data),
+        reference_script: None,
+      }
+    = output
   expect expect_script_hash(address) == own_policy_id
 
   expect datum: DaAttestationDatum = datum_data
@@ -168,14 +177,16 @@ fn verify_indexed_signatures(
     expect
       signer_index < bytearray.length(committee_signers) / verification_key_byte_count
 
-    let verification_key =
-      bytearray_slice(
-        committee_signers,
-        signer_index * verification_key_byte_count,
-        verification_key_byte_count,
-      )
-    let signature =
-      bytearray_slice(signatures, signature_cursor + 1, signature_byte_count)
+    let verification_key = bytearray_slice(
+      committee_signers,
+      signer_index * verification_key_byte_count,
+      verification_key_byte_count,
+    )
+    let signature = bytearray_slice(
+      signatures,
+      signature_cursor + 1,
+      signature_byte_count,
+    )
     expect verify_ed25519_signature(verification_key, message, signature)
     let attested_signers = set_attested_signer(input_attested, signer_index)
 
@@ -196,15 +207,17 @@ fn get_attestation_input_datum(
   input_index: Int,
   own_policy_id: PolicyId,
 ) -> DaAttestationDatum {
-  expect Some(Input {
-    output: Output {
-      address,
-      value,
-      datum: InlineDatum(datum_data),
-      reference_script: None,
-    },
-    ..
-  }) = inputs |> list.at(input_index)
+  expect
+      Some(Input {
+        output: Output {
+          address,
+          value,
+          datum: InlineDatum(datum_data),
+          reference_script: None,
+        },
+        ..
+      })
+    = inputs |> list.at(input_index)
 
   expect expect_script_hash(address) == own_policy_id
   expect datum: DaAttestationDatum = datum_data
@@ -224,12 +237,14 @@ pub fn validate_add_signatures(
 ) -> Bool {
   expect Some(input_datum) = datum
 
-  expect Output {
-    address: input_address,
-    value: input_value,
-    datum: InlineDatum(input_datum_data),
-    reference_script: None,
-  } = tx.inputs |> resolve_input(own_ref)
+  expect
+      Output {
+        address: input_address,
+        value: input_value,
+        datum: InlineDatum(input_datum_data),
+        reference_script: None,
+      }
+    = tx.inputs |> resolve_input(own_ref)
   let expected_input_datum_data: Data = input_datum
   expect input_datum_data == expected_input_datum_data
 
@@ -237,12 +252,14 @@ pub fn validate_add_signatures(
   let attestation_asset = attestation_asset_name(input_datum.header_hash)
   expect assets.has_nft_strict(input_value, own_policy_id, attestation_asset)
 
-  expect Output {
-    address: output_address,
-    value: output_value,
-    datum: InlineDatum(output_datum_data),
-    reference_script: None,
-  } = tx.outputs |> output_at_index(output_index)
+  expect
+      Output {
+        address: output_address,
+        value: output_value,
+        datum: InlineDatum(output_datum_data),
+        reference_script: None,
+      }
+    = tx.outputs |> output_at_index(output_index)
   expect output_address == input_address
   expect output_value == input_value
 
@@ -252,28 +269,26 @@ pub fn validate_add_signatures(
   expect
     output_datum.committee_signers_hash == input_datum.committee_signers_hash
 
-  let params =
-    get_da_params(
-      tx.reference_inputs,
-      da_params_policy_id,
-      da_params_ref_input_index,
-    )
+  let params = get_da_params(
+    tx.reference_inputs,
+    da_params_policy_id,
+    da_params_ref_input_index,
+  )
   expect params.committee_signers_hash == input_datum.committee_signers_hash
 
   let signatures_len = bytearray.length(signatures)
   expect signatures_len > 0
   expect signatures_len % signature_witness_byte_count == 0
 
-  let attested_signers =
-    verify_indexed_signatures(
-      signatures,
-      attestation_message(input_datum.header_hash),
-      params.committee,
-      input_datum.attested_signers,
-      0,
-      0,
-      signatures_len,
-    )
+  let attested_signers = verify_indexed_signatures(
+    signatures,
+    attestation_message(input_datum.header_hash),
+    params.committee,
+    input_datum.attested_signers,
+    0,
+    0,
+    signatures_len,
+  )
   let attestation_count = builtin.count_set_bits(attested_signers)
   expect output_datum.attested_signers == attested_signers
   expect output_datum.attestation_count == attestation_count
@@ -294,40 +309,35 @@ validator da_attestation(
         state_queue_ref_input_index,
         state_queue_mint_ref_script_input_index,
       } -> {
-        let params =
-          get_da_params(
-            tx.reference_inputs,
-            da_params_policy_id,
-            da_params_ref_input_index,
-          )
-        let state_queue_policy_id =
-          get_authenticated_state_queue_policy_id(
-            tx.reference_inputs,
-            reference_script_auth_policy_id,
-            state_queue_mint_ref_script_input_index,
-          )
+        let params = get_da_params(
+          tx.reference_inputs,
+          da_params_policy_id,
+          da_params_ref_input_index,
+        )
+        let state_queue_policy_id = get_authenticated_state_queue_policy_id(
+          tx.reference_inputs,
+          reference_script_auth_policy_id,
+          state_queue_mint_ref_script_input_index,
+        )
 
-        let expected_header_hash =
-          state_queue.get_state_queue_node(
-            tx.reference_inputs,
-            state_queue_policy_id,
-            state_queue_ref_input_index,
-            fn(state_queue_node, header_hash) {
-              expect
-                state_queue_node.da_attestation == state_queue.no_da_attestation
-              header_hash
-            },
-          )
+        let expected_header_hash = state_queue.get_state_queue_node(
+          tx.reference_inputs,
+          state_queue_policy_id,
+          state_queue_ref_input_index,
+          fn(state_queue_node, header_hash) {
+            expect
+              state_queue_node.da_attestation == state_queue.no_da_attestation
+            header_hash
+          },
+        )
 
-        let attestation_asset =
-          tx.outputs
-            |> output_at_index(output_index)
-            |> validate_init_output(own_policy_id, params, expected_header_hash)
+        let attestation_asset = tx.outputs
+          |> output_at_index(output_index)
+          |> validate_init_output(own_policy_id, params, expected_header_hash)
 
-        expect [Pair(minted_asset_name, minted_quantity)] =
-          tx.mint
-            |> assets.tokens(own_policy_id)
-            |> dict.to_pairs
+        expect [Pair(minted_asset_name, minted_quantity)] = tx.mint
+          |> assets.tokens(own_policy_id)
+          |> dict.to_pairs
         expect minted_asset_name == attestation_asset
         expect minted_quantity == 1
 
@@ -339,30 +349,28 @@ validator da_attestation(
         state_queue_output_index,
         state_queue_mint_ref_script_input_index,
       } -> {
-        let attestation_datum =
-          get_attestation_input_datum(
-            tx.inputs,
-            da_attestation_input_index,
-            own_policy_id,
-          )
+        let attestation_datum = get_attestation_input_datum(
+          tx.inputs,
+          da_attestation_input_index,
+          own_policy_id,
+        )
         expect
           attestation_datum.attestation_count >= attestation_datum.da_threshold
 
-        let attestation_asset =
-          attestation_asset_name(attestation_datum.header_hash)
-        expect [Pair(minted_asset_name, minted_quantity)] =
-          tx.mint
-            |> assets.tokens(own_policy_id)
-            |> dict.to_pairs
+        let attestation_asset = attestation_asset_name(
+          attestation_datum.header_hash,
+        )
+        expect [Pair(minted_asset_name, minted_quantity)] = tx.mint
+          |> assets.tokens(own_policy_id)
+          |> dict.to_pairs
         expect minted_asset_name == attestation_asset
         expect minted_quantity == -1
 
-        let state_queue_policy_id =
-          get_authenticated_state_queue_policy_id(
-            tx.reference_inputs,
-            reference_script_auth_policy_id,
-            state_queue_mint_ref_script_input_index,
-          )
+        let state_queue_policy_id = get_authenticated_state_queue_policy_id(
+          tx.reference_inputs,
+          reference_script_auth_policy_id,
+          state_queue_mint_ref_script_input_index,
+        )
 
         state_queue.validate_da_attestation_attachment(
           tx.inputs,
@@ -395,18 +403,17 @@ validator da_attestation(
           tx,
         )
       BurnForStateQueue { mint_redeemer_index } -> {
-        let own_policy_id =
-          tx.inputs
-            |> resolve_input(own_ref)
-            |> expect_script_hash_from_output
+        let own_policy_id = tx.inputs
+          |> resolve_input(own_ref)
+          |> expect_script_hash_from_output
 
-        let mint_redeemer_data =
-          tx.redeemers
-            |> utils.get_redeemer_at(Mint(own_policy_id), mint_redeemer_index)
-        expect ApplyToStateQueue { da_attestation_input_index, .. }: MintRedeemer =
-          mint_redeemer_data
-        expect Some(Input { output_reference, .. }) =
-          tx.inputs |> list.at(da_attestation_input_index)
+        let mint_redeemer_data = tx.redeemers
+          |> utils.get_redeemer_at(Mint(own_policy_id), mint_redeemer_index)
+        expect
+            ApplyToStateQueue { da_attestation_input_index, .. }: MintRedeemer
+          = mint_redeemer_data
+        expect Some(Input { output_reference, .. }) = tx.inputs
+          |> list.at(da_attestation_input_index)
         expect output_reference == own_ref
 
         True

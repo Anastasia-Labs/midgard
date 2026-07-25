@@ -8,7 +8,7 @@ import {
 import {
   DA_ON_CHAIN_ATTESTATION_V1_DOMAIN,
   DA_TRANSPORT_LIMITS_V1,
-  DA_TRANSPORT_PROTOCOL_VERSION,
+  DA_TRANSPORT_V1_PROTOCOL_VERSION,
   type DaAttestationGossipV1,
   type DaCapabilitiesResponseV1,
   DaConflictEvidenceKind,
@@ -71,7 +71,7 @@ describe("DA libp2p transport protocol freeze", () => {
   });
 
   it("freezes protocol IDs, topics, domains, limits, and enum codes", () => {
-    expect(DA_TRANSPORT_PROTOCOL_VERSION).toBe(1);
+    expect(DA_TRANSPORT_V1_PROTOCOL_VERSION).toBe(1);
     expect(DA_ON_CHAIN_ATTESTATION_V1_DOMAIN).toBe("MidgardDAAttestationV1");
     expect(DA_TRANSPORT_LIMITS_V1).toEqual({
       maxPayloadBytes: 67_108_864,
@@ -130,7 +130,7 @@ describe("DA libp2p transport protocol freeze", () => {
         deploymentFingerprint: deployment,
         headerHash: header,
         payloadHash: payload,
-        payloadSchemaVersion: 2,
+        payloadSchemaVersion: 1,
         mode: "chunked",
         payloadBytes: null,
         chunkManifest,
@@ -140,7 +140,7 @@ describe("DA libp2p transport protocol freeze", () => {
         `5820${h("01", 32)}`,
         `581c${h("02", 28)}`,
         `5820${h("03", 32)}`,
-        "02",
+        "01",
         "01",
         "f6",
         "84",
@@ -184,7 +184,7 @@ describe("DA libp2p transport protocol freeze", () => {
         status: "found",
         headerHash: header,
         payloadHash: payload,
-        payloadSchemaVersion: 2,
+        payloadSchemaVersion: 1,
         payloadBytes: 5,
         rootSummaryHash: b(0x06, 32),
         proofBundleHash: b(0x07, 32),
@@ -198,7 +198,7 @@ describe("DA libp2p transport protocol freeze", () => {
         "00",
         `581c${h("02", 28)}`,
         `5820${h("03", 32)}`,
-        "02",
+        "01",
         "05",
         `5820${h("06", 32)}`,
         `5820${h("07", 32)}`,
@@ -269,7 +269,7 @@ describe("DA libp2p transport protocol freeze", () => {
       deploymentFingerprint: deployment,
       headerHash: header,
       payloadHash: payload,
-      payloadSchemaVersion: 2,
+      payloadSchemaVersion: 1,
       mode: "chunked",
       payloadBytes: null,
       chunkManifest,
@@ -313,7 +313,7 @@ describe("DA libp2p transport protocol freeze", () => {
       deploymentFingerprint: deployment,
       headerHash: header,
       payloadHash: payload,
-      payloadSchemaVersion: 2,
+      payloadSchemaVersion: 1,
       mode: "chunked",
       payloadBytes: null,
       chunkManifest,
@@ -357,8 +357,8 @@ describe("DA libp2p transport protocol freeze", () => {
     ).toEqual(request);
     const response: DaCapabilitiesResponseV1 = {
       deploymentFingerprint: deployment,
-      transportProtocolVersion: DA_TRANSPORT_PROTOCOL_VERSION,
-      payloadSchemaVersions: [2, 3],
+      transportProtocolVersion: DA_TRANSPORT_V1_PROTOCOL_VERSION,
+      payloadSchemaVersions: [1],
       envelopeContentEncodings: [0, 1],
       maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
       maxInlineResponseBytes: DA_TRANSPORT_LIMITS_V1.maxInlineResponseBytes,
@@ -374,9 +374,9 @@ describe("DA libp2p transport protocol freeze", () => {
     expect(() =>
       encodeDaCapabilitiesResponseV1Cbor({
         ...response,
-        payloadSchemaVersions: [3, 2],
+        payloadSchemaVersions: [999] as unknown as readonly [1],
       }),
-    ).toThrow(/strictly increasing/);
+    ).toThrow(/must contain exactly DA payload schema V1/);
   });
 });
 

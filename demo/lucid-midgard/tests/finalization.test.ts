@@ -1,14 +1,15 @@
 import {
   computeHash32,
-  computeMidgardNativeTxId,
+  computeMidgardNativeTxIdV1,
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
-  deriveMidgardNativeTxWitnessSetCompact,
+  decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  deriveMidgardNativeTxWitnessSetCompactV1,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   MIDGARD_POSIX_TIME_NONE,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
+import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -35,9 +36,11 @@ const fakeProvider: MidgardProvider = {
     network: "Preview",
     midgardNativeTxVersion: 1,
     currentSlot: 0n,
+    consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
     supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+    codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     protocolFeeParameters: { minFeeA: 44n, minFeeB: 155381n },
-    submissionLimits: { maxSubmitTxCborBytes: 32768 },
+    submissionLimits: { maxSubmitTxCborBytes: MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes },
     validation: {
       strictnessProfile: "phase1_midgard",
       localValidationIsAuthoritative: false,
@@ -69,9 +72,11 @@ const zeroFeeProvider: MidgardProvider = {
     network: "Preview",
     midgardNativeTxVersion: 1,
     currentSlot: 0n,
+    consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
     supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+    codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     protocolFeeParameters: { minFeeA: 0n, minFeeB: 0n },
-    submissionLimits: { maxSubmitTxCborBytes: 32768 },
+    submissionLimits: { maxSubmitTxCborBytes: MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes },
     validation: {
       strictnessProfile: "phase1_midgard",
       localValidationIsAuthoritative: false,
@@ -91,10 +96,10 @@ const makeOutRef = (byte: number, outputIndex = 0): OutRef => ({
   outputIndex,
 });
 
-const scriptAddress = (scriptHash: string): string =>
+const enterpriseAddressFor = (privateKey: CML.PrivateKey): string =>
   CML.EnterpriseAddress.new(
     0,
-    CML.Credential.new_script(CML.ScriptHash.from_hex(scriptHash)),
+    CML.Credential.new_pub_key(privateKey.to_public().hash()),
   )
     .to_address()
     .to_bech32();
@@ -123,13 +128,13 @@ describe("TxBuilder finalization", () => {
       ])
       .addSigner("bb".repeat(28))
       .pay.ToAddress(address, { lovelace: 1_000_000n })
-      .pay.ToProtectedAddress(address, { lovelace: 2_000_000n })
+      .pay.ToAddress(address, { lovelace: 2_000_000n })
       .complete();
 
-    const decoded = decodeMidgardNativeTxFullFromCanonicalCbor(
+    const decoded = decodeMidgardNativeTxFullV1FromCanonicalCbor(
       completed.txCbor,
     );
-    expect(completed.txId).toEqual(computeMidgardNativeTxId(decoded));
+    expect(completed.txId).toEqual(computeMidgardNativeTxIdV1(decoded));
     expect(completed.toHash()).toBe(completed.txIdHex);
     expect(completed.toCBOR()).toBe(completed.txHex);
     expect(completed.toJSON()).toMatchObject({
@@ -169,8 +174,8 @@ describe("TxBuilder finalization", () => {
       .collectFrom([makeUtxo(makeOutRef(0x11), { lovelace: 1_000_000n })])
       .pay.ToAddress(address, { lovelace: 1_000_000n })
       .complete();
-    const tx = decodeMidgardNativeTxFullFromCanonicalCbor(completed.txCbor);
-    const witnessCompact = deriveMidgardNativeTxWitnessSetCompact(
+    const tx = decodeMidgardNativeTxFullV1FromCanonicalCbor(completed.txCbor);
+    const witnessCompact = deriveMidgardNativeTxWitnessSetCompactV1(
       tx.witnessSet,
     );
 
@@ -213,9 +218,9 @@ describe("TxBuilder finalization", () => {
         makeUtxo(makeOutRef(0x11, 0), { lovelace: 1_000_000n }),
       ])
       .pay.ToAddress(address, { lovelace: 1_000_000n })
-      .pay.ToProtectedAddress(address, { lovelace: 2_000_000n })
+      .pay.ToAddress(address, { lovelace: 2_000_000n })
       .complete();
-    const tx = decodeMidgardNativeTxFullFromCanonicalCbor(completed.txCbor);
+    const tx = decodeMidgardNativeTxFullV1FromCanonicalCbor(completed.txCbor);
 
     const spendInputs = decodeMidgardNativeByteListPreimage(
       tx.body.spendInputsPreimageCbor,
@@ -238,11 +243,7 @@ describe("TxBuilder finalization", () => {
     ).toBe(true);
     expect(
       outputs[1]?.equals(
-        encodeMidgardTxOutput(
-          address,
-          { lovelace: 2_000_000n },
-          { kind: "protected" },
-        ),
+        encodeMidgardTxOutput(address, { lovelace: 2_000_000n }),
       ),
     ).toBe(true);
   });
@@ -346,9 +347,8 @@ describe("TxBuilder finalization", () => {
   });
 
   it("runs shared Phase B local validation against explicit pre-state", async () => {
-    const children = CML.NativeScriptList.new();
-    const native = CML.NativeScript.new_script_all(children);
-    const nativeAddress = scriptAddress(native.hash().to_hex());
+    const privateKey = CML.PrivateKey.generate_ed25519();
+    const inputAddress = enterpriseAddressFor(privateKey);
     const midgard = await LucidMidgard.new(zeroFeeProvider, {
       network: "Preview",
       networkId: 0,
@@ -356,25 +356,25 @@ describe("TxBuilder finalization", () => {
     const input = decodeMidgardUtxo({
       outRef: makeOutRef(0x11),
       outRefCbor: outRefToCbor(makeOutRef(0x11)),
-      outputCbor: encodeMidgardTxOutput(nativeAddress, {
+      outputCbor: encodeMidgardTxOutput(inputAddress, {
         lovelace: 1_000_000n,
       }),
     });
     const inputOutRefCbor = Buffer.from(input.cbor!.outRef!);
     const inputOutputCbor = Buffer.from(input.cbor!.output!);
-    const completed = await midgard
+    const unsigned = await midgard
       .newTx()
-      .attach.NativeScript(native)
       .collectFrom([input])
       .pay.ToAddress(address, { lovelace: 1_000_000n })
-      .complete({
-        localValidation: "phase-b",
-        localPreState: new Map([
-          [inputOutRefCbor.toString("hex"), inputOutputCbor],
-        ]),
-      });
+      .complete();
+    const completed = await unsigned.sign.withPrivateKey(privateKey).complete();
+    const report = await completed.validate("phase-b", {
+      localPreState: new Map([
+        [inputOutRefCbor.toString("hex"), inputOutputCbor],
+      ]),
+    });
 
-    expect(completed.metadata.localValidation).toMatchObject({
+    expect(report).toMatchObject({
       phase: "phase-b",
       acceptedTxIds: [completed.txIdHex],
       rejected: [],
@@ -385,9 +385,8 @@ describe("TxBuilder finalization", () => {
   });
 
   it("runs explicit Phase B local preflight against shared validator pre-state", async () => {
-    const children = CML.NativeScriptList.new();
-    const native = CML.NativeScript.new_script_all(children);
-    const nativeAddress = scriptAddress(native.hash().to_hex());
+    const privateKey = CML.PrivateKey.generate_ed25519();
+    const inputAddress = enterpriseAddressFor(privateKey);
     const midgard = await LucidMidgard.new(zeroFeeProvider, {
       network: "Preview",
       networkId: 0,
@@ -395,18 +394,18 @@ describe("TxBuilder finalization", () => {
     const input = decodeMidgardUtxo({
       outRef: makeOutRef(0x12),
       outRefCbor: outRefToCbor(makeOutRef(0x12)),
-      outputCbor: encodeMidgardTxOutput(nativeAddress, {
+      outputCbor: encodeMidgardTxOutput(inputAddress, {
         lovelace: 1_000_000n,
       }),
     });
     const inputOutRefCbor = Buffer.from(input.cbor!.outRef!);
     const inputOutputCbor = Buffer.from(input.cbor!.output!);
-    const completed = await midgard
+    const unsigned = await midgard
       .newTx()
-      .attach.NativeScript(native)
       .collectFrom([input])
       .pay.ToAddress(address, { lovelace: 1_000_000n })
       .complete();
+    const completed = await unsigned.sign.withPrivateKey(privateKey).complete();
 
     const report = await completed.validate("phase-b", {
       localPreState: new Map([
@@ -445,7 +444,7 @@ describe("TxBuilder finalization", () => {
     const tx = completed.tx;
     tx.body.outputsPreimageCbor[0] ^= 0xff;
     expect(completed.tx.body.outputsPreimageCbor.toString("hex")).toBe(
-      decodeMidgardNativeTxFullFromCanonicalCbor(
+      decodeMidgardNativeTxFullV1FromCanonicalCbor(
         Buffer.from(completed.txHex, "hex"),
       ).body.outputsPreimageCbor.toString("hex"),
     );

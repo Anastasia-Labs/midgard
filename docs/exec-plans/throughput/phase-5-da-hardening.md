@@ -1,5 +1,9 @@
 # ExecPlan: Throughput Phase 5 — DA Hardening (D2)
 
+> **Historical, superseded by canonical V1 consolidation:** This record names
+> pre-consolidation payload/envelope formats and compatibility rollout steps.
+> Those V2/V3 identities and rollout branches are not supported surfaces.
+
 **Status:** V1 implementation, fail-closed exact-50k distribution gate, and strict historical 5,000,000-row/100-fixture provenance complete; bounded three-process closeout rerun passed; formal Docker timing distribution, fresh-live claim, 100k/one-hour, and ≤2 s p99 exit criteria remain blocked
 **Effort:** weeks 10–14, parallel track
 **Owner:** TBD

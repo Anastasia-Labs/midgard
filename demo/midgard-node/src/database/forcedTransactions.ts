@@ -1,3 +1,23 @@
+import {
+  computeMidgardNativeTxIdV1,
+  computeMidgardNativeTxProofCommitmentV1,
+  decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  deriveMidgardNativeTxProofSourceV1,
+} from "@al-ft/midgard-core/codec";
+import {
+  asArray,
+  asBigInt,
+  asBytes,
+  decodeSingleCbor,
+  encodeCbor,
+} from "@al-ft/midgard-core/codec/cbor";
+import {
+  isMidgardConsensusProfileV1,
+  MIDGARD_CONSENSUS_LIMITS_V1,
+  MIDGARD_CONSENSUS_PROFILE_V1_ID,
+  type MidgardConsensusProfileV1,
+} from "@al-ft/midgard-core/consensus-profile-v1";
+import { validateMidgardConsensusV1TxCbor } from "@al-ft/midgard-core/consensus-validation-v1";
 import { aikenSerialisedPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
@@ -13,6 +33,15 @@ import * as ProjectedEvents from "@/database/utils/projected-events.js";
 import { Database } from "@/services/database.js";
 
 export const tableName = "forced_transaction_utxos";
+const PROOF_MAX_CANONICAL_TRANSACTION_BYTES = 295_041;
+if (
+  PROOF_MAX_CANONICAL_TRANSACTION_BYTES !==
+  MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes
+) {
+  throw new Error(
+    "forced-transaction SQL bound does not match canonical V1",
+  );
+}
 
 export enum Columns {
   TX_ORDER_ID = "tx_order_id",
@@ -24,6 +53,11 @@ export enum Columns {
   TX_COMPACT = "tx_compact",
   FORCED_INCLUSION_VALUE = "forced_inclusion_value",
   OPERATOR_VALIDITY = "operator_validity",
+  CONSENSUS_PROFILE_ID = "consensus_profile_id",
+  NATIVE_TX_CBOR = "native_tx_cbor",
+  TRANSACTION_COMMITMENT = "transaction_commitment",
+  CEK_PROGRAM_MATERIAL_SIDECAR_CBOR = "cek_program_material_sidecar_cbor",
+  CEK_PROGRAM_MATERIAL_SIDECAR_SHA256 = "cek_program_material_sidecar_sha256",
   INCLUSION_TIME = "inclusion_time",
   PROJECTED_HEADER_HASH = "projected_header_hash",
   STATUS = "status",
@@ -47,15 +81,93 @@ export type Entry = {
   [Columns.TX_COMPACT]: Buffer;
   [Columns.FORCED_INCLUSION_VALUE]: Buffer;
   [Columns.OPERATOR_VALIDITY]: SDK.MidgardTxValidity;
+  [Columns.CONSENSUS_PROFILE_ID]: typeof MIDGARD_CONSENSUS_PROFILE_V1_ID;
+  [Columns.NATIVE_TX_CBOR]: Buffer;
+  [Columns.TRANSACTION_COMMITMENT]: Buffer;
+  [Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR]: Buffer;
+  [Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256]: Buffer;
   [Columns.INCLUSION_TIME]: Date;
   [Columns.PROJECTED_HEADER_HASH]: Buffer | null;
   [Columns.STATUS]: Status;
 };
 
-export type ForcedInclusionValueInput = {
-  readonly txCompact: SDK.MidgardTxCompact;
+export type ForcedInclusionValueV1Input = {
+  readonly nativeTxCbor: Buffer;
   readonly operatorValidity: SDK.MidgardTxValidity;
+  readonly consensusProfile: MidgardConsensusProfileV1;
 };
+
+const FORCED_TRANSACTION_JOURNAL_MEMBER_V1 = 1n;
+
+export type ForcedTransactionJournalMemberV1 = {
+  readonly sourceValueCbor: Buffer;
+  readonly canonicalTransactionCbor: Buffer;
+  readonly programMaterialSidecarCbor: Buffer;
+};
+
+/**
+ * Durable V1 journal representation. The committed source and its DA-only
+ * canonical preimage remain distinct so the publisher cannot omit
+ * either after header construction.
+ */
+export const encodeForcedTransactionJournalMemberV1 = ({
+  sourceValueCbor,
+  canonicalTransactionCbor,
+  programMaterialSidecarCbor,
+}: ForcedTransactionJournalMemberV1): Buffer =>
+  encodeCbor([
+    FORCED_TRANSACTION_JOURNAL_MEMBER_V1,
+    Buffer.from(sourceValueCbor),
+    Buffer.from(canonicalTransactionCbor),
+    Buffer.from(programMaterialSidecarCbor),
+  ]);
+
+export const decodeForcedTransactionJournalMemberV1 = (
+  bytes: Uint8Array,
+): ForcedTransactionJournalMemberV1 => {
+  const fields = asArray(
+    decodeSingleCbor(bytes),
+    "forced_transaction_journal_member_v1",
+  );
+  if (
+    fields.length !== 4 ||
+    asBigInt(fields[0], "forced_transaction_journal_member_v1.version") !==
+      FORCED_TRANSACTION_JOURNAL_MEMBER_V1
+  ) {
+    throw new Error(
+      "forced_transaction_journal_member_v1 must contain exact version 1 and three byte fields",
+    );
+  }
+  const sourceValueCbor = asBytes(
+    fields[1],
+    "forced_transaction_journal_member_v1.source_value_cbor",
+  );
+  const canonicalTransactionCbor = asBytes(
+    fields[2],
+    "forced_transaction_journal_member_v1.canonical_transaction_cbor",
+  );
+  const programMaterialSidecarCbor = asBytes(
+    fields[3],
+    "forced_transaction_journal_member_v1.program_material_sidecar_cbor",
+  );
+  if (
+    sourceValueCbor.length === 0 ||
+    canonicalTransactionCbor.length === 0 ||
+    programMaterialSidecarCbor.length === 0
+  ) {
+    throw new Error(
+      "forced_transaction_journal_member_v1 cannot contain an empty source, transaction preimage, or material sidecar",
+    );
+  }
+  return {
+    sourceValueCbor,
+    canonicalTransactionCbor,
+    programMaterialSidecarCbor,
+  };
+};
+
+const sha256 = (payload: Uint8Array): Buffer =>
+  createHash("sha256").update(payload).digest();
 
 const projectedEventsTable = {
   tableName,
@@ -91,66 +203,97 @@ const projectedEventAdapter = ProjectedEvents.makeProjectedEventAdapter<Entry>({
   },
 });
 
-const sameImmutablePayload = (left: Entry, right: Entry): boolean =>
-  left[Columns.TX_ORDER_ID].equals(right[Columns.TX_ORDER_ID]) &&
-  left[Columns.TX_ORDER_L1_TX_HASH].equals(
-    right[Columns.TX_ORDER_L1_TX_HASH],
-  ) &&
-  left[Columns.TX_ORDER_L1_OUTPUT_INDEX] ===
-    right[Columns.TX_ORDER_L1_OUTPUT_INDEX] &&
-  left[Columns.ASSET_NAME].equals(right[Columns.ASSET_NAME]) &&
-  left[Columns.RAW_DATUM].equals(right[Columns.RAW_DATUM]) &&
-  left[Columns.TX_ID].equals(right[Columns.TX_ID]) &&
-  left[Columns.TX_COMPACT].equals(right[Columns.TX_COMPACT]) &&
-  left[Columns.FORCED_INCLUSION_VALUE].equals(
-    right[Columns.FORCED_INCLUSION_VALUE],
-  ) &&
-  left[Columns.OPERATOR_VALIDITY] === right[Columns.OPERATOR_VALIDITY] &&
-  left[Columns.INCLUSION_TIME].getTime() ===
-    right[Columns.INCLUSION_TIME].getTime();
+const sameImmutablePayload = (left: Entry, right: Entry): boolean => {
+  return (
+    left[Columns.TX_ORDER_ID].equals(right[Columns.TX_ORDER_ID]) &&
+    left[Columns.TX_ORDER_L1_TX_HASH].equals(
+      right[Columns.TX_ORDER_L1_TX_HASH],
+    ) &&
+    left[Columns.TX_ORDER_L1_OUTPUT_INDEX] ===
+      right[Columns.TX_ORDER_L1_OUTPUT_INDEX] &&
+    left[Columns.ASSET_NAME].equals(right[Columns.ASSET_NAME]) &&
+    left[Columns.RAW_DATUM].equals(right[Columns.RAW_DATUM]) &&
+    left[Columns.TX_ID].equals(right[Columns.TX_ID]) &&
+    left[Columns.TX_COMPACT].equals(right[Columns.TX_COMPACT]) &&
+    left[Columns.CONSENSUS_PROFILE_ID] ===
+      right[Columns.CONSENSUS_PROFILE_ID] &&
+    left[Columns.NATIVE_TX_CBOR].equals(right[Columns.NATIVE_TX_CBOR]) &&
+    left[Columns.TRANSACTION_COMMITMENT].equals(
+      right[Columns.TRANSACTION_COMMITMENT],
+    ) &&
+    left[Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR].equals(
+      right[Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR],
+    ) &&
+    left[Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256].equals(
+      right[Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256],
+    ) &&
+    left[Columns.INCLUSION_TIME].getTime() ===
+      right[Columns.INCLUSION_TIME].getTime()
+  );
+};
 
-export const txIdFromTxCompact = (
-  txCompact: SDK.MidgardTxCompact,
-): Effect.Effect<Buffer, DatabaseError> =>
-  Effect.gen(function* () {
-    const bodyCbor = yield* Effect.try({
-      try: () =>
-        aikenSerialisedPlutusDataCbor(
-          LucidData.to(txCompact.body, SDK.MidgardTxBodyCompact),
-        ),
-      catch: (cause) =>
-        new DatabaseError({
-          table: tableName,
-          message: "Failed to encode forced transaction compact body",
-          cause,
-        }),
-    });
-    const txIdHex = yield* SDK.hashHexWithBlake2b(bodyCbor, 32).pipe(
-      Effect.mapError(
-        (cause) =>
-          new DatabaseError({
-            table: tableName,
-            message: "Failed to hash forced transaction compact body",
-            cause,
-          }),
-      ),
-    );
-    return Buffer.from(txIdHex, "hex");
-  });
-
-export const encodeForcedInclusionValue = ({
-  txCompact,
+export const encodeForcedInclusionValueV1 = ({
+  nativeTxCbor,
   operatorValidity,
-}: ForcedInclusionValueInput): Effect.Effect<
-  { readonly txId: Buffer; readonly value: Buffer },
+  consensusProfile,
+}: ForcedInclusionValueV1Input): Effect.Effect<
+  {
+    readonly txId: Buffer;
+    readonly txCompact: Buffer;
+    readonly transactionCommitment: Buffer;
+    readonly source: ReturnType<typeof deriveMidgardNativeTxProofSourceV1>;
+    readonly value: Buffer;
+  },
   DatabaseError
 > =>
   Effect.gen(function* () {
-    const txId = yield* txIdFromTxCompact(txCompact);
-    const forcedInclusionTx: SDK.ForcedInclusionTx = {
-      tx_compact: {
-        body: txCompact.body,
-        wits: txCompact.wits,
+    if (!isMidgardConsensusProfileV1(consensusProfile)) {
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: tableName,
+          message:
+            "Refusing to encode a forced transaction under a non-V1 consensus profile",
+          cause: "non-v1-profile",
+        }),
+      );
+    }
+    const material = yield* Effect.try({
+      try: () => {
+        const violation = validateMidgardConsensusV1TxCbor(nativeTxCbor);
+        if (violation !== null) {
+          throw new Error(
+            `${violation.code} ${violation.featureId}: ${violation.detail}`,
+          );
+        }
+        const nativeTx =
+          decodeMidgardNativeTxFullV1FromCanonicalCbor(nativeTxCbor);
+        const txId = computeMidgardNativeTxIdV1(nativeTx);
+        const source = deriveMidgardNativeTxProofSourceV1(nativeTx);
+        const transactionCommitment =
+          computeMidgardNativeTxProofCommitmentV1(source);
+        return {
+          txId,
+          source,
+          transactionCommitment,
+          txCompact: source.compactCbor,
+        };
+      },
+      catch: (cause) =>
+        new DatabaseError({
+          table: tableName,
+          message: "Failed to verify the exact canonical V1 forced transaction",
+          cause,
+        }),
+    });
+    const forcedInclusionTx: SDK.ForcedInclusionTxV1 = {
+      tx_id: material.txId.toString("hex"),
+      transaction_commitment: material.transactionCommitment.toString("hex"),
+      source: {
+        compact_cbor: material.source.compactCbor.toString("hex"),
+        witness_set_compact_cbor:
+          material.source.witnessSetCompactCbor.toString("hex"),
+        field_preimage_lengths_cbor:
+          material.source.fieldPreimageLengthsCbor.toString("hex"),
       },
       operator_validity: operatorValidity,
     };
@@ -158,18 +301,18 @@ export const encodeForcedInclusionValue = ({
       try: () =>
         Buffer.from(
           aikenSerialisedPlutusDataCbor(
-            LucidData.to(forcedInclusionTx, SDK.ForcedInclusionTx),
+            LucidData.to(forcedInclusionTx, SDK.ForcedInclusionTxV1),
           ),
           "hex",
         ),
       catch: (cause) =>
         new DatabaseError({
           table: tableName,
-          message: "Failed to encode forced transaction source value",
+          message: "Failed to encode V1 forced transaction source value",
           cause,
         }),
     });
-    return { txId, value };
+    return { ...material, value };
   });
 
 export const createTable: Effect.Effect<void, DatabaseError, Database> =
@@ -186,22 +329,27 @@ export const createTable: Effect.Effect<void, DatabaseError, Database> =
           ${sql(Columns.TX_ID)} BYTEA NOT NULL CHECK (octet_length(${sql(Columns.TX_ID)}) = 32),
           ${sql(Columns.TX_COMPACT)} BYTEA NOT NULL,
           ${sql(Columns.FORCED_INCLUSION_VALUE)} BYTEA NOT NULL,
-          ${sql(Columns.OPERATOR_VALIDITY)} TEXT NOT NULL CHECK (${sql(Columns.OPERATOR_VALIDITY)} IN (
+	          ${sql(Columns.OPERATOR_VALIDITY)} TEXT NOT NULL CHECK (${sql(Columns.OPERATOR_VALIDITY)} IN (
             'TxIsValid',
             'NonExistentInputUtxo',
             'InvalidSignature',
             'FailedScript',
             'FeeTooLow',
             'UnbalancedTx'
-          )),
+	          )),
+	          ${sql(Columns.CONSENSUS_PROFILE_ID)} TEXT NOT NULL CHECK (${sql(Columns.CONSENSUS_PROFILE_ID)} = ${MIDGARD_CONSENSUS_PROFILE_V1_ID}),
+	          ${sql(Columns.NATIVE_TX_CBOR)} BYTEA NOT NULL CHECK (octet_length(${sql(Columns.NATIVE_TX_CBOR)}) <= 295041),
+	          ${sql(Columns.TRANSACTION_COMMITMENT)} BYTEA NOT NULL CHECK (octet_length(${sql(Columns.TRANSACTION_COMMITMENT)}) = 32),
+	          ${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)} BYTEA NOT NULL CHECK (octet_length(${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)}) > 0),
+	          ${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256)} BYTEA NOT NULL CHECK (octet_length(${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256)}) = 32),
           ${sql(Columns.INCLUSION_TIME)} TIMESTAMPTZ NOT NULL,
           ${sql(Columns.PROJECTED_HEADER_HASH)} BYTEA,
           ${sql(Columns.STATUS)} TEXT NOT NULL CHECK (${sql(Columns.STATUS)} IN ('awaiting', 'projected', 'finalized')),
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
           UNIQUE (${sql(Columns.TX_ORDER_L1_TX_HASH)}, ${sql(Columns.TX_ORDER_L1_OUTPUT_INDEX)}),
-          CHECK (${sql(Columns.STATUS)} <> 'awaiting' OR ${sql(Columns.PROJECTED_HEADER_HASH)} IS NULL)
-        );`;
+	          CHECK (${sql(Columns.STATUS)} <> 'awaiting' OR ${sql(Columns.PROJECTED_HEADER_HASH)} IS NULL)
+	        );`;
         yield* sql`CREATE INDEX IF NOT EXISTS ${sql(
           `idx_${tableName}_${Columns.STATUS}_${Columns.INCLUSION_TIME}_${Columns.TX_ORDER_ID}`,
         )} ON ${sql(tableName)} (
@@ -264,8 +412,9 @@ export const insertEntries = (
         AND ${sql(tableName)}.${sql(Columns.RAW_DATUM)} = EXCLUDED.${sql(Columns.RAW_DATUM)}
         AND ${sql(tableName)}.${sql(Columns.TX_ID)} = EXCLUDED.${sql(Columns.TX_ID)}
         AND ${sql(tableName)}.${sql(Columns.TX_COMPACT)} = EXCLUDED.${sql(Columns.TX_COMPACT)}
-        AND ${sql(tableName)}.${sql(Columns.FORCED_INCLUSION_VALUE)} = EXCLUDED.${sql(Columns.FORCED_INCLUSION_VALUE)}
-        AND ${sql(tableName)}.${sql(Columns.OPERATOR_VALIDITY)} = EXCLUDED.${sql(Columns.OPERATOR_VALIDITY)}
+        AND ${sql(tableName)}.${sql(Columns.CONSENSUS_PROFILE_ID)} IS NOT DISTINCT FROM EXCLUDED.${sql(Columns.CONSENSUS_PROFILE_ID)}
+        AND ${sql(tableName)}.${sql(Columns.NATIVE_TX_CBOR)} IS NOT DISTINCT FROM EXCLUDED.${sql(Columns.NATIVE_TX_CBOR)}
+        AND ${sql(tableName)}.${sql(Columns.TRANSACTION_COMMITMENT)} IS NOT DISTINCT FROM EXCLUDED.${sql(Columns.TRANSACTION_COMMITMENT)}
         AND ${sql(tableName)}.${sql(Columns.INCLUSION_TIME)} = EXCLUDED.${sql(Columns.INCLUSION_TIME)}
       RETURNING ${sql(Columns.TX_ORDER_ID)}
     `;
@@ -284,6 +433,58 @@ export const insertEntries = (
     sqlErrorToDatabaseError(
       tableName,
       "Failed to insert forced transaction UTxOs",
+    ),
+  );
+
+export const setProofClassifications = (
+  classifications: readonly {
+    readonly txOrderId: Buffer;
+    readonly operatorValidity: SDK.MidgardTxValidity;
+    readonly forcedInclusionValue: Buffer;
+    readonly programMaterialSidecarCbor: Buffer;
+  }[],
+): Effect.Effect<void, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    if (classifications.length === 0) {
+      return;
+    }
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql.withTransaction(
+      Effect.forEach(
+        classifications,
+        (classification) =>
+          sql`
+            UPDATE ${sql(tableName)}
+            SET
+              ${sql(Columns.OPERATOR_VALIDITY)} = ${classification.operatorValidity},
+              ${sql(Columns.FORCED_INCLUSION_VALUE)} = ${classification.forcedInclusionValue},
+              ${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)} = ${classification.programMaterialSidecarCbor},
+              ${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256)} = ${sha256(classification.programMaterialSidecarCbor)},
+              updated_at = NOW()
+            WHERE ${sql(Columns.TX_ORDER_ID)} = ${classification.txOrderId}
+              AND ${sql(Columns.CONSENSUS_PROFILE_ID)} = ${MIDGARD_CONSENSUS_PROFILE_V1_ID}
+            RETURNING ${sql(Columns.TX_ORDER_ID)}
+          `.pipe(
+            Effect.flatMap((rows) =>
+              rows.length === 1
+                ? Effect.void
+                : Effect.fail(
+                    new DatabaseError({
+                      table: tableName,
+                      message:
+                        "Failed to persist exact V1 forced transaction classification",
+                      cause: `tx_order_id=${classification.txOrderId.toString("hex")},updated=${rows.length.toString()}`,
+                    }),
+                  ),
+            ),
+          ),
+        { discard: true },
+      ),
+    );
+  }).pipe(
+    sqlErrorToDatabaseError(
+      tableName,
+      "Failed to update V1 forced transaction classifications",
     ),
   );
 
@@ -396,3 +597,4 @@ export const toRootKeyValue = (
 });
 
 export const clear = clearTable(tableName);
+import { createHash } from "node:crypto";

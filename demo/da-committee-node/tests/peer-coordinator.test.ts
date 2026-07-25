@@ -14,7 +14,7 @@ import { DaPeerRegistry } from "../src/da/libp2p/DaPeerRegistry.js";
 import type {
   DaPayloadRecord,
   DaSignatureRecord,
-  Header,
+  HeaderV1,
   PayloadRootSet,
   StateQueueHeaderRecord,
 } from "../src/domain.js";
@@ -105,6 +105,7 @@ describe("PeerSignatureCoordinator", () => {
     await receiverStore.saveDaPayload({
       deploymentFingerprint,
       headerHash,
+      payloadSchemaVersion: 1,
       payloadCborHex: "aabb",
       payloadSha256: "22".repeat(32),
       sourcePeerId: "fixture",
@@ -236,6 +237,7 @@ describe("PeerSignatureCoordinator", () => {
     await receiverStore.saveDaPayload({
       deploymentFingerprint,
       headerHash,
+      payloadSchemaVersion: 1,
       payloadCborHex: "aabb",
       payloadSha256: "22".repeat(32),
       sourcePeerId: "fixture",
@@ -276,6 +278,7 @@ describe("PeerSignatureCoordinator", () => {
     await localStore.saveDaPayload({
       deploymentFingerprint,
       headerHash,
+      payloadSchemaVersion: 1,
       payloadCborHex: "aabb",
       payloadSha256: "22".repeat(32),
       sourcePeerId: "fixture",
@@ -532,7 +535,7 @@ const signatureRecord = ({
   broadcastStatus: "local",
   l1ChainPoint: {},
   validation: {
-    payloadVersion: Number(SDK.DA_PAYLOAD_V2_VERSION),
+    payloadVersion: Number(SDK.DA_PAYLOAD_V1_VERSION),
     rootsMatch: true,
     stateQueueOutRef: "tx#0",
     headerHash,
@@ -576,7 +579,7 @@ const saveVerifiedPayload = async (
     readonly headerHash: string;
     readonly payloadHash: string;
     readonly payloadCbor: Buffer;
-    readonly header: Header;
+    readonly header: HeaderV1;
   },
 ): Promise<void> => {
   await store.upsertStateQueueHeader(
@@ -585,6 +588,7 @@ const saveVerifiedPayload = async (
   await store.saveDaPayload({
     deploymentFingerprint,
     headerHash,
+    payloadSchemaVersion: 1,
     payloadCborHex: payloadCbor.toString("hex"),
     payloadSha256: payloadHash,
     sourcePeerId: "fixture",
@@ -603,7 +607,7 @@ const stateQueueRecord = ({
 }: {
   readonly deploymentFingerprint: string;
   readonly headerHash: string;
-  readonly header: Header;
+  readonly header: HeaderV1;
 }): StateQueueHeaderRecord => ({
   deploymentFingerprint,
   headerHash,
@@ -624,7 +628,7 @@ const stateQueueRecord = ({
   updatedAt: new Date().toISOString(),
 });
 
-const rootSummaryFromHeader = (header: Header): PayloadRootSet => ({
+const rootSummaryFromHeader = (header: HeaderV1): PayloadRootSet => ({
   utxosRoot: header.utxosRoot,
   transactionsRoot: header.transactionsRoot,
   depositsRoot: header.depositsRoot,

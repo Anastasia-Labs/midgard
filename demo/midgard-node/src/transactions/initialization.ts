@@ -1,3 +1,4 @@
+import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
@@ -18,7 +19,10 @@ import { slotToUnixTimeForLucidOrEmulatorFallback } from "@/lucid-time.js";
 import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
 import { NodeConfig } from "@/services/config.js";
 import { Lucid } from "@/services/lucid.js";
-import { MidgardContracts } from "@/services/midgard-contracts.js";
+import {
+  type ContractDeploymentIdentityValue,
+  MidgardContracts,
+} from "@/services/midgard-contracts.js";
 import {
   fetchStateQueueTopologyProgram,
   type StateQueueTopology,
@@ -57,10 +61,12 @@ const FraudProofCatalogueIdSchema = LucidData.Bytes({
 });
 type LucidDataSchema = Parameters<typeof LucidData.to>[1];
 
-type IndexedFraudProof = readonly [
+type IndexedFraudProof<
+  CategoryName extends SDK.FraudProofCatalogueCategoryName = SDK.FraudProofCatalogueCategoryName,
+> = readonly [
   categoryId: Buffer,
   validator: SDK.SpendingValidator,
-  categoryName: SDK.FraudProofCatalogueCategoryName,
+  categoryName: CategoryName,
 ];
 
 /**
@@ -68,7 +74,7 @@ type IndexedFraudProof = readonly [
  */
 export const fraudProofsToIndexedValidators = (
   fraudProofs: SDK.FraudProofs,
-): IndexedFraudProof[] => {
+): IndexedFraudProof<SDK.FraudProofCatalogueCategoryName>[] => {
   return SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((fraudProofTitle, i) => [
     uint32ToFraudProofID(i),
     fraudProofs[fraudProofTitle],
@@ -99,8 +105,10 @@ const encodeFraudProofCatalogueValue = (
 /**
  * Builds the Merkle Patricia Forestry root used as the fraud-proof catalogue.
  */
-export const createFraudProofCatalogueMpf = (
-  indexedFraudProofs: readonly IndexedFraudProof[],
+export const createFraudProofCatalogueMpf = <
+  CategoryName extends SDK.FraudProofCatalogueCategoryName,
+>(
+  indexedFraudProofs: readonly IndexedFraudProof<CategoryName>[],
 ): Effect.Effect<MidgardMpf, MpfError> =>
   Effect.gen(function* () {
     const batchOps = indexedFraudProofs.map(
@@ -115,17 +123,19 @@ export const createFraudProofCatalogueMpf = (
     return mpf;
   });
 
-export const buildFraudProofCatalogueDeploymentInfo = (
-  indexedFraudProofs: readonly IndexedFraudProof[],
-): Effect.Effect<SDK.FraudProofCatalogueDeploymentInfo, MpfError> =>
+export const buildFraudProofCatalogueDeploymentInfo = <
+  CategoryName extends SDK.FraudProofCatalogueCategoryName,
+>(
+  indexedFraudProofs: readonly IndexedFraudProof<CategoryName>[],
+): Effect.Effect<
+  SDK.FraudProofCatalogueDeploymentInfo<CategoryName>,
+  MpfError
+> =>
   Effect.gen(function* () {
     const mpf = yield* createFraudProofCatalogueMpf(indexedFraudProofs);
     const root = yield* mpf.rootHex();
     const categories: Partial<
-      Record<
-        SDK.FraudProofCatalogueCategoryName,
-        SDK.FraudProofCatalogueCategoryDeploymentInfo
-      >
+      Record<CategoryName, SDK.FraudProofCatalogueCategoryDeploymentInfo>
     > = {};
 
     for (const [categoryId, validator, categoryName] of indexedFraudProofs) {
@@ -141,7 +151,7 @@ export const buildFraudProofCatalogueDeploymentInfo = (
     return {
       root,
       categories:
-        categories as SDK.FraudProofCatalogueDeploymentInfo["categories"],
+        categories as SDK.FraudProofCatalogueDeploymentInfo<CategoryName>["categories"],
     };
   });
 
@@ -678,6 +688,8 @@ export const buildAtomicProtocolInitTxProgram = (
   fraudProofCatalogueMerkleRoot: string,
   validTo?: bigint,
   referenceScripts?: AtomicProtocolInitReferenceScripts,
+  consensusProfile: ContractDeploymentIdentityValue["consensusProfile"] =
+    MIDGARD_CONSENSUS_PROFILE_V1,
 ): Effect.Effect<
   TxBuilder,
   | SDK.LucidError
@@ -691,6 +703,7 @@ export const buildAtomicProtocolInitTxProgram = (
     const daParams = yield* deriveOperatorDaParams(nodeConfig);
     return yield* SDK.incompleteInitializationTxProgram(lucid, {
       midgardValidators: contracts,
+      consensusProfile,
       fraudProofCatalogueMerkleRoot,
       daParams,
       oneShotNonceUTxO: nonceUtxo,
@@ -758,6 +771,7 @@ export const program: Effect.Effect<
       fraudProofCatalogueDeploymentInfo.root,
       initDeadline,
       referenceScripts,
+      contracts.consensusProfile,
     ),
     "Failed to build atomic real protocol initialization transaction",
   );

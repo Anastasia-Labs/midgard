@@ -17,7 +17,6 @@ const values = (): Record<string, string> => ({
   POSTGRES_PORT: "5544",
   POSTGRES_DB: "midgard_phase4_process_test",
   L1_PROVIDER: "Kupmios",
-  L1_PROVIDER_FAILOVER: "",
   L1_OGMIOS_KEY: "http://127.0.0.1:2337",
   L1_KUPO_KEY: "http://127.0.0.1:2442",
   MIN_FEE_A: "0",
@@ -101,7 +100,7 @@ const isolation: Phase4ProcessIsolationIdentity = {
 };
 
 const attestation = () => ({
-  schemaVersion: "midgard-phase4-local-devnet-reset-attestation-v3",
+  schemaVersion: "midgard-phase4-local-devnet-reset-attestation-v1",
   scenarioLabel: "crash-speculative_mid_build-flag-on",
   composeProject: isolation.composeProject,
   networkMagic: isolation.networkMagic,
@@ -160,7 +159,6 @@ describe("Phase 4 process isolation", () => {
     [{ L1_KUPO_KEY: "http://127.0.0.1:1442" }, "protected live port"],
     [{ POSTGRES_DB: "midgard" }, "must start with"],
     [{ L1_KUPO_KEY: "https://example.com:2442" }, "loopback"],
-    [{ L1_PROVIDER_FAILOVER: "Blockfrost" }, "forbids"],
     [{ MIN_FEE_A: "10" }, "MIN_FEE_A=0"],
     [{ MIN_FEE_B: "10" }, "MIN_FEE_A=0"],
     [{ MIDGARD_DOTENV_MODE: "enabled" }, "disable checkout dotenv"],

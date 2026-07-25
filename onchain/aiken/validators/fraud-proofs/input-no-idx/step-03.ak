@@ -35,31 +35,29 @@ validator main(
         //    same block as the first tx via the computation thread token's
         //    asset name.
         let
-          _own_script_hash,
-          _computation_thread_token_asset_name,
-          _fraud_prover,
-          m_input_state_data,
-          output_script_hash,
-          output_state_data,
-          _header,
-          producing_tx_id,
-          _producing_tx,
-          tx_field_preimage,
-        <-
-          pass_tx_to_next_step(
-            computation_thread_token_policy_id,
-            hub_oracle,
-            datum,
-            tx_inclusion_args,
-            own_out_ref,
-            tx,
-          )
+            _own_script_hash,
+            _computation_thread_token_asset_name,
+            _fraud_prover,
+            m_input_state_data,
+            output_script_hash,
+            output_state_data,
+            _header,
+            producing_tx_id,
+            _producing_tx,
+            tx_field_preimage
+          <- pass_tx_to_next_step(
+          computation_thread_token_policy_id,
+          hub_oracle,
+          datum,
+          tx_inclusion_args,
+          own_out_ref,
+          tx,
+        )
 
         // 2. Redeemer must provide the body of the producing transaction.
         expect TxBodyProvided(producing_tx_body) = tx_field_preimage
 
-        expect Some(State { bad_input_tx_id, bad_input_output_index }) =
-          m_input_state_data
+        expect Some(State { bad_input_tx_id, bad_input_output_index }) = m_input_state_data
 
         // 3. The verified producing tx ID must match the bad transaciton's
         //    input.
@@ -70,11 +68,10 @@ validator main(
         //    non-existent input's output index (which is expected to be larger
         //    than the last output in the provided preimage).
         expect output_script_hash == step_04_validator_script_hash
-        let expected_output_state: Data =
-          step_04.State {
-            producing_tx_outputs_hash: producing_tx_body.outputs,
-            bad_input_output_index,
-          }
+        let expected_output_state: Data = step_04.State {
+          producing_tx_outputs_hash: producing_tx_body.outputs,
+          bad_input_output_index,
+        }
         expect output_state_data == expected_output_state
 
         // Done.

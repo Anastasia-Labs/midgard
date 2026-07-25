@@ -1,4 +1,5 @@
 import { assetsEqual } from "@al-ft/midgard-core/assets";
+import { MIDGARD_PROTOCOL_V1_VERSION } from "@al-ft/midgard-core/consensus-profile-v1";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { outRefLabel } from "@al-ft/midgard-core/out-ref";
 import {
@@ -29,11 +30,11 @@ import type {
 import { outputReferenceFromUTxO } from "@/common.js";
 import {
   castConfirmedStateToData,
-  castStateQueueNodeToData,
+  castStateQueueNodeV1ToData,
   type ConfirmedState,
-  getHeaderFromStateQueueDatum,
-  hashBlockHeader,
-  type Header,
+  getHeaderV1FromStateQueueDatum,
+  hashBlockHeaderV1,
+  type HeaderV1,
   NO_DA_ATTESTATION,
 } from "@/ledger-state.js";
 import {
@@ -481,7 +482,7 @@ export type ProductionCommitBlockHeaderParams = {
   readonly contracts: MidgardValidators;
   readonly latestBlock: StateQueueUTxO;
   readonly updatedNodeDatum: LinkedListNodeView;
-  readonly newHeader: Header;
+  readonly newHeader: HeaderV1;
   readonly validTo: number;
   readonly witness: StateQueueCommitWitnessContext;
   readonly headerNodeLovelace?: bigint;
@@ -508,7 +509,7 @@ export const buildProductionCommitBlockHeaderTxProgram = ({
   StateQueueError | HashingError
 > =>
   Effect.gen(function* () {
-    const newHeaderHash = yield* hashBlockHeader(newHeader);
+    const newHeaderHash = yield* hashBlockHeaderV1(newHeader);
     const headerNodeUnit = toUnit(
       contracts.stateQueue.policyId,
       STATE_QUEUE_NODE_ASSET_NAME_PREFIX + newHeaderHash,
@@ -521,10 +522,15 @@ export const buildProductionCommitBlockHeaderTxProgram = ({
     const appendedNodeDatum: LinkedListNodeView = {
       key: updatedNodeDatum.next,
       next: "Empty",
-      data: castStateQueueNodeToData({
-        header: newHeader,
-        da_attestation: NO_DA_ATTESTATION,
-      }) as LinkedListNodeView["data"],
+      data: ("validationTracesRoot" in newHeader
+        ? castStateQueueNodeV1ToData({
+            header: newHeader,
+            da_attestation: NO_DA_ATTESTATION,
+          })
+        : castStateQueueNodeV1ToData({
+            header: newHeader,
+            da_attestation: NO_DA_ATTESTATION,
+          })) as LinkedListNodeView["data"],
     };
     const appendedNodeDatumCbor = encodeLinkedListNodeView(appendedNodeDatum);
     const updatedNodeDatumCbor = encodeLinkedListNodeView(updatedNodeDatum);
@@ -633,7 +639,7 @@ export type MergeLayoutDiagnostics = {
 export type ProductionMergeToConfirmedStateResult = {
   readonly tx: TxSignBuilder;
   readonly headerNodeKey: string;
-  readonly blockHeader: Header;
+  readonly blockHeader: HeaderV1;
   readonly layout: MergeRedeemerLayout;
   readonly diagnostics: MergeLayoutDiagnostics;
 };
@@ -671,10 +677,10 @@ const makeStateQueueMergeRedeemer = ({
 }: {
   readonly layout: MergeRedeemerLayout;
   readonly headerNodeKey: string;
-  readonly blockHeader: Header;
+  readonly blockHeader: HeaderV1;
   readonly confirmedStateInputOutRef: OutputReference;
-}): StateQueueRedeemerType => ({
-  MergeToConfirmedState: {
+}): StateQueueRedeemerType => {
+  const common = {
     header_node_key: headerNodeKey,
     confirmed_state_input_outref: confirmedStateInputOutRef,
     confirmed_state_output_index: BigInt(layout.confirmedStateOutputIndex),
@@ -691,8 +697,11 @@ const makeStateQueueMergeRedeemer = ({
     merged_block_deposit_count: blockHeader.depositCount,
     merged_block_total_event_count: blockHeader.totalEventCount,
     merged_block_transition_step_count: blockHeader.transitionStepCount,
-  },
-});
+    merged_block_validation_traces_root: blockHeader.validationTracesRoot,
+    merged_block_validation_trace_count: blockHeader.validationTraceCount,
+  };
+  return { MergeToConfirmedStateV1: common };
+};
 
 const makeSettlementSpawnRedeemer = ({
   layout,
@@ -785,7 +794,7 @@ const assertMergeRedeemerInvariants = ({
 }: {
   readonly layout: MergeRedeemerLayout;
   readonly headerNodeKey: string;
-  readonly blockHeader: Header;
+  readonly blockHeader: HeaderV1;
   readonly confirmedStateInputOutRef: OutputReference;
   readonly encodedStateQueueMergeRedeemer: string;
   readonly encodedSettlementSpawnRedeemer: string;
@@ -800,14 +809,15 @@ const assertMergeRedeemerInvariants = ({
   ) as SettlementMintRedeemerType;
   const mismatches: string[] = [];
 
-  if (
-    typeof decodedStateQueue !== "object" ||
-    decodedStateQueue === null ||
-    !("MergeToConfirmedState" in decodedStateQueue)
-  ) {
+  const stateQueueMerge =
+    typeof decodedStateQueue !== "object" || decodedStateQueue === null
+      ? undefined
+      : "MergeToConfirmedStateV1" in decodedStateQueue
+        ? decodedStateQueue.MergeToConfirmedStateV1
+        : undefined;
+  if (stateQueueMerge === undefined) {
     mismatches.push("state_queue variant mismatch");
   } else {
-    const stateQueueMerge = decodedStateQueue.MergeToConfirmedState;
     if (stateQueueMerge.header_node_key !== headerNodeKey) {
       mismatches.push("state_queue.header_node_key mismatch");
     }
@@ -907,6 +917,18 @@ const assertMergeRedeemerInvariants = ({
     ) {
       mismatches.push("state_queue.transition_step_count mismatch");
     }
+    if (
+      stateQueueMerge.merged_block_validation_traces_root !==
+      blockHeader.validationTracesRoot
+    ) {
+      mismatches.push("state_queue.validation_traces_root mismatch");
+    }
+    if (
+      stateQueueMerge.merged_block_validation_trace_count !==
+      blockHeader.validationTraceCount
+    ) {
+      mismatches.push("state_queue.validation_trace_count mismatch");
+    }
   }
 
   if (!("Spawn" in decodedSettlement)) {
@@ -954,7 +976,19 @@ export const buildProductionMergeToConfirmedStateTxProgram = ({
   StateQueueError | DataCoercionError | HashingError
 > =>
   Effect.gen(function* () {
-    const blockHeader = yield* getHeaderFromStateQueueDatum(
+    const { data: confirmedStateData } =
+      yield* getConfirmedStateFromStateQueueDatum(confirmedUTxO.datum);
+    if (
+      confirmedStateData.protocolVersion !== BigInt(MIDGARD_PROTOCOL_V1_VERSION)
+    ) {
+      return yield* Effect.fail(
+        new StateQueueError({
+          message: "Failed to build merge transaction",
+          cause: `unsupported confirmed state protocol version ${confirmedStateData.protocolVersion.toString()}`,
+        }),
+      );
+    }
+    const blockHeader = yield* getHeaderV1FromStateQueueDatum(
       firstBlockUTxO.datum,
     );
     if (firstBlockUTxO.datum.key === "Empty") {
@@ -966,7 +1000,7 @@ export const buildProductionMergeToConfirmedStateTxProgram = ({
       );
     }
     const headerNodeKey = firstBlockUTxO.datum.key.Key.key;
-    const recomputedHeaderHash = yield* hashBlockHeader(blockHeader);
+    const recomputedHeaderHash = yield* hashBlockHeaderV1(blockHeader);
     if (recomputedHeaderHash !== headerNodeKey) {
       return yield* Effect.fail(
         new StateQueueError({
@@ -977,8 +1011,6 @@ export const buildProductionMergeToConfirmedStateTxProgram = ({
       );
     }
 
-    const { data: confirmedStateData } =
-      yield* getConfirmedStateFromStateQueueDatum(confirmedUTxO.datum);
     const updatedConfirmedState: ConfirmedState = {
       headerHash: headerNodeKey,
       prevHeaderHash: confirmedStateData.headerHash,

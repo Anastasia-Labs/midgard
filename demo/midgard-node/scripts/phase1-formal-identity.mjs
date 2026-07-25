@@ -5,7 +5,7 @@ import path from "node:path";
 import { CML } from "@lucid-evolution/lucid";
 
 export const PHASE1_FORMAL_BINDING_SCHEMA =
-  "midgard-phase1-live-corpus-binding-v2";
+  "midgard-phase1-live-corpus-binding-v1";
 export const PHASE1_FORMAL_SCENARIO = "phase1-starvation-2x-soak";
 export const PHASE1_FORMAL_CHAIN_COUNT = 4_096;
 export const PHASE1_FORMAL_CHAIN_DEPTH = 748;

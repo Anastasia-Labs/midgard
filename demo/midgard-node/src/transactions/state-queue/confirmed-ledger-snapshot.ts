@@ -22,7 +22,7 @@ import { computeLedgerMpfRootFromLedgerEntries } from "@/workers/utils/mpf.js";
 export type ConfirmedLedgerSnapshot = {
   readonly entries: readonly Ledger.Entry[];
   readonly root: string;
-  readonly delta?: {
+  readonly delta: {
     readonly spent: readonly Buffer[];
     readonly produced: readonly Ledger.Entry[];
   };
@@ -33,9 +33,7 @@ export type DecodedConfirmedLedgerDelta = NonNullable<
 >;
 
 export const pendingUtxoMemberToConfirmedLedgerEntry = (
-  member:
-    | PendingBlockFinalizationsDB.UtxoRecord
-    | PendingBlockFinalizationsDB.UtxoInput,
+  member: PendingBlockFinalizationsDB.UtxoInput,
 ): Effect.Effect<Ledger.Entry, DatabaseError> =>
   Effect.try({
     try: () => {
@@ -70,19 +68,17 @@ export const pendingUtxoMemberToConfirmedLedgerEntry = (
 
 export const decodeConfirmedLedgerDelta = (
   record: PendingBlockFinalizationsDB.Record,
-): Effect.Effect<DecodedConfirmedLedgerDelta | undefined, DatabaseError> =>
-  record.ledgerDelta === undefined
-    ? Effect.succeed(undefined)
-    : Effect.forEach(
-        record.ledgerDelta.produced,
-        pendingUtxoMemberToConfirmedLedgerEntry,
-        { concurrency: "unbounded" },
-      ).pipe(
-        Effect.map((produced) => ({
-          spent: record.ledgerDelta!.spent,
-          produced,
-        })),
-      );
+): Effect.Effect<DecodedConfirmedLedgerDelta, DatabaseError> =>
+  Effect.forEach(
+    record.ledgerDelta.produced,
+    pendingUtxoMemberToConfirmedLedgerEntry,
+    { concurrency: 1 },
+  ).pipe(
+    Effect.map((produced) => ({
+      spent: record.ledgerDelta.spent,
+      produced,
+    })),
+  );
 
 const computeRecoveredRoot = (entries: readonly Ledger.Entry[]) =>
   computeLedgerMpfRootFromLedgerEntries(entries).pipe(
@@ -125,9 +121,8 @@ const materializeFromBase = ({
   readonly seen: ReadonlySet<string>;
 }): Effect.Effect<ConfirmedLedgerSnapshot, DatabaseError, Database> =>
   Effect.gen(function* () {
-    const headerHashHex = record[
-      PendingBlockFinalizationsDB.Columns.HEADER_HASH
-    ].toString("hex");
+    const headerHashHex =
+      record[PendingBlockFinalizationsDB.Columns.HEADER_HASH].toString("hex");
     if (seen.has(headerHashHex)) {
       return yield* Effect.fail(
         new DatabaseError({
@@ -139,15 +134,6 @@ const materializeFromBase = ({
     }
     const nextSeen = new Set(seen).add(headerHashHex);
     const delta = yield* decodeConfirmedLedgerDelta(record);
-    if (delta === undefined) {
-      const entries = yield* Effect.forEach(
-        record.utxoMembers,
-        pendingUtxoMemberToConfirmedLedgerEntry,
-        { concurrency: "unbounded" },
-      );
-      const root = yield* computeRecoveredRoot(entries);
-      return { entries, root };
-    }
 
     const baseRoot =
       record[PendingBlockFinalizationsDB.Columns.BASE_UTXOS_ROOT];
@@ -211,14 +197,6 @@ export const materializeConfirmedLedgerSnapshot = (
   record: PendingBlockFinalizationsDB.Record,
 ): Effect.Effect<ConfirmedLedgerSnapshot, DatabaseError, Database> =>
   Effect.gen(function* () {
-    if (record.ledgerDelta === undefined) {
-      const entries = yield* Effect.forEach(
-        record.utxoMembers,
-        pendingUtxoMemberToConfirmedLedgerEntry,
-        { concurrency: "unbounded" },
-      );
-      return { entries, root: yield* computeRecoveredRoot(entries) };
-    }
     const confirmedEntries = yield* ConfirmedLedgerDB.retrieve;
     const confirmedRoot = yield* computeRecoveredRoot(confirmedEntries);
     return yield* materializeFromBase({

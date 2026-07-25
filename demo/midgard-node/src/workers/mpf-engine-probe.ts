@@ -689,7 +689,7 @@ void Effect.runPromise(
                 );
               }
               const parkStartedAt = performance.now();
-              const artifact = yield* ledger.parkEventFlatOverlayV2(4);
+              const artifact = yield* ledger.parkEventFlatOverlayV1(4);
               const parkMs = performance.now() - parkStartedAt;
               const captured = store.diagnostics();
               if (captured.levelBatchWrites !== writesBefore) {
@@ -727,7 +727,7 @@ void Effect.runPromise(
                 );
               }
               const rehydrated =
-                yield* MidgardMpf.resumeParkedEventFlatOverlayV2(
+                yield* MidgardMpf.resumeParkedEventFlatOverlayV1(
                   "mpf-engine-probe",
                   levelFixturePath,
                   artifact,

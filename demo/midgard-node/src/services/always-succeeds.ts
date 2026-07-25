@@ -221,6 +221,18 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
     const payout = yield* mkAuthVal("payout");
     const withdrawal = yield* mkAuthVal("withdrawal");
     const txOrder = yield* mkAuthVal("tx_order");
+    const txOrderFieldPreimage = yield* makeSpendingValidator(
+      "midgard",
+      "tx_order",
+      NETWORK,
+    );
+    const txOrderFieldReceipt = {
+      ...txOrderFieldPreimage,
+      mintingScriptCBOR: txOrder.mintingScriptCBOR,
+      mintingScript: txOrder.mintingScript,
+      policyId: txOrder.policyId,
+    };
+    const cekProgramMaterial = txOrderFieldPreimage;
     const settlement = yield* mkAuthVal("settlement");
 
     // Reserve
@@ -245,6 +257,7 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
     const nonExistentInputNoIndex = yield* mkFP("non_existent_input_no_index");
     const invalidRange = yield* mkFP("invalid_range");
     const transitionTrace = yield* mkFP("transition_trace");
+    const validationTraceDispute = transitionTrace;
 
     const fraudProofs: SDK.FraudProofs = {
       doubleSpend,
@@ -252,6 +265,7 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       nonExistentInputNoIndex,
       invalidRange,
       transitionTrace,
+      validationTraceDispute,
     };
 
     return {
@@ -270,6 +284,9 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       deposit,
       withdrawal,
       txOrder,
+      txOrderFieldPreimage,
+      txOrderFieldReceipt,
+      cekProgramMaterial,
       settlement,
       reserve,
       payout,

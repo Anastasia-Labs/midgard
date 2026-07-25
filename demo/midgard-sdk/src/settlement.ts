@@ -63,7 +63,10 @@ import {
 import { outputDatumCborMatches } from "@/tx-output-utils.js";
 
 import { DepositUTxO, utxosToDepositUTxOs } from "./user-events/deposit.js";
-import { TxOrderUTxO, utxosToTxOrderUTxOs } from "./user-events/tx-order.js";
+import {
+  TxOrderUTxOV1,
+  utxosToTxOrderUTxOsV1,
+} from "./user-events/tx-order.js";
 import {
   utxosToWithdrawalUTxOs,
   WithdrawalUTxO,
@@ -512,7 +515,7 @@ export const fetchUserEventRefUTxO = (
   userEventPolicyId: string,
   lucid: LucidEvolution,
 ): Effect.Effect<
-  DepositUTxO | WithdrawalUTxO | TxOrderUTxO,
+  DepositUTxO | WithdrawalUTxO | TxOrderUTxOV1,
   LucidError | DataCoercionError
 > =>
   Effect.gen(function* () {
@@ -528,7 +531,7 @@ export const fetchUserEventRefUTxO = (
     const authenticUTxOs = yield* userEventType === "Deposit"
       ? utxosToDepositUTxOs(allUTxOs, userEventPolicyId)
       : "TxOrder" in userEventType
-        ? utxosToTxOrderUTxOs(allUTxOs, userEventPolicyId)
+        ? utxosToTxOrderUTxOsV1(allUTxOs, userEventPolicyId)
         : "Withdrawal" in userEventType
           ? utxosToWithdrawalUTxOs(allUTxOs, userEventPolicyId)
           : Effect.fail(

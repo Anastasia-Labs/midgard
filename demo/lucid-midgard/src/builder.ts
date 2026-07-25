@@ -1,13 +1,20 @@
 import { assetsEqual } from "@al-ft/midgard-core/assets";
 import {
-  computeMidgardNativeTxId,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
+  encodeMidgardCekProgramMaterialSidecarV1,
+  type MidgardCekProgramMaterialEntryV1,
+} from "@al-ft/midgard-core/cek-proof";
+import {
+  computeMidgardNativeTxIdV1,
+  decodeMidgardNativeTxFullV1FromCanonicalCbor,
   encodeMidgardAddressText,
-  encodeMidgardNativeTxCanonical,
-  materializeMidgardNativeTxFromCanonical,
+  encodeMidgardNativeTxCanonicalV1,
+  materializeMidgardNativeTxFromCanonicalV1,
   midgardAddressFromText,
-  type MidgardNativeTxFull,
+  type MidgardNativeTxFullV1,
 } from "@al-ft/midgard-core/codec";
+import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { isMidgardConsensusProfileV1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { validateMidgardConsensusV1TxCbor } from "@al-ft/midgard-core/consensus-validation-v1";
 import { normalizeHex } from "@al-ft/midgard-core/hex";
 import {
   LedgerColumns,
@@ -77,6 +84,7 @@ import {
   normalizePolicyId,
   normalizeScriptHash,
   normalizeScriptLanguage,
+  prepareProofBuilderState,
 } from "./builder/script-materialization.js";
 import {
   assertNoDuplicateStrings,
@@ -311,13 +319,31 @@ export type DatumOfOptions =
   | string;
 
 const txBuilderConstructorToken = Symbol("TxBuilder.constructor");
+
+const assertConsensusTransaction = (
+  txCbor: Uint8Array,
+  consensusProfile: LucidMidgardConfigSnapshot["consensusProfile"],
+): void => {
+  if (!isMidgardConsensusProfileV1(consensusProfile)) {
+    throw new BuilderInvariantError(
+      "Transaction uses an unsupported consensus profile",
+    );
+  }
+  const violation = validateMidgardConsensusV1TxCbor(txCbor);
+  if (violation !== null) {
+    throw new BuilderInvariantError(
+      `Transaction violates the V1 consensus profile: ${violation.code}`,
+      `${violation.featureId}: ${violation.detail}`,
+    );
+  }
+};
 const submittedTxConstructorToken = Symbol("SubmittedTx.constructor");
 const partiallySignedTxConstructorToken = Symbol(
   "PartiallySignedTx.constructor",
 );
 
 const assertTxNetworkMatchesExpected = (
-  tx: MidgardNativeTxFull,
+  tx: MidgardNativeTxFullV1,
   expectedNetworkId: bigint | undefined,
   context: string,
 ): void => {
@@ -362,13 +388,13 @@ export type MidgardTxJson = {
 };
 
 const completeTxMetadataWithAddrWitnesses = (
-  tx: MidgardNativeTxFull,
+  tx: MidgardNativeTxFullV1,
   metadata: CompleteTxMetadata,
 ): CompleteTxMetadata => {
   const witnesses = decodeAddrWitnesses(tx.witnessSet.addrTxWitsPreimageCbor);
   return {
     ...metadata,
-    txByteLength: encodeMidgardNativeTxCanonical(tx).length,
+    txByteLength: encodeMidgardNativeTxCanonicalV1(tx).length,
     ...addrWitnessMetadata(witnesses),
   };
 };
@@ -444,7 +470,7 @@ export class TxPartialSignBuilder {
 
   private async collectWitnesses(): Promise<readonly VKeyWitness[]> {
     const nativeTx = this.#tx.tx;
-    const bodyHash = computeMidgardNativeTxId(nativeTx);
+    const bodyHash = computeMidgardNativeTxIdV1(nativeTx);
     const witnesses: VKeyWitness[] = this.#witnesses.map((witness, index) =>
       normalizeVKeyWitnessInput(
         witness,
@@ -493,13 +519,17 @@ export class CompleteTx {
   readonly partialSign: PartialSignApi;
 
   constructor(
-    tx: MidgardNativeTxFull,
+    tx: MidgardNativeTxFullV1,
     metadata: CompleteTxMetadata,
     context?: CompleteTxContext,
   ) {
-    this.#txCbor = encodeMidgardNativeTxCanonical(tx);
+    this.#txCbor = encodeMidgardNativeTxCanonicalV1(tx);
+    assertConsensusTransaction(
+      this.#txCbor,
+      context?.consensusProfile ?? MIDGARD_CONSENSUS_PROFILE_V1,
+    );
     this.txHex = this.#txCbor.toString("hex");
-    this.#txId = computeMidgardNativeTxId(tx);
+    this.#txId = computeMidgardNativeTxIdV1(tx);
     this.txIdHex = this.#txId.toString("hex");
     this.#metadata = cloneCompleteTxMetadata(metadata);
     this.#context = context;
@@ -511,8 +541,8 @@ export class CompleteTx {
     );
   }
 
-  get tx(): MidgardNativeTxFull {
-    return decodeMidgardNativeTxFullFromCanonicalCbor(this.#txCbor);
+  get tx(): MidgardNativeTxFullV1 {
+    return decodeMidgardNativeTxFullV1FromCanonicalCbor(this.#txCbor);
   }
 
   get txCbor(): Buffer {
@@ -525,6 +555,14 @@ export class CompleteTx {
 
   get metadata(): CompleteTxMetadata {
     return cloneCompleteTxMetadata(this.#metadata);
+  }
+
+  get programMaterial(): readonly MidgardCekProgramMaterialEntryV1[] {
+    return (this.#context?.programMaterial ?? []).map((entry) => ({
+      ...entry,
+      root: Buffer.from(entry.root) as MidgardCekProgramMaterialEntryV1["root"],
+      preimage: Buffer.from(entry.preimage),
+    }));
   }
 
   toCBOR(): string {
@@ -706,7 +744,7 @@ export class CompleteTx {
       signedTx,
       {
         ...this.#metadata,
-        txByteLength: encodeMidgardNativeTxCanonical(signedTx).length,
+        txByteLength: encodeMidgardNativeTxCanonicalV1(signedTx).length,
         ...addrWitnessMetadata(signedWitnesses),
       },
       this.#context,
@@ -742,7 +780,7 @@ export class CompleteTx {
     });
     const admission = assertSubmitAdmissionMatches(
       this.txIdHex,
-      await provider.submitTx(this.txHex),
+      await provider.submitTx(this.txHex, this.programMaterial),
     );
     return makeSubmittedTx(this, admission, provider);
   }
@@ -803,7 +841,7 @@ const assertTrustedCompleteTx = (tx: CompleteTx, action: string): void => {
 };
 
 const makeCompleteTx = (
-  tx: MidgardNativeTxFull,
+  tx: MidgardNativeTxFullV1,
   metadata: CompleteTxMetadata,
   context?: CompleteTxContext,
 ): CompleteTx => {
@@ -833,7 +871,7 @@ const completeWitnessSet = (
 };
 
 const assemblePartialWitnessBundles = (
-  tx: MidgardNativeTxFull,
+  tx: MidgardNativeTxFullV1,
   metadata: CompleteTxMetadata,
   context: CompleteTxContext | undefined,
   bundles: PartialWitnessBundleInput | readonly PartialWitnessBundleInput[],
@@ -843,7 +881,7 @@ const assemblePartialWitnessBundles = (
   if (inputs.length === 0) {
     throw new SigningError("At least one partial witness bundle is required");
   }
-  const bodyHash = computeMidgardNativeTxId(tx);
+  const bodyHash = computeMidgardNativeTxIdV1(tx);
   const witnesses = inputs.flatMap((input) => {
     const bundle = parsePartialWitnessBundle(input);
     assertPartialBundleMatchesTx(tx, bundle);
@@ -891,7 +929,7 @@ export class PartiallySignedTx {
   readonly txIdHex: string;
 
   constructor(
-    tx: MidgardNativeTxFull,
+    tx: MidgardNativeTxFullV1,
     metadata: CompleteTxMetadata,
     context?: CompleteTxContext,
     token?: symbol,
@@ -901,16 +939,20 @@ export class PartiallySignedTx {
         "PartiallySignedTx constructor is internal; use CompleteTx.assemble(..., { allowPartial: true })",
       );
     }
-    this.#txCbor = encodeMidgardNativeTxCanonical(tx);
+    this.#txCbor = encodeMidgardNativeTxCanonicalV1(tx);
+    assertConsensusTransaction(
+      this.#txCbor,
+      context?.consensusProfile ?? MIDGARD_CONSENSUS_PROFILE_V1,
+    );
     this.txHex = this.#txCbor.toString("hex");
-    this.#txId = computeMidgardNativeTxId(tx);
+    this.#txId = computeMidgardNativeTxIdV1(tx);
     this.txIdHex = this.#txId.toString("hex");
     this.#metadata = cloneCompleteTxMetadata(metadata);
     this.#context = context;
   }
 
-  get tx(): MidgardNativeTxFull {
-    return decodeMidgardNativeTxFullFromCanonicalCbor(this.#txCbor);
+  get tx(): MidgardNativeTxFullV1 {
+    return decodeMidgardNativeTxFullV1FromCanonicalCbor(this.#txCbor);
   }
 
   get txCbor(): Buffer {
@@ -984,7 +1026,7 @@ export class PartiallySignedTx {
 }
 
 const makePartiallySignedTx = (
-  tx: MidgardNativeTxFull,
+  tx: MidgardNativeTxFullV1,
   metadata: CompleteTxMetadata,
   context?: CompleteTxContext,
 ): PartiallySignedTx =>
@@ -1790,6 +1832,8 @@ const normalizeLocalPreflightPhase = (
 const queuedTxFromComplete = (tx: CompleteTx): QueuedTx => ({
   txId: tx.txId,
   txCbor: tx.txCbor,
+  programMaterialSidecarCbor:
+    encodeMidgardCekProgramMaterialSidecarV1(tx.programMaterial),
   arrivalSeq: 0n,
   createdAt: new Date(0),
 });
@@ -1880,6 +1924,7 @@ const runSharedLocalPreflight = async ({
   }
 
   const params = await provider.getProtocolParameters();
+  const protocolInfo = await provider.getProtocolInfo();
   assertTxNetworkMatchesExpected(completed.tx, params.networkId, "Provider");
   const concurrency = normalizeValidationConcurrency(
     options.validationConcurrency,
@@ -1891,6 +1936,7 @@ const runSharedLocalPreflight = async ({
     minFeeB: params.minFeeB,
     concurrency,
     strictnessProfile: params.strictnessProfile ?? "production",
+    consensusProfile: protocolInfo.consensusProfile,
   };
   const phaseA = await Effect.runPromise(
     runPhaseAValidation([queuedTxFromComplete(completed)], phaseAConfig),
@@ -1956,13 +2002,14 @@ export class TxBuilder {
       );
     }
     this.attach = {
-      Script: (source) =>
-        this.next({
+      Script: (source) => {
+        return this.next({
           scripts: {
             ...this.state.scripts,
             scripts: [...this.state.scripts.scripts, cloneScriptSource(source)],
           },
-        }),
+        });
+      },
       NativeScript: (script) =>
         this.attach.Script({
           kind: "native",
@@ -1979,8 +2026,9 @@ export class TxBuilder {
         this.attach.Script(
           validatorScriptSource(validator, "ObserverValidator"),
         ),
-      ReferenceScriptMetadata: (metadata) =>
-        this.attachReferenceScriptMetadata(metadata),
+      ReferenceScriptMetadata: (metadata) => {
+        return this.attachReferenceScriptMetadata(metadata);
+      },
       Datum: (data, hash) => this.attachDatum(data, hash),
     };
     this.pay = {
@@ -2362,9 +2410,10 @@ export class TxBuilder {
   }
 
   private async finalizeCompleteTx(
-    tx: MidgardNativeTxFull,
+    tx: MidgardNativeTxFullV1,
     metadata: Omit<CompleteTxMetadata, "localValidation">,
     options: CompleteOptions,
+    programMaterial: readonly MidgardCekProgramMaterialEntryV1[] = [],
   ): Promise<CompleteTx> {
     const context: CompleteTxContext = {
       provider: this.context.provider.provider,
@@ -2372,6 +2421,8 @@ export class TxBuilder {
       networkId: configNetworkId(this.context.config),
       maxSubmitTxCborBytes:
         this.context.config.submissionLimits.maxSubmitTxCborBytes,
+      consensusProfile: this.context.config.consensusProfile,
+      programMaterial,
     };
     const enrichedMetadata = attachProviderMetadata(
       metadata,
@@ -2450,6 +2501,7 @@ export class TxBuilder {
     state: BuilderState,
     options: CompleteOptions,
     resolved?: BalancedCompletionInputs,
+    programMaterial: readonly MidgardCekProgramMaterialEntryV1[] = [],
   ): Promise<CompleteTx> {
     let completionInputs = resolved;
     if (completionInputs === undefined) {
@@ -2469,13 +2521,27 @@ export class TxBuilder {
       resolved: completionInputs,
       initialFee: resolveInitialFee(state, options.fee),
       maxFeeIterations: resolveMaxFeeIterations(options.maxFeeIterations),
+      nativeTxVersion: BigInt(
+        this.context.config.midgardNativeTxVersion,
+      ),
       deriveScriptMaterialization,
     });
-    return this.finalizeCompleteTx(balanced.tx, balanced.metadata, options);
+    return this.finalizeCompleteTx(
+      balanced.tx,
+      balanced.metadata,
+      options,
+      programMaterial,
+    );
   }
 
   async complete(options: CompleteOptions = {}): Promise<CompleteTx> {
-    const state = cloneState(this.state);
+    const clonedState = cloneState(this.state);
+    const prepared = isMidgardConsensusProfileV1(
+      this.context.config.consensusProfile,
+    )
+      ? prepareProofBuilderState(clonedState)
+      : { state: clonedState, programMaterial: [] };
+    const state = prepared.state;
     const balanceRequested = shouldBalanceWithWalletDefault(
       options,
       this.context.wallet !== undefined,
@@ -2486,7 +2552,12 @@ export class TxBuilder {
       );
     }
     if (balanceRequested) {
-      return this.completeBalanced(state, options);
+      return this.completeBalanced(
+        state,
+        options,
+        undefined,
+        prepared.programMaterial,
+      );
     }
 
     const fee = resolveInitialFee(state, options.fee);
@@ -2504,9 +2575,10 @@ export class TxBuilder {
       state,
       fee,
       scriptMaterialization,
+      BigInt(this.context.config.midgardNativeTxVersion),
     );
-    const tx = materializeMidgardNativeTxFromCanonical(canonical);
-    const txCbor = encodeMidgardNativeTxCanonical(tx);
+    const tx = materializeMidgardNativeTxFromCanonicalV1(canonical);
+    const txCbor = encodeMidgardNativeTxCanonicalV1(tx);
     const expectedWitnessKeyHashes = expectedAddrWitnessKeyHashes(state);
     const expectedAddrWitnessCount = expectedWitnessKeyHashes.length;
 
@@ -2529,6 +2601,7 @@ export class TxBuilder {
         ),
       },
       options,
+      prepared.programMaterial,
     );
   }
 
@@ -2608,7 +2681,13 @@ export class TxBuilder {
   }
 
   async chain(options: CompleteOptions = {}): Promise<ChainResult> {
-    const state = cloneState(this.state);
+    const clonedState = cloneState(this.state);
+    const prepared = isMidgardConsensusProfileV1(
+      this.context.config.consensusProfile,
+    )
+      ? prepareProofBuilderState(clonedState)
+      : { state: clonedState, programMaterial: [] };
+    const state = prepared.state;
     const balanceRequested = shouldBalanceWithWalletDefault(
       options,
       this.context.wallet !== undefined,
@@ -2625,7 +2704,12 @@ export class TxBuilder {
     const completed =
       balancedInputs === undefined
         ? await this.complete(options)
-        : await this.completeBalanced(state, options, balancedInputs);
+        : await this.completeBalanced(
+            state,
+            options,
+            balancedInputs,
+            prepared.programMaterial,
+          );
     const baseWalletInputs =
       balancedInputs?.walletInputs.inputs ??
       (await this.explicitChainBaseWalletInputs(state, options));
@@ -3011,6 +3095,7 @@ export class LucidMidgard {
       wallet: () => this.selectedWallet,
       networkId: configNetworkId(this.#config),
       maxSubmitTxCborBytes: this.#config.submissionLimits.maxSubmitTxCborBytes,
+      consensusProfile: this.#config.consensusProfile,
     };
   }
 

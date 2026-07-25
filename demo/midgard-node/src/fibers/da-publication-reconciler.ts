@@ -4,12 +4,12 @@ import { hostname } from "node:os";
 import { DA_TRANSPORT_LIMITS_V1 } from "@al-ft/midgard-core/da-transport";
 import { Effect, Metric, Option, Schedule } from "effect";
 
+import { readDaHardeningConfig } from "@/da/hardening-config.js";
 import {
   loadDaProducerPublicationManifestFromEnv,
   publishDaPayloadAnnouncementFromEnv,
   reconcileDaPayloadPeerFromEnv,
 } from "@/da/libp2p-producer.js";
-import { readDaHardeningConfig } from "@/da/hardening-config.js";
 import {
   DaPayloadAnnouncementsDB,
   DaPayloadPublicationsDB,

@@ -27,8 +27,21 @@ An L2 transaction request in a Midgard block is an endogenous event.
 Its corresponding utxo set transition is validated purely based on the information contained in the utxo set.
 This contrasts with deposit and withdrawal events, which create and spend utxos (respectively) based on information observed outside the L2 ledger.
 
-A transaction can only spend a utxo if it satisfies the conditions of the spending validator corresponding to the utxo's payment address, and it can only mint and burn tokens by satisfying the conditions of the corresponding minting policies.
-Of course, users can inject information into the utxo set via redeemer arguments and output datums set in transactions, but those are still subject to the transaction scripts' conditions.
+\paragraph{Launch consensus profile.}
+The transaction structures below describe the codec's representational
+superset. The immutable launch profile is narrower: protocol version (0),
+native transaction version (1), public-key payment credentials only, and no
+mint or burn, reference inputs, scripts, redeemers, observers, reference
+scripts, or protected outputs. Unknown versions and every representable field
+outside that profile fail closed. The canonical full transaction is at most
+(8{,}192) bytes and each encoded output value is at most (1{,}024) bytes;
+the reference-script limit is zero. These limits are consensus admission and
+DA-attestation rules, not operator-tunable policy.
+
+The codec retains future transaction fields, but the launch profile does not
+admit script-controlled spends or token minting. Launch transactions spend
+public-key outputs using address witnesses and preserve value according to the
+no-mint equation in \cref{h:custom-midgard-ledger-rules}.
 
 \subsection{Cardano transaction types}
 \label{h:cardano-transaction-types}
@@ -96,7 +109,8 @@ Midgard's transaction types deviate from Cardano's in the following ways:
       For this reason, staking and governance actions are prohibited in Midgard L2 transactions.
     \item[No pre-Conway features.] Midgard does not need to maintain backwards compatibility with pre-Conway eras.
       Midgard deposits and transactions will be prohibited from using bootstrap addresses, and Shelley addresses with Plutus versions older than Plutus V3.
-      Public key hash credentials, native scripts, and Plutus scripts at or above V3 are allowed.
+      The codec can represent public key, native-script, and Plutus credentials,
+      but the launch profile admits public-key payment credentials only.
     \item[No transaction metadata.] Midgard prohibits using metadata in L2 transactions but allows users to set the \code{auxiliary\_data\_hash} to any arbitrary hash, which Midgard's ledger's rules do not require to match the empty transaction metadata field.
       This preserves users' ability to pin metadata content via a hash in Midgard's ledger, but they are expected to store the actual metadata offchain.
     \item[No datum hashes in outputs.] Midgard output datums are either absent or inline.

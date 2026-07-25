@@ -1,16 +1,46 @@
+import { createHash } from "node:crypto";
 import { dirname } from "node:path";
 
 import { Proof, Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { encodeMidgardTxOutput } from "@al-ft/lucid-midgard";
 import {
+  encodeMidgardCekProgramMaterialSidecarV1,
+  type MidgardCekProgramEnvelopeV1,
+} from "@al-ft/midgard-core/cek-proof";
+import {
+  computeMidgardNativeTxIdV1,
+  computeMidgardNativeTxProofCommitmentV1,
+  decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
   encodeCborBytes,
   encodeCborInteger,
   encodeCborTagRaw,
-  encodeMidgardNativeTxCompact,
 } from "@al-ft/midgard-core/codec";
+import {
+  isMidgardConsensusProfileV1,
+  MIDGARD_CONSENSUS_LIMITS_V1,
+  MIDGARD_CONSENSUS_PROFILE_V1,
+  MIDGARD_TRANSITION_STEP_V1_SCHEMA_VERSION,
+  type MidgardConsensusProfileV1,
+} from "@al-ft/midgard-core/consensus-profile-v1";
+import { validateMidgardConsensusV1TxCbor } from "@al-ft/midgard-core/consensus-validation-v1";
 import { normalizeHex } from "@al-ft/midgard-core/hex";
+import { aikenSerialisedPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
+import {
+  collectMidgardV1AttachedProgramEnvelopes,
+  collectMidgardV1ReferencedProgramEnvelopes,
+} from "@al-ft/midgard-core/script-proof";
 import * as SDK from "@al-ft/midgard-sdk";
-import { decodeMidgardTxCommitmentsFromCanonicalCbor } from "@al-ft/midgard-validation";
+import {
+  applyUTxOStatePatch,
+  buildDeterministicValidationMachineTrace,
+  type RejectCode,
+  RejectCodes,
+  runPhaseAValidation,
+  runPhaseBValidationWithPatch,
+  type ValidationMachineLedgerEntry,
+  type ValidationMachineLedgerMutationStep,
+} from "@al-ft/midgard-validation";
 import { SqlClient } from "@effect/sql";
 import type { UTxO } from "@lucid-evolution/lucid";
 import { CML, Data as LucidData } from "@lucid-evolution/lucid";
@@ -19,6 +49,7 @@ import { Data, Effect, Fiber, Metric, Option } from "effect";
 import * as FS from "fs";
 import { Level } from "level";
 
+import * as CekProgramMaterialDB from "@/database/cekProgramMaterial.js";
 import * as ConfirmedLedgerDB from "@/database/confirmedLedger.js";
 import * as DepositsDB from "@/database/deposits.js";
 import * as ForcedTransactionsDB from "@/database/forcedTransactions.js";
@@ -26,6 +57,8 @@ import * as MempoolDB from "@/database/mempool.js";
 import * as MempoolLedgerDB from "@/database/mempoolLedger.js";
 import * as MempoolTxDeltasDB from "@/database/mempoolTxDeltas.js";
 import * as MpfEngineStateDB from "@/database/mpfEngineState.js";
+import * as PendingBlockFinalizationsDB from "@/database/pendingBlockFinalizations.js";
+import * as TxAdmissionsDB from "@/database/txAdmissions.js";
 import * as TxRejectionsDB from "@/database/txRejections.js";
 import {
   DatabaseError,
@@ -35,6 +68,7 @@ import * as Ledger from "@/database/utils/ledger.js";
 import * as Tx from "@/database/utils/tx.js";
 import * as WithdrawalsDB from "@/database/withdrawals.js";
 import { Database, NodeConfig, type NodeConfigDep } from "@/services/index.js";
+import type { ContractDeploymentIdentityValue } from "@/services/midgard-contracts.js";
 import {
   encodeNativeMpfEventLog,
   type NativeMpfGenerationHandle,
@@ -53,8 +87,8 @@ import {
   EventFlatMutationArena,
   type EventFlatMutationDiagnostics,
   type PackedMpfStoredValue,
-  type ParkedEventFlatOverlayV2,
-  ResumedEventFlatOverlayV2,
+  type ParkedEventFlatOverlayV1,
+  ResumedEventFlatOverlayV1,
 } from "./mpf-event-flat.js";
 import {
   eventFlatDigest,
@@ -79,11 +113,13 @@ export {
   verifyKeyValuePhasMembershipProof,
   verifyKeyValuePhasNonMembershipProof,
 } from "./mpf/phas.js";
-export type { ParkedEventFlatOverlayV2 } from "./mpf-event-flat.js";
+export type { ParkedEventFlatOverlayV1 } from "./mpf-event-flat.js";
 
 const consumeMpfMutationProof = Trie.prototype.consumeMidgardMutationProof;
 const ROOT_KEY = "__root__";
 const JSON_LEVEL_ENCODING_OPTS = { valueEncoding: "json" as const };
+const sha256 = (bytes: Uint8Array): Buffer =>
+  createHash("sha256").update(bytes).digest();
 
 export const MPF_EMPTY_ROOT_HEX = SDK.EMPTY_MERKLE_TREE_ROOT;
 const MPF_EMPTY_ROOT = Buffer.from(MPF_EMPTY_ROOT_HEX, "hex");
@@ -458,17 +494,50 @@ const applyPendingBatch = (
     return op.type === "put" ? op.value : undefined;
   }, value);
 
-export const encodeTransactionRootValue = (txCanonicalCbor: Buffer): Buffer =>
-  encodeMidgardNativeTxCompact(
-    decodeMidgardTxCommitmentsFromCanonicalCbor(txCanonicalCbor)
-      .transactionCompact,
+export const encodeTransactionRootValue = (
+  txCanonicalCbor: Buffer,
+  consensusProfile: MidgardConsensusProfileV1 = MIDGARD_CONSENSUS_PROFILE_V1,
+): Buffer => {
+  if (!isMidgardConsensusProfileV1(consensusProfile)) {
+    throw new Error("Refusing transaction under a non-V1 consensus profile");
+  }
+  const violation = validateMidgardConsensusV1TxCbor(txCanonicalCbor);
+  if (violation !== null) {
+    throw new Error(
+      `Refusing transaction outside the exact canonical V1 consensus profile: ${violation.code} ${violation.featureId} ${violation.detail}`,
+    );
+  }
+  const source =
+    deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(txCanonicalCbor);
+  const transactionId = computeMidgardNativeTxIdV1(
+    decodeMidgardNativeTxFullV1FromCanonicalCbor(txCanonicalCbor),
   );
+  const value: SDK.L2TransactionSourceV1 = {
+    tx_id: transactionId.toString("hex"),
+    transaction_commitment:
+      computeMidgardNativeTxProofCommitmentV1(source).toString("hex"),
+    source: {
+      compact_cbor: source.compactCbor.toString("hex"),
+      witness_set_compact_cbor: source.witnessSetCompactCbor.toString("hex"),
+      field_preimage_lengths_cbor:
+        source.fieldPreimageLengthsCbor.toString("hex"),
+    },
+  };
+  return Buffer.from(
+    aikenSerialisedPlutusDataCbor(
+      LucidData.to(value, SDK.L2TransactionSourceV1),
+    ),
+    "hex",
+  );
+};
 
 export const COMMIT_REJECT_CODE_DECODE_FAILED = "E_COMMIT_CBOR_DESERIALIZATION";
 export const COMMIT_REJECT_CODE_WITHDRAWN_REFERENCE_INPUT =
   "E_COMMIT_WITHDRAWN_REFERENCE_INPUT";
 export const COMMIT_REJECT_CODE_SAME_BLOCK_DEPOSIT_INPUT =
   "E_COMMIT_SAME_BLOCK_DEPOSIT_INPUT";
+export const COMMIT_REJECT_CODE_FORCED_TRANSACTION_INPUT =
+  "E_COMMIT_FORCED_TRANSACTION_INPUT";
 
 export type ResolvedTxDeltaForCommit =
   | {
@@ -784,6 +853,14 @@ export const deleteMpfStore = (
   }).pipe(Effect.withLogSpan(`Delete ${name} MPF store`));
 
 export type ProcessMpfsConfig = {
+  readonly consensusProfile?: ContractDeploymentIdentityValue["consensusProfile"];
+  readonly forcedValidation?: {
+    readonly expectedNetworkId: bigint;
+    readonly minFeeA: bigint;
+    readonly minFeeB: bigint;
+    readonly bucketConcurrency: number;
+    readonly slotForUnixTime: (unixTimeMs: number) => bigint;
+  };
   readonly currentBlockStartTime?: Date;
   readonly processedOnlyEndTime?: Date;
   readonly depositOnlyEndTime?: Date;
@@ -806,6 +883,18 @@ export type ProcessMpfsConfig = {
    */
   readonly deferDatabaseWrites?: boolean;
   readonly nativeMpf?: NativeMpfBuildContext;
+  /**
+   * V1 blocks must retain a descriptor for every forced and included
+   * normal transaction. The provider is deliberately mandatory for that
+   * generation: a header must never substitute an empty or synthetic trace
+   * when the deterministic validation machine is unavailable.
+   */
+  readonly validationTraceBuilder?: (
+    input: ValidationTraceBuildInput,
+  ) => Effect.Effect<
+    readonly RetainedValidationTraceMember[],
+    MpfError | DatabaseError
+  >;
 };
 
 export type NativeMpfBuildContext = {
@@ -993,6 +1082,117 @@ export type RetainedEventToStepMember = {
   readonly valueCbor: Buffer;
   readonly value: SDK.EventToStepValue;
 };
+
+export type ValidationTraceTransactionInput = {
+  readonly eventKey: SDK.EventKey;
+  readonly transactionId: Buffer;
+  readonly canonicalTransactionCbor: Buffer;
+  readonly programMaterialSidecarCbor: Buffer;
+  readonly sourceKind: "normal" | "forced";
+  readonly priorUtxosRoot: string;
+  readonly postUtxosRoot: string;
+  readonly ledgerOps: readonly MpfBatchOp[];
+  readonly ledgerWitnessEntries: readonly ValidationMachineLedgerEntry[];
+  readonly ledgerMutationSteps: readonly ValidationMachineLedgerMutationStep[];
+  readonly verdict: "accepted" | "rejected";
+  readonly rejectionCode: RejectCode | null;
+};
+
+export type ValidationTraceBuildInput = {
+  readonly consensusProfile: MidgardConsensusProfileV1;
+  readonly blockEndTime: Date;
+  readonly expectedNetworkId: bigint;
+  readonly minFeeA: bigint;
+  readonly minFeeB: bigint;
+  readonly blockSlot: bigint;
+  readonly transactions: readonly ValidationTraceTransactionInput[];
+};
+
+export type RetainedValidationTraceMember = {
+  readonly eventKey: SDK.EventKey;
+  readonly keyCbor: Buffer;
+  readonly valueCbor: Buffer;
+  readonly value: SDK.ValidationTraceDescriptorV1;
+};
+
+export type ValidationTraceBuildResult = {
+  readonly validationTracesRoot: string;
+  readonly validationTraceMembers: readonly RetainedValidationTraceMember[];
+  readonly validationTraceCount: number;
+};
+
+export const buildDeterministicValidationTraceMembers = (
+  input: ValidationTraceBuildInput,
+): Effect.Effect<
+  readonly RetainedValidationTraceMember[],
+  DatabaseError | MpfError
+> =>
+  Effect.forEach(
+    input.transactions,
+    (transaction) =>
+      Effect.gen(function* () {
+        const keyCbor = yield* eventKeyCbor(transaction.eventKey);
+        const trace = yield* buildDeterministicValidationMachineTrace({
+          consensusProfile: input.consensusProfile,
+          eventKeyCbor: keyCbor,
+          transactionId: transaction.transactionId,
+          canonicalTransactionCbor: transaction.canonicalTransactionCbor,
+          programMaterialSidecarCbor: transaction.programMaterialSidecarCbor,
+          sourceKind: transaction.sourceKind,
+          priorUtxosRoot: transaction.priorUtxosRoot,
+          postUtxosRoot: transaction.postUtxosRoot,
+          ledgerWitnessEntries: transaction.ledgerWitnessEntries,
+          ledgerMutationSteps: transaction.ledgerMutationSteps,
+          expectedLedgerOps: transaction.ledgerOps,
+          expectedVerdict: transaction.verdict,
+          expectedRejectionCode: transaction.rejectionCode,
+          blockEndTimeMs: input.blockEndTime.getTime(),
+          expectedNetworkId: input.expectedNetworkId,
+          minFeeA: input.minFeeA,
+          minFeeB: input.minFeeB,
+          blockSlot: input.blockSlot,
+        }).pipe(
+          Effect.mapError(
+            (cause) =>
+              new DatabaseError({
+                table: PendingBlockFinalizationsDB.tableName,
+                message:
+                  "Deterministic validation-machine replay failed while building a V1 block",
+                cause,
+              }),
+          ),
+        );
+        const descriptor: SDK.ValidationTraceDescriptorV1 = {
+          schema_version: BigInt(trace.tree.descriptor.schemaVersion),
+          machine_version: BigInt(trace.tree.descriptor.machineVersion),
+          trace_root: trace.tree.descriptor.traceRoot.toString("hex"),
+          step_count: BigInt(trace.tree.descriptor.stepCount),
+          initial_state_hash:
+            trace.tree.descriptor.initialStateHash.toString("hex"),
+          terminal_state_hash:
+            trace.tree.descriptor.terminalStateHash.toString("hex"),
+          verdict:
+            trace.tree.descriptor.verdict === "accepted"
+              ? "Accepted"
+              : "Rejected",
+          rejection_code_hash:
+            trace.tree.descriptor.rejectionCodeHash.toString("hex"),
+        };
+        return {
+          eventKey: transaction.eventKey,
+          keyCbor,
+          valueCbor: Buffer.from(
+            LucidData.to(
+              descriptor as never,
+              SDK.ValidationTraceDescriptorV1 as never,
+            ),
+            "hex",
+          ),
+          value: descriptor,
+        };
+      }),
+    { concurrency: 1 },
+  );
 
 export type TransitionTraceBuildResult = {
   readonly finalUtxosRoot: string;
@@ -1418,8 +1618,9 @@ const countedRootFromEncodedEntries = (
 
 export const buildTransactionsSourceRoot = (
   entries: readonly MpfInsertBatchOp[],
+  domain: SDK.RootDomain = SDK.ROOT_DOMAINS.transactionsV1,
 ): Effect.Effect<string, MpfError> =>
-  countedRootFromEncodedEntries(SDK.ROOT_DOMAINS.transactions, entries);
+  countedRootFromEncodedEntries(domain, entries);
 
 const eventKeyCbor = (
   eventKey: SDK.EventKey,
@@ -1580,11 +1781,70 @@ const validateTransitionTraceSourceEvents = ({
   MpfError
 > =>
   Effect.gen(function* () {
+    const sourceCountBounds = [
+      [
+        "withdrawal",
+        withdrawalCount,
+        MIDGARD_CONSENSUS_LIMITS_V1.maxWithdrawalCount,
+      ],
+      [
+        "forced transaction",
+        forcedTransactionCount,
+        MIDGARD_CONSENSUS_LIMITS_V1.maxForcedTransactionCount,
+      ],
+      [
+        "L2 transaction",
+        l2TransactionCount,
+        MIDGARD_CONSENSUS_LIMITS_V1.maxL2TransactionCount,
+      ],
+      ["deposit", depositCount, MIDGARD_CONSENSUS_LIMITS_V1.maxDepositCount],
+    ] as const;
+    for (const [label, count, maximum] of sourceCountBounds) {
+      if (!Number.isSafeInteger(count) || count < 0 || count > maximum) {
+        return yield* Effect.fail(
+          MpfError.rootBuild(
+            "transition trace",
+            new Error(
+              `${label} count must be a safe integer between 0 and ${maximum.toString()}: ${count.toString()}`,
+            ),
+          ),
+        );
+      }
+    }
     const totalEventCount =
       withdrawalCount +
       forcedTransactionCount +
       l2TransactionCount +
       depositCount;
+    if (
+      totalEventCount > MIDGARD_CONSENSUS_LIMITS_V1.maxTotalEventCount ||
+      totalEventCount > MIDGARD_CONSENSUS_LIMITS_V1.maxTransitionStepCount
+    ) {
+      return yield* Effect.fail(
+        MpfError.rootBuild(
+          "transition trace",
+          new Error(
+            `Transition source count ${totalEventCount.toString()} exceeds the launch event/step bound`,
+          ),
+        ),
+      );
+    }
+    const ledgerOperationCount = sourceEvents.reduce(
+      (total, sourceEvent) => total + sourceEvent.ledgerOps.length,
+      0,
+    );
+    if (
+      ledgerOperationCount > MIDGARD_CONSENSUS_LIMITS_V1.maxLedgerOperationCount
+    ) {
+      return yield* Effect.fail(
+        MpfError.rootBuild(
+          "transition trace",
+          new Error(
+            `Ledger operation count ${ledgerOperationCount.toString()} exceeds the V1 consensus maximum ${MIDGARD_CONSENSUS_LIMITS_V1.maxLedgerOperationCount.toString()}`,
+          ),
+        ),
+      );
+    }
     if (
       expectedTotalEventCount !== undefined &&
       totalEventCount !== expectedTotalEventCount
@@ -1728,6 +1988,7 @@ export const buildTransitionTraceResult = ({
   l2TransactionCount,
   depositCount,
   expectedTotalEventCount,
+  transitionStepSchemaVersion = MIDGARD_TRANSITION_STEP_V1_SCHEMA_VERSION,
 }: {
   readonly ledgerMpf: MidgardMpf;
   readonly sourceEvents: readonly TransitionTraceSourceEvent[];
@@ -1736,6 +1997,7 @@ export const buildTransitionTraceResult = ({
   readonly l2TransactionCount: number;
   readonly depositCount: number;
   readonly expectedTotalEventCount?: number;
+  readonly transitionStepSchemaVersion?: 1 | 2 | 3;
 }): Effect.Effect<TransitionTraceBuildResult, MpfError> =>
   Effect.gen(function* () {
     const { totalEventCount, eventKeyCbors } =
@@ -1909,7 +2171,7 @@ export const buildTransitionTraceResult = ({
           runningUtxosRoot = postUtxosRoot;
         }
         const value: SDK.TransitionStep = {
-          schema_version: 1n,
+          schema_version: BigInt(transitionStepSchemaVersion),
           step_index: BigInt(index),
           event_key: sourceEvent.eventKey,
           phase: sourceEvent.phase,
@@ -2006,6 +2268,7 @@ export const buildNativeTransitionTraceResult = ({
   l2TransactionCount,
   depositCount,
   expectedTotalEventCount,
+  transitionStepSchemaVersion = MIDGARD_TRANSITION_STEP_V1_SCHEMA_VERSION,
 }: {
   readonly nativeMpf: NativeMpfBuildContext;
   readonly sourceEvents: readonly TransitionTraceSourceEvent[];
@@ -2014,6 +2277,7 @@ export const buildNativeTransitionTraceResult = ({
   readonly l2TransactionCount: number;
   readonly depositCount: number;
   readonly expectedTotalEventCount?: number;
+  readonly transitionStepSchemaVersion?: 1 | 2 | 3;
 }): Effect.Effect<TransitionTraceBuildResult, MpfError> =>
   Effect.gen(function* () {
     const validationStartedAt = performance.now();
@@ -2067,7 +2331,7 @@ export const buildNativeTransitionTraceResult = ({
       const preUtxosRoot = runningUtxosRoot;
       runningUtxosRoot = applied.eventRoots[index]!;
       const value: SDK.TransitionStep = {
-        schema_version: 1n,
+        schema_version: BigInt(transitionStepSchemaVersion),
         step_index: BigInt(index),
         event_key: sourceEvent.eventKey,
         phase: sourceEvent.phase,
@@ -2261,7 +2525,7 @@ export const buildNativeProductionRootProbe = ({
               productionEventRoot(SDK.ROOT_DOMAINS.deposits, deposits),
               productionEventRoot(SDK.ROOT_DOMAINS.withdrawals, withdrawals),
               productionEventRoot(
-                SDK.ROOT_DOMAINS.forcedTransactions,
+                SDK.ROOT_DOMAINS.forcedTransactionsV1,
                 forcedTransactions,
               ),
             ],
@@ -2601,6 +2865,342 @@ const logCommitMpfPhaseTiming = (
   );
 };
 
+const forcedValidityForRejection = (
+  code: RejectCode,
+): SDK.MidgardTxValidity => {
+  switch (code) {
+    case RejectCodes.InputNotFound:
+      return "NonExistentInputUtxo";
+    case RejectCodes.InvalidSignature:
+    case RejectCodes.MissingRequiredWitness:
+      return "InvalidSignature";
+    case RejectCodes.NativeScriptInvalid:
+    case RejectCodes.PlutusScriptInvalid:
+    case RejectCodes.PlutusEvaluationUnavailable:
+      return "FailedScript";
+    case RejectCodes.MinFee:
+      return "FeeTooLow";
+    default:
+      return "UnbalancedTx";
+  }
+};
+
+type ClassifiedForcedTransactionV1 = {
+  readonly entry: ForcedTransactionsDB.Entry;
+  readonly ledgerOps: readonly MpfBatchOp[];
+  readonly ledgerWitnessEntries: readonly ValidationMachineLedgerEntry[];
+  readonly ledgerMutationSteps: readonly ValidationMachineLedgerMutationStep[];
+  readonly rejectionCode: RejectCode | null;
+  readonly programMaterialSidecarCbor: Buffer;
+};
+
+const transientTrieRoot = (trie: Trie): Buffer =>
+  trie.hash == null ? Buffer.alloc(32) : Buffer.from(trie.hash);
+
+const applyValidationLedgerMutations = async (
+  trie: Trie,
+  operations: readonly MpfBatchOp[],
+): Promise<readonly ValidationMachineLedgerMutationStep[]> => {
+  const steps: ValidationMachineLedgerMutationStep[] = [];
+  for (const operation of operations) {
+    const preRoot = transientTrieRoot(trie);
+    const proofCbor = Buffer.from(
+      (await trie.prove(operation.key, operation.type === "insert")).toCBOR(),
+    );
+    if (operation.type === "delete") {
+      await trie.delete(operation.key);
+    } else {
+      await trie.insert(operation.key, operation.value);
+    }
+    steps.push({
+      operation,
+      preRoot,
+      postRoot: transientTrieRoot(trie),
+      proofCbor,
+    });
+  }
+  return steps;
+};
+
+const validationLedgerWitnesses = (
+  state: ReadonlyMap<string, Buffer>,
+  outRefHexes: readonly string[],
+): readonly ValidationMachineLedgerEntry[] =>
+  [...new Set(outRefHexes)].sort().flatMap((outRefHex) => {
+    const output = state.get(outRefHex);
+    return output === undefined
+      ? []
+      : [
+          {
+            outRef: Buffer.from(outRefHex, "hex"),
+            output: Buffer.from(output),
+          },
+        ];
+  });
+
+const programMaterialSidecarForEnvelopes = (
+  envelopes: readonly MidgardCekProgramEnvelopeV1[],
+): Effect.Effect<Buffer, DatabaseError, Database> =>
+  CekProgramMaterialDB.retrieveVerifiedBundles(envelopes).pipe(
+    Effect.map((entries) => encodeMidgardCekProgramMaterialSidecarV1(entries)),
+  );
+
+const classifyForcedTransactionsV1 = ({
+  entries,
+  initialState,
+  effectiveEndTime,
+  consensusProfile,
+  validation,
+}: {
+  readonly entries: readonly ForcedTransactionsDB.Entry[];
+  readonly initialState: Map<string, Buffer>;
+  readonly effectiveEndTime: Date;
+  readonly consensusProfile: MidgardConsensusProfileV1;
+  readonly validation: NonNullable<ProcessMpfsConfig["forcedValidation"]>;
+}): Effect.Effect<
+  readonly ClassifiedForcedTransactionV1[],
+  DatabaseError,
+  Database
+> =>
+  Effect.gen(function* () {
+    const state = new Map(
+      [...initialState.entries()].map(([key, value]) => [
+        key,
+        Buffer.from(value),
+      ]),
+    );
+    const mutationTrie = yield* Effect.tryPromise({
+      try: () =>
+        Trie.fromList(
+          [...state.entries()].map(([key, value]) => ({
+            key: Buffer.from(key, "hex"),
+            value,
+          })),
+          new Store(undefined),
+        ),
+      catch: (cause) =>
+        new DatabaseError({
+          table: ForcedTransactionsDB.tableName,
+          message:
+            "Failed to construct the forced-transaction validation mutation trie",
+          cause,
+        }),
+    });
+    const classified: ClassifiedForcedTransactionV1[] = [];
+    let arrivalSeq = 0n;
+    for (const entry of entries) {
+      const nativeTxCbor = entry[ForcedTransactionsDB.Columns.NATIVE_TX_CBOR];
+      const transactionCommitment = entry[ForcedTransactionsDB.Columns.TRANSACTION_COMMITMENT];
+      const profileId =
+        entry[ForcedTransactionsDB.Columns.CONSENSUS_PROFILE_ID];
+      if (
+        profileId !== consensusProfile.profileId ||
+        nativeTxCbor == null ||
+        transactionCommitment == null
+      ) {
+        return yield* Effect.fail(
+          new DatabaseError({
+            table: ForcedTransactionsDB.tableName,
+            message:
+              "V1 block contains a forced transaction without exact V1 source material",
+            cause: `tx_order_id=${entry[
+              ForcedTransactionsDB.Columns.TX_ORDER_ID
+            ].toString("hex")},profile=${profileId ?? "missing"}`,
+          }),
+        );
+      }
+      const txId = entry[ForcedTransactionsDB.Columns.TX_ID];
+      const canonicalTx = yield* Effect.try({
+        try: () => decodeMidgardNativeTxFullV1FromCanonicalCbor(nativeTxCbor),
+        catch: (cause) =>
+          new DatabaseError({
+            table: ForcedTransactionsDB.tableName,
+            message:
+              "Forced transaction canonical bytes cannot be decoded while resolving CEK program material",
+            cause,
+          }),
+      });
+      // Malformed attached script/output bytes remain a deterministic Phase A
+      // rejection. No material can be authenticated for a non-envelope.
+      const attachedEnvelopes = (() => {
+        try {
+          return collectMidgardV1AttachedProgramEnvelopes(canonicalTx);
+        } catch {
+          return Object.freeze([]) as readonly MidgardCekProgramEnvelopeV1[];
+        }
+      })();
+      let programMaterialSidecarCbor =
+        yield* programMaterialSidecarForEnvelopes(attachedEnvelopes);
+      const phaseA = yield* runPhaseAValidation(
+        [
+          {
+            txId,
+            txCbor: nativeTxCbor,
+            arrivalSeq,
+            createdAt: entry[ForcedTransactionsDB.Columns.INCLUSION_TIME],
+            programMaterialSidecarCbor,
+          },
+        ],
+        {
+          expectedNetworkId: validation.expectedNetworkId,
+          minFeeA: validation.minFeeA,
+          minFeeB: validation.minFeeB,
+          concurrency: 1,
+          strictnessProfile: "phase1_midgard",
+          consensusProfile,
+        },
+      ).pipe(
+        Effect.mapError(
+          (cause) =>
+            new DatabaseError({
+              table: ForcedTransactionsDB.tableName,
+              message: "Forced transaction Phase A evaluation failed",
+              cause,
+            }),
+        ),
+      );
+      arrivalSeq += 1n;
+
+      let operatorValidity: SDK.MidgardTxValidity;
+      let ledgerOps: readonly MpfBatchOp[] = [];
+      let ledgerWitnessEntries: readonly ValidationMachineLedgerEntry[] = [];
+      let ledgerMutationSteps: readonly ValidationMachineLedgerMutationStep[] =
+        [];
+      let rejectionCode: RejectCode | null = null;
+      if (phaseA.rejected.length > 0) {
+        rejectionCode = phaseA.rejected[0]!.code;
+        operatorValidity = forcedValidityForRejection(rejectionCode);
+      } else {
+        let acceptedCandidate = phaseA.accepted[0]!;
+        if (
+          acceptedCandidate.graph.referenceOutRefHexes.every((outRef) =>
+            state.has(outRef),
+          )
+        ) {
+          // A malformed referenced ledger output is classified by Phase B.
+          const referencedEnvelopes = (() => {
+            try {
+              return collectMidgardV1ReferencedProgramEnvelopes(
+                canonicalTx,
+                state,
+              );
+            } catch {
+              return Object.freeze(
+                [],
+              ) as readonly MidgardCekProgramEnvelopeV1[];
+            }
+          })();
+          if (referencedEnvelopes.length > 0) {
+            programMaterialSidecarCbor =
+              yield* programMaterialSidecarForEnvelopes([
+                ...attachedEnvelopes,
+                ...referencedEnvelopes,
+              ]);
+            acceptedCandidate = {
+              ...acceptedCandidate,
+              submission: {
+                ...acceptedCandidate.submission,
+                programMaterialSidecarCbor,
+              },
+            };
+          }
+        }
+        ledgerWitnessEntries = validationLedgerWitnesses(state, [
+          ...acceptedCandidate.graph.spentOutRefHexes,
+          ...acceptedCandidate.graph.referenceOutRefHexes,
+        ]);
+        const phaseB = yield* runPhaseBValidationWithPatch(
+          [acceptedCandidate],
+          state,
+          {
+            nowCardanoSlotNo: validation.slotForUnixTime(
+              effectiveEndTime.getTime(),
+            ),
+            bucketConcurrency: validation.bucketConcurrency,
+            enforceScriptBudget: true,
+          },
+        ).pipe(
+          Effect.mapError(
+            (cause) =>
+              new DatabaseError({
+                table: ForcedTransactionsDB.tableName,
+                message: "Forced transaction Phase B evaluation failed",
+                cause,
+              }),
+          ),
+        );
+        if (phaseB.rejected.length > 0) {
+          rejectionCode = phaseB.rejected[0]!.code;
+          operatorValidity = forcedValidityForRejection(rejectionCode);
+        } else {
+          operatorValidity = "TxIsValid";
+          ledgerOps = [
+            ...phaseB.statePatch.deletedOutRefs.map((outRef) => ({
+              type: "delete" as const,
+              key: Buffer.from(outRef, "hex"),
+            })),
+            ...phaseB.statePatch.upsertedOutRefs.map(([outRef, output]) => ({
+              type: "insert" as const,
+              key: Buffer.from(outRef, "hex"),
+              value: Buffer.from(output),
+            })),
+          ];
+          ledgerMutationSteps = yield* Effect.tryPromise({
+            try: () => applyValidationLedgerMutations(mutationTrie, ledgerOps),
+            catch: (cause) =>
+              new DatabaseError({
+                table: ForcedTransactionsDB.tableName,
+                message:
+                  "Failed to derive forced-transaction ledger mutation roots",
+                cause,
+              }),
+          });
+          applyUTxOStatePatch(state, phaseB.statePatch);
+        }
+      }
+      const encoded = yield* ForcedTransactionsDB.encodeForcedInclusionValueV1({
+        nativeTxCbor,
+        operatorValidity,
+        consensusProfile,
+      });
+      if (
+        !encoded.txId.equals(txId) ||
+        !encoded.transactionCommitment.equals(transactionCommitment) ||
+        !encoded.txCompact.equals(
+          entry[ForcedTransactionsDB.Columns.TX_COMPACT],
+        )
+      ) {
+        return yield* Effect.fail(
+          new DatabaseError({
+            table: ForcedTransactionsDB.tableName,
+            message:
+              "Forced transaction persisted identity does not match its exact canonical V1 bytes",
+            cause: `tx_order_id=${entry[
+              ForcedTransactionsDB.Columns.TX_ORDER_ID
+            ].toString("hex")}`,
+          }),
+        );
+      }
+      classified.push({
+        entry: {
+          ...entry,
+          [ForcedTransactionsDB.Columns.OPERATOR_VALIDITY]: operatorValidity,
+          [ForcedTransactionsDB.Columns.FORCED_INCLUSION_VALUE]: encoded.value,
+          [ForcedTransactionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR]:
+            programMaterialSidecarCbor,
+          [ForcedTransactionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256]:
+            sha256(programMaterialSidecarCbor),
+        },
+        ledgerOps,
+        ledgerWitnessEntries,
+        ledgerMutationSteps,
+        rejectionCode,
+        programMaterialSidecarCbor,
+      });
+    }
+    return classified;
+  });
+
 export const processMpfs = (
   ledgerMpf: MidgardMpf | undefined,
   transactionsMpf: MidgardMpf,
@@ -2613,9 +3213,12 @@ export const processMpfs = (
     txRoot: string;
     transitionTraceRoot: string;
     eventToStepRoot: string;
+    validationTracesRoot: string;
     transitionTraceMembers: readonly RetainedTransitionTraceMember[];
     eventToStepMembers: readonly RetainedEventToStepMember[];
+    validationTraceMembers: readonly RetainedValidationTraceMember[];
     transitionStepCount: number;
+    validationTraceCount: number;
     totalEventCount: number;
     utxoPayloadEntries: readonly UtxoPayloadEntry[];
     ledgerDelta: LedgerDelta;
@@ -2941,9 +3544,106 @@ export const processMpfs = (
         classified.ledgerOutRef.toString("hex"),
       ),
     );
-
+    const shouldCheckPayloadRoot =
+      (config?.payloadRootCheck ?? "every_block") === "every_block";
+    const initialLedgerEntries =
+      config?.initialLedgerEntries ??
+      (shouldCheckPayloadRoot ? yield* ConfirmedLedgerDB.retrieve : []);
     const orderedDecodedMempoolTxs =
       yield* orderDecodedMempoolTxsForLedgerApplication(decodedMempoolTxs);
+
+    const consensusProfile =
+      config?.consensusProfile ?? MIDGARD_CONSENSUS_PROFILE_V1;
+    if (!isMidgardConsensusProfileV1(consensusProfile)) {
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: ForcedTransactionsDB.tableName,
+          message: "Block construction requires the canonical V1 profile",
+          cause: "non-v1 consensus profile",
+        }),
+      );
+    }
+    if (
+      (includedForcedTransactionEntries.length > 0 ||
+        orderedDecodedMempoolTxs.length > 0) &&
+      (config?.forcedValidation === undefined ||
+        effectiveEndTime === undefined)
+    ) {
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: ForcedTransactionsDB.tableName,
+          message:
+            "V1 transactions require an exact block-time validation context",
+          cause: `forced_count=${includedForcedTransactionEntries.length.toString()},normal_count=${orderedDecodedMempoolTxs.length.toString()},effective_end_time=${effectiveEndTime?.toISOString() ?? "missing"}`,
+        }),
+      );
+    }
+    const forcedPreState = new Map(
+      initialLedgerEntries.map((entry) => [
+        entry[Ledger.Columns.OUTREF].toString("hex"),
+        Buffer.from(entry[Ledger.Columns.OUTPUT]),
+      ]),
+    );
+    for (const classifiedWithdrawal of validWithdrawalClassifications) {
+      forcedPreState.delete(
+        classifiedWithdrawal.ledgerOutRef.toString("hex"),
+      );
+    }
+    const classifiedForcedTransactionsV1:
+      readonly ClassifiedForcedTransactionV1[] =
+      includedForcedTransactionEntries.length === 0
+        ? []
+        : yield* classifyForcedTransactionsV1({
+            entries: includedForcedTransactionEntries,
+            initialState: forcedPreState,
+            effectiveEndTime: effectiveEndTime!,
+            consensusProfile,
+            validation: config!.forcedValidation!,
+          });
+    includedForcedTransactionEntries = classifiedForcedTransactionsV1.map(
+      ({ entry }) => entry,
+    );
+    if (
+      config?.deferDatabaseWrites !== true &&
+      classifiedForcedTransactionsV1.length > 0
+    ) {
+      yield* ForcedTransactionsDB.setProofClassifications(
+        classifiedForcedTransactionsV1.map(({ entry }) => ({
+          txOrderId: entry[ForcedTransactionsDB.Columns.TX_ORDER_ID],
+          operatorValidity:
+            entry[ForcedTransactionsDB.Columns.OPERATOR_VALIDITY],
+          forcedInclusionValue:
+            entry[ForcedTransactionsDB.Columns.FORCED_INCLUSION_VALUE],
+          programMaterialSidecarCbor:
+            entry[
+              ForcedTransactionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR
+            ],
+        })),
+      );
+    }
+    const forcedLedgerOpsByEventId = new Map(
+      classifiedForcedTransactionsV1.map(({ entry, ledgerOps }) => [
+        entry[ForcedTransactionsDB.Columns.TX_ORDER_ID].toString("hex"),
+        ledgerOps,
+      ]),
+    );
+    const forcedSpentOutRefHexes = new Set(
+      [...forcedLedgerOpsByEventId.values()].flatMap((ops) =>
+        ops.flatMap((op) =>
+          op.type === "delete" ? [op.key.toString("hex")] : [],
+        ),
+      ),
+    );
+    const proofNormalLedgerOpsByTxId = new Map<string, readonly MpfBatchOp[]>();
+    const proofNormalLedgerWitnessesByTxId = new Map<
+      string,
+      readonly ValidationMachineLedgerEntry[]
+    >();
+    const proofNormalLedgerMutationsByTxId = new Map<
+      string,
+      readonly ValidationMachineLedgerMutationStep[]
+    >();
+    const proofNormalProgramMaterialByTxId = new Map<string, Buffer>();
 
     yield* Effect.forEach(orderedDecodedMempoolTxs, (decoded) =>
       Effect.gen(function* () {
@@ -2964,6 +3664,25 @@ export const processMpfs = (
           });
           yield* Effect.logWarning(
             `Skipping mempool tx ${txHashHex}: it spends an outref consumed by a due withdrawal event.`,
+          );
+          return;
+        }
+        const forcedSpentOutRef = decoded.spent.find((outRef) =>
+          forcedSpentOutRefHexes.has(outRef.toString("hex")),
+        );
+        if (forcedSpentOutRef !== undefined) {
+          rejectedTxHashes.push(Buffer.from(decoded.txHash));
+          rejectionEntries.push({
+            [TxRejectionsDB.Columns.TX_ID]: Buffer.from(decoded.txHash),
+            [TxRejectionsDB.Columns.REJECT_CODE]:
+              COMMIT_REJECT_CODE_FORCED_TRANSACTION_INPUT,
+            [TxRejectionsDB.Columns.REJECT_DETAIL]:
+              `Transaction spends L2 outref ${forcedSpentOutRef.toString(
+                "hex",
+              )}, which is consumed by a valid forced transaction earlier in the same block`,
+          });
+          yield* Effect.logWarning(
+            `Skipping mempool tx ${txHashHex}: it spends an outref consumed by a valid forced transaction.`,
           );
           return;
         }
@@ -2993,12 +3712,219 @@ export const processMpfs = (
         const transactionInsertOp = {
           type: "insert",
           key: decoded.txHash,
-          value: encodeTransactionRootValue(decoded.txCbor),
+          value: encodeTransactionRootValue(
+            decoded.txCbor,
+            config?.consensusProfile ?? MIDGARD_CONSENSUS_PROFILE_V1,
+          ),
         } as const satisfies MpfInsertBatchOp;
         transactionOps.push(transactionInsertOp);
         transactionSourceOps.push(transactionInsertOp);
       }),
     );
+
+    if (processedMempoolTxs.length > 0) {
+      const validation = config!.forcedValidation!;
+      const durableProgramMaterial =
+        yield* TxAdmissionsDB.retrieveProgramMaterialSidecars(
+          processedMempoolTxs.map((entry) => entry[Tx.Columns.TX_ID]),
+        );
+      for (const material of durableProgramMaterial) {
+        proofNormalProgramMaterialByTxId.set(
+          material.txId.toString("hex"),
+          Buffer.from(material.sidecarCbor),
+        );
+      }
+      if (
+        proofNormalProgramMaterialByTxId.size !== processedMempoolTxs.length ||
+        processedMempoolTxs.some(
+          (entry) =>
+            !proofNormalProgramMaterialByTxId.has(
+              entry[Tx.Columns.TX_ID].toString("hex"),
+            ),
+        )
+      ) {
+        return yield* Effect.fail(
+          new DatabaseError({
+            table: TxAdmissionsDB.payloadTableName,
+            message:
+              "V1 validation requires one durable canonical CEK material sidecar per normal transaction",
+            cause: `transactions=${processedMempoolTxs.length.toString()},sidecars=${proofNormalProgramMaterialByTxId.size.toString()}`,
+          }),
+        );
+      }
+      const proofPreState = new Map(
+        initialLedgerEntries.map((entry) => [
+          entry[Ledger.Columns.OUTREF].toString("hex"),
+          Buffer.from(entry[Ledger.Columns.OUTPUT]),
+        ]),
+      );
+      for (const classifiedWithdrawal of validWithdrawalClassifications) {
+        proofPreState.delete(classifiedWithdrawal.ledgerOutRef.toString("hex"));
+      }
+      for (const classified of classifiedForcedTransactionsV1) {
+        for (const op of classified.ledgerOps) {
+          if (op.type === "delete") {
+            proofPreState.delete(op.key.toString("hex"));
+          } else {
+            proofPreState.set(op.key.toString("hex"), Buffer.from(op.value));
+          }
+        }
+      }
+
+      const proofPhaseA = yield* runPhaseAValidation(
+        processedMempoolTxs.map((entry, index) => ({
+          txId: entry[Tx.Columns.TX_ID],
+          txCbor: entry[Tx.Columns.TX],
+          arrivalSeq: BigInt(index),
+          createdAt: entry[Tx.Columns.TIMESTAMPTZ],
+          programMaterialSidecarCbor: proofNormalProgramMaterialByTxId.get(
+            entry[Tx.Columns.TX_ID].toString("hex"),
+          )!,
+        })),
+        {
+          expectedNetworkId: validation.expectedNetworkId,
+          minFeeA: validation.minFeeA,
+          minFeeB: validation.minFeeB,
+          concurrency: 1,
+          strictnessProfile: "phase1_midgard",
+          consensusProfile,
+        },
+      ).pipe(
+        Effect.mapError(
+          (cause) =>
+            new DatabaseError({
+              table: MempoolDB.tableName,
+              message: "V1 normal transaction Phase A failed",
+              cause,
+            }),
+        ),
+      );
+      const proofPhaseB = yield* runPhaseBValidationWithPatch(
+        proofPhaseA.accepted,
+        proofPreState,
+        {
+          nowCardanoSlotNo: validation.slotForUnixTime(
+            effectiveEndTime!.getTime(),
+          ),
+          bucketConcurrency: validation.bucketConcurrency,
+          enforceScriptBudget: true,
+        },
+      ).pipe(
+        Effect.mapError(
+          (cause) =>
+            new DatabaseError({
+              table: MempoolDB.tableName,
+              message: "V1 normal transaction Phase B failed",
+              cause,
+            }),
+        ),
+      );
+      const proofRejected = [...proofPhaseA.rejected, ...proofPhaseB.rejected];
+      for (const rejected of proofRejected) {
+        rejectedTxHashes.push(Buffer.from(rejected.txId));
+        rejectionEntries.push({
+          [TxRejectionsDB.Columns.TX_ID]: Buffer.from(rejected.txId),
+          [TxRejectionsDB.Columns.REJECT_CODE]: rejected.code,
+          [TxRejectionsDB.Columns.REJECT_DETAIL]: rejected.detail,
+        });
+      }
+
+      const acceptedByTxId = new Map(
+        proofPhaseB.accepted.map((accepted) => [
+          accepted.ledgerTx.txId.toString("hex"),
+          accepted,
+        ]),
+      );
+      const proofNormalReplayState = new Map(
+        [...proofPreState.entries()].map(([outRef, output]) => [
+          outRef,
+          Buffer.from(output),
+        ]),
+      );
+      const proofNormalMutationTrie = yield* Effect.tryPromise({
+        try: () =>
+          Trie.fromList(
+            [...proofNormalReplayState.entries()].map(([key, value]) => ({
+              key: Buffer.from(key, "hex"),
+              value,
+            })),
+            new Store(undefined),
+          ),
+        catch: (cause) =>
+          new DatabaseError({
+            table: MempoolDB.tableName,
+            message:
+              "Failed to construct the normal-transaction validation mutation trie",
+            cause,
+          }),
+      });
+      processedMempoolTxs.length = 0;
+      mempoolTxHashes.length = 0;
+      transactionOps.length = 0;
+      transactionSourceOps.length = 0;
+      sizeOfProcessedTxs = 0;
+      for (const decoded of orderedDecodedMempoolTxs) {
+        const txIdHex = decoded.txHash.toString("hex");
+        const accepted = acceptedByTxId.get(txIdHex);
+        if (accepted === undefined) continue;
+        const ledgerOps: readonly MpfBatchOp[] = [
+          ...accepted.graph.spentOutRefHexes.map((outRef) => ({
+            type: "delete" as const,
+            key: Buffer.from(outRef, "hex"),
+          })),
+          ...accepted.graph.produced.map((produced) => ({
+            type: "insert" as const,
+            key: Buffer.from(produced[Ledger.Columns.OUTREF]),
+            value: Buffer.from(produced[Ledger.Columns.OUTPUT]),
+          })),
+        ];
+        proofNormalLedgerOpsByTxId.set(txIdHex, ledgerOps);
+        proofNormalLedgerWitnessesByTxId.set(
+          txIdHex,
+          validationLedgerWitnesses(proofNormalReplayState, [
+            ...accepted.graph.spentOutRefHexes,
+            ...accepted.graph.referenceOutRefHexes,
+          ]),
+        );
+        proofNormalLedgerMutationsByTxId.set(
+          txIdHex,
+          yield* Effect.tryPromise({
+            try: () =>
+              applyValidationLedgerMutations(
+                proofNormalMutationTrie,
+                ledgerOps,
+              ),
+            catch: (cause) =>
+              new DatabaseError({
+                table: MempoolDB.tableName,
+                message:
+                  "Failed to derive normal-transaction ledger mutation roots",
+                cause,
+              }),
+          }),
+        );
+        for (const operation of ledgerOps) {
+          if (operation.type === "delete") {
+            proofNormalReplayState.delete(operation.key.toString("hex"));
+          } else {
+            proofNormalReplayState.set(
+              operation.key.toString("hex"),
+              Buffer.from(operation.value),
+            );
+          }
+        }
+        processedMempoolTxs.push(decoded.entry);
+        mempoolTxHashes.push(Buffer.from(decoded.txHash));
+        sizeOfProcessedTxs += decoded.txCbor.length;
+        const transactionInsertOp = {
+          type: "insert",
+          key: Buffer.from(decoded.txHash),
+          value: encodeTransactionRootValue(decoded.txCbor, consensusProfile),
+        } as const satisfies MpfInsertBatchOp;
+        transactionOps.push(transactionInsertOp);
+        transactionSourceOps.push(transactionInsertOp);
+      }
+    }
 
     if (depositLedgerEntries.length > 0) {
       yield* Effect.logInfo(
@@ -3030,11 +3956,6 @@ export const processMpfs = (
       ledgerMpf === undefined
         ? Buffer.from(nativeMpf!.handle.baseRoot, "hex")
         : yield* ledgerMpf.root();
-    const shouldCheckPayloadRoot =
-      (config?.payloadRootCheck ?? "every_block") === "every_block";
-    const initialLedgerEntries =
-      config?.initialLedgerEntries ??
-      (shouldCheckPayloadRoot ? yield* ConfirmedLedgerDB.retrieve : []);
     const ledgerRootBeforeApplyHex = ledgerRootBeforeApply.toString("hex");
     const selectedBaseUtxoRoot =
       config?.selectedBaseUtxoRoot ??
@@ -3078,9 +3999,13 @@ export const processMpfs = (
       includedForcedTransactionEntries,
       (entry) =>
         Effect.gen(function* () {
+          const ledgerOps = forcedLedgerOpsByEventId.get(
+            entry[ForcedTransactionsDB.Columns.TX_ORDER_ID].toString("hex"),
+          );
           if (
             entry[ForcedTransactionsDB.Columns.OPERATOR_VALIDITY] ===
-            "TxIsValid"
+              "TxIsValid" &&
+            ledgerOps === undefined
           ) {
             return yield* Effect.fail(
               new DatabaseError({
@@ -3096,7 +4021,7 @@ export const processMpfs = (
           return {
             eventKey: yield* forcedTransactionTraceEventKey(entry),
             phase: "ForcedTransaction" as const,
-            ledgerOps: [],
+            ledgerOps: ledgerOps ?? [],
           } satisfies TransitionTraceSourceEvent;
         }),
     );
@@ -3124,20 +4049,25 @@ export const processMpfs = (
               }),
             );
           }
+          const proofLedgerOps = proofNormalLedgerOpsByTxId.get(
+            txHash.toString("hex"),
+          );
+          if (proofLedgerOps === undefined) {
+            return yield* Effect.fail(
+              new DatabaseError({
+                table: MempoolDB.tableName,
+                message:
+                  "Refusing to build a V1 transition trace because an included transaction is missing its sequentially validated ledger delta",
+                cause: `source_index=${index.toString()},tx_id=${txHash.toString(
+                  "hex",
+                )}`,
+              }),
+            );
+          }
           return {
             eventKey: l2TransactionTraceEventKey(decoded.txHash),
             phase: "L2Transaction" as const,
-            ledgerOps: [
-              ...decoded.spent.map((outRef) => ({
-                type: "delete" as const,
-                key: outRef,
-              })),
-              ...decoded.produced.map((entry) => ({
-                type: "insert" as const,
-                key: entry[Ledger.Columns.OUTREF],
-                value: entry[Ledger.Columns.OUTPUT],
-              })),
-            ],
+            ledgerOps: proofLedgerOps,
           } satisfies TransitionTraceSourceEvent;
         }),
     );
@@ -3198,6 +4128,7 @@ export const processMpfs = (
           );
     const txRootFiber = yield* buildTransactionsSourceRoot(
       transactionSourceOps,
+      SDK.ROOT_DOMAINS.transactionsV1,
     ).pipe(Effect.fork);
     const architectureGTransactionMpfFiber =
       ledgerMpf === undefined
@@ -3223,6 +4154,8 @@ export const processMpfs = (
           forcedTransactionCount: includedForcedTransactionEntries.length,
           l2TransactionCount: processedMempoolTxs.length,
           depositCount: includedDepositEntries.length,
+          transitionStepSchemaVersion:
+            MIDGARD_TRANSITION_STEP_V1_SCHEMA_VERSION,
         }).pipe(
           Effect.catchAll((error) =>
             Effect.gen(function* () {
@@ -3243,6 +4176,8 @@ export const processMpfs = (
           forcedTransactionCount: includedForcedTransactionEntries.length,
           l2TransactionCount: processedMempoolTxs.length,
           depositCount: includedDepositEntries.length,
+          transitionStepSchemaVersion:
+            MIDGARD_TRANSITION_STEP_V1_SCHEMA_VERSION,
         }).pipe(
           Effect.catchAll((error) =>
             ledgerMpf
@@ -3359,6 +4294,199 @@ export const processMpfs = (
       );
     }
 
+    const validationTraceBuild: ValidationTraceBuildResult = yield* Effect.gen(
+      function* () {
+        const expectedValidationTraceCount =
+          includedForcedTransactionEntries.length +
+          processedMempoolTxs.length;
+        if (expectedValidationTraceCount === 0) {
+          return {
+            validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+            validationTraceMembers: [],
+            validationTraceCount: 0,
+          };
+        }
+        const validation = config!.forcedValidation!;
+        const validationTraceBuilder =
+          config?.validationTraceBuilder ??
+          buildDeterministicValidationTraceMembers;
+      const traceByEventKey = new Map(
+        transitionTraceBuild.transitionTraceMembers.map((member) => [
+          member.keyCbor.toString("hex"),
+          member,
+        ]),
+      );
+      const forcedByOrderId = new Map(
+        classifiedForcedTransactionsV1.map((classified) => [
+          classified.entry[ForcedTransactionsDB.Columns.TX_ORDER_ID].toString(
+            "hex",
+          ),
+          classified,
+        ]),
+      );
+      const forcedValidationInputs = yield* Effect.forEach(
+        includedForcedTransactionEntries,
+        (entry) =>
+          Effect.gen(function* () {
+            const eventKey = yield* forcedTransactionTraceEventKey(entry);
+            const keyCbor = yield* eventKeyCbor(eventKey);
+            const trace = traceByEventKey.get(keyCbor.toString("hex"));
+            const classified = forcedByOrderId.get(
+              entry[ForcedTransactionsDB.Columns.TX_ORDER_ID].toString("hex"),
+            );
+            const canonicalTransactionCbor =
+              entry[ForcedTransactionsDB.Columns.NATIVE_TX_CBOR];
+            if (
+              trace === undefined ||
+              classified === undefined ||
+              canonicalTransactionCbor == null
+            ) {
+              return yield* Effect.fail(
+                new DatabaseError({
+                  table: ForcedTransactionsDB.tableName,
+                  message:
+                    "V1 forced transaction is missing validation-trace source material",
+                  cause: `tx_order_id=${entry[
+                    ForcedTransactionsDB.Columns.TX_ORDER_ID
+                  ].toString("hex")}`,
+                }),
+              );
+            }
+            return {
+              eventKey,
+              transactionId: Buffer.from(
+                entry[ForcedTransactionsDB.Columns.TX_ID],
+              ),
+              canonicalTransactionCbor: Buffer.from(canonicalTransactionCbor),
+              programMaterialSidecarCbor: Buffer.from(
+                classified.programMaterialSidecarCbor,
+              ),
+              sourceKind: "forced" as const,
+              priorUtxosRoot: trace.value.pre_utxos_root,
+              postUtxosRoot: trace.value.post_utxos_root,
+              ledgerOps: classified.ledgerOps,
+              ledgerWitnessEntries: classified.ledgerWitnessEntries,
+              ledgerMutationSteps: classified.ledgerMutationSteps,
+              verdict:
+                classified.rejectionCode === null
+                  ? ("accepted" as const)
+                  : ("rejected" as const),
+              rejectionCode: classified.rejectionCode,
+            };
+          }),
+      );
+      const normalValidationInputs = yield* Effect.forEach(
+        processedMempoolTxs,
+        (entry) =>
+          Effect.gen(function* () {
+            const eventKey = l2TransactionTraceEventKey(
+              entry[Tx.Columns.TX_ID],
+            );
+            const keyCbor = yield* eventKeyCbor(eventKey);
+            const trace = traceByEventKey.get(keyCbor.toString("hex"));
+            const ledgerOps = proofNormalLedgerOpsByTxId.get(
+              entry[Tx.Columns.TX_ID].toString("hex"),
+            );
+            const ledgerWitnessEntries = proofNormalLedgerWitnessesByTxId.get(
+              entry[Tx.Columns.TX_ID].toString("hex"),
+            );
+            const ledgerMutationSteps = proofNormalLedgerMutationsByTxId.get(
+              entry[Tx.Columns.TX_ID].toString("hex"),
+            );
+            const programMaterialSidecarCbor =
+              proofNormalProgramMaterialByTxId.get(
+                entry[Tx.Columns.TX_ID].toString("hex"),
+              );
+            if (
+              trace === undefined ||
+              ledgerOps === undefined ||
+              ledgerWitnessEntries === undefined ||
+              ledgerMutationSteps === undefined ||
+              programMaterialSidecarCbor === undefined
+            ) {
+              return yield* Effect.fail(
+                new DatabaseError({
+                  table: MempoolDB.tableName,
+                  message:
+                    "V1 normal transaction is missing validation-trace source material",
+                  cause: `tx_id=${entry[Tx.Columns.TX_ID].toString("hex")}`,
+                }),
+              );
+            }
+            return {
+              eventKey,
+              transactionId: Buffer.from(entry[Tx.Columns.TX_ID]),
+              canonicalTransactionCbor: Buffer.from(entry[Tx.Columns.TX]),
+              programMaterialSidecarCbor: Buffer.from(
+                programMaterialSidecarCbor,
+              ),
+              sourceKind: "normal" as const,
+              priorUtxosRoot: trace.value.pre_utxos_root,
+              postUtxosRoot: trace.value.post_utxos_root,
+              ledgerOps,
+              ledgerWitnessEntries,
+              ledgerMutationSteps,
+              verdict: "accepted" as const,
+              rejectionCode: null,
+            };
+          }),
+      );
+      const validationTraceMembers = yield* validationTraceBuilder({
+        consensusProfile,
+        blockEndTime: effectiveEndTime!,
+        expectedNetworkId: validation.expectedNetworkId,
+        minFeeA: validation.minFeeA,
+        minFeeB: validation.minFeeB,
+        blockSlot: validation.slotForUnixTime(effectiveEndTime!.getTime()),
+        transactions: [...forcedValidationInputs, ...normalValidationInputs],
+      });
+      if (validationTraceMembers.length !== expectedValidationTraceCount) {
+        return yield* Effect.fail(
+          new DatabaseError({
+            table: PendingBlockFinalizationsDB.tableName,
+            message:
+              "Validation trace provider returned the wrong descriptor count",
+            cause: `expected=${expectedValidationTraceCount.toString()},actual=${validationTraceMembers.length.toString()}`,
+          }),
+        );
+      }
+      const seenEventKeys = new Set<string>();
+      for (const member of validationTraceMembers) {
+        const keyHex = member.keyCbor.toString("hex");
+        if (
+          seenEventKeys.has(keyHex) ||
+          !traceByEventKey.has(keyHex) ||
+          !member.keyCbor.equals(yield* eventKeyCbor(member.eventKey))
+        ) {
+          return yield* Effect.fail(
+            new DatabaseError({
+              table: PendingBlockFinalizationsDB.tableName,
+              message:
+                "Validation trace provider returned a duplicate, foreign, or non-canonical event key",
+              cause: `event_key_cbor=${keyHex}`,
+            }),
+          );
+        }
+        seenEventKeys.add(keyHex);
+      }
+      const validationTracesRoot =
+        validationTraceMembers.length === 0
+          ? SDK.EMPTY_MERKLE_TREE_ROOT
+          : yield* countedRootFromEncodedEntries(
+              SDK.ROOT_DOMAINS.validationTraces,
+              validationTraceMembers.map((member) => ({
+                key: member.keyCbor,
+                value: member.valueCbor,
+              })),
+            );
+        return {
+          validationTracesRoot,
+          validationTraceMembers,
+          validationTraceCount: validationTraceMembers.length,
+        };
+      },
+    );
+
     yield* Effect.logInfo(
       `🔹 New raw transaction MPF root found: ${rawTxRoot}`,
     );
@@ -3369,6 +4497,9 @@ export const processMpfs = (
     );
     yield* Effect.logInfo(
       `🔹 New event-to-step root found: ${transitionTraceBuild.eventToStepRoot}`,
+    );
+    yield* Effect.logInfo(
+      `🔹 New validation traces root found: ${validationTraceBuild.validationTracesRoot}`,
     );
 
     const recordCorpusPath = config?.recordCorpusPath?.trim() ?? "";
@@ -3409,11 +4540,11 @@ export const processMpfs = (
               withdrawals,
             ),
             countedRootFromEncodedEntries(
-              SDK.ROOT_DOMAINS.forcedTransactions,
+              SDK.ROOT_DOMAINS.forcedTransactionsV1,
               forcedTransactions,
             ),
           ],
-          { concurrency: "unbounded" },
+          { concurrency: 1 },
         );
       const encodeEntry = (entry: {
         readonly key: Buffer;
@@ -3506,9 +4637,12 @@ export const processMpfs = (
       txRoot,
       transitionTraceRoot: transitionTraceBuild.transitionTraceRoot,
       eventToStepRoot: transitionTraceBuild.eventToStepRoot,
+      validationTracesRoot: validationTraceBuild.validationTracesRoot,
       transitionTraceMembers: transitionTraceBuild.transitionTraceMembers,
       eventToStepMembers: transitionTraceBuild.eventToStepMembers,
+      validationTraceMembers: validationTraceBuild.validationTraceMembers,
       transitionStepCount: transitionTraceBuild.transitionStepCount,
+      validationTraceCount: validationTraceBuild.validationTraceCount,
       totalEventCount: transitionTraceBuild.totalEventCount,
       utxoPayloadEntries,
       ledgerDelta: collapseLedgerDelta(transitionLedgerOps),
@@ -6215,8 +7349,8 @@ export class MidgardMpf {
    * Resets the working trie view. While a block overlay is active this is a
    * logical reset only: the overlay's original rollback root remains intact
    * and callers must explicitly flush/promote after their journal or recovery
-   * boundary. Legacy/no-overlay callers retain the historical immediate marker
-   * persistence used by standalone migration and recovery tooling.
+   * boundary. Non-overlay callers persist the root marker immediately for
+   * standalone migration and recovery tooling.
    */
   public resetToRoot(root: Buffer): Effect.Effect<void, MpfError> {
     return Effect.gen(this, function* () {
@@ -6974,15 +8108,15 @@ export class MidgardMpf {
     });
   }
 
-  public parkEventFlatOverlayV2(
+  public parkEventFlatOverlayV1(
     shardCount = 4,
-  ): Effect.Effect<ParkedEventFlatOverlayV2, MpfError> {
+  ): Effect.Effect<ParkedEventFlatOverlayV1, MpfError> {
     return Effect.gen(this, function* () {
       if (this.engine !== "event_flat" || this.eventFlatArena === undefined) {
         return yield* Effect.fail(
           MpfError.batch(
             `${this.trieName}-event-flat-park`,
-            new Error("Event-flat V2 park requires an active packed arena"),
+            new Error("Event-flat V1 park requires an active packed arena"),
           ),
         );
       }
@@ -6991,7 +8125,7 @@ export class MidgardMpf {
         return yield* Effect.fail(
           MpfError.batch(
             `${this.trieName}-event-flat-park`,
-            new Error("Event-flat V2 park requires an active overlay"),
+            new Error("Event-flat V1 park requires an active overlay"),
           ),
         );
       }
@@ -7020,7 +8154,7 @@ export class MidgardMpf {
         return yield* Effect.fail(
           MpfError.batch(
             `${this.trieName}-event-flat-park`,
-            new Error("Event-flat V2 park performed a Level write"),
+            new Error("Event-flat V1 park performed a Level write"),
           ),
         );
       }
@@ -7042,10 +8176,10 @@ export class MidgardMpf {
     });
   }
 
-  public static resumeParkedEventFlatOverlayV2(
+  public static resumeParkedEventFlatOverlayV1(
     trieName: string,
     levelDBFilePath: string | undefined,
-    artifact: ParkedEventFlatOverlayV2,
+    artifact: ParkedEventFlatOverlayV1,
   ): Effect.Effect<MidgardMpf, MpfError> {
     return Effect.gen(function* () {
       yield* Effect.tryPromise({
@@ -7064,7 +8198,7 @@ export class MidgardMpf {
         );
       }
       const resumedView = yield* Effect.try({
-        try: () => new ResumedEventFlatOverlayV2(artifact),
+        try: () => new ResumedEventFlatOverlayV1(artifact),
         catch: (cause) =>
           MpfError.create(`${trieName}-event-flat-resume`, cause),
       });

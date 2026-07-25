@@ -106,7 +106,7 @@ describe("PHAS membership SDK boundary", () => {
     );
 
     expect(identity.scriptHash).toEqual(
-      "46df0027fc0af07197924dc07f1c27ac6b15eb2bd6efc7a73b0dbb4d",
+      "1fc59ff54da02f2535d64b40b647a8826c8b3d914d7ba5257f5b2721",
     );
     expect(identity.rewardAddress.startsWith("stake_test")).toBe(true);
   });

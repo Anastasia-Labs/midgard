@@ -3,6 +3,7 @@ import { Worker } from "node:worker_threads";
 import {
   deserializePhaseACandidate,
   type LocalScriptEvalResult,
+  type PhaseAConfig,
   type PhaseAResult,
   type QueuedTx,
   type RejectedTx,
@@ -11,6 +12,7 @@ import { Context, Data, Duration, Effect, Layer, Metric } from "effect";
 
 import { resolveWorkerEntry } from "@/fibers/resolve-worker-entry.js";
 import { NodeConfig } from "@/services/config.js";
+import { ContractDeploymentIdentity } from "@/services/midgard-contracts.js";
 import {
   copyToTransferable,
   packPhaseAJob,
@@ -28,6 +30,7 @@ export class ValidationWorkerError extends Data.TaggedError(
 
 export type ValidationPoolService = {
   readonly poolSize: number;
+  readonly consensusProfile: NonNullable<PhaseAConfig["consensusProfile"]>;
   readonly runPhaseAChunk: (
     txs: readonly QueuedTx[],
   ) => Effect.Effect<PhaseAResult, ValidationWorkerError>;
@@ -436,10 +439,12 @@ export class FixedValidationWorkerPool {
 
 const makeValidationPool = Effect.gen(function* () {
   const config = yield* NodeConfig;
+  const deploymentIdentity = yield* ContractDeploymentIdentity;
   const size = config.VALIDATION_WORKER_POOL_SIZE;
   if (size === 0) {
     return {
       poolSize: 0,
+      consensusProfile: deploymentIdentity.consensusProfile,
       runPhaseAChunk: () =>
         Effect.fail(
           new ValidationWorkerError({ message: "validation pool is disabled" }),
@@ -471,6 +476,7 @@ const makeValidationPool = Effect.gen(function* () {
         minFeeA: config.MIN_FEE_A,
         minFeeB: config.MIN_FEE_B,
         strictnessProfile: config.VALIDATION_STRICTNESS_PROFILE,
+        consensusProfile: deploymentIdentity.consensusProfile,
       },
       signatureVerifier: config.VALIDATION_WORKER_NODE_ED25519 ? "node" : "cml",
     },
@@ -511,6 +517,7 @@ const makeValidationPool = Effect.gen(function* () {
 
   const service: ValidationPoolService = {
     poolSize: size,
+    consensusProfile: deploymentIdentity.consensusProfile,
     ready,
     stats: Effect.sync(() => pool.stats()),
     runPhaseAChunk: (txs) => {

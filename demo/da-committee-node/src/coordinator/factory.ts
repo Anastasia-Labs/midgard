@@ -43,11 +43,6 @@ export const onChainCoordinatorFromConfig = async (
   >,
   deps: OnChainCoordinatorFactoryDeps = defaultDeps,
 ): Promise<OnChainLifecycleCoordinator> => {
-  if (config.midgardNodeDeployment === undefined) {
-    throw new Error(
-      "L1 submission requires Midgard node deployment-info with script CBOR and reference-script UTxOs",
-    );
-  }
   if (config.l1SubmitterKeySource === undefined) {
     throw new Error("L1_SUBMITTER_KEY_SOURCE is required for L1 submission");
   }

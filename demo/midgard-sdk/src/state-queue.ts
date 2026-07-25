@@ -1,3 +1,4 @@
+import { MIDGARD_PROTOCOL_V1_VERSION } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
   Address,
   Assets,
@@ -36,19 +37,18 @@ import { getStateToken } from "@/internals.js";
 import {
   EMPTY_MERKLE_TREE_ROOT,
   GENESIS_HEADER_HASH,
-  GENESIS_PROTOCOL_VERSION,
 } from "@/ledger-constants.js";
 import {
-  castStateQueueNodeToData,
+  castStateQueueNodeV1ToData,
   ConfirmedState,
-  getHeaderFromStateQueueDatum,
-  hashBlockHeader,
-  Header,
+  getHeaderV1FromStateQueueDatum,
+  hashBlockHeaderV1,
   HeaderHashSchema,
-  HeaderTransitionCommitments,
   HeaderTransitionCommitmentsError,
+  HeaderTransitionCommitmentsV1,
+  HeaderV1,
   NO_DA_ATTESTATION,
-  validateHeaderTransitionCommitmentsProgram,
+  validateHeaderTransitionCommitmentsV1Program,
 } from "@/ledger-state.js";
 import {
   encodeLinkedListNodeView,
@@ -128,7 +128,7 @@ export const BlockRemovalApproach =
 
 export const StateQueueRedeemerSchema = Data.Enum([
   Data.Object({
-    Init: Data.Object({
+    InitV1: Data.Object({
       output_index: Data.Integer(),
     }),
   }),
@@ -144,7 +144,16 @@ export const StateQueueRedeemerSchema = Data.Enum([
     }),
   }),
   Data.Object({
-    MergeToConfirmedState: Data.Object({
+    RemoveFraudulentBlockHeader: Data.Object({
+      fraudulent_operator: Data.Bytes({ minLength: 28, maxLength: 28 }),
+      fraudulent_blocks_header_hash: HeaderHashSchema,
+      slashing_approach: SlashingApproachSchema,
+      fraud_proof_ref_input_index: Data.Integer(),
+      block_removal_approach: BlockRemovalApproachSchema,
+    }),
+  }),
+  Data.Object({
+    MergeToConfirmedStateV1: Data.Object({
       header_node_key: Data.Bytes(),
       confirmed_state_input_outref: OutputReferenceSchema,
       confirmed_state_output_index: Data.Integer(),
@@ -155,21 +164,14 @@ export const StateQueueRedeemerSchema = Data.Enum([
       merged_block_deposits_root: MerkleRootSchema,
       merged_block_transition_trace_root: MerkleRootSchema,
       merged_block_event_to_step_root: MerkleRootSchema,
+      merged_block_validation_traces_root: MerkleRootSchema,
       merged_block_withdrawal_count: Data.Integer(),
       merged_block_forced_transaction_count: Data.Integer(),
       merged_block_l2_transaction_count: Data.Integer(),
       merged_block_deposit_count: Data.Integer(),
       merged_block_total_event_count: Data.Integer(),
       merged_block_transition_step_count: Data.Integer(),
-    }),
-  }),
-  Data.Object({
-    RemoveFraudulentBlockHeader: Data.Object({
-      fraudulent_operator: Data.Bytes({ minLength: 28, maxLength: 28 }),
-      fraudulent_blocks_header_hash: HeaderHashSchema,
-      slashing_approach: SlashingApproachSchema,
-      fraud_proof_ref_input_index: Data.Integer(),
-      block_removal_approach: BlockRemovalApproachSchema,
+      merged_block_validation_trace_count: Data.Integer(),
     }),
   }),
 ]);
@@ -245,7 +247,7 @@ export type StateQueueInitParams = {
  */
 export type EmulatorStateQueueCommitBlockHeaderParams = {
   anchorUTxO: StateQueueUTxO;
-  newHeader: Header;
+  newHeader: HeaderV1;
   additionalInputs?: readonly UTxO[];
   validFrom?: bigint;
   validTo?: bigint;
@@ -766,7 +768,7 @@ export const incompleteEmulatorCommitBlockHeaderTxProgram = (
   params: EmulatorStateQueueCommitBlockHeaderParams,
 ): Effect.Effect<TxBuilder, HashingError> =>
   Effect.gen(function* () {
-    const newHeaderHash = yield* hashBlockHeader(params.newHeader);
+    const newHeaderHash = yield* hashBlockHeaderV1(params.newHeader);
     const newBlockAssetName =
       STATE_QUEUE_NODE_ASSET_NAME_PREFIX + newHeaderHash;
     const newBlockAssets: Assets = {
@@ -779,7 +781,7 @@ export const incompleteEmulatorCommitBlockHeaderTxProgram = (
     const newBlockDatum: LinkedListNodeView = {
       key: { Key: { key: newHeaderHash } },
       next: "Empty",
-      data: castStateQueueNodeToData({
+      data: castStateQueueNodeV1ToData({
         header: params.newHeader,
         da_attestation: NO_DA_ATTESTATION,
       }) as LinkedListNodeView["data"],
@@ -1091,107 +1093,80 @@ export const incompleteRemoveFraudulentBlocksLinkTxProgram = (
 };
 
 /**
- * Given the latest block in state queue, along with the required tree roots,
- * this function returns the updated datum of the latest block, along with the
- * new `Header` that should be included in the new block's datum.
- *
- * @param lucid - The `LucidEvolution` API object.
- * @param latestBlocksDatum - Datum of the UTxO of the latest block in queue.
- * @param newUTxOsRoot - MPF root of the updated ledger.
- * @param transactionsRoot - MPF root of the transactions included in the new block.
- * @param depositsRoot - MPF root of the deposit transactions included in the new block.
- * @param withdrawalsRoot - MPF root of the withdrawal transactions included in the new block.
- * @param transitionCommitments - transition trace commitment roots and counts.
- * @param endTime - POSIX time of the new block's closing range.
+ * Builds the canonical V1 state-queue header and linked-list update. It
+ * accepts only StateQueueNodeV1 and commits the validation-trace root/count.
  */
-export const updateLatestBlocksDatumAndGetTheNewHeaderProgram = (
+export const updateLatestBlocksDatumAndGetTheNewHeaderV1Program = (
   lucid: LucidEvolution,
   latestBlocksDatum: LinkedListNodeView,
   newUTxOsRoot: MerkleRoot,
   transactionsRoot: MerkleRoot,
   depositsRoot: MerkleRoot,
   withdrawalsRoot: MerkleRoot,
-  transitionCommitments: HeaderTransitionCommitments,
+  transitionCommitments: HeaderTransitionCommitmentsV1,
   endTime: POSIXTime,
+  validationContext: Pick<
+    HeaderV1,
+    "blockSlot" | "expectedNetworkId" | "minFeeA" | "minFeeB"
+  >,
 ): Effect.Effect<
-  { nodeDatum: LinkedListNodeView; header: Header },
+  { nodeDatum: LinkedListNodeView; header: HeaderV1 },
   | DataCoercionError
   | HeaderTransitionCommitmentsError
   | LucidError
   | HashingError
 > =>
   Effect.gen(function* () {
-    const walletAddress: string = yield* Effect.tryPromise({
+    const walletAddress = yield* Effect.tryPromise({
       try: () => lucid.wallet().address(),
-      catch: (e) =>
-        new LucidError({ message: `Failed to find the wallet`, cause: e }),
+      catch: (cause) =>
+        new LucidError({
+          message: "Failed to find the wallet",
+          cause,
+        }),
     });
+    const operatorVkey = paymentCredentialOf(walletAddress).hash;
+    const commitments = yield* validateHeaderTransitionCommitmentsV1Program(
+      transitionCommitments,
+    );
 
-    const pubKeyHash = paymentCredentialOf(walletAddress).hash;
-    const checkedTransitionCommitments =
-      yield* validateHeaderTransitionCommitmentsProgram(transitionCommitments);
     if (latestBlocksDatum.key === "Empty") {
       const { data: confirmedState } =
         yield* getConfirmedStateFromStateQueueDatum(latestBlocksDatum);
-      const newHeader = {
+      if (confirmedState.protocolVersion !== 1n) {
+        return yield* Effect.fail(
+          new DataCoercionError({
+            message:
+              "Proof-profile state queue root has the wrong protocol version",
+            cause: `protocol_version=${confirmedState.protocolVersion.toString()}`,
+          }),
+        );
+      }
+      const newHeader: HeaderV1 = {
         prevUtxosRoot: confirmedState.utxoRoot,
         utxosRoot: newUTxOsRoot,
         withdrawalsRoot,
-        forcedTransactionsRoot:
-          checkedTransitionCommitments.forcedTransactionsRoot,
+        forcedTransactionsRoot: commitments.forcedTransactionsRoot,
         transactionsRoot,
         depositsRoot,
-        transitionTraceRoot: checkedTransitionCommitments.transitionTraceRoot,
-        eventToStepRoot: checkedTransitionCommitments.eventToStepRoot,
-        withdrawalCount: checkedTransitionCommitments.withdrawalCount,
-        forcedTransactionCount:
-          checkedTransitionCommitments.forcedTransactionCount,
-        l2TransactionCount: checkedTransitionCommitments.l2TransactionCount,
-        depositCount: checkedTransitionCommitments.depositCount,
-        totalEventCount: checkedTransitionCommitments.totalEventCount,
-        transitionStepCount: checkedTransitionCommitments.transitionStepCount,
+        transitionTraceRoot: commitments.transitionTraceRoot,
+        eventToStepRoot: commitments.eventToStepRoot,
+        validationTracesRoot: commitments.validationTracesRoot,
+        withdrawalCount: commitments.withdrawalCount,
+        forcedTransactionCount: commitments.forcedTransactionCount,
+        l2TransactionCount: commitments.l2TransactionCount,
+        depositCount: commitments.depositCount,
+        totalEventCount: commitments.totalEventCount,
+        transitionStepCount: commitments.transitionStepCount,
+        validationTraceCount: commitments.validationTraceCount,
         startTime: confirmedState.endTime,
         endTime,
+        ...validationContext,
         prevHeaderHash: confirmedState.headerHash,
-        operatorVkey: pubKeyHash,
+        operatorVkey,
         protocolVersion: confirmedState.protocolVersion,
       };
-      const newHeaderHash = yield* hashBlockHeader(newHeader);
-      return {
-        nodeDatum: {
-          ...latestBlocksDatum,
-          next: { Key: { key: newHeaderHash } },
-        },
-        header: newHeader,
-      };
-    } else {
-      const latestHeader =
-        yield* getHeaderFromStateQueueDatum(latestBlocksDatum);
-      const prevHeaderHash = yield* hashBlockHeader(latestHeader);
-      const newHeader = {
-        ...latestHeader,
-        prevUtxosRoot: latestHeader.utxosRoot,
-        utxosRoot: newUTxOsRoot,
-        withdrawalsRoot,
-        forcedTransactionsRoot:
-          checkedTransitionCommitments.forcedTransactionsRoot,
-        transactionsRoot,
-        depositsRoot,
-        transitionTraceRoot: checkedTransitionCommitments.transitionTraceRoot,
-        eventToStepRoot: checkedTransitionCommitments.eventToStepRoot,
-        withdrawalCount: checkedTransitionCommitments.withdrawalCount,
-        forcedTransactionCount:
-          checkedTransitionCommitments.forcedTransactionCount,
-        l2TransactionCount: checkedTransitionCommitments.l2TransactionCount,
-        depositCount: checkedTransitionCommitments.depositCount,
-        totalEventCount: checkedTransitionCommitments.totalEventCount,
-        transitionStepCount: checkedTransitionCommitments.transitionStepCount,
-        startTime: latestHeader.endTime,
-        endTime,
-        prevHeaderHash,
-        operatorVkey: pubKeyHash,
-      };
-      const newHeaderHash = yield* hashBlockHeader(newHeader);
+      const newHeaderHash = yield* hashBlockHeaderV1(newHeader);
       return {
         nodeDatum: {
           ...latestBlocksDatum,
@@ -1200,44 +1175,43 @@ export const updateLatestBlocksDatumAndGetTheNewHeaderProgram = (
         header: newHeader,
       };
     }
-  });
 
-/**
- * Given the latest block in state queue, along with the required tree roots,
- * this function returns the updated datum of the latest block, along with the
- * new `Header` that should be included in the new block's datum.
- *
- * @param lucid - The `LucidEvolution` API object.
- * @param latestBlocksDatum - Datum of the UTxO of the latest block in queue.
- * @param newUTxOsRoot - MPF root of the updated ledger.
- * @param transactionsRoot - MPF root of the transactions included in the new block.
- * @param depositsRoot - MPF root of the deposit transactions included in the new block.
- * @param withdrawalsRoot - MPF root of the withdrawal transactions included in the new block.
- * @param transitionCommitments - transition trace commitment roots and counts.
- * @param endTime - POSIX time of the new block's closing range.
- */
-export const updateLatestBlocksDatumAndGetTheNewHeader = (
-  lucid: LucidEvolution,
-  latestBlocksDatum: LinkedListNodeView,
-  newUTxOsRoot: MerkleRoot,
-  transactionsRoot: MerkleRoot,
-  depositsRoot: MerkleRoot,
-  withdrawalsRoot: MerkleRoot,
-  transitionCommitments: HeaderTransitionCommitments,
-  endTime: POSIXTime,
-): Promise<{ nodeDatum: LinkedListNodeView; header: Header }> =>
-  makeReturn(
-    updateLatestBlocksDatumAndGetTheNewHeaderProgram(
-      lucid,
-      latestBlocksDatum,
-      newUTxOsRoot,
+    const latestHeader =
+      yield* getHeaderV1FromStateQueueDatum(latestBlocksDatum);
+    const prevHeaderHash = yield* hashBlockHeaderV1(latestHeader);
+    const newHeader: HeaderV1 = {
+      ...latestHeader,
+      prevUtxosRoot: latestHeader.utxosRoot,
+      utxosRoot: newUTxOsRoot,
+      withdrawalsRoot,
+      forcedTransactionsRoot: commitments.forcedTransactionsRoot,
       transactionsRoot,
       depositsRoot,
-      withdrawalsRoot,
-      transitionCommitments,
+      transitionTraceRoot: commitments.transitionTraceRoot,
+      eventToStepRoot: commitments.eventToStepRoot,
+      validationTracesRoot: commitments.validationTracesRoot,
+      withdrawalCount: commitments.withdrawalCount,
+      forcedTransactionCount: commitments.forcedTransactionCount,
+      l2TransactionCount: commitments.l2TransactionCount,
+      depositCount: commitments.depositCount,
+      totalEventCount: commitments.totalEventCount,
+      transitionStepCount: commitments.transitionStepCount,
+      validationTraceCount: commitments.validationTraceCount,
+      startTime: latestHeader.endTime,
       endTime,
-    ),
-  ).unsafeRun();
+      ...validationContext,
+      prevHeaderHash,
+      operatorVkey,
+    };
+    const newHeaderHash = yield* hashBlockHeaderV1(newHeader);
+    return {
+      nodeDatum: {
+        ...latestBlocksDatum,
+        next: { Key: { key: newHeaderHash } },
+      },
+      header: newHeader,
+    };
+  });
 
 export const fetchUnsortedStateQueueUTxOsProgram = (
   lucid: LucidEvolution,
@@ -1412,7 +1386,7 @@ export const incompleteInitStateQueueTxProgram = (
       utxoRoot: EMPTY_MERKLE_TREE_ROOT,
       startTime: params.genesisTime,
       endTime: params.genesisTime,
-      protocolVersion: GENESIS_PROTOCOL_VERSION,
+      protocolVersion: BigInt(MIDGARD_PROTOCOL_V1_VERSION),
     };
 
     return yield* incompleteInitLinkedListTxProgram(lucid, {
@@ -1420,7 +1394,7 @@ export const incompleteInitStateQueueTxProgram = (
       rootAssetName: STATE_QUEUE_ROOT_ASSET_NAME,
       data: Data.castTo(stateQueueData, ConfirmedState),
       redeemer: (outputIndex) =>
-        Data.to({ Init: { output_index: outputIndex } }, StateQueueRedeemer),
+        Data.to({ InitV1: { output_index: outputIndex } }, StateQueueRedeemer),
       lovelace: params.lovelace,
     });
   });

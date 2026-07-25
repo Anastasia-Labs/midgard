@@ -2,18 +2,16 @@
 
 Last reconciled: 2026-06-20
 
-Status: Task09 launch-gate architecture for production transition-trace
-commitments.
+Status: canonical V1 architecture for production transition-trace commitments.
 
 Scope: this document specifies the implemented commitments needed to prove that
 a queued Midgard state commitment's `utxos_root` is the deterministic result of
 applying the committed withdrawals, forced-inclusion transactions, normal L2
 transactions, and deposits to `prev_utxos_root`.
 
-This is now the current launch-gate protocol shape. The TypeScript and Aiken
-type name remains `Header`, but the serialized fields are the clean `HeaderV2`
-commitment surface described here. Production paths must not construct or accept
-the old header shape.
+This is the canonical V1 protocol shape. The serialized fields are the
+`HeaderV1` commitment surface described here. Any other header shape fails
+closed.
 
 ## Executive Summary
 
@@ -172,7 +170,7 @@ The header carries compact roots. Public challengers still need the data those
 roots authenticate.
 
 The launch-gate implementation uses DA committee retention as the production
-source for challenger payloads. A challenger fetches retained `DaPayloadV2` by
+source for challenger payloads. A challenger fetches retained `DaPayloadV1` by
 `header_hash` from DA committee endpoints such as:
 
 ```text
@@ -200,13 +198,13 @@ The DA/proof-data network must publish, retain, replicate, and attest:
   versions.
 
 This does not mean the Midgard producer must submit a separate witness bundle
-for every possible proof. The retained `DaPayloadV2` contains the header, final
+for every possible proof. The retained `DaPayloadV1` contains the header, final
 UTxO members, source entries, transition trace entries, event-to-step entries,
 and counts. Challengers derive membership, non-membership, boundary, link, count,
 and one-step witnesses from that retained data.
 
 ```text
-DaPayloadV2 {
+DaPayloadV1 {
   version
   block_body {
     header_hash
@@ -1087,7 +1085,7 @@ MidgardTransitionStepV1
   `total_event_count`, and `transition_step_count`.
 - Block production builds deterministic source roots, event-to-step members, and
   dense transition trace members in phase order.
-- DA payload v2 retains the header, final UTxO members, all source-root members,
+- DA payload V1 retains the header, final UTxO members, all source-root members,
   transition trace members, event-to-step members, and counts. DA committee
   validation recomputes roots/counts and fails closed on malformed coverage.
 - Aiken transition-trace proof validators cover trace boundary, trace link,

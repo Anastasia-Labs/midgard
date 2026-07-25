@@ -38,41 +38,38 @@ validator main(
         // 1. Generic validations for passing the provided bad tx to the next
         //    step must pass.
         let
-          _own_script_hash,
-          _computation_thread_token_asset_name,
-          _fraud_prover,
-          _m_input_state_data,
-          output_script_hash,
-          output_state_data,
-          header,
-          _bad_tx_id,
-          _bad_tx,
-          bad_tx_field_preimage,
-        <-
-          pass_tx_to_next_step(
-            computation_thread_token_policy_id,
-            hub_oracle,
-            datum,
-            tx_inclusion_args,
-            own_out_ref,
-            tx,
-          )
+            _own_script_hash,
+            _computation_thread_token_asset_name,
+            _fraud_prover,
+            _m_input_state_data,
+            output_script_hash,
+            output_state_data,
+            header,
+            _bad_tx_id,
+            _bad_tx,
+            bad_tx_field_preimage
+          <- pass_tx_to_next_step(
+          computation_thread_token_policy_id,
+          hub_oracle,
+          datum,
+          tx_inclusion_args,
+          own_out_ref,
+          tx,
+        )
 
         // 2. Bad transaction's body must be provided.
         expect TxBodyProvided(bad_tx_body) = bad_tx_field_preimage
 
-        let ledger_state.Header { prev_utxos_root, transactions_root, .. } =
-          header
+        let ledger_state.HeaderV1 { prev_utxos_root, transactions_root, .. } = header
 
         // 3. The UTxO must be produced at next step's script hash with reference
         //    inputs hash of the bad transaction, and relevant block roots.
         expect output_script_hash == step_02_validator_script_hash
-        let expected_output_state: Data =
-          step_02.State {
-            bad_tx_reference_inputs_hash: bad_tx_body.reference_inputs,
-            blocks_prev_utxos_root: prev_utxos_root,
-            blocks_transactions_root: transactions_root,
-          }
+        let expected_output_state: Data = step_02.State {
+          bad_tx_reference_inputs_hash: bad_tx_body.reference_inputs,
+          blocks_prev_utxos_root: prev_utxos_root,
+          blocks_transactions_root: transactions_root,
+        }
         expect output_state_data == expected_output_state
 
         // Done.

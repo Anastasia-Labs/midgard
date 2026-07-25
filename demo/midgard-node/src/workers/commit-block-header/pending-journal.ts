@@ -8,7 +8,11 @@ import {
 } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import * as Ledger from "@/database/utils/ledger.js";
-import { type Database, Lucid } from "@/services/index.js";
+import {
+  type ContractDeploymentIdentityValue,
+  type Database,
+  Lucid,
+} from "@/services/index.js";
 import {
   serializeStateQueueUTxO,
   type WorkerInput,
@@ -23,13 +27,14 @@ import {
 import {
   fetchExpectedStateQueueTailLocal,
   getConfirmedStateFromStateQueueDatumLocal,
-  getHeaderFromStateQueueDatumLocal,
+  getHeaderV1FromStateQueueDatumLocal,
   stateQueueBaseHeaderHash,
   stateQueueOutRef,
 } from "./state-queue.js";
 
 const baseRootsFromStateQueueTail = (
   latestBlock: SDK.StateQueueUTxO,
+  _consensusProfile: ContractDeploymentIdentityValue["consensusProfile"],
 ): Effect.Effect<
   PendingBlockFinalizationsDB.PendingBlockFinalizationMetadata["baseRoots"],
   SDK.DataCoercionError,
@@ -48,7 +53,9 @@ const baseRootsFromStateQueueTail = (
       };
     }
 
-    const header = yield* getHeaderFromStateQueueDatumLocal(latestBlock.datum);
+    const header = yield* getHeaderV1FromStateQueueDatumLocal(
+      latestBlock.datum,
+    );
     return {
       utxosRoot: header.utxosRoot,
       forcedTransactionsRoot: header.forcedTransactionsRoot,
@@ -73,19 +80,14 @@ export const resolvePendingJournalLedgerState = ({
   readonly implicitGenesisEntries: readonly Ledger.MinimalEntry[];
   readonly transitionDelta: LedgerDelta;
 }): Effect.Effect<
-  | {
-      readonly ledgerDelta: LedgerDelta;
-      readonly utxoEntries: readonly [];
-    }
-  | {
-      readonly ledgerDelta: undefined;
-      readonly utxoEntries: readonly UtxoPayloadEntry[];
-    },
+  {
+    readonly ledgerDelta: LedgerDelta;
+  },
   DatabaseError
 > =>
   Effect.gen(function* () {
     if (recordedBaseUtxosRoot === selectedBaseUtxosRoot) {
-      return { ledgerDelta: transitionDelta, utxoEntries: [] };
+      return { ledgerDelta: transitionDelta };
     }
     if (
       recordedBaseUtxosRoot !== SDK.EMPTY_MERKLE_TREE_ROOT ||
@@ -148,7 +150,7 @@ export const resolvePendingJournalLedgerState = ({
         new DatabaseError({
           table: PendingBlockFinalizationsDB.tableName,
           message:
-            "Self-contained first-block journal snapshot has the wrong final UTxO count",
+            "First-block V1 ledger delta has the wrong final UTxO count",
           cause: `actual=${produced.length.toString()},expected=${expectedFinalEntryCount.toString()}`,
         }),
       );
@@ -159,7 +161,7 @@ export const resolvePendingJournalLedgerState = ({
           new DatabaseError({
             table: PendingBlockFinalizationsDB.tableName,
             message:
-              "Failed to verify the self-contained first-block journal snapshot",
+              "Failed to verify the first-block V1 ledger delta",
             cause,
           }),
       ),
@@ -169,12 +171,17 @@ export const resolvePendingJournalLedgerState = ({
         new DatabaseError({
           table: PendingBlockFinalizationsDB.tableName,
           message:
-            "Self-contained first-block journal snapshot does not reproduce the expected UTxO root",
+            "First-block V1 ledger delta does not reproduce the expected UTxO root",
           cause: `recovered_root=${recoveredRoot},expected_root=${expectedFinalUtxosRoot}`,
         }),
       );
     }
-    return { ledgerDelta: undefined, utxoEntries: produced };
+    return {
+      ledgerDelta: {
+        spent: [],
+        produced,
+      },
+    };
   });
 
 export const buildPendingJournalMetadata = ({
@@ -183,12 +190,14 @@ export const buildPendingJournalMetadata = ({
   blockEndTimeMs,
   expectedRoots,
   expectedCounts,
+  consensusProfile,
 }: {
   readonly latestBlock: SDK.StateQueueUTxO;
   readonly workerInput: WorkerInput;
   readonly blockEndTimeMs: number;
   readonly expectedRoots: PendingBlockFinalizationsDB.PendingBlockFinalizationMetadata["expectedRoots"];
   readonly expectedCounts: PendingBlockFinalizationsDB.PendingBlockFinalizationMetadata["expectedCounts"];
+  readonly consensusProfile: ContractDeploymentIdentityValue["consensusProfile"];
 }): Effect.Effect<
   PendingBlockFinalizationsDB.PendingBlockFinalizationMetadata,
   | SDK.CmlUnexpectedError
@@ -204,8 +213,12 @@ export const buildPendingJournalMetadata = ({
     const serializedBase = yield* serializeStateQueueUTxO(latestBlock);
     const baseHeaderHash = yield* stateQueueBaseHeaderHash(latestBlock);
     const baseTailOutRef = stateQueueOutRef(latestBlock);
-    const baseRoots = yield* baseRootsFromStateQueueTail(latestBlock);
+    const baseRoots = yield* baseRootsFromStateQueueTail(
+      latestBlock,
+      consensusProfile,
+    );
     return {
+      consensusProfileId: consensusProfile.profileId,
       stateQueueLeaseToken,
       baseSnapshotId:
         workerInput.data.baseSnapshotId ??
@@ -268,6 +281,7 @@ export const assertLiveTailCommitBase = (
 export const resolveLiveTailCommitBase = (
   contracts: SDK.MidgardValidators,
   expectedTail: SDK.StateQueueUTxO,
+  _consensusProfile: ContractDeploymentIdentityValue["consensusProfile"],
 ): Effect.Effect<
   SDK.StateQueueUTxO,
   | SDK.LucidError
@@ -327,6 +341,9 @@ export const assertPendingJournalCompleteness = ({
   transitionTraceMemberCount,
   eventToStepRoot,
   eventToStepMemberCount,
+  validationTracesRoot = SDK.EMPTY_MERKLE_TREE_ROOT,
+  validationTraceMemberCount = 0,
+  expectedValidationTraceCount = 0,
 }: {
   readonly utxoRoot: string;
   readonly utxoMemberCount: number;
@@ -344,6 +361,9 @@ export const assertPendingJournalCompleteness = ({
   readonly transitionTraceMemberCount: number;
   readonly eventToStepRoot: string;
   readonly eventToStepMemberCount: number;
+  readonly validationTracesRoot?: string;
+  readonly validationTraceMemberCount?: number;
+  readonly expectedValidationTraceCount?: number;
 }): Effect.Effect<void, DatabaseError> =>
   Effect.gen(function* () {
     if (utxoRoot !== emptyTxRoot && utxoMemberCount <= 0 && !hasLedgerDelta) {
@@ -428,6 +448,29 @@ export const assertPendingJournalCompleteness = ({
           message:
             "Refusing to submit commit because a non-empty event-to-step root would have no pending journal event-to-step members",
           cause: `event_to_step_root=${eventToStepRoot}`,
+        }),
+      );
+    }
+    if (
+      validationTracesRoot !== SDK.EMPTY_MERKLE_TREE_ROOT &&
+      validationTraceMemberCount <= 0
+    ) {
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: PendingBlockFinalizationsDB.tableName,
+          message:
+            "Refusing to submit commit because a non-empty validation traces root would have no pending journal validation descriptors",
+          cause: `validation_traces_root=${validationTracesRoot}`,
+        }),
+      );
+    }
+    if (validationTraceMemberCount !== expectedValidationTraceCount) {
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: PendingBlockFinalizationsDB.tableName,
+          message:
+            "Refusing to submit commit because validation trace descriptor membership does not match the header count",
+          cause: `validation_trace_members=${validationTraceMemberCount.toString()},expected_validation_trace_count=${expectedValidationTraceCount.toString()}`,
         }),
       );
     }

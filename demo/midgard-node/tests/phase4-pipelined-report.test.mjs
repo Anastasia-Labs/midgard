@@ -64,7 +64,7 @@ const reportFixture = ({
   daQueueSlope = -0.001,
 } = {}) => ({
   benchmark: "midgard-l2-throughput",
-  version: 2,
+  version: 1,
   scenario: PHASE4_ONE_HOUR_SCENARIO,
   scenarioClass: "B",
   metadata: {

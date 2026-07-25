@@ -19,8 +19,8 @@ import {
   EventKeySchema,
   type EventToStepValue,
   EventToStepValueSchema,
-  type ForcedInclusionTx,
-  ForcedInclusionTxSchema,
+  type ForcedInclusionTxV1,
+  ForcedInclusionTxV1Schema,
   type TransitionStep,
   TransitionStepSchema,
   type WithdrawalInfo,
@@ -31,22 +31,24 @@ type DataSchema = Parameters<typeof Data.Nullable>[0];
 
 export const RootDomainSchema = Data.Enum([
   Data.Literal("WithdrawalsRootDomain"),
-  Data.Literal("ForcedTransactionsRootDomain"),
-  Data.Literal("TransactionsRootDomain"),
+  Data.Literal("ForcedTransactionsV1RootDomain"),
+  Data.Literal("TransactionsV1RootDomain"),
   Data.Literal("DepositsRootDomain"),
   Data.Literal("TransitionTraceRootDomain"),
   Data.Literal("EventToStepRootDomain"),
+  Data.Literal("ValidationTracesRootDomain"),
 ]);
 export type RootDomain = Data.Static<typeof RootDomainSchema>;
 export const RootDomain = RootDomainSchema as unknown as RootDomain;
 
 export const ROOT_DOMAINS = {
   withdrawals: "WithdrawalsRootDomain",
-  forcedTransactions: "ForcedTransactionsRootDomain",
-  transactions: "TransactionsRootDomain",
+  forcedTransactionsV1: "ForcedTransactionsV1RootDomain",
+  transactionsV1: "TransactionsV1RootDomain",
   deposits: "DepositsRootDomain",
   transitionTrace: "TransitionTraceRootDomain",
   eventToStep: "EventToStepRootDomain",
+  validationTraces: "ValidationTracesRootDomain",
 } as const satisfies Record<string, RootDomain>;
 
 export type RootCountProof = {
@@ -173,10 +175,10 @@ export const WithdrawalSourceMembershipProof =
   WithdrawalSourceMembershipProofSchema as unknown as WithdrawalSourceMembershipProof;
 
 export const ForcedTransactionSourceMembershipProofSchema =
-  rootMembershipProofSchema(OutputReferenceSchema, ForcedInclusionTxSchema);
+  rootMembershipProofSchema(OutputReferenceSchema, ForcedInclusionTxV1Schema);
 export type ForcedTransactionSourceMembershipProof = RootMembershipProof<
   OutputReference,
-  ForcedInclusionTx
+  ForcedInclusionTxV1
 >;
 export const ForcedTransactionSourceMembershipProof =
   ForcedTransactionSourceMembershipProofSchema as unknown as ForcedTransactionSourceMembershipProof;

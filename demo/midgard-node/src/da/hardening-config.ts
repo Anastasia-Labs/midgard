@@ -1,4 +1,6 @@
-export type DaPayloadEnvelopeMode = "off" | "identity" | "zstd";
+import type { DaPayloadEmissionMode } from "@al-ft/midgard-core/da-payload-sizing";
+
+export type DaPayloadEnvelopeMode = DaPayloadEmissionMode;
 
 export type DaHardeningConfig = {
   readonly envelopeMode: DaPayloadEnvelopeMode;
@@ -27,10 +29,10 @@ const positiveInteger = (
 export const readDaHardeningConfig = (
   env: NodeJS.ProcessEnv = process.env,
 ): DaHardeningConfig => {
-  const rawMode = env.MIDGARD_DA_PAYLOAD_ENVELOPE?.trim() || "off";
-  if (rawMode !== "off" && rawMode !== "identity" && rawMode !== "zstd") {
+  const rawMode = env.MIDGARD_DA_PAYLOAD_ENVELOPE?.trim() || "identity";
+  if (rawMode !== "identity" && rawMode !== "zstd") {
     throw new Error(
-      "MIDGARD_DA_PAYLOAD_ENVELOPE must be off, identity, or zstd",
+      "MIDGARD_DA_PAYLOAD_ENVELOPE must be identity or zstd",
     );
   }
   const zstdLevel = positiveInteger(

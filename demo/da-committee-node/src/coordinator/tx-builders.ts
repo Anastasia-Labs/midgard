@@ -29,7 +29,7 @@ type RedeemerContextLike = {
 
 export type DaAttestationTarget = {
   readonly stateQueueUtxo: SDK.StateQueueUTxO;
-  readonly stateQueueNode: SDK.StateQueueNode;
+  readonly stateQueueNode: SDK.StateQueueNodeV1;
   readonly headerHash: string;
 };
 
@@ -215,7 +215,7 @@ export const buildApplyAttestationTx = async ({
   );
   const updatedStateQueueDatum = SDK.encodeLinkedListNodeView({
     ...target.stateQueueUtxo.datum,
-    data: SDK.castStateQueueNodeToData({
+    data: SDK.castStateQueueNodeV1ToData({
       header: target.stateQueueNode.header,
       da_attestation: contracts.daAttestation.policyId,
     }) as SDK.LinkedListNodeView["data"],

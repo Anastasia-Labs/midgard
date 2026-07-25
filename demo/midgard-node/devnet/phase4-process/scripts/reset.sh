@@ -37,7 +37,7 @@ jq -e \
   --arg cardanoImage "$PHASE4_CARDANO_NODE_IMAGE" --arg ogmiosImage "$PHASE4_OGMIOS_IMAGE" \
   --arg kupoImage "$PHASE4_KUPO_IMAGE" --arg postgresImage "$PHASE4_POSTGRES_IMAGE" \
   --arg phasRegistrationProofSha256 "$phas_registration_proof_sha" \
-  '.schemaVersion == "midgard-phase4-matched-snapshot-identity-v2" and
+  '.schemaVersion == "midgard-phase4-matched-snapshot-identity-v1" and
    .composeProject == $composeProject and .networkMagic == $networkMagic and
    .postgresDatabase == $postgresDatabase and .deploymentManifestSha256 == $deploymentManifestSha256 and
    .images.cardanoNode.ref == $cardanoImage and .images.ogmios.ref == $ogmiosImage and
@@ -125,7 +125,7 @@ jq -e \
   --arg postgresDatabase "$MIDGARD_PHASE4_POSTGRES_DATABASE" \
   --arg deploymentManifestSha256 "$manifest_sha" \
   --arg phasRegistrationProofSha256 "$phas_registration_proof_sha" \
-  '.schemaVersion == "midgard-phase4-matched-snapshot-identity-v2" and
+  '.schemaVersion == "midgard-phase4-matched-snapshot-identity-v1" and
    .composeProject == $composeProject and
    .networkMagic == $networkMagic and
    .postgresDatabase == $postgresDatabase and
@@ -164,7 +164,7 @@ attestation_path="$MIDGARD_PHASE4_RUN_DIR/work/reset-attestation.json"
 attestation_pending_path="$MIDGARD_PHASE4_RUN_DIR/work/reset-attestation.pending.json"
 rm -f "$attestation_path" "$attestation_pending_path"
 jq -n \
-  --arg schemaVersion midgard-phase4-local-devnet-reset-attestation-v3 \
+  --arg schemaVersion midgard-phase4-local-devnet-reset-attestation-v1 \
   --arg scenarioLabel "$scenario_label" \
   --arg composeProject "$MIDGARD_PHASE4_COMPOSE_PROJECT" \
   --argjson networkMagic "$MIDGARD_PHASE4_NETWORK_MAGIC" \

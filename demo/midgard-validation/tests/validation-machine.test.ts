@@ -1,0 +1,1047 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+import {
+  buildMidgardValidationTraceTree,
+  computeMidgardNativeTxProofCommitmentV1,
+  deriveMidgardNativeTxProofSourceV1,
+  encodeCbor,
+  encodeMidgardCekProgramMaterialSidecarV1,
+  encodeMidgardTxOutput,
+  hashMidgardValidationMachineStateV1,
+  MIDGARD_CONSENSUS_PROFILE_V1,
+  MIDGARD_VALIDATION_DISPUTE_V1_VERSION,
+  verifyMidgardValidationTraceProofV1,
+} from "@al-ft/midgard-core";
+import { Lambda, UPLCEncoder, UPLCProgram, UPLCVar } from "@harmoniclabs/uplc";
+import { Effect } from "effect";
+import { describe, expect, it } from "vitest";
+
+import { parseExactAikenDataCbor } from "../../midgard-fault-proofs/src/aiken-blueprint-data.js";
+import {
+  advanceMidgardResolvedInputsAccumulatorV1,
+  buildDeterministicValidationMachineTrace,
+  buildMidgardCanonicalCekProgramV1,
+  buildValidationMachineLedgerMutationSteps,
+  type DeterministicValidationMachineTrace,
+  encodeValidationBoundaryEvidenceCborV1,
+  initialMidgardResolvedInputsAccumulatorV1,
+  MidgardRedeemerTag,
+  RejectCodes,
+} from "../src/index.js";
+import {
+  hashScriptWitness,
+  makeNativeTx,
+  makeOutput,
+  makeProtectedScriptOutput,
+  makeRedeemersCbor,
+  nativeScriptWitness,
+  outRefFromByte,
+  outRefFromTxId,
+  plutusV3ScriptWitness,
+  TEST_ADDRESS_BYTES,
+} from "./validation-fixtures.js";
+
+const root = (byte: number): string => Buffer.alloc(32, byte).toString("hex");
+const validationDisputeBlueprint = JSON.parse(
+  readFileSync(
+    resolve(process.cwd(), "../../onchain/aiken/plutus.json"),
+    "utf8",
+  ),
+) as unknown;
+
+const validateBoundaryAbiAndCollectAuxiliaryKinds = (
+  trace: DeterministicValidationMachineTrace,
+): {
+  readonly kinds: ReadonlySet<string>;
+  readonly maxArgumentsBytes: number;
+} => {
+  const validated = new Set<string>();
+  let maxArgumentsBytes = 0;
+  for (let lowIndex = 0; lowIndex < trace.states.length - 1; lowIndex += 1) {
+    const auxiliaryKind = trace.witnesses[lowIndex]!.auxiliary?.kind ?? "none";
+    const highIndex = lowIndex + 1;
+    const challengerStates = trace.states.map((state, index) => {
+      if (index !== highIndex && index !== trace.states.length - 1) {
+        return state;
+      }
+      const workRoot = Buffer.from(state.workRoot);
+      workRoot[0] = workRoot[0]! ^ 0x01;
+      return { ...state, workRoot };
+    });
+    const challengerTree = buildMidgardValidationTraceTree(
+      challengerStates.map(hashMidgardValidationMachineStateV1),
+      trace.verdict,
+      trace.tree.descriptor.rejectionCodeHash,
+    );
+    const argumentsCbor = encodeValidationBoundaryEvidenceCborV1({
+      dispute: {
+        version: MIDGARD_VALIDATION_DISPUTE_V1_VERSION,
+        operatorDescriptor: trace.tree.descriptor,
+        challengerDescriptor: challengerTree.descriptor,
+        lowIndex,
+        highIndex,
+        agreedLowHash: hashMidgardValidationMachineStateV1(
+          trace.states[lowIndex]!,
+        ),
+        operatorHighHash: trace.tree.proofs[highIndex]!.stateHash,
+        challengerHighHash: challengerTree.proofs[highIndex]!.stateHash,
+        round: 1,
+        responseDeadline: 1_800_000_000_000,
+        turn: { type: "readyForOneStep" },
+      },
+      operatorTrace: trace,
+      challengerTrace: {
+        ...trace,
+        states: challengerStates,
+        tree: challengerTree,
+      },
+    });
+    parseExactAikenDataCbor({
+      blueprint: validationDisputeBlueprint,
+      definitionName:
+        "midgard/validation_resolution_v1/ValidationBoundaryEvidenceV1",
+      cbor: argumentsCbor.toString("hex"),
+      maxBytes: 16 * 1024 - 1,
+    });
+    maxArgumentsBytes = Math.max(maxArgumentsBytes, argumentsCbor.length);
+    validated.add(auxiliaryKind);
+  }
+  return { kinds: validated, maxArgumentsBytes };
+};
+
+const context = {
+  consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+  eventKeyCbor: encodeCbor([2n, Buffer.alloc(32, 0x41)]),
+  sourceKind: "normal" as const,
+  blockEndTimeMs: 1_750_000_000_000,
+  expectedNetworkId: 0n,
+  minFeeA: 0n,
+  minFeeB: 0n,
+  blockSlot: 100n,
+  ledgerMutationSteps: [],
+};
+
+const buildAcceptingIdentityProgram = () =>
+  buildMidgardCanonicalCekProgramV1(
+    Buffer.from(
+      UPLCEncoder.compile(
+        new UPLCProgram([1, 1, 0], new Lambda(new UPLCVar(0))),
+      ).toBuffer().buffer,
+    ),
+  );
+
+describe("deterministic validation machine", () => {
+  it("replays an accepted transaction through bounded field-reveal instructions", async () => {
+    const spent = outRefFromByte(0x11);
+    const output = makeOutput(10n);
+    const transaction = makeNativeTx({
+      version: 1n,
+      spendInputs: [spent],
+      outputs: [output],
+    });
+    const expectedLedgerOps = [
+      { type: "delete" as const, key: spent },
+      {
+        type: "insert" as const,
+        key: outRefFromTxId(transaction.txId),
+        value: output,
+      },
+    ];
+    const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps(
+      {
+        initialEntries: [{ outRef: spent, output }],
+        operations: expectedLedgerOps,
+      },
+    );
+    const trace = await Effect.runPromise(
+      buildDeterministicValidationMachineTrace({
+        ...context,
+        transactionId: transaction.txId,
+        canonicalTransactionCbor: transaction.txCbor,
+        priorUtxosRoot: ledgerMutationSteps[0]!.preRoot.toString("hex"),
+        postUtxosRoot: ledgerMutationSteps.at(-1)!.postRoot.toString("hex"),
+        ledgerWitnessEntries: [{ outRef: spent, output }],
+        expectedLedgerOps,
+        ledgerMutationSteps,
+        expectedVerdict: "accepted",
+        expectedRejectionCode: null,
+      }),
+    );
+
+    expect(trace.states.map((state) => state.phase)).toEqual([
+      ...Array<string>(9).fill("canonicalDecode"),
+      "compactBinding",
+      "staticLedgerRules",
+      "inputSets",
+      "signatures",
+      "phaseANativeScripts",
+      "phaseAScriptPreconditions",
+      "resolveInputs",
+      "resolveInputs",
+      "resolveInputs",
+      "scriptSources",
+      "scriptSources",
+      "scriptSources",
+      "scriptSources",
+      "scriptSources",
+      "scriptSources",
+      "scriptSources",
+      "scriptSources",
+      "scriptSources",
+      "scriptSources",
+      "scriptSources",
+      "scriptSources",
+      "scriptSources",
+      "nativeScripts",
+      "scriptIntegrity",
+      "cek",
+      ...Array<string>(8).fill("valueAndMint"),
+      ...Array<string>(6).fill("ledgerDelta"),
+      "terminal",
+    ]);
+    const canonicalWitnesses = trace.witnesses.filter(
+      (witness) => witness.phase === "canonicalDecode",
+    );
+    expect(canonicalWitnesses).toHaveLength(9);
+    expect(
+      canonicalWitnesses.every(
+        (witness) => {
+          if (witness.auxiliary === null) return witness.cbor.length < 16 * 1024;
+          return (
+            witness.auxiliary.kind === "transactionFieldChunk" &&
+            witness.auxiliary.chunkProof.chunk.length <= 4_095 &&
+            witness.cbor.length +
+              witness.auxiliary.chunkProof.chunk.length <
+              16 * 1024
+          );
+        },
+      ),
+    ).toBe(true);
+    const scriptSourceWitnesses = trace.witnesses.filter(
+      (witness) => witness.phase === "scriptSources",
+    );
+    expect(scriptSourceWitnesses).toHaveLength(13);
+    expect(
+      scriptSourceWitnesses
+        .slice(0, 2)
+        .every(
+          (witness) => witness.auxiliary?.kind === "transactionFieldPreimage",
+        ),
+    ).toBe(true);
+    expect(scriptSourceWitnesses[2]?.auxiliary?.kind).toBe(
+      "transactionFieldPairPreimage",
+    );
+    expect(scriptSourceWitnesses[3]?.auxiliary?.kind).toBe(
+      "resolvedInputReplay",
+    );
+    expect(scriptSourceWitnesses[4]?.auxiliary).toBeNull();
+    expect(scriptSourceWitnesses[5]?.auxiliary?.kind).toBe(
+      "transactionFieldPreimage",
+    );
+    expect(scriptSourceWitnesses[6]?.auxiliary?.kind).toBe("outputReplay");
+    expect(scriptSourceWitnesses[7]?.auxiliary).toBeNull();
+    expect(scriptSourceWitnesses[8]?.auxiliary?.kind).toBe(
+      "transactionFieldPreimage",
+    );
+    expect(scriptSourceWitnesses[9]?.auxiliary?.kind).toBe(
+      "transactionFieldPreimage",
+    );
+    expect(scriptSourceWitnesses[10]?.auxiliary).toBeNull();
+    expect(scriptSourceWitnesses[11]?.auxiliary).toBeNull();
+    expect(scriptSourceWitnesses[12]?.auxiliary).toBeNull();
+    expect(
+      canonicalWitnesses.every(
+        (witness) => {
+          if (witness.cbor.includes(transaction.txCbor)) return false;
+          return (
+            witness.auxiliary === null ||
+            (witness.auxiliary.kind === "transactionFieldChunk" &&
+              !witness.auxiliary.chunkProof.chunk.includes(transaction.txCbor))
+          );
+        },
+      ),
+    ).toBe(true);
+    const compactBindingWitness = trace.witnesses.find(
+      (witness) => witness.phase === "compactBinding",
+    );
+    expect(compactBindingWitness).toBeDefined();
+    expect(compactBindingWitness!.cbor.includes(transaction.txCbor)).toBe(
+      false,
+    );
+    const staticRulesWitness = trace.witnesses.find(
+      (witness) => witness.phase === "staticLedgerRules",
+    );
+    expect(staticRulesWitness).toBeDefined();
+    expect(staticRulesWitness!.cbor.includes(transaction.txCbor)).toBe(false);
+    expect(trace.tree.descriptor.verdict).toBe("accepted");
+    expect(trace.states[0]!.transactionCommitment).toEqual(
+      computeMidgardNativeTxProofCommitmentV1(
+        deriveMidgardNativeTxProofSourceV1(transaction.tx),
+      ),
+    );
+    expect(
+      trace.tree.proofs.every((proof) =>
+        verifyMidgardValidationTraceProofV1({
+          descriptor: trace.tree.descriptor,
+          proof,
+        }),
+      ),
+    ).toBe(true);
+    const oneStepAbi = validateBoundaryAbiAndCollectAuxiliaryKinds(trace);
+    expect(oneStepAbi.kinds.size).toBeGreaterThanOrEqual(8);
+    expect(oneStepAbi.maxArgumentsBytes).toBeLessThan(16 * 1024);
+  });
+
+  it("matches the L1 resolved-input accumulator vector", () => {
+    const initial = initialMidgardResolvedInputsAccumulatorV1();
+    expect(initial.toString("hex")).toBe(
+      "07eb401e2f7e5de17444414ec48a5d9dca455dea72f4675cc2b08bf5b4e39979",
+    );
+    expect(
+      advanceMidgardResolvedInputsAccumulatorV1({
+        accumulator: initial,
+        sourceKind: "spend",
+        key: Buffer.from("010203", "hex"),
+        value: Buffer.from("040506", "hex"),
+      }).toString("hex"),
+    ).toBe("97e2dbdabf1ac8b5046e02f46c8d081ade2d81296b174bf77b9b8c69bd59c9c0");
+  });
+
+  it("emits the exact incremental context and CEK trace for PlutusV3", async () => {
+    const spent = outRefFromByte(0x1d);
+    const program = buildAcceptingIdentityProgram();
+    const script = plutusV3ScriptWitness(program.envelopeCbor);
+    const scriptHash = hashScriptWitness(script);
+    const spentOutput = makeProtectedScriptOutput(scriptHash, 10n);
+    const output = makeOutput(10n);
+    const transaction = makeNativeTx({
+      version: 1n,
+      spendInputs: [spent],
+      outputs: [output],
+      scriptWitnesses: [script],
+      redeemerTxWitsPreimageCbor: makeRedeemersCbor([
+        {
+          tag: MidgardRedeemerTag.Spend,
+          index: 0n,
+          exUnits: [1_000_000_000n, 1_000_000_000n],
+        },
+      ]),
+      scriptLanguages: ["PlutusV3"],
+    });
+    const expectedLedgerOps = [
+      { type: "delete" as const, key: spent },
+      {
+        type: "insert" as const,
+        key: outRefFromTxId(transaction.txId),
+        value: output,
+      },
+    ];
+    const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps(
+      {
+        initialEntries: [{ outRef: spent, output: spentOutput }],
+        operations: expectedLedgerOps,
+      },
+    );
+    const trace = await Effect.runPromise(
+      buildDeterministicValidationMachineTrace({
+        ...context,
+        transactionId: transaction.txId,
+        canonicalTransactionCbor: transaction.txCbor,
+        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([
+          ...program.material.values(),
+        ]),
+        priorUtxosRoot: ledgerMutationSteps[0]!.preRoot.toString("hex"),
+        postUtxosRoot: ledgerMutationSteps.at(-1)!.postRoot.toString("hex"),
+        ledgerWitnessEntries: [{ outRef: spent, output: spentOutput }],
+        expectedLedgerOps,
+        ledgerMutationSteps,
+        expectedVerdict: "accepted",
+        expectedRejectionCode: null,
+      }),
+    );
+
+    const cekWitnesses = trace.witnesses.filter(
+      (witness) => witness.phase === "cek",
+    );
+    expect(cekWitnesses.map((witness) => witness.auxiliary?.kind)).toEqual(
+      expect.arrayContaining([
+        "nativeExecutionScan",
+        "redeemerScan",
+        "cekResolvedContextItem",
+        "cekOutputContextItem",
+        "cekSignerContextItem",
+        "cekRedeemerContextSelect",
+        "cekDataScanStep",
+        "cekContextFinalizeSpend",
+        "cekContextAssemble",
+        "cekTxInfoFinalize",
+        "cekContextSeed",
+        "cekCoreStep",
+      ]),
+    );
+    const cekStates = trace.states.filter((state) => state.phase === "cek");
+    expect(cekStates.at(-1)!.executionCpu).toBeGreaterThan(0n);
+    expect(cekStates.at(-1)!.executionMemory).toBeGreaterThan(0n);
+    expect(trace.verdict).toBe("accepted");
+    const oneStepAbi = validateBoundaryAbiAndCollectAuxiliaryKinds(trace);
+    expect(oneStepAbi.kinds.size).toBeGreaterThan(15);
+    expect(oneStepAbi.maxArgumentsBytes).toBeLessThan(16 * 1024);
+  });
+
+  it("executes an authenticated PlutusV3 reference script from a reference input", async () => {
+    const spent = outRefFromByte(0x1e);
+    const reference = outRefFromByte(0x1f);
+    const program = buildAcceptingIdentityProgram();
+    const script = plutusV3ScriptWitness(program.envelopeCbor);
+    const scriptHash = hashScriptWitness(script);
+    const spentOutput = makeProtectedScriptOutput(scriptHash, 10n);
+    const referenceOutput = encodeMidgardTxOutput({
+      address: TEST_ADDRESS_BYTES,
+      value: { lovelace: 1n, assets: new Map() },
+      script_ref: script,
+    });
+    const output = makeOutput(10n);
+    const transaction = makeNativeTx({
+      version: 1n,
+      spendInputs: [spent],
+      referenceInputs: [reference],
+      outputs: [output],
+      redeemerTxWitsPreimageCbor: makeRedeemersCbor([
+        {
+          tag: MidgardRedeemerTag.Spend,
+          index: 0n,
+          exUnits: [1_000_000_000n, 1_000_000_000n],
+        },
+      ]),
+      scriptLanguages: ["PlutusV3"],
+    });
+    const expectedLedgerOps = [
+      { type: "delete" as const, key: spent },
+      {
+        type: "insert" as const,
+        key: outRefFromTxId(transaction.txId),
+        value: output,
+      },
+    ];
+    const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps(
+      {
+        initialEntries: [
+          { outRef: spent, output: spentOutput },
+          { outRef: reference, output: referenceOutput },
+        ],
+        operations: expectedLedgerOps,
+      },
+    );
+    const trace = await Effect.runPromise(
+      buildDeterministicValidationMachineTrace({
+        ...context,
+        transactionId: transaction.txId,
+        canonicalTransactionCbor: transaction.txCbor,
+        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([
+          ...program.material.values(),
+        ]),
+        priorUtxosRoot: ledgerMutationSteps[0]!.preRoot.toString("hex"),
+        postUtxosRoot: ledgerMutationSteps.at(-1)!.postRoot.toString("hex"),
+        ledgerWitnessEntries: [
+          { outRef: spent, output: spentOutput },
+          { outRef: reference, output: referenceOutput },
+        ],
+        expectedLedgerOps,
+        ledgerMutationSteps,
+        expectedVerdict: "accepted",
+        expectedRejectionCode: null,
+      }),
+    );
+
+    const referenceSource = trace.witnesses.find(
+      (witness) =>
+        witness.auxiliary?.kind === "scriptSourceScan" &&
+        witness.auxiliary.originKind === "reference",
+    );
+    expect(referenceSource?.auxiliary).toMatchObject({
+      kind: "scriptSourceScan",
+      originKind: "reference",
+    });
+    expect(
+      trace.witnesses.some(
+        (witness) =>
+          witness.auxiliary?.kind === "cekResolvedContextItem" &&
+          witness.auxiliary.sourceKind === "reference",
+      ),
+    ).toBe(true);
+    expect(
+      trace.witnesses.some(
+        (witness) => witness.auxiliary?.kind === "cekCoreStep",
+      ),
+    ).toBe(true);
+    expect(trace.verdict).toBe("accepted");
+    expect([...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds]).toEqual(
+      expect.arrayContaining([
+        "scriptSourceScan",
+        "cekResolvedContextItem",
+        "cekCoreStep",
+      ]),
+    );
+  });
+
+  it.each([
+    { operation: "mint", quantity: 5n },
+    { operation: "burn", quantity: -5n },
+  ])(
+    "executes scripted $operation through the exact mint context and CEK trace",
+    async ({ quantity }) => {
+      const spent = outRefFromByte(quantity > 0n ? 0x31 : 0x32);
+      const program = buildAcceptingIdentityProgram();
+      const script = plutusV3ScriptWitness(program.envelopeCbor);
+      const policyId = Buffer.from(hashScriptWitness(script), "hex");
+      const assetName = Buffer.from("aced", "hex");
+      const assets = new Map([
+        [policyId.toString("hex"), new Map([[assetName.toString("hex"), 5n]])],
+      ]);
+      const spentOutput =
+        quantity > 0n ? makeOutput(10n) : makeOutput(10n, undefined, assets);
+      const output =
+        quantity > 0n ? makeOutput(10n, undefined, assets) : makeOutput(10n);
+      const transaction = makeNativeTx({
+        version: 1n,
+        spendInputs: [spent],
+        outputs: [output],
+        scriptWitnesses: [script],
+        mintPreimageCbor: encodeCbor(
+          new Map([[policyId, new Map([[assetName, quantity]])]]),
+        ),
+        redeemerTxWitsPreimageCbor: makeRedeemersCbor([
+          {
+            tag: MidgardRedeemerTag.Mint,
+            index: 0n,
+            exUnits: [1_000_000_000n, 1_000_000_000n],
+          },
+        ]),
+        scriptLanguages: ["PlutusV3"],
+      });
+      const expectedLedgerOps = [
+        { type: "delete" as const, key: spent },
+        {
+          type: "insert" as const,
+          key: outRefFromTxId(transaction.txId),
+          value: output,
+        },
+      ];
+      const ledgerMutationSteps =
+        await buildValidationMachineLedgerMutationSteps({
+          initialEntries: [{ outRef: spent, output: spentOutput }],
+          operations: expectedLedgerOps,
+        });
+      const trace = await Effect.runPromise(
+        buildDeterministicValidationMachineTrace({
+          ...context,
+          transactionId: transaction.txId,
+          canonicalTransactionCbor: transaction.txCbor,
+          programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([
+            ...program.material.values(),
+          ]),
+          priorUtxosRoot: ledgerMutationSteps[0]!.preRoot.toString("hex"),
+          postUtxosRoot: ledgerMutationSteps.at(-1)!.postRoot.toString("hex"),
+          ledgerWitnessEntries: [{ outRef: spent, output: spentOutput }],
+          expectedLedgerOps,
+          ledgerMutationSteps,
+          expectedVerdict: "accepted",
+          expectedRejectionCode: null,
+        }),
+      );
+
+      expect(
+        trace.witnesses.find(
+          (witness) => witness.auxiliary?.kind === "cekMintContextItem",
+        )?.auxiliary,
+      ).toMatchObject({
+        kind: "cekMintContextItem",
+        quantity,
+      });
+      expect(
+        trace.witnesses.some(
+          (witness) => witness.auxiliary?.kind === "cekCoreStep",
+        ),
+      ).toBe(true);
+      expect(trace.verdict).toBe("accepted");
+      expect([...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds]).toEqual(
+        expect.arrayContaining([
+          "cekMintContextItem",
+          "valueMintAsset",
+          "ledgerDeltaReplay",
+          "ledgerDeltaOutput",
+        ]),
+      );
+    },
+  );
+
+  it("executes a MidgardV1 protected-output receiving script", async () => {
+    const spent = outRefFromByte(0x33);
+    const spentOutput = makeOutput(10n);
+    const program = buildAcceptingIdentityProgram();
+    const script = {
+      language: "MidgardV1" as const,
+      scriptBytes: program.envelopeCbor,
+    };
+    const scriptHash = hashScriptWitness(script);
+    const output = makeProtectedScriptOutput(scriptHash, 10n);
+    const transaction = makeNativeTx({
+      version: 1n,
+      spendInputs: [spent],
+      outputs: [output],
+      scriptWitnesses: [script],
+      redeemerTxWitsPreimageCbor: makeRedeemersCbor([
+        {
+          tag: MidgardRedeemerTag.Receiving,
+          index: 0n,
+          exUnits: [1_000_000_000n, 1_000_000_000n],
+        },
+      ]),
+      scriptLanguages: ["MidgardV1"],
+    });
+    const expectedLedgerOps = [
+      { type: "delete" as const, key: spent },
+      {
+        type: "insert" as const,
+        key: outRefFromTxId(transaction.txId),
+        value: output,
+      },
+    ];
+    const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps(
+      {
+        initialEntries: [{ outRef: spent, output: spentOutput }],
+        operations: expectedLedgerOps,
+      },
+    );
+    const trace = await Effect.runPromise(
+      buildDeterministicValidationMachineTrace({
+        ...context,
+        transactionId: transaction.txId,
+        canonicalTransactionCbor: transaction.txCbor,
+        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([
+          ...program.material.values(),
+        ]),
+        priorUtxosRoot: ledgerMutationSteps[0]!.preRoot.toString("hex"),
+        postUtxosRoot: ledgerMutationSteps.at(-1)!.postRoot.toString("hex"),
+        ledgerWitnessEntries: [{ outRef: spent, output: spentOutput }],
+        expectedLedgerOps,
+        ledgerMutationSteps,
+        expectedVerdict: "accepted",
+        expectedRejectionCode: null,
+      }),
+    );
+
+    expect(
+      trace.witnesses.find(
+        (witness) =>
+          witness.auxiliary?.kind === "nativeExecutionScan" &&
+          witness.auxiliary.purpose.purposeKind === 3,
+      )?.auxiliary,
+    ).toMatchObject({
+      kind: "nativeExecutionScan",
+      languageTag: 128,
+      purpose: { purposeKind: 3 },
+    });
+    expect(
+      trace.witnesses.some(
+        (witness) => witness.auxiliary?.kind === "cekContextFinalize",
+      ),
+    ).toBe(true);
+    expect(trace.verdict).toBe("accepted");
+    expect([...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds]).toEqual(
+      expect.arrayContaining([
+        "nativeExecutionScan",
+        "cekOutputContextItem",
+        "cekContextFinalize",
+        "ledgerDeltaOutput",
+      ]),
+    );
+  });
+
+  it("executes an authenticated PlutusV3 observer", async () => {
+    const spent = outRefFromByte(0x34);
+    const spentOutput = makeOutput(10n);
+    const output = makeOutput(10n);
+    const program = buildAcceptingIdentityProgram();
+    const script = plutusV3ScriptWitness(program.envelopeCbor);
+    const observerHash = Buffer.from(hashScriptWitness(script), "hex");
+    const transaction = makeNativeTx({
+      version: 1n,
+      spendInputs: [spent],
+      outputs: [output],
+      requiredObserverItems: [observerHash],
+      networkId: 0n,
+      scriptWitnesses: [script],
+      redeemerTxWitsPreimageCbor: makeRedeemersCbor([
+        {
+          tag: MidgardRedeemerTag.Reward,
+          index: 0n,
+          exUnits: [1_000_000_000n, 1_000_000_000n],
+        },
+      ]),
+      scriptLanguages: ["PlutusV3"],
+    });
+    const expectedLedgerOps = [
+      { type: "delete" as const, key: spent },
+      {
+        type: "insert" as const,
+        key: outRefFromTxId(transaction.txId),
+        value: output,
+      },
+    ];
+    const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps(
+      {
+        initialEntries: [{ outRef: spent, output: spentOutput }],
+        operations: expectedLedgerOps,
+      },
+    );
+    const trace = await Effect.runPromise(
+      buildDeterministicValidationMachineTrace({
+        ...context,
+        transactionId: transaction.txId,
+        canonicalTransactionCbor: transaction.txCbor,
+        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([
+          ...program.material.values(),
+        ]),
+        priorUtxosRoot: ledgerMutationSteps[0]!.preRoot.toString("hex"),
+        postUtxosRoot: ledgerMutationSteps.at(-1)!.postRoot.toString("hex"),
+        ledgerWitnessEntries: [{ outRef: spent, output: spentOutput }],
+        expectedLedgerOps,
+        ledgerMutationSteps,
+        expectedVerdict: "accepted",
+        expectedRejectionCode: null,
+      }),
+    );
+
+    expect(
+      trace.witnesses.find(
+        (witness) =>
+          witness.auxiliary?.kind === "nativeExecutionScan" &&
+          witness.auxiliary.purpose.purposeKind === 2,
+      )?.auxiliary,
+    ).toMatchObject({
+      kind: "nativeExecutionScan",
+      languageTag: 3,
+      purpose: { purposeKind: 2 },
+    });
+    expect(
+      trace.witnesses.some(
+        (witness) => witness.auxiliary?.kind === "cekCoreStep",
+      ),
+    ).toBe(true);
+    expect(trace.verdict).toBe("accepted");
+    expect([...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds]).toEqual(
+      expect.arrayContaining([
+        "nativeExecutionScan",
+        "cekRedeemerContextSelect",
+        "cekCoreStep",
+      ]),
+    );
+  });
+
+  it("replays signed mint through an authenticated mint leaf", async () => {
+    const spent = outRefFromByte(0x21);
+    const spentOutput = makeOutput(10n);
+    const script = nativeScriptWitness({ type: "all", scripts: [] });
+    const policyId = Buffer.from(hashScriptWitness(script), "hex");
+    const assetName = Buffer.from("cafe", "hex");
+    const mintedOutput = makeOutput(
+      10n,
+      undefined,
+      new Map([
+        [policyId.toString("hex"), new Map([[assetName.toString("hex"), 5n]])],
+      ]),
+    );
+    const transaction = makeNativeTx({
+      version: 1n,
+      spendInputs: [spent],
+      outputs: [mintedOutput],
+      scriptWitnesses: [script],
+      mintPreimageCbor: encodeCbor(
+        new Map([[policyId, new Map([[assetName, 5n]])]]),
+      ),
+    });
+    const expectedLedgerOps = [
+      { type: "delete" as const, key: spent },
+      {
+        type: "insert" as const,
+        key: outRefFromTxId(transaction.txId),
+        value: mintedOutput,
+      },
+    ];
+    const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps(
+      {
+        initialEntries: [{ outRef: spent, output: spentOutput }],
+        operations: expectedLedgerOps,
+      },
+    );
+    const trace = await Effect.runPromise(
+      buildDeterministicValidationMachineTrace({
+        ...context,
+        transactionId: transaction.txId,
+        canonicalTransactionCbor: transaction.txCbor,
+        priorUtxosRoot: ledgerMutationSteps[0]!.preRoot.toString("hex"),
+        postUtxosRoot: ledgerMutationSteps.at(-1)!.postRoot.toString("hex"),
+        ledgerWitnessEntries: [{ outRef: spent, output: spentOutput }],
+        expectedLedgerOps,
+        ledgerMutationSteps,
+        expectedVerdict: "accepted",
+        expectedRejectionCode: null,
+      }),
+    );
+
+    expect(
+      trace.witnesses.filter(
+        (witness) => witness.auxiliary?.kind === "valueMintAsset",
+      ),
+    ).toHaveLength(1);
+    expect(trace.verdict).toBe("accepted");
+    expect([...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds]).toEqual(
+      expect.arrayContaining([
+        "valueOutputAsset",
+        "valueMintAsset",
+        "ledgerDeltaReplay",
+        "ledgerDeltaOutput",
+      ]),
+    );
+  });
+
+  it("replays signed burn through the same authenticated mint leaf path", async () => {
+    const spent = outRefFromByte(0x22);
+    const script = nativeScriptWitness({ type: "all", scripts: [] });
+    const policyId = Buffer.from(hashScriptWitness(script), "hex");
+    const assetName = Buffer.from("beef", "hex");
+    const spentOutput = makeOutput(
+      10n,
+      undefined,
+      new Map([
+        [policyId.toString("hex"), new Map([[assetName.toString("hex"), 5n]])],
+      ]),
+    );
+    const burnedOutput = makeOutput(10n);
+    const transaction = makeNativeTx({
+      version: 1n,
+      spendInputs: [spent],
+      outputs: [burnedOutput],
+      scriptWitnesses: [script],
+      mintPreimageCbor: encodeCbor(
+        new Map([[policyId, new Map([[assetName, -5n]])]]),
+      ),
+    });
+    const expectedLedgerOps = [
+      { type: "delete" as const, key: spent },
+      {
+        type: "insert" as const,
+        key: outRefFromTxId(transaction.txId),
+        value: burnedOutput,
+      },
+    ];
+    const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps(
+      {
+        initialEntries: [{ outRef: spent, output: spentOutput }],
+        operations: expectedLedgerOps,
+      },
+    );
+    const trace = await Effect.runPromise(
+      buildDeterministicValidationMachineTrace({
+        ...context,
+        transactionId: transaction.txId,
+        canonicalTransactionCbor: transaction.txCbor,
+        priorUtxosRoot: ledgerMutationSteps[0]!.preRoot.toString("hex"),
+        postUtxosRoot: ledgerMutationSteps.at(-1)!.postRoot.toString("hex"),
+        ledgerWitnessEntries: [{ outRef: spent, output: spentOutput }],
+        expectedLedgerOps,
+        ledgerMutationSteps,
+        expectedVerdict: "accepted",
+        expectedRejectionCode: null,
+      }),
+    );
+
+    expect(
+      trace.witnesses.find(
+        (witness) => witness.auxiliary?.kind === "valueMintAsset",
+      )?.auxiliary,
+    ).toMatchObject({ kind: "valueMintAsset", quantity: -5n });
+    expect(trace.verdict).toBe("accepted");
+    expect([...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds]).toEqual(
+      expect.arrayContaining([
+        "valueInputAsset",
+        "valueMintAsset",
+        "ledgerDeltaReplay",
+        "ledgerDeltaOutput",
+      ]),
+    );
+  });
+
+  it("commits an invalid forced transaction as a proved no-op", async () => {
+    const spent = outRefFromByte(0x11);
+    const output = makeOutput(10n);
+    const transaction = makeNativeTx({
+      version: 1n,
+      invalidVkeyWitness: true,
+      spendInputs: [spent],
+      outputs: [output],
+    });
+    const trace = await Effect.runPromise(
+      buildDeterministicValidationMachineTrace({
+        ...context,
+        sourceKind: "forced",
+        transactionId: transaction.txId,
+        canonicalTransactionCbor: transaction.txCbor,
+        priorUtxosRoot: root(3),
+        postUtxosRoot: root(3),
+        ledgerWitnessEntries: [{ outRef: spent, output }],
+        expectedLedgerOps: [],
+        expectedVerdict: "rejected",
+        expectedRejectionCode: RejectCodes.InvalidSignature,
+      }),
+    );
+
+    expect(trace.tree.descriptor.verdict).toBe("rejected");
+    expect(trace.states.at(-1)).toMatchObject({
+      phase: "terminal",
+      verdict: "rejected",
+    });
+    expect(trace.states.some((state) => state.phase === "ledgerDelta")).toBe(
+      false,
+    );
+    expect(
+      validateBoundaryAbiAndCollectAuxiliaryKinds(trace).maxArgumentsBytes,
+    ).toBeLessThan(16 * 1024);
+  });
+
+  it("streams an aggregate field above 8 KiB as ordered L1-sized item proofs", async () => {
+    const spent = outRefFromByte(0x12);
+    const spentOutput = makeOutput(10n);
+    const outputs = Array.from({ length: 300 }, (_, index) =>
+      makeOutput(BigInt(index + 1)),
+    );
+    const transaction = makeNativeTx({
+      version: 1n,
+      invalidVkeyWitness: true,
+      spendInputs: [spent],
+      outputs,
+    });
+    expect(transaction.tx.body.outputsPreimageCbor.length).toBeGreaterThan(
+      8 * 1024,
+    );
+    const trace = await Effect.runPromise(
+      buildDeterministicValidationMachineTrace({
+        ...context,
+        sourceKind: "forced",
+        transactionId: transaction.txId,
+        canonicalTransactionCbor: transaction.txCbor,
+        priorUtxosRoot: root(3),
+        postUtxosRoot: root(3),
+        ledgerWitnessEntries: [{ outRef: spent, output: spentOutput }],
+        expectedLedgerOps: [],
+        expectedVerdict: "rejected",
+        expectedRejectionCode: RejectCodes.InvalidSignature,
+      }),
+    );
+
+    const outputChunks = trace.witnesses
+      .filter((witness) => witness.phase === "canonicalDecode")
+      .flatMap((witness) =>
+        witness.auxiliary?.kind === "transactionFieldChunk" &&
+        witness.auxiliary.chunkProof.fieldIndex === 2
+          ? [witness.auxiliary]
+          : [],
+      );
+    expect(outputChunks).toHaveLength(outputs.length);
+    expect(
+      outputChunks.every(
+        ({ collectionProof, chunkProof }, itemIndex) =>
+          collectionProof.itemCount === outputs.length &&
+          collectionProof.itemIndex === itemIndex &&
+          chunkProof.itemIndex === itemIndex &&
+          chunkProof.chunkIndex === 0 &&
+          chunkProof.chunk.length <= 4_095,
+      ),
+    ).toBe(true);
+    expect(trace.verdict).toBe("rejected");
+  });
+
+  it("commits malformed authenticated ledger output rejection at its lookup instruction", async () => {
+    const spent = outRefFromByte(0x11);
+    const transaction = makeNativeTx({
+      version: 1n,
+      spendInputs: [spent],
+      outputs: [makeOutput(10n)],
+    });
+    const unchangedRoot = root(6);
+    const trace = await Effect.runPromise(
+      buildDeterministicValidationMachineTrace({
+        ...context,
+        sourceKind: "forced",
+        transactionId: transaction.txId,
+        canonicalTransactionCbor: transaction.txCbor,
+        priorUtxosRoot: unchangedRoot,
+        postUtxosRoot: unchangedRoot,
+        ledgerWitnessEntries: [
+          { outRef: spent, output: Buffer.from("8200", "hex") },
+        ],
+        expectedLedgerOps: [],
+        expectedVerdict: "rejected",
+        expectedRejectionCode: RejectCodes.InvalidOutput,
+      }),
+    );
+
+    expect(trace.states.map((state) => state.phase)).toEqual([
+      ...Array<string>(9).fill("canonicalDecode"),
+      "compactBinding",
+      "staticLedgerRules",
+      "inputSets",
+      "signatures",
+      "phaseANativeScripts",
+      "phaseAScriptPreconditions",
+      "resolveInputs",
+      "resolveInputs",
+      "terminal",
+    ]);
+    expect(validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds).toContain(
+      "scheduledLedgerLookup",
+    );
+  });
+
+  it("fails closed when the claimed verdict or delta disagrees with replay", async () => {
+    const spent = outRefFromByte(0x11);
+    const output = makeOutput(10n);
+    const transaction = makeNativeTx({
+      version: 1n,
+      spendInputs: [spent],
+      outputs: [output],
+    });
+    const base = {
+      ...context,
+      transactionId: transaction.txId,
+      canonicalTransactionCbor: transaction.txCbor,
+      priorUtxosRoot: root(4),
+      postUtxosRoot: root(5),
+      ledgerWitnessEntries: [{ outRef: spent, output }],
+    };
+
+    await expect(
+      Effect.runPromise(
+        buildDeterministicValidationMachineTrace({
+          ...base,
+          expectedLedgerOps: [],
+          expectedVerdict: "rejected",
+          expectedRejectionCode: RejectCodes.InvalidSignature,
+        }),
+      ),
+    ).rejects.toThrow(/disagrees with operator classification/u);
+
+    await expect(
+      Effect.runPromise(
+        buildDeterministicValidationMachineTrace({
+          ...base,
+          expectedLedgerOps: [],
+          expectedVerdict: "accepted",
+          expectedRejectionCode: null,
+        }),
+      ),
+    ).rejects.toThrow(/ledger delta differs/u);
+  });
+});

@@ -4,9 +4,8 @@ import type { SubmitterReconciler } from "./coordinator/submitter-reconciler.js"
 import {
   daPayloadSha256,
   DaPayloadValidationError,
-  type TransactionRootValueProjector,
-  type VerifiedDaPayload,
-  verifyDaPayloadAgainstHeader,
+  type VerifiedDaPayloadV1,
+  verifyDaPayloadV1AgainstHeader,
 } from "./da/payload.js";
 import type {
   DaPayloadCandidate,
@@ -19,10 +18,7 @@ import type {
   StateQueueHeaderRecord,
 } from "./domain.js";
 import type { DaAttestationChainReader } from "./l1/da-attestation-reader.js";
-import {
-  scanStateQueue,
-  type StateQueueProvider,
-} from "./l1/state-queue-scanner.js";
+import { scanStateQueue, type StateQueueProvider } from "./l1/state-queue-scanner.js";
 import {
   type DaSigner,
   type DaSignerValidation,
@@ -41,7 +37,6 @@ export type WatcherServiceDeps = {
   readonly coordinator?: AttestationCoordinator;
   readonly submitterReconciler?: Pick<SubmitterReconciler, "reconcileHeader">;
   readonly daChainReader?: DaAttestationChainReader;
-  readonly transactionProjector?: TransactionRootValueProjector;
 };
 
 export type WatcherTickResult = {
@@ -397,6 +392,7 @@ export class WatcherService {
       deploymentFingerprint: this.deps.config.deploymentFingerprint,
       daAttestationPolicyId: this.deps.config.daAttestationPolicyId,
       finalityDepth: this.deps.config.finalityDepth,
+      consensusProfile: this.deps.config.consensusProfile,
     });
     const errors: string[] = [];
     const payloadFetches: WatcherPayloadFetchObservation[] = [];
@@ -540,7 +536,7 @@ export class WatcherService {
   private async fetchVerifyPayload(
     record: Awaited<ReturnType<typeof scanStateQueue>>[number],
     payloadFetches: WatcherPayloadFetchObservation[],
-  ): Promise<VerifiedDaPayload | undefined> {
+  ): Promise<VerifiedDaPayloadV1 | undefined> {
     const existing = await this.deps.store.getDaPayload(record.headerHash);
     if (existing !== undefined && hasPayloadBytes(existing)) {
       return this.verifyStoredPayload(record, existing);
@@ -559,6 +555,7 @@ export class WatcherService {
       const saved = await this.deps.store.saveDaPayload({
         deploymentFingerprint: this.deps.config.deploymentFingerprint,
         headerHash: record.headerHash,
+        payloadSchemaVersion: 1,
         payloadCborHex: "",
         payloadSha256: "",
         sourcePeerId: "",
@@ -614,7 +611,7 @@ export class WatcherService {
   private async verifyStoredPayload(
     record: Awaited<ReturnType<typeof scanStateQueue>>[number],
     payloadRecord: DaPayloadRecord,
-  ): Promise<VerifiedDaPayload> {
+  ): Promise<VerifiedDaPayloadV1> {
     if (payloadRecord.validationStatus === "conflicted") {
       throw new Error(payloadRecord.validationError ?? "payload conflict");
     }
@@ -667,36 +664,24 @@ export class WatcherService {
       string,
       {
         readonly payloadCbor: Buffer;
-        payloadSchemaVersion?: number;
         readonly sourcePeerIds: string[];
       }
     >();
     for (const candidate of candidates) {
+      if (candidate.payloadSchemaVersion !== 1) {
+        throw new DaPayloadValidationError(
+          "wrong_version",
+          "DA payload candidate is not bound to canonical schema V1",
+        );
+      }
       const hash = daPayloadSha256(candidate.payloadCbor);
       const existing = byHash.get(hash);
       if (existing === undefined) {
         byHash.set(hash, {
           payloadCbor: candidate.payloadCbor,
-          payloadSchemaVersion: candidate.payloadSchemaVersion,
           sourcePeerIds: [candidate.sourcePeerId],
         });
       } else {
-        if (
-          existing.payloadSchemaVersion !== undefined &&
-          candidate.payloadSchemaVersion !== undefined &&
-          existing.payloadSchemaVersion !== candidate.payloadSchemaVersion
-        ) {
-          byHash.set(
-            `${hash}:schema-${candidate.payloadSchemaVersion.toString()}`,
-            {
-              payloadCbor: candidate.payloadCbor,
-              payloadSchemaVersion: candidate.payloadSchemaVersion,
-              sourcePeerIds: [candidate.sourcePeerId],
-            },
-          );
-          continue;
-        }
-        existing.payloadSchemaVersion ??= candidate.payloadSchemaVersion;
         existing.sourcePeerIds.push(candidate.sourcePeerId);
       }
     }
@@ -705,7 +690,7 @@ export class WatcherService {
       return {
         sourcePeerId: entry.sourcePeerIds[0]!,
         payloadCbor: entry.payloadCbor,
-        payloadSchemaVersion: entry.payloadSchemaVersion,
+        payloadSchemaVersion: 1,
       };
     }
     const conflictDetail = [...byHash.entries()]
@@ -714,7 +699,7 @@ export class WatcherService {
     await this.deps.store.saveDaPayload({
       deploymentFingerprint: this.deps.config.deploymentFingerprint,
       headerHash,
-      payloadSchemaVersion: candidates[0]?.payloadSchemaVersion,
+      payloadSchemaVersion: 1,
       payloadCborHex: candidates[0]?.payloadCbor.toString("hex") ?? "",
       payloadSha256:
         candidates[0] === undefined
@@ -737,20 +722,17 @@ export class WatcherService {
     payloadCbor: Buffer,
     record: Awaited<ReturnType<typeof scanStateQueue>>[number],
     payloadRecord: DaPayloadRecord,
-  ) {
+  ): Promise<VerifiedDaPayloadV1> {
     try {
-      const verified = await verifyDaPayloadAgainstHeader(
+      const verificationOptions = {
+        payloadSchemaVersion: 1,
+        stateQueueOutRef: record.stateQueueOutRef,
+      } as const;
+      const verified = await verifyDaPayloadV1AgainstHeader(
         payloadCbor,
         record.headerHash,
         record.header,
-        {
-          // Records written before the V3 decoder field existed are historical
-          // raw DaPayloadV2 rows. This is storage decoding, not an operator
-          // compatibility mode.
-          payloadSchemaVersion: payloadRecord.payloadSchemaVersion ?? 2,
-          stateQueueOutRef: record.stateQueueOutRef,
-          transactionProjector: this.deps.transactionProjector,
-        },
+        verificationOptions,
       );
       const verifiedPayloadRecord: DaPayloadRecord = {
         ...payloadRecord,

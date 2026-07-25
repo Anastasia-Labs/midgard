@@ -3,7 +3,21 @@
  * This module groups endpoint handlers and access control in one place while
  * delegating startup checks and response shaping to narrower modules.
  */
+import {
+  decodeMidgardCekProgramMaterialSidecarV1,
+  decodeMidgardProofSubmissionV1,
+  encodeMidgardCekProgramMaterialSidecarV1,
+  verifyMidgardCekProgramMaterialV1,
+} from "@al-ft/midgard-core/cek-proof";
+import { decodeMidgardNativeTxFullV1FromCanonicalCbor } from "@al-ft/midgard-core/codec";
+import {
+  MIDGARD_CONSENSUS_LIMITS_V1,
+  MIDGARD_CONSENSUS_PROFILE_V1,
+  type MidgardConsensusProfileV1,
+} from "@al-ft/midgard-core/consensus-profile-v1";
+import { validateMidgardConsensusV1TxCbor } from "@al-ft/midgard-core/consensus-validation-v1";
 import { hexToBytes } from "@al-ft/midgard-core/hex";
+import { collectMidgardV1AttachedProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   HttpRouter,
@@ -42,6 +56,7 @@ import * as UtxosCommand from "@/commands/utxos.js";
 import {
   AddressHistoryDB,
   BlocksDB,
+  CekProgramMaterialDB,
   DaPayloadPublicationsDB,
   ForeignTipReconciliationsDB,
   ImmutableDB,
@@ -81,6 +96,7 @@ import {
   WriteBehind,
 } from "@/services/index.js";
 import {
+  ContractDeploymentIdentity,
   Globals,
   Lucid,
   MidgardContracts,
@@ -711,8 +727,10 @@ const submitQueueOfferFailureCounter = Metric.counter(
   },
 );
 
-const isApplicationCbor = (contentType: string | undefined): boolean =>
-  contentType?.split(";")[0]?.trim().toLowerCase() === "application/cbor";
+const V1_SUBMISSION_MEDIA_TYPE = "application/vnd.midgard.v1+cbor";
+
+const requestMediaType = (contentType: string | undefined): string =>
+  contentType?.split(";")[0]?.trim().toLowerCase() ?? "";
 
 const parseFixedHexParam = (
   value: unknown,
@@ -2013,11 +2031,13 @@ const getPipelineStatusHandler = Effect.gen(function* () {
 const getProtocolInfoHandler = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
   const lucid = yield* Lucid;
+  const deploymentIdentity = yield* ContractDeploymentIdentity;
   const response = yield* Effect.try({
     try: () =>
       ProtocolInfoCommand.encodeProtocolInfo({
         nodeConfig,
         currentSlot: lucid.api.currentSlot(),
+        consensusProfile: deploymentIdentity.consensusProfile,
       }),
     catch: (error) => error,
   });
@@ -2288,14 +2308,14 @@ const getStateQueueHandler = Effect.gen(function* () {
     oldestQueuedBlock === undefined
       ? null
       : yield* Effect.gen(function* () {
-          const blockHeader = yield* SDK.getHeaderFromStateQueueDatum(
+          const blockHeader = yield* SDK.getHeaderV1FromStateQueueDatum(
             oldestQueuedBlock.datum,
           );
           const stateQueueNode =
-            yield* SDK.getStateQueueNodeFromStateQueueDatum(
+            yield* SDK.getStateQueueNodeV1FromStateQueueDatum(
               oldestQueuedBlock.datum,
             );
-          const headerHash = yield* SDK.hashBlockHeader(blockHeader);
+          const headerHash = yield* SDK.hashBlockHeaderV1(blockHeader);
           const maturity = mergeMaturityWindow(
             lucid.api,
             Number(blockHeader.endTime),
@@ -2585,15 +2605,17 @@ const postSubmitHandler = <R>(
       const nodeConfig = yield* NodeConfig;
       const request = yield* HttpServerRequest.HttpServerRequest;
 
-      if (!isApplicationCbor(request.headers["content-type"])) {
+      if (
+        requestMediaType(request.headers["content-type"]) !==
+        V1_SUBMISSION_MEDIA_TYPE
+      ) {
         yield* Effect.logInfo(
-          `▫️ Invalid submit payload: expected application/cbor`,
+          `▫️ Invalid submit payload: expected ${V1_SUBMISSION_MEDIA_TYPE}`,
         );
         yield* recordLatency();
         return yield* HttpServerResponse.json(
           {
-            error:
-              "Request body must be raw Midgard canonical transaction CBOR with Content-Type application/cbor",
+            error: `V1 requests must be a canonical proof submission envelope with Content-Type ${V1_SUBMISSION_MEDIA_TYPE}`,
           },
           { status: 415 },
         );
@@ -2615,10 +2637,47 @@ const postSubmitHandler = <R>(
         );
       }
 
+      const requestBody = Buffer.from(bodyBytes.right);
+      if (requestBody.length > MIDGARD_CONSENSUS_LIMITS_V1.maxDaPayloadBytes) {
+        yield* recordLatency();
+        return yield* HttpServerResponse.json(
+          {
+            error: `V1 submission exceeds the DA proof envelope (${requestBody.length.toString()} > ${MIDGARD_CONSENSUS_LIMITS_V1.maxDaPayloadBytes.toString()})`,
+          },
+          { status: 413 },
+        );
+      }
+      const decodedSubmission = yield* Effect.either(
+        Effect.try({
+          try: () => decodeMidgardProofSubmissionV1(requestBody),
+          catch: (cause) => cause,
+        }),
+      );
+      if (decodedSubmission._tag === "Left") {
+        yield* Effect.logInfo(
+          `▫️ Submit rejected: malformed V1 submission envelope`,
+        );
+        yield* recordLatency();
+        return yield* HttpServerResponse.json(
+          { error: "Invalid canonical V1 submission envelope" },
+          { status: 400 },
+        );
+      }
+      const transactionBytes = decodedSubmission.right.transactionCbor;
+      const programMaterial = decodedSubmission.right.programMaterial;
+      const programMaterialSidecarCbor =
+        encodeMidgardCekProgramMaterialSidecarV1(programMaterial);
+      // Re-decode the independently stored representation at the admission
+      // boundary; database replay must never depend on the HTTP wrapper.
+      decodeMidgardCekProgramMaterialSidecarV1(programMaterialSidecarCbor);
+
       const normalizeStartedAt = Date.now();
       const validation = validateSubmitTxCanonicalCbor(
-        new Uint8Array(bodyBytes.right),
-        nodeConfig.MAX_SUBMIT_TX_CBOR_BYTES,
+        transactionBytes,
+        Math.min(
+          nodeConfig.MAX_SUBMIT_TX_CBOR_BYTES,
+          MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes,
+        ),
       );
       if (!validation.ok) {
         yield* submitNormalizeDurationTimer(
@@ -2647,6 +2706,55 @@ const postSubmitHandler = <R>(
           { status: 400 },
         );
       }
+      const proofViolation = validateMidgardConsensusV1TxCbor(
+        normalized.txCanonicalCbor,
+      );
+      if (proofViolation !== null) {
+        yield* submitNormalizeDurationTimer(
+          Effect.succeed(Duration.millis(Date.now() - normalizeStartedAt)),
+        );
+        yield* recordLatency();
+        return yield* HttpServerResponse.json(
+          {
+            error: proofViolation.code,
+            feature: proofViolation.featureId,
+            detail: proofViolation.detail,
+          },
+          { status: 400 },
+        );
+      }
+      const materialValidation = yield* Effect.either(
+        Effect.try({
+          try: () => {
+            const tx = decodeMidgardNativeTxFullV1FromCanonicalCbor(
+              normalized.txCanonicalCbor,
+            );
+            const envelopes = collectMidgardV1AttachedProgramEnvelopes(tx);
+            for (const envelope of envelopes) {
+              verifyMidgardCekProgramMaterialV1(envelope, programMaterial, {
+                allowUnreachable: true,
+              });
+            }
+            return envelopes;
+          },
+          catch: (cause) => cause,
+        }),
+      );
+      if (materialValidation._tag === "Left") {
+        yield* submitNormalizeDurationTimer(
+          Effect.succeed(Duration.millis(Date.now() - normalizeStartedAt)),
+        );
+        yield* recordLatency();
+        return yield* HttpServerResponse.json(
+          {
+            error: "E_CEK_PROGRAM_MATERIAL",
+            detail:
+              "V1 program material does not cover every attached program envelope",
+          },
+          { status: 400 },
+        );
+      }
+      const attachedProgramEnvelopes = materialValidation.right;
       yield* submitNormalizeDurationTimer(
         Effect.succeed(Duration.millis(Date.now() - normalizeStartedAt)),
       );
@@ -2667,11 +2775,13 @@ const postSubmitHandler = <R>(
         ? admissionWriter.admitReserved({
             txId: normalized.txId,
             txCanonicalCbor: normalized.txCanonicalCbor,
+            programMaterialSidecarCbor,
             submitSource: normalized.source,
           })
         : TxAdmissionsDB.admit({
             txId: normalized.txId,
             txCanonicalCbor: normalized.txCanonicalCbor,
+            programMaterialSidecarCbor,
             submitSource: normalized.source,
             currentBacklog: reservation.currentBacklog,
             maxBacklog: nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG,
@@ -2697,6 +2807,10 @@ const postSubmitHandler = <R>(
       );
       yield* submitDurableAdmissionDurationTimer(
         Effect.succeed(Duration.millis(Date.now() - durableAdmissionStartedAt)),
+      );
+      yield* CekProgramMaterialDB.persistVerifiedBundles(
+        attachedProgramEnvelopes,
+        programMaterial,
       );
       if (admitted.kind === "new") {
         if (!reservation.reserved) {
@@ -2785,17 +2899,26 @@ const postSubmitHandler = <R>(
 /**
  * Focused router used by the admission integration harness. Keeping this as a
  * real HttpRouter (rather than calling the handler as a function) makes route,
- * request-body, status-code, and response-body compatibility executable while
+ * request-body, status-code, and response-body contract executable while
  * allowing the harness to hold validation wakeups at a deterministic boundary.
  */
 export const buildSubmitRouter = <R>(
   wakeTxQueueProcessor: Effect.Effect<void, never, R>,
   withMonitoring?: boolean,
+  consensusProfile: MidgardConsensusProfileV1 = MIDGARD_CONSENSUS_PROFILE_V1,
 ) =>
   HttpRouter.empty.pipe(
     HttpRouter.post(
       `/${SUBMIT_ENDPOINT}`,
-      postSubmitHandler(withMonitoring, wakeTxQueueProcessor),
+      postSubmitHandler(withMonitoring, wakeTxQueueProcessor).pipe(
+        Effect.provideService(
+          ContractDeploymentIdentity,
+          ContractDeploymentIdentity.make({
+            kind: "derived",
+            consensusProfile,
+          }),
+        ),
+      ),
     ),
   );
 
@@ -2816,6 +2939,7 @@ export const buildListenRouter = (
   | Lucid
   | NodeConfig
   | MidgardContracts
+  | ContractDeploymentIdentity
   | SqlClient
   | HttpServerRequest.HttpServerRequest
   | Globals

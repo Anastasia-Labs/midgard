@@ -1,5 +1,9 @@
 # Phase 5 DA Transport / Payload Version Proposal
 
+> **Historical, superseded by canonical V1 consolidation:** This proposal
+> analyzes pre-consolidation V2 payloads. Its version names and compatibility
+> options are not supported canonical V1 behavior.
+
 **Status:** Policy decision required; no limit change is enabled; 100k/one-hour and ≤2 s p99 remain unmet
 **Date:** 2026-07-10
 **Current production posture:** fail closed on `DA_TRANSPORT_LIMITS_V1.maxPayloadBytes = 64 MiB`; producer envelope emission remains `off` by default

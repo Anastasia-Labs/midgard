@@ -25,7 +25,8 @@ import {
  * step datum/redeemer envelope matches every other fault-proof family.
  */
 
-export const NonExistentInputTxInclusionArgsSchema = NativeTxInclusionArgsSchema;
+export const NonExistentInputTxInclusionArgsSchema =
+  NativeTxInclusionArgsSchema;
 export type NonExistentInputTxInclusionArgs = NativeTxInclusionArgs;
 export const NonExistentInputTxInclusionArgs =
   NativeTxInclusionArgs as unknown as NonExistentInputTxInclusionArgs;

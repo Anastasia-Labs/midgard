@@ -223,6 +223,36 @@ describe("commit block planner", () => {
     expect(planned.candidateSelection.candidateTxHashes).toHaveLength(2);
   });
 
+  it("fails closed with an empty selection when the first candidate exceeds a bound", () => {
+    const selection = selectCommitTxCandidates({
+      mempoolTxs: [mkTxEntry(1), mkTxEntry(2)],
+      processedMempoolTxs: [],
+    });
+
+    const planned = planCommitBatchBudgets({
+      candidateSelection: selection,
+      limits: {
+        maxL2TxCount: 10,
+        maxCanonicalTxBytes: 1,
+        maxLedgerOpCount: 10,
+        maxTransitionStepCount: 10,
+        maxDaPayloadBytes: 10,
+        maxCommitTxBytes: 10_000,
+        maxEstimatedCommitBuildMs: 10_000,
+        estimatedLedgerOpsPerTx: 1,
+        estimatedTransitionStepsPerTx: 1,
+        estimatedDaOverheadBytesPerTx: 0,
+        estimatedCommitTxOverheadBytes: 0,
+        estimatedCommitBuildMsPerTx: 1,
+      },
+    });
+
+    expect(planned.plan.stopReason).toBe("tx_bytes_budget");
+    expect(planned.plan.selectedTxCount).toBe(0);
+    expect(planned.candidateSelection.candidateTxs).toEqual([]);
+    expect(planned.prunedTxCount).toBe(2);
+  });
+
   it("uses the maximum candidate tx timestamp as the shared tx-backed candidate end-time source", () => {
     const first = mkTxEntry(1, new Date("2026-01-01T00:03:00.000Z"));
     const second = mkTxEntry(2, new Date("2026-01-01T00:04:00.000Z"));

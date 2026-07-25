@@ -4,24 +4,75 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
+  DA_TRANSPORT_LIMITS_V1,
+  DA_TRANSPORT_V1_PROTOCOL_VERSION,
+} from "@al-ft/midgard-core/da-transport";
+import {
   REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
   type ReferenceScriptAuthPolicyDeploymentInfo,
 } from "@al-ft/midgard-sdk";
+import { validatorToScriptHash } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
   buildContractDeploymentInfoFromContracts,
-  buildDeploymentManifestV2,
+  buildDeploymentManifestV1,
+  type DeploymentManifestV1IdentityContext,
 } from "@/commands/contract-deployment-info.js";
 import { parseDaProducerPublicationManifest } from "@/da/libp2p-producer.js";
 import { generateDaLibp2pRuntimeManifest } from "@/da/libp2p-runtime-manifest.js";
+import {
+  computeDeploymentManifestId,
+  computeDeploymentManifestV1DaCommitteeSignersHash,
+  computeDeploymentManifestV1JsonDigest,
+  DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+  type DeploymentManifestV1Value,
+  normalizeDeploymentManifestV1JsonValue,
+} from "@/deployment-manifest-v1.js";
 import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
+import {
+  buildFraudProofCatalogueDeploymentInfo,
+  fraudProofsToIndexedValidators,
+} from "@/transactions/initialization.js";
 
 const PRODUCER_KEY = `seed:${"00".repeat(31)}01`;
 const WATCHER_KEY = `seed:${"00".repeat(31)}02`;
 const DA_VKEY = "11".repeat(32);
 const PRODUCER_DA_VKEY = "22".repeat(32);
+const CARDANO_PARAMETERS =
+  normalizeDeploymentManifestV1JsonValue({ maxTxSize: 16_384 });
+const MANIFEST_IDENTITY_CONTEXT: DeploymentManifestV1IdentityContext = {
+  cardanoProtocolParameters: {
+    snapshot: CARDANO_PARAMETERS,
+    digest: computeDeploymentManifestV1JsonDigest(CARDANO_PARAMETERS),
+  },
+  genesis: {
+    headerHash: "00".repeat(28),
+    utxoSetDigest: computeDeploymentManifestV1JsonDigest(
+      normalizeDeploymentManifestV1JsonValue([]),
+    ),
+  },
+  da: {
+    committeeVkeys: [DA_VKEY],
+    committeeSignersHash:
+      computeDeploymentManifestV1DaCommitteeSignersHash([DA_VKEY]),
+    threshold: 1,
+    transportProfile: {
+      protocolVersion: DA_TRANSPORT_V1_PROTOCOL_VERSION,
+      runtimeManifestSchemaVersion: DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
+      envelopeEncoding: "identity" as const,
+      zstdLevel: 3,
+      limits: DA_TRANSPORT_LIMITS_V1,
+      retentionDays: DA_TRANSPORT_LIMITS_V1.minimumRetentionDays,
+    },
+  },
+  proofEvidence: {
+    digest: null,
+    blueprintHash: "33".repeat(32),
+  },
+};
 
 const tempDirs: string[] = [];
 
@@ -37,6 +88,7 @@ describe("DA libp2p runtime manifest profiles", () => {
       target: "producer",
       profile: "producer-container-watcher-host",
       contractDeploymentInfoPath: deploymentInfo.path,
+      network: "Preprod",
       producerPrivateKeySource: PRODUCER_KEY,
       threshold: 1,
       committeeMembers: [
@@ -51,7 +103,7 @@ describe("DA libp2p runtime manifest profiles", () => {
 
     expect(JSON.stringify(manifest)).toContain("host.docker.internal");
     expect(manifest.schemaVersion).toBe(
-      "midgard-da-libp2p-runtime-manifest-v2",
+      "midgard-da-libp2p-runtime-manifest-v1",
     );
     expect(manifest.deployment).toEqual({
       fingerprint: deploymentInfo.manifestId,
@@ -83,6 +135,7 @@ describe("DA libp2p runtime manifest profiles", () => {
       target: "producer",
       profile: "compose",
       contractDeploymentInfoPath: deploymentInfo.path,
+      network: "Preprod",
       producerPrivateKeySource: PRODUCER_KEY,
       watcherServiceName: "watcher-a",
       threshold: 1,
@@ -105,6 +158,7 @@ describe("DA libp2p runtime manifest profiles", () => {
       target: "producer",
       profile: "producer-container-watcher-host",
       contractDeploymentInfoPath: deploymentInfo.path,
+      network: "Preprod",
       producerPrivateKeySource: PRODUCER_KEY,
       threshold: 1,
       committeeMembers: [
@@ -149,6 +203,7 @@ describe("DA libp2p runtime manifest profiles", () => {
         target: "producer",
         profile: "public",
         contractDeploymentInfoPath: deploymentInfo.path,
+        network: "Preprod",
         producerPrivateKeySource: PRODUCER_KEY,
         producerPublicHost: "127.0.0.1",
         watcherPublicHost: "da.example",
@@ -176,6 +231,7 @@ describe("DA libp2p runtime manifest profiles", () => {
         target: "producer",
         profile: "host",
         contractDeploymentInfoPath: deploymentInfo.path,
+        network: "Preprod",
         producerPrivateKeySource: PRODUCER_KEY,
         threshold: 1,
         committeeMembers: [
@@ -187,7 +243,7 @@ describe("DA libp2p runtime manifest profiles", () => {
           },
         ],
       }),
-    ).rejects.toThrow(/steps\.initProtocol\.status=pending/);
+    ).rejects.toThrow(/steps\.initProtocol\.status must be complete/);
   });
 
   it("rejects stale or inconsistent producer runtime manifest identities", async () => {
@@ -196,6 +252,7 @@ describe("DA libp2p runtime manifest profiles", () => {
       target: "producer",
       profile: "host",
       contractDeploymentInfoPath: deploymentInfo.path,
+      network: "Preprod",
       producerPrivateKeySource: PRODUCER_KEY,
       threshold: 1,
       committeeMembers: [
@@ -212,7 +269,7 @@ describe("DA libp2p runtime manifest profiles", () => {
       parseDaProducerPublicationManifest(
         {
           ...manifest,
-          schemaVersion: "midgard-da-libp2p-runtime-manifest-v1",
+          schemaVersion: "unsupported-da-runtime-manifest",
         },
         { DA_LIBP2P_PRIVATE_KEY_SOURCE: PRODUCER_KEY },
       ),
@@ -259,51 +316,65 @@ const writeFinalizedDeploymentInfo = async (
   const contracts = await Effect.runPromise(
     AlwaysSucceedsContract.pipe(Effect.provide(AlwaysSucceedsContract.Default)),
   );
+  const nativeScriptCbor = `8200581c${"00".repeat(28)}`;
   const referenceScriptAuthPolicy: ReferenceScriptAuthPolicyDeploymentInfo = {
-    policyId: contracts.referenceScriptAuth.policyId,
+    policyId: validatorToScriptHash({
+      type: "Native",
+      script: nativeScriptCbor,
+    }),
     nativeScript: {
       type: "Native",
-      cborHex: contracts.referenceScriptAuth.mintingScriptCBOR,
+      cborHex: nativeScriptCbor,
       expiresAtSlot: 0,
       expiresAtUnixTime: 0,
-      timelockDurationMs: 0,
+      timelockDurationMs: 1,
     },
     tokenNames: REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
     postTimelockAudit: { required: true, rule: "test fixture" },
   };
-  const manifest = buildDeploymentManifestV2(
+  const referenceScriptOutRefs = new Map(
+    Object.values(
+      DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+    ).map((contractName, index) => [
+      contractName,
+      {
+        txHash: (index + 1)
+          .toString(16)
+          .padStart(2, "0")
+          .repeat(32),
+        outputIndex: 0,
+      },
+    ]),
+  );
+  const fraudProofCatalogue = await Effect.runPromise(
+    buildFraudProofCatalogueDeploymentInfo(
+      fraudProofsToIndexedValidators(contracts.fraudProofs),
+    ),
+  );
+  const manifest = buildDeploymentManifestV1(
     buildContractDeploymentInfoFromContracts(
       contracts,
       referenceScriptAuthPolicy,
+      referenceScriptOutRefs,
+      fraudProofCatalogue,
     ),
     {
       network: "Preprod",
+      ...MANIFEST_IDENTITY_CONTEXT,
       referenceScriptDeployAddress: "addr_test1reference",
       hubOracleOneShotTxHash: "ab".repeat(32),
       hubOracleOneShotOutputIndex: 0,
+      hubOracleOneShotStatus: "consumed_by_init",
+      steps: {
+        initProtocol: { status: "complete" },
+      },
     },
   ) as unknown as Record<string, unknown>;
-  const hubOracleOneShot = manifest.hubOracleOneShot as Record<string, unknown>;
-  hubOracleOneShot.status = "consumed_by_init";
-  const steps = manifest.steps as Record<string, Record<string, unknown>>;
-  for (const step of [
-    "prepareHubOracleNonce",
-    "deployNodeRuntimeReferenceScripts",
-    "initProtocol",
-  ]) {
-    steps[step] = { ...(steps[step] ?? {}), status: "complete" };
-  }
-  const referenceScripts = manifest.referenceScripts as Record<
-    string,
-    Record<string, unknown>
-  >;
-  let index = 0;
-  for (const record of Object.values(referenceScripts)) {
-    record.status = "confirmed";
-    record.outRef ??= `${(index + 1).toString(16).padStart(2, "0").repeat(32)}#0`;
-    index += 1;
-  }
   mutate?.(manifest);
+  delete manifest.manifestId;
+  manifest.manifestId = computeDeploymentManifestId(
+    manifest as unknown as Omit<DeploymentManifestV1Value, "manifestId">,
+  );
   const raw = `${JSON.stringify(manifest, null, 2)}\n`;
   const path = join(dir, "contract-deployment-info.json");
   await writeFile(path, raw, "utf8");

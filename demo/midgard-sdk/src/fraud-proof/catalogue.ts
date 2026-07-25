@@ -26,6 +26,7 @@ export const FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER = [
   "nonExistentInputNoIndex",
   "invalidRange",
   "transitionTrace",
+  "validationTraceDispute",
 ] as const satisfies readonly (keyof FraudProofs)[];
 
 export type FraudProofCatalogueCategoryName =
@@ -37,13 +38,12 @@ export type FraudProofCatalogueCategoryDeploymentInfo = {
   readonly membershipProofCbor: string;
 };
 
-export type FraudProofCatalogueDeploymentInfo = {
+export type FraudProofCatalogueDeploymentInfo<
+  CategoryName extends string = FraudProofCatalogueCategoryName,
+> = {
   readonly root: MerkleRoot;
   readonly categories: Readonly<
-    Record<
-      FraudProofCatalogueCategoryName,
-      FraudProofCatalogueCategoryDeploymentInfo
-    >
+    Record<CategoryName, FraudProofCatalogueCategoryDeploymentInfo>
   >;
 };
 

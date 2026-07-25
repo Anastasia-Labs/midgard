@@ -226,7 +226,7 @@ const replayOne = (
           counted(SDK.ROOT_DOMAINS.deposits, block.deposits),
           counted(SDK.ROOT_DOMAINS.withdrawals, block.withdrawals),
           counted(
-            SDK.ROOT_DOMAINS.forcedTransactions,
+            SDK.ROOT_DOMAINS.forcedTransactionsV1,
             block.forcedTransactions,
           ),
         ],

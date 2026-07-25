@@ -43,29 +43,30 @@ validator main(
         // 1. Specified input must be authentic and properly reproduced at the
         //    fraud proof's spending address.
         let
-          _own_script_hash,
-          _computation_thread_token_asset_name,
-          _fraud_prover,
-          m_input_state_data,
-        <-
-          finalize(
-            computation_thread_token_policy_id,
-            fraud_proof_token_policy_id,
-            fraud_proof_token_address,
-            step_datum,
-            input_index,
-            output_index,
-            fraud_proof_mint_redeemer_index,
-            own_out_ref,
-            inputs,
-            outputs,
-            redeemers,
-          )
+            _own_script_hash,
+            _computation_thread_token_asset_name,
+            _fraud_prover,
+            m_input_state_data
+          <- finalize(
+          computation_thread_token_policy_id,
+          fraud_proof_token_policy_id,
+          fraud_proof_token_address,
+          step_datum,
+          input_index,
+          output_index,
+          fraud_proof_mint_redeemer_index,
+          own_out_ref,
+          inputs,
+          outputs,
+          redeemers,
+        )
 
-        expect Some(State {
-          missing_reference_input_tx_id,
-          blocks_transactions_root,
-        }) = m_input_state_data
+        expect
+            Some(State {
+              missing_reference_input_tx_id,
+              blocks_transactions_root,
+            })
+          = m_input_state_data
 
         // 2. The missing reference input must not have been produced in the
         //    same block.

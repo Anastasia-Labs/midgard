@@ -1,5 +1,5 @@
-import type { DaGossipTopic } from "@al-ft/midgard-core/da-transport";
 import { withDaRequestDeadline } from "@al-ft/midgard-core/da-request-deadline";
+import type { DaGossipTopic } from "@al-ft/midgard-core/da-transport";
 import { noise } from "@chainsafe/libp2p-noise";
 import { yamux } from "@chainsafe/libp2p-yamux";
 import { bootstrap } from "@libp2p/bootstrap";

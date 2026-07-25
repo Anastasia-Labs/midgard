@@ -4,13 +4,13 @@ import { join } from "node:path";
 
 import {
   computeHash32,
-  computeMidgardNativeTxId,
+  computeMidgardNativeTxIdV1,
   encodeCbor,
-  encodeMidgardNativeTxCanonical,
-  materializeMidgardNativeTxFromCanonical,
-  MIDGARD_NATIVE_TX_VERSION,
+  encodeMidgardNativeTxCanonicalV1,
+  materializeMidgardNativeTxFromCanonicalV1,
+  MIDGARD_NATIVE_TX_V1_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  type MidgardNativeTxFull,
+  type MidgardNativeTxFullV1,
 } from "@al-ft/midgard-core";
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
@@ -40,7 +40,7 @@ const inputCbor = (txHash: string, outputIndex: bigint): Buffer =>
 const makeNativeTx = (
   inputs: readonly Buffer[],
   fee: bigint,
-): MidgardNativeTxFull => {
+): MidgardNativeTxFullV1 => {
   const body = {
     spendInputsPreimageCbor: encodeCbor(inputs),
     referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
@@ -60,17 +60,17 @@ const makeNativeTx = (
     scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
     redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
   };
-  return materializeMidgardNativeTxFromCanonical({
-    version: MIDGARD_NATIVE_TX_VERSION,
+  return materializeMidgardNativeTxFromCanonicalV1({
+    version: MIDGARD_NATIVE_TX_V1_VERSION,
     validity: "TxIsValid",
     body,
     witnessSet,
   });
 };
 
-const payloadFromTx = (tx: MidgardNativeTxFull): NodeTransactionPayload => ({
-  nodeTxId: computeMidgardNativeTxId(tx).toString("hex"),
-  txCbor: encodeMidgardNativeTxCanonical(tx).toString("hex"),
+const payloadFromTx = (tx: MidgardNativeTxFullV1): NodeTransactionPayload => ({
+  nodeTxId: computeMidgardNativeTxIdV1(tx).toString("hex"),
+  txCbor: encodeMidgardNativeTxCanonicalV1(tx).toString("hex"),
 });
 
 const payloadFromInputs = (
@@ -122,8 +122,6 @@ describe("prepare-double-spend", () => {
     expect(output.commitmentEncodings.nativeNode.transactionsRoot).toMatch(
       /^[0-9a-f]{64}$/,
     );
-    expect(output.compatibility.canUseSubmitStepCommands).toBe(true);
-    expect(output.compatibility.reasons).toEqual([]);
   });
 
   it("honors explicit tx pair selection", async () => {
@@ -144,6 +142,20 @@ describe("prepare-double-spend", () => {
     expect(output.tx1.nodeTxId).toBe(tx1Payload.nodeTxId);
     expect(output.tx2.nodeTxId).toBe(tx2Payload.nodeTxId);
     expect(output.tx2.doubleSpentInputIndex).toBe(1);
+  });
+
+  it("fails closed when the expected V1 transactions root differs", async () => {
+    const sharedInput = inputCbor(h32("54"), 1n);
+    await expect(
+      prepareDoubleSpendFromTransactions({
+        headerHash: h28("ba"),
+        expectedTransactionsRoot: h32("00"),
+        transactions: [
+          payloadFromInputs([sharedInput], 1n),
+          payloadFromInputs([sharedInput], 2n),
+        ],
+      }),
+    ).rejects.toThrow("Expected V1 transactions root");
   });
 
   it("rejects blocks without two distinct transactions spending the same input", async () => {
@@ -220,7 +232,6 @@ describe("prepare-double-spend", () => {
         outputIndex: 3n,
       });
       expect(output.files?.tx1InputsPath).toBe(join(dir, "tx1-inputs.json"));
-      expect(output.compatibility.canUseSubmitStepCommands).toBe(true);
     });
   });
 
@@ -243,7 +254,6 @@ describe("prepare-double-spend", () => {
         await readFile(join(dir, "block-transactions.json"), "utf8"),
       ) as unknown[];
       expect(payloads).toHaveLength(3);
-      expect(output.compatibility.canUseSubmitStepCommands).toBe(true);
     });
   });
 });

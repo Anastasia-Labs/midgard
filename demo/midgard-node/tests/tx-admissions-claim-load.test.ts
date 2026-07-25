@@ -1,5 +1,6 @@
 import "./utils.js";
 
+import { encodeMidgardCekProgramMaterialSidecarV1 } from "@al-ft/midgard-core/cek-proof";
 import { SqlClient } from "@effect/sql";
 import { it } from "@effect/vitest";
 import { Deferred, Duration, Effect, Fiber } from "effect";
@@ -28,6 +29,8 @@ const insertAdmissions = (inputs: readonly AdmissionInput[]) =>
     for (const input of inputs) {
       const inserted = yield* TxAdmissionsDB.tryInsert({
         ...input,
+        programMaterialSidecarCbor:
+          encodeMidgardCekProgramMaterialSidecarV1([]),
         submitSource: "native",
       });
       expect(inserted).not.toBeNull();

@@ -54,7 +54,7 @@ export type RetainedDaFetchAttempt = {
 export type RetainedDaPayloadFetchResult = {
   readonly sourceId: string;
   readonly sourcePeerId: string;
-  readonly payloadCbor: Buffer;
+  readonly payloadEnvelopeCbor: Buffer;
   readonly metadata?: unknown;
   readonly attempts: readonly RetainedDaFetchAttempt[];
 };
@@ -176,7 +176,7 @@ export class DaLibp2pRetainedDaSource implements RetainedDaPayloadSource {
           ok: true,
           sourceId: this.sourceId,
           sourcePeerId: peer.peerId,
-          payloadCbor: result.payloadCbor,
+          payloadEnvelopeCbor: result.payloadEnvelopeCbor,
           metadata: result.metadata,
           attempts,
         };
@@ -423,7 +423,7 @@ export class DaLibp2pRetainedDaSource implements RetainedDaPayloadSource {
     headerHash: Buffer,
   ): Promise<
     | {
-        readonly payloadCbor: Buffer;
+        readonly payloadEnvelopeCbor: Buffer;
         readonly metadata?: unknown;
       }
     | undefined
@@ -448,10 +448,10 @@ export class DaLibp2pRetainedDaSource implements RetainedDaPayloadSource {
             "inline payload response is missing payload bytes",
           );
         }
-        const payloadCbor = Buffer.from(response.payloadBytes);
-        assertHash(payloadCbor, response.payloadHash, "payload hash mismatch");
+        const payloadEnvelopeCbor = Buffer.from(response.payloadBytes);
+        assertHash(payloadEnvelopeCbor, response.payloadHash, "payload hash mismatch");
         return {
-          payloadCbor,
+          payloadEnvelopeCbor,
           metadata: await this.fetchMetadata(peer, headerHash),
         };
       }
@@ -461,15 +461,15 @@ export class DaLibp2pRetainedDaSource implements RetainedDaPayloadSource {
             "chunked payload response is missing chunk manifest",
           );
         }
-        const payloadCbor = await this.fetchPayloadChunks(
+        const payloadEnvelopeCbor = await this.fetchPayloadChunks(
           peer,
           headerHash,
           response.payloadHash,
           response.chunkManifest,
         );
-        assertHash(payloadCbor, response.payloadHash, "payload hash mismatch");
+        assertHash(payloadEnvelopeCbor, response.payloadHash, "payload hash mismatch");
         return {
-          payloadCbor,
+          payloadEnvelopeCbor,
           metadata: await this.fetchMetadata(peer, headerHash),
         };
       }
@@ -535,13 +535,13 @@ export class DaLibp2pRetainedDaSource implements RetainedDaPayloadSource {
       }
       chunks.push(chunk);
     }
-    const payloadCbor = Buffer.concat(chunks);
-    if (payloadCbor.length !== manifest.totalBytes) {
+    const payloadEnvelopeCbor = Buffer.concat(chunks);
+    if (payloadEnvelopeCbor.length !== manifest.totalBytes) {
       throw new InvalidRetainedDaResponseError(
         "chunked payload total size does not match manifest",
       );
     }
-    return payloadCbor;
+    return payloadEnvelopeCbor;
   }
 
   private async fetchMetadata(
@@ -631,7 +631,7 @@ export const fetchRetainedDaPayloadByHeaderHash = async ({
         return {
           sourceId: result.sourceId,
           sourcePeerId: result.sourcePeerId,
-          payloadCbor: result.payloadCbor,
+          payloadEnvelopeCbor: result.payloadEnvelopeCbor,
           metadata: result.metadata,
           attempts,
         };

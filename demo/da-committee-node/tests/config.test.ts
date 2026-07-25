@@ -1,7 +1,20 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { computeDeploymentManifestV1Id } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@al-ft/midgard-core/consensus-profile-v1", async (importOriginal) => {
+  const original =
+    await importOriginal<
+      typeof import("@al-ft/midgard-core/consensus-profile-v1")
+    >();
+  return {
+    ...original,
+    assertMidgardConsensusV1ReleaseReady: (): void => undefined,
+  };
+});
 
 import {
   DEFAULT_L1_SUBMITTER_PREFLIGHT,
@@ -12,9 +25,42 @@ import {
 } from "../src/config.js";
 import { parseMidgardNodeDeploymentInfo } from "../src/l1/deployment.js";
 import { tempDir } from "./helpers.js";
-import { writeDaDeploymentFixture } from "./helpers/deployment-fixture.js";
+import {
+  readDaDeploymentFixture,
+  writeDaDeploymentFixture,
+} from "./helpers/deployment-fixture.js";
 
 describe("loadWatcherConfig", () => {
+  it("parses only the exact V1 manifest and consensus-profile pairing", async () => {
+    const dir = await tempDir();
+    const manifest = libp2pManifest("01".repeat(32));
+    const { manifestPath, deploymentInfoPath } = await writeConfigFiles(
+      dir,
+      manifest,
+    );
+    const canonicalManifest = {
+      ...(await readDaDeploymentFixture()),
+      manifestId: DEPLOYMENT_MANIFEST_ID,
+    };
+    await writeFile(deploymentInfoPath, JSON.stringify(canonicalManifest));
+    await expect(
+      loadWatcherConfig(libp2pConfigEnv(dir, manifestPath, deploymentInfoPath)),
+    ).resolves.toMatchObject({
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+    });
+
+    await writeFile(
+      deploymentInfoPath,
+      JSON.stringify({
+        ...canonicalManifest,
+        schemaVersion: "unsupported-deployment-manifest",
+      }),
+    );
+    await expect(
+      loadWatcherConfig(libp2pConfigEnv(dir, manifestPath, deploymentInfoPath)),
+    ).rejects.toThrow(/schemaVersion must be/u);
+  });
+
   it("loads deployment files and DA params from the manifest", async () => {
     const dir = await tempDir();
     const member = "01".repeat(32);
@@ -48,7 +94,7 @@ describe("loadWatcherConfig", () => {
     );
 
     expect(config.network).toBe("Preview");
-    expect(config.deploymentFingerprint).toBe("ab".repeat(32));
+    expect(config.deploymentFingerprint).toBe(DEPLOYMENT_MANIFEST_ID);
     expect(config.libp2pPrivateKeySource).toBe(LIBP2P_PRIVATE_KEY_SOURCE);
     expect(config.l1SubmitterSignerIndexes).toEqual([]);
     expect(config.daCommitteeMembers).toEqual([
@@ -59,7 +105,7 @@ describe("loadWatcherConfig", () => {
       throw new Error("expected libp2p DA transport config");
     }
     expect(config.daTransport).toMatchObject({
-      deploymentFingerprint: "ab".repeat(32),
+      deploymentFingerprint: DEPLOYMENT_MANIFEST_ID,
       noHttpDaTransport: true,
       threshold: 1,
       listenMultiaddrs: ["/ip4/0.0.0.0/tcp/0"],
@@ -177,7 +223,7 @@ describe("loadWatcherConfig", () => {
     }[] = [
       {
         mutate: (manifest) => {
-          manifest.schemaVersion = "midgard-da-libp2p-runtime-manifest-v1";
+          manifest.schemaVersion = "unsupported-da-runtime-manifest";
         },
         error: /schemaVersion/,
       },
@@ -264,7 +310,7 @@ describe("loadWatcherConfig", () => {
           )[0]!.da_vkey = "02".repeat(32);
         },
         env: { DA_COMMITTEE_HEX: "01".repeat(32), DA_THRESHOLD: "1" },
-        error: /does not match DA committee/,
+        error: /DA_COMMITTEE_HEX must exactly match/,
       },
     ];
     for (const testCase of cases) {
@@ -387,11 +433,20 @@ describe("loadWatcherConfig", () => {
   it("requires script CBOR and reference-script UTxOs in self-submitting coordinator mode", async () => {
     const dir = await tempDir();
     const member = "01".repeat(32);
-    const manifest = libp2pManifest(member, ["committee", "coordinator"]);
     const manifestPath = join(dir, "manifest.json");
     const deploymentInfoPath = join(dir, "deployment.json");
+    const incompleteDeployment = await readDaDeploymentFixture();
+    delete (incompleteDeployment.contracts as Record<string, unknown>)
+      .daAttestationMint;
+    const deploymentWithId =
+      withRecomputedDeploymentManifestId(incompleteDeployment);
+    const manifest = libp2pManifest(
+      member,
+      ["committee", "coordinator"],
+      String(deploymentWithId.manifestId),
+    );
     await writeFile(manifestPath, JSON.stringify(manifest));
-    await writeMinimalDeploymentInfo(deploymentInfoPath);
+    await writeFile(deploymentInfoPath, JSON.stringify(deploymentWithId));
     await expect(
       loadWatcherConfig({
         ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
@@ -402,7 +457,7 @@ describe("loadWatcherConfig", () => {
         L1_SUBMITTER_KEY_SOURCE: "private-key:ed25519_sk_test",
         DA_L1_SUBMISSION_ENABLED: "true",
       }),
-    ).rejects.toThrow(/script CBOR and reference-script UTxOs/);
+    ).rejects.toThrow(/contracts\.daAttestationMint is required/);
   });
 
   it("accepts real Midgard deployment info for self-submitting coordinator mode", async () => {
@@ -591,56 +646,75 @@ describe("loadWatcherConfig", () => {
 
   it("fails closed when required deployment contract fields are absent", async () => {
     const dir = await tempDir();
-    const manifest = libp2pManifest("01".repeat(32));
-    delete manifest.contracts;
     const manifestPath = join(dir, "manifest.json");
     const deploymentInfoPath = join(dir, "deployment.json");
+    const deploymentInfo = await readDaDeploymentFixture();
+    delete (deploymentInfo.contracts as Record<string, unknown>)
+      .daAttestationMint;
+    const deploymentWithId = withRecomputedDeploymentManifestId(deploymentInfo);
+    const manifest = libp2pManifest(
+      "01".repeat(32),
+      ["committee"],
+      String(deploymentWithId.manifestId),
+    );
     await writeFile(manifestPath, JSON.stringify(manifest));
-    await writeMinimalDeploymentInfo(deploymentInfoPath);
+    await writeFile(deploymentInfoPath, JSON.stringify(deploymentWithId));
     await expect(
       loadWatcherConfig({
         ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
         DA_SIGNER_INDEX: "0",
         DA_SIGNER_KEY_SOURCE: "hex:" + "00".repeat(32),
       }),
-    ).rejects.toThrow(/DA attestation policy id/);
+    ).rejects.toThrow(/contracts\.daAttestationMint is required/);
+  });
+
+  it("rejects a recomputed manifest that omits a non-DA V1 contract", async () => {
+    const dir = await tempDir();
+    const manifestPath = join(dir, "manifest.json");
+    const deploymentInfoPath = join(dir, "deployment.json");
+    const deploymentInfo = await readDaDeploymentFixture();
+    delete (deploymentInfo.contracts as Record<string, unknown>).payoutMint;
+    const deploymentWithId = withRecomputedDeploymentManifestId(deploymentInfo);
+    const manifest = libp2pManifest(
+      "01".repeat(32),
+      ["committee"],
+      String(deploymentWithId.manifestId),
+    );
+    await writeFile(manifestPath, JSON.stringify(manifest));
+    await writeFile(deploymentInfoPath, JSON.stringify(deploymentWithId));
+    await expect(
+      loadWatcherConfig(libp2pConfigEnv(dir, manifestPath, deploymentInfoPath)),
+    ).rejects.toThrow(/contracts\.payoutMint is required/);
   });
 });
 
 const LIBP2P_PEER_ID_A = "12D3KooWJzVqLz7QpLdfW6M5G2X1L8L6GQ9QJ3uCHZP8X8J6BC8u";
 const LIBP2P_PEER_ID_B = "12D3KooWR3iZBFz6W2fyFdRt2t45x2Ytz9p6c9JwHyDqaN49XU47";
 const LIBP2P_PRIVATE_KEY_SOURCE = `seed:${"00".repeat(31)}01`;
-const DEPLOYMENT_MANIFEST_ID = "ab".repeat(32);
+const canonicalDeploymentManifest = await readDaDeploymentFixture();
+const DEPLOYMENT_MANIFEST_ID = canonicalDeploymentManifest.manifestId;
+if (typeof DEPLOYMENT_MANIFEST_ID !== "string") {
+  throw new Error("Canonical deployment fixture is missing manifestId");
+}
 
 const libp2pManifest = (
   member: string,
   roles: readonly string[] = ["committee", "retrieval"],
   deploymentManifestId = DEPLOYMENT_MANIFEST_ID,
 ): Record<string, unknown> => ({
-  schemaVersion: "midgard-da-libp2p-runtime-manifest-v2",
+  schemaVersion: "midgard-da-libp2p-runtime-manifest-v1",
+  network: "Preview",
   deployment: {
-    name: "public-testnet",
     fingerprint: deploymentManifestId.toUpperCase(),
     contract_deployment_manifest_id: deploymentManifestId,
     contract_deployment_info_sha256: "cd".repeat(32),
     identity_source: "contract_deployment_manifest_id",
-    cardano_network: "Preview",
-    midgard_network: "Preview",
-    da_protocol_version: 1,
   },
-  contracts: {
-    stateQueue: {
-      policyId: "02".repeat(28),
-      spendingScriptAddress: "addr_test1statequeue",
-    },
-    daAttestation: {
-      policyId: "03".repeat(28),
-      spendingScriptAddress: "addr_test1daattestation",
-    },
-    daParamsGovernor: {
-      policyId: "04".repeat(28),
-      spendingScriptAddress: "addr_test1daparams",
-    },
+  runtime_topology: {
+    target: "watcher",
+    profile: "public",
+    producer_peer_id: LIBP2P_PEER_ID_B,
+    local_signer_index: 0,
   },
   da_transport: {
     kind: "libp2p",
@@ -682,6 +756,16 @@ const libp2pManifest = (
   },
 });
 
+const withRecomputedDeploymentManifestId = (
+  manifest: Record<string, unknown>,
+): Record<string, unknown> => {
+  const { manifestId: _manifestId, ...identityInput } = manifest;
+  return {
+    ...identityInput,
+    manifestId: computeDeploymentManifestV1Id(identityInput),
+  };
+};
+
 const writeConfigFiles = async (
   dir: string,
   manifest: Record<string, unknown>,
@@ -700,10 +784,11 @@ const writeMinimalDeploymentInfo = async (
   path: string,
   manifestId = DEPLOYMENT_MANIFEST_ID,
 ): Promise<void> => {
+  const fixture = await readDaDeploymentFixture();
   await writeFile(
     path,
     JSON.stringify({
-      schemaVersion: "midgard-deployment-manifest-v2",
+      ...fixture,
       manifestId,
     }),
   );

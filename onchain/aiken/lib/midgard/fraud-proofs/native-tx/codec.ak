@@ -139,31 +139,30 @@ pub fn decode_canonical_uint_at(bytes: ByteArray, offset: Int) -> Pair<Int, Int>
     expect value > 0xff
     Pair(offset + 3, value)
   } else if tag == 26 {
-    let value =
-      (
-        ( byte_at(bytes, offset + 1) * 256 + byte_at(bytes, offset + 2) ) * 256 + byte_at(
-          bytes,
-          offset + 3,
-        )
-      ) * 256 + byte_at(bytes, offset + 4)
+    let value = (
+      ( byte_at(bytes, offset + 1) * 256 + byte_at(bytes, offset + 2) ) * 256 + byte_at(
+        bytes,
+        offset + 3,
+      )
+    ) * 256 + byte_at(bytes, offset + 4)
     expect value > 0xffff
     Pair(offset + 5, value)
   } else {
     expect tag == 27
-    let value =
+    let value = (
       (
         (
           (
             (
-              (
-                (
-                  byte_at(bytes, offset + 1) * 256 + byte_at(bytes, offset + 2)
-                ) * 256 + byte_at(bytes, offset + 3)
-              ) * 256 + byte_at(bytes, offset + 4)
-            ) * 256 + byte_at(bytes, offset + 5)
-          ) * 256 + byte_at(bytes, offset + 6)
-        ) * 256 + byte_at(bytes, offset + 7)
-      ) * 256 + byte_at(bytes, offset + 8)
+              ( byte_at(bytes, offset + 1) * 256 + byte_at(bytes, offset + 2) ) * 256 + byte_at(
+                bytes,
+                offset + 3,
+              )
+            ) * 256 + byte_at(bytes, offset + 4)
+          ) * 256 + byte_at(bytes, offset + 5)
+        ) * 256 + byte_at(bytes, offset + 6)
+      ) * 256 + byte_at(bytes, offset + 7)
+    ) * 256 + byte_at(bytes, offset + 8)
     expect value > 0xffffffff
     Pair(offset + 9, value)
   }
@@ -241,31 +240,30 @@ pub fn decode_canonical_int_at(bytes: ByteArray, offset: Int) -> Pair<Int, Int> 
     expect value > 0xff
     Pair(offset + 3, -1 - value)
   } else if tag == 58 {
-    let value =
-      (
-        ( byte_at(bytes, offset + 1) * 256 + byte_at(bytes, offset + 2) ) * 256 + byte_at(
-          bytes,
-          offset + 3,
-        )
-      ) * 256 + byte_at(bytes, offset + 4)
+    let value = (
+      ( byte_at(bytes, offset + 1) * 256 + byte_at(bytes, offset + 2) ) * 256 + byte_at(
+        bytes,
+        offset + 3,
+      )
+    ) * 256 + byte_at(bytes, offset + 4)
     expect value > 0xffff
     Pair(offset + 5, -1 - value)
   } else {
     expect tag == 59
-    let value =
+    let value = (
       (
         (
           (
             (
-              (
-                (
-                  byte_at(bytes, offset + 1) * 256 + byte_at(bytes, offset + 2)
-                ) * 256 + byte_at(bytes, offset + 3)
-              ) * 256 + byte_at(bytes, offset + 4)
-            ) * 256 + byte_at(bytes, offset + 5)
-          ) * 256 + byte_at(bytes, offset + 6)
-        ) * 256 + byte_at(bytes, offset + 7)
-      ) * 256 + byte_at(bytes, offset + 8)
+              ( byte_at(bytes, offset + 1) * 256 + byte_at(bytes, offset + 2) ) * 256 + byte_at(
+                bytes,
+                offset + 3,
+              )
+            ) * 256 + byte_at(bytes, offset + 4)
+          ) * 256 + byte_at(bytes, offset + 5)
+        ) * 256 + byte_at(bytes, offset + 6)
+      ) * 256 + byte_at(bytes, offset + 7)
+    ) * 256 + byte_at(bytes, offset + 8)
     expect value > 0xffffffff
     Pair(offset + 9, -1 - value)
   }
@@ -290,13 +288,12 @@ pub fn decode_definite_bytes_at(
     Pair(offset + 3 + length, slice_len(bytes, offset + 3, length))
   } else {
     expect tag == 90
-    let length =
-      (
-        ( byte_at(bytes, offset + 1) * 256 + byte_at(bytes, offset + 2) ) * 256 + byte_at(
-          bytes,
-          offset + 3,
-        )
-      ) * 256 + byte_at(bytes, offset + 4)
+    let length = (
+      ( byte_at(bytes, offset + 1) * 256 + byte_at(bytes, offset + 2) ) * 256 + byte_at(
+        bytes,
+        offset + 3,
+      )
+    ) * 256 + byte_at(bytes, offset + 4)
     Pair(offset + 5 + length, slice_len(bytes, offset + 5, length))
   }
 }

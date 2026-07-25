@@ -12,8 +12,8 @@ const MAX_UINT64 = 0xffff_ffff_ffff_ffffn;
 /**
  * Proves and decodes the exact canonical CML TransactionInput wire shape.
  *
- * Returning undefined is intentional: the caller must preserve compatibility
- * by delegating every unproven shape to CML's decoder.
+ * Returning undefined is intentional: the caller delegates every shape not
+ * proven by this fast path to CML's authoritative Cardano decoder.
  */
 export const decodeCanonicalTransactionInput = (
   bytes: Uint8Array,

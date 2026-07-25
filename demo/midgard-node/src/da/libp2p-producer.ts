@@ -5,7 +5,7 @@ import { withDaRequestDeadline } from "@al-ft/midgard-core/da-request-deadline";
 import {
   computeDaSha256Hash,
   DA_TRANSPORT_LIMITS_V1,
-  DA_TRANSPORT_PROTOCOL_VERSION,
+  DA_TRANSPORT_V1_PROTOCOL_VERSION,
   type DaCapabilitiesResponseV1,
   daDeploymentFingerprintFromHex,
   DaGossipTopic,
@@ -46,7 +46,6 @@ import { DatabaseError } from "@/database/utils/common.js";
 import type { Database } from "@/services/database.js";
 
 const MANIFEST_PATH_ENV = "MIDGARD_DEPLOYMENT_MANIFEST_PATH";
-const FALLBACK_MANIFEST_PATH_ENV = "MIDGARD_DA_DEPLOYMENT_MANIFEST_PATH";
 const LIBP2P_PRIVATE_KEY_SOURCE_ENV = "DA_LIBP2P_PRIVATE_KEY_SOURCE";
 const ACCEPTED_RESPONSE_STATUSES = new Set(["accepted", "duplicate"]);
 const daPublishPeerDurationTimer = Metric.timer(
@@ -283,33 +282,71 @@ export class DaPayloadPublicationError extends Error {
 export const parseDaProducerPublicationManifest = (
   manifest: Record<string, unknown>,
   env: NodeJS.ProcessEnv = process.env,
-): DaProducerPublicationManifest | null => {
-  const rawDaTransport =
-    objectAt(manifest, ["da_transport"]) ?? objectAt(manifest, ["daTransport"]);
-  if (rawDaTransport === undefined) {
-    return null;
+): DaProducerPublicationManifest => {
+  requireExactKeys(
+    manifest,
+    ["schemaVersion", "network", "deployment", "runtime_topology", "da_transport", "da_committee"],
+    ["network"],
+    "producer DA libp2p runtime manifest",
+  );
+  const runtimeTopology = objectAt(manifest, ["runtime_topology"]);
+  if (runtimeTopology === undefined) {
+    throw new Error("runtime_topology is required");
   }
-  const kind = stringAt(rawDaTransport, [["kind"], ["mode"]]);
+  requireExactKeys(
+    runtimeTopology,
+    ["target", "profile", "producer_peer_id"],
+    [],
+    "runtime_topology",
+  );
+  if (runtimeTopology.target !== "producer") {
+    throw new Error("runtime_topology.target must be producer");
+  }
+  const rawDaTransport = objectAt(manifest, ["da_transport"]);
+  if (rawDaTransport === undefined) {
+    throw new Error("da_transport is required for libp2p DA publication");
+  }
+  const kind = stringAt(rawDaTransport, [["kind"]]);
   if (kind !== "libp2p") {
-    return null;
+    throw new Error("da_transport.kind must be libp2p");
   }
   const deploymentIdentity = parseDaLibp2pRuntimeManifestDeploymentIdentity(
     manifest,
     "producer DA libp2p runtime manifest",
   );
   const daTransport = rawDaTransport;
+  requireExactKeys(
+    daTransport,
+    [
+      "kind",
+      "no_http_da_transport",
+      "listen_multiaddrs",
+      "announce_multiaddrs",
+      "bootstrap_multiaddrs",
+      "gossip",
+      "limits",
+      "retention_days",
+    ],
+    [],
+    "da_transport",
+  );
   rejectUrlShapedLibp2pDaConfig(daTransport, "da_transport");
   if (daTransport.no_http_da_transport !== true) {
     throw new Error(
       "da_transport.no_http_da_transport must be true in libp2p DA mode",
     );
   }
-  const daCommittee =
-    objectAt(manifest, ["da_committee"]) ?? objectAt(manifest, ["daCommittee"]);
+  const daCommittee = objectAt(manifest, ["da_committee"]);
   if (daCommittee === undefined) {
     throw new Error("da_committee is required for libp2p DA publication");
   }
   rejectUrlShapedLibp2pDaConfig(daCommittee, "da_committee");
+  requireExactKeys(
+    daCommittee,
+    ["threshold", "members"],
+    [],
+    "da_committee",
+  );
   const threshold = numberAt(daCommittee, ["threshold"]);
   if (
     threshold === undefined ||
@@ -328,6 +365,63 @@ export const parseDaProducerPublicationManifest = (
     );
   }
   const limits = objectAt(daTransport, ["limits"]);
+  if (limits === undefined) {
+    throw new Error("da_transport.limits is required");
+  }
+  requireExactKeys(
+    limits,
+    [
+      "max_payload_bytes",
+      "max_inline_response_bytes",
+      "max_chunk_bytes",
+      "max_streams_per_peer",
+      "request_timeout_ms",
+    ],
+    [],
+    "da_transport.limits",
+  );
+  const gossip = objectAt(daTransport, ["gossip"]);
+  if (gossip === undefined) {
+    throw new Error("da_transport.gossip is required");
+  }
+  requireExactKeys(
+    gossip,
+    [
+      "strict_sign",
+      "emit_self",
+      "allowed_topics_only",
+      "max_gossip_message_bytes",
+    ],
+    [],
+    "da_transport.gossip",
+  );
+  if (
+    gossip.strict_sign !== true ||
+    gossip.emit_self !== false ||
+    gossip.allowed_topics_only !== true
+  ) {
+    throw new Error(
+      "da_transport.gossip must use strict_sign=true, emit_self=false, and allowed_topics_only=true",
+    );
+  }
+  if (daTransport.retention_days !== DA_TRANSPORT_LIMITS_V1.minimumRetentionDays) {
+    throw new Error(
+      `da_transport.retention_days must be ${DA_TRANSPORT_LIMITS_V1.minimumRetentionDays.toString()}`,
+    );
+  }
+  const listenMultiaddrs = requiredStringArray(
+    daTransport,
+    "listen_multiaddrs",
+    "da_transport.listen_multiaddrs",
+  );
+  const announceMultiaddrs = requiredStringArray(
+    daTransport,
+    "announce_multiaddrs",
+    "da_transport.announce_multiaddrs",
+  );
+  const bootstrapMultiaddrs = stringArrayAt(daTransport, [
+    ["bootstrap_multiaddrs"],
+  ]);
   return {
     deploymentFingerprint: deploymentIdentity.fingerprint,
     contractDeploymentManifestId:
@@ -359,33 +453,24 @@ export const parseDaProducerPublicationManifest = (
       "max_streams_per_peer",
       DA_TRANSPORT_LIMITS_V1.maxStreamsPerPeer,
     ),
-    maxGossipMessageBytes:
-      numberAt(daTransport, [["gossip", "max_gossip_message_bytes"]]) ??
+    maxGossipMessageBytes: exactLimit(
+      gossip,
+      "max_gossip_message_bytes",
       DA_TRANSPORT_LIMITS_V1.maxGossipMessageBytes,
-    listenMultiaddrs: stringArrayAt(daTransport, [
-      ["listen_multiaddrs"],
-      ["listenMultiaddrs"],
-    ]),
-    announceMultiaddrs: stringArrayAt(daTransport, [
-      ["announce_multiaddrs"],
-      ["announceMultiaddrs"],
-    ]),
-    bootstrapMultiaddrs: stringArrayAt(daTransport, [
-      ["bootstrap_multiaddrs"],
-      ["bootstrapMultiaddrs"],
-    ]),
+    ),
+    listenMultiaddrs,
+    announceMultiaddrs,
+    bootstrapMultiaddrs,
     committeePeers,
   };
 };
 
 export const loadDaProducerPublicationManifestFromEnv = async (
   env: NodeJS.ProcessEnv = process.env,
-): Promise<DaProducerPublicationManifest | null> => {
-  const manifestPath =
-    optionalNonEmpty(env[MANIFEST_PATH_ENV]) ??
-    optionalNonEmpty(env[FALLBACK_MANIFEST_PATH_ENV]);
+): Promise<DaProducerPublicationManifest> => {
+  const manifestPath = optionalNonEmpty(env[MANIFEST_PATH_ENV]);
   if (manifestPath === undefined) {
-    return null;
+    throw new Error(`${MANIFEST_PATH_ENV} is required for libp2p DA`);
   }
   const raw = await readFile(manifestPath, "utf8");
   const parsed = JSON.parse(raw) as unknown;
@@ -1259,11 +1344,8 @@ const capabilityMismatch = (
   ) {
     return "deployment fingerprint mismatch";
   }
-  if (response.transportProtocolVersion !== DA_TRANSPORT_PROTOCOL_VERSION) {
-    return `transport protocol version ${response.transportProtocolVersion.toString()} is not ${DA_TRANSPORT_PROTOCOL_VERSION.toString()}`;
-  }
-  if (!response.payloadSchemaVersions.includes(3)) {
-    return "payload schema version 3 is not supported";
+  if (!response.payloadSchemaVersions.includes(1)) {
+    return "payload schema version 1 is not supported";
   }
   const requiredEncoding = mode === "identity" ? 0 : 1;
   if (!response.envelopeContentEncodings.includes(requiredEncoding)) {
@@ -2160,7 +2242,7 @@ const payloadAnnouncementSigningPreimage = (message: {
   readonly deploymentFingerprint: Buffer;
   readonly headerHash: Buffer;
   readonly payloadHash: Buffer;
-  readonly payloadSchemaVersion: number;
+  readonly payloadSchemaVersion: 1;
   readonly payloadBytes: number;
   readonly chunkSize: number;
   readonly chunkCount: number;
@@ -2171,7 +2253,7 @@ const payloadAnnouncementSigningPreimage = (message: {
   Buffer.concat([
     Buffer.from(DaTransportSigningDomain.payloadAnnouncement, "utf8"),
     Buffer.from([0]),
-    Buffer.from([DA_TRANSPORT_PROTOCOL_VERSION]),
+    Buffer.from([DA_TRANSPORT_V1_PROTOCOL_VERSION]),
     encodeDaPayloadAnnouncementV1Cbor({
       ...message,
       signature: Buffer.alloc(0),
@@ -2250,11 +2332,13 @@ const parseCommitteePeers = (
       if (!isRecord(member)) {
         throw new Error("da_committee.members entries must be objects");
       }
-      const signerIndex = numberAt(member, [
-        ["signer_index"],
-        ["signerIndex"],
-        ["index"],
-      ]);
+      requireExactKeys(
+        member,
+        ["signer_index", "da_vkey", "peer_id", "multiaddrs", "roles"],
+        [],
+        `da_committee.members[${index.toString()}]`,
+      );
+      const signerIndex = numberAt(member, [["signer_index"]]);
       if (
         signerIndex === undefined ||
         !Number.isSafeInteger(signerIndex) ||
@@ -2271,7 +2355,7 @@ const parseCommitteePeers = (
         );
       }
       seenSignerIndexes.add(signerIndex);
-      const peerId = stringAt(member, [["peer_id"], ["peerId"]]);
+      const peerId = stringAt(member, [["peer_id"]]);
       if (peerId === undefined || peerId.trim().length === 0) {
         throw new Error(
           `da_committee.members[${index.toString()}].peer_id is required`,
@@ -2303,7 +2387,7 @@ const parseCommitteePeers = (
       return {
         signerIndex,
         daVkey: normalizeHex32(
-          stringAt(member, [["da_vkey"], ["daVkey"], ["vkey"]]) ?? "",
+          stringAt(member, [["da_vkey"]]) ?? "",
           `da_committee.members[${index.toString()}].da_vkey`,
         ),
         peerId,
@@ -2459,11 +2543,11 @@ const exactLimit = (
   expected: number,
 ): number => {
   if (limits === undefined) {
-    return expected;
+    throw new Error("da_transport limits object is required");
   }
   const configured = limits[key];
   if (configured === undefined) {
-    return expected;
+    throw new Error(`da_transport.limits.${key} is required`);
   }
   if (configured !== expected) {
     throw new Error(
@@ -2471,6 +2555,38 @@ const exactLimit = (
     );
   }
   return expected;
+};
+
+const requireExactKeys = (
+  value: Record<string, unknown>,
+  expectedKeys: readonly string[],
+  optionalKeys: readonly string[],
+  fieldName: string,
+): void => {
+  const expected = new Set(expectedKeys);
+  const optional = new Set(optionalKeys);
+  for (const key of Object.keys(value)) {
+    if (!expected.has(key)) {
+      throw new Error(`${fieldName}.${key} is unexpected`);
+    }
+  }
+  for (const key of expectedKeys) {
+    if (!optional.has(key) && !Object.hasOwn(value, key)) {
+      throw new Error(`${fieldName}.${key} is required`);
+    }
+  }
+};
+
+const requiredStringArray = (
+  source: Record<string, unknown>,
+  key: string,
+  fieldName: string,
+): readonly string[] => {
+  const values = stringArrayAt(source, [[key]]);
+  if (values.length === 0) {
+    throw new Error(`${fieldName} must be a non-empty string array`);
+  }
+  return values;
 };
 
 const rejectUrlShapedLibp2pDaConfig = (value: unknown, path: string): void => {

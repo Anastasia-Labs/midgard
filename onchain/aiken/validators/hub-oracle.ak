@@ -9,11 +9,10 @@ validator mint(init_utxo: OutputReference, hub_oracle_asset_name: AssetName) {
     expect utils.validate_mint(self.mint, policy_id, hub_oracle_asset_name, qty)
 
     if qty == 1 {
-      expect Some(_) =
-        list.find(
-          self.inputs,
-          fn(input) { input.output_reference == init_utxo },
-        )
+      expect Some(_) = list.find(
+        self.inputs,
+        fn(input) { input.output_reference == init_utxo },
+      )
       True
     } else {
       expect qty == -1

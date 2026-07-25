@@ -12,7 +12,7 @@ import {
 import {
   MidgardMpf,
   MpfError,
-  type ParkedEventFlatOverlayV2,
+  type ParkedEventFlatOverlayV1,
   type ParkedMpfOverlayV1,
 } from "@/workers/utils/mpf.js";
 
@@ -29,8 +29,8 @@ const artifact = (trieName: string): ParkedMpfOverlayV1 => ({
   encodedBytes: 0,
 });
 
-const eventFlatArtifact = (trieName: string): ParkedEventFlatOverlayV2 => ({
-  schemaVersion: 2,
+const eventFlatArtifact = (trieName: string): ParkedEventFlatOverlayV1 => ({
+  schemaVersion: 1,
   trieName,
   baseRoot: new ArrayBuffer(32),
   candidateRoot: new ArrayBuffer(32),
@@ -62,14 +62,14 @@ const fakeMpf = ({
   readonly name: string;
   readonly events: string[];
   readonly parkedArtifact?: ParkedMpfOverlayV1;
-  readonly parkedEventFlatArtifact?: ParkedEventFlatOverlayV2;
+  readonly parkedEventFlatArtifact?: ParkedEventFlatOverlayV1;
   readonly eventFlat?: boolean;
   readonly parkFailure?: MpfError;
 }): MidgardMpf =>
   ({
     usesEventFlatEngine: () => eventFlat,
-    parkEventFlatOverlayV2: () =>
-      Effect.sync(() => events.push(`${name}:park-v2`)).pipe(
+    parkEventFlatOverlayV1: () =>
+      Effect.sync(() => events.push(`${name}:park-v1`)).pipe(
         Effect.zipRight(
           parkFailure === undefined
             ? Effect.succeed(parkedEventFlatArtifact ?? eventFlatArtifact(name))
@@ -161,7 +161,7 @@ describe("speculative MPF lifecycle", () => {
       transactions: transactionsArtifact,
     });
     expect(events).toEqual([
-      "ledger:park-v2",
+      "ledger:park-v1",
       "transactions:park",
       "parent:discard",
       "ledger:close",
@@ -174,31 +174,31 @@ describe("speculative MPF lifecycle", () => {
       name: "resumed-transactions",
       events,
     });
-    const resumeV2 = vi.fn(() => Effect.succeed(resumedLedger));
-    const resumeV1 = vi.fn(() => Effect.succeed(resumedTransactions));
+    const resumeEventFlat = vi.fn(() => Effect.succeed(resumedLedger));
+    const resumeOverlay = vi.fn(() => Effect.succeed(resumedTransactions));
     const resumed = await Effect.runPromise(
       resumeSpeculativeMpfsForSubmission({
         artifacts: parked,
         ledgerMpfPath: "/tmp/injected-event-flat",
         needsLocalFinalizationTransactionsMpf: false,
-        resumeParkedOverlay: resumeV1,
-        resumeParkedEventFlatOverlay: resumeV2,
+        resumeParkedOverlay: resumeOverlay,
+        resumeParkedEventFlatOverlay: resumeEventFlat,
         openLocalFinalizationTransactionsMpf: () =>
           Effect.fail(failure("must not open local finalization")),
       }),
     );
     expect(resumed.ledgerMpf).toBe(resumedLedger);
     expect(resumed.transactionsMpf).toBe(resumedTransactions);
-    expect(resumeV2).toHaveBeenCalledOnce();
-    expect(resumeV1).toHaveBeenCalledOnce();
+    expect(resumeEventFlat).toHaveBeenCalledOnce();
+    expect(resumeOverlay).toHaveBeenCalledOnce();
     expect(resumedLedger.flushBlockOverlay).not.toHaveBeenCalled();
   });
 
   it("does not resume transactions after an event-flat ledger resume failure", async () => {
-    const resumeV2 = vi.fn(() =>
+    const resumeEventFlat = vi.fn(() =>
       Effect.fail(failure("event-flat resume failed")),
     );
-    const resumeV1 = vi.fn(() =>
+    const resumeOverlay = vi.fn(() =>
       Effect.succeed(fakeMpf({ name: "unexpected-transactions", events: [] })),
     );
     const result = await Effect.runPromise(
@@ -211,16 +211,16 @@ describe("speculative MPF lifecycle", () => {
           },
           ledgerMpfPath: "/tmp/injected-event-flat-failure",
           needsLocalFinalizationTransactionsMpf: false,
-          resumeParkedOverlay: resumeV1,
-          resumeParkedEventFlatOverlay: resumeV2,
+          resumeParkedOverlay: resumeOverlay,
+          resumeParkedEventFlatOverlay: resumeEventFlat,
           openLocalFinalizationTransactionsMpf: () =>
             Effect.fail(failure("must not open local finalization")),
         }),
       ),
     );
     expect(result._tag).toBe("Left");
-    expect(resumeV2).toHaveBeenCalledOnce();
-    expect(resumeV1).not.toHaveBeenCalled();
+    expect(resumeEventFlat).toHaveBeenCalledOnce();
+    expect(resumeOverlay).not.toHaveBeenCalled();
   });
 
   it("closes every handle and exposes no artifact when the second park fails", async () => {

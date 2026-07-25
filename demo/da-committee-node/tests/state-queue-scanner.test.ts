@@ -1,3 +1,4 @@
+import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
@@ -20,6 +21,7 @@ describe("state queue scanner", () => {
       deploymentFingerprint: "dep",
       daAttestationPolicyId: "33".repeat(28),
       finalityDepth: 2,
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
     });
     expect(records).toHaveLength(1);
     expect(records[0]!.status).toBe("unattested");
@@ -51,6 +53,7 @@ describe("state queue scanner", () => {
       deploymentFingerprint: "dep",
       daAttestationPolicyId: "33".repeat(28),
       finalityDepth: 0,
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
     });
     expect(records.map((record) => record.status)).toEqual([
       "attested",
@@ -77,6 +80,7 @@ describe("state queue scanner", () => {
       deploymentFingerprint: "dep",
       daAttestationPolicyId: "33".repeat(28),
       finalityDepth: 0,
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
     });
 
     expect(records).toHaveLength(1);

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { decodeMidgardCekProgramMaterialSidecarV1 } from "@al-ft/midgard-core/cek-proof";
 import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
 
@@ -21,13 +22,15 @@ const forcedTransactionsTableName =
   "pending_block_finalization_forced_transactions";
 const withdrawalsTableName = "pending_block_finalization_withdrawals";
 const txsTableName = "pending_block_finalization_txs";
-const utxosTableName = "pending_block_finalization_utxos";
 const transitionTraceTableName = "pending_block_finalization_transition_trace";
 const eventToStepTableName = "pending_block_finalization_event_to_step";
+const validationTracesTableName =
+  "pending_block_finalization_validation_traces";
 
 export enum Columns {
   HEADER_HASH = "header_hash",
   HEADER_CBOR = "header_cbor",
+  CONSENSUS_PROFILE_ID = "consensus_profile_id",
   SUBMITTED_TX_HASH = "submitted_tx_hash",
   STATE_QUEUE_LEASE_TOKEN = "state_queue_lease_token",
   BASE_SNAPSHOT_ID = "base_snapshot_id",
@@ -48,12 +51,14 @@ export enum Columns {
   EXPECTED_WITHDRAWALS_ROOT = "expected_withdrawals_root",
   EXPECTED_TRANSITION_TRACE_ROOT = "expected_transition_trace_root",
   EXPECTED_EVENT_TO_STEP_ROOT = "expected_event_to_step_root",
+  EXPECTED_VALIDATION_TRACES_ROOT = "expected_validation_traces_root",
   EXPECTED_WITHDRAWAL_COUNT = "expected_withdrawal_count",
   EXPECTED_FORCED_TRANSACTION_COUNT = "expected_forced_transaction_count",
   EXPECTED_L2_TRANSACTION_COUNT = "expected_l2_transaction_count",
   EXPECTED_DEPOSIT_COUNT = "expected_deposit_count",
   EXPECTED_TOTAL_EVENT_COUNT = "expected_total_event_count",
   EXPECTED_TRANSITION_STEP_COUNT = "expected_transition_step_count",
+  EXPECTED_VALIDATION_TRACE_COUNT = "expected_validation_trace_count",
   LEDGER_DELTA_SPENT = "ledger_delta_spent",
   LEDGER_DELTA_PRODUCED = "ledger_delta_produced",
   UTXO_PAYLOAD_ENTRY_COUNT = "utxo_payload_entry_count",
@@ -78,15 +83,15 @@ export enum MemberColumns {
   ORDINAL = "ordinal",
   PAYLOAD_CBOR = "payload_cbor",
   PAYLOAD_SHA256 = "payload_sha256",
+  CEK_PROGRAM_MATERIAL_SIDECAR_CBOR = "cek_program_material_sidecar_cbor",
+  CEK_PROGRAM_MATERIAL_SIDECAR_SHA256 = "cek_program_material_sidecar_sha256",
   SOURCE_TABLE = "source_table",
   SOURCE_ID = "source_id",
   SOURCE_TIMESTAMP = "source_time_stamp_tz",
 }
 
 export enum UtxoColumns {
-  HEADER_HASH = "header_hash",
   OUTREF = "outref",
-  ORDINAL = "ordinal",
   OUTPUT = "output",
 }
 
@@ -111,6 +116,7 @@ const ACTIVE_STATUSES: readonly Status[] = [
 export type Row = {
   [Columns.HEADER_HASH]: Buffer;
   [Columns.HEADER_CBOR]: Buffer;
+  [Columns.CONSENSUS_PROFILE_ID]: "midgard-consensus-v1";
   [Columns.SUBMITTED_TX_HASH]: Buffer | null;
   [Columns.STATE_QUEUE_LEASE_TOKEN]: string;
   [Columns.BASE_SNAPSHOT_ID]: string;
@@ -131,14 +137,16 @@ export type Row = {
   [Columns.EXPECTED_WITHDRAWALS_ROOT]: string;
   [Columns.EXPECTED_TRANSITION_TRACE_ROOT]: string;
   [Columns.EXPECTED_EVENT_TO_STEP_ROOT]: string;
+  [Columns.EXPECTED_VALIDATION_TRACES_ROOT]: string;
   [Columns.EXPECTED_WITHDRAWAL_COUNT]: bigint;
   [Columns.EXPECTED_FORCED_TRANSACTION_COUNT]: bigint;
   [Columns.EXPECTED_L2_TRANSACTION_COUNT]: bigint;
   [Columns.EXPECTED_DEPOSIT_COUNT]: bigint;
   [Columns.EXPECTED_TOTAL_EVENT_COUNT]: bigint;
   [Columns.EXPECTED_TRANSITION_STEP_COUNT]: bigint;
-  [Columns.LEDGER_DELTA_SPENT]?: unknown | null;
-  [Columns.LEDGER_DELTA_PRODUCED]?: unknown | null;
+  [Columns.EXPECTED_VALIDATION_TRACE_COUNT]: bigint;
+  [Columns.LEDGER_DELTA_SPENT]: unknown;
+  [Columns.LEDGER_DELTA_PRODUCED]: unknown;
   [Columns.UTXO_PAYLOAD_ENTRY_COUNT]?: number | null;
   [Columns.UTXO_PAYLOAD_ENCODED_TUPLE_BYTES]?: number | null;
   [Columns.MPF_OWNER_SCHEMA]?: number | null;
@@ -165,6 +173,7 @@ type RawRow = Omit<
   | Columns.EXPECTED_DEPOSIT_COUNT
   | Columns.EXPECTED_TOTAL_EVENT_COUNT
   | Columns.EXPECTED_TRANSITION_STEP_COUNT
+  | Columns.EXPECTED_VALIDATION_TRACE_COUNT
   | Columns.UTXO_PAYLOAD_ENTRY_COUNT
   | Columns.UTXO_PAYLOAD_ENCODED_TUPLE_BYTES
   | Columns.MPF_OWNER_SCHEMA
@@ -177,6 +186,7 @@ type RawRow = Omit<
   [Columns.EXPECTED_DEPOSIT_COUNT]: PgBigInt;
   [Columns.EXPECTED_TOTAL_EVENT_COUNT]: PgBigInt;
   [Columns.EXPECTED_TRANSITION_STEP_COUNT]: PgBigInt;
+  [Columns.EXPECTED_VALIDATION_TRACE_COUNT]: PgBigInt;
   [Columns.UTXO_PAYLOAD_ENTRY_COUNT]?: PgBigInt | null;
   [Columns.UTXO_PAYLOAD_ENCODED_TUPLE_BYTES]?: PgBigInt | null;
   [Columns.MPF_OWNER_SCHEMA]?: PgBigInt | null;
@@ -190,22 +200,17 @@ export type MemberRecord = {
   [MemberColumns.ORDINAL]: number;
   [MemberColumns.PAYLOAD_CBOR]: Buffer;
   [MemberColumns.PAYLOAD_SHA256]: Buffer;
+  [MemberColumns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR]?: Buffer | null;
+  [MemberColumns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256]?: Buffer | null;
   [MemberColumns.SOURCE_TABLE]: string;
   [MemberColumns.SOURCE_ID]: Buffer;
   [MemberColumns.SOURCE_TIMESTAMP]: Date;
 };
 
-export type UtxoRecord = {
-  [UtxoColumns.HEADER_HASH]: Buffer;
+export type UtxoInput = {
   [UtxoColumns.OUTREF]: Buffer;
-  [UtxoColumns.ORDINAL]: number;
   [UtxoColumns.OUTPUT]: Buffer;
 };
-
-export type UtxoInput = Omit<
-  UtxoRecord,
-  UtxoColumns.HEADER_HASH | UtxoColumns.ORDINAL
->;
 
 export type RetainedRootMemberInput = {
   readonly keyCbor: Buffer;
@@ -246,6 +251,9 @@ const normalizeRow = (row: RawRow): Row => ({
   [Columns.EXPECTED_TRANSITION_STEP_COUNT]: toBigInt(
     row[Columns.EXPECTED_TRANSITION_STEP_COUNT],
   ),
+  [Columns.EXPECTED_VALIDATION_TRACE_COUNT]: toBigInt(
+    row[Columns.EXPECTED_VALIDATION_TRACE_COUNT],
+  ),
   [Columns.UTXO_PAYLOAD_ENTRY_COUNT]: toSafeNumber(
     row[Columns.UTXO_PAYLOAD_ENTRY_COUNT],
   ),
@@ -273,8 +281,8 @@ export type Record = Row & {
   readonly txMembers: readonly MemberRecord[];
   readonly transitionTraceMembers: readonly MemberRecord[];
   readonly eventToStepMembers: readonly MemberRecord[];
-  readonly utxoMembers: readonly UtxoRecord[];
-  readonly ledgerDelta?: LedgerDeltaInput;
+  readonly validationTraceMembers: readonly MemberRecord[];
+  readonly ledgerDelta: LedgerDeltaInput;
   readonly utxoPayloadAggregate?: UtxoPayloadSizeAggregate;
   readonly nativeMpfReplay?: NativeMpfReplayInput;
 };
@@ -301,6 +309,7 @@ export type NativeMpfReplayInput = {
 };
 
 export type PendingBlockFinalizationMetadata = {
+  readonly consensusProfileId: "midgard-consensus-v1";
   readonly stateQueueLeaseToken: string;
   readonly baseSnapshotId: string;
   readonly baseTailOutRef: string;
@@ -322,6 +331,7 @@ export type PendingBlockFinalizationMetadata = {
     readonly withdrawalsRoot: string;
     readonly transitionTraceRoot: string;
     readonly eventToStepRoot: string;
+    readonly validationTracesRoot: string;
   };
   readonly expectedCounts: {
     readonly withdrawalCount: bigint;
@@ -330,6 +340,7 @@ export type PendingBlockFinalizationMetadata = {
     readonly depositCount: bigint;
     readonly totalEventCount: bigint;
     readonly transitionStepCount: bigint;
+    readonly validationTraceCount: bigint;
   };
 };
 
@@ -346,11 +357,15 @@ export type PrepareInput = {
   readonly withdrawalEntries: readonly WithdrawalsDB.Entry[];
   readonly mempoolTxIds: readonly Buffer[];
   readonly mempoolTxs: readonly TxTable.EntryWithTimeStamp[];
+  readonly mempoolTxProgramMaterialSidecars?: readonly {
+    readonly txId: Buffer;
+    readonly sidecarCbor: Buffer;
+  }[];
   readonly mempoolTxSourceTable: string;
   readonly transitionTraceMembers: readonly RetainedRootMemberInput[];
   readonly eventToStepMembers: readonly RetainedRootMemberInput[];
-  readonly utxoEntries: readonly UtxoInput[];
-  readonly ledgerDelta?: LedgerDeltaInput;
+  readonly validationTraceMembers: readonly RetainedRootMemberInput[];
+  readonly ledgerDelta: LedgerDeltaInput;
   readonly utxoPayloadAggregate?: UtxoPayloadSizeAggregate;
   readonly nativeMpfReplay?: NativeMpfReplayInput;
 };
@@ -416,12 +431,11 @@ const decodeHexArray = (value: unknown, label: string): readonly Buffer[] => {
   return value.map((item) => Buffer.from(item as string, "hex"));
 };
 
-const decodeLedgerDelta = (row: Row): LedgerDeltaInput | undefined => {
+const decodeLedgerDelta = (row: Row): LedgerDeltaInput => {
   const parseJson = (value: unknown): unknown =>
     typeof value === "string" ? JSON.parse(value) : value;
   const spent = parseJson(row[Columns.LEDGER_DELTA_SPENT]);
   const produced = parseJson(row[Columns.LEDGER_DELTA_PRODUCED]);
-  if (spent == null && produced == null) return undefined;
   if (!Array.isArray(produced)) {
     throw new Error("ledger_delta_produced must be an array");
   }
@@ -479,6 +493,7 @@ const txMemberEntry = (
   entry: TxTable.EntryWithTimeStamp,
   ordinal: number,
   sourceTable: string,
+  programMaterialSidecarCbor?: Buffer,
 ): MemberRecord => {
   const payload = Buffer.from(entry[TxTable.Columns.TX]);
   const memberId = Buffer.from(entry[TxTable.Columns.TX_ID]);
@@ -488,6 +503,16 @@ const txMemberEntry = (
     [MemberColumns.ORDINAL]: ordinal,
     [MemberColumns.PAYLOAD_CBOR]: payload,
     [MemberColumns.PAYLOAD_SHA256]: sha256(payload),
+    ...(programMaterialSidecarCbor === undefined
+      ? {}
+      : {
+          [MemberColumns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR]: Buffer.from(
+            programMaterialSidecarCbor,
+          ),
+          [MemberColumns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256]: sha256(
+            programMaterialSidecarCbor,
+          ),
+        }),
     [MemberColumns.SOURCE_TABLE]: sourceTable,
     [MemberColumns.SOURCE_ID]: memberId,
     [MemberColumns.SOURCE_TIMESTAMP]: entry[TxTable.Columns.TIMESTAMPTZ],
@@ -517,23 +542,58 @@ const forcedTransactionMemberEntry = (
   headerHash: Buffer,
   entry: ForcedTransactionsDB.Entry,
   ordinal: number,
-): MemberRecord => {
-  const payload = Buffer.from(
-    entry[ForcedTransactionsDB.Columns.FORCED_INCLUSION_VALUE],
-  );
-  const memberId = Buffer.from(entry[ForcedTransactionsDB.Columns.TX_ORDER_ID]);
-  return {
-    [MemberColumns.HEADER_HASH]: headerHash,
-    [MemberColumns.MEMBER_ID]: memberId,
-    [MemberColumns.ORDINAL]: ordinal,
-    [MemberColumns.PAYLOAD_CBOR]: payload,
-    [MemberColumns.PAYLOAD_SHA256]: sha256(payload),
-    [MemberColumns.SOURCE_TABLE]: ForcedTransactionsDB.tableName,
-    [MemberColumns.SOURCE_ID]: memberId,
-    [MemberColumns.SOURCE_TIMESTAMP]:
-      entry[ForcedTransactionsDB.Columns.INCLUSION_TIME],
-  };
-};
+): Effect.Effect<MemberRecord, DatabaseError> =>
+  Effect.gen(function* () {
+    const sourceValueCbor = Buffer.from(
+      entry[ForcedTransactionsDB.Columns.FORCED_INCLUSION_VALUE],
+    );
+    const canonicalTransactionCbor =
+      entry[ForcedTransactionsDB.Columns.NATIVE_TX_CBOR];
+    const programMaterialSidecarCbor =
+      entry[ForcedTransactionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR];
+    const programMaterialSidecarSha256 =
+      entry[ForcedTransactionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256];
+    if (
+      canonicalTransactionCbor.length === 0 ||
+        programMaterialSidecarCbor.length === 0 ||
+        programMaterialSidecarSha256.length !== 32 ||
+        !sha256(programMaterialSidecarCbor).equals(
+          programMaterialSidecarSha256,
+        )
+    ) {
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: ForcedTransactionsDB.tableName,
+          message:
+            "Refusing to journal a V1 forced transaction without its canonical transaction preimage and authenticated CEK material sidecar",
+          cause: `tx_order_id=${entry[
+            ForcedTransactionsDB.Columns.TX_ORDER_ID
+          ].toString("hex")}`,
+        }),
+      );
+    }
+    const payload = ForcedTransactionsDB.encodeForcedTransactionJournalMemberV1(
+      {
+        sourceValueCbor,
+        canonicalTransactionCbor,
+        programMaterialSidecarCbor,
+      },
+    );
+    const memberId = Buffer.from(
+      entry[ForcedTransactionsDB.Columns.TX_ORDER_ID],
+    );
+    return {
+      [MemberColumns.HEADER_HASH]: headerHash,
+      [MemberColumns.MEMBER_ID]: memberId,
+      [MemberColumns.ORDINAL]: ordinal,
+      [MemberColumns.PAYLOAD_CBOR]: payload,
+      [MemberColumns.PAYLOAD_SHA256]: sha256(payload),
+      [MemberColumns.SOURCE_TABLE]: ForcedTransactionsDB.tableName,
+      [MemberColumns.SOURCE_ID]: memberId,
+      [MemberColumns.SOURCE_TIMESTAMP]:
+        entry[ForcedTransactionsDB.Columns.INCLUSION_TIME],
+    };
+  });
 
 const withdrawalMemberEntry = (
   headerHash: Buffer,
@@ -565,17 +625,6 @@ const withdrawalMemberEntry = (
         entry[WithdrawalsDB.Columns.INCLUSION_TIME],
     };
   });
-
-const utxoMemberEntry = (
-  headerHash: Buffer,
-  entry: UtxoInput,
-  ordinal: number,
-): UtxoRecord => ({
-  [UtxoColumns.HEADER_HASH]: headerHash,
-  [UtxoColumns.OUTREF]: Buffer.from(entry[UtxoColumns.OUTREF]),
-  [UtxoColumns.ORDINAL]: ordinal,
-  [UtxoColumns.OUTPUT]: Buffer.from(entry[UtxoColumns.OUTPUT]),
-});
 
 const retainedRootMemberEntry = ({
   headerHash,
@@ -615,16 +664,6 @@ const retrieveMembers = (
       ORDER BY ${sql(MemberColumns.ORDINAL)} ASC`;
   }).pipe(Effect.orDie);
 
-const retrieveUtxoMembers = (
-  sql: SqlClient.SqlClient,
-  headerHash: Buffer,
-): Effect.Effect<readonly UtxoRecord[], never, never> =>
-  Effect.gen(function* () {
-    return yield* sql<UtxoRecord>`SELECT * FROM ${sql(utxosTableName)}
-      WHERE ${sql(UtxoColumns.HEADER_HASH)} = ${headerHash}
-      ORDER BY ${sql(UtxoColumns.ORDINAL)} ASC`;
-  }).pipe(Effect.orDie);
-
 const retrieveRecord = (
   sql: SqlClient.SqlClient,
   row: RawRow,
@@ -638,7 +677,7 @@ const retrieveRecord = (
       mempoolTxIds,
       transitionTraceMembers,
       eventToStepMembers,
-      utxoMembers,
+      validationTraceMembers,
     ] = yield* Effect.all(
       [
         retrieveMembers(
@@ -667,9 +706,13 @@ const retrieveRecord = (
           eventToStepTableName,
           normalizedRow[Columns.HEADER_HASH],
         ),
-        retrieveUtxoMembers(sql, normalizedRow[Columns.HEADER_HASH]),
+        retrieveMembers(
+          sql,
+          validationTracesTableName,
+          normalizedRow[Columns.HEADER_HASH],
+        ),
       ],
-      { concurrency: "unbounded" },
+      { concurrency: 1 },
     );
     return {
       ...normalizedRow,
@@ -702,7 +745,7 @@ const retrieveRecord = (
       txMembers: mempoolTxIds,
       transitionTraceMembers,
       eventToStepMembers,
-      utxoMembers,
+      validationTraceMembers,
     };
   }).pipe(Effect.orDie);
 
@@ -897,7 +940,8 @@ export const preparePendingSubmission = (
     const depositMembers = input.depositEntries.map((entry, ordinal) =>
       depositMemberEntry(input.headerHash, entry, ordinal),
     );
-    const forcedTransactionMembers = input.forcedTransactionEntries.map(
+    const forcedTransactionMembers = yield* Effect.forEach(
+      input.forcedTransactionEntries,
       (entry, ordinal) =>
         forcedTransactionMemberEntry(input.headerHash, entry, ordinal),
     );
@@ -906,12 +950,57 @@ export const preparePendingSubmission = (
       (entry, ordinal) =>
         withdrawalMemberEntry(input.headerHash, entry, ordinal),
     );
+    const programMaterialByTxId = new Map<string, Buffer>();
+    for (const material of input.mempoolTxProgramMaterialSidecars ?? []) {
+      const txIdHex = material.txId.toString("hex");
+      if (programMaterialByTxId.has(txIdHex)) {
+        return yield* Effect.fail(
+          new DatabaseError({
+            table: txsTableName,
+            message:
+              "Refusing to prepare duplicate V1 transaction program material",
+            cause: `tx_id=${txIdHex}`,
+          }),
+        );
+      }
+      yield* Effect.try({
+        try: () =>
+          decodeMidgardCekProgramMaterialSidecarV1(material.sidecarCbor),
+        catch: (cause) =>
+          new DatabaseError({
+            table: txsTableName,
+            message:
+              "Refusing to journal malformed V1 transaction program material",
+            cause,
+          }),
+      });
+      programMaterialByTxId.set(txIdHex, Buffer.from(material.sidecarCbor));
+    }
+    if (
+      programMaterialByTxId.size !== input.mempoolTxs.length ||
+        input.mempoolTxs.some(
+          (entry) =>
+            !programMaterialByTxId.has(
+              entry[TxTable.Columns.TX_ID].toString("hex"),
+            ),
+        )
+    ) {
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: txsTableName,
+          message:
+            "V1 pending journal requires one canonical program-material sidecar per normal transaction",
+          cause: `transactions=${input.mempoolTxs.length.toString()},sidecars=${programMaterialByTxId.size.toString()}`,
+        }),
+      );
+    }
     const txMembers = input.mempoolTxs.map((entry, ordinal) =>
       txMemberEntry(
         input.headerHash,
         entry,
         ordinal,
         input.mempoolTxSourceTable,
+        programMaterialByTxId.get(entry[TxTable.Columns.TX_ID].toString("hex")),
       ),
     );
     const transitionTraceMembers = input.transitionTraceMembers.map(
@@ -933,8 +1022,15 @@ export const preparePendingSubmission = (
         blockEndTime: input.blockEndTime,
       }),
     );
-    const utxoMembers = input.utxoEntries.map((entry, ordinal) =>
-      utxoMemberEntry(input.headerHash, entry, ordinal),
+    const validationTraceMembers = input.validationTraceMembers.map(
+      (entry, ordinal) =>
+        retainedRootMemberEntry({
+          headerHash: input.headerHash,
+          entry,
+          ordinal,
+          sourceTable: validationTracesTableName,
+          blockEndTime: input.blockEndTime,
+        }),
     );
     yield* sql.withTransaction(
       Effect.gen(function* () {
@@ -972,6 +1068,7 @@ export const preparePendingSubmission = (
         yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert({
           [Columns.HEADER_HASH]: input.headerHash,
           [Columns.HEADER_CBOR]: input.headerCbor,
+          [Columns.CONSENSUS_PROFILE_ID]: input.metadata.consensusProfileId,
           [Columns.SUBMITTED_TX_HASH]: null,
           [Columns.STATE_QUEUE_LEASE_TOKEN]:
             input.metadata.stateQueueLeaseToken,
@@ -1002,6 +1099,8 @@ export const preparePendingSubmission = (
             input.metadata.expectedRoots.transitionTraceRoot,
           [Columns.EXPECTED_EVENT_TO_STEP_ROOT]:
             input.metadata.expectedRoots.eventToStepRoot,
+          [Columns.EXPECTED_VALIDATION_TRACES_ROOT]:
+            input.metadata.expectedRoots.validationTracesRoot,
           [Columns.EXPECTED_WITHDRAWAL_COUNT]:
             input.metadata.expectedCounts.withdrawalCount,
           [Columns.EXPECTED_FORCED_TRANSACTION_COUNT]:
@@ -1014,23 +1113,19 @@ export const preparePendingSubmission = (
             input.metadata.expectedCounts.totalEventCount,
           [Columns.EXPECTED_TRANSITION_STEP_COUNT]:
             input.metadata.expectedCounts.transitionStepCount,
-          [Columns.LEDGER_DELTA_SPENT]:
-            input.ledgerDelta === undefined
-              ? null
-              : JSON.stringify(
-                  input.ledgerDelta.spent.map((outref) =>
-                    outref.toString("hex"),
-                  ),
-                ),
-          [Columns.LEDGER_DELTA_PRODUCED]:
-            input.ledgerDelta === undefined
-              ? null
-              : JSON.stringify(
-                  input.ledgerDelta.produced.map((entry) => ({
-                    outref: entry[UtxoColumns.OUTREF].toString("hex"),
-                    output: entry[UtxoColumns.OUTPUT].toString("hex"),
-                  })),
-                ),
+          [Columns.EXPECTED_VALIDATION_TRACE_COUNT]:
+            input.metadata.expectedCounts.validationTraceCount,
+          [Columns.LEDGER_DELTA_SPENT]: JSON.stringify(
+            input.ledgerDelta.spent.map((outref) =>
+              outref.toString("hex"),
+            ),
+          ),
+          [Columns.LEDGER_DELTA_PRODUCED]: JSON.stringify(
+            input.ledgerDelta.produced.map((entry) => ({
+              outref: entry[UtxoColumns.OUTREF].toString("hex"),
+              output: entry[UtxoColumns.OUTPUT].toString("hex"),
+            })),
+          ),
           [Columns.UTXO_PAYLOAD_ENTRY_COUNT]:
             input.utxoPayloadAggregate?.entryCount ?? null,
           [Columns.UTXO_PAYLOAD_ENCODED_TUPLE_BYTES]:
@@ -1081,10 +1176,10 @@ export const preparePendingSubmission = (
             eventToStepMembers,
           )}`;
         }
-        if (utxoMembers.length > 0) {
-          yield* sql`INSERT INTO ${sql(utxosTableName)} ${sql.insert(
-            utxoMembers,
-          )}`;
+        if (validationTraceMembers.length > 0) {
+          yield* sql`INSERT INTO ${sql(
+            validationTracesTableName,
+          )} ${sql.insert(validationTraceMembers)}`;
         }
       }),
     );
@@ -1494,7 +1589,7 @@ export const clear = Effect.all(
     clearTable(txsTableName),
     clearTable(transitionTraceTableName),
     clearTable(eventToStepTableName),
-    clearTable(utxosTableName),
+    clearTable(validationTracesTableName),
     clearTable(tableName),
   ],
   { discard: true },

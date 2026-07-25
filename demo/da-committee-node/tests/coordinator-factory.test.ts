@@ -7,27 +7,6 @@ import type { L1SubmitterPreflightOptions } from "../src/l1/submitter.js";
 import { minimalConfig } from "./helpers.js";
 
 describe("onChainCoordinatorFromConfig", () => {
-  it("fails closed without Midgard node deployment metadata", async () => {
-    const config = {
-      ...minimalConfig({
-        dir: "/tmp",
-        manifestPath: "/tmp/manifest.json",
-        deploymentInfoPath: "/tmp/deployment.json",
-        signerSeed: "00".repeat(32),
-        signerPublicKey: "11".repeat(32),
-      }),
-      mode: "coordinator" as const,
-      l1SubmitterKeySource: "private-key:ed25519_sk_test",
-      cardanoProviderUrls: [
-        "blockfrost:https://cardano-preview.blockfrost.io/api/v0#project",
-      ],
-    };
-
-    await expect(onChainCoordinatorFromConfig(config)).rejects.toThrow(
-      /deployment-info/,
-    );
-  });
-
   it("fails closed without an L1 submitter key source", async () => {
     const config = {
       ...minimalConfig({

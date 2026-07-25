@@ -21,10 +21,10 @@ vi.mock("@al-ft/midgard-sdk", async (importOriginal) => {
     ...actual,
     fetchConfirmedStateAndItsLinkProgram:
       fetchConfirmedStateAndItsLinkProgramMock,
-    getStateQueueNodeFromStateQueueDatum:
+    getStateQueueNodeV1FromStateQueueDatum:
       getStateQueueNodeFromStateQueueDatumMock,
-    getHeaderFromStateQueueDatum: getHeaderFromStateQueueDatumMock,
-    hashBlockHeader: hashBlockHeaderMock,
+    getHeaderV1FromStateQueueDatum: getHeaderFromStateQueueDatumMock,
+    hashBlockHeaderV1: hashBlockHeaderMock,
   };
 });
 
@@ -116,7 +116,7 @@ const configureCandidate = ({
 }) => {
   const blockHeader = {
     endTime,
-  } as SDK.Header;
+  } as SDK.HeaderV1;
   fetchConfirmedStateAndItsLinkProgramMock.mockImplementation(() =>
     Effect.succeed({
       confirmed: {} as SDK.StateQueueUTxO,
@@ -127,7 +127,7 @@ const configureCandidate = ({
     Effect.succeed({
       header: blockHeader,
       da_attestation: daAttestation,
-    } as SDK.StateQueueNode),
+    } as SDK.StateQueueNodeV1),
   );
   getHeaderFromStateQueueDatumMock.mockImplementation(() =>
     Effect.succeed(blockHeader),

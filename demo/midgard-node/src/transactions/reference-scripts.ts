@@ -1232,6 +1232,35 @@ export const nodeRuntimeReferenceScriptTargets = (
     name: "payout minting",
     script: contracts.payout.mintingScript,
   },
+  ...(contracts.txOrderFieldPreimage.spendingScriptHash ===
+  contracts.txOrder.spendingScriptHash
+    ? []
+    : [
+        {
+          name: "V1 transaction-field preimage publication",
+          script: contracts.txOrderFieldPreimage.spendingScript,
+        },
+        {
+          name: "V1 transaction-field receipt",
+          script: contracts.txOrderFieldReceipt.spendingScript,
+        },
+        {
+          name: "V1 transaction-field receipt minting",
+          script: contracts.txOrderFieldReceipt.mintingScript,
+        },
+        {
+          name: "V1 immutable CEK program-material publication",
+          script: contracts.cekProgramMaterial.spendingScript,
+        },
+      ]),
+  ...(contracts.fraudProofs.validationTraceDispute === undefined
+    ? []
+    : [
+        {
+          name: "V1 validation-trace dispute",
+          script: contracts.fraudProofs.validationTraceDispute.spendingScript,
+        },
+      ]),
 ];
 
 export const referenceScriptTargetsByCommand = (

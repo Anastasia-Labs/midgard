@@ -69,7 +69,7 @@ the implementation** — see [`coverage-matrix.md`](coverage-matrix.md) for the 
    `@aiken-lang/merkle-patricia-forestry` (`prepare-*.ts`, `ne-proofs.ts`,
    `transition-trace/phas.ts`). Data sources: live midgard-node REST (`GET /block`, `/tx`),
    local JSON/CBOR fixture files, or (transition-trace only) libp2p retrieval of the
-   committee-retained `DaPayloadV2` (`transition-trace/fetch.ts`).
+   committee-retained `DaPayloadV1` (`transition-trace/fetch.ts`).
 3. **Init** — `computation-thread.ak` mints the thread NFT after verifying catalogue
    membership of the category and prover signature
    (`onchain/aiken/validators/computation-thread.ak:42-121`).
@@ -148,7 +148,7 @@ there is no Plutus-script concept in the L1-disputable format
 
 ### Retained off-chain (evidence sources)
 
-- **DA committee payload**: `DaPayloadV2` (header + utxos + four event member arrays +
+- **DA committee payload**: `DaPayloadV1` (header + utxos + four event member arrays +
   trace + event-to-step + counts) keyed by header hash
   (`technical-spec/6-offchain-data-architecture/1-da-layer.tex:20-26,39-53`). Committee
   members verify 7 roots + 6 counts against the L1 header before signing

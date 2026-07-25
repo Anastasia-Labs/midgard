@@ -82,8 +82,44 @@ const parseCborNode = (
     };
   }
   if (major === 2) {
+    if (length.value === null) {
+      const chunks: Buffer[] = [];
+      let cursor = length.offset;
+      while (bytes[cursor] !== 0xff) {
+        const chunkInitial = bytes[cursor];
+        if (chunkInitial === undefined || chunkInitial >> 5 !== 2) {
+          throw new Error(
+            "Indefinite CBOR bytes must contain only definite byte chunks",
+          );
+        }
+        const chunkLength = readCborLength(
+          bytes,
+          cursor + 1,
+          chunkInitial & 0x1f,
+        );
+        const definiteChunkLength = Number(
+          expectCborLength(chunkLength.value, "indefinite bytes chunk"),
+        );
+        const end = chunkLength.offset + definiteChunkLength;
+        if (end > bytes.length) {
+          throw new Error("Unexpected end of indefinite CBOR bytes");
+        }
+        chunks.push(bytes.subarray(chunkLength.offset, end));
+        cursor = end;
+      }
+      if (bytes[cursor] !== 0xff) {
+        throw new Error("Unterminated indefinite CBOR bytes");
+      }
+      return {
+        node: { kind: "bytes", value: Buffer.concat(chunks) },
+        offset: cursor + 1,
+      };
+    }
     const byteLength = Number(expectCborLength(length.value, "bytes"));
     const end = length.offset + byteLength;
+    if (end > bytes.length) {
+      throw new Error("Unexpected end of CBOR bytes");
+    }
     return {
       node: { kind: "bytes", value: bytes.subarray(length.offset, end) },
       offset: end,
@@ -256,41 +292,62 @@ const encodeCborHeader = (major: number, value: bigint | null): Buffer => {
   return out;
 };
 
-const encodeCborNodeWithDefiniteMaps = (node: CborNode): Buffer => {
+const encodeCborNodeWithDefiniteMaps = (
+  node: CborNode,
+  sortMaps: boolean,
+): Buffer => {
   switch (node.kind) {
     case "uint":
       return encodeCborHeader(0, node.value);
     case "nint":
       return encodeCborHeader(1, node.value);
-    case "bytes":
-      return Buffer.concat([
-        encodeCborHeader(2, BigInt(node.value.length)),
-        node.value,
-      ]);
-    case "array": {
-      const items = node.items.map(encodeCborNodeWithDefiniteMaps);
-      if (node.indefinite) {
+    case "bytes": {
+      if (node.value.length <= 64) {
         return Buffer.concat([
-          Buffer.from([0x9f]),
-          ...items,
-          Buffer.from([0xff]),
+          encodeCborHeader(2, BigInt(node.value.length)),
+          node.value,
         ]);
       }
+      const chunks: Buffer[] = [];
+      for (let offset = 0; offset < node.value.length; offset += 64) {
+        const chunk = node.value.subarray(offset, offset + 64);
+        chunks.push(encodeCborHeader(2, BigInt(chunk.length)), chunk);
+      }
       return Buffer.concat([
-        encodeCborHeader(4, BigInt(node.items.length)),
-        ...items,
+        Buffer.from([0x5f]),
+        ...chunks,
+        Buffer.from([0xff]),
       ]);
     }
+    case "array": {
+      const items = node.items.map((item) =>
+        encodeCborNodeWithDefiniteMaps(item, sortMaps),
+      );
+      return node.items.length === 0
+        ? Buffer.from([0x80])
+        : Buffer.concat([
+            Buffer.from([0x9f]),
+            ...items,
+            Buffer.from([0xff]),
+          ]);
+    }
     case "map": {
-      const entries = node.entries
-        .map(([key, value]) => {
-          const encodedKey = encodeCborNodeWithDefiniteMaps(key);
-          const encodedValue = encodeCborNodeWithDefiniteMaps(value);
-          return { encodedKey, encodedValue };
-        })
-        .sort((left, right) =>
+      const entries = node.entries.map(([key, value]) => {
+        const encodedKey = encodeCborNodeWithDefiniteMaps(
+          key,
+          sortMaps,
+        );
+        const encodedValue = encodeCborNodeWithDefiniteMaps(
+          value,
+          sortMaps,
+        );
+        return { encodedKey, encodedValue };
+      });
+      if (sortMaps) {
+        entries.sort((left, right) =>
           Buffer.compare(left.encodedKey, right.encodedKey),
         );
+      }
       return Buffer.concat([
         encodeCborHeader(5, BigInt(entries.length)),
         ...entries.flatMap(({ encodedKey, encodedValue }) => [
@@ -299,22 +356,53 @@ const encodeCborNodeWithDefiniteMaps = (node: CborNode): Buffer => {
         ]),
       ]);
     }
-    case "tag":
+    case "tag": {
+      if (
+        node.tag === 102n &&
+        node.value.kind === "array" &&
+        node.value.items.length === 2
+      ) {
+        return Buffer.concat([
+          encodeCborHeader(6, node.tag),
+          Buffer.from([0x82]),
+          ...node.value.items.map((item) =>
+            encodeCborNodeWithDefiniteMaps(item, sortMaps),
+          ),
+        ]);
+      }
       return Buffer.concat([
         encodeCborHeader(6, node.tag),
-        encodeCborNodeWithDefiniteMaps(node.value),
+        encodeCborNodeWithDefiniteMaps(node.value, sortMaps),
       ]);
+    }
   }
 };
 
-export const aikenSerialisedPlutusDataCbor = (cbor: string): string => {
+const aikenSerialisedPlutusDataCborWithMapOrder = (
+  cbor: string,
+  sortMaps: boolean,
+): string => {
   const input = Buffer.from(cbor, "hex");
   const parsed = parseCborNode(input, 0);
   if (parsed.offset !== input.length) {
     throw new Error("Unexpected trailing bytes in PlutusData CBOR");
   }
-  return encodeCborNodeWithDefiniteMaps(parsed.node).toString("hex");
+  return encodeCborNodeWithDefiniteMaps(parsed.node, sortMaps).toString(
+    "hex",
+  );
 };
+
+export const aikenSerialisedPlutusDataCbor = (cbor: string): string =>
+  aikenSerialisedPlutusDataCborWithMapOrder(cbor, true);
+
+/**
+ * Mirrors `serialiseData` for an already constructed Data value. Unlike
+ * typed SDK encoders, a raw Plutus Data map retains its explicit pair order,
+ * and that order is observable through both `unMapData` and serialization.
+ */
+export const aikenSerialisedPlutusDataCborPreservingMapOrder = (
+  cbor: string,
+): string => aikenSerialisedPlutusDataCborWithMapOrder(cbor, false);
 
 export const plutusConstrFieldCbor = (
   cbor: string,

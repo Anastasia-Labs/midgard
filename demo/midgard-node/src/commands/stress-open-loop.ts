@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
 
+import { encodeMidgardProofSubmissionV1 } from "@al-ft/midgard-core/cek-proof";
+
 export type OpenLoopCorpusShape = "fanout" | "chain" | "mixed";
 
 export type OpenLoopWorkloadProfile =
@@ -420,11 +422,14 @@ export const runOpenLoopSubmitter = async ({
     const promise = (async () => {
       const submittedPerfMs = performanceNow();
       const submittedAtMs = Date.now();
-      const body = Buffer.from(row.canonicalCborHex, "hex");
+      const body = encodeMidgardProofSubmissionV1({
+        transactionCbor: Buffer.from(row.canonicalCborHex, "hex"),
+        programMaterial: [],
+      });
       try {
         const response = await fetchImpl(endpoint, {
           method: "POST",
-          headers: { "content-type": "application/cbor" },
+          headers: { "content-type": "application/vnd.midgard.v1+cbor" },
           body,
           signal,
         });

@@ -1,4 +1,6 @@
+import type { MidgardValidationPhaseName } from "@al-ft/midgard-core";
 import type { MidgardValue } from "@al-ft/midgard-core/codec";
+import type { MidgardConsensusProfileV1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import type { Effect } from "effect";
 
 import type { LedgerEntry } from "./ledger.js";
@@ -40,6 +42,30 @@ export const RejectCodes = {
   CertificatesForbidden: "E_CERTIFICATES_FORBIDDEN",
   NonZeroWithdrawal: "E_NONZERO_WITHDRAWAL",
   NetworkIdMismatch: "E_NETWORK_ID_MISMATCH",
+  TxVersion: "E_TX_VERSION",
+  TxSize: "E_TX_SIZE",
+  ValueSize: "E_VALUE_SIZE",
+  InputCount: "E_INPUT_COUNT",
+  ReferenceInputCount: "E_REFERENCE_INPUT_COUNT",
+  OutputCount: "E_OUTPUT_COUNT",
+  AddressWitnessCount: "E_ADDRESS_WITNESS_COUNT",
+  RequiredSignerCount: "E_REQUIRED_SIGNER_COUNT",
+  ScriptExecutionCount: "E_SCRIPT_EXECUTION_COUNT",
+  ObserverCount: "E_OBSERVER_COUNT",
+  FieldPreimageSize: "E_FIELD_PREIMAGE_SIZE",
+  LedgerOutputSize: "E_LEDGER_OUTPUT_SIZE",
+  DatumSize: "E_DATUM_SIZE",
+  ScriptProgramSize: "E_SCRIPT_PROGRAM_SIZE",
+  ScriptProgramEncoding: "E_SCRIPT_PROGRAM_ENCODING",
+  ScriptProgramAggregateSize: "E_SCRIPT_PROGRAM_AGGREGATE_SIZE",
+  NativeScriptDepth: "E_NATIVE_SCRIPT_DEPTH",
+  NativeScriptNodeCount: "E_NATIVE_SCRIPT_NODE_COUNT",
+  RedeemerSize: "E_REDEEMER_SIZE",
+  AssetCount: "E_ASSET_COUNT",
+  MintForbidden: "E_MINT_FORBIDDEN",
+  ReferenceInputForbidden: "E_REFERENCE_INPUT_FORBIDDEN",
+  ScriptFeatureForbidden: "E_SCRIPT_FEATURE_FORBIDDEN",
+  CekProgramMaterial: "E_CEK_PROGRAM_MATERIAL",
 } as const;
 
 export type RejectCode = (typeof RejectCodes)[keyof typeof RejectCodes];
@@ -51,6 +77,7 @@ export type RejectCode = (typeof RejectCodes)[keyof typeof RejectCodes];
 export type QueuedTx = {
   readonly txId: Buffer;
   readonly txCbor: Buffer;
+  readonly programMaterialSidecarCbor?: Buffer | null;
   readonly arrivalSeq: bigint;
   readonly createdAt: Date;
 };
@@ -86,6 +113,7 @@ export type PhaseAValidatedTx = {
   /** Non-ledger submission metadata retained for ordering and persistence. */
   readonly submission: {
     readonly txCbor: Buffer;
+    readonly programMaterialSidecarCbor: Buffer | null;
     readonly arrivalSeq: bigint;
     readonly createdAt: Date;
   };
@@ -118,6 +146,14 @@ export type RejectedTx = {
   readonly txId: Buffer;
   readonly code: RejectCode;
   readonly detail: string | null;
+  /**
+   * Exact consensus-machine instruction that produced this rejection.
+   *
+   * V1 trace construction fails closed when it is absent. The code alone is
+   * not sufficient because, for example, a missing witness can be discovered
+   * during signer, input-resolution, or script-source validation.
+   */
+  readonly consensusPhase?: MidgardValidationPhaseName;
 };
 
 /**
@@ -145,6 +181,7 @@ export type PhaseAConfig = {
   readonly minFeeB: bigint;
   readonly concurrency: number;
   readonly strictnessProfile: string;
+  readonly consensusProfile?: MidgardConsensusProfileV1;
 };
 
 /**
@@ -172,6 +209,10 @@ export type PhaseBConfig = {
     scriptBytes: Uint8Array,
     contextCbor: Uint8Array,
   ) => Effect.Effect<LocalScriptEvalResult, Error>;
+  readonly evaluateProofScript?: (
+    programEnvelopeCbor: Uint8Array,
+    contextCbor: Uint8Array,
+  ) => Effect.Effect<LocalScriptEvalResult, Error>;
 };
 
 /**
@@ -181,5 +222,6 @@ export type PhaseBConfig = {
 export type QueuedTxPayload = {
   readonly txId: Buffer;
   readonly txCbor: Buffer;
+  readonly programMaterialSidecarCbor?: Buffer | null;
   readonly createdAtMillis: number;
 };

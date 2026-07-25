@@ -1,6 +1,11 @@
 import {
+  decodeMidgardCekProgramEnvelopeV1,
+  type MidgardCekProgramMaterialEntryV1,
+} from "@al-ft/midgard-core/cek-proof";
+import {
   computeHash32,
   computeScriptIntegrityHashForLanguages,
+  deriveMidgardNativeFieldCollectionV1,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
@@ -11,6 +16,7 @@ import {
   type ScriptLanguageName,
 } from "@al-ft/midgard-core/codec";
 import { hexToBytes, normalizeHex } from "@al-ft/midgard-core/hex";
+import { buildMidgardCanonicalCekProgramV1 } from "@al-ft/midgard-validation/cek-program";
 import { CML } from "@lucid-evolution/lucid";
 
 import { type Assets, normalizeAssets } from "../core/assets.js";
@@ -281,6 +287,115 @@ const knownScriptSource = (
         sourceId,
       );
   }
+};
+
+export type PreparedProofBuilderState = {
+  readonly state: BuilderState;
+  readonly programMaterial: readonly MidgardCekProgramMaterialEntryV1[];
+};
+
+const canonicalProofProgram = (
+  script: MidgardVersionedScript,
+  material: Map<string, MidgardCekProgramMaterialEntryV1>,
+): MidgardVersionedScript => {
+  if (script.language === "NativeCardano") return script;
+  try {
+    decodeMidgardCekProgramEnvelopeV1(script.scriptBytes);
+    return script;
+  } catch {
+    const canonical = buildMidgardCanonicalCekProgramV1(script.scriptBytes);
+    for (const [root, entry] of canonical.material) {
+      const prior = material.get(root);
+      if (
+        prior !== undefined &&
+        (prior.kind !== entry.kind ||
+          !Buffer.from(prior.preimage).equals(entry.preimage))
+      ) {
+        throw new BuilderInvariantError(
+          "CEK program material hash collision",
+          root,
+        );
+      }
+      material.set(root, entry);
+    }
+    return {
+      language: script.language,
+      scriptBytes: canonical.envelopeCbor,
+    };
+  }
+};
+
+/**
+ * Replaces proof-profile raw UPLC authoring inputs with their compact
+ * consensus envelopes and retains the exact content-addressed graph sidecar.
+ * Already-enveloped programs remain usable for content previously retained
+ * by the node/DA network.
+ */
+export const prepareProofBuilderState = (
+  state: BuilderState,
+): PreparedProofBuilderState => {
+  const material = new Map<string, MidgardCekProgramMaterialEntryV1>();
+  const scripts = state.scripts.scripts.map((source, index): ScriptSource => {
+    if (source.kind === "native") return source;
+    if (source.kind === "dual-plutus-v3-midgard-v1") {
+      throw new BuilderInvariantError(
+        "Dual PlutusV3/MidgardV1 script witnesses are not supported; attach explicit versioned scripts",
+        `inline:${index.toString()}`,
+      );
+    }
+    const known = knownScriptSource(
+      source,
+      `inline:${index.toString()}`,
+      true,
+    );
+    if (known.witnessScript === undefined) {
+      throw new BuilderInvariantError(
+        "Inline V1 script is missing witness bytes",
+      );
+    }
+    const canonical = canonicalProofProgram(known.witnessScript, material);
+    return canonical.language === "PlutusV3"
+      ? {
+          kind: "plutus-v3",
+          language: "PlutusV3",
+          script: Buffer.from(canonical.scriptBytes),
+        }
+      : {
+          kind: "midgard-v1",
+          language: "MidgardV1",
+          script: Buffer.from(canonical.scriptBytes),
+        };
+  });
+  const outputs = state.outputs.map((output) => {
+    if (output.scriptRef === undefined) return output;
+    const canonical = canonicalProofProgram(
+      normalizeScriptRef(output.scriptRef),
+      material,
+    );
+    if (canonical.language === "NativeCardano") return output;
+    return {
+      ...output,
+      scriptRef: {
+        type: canonical.language,
+        script: Buffer.from(canonical.scriptBytes).toString("hex"),
+      } as const,
+    };
+  });
+  return Object.freeze({
+    state: {
+      ...state,
+      scripts: {
+        ...state.scripts,
+        scripts,
+      },
+      outputs,
+    },
+    programMaterial: Object.freeze(
+      [...material.values()].sort((left, right) =>
+        Buffer.compare(Buffer.from(left.root), Buffer.from(right.root)),
+      ),
+    ),
+  });
 };
 
 const knownReferenceScriptSource = (
@@ -798,7 +913,10 @@ export const deriveScriptMaterialization = (
   }
 
   const redeemerTxWitsPreimageCbor = encodeRedeemers(redeemers);
-  const redeemerTxWitsHash = computeHash32(redeemerTxWitsPreimageCbor);
+  const redeemerTxWitsHash = deriveMidgardNativeFieldCollectionV1({
+    fieldIndex: 8,
+    preimageCbor: redeemerTxWitsPreimageCbor,
+  }).commitment;
   const requiredLanguages = [...languages].sort();
   return {
     requiredObserversPreimageCbor: requiredObserversPreimageCbor(

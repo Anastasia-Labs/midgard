@@ -5,10 +5,7 @@ import { dirname } from "node:path";
 
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { normalizeHex } from "@al-ft/midgard-core/hex";
-import {
-  assertReferenceScriptAuthMinimumRemaining,
-  referenceScriptAuthPolicyDeploymentInfo,
-} from "@al-ft/midgard-sdk";
+import { assertReferenceScriptAuthMinimumRemaining } from "@al-ft/midgard-sdk";
 import { NodeRuntime } from "@effect/platform-node";
 import { SqlClient } from "@effect/sql";
 import { getAddressDetails, type Network } from "@lucid-evolution/lucid";
@@ -48,7 +45,6 @@ import * as PrepareHubOracleNonce from "@/commands/prepare-hub-oracle-nonce.js";
 import * as ReconcileCommand from "@/commands/reconcile.js";
 import * as ReserveInspectionCommand from "@/commands/reserve-inspection.js";
 import * as ReservePayoutCommand from "@/commands/reserve-payout.js";
-import * as HistoricalStressCorpusCommand from "@/commands/stress-corpus/historical-extension-command.js";
 import * as StressCorpusCommand from "@/commands/stress-corpus-generate.js";
 import { collectGroundTruthMetricsFromSql } from "@/commands/stress-db-metrics.js";
 import { collectEnvironmentFingerprint } from "@/commands/stress-environment-fingerprint.js";
@@ -499,6 +495,7 @@ const provideDatabaseTxServices = <A, E>(
     | Services.NodeConfig
     | Services.Database
     | Services.WriteBehind
+    | Services.ContractDeploymentIdentity
     | Services.MidgardContracts
     | Services.Lucid
   >,
@@ -512,7 +509,7 @@ const provideDatabaseTxServices = <A, E>(
     Effect.provide(Services.WriteBehindLive),
     Effect.provide(Services.NodeConfig.layer),
     Effect.provide(Services.Database.layer),
-    Effect.provide(Services.MidgardContracts.Default),
+    Effect.provide(Services.MidgardContractServices),
     Effect.provide(Services.Lucid.Default),
   );
 
@@ -1018,6 +1015,7 @@ program
             | Services.AdmissionSql
             | Services.WriteBehind
             | Services.NodeConfig
+            | Services.ContractDeploymentIdentity
           >((runShared) =>
             StressWalletsCommand.fanoutStressWallets(
               {
@@ -1140,6 +1138,7 @@ program
             Effect.provide(Services.Lucid.Default),
             Effect.provide(Services.Database.layer),
             Effect.provide(Services.NodeConfig.layer),
+            Effect.provide(Services.MidgardContractServices),
           ),
         );
         writeJson(result);
@@ -1257,6 +1256,7 @@ program
             | Services.AdmissionSql
             | Services.WriteBehind
             | Services.NodeConfig
+            | Services.ContractDeploymentIdentity
           >((runShared) =>
             StressWalletsCommand.consolidateStressWallets(
               {
@@ -1412,6 +1412,7 @@ program
             Effect.provide(Services.Lucid.Default),
             Effect.provide(Services.Database.layer),
             Effect.provide(Services.NodeConfig.layer),
+            Effect.provide(Services.MidgardContractServices),
           ),
         );
         writeJson(result);
@@ -1528,6 +1529,7 @@ program
             | Services.AdmissionSql
             | Services.WriteBehind
             | Services.NodeConfig
+            | Services.ContractDeploymentIdentity
           >(async (runShared) => {
             const fees = await runShared(
               Effect.gen(function* () {
@@ -1661,267 +1663,12 @@ program
             Effect.provide(Services.Lucid.Default),
             Effect.provide(Services.Database.layer),
             Effect.provide(Services.NodeConfig.layer),
+            Effect.provide(Services.MidgardContractServices),
           ),
         );
         writeJson(result);
       } catch (error) {
         failCli("stress-wallets:terminal-drain", error);
-      }
-    },
-  );
-
-program
-  .command("stress-wallets:consolidate-verify-legacy-state")
-  .description(
-    "Read-only validation of an exact legacy consolidation journal with categorized output report",
-  )
-  .requiredOption("--count <count>", "Exact controlled wallet scope size")
-  .requiredOption("--expected-entry-count <count>", "Exact legacy entry count")
-  .requiredOption(
-    "--expected-preimage-sha256 <sha256>",
-    "Required journal SHA-256",
-  )
-  .requiredOption(
-    "--treasury-wallet-seed-phrase-env <name>",
-    "Environment variable containing the exact treasury wallet seed phrase",
-  )
-  .requiredOption(
-    "--report-path <path>",
-    "New immutable verification report path",
-  )
-  .option(
-    "--endpoint <url>",
-    "Midgard node endpoint",
-    defaultMidgardNodeEndpoint(),
-  )
-  .option("--start-index <index>", "First wallet index", "1")
-  .option("--out-dir <path>", "Stress wallet directory", ".stress-wallets")
-  .option(
-    "--env-prefix <prefix>",
-    "Stress wallet env prefix",
-    "STRESS_WALLET_SEED_PHRASE",
-  )
-  .option("--network <network>", "Wallet network; defaults to NETWORK env")
-  .option(
-    "--reserve-lovelace <amount>",
-    "Maximum allowed live source reserve",
-    "100000",
-  )
-  .option("--max-in-flight <count>", "Maximum concurrent validation reads", "8")
-  .option(
-    "--request-timeout-ms <ms>",
-    "Per-request validation deadline",
-    "30000",
-  )
-  .action(
-    async (options: {
-      readonly count: string;
-      readonly expectedEntryCount: string;
-      readonly expectedPreimageSha256: string;
-      readonly treasuryWalletSeedPhraseEnv: string;
-      readonly reportPath: string;
-      readonly endpoint: string;
-      readonly startIndex: string;
-      readonly outDir: string;
-      readonly envPrefix: string;
-      readonly network?: string;
-      readonly reserveLovelace: string;
-      readonly maxInFlight: string;
-      readonly requestTimeoutMs: string;
-    }) => {
-      try {
-        const treasurySeedPhrase = resolveWalletSeedPhrase({
-          walletSeedPhraseEnv: options.treasuryWalletSeedPhraseEnv,
-        });
-        const requestTimeoutMs = StressWalletsCommand.parseStressWalletCount(
-          options.requestTimeoutMs,
-          "--request-timeout-ms",
-        );
-        const result =
-          await StressWalletsCommand.verifyLegacyConsolidationState(
-            {
-              count: StressWalletsCommand.parseStressWalletCount(
-                options.count,
-                "--count",
-              ),
-              expectedEntryCount: StressWalletsCommand.parseStressWalletCount(
-                options.expectedEntryCount,
-                "--expected-entry-count",
-              ),
-              expectedPreimageSha256: options.expectedPreimageSha256,
-              treasurySeedPhrase: treasurySeedPhrase.seedPhrase,
-              reportPath: options.reportPath,
-              nodeEndpoint: options.endpoint,
-              startIndex: StressWalletsCommand.parseStressWalletCount(
-                options.startIndex,
-                "--start-index",
-              ),
-              outDir: options.outDir,
-              envPrefix: options.envPrefix,
-              network: StressWalletsCommand.parseStressWalletNetwork(
-                options.network,
-              ),
-              reserveLovelace:
-                StressWalletsCommand.parseStressWalletNonNegativeLovelace(
-                  options.reserveLovelace,
-                  "--reserve-lovelace",
-                ),
-              maxInFlight: StressWalletsCommand.parseStressWalletCount(
-                options.maxInFlight,
-                "--max-in-flight",
-              ),
-              requestTimeoutMs,
-            },
-            {
-              fetchTxStatus: async (nodeEndpoint, txHash) => {
-                const response = await fetch(
-                  nodeEndpoint +
-                    "/tx-status?tx_hash=" +
-                    encodeURIComponent(txHash),
-                  { signal: AbortSignal.timeout(requestTimeoutMs) },
-                );
-                const body = (await response.json()) as {
-                  readonly status?: unknown;
-                };
-                if (!response.ok || typeof body.status !== "string") {
-                  throw new Error(
-                    "Failed to read /tx-status for " +
-                      txHash +
-                      ": " +
-                      response.status.toString(),
-                  );
-                }
-                return body.status;
-              },
-            },
-          );
-        writeJson(result);
-      } catch (error) {
-        failCli("stress-wallets:consolidate-verify-legacy-state", error);
-      }
-    },
-  );
-
-program
-  .command("stress-wallets:consolidate-upgrade-state")
-  .description(
-    "One-shot audited upgrade of an exact legacy v1 consolidation journal to v2",
-  )
-  .requiredOption("--count <count>", "Exact controlled wallet scope size")
-  .requiredOption(
-    "--expected-entry-count <count>",
-    "Exact number of legacy journal entries that must be preserved",
-  )
-  .requiredOption(
-    "--expected-preimage-sha256 <sha256>",
-    "Required SHA-256 of the exact legacy consolidation-state.json bytes",
-  )
-  .requiredOption(
-    "--treasury-wallet-seed-phrase-env <name>",
-    "Environment variable containing the exact treasury wallet seed phrase",
-  )
-  .option(
-    "--endpoint <url>",
-    "Midgard node endpoint used for /tx-status and /utxos",
-    defaultMidgardNodeEndpoint(),
-  )
-  .option("--start-index <index>", "First wallet index in the exact scope", "1")
-  .option("--out-dir <path>", "Stress wallet directory", ".stress-wallets")
-  .option(
-    "--env-prefix <prefix>",
-    "Environment variable prefix recorded by the stress wallets",
-    "STRESS_WALLET_SEED_PHRASE",
-  )
-  .option("--network <network>", "Wallet network; defaults to NETWORK env")
-  .option(
-    "--reserve-lovelace <amount>",
-    "Maximum allowed live source reserve",
-    "100000",
-  )
-  .option("--max-in-flight <count>", "Maximum concurrent validation reads", "8")
-  .option(
-    "--request-timeout-ms <ms>",
-    "Per-request validation deadline",
-    "30000",
-  )
-  .action(
-    async (options: {
-      readonly count: string;
-      readonly expectedEntryCount: string;
-      readonly expectedPreimageSha256: string;
-      readonly treasuryWalletSeedPhraseEnv: string;
-      readonly endpoint: string;
-      readonly startIndex: string;
-      readonly outDir: string;
-      readonly envPrefix: string;
-      readonly network?: string;
-      readonly reserveLovelace: string;
-      readonly maxInFlight: string;
-      readonly requestTimeoutMs: string;
-    }) => {
-      try {
-        const treasurySeedPhrase = resolveWalletSeedPhrase({
-          walletSeedPhraseEnv: options.treasuryWalletSeedPhraseEnv,
-        });
-        const requestTimeoutMs = StressWalletsCommand.parseStressWalletCount(
-          options.requestTimeoutMs,
-          "--request-timeout-ms",
-        );
-        const result =
-          await StressWalletsCommand.upgradeLegacyConsolidationState(
-            {
-              count: StressWalletsCommand.parseStressWalletCount(
-                options.count,
-                "--count",
-              ),
-              expectedEntryCount: StressWalletsCommand.parseStressWalletCount(
-                options.expectedEntryCount,
-                "--expected-entry-count",
-              ),
-              expectedPreimageSha256: options.expectedPreimageSha256,
-              treasurySeedPhrase: treasurySeedPhrase.seedPhrase,
-              nodeEndpoint: options.endpoint,
-              startIndex: StressWalletsCommand.parseStressWalletCount(
-                options.startIndex,
-                "--start-index",
-              ),
-              outDir: options.outDir,
-              envPrefix: options.envPrefix,
-              network: StressWalletsCommand.parseStressWalletNetwork(
-                options.network,
-              ),
-              reserveLovelace:
-                StressWalletsCommand.parseStressWalletNonNegativeLovelace(
-                  options.reserveLovelace,
-                  "--reserve-lovelace",
-                ),
-              maxInFlight: StressWalletsCommand.parseStressWalletCount(
-                options.maxInFlight,
-                "--max-in-flight",
-              ),
-              requestTimeoutMs,
-            },
-            {
-              fetchTxStatus: async (nodeEndpoint, txHash) => {
-                const response = await fetch(
-                  `${nodeEndpoint}/tx-status?tx_hash=${encodeURIComponent(txHash)}`,
-                  { signal: AbortSignal.timeout(requestTimeoutMs) },
-                );
-                const body = (await response.json()) as {
-                  readonly status?: unknown;
-                };
-                if (!response.ok || typeof body.status !== "string") {
-                  throw new Error(
-                    `Failed to read /tx-status for ${txHash}: ${response.status.toString()}`,
-                  );
-                }
-                return body.status;
-              },
-            },
-          );
-        writeJson(result);
-      } catch (error) {
-        failCli("stress-wallets:consolidate-upgrade-state", error);
       }
     },
   );
@@ -1978,68 +1725,6 @@ program
       writeJson(result);
     } catch (error) {
       failCli("stress-corpus-generate", error);
-    }
-  });
-
-program
-  .command("stress-corpus-historical-extension")
-  .description(
-    "Build a Phase-5-only offline historical corpus extension; never valid as fresh Phase 1/2 evidence",
-  )
-  .requiredOption("--base-corpus-path <path>", "Retained corpus NDJSON")
-  .requiredOption(
-    "--base-corpus-sha256 <sha256>",
-    "Expected retained corpus SHA-256",
-  )
-  .requiredOption("--base-index-path <path>", "Retained corpus index")
-  .requiredOption(
-    "--base-index-sha256 <sha256>",
-    "Expected retained index SHA-256",
-  )
-  .requiredOption("--base-manifest-path <path>", "Retained corpus manifest")
-  .requiredOption(
-    "--base-manifest-sha256 <sha256>",
-    "Expected retained manifest SHA-256",
-  )
-  .requiredOption(
-    "--base-verification-path <path>",
-    "Retained standalone corpus verification",
-  )
-  .requiredOption(
-    "--base-verification-sha256 <sha256>",
-    "Expected retained verification SHA-256",
-  )
-  .requiredOption("--base-binding-path <path>", "Retained Phase 1 live binding")
-  .requiredOption(
-    "--base-binding-sha256 <sha256>",
-    "Expected retained Phase 1 binding SHA-256",
-  )
-  .requiredOption("--fanout-report-path <path>", "Retained fanout report")
-  .requiredOption(
-    "--fanout-report-sha256 <sha256>",
-    "Expected retained fanout report SHA-256",
-  )
-  .requiredOption(
-    "--wallets-dir <path>",
-    "Controlled wallet records used only in memory to sign terminal-derived continuations",
-  )
-  .requiredOption("--out-dir <path>", "New immutable output directory")
-  .option("--base-chain-count <count>", "Retained chain count", "4096")
-  .option("--base-depth <count>", "Retained per-chain depth", "748")
-  .option("--target-row-count <count>", "Exact extended row count", "5000000")
-  .option("--workers <count>", "Worker thread count")
-  .option("--yes", "Confirm offline generation")
-  .action(async (options) => {
-    try {
-      const config =
-        HistoricalStressCorpusCommand.parseHistoricalExtensionConfig(options);
-      const result =
-        await HistoricalStressCorpusCommand.generateHistoricalCorpusExtension(
-          config,
-        );
-      writeJson(result);
-    } catch (error) {
-      failCli("stress-corpus-historical-extension", error);
     }
   });
 
@@ -2386,7 +2071,7 @@ reconcile
   .option("--watcher-url <url>", "Copied DA node base URL")
   .option(
     "--contract-deployment-info <path>",
-    "Finalized v2 contract deployment info path used to derive the watcher deployment fingerprint",
+    "Finalized V1 contract deployment info path used to derive the watcher deployment fingerprint",
   )
   .option(
     "--repair",
@@ -2543,7 +2228,6 @@ program
                   txHash,
                 },
               },
-              requireReadyManifest: true,
             },
           );
         yield* Effect.logInfo(
@@ -2731,7 +2415,7 @@ program
   )
   .option(
     "--no-op-calibration-endpoint <url>",
-    "No-op /submit-compatible endpoint used for client calibration",
+    "No-op endpoint with the POST /submit request shape, used for client calibration",
   )
   .option(
     "--require-no-op-calibration",
@@ -2885,6 +2569,7 @@ program
         const sql = yield* SqlClient.SqlClient;
         const nodeConfig = yield* Services.NodeConfig;
         const writeBehind = yield* Services.WriteBehind;
+        const deploymentIdentity = yield* Services.ContractDeploymentIdentity;
         return yield* Effect.tryPromise({
           try: () =>
             E2EStressL2ThroughputCommand.runE2EL2StressThroughput(
@@ -2911,6 +2596,10 @@ program
                       Effect.provideService(SqlClient.SqlClient, sql),
                       Effect.provideService(Services.NodeConfig, nodeConfig),
                       Effect.provideService(Services.WriteBehind, writeBehind),
+                      Effect.provideService(
+                        Services.ContractDeploymentIdentity,
+                        deploymentIdentity,
+                      ),
                     ),
                   ),
                 collectStageMetricSources: async ({ txHashes }) =>
@@ -3018,6 +2707,7 @@ program
           Effect.provide(Services.NodeConfig.layer),
           Effect.provide(Services.Database.layer),
           Effect.provide(Services.Lucid.Default),
+          Effect.provide(Services.MidgardContractServices),
           Effect.provide(stressCliLoggerLayer),
         ),
       );
@@ -3244,7 +2934,7 @@ program
   )
   .requiredOption(
     "--contract-deployment-info <path>",
-    "Finalized v2 contract deployment info path; deployment.fingerprint is derived from manifestId",
+    "Finalized V1 contract deployment info path; deployment.fingerprint is derived from manifestId",
   )
   .requiredOption(
     "--producer-libp2p-key-source <source>",
@@ -3257,7 +2947,7 @@ program
     collectStringOption,
     [],
   )
-  .option("--network <network>", "Cardano network label")
+  .requiredOption("--network <network>", "Exact Cardano network label")
   .option("--local-signer-index <n>", "Local watcher signer index")
   .option("--producer-port <port>", "Producer retrieval libp2p port")
   .option("--watcher-port <port>", "Watcher libp2p port")
@@ -3282,7 +2972,7 @@ program
         producerPrivateKeySource: opts.producerLibp2pKeySource,
         committeeMembers,
         threshold: parsePositiveIntegerOption(opts.threshold, "--threshold"),
-        ...(typeof opts.network === "string" ? { network: opts.network } : {}),
+        network: opts.network,
         ...(typeof opts.localSignerIndex === "string"
           ? {
               localSignerIndex: parseNonNegativeIntegerOption(
@@ -3858,36 +3548,6 @@ for (const commandName of RegisterActiveOperator.REFERENCE_SCRIPT_COMMAND_NAMES)
                 `${nodeConfig.HUB_ORACLE_ONE_SHOT_TX_HASH}#${nodeConfig.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX.toString()}`,
               ]),
             );
-          const liveReferenceScripts = yield* fetchReferenceScriptUtxosProgram(
-            lucidService.referenceScriptsApi,
-            lucidService.referenceScriptsAddress,
-            referenceScriptTargetsByCommand(contracts)[commandName],
-            contracts.referenceScriptAuth,
-          );
-          const deploymentInfo =
-            yield* ContractDeploymentInfo.buildContractDeploymentInfoProgram(
-              contracts,
-              [
-                ...liveReferenceScripts.map(({ utxo }) => utxo),
-                ...published.map(({ utxo }) => utxo),
-              ],
-              referenceScriptAuthPolicyDeploymentInfo(authPolicy),
-            );
-          const manifestPath =
-            yield* ContractDeploymentInfo.writeContractDeploymentInfoFileProgram(
-              manifestOutputPath,
-              ContractDeploymentInfo.buildDeploymentManifestV2(deploymentInfo, {
-                network: nodeConfig.NETWORK,
-                referenceScriptDeployAddress:
-                  nodeConfig.L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS,
-                hubOracleOneShotTxHash: nodeConfig.HUB_ORACLE_ONE_SHOT_TX_HASH,
-                hubOracleOneShotOutputIndex:
-                  nodeConfig.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX,
-              }),
-            );
-          yield* Effect.logInfo(
-            `reference-script deployment info written: ${manifestPath}`,
-          );
           return { mode: "publish" as const, published };
         }).pipe(
           Effect.tap((result) => {
@@ -4314,7 +3974,6 @@ program
 
 program
   .command("submit-l2-transfer")
-  .alias("submit-tx")
   .description(
     "Build, sign, and submit a Midgard-native L2 transfer from USER_WALLET by default or a provided seed phrase",
   )
@@ -4409,6 +4068,7 @@ program
         Effect.provide(Services.Lucid.Default),
         Effect.provide(Services.Database.layer),
         Effect.provide(Services.NodeConfig.layer),
+        Effect.provide(Services.MidgardContractServices),
       );
 
       runCliEffect(mainEffect);

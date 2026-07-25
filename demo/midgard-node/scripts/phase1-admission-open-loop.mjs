@@ -9,6 +9,7 @@ import { performance } from "node:perf_hooks";
 import { createInterface } from "node:readline";
 
 import { Pool } from "undici";
+import { encodeMidgardProofSubmissionV1 } from "@al-ft/midgard-core/cek-proof";
 
 const requireOptIn = () => {
   if (process.env.PHASE1_ADMISSION_OPERATOR !== "1") {
@@ -184,6 +185,10 @@ const runStage = async ({ name, rate, seconds, retainSamples }) => {
   let lastCompletedAt = startedAt;
 
   const dispatch = (body, scheduledAt) => {
+    const submissionBody = encodeMidgardProofSubmissionV1({
+      transactionCbor: body,
+      programMaterial: [],
+    });
     const dispatchedAt = performance.now();
     if (retainSamples)
       scheduleLagMs.push(Math.max(0, dispatchedAt - scheduledAt));
@@ -192,8 +197,8 @@ const runStage = async ({ name, rate, seconds, retainSamples }) => {
       .request({
         path: "/submit",
         method: "POST",
-        headers: { "content-type": "application/cbor" },
-        body,
+        headers: { "content-type": "application/vnd.midgard.v1+cbor" },
+        body: submissionBody,
       })
       .then(async (response) => {
         await response.body.text();

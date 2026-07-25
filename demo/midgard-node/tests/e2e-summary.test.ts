@@ -1108,7 +1108,7 @@ describe("e2e run summary", () => {
     await writeSummaryMarkdownAtomic(markdownPath, summary);
 
     await expect(readFile(jsonPath, "utf8")).resolves.toContain(
-      '"schemaVersion": "midgard-e2e-summary-v2"',
+      '"schemaVersion": "midgard-e2e-summary-v1"',
     );
     const markdown = await readFile(markdownPath, "utf8");
     expect(markdown).toContain("# Midgard E2E Run Summary");

@@ -3,9 +3,9 @@ import { describe, expect, it } from "vitest";
 
 import { PendingBlockFinalizationsDB } from "@/database/index.js";
 import {
+  type CanonicalCommittedHeader,
   findEarliestCanonicalPayloadJournal,
   localJournalHasPayloadMembers,
-  type CanonicalCommittedHeader,
 } from "@/services/canonical-journal-recovery.js";
 
 const headerHash = (byte: number): Buffer => Buffer.alloc(28, byte);

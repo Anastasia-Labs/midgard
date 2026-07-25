@@ -1,5 +1,5 @@
 import {
-  getHeaderFromStateQueueDatum,
+  getHeaderV1FromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
   HUB_ORACLE_ASSET_NAME,
   InvalidRangeStep01SpendRedeemer,
@@ -186,7 +186,7 @@ export const submitInvalidRangeStep01 = async ({
     getLinkedListNodeViewFromUTxO(stateQueueBlockUtxo),
   );
   const header = await Effect.runPromise(
-    getHeaderFromStateQueueDatum(stateQueueNodeView),
+    getHeaderV1FromStateQueueDatum(stateQueueNodeView),
   );
   requireNativeTxMatchesCompactCbor(txInclusion);
   const normalizedValidityRange = normalizeNativeTxValidityRange(

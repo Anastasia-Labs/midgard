@@ -1,7 +1,13 @@
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  assertMidgardConsensusV1ReleaseReady,
+  MIDGARD_CONSENSUS_PROFILE_V1,
+  type MidgardConsensusProfileV1,
+} from "@al-ft/midgard-core/consensus-profile-v1";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { normalizeOutRef } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -23,10 +29,13 @@ import {
 import { Effect, Layer } from "effect";
 
 import {
-  DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
-  type DeploymentManifestV2Value,
-  parseDeploymentManifestV2Value,
-} from "@/deployment-manifest-v2.js";
+  type DeploymentManifestV1Value,
+  parseDeploymentManifestV1Value,
+} from "@/deployment-manifest-v1.js";
+import {
+  defaultDeploymentRunStatePath,
+  loadDeploymentRunState,
+} from "@/e2e/run-state.js";
 
 import { AlwaysSucceedsContract } from "./always-succeeds.js";
 import { NodeConfig, type NodeConfigDep } from "./config.js";
@@ -55,7 +64,7 @@ type DeploymentManifestContractEntry = {
   readonly scriptHash?: unknown;
 };
 
-type DeploymentManifestCandidate = DeploymentManifestV2Value & {
+type DeploymentManifestCandidate = DeploymentManifestV1Value & {
   readonly contracts: Readonly<Record<string, DeploymentManifestContractEntry>>;
 };
 
@@ -63,6 +72,7 @@ export type ContractDeploymentIdentityValue = {
   readonly kind: "manifest" | "derived";
   readonly manifestId?: string;
   readonly path?: string;
+  readonly consensusProfile: MidgardConsensusProfileV1;
 };
 
 type MidgardContractRuntimeValue = {
@@ -77,15 +87,6 @@ const DEFAULT_REAL_BLUEPRINT_CANDIDATES = [
   path.resolve(process.cwd(), "../../onchain/aiken/plutus.json"),
   path.resolve(process.cwd(), "onchain/aiken/plutus.json"),
 ] as const;
-const DEFAULT_CONTRACT_DEPLOYMENT_INFO_CANDIDATES = [
-  path.resolve(moduleDir, "../../deploymentInfo/contract-deployment-info.json"),
-  path.resolve(process.cwd(), "deploymentInfo/contract-deployment-info.json"),
-  path.resolve(
-    process.cwd(),
-    "demo/midgard-node/deploymentInfo/contract-deployment-info.json",
-  ),
-] as const;
-
 /**
  * Cached real blueprint loaded from either `MIDGARD_REAL_BLUEPRINT_PATH` or
  * the canonical onchain Aiken build output.
@@ -123,6 +124,25 @@ const resolveDefaultRealBlueprintPath = (): string => {
   );
 };
 
+const resolveConfiguredRealBlueprintPath = (): string => {
+  const configuredPath = process.env.MIDGARD_REAL_BLUEPRINT_PATH?.trim();
+  return configuredPath ? configuredPath : resolveDefaultRealBlueprintPath();
+};
+
+export const loadRealBlueprintSha256 = (): Effect.Effect<string, Error> =>
+  Effect.try({
+    try: () => {
+      const blueprintPath = resolveConfiguredRealBlueprintPath();
+      const raw = readFileSync(blueprintPath);
+      parseBlueprint(raw.toString("utf8"), blueprintPath);
+      return createHash("sha256").update(raw).digest("hex");
+    },
+    catch: (cause) =>
+      new Error(
+        `Failed to hash canonical real blueprint: ${formatUnknownError(cause)}`,
+      ),
+  });
+
 /**
  * Loads the real-contract blueprint, optionally honoring an override path from
  * the environment.
@@ -130,10 +150,7 @@ const resolveDefaultRealBlueprintPath = (): string => {
 const loadRealBlueprint = (): Effect.Effect<Blueprint, Error> =>
   Effect.try({
     try: () => {
-      const configuredPath = process.env.MIDGARD_REAL_BLUEPRINT_PATH?.trim();
-      const blueprintPath = configuredPath
-        ? configuredPath
-        : resolveDefaultRealBlueprintPath();
+      const blueprintPath = resolveConfiguredRealBlueprintPath();
 
       if (cachedRealBlueprint?.path === blueprintPath) {
         return cachedRealBlueprint.blueprint;
@@ -154,57 +171,19 @@ const loadRealBlueprint = (): Effect.Effect<Blueprint, Error> =>
       new Error(`Failed to load real blueprint: ${formatUnknownError(cause)}`),
   });
 
-const resolveDefaultContractDeploymentInfoPath = (): string => {
-  for (const candidate of new Set(
-    DEFAULT_CONTRACT_DEPLOYMENT_INFO_CANDIDATES,
-  )) {
-    if (existsSync(candidate)) {
-      return candidate;
-    }
-  }
-  throw new Error(
-    `Failed to locate contract deployment info. Looked in: ${DEFAULT_CONTRACT_DEPLOYMENT_INFO_CANDIDATES.join(", ")}`,
-  );
-};
-
-const configuredContractDeploymentInfoPath = (): string => {
-  const configuredPath =
-    process.env.MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH?.trim();
-  return configuredPath === undefined || configuredPath.length === 0
-    ? resolveDefaultContractDeploymentInfoPath()
-    : path.resolve(configuredPath);
-};
-
 const loadReferenceScriptAuthValidator = (): Effect.Effect<
   SDK.MintingValidator,
   Error
 > =>
-  Effect.try({
-    try: () => {
-      const deploymentInfoPath = configuredContractDeploymentInfoPath();
-      const parsed = JSON.parse(
-        readFileSync(deploymentInfoPath, "utf8"),
-      ) as unknown;
+  Effect.tryPromise({
+    try: async () => {
+      const runStatePath = defaultDeploymentRunStatePath();
+      const runState = await loadDeploymentRunState(runStatePath);
+      if (runState === null) {
+        throw new Error(`Deployment run state does not exist: ${runStatePath}`);
+      }
       const referenceScriptAuthPolicy =
-        typeof parsed === "object" &&
-        parsed !== null &&
-        typeof (
-          parsed as {
-            referenceScriptAuthPolicy?: {
-              policyId?: unknown;
-              nativeScript?: { cborHex?: unknown; type?: unknown };
-            };
-          }
-        ).referenceScriptAuthPolicy === "object"
-          ? (
-              parsed as {
-                referenceScriptAuthPolicy: {
-                  policyId?: unknown;
-                  nativeScript?: { cborHex?: unknown; type?: unknown };
-                };
-              }
-            ).referenceScriptAuthPolicy
-          : undefined;
+        runState.identity.referenceScriptAuthPolicy;
       const policyId =
         typeof referenceScriptAuthPolicy?.policyId === "string"
           ? referenceScriptAuthPolicy.policyId
@@ -216,12 +195,12 @@ const loadReferenceScriptAuthValidator = (): Effect.Effect<
           : "";
       if (!/^[0-9a-fA-F]{56}$/.test(policyId)) {
         throw new Error(
-          `Deployment info at "${deploymentInfoPath}" does not contain a valid referenceScriptAuthPolicy.policyId`,
+          `Deployment run state at "${runStatePath}" does not contain a valid identity.referenceScriptAuthPolicy.policyId`,
         );
       }
       if (!/^[0-9a-fA-F]+$/.test(cborHex)) {
         throw new Error(
-          `Deployment info at "${deploymentInfoPath}" does not contain a valid referenceScriptAuthPolicy.nativeScript.cborHex`,
+          `Deployment run state at "${runStatePath}" does not contain a valid identity.referenceScriptAuthPolicy.nativeScript.cborHex`,
         );
       }
       const mintingScript: MintingPolicy = {
@@ -242,7 +221,7 @@ const loadReferenceScriptAuthValidator = (): Effect.Effect<
     },
     catch: (cause) =>
       new Error(
-        `Failed to load reference-script auth policy id from deployment info: ${formatUnknownError(
+        `Failed to load reference-script auth policy id from deployment run state: ${formatUnknownError(
           cause,
         )}`,
       ),
@@ -251,7 +230,7 @@ const loadReferenceScriptAuthValidator = (): Effect.Effect<
 export const parseRuntimeDeploymentManifest = (
   raw: unknown,
 ): DeploymentManifestCandidate =>
-  parseDeploymentManifestV2Value(raw) as DeploymentManifestCandidate;
+  parseDeploymentManifestV1Value(raw) as DeploymentManifestCandidate;
 
 export const readRuntimeDeploymentManifestFile = (
   deploymentInfoPath: string,
@@ -273,15 +252,6 @@ export const readRuntimeDeploymentManifestFile = (
   const parsed = JSON.parse(
     readFileSync(deploymentInfoPath, "utf8"),
   ) as unknown;
-  const claimsV2 =
-    typeof parsed === "object" &&
-    parsed !== null &&
-    !Array.isArray(parsed) &&
-    (parsed as { readonly schemaVersion?: unknown }).schemaVersion ===
-      DEPLOYMENT_MANIFEST_SCHEMA_VERSION;
-  if (!required && !claimsV2) {
-    return undefined;
-  }
   return {
     path: deploymentInfoPath,
     manifest: parseRuntimeDeploymentManifest(parsed),
@@ -289,13 +259,12 @@ export const readRuntimeDeploymentManifestFile = (
 };
 
 const readConfiguredDeploymentManifest = () => {
-  const explicitlyConfigured = Boolean(
-    process.env.MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH?.trim(),
-  );
-  return readRuntimeDeploymentManifestFile(
-    configuredContractDeploymentInfoPath(),
-    explicitlyConfigured,
-  );
+  const configuredPath =
+    process.env.MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH?.trim();
+  if (configuredPath === undefined || configuredPath.length === 0) {
+    return undefined;
+  }
+  return readRuntimeDeploymentManifestFile(path.resolve(configuredPath), true);
 };
 
 const requireManifestString = (
@@ -568,6 +537,38 @@ export const midgardContractsFromDeploymentManifest = (
     ),
     ...hubOracleMint,
   };
+  const txOrder = authenticatedValidatorFromManifest(
+    network,
+    manifest,
+    sourcePath,
+    "txOrderSpend",
+    "txOrderMint",
+  );
+  const txOrderFieldPreimage = spendingValidatorFromManifest(
+    network,
+    manifest,
+    sourcePath,
+    "txOrderFieldPreimageSpend",
+  );
+  const txOrderFieldReceipt = {
+    ...spendingValidatorFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      "txOrderFieldReceiptSpend",
+    ),
+    ...mintingValidatorFromManifest(
+      manifest,
+      sourcePath,
+      "txOrderFieldReceiptMint",
+    ),
+  };
+  const cekProgramMaterial = spendingValidatorFromManifest(
+    network,
+    manifest,
+    sourcePath,
+    "cekProgramMaterialSpend",
+  );
 
   return {
     referenceScriptAuth,
@@ -656,13 +657,10 @@ export const midgardContractsFromDeploymentManifest = (
       "withdrawalSpend",
       "withdrawalMint",
     ),
-    txOrder: authenticatedValidatorFromManifest(
-      network,
-      manifest,
-      sourcePath,
-      "txOrderSpend",
-      "txOrderMint",
-    ),
+    txOrder,
+    txOrderFieldPreimage,
+    txOrderFieldReceipt,
+    cekProgramMaterial,
     settlement: authenticatedValidatorFromManifest(
       network,
       manifest,
@@ -720,6 +718,12 @@ export const midgardContractsFromDeploymentManifest = (
         manifest,
         sourcePath,
         "fraudProofTransitionTrace",
+      ),
+      validationTraceDispute: spendingValidatorFromManifest(
+        network,
+        manifest,
+        sourcePath,
+        "validationTraceDispute",
       ),
     },
   };
@@ -794,8 +798,12 @@ export const REAL_DEPOSIT_SCRIPT_TITLES = {
  * Blueprint titles for the real tx-order scripts.
  */
 export const REAL_TX_ORDER_SCRIPT_TITLES = {
-  mint: "user_events/tx_order.mint.mint",
-  spend: "user_events/tx_order.spend.spend",
+  mint: "user_events/tx_order_v1.mint.mint",
+  spend: "user_events/tx_order_v1.spend.spend",
+  fieldPreimageSpend: "user_events/tx_field_preimage_v1.spend.spend",
+  fieldReceiptMint: "user_events/tx_field_receipt_v1.mint.mint",
+  fieldReceiptSpend: "user_events/tx_field_receipt_spend_v1.spend.spend",
+  cekProgramMaterialSpend: "user_events/cek_program_material_v1.spend.spend",
 } as const;
 
 /**
@@ -1171,6 +1179,41 @@ const buildRealTransitionTraceProofValidator = (
     return transitionTraceContracts.transitionTrace.firstStep;
   });
 
+const buildRealValidationTraceDisputeValidator = (
+  network: Network,
+  contracts: SDK.MidgardValidators,
+  computationThread: SDK.MintingValidator,
+  fraudProof: SDK.AuthenticatedValidator,
+): Effect.Effect<SDK.SpendingValidator, Error> =>
+  Effect.gen(function* () {
+    const blueprint = SDK.parseFaultProofBlueprint(yield* loadRealBlueprint());
+    const validationTraceContracts =
+      yield* SDK.buildValidationTraceDisputeFaultProofContracts({
+        blueprint,
+        network,
+        hubOraclePolicyId: contracts.hubOracle.policyId,
+        fraudProofCataloguePolicyId: contracts.fraudProofCatalogue.policyId,
+      });
+
+    yield* expectDerivedScriptHash(
+      "computation-thread policy",
+      computationThread.policyId,
+      validationTraceContracts.computationThread.policyId,
+    );
+    yield* expectDerivedScriptHash(
+      "fraud-proof policy",
+      fraudProof.policyId,
+      validationTraceContracts.fraudProof.policyId,
+    );
+    yield* expectDerivedScriptHash(
+      "fraud-proof spend",
+      fraudProof.spendingScriptHash,
+      validationTraceContracts.fraudProof.spendingScriptHash,
+    );
+
+    return validationTraceContracts.validationTraceDispute.firstStep;
+  });
+
 const buildRealNonExistentInputFirstStepValidator = (
   network: Network,
   contracts: SDK.MidgardValidators,
@@ -1337,16 +1380,85 @@ const buildRealDepositValidator = (
     () => [contracts.hubOracle.policyId],
   );
 
-const buildRealTxOrderValidator = (
+export type TxOrderContracts = {
+  readonly txOrder: SDK.AuthenticatedValidator;
+  readonly txOrderFieldPreimage: SDK.SpendingValidator;
+  readonly txOrderFieldReceipt: SDK.SpendingValidator & SDK.MintingValidator;
+  readonly cekProgramMaterial: SDK.SpendingValidator;
+};
+
+/**
+ * Derives the indivisible V1 tx-order script family. The dependency
+ * order is consensus-critical: parameterless fragment/receipt locks first,
+ * then the receipt policy, and finally the tx-order policy that authenticates
+ * compact receipt references.
+ */
+export const buildRealTxOrderContracts = (
   network: Network,
-  contracts: SDK.MidgardValidators,
-): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
-  buildRealAuthenticatedValidator(
-    network,
-    REAL_TX_ORDER_SCRIPT_TITLES,
-    [contracts.hubOracle.policyId],
-    () => [contracts.hubOracle.policyId],
-  );
+  hubOraclePolicyId: string,
+): Effect.Effect<TxOrderContracts, Error> =>
+  Effect.gen(function* () {
+    const blueprint = yield* loadRealBlueprint();
+    const fieldPreimageBase = yield* getCompiledScript(
+      blueprint,
+      REAL_TX_ORDER_SCRIPT_TITLES.fieldPreimageSpend,
+    );
+    const fieldReceiptSpendBase = yield* getCompiledScript(
+      blueprint,
+      REAL_TX_ORDER_SCRIPT_TITLES.fieldReceiptSpend,
+    );
+    const cekProgramMaterialBase = yield* getCompiledScript(
+      blueprint,
+      REAL_TX_ORDER_SCRIPT_TITLES.cekProgramMaterialSpend,
+    );
+    const txOrderFieldPreimage = makeSpendingValidator(
+      network,
+      fieldPreimageBase,
+    );
+    const fieldReceiptSpend = makeSpendingValidator(
+      network,
+      fieldReceiptSpendBase,
+    );
+    const fieldReceiptMintBase = yield* getCompiledScript(
+      blueprint,
+      REAL_TX_ORDER_SCRIPT_TITLES.fieldReceiptMint,
+    );
+    const fieldReceiptMint = makeMintingPolicy(
+      applyParamsToScript(fieldReceiptMintBase, [
+        txOrderFieldPreimage.spendingScriptHash,
+        fieldReceiptSpend.spendingScriptHash,
+      ]),
+    );
+    const txOrderMintBase = yield* getCompiledScript(
+      blueprint,
+      REAL_TX_ORDER_SCRIPT_TITLES.mint,
+    );
+    const txOrderSpendBase = yield* getCompiledScript(
+      blueprint,
+      REAL_TX_ORDER_SCRIPT_TITLES.spend,
+    );
+    const txOrder = makeAuthenticatedValidator(
+      network,
+      applyParamsToScript(txOrderMintBase, [
+        hubOraclePolicyId,
+        fieldReceiptSpend.spendingScriptHash,
+        fieldReceiptMint.policyId,
+      ]),
+      applyParamsToScript(txOrderSpendBase, [hubOraclePolicyId]),
+    );
+    return {
+      txOrder,
+      txOrderFieldPreimage,
+      txOrderFieldReceipt: {
+        ...fieldReceiptSpend,
+        ...fieldReceiptMint,
+      },
+      cekProgramMaterial: makeSpendingValidator(
+        network,
+        cekProgramMaterialBase,
+      ),
+    };
+  });
 
 const buildRealWithdrawalValidator = (
   network: Network,
@@ -1467,6 +1579,13 @@ export const withRealStateQueueAndOperatorContracts = (
       realComputationThread,
       realFraudProof,
     );
+    const realValidationTraceDispute =
+      yield* buildRealValidationTraceDisputeValidator(
+        network,
+        withRealFraudProofCatalogue,
+        realComputationThread,
+        realFraudProof,
+      );
     const realNonExistentInput =
       yield* buildRealNonExistentInputFirstStepValidator(
         network,
@@ -1481,6 +1600,7 @@ export const withRealStateQueueAndOperatorContracts = (
         ...withRealFraudProofCatalogue.fraudProofs,
         doubleSpend: realDoubleSpendFirstStep,
         transitionTrace: realTransitionTrace,
+        validationTraceDispute: realValidationTraceDispute,
         nonExistentInput: realNonExistentInput,
       },
     };
@@ -1522,13 +1642,16 @@ export const withRealStateQueueAndOperatorContracts = (
       deposit: realDeposit,
     };
 
-    const realTxOrder = yield* buildRealTxOrderValidator(
+    const realTxOrderContracts = yield* buildRealTxOrderContracts(
       network,
-      withRealHubOracleAndDeposit,
+      withRealHubOracleAndDeposit.hubOracle.policyId,
     );
     const withRealHubOracleDepositAndTxOrder: SDK.MidgardValidators = {
       ...withRealHubOracleAndDeposit,
-      txOrder: realTxOrder,
+      txOrder: realTxOrderContracts.txOrder,
+      txOrderFieldPreimage: realTxOrderContracts.txOrderFieldPreimage,
+      txOrderFieldReceipt: realTxOrderContracts.txOrderFieldReceipt,
+      cekProgramMaterial: realTxOrderContracts.cekProgramMaterial,
     };
 
     const realWithdrawal = yield* buildRealWithdrawalValidator(
@@ -1628,6 +1751,15 @@ const makeMidgardContractRuntime = Effect.gen(function* () {
   });
   if (configuredManifest !== undefined) {
     yield* Effect.try({
+      try: assertMidgardConsensusV1ReleaseReady,
+      catch: (cause) =>
+        new Error(
+          `Configured V1 deployment is fail-closed: ${formatUnknownError(
+            cause,
+          )}`,
+        ),
+    });
+    yield* Effect.try({
       try: () =>
         assertDeploymentManifestMatchesConfig(
           configuredManifest.manifest,
@@ -1667,6 +1799,7 @@ const makeMidgardContractRuntime = Effect.gen(function* () {
         kind: "manifest",
         manifestId: configuredManifest.manifest.manifestId,
         path: configuredManifest.path,
+        consensusProfile: configuredManifest.manifest.consensusProfile,
       },
     };
     return runtime;
@@ -1685,11 +1818,14 @@ const makeMidgardContractRuntime = Effect.gen(function* () {
     },
   );
   yield* Effect.logInfo(
-    "🔐 Contract source selected: state_queue=real, da_attestation=real, da_params_governor=real, hub_oracle=real, deposit=real, tx_order=real, withdrawal=real, settlement=real, reserve=real, payout=real, registered_operators=real, active_operators=real, retired_operators=real, scheduler=real, fraud_proofs.double_spend=real, fraud_proofs.transition_trace=real, fraud_proofs.non_existent_input=real",
+    "🔐 Contract source selected: state_queue=real, da_attestation=real, da_params_governor=real, hub_oracle=real, deposit=real, tx_order=real, withdrawal=real, settlement=real, reserve=real, payout=real, registered_operators=real, active_operators=real, retired_operators=real, scheduler=real, fraud_proofs.double_spend=real, fraud_proofs.transition_trace=real, fraud_proofs.validation_trace_dispute=real, fraud_proofs.non_existent_input=real",
   );
   const runtime: MidgardContractRuntimeValue = {
     contracts: resolvedContracts,
-    identity: { kind: "derived" },
+    identity: {
+      kind: "derived",
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+    },
   };
   return runtime;
 }).pipe(Effect.orDie);
@@ -1708,7 +1844,10 @@ class MidgardContractRuntime extends Effect.Service<MidgardContractRuntime>()(
 export class MidgardContracts extends Effect.Service<MidgardContracts>()(
   "MidgardContracts",
   {
-    effect: Effect.map(MidgardContractRuntime, ({ contracts }) => contracts),
+    effect: Effect.map(MidgardContractRuntime, ({ contracts, identity }) => ({
+      ...contracts,
+      consensusProfile: identity.consensusProfile,
+    })),
     dependencies: [MidgardContractRuntime.Default],
   },
 ) {}

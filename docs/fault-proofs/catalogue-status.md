@@ -199,11 +199,10 @@ Gaps that are **fixes, not catalogue entries** (no new proof type):
   A mid-flight committee change also bricks partially-signed attestations and strands
   their ADA (`da-attestation.ak:143-144,261,348-349`). Decide governed lower bounds and
   an attestation-rescue/refund path.
-- **D-S13** — `protocol_version` (`ledger-state.ak:76,110`) and `schema_version`
-  (`:285`) are inert: frozen at genesis, read by no validator or proof, so there is no
-  "block contents violate their declared version" fault and no upgrade path short of
-  redeploying scripts. Decide the version-gating + conformance-proof story before any
-  upgrade is bolted on.
+- **D-S13 resolved for canonical V1** — the exact consensus tuple and tuple
+  digest bind protocol version 1, transition schema 1, native transaction
+  version 1, protocol-info API 1, and `DeploymentManifestV1`. Unknown
+  identities fail closed; a future upgrade requires a new deployment.
 - **D-DA2** — data withheld after attestation (remedy, not proof).
 - **D-E1 / W-C10** — economics.
 - **Genesis/deployment trust (record, no runtime fix)**: the hub-oracle datum — every

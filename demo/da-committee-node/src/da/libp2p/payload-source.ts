@@ -122,10 +122,11 @@ export class DaLibp2pPayloadSource implements DaPayloadSource {
         const payloadCbor = Buffer.from(byHeaderResponse.payloadBytes);
         assertPayloadHash(payloadCbor, byHeaderResponse.payloadHash);
         const metadata = await this.fetchMetadata(peer, headerHash);
+        assertCanonicalPayloadMetadata(metadata);
         return {
           sourcePeerId: peer.peerId,
           payloadCbor,
-          payloadSchemaVersion: metadata?.payloadSchemaVersion ?? undefined,
+          payloadSchemaVersion: 1,
           metadata,
         };
       }
@@ -151,10 +152,11 @@ export class DaLibp2pPayloadSource implements DaPayloadSource {
         }
         assertPayloadHash(payloadCbor, byHeaderResponse.payloadHash);
         const metadata = await this.fetchMetadata(peer, headerHash);
+        assertCanonicalPayloadMetadata(metadata);
         return {
           sourcePeerId: peer.peerId,
           payloadCbor,
-          payloadSchemaVersion: metadata?.payloadSchemaVersion ?? undefined,
+          payloadSchemaVersion: 1,
           metadata,
         };
       }
@@ -245,6 +247,18 @@ export class DaLibp2pPayloadSource implements DaPayloadSource {
     return this.protocolIds.protocolIdByName.get(protocol)!;
   }
 }
+
+const assertCanonicalPayloadMetadata = (
+  metadata:
+    | ReturnType<typeof decodeDaMetadataByHeaderResponseV1Cbor>
+    | undefined,
+): void => {
+  if (metadata?.payloadSchemaVersion !== 1) {
+    throw new InvalidDaPayloadSourceResponseError(
+      "payload metadata is missing canonical V1 schema binding",
+    );
+  }
+};
 
 export const createDaLibp2pPayloadRequestHandlers = ({
   deploymentFingerprint,

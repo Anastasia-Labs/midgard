@@ -10,33 +10,43 @@ The data availability layer is critical to Midgard's security because every comm
 \subsection{Current committee-retained payload}
 \label{h:data-availability-current-committee}
 
-The current implementation uses a DA committee that retains \code{DaPayloadV2} records keyed by \code{header\_hash}.
-The retained payload contains the embedded header, final UTxO members, withdrawal members, forced transaction members, normal L2 transaction members, deposit members, transition trace members, event-to-step members, and counts.
+The current implementation uses a DA committee that retains exact
+\code{DaPayloadEnvelopeV1} records keyed by \code{header\_hash}. Each envelope
+declares identity or zstd encoding and authenticates the canonical
+\code{DaPayloadV1} inner bytes, decoded length, and SHA-256.
+The retained payload contains the embedded header, final UTxO members,
+withdrawal members, forced and normal compact transaction sources, their full
+canonical preimages, CEK program material, deposit members, transition trace
+members, event-to-step members, validation-trace descriptors, and counts.
 Committee nodes recompute every root and count against the L1 header before signing an attestation.
 
 Independent challengers retrieve the retained payload from DA committee routes keyed by deployment fingerprint and header hash, then reconstruct the roots and proof witnesses locally.
 Operator debug endpoints are not a production DA source; challenger tooling must be able to build transition-trace proofs from the L1 header plus committee-retained data.
 
 \begin{equation*}
-    \T{DaPayloadV2} \coloneq \left\{
+    \T{DaPayloadV1} \coloneq \left\{
     \begin{array}{ll}
         \T{version} : & \T{Int} \\
-        \T{block\_body} : & \T{DaPayloadBodyV2}
+        \T{block\_body} : & \T{DaPayloadBodyV1}
     \end{array} \right\}
 \end{equation*}
 
 \begin{equation*}
-    \T{DaPayloadBodyV2} \coloneq \left\{
+    \T{DaPayloadBodyV1} \coloneq \left\{
     \begin{array}{ll}
         \T{header\_hash} : & \T{HeaderHash} \\
         \T{header} : & \T{Header} \\
         \T{utxos} : & \T{[(ByteArray, ByteArray)]} \\
         \T{withdrawals} : & \T{[(WithdrawalId, WithdrawalInfo)]} \\
         \T{forced\_transactions} : & \T{[(TxOrderId, ForcedInclusionTx)]} \\
-        \T{transactions} : & \T{[(TxId, ByteArray)]} \\
+        \T{transactions} : & \T{[(TxId, L2TransactionSourceV1)]} \\
+        \T{transaction\_preimages} : & \T{[(TxId, ByteArray)]} \\
+        \T{forced\_transaction\_preimages} : & \T{[(TxId, ByteArray)]} \\
+        \T{cek\_program\_material} : & \T{[(CekRoot, ByteArray)]} \\
         \T{deposits} : & \T{[(DepositId, DepositInfo)]} \\
         \T{transition\_trace} : & \T{[(Int, TransitionStep)]} \\
         \T{event\_to\_step} : & \T{[(EventKey, EventToStepValue)]} \\
+        \T{validation\_traces} : & \T{[(EventKey, ValidationTraceDescriptorV1)]} \\
         \T{counts} : & \T{HeaderCounts}
     \end{array} \right\}
 \end{equation*}

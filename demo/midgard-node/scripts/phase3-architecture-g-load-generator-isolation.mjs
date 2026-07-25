@@ -12,7 +12,7 @@ import {
 } from "./phase3-architecture-g-closure-lib.mjs";
 
 export const PHASE3_LOAD_GENERATOR_ISOLATION_SCHEMA =
-  "midgard-phase3-load-generator-isolation-v3";
+  "midgard-phase3-load-generator-isolation-v1";
 export const PHASE3_NODE_PRE_LIFECYCLE_REVALIDATION_SCHEMA =
   "midgard-phase3-node-pre-lifecycle-revalidation-v1";
 

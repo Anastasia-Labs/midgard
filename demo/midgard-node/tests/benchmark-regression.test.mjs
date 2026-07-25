@@ -526,7 +526,9 @@ describe("Phase 1 formal scenario contracts", () => {
       source.indexOf("const summarizeCursorContinuity"),
     );
     expect(selfCheck).toContain("`${noOpEndpoint}/submit`");
-    expect(selfCheck).toContain('"content-type": "application/cbor"');
+    expect(selfCheck).toContain(
+      '"content-type": "application/vnd.midgard.v1+cbor"',
+    );
     expect(selfCheck).toContain("body: Buffer.from([0])");
     expect(selfCheck).toContain(".request(endpoint, requestOptions)");
     expect(selfCheck).toContain("Math.min(httpConnections, submitConcurrency)");

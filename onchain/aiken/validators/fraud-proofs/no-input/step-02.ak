@@ -40,28 +40,29 @@ validator main(
 
         // 1. Specified input must be authentic and properly reproduced.
         let
-          _own_script_hash,
-          _computation_thread_token_asset_name,
-          _fraud_prover,
-          m_input_state_data,
-          output_script_hash,
-          output_state_data,
-        <-
-          continue(
-            computation_thread_token_policy_id,
-            step_datum,
-            input_index,
-            output_index,
-            own_out_ref,
-            inputs,
-            outputs,
-          )
+            _own_script_hash,
+            _computation_thread_token_asset_name,
+            _fraud_prover,
+            m_input_state_data,
+            output_script_hash,
+            output_state_data
+          <- continue(
+          computation_thread_token_policy_id,
+          step_datum,
+          input_index,
+          output_index,
+          own_out_ref,
+          inputs,
+          outputs,
+        )
 
-        expect Some(State {
-          bad_tx_inputs_hash,
-          blocks_prev_utxos_root,
-          blocks_transactions_root,
-        }) = m_input_state_data
+        expect
+            Some(State {
+              bad_tx_inputs_hash,
+              blocks_prev_utxos_root,
+              blocks_transactions_root,
+            })
+          = m_input_state_data
 
         // 2. Target input must be included in the verified transaction's native
         //    spend-inputs preimage, hashed via `encode_input_preimage` (the
@@ -74,12 +75,11 @@ validator main(
         // 3. Target input, plus the relevant block roots, must be passed to the
         //    next step.
         expect output_script_hash == step_03_validator_script_hash
-        let expected_output_state: Data =
-          step_03.State {
-            missing_input,
-            blocks_prev_utxos_root,
-            blocks_transactions_root,
-          }
+        let expected_output_state: Data = step_03.State {
+          missing_input,
+          blocks_prev_utxos_root,
+          blocks_transactions_root,
+        }
         expect output_state_data == expected_output_state
 
         // Done.

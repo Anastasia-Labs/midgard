@@ -16,36 +16,43 @@ export const getConfirmedStateFromStateQueueDatumLocal = (
   SDK.DataCoercionError
 > => localizeSdkEffect(SDK.getConfirmedStateFromStateQueueDatum(nodeDatum));
 
-export const getHeaderFromStateQueueDatumLocal = (
+export const getHeaderV1FromStateQueueDatumLocal = (
   nodeDatum: SDK.LinkedListNodeView,
-): Effect.Effect<SDK.Header, SDK.DataCoercionError> =>
-  localizeSdkEffect(SDK.getHeaderFromStateQueueDatum(nodeDatum));
+): Effect.Effect<SDK.HeaderV1, SDK.DataCoercionError> =>
+  localizeSdkEffect(SDK.getHeaderV1FromStateQueueDatum(nodeDatum));
 
-export const hashBlockHeaderLocal = (
-  header: SDK.Header,
+export const hashBlockHeaderV1Local = (
+  header: SDK.HeaderV1,
 ): Effect.Effect<string, SDK.HashingError> =>
-  localizeSdkEffect(SDK.hashBlockHeader(header));
+  localizeSdkEffect(SDK.hashBlockHeaderV1(header));
 
-export const updateLatestBlocksDatumAndGetTheNewHeaderLocal = (
+export const updateLatestBlocksDatumAndGetTheNewHeaderV1Local = (
   lucid: Parameters<
-    typeof SDK.updateLatestBlocksDatumAndGetTheNewHeaderProgram
+    typeof SDK.updateLatestBlocksDatumAndGetTheNewHeaderV1Program
   >[0],
   latestBlocksDatum: SDK.LinkedListNodeView,
   newUTxOsRoot: string,
   transactionsRoot: string,
   depositsRoot: string,
   withdrawalsRoot: string,
-  transitionCommitments: SDK.HeaderTransitionCommitments,
+  transitionCommitments: SDK.HeaderTransitionCommitmentsV1,
   endTime: bigint,
+  validationContext: Pick<
+    SDK.HeaderV1,
+    "blockSlot" | "expectedNetworkId" | "minFeeA" | "minFeeB"
+  >,
 ): Effect.Effect<
-  { readonly nodeDatum: SDK.LinkedListNodeView; readonly header: SDK.Header },
+  {
+    readonly nodeDatum: SDK.LinkedListNodeView;
+    readonly header: SDK.HeaderV1;
+  },
   | SDK.DataCoercionError
   | SDK.HeaderTransitionCommitmentsError
   | SDK.LucidError
   | SDK.HashingError
 > =>
   localizeSdkEffect(
-    SDK.updateLatestBlocksDatumAndGetTheNewHeaderProgram(
+    SDK.updateLatestBlocksDatumAndGetTheNewHeaderV1Program(
       lucid,
       latestBlocksDatum,
       newUTxOsRoot,
@@ -54,6 +61,7 @@ export const updateLatestBlocksDatumAndGetTheNewHeaderLocal = (
       withdrawalsRoot,
       transitionCommitments,
       endTime,
+      validationContext,
     ),
   );
 
@@ -67,7 +75,7 @@ export const getLatestBlockDatumEndTime = (
             new Date(Number(confirmedState.endTime)),
         ),
       )
-    : getHeaderFromStateQueueDatumLocal(latestBlocksDatum).pipe(
+    : getHeaderV1FromStateQueueDatumLocal(latestBlocksDatum).pipe(
         Effect.map((latestHeader) => new Date(Number(latestHeader.endTime))),
       );
 
@@ -84,8 +92,8 @@ export const stateQueueBaseHeaderHash = (
       );
       return data.headerHash;
     }
-    const header = yield* getHeaderFromStateQueueDatumLocal(block.datum);
-    return yield* hashBlockHeaderLocal(header);
+    const header = yield* getHeaderV1FromStateQueueDatumLocal(block.datum);
+    return yield* hashBlockHeaderV1Local(header);
   });
 
 export const fetchLatestCommittedBlockLocal = (

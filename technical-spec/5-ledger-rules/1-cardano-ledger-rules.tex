@@ -556,7 +556,6 @@ Formal specification:
 \begin{split}
   &\forall t \in Ledger : \\
     &\quad
-      mint(t) \;+\;
       \sum value \bigl(  spend\_inputs(t) \bigr) \;=\;
       fee(t) \;+\;
       \sum value \bigl(  outputs(t) \bigr)
@@ -576,7 +575,6 @@ Formal specification:
 \begin{split}
   &\exists t \in txs : \\
     &\quad
-      mint(t) \;+\;
       \sum value \bigl(  spend\_inputs(t) \bigr) \;\neq\;
       fee(t) \;+\;
       \sum value \bigl(  outputs(t) \bigr)
@@ -592,14 +590,15 @@ Fraud proof construction:
   \item The sums in the calculation must show a discrepancy.
 \end{enumerate}
 
-\subsection{Rule: No Ada minted}
+\subsection{Rule: No mint or burn}
 \label{rule:no-ada-minted}
-Ada must not be minted.
+The canonical mint preimage must be empty; no asset, including Ada, may be
+minted or burned by a launch-profile L2 transaction.
 Formal specification:
 \begin{empheq}[box=\ledgerRuleBox]{equation*}
 \begin{split}
   &\forall t \in Ledger:\\
-    &\quad lovelaces(mint(t)) = 0
+    &\quad mint(t) = \varnothing
 \end{split}
 \end{empheq}
 
@@ -608,14 +607,14 @@ This ledger rule is violated if any of the following violations occur:
   \item \hyperref[violation:ADA-MINTED]{ADA-MINTED}
 \end{itemize-multi}
 
-\subsubsection{ADA-MINTED violation}
+\subsubsection{MINT-OR-BURN violation}
 \label{violation:ADA-MINTED}
-Ada is minted in transaction $t$.
+The mint preimage of transaction $t$ is non-empty.
 Formal specification:
 \begin{equation*}
 \begin{split}
   &\exists t \in txs:\\
-    &\quad lovelaces(mint(t)) \neq 0
+    &\quad mint(t) \neq \varnothing
 \end{split}
 \end{equation*}
 
@@ -623,17 +622,44 @@ Fraud proof construction:
 \begin{enumerate}
   \item Let $t$ be the transaction alleged to violate the ledger rule.
   \item A membership proof must be provided that shows that the transaction $t$ is included in the ledger.
-  \item $lovelaces(mint(t)) \neq 0$
+  \item The canonical mint preimage is not the empty list.
 \end{enumerate}
 
-% \subsection{Rule: Maximum transaction size}
-% \label{rule:maximum-transaction-size}
+\subsection{Rule: Maximum transaction size}
+\label{rule:maximum-transaction-size}
 
-% \subsection{Rule: Maximum reference script size}
-% \label{rule:maximum-reference-script-size}
+Canonical V1 has no independent (8{,}192)-byte aggregate transaction
+ceiling. Each dynamic canonical field preimage is independently committed by
+the compact transaction and has a compiled maximum derived from the supported
+(16{,}384)-byte L1 fault-proof transaction floor and the concrete overhead of
+the one-step instruction that reveals it. For every instruction,
+\[
+    |\T{field\_preimage}| + |\T{reserved\_proof\_overhead}| <
+    16{,}384.
+\]
+The effective maximum canonical transaction size is the sum of every bounded
+dynamic field after its canonical byte-string wrapping, plus all fixed-size
+fields and CBOR framing. It is not an independently selected protocol cap.
+Each enabled proof instruction must additionally pass its execution-unit and
+serialized worst-case transaction test.
 
-% \subsection{Rule: Maximum value size}
-% \label{rule:maximum-value-size}
+\subsection{Rule: Maximum reference script size}
+\label{rule:maximum-reference-script-size}
+
+Reference scripts are supported in canonical V1. A reference script contained in a
+ledger output shares that output preimage's concrete membership-proof
+envelope; when a script program is revealed by a script-execution instruction,
+it also satisfies that instruction's program-preimage envelope. There is no
+zero-byte canonical V1 limit.
+
+\subsection{Rule: Maximum value size}
+\label{rule:maximum-value-size}
+
+Canonical V1 assigns no arbitrary independent cap to a canonical value. The value
+shares the compiled preimage envelope of the output or transaction field that
+contains it. A narrower value-only limit is permitted only in a distinct
+instruction whose concrete L1 proof reveals that value as one independent
+preimage and whose measured proof overhead requires it.
 
 \subsection{Rule: No negative value}
 \label{rule:no-negative-value}

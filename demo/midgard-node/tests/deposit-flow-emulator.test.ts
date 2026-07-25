@@ -2,6 +2,7 @@ import "./utils.js";
 
 import { randomUUID } from "node:crypto";
 
+import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
 import {
@@ -86,6 +87,7 @@ import type {
 import { runUserEventBarrierRefresherPass } from "@/fibers/user-event-barrier-refresher.js";
 import type { NodeConfigDep } from "@/services/config.js";
 import {
+  ContractDeploymentIdentity,
   Database,
   Globals,
   Lucid as LucidService,
@@ -1092,7 +1094,13 @@ const runCommitWorker = async (
           undefined,
           nodeConfig,
         ),
-    ).pipe(Effect.provide(Database.layer)),
+    ).pipe(
+      Effect.provideService(ContractDeploymentIdentity, ContractDeploymentIdentity.make({
+        kind: "derived",
+        consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+      })),
+      Effect.provide(Database.layer),
+    ),
   );
   if (leaseResult._tag === "Busy") {
     throw new Error(
@@ -1247,6 +1255,10 @@ const runBarrierRefresherForTest = (
     runUserEventBarrierRefresherPass.pipe(
       Effect.provideService(LucidService, lucidService as any),
       Effect.provideService(MidgardContracts, fixture.contracts as any),
+      Effect.provideService(ContractDeploymentIdentity, ContractDeploymentIdentity.make({
+        kind: "derived",
+        consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+      })),
       Effect.provideService(Globals, globals),
       Effect.provide(Database.layer),
       Effect.provide(NodeConfig.layer),
@@ -1362,6 +1374,10 @@ const runSpeculativeWorkerWithInstruction = async ({
               ),
         ),
       ),
+      Effect.provideService(ContractDeploymentIdentity, ContractDeploymentIdentity.make({
+        kind: "derived",
+        consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+      })),
       Effect.provide(Database.layer),
     ),
   );
@@ -1928,6 +1944,10 @@ const runLocalFinalizationRecoveryWorker = async (
       Effect.succeed(lucidService as any),
     ).pipe(
       Effect.provideService(MidgardContracts, contracts as any),
+      Effect.provideService(ContractDeploymentIdentity, ContractDeploymentIdentity.make({
+        kind: "derived",
+        consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+      })),
       Effect.provide(Database.layer),
       Effect.provide(NodeConfig.layer),
     ),
@@ -1998,7 +2018,7 @@ const getStateQueueDatumEndTime = (datum: SDK.LinkedListNodeView) =>
           yield* SDK.getConfirmedStateFromStateQueueDatum(datum);
         return Number(confirmedState.endTime);
       }
-      const latestHeader = yield* SDK.getHeaderFromStateQueueDatum(datum);
+      const latestHeader = yield* SDK.getHeaderV1FromStateQueueDatum(datum);
       return Number(latestHeader.endTime);
     }),
   );
@@ -2146,10 +2166,10 @@ const commitConfirmRecoverAndMerge = async ({
   const queuedBlockBeforeMerge =
     sortedStateQueueBeforeMerge[sortedStateQueueBeforeMerge.length - 1]!;
   const queuedHeaderBeforeMerge = await Effect.runPromise(
-    SDK.getHeaderFromStateQueueDatum(queuedBlockBeforeMerge.datum),
+    SDK.getHeaderV1FromStateQueueDatum(queuedBlockBeforeMerge.datum),
   );
   const queuedHeaderHash = await Effect.runPromise(
-    SDK.hashBlockHeader(queuedHeaderBeforeMerge),
+    SDK.hashBlockHeaderV1(queuedHeaderBeforeMerge),
   );
 
   await attestQueuedStateQueueHeader({
@@ -2205,7 +2225,7 @@ const expectedAuthenticatedEventRoot = (
   );
 
 const expectHeaderRootsToMatchCandidate = (
-  header: SDK.Header,
+  header: SDK.HeaderV1,
   candidate: SpeculativeCandidateSummary,
 ): void => {
   expect(header.utxosRoot).toBe(candidate.roots.utxos);
@@ -2512,10 +2532,10 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
       fixture.contracts,
     );
     const latestHeader = await Effect.runPromise(
-      SDK.getHeaderFromStateQueueDatum(latestBlockAfterCommit.datum),
+      SDK.getHeaderV1FromStateQueueDatum(latestBlockAfterCommit.datum),
     );
     const latestHeaderHash = await Effect.runPromise(
-      SDK.hashBlockHeader(latestHeader),
+      SDK.hashBlockHeaderV1(latestHeader),
     );
     const daPayloadAfterRecovery = await runNodeDatabaseEffect(
       DaPayloadsDB.retrieveByHeaderHash(Buffer.from(latestHeaderHash, "hex")),
@@ -2525,7 +2545,7 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
       throw new Error("Expected a DA payload row for the finalized block");
     }
     const daPayloadRow = daPayloadAfterRecovery.value;
-    const daPayload = SDK.decodeDaPayloadV2(
+    const daPayload = SDK.decodeDaPayloadV1(
       daPayloadRow[DaPayloadsDB.Columns.PAYLOAD_CBOR],
     );
     expect(daPayload.block_body.header_hash).toEqual(latestHeaderHash);
@@ -2932,8 +2952,8 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
         activeJournal.value[
           PendingBlockFinalizationsDB.Columns.HEADER_CBOR
         ].toString("hex"),
-        SDK.Header as never,
-      ) as SDK.Header;
+        SDK.HeaderV1 as never,
+      ) as SDK.HeaderV1;
       expectHeaderRootsToMatchCandidate(
         durableSubmittedHeader,
         speculative.candidate,
@@ -2951,7 +2971,7 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
         fixture.contracts,
       );
       const latestHeader = await Effect.runPromise(
-        SDK.getHeaderFromStateQueueDatum(latestBlock.datum),
+        SDK.getHeaderV1FromStateQueueDatum(latestBlock.datum),
       );
       expectHeaderRootsToMatchCandidate(latestHeader, speculative.candidate);
 
@@ -3288,9 +3308,9 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
 
       const daPayloadCountBeforeCandidate = await countDaPayloadRows();
       const resumeV1Spy = vi.spyOn(MidgardMpf, "resumeParkedOverlay");
-      const resumeV2Spy = vi.spyOn(
+      const resumeEventFlatSpy = vi.spyOn(
         MidgardMpf,
-        "resumeParkedEventFlatOverlayV2",
+        "resumeParkedEventFlatOverlayV1",
       );
       const discardSpy = vi.spyOn(
         MidgardMpf.prototype,
@@ -3301,7 +3321,7 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
       let independentlySubmittedBlockEndTimeMs = 0;
       let daPayloadCountBeforeT2Decision = -1;
       let resumeV1Calls = 0;
-      let resumeV2Calls = 0;
+      let resumeEventFlatCalls = 0;
       let discardInstances: readonly MidgardMpf[] = [];
       let closeInstances: readonly MidgardMpf[] = [];
       const speculative = await (async () => {
@@ -3336,7 +3356,7 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
                     fixture.contracts,
                   );
                   return Effect.runPromise(
-                    SDK.getHeaderFromStateQueueDatum(confirmedN.datum),
+                    SDK.getHeaderV1FromStateQueueDatum(confirmedN.datum),
                   );
                 });
                 daPayloadCountBeforeT2Decision =
@@ -3420,6 +3440,7 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
                       decideSpeculativeInstructionForLiveTip({
                         expectedHeaderHash: candidate.baseHeaderHash,
                         liveTail: snapshot.tailCommitBase.utxo,
+                        consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
                         submitInstruction: {
                           type: "SubmitSpeculativeCandidate",
                           confirmedBlock: snapshot.tailCommitBase.utxo,
@@ -3445,7 +3466,7 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
           });
         } finally {
           resumeV1Calls = resumeV1Spy.mock.calls.length;
-          resumeV2Calls = resumeV2Spy.mock.calls.length;
+          resumeEventFlatCalls = resumeEventFlatSpy.mock.calls.length;
           discardInstances = [
             ...(discardSpy.mock.contexts as readonly MidgardMpf[]),
           ];
@@ -3453,13 +3474,13 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
             ...(closeSpy.mock.contexts as readonly MidgardMpf[]),
           ];
           resumeV1Spy.mockRestore();
-          resumeV2Spy.mockRestore();
+          resumeEventFlatSpy.mockRestore();
           discardSpy.mockRestore();
           closeSpy.mockRestore();
         }
       })();
       expect(resumeV1Calls).toBe(0);
-      expect(resumeV2Calls).toBe(0);
+      expect(resumeEventFlatCalls).toBe(0);
       expect(discardInstances).toHaveLength(1);
       expect(discardInstances[0]?.trieName).toBe("ledger");
       expect(new Set(discardInstances).size).toBe(discardInstances.length);
@@ -3502,10 +3523,10 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
         fixture.contracts,
       );
       const foreignTipHeader = await Effect.runPromise(
-        SDK.getHeaderFromStateQueueDatum(foreignTip.datum),
+        SDK.getHeaderV1FromStateQueueDatum(foreignTip.datum),
       );
       expect(
-        await Effect.runPromise(SDK.hashBlockHeader(foreignTipHeader)),
+        await Effect.runPromise(SDK.hashBlockHeaderV1(foreignTipHeader)),
       ).toBe(independentlySubmittedHeaderHash);
       await advanceEmulatorPastUnixTime(
         fixture,
@@ -3829,10 +3850,10 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
       ),
     ).toHaveLength(1);
     const queuedHeaderBeforeMerge = await Effect.runPromise(
-      SDK.getHeaderFromStateQueueDatum(queuedBlockBeforeMerge.datum),
+      SDK.getHeaderV1FromStateQueueDatum(queuedBlockBeforeMerge.datum),
     );
     const queuedHeaderHash = await Effect.runPromise(
-      SDK.hashBlockHeader(queuedHeaderBeforeMerge),
+      SDK.hashBlockHeaderV1(queuedHeaderBeforeMerge),
     );
     expect(queuedBlockBeforeMerge.datum.key).toEqual({
       Key: { key: queuedHeaderHash },

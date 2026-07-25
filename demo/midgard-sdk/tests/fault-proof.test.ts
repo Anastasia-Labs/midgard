@@ -19,6 +19,7 @@ import {
   buildFaultProofContracts,
   buildInvalidRangeFaultProofContracts,
   buildTransitionTraceFaultProofContracts,
+  buildValidationTraceDisputeFaultProofContracts,
   DOUBLE_SPEND_FAULT_PROOF_TITLES,
   DoubleSpendStep01Datum,
   DoubleSpendStep01SpendRedeemer,
@@ -45,6 +46,8 @@ import {
   parseFaultProofBlueprint,
   type Proof,
   TRANSITION_TRACE_FAULT_PROOF_TITLES,
+  VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES,
+  VALIDATION_TRACE_RESOLVER_COUNT_V1,
 } from "../src/index.js";
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
@@ -431,7 +434,14 @@ describe("fault-proof contract builder", () => {
     expect(contracts.transitionTrace.firstStep).toBe(
       contracts.transitionTrace.steps[0],
     );
-    expect(contracts.transitionTrace.steps).toHaveLength(1);
+    expect(contracts.transitionTrace.steps).toHaveLength(9);
+    expect(contracts.validationTraceDispute.firstStep).toBe(
+      contracts.validationTraceDispute.steps[0],
+    );
+    expect(contracts.validationTraceDispute.steps).toHaveLength(27);
+    expect(contracts.validationTraceDispute.resolvers).toHaveLength(
+      VALIDATION_TRACE_RESOLVER_COUNT_V1,
+    );
     expect(
       new Set(
         [
@@ -439,9 +449,10 @@ describe("fault-proof contract builder", () => {
           ...contracts.nonExistentInput.steps,
           ...contracts.invalidRange.steps,
           ...contracts.transitionTrace.steps,
+          ...contracts.validationTraceDispute.steps,
         ].map((step) => step.spendingScriptHash),
       ).size,
-    ).toBe(11);
+    ).toBe(46);
   });
 
   it("builds invalid-range with the validator parameter order from the blueprint", async () => {
@@ -544,7 +555,7 @@ describe("fault-proof contract builder", () => {
     expect(contracts.transitionTrace.firstStep).toBe(
       contracts.transitionTrace.steps[0],
     );
-    expect(contracts.transitionTrace.steps).toHaveLength(1);
+    expect(contracts.transitionTrace.steps).toHaveLength(9);
 
     const fraudProofTokenAddressData = Data.from(
       Data.to(
@@ -554,24 +565,248 @@ describe("fault-proof contract builder", () => {
         AddressData,
       ),
     );
-    const expectedProofCbor = applyParamsToScript(
-      compiledScript(blueprint, TRANSITION_TRACE_FAULT_PROOF_TITLES.proof),
+    const finalNames = [
+      "control",
+      "source",
+      "withdrawal",
+      "forced",
+      "accepted",
+      "deposit",
+      "l1Event",
+      "duplicate",
+    ] as const;
+    const expectedFinalCbors = finalNames.map((name) =>
+      applyParamsToScript(
+        compiledScript(blueprint, TRANSITION_TRACE_FAULT_PROOF_TITLES[name]),
+        [
+          contracts.computationThread.policyId,
+          contracts.fraudProof.policyId,
+          fraudProofTokenAddressData,
+          ...(name === "deposit" || name === "l1Event" ? [h28b] : []),
+        ],
+      ),
+    );
+    expect(
+      contracts.transitionTrace.finals.map(
+        ({ spendingScriptCBOR }) => spendingScriptCBOR,
+      ),
+    ).toEqual(expectedFinalCbors);
+    const finalHashesSchema = Data.Array(Data.Bytes());
+    type FinalHashes = Data.Static<typeof finalHashesSchema>;
+    const FinalHashes = finalHashesSchema as unknown as FinalHashes;
+    const finalHashesData = Data.from(
+      Data.to(
+        expectedFinalCbors.map((cbor) => spendingScriptHash(cbor)),
+        FinalHashes,
+      ),
+    );
+    const expectedRouteCbor = applyParamsToScript(
+      compiledScript(blueprint, TRANSITION_TRACE_FAULT_PROOF_TITLES.route),
+      [finalHashesData, contracts.computationThread.policyId],
+    );
+    expect(contracts.transitionTrace.route.spendingScriptCBOR).toBe(
+      expectedRouteCbor,
+    );
+    expect(contracts.transitionTrace.route.spendingScriptAddress).toBe(
+      validatorToAddress("Preprod", spendingScript(expectedRouteCbor)),
+    );
+  });
+
+  it("builds validation-trace dispute with its exact shared-policy parameter order", async () => {
+    const blueprint = filterBlueprint(loadBlueprint(), [
+      ...Object.values(FAULT_PROOF_SHARED_TITLES),
+      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.dispute,
+      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.source,
+      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.game,
+      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.boundary,
+      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.timeout,
+      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.award,
+      ...Object.values(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.prepares),
+      ...Object.values(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics),
+      ...Object.values(
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.directResolvers,
+      ),
+    ]);
+
+    const contracts = await Effect.runPromise(
+      buildValidationTraceDisputeFaultProofContracts({
+        blueprint,
+        network: "Preprod",
+        hubOraclePolicyId: h28b,
+        fraudProofCataloguePolicyId: h28c,
+      }),
+    );
+    const fraudProofTokenAddressData = Data.from(
+      Data.to(
+        await Effect.runPromise(
+          addressDataFromBech32(contracts.fraudProof.spendingScriptAddress),
+        ),
+        AddressData,
+      ),
+    );
+    const expectedAward = applyParamsToScript(
+      compiledScript(
+        blueprint,
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.award,
+      ),
       [
         contracts.computationThread.policyId,
         contracts.fraudProof.policyId,
         fraudProofTokenAddressData,
+      ],
+    );
+    const expectedSemanticResolvers = Object.values(
+      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics,
+    ).map((title) =>
+      applyParamsToScript(compiledScript(blueprint, title), [
+        spendingScriptHash(expectedAward),
+        contracts.computationThread.policyId,
+      ]),
+    );
+    const expectedPrepareResolvers = Object.values(
+      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.prepares,
+    ).map((title, index) =>
+      applyParamsToScript(compiledScript(blueprint, title), [
+        spendingScriptHash(expectedSemanticResolvers[index]!),
+        contracts.computationThread.policyId,
+      ]),
+    );
+    const expectedDirectResolvers = Object.values(
+      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.directResolvers,
+    ).map((title) =>
+      applyParamsToScript(compiledScript(blueprint, title), [
+        contracts.computationThread.policyId,
+        contracts.fraudProof.policyId,
+        fraudProofTokenAddressData,
+      ]),
+    );
+    const expectedResolvers = [
+      ...expectedPrepareResolvers,
+      ...expectedDirectResolvers,
+    ];
+    expect(expectedResolvers).toHaveLength(VALIDATION_TRACE_RESOLVER_COUNT_V1);
+    const resolverHashesSchema = Data.Array(Data.Bytes());
+    type ResolverHashes = Data.Static<typeof resolverHashesSchema>;
+    const ResolverHashes = resolverHashesSchema as unknown as ResolverHashes;
+    const resolverHashesData = Data.from(
+      Data.to(
+        expectedResolvers.map((cbor) => spendingScriptHash(cbor)),
+        ResolverHashes,
+      ),
+    );
+    const expectedBoundaryCbor = applyParamsToScript(
+      compiledScript(
+        blueprint,
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.boundary,
+      ),
+      [resolverHashesData, contracts.computationThread.policyId],
+    );
+    const expectedTimeoutCbor = applyParamsToScript(
+      compiledScript(
+        blueprint,
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.timeout,
+      ),
+      [
+        contracts.computationThread.policyId,
+        contracts.fraudProof.policyId,
+        fraudProofTokenAddressData,
+      ],
+    );
+    const expectedGameCbor = applyParamsToScript(
+      compiledScript(
+        blueprint,
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.game,
+      ),
+      [
+        spendingScriptHash(expectedBoundaryCbor),
+        spendingScriptHash(expectedTimeoutCbor),
+        contracts.computationThread.policyId,
+      ],
+    );
+    const expectedSourceCbor = applyParamsToScript(
+      compiledScript(
+        blueprint,
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.source,
+      ),
+      [
+        spendingScriptHash(expectedGameCbor),
+        spendingScriptHash(expectedAward),
+        contracts.computationThread.policyId,
+      ],
+    );
+    const expectedCbor = applyParamsToScript(
+      compiledScript(
+        blueprint,
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.dispute,
+      ),
+      [
+        spendingScriptHash(expectedSourceCbor),
+        contracts.computationThread.policyId,
         h28b,
       ],
     );
+    for (const [label, cbor] of [
+      ["opener", expectedCbor],
+      ["source", expectedSourceCbor],
+      ["game", expectedGameCbor],
+      ["boundary", expectedBoundaryCbor],
+      ["timeout", expectedTimeoutCbor],
+      ["award", expectedAward],
+      ...expectedPrepareResolvers.map(
+        (cbor, prepareIndex) =>
+          [`prepare-${prepareIndex.toString()}`, cbor] as const,
+      ),
+    ] as const) {
+      expect(
+        cbor.length / 2,
+        `${label} parameterized script bytes`,
+      ).toBeLessThan(14 * 1024);
+    }
 
-    expect(contracts.transitionTrace.steps[0].spendingScriptCBOR).toBe(
-      expectedProofCbor,
+    expect(contracts.validationTraceDispute.steps).toHaveLength(27);
+    expect(contracts.validationTraceDispute.award.spendingScriptCBOR).toBe(
+      expectedAward,
     );
-    expect(contracts.transitionTrace.steps[0].spendingScriptHash).toBe(
-      spendingScriptHash(expectedProofCbor),
+    expect(
+      contracts.validationTraceDispute.semanticResolvers.map(
+        ({ spendingScriptCBOR }) => spendingScriptCBOR,
+      ),
+    ).toEqual(expectedSemanticResolvers);
+    expect(
+      contracts.validationTraceDispute.prepareResolvers.map(
+        ({ spendingScriptCBOR }) => spendingScriptCBOR,
+      ),
+    ).toEqual(expectedPrepareResolvers);
+    expect(
+      contracts.validationTraceDispute.directResolvers.map(
+        ({ spendingScriptCBOR }) => spendingScriptCBOR,
+      ),
+    ).toEqual(expectedDirectResolvers);
+    expect(
+      contracts.validationTraceDispute.resolvers.map(
+        ({ spendingScriptCBOR }) => spendingScriptCBOR,
+      ),
+    ).toEqual(expectedResolvers);
+    expect(contracts.validationTraceDispute.boundary.spendingScriptCBOR).toBe(
+      expectedBoundaryCbor,
     );
-    expect(contracts.transitionTrace.steps[0].spendingScriptAddress).toBe(
-      validatorToAddress("Preprod", spendingScript(expectedProofCbor)),
+    expect(contracts.validationTraceDispute.timeout.spendingScriptCBOR).toBe(
+      expectedTimeoutCbor,
     );
+    expect(contracts.validationTraceDispute.game.spendingScriptCBOR).toBe(
+      expectedGameCbor,
+    );
+    expect(contracts.validationTraceDispute.source.spendingScriptCBOR).toBe(
+      expectedSourceCbor,
+    );
+    expect(contracts.validationTraceDispute.firstStep.spendingScriptCBOR).toBe(
+      expectedCbor,
+    );
+    expect(contracts.validationTraceDispute.firstStep.spendingScriptHash).toBe(
+      spendingScriptHash(expectedCbor),
+    );
+    expect(
+      contracts.validationTraceDispute.firstStep.spendingScriptAddress,
+    ).toBe(validatorToAddress("Preprod", spendingScript(expectedCbor)));
   });
 });

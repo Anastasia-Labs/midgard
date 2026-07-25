@@ -1,24 +1,24 @@
+import { encodeMidgardCekProgramMaterialSidecarV1 } from "@al-ft/midgard-core/cek-proof";
 import {
-  computeHash32,
-  computeMidgardNativeTxId,
+  computeMidgardNativeTxIdV1,
   computeScriptIntegrityHashForLanguages,
-  deriveMidgardNativeTxBodyCompact,
-  deriveMidgardNativeTxCompact,
+  deriveMidgardNativeFieldCollectionV1,
+  deriveMidgardNativeTxBodyCompactV1,
+  deriveMidgardNativeTxCompactV1,
   EMPTY_NULL_ROOT,
   encodeMidgardAddressText,
   encodeMidgardNativeScript,
-  encodeMidgardNativeTxBodyCompact,
-  encodeMidgardNativeTxCanonical,
+  encodeMidgardNativeTxCanonicalV1,
   encodeMidgardTxOutput,
   encodeMidgardVersionedScriptListPreimage,
   hashMidgardVersionedScript,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
-  MIDGARD_NATIVE_TX_VERSION,
+  MIDGARD_NATIVE_TX_V1_VERSION,
   MIDGARD_POSIX_TIME_NONE,
   type MidgardNativeScript,
-  type MidgardNativeTxBodyCanonical,
-  type MidgardNativeTxFull,
-  type MidgardNativeTxWitnessSetCanonical,
+  type MidgardNativeTxBodyCanonicalV1,
+  type MidgardNativeTxFullV1,
+  type MidgardNativeTxWitnessSetCanonicalV1,
   type MidgardTxOutput,
   type MidgardTxValidity,
   type MidgardVersionedScript,
@@ -59,19 +59,22 @@ type NativeTxOptions = {
   readonly validity?: MidgardTxValidity;
   readonly validityIntervalStart?: bigint;
   readonly validityIntervalEnd?: bigint;
+  readonly requiredObserverItems?: readonly Uint8Array[];
   readonly requiredSignerItems?: readonly Uint8Array[];
   readonly scriptWitnesses?: readonly MidgardVersionedScript[];
   readonly redeemerTxWitsPreimageCbor?: Buffer;
+  readonly mintPreimageCbor?: Buffer;
   readonly scriptLanguages?: readonly ScriptLanguageName[];
   readonly auxiliaryDataHash?: Buffer;
   readonly networkId?: bigint;
   readonly invalidVkeyWitness?: true;
   readonly omitVkeyWitness?: true;
   readonly privateKey?: CML.PrivateKey;
+  readonly version?: 1n;
 };
 
 export type NativeTxFixture = {
-  readonly tx: MidgardNativeTxFull;
+  readonly tx: MidgardNativeTxFullV1;
   readonly txId: Buffer;
   readonly txCbor: Buffer;
 };
@@ -98,12 +101,13 @@ export const outRefFromTxId = (txId: Buffer, index = 0n): Buffer =>
 export const makeOutput = (
   lovelace: bigint,
   address = TEST_ADDRESS_BYTES,
+  assets: ReadonlyMap<string, ReadonlyMap<string, bigint>> = new Map(),
 ): Buffer => {
   const output: MidgardTxOutput = {
     address,
     value: {
       lovelace,
-      assets: new Map(),
+      assets,
     },
   };
   return encodeMidgardTxOutput(output);
@@ -177,11 +181,14 @@ export const makeNativeTx = (opts: NativeTxOptions = {}): NativeTxFixture => {
     opts.scriptLanguages === undefined
       ? EMPTY_NULL_ROOT
       : computeScriptIntegrityHashForLanguages(
-          computeHash32(redeemerTxWitsPreimageCbor),
+          deriveMidgardNativeFieldCollectionV1({
+            fieldIndex: 8,
+            preimageCbor: redeemerTxWitsPreimageCbor,
+          }).commitment,
           opts.scriptLanguages,
         );
 
-  const body: MidgardNativeTxBodyCanonical = {
+  const body: MidgardNativeTxBodyCanonicalV1 = {
     spendInputsPreimageCbor: encodeByteList(spendInputs),
     referenceInputsPreimageCbor: encodeByteList(referenceInputs),
     outputsPreimageCbor: encodeByteList(outputs),
@@ -189,17 +196,24 @@ export const makeNativeTx = (opts: NativeTxOptions = {}): NativeTxFixture => {
     validityIntervalStart:
       opts.validityIntervalStart ?? MIDGARD_POSIX_TIME_NONE,
     validityIntervalEnd: opts.validityIntervalEnd ?? MIDGARD_POSIX_TIME_NONE,
-    requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
+    requiredObserversPreimageCbor: encodeByteList(
+      opts.requiredObserverItems ?? [],
+    ),
     requiredSignersPreimageCbor: encodeByteList(requiredSignerItems),
-    mintPreimageCbor: EMPTY_CBOR_LIST,
+    mintPreimageCbor: opts.mintPreimageCbor ?? EMPTY_CBOR_LIST,
     scriptIntegrityHash,
     auxiliaryDataHash: opts.auxiliaryDataHash ?? EMPTY_NULL_ROOT,
     networkId: opts.networkId ?? MIDGARD_NATIVE_NETWORK_ID_NONE,
   };
 
-  const bodyHash = computeHash32(
-    encodeMidgardNativeTxBodyCompact(deriveMidgardNativeTxBodyCompact(body)),
-  );
+  const version = opts.version ?? MIDGARD_NATIVE_TX_V1_VERSION;
+  const bodyCompact = deriveMidgardNativeTxBodyCompactV1(body);
+  const bodyHash = computeMidgardNativeTxIdV1({
+    version,
+    transactionBody: bodyCompact,
+    transactionWitnessSetHash: Buffer.alloc(32),
+    validity: opts.validity ?? "TxIsValid",
+  });
   const signedBodyHash =
     opts.invalidVkeyWitness === true ? Buffer.alloc(32, 0x7f) : bodyHash;
   const addrTxWitsPreimageCbor =
@@ -214,21 +228,26 @@ export const makeNativeTx = (opts: NativeTxOptions = {}): NativeTxFixture => {
           ),
         ]);
 
-  const witnessSet: MidgardNativeTxWitnessSetCanonical = {
+  const witnessSet: MidgardNativeTxWitnessSetCanonicalV1 = {
     addrTxWitsPreimageCbor,
     scriptTxWitsPreimageCbor,
     redeemerTxWitsPreimageCbor,
   };
   const validity = opts.validity ?? "TxIsValid";
-  const tx: MidgardNativeTxFull = {
-    version: MIDGARD_NATIVE_TX_VERSION,
+  const tx: MidgardNativeTxFullV1 = {
+    version,
     validity,
-    compact: deriveMidgardNativeTxCompact(body, witnessSet, validity),
+    compact: deriveMidgardNativeTxCompactV1(
+      body,
+      witnessSet,
+      validity,
+      version,
+    ),
     body,
     witnessSet,
   };
-  const txId = computeMidgardNativeTxId(tx);
-  const txCbor = encodeMidgardNativeTxCanonical(tx);
+  const txId = computeMidgardNativeTxIdV1(tx);
+  const txCbor = encodeMidgardNativeTxCanonicalV1(tx);
 
   return {
     tx,
@@ -238,14 +257,14 @@ export const makeNativeTx = (opts: NativeTxOptions = {}): NativeTxFixture => {
 };
 
 export const encodeRecomputedNativeTx = (
-  tx: MidgardNativeTxFull,
+  tx: MidgardNativeTxFullV1,
 ): NativeTxFixture => {
-  const updated: MidgardNativeTxFull = {
+  const updated: MidgardNativeTxFullV1 = {
     ...tx,
-    compact: deriveMidgardNativeTxCompact(tx.body, tx.witnessSet, tx.validity),
+    compact: deriveMidgardNativeTxCompactV1(tx.body, tx.witnessSet, tx.validity),
   };
-  const txId = computeMidgardNativeTxId(updated);
-  const txCbor = encodeMidgardNativeTxCanonical(updated);
+  const txId = computeMidgardNativeTxIdV1(updated);
+  const txCbor = encodeMidgardNativeTxCanonicalV1(updated);
   return {
     tx: updated,
     txId,
@@ -262,6 +281,8 @@ export const makeQueued = (
   txCbor,
   arrivalSeq,
   createdAt: new Date(0),
+  programMaterialSidecarCbor:
+    encodeMidgardCekProgramMaterialSidecarV1([]),
 });
 
 export const ledgerEntry = (outRef: Buffer, output: Buffer): LedgerEntry => ({
@@ -280,6 +301,7 @@ type PhaseBCandidateOptions = Omit<
   readonly referenceInputs?: readonly Buffer[];
   readonly outputLovelace?: bigint;
   readonly outputs?: readonly Buffer[];
+  readonly programMaterialSidecarCbor?: Buffer | null;
 };
 
 export const makePhaseBCandidate = (
@@ -299,6 +321,8 @@ export const makePhaseBCandidate = (
   return buildPhaseAValidatedTx({
     ledgerTx: submittedTx.ledgerTx,
     txCbor: submittedTx.txCbor,
+    programMaterialSidecarCbor:
+      opts.programMaterialSidecarCbor ?? null,
     arrivalSeq: opts.arrivalSeq ?? 0n,
     createdAt: new Date(0),
     redeemerWitnessHash: submittedTx.commitments.redeemerWitnessHash,

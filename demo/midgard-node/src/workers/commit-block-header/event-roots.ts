@@ -1,3 +1,7 @@
+import {
+  MIDGARD_CONSENSUS_PROFILE_V1,
+  type MidgardConsensusProfileV1,
+} from "@al-ft/midgard-core/consensus-profile-v1";
 import { Effect, Option } from "effect";
 
 import {
@@ -53,13 +57,14 @@ export const resolveWithdrawalsRoot = (
 
 export const resolveForcedTransactionsRoot = (
   forcedTransactionEntries: readonly ForcedTransactionsDB.Entry[],
+  _consensusProfile: MidgardConsensusProfileV1 = MIDGARD_CONSENSUS_PROFILE_V1,
 ): Effect.Effect<Option.Option<string>, MpfError, never> =>
   Effect.gen(function* () {
     if (forcedTransactionEntries.length <= 0) {
       return Option.none();
     }
     const root = yield* buildAuthenticatedRootFromEncodedEntries(
-      "ForcedTransactionsRootDomain",
+      "ForcedTransactionsV1RootDomain",
       forcedTransactionEntries.map(ForcedTransactionsDB.toRootKeyValue),
     );
     return Option.some(root.root);

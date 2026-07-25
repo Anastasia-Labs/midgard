@@ -1,6 +1,6 @@
+import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { open, readFile, rename, rm } from "node:fs/promises";
-import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { resolve } from "node:path";
 import { getHeapStatistics } from "node:v8";
 import { MessageChannel, type MessagePort } from "node:worker_threads";
@@ -11,18 +11,18 @@ import {
   createEventFlatDigest,
   prepareEventFlatDigest,
 } from "../../workers/utils/mpf-event-flat-digest.js";
-import { NativeMpfRpcFrameDecoder, encodeNativeMpfRpcFrame } from "./codec.js";
+import { encodeNativeMpfRpcFrame,NativeMpfRpcFrameDecoder } from "./codec.js";
 import {
-  NATIVE_MPF_OWNER_DEFAULT_CAPS,
-  NATIVE_MPF_RPC_SCHEMA,
-  NativeMpfRpcKind,
   assertNativeMpfGenerationHandle,
   assertNativeMpfHashHex,
+  NATIVE_MPF_OWNER_DEFAULT_CAPS,
+  NATIVE_MPF_RPC_SCHEMA,
   type NativeMpfApplyResult,
   type NativeMpfGenerationHandle,
   type NativeMpfOwnerDiagnostics,
   type NativeMpfOwnerService,
   type NativeMpfRpcFrame,
+  NativeMpfRpcKind,
   type PersistedNativeMpfReplay,
 } from "./protocol.js";
 
@@ -1303,14 +1303,8 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
           .subarray(84 + index * HASH_BYTES, 84 + (index + 1) * HASH_BYTES)
           .toString("hex"),
       ),
-      proofArenaDurationNs: readDurationNs(
-        rootsEnd,
-        "proofArenaDurationNs",
-      ),
-      mutationDurationNs: readDurationNs(
-        rootsEnd + 8,
-        "mutationDurationNs",
-      ),
+      proofArenaDurationNs: readDurationNs(rootsEnd, "proofArenaDurationNs"),
+      mutationDurationNs: readDurationNs(rootsEnd + 8, "mutationDurationNs"),
     };
   }
 

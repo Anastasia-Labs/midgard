@@ -131,6 +131,7 @@ const mintPolicyHashHexes = (tx: MidgardLedgerTx): readonly string[] => {
 type BuildPhaseAValidatedTxArgs = {
   readonly ledgerTx: MidgardLedgerTx;
   readonly txCbor: Buffer;
+  readonly programMaterialSidecarCbor?: Buffer | null;
   readonly arrivalSeq: bigint;
   readonly createdAt: Date;
   readonly redeemerWitnessHash: Buffer;
@@ -139,6 +140,7 @@ type BuildPhaseAValidatedTxArgs = {
 export const buildPhaseAValidatedTx = ({
   ledgerTx,
   txCbor,
+  programMaterialSidecarCbor,
   arrivalSeq,
   createdAt,
   redeemerWitnessHash,
@@ -163,6 +165,10 @@ export const buildPhaseAValidatedTx = ({
     ledgerTx,
     submission: {
       txCbor: Buffer.from(txCbor),
+      programMaterialSidecarCbor:
+        programMaterialSidecarCbor == null
+          ? null
+          : Buffer.from(programMaterialSidecarCbor),
       arrivalSeq,
       createdAt: new Date(createdAt.getTime()),
     },

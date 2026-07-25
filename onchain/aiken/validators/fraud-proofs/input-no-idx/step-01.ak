@@ -38,25 +38,24 @@ validator main(
         // 1. Generic validations for passing the provided bad tx to the next
         //    step must pass.
         let
-          _own_script_hash,
-          _computation_thread_token_asset_name,
-          _fraud_prover,
-          _m_input_state_data,
-          output_script_hash,
-          output_state_data,
-          _header,
-          _bad_tx_id,
-          _bad_tx,
-          tx_field_preimage,
-        <-
-          pass_tx_to_next_step(
-            computation_thread_token_policy_id,
-            hub_oracle,
-            datum,
-            tx_inclusion_args,
-            own_out_ref,
-            tx,
-          )
+            _own_script_hash,
+            _computation_thread_token_asset_name,
+            _fraud_prover,
+            _m_input_state_data,
+            output_script_hash,
+            output_state_data,
+            _header,
+            _bad_tx_id,
+            _bad_tx,
+            tx_field_preimage
+          <- pass_tx_to_next_step(
+          computation_thread_token_policy_id,
+          hub_oracle,
+          datum,
+          tx_inclusion_args,
+          own_out_ref,
+          tx,
+        )
 
         // 2. Redeemer must provide the body of the bad transaction.
         expect TxBodyProvided(bad_tx_body) = tx_field_preimage
@@ -64,8 +63,9 @@ validator main(
         // 3. The UTxO must be produced at next step's script hash with the
         //    verified bad transactions' inputs included in its datum.
         expect output_script_hash == step_02_validator_script_hash
-        let expected_output_state: Data =
-          step_02.State { verified_tx_inputs_hash: bad_tx_body.spend_inputs }
+        let expected_output_state: Data = step_02.State {
+          verified_tx_inputs_hash: bad_tx_body.spend_inputs,
+        }
         expect output_state_data == expected_output_state
 
         // Done.

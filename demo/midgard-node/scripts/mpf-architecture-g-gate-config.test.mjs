@@ -266,7 +266,7 @@ test("Phase 3 evidence resolves the explicit current Phase 1 binding and rejects
       outputCborSha256: hash(92 + index),
     }));
     const binding = {
-      schemaVersion: "midgard-phase1-live-corpus-binding-v2",
+      schemaVersion: "midgard-phase1-live-corpus-binding-v1",
       deploymentManifestId: "deployment-id",
       nodeImageId: "sha256:node-image",
       nodeContainerId: "node-container-id",

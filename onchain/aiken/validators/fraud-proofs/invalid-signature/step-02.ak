@@ -45,27 +45,25 @@ validator main(
         // 1. Specified input must be authentic and properly reproduced at the
         //    fraud proof's spending address.
         let
-          _own_script_hash,
-          _computation_thread_token_asset_name,
-          _fraud_prover,
-          m_input_state_data,
-        <-
-          finalize(
-            computation_thread_token_policy_id,
-            fraud_proof_token_policy_id,
-            fraud_proof_token_address,
-            step_datum,
-            input_index,
-            output_index,
-            fraud_proof_mint_redeemer_index,
-            own_out_ref,
-            inputs,
-            outputs,
-            redeemers,
-          )
+            _own_script_hash,
+            _computation_thread_token_asset_name,
+            _fraud_prover,
+            m_input_state_data
+          <- finalize(
+          computation_thread_token_policy_id,
+          fraud_proof_token_policy_id,
+          fraud_proof_token_address,
+          step_datum,
+          input_index,
+          output_index,
+          fraud_proof_mint_redeemer_index,
+          own_out_ref,
+          inputs,
+          outputs,
+          redeemers,
+        )
 
-        expect Some(State { bad_tx_id, bad_addr_tx_wits_hash }) =
-          m_input_state_data
+        expect Some(State { bad_tx_id, bad_addr_tx_wits_hash }) = m_input_state_data
 
         // 2. Provided address witnesses preimage must match the hash carried
         //    from the previous step.
@@ -74,9 +72,8 @@ validator main(
         // 3. The provided vkey must map to the invalid signature.
         //    TODO: We are relying on the correctness of the witness set. We
         //          might need a fraud proof to prevent e.g. duplicate vkeys.
-        let bad_addr_tx_wit_signature =
-          addr_tx_wits_preimage
-            |> pairs.expect_get_first(bad_addr_tx_wit_verification_key)
+        let bad_addr_tx_wit_signature = addr_tx_wits_preimage
+          |> pairs.expect_get_first(bad_addr_tx_wit_verification_key)
 
         // 4. The signature must be invalid.
         expect

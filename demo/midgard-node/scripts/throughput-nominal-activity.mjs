@@ -4,6 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { encodeMidgardProofSubmissionV1 } from "@al-ft/midgard-core/cek-proof";
+
 import {
   buildNativeSignedOneToOne,
   decodeCoin,
@@ -290,17 +292,21 @@ const fetchUtxos = async (address) => {
 const submitTxHex = async (txHex) => {
   let attempt = 0;
   while (attempt <= retry503) {
+    const body = encodeMidgardProofSubmissionV1({
+      transactionCbor: Buffer.from(txHex, "hex"),
+      programMaterial: [],
+    });
     const resp = await fetch(`${submitEndpoint}/submit`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ tx_cbor: txHex }),
+      headers: { "content-type": "application/vnd.midgard.v1+cbor" },
+      body,
     });
 
     if (resp.ok) {
       return { ok: true, status: resp.status };
     }
 
-    const body = await resp.text();
+    const responseBody = await resp.text();
     if ((resp.status === 503 || resp.status === 429) && attempt < retry503) {
       attempt += 1;
       await sleep(retryDelayMs);
@@ -310,7 +316,7 @@ const submitTxHex = async (txHex) => {
     return {
       ok: false,
       status: resp.status,
-      body,
+      body: responseBody,
     };
   }
 

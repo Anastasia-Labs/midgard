@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  NativeMpfRpcFrameDecoder,
   encodeNativeMpfRpcFrame,
+  NativeMpfRpcFrameDecoder,
 } from "../src/services/mpf-native-owner/codec.js";
 import {
   NATIVE_MPF_RPC_SCHEMA,

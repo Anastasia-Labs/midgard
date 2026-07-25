@@ -227,7 +227,7 @@ export const scanSubmitRecords = async (filePath) => {
 };
 
 export const summarizePhase3WorkloadReport = (report) => {
-  if (report?.benchmark !== "midgard-l2-throughput" || report?.version !== 2) {
+  if (report?.benchmark !== "midgard-l2-throughput" || report?.version !== 1) {
     throw new Error("workload emitted an unexpected report schema");
   }
   const primary = new Set(report?.summary?.primaryStageNames ?? []);
@@ -632,7 +632,7 @@ export const captureClosureIdentity = async ({
     );
   }
   if (
-    phase1?.schemaVersion !== "midgard-phase1-live-corpus-binding-v2" ||
+    phase1?.schemaVersion !== "midgard-phase1-live-corpus-binding-v1" ||
     phase1?.deploymentManifestId !== deployment?.manifestId ||
     normalizedImageId(phase1?.nodeImageId) !==
       normalizedImageId(runtime?.document?.node?.imageId)
@@ -726,7 +726,7 @@ export const evaluateClosureIdentity = (identity) => {
     identity?.runtime?.schemaVersion !==
       "midgard-phase4-environment-artifact-v1" ||
     identity?.phase1?.schemaVersion !==
-      "midgard-phase1-live-corpus-binding-v2" ||
+      "midgard-phase1-live-corpus-binding-v1" ||
     !SHA256.test(identity?.deployment?.manifestId ?? "") ||
     !/^(?:sha256:)?[0-9a-f]{64}$/u.test(identity?.phase1?.nodeImageId ?? "")
   ) {
@@ -858,7 +858,7 @@ export const evaluateClosureIdentityArtifacts = (
       runtime?.documentSha256 !== canonicalJsonSha256(runtime.document) ||
       runtime?.document?.deploymentManifest?.sha256 !== deploymentSha256 ||
       deployment?.manifestId !== identity.deployment.manifestId ||
-      phase1?.schemaVersion !== "midgard-phase1-live-corpus-binding-v2" ||
+      phase1?.schemaVersion !== "midgard-phase1-live-corpus-binding-v1" ||
       phase1?.deploymentManifestId !== deployment?.manifestId ||
       normalizedImageId(phase1?.nodeImageId) !==
         normalizedImageId(runtime?.document?.node?.imageId) ||

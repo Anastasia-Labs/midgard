@@ -5,8 +5,9 @@ use aiken_design_patterns/linked_list
 use cardano/assets.{AssetName, PolicyId}
 use cardano/transaction.{Input, Output, OutputReference}
 use midgard/ledger_state.{
-  ConfirmedState, DepositsRoot, EventToStepRoot, ForcedTransactionsRoot, Header,
-  HeaderHash, MidgardTxsRoot, TransitionTraceRoot, WithdrawalsRoot,
+  ConfirmedState, DepositsRoot, EventToStepRoot, ForcedTransactionsRoot,
+  HeaderHash, HeaderV1, MidgardTxsRoot, TransitionTraceRoot,
+  ValidationTracesRoot, WithdrawalsRoot, protocol_version_v1,
 }
 
 /// TODO: It might be better to be space-conscious and use an empty name.
@@ -26,8 +27,16 @@ pub const block_asset_name_prefix_length: Int =
 pub const no_da_attestation: ByteArray = ""
 
 pub type StateQueueNode {
-  header: Header,
+  header: HeaderV1,
   da_attestation: ByteArray,
+}
+
+pub type HeaderView =
+  HeaderV1
+
+pub fn decode_header_view(header: HeaderV1) -> HeaderView {
+  expect header.protocol_version == protocol_version_v1
+  header
 }
 
 pub type Datum =
@@ -62,7 +71,7 @@ pub type BlockRemovalApproach {
 }
 
 pub type MintRedeemer {
-  Init { output_index: Int }
+  InitV1 { output_index: Int }
   Deinit
   CommitBlockHeader {
     new_block_output_index: Int,
@@ -72,7 +81,14 @@ pub type MintRedeemer {
     active_operators_input_index: Int,
     active_operators_redeemer_index: Int,
   }
-  MergeToConfirmedState {
+  RemoveFraudulentBlockHeader {
+    fraudulent_operator: VerificationKeyHash,
+    fraudulent_blocks_header_hash: HeaderHash,
+    slashing_approach: SlashingApproach,
+    fraud_proof_ref_input_index: Int,
+    block_removal_approach: BlockRemovalApproach,
+  }
+  MergeToConfirmedStateV1 {
     header_node_key: ByteArray,
     confirmed_state_input_outref: OutputReference,
     confirmed_state_output_index: Int,
@@ -83,19 +99,14 @@ pub type MintRedeemer {
     merged_block_deposits_root: DepositsRoot,
     merged_block_transition_trace_root: TransitionTraceRoot,
     merged_block_event_to_step_root: EventToStepRoot,
+    merged_block_validation_traces_root: ValidationTracesRoot,
     merged_block_withdrawal_count: Int,
     merged_block_forced_transaction_count: Int,
     merged_block_l2_transaction_count: Int,
     merged_block_deposit_count: Int,
     merged_block_total_event_count: Int,
     merged_block_transition_step_count: Int,
-  }
-  RemoveFraudulentBlockHeader {
-    fraudulent_operator: VerificationKeyHash,
-    fraudulent_blocks_header_hash: HeaderHash,
-    slashing_approach: SlashingApproach,
-    fraud_proof_ref_input_index: Int,
-    block_removal_approach: BlockRemovalApproach,
+    merged_block_validation_trace_count: Int,
   }
 }
 
@@ -104,16 +115,16 @@ pub fn get_confirmed_state(
   state_queue_policy: ByteArray,
   state_queue_node_ref_input_index: Int,
 ) -> ConfirmedState {
-  expect Some(Input { output, .. }) =
-    reference_inputs |> list.at(state_queue_node_ref_input_index)
+  expect Some(Input { output, .. }) = reference_inputs
+    |> list.at(state_queue_node_ref_input_index)
   let linked_list_eval = {
     let
-      _state_queue_element_address,
-      _state_queue_element_lovelace,
-      m_state_queue_element_key,
-      state_queue_element_data,
-      _state_queue_element_link,
-    <- linked_list.get_element_info(output)
+        _state_queue_element_address,
+        _state_queue_element_lovelace,
+        m_state_queue_element_key,
+        state_queue_element_data,
+        _state_queue_element_link
+      <- linked_list.get_element_info(output)
     expect None = m_state_queue_element_key
     expect coerced_confirmed_state: ConfirmedState = state_queue_element_data
     coerced_confirmed_state
@@ -127,18 +138,19 @@ pub fn get_confirmed_state(
       )
 }
 
-pub fn get_block_datum(
+pub fn get_block_datum_v1(
   reference_inputs: List<Input>,
   state_queue_policy: ByteArray,
   state_queue_node_ref_input_index: Int,
-  return: fn(Header, HeaderHash) -> result,
+  return: fn(HeaderV1, HeaderHash) -> result,
 ) -> result {
   get_state_queue_node(
     reference_inputs,
     state_queue_policy,
     state_queue_node_ref_input_index,
     fn(state_queue_node, header_hash) {
-      return(state_queue_node.header, header_hash)
+      let header = decode_header_view(state_queue_node.header)
+      return(header, header_hash)
     },
   )
 }
@@ -149,16 +161,16 @@ pub fn get_state_queue_node(
   state_queue_node_ref_input_index: Int,
   return: fn(StateQueueNode, HeaderHash) -> result,
 ) -> result {
-  expect Some(Input { output, .. }) =
-    reference_inputs |> list.at(state_queue_node_ref_input_index)
+  expect Some(Input { output, .. }) = reference_inputs
+    |> list.at(state_queue_node_ref_input_index)
   let linked_list_eval = {
     let
-      _state_queue_element_address,
-      _state_queue_element_lovelace,
-      m_state_queue_element_key,
-      state_queue_element_data,
-      _state_queue_element_link,
-    <- linked_list.get_element_info(output)
+        _state_queue_element_address,
+        _state_queue_element_lovelace,
+        m_state_queue_element_key,
+        state_queue_element_data,
+        _state_queue_element_link
+      <- linked_list.get_element_info(output)
     expect Some(header_hash) = m_state_queue_element_key
     expect state_queue_node: StateQueueNode = state_queue_element_data
     return(state_queue_node, header_hash)
@@ -178,13 +190,9 @@ fn get_node_info(
   return: fn(Int, HeaderHash, StateQueueNode, linked_list.Link) -> result,
 ) -> result {
   let linked_list_eval = {
-    let
-      _address,
-      lovelace,
-      m_header_hash,
-      data,
-      link,
-    <- linked_list.get_element_info(output)
+    let _address, lovelace, m_header_hash, data, link <- linked_list.get_element_info(
+      output,
+    )
     expect Some(header_hash) = m_header_hash
     expect state_queue_node: StateQueueNode = data
     return(lovelace, header_hash, state_queue_node, link)
@@ -207,25 +215,21 @@ pub fn validate_da_attestation_attachment(
   expected_header_hash: HeaderHash,
   da_attestation_policy_id: PolicyId,
 ) -> Bool {
-  expect Some(Input { output: input_output, .. }) =
-    inputs |> list.at(state_queue_input_index)
+  expect Some(Input { output: input_output, .. }) = inputs
+    |> list.at(state_queue_input_index)
   expect Some(output) = outputs |> list.at(state_queue_output_index)
   let Output { address: input_address, .. } = input_output
   let Output { address: output_address, .. } = output
   expect input_address == output_address
 
-  let
-    input_lovelace,
-    input_header_hash,
-    input_block,
-    input_link,
-  <- get_node_info(input_output, state_queue_policy)
-  let
-    output_lovelace,
-    output_header_hash,
-    output_block,
-    output_link,
-  <- get_node_info(output, state_queue_policy)
+  let input_lovelace, input_header_hash, input_block, input_link <- get_node_info(
+    input_output,
+    state_queue_policy,
+  )
+  let output_lovelace, output_header_hash, output_block, output_link <- get_node_info(
+    output,
+    state_queue_policy,
+  )
 
   expect input_header_hash == expected_header_hash
   expect output_header_hash == expected_header_hash
@@ -237,21 +241,17 @@ pub fn validate_da_attestation_attachment(
   True
 }
 
-pub fn get_prev_header_hash_of_node(
+pub fn get_prev_header_hash_of_node_v1(
   reference_inputs: List<Input>,
   state_queue_policy: ByteArray,
   state_queue_node_ref_input_index: Int,
   expected_state_queue_node_header_hash: HeaderHash,
 ) -> HeaderHash {
-  let
-    header,
-    retrieved_state_queue_node_header_hash,
-  <-
-    get_block_datum(
-      reference_inputs,
-      state_queue_policy,
-      state_queue_node_ref_input_index,
-    )
+  let header, retrieved_state_queue_node_header_hash <- get_block_datum_v1(
+    reference_inputs,
+    state_queue_policy,
+    state_queue_node_ref_input_index,
+  )
   expect
     retrieved_state_queue_node_header_hash == expected_state_queue_node_header_hash
   header.prev_header_hash

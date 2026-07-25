@@ -87,7 +87,7 @@ jq -e \
   --arg kupoImage "$PHASE4_KUPO_IMAGE" \
   --arg postgresImage "$PHASE4_POSTGRES_IMAGE" \
   --arg phasRegistrationProofSha256 "$phas_registration_proof_sha" \
-  '.schemaVersion == "midgard-phase4-matched-snapshot-identity-v2" and
+  '.schemaVersion == "midgard-phase4-matched-snapshot-identity-v1" and
    .composeProject == $composeProject and .networkMagic == $networkMagic and
    .postgresDatabase == $postgresDatabase and .deploymentManifestSha256 == $deploymentManifestSha256 and
    .images.cardanoNode.ref == $cardanoImage and .images.ogmios.ref == $ogmiosImage and

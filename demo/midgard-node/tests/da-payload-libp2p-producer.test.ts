@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { MIDGARD_CONSENSUS_PROFILE_V1_ID } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
   computeDaSha256Hash,
   DA_TRANSPORT_LIMITS_V1,
@@ -11,22 +12,23 @@ import {
   daGossipTopic,
   DaRequestResponseProtocol,
   daRequestResponseProtocolId,
-  decodeDaMetadataByHeaderResponseV1Cbor,
   decodeDaCapabilitiesRequestV1Cbor,
+  decodeDaMetadataByHeaderResponseV1Cbor,
   decodeDaPayloadAnnouncementV1Cbor,
   decodeDaPayloadByHeaderResponseV1Cbor,
   decodeDaPayloadSubmitRequestV1Cbor,
-  encodeDaMetadataByHeaderResponseV1Cbor,
   encodeDaCapabilitiesResponseV1Cbor,
+  encodeDaMetadataByHeaderResponseV1Cbor,
   encodeDaPayloadByHeaderRequestV1Cbor,
   encodeDaPayloadSubmitResponseV1Cbor,
 } from "@al-ft/midgard-core/da-transport";
+import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import { loadDaLibp2pIdentity } from "@/da/libp2p-identity.js";
 import {
-  closeDaLibp2pPublicationTransport,
   assertDaEnvelopeCapabilityQuorum,
+  closeDaLibp2pPublicationTransport,
   createDaLibp2pProducerProbeTransport,
   createDaLibp2pRetainedPayloadRequestHandlers,
   type DaProducerProbeTransport,
@@ -53,7 +55,7 @@ const PAYLOAD_HASH = computeDaSha256Hash(PAYLOAD_CBOR);
 const PRODUCER_PRIVATE_KEY_SOURCE = `seed:${"00".repeat(31)}01`;
 
 describe("DA payload libp2p producer publication", () => {
-  it("requires a threshold of exact V3 envelope capabilities", async () => {
+  it("requires a threshold of exact V1 envelope capabilities", async () => {
     const manifest = parseThreeCommitteePeerManifest();
     let incapablePeers = new Set([PEER_C]);
     const transport: DaProducerProbeTransport = {
@@ -71,7 +73,7 @@ describe("DA payload libp2p producer publication", () => {
         return encodeDaCapabilitiesResponseV1Cbor({
           deploymentFingerprint: Buffer.from(DEPLOYMENT, "hex"),
           transportProtocolVersion: 1,
-          payloadSchemaVersions: incapablePeers.has(peer.peerId) ? [2] : [2, 3],
+          payloadSchemaVersions: [1],
           envelopeContentEncodings: incapablePeers.has(peer.peerId)
             ? [0]
             : [0, 1],
@@ -215,7 +217,7 @@ describe("DA payload libp2p producer publication", () => {
       status: "found",
       headerHash: HEADER_HASH,
       payloadHash: PAYLOAD_HASH,
-      payloadSchemaVersion: 2,
+      payloadSchemaVersion: 1,
       payloadBytes: PAYLOAD_CBOR.length,
       localStatus: "verified",
     });
@@ -346,7 +348,7 @@ describe("DA payload libp2p producer publication", () => {
     );
   });
 
-  it("succeeds with decoder-capable peers when an old peer structurally rejects schema v3", async () => {
+  it("succeeds when one committee peer rejects the payload", async () => {
     const manifest = parseThreeCommitteePeerManifest();
     const transport: DaProducerTransport = {
       localPeerId: () => "producer-peer",
@@ -362,7 +364,7 @@ describe("DA payload libp2p producer publication", () => {
       publish: async () => ({ recipients: [PEER_A, PEER_B] }),
     };
     const report = await publishDaPayloadInsert({
-      insert: { ...insertFixture(), [DaPayloadsDB.Columns.VERSION]: 3 },
+      insert: { ...insertFixture(), [DaPayloadsDB.Columns.VERSION]: 1 },
       manifest,
       transport,
     });
@@ -703,9 +705,9 @@ describe("DA payload libp2p producer publication", () => {
     );
   });
 
-  it("rejects v1/raw-SHA style runtime manifests", () => {
+  it("rejects an unsupported runtime-manifest schema", () => {
     const manifest = manifestFixture();
-    manifest.schemaVersion = "midgard-da-libp2p-runtime-manifest-v1";
+    manifest.schemaVersion = "midgard-da-libp2p-runtime-manifest-v999";
 
     expect(() => parseDaProducerPublicationManifest(manifest)).toThrow(
       /schemaVersion/,
@@ -737,12 +739,17 @@ describe("DA payload libp2p producer publication", () => {
 });
 
 const manifestFixture = (): Record<string, unknown> => ({
-  schemaVersion: "midgard-da-libp2p-runtime-manifest-v2",
+  schemaVersion: "midgard-da-libp2p-runtime-manifest-v1",
   deployment: {
     fingerprint: DEPLOYMENT.toUpperCase(),
     contract_deployment_manifest_id: DEPLOYMENT,
     contract_deployment_info_sha256: "cd".repeat(32),
     identity_source: "contract_deployment_manifest_id",
+  },
+  runtime_topology: {
+    target: "producer",
+    profile: "public",
+    producer_peer_id: PEER_C,
   },
   da_transport: {
     kind: "libp2p",
@@ -763,6 +770,7 @@ const manifestFixture = (): Record<string, unknown> => ({
       max_streams_per_peer: DA_TRANSPORT_LIMITS_V1.maxStreamsPerPeer,
       request_timeout_ms: DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
     },
+    retention_days: DA_TRANSPORT_LIMITS_V1.minimumRetentionDays,
   },
   da_committee: {
     threshold: 2,
@@ -820,9 +828,6 @@ const parseThreeCommitteePeerManifest = () => {
   const parsed = parseDaProducerPublicationManifest(fixture, {
     DA_LIBP2P_PRIVATE_KEY_SOURCE: PRODUCER_PRIVATE_KEY_SOURCE,
   });
-  if (parsed === null) {
-    throw new Error("expected three-peer DA manifest");
-  }
   return parsed;
 };
 
@@ -851,7 +856,9 @@ const serverPort = (server: Server): number => {
 
 const insertFixture = (): DaPayloadsDB.InsertInput => ({
   [DaPayloadsDB.Columns.HEADER_HASH]: HEADER_HASH,
-  [DaPayloadsDB.Columns.VERSION]: 2,
+  [DaPayloadsDB.Columns.CONSENSUS_PROFILE_ID]:
+    MIDGARD_CONSENSUS_PROFILE_V1_ID,
+  [DaPayloadsDB.Columns.VERSION]: 1,
   [DaPayloadsDB.Columns.PAYLOAD_CBOR]: PAYLOAD_CBOR,
   [DaPayloadsDB.Columns.PAYLOAD_SHA256]: PAYLOAD_HASH,
   [DaPayloadsDB.Columns.UTXOS_ROOT]: "10".repeat(32),
@@ -861,12 +868,14 @@ const insertFixture = (): DaPayloadsDB.InsertInput => ({
   [DaPayloadsDB.Columns.WITHDRAWALS_ROOT]: "14".repeat(32),
   [DaPayloadsDB.Columns.TRANSITION_TRACE_ROOT]: "15".repeat(32),
   [DaPayloadsDB.Columns.EVENT_TO_STEP_ROOT]: "16".repeat(32),
+  [DaPayloadsDB.Columns.VALIDATION_TRACES_ROOT]: EMPTY_MERKLE_TREE_ROOT,
   [DaPayloadsDB.Columns.WITHDRAWAL_COUNT]: 0n,
   [DaPayloadsDB.Columns.FORCED_TRANSACTION_COUNT]: 0n,
   [DaPayloadsDB.Columns.L2_TRANSACTION_COUNT]: 0n,
   [DaPayloadsDB.Columns.DEPOSIT_COUNT]: 0n,
   [DaPayloadsDB.Columns.TOTAL_EVENT_COUNT]: 0n,
   [DaPayloadsDB.Columns.TRANSITION_STEP_COUNT]: 0n,
+  [DaPayloadsDB.Columns.VALIDATION_TRACE_COUNT]: 0n,
   [DaPayloadsDB.Columns.BLOCK_START_TIME]: new Date("2026-06-21T00:00:00Z"),
   [DaPayloadsDB.Columns.BLOCK_END_TIME]: new Date("2026-06-21T00:00:01Z"),
 });

@@ -1,37 +1,50 @@
 import { Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  decodeMidgardNativeTxFullFromCanonicalCbor,
-  encodeMidgardNativeTxCompact,
+  decodeMidgardCekProgramMaterialDaEntryV1,
+  type MidgardCekProgramEnvelopeV1,
+  verifyMidgardCekProgramMaterialBundleV1,
+} from "@al-ft/midgard-core/cek-proof";
+import {
+  computeMidgardNativeTxIdV1,
+  computeMidgardNativeTxProofCommitmentV1,
+  decodeMidgardNativeByteListPreimage,
+  decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  deriveMidgardNativeTxProofSourceV1,
 } from "@al-ft/midgard-core/codec";
 import { readCborBytes, readCborInteger } from "@al-ft/midgard-core/codec/cbor";
 import {
+  MIDGARD_CONSENSUS_LIMITS_V1,
+  MIDGARD_PROTOCOL_V1_VERSION,
+  MIDGARD_TRANSITION_STEP_V1_SCHEMA_VERSION,
+} from "@al-ft/midgard-core/consensus-profile-v1";
+import { validateMidgardConsensusV1TxCbor } from "@al-ft/midgard-core/consensus-validation-v1";
+import {
   type DaPayloadEnvelopeTimingStage,
-  unwrapDaPayload,
+  unwrapDaPayloadV1,
 } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS_V1 } from "@al-ft/midgard-core/da-transport";
+import {
+  collectMidgardV1AttachedProgramEnvelopes,
+  collectMidgardV1ReferencedProgramEnvelopes,
+} from "@al-ft/midgard-core/script-proof";
+import { decodeMidgardValidationTraceDescriptorV1 } from "@al-ft/midgard-core/validation-trace";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
+import { blake2b } from "@noble/hashes/blake2.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { Effect } from "effect";
 
 import type {
-  Header,
   PayloadCountSet,
   PayloadRootSet,
   ValidationSummary,
 } from "../domain.js";
-import { hashBlockHeader } from "../l1/state-queue-scanner.js";
 import { bytesToHex, hexToBytes, normalizeHex } from "../utils/hex.js";
 
 type DataSchema = Parameters<typeof LucidData.Nullable>[0];
 
-export type TransactionRootValueProjector = (
-  fullTransactionCbor: Buffer,
-) => Buffer | Promise<Buffer>;
-
 export type PayloadVerificationOptions = {
-  readonly payloadSchemaVersion?: number;
-  readonly transactionProjector?: TransactionRootValueProjector;
+  readonly payloadSchemaVersion: 1;
   readonly stateQueueOutRef: string;
   readonly timing?: DaPayloadVerificationTimingOptions;
 };
@@ -51,14 +64,28 @@ export type DaPayloadVerificationTimingOptions = {
   ) => void;
 };
 
-export type VerifiedDaPayload = {
-  readonly payload: SDK.DaPayloadV2;
+export type DaPayloadRootSetV1 = PayloadRootSet & {
+  readonly validationTracesRoot: string;
+};
+
+export type DaPayloadCountSetV1 = PayloadCountSet & {
+  readonly validationTraceCount: bigint;
+};
+
+export type VerifiedDaPayloadV1 = {
+  readonly payload: SDK.DaPayloadV1;
   readonly storedPayloadCbor: Buffer;
   readonly innerPayloadCbor: Buffer;
   readonly payloadSha256: string;
-  readonly roots: PayloadRootSet;
-  readonly counts: PayloadCountSet;
-  readonly validation: ValidationSummary;
+  readonly roots: DaPayloadRootSetV1;
+  readonly counts: DaPayloadCountSetV1;
+  readonly validation: Omit<
+    ValidationSummary,
+    "rootSummary" | "countSummary"
+  > & {
+    readonly rootSummary: DaPayloadRootSetV1;
+    readonly countSummary: DaPayloadCountSetV1;
+  };
 };
 
 export class DaPayloadValidationError extends Error {
@@ -72,6 +99,9 @@ export class DaPayloadValidationError extends Error {
     | "header_mismatch"
     | "malformed_transaction"
     | "malformed_trace"
+    | "unsupported_feature"
+    | "consensus_bound"
+    | "version_mismatch"
     | "root_mismatch"
     | "count_mismatch"
     | "coverage_mismatch";
@@ -87,41 +117,43 @@ export class DaPayloadValidationError extends Error {
   }
 }
 
-export const decodeDaPayloadV2Strict = (
+export const decodeDaPayloadV1Strict = (
   payloadCbor: Uint8Array,
   timing: DaPayloadVerificationTimingOptions = {},
-): SDK.DaPayloadV2 => {
-  // The canonical reader is synchronous and never retains or mutates its
-  // input, so an already-owned Buffer can be borrowed without another full
-  // payload copy.
+): SDK.DaPayloadV1 => {
+  if (payloadCbor.length > MIDGARD_CONSENSUS_LIMITS_V1.maxDaPayloadBytes) {
+    throw new DaPayloadValidationError(
+      "consensus_bound",
+      `canonical DA payload bytes ${payloadCbor.length.toString()} exceed V1 maximum ${MIDGARD_CONSENSUS_LIMITS_V1.maxDaPayloadBytes.toString()}`,
+    );
+  }
   const payloadBuffer = Buffer.isBuffer(payloadCbor)
     ? payloadCbor
     : Buffer.from(payloadCbor);
-  let payload: SDK.DaPayloadV2;
+  let payload: SDK.DaPayloadV1;
   const decodeStartedAt = readMonotonicNow(timing);
   try {
-    payload = SDK.decodeDaPayloadV2Canonical(payloadBuffer);
+    payload = SDK.decodeDaPayloadV1(payloadBuffer);
   } catch (cause) {
     throw new DaPayloadValidationError(
-      cause instanceof SDK.DaPayloadV2NonCanonicalError
+      cause instanceof SDK.DaPayloadV1NonCanonicalError
         ? "non_canonical"
         : "malformed_da",
-      cause instanceof SDK.DaPayloadV2NonCanonicalError
-        ? "payload CBOR was not canonical for DaPayloadV2"
-        : "failed to decode DaPayloadV2 canonical CBOR",
+      cause instanceof SDK.DaPayloadV1NonCanonicalError
+        ? "payload CBOR was not canonical for DaPayloadV1"
+        : "failed to decode DaPayloadV1 canonical CBOR",
       { cause },
     );
   } finally {
     recordTiming(timing, "inner_decode", decodeStartedAt);
   }
-  // decodeDaPayloadV2Canonical proves the exact encoder framing while reading;
-  // re-encoding here would allocate and compare the complete inner payload.
+
   const validationStartedAt = readMonotonicNow(timing);
   try {
-    if (payload.version !== SDK.DA_PAYLOAD_V2_VERSION) {
+    if (payload.version !== SDK.DA_PAYLOAD_V1_VERSION) {
       throw new DaPayloadValidationError(
         "wrong_version",
-        `expected DaPayloadV2 version ${SDK.DA_PAYLOAD_V2_VERSION.toString()}, got ${payload.version.toString()}`,
+        `expected DaPayloadV1 version ${SDK.DA_PAYLOAD_V1_VERSION.toString()}, got ${payload.version.toString()}`,
       );
     }
     const body = payload.block_body;
@@ -129,39 +161,44 @@ export const decodeDaPayloadV2Strict = (
       fieldName: "payload header_hash",
       byteLength: 28,
     });
-    const embeddedHeaderHash = hashBlockHeader(body.header);
+    const embeddedHeaderHash = hashBlockHeaderCborV1(body.header);
     if (embeddedHeaderHash !== body.header_hash) {
       throw new DaPayloadValidationError(
         "header_hash_mismatch",
-        `embedded header hash ${embeddedHeaderHash} does not match payload header_hash ${body.header_hash}`,
+        `embedded V1 header hash ${embeddedHeaderHash} does not match payload header_hash ${body.header_hash}`,
       );
     }
     validateEntries("utxos", body.utxos);
     validateEntries("withdrawals", body.withdrawals);
     validateEntries("forced_transactions", body.forced_transactions);
     validateEntries("transactions", body.transactions);
+    validateEntries("transaction_preimages", body.transaction_preimages);
+    validateEntries(
+      "forced_transaction_preimages",
+      body.forced_transaction_preimages,
+    );
+    validateEntries("cek_program_material", body.cek_program_material);
     validateEntries("deposits", body.deposits);
     validateEntries("transition_trace", body.transition_trace);
     validateEntries("event_to_step", body.event_to_step);
-    validateCounts(body.counts);
-    validateTraceCoverage(payload);
+    validateEntries("validation_traces", body.validation_traces);
+    validateDaPayloadCountsV1(body.counts);
+    validateDaPayloadConsensusV1(body);
+    validateProofTraceCoverageV1(payload);
     return payload;
   } finally {
     recordTiming(timing, "payload_structure_validation", validationStartedAt);
   }
 };
 
-export const computeDaPayloadRoots = async (
-  payload: SDK.DaPayloadV2,
-  transactionProjector: TransactionRootValueProjector = defaultTransactionProjector,
+const computeDaPayloadRootsForForcedDomain = async (
+  payload: SDK.DaPayloadV1,
 ): Promise<PayloadRootSet> => {
   const body = payload.block_body;
   const transactionValues: Buffer[] = [];
   for (const [, value] of body.transactions) {
     try {
-      transactionValues.push(
-        Buffer.from(await transactionProjector(hexToBytes(value, "tx value"))),
-      );
+      transactionValues.push(hexToBytes(value, "tx value"));
     } catch (cause) {
       throw new DaPayloadValidationError(
         "malformed_transaction",
@@ -181,9 +218,12 @@ export const computeDaPayloadRoots = async (
   ] = await Promise.all([
     keyValuePhasRoot(body.utxos),
     countedRoot(SDK.ROOT_DOMAINS.withdrawals, body.withdrawals),
-    countedRoot(SDK.ROOT_DOMAINS.forcedTransactions, body.forced_transactions),
+    countedRoot(
+      SDK.ROOT_DOMAINS.forcedTransactionsV1,
+      body.forced_transactions,
+    ),
     countedRootWithValues(
-      SDK.ROOT_DOMAINS.transactions,
+      SDK.ROOT_DOMAINS.transactionsV1,
       body.transactions.map(([key]) => hexToBytes(key, "tx key")),
       transactionValues,
     ),
@@ -202,12 +242,25 @@ export const computeDaPayloadRoots = async (
   };
 };
 
-export const verifyDaPayloadAgainstHeader = async (
+export const computeDaPayloadV1Roots = async (
+  payload: SDK.DaPayloadV1,
+): Promise<DaPayloadRootSetV1> => {
+  const proofRoots = await computeDaPayloadRootsForForcedDomain(payload);
+  return {
+    ...proofRoots,
+    validationTracesRoot: await countedRoot(
+      SDK.ROOT_DOMAINS.validationTraces,
+      payload.block_body.validation_traces,
+    ),
+  };
+};
+
+export const verifyDaPayloadV1AgainstHeader = async (
   storedPayloadCbor: Uint8Array,
   expectedHeaderHash: string,
-  header: Header,
+  header: SDK.HeaderV1,
   options: PayloadVerificationOptions,
-): Promise<VerifiedDaPayload> => {
+): Promise<VerifiedDaPayloadV1> => {
   const storedPayloadBuffer = Buffer.from(storedPayloadCbor);
   const hashStartedAt = readMonotonicNow(options.timing);
   const payloadSha256 = bytesToHex(sha256(storedPayloadBuffer));
@@ -215,9 +268,8 @@ export const verifyDaPayloadAgainstHeader = async (
   let payloadBuffer: Buffer;
   try {
     payloadBuffer = (
-      await unwrapDaPayload(storedPayloadBuffer, {
+      await unwrapDaPayloadV1(storedPayloadBuffer, {
         maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
-        schemaVersion: options.payloadSchemaVersion,
         timing: options.timing,
       })
     ).innerBytes;
@@ -232,7 +284,7 @@ export const verifyDaPayloadAgainstHeader = async (
     fieldName: "expected header hash",
     byteLength: 28,
   });
-  const payload = decodeDaPayloadV2Strict(payloadBuffer, options.timing);
+  const payload = decodeDaPayloadV1Strict(payloadBuffer, options.timing);
   const semanticStartedAt = readMonotonicNow(options.timing);
   try {
     if (payload.block_body.header_hash !== normalizedHeaderHash) {
@@ -241,35 +293,43 @@ export const verifyDaPayloadAgainstHeader = async (
         `payload header_hash ${payload.block_body.header_hash} does not match L1 header hash ${normalizedHeaderHash}`,
       );
     }
-    if (hashBlockHeader(header) !== normalizedHeaderHash) {
+    if (hashBlockHeaderCborV1(header) !== normalizedHeaderHash) {
       throw new DaPayloadValidationError(
         "header_hash_mismatch",
-        `L1 header body does not hash to expected header_hash ${normalizedHeaderHash}`,
+        `L1 V1 header body does not hash to expected header_hash ${normalizedHeaderHash}`,
       );
     }
-    if (headerCborHex(payload.block_body.header) !== headerCborHex(header)) {
+    if (
+      headerCborHexV1(payload.block_body.header) !== headerCborHexV1(header)
+    ) {
       throw new DaPayloadValidationError(
         "header_mismatch",
-        "payload embedded header does not match the L1 header",
+        "payload embedded V1 header does not match the L1 header",
       );
     }
-    const roots = await computeDaPayloadRoots(
-      payload,
-      options.transactionProjector,
-    );
+    if (header.protocolVersion !== BigInt(MIDGARD_PROTOCOL_V1_VERSION)) {
+      throw new DaPayloadValidationError(
+        "version_mismatch",
+        `V1 header protocol_version must equal ${MIDGARD_PROTOCOL_V1_VERSION.toString()}, got ${header.protocolVersion.toString()}`,
+      );
+    }
+    const roots = await computeDaPayloadV1Roots(payload);
     const counts = payload.block_body.counts;
-    const mismatches = rootMismatches(header, roots);
-    if (mismatches.length > 0) {
+    const rootMismatchFields = daPayloadRootMismatchesV1(header, roots);
+    if (rootMismatchFields.length > 0) {
       throw new DaPayloadValidationError(
         "root_mismatch",
-        `payload roots do not match L1 header: ${mismatches.join(",")}`,
+        `V1 DA payload roots do not match L1 header: ${rootMismatchFields.join(",")}`,
       );
     }
-    const countMismatchFields = countMismatches(headerCounts(header), counts);
+    const countMismatchFields = daPayloadCountMismatchesV1(
+      daPayloadHeaderCountsV1(header),
+      counts,
+    );
     if (countMismatchFields.length > 0) {
       throw new DaPayloadValidationError(
         "count_mismatch",
-        `payload counts do not match L1 header: ${countMismatchFields.join(",")}`,
+        `V1 DA payload counts do not match L1 header: ${countMismatchFields.join(",")}`,
       );
     }
     return {
@@ -358,7 +418,7 @@ const validateEntries = (
   }
 };
 
-const validateCounts = (counts: SDK.DaPayloadCountsV2): void => {
+const validateCountsV1 = (counts: SDK.DaPayloadCountsV1): void => {
   const fields = [
     ["withdrawal_count", counts.withdrawalCount],
     ["forced_transaction_count", counts.forcedTransactionCount],
@@ -390,6 +450,324 @@ const validateCounts = (counts: SDK.DaPayloadCountsV2): void => {
     throw new DaPayloadValidationError(
       "count_mismatch",
       "transition_step_count must equal total_event_count",
+    );
+  }
+};
+
+const validateDaPayloadCountsV1 = (counts: SDK.DaPayloadCountsV1): void => {
+  validateCountsV1(counts);
+  if (counts.validationTraceCount < 0n) {
+    throw new DaPayloadValidationError(
+      "count_mismatch",
+      "validation_trace_count must be non-negative",
+    );
+  }
+  const expectedValidationTraces =
+    counts.forcedTransactionCount + counts.l2TransactionCount;
+  if (counts.validationTraceCount !== expectedValidationTraces) {
+    throw new DaPayloadValidationError(
+      "count_mismatch",
+      `validation_trace_count ${counts.validationTraceCount.toString()} must equal forced_transaction_count + l2_transaction_count ${expectedValidationTraces.toString()}`,
+    );
+  }
+};
+
+const collectProofProgramEnvelopes = (
+  tx: ReturnType<typeof decodeMidgardNativeTxFullV1FromCanonicalCbor>,
+  fieldName: string,
+  target: MidgardCekProgramEnvelopeV1[],
+  resolvedOutputsByOutRef?: ReadonlyMap<string, Uint8Array>,
+): void => {
+  try {
+    target.push(...collectMidgardV1AttachedProgramEnvelopes(tx));
+    if (resolvedOutputsByOutRef !== undefined) {
+      target.push(
+        ...collectMidgardV1ReferencedProgramEnvelopes(
+          tx,
+          resolvedOutputsByOutRef,
+        ),
+      );
+    }
+  } catch (cause) {
+    throw new DaPayloadValidationError(
+      "malformed_transaction",
+      `${fieldName} has malformed V1 program envelopes`,
+      { cause },
+    );
+  }
+};
+
+const validateDaPayloadConsensusV1 = (body: SDK.DaPayloadBodyV1): void => {
+  if (body.header.protocolVersion !== BigInt(MIDGARD_PROTOCOL_V1_VERSION)) {
+    throw new DaPayloadValidationError(
+      "version_mismatch",
+      `embedded V1 header protocol_version must equal ${MIDGARD_PROTOCOL_V1_VERSION.toString()}, got ${body.header.protocolVersion.toString()}`,
+    );
+  }
+
+  const limits = MIDGARD_CONSENSUS_LIMITS_V1;
+  const countBounds = [
+    [
+      "withdrawal_count",
+      body.counts.withdrawalCount,
+      limits.maxWithdrawalCount,
+    ],
+    [
+      "forced_transaction_count",
+      body.counts.forcedTransactionCount,
+      limits.maxForcedTransactionCount,
+    ],
+    [
+      "l2_transaction_count",
+      body.counts.l2TransactionCount,
+      limits.maxL2TransactionCount,
+    ],
+    ["deposit_count", body.counts.depositCount, limits.maxDepositCount],
+    [
+      "total_event_count",
+      body.counts.totalEventCount,
+      limits.maxTotalEventCount,
+    ],
+    [
+      "transition_step_count",
+      body.counts.transitionStepCount,
+      limits.maxTransitionStepCount,
+    ],
+    [
+      "validation_trace_count",
+      body.counts.validationTraceCount,
+      limits.maxValidationTraceCount,
+    ],
+  ] as const;
+  for (const [field, value, maximum] of countBounds) {
+    if (value > BigInt(maximum)) {
+      throw new DaPayloadValidationError(
+        "consensus_bound",
+        `${field} ${value.toString()} exceeds V1 maximum ${maximum.toString()}`,
+      );
+    }
+  }
+
+  if (body.transactions.length !== body.transaction_preimages.length) {
+    throw new DaPayloadValidationError(
+      "coverage_mismatch",
+      "every committed normal transaction source must have exactly one canonical transaction preimage",
+    );
+  }
+  if (
+    body.forced_transactions.length !== body.forced_transaction_preimages.length
+  ) {
+    throw new DaPayloadValidationError(
+      "coverage_mismatch",
+      "every committed forced transaction source must have exactly one canonical transaction preimage",
+    );
+  }
+  const transactionPreimages = new Map(body.transaction_preimages);
+  const forcedTransactionPreimages = new Map(body.forced_transaction_preimages);
+  const resolvedOutputsByOutRef = new Map(
+    body.utxos.map(([outRefHex, outputHex]) => [
+      normalizeHex(outRefHex, { fieldName: "utxos.key" }),
+      hexToBytes(outputHex, "utxos.value"),
+    ]),
+  );
+
+  let canonicalTransactionBytes = 0;
+  let ledgerOperationCount = body.deposits.length;
+  const programEnvelopes: MidgardCekProgramEnvelopeV1[] = [];
+  const validateFullTransaction = (
+    txCbor: Buffer,
+    fieldName: string,
+  ): ReturnType<typeof decodeMidgardNativeTxFullV1FromCanonicalCbor> => {
+    canonicalTransactionBytes += txCbor.length;
+    let tx;
+    try {
+      tx = decodeMidgardNativeTxFullV1FromCanonicalCbor(txCbor);
+    } catch (cause) {
+      throw new DaPayloadValidationError(
+        "malformed_transaction",
+        `${fieldName} is not a canonical full Midgard transaction`,
+        { cause },
+      );
+    }
+    const violation = validateMidgardConsensusV1TxCbor(txCbor);
+    if (violation !== null) {
+      throw new DaPayloadValidationError(
+        violation.code === "E_TX_SIZE" ||
+        violation.code === "E_FIELD_PREIMAGE_SIZE" ||
+        violation.code === "E_LEDGER_OUTPUT_SIZE"
+          ? "consensus_bound"
+          : "unsupported_feature",
+        `${fieldName} violates proof consensus profile: ${violation.code} ${violation.featureId} ${violation.detail}`,
+      );
+    }
+    collectProofProgramEnvelopes(
+      tx,
+      fieldName,
+      programEnvelopes,
+      resolvedOutputsByOutRef,
+    );
+    return tx;
+  };
+  const countLedgerOperations = (
+    tx: ReturnType<typeof decodeMidgardNativeTxFullV1FromCanonicalCbor>,
+    fieldName: string,
+  ): void => {
+    ledgerOperationCount +=
+      decodeMidgardNativeByteListPreimage(
+        tx.body.spendInputsPreimageCbor,
+        `${fieldName}.spend_inputs`,
+      ).length +
+      decodeMidgardNativeByteListPreimage(
+        tx.body.outputsPreimageCbor,
+        `${fieldName}.outputs`,
+      ).length;
+  };
+  const assertSourceBinding = (
+    source: SDK.L2TransactionSourceV1,
+    tx: ReturnType<typeof decodeMidgardNativeTxFullV1FromCanonicalCbor>,
+    fieldName: string,
+  ): string => {
+    const decodedTxId = computeMidgardNativeTxIdV1(tx).toString("hex");
+    const committedTxId = normalizeHex(source.tx_id, {
+      fieldName: `${fieldName}.tx_id`,
+      byteLength: 32,
+    });
+    if (committedTxId !== decodedTxId) {
+      throw new DaPayloadValidationError(
+        "malformed_transaction",
+        `${fieldName}.tx_id ${committedTxId} does not match decoded transaction id ${decodedTxId}`,
+      );
+    }
+    const derived = deriveMidgardNativeTxProofSourceV1(tx);
+    const compactCbor = normalizeHex(source.source.compact_cbor, {
+      fieldName: `${fieldName}.source.compact_cbor`,
+    });
+    const witnessSetCompactCbor = normalizeHex(
+      source.source.witness_set_compact_cbor,
+      {
+        fieldName: `${fieldName}.source.witness_set_compact_cbor`,
+      },
+    );
+    const fieldPreimageLengthsCbor = normalizeHex(
+      source.source.field_preimage_lengths_cbor,
+      {
+        fieldName: `${fieldName}.source.field_preimage_lengths_cbor`,
+      },
+    );
+    if (
+      compactCbor !== derived.compactCbor.toString("hex") ||
+      witnessSetCompactCbor !== derived.witnessSetCompactCbor.toString("hex") ||
+      fieldPreimageLengthsCbor !==
+        derived.fieldPreimageLengthsCbor.toString("hex")
+    ) {
+      throw new DaPayloadValidationError(
+        "malformed_transaction",
+        `${fieldName}.source does not match the canonical transaction field commitments`,
+      );
+    }
+    const derivedCommitment =
+      computeMidgardNativeTxProofCommitmentV1(derived).toString("hex");
+    const committedCommitment = normalizeHex(source.transaction_commitment, {
+      fieldName: `${fieldName}.transaction_commitment`,
+      byteLength: 32,
+    });
+    if (committedCommitment !== derivedCommitment) {
+      throw new DaPayloadValidationError(
+        "malformed_transaction",
+        `${fieldName}.transaction_commitment does not match the compact proof source`,
+      );
+    }
+    return decodedTxId;
+  };
+
+  for (const [index, [keyHex, valueHex]] of body.transactions.entries()) {
+    const fieldName = `transactions[${index.toString()}]`;
+    const committedTxId = normalizeHex(keyHex, {
+      fieldName: `${fieldName}.key`,
+      byteLength: 32,
+    });
+    const preimageHex = transactionPreimages.get(keyHex);
+    if (preimageHex === undefined) {
+      throw new DaPayloadValidationError(
+        "coverage_mismatch",
+        `${fieldName} has no same-key transaction_preimages entry`,
+      );
+    }
+    const source = decodeCanonicalData<SDK.L2TransactionSourceV1>(
+      valueHex,
+      SDK.L2TransactionSourceV1Schema as never,
+      `${fieldName}.value`,
+    );
+    const tx = validateFullTransaction(
+      hexToBytes(preimageHex, `transaction_preimages[${index.toString()}]`),
+      `transaction_preimages[${index.toString()}]`,
+    );
+    if (assertSourceBinding(source, tx, fieldName) !== committedTxId) {
+      throw new DaPayloadValidationError(
+        "malformed_transaction",
+        `${fieldName}.key does not match the committed transaction source`,
+      );
+    }
+    countLedgerOperations(tx, fieldName);
+  }
+
+  for (const [
+    index,
+    [keyHex, valueHex],
+  ] of body.forced_transactions.entries()) {
+    const fieldName = `forced_transactions[${index.toString()}]`;
+    const preimageHex = forcedTransactionPreimages.get(keyHex);
+    if (preimageHex === undefined) {
+      throw new DaPayloadValidationError(
+        "coverage_mismatch",
+        `${fieldName} has no same-key forced_transaction_preimages entry`,
+      );
+    }
+    const forced = decodeCanonicalData<SDK.ForcedInclusionTxV1>(
+      valueHex,
+      SDK.ForcedInclusionTxV1Schema as never,
+      `${fieldName}.value`,
+    );
+    const tx = validateFullTransaction(
+      hexToBytes(
+        preimageHex,
+        `forced_transaction_preimages[${index.toString()}]`,
+      ),
+      `forced_transaction_preimages[${index.toString()}]`,
+    );
+    assertSourceBinding(forced, tx, fieldName);
+    if (forced.operator_validity === "TxIsValid") {
+      countLedgerOperations(tx, fieldName);
+    }
+  }
+
+  if (canonicalTransactionBytes > limits.maxCanonicalTransactionBytesPerBlock) {
+    throw new DaPayloadValidationError(
+      "consensus_bound",
+      `canonical transaction bytes ${canonicalTransactionBytes.toString()} exceed V1 maximum ${limits.maxCanonicalTransactionBytesPerBlock.toString()}`,
+    );
+  }
+  if (ledgerOperationCount > limits.maxLedgerOperationCount) {
+    throw new DaPayloadValidationError(
+      "consensus_bound",
+      `ledger operations ${ledgerOperationCount.toString()} exceed V1 maximum ${limits.maxLedgerOperationCount.toString()}`,
+    );
+  }
+  try {
+    const material = body.cek_program_material.map(([rootHex, valueHex]) =>
+      decodeMidgardCekProgramMaterialDaEntryV1(
+        hexToBytes(rootHex, "cek_program_material.root"),
+        hexToBytes(valueHex, "cek_program_material.value"),
+      ),
+    );
+    verifyMidgardCekProgramMaterialBundleV1(programEnvelopes, material, {
+      allowUnreachable: true,
+    });
+  } catch (cause) {
+    throw new DaPayloadValidationError(
+      "coverage_mismatch",
+      "CEK program material does not exactly cover every inline and newly referenced V1 program",
+      { cause },
     );
   }
 };
@@ -545,8 +923,13 @@ const parseCanonicalL2EventToStep = (
   }
 };
 
-const headerCborHex = (header: Header): string =>
-  dataHex(header, SDK.Header as never);
+const headerCborHexV1 = (header: SDK.HeaderV1): string =>
+  dataHex(header, SDK.HeaderV1 as never);
+
+const hashBlockHeaderCborV1 = (header: SDK.HeaderV1): string =>
+  bytesToHex(
+    blake2b(Buffer.from(headerCborHexV1(header), "hex"), { dkLen: 28 }),
+  );
 
 const eventKeyFingerprint = (eventKey: SDK.EventKey): string =>
   dataHex(eventKey, SDK.EventKeySchema);
@@ -564,7 +947,7 @@ const eventPhase = (eventKey: SDK.EventKey): SDK.TransitionPhase => {
   return "Deposit";
 };
 
-const sourceEventFingerprints = (body: SDK.DaPayloadBodyV2): Set<string> => {
+const sourceEventFingerprints = (body: SDK.DaPayloadBodyV1): Set<string> => {
   const fingerprints = new Set<string>();
   const add = (fingerprint: string, fieldName: string) => {
     if (fingerprints.has(fingerprint)) {
@@ -625,9 +1008,11 @@ const sourceEventFingerprints = (body: SDK.DaPayloadBodyV2): Set<string> => {
   return fingerprints;
 };
 
-const validateTraceCoverage = (payload: SDK.DaPayloadV2): void => {
+const validateTraceCoverage = (payload: SDK.DaPayloadV1): void => {
   const body = payload.block_body;
   const counts = body.counts;
+  const expectedTransitionStepSchemaVersion =
+    MIDGARD_TRANSITION_STEP_V1_SCHEMA_VERSION;
   const memberCounts: PayloadCountSet = {
     withdrawalCount: BigInt(body.withdrawals.length),
     forcedTransactionCount: BigInt(body.forced_transactions.length),
@@ -697,10 +1082,10 @@ const validateTraceCoverage = (payload: SDK.DaPayloadV2): void => {
         LucidData.Integer() as never,
         `transition_trace[${index.toString()}].key`,
       );
-    if (step.schema_version < 0n) {
+    if (step.schema_version !== BigInt(expectedTransitionStepSchemaVersion)) {
       throw new DaPayloadValidationError(
-        "malformed_trace",
-        "transition step schema_version must be non-negative",
+        "version_mismatch",
+        `transition step schema_version must equal ${expectedTransitionStepSchemaVersion.toString()}, got ${step.schema_version.toString()}`,
       );
     }
     if (key !== step.step_index) {
@@ -807,6 +1192,106 @@ const validateTraceCoverage = (payload: SDK.DaPayloadV2): void => {
   }
 };
 
+const validateProofTraceCoverageV1 = (payload: SDK.DaPayloadV1): void => {
+  validateTraceCoverage(payload);
+  const body = payload.block_body;
+  if (
+    BigInt(body.validation_traces.length) !== body.counts.validationTraceCount
+  ) {
+    throw new DaPayloadValidationError(
+      "count_mismatch",
+      "validation_traces member count must equal validation_trace_count",
+    );
+  }
+
+  const expectedVerdicts = new Map<string, "accepted" | "rejected">();
+  for (const [index, [key]] of body.transactions.entries()) {
+    const txId = normalizeHex(key, {
+      fieldName: `transactions[${index.toString()}].key`,
+      byteLength: 32,
+    });
+    expectedVerdicts.set(l2EventKeyFingerprintFromTxId(txId), "accepted");
+  }
+  for (const [index, [key, value]] of body.forced_transactions.entries()) {
+    const txOrderId = decodeCanonicalData<SDK.OutputReference>(
+      key,
+      SDK.OutputReference as never,
+      `forced_transactions[${index.toString()}].key`,
+    );
+    const forced = decodeCanonicalData<SDK.ForcedInclusionTxV1>(
+      value,
+      SDK.ForcedInclusionTxV1Schema as never,
+      `forced_transactions[${index.toString()}].value`,
+    );
+    expectedVerdicts.set(
+      eventKeyFingerprint({
+        ForcedTransactionEventKey: { tx_order_id: txOrderId },
+      }),
+      forced.operator_validity === "TxIsValid" ? "accepted" : "rejected",
+    );
+  }
+
+  const observed = new Set<string>();
+  for (const [index, [keyHex, valueHex]] of body.validation_traces.entries()) {
+    const eventKey = decodeCanonicalData<SDK.EventKey>(
+      keyHex,
+      SDK.EventKeySchema as never,
+      `validation_traces[${index.toString()}].key`,
+    );
+    if (
+      !("L2TransactionEventKey" in eventKey) &&
+      !("ForcedTransactionEventKey" in eventKey)
+    ) {
+      throw new DaPayloadValidationError(
+        "coverage_mismatch",
+        "validation trace keys must identify an L2 or forced transaction",
+      );
+    }
+    const fingerprint = eventKeyFingerprint(eventKey);
+    if (observed.has(fingerprint)) {
+      throw new DaPayloadValidationError(
+        "duplicate_key",
+        `duplicate validation trace event key ${fingerprint}`,
+      );
+    }
+    const expectedVerdict = expectedVerdicts.get(fingerprint);
+    if (expectedVerdict === undefined) {
+      throw new DaPayloadValidationError(
+        "coverage_mismatch",
+        "validation trace does not correspond to a committed transaction source",
+      );
+    }
+    let descriptor;
+    try {
+      descriptor = decodeMidgardValidationTraceDescriptorV1(
+        hexToBytes(valueHex, `validation_traces[${index.toString()}].value`),
+      );
+    } catch (cause) {
+      throw new DaPayloadValidationError(
+        "malformed_trace",
+        `validation_traces[${index.toString()}].value is not a canonical bounded descriptor`,
+        { cause },
+      );
+    }
+    if (descriptor.verdict !== expectedVerdict) {
+      throw new DaPayloadValidationError(
+        "coverage_mismatch",
+        `validation trace verdict ${descriptor.verdict} does not match committed operator verdict ${expectedVerdict}`,
+      );
+    }
+    observed.add(fingerprint);
+  }
+
+  for (const fingerprint of expectedVerdicts.keys()) {
+    if (!observed.has(fingerprint)) {
+      throw new DaPayloadValidationError(
+        "coverage_mismatch",
+        "validation_traces omits a committed transaction source",
+      );
+    }
+  }
+};
+
 const keyValuePhasRoot = async (
   entries: readonly SDK.DaPayloadEntry[],
 ): Promise<string> =>
@@ -861,17 +1346,8 @@ const countedRootWithValues = async (
   );
 };
 
-const defaultTransactionProjector: TransactionRootValueProjector = (
-  fullTransactionCbor,
-) =>
-  Buffer.from(
-    encodeMidgardNativeTxCompact(
-      decodeMidgardNativeTxFullFromCanonicalCbor(fullTransactionCbor).compact,
-    ),
-  );
-
-const rootMismatches = (
-  header: Header,
+const rootMismatchesV1 = (
+  header: SDK.HeaderV1,
   roots: PayloadRootSet,
 ): readonly string[] =>
   [
@@ -894,13 +1370,30 @@ const rootMismatches = (
       : "event_to_step_root",
   ].filter((field): field is string => field !== undefined);
 
-const headerCounts = (header: Header): PayloadCountSet => ({
+const daPayloadRootMismatchesV1 = (
+  header: SDK.HeaderV1,
+  roots: DaPayloadRootSetV1,
+): readonly string[] => [
+  ...rootMismatchesV1(header, roots),
+  ...(header.validationTracesRoot === roots.validationTracesRoot
+    ? []
+    : ["validation_traces_root"]),
+];
+
+const headerCountsV1 = (header: SDK.HeaderV1): PayloadCountSet => ({
   withdrawalCount: header.withdrawalCount,
   forcedTransactionCount: header.forcedTransactionCount,
   l2TransactionCount: header.l2TransactionCount,
   depositCount: header.depositCount,
   totalEventCount: header.totalEventCount,
   transitionStepCount: header.transitionStepCount,
+});
+
+const daPayloadHeaderCountsV1 = (
+  header: SDK.HeaderV1,
+): DaPayloadCountSetV1 => ({
+  ...headerCountsV1(header),
+  validationTraceCount: header.validationTraceCount,
 });
 
 const countMismatches = (
@@ -925,3 +1418,13 @@ const countMismatches = (
       ? undefined
       : "transition_step_count",
   ].filter((field): field is string => field !== undefined);
+
+const daPayloadCountMismatchesV1 = (
+  expected: DaPayloadCountSetV1,
+  actual: DaPayloadCountSetV1,
+): readonly string[] => [
+  ...countMismatches(expected, actual),
+  ...(expected.validationTraceCount === actual.validationTraceCount
+    ? []
+    : ["validation_trace_count"]),
+];

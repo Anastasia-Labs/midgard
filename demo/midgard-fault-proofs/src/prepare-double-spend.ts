@@ -3,19 +3,19 @@ import { join } from "node:path";
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  computeMidgardNativeTxId,
+  computeMidgardNativeTxIdV1,
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardNativeTxFullV1FromCanonicalCbor,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
-  encodeMidgardNativeTxCanonical,
-  encodeMidgardNativeTxCompact,
+  encodeMidgardNativeTxCanonicalV1,
+  encodeMidgardNativeTxCompactV1,
   formatUnknownError,
-  materializeMidgardNativeTxFromCanonical,
-  MIDGARD_NATIVE_TX_VERSION,
+  materializeMidgardNativeTxFromCanonicalV1,
+  MIDGARD_NATIVE_TX_V1_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  type MidgardNativeTxFull,
+  type MidgardNativeTxFullV1,
 } from "@al-ft/midgard-core";
 import {
   EMPTY_MERKLE_TREE_ROOT,
@@ -44,7 +44,6 @@ export type PrepareDoubleSpendCliConfig = {
   readonly tx1Id?: string;
   readonly tx2Id?: string;
   readonly outputDir?: string;
-  readonly allowIncompatibleOutput?: boolean;
 };
 
 export type NodeTransactionPayload = {
@@ -76,17 +75,12 @@ export type PreparedDoubleSpendOutput = {
   readonly headerHash: string;
   readonly txCount: number;
   readonly doubleSpentInput: OutputReferenceData;
-  readonly compatibility: {
-    readonly canUseSubmitStepCommands: boolean;
-    readonly reasons: readonly string[];
-  };
   readonly commitmentEncodings: {
     readonly nativeNode: {
       readonly transactionsRoot: string;
     };
     readonly expectedTransactionsRoot?: {
       readonly value: string;
-      readonly matchesNativeNodeRoot: boolean;
     };
   };
   readonly tx1: PreparedDoubleSpendTx;
@@ -108,20 +102,18 @@ export type PrepareDoubleSpendFromFileConfig = {
   readonly tx1Id?: string;
   readonly tx2Id?: string;
   readonly outputDir?: string;
-  readonly allowIncompatibleOutput?: boolean;
 };
 
 export type PrepareSampleDoubleSpendConfig = {
   readonly headerHash: string;
   readonly expectedTransactionsRoot?: string;
   readonly outputDir?: string;
-  readonly allowIncompatibleOutput?: boolean;
 };
 
 export type DecodedTransactionMaterial = {
   readonly nodeTxId: string;
   readonly txCbor: string;
-  readonly nativeTx: MidgardNativeTxFull;
+  readonly nativeTx: MidgardNativeTxFullV1;
   readonly nativeTxCompact: NativeTxCompactData;
   readonly inputs: readonly OutputReferenceData[];
   readonly spendInputCbors: readonly string[];
@@ -280,7 +272,7 @@ const transactionInputCbor = (txHash: string, outputIndex: bigint): Buffer =>
 const sampleNativeTx = (
   inputs: readonly Buffer[],
   fee: bigint,
-): MidgardNativeTxFull => {
+): MidgardNativeTxFullV1 => {
   const body = {
     spendInputsPreimageCbor: encodeCbor(inputs),
     referenceInputsPreimageCbor: Buffer.from(EMPTY_CBOR_LIST),
@@ -300,8 +292,8 @@ const sampleNativeTx = (
     scriptTxWitsPreimageCbor: Buffer.from(EMPTY_CBOR_LIST),
     redeemerTxWitsPreimageCbor: Buffer.from(EMPTY_CBOR_LIST),
   };
-  return materializeMidgardNativeTxFromCanonical({
-    version: MIDGARD_NATIVE_TX_VERSION,
+  return materializeMidgardNativeTxFromCanonicalV1({
+    version: MIDGARD_NATIVE_TX_V1_VERSION,
     validity: "TxIsValid",
     body,
     witnessSet,
@@ -309,10 +301,10 @@ const sampleNativeTx = (
 };
 
 const payloadFromNativeTx = (
-  tx: MidgardNativeTxFull,
+  tx: MidgardNativeTxFullV1,
 ): NodeTransactionPayload => ({
-  nodeTxId: computeMidgardNativeTxId(tx).toString("hex"),
-  txCbor: encodeMidgardNativeTxCanonical(tx).toString("hex"),
+  nodeTxId: computeMidgardNativeTxIdV1(tx).toString("hex"),
+  txCbor: encodeMidgardNativeTxCanonicalV1(tx).toString("hex"),
 });
 
 export const makeSampleDoubleSpendTransactions =
@@ -376,9 +368,9 @@ export const decodeTransactionMaterial = async (
 ): Promise<DecodedTransactionMaterial> => {
   const nodeTxId = parseHex(payload.nodeTxId, "nodeTxId", 32);
   const txCbor = parseHex(payload.txCbor, `tx ${nodeTxId} CBOR`);
-  let nativeTx: MidgardNativeTxFull;
+  let nativeTx: MidgardNativeTxFullV1;
   try {
-    nativeTx = decodeMidgardNativeTxFullFromCanonicalCbor(
+    nativeTx = decodeMidgardNativeTxFullV1FromCanonicalCbor(
       Buffer.from(txCbor, "hex"),
     );
   } catch (cause) {
@@ -386,7 +378,7 @@ export const decodeTransactionMaterial = async (
       `Failed to decode native Midgard tx ${nodeTxId}: ${formatUnknownError(cause)}`,
     );
   }
-  const computedNodeTxId = computeMidgardNativeTxId(nativeTx).toString("hex");
+  const computedNodeTxId = computeMidgardNativeTxIdV1(nativeTx).toString("hex");
   if (computedNodeTxId !== nodeTxId) {
     throw new Error(
       `Node tx id mismatch: listed=${nodeTxId}, computed=${computedNodeTxId}.`,
@@ -407,9 +399,9 @@ export const decodeTransactionMaterial = async (
     nativeTxCompact: nativeTxFromCoreCompact(nativeTx.compact),
     inputs,
     spendInputCbors,
-    nativeCompactCbor: encodeMidgardNativeTxCompact(nativeTx.compact).toString(
-      "hex",
-    ),
+    nativeCompactCbor: encodeMidgardNativeTxCompactV1(
+      nativeTx.compact,
+    ).toString("hex"),
   };
 };
 
@@ -572,42 +564,30 @@ const prepareTx = ({
   doubleSpentInputIndex,
 });
 
-export const compatibilityReasons = ({
+export const requireTransactionsRootMatchV1 = ({
   nativeRoot,
   expectedTransactionsRoot,
 }: {
   readonly nativeRoot: string;
   readonly expectedTransactionsRoot?: string;
-}): readonly string[] => {
-  const reasons: string[] = [];
+}): void => {
   if (
     expectedTransactionsRoot !== undefined &&
     expectedTransactionsRoot !== nativeRoot
   ) {
-    reasons.push(
-      `Expected transactions root ${expectedTransactionsRoot} does not match the native node transaction root ${nativeRoot}.`,
+    throw new Error(
+      `Expected V1 transactions root ${expectedTransactionsRoot} does not match the native node transaction root ${nativeRoot}.`,
     );
   }
-  return reasons;
 };
 
 const writePreparedFiles = async ({
   output,
   outputDir,
-  allowIncompatibleOutput,
 }: {
   readonly output: PreparedDoubleSpendOutput;
   readonly outputDir: string;
-  readonly allowIncompatibleOutput: boolean;
 }): Promise<PreparedDoubleSpendOutput["files"]> => {
-  if (
-    !output.compatibility.canUseSubmitStepCommands &&
-    !allowIncompatibleOutput
-  ) {
-    throw new Error(
-      "Refusing to write submit-step material because the selected block is not compatible with the current fault-proof ABI. Pass --allow-incompatible-output to write diagnostic files anyway.",
-    );
-  }
   await mkdir(outputDir, { recursive: true });
   const paths = {
     tx1InclusionPath: join(outputDir, "tx1-inclusion.json"),
@@ -630,7 +610,6 @@ const writePreparedFiles = async ({
         tx2NodeTxId: output.tx2.nodeTxId,
         tx1DoubleSpentInputIndex: output.tx1.doubleSpentInputIndex,
         tx2DoubleSpentInputIndex: output.tx2.doubleSpentInputIndex,
-        compatibility: output.compatibility,
         commitmentEncodings: output.commitmentEncodings,
       }),
     ),
@@ -658,7 +637,6 @@ export const prepareDoubleSpendFromTransactions = async ({
   tx1Id,
   tx2Id,
   outputDir,
-  allowIncompatibleOutput = false,
 }: {
   readonly headerHash: string;
   readonly transactions: readonly NodeTransactionPayload[];
@@ -666,7 +644,6 @@ export const prepareDoubleSpendFromTransactions = async ({
   readonly tx1Id?: string;
   readonly tx2Id?: string;
   readonly outputDir?: string;
-  readonly allowIncompatibleOutput?: boolean;
 }): Promise<PreparedDoubleSpendOutput> => {
   const normalizedHeaderHash = parseHex(headerHash, "--header-hash", 28);
   const normalizedExpectedRoot =
@@ -688,7 +665,7 @@ export const prepareDoubleSpendFromTransactions = async ({
     nativeTrieItem(pair.tx2).key,
     "tx2",
   );
-  const reasons = compatibilityReasons({
+  requireTransactionsRootMatchV1({
     nativeRoot: nativeTrie.root,
     expectedTransactionsRoot: normalizedExpectedRoot,
   });
@@ -696,10 +673,6 @@ export const prepareDoubleSpendFromTransactions = async ({
     headerHash: normalizedHeaderHash,
     txCount: decoded.length,
     doubleSpentInput: pair.doubleSpentInput,
-    compatibility: {
-      canUseSubmitStepCommands: reasons.length === 0,
-      reasons,
-    },
     commitmentEncodings: {
       nativeNode: {
         transactionsRoot: nativeTrie.root,
@@ -709,7 +682,6 @@ export const prepareDoubleSpendFromTransactions = async ({
         : {
             expectedTransactionsRoot: {
               value: normalizedExpectedRoot,
-              matchesNativeNodeRoot: normalizedExpectedRoot === nativeTrie.root,
             },
           }),
     },
@@ -732,7 +704,6 @@ export const prepareDoubleSpendFromTransactions = async ({
   const files = await writePreparedFiles({
     output: baseOutput,
     outputDir,
-    allowIncompatibleOutput,
   });
   return { ...baseOutput, files };
 };
@@ -752,7 +723,6 @@ export const prepareDoubleSpendFromNode = async (
     tx1Id: config.tx1Id,
     tx2Id: config.tx2Id,
     outputDir: config.outputDir,
-    allowIncompatibleOutput: config.allowIncompatibleOutput,
   });
 };
 
@@ -769,7 +739,6 @@ export const prepareDoubleSpendFromFile = async (
     tx1Id: config.tx1Id,
     tx2Id: config.tx2Id,
     outputDir: config.outputDir,
-    allowIncompatibleOutput: config.allowIncompatibleOutput,
   });
 };
 
@@ -782,7 +751,6 @@ export const prepareSampleDoubleSpend = async (
     transactions,
     expectedTransactionsRoot: config.expectedTransactionsRoot,
     outputDir: config.outputDir,
-    allowIncompatibleOutput: config.allowIncompatibleOutput,
   });
   if (config.outputDir === undefined) {
     return output;

@@ -2,18 +2,35 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import {
+  DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
+  DA_TRANSPORT_LIMITS_V1,
+  DA_TRANSPORT_V1_PROTOCOL_VERSION,
+} from "@al-ft/midgard-core/da-transport";
+import { REFERENCE_SCRIPT_AUTH_TOKEN_NAMES } from "@al-ft/midgard-sdk";
 import { it } from "@effect/vitest";
-import { mintingPolicyToId } from "@lucid-evolution/lucid";
+import {
+  mintingPolicyToId,
+  validatorToScriptHash,
+} from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it as unitIt } from "vitest";
 
 import {
-  computeDeploymentManifestId,
-  DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
-  type DeploymentManifestV2Value,
-} from "@/deployment-manifest-v2.js";
+  buildContractDeploymentInfoFromContracts,
+  buildDeploymentManifestV1,
+  type DeploymentManifestV1IdentityContext,
+} from "@/commands/contract-deployment-info.js";
+import {
+  computeDeploymentManifestV1DaCommitteeSignersHash,
+  computeDeploymentManifestV1JsonDigest,
+  DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+  normalizeDeploymentManifestV1JsonValue,
+} from "@/deployment-manifest-v1.js";
 import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
 import {
+  buildRealTxOrderContracts,
+  readRuntimeDeploymentManifestFile,
   REAL_ACTIVE_OPERATORS_SCRIPT_TITLES,
   REAL_DEPOSIT_SCRIPT_TITLES,
   REAL_HUB_ORACLE_SCRIPT_TITLES,
@@ -25,15 +42,51 @@ import {
   REAL_STATE_QUEUE_SCRIPT_TITLES,
   REAL_TX_ORDER_SCRIPT_TITLES,
   REAL_WITHDRAWAL_SCRIPT_TITLES,
-  readRuntimeDeploymentManifestFile,
   withRealStateQueueAndOperatorContracts,
 } from "@/services/midgard-contracts.js";
+import {
+  buildFraudProofCatalogueDeploymentInfo,
+  fraudProofsToIndexedValidators,
+} from "@/transactions/initialization.js";
 
 describe("midgard contracts registry", () => {
   const oneShotOutRef = {
     txHash: "00".repeat(32),
     outputIndex: 0,
   } as const;
+  const cardanoSnapshot =
+    normalizeDeploymentManifestV1JsonValue({ maxTxSize: 16_384 });
+  const daVkey = "11".repeat(32);
+  const manifestIdentityContext: DeploymentManifestV1IdentityContext = {
+    cardanoProtocolParameters: {
+      snapshot: cardanoSnapshot,
+      digest: computeDeploymentManifestV1JsonDigest(cardanoSnapshot),
+    },
+    genesis: {
+      headerHash: "00".repeat(28),
+      utxoSetDigest: computeDeploymentManifestV1JsonDigest(
+        normalizeDeploymentManifestV1JsonValue([]),
+      ),
+    },
+    da: {
+      committeeVkeys: [daVkey],
+      committeeSignersHash:
+        computeDeploymentManifestV1DaCommitteeSignersHash([daVkey]),
+      threshold: 1,
+      transportProfile: {
+        protocolVersion: DA_TRANSPORT_V1_PROTOCOL_VERSION,
+        runtimeManifestSchemaVersion: DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
+        envelopeEncoding: "identity" as const,
+        zstdLevel: 3,
+        limits: DA_TRANSPORT_LIMITS_V1,
+        retentionDays: DA_TRANSPORT_LIMITS_V1.minimumRetentionDays,
+      },
+    },
+    proofEvidence: {
+      digest: null,
+      blueprintHash: "22".repeat(32),
+    },
+  };
 
   it.effect("resolves real state_queue and hub_oracle scripts", () =>
     Effect.gen(function* () {
@@ -63,7 +116,10 @@ describe("midgard contracts registry", () => {
         "operator_directory/retired_operators.mint.mint",
       );
       expect(REAL_TX_ORDER_SCRIPT_TITLES.mint).toBe(
-        "user_events/tx_order.mint.mint",
+        "user_events/tx_order_v1.mint.mint",
+      );
+      expect(REAL_TX_ORDER_SCRIPT_TITLES.fieldReceiptMint).toBe(
+        "user_events/tx_field_receipt_v1.mint.mint",
       );
       expect(REAL_WITHDRAWAL_SCRIPT_TITLES.mint).toBe(
         "user_events/withdrawal.mint.mint",
@@ -131,6 +187,26 @@ describe("midgard contracts registry", () => {
       expect(resolved.fraudProofs.doubleSpend.spendingScriptCBOR).not.toEqual(
         placeholderContracts.fraudProofs.doubleSpend.spendingScriptCBOR,
       );
+
+      const txOrderContracts = yield* buildRealTxOrderContracts(
+        "Preprod",
+        resolved.hubOracle.policyId,
+      );
+      expect(txOrderContracts.txOrder.policyId).toEqual(
+        mintingPolicyToId(txOrderContracts.txOrder.mintingScript),
+      );
+      expect(txOrderContracts.txOrderFieldReceipt.policyId).toEqual(
+        mintingPolicyToId(txOrderContracts.txOrderFieldReceipt.mintingScript),
+      );
+      expect(
+        txOrderContracts.txOrderFieldPreimage.spendingScriptHash,
+      ).toHaveLength(56);
+      expect(
+        txOrderContracts.txOrderFieldReceipt.spendingScriptHash,
+      ).toHaveLength(56);
+      expect(txOrderContracts.cekProgramMaterial.spendingScriptHash).toHaveLength(
+        56,
+      );
     }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
   );
 
@@ -153,46 +229,88 @@ describe("midgard contracts registry", () => {
   );
 
   unitIt(
-    "fails closed for explicit manifests and only permits auto-discovered legacy fallback",
+    "fails closed for every existing non-V1 or tampered manifest",
     async () => {
       const dir = await mkdtemp(join(tmpdir(), "midgard-runtime-manifest-"));
       const missingPath = join(dir, "missing.json");
-      const legacyPath = join(dir, "legacy.json");
+      const unsupportedPath = join(dir, "unsupported.json");
       const tamperedPath = join(dir, "tampered.json");
       try {
         expect(() =>
           readRuntimeDeploymentManifestFile(missingPath, true),
         ).toThrow(/does not exist/);
         await writeFile(
-          legacyPath,
-          JSON.stringify({ schemaVersion: "legacy", contracts: {} }),
-        );
-        expect(readRuntimeDeploymentManifestFile(legacyPath, false)).toBe(
-          undefined,
+          unsupportedPath,
+          JSON.stringify({ schemaVersion: "unsupported", contracts: {} }),
         );
         expect(() =>
-          readRuntimeDeploymentManifestFile(legacyPath, true),
-        ).toThrow(/schemaVersion must be midgard-deployment-manifest-v2/);
+          readRuntimeDeploymentManifestFile(unsupportedPath, false),
+        ).toThrow(/schemaVersion must be midgard-deployment-manifest-v1/);
+        expect(() =>
+          readRuntimeDeploymentManifestFile(unsupportedPath, true),
+        ).toThrow(/schemaVersion must be midgard-deployment-manifest-v1/);
 
-        const identityInput: Omit<DeploymentManifestV2Value, "manifestId"> = {
-          schemaVersion: DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
-          network: "Preprod",
-          referenceScriptDeployAddress: "addr_test1reference",
-          hubOracleOneShot: {
-            txHash: "ab".repeat(32),
-            outputIndex: 0,
-            outRef: `${"ab".repeat(32)}#0`,
+        const contracts = await Effect.runPromise(
+          AlwaysSucceedsContract.pipe(
+            Effect.provide(AlwaysSucceedsContract.Default),
+          ),
+        );
+        const nativeScriptCbor = `8200581c${"00".repeat(28)}`;
+        const authPolicy = {
+          policyId: validatorToScriptHash({
+            type: "Native" as const,
+            script: nativeScriptCbor,
+          }),
+          nativeScript: {
+            type: "Native" as const,
+            cborHex: nativeScriptCbor,
+            expiresAtSlot: 1,
+            expiresAtUnixTime: 1,
+            timelockDurationMs: 1,
           },
-          referenceScriptAuthPolicy: { policyId: "cd".repeat(28) },
-          contracts: {},
-          referenceScripts: {},
-          steps: {},
+          tokenNames: REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
+          postTimelockAudit: {
+            required: true as const,
+            rule: "test fixture",
+          },
         };
+        const referenceScriptOutRefs = new Map(
+          Object.values(
+            DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+          ).map((contractName, outputIndex) => [
+            contractName,
+            { txHash: "33".repeat(32), outputIndex },
+          ]),
+        );
+        const fraudProofCatalogue = await Effect.runPromise(
+          buildFraudProofCatalogueDeploymentInfo(
+            fraudProofsToIndexedValidators(contracts.fraudProofs),
+          ),
+        );
+        const manifest = buildDeploymentManifestV1(
+          buildContractDeploymentInfoFromContracts(
+            contracts,
+            authPolicy,
+            referenceScriptOutRefs,
+            fraudProofCatalogue,
+          ),
+          {
+            network: "Preprod",
+            ...manifestIdentityContext,
+            referenceScriptDeployAddress: "addr_test1reference",
+            hubOracleOneShotTxHash: "ab".repeat(32),
+            hubOracleOneShotOutputIndex: 0,
+            hubOracleOneShotStatus: "consumed_by_init",
+            now: new Date("2026-07-24T00:00:00.000Z"),
+            steps: {
+              initProtocol: { status: "complete" },
+            },
+          },
+        );
         await writeFile(
           tamperedPath,
           JSON.stringify({
-            ...identityInput,
-            manifestId: computeDeploymentManifestId(identityInput),
+            ...manifest,
             network: "Preview",
           }),
         );

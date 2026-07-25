@@ -15,7 +15,6 @@ import {
 } from "@al-ft/midgard-core/da-transport";
 
 import type { Libp2pDaRole, Libp2pDaTransportLimits } from "../../config.js";
-import type { TransactionRootValueProjector } from "../payload.js";
 import {
   DaProofArtifactDeriver,
   type DaProofArtifactStore,
@@ -39,7 +38,6 @@ export type DaLibp2pProofProtocolHandlersOptions = {
   readonly limits?: Partial<DaLibp2pProofProtocolLimits>;
   readonly registry?: Pick<DaPeerRegistry, "getByPeerId">;
   readonly allowedRequesterRoles?: readonly Libp2pDaRole[];
-  readonly transactionProjector?: TransactionRootValueProjector;
 };
 
 export type DaLibp2pProofRequestContext = {
@@ -70,7 +68,6 @@ export class DaLibp2pProofProtocolHandlers {
     this.deriver = new DaProofArtifactDeriver({
       deploymentFingerprint,
       store: options.store,
-      transactionProjector: options.transactionProjector,
     });
     this.registry = options.registry;
     this.allowedRequesterRoles = new Set(

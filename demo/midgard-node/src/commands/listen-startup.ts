@@ -14,16 +14,16 @@ import {
   PendingBlockFinalizationsDB,
 } from "@/database/index.js";
 import {
+  fetchCanonicalCommittedHeaders,
+  localJournalHasPayloadMembers,
+  reviveEarliestCanonicalPayloadJournal,
+} from "@/services/canonical-journal-recovery.js";
+import {
   Globals,
   Lucid,
   MidgardContracts,
   NodeConfig,
 } from "@/services/index.js";
-import {
-  fetchCanonicalCommittedHeaders,
-  localJournalHasPayloadMembers,
-  reviveEarliestCanonicalPayloadJournal,
-} from "@/services/canonical-journal-recovery.js";
 import {
   fetchStateQueueSnapshotProgram,
   formatStateQueueTopology,
@@ -80,7 +80,6 @@ const writeStartupContractDeploymentInfoAfterFreshInit = (initTxHash: string) =>
               txHash: initTxHash,
             },
           },
-          requireReadyManifest: true,
         },
       );
     yield* Effect.logInfo(
@@ -378,11 +377,11 @@ export const seedLatestLocalBlockBoundaryOnStartup = Effect.gen(function* () {
   });
   let seededBoundaryMs = latestEndTimeMs;
   if (latestBlock.datum.key !== "Empty") {
-    const latestHeader = yield* SDK.getHeaderFromStateQueueDatum(
+    const latestHeader = yield* SDK.getHeaderV1FromStateQueueDatum(
       latestBlock.datum,
     );
     const latestHeaderHash = Buffer.from(
-      yield* SDK.hashBlockHeader(latestHeader),
+      yield* SDK.hashBlockHeaderV1(latestHeader),
       "hex",
     );
     const finalizedJournal =

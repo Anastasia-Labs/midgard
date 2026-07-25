@@ -46,7 +46,7 @@ import {
 import {
   AuthenticatedPackedMpfArena,
   EventFlatMutationArena,
-  ResumedEventFlatOverlayV2,
+  ResumedEventFlatOverlayV1,
 } from "../src/workers/utils/mpf-event-flat.js";
 import { prepareEventFlatDigest } from "../src/workers/utils/mpf-event-flat-digest.js";
 import { compileAuthenticatedFlatMpfMultiproof } from "../src/workers/utils/mpf-flat-multiproof.js";
@@ -2129,19 +2129,19 @@ describe("Midgard MPF wrapper", () => {
         );
         expect(immutableSnapshot.rootHash()).toStrictEqual(immutableRoot);
         expect(immutableSnapshot.get(key1)).toStrictEqual(value1);
-        const parkedV2 = yield* Effect.promise(() =>
+        const parkedV1 = yield* Effect.promise(() =>
           arena.freezeParallel({
-            trieName: "test-mpf-event-flat-v2",
+            trieName: "test-mpf-event-flat-v1",
             baseRoot: Buffer.from(artifact.baseRoot),
             shardCount: 2,
           }),
         );
-        const transferredV2 = structuredClone(parkedV2, {
+        const transferredV1 = structuredClone(parkedV1, {
           transfer: [
-            parkedV2.baseRoot,
-            parkedV2.candidateRoot,
-            parkedV2.closureDigest,
-            ...parkedV2.shards.flatMap((shard) => [
+            parkedV1.baseRoot,
+            parkedV1.candidateRoot,
+            parkedV1.closureDigest,
+            ...parkedV1.shards.flatMap((shard) => [
               shard.nodeHashes,
               shard.nodeValues,
               shard.nodeValueOffsets,
@@ -2149,16 +2149,16 @@ describe("Midgard MPF wrapper", () => {
             ]),
           ],
         });
-        expect(parkedV2.shards[0]!.nodeValues.byteLength).toBe(0);
-        const resumedV2 = new ResumedEventFlatOverlayV2(transferredV2);
-        expect(resumedV2.rootHash()).toStrictEqual(frozen.rootHash());
-        expect(resumedV2.get(key2)).toStrictEqual(value3);
-        expect(resumedV2.prove(key1).verify(false)).toStrictEqual(
+        expect(parkedV1.shards[0]!.nodeValues.byteLength).toBe(0);
+        const resumedV1 = new ResumedEventFlatOverlayV1(transferredV1);
+        expect(resumedV1.rootHash()).toStrictEqual(frozen.rootHash());
+        expect(resumedV1.get(key2)).toStrictEqual(value3);
+        expect(resumedV1.prove(key1).verify(false)).toStrictEqual(
           frozen.rootHash(),
         );
-        const corruptedV2 = structuredClone(transferredV2);
-        new Uint8Array(corruptedV2.shards[0]!.nodeValues)[0] ^= 1;
-        expect(() => new ResumedEventFlatOverlayV2(corruptedV2)).toThrow();
+        const corruptedV1 = structuredClone(transferredV1);
+        new Uint8Array(corruptedV1.shards[0]!.nodeValues)[0] ^= 1;
+        expect(() => new ResumedEventFlatOverlayV1(corruptedV1)).toThrow();
         yield* reference.discardBlockOverlay();
         yield* reference.close();
       }),
@@ -2342,14 +2342,14 @@ describe("Midgard MPF wrapper", () => {
         expect((yield* eventFlat.get(numberedKey(1_000)))._tag).toBe("Some");
         const beforePark = eventFlat.eventFlatMutationDiagnostics();
         expect(beforePark).toBeDefined();
-        const artifact = yield* eventFlat.parkEventFlatOverlayV2(2);
+        const artifact = yield* eventFlat.parkEventFlatOverlayV1(2);
         expect(artifact.nodeCount).toBe(beforePark!.reachableDirtyNodeCount);
         expect(artifact.nodeCount).toBeLessThan(beforePark!.reachableNodeCount);
         expect(Buffer.from(artifact.baseRoot)).toStrictEqual(durableRoot);
         expect(Buffer.from(artifact.candidateRoot)).toStrictEqual(
           candidateRoot,
         );
-        const resumed = yield* MidgardMpf.resumeParkedEventFlatOverlayV2(
+        const resumed = yield* MidgardMpf.resumeParkedEventFlatOverlayV1(
           "test-mpf-event-flat-level",
           PATH_HYDRATION_DB,
           artifact,
@@ -2475,7 +2475,7 @@ describe("Midgard MPF wrapper", () => {
         ];
         yield* fork.primeBlockPathArena(ops, 2, false);
         const candidateRoot = yield* fork.applyBatch(ops);
-        const artifact = yield* fork.parkEventFlatOverlayV2(2);
+        const artifact = yield* fork.parkEventFlatOverlayV1(2);
         yield* owner.discardBlockOverlay();
         yield* fork.close();
         yield* owner.close();
@@ -2491,7 +2491,7 @@ describe("Midgard MPF wrapper", () => {
         const tampered = structuredClone(artifact);
         new Uint8Array(tampered.shards[0]!.nodeValues)[0] ^= 1;
         expect(
-          (yield* MidgardMpf.resumeParkedEventFlatOverlayV2(
+          (yield* MidgardMpf.resumeParkedEventFlatOverlayV1(
             "test-mpf-event-flat-phase4",
             PATH_HYDRATION_DB,
             tampered,
@@ -2505,7 +2505,7 @@ describe("Midgard MPF wrapper", () => {
         expect(yield* afterTamper.root()).toStrictEqual(durableRoot);
         yield* afterTamper.close();
 
-        const resumed = yield* MidgardMpf.resumeParkedEventFlatOverlayV2(
+        const resumed = yield* MidgardMpf.resumeParkedEventFlatOverlayV1(
           "test-mpf-event-flat-phase4",
           PATH_HYDRATION_DB,
           artifact,
@@ -3982,7 +3982,7 @@ describe("Midgard MPF wrapper", () => {
             utxoPayloadAggregateFromEntries(finalEntries),
           );
 
-          const header: SDK.Header = {
+          const header: SDK.HeaderV1 = {
             prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
             utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
             withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
@@ -3991,20 +3991,26 @@ describe("Midgard MPF wrapper", () => {
             depositsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
             transitionTraceRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
             eventToStepRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+            validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
             withdrawalCount: 0n,
             forcedTransactionCount: 0n,
             l2TransactionCount: 0n,
             depositCount: 0n,
             totalEventCount: 0n,
             transitionStepCount: 0n,
+            validationTraceCount: 0n,
             startTime: 0n,
             endTime: 1n,
+            blockSlot: 0n,
+            expectedNetworkId: 0n,
+            minFeeA: 0n,
+            minFeeB: 0n,
             prevHeaderHash: "00".repeat(28),
             operatorVkey: "11".repeat(28),
             protocolVersion: 1n,
           };
-          const payload: SDK.DaPayloadV2 = {
-            version: SDK.DA_PAYLOAD_V2_VERSION,
+          const payload: SDK.DaPayloadV1 = {
+            version: SDK.DA_PAYLOAD_V1_VERSION,
             block_body: {
               header_hash: "22".repeat(28),
               header,
@@ -4018,6 +4024,10 @@ describe("Midgard MPF wrapper", () => {
               deposits: [],
               transition_trace: [],
               event_to_step: [],
+              transaction_preimages: [],
+              forced_transaction_preimages: [],
+              cek_program_material: [],
+              validation_traces: [],
               counts: {
                 withdrawalCount: 0n,
                 forcedTransactionCount: 0n,
@@ -4025,13 +4035,14 @@ describe("Midgard MPF wrapper", () => {
                 depositCount: 0n,
                 totalEventCount: 0n,
                 transitionStepCount: 0n,
+                validationTraceCount: 0n,
               },
             },
           };
           expect(
-            SDK.daPayloadV2EncodedSizeFromUtxoAggregate(payload, actual),
+            SDK.daPayloadV1EncodedSizeFromUtxoAggregate(payload, actual),
             testCase.label,
-          ).toBe(SDK.encodeDaPayloadV2(payload).length);
+          ).toBe(SDK.encodeDaPayloadV1(payload).length);
           yield* mpf.close();
         }
       }),

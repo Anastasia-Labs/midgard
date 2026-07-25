@@ -46,7 +46,10 @@ export type PipelinedCommitDatabaseState = {
       readonly transactions: readonly unknown[];
       readonly transitionTrace: readonly unknown[];
       readonly eventToStep: readonly unknown[];
-      readonly utxos: readonly unknown[];
+      readonly ledgerDelta: {
+        readonly spent: readonly string[];
+        readonly produced: readonly unknown[];
+      };
     };
     readonly submittedTxHash: string | null;
     readonly status: PendingBlockFinalizationsDB.Status;
@@ -106,10 +109,12 @@ export type PipelinedCommitEquivalentDatabaseState = Omit<
   PipelinedCommitDatabaseState,
   "activeJournal" | "activeLease"
 > & {
-  readonly activeJournal: null | Omit<
-    NonNullable<PipelinedCommitDatabaseState["activeJournal"]>,
-    "leaseToken"
-  > & { readonly leaseTokenPresent: boolean };
+  readonly activeJournal:
+    | null
+    | (Omit<
+        NonNullable<PipelinedCommitDatabaseState["activeJournal"]>,
+        "leaseToken"
+      > & { readonly leaseTokenPresent: boolean });
   readonly activeLease: null | {
     readonly holder: string;
     readonly status: StateQueueMutationLeasesDB.Status;
@@ -187,21 +192,25 @@ const normalizeJournalMembers = (
 ) =>
   members
     .map((member) => ({
-      memberId: member[PendingBlockFinalizationsDB.MemberColumns.MEMBER_ID].toString(
-        "hex",
-      ),
-      ordinal: member[PendingBlockFinalizationsDB.MemberColumns.ORDINAL],
-      payloadSha256:
-        member[PendingBlockFinalizationsDB.MemberColumns.PAYLOAD_SHA256].toString(
+      memberId:
+        member[PendingBlockFinalizationsDB.MemberColumns.MEMBER_ID].toString(
           "hex",
         ),
-      sourceTable: member[PendingBlockFinalizationsDB.MemberColumns.SOURCE_TABLE],
+      ordinal: member[PendingBlockFinalizationsDB.MemberColumns.ORDINAL],
+      payloadSha256:
+        member[
+          PendingBlockFinalizationsDB.MemberColumns.PAYLOAD_SHA256
+        ].toString("hex"),
+      sourceTable:
+        member[PendingBlockFinalizationsDB.MemberColumns.SOURCE_TABLE],
       sourceId:
         member[PendingBlockFinalizationsDB.MemberColumns.SOURCE_ID]?.toString(
           "hex",
         ) ?? null,
     }))
-    .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+    .sort((left, right) =>
+      JSON.stringify(left).localeCompare(JSON.stringify(right)),
+    );
 
 /** Read-only evidence used by the real-process crash and contention gates. */
 export const capturePipelinedCommitDatabaseState: Effect.Effect<
@@ -232,25 +241,36 @@ export const capturePipelinedCommitDatabaseState: Effect.Effect<
     onSome: (record) => ({
       headerHash:
         record[PendingBlockFinalizationsDB.Columns.HEADER_HASH].toString("hex"),
-      headerCbor: record[PendingBlockFinalizationsDB.Columns.HEADER_CBOR].toString(
-        "hex",
-      ),
+      headerCbor:
+        record[PendingBlockFinalizationsDB.Columns.HEADER_CBOR].toString("hex"),
       journalPayloadIdentity: {
         deposits: normalizeJournalMembers(record.depositMembers),
-        forcedTransactions: normalizeJournalMembers(record.forcedTransactionMembers),
+        forcedTransactions: normalizeJournalMembers(
+          record.forcedTransactionMembers,
+        ),
         withdrawals: normalizeJournalMembers(record.withdrawalMembers),
         transactions: normalizeJournalMembers(record.txMembers),
         transitionTrace: normalizeJournalMembers(record.transitionTraceMembers),
         eventToStep: normalizeJournalMembers(record.eventToStepMembers),
-        utxos: record.utxoMembers
-          .map((member) => ({
-            outref: member[PendingBlockFinalizationsDB.UtxoColumns.OUTREF],
-            ordinal: member[PendingBlockFinalizationsDB.UtxoColumns.ORDINAL],
-            output: member[PendingBlockFinalizationsDB.UtxoColumns.OUTPUT].toString(
-              "hex",
-            ),
-          }))
-          .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))),
+        ledgerDelta: {
+          spent: record.ledgerDelta.spent
+            .map((outref) => outref.toString("hex"))
+            .sort(),
+          produced: record.ledgerDelta.produced
+            .map((member) => ({
+              outref:
+                member[
+                  PendingBlockFinalizationsDB.UtxoColumns.OUTREF
+                ].toString("hex"),
+              output:
+                member[
+                  PendingBlockFinalizationsDB.UtxoColumns.OUTPUT
+                ].toString("hex"),
+            }))
+          .sort((left, right) =>
+            JSON.stringify(left).localeCompare(JSON.stringify(right)),
+          ),
+        },
       },
       submittedTxHash:
         record[PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH]?.toString(
@@ -264,37 +284,50 @@ export const capturePipelinedCommitDatabaseState: Effect.Effect<
       baseTailOutRef:
         record[PendingBlockFinalizationsDB.Columns.BASE_TAIL_OUT_REF] ?? null,
       baseTailDatumCbor:
-        record[PendingBlockFinalizationsDB.Columns.BASE_TAIL_DATUM_CBOR] ?? null,
+        record[PendingBlockFinalizationsDB.Columns.BASE_TAIL_DATUM_CBOR] ??
+        null,
       baseRoots: {
         utxos: record[PendingBlockFinalizationsDB.Columns.BASE_UTXOS_ROOT],
         forcedTransactions:
-          record[PendingBlockFinalizationsDB.Columns.BASE_FORCED_TRANSACTIONS_ROOT],
+          record[
+            PendingBlockFinalizationsDB.Columns.BASE_FORCED_TRANSACTIONS_ROOT
+          ],
         transactions:
           record[PendingBlockFinalizationsDB.Columns.BASE_TRANSACTIONS_ROOT],
-        deposits: record[PendingBlockFinalizationsDB.Columns.BASE_DEPOSITS_ROOT],
+        deposits:
+          record[PendingBlockFinalizationsDB.Columns.BASE_DEPOSITS_ROOT],
         withdrawals:
           record[PendingBlockFinalizationsDB.Columns.BASE_WITHDRAWALS_ROOT],
       },
       expectedRoots: {
         utxos: record[PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT],
         forcedTransactions:
-          record[PendingBlockFinalizationsDB.Columns.EXPECTED_FORCED_TRANSACTIONS_ROOT],
+          record[
+            PendingBlockFinalizationsDB.Columns
+              .EXPECTED_FORCED_TRANSACTIONS_ROOT
+          ],
         transactions:
-          record[PendingBlockFinalizationsDB.Columns.EXPECTED_TRANSACTIONS_ROOT],
+          record[
+            PendingBlockFinalizationsDB.Columns.EXPECTED_TRANSACTIONS_ROOT
+          ],
         deposits:
           record[PendingBlockFinalizationsDB.Columns.EXPECTED_DEPOSITS_ROOT],
         withdrawals:
           record[PendingBlockFinalizationsDB.Columns.EXPECTED_WITHDRAWALS_ROOT],
         transitionTrace:
-          record[PendingBlockFinalizationsDB.Columns.EXPECTED_TRANSITION_TRACE_ROOT],
+          record[
+            PendingBlockFinalizationsDB.Columns.EXPECTED_TRANSITION_TRACE_ROOT
+          ],
         eventToStep:
-          record[PendingBlockFinalizationsDB.Columns.EXPECTED_EVENT_TO_STEP_ROOT],
+          record[
+            PendingBlockFinalizationsDB.Columns.EXPECTED_EVENT_TO_STEP_ROOT
+          ],
       },
       mpfReplay: {
         baseRoot:
-          record[PendingBlockFinalizationsDB.Columns.MPF_REPLAY_BASE_ROOT]?.toString(
-            "hex",
-          ) ?? null,
+          record[
+            PendingBlockFinalizationsDB.Columns.MPF_REPLAY_BASE_ROOT
+          ]?.toString("hex") ?? null,
         candidateRoot:
           record[
             PendingBlockFinalizationsDB.Columns.MPF_REPLAY_CANDIDATE_ROOT
@@ -304,9 +337,9 @@ export const capturePipelinedCommitDatabaseState: Effect.Effect<
             PendingBlockFinalizationsDB.Columns.MPF_REPLAY_EVENT_LOG_DIGEST
           ]?.toString("hex") ?? null,
         eventRoots:
-          record[PendingBlockFinalizationsDB.Columns.MPF_REPLAY_EVENT_ROOTS]?.toString(
-            "hex",
-          ) ?? null,
+          record[
+            PendingBlockFinalizationsDB.Columns.MPF_REPLAY_EVENT_ROOTS
+          ]?.toString("hex") ?? null,
         eventCount:
           record[PendingBlockFinalizationsDB.Columns.MPF_REPLAY_EVENT_COUNT] ??
           null,

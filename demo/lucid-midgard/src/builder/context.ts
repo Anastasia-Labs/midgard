@@ -1,7 +1,10 @@
+import { MIDGARD_NATIVE_TX_V1_VERSION } from "@al-ft/midgard-core/codec";
 import {
-  MIDGARD_NATIVE_TX_VERSION,
-  MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
-} from "@al-ft/midgard-core/codec";
+  isMidgardConsensusProfileV1,
+  MIDGARD_CONSENSUS_LIMITS_V1,
+  MIDGARD_CONSENSUS_PROFILE_V1,
+  type MidgardConsensusProfileV1,
+} from "@al-ft/midgard-core/consensus-profile-v1";
 import type { Network } from "@lucid-evolution/lucid";
 
 import {
@@ -66,7 +69,9 @@ export type LucidMidgardConfigSnapshot = {
   readonly apiVersion: number;
   readonly midgardNativeTxVersion: number;
   readonly currentSlot: bigint;
+  readonly consensusProfile: MidgardConsensusProfileV1;
   readonly supportedScriptLanguages: readonly ProtocolScriptLanguage[];
+  readonly codecSupportedScriptLanguages: readonly ProtocolScriptLanguage[];
   readonly protocolFeeParameters: {
     readonly minFeeA: bigint;
     readonly minFeeB: bigint;
@@ -79,7 +84,6 @@ export type LucidMidgardConfigSnapshot = {
     readonly localValidationIsAuthoritative: false;
   };
   readonly protocolInfoSource: ProviderDiagnostics["protocolInfoSource"];
-  readonly protocolInfoFallbackReason?: string;
   readonly providerDiagnostics: ProviderDiagnostics;
   readonly utxoOverrideGeneration: number;
   readonly hasUtxoOverrides: boolean;
@@ -158,27 +162,36 @@ const cloneSupportedScriptLanguages = (
 
 export const cloneProtocolInfo = (
   info: MidgardProtocolInfo,
-): MidgardProtocolInfo => ({
-  apiVersion: info.apiVersion,
-  network: info.network,
-  midgardNativeTxVersion: info.midgardNativeTxVersion,
-  currentSlot: info.currentSlot,
-  supportedScriptLanguages: cloneSupportedScriptLanguages(
-    info.supportedScriptLanguages,
-  ),
-  protocolFeeParameters: {
-    minFeeA: info.protocolFeeParameters.minFeeA,
-    minFeeB: info.protocolFeeParameters.minFeeB,
-  },
-  submissionLimits: {
-    maxSubmitTxCborBytes: info.submissionLimits.maxSubmitTxCborBytes,
-  },
-  validation: {
-    strictnessProfile: info.validation.strictnessProfile,
-    localValidationIsAuthoritative:
-      info.validation.localValidationIsAuthoritative,
-  },
-});
+): MidgardProtocolInfo => {
+  const common = {
+    network: info.network,
+    midgardNativeTxVersion: info.midgardNativeTxVersion,
+    currentSlot: info.currentSlot,
+    supportedScriptLanguages: cloneSupportedScriptLanguages(
+      info.supportedScriptLanguages,
+    ),
+    codecSupportedScriptLanguages: cloneSupportedScriptLanguages(
+      info.codecSupportedScriptLanguages,
+    ),
+    protocolFeeParameters: {
+      minFeeA: info.protocolFeeParameters.minFeeA,
+      minFeeB: info.protocolFeeParameters.minFeeB,
+    },
+    submissionLimits: {
+      maxSubmitTxCborBytes: info.submissionLimits.maxSubmitTxCborBytes,
+    },
+    validation: {
+      strictnessProfile: info.validation.strictnessProfile,
+      localValidationIsAuthoritative:
+        info.validation.localValidationIsAuthoritative,
+    },
+  };
+  return {
+    ...common,
+    apiVersion: 1,
+    consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+  };
+};
 
 export const cloneProviderDiagnostics = (
   diagnostics: ProviderDiagnostics,
@@ -200,28 +213,17 @@ export const cloneProviderDiagnostics = (
   }
   if (
     diagnostics.protocolInfoSource !== "node" &&
-    diagnostics.protocolInfoSource !== "fallback" &&
+    diagnostics.protocolInfoSource !== "offline" &&
     diagnostics.protocolInfoSource !== "unknown"
   ) {
     throw new ProviderPayloadError(
       "/provider/diagnostics",
-      "Provider diagnostics protocolInfoSource must be node, fallback, or unknown",
-    );
-  }
-  if (
-    diagnostics.protocolInfoSource === "fallback" &&
-    (typeof diagnostics.protocolInfoFallbackReason !== "string" ||
-      diagnostics.protocolInfoFallbackReason.trim().length === 0)
-  ) {
-    throw new ProviderPayloadError(
-      "/provider/diagnostics",
-      "Fallback protocol-info diagnostics require a non-empty reason",
+      "Provider diagnostics protocolInfoSource must be node, offline, or unknown",
     );
   }
   return {
     endpoint: diagnostics.endpoint,
     protocolInfoSource: diagnostics.protocolInfoSource,
-    protocolInfoFallbackReason: diagnostics.protocolInfoFallbackReason,
   };
 };
 
@@ -282,10 +284,10 @@ export const validateProtocolInfo = (
       "Protocol info must be an object",
     );
   }
-  if (!Number.isSafeInteger(info.apiVersion) || info.apiVersion <= 0) {
+  if (info.apiVersion !== 1) {
     throw new ProviderPayloadError(
       "/protocol-info",
-      "apiVersion must be a positive safe integer",
+      "apiVersion must equal the compiled V1 protocol API version",
     );
   }
   if (typeof info.network !== "string" || info.network.trim().length === 0) {
@@ -309,9 +311,17 @@ export const validateProtocolInfo = (
       "currentSlot must be a non-negative bigint",
     );
   }
-  const expectedLanguages = MIDGARD_SUPPORTED_SCRIPT_LANGUAGES.map(
-    (language) => `${language.name}:${language.tag.toString(10)}`,
-  ).sort();
+  if (!isMidgardConsensusProfileV1(info.consensusProfile)) {
+    throw new ProviderCapabilityError(
+      "/protocol-info",
+      "Provider consensus profile does not match the compiled V1 profile",
+    );
+  }
+  const expectedLanguages = info.codecSupportedScriptLanguages
+    .map(
+      (language) => `${language.name}:${language.tag.toString(10)}`,
+    )
+    .sort();
   const actualLanguages = Array.isArray(info.supportedScriptLanguages)
     ? info.supportedScriptLanguages
         .map((language) => {
@@ -338,7 +348,7 @@ export const validateProtocolInfo = (
   ) {
     throw new ProviderPayloadError(
       "/protocol-info",
-      "supportedScriptLanguages must exactly match PlutusV3 and MidgardV1 protocol tags",
+      "supportedScriptLanguages must exactly match the consensus profile",
     );
   }
   if (
@@ -358,11 +368,12 @@ export const validateProtocolInfo = (
     typeof info.submissionLimits !== "object" ||
     info.submissionLimits === null ||
     !Number.isSafeInteger(info.submissionLimits.maxSubmitTxCborBytes) ||
-    info.submissionLimits.maxSubmitTxCborBytes <= 0
+    info.submissionLimits.maxSubmitTxCborBytes !==
+      MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes
   ) {
     throw new ProviderPayloadError(
       "/protocol-info",
-      "submissionLimits.maxSubmitTxCborBytes must be a positive safe integer",
+      "submissionLimits.maxSubmitTxCborBytes must equal the exact consensus profile",
     );
   }
   if (
@@ -377,7 +388,10 @@ export const validateProtocolInfo = (
       "validation profile must be explicit and non-authoritative locally",
     );
   }
-  if (info.midgardNativeTxVersion !== Number(MIDGARD_NATIVE_TX_VERSION)) {
+  if (
+    info.midgardNativeTxVersion !==
+    Number(MIDGARD_NATIVE_TX_V1_VERSION)
+  ) {
     throw new ProviderCapabilityError(
       "/protocol-info",
       "Provider Midgard native transaction version mismatch",
@@ -427,8 +441,12 @@ export const buildConfigSnapshot = ({
     apiVersion: protocolInfo.apiVersion,
     midgardNativeTxVersion: protocolInfo.midgardNativeTxVersion,
     currentSlot: protocolInfo.currentSlot,
+    consensusProfile: protocolInfo.consensusProfile,
     supportedScriptLanguages: cloneSupportedScriptLanguages(
       protocolInfo.supportedScriptLanguages,
+    ),
+    codecSupportedScriptLanguages: cloneSupportedScriptLanguages(
+      protocolInfo.codecSupportedScriptLanguages,
     ),
     protocolFeeParameters: {
       minFeeA: protocolInfo.protocolFeeParameters.minFeeA,
@@ -443,7 +461,6 @@ export const buildConfigSnapshot = ({
         protocolInfo.validation.localValidationIsAuthoritative,
     },
     protocolInfoSource: diagnostics.protocolInfoSource,
-    protocolInfoFallbackReason: diagnostics.protocolInfoFallbackReason,
     providerDiagnostics: cloneProviderDiagnostics(diagnostics),
     utxoOverrideGeneration,
     hasUtxoOverrides,
@@ -523,7 +540,7 @@ export const readProviderSnapshot = async ({
   }
   const expectedNativeVersion =
     options?.expectedMidgardNativeTxVersion ??
-    Number(MIDGARD_NATIVE_TX_VERSION);
+    protocolInfo.consensusProfile.nativeTransactionVersion;
   if (protocolInfo.midgardNativeTxVersion !== expectedNativeVersion) {
     throw new ProviderCapabilityError(
       "/protocol-info",
@@ -586,12 +603,20 @@ export const assertBuilderContextsComposable = (
     );
   }
   if (
+    left.config.apiVersion !== right.config.apiVersion ||
+    left.config.consensusProfile.profileId !==
+      right.config.consensusProfile.profileId
+  ) {
+    throw new BuilderInvariantError(
+      "Cannot compose builders with different consensus profiles",
+      `left=${left.config.consensusProfile.profileId} right=${right.config.consensusProfile.profileId}`,
+    );
+  }
+  if (
     left.provider.diagnostics.endpoint !==
       right.provider.diagnostics.endpoint ||
     left.provider.diagnostics.protocolInfoSource !==
-      right.provider.diagnostics.protocolInfoSource ||
-    left.provider.diagnostics.protocolInfoFallbackReason !==
-      right.provider.diagnostics.protocolInfoFallbackReason
+      right.provider.diagnostics.protocolInfoSource
   ) {
     throw new BuilderInvariantError(
       "Cannot compose builders with different provider diagnostics",

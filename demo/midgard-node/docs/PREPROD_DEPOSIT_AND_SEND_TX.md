@@ -162,7 +162,6 @@ node dist/index.js submit-l2-transfer \
 
 Notes:
 
-- `submit-l2-transfer` also has the alias `submit-tx`.
 - The default endpoint is taken from `MIDGARD_NODE_URL`, or falls back to `http://127.0.0.1:$PORT`.
 - The command prints JSON including `txId`, `status`, `selectedInputs`, `requestedAssets`, and `changeAssets`; the status API still takes this value as `tx_hash`.
 - With the default API submission path, the immediate response status is typically `queued`.

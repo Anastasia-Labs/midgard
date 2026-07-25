@@ -8,6 +8,7 @@ import {
   buildDoubleSpendFaultProofContracts,
   buildFaultProofContracts,
   buildTransitionTraceFaultProofContracts,
+  buildValidationTraceDisputeFaultProofContracts,
   DOUBLE_SPEND_FAULT_PROOF_TITLES,
   EMPTY_MERKLE_TREE_ROOT,
   FAULT_PROOF_SHARED_TITLES,
@@ -19,6 +20,7 @@ import {
   parseFaultProofBlueprint,
   ScriptHashSchema,
   TRANSITION_TRACE_FAULT_PROOF_TITLES,
+  VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES,
 } from "@al-ft/midgard-sdk";
 import { CML, Data, type UTxO, walletFromSeed } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -30,6 +32,7 @@ import {
   resolveInvalidRangeDeploymentContracts,
   resolveProverSigner,
   resolveTransitionTraceDeploymentContracts,
+  resolveValidationTraceDisputeDeploymentContracts,
   submitInit,
 } from "../src/index.js";
 
@@ -393,6 +396,83 @@ describe("fault-proof deployment contract resolution", () => {
 
     expect(resolved.transitionTraceCategory.categoryId).toBe("00000004");
     expect(resolved.contracts.transitionTrace.steps).toHaveLength(1);
+  });
+
+  it("resolves the required V1 validation-dispute category and rejects an incomplete catalogue", async () => {
+    const blueprint = filterBlueprint(readBlueprint(), [
+      ...Object.values(FAULT_PROOF_SHARED_TITLES),
+      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.dispute,
+      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.source,
+      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.game,
+      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.boundary,
+      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.timeout,
+      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.award,
+      ...Object.values(
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.prepares,
+      ),
+      ...Object.values(
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics,
+      ),
+      ...Object.values(
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.directResolvers,
+      ),
+    ]);
+    const contracts = await Effect.runPromise(
+      buildValidationTraceDisputeFaultProofContracts({
+        blueprint,
+        network: "Preprod",
+        hubOraclePolicyId: h28,
+        fraudProofCataloguePolicyId: h28b,
+      }),
+    );
+    const proofCatalogue = await catalogueFor({
+      validationTraceDispute:
+        contracts.validationTraceDispute.firstStep.spendingScriptHash,
+    });
+    const deploymentInfo = deploymentManifest({
+      hubOracleMint: { scriptHash: h28 },
+      fraudProofCatalogueMint: {
+        scriptHash: h28b,
+        fraudProofCatalogue: proofCatalogue,
+      },
+      fraudProofMint: { scriptHash: contracts.fraudProof.policyId },
+      validationTraceDispute: {
+        scriptHash:
+          contracts.validationTraceDispute.firstStep.spendingScriptHash,
+      },
+    });
+
+    const resolved =
+      await resolveValidationTraceDisputeDeploymentContracts({
+        blueprint,
+        deploymentInfo,
+        network: "Preprod",
+      });
+    expect(resolved.validationTraceDisputeCategory.categoryId).toBe(
+      "00000005",
+    );
+    expect(resolved.contracts.validationTraceDispute.steps).toHaveLength(1);
+
+    const {
+      validationTraceDispute: _omitted,
+      ...incompleteCategories
+    } = proofCatalogue.categories;
+    await expect(
+      resolveValidationTraceDisputeDeploymentContracts({
+        blueprint,
+        deploymentInfo: deploymentManifest({
+          ...deploymentInfo.contracts,
+          fraudProofCatalogueMint: {
+            scriptHash: h28b,
+            fraudProofCatalogue: {
+              ...proofCatalogue,
+              categories: incompleteCategories,
+            },
+          },
+        }),
+        network: "Preprod",
+      }),
+    ).rejects.toThrow(/categories\.validationTraceDispute/u);
   });
 
   it("does not gate double-spend submit-init on stale invalid-range deployment readiness", async () => {

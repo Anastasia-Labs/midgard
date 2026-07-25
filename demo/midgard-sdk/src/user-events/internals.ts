@@ -238,7 +238,9 @@ export const slotToUnixTimeForLucid = (
   slot: number,
 ): number | undefined => {
   try {
-    const unixTime = lucid.slotToUnixTime(slot);
+    const unixTime = (
+      lucid as unknown as { slotToUnixTime(value: number): number }
+    ).slotToUnixTime(slot);
     return Number.isSafeInteger(unixTime) ? unixTime : undefined;
   } catch {
     return undefined;
@@ -311,6 +313,11 @@ export type PrepareUserEventMintContextParams = {
   readonly eventPolicyId: PolicyId;
   readonly hubOraclePolicyField: HubOraclePolicyField;
   readonly hubOracleAddressField: HubOracleAddressField;
+  /**
+   * A previously reserved nonce is required by staged V1 tx orders,
+   * whose field fragments are published before the final event is minted.
+   */
+  readonly nonceInput?: UTxO;
 };
 
 export type UserEventMintContext = {
@@ -334,6 +341,7 @@ export const prepareUserEventMintContext = ({
   eventPolicyId,
   hubOraclePolicyField,
   hubOracleAddressField,
+  nonceInput: requestedNonceInput,
 }: PrepareUserEventMintContextParams): Effect.Effect<
   UserEventMintContext,
   | HubOracleError
@@ -380,7 +388,9 @@ export const prepareUserEventMintContext = ({
       );
     }
 
-    const nonceInput = yield* selectWalletNonceInputProgram(lucid, label);
+    const nonceInput =
+      requestedNonceInput ??
+      (yield* selectWalletNonceInputProgram(lucid, label));
     const eventIdCbor = outputReferenceToPlutusDataCbor(nonceInput);
     const nonceAssetName = yield* hashHexWithBlake2b(eventIdCbor, 32);
     const witnessScript =

@@ -26,7 +26,6 @@ import dotenv from "dotenv";
 
 const [nodePath, walletPath, runPath, outputPath, manifestPath, blueprintPath] = process.argv.slice(2);
 const nodeValues = dotenv.parse(readFileSync(nodePath, "utf8"));
-delete nodeValues.L1_PROVIDER_FAILOVER;
 const walletValues = dotenv.parse(readFileSync(walletPath, "utf8"));
 const runValues = dotenv.parse(readFileSync(runPath, "utf8"));
 for (const [source, entries] of [[nodePath, nodeValues], [walletPath, walletValues], [runPath, runValues]]) {

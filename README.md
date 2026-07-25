@@ -41,6 +41,8 @@ implementations, and the LaTeX technical specification in a single repository.
   message names both files.
 - [Documentation policy](./docs/DOCUMENTATION_POLICY.md): source-of-truth,
   evidence, security-claim, and plan-lifecycle rules.
+- [Canonical V1 consensus profile](./docs/consensus-profile-v1.md): exact
+  versions, feature gates, immutable size bounds, and enforcement ownership.
 
 ## Build the On-Chain Code
 

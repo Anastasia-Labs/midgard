@@ -41,9 +41,6 @@ export const createTable: Effect.Effect<void, DatabaseError, Database> =
           ${sql(Columns.CREATED_AT)} TIMESTAMPTZ NOT NULL DEFAULT NOW(),
           UNIQUE (tx_id, address)
         );`;
-        yield* sql`ALTER TABLE ${sql(tableName)}
-          ADD COLUMN IF NOT EXISTS ${sql(Columns.CREATED_AT)}
-          TIMESTAMPTZ NOT NULL DEFAULT NOW();`;
         yield* sql`CREATE INDEX IF NOT EXISTS ${sql(
           `idx_${tableName}_${Columns.CREATED_AT}`,
         )} ON ${sql(tableName)} (${sql(Columns.CREATED_AT)});`;

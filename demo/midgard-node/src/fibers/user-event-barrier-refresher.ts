@@ -8,6 +8,7 @@ import {
   type UserEventBarrierWatermarks,
 } from "@/fibers/speculative-commit-state.js";
 import {
+  ContractDeploymentIdentity,
   Database,
   Globals,
   Lucid,
@@ -38,7 +39,12 @@ export const mergeBarrierWatermarks = (
 export const runUserEventBarrierRefresherPass: Effect.Effect<
   UserEventBarrierWatermarks,
   unknown,
-  Globals | MidgardContracts | Lucid | Database | NodeConfig
+  | Globals
+  | MidgardContracts
+  | ContractDeploymentIdentity
+  | Lucid
+  | Database
+  | NodeConfig
 > = Effect.gen(function* () {
   const globals = yield* Globals;
   const startedAtMs = Date.now();
@@ -84,7 +90,12 @@ export const userEventBarrierRefresherFiber = (
 ): Effect.Effect<
   void,
   never,
-  Globals | MidgardContracts | Lucid | Database | NodeConfig
+  | Globals
+  | MidgardContracts
+  | ContractDeploymentIdentity
+  | Lucid
+  | Database
+  | NodeConfig
 > =>
   Effect.gen(function* () {
     const globals = yield* Globals;

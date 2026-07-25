@@ -52,24 +52,23 @@ validator main(
         // 1. Generic validations for passing the provided bad tx to the next
         //    step must pass.
         let
-          _own_script_hash,
-          _computation_thread_token_asset_name,
-          _fraud_prover,
-          m_input_state_data,
-          output_script_hash,
-          output_state_data,
-          _header,
-          bad_tx_id,
-          bad_tx_view,
-        <-
-          pass_native_tx_to_next_step(
-            computation_thread_token_policy_id,
-            hub_oracle,
-            datum,
-            tx_inclusion_args,
-            own_out_ref,
-            tx,
-          )
+            _own_script_hash,
+            _computation_thread_token_asset_name,
+            _fraud_prover,
+            m_input_state_data,
+            output_script_hash,
+            output_state_data,
+            _header,
+            bad_tx_id,
+            bad_tx_view
+          <- pass_native_tx_to_next_step(
+          computation_thread_token_policy_id,
+          hub_oracle,
+          datum,
+          tx_inclusion_args,
+          own_out_ref,
+          tx,
+        )
 
         expect None = m_input_state_data
 
@@ -77,11 +76,10 @@ validator main(
         //    verified first bad transaction ID and native spend-input hash in
         //    the `data` field of its `StepDatum`.
         expect output_script_hash == step_02_validator_script_hash
-        let expected_output_state: Data =
-          step_02.State {
-            verified_tx1_id: bad_tx_id,
-            verified_tx1_spend_inputs_hash: bad_tx_view.tx_compact.body.spend_inputs_hash,
-          }
+        let expected_output_state: Data = step_02.State {
+          verified_tx1_id: bad_tx_id,
+          verified_tx1_spend_inputs_hash: bad_tx_view.tx_compact.body.spend_inputs_hash,
+        }
         expect output_state_data == expected_output_state
 
         // Done.

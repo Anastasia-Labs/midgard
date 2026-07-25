@@ -80,6 +80,14 @@ The builder methods, all returning a new `TxBuilder`:
 - `compose(other, ...others)`: merges compatible fragments left-to-right.
 - `snapshot()` / `debugSnapshot()`, inspectable builder state.
 
+<Callout type="warn" title="Launch feature gates">
+The public methods remain stable across profiles, but the launch profile rejects
+`mintAssets`, `mint`, script witnesses, redeemers, reference inputs/scripts,
+observers, script payment credentials, and protected outputs. Retaining a method
+does not advertise consensus support; unsupported calls fail before builder state
+changes.
+</Callout>
+
 Completion comes in three flavors, each also as a `Safe` and `Program` variant:
 
 - `complete(options?)` / `completeSafe(options?)` / `completeProgram(options?)`

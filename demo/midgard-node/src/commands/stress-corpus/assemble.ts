@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
+import { once } from "node:events";
 import { createReadStream, createWriteStream } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { once } from "node:events";
 
 import type {
   OpenLoopCorpusRow,

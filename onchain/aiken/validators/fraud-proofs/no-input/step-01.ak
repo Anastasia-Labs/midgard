@@ -38,26 +38,25 @@ validator main(
         // 1. Generic validations for passing the provided bad tx to the next
         //    step must pass.
         let
-          _own_script_hash,
-          _computation_thread_token_asset_name,
-          _fraud_prover,
-          _m_input_state_data,
-          output_script_hash,
-          output_state_data,
-          header,
-          _bad_tx_id,
-          bad_tx_view,
-        <-
-          pass_native_tx_to_next_step(
-            computation_thread_token_policy_id,
-            hub_oracle,
-            datum,
-            tx_inclusion_args,
-            own_out_ref,
-            tx,
-          )
+            _own_script_hash,
+            _computation_thread_token_asset_name,
+            _fraud_prover,
+            _m_input_state_data,
+            output_script_hash,
+            output_state_data,
+            header,
+            _bad_tx_id,
+            bad_tx_view
+          <- pass_native_tx_to_next_step(
+          computation_thread_token_policy_id,
+          hub_oracle,
+          datum,
+          tx_inclusion_args,
+          own_out_ref,
+          tx,
+        )
 
-        let ledger_state.Header { prev_utxos_root, .. } = header
+        let ledger_state.HeaderV1 { prev_utxos_root, .. } = header
 
         // 2. The UTxO must be produced at next step's script hash with the
         //    native spend-inputs hash of the bad transaction, and relevant
@@ -66,12 +65,11 @@ validator main(
         //    `pass_native_tx_to_next_step`) is threaded forward so step-04's
         //    non-membership check runs against a real MPF root.
         expect output_script_hash == step_02_validator_script_hash
-        let expected_output_state: Data =
-          step_02.State {
-            bad_tx_inputs_hash: bad_tx_view.tx_compact.body.spend_inputs_hash,
-            blocks_prev_utxos_root: prev_utxos_root,
-            blocks_transactions_root: tx_inclusion_args.transactions_phas_root,
-          }
+        let expected_output_state: Data = step_02.State {
+          bad_tx_inputs_hash: bad_tx_view.tx_compact.body.spend_inputs_hash,
+          blocks_prev_utxos_root: prev_utxos_root,
+          blocks_transactions_root: tx_inclusion_args.transactions_phas_root,
+        }
         expect output_state_data == expected_output_state
 
         // Done.

@@ -21,13 +21,16 @@ use aiken/crypto.{
 }
 use aiken/primitive/bytearray
 use cardano/address.{Address, Credential}
-use cardano/assets.{Lovelace}
+use cardano/assets.{Lovelace, PolicyId}
 use cardano/transaction.{
   Datum as CardanoDatum, OutputReference, Redeemer, ScriptPurpose, ValidityRange,
 }
 use env
+use midgard/bounded_collection_v1
+use midgard/bounded_item_v1
 use midgard/common/types.{H28, H32, MerkleRoot, PosixTime, ValuePairs}
 use midgard/common/utils
+use midgard/validation_trace_v1
 
 // # Ledger state types
 
@@ -37,14 +40,14 @@ use midgard/common/utils
 /// Full representation.
 pub type Block {
   header_hash: HeaderHash,
-  header: Header,
+  header: HeaderV1,
   block_body: BlockBody,
 }
 
 /// Midgard block header hash.
 /// Compact representation.
 pub type HeaderHash =
-  H28<Header>
+  H28<HeaderV1>
 
 pub type MidgardLedger =
   Dict<OutputReference, MidgardOutput>
@@ -52,9 +55,9 @@ pub type MidgardLedger =
 pub type MidgardLedgerRoot =
   MerkleRoot<OutputReference, MidgardOutput>
 
-/// Midgard block header.
+/// Canonical proof-complete Midgard V1 block header.
 /// Compact representation.
-pub type Header {
+pub type HeaderV1 {
   prev_utxos_root: MidgardLedgerRoot,
   utxos_root: MidgardLedgerRoot,
   withdrawals_root: WithdrawalsRoot,
@@ -63,14 +66,20 @@ pub type Header {
   deposits_root: DepositsRoot,
   transition_trace_root: TransitionTraceRoot,
   event_to_step_root: EventToStepRoot,
+  validation_traces_root: ValidationTracesRoot,
   withdrawal_count: Int,
   forced_transaction_count: Int,
   l2_transaction_count: Int,
   deposit_count: Int,
   total_event_count: Int,
   transition_step_count: Int,
+  validation_trace_count: Int,
   start_time: PosixTime,
   end_time: PosixTime,
+  block_slot: Int,
+  expected_network_id: Int,
+  min_fee_a: Int,
+  min_fee_b: Int,
   prev_header_hash: HeaderHash,
   operator_vkey: VerificationKeyHash,
   protocol_version: Int,
@@ -108,6 +117,29 @@ pub const genesis_header_hash: HeaderHash =
 pub const genesis_utxo_root: MidgardLedgerRoot = env.empty_merkle_tree_root
 
 pub const genesis_protocol_version: Int = 0
+
+pub const protocol_version_v1: Int = 1
+
+/// Seven-day maturity for the canonical V1 deployment.
+pub const block_maturity_duration_v1: Int = 7 * 24 * 60 * 60 * 1000
+
+pub const transition_step_schema_version_v1: Int = 1
+
+// Immutable canonical V1 consensus bounds. These are deployment identity, not
+// operator-configurable tuning knobs.
+pub const max_withdrawal_count_v1: Int = 10_000
+
+pub const max_forced_transaction_count_v1: Int = 10_000
+
+pub const max_l2_transaction_count_v1: Int = 10_000
+
+pub const max_deposit_count_v1: Int = 10_000
+
+pub const max_total_event_count_v1: Int = 40_000
+
+pub const max_transition_step_count_v1: Int = 40_000
+
+pub const max_validation_trace_count_v1: Int = 20_000
 
 // ## User events
 
@@ -194,16 +226,61 @@ pub type WithdrawalEvent {
 pub type TxOrderId =
   OutputReference
 
-pub type TxOrderEvent {
+pub type NativeTxProofSourceV1 {
+  compact_cbor: ByteArray,
+  witness_set_compact_cbor: ByteArray,
+  field_preimage_lengths_cbor: ByteArray,
+}
+
+pub type TxFieldPreimageV1 {
+  field_receipt_policy_id: PolicyId,
+  tx_order_policy_id: PolicyId,
+  tx_order_id: TxOrderId,
+  transaction_commitment: ByteArray,
+  collection_proof: bounded_collection_v1.ItemProofV1,
+  proof: bounded_item_v1.ChunkProofV1,
+}
+
+pub type TxFieldReceiptV1 {
+  field_receipt_policy_id: PolicyId,
+  tx_order_policy_id: PolicyId,
+  tx_order_id: TxOrderId,
+  transaction_commitment: ByteArray,
+  collection_proof: bounded_collection_v1.ItemProofV1,
+  chunk_index: Int,
+  field_reference: OutputReference,
+  predecessor_receipt_reference: Option<OutputReference>,
+  field_encoded_size: Int,
+}
+
+/// Permissionless, immutable L1 publication of one content-addressed CEK
+/// program node. The root authenticates `(kind, preimage)` under the
+/// canonical V1 domain; the enclosing validator deliberately has no spend path so
+/// forced-transaction material remains available for later classification and
+/// challenge.
+pub type CekProgramMaterialDatumV1 {
+  kind: Int,
+  root: ByteArray,
+  preimage: ByteArray,
+}
+
+pub type TxOrderPayloadV1 {
+  tx_id: ByteArray,
+  transaction_commitment: ByteArray,
+  source: NativeTxProofSourceV1,
+  terminal_receipt_reference: Option<OutputReference>,
+}
+
+pub type TxOrderEventV1 {
   id: TxOrderId,
-  tx: MidgardTxCompact,
+  tx: TxOrderPayloadV1,
 }
 
 pub type ForcedTransactions =
-  Dict<TxOrderId, ForcedInclusionTx>
+  Dict<TxOrderId, ForcedInclusionTxV1>
 
 pub type ForcedTransactionsRoot =
-  MerkleRoot<TxOrderId, ForcedInclusionTx>
+  MerkleRoot<TxOrderId, ForcedInclusionTxV1>
 
 // ## Transaction
 
@@ -251,8 +328,16 @@ pub type MidgardTxValidity {
   UnbalancedTx
 }
 
-pub type ForcedInclusionTx {
-  tx_compact: MidgardTxCompactWithoutValidity,
+pub type L2TransactionSourceV1 {
+  tx_id: ByteArray,
+  transaction_commitment: ByteArray,
+  source: NativeTxProofSourceV1,
+}
+
+pub type ForcedInclusionTxV1 {
+  tx_id: ByteArray,
+  transaction_commitment: ByteArray,
+  source: NativeTxProofSourceV1,
   operator_validity: MidgardTxValidity,
 }
 
@@ -295,6 +380,12 @@ pub type TransitionTrace =
 
 pub type TransitionTraceRoot =
   MerkleRoot<Int, TransitionStep>
+
+pub type ValidationTraces =
+  Dict<EventKey, validation_trace_v1.ValidationTraceDescriptorV1>
+
+pub type ValidationTracesRoot =
+  MerkleRoot<EventKey, validation_trace_v1.ValidationTraceDescriptorV1>
 
 // ### Transaction body
 
@@ -418,19 +509,21 @@ pub type MidgardTxWitnessSetCompact {
 }
 
 pub fn midgard_tx_body_to_compact(body: MidgardTxBody) -> MidgardTxBodyCompact {
-  let MidgardTxBody {
-    spend_inputs,
-    reference_inputs,
-    outputs,
-    fee,
-    validity_interval,
-    required_observers,
-    required_signer_hashes,
-    mint,
-    script_integrity_hash,
-    auxiliary_data_hash,
-    network_id,
-  } = body
+  let
+      MidgardTxBody {
+        spend_inputs,
+        reference_inputs,
+        outputs,
+        fee,
+        validity_interval,
+        required_observers,
+        required_signer_hashes,
+        mint,
+        script_integrity_hash,
+        auxiliary_data_hash,
+        network_id,
+      }
+    = body
   MidgardTxBodyCompact {
     spend_inputs: spend_inputs |> utils.serialise_and_hash_32,
     reference_inputs: reference_inputs |> utils.serialise_and_hash_32,
@@ -450,8 +543,7 @@ pub fn midgard_tx_body_to_compact(body: MidgardTxBody) -> MidgardTxBodyCompact {
 pub fn midgard_tx_wits_to_compact(
   wits: MidgardTxWitnessSet,
 ) -> MidgardTxWitnessSetCompact {
-  let MidgardTxWitnessSet { addr_tx_wits, script_tx_wits, redeemer_tx_wits } =
-    wits
+  let MidgardTxWitnessSet { addr_tx_wits, script_tx_wits, redeemer_tx_wits } = wits
   MidgardTxWitnessSetCompact {
     addr_tx_wits: addr_tx_wits |> utils.serialise_and_hash_32,
     script_tx_wits: script_tx_wits |> utils.serialise_and_hash_32,

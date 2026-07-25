@@ -1,9 +1,9 @@
 import {
-  computeMidgardNativeTxId,
-  decodeMidgardNativeTxCompact,
-  encodeMidgardNativeTxCompact,
+  computeMidgardNativeTxIdV1,
+  decodeMidgardNativeTxCompactV1,
+  encodeMidgardNativeTxCompactV1,
   formatUnknownError,
-  type MidgardNativeTxCompact as CoreNativeTxCompact,
+  type MidgardNativeTxCompactV1 as CoreNativeTxCompact,
   MidgardTxValidityCodes,
   normalizeHex,
 } from "@al-ft/midgard-core";
@@ -248,7 +248,7 @@ export const requireNativeTxMatchesCompactCbor = (
 ): CoreNativeTxCompact => {
   let decoded: CoreNativeTxCompact;
   try {
-    decoded = decodeMidgardNativeTxCompact(
+    decoded = decodeMidgardNativeTxCompactV1(
       Buffer.from(inclusion.nativeTxCompactCbor, "hex"),
     );
   } catch (cause) {
@@ -256,7 +256,7 @@ export const requireNativeTxMatchesCompactCbor = (
       `--tx-inclusion.nativeTxCompactCbor is not a valid native compact transaction: ${formatUnknownError(cause)}`,
     );
   }
-  const canonicalCbor = encodeMidgardNativeTxCompact(decoded).toString("hex");
+  const canonicalCbor = encodeMidgardNativeTxCompactV1(decoded).toString("hex");
   if (canonicalCbor !== inclusion.nativeTxCompactCbor) {
     throw new Error(
       "--tx-inclusion.nativeTxCompactCbor is not canonical native compact CBOR.",
@@ -271,7 +271,7 @@ export const requireNativeTxMatchesCompactCbor = (
       "--tx-inclusion.nativeTx does not match nativeTxCompactCbor.",
     );
   }
-  const computedTxId = computeMidgardNativeTxId(decoded).toString("hex");
+  const computedTxId = computeMidgardNativeTxIdV1(decoded).toString("hex");
   if (computedTxId !== inclusion.nativeTxId) {
     throw new Error(
       `--tx-inclusion.nativeTxId mismatch: provided=${inclusion.nativeTxId}, computed=${computedTxId}.`,

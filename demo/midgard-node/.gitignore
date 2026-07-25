@@ -3,6 +3,7 @@
 .eslintrc.json
 node_modules
 dist
+.probe-dist/
 *.tgz
 .direnv
 *mpt-db/*

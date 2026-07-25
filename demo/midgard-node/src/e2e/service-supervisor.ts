@@ -6,13 +6,13 @@ import {
   type E2EEnvInheritance,
   type E2EEnvProvenance,
 } from "@/e2e/env.js";
-import { runLoggedChildProcessAttempt } from "@/e2e/logged-child-process.js";
 import type {
   FileTerminationObservation,
   FileTerminationSpec,
   OutputTerminationObservation,
   OutputTerminationSpec,
 } from "@/e2e/logged-child-process.js";
+import { runLoggedChildProcessAttempt } from "@/e2e/logged-child-process.js";
 import type { ChildProcessCleanupResult } from "@/e2e/process-cleanup.js";
 import type { OwnedProcessGroupSpec } from "@/e2e/process-ownership.js";
 import { redactArg, type RedactedCommand } from "@/e2e/runner.js";

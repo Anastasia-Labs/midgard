@@ -1,3 +1,7 @@
+import {
+  MIDGARD_CONSENSUS_LIMITS_V1,
+  MIDGARD_PROTOCOL_V1_VERSION,
+} from "@al-ft/midgard-core/consensus-profile-v1";
 import { Data } from "@lucid-evolution/lucid";
 import { Data as EffectData, Effect } from "effect";
 
@@ -21,7 +25,8 @@ export const HeaderHashSchema = Data.Bytes({ minLength: 28, maxLength: 28 });
 export type HeaderHash = Data.Static<typeof HeaderHashSchema>;
 export const HeaderHash = HeaderHashSchema as unknown as HeaderHash;
 
-export const HeaderSchema = Data.Object({
+/** Canonical proof-complete Midgard V1 block header. */
+export const HeaderV1Schema = Data.Object({
   prevUtxosRoot: MerkleRootSchema,
   utxosRoot: MerkleRootSchema,
   withdrawalsRoot: MerkleRootSchema,
@@ -30,72 +35,85 @@ export const HeaderSchema = Data.Object({
   depositsRoot: MerkleRootSchema,
   transitionTraceRoot: MerkleRootSchema,
   eventToStepRoot: MerkleRootSchema,
+  validationTracesRoot: MerkleRootSchema,
   withdrawalCount: Data.Integer(),
   forcedTransactionCount: Data.Integer(),
   l2TransactionCount: Data.Integer(),
   depositCount: Data.Integer(),
   totalEventCount: Data.Integer(),
   transitionStepCount: Data.Integer(),
+  validationTraceCount: Data.Integer(),
   startTime: POSIXTimeSchema,
   endTime: POSIXTimeSchema,
+  blockSlot: Data.Integer(),
+  expectedNetworkId: Data.Integer(),
+  minFeeA: Data.Integer(),
+  minFeeB: Data.Integer(),
   prevHeaderHash: HeaderHashSchema,
   operatorVkey: PubKeyHashSchema,
   protocolVersion: Data.Integer(),
 });
-export type Header = Data.Static<typeof HeaderSchema>;
-export const Header = HeaderSchema as unknown as Header;
+export type HeaderV1 = Data.Static<typeof HeaderV1Schema>;
+export const HeaderV1 = HeaderV1Schema as unknown as HeaderV1;
 
-export type HeaderTransitionCommitments = Pick<
-  Header,
+export type HeaderTransitionCommitmentsV1 = Pick<
+  HeaderV1,
   | "forcedTransactionsRoot"
   | "transitionTraceRoot"
   | "eventToStepRoot"
+  | "validationTracesRoot"
   | "withdrawalCount"
   | "forcedTransactionCount"
   | "l2TransactionCount"
   | "depositCount"
   | "totalEventCount"
   | "transitionStepCount"
+  | "validationTraceCount"
 >;
 
-export const EMPTY_HEADER_TRANSITION_COMMITMENTS: HeaderTransitionCommitments =
+export const EMPTY_HEADER_TRANSITION_COMMITMENTS_V1: HeaderTransitionCommitmentsV1 =
   {
     forcedTransactionsRoot: EMPTY_MERKLE_TREE_ROOT,
     transitionTraceRoot: EMPTY_MERKLE_TREE_ROOT,
     eventToStepRoot: EMPTY_MERKLE_TREE_ROOT,
+    validationTracesRoot: EMPTY_MERKLE_TREE_ROOT,
     withdrawalCount: 0n,
     forcedTransactionCount: 0n,
     l2TransactionCount: 0n,
     depositCount: 0n,
     totalEventCount: 0n,
     transitionStepCount: 0n,
+    validationTraceCount: 0n,
   };
 
-export type HeaderTransitionCommitmentSourceRoots = Pick<
-  Header,
+export type HeaderTransitionCommitmentSourceRootsV1 = Pick<
+  HeaderV1,
   | "withdrawalsRoot"
   | "forcedTransactionsRoot"
   | "transactionsRoot"
   | "depositsRoot"
 >;
 
-export type HeaderTransitionCommitmentCounts = Pick<
-  HeaderTransitionCommitments,
+export type HeaderTransitionCommitmentCountsV1 = Pick<
+  HeaderTransitionCommitmentsV1,
   | "withdrawalCount"
   | "forcedTransactionCount"
   | "l2TransactionCount"
   | "depositCount"
 >;
 
-export type MakeHeaderTransitionCommitmentsInput =
-  HeaderTransitionCommitmentSourceRoots &
-    HeaderTransitionCommitmentCounts &
+export type MakeHeaderTransitionCommitmentsV1Input =
+  HeaderTransitionCommitmentSourceRootsV1 &
+    HeaderTransitionCommitmentCountsV1 &
     Partial<
       Pick<
-        HeaderTransitionCommitments,
+        HeaderTransitionCommitmentsV1,
         "transitionTraceRoot" | "eventToStepRoot" | "transitionStepCount"
       >
-    >;
+    > & {
+      readonly validationTracesRoot: MerkleRoot;
+      readonly validationTraceCount: bigint;
+    };
 
 export class HeaderTransitionCommitmentsError extends EffectData.TaggedError(
   "HeaderTransitionCommitmentsError",
@@ -107,10 +125,10 @@ const headerTransitionCommitmentsError = (
 ): HeaderTransitionCommitmentsError =>
   new HeaderTransitionCommitmentsError({ message, cause });
 
-export const validateHeaderTransitionCommitmentsProgram = (
-  commitments: HeaderTransitionCommitments,
+export const validateHeaderTransitionCommitmentsV1Program = (
+  commitments: HeaderTransitionCommitmentsV1,
 ): Effect.Effect<
-  HeaderTransitionCommitments,
+  HeaderTransitionCommitmentsV1,
   HeaderTransitionCommitmentsError
 > =>
   Effect.gen(function* () {
@@ -121,6 +139,7 @@ export const validateHeaderTransitionCommitmentsProgram = (
       ["depositCount", commitments.depositCount],
       ["totalEventCount", commitments.totalEventCount],
       ["transitionStepCount", commitments.transitionStepCount],
+      ["validationTraceCount", commitments.validationTraceCount],
     ] as const;
     for (const [field, count] of countEntries) {
       if (count < 0n) {
@@ -185,10 +204,36 @@ export const validateHeaderTransitionCommitmentsProgram = (
       );
     }
 
+    const expectedValidationTraceCount =
+      commitments.forcedTransactionCount + commitments.l2TransactionCount;
+    if (commitments.validationTraceCount !== expectedValidationTraceCount) {
+      return yield* Effect.fail(
+        headerTransitionCommitmentsError(
+          "Proof header validation_trace_count must equal forced_transaction_count + l2_transaction_count",
+          `expected=${expectedValidationTraceCount.toString()},actual=${commitments.validationTraceCount.toString()}`,
+        ),
+      );
+    }
+    if (
+      commitments.validationTraceCount >
+      BigInt(MIDGARD_CONSENSUS_LIMITS_V1.maxValidationTraceCount)
+    ) {
+      return yield* Effect.fail(
+        headerTransitionCommitmentsError(
+          "Proof header validation_trace_count exceeds the compiled consensus bound",
+          `${commitments.validationTraceCount.toString()} > ${MIDGARD_CONSENSUS_LIMITS_V1.maxValidationTraceCount.toString()}`,
+        ),
+      );
+    }
+    yield* validateSourceRootCountV1(
+      "validation_traces",
+      commitments.validationTracesRoot,
+      commitments.validationTraceCount,
+    );
     return commitments;
   });
 
-const validateSourceRootCount = (
+const validateSourceRootCountV1 = (
   label: string,
   root: MerkleRoot,
   count: bigint,
@@ -212,91 +257,109 @@ const validateSourceRootCount = (
   return Effect.void;
 };
 
-export const makeHeaderTransitionCommitmentsProgram = (
-  input: MakeHeaderTransitionCommitmentsInput,
+export const makeHeaderTransitionCommitmentsV1Program = (
+  input: MakeHeaderTransitionCommitmentsV1Input,
 ): Effect.Effect<
-  HeaderTransitionCommitments,
+  HeaderTransitionCommitmentsV1,
   HeaderTransitionCommitmentsError
 > =>
   Effect.gen(function* () {
-    yield* validateSourceRootCount(
+    yield* validateSourceRootCountV1(
       "withdrawals",
       input.withdrawalsRoot,
       input.withdrawalCount,
     );
-    yield* validateSourceRootCount(
+    yield* validateSourceRootCountV1(
       "forced_transactions",
       input.forcedTransactionsRoot,
       input.forcedTransactionCount,
     );
-    yield* validateSourceRootCount(
+    yield* validateSourceRootCountV1(
       "transactions",
       input.transactionsRoot,
       input.l2TransactionCount,
     );
-    yield* validateSourceRootCount(
+    yield* validateSourceRootCountV1(
       "deposits",
       input.depositsRoot,
       input.depositCount,
     );
-
     const totalEventCount =
       input.withdrawalCount +
       input.forcedTransactionCount +
       input.l2TransactionCount +
       input.depositCount;
-    return yield* validateHeaderTransitionCommitmentsProgram({
+    return yield* validateHeaderTransitionCommitmentsV1Program({
       forcedTransactionsRoot: input.forcedTransactionsRoot,
       transitionTraceRoot: input.transitionTraceRoot ?? EMPTY_MERKLE_TREE_ROOT,
       eventToStepRoot: input.eventToStepRoot ?? EMPTY_MERKLE_TREE_ROOT,
+      validationTracesRoot: input.validationTracesRoot,
       withdrawalCount: input.withdrawalCount,
       forcedTransactionCount: input.forcedTransactionCount,
       l2TransactionCount: input.l2TransactionCount,
       depositCount: input.depositCount,
       totalEventCount,
       transitionStepCount: input.transitionStepCount ?? totalEventCount,
+      validationTraceCount: input.validationTraceCount,
     });
   });
 
 export const NO_DA_ATTESTATION = "";
 
-export const StateQueueNodeSchema = Data.Object({
-  header: HeaderSchema,
+export const StateQueueNodeV1Schema = Data.Object({
+  header: HeaderV1Schema,
   da_attestation: Data.Bytes(),
 });
-export type StateQueueNode = Data.Static<typeof StateQueueNodeSchema>;
-export const StateQueueNode = StateQueueNodeSchema as unknown as StateQueueNode;
-export const castStateQueueNodeToData = (node: StateQueueNode): unknown =>
-  Data.castTo(node, StateQueueNode);
+export type StateQueueNodeV1 = Data.Static<typeof StateQueueNodeV1Schema>;
+export const StateQueueNodeV1 =
+  StateQueueNodeV1Schema as unknown as StateQueueNodeV1;
+export const castStateQueueNodeV1ToData = (node: StateQueueNodeV1): unknown =>
+  Data.castTo(node, StateQueueNodeV1);
 
-export const getHeaderFromStateQueueDatum = (nodeDatum: {
+export const getHeaderV1FromStateQueueDatum = (nodeDatum: {
   readonly data: Parameters<typeof Data.castFrom>[0];
-}): Effect.Effect<Header, DataCoercionError> =>
+}): Effect.Effect<HeaderV1, DataCoercionError> =>
   Effect.try({
-    try: () => Data.castFrom(nodeDatum.data, StateQueueNode).header,
+    try: () => {
+      const header = Data.castFrom(nodeDatum.data, StateQueueNodeV1).header;
+      if (header.protocolVersion !== BigInt(MIDGARD_PROTOCOL_V1_VERSION)) {
+        throw new Error(
+          `Expected proof protocol version ${MIDGARD_PROTOCOL_V1_VERSION.toString()}, got ${header.protocolVersion.toString()}`,
+        );
+      }
+      return header;
+    },
     catch: (cause) =>
       new DataCoercionError({
-        message: "Failed coercing block's datum data to `StateQueueNode`",
+        message: "Failed coercing block's datum data to `StateQueueNodeV1`",
         cause,
       }),
   });
 
-export const getStateQueueNodeFromStateQueueDatum = (nodeDatum: {
+export const getStateQueueNodeV1FromStateQueueDatum = (nodeDatum: {
   readonly data: Parameters<typeof Data.castFrom>[0];
-}): Effect.Effect<StateQueueNode, DataCoercionError> =>
+}): Effect.Effect<StateQueueNodeV1, DataCoercionError> =>
   Effect.try({
-    try: () => Data.castFrom(nodeDatum.data, StateQueueNode),
+    try: () => {
+      const node = Data.castFrom(nodeDatum.data, StateQueueNodeV1);
+      if (node.header.protocolVersion !== BigInt(MIDGARD_PROTOCOL_V1_VERSION)) {
+        throw new Error(
+          `Expected protocol version ${MIDGARD_PROTOCOL_V1_VERSION.toString()}, got ${node.header.protocolVersion.toString()}`,
+        );
+      }
+      return node;
+    },
     catch: (cause) =>
       new DataCoercionError({
-        message: "Failed coercing block's datum data to `StateQueueNode`",
+        message: "Failed coercing block's datum data to `StateQueueNodeV1`",
         cause,
       }),
   });
 
-export const hashBlockHeader = (
-  header: Header,
+export const hashBlockHeaderV1 = (
+  header: HeaderV1,
 ): Effect.Effect<string, HashingError> =>
-  hashHexWithBlake2b(Data.to(header, Header), 28);
+  hashHexWithBlake2b(Data.to(header, HeaderV1), 28);
 
 export const ConfirmedStateSchema = Data.Object({
   headerHash: HeaderHashSchema,
@@ -355,93 +418,149 @@ export type MidgardTxValidity = Data.Static<typeof MidgardTxValiditySchema>;
 export const MidgardTxValidity =
   MidgardTxValiditySchema as unknown as MidgardTxValidity;
 
-export const MidgardNetworkIdSchema = Data.Enum([
-  Data.Literal("Mainnet"),
-  Data.Literal("Testnet"),
-]);
-export type MidgardNetworkId = Data.Static<typeof MidgardNetworkIdSchema>;
-export const MidgardNetworkId =
-  MidgardNetworkIdSchema as unknown as MidgardNetworkId;
-
-export const MidgardTxWitnessSetCompactSchema = Data.Object({
-  addr_tx_wits: H32Schema,
-  script_tx_wits: H32Schema,
-  redeemer_tx_wits: H32Schema,
+export const NativeTxProofSourceV1Schema = Data.Object({
+  compact_cbor: Data.Bytes(),
+  witness_set_compact_cbor: Data.Bytes(),
+  field_preimage_lengths_cbor: Data.Bytes(),
 });
-export type MidgardTxWitnessSetCompact = Data.Static<
-  typeof MidgardTxWitnessSetCompactSchema
+export type NativeTxProofSourceV1 = Data.Static<
+  typeof NativeTxProofSourceV1Schema
 >;
-export const MidgardTxWitnessSetCompact =
-  MidgardTxWitnessSetCompactSchema as unknown as MidgardTxWitnessSetCompact;
+export const NativeTxProofSourceV1 =
+  NativeTxProofSourceV1Schema as unknown as NativeTxProofSourceV1;
 
-export const IntervalBoundTypeSchema = Data.Enum([
-  Data.Literal("NegativeInfinity"),
-  Data.Object({ Finite: Data.Tuple([Data.Integer()]) }),
-  Data.Literal("PositiveInfinity"),
-]);
-export type IntervalBoundType = Data.Static<typeof IntervalBoundTypeSchema>;
-export const IntervalBoundType =
-  IntervalBoundTypeSchema as unknown as IntervalBoundType;
-
-export const IntervalBoundSchema = Data.Object({
-  bound_type: IntervalBoundTypeSchema,
-  is_inclusive: Data.Boolean(),
+export const BoundedBlobFrontierPeakV1Schema = Data.Object({
+  height: Data.Integer(),
+  hash: H32Schema,
 });
-export type IntervalBound = Data.Static<typeof IntervalBoundSchema>;
-export const IntervalBound = IntervalBoundSchema as unknown as IntervalBound;
-
-export const ValidityRangeSchema = Data.Object({
-  lower_bound: IntervalBoundSchema,
-  upper_bound: IntervalBoundSchema,
-});
-export type ValidityRange = Data.Static<typeof ValidityRangeSchema>;
-export const ValidityRange = ValidityRangeSchema as unknown as ValidityRange;
-
-export const MidgardTxBodyCompactSchema = Data.Object({
-  spend_inputs: H32Schema,
-  reference_inputs: H32Schema,
-  outputs: H32Schema,
-  fee: Data.Integer(),
-  validity_interval: ValidityRangeSchema,
-  required_observers: H32Schema,
-  required_signer_hashes: H32Schema,
-  mint: H32Schema,
-  script_integrity_hash: H32Schema,
-  auxiliary_data_hash: H32Schema,
-  network_id: MidgardNetworkIdSchema,
-});
-export type MidgardTxBodyCompact = Data.Static<
-  typeof MidgardTxBodyCompactSchema
+export type BoundedBlobFrontierPeakV1 = Data.Static<
+  typeof BoundedBlobFrontierPeakV1Schema
 >;
-export const MidgardTxBodyCompact =
-  MidgardTxBodyCompactSchema as unknown as MidgardTxBodyCompact;
+export const BoundedBlobFrontierPeakV1 =
+  BoundedBlobFrontierPeakV1Schema as unknown as BoundedBlobFrontierPeakV1;
 
-export const MidgardTxCompactSchema = Data.Object({
-  body: MidgardTxBodyCompactSchema,
-  wits: H32Schema,
-  validity: MidgardTxValiditySchema,
+export const BoundedBlobChunkProofV1Schema = Data.Object({
+  version: Data.Integer(),
+  field_index: Data.Integer(),
+  total_length: Data.Integer(),
+  chunk_index: Data.Integer(),
+  chunk: Data.Bytes(),
+  frontier: Data.Array(BoundedBlobFrontierPeakV1Schema),
+  siblings: Data.Array(H32Schema),
 });
-export type MidgardTxCompact = Data.Static<typeof MidgardTxCompactSchema>;
-export const MidgardTxCompact =
-  MidgardTxCompactSchema as unknown as MidgardTxCompact;
-
-export const MidgardTxCompactWithoutValiditySchema = Data.Object({
-  body: MidgardTxBodyCompactSchema,
-  wits: H32Schema,
-});
-export type MidgardTxCompactWithoutValidity = Data.Static<
-  typeof MidgardTxCompactWithoutValiditySchema
+export type BoundedBlobChunkProofV1 = Data.Static<
+  typeof BoundedBlobChunkProofV1Schema
 >;
-export const MidgardTxCompactWithoutValidity =
-  MidgardTxCompactWithoutValiditySchema as unknown as MidgardTxCompactWithoutValidity;
+export const BoundedBlobChunkProofV1 =
+  BoundedBlobChunkProofV1Schema as unknown as BoundedBlobChunkProofV1;
 
-export const ForcedInclusionTxSchema = Data.Object({
-  tx_compact: MidgardTxCompactWithoutValiditySchema,
+export const BoundedCollectionItemProofV1Schema = Data.Object({
+  version: Data.Integer(),
+  field_index: Data.Integer(),
+  item_count: Data.Integer(),
+  item_index: Data.Integer(),
+  item_length: Data.Integer(),
+  item_commitment: H32Schema,
+  frontier: Data.Array(BoundedBlobFrontierPeakV1Schema),
+  siblings: Data.Array(H32Schema),
+});
+export type BoundedCollectionItemProofV1 = Data.Static<
+  typeof BoundedCollectionItemProofV1Schema
+>;
+export const BoundedCollectionItemProofV1 =
+  BoundedCollectionItemProofV1Schema as unknown as BoundedCollectionItemProofV1;
+
+export const BoundedItemChunkProofV1Schema = Data.Object({
+  version: Data.Integer(),
+  field_index: Data.Integer(),
+  item_index: Data.Integer(),
+  total_length: Data.Integer(),
+  chunk_index: Data.Integer(),
+  chunk: Data.Bytes(),
+  frontier: Data.Array(BoundedBlobFrontierPeakV1Schema),
+  siblings: Data.Array(H32Schema),
+});
+export type BoundedItemChunkProofV1 = Data.Static<
+  typeof BoundedItemChunkProofV1Schema
+>;
+export const BoundedItemChunkProofV1 =
+  BoundedItemChunkProofV1Schema as unknown as BoundedItemChunkProofV1;
+
+export const TxFieldPreimageV1Schema = Data.Object({
+  field_receipt_policy_id: Data.Bytes({ minLength: 28, maxLength: 28 }),
+  tx_order_policy_id: Data.Bytes({ minLength: 28, maxLength: 28 }),
+  tx_order_id: OutputReferenceSchema,
+  transaction_commitment: H32Schema,
+  collection_proof: BoundedCollectionItemProofV1Schema,
+  proof: BoundedItemChunkProofV1Schema,
+});
+export type TxFieldPreimageV1 = Data.Static<typeof TxFieldPreimageV1Schema>;
+export const TxFieldPreimageV1 =
+  TxFieldPreimageV1Schema as unknown as TxFieldPreimageV1;
+
+export const TxFieldReceiptV1Schema = Data.Object({
+  field_receipt_policy_id: Data.Bytes({ minLength: 28, maxLength: 28 }),
+  tx_order_policy_id: Data.Bytes({ minLength: 28, maxLength: 28 }),
+  tx_order_id: OutputReferenceSchema,
+  transaction_commitment: H32Schema,
+  collection_proof: BoundedCollectionItemProofV1Schema,
+  chunk_index: Data.Integer(),
+  field_reference: OutputReferenceSchema,
+  predecessor_receipt_reference: Data.Nullable(OutputReferenceSchema),
+  field_encoded_size: Data.Integer(),
+});
+export type TxFieldReceiptV1 = Data.Static<typeof TxFieldReceiptV1Schema>;
+export const TxFieldReceiptV1 =
+  TxFieldReceiptV1Schema as unknown as TxFieldReceiptV1;
+
+export const CekProgramMaterialDatumV1Schema = Data.Object({
+  kind: Data.Integer(),
+  root: H32Schema,
+  preimage: Data.Bytes(),
+});
+export type CekProgramMaterialDatumV1 = Data.Static<
+  typeof CekProgramMaterialDatumV1Schema
+>;
+export const CekProgramMaterialDatumV1 =
+  CekProgramMaterialDatumV1Schema as unknown as CekProgramMaterialDatumV1;
+
+export const TxOrderPayloadV1Schema = Data.Object({
+  tx_id: H32Schema,
+  transaction_commitment: H32Schema,
+  source: NativeTxProofSourceV1Schema,
+  terminal_receipt_reference: Data.Nullable(OutputReferenceSchema),
+});
+export type TxOrderPayloadV1 = Data.Static<typeof TxOrderPayloadV1Schema>;
+export const TxOrderPayloadV1 =
+  TxOrderPayloadV1Schema as unknown as TxOrderPayloadV1;
+
+export const TxOrderEventV1Schema = Data.Object({
+  id: OutputReferenceSchema,
+  tx: TxOrderPayloadV1Schema,
+});
+export type TxOrderEventV1 = Data.Static<typeof TxOrderEventV1Schema>;
+export const TxOrderEventV1 = TxOrderEventV1Schema as unknown as TxOrderEventV1;
+
+export const L2TransactionSourceV1Schema = Data.Object({
+  tx_id: H32Schema,
+  transaction_commitment: H32Schema,
+  source: NativeTxProofSourceV1Schema,
+});
+export type L2TransactionSourceV1 = Data.Static<
+  typeof L2TransactionSourceV1Schema
+>;
+export const L2TransactionSourceV1 =
+  L2TransactionSourceV1Schema as unknown as L2TransactionSourceV1;
+
+export const ForcedInclusionTxV1Schema = Data.Object({
+  tx_id: H32Schema,
+  transaction_commitment: H32Schema,
+  source: NativeTxProofSourceV1Schema,
   operator_validity: MidgardTxValiditySchema,
 });
-export type ForcedInclusionTx = Data.Static<typeof ForcedInclusionTxSchema>;
-export const ForcedInclusionTx =
-  ForcedInclusionTxSchema as unknown as ForcedInclusionTx;
+export type ForcedInclusionTxV1 = Data.Static<typeof ForcedInclusionTxV1Schema>;
+export const ForcedInclusionTxV1 =
+  ForcedInclusionTxV1Schema as unknown as ForcedInclusionTxV1;
 
 export const TransitionPhaseSchema = Data.Enum([
   Data.Literal("Withdrawal"),
@@ -497,12 +616,29 @@ export const TransitionStepSchema = Data.Object({
 export type TransitionStep = Data.Static<typeof TransitionStepSchema>;
 export const TransitionStep = TransitionStepSchema as unknown as TransitionStep;
 
-export const TxOrderEventSchema = Data.Object({
-  id: OutputReferenceSchema,
-  tx: MidgardTxCompactSchema,
+export const ValidationVerdictV1Schema = Data.Enum([
+  Data.Literal("Accepted"),
+  Data.Literal("Rejected"),
+]);
+export type ValidationVerdictV1 = Data.Static<typeof ValidationVerdictV1Schema>;
+export const ValidationVerdictV1 =
+  ValidationVerdictV1Schema as unknown as ValidationVerdictV1;
+
+export const ValidationTraceDescriptorV1Schema = Data.Object({
+  schema_version: Data.Integer(),
+  machine_version: Data.Integer(),
+  trace_root: H32Schema,
+  step_count: Data.Integer(),
+  initial_state_hash: H32Schema,
+  terminal_state_hash: H32Schema,
+  verdict: ValidationVerdictV1Schema,
+  rejection_code_hash: H32Schema,
 });
-export type TxOrderEvent = Data.Static<typeof TxOrderEventSchema>;
-export const TxOrderEvent = TxOrderEventSchema as unknown as TxOrderEvent;
+export type ValidationTraceDescriptorV1 = Data.Static<
+  typeof ValidationTraceDescriptorV1Schema
+>;
+export const ValidationTraceDescriptorV1 =
+  ValidationTraceDescriptorV1Schema as unknown as ValidationTraceDescriptorV1;
 
 export const WithdrawalBodySchema = Data.Object({
   l2_outref: OutputReferenceSchema,

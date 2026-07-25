@@ -4,6 +4,7 @@ export * from "./datum.js";
 export * from "./errors.js";
 export * from "./hash.js";
 export * from "./native.js";
+export * from "./native-field-items.js";
 export * from "./native-script.js";
 export * from "./output.js";
 export * from "./script-language-views.js";

@@ -4,13 +4,13 @@ import { join } from "node:path";
 
 import {
   computeHash32,
-  computeMidgardNativeTxId,
+  computeMidgardNativeTxIdV1,
   encodeCbor,
-  encodeMidgardNativeTxCanonical,
-  materializeMidgardNativeTxFromCanonical,
-  MIDGARD_NATIVE_TX_VERSION,
+  encodeMidgardNativeTxCanonicalV1,
+  materializeMidgardNativeTxFromCanonicalV1,
+  MIDGARD_NATIVE_TX_V1_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  type MidgardNativeTxFull,
+  type MidgardNativeTxFullV1,
 } from "@al-ft/midgard-core";
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
@@ -44,9 +44,9 @@ const makeNativeTx = ({
   readonly validityIntervalStart: bigint;
   readonly validityIntervalEnd: bigint;
   readonly fee: bigint;
-}): MidgardNativeTxFull =>
-  materializeMidgardNativeTxFromCanonical({
-    version: MIDGARD_NATIVE_TX_VERSION,
+}): MidgardNativeTxFullV1 =>
+  materializeMidgardNativeTxFromCanonicalV1({
+    version: MIDGARD_NATIVE_TX_V1_VERSION,
     validity: "TxIsValid",
     body: {
       spendInputsPreimageCbor: encodeCbor([inputCbor(h32("11"), fee)]),
@@ -69,9 +69,9 @@ const makeNativeTx = ({
     },
   });
 
-const payloadFromTx = (tx: MidgardNativeTxFull): NodeTransactionPayload => ({
-  nodeTxId: computeMidgardNativeTxId(tx).toString("hex"),
-  txCbor: encodeMidgardNativeTxCanonical(tx).toString("hex"),
+const payloadFromTx = (tx: MidgardNativeTxFullV1): NodeTransactionPayload => ({
+  nodeTxId: computeMidgardNativeTxIdV1(tx).toString("hex"),
+  txCbor: encodeMidgardNativeTxCanonicalV1(tx).toString("hex"),
 });
 
 const withTempDir = async <A>(run: (dir: string) => Promise<A>): Promise<A> => {
@@ -121,10 +121,6 @@ describe("prepare-invalid-range", () => {
     expect(output.commitmentEncodings.nativeNode.transactionsRoot).toMatch(
       /^[0-9a-f]{64}$/,
     );
-    expect(output.compatibility).toEqual({
-      canUseSubmitStepCommands: true,
-      reasons: [],
-    });
   });
 
   it("honors explicit tx selection and rejects a selected non-violating tx", async () => {
@@ -162,6 +158,25 @@ describe("prepare-invalid-range", () => {
     });
     expect(output.tx.nodeTxId).toBe(upperBadTx.nodeTxId);
     expect(output.tx.violationReason).toBe("upper-at-or-after-block");
+  });
+
+  it("fails closed when the expected V1 transactions root differs", async () => {
+    const badTx = payloadFromTx(
+      makeNativeTx({
+        validityIntervalStart: 99n,
+        validityIntervalEnd: 150n,
+        fee: 8n,
+      }),
+    );
+    await expect(
+      prepareInvalidRangeFromTransactions({
+        headerHash: h28("bc"),
+        expectedTransactionsRoot: h32("00"),
+        transactions: [badTx],
+        blockValidFrom: 100n,
+        blockValidTo: 200n,
+      }),
+    ).rejects.toThrow("Expected V1 transactions root");
   });
 
   it("rejects blocks without invalid-range transactions", async () => {

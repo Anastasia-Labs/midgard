@@ -1,7 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:net";
 
-import { wrapDaPayloadV3 } from "@al-ft/midgard-core/da-payload-envelope";
+import { MIDGARD_CONSENSUS_PROFILE_V1_ID } from "@al-ft/midgard-core/consensus-profile-v1";
+import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
 import {
   computeDaSha256Hash,
   DA_TRANSPORT_LIMITS_V1,
@@ -34,7 +35,7 @@ import {
   DaPayloadSubmitAdmission,
   loadDaLibp2pIdentity,
 } from "../../da-committee-node/src/da/libp2p/index.js";
-import { hashBlockHeader } from "../../da-committee-node/src/l1/state-queue-scanner.js";
+import { hashBlockHeaderV1 } from "../../da-committee-node/src/l1/state-queue-scanner.js";
 import { JsonFileWatcherStore } from "../../da-committee-node/src/store.js";
 import {
   makePayloadFixture,
@@ -44,7 +45,7 @@ import {
 const DEPLOYMENT = "a5".repeat(32);
 
 describe("real multi-peer DA publication", () => {
-  it("publishes a zstd V3 envelope to threshold, returns before a dead peer timeout, and recovers after peer restart", async () => {
+  it("publishes a zstd V1 envelope to threshold, returns before a dead peer timeout, and recovers after peer restart", async () => {
     const producerSeed = `seed:${"00".repeat(31)}09`;
     const committeeSeeds = [
       `seed:${"00".repeat(31)}01`,
@@ -81,7 +82,7 @@ describe("real multi-peer DA publication", () => {
       ),
     );
     let slowThirdPeer = false;
-    let rejectV3OnThirdPeer = false;
+    let rejectEnvelopeOnThirdPeer = false;
     const committeeHandlerMetrics: Array<{
       readonly peerIndex: number;
       readonly durationMs: number;
@@ -137,7 +138,7 @@ describe("real multi-peer DA publication", () => {
         }
         const startedAt = performance.now();
         const rssBeforeBytes = process.memoryUsage().rss;
-        if (index === 2 && rejectV3OnThirdPeer) {
+        if (index === 2 && rejectEnvelopeOnThirdPeer) {
           const request = decodeDaPayloadSubmitRequestV1Cbor(
             await readSingleDaStreamFrame(context.stream, {
               maxFrameBytes: config.limits.maxPayloadBytes,
@@ -214,7 +215,7 @@ describe("real multi-peer DA publication", () => {
       });
       expect(capabilities.every((result) => result.capable)).toBe(true);
       const fixture = await makePayloadFixture();
-      const envelope = await wrapDaPayloadV3(fixture.payloadCbor, {
+      const envelope = await wrapDaPayloadV1(fixture.payloadCbor, {
         mode: "zstd",
         zstdLevel: 3,
       });
@@ -230,14 +231,14 @@ describe("real multi-peer DA publication", () => {
         stores.map((store) =>
           expect(store.getDaPayload(fixture.headerHash)).resolves.toMatchObject(
             {
-              payloadSchemaVersion: 3,
+              payloadSchemaVersion: 1,
               payloadCborHex: envelope.toString("hex"),
             },
           ),
         ),
       );
 
-      rejectV3OnThirdPeer = true;
+      rejectEnvelopeOnThirdPeer = true;
       const mixed = await publishDaPayloadInsert({
         insert,
         manifest,
@@ -254,26 +255,29 @@ describe("real multi-peer DA publication", () => {
         ]),
       );
 
-      const v2Header = {
+      const secondHeader = {
         ...fixture.header,
         startTime: fixture.header.startTime + 10n,
         endTime: fixture.header.endTime + 10n,
       };
-      const v2HeaderHash = hashBlockHeader(v2Header);
-      const v2PayloadCbor = SDK.encodeDaPayloadV2({
+      const secondHeaderHash = hashBlockHeaderV1(secondHeader);
+      const secondPayloadCbor = SDK.encodeDaPayloadV1({
         ...fixture.payload,
         block_body: {
           ...fixture.payload.block_body,
-          header_hash: v2HeaderHash,
-          header: v2Header,
+          header_hash: secondHeaderHash,
+          header: secondHeader,
         },
       });
-      rejectV3OnThirdPeer = false;
+      rejectEnvelopeOnThirdPeer = false;
       const inverse = await publishDaPayloadInsert({
         insert: {
-          ...insertFromFixture(fixture, v2PayloadCbor),
-          [DaPayloadsDB.Columns.HEADER_HASH]: Buffer.from(v2HeaderHash, "hex"),
-          [DaPayloadsDB.Columns.VERSION]: 2,
+          ...insertFromFixture(fixture, secondPayloadCbor),
+          [DaPayloadsDB.Columns.HEADER_HASH]: Buffer.from(
+            secondHeaderHash,
+            "hex",
+          ),
+          [DaPayloadsDB.Columns.VERSION]: 1,
         },
         manifest,
         transport,
@@ -322,7 +326,7 @@ describe("real multi-peer DA publication", () => {
         await Promise.all(
           stores.map(async (store) => {
             const stored = await store.getDaPayload(largeHeaderHash);
-            expect(stored?.payloadSchemaVersion).toBe(3);
+            expect(stored?.payloadSchemaVersion).toBe(1);
             expect(stored?.payloadCborHex.length).toBe(
               largeEnvelope.length * 2,
             );
@@ -419,7 +423,9 @@ const insertFromFixture = (
   envelope: Buffer,
 ): DaPayloadsDB.InsertInput => ({
   [DaPayloadsDB.Columns.HEADER_HASH]: Buffer.from(fixture.headerHash, "hex"),
-  [DaPayloadsDB.Columns.VERSION]: 3,
+  [DaPayloadsDB.Columns.CONSENSUS_PROFILE_ID]:
+    MIDGARD_CONSENSUS_PROFILE_V1_ID,
+  [DaPayloadsDB.Columns.VERSION]: 1,
   [DaPayloadsDB.Columns.PAYLOAD_CBOR]: envelope,
   [DaPayloadsDB.Columns.PAYLOAD_SHA256]: computeDaSha256Hash(envelope),
   [DaPayloadsDB.Columns.UTXOS_ROOT]: fixture.header.utxosRoot,
@@ -431,6 +437,8 @@ const insertFromFixture = (
   [DaPayloadsDB.Columns.TRANSITION_TRACE_ROOT]:
     fixture.header.transitionTraceRoot,
   [DaPayloadsDB.Columns.EVENT_TO_STEP_ROOT]: fixture.header.eventToStepRoot,
+  [DaPayloadsDB.Columns.VALIDATION_TRACES_ROOT]:
+    SDK.EMPTY_MERKLE_TREE_ROOT,
   [DaPayloadsDB.Columns.WITHDRAWAL_COUNT]: fixture.header.withdrawalCount,
   [DaPayloadsDB.Columns.FORCED_TRANSACTION_COUNT]:
     fixture.header.forcedTransactionCount,
@@ -440,6 +448,7 @@ const insertFromFixture = (
   [DaPayloadsDB.Columns.TOTAL_EVENT_COUNT]: fixture.header.totalEventCount,
   [DaPayloadsDB.Columns.TRANSITION_STEP_COUNT]:
     fixture.header.transitionStepCount,
+  [DaPayloadsDB.Columns.VALIDATION_TRACE_COUNT]: 0n,
   [DaPayloadsDB.Columns.BLOCK_START_TIME]: new Date(1),
   [DaPayloadsDB.Columns.BLOCK_END_TIME]: new Date(2),
 });

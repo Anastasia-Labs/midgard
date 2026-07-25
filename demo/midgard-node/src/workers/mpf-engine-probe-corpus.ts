@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import {
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardNativeTxFullV1FromCanonicalCbor,
 } from "@al-ft/midgard-core/codec";
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML } from "@lucid-evolution/lucid";
@@ -72,7 +72,7 @@ export const decodeCanonicalProbeRow = (
     value.selectedInputOutref ?? "",
   ).toLowerCase();
   const selectedInput = canonicalOutrefCborFromLabel(selectedInputOutref);
-  const native = decodeMidgardNativeTxFullFromCanonicalCbor(cbor);
+  const native = decodeMidgardNativeTxFullV1FromCanonicalCbor(cbor);
   const spendInputs = decodeMidgardNativeByteListPreimage(
     native.body.spendInputsPreimageCbor,
     "native.spend_inputs",

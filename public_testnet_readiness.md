@@ -27,10 +27,10 @@ Current decision: no-go for an open public testnet.
 | Reserve/payout | Partial | Builders and CLI flows exist for deposit absorption, valid-withdrawal payout init/funding/conclusion, plus SDK-level invalid-withdrawal refund construction. Node-level invalid-refund submission, public operator runbooks, and public/preprod acceptance remain blockers. |
 | Commit/confirm/merge | Mostly implemented | State queue, pending finalization journal, leases, DA-attestation-gated merge, and merge worker exist. Needs restart/recovery acceptance and stronger crash-boundary tests. |
 | Operator lifecycle | Partial | Register/activate builders and tests exist. Public CLI/API/runbook coverage for status, register, activate, deactivate/deregister, and monitoring is incomplete. |
-| Fraud proofs and DA | Partial, not public-testnet ready | Tooling, DA attestation transactions, merge gating, `DaPayloadV2` node persistence/endpoints, and libp2p DA payload retrieval/attestation exist. Proof family completeness, typed proof-bundle witnesses, public retrieval guarantees, and preprod end-to-end challenge acceptance remain blockers. |
+| Fraud proofs and DA | Partial, not public-testnet ready | Tooling, DA attestation transactions, merge gating, `DaPayloadV1` node persistence/endpoints, and libp2p DA payload retrieval/attestation exist. Proof family completeness, typed proof-bundle witnesses, public retrieval guarantees, and preprod end-to-end challenge acceptance remain blockers. |
 | Contract deployment | Mostly implemented | Atomic init, v2 deployment manifest identity, real blueprint loading, reference-script records, DA binding, and fail-closed startup verification exist. Manifest provenance/parameter coverage, signing/release policy, and realistic public-testnet parameters remain. |
 | Node operations | Partial | Docker, migrations, readiness, DA payload retention guards, metrics, and logs exist. Defaults and compose exposure are not public-hardened. |
-| SDK/provider | Partial | Provider submit, protocol-info parsing, DA transport V1 envelope codecs, and `DaPayloadV2` payload codecs exist. Packaging, abort/timeout behavior, and public docs need hardening. |
+| SDK/provider | Partial | Provider submit, protocol-info parsing, DA transport V1 envelope codecs, and `DaPayloadV1` payload codecs exist. Packaging, abort/timeout behavior, and public docs need hardening. |
 | CI/acceptance | Partial | Primary Aiken, core, SDK, validation, fault-proof, DA, Lucid, node, native-MPF, and offline throughput checks run in CI. A clean public deploy, rollback/restart matrix, and preprod fraud-proof challenge remain outside the gate. |
 
 ## Launch Blockers
@@ -38,7 +38,7 @@ Current decision: no-go for an open public testnet.
 - [x] Define and enforce a deployment fingerprint for current node and DA attachment.
   - Acceptance: every node stores and verifies the v2 manifest identity containing network id, one-shot out-ref, contract bytes/hashes, reference-script records, and fraud-proof catalogue metadata.
   - Acceptance: startup fails closed when local durable state belongs to a different deployment fingerprint.
-  - Evidence: `demo/midgard-node/src/commands/contract-deployment-info.ts` builds and verifies `midgard-deployment-manifest-v2`; `demo/midgard-node/src/commands/listen-startup.ts` refuses an existing deployment without a matching finalized manifest; DA runtime/store configuration binds to its manifest ID.
+  - Evidence: `demo/midgard-node/src/commands/contract-deployment-info.ts` builds and verifies `midgard-deployment-manifest-v1`; `demo/midgard-node/src/commands/listen-startup.ts` refuses an existing deployment without a matching finalized manifest; DA runtime/store configuration binds to its manifest ID.
 
 - [ ] Extend deployment identity into complete signed release provenance.
   - Acceptance: include Aiken compiler, `aiken.lock`, blueprint, protocol-parameter, Cardano era/protocol-version, runtime rule-bundle, and release hashes.
@@ -48,7 +48,7 @@ Current decision: no-go for an open public testnet.
   - Acceptance: at least the intended public-testnet fraud-proof family is fully end-to-end on preprod from invalid block fixture to computation thread steps to fraudulent block removal.
   - Acceptance: proof bundles persist schema versions, payload hashes, root role, member count, membership/non-membership/deletion witnesses, and all inputs needed by public challengers.
   - Acceptance: public endpoints or documented data exports allow an external watcher to reconstruct and submit the proof without privileged local DB access.
-  - Evidence: `demo/midgard-node/src/database/daPayloads.ts`, `demo/midgard-node/src/workers/commit-block-header/da-payload.ts`, `demo/midgard-sdk/src/da-payload.ts`, `demo/da-committee-node/src/da/payload.ts`, `demo/da-committee-node/src/da/libp2p/payload-protocols.ts`, and `demo/midgard-node/docs/TRANSITION_TRACE_COMMITMENTS.md` now provide a versioned node-produced `DaPayloadV2` keyed by header hash, with transition trace roots/counts and DA committee validation/retention paths, but not typed proof witnesses, public retrieval guarantees, or challenger-grade proof bundle retrieval.
+  - Evidence: `demo/midgard-node/src/database/daPayloads.ts`, `demo/midgard-node/src/workers/commit-block-header/da-payload.ts`, `demo/midgard-sdk/src/da-payload.ts`, `demo/da-committee-node/src/da/payload.ts`, `demo/da-committee-node/src/da/libp2p/payload-protocols.ts`, and `demo/midgard-node/docs/TRANSITION_TRACE_COMMITMENTS.md` now provide a versioned node-produced `DaPayloadV1` keyed by header hash, with transition trace roots/counts and DA committee validation/retention paths, but not typed proof witnesses, public retrieval guarantees, or challenger-grade proof bundle retrieval.
   - Evidence: `demo/midgard-node/docs/PREPROD_DOUBLE_SPEND_FAULT_PROOF_GAP_REPORT.md` still documents that the double-spend proof path was not yet complete end-to-end and lists broader proof-family gaps.
 
 - [ ] Harden public ingress and operational exposure.
@@ -144,7 +144,7 @@ Current decision: no-go for an open public testnet.
 
 - [ ] Define the first public fraud-proof milestone and prove it end to end on preprod.
 - [ ] Persist typed proof bundles and public DA artifacts.
-- [x] Persist and serve canonical `DaPayloadV2` block-body payloads for locally finalized blocks.
+- [x] Persist and serve canonical `DaPayloadV1` block-body payloads for locally finalized blocks.
 - [ ] Add proof bundle APIs or artifact export commands.
 - [ ] Add watcher/challenger runbook and adversarial fixtures.
 - [ ] Add a closed proof-family coverage matrix before claiming broad fraud-proof security.
@@ -187,8 +187,8 @@ These are the main code-backed reasons for the no-go decision. They should be ke
 | `onchain/aiken/env/default.ak` and `onchain/aiken/env/testnet.ak` use demonstration timing and zero economics. | Public parameter review is a blocker. |
 | `docs/fault-proofs/testing-status.md` records emulator coverage but no current publishable preprod end-to-end challenge/removal acceptance. | Fraud-proof readiness is not yet public-testnet ready. |
 | `docs/fault-proofs/coverage-matrix.md` and `catalogue-status.md` record unreachable, legacy-bound, stubbed, and missing proof families. | Public security claims must be narrowed and enabled features gated until the proof matrix is complete. |
-| `demo/midgard-node/src/database/pendingBlockFinalizations.ts` persists pending block payload members and `demo/midgard-node/src/database/daPayloads.ts` persists canonical `DaPayloadV2` payload CBOR plus roots and counts, but neither stores full typed proof-bundle schemas, root roles, membership/non-membership/deletion witnesses, opened field preimages, or verifier ABI versions. | External challengers need proof witnesses and stable schemas, not only node-local block-body payloads. |
-| `demo/da-committee-node/src/da/payload.ts` validates canonical `DaPayloadV2` bytes and `demo/da-committee-node/src/da/libp2p/payload-protocols.ts` serves payload, metadata, and attestation exchange over libp2p rather than HTTP. | The DA committee path is materially stronger than node-local payload production, but public availability guarantees and challenger APIs still need to be specified and accepted end to end. |
+| `demo/midgard-node/src/database/pendingBlockFinalizations.ts` persists pending block payload members and `demo/midgard-node/src/database/daPayloads.ts` persists canonical `DaPayloadV1` payload CBOR plus roots and counts, but neither stores full typed proof-bundle schemas, root roles, membership/non-membership/deletion witnesses, opened field preimages, or verifier ABI versions. | External challengers need proof witnesses and stable schemas, not only node-local block-body payloads. |
+| `demo/da-committee-node/src/da/payload.ts` validates canonical `DaPayloadV1` bytes and `demo/da-committee-node/src/da/libp2p/payload-protocols.ts` serves payload, metadata, and attestation exchange over libp2p rather than HTTP. | The DA committee path is materially stronger than node-local payload production, but public availability guarantees and challenger APIs still need to be specified and accepted end to end. |
 | `demo/midgard-node/src/transactions/da-attestation.ts` can mint/sign/apply DA attestations for state-queue headers, and `demo/midgard-node/src/transactions/state-queue/merge-to-confirmed-state.ts` skips merge until the queued block carries the expected DA attestation policy id. | Merge is gated on DA attestation, but public committee operation, payload retrieval guarantees, and watcher/challenger integration remain undefined. |
 | `demo/midgard-fault-proofs/package.json` describes the package as manual tooling. | Public challenger infrastructure is not yet autonomous or watcher-grade. |
 | `demo/midgard-sdk/package.json` lacks an `exports` map while building ESM and CJS under `"type": "module"`. | Public CJS consumers can resolve the wrong entrypoint. |
@@ -430,7 +430,7 @@ These are the main code-backed reasons for the no-go decision. They should be ke
 - [x] Commit, confirmation, pending finalization journal, local finalization recovery, and merge workers exist.
 - [x] State-queue mutation leases exist to prevent overlapping mutation workers.
 - [x] Locally finalized blocks persist canonical DA payload records keyed by header hash.
-  - Evidence: local finalization builds `DaPayloadV2`, recomputes committed roots/counts, and upserts `da_payloads` before marking the pending finalization complete.
+  - Evidence: local finalization builds `DaPayloadV1`, recomputes committed roots/counts, and upserts `da_payloads` before marking the pending finalization complete.
 - [ ] Add crash-boundary acceptance tests.
   - Acceptance: restart at each boundary leaves no duplicate committed blocks, no lost mempool transactions, no unbounded local finalization pending state, and no MPF/DB divergence.
 - [ ] Make split DB/MPF boundaries explicitly tested.
@@ -458,7 +458,7 @@ These are the main code-backed reasons for the no-go decision. They should be ke
 - [ ] Add consensus feature gates tied to the public fraud-proof coverage matrix.
   - Acceptance: every transaction feature admitted by public testnet consensus maps to a supported proof family; uncovered features such as script-bearing transactions, mint/burn, observers, redeemers, reference scripts, or withdrawal categories are rejected or explicitly disabled by config/manifest until their proof coverage is complete.
 - [x] Define and expose the current node-produced DA payload shape.
-  - Evidence: `DaPayloadV2` includes header hash, header CBOR semantics, sorted UTxO, withdrawal, forced-transaction, L2 transaction, deposit, transition-trace, event-to-step entries, and member counts; the node serves CBOR at `/da/payload` and metadata at `/da/payload/metadata`, while DA committee nodes validate and exchange the payload over libp2p.
+  - Evidence: `DaPayloadV1` includes header hash, header CBOR semantics, sorted UTxO, withdrawal, forced-transaction, L2 transaction, deposit, transition-trace, event-to-step entries, and member counts; the node serves CBOR at `/da/payload` and metadata at `/da/payload/metadata`, while DA committee nodes validate and exchange the payload over libp2p.
 - [ ] Bind public DA to committed headers, L1-visible attestations, and public retrieval guarantees.
   - Acceptance: every public-testnet block header or state-queue append has a verifiable DA commitment or attestation covering full tx payloads, opened field preimages, proof bundle metadata, and transition/proof member counts.
   - Acceptance: the public DA committee/storage layer validates the node-produced payload, signs or otherwise attests the exact header/payload relationship, and serves it independently of the producer node.
@@ -471,7 +471,7 @@ These are the main code-backed reasons for the no-go decision. They should be ke
 - [ ] Define a versioned proof-bundle schema.
   - Acceptance: `ProofBundleV1` includes header hash, root role, root schema version, root, member count, canonical key/value CBOR, membership proof CBOR, optional non-membership/deletion proof, opened field preimages, source payload hash, and verifier ABI version.
 - [ ] Add public proof bundle APIs or artifact exports.
-- [ ] Publish proof-bundle retrieval APIs beyond `/block`, `/tx`, and raw `DaPayloadV2`.
+- [ ] Publish proof-bundle retrieval APIs beyond `/block`, `/tx`, and raw `DaPayloadV1`.
   - Acceptance: external challengers can fetch block proof bundles, tx root members, membership witnesses, proof families, hashes, pagination, and retention guarantees through stable schemas.
 - [ ] Add watcher/challenger runbook.
   - Acceptance: an external party can detect an invalid block, fetch data, build the proof, submit transactions, and observe final resolution.

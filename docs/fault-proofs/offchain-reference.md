@@ -56,9 +56,9 @@ commands are offline.
 ### non-existent-input (6 manual steps)
 
 `prepare-non-existent-input` (node/file modes plus optional
-`--prev-block-payload-file` — a **local** `DaPayloadV2` CBOR file, plain `readFile` at
+`--prev-block-payload-file` — a **local** `DaPayloadV1` CBOR file, plain `readFile` at
 `src/prepare-non-existent-input.ts:406`, not a live DA fetch; non-membership via empty
-genesis trie or `reconstructDaPayloadV2` + `keyValuePhasNonMembershipProof`) →
+genesis trie or `reconstructDaPayloadV1` + `keyValuePhasNonMembershipProof`) →
 `submit-init` → `ne-submit-step-01..04` (step-03 uses the `pexcludes` withdrawal carrier;
 step-04 mints token).
 
@@ -66,7 +66,7 @@ step-04 mints token).
 
 `transition-trace/detect.ts` (fault detection over reconstructed payloads),
 `reconstruct.ts` (rebuild ledger/roots from raw DA payload CBOR and centralize direct
-`SDK.decodeDaPayloadV2` use), `witnesses.ts` (PHAS membership/non-membership
+`SDK.decodeDaPayloadV1` use), `witnesses.ts` (PHAS membership/non-membership
 builders), `phas.ts` (MPF root/proof library shared across families), `fetch.ts`
 (`DaLibp2pRetainedDaSource` — the only real libp2p DA retrieval in the package,
 hash-verifying every response), `submit.ts` (terminal step: burns thread, mints token).

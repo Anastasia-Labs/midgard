@@ -5,6 +5,7 @@
  */
 import { randomUUID } from "node:crypto";
 
+import { isMidgardConsensusProfileV1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { type LucidEvolution, toUnit } from "@lucid-evolution/lucid";
@@ -46,10 +47,13 @@ import {
 } from "@/fibers/speculative-commit-state.js";
 import {
   ConfigError,
+  ContractDeploymentIdentity,
+  type ContractDeploymentIdentityValue,
   Database,
   DatabaseInitializationError,
   Lucid,
   MidgardContracts,
+  MidgardContractServices,
   NativeMpfWorkerPortClient,
   NodeConfig,
 } from "@/services/index.js";
@@ -117,7 +121,7 @@ import {
   MidgardMpf,
   MpfError,
   type NativeMpfBuildContext,
-  type ParkedEventFlatOverlayV2,
+  type ParkedEventFlatOverlayV1,
   type ParkedMpfOverlayV1,
   processMpfs,
   utxoToInsertBatchOp,
@@ -141,11 +145,15 @@ class CommitWorkerInvariantError extends Data.TaggedError(
 }> {}
 
 export const provideCommitBlockWorkerServices = <A, E>(
-  effect: Effect.Effect<A, E, MidgardContracts | Database | NodeConfig>,
+  effect: Effect.Effect<
+    A,
+    E,
+    MidgardContracts | ContractDeploymentIdentity | Database | NodeConfig
+  >,
 ): Effect.Effect<A, E | ConfigError | DatabaseInitializationError, never> =>
   pipe(
     effect,
-    Effect.provide(MidgardContracts.Default),
+    Effect.provide(MidgardContractServices),
     Effect.provide(Database.workerLayer),
     Effect.provide(NodeConfig.layer),
   );
@@ -210,6 +218,7 @@ export const revalidateAndPersistSpeculativeCandidateSources = ({
   excludedUserEventIds,
   stateQueueLeaseToken,
   activeMpfLeaseOwner,
+  consensusProfile,
 }: {
   readonly includedDepositEntries: readonly DepositsDB.Entry[];
   readonly includedForcedTransactionEntries: readonly ForcedTransactionsDB.Entry[];
@@ -231,6 +240,7 @@ export const revalidateAndPersistSpeculativeCandidateSources = ({
   };
   readonly stateQueueLeaseToken: string;
   readonly activeMpfLeaseOwner: string;
+  readonly consensusProfile?: ContractDeploymentIdentityValue["consensusProfile"];
 }): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -627,7 +637,10 @@ export const revalidateAndPersistSpeculativeCandidateSources = ({
       yield* Effect.all(
         [
           resolveDepositsRoot(includedDepositEntries),
-          resolveForcedTransactionsRoot(includedForcedTransactionEntries),
+          resolveForcedTransactionsRoot(
+            includedForcedTransactionEntries,
+            consensusProfile,
+          ),
           resolveWithdrawalsRoot(includedWithdrawalEntries),
         ],
         { concurrency: "unbounded" },
@@ -905,11 +918,11 @@ const resolveCommitBaseLedgerEntries = ({
           }
         }
       } else {
-        const header = yield* SDK.getHeaderFromStateQueueDatum(
+        const header = yield* SDK.getHeaderV1FromStateQueueDatum(
           latestBlock.datum,
         );
         const currentLedgerRootHex = yield* currentLedgerRoot();
-        const headerHash = yield* SDK.hashBlockHeader(header);
+        const headerHash = yield* SDK.hashBlockHeaderV1(header);
         const journal = yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
           Buffer.from(headerHash, "hex"),
         );
@@ -1210,6 +1223,8 @@ export type ExplicitBlockHeaderCommitParams = {
   readonly l2TransactionCount?: bigint;
   readonly transitionTraceRoot?: string;
   readonly eventToStepRoot?: string;
+  readonly validationTracesRoot?: string;
+  readonly validationTraceCount?: bigint;
   readonly endTimeMs?: number;
   readonly awaitConfirmation?: boolean;
 };
@@ -1336,6 +1351,11 @@ export const commitExplicitBlockHeaderProgram = (
         l2TransactionCount: params.l2TransactionCount ?? 0n,
         depositCount: 0n,
       },
+      {
+        validationTracesRoot:
+          params.validationTracesRoot ?? SDK.EMPTY_MERKLE_TREE_ROOT,
+        validationTraceCount: params.validationTraceCount ?? 0n,
+      },
     );
     const explicitBuildResult = yield* buildUnsignedCommitTx(
       contracts,
@@ -1345,6 +1365,7 @@ export const commitExplicitBlockHeaderProgram = (
       params.depositsRoot,
       params.withdrawalsRoot,
       transitionCommitments,
+      contracts.consensusProfile,
       endTime,
     );
     if ("dueWork" in explicitBuildResult) {
@@ -1403,7 +1424,7 @@ type SpeculativeMpfArtifacts =
     }
   | {
       readonly engine: "event_flat";
-      readonly ledger: ParkedEventFlatOverlayV2;
+      readonly ledger: ParkedEventFlatOverlayV1;
       readonly transactions: ParkedMpfOverlayV1;
     };
 
@@ -1440,7 +1461,7 @@ export const parkSpeculativeMpfsForConfirmationWait = ({
         if (eventFlat) {
           artifacts = {
             engine: "event_flat",
-            ledger: yield* ledgerFork.parkEventFlatOverlayV2(),
+            ledger: yield* ledgerFork.parkEventFlatOverlayV1(),
             transactions: yield* transactionsScratch.parkBlockOverlay(),
           };
         } else {
@@ -1472,7 +1493,7 @@ type ResumeParkedOverlay = (
 type ResumeParkedEventFlatOverlay = (
   trieName: string,
   levelDBFilePath: string | undefined,
-  artifact: ParkedEventFlatOverlayV2,
+  artifact: ParkedEventFlatOverlayV1,
 ) => Effect.Effect<MidgardMpf, MpfError>;
 
 type OpenLocalFinalizationTransactionsMpf = () => Effect.Effect<
@@ -1485,7 +1506,7 @@ export const resumeSpeculativeMpfsForSubmission = ({
   ledgerMpfPath,
   needsLocalFinalizationTransactionsMpf,
   resumeParkedOverlay = MidgardMpf.resumeParkedOverlay,
-  resumeParkedEventFlatOverlay = MidgardMpf.resumeParkedEventFlatOverlayV2,
+  resumeParkedEventFlatOverlay = MidgardMpf.resumeParkedEventFlatOverlayV1,
   openLocalFinalizationTransactionsMpf,
 }: {
   readonly artifacts: SpeculativeMpfArtifacts;
@@ -1570,7 +1591,7 @@ const databaseOperationsProgram = (
 ): Effect.Effect<
   WorkerOutput,
   unknown,
-  MidgardContracts | Database | NodeConfig
+  MidgardContracts | ContractDeploymentIdentity | Database | NodeConfig
 > =>
   Effect.gen(function* () {
     let acquiredCommitLucid: Lucid | undefined;
@@ -1618,6 +1639,7 @@ const databaseOperationsProgram = (
           }
         : output;
     const nodeConfig = yield* NodeConfig;
+    const deploymentIdentity = yield* ContractDeploymentIdentity;
     yield* configureCommitMpfRuntime(nodeConfig);
     if (
       nodeConfig.MPF_ENGINE === "architecture_g" &&
@@ -1914,6 +1936,7 @@ const databaseOperationsProgram = (
         mempoolTxHashes: [],
         workerInput,
         sizeOfProcessedTxs: 0,
+        consensusProfile: deploymentIdentity.consensusProfile,
       }).pipe(Effect.provideService(Lucid, lucid));
     }
 
@@ -2011,6 +2034,11 @@ const databaseOperationsProgram = (
     }
     const mpfProcessingStartedAtMs = Date.now();
     mpfProcessingPasses += 1;
+    const proofValidationLucid = isMidgardConsensusProfileV1(
+      deploymentIdentity.consensusProfile,
+    )
+      ? (yield* acquireCommitLucidOnce).api
+      : undefined;
     const processed = yield* processMpfs(
       ledgerMpf,
       transactionsMpf,
@@ -2036,6 +2064,18 @@ const databaseOperationsProgram = (
           ? effectiveUserEventOnlyEndTime
           : undefined,
         initialLedgerEntries,
+        consensusProfile: deploymentIdentity.consensusProfile,
+        forcedValidation:
+          proofValidationLucid === undefined
+            ? undefined
+            : {
+                expectedNetworkId: nodeConfig.NETWORK === "Mainnet" ? 1n : 0n,
+                minFeeA: nodeConfig.MIN_FEE_A,
+                minFeeB: nodeConfig.MIN_FEE_B,
+                bucketConcurrency: nodeConfig.VALIDATION_G4_BUCKET_CONCURRENCY,
+                slotForUnixTime: (unixTimeMs) =>
+                  BigInt(proofValidationLucid.unixTimeToSlot(unixTimeMs)),
+              },
         selectedBaseUtxoRoot: commitBase.root,
         payloadRootCheck: nodeConfig.MPF_PAYLOAD_ROOT_CHECK,
         baseUtxoPayloadAggregate: commitBase.utxoPayloadAggregate,
@@ -2067,9 +2107,12 @@ const databaseOperationsProgram = (
       txRoot,
       transitionTraceRoot,
       eventToStepRoot,
+      validationTracesRoot,
       transitionTraceMembers,
       eventToStepMembers,
+      validationTraceMembers,
       transitionStepCount,
+      validationTraceCount,
       utxoPayloadEntries,
       ledgerDelta,
       utxoPayloadAggregate,
@@ -2200,7 +2243,10 @@ const databaseOperationsProgram = (
         yield* Effect.all(
           [
             resolveDepositsRoot(includedDepositEntries),
-            resolveForcedTransactionsRoot(includedForcedTransactionEntries),
+            resolveForcedTransactionsRoot(
+              includedForcedTransactionEntries,
+              deploymentIdentity.consensusProfile,
+            ),
             resolveWithdrawalsRoot(includedWithdrawalEntries),
           ],
           { concurrency: "unbounded" },
@@ -2271,9 +2317,9 @@ const databaseOperationsProgram = (
       const confirmedHeaderHash =
         confirmedBlock.datum.key === "Empty"
           ? undefined
-          : yield* SDK.getHeaderFromStateQueueDatum(confirmedBlock.datum).pipe(
-              Effect.flatMap(SDK.hashBlockHeader),
-            );
+          : yield* SDK.getHeaderV1FromStateQueueDatum(
+              confirmedBlock.datum,
+            ).pipe(Effect.flatMap(SDK.hashBlockHeaderV1));
       if (confirmedHeaderHash !== speculativeBuild.base.headerHash) {
         return {
           type: "SpeculativeCandidateInvalidatedOutput",
@@ -2303,6 +2349,7 @@ const databaseOperationsProgram = (
             mempoolTxHashes: [],
             workerInput,
             sizeOfProcessedTxs: 0,
+            consensusProfile: deploymentIdentity.consensusProfile,
             beforeTransactionsMpfReset: Effect.all(
               [
                 StateQueueMutationLeasesDB.revalidate(
@@ -2356,7 +2403,9 @@ const databaseOperationsProgram = (
         );
       if (submitSchedulerWindow !== undefined) {
         const confirmedEndTimeMs = Number(
-          (yield* getLatestBlockDatumEndTime(confirmedBlock.datum)).getTime(),
+          (yield* getLatestBlockDatumEndTime(
+            confirmedBlock.datum,
+          )).getTime(),
         );
         const submitFit = resolveCommitEndTimeFit({
           lucid: speculativeLucid.api,
@@ -2403,6 +2452,7 @@ const databaseOperationsProgram = (
           excludedUserEventIds,
           stateQueueLeaseToken: instruction.stateQueueLeaseToken,
           activeMpfLeaseOwner,
+          consensusProfile: deploymentIdentity.consensusProfile,
         });
       submitAvailableConfirmedBlock = instruction.confirmedBlock;
       submitWorkerInput = {
@@ -2462,6 +2512,7 @@ const databaseOperationsProgram = (
         );
         const output = yield* submitDepositOnlyCommit({
           contracts: submissionContracts,
+          consensusProfile: deploymentIdentity.consensusProfile,
           latestBlock,
           endTime: effectiveUserEventOnlyEndTime,
           includedDepositEntries,
@@ -2476,9 +2527,12 @@ const databaseOperationsProgram = (
           txRoot,
           transitionTraceRoot,
           eventToStepRoot,
+          validationTracesRoot,
           transitionTraceMembers,
           eventToStepMembers,
+          validationTraceMembers,
           transitionStepCount,
+          validationTraceCount,
           utxoPayloadEntries,
           ledgerDelta,
           utxoPayloadAggregate,
@@ -2500,6 +2554,7 @@ const databaseOperationsProgram = (
         yield* Effect.logInfo("🔹 Checking for user events...");
         const output = yield* submitTxBackedCommit({
           contracts: submissionContracts,
+          consensusProfile: deploymentIdentity.consensusProfile,
           latestBlock,
           endTime,
           includedDepositEntries,
@@ -2512,9 +2567,12 @@ const databaseOperationsProgram = (
           txRoot,
           transitionTraceRoot,
           eventToStepRoot,
+          validationTracesRoot,
           transitionTraceMembers,
           eventToStepMembers,
+          validationTraceMembers,
           transitionStepCount,
+          validationTraceCount,
           utxoPayloadEntries,
           ledgerDelta,
           utxoPayloadAggregate,
@@ -2550,7 +2608,7 @@ export const runCommitBlockHeaderWorkerProgram = (
 ): Effect.Effect<
   WorkerOutput,
   unknown,
-  MidgardContracts | Database | NodeConfig
+  MidgardContracts | ContractDeploymentIdentity | Database | NodeConfig
 > =>
   Effect.gen(function* () {
     yield* Effect.logInfo("🔹 Retrieving all mempool transactions...");
@@ -2964,7 +3022,7 @@ export const runCommitBlockHeaderCandidateBuildProgram = (
 ): Effect.Effect<
   SpeculativeCandidateReadyOutput["candidate"],
   unknown,
-  MidgardContracts | Database | NodeConfig
+  MidgardContracts | ContractDeploymentIdentity | Database | NodeConfig
 > =>
   Effect.gen(function* () {
     if (workerInput.data.speculativeBuild === undefined) {

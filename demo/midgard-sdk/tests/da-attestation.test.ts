@@ -9,17 +9,17 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyDaAttestationSignatureWitnesses,
-  castStateQueueNodeToData,
+  castStateQueueNodeV1ToData,
   type DaAttestationBuildError,
   DaAttestationDatum,
-  DaAttestationSpendRedeemer,
   type DaAttestationReferenceScripts,
+  DaAttestationSpendRedeemer,
   type DaAttestationStateQueueTarget,
   daAttestationUnit,
   type DaAttestationUtxo,
   type DaParamsDatum,
   EMPTY_ATTESTED_SIGNER_BITMAP,
-  EMPTY_HEADER_TRANSITION_COMMITMENTS,
+  EMPTY_HEADER_TRANSITION_COMMITMENTS_V1,
   encodeDaAttestationSignatureWitnesses,
   encodeLinkedListNodeView,
   incompleteAddDaAttestationSignaturesTxProgram,
@@ -31,7 +31,7 @@ import {
   NO_DA_ATTESTATION,
   signerIndexIsDaAttested,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
-  StateQueueNode,
+  StateQueueNodeV1,
   type StateQueueUTxO,
 } from "../src/index.js";
 
@@ -131,16 +131,20 @@ const makeFixture = () => {
     stateQueue: validator("bb", "addr_state_queue"),
   } as Pick<MidgardValidators, "daAttestation" | "stateQueue">;
   const headerHash = h28("10");
-  const stateQueueNode: StateQueueNode = {
+  const stateQueueNode: StateQueueNodeV1 = {
     header: {
       prevUtxosRoot: h32("01"),
       utxosRoot: h32("02"),
       withdrawalsRoot: h32("05"),
-      ...EMPTY_HEADER_TRANSITION_COMMITMENTS,
+      ...EMPTY_HEADER_TRANSITION_COMMITMENTS_V1,
       transactionsRoot: h32("03"),
       depositsRoot: h32("04"),
       startTime: 1n,
       endTime: 2n,
+      blockSlot: 0n,
+      expectedNetworkId: 0n,
+      minFeeA: 0n,
+      minFeeB: 0n,
       prevHeaderHash: h28("06"),
       operatorVkey: h28("07"),
       protocolVersion: 0n,
@@ -150,7 +154,7 @@ const makeFixture = () => {
   const linkedListNode: LinkedListNodeView = {
     key: { Key: { key: headerHash } },
     next: "Empty",
-    data: castStateQueueNodeToData(
+    data: castStateQueueNodeV1ToData(
       stateQueueNode,
     ) as LinkedListNodeView["data"],
   };
@@ -454,7 +458,7 @@ describe("DA attestation SDK builders", () => {
     if ("Node" in linkedListDatum.data) {
       const stateQueueNode = Data.castFrom(
         linkedListDatum.data.Node.data,
-        StateQueueNode,
+        StateQueueNodeV1,
       );
       expect(stateQueueNode.header).toEqual(
         fixture.target.stateQueueNode.header,

@@ -5,19 +5,24 @@ import { fileURLToPath } from "node:url";
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
   compareOutRefs,
-  computeMidgardNativeTxId,
+  computeMidgardNativeTxIdV1,
+  computeMidgardNativeTxProofCommitmentV1,
   decodeMidgardNativeByteListPreimage,
+  deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
-  encodeMidgardNativeTxCompact,
+  encodeMidgardNativeTxCanonicalV1,
+  encodeMidgardNativeTxCompactV1,
   findOutRefIndex,
-  materializeMidgardNativeTxFromCanonical,
-  MIDGARD_NATIVE_TX_VERSION,
+  materializeMidgardNativeTxFromCanonicalV1,
+  MIDGARD_NATIVE_TX_V1_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  type MidgardNativeTxFull,
+  MIDGARD_PROTOCOL_V1_VERSION,
+  type MidgardNativeTxFullV1,
   outRefLabel,
 } from "@al-ft/midgard-core";
+import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
 import {
   ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX,
   ACTIVE_OPERATORS_ROOT_ASSET_NAME,
@@ -34,17 +39,17 @@ import {
   buildTransitionTraceFaultProofContracts,
   commitCountedRootProgram,
   ConfirmedState,
-  DA_PAYLOAD_V2_VERSION,
+  DA_PAYLOAD_V1_VERSION,
   DoubleSpendStep02Datum,
   DoubleSpendStep03Datum,
   DoubleSpendStep04Datum,
-  EMPTY_HEADER_TRANSITION_COMMITMENTS,
+  EMPTY_HEADER_TRANSITION_COMMITMENTS_V1,
   EMPTY_MERKLE_TREE_ROOT,
-  encodeDaPayloadV2,
+  encodeDaPayloadV1,
   encodeLinkedListNodeView,
   EventKeySchema,
   EventToStepValueSchema,
-  ForcedInclusionTxSchema,
+  ForcedInclusionTxV1Schema,
   FRAUD_PROOF_CATALOGUE_ASSET_NAME,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
@@ -55,10 +60,10 @@ import {
   FraudProofTokenDatum,
   GENESIS_HEADER_HASH,
   GENESIS_PROTOCOL_VERSION,
-  getHeaderFromStateQueueDatum,
-  hashBlockHeader,
-  Header,
+  getHeaderV1FromStateQueueDatum,
+  hashBlockHeaderV1,
   headerHashFromStateQueueUTxO,
+  HeaderV1,
   HUB_ORACLE_ASSET_NAME,
   HubOracleDatum,
   incompleteEmulatorCommitBlockHeaderTxProgram,
@@ -97,6 +102,7 @@ import {
   TransitionStepSchema,
   utxosToStateQueueUTxOs,
   utxoToStateQueueUTxO,
+  ValidationTraceDescriptorV1Schema,
   type WithdrawalValidator as SdkWithdrawalValidator,
 } from "@al-ft/midgard-sdk";
 import {
@@ -140,7 +146,7 @@ import {
   neSubmitStep04,
   parseSpendInputCbors,
   parseSubmitStep01TxInclusion,
-  reconstructDaPayloadV2,
+  reconstructDaPayloadV1,
   resolveProverSigner,
   type StateQueueMutationLeaseCoordinator,
   submitInit,
@@ -306,6 +312,18 @@ const makeAlwaysSucceedsContracts = (
     transitionTrace: makeSpendingValidator(
       alwaysScript(blueprint, "fraud_proofs", "transition_trace", "spend"),
     ),
+    validationTraceDispute: makeSpendingValidator(
+      alwaysScript(blueprint, "fraud_proofs", "transition_trace", "spend"),
+    ),
+  };
+  const fieldPreimageV1 = makeSpendingValidator(
+    alwaysScript(blueprint, "midgard", "state_queue", "spend"),
+  );
+  const fieldReceiptV1 = {
+    ...fieldPreimageV1,
+    ...makeMintingValidator(
+      alwaysScript(blueprint, "midgard", "state_queue", "mint"),
+    ),
   };
 
   return {
@@ -336,6 +354,9 @@ const makeAlwaysSucceedsContracts = (
     deposit: alwaysAuthenticated(blueprint, "deposit"),
     withdrawal: alwaysAuthenticated(blueprint, "withdrawal"),
     txOrder: alwaysAuthenticated(blueprint, "tx_order"),
+    txOrderFieldPreimage: fieldPreimageV1,
+    txOrderFieldReceipt: fieldReceiptV1,
+    cekProgramMaterial: fieldPreimageV1,
     settlement: alwaysAuthenticated(blueprint, "settlement"),
     reserve,
     payout: alwaysAuthenticated(blueprint, "payout"),
@@ -777,9 +798,9 @@ const makeNativeTx = ({
   readonly witnessByte: string;
   readonly validityIntervalStart?: bigint;
   readonly validityIntervalEnd?: bigint;
-}): MidgardNativeTxFull =>
-  materializeMidgardNativeTxFromCanonical({
-    version: MIDGARD_NATIVE_TX_VERSION,
+}): MidgardNativeTxFullV1 =>
+  materializeMidgardNativeTxFromCanonicalV1({
+    version: MIDGARD_NATIVE_TX_V1_VERSION,
     validity: "TxIsValid",
     body: {
       spendInputsPreimageCbor: encodeCbor(spendInputCbors),
@@ -807,15 +828,15 @@ const makeNativeTx = ({
   });
 
 const compactTxEntry = (
-  nativeTx: MidgardNativeTxFull,
+  nativeTx: MidgardNativeTxFullV1,
 ): Omit<TransactionInclusionEntry, "inclusion"> => ({
   nativeTx: nativeTxFromCoreCompact(nativeTx.compact),
-  nativeTxId: computeMidgardNativeTxId(nativeTx).toString("hex"),
+  nativeTxId: computeMidgardNativeTxIdV1(nativeTx).toString("hex"),
   spendInputCbors: decodeSpendInputCbors(nativeTx),
 });
 
 const decodeSpendInputCbors = (
-  nativeTx: MidgardNativeTxFull,
+  nativeTx: MidgardNativeTxFullV1,
 ): readonly string[] =>
   decodeMidgardNativeByteListPreimage(
     nativeTx.body.spendInputsPreimageCbor,
@@ -855,7 +876,7 @@ const buildTransactionInclusionFixture = async (): Promise<{
     await trie.insert(
       Buffer.from(entry.nativeTxId, "hex"),
       Buffer.from(
-        encodeMidgardNativeTxCompact(
+        encodeMidgardNativeTxCompactV1(
           entry === tx1 ? tx1Native.compact : tx2Native.compact,
         ),
       ),
@@ -870,7 +891,7 @@ const buildTransactionInclusionFixture = async (): Promise<{
       inclusion: {
         nativeTxId: entry.nativeTxId,
         nativeTx: entry.nativeTx,
-        nativeTxCompactCbor: encodeMidgardNativeTxCompact(
+        nativeTxCompactCbor: encodeMidgardNativeTxCompactV1(
           entry === tx1 ? tx1Native.compact : tx2Native.compact,
         ).toString("hex"),
         transactionsPhasRoot: trieRootHex(trie),
@@ -939,7 +960,7 @@ const buildInvalidRangeTransactionInclusionFixture = async ({
   const trie = new Trie(store);
   await trie.insert(
     Buffer.from(badTx.nativeTxId, "hex"),
-    Buffer.from(encodeMidgardNativeTxCompact(badNativeTx.compact)),
+    Buffer.from(encodeMidgardNativeTxCompactV1(badNativeTx.compact)),
   );
   const proof = await trie.prove(Buffer.from(badTx.nativeTxId, "hex"));
 
@@ -950,7 +971,7 @@ const buildInvalidRangeTransactionInclusionFixture = async ({
       inclusion: {
         nativeTxId: badTx.nativeTxId,
         nativeTx: badTx.nativeTx,
-        nativeTxCompactCbor: encodeMidgardNativeTxCompact(
+        nativeTxCompactCbor: encodeMidgardNativeTxCompactV1(
           badNativeTx.compact,
         ).toString("hex"),
         transactionsPhasRoot: trieRootHex(trie),
@@ -994,7 +1015,7 @@ const buildNonExistentInputFixture = async (): Promise<{
     witnessByte: "e5",
   });
   const badTx = compactTxEntry(badTxNative);
-  const badTxCompactCbor = encodeMidgardNativeTxCompact(badTxNative.compact);
+  const badTxCompactCbor = encodeMidgardNativeTxCompactV1(badTxNative.compact);
 
   // A second, well-formed L2 tx so the transactions trie is non-trivial (proofs
   // for a single-element trie are degenerate).
@@ -1008,7 +1029,7 @@ const buildNonExistentInputFixture = async (): Promise<{
     witnessByte: "c5",
   });
   const otherTx = compactTxEntry(otherTxNative);
-  const otherTxCompactCbor = encodeMidgardNativeTxCompact(
+  const otherTxCompactCbor = encodeMidgardNativeTxCompactV1(
     otherTxNative.compact,
   );
 
@@ -1151,7 +1172,7 @@ const countedTransactionsRoot = (
 ): Promise<string> =>
   Effect.runPromise(
     commitCountedRootProgram({
-      domain: ROOT_DOMAINS.transactions,
+      domain: ROOT_DOMAINS.transactionsV1,
       phasRoot: rawRoot,
       count,
     }),
@@ -1162,19 +1183,23 @@ const makeHeader = (
   now: number,
   transactionsRoot = EMPTY_MERKLE_TREE_ROOT,
   l2TransactionCount = 0n,
-): Header => ({
+): HeaderV1 => ({
   prevUtxosRoot: EMPTY_MERKLE_TREE_ROOT,
   utxosRoot: EMPTY_MERKLE_TREE_ROOT,
   withdrawalsRoot: EMPTY_MERKLE_TREE_ROOT,
-  ...EMPTY_HEADER_TRANSITION_COMMITMENTS,
+  ...EMPTY_HEADER_TRANSITION_COMMITMENTS_V1,
   l2TransactionCount,
   transactionsRoot,
   depositsRoot: EMPTY_MERKLE_TREE_ROOT,
   startTime: BigInt(now),
   endTime: BigInt(now + 1_000),
+  blockSlot: 0n,
+  expectedNetworkId: 0n,
+  minFeeA: 0n,
+  minFeeB: 0n,
   prevHeaderHash: GENESIS_HEADER_HASH,
   operatorVkey,
-  protocolVersion: GENESIS_PROTOCOL_VERSION,
+  protocolVersion: BigInt(MIDGARD_PROTOCOL_V1_VERSION),
 });
 
 const transitionTraceOutRef = (byte: string): OutputReference => ({
@@ -1209,29 +1234,6 @@ const sortedDaEntries = (
     left < right ? -1 : left > right ? 1 : 0,
   );
 
-const transitionTraceTxBody = (byte: string) => ({
-  spend_inputs: h32(byte),
-  reference_inputs: h32("b1"),
-  outputs: h32("b2"),
-  fee: 0n,
-  validity_interval: {
-    lower_bound: {
-      bound_type: "NegativeInfinity",
-      is_inclusive: true,
-    },
-    upper_bound: {
-      bound_type: "PositiveInfinity",
-      is_inclusive: false,
-    },
-  },
-  required_observers: h32("b3"),
-  required_signer_hashes: h32("b4"),
-  mint: h32("b5"),
-  script_integrity_hash: h32("b6"),
-  auxiliary_data_hash: h32("b7"),
-  network_id: "Testnet",
-});
-
 const buildInvalidForcedTransitionTraceFixture = async ({
   operatorVkey,
   now,
@@ -1248,10 +1250,29 @@ const buildInvalidForcedTransitionTraceFixture = async ({
       value: Buffer.from(finalUtxo[1], "hex"),
     },
   ]);
+  const forcedNativeTx = makeNativeTx({
+    spendInputCbors: [],
+    fee: 0n,
+    referenceByte: "b1",
+    outputByte: "b2",
+    witnessByte: "b8",
+  });
+  const forcedCanonicalCbor =
+    encodeMidgardNativeTxCanonicalV1(forcedNativeTx);
+  const forcedSource =
+    deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(
+      forcedCanonicalCbor,
+    );
   const forcedTransaction = {
-    tx_compact: {
-      body: transitionTraceTxBody("b0"),
-      wits: h32("b8"),
+    tx_id: computeMidgardNativeTxIdV1(forcedNativeTx).toString("hex"),
+    transaction_commitment:
+      computeMidgardNativeTxProofCommitmentV1(forcedSource).toString("hex"),
+    source: {
+      compact_cbor: forcedSource.compactCbor.toString("hex"),
+      witness_set_compact_cbor:
+        forcedSource.witnessSetCompactCbor.toString("hex"),
+      field_preimage_lengths_cbor:
+        forcedSource.fieldPreimageLengthsCbor.toString("hex"),
     },
     operator_validity: "FailedScript",
   };
@@ -1272,7 +1293,30 @@ const buildInvalidForcedTransitionTraceFixture = async ({
       key: txOrderId,
       keySchema: OutputReference as never,
       value: forcedTransaction,
-      valueSchema: ForcedInclusionTxSchema,
+      valueSchema: ForcedInclusionTxV1Schema,
+    }),
+  ];
+  const forcedPreimageEntries = [
+    transitionTraceRawEntry(
+      forcedEntries[0]![0],
+      forcedCanonicalCbor.toString("hex"),
+    ),
+  ];
+  const validationTraceEntries = [
+    transitionTraceDaEntry({
+      key: eventKey,
+      keySchema: EventKeySchema,
+      value: {
+        schema_version: 1n,
+        machine_version: 1n,
+        trace_root: h32("c1"),
+        step_count: 1n,
+        initial_state_hash: h32("c2"),
+        terminal_state_hash: h32("c3"),
+        verdict: "Rejected",
+        rejection_code_hash: h32("c4"),
+      },
+      valueSchema: ValidationTraceDescriptorV1Schema,
     }),
   ];
   const traceEntries = [
@@ -1292,7 +1336,7 @@ const buildInvalidForcedTransitionTraceFixture = async ({
     }),
   ];
   const forcedRoot = await buildCountedRoot(
-    ROOT_DOMAINS.forcedTransactions,
+    ROOT_DOMAINS.forcedTransactionsV1,
     forcedEntries.map(([key, value]) => ({
       key: Buffer.from(key, "hex"),
       value: Buffer.from(value, "hex"),
@@ -1312,6 +1356,13 @@ const buildInvalidForcedTransitionTraceFixture = async ({
       value: Buffer.from(value, "hex"),
     })),
   );
+  const validationTracesRoot = await buildCountedRoot(
+    ROOT_DOMAINS.validationTraces,
+    validationTraceEntries.map(([key, value]) => ({
+      key: Buffer.from(key, "hex"),
+      value: Buffer.from(value, "hex"),
+    })),
+  );
   const counts = {
     withdrawalCount: 0n,
     forcedTransactionCount: 1n,
@@ -1319,33 +1370,43 @@ const buildInvalidForcedTransitionTraceFixture = async ({
     depositCount: 0n,
     totalEventCount: 1n,
     transitionStepCount: 1n,
+    validationTraceCount: 1n,
   };
-  const header: Header = {
+  const header: HeaderV1 = {
     ...makeHeader(operatorVkey, now),
     utxosRoot: finalUtxosRoot.root,
     forcedTransactionsRoot: forcedRoot.root,
     transitionTraceRoot: traceRoot.root,
     eventToStepRoot: eventToStepRoot.root,
+    validationTracesRoot: validationTracesRoot.root,
     ...counts,
   };
-  const headerHash = await Effect.runPromise(hashBlockHeader(header));
-  const payloadCbor = encodeDaPayloadV2({
-    version: DA_PAYLOAD_V2_VERSION,
-    block_body: {
-      header_hash: headerHash,
-      header,
-      utxos: sortedDaEntries([finalUtxo]),
-      withdrawals: [],
-      forced_transactions: sortedDaEntries(forcedEntries),
-      transactions: [],
-      deposits: [],
-      transition_trace: sortedDaEntries(traceEntries),
-      event_to_step: sortedDaEntries(eventToStepEntries),
-      counts,
-    },
-  });
-  const reconstruction = await reconstructDaPayloadV2({
-    payloadCbor,
+  const headerHash = await Effect.runPromise(hashBlockHeaderV1(header));
+  const payloadEnvelopeCbor = await wrapDaPayloadV1(
+    encodeDaPayloadV1({
+      version: DA_PAYLOAD_V1_VERSION,
+      block_body: {
+        header_hash: headerHash,
+        header,
+        utxos: sortedDaEntries([finalUtxo]),
+        withdrawals: [],
+        forced_transactions: sortedDaEntries(forcedEntries),
+        transactions: [],
+        deposits: [],
+        transition_trace: sortedDaEntries(traceEntries),
+        event_to_step: sortedDaEntries(eventToStepEntries),
+        transaction_preimages: [],
+        forced_transaction_preimages:
+          sortedDaEntries(forcedPreimageEntries),
+        cek_program_material: [],
+        validation_traces: sortedDaEntries(validationTraceEntries),
+        counts,
+      },
+    }),
+    { mode: "identity" },
+  );
+  const reconstruction = await reconstructDaPayloadV1({
+    payloadEnvelopeCbor,
     expectedHeaderHash: headerHash,
     committedHeader: header,
   });
@@ -1373,7 +1434,7 @@ const submitSetupTx = async ({
   readonly contracts: MidgardValidators;
   readonly nonceUtxo: UTxO;
   readonly catalogue: FraudProofCatalogueDeploymentInfo;
-  readonly header: Header;
+  readonly header: HeaderV1;
 }): Promise<{
   readonly fraudulentBlockOutRef: string;
   readonly headerHash: string;
@@ -1390,7 +1451,7 @@ const submitSetupTx = async ({
   readonly registeredOperatorsRoot: UTxO;
 }> => {
   const hubOracleDatum = await Effect.runPromise(makeHubOracleDatum(contracts));
-  const headerHash = await Effect.runPromise(hashBlockHeader(header));
+  const headerHash = await Effect.runPromise(hashBlockHeaderV1(header));
   const hubOracleUnit = toUnit(
     contracts.hubOracle.policyId,
     HUB_ORACLE_ASSET_NAME,
@@ -1467,7 +1528,7 @@ const submitSetupTx = async ({
     .mintAssets(
       { [stateQueueRootUnit]: 1n },
       Data.to(
-        { Init: { output_index: SETUP_OUTPUT_INDEX.stateQueueRoot } },
+        { InitV1: { output_index: SETUP_OUTPUT_INDEX.stateQueueRoot } },
         StateQueueRedeemer,
       ),
     )
@@ -1891,7 +1952,7 @@ const submitSetupTx = async ({
     utxoToStateQueueUTxO(fraudulentBlockUtxo, contracts.stateQueue.policyId),
   );
   const committedHeader = await Effect.runPromise(
-    getHeaderFromStateQueueDatum(committedBlock.datum),
+    getHeaderV1FromStateQueueDatum(committedBlock.datum),
   );
   expect(committedHeader.transactionsRoot).toBe(header.transactionsRoot);
   const continuedRoot = await Effect.runPromise(
@@ -1929,7 +1990,7 @@ const submitSuccessorBlockTx = async ({
   readonly lucid: Awaited<ReturnType<typeof Lucid>>;
   readonly contracts: MidgardValidators;
   readonly anchorBlockUnit: string;
-  readonly header: Header;
+  readonly header: HeaderV1;
   readonly hubOracle: UTxO;
   readonly scheduler: UTxO;
   readonly activeOperatorNode: UTxO;
@@ -1951,7 +2012,7 @@ const submitSuccessorBlockTx = async ({
   const anchorBlock = await Effect.runPromise(
     utxoToStateQueueUTxO(anchorBlockUtxo, contracts.stateQueue.policyId),
   );
-  const successorHeaderHash = await Effect.runPromise(hashBlockHeader(header));
+  const successorHeaderHash = await Effect.runPromise(hashBlockHeaderV1(header));
   const successorBlockUnit = toUnit(
     contracts.stateQueue.policyId,
     STATE_QUEUE_NODE_ASSET_NAME_PREFIX + successorHeaderHash,
@@ -2059,7 +2120,7 @@ const submitSuccessorBlockTx = async ({
   const continuedAnchor = await Effect.runPromise(
     utxoToStateQueueUTxO(continuedAnchorUtxo, contracts.stateQueue.policyId),
   );
-  await Effect.runPromise(getHeaderFromStateQueueDatum(continuedAnchor.datum));
+  await Effect.runPromise(getHeaderV1FromStateQueueDatum(continuedAnchor.datum));
   expect(continuedAnchor.datum.next).toEqual({
     Key: { key: successorHeaderHash },
   });
@@ -2153,7 +2214,7 @@ const buildRemovalDeploymentInfo = (
 type SuccessorBlockFixture = Awaited<
   ReturnType<typeof submitSuccessorBlockTx>
 > & {
-  readonly header: Header;
+  readonly header: HeaderV1;
 };
 
 type ProvedDoubleSpendFixture = {
@@ -2167,7 +2228,7 @@ type ProvedDoubleSpendFixture = {
   readonly transactionInclusion: Awaited<
     ReturnType<typeof buildTransactionInclusionFixture>
   >;
-  readonly fraudulentHeader: Header;
+  readonly fraudulentHeader: HeaderV1;
   readonly headerHash: string;
   readonly setup: Awaited<ReturnType<typeof submitSetupTx>>;
   readonly successors: readonly SuccessorBlockFixture[];

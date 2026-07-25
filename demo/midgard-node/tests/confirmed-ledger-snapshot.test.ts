@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import { PendingBlockFinalizationsDB } from "@/database/index.js";
 import * as Ledger from "@/database/utils/ledger.js";
 import { materializeConfirmedLedgerSnapshot } from "@/transactions/state-queue/confirmed-ledger-snapshot.js";
+import { computeLedgerMpfRootFromLedgerEntries } from "@/workers/utils/mpf.js";
 
 import { makeMidgardTxOutput } from "./midgard-output-helpers.js";
 
@@ -22,19 +23,29 @@ const txOutRefCbor = (txHashByte: string, outputIndex: bigint) =>
   );
 
 describe("confirmed ledger snapshot materialization", () => {
-  it("decodes finalized journal UTxO members into confirmed ledger entries", async () => {
+  it("decodes finalized V1 journal ledger deltas into confirmed ledger entries", async () => {
     const outref = txOutRefCbor("42", 3n);
     const output = makeMidgardTxOutput(
       CML.Address.from_bech32(VALID_ADDRESS),
       CML.Value.from_coin(2_000_000n),
     );
     const now = new Date("2026-06-19T00:00:00.000Z");
+    const expectedRoot = await Effect.runPromise(
+      computeLedgerMpfRootFromLedgerEntries([
+        {
+          [Ledger.Columns.OUTREF]: outref,
+          [Ledger.Columns.OUTPUT]: Buffer.from(output.to_cbor_bytes()),
+        },
+      ]),
+    );
     const record = {
       [PendingBlockFinalizationsDB.Columns.HEADER_HASH]: Buffer.alloc(28, 1),
       [PendingBlockFinalizationsDB.Columns.HEADER_CBOR]: Buffer.from(
         "d87980",
         "hex",
       ),
+      [PendingBlockFinalizationsDB.Columns.CONSENSUS_PROFILE_ID]:
+        "midgard-consensus-v1",
       [PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH]: Buffer.alloc(
         32,
         2,
@@ -60,7 +71,7 @@ describe("confirmed ledger snapshot materialization", () => {
       [PendingBlockFinalizationsDB.Columns.BLOCK_START_TIME]: now,
       [PendingBlockFinalizationsDB.Columns.BLOCK_END_TIME]: now,
       [PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT]:
-        SDK.EMPTY_MERKLE_TREE_ROOT,
+        expectedRoot,
       [PendingBlockFinalizationsDB.Columns.EXPECTED_FORCED_TRANSACTIONS_ROOT]:
         SDK.EMPTY_MERKLE_TREE_ROOT,
       [PendingBlockFinalizationsDB.Columns.EXPECTED_TRANSACTIONS_ROOT]:
@@ -73,6 +84,8 @@ describe("confirmed ledger snapshot materialization", () => {
         SDK.EMPTY_MERKLE_TREE_ROOT,
       [PendingBlockFinalizationsDB.Columns.EXPECTED_EVENT_TO_STEP_ROOT]:
         SDK.EMPTY_MERKLE_TREE_ROOT,
+      [PendingBlockFinalizationsDB.Columns.EXPECTED_VALIDATION_TRACES_ROOT]:
+        SDK.EMPTY_MERKLE_TREE_ROOT,
       [PendingBlockFinalizationsDB.Columns.EXPECTED_WITHDRAWAL_COUNT]: 0n,
       [PendingBlockFinalizationsDB.Columns.EXPECTED_FORCED_TRANSACTION_COUNT]:
         0n,
@@ -80,6 +93,14 @@ describe("confirmed ledger snapshot materialization", () => {
       [PendingBlockFinalizationsDB.Columns.EXPECTED_DEPOSIT_COUNT]: 0n,
       [PendingBlockFinalizationsDB.Columns.EXPECTED_TOTAL_EVENT_COUNT]: 0n,
       [PendingBlockFinalizationsDB.Columns.EXPECTED_TRANSITION_STEP_COUNT]: 0n,
+      [PendingBlockFinalizationsDB.Columns.EXPECTED_VALIDATION_TRACE_COUNT]: 0n,
+      [PendingBlockFinalizationsDB.Columns.LEDGER_DELTA_SPENT]: [],
+      [PendingBlockFinalizationsDB.Columns.LEDGER_DELTA_PRODUCED]: [
+        {
+          outref: outref.toString("hex"),
+          output: Buffer.from(output.to_cbor_bytes()).toString("hex"),
+        },
+      ],
       [PendingBlockFinalizationsDB.Columns.STATUS]:
         PendingBlockFinalizationsDB.Status.Finalized,
       [PendingBlockFinalizationsDB.Columns.OBSERVED_CONFIRMED_AT_MS]: 1n,
@@ -95,25 +116,24 @@ describe("confirmed ledger snapshot materialization", () => {
       txMembers: [],
       transitionTraceMembers: [],
       eventToStepMembers: [],
-      utxoMembers: [
-        {
-          [PendingBlockFinalizationsDB.UtxoColumns.HEADER_HASH]: Buffer.alloc(
-            28,
-            1,
-          ),
+      validationTraceMembers: [],
+      ledgerDelta: {
+        spent: [],
+        produced: [
+          {
           [PendingBlockFinalizationsDB.UtxoColumns.OUTREF]: outref,
-          [PendingBlockFinalizationsDB.UtxoColumns.ORDINAL]: 0,
           [PendingBlockFinalizationsDB.UtxoColumns.OUTPUT]:
             output.to_cbor_bytes(),
-        },
-      ],
+          },
+        ],
+      },
     } satisfies PendingBlockFinalizationsDB.Record;
 
     const snapshot = await Effect.runPromise(
       materializeConfirmedLedgerSnapshot(record).pipe(
         Effect.provideService(
           SqlClient.SqlClient,
-          {} as SqlClient.SqlClient,
+          (() => Effect.succeed([])) as unknown as SqlClient.SqlClient,
         ),
       ),
     );

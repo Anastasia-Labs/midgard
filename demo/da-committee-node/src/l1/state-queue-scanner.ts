@@ -1,3 +1,7 @@
+import {
+  isMidgardConsensusProfileV1,
+  type MidgardConsensusProfileV1,
+} from "@al-ft/midgard-core/consensus-profile-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
@@ -17,6 +21,7 @@ export type StateQueueScanConfig = {
   readonly deploymentFingerprint: string;
   readonly daAttestationPolicyId: string;
   readonly finalityDepth: number;
+  readonly consensusProfile: MidgardConsensusProfileV1;
 };
 
 export const scanStateQueue = async (
@@ -29,8 +34,8 @@ export const scanStateQueue = async (
     .map((node) => validateObservedNode(node, config));
 };
 
-export const hashBlockHeader = (header: SDK.Header): string => {
-  const headerCborHex = Data.to(header as never, SDK.Header as never);
+export const hashBlockHeaderV1 = (header: SDK.HeaderV1): string => {
+  const headerCborHex = Data.to(header, SDK.HeaderV1);
   return bytesToHex(blake2b(Buffer.from(headerCborHex, "hex"), { dkLen: 28 }));
 };
 
@@ -39,7 +44,10 @@ const validateObservedNode = (
   config: StateQueueScanConfig,
 ): StateQueueHeaderRecord => {
   const validationErrors: string[] = [];
-  const computedHeaderHash = hashBlockHeader(node.header);
+  if (!isMidgardConsensusProfileV1(config.consensusProfile)) {
+    validationErrors.push("consensus_profile_mismatch");
+  }
+  const computedHeaderHash = hashBlockHeaderV1(node.header);
   const linkedListKey = normalizeHex(node.linkedListKey, {
     fieldName: "state queue linked-list key",
     byteLength: 28,

@@ -174,7 +174,7 @@ const validationSummaryFromHeader = (
   header: StateQueueHeaderRecord,
   rootSummary: PayloadRootSet,
 ): ValidationSummary => ({
-  payloadVersion: Number(SDK.DA_PAYLOAD_V2_VERSION),
+  payloadVersion: Number(SDK.DA_PAYLOAD_V1_VERSION),
   rootsMatch: true,
   stateQueueOutRef: header.stateQueueOutRef,
   headerHash: header.headerHash,

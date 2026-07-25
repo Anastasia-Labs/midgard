@@ -11,7 +11,6 @@ import {
 import { parseHex, parseSignedInteger, stringifyJson } from "./json-file.js";
 import {
   buildTrieView,
-  compatibilityReasons,
   decodeTransactionMaterial,
   type FetchLike,
   fetchNodeBlockTransactions,
@@ -20,6 +19,7 @@ import {
   type PreparedTxInclusionJson,
   readNodeTransactionPayloadsFile,
   requireProof,
+  requireTransactionsRootMatchV1,
 } from "./prepare-double-spend.js";
 
 export type InvalidRangeViolationReason = NonNullable<
@@ -34,7 +34,6 @@ export type PrepareInvalidRangeCliConfig = {
   readonly expectedTransactionsRoot?: string;
   readonly txId?: string;
   readonly outputDir?: string;
-  readonly allowIncompatibleOutput?: boolean;
   readonly fetchImpl?: FetchLike;
 };
 
@@ -46,7 +45,6 @@ export type PrepareInvalidRangeFromFileConfig = {
   readonly expectedTransactionsRoot?: string;
   readonly txId?: string;
   readonly outputDir?: string;
-  readonly allowIncompatibleOutput?: boolean;
 };
 
 export type PreparedInvalidRangeTx = {
@@ -65,17 +63,12 @@ export type PreparedInvalidRangeOutput = {
     readonly validFrom: bigint;
     readonly validTo: bigint;
   };
-  readonly compatibility: {
-    readonly canUseSubmitStepCommands: boolean;
-    readonly reasons: readonly string[];
-  };
   readonly commitmentEncodings: {
     readonly nativeNode: {
       readonly transactionsRoot: string;
     };
     readonly expectedTransactionsRoot?: {
       readonly value: string;
-      readonly matchesNativeNodeRoot: boolean;
     };
   };
   readonly tx: PreparedInvalidRangeTx;
@@ -105,20 +98,10 @@ const parseBlockValidity = ({
 const writePreparedFiles = async ({
   output,
   outputDir,
-  allowIncompatibleOutput,
 }: {
   readonly output: PreparedInvalidRangeOutput;
   readonly outputDir: string;
-  readonly allowIncompatibleOutput: boolean;
 }): Promise<PreparedInvalidRangeOutput["files"]> => {
-  if (
-    !output.compatibility.canUseSubmitStepCommands &&
-    !allowIncompatibleOutput
-  ) {
-    throw new Error(
-      "Refusing to write submit-step material because the selected block is not compatible with the current fault-proof ABI. Pass --allow-incompatible-output to write diagnostic files anyway.",
-    );
-  }
   await mkdir(outputDir, { recursive: true });
   const paths = {
     txInclusionPath: join(outputDir, "tx-inclusion.json"),
@@ -134,7 +117,6 @@ const writePreparedFiles = async ({
         txNodeTxId: output.tx.nodeTxId,
         normalizedValidityRange: output.tx.normalizedValidityRange,
         violationReason: output.tx.violationReason,
-        compatibility: output.compatibility,
         commitmentEncodings: output.commitmentEncodings,
       }),
     ),
@@ -150,7 +132,6 @@ export const prepareInvalidRangeFromTransactions = async ({
   expectedTransactionsRoot,
   txId,
   outputDir,
-  allowIncompatibleOutput = false,
 }: {
   readonly headerHash: string;
   readonly transactions: readonly NodeTransactionPayload[];
@@ -159,7 +140,6 @@ export const prepareInvalidRangeFromTransactions = async ({
   readonly expectedTransactionsRoot?: string;
   readonly txId?: string;
   readonly outputDir?: string;
-  readonly allowIncompatibleOutput?: boolean;
 }): Promise<PreparedInvalidRangeOutput> => {
   const normalizedHeaderHash = parseHex(headerHash, "--header-hash", 28);
   const blockValidity = parseBlockValidity({ blockValidFrom, blockValidTo });
@@ -222,7 +202,7 @@ export const prepareInvalidRangeFromTransactions = async ({
     nativeTrieItem(selected.tx).key,
     "invalid-range tx",
   );
-  const reasons = compatibilityReasons({
+  requireTransactionsRootMatchV1({
     nativeRoot: nativeTrie.root,
     expectedTransactionsRoot: normalizedExpectedRoot,
   });
@@ -230,10 +210,6 @@ export const prepareInvalidRangeFromTransactions = async ({
     headerHash: normalizedHeaderHash,
     txCount: decoded.length,
     blockValidity,
-    compatibility: {
-      canUseSubmitStepCommands: reasons.length === 0,
-      reasons,
-    },
     commitmentEncodings: {
       nativeNode: {
         transactionsRoot: nativeTrie.root,
@@ -243,7 +219,6 @@ export const prepareInvalidRangeFromTransactions = async ({
         : {
             expectedTransactionsRoot: {
               value: normalizedExpectedRoot,
-              matchesNativeNodeRoot: normalizedExpectedRoot === nativeTrie.root,
             },
           }),
     },
@@ -268,7 +243,6 @@ export const prepareInvalidRangeFromTransactions = async ({
   const files = await writePreparedFiles({
     output: baseOutput,
     outputDir,
-    allowIncompatibleOutput,
   });
   return { ...baseOutput, files };
 };
@@ -290,7 +264,6 @@ export const prepareInvalidRangeFromNode = async (
     expectedTransactionsRoot: config.expectedTransactionsRoot,
     txId: config.txId,
     outputDir: config.outputDir,
-    allowIncompatibleOutput: config.allowIncompatibleOutput,
   });
 };
 
@@ -308,6 +281,5 @@ export const prepareInvalidRangeFromFile = async (
     expectedTransactionsRoot: config.expectedTransactionsRoot,
     txId: config.txId,
     outputDir: config.outputDir,
-    allowIncompatibleOutput: config.allowIncompatibleOutput,
   });
 };

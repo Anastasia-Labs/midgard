@@ -1,6 +1,4 @@
 use aiken/cbor
-use aiken/crypto.{blake2b_256}
-use aiken/interval
 use aiken/merkle_patricia_forestry.{Leaf}
 use aiken/merkle_patricia_forestry as mpf
 use aiken/primitive/bytearray
@@ -8,12 +6,12 @@ use cardano/address.{Address}
 use cardano/assets
 use cardano/transaction.{InlineDatum, Input, NoDatum, Output, OutputReference}
 use env
+use midgard/bounded_blob_v1
 use midgard/common/utils
-use midgard/fraud_proofs/transition_trace/proof
 use midgard/fraud_proofs/native_tx/compact as native_compact
 use midgard/fraud_proofs/native_tx/components as native_components
-use midgard/fraud_proofs/native_tx/preimages as native_preimages
 use midgard/fraud_proofs/native_tx/types as native_types
+use midgard/fraud_proofs/transition_trace/proof
 use midgard/hub_oracle
 use midgard/ledger_state
 use midgard/transition_trace
@@ -76,8 +74,8 @@ fn dummy_hub_datum() -> hub_oracle.Datum {
   }
 }
 
-fn base_header() -> ledger_state.Header {
-  ledger_state.Header {
+fn base_header() -> ledger_state.HeaderV1 {
+  ledger_state.HeaderV1 {
     prev_utxos_root: h32_a,
     utxos_root: h32_b,
     withdrawals_root: env.empty_merkle_tree_root,
@@ -86,25 +84,31 @@ fn base_header() -> ledger_state.Header {
     deposits_root: env.empty_merkle_tree_root,
     transition_trace_root: env.empty_merkle_tree_root,
     event_to_step_root: env.empty_merkle_tree_root,
+    validation_traces_root: env.empty_merkle_tree_root,
     withdrawal_count: 0,
     forced_transaction_count: 0,
     l2_transaction_count: 0,
     deposit_count: 0,
     total_event_count: 0,
     transition_step_count: 0,
+    validation_trace_count: 0,
     start_time: 10,
     end_time: 20,
+    block_slot: 0,
+    expected_network_id: 0,
+    min_fee_a: 0,
+    min_fee_b: 0,
     prev_header_hash: h28_b,
     operator_vkey: h28_a,
-    protocol_version: 1,
+    protocol_version: ledger_state.protocol_version_v1,
   }
 }
 
 fn traced_header(
   trace_root: ByteArray,
   event_to_step_root: ByteArray,
-) -> ledger_state.Header {
-  ledger_state.Header {
+) -> ledger_state.HeaderV1 {
+  ledger_state.HeaderV1 {
     ..base_header(),
     transition_trace_root: trace_root,
     event_to_step_root,
@@ -115,7 +119,7 @@ fn traced_header(
 }
 
 fn prove(
-  header: ledger_state.Header,
+  header: ledger_state.HeaderV1,
   fault: proof.TransitionFault,
 ) -> proof.TransitionFaultProof {
   let header_data: Data = header
@@ -126,7 +130,7 @@ fn prove(
   }
 }
 
-fn asset_name_for(header: ledger_state.Header) -> ByteArray {
+fn asset_name_for(header: ledger_state.HeaderV1) -> ByteArray {
   let header_data: Data = header
   fraud_category_id
     |> bytearray.concat(utils.serialise_and_hash_28(header_data))
@@ -267,18 +271,18 @@ fn deposit_source_membership(
 
 fn forced_source_membership(
   tx_order_id: ledger_state.TxOrderId,
-  tx: ledger_state.ForcedInclusionTx,
+  tx: ledger_state.ForcedInclusionTxV1,
 ) -> transition_trace.RootMembershipProof<
   ledger_state.TxOrderId,
-  ledger_state.ForcedInclusionTx,
+  ledger_state.ForcedInclusionTxV1,
 > {
   let key_bytes = cbor.serialise(tx_order_id)
   let value_bytes = cbor.serialise(tx)
   let phas_root = mpf.root(mpf.insert(mpf.empty, key_bytes, value_bytes, []))
   transition_trace.RootMembershipProof {
-    domain: transition_trace.ForcedTransactionsRootDomain,
+    domain: transition_trace.ForcedTransactionsV1RootDomain,
     root: transition_trace.commit_counted_root(
-      transition_trace.ForcedTransactionsRootDomain,
+      transition_trace.ForcedTransactionsV1RootDomain,
       phas_root,
       1,
     ),
@@ -296,9 +300,9 @@ fn raw_l2_source_membership(
 ) -> transition_trace.RootMembershipProof<ByteArray, ByteArray> {
   let phas_root = mpf.root(mpf.insert(mpf.empty, tx_id, compact_cbor, []))
   transition_trace.RootMembershipProof {
-    domain: transition_trace.TransactionsRootDomain,
+    domain: transition_trace.TransactionsV1RootDomain,
     root: transition_trace.commit_counted_root(
-      transition_trace.TransactionsRootDomain,
+      transition_trace.TransactionsV1RootDomain,
       phas_root,
       1,
     ),
@@ -317,10 +321,6 @@ fn ledger_outref_key(out_ref: OutputReference) -> ByteArray {
       output_index: out_ref.output_index,
     },
   )
-}
-
-fn native_input(tx_id: ByteArray, output_index: Int) -> native_types.MidgardTxInput {
-  native_types.MidgardTxInput { tx_id, output_index }
 }
 
 fn native_output() -> native_types.MidgardTxOutput {
@@ -381,12 +381,11 @@ fn deposit_reference_input(
   info: ledger_state.DepositInfo,
   event_asset_name: ByteArray,
 ) -> Input {
-  let deposit_datum =
-    deposit.Datum {
-      event: ledger_state.DepositEvent { id: deposit_id, info },
-      inclusion_time: 15,
-      witness: h28_a,
-    }
+  let deposit_datum = deposit.Datum {
+    event: ledger_state.DepositEvent { id: deposit_id, info },
+    inclusion_time: 15,
+    witness: h28_a,
+  }
   let deposit_datum_data: Data = deposit_datum
   Input {
     output_reference: out_ref(99),
@@ -423,27 +422,17 @@ fn ledger_insert_witness(
   }
 }
 
-fn compact_body() -> ledger_state.MidgardTxBodyCompact {
-  ledger_state.MidgardTxBodyCompact {
-    spend_inputs: h32_a,
-    reference_inputs: h32_a,
-    outputs: h32_a,
-    fee: 0,
-    validity_interval: interval.everything,
-    required_observers: h32_a,
-    required_signer_hashes: h32_a,
-    mint: h32_a,
-    script_integrity_hash: h32_a,
-    auxiliary_data_hash: h32_a,
-    network_id: ledger_state.Testnet,
-  }
-}
-
-fn forced_tx(validity: ledger_state.MidgardTxValidity) -> ledger_state.ForcedInclusionTx {
-  ledger_state.ForcedInclusionTx {
-    tx_compact: ledger_state.MidgardTxCompactWithoutValidity {
-      body: compact_body(),
-      wits: h32_b,
+fn forced_tx(
+  validity: ledger_state.MidgardTxValidity,
+  compact_cbor: ByteArray,
+) -> ledger_state.ForcedInclusionTxV1 {
+  ledger_state.ForcedInclusionTxV1 {
+    tx_id: h32_a,
+    transaction_commitment: h32_b,
+    source: ledger_state.NativeTxProofSourceV1 {
+      compact_cbor,
+      witness_set_compact_cbor: #"",
+      field_preimage_lengths_cbor: #"",
     },
     operator_validity: validity,
   }
@@ -453,12 +442,15 @@ fn native_l2_compact_cbor(
   spend_inputs_preimage: ByteArray,
   outputs_preimage: ByteArray,
 ) -> ByteArray {
-  native_compact.encode_native_tx_compact(
+  native_compact.encode_native_tx_compact_v1(
     native_types.NativeTxCompact {
       body: native_types.NativeTxBodyCompact {
-        spend_inputs_hash: blake2b_256(spend_inputs_preimage),
+        spend_inputs_hash: bounded_blob_v1.from_preimage(
+          0,
+          spend_inputs_preimage,
+        ),
         reference_inputs_hash: h32_b,
-        outputs_hash: blake2b_256(outputs_preimage),
+        outputs_hash: bounded_blob_v1.from_preimage(2, outputs_preimage),
         fee: 0,
         validity_interval_start: -1,
         validity_interval_end: -1,
@@ -476,7 +468,7 @@ fn native_l2_compact_cbor(
 }
 
 fn valid_against_header(
-  header: ledger_state.Header,
+  header: ledger_state.HeaderV1,
   fault: proof.TransitionFault,
 ) -> Bool {
   proof.validate_transition_fault_proof(
@@ -488,8 +480,13 @@ fn valid_against_header(
 }
 
 test accepts_trace_boundary_fault() {
-  let opened_step =
-    step(0, withdrawal_event_key(0), ledger_state.Withdrawal, h32_c, h32_b)
+  let opened_step = step(
+    0,
+    withdrawal_event_key(0),
+    ledger_state.Withdrawal,
+    h32_c,
+    h32_b,
+  )
   let trace_proof = trace_membership(opened_step)
   let header = traced_header(trace_proof.root, env.empty_merkle_tree_root)
 
@@ -500,11 +497,16 @@ test accepts_trace_boundary_fault() {
 }
 
 test rejects_trace_boundary_when_header_binding_is_wrong() {
-  let opened_step =
-    step(0, withdrawal_event_key(0), ledger_state.Withdrawal, h32_c, h32_b)
+  let opened_step = step(
+    0,
+    withdrawal_event_key(0),
+    ledger_state.Withdrawal,
+    h32_c,
+    h32_b,
+  )
   let trace_proof = trace_membership(opened_step)
   let header = traced_header(trace_proof.root, env.empty_merkle_tree_root)
-  let bad_header = ledger_state.Header { ..header, protocol_version: 99 }
+  let bad_header = ledger_state.HeaderV1 { ..header, protocol_version: 99 }
 
   !proof.validate_transition_fault_proof(
     prove(
@@ -518,8 +520,13 @@ test rejects_trace_boundary_when_header_binding_is_wrong() {
 }
 
 test rejects_trace_fault_for_wrong_fraud_category_prefix() {
-  let opened_step =
-    step(0, withdrawal_event_key(0), ledger_state.Withdrawal, h32_c, h32_b)
+  let opened_step = step(
+    0,
+    withdrawal_event_key(0),
+    ledger_state.Withdrawal,
+    h32_c,
+    h32_b,
+  )
   let trace_proof = trace_membership(opened_step)
   let header = traced_header(trace_proof.root, env.empty_merkle_tree_root)
 
@@ -535,52 +542,59 @@ test rejects_trace_fault_for_wrong_fraud_category_prefix() {
 }
 
 test accepts_trace_link_fault() {
-  let first =
-    step(0, withdrawal_event_key(0), ledger_state.Withdrawal, h32_a, h32_b)
-  let second =
-    step(1, withdrawal_event_key(1), ledger_state.Withdrawal, h32_c, h32_b)
+  let first = step(
+    0,
+    withdrawal_event_key(0),
+    ledger_state.Withdrawal,
+    h32_a,
+    h32_b,
+  )
+  let second = step(
+    1,
+    withdrawal_event_key(1),
+    ledger_state.Withdrawal,
+    h32_c,
+    h32_b,
+  )
   let first_proof = trace_membership(first)
   let second_proof = trace_membership(second)
-  let phas_root =
-    #"3bcfcd1e874525cfeeebf5e14ca50d42f13e40eb5aec6035553e387334073b11"
+  let phas_root = #"3bcfcd1e874525cfeeebf5e14ca50d42f13e40eb5aec6035553e387334073b11"
   let root = #"7dcbc5316a6560bab11727549dde22de2571a24942627f1085befa031ea9a21b"
-  let adjacent =
-    transition_trace.AdjacentTraceProof {
-      lower: transition_trace.RootMembershipProof {
-        ..first_proof,
-        root,
-        phas_root,
-        count: 2,
-        proof: [
-          Leaf {
-            skip: 0,
-            key: #"ee155ace9c40292074cb6aff8c9ccdd273c81648ff1149ef36bcea6ebb8a3e25",
-            value: #"d9ede6e662618c9f127593e18134e7cec399e940a4aa9265fe174e62ff93bd82",
-          },
-        ],
-      },
-      upper: transition_trace.RootMembershipProof {
-        ..second_proof,
-        root,
-        phas_root,
-        count: 2,
-        proof: [
-          Leaf {
-            skip: 0,
-            key: #"03170a2e7597b7b7e3d84c05391d139a62b157e78786d8c082f29dcf4c111314",
-            value: #"36151b072a63e8b9b548aa519018508e16675e2403d738fca55a195e962aaa12",
-          },
-        ],
-      },
-    }
-  let header =
-    ledger_state.Header {
-      ..base_header(),
-      transition_trace_root: root,
-      withdrawal_count: 2,
-      total_event_count: 2,
-      transition_step_count: 2,
-    }
+  let adjacent = transition_trace.AdjacentTraceProof {
+    lower: transition_trace.RootMembershipProof {
+      ..first_proof,
+      root,
+      phas_root,
+      count: 2,
+      proof: [
+        Leaf {
+          skip: 0,
+          key: #"ee155ace9c40292074cb6aff8c9ccdd273c81648ff1149ef36bcea6ebb8a3e25",
+          value: #"d9ede6e662618c9f127593e18134e7cec399e940a4aa9265fe174e62ff93bd82",
+        },
+      ],
+    },
+    upper: transition_trace.RootMembershipProof {
+      ..second_proof,
+      root,
+      phas_root,
+      count: 2,
+      proof: [
+        Leaf {
+          skip: 0,
+          key: #"03170a2e7597b7b7e3d84c05391d139a62b157e78786d8c082f29dcf4c111314",
+          value: #"36151b072a63e8b9b548aa519018508e16675e2403d738fca55a195e962aaa12",
+        },
+      ],
+    },
+  }
+  let header = ledger_state.HeaderV1 {
+    ..base_header(),
+    transition_trace_root: root,
+    withdrawal_count: 2,
+    total_event_count: 2,
+    transition_step_count: 2,
+  }
 
   valid_against_header(header, proof.TraceLinkFault { adjacent })
 }
@@ -589,8 +603,11 @@ test accepts_event_to_step_mismatch_fault() {
   let event_key = withdrawal_event_key(0)
   let opened_step = step(0, event_key, ledger_state.Withdrawal, h32_a, h32_b)
   let trace_proof = trace_membership(opened_step)
-  let wrong_mapping =
-    event_to_step_membership(event_key, 7, ledger_state.Withdrawal)
+  let wrong_mapping = event_to_step_membership(
+    event_key,
+    7,
+    ledger_state.Withdrawal,
+  )
   let header = traced_header(trace_proof.root, wrong_mapping.root)
 
   valid_against_header(
@@ -608,13 +625,15 @@ test accepts_source_membership_mismatch_fault() {
   let event_key = withdrawal_event_key(0)
   let opened_step = step(0, event_key, ledger_state.Withdrawal, h32_a, h32_b)
   let trace_proof = trace_membership(opened_step)
-  let event_to_step =
-    event_to_step_membership(event_key, 0, ledger_state.Withdrawal)
-  let header =
-    ledger_state.Header {
-      ..traced_header(trace_proof.root, event_to_step.root),
-      withdrawal_count: 0,
-    }
+  let event_to_step = event_to_step_membership(
+    event_key,
+    0,
+    ledger_state.Withdrawal,
+  )
+  let header = ledger_state.HeaderV1 {
+    ..traced_header(trace_proof.root, event_to_step.root),
+    withdrawal_count: 0,
+  }
 
   valid_against_header(
     header,
@@ -636,16 +655,17 @@ test accepts_source_membership_mismatch_fault() {
 test accepts_l2_mapped_event_missing_from_source_fault() {
   let tx_id = h32_c
   let event_key = ledger_state.L2TransactionEventKey { tx_id }
-  let opened_step =
-    step(0, event_key, ledger_state.L2Transaction, h32_a, h32_b)
+  let opened_step = step(0, event_key, ledger_state.L2Transaction, h32_a, h32_b)
   let trace_proof = trace_membership(opened_step)
-  let event_to_step =
-    event_to_step_membership(event_key, 0, ledger_state.L2Transaction)
-  let header =
-    ledger_state.Header {
-      ..traced_header(trace_proof.root, event_to_step.root),
-      l2_transaction_count: 0,
-    }
+  let event_to_step = event_to_step_membership(
+    event_key,
+    0,
+    ledger_state.L2Transaction,
+  )
+  let header = ledger_state.HeaderV1 {
+    ..traced_header(trace_proof.root, event_to_step.root),
+    l2_transaction_count: 0,
+  }
 
   valid_against_header(
     header,
@@ -655,7 +675,7 @@ test accepts_l2_mapped_event_missing_from_source_fault() {
         event_to_step,
         source_non_membership: proof.L2TransactionSourceNonMembership {
           non_membership: empty_non_membership(
-            transition_trace.TransactionsRootDomain,
+            transition_trace.TransactionsV1RootDomain,
             tx_id,
           ),
         },
@@ -666,19 +686,19 @@ test accepts_l2_mapped_event_missing_from_source_fault() {
 
 test accepts_l2_source_event_missing_trace_fault() {
   let tx_id = h32_c
-  let source_membership =
-    raw_l2_source_membership(tx_id, native_l2_compact_cbor(h32_a, h32_b))
-  let event_to_step_non_membership =
-    empty_non_membership(
-      transition_trace.EventToStepRootDomain,
-      ledger_state.L2TransactionEventKey { tx_id },
-    )
-  let header =
-    ledger_state.Header {
-      ..base_header(),
-      transactions_root: source_membership.root,
-      l2_transaction_count: 1,
-    }
+  let source_membership = raw_l2_source_membership(
+    tx_id,
+    native_l2_compact_cbor(h32_a, h32_b),
+  )
+  let event_to_step_non_membership = empty_non_membership(
+    transition_trace.EventToStepRootDomain,
+    ledger_state.L2TransactionEventKey { tx_id },
+  )
+  let header = ledger_state.HeaderV1 {
+    ..base_header(),
+    transactions_root: source_membership.root,
+    l2_transaction_count: 1,
+  }
 
   valid_against_header(
     header,
@@ -719,20 +739,27 @@ test accepts_valid_withdrawal_delete_transition_fault() {
   let spent_key = ledger_outref_key(out_ref(9))
   let spent_value = native_output_cbor()
   let pre_root = mpf.root(mpf.insert(mpf.empty, spent_key, spent_value, []))
-  let expected_post_root =
-    proof.delete_root(pre_root, spent_key, spent_value, [])
-  let opened_step =
-    step(0, event_key, ledger_state.Withdrawal, pre_root, h32_b)
+  let expected_post_root = proof.delete_root(
+    pre_root,
+    spent_key,
+    spent_value,
+    [],
+  )
+  let opened_step = step(0, event_key, ledger_state.Withdrawal, pre_root, h32_b)
   let trace_proof = trace_membership(opened_step)
-  let event_to_step =
-    event_to_step_membership(event_key, 0, ledger_state.Withdrawal)
-  let withdrawal_membership =
-    withdrawal_source_membership(out_ref(0), valid_withdrawal_info())
-  let header =
-    ledger_state.Header {
-      ..traced_header(trace_proof.root, event_to_step.root),
-      withdrawals_root: withdrawal_membership.root,
-    }
+  let event_to_step = event_to_step_membership(
+    event_key,
+    0,
+    ledger_state.Withdrawal,
+  )
+  let withdrawal_membership = withdrawal_source_membership(
+    out_ref(0),
+    valid_withdrawal_info(),
+  )
+  let header = ledger_state.HeaderV1 {
+    ..traced_header(trace_proof.root, event_to_step.root),
+    withdrawals_root: withdrawal_membership.root,
+  }
 
   expect expected_post_root != opened_step.post_utxos_root
   valid_against_header(
@@ -753,20 +780,33 @@ test rejects_valid_withdrawal_delete_when_trace_matches_expected_post_root() {
   let spent_key = ledger_outref_key(out_ref(9))
   let spent_value = native_output_cbor()
   let pre_root = mpf.root(mpf.insert(mpf.empty, spent_key, spent_value, []))
-  let expected_post_root =
-    proof.delete_root(pre_root, spent_key, spent_value, [])
-  let opened_step =
-    step(0, event_key, ledger_state.Withdrawal, pre_root, expected_post_root)
+  let expected_post_root = proof.delete_root(
+    pre_root,
+    spent_key,
+    spent_value,
+    [],
+  )
+  let opened_step = step(
+    0,
+    event_key,
+    ledger_state.Withdrawal,
+    pre_root,
+    expected_post_root,
+  )
   let trace_proof = trace_membership(opened_step)
-  let event_to_step =
-    event_to_step_membership(event_key, 0, ledger_state.Withdrawal)
-  let withdrawal_membership =
-    withdrawal_source_membership(out_ref(0), valid_withdrawal_info())
-  let header =
-    ledger_state.Header {
-      ..traced_header(trace_proof.root, event_to_step.root),
-      withdrawals_root: withdrawal_membership.root,
-    }
+  let event_to_step = event_to_step_membership(
+    event_key,
+    0,
+    ledger_state.Withdrawal,
+  )
+  let withdrawal_membership = withdrawal_source_membership(
+    out_ref(0),
+    valid_withdrawal_info(),
+  )
+  let header = ledger_state.HeaderV1 {
+    ..traced_header(trace_proof.root, event_to_step.root),
+    withdrawals_root: withdrawal_membership.root,
+  }
 
   !valid_against_header(
     header,
@@ -785,15 +825,19 @@ test accepts_invalid_withdrawal_no_op_transition_fault() {
   let event_key = withdrawal_event_key(0)
   let opened_step = step(0, event_key, ledger_state.Withdrawal, h32_a, h32_b)
   let trace_proof = trace_membership(opened_step)
-  let event_to_step =
-    event_to_step_membership(event_key, 0, ledger_state.Withdrawal)
-  let withdrawal_membership =
-    withdrawal_source_membership(out_ref(0), invalid_withdrawal_info())
-  let header =
-    ledger_state.Header {
-      ..traced_header(trace_proof.root, event_to_step.root),
-      withdrawals_root: withdrawal_membership.root,
-    }
+  let event_to_step = event_to_step_membership(
+    event_key,
+    0,
+    ledger_state.Withdrawal,
+  )
+  let withdrawal_membership = withdrawal_source_membership(
+    out_ref(0),
+    invalid_withdrawal_info(),
+  )
+  let header = ledger_state.HeaderV1 {
+    ..traced_header(trace_proof.root, event_to_step.root),
+    withdrawals_root: withdrawal_membership.root,
+  }
 
   valid_against_header(
     header,
@@ -811,15 +855,19 @@ test rejects_invalid_withdrawal_no_op_when_trace_does_not_mutate_root() {
   let event_key = withdrawal_event_key(0)
   let opened_step = step(0, event_key, ledger_state.Withdrawal, h32_a, h32_a)
   let trace_proof = trace_membership(opened_step)
-  let event_to_step =
-    event_to_step_membership(event_key, 0, ledger_state.Withdrawal)
-  let withdrawal_membership =
-    withdrawal_source_membership(out_ref(0), invalid_withdrawal_info())
-  let header =
-    ledger_state.Header {
-      ..traced_header(trace_proof.root, event_to_step.root),
-      withdrawals_root: withdrawal_membership.root,
-    }
+  let event_to_step = event_to_step_membership(
+    event_key,
+    0,
+    ledger_state.Withdrawal,
+  )
+  let withdrawal_membership = withdrawal_source_membership(
+    out_ref(0),
+    invalid_withdrawal_info(),
+  )
+  let header = ledger_state.HeaderV1 {
+    ..traced_header(trace_proof.root, event_to_step.root),
+    withdrawals_root: withdrawal_membership.root,
+  }
 
   !valid_against_header(
     header,
@@ -834,25 +882,35 @@ test rejects_invalid_withdrawal_no_op_when_trace_does_not_mutate_root() {
 }
 
 test accepts_invalid_forced_transaction_no_op_transition_fault() {
-  let event_key =
-    ledger_state.ForcedTransactionEventKey { tx_order_id: out_ref(0) }
-  let opened_step =
-    step(0, event_key, ledger_state.ForcedTransaction, h32_a, h32_b)
+  let event_key = ledger_state.ForcedTransactionEventKey {
+    tx_order_id: out_ref(0),
+  }
+  let opened_step = step(
+    0,
+    event_key,
+    ledger_state.ForcedTransaction,
+    h32_a,
+    h32_b,
+  )
   let trace_proof = trace_membership(opened_step)
-  let event_to_step =
-    event_to_step_membership(event_key, 0, ledger_state.ForcedTransaction)
-  let source_membership =
-    forced_source_membership(out_ref(0), forced_tx(ledger_state.FailedScript))
-  let header =
-    ledger_state.Header {
-      ..base_header(),
-      forced_transactions_root: source_membership.root,
-      transition_trace_root: trace_proof.root,
-      event_to_step_root: event_to_step.root,
-      forced_transaction_count: 1,
-      total_event_count: 1,
-      transition_step_count: 1,
-    }
+  let event_to_step = event_to_step_membership(
+    event_key,
+    0,
+    ledger_state.ForcedTransaction,
+  )
+  let source_membership = forced_source_membership(
+    out_ref(0),
+    forced_tx(ledger_state.FailedScript, #""),
+  )
+  let header = ledger_state.HeaderV1 {
+    ..base_header(),
+    forced_transactions_root: source_membership.root,
+    transition_trace_root: trace_proof.root,
+    event_to_step_root: event_to_step.root,
+    forced_transaction_count: 1,
+    total_event_count: 1,
+    transition_step_count: 1,
+  }
 
   valid_against_header(
     header,
@@ -866,31 +924,38 @@ test accepts_invalid_forced_transaction_no_op_transition_fault() {
   )
 }
 
-test rejects_valid_forced_transaction_unsupported_transition_fault() {
-  let event_key =
-    ledger_state.ForcedTransactionEventKey { tx_order_id: out_ref(0) }
-  let opened_step =
-    step(0, event_key, ledger_state.ForcedTransaction, h32_a, h32_b)
+test rejects_unknown_transition_step_schema_version() {
+  let event_key = ledger_state.ForcedTransactionEventKey {
+    tx_order_id: out_ref(0),
+  }
+  let opened_step = ledger_state.TransitionStep {
+    ..step(0, event_key, ledger_state.ForcedTransaction, h32_a, h32_b),
+    schema_version: 23,
+  }
   let trace_proof = trace_membership(opened_step)
-  let event_to_step =
-    event_to_step_membership(event_key, 0, ledger_state.ForcedTransaction)
-  let source_membership =
-    forced_source_membership(out_ref(0), forced_tx(ledger_state.TxIsValid))
-  let header =
-    ledger_state.Header {
-      ..base_header(),
-      forced_transactions_root: source_membership.root,
-      transition_trace_root: trace_proof.root,
-      event_to_step_root: event_to_step.root,
-      forced_transaction_count: 1,
-      total_event_count: 1,
-      transition_step_count: 1,
-    }
+  let event_to_step = event_to_step_membership(
+    event_key,
+    0,
+    ledger_state.ForcedTransaction,
+  )
+  let source_membership = forced_source_membership(
+    out_ref(0),
+    forced_tx(ledger_state.FailedScript, #""),
+  )
+  let header = ledger_state.HeaderV1 {
+    ..base_header(),
+    forced_transactions_root: source_membership.root,
+    transition_trace_root: trace_proof.root,
+    event_to_step_root: event_to_step.root,
+    forced_transaction_count: 1,
+    total_event_count: 1,
+    transition_step_count: 1,
+  }
 
   !valid_against_header(
     header,
     proof.InvalidOneStepTransition {
-      witness: proof.ValidForcedTransactionUnsupported {
+      witness: proof.InvalidForcedTransactionNoOpTransition {
         trace_proof,
         event_to_step,
         source_membership,
@@ -905,30 +970,36 @@ test accepts_valid_deposit_transition_fault() {
   let event_key = ledger_state.DepositEventKey { deposit_id }
   let projected_key = ledger_outref_key(deposit_id)
   let projected_value = native_deposit_output_cbor(0)
-  let expected_post_root =
-    proof.insert_root(
-      env.empty_merkle_tree_root,
-      projected_key,
-      projected_value,
-      [],
-    )
-  let opened_step =
-    step(0, event_key, ledger_state.Deposit, env.empty_merkle_tree_root, h32_b)
+  let expected_post_root = proof.insert_root(
+    env.empty_merkle_tree_root,
+    projected_key,
+    projected_value,
+    [],
+  )
+  let opened_step = step(
+    0,
+    event_key,
+    ledger_state.Deposit,
+    env.empty_merkle_tree_root,
+    h32_b,
+  )
   let trace_proof = trace_membership(opened_step)
-  let event_to_step =
-    event_to_step_membership(event_key, 0, ledger_state.Deposit)
+  let event_to_step = event_to_step_membership(
+    event_key,
+    0,
+    ledger_state.Deposit,
+  )
   let source_membership = deposit_source_membership(deposit_id, deposit_info)
   let event_asset_name = #"01"
-  let header =
-    ledger_state.Header {
-      ..base_header(),
-      deposits_root: source_membership.root,
-      transition_trace_root: trace_proof.root,
-      event_to_step_root: event_to_step.root,
-      deposit_count: 1,
-      total_event_count: 1,
-      transition_step_count: 1,
-    }
+  let header = ledger_state.HeaderV1 {
+    ..base_header(),
+    deposits_root: source_membership.root,
+    transition_trace_root: trace_proof.root,
+    event_to_step_root: event_to_step.root,
+    deposit_count: 1,
+    total_event_count: 1,
+    transition_step_count: 1,
+  }
 
   expect expected_post_root != opened_step.post_utxos_root
   proof.validate_transition_fault_proof(
@@ -956,23 +1027,30 @@ test rejects_valid_deposit_transition_with_arbitrary_projected_output() {
   let deposit_info = sample_deposit_info(0)
   let event_key = ledger_state.DepositEventKey { deposit_id }
   let projected_key = ledger_outref_key(deposit_id)
-  let opened_step =
-    step(0, event_key, ledger_state.Deposit, env.empty_merkle_tree_root, h32_b)
+  let opened_step = step(
+    0,
+    event_key,
+    ledger_state.Deposit,
+    env.empty_merkle_tree_root,
+    h32_b,
+  )
   let trace_proof = trace_membership(opened_step)
-  let event_to_step =
-    event_to_step_membership(event_key, 0, ledger_state.Deposit)
+  let event_to_step = event_to_step_membership(
+    event_key,
+    0,
+    ledger_state.Deposit,
+  )
   let source_membership = deposit_source_membership(deposit_id, deposit_info)
   let event_asset_name = #"01"
-  let header =
-    ledger_state.Header {
-      ..base_header(),
-      deposits_root: source_membership.root,
-      transition_trace_root: trace_proof.root,
-      event_to_step_root: event_to_step.root,
-      deposit_count: 1,
-      total_event_count: 1,
-      transition_step_count: 1,
-    }
+  let header = ledger_state.HeaderV1 {
+    ..base_header(),
+    deposits_root: source_membership.root,
+    transition_trace_root: trace_proof.root,
+    event_to_step_root: event_to_step.root,
+    deposit_count: 1,
+    total_event_count: 1,
+    transition_step_count: 1,
+  }
 
   !proof.validate_transition_fault_proof(
     prove(
@@ -1000,23 +1078,30 @@ test rejects_valid_deposit_transition_with_wrong_network_id() {
   let event_key = ledger_state.DepositEventKey { deposit_id }
   let projected_key = ledger_outref_key(deposit_id)
   let wrong_network_projected_value = native_deposit_output_cbor(1)
-  let opened_step =
-    step(0, event_key, ledger_state.Deposit, env.empty_merkle_tree_root, h32_b)
+  let opened_step = step(
+    0,
+    event_key,
+    ledger_state.Deposit,
+    env.empty_merkle_tree_root,
+    h32_b,
+  )
   let trace_proof = trace_membership(opened_step)
-  let event_to_step =
-    event_to_step_membership(event_key, 0, ledger_state.Deposit)
+  let event_to_step = event_to_step_membership(
+    event_key,
+    0,
+    ledger_state.Deposit,
+  )
   let source_membership = deposit_source_membership(deposit_id, deposit_info)
   let event_asset_name = #"01"
-  let header =
-    ledger_state.Header {
-      ..base_header(),
-      deposits_root: source_membership.root,
-      transition_trace_root: trace_proof.root,
-      event_to_step_root: event_to_step.root,
-      deposit_count: 1,
-      total_event_count: 1,
-      transition_step_count: 1,
-    }
+  let header = ledger_state.HeaderV1 {
+    ..base_header(),
+    deposits_root: source_membership.root,
+    transition_trace_root: trace_proof.root,
+    event_to_step_root: event_to_step.root,
+    deposit_count: 1,
+    total_event_count: 1,
+    transition_step_count: 1,
+  }
 
   !proof.validate_transition_fault_proof(
     prove(
@@ -1041,138 +1126,21 @@ test rejects_valid_deposit_transition_with_wrong_network_id() {
   )
 }
 
-test accepts_l2_transaction_transition_fault() {
-  let tx_id = h32_c
-  let spent_input = native_input(h32_a, 0)
-  let spent_key = native_components.encode_midgard_tx_input(spent_input)
-  let spent_value = native_output_cbor()
-  let produced_output = native_output()
-  let produced_key =
-    native_components.encode_midgard_tx_input(native_input(tx_id, 0))
-  let produced_value = native_components.encode_midgard_tx_output(produced_output)
-  let spend_inputs_preimage = native_preimages.encode_input_preimage([spent_input])
-  let outputs_preimage = native_preimages.encode_output_preimage([produced_output])
-  let source_membership =
-    raw_l2_source_membership(
-      tx_id,
-      native_l2_compact_cbor(spend_inputs_preimage, outputs_preimage),
-    )
-  let pre_root = mpf.root(mpf.insert(mpf.empty, spent_key, spent_value, []))
-  let expected_post_root =
-    proof.insert_root(
-      proof.delete_root(pre_root, spent_key, spent_value, []),
-      produced_key,
-      produced_value,
-      [],
-    )
-  let event_key = ledger_state.L2TransactionEventKey { tx_id }
-  let opened_step =
-    step(0, event_key, ledger_state.L2Transaction, pre_root, h32_b)
-  let trace_proof = trace_membership(opened_step)
-  let event_to_step =
-    event_to_step_membership(event_key, 0, ledger_state.L2Transaction)
-  let header =
-    ledger_state.Header {
-      ..base_header(),
-      transactions_root: source_membership.root,
-      transition_trace_root: trace_proof.root,
-      event_to_step_root: event_to_step.root,
-      l2_transaction_count: 1,
-      total_event_count: 1,
-      transition_step_count: 1,
-    }
-
-  expect expected_post_root != opened_step.post_utxos_root
-  valid_against_header(
-    header,
-    proof.InvalidOneStepTransition {
-      witness: proof.L2TransactionTransition {
-        trace_proof,
-        event_to_step,
-        source_membership,
-        spend_inputs_preimage,
-        outputs_preimage,
-        spent_utxos: [ledger_delete_witness(spent_key, spent_value)],
-        produced_utxos: [ledger_insert_witness(produced_key, produced_value)],
-      },
-    },
-  )
-}
-
-test rejects_l2_transaction_when_trace_matches_expected_post_root() {
-  let tx_id = h32_c
-  let spent_input = native_input(h32_a, 0)
-  let spent_key = native_components.encode_midgard_tx_input(spent_input)
-  let spent_value = native_output_cbor()
-  let produced_output = native_output()
-  let produced_key =
-    native_components.encode_midgard_tx_input(native_input(tx_id, 0))
-  let produced_value = native_components.encode_midgard_tx_output(produced_output)
-  let spend_inputs_preimage = native_preimages.encode_input_preimage([spent_input])
-  let outputs_preimage = native_preimages.encode_output_preimage([produced_output])
-  let source_membership =
-    raw_l2_source_membership(
-      tx_id,
-      native_l2_compact_cbor(spend_inputs_preimage, outputs_preimage),
-    )
-  let pre_root = mpf.root(mpf.insert(mpf.empty, spent_key, spent_value, []))
-  let expected_post_root =
-    proof.insert_root(
-      proof.delete_root(pre_root, spent_key, spent_value, []),
-      produced_key,
-      produced_value,
-      [],
-    )
-  let event_key = ledger_state.L2TransactionEventKey { tx_id }
-  let opened_step =
-    step(0, event_key, ledger_state.L2Transaction, pre_root, expected_post_root)
-  let trace_proof = trace_membership(opened_step)
-  let event_to_step =
-    event_to_step_membership(event_key, 0, ledger_state.L2Transaction)
-  let header =
-    ledger_state.Header {
-      ..base_header(),
-      transactions_root: source_membership.root,
-      transition_trace_root: trace_proof.root,
-      event_to_step_root: event_to_step.root,
-      l2_transaction_count: 1,
-      total_event_count: 1,
-      transition_step_count: 1,
-    }
-
-  !valid_against_header(
-    header,
-    proof.InvalidOneStepTransition {
-      witness: proof.L2TransactionTransition {
-        trace_proof,
-        event_to_step,
-        source_membership,
-        spend_inputs_preimage,
-        outputs_preimage,
-        spent_utxos: [ledger_delete_witness(spent_key, spent_value)],
-        produced_utxos: [ledger_insert_witness(produced_key, produced_value)],
-      },
-    },
-  )
-}
-
 test accepts_duplicate_trace_event_fault() {
   let event_key = withdrawal_event_key(0)
   let left_step = step(0, event_key, ledger_state.Withdrawal, h32_a, h32_b)
   let right_step = step(1, event_key, ledger_state.Withdrawal, h32_b, h32_c)
   let left_trace = trace_membership(left_step)
   let right_trace = trace_membership(right_step)
-  let phas_root =
-    #"dbf61b46d5c4def32178e8415221a5f46769dffe0ce62557a3d7498069936dcf"
+  let phas_root = #"dbf61b46d5c4def32178e8415221a5f46769dffe0ce62557a3d7498069936dcf"
   let root = #"30207d3fb9261eef53138441ef4ece4ba72f3e2e9f79e2004a122f1bffb305d3"
-  let header =
-    ledger_state.Header {
-      ..base_header(),
-      transition_trace_root: root,
-      withdrawal_count: 2,
-      total_event_count: 2,
-      transition_step_count: 2,
-    }
+  let header = ledger_state.HeaderV1 {
+    ..base_header(),
+    transition_trace_root: root,
+    withdrawal_count: 2,
+    total_event_count: 2,
+    transition_step_count: 2,
+  }
 
   valid_against_header(
     header,
@@ -1208,14 +1176,16 @@ test accepts_duplicate_trace_event_fault() {
 }
 
 test accepts_count_fault() {
-  let proof_root =
-    transition_trace.RootCountProof {
-      domain: transition_trace.TransitionTraceRootDomain,
-      root: env.empty_merkle_tree_root,
-      phas_root: env.empty_merkle_tree_root,
-      count: 0,
-    }
-  let header = ledger_state.Header { ..base_header(), transition_step_count: 1 }
+  let proof_root = transition_trace.RootCountProof {
+    domain: transition_trace.TransitionTraceRootDomain,
+    root: env.empty_merkle_tree_root,
+    phas_root: env.empty_merkle_tree_root,
+    count: 0,
+  }
+  let header = ledger_state.HeaderV1 {
+    ..base_header(),
+    transition_step_count: 1,
+  }
 
   valid_against_header(
     header,
@@ -1226,26 +1196,23 @@ test accepts_count_fault() {
 }
 
 test accepts_omitted_due_deposit_fault() {
-  let deposit_info =
-    sample_deposit_info(0)
-  let deposit_datum =
-    deposit.Datum {
-      event: ledger_state.DepositEvent { id: out_ref(0), info: deposit_info },
-      inclusion_time: 15,
-      witness: h28_a,
-    }
+  let deposit_info = sample_deposit_info(0)
+  let deposit_datum = deposit.Datum {
+    event: ledger_state.DepositEvent { id: out_ref(0), info: deposit_info },
+    inclusion_time: 15,
+    witness: h28_a,
+  }
   let deposit_datum_data: Data = deposit_datum
   let event_asset_name = #"01"
-  let reference_input =
-    Input {
-      output_reference: out_ref(99),
-      output: Output {
-        address: dummy_address(),
-        value: assets.from_asset(h28_a, event_asset_name, 1),
-        datum: InlineDatum(deposit_datum_data),
-        reference_script: None,
-      },
-    }
+  let reference_input = Input {
+    output_reference: out_ref(99),
+    output: Output {
+      address: dummy_address(),
+      value: assets.from_asset(h28_a, event_asset_name, 1),
+      datum: InlineDatum(deposit_datum_data),
+      reference_script: None,
+    },
+  }
   let header = base_header()
 
   proof.validate_transition_fault_proof(
@@ -1269,33 +1236,29 @@ test accepts_omitted_due_deposit_fault() {
 }
 
 test accepts_out_of_window_deposit_fault() {
-  let deposit_info =
-    sample_deposit_info(0)
-  let deposit_datum =
-    deposit.Datum {
-      event: ledger_state.DepositEvent { id: out_ref(0), info: deposit_info },
-      inclusion_time: 30,
-      witness: h28_a,
-    }
+  let deposit_info = sample_deposit_info(0)
+  let deposit_datum = deposit.Datum {
+    event: ledger_state.DepositEvent { id: out_ref(0), info: deposit_info },
+    inclusion_time: 30,
+    witness: h28_a,
+  }
   let deposit_datum_data: Data = deposit_datum
   let event_asset_name = #"01"
   let source_membership = deposit_source_membership(out_ref(0), deposit_info)
-  let reference_input =
-    Input {
-      output_reference: out_ref(99),
-      output: Output {
-        address: dummy_address(),
-        value: assets.from_asset(h28_a, event_asset_name, 1),
-        datum: InlineDatum(deposit_datum_data),
-        reference_script: None,
-      },
-    }
-  let header =
-    ledger_state.Header {
-      ..base_header(),
-      deposits_root: source_membership.root,
-      deposit_count: 1,
-    }
+  let reference_input = Input {
+    output_reference: out_ref(99),
+    output: Output {
+      address: dummy_address(),
+      value: assets.from_asset(h28_a, event_asset_name, 1),
+      datum: InlineDatum(deposit_datum_data),
+      reference_script: None,
+    },
+  }
+  let header = ledger_state.HeaderV1 {
+    ..base_header(),
+    deposits_root: source_membership.root,
+    deposit_count: 1,
+  }
 
   proof.validate_transition_fault_proof(
     prove(

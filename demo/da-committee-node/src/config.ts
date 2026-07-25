@@ -1,7 +1,14 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
+import {
+  assertMidgardConsensusV1ReleaseReady,
+  isMidgardConsensusProfileV1,
+  MIDGARD_CONSENSUS_LIMITS_V1,
+  type MidgardConsensusProfileV1,
+} from "@al-ft/midgard-core/consensus-profile-v1";
 import { parseDaLibp2pRuntimeManifestDeploymentIdentity } from "@al-ft/midgard-core/da-transport";
+import { verifyFinalizedDeploymentManifestV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { multiaddr } from "@multiformats/multiaddr";
 import { blake2b } from "@noble/hashes/blake2.js";
 
@@ -32,7 +39,8 @@ export type WatcherConfig = {
   readonly deploymentManifestRaw: string;
   readonly deploymentManifest: Record<string, unknown>;
   readonly contractDeploymentInfo: Record<string, unknown>;
-  readonly midgardNodeDeployment?: MidgardNodeDeployment;
+  readonly consensusProfile: MidgardConsensusProfileV1;
+  readonly midgardNodeDeployment: MidgardNodeDeployment;
   readonly cardanoProviderUrls: readonly string[];
   readonly finalityDepth: number;
   readonly daTransport: Libp2pDaTransportConfig;
@@ -136,7 +144,7 @@ export const DEFAULT_L1_SUBMITTER_PREFLIGHT = {
 } as const;
 
 export const LIBP2P_DA_TRANSPORT_LIMITS = {
-  maxPayloadBytes: 67_108_864,
+  maxPayloadBytes: MIDGARD_CONSENSUS_LIMITS_V1.maxDaPayloadBytes,
   maxInlineResponseBytes: 1_048_576,
   maxChunkBytes: 1_048_576,
   maxStreamsPerPeer: 16,
@@ -145,9 +153,6 @@ export const LIBP2P_DA_TRANSPORT_LIMITS = {
 
 export const LIBP2P_DA_GOSSIP_MAX_MESSAGE_BYTES = 65_536;
 export const LIBP2P_DA_MIN_RETENTION_DAYS = 15;
-const CONTRACT_DEPLOYMENT_MANIFEST_SCHEMA_VERSION =
-  "midgard-deployment-manifest-v2";
-
 export const loadWatcherConfig = async (
   env: Env = process.env,
 ): Promise<WatcherConfig> => {
@@ -168,6 +173,18 @@ export const loadWatcherConfig = async (
     deploymentManifestRaw,
     deploymentManifestPath,
   );
+  requireExactKeys(
+    deploymentManifest,
+    [
+      "schemaVersion",
+      "network",
+      "deployment",
+      "runtime_topology",
+      "da_transport",
+      "da_committee",
+    ],
+    "DA runtime manifest",
+  );
   const contractDeploymentInfo = parseJsonObject(
     contractDeploymentInfoRaw,
     contractDeploymentInfoPath,
@@ -178,10 +195,11 @@ export const loadWatcherConfig = async (
   const contractDeploymentInfoSha256 = createHash("sha256")
     .update(contractDeploymentInfoRaw)
     .digest("hex");
-  const contractDeploymentManifestId = contractDeploymentManifestIdConfig(
-    contractDeploymentInfo,
-    contractDeploymentInfoPath,
-  );
+  const { manifestId: contractDeploymentManifestId, consensusProfile } =
+    contractDeploymentManifestConfig(
+      contractDeploymentInfo,
+      contractDeploymentInfoPath,
+    );
   const deploymentFingerprint = deploymentFingerprintConfig(
     deploymentManifest,
     contractDeploymentManifestId,
@@ -192,89 +210,30 @@ export const loadWatcherConfig = async (
     deploymentFingerprint,
   });
   const libp2pPrivateKeySource = libp2pPrivateKeySourceConfig(env);
-  const network =
-    env.MIDGARD_NETWORK ??
-    optionalString(deploymentManifest, "network") ??
-    stringAt(deploymentManifest, ["deployment", "cardano_network"]) ??
-    stringAt(deploymentManifest, ["deployment", "midgard_network"]) ??
-    optionalString(deploymentManifest, "networkId");
-  if (network === undefined || network.trim() === "") {
-    throw new Error("MIDGARD_NETWORK or manifest network is required");
+  const network = optionalString(deploymentManifest, "network");
+  if (network === undefined || network.length === 0) {
+    throw new Error("DA runtime manifest network is required");
+  }
+  if (env.MIDGARD_NETWORK !== undefined && env.MIDGARD_NETWORK !== network) {
+    throw new Error(
+      `MIDGARD_NETWORK must exactly match runtime manifest network ${network}`,
+    );
   }
   const midgardNodeDeployment = parseMidgardNodeDeploymentInfo(
     contractDeploymentInfo,
     network,
   );
 
-  const daAttestationPolicyId = requireDeploymentString(
-    deploymentManifest,
-    contractDeploymentInfo,
-    [
-      ["contracts", "daAttestation", "policyId"],
-      ["daAttestation", "policyId"],
-      ["da_attestation", "policy_id"],
-    ],
-    "DA attestation policy id",
-    () => midgardNodeDeployment?.daAttestation.policyId,
-  );
-  const daAttestationAddress = requireDeploymentString(
-    deploymentManifest,
-    contractDeploymentInfo,
-    [
-      ["contracts", "daAttestation", "spendingScriptAddress"],
-      ["contracts", "daAttestation", "address"],
-      ["daAttestation", "spendingScriptAddress"],
-      ["da_attestation", "address"],
-    ],
-    "DA attestation address",
-    () => midgardNodeDeployment?.daAttestation.spendingScriptAddress,
-  );
-  const daParamsGovernorPolicyId = requireDeploymentString(
-    deploymentManifest,
-    contractDeploymentInfo,
-    [
-      ["contracts", "daParamsGovernor", "policyId"],
-      ["daParamsGovernor", "policyId"],
-      ["da_params_governor", "policy_id"],
-    ],
-    "DA params governor policy id",
-    () => midgardNodeDeployment?.daParamsGovernor.policyId,
-  );
-  const daParamsGovernorAddress = requireDeploymentString(
-    deploymentManifest,
-    contractDeploymentInfo,
-    [
-      ["contracts", "daParamsGovernor", "spendingScriptAddress"],
-      ["contracts", "daParamsGovernor", "address"],
-      ["daParamsGovernor", "spendingScriptAddress"],
-      ["da_params_governor", "address"],
-    ],
-    "DA params governor address",
-    () => midgardNodeDeployment?.daParamsGovernor.spendingScriptAddress,
-  );
-  const stateQueuePolicyId = requireDeploymentString(
-    deploymentManifest,
-    contractDeploymentInfo,
-    [
-      ["contracts", "stateQueue", "policyId"],
-      ["stateQueue", "policyId"],
-      ["state_queue", "policy_id"],
-    ],
-    "state queue policy id",
-    () => midgardNodeDeployment?.stateQueue.policyId,
-  );
-  const stateQueueAddress = requireDeploymentString(
-    deploymentManifest,
-    contractDeploymentInfo,
-    [
-      ["contracts", "stateQueue", "spendingScriptAddress"],
-      ["contracts", "stateQueue", "address"],
-      ["stateQueue", "spendingScriptAddress"],
-      ["state_queue", "address"],
-    ],
-    "state queue address",
-    () => midgardNodeDeployment?.stateQueue.spendingScriptAddress,
-  );
+  const daAttestationPolicyId = midgardNodeDeployment.daAttestation.policyId;
+  const daAttestationAddress =
+    midgardNodeDeployment.daAttestation.spendingScriptAddress;
+  const daParamsGovernorPolicyId =
+    midgardNodeDeployment.daParamsGovernor.policyId;
+  const daParamsGovernorAddress =
+    midgardNodeDeployment.daParamsGovernor.spendingScriptAddress;
+  const stateQueuePolicyId = midgardNodeDeployment.stateQueue.policyId;
+  const stateQueueAddress =
+    midgardNodeDeployment.stateQueue.spendingScriptAddress;
   const l1SubmitterKeySource = optionalKeySource(
     env.L1_SUBMITTER_KEY_SOURCE,
     "L1_SUBMITTER_KEY_SOURCE",
@@ -307,11 +266,6 @@ export const loadWatcherConfig = async (
     );
   }
   if (l1SubmissionEnabled) {
-    if (midgardNodeDeployment === undefined) {
-      throw new Error(
-        "L1 submission requires Midgard node deployment-info with script CBOR and reference-script UTxOs",
-      );
-    }
     if (!isLiveLucidProviderUrl(cardanoProviderUrls[0]!)) {
       throw new Error(
         "L1 submission requires a blockfrost: or kupmios: CARDANO_PROVIDER_URLS entry",
@@ -341,6 +295,7 @@ export const loadWatcherConfig = async (
     deploymentManifestRaw,
     deploymentManifest,
     contractDeploymentInfo,
+    consensusProfile,
     midgardNodeDeployment,
     cardanoProviderUrls,
     finalityDepth: nonNegativeInt(
@@ -599,10 +554,8 @@ const optionalSignerConfig = (
   env: Env,
 ): Pick<WatcherConfig, "signerIndex" | "signerKeySource"> => {
   const configuredMode = optionalNonEmpty(env.DA_MODE);
-  if (configuredMode !== undefined && configuredMode !== "unified") {
-    throw new Error(
-      "DA_MODE has been removed; omit it or set DA_MODE=unified while migrating",
-    );
+  if (configuredMode !== undefined) {
+    throw new Error("DA_MODE has been removed and must be omitted");
   }
   const index = optionalNonEmpty(env.DA_SIGNER_INDEX);
   const keySource = optionalNonEmpty(env.DA_SIGNER_KEY_SOURCE);
@@ -680,24 +633,27 @@ const LIBP2P_DA_URL_ENV_OVERRIDES = [
   "DA_PUBLIC_BASE_URL",
 ] as const;
 
-const contractDeploymentManifestIdConfig = (
+const contractDeploymentManifestConfig = (
   contractDeploymentInfo: Record<string, unknown>,
   path: string,
-): string => {
-  const schemaVersion = optionalString(contractDeploymentInfo, "schemaVersion");
-  if (schemaVersion !== CONTRACT_DEPLOYMENT_MANIFEST_SCHEMA_VERSION) {
-    throw new Error(
-      `${path} must be a ${CONTRACT_DEPLOYMENT_MANIFEST_SCHEMA_VERSION} contract deployment manifest`,
-    );
+): {
+  readonly manifestId: string;
+  readonly consensusProfile: MidgardConsensusProfileV1;
+} => {
+  const verified = verifyFinalizedDeploymentManifestV1(contractDeploymentInfo);
+  const exactProfile = verified.consensusProfile;
+  if (!isMidgardConsensusProfileV1(exactProfile)) {
+    throw new Error(`${path} does not contain the exact V1 consensus profile`);
   }
-  const manifestId = optionalString(contractDeploymentInfo, "manifestId");
-  if (manifestId === undefined) {
-    throw new Error(`${path} is missing manifestId`);
-  }
-  return normalizeHex(manifestId, {
-    fieldName: "contract deployment manifestId",
-    byteLength: 32,
-  });
+  assertMidgardConsensusV1ReleaseReady();
+  const manifestId = verified.manifestId as string;
+  return {
+    manifestId: normalizeHex(manifestId, {
+      fieldName: "contract deployment manifestId",
+      byteLength: 32,
+    }),
+    consensusProfile: exactProfile,
+  };
 };
 
 const deploymentFingerprintConfig = (
@@ -726,6 +682,18 @@ const libp2pDaTransportConfig = ({
   readonly deploymentFingerprint: string;
 }): Libp2pDaTransportConfig => {
   rejectLibp2pDaUrlEnvOverrides(env);
+  const runtimeTopology = objectAt(deploymentManifest, ["runtime_topology"]);
+  if (runtimeTopology === undefined) {
+    throw new Error("runtime_topology is required");
+  }
+  requireExactKeys(
+    runtimeTopology,
+    ["target", "profile", "producer_peer_id", "local_signer_index"],
+    "runtime_topology",
+  );
+  if (runtimeTopology.target !== "watcher") {
+    throw new Error("runtime_topology.target must be watcher");
+  }
   const daTransport = daTransportObject(deploymentManifest);
   if (daTransport === undefined) {
     throw new Error("da_transport.kind=libp2p is required");
@@ -734,10 +702,25 @@ const libp2pDaTransportConfig = ({
   if (kind !== "libp2p") {
     throw new Error("da_transport.kind must be libp2p");
   }
+  requireExactKeys(
+    daTransport,
+    [
+      "kind",
+      "no_http_da_transport",
+      "listen_multiaddrs",
+      "announce_multiaddrs",
+      "bootstrap_multiaddrs",
+      "gossip",
+      "limits",
+      "retention_days",
+    ],
+    "da_transport",
+  );
   const daCommittee = daCommitteeObject(deploymentManifest);
   if (daCommittee === undefined) {
     throw new Error("da_committee is required for libp2p DA mode");
   }
+  requireExactKeys(daCommittee, ["threshold", "members"], "da_committee");
   rejectUrlShapedLibp2pDaConfig(daTransport, "da_transport");
   rejectUrlShapedLibp2pDaConfig(daCommittee, "da_committee");
   const noHttpDaTransport = daTransport.no_http_da_transport;
@@ -777,8 +760,6 @@ const libp2pDaTransportConfig = ({
     limits,
     retentionDays: parseLibp2pRetentionDays({
       daTransport,
-      daCommittee,
-      legacyDa: objectAt(deploymentManifest, ["da"]),
     }),
     peers,
   };
@@ -787,14 +768,12 @@ const libp2pDaTransportConfig = ({
 const daTransportObject = (
   deploymentManifest: Record<string, unknown>,
 ): Record<string, unknown> | undefined =>
-  objectAt(deploymentManifest, ["da_transport"]) ??
-  objectAt(deploymentManifest, ["daTransport"]);
+  objectAt(deploymentManifest, ["da_transport"]);
 
 const daCommitteeObject = (
   deploymentManifest: Record<string, unknown>,
 ): Record<string, unknown> | undefined =>
-  objectAt(deploymentManifest, ["da_committee"]) ??
-  objectAt(deploymentManifest, ["daCommittee"]);
+  objectAt(deploymentManifest, ["da_committee"]);
 
 const rejectLibp2pDaUrlEnvOverrides = (env: Env): void => {
   for (const name of LIBP2P_DA_URL_ENV_OVERRIDES) {
@@ -833,6 +812,16 @@ const parseLibp2pGossipConfig = (
   if (gossip === undefined) {
     throw new Error("da_transport.gossip is required in libp2p DA mode");
   }
+  requireExactKeys(
+    gossip,
+    [
+      "strict_sign",
+      "emit_self",
+      "allowed_topics_only",
+      "max_gossip_message_bytes",
+    ],
+    "da_transport.gossip",
+  );
   requireExactBoolean(gossip, "strict_sign", true, "da_transport.gossip");
   requireExactBoolean(gossip, "emit_self", false, "da_transport.gossip");
   requireExactBoolean(
@@ -862,6 +851,17 @@ const parseLibp2pLimitsConfig = (
   if (limits === undefined) {
     throw new Error("da_transport.limits is required in libp2p DA mode");
   }
+  requireExactKeys(
+    limits,
+    [
+      "max_payload_bytes",
+      "max_inline_response_bytes",
+      "max_chunk_bytes",
+      "max_streams_per_peer",
+      "request_timeout_ms",
+    ],
+    "da_transport.limits",
+  );
   requireExactNumber(
     limits,
     "max_payload_bytes",
@@ -897,33 +897,10 @@ const parseLibp2pLimitsConfig = (
 
 const parseLibp2pRetentionDays = ({
   daTransport,
-  daCommittee,
-  legacyDa,
 }: {
   readonly daTransport: Record<string, unknown>;
-  readonly daCommittee: Record<string, unknown>;
-  readonly legacyDa?: Record<string, unknown>;
 }): number => {
-  const days =
-    numberAt(daTransport, ["retention_days"]) ??
-    numberAt(daTransport, ["retentionDays"]) ??
-    numberAt(daCommittee, ["retention_days"]) ??
-    numberAt(daCommittee, ["retentionDays"]) ??
-    (legacyDa === undefined
-      ? undefined
-      : (numberAt(legacyDa, ["retention_days"]) ??
-        numberAt(legacyDa, ["retentionDays"])));
-  const slots =
-    numberAt(daTransport, ["retention_slots"]) ??
-    numberAt(daTransport, ["retentionSlots"]) ??
-    numberAt(daCommittee, ["retention_slots"]) ??
-    numberAt(daCommittee, ["retentionSlots"]) ??
-    (legacyDa === undefined
-      ? undefined
-      : (numberAt(legacyDa, ["retention_slots"]) ??
-        numberAt(legacyDa, ["retentionSlots"])));
-  const retentionDays =
-    days ?? (slots === undefined ? undefined : slots / 86_400);
+  const retentionDays = numberAt(daTransport, ["retention_days"]);
   if (
     retentionDays === undefined ||
     !Number.isFinite(retentionDays) ||
@@ -990,6 +967,11 @@ const parseLibp2pDaCommitteePeers = (
     if (!isRecord(member)) {
       throw new Error("da_committee.members entries must be objects");
     }
+    requireExactKeys(
+      member,
+      ["signer_index", "da_vkey", "peer_id", "multiaddrs", "roles"],
+      `da_committee.members[${memberPosition.toString()}]`,
+    );
     const signerIndex = requiredSignerIndex(
       member,
       "da_committee.members",
@@ -1002,9 +984,9 @@ const parseLibp2pDaCommitteePeers = (
     }
     seenIndexes.add(signerIndex);
     const peerId = requiredPeerId(
-      stringField(
+      requiredString(
         member,
-        ["peer_id", "peerId"],
+        "peer_id",
         `da_committee.members[${memberPosition.toString()}].peer_id`,
       ),
       `da_committee.members[${memberPosition.toString()}].peer_id`,
@@ -1016,9 +998,9 @@ const parseLibp2pDaCommitteePeers = (
     return {
       signerIndex,
       daVkey: normalizeHex(
-        stringField(
+        requiredString(
           member,
-          ["da_vkey", "daVkey", "vkey"],
+          "da_vkey",
           `da_committee.members[${memberPosition.toString()}].da_vkey`,
         ),
         {
@@ -1066,7 +1048,7 @@ const requiredSignerIndex = (
   collectionName: string,
   memberPosition: number,
 ): number => {
-  const value = member.signer_index ?? member.signerIndex ?? member.index;
+  const value = member.signer_index;
   if (
     !Number.isSafeInteger(value) ||
     (value as number) < 0 ||
@@ -1196,20 +1178,6 @@ const requireExactNumber = (
   }
 };
 
-const stringField = (
-  source: Record<string, unknown>,
-  keys: readonly string[],
-  fieldName: string,
-): string => {
-  for (const key of keys) {
-    const value = source[key];
-    if (typeof value === "string" && value.trim() !== "") {
-      return value;
-    }
-  }
-  throw new Error(`${fieldName} is required`);
-};
-
 const validateLibp2pCommitteeMatchesDaParams = (
   transport: Libp2pDaTransportConfig,
   daParams: DaParamsConfig,
@@ -1243,36 +1211,53 @@ const daParamsConfig = (
   daCommitteeMembers: readonly DaCommitteeMember[],
 ): DaParamsConfig => {
   const memberKeys = daCommitteeMembers.map((member) => member.vkey);
-  const committeeHex = normalizeHex(
-    env.DA_COMMITTEE_HEX ?? memberKeys.join(""),
-    { fieldName: "DA committee" },
-  );
+  const committeeHex = normalizeHex(memberKeys.join(""), {
+    fieldName: "DA committee",
+  });
   if (committeeHex.length === 0 || committeeHex.length % 64 !== 0) {
     throw new Error("DA committee must be packed 32-byte verification keys");
+  }
+  if (
+    env.DA_COMMITTEE_HEX !== undefined &&
+    normalizeHex(env.DA_COMMITTEE_HEX, {
+      fieldName: "DA_COMMITTEE_HEX",
+    }) !== committeeHex
+  ) {
+    throw new Error("DA_COMMITTEE_HEX must exactly match da_committee.members");
   }
   const computedCommitteeHash = bytesToHex(
     blake2b(hexToBytes(committeeHex, "DA committee"), { dkLen: 32 }),
   );
-  const committeeSignersHash = normalizeHex(
-    env.DA_COMMITTEE_SIGNERS_HASH ??
-      stringAt(deploymentManifest, ["da", "committeeSignersHash"]) ??
-      stringAt(deploymentManifest, ["da_committee", "committeeSignersHash"]) ??
-      stringAt(deploymentManifest, [
-        "da_committee",
-        "committee_signers_hash",
-      ]) ??
-      stringAt(deploymentManifest, ["daCommittee", "committeeSignersHash"]) ??
-      computedCommitteeHash,
-    { fieldName: "DA committee signers hash", byteLength: 32 },
-  );
-  const threshold = positiveInt(
-    env.DA_THRESHOLD ??
-      numberAt(deploymentManifest, ["da", "threshold"])?.toString() ??
-      numberAt(deploymentManifest, ["da_committee", "threshold"])?.toString() ??
-      numberAt(deploymentManifest, ["daCommittee", "threshold"])?.toString() ??
-      "",
-    "DA_THRESHOLD",
-  );
+  if (
+    env.DA_COMMITTEE_SIGNERS_HASH !== undefined &&
+    normalizeHex(env.DA_COMMITTEE_SIGNERS_HASH, {
+      fieldName: "DA_COMMITTEE_SIGNERS_HASH",
+      byteLength: 32,
+    }) !== computedCommitteeHash
+  ) {
+    throw new Error(
+      "DA_COMMITTEE_SIGNERS_HASH must exactly match da_committee.members",
+    );
+  }
+  const committeeSignersHash = computedCommitteeHash;
+  const thresholdValue = numberAt(deploymentManifest, [
+    "da_committee",
+    "threshold",
+  ]);
+  if (
+    thresholdValue === undefined ||
+    !Number.isSafeInteger(thresholdValue) ||
+    thresholdValue <= 0
+  ) {
+    throw new Error("da_committee.threshold must be a positive integer");
+  }
+  const threshold = thresholdValue;
+  if (
+    env.DA_THRESHOLD !== undefined &&
+    positiveInt(env.DA_THRESHOLD, "DA_THRESHOLD") !== threshold
+  ) {
+    throw new Error("DA_THRESHOLD must exactly match da_committee.threshold");
+  }
   return { committeeHex, committeeSignersHash, threshold };
 };
 
@@ -1304,24 +1289,34 @@ const parseJsonObject = (
   return parsed;
 };
 
-const requireDeploymentString = (
-  manifest: Record<string, unknown>,
-  deploymentInfo: Record<string, unknown>,
-  paths: readonly (readonly string[])[],
-  label: string,
-  fallback?: () => string | undefined,
-): string => {
-  for (const path of paths) {
-    const value = stringAt(manifest, path) ?? stringAt(deploymentInfo, path);
-    if (value !== undefined && value.trim() !== "") {
-      return value;
+const requireExactKeys = (
+  value: Record<string, unknown>,
+  keys: readonly string[],
+  fieldName: string,
+): void => {
+  const expected = new Set(keys);
+  for (const key of Object.keys(value)) {
+    if (!expected.has(key)) {
+      throw new Error(`${fieldName}.${key} is unexpected`);
     }
   }
-  const fallbackValue = fallback?.();
-  if (fallbackValue !== undefined && fallbackValue.trim() !== "") {
-    return fallbackValue;
+  for (const key of keys) {
+    if (!Object.hasOwn(value, key)) {
+      throw new Error(`${fieldName}.${key} is required`);
+    }
   }
-  throw new Error(`missing ${label} in deployment manifest/deployment info`);
+};
+
+const requiredString = (
+  object: Record<string, unknown>,
+  key: string,
+  fieldName: string,
+): string => {
+  const value = object[key];
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new Error(`${fieldName} is required`);
+  }
+  return value;
 };
 
 const optionalString = (
@@ -1329,14 +1324,6 @@ const optionalString = (
   key: string,
 ): string | undefined => {
   const value = object[key];
-  return typeof value === "string" ? value : undefined;
-};
-
-const stringAt = (
-  root: Record<string, unknown>,
-  path: readonly string[],
-): string | undefined => {
-  const value = valueAt(root, path);
   return typeof value === "string" ? value : undefined;
 };
 

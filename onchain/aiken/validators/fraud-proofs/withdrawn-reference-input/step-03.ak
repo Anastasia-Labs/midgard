@@ -46,37 +46,40 @@ validator main(
         // 1. Specified input must be authentic and properly reproduced at the
         //    fraud proof's spending address.
         let
-          _own_script_hash,
-          _computation_thread_token_asset_name,
-          _fraud_prover,
-          m_input_state_data,
-        <-
-          finalize(
-            computation_thread_token_policy_id,
-            fraud_proof_token_policy_id,
-            fraud_proof_token_address,
-            step_datum,
-            input_index,
-            output_index,
-            fraud_proof_mint_redeemer_index,
-            own_out_ref,
-            inputs,
-            outputs,
-            redeemers,
-          )
+            _own_script_hash,
+            _computation_thread_token_asset_name,
+            _fraud_prover,
+            m_input_state_data
+          <- finalize(
+          computation_thread_token_policy_id,
+          fraud_proof_token_policy_id,
+          fraud_proof_token_address,
+          step_datum,
+          input_index,
+          output_index,
+          fraud_proof_mint_redeemer_index,
+          own_out_ref,
+          inputs,
+          outputs,
+          redeemers,
+        )
 
-        expect Some(State {
-          missing_reference_input_outref,
-          blocks_withdrawals_root,
-        }) = m_input_state_data
+        expect
+            Some(State {
+              missing_reference_input_outref,
+              blocks_withdrawals_root,
+            })
+          = m_input_state_data
 
         // 2. The provided withdrawal event must be valid, and it must spend the
         //    reference input that was referenced in the bad transaction.
-        expect WithdrawalInfo {
-          body: WithdrawalBody { l2_outref, .. },
-          validity: WithdrawalIsValid,
-          ..
-        } = withdrawal_info
+        expect
+            WithdrawalInfo {
+              body: WithdrawalBody { l2_outref, .. },
+              validity: WithdrawalIsValid,
+              ..
+            }
+          = withdrawal_info
         expect l2_outref == missing_reference_input_outref
 
         // 3. The withdrawal event must be present in the withdrawals root of

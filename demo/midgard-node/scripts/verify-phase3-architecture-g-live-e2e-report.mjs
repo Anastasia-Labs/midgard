@@ -14,7 +14,7 @@ import {
 } from "./phase3-architecture-g-closure-lib.mjs";
 
 export const PHASE3_LIVE_E2E_SCHEMA =
-  "midgard-phase3-architecture-g-clean-live-e2e-v2";
+  "midgard-phase3-architecture-g-clean-live-e2e-v1";
 export const PHASE3_LIVE_E2E_SCENARIO =
   "phase3-architecture-g-clean-live-e2e-recovery-v1";
 export const PHASE3_LIVE_E2E_AUTHORIZATION = "architecture-g-clean-live-e2e-v1";

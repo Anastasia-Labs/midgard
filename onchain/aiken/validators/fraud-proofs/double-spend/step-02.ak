@@ -31,27 +31,25 @@ validator main(
         // 1. Generic validations for passing the provided bad tx to the next
         //    step must pass.
         let
-          _own_script_hash,
-          _computation_thread_token_asset_name,
-          _fraud_prover,
-          m_input_state_data,
-          output_script_hash,
-          output_state_data,
-          _header,
-          tx2_id,
-          tx2_view,
-        <-
-          pass_native_tx_to_next_step(
-            computation_thread_token_policy_id,
-            hub_oracle,
-            datum,
-            tx_inclusion_args,
-            own_out_ref,
-            tx,
-          )
+            _own_script_hash,
+            _computation_thread_token_asset_name,
+            _fraud_prover,
+            m_input_state_data,
+            output_script_hash,
+            output_state_data,
+            _header,
+            tx2_id,
+            tx2_view
+          <- pass_native_tx_to_next_step(
+          computation_thread_token_policy_id,
+          hub_oracle,
+          datum,
+          tx_inclusion_args,
+          own_out_ref,
+          tx,
+        )
 
-        expect Some(State { verified_tx1_id, verified_tx1_spend_inputs_hash }) =
-          m_input_state_data
+        expect Some(State { verified_tx1_id, verified_tx1_spend_inputs_hash }) = m_input_state_data
 
         // 2. The two transactions must be different.
         expect verified_tx1_id != tx2_id
@@ -59,11 +57,10 @@ validator main(
         // 3. The UTxO must be produced at next step's script hash with both
         //    verified bad transactions' native spend-input hashes in its datum.
         expect output_script_hash == step_03_validator_script_hash
-        let expected_output_state: Data =
-          step_03.State {
-            verified_tx1_spend_inputs_hash,
-            verified_tx2_spend_inputs_hash: tx2_view.tx_compact.body.spend_inputs_hash,
-          }
+        let expected_output_state: Data = step_03.State {
+          verified_tx1_spend_inputs_hash,
+          verified_tx2_spend_inputs_hash: tx2_view.tx_compact.body.spend_inputs_hash,
+        }
         expect output_state_data == expected_output_state
 
         // Done.

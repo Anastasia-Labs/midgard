@@ -5,8 +5,8 @@ import {
   NATIVE_MPF_RPC_DIGEST_DOMAIN,
   NATIVE_MPF_RPC_MAGIC,
   NATIVE_MPF_RPC_SCHEMA,
-  NativeMpfRpcKind,
   type NativeMpfRpcFrame,
+  NativeMpfRpcKind,
 } from "./protocol.js";
 
 const LENGTH_BYTES = 4;

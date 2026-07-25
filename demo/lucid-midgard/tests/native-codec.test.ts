@@ -1,28 +1,27 @@
 import {
   computeHash32,
-  computeMidgardNativeTxId,
+  computeMidgardNativeTxIdV1,
   computeScriptIntegrityHashForLanguages,
-  decodeMidgardNativeTxCanonical,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardNativeTxCanonicalV1,
+  decodeMidgardNativeTxFullV1FromCanonicalCbor,
   EMPTY_CBOR_LIST,
   EMPTY_CBOR_NULL,
   EMPTY_NULL_ROOT,
-  encodeCbor,
-  encodeMidgardNativeTxBodyCompact,
-  encodeMidgardNativeTxCanonical,
-  materializeMidgardNativeTxFromCanonical,
+  encodeMidgardNativeTxBodyCompactV1,
+  encodeMidgardNativeTxCanonicalV1,
+  materializeMidgardNativeTxFromCanonicalV1,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
-  MIDGARD_NATIVE_TX_VERSION,
+  MIDGARD_NATIVE_TX_V1_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  type MidgardNativeTxCanonical,
-  type MidgardNativeTxFull,
+  type MidgardNativeTxCanonicalV1,
+  type MidgardNativeTxFullV1,
   PLUTUS_V3_CANONICAL_COST_MODEL_VIEW,
   ScriptLanguageTags,
 } from "@al-ft/midgard-core/codec";
 import { describe, expect, it } from "vitest";
 
-const makeCanonical = (): MidgardNativeTxCanonical => ({
-  version: MIDGARD_NATIVE_TX_VERSION,
+const makeCanonical = (): MidgardNativeTxCanonicalV1 => ({
+  version: MIDGARD_NATIVE_TX_V1_VERSION,
   validity: "TxIsValid",
   body: {
     spendInputsPreimageCbor: EMPTY_CBOR_LIST,
@@ -45,34 +44,6 @@ const makeCanonical = (): MidgardNativeTxCanonical => ({
   },
 });
 
-const compactValue = (tx: MidgardNativeTxFull): readonly unknown[] => [
-  tx.compact.version,
-  computeMidgardNativeTxId(tx),
-  tx.compact.transactionWitnessSetHash,
-  0n,
-];
-
-const bodyFullValue = (tx: MidgardNativeTxFull): readonly unknown[] => [
-  tx.compact.transactionBody.spendInputsHash,
-  tx.body.spendInputsPreimageCbor,
-  tx.compact.transactionBody.referenceInputsHash,
-  tx.body.referenceInputsPreimageCbor,
-  tx.compact.transactionBody.outputsHash,
-  tx.body.outputsPreimageCbor,
-  tx.body.fee,
-  tx.body.validityIntervalStart,
-  tx.body.validityIntervalEnd,
-  tx.compact.transactionBody.requiredObserversHash,
-  tx.body.requiredObserversPreimageCbor,
-  tx.compact.transactionBody.requiredSignersHash,
-  tx.body.requiredSignersPreimageCbor,
-  tx.compact.transactionBody.mintHash,
-  tx.body.mintPreimageCbor,
-  tx.body.scriptIntegrityHash,
-  tx.body.auxiliaryDataHash,
-  tx.body.networkId,
-];
-
 describe("Midgard native v1 codec", () => {
   it("exposes shared script language view helpers", () => {
     const redeemerTxWitsHash = Buffer.from(
@@ -90,11 +61,11 @@ describe("Midgard native v1 codec", () => {
   });
 
   it("round trips canonical transaction CBOR into a materialized full transaction", () => {
-    const tx = materializeMidgardNativeTxFromCanonical(makeCanonical());
-    const encoded = encodeMidgardNativeTxCanonical(tx);
-    const decoded = decodeMidgardNativeTxFullFromCanonicalCbor(encoded);
+    const tx = materializeMidgardNativeTxFromCanonicalV1(makeCanonical());
+    const encoded = encodeMidgardNativeTxCanonicalV1(tx);
+    const decoded = decodeMidgardNativeTxFullV1FromCanonicalCbor(encoded);
 
-    expect(decoded.version).toBe(MIDGARD_NATIVE_TX_VERSION);
+    expect(decoded.version).toBe(MIDGARD_NATIVE_TX_V1_VERSION);
     expect(decoded.compact.transactionBody).toEqual(tx.compact.transactionBody);
     expect(decoded.compact.transactionWitnessSetHash).toEqual(
       tx.compact.transactionWitnessSetHash,
@@ -106,49 +77,33 @@ describe("Midgard native v1 codec", () => {
 
   it("decodes canonical transaction CBOR without deriving compact fields", () => {
     const canonical = makeCanonical();
-    const decoded = decodeMidgardNativeTxCanonical(
-      encodeMidgardNativeTxCanonical(canonical),
+    const decoded = decodeMidgardNativeTxCanonicalV1(
+      encodeMidgardNativeTxCanonicalV1(canonical),
     );
 
     expect(decoded).toEqual(canonical);
     expect("compact" in decoded).toBe(false);
   });
 
-  it("uses the compact body hash as the transaction id", () => {
-    const tx = materializeMidgardNativeTxFromCanonical(makeCanonical());
+  it("uses the canonical V1 compact-body domain as the transaction id", () => {
+    const tx = materializeMidgardNativeTxFromCanonicalV1(makeCanonical());
 
-    expect(computeMidgardNativeTxId(tx)).toEqual(
+    expect(computeMidgardNativeTxIdV1(tx)).toEqual(
       computeHash32(
-        encodeMidgardNativeTxBodyCompact(tx.compact.transactionBody),
+        Buffer.concat([
+          Buffer.from("MidgardNativeTxBodyV1", "ascii"),
+          Buffer.from([1]),
+          encodeMidgardNativeTxBodyCompactV1(
+            tx.compact.transactionBody,
+          ),
+        ]),
       ),
     );
   });
 
-  it("rejects the old embedded-compact transaction format", () => {
-    const tx = materializeMidgardNativeTxFromCanonical(makeCanonical());
-    const legacyWitnessSet = [
-      tx.compact.transactionWitnessSetHash,
-      tx.witnessSet.addrTxWitsPreimageCbor,
-      tx.compact.transactionWitnessSetHash,
-      tx.witnessSet.scriptTxWitsPreimageCbor,
-      tx.compact.transactionWitnessSetHash,
-      tx.witnessSet.redeemerTxWitsPreimageCbor,
-    ];
-    const encoded = encodeCbor([
-      MIDGARD_NATIVE_TX_VERSION,
-      compactValue(tx),
-      bodyFullValue(tx),
-      legacyWitnessSet,
-    ]);
-
-    expect(() => decodeMidgardNativeTxFullFromCanonicalCbor(encoded)).toThrow(
-      /transaction\[1\] must have exactly 12 elements/,
-    );
-  });
-
   it("rejects derived compact body drift", () => {
-    const tx = materializeMidgardNativeTxFromCanonical(makeCanonical());
-    const tampered: MidgardNativeTxFull = {
+    const tx = materializeMidgardNativeTxFromCanonicalV1(makeCanonical());
+    const tampered: MidgardNativeTxFullV1 = {
       ...tx,
       compact: {
         ...tx.compact,
@@ -159,18 +114,18 @@ describe("Midgard native v1 codec", () => {
       },
     };
 
-    expect(() => encodeMidgardNativeTxCanonical(tampered)).toThrow(
+    expect(() => encodeMidgardNativeTxCanonicalV1(tampered)).toThrow(
       /transaction_compact\.transaction_body must match the derived compact body/,
     );
   });
 
   it("rejects trailing CBOR bytes", () => {
-    const encoded = encodeMidgardNativeTxCanonical(
-      materializeMidgardNativeTxFromCanonical(makeCanonical()),
+    const encoded = encodeMidgardNativeTxCanonicalV1(
+      materializeMidgardNativeTxFromCanonicalV1(makeCanonical()),
     );
 
     expect(() =>
-      decodeMidgardNativeTxFullFromCanonicalCbor(
+      decodeMidgardNativeTxFullV1FromCanonicalCbor(
         Buffer.concat([encoded, EMPTY_CBOR_NULL]),
       ),
     ).toThrow(/cbor has trailing bytes/);

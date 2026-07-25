@@ -143,7 +143,11 @@ export const trimByEventFraction = <A>(
   return rows.slice(discard, rows.length - discard);
 };
 
-const rate = (count: number, startedAt: Date | null, finishedAt: Date | null) => {
+const rate = (
+  count: number,
+  startedAt: Date | null,
+  finishedAt: Date | null,
+) => {
   if (count <= 1 || startedAt === null || finishedAt === null) {
     return null;
   }
@@ -421,7 +425,9 @@ export const collectGroundTruthMetricsFromSql = (
           trimFraction: query.trimFraction,
           timestamp: (row) => row.observed_at,
           latencyMs: (row) => {
-            const confirmedAt = commitConfirmByTx.get(normalizeHash(row.tx_hash));
+            const confirmedAt = commitConfirmByTx.get(
+              normalizeHash(row.tx_hash),
+            );
             return confirmedAt === undefined
               ? null
               : ms(row.observed_at) - ms(confirmedAt);

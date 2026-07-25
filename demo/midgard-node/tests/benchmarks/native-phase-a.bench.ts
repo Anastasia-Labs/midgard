@@ -2,11 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 
 import {
-  cardanoTxBytesToMidgardNativeTxCanonicalCbor,
-  computeMidgardNativeTxId,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
-  deriveMidgardNativeTxCompact,
-  encodeMidgardNativeTxCanonical,
+  cardanoTxBytesToMidgardNativeTxCanonicalCborV1,
+  computeMidgardNativeTxIdV1,
+  decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  deriveMidgardNativeTxCompactV1,
+  encodeMidgardNativeTxCanonicalV1,
 } from "@al-ft/midgard-core/codec";
 import { QueuedTx, runPhaseAValidation } from "@al-ft/midgard-validation";
 import { Effect } from "effect";
@@ -128,10 +128,10 @@ describe("native tx phase-A benchmark", () => {
       .map((tx) => Buffer.from(tx.cborHex, "hex"));
 
     const nativeCanonicalCbors = txBytes.map((bytes) =>
-      cardanoTxBytesToMidgardNativeTxCanonicalCbor(bytes),
+      cardanoTxBytesToMidgardNativeTxCanonicalCborV1(bytes),
     );
     const normalizedNative = nativeCanonicalCbors.map((bytes) => {
-      const converted = decodeMidgardNativeTxFullFromCanonicalCbor(bytes);
+      const converted = decodeMidgardNativeTxFullV1FromCanonicalCbor(bytes);
       const normalized = {
         version: converted.version,
         validity: "TxIsValid" as const,
@@ -148,7 +148,7 @@ describe("native tx phase-A benchmark", () => {
       };
       return {
         ...normalized,
-        compact: deriveMidgardNativeTxCompact(
+        compact: deriveMidgardNativeTxCompactV1(
           normalized.body,
           normalized.witnessSet,
           "TxIsValid",
@@ -157,8 +157,8 @@ describe("native tx phase-A benchmark", () => {
     });
     const nativeExpectedNetworkId = EXPECTED_NETWORK_ID;
     const nativeQueued: QueuedTx[] = normalizedNative.map((tx, i) => ({
-      txId: computeMidgardNativeTxId(tx),
-      txCbor: encodeMidgardNativeTxCanonical(tx),
+      txId: computeMidgardNativeTxIdV1(tx),
+      txCbor: encodeMidgardNativeTxCanonicalV1(tx),
       arrivalSeq: BigInt(i),
       createdAt: new Date(0),
     }));

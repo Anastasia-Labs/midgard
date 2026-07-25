@@ -69,7 +69,7 @@ ogmios_image_id=$(image_id "$PHASE4_OGMIOS_IMAGE")
 kupo_image_id=$(image_id "$PHASE4_KUPO_IMAGE")
 postgres_image_id=$(image_id "$PHASE4_POSTGRES_IMAGE")
 jq -n \
-  --arg schemaVersion midgard-phase4-matched-snapshot-identity-v2 \
+  --arg schemaVersion midgard-phase4-matched-snapshot-identity-v1 \
   --arg composeProject "$MIDGARD_PHASE4_COMPOSE_PROJECT" \
   --argjson networkMagic "$MIDGARD_PHASE4_NETWORK_MAGIC" \
   --arg postgresDatabase "$MIDGARD_PHASE4_POSTGRES_DATABASE" \

@@ -1,7 +1,7 @@
 import * as SDK from "@al-ft/midgard-sdk";
 
 type EventCommitmentRoots = Pick<
-  SDK.MakeHeaderTransitionCommitmentsInput,
+  SDK.MakeHeaderTransitionCommitmentsV1Input,
   | "withdrawalsRoot"
   | "forcedTransactionsRoot"
   | "transactionsRoot"
@@ -11,7 +11,7 @@ type EventCommitmentRoots = Pick<
 >;
 
 type EventCommitmentCounts = Pick<
-  SDK.MakeHeaderTransitionCommitmentsInput,
+  SDK.MakeHeaderTransitionCommitmentsV1Input,
   | "withdrawalCount"
   | "forcedTransactionCount"
   | "l2TransactionCount"
@@ -19,7 +19,18 @@ type EventCommitmentCounts = Pick<
   | "transitionStepCount"
 >;
 
+export type ValidationCommitments = Pick<
+  SDK.MakeHeaderTransitionCommitmentsV1Input,
+  "validationTracesRoot" | "validationTraceCount"
+>;
+
 export const makeEventCommitments = (
   roots: EventCommitmentRoots,
   counts: EventCommitmentCounts,
-) => SDK.makeHeaderTransitionCommitmentsProgram({ ...roots, ...counts });
+  validation: ValidationCommitments,
+) =>
+  SDK.makeHeaderTransitionCommitmentsV1Program({
+    ...roots,
+    ...counts,
+    ...validation,
+  });

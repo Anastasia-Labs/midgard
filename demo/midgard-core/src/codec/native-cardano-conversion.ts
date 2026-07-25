@@ -3,7 +3,7 @@ import { CML } from "@lucid-evolution/lucid";
 import { encodeCbor } from "./cbor.js";
 import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
 import { ensureHash32 } from "./hash.js";
-import { type MidgardNativeTxCanonical } from "./native.js";
+import { type MidgardNativeTxCanonicalV1 } from "./native.js";
 import { EMPTY_NULL_ROOT } from "./native-constants.js";
 import { decodeMidgardNativeScript } from "./native-script.js";
 import { encodeMidgardTxOutput, type MidgardTxOutput } from "./output.js";
@@ -454,10 +454,10 @@ const assertCardanoTxConvertibleToNative = (tx: CML.Transaction): void => {
   }
 };
 
-export const cardanoTxBytesToMidgardNativeTxCanonical = (
+export const cardanoTxBytesToMidgardNativeTxCanonicalV1 = (
   cardanoTxBytes: Uint8Array,
   constants: CardanoToMidgardNativeConstants,
-): MidgardNativeTxCanonical => {
+): MidgardNativeTxCanonicalV1 => {
   const tx = parseCardanoTx(cardanoTxBytes);
   assertCardanoTxConvertibleToNative(tx);
   const txBody = tx.body();

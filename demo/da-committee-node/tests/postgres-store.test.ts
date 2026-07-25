@@ -156,9 +156,10 @@ const stateQueueHeaderRecord = (): StateQueueHeaderRecord => ({
 const daPayloadRecord = (): DaPayloadRecord => ({
   deploymentFingerprint: "dep",
   headerHash: "01".repeat(28),
+  payloadSchemaVersion: 1,
   payloadCborHex: "aa",
   payloadSha256: "11".repeat(32),
-  sourcePeerId: "http://da.example",
+  sourcePeerId: "fixture-peer",
   fetchedAt: "2026-06-13T00:00:01.000Z",
   validationStatus: "fetched",
 });
@@ -177,7 +178,7 @@ const daSignatureRecord = (): DaSignatureRecord => ({
     depth: 12,
   },
   validation: {
-    payloadVersion: Number(SDK.DA_PAYLOAD_V2_VERSION),
+    payloadVersion: Number(SDK.DA_PAYLOAD_V1_VERSION),
     rootsMatch: true,
     stateQueueOutRef: `${"02".repeat(32)}#0`,
     headerHash: "01".repeat(28),

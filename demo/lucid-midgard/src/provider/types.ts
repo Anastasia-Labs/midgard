@@ -1,7 +1,9 @@
+import type { MidgardCekProgramMaterialEntryV1 } from "@al-ft/midgard-core/cek-proof";
 import type {
   ScriptLanguageName,
   ScriptLanguageTag,
 } from "@al-ft/midgard-core/codec";
+import type { MidgardConsensusProfileV1 } from "@al-ft/midgard-core/consensus-profile-v1";
 
 import type {
   Address,
@@ -18,12 +20,12 @@ export type ProtocolScriptLanguage = {
   readonly tag: ScriptLanguageTag;
 };
 
-export type MidgardProtocolInfo = {
-  readonly apiVersion: number;
+type MidgardProtocolInfoCommon = {
   readonly network: string;
   readonly midgardNativeTxVersion: number;
   readonly currentSlot: bigint;
   readonly supportedScriptLanguages: readonly ProtocolScriptLanguage[];
+  readonly codecSupportedScriptLanguages: readonly ProtocolScriptLanguage[];
   readonly protocolFeeParameters: {
     readonly minFeeA: bigint;
     readonly minFeeB: bigint;
@@ -37,15 +39,14 @@ export type MidgardProtocolInfo = {
   };
 };
 
-export type ProviderDiagnostics = {
-  readonly endpoint: string;
-  readonly protocolInfoSource: "node" | "fallback" | "unknown";
-  readonly protocolInfoFallbackReason?: string;
+export type MidgardProtocolInfo = MidgardProtocolInfoCommon & {
+  readonly apiVersion: 1;
+  readonly consensusProfile: MidgardConsensusProfileV1;
 };
 
-export type ProtocolInfoFallback = {
-  readonly protocolInfo: MidgardProtocolInfo;
-  readonly reason: string;
+export type ProviderDiagnostics = {
+  readonly endpoint: string;
+  readonly protocolInfoSource: "node" | "offline" | "unknown";
 };
 
 export type MidgardProvider = {
@@ -58,7 +59,10 @@ export type MidgardProvider = {
   getProtocolInfo(): Promise<MidgardProtocolInfo>;
   getProtocolParameters(): Promise<MidgardProtocolParameters>;
   getCurrentSlot(): Promise<bigint>;
-  submitTx(txCanonicalCborHex: string): Promise<SubmitTxResult>;
+  submitTx(
+    txCanonicalCborHex: string,
+    programMaterial?: readonly MidgardCekProgramMaterialEntryV1[],
+  ): Promise<SubmitTxResult>;
   getTxStatus(txId: TxHash): Promise<TxStatus>;
   diagnostics(): ProviderDiagnostics;
 };
@@ -71,5 +75,4 @@ export type MidgardFetch = (
 export type MidgardNodeProviderOptions = {
   readonly endpoint: string;
   readonly fetch?: MidgardFetch;
-  readonly protocolInfoFallback?: ProtocolInfoFallback;
 };

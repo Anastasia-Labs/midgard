@@ -194,10 +194,10 @@ export class LucidDaAttestationSubmitter
         continue;
       }
       const stateQueueNode = await Effect.runPromise(
-        SDK.getStateQueueNodeFromStateQueueDatum(stateQueueUtxo.datum),
+        SDK.getStateQueueNodeV1FromStateQueueDatum(stateQueueUtxo.datum),
       );
       const computedHeaderHash = await Effect.runPromise(
-        SDK.hashBlockHeader(stateQueueNode.header),
+        SDK.hashBlockHeaderV1(stateQueueNode.header),
       );
       if (computedHeaderHash !== headerHash) {
         continue;

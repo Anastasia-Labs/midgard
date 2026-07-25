@@ -42,9 +42,34 @@ The effect of a valid included transaction order on a block's utxo set is identi
 It removes all of the transaction's inputs from the ledger and adds all of its outputs.
 Invalid included transaction orders are represented as forced transaction trace steps whose operator validity classification is challengeable.
 
-The current transition-trace launch gate intentionally supports only invalid/no-op forced transaction steps in production block construction.
-An operator must not commit an effectful \code{TxIsValid} forced transaction trace step until the forced-transaction ledger deltas and proof preimages needed by the one-step verifier are available.
-The Aiken transition-trace proof validator rejects the unsupported valid-forced redeemer path, so this is a fail-closed deployment restriction rather than an alternate validity rule.
+In canonical V1, every canonical field preimage is published as an independently
+locked fragment. A second transaction references that fragment and may mint a
+compact field-receipt NFT only after the receipt policy recomputes the compact
+source, field hash, canonical encoding, and compiled field bound on L1. The
+receipt datum binds the \code{TxOrderId}, transaction commitment, field index,
+and exact fragment output reference. This two-transaction sequence avoids a
+circular attempt to place a publishing transaction's own ID in one of its
+inline output datums.
+
+The final transaction-order mint references exactly nine compact receipts,
+not all nine large field fragments. It verifies the ordered receipt NFT and
+datum for every committed field and records both ordered reference lists in
+the order datum. When the order is consumed, all fragments and receipts must
+also be consumed, the order NFT and all receipt NFTs must be burned, and the
+fragment/receipt spending validators independently enforce those burns.
+Missing, duplicate, non-canonical, mismatched, oversized, or unreceipted
+fragments fail closed.
+
+The canonical V1 validation trace uses the same machine for normal and forced
+transactions. A valid forced transaction therefore applies the exact accepted
+ledger delta, while an invalid forced transaction commits an exact no-op.
+An operator verdict that differs from the L1-computed terminal verdict is a
+fault in either direction.
+
+The temporary \code{ValidForcedTransactionUnsupported} implementation gate is
+fail-closed scaffolding only. It must be removed and replaced by complete
+accepted-effectful and rejected-no-op L1 proof paths before canonical V1
+activation.
 
 \Cref{h:transaction-order} describes the lifecycle of a transaction order request in further detail.
 

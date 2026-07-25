@@ -1,6 +1,14 @@
 import * as SDK from "@al-ft/midgard-sdk";
+import {
+  readCborArrayHeader,
+  readCborBytes,
+  readCborInteger,
+} from "@al-ft/midgard-core/codec/cbor";
 
-import { TransitionTraceChallengerError } from "./errors.js";
+import {
+  transitionTraceError,
+  TransitionTraceChallengerError,
+} from "./errors.js";
 import {
   eventKeyFingerprint,
   eventKeyPhase,
@@ -9,6 +17,7 @@ import {
 } from "./reconstruct.js";
 import {
   buildCountFault,
+  buildAcceptedTransactionTransitionMismatchFault,
   buildDuplicateTraceEventFault,
   buildEventToStepMismatchFault,
   buildInvalidForcedTransactionNoOpWitness,
@@ -21,6 +30,7 @@ import {
   buildTraceBoundaryFault,
   buildTraceLinkFault,
   buildTransitionFaultProof,
+  type AcceptedTransactionTransitionMismatchEvidence,
   type OmittedDueL1EventEvidence,
   type OutOfWindowSourceEventEvidence,
   rootCountProof,
@@ -35,7 +45,8 @@ export type TransitionTraceFaultKind =
   | "omittedDueL1Event"
   | "duplicateTraceEvent"
   | "outOfWindowSourceEvent"
-  | "countFault";
+  | "countFault"
+  | "acceptedTransactionTransitionMismatch";
 
 export type TransitionTraceDetection =
   | {
@@ -57,6 +68,7 @@ export type TransitionTraceDetection =
 export type TransitionTraceDetectionEvidence = {
   readonly omittedDueL1Events?: readonly OmittedDueL1EventEvidence[];
   readonly outOfWindowSourceEvents?: readonly OutOfWindowSourceEventEvidence[];
+  readonly acceptedTransactionTransitionMismatches?: readonly AcceptedTransactionTransitionMismatchEvidence[];
 };
 
 const detection = ({
@@ -155,7 +167,7 @@ export const detectCountFaults = (
         reconstruction,
         kind: "countFault",
         invariant: "header_total_event_count",
-        diagnostic: `Header total_event_count ${header.totalEventCount.toString()} does not equal source count sum ${expectedTotal.toString()}.`,
+        diagnostic: `HeaderV1 total_event_count ${header.totalEventCount.toString()} does not equal source count sum ${expectedTotal.toString()}.`,
         fault,
       }),
     );
@@ -167,7 +179,7 @@ export const detectCountFaults = (
         reconstruction,
         kind: "countFault",
         invariant: "header_transition_step_count",
-        diagnostic: `Header transition_step_count ${header.transitionStepCount.toString()} does not equal total_event_count ${header.totalEventCount.toString()}.`,
+        diagnostic: `HeaderV1 transition_step_count ${header.transitionStepCount.toString()} does not equal total_event_count ${header.totalEventCount.toString()}.`,
         fault,
       }),
     );
@@ -524,17 +536,85 @@ const detectInvalidNoOpTransitions = async (
         }),
       );
     }
-    if (
-      source.phase === "ForcedTransaction" &&
-      source.entry.value.operator_validity === "TxIsValid"
-    ) {
+  }
+  return detections;
+};
+
+const acceptedTerminalPostRoot = (
+  terminalAcceptanceWitnessCbor: string,
+): string => {
+  const bytes = Buffer.from(terminalAcceptanceWitnessCbor, "hex");
+  const array = readCborArrayHeader(
+    bytes,
+    0,
+    "terminal acceptance witness",
+  );
+  if (array.length !== 4) {
+    throw transitionTraceError(
+      "malformedPayload",
+      "Terminal acceptance witness must contain exactly four fields.",
+    );
+  }
+  const version = readCborInteger(bytes, array.nextOffset, "terminal version");
+  if (version.value !== 1n) {
+    throw transitionTraceError(
+      "malformedPayload",
+      "Terminal acceptance witness has an unsupported version.",
+    );
+  }
+  const tag = readCborBytes(bytes, version.nextOffset, "terminal tag");
+  if (tag.value.length !== 0) {
+    throw transitionTraceError(
+      "malformedPayload",
+      "Terminal acceptance witness tag must be empty.",
+    );
+  }
+  const root = readCborBytes(bytes, tag.nextOffset, "terminal ledger root");
+  if (root.value.length !== 32) {
+    throw transitionTraceError(
+      "malformedPayload",
+      "Terminal acceptance witness ledger root must contain 32 bytes.",
+    );
+  }
+  const frontier = readCborBytes(
+    bytes,
+    root.nextOffset,
+    "terminal delta frontier",
+  );
+  if (frontier.nextOffset !== bytes.length) {
+    throw transitionTraceError(
+      "malformedPayload",
+      "Terminal acceptance witness contains trailing bytes.",
+    );
+  }
+  return root.value.toString("hex");
+};
+
+const detectAcceptedTransactionTransitionMismatches = (
+  reconstruction: TransitionTraceReconstruction,
+  evidence: readonly AcceptedTransactionTransitionMismatchEvidence[],
+): readonly TransitionTraceDetection[] => {
+  const detections: TransitionTraceDetection[] = [];
+  for (const item of evidence) {
+    if (item.claim.descriptor_membership.value.verdict !== "Accepted") {
+      throw transitionTraceError(
+        "missingWitnessData",
+        "Accepted transition mismatch evidence must reference an accepted descriptor.",
+      );
+    }
+    const committedPostRoot =
+      item.claim.transition_step_membership.value.post_utxos_root;
+    const validatedPostRoot = acceptedTerminalPostRoot(
+      item.terminalAcceptanceWitnessCbor,
+    );
+    if (committedPostRoot !== validatedPostRoot) {
       detections.push(
-        unsupportedDetection({
-          kind: "invalidOneStepTransition",
-          invariant: "valid_forced_transaction_effect_supported",
-          diagnostic: `Trace step ${step.step_index.toString()} is a valid forced transaction, whose effectful transition remains fail-closed in Task07.`,
-          reason:
-            "Valid forced transaction proofs are intentionally rejected until forced transaction ledger deltas/preimages exist.",
+        detection({
+          reconstruction,
+          kind: "acceptedTransactionTransitionMismatch",
+          invariant: "accepted_transaction_uses_validated_ledger_root",
+          diagnostic: `Accepted transaction transition commits ${committedPostRoot}, but its authenticated terminal validation witness commits ${validatedPostRoot}.`,
+          fault: buildAcceptedTransactionTransitionMismatchFault(item),
         }),
       );
     }
@@ -625,6 +705,10 @@ export const detectTransitionTraceFaults = async (
   ...(await detectEventToStepMismatches(reconstruction)),
   ...(await detectSourceMembershipMismatches(reconstruction)),
   ...(await detectInvalidNoOpTransitions(reconstruction)),
+  ...detectAcceptedTransactionTransitionMismatches(
+    reconstruction,
+    evidence.acceptedTransactionTransitionMismatches ?? [],
+  ),
   ...(await detectOmittedDueL1Events(
     reconstruction,
     evidence.omittedDueL1Events ?? [],

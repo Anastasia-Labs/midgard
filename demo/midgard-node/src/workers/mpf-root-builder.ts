@@ -1,7 +1,8 @@
-import * as SDK from "@al-ft/midgard-sdk";
-import { Effect } from "effect";
 import { createRequire } from "node:module";
 import { parentPort } from "node:worker_threads";
+
+import * as SDK from "@al-ft/midgard-sdk";
+import { Effect } from "effect";
 
 export type MpfRootBuilderRequest = {
   readonly id: number;
@@ -35,31 +36,26 @@ const require = createRequire(import.meta.url);
 const rootRuntime = new Promise<{
   readonly mpf: typeof import("./utils/mpf.js");
   readonly forestry: typeof import("@aiken-lang/merkle-patricia-forestry");
-}>(
-  (resolve, reject) => {
-    const blake2b = require("blake2b") as {
-      readonly ready: (callback: (error?: unknown) => void) => void;
-    };
-    blake2b.ready((error?: unknown) => {
-      if (error !== undefined) {
-        reject(error);
-        return;
-      }
-      // blake2b@2.1.4 swaps its CommonJS export to blake2b-wasm in a
-      // readiness callback. Import forestry only after that export is live so
-      // its ESM default binding cannot capture the pure-JS bootstrap function.
-      setImmediate(() => {
-        void Promise.all([
-          import("./utils/mpf.js"),
-          import("@aiken-lang/merkle-patricia-forestry"),
-        ]).then(
-          ([mpf, forestry]) => resolve({ mpf, forestry }),
-          reject,
-        );
-      });
+}>((resolve, reject) => {
+  const blake2b = require("blake2b") as {
+    readonly ready: (callback: (error?: unknown) => void) => void;
+  };
+  blake2b.ready((error?: unknown) => {
+    if (error !== undefined) {
+      reject(error);
+      return;
+    }
+    // blake2b@2.1.4 swaps its CommonJS export to blake2b-wasm in a
+    // readiness callback. Import forestry only after that export is live so
+    // its ESM default binding cannot capture the pure-JS bootstrap function.
+    setImmediate(() => {
+      void Promise.all([
+        import("./utils/mpf.js"),
+        import("@aiken-lang/merkle-patricia-forestry"),
+      ]).then(([mpf, forestry]) => resolve({ mpf, forestry }), reject);
     });
-  },
-);
+  });
+});
 
 parentPort.on("message", (request: MpfRootBuilderRequest) => {
   void Effect.runPromise(
@@ -69,20 +65,17 @@ parentPort.on("message", (request: MpfRootBuilderRequest) => {
       const keyArena = Buffer.from(request.keys);
       const valueArena = Buffer.from(request.values);
       const offsets = new Uint32Array(request.offsets);
-      const entries = Array.from(
-        { length: offsets.length / 4 },
-        (_, index) => {
-          const offset = index * 4;
-          const keyOffset = offsets[offset]!;
-          const keyLength = offsets[offset + 1]!;
-          const valueOffset = offsets[offset + 2]!;
-          const valueLength = offsets[offset + 3]!;
-          return {
+      const entries = Array.from({ length: offsets.length / 4 }, (_, index) => {
+        const offset = index * 4;
+        const keyOffset = offsets[offset]!;
+        const keyLength = offsets[offset + 1]!;
+        const valueOffset = offsets[offset + 2]!;
+        const valueLength = offsets[offset + 3]!;
+        return {
           key: keyArena.subarray(keyOffset, keyOffset + keyLength),
           value: valueArena.subarray(valueOffset, valueOffset + valueLength),
-          };
-        },
-      );
+        };
+      });
       const unpackMs = performance.now() - unpackStartedAt;
       const canonicalizeStartedAt = performance.now();
       const canonical = yield* mpf.canonicalizeKeyValuePhasEntries(
@@ -95,12 +88,10 @@ parentPort.on("message", (request: MpfRootBuilderRequest) => {
         canonical.length === 0
           ? SDK.EMPTY_MERKLE_TREE_ROOT
           : Buffer.from(
-              (
-                yield* Effect.tryPromise({
-                  try: () => forestry.Trie.fromList(canonical),
-                  catch: (cause) => mpf.MpfError.phasRoot(cause),
-                })
-              ).hash,
+              (yield* Effect.tryPromise({
+                try: () => forestry.Trie.fromList(canonical),
+                catch: (cause) => mpf.MpfError.phasRoot(cause),
+              })).hash,
             ).toString("hex");
       const trieFromListMs = performance.now() - trieStartedAt;
       const domainCommitStartedAt = performance.now();

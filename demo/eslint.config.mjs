@@ -6,7 +6,9 @@ export default [
     ignores: [
       "**/coverage/**",
       "**/dist/**",
+      "**/logs/**",
       "**/node_modules/**",
+      "**/.architecture-f-wasm/**",
       "**/.tmp/**",
     ],
   },

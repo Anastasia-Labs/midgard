@@ -92,16 +92,20 @@ pub fn quantity_of_policy_id(value: Value, policyId: PolicyId) {
 }
 
 pub fn get_own_hash(output_reference: OutputReference, txInputs: List<Input>) {
-  expect Some(input) =
-    list.find(txInputs, fn(x) { x.output_reference == output_reference })
+  expect Some(input) = list.find(
+    txInputs,
+    fn(x) { x.output_reference == output_reference },
+  )
 
   expect Script(hash) = input.output.address.payment_credential
   hash
 }
 
 pub fn get_own_address(output_reference: OutputReference, txInputs: List<Input>) {
-  expect Some(input) =
-    list.find(txInputs, fn(x) { x.output_reference == output_reference })
+  expect Some(input) = list.find(
+    txInputs,
+    fn(x) { x.output_reference == output_reference },
+  )
 
   input.output.address
 }
@@ -125,10 +129,9 @@ pub fn has_signed(
 /// Expects a single token to be present in the given `Value`, and returns it as
 /// a triplet.
 pub fn get_single_asset_from_value(v: Value) -> (PolicyId, AssetName, Int) {
-  expect [Pair(sym, tn_qty_pairs)] =
-    v
-      |> assets.to_dict
-      |> dict.to_pairs
+  expect [Pair(sym, tn_qty_pairs)] = v
+    |> assets.to_dict
+    |> dict.to_pairs
   expect [Pair(tn, qty)] = tn_qty_pairs |> dict.to_pairs
   (sym, tn, qty)
 }
@@ -138,10 +141,9 @@ pub fn get_asset_name_from_value_with_policy(
   value: Value,
   policy_id: PolicyId,
 ) -> AssetName {
-  expect [Pair(asset_name, _)] =
-    value
-      |> assets.tokens(policy_id)
-      |> dict.to_pairs
+  expect [Pair(asset_name, _)] = value
+    |> assets.tokens(policy_id)
+    |> dict.to_pairs
 
   asset_name
 }
@@ -151,10 +153,9 @@ pub fn get_singleton_asset_with_policy(
   value: Value,
   policy_id: PolicyId,
 ) -> Pair<AssetName, Int> {
-  expect [p] =
-    value
-      |> assets.tokens(policy_id)
-      |> dict.to_pairs
+  expect [p] = value
+    |> assets.tokens(policy_id)
+    |> dict.to_pairs
 
   p
 }
@@ -164,11 +165,10 @@ pub fn get_singleton_asset_with_policy(
 pub fn get_single_asset_from_value_apart_from_ada(
   v: Value,
 ) -> (PolicyId, AssetName, Int) {
-  expect [Pair(sym, tn_qty_pairs)] =
-    v
-      |> assets.to_dict
-      |> dict.delete(assets.ada_policy_id)
-      |> dict.to_pairs
+  expect [Pair(sym, tn_qty_pairs)] = v
+    |> assets.to_dict
+    |> dict.delete(assets.ada_policy_id)
+    |> dict.to_pairs
   expect [Pair(tn, qty)] = tn_qty_pairs |> dict.to_pairs
   (sym, tn, qty)
 }
@@ -180,12 +180,15 @@ pub fn get_authentic_input_with_policy_at(
   nft_policy_id: PolicyId,
   input_index: Int,
 ) -> Input {
-  expect Some(
-    Input { output: Output { value: input_value, .. }, .. } as found_input,
-  ) = list.at(inputs, input_index)
+  expect
+      Some(
+        Input { output: Output { value: input_value, .. }, .. } as found_input,
+      )
+    = list.at(inputs, input_index)
 
-  expect (input_nft_policy_id, _, 1) =
-    get_single_asset_from_value_apart_from_ada(input_value)
+  expect (input_nft_policy_id, _, 1) = get_single_asset_from_value_apart_from_ada(
+    input_value,
+  )
 
   expect input_nft_policy_id == nft_policy_id
 
@@ -200,11 +203,14 @@ pub fn get_authentic_input_asset_name_with_policy_at(
   nft_policy_id: PolicyId,
   input_index: Int,
 ) -> AssetName {
-  expect Some(Input { output: Output { value: input_value, .. }, .. }) =
-    list.at(inputs, input_index)
+  expect Some(Input { output: Output { value: input_value, .. }, .. }) = list.at(
+    inputs,
+    input_index,
+  )
 
-  expect (input_nft_policy_id, input_nft_asset_name, 1) =
-    get_single_asset_from_value_apart_from_ada(input_value)
+  expect (input_nft_policy_id, input_nft_asset_name, 1) = get_single_asset_from_value_apart_from_ada(
+    input_value,
+  )
 
   expect input_nft_policy_id == nft_policy_id
 
@@ -217,12 +223,15 @@ pub fn get_authentic_input_and_asset_name_with_policy_at(
   input_index: Int,
   return: fn(Input, AssetName) -> result,
 ) -> result {
-  expect Some(
-    Input { output: Output { value: input_value, .. }, .. } as found_input,
-  ) = list.at(inputs, input_index)
+  expect
+      Some(
+        Input { output: Output { value: input_value, .. }, .. } as found_input,
+      )
+    = list.at(inputs, input_index)
 
-  expect (input_nft_policy_id, input_nft_asset_name, 1) =
-    get_single_asset_from_value_apart_from_ada(input_value)
+  expect (input_nft_policy_id, input_nft_asset_name, 1) = get_single_asset_from_value_apart_from_ada(
+    input_value,
+  )
 
   expect input_nft_policy_id == nft_policy_id
 
@@ -237,17 +246,20 @@ pub fn get_authentic_input_datum_with_policy_at(
   nft_policy_id: PolicyId,
   input_index: Int,
 ) -> Data {
-  expect Some(Input {
-    output: Output {
-      value: input_value,
-      datum: InlineDatum(input_datum_data),
-      ..
-    },
-    ..
-  }) = list.at(inputs, input_index)
+  expect
+      Some(Input {
+        output: Output {
+          value: input_value,
+          datum: InlineDatum(input_datum_data),
+          ..
+        },
+        ..
+      })
+    = list.at(inputs, input_index)
 
-  expect (input_nft_policy_id, _, 1) =
-    get_single_asset_from_value_apart_from_ada(input_value)
+  expect (input_nft_policy_id, _, 1) = get_single_asset_from_value_apart_from_ada(
+    input_value,
+  )
 
   expect input_nft_policy_id == nft_policy_id
 
@@ -262,17 +274,20 @@ pub fn get_authentic_input_datum_and_asset_name_with_policy_at(
   input_index: Int,
   return: fn(AssetName, Data) -> result,
 ) -> result {
-  expect Some(Input {
-    output: Output {
-      value: input_value,
-      datum: InlineDatum(input_datum_data),
-      ..
-    },
-    ..
-  }) = list.at(inputs, input_index)
+  expect
+      Some(Input {
+        output: Output {
+          value: input_value,
+          datum: InlineDatum(input_datum_data),
+          ..
+        },
+        ..
+      })
+    = list.at(inputs, input_index)
 
-  expect (input_nft_policy_id, input_nft_asset_name, 1) =
-    get_single_asset_from_value_apart_from_ada(input_value)
+  expect (input_nft_policy_id, input_nft_asset_name, 1) = get_single_asset_from_value_apart_from_ada(
+    input_value,
+  )
 
   expect input_nft_policy_id == nft_policy_id
 
@@ -286,12 +301,15 @@ pub fn get_authentic_input_with_nft_at(
   nft_asset_name: AssetName,
   input_index: Int,
 ) -> Input {
-  expect Some(
-    Input { output: Output { value: input_value, .. }, .. } as found_input,
-  ) = list.at(inputs, input_index)
+  expect
+      Some(
+        Input { output: Output { value: input_value, .. }, .. } as found_input,
+      )
+    = list.at(inputs, input_index)
 
-  let input_nft_triplet =
-    get_single_asset_from_value_apart_from_ada(input_value)
+  let input_nft_triplet = get_single_asset_from_value_apart_from_ada(
+    input_value,
+  )
 
   expect input_nft_triplet == (nft_policy_id, nft_asset_name, 1)
 
@@ -307,17 +325,20 @@ pub fn get_authentic_input_datum_with_nft_at(
   nft_asset_name: AssetName,
   input_index: Int,
 ) -> Data {
-  expect Some(Input {
-    output: Output {
-      value: input_value,
-      datum: InlineDatum(input_datum_data),
-      ..
-    },
-    ..
-  }) = list.at(inputs, input_index)
+  expect
+      Some(Input {
+        output: Output {
+          value: input_value,
+          datum: InlineDatum(input_datum_data),
+          ..
+        },
+        ..
+      })
+    = list.at(inputs, input_index)
 
-  let input_nft_triplet =
-    get_single_asset_from_value_apart_from_ada(input_value)
+  let input_nft_triplet = get_single_asset_from_value_apart_from_ada(
+    input_value,
+  )
 
   expect input_nft_triplet == (nft_policy_id, nft_asset_name, 1)
 
@@ -332,16 +353,21 @@ pub fn get_authentic_input_of(
   nft_token_name: ByteArray,
   input_index: Int,
 ) -> Input {
-  expect Some(
-    Input {
-      output: Output {
-        address: Address { payment_credential: Script(refs_script_hash), .. },
-        value: refs_value,
-        ..
-      },
-      ..
-    } as found_ref_input,
-  ) = list.at(inputs, input_index)
+  expect
+      Some(
+        Input {
+          output: Output {
+            address: Address {
+              payment_credential: Script(refs_script_hash),
+              ..
+            },
+            value: refs_value,
+            ..
+          },
+          ..
+        } as found_ref_input,
+      )
+    = list.at(inputs, input_index)
 
   let refs_nft_triplet = get_single_asset_from_value_apart_from_ada(refs_value)
 
@@ -362,17 +388,20 @@ pub fn get_authentic_output_datum_at_address_with_nft_at(
   nft_asset_name: AssetName,
   output_index: Int,
 ) -> Data {
-  expect Some(Output {
-    address: output_address,
-    value: output_value,
-    datum: InlineDatum(output_datum_data),
-    reference_script: None,
-  }) = list.at(outputs, output_index)
+  expect
+      Some(Output {
+        address: output_address,
+        value: output_value,
+        datum: InlineDatum(output_datum_data),
+        reference_script: None,
+      })
+    = list.at(outputs, output_index)
 
   expect expected_address == output_address
 
-  let output_nft_triplet =
-    get_single_asset_from_value_apart_from_ada(output_value)
+  let output_nft_triplet = get_single_asset_from_value_apart_from_ada(
+    output_value,
+  )
 
   expect output_nft_triplet == (nft_policy_id, nft_asset_name, 1)
 
@@ -393,27 +422,33 @@ pub fn authenticate_input_output_and_get_output_datum_data(
   output: Output,
   authentication_policy_id: PolicyId,
 ) -> Data {
-  let Input {
-    output: Output { address: input_address, value: input_value, .. },
-    ..
-  } = input
+  let
+      Input {
+        output: Output { address: input_address, value: input_value, .. },
+        ..
+      }
+    = input
 
-  expect Output {
-    address: output_address,
-    value: output_value,
-    datum: InlineDatum(output_datum_data),
-    reference_script: None,
-  } = output
+  expect
+      Output {
+        address: output_address,
+        value: output_value,
+        datum: InlineDatum(output_datum_data),
+        reference_script: None,
+      }
+    = output
 
   expect input_address == output_address
 
-  expect (input_nft_symbol, _, 1) as input_nft_triplet =
-    get_single_asset_from_value_apart_from_ada(input_value)
+  expect (input_nft_symbol, _, 1) as input_nft_triplet = get_single_asset_from_value_apart_from_ada(
+    input_value,
+  )
 
   expect input_nft_symbol == authentication_policy_id
 
-  let output_nft_triplet =
-    get_single_asset_from_value_apart_from_ada(output_value)
+  let output_nft_triplet = get_single_asset_from_value_apart_from_ada(
+    output_value,
+  )
 
   expect input_nft_triplet == output_nft_triplet
 
@@ -450,9 +485,8 @@ pub fn authentic_value_has_tokens(
   nft_asset_name: AssetName,
   tokens: ValuePairs,
 ) -> Bool {
-  let without_nft =
-    value
-      |> assets.add(nft_policy_id, nft_asset_name, -1)
+  let without_nft = value
+    |> assets.add(nft_policy_id, nft_asset_name, -1)
   assets.match(without_nft, tokens, fn(_, tokens_ada) { tokens_ada == 0 })
 }
 
@@ -512,23 +546,22 @@ pub fn compare_authentic_value_with_target(
   target: ValuePairs,
   quantity_predicate: fn(Int, Int) -> Bool,
 ) -> Bool {
-  let value_without_nft: Pairs<PolicyId, Dict<AssetName, Int>> =
-    value
-      |> assets.add(nft_policy_id, nft_asset_name, -1)
-      |> assets.to_dict
-      |> dict.to_pairs
-  let
-    value_policy_pair,
-    target_policy_pair,
-    _,
-  <- zip_foldr(value_without_nft, target, True)
+  let value_without_nft: Pairs<PolicyId, Dict<AssetName, Int>> = value
+    |> assets.add(nft_policy_id, nft_asset_name, -1)
+    |> assets.to_dict
+    |> dict.to_pairs
+  let value_policy_pair, target_policy_pair, _ <- zip_foldr(
+    value_without_nft,
+    target,
+    True,
+  )
   expect value_policy_pair.1st == target_policy_pair.1st
   let value_token_pairs = value_policy_pair.2nd |> dict.to_pairs
-  let
-    value_token_pair,
-    target_token_pair,
-    _,
-  <- zip_foldr(value_token_pairs, target_policy_pair.2nd, True)
+  let value_token_pair, target_token_pair, _ <- zip_foldr(
+    value_token_pairs,
+    target_policy_pair.2nd,
+    True,
+  )
   expect value_token_pair.1st == target_token_pair.1st
   quantity_predicate(value_token_pair.2nd, target_token_pair.2nd)
 }
@@ -554,10 +587,12 @@ pub fn get_spending_redeemer_data_at(
   inputs: List<Input>,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
 ) -> Data {
-  expect Some(Input {
-    output_reference: input_outref,
-    output: Output { address: input_address, .. },
-  }) = inputs |> list.at(input_index)
+  expect
+      Some(Input {
+        output_reference: input_outref,
+        output: Output { address: input_address, .. },
+      })
+    = inputs |> list.at(input_index)
   //
   expect input_address.payment_credential == script_address.payment_credential
   //
@@ -573,14 +608,16 @@ pub fn get_inline_datum_and_spending_redeemer_data_at(
   inputs: List<Input>,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
 ) -> (Data, Data) {
-  expect Some(Input {
-    output_reference: input_outref,
-    output: Output {
-      address: input_address,
-      datum: InlineDatum(datum_data),
-      ..
-    },
-  }) = inputs |> list.at(input_index)
+  expect
+      Some(Input {
+        output_reference: input_outref,
+        output: Output {
+          address: input_address,
+          datum: InlineDatum(datum_data),
+          ..
+        },
+      })
+    = inputs |> list.at(input_index)
   //
   expect input_address.payment_credential == script_address.payment_credential
   //
@@ -603,15 +640,19 @@ pub fn plutarch_phas(
   withdraw_redeemer_index: Int,
 ) -> Bool {
   expect _withdraw_redeemer_index = withdraw_redeemer_index
-  let phas_validator_redeemer =
-    get_unique_withdraw_redeemer(redeemers, env.plutarch_phas_validator_hash)
+  let phas_validator_redeemer = get_unique_withdraw_redeemer(
+    redeemers,
+    env.plutarch_phas_validator_hash,
+  )
   let key_bytes = cbor.serialise(key)
   let value_bytes = cbor.serialise(value)
-  expect [
-    redeemer_root_data, redeemer_key_data, redeemer_value_data,
-    redeemer_proof_data,
-    ..
-  ] = builtin.un_list_data(phas_validator_redeemer)
+  expect
+      [
+        redeemer_root_data, redeemer_key_data, redeemer_value_data,
+        redeemer_proof_data,
+        ..
+      ]
+    = builtin.un_list_data(phas_validator_redeemer)
 
   let merkle_root_data: Data = merkle_root
 
@@ -634,13 +675,17 @@ pub fn plutarch_phas_raw(
   withdraw_redeemer_index: Int,
 ) -> Bool {
   expect _withdraw_redeemer_index = withdraw_redeemer_index
-  let phas_validator_redeemer =
-    get_unique_withdraw_redeemer(redeemers, env.plutarch_phas_validator_hash)
-  expect [
-    redeemer_root_data, redeemer_key_data, redeemer_value_data,
-    redeemer_proof_data,
-    ..
-  ] = builtin.un_list_data(phas_validator_redeemer)
+  let phas_validator_redeemer = get_unique_withdraw_redeemer(
+    redeemers,
+    env.plutarch_phas_validator_hash,
+  )
+  expect
+      [
+        redeemer_root_data, redeemer_key_data, redeemer_value_data,
+        redeemer_proof_data,
+        ..
+      ]
+    = builtin.un_list_data(phas_validator_redeemer)
 
   let proof_data: Data = membership_proof
 
@@ -664,16 +709,16 @@ pub fn plutarch_pexcludes(
   withdraw_redeemer_index: Int,
 ) -> Bool {
   expect _withdraw_redeemer_index = withdraw_redeemer_index
-  let pexcludes_validator_redeemer =
-    get_unique_withdraw_redeemer(
-      redeemers,
-      env.plutarch_pexcludes_validator_hash,
-    )
+  let pexcludes_validator_redeemer = get_unique_withdraw_redeemer(
+    redeemers,
+    env.plutarch_pexcludes_validator_hash,
+  )
   let key_bytes = cbor.serialise(key)
   expect [redeemer_root_data,
-    redeemer_key_data,
-    redeemer_proof_data, ..] =
-    builtin.un_list_data(pexcludes_validator_redeemer)
+        redeemer_key_data,
+        redeemer_proof_data, ..] = builtin.un_list_data(
+    pexcludes_validator_redeemer,
+  )
 
   let merkle_root_data: Data = merkle_root
 
@@ -699,15 +744,15 @@ pub fn plutarch_pexcludes_raw(
   withdraw_redeemer_index: Int,
 ) -> Bool {
   expect _withdraw_redeemer_index = withdraw_redeemer_index
-  let pexcludes_validator_redeemer =
-    get_unique_withdraw_redeemer(
-      redeemers,
-      env.plutarch_pexcludes_validator_hash,
-    )
+  let pexcludes_validator_redeemer = get_unique_withdraw_redeemer(
+    redeemers,
+    env.plutarch_pexcludes_validator_hash,
+  )
   expect [redeemer_root_data,
-    redeemer_key_data,
-    redeemer_proof_data, ..] =
-    builtin.un_list_data(pexcludes_validator_redeemer)
+        redeemer_key_data,
+        redeemer_proof_data, ..] = builtin.un_list_data(
+    pexcludes_validator_redeemer,
+  )
 
   let proof_data: Data = non_membership_proof
 
@@ -722,17 +767,15 @@ fn get_unique_withdraw_redeemer(
   redeemers: Pairs<ScriptPurpose, Redeemer>,
   withdraw_script_hash: ScriptHash,
 ) -> Redeemer {
-  expect [Pair(_, redeemer)] =
-    redeemers
-      |> list.filter(
-          fn(redeemer_pair) {
-            when redeemer_pair.1st is {
-              Withdraw(Script(script_hash)) ->
-                script_hash == withdraw_script_hash
-              _ -> False
-            }
-          },
-        )
+  expect [Pair(_, redeemer)] = redeemers
+    |> list.filter(
+        fn(redeemer_pair) {
+          when redeemer_pair.1st is {
+            Withdraw(Script(script_hash)) -> script_hash == withdraw_script_hash
+            _ -> False
+          }
+        },
+      )
   redeemer
 }
 
@@ -745,8 +788,12 @@ pub fn plutarch_pdelete(
   withdraw_redeemer_index: Int,
 ) -> MerkleRoot<key, value> {
   let proof_data: Data = membership_proof
-  let function_input: List<Data> =
-    [builtin.b_data(merkle_root_before_delete), key, value, proof_data]
+  let function_input: List<Data> = [
+    builtin.b_data(merkle_root_before_delete),
+    key,
+    value,
+    proof_data,
+  ]
   merkelized_validator.delegated_compute(
     function_input: function_input,
     staking_validator: env.plutarch_pdelete_validator_hash,

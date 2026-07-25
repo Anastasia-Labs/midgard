@@ -88,7 +88,15 @@ export const utxosAtByNFTPolicyId = (
     const providerResult: unknown = yield* Effect.tryPromise({
       // Lucid 0.6 provides a provider-neutral policy query with a native
       // Kupmios fast path and a correct address-wide fallback.
-      try: () => lucid.utxosAtWithPolicy(addressOrCred, policyId),
+      try: () =>
+        (
+          lucid as unknown as {
+            utxosAtWithPolicy(
+              address: Address | Credential,
+              policy: PolicyId,
+            ): Promise<unknown>;
+          }
+        ).utxosAtWithPolicy(addressOrCred, policyId),
       catch: (e) => {
         return new LucidError({
           message: `Failed to fetch UTxOs at: ${addressOrCred}`,
@@ -203,6 +211,10 @@ export type FraudProofs = {
   nonExistentInputNoIndex: SpendingValidator;
   invalidRange: SpendingValidator;
   transitionTrace: SpendingValidator;
+  /**
+   * V1 stateful dispute game for a transaction-validation trace.
+   */
+  validationTraceDispute: SpendingValidator;
 };
 
 export type MidgardValidators = {
@@ -221,6 +233,21 @@ export type MidgardValidators = {
   deposit: AuthenticatedValidator;
   withdrawal: AuthenticatedValidator;
   txOrder: AuthenticatedValidator;
+  /**
+   * V1 field fragments remain locked here until the corresponding
+   * tx-order NFT is burned.
+   */
+  txOrderFieldPreimage: SpendingValidator;
+  /**
+   * V1 receipts are minted only after L1 verifies one referenced field
+   * preimage and remain locked until the corresponding tx-order NFT burns.
+   */
+  txOrderFieldReceipt: SpendingValidator & MintingValidator;
+  /**
+   * Permissionless append-only L1 availability for content-addressed V1
+   * CEK material. Its validator has no successful spending path.
+   */
+  cekProgramMaterial: SpendingValidator;
   settlement: AuthenticatedValidator;
   reserve: SpendingValidator & WithdrawalValidator;
   payout: AuthenticatedValidator;

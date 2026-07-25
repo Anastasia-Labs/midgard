@@ -1,10 +1,11 @@
 import {
-  computeMidgardNativeTxId,
+  computeMidgardNativeTxIdV1,
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardNativeTxFullV1FromCanonicalCbor,
   encodeCbor,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
+import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -59,9 +60,11 @@ const makeProvider = (opts?: {
     network: "Preview",
     midgardNativeTxVersion: 1,
     currentSlot: 0n,
+    consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
     supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+    codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     protocolFeeParameters: { minFeeA: 0n, minFeeB: 0n },
-    submissionLimits: { maxSubmitTxCborBytes: 32768 },
+    submissionLimits: { maxSubmitTxCborBytes: MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes },
     validation: {
       strictnessProfile: "phase1_midgard",
       localValidationIsAuthoritative: false,
@@ -76,11 +79,11 @@ const makeProvider = (opts?: {
   }),
   getCurrentSlot: async () => 0n,
   submitTx: async (txCborHex) => {
-    const tx = decodeMidgardNativeTxFullFromCanonicalCbor(
+    const tx = decodeMidgardNativeTxFullV1FromCanonicalCbor(
       Buffer.from(txCborHex, "hex"),
     );
     return {
-      txId: computeMidgardNativeTxId(tx).toString("hex"),
+      txId: computeMidgardNativeTxIdV1(tx).toString("hex"),
       status: "queued",
       httpStatus: 202,
       duplicate: false,
@@ -171,7 +174,7 @@ describe("partial signing", () => {
     const secondBundle = await completed.sign
       .withWallet(secondWallet)
       .partial();
-    const bodyHash = computeMidgardNativeTxId(completed.tx);
+    const bodyHash = computeMidgardNativeTxIdV1(completed.tx);
     const signedFromSignBuilder = await completed.sign
       .withWitnesses([
         makeVKeyWitness(bodyHash, secondKey),
@@ -219,7 +222,7 @@ describe("partial signing", () => {
 
   it("exports, imports, and reuses canonical partial witness bundles", async () => {
     const { completed, firstKey, secondKey } = await makeFixture();
-    const bodyHash = computeMidgardNativeTxId(completed.tx);
+    const bodyHash = computeMidgardNativeTxIdV1(completed.tx);
     const firstWitness = makeVKeyWitness(bodyHash, firstKey);
     const secondWitness = makeVKeyWitness(bodyHash, secondKey);
     const combinedBundle = await completed.sign
@@ -267,7 +270,7 @@ describe("partial signing", () => {
       parsePartialWitnessBundle({ ...firstBundle, kind: "Bad" } as never),
     ).toThrow(SigningError);
     expect(() =>
-      parsePartialWitnessBundle({ ...firstBundle, version: 2 } as never),
+      parsePartialWitnessBundle({ ...firstBundle, version: 23 } as never),
     ).toThrow(SigningError);
     expect(() => parsePartialWitnessBundle(null as never)).toThrow(
       SigningError,

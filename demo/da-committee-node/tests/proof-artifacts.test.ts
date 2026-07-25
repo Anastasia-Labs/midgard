@@ -9,13 +9,13 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { computeDaPayloadRoots, daPayloadSha256 } from "../src/da/payload.js";
+import { computeDaPayloadV1Roots, daPayloadSha256 } from "../src/da/payload.js";
 import {
   DaProofArtifactDeriver,
   type DaProofArtifactStore,
 } from "../src/da/proof-artifacts.js";
 import type { DaPayloadRecord, StateQueueHeaderRecord } from "../src/domain.js";
-import { IDENTITY_TX_PROJECTOR, makePayloadFixture } from "./helpers.js";
+import { makePayloadFixture } from "./helpers.js";
 
 const deploymentFingerprint = "01".repeat(32);
 const deploymentFingerprintBytes = Buffer.from(deploymentFingerprint, "hex");
@@ -40,7 +40,7 @@ describe("DA proof artifact derivation", () => {
       SDK.TransitionTraceMembershipProofSchema as never,
     ) as SDK.IndexedTraceProof;
     expect(proof.root).toBe(context.header.transitionTraceRoot);
-    expect(proof.count).toBe(5n);
+    expect(proof.count).toBe(3n);
     expect(proof.key).toBe(2n);
     expect(proof.value.step_index).toBe(2n);
   });
@@ -70,7 +70,7 @@ describe("DA proof artifact derivation", () => {
       expect(proof.EventToStepMembership.membership.root).toBe(
         context.header.eventToStepRoot,
       );
-      expect(proof.EventToStepMembership.membership.count).toBe(5n);
+      expect(proof.EventToStepMembership.membership.count).toBe(3n);
     }
   });
 
@@ -226,13 +226,11 @@ describe("DA proof artifact derivation", () => {
 
 const makeVerifiedContext = async () => {
   const fixture = await makePayloadFixture();
-  const rootSummary = await computeDaPayloadRoots(
-    fixture.payload,
-    IDENTITY_TX_PROJECTOR,
-  );
+  const rootSummary = await computeDaPayloadV1Roots(fixture.payload);
   const payloadRecord: DaPayloadRecord = {
     deploymentFingerprint,
     headerHash: fixture.headerHash,
+    payloadSchemaVersion: 1,
     payloadCborHex: fixture.payloadCbor.toString("hex"),
     payloadSha256: daPayloadSha256(fixture.payloadCbor),
     sourcePeerId: "fixture-peer",
@@ -273,7 +271,6 @@ const makeDeriver = (store: DaProofArtifactStore): DaProofArtifactDeriver =>
   new DaProofArtifactDeriver({
     deploymentFingerprint,
     store,
-    transactionProjector: IDENTITY_TX_PROJECTOR,
   });
 
 const makeStore = ({

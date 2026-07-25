@@ -49,22 +49,20 @@ test accepts_empty_midgard_root_non_membership_fixture() {
 }
 
 test accepts_typed_membership_witness_fixture() {
-  let counted_root =
-    transition_trace.commit_counted_root(
-      transition_trace.DepositsRootDomain,
-      single_typed_root,
-      1,
-    )
-  let witness =
-    transition_trace.RootMembershipProof {
-      domain: transition_trace.DepositsRootDomain,
-      root: counted_root,
-      phas_root: single_typed_root,
-      count: 1,
-      key: 0,
-      value: #"aa",
-      proof: empty_proof,
-    }
+  let counted_root = transition_trace.commit_counted_root(
+    transition_trace.DepositsRootDomain,
+    single_typed_root,
+    1,
+  )
+  let witness = transition_trace.RootMembershipProof {
+    domain: transition_trace.DepositsRootDomain,
+    root: counted_root,
+    phas_root: single_typed_root,
+    count: 1,
+    key: 0,
+    value: #"aa",
+    proof: empty_proof,
+  }
 
   transition_trace.verify_root_membership_with_bytes(
     witness,

@@ -1,7 +1,7 @@
 import { encodeCbor } from "./cbor.js";
 import { computeHash32 } from "./hash.js";
 
-export const MIDGARD_NATIVE_TX_VERSION = 1n;
+export const MIDGARD_NATIVE_TX_V1_VERSION = 1n;
 export const MIDGARD_POSIX_TIME_NONE = -1n;
 export const MIDGARD_NATIVE_NETWORK_ID_NONE = 255n;
 export const EMPTY_CBOR_LIST = encodeCbor([]);

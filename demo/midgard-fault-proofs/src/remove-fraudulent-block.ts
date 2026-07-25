@@ -8,14 +8,15 @@ import {
   buildInvalidRangeFaultProofContracts,
   buildNonExistentInputFaultProofContracts,
   buildTransitionTraceFaultProofContracts,
+  buildValidationTraceDisputeFaultProofContracts,
   type DoubleSpendFaultProofContracts,
   encodeLinkedListNodeView,
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   type FraudProofCatalogueCategoryName,
   FraudProofTokenDatum,
-  getHeaderFromStateQueueDatum,
+  getHeaderV1FromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
-  hashBlockHeader,
+  hashBlockHeaderV1,
   HUB_ORACLE_ASSET_NAME,
   incompleteRemoveFraudulentBlocksLinkTxProgram,
   incompleteRemoveLastFraudulentBlockHeaderTxProgram,
@@ -51,6 +52,7 @@ import {
   type StateQueueUTxO,
   type TransitionTraceFaultProofContracts,
   utxoToStateQueueUTxO,
+  type ValidationTraceDisputeFaultProofContracts,
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
@@ -267,7 +269,11 @@ export type RemoveFraudulentBlockCliConfig = SubmitProviderConfig & {
 
 export type RemoveFraudulentBlockFraudCategory = Extract<
   FraudProofCatalogueCategoryName,
-  "doubleSpend" | "nonExistentInput" | "invalidRange" | "transitionTrace"
+  | "doubleSpend"
+  | "nonExistentInput"
+  | "invalidRange"
+  | "transitionTrace"
+  | "validationTraceDispute"
 >;
 
 export type StateQueueMutationLease = {
@@ -544,12 +550,14 @@ const buildRemovalContracts = async ({
     | DoubleSpendFaultProofContracts
     | NonExistentInputFaultProofContracts
     | InvalidRangeFaultProofContracts
-    | TransitionTraceFaultProofContracts;
+    | TransitionTraceFaultProofContracts
+    | ValidationTraceDisputeFaultProofContracts;
   let expectedCategoryDeploymentEntry:
     | "fraudProofDoubleSpend"
     | "fraudProofNonExistentInput"
     | "fraudProofInvalidRange"
-    | "fraudProofTransitionTrace";
+    | "fraudProofTransitionTrace"
+    | "validationTraceDispute";
   let derivedCategoryFirstStepHash: string;
   if (fraudCategory === "doubleSpend") {
     const doubleSpendContracts = await Effect.runPromise(
@@ -590,7 +598,7 @@ const buildRemovalContracts = async ({
     expectedCategoryDeploymentEntry = "fraudProofInvalidRange";
     derivedCategoryFirstStepHash =
       invalidRangeContracts.invalidRange.firstStep.spendingScriptHash;
-  } else {
+  } else if (fraudCategory === "transitionTrace") {
     const transitionTraceContracts = await Effect.runPromise(
       buildTransitionTraceFaultProofContracts({
         blueprint: parsedBlueprint,
@@ -603,6 +611,20 @@ const buildRemovalContracts = async ({
     expectedCategoryDeploymentEntry = "fraudProofTransitionTrace";
     derivedCategoryFirstStepHash =
       transitionTraceContracts.transitionTrace.firstStep.spendingScriptHash;
+  } else {
+    const validationTraceDisputeContracts = await Effect.runPromise(
+      buildValidationTraceDisputeFaultProofContracts({
+        blueprint: parsedBlueprint,
+        network,
+        hubOraclePolicyId,
+        fraudProofCataloguePolicyId,
+      }),
+    );
+    categoryContracts = validationTraceDisputeContracts;
+    expectedCategoryDeploymentEntry = "validationTraceDispute";
+    derivedCategoryFirstStepHash =
+      validationTraceDisputeContracts.validationTraceDispute.firstStep
+        .spendingScriptHash;
   }
   requireMatchingScriptHash({
     label: "fraudProofMint policy",
@@ -622,10 +644,18 @@ const buildRemovalContracts = async ({
     ),
     derived: derivedCategoryFirstStepHash,
   });
-  const categoryId =
-    deploymentInfo.fraudProofCatalogueMint?.fraudProofCatalogue?.categories[
-      fraudCategory
-    ].categoryId;
+  const categoryId = (
+    deploymentInfo.fraudProofCatalogueMint?.fraudProofCatalogue?.categories as
+      | Readonly<
+          Partial<
+            Record<
+              RemoveFraudulentBlockFraudCategory,
+              { readonly categoryId: string }
+            >
+          >
+        >
+      | undefined
+  )?.[fraudCategory]?.categoryId;
   if (categoryId === undefined) {
     throw new Error(
       `Deployment info is missing fraudProofCatalogueMint.fraudProofCatalogue.categories.${fraudCategory}.`,
@@ -858,9 +888,9 @@ const requireStateQueueHeaderHash = async (
     );
   }
   const header = await Effect.runPromise(
-    getHeaderFromStateQueueDatum(stateQueueNode.datum),
+    getHeaderV1FromStateQueueDatum(stateQueueNode.datum),
   );
-  const computedHeaderHash = await Effect.runPromise(hashBlockHeader(header));
+  const computedHeaderHash = await Effect.runPromise(hashBlockHeaderV1(header));
   if (computedHeaderHash !== assetHeaderHash) {
     throw new Error(
       `State-queue block datum hash mismatch for ${outRefLabel(stateQueueNode.utxo)}: asset=${assetHeaderHash}, computed=${computedHeaderHash}.`,
@@ -2252,7 +2282,7 @@ export const submitRemoveFraudulentBlock = async ({
     await stateQueueMutationLease?.renew();
     const removedHeaderHash = await requireStateQueueHeaderHash(removed);
     const removedHeader = await Effect.runPromise(
-      getHeaderFromStateQueueDatum(removed.datum),
+      getHeaderV1FromStateQueueDatum(removed.datum),
     );
     const fraudulentOperator = removedHeader.operatorVkey;
     const currentSchedulerUtxo = await requireSingletonUtxo({

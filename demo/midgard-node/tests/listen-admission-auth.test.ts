@@ -1,4 +1,4 @@
-import { cardanoTxBytesToMidgardNativeTxCanonicalCbor } from "@al-ft/midgard-core/codec";
+import { cardanoTxBytesToMidgardNativeTxCanonicalCborV1 } from "@al-ft/midgard-core/codec";
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -137,7 +137,7 @@ describe("submit admission helpers", () => {
   it("keeps native tx bytes unchanged when payload is already Midgard-native", () => {
     const cardanoBytes = makeCardanoSignedMapOutputTxBytes();
     const nativeBytes =
-      cardanoTxBytesToMidgardNativeTxCanonicalCbor(cardanoBytes);
+      cardanoTxBytesToMidgardNativeTxCanonicalCborV1(cardanoBytes);
     const normalized = normalizeSubmitTxCanonicalCborToNative(nativeBytes);
     expect(normalized).toMatchObject({
       ok: true,

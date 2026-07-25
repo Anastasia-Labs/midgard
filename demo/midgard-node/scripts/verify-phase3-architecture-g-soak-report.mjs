@@ -33,7 +33,7 @@ import {
 } from "./phase3-architecture-g-load-generator-isolation.mjs";
 
 export const PHASE3_ARCHITECTURE_G_SOAK_SCHEMA =
-  "midgard-phase3-architecture-g-live-soak-v4";
+  "midgard-phase3-architecture-g-live-soak-v1";
 export const PHASE3_ARCHITECTURE_G_SOAK_SCENARIO =
   "phase3-architecture-g-live-soak-24h-v1";
 export const PHASE3_ARCHITECTURE_G_SOAK_DURATION_SEC = 86_400;

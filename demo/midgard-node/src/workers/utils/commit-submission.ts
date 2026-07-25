@@ -236,12 +236,10 @@ export const finalizeCommittedBlockLocally = (
         : yield* Effect.gen(function* () {
             const record = options.daPayloadRecord!;
             const snapshot =
-              record.ledgerDelta === undefined
-                ? undefined
-                : yield* materializeConfirmedLedgerSnapshot(record);
+              yield* materializeConfirmedLedgerSnapshot(record);
             return yield* buildDaPayloadInsert({
               record,
-              utxos: snapshot?.entries.map((entry) => ({
+              utxos: snapshot.entries.map((entry) => ({
                 outref: entry.outref,
                 output: entry.output,
               })),
@@ -533,8 +531,8 @@ export const recoverSubmittedTxHashByHeaderProgram = (
       if (block.datum.key === "Empty") {
         continue;
       }
-      const header = yield* SDK.getHeaderFromStateQueueDatum(block.datum);
-      const headerHash = yield* SDK.hashBlockHeader(header);
+      const header = yield* SDK.getHeaderV1FromStateQueueDatum(block.datum);
+      const headerHash = yield* SDK.hashBlockHeaderV1(header);
       if (headerHash === expectedHeaderHash) {
         yield* Effect.logWarning(
           `🔹 Submit errored but on-chain header ${expectedHeaderHash} is already present in canonical state_queue; recovering submission state.`,

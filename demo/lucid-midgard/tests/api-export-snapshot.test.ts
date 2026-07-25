@@ -73,7 +73,6 @@ const expectedNamedExports = [
   "PlutusDataLike",
   "PlutusV3Validator",
   "PrivateKey",
-  "ProtocolInfoFallback",
   "ProtocolScriptLanguage",
   "ProviderCapabilityError",
   "ProviderDiagnostics",

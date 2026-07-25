@@ -1,3 +1,4 @@
+import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import { Option } from "effect";
 
 import {
@@ -68,11 +69,12 @@ export type PlannedCommitBatchSelection = {
 };
 
 export const DEFAULT_COMMIT_BATCH_BUDGET_LIMITS: CommitBatchBudgetLimits = {
-  maxL2TxCount: 10_000,
-  maxCanonicalTxBytes: 32 * 1024 * 1024,
-  maxLedgerOpCount: 40_000,
-  maxTransitionStepCount: 40_000,
-  maxDaPayloadBytes: 64 * 1024 * 1024,
+  maxL2TxCount: MIDGARD_CONSENSUS_LIMITS_V1.maxL2TransactionCount,
+  maxCanonicalTxBytes:
+    MIDGARD_CONSENSUS_LIMITS_V1.maxCanonicalTransactionBytesPerBlock,
+  maxLedgerOpCount: MIDGARD_CONSENSUS_LIMITS_V1.maxLedgerOperationCount,
+  maxTransitionStepCount: MIDGARD_CONSENSUS_LIMITS_V1.maxTransitionStepCount,
+  maxDaPayloadBytes: MIDGARD_CONSENSUS_LIMITS_V1.maxDaPayloadBytes,
   maxCommitTxBytes: 128 * 1024,
   maxEstimatedCommitBuildMs: 30_000,
   estimatedLedgerOpsPerTx: 2,
@@ -113,9 +115,7 @@ export const updateCommitBuildEwma = ({
   ) {
     return clampCommitBuildMsPerTx(previousMsPerTx);
   }
-  const sample = clampCommitBuildMsPerTx(
-    measuredBuildMs / processedTxCount,
-  );
+  const sample = clampCommitBuildMsPerTx(measuredBuildMs / processedTxCount);
   return clampCommitBuildMsPerTx(
     alpha * sample + (1 - alpha) * previousMsPerTx,
   );
@@ -479,8 +479,7 @@ export const planCommitBatchBudgets = ({
     const nextPlan: CommitBatchPlan = {
       selectedTxCount,
       selectedTxBytes: nextSelectedTxBytes,
-      selectedLedgerOpCount:
-        selectedTxCount * limits.estimatedLedgerOpsPerTx,
+      selectedLedgerOpCount: selectedTxCount * limits.estimatedLedgerOpsPerTx,
       selectedTransitionStepCount:
         selectedTxCount * limits.estimatedTransitionStepsPerTx,
       estimatedDaPayloadBytes:
@@ -501,10 +500,9 @@ export const planCommitBatchBudgets = ({
     selectedTxBytes = nextSelectedTxBytes;
   }
 
-  const candidateTxs =
-    candidateSelection.candidateTxs.length > 0 && selected.length === 0
-      ? [candidateSelection.candidateTxs[0]!]
-      : selected;
+  // Empty is the only safe result when the first candidate does not fit. The
+  // former "always include one" fallback silently exceeded consensus bounds.
+  const candidateTxs = selected;
   const finalPlan = estimateCommitBatchPlan(candidateTxs, limits, stopReason);
   return {
     candidateSelection: buildCommitTxCandidateSelection(

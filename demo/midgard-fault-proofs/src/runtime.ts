@@ -11,6 +11,7 @@ import {
   buildInvalidRangeFaultProofContracts,
   buildNonExistentInputFaultProofContracts,
   buildTransitionTraceFaultProofContracts,
+  buildValidationTraceDisputeFaultProofContracts,
   type DoubleSpendFaultProofContracts,
   type FraudProofCatalogueCategoryDeploymentInfo,
   type FraudProofCatalogueCategoryName,
@@ -21,6 +22,7 @@ import {
   Proof,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
   type TransitionTraceFaultProofContracts,
+  type ValidationTraceDisputeFaultProofContracts,
 } from "@al-ft/midgard-sdk";
 import {
   Blockfrost,
@@ -336,9 +338,22 @@ export type ResolvedTransitionTraceDeploymentContracts = {
   readonly contracts: TransitionTraceFaultProofContracts;
 };
 
+export type ResolvedValidationTraceDisputeDeploymentContracts = {
+  readonly deploymentInfo: ContractDeploymentInfo;
+  readonly validationTraceDisputeCategory: FraudProofCatalogueCategoryDeploymentInfo;
+  readonly stateQueuePolicyId: string | undefined;
+  readonly fraudProofCataloguePolicyId: string;
+  readonly hubOraclePolicyId: string;
+  readonly contracts: ValidationTraceDisputeFaultProofContracts;
+};
+
 type SupportedFaultProofCategoryName = Extract<
   FraudProofCatalogueCategoryName,
-  "doubleSpend" | "nonExistentInput" | "invalidRange" | "transitionTrace"
+  | "doubleSpend"
+  | "nonExistentInput"
+  | "invalidRange"
+  | "transitionTrace"
+  | "validationTraceDispute"
 >;
 
 const FRAUD_PROOF_DEPLOYMENT_ENTRY_BY_CATEGORY = {
@@ -346,6 +361,7 @@ const FRAUD_PROOF_DEPLOYMENT_ENTRY_BY_CATEGORY = {
   nonExistentInput: "fraudProofNonExistentInput",
   invalidRange: "fraudProofInvalidRange",
   transitionTrace: "fraudProofTransitionTrace",
+  validationTraceDispute: "validationTraceDispute",
 } as const satisfies Record<SupportedFaultProofCategoryName, string>;
 
 const categoryLabel = (
@@ -360,6 +376,8 @@ const categoryLabel = (
       return "invalid-range";
     case "transitionTrace":
       return "transition-trace";
+    case "validationTraceDispute":
+      return "validation-trace-dispute";
   }
 };
 
@@ -387,7 +405,8 @@ const resolveFaultProofDeploymentContracts = async ({
     | DoubleSpendFaultProofContracts
     | NonExistentInputFaultProofContracts
     | InvalidRangeFaultProofContracts
-    | TransitionTraceFaultProofContracts;
+    | TransitionTraceFaultProofContracts
+    | ValidationTraceDisputeFaultProofContracts;
 }> => {
   const parsedDeploymentInfo = parseContractDeploymentInfo(deploymentInfo);
   const catalogue =
@@ -397,7 +416,16 @@ const resolveFaultProofDeploymentContracts = async ({
       "Deployment info is missing fraudProofCatalogueMint.fraudProofCatalogue.",
     );
   }
-  const category = catalogue.categories[categoryName];
+  const category = (
+    catalogue.categories as Readonly<
+      Partial<
+        Record<
+          SupportedFaultProofCategoryName,
+          FraudProofCatalogueCategoryDeploymentInfo
+        >
+      >
+    >
+  )[categoryName];
   if (category === undefined) {
     throw new Error(
       `Deployment info is missing fraudProofCatalogueMint.fraudProofCatalogue.categories.${categoryName}.`,
@@ -432,7 +460,8 @@ const resolveFaultProofDeploymentContracts = async ({
     | DoubleSpendFaultProofContracts
     | NonExistentInputFaultProofContracts
     | InvalidRangeFaultProofContracts
-    | TransitionTraceFaultProofContracts;
+    | TransitionTraceFaultProofContracts
+    | ValidationTraceDisputeFaultProofContracts;
   let derivedFirstStepHash: string;
   if (categoryName === "doubleSpend") {
     const doubleSpendContracts = await Effect.runPromise(
@@ -470,7 +499,7 @@ const resolveFaultProofDeploymentContracts = async ({
     contracts = invalidRangeContracts;
     derivedFirstStepHash =
       invalidRangeContracts.invalidRange.firstStep.spendingScriptHash;
-  } else {
+  } else if (categoryName === "transitionTrace") {
     const transitionTraceContracts = await Effect.runPromise(
       buildTransitionTraceFaultProofContracts({
         blueprint: parsedBlueprint,
@@ -482,6 +511,19 @@ const resolveFaultProofDeploymentContracts = async ({
     contracts = transitionTraceContracts;
     derivedFirstStepHash =
       transitionTraceContracts.transitionTrace.firstStep.spendingScriptHash;
+  } else {
+    const validationTraceDisputeContracts = await Effect.runPromise(
+      buildValidationTraceDisputeFaultProofContracts({
+        blueprint: parsedBlueprint,
+        network,
+        hubOraclePolicyId,
+        fraudProofCataloguePolicyId,
+      }),
+    );
+    contracts = validationTraceDisputeContracts;
+    derivedFirstStepHash =
+      validationTraceDisputeContracts.validationTraceDispute.firstStep
+        .spendingScriptHash;
   }
   requireMatchingScriptHash({
     label: "fraudProofMint policy",
@@ -598,6 +640,27 @@ export const resolveTransitionTraceDeploymentContracts = async (params: {
     fraudProofCataloguePolicyId: resolved.fraudProofCataloguePolicyId,
     hubOraclePolicyId: resolved.hubOraclePolicyId,
     contracts: resolved.contracts as TransitionTraceFaultProofContracts,
+  };
+};
+
+export const resolveValidationTraceDisputeDeploymentContracts = async (params: {
+  readonly blueprint: unknown;
+  readonly deploymentInfo: unknown;
+  readonly network: Network;
+  readonly requireStateQueueMint?: boolean;
+  readonly requireFraudProofSpend?: boolean;
+}): Promise<ResolvedValidationTraceDisputeDeploymentContracts> => {
+  const resolved = await resolveFaultProofDeploymentContracts({
+    ...params,
+    categoryName: "validationTraceDispute",
+  });
+  return {
+    deploymentInfo: resolved.deploymentInfo,
+    validationTraceDisputeCategory: resolved.category,
+    stateQueuePolicyId: resolved.stateQueuePolicyId,
+    fraudProofCataloguePolicyId: resolved.fraudProofCataloguePolicyId,
+    hubOraclePolicyId: resolved.hubOraclePolicyId,
+    contracts: resolved.contracts as ValidationTraceDisputeFaultProofContracts,
   };
 };
 

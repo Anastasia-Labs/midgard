@@ -1,3 +1,7 @@
+import {
+  MIDGARD_CONSENSUS_PROFILE_V1_ID,
+  type MidgardConsensusProfileV1,
+} from "@al-ft/midgard-core/consensus-profile-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { Data as LucidData } from "@lucid-evolution/lucid";
@@ -19,6 +23,7 @@ export const Status = {
 
 export enum Columns {
   FOREIGN_HEADER_HASH = "foreign_header_hash",
+  CONSENSUS_PROFILE_ID = "consensus_profile_id",
   REPLACED_BASE_HEADER_HASH = "replaced_base_header_hash",
   FOREIGN_HEADER_CBOR = "foreign_header_cbor",
   BLOCK_START_TIME = "block_start_time",
@@ -40,6 +45,7 @@ export enum Columns {
 
 export type Entry = {
   [Columns.FOREIGN_HEADER_HASH]: Buffer;
+  [Columns.CONSENSUS_PROFILE_ID]: typeof MIDGARD_CONSENSUS_PROFILE_V1_ID;
   [Columns.REPLACED_BASE_HEADER_HASH]: Buffer;
   [Columns.FOREIGN_HEADER_CBOR]: Buffer;
   [Columns.BLOCK_START_TIME]: Date;
@@ -63,13 +69,17 @@ export const recordMismatch = ({
   foreignHeaderHash,
   replacedBaseHeaderHash,
   foreignHeader,
+  consensusProfile,
 }: {
   readonly foreignHeaderHash: string;
   readonly replacedBaseHeaderHash: string;
-  readonly foreignHeader: SDK.Header;
+  readonly foreignHeader: SDK.HeaderV1;
+  readonly consensusProfile: MidgardConsensusProfileV1;
 }): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
-    const recomputedHeaderHash = yield* SDK.hashBlockHeader(foreignHeader).pipe(
+    const recomputedHeaderHash = yield* SDK.hashBlockHeaderV1(
+      foreignHeader,
+    ).pipe(
       Effect.mapError(
         (cause) =>
           new DatabaseError({
@@ -89,7 +99,7 @@ export const recordMismatch = ({
       );
     }
     const foreignHeaderCbor = Buffer.from(
-      LucidData.to(foreignHeader as never, SDK.Header as never),
+      LucidData.to(foreignHeader, SDK.HeaderV1),
       "hex",
     );
     const startTimeMs = Number(foreignHeader.startTime);
@@ -116,6 +126,7 @@ export const recordMismatch = ({
     const rows = yield* sql<{ [Columns.FOREIGN_HEADER_HASH]: Buffer }>`
       INSERT INTO ${sql(tableName)} (
         ${sql(Columns.FOREIGN_HEADER_HASH)},
+        ${sql(Columns.CONSENSUS_PROFILE_ID)},
         ${sql(Columns.REPLACED_BASE_HEADER_HASH)},
         ${sql(Columns.FOREIGN_HEADER_CBOR)},
         ${sql(Columns.BLOCK_START_TIME)},
@@ -130,6 +141,7 @@ export const recordMismatch = ({
         ${sql(Columns.BLOCKING_REASON)}
       ) VALUES (
         ${Buffer.from(foreignHeaderHash, "hex")},
+        ${consensusProfile.profileId},
         ${Buffer.from(replacedBaseHeaderHash, "hex")},
         ${foreignHeaderCbor},
         ${blockStartTime},
@@ -146,6 +158,7 @@ export const recordMismatch = ({
       ON CONFLICT (${sql(Columns.FOREIGN_HEADER_HASH)}) DO UPDATE SET
         ${sql(Columns.UPDATED_AT)} = NOW()
       WHERE ${sql(tableName)}.${sql(Columns.REPLACED_BASE_HEADER_HASH)} = EXCLUDED.${sql(Columns.REPLACED_BASE_HEADER_HASH)}
+        AND ${sql(tableName)}.${sql(Columns.CONSENSUS_PROFILE_ID)} = EXCLUDED.${sql(Columns.CONSENSUS_PROFILE_ID)}
         AND ${sql(tableName)}.${sql(Columns.FOREIGN_HEADER_CBOR)} = EXCLUDED.${sql(Columns.FOREIGN_HEADER_CBOR)}
         AND ${sql(tableName)}.${sql(Columns.BLOCK_START_TIME)} = EXCLUDED.${sql(Columns.BLOCK_START_TIME)}
         AND ${sql(tableName)}.${sql(Columns.BLOCK_END_TIME)} = EXCLUDED.${sql(Columns.BLOCK_END_TIME)}
@@ -250,7 +263,7 @@ export const markResolved = ({
 }: {
   readonly foreignHeaderHash: string;
   readonly verifiedDaPayloadCbor?: Buffer;
-  readonly verifiedDaSchemaVersion?: number;
+  readonly verifiedDaSchemaVersion?: 1;
 }): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
     if (

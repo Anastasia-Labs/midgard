@@ -89,15 +89,15 @@ pub fn operator_is_not_a_member(
   reference_inputs: List<Input>,
   element_ref_input_index: Int,
 ) -> linked_list.ElementEval<Bool> {
-  expect Some(element_input) =
-    reference_inputs |> list.at(element_ref_input_index)
+  expect Some(element_input) = reference_inputs
+    |> list.at(element_ref_input_index)
   let
-    _element_address,
-    _element_lovelace,
-    m_smaller_key,
-    _element_data,
-    larger_link,
-  <- linked_list.get_element_info(element_input.output)
+      _element_address,
+      _element_lovelace,
+      m_smaller_key,
+      _element_data,
+      larger_link
+    <- linked_list.get_element_info(element_input.output)
   and {
     when m_smaller_key is {
       Some(smaller_key) -> bytearray.compare(smaller_key, operator) == Less
@@ -138,43 +138,42 @@ pub fn validate_transferred_operator_insertion(
     Bool,
 ) -> linked_list.ElementEval<Bool> {
   // 1. The minting redeemer of the origin operators list must be invoked.
-  let origin_list_redeemer_data =
-    redeemers
-      |> utils.get_redeemer_at(
-          expected_purpose: Mint(origin_list_policy_id),
-          redeemer_index: origin_list_redeemer_index,
-        )
+  let origin_list_redeemer_data = redeemers
+    |> utils.get_redeemer_at(
+        expected_purpose: Mint(origin_list_policy_id),
+        redeemer_index: origin_list_redeemer_index,
+      )
 
-  let (operator_from_origin_list_redeemer, must_penalize) =
-    origin_list_redeemer_to_operator_and_penalty_flag(origin_list_redeemer_data)
+  let (operator_from_origin_list_redeemer, must_penalize) = origin_list_redeemer_to_operator_and_penalty_flag(
+    origin_list_redeemer_data,
+  )
 
   // 2. The operator from target list's redeemer must agree with the one
   //    extracted from the origin list's redeemer.
   expect operator == operator_from_origin_list_redeemer
 
   // 3. Specified outputs related to the linked list must exist.
-  expect Some(target_list_anchor_element_output) =
-    outputs |> list.at(target_list_anchor_element_output_index)
-  expect Some(target_list_inserted_node) =
-    outputs |> list.at(target_list_inserted_node_output_index)
+  expect Some(target_list_anchor_element_output) = outputs
+    |> list.at(target_list_anchor_element_output_index)
+  expect Some(target_list_inserted_node) = outputs
+    |> list.at(target_list_inserted_node_output_index)
 
   // 4. Ordered insertion in the linked list must be proper.
   let
-    _anchor_input,
-    anchor_lovelace_change,
-    m_anchor_key,
-    _anchor_data,
-    inserted_node_lovelace,
-    inserted_node_key,
-    inserted_node_data,
-    inserted_node_link,
-  <-
-    linked_list.insert_ascending(
-      continued_anchor_element_output: target_list_anchor_element_output,
-      new_node_output: target_list_inserted_node,
-      inputs: inputs,
-      tx_mint: mint,
-    )
+      _anchor_input,
+      anchor_lovelace_change,
+      m_anchor_key,
+      _anchor_data,
+      inserted_node_lovelace,
+      inserted_node_key,
+      inserted_node_data,
+      inserted_node_link
+    <- linked_list.insert_ascending(
+    continued_anchor_element_output: target_list_anchor_element_output,
+    new_node_output: target_list_inserted_node,
+    inputs: inputs,
+    tx_mint: mint,
+  )
 
   // 5. ADA of anchor element must be preserved.
   expect anchor_lovelace_change >= 0
@@ -232,57 +231,59 @@ pub fn slash_fraudulent_operator_and_get_info(
   ) ->
     Bool,
 ) -> linked_list.ElementEval<Bool> {
-  let SlashingArguments {
-    slashed_operator,
-    hub_oracle_ref_input_index,
-    slashed_operator_anchor_element_input_outref,
-    slashed_operator_anchor_element_output_index,
-    slashing_reason,
-  } = slashing_arguments
+  let
+      SlashingArguments {
+        slashed_operator,
+        hub_oracle_ref_input_index,
+        slashed_operator_anchor_element_input_outref,
+        slashed_operator_anchor_element_output_index,
+        slashing_reason,
+      }
+    = slashing_arguments
 
-  let Transaction {
-    inputs,
-    outputs,
-    reference_inputs,
-    mint,
-    fee,
-    redeemers,
-    ..
-  } = tx
+  let
+      Transaction {
+        inputs,
+        outputs,
+        reference_inputs,
+        mint,
+        fee,
+        redeemers,
+        ..
+      }
+    = tx
 
   // 1. Transaction must refer to the authentic hub oracle UTxO to allow
   //    extraction of relevant addresses or policy IDs.
-  let hub_datum =
-    hub.get_datum(
-      reference_inputs,
-      hub_oracle_script_hash,
-      hub_oracle_ref_input_index,
-    )
+  let hub_datum = hub.get_datum(
+    reference_inputs,
+    hub_oracle_script_hash,
+    hub_oracle_ref_input_index,
+  )
 
   // 2. Specified output for removal of the slashed operator's node from the
   //    linked list must exist at its index.
-  expect Some(slashed_operator_anchor_element_output) =
-    outputs |> list.at(slashed_operator_anchor_element_output_index)
+  expect Some(slashed_operator_anchor_element_output) = outputs
+    |> list.at(slashed_operator_anchor_element_output_index)
 
   // 3. Linked list's removal logic must be valid for the specified inputs and
   //    output.
   let
-    _anchor_input,
-    anchor_lovelace_change,
-    m_anchor_key,
-    _anchor_data,
-    _slashed_operator_node_input,
-    slashed_operator_node_lovelace,
-    slashed_operator_node_key,
-    _slashed_operator_node_data,
-    slashed_operator_node_link,
-  <-
-    linked_list.remove(
-      anchor_input_outref: slashed_operator_anchor_element_input_outref,
-      continued_anchor_element_output: slashed_operator_anchor_element_output,
-      inputs: inputs,
-      tx_mint: mint,
-    )
+      _anchor_input,
+      anchor_lovelace_change,
+      m_anchor_key,
+      _anchor_data,
+      _slashed_operator_node_input,
+      slashed_operator_node_lovelace,
+      slashed_operator_node_key,
+      _slashed_operator_node_data,
+      slashed_operator_node_link
+    <- linked_list.remove(
+    anchor_input_outref: slashed_operator_anchor_element_input_outref,
+    continued_anchor_element_output: slashed_operator_anchor_element_output,
+    inputs: inputs,
+    tx_mint: mint,
+  )
 
   // 4. ADA of anchor element must be preserved.
   expect anchor_lovelace_change >= 0
@@ -322,12 +323,12 @@ pub fn slash_fraudulent_operator_and_get_info(
       //     `RemoveFraudulentBlockHeader` redeemer, and the operator specified
       //     there must agree with the `slashed_operator` redeemer argument
       //     here.
-      expect state_queue.RemoveFraudulentBlockHeader { fraudulent_operator, .. } =
-        redeemers
-          |> utils.get_redeemer_at(
-              expected_purpose: Mint(hub_datum.state_queue),
-              redeemer_index: state_queue_redeemer_index,
-            )
+      expect state_queue.RemoveFraudulentBlockHeader { fraudulent_operator, .. }
+        = redeemers
+        |> utils.get_redeemer_at(
+            expected_purpose: Mint(hub_datum.state_queue),
+            redeemer_index: state_queue_redeemer_index,
+          )
       expect fraudulent_operator == slashed_operator
 
       // Done.
@@ -339,14 +340,13 @@ pub fn slash_fraudulent_operator_and_get_info(
     } -> {
       // 8b. A settlement UTxO must be getting spent via the
       //     `DisproveResolutionClaim` redeemer.
-      expect settlement.DisproveResolutionClaim { operator, .. } =
-        utils.get_spending_redeemer_data_at(
-          hub_datum.settlement_addr,
-          settlement_input_index,
-          settlement_redeemer_index,
-          inputs,
-          redeemers,
-        )
+      expect settlement.DisproveResolutionClaim { operator, .. } = utils.get_spending_redeemer_data_at(
+        hub_datum.settlement_addr,
+        settlement_input_index,
+        settlement_redeemer_index,
+        inputs,
+        redeemers,
+      )
       expect operator == slashed_operator
 
       // Done.
@@ -362,14 +362,14 @@ pub fn cross_validate_slashing_reason(
   redeemer_to_slashing_arguments: fn(Redeemer) -> SlashingArguments,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
 ) -> SlashingReason {
-  let target_operators_set_redeemer_data =
-    utils.get_redeemer_at(
-      redeemers: redeemers,
-      expected_purpose: Mint(target_operators_set_policy_id),
-      redeemer_index: target_operators_set_redeemer_index,
-    )
-  let SlashingArguments { slashed_operator, slashing_reason, .. } =
-    redeemer_to_slashing_arguments(target_operators_set_redeemer_data)
+  let target_operators_set_redeemer_data = utils.get_redeemer_at(
+    redeemers: redeemers,
+    expected_purpose: Mint(target_operators_set_policy_id),
+    redeemer_index: target_operators_set_redeemer_index,
+  )
+  let SlashingArguments { slashed_operator, slashing_reason, .. } = redeemer_to_slashing_arguments(
+    target_operators_set_redeemer_data,
+  )
   expect fraudulent_operator == slashed_operator
   slashing_reason
 }

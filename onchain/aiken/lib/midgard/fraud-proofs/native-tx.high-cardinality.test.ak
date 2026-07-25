@@ -6,9 +6,9 @@ use aiken/collection/list
 use aiken/crypto.{blake2b_256}
 use aiken/fuzz
 use midgard/fraud_proofs/native_tx/compact.{
-  decode_native_tx_compact, encode_native_tx_body_compact,
-  encode_native_tx_compact, verify_native_tx_compact,
-  verify_native_tx_compact_cbor,
+  decode_native_tx_compact_v1, encode_native_tx_body_compact,
+  encode_native_tx_compact_v1, verify_native_tx_compact_cbor_v1,
+  verify_native_tx_compact_v1,
 }
 use midgard/fraud_proofs/native_tx/preimages.{
   decode_midgard_tx_address_witnesses_preimage_cbor,
@@ -22,7 +22,7 @@ use midgard/fraud_proofs/native_tx/preimages.{
   encode_script_witness_preimage,
 }
 use midgard/fraud_proofs/native_tx/transaction.{
-  decode_midgard_transaction, encode_midgard_transaction,
+  decode_midgard_transaction_v1, encode_midgard_transaction_v1,
   midgard_transaction_to_compact, midgard_transaction_witness_set_to_compact,
   partial_view_from_compact_and_preimages,
 }
@@ -82,7 +82,7 @@ fn sample_high_cardinality_compact_fixture(
 ) -> Fuzzer<Pair<NativeTxCompact, ByteArray>> {
   fuzz.constant(
     Pair(
-      decode_native_tx_compact(high_cardinality_compact_cbor),
+      decode_native_tx_compact_v1(high_cardinality_compact_cbor),
       high_cardinality_compact_cbor,
     ),
   )
@@ -164,7 +164,7 @@ fn redeemer_pointer_tags(
 bench high_cardinality_decode_midgard_transaction_bench(
   tx_cbor: ByteArray via sample_high_cardinality_tx_cbor,
 ) {
-  let decoded = decode_midgard_transaction(tx_cbor)
+  let decoded = decode_midgard_transaction_v1(tx_cbor)
   and {
     decoded.version == 1,
     list.length(decoded.body.inputs) == 8,
@@ -177,7 +177,7 @@ bench high_cardinality_decode_midgard_transaction_bench(
 bench high_cardinality_decode_native_tx_compact_bench(
   compact_cbor: ByteArray via sample_high_cardinality_compact_cbor,
 ) {
-  let compact = decode_native_tx_compact(compact_cbor)
+  let compact = decode_native_tx_compact_v1(compact_cbor)
   compact.validity_code == 0
 }
 
@@ -185,25 +185,33 @@ bench high_cardinality_verify_native_tx_compact_reencode_bench(
   fixture: Pair<NativeTxCompact, ByteArray> via sample_high_cardinality_compact_fixture,
 ) {
   let Pair(compact, compact_cbor) = fixture
-  let verified =
-    verify_native_tx_compact(high_cardinality_tx_id, compact, compact_cbor)
+  let verified = verify_native_tx_compact_v1(
+    high_cardinality_tx_id,
+    compact,
+    compact_cbor,
+  )
   verified.tx_compact.validity_code == 0
 }
 
 bench high_cardinality_verify_native_tx_compact_cbor_bench(
   compact_cbor: ByteArray via sample_high_cardinality_compact_cbor,
 ) {
-  let verified =
-    verify_native_tx_compact_cbor(high_cardinality_tx_id, compact_cbor)
+  let verified = verify_native_tx_compact_cbor_v1(
+    high_cardinality_tx_id,
+    compact_cbor,
+  )
   verified.tx_compact.validity_code == 0
 }
 
 bench high_cardinality_decode_then_verify_native_tx_compact_reencode_bench(
   compact_cbor: ByteArray via sample_high_cardinality_compact_cbor,
 ) {
-  let compact = decode_native_tx_compact(compact_cbor)
-  let verified =
-    verify_native_tx_compact(high_cardinality_tx_id, compact, compact_cbor)
+  let compact = decode_native_tx_compact_v1(compact_cbor)
+  let verified = verify_native_tx_compact_v1(
+    high_cardinality_tx_id,
+    compact,
+    compact_cbor,
+  )
   verified.tx_compact.validity_code == 0
 }
 
@@ -267,32 +275,33 @@ test high_cardinality_lucid_midgard_native_tx_decodes() {
   let compact_cbor = high_cardinality_compact_cbor
   let tx_id = high_cardinality_tx_id
   let spend_inputs_preimage_cbor = high_cardinality_spend_inputs_preimage_cbor
-  let reference_inputs_preimage_cbor =
-    high_cardinality_reference_inputs_preimage_cbor
+  let reference_inputs_preimage_cbor = high_cardinality_reference_inputs_preimage_cbor
   let outputs_preimage_cbor = high_cardinality_outputs_preimage_cbor
-  let required_observers_preimage_cbor =
-    high_cardinality_required_observers_preimage_cbor
-  let required_signers_preimage_cbor =
-    high_cardinality_required_signers_preimage_cbor
+  let required_observers_preimage_cbor = high_cardinality_required_observers_preimage_cbor
+  let required_signers_preimage_cbor = high_cardinality_required_signers_preimage_cbor
   let mint_preimage_cbor = high_cardinality_mint_preimage_cbor
   let addr_wits_preimage_cbor = high_cardinality_addr_wits_preimage_cbor
   let script_wits_preimage_cbor = high_cardinality_script_wits_preimage_cbor
   let redeemer_wits_preimage_cbor = high_cardinality_redeemer_wits_preimage_cbor
-  let decoded_spend_inputs =
-    decode_midgard_tx_inputs_preimage_cbor(spend_inputs_preimage_cbor)
-  let decoded_reference_inputs =
-    decode_midgard_tx_inputs_preimage_cbor(reference_inputs_preimage_cbor)
-  let decoded_outputs =
-    decode_midgard_tx_outputs_preimage_cbor(outputs_preimage_cbor)
+  let decoded_spend_inputs = decode_midgard_tx_inputs_preimage_cbor(
+    spend_inputs_preimage_cbor,
+  )
+  let decoded_reference_inputs = decode_midgard_tx_inputs_preimage_cbor(
+    reference_inputs_preimage_cbor,
+  )
+  let decoded_outputs = decode_midgard_tx_outputs_preimage_cbor(
+    outputs_preimage_cbor,
+  )
   let decoded_mint = decode_midgard_tx_mint_preimage_cbor(mint_preimage_cbor)
-  let decoded_addr_wits =
-    decode_midgard_tx_address_witnesses_preimage_cbor(addr_wits_preimage_cbor)
-  let decoded_script_wits =
-    decode_midgard_tx_script_witnesses_preimage_cbor(script_wits_preimage_cbor)
-  let decoded_redeemer_wits =
-    decode_midgard_tx_redeemer_witnesses_preimage_cbor(
-      redeemer_wits_preimage_cbor,
-    )
+  let decoded_addr_wits = decode_midgard_tx_address_witnesses_preimage_cbor(
+    addr_wits_preimage_cbor,
+  )
+  let decoded_script_wits = decode_midgard_tx_script_witnesses_preimage_cbor(
+    script_wits_preimage_cbor,
+  )
+  let decoded_redeemer_wits = decode_midgard_tx_redeemer_witnesses_preimage_cbor(
+    redeemer_wits_preimage_cbor,
+  )
   expect
     encode_input_preimage(decoded_spend_inputs) == spend_inputs_preimage_cbor
   expect
@@ -306,44 +315,45 @@ test high_cardinality_lucid_midgard_native_tx_decodes() {
   expect
     encode_redeemer_witness_preimage(decoded_redeemer_wits) == redeemer_wits_preimage_cbor
 
-  let decoded = decode_midgard_transaction(tx_cbor)
+  let decoded = decode_midgard_transaction_v1(tx_cbor)
   let compact = midgard_transaction_to_compact(decoded)
-  let compact_from_cbor = decode_native_tx_compact(compact_cbor)
-  let verified =
-    verify_native_tx_compact(tx_id, compact_from_cbor, compact_cbor)
-  let verified_from_cbor = verify_native_tx_compact_cbor(tx_id, compact_cbor)
-  let witness_set_compact =
-    midgard_transaction_witness_set_to_compact(decoded.witness_set)
-  let body_preimages =
-    MidgardTransactionBodyPartialPreimages {
-      inputs: Some(spend_inputs_preimage_cbor),
-      reference_inputs: Some(reference_inputs_preimage_cbor),
-      outputs: Some(outputs_preimage_cbor),
-      required_observers: Some(required_observers_preimage_cbor),
-      required_signers: Some(required_signers_preimage_cbor),
-      mint: Some(mint_preimage_cbor),
-    }
-  let witness_set_preimages =
-    MidgardTransactionWitnessSetPartialPreimages {
-      addr_tx_wits: Some(addr_wits_preimage_cbor),
-      script_tx_wits: Some(script_wits_preimage_cbor),
-      redeemer_tx_wits: Some(redeemer_wits_preimage_cbor),
-    }
-  let partial =
-    partial_view_from_compact_and_preimages(
-      verified,
-      body_preimages,
-      Some(witness_set_compact),
-      witness_set_preimages,
-    )
+  let compact_from_cbor = decode_native_tx_compact_v1(compact_cbor)
+  let verified = verify_native_tx_compact_v1(
+    tx_id,
+    compact_from_cbor,
+    compact_cbor,
+  )
+  let verified_from_cbor = verify_native_tx_compact_cbor_v1(tx_id, compact_cbor)
+  let witness_set_compact = midgard_transaction_witness_set_to_compact(
+    decoded.witness_set,
+  )
+  let body_preimages = MidgardTransactionBodyPartialPreimages {
+    inputs: Some(spend_inputs_preimage_cbor),
+    reference_inputs: Some(reference_inputs_preimage_cbor),
+    outputs: Some(outputs_preimage_cbor),
+    required_observers: Some(required_observers_preimage_cbor),
+    required_signers: Some(required_signers_preimage_cbor),
+    mint: Some(mint_preimage_cbor),
+  }
+  let witness_set_preimages = MidgardTransactionWitnessSetPartialPreimages {
+    addr_tx_wits: Some(addr_wits_preimage_cbor),
+    script_tx_wits: Some(script_wits_preimage_cbor),
+    redeemer_tx_wits: Some(redeemer_wits_preimage_cbor),
+  }
+  let partial = partial_view_from_compact_and_preimages(
+    verified,
+    body_preimages,
+    Some(witness_set_compact),
+    witness_set_preimages,
+  )
   expect Some(partial_body) = partial.body
   expect Some(partial_witness_set) = partial.witness_set
 
   and {
     verified_from_cbor == verified,
-    encode_midgard_transaction(decoded) == tx_cbor,
+    encode_midgard_transaction_v1(decoded) == tx_cbor,
     compact == compact_from_cbor,
-    encode_native_tx_compact(compact) == compact_cbor,
+    encode_native_tx_compact_v1(compact) == compact_cbor,
     blake2b_256(encode_native_tx_body_compact(compact.body)) == tx_id,
     list.length(decoded.body.inputs) == 8,
     list.length(decoded.body.reference_inputs) == 4,

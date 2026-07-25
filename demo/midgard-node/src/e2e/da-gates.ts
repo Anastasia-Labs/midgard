@@ -3,7 +3,7 @@ import {
   publicationSatisfied,
 } from "@/da/libp2p-producer.js";
 
-export const E2E_DA_GATE_SCHEMA_VERSION = "midgard-e2e-da-gate-v2";
+export const E2E_DA_GATE_SCHEMA_VERSION = "midgard-e2e-da-gate-v1";
 
 export type DaGateStatus = "satisfied" | "pending" | "blocked" | "failed";
 

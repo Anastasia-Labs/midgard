@@ -13,9 +13,9 @@ funded roles: `L1_OPERATOR_SEED_PHRASE`,
 `L1_REFERENCE_SCRIPT_SEED_PHRASE`, `USER_SEED_PHRASE`, and the A/B
 `TESTNET_GENESIS_WALLET_SEED_PHRASE_*` values. `node.env` contains the remaining
 Midgard configuration but must not select a public network or remote provider.
-The unrelated compatibility wallet C is not used or funded by this gate; the
-bootstrap and immutable acceptance environment set C=A only when C is absent so
-NodeConfig is complete without reading the checkout `.env`.
+The unrelated supplemental wallet C is not used or funded by this gate; the
+bootstrap and immutable acceptance environment set C=A only when C is absent
+so NodeConfig is complete without reading the checkout `.env`.
 
 ```bash
 export MIDGARD_PHASE4_RUN_DIR=/tmp/midgard-phase4-process-example
@@ -127,7 +127,7 @@ pnpm run accept:phase4:pipelined-process
 The acceptance command supplies `MIDGARD_PHASE4_SCENARIO_LABEL`. Each reset
 verifies the snapshot set and canonical identity, restores all durable
 participants, restarts the isolated infrastructure, and prints the
-`midgard-phase4-local-devnet-reset-attestation-v3` JSON identity. The process
+`midgard-phase4-local-devnet-reset-attestation-v1` JSON identity. The process
 harness receives that frozen identity only after the recreated producer forges
 strictly beyond the frozen slot and Kupo indexes strictly beyond it. Because
 producer recreation replaces the Cardano socket inode, reset explicitly

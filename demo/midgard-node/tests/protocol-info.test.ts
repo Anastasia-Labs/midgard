@@ -1,4 +1,4 @@
-import { MIDGARD_SUPPORTED_SCRIPT_LANGUAGES } from "@al-ft/midgard-core/codec";
+import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import { describe, expect, it } from "vitest";
 
 import { encodeProtocolInfo } from "@/commands/protocol-info.js";
@@ -7,35 +7,29 @@ const nodeConfig = {
   NETWORK: "Preview",
   MIN_FEE_A: 44n,
   MIN_FEE_B: 155381n,
-  MAX_SUBMIT_TX_CBOR_BYTES: 32768,
+  MAX_SUBMIT_TX_CBOR_BYTES:
+    MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
   VALIDATION_STRICTNESS_PROFILE: "phase1_midgard",
 } as const;
 
 describe("encodeProtocolInfo", () => {
-  it("serializes stable builder facts without JSON bigint fields", () => {
-    expect(
+  it("fails closed while the compiled V1 release-evidence gate is incomplete", () => {
+    expect(() =>
       encodeProtocolInfo({
         nodeConfig,
         currentSlot: 123456,
       }),
-    ).toEqual({
-      apiVersion: 1,
-      network: "Preview",
-      midgardNativeTxVersion: 1,
-      currentSlot: "123456",
-      supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
-      protocolFeeParameters: {
-        minFeeA: "44",
-        minFeeB: "155381",
-      },
-      submissionLimits: {
-        maxSubmitTxCborBytes: 32768,
-      },
-      validation: {
-        strictnessProfile: "phase1_midgard",
-        localValidationIsAuthoritative: false,
-      },
-    });
+    ).toThrow(/not activated/u);
+  });
+
+  it("does not advertise V1 before its compiled L1 evidence gate is complete", () => {
+    expect(() =>
+      encodeProtocolInfo({
+        nodeConfig,
+        currentSlot: 123456,
+        consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+      }),
+    ).toThrow(/not activated/u);
   });
 
   it("rejects unsafe numeric current slots", () => {

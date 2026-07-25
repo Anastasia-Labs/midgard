@@ -9,10 +9,12 @@ pub fn verified_spend_inputs_at(
   spend_inputs_ref_input_index: Int,
   expected_spend_inputs_hash: ByteArray,
 ) -> List<MidgardTxInput> {
-  expect Some(Input {
-    output: Output { datum: InlineDatum(spend_inputs_data), .. },
-    ..
-  }) = reference_inputs |> list.at(spend_inputs_ref_input_index)
+  expect
+      Some(Input {
+        output: Output { datum: InlineDatum(spend_inputs_data), .. },
+        ..
+      })
+    = reference_inputs |> list.at(spend_inputs_ref_input_index)
 
   expect spend_inputs: List<MidgardTxInput> = spend_inputs_data
   expect

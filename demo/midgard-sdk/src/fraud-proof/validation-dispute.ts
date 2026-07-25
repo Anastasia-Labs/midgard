@@ -1,0 +1,600 @@
+import type { MidgardValidationDisputeV1 } from "@al-ft/midgard-core/validation-dispute";
+import type {
+  MidgardValidationMachineStateV1,
+  MidgardValidationTraceDescriptorV1,
+  MidgardValidationTraceProofV1,
+} from "@al-ft/midgard-core/validation-trace";
+import { Data } from "@lucid-evolution/lucid";
+
+import {
+  H32Schema,
+  OutputReferenceSchema,
+  PubKeyHashSchema,
+} from "@/common.js";
+import {
+  EventKeySchema,
+  EventToStepValueSchema,
+  ForcedInclusionTxV1Schema,
+  HeaderV1Schema,
+  L2TransactionSourceV1Schema,
+  TransitionStepSchema,
+  ValidationTraceDescriptorV1Schema,
+} from "@/ledger-state.js";
+import { rootMembershipProofSchema } from "@/transition-trace.js";
+
+export const ValidationMachinePhaseV1Schema = Data.Enum([
+  Data.Literal("CanonicalDecode"),
+  Data.Literal("CompactBinding"),
+  Data.Literal("StaticLedgerRules"),
+  Data.Literal("InputSets"),
+  Data.Literal("Signatures"),
+  Data.Literal("PhaseANativeScripts"),
+  Data.Literal("PhaseAScriptPreconditions"),
+  Data.Literal("ResolveInputs"),
+  Data.Literal("ScriptSources"),
+  Data.Literal("NativeScripts"),
+  Data.Literal("ScriptIntegrity"),
+  Data.Literal("Cek"),
+  Data.Literal("ValueAndMint"),
+  Data.Literal("LedgerDelta"),
+  Data.Literal("Terminal"),
+]);
+
+export const ValidationMachineVerdictV1Schema = Data.Enum([
+  Data.Literal("Pending"),
+  Data.Literal("Accepted"),
+  Data.Literal("Rejected"),
+]);
+
+export const ValidationMachineSourceKindV1Schema = Data.Enum([
+  Data.Literal("Normal"),
+  Data.Literal("Forced"),
+]);
+
+export const ValidationMachineStateV1Schema = Data.Object({
+  machine_version: Data.Integer(),
+  event_key_hash: H32Schema,
+  transaction_id: H32Schema,
+  transaction_commitment: H32Schema,
+  validation_context_hash: H32Schema,
+  source_kind: ValidationMachineSourceKindV1Schema,
+  prior_ledger_root: H32Schema,
+  phase: ValidationMachinePhaseV1Schema,
+  program_counter: Data.Integer(),
+  work_root: H32Schema,
+  execution_cpu: Data.Integer(),
+  execution_memory: Data.Integer(),
+  verdict: ValidationMachineVerdictV1Schema,
+  rejection_code_hash: H32Schema,
+  ledger_delta_root: H32Schema,
+});
+export type ValidationMachineStateV1 = Data.Static<
+  typeof ValidationMachineStateV1Schema
+>;
+export const ValidationMachineStateV1 =
+  ValidationMachineStateV1Schema as unknown as ValidationMachineStateV1;
+
+export const ValidationTraceProofV1Schema = Data.Object({
+  state_index: Data.Integer(),
+  state_hash: H32Schema,
+  siblings: Data.Array(H32Schema),
+});
+export type ValidationTraceProofV1 = Data.Static<
+  typeof ValidationTraceProofV1Schema
+>;
+export const ValidationTraceProofV1 =
+  ValidationTraceProofV1Schema as unknown as ValidationTraceProofV1;
+
+export const ValidationDisputeTurnV1Schema = Data.Enum([
+  Data.Object({
+    AwaitingOperator: Data.Object({ midpoint: Data.Integer() }),
+  }),
+  Data.Object({
+    AwaitingChallenger: Data.Object({
+      midpoint: Data.Integer(),
+      operator_midpoint_hash: H32Schema,
+    }),
+  }),
+  Data.Literal("ReadyForOneStep"),
+]);
+
+export const ValidationDisputeV1Schema = Data.Object({
+  version: Data.Integer(),
+  operator_descriptor: ValidationTraceDescriptorV1Schema,
+  challenger_descriptor: ValidationTraceDescriptorV1Schema,
+  low_index: Data.Integer(),
+  high_index: Data.Integer(),
+  agreed_low_hash: H32Schema,
+  operator_high_hash: H32Schema,
+  challenger_high_hash: H32Schema,
+  round: Data.Integer(),
+  response_deadline: Data.Integer(),
+  turn: ValidationDisputeTurnV1Schema,
+});
+export type ValidationDisputeV1 = Data.Static<typeof ValidationDisputeV1Schema>;
+export const ValidationDisputeV1 =
+  ValidationDisputeV1Schema as unknown as ValidationDisputeV1;
+
+export const ValidationDisputeStateV1Schema = Data.Object({
+  challenged_header_hash: Data.Bytes({ minLength: 28, maxLength: 28 }),
+  operator_vkey: PubKeyHashSchema,
+  dispute: ValidationDisputeV1Schema,
+});
+export type ValidationDisputeStateV1 = Data.Static<
+  typeof ValidationDisputeStateV1Schema
+>;
+export const ValidationDisputeStateV1 =
+  ValidationDisputeStateV1Schema as unknown as ValidationDisputeStateV1;
+
+export const ValidationDisputeDatumV1Schema = Data.Object({
+  fraud_prover: PubKeyHashSchema,
+  data: Data.Nullable(ValidationDisputeStateV1Schema),
+});
+export type ValidationDisputeDatumV1 = Data.Static<
+  typeof ValidationDisputeDatumV1Schema
+>;
+export const ValidationDisputeDatumV1 =
+  ValidationDisputeDatumV1Schema as unknown as ValidationDisputeDatumV1;
+
+export const ValidationResolutionStateV1Schema = Data.Object({
+  version: Data.Integer(),
+  pre_state: ValidationMachineStateV1Schema,
+  operator_successor_hash: H32Schema,
+  challenger_successor_hash: H32Schema,
+});
+export type ValidationResolutionStateV1 = Data.Static<
+  typeof ValidationResolutionStateV1Schema
+>;
+export const ValidationResolutionStateV1 =
+  ValidationResolutionStateV1Schema as unknown as ValidationResolutionStateV1;
+
+export const ValidationResolutionDatumV1Schema = Data.Object({
+  fraud_prover: PubKeyHashSchema,
+  data: Data.Nullable(ValidationResolutionStateV1Schema),
+});
+export type ValidationResolutionDatumV1 = Data.Static<
+  typeof ValidationResolutionDatumV1Schema
+>;
+export const ValidationResolutionDatumV1 =
+  ValidationResolutionDatumV1Schema as unknown as ValidationResolutionDatumV1;
+
+const ValidationDescriptorMembershipV1Schema = rootMembershipProofSchema(
+  EventKeySchema,
+  ValidationTraceDescriptorV1Schema,
+);
+const ValidationTransitionStepMembershipV1Schema = rootMembershipProofSchema(
+  Data.Integer(),
+  TransitionStepSchema,
+);
+const ValidationEventToStepMembershipV1Schema = rootMembershipProofSchema(
+  EventKeySchema,
+  EventToStepValueSchema,
+);
+const ForcedValidationSourceMembershipV1Schema = rootMembershipProofSchema(
+  OutputReferenceSchema,
+  ForcedInclusionTxV1Schema,
+);
+const NormalValidationSourceMembershipV1Schema = rootMembershipProofSchema(
+  H32Schema,
+  L2TransactionSourceV1Schema,
+);
+
+export const ValidationSourceMembershipV1Schema = Data.Enum([
+  Data.Object({
+    ForcedValidationSource: Data.Object({
+      membership: ForcedValidationSourceMembershipV1Schema,
+    }),
+  }),
+  Data.Object({
+    NormalValidationSource: Data.Object({
+      membership: NormalValidationSourceMembershipV1Schema,
+    }),
+  }),
+]);
+
+export const ValidationClaimWitnessV1Schema = Data.Object({
+  version: Data.Integer(),
+  descriptor_membership: ValidationDescriptorMembershipV1Schema,
+  transition_step_membership: ValidationTransitionStepMembershipV1Schema,
+  event_to_step_membership: ValidationEventToStepMembershipV1Schema,
+  source_membership: ValidationSourceMembershipV1Schema,
+  validation_context_cbor: Data.Bytes(),
+  initial_state: ValidationMachineStateV1Schema,
+  terminal_state: ValidationMachineStateV1Schema,
+  initial_state_proof: ValidationTraceProofV1Schema,
+  terminal_state_proof: ValidationTraceProofV1Schema,
+});
+export type ValidationClaimWitnessV1 = Data.Static<
+  typeof ValidationClaimWitnessV1Schema
+>;
+export const ValidationClaimWitnessV1 =
+  ValidationClaimWitnessV1Schema as unknown as ValidationClaimWitnessV1;
+
+export const PendingValidationClaimV1Schema = Data.Object({
+  challenged_header_hash: Data.Bytes({ minLength: 28, maxLength: 28 }),
+  challenged_header: HeaderV1Schema,
+  claim: ValidationClaimWitnessV1Schema,
+  challenger_descriptor: ValidationTraceDescriptorV1Schema,
+  open_time_upper: Data.Integer(),
+});
+export type PendingValidationClaimV1 = Data.Static<
+  typeof PendingValidationClaimV1Schema
+>;
+export const PendingValidationClaimV1 =
+  PendingValidationClaimV1Schema as unknown as PendingValidationClaimV1;
+
+export const PendingValidationClaimDatumV1Schema = Data.Object({
+  fraud_prover: PubKeyHashSchema,
+  data: Data.Nullable(PendingValidationClaimV1Schema),
+});
+export type PendingValidationClaimDatumV1 = Data.Static<
+  typeof PendingValidationClaimDatumV1Schema
+>;
+export const PendingValidationClaimDatumV1 =
+  PendingValidationClaimDatumV1Schema as unknown as PendingValidationClaimDatumV1;
+
+const cancelActionSchema = Data.Object({
+  Cancel: Data.Object({
+    input_index: Data.Integer(),
+    computation_thread_mint_redeemer_index: Data.Integer(),
+  }),
+});
+
+export const ValidationDisputeOpenActionV1Schema = Data.Enum([
+  Data.Object({
+    Open: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      hub_ref_input_index: Data.Integer(),
+      state_queue_node_ref_input_index: Data.Integer(),
+      claim: ValidationClaimWitnessV1Schema,
+      challenger_descriptor: ValidationTraceDescriptorV1Schema,
+    }),
+  }),
+]);
+export type ValidationDisputeOpenActionV1 = Data.Static<
+  typeof ValidationDisputeOpenActionV1Schema
+>;
+export const ValidationDisputeOpenActionV1 =
+  ValidationDisputeOpenActionV1Schema as unknown as ValidationDisputeOpenActionV1;
+
+export const ValidationDisputeOpenSpendRedeemerV1Schema = Data.Enum([
+  cancelActionSchema,
+  Data.Object({
+    Continue: Data.Tuple([ValidationDisputeOpenActionV1Schema]),
+  }),
+]);
+export type ValidationDisputeOpenSpendRedeemerV1 = Data.Static<
+  typeof ValidationDisputeOpenSpendRedeemerV1Schema
+>;
+export const ValidationDisputeOpenSpendRedeemerV1 =
+  ValidationDisputeOpenSpendRedeemerV1Schema as unknown as ValidationDisputeOpenSpendRedeemerV1;
+
+export const ValidationSourceActionV1Schema = Data.Enum([
+  Data.Object({
+    VerifySource: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+    }),
+  }),
+]);
+export type ValidationSourceActionV1 = Data.Static<
+  typeof ValidationSourceActionV1Schema
+>;
+export const ValidationSourceActionV1 =
+  ValidationSourceActionV1Schema as unknown as ValidationSourceActionV1;
+
+export const ValidationSourceSpendRedeemerV1Schema = Data.Enum([
+  cancelActionSchema,
+  Data.Object({ Continue: Data.Tuple([ValidationSourceActionV1Schema]) }),
+]);
+export type ValidationSourceSpendRedeemerV1 = Data.Static<
+  typeof ValidationSourceSpendRedeemerV1Schema
+>;
+export const ValidationSourceSpendRedeemerV1 =
+  ValidationSourceSpendRedeemerV1Schema as unknown as ValidationSourceSpendRedeemerV1;
+
+export const ValidationGameActionV1Schema = Data.Enum([
+  Data.Object({
+    RevealOperator: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      proof: ValidationTraceProofV1Schema,
+    }),
+  }),
+  Data.Object({
+    RevealChallenger: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      proof: ValidationTraceProofV1Schema,
+    }),
+  }),
+  Data.Object({
+    EnterResolution: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    EnterChallengerTimeout: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+    }),
+  }),
+]);
+export type ValidationGameActionV1 = Data.Static<
+  typeof ValidationGameActionV1Schema
+>;
+export const ValidationGameActionV1 =
+  ValidationGameActionV1Schema as unknown as ValidationGameActionV1;
+
+export const ValidationGameSpendRedeemerV1Schema = Data.Enum([
+  cancelActionSchema,
+  Data.Object({ Continue: Data.Tuple([ValidationGameActionV1Schema]) }),
+]);
+export type ValidationGameSpendRedeemerV1 = Data.Static<
+  typeof ValidationGameSpendRedeemerV1Schema
+>;
+export const ValidationGameSpendRedeemerV1 =
+  ValidationGameSpendRedeemerV1Schema as unknown as ValidationGameSpendRedeemerV1;
+
+export const ValidationBoundaryEvidenceV1Schema = Data.Object({
+  pre_state: ValidationMachineStateV1Schema,
+  operator_post: ValidationTraceProofV1Schema,
+  challenger_post: ValidationTraceProofV1Schema,
+});
+export type ValidationBoundaryEvidenceV1 = Data.Static<
+  typeof ValidationBoundaryEvidenceV1Schema
+>;
+export const ValidationBoundaryEvidenceV1 =
+  ValidationBoundaryEvidenceV1Schema as unknown as ValidationBoundaryEvidenceV1;
+
+export const ValidationBoundaryActionV1Schema = Data.Enum([
+  Data.Object({
+    PrepareResolution: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      resolver_index: Data.Integer(),
+      evidence: ValidationBoundaryEvidenceV1Schema,
+    }),
+  }),
+]);
+export type ValidationBoundaryActionV1 = Data.Static<
+  typeof ValidationBoundaryActionV1Schema
+>;
+export const ValidationBoundaryActionV1 =
+  ValidationBoundaryActionV1Schema as unknown as ValidationBoundaryActionV1;
+
+export const ValidationBoundarySpendRedeemerV1Schema = Data.Enum([
+  cancelActionSchema,
+  Data.Object({ Continue: Data.Tuple([ValidationBoundaryActionV1Schema]) }),
+]);
+export type ValidationBoundarySpendRedeemerV1 = Data.Static<
+  typeof ValidationBoundarySpendRedeemerV1Schema
+>;
+export const ValidationBoundarySpendRedeemerV1 =
+  ValidationBoundarySpendRedeemerV1Schema as unknown as ValidationBoundarySpendRedeemerV1;
+
+export const ValidationTimeoutActionV1Schema = Data.Enum([
+  Data.Object({
+    ChallengerTimeout: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      fraud_proof_mint_redeemer_index: Data.Integer(),
+    }),
+  }),
+]);
+export type ValidationTimeoutActionV1 = Data.Static<
+  typeof ValidationTimeoutActionV1Schema
+>;
+export const ValidationTimeoutActionV1 =
+  ValidationTimeoutActionV1Schema as unknown as ValidationTimeoutActionV1;
+
+export const ValidationTimeoutSpendRedeemerV1Schema = Data.Enum([
+  cancelActionSchema,
+  Data.Object({ Continue: Data.Tuple([ValidationTimeoutActionV1Schema]) }),
+]);
+export type ValidationTimeoutSpendRedeemerV1 = Data.Static<
+  typeof ValidationTimeoutSpendRedeemerV1Schema
+>;
+export const ValidationTimeoutSpendRedeemerV1 =
+  ValidationTimeoutSpendRedeemerV1Schema as unknown as ValidationTimeoutSpendRedeemerV1;
+
+const bytesHex = (bytes: Uint8Array): string =>
+  Buffer.from(bytes).toString("hex");
+
+const safeNumber = (value: bigint, field: string): number => {
+  const number = Number(value);
+  if (!Number.isSafeInteger(number) || number < 0) {
+    throw new Error(`${field} must be a non-negative safe integer`);
+  }
+  return number;
+};
+
+const verdictData = (
+  verdict: MidgardValidationTraceDescriptorV1["verdict"],
+): "Accepted" | "Rejected" =>
+  verdict === "accepted" ? "Accepted" : "Rejected";
+
+export const validationTraceDescriptorDataFromCore = (
+  descriptor: MidgardValidationTraceDescriptorV1,
+): Data.Static<typeof ValidationTraceDescriptorV1Schema> => ({
+  schema_version: BigInt(descriptor.schemaVersion),
+  machine_version: BigInt(descriptor.machineVersion),
+  trace_root: bytesHex(descriptor.traceRoot),
+  step_count: BigInt(descriptor.stepCount),
+  initial_state_hash: bytesHex(descriptor.initialStateHash),
+  terminal_state_hash: bytesHex(descriptor.terminalStateHash),
+  verdict: verdictData(descriptor.verdict),
+  rejection_code_hash: bytesHex(descriptor.rejectionCodeHash),
+});
+
+export const validationTraceDescriptorCoreFromData = (
+  descriptor: Data.Static<typeof ValidationTraceDescriptorV1Schema>,
+): MidgardValidationTraceDescriptorV1 => ({
+  schemaVersion: safeNumber(
+    descriptor.schema_version,
+    "descriptor.schema_version",
+  ) as MidgardValidationTraceDescriptorV1["schemaVersion"],
+  machineVersion: safeNumber(
+    descriptor.machine_version,
+    "descriptor.machine_version",
+  ) as MidgardValidationTraceDescriptorV1["machineVersion"],
+  traceRoot: Buffer.from(descriptor.trace_root, "hex"),
+  stepCount: safeNumber(descriptor.step_count, "descriptor.step_count"),
+  initialStateHash: Buffer.from(descriptor.initial_state_hash, "hex"),
+  terminalStateHash: Buffer.from(descriptor.terminal_state_hash, "hex"),
+  verdict: descriptor.verdict === "Accepted" ? "accepted" : "rejected",
+  rejectionCodeHash: Buffer.from(descriptor.rejection_code_hash, "hex"),
+});
+
+export const validationTraceProofDataFromCore = (
+  proof: MidgardValidationTraceProofV1,
+): ValidationTraceProofV1 => ({
+  state_index: BigInt(proof.stateIndex),
+  state_hash: bytesHex(proof.stateHash),
+  siblings: proof.siblings.map(bytesHex),
+});
+
+export const validationTraceProofCoreFromData = (
+  proof: ValidationTraceProofV1,
+): MidgardValidationTraceProofV1 => ({
+  stateIndex: safeNumber(proof.state_index, "proof.state_index"),
+  stateHash: Buffer.from(proof.state_hash, "hex"),
+  siblings: proof.siblings.map((sibling) => Buffer.from(sibling, "hex")),
+});
+
+export const validationMachineStateDataFromCore = (
+  state: MidgardValidationMachineStateV1,
+): ValidationMachineStateV1 => ({
+  machine_version: BigInt(state.machineVersion),
+  event_key_hash: bytesHex(state.eventKeyHash),
+  transaction_id: bytesHex(state.transactionId),
+  transaction_commitment: bytesHex(state.transactionCommitment),
+  validation_context_hash: bytesHex(state.validationContextHash),
+  source_kind: state.sourceKind === "normal" ? "Normal" : "Forced",
+  prior_ledger_root: bytesHex(state.priorLedgerRoot),
+  phase:
+    state.phase === "canonicalDecode"
+      ? "CanonicalDecode"
+      : state.phase === "compactBinding"
+        ? "CompactBinding"
+        : state.phase === "staticLedgerRules"
+          ? "StaticLedgerRules"
+          : state.phase === "inputSets"
+            ? "InputSets"
+            : state.phase === "signatures"
+              ? "Signatures"
+              : state.phase === "phaseANativeScripts"
+                ? "PhaseANativeScripts"
+                : state.phase === "phaseAScriptPreconditions"
+                  ? "PhaseAScriptPreconditions"
+                  : state.phase === "resolveInputs"
+                    ? "ResolveInputs"
+                    : state.phase === "scriptSources"
+                      ? "ScriptSources"
+                      : state.phase === "nativeScripts"
+                        ? "NativeScripts"
+                        : state.phase === "scriptIntegrity"
+                          ? "ScriptIntegrity"
+                          : state.phase === "cek"
+                            ? "Cek"
+                            : state.phase === "valueAndMint"
+                              ? "ValueAndMint"
+                              : state.phase === "ledgerDelta"
+                                ? "LedgerDelta"
+                                : "Terminal",
+  program_counter: BigInt(state.programCounter),
+  work_root: bytesHex(state.workRoot),
+  execution_cpu: state.executionCpu,
+  execution_memory: state.executionMemory,
+  verdict:
+    state.verdict === "pending"
+      ? "Pending"
+      : state.verdict === "accepted"
+        ? "Accepted"
+        : "Rejected",
+  rejection_code_hash: bytesHex(state.rejectionCodeHash),
+  ledger_delta_root: bytesHex(state.ledgerDeltaRoot),
+});
+
+export const validationDisputeDataFromCore = (
+  dispute: MidgardValidationDisputeV1,
+): ValidationDisputeV1 => ({
+  version: BigInt(dispute.version),
+  operator_descriptor: validationTraceDescriptorDataFromCore(
+    dispute.operatorDescriptor,
+  ),
+  challenger_descriptor: validationTraceDescriptorDataFromCore(
+    dispute.challengerDescriptor,
+  ),
+  low_index: BigInt(dispute.lowIndex),
+  high_index: BigInt(dispute.highIndex),
+  agreed_low_hash: bytesHex(dispute.agreedLowHash),
+  operator_high_hash: bytesHex(dispute.operatorHighHash),
+  challenger_high_hash: bytesHex(dispute.challengerHighHash),
+  round: BigInt(dispute.round),
+  response_deadline: BigInt(dispute.responseDeadline),
+  turn:
+    dispute.turn.type === "awaitingOperator"
+      ? {
+          AwaitingOperator: { midpoint: BigInt(dispute.turn.midpoint) },
+        }
+      : dispute.turn.type === "awaitingChallenger"
+        ? {
+            AwaitingChallenger: {
+              midpoint: BigInt(dispute.turn.midpoint),
+              operator_midpoint_hash: bytesHex(
+                dispute.turn.operatorMidpointHash,
+              ),
+            },
+          }
+        : "ReadyForOneStep",
+});
+
+export const validationDisputeCoreFromData = (
+  dispute: ValidationDisputeV1,
+): MidgardValidationDisputeV1 => ({
+  version: safeNumber(
+    dispute.version,
+    "dispute.version",
+  ) as MidgardValidationDisputeV1["version"],
+  operatorDescriptor: validationTraceDescriptorCoreFromData(
+    dispute.operator_descriptor,
+  ),
+  challengerDescriptor: validationTraceDescriptorCoreFromData(
+    dispute.challenger_descriptor,
+  ),
+  lowIndex: safeNumber(dispute.low_index, "dispute.low_index"),
+  highIndex: safeNumber(dispute.high_index, "dispute.high_index"),
+  agreedLowHash: Buffer.from(dispute.agreed_low_hash, "hex"),
+  operatorHighHash: Buffer.from(dispute.operator_high_hash, "hex"),
+  challengerHighHash: Buffer.from(dispute.challenger_high_hash, "hex"),
+  round: safeNumber(dispute.round, "dispute.round"),
+  responseDeadline: safeNumber(
+    dispute.response_deadline,
+    "dispute.response_deadline",
+  ),
+  turn:
+    dispute.turn === "ReadyForOneStep"
+      ? { type: "readyForOneStep" }
+      : "AwaitingOperator" in dispute.turn
+        ? {
+            type: "awaitingOperator",
+            midpoint: safeNumber(
+              dispute.turn.AwaitingOperator.midpoint,
+              "dispute.turn.midpoint",
+            ),
+          }
+        : {
+            type: "awaitingChallenger",
+            midpoint: safeNumber(
+              dispute.turn.AwaitingChallenger.midpoint,
+              "dispute.turn.midpoint",
+            ),
+            operatorMidpointHash: Buffer.from(
+              dispute.turn.AwaitingChallenger.operator_midpoint_hash,
+              "hex",
+            ),
+          },
+});

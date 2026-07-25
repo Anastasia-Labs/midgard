@@ -43,30 +43,31 @@ validator main(
         // 1. Specified input must be authentic and properly reproduced at the
         //    fraud proof's spending address.
         let
-          _own_script_hash,
-          _computation_thread_token_asset_name,
-          _fraud_prover,
-          m_input_state_data,
-        <-
-          finalize(
-            computation_thread_token_policy_id,
-            fraud_proof_token_policy_id,
-            fraud_proof_token_address,
-            step_datum,
-            input_index,
-            output_index,
-            fraud_proof_mint_redeemer_index,
-            own_out_ref,
-            inputs,
-            outputs,
-            redeemers,
-          )
+            _own_script_hash,
+            _computation_thread_token_asset_name,
+            _fraud_prover,
+            m_input_state_data
+          <- finalize(
+          computation_thread_token_policy_id,
+          fraud_proof_token_policy_id,
+          fraud_proof_token_address,
+          step_datum,
+          input_index,
+          output_index,
+          fraud_proof_mint_redeemer_index,
+          own_out_ref,
+          inputs,
+          outputs,
+          redeemers,
+        )
 
-        expect Some(State {
-          block_valid_from,
-          block_valid_to,
-          bad_tx_normalized_validity_range,
-        }) = m_input_state_data
+        expect
+            Some(State {
+              block_valid_from,
+              block_valid_to,
+              bad_tx_normalized_validity_range,
+            })
+          = m_input_state_data
 
         // 2. One or more **bounds** of the bad transaction's validity interval
         //    must fall out of the block's. Meaning unbounded ends are not

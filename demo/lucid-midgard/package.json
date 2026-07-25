@@ -20,7 +20,6 @@
     "clean": "rimraf dist",
     "prebuild": "pnpm --dir ../midgard-validation run build",
     "build": "tsup src/index.ts --format esm,cjs --dts --clean",
-    "fixtures:native": "tsup scripts/generate-native-tx-aiken-fixtures.ts --format esm --out-dir .tmp/native-fixtures --clean && node .tmp/native-fixtures/generate-native-tx-aiken-fixtures.js",
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",

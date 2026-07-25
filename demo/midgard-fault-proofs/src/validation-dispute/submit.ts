@@ -1,0 +1,1713 @@
+import {
+  canOpenMidgardValidationDisputeBeforeMaturity,
+  type MidgardValidationTraceProofV1,
+  openMidgardValidationDispute,
+  revealMidgardValidationChallengerMidpoint,
+  revealMidgardValidationOperatorMidpoint,
+  timeoutMidgardValidationDispute,
+} from "@al-ft/midgard-core";
+import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import {
+  FraudProofComputationThreadRedeemer,
+  FraudProofTokenDatum,
+  FraudProofTokenMintRedeemer,
+  getHeaderV1FromStateQueueDatum,
+  getLinkedListNodeViewFromUTxO,
+  hashBlockHeaderV1,
+  HUB_ORACLE_ASSET_NAME,
+  requireInputIndex,
+  requireMintRedeemerIndex,
+  requireOwnMintPurpose,
+  requireOwnSpendPurpose,
+  requireReferenceInputIndex,
+  requireUniqueOutputIndex,
+  type ValidationClaimWitnessV1,
+  type ValidationMachineStateV1,
+  PendingValidationClaimDatumV1,
+  type PendingValidationClaimDatumV1 as PendingValidationClaimDatumV1Data,
+  validationDisputeCoreFromData,
+  validationDisputeDataFromCore,
+  ValidationBoundarySpendRedeemerV1,
+  ValidationDisputeDatumV1,
+  type ValidationDisputeDatumV1 as ValidationDisputeDatumV1Data,
+  ValidationDisputeOpenSpendRedeemerV1,
+  ValidationGameSpendRedeemerV1,
+  ValidationResolutionDatumV1,
+  ValidationSourceSpendRedeemerV1,
+  ValidationTimeoutSpendRedeemerV1,
+  validationTraceDescriptorCoreFromData,
+  validationTraceDescriptorDataFromCore,
+  type ValidationTraceDescriptorV1,
+  validationTraceProofCoreFromData,
+  validationTraceProofDataFromCore,
+  type ValidationTraceProofV1,
+} from "@al-ft/midgard-sdk";
+import {
+  type BuildTxWithRedeemer,
+  credentialToAddress,
+  Data,
+  type LucidEvolution,
+  type Network,
+  scriptHashToCredential,
+  toUnit,
+  type UTxO,
+} from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+
+import {
+  DEFAULT_CONFIRMATION_POLL_MS,
+  fetchUtxoByOutRef,
+  outRefLabel,
+  parseOutRef,
+  requireSingletonUtxo,
+  type ResolvedProverSigner,
+  resolveFraudulentHeaderHash,
+  resolveValidationTraceDisputeDeploymentContracts,
+} from "../runtime.js";
+import {
+  requireComputationThreadToken,
+  requireInitialStepDatum,
+  selectFeeInput,
+} from "../submit-step-01.js";
+import {
+  computationThreadOutputPredicate,
+  outputWithDatumAndUnitPredicate,
+} from "../tx-layout.js";
+
+export const VALIDATION_DISPUTE_VALIDITY_BACKOFF_MS = 60_000;
+export const VALIDATION_DISPUTE_VALIDITY_LEEWAY_MS = 60_000;
+export const MAX_L1_VALIDATION_PROOF_TRANSACTION_BYTES = 16 * 1024;
+
+export type ValidationDisputeValidityRange = {
+  readonly validFrom: number;
+  readonly validTo: number;
+};
+
+const safeUnsignedNumber = (value: bigint, field: string): number => {
+  const number = Number(value);
+  if (!Number.isSafeInteger(number) || number < 0) {
+    throw new Error(`${field} must be a non-negative safe integer`);
+  }
+  return number;
+};
+
+export const validationDisputeValidityRange = (
+  now: number,
+): ValidationDisputeValidityRange => {
+  if (
+    !Number.isSafeInteger(now) ||
+    now < VALIDATION_DISPUTE_VALIDITY_BACKOFF_MS
+  ) {
+    throw new Error(
+      "Validation-dispute current time must be a safe POSIX time",
+    );
+  }
+  return {
+    validFrom: now - VALIDATION_DISPUTE_VALIDITY_BACKOFF_MS,
+    validTo: now + VALIDATION_DISPUTE_VALIDITY_LEEWAY_MS,
+  };
+};
+
+export const validationDisputeTimeoutValidityRange = (
+  now: number,
+  responseDeadline: number,
+): ValidationDisputeValidityRange => {
+  const ordinary = validationDisputeValidityRange(now);
+  if (!Number.isSafeInteger(responseDeadline) || responseDeadline < 0) {
+    throw new Error(
+      "Validation-dispute response deadline must be a non-negative safe integer",
+    );
+  }
+  if (now <= responseDeadline) {
+    throw new Error("Validation-dispute response deadline has not passed");
+  }
+  return requireValidityRange({
+    validFrom: Math.max(ordinary.validFrom, responseDeadline + 1),
+    validTo: ordinary.validTo,
+  });
+};
+
+const requireValidityRange = (
+  range: ValidationDisputeValidityRange,
+): ValidationDisputeValidityRange => {
+  if (
+    !Number.isSafeInteger(range.validFrom) ||
+    !Number.isSafeInteger(range.validTo) ||
+    range.validFrom < 0 ||
+    range.validTo < range.validFrom ||
+    range.validTo - range.validFrom >
+      VALIDATION_DISPUTE_VALIDITY_BACKOFF_MS +
+        VALIDATION_DISPUTE_VALIDITY_LEEWAY_MS
+  ) {
+    throw new Error(
+      "Validation-dispute validity range must be a non-negative closed range no longer than 120 seconds",
+    );
+  }
+  return range;
+};
+
+const threadAssets = (threadUtxo: UTxO, threadUnit: string) => ({
+  lovelace: threadUtxo.assets.lovelace ?? 0n,
+  [threadUnit]: 1n,
+});
+
+const requireL1ProofEnvelope = (
+  transactionCbor: string,
+  label: string,
+): void => {
+  const bytes = transactionCbor.length / 2;
+  if (
+    transactionCbor.length % 2 !== 0 ||
+    !/^[0-9a-f]+$/u.test(transactionCbor) ||
+    bytes >= MAX_L1_VALIDATION_PROOF_TRANSACTION_BYTES
+  ) {
+    throw new Error(
+      `${label} transaction is ${bytes.toString()} bytes; the complete signed L1 proof transaction must be strictly below ${MAX_L1_VALIDATION_PROOF_TRANSACTION_BYTES.toString()} bytes`,
+    );
+  }
+};
+
+type ContinueLayout = {
+  readonly inputIndex: bigint;
+  readonly outputIndex: bigint;
+};
+
+type OpenLayout = ContinueLayout & {
+  readonly hubOracleRefInputIndex: bigint;
+  readonly stateQueueNodeRefInputIndex: bigint;
+};
+
+const makeOpenRedeemer = ({
+  threadUtxo,
+  hubOracleUtxo,
+  stateQueueBlockUtxo,
+  outputAddress,
+  outputDatum,
+  threadUnit,
+  claim,
+  challengerDescriptor,
+  onLayout,
+}: {
+  readonly threadUtxo: UTxO;
+  readonly hubOracleUtxo: UTxO;
+  readonly stateQueueBlockUtxo: UTxO;
+  readonly outputAddress: string;
+  readonly outputDatum: string;
+  readonly threadUnit: string;
+  readonly claim: ValidationClaimWitnessV1;
+  readonly challengerDescriptor: ValidationTraceDescriptorV1;
+  readonly onLayout: (layout: OpenLayout) => void;
+}): BuildTxWithRedeemer =>
+  ((ctx) => {
+    requireOwnSpendPurpose(ctx, threadUtxo, "validation dispute open");
+    const layout: OpenLayout = {
+      inputIndex: requireInputIndex(ctx, threadUtxo, "validation dispute open"),
+      outputIndex: requireUniqueOutputIndex(
+        ctx.outputs,
+        computationThreadOutputPredicate({
+          address: outputAddress,
+          datum: outputDatum,
+          unit: threadUnit,
+        }),
+        "validation dispute open",
+      ),
+      hubOracleRefInputIndex: requireReferenceInputIndex(
+        ctx,
+        hubOracleUtxo,
+        "validation dispute open hub oracle",
+      ),
+      stateQueueNodeRefInputIndex: requireReferenceInputIndex(
+        ctx,
+        stateQueueBlockUtxo,
+        "validation dispute open state-queue block",
+      ),
+    };
+    onLayout(layout);
+    return Data.to(
+      {
+        Continue: [
+          {
+            Open: {
+              input_index: layout.inputIndex,
+              output_index: layout.outputIndex,
+              hub_ref_input_index: layout.hubOracleRefInputIndex,
+              state_queue_node_ref_input_index:
+                layout.stateQueueNodeRefInputIndex,
+              claim,
+              challenger_descriptor: challengerDescriptor,
+            },
+          },
+        ],
+      },
+      ValidationDisputeOpenSpendRedeemerV1,
+    );
+  }) satisfies BuildTxWithRedeemer;
+
+const makeVerifySourceRedeemer = ({
+  threadUtxo,
+  outputAddress,
+  outputDatum,
+  threadUnit,
+  onLayout,
+}: {
+  readonly threadUtxo: UTxO;
+  readonly outputAddress: string;
+  readonly outputDatum: string;
+  readonly threadUnit: string;
+  readonly onLayout: (layout: ContinueLayout) => void;
+}): BuildTxWithRedeemer =>
+  ((ctx) => {
+    requireOwnSpendPurpose(
+      ctx,
+      threadUtxo,
+      "validation dispute verify source",
+    );
+    const layout: ContinueLayout = {
+      inputIndex: requireInputIndex(
+        ctx,
+        threadUtxo,
+        "validation dispute verify source",
+      ),
+      outputIndex: requireUniqueOutputIndex(
+        ctx.outputs,
+        computationThreadOutputPredicate({
+          address: outputAddress,
+          datum: outputDatum,
+          unit: threadUnit,
+        }),
+        "validation dispute verify source",
+      ),
+    };
+    onLayout(layout);
+    return Data.to(
+      {
+        Continue: [
+          {
+            VerifySource: {
+              input_index: layout.inputIndex,
+              output_index: layout.outputIndex,
+            },
+          },
+        ],
+      },
+      ValidationSourceSpendRedeemerV1,
+    );
+  }) satisfies BuildTxWithRedeemer;
+
+const makeRevealRedeemer = ({
+  threadUtxo,
+  outputAddress,
+  outputDatum,
+  threadUnit,
+  role,
+  proof,
+  onLayout,
+}: {
+  readonly threadUtxo: UTxO;
+  readonly outputAddress: string;
+  readonly outputDatum: string;
+  readonly threadUnit: string;
+  readonly role: "operator" | "challenger";
+  readonly proof: ValidationTraceProofV1;
+  readonly onLayout: (layout: ContinueLayout) => void;
+}): BuildTxWithRedeemer =>
+  ((ctx) => {
+    requireOwnSpendPurpose(
+      ctx,
+      threadUtxo,
+      `validation dispute reveal ${role}`,
+    );
+    const layout: ContinueLayout = {
+      inputIndex: requireInputIndex(
+        ctx,
+        threadUtxo,
+        `validation dispute reveal ${role}`,
+      ),
+      outputIndex: requireUniqueOutputIndex(
+        ctx.outputs,
+        computationThreadOutputPredicate({
+          address: outputAddress,
+          datum: outputDatum,
+          unit: threadUnit,
+        }),
+        `validation dispute reveal ${role}`,
+      ),
+    };
+    onLayout(layout);
+    const action =
+      role === "operator"
+        ? {
+            RevealOperator: {
+              input_index: layout.inputIndex,
+              output_index: layout.outputIndex,
+              proof,
+            },
+          }
+        : {
+            RevealChallenger: {
+              input_index: layout.inputIndex,
+              output_index: layout.outputIndex,
+              proof,
+            },
+          };
+    return Data.to({ Continue: [action] }, ValidationGameSpendRedeemerV1);
+  }) satisfies BuildTxWithRedeemer;
+
+const makeGameHandoffRedeemer = ({
+  threadUtxo,
+  outputAddress,
+  outputDatum,
+  threadUnit,
+  destination,
+  onLayout,
+}: {
+  readonly threadUtxo: UTxO;
+  readonly outputAddress: string;
+  readonly outputDatum: string;
+  readonly threadUnit: string;
+  readonly destination: "resolution" | "challengerTimeout";
+  readonly onLayout: (layout: ContinueLayout) => void;
+}): BuildTxWithRedeemer =>
+  ((ctx) => {
+    const label = `validation dispute enter ${destination}`;
+    requireOwnSpendPurpose(ctx, threadUtxo, label);
+    const layout: ContinueLayout = {
+      inputIndex: requireInputIndex(ctx, threadUtxo, label),
+      outputIndex: requireUniqueOutputIndex(
+        ctx.outputs,
+        computationThreadOutputPredicate({
+          address: outputAddress,
+          datum: outputDatum,
+          unit: threadUnit,
+        }),
+        label,
+      ),
+    };
+    onLayout(layout);
+    const action =
+      destination === "resolution"
+        ? {
+            EnterResolution: {
+              input_index: layout.inputIndex,
+              output_index: layout.outputIndex,
+            },
+          }
+        : {
+            EnterChallengerTimeout: {
+              input_index: layout.inputIndex,
+              output_index: layout.outputIndex,
+            },
+          };
+    return Data.to(
+      { Continue: [action] },
+      ValidationGameSpendRedeemerV1,
+    );
+  }) satisfies BuildTxWithRedeemer;
+
+export type SubmitValidationDisputeOpenResult = {
+  readonly txHash: string;
+  readonly threadOutRef: string;
+  readonly nextThreadOutRef: string;
+  readonly fraudulentHeaderHash: string;
+  readonly inputIndex: number;
+  readonly outputIndex: number;
+  readonly hubOracleRefInputIndex: number;
+  readonly stateQueueNodeRefInputIndex: number;
+  readonly responseDeadline: number;
+  readonly awaitedConfirmation: boolean;
+};
+
+export const submitValidationDisputeOpen = async ({
+  lucid,
+  blueprint,
+  deploymentInfo,
+  network,
+  signer,
+  threadOutRef,
+  stateQueueBlockOutRef,
+  claim,
+  challengerDescriptor,
+  validityRange = validationDisputeValidityRange(Date.now()),
+  awaitConfirmation = true,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly blueprint: unknown;
+  readonly deploymentInfo: unknown;
+  readonly network: Network;
+  readonly signer: ResolvedProverSigner;
+  readonly threadOutRef: string;
+  readonly stateQueueBlockOutRef: string;
+  readonly claim: ValidationClaimWitnessV1;
+  readonly challengerDescriptor: ValidationTraceDescriptorV1;
+  readonly validityRange?: ValidationDisputeValidityRange;
+  readonly awaitConfirmation?: boolean;
+}): Promise<SubmitValidationDisputeOpenResult> => {
+  const range = requireValidityRange(validityRange);
+  const resolved = await resolveValidationTraceDisputeDeploymentContracts({
+    blueprint,
+    deploymentInfo,
+    network,
+    requireStateQueueMint: true,
+  });
+  const { validationTraceDisputeCategory, hubOraclePolicyId, contracts } =
+    resolved;
+  const stateQueuePolicyId = resolved.stateQueuePolicyId!;
+  const [threadUtxo, hubOracleUtxo, stateQueueBlockUtxo] = await Promise.all([
+    fetchUtxoByOutRef({
+      lucid,
+      outRef: parseOutRef(threadOutRef, "--thread-out-ref"),
+      label: "validation-dispute computation-thread UTxO",
+    }),
+    requireSingletonUtxo({
+      lucid,
+      address: credentialToAddress(
+        network,
+        scriptHashToCredential(hubOraclePolicyId),
+      ),
+      unit: toUnit(hubOraclePolicyId, HUB_ORACLE_ASSET_NAME),
+      label: "hub oracle",
+    }),
+    fetchUtxoByOutRef({
+      lucid,
+      outRef: parseOutRef(stateQueueBlockOutRef, "--state-queue-block-out-ref"),
+      label: "validation-dispute state-queue block UTxO",
+    }),
+  ]);
+  const disputeContract = contracts.validationTraceDispute.firstStep;
+  if (threadUtxo.address !== disputeContract.spendingScriptAddress) {
+    throw new Error(
+      `Thread UTxO ${outRefLabel(threadUtxo)} is not locked at the validation-dispute validator`,
+    );
+  }
+  const token = requireComputationThreadToken({
+    utxo: threadUtxo,
+    computationThreadPolicyId: contracts.computationThread.policyId,
+    categoryId: validationTraceDisputeCategory.categoryId,
+    categoryLabel: "validation-trace-dispute",
+  });
+  requireInitialStepDatum({ threadUtxo, signer });
+  const fraudulentHeaderHash = resolveFraudulentHeaderHash({
+    stateQueuePolicyId,
+    fraudulentBlockUtxo: stateQueueBlockUtxo,
+  });
+  if (fraudulentHeaderHash !== token.fraudulentHeaderHash) {
+    throw new Error(
+      `State-queue block header hash ${fraudulentHeaderHash} does not match computation-thread header hash ${token.fraudulentHeaderHash}`,
+    );
+  }
+  const stateQueueNodeView = await Effect.runPromise(
+    getLinkedListNodeViewFromUTxO(stateQueueBlockUtxo),
+  );
+  const header = await Effect.runPromise(
+    getHeaderV1FromStateQueueDatum(stateQueueNodeView),
+  );
+  const computedHeaderHash = await Effect.runPromise(hashBlockHeaderV1(header));
+  if (computedHeaderHash !== fraudulentHeaderHash) {
+    throw new Error(
+      `State-queue datum header hashes to ${computedHeaderHash}, expected ${fraudulentHeaderHash}`,
+    );
+  }
+  const operatorDescriptor = validationTraceDescriptorCoreFromData(
+    claim.descriptor_membership.value,
+  );
+  const challengerDescriptorCore =
+    validationTraceDescriptorCoreFromData(challengerDescriptor);
+  const dispute = openMidgardValidationDispute({
+    operatorDescriptor,
+    challengerDescriptor: challengerDescriptorCore,
+    currentTime: range.validTo,
+  });
+  if (
+    !canOpenMidgardValidationDisputeBeforeMaturity({
+      currentTimeUpper: range.validTo,
+      challengedBlockEndTime: safeUnsignedNumber(
+        header.endTime,
+        "header.endTime",
+      ),
+      maturityDuration: MIDGARD_CONSENSUS_LIMITS_V1.blockMaturityMs,
+    })
+  ) {
+    throw new Error(
+      "Validation dispute cannot complete before the challenged block matures",
+    );
+  }
+  const outputDatum = Data.to(
+    {
+      fraud_prover: signer.paymentKeyHash,
+      data: {
+        challenged_header_hash: fraudulentHeaderHash,
+        challenged_header: header,
+        claim,
+        challenger_descriptor: challengerDescriptor,
+        open_time_upper: BigInt(range.validTo),
+      },
+    },
+    PendingValidationClaimDatumV1,
+  );
+  let layout: OpenLayout | undefined;
+  signer.selectWallet(lucid);
+  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const tx = lucid
+    .newTx()
+    .collectFrom([feeInput])
+    .collectFrom(
+      [threadUtxo],
+      makeOpenRedeemer({
+        threadUtxo,
+        hubOracleUtxo,
+        stateQueueBlockUtxo,
+        outputAddress:
+          contracts.validationTraceDispute.source.spendingScriptAddress,
+        outputDatum,
+        threadUnit: token.unit,
+        claim,
+        challengerDescriptor,
+        onLayout: (resolvedLayout) => {
+          layout = resolvedLayout;
+        },
+      }),
+    )
+    .readFrom([hubOracleUtxo, stateQueueBlockUtxo])
+    .pay.ToContract(
+      contracts.validationTraceDispute.source.spendingScriptAddress,
+      { kind: "inline", value: outputDatum },
+      threadAssets(threadUtxo, token.unit),
+    )
+    .validFrom(range.validFrom)
+    .validTo(range.validTo)
+    .addSignerKey(signer.paymentKeyHash)
+    .attach.SpendingValidator(disputeContract.spendingScript);
+  const unsigned = await tx.complete({ localUPLCEval: true });
+  if (layout === undefined) {
+    throw new Error(
+      "BuildTxWithRedeemer did not resolve validation-dispute open layout",
+    );
+  }
+  const signed = await unsigned.sign.withWallet().complete();
+  requireL1ProofEnvelope(signed.toCBOR(), "Validation-dispute open");
+  const txHash = await signed.submit();
+  if (awaitConfirmation) {
+    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
+  }
+  return {
+    txHash,
+    threadOutRef,
+    nextThreadOutRef: `${txHash}#${layout.outputIndex.toString()}`,
+    fraudulentHeaderHash,
+    inputIndex: Number(layout.inputIndex),
+    outputIndex: Number(layout.outputIndex),
+    hubOracleRefInputIndex: Number(layout.hubOracleRefInputIndex),
+    stateQueueNodeRefInputIndex: Number(layout.stateQueueNodeRefInputIndex),
+    responseDeadline: dispute.responseDeadline,
+    awaitedConfirmation: awaitConfirmation,
+  };
+};
+
+const requirePendingClaimDatum = (
+  threadUtxo: UTxO,
+): PendingValidationClaimDatumV1Data & {
+  readonly data: NonNullable<PendingValidationClaimDatumV1Data["data"]>;
+} => {
+  if (threadUtxo.datum == null) {
+    throw new Error(
+      `Validation-dispute source UTxO ${outRefLabel(threadUtxo)} is missing datum`,
+    );
+  }
+  const datum = Data.from(threadUtxo.datum, PendingValidationClaimDatumV1);
+  if (datum.data === null) {
+    throw new Error(
+      "Validation-dispute source verification requires pending claim state",
+    );
+  }
+  return datum as PendingValidationClaimDatumV1Data & {
+    readonly data: NonNullable<PendingValidationClaimDatumV1Data["data"]>;
+  };
+};
+
+export type SubmitValidationDisputeVerifySourceResult = {
+  readonly txHash: string;
+  readonly threadOutRef: string;
+  readonly nextThreadOutRef: string;
+  readonly inputIndex: number;
+  readonly outputIndex: number;
+  readonly responseDeadline: number;
+  readonly awaitedConfirmation: boolean;
+};
+
+export const submitValidationDisputeVerifySource = async ({
+  lucid,
+  blueprint,
+  deploymentInfo,
+  network,
+  signer,
+  threadOutRef,
+  validityRange = validationDisputeValidityRange(Date.now()),
+  awaitConfirmation = true,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly blueprint: unknown;
+  readonly deploymentInfo: unknown;
+  readonly network: Network;
+  readonly signer: ResolvedProverSigner;
+  readonly threadOutRef: string;
+  readonly validityRange?: ValidationDisputeValidityRange;
+  readonly awaitConfirmation?: boolean;
+}): Promise<SubmitValidationDisputeVerifySourceResult> => {
+  const range = requireValidityRange(validityRange);
+  const { validationTraceDisputeCategory, contracts } =
+    await resolveValidationTraceDisputeDeploymentContracts({
+      blueprint,
+      deploymentInfo,
+      network,
+    });
+  const threadUtxo = await fetchUtxoByOutRef({
+    lucid,
+    outRef: parseOutRef(threadOutRef, "--thread-out-ref"),
+    label: "validation-dispute source-verification UTxO",
+  });
+  const sourceContract = contracts.validationTraceDispute.source;
+  if (threadUtxo.address !== sourceContract.spendingScriptAddress) {
+    throw new Error(
+      `Thread UTxO ${outRefLabel(threadUtxo)} is not locked at the validation-dispute source validator`,
+    );
+  }
+  const token = requireComputationThreadToken({
+    utxo: threadUtxo,
+    computationThreadPolicyId: contracts.computationThread.policyId,
+    categoryId: validationTraceDisputeCategory.categoryId,
+    categoryLabel: "validation-trace-dispute",
+  });
+  const inputDatum = requirePendingClaimDatum(threadUtxo);
+  if (inputDatum.fraud_prover !== signer.paymentKeyHash) {
+    throw new Error(
+      `Validation-dispute source verification requires fraud prover ${inputDatum.fraud_prover}, got ${signer.paymentKeyHash}`,
+    );
+  }
+  const operatorDescriptor = validationTraceDescriptorCoreFromData(
+    inputDatum.data.claim.descriptor_membership.value,
+  );
+  const challengerDescriptor = validationTraceDescriptorCoreFromData(
+    inputDatum.data.challenger_descriptor,
+  );
+  const dispute = openMidgardValidationDispute({
+    operatorDescriptor,
+    challengerDescriptor,
+    currentTime: safeUnsignedNumber(
+      inputDatum.data.open_time_upper,
+      "pending.open_time_upper",
+    ),
+  });
+  const outputDatum = Data.to(
+    {
+      fraud_prover: inputDatum.fraud_prover,
+      data: {
+        challenged_header_hash: inputDatum.data.challenged_header_hash,
+        operator_vkey: inputDatum.data.challenged_header.operatorVkey,
+        dispute: validationDisputeDataFromCore(dispute),
+      },
+    },
+    ValidationDisputeDatumV1,
+  );
+  let layout: ContinueLayout | undefined;
+  signer.selectWallet(lucid);
+  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const tx = lucid
+    .newTx()
+    .collectFrom([feeInput])
+    .collectFrom(
+      [threadUtxo],
+      makeVerifySourceRedeemer({
+        threadUtxo,
+        outputAddress: contracts.validationTraceDispute.game.spendingScriptAddress,
+        outputDatum,
+        threadUnit: token.unit,
+        onLayout: (resolvedLayout) => {
+          layout = resolvedLayout;
+        },
+      }),
+    )
+    .pay.ToContract(
+      contracts.validationTraceDispute.game.spendingScriptAddress,
+      { kind: "inline", value: outputDatum },
+      threadAssets(threadUtxo, token.unit),
+    )
+    .validFrom(range.validFrom)
+    .validTo(range.validTo)
+    .addSignerKey(signer.paymentKeyHash)
+    .attach.SpendingValidator(sourceContract.spendingScript);
+  const unsigned = await tx.complete({ localUPLCEval: true });
+  if (layout === undefined) {
+    throw new Error(
+      "BuildTxWithRedeemer did not resolve validation-dispute source layout",
+    );
+  }
+  const signed = await unsigned.sign.withWallet().complete();
+  requireL1ProofEnvelope(
+    signed.toCBOR(),
+    "Validation-dispute source verification",
+  );
+  const txHash = await signed.submit();
+  if (awaitConfirmation) {
+    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
+  }
+  return {
+    txHash,
+    threadOutRef,
+    nextThreadOutRef: `${txHash}#${layout.outputIndex.toString()}`,
+    inputIndex: Number(layout.inputIndex),
+    outputIndex: Number(layout.outputIndex),
+    responseDeadline: dispute.responseDeadline,
+    awaitedConfirmation: awaitConfirmation,
+  };
+};
+
+export type SubmitValidationDisputeRevealResult = {
+  readonly txHash: string;
+  readonly threadOutRef: string;
+  readonly nextThreadOutRef: string;
+  readonly role: "operator" | "challenger";
+  readonly inputIndex: number;
+  readonly outputIndex: number;
+  readonly responseDeadline: number;
+  readonly awaitedConfirmation: boolean;
+};
+
+type FinalizeLayout = ContinueLayout & {
+  readonly fraudProofMintRedeemerIndex: bigint;
+  readonly computationThreadMintRedeemerIndex: bigint;
+};
+
+const makeTimeoutSpendRedeemer = ({
+  threadUtxo,
+  fraudProofAddress,
+  fraudProofPolicyId,
+  fraudProofUnit,
+  fraudProofDatum,
+  onLayout,
+}: {
+  readonly threadUtxo: UTxO;
+  readonly fraudProofAddress: string;
+  readonly fraudProofPolicyId: string;
+  readonly fraudProofUnit: string;
+  readonly fraudProofDatum: string;
+  readonly onLayout: (
+    layout: Omit<FinalizeLayout, "computationThreadMintRedeemerIndex">,
+  ) => void;
+}): BuildTxWithRedeemer =>
+  ((ctx) => {
+    requireOwnSpendPurpose(ctx, threadUtxo, "validation dispute timeout");
+    const layout = {
+      inputIndex: requireInputIndex(
+        ctx,
+        threadUtxo,
+        "validation dispute timeout",
+      ),
+      outputIndex: requireUniqueOutputIndex(
+        ctx.outputs,
+        outputWithDatumAndUnitPredicate({
+          address: fraudProofAddress,
+          datum: fraudProofDatum,
+          unit: fraudProofUnit,
+        }),
+        "validation dispute timeout fraud proof",
+      ),
+      fraudProofMintRedeemerIndex: requireMintRedeemerIndex(
+        ctx,
+        fraudProofPolicyId,
+        "validation dispute timeout fraud-proof mint",
+      ),
+    };
+    onLayout(layout);
+    return Data.to(
+      {
+        Continue: [
+          {
+            ChallengerTimeout: {
+              input_index: layout.inputIndex,
+              output_index: layout.outputIndex,
+              fraud_proof_mint_redeemer_index:
+                layout.fraudProofMintRedeemerIndex,
+            },
+          },
+        ],
+      },
+      ValidationTimeoutSpendRedeemerV1,
+    );
+  }) satisfies BuildTxWithRedeemer;
+
+const makeFraudProofMintRedeemer = ({
+  fraudProofPolicyId,
+  computationThreadPolicyId,
+  computationThreadAssetName,
+  onComputationThreadMintRedeemerIndex,
+}: {
+  readonly fraudProofPolicyId: string;
+  readonly computationThreadPolicyId: string;
+  readonly computationThreadAssetName: string;
+  readonly onComputationThreadMintRedeemerIndex: (index: bigint) => void;
+}): BuildTxWithRedeemer =>
+  ((ctx) => {
+    requireOwnMintPurpose(
+      ctx,
+      fraudProofPolicyId,
+      "validation dispute fraud-proof mint",
+    );
+    const computationThreadMintRedeemerIndex = requireMintRedeemerIndex(
+      ctx,
+      computationThreadPolicyId,
+      "validation dispute computation-thread burn",
+    );
+    onComputationThreadMintRedeemerIndex(computationThreadMintRedeemerIndex);
+    return Data.to(
+      {
+        computation_thread_token_asset_name: computationThreadAssetName,
+        computation_thread_mint_redeemer_index:
+          computationThreadMintRedeemerIndex,
+      },
+      FraudProofTokenMintRedeemer,
+    );
+  }) satisfies BuildTxWithRedeemer;
+
+const makeComputationThreadSuccessRedeemer = ({
+  computationThreadPolicyId,
+  computationThreadAssetName,
+}: {
+  readonly computationThreadPolicyId: string;
+  readonly computationThreadAssetName: string;
+}): BuildTxWithRedeemer =>
+  ((ctx) => {
+    requireOwnMintPurpose(
+      ctx,
+      computationThreadPolicyId,
+      "validation dispute computation-thread burn",
+    );
+    return Data.to(
+      {
+        Success: { burning_token_asset_name: computationThreadAssetName },
+      },
+      FraudProofComputationThreadRedeemer,
+    );
+  }) satisfies BuildTxWithRedeemer;
+
+const requireDisputeDatum = (
+  threadUtxo: UTxO,
+): ValidationDisputeDatumV1Data & {
+  readonly data: NonNullable<ValidationDisputeDatumV1Data["data"]>;
+} => {
+  if (threadUtxo.datum == null) {
+    throw new Error(
+      `Validation-dispute thread UTxO ${outRefLabel(threadUtxo)} is missing datum`,
+    );
+  }
+  const datum = Data.from(threadUtxo.datum, ValidationDisputeDatumV1);
+  if (datum.data === null) {
+    throw new Error("Validation-dispute reveal requires initialized state");
+  }
+  return datum as ValidationDisputeDatumV1Data & {
+    readonly data: NonNullable<ValidationDisputeDatumV1Data["data"]>;
+  };
+};
+
+export const submitValidationDisputeReveal = async ({
+  lucid,
+  blueprint,
+  deploymentInfo,
+  network,
+  signer,
+  threadOutRef,
+  role,
+  proof,
+  validityRange = validationDisputeValidityRange(Date.now()),
+  awaitConfirmation = true,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly blueprint: unknown;
+  readonly deploymentInfo: unknown;
+  readonly network: Network;
+  readonly signer: ResolvedProverSigner;
+  readonly threadOutRef: string;
+  readonly role: "operator" | "challenger";
+  readonly proof: MidgardValidationTraceProofV1;
+  readonly validityRange?: ValidationDisputeValidityRange;
+  readonly awaitConfirmation?: boolean;
+}): Promise<SubmitValidationDisputeRevealResult> => {
+  const range = requireValidityRange(validityRange);
+  const { validationTraceDisputeCategory, contracts } =
+    await resolveValidationTraceDisputeDeploymentContracts({
+      blueprint,
+      deploymentInfo,
+      network,
+    });
+  const threadUtxo = await fetchUtxoByOutRef({
+    lucid,
+    outRef: parseOutRef(threadOutRef, "--thread-out-ref"),
+    label: "validation-dispute computation-thread UTxO",
+  });
+  const disputeContract = contracts.validationTraceDispute.game;
+  if (threadUtxo.address !== disputeContract.spendingScriptAddress) {
+    throw new Error(
+      `Thread UTxO ${outRefLabel(threadUtxo)} is not locked at the validation-dispute validator`,
+    );
+  }
+  const token = requireComputationThreadToken({
+    utxo: threadUtxo,
+    computationThreadPolicyId: contracts.computationThread.policyId,
+    categoryId: validationTraceDisputeCategory.categoryId,
+    categoryLabel: "validation-trace-dispute",
+  });
+  const inputDatum = requireDisputeDatum(threadUtxo);
+  const expectedSigner =
+    role === "operator"
+      ? inputDatum.data.operator_vkey
+      : inputDatum.fraud_prover;
+  if (signer.paymentKeyHash !== expectedSigner) {
+    throw new Error(
+      `Validation-dispute ${role} reveal requires signer ${expectedSigner}, got ${signer.paymentKeyHash}`,
+    );
+  }
+  const inputDispute = validationDisputeCoreFromData(inputDatum.data.dispute);
+  const nextDispute =
+    role === "operator"
+      ? revealMidgardValidationOperatorMidpoint({
+          dispute: inputDispute,
+          proof,
+          currentTime: range.validTo,
+        })
+      : revealMidgardValidationChallengerMidpoint({
+          dispute: inputDispute,
+          proof,
+          currentTime: range.validTo,
+        });
+  const outputDatum = Data.to(
+    {
+      fraud_prover: inputDatum.fraud_prover,
+      data: {
+        challenged_header_hash: inputDatum.data.challenged_header_hash,
+        operator_vkey: inputDatum.data.operator_vkey,
+        dispute: validationDisputeDataFromCore(nextDispute),
+      },
+    },
+    ValidationDisputeDatumV1,
+  );
+  const proofData = validationTraceProofDataFromCore(proof);
+  // Round-trip before construction so non-canonical or out-of-range proof
+  // fields fail before wallet selection and never reach balancing.
+  validationTraceProofCoreFromData(proofData);
+  let layout: ContinueLayout | undefined;
+  signer.selectWallet(lucid);
+  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const tx = lucid
+    .newTx()
+    .collectFrom([feeInput])
+    .collectFrom(
+      [threadUtxo],
+      makeRevealRedeemer({
+        threadUtxo,
+        outputAddress: disputeContract.spendingScriptAddress,
+        outputDatum,
+        threadUnit: token.unit,
+        role,
+        proof: proofData,
+        onLayout: (resolvedLayout) => {
+          layout = resolvedLayout;
+        },
+      }),
+    )
+    .pay.ToContract(
+      disputeContract.spendingScriptAddress,
+      { kind: "inline", value: outputDatum },
+      threadAssets(threadUtxo, token.unit),
+    )
+    .validFrom(range.validFrom)
+    .validTo(range.validTo)
+    .addSignerKey(signer.paymentKeyHash)
+    .attach.SpendingValidator(disputeContract.spendingScript);
+  const unsigned = await tx.complete({ localUPLCEval: true });
+  if (layout === undefined) {
+    throw new Error(
+      `BuildTxWithRedeemer did not resolve validation-dispute ${role} reveal layout`,
+    );
+  }
+  const signed = await unsigned.sign.withWallet().complete();
+  requireL1ProofEnvelope(signed.toCBOR(), `Validation-dispute ${role} reveal`);
+  const txHash = await signed.submit();
+  if (awaitConfirmation) {
+    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
+  }
+  return {
+    txHash,
+    threadOutRef,
+    nextThreadOutRef: `${txHash}#${layout.outputIndex.toString()}`,
+    role,
+    inputIndex: Number(layout.inputIndex),
+    outputIndex: Number(layout.outputIndex),
+    responseDeadline: nextDispute.responseDeadline,
+    awaitedConfirmation: awaitConfirmation,
+  };
+};
+
+export type SubmitValidationDisputeEnterTimeoutResult = {
+  readonly txHash: string;
+  readonly threadOutRef: string;
+  readonly nextThreadOutRef: string;
+  readonly inputIndex: number;
+  readonly outputIndex: number;
+  readonly awaitedConfirmation: boolean;
+};
+
+export const submitValidationDisputeEnterTimeout = async ({
+  lucid,
+  blueprint,
+  deploymentInfo,
+  network,
+  signer,
+  threadOutRef,
+  validityRange,
+  now = Date.now(),
+  awaitConfirmation = true,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly blueprint: unknown;
+  readonly deploymentInfo: unknown;
+  readonly network: Network;
+  readonly signer: ResolvedProverSigner;
+  readonly threadOutRef: string;
+  readonly validityRange?: ValidationDisputeValidityRange;
+  readonly now?: number;
+  readonly awaitConfirmation?: boolean;
+}): Promise<SubmitValidationDisputeEnterTimeoutResult> => {
+  const { validationTraceDisputeCategory, contracts } =
+    await resolveValidationTraceDisputeDeploymentContracts({
+      blueprint,
+      deploymentInfo,
+      network,
+    });
+  const threadUtxo = await fetchUtxoByOutRef({
+    lucid,
+    outRef: parseOutRef(threadOutRef, "--thread-out-ref"),
+    label: "validation-dispute game UTxO",
+  });
+  const gameContract = contracts.validationTraceDispute.game;
+  if (threadUtxo.address !== gameContract.spendingScriptAddress) {
+    throw new Error(
+      `Thread UTxO ${outRefLabel(threadUtxo)} is not locked at the validation-dispute game validator`,
+    );
+  }
+  const token = requireComputationThreadToken({
+    utxo: threadUtxo,
+    computationThreadPolicyId: contracts.computationThread.policyId,
+    categoryId: validationTraceDisputeCategory.categoryId,
+    categoryLabel: "validation-trace-dispute",
+  });
+  const inputDatum = requireDisputeDatum(threadUtxo);
+  if (inputDatum.fraud_prover !== signer.paymentKeyHash) {
+    throw new Error(
+      `Validation-dispute timeout handoff requires fraud prover ${inputDatum.fraud_prover}, got ${signer.paymentKeyHash}`,
+    );
+  }
+  const dispute = validationDisputeCoreFromData(inputDatum.data.dispute);
+  const range = requireValidityRange(
+    validityRange ??
+      validationDisputeTimeoutValidityRange(now, dispute.responseDeadline),
+  );
+  if (
+    timeoutMidgardValidationDispute({
+      dispute,
+      currentTime: range.validFrom,
+    }) !== "challenger"
+  ) {
+    throw new Error(
+      "Validation-dispute timeout does not award the fraud proof to the challenger",
+    );
+  }
+  const outputDatum = Data.to(inputDatum, ValidationDisputeDatumV1);
+  let layout: ContinueLayout | undefined;
+  signer.selectWallet(lucid);
+  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const tx = lucid
+    .newTx()
+    .collectFrom([feeInput])
+    .collectFrom(
+      [threadUtxo],
+      makeGameHandoffRedeemer({
+        threadUtxo,
+        outputAddress:
+          contracts.validationTraceDispute.timeout.spendingScriptAddress,
+        outputDatum,
+        threadUnit: token.unit,
+        destination: "challengerTimeout",
+        onLayout: (resolvedLayout) => {
+          layout = resolvedLayout;
+        },
+      }),
+    )
+    .pay.ToContract(
+      contracts.validationTraceDispute.timeout.spendingScriptAddress,
+      { kind: "inline", value: outputDatum },
+      threadAssets(threadUtxo, token.unit),
+    )
+    .validFrom(range.validFrom)
+    .validTo(range.validTo)
+    .addSignerKey(signer.paymentKeyHash)
+    .attach.SpendingValidator(gameContract.spendingScript);
+  const unsigned = await tx.complete({ localUPLCEval: true });
+  if (layout === undefined) {
+    throw new Error(
+      "BuildTxWithRedeemer did not resolve validation-dispute timeout handoff layout",
+    );
+  }
+  const signed = await unsigned.sign.withWallet().complete();
+  requireL1ProofEnvelope(
+    signed.toCBOR(),
+    "Validation-dispute timeout handoff",
+  );
+  const txHash = await signed.submit();
+  if (awaitConfirmation) {
+    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
+  }
+  return {
+    txHash,
+    threadOutRef,
+    nextThreadOutRef: `${txHash}#${layout.outputIndex.toString()}`,
+    inputIndex: Number(layout.inputIndex),
+    outputIndex: Number(layout.outputIndex),
+    awaitedConfirmation: awaitConfirmation,
+  };
+};
+
+export type SubmitValidationDisputeTimeoutResult = {
+  readonly txHash: string;
+  readonly threadOutRef: string;
+  readonly fraudProofOutRef: string;
+  readonly fraudProofUnit: string;
+  readonly inputIndex: number;
+  readonly outputIndex: number;
+  readonly computationThreadMintRedeemerIndex: number;
+  readonly fraudProofMintRedeemerIndex: number;
+  readonly awaitedConfirmation: boolean;
+};
+
+export const submitValidationDisputeTimeout = async ({
+  lucid,
+  blueprint,
+  deploymentInfo,
+  network,
+  signer,
+  threadOutRef,
+  validityRange,
+  now = Date.now(),
+  awaitConfirmation = true,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly blueprint: unknown;
+  readonly deploymentInfo: unknown;
+  readonly network: Network;
+  readonly signer: ResolvedProverSigner;
+  readonly threadOutRef: string;
+  readonly validityRange?: ValidationDisputeValidityRange;
+  readonly now?: number;
+  readonly awaitConfirmation?: boolean;
+}): Promise<SubmitValidationDisputeTimeoutResult> => {
+  const { validationTraceDisputeCategory, contracts } =
+    await resolveValidationTraceDisputeDeploymentContracts({
+      blueprint,
+      deploymentInfo,
+      network,
+      requireFraudProofSpend: true,
+    });
+  const threadUtxo = await fetchUtxoByOutRef({
+    lucid,
+    outRef: parseOutRef(threadOutRef, "--thread-out-ref"),
+    label: "validation-dispute computation-thread UTxO",
+  });
+  const disputeContract = contracts.validationTraceDispute.timeout;
+  if (threadUtxo.address !== disputeContract.spendingScriptAddress) {
+    throw new Error(
+      `Thread UTxO ${outRefLabel(threadUtxo)} is not locked at the validation-dispute validator`,
+    );
+  }
+  const token = requireComputationThreadToken({
+    utxo: threadUtxo,
+    computationThreadPolicyId: contracts.computationThread.policyId,
+    categoryId: validationTraceDisputeCategory.categoryId,
+    categoryLabel: "validation-trace-dispute",
+  });
+  const inputDatum = requireDisputeDatum(threadUtxo);
+  const dispute = validationDisputeCoreFromData(inputDatum.data.dispute);
+  const range = requireValidityRange(
+    validityRange ??
+      validationDisputeTimeoutValidityRange(now, dispute.responseDeadline),
+  );
+  if (
+    timeoutMidgardValidationDispute({
+      dispute,
+      currentTime: range.validFrom,
+    }) !== "challenger"
+  ) {
+    throw new Error(
+      "Validation-dispute timeout does not award the fraud proof to the challenger",
+    );
+  }
+  const fraudProofUnit = toUnit(contracts.fraudProof.policyId, token.assetName);
+  const fraudProofDatum = Data.to(
+    { fraud_prover: inputDatum.fraud_prover },
+    FraudProofTokenDatum,
+  );
+  let partialLayout:
+    | Omit<FinalizeLayout, "computationThreadMintRedeemerIndex">
+    | undefined;
+  let computationThreadMintRedeemerIndex: bigint | undefined;
+  signer.selectWallet(lucid);
+  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const tx = lucid
+    .newTx()
+    .collectFrom([feeInput])
+    .collectFrom(
+      [threadUtxo],
+      makeTimeoutSpendRedeemer({
+        threadUtxo,
+        fraudProofAddress: contracts.fraudProof.spendingScriptAddress,
+        fraudProofPolicyId: contracts.fraudProof.policyId,
+        fraudProofUnit,
+        fraudProofDatum,
+        onLayout: (layout) => {
+          partialLayout = layout;
+        },
+      }),
+    )
+    .mintAssets(
+      { [token.unit]: -1n },
+      makeComputationThreadSuccessRedeemer({
+        computationThreadPolicyId: contracts.computationThread.policyId,
+        computationThreadAssetName: token.assetName,
+      }),
+    )
+    .mintAssets(
+      { [fraudProofUnit]: 1n },
+      makeFraudProofMintRedeemer({
+        fraudProofPolicyId: contracts.fraudProof.policyId,
+        computationThreadPolicyId: contracts.computationThread.policyId,
+        computationThreadAssetName: token.assetName,
+        onComputationThreadMintRedeemerIndex: (index) => {
+          computationThreadMintRedeemerIndex = index;
+        },
+      }),
+    )
+    .pay.ToContract(
+      contracts.fraudProof.spendingScriptAddress,
+      { kind: "inline", value: fraudProofDatum },
+      {
+        lovelace: threadUtxo.assets.lovelace ?? 0n,
+        [fraudProofUnit]: 1n,
+      },
+    )
+    .validFrom(range.validFrom)
+    .validTo(range.validTo)
+    .attach.SpendingValidator(disputeContract.spendingScript)
+    .attach.MintingPolicy(contracts.computationThread.mintingScript)
+    .attach.MintingPolicy(contracts.fraudProof.mintingScript);
+  const unsigned = await tx.complete({ localUPLCEval: true });
+  if (
+    partialLayout === undefined ||
+    computationThreadMintRedeemerIndex === undefined
+  ) {
+    throw new Error(
+      "BuildTxWithRedeemer did not resolve validation-dispute timeout layout",
+    );
+  }
+  const layout: FinalizeLayout = {
+    ...partialLayout,
+    computationThreadMintRedeemerIndex,
+  };
+  const signed = await unsigned.sign.withWallet().complete();
+  requireL1ProofEnvelope(signed.toCBOR(), "Validation-dispute timeout");
+  const txHash = await signed.submit();
+  if (awaitConfirmation) {
+    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
+  }
+  return {
+    txHash,
+    threadOutRef,
+    fraudProofOutRef: `${txHash}#${layout.outputIndex.toString()}`,
+    fraudProofUnit,
+    inputIndex: Number(layout.inputIndex),
+    outputIndex: Number(layout.outputIndex),
+    computationThreadMintRedeemerIndex: Number(
+      layout.computationThreadMintRedeemerIndex,
+    ),
+    fraudProofMintRedeemerIndex: Number(layout.fraudProofMintRedeemerIndex),
+    awaitedConfirmation: awaitConfirmation,
+  };
+};
+
+const makePrepareResolutionRedeemer = ({
+  threadUtxo,
+  outputAddress,
+  outputDatum,
+  threadUnit,
+  resolverIndex,
+  preState,
+  operatorPost,
+  challengerPost,
+  onLayout,
+}: {
+  readonly threadUtxo: UTxO;
+  readonly outputAddress: string;
+  readonly outputDatum: string;
+  readonly threadUnit: string;
+  readonly resolverIndex: bigint;
+  readonly preState: ValidationMachineStateV1;
+  readonly operatorPost: ValidationTraceProofV1;
+  readonly challengerPost: ValidationTraceProofV1;
+  readonly onLayout: (layout: ContinueLayout) => void;
+}): BuildTxWithRedeemer =>
+  ((ctx) => {
+    requireOwnSpendPurpose(
+      ctx,
+      threadUtxo,
+      "validation dispute prepare resolution",
+    );
+    const layout: ContinueLayout = {
+      inputIndex: requireInputIndex(
+        ctx,
+        threadUtxo,
+        "validation dispute prepare resolution",
+      ),
+      outputIndex: requireUniqueOutputIndex(
+        ctx.outputs,
+        computationThreadOutputPredicate({
+          address: outputAddress,
+          datum: outputDatum,
+          unit: threadUnit,
+        }),
+        "validation dispute prepare resolution",
+      ),
+    };
+    onLayout(layout);
+    return Data.to(
+      {
+        Continue: [
+          {
+            PrepareResolution: {
+              input_index: layout.inputIndex,
+              output_index: layout.outputIndex,
+              resolver_index: resolverIndex,
+              evidence: {
+                pre_state: preState,
+                operator_post: operatorPost,
+                challenger_post: challengerPost,
+              },
+            },
+          },
+        ],
+      },
+      ValidationBoundarySpendRedeemerV1,
+    );
+  }) satisfies BuildTxWithRedeemer;
+
+export type SubmitValidationDisputeEnterResolutionResult = {
+  readonly txHash: string;
+  readonly threadOutRef: string;
+  readonly nextThreadOutRef: string;
+  readonly inputIndex: number;
+  readonly outputIndex: number;
+  readonly awaitedConfirmation: boolean;
+};
+
+export const submitValidationDisputeEnterResolution = async ({
+  lucid,
+  blueprint,
+  deploymentInfo,
+  network,
+  signer,
+  threadOutRef,
+  validityRange = validationDisputeValidityRange(Date.now()),
+  awaitConfirmation = true,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly blueprint: unknown;
+  readonly deploymentInfo: unknown;
+  readonly network: Network;
+  readonly signer: ResolvedProverSigner;
+  readonly threadOutRef: string;
+  readonly validityRange?: ValidationDisputeValidityRange;
+  readonly awaitConfirmation?: boolean;
+}): Promise<SubmitValidationDisputeEnterResolutionResult> => {
+  const range = requireValidityRange(validityRange);
+  const { validationTraceDisputeCategory, contracts } =
+    await resolveValidationTraceDisputeDeploymentContracts({
+      blueprint,
+      deploymentInfo,
+      network,
+    });
+  const threadUtxo = await fetchUtxoByOutRef({
+    lucid,
+    outRef: parseOutRef(threadOutRef, "--thread-out-ref"),
+    label: "validation-dispute game UTxO",
+  });
+  const gameContract = contracts.validationTraceDispute.game;
+  if (threadUtxo.address !== gameContract.spendingScriptAddress) {
+    throw new Error(
+      `Thread UTxO ${outRefLabel(threadUtxo)} is not locked at the validation-dispute game validator`,
+    );
+  }
+  const token = requireComputationThreadToken({
+    utxo: threadUtxo,
+    computationThreadPolicyId: contracts.computationThread.policyId,
+    categoryId: validationTraceDisputeCategory.categoryId,
+    categoryLabel: "validation-trace-dispute",
+  });
+  const inputDatum = requireDisputeDatum(threadUtxo);
+  const dispute = validationDisputeCoreFromData(inputDatum.data.dispute);
+  if (dispute.turn.type !== "readyForOneStep") {
+    throw new Error(
+      "Validation dispute must finish bisection before one-step resolution",
+    );
+  }
+  if (inputDatum.fraud_prover !== signer.paymentKeyHash) {
+    throw new Error(
+      `Validation-dispute resolution handoff requires fraud prover ${inputDatum.fraud_prover}, got ${signer.paymentKeyHash}`,
+    );
+  }
+  const outputDatum = Data.to(inputDatum, ValidationDisputeDatumV1);
+  let layout: ContinueLayout | undefined;
+  signer.selectWallet(lucid);
+  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const tx = lucid
+    .newTx()
+    .collectFrom([feeInput])
+    .collectFrom(
+      [threadUtxo],
+      makeGameHandoffRedeemer({
+        threadUtxo,
+        outputAddress:
+          contracts.validationTraceDispute.boundary.spendingScriptAddress,
+        outputDatum,
+        threadUnit: token.unit,
+        destination: "resolution",
+        onLayout: (resolvedLayout) => {
+          layout = resolvedLayout;
+        },
+      }),
+    )
+    .pay.ToContract(
+      contracts.validationTraceDispute.boundary.spendingScriptAddress,
+      { kind: "inline", value: outputDatum },
+      threadAssets(threadUtxo, token.unit),
+    )
+    .validFrom(range.validFrom)
+    .validTo(range.validTo)
+    .addSignerKey(signer.paymentKeyHash)
+    .attach.SpendingValidator(gameContract.spendingScript);
+  const unsigned = await tx.complete({ localUPLCEval: true });
+  if (layout === undefined) {
+    throw new Error(
+      "BuildTxWithRedeemer did not resolve validation-dispute resolution handoff layout",
+    );
+  }
+  const signed = await unsigned.sign.withWallet().complete();
+  requireL1ProofEnvelope(
+    signed.toCBOR(),
+    "Validation-dispute resolution handoff",
+  );
+  const txHash = await signed.submit();
+  if (awaitConfirmation) {
+    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
+  }
+  return {
+    txHash,
+    threadOutRef,
+    nextThreadOutRef: `${txHash}#${layout.outputIndex.toString()}`,
+    inputIndex: Number(layout.inputIndex),
+    outputIndex: Number(layout.outputIndex),
+    awaitedConfirmation: awaitConfirmation,
+  };
+};
+
+const VALIDATION_RESOLVER_PHASES_V1 = [
+  "CanonicalDecode",
+  "CompactBinding",
+  "StaticLedgerRules",
+  "InputSets",
+  "Signatures",
+  "PhaseANativeScripts",
+  "PhaseAScriptPreconditions",
+  "ResolveInputs",
+  "ScriptSources",
+  "NativeScripts",
+  "ScriptIntegrity",
+  "Cek",
+  "ValueAndMint",
+  "LedgerDelta",
+] as const satisfies readonly ValidationMachineStateV1["phase"][];
+
+export const validationResolverIndexV1 = (
+  phase: ValidationMachineStateV1["phase"],
+): number => {
+  const resolverIndex = VALIDATION_RESOLVER_PHASES_V1.indexOf(
+    phase as (typeof VALIDATION_RESOLVER_PHASES_V1)[number],
+  );
+  if (resolverIndex < 0) {
+    throw new Error(`Validation phase ${phase} has no one-step resolver`);
+  }
+  return resolverIndex;
+};
+
+export type SubmitValidationDisputePrepareResolutionResult = {
+  readonly txHash: string;
+  readonly threadOutRef: string;
+  readonly nextThreadOutRef: string;
+  readonly resolverIndex: number;
+  readonly inputIndex: number;
+  readonly outputIndex: number;
+  readonly awaitedConfirmation: boolean;
+};
+
+export const submitValidationDisputePrepareResolution = async ({
+  lucid,
+  blueprint,
+  deploymentInfo,
+  network,
+  signer,
+  threadOutRef,
+  preState,
+  operatorPost,
+  challengerPost,
+  validityRange = validationDisputeValidityRange(Date.now()),
+  awaitConfirmation = true,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly blueprint: unknown;
+  readonly deploymentInfo: unknown;
+  readonly network: Network;
+  readonly signer: ResolvedProverSigner;
+  readonly threadOutRef: string;
+  readonly preState: ValidationMachineStateV1;
+  readonly operatorPost: ValidationTraceProofV1;
+  readonly challengerPost: ValidationTraceProofV1;
+  readonly validityRange?: ValidationDisputeValidityRange;
+  readonly awaitConfirmation?: boolean;
+}): Promise<SubmitValidationDisputePrepareResolutionResult> => {
+  const range = requireValidityRange(validityRange);
+  const { validationTraceDisputeCategory, contracts } =
+    await resolveValidationTraceDisputeDeploymentContracts({
+      blueprint,
+      deploymentInfo,
+      network,
+    });
+  const threadUtxo = await fetchUtxoByOutRef({
+    lucid,
+    outRef: parseOutRef(threadOutRef, "--thread-out-ref"),
+    label: "validation-dispute boundary UTxO",
+  });
+  const boundaryContract = contracts.validationTraceDispute.boundary;
+  if (threadUtxo.address !== boundaryContract.spendingScriptAddress) {
+    throw new Error(
+      `Thread UTxO ${outRefLabel(threadUtxo)} is not locked at the validation-dispute boundary validator`,
+    );
+  }
+  const token = requireComputationThreadToken({
+    utxo: threadUtxo,
+    computationThreadPolicyId: contracts.computationThread.policyId,
+    categoryId: validationTraceDisputeCategory.categoryId,
+    categoryLabel: "validation-trace-dispute",
+  });
+  const inputDatum = requireDisputeDatum(threadUtxo);
+  if (inputDatum.fraud_prover !== signer.paymentKeyHash) {
+    throw new Error(
+      `Validation-dispute boundary preparation requires fraud prover ${inputDatum.fraud_prover}, got ${signer.paymentKeyHash}`,
+    );
+  }
+  const dispute = validationDisputeCoreFromData(inputDatum.data.dispute);
+  if (dispute.turn.type !== "readyForOneStep") {
+    throw new Error(
+      "Validation dispute must finish bisection before boundary preparation",
+    );
+  }
+  const resolverIndex = validationResolverIndexV1(preState.phase);
+  const resolverContract =
+    contracts.validationTraceDispute.resolvers[resolverIndex];
+  if (resolverContract === undefined) {
+    throw new Error(
+      `Validation resolver ${resolverIndex.toString()} is missing from the deployment`,
+    );
+  }
+  if (
+    operatorPost.state_hash !== inputDatum.data.dispute.operator_high_hash ||
+    challengerPost.state_hash !== inputDatum.data.dispute.challenger_high_hash
+  ) {
+    throw new Error(
+      "Validation boundary successor proofs do not match the authenticated dispute",
+    );
+  }
+  const outputDatum = Data.to(
+    {
+      fraud_prover: inputDatum.fraud_prover,
+      data: {
+        version: 1n,
+        pre_state: preState,
+        operator_successor_hash: operatorPost.state_hash,
+        challenger_successor_hash: challengerPost.state_hash,
+      },
+    },
+    ValidationResolutionDatumV1,
+  );
+  let layout: ContinueLayout | undefined;
+  signer.selectWallet(lucid);
+  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const tx = lucid
+    .newTx()
+    .collectFrom([feeInput])
+    .collectFrom(
+      [threadUtxo],
+      makePrepareResolutionRedeemer({
+        threadUtxo,
+        outputAddress: resolverContract.spendingScriptAddress,
+        outputDatum,
+        threadUnit: token.unit,
+        resolverIndex: BigInt(resolverIndex),
+        preState,
+        operatorPost,
+        challengerPost,
+        onLayout: (resolvedLayout) => {
+          layout = resolvedLayout;
+        },
+      }),
+    )
+    .pay.ToContract(
+      resolverContract.spendingScriptAddress,
+      { kind: "inline", value: outputDatum },
+      threadAssets(threadUtxo, token.unit),
+    )
+    .validFrom(range.validFrom)
+    .validTo(range.validTo)
+    .addSignerKey(signer.paymentKeyHash)
+    .attach.SpendingValidator(boundaryContract.spendingScript);
+  const unsigned = await tx.complete({ localUPLCEval: true });
+  if (layout === undefined) {
+    throw new Error(
+      "BuildTxWithRedeemer did not resolve validation-dispute boundary layout",
+    );
+  }
+  const signed = await unsigned.sign.withWallet().complete();
+  requireL1ProofEnvelope(
+    signed.toCBOR(),
+    "Validation-dispute boundary preparation",
+  );
+  const txHash = await signed.submit();
+  if (awaitConfirmation) {
+    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
+  }
+  return {
+    txHash,
+    threadOutRef,
+    nextThreadOutRef: `${txHash}#${layout.outputIndex.toString()}`,
+    resolverIndex,
+    inputIndex: Number(layout.inputIndex),
+    outputIndex: Number(layout.outputIndex),
+    awaitedConfirmation: awaitConfirmation,
+  };
+};
+
+export const validationDisputeDescriptorData =
+  validationTraceDescriptorDataFromCore;

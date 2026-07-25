@@ -1,16 +1,20 @@
 import { Data } from "@lucid-evolution/lucid";
 
 import {
+  type ValidationClaimWitnessV1,
+  ValidationClaimWitnessV1Schema,
+} from "@/fraud-proof/validation-dispute.js";
+import {
   type OutputReference,
   OutputReferenceSchema,
   type Proof,
   ProofSchema,
 } from "@/common.js";
 import {
-  type Header,
   type HeaderHash,
   HeaderHashSchema,
-  HeaderSchema,
+  type HeaderV1,
+  HeaderV1Schema,
   type MidgardTxValidity,
   MidgardTxValiditySchema,
   type WithdrawalValidity,
@@ -280,13 +284,6 @@ export const InvalidOneStepTransitionWitnessSchema = Data.Enum([
     }),
   }),
   Data.Object({
-    ValidForcedTransactionUnsupported: Data.Object({
-      trace_proof: TransitionTraceMembershipProofSchema,
-      event_to_step: EventToStepMembershipProofSchema,
-      source_membership: ForcedTransactionSourceMembershipProofSchema,
-    }),
-  }),
-  Data.Object({
     ValidDepositTransition: Data.Object({
       trace_proof: TransitionTraceMembershipProofSchema,
       event_to_step: EventToStepMembershipProofSchema,
@@ -294,17 +291,6 @@ export const InvalidOneStepTransitionWitnessSchema = Data.Enum([
       event_ref_input_index: Data.Integer(),
       event_asset_name: Data.Bytes(),
       projected_utxo: LedgerInsertWitnessSchema,
-    }),
-  }),
-  Data.Object({
-    L2TransactionTransition: Data.Object({
-      trace_proof: TransitionTraceMembershipProofSchema,
-      event_to_step: EventToStepMembershipProofSchema,
-      source_membership: RawRootMembershipProofSchema,
-      spend_inputs_preimage: Data.Bytes(),
-      outputs_preimage: Data.Bytes(),
-      spent_utxos: Data.Array(LedgerDeleteWitnessSchema),
-      produced_utxos: Data.Array(LedgerInsertWitnessSchema),
     }),
   }),
 ]);
@@ -332,13 +318,6 @@ export type InvalidOneStepTransitionWitness =
       };
     }
   | {
-      readonly ValidForcedTransactionUnsupported: {
-        readonly trace_proof: IndexedTraceProof;
-        readonly event_to_step: EventToStepMembershipProof;
-        readonly source_membership: ForcedTransactionSourceMembershipProof;
-      };
-    }
-  | {
       readonly ValidDepositTransition: {
         readonly trace_proof: IndexedTraceProof;
         readonly event_to_step: EventToStepMembershipProof;
@@ -346,17 +325,6 @@ export type InvalidOneStepTransitionWitness =
         readonly event_ref_input_index: bigint;
         readonly event_asset_name: string;
         readonly projected_utxo: LedgerInsertWitness;
-      };
-    }
-  | {
-      readonly L2TransactionTransition: {
-        readonly trace_proof: IndexedTraceProof;
-        readonly event_to_step: EventToStepMembershipProof;
-        readonly source_membership: RawRootMembershipProof;
-        readonly spend_inputs_preimage: string;
-        readonly outputs_preimage: string;
-        readonly spent_utxos: readonly LedgerDeleteWitness[];
-        readonly produced_utxos: readonly LedgerInsertWitness[];
       };
     };
 export const InvalidOneStepTransitionWitness =
@@ -539,6 +507,14 @@ export const TransitionFaultSchema = Data.Enum([
   Data.Object({
     CountFault: Data.Object({ witness: CountFaultWitnessSchema }),
   }),
+  Data.Object({
+    AcceptedTransactionTransitionMismatch: Data.Object({
+      witness: Data.Object({
+        claim: ValidationClaimWitnessV1Schema,
+        terminal_acceptance_witness_cbor: Data.Bytes(),
+      }),
+    }),
+  }),
 ]);
 export type TransitionFault =
   | {
@@ -580,57 +556,81 @@ export type TransitionFault =
         readonly witness: OutOfWindowSourceEventWitness;
       };
     }
-  | { readonly CountFault: { readonly witness: CountFaultWitness } };
+  | { readonly CountFault: { readonly witness: CountFaultWitness } }
+  | {
+      readonly AcceptedTransactionTransitionMismatch: {
+        readonly witness: {
+          readonly claim: ValidationClaimWitnessV1;
+          readonly terminal_acceptance_witness_cbor: string;
+        };
+      };
+    };
 export const TransitionFault =
   TransitionFaultSchema as unknown as TransitionFault;
 
 export const TransitionFaultProofSchema = Data.Object({
   challenged_header_hash: HeaderHashSchema,
-  header: HeaderSchema,
+  header: HeaderV1Schema,
   fault: TransitionFaultSchema,
 });
 export type TransitionFaultProof = {
   readonly challenged_header_hash: HeaderHash;
-  readonly header: Header;
+  readonly header: HeaderV1;
   readonly fault: TransitionFault;
 };
 export const TransitionFaultProof =
   TransitionFaultProofSchema as unknown as TransitionFaultProof;
 
-export const TransitionTraceProofStepDatumSchema = faultProofStepDatumSchema(
-  Data.Any(),
+export const TransitionTraceStepDatumSchema = faultProofStepDatumSchema(
+  TransitionFaultProofSchema,
 );
-export type TransitionTraceProofStepDatum = {
+export type TransitionTraceStepDatum = {
   readonly fraud_prover: string;
-  readonly data: unknown | null;
+  readonly data: TransitionFaultProof | null;
 };
-export const TransitionTraceProofStepDatum =
-  TransitionTraceProofStepDatumSchema as unknown as TransitionTraceProofStepDatum;
+export const TransitionTraceStepDatum =
+  TransitionTraceStepDatumSchema as unknown as TransitionTraceStepDatum;
 
-export const TransitionTraceProofArgsSchema = Data.Object({
+export const TransitionTraceRouteArgsSchema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  proof: TransitionFaultProofSchema,
+});
+export type TransitionTraceRouteArgs = {
+  readonly input_index: bigint;
+  readonly output_index: bigint;
+  readonly proof: TransitionFaultProof;
+};
+export const TransitionTraceRouteArgs =
+  TransitionTraceRouteArgsSchema as unknown as TransitionTraceRouteArgs;
+
+export const TransitionTraceRouteSpendRedeemerSchema =
+  faultProofStepRedeemerSchema(TransitionTraceRouteArgsSchema);
+export type TransitionTraceRouteSpendRedeemer =
+  | { readonly Cancel: FaultProofStepCancel }
+  | { readonly Continue: readonly [TransitionTraceRouteArgs] };
+export const TransitionTraceRouteSpendRedeemer =
+  TransitionTraceRouteSpendRedeemerSchema as unknown as TransitionTraceRouteSpendRedeemer;
+
+export const TransitionTraceFinalArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   hub_ref_input_index: Data.Integer(),
   fraud_proof_mint_redeemer_index: Data.Integer(),
-  proof: TransitionFaultProofSchema,
 });
-export type TransitionTraceProofArgs = {
-  readonly input_index: bigint;
-  readonly output_index: bigint;
-  readonly hub_ref_input_index: bigint;
-  readonly fraud_proof_mint_redeemer_index: bigint;
-  readonly proof: TransitionFaultProof;
-};
-export const TransitionTraceProofArgs =
-  TransitionTraceProofArgsSchema as unknown as TransitionTraceProofArgs;
+export type TransitionTraceFinalArgs = Data.Static<
+  typeof TransitionTraceFinalArgsSchema
+>;
+export const TransitionTraceFinalArgs =
+  TransitionTraceFinalArgsSchema as unknown as TransitionTraceFinalArgs;
 
-export const TransitionTraceProofSpendRedeemerSchema =
-  faultProofStepRedeemerSchema(TransitionTraceProofArgsSchema);
-export type TransitionTraceProofSpendRedeemer =
+export const TransitionTraceFinalSpendRedeemerSchema =
+  faultProofStepRedeemerSchema(TransitionTraceFinalArgsSchema);
+export type TransitionTraceFinalSpendRedeemer =
   | { readonly Cancel: FaultProofStepCancel }
-  | { readonly Continue: readonly [TransitionTraceProofArgs] };
-export const TransitionTraceProofSpendRedeemer =
-  TransitionTraceProofSpendRedeemerSchema as unknown as TransitionTraceProofSpendRedeemer;
+  | { readonly Continue: readonly [TransitionTraceFinalArgs] };
+export const TransitionTraceFinalSpendRedeemer =
+  TransitionTraceFinalSpendRedeemerSchema as unknown as TransitionTraceFinalSpendRedeemer;
 
 export const makeTransitionFaultProof = ({
   challengedHeaderHash,
@@ -638,7 +638,7 @@ export const makeTransitionFaultProof = ({
   fault,
 }: {
   readonly challengedHeaderHash: HeaderHash;
-  readonly header: Header;
+  readonly header: HeaderV1;
   readonly fault: TransitionFault;
 }): TransitionFaultProof => ({
   challenged_header_hash: challengedHeaderHash,
@@ -689,11 +689,7 @@ export const sourceMembershipMismatchFault = (
   SourceMembershipMismatch: { witness },
 });
 
-/**
- * Builds the ABI shape for the invalid one-step fault family. Variant support
- * is enforced on-chain; valid forced-transaction support is still fail-closed
- * until the exact state delta can be derived on-chain.
- */
+/** Builds the canonical V1 invalid-one-step transition fault. */
 export const invalidOneStepTransitionFault = (
   witness: InvalidOneStepTransitionWitness,
 ): TransitionFault => ({
@@ -729,9 +725,24 @@ export const countFault = (witness: CountFaultWitness): TransitionFault => ({
   CountFault: { witness },
 });
 
+export const acceptedTransactionTransitionMismatchFault = ({
+  claim,
+  terminalAcceptanceWitnessCbor,
+}: {
+  readonly claim: ValidationClaimWitnessV1;
+  readonly terminalAcceptanceWitnessCbor: string;
+}): TransitionFault => ({
+  AcceptedTransactionTransitionMismatch: {
+    witness: {
+      claim,
+      terminal_acceptance_witness_cbor: terminalAcceptanceWitnessCbor,
+    },
+  },
+});
+
 export type TransitionTraceFaultProofFixture = {
   readonly proof: TransitionFaultProof;
-  readonly spendArgs: TransitionTraceProofArgs;
-  readonly spendRedeemer: TransitionTraceProofSpendRedeemer;
+  readonly routeArgs: TransitionTraceRouteArgs;
+  readonly routeRedeemer: TransitionTraceRouteSpendRedeemer;
   readonly threadAssetName: string;
 };

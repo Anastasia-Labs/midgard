@@ -1,5 +1,5 @@
 import {
-  getHeaderFromStateQueueDatum,
+  getHeaderV1FromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
   HUB_ORACLE_ASSET_NAME,
   NonExistentInputStep01SpendRedeemer,
@@ -181,7 +181,7 @@ export const neSubmitStep01 = async ({
     getLinkedListNodeViewFromUTxO(stateQueueBlockUtxo),
   );
   const header = await Effect.runPromise(
-    getHeaderFromStateQueueDatum(stateQueueNodeView),
+    getHeaderV1FromStateQueueDatum(stateQueueNodeView),
   );
 
   signer.selectWallet(lucid);

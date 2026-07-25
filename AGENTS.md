@@ -39,6 +39,11 @@ targets another environment.
 
 - Strict behavior is the default. Demo, benchmark, migration, or compatibility
   shortcuts must be explicit, isolated, and unavailable by default.
+- Before mainnet launch, undeployed versions have no compatibility contract:
+  replace V1 and database schemas in place, remove obsolete branches, and
+  wipe/redeploy development state instead of adding compatibility layers or
+  migrations. Keep versioning seams for post-launch upgrades, but preserve or
+  migrate only versions that actually shipped.
 - Named plan docs, review docs, commands, and verification surfaces are the
   source of truth before improvising.
 - Preserve user work: check dirty state, do not clean or revert unrelated

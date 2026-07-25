@@ -1,4 +1,10 @@
-import { MIDGARD_SUPPORTED_SCRIPT_LANGUAGES } from "@al-ft/midgard-core/codec";
+import {
+  encodeMidgardAddressText,
+  MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+  midgardAddressFromText,
+  protectMidgardAddress,
+} from "@al-ft/midgard-core/codec";
+import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -10,7 +16,6 @@ import {
   LucidMidgard,
   type MidgardProvider,
   type MidgardUtxo,
-  outputAddressProtected,
   type OutRef,
   outRefToCbor,
 } from "../src/index.js";
@@ -26,9 +31,11 @@ const fakeProvider: MidgardProvider = {
     network: "Preview",
     midgardNativeTxVersion: 1,
     currentSlot: 0n,
+    consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
     supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+    codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     protocolFeeParameters: { minFeeA: 44n, minFeeB: 155381n },
-    submissionLimits: { maxSubmitTxCborBytes: 32768 },
+    submissionLimits: { maxSubmitTxCborBytes: MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes },
     validation: {
       strictnessProfile: "phase1_midgard",
       localValidationIsAuthoritative: false,
@@ -65,6 +72,13 @@ const makeUtxo = (ref: OutRef): MidgardUtxo =>
     outputCbor: encodeMidgardTxOutput(address, { lovelace: 3_000_000n }),
   });
 
+const makeUtxoAtAddress = (ref: OutRef, outputAddress: string): MidgardUtxo =>
+  decodeMidgardUtxo({
+    outRef: ref,
+    outRefCbor: outRefToCbor(ref),
+    outputCbor: encodeMidgardTxOutput(outputAddress, { lovelace: 3_000_000n }),
+  });
+
 describe("LucidMidgard builder fluent API", () => {
   it("records fluent builder state deterministically", async () => {
     const midgard = await LucidMidgard.new(fakeProvider, {
@@ -75,7 +89,6 @@ describe("LucidMidgard builder fluent API", () => {
     const tx = midgard
       .newTx()
       .collectFrom([input])
-      .readFrom([makeUtxo(makeOutRef(0x22))])
       .addSigner("aa".repeat(28))
       .addSignerKey("bb".repeat(28))
       .setMinFee(123n)
@@ -85,7 +98,7 @@ describe("LucidMidgard builder fluent API", () => {
 
     expect(tx.debugSnapshot()).toMatchObject({
       spendInputs: [{ txHash: input.txHash, outputIndex: 0 }],
-      referenceInputs: [{ txHash: "22".repeat(32), outputIndex: 0 }],
+      referenceInputs: [],
       requiredSigners: ["aa".repeat(28), "bb".repeat(28)],
       minimumFee: 123n,
       validityIntervalStart: 10n,
@@ -100,7 +113,9 @@ describe("LucidMidgard builder fluent API", () => {
     });
     expect(tx.config()).toMatchObject({ network: "Preview", networkId: 0 });
     expect(tx.rawConfig()).toMatchObject({
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
       supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+      codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     });
   });
 
@@ -154,12 +169,8 @@ describe("LucidMidgard builder fluent API", () => {
     const outputs = tx.debugSnapshot().outputs;
     expect(outputs).toMatchObject([
       { kind: "ordinary", address, assets: { lovelace: 1_000_000n } },
-      {
-        kind: "protected",
-        assets: { lovelace: 2_000_000n },
-      },
+      { kind: "protected", assets: { lovelace: 2_000_000n } },
     ]);
-    expect(outputAddressProtected(outputs[1]!.address)).toBe(true);
   });
 
   it("rejects runtime output kind options on explicit pay helpers", async () => {
@@ -207,68 +218,76 @@ describe("LucidMidgard builder fluent API", () => {
     );
   });
 
-  it("records spend redeemer placeholders without deriving indexes yet", async () => {
+  it("retains spend redeemers in canonical V1 builder state", async () => {
     const midgard = await LucidMidgard.new(fakeProvider);
-    const tx = midgard.newTx().collectFrom([makeUtxo(makeOutRef(0x11))], {
-      data: CML.PlutusData.new_integer(CML.BigInteger.from_str("1")),
-      exUnits: { mem: 1n, steps: 2n },
-    });
-
+    const tx = midgard
+      .newTx()
+      .collectFrom([makeUtxo(makeOutRef(0x11))], {
+        data: CML.PlutusData.new_integer(CML.BigInteger.from_str("1")),
+        exUnits: { mem: 1n, steps: 2n },
+      });
     expect(tx.debugSnapshot().scripts.spendRedeemers).toHaveLength(1);
   });
 
-  it("keeps redeemer data immutable from caller and snapshot mutation", async () => {
+  it("retains script credentials and protected spend inputs", async () => {
     const midgard = await LucidMidgard.new(fakeProvider);
-    const originalData = Buffer.from([0x01, 0x02, 0x03]);
-    const tx = midgard.newTx().collectFrom([makeUtxo(makeOutRef(0x11))], {
-      data: originalData,
-      exUnits: { mem: 1n, steps: 2n },
-    });
+    const scriptAddressBytes = midgardAddressFromText(address);
+    scriptAddressBytes[0] = (scriptAddressBytes[0]! & 0x0f) | 0x10;
+    const scriptAddress = encodeMidgardAddressText(scriptAddressBytes);
+    const protectedAddress = encodeMidgardAddressText(
+      protectMidgardAddress(midgardAddressFromText(address)),
+    );
 
-    originalData[0] = 0xff;
-    const firstSnapshot = tx.debugSnapshot();
-    const snapshotData = firstSnapshot.scripts.spendRedeemers[0]?.redeemer
-      ?.data as Uint8Array;
-    expect(Buffer.from(snapshotData).toString("hex")).toBe("010203");
-
-    snapshotData[1] = 0xee;
-    const secondSnapshotData = tx.debugSnapshot().scripts.spendRedeemers[0]
-      ?.redeemer?.data as Uint8Array;
-    expect(Buffer.from(secondSnapshotData).toString("hex")).toBe("010203");
+    const tx = midgard
+      .newTx()
+      .collectFrom([
+        makeUtxoAtAddress(makeOutRef(0x12), scriptAddress),
+        makeUtxoAtAddress(makeOutRef(0x13), protectedAddress),
+      ]);
+    expect(tx.debugSnapshot().spendInputs).toHaveLength(2);
   });
 
-  it("keeps output datum and script reference bytes immutable", async () => {
+  it("clones byte redeemers before retaining caller data", async () => {
+    const midgard = await LucidMidgard.new(fakeProvider);
+    const originalData = Buffer.from([0x01, 0x02, 0x03]);
+    const tx = midgard
+      .newTx()
+      .collectFrom([makeUtxo(makeOutRef(0x11))], {
+        data: originalData,
+        exUnits: { mem: 1n, steps: 2n },
+      });
+    originalData[0] = 0xff;
+    const retained = tx.debugSnapshot().scripts.spendRedeemers[0]?.redeemer
+      ?.data as Uint8Array;
+    expect(Buffer.from(retained).toString("hex")).toBe("010203");
+  });
+
+  it("keeps output datum bytes immutable and retains reference scripts", async () => {
     const midgard = await LucidMidgard.new(fakeProvider, {
       network: "Preview",
       networkId: 0,
     });
     const datum = Buffer.from([0x41, 0x00]);
-    const scriptRef = Buffer.from([0x82, 0x00]);
     const tx = midgard.newTx().pay.ToAddress(
       address,
       { lovelace: 1_000_000n },
       {
         datum,
-        scriptRef,
       },
     );
 
     datum[1] = 0xff;
-    scriptRef[1] = 0xff;
     const firstSnapshot = tx.debugSnapshot();
     const snapshotDatum = firstSnapshot.outputs[0]?.datum;
     const snapshotDatumData =
       snapshotDatum?.kind === "inline"
         ? (snapshotDatum.data as Uint8Array)
         : undefined;
-    const snapshotScriptRef = firstSnapshot.outputs[0]?.scriptRef as Uint8Array;
     expect(Buffer.from(snapshotDatumData ?? []).toString("hex")).toBe("4100");
-    expect(Buffer.from(snapshotScriptRef).toString("hex")).toBe("8200");
 
     if (snapshotDatumData !== undefined) {
       snapshotDatumData[1] = 0xee;
     }
-    snapshotScriptRef[1] = 0xee;
     const secondSnapshot = tx.debugSnapshot();
     const secondDatum = secondSnapshot.outputs[0]?.datum;
     const secondDatumData =
@@ -276,10 +295,15 @@ describe("LucidMidgard builder fluent API", () => {
         ? (secondDatum.data as Uint8Array)
         : undefined;
     expect(Buffer.from(secondDatumData ?? []).toString("hex")).toBe("4100");
+    const withReferenceScript = midgard
+      .newTx()
+      .pay.ToAddress(
+        address,
+        { lovelace: 1_000_000n },
+        { scriptRef: { type: "PlutusV3", script: "0102" } },
+      );
     expect(
-      Buffer.from(secondSnapshot.outputs[0]?.scriptRef as Uint8Array).toString(
-        "hex",
-      ),
-    ).toBe("8200");
+      withReferenceScript.debugSnapshot().outputs[0]?.scriptRef,
+    ).toEqual({ type: "PlutusV3", script: "0102" });
   });
 });

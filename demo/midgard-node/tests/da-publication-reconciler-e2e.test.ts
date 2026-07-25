@@ -3,10 +3,12 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { MIDGARD_CONSENSUS_PROFILE_V1_ID } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
   computeDaSha256Hash,
   DA_TRANSPORT_LIMITS_V1,
 } from "@al-ft/midgard-core/da-transport";
+import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -266,7 +268,7 @@ describe.skipIf(!enabled)("joined DA publication reconciler E2E", () => {
       await expect(
         stores[2]!.getDaPayload(fixture.headerHash),
       ).resolves.toMatchObject({
-        payloadSchemaVersion: 2,
+        payloadSchemaVersion: 1,
         payloadCborHex: fixture.payloadCbor.toString("hex"),
       });
     } finally {
@@ -314,7 +316,7 @@ const runtimeManifest = (
   manifest: DaProducerPublicationManifest,
   peers: readonly DaProducerCommitteePeer[],
 ): Record<string, unknown> => ({
-  schemaVersion: "midgard-da-libp2p-runtime-manifest-v2",
+  schemaVersion: "midgard-da-libp2p-runtime-manifest-v1",
   deployment: {
     fingerprint: manifest.deploymentFingerprint,
     contract_deployment_manifest_id: manifest.deploymentFingerprint,
@@ -357,7 +359,9 @@ const insertFromFixture = (
   fixture: Awaited<ReturnType<typeof makePayloadFixture>>,
 ): DaPayloadsDB.InsertInput => ({
   [DaPayloadsDB.Columns.HEADER_HASH]: Buffer.from(fixture.headerHash, "hex"),
-  [DaPayloadsDB.Columns.VERSION]: 2,
+  [DaPayloadsDB.Columns.CONSENSUS_PROFILE_ID]:
+    MIDGARD_CONSENSUS_PROFILE_V1_ID,
+  [DaPayloadsDB.Columns.VERSION]: 1,
   [DaPayloadsDB.Columns.PAYLOAD_CBOR]: fixture.payloadCbor,
   [DaPayloadsDB.Columns.PAYLOAD_SHA256]: computeDaSha256Hash(
     fixture.payloadCbor,
@@ -371,6 +375,7 @@ const insertFromFixture = (
   [DaPayloadsDB.Columns.TRANSITION_TRACE_ROOT]:
     fixture.header.transitionTraceRoot,
   [DaPayloadsDB.Columns.EVENT_TO_STEP_ROOT]: fixture.header.eventToStepRoot,
+  [DaPayloadsDB.Columns.VALIDATION_TRACES_ROOT]: EMPTY_MERKLE_TREE_ROOT,
   [DaPayloadsDB.Columns.WITHDRAWAL_COUNT]: fixture.header.withdrawalCount,
   [DaPayloadsDB.Columns.FORCED_TRANSACTION_COUNT]:
     fixture.header.forcedTransactionCount,
@@ -380,6 +385,7 @@ const insertFromFixture = (
   [DaPayloadsDB.Columns.TOTAL_EVENT_COUNT]: fixture.header.totalEventCount,
   [DaPayloadsDB.Columns.TRANSITION_STEP_COUNT]:
     fixture.header.transitionStepCount,
+  [DaPayloadsDB.Columns.VALIDATION_TRACE_COUNT]: 0n,
   [DaPayloadsDB.Columns.BLOCK_START_TIME]: new Date(1),
   [DaPayloadsDB.Columns.BLOCK_END_TIME]: new Date(2),
 });

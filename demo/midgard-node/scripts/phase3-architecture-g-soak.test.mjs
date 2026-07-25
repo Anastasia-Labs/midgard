@@ -335,7 +335,7 @@ const report = ({
       deployment: {
         path: "/artifacts/deployment.json",
         sha256: hash("8"),
-        schemaVersion: "midgard-contract-deployment-v2",
+        schemaVersion: "midgard-deployment-manifest-v1",
         manifestId: hash("a"),
       },
       ownerBinary: {
@@ -348,7 +348,7 @@ const report = ({
       phase1: {
         path: "/artifacts/phase1-binding.json",
         sha256: hash("d"),
-        schemaVersion: "midgard-phase1-live-corpus-binding-v2",
+        schemaVersion: "midgard-phase1-live-corpus-binding-v1",
         deploymentManifestId: hash("a"),
         nodeImageId: `sha256:${hash("9")}`,
         nodeContainerId: hash("5"),

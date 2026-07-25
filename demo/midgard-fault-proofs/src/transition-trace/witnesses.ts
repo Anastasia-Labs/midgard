@@ -271,11 +271,11 @@ export const buildRawL2TransactionSourceMembershipProof = async ({
     phas_root: reconstruction.rootData.transactions.phasRoot,
     count: reconstruction.rootData.transactions.count,
     key: entry.txId,
-    value: entry.compactTransactionCbor.toString("hex"),
+    value: entry.valueBytes.toString("hex"),
     proof: await keyValuePhasProof(
       countedPhasView(reconstruction.rootData.transactions),
       entry.keyBytes,
-      entry.compactTransactionCbor,
+      entry.valueBytes,
     ),
   };
 };
@@ -457,11 +457,9 @@ export type ValidDepositTransitionEvidence = {
   readonly projectedUtxo: SDK.LedgerInsertWitness;
 };
 
-export type L2TransactionTransitionEvidence = {
-  readonly spendInputsPreimage: string;
-  readonly outputsPreimage: string;
-  readonly spentUtxos: readonly SDK.LedgerDeleteWitness[];
-  readonly producedUtxos: readonly SDK.LedgerInsertWitness[];
+export type AcceptedTransactionTransitionMismatchEvidence = {
+  readonly claim: SDK.ValidationClaimWitnessV1;
+  readonly terminalAcceptanceWitnessCbor: string;
 };
 
 export const buildInvalidWithdrawalNoOpWitness = async ({
@@ -576,42 +574,6 @@ export const buildInvalidForcedTransactionNoOpWitness = async ({
   };
 };
 
-export const buildValidForcedTransactionUnsupportedWitness = async ({
-  reconstruction,
-  stepIndex,
-}: {
-  readonly reconstruction: TransitionTraceReconstruction;
-  readonly stepIndex: bigint;
-}): Promise<SDK.InvalidOneStepTransitionWitness> => {
-  const trace = requireTraceEntry(reconstruction, stepIndex);
-  const source = sourceEventOrThrow(reconstruction, trace.value.event_key);
-  if (source.phase !== "ForcedTransaction") {
-    throw transitionTraceError(
-      "missingWitnessData",
-      `Trace step ${stepIndex.toString()} is not a forced-transaction step.`,
-    );
-  }
-  if (source.entry.value.operator_validity !== "TxIsValid") {
-    throw transitionTraceError(
-      "missingWitnessData",
-      "ValidForcedTransactionUnsupported requires a forced transaction source classified as TxIsValid.",
-    );
-  }
-  return {
-    ValidForcedTransactionUnsupported: {
-      trace_proof: await buildIndexedTraceProof({ reconstruction, stepIndex }),
-      event_to_step: await buildEventToStepMembershipProof({
-        reconstruction,
-        eventKey: trace.value.event_key,
-      }),
-      source_membership: await membershipProof({
-        root: reconstruction.rootData.forcedTransactions,
-        entry: source.entry,
-      }),
-    },
-  };
-};
-
 export const buildValidDepositTransitionWitness = async ({
   reconstruction,
   stepIndex,
@@ -647,40 +609,14 @@ export const buildValidDepositTransitionWitness = async ({
   };
 };
 
-export const buildL2TransactionTransitionWitness = async ({
-  reconstruction,
-  stepIndex,
-  evidence,
-}: {
-  readonly reconstruction: TransitionTraceReconstruction;
-  readonly stepIndex: bigint;
-  readonly evidence: L2TransactionTransitionEvidence;
-}): Promise<SDK.InvalidOneStepTransitionWitness> => {
-  const trace = requireTraceEntry(reconstruction, stepIndex);
-  if (!("L2TransactionEventKey" in trace.value.event_key)) {
-    throw transitionTraceError(
-      "missingWitnessData",
-      `Trace step ${stepIndex.toString()} is not an L2 transaction step.`,
-    );
-  }
-  return {
-    L2TransactionTransition: {
-      trace_proof: await buildIndexedTraceProof({ reconstruction, stepIndex }),
-      event_to_step: await buildEventToStepMembershipProof({
-        reconstruction,
-        eventKey: trace.value.event_key,
-      }),
-      source_membership: await buildRawL2TransactionSourceMembershipProof({
-        reconstruction,
-        txId: trace.value.event_key.L2TransactionEventKey.tx_id,
-      }),
-      spend_inputs_preimage: evidence.spendInputsPreimage,
-      outputs_preimage: evidence.outputsPreimage,
-      spent_utxos: evidence.spentUtxos,
-      produced_utxos: evidence.producedUtxos,
-    },
-  };
-};
+export const buildAcceptedTransactionTransitionMismatchFault = ({
+  claim,
+  terminalAcceptanceWitnessCbor,
+}: AcceptedTransactionTransitionMismatchEvidence): SDK.TransitionFault =>
+  SDK.acceptedTransactionTransitionMismatchFault({
+    claim,
+    terminalAcceptanceWitnessCbor,
+  });
 
 export type OmittedDueL1EventEvidence =
   | {

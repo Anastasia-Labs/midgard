@@ -428,7 +428,6 @@ test("protocol bootstrap migrates and pins the run-scoped manifest before PHAS",
   assert.ok(aikenAt >= 0 && aikenAt < buildAt);
   assert.match(bootstrap, /plutus\.json\.sha256/);
   assert.match(bootstrap, /MIDGARD_REAL_BLUEPRINT_PATH/);
-  assert.match(bootstrap, /unset L1_PROVIDER_FAILOVER/);
   assert.match(
     bootstrap,
     /upsert_private_env HUB_ORACLE_ONE_SHOT_TX_HASH "\$tx_hash" "\$node_env"/,
@@ -491,7 +490,7 @@ test("PHAS preflight is a pinned read-only ledger and canonical-transaction proo
   const reset = read("scripts/reset.sh");
   const restoredProofAt = reset.indexOf("phas-registration-preflight.sh");
   const attestationAt = reset.indexOf(
-    "midgard-phase4-local-devnet-reset-attestation-v3",
+    "midgard-phase4-local-devnet-reset-attestation-v1",
   );
   const resumeAt = reset.indexOf("MIDGARD_PHASE4_BLOCK_PRODUCER=true");
   assert.ok(
@@ -524,8 +523,8 @@ test("reset rejects every immutable drift before stopping services or restoring 
 
 test("reset attestation binds the complete canonical snapshot identity", () => {
   const reset = read("scripts/reset.sh");
-  assert.match(reset, /midgard-phase4-local-devnet-reset-attestation-v3/);
-  assert.match(reset, /midgard-phase4-matched-snapshot-identity-v2/);
+  assert.match(reset, /midgard-phase4-local-devnet-reset-attestation-v1/);
+  assert.match(reset, /midgard-phase4-matched-snapshot-identity-v1/);
   assert.match(reset, /restored Cardano\/Kupo state does not match/);
   const observerAt = reset.indexOf(
     "MIDGARD_PHASE4_BLOCK_PRODUCER=false compose_quiet up",
@@ -657,7 +656,7 @@ test("acceptance env is canonical when node.env lacks run-scoped values", async 
   );
   writeFileSync(
     join(runDir, "secrets/node.env"),
-    "POSTGRES_HOST=stale\nL1_PROVIDER=Blockfrost\nL1_PROVIDER_FAILOVER=legacy\n",
+    "POSTGRES_HOST=stale\nL1_PROVIDER=Blockfrost\n",
   );
   writeFileSync(
     join(runDir, "secrets/wallets.env"),
@@ -690,7 +689,7 @@ test("acceptance env is canonical when node.env lacks run-scoped values", async 
   }
   assert.doesNotMatch(
     output,
-    /Blockfrost|POSTGRES_HOST="stale"|L1_PROVIDER_FAILOVER/,
+    /Blockfrost|POSTGRES_HOST="stale"/,
   );
   rmSync(runDir, { recursive: true, force: true });
 });

@@ -1,8 +1,10 @@
 import {
-  computeMidgardNativeTxId,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
+  computeMidgardNativeTxIdV1,
+  decodeMidgardNativeTxFullV1FromCanonicalCbor,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
+import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { buildMidgardCanonicalCekProgramV1 } from "@al-ft/midgard-validation";
 import { CML } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { Effect } from "effect";
@@ -79,9 +81,11 @@ const memoryProvider = (
     network: "Preview",
     midgardNativeTxVersion: 1,
     currentSlot: 0n,
+    consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
     supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+    codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     protocolFeeParameters: { minFeeA: 0n, minFeeB: 0n },
-    submissionLimits: { maxSubmitTxCborBytes: 32768 },
+    submissionLimits: { maxSubmitTxCborBytes: MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes },
     validation: {
       strictnessProfile: "phase1_midgard",
       localValidationIsAuthoritative: false,
@@ -92,20 +96,22 @@ const memoryProvider = (
     network: "Preview",
     midgardNativeTxVersion: 1,
     currentSlot: 0n,
+    consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
     supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+    codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     minFeeA: 0n,
     minFeeB: 0n,
     networkId: 0n,
-    maxSubmitTxCborBytes: 32768,
+    maxSubmitTxCborBytes: MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
     strictnessProfile: "phase1_midgard",
   }),
   getCurrentSlot: async () => 0n,
   submitTx: async (txCborHex): Promise<SubmitTxResult> => {
-    const tx = decodeMidgardNativeTxFullFromCanonicalCbor(
+    const tx = decodeMidgardNativeTxFullV1FromCanonicalCbor(
       Buffer.from(txCborHex, "hex"),
     );
     return {
-      txId: computeMidgardNativeTxId(tx).toString("hex"),
+      txId: computeMidgardNativeTxIdV1(tx).toString("hex"),
       status: "queued",
       httpStatus: 202,
       duplicate: false,
@@ -194,8 +200,10 @@ export const providerConvenienceAndStatusStates = async (): Promise<
 
 export const observerTransaction = async (): Promise<string> => {
   const { midgard, input, address } = await makeExampleContext();
-  const script = Buffer.from("4e4d01000033222220051200120011", "hex");
-  const hash = midgardV1ScriptHash(script);
+  const script = Buffer.from("010100200101", "hex");
+  const hash = midgardV1ScriptHash(
+    buildMidgardCanonicalCekProgramV1(script).envelopeCbor,
+  );
   const tx = await midgard
     .newTx()
     .collectFrom([input])
@@ -211,7 +219,7 @@ export const importComposeAndChain = async (): Promise<readonly string[]> => {
   const left = midgard.newTx().collectFrom([input]);
   const right = midgard
     .newTx()
-    .pay.ToProtectedAddress(address, { lovelace: 2_000_000n });
+    .pay.ToAddress(address, { lovelace: 2_000_000n });
   const chained = await left.compose(right).chain({ fee: 0n });
   const imported = midgard.fromTx(chained[2].toCBOR());
   return [chained[1][0]!.txHash, imported.toHash()];

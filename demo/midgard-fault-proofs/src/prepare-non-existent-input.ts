@@ -2,12 +2,12 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
-  computeMidgardNativeTxId,
+  computeMidgardNativeTxIdV1,
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
-  encodeMidgardNativeTxCompact,
+  decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  encodeMidgardNativeTxCompactV1,
   formatUnknownError,
-  type MidgardNativeTxFull,
+  type MidgardNativeTxFullV1,
 } from "@al-ft/midgard-core";
 import {
   commitCountedRootProgram,
@@ -38,7 +38,7 @@ import {
 import { spendInputsWitnessFromCbors } from "./spend-input-witness.js";
 import { nativeTxFromCoreCompact } from "./submit-step-01.js";
 import { keyValuePhasNonMembershipProof } from "./transition-trace/phas.js";
-import { reconstructDaPayloadV2 } from "./transition-trace/reconstruct.js";
+import { reconstructDaPayloadV1 } from "./transition-trace/reconstruct.js";
 
 type LucidDataSchema = Parameters<typeof Data.to>[1];
 
@@ -114,9 +114,9 @@ type DecodedTx = {
 const decodeTx = (payload: NodeTransactionPayload): DecodedTx => {
   const nodeTxId = parseHex(payload.nodeTxId, "nodeTxId", 32);
   const txCbor = parseHex(payload.txCbor, `tx ${nodeTxId} CBOR`);
-  let nativeTx: MidgardNativeTxFull;
+  let nativeTx: MidgardNativeTxFullV1;
   try {
-    nativeTx = decodeMidgardNativeTxFullFromCanonicalCbor(
+    nativeTx = decodeMidgardNativeTxFullV1FromCanonicalCbor(
       Buffer.from(txCbor, "hex"),
     );
   } catch (cause) {
@@ -124,7 +124,7 @@ const decodeTx = (payload: NodeTransactionPayload): DecodedTx => {
       `Failed to decode native Midgard tx ${nodeTxId}: ${formatUnknownError(cause)}`,
     );
   }
-  const computed = computeMidgardNativeTxId(nativeTx).toString("hex");
+  const computed = computeMidgardNativeTxIdV1(nativeTx).toString("hex");
   if (computed !== nodeTxId) {
     throw new Error(
       `Node tx id mismatch: listed=${nodeTxId}, computed=${computed}.`,
@@ -137,9 +137,9 @@ const decodeTx = (payload: NodeTransactionPayload): DecodedTx => {
   return {
     nodeTxId,
     nativeTxCompact: nativeTxFromCoreCompact(nativeTx.compact),
-    nativeCompactCbor: encodeMidgardNativeTxCompact(nativeTx.compact).toString(
-      "hex",
-    ),
+    nativeCompactCbor: encodeMidgardNativeTxCompactV1(
+      nativeTx.compact,
+    ).toString("hex"),
     inputs: spendInputsWitnessFromCbors(spendInputCbors, "spend_inputs").inputs,
   };
 };
@@ -176,17 +176,17 @@ const parseBadInputIndex = (value: string | number | undefined): number => {
 const resolveLedgerNonMembershipProof = async ({
   prevUtxosRoot,
   missingInput,
-  prevBlockPayloadCbor,
+  prevBlockPayloadEnvelopeCbor,
 }: {
   readonly prevUtxosRoot: string;
   readonly missingInput: MidgardTxInput;
-  readonly prevBlockPayloadCbor?: Uint8Array;
+  readonly prevBlockPayloadEnvelopeCbor?: Uint8Array;
 }): Promise<string> => {
   const ledgerKey = Buffer.from(ledgerKeyBytesHex(missingInput), "hex");
   if (prevUtxosRoot === EMPTY_MERKLE_TREE_ROOT) {
     return await buildNonMembershipProof([], ledgerKey);
   }
-  if (prevBlockPayloadCbor === undefined) {
+  if (prevBlockPayloadEnvelopeCbor === undefined) {
     throw new Error(
       `The block sits over a non-empty prev-utxos ledger (root ${prevUtxosRoot}). ` +
         "Supply the previous block's DA payload via --prev-block-payload-file so " +
@@ -194,8 +194,8 @@ const resolveLedgerNonMembershipProof = async ({
         "proof built. (Only the empty-genesis first block needs no payload.)",
     );
   }
-  const reconstruction = await reconstructDaPayloadV2({
-    payloadCbor: prevBlockPayloadCbor,
+  const reconstruction = await reconstructDaPayloadV1({
+    payloadEnvelopeCbor: prevBlockPayloadEnvelopeCbor,
   });
   if (reconstruction.roots.utxosRoot !== prevUtxosRoot) {
     throw new Error(
@@ -216,7 +216,7 @@ const resolveLedgerNonMembershipProof = async ({
 /**
  * Builds the four non-existent-input submit-step artifacts from a block the node
  * actually committed. The transactions trie is reconstructed with the node's
- * native encoding (`encodeMidgardNativeTxCompact` keyed by the raw 32-byte tx
+ * native encoding (`encodeMidgardNativeTxCompactV1` keyed by the raw 32-byte tx
  * id), so its root matches the committed `transactions_root` by construction.
  */
 export const prepareNonExistentInputFromTransactions = async ({
@@ -225,7 +225,7 @@ export const prepareNonExistentInputFromTransactions = async ({
   badTxId,
   badInputIndex,
   prevUtxosRoot = EMPTY_MERKLE_TREE_ROOT,
-  prevBlockPayloadCbor,
+  prevBlockPayloadEnvelopeCbor,
   expectedTransactionsRoot,
   outputDir,
 }: {
@@ -234,7 +234,7 @@ export const prepareNonExistentInputFromTransactions = async ({
   readonly badTxId?: string;
   readonly badInputIndex?: string | number;
   readonly prevUtxosRoot?: string;
-  readonly prevBlockPayloadCbor?: Uint8Array;
+  readonly prevBlockPayloadEnvelopeCbor?: Uint8Array;
   readonly expectedTransactionsRoot?: string;
   readonly outputDir?: string;
 }): Promise<PreparedNonExistentInputOutput> => {
@@ -299,12 +299,12 @@ export const prepareNonExistentInputFromTransactions = async ({
   const ledgerNonMembershipProofCbor = await resolveLedgerNonMembershipProof({
     prevUtxosRoot: normalizedPrevUtxosRoot,
     missingInput,
-    prevBlockPayloadCbor,
+    prevBlockPayloadEnvelopeCbor,
   });
 
   const committedTransactionsRoot = await Effect.runPromise(
     commitCountedRootProgram({
-      domain: ROOT_DOMAINS.transactions,
+      domain: ROOT_DOMAINS.transactionsV1,
       phasRoot: transactionsRoot,
       count: BigInt(decoded.length),
     }),
@@ -394,10 +394,10 @@ export const prepareNonExistentInputFromTransactions = async ({
 };
 
 /**
- * Reads a previous-block DA payload file: the `DaPayloadV2` canonical CBOR as a
+ * Reads a previous-block DA payload file: the `DaPayloadEnvelopeV1` canonical CBOR as a
  * hex string (whitespace tolerated). Returns `undefined` when no path is given.
  */
-const readPrevBlockPayloadCbor = async (
+const readPrevBlockPayloadEnvelopeCbor = async (
   path: string | undefined,
 ): Promise<Uint8Array | undefined> => {
   if (path === undefined) {
@@ -411,13 +411,13 @@ export const prepareNonExistentInputFromNode = async (
   config: PrepareNonExistentInputCliConfig,
 ): Promise<PreparedNonExistentInputOutput> => {
   const headerHash = parseHex(config.headerHash, "--header-hash", 28);
-  const [transactions, prevBlockPayloadCbor] = await Promise.all([
+  const [transactions, prevBlockPayloadEnvelopeCbor] = await Promise.all([
     fetchNodeBlockTransactions({
       midgardNodeUrl: config.midgardNodeUrl,
       headerHash,
       fetchImpl: config.fetchImpl,
     }),
-    readPrevBlockPayloadCbor(config.prevBlockPayloadPath),
+    readPrevBlockPayloadEnvelopeCbor(config.prevBlockPayloadPath),
   ]);
   return await prepareNonExistentInputFromTransactions({
     headerHash,
@@ -425,7 +425,7 @@ export const prepareNonExistentInputFromNode = async (
     badTxId: config.badTxId,
     badInputIndex: config.badInputIndex,
     prevUtxosRoot: config.prevUtxosRoot,
-    prevBlockPayloadCbor,
+    prevBlockPayloadEnvelopeCbor,
     expectedTransactionsRoot: config.expectedTransactionsRoot,
     outputDir: config.outputDir,
   });
@@ -434,9 +434,9 @@ export const prepareNonExistentInputFromNode = async (
 export const prepareNonExistentInputFromFile = async (
   config: PrepareNonExistentInputFromFileConfig,
 ): Promise<PreparedNonExistentInputOutput> => {
-  const [transactions, prevBlockPayloadCbor] = await Promise.all([
+  const [transactions, prevBlockPayloadEnvelopeCbor] = await Promise.all([
     readNodeTransactionPayloadsFile(config.transactionsPath),
-    readPrevBlockPayloadCbor(config.prevBlockPayloadPath),
+    readPrevBlockPayloadEnvelopeCbor(config.prevBlockPayloadPath),
   ]);
   return await prepareNonExistentInputFromTransactions({
     headerHash: config.headerHash,
@@ -444,7 +444,7 @@ export const prepareNonExistentInputFromFile = async (
     badTxId: config.badTxId,
     badInputIndex: config.badInputIndex,
     prevUtxosRoot: config.prevUtxosRoot,
-    prevBlockPayloadCbor,
+    prevBlockPayloadEnvelopeCbor,
     expectedTransactionsRoot: config.expectedTransactionsRoot,
     outputDir: config.outputDir,
   });

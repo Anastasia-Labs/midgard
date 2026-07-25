@@ -442,50 +442,6 @@ export class PostgresWatcherStore implements WatcherStore {
         PRIMARY KEY (deployment_fingerprint, signer_index, nonce)
       );
     `);
-    await this.migratePeerIdColumnNames();
-  }
-
-  private async migratePeerIdColumnNames(): Promise<void> {
-    const legacyPeerColumn = ["peer", "base", "url"].join("_");
-    await this.renameColumnIfOnlyLegacyExists(
-      "watcher_peer_broadcasts",
-      legacyPeerColumn,
-      "peer_id",
-    );
-    await this.renameColumnIfOnlyLegacyExists(
-      "watcher_peer_health",
-      legacyPeerColumn,
-      "peer_id",
-    );
-  }
-
-  private async renameColumnIfOnlyLegacyExists(
-    tableName: string,
-    legacyColumnName: string,
-    replacementColumnName: string,
-  ): Promise<void> {
-    const [legacy, replacement] = await Promise.all([
-      this.hasColumn(tableName, legacyColumnName),
-      this.hasColumn(tableName, replacementColumnName),
-    ]);
-    if (legacy && !replacement) {
-      await this.pool.query(
-        `ALTER TABLE ${tableName} RENAME COLUMN ${legacyColumnName} TO ${replacementColumnName}`,
-      );
-    }
-  }
-
-  private async hasColumn(
-    tableName: string,
-    columnName: string,
-  ): Promise<boolean> {
-    const result = await this.pool.query(
-      `SELECT 1
-       FROM information_schema.columns
-       WHERE table_name = $1 AND column_name = $2`,
-      [tableName, columnName],
-    );
-    return result.rowCount === 1;
   }
 
   private async upsertRecord<T extends { readonly headerHash: string }>(

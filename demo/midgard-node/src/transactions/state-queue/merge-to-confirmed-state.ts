@@ -78,9 +78,7 @@ import { synchronizeCommitMpfStoresFromConfirmedLedger } from "@/workers/utils/m
 
 import {
   applyConfirmedLedgerDelta,
-  decodeConfirmedLedgerDelta,
   materializeConfirmedLedgerSnapshot,
-  replaceConfirmedLedgerWithEntries,
 } from "./confirmed-ledger-snapshot.js";
 import {
   classifyOldestQueuedBlockCandidateReadiness,
@@ -192,8 +190,8 @@ export type CanonicalMergeCandidateReadiness =
       readonly status: "candidate";
       readonly confirmedUTxO: SDK.StateQueueUTxO;
       readonly firstBlockUTxO: SDK.StateQueueUTxO;
-      readonly blockHeader: SDK.Header;
-      readonly firstBlockNode: SDK.StateQueueNode;
+      readonly blockHeader: SDK.HeaderV1;
+      readonly firstBlockNode: SDK.StateQueueNodeV1;
       readonly readiness: OldestQueuedBlockCandidateReadiness;
     }
   | {
@@ -313,13 +311,13 @@ export const fetchCanonicalMergeCandidateReadiness = (
     }
 
     const headerNodeKey = firstBlockUTxO.datum.key.Key.key;
-    const firstBlockNode = yield* SDK.getStateQueueNodeFromStateQueueDatum(
+    const firstBlockNode = yield* SDK.getStateQueueNodeV1FromStateQueueDatum(
       firstBlockUTxO.datum,
     );
-    const blockHeader = yield* SDK.getHeaderFromStateQueueDatum(
+    const blockHeader = yield* SDK.getHeaderV1FromStateQueueDatum(
       firstBlockUTxO.datum,
     );
-    const recomputedHeaderHash = yield* SDK.hashBlockHeader(blockHeader);
+    const recomputedHeaderHash = yield* SDK.hashBlockHeaderV1(blockHeader);
     if (recomputedHeaderHash !== headerNodeKey) {
       return yield* Effect.fail(
         new SDK.StateQueueError({
@@ -1112,20 +1110,10 @@ export const buildAndSubmitMergeTx = (
             }),
           );
         }
-        const decodedLedgerDelta = yield* decodeConfirmedLedgerDelta(
+        const confirmedLedgerSnapshot =
+          yield* materializeConfirmedLedgerSnapshot(
           finalizedJournal.value,
         );
-        const confirmedLedgerSnapshot =
-          decodedLedgerDelta === undefined
-            ? yield* materializeConfirmedLedgerSnapshot(finalizedJournal.value)
-            : {
-                entries: decodedLedgerDelta.produced,
-                root: finalizedJournal.value[
-                  PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT
-                ],
-                delta: decodedLedgerDelta,
-              };
-        const confirmedLedgerSnapshotEntries = confirmedLedgerSnapshot.entries;
         const confirmedLedgerSnapshotRoot = confirmedLedgerSnapshot.root;
         const expectedSnapshotRoot =
           finalizedJournal.value[
@@ -1158,38 +1146,21 @@ export const buildAndSubmitMergeTx = (
               projectedForcedTransactionEventIds.length,
             withdrawalEventCount: projectedWithdrawalEventIds.length,
             confirmedLedgerSnapshotRoot,
-            ...(confirmedLedgerSnapshot.delta === undefined
-              ? {
-                  confirmedLedgerSnapshotCount:
-                    confirmedLedgerSnapshotEntries.length,
-                }
-              : {
-                  ledgerDeltaSpentCount:
-                    confirmedLedgerSnapshot.delta.spent.length,
-                  ledgerDeltaProducedCount:
-                    confirmedLedgerSnapshot.delta.produced.length,
-                }),
+            ledgerDeltaSpentCount: confirmedLedgerSnapshot.delta.spent.length,
+            ledgerDeltaProducedCount:
+              confirmedLedgerSnapshot.delta.produced.length,
           },
         });
         const sql = yield* SqlClient.SqlClient;
-        // - Replace from a legacy full snapshot or apply the finalized delta
+        // - Apply the canonical finalized V1 ledger delta
         // - Remove all the tx hashes of the merged block from BlocksDB
         yield* sql
           .withTransaction(
             Effect.gen(function* () {
-              if (confirmedLedgerSnapshot.delta === undefined) {
-                yield* Effect.logInfo(
-                  `🔸 Replace confirmed ledger db from legacy finalized UTxO snapshot (entries=${confirmedLedgerSnapshotEntries.length.toString()},root=${confirmedLedgerSnapshotRoot})...`,
-                );
-                yield* replaceConfirmedLedgerWithEntries(
-                  confirmedLedgerSnapshotEntries,
-                );
-              } else {
-                yield* Effect.logInfo(
-                  `🔸 Apply finalized confirmed-ledger delta (spent=${confirmedLedgerSnapshot.delta.spent.length.toString()},produced=${confirmedLedgerSnapshot.delta.produced.length.toString()},root=${confirmedLedgerSnapshotRoot})...`,
-                );
-                yield* applyConfirmedLedgerDelta(confirmedLedgerSnapshot.delta);
-              }
+              yield* Effect.logInfo(
+                `🔸 Apply finalized confirmed-ledger V1 delta (spent=${confirmedLedgerSnapshot.delta.spent.length.toString()},produced=${confirmedLedgerSnapshot.delta.produced.length.toString()},root=${confirmedLedgerSnapshotRoot})...`,
+              );
+              yield* applyConfirmedLedgerDelta(confirmedLedgerSnapshot.delta);
               yield* Effect.logInfo("🔸 Clear block from BlocksDB...");
               yield* BlocksDB.clearBlock(headerHash).pipe(
                 Effect.withSpan("clear-block-from-BlocksDB"),

@@ -30,7 +30,10 @@ Transaction requests submitted to operators' mempools and forced transaction ord
     \end{array} \right\}
 \end{equation*}
 
-The data-availability payload for this body is \code{DaPayloadBodyV2}. It includes the embedded header, the header hash, all body member arrays above, and the count fields repeated from the header.
+The data-availability payload for this body is \code{DaPayloadBodyV1}. It
+includes the embedded header and hash, all authenticated body member arrays,
+canonical full transaction preimages, CEK program material,
+validation-trace descriptors, and count fields repeated from the header.
 The payload is accepted by DA committee validators only when the embedded header hashes to \code{header\_hash}, the member arrays are canonical and duplicate-free, all counted roots recompute to the header roots, and the repeated counts match both the member arrays and the header.
 
 \Cref{fig:block-transition} shows how the block's \code{utxos} are derived from the previous block's \code{utxos} by applying the block's events.
@@ -179,6 +182,20 @@ These header fields are interpreted as follows:
     \item The \code{operator\_vkey} field is the cryptographic verification key for signatures of the operator who committed the block header to the L1 state queue.
     \item The \code{protocol\_version} is the Midgard protocol version that applies to this block.
 \end{itemize}
+
+For the launch profile, \code{protocol\_version} must equal (0), and every
+\code{TransitionStep.schema\_version} must equal (1). Version comparison is
+exact: an unknown higher or lower version is invalid rather than being treated
+as backward compatible.
+
+The launch count bounds are (10{,}000) members for each of withdrawals,
+forced transactions, normal L2 transactions, and deposits, with at most
+(40{,}000) total events and transition steps. The corresponding DA payload
+is additionally bounded to (32\,MiB) of canonical normal-transaction
+bytes, (40{,}000) ledger operations, and (64\,MiB) total canonical
+payload bytes. Header count bounds are checked by the L1 state-queue validator;
+payload and transaction bounds are checked before the DA committee may attest,
+and merge requires that attestation.
 
 \subsection{Transition trace commitments}
 \label{h:transition-trace-commitments}

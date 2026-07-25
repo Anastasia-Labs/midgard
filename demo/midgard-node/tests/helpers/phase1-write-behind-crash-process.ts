@@ -2,8 +2,8 @@ import { Effect } from "effect";
 
 import * as TxAdmissionsDB from "@/database/txAdmissions.js";
 import type * as Ledger from "@/database/utils/ledger.js";
-import { Database } from "@/services/database.js";
 import { NodeConfig } from "@/services/config.js";
+import { Database } from "@/services/database.js";
 import {
   WriteBehind,
   type WriteBehindService,

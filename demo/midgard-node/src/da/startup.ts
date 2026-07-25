@@ -6,28 +6,14 @@ import {
   loadDaProducerPublicationManifestFromEnv,
 } from "@/da/libp2p-producer.js";
 import {
-  DatabaseInitializationError,
   ContractDeploymentIdentity,
   type ContractDeploymentIdentityValue,
+  DatabaseInitializationError,
   Lucid,
   MidgardContracts,
   NodeConfig,
 } from "@/services/index.js";
 import { fetchDaParamsUtxo } from "@/transactions/da-attestation.js";
-
-export const assertDaEnvelopeManifestConfigured = (
-  envelopeMode: "off" | "identity" | "zstd",
-  manifest: Awaited<
-    ReturnType<typeof loadDaProducerPublicationManifestFromEnv>
-  >,
-): void => {
-  if (envelopeMode !== "off" && manifest === null) {
-    throw new DatabaseInitializationError({
-      message: `DA ${envelopeMode} envelope mode requires a configured publication manifest`,
-      cause: "no libp2p DA manifest configured",
-    });
-  }
-};
 
 export const assertDaThresholdCompatible = (
   transportThreshold: number,
@@ -65,7 +51,7 @@ export const assertDaDeploymentIdentityCompatible = (
 };
 
 export type DaHardeningStartupPreflight = {
-  readonly envelopeMode: "off" | "identity" | "zstd";
+  readonly envelopeMode: "identity" | "zstd";
   readonly manifest: Awaited<
     ReturnType<typeof loadDaProducerPublicationManifestFromEnv>
   >;
@@ -94,13 +80,6 @@ export const prepareDaHardeningStartup = Effect.gen(function* () {
         cause,
       }),
   });
-  yield* Effect.try({
-    try: () => assertDaEnvelopeManifestConfigured(envelopeMode, manifest),
-    catch: (cause) => cause as DatabaseInitializationError,
-  });
-  if (manifest === null) {
-    return { envelopeMode, manifest } satisfies DaHardeningStartupPreflight;
-  }
   const contractIdentity = yield* ContractDeploymentIdentity;
   yield* Effect.try({
     try: () =>
@@ -119,9 +98,6 @@ export const assertDaHardeningProviderStartup = ({
   manifest,
 }: DaHardeningStartupPreflight) =>
   Effect.gen(function* () {
-    if (manifest === null) {
-      return;
-    }
     const lucid = yield* Lucid;
     const contracts = yield* MidgardContracts;
     const daParams = yield* fetchDaParamsUtxo(lucid.api, contracts).pipe(
@@ -141,20 +117,18 @@ export const assertDaHardeningProviderStartup = ({
         ),
       catch: (cause) => cause as DatabaseInitializationError,
     });
-    if (envelopeMode !== "off") {
-      yield* Effect.tryPromise({
-        try: () =>
-          assertDaEnvelopeCapabilityQuorum({
-            manifest,
-            mode: envelopeMode,
-          }),
-        catch: (cause) =>
-          new DatabaseInitializationError({
-            message: `DA ${envelopeMode} envelope capability quorum failed at startup`,
-            cause,
-          }),
-      });
-    }
+    yield* Effect.tryPromise({
+      try: () =>
+        assertDaEnvelopeCapabilityQuorum({
+          manifest,
+          mode: envelopeMode,
+        }),
+      catch: (cause) =>
+        new DatabaseInitializationError({
+          message: `DA ${envelopeMode} envelope capability quorum failed at startup`,
+          cause,
+        }),
+    });
   });
 
 /**

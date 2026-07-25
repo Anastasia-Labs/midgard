@@ -1,5 +1,6 @@
 import { availableParallelism } from "node:os";
 
+import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS,
@@ -132,7 +133,7 @@ export type NodeConfigDep = {
   OPERATOR_SLASHING_PENALTY_LOVELACE: bigint;
   DA_COMMITTEE_HEX: string;
   DA_THRESHOLD: bigint | null;
-  MIDGARD_DA_PAYLOAD_ENVELOPE: "off" | "identity" | "zstd";
+  MIDGARD_DA_PAYLOAD_ENVELOPE: "identity" | "zstd";
   MIDGARD_DA_ZSTD_LEVEL: number;
   MIDGARD_DA_PUBLISH_CONCURRENCY: number;
   MIDGARD_DA_PUBLISH_RECONCILE_INTERVAL_MS: number;
@@ -182,35 +183,13 @@ export type NodeConfigDep = {
   LEDGER_MPF_DB_PATH: string;
   TRANSACTIONS_MPF_DB_PATH: string;
   GENESIS_UTXOS: UTxO[];
-  /** Preserves configured wallet identity even when an isolated harness aliases C=A. */
+  /** Preserves configured wallet identity when an isolated harness maps C=A. */
   GENESIS_UTXOS_BY_WALLET?: Readonly<{
     A: readonly UTxO[];
     B: readonly UTxO[];
     C: readonly UTxO[];
   }>;
 };
-
-const rejectDeprecatedRootStoreEnvVars = Effect.sync(() => {
-  const deprecated = [
-    ["LEDGER_MPT_DB_PATH", "LEDGER_MPF_DB_PATH"],
-    ["MEMPOOL_MPT_DB_PATH", "TRANSACTIONS_MPF_DB_PATH"],
-    ["MEMPOOL_MPF_DB_PATH", "TRANSACTIONS_MPF_DB_PATH"],
-    ["L1_PROVIDER_FAILOVER", "local Kupmios configuration"],
-  ] as const;
-  const configuredDeprecated = deprecated.filter(
-    ([name]) => process.env[name] !== undefined,
-  );
-  if (configuredDeprecated.length > 0) {
-    throw new Error(
-      configuredDeprecated
-        .map(
-          ([name, replacement]) =>
-            `${name} is no longer supported; use ${replacement}`,
-        )
-        .join("; "),
-    );
-  }
-});
 
 const positiveSafeIntegerConfig = (name: string, defaultValue: number) =>
   Config.integer(name).pipe(
@@ -239,7 +218,6 @@ const positiveFiniteNumberConfig = (name: string, defaultValue: number) =>
  * variables.
  */
 const makeConfig = Effect.gen(function* () {
-  yield* rejectDeprecatedRootStoreEnvVars;
   const provider = yield* Config.literal("Kupmios")("L1_PROVIDER");
   const ogmiosKey = yield* Config.string("L1_OGMIOS_KEY");
   const kupoKey = yield* Config.string("L1_KUPO_KEY");
@@ -515,7 +493,21 @@ const makeConfig = Effect.gen(function* () {
   ).pipe(Config.withDefault(10_000));
   const maxSubmitTxCborBytes = yield* Config.integer(
     "MAX_SUBMIT_TX_CBOR_BYTES",
-  ).pipe(Config.withDefault(32_768));
+  ).pipe(
+    Config.withDefault(MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes),
+    Config.mapAttempt((value) => {
+      if (
+        !Number.isSafeInteger(value) ||
+        value <= 0 ||
+        value > MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes
+      ) {
+        throw new Error(
+          `MAX_SUBMIT_TX_CBOR_BYTES must be between 1 and ${MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes.toString()}`,
+        );
+      }
+      return value;
+    }),
+  );
   const readinessMaxHeartbeatAgeMs = yield* Config.integer(
     "READINESS_MAX_HEARTBEAT_AGE_MS",
   ).pipe(Config.withDefault(120_000));
@@ -867,15 +859,42 @@ const makeConfig = Effect.gen(function* () {
   );
   const commitMaxL2TxCount = yield* positiveSafeIntegerConfig(
     "COMMIT_MAX_L2_TX_COUNT",
-    10_000,
+    MIDGARD_CONSENSUS_LIMITS_V1.maxL2TransactionCount,
+  ).pipe(
+    Config.mapAttempt((value) => {
+      if (value > MIDGARD_CONSENSUS_LIMITS_V1.maxL2TransactionCount) {
+        throw new Error(
+          `COMMIT_MAX_L2_TX_COUNT must be <= ${MIDGARD_CONSENSUS_LIMITS_V1.maxL2TransactionCount.toString()}`,
+        );
+      }
+      return value;
+    }),
   );
   const commitMaxLedgerOpCount = yield* positiveSafeIntegerConfig(
     "COMMIT_MAX_LEDGER_OP_COUNT",
-    40_000,
+    MIDGARD_CONSENSUS_LIMITS_V1.maxLedgerOperationCount,
+  ).pipe(
+    Config.mapAttempt((value) => {
+      if (value > MIDGARD_CONSENSUS_LIMITS_V1.maxLedgerOperationCount) {
+        throw new Error(
+          `COMMIT_MAX_LEDGER_OP_COUNT must be <= ${MIDGARD_CONSENSUS_LIMITS_V1.maxLedgerOperationCount.toString()}`,
+        );
+      }
+      return value;
+    }),
   );
   const commitMaxTransitionStepCount = yield* positiveSafeIntegerConfig(
     "COMMIT_MAX_TRANSITION_STEP_COUNT",
-    40_000,
+    MIDGARD_CONSENSUS_LIMITS_V1.maxTransitionStepCount,
+  ).pipe(
+    Config.mapAttempt((value) => {
+      if (value > MIDGARD_CONSENSUS_LIMITS_V1.maxTransitionStepCount) {
+        throw new Error(
+          `COMMIT_MAX_TRANSITION_STEP_COUNT must be <= ${MIDGARD_CONSENSUS_LIMITS_V1.maxTransitionStepCount.toString()}`,
+        );
+      }
+      return value;
+    }),
   );
   const commitBuildCostModel = yield* Config.literal(
     "static",

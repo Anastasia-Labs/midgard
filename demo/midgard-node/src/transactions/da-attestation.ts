@@ -322,13 +322,13 @@ const fetchUnattestedHeaders = (
       if (stateQueueUtxo.datum.key === "Empty") {
         continue;
       }
-      const node = yield* SDK.getStateQueueNodeFromStateQueueDatum(
+      const node = yield* SDK.getStateQueueNodeV1FromStateQueueDatum(
         stateQueueUtxo.datum,
       );
       if (node.da_attestation !== SDK.NO_DA_ATTESTATION) {
         continue;
       }
-      const recomputedHeaderHash = yield* SDK.hashBlockHeader(node.header);
+      const recomputedHeaderHash = yield* SDK.hashBlockHeaderV1(node.header);
       const datumHeaderHash = stateQueueUtxo.datum.key.Key.key;
       if (recomputedHeaderHash !== datumHeaderHash) {
         return yield* Effect.fail(

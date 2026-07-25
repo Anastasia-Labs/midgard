@@ -60,22 +60,7 @@ export const daAttestationValidatorsFromDeployment = (
 export const parseMidgardNodeDeploymentInfo = (
   deploymentInfo: Record<string, unknown>,
   network: string,
-): MidgardNodeDeployment | undefined => {
-  const keys = [
-    "daAttestationMint",
-    "daAttestationSpend",
-    "daParamsGovernorMint",
-    "daParamsGovernorSpend",
-    "stateQueueMint",
-    "stateQueueSpend",
-  ] as const;
-  if (
-    !keys.some(
-      (key) => objectAt(deploymentInfo, ["contracts", key]) !== undefined,
-    )
-  ) {
-    return undefined;
-  }
+): MidgardNodeDeployment => {
   const lucidNetwork = normalizeLucidNetwork(network);
   return {
     daAttestation: authenticatedDeployment(
@@ -100,23 +85,17 @@ export const parseMidgardNodeDeploymentInfo = (
 };
 
 export const normalizeLucidNetwork = (value: string): LucidNetwork => {
-  const normalized = value.trim().toLowerCase();
-  switch (normalized) {
-    case "mainnet":
-      return "Mainnet";
-    case "preprod":
-    case "pre-production":
-    case "preproduction":
-      return "Preprod";
-    case "preview":
-      return "Preview";
-    case "custom":
-      return "Custom";
-    default:
-      throw new Error(
-        `unsupported Cardano network ${value}; expected Mainnet, Preprod, Preview, or Custom`,
-      );
+  if (
+    value === "Mainnet" ||
+    value === "Preprod" ||
+    value === "Preview" ||
+    value === "Custom"
+  ) {
+    return value;
   }
+  throw new Error(
+    `unsupported Cardano network ${value}; expected Mainnet, Preprod, Preview, or Custom`,
+  );
 };
 
 const authenticatedDeployment = (
@@ -168,29 +147,33 @@ const deploymentContract = (
   if (root === undefined) {
     throw new Error(`${label} contract deployment entry is required`);
   }
+  requireExactKeys(
+    root,
+    ["refScriptUTxO", "contract", "scriptHash"],
+    `${label} contract deployment entry`,
+  );
   const contract = objectAt(root, ["contract"]);
   if (contract === undefined) {
     throw new Error(`${label} contract object is required`);
   }
+  requireExactKeys(contract, ["type", "cborHex"], `${label} contract`);
   const script = deploymentScript(contract, label);
-  const scriptHash =
+  const derivedScriptHash =
     purpose === "mint"
       ? mintingPolicyToId(script as never)
       : validatorToScriptHash(script as never);
   const configuredScriptHash = stringAt(root, ["scriptHash"]);
-  if (
-    configuredScriptHash !== undefined &&
-    configuredScriptHash.trim() !== ""
-  ) {
-    const normalizedConfigured = normalizeHex(configuredScriptHash, {
-      fieldName: `${label} scriptHash`,
-      byteLength: 28,
-    });
-    if (normalizedConfigured !== scriptHash) {
-      throw new Error(
-        `${label} scriptHash mismatch: configured=${normalizedConfigured}, derived=${scriptHash}`,
-      );
-    }
+  if (configuredScriptHash === undefined || configuredScriptHash.trim() === "") {
+    throw new Error(`${label} scriptHash is required`);
+  }
+  const scriptHash = normalizeHex(configuredScriptHash, {
+    fieldName: `${label} scriptHash`,
+    byteLength: 28,
+  });
+  if (scriptHash !== derivedScriptHash) {
+    throw new Error(
+      `${label} scriptHash mismatch: configured=${scriptHash}, derived=${derivedScriptHash}`,
+    );
   }
   return {
     key,
@@ -227,6 +210,11 @@ const deploymentOutRef = (
   if (refScriptUTxO === undefined) {
     throw new Error(`${label} refScriptUTxO is required`);
   }
+  requireExactKeys(
+    refScriptUTxO,
+    ["txHash", "outputIndex"],
+    `${label} refScriptUTxO`,
+  );
   const txHash = stringAt(refScriptUTxO, ["txHash"]);
   const outputIndex = valueAt(refScriptUTxO, ["outputIndex"]);
   if (txHash === undefined) {
@@ -285,3 +273,21 @@ const valueAt = (
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+
+const requireExactKeys = (
+  value: Record<string, unknown>,
+  keys: readonly string[],
+  fieldName: string,
+): void => {
+  const expected = new Set(keys);
+  for (const key of Object.keys(value)) {
+    if (!expected.has(key)) {
+      throw new Error(`${fieldName}.${key} is unexpected`);
+    }
+  }
+  for (const key of keys) {
+    if (!Object.hasOwn(value, key)) {
+      throw new Error(`${fieldName}.${key} is required`);
+    }
+  }
+};

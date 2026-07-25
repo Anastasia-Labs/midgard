@@ -71,47 +71,45 @@ fn midgard_credential_from_hash(
 }
 
 pub fn encode_midgard_address(address: MidgardAddress) -> ByteArray {
-  let MidgardAddress {
-    protected,
-    network_id,
-    payment_credential,
-    stake_credential,
-  } = address
+  let
+      MidgardAddress {
+        protected,
+        network_id,
+        payment_credential,
+        stake_credential,
+      }
+    = address
   expect or {
       network_id == 0,
       network_id == 1,
     }
   let payment_hash = midgard_credential_hash(payment_credential)
-  let address_type =
-    when stake_credential is {
-      Some(stake_credential) -> {
-        let payment_offset =
-          if midgard_credential_is_script(payment_credential) {
-            1
-          } else {
-            0
-          }
-        let stake_offset =
-          if midgard_credential_is_script(stake_credential) {
-            2
-          } else {
-            0
-          }
-        payment_offset + stake_offset
+  let address_type = when stake_credential is {
+    Some(stake_credential) -> {
+      let payment_offset = if midgard_credential_is_script(payment_credential) {
+        1
+      } else {
+        0
       }
-      None ->
-        if midgard_credential_is_script(payment_credential) {
-          7
-        } else {
-          6
-        }
+      let stake_offset = if midgard_credential_is_script(stake_credential) {
+        2
+      } else {
+        0
+      }
+      payment_offset + stake_offset
     }
-  let protected_offset =
-    if protected {
-      8
-    } else {
-      0
-    }
+    None ->
+      if midgard_credential_is_script(payment_credential) {
+        7
+      } else {
+        6
+      }
+  }
+  let protected_offset = if protected {
+    8
+  } else {
+    0
+  }
   let header = address_type * 16 + network_id + protected_offset
   let payment_address = bytearray.push(payment_hash, header)
   when stake_credential is {
@@ -135,54 +133,50 @@ fn decode_midgard_address_payload(
   let address_type = header / 16
   let network_nibble = header - address_type * 16
   let protected = network_nibble >= 8
-  let network_id =
-    if protected {
-      network_nibble - 8
-    } else {
-      network_nibble
-    }
+  let network_id = if protected {
+    network_nibble - 8
+  } else {
+    network_nibble
+  }
   expect or {
       network_id == 0,
       network_id == 1,
     }
   let payment_is_script = or {
-      address_type == 1,
+    address_type == 1,
+    address_type == 3,
+    address_type == 7,
+  }
+  let payment_credential = midgard_credential_from_hash(
+    payment_is_script,
+    slice_len(bytes, offset + 1, 28),
+  )
+  let stake_credential = if length == 57 {
+    expect address_type <= 3
+    let stake_is_script = or {
+      address_type == 2,
       address_type == 3,
-      address_type == 7,
     }
-  let payment_credential =
-    midgard_credential_from_hash(
-      payment_is_script,
-      slice_len(bytes, offset + 1, 28),
+    Some(
+      midgard_credential_from_hash(
+        stake_is_script,
+        slice_len(bytes, offset + 29, 28),
+      ),
     )
-  let stake_credential =
-    if length == 57 {
-      expect address_type <= 3
-      let stake_is_script = or {
-          address_type == 2,
-          address_type == 3,
-        }
-      Some(
-        midgard_credential_from_hash(
-          stake_is_script,
-          slice_len(bytes, offset + 29, 28),
-        ),
-      )
-    } else {
-      expect or {
-          address_type == 6,
-          address_type == 7,
-        }
-      None
-    }
+  } else {
+    expect or {
+        address_type == 6,
+        address_type == 7,
+      }
+    None
+  }
 
-  let address =
-    MidgardAddress {
-      protected,
-      network_id,
-      payment_credential,
-      stake_credential,
-    }
+  let address = MidgardAddress {
+    protected,
+    network_id,
+    payment_credential,
+    stake_credential,
+  }
   address
 }
 
@@ -330,16 +324,15 @@ fn count_policy_groups(
     [] -> 0
     [Pair(unit, _), ..rest] -> {
       let policy_id = asset_unit_policy_id(unit)
-      let increment =
-        when previous_policy_id is {
-          Some(previous_policy_id) ->
-            if policy_id == previous_policy_id {
-              0
-            } else {
-              1
-            }
-          None -> 1
-        }
+      let increment = when previous_policy_id is {
+        Some(previous_policy_id) ->
+          if policy_id == previous_policy_id {
+            0
+          } else {
+            1
+          }
+        None -> 1
+      }
       increment + count_policy_groups(rest, Some(policy_id))
     }
   }
@@ -416,13 +409,12 @@ fn decode_midgard_asset_quantities_at(
     expect _asset_name = expect_asset_name(asset_name)
     let Pair(offset, quantity) = decode_uint_at(bytes, offset)
     expect quantity > 0
-    let Pair(offset, rest) =
-      decode_midgard_asset_quantities_at(
-        bytes,
-        offset,
-        remaining - 1,
-        policy_id,
-      )
+    let Pair(offset, rest) = decode_midgard_asset_quantities_at(
+      bytes,
+      offset,
+      remaining - 1,
+      policy_id,
+    )
     Pair(
       offset,
       [Pair(policy_id |> bytearray.concat(asset_name), quantity), ..rest],
@@ -441,10 +433,17 @@ fn decode_midgard_policy_assets_at(
     let Pair(offset, policy_id) = decode_h28_at(bytes, offset)
     let Pair(offset, asset_count) = decode_definite_map_header_at(bytes, offset)
     expect asset_count > 0
-    let Pair(offset, policy_assets) =
-      decode_midgard_asset_quantities_at(bytes, offset, asset_count, policy_id)
-    let Pair(offset, rest_assets) =
-      decode_midgard_policy_assets_at(bytes, offset, remaining - 1)
+    let Pair(offset, policy_assets) = decode_midgard_asset_quantities_at(
+      bytes,
+      offset,
+      asset_count,
+      policy_id,
+    )
+    let Pair(offset, rest_assets) = decode_midgard_policy_assets_at(
+      bytes,
+      offset,
+      remaining - 1,
+    )
     Pair(offset, append_assets(policy_assets, rest_assets))
   }
 }
@@ -456,8 +455,11 @@ fn decode_midgard_value_at(
   let offset = expect_byte(bytes, offset, 130)
   let Pair(offset, lovelace) = decode_uint_at(bytes, offset)
   let Pair(offset, policy_count) = decode_definite_map_header_at(bytes, offset)
-  let Pair(offset, assets) =
-    decode_midgard_policy_assets_at(bytes, offset, policy_count)
+  let Pair(offset, assets) = decode_midgard_policy_assets_at(
+    bytes,
+    offset,
+    policy_count,
+  )
   Pair(offset, MidgardValue { lovelace, assets })
 }
 
@@ -535,14 +537,11 @@ pub fn decode_midgard_versioned_script_data(
 
 pub fn encode_midgard_tx_output(output: MidgardTxOutput) -> ByteArray {
   let MidgardTxOutput { address, value, datum_cbor, script_ref } = output
-  let required_entries =
-    #"a2"
-      |> bytearray.concat(cbor.serialise(0))
-      |> bytearray.concat(
-          encode_definite_bytes(encode_midgard_address(address)),
-        )
-      |> bytearray.concat(cbor.serialise(1))
-      |> bytearray.concat(encode_midgard_value(value))
+  let required_entries = #"a2"
+    |> bytearray.concat(cbor.serialise(0))
+    |> bytearray.concat(encode_definite_bytes(encode_midgard_address(address)))
+    |> bytearray.concat(cbor.serialise(1))
+    |> bytearray.concat(encode_midgard_value(value))
   when datum_cbor is {
     Some(datum_cbor) ->
       when script_ref is {
@@ -588,69 +587,66 @@ pub fn encode_midgard_tx_output(output: MidgardTxOutput) -> ByteArray {
 
 pub fn decode_midgard_tx_output_data(data: Data) -> MidgardTxOutput {
   let entries = builtin.un_map_data(data)
-  let output =
-    when entries is {
-      [Pair(key_0, address_data), Pair(key_1, value_data)] -> {
-        expect builtin.un_i_data(key_0) == 0
-        expect builtin.un_i_data(key_1) == 1
+  let output = when entries is {
+    [Pair(key_0, address_data), Pair(key_1, value_data)] -> {
+      expect builtin.un_i_data(key_0) == 0
+      expect builtin.un_i_data(key_1) == 1
+      MidgardTxOutput {
+        address: address_data
+          |> builtin.un_b_data
+          |> decode_midgard_address_bytes,
+        value: decode_midgard_value_data(value_data),
+        datum_cbor: None,
+        script_ref: None,
+      }
+    }
+    [
+      Pair(key_0, address_data), Pair(key_1, value_data),
+      Pair(key_2, extra_data),
+    ] -> {
+      expect builtin.un_i_data(key_0) == 0
+      expect builtin.un_i_data(key_1) == 1
+      let extra_key = builtin.un_i_data(key_2)
+      if extra_key == 2 {
+        MidgardTxOutput {
+          address: address_data
+            |> builtin.un_b_data
+            |> decode_midgard_address_bytes,
+          value: decode_midgard_value_data(value_data),
+          datum_cbor: Some(builtin.un_b_data(extra_data)),
+          script_ref: None,
+        }
+      } else {
+        expect extra_key == 3
         MidgardTxOutput {
           address: address_data
             |> builtin.un_b_data
             |> decode_midgard_address_bytes,
           value: decode_midgard_value_data(value_data),
           datum_cbor: None,
-          script_ref: None,
+          script_ref: Some(decode_midgard_versioned_script_data(extra_data)),
         }
       }
-      [
-        Pair(key_0, address_data), Pair(key_1, value_data),
-        Pair(key_2, extra_data),
-      ] -> {
-        expect builtin.un_i_data(key_0) == 0
-        expect builtin.un_i_data(key_1) == 1
-        let extra_key = builtin.un_i_data(key_2)
-        if extra_key == 2 {
-          MidgardTxOutput {
-            address: address_data
-              |> builtin.un_b_data
-              |> decode_midgard_address_bytes,
-            value: decode_midgard_value_data(value_data),
-            datum_cbor: Some(builtin.un_b_data(extra_data)),
-            script_ref: None,
-          }
-        } else {
-          expect extra_key == 3
-          MidgardTxOutput {
-            address: address_data
-              |> builtin.un_b_data
-              |> decode_midgard_address_bytes,
-            value: decode_midgard_value_data(value_data),
-            datum_cbor: None,
-            script_ref: Some(decode_midgard_versioned_script_data(extra_data)),
-          }
-        }
-      }
-      [
-        Pair(key_0, address_data), Pair(key_1, value_data),
-        Pair(key_2, datum_data), Pair(key_3, script_ref_data),
-      ] -> {
-        expect builtin.un_i_data(key_0) == 0
-        expect builtin.un_i_data(key_1) == 1
-        expect builtin.un_i_data(key_2) == 2
-        expect builtin.un_i_data(key_3) == 3
-        MidgardTxOutput {
-          address: address_data
-            |> builtin.un_b_data
-            |> decode_midgard_address_bytes,
-          value: decode_midgard_value_data(value_data),
-          datum_cbor: Some(builtin.un_b_data(datum_data)),
-          script_ref: Some(
-            decode_midgard_versioned_script_data(script_ref_data),
-          ),
-        }
-      }
-      _ -> fail
     }
+    [
+      Pair(key_0, address_data), Pair(key_1, value_data),
+      Pair(key_2, datum_data), Pair(key_3, script_ref_data),
+    ] -> {
+      expect builtin.un_i_data(key_0) == 0
+      expect builtin.un_i_data(key_1) == 1
+      expect builtin.un_i_data(key_2) == 2
+      expect builtin.un_i_data(key_3) == 3
+      MidgardTxOutput {
+        address: address_data
+          |> builtin.un_b_data
+          |> decode_midgard_address_bytes,
+        value: decode_midgard_value_data(value_data),
+        datum_cbor: Some(builtin.un_b_data(datum_data)),
+        script_ref: Some(decode_midgard_versioned_script_data(script_ref_data)),
+      }
+    }
+    _ -> fail
+  }
   output
 }
 
@@ -674,8 +670,10 @@ pub fn decode_midgard_tx_output_cbor(output_cbor: ByteArray) -> MidgardTxOutput 
     let extra_key = byte_at(output_cbor, offset)
     let offset = offset + 1
     if extra_key == 2 {
-      let Pair(offset, datum_cbor) =
-        decode_definite_bytes_at(output_cbor, offset)
+      let Pair(offset, datum_cbor) = decode_definite_bytes_at(
+        output_cbor,
+        offset,
+      )
       if entry_count == 3 {
         expect offset == bytearray.length(output_cbor)
         MidgardTxOutput {
@@ -687,8 +685,10 @@ pub fn decode_midgard_tx_output_cbor(output_cbor: ByteArray) -> MidgardTxOutput 
       } else {
         expect entry_count == 4
         let offset = expect_byte(output_cbor, offset, 3)
-        let Pair(offset, script_ref) =
-          decode_midgard_versioned_script_at(output_cbor, offset)
+        let Pair(offset, script_ref) = decode_midgard_versioned_script_at(
+          output_cbor,
+          offset,
+        )
         expect offset == bytearray.length(output_cbor)
         MidgardTxOutput {
           address,
@@ -700,8 +700,10 @@ pub fn decode_midgard_tx_output_cbor(output_cbor: ByteArray) -> MidgardTxOutput 
     } else {
       expect extra_key == 3
       expect entry_count == 3
-      let Pair(offset, script_ref) =
-        decode_midgard_versioned_script_at(output_cbor, offset)
+      let Pair(offset, script_ref) = decode_midgard_versioned_script_at(
+        output_cbor,
+        offset,
+      )
       expect offset == bytearray.length(output_cbor)
       MidgardTxOutput {
         address,
@@ -727,8 +729,10 @@ pub fn decode_midgard_address_witness_cbor(
   witness_cbor: ByteArray,
 ) -> MidgardAddressWitness {
   let offset = expect_byte(witness_cbor, 0, 130)
-  let Pair(offset, verification_key) =
-    decode_definite_bytes_at(witness_cbor, offset)
+  let Pair(offset, verification_key) = decode_definite_bytes_at(
+    witness_cbor,
+    offset,
+  )
   expect bytearray.length(verification_key) == 32
   let Pair(offset, signature) = decode_definite_bytes_at(witness_cbor, offset)
   expect bytearray.length(signature) == 64
@@ -778,8 +782,8 @@ fn decode_midgard_redeemer_purpose_tag_at(
 pub fn encode_midgard_redeemer_witness_data(
   witness: MidgardRedeemerWitness,
 ) -> Data {
-  let MidgardRedeemerWitness { purpose, index, redeemer_cbor, execution_units } =
-    witness
+  let MidgardRedeemerWitness { purpose, index, redeemer_cbor, execution_units }
+    = witness
   expect index >= 0
   expect execution_units.memory >= 0
   expect execution_units.steps >= 0
@@ -801,8 +805,8 @@ pub fn encode_midgard_redeemer_witness_data(
 pub fn encode_midgard_redeemer_witness(
   witness: MidgardRedeemerWitness,
 ) -> ByteArray {
-  let MidgardRedeemerWitness { purpose, index, redeemer_cbor, execution_units } =
-    witness
+  let MidgardRedeemerWitness { purpose, index, redeemer_cbor, execution_units }
+    = witness
   expect index >= 0
   expect execution_units.memory >= 0
   expect execution_units.steps >= 0
@@ -822,8 +826,10 @@ pub fn decode_midgard_redeemer_witness_at(
   offset: Int,
 ) -> Pair<Int, MidgardRedeemerWitness> {
   let offset = expect_byte(bytes, offset, 132)
-  let Pair(offset, purpose_tag) =
-    decode_midgard_redeemer_purpose_tag_at(bytes, offset)
+  let Pair(offset, purpose_tag) = decode_midgard_redeemer_purpose_tag_at(
+    bytes,
+    offset,
+  )
   let Pair(offset, index) = decode_uint_at(bytes, offset)
   let Pair(offset, redeemer_cbor) = decode_definite_bytes_at(bytes, offset)
   let offset = expect_byte(bytes, offset, 130)
@@ -844,20 +850,19 @@ pub fn decode_midgard_redeemer_witness_data(
   data: Data,
 ) -> MidgardRedeemerWitness {
   expect [purpose_data,
-    index_data,
-    redeemer_cbor_data, execution_units_data] = builtin.un_list_data(data)
+        index_data,
+        redeemer_cbor_data, execution_units_data] = builtin.un_list_data(data)
   expect [memory_data, steps_data] = builtin.un_list_data(execution_units_data)
-  let witness =
-    MidgardRedeemerWitness {
-      purpose: purpose_data
-        |> builtin.un_i_data
-        |> midgard_redeemer_purpose_from_tag,
-      index: builtin.un_i_data(index_data),
-      redeemer_cbor: builtin.un_b_data(redeemer_cbor_data),
-      execution_units: MidgardExecutionUnits {
-        memory: builtin.un_i_data(memory_data),
-        steps: builtin.un_i_data(steps_data),
-      },
-    }
+  let witness = MidgardRedeemerWitness {
+    purpose: purpose_data
+      |> builtin.un_i_data
+      |> midgard_redeemer_purpose_from_tag,
+    index: builtin.un_i_data(index_data),
+    redeemer_cbor: builtin.un_b_data(redeemer_cbor_data),
+    execution_units: MidgardExecutionUnits {
+      memory: builtin.un_i_data(memory_data),
+      steps: builtin.un_i_data(steps_data),
+    },
+  }
   witness
 }

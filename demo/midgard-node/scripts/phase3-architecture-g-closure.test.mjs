@@ -62,13 +62,13 @@ const identity = () => ({
   deployment: {
     path: "/evidence/deployment.json",
     sha256: hash("6"),
-    schemaVersion: "midgard-deployment-manifest-v2",
+    schemaVersion: "midgard-deployment-manifest-v1",
     manifestId: hash("8"),
   },
   phase1: {
     path: "/evidence/phase1.json",
     sha256: hash("9"),
-    schemaVersion: "midgard-phase1-live-corpus-binding-v2",
+    schemaVersion: "midgard-phase1-live-corpus-binding-v1",
     deploymentManifestId: hash("8"),
     nodeImageId: `sha256:${hash("7")}`,
     nodeContainerId: "container-id",

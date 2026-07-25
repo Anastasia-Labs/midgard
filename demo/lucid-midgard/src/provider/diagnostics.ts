@@ -25,13 +25,10 @@ export const redactEndpoint = (endpoint: string): string => {
 export const providerDiagnostics = ({
   endpoint,
   protocolInfoSource,
-  protocolInfoFallbackReason,
 }: {
   readonly endpoint: string;
   readonly protocolInfoSource: ProviderDiagnostics["protocolInfoSource"];
-  readonly protocolInfoFallbackReason?: string;
 }): ProviderDiagnostics => ({
   endpoint: redactEndpoint(endpoint),
   protocolInfoSource,
-  protocolInfoFallbackReason,
 });

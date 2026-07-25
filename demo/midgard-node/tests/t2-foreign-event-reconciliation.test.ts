@@ -14,7 +14,7 @@ const emptyIds = (): T2CandidateEventIds => ({
   withdrawals: [],
 });
 
-const headerFor = (overrides: Partial<SDK.Header> = {}): SDK.Header => ({
+const headerFor = (overrides: Partial<SDK.HeaderV1> = {}): SDK.HeaderV1 => ({
   prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
   utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
   withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
@@ -23,14 +23,20 @@ const headerFor = (overrides: Partial<SDK.Header> = {}): SDK.Header => ({
   depositsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
   transitionTraceRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
   eventToStepRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+  validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
   withdrawalCount: 0n,
   forcedTransactionCount: 0n,
   l2TransactionCount: 0n,
   depositCount: 0n,
   totalEventCount: 0n,
   transitionStepCount: 0n,
+  validationTraceCount: 0n,
   startTime: 1n,
   endTime: 2n,
+  blockSlot: 0n,
+  expectedNetworkId: 0n,
+  minFeeA: 0n,
+  minFeeB: 0n,
   prevHeaderHash: "11".repeat(28),
   operatorVkey: "22".repeat(28),
   protocolVersion: 1n,
@@ -42,12 +48,12 @@ const resolve = async ({
   candidateIds,
   payload,
 }: {
-  readonly header: SDK.Header;
+  readonly header: SDK.HeaderV1;
   readonly candidateIds: T2CandidateEventIds;
-  readonly payload?: SDK.DaPayloadV2;
+  readonly payload?: SDK.DaPayloadV1;
 }) =>
   Effect.runPromise(
-    SDK.hashBlockHeader(header).pipe(
+    SDK.hashBlockHeaderV1(header).pipe(
       Effect.flatMap((foreignHeaderHash) =>
         resolveT2ForeignEventEvidence({
           foreignHeaderHash,
@@ -60,16 +66,17 @@ const resolve = async ({
   );
 
 const oneDepositPayload = async (depositId: string) => {
-  const counts: SDK.DaPayloadCountsV2 = {
+  const counts: SDK.DaPayloadCountsV1 = {
     withdrawalCount: 0n,
     forcedTransactionCount: 0n,
     l2TransactionCount: 0n,
     depositCount: 1n,
     totalEventCount: 1n,
     transitionStepCount: 0n,
+    validationTraceCount: 0n,
   };
-  const draft: SDK.DaPayloadV2 = {
-    version: SDK.DA_PAYLOAD_V2_VERSION,
+  const draft: SDK.DaPayloadV1 = {
+    version: SDK.DA_PAYLOAD_V1_VERSION,
     block_body: {
       header_hash: "00".repeat(28),
       header: headerFor(),
@@ -80,6 +87,10 @@ const oneDepositPayload = async (depositId: string) => {
       deposits: [[depositId, "01"]],
       transition_trace: [],
       event_to_step: [],
+      transaction_preimages: [],
+      forced_transaction_preimages: [],
+      cek_program_material: [],
+      validation_traces: [],
       counts,
     },
   };
@@ -92,10 +103,12 @@ const oneDepositPayload = async (depositId: string) => {
     depositsRoot: roots.depositsRoot,
     transitionTraceRoot: roots.transitionTraceRoot,
     eventToStepRoot: roots.eventToStepRoot,
+    validationTracesRoot: roots.validationTracesRoot,
     depositCount: 1n,
     totalEventCount: 1n,
+    validationTraceCount: 0n,
   });
-  const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
+  const headerHash = await Effect.runPromise(SDK.hashBlockHeaderV1(header));
   return {
     header,
     payload: {
@@ -105,7 +118,7 @@ const oneDepositPayload = async (depositId: string) => {
         header_hash: headerHash,
         header,
       },
-    } satisfies SDK.DaPayloadV2,
+    } satisfies SDK.DaPayloadV1,
   };
 };
 

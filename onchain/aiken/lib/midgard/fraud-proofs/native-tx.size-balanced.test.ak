@@ -7,9 +7,9 @@ use aiken/crypto.{blake2b_256}
 use aiken/fuzz
 use aiken/primitive/bytearray
 use midgard/fraud_proofs/native_tx/compact.{
-  decode_native_tx_compact, encode_native_tx_body_compact,
-  encode_native_tx_compact, verify_native_tx_compact,
-  verify_native_tx_compact_cbor,
+  decode_native_tx_compact_v1, encode_native_tx_body_compact,
+  encode_native_tx_compact_v1, verify_native_tx_compact_cbor_v1,
+  verify_native_tx_compact_v1,
 }
 use midgard/fraud_proofs/native_tx/preimages.{
   decode_midgard_tx_address_witnesses_preimage_cbor,
@@ -20,7 +20,7 @@ use midgard/fraud_proofs/native_tx/preimages.{
   decode_midgard_tx_script_witnesses_preimage_cbor,
 }
 use midgard/fraud_proofs/native_tx/transaction.{
-  decode_midgard_transaction, encode_midgard_transaction,
+  decode_midgard_transaction_v1, encode_midgard_transaction_v1,
   midgard_transaction_to_compact,
 }
 use midgard/fraud_proofs/native_tx/types.{MidgardTransaction, NativeTxCompact}
@@ -78,7 +78,7 @@ fn sample_size_balanced_compact_cbor(_size: Int) -> Fuzzer<ByteArray> {
 }
 
 fn sample_size_balanced_decoded_tx(_size: Int) -> Fuzzer<MidgardTransaction> {
-  fuzz.constant(decode_midgard_transaction(size_balanced_tx_cbor))
+  fuzz.constant(decode_midgard_transaction_v1(size_balanced_tx_cbor))
 }
 
 fn sample_size_balanced_compact_fixture(
@@ -86,7 +86,7 @@ fn sample_size_balanced_compact_fixture(
 ) -> Fuzzer<Pair<NativeTxCompact, ByteArray>> {
   fuzz.constant(
     Pair(
-      decode_native_tx_compact(size_balanced_compact_cbor),
+      decode_native_tx_compact_v1(size_balanced_compact_cbor),
       size_balanced_compact_cbor,
     ),
   )
@@ -143,7 +143,7 @@ fn sample_size_balanced_redeemer_wits_preimage_cbor(
 bench size_balanced_decode_midgard_transaction_bench(
   tx_cbor: ByteArray via sample_size_balanced_tx_cbor,
 ) {
-  let decoded = decode_midgard_transaction(tx_cbor)
+  let decoded = decode_midgard_transaction_v1(tx_cbor)
   and {
     decoded.version == 1,
     decoded.body.fee == size_balanced_fee,
@@ -159,7 +159,7 @@ bench size_balanced_decode_midgard_transaction_bench(
 bench size_balanced_encode_midgard_transaction_bench(
   decoded: MidgardTransaction via sample_size_balanced_decoded_tx,
 ) {
-  let encoded = encode_midgard_transaction(decoded)
+  let encoded = encode_midgard_transaction_v1(decoded)
   and {
     bytearray.length(encoded) == size_balanced_full_tx_cbor_bytes,
     encoded == size_balanced_tx_cbor,
@@ -169,7 +169,7 @@ bench size_balanced_encode_midgard_transaction_bench(
 bench size_balanced_decode_native_tx_compact_bench(
   compact_cbor: ByteArray via sample_size_balanced_compact_cbor,
 ) {
-  let compact = decode_native_tx_compact(compact_cbor)
+  let compact = decode_native_tx_compact_v1(compact_cbor)
   compact.validity_code == 0
 }
 
@@ -177,16 +177,21 @@ bench size_balanced_verify_native_tx_compact_reencode_bench(
   fixture: Pair<NativeTxCompact, ByteArray> via sample_size_balanced_compact_fixture,
 ) {
   let Pair(compact, compact_cbor) = fixture
-  let verified =
-    verify_native_tx_compact(size_balanced_tx_id, compact, compact_cbor)
+  let verified = verify_native_tx_compact_v1(
+    size_balanced_tx_id,
+    compact,
+    compact_cbor,
+  )
   verified.tx_compact.validity_code == 0
 }
 
 bench size_balanced_verify_native_tx_compact_cbor_bench(
   compact_cbor: ByteArray via sample_size_balanced_compact_cbor,
 ) {
-  let verified =
-    verify_native_tx_compact_cbor(size_balanced_tx_id, compact_cbor)
+  let verified = verify_native_tx_compact_cbor_v1(
+    size_balanced_tx_id,
+    compact_cbor,
+  )
   verified.tx_compact.validity_code == 0
 }
 
@@ -249,44 +254,42 @@ test size_balanced_lucid_midgard_native_tx_decodes() {
   let tx_cbor = size_balanced_tx_cbor
   let compact_cbor = size_balanced_compact_cbor
   let tx_id = size_balanced_tx_id
-  let decoded = decode_midgard_transaction(tx_cbor)
+  let decoded = decode_midgard_transaction_v1(tx_cbor)
   let compact = midgard_transaction_to_compact(decoded)
-  let compact_from_cbor = decode_native_tx_compact(compact_cbor)
-  let verified =
-    verify_native_tx_compact(tx_id, compact_from_cbor, compact_cbor)
-  let verified_from_cbor = verify_native_tx_compact_cbor(tx_id, compact_cbor)
-  let decoded_spend_inputs =
-    decode_midgard_tx_inputs_preimage_cbor(
-      size_balanced_spend_inputs_preimage_cbor,
-    )
-  let decoded_reference_inputs =
-    decode_midgard_tx_inputs_preimage_cbor(
-      size_balanced_reference_inputs_preimage_cbor,
-    )
-  let decoded_outputs =
-    decode_midgard_tx_outputs_preimage_cbor(size_balanced_outputs_preimage_cbor)
-  let decoded_required_observers =
-    decode_midgard_tx_byte_list_preimage_cbor(
-      size_balanced_required_observers_preimage_cbor,
-    )
-  let decoded_required_signers =
-    decode_midgard_tx_byte_list_preimage_cbor(
-      size_balanced_required_signers_preimage_cbor,
-    )
-  let decoded_mint =
-    decode_midgard_tx_mint_preimage_cbor(size_balanced_mint_preimage_cbor)
-  let decoded_addr_wits =
-    decode_midgard_tx_address_witnesses_preimage_cbor(
-      size_balanced_addr_wits_preimage_cbor,
-    )
-  let decoded_script_wits =
-    decode_midgard_tx_script_witnesses_preimage_cbor(
-      size_balanced_script_wits_preimage_cbor,
-    )
-  let decoded_redeemer_wits =
-    decode_midgard_tx_redeemer_witnesses_preimage_cbor(
-      size_balanced_redeemer_wits_preimage_cbor,
-    )
+  let compact_from_cbor = decode_native_tx_compact_v1(compact_cbor)
+  let verified = verify_native_tx_compact_v1(
+    tx_id,
+    compact_from_cbor,
+    compact_cbor,
+  )
+  let verified_from_cbor = verify_native_tx_compact_cbor_v1(tx_id, compact_cbor)
+  let decoded_spend_inputs = decode_midgard_tx_inputs_preimage_cbor(
+    size_balanced_spend_inputs_preimage_cbor,
+  )
+  let decoded_reference_inputs = decode_midgard_tx_inputs_preimage_cbor(
+    size_balanced_reference_inputs_preimage_cbor,
+  )
+  let decoded_outputs = decode_midgard_tx_outputs_preimage_cbor(
+    size_balanced_outputs_preimage_cbor,
+  )
+  let decoded_required_observers = decode_midgard_tx_byte_list_preimage_cbor(
+    size_balanced_required_observers_preimage_cbor,
+  )
+  let decoded_required_signers = decode_midgard_tx_byte_list_preimage_cbor(
+    size_balanced_required_signers_preimage_cbor,
+  )
+  let decoded_mint = decode_midgard_tx_mint_preimage_cbor(
+    size_balanced_mint_preimage_cbor,
+  )
+  let decoded_addr_wits = decode_midgard_tx_address_witnesses_preimage_cbor(
+    size_balanced_addr_wits_preimage_cbor,
+  )
+  let decoded_script_wits = decode_midgard_tx_script_witnesses_preimage_cbor(
+    size_balanced_script_wits_preimage_cbor,
+  )
+  let decoded_redeemer_wits = decode_midgard_tx_redeemer_witnesses_preimage_cbor(
+    size_balanced_redeemer_wits_preimage_cbor,
+  )
 
   and {
     bytearray.length(tx_cbor) == size_balanced_full_tx_cbor_bytes,
@@ -296,8 +299,8 @@ test size_balanced_lucid_midgard_native_tx_decodes() {
     verified_from_cbor == verified,
     compact == compact_from_cbor,
     verified.tx_compact == compact_from_cbor,
-    encode_midgard_transaction(decoded) == tx_cbor,
-    encode_native_tx_compact(compact) == compact_cbor,
+    encode_midgard_transaction_v1(decoded) == tx_cbor,
+    encode_native_tx_compact_v1(compact) == compact_cbor,
     blake2b_256(encode_native_tx_body_compact(compact.body)) == tx_id,
     decoded.body.fee == size_balanced_fee,
     decoded.body.fee <= 10000000,

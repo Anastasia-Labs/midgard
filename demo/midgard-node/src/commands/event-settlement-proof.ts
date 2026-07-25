@@ -357,7 +357,7 @@ export const resolveEventSettlementProofProgram = (
       yield* ForcedTransactionsDB.retrieveByProjectedHeaderHash(headerHash);
     const settlement = yield* fetchSettlementRefInput(headerHash);
     const proof = yield* buildSourceMembershipProof({
-      domain: SDK.ROOT_DOMAINS.forcedTransactions,
+      domain: SDK.ROOT_DOMAINS.forcedTransactionsV1,
       expectedRoot: settlement.datum.forced_transactions_root,
       entries: entries.map(ForcedTransactionsDB.toRootKeyValue),
       targetKey: lookup.eventId,

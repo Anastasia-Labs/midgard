@@ -42,48 +42,47 @@ validator main(
 
         // 1. Specified input must be authentic and properly reproduced.
         let
-          _own_script_hash,
-          _computation_thread_token_asset_name,
-          _fraud_prover,
-          m_input_state_data,
-          output_script_hash,
-          output_state_data,
-        <-
-          continue(
-            computation_thread_token_policy_id,
-            step_datum,
-            input_index,
-            output_index,
-            own_out_ref,
-            inputs,
-            outputs,
-          )
+            _own_script_hash,
+            _computation_thread_token_asset_name,
+            _fraud_prover,
+            m_input_state_data,
+            output_script_hash,
+            output_state_data
+          <- continue(
+          computation_thread_token_policy_id,
+          step_datum,
+          input_index,
+          output_index,
+          own_out_ref,
+          inputs,
+          outputs,
+        )
 
-        expect Some(State {
-          verified_tx1_spend_inputs_hash,
-          verified_tx2_spend_inputs_hash,
-        }) = m_input_state_data
+        expect
+            Some(State {
+              verified_tx1_spend_inputs_hash,
+              verified_tx2_spend_inputs_hash,
+            })
+          = m_input_state_data
 
         // 2. Referenced native spend-inputs preimage for tx1 must be valid.
-        let tx1_spend_inputs =
-          input_witness.verified_spend_inputs_at(
-            reference_inputs,
-            tx1_spend_inputs_ref_input_index,
-            verified_tx1_spend_inputs_hash,
-          )
+        let tx1_spend_inputs = input_witness.verified_spend_inputs_at(
+          reference_inputs,
+          tx1_spend_inputs_ref_input_index,
+          verified_tx1_spend_inputs_hash,
+        )
 
         // 3. The provided index must correspond to an input in the given list.
-        let tx1_double_spent_input =
-          tx1_spend_inputs |> list.expect_at(double_spent_input_index)
+        let tx1_double_spent_input = tx1_spend_inputs
+          |> list.expect_at(double_spent_input_index)
 
         // 4. The fetched input, along with the unused second transaction inputs
         //    hash, must be carried over in the datum of the next step.
         expect output_script_hash == step_04_validator_script_hash
-        let expected_output_state: Data =
-          step_04.State {
-            verified_tx2_spend_inputs_hash,
-            double_spent_input: tx1_double_spent_input,
-          }
+        let expected_output_state: Data = step_04.State {
+          verified_tx2_spend_inputs_hash,
+          double_spent_input: tx1_double_spent_input,
+        }
         expect output_state_data == expected_output_state
 
         // Done.

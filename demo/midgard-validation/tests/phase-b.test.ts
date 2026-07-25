@@ -1,7 +1,21 @@
-import { Effect } from "effect";
+import {
+  encodeMidgardCekProgramEnvelopeV1,
+  encodeMidgardCekProgramMaterialSidecarV1,
+  encodeMidgardCekTermNodeV1,
+  hashMidgardCekTermNodeV1,
+} from "@al-ft/midgard-core/cek-proof";
+import { encodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
+import {
+  Lambda,
+  UPLCEncoder,
+  UPLCProgram,
+  UPLCVar,
+} from "@harmoniclabs/uplc";
 import { Constr } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
+import { buildMidgardCanonicalCekProgramV1 } from "../src/cek-program.js";
 import {
   applyUTxOStatePatch,
   buildConflictComponents,
@@ -25,6 +39,7 @@ import {
   makeRedeemersCbor,
   outRefFromByte,
   plutusV3ScriptWitness,
+  TEST_ADDRESS_BYTES,
 } from "./validation-fixtures.js";
 
 const phaseBConfig: PhaseBConfig = {
@@ -262,6 +277,70 @@ describe("phase B validation", () => {
     expect(result.rejected[0].code).toBe(RejectCodes.DoubleSpend);
   });
 
+  it("requires exact material for a historical reference program", async () => {
+    const spent = outRefFromByte(0x7a);
+    const reference = outRefFromByte(0x7b);
+    const termPreimage = encodeMidgardCekTermNodeV1({ kind: "error" });
+    const termRoot = hashMidgardCekTermNodeV1({ kind: "error" });
+    const envelope = encodeMidgardCekProgramEnvelopeV1({
+      uplcVersion: [1n, 1n, 0n],
+      termRoot,
+      nodeCount: 1n,
+      materialByteLength: BigInt(termPreimage.length),
+    });
+    const referenceOutput = encodeMidgardTxOutput({
+      address: TEST_ADDRESS_BYTES,
+      value: { lovelace: 1n, assets: new Map() },
+      script_ref: {
+        language: "PlutusV3",
+        scriptBytes: envelope,
+      },
+    });
+    const material = {
+      kind: "term" as const,
+      root: termRoot,
+      preimage: termPreimage,
+    };
+
+    const missing = await runPhaseB(
+      [
+        makePhaseBCandidate({
+          spent: [spent],
+          referenceInputs: [reference],
+          outputLovelace: 10n,
+          programMaterialSidecarCbor:
+            encodeMidgardCekProgramMaterialSidecarV1([]),
+        }),
+      ],
+      preState([
+        [spent, makeOutput(10n)],
+        [reference, referenceOutput],
+      ]),
+    );
+    expectSinglePhaseBRejection(
+      missing,
+      RejectCodes.CekProgramMaterial,
+    );
+
+    const covered = await runPhaseB(
+      [
+        makePhaseBCandidate({
+          spent: [spent],
+          referenceInputs: [reference],
+          outputLovelace: 10n,
+          programMaterialSidecarCbor:
+            encodeMidgardCekProgramMaterialSidecarV1([material]),
+        }),
+      ],
+      preState([
+        [spent, makeOutput(10n)],
+        [reference, referenceOutput],
+      ]),
+    );
+    expect(covered.rejected).toHaveLength(0);
+    expect(covered.accepted).toHaveLength(1);
+  });
+
   it("rejects a later reference input after an earlier component member spends it", async () => {
     const spent = outRefFromByte(0x2f);
     const other = outRefFromByte(0x30);
@@ -431,6 +510,38 @@ describe("phase B validation", () => {
     expect(evaluatorCalls).toBe(1);
     expect(result.accepted).toHaveLength(1);
     expect(result.rejected).toHaveLength(0);
+  });
+
+  it("executes V1 envelopes through the authenticated CEK graph", async () => {
+    const spent = outRefFromByte(0x6d);
+    const program = buildMidgardCanonicalCekProgramV1(
+      Buffer.from(
+        UPLCEncoder.compile(
+          new UPLCProgram([1, 1, 0], new Lambda(new UPLCVar(0))),
+        ).toBuffer().buffer,
+      ),
+    );
+    const script = plutusV3ScriptWitness(program.envelopeCbor);
+    const scriptHash = hashScriptWitness(script);
+    const candidate = makePhaseBCandidate({
+      spent: [spent],
+      outputLovelace: 10n,
+      scriptWitnesses: [script],
+      redeemerTxWitsPreimageCbor: makeRedeemersCbor([
+        { tag: MidgardRedeemerTag.Spend, index: 0n },
+      ]),
+      scriptLanguages: ["PlutusV3"],
+      programMaterialSidecarCbor:
+        encodeMidgardCekProgramMaterialSidecarV1(
+          [...program.material.values()],
+        ),
+    });
+    const result = await runPhaseB(
+      [candidate],
+      preState([[spent, makeProtectedScriptOutput(scriptHash, 10n)]]),
+    );
+    expect(result.rejected).toHaveLength(0);
+    expect(result.accepted).toHaveLength(1);
   });
 
   it("propagates worker infrastructure failures instead of rejecting the tx", async () => {

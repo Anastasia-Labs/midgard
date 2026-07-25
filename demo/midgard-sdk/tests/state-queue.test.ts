@@ -4,15 +4,15 @@ import { fileURLToPath } from "node:url";
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  computeMidgardNativeTxId,
+  computeMidgardNativeTxIdV1,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
-  encodeMidgardNativeTxCompact,
-  materializeMidgardNativeTxFromCanonical,
-  MIDGARD_NATIVE_TX_VERSION,
+  encodeMidgardNativeTxCompactV1,
+  materializeMidgardNativeTxFromCanonicalV1,
+  MIDGARD_NATIVE_TX_V1_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  type MidgardNativeTxFull,
+  type MidgardNativeTxFullV1,
 } from "@al-ft/midgard-core";
 import {
   applyDoubleCborEncoding,
@@ -46,29 +46,28 @@ import {
   addressDataFromBech32,
   type AuthenticatedValidator,
   ConfirmedState,
-  EMPTY_HEADER_TRANSITION_COMMITMENTS,
+  EMPTY_HEADER_TRANSITION_COMMITMENTS_V1,
   EMPTY_MERKLE_TREE_ROOT,
   encodeLinkedListNodeView,
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   FraudProofTokenDatum,
   GENESIS_HEADER_HASH,
-  GENESIS_PROTOCOL_VERSION,
-  getHeaderFromStateQueueDatum,
-  hashBlockHeader,
-  type Header as HeaderType,
+  getHeaderV1FromStateQueueDatum,
+  hashBlockHeaderV1,
   headerHashFromStateQueueUTxO,
+  type HeaderV1 as HeaderType,
   HUB_ORACLE_ASSET_NAME,
   incompleteEmulatorCommitBlockHeaderTxProgram,
   incompleteRemoveFraudulentBlocksLinkTxProgram,
   incompleteRemoveLastFraudulentBlockHeaderTxProgram,
   requireInputIndex,
   requireMintRedeemerIndex,
+  requireOperatorWalletInputs,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
   RETIRED_OPERATORS_ROOT_ASSET_NAME,
   SCHEDULER_ASSET_NAME,
   SchedulerDatum,
-  requireOperatorWalletInputs,
   type SpendingValidator as SdkSpendingValidator,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
   STATE_QUEUE_ROOT_ASSET_NAME,
@@ -343,9 +342,9 @@ const outputReferenceCbor = (txHash: string, outputIndex: bigint): Buffer =>
 const makeNativeTx = (
   spendInputCbors: readonly Buffer[],
   fee: bigint,
-): MidgardNativeTxFull =>
-  materializeMidgardNativeTxFromCanonical({
-    version: MIDGARD_NATIVE_TX_VERSION,
+): MidgardNativeTxFullV1 =>
+  materializeMidgardNativeTxFromCanonicalV1({
+    version: MIDGARD_NATIVE_TX_V1_VERSION,
     validity: "TxIsValid",
     body: {
       spendInputsPreimageCbor: encodeCbor(spendInputCbors),
@@ -383,8 +382,8 @@ const buildTransactionsRoot = async (): Promise<string> => {
 
   for (const nativeTx of [tx1, tx2]) {
     await trie.insert(
-      computeMidgardNativeTxId(nativeTx),
-      encodeMidgardNativeTxCompact(nativeTx.compact),
+      computeMidgardNativeTxIdV1(nativeTx),
+      encodeMidgardNativeTxCompactV1(nativeTx.compact),
     );
   }
 
@@ -455,7 +454,7 @@ const submitSetupTx = async ({
     utxoRoot: EMPTY_MERKLE_TREE_ROOT,
     startTime: stateQueueGenesisTime,
     endTime: stateQueueGenesisTime,
-    protocolVersion: GENESIS_PROTOCOL_VERSION,
+    protocolVersion: 1n,
   };
   const rootNodeDatum = (data: unknown): string =>
     encodeLinkedListNodeView({
@@ -497,7 +496,7 @@ const submitSetupTx = async ({
     )
     .mintAssets(
       stateQueueAssets,
-      Data.to({ Init: { output_index: 2n } }, StateQueueRedeemer),
+      Data.to({ InitV1: { output_index: 2n } }, StateQueueRedeemer),
     )
     .pay.ToContract(
       contracts.stateQueue.spendingScriptAddress,
@@ -702,7 +701,7 @@ const submitCommitHeaderTx = async ({
   const commitSigned = await commitUnsigned.sign.withWallet().complete();
   await lucid.awaitTx(await commitSigned.submit());
 
-  const headerHash = await Effect.runPromise(hashBlockHeader(header));
+  const headerHash = await Effect.runPromise(hashBlockHeaderV1(header));
   const blockUnit = toUnit(
     contracts.stateQueue.policyId,
     STATE_QUEUE_NODE_ASSET_NAME_PREFIX + headerHash,
@@ -726,6 +725,39 @@ const submitCommitHeaderTx = async ({
 };
 
 describe("state-queue ABI", () => {
+  it("round-trips only the canonical V1 init and merge variants", () => {
+    expect(
+      roundTrip({ InitV1: { output_index: 2n } }, StateQueueRedeemer),
+    ).toEqual({ InitV1: { output_index: 2n } });
+
+    const proofMerge = {
+      MergeToConfirmedStateV1: {
+        header_node_key: "11".repeat(28),
+        confirmed_state_input_outref: outputReference,
+        confirmed_state_output_index: 0n,
+        m_settlement_redeemer_index: 1n,
+        merged_block_withdrawals_root: "21".repeat(32),
+        merged_block_forced_transactions_root: "22".repeat(32),
+        merged_block_transactions_root: "23".repeat(32),
+        merged_block_deposits_root: "24".repeat(32),
+        merged_block_transition_trace_root: "25".repeat(32),
+        merged_block_event_to_step_root: "26".repeat(32),
+        merged_block_validation_traces_root: "27".repeat(32),
+        merged_block_withdrawal_count: 1n,
+        merged_block_forced_transaction_count: 2n,
+        merged_block_l2_transaction_count: 3n,
+        merged_block_deposit_count: 4n,
+        merged_block_total_event_count: 10n,
+        merged_block_transition_step_count: 10n,
+        merged_block_validation_trace_count: 5n,
+      },
+    };
+    expect(roundTrip(proofMerge, StateQueueRedeemer)).toEqual(proofMerge);
+    expect(
+      roundTrip({ InitV1: { output_index: 2n } }, StateQueueRedeemer),
+    ).toEqual({ InitV1: { output_index: 2n } });
+  });
+
   it("round-trips CommitBlockHeader and RemoveFraudulentBlockHeader", () => {
     expect(
       roundTrip(
@@ -831,16 +863,20 @@ describe("state-queue emulator builders", () => {
       prevUtxosRoot: EMPTY_MERKLE_TREE_ROOT,
       utxosRoot: EMPTY_MERKLE_TREE_ROOT,
       withdrawalsRoot: EMPTY_MERKLE_TREE_ROOT,
-      ...EMPTY_HEADER_TRANSITION_COMMITMENTS,
+      ...EMPTY_HEADER_TRANSITION_COMMITMENTS_V1,
       transactionsRoot,
       depositsRoot: EMPTY_MERKLE_TREE_ROOT,
       startTime: genesisTime,
       endTime: genesisTime + 1_000n,
+      blockSlot: 0n,
+      expectedNetworkId: 0n,
+      minFeeA: 0n,
+      minFeeB: 0n,
       prevHeaderHash: GENESIS_HEADER_HASH,
       operatorVkey: operator,
-      protocolVersion: GENESIS_PROTOCOL_VERSION,
+      protocolVersion: 1n,
     };
-    const headerHash = await Effect.runPromise(hashBlockHeader(header));
+    const headerHash = await Effect.runPromise(hashBlockHeaderV1(header));
     const nonceUtxo = (await lucid.wallet().getUtxos())[0];
     if (nonceUtxo === undefined) {
       throw new Error("Expected wallet to expose a setup nonce UTxO");
@@ -893,7 +929,7 @@ describe("state-queue emulator builders", () => {
       utxoToStateQueueUTxO(continuedRootUtxo, contracts.stateQueue.policyId),
     );
     const committedHeader = await Effect.runPromise(
-      getHeaderFromStateQueueDatum(committedBlock.datum),
+      getHeaderV1FromStateQueueDatum(committedBlock.datum),
     );
     expect(committedHeader.transactionsRoot).toBe(transactionsRoot);
     await expect(
@@ -970,17 +1006,21 @@ describe("state-queue emulator builders", () => {
       prevUtxosRoot: EMPTY_MERKLE_TREE_ROOT,
       utxosRoot: EMPTY_MERKLE_TREE_ROOT,
       withdrawalsRoot: EMPTY_MERKLE_TREE_ROOT,
-      ...EMPTY_HEADER_TRANSITION_COMMITMENTS,
+      ...EMPTY_HEADER_TRANSITION_COMMITMENTS_V1,
       transactionsRoot: await buildTransactionsRoot(),
       depositsRoot: EMPTY_MERKLE_TREE_ROOT,
       startTime: genesisTime,
       endTime: genesisTime + 1_000n,
+      blockSlot: 0n,
+      expectedNetworkId: 0n,
+      minFeeA: 0n,
+      minFeeB: 0n,
       prevHeaderHash: GENESIS_HEADER_HASH,
       operatorVkey: operator,
-      protocolVersion: GENESIS_PROTOCOL_VERSION,
+      protocolVersion: 1n,
     };
     const firstHeaderHash = await Effect.runPromise(
-      hashBlockHeader(firstHeader),
+      hashBlockHeaderV1(firstHeader),
     );
     const nonceUtxo = (await lucid.wallet().getUtxos())[0];
     if (nonceUtxo === undefined) {
@@ -1018,7 +1058,7 @@ describe("state-queue emulator builders", () => {
       prevHeaderHash: firstHeaderHash,
     };
     const secondHeaderHash = await Effect.runPromise(
-      hashBlockHeader(secondHeader),
+      hashBlockHeaderV1(secondHeader),
     );
     const secondCommit = await submitCommitHeaderTx({
       lucid,

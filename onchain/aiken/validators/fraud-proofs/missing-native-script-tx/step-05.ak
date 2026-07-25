@@ -40,27 +40,28 @@ validator main(
 
         // 1. Specified input must be authentic and properly reproduced.
         let
-          _own_script_hash,
-          _computation_thread_token_asset_name,
-          _fraud_prover,
-          m_input_state_data,
-          output_script_hash,
-          output_state_data,
-        <-
-          continue(
-            computation_thread_token_policy_id,
-            step_datum,
-            input_index,
-            output_index,
-            own_out_ref,
-            inputs,
-            outputs,
-          )
+            _own_script_hash,
+            _computation_thread_token_asset_name,
+            _fraud_prover,
+            m_input_state_data,
+            output_script_hash,
+            output_state_data
+          <- continue(
+          computation_thread_token_policy_id,
+          step_datum,
+          input_index,
+          output_index,
+          own_out_ref,
+          inputs,
+          outputs,
+        )
 
-        expect Some(State {
-          expected_missing_script_hash,
-          verified_script_wits_hash,
-        }) = m_input_state_data
+        expect
+            Some(State {
+              expected_missing_script_hash,
+              verified_script_wits_hash,
+            })
+          = m_input_state_data
 
         // 2. The missing script hash must correspond to a native script.
         expect
@@ -71,11 +72,10 @@ validator main(
         // 3. The UTxO must be produced at next step's script hash with a proper
         //    state.
         expect output_script_hash == step_06_validator_script_hash
-        let expected_output_state: Data =
-          step_06.State {
-            expected_missing_script_hash,
-            verified_script_wits_hash,
-          }
+        let expected_output_state: Data = step_06.State {
+          expected_missing_script_hash,
+          verified_script_wits_hash,
+        }
         expect output_state_data == expected_output_state
 
         // Done.

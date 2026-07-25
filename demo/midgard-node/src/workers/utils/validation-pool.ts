@@ -1,4 +1,5 @@
 import type {
+  PhaseAConfig,
   RejectCode,
   WirePhaseACandidate,
 } from "@al-ft/midgard-validation";
@@ -9,6 +10,7 @@ export type ValidationWorkerInit = {
     readonly minFeeA: bigint;
     readonly minFeeB: bigint;
     readonly strictnessProfile: string;
+    readonly consensusProfile: NonNullable<PhaseAConfig["consensusProfile"]>;
   };
   /** Worker-local runtime choice; never enters serializable PhaseAConfig. */
   readonly signatureVerifier?: "node" | "cml";
@@ -22,6 +24,8 @@ export type PhaseAJobRequest = {
     readonly txIdOffset: number;
     readonly cborOffset: number;
     readonly cborLength: number;
+    readonly programMaterialOffset: number;
+    readonly programMaterialLength: number;
     readonly arrivalSeq: bigint;
     readonly createdAtMs: number;
   }>;
@@ -83,6 +87,7 @@ export type ValidationWorkerResponse =
 export type PhaseAWorkerInput = {
   readonly txId: Buffer;
   readonly txCbor: Buffer;
+  readonly programMaterialSidecarCbor?: Buffer | null;
   readonly arrivalSeq: bigint;
   readonly createdAt: Date;
 };
@@ -99,7 +104,11 @@ export const packPhaseAJob = (
     }
   }
   const totalBytes = txs.reduce(
-    (total, tx) => total + tx.txId.byteLength + tx.txCbor.byteLength,
+    (total, tx) =>
+      total +
+      tx.txId.byteLength +
+      tx.txCbor.byteLength +
+      (tx.programMaterialSidecarCbor?.byteLength ?? 0),
     0,
   );
   const arena = new ArrayBuffer(totalBytes);
@@ -112,10 +121,19 @@ export const packPhaseAJob = (
     const cborOffset = offset;
     bytes.set(tx.txCbor, offset);
     offset += tx.txCbor.byteLength;
+    const programMaterialOffset = offset;
+    const programMaterialLength =
+      tx.programMaterialSidecarCbor?.byteLength ?? 0;
+    if (programMaterialLength > 0) {
+      bytes.set(tx.programMaterialSidecarCbor!, offset);
+      offset += programMaterialLength;
+    }
     return {
       txIdOffset,
       cborOffset,
       cborLength: tx.txCbor.byteLength,
+      programMaterialOffset,
+      programMaterialLength,
       arrivalSeq: tx.arrivalSeq,
       createdAtMs: tx.createdAt.getTime(),
     };

@@ -112,7 +112,7 @@ export const stateQueueUtxosToObservedNodes = async (
       continue;
     }
     const stateQueueNode = await Effect.runPromise(
-      SDK.getStateQueueNodeFromStateQueueDatum(stateQueueUtxo.datum),
+      SDK.getStateQueueNodeV1FromStateQueueDatum(stateQueueUtxo.datum),
     );
     const chainPoint = {
       providerSource,

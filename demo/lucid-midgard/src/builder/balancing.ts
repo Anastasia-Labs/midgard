@@ -1,7 +1,7 @@
 import {
-  encodeMidgardNativeTxCanonical,
-  materializeMidgardNativeTxFromCanonical,
-  type MidgardNativeTxFull,
+  encodeMidgardNativeTxCanonicalV1,
+  materializeMidgardNativeTxFromCanonicalV1,
+  type MidgardNativeTxFullV1,
 } from "@al-ft/midgard-core/codec";
 
 import {
@@ -296,17 +296,19 @@ export const buildBalancedCompletion = ({
   resolved,
   initialFee,
   maxFeeIterations,
+  nativeTxVersion,
   deriveScriptMaterialization,
 }: {
   readonly state: BuilderState;
   readonly resolved: BalancedCompletionInputs;
   readonly initialFee: bigint;
   readonly maxFeeIterations: number;
+  readonly nativeTxVersion: bigint;
   readonly deriveScriptMaterialization: (
     state: BuilderState,
   ) => ScriptMaterialization;
 }): {
-  readonly tx: MidgardNativeTxFull;
+  readonly tx: MidgardNativeTxFullV1;
   readonly metadata: Omit<CompleteTxMetadata, "localValidation">;
 } => {
   const { changeAddress, feePolicy, walletInputs } = resolved;
@@ -351,11 +353,12 @@ export const buildBalancedCompletion = ({
       spendInputs: selectedInputs.map(cloneUtxo),
       outputs,
     };
-    const candidateTx = materializeMidgardNativeTxFromCanonical(
+    const candidateTx = materializeMidgardNativeTxFromCanonicalV1(
       buildCanonicalUnsignedTx(
         candidateState,
         fee,
         deriveScriptMaterialization(candidateState),
+        nativeTxVersion,
       ),
     );
     const expectedWitnessKeyHashes =
@@ -378,7 +381,7 @@ export const buildBalancedCompletion = ({
           referenceInputCount: candidateState.referenceInputs.length,
           outputCount: candidateState.outputs.length,
           requiredSignerCount: candidateState.requiredSigners.length,
-          txByteLength: encodeMidgardNativeTxCanonical(candidateTx).length,
+          txByteLength: encodeMidgardNativeTxCanonicalV1(candidateTx).length,
           feeIterations: iteration,
           balanced: true,
           changeAddress,

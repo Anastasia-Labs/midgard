@@ -17,17 +17,19 @@ import {
   type ResolvedWalletSeedPhrase,
   resolveWalletSeedPhrase,
 } from "@/commands/command-utils.js";
+import type { GroundTruthMetrics } from "@/commands/stress-db-metrics.js";
+import type { EnvironmentFingerprint } from "@/commands/stress-environment-fingerprint.js";
 import {
   buildOpenLoopPlacementProof,
   type NoOpCalibrationSummary,
   type OpenLoopCorpusPlan,
   type OpenLoopCorpusRow,
-  parseOpenLoopCorpusLine,
   type OpenLoopCorpusShape,
   type OpenLoopPlacementProof,
   type OpenLoopSubmitRecord,
   type OpenLoopSubmitSummary,
   type OpenLoopWorkloadProfile,
+  parseOpenLoopCorpusLine,
   summarizeOpenLoopSubmissions,
 } from "@/commands/stress-open-loop.js";
 import {
@@ -37,15 +39,13 @@ import {
   type StressMetrics,
   type StressStageMetricDbSources,
 } from "@/commands/stress-stage-metrics.js";
-import type { GroundTruthMetrics } from "@/commands/stress-db-metrics.js";
-import type { EnvironmentFingerprint } from "@/commands/stress-environment-fingerprint.js";
 import {
   parseSubmitL2TransferConfig,
   type SubmitL2TransferConfig,
   type SubmitL2TransferResult,
 } from "@/commands/submit-l2-transfer.js";
 
-export const E2E_L2_STRESS_SCHEMA_VERSION = "midgard-e2e-l2-stress-v3";
+export const E2E_L2_STRESS_SCHEMA_VERSION = "midgard-e2e-l2-stress-v1";
 
 export type E2EL2StressMode = "serial-chain" | "parallel-fanout";
 export type E2EL2StressLoadModel =
@@ -1165,7 +1165,9 @@ const readCorpusRowsForRecords = async ({
   return found;
 };
 
-const canonicalEnginePaths = (outDir: string): CanonicalEngineArtifactPaths => ({
+const canonicalEnginePaths = (
+  outDir: string,
+): CanonicalEngineArtifactPaths => ({
   engineReportJson: join(outDir, "engine-report.json"),
   engineEventsNdjson: join(outDir, "engine-events.ndjson"),
   submitRecordsNdjson: join(outDir, "submit-records.ndjson"),
@@ -1925,13 +1927,13 @@ const runOpenLoopUpperBoundStress = async (
   });
   const submissionFinishedAtDate = now();
   const submissionFinishedAt = submissionFinishedAtDate.toISOString();
-  const engineReport = (await readJsonFile(
-    enginePaths.engineReportJson,
-  )) as {
+  const engineReport = (await readJsonFile(enginePaths.engineReportJson)) as {
     readonly calibration?: { readonly noOp?: NoOpCalibrationSummary | null };
     readonly summary?: { readonly firstErrors?: readonly string[] };
   };
-  const submitRecords = await readSubmitRecords(enginePaths.submitRecordsNdjson);
+  const submitRecords = await readSubmitRecords(
+    enginePaths.submitRecordsNdjson,
+  );
   const corpusRowsByTxHash = await readCorpusRowsForRecords({
     corpusPath: config.corpusPath,
     records: submitRecords,
@@ -2149,15 +2151,14 @@ const runOpenLoopUpperBoundStress = async (
       : await runtime.collectEnvironmentFingerprint({
           calibrationProofRef: enginePaths.noopCalibrationJson,
         }));
-  const classification: E2EL2StressClassification =
-    submitRecords.some((record) =>
-      record.error?.includes("duplicate_or_mismatched_response"),
-    )
-      ? "duplicate_submission"
-      : engineResult.exitCode !== 0 &&
-          JSON.stringify(engineReport).includes("corpus_exhausted")
-        ? "corpus_exhausted"
-        : baseClassification;
+  const classification: E2EL2StressClassification = submitRecords.some(
+    (record) => record.error?.includes("duplicate_or_mismatched_response"),
+  )
+    ? "duplicate_submission"
+    : engineResult.exitCode !== 0 &&
+        JSON.stringify(engineReport).includes("corpus_exhausted")
+      ? "corpus_exhausted"
+      : baseClassification;
   const summary: E2EL2StressSummary = {
     schemaVersion: E2E_L2_STRESS_SCHEMA_VERSION,
     runId: config.runId,

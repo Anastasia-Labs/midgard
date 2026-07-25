@@ -11,10 +11,10 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
+  admissionBacklogGaugeFiber,
   beginAdmissionBacklogRefresh,
   commitAdmissionBacklogSlot,
   completeAdmissionBacklogRefresh,
-  admissionBacklogGaugeFiber,
   noteLocalAdmit,
   readAdmissionBacklogGauge,
   releaseAdmissionBacklogSlot,

@@ -16,10 +16,10 @@ import type {
   MidgardValidators,
 } from "@/common.js";
 import {
-  castStateQueueNodeToData,
+  castStateQueueNodeV1ToData,
   type HeaderHash,
   HeaderHashSchema,
-  type StateQueueNode,
+  type StateQueueNodeV1,
 } from "@/ledger-state.js";
 import {
   encodeLinkedListNodeView,
@@ -151,7 +151,7 @@ export type DaAttestationReferenceScripts = {
 
 export type DaAttestationStateQueueTarget = {
   readonly stateQueueUtxo: StateQueueUTxO;
-  readonly stateQueueNode: StateQueueNode;
+  readonly stateQueueNode: StateQueueNodeV1;
   readonly headerHash: HeaderHash;
 };
 
@@ -551,7 +551,7 @@ export const incompleteApplyDaAttestationToStateQueueTxProgram = (
     );
     const updatedStateQueueDatum = encodeLinkedListNodeView({
       ...config.target.stateQueueUtxo.datum,
-      data: castStateQueueNodeToData({
+      data: castStateQueueNodeV1ToData({
         header: config.target.stateQueueNode.header,
         da_attestation: contracts.daAttestation.policyId,
       }) as LinkedListNodeView["data"],

@@ -1,12 +1,13 @@
 use aiken/builtin
 use aiken/cbor
 use aiken/collection/list
-use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
+use midgard/bounded_collection_v1
 use midgard/fraud_proofs/native_tx/codec.{
-  decode_definite_array_header_at, decode_definite_bytes_at,
-  encode_definite_array_header, encode_definite_bytes,
+  byte_at, decode_canonical_int_at, decode_definite_array_header_at,
+  decode_definite_bytes_at, encode_definite_array_header, encode_definite_bytes,
   encode_definite_map_header, encode_native_byte_list, expect_deserialise,
+  slice_len,
 }
 use midgard/fraud_proofs/native_tx/components.{
   decode_midgard_address_witness_cbor, decode_midgard_redeemer_witness_at,
@@ -70,10 +71,15 @@ pub fn encode_redeemer_witness_preimage(
 pub fn decode_midgard_tx_byte_list_preimage_cbor(
   preimage_cbor: ByteArray,
 ) -> List<ByteArray> {
-  let Pair(offset, item_count) =
-    decode_definite_array_header_at(preimage_cbor, 0)
-  let Pair(offset, items) =
-    decode_byte_items_at(preimage_cbor, offset, item_count)
+  let Pair(offset, item_count) = decode_definite_array_header_at(
+    preimage_cbor,
+    0,
+  )
+  let Pair(offset, items) = decode_byte_items_at(
+    preimage_cbor,
+    offset,
+    item_count,
+  )
   expect offset == bytearray.length(preimage_cbor)
   items
 }
@@ -99,10 +105,15 @@ fn decode_byte_items_at(
   if remaining <= 0 {
     Pair(offset, [])
   } else {
-    let Pair(offset, item_cbor) =
-      decode_definite_bytes_at(preimage_cbor, offset)
-    let Pair(offset, rest) =
-      decode_byte_items_at(preimage_cbor, offset, remaining - 1)
+    let Pair(offset, item_cbor) = decode_definite_bytes_at(
+      preimage_cbor,
+      offset,
+    )
+    let Pair(offset, rest) = decode_byte_items_at(
+      preimage_cbor,
+      offset,
+      remaining - 1,
+    )
     Pair(offset, [item_cbor, ..rest])
   }
 }
@@ -115,11 +126,16 @@ fn decode_input_cbor_items_at(
   if remaining <= 0 {
     Pair(offset, [])
   } else {
-    let Pair(offset, input_cbor) =
-      decode_definite_bytes_at(preimage_cbor, offset)
+    let Pair(offset, input_cbor) = decode_definite_bytes_at(
+      preimage_cbor,
+      offset,
+    )
     let input = decode_midgard_tx_input_cbor(input_cbor)
-    let Pair(offset, rest) =
-      decode_input_cbor_items_at(preimage_cbor, offset, remaining - 1)
+    let Pair(offset, rest) = decode_input_cbor_items_at(
+      preimage_cbor,
+      offset,
+      remaining - 1,
+    )
     Pair(offset, [input, ..rest])
   }
 }
@@ -132,11 +148,16 @@ fn decode_output_cbor_items_at(
   if remaining <= 0 {
     Pair(offset, [])
   } else {
-    let Pair(offset, output_cbor) =
-      decode_definite_bytes_at(preimage_cbor, offset)
+    let Pair(offset, output_cbor) = decode_definite_bytes_at(
+      preimage_cbor,
+      offset,
+    )
     let output = decode_midgard_tx_output_cbor(output_cbor)
-    let Pair(offset, rest) =
-      decode_output_cbor_items_at(preimage_cbor, offset, remaining - 1)
+    let Pair(offset, rest) = decode_output_cbor_items_at(
+      preimage_cbor,
+      offset,
+      remaining - 1,
+    )
     Pair(offset, [output, ..rest])
   }
 }
@@ -149,11 +170,16 @@ fn decode_address_witness_cbor_items_at(
   if remaining <= 0 {
     Pair(offset, [])
   } else {
-    let Pair(offset, witness_cbor) =
-      decode_definite_bytes_at(preimage_cbor, offset)
+    let Pair(offset, witness_cbor) = decode_definite_bytes_at(
+      preimage_cbor,
+      offset,
+    )
     let witness = decode_midgard_address_witness_cbor(witness_cbor)
-    let Pair(offset, rest) =
-      decode_address_witness_cbor_items_at(preimage_cbor, offset, remaining - 1)
+    let Pair(offset, rest) = decode_address_witness_cbor_items_at(
+      preimage_cbor,
+      offset,
+      remaining - 1,
+    )
     Pair(offset, [witness, ..rest])
   }
 }
@@ -166,10 +192,15 @@ fn decode_script_items_at(
   if remaining <= 0 {
     Pair(offset, [])
   } else {
-    let Pair(offset, script) =
-      decode_midgard_versioned_script_at(preimage_cbor, offset)
-    let Pair(offset, rest) =
-      decode_script_items_at(preimage_cbor, offset, remaining - 1)
+    let Pair(offset, script) = decode_midgard_versioned_script_at(
+      preimage_cbor,
+      offset,
+    )
+    let Pair(offset, rest) = decode_script_items_at(
+      preimage_cbor,
+      offset,
+      remaining - 1,
+    )
     Pair(offset, [script, ..rest])
   }
 }
@@ -182,10 +213,15 @@ fn decode_redeemer_witness_items_at(
   if remaining <= 0 {
     Pair(offset, [])
   } else {
-    let Pair(offset, witness) =
-      decode_midgard_redeemer_witness_at(preimage_cbor, offset)
-    let Pair(offset, rest) =
-      decode_redeemer_witness_items_at(preimage_cbor, offset, remaining - 1)
+    let Pair(offset, witness) = decode_midgard_redeemer_witness_at(
+      preimage_cbor,
+      offset,
+    )
+    let Pair(offset, rest) = decode_redeemer_witness_items_at(
+      preimage_cbor,
+      offset,
+      remaining - 1,
+    )
     Pair(offset, [witness, ..rest])
   }
 }
@@ -193,10 +229,15 @@ fn decode_redeemer_witness_items_at(
 pub fn decode_midgard_tx_inputs_preimage_cbor(
   preimage_cbor: ByteArray,
 ) -> List<MidgardTxInput> {
-  let Pair(offset, item_count) =
-    decode_definite_array_header_at(preimage_cbor, 0)
-  let Pair(offset, inputs) =
-    decode_input_cbor_items_at(preimage_cbor, offset, item_count)
+  let Pair(offset, item_count) = decode_definite_array_header_at(
+    preimage_cbor,
+    0,
+  )
+  let Pair(offset, inputs) = decode_input_cbor_items_at(
+    preimage_cbor,
+    offset,
+    item_count,
+  )
   expect offset == bytearray.length(preimage_cbor)
   inputs
 }
@@ -204,10 +245,15 @@ pub fn decode_midgard_tx_inputs_preimage_cbor(
 pub fn decode_midgard_tx_outputs_preimage_cbor(
   preimage_cbor: ByteArray,
 ) -> List<MidgardTxOutput> {
-  let Pair(offset, item_count) =
-    decode_definite_array_header_at(preimage_cbor, 0)
-  let Pair(offset, outputs) =
-    decode_output_cbor_items_at(preimage_cbor, offset, item_count)
+  let Pair(offset, item_count) = decode_definite_array_header_at(
+    preimage_cbor,
+    0,
+  )
+  let Pair(offset, outputs) = decode_output_cbor_items_at(
+    preimage_cbor,
+    offset,
+    item_count,
+  )
   expect offset == bytearray.length(preimage_cbor)
   outputs
 }
@@ -215,10 +261,15 @@ pub fn decode_midgard_tx_outputs_preimage_cbor(
 pub fn decode_midgard_tx_address_witnesses_preimage_cbor(
   preimage_cbor: ByteArray,
 ) -> List<MidgardAddressWitness> {
-  let Pair(offset, item_count) =
-    decode_definite_array_header_at(preimage_cbor, 0)
-  let Pair(offset, witnesses) =
-    decode_address_witness_cbor_items_at(preimage_cbor, offset, item_count)
+  let Pair(offset, item_count) = decode_definite_array_header_at(
+    preimage_cbor,
+    0,
+  )
+  let Pair(offset, witnesses) = decode_address_witness_cbor_items_at(
+    preimage_cbor,
+    offset,
+    item_count,
+  )
   expect offset == bytearray.length(preimage_cbor)
   witnesses
 }
@@ -226,10 +277,15 @@ pub fn decode_midgard_tx_address_witnesses_preimage_cbor(
 pub fn decode_midgard_tx_script_witnesses_preimage_cbor(
   preimage_cbor: ByteArray,
 ) -> List<MidgardScriptWitness> {
-  let Pair(offset, item_count) =
-    decode_definite_array_header_at(preimage_cbor, 0)
-  let Pair(offset, witnesses) =
-    decode_script_items_at(preimage_cbor, offset, item_count)
+  let Pair(offset, item_count) = decode_definite_array_header_at(
+    preimage_cbor,
+    0,
+  )
+  let Pair(offset, witnesses) = decode_script_items_at(
+    preimage_cbor,
+    offset,
+    item_count,
+  )
   expect offset == bytearray.length(preimage_cbor)
   witnesses
 }
@@ -237,10 +293,15 @@ pub fn decode_midgard_tx_script_witnesses_preimage_cbor(
 pub fn decode_midgard_tx_redeemer_witnesses_preimage_cbor(
   preimage_cbor: ByteArray,
 ) -> List<MidgardRedeemerWitness> {
-  let Pair(offset, item_count) =
-    decode_definite_array_header_at(preimage_cbor, 0)
-  let Pair(offset, witnesses) =
-    decode_redeemer_witness_items_at(preimage_cbor, offset, item_count)
+  let Pair(offset, item_count) = decode_definite_array_header_at(
+    preimage_cbor,
+    0,
+  )
+  let Pair(offset, witnesses) = decode_redeemer_witness_items_at(
+    preimage_cbor,
+    offset,
+    item_count,
+  )
   expect offset == bytearray.length(preimage_cbor)
   witnesses
 }
@@ -278,6 +339,32 @@ fn encode_mint_policy_assets(pairs: List<Pair<Data, Data>>) -> ByteArray {
   }
 }
 
+pub fn encode_mint_policy_item(
+  policy_id_data: Data,
+  asset_map_data: Data,
+) -> ByteArray {
+  let policy_id = builtin.un_b_data(policy_id_data)
+  let asset_pairs = builtin.un_map_data(asset_map_data)
+  expect bytearray.length(policy_id) == 28
+  expect list.length(asset_pairs) > 0
+  encode_definite_array_header(2)
+    |> bytearray.concat(encode_definite_bytes(policy_id))
+    |> bytearray.concat(
+        encode_definite_map_header(list.length(asset_pairs))
+          |> bytearray.concat(encode_mint_asset_quantities(asset_pairs)),
+      )
+}
+
+pub fn mint_policy_items(mint: Data) -> List<ByteArray> {
+  let empty_mint: Data = []
+  if mint == empty_mint {
+    []
+  } else {
+    builtin.un_map_data(mint)
+      |> list.map(fn(pair) { encode_mint_policy_item(pair.1st, pair.2nd) })
+  }
+}
+
 pub fn encode_mint_preimage(mint: Data) -> ByteArray {
   let empty_mint: Data = []
   if mint == empty_mint {
@@ -293,11 +380,191 @@ pub fn decode_midgard_tx_mint_preimage_cbor(preimage_cbor: ByteArray) -> Data {
   expect_deserialise(preimage_cbor)
 }
 
+pub fn decode_canonical_bytes_at(
+  bytes: ByteArray,
+  offset: Int,
+) -> Pair<Int, ByteArray> {
+  let tag = byte_at(bytes, offset)
+  if and {
+    tag >= 64,
+    tag <= 87,
+  } {
+    let length = tag - 64
+    Pair(offset + 1 + length, slice_len(bytes, offset + 1, length))
+  } else if tag == 88 {
+    let length = byte_at(bytes, offset + 1)
+    expect length >= 24
+    Pair(offset + 2 + length, slice_len(bytes, offset + 2, length))
+  } else if tag == 89 {
+    let length = byte_at(bytes, offset + 1) * 256 + byte_at(bytes, offset + 2)
+    expect length > 0xff
+    Pair(offset + 3 + length, slice_len(bytes, offset + 3, length))
+  } else {
+    expect tag == 90
+    let length = (
+      ( byte_at(bytes, offset + 1) * 256 + byte_at(bytes, offset + 2) ) * 256 + byte_at(
+        bytes,
+        offset + 3,
+      )
+    ) * 256 + byte_at(bytes, offset + 4)
+    expect length > 0xffff
+    Pair(offset + 5 + length, slice_len(bytes, offset + 5, length))
+  }
+}
+
+pub fn decode_canonical_map_header_at(
+  bytes: ByteArray,
+  offset: Int,
+) -> Pair<Int, Int> {
+  let tag = byte_at(bytes, offset)
+  if and {
+    tag >= 160,
+    tag <= 183,
+  } {
+    Pair(offset + 1, tag - 160)
+  } else if tag == 184 {
+    let item_count = byte_at(bytes, offset + 1)
+    expect item_count >= 24
+    Pair(offset + 2, item_count)
+  } else if tag == 185 {
+    let item_count = byte_at(bytes, offset + 1) * 256 + byte_at(
+      bytes,
+      offset + 2,
+    )
+    expect item_count > 0xff
+    Pair(offset + 3, item_count)
+  } else {
+    expect tag == 186
+    let item_count = (
+      ( byte_at(bytes, offset + 1) * 256 + byte_at(bytes, offset + 2) ) * 256 + byte_at(
+        bytes,
+        offset + 3,
+      )
+    ) * 256 + byte_at(bytes, offset + 4)
+    expect item_count > 0xffff
+    Pair(offset + 5, item_count)
+  }
+}
+
+fn canonical_bytes_encoded_length(bytes: ByteArray) -> Int {
+  let length = bytearray.length(bytes)
+  if length < 24 {
+    1 + length
+  } else if length <= 0xff {
+    2 + length
+  } else if length <= 0xffff {
+    3 + length
+  } else {
+    5 + length
+  }
+}
+
+pub fn canonical_bytes_key_precedes(left: ByteArray, right: ByteArray) -> Bool {
+  let left_length = canonical_bytes_encoded_length(left)
+  let right_length = canonical_bytes_encoded_length(right)
+  if left_length < right_length {
+    True
+  } else if left_length > right_length {
+    False
+  } else {
+    bytearray.compare(left, right) == Less
+  }
+}
+
+fn verify_canonical_mint_assets_at(
+  bytes: ByteArray,
+  offset: Int,
+  remaining: Int,
+  previous_asset_name: Option<ByteArray>,
+) -> Int {
+  if remaining <= 0 {
+    offset
+  } else {
+    let Pair(offset, asset_name) = decode_canonical_bytes_at(bytes, offset)
+    expect bytearray.length(asset_name) <= 32
+    expect
+      when previous_asset_name is {
+        None -> True
+        Some(previous) -> canonical_bytes_key_precedes(previous, asset_name)
+      }
+    let Pair(offset, quantity) = decode_canonical_int_at(bytes, offset)
+    expect quantity != 0
+    verify_canonical_mint_assets_at(
+      bytes,
+      offset,
+      remaining - 1,
+      Some(asset_name),
+    )
+  }
+}
+
+fn verify_canonical_mint_policies_at(
+  bytes: ByteArray,
+  offset: Int,
+  remaining: Int,
+  previous_policy_id: Option<ByteArray>,
+) -> Int {
+  if remaining <= 0 {
+    offset
+  } else {
+    let Pair(offset, policy_id) = decode_canonical_bytes_at(bytes, offset)
+    expect bytearray.length(policy_id) == 28
+    expect
+      when previous_policy_id is {
+        None -> True
+        Some(previous) -> canonical_bytes_key_precedes(previous, policy_id)
+      }
+    let Pair(offset, asset_count) = decode_canonical_map_header_at(
+      bytes,
+      offset,
+    )
+    expect asset_count > 0
+    let offset = verify_canonical_mint_assets_at(
+      bytes,
+      offset,
+      asset_count,
+      None,
+    )
+    verify_canonical_mint_policies_at(
+      bytes,
+      offset,
+      remaining - 1,
+      Some(policy_id),
+    )
+  }
+}
+
+/// Checks the mint preimage without first materialising the entire 9 KiB map
+/// as Plutus Data. This keeps the independently revealed field below the L1
+/// execution-memory envelope while retaining exact canonical-CBOR, ordering,
+/// non-empty policy, non-zero quantity, size, and compact-hash checks.
+pub fn verify_canonical_mint_preimage_cbor(
+  preimage_cbor: ByteArray,
+  expected_hash: ByteArray,
+) -> Bool {
+  expect
+    bounded_collection_v1.from_items(
+      5,
+      mint_policy_items(expect_deserialise(preimage_cbor)),
+    ) == expected_hash
+  if preimage_cbor == #"80" {
+    True
+  } else {
+    let Pair(offset, policy_count) = decode_canonical_map_header_at(
+      preimage_cbor,
+      0,
+    )
+    verify_canonical_mint_policies_at(preimage_cbor, offset, policy_count, None) == bytearray.length(
+      preimage_cbor,
+    )
+  }
+}
+
 pub fn verify_spend_inputs_preimage(
   spend_input_cbors: List<ByteArray>,
   expected_spend_inputs_hash: ByteArray,
 ) -> Bool {
-  blake2b_256(encode_native_byte_list(spend_input_cbors)) == expected_spend_inputs_hash
+  bounded_collection_v1.from_items(0, spend_input_cbors) == expected_spend_inputs_hash
 }
 
 pub fn spend_input_cbor_at(

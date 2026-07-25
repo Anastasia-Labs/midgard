@@ -15,16 +15,18 @@ use midgard/fraud_proofs/common.{cancel, pass_native_tx_to_next_step}
 use midgard/fraud_proofs/invalid_range/step_01.{Datum, SpendRedeemer}
 use midgard/fraud_proofs/invalid_range/step_02
 use midgard/fraud_proofs/native_tx/types.{NativeTxBodyCompact}
-use midgard/ledger_state.{Header}
+use midgard/ledger_state.{HeaderV1}
 
 fn normalize_native_validity_range(
   body: NativeTxBodyCompact,
 ) -> vrn.NormalizedTimeRange {
-  let NativeTxBodyCompact {
-    validity_interval_start: lower,
-    validity_interval_end: exclusive_upper,
-    ..
-  } = body
+  let
+      NativeTxBodyCompact {
+        validity_interval_start: lower,
+        validity_interval_end: exclusive_upper,
+        ..
+      }
+    = body
 
   when
     (lower == env.posix_time_none, exclusive_upper == env.posix_time_none)
@@ -68,45 +70,46 @@ validator main(
         // 1. Generic validations for passing the provided bad tx to the next
         //    step must pass.
         let
-          _own_script_hash,
-          _computation_thread_token_asset_name,
-          _fraud_prover,
-          m_input_state_data,
-          output_script_hash,
-          output_state_data,
-          header,
-          _bad_tx_id,
-          bad_tx_view,
-        <-
-          pass_native_tx_to_next_step(
-            computation_thread_token_policy_id,
-            hub_oracle,
-            datum,
-            tx_inclusion_args,
-            own_out_ref,
-            tx,
-          )
+            _own_script_hash,
+            _computation_thread_token_asset_name,
+            _fraud_prover,
+            m_input_state_data,
+            output_script_hash,
+            output_state_data,
+            header,
+            _bad_tx_id,
+            bad_tx_view
+          <- pass_native_tx_to_next_step(
+          computation_thread_token_policy_id,
+          hub_oracle,
+          datum,
+          tx_inclusion_args,
+          own_out_ref,
+          tx,
+        )
 
         expect None = m_input_state_data
 
-        let Header {
-          start_time: block_valid_from,
-          end_time: block_valid_to,
-          ..
-        } = header
+        let
+            HeaderV1 {
+              start_time: block_valid_from,
+              end_time: block_valid_to,
+              ..
+            }
+          = header
 
-        let bad_tx_normalized_validity_range =
-          normalize_native_validity_range(bad_tx_view.tx_compact.body)
+        let bad_tx_normalized_validity_range = normalize_native_validity_range(
+          bad_tx_view.tx_compact.body,
+        )
 
         // 2. The UTxO must be produced at next step's script hash with validity
         //    range of the bad tx, and block's time range provided.
         expect output_script_hash == step_02_validator_script_hash
-        let expected_output_state: Data =
-          step_02.State {
-            block_valid_from,
-            block_valid_to,
-            bad_tx_normalized_validity_range,
-          }
+        let expected_output_state: Data = step_02.State {
+          block_valid_from,
+          block_valid_to,
+          bad_tx_normalized_validity_range,
+        }
         expect output_state_data == expected_output_state
 
         // Done.

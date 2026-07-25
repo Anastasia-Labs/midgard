@@ -70,6 +70,7 @@ export type InspectContractsOutput = {
     readonly nonExistentInput: InspectContractsCatalogueCategoryOutput;
     readonly invalidRange: InspectContractsCatalogueCategoryOutput;
     readonly transitionTrace: InspectContractsCatalogueCategoryOutput;
+    readonly validationTraceDispute: InspectContractsCatalogueCategoryOutput;
   };
   readonly doubleSpend: {
     readonly categoryFirstStepHash: string;
@@ -106,12 +107,49 @@ export type InspectContractsOutput = {
     readonly categoryFirstStepHash: string;
     readonly deploymentTransitionTraceScriptHash: string | null;
     readonly deploymentTransitionTraceMatchesFirstStep: boolean | null;
-    readonly steps: readonly [InspectContractsStepOutput];
+    readonly steps: readonly [
+      InspectContractsStepOutput,
+      InspectContractsStepOutput,
+      InspectContractsStepOutput,
+      InspectContractsStepOutput,
+      InspectContractsStepOutput,
+      InspectContractsStepOutput,
+      InspectContractsStepOutput,
+      InspectContractsStepOutput,
+      InspectContractsStepOutput,
+    ];
+  };
+  readonly validationTraceDispute: {
+    readonly categoryFirstStepHash: string;
+    readonly deploymentValidationTraceDisputeScriptHash: string | null;
+    readonly deploymentValidationTraceDisputeMatchesFirstStep: boolean | null;
+    readonly steps: readonly [
+      InspectContractsStepOutput,
+      ...InspectContractsStepOutput[],
+    ];
   };
 };
 
 export type InspectContractsStepOutput = {
-  readonly name: "step01" | "step02" | "step03" | "step04" | "proof";
+  readonly name:
+    | "step01"
+    | "step02"
+    | "step03"
+    | "step04"
+    | "route"
+    | "control"
+    | "withdrawal"
+    | "forced"
+    | "accepted"
+    | "deposit"
+    | "l1Event"
+    | "duplicate"
+    | "dispute"
+    | "source"
+    | "game"
+    | "boundary"
+    | "timeout"
+    | `resolver-${number}`;
   readonly scriptHash: string;
   readonly address: string;
 };
@@ -131,7 +169,8 @@ export type ImplementedFraudProofCategoryName =
   | "doubleSpend"
   | "nonExistentInput"
   | "invalidRange"
-  | "transitionTrace";
+  | "transitionTrace"
+  | "validationTraceDispute";
 
 export const expectedFraudProofCategoryId = (
   name: FraudProofCatalogueCategoryName,
@@ -221,7 +260,10 @@ const parseFraudProofCatalogueDeploymentInfo = (
     candidate.categories,
     "fraudProofCatalogue.categories",
   );
-  const seenCategoryIds = new Map<string, FraudProofCatalogueCategoryName>();
+  const seenCategoryIds = new Map<
+    string,
+    FraudProofCatalogueCategoryName
+  >();
   const categories = Object.fromEntries(
     FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((name) => {
       const category = rawCategories[name];
@@ -254,6 +296,17 @@ const parseFraudProofCatalogueDeploymentInfo = (
     categories,
   };
 };
+
+const fraudProofCatalogueCategories = (
+  catalogue: FraudProofCatalogueDeploymentInfo,
+): Readonly<
+  Partial<
+    Record<
+      FraudProofCatalogueCategoryName,
+      FraudProofCatalogueCategoryDeploymentInfo
+    >
+  >
+> => catalogue.categories;
 
 const parseRefScriptUTxO = (
   value: unknown,
@@ -448,8 +501,14 @@ export const inspectFraudProofCatalogueCategoryReadiness = async ({
   const store = new Store(undefined);
   await store.ready();
   const trie = new Trie(store);
+  const categories = fraudProofCatalogueCategories(catalogue);
   for (const currentCategoryName of FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
-    const currentCategory = catalogue.categories[currentCategoryName];
+    const currentCategory = categories[currentCategoryName];
+    if (currentCategory === undefined) {
+      throw new Error(
+        `fraudProofCatalogue.categories.${currentCategoryName} is missing`,
+      );
+    }
     await trie.insert(
       encodeCatalogueKey(currentCategory.categoryId),
       encodeCatalogueValue(currentCategory.scriptHash),
@@ -458,7 +517,12 @@ export const inspectFraudProofCatalogueCategoryReadiness = async ({
 
   const derivedRoot = trieRootHex(trie);
   const rootMatchesDerived = catalogue.root === derivedRoot;
-  const category = catalogue.categories[categoryName];
+  const category = categories[categoryName];
+  if (category === undefined) {
+    throw new Error(
+      `fraudProofCatalogue.categories.${categoryName} is missing`,
+    );
+  }
   const proof = await trie.prove(encodeCatalogueKey(category.categoryId));
   const derivedProofCbor = proof.toCBOR().toString("hex");
   const expectedCategoryId = expectedFraudProofCategoryId(categoryName);
@@ -552,6 +616,7 @@ const inspectFraudProofCatalogue = (
       nonExistentInput: emptyCatalogueCategoryInspection(),
       invalidRange: emptyCatalogueCategoryInspection(),
       transitionTrace: emptyCatalogueCategoryInspection(),
+      validationTraceDispute: emptyCatalogueCategoryInspection(),
     });
   }
 
@@ -560,8 +625,14 @@ const inspectFraudProofCatalogue = (
       const store = new Store(undefined);
       await store.ready();
       const trie = new Trie(store);
+      const categories = fraudProofCatalogueCategories(catalogue);
       for (const categoryName of FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
-        const category = catalogue.categories[categoryName];
+        const category = categories[categoryName];
+        if (category === undefined) {
+          throw new Error(
+            `fraudProofCatalogue.categories.${categoryName} is missing`,
+          );
+        }
         await trie.insert(
           encodeCatalogueKey(category.categoryId),
           encodeCatalogueValue(category.scriptHash),
@@ -573,7 +644,10 @@ const inspectFraudProofCatalogue = (
       const inspectCategory = async (
         name: ImplementedFraudProofCategoryName,
       ): Promise<InspectContractsCatalogueCategoryOutput> => {
-        const category = catalogue.categories[name];
+        const category = categories[name];
+        if (category === undefined) {
+          return emptyCatalogueCategoryInspection();
+        }
         const expectedCategoryId = expectedFraudProofCategoryId(name);
         const proof = await trie.prove(encodeCatalogueKey(category.categoryId));
         const derivedProofCbor = proof.toCBOR().toString("hex");
@@ -604,12 +678,27 @@ const inspectFraudProofCatalogue = (
       const nonExistentInput = await inspectCategory("nonExistentInput");
       const invalidRange = await inspectCategory("invalidRange");
       const transitionTrace = await inspectCategory("transitionTrace");
+      const validationTraceDispute = await inspectCategory(
+        "validationTraceDispute",
+      );
       const implementedCategories: readonly ImplementedFraudProofCategoryName[] =
-        ["doubleSpend", "nonExistentInput", "invalidRange", "transitionTrace"];
+        [
+          "doubleSpend",
+          "nonExistentInput",
+          "invalidRange",
+          "transitionTrace",
+          ...("validationTraceDispute" in catalogue.categories
+            ? (["validationTraceDispute"] as const)
+            : []),
+        ];
       const implementedCategoriesReady = implementedCategories.every((name) => {
-        return { doubleSpend, nonExistentInput, invalidRange, transitionTrace }[
-          name
-        ].ready;
+        return {
+          doubleSpend,
+          nonExistentInput,
+          invalidRange,
+          transitionTrace,
+          validationTraceDispute,
+        }[name].ready;
       });
 
       return {
@@ -621,6 +710,7 @@ const inspectFraudProofCatalogue = (
         nonExistentInput,
         invalidRange,
         transitionTrace,
+        validationTraceDispute,
       };
     },
     catch: (cause) =>
@@ -671,6 +761,11 @@ export const inspectContracts = ({
       parsedDeploymentInfo,
       "fraudProofTransitionTrace",
     );
+    const deploymentValidationTraceDisputeScriptHash =
+      optionalDeploymentScriptHash(
+        parsedDeploymentInfo,
+        "validationTraceDispute",
+      );
     const deployedFraudProofCatalogue =
       parsedDeploymentInfo.fraudProofCatalogueMint?.fraudProofCatalogue;
 
@@ -721,6 +816,8 @@ export const inspectContracts = ({
       contracts.invalidRange.firstStep.spendingScriptHash;
     const transitionTraceCategoryFirstStepHash =
       contracts.transitionTrace.firstStep.spendingScriptHash;
+    const validationTraceDisputeCategoryFirstStepHash =
+      contracts.validationTraceDispute.firstStep.spendingScriptHash;
     const deploymentDoubleSpendMatchesFirstStep =
       deploymentDoubleSpendScriptHash === null
         ? null
@@ -740,6 +837,11 @@ export const inspectContracts = ({
         ? null
         : deploymentTransitionTraceScriptHash ===
           transitionTraceCategoryFirstStepHash;
+    const deploymentValidationTraceDisputeMatchesFirstStep =
+      deploymentValidationTraceDisputeScriptHash === null
+        ? null
+        : deploymentValidationTraceDisputeScriptHash ===
+          validationTraceDisputeCategoryFirstStepHash;
     const fraudProofCatalogue = yield* inspectFraudProofCatalogue(
       deployedFraudProofCatalogue,
       {
@@ -747,12 +849,15 @@ export const inspectContracts = ({
         nonExistentInput: nonExistentInputCategoryFirstStepHash,
         invalidRange: invalidRangeCategoryFirstStepHash,
         transitionTrace: transitionTraceCategoryFirstStepHash,
+        validationTraceDispute: validationTraceDisputeCategoryFirstStepHash,
       },
       {
         doubleSpend: deploymentDoubleSpendMatchesFirstStep,
         nonExistentInput: deploymentNonExistentInputMatchesFirstStep,
         invalidRange: deploymentInvalidRangeMatchesFirstStep,
         transitionTrace: deploymentTransitionTraceMatchesFirstStep,
+        validationTraceDispute:
+          deploymentValidationTraceDisputeMatchesFirstStep,
       },
     );
 
@@ -797,7 +902,33 @@ export const inspectContracts = ({
         categoryFirstStepHash: transitionTraceCategoryFirstStepHash,
         deploymentTransitionTraceScriptHash,
         deploymentTransitionTraceMatchesFirstStep,
-        steps: [stepOutput("proof", contracts.transitionTrace.steps[0])],
+        steps: [
+          stepOutput("route", contracts.transitionTrace.route),
+          stepOutput("control", contracts.transitionTrace.finals[0]),
+          stepOutput("source", contracts.transitionTrace.finals[1]),
+          stepOutput("withdrawal", contracts.transitionTrace.finals[2]),
+          stepOutput("forced", contracts.transitionTrace.finals[3]),
+          stepOutput("accepted", contracts.transitionTrace.finals[4]),
+          stepOutput("deposit", contracts.transitionTrace.finals[5]),
+          stepOutput("l1Event", contracts.transitionTrace.finals[6]),
+          stepOutput("duplicate", contracts.transitionTrace.finals[7]),
+        ],
+      },
+      validationTraceDispute: {
+        categoryFirstStepHash: validationTraceDisputeCategoryFirstStepHash,
+        deploymentValidationTraceDisputeScriptHash,
+        deploymentValidationTraceDisputeMatchesFirstStep,
+        steps: [
+          stepOutput("dispute", contracts.validationTraceDispute.opener),
+          stepOutput("source", contracts.validationTraceDispute.source),
+          stepOutput("game", contracts.validationTraceDispute.game),
+          stepOutput("boundary", contracts.validationTraceDispute.boundary),
+          stepOutput("timeout", contracts.validationTraceDispute.timeout),
+          ...contracts.validationTraceDispute.resolvers.map(
+            (resolver, resolverIndex) =>
+              stepOutput(`resolver-${resolverIndex}`, resolver),
+          ),
+        ],
       },
     };
   });

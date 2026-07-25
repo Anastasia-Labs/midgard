@@ -1,6 +1,6 @@
 import { DA_TRANSPORT_LIMITS_V1 } from "./da-transport.js";
 
-export type DaPayloadEmissionMode = "off" | "identity" | "zstd";
+export type DaPayloadEmissionMode = "identity" | "zstd";
 
 const assertSafeLength = (value: number, fieldName: string): number => {
   if (!Number.isSafeInteger(value) || value < 0) {
@@ -39,8 +39,8 @@ export const zstdCompressBound = (sourceBytes: number): number => {
   return result;
 };
 
-/** Exact canonical-CBOR bytes for DaPayloadEnvelopeV3. */
-export const daPayloadEnvelopeV3EncodedSize = ({
+/** Exact canonical-CBOR bytes for DaPayloadEnvelopeV1. */
+export const daPayloadEnvelopeV1EncodedSize = ({
   innerBytes,
   bodyBytes,
 }: {
@@ -48,7 +48,7 @@ export const daPayloadEnvelopeV3EncodedSize = ({
   readonly bodyBytes: number;
 }): number =>
   1 + // fixed array(5)
-  1 + // version=3
+  1 + // version=1
   1 + // content encoding
   canonicalCborArgumentSize(innerBytes) +
   canonicalCborByteStringSize(32) +
@@ -60,10 +60,10 @@ export const daPayloadSubmitV1EncodedSize = ({
   payloadSchemaVersion,
 }: {
   readonly payloadBytes: number;
-  readonly payloadSchemaVersion: 2 | 3;
+  readonly payloadSchemaVersion: 1;
 }): number => {
-  if (payloadSchemaVersion !== 2 && payloadSchemaVersion !== 3) {
-    throw new RangeError("DA payload schema version must be 2 or 3");
+  if (payloadSchemaVersion !== 1) {
+    throw new RangeError("DA payload schema version must be 1");
   }
   return (
     1 + // fixed array(7)
@@ -79,7 +79,7 @@ export const daPayloadSubmitV1EncodedSize = ({
 
 export type DaPayloadV1SizeProjection = {
   readonly mode: DaPayloadEmissionMode;
-  readonly schemaVersion: 2 | 3;
+  readonly schemaVersion: 1;
   readonly innerBytes: number;
   readonly storedBytesUpperBound: number;
   readonly requestBytesUpperBound: number;
@@ -90,14 +90,11 @@ export const projectDaPayloadV1Sizes = (
   mode: DaPayloadEmissionMode,
 ): DaPayloadV1SizeProjection => {
   const inner = assertSafeLength(innerBytes, "DA payload inner bytes");
-  const schemaVersion = mode === "off" ? 2 : 3;
-  const storedBytesUpperBound =
-    mode === "off"
-      ? inner
-      : daPayloadEnvelopeV3EncodedSize({
-          innerBytes: inner,
-          bodyBytes: mode === "identity" ? inner : zstdCompressBound(inner),
-        });
+  const schemaVersion = 1 as const;
+  const storedBytesUpperBound = daPayloadEnvelopeV1EncodedSize({
+    innerBytes: inner,
+    bodyBytes: mode === "identity" ? inner : zstdCompressBound(inner),
+  });
   return {
     mode,
     schemaVersion,
@@ -111,7 +108,7 @@ export const projectDaPayloadV1Sizes = (
 };
 
 /**
- * Maximum inner DaPayloadV2 bytes that provably fit both the stored-artifact
+ * Maximum inner DaPayloadV1 bytes that provably fit both the stored-artifact
  * and inline-request V1 bounds for the selected emission mode.
  */
 export const maxDaPayloadV1InnerBytes = (

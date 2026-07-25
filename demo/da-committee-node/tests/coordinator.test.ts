@@ -617,7 +617,7 @@ const signatureRecord = (): DaSignatureRecord => ({
   broadcastStatus: "local",
   l1ChainPoint: {},
   validation: {
-    payloadVersion: Number(SDK.DA_PAYLOAD_V2_VERSION),
+    payloadVersion: Number(SDK.DA_PAYLOAD_V1_VERSION),
     rootsMatch: true,
     stateQueueOutRef: "state#0",
     headerHash: "01".repeat(28),

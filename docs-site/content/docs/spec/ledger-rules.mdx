@@ -15,13 +15,11 @@ requires `lovelaces(mint(t)) = 0` and is violated by `ADA-MINTED`.
 
 ## Custom Midgard ledger rules
 
-<Callout type="warn" title="Section 5.2 is not yet written">
-`technical-spec/5-ledger-rules/2-custom-midgard-ledger-rules.tex` currently contains
-five subsection headings and no rule text. Three carry a `% TODO: clarify` comment.
-The headings are **Is valid**, **No auxiliary data**, **Certificates empty**, **Only
-zero withdrawals**, and **No mints**. Do not treat these titles as specified rules
-until the section has content. Where the implementation already enforces a
-corresponding check, that check, not the heading, is the current behavior.
+<Callout type="info" title="The launch profile is normative">
+`technical-spec/5-ledger-rules/2-custom-midgard-ledger-rules.tex` now records the
+launch rules, while `demo/midgard-core/src/consensus-profile.ts` is their
+machine-readable identity. A future profile may enable additional features only
+with corresponding L1-disputable proof coverage.
 </Callout>
 
 What the implementation enforces today is documented under the
@@ -34,18 +32,16 @@ What the implementation enforces today is documented under the
 | No auxiliary data | Enforced by Phase A. `auxiliaryDataHash` must equal `EMPTY_NULL_ROOT`. | `E_AUX_DATA_FORBIDDEN` |
 | Certificates empty | Holds by construction. The native transaction format has no certificate field. | Not applicable |
 | Only zero withdrawals | Holds by construction. Native transactions carry required observers, not withdrawals. When a native transaction is converted to a Cardano transaction, each observer becomes a reward-account withdrawal of exactly `0` lovelace (`codec/native.ts`). | Not applicable |
-| No mints | **Not enforced.** See below. | Not applicable |
+| No mints | Enforced by Phase A and independently by DA payload verification. The canonical mint preimage must be empty. | `E_MINT_FORBIDDEN` |
 
-<Callout type="error" title="No mints is contradicted by the implementation">
-Phase A applies no mint prohibition, [Phase B](/docs/validation/phase-b) includes
-`mint` in the value-preservation equation, and `lucid-midgard` exposes `mintAssets`
-and `mint` builder methods. The
-[adversarial review](/docs/watchers/adversarial-review) records this as a critical
-finding: every ledger feature the deployed protocol admits must have end-to-end proof
-support, or be disabled in consensus. Minting is currently admitted and not
-proof-covered.
-
-Treat "No mints" as an open protocol decision, not a rule. It is tracked in
+<Callout type="warn" title="Mint/burn is retained, not enabled">
+`lucid-midgard` retains the `mintAssets` and `mint` methods, and Phase B retains
+the profile-independent `inputs − fee + mint − outputs = 0` accounting equation.
+Under `midgard-launch-consensus-v1`, the builder methods fail immediately and
+Phase A/DA reject any non-empty mint preimage. This preserves the product surface
+without claiming the missing mint-authorization and value-preservation fraud
+proofs. Enabling mint/burn requires a new consensus profile and those proof
+families, as required by
 [issue #459](https://github.com/Anastasia-Labs/midgard/issues/459).
 </Callout>
 

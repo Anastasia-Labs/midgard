@@ -46,7 +46,7 @@ pub const empty_merkle_tree_root =
   #"0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8"
 
 pub const plutarch_phas_validator_hash: ScriptHash =
-  #"46df0027fc0af07197924dc07f1c27ac6b15eb2bd6efc7a73b0dbb4d"
+  #"1fc59ff54da02f2535d64b40b647a8826c8b3d914d7ba5257f5b2721"
 
 pub const plutarch_pexcludes_validator_hash: ScriptHash =
   #"5a06db38b22c52ca7d1789f16c1819da03b15171efe245ef18ad7af6"

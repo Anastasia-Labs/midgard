@@ -1,3 +1,4 @@
+import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { type LucidEvolution, toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -11,7 +12,7 @@ const policyId = "aa".repeat(28);
 const stateQueueAddress =
   "addr_test1wzylc3gg4h37gt69yx057gkn4egefs5t9rsycmryecpsenswtdp58";
 
-const headerFixture = (overrides: Partial<SDK.Header> = {}): SDK.Header => ({
+const headerFixture = (overrides: Partial<SDK.HeaderV1> = {}): SDK.HeaderV1 => ({
   prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
   utxosRoot: "11".repeat(32),
   withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
@@ -20,14 +21,20 @@ const headerFixture = (overrides: Partial<SDK.Header> = {}): SDK.Header => ({
   depositsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
   transitionTraceRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
   eventToStepRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+  validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
   withdrawalCount: 0n,
   forcedTransactionCount: 0n,
   l2TransactionCount: 0n,
   depositCount: 0n,
   totalEventCount: 0n,
   transitionStepCount: 0n,
+  validationTraceCount: 0n,
   startTime: 1_000n,
   endTime: 2_000n,
+  blockSlot: 0n,
+  expectedNetworkId: 0n,
+  minFeeA: 0n,
+  minFeeB: 0n,
   prevHeaderHash: "22".repeat(28),
   operatorVkey: "33".repeat(28),
   protocolVersion: 1n,
@@ -42,15 +49,15 @@ const makeTail = async ({
 }: {
   readonly txHash?: string;
   readonly outputIndex?: number;
-  readonly header?: SDK.Header;
+  readonly header?: SDK.HeaderV1;
   readonly next?: SDK.LinkedListNodeView["next"];
 } = {}): Promise<SDK.StateQueueUTxO> => {
-  const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
+  const headerHash = await Effect.runPromise(SDK.hashBlockHeaderV1(header));
   const assetName = SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + headerHash;
   const datum: SDK.LinkedListNodeView = {
     key: { Key: { key: headerHash } },
     next,
-    data: SDK.castStateQueueNodeToData({
+    data: SDK.castStateQueueNodeV1ToData({
       header,
       da_attestation: SDK.NO_DA_ATTESTATION,
     }) as SDK.LinkedListNodeView["data"],
@@ -118,7 +125,11 @@ describe("commit-block expected state-queue tail lookup", () => {
     const lucid = fakeLucid([replacement.utxo]);
 
     const actual = await Effect.runPromise(
-      resolveLiveTailCommitBase(contracts, expected).pipe(
+      resolveLiveTailCommitBase(
+        contracts,
+        expected,
+        MIDGARD_CONSENSUS_PROFILE_V1,
+      ).pipe(
         Effect.provideService(RuntimeLucid, lucid as unknown as RuntimeLucid),
       ),
     );
@@ -138,7 +149,11 @@ describe("commit-block expected state-queue tail lookup", () => {
 
     const outcome = await Effect.runPromise(
       Effect.either(
-        resolveLiveTailCommitBase(contracts, expected).pipe(
+        resolveLiveTailCommitBase(
+          contracts,
+          expected,
+          MIDGARD_CONSENSUS_PROFILE_V1,
+        ).pipe(
           Effect.provideService(RuntimeLucid, lucid as unknown as RuntimeLucid),
         ),
       ),
@@ -161,7 +176,11 @@ describe("commit-block expected state-queue tail lookup", () => {
     const missingLucid = fakeLucid([]);
     const missingOutcome = await Effect.runPromise(
       Effect.either(
-        resolveLiveTailCommitBase(contracts, expected).pipe(
+        resolveLiveTailCommitBase(
+          contracts,
+          expected,
+          MIDGARD_CONSENSUS_PROFILE_V1,
+        ).pipe(
           Effect.provideService(
             RuntimeLucid,
             missingLucid as unknown as RuntimeLucid,

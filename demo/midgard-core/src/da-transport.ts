@@ -12,19 +12,21 @@ import {
   MidgardTxCodecErrorCodes,
 } from "./codec/errors.js";
 import { ensureHash32 } from "./codec/hash.js";
+import { MIDGARD_CONSENSUS_LIMITS_V1 } from "./consensus-profile-v1.js";
+import { DA_PAYLOAD_INNER_V1_SCHEMA_VERSION } from "./da-payload-envelope.js";
 
-export const DA_TRANSPORT_PROTOCOL_VERSION = 1;
+export const DA_TRANSPORT_V1_PROTOCOL_VERSION = 1 as const;
 export const DA_DEPLOYMENT_FINGERPRINT_LENGTH = 32;
 export const DA_HEADER_HASH_LENGTH = 28;
 export const DA_HASH_LENGTH = 32;
 export const DA_ON_CHAIN_WITNESS_LENGTH = 65;
-export const DA_LIBP2P_RUNTIME_MANIFEST_SCHEMA_VERSION =
-  "midgard-da-libp2p-runtime-manifest-v2";
+export const DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION =
+  "midgard-da-libp2p-runtime-manifest-v1";
 export const DA_LIBP2P_RUNTIME_MANIFEST_IDENTITY_SOURCE =
   "contract_deployment_manifest_id";
 
 export const DA_TRANSPORT_LIMITS_V1 = {
-  maxPayloadBytes: 67_108_864,
+  maxPayloadBytes: MIDGARD_CONSENSUS_LIMITS_V1.maxDaPayloadBytes,
   maxInlineResponseBytes: 1_048_576,
   maxChunkBytes: 1_048_576,
   maxGossipMessageBytes: 65_536,
@@ -164,7 +166,7 @@ export type DaPayloadAnnouncementV1 = {
   readonly deploymentFingerprint: Buffer;
   readonly headerHash: Buffer;
   readonly payloadHash: Buffer;
-  readonly payloadSchemaVersion: number;
+  readonly payloadSchemaVersion: typeof DA_PAYLOAD_INNER_V1_SCHEMA_VERSION;
   readonly payloadBytes: number;
   readonly chunkSize: number;
   readonly chunkCount: number;
@@ -178,7 +180,7 @@ export type DaPayloadSubmitRequestV1 = {
   readonly deploymentFingerprint: Buffer;
   readonly headerHash: Buffer;
   readonly payloadHash: Buffer;
-  readonly payloadSchemaVersion: number;
+  readonly payloadSchemaVersion: typeof DA_PAYLOAD_INNER_V1_SCHEMA_VERSION;
   readonly mode: DaPayloadSubmitMode;
   readonly payloadBytes: Buffer | null;
   readonly chunkManifest: DaPayloadChunkManifestV1 | null;
@@ -198,8 +200,10 @@ export type DaCapabilitiesRequestV1 = {
 
 export type DaCapabilitiesResponseV1 = {
   readonly deploymentFingerprint: Buffer;
-  readonly transportProtocolVersion: number;
-  readonly payloadSchemaVersions: readonly number[];
+  readonly transportProtocolVersion: typeof DA_TRANSPORT_V1_PROTOCOL_VERSION;
+  readonly payloadSchemaVersions: readonly [
+    typeof DA_PAYLOAD_INNER_V1_SCHEMA_VERSION,
+  ];
   readonly envelopeContentEncodings: readonly number[];
   readonly maxPayloadBytes: number;
   readonly maxInlineResponseBytes: number;
@@ -244,7 +248,9 @@ export type DaMetadataByHeaderResponseV1 = {
   readonly status: DaMetadataStatus;
   readonly headerHash: Buffer;
   readonly payloadHash: Buffer | null;
-  readonly payloadSchemaVersion: number | null;
+  readonly payloadSchemaVersion:
+    | typeof DA_PAYLOAD_INNER_V1_SCHEMA_VERSION
+    | null;
   readonly payloadBytes: number | null;
   readonly rootSummaryHash: Buffer | null;
   readonly proofBundleHash: Buffer | null;
@@ -389,6 +395,36 @@ const ensureUint = (value: unknown, fieldName: string): number => {
   return Number(int);
 };
 
+const ensureDaPayloadSchemaV1 = (
+  value: unknown,
+  fieldName: string,
+): typeof DA_PAYLOAD_INNER_V1_SCHEMA_VERSION => {
+  const version = ensureUint(value, fieldName);
+  if (version !== DA_PAYLOAD_INNER_V1_SCHEMA_VERSION) {
+    fail(
+      MidgardTxCodecErrorCodes.SchemaMismatch,
+      `${fieldName} must equal ${DA_PAYLOAD_INNER_V1_SCHEMA_VERSION.toString()}`,
+      `actual=${version.toString()}`,
+    );
+  }
+  return DA_PAYLOAD_INNER_V1_SCHEMA_VERSION;
+};
+
+const ensureDaTransportV1 = (
+  value: unknown,
+  fieldName: string,
+): typeof DA_TRANSPORT_V1_PROTOCOL_VERSION => {
+  const version = ensureUint(value, fieldName);
+  if (version !== DA_TRANSPORT_V1_PROTOCOL_VERSION) {
+    fail(
+      MidgardTxCodecErrorCodes.SchemaMismatch,
+      `${fieldName} must equal ${DA_TRANSPORT_V1_PROTOCOL_VERSION.toString()}`,
+      `actual=${version.toString()}`,
+    );
+  }
+  return DA_TRANSPORT_V1_PROTOCOL_VERSION;
+};
+
 const ensureUint8 = (value: unknown, fieldName: string): number => {
   const int = ensureUint(value, fieldName);
   if (int > 255) {
@@ -529,19 +565,53 @@ const nonEmptyStringValue = (value: unknown, fieldName: string): string => {
   return value as string;
 };
 
+const exactRecordKeys = (
+  value: Record<string, unknown>,
+  keys: readonly string[],
+  fieldName: string,
+): void => {
+  const expected = new Set(keys);
+  for (const key of Object.keys(value)) {
+    if (!expected.has(key)) {
+      fail(
+        MidgardTxCodecErrorCodes.InvalidFieldType,
+        `${fieldName}.${key} is unexpected`,
+      );
+    }
+  }
+  for (const key of keys) {
+    if (!Object.prototype.hasOwnProperty.call(value, key)) {
+      fail(
+        MidgardTxCodecErrorCodes.InvalidFieldType,
+        `${fieldName}.${key} is required`,
+      );
+    }
+  }
+};
+
 export const parseDaLibp2pRuntimeManifestDeploymentIdentity = (
   manifest: Record<string, unknown>,
   fieldName = "DA libp2p runtime manifest",
 ): DaLibp2pRuntimeManifestDeploymentIdentity => {
-  if (manifest.schemaVersion !== DA_LIBP2P_RUNTIME_MANIFEST_SCHEMA_VERSION) {
+  if (manifest.schemaVersion !== DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION) {
     fail(
       MidgardTxCodecErrorCodes.InvalidFieldType,
-      `${fieldName}.schemaVersion must be ${DA_LIBP2P_RUNTIME_MANIFEST_SCHEMA_VERSION}`,
+      `${fieldName}.schemaVersion must be ${DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION}`,
       String(manifest.schemaVersion),
     );
   }
   const deployment = recordValue(
     manifest.deployment,
+    `${fieldName}.deployment`,
+  );
+  exactRecordKeys(
+    deployment,
+    [
+      "fingerprint",
+      "contract_deployment_manifest_id",
+      "contract_deployment_info_sha256",
+      "identity_source",
+    ],
     `${fieldName}.deployment`,
   );
   if (
@@ -600,7 +670,7 @@ export const daGossipTopic = (
 ): string =>
   `/midgard/${normalizeDaDeploymentFingerprintHex(
     deploymentFingerprint,
-  )}/da/${topic}/${DA_TRANSPORT_PROTOCOL_VERSION}`;
+  )}/da/${topic}/${DA_TRANSPORT_V1_PROTOCOL_VERSION}`;
 
 export const daRequestResponseProtocolId = (
   deploymentFingerprint: string | Uint8Array,
@@ -608,7 +678,7 @@ export const daRequestResponseProtocolId = (
 ): string =>
   `/midgard/${normalizeDaDeploymentFingerprintHex(
     deploymentFingerprint,
-  )}/da/${protocol}/${DA_TRANSPORT_PROTOCOL_VERSION}`;
+  )}/da/${protocol}/${DA_TRANSPORT_V1_PROTOCOL_VERSION}`;
 
 const hashValue = (value: unknown, fieldName: string): Buffer =>
   ensureDaHash32(asBytes(value, fieldName), fieldName);
@@ -699,6 +769,23 @@ const cborSortedUintArray = (
   return normalized.map(BigInt);
 };
 
+const exactDaPayloadSchemaVersionsV1 = (
+  value: unknown,
+  fieldName: string,
+): readonly [typeof DA_PAYLOAD_INNER_V1_SCHEMA_VERSION] => {
+  const versions = sortedUintArrayValue(value, fieldName);
+  if (
+    versions.length !== 1 ||
+    versions[0] !== DA_PAYLOAD_INNER_V1_SCHEMA_VERSION
+  ) {
+    fail(
+      MidgardTxCodecErrorCodes.SchemaMismatch,
+      `${fieldName} must contain exactly DA payload schema V1`,
+    );
+  }
+  return [DA_PAYLOAD_INNER_V1_SCHEMA_VERSION];
+};
+
 const encodePayloadChunkManifestValue = (
   manifest: DaPayloadChunkManifestV1,
 ): unknown[] => [
@@ -764,7 +851,12 @@ const encodePayloadAnnouncementValue = (
   ensureDaDeploymentFingerprint(message.deploymentFingerprint),
   ensureDaHeaderHash(message.headerHash),
   ensureDaPayloadHash(message.payloadHash),
-  cborUint(message.payloadSchemaVersion, "payload_schema_version"),
+  BigInt(
+    ensureDaPayloadSchemaV1(
+      message.payloadSchemaVersion,
+      "payload_schema_version",
+    ),
+  ),
   cborUint(message.payloadBytes, "payload_bytes"),
   cborUint(message.chunkSize, "chunk_size"),
   cborUint(message.chunkCount, "chunk_count"),
@@ -786,7 +878,7 @@ const decodePayloadAnnouncementValue = (
     ),
     headerHash: headerHashValue(v[1], `${fieldName}.header_hash`),
     payloadHash: payloadHashValue(v[2], `${fieldName}.payload_hash`),
-    payloadSchemaVersion: ensureUint(
+    payloadSchemaVersion: ensureDaPayloadSchemaV1(
       v[3],
       `${fieldName}.payload_schema_version`,
     ),
@@ -819,7 +911,12 @@ const encodePayloadSubmitRequestValue = (
   ensureDaDeploymentFingerprint(message.deploymentFingerprint),
   ensureDaHeaderHash(message.headerHash),
   ensureDaPayloadHash(message.payloadHash),
-  cborUint(message.payloadSchemaVersion, "payload_schema_version"),
+  BigInt(
+    ensureDaPayloadSchemaV1(
+      message.payloadSchemaVersion,
+      "payload_schema_version",
+    ),
+  ),
   cborEnum(DaPayloadSubmitMode, message.mode, "mode"),
   message.payloadBytes == null
     ? null
@@ -839,7 +936,7 @@ const decodePayloadSubmitRequestValue = (
     ),
     headerHash: headerHashValue(v[1], `${fieldName}.header_hash`),
     payloadHash: payloadHashValue(v[2], `${fieldName}.payload_hash`),
-    payloadSchemaVersion: ensureUint(
+    payloadSchemaVersion: ensureDaPayloadSchemaV1(
       v[3],
       `${fieldName}.payload_schema_version`,
     ),
@@ -1114,7 +1211,14 @@ const encodeMetadataByHeaderResponseValue = (
   message.payloadHash == null
     ? null
     : ensureDaPayloadHash(message.payloadHash, "payload_hash"),
-  cborOptionalUint(message.payloadSchemaVersion, "payload_schema_version"),
+  message.payloadSchemaVersion == null
+    ? null
+    : BigInt(
+        ensureDaPayloadSchemaV1(
+          message.payloadSchemaVersion,
+          "payload_schema_version",
+        ),
+      ),
   cborOptionalUint(message.payloadBytes, "payload_bytes"),
   message.rootSummaryHash == null
     ? null
@@ -1144,7 +1248,10 @@ const decodeMetadataByHeaderResponseValue = (
     payloadSchemaVersion:
       v[3] == null
         ? null
-        : ensureUint(v[3], `${fieldName}.payload_schema_version`),
+        : ensureDaPayloadSchemaV1(
+            v[3],
+            `${fieldName}.payload_schema_version`,
+          ),
     payloadBytes:
       v[4] == null ? null : ensureUint(v[4], `${fieldName}.payload_bytes`),
     rootSummaryHash:
@@ -1665,8 +1772,19 @@ const encodeCapabilitiesResponseValue = (
   message: DaCapabilitiesResponseV1,
 ): unknown[] => [
   ensureDaDeploymentFingerprint(message.deploymentFingerprint),
-  cborUint(message.transportProtocolVersion, "transport_protocol_version"),
-  cborSortedUintArray(message.payloadSchemaVersions, "payload_schema_versions"),
+  BigInt(
+    ensureDaTransportV1(
+      message.transportProtocolVersion,
+      "transport_protocol_version",
+    ),
+  ),
+  cborSortedUintArray(
+    exactDaPayloadSchemaVersionsV1(
+      message.payloadSchemaVersions,
+      "payload_schema_versions",
+    ),
+    "payload_schema_versions",
+  ),
   cborSortedUintArray(
     message.envelopeContentEncodings,
     "envelope_content_encodings",
@@ -1688,11 +1806,11 @@ const decodeCapabilitiesResponseValue = (
       fields[0],
       `${fieldName}.deployment_fingerprint`,
     ),
-    transportProtocolVersion: ensureUint(
+    transportProtocolVersion: ensureDaTransportV1(
       fields[1],
       `${fieldName}.transport_protocol_version`,
     ),
-    payloadSchemaVersions: sortedUintArrayValue(
+    payloadSchemaVersions: exactDaPayloadSchemaVersionsV1(
       fields[2],
       `${fieldName}.payload_schema_versions`,
     ),

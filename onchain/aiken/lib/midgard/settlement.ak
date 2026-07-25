@@ -7,7 +7,7 @@ use midgard/common/types.{PosixTime}
 use midgard/common/utils
 use midgard/ledger_state
 use midgard/transition_trace
-use midgard/user_events/tx_order
+use midgard/user_events/tx_order_v1 as tx_order
 
 pub type Datum {
   deposits_root: ledger_state.DepositsRoot,
@@ -122,22 +122,26 @@ pub fn get_datum(
   settlement_policy_id: PolicyId,
   settlement_ref_input_index: Int,
 ) -> Datum {
-  expect Input {
-    output: Output { datum: InlineDatum(settlement_datum_data), .. },
-    ..
-  } =
-    reference_inputs
-      |> utils.get_authentic_input_with_policy_at(
-          settlement_policy_id,
-          settlement_ref_input_index,
-        )
+  expect
+      Input {
+        output: Output { datum: InlineDatum(settlement_datum_data), .. },
+        ..
+      }
+    = reference_inputs
+    |> utils.get_authentic_input_with_policy_at(
+        settlement_policy_id,
+        settlement_ref_input_index,
+      )
 
-  expect Pair(0, settlement_fields) =
-    builtin.un_constr_data(settlement_datum_data)
-  expect [
-    deposits_root_data, withdrawals_root_data, forced_transactions_root_data,
-    transactions_root_data, resolution_claim_data,
-  ] = settlement_fields
+  expect Pair(0, settlement_fields) = builtin.un_constr_data(
+    settlement_datum_data,
+  )
+  expect
+      [
+        deposits_root_data, withdrawals_root_data, forced_transactions_root_data,
+        transactions_root_data, resolution_claim_data,
+      ]
+    = settlement_fields
 
   Datum {
     deposits_root: builtin.un_b_data(deposits_root_data),
@@ -149,8 +153,9 @@ pub fn get_datum(
 }
 
 fn parse_resolution_claim(claim_data: Data) -> Option<ResolutionClaim> {
-  let Pair(option_constructor, option_fields) =
-    builtin.un_constr_data(claim_data)
+  let Pair(option_constructor, option_fields) = builtin.un_constr_data(
+    claim_data,
+  )
   if option_constructor == 1 {
     expect [] = option_fields
     None
@@ -187,20 +192,22 @@ pub fn valid_event_inclusion(
     Deposit -> {
       // 1. The transaction must include a deposit event utxo as a reference
       //    input. Let that reference input be `unprocessed_deposit`.
-      expect Input {
-        output: Output { datum: InlineDatum(deposit_datum_data), .. },
-        ..
-      } =
-        utils.get_authentic_input_with_nft_at(
-          reference_inputs,
-          deposit_script_hash,
-          unresolved_event_asset_name,
-          unresolved_event_ref_input_index,
-        )
+      expect
+          Input {
+            output: Output { datum: InlineDatum(deposit_datum_data), .. },
+            ..
+          }
+        = utils.get_authentic_input_with_nft_at(
+        reference_inputs,
+        deposit_script_hash,
+        unresolved_event_asset_name,
+        unresolved_event_ref_input_index,
+      )
       // Unsafe coercion is fine here as we have already validated the
       // authenticity of the utxo.
-      let Pair(deposit_key, deposit_value) =
-        ledger_state.unsafe_event_to_key_value_pair(deposit_datum_data)
+      let Pair(deposit_key, deposit_value) = ledger_state.unsafe_event_to_key_value_pair(
+        deposit_datum_data,
+      )
       expect deposit_id: ledger_state.DepositId = deposit_key
       expect deposit_info: ledger_state.DepositInfo = deposit_value
       expect DepositMembership { witness } = membership_proof
@@ -221,29 +228,30 @@ pub fn valid_event_inclusion(
     Withdrawal { validity_override } -> {
       // 1. The transaction must include a withdrawal order as a reference
       //    input. Let that reference input be `unprocessed_withdrawal`.
-      expect Input {
-        output: Output { datum: InlineDatum(withdrawal_datum_data), .. },
-        ..
-      } =
-        utils.get_authentic_input_with_nft_at(
-          reference_inputs,
-          withdrawal_script_hash,
-          unresolved_event_asset_name,
-          unresolved_event_ref_input_index,
-        )
+      expect
+          Input {
+            output: Output { datum: InlineDatum(withdrawal_datum_data), .. },
+            ..
+          }
+        = utils.get_authentic_input_with_nft_at(
+        reference_inputs,
+        withdrawal_script_hash,
+        unresolved_event_asset_name,
+        unresolved_event_ref_input_index,
+      )
 
-      let Pair(withdrawal_key, withdrawal_info_data) =
-        ledger_state.unsafe_event_to_key_value_pair(withdrawal_datum_data)
+      let Pair(withdrawal_key, withdrawal_info_data) = ledger_state.unsafe_event_to_key_value_pair(
+        withdrawal_datum_data,
+      )
       expect withdrawal_id: ledger_state.WithdrawalId = withdrawal_key
 
       // `validity` of `unprocessed_withdrawal` must be set via the redeemer.
       expect withdrawal_info: ledger_state.WithdrawalInfo = withdrawal_info_data
       //
-      let overridden_withdrawal_info =
-        ledger_state.WithdrawalInfo {
-          ..withdrawal_info,
-          validity: validity_override,
-        }
+      let overridden_withdrawal_info = ledger_state.WithdrawalInfo {
+        ..withdrawal_info,
+        validity: validity_override,
+      }
       expect WithdrawalMembership { witness } = membership_proof
 
       // 2. A valid membership proof must be provided, proving that
@@ -262,34 +270,31 @@ pub fn valid_event_inclusion(
     TxOrder { validity_override } -> {
       // 1. The transaction must include an L2 transaction order as a reference
       //    input. Let that reference input be `unprocessed_tx_order`.
-      expect Input {
-        output: Output { datum: InlineDatum(tx_order_datum_data), .. },
-        ..
-      } =
-        utils.get_authentic_input_with_nft_at(
-          reference_inputs,
-          tx_order_script_hash,
-          unresolved_event_asset_name,
-          unresolved_event_ref_input_index,
-        )
+      expect
+          Input {
+            output: Output { datum: InlineDatum(tx_order_datum_data), .. },
+            ..
+          }
+        = utils.get_authentic_input_with_nft_at(
+        reference_inputs,
+        tx_order_script_hash,
+        unresolved_event_asset_name,
+        unresolved_event_ref_input_index,
+      )
 
       // `validity` of `unprocessed_tx_order` must be set via the redeemer.
       expect tx_order_datum: tx_order.Datum = tx_order_datum_data
-      let
-        tx_order_id,
-        forced_inclusion_tx,
-      <-
-        tx_order.forced_inclusion_key_value(
-          tx_order_event_data: tx_order_datum.event,
-          validity_override: validity_override,
-        )
+      let tx_order_id, forced_inclusion_tx <- tx_order.forced_inclusion_key_value(
+        tx_order_event_data: tx_order_datum.event,
+        validity_override: validity_override,
+      )
       expect TxOrderMembership { witness } = membership_proof
 
       // 2. A valid membership proof must be provided, proving that
       //    `unprocessed_tx_order` with the operator-provided validity is a
       //    member of the forced transactions tree in the settlement utxo.
       valid_counted_membership(
-        expected_domain: transition_trace.ForcedTransactionsRootDomain,
+        expected_domain: transition_trace.ForcedTransactionsV1RootDomain,
         expected_root: forced_transactions_root,
         witness: witness,
         key: tx_order_id,

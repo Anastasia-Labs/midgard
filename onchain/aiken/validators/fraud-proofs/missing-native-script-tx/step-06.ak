@@ -43,29 +43,30 @@ validator main(
         // 1. Specified input must be authentic and properly reproduced at the
         //    fraud proof's spending address.
         let
-          _own_script_hash,
-          _computation_thread_token_asset_name,
-          _fraud_prover,
-          m_input_state_data,
-        <-
-          finalize(
-            computation_thread_token_policy_id,
-            fraud_proof_token_policy_id,
-            fraud_proof_token_address,
-            step_datum,
-            input_index,
-            output_index,
-            fraud_proof_mint_redeemer_index,
-            own_out_ref,
-            inputs,
-            outputs,
-            redeemers,
-          )
+            _own_script_hash,
+            _computation_thread_token_asset_name,
+            _fraud_prover,
+            m_input_state_data
+          <- finalize(
+          computation_thread_token_policy_id,
+          fraud_proof_token_policy_id,
+          fraud_proof_token_address,
+          step_datum,
+          input_index,
+          output_index,
+          fraud_proof_mint_redeemer_index,
+          own_out_ref,
+          inputs,
+          outputs,
+          redeemers,
+        )
 
-        expect Some(State {
-          expected_missing_script_hash,
-          verified_script_wits_hash,
-        }) = m_input_state_data
+        expect
+            Some(State {
+              expected_missing_script_hash,
+              verified_script_wits_hash,
+            })
+          = m_input_state_data
 
         // 2. The provided script witnesses preimage must match the hash carried
         //    from the previous steps.
@@ -74,8 +75,8 @@ validator main(
 
         // 3. The bad transaction's script witnesses must not contain the
         //    required native script.
-        let required_script_is_present =
-          script_tx_wits_preimage |> pairs.has_key(expected_missing_script_hash)
+        let required_script_is_present = script_tx_wits_preimage
+          |> pairs.has_key(expected_missing_script_hash)
         expect required_script_is_present == False
 
         // Done.

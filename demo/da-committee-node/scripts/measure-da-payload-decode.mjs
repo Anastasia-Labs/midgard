@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { readFile } from "node:fs/promises";
 
-import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
+import { unwrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS_V1 } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
 
@@ -37,9 +37,8 @@ const report = {
 
 const envelope = await readFile(envelopePath);
 const unwrapStartedAt = performance.now();
-const unwrapped = await unwrapDaPayload(envelope, {
+const unwrapped = await unwrapDaPayloadV1(envelope, {
   maxPayloadBytes: maxInnerBytes,
-  schemaVersion: 3,
 });
 const unwrapDurationMs = performance.now() - unwrapStartedAt;
 const rssAfterUnwrapBytes = process.memoryUsage().rss;
@@ -59,8 +58,8 @@ if (mode === "unwrap") {
 }
 
 const strictDecodeStartedAt = performance.now();
-const payload = SDK.decodeDaPayloadV2(unwrapped.innerBytes);
-const canonical = SDK.encodeDaPayloadV2(payload);
+const payload = SDK.decodeDaPayloadV1(unwrapped.innerBytes);
+const canonical = SDK.encodeDaPayloadV1(payload);
 if (!canonical.equals(unwrapped.innerBytes)) {
   throw new Error("decoded payload did not re-encode canonically");
 }

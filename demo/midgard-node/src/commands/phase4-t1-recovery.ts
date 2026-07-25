@@ -1,3 +1,4 @@
+import { isMidgardConsensusProfileV1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
@@ -7,8 +8,8 @@ import { commitExplicitBlockHeaderProgram } from "@/workers/commit-block-header.
 import {
   fetchLatestCommittedBlockLocal,
   getConfirmedStateFromStateQueueDatumLocal,
-  getHeaderFromStateQueueDatumLocal,
-  hashBlockHeaderLocal,
+  getHeaderV1FromStateQueueDatumLocal,
+  hashBlockHeaderV1Local,
   localizeSdkEffect,
   stateQueueBaseHeaderHash,
   stateQueueOutRef,
@@ -214,6 +215,13 @@ const safeTimeMs = (value: bigint, label: string): number => {
 const fetchPhase4T1CanonicalState = Effect.gen(function* () {
   const lucid = yield* Lucid;
   const contracts = yield* MidgardContracts;
+  if (!isMidgardConsensusProfileV1(contracts.consensusProfile)) {
+    return yield* Effect.fail(
+      new Error(
+        "The phase4-t1-v1 recovery probe is launch-profile-specific and refuses V1 state-queue data",
+      ),
+    );
+  }
   const fetchConfig: SDK.StateQueueFetchConfig = {
     stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
     stateQueuePolicyId: contracts.stateQueue.policyId,
@@ -235,10 +243,10 @@ const fetchPhase4T1CanonicalState = Effect.gen(function* () {
       );
       continue;
     }
-    const header = yield* getHeaderFromStateQueueDatumLocal(block.datum);
+    const header = yield* getHeaderV1FromStateQueueDatumLocal(block.datum);
     canonicalHeaderHashes.push(
       requireL2HeaderHash(
-        yield* hashBlockHeaderLocal(header),
+        yield* hashBlockHeaderV1Local(header),
         "canonical header hash",
       ),
     );
@@ -281,7 +289,7 @@ const fetchPhase4T1CanonicalState = Effect.gen(function* () {
       endTimeMs: safeTimeMs(data.endTime, "confirmed end time"),
     };
   } else {
-    const header = yield* getHeaderFromStateQueueDatumLocal(latest.datum);
+    const header = yield* getHeaderV1FromStateQueueDatumLocal(latest.datum);
     canonicalTip = {
       headerHash: requireL2HeaderHash(latestHeaderHash, "canonical tip hash"),
       outRef: stateQueueOutRef(latest),
