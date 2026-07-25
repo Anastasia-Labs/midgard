@@ -3593,7 +3593,7 @@ test script_sources_commits_outputs_for_bounded_replay() {
   )
 }
 
-test script_sources_collects_protected_receive_purposes() {
+fn protected_receive_purpose_step(step_to_verify: Int) -> Bool {
   let output = MidgardTxOutput {
     address: MidgardAddress {
       protected: True,
@@ -3650,21 +3650,6 @@ test script_sources_collects_protected_receive_purposes() {
     [h_28_a],
     16,
   )
-  let item_valid = validation_machine_v1.verify_one_step_evidence(
-    pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
-        work_witness_cbor,
-        claimed_successor: after_output,
-      },
-      auxiliary: validation_machine_v1.OutputReplayWitness {
-        output_index: 0,
-        output_cbor,
-        siblings: [],
-        signer_proof: validation_machine_v1.NoSignerSetProof,
-      },
-    },
-  )
   let Pair(final_pre, final_work_witness_cbor) = script_sources_output_step_fixture(
     tx,
     0,
@@ -3699,19 +3684,45 @@ test script_sources_collects_protected_receive_purposes() {
     [h_28_a],
     17,
   )
-  and {
-    item_valid,
+  if step_to_verify == 0 {
     validation_machine_v1.verify_one_step_evidence(
-      final_pre,
+      pre,
       validation_machine_v1.ValidationOneStepEvidenceV1 {
         transition: validation_machine_v1.ValidationOneStepWitnessV1 {
-          work_witness_cbor: final_work_witness_cbor,
-          claimed_successor: stage_six,
+          work_witness_cbor,
+          claimed_successor: after_output,
         },
-        auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+        auxiliary: validation_machine_v1.OutputReplayWitness {
+          output_index: 0,
+          output_cbor,
+          siblings: [],
+          signer_proof: validation_machine_v1.NoSignerSetProof,
+        },
       },
-    ),
+    )
+  } else {
+    and {
+      step_to_verify == 1,
+      validation_machine_v1.verify_one_step_evidence(
+        final_pre,
+        validation_machine_v1.ValidationOneStepEvidenceV1 {
+          transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+            work_witness_cbor: final_work_witness_cbor,
+            claimed_successor: stage_six,
+          },
+          auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+        },
+      ),
+    }
   }
+}
+
+test script_sources_collects_protected_receive_purpose() {
+  protected_receive_purpose_step(0)
+}
+
+test script_sources_finishes_protected_receive_purpose_replay() {
+  protected_receive_purpose_step(1)
 }
 
 test script_sources_rejects_an_unsigned_protected_pubkey_output() {
