@@ -719,12 +719,44 @@ export const midgardContractsFromDeploymentManifest = (
         sourcePath,
         "fraudProofTransitionTrace",
       ),
-      validationTraceDispute: spendingValidatorFromManifest(
-        network,
-        manifest,
-        sourcePath,
-        "validationTraceDispute",
-      ),
+      validationTraceDispute: {
+        ...spendingValidatorFromManifest(
+          network,
+          manifest,
+          sourcePath,
+          "validationTraceDispute",
+        ),
+        source: spendingValidatorFromManifest(
+          network,
+          manifest,
+          sourcePath,
+          "validationTraceDisputeSource",
+        ),
+        game: spendingValidatorFromManifest(
+          network,
+          manifest,
+          sourcePath,
+          "validationTraceDisputeGame",
+        ),
+        boundary: spendingValidatorFromManifest(
+          network,
+          manifest,
+          sourcePath,
+          "validationTraceDisputeBoundary",
+        ),
+        timeout: spendingValidatorFromManifest(
+          network,
+          manifest,
+          sourcePath,
+          "validationTraceDisputeTimeout",
+        ),
+        award: spendingValidatorFromManifest(
+          network,
+          manifest,
+          sourcePath,
+          "validationTraceDisputeAward",
+        ),
+      },
     },
   };
 };
@@ -1184,7 +1216,7 @@ const buildRealValidationTraceDisputeValidator = (
   contracts: SDK.MidgardValidators,
   computationThread: SDK.MintingValidator,
   fraudProof: SDK.AuthenticatedValidator,
-): Effect.Effect<SDK.SpendingValidator, Error> =>
+): Effect.Effect<SDK.ValidationTraceDisputeValidators, Error> =>
   Effect.gen(function* () {
     const blueprint = SDK.parseFaultProofBlueprint(yield* loadRealBlueprint());
     const validationTraceContracts =
@@ -1211,7 +1243,15 @@ const buildRealValidationTraceDisputeValidator = (
       validationTraceContracts.fraudProof.spendingScriptHash,
     );
 
-    return validationTraceContracts.validationTraceDispute.firstStep;
+    const chain = validationTraceContracts.validationTraceDispute;
+    return {
+      ...chain.opener,
+      source: chain.source,
+      game: chain.game,
+      boundary: chain.boundary,
+      timeout: chain.timeout,
+      award: chain.award,
+    };
   });
 
 const buildRealNonExistentInputFirstStepValidator = (

@@ -281,6 +281,21 @@ describe("V1 deployment manifest", () => {
     ).toThrow(/contracts\.validationTraceDispute is required/u);
   });
 
+  it("rejects a manifest missing a validation-dispute control contract", () => {
+    const { manifestId: _manifestId, ...identity } = canonicalManifest();
+    const {
+      validationTraceDisputeSource: _validationTraceDisputeSource,
+      ...withoutSource
+    } = identity.contracts;
+    const missingContract = {
+      ...identity,
+      contracts: withoutSource,
+    } as Omit<DeploymentManifestV1Value, "manifestId">;
+    expect(() =>
+      parseDeploymentManifestV1Value(withId(missingContract)),
+    ).toThrow(/contracts\.validationTraceDisputeSource is required/u);
+  });
+
   it("rejects tampered script bytes even with a recomputed manifest ID", () => {
     const { manifestId: _manifestId, ...identity } = canonicalManifest();
     const tampered = {

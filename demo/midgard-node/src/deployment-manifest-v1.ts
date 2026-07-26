@@ -38,6 +38,11 @@ export const REQUIRED_TRANSACTION_ORDER_CONTRACTS = Object.freeze([
   "txOrderFieldReceiptMint",
   "cekProgramMaterialSpend",
   "validationTraceDispute",
+  "validationTraceDisputeSource",
+  "validationTraceDisputeGame",
+  "validationTraceDisputeBoundary",
+  "validationTraceDisputeTimeout",
+  "validationTraceDisputeAward",
 ] as const);
 
 export const DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES = Object.freeze([
@@ -86,6 +91,11 @@ export const DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES = Object.freeze([
   "fraudProofInvalidRange",
   "fraudProofTransitionTrace",
   "validationTraceDispute",
+  "validationTraceDisputeSource",
+  "validationTraceDisputeGame",
+  "validationTraceDisputeBoundary",
+  "validationTraceDisputeTimeout",
+  "validationTraceDisputeAward",
 ] as const);
 
 export const DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
@@ -122,6 +132,11 @@ export const DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
     "V1 transaction-field receipt minting": "txOrderFieldReceiptMint",
     "V1 immutable CEK program-material publication": "cekProgramMaterialSpend",
     "V1 validation-trace dispute": "validationTraceDispute",
+    "V1 validation-trace source": "validationTraceDisputeSource",
+    "V1 validation-trace game": "validationTraceDisputeGame",
+    "V1 validation-trace boundary": "validationTraceDisputeBoundary",
+    "V1 validation-trace timeout": "validationTraceDisputeTimeout",
+    "V1 validation-trace award": "validationTraceDisputeAward",
   } as const);
 
 export const DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_ROLES = Object.freeze(

@@ -1260,6 +1260,32 @@ export const nodeRuntimeReferenceScriptTargets = (
           name: "V1 validation-trace dispute",
           script: contracts.fraudProofs.validationTraceDispute.spendingScript,
         },
+        {
+          name: "V1 validation-trace source",
+          script:
+            contracts.fraudProofs.validationTraceDispute.source.spendingScript,
+        },
+        {
+          name: "V1 validation-trace game",
+          script:
+            contracts.fraudProofs.validationTraceDispute.game.spendingScript,
+        },
+        {
+          name: "V1 validation-trace boundary",
+          script:
+            contracts.fraudProofs.validationTraceDispute.boundary
+              .spendingScript,
+        },
+        {
+          name: "V1 validation-trace timeout",
+          script:
+            contracts.fraudProofs.validationTraceDispute.timeout.spendingScript,
+        },
+        {
+          name: "V1 validation-trace award",
+          script:
+            contracts.fraudProofs.validationTraceDispute.award.spendingScript,
+        },
       ]),
 ];
 

@@ -203,8 +203,14 @@ export type WithdrawalValidator = {
 
 export type AuthenticatedValidator = SpendingValidator & MintingValidator;
 
-// TODO: We'll need a more elaborate design to allow multiple steps for each
-//       proof.
+export type ValidationTraceDisputeValidators = SpendingValidator & {
+  readonly source: SpendingValidator;
+  readonly game: SpendingValidator;
+  readonly boundary: SpendingValidator;
+  readonly timeout: SpendingValidator;
+  readonly award: SpendingValidator;
+};
+
 export type FraudProofs = {
   doubleSpend: SpendingValidator;
   nonExistentInput: SpendingValidator;
@@ -214,7 +220,7 @@ export type FraudProofs = {
   /**
    * V1 stateful dispute game for a transaction-validation trace.
    */
-  validationTraceDispute: SpendingValidator;
+  validationTraceDispute: ValidationTraceDisputeValidators;
 };
 
 export type MidgardValidators = {

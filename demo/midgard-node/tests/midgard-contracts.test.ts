@@ -187,6 +187,16 @@ describe("midgard contracts registry", () => {
       expect(resolved.fraudProofs.doubleSpend.spendingScriptCBOR).not.toEqual(
         placeholderContracts.fraudProofs.doubleSpend.spendingScriptCBOR,
       );
+      const validationControlHashes = [
+        resolved.fraudProofs.validationTraceDispute.spendingScriptHash,
+        resolved.fraudProofs.validationTraceDispute.source.spendingScriptHash,
+        resolved.fraudProofs.validationTraceDispute.game.spendingScriptHash,
+        resolved.fraudProofs.validationTraceDispute.boundary
+          .spendingScriptHash,
+        resolved.fraudProofs.validationTraceDispute.timeout.spendingScriptHash,
+        resolved.fraudProofs.validationTraceDispute.award.spendingScriptHash,
+      ];
+      expect(new Set(validationControlHashes).size).toEqual(6);
 
       const txOrderContracts = yield* buildRealTxOrderContracts(
         "Preprod",

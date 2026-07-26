@@ -58,6 +58,11 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
   "V1 immutable CEK program-material publication":
     "V1CekProgramMaterialSpend",
   "V1 validation-trace dispute": "V1ValidationTraceDispute",
+  "V1 validation-trace source": "V1ValidationTraceSource",
+  "V1 validation-trace game": "V1ValidationTraceGame",
+  "V1 validation-trace boundary": "V1ValidationTraceBoundary",
+  "V1 validation-trace timeout": "V1ValidationTraceTimeout",
+  "V1 validation-trace award": "V1ValidationTraceAward",
 } as const;
 
 export type ReferenceScriptAuthTokenTarget =

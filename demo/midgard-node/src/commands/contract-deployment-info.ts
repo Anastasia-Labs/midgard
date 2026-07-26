@@ -231,6 +231,11 @@ const REFERENCE_SCRIPT_TARGET_BY_CONTRACT_NAME: Readonly<
   txOrderFieldReceiptMint: "V1 transaction-field receipt minting",
   cekProgramMaterialSpend: "V1 immutable CEK program-material publication",
   validationTraceDispute: "V1 validation-trace dispute",
+  validationTraceDisputeSource: "V1 validation-trace source",
+  validationTraceDisputeGame: "V1 validation-trace game",
+  validationTraceDisputeBoundary: "V1 validation-trace boundary",
+  validationTraceDisputeTimeout: "V1 validation-trace timeout",
+  validationTraceDisputeAward: "V1 validation-trace award",
 };
 
 const mintDescriptor = (
@@ -510,6 +515,31 @@ const collectScriptDescriptors = (
     "validationTraceDispute",
     contracts.fraudProofs.validationTraceDispute,
     "V1 validation-trace dispute",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeSource",
+    contracts.fraudProofs.validationTraceDispute.source,
+    "V1 validation-trace source",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeGame",
+    contracts.fraudProofs.validationTraceDispute.game,
+    "V1 validation-trace game",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeBoundary",
+    contracts.fraudProofs.validationTraceDispute.boundary,
+    "V1 validation-trace boundary",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeTimeout",
+    contracts.fraudProofs.validationTraceDispute.timeout,
+    "V1 validation-trace timeout",
+  ),
+  spendDescriptor(
+    "validationTraceDisputeAward",
+    contracts.fraudProofs.validationTraceDispute.award,
+    "V1 validation-trace award",
   ),
 ];
 

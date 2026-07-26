@@ -257,7 +257,14 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
     const nonExistentInputNoIndex = yield* mkFP("non_existent_input_no_index");
     const invalidRange = yield* mkFP("invalid_range");
     const transitionTrace = yield* mkFP("transition_trace");
-    const validationTraceDispute = transitionTrace;
+    const validationTraceDispute: SDK.ValidationTraceDisputeValidators = {
+      ...transitionTrace,
+      source: transitionTrace,
+      game: transitionTrace,
+      boundary: transitionTrace,
+      timeout: transitionTrace,
+      award: transitionTrace,
+    };
 
     const fraudProofs: SDK.FraudProofs = {
       doubleSpend,

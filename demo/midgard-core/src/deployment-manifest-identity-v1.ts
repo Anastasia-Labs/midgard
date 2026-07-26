@@ -62,6 +62,11 @@ export const DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES = Object.freeze([
   "fraudProofInvalidRange",
   "fraudProofTransitionTrace",
   "validationTraceDispute",
+  "validationTraceDisputeSource",
+  "validationTraceDisputeGame",
+  "validationTraceDisputeBoundary",
+  "validationTraceDisputeTimeout",
+  "validationTraceDisputeAward",
 ] as const);
 
 export const DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
@@ -98,6 +103,11 @@ export const DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
     "V1 transaction-field receipt minting": "txOrderFieldReceiptMint",
     "V1 immutable CEK program-material publication": "cekProgramMaterialSpend",
     "V1 validation-trace dispute": "validationTraceDispute",
+    "V1 validation-trace source": "validationTraceDisputeSource",
+    "V1 validation-trace game": "validationTraceDisputeGame",
+    "V1 validation-trace boundary": "validationTraceDisputeBoundary",
+    "V1 validation-trace timeout": "validationTraceDisputeTimeout",
+    "V1 validation-trace award": "validationTraceDisputeAward",
   } as const);
 
 export const DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES =
@@ -135,6 +145,11 @@ export const DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES =
     "V1 immutable CEK program-material publication":
       "V1CekProgramMaterialSpend",
     "V1 validation-trace dispute": "V1ValidationTraceDispute",
+    "V1 validation-trace source": "V1ValidationTraceSource",
+    "V1 validation-trace game": "V1ValidationTraceGame",
+    "V1 validation-trace boundary": "V1ValidationTraceBoundary",
+    "V1 validation-trace timeout": "V1ValidationTraceTimeout",
+    "V1 validation-trace award": "V1ValidationTraceAward",
   } as const);
 
 export const DEPLOYMENT_MANIFEST_V1_STEP_NAMES = Object.freeze([

@@ -234,6 +234,18 @@ describe("contract deployment info", () => {
         expect(
           manifest.contracts.fraudProofInvalidRange.refScriptUTxO,
         ).toBeNull();
+        expect(
+          manifest.contracts.validationTraceDisputeSource.scriptHash,
+        ).toEqual(
+          contracts.fraudProofs.validationTraceDispute.source
+            .spendingScriptHash,
+        );
+        expect(
+          manifest.contracts.validationTraceDisputeAward.scriptHash,
+        ).toEqual(
+          contracts.fraudProofs.validationTraceDispute.award
+            .spendingScriptHash,
+        );
       }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
   );
 

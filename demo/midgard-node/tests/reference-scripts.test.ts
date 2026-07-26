@@ -105,6 +105,16 @@ describe("node-runtime reference-script registry", () => {
     expect(names).toContain("reserve observer");
     expect(names).toContain("payout spending");
     expect(names).toContain("payout minting");
+    expect(
+      names.filter((name) => name.startsWith("V1 validation-trace ")),
+    ).toEqual([
+      "V1 validation-trace dispute",
+      "V1 validation-trace source",
+      "V1 validation-trace game",
+      "V1 validation-trace boundary",
+      "V1 validation-trace timeout",
+      "V1 validation-trace award",
+    ]);
   });
 
   it("derives protocol-init as a strict subset of node-runtime", async () => {
