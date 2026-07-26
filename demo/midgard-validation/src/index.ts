@@ -11,6 +11,7 @@ export * from "./cek-executor.js";
 export * from "./cek-machine.js";
 export * from "./cek-program.js";
 export * from "./ledger.js";
+export * from "./ledger-output-descriptor.js";
 export * from "./ledger-tx.js";
 export * from "./local-script-eval.js";
 export * from "./midgard-redeemers.js";

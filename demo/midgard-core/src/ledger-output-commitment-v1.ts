@@ -2,15 +2,15 @@ import { blake2b } from "@noble/hashes/blake2.js";
 
 import {
   buildMidgardBoundedItemV1,
-  type MidgardBoundedItemV1,
   type MidgardBoundedItemChunkProofV1,
+  type MidgardBoundedItemV1,
   verifyMidgardBoundedItemChunkProofV1,
 } from "./bounded-item-v1.js";
+import { encodeMidgardAddressBytes } from "./codec/address.js";
 import {
   decodeSingleCbor,
   encodeCbor,
 } from "./codec/cbor.js";
-import { encodeMidgardAddressBytes } from "./codec/address.js";
 import { ensureHash32, type Hash32 } from "./codec/hash.js";
 import {
   buildMidgardValidationMerkleFrontierV1,
