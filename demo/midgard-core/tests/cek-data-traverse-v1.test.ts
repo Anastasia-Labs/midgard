@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   advanceMidgardCekDataTraverseV1,
   appendMidgardCekDataFrameChildV1,
+  buildMidgardCekDataTraverseTraceV1,
   buildMidgardValidationMerkleMembershipV1,
   encodeCborBytes,
   encodeMidgardCekDataTraverseControlV1,
@@ -401,5 +402,84 @@ describe("authenticated CEK Data traversal V1", () => {
       }),
     ).toBeNull();
 
+  });
+
+  it("automatically constructs every reveal and witness for nested canonical Data", () => {
+    const byteLeaf = encodeCardanoDataBytes(
+      Buffer.alloc(65, 0x71),
+    );
+    const source = Buffer.concat([
+      Buffer.from("a2019fd87980ff", "hex"),
+      byteLeaf,
+      Buffer.from("d8668218809f00ff", "hex"),
+    ]);
+    const trace = buildMidgardCekDataTraverseTraceV1({
+      sourceStart: 31,
+      source,
+    });
+    const summary = finalizeMidgardCekDataTraverseV1(
+      trace.terminal,
+    );
+
+    expect(summary).not.toBeNull();
+    expect(trace.terminal.offset).toBe(source.length);
+    expect(
+      Math.max(
+        ...trace.steps
+          .map((step) => step.sourceBytes?.length ?? 0),
+      ),
+    ).toBeLessThanOrEqual(
+      MIDGARD_CEK_DATA_TRAVERSE_MAX_SOURCE_SPAN_V1,
+    );
+    expect(
+      trace.steps.map((step) => step.action?.kind),
+    ).toContain("foldMap");
+    expect(
+      trace.steps.map((step) => step.action?.kind),
+    ).toContain("headLargeConstructor");
+    for (const step of trace.steps) {
+      expect(
+        advanceMidgardCekDataTraverseV1({
+          control: step.control,
+          sourceBytes: step.sourceBytes,
+          action: step.action,
+        }),
+      ).toStrictEqual(step.next);
+    }
+  });
+
+  it("constructs deeply nested evidence without a JavaScript call-stack limit", () => {
+    const depth = 3_000;
+    const source = Buffer.concat([
+      Buffer.from("d8799f".repeat(depth), "hex"),
+      Buffer.from([0x01]),
+      Buffer.from("ff".repeat(depth), "hex"),
+    ]);
+    const trace = buildMidgardCekDataTraverseTraceV1({
+      sourceStart: 0,
+      source,
+    });
+
+    expect(source.length).toBe(12_001);
+    expect(
+      finalizeMidgardCekDataTraverseV1(trace.terminal),
+    ).not.toBeNull();
+  });
+
+  it("makes the automatic constructor reject noncanonical and trailing bytes", () => {
+    const malformed = [
+      "8101",
+      "9fff",
+      "d86682187f80",
+      "0102",
+    ];
+    for (const source of malformed) {
+      expect(() =>
+        buildMidgardCekDataTraverseTraceV1({
+          sourceStart: 0,
+          source: Buffer.from(source, "hex"),
+        }),
+      ).toThrow();
+    }
   });
 });
