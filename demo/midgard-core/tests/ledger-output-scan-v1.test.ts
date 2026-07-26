@@ -5,6 +5,7 @@ import {
   decodeMidgardDatum,
   encodeMidgardTxOutput,
   type MidgardTxOutput,
+  midgardValueToCmlValue,
 } from "../src/codec/index.js";
 import {
   advanceMidgardLedgerOutputScanV1,
@@ -74,6 +75,9 @@ describe("ledger output scan V1", () => {
     expect(terminal.cursor).toBe(fixture.cbor.length);
     expect(terminal.address).toStrictEqual(fixture.output.address);
     expect(terminal.lovelace).toBe(8_000_000n);
+    expect(terminal.cardanoValueSize).toBe(
+      midgardValueToCmlValue(fixture.output.value).to_cbor_bytes().length,
+    );
     expect(terminal.assetFrontier.count).toBe(2);
     expect(
       commitMidgardValidationMerkleFrontierV1(
@@ -86,7 +90,7 @@ describe("ledger output scan V1", () => {
     expect(
       encodeMidgardLedgerOutputScanControlV1(terminal).toString("hex"),
     ).toBe(
-      "950107192bf10402581d78111111111111111111111111111111111111111111111111111111111a007a1200000000581c555555555555555555555555555555555555555555555555555555554040028182015820fdd05992e96e478560b718d45058402827072f35e5220f396e2569800a2b76fe18541914270003191481191770",
+      "960107192bf10402581d78111111111111111111111111111111111111111111111111111111111a007a1200182e000000581c555555555555555555555555555555555555555555555555555555554040028182015820fdd05992e96e478560b718d45058402827072f35e5220f396e2569800a2b76fe18541914270003191481191770",
     );
     expect(
       trace.steps

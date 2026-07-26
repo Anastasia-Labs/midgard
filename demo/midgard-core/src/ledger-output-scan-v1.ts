@@ -46,6 +46,7 @@ export type MidgardLedgerOutputScanControlV1 = {
   readonly optionalFieldCount: number;
   readonly address: Buffer;
   readonly lovelace: bigint;
+  readonly cardanoValueSize: number;
   readonly policyRemaining: number;
   readonly assetRemaining: number;
   readonly policyAssetCursor: number;
@@ -83,6 +84,7 @@ export const initialMidgardLedgerOutputScanControlV1 =
     optionalFieldCount: 0,
     address: Buffer.alloc(0),
     lovelace: 0n,
+    cardanoValueSize: 0,
     policyRemaining: 0,
     assetRemaining: 0,
     policyAssetCursor: 0,
@@ -160,6 +162,7 @@ export const encodeMidgardLedgerOutputScanControlV1 = (
     throw new Error("Invalid V1 ledger output scan lovelace");
   }
   for (const [field, value] of [
+    ["Cardano Value size", control.cardanoValueSize],
     ["policy remaining", control.policyRemaining],
     ["asset remaining", control.assetRemaining],
     ["policy asset cursor", control.policyAssetCursor],
@@ -215,6 +218,7 @@ export const encodeMidgardLedgerOutputScanControlV1 = (
     BigInt(control.optionalFieldCount),
     control.address,
     control.lovelace,
+    BigInt(control.cardanoValueSize),
     BigInt(control.policyRemaining),
     BigInt(control.assetRemaining),
     BigInt(control.policyAssetCursor),
@@ -274,6 +278,17 @@ const optionalFieldsComplete = (
   control: MidgardLedgerOutputScanControlV1,
 ): boolean =>
   control.optionalFieldCount + 2 === control.mapEntryCount;
+
+const encodedCborLength = (value: bigint | Uint8Array): number =>
+  encodeCbor(value).length;
+
+const encodedMapHeaderLength = (entryCount: number): number => {
+  if (entryCount < 24) return 1;
+  if (entryCount <= 0xff) return 2;
+  if (entryCount <= 0xffff) return 3;
+  if (entryCount <= 0xffff_ffff) return 5;
+  throw new Error("V1 Cardano Value map exceeds the uint32 envelope");
+};
 
 const stepRequiredFields = ({
   control,
@@ -352,6 +367,12 @@ const stepValueHeader = ({
       localOffset: policies.nextOffset,
     }),
     lovelace: lovelace.value,
+    cardanoValueSize:
+      policies.length === 0
+        ? encodedCborLength(lovelace.value)
+        : 1 +
+          encodedCborLength(lovelace.value) +
+          encodedMapHeaderLength(policies.length),
     policyRemaining: policies.length,
   };
 };
@@ -397,6 +418,10 @@ const stepPolicyHeader = ({
     policyAssetCursor: 0,
     currentPolicy: policy.value,
     previousAssetName: Buffer.alloc(0),
+    cardanoValueSize:
+      control.cardanoValueSize +
+      encodedCborLength(policy.value) +
+      encodedMapHeaderLength(assets.length),
   };
 };
 
@@ -477,6 +502,10 @@ const stepAsset = ({
         quantity: quantity.value,
       }),
     ),
+    cardanoValueSize:
+      control.cardanoValueSize +
+      encodedCborLength(assetName.value) +
+      encodedCborLength(quantity.value),
   };
 };
 
@@ -735,6 +764,7 @@ export const isExactMidgardLedgerOutputScanTerminalV1 = ({
   optionalFieldsComplete(control) &&
   (control.address.length === 29 || control.address.length === 57) &&
   control.lovelace >= 0n &&
+  control.cardanoValueSize > 0 &&
   control.policyRemaining === 0 &&
   control.assetRemaining === 0 &&
   control.policyAssetCursor === 0 &&

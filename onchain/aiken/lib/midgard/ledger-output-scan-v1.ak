@@ -35,6 +35,7 @@ pub type LedgerOutputScanControlV1 {
   optional_field_count: Int,
   address: ByteArray,
   lovelace: Int,
+  cardano_value_size: Int,
   policy_remaining: Int,
   asset_remaining: Int,
   policy_asset_cursor: Int,
@@ -60,6 +61,7 @@ pub fn initial_control_v1() -> LedgerOutputScanControlV1 {
     optional_field_count: 0,
     address: #"",
     lovelace: 0,
+    cardano_value_size: 0,
     policy_remaining: 0,
     asset_remaining: 0,
     policy_asset_cursor: 0,
@@ -114,6 +116,7 @@ pub fn control_is_well_formed(
       ledger_output_v1.decode_canonical_address_bytes(control.address) != None,
     },
     control.lovelace >= 0,
+    control.cardano_value_size >= 0,
     control.policy_remaining >= 0,
     control.asset_remaining >= 0,
     control.policy_asset_cursor >= 0,
@@ -161,7 +164,7 @@ pub fn encode_control_v1(
   control: LedgerOutputScanControlV1,
 ) -> ByteArray {
   expect control_is_well_formed(control)
-  encode_definite_array_header(21)
+  encode_definite_array_header(22)
     |> bytearray.concat(cbor.serialise(version))
     |> bytearray.concat(cbor.serialise(control.stage))
     |> bytearray.concat(cbor.serialise(control.cursor))
@@ -169,6 +172,7 @@ pub fn encode_control_v1(
     |> bytearray.concat(cbor.serialise(control.optional_field_count))
     |> bytearray.concat(encode_definite_bytes(control.address))
     |> bytearray.concat(cbor.serialise(control.lovelace))
+    |> bytearray.concat(cbor.serialise(control.cardano_value_size))
     |> bytearray.concat(cbor.serialise(control.policy_remaining))
     |> bytearray.concat(cbor.serialise(control.asset_remaining))
     |> bytearray.concat(cbor.serialise(control.policy_asset_cursor))
@@ -194,11 +198,12 @@ pub fn control_from_data_v1(
     [
       version_data, stage_data, cursor_data, map_entry_count_data,
       optional_field_count_data, address_data, lovelace_data,
-      policy_remaining_data, asset_remaining_data, policy_asset_cursor_data,
-      previous_policy_data, current_policy_data, previous_asset_name_data,
-      asset_count_data, asset_peaks_data, datum_offset_data, datum_length_data,
-      payload_remaining_data, reference_script_language_data,
-      reference_script_offset_data, reference_script_length_data,
+      cardano_value_size_data, policy_remaining_data, asset_remaining_data,
+      policy_asset_cursor_data, previous_policy_data, current_policy_data,
+      previous_asset_name_data, asset_count_data, asset_peaks_data,
+      datum_offset_data, datum_length_data, payload_remaining_data,
+      reference_script_language_data, reference_script_offset_data,
+      reference_script_length_data,
     ] = builtin.un_list_data(data)
   let control = LedgerOutputScanControlV1 {
     version: builtin.un_i_data(version_data),
@@ -208,6 +213,7 @@ pub fn control_from_data_v1(
     optional_field_count: builtin.un_i_data(optional_field_count_data),
     address: builtin.un_b_data(address_data),
     lovelace: builtin.un_i_data(lovelace_data),
+    cardano_value_size: builtin.un_i_data(cardano_value_size_data),
     policy_remaining: builtin.un_i_data(policy_remaining_data),
     asset_remaining: builtin.un_i_data(asset_remaining_data),
     policy_asset_cursor: builtin.un_i_data(policy_asset_cursor_data),
@@ -265,6 +271,21 @@ fn canonical_key_at(
         None
       }
     None -> None
+  }
+}
+
+fn major_head_length(value: Int) -> Int {
+  expect value >= 0
+  if value < 24 {
+    1
+  } else if value <= 255 {
+    2
+  } else if value <= 65535 {
+    3
+  } else if value <= 4294967295 {
+    5
+  } else {
+    9
   }
 }
 
@@ -363,6 +384,13 @@ fn step_value_header(
                             policies.next_offset,
                           ),
                           lovelace: lovelace.value,
+                          cardano_value_size: if policies.value == 0 {
+                            bytearray.length(cbor.serialise(lovelace.value))
+                          } else {
+                            1 + bytearray.length(cbor.serialise(lovelace.value)) + major_head_length(
+                              policies.value,
+                            )
+                          },
                           policy_remaining: policies.value,
                         },
                       )
@@ -412,6 +440,9 @@ fn step_policy_header(
                 policy_asset_cursor: 0,
                 current_policy: policy.value,
                 previous_asset_name: #"",
+                cardano_value_size: control.cardano_value_size + bytearray.length(
+                  encode_definite_bytes(policy.value),
+                ) + major_head_length(assets.value),
               },
             )
           } else {
@@ -521,6 +552,9 @@ fn step_asset(
                     quantity.value,
                   ),
                 ),
+                cardano_value_size: control.cardano_value_size + bytearray.length(
+                  encode_definite_bytes(asset_name.value),
+                ) + bytearray.length(cbor.serialise(quantity.value)),
               },
             )
           } else {
@@ -819,6 +853,7 @@ pub fn terminal_is_exact_v1(
       control.address,
     ) == 57,
     control.lovelace >= 0,
+    control.cardano_value_size > 0,
     control.policy_remaining == 0,
     control.asset_remaining == 0,
     control.policy_asset_cursor == 0,
