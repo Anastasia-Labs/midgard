@@ -72,10 +72,12 @@ Result: **PASS** (1 passed, 11 skipped; measured test 6.494 s, total 8.23 s).
 
 ## P1 status and stop boundary
 
-The emulator portion of the P1 control-publication gate is now PASS for all
-six canonical controls. P1 overall remains open for its separately required
-actual target-network transaction evidence. Unsupported or incomplete
-activation remains fail closed.
+The P1 control-publication gate is now **PASS** for all six canonical controls:
+each exact, fully signed Cardano transaction fits the required 16,384-byte
+envelope with measured margin. Trusted effective/pending parameters and actual
+target-network construction remain separately required by P5; this
+emulator-only checkpoint does not satisfy or weaken that later gate.
+Unsupported or incomplete activation remains fail closed.
 
 Stop here before resolver publication/expansion, converting control
 submissions to consume these references, P4 fault-family work, live
