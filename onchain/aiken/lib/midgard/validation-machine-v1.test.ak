@@ -5031,6 +5031,8 @@ test script_sources_discovers_an_exact_non_native_execution() {
       redeemer_tx_wits: [redeemer],
     },
   }
+  let script_cbor = encode_midgard_versioned_script(script)
+  let script_item_commitment = bounded_item_v1.from_bytes(7, 0, script_cbor)
   let source_leaf = script_proof_v1.source_leaf_hash(0, #"00", script)
   let source_frontier = validation_merkle_v1.build_frontier([source_leaf])
   let redeemer_leaf = script_proof_v1.redeemer_leaf_hash(0, redeemer)
@@ -5141,7 +5143,10 @@ test script_sources_discovers_an_exact_non_native_execution() {
           source_index: 0,
           origin_kind: 0,
           source_key: #"00",
-          script,
+          script_language_tag: 3,
+          script_hash,
+          script_total_length: bytearray.length(script_cbor),
+          script_item_commitment,
           siblings: [],
         },
       },
@@ -8368,10 +8373,10 @@ test maximum_script_program_instruction_evidence_is_bounded() {
       source_index: 15,
       origin_kind: 1,
       source_key: bytearray.from_int_big_endian(0, 36),
-      script: MidgardVersionedScript {
-        language: PlutusV3Script,
-        script_bytes: v1_program_envelope(),
-      },
+      script_language_tag: 3,
+      script_hash: h_28_a,
+      script_total_length: 50,
+      script_item_commitment: h_a,
       siblings: list.repeat(zero, 4),
     },
   }
@@ -8582,6 +8587,7 @@ test script_sources_stage_zero_finish_advances_a_complete_source_frontier() {
         0,
         3,
         #"03" |> bytearray.concat(payload) |> blake2b_224,
+        bytearray.length(item_cbor),
         item_commitment,
       ),
     ],
@@ -8812,6 +8818,7 @@ test script_sources_stage_zero_commits_the_terminal_script_identity() {
         0,
         3,
         script_hash,
+        bytearray.length(item_cbor),
         item_commitment,
       ),
     ],

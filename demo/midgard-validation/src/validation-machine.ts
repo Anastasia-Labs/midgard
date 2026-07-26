@@ -383,7 +383,10 @@ export type ValidationMachineWorkWitness = {
         readonly sourceIndex: number;
         readonly originKind: "inline" | "reference";
         readonly sourceKey: Buffer;
-        readonly script: MidgardVersionedScript;
+        readonly scriptLanguageTag: 0 | 3 | 128;
+        readonly scriptHash: Buffer;
+        readonly scriptTotalLength: number;
+        readonly scriptItemCommitment: Buffer;
         readonly siblings: readonly Buffer[];
       }
     | {
@@ -1496,6 +1499,10 @@ export const buildDeterministicValidationMachineTrace = (
       readonly originKind: "inline" | "reference";
       readonly sourceKey: Buffer;
       readonly script: MidgardVersionedScript;
+      readonly scriptLanguageTag: 0 | 3 | 128;
+      readonly scriptHash: Buffer;
+      readonly scriptTotalLength: number;
+      readonly scriptItemCommitment: Buffer;
       readonly leaf: Buffer;
     };
     type ScriptPurposeProofEntry = {
@@ -1517,10 +1524,25 @@ export const buildDeterministicValidationMachineTrace = (
       phaseALedgerTx?.scriptWitnesses ?? []
     ).map((witness) => {
       const sourceKey = encodeCbor(BigInt(witness.index));
+      const item = scriptWitnessesCollection.items[witness.index]!;
+      const scriptLanguageTag =
+        witness.script.language === "NativeCardano"
+          ? 0
+          : witness.script.language === "PlutusV3"
+            ? 3
+            : 128;
+      const scriptHash = Buffer.from(
+        hashMidgardVersionedScript(witness.script),
+        "hex",
+      );
       return {
         originKind: "inline",
         sourceKey,
         script: witness.script,
+        scriptLanguageTag,
+        scriptHash,
+        scriptTotalLength: item.bytes.length,
+        scriptItemCommitment: item.commitment,
         leaf: hashMidgardScriptSourceLeafV1({
           originKind: "inline",
           sourceKey,
@@ -3352,6 +3374,10 @@ export const buildDeterministicValidationMachineTrace = (
                   scriptLanguageTag:
                     descriptor.referenceScriptLanguage,
                   scriptHash: descriptor.referenceScriptHash,
+                  scriptTotalLength:
+                    descriptor.referenceScriptTotalLength,
+                  itemCommitment:
+                    descriptor.referenceScriptItemCommitment,
                 });
                 if (
                   !leaf.equals(
@@ -3372,6 +3398,13 @@ export const buildDeterministicValidationMachineTrace = (
                   originKind: "reference",
                   sourceKey: node.key,
                   script: output.script_ref,
+                  scriptLanguageTag:
+                    descriptor.referenceScriptLanguage,
+                  scriptHash: descriptor.referenceScriptHash,
+                  scriptTotalLength:
+                    descriptor.referenceScriptTotalLength,
+                  scriptItemCommitment:
+                    descriptor.referenceScriptItemCommitment,
                   leaf,
                 };
                 scriptSourceEntries.push(sourceEntry);
@@ -4032,7 +4065,11 @@ export const buildDeterministicValidationMachineTrace = (
                         sourceIndex,
                         originKind: source.originKind,
                         sourceKey: source.sourceKey,
-                        script: source.script,
+                        scriptLanguageTag: source.scriptLanguageTag,
+                        scriptHash: source.scriptHash,
+                        scriptTotalLength: source.scriptTotalLength,
+                        scriptItemCommitment:
+                          source.scriptItemCommitment,
                         siblings: sourceMembership(sourceIndex).siblings,
                       },
                     );
@@ -4212,7 +4249,11 @@ export const buildDeterministicValidationMachineTrace = (
                         sourceIndex,
                         originKind: source.originKind,
                         sourceKey: source.sourceKey,
-                        script: source.script,
+                        scriptLanguageTag: source.scriptLanguageTag,
+                        scriptHash: source.scriptHash,
+                        scriptTotalLength: source.scriptTotalLength,
+                        scriptItemCommitment:
+                          source.scriptItemCommitment,
                         siblings: sourceMembership(sourceIndex).siblings,
                       },
                     );

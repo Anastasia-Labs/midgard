@@ -206,7 +206,10 @@ pub type ValidationAuxiliaryWitnessV1 {
     source_index: Int,
     origin_kind: Int,
     source_key: ByteArray,
-    script: MidgardScriptWitness,
+    script_language_tag: Int,
+    script_hash: ByteArray,
+    script_total_length: Int,
+    script_item_commitment: ByteArray,
     siblings: List<ByteArray>,
   }
   RedeemerScanWitness {
@@ -7648,6 +7651,7 @@ pub fn verify_script_sources_stage_zero_hash_terminal_semantics_v1(
       control.source_count,
       pending.language_tag,
       script_hash,
+      pending.item_length,
       pending.item_commitment,
     ),
   )
@@ -7752,6 +7756,7 @@ fn script_sources_stage_zero(
                 control.source_count,
                 pending.language_tag,
                 script_hash,
+                pending.item_length,
                 pending.item_commitment,
               ),
             ),
@@ -8085,6 +8090,8 @@ fn replay_source_frontier(
           key,
           descriptor.reference_script_language,
           descriptor.reference_script_hash,
+          descriptor.reference_script_total_length,
+          descriptor.reference_script_item_commitment,
         ),
       ),
     }
@@ -9333,14 +9340,20 @@ fn script_sources_stage_nine(
           source_index,
           origin_kind,
           source_key,
-          script,
+          script_language_tag,
+          script_hash,
+          script_total_length,
+          script_item_commitment,
           siblings,
         }
       = auxiliary
-    let source_leaf = script_proof_v1.source_leaf_hash(
+    let source_leaf = script_proof_v1.source_descriptor_leaf_hash(
       origin_kind,
       source_key,
-      script,
+      script_language_tag,
+      script_hash,
+      script_total_length,
+      script_item_commitment,
     )
     if and {
       source_index == discovery.source_cursor,
@@ -9352,8 +9365,7 @@ fn script_sources_stage_nine(
         siblings,
       ),
     } {
-      if script_proof_v1.versioned_script_hash(script) == discovery.current_script_hash {
-        let language_tag = script_proof_v1.language_tag(script.language)
+      if script_hash == discovery.current_script_hash {
         let next_used_inline = if origin_kind == 0 {
           script_discovery_bitmap_insert(
             discovery.used_inline_bitmap,
@@ -9362,12 +9374,12 @@ fn script_sources_stage_nine(
         } else {
           discovery.used_inline_bitmap
         }
-        if language_tag == 0 {
+        if script_language_tag == 0 {
           let next_execution = append_script_execution(
             discovery,
             current_script_purpose_leaf(discovery),
             source_leaf,
-            language_tag,
+            script_language_tag,
             #"",
           )
           let completed = reset_script_discovery_current(
@@ -9397,7 +9409,7 @@ fn script_sources_stage_nine(
               source_cursor: source_index + 1,
               redeemer_cursor: 0,
               matched_source_index: source_index,
-              matched_language_tag: language_tag,
+              matched_language_tag: script_language_tag,
               matched_source_leaf: source_leaf,
               used_inline_bitmap: next_used_inline,
             },
@@ -9593,14 +9605,20 @@ fn script_sources_stage_eleven(
           source_index,
           origin_kind,
           source_key,
-          script,
+          script_language_tag,
+          script_hash,
+          script_total_length,
+          script_item_commitment,
           siblings,
         }
       = auxiliary
-    let source_leaf = script_proof_v1.source_leaf_hash(
+    let source_leaf = script_proof_v1.source_descriptor_leaf_hash(
       origin_kind,
       source_key,
-      script,
+      script_language_tag,
+      script_hash,
+      script_total_length,
+      script_item_commitment,
     )
     if and {
       source_index == discovery.source_cursor,

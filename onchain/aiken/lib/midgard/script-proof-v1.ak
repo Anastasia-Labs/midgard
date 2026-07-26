@@ -63,6 +63,7 @@ pub fn inline_source_leaf_hash(
   source_index: Int,
   script_language_tag: Int,
   script_hash: ByteArray,
+  script_total_length: Int,
   item_commitment: ByteArray,
 ) -> ByteArray {
   expect source_index >= 0
@@ -72,11 +73,13 @@ pub fn inline_source_leaf_hash(
       script_language_tag == 128,
     }
   expect bytearray.length(script_hash) == 28
+  expect script_total_length > 0
   expect bytearray.length(item_commitment) == 32
   inline_source_leaf_domain
     |> bytearray.concat(cbor.serialise(source_index))
     |> bytearray.concat(cbor.serialise(script_language_tag))
     |> bytearray.concat(encode_definite_bytes(script_hash))
+    |> bytearray.concat(cbor.serialise(script_total_length))
     |> bytearray.concat(encode_definite_bytes(item_commitment))
     |> blake2b_256
 }
@@ -95,21 +98,31 @@ pub fn source_leaf_hash(
     let source_index = builtin.un_i_data(source_index_data)
     expect source_index >= 0
     expect cbor.serialise(source_index) == source_key
+    let script_cbor = encode_midgard_versioned_script(script)
     inline_source_leaf_hash(
       source_index,
       language_tag(script.language),
       versioned_script_hash(script),
+      bytearray.length(script_cbor),
       bounded_item_v1.from_bytes(
         7,
         source_index,
-        encode_midgard_versioned_script(script),
+        script_cbor,
       ),
     )
   } else {
+    expect Some(source_key_data) = cbor.deserialise(source_key)
+    expect [_, output_index_data] = builtin.un_list_data(source_key_data)
+    let output_index = builtin.un_i_data(output_index_data)
+    expect output_index >= 0
+    expect output_index <= 65535
+    let script_cbor = encode_midgard_versioned_script(script)
     reference_source_leaf_hash(
       source_key,
       language_tag(script.language),
       versioned_script_hash(script),
+      bytearray.length(script_cbor),
+      bounded_item_v1.from_bytes(2, output_index, script_cbor),
     )
   }
 }
@@ -118,6 +131,8 @@ pub fn reference_source_leaf_hash(
   source_key: ByteArray,
   script_language_tag: Int,
   script_hash: ByteArray,
+  script_total_length: Int,
+  item_commitment: ByteArray,
 ) -> ByteArray {
   expect or {
       script_language_tag == 0,
@@ -125,12 +140,51 @@ pub fn reference_source_leaf_hash(
       script_language_tag == 128,
     }
   expect bytearray.length(script_hash) == 28
+  expect script_total_length > 0
+  expect bytearray.length(item_commitment) == 32
   source_leaf_domain
     |> bytearray.concat(cbor.serialise(1))
     |> bytearray.concat(encode_definite_bytes(source_key))
     |> bytearray.concat(cbor.serialise(script_language_tag))
     |> bytearray.concat(encode_definite_bytes(script_hash))
+    |> bytearray.concat(cbor.serialise(script_total_length))
+    |> bytearray.concat(encode_definite_bytes(item_commitment))
     |> blake2b_256
+}
+
+pub fn source_descriptor_leaf_hash(
+  origin_kind: Int,
+  source_key: ByteArray,
+  script_language_tag: Int,
+  script_hash: ByteArray,
+  script_total_length: Int,
+  item_commitment: ByteArray,
+) -> ByteArray {
+  expect or {
+      origin_kind == 0,
+      origin_kind == 1,
+    }
+  if origin_kind == 0 {
+    expect Some(source_index_data) = cbor.deserialise(source_key)
+    let source_index = builtin.un_i_data(source_index_data)
+    expect source_index >= 0
+    expect cbor.serialise(source_index) == source_key
+    inline_source_leaf_hash(
+      source_index,
+      script_language_tag,
+      script_hash,
+      script_total_length,
+      item_commitment,
+    )
+  } else {
+    reference_source_leaf_hash(
+      source_key,
+      script_language_tag,
+      script_hash,
+      script_total_length,
+      item_commitment,
+    )
+  }
 }
 
 pub fn redeemer_purpose_tag(purpose: MidgardRedeemerPurpose) -> Int {

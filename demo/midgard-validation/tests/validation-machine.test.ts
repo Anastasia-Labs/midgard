@@ -621,7 +621,15 @@ describe("deterministic validation machine", () => {
     expect(referenceSource?.auxiliary).toMatchObject({
       kind: "scriptSourceScan",
       originKind: "reference",
+      scriptLanguageTag: 3,
+      scriptHash: Buffer.from(scriptHash, "hex"),
     });
+    if (referenceSource?.auxiliary?.kind !== "scriptSourceScan") {
+      throw new Error("expected a compact reference-script source witness");
+    }
+    expect(referenceSource.auxiliary.scriptTotalLength).toBeGreaterThan(0);
+    expect(referenceSource.auxiliary.scriptItemCommitment).toHaveLength(32);
+    expect("script" in referenceSource.auxiliary).toBe(false);
     expect(
       trace.witnesses
         .filter((witness) => witness.phase === "inputSets")

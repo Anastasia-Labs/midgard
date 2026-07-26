@@ -1125,7 +1125,10 @@ export const validationAuxiliaryWitnessDataV1 = (
         int(auxiliary.sourceIndex),
         originKind(auxiliary.originKind),
         bytes(auxiliary.sourceKey),
-        scriptData(auxiliary.script),
+        int(auxiliary.scriptLanguageTag),
+        bytes(auxiliary.scriptHash),
+        int(auxiliary.scriptTotalLength),
+        bytes(auxiliary.scriptItemCommitment),
         byteList(auxiliary.siblings),
       ]);
     case "redeemerScan":

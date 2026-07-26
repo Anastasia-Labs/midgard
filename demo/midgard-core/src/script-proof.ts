@@ -180,6 +180,7 @@ export const hashMidgardScriptSourceLeafV1 = (input: {
         hashMidgardVersionedScript(input.script),
         "hex",
       ),
+      scriptTotalLength: item.bytes.length,
       itemCommitment: item.commitment,
     });
   }
@@ -187,12 +188,45 @@ export const hashMidgardScriptSourceLeafV1 = (input: {
     hashMidgardVersionedScript(input.script),
     "hex",
   );
+  const sourceKey = decodeSingleCbor(input.sourceKey);
+  if (
+    !Array.isArray(sourceKey) ||
+    sourceKey.length !== 2 ||
+    !(sourceKey[0] instanceof Uint8Array) ||
+    sourceKey[0].length !== 32
+  ) {
+    throw new Error("reference script source key is not an output reference");
+  }
+  const decodedOutputIndex =
+    typeof sourceKey[1] === "number" &&
+    Number.isSafeInteger(sourceKey[1])
+      ? BigInt(sourceKey[1])
+      : sourceKey[1];
+  if (
+    typeof decodedOutputIndex !== "bigint" ||
+    decodedOutputIndex < 0n ||
+    decodedOutputIndex > 65_535n ||
+    !encodeCbor([
+      Buffer.from(sourceKey[0]),
+      decodedOutputIndex,
+    ]).equals(Buffer.from(input.sourceKey))
+  ) {
+    throw new Error("reference script source key is not canonical");
+  }
+  const scriptCbor = encodeMidgardVersionedScript(input.script);
+  const item = buildMidgardBoundedItemV1({
+    fieldIndex: 2,
+    itemIndex: Number(decodedOutputIndex),
+    bytes: scriptCbor,
+  });
   return hashMidgardReferenceScriptSourceLeafV1({
     sourceKey: input.sourceKey,
     scriptLanguageTag: Number(
       MidgardVersionedScriptTags[input.script.language],
     ) as 0 | 3 | 128,
     scriptHash,
+    scriptTotalLength: scriptCbor.length,
+    itemCommitment: item.commitment,
   });
 };
 
@@ -200,11 +234,30 @@ export const hashMidgardReferenceScriptSourceLeafV1 = (input: {
   readonly sourceKey: Uint8Array;
   readonly scriptLanguageTag: 0 | 3 | 128;
   readonly scriptHash: Uint8Array;
+  readonly scriptTotalLength: number;
+  readonly itemCommitment: Uint8Array;
 }): Hash32 => {
+  if (
+    input.scriptLanguageTag !== 0 &&
+    input.scriptLanguageTag !== 3 &&
+    input.scriptLanguageTag !== 128
+  ) {
+    throw new Error("reference script language tag is not supported");
+  }
   const scriptHash = Buffer.from(input.scriptHash);
   if (scriptHash.length !== 28) {
     throw new Error("reference script hash must contain exactly 28 bytes");
   }
+  if (
+    !Number.isSafeInteger(input.scriptTotalLength) ||
+    input.scriptTotalLength <= 0
+  ) {
+    throw new Error("reference script total length must be positive");
+  }
+  const itemCommitment = ensureHash32(
+    input.itemCommitment,
+    "reference script source item commitment",
+  );
   return hash32(
     Buffer.concat([
       SOURCE_LEAF_DOMAIN,
@@ -212,6 +265,8 @@ export const hashMidgardReferenceScriptSourceLeafV1 = (input: {
       encodeCbor(Buffer.from(input.sourceKey)),
       encodeCbor(input.scriptLanguageTag),
       encodeCbor(scriptHash),
+      encodeCbor(BigInt(input.scriptTotalLength)),
+      encodeCbor(itemCommitment),
     ]),
   );
 };
@@ -220,6 +275,7 @@ export const hashMidgardInlineScriptSourceLeafV1 = (input: {
   readonly sourceIndex: bigint;
   readonly scriptLanguageTag: 0 | 3 | 128;
   readonly scriptHash: Uint8Array;
+  readonly scriptTotalLength: number;
   readonly itemCommitment: Uint8Array;
 }): Hash32 => {
   if (input.sourceIndex < 0n) {
@@ -240,12 +296,19 @@ export const hashMidgardInlineScriptSourceLeafV1 = (input: {
   if (scriptHash.length !== 28) {
     throw new Error("inline script hash must contain exactly 28 bytes");
   }
+  if (
+    !Number.isSafeInteger(input.scriptTotalLength) ||
+    input.scriptTotalLength <= 0
+  ) {
+    throw new Error("inline script total length must be positive");
+  }
   return hash32(
     Buffer.concat([
       INLINE_SOURCE_LEAF_DOMAIN,
       encodeCbor(input.sourceIndex),
       encodeCbor(input.scriptLanguageTag),
       encodeCbor(scriptHash),
+      encodeCbor(BigInt(input.scriptTotalLength)),
       encodeCbor(itemCommitment),
     ]),
   );
