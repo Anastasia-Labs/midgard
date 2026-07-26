@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
+import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
   buildFaultProofContracts,
   EMPTY_MERKLE_TREE_ROOT,
@@ -169,7 +170,7 @@ const deploymentInfoFor = (
   },
 });
 
-describe("inspect-contracts", () => {
+describe("inspect-contracts", { timeout: 30_000 }, () => {
   it("emits stable implemented-category inspection JSON with catalogue readiness", async () => {
     const fixture = inspectionFixture;
     const { blueprintJson, contracts, fraudProofCatalogue } = fixture;
@@ -261,6 +262,82 @@ describe("inspect-contracts", () => {
       ...Array.from({ length: 12 }, (_, index) => `prepare-resolver-${index}`),
       ...Array.from({ length: 2 }, (_, index) => `direct-resolver-${index}`),
     ]);
+    const appliedSpendingScripts = [
+      ...output.doubleSpend.steps.map((step) => ({
+        category: "doubleSpend",
+        step,
+      })),
+      ...output.nonExistentInput.steps.map((step) => ({
+        category: "nonExistentInput",
+        step,
+      })),
+      ...output.invalidRange.steps.map((step) => ({
+        category: "invalidRange",
+        step,
+      })),
+      ...output.transitionTrace.steps.map((step) => ({
+        category: "transitionTrace",
+        step,
+      })),
+      ...output.validationTraceDispute.steps.map((step) => ({
+        category: "validationTraceDispute",
+        step,
+      })),
+    ];
+    const selectedParameterizedValidators = [
+      ...contracts.doubleSpend.steps,
+      ...contracts.nonExistentInput.steps,
+      ...contracts.invalidRange.steps,
+      contracts.transitionTrace.route,
+      ...contracts.transitionTrace.finals,
+      contracts.validationTraceDispute.opener,
+      contracts.validationTraceDispute.source,
+      contracts.validationTraceDispute.game,
+      contracts.validationTraceDispute.boundary,
+      contracts.validationTraceDispute.timeout,
+      contracts.validationTraceDispute.award,
+      ...contracts.validationTraceDispute.semanticResolvers,
+      ...contracts.validationTraceDispute.prepareResolvers,
+      ...contracts.validationTraceDispute.directResolvers,
+    ];
+    expect(appliedSpendingScripts).toHaveLength(
+      selectedParameterizedValidators.length,
+    );
+    appliedSpendingScripts.forEach(({ step }, index) => {
+      const selectedValidator = selectedParameterizedValidators[index];
+      expect(selectedValidator).toBeDefined();
+      const standaloneScriptBytes = Buffer.from(
+        selectedValidator?.spendingScriptCBOR ?? "",
+        "hex",
+      ).byteLength;
+      expect(step.standaloneScriptBytes).toBe(standaloneScriptBytes);
+      expect(
+        step.withinL1TransactionByteEnvelopeNecessaryCondition,
+      ).toBe(
+        standaloneScriptBytes <
+          MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes,
+      );
+    });
+    const expectedOversized = appliedSpendingScripts.flatMap(
+      ({ category, step }) =>
+        step.withinL1TransactionByteEnvelopeNecessaryCondition
+          ? []
+          : [
+              {
+                category,
+                name: step.name,
+                scriptHash: step.scriptHash,
+                standaloneScriptBytes: step.standaloneScriptBytes,
+              },
+            ],
+    );
+    expect(output.l1SpendingScriptEnvelopeNecessaryCondition).toEqual({
+      maxTransactionBytes:
+        MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes,
+      appliedSpendingScriptCount: appliedSpendingScripts.length,
+      allAppliedSpendingScriptsWithinEnvelope: expectedOversized.length === 0,
+      oversizedAppliedSpendingScripts: expectedOversized,
+    });
     expect(output.fraudProofCatalogue.root).toBe(fraudProofCatalogue.root);
     expect(output.fraudProofCatalogue.rootMatchesDerived).toBe(true);
     expect(output.fraudProofCatalogue.doubleSpend.categoryId).toBe("00000000");

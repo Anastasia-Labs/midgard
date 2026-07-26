@@ -1,4 +1,5 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
+import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import {
   buildFaultProofContracts,
@@ -53,6 +54,18 @@ export type InspectContractsFromFilesParams = {
 
 export type InspectContractsOutput = {
   readonly network: Network;
+  /**
+   * Necessary-only L1 envelope audit over every parameterized spending
+   * validator selected by the fault-proof contract builder. Passing this
+   * audit does not satisfy proof-fit: the complete concrete transaction,
+   * including framing, witnesses, redeemers, and outputs, must also fit.
+   */
+  readonly l1SpendingScriptEnvelopeNecessaryCondition: {
+    readonly maxTransactionBytes: number;
+    readonly appliedSpendingScriptCount: number;
+    readonly allAppliedSpendingScriptsWithinEnvelope: boolean;
+    readonly oversizedAppliedSpendingScripts: readonly InspectContractsOversizedSpendingScript[];
+  };
   readonly computationThread: {
     readonly policyId: string;
   };
@@ -155,6 +168,26 @@ export type InspectContractsStepOutput = {
     | `direct-resolver-${number}`;
   readonly scriptHash: string;
   readonly address: string;
+  readonly standaloneScriptBytes: number;
+  /**
+   * A necessary condition only. The script must leave at least one byte for
+   * the rest of the complete L1 transaction; full proof-fit is stricter.
+   */
+  readonly withinL1TransactionByteEnvelopeNecessaryCondition: boolean;
+};
+
+export type InspectContractsProofCategory =
+  | "doubleSpend"
+  | "nonExistentInput"
+  | "invalidRange"
+  | "transitionTrace"
+  | "validationTraceDispute";
+
+export type InspectContractsOversizedSpendingScript = {
+  readonly category: InspectContractsProofCategory;
+  readonly name: InspectContractsStepOutput["name"];
+  readonly scriptHash: string;
+  readonly standaloneScriptBytes: number;
 };
 
 export type InspectContractsCatalogueCategoryOutput = {
@@ -797,17 +830,106 @@ export const inspectContracts = ({
     const stepOutput = (
       name: InspectContractsStepOutput["name"],
       step: typeof step01,
-    ): InspectContractsStepOutput => ({
-      name,
-      scriptHash: step.spendingScriptHash,
-      address: step.spendingScriptAddress,
-    });
+    ): InspectContractsStepOutput => {
+      const standaloneScriptBytes = Buffer.from(
+        step.spendingScriptCBOR,
+        "hex",
+      ).byteLength;
+      return {
+        name,
+        scriptHash: step.spendingScriptHash,
+        address: step.spendingScriptAddress,
+        standaloneScriptBytes,
+        withinL1TransactionByteEnvelopeNecessaryCondition:
+          standaloneScriptBytes <
+          MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes,
+      };
+    };
     const steps: InspectContractsOutput["doubleSpend"]["steps"] = [
       stepOutput("step01", step01),
       stepOutput("step02", step02),
       stepOutput("step03", step03),
       stepOutput("step04", step04),
     ];
+    const nonExistentInputSteps: InspectContractsOutput["nonExistentInput"]["steps"] =
+      [
+        stepOutput("step01", nonExistentInputStep01),
+        stepOutput("step02", nonExistentInputStep02),
+        stepOutput("step03", nonExistentInputStep03),
+        stepOutput("step04", nonExistentInputStep04),
+      ];
+    const invalidRangeSteps: InspectContractsOutput["invalidRange"]["steps"] = [
+      stepOutput("step01", contracts.invalidRange.steps[0]),
+      stepOutput("step02", contracts.invalidRange.steps[1]),
+    ];
+    const transitionTraceSteps: InspectContractsOutput["transitionTrace"]["steps"] =
+      [
+        stepOutput("route", contracts.transitionTrace.route),
+        stepOutput("control", contracts.transitionTrace.finals[0]),
+        stepOutput("source", contracts.transitionTrace.finals[1]),
+        stepOutput("withdrawal", contracts.transitionTrace.finals[2]),
+        stepOutput("forced", contracts.transitionTrace.finals[3]),
+        stepOutput("accepted", contracts.transitionTrace.finals[4]),
+        stepOutput("deposit", contracts.transitionTrace.finals[5]),
+        stepOutput("l1Event", contracts.transitionTrace.finals[6]),
+        stepOutput("duplicate", contracts.transitionTrace.finals[7]),
+      ];
+    const validationTraceDisputeSteps: InspectContractsOutput["validationTraceDispute"]["steps"] =
+      [
+        stepOutput("dispute", contracts.validationTraceDispute.opener),
+        stepOutput("source", contracts.validationTraceDispute.source),
+        stepOutput("game", contracts.validationTraceDispute.game),
+        stepOutput("boundary", contracts.validationTraceDispute.boundary),
+        stepOutput("timeout", contracts.validationTraceDispute.timeout),
+        stepOutput("award", contracts.validationTraceDispute.award),
+        ...contracts.validationTraceDispute.semanticResolvers.map(
+          (resolver, resolverIndex) =>
+            stepOutput(`semantic-resolver-${resolverIndex}`, resolver),
+        ),
+        ...contracts.validationTraceDispute.prepareResolvers.map(
+          (resolver, resolverIndex) =>
+            stepOutput(`prepare-resolver-${resolverIndex}`, resolver),
+        ),
+        ...contracts.validationTraceDispute.directResolvers.map(
+          (resolver, resolverIndex) =>
+            stepOutput(`direct-resolver-${resolverIndex}`, resolver),
+        ),
+      ];
+    const categorizedAppliedSpendingScripts: readonly {
+      readonly category: InspectContractsProofCategory;
+      readonly step: InspectContractsStepOutput;
+    }[] = [
+      ...steps.map((step) => ({ category: "doubleSpend" as const, step })),
+      ...nonExistentInputSteps.map((step) => ({
+        category: "nonExistentInput" as const,
+        step,
+      })),
+      ...invalidRangeSteps.map((step) => ({
+        category: "invalidRange" as const,
+        step,
+      })),
+      ...transitionTraceSteps.map((step) => ({
+        category: "transitionTrace" as const,
+        step,
+      })),
+      ...validationTraceDisputeSteps.map((step) => ({
+        category: "validationTraceDispute" as const,
+        step,
+      })),
+    ];
+    const oversizedAppliedSpendingScripts =
+      categorizedAppliedSpendingScripts.flatMap(({ category, step }) =>
+        step.withinL1TransactionByteEnvelopeNecessaryCondition
+          ? []
+          : [
+              {
+                category,
+                name: step.name,
+                scriptHash: step.scriptHash,
+                standaloneScriptBytes: step.standaloneScriptBytes,
+              },
+            ],
+      );
     const categoryFirstStepHash =
       contracts.doubleSpend.firstStep.spendingScriptHash;
     const nonExistentInputCategoryFirstStepHash =
@@ -863,6 +985,14 @@ export const inspectContracts = ({
 
     return {
       network,
+      l1SpendingScriptEnvelopeNecessaryCondition: {
+        maxTransactionBytes:
+          MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes,
+        appliedSpendingScriptCount: categorizedAppliedSpendingScripts.length,
+        allAppliedSpendingScriptsWithinEnvelope:
+          oversizedAppliedSpendingScripts.length === 0,
+        oversizedAppliedSpendingScripts,
+      },
       computationThread: {
         policyId: contracts.computationThread.policyId,
       },
@@ -882,62 +1012,25 @@ export const inspectContracts = ({
         categoryFirstStepHash: nonExistentInputCategoryFirstStepHash,
         deploymentNonExistentInputScriptHash,
         deploymentNonExistentInputMatchesFirstStep,
-        steps: [
-          stepOutput("step01", nonExistentInputStep01),
-          stepOutput("step02", nonExistentInputStep02),
-          stepOutput("step03", nonExistentInputStep03),
-          stepOutput("step04", nonExistentInputStep04),
-        ],
+        steps: nonExistentInputSteps,
       },
       invalidRange: {
         categoryFirstStepHash: invalidRangeCategoryFirstStepHash,
         deploymentInvalidRangeScriptHash,
         deploymentInvalidRangeMatchesFirstStep,
-        steps: [
-          stepOutput("step01", contracts.invalidRange.steps[0]),
-          stepOutput("step02", contracts.invalidRange.steps[1]),
-        ],
+        steps: invalidRangeSteps,
       },
       transitionTrace: {
         categoryFirstStepHash: transitionTraceCategoryFirstStepHash,
         deploymentTransitionTraceScriptHash,
         deploymentTransitionTraceMatchesFirstStep,
-        steps: [
-          stepOutput("route", contracts.transitionTrace.route),
-          stepOutput("control", contracts.transitionTrace.finals[0]),
-          stepOutput("source", contracts.transitionTrace.finals[1]),
-          stepOutput("withdrawal", contracts.transitionTrace.finals[2]),
-          stepOutput("forced", contracts.transitionTrace.finals[3]),
-          stepOutput("accepted", contracts.transitionTrace.finals[4]),
-          stepOutput("deposit", contracts.transitionTrace.finals[5]),
-          stepOutput("l1Event", contracts.transitionTrace.finals[6]),
-          stepOutput("duplicate", contracts.transitionTrace.finals[7]),
-        ],
+        steps: transitionTraceSteps,
       },
       validationTraceDispute: {
         categoryFirstStepHash: validationTraceDisputeCategoryFirstStepHash,
         deploymentValidationTraceDisputeScriptHash,
         deploymentValidationTraceDisputeMatchesFirstStep,
-        steps: [
-          stepOutput("dispute", contracts.validationTraceDispute.opener),
-          stepOutput("source", contracts.validationTraceDispute.source),
-          stepOutput("game", contracts.validationTraceDispute.game),
-          stepOutput("boundary", contracts.validationTraceDispute.boundary),
-          stepOutput("timeout", contracts.validationTraceDispute.timeout),
-          stepOutput("award", contracts.validationTraceDispute.award),
-          ...contracts.validationTraceDispute.semanticResolvers.map(
-            (resolver, resolverIndex) =>
-              stepOutput(`semantic-resolver-${resolverIndex}`, resolver),
-          ),
-          ...contracts.validationTraceDispute.prepareResolvers.map(
-            (resolver, resolverIndex) =>
-              stepOutput(`prepare-resolver-${resolverIndex}`, resolver),
-          ),
-          ...contracts.validationTraceDispute.directResolvers.map(
-            (resolver, resolverIndex) =>
-              stepOutput(`direct-resolver-${resolverIndex}`, resolver),
-          ),
-        ],
+        steps: validationTraceDisputeSteps,
       },
     };
   });
