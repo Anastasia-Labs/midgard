@@ -192,6 +192,38 @@ pub fn parse_syntax_v1(
   }
 }
 
+/// Restricts the streamed integer grammar to a canonical nonnegative
+/// constructor alternative above 127. Positive bignums are accepted without
+/// materializing their value.
+pub fn parse_large_constructor_syntax_v1(
+  bytes: ByteArray,
+  source_length: Int,
+) -> Option<Int> {
+  when parse_syntax_v1(bytes, source_length) is {
+    None -> None
+    Some(memory) -> {
+      let first = bytearray.at(bytes, 0)
+      if first == 194 {
+        Some(memory)
+      } else {
+        when read_canonical_argument(bytes, 0) is {
+          None -> None
+          Some(argument) ->
+            if and {
+              argument.major == 0,
+              argument.value > 127,
+              argument.next_offset == source_length,
+            } {
+              Some(memory)
+            } else {
+              None
+            }
+        }
+      }
+    }
+  }
+}
+
 pub fn control_is_well_formed(
   control: CekDataIntegerControlV1,
 ) -> Bool {

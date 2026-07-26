@@ -208,6 +208,34 @@ export const parseMidgardCekDataIntegerSyntaxV1 = ({
   }
 };
 
+/**
+ * Restricts the integer grammar to a canonical nonnegative constructor
+ * alternative above 127. Positive bignums are accepted without materializing
+ * their value; major-one and tag-three encodings fail closed.
+ */
+export const parseMidgardCekDataLargeConstructorSyntaxV1 = ({
+  syntaxBytes,
+  sourceLength,
+}: {
+  readonly syntaxBytes: Uint8Array;
+  readonly sourceLength: number;
+}): bigint | null => {
+  const memory = parseMidgardCekDataIntegerSyntaxV1({
+    syntaxBytes,
+    sourceLength,
+  });
+  if (memory === null) return null;
+  const first = syntaxBytes[0]!;
+  if (first === 0xc2) return memory;
+  const argument = readCanonicalCborArgument(syntaxBytes, 0);
+  return argument !== null &&
+    argument.major === 0 &&
+    argument.value > 127n &&
+    argument.nextOffset === sourceLength
+    ? memory
+    : null;
+};
+
 export const isWellFormedMidgardCekDataIntegerControlV1 = (
   control: MidgardCekDataIntegerControlV1,
 ): boolean => {

@@ -85,6 +85,34 @@ test canonical_signed_boundaries_have_exact_cek_memory() {
   ] == [Some(5), Some(5), Some(13), Some(13), Some(13), Some(13)]
 }
 
+test accepts_only_canonical_constructor_alternatives_above_127() {
+  and {
+    cek_data_integer_v1.parse_large_constructor_syntax_v1(#"1880", 2)
+      != None,
+    cek_data_integer_v1.parse_large_constructor_syntax_v1(
+      #"1bffffffffffffffff",
+      9,
+    )
+      != None,
+    cek_data_integer_v1.parse_large_constructor_syntax_v1(
+      #"c249010000000000000000",
+      11,
+    )
+      != None,
+    cek_data_integer_v1.parse_large_constructor_syntax_v1(#"1817", 2)
+      == None,
+    cek_data_integer_v1.parse_large_constructor_syntax_v1(#"187f", 2)
+      == None,
+    cek_data_integer_v1.parse_large_constructor_syntax_v1(#"3880", 2)
+      == None,
+    cek_data_integer_v1.parse_large_constructor_syntax_v1(
+      #"c349010000000000000000",
+      11,
+    )
+      == None,
+  }
+}
+
 test rejects_malformed_and_noncanonical_integer_syntax() {
   and {
     cek_data_integer_v1.parse_syntax_v1(#"1817", 2) == None,

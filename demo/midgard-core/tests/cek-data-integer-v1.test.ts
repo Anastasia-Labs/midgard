@@ -13,6 +13,7 @@ import {
   MidgardCekDataIntegerStagesV1,
   nextMidgardCekDataIntegerSpanV1,
   parseMidgardCekDataIntegerSyntaxV1,
+  parseMidgardCekDataLargeConstructorSyntaxV1,
 } from "../src/index.js";
 
 const integerCases = [
@@ -153,6 +154,37 @@ describe("authenticated CEK Data integer V1", () => {
     ).toBe(
       "720c28eb8291c0e25d860108458a13027f509d93b9c61296532fdb230063c691",
     );
+  });
+
+  it("accepts only canonical constructor alternatives above 127", () => {
+    const accepted = [
+      Buffer.from("1880", "hex"),
+      Buffer.from("1bffffffffffffffff", "hex"),
+      Buffer.from("c249010000000000000000", "hex"),
+    ];
+    const rejected = [
+      Buffer.from("1817", "hex"),
+      Buffer.from("187f", "hex"),
+      Buffer.from("3880", "hex"),
+      Buffer.from("c349010000000000000000", "hex"),
+    ];
+
+    for (const source of accepted) {
+      expect(
+        parseMidgardCekDataLargeConstructorSyntaxV1({
+          syntaxBytes: source,
+          sourceLength: source.length,
+        }),
+      ).not.toBeNull();
+    }
+    for (const source of rejected) {
+      expect(
+        parseMidgardCekDataLargeConstructorSyntaxV1({
+          syntaxBytes: source,
+          sourceLength: source.length,
+        }),
+      ).toBeNull();
+    }
   });
 
   it.each([
