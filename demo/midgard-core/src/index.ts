@@ -4,6 +4,7 @@ export * from "./bounded-blob-v1.js";
 export * from "./bounded-collection-v1.js";
 export * from "./bounded-item-v1.js";
 export * from "./capability-parity-v1.js";
+export * from "./cek-blob-frontier-v1.js";
 export * from "./cek-proof.js";
 export * from "./cek-semantic.js";
 export * from "./codec/index.js";

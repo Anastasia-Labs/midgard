@@ -1,0 +1,72 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  appendMidgardCekBlobFrontierChunkV1,
+  commitMidgardCekBlobV1,
+  emptyMidgardCekBlobFrontierV1,
+  encodeMidgardCekBlobFrontierV1,
+  finalizeMidgardCekBlobFrontierV1,
+  MIDGARD_CEK_BLOB_CHUNK_BYTES,
+  validateMidgardCekBlobFrontierV1,
+} from "../src/index.js";
+
+const buildFrontier = (bytes: Buffer) => {
+  let frontier = emptyMidgardCekBlobFrontierV1();
+  if (bytes.length === 0) {
+    return appendMidgardCekBlobFrontierChunkV1(
+      frontier,
+      Buffer.alloc(0),
+    );
+  }
+  for (
+    let offset = 0;
+    offset < bytes.length;
+    offset += MIDGARD_CEK_BLOB_CHUNK_BYTES
+  ) {
+    frontier = appendMidgardCekBlobFrontierChunkV1(
+      frontier,
+      bytes.subarray(
+        offset,
+        Math.min(
+          offset + MIDGARD_CEK_BLOB_CHUNK_BYTES,
+          bytes.length,
+        ),
+      ),
+    );
+  }
+  return frontier;
+};
+
+describe("streaming CEK blob frontier V1", () => {
+  it.each([0, 1, 4_095, 4_096, 8_190, 8_191, 16_384])(
+    "reproduces the canonical left-balanced blob root for %i bytes",
+    (length) => {
+      const bytes = Buffer.alloc(length, 0x6a);
+      const frontier = buildFrontier(bytes);
+      expect(finalizeMidgardCekBlobFrontierV1(frontier)).toStrictEqual(
+        commitMidgardCekBlobV1(bytes).root,
+      );
+      expect(frontier.byteLength).toBe(BigInt(length));
+    },
+  );
+
+  it("encodes a compact cross-language frontier deterministically", () => {
+    const frontier = buildFrontier(Buffer.alloc(8_191, 0x6a));
+    expect(encodeMidgardCekBlobFrontierV1(frontier).toString("hex")).toBe(
+      "840103191fff8283005820344b2b0f0e31517cd429e9ed6bc07028defbc437648e4988fbd3f20c64f87d7b01830158203160ec563e32826cc3fc245286437e12ab09796f078e4780a8596b2a09995d8b191ffe",
+    );
+  });
+
+  it("fails closed for malformed occupancy and append after a partial leaf", () => {
+    const partial = buildFrontier(Buffer.alloc(4_096, 0x6a));
+    expect(() =>
+      appendMidgardCekBlobFrontierChunkV1(partial, Buffer.from([0x01])),
+    ).toThrow(/final leaf/u);
+    expect(() =>
+      validateMidgardCekBlobFrontierV1({
+        ...partial,
+        count: 4,
+      }),
+    ).toThrow(/frontier/u);
+  });
+});
