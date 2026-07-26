@@ -46,7 +46,9 @@ import {
   buildTransitionTraceFaultProofContracts,
   buildValidationTraceDisputeFaultProofContracts,
   commitCountedRootProgram,
+  completeReferenceScriptPublicationTxProgram,
   ConfirmedState,
+  createReferenceScriptAuthPolicy,
   DA_PAYLOAD_V1_VERSION,
   DoubleSpendStep02Datum,
   DoubleSpendStep03Datum,
@@ -86,6 +88,8 @@ import {
   parseFaultProofBlueprint,
   parsePhasMembershipBlueprint,
   phasMembershipWithdrawalScriptFromBlueprint,
+  referenceScriptAuthPolicyDeploymentInfo,
+  referenceScriptPublicationFundingTarget,
   REGISTERED_OPERATORS_ROOT_ASSET_NAME,
   RegisteredOperatorMintRedeemer,
   requireInputIndex,
@@ -101,6 +105,7 @@ import {
   SchedulerMintRedeemer,
   SchedulerSpendRedeemer,
   ScriptHashSchema,
+  selectReferenceScriptFundingUtxos,
   sortStateQueueUTxOs,
   type SpendingValidator as SdkSpendingValidator,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
@@ -157,7 +162,6 @@ import {
   buildCountedRoot,
   buildInvalidForcedTransactionNoOpWitness,
   buildTransitionFaultProof,
-  buildValidationDisputeOpen,
   encodeData,
   keyValuePhasProof,
   keyValuePhasRootWithCount,
@@ -182,6 +186,7 @@ import {
   submitTransitionTraceProof,
   submitValidationDisputeAward,
   submitValidationDisputeEnterResolution,
+  submitValidationDisputeOpen,
   submitValidationDisputePrepareResolution,
   submitValidationDisputePrepareSelected,
   submitValidationDisputeReveal,
@@ -941,8 +946,11 @@ const SCHEDULER_APPOINTMENT_OUTPUT_INDEX = {
 
 const h32 = (byte: string): string => byte.repeat(32);
 
-const deploymentManifest = (contracts: Record<string, unknown>) => ({
-  referenceScriptAuthPolicy: {},
+const deploymentManifest = (
+  contracts: Record<string, unknown>,
+  referenceScriptAuthPolicy: Record<string, unknown> = {},
+) => ({
+  referenceScriptAuthPolicy,
   contracts,
 });
 
@@ -1937,8 +1945,11 @@ type CompleteSignedTransactionMeasurement = {
   readonly referenceInputCount: number;
   readonly outputCount: number;
   readonly vkeyWitnessCount: number;
+  readonly nativeScriptCount: number;
   readonly redeemerCount: number;
   readonly datumCount: number;
+  readonly plutusV1ScriptCount: number;
+  readonly plutusV2ScriptCount: number;
   readonly plutusV3ScriptCount: number;
 };
 
@@ -1966,8 +1977,11 @@ const measureCompleteSignedTransaction = (
     referenceInputCount: body.reference_inputs()?.len() ?? 0,
     outputCount: body.outputs().len(),
     vkeyWitnessCount: witnessSet.vkeywitnesses()?.len() ?? 0,
+    nativeScriptCount: witnessSet.native_scripts()?.len() ?? 0,
     redeemerCount: redeemers?.len() ?? 0,
     datumCount: witnessSet.plutus_datums()?.len() ?? 0,
+    plutusV1ScriptCount: witnessSet.plutus_v1_scripts()?.len() ?? 0,
+    plutusV2ScriptCount: witnessSet.plutus_v2_scripts()?.len() ?? 0,
     plutusV3ScriptCount: witnessSet.plutus_v3_scripts()?.len() ?? 0,
   };
 };
@@ -2736,9 +2750,84 @@ const submitSuccessorBlockTx = async ({
   };
 };
 
+const VALIDATION_DISPUTE_REFERENCE_SCRIPT_ROLE =
+  "V1 validation-trace dispute";
+
+const publishValidationDisputeReferenceScript = async ({
+  lucid,
+  contracts,
+  now,
+}: {
+  readonly lucid: Awaited<ReturnType<typeof Lucid>>;
+  readonly contracts: MidgardValidators;
+  readonly now: number;
+}) => {
+  const target = {
+    name: VALIDATION_DISPUTE_REFERENCE_SCRIPT_ROLE,
+    script: contracts.fraudProofs.validationTraceDispute.spendingScript,
+  };
+  const authPolicy = createReferenceScriptAuthPolicy(lucid, now);
+  const selectedFundingInputs = selectReferenceScriptFundingUtxos(
+    await lucid.wallet().getUtxos(),
+    referenceScriptPublicationFundingTarget(1),
+  );
+  if (selectedFundingInputs.length === 0) {
+    throw new Error(
+      "Expected a plain-Ada input for authenticated validation-dispute reference-script publication",
+    );
+  }
+  const referenceScriptsAddress = await lucid.wallet().address();
+  const { tx, layout } = await Effect.runPromise(
+    completeReferenceScriptPublicationTxProgram({
+      lucid,
+      selectedFundingInputs,
+      walletAddress: referenceScriptsAddress,
+      referenceScriptsAddress,
+      missingTargets: [target],
+      authPolicy,
+    }),
+  );
+  const localOutput = layout.localReferenceOutputs.get(target.name);
+  if (localOutput === undefined) {
+    throw new Error(
+      "Authenticated publication transaction omitted the validation-dispute reference-script output",
+    );
+  }
+  const signed = await tx.sign.withWallet().complete();
+  const publicationMeasurement = measureCompleteSignedTransaction(
+    signed.toCBOR(),
+  );
+  if (publicationMeasurement.l1ByteMargin <= 0) {
+    throw new Error(
+      `Authenticated validation-dispute reference-script publication is ${publicationMeasurement.completeSignedBytes.toString()} bytes and does not fit the 16,384-byte L1 envelope`,
+    );
+  }
+  const txHash = await signed.submit();
+  await lucid.awaitTx(txHash);
+  const outRef = {
+    txHash,
+    outputIndex: localOutput.outputIndex,
+  };
+  const published = await lucid.utxosByOutRef([outRef]);
+  if (published.length !== 1) {
+    throw new Error(
+      `Expected one live validation-dispute reference-script UTxO at ${txHash}#${localOutput.outputIndex.toString()}, found ${published.length.toString()}`,
+    );
+  }
+  return {
+    authPolicyDeploymentInfo:
+      referenceScriptAuthPolicyDeploymentInfo(authPolicy),
+    publicationMeasurement,
+    utxo: published[0]!,
+  };
+};
+
 const buildRemovalDeploymentInfo = (
   contracts: MidgardValidators,
   catalogue: FraudProofCatalogueDeploymentInfo,
+  validationDisputePublication?: Awaited<
+    ReturnType<typeof publishValidationDisputeReferenceScript>
+  >,
 ) => {
   const deploymentEntry = (scriptHash: string, script: Script) => ({
     scriptHash,
@@ -2776,6 +2865,18 @@ const buildRemovalDeploymentInfo = (
     validationTraceDispute: {
       scriptHash:
         contracts.fraudProofs.validationTraceDispute.spendingScriptHash,
+      refScriptUTxO:
+        validationDisputePublication === undefined
+          ? null
+          : {
+              txHash: validationDisputePublication.utxo.txHash,
+              outputIndex: validationDisputePublication.utxo.outputIndex,
+            },
+      contract: {
+        type: contracts.fraudProofs.validationTraceDispute.spendingScript.type,
+        cborHex:
+          contracts.fraudProofs.validationTraceDispute.spendingScript.script,
+      },
     },
     stateQueueMint: deploymentEntry(
       contracts.stateQueue.policyId,
@@ -2814,7 +2915,7 @@ const buildRemovalDeploymentInfo = (
       contracts.scheduler.spendingScript,
     ),
     settlementMint: { scriptHash: contracts.settlement.policyId },
-  });
+  }, validationDisputePublication?.authPolicyDeploymentInfo);
 };
 
 type SuccessorBlockFixture = Awaited<
@@ -4648,7 +4749,40 @@ describe("fault-proof emulator integration", () => {
           header: fixture.header,
         }),
     );
-    const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue);
+    const publicationSlotConfig = operatorLucid.config().slotConfig;
+    if (publicationSlotConfig === undefined) {
+      throw new Error(
+        "Expected reference-script publisher Lucid to expose its Custom slot config",
+      );
+    }
+    const setupProtocolParameters = emulator.protocolParameters;
+    emulator.protocolParameters = {
+      ...setupProtocolParameters,
+      maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
+    };
+    const referenceScriptPublisherLucid = await Lucid(emulator, "Custom", {
+      slotConfig: publicationSlotConfig,
+    });
+    referenceScriptPublisherLucid.selectWallet.fromSeed(operator.seedPhrase);
+    const validationDisputePublication = await runEmulatorLifecycleStage(
+      "reference-script.publish-authenticated",
+      async () => {
+        try {
+          return await publishValidationDisputeReferenceScript({
+            lucid: referenceScriptPublisherLucid,
+            contracts,
+            now: emulator.now(),
+          });
+        } finally {
+          emulator.protocolParameters = setupProtocolParameters;
+        }
+      },
+    );
+    const deploymentInfo = buildRemovalDeploymentInfo(
+      contracts,
+      catalogue,
+      validationDisputePublication,
+    );
     const initResult = await runEmulatorLifecycleStage(
       "init",
       () =>
@@ -4663,78 +4797,13 @@ describe("fault-proof emulator integration", () => {
           awaitConfirmation: true,
         }),
     );
-    const firstStepUtxo = await expectSingleUtxoWithUnit(
-      challengerLucid,
-      initResult.firstStepAddress,
-      initResult.computationThreadUnit,
-    );
-    const builtOpen = await runEmulatorLifecycleStage(
-      "open.build-functional-diagnostic",
-      () =>
-        buildValidationDisputeOpen({
-          lucid: challengerLucid,
-          blueprint: realBlueprint,
-          deploymentInfo,
-          network,
-          signer: challengerSigner,
-          threadOutRef: outRefLabel(firstStepUtxo),
-          stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-          claim: fixture.claim,
-          challengerDescriptor: fixture.challengerDescriptor,
-          validityRange: validityRange(),
-        }),
-    );
-    const publicationMeasurement = measureCompleteSignedTransaction(
-      builtOpen.signed.toCBOR(),
-    );
     const functionalProtocolParameters = emulator.protocolParameters;
-    emulator.protocolParameters = {
-      ...functionalProtocolParameters,
-      maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
-    };
     const functionalSlotConfig = challengerLucid.config().slotConfig;
     if (functionalSlotConfig === undefined) {
       throw new Error(
         "Expected functional emulator Lucid to expose its Custom slot config",
       );
     }
-    const targetFitChallengerLucid = await Lucid(emulator, "Custom", {
-      slotConfig: functionalSlotConfig,
-    });
-    targetFitChallengerLucid.selectWallet.fromSeed(challenger.seedPhrase);
-    let targetPublicationFailure: string | undefined;
-    try {
-      await buildValidationDisputeOpen({
-        lucid: targetFitChallengerLucid,
-        blueprint: realBlueprint,
-        deploymentInfo,
-        network,
-        signer: challengerSigner,
-        threadOutRef: outRefLabel(firstStepUtxo),
-        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-        claim: fixture.claim,
-        challengerDescriptor: fixture.challengerDescriptor,
-        validityRange: validityRange(),
-      });
-    } catch (cause) {
-      targetPublicationFailure =
-        cause instanceof Error ? cause.message : String(cause);
-    } finally {
-      emulator.protocolParameters = functionalProtocolParameters;
-    }
-    expect(targetPublicationFailure).toMatch(
-      /Max transaction size of 16384 exceeded/u,
-    );
-    const openResult = await runEmulatorLifecycleStage(
-      "open.submit-functional-diagnostic",
-      async () => {
-        const txHash = await builtOpen.signed.submit();
-        await challengerLucid.awaitTx(txHash);
-        return {
-          nextThreadOutRef: `${txHash}#${builtOpen.outputIndex.toString()}`,
-        };
-      },
-    );
     emulator.protocolParameters = {
       ...functionalProtocolParameters,
       maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
@@ -4747,6 +4816,30 @@ describe("fault-proof emulator integration", () => {
     });
     targetOperatorLucid.selectWallet.fromSeed(operator.seedPhrase);
     targetChallengerLucid.selectWallet.fromSeed(challenger.seedPhrase);
+    const firstStepUtxo = await expectSingleUtxoWithUnit(
+      targetChallengerLucid,
+      initResult.firstStepAddress,
+      initResult.computationThreadUnit,
+    );
+    const openSubmission = await runEmulatorLifecycleStage("open", () =>
+      captureEmulatorSubmission(emulator, () =>
+        submitValidationDisputeOpen({
+          lucid: targetChallengerLucid,
+          blueprint: realBlueprint,
+          deploymentInfo,
+          network,
+          signer: challengerSigner,
+          threadOutRef: outRefLabel(firstStepUtxo),
+          stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+          claim: fixture.claim,
+          challengerDescriptor: fixture.challengerDescriptor,
+          validityRange: validityRange(),
+          awaitConfirmation: true,
+        }),
+      ),
+    );
+    const openResult = openSubmission.result;
+    const publicationMeasurement = openSubmission.measurement;
     const sourceResult = await runEmulatorLifecycleStage("source", () =>
       submitValidationDisputeVerifySource({
         lucid: targetChallengerLucid,
@@ -4872,6 +4965,8 @@ describe("fault-proof emulator integration", () => {
     );
     const awardResult = awardSubmission.result;
     const proofTransactionMeasurements = {
+      referenceScriptPublication:
+        validationDisputePublication.publicationMeasurement,
       publication: publicationMeasurement,
       resolution: semanticSubmission.measurement,
       award: awardSubmission.measurement,
@@ -4879,10 +4974,7 @@ describe("fault-proof emulator integration", () => {
     if (process.env.MIDGARD_PRINT_PROOF_FIT === "1") {
       console.info(
         JSON.stringify(
-          {
-            targetPublicationFailure,
-            transactions: proofTransactionMeasurements,
-          },
+          { transactions: proofTransactionMeasurements },
           (_key, value: unknown) =>
             typeof value === "bigint" ? value.toString() : value,
           2,
@@ -4910,9 +5002,22 @@ describe("fault-proof emulator integration", () => {
         initResult.computationThreadAssetName,
       ),
     );
-    expect(publicationMeasurement.l1ByteMargin).toBeLessThan(0);
+    expect(publicationMeasurement.l1ByteMargin).toBeGreaterThan(0);
+    expect(publicationMeasurement.referenceInputCount).toBe(3);
+    expect(
+      validationDisputePublication.publicationMeasurement.nativeScriptCount,
+    ).toBe(1);
+    expect(publicationMeasurement.plutusV3ScriptCount).toBe(0);
     expect(semanticSubmission.measurement.l1ByteMargin).toBeGreaterThan(0);
     expect(awardSubmission.measurement.l1ByteMargin).toBeGreaterThan(0);
+    for (const measurement of Object.values(proofTransactionMeasurements)) {
+      expect(measurement.executionMemory).toBeLessThanOrEqual(
+        emulator.protocolParameters.maxTxExMem,
+      );
+      expect(measurement.executionSteps).toBeLessThanOrEqual(
+        emulator.protocolParameters.maxTxExSteps,
+      );
+    }
     await expect(
       targetChallengerLucid.utxosAtWithUnit(
         contracts.fraudProof.spendingScriptAddress,

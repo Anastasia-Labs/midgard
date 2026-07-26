@@ -20,6 +20,7 @@ import {
   type PendingValidationClaimDatumV1 as PendingValidationClaimDatumV1Data,
   PreparedValidationResolutionDatumV1,
   type PreparedValidationResolutionDatumV1 as PreparedValidationResolutionDatumV1Data,
+  referenceScriptAuthUnit,
   requireInputIndex,
   requireMintRedeemerIndex,
   requireOwnMintPurpose,
@@ -65,6 +66,7 @@ import {
   toUnit,
   type TxSigned,
   type UTxO,
+  validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -91,6 +93,8 @@ import {
 export const VALIDATION_DISPUTE_VALIDITY_BACKOFF_MS = 60_000;
 export const VALIDATION_DISPUTE_VALIDITY_LEEWAY_MS = 60_000;
 export const MAX_L1_VALIDATION_PROOF_TRANSACTION_BYTES = 16 * 1024;
+const VALIDATION_DISPUTE_REFERENCE_SCRIPT_ROLE =
+  "V1 validation-trace dispute";
 
 export type ValidationDisputeValidityRange = {
   readonly validFrom: number;
@@ -181,6 +185,50 @@ const requireL1ProofEnvelope = (
   ) {
     throw new Error(
       `${label} transaction is ${bytes.toString()} bytes; the complete signed L1 proof transaction must be no larger than ${MAX_L1_VALIDATION_PROOF_TRANSACTION_BYTES.toString()} bytes`,
+    );
+  }
+};
+
+const requireValidationDisputeReferenceScript = ({
+  utxo,
+  deployedScriptHash,
+  expectedScriptHash,
+  authPolicyId,
+}: {
+  readonly utxo: UTxO;
+  readonly deployedScriptHash: string;
+  readonly expectedScriptHash: string;
+  readonly authPolicyId: string;
+}): void => {
+  if (utxo.scriptRef == null) {
+    throw new Error(
+      `Validation-dispute reference UTxO ${outRefLabel(utxo)} does not carry a reference script`,
+    );
+  }
+  const actualScriptHash = validatorToScriptHash(utxo.scriptRef);
+  if (
+    actualScriptHash !== deployedScriptHash ||
+    actualScriptHash !== expectedScriptHash
+  ) {
+    throw new Error(
+      `Validation-dispute reference script hash mismatch: actual=${actualScriptHash}, deployment=${deployedScriptHash}, expected=${expectedScriptHash}`,
+    );
+  }
+  const expectedRoleUnit = referenceScriptAuthUnit(
+    authPolicyId,
+    VALIDATION_DISPUTE_REFERENCE_SCRIPT_ROLE,
+  );
+  const authPolicyAssets = Object.entries(utxo.assets).filter(
+    ([unit, amount]) =>
+      unit.slice(0, authPolicyId.length) === authPolicyId && amount !== 0n,
+  );
+  if (
+    authPolicyAssets.length !== 1 ||
+    authPolicyAssets[0]![0] !== expectedRoleUnit ||
+    authPolicyAssets[0]![1] !== 1n
+  ) {
+    throw new Error(
+      `Validation-dispute reference UTxO ${outRefLabel(utxo)} must carry exactly one ${expectedRoleUnit} auth-role token`,
     );
   }
 };
@@ -834,10 +882,31 @@ export const buildValidationDisputeOpen = async ({
     network,
     requireStateQueueMint: true,
   });
-  const { validationTraceDisputeCategory, hubOraclePolicyId, contracts } =
-    resolved;
+  const {
+    deploymentInfo: parsedDeploymentInfo,
+    referenceScriptAuthPolicyId,
+    validationTraceDisputeCategory,
+    hubOraclePolicyId,
+    contracts,
+  } = resolved;
   const stateQueuePolicyId = resolved.stateQueuePolicyId!;
-  const [threadUtxo, hubOracleUtxo, stateQueueBlockUtxo] = await Promise.all([
+  const disputeContract = contracts.validationTraceDispute.firstStep;
+  const disputeDeploymentEntry =
+    parsedDeploymentInfo.validationTraceDispute;
+  if (disputeDeploymentEntry === undefined) {
+    throw new Error('Deployment info is missing "validationTraceDispute"');
+  }
+  if (disputeDeploymentEntry.refScriptUTxO == null) {
+    throw new Error(
+      'Deployment info entry "validationTraceDispute" is missing refScriptUTxO; publish the authenticated V1 validation-trace dispute reference script and regenerate deployment info before opening a dispute',
+    );
+  }
+  const [
+    threadUtxo,
+    hubOracleUtxo,
+    stateQueueBlockUtxo,
+    disputeReferenceUtxo,
+  ] = await Promise.all([
     fetchUtxoByOutRef({
       lucid,
       outRef: parseOutRef(threadOutRef, "--thread-out-ref"),
@@ -857,8 +926,18 @@ export const buildValidationDisputeOpen = async ({
       outRef: parseOutRef(stateQueueBlockOutRef, "--state-queue-block-out-ref"),
       label: "validation-dispute state-queue block UTxO",
     }),
+    fetchUtxoByOutRef({
+      lucid,
+      outRef: disputeDeploymentEntry.refScriptUTxO,
+      label: "validation-dispute authenticated reference-script UTxO",
+    }),
   ]);
-  const disputeContract = contracts.validationTraceDispute.firstStep;
+  requireValidationDisputeReferenceScript({
+    utxo: disputeReferenceUtxo,
+    deployedScriptHash: disputeDeploymentEntry.scriptHash,
+    expectedScriptHash: disputeContract.spendingScriptHash,
+    authPolicyId: referenceScriptAuthPolicyId,
+  });
   if (threadUtxo.address !== disputeContract.spendingScriptAddress) {
     throw new Error(
       `Thread UTxO ${outRefLabel(threadUtxo)} is not locked at the validation-dispute validator`,
@@ -953,7 +1032,11 @@ export const buildValidationDisputeOpen = async ({
         },
       }),
     )
-    .readFrom([hubOracleUtxo, stateQueueBlockUtxo])
+    .readFrom([
+      hubOracleUtxo,
+      stateQueueBlockUtxo,
+      disputeReferenceUtxo,
+    ])
     .pay.ToContract(
       contracts.validationTraceDispute.source.spendingScriptAddress,
       { kind: "inline", value: outputDatum },
@@ -961,8 +1044,7 @@ export const buildValidationDisputeOpen = async ({
     )
     .validFrom(range.validFrom)
     .validTo(range.validTo)
-    .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(disputeContract.spendingScript);
+    .addSignerKey(signer.paymentKeyHash);
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (layout === undefined) {
     throw new Error(

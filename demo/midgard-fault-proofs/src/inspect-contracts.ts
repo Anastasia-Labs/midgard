@@ -11,9 +11,16 @@ import {
   type FraudProofCatalogueDeploymentInfo,
   parseFaultProofBlueprint,
   Proof,
+  REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
+  type ReferenceScriptAuthTokenTarget,
   ScriptHashSchema,
 } from "@al-ft/midgard-sdk";
-import { Data, Network, type Script } from "@lucid-evolution/lucid";
+import {
+  Data,
+  mintingPolicyToId,
+  Network,
+  type Script,
+} from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
@@ -465,6 +472,62 @@ export const parseContractDeploymentInfo = (
   }
 
   return entries;
+};
+
+export const parseContractDeploymentReferenceScriptAuthPolicyId = (
+  value: unknown,
+  target: ReferenceScriptAuthTokenTarget,
+): string => {
+  const manifest = requireRecord(value, "Contract deployment info");
+  const policy = requireRecord(
+    manifest.referenceScriptAuthPolicy,
+    "Contract deployment info.referenceScriptAuthPolicy",
+  );
+  const policyId = normalizeHex(
+    policy.policyId,
+    "Contract deployment info.referenceScriptAuthPolicy.policyId",
+    28,
+  );
+  const nativeScript = requireRecord(
+    policy.nativeScript,
+    "Contract deployment info.referenceScriptAuthPolicy.nativeScript",
+  );
+  if (nativeScript.type !== "Native") {
+    throw new Error(
+      "Contract deployment info.referenceScriptAuthPolicy.nativeScript.type must be Native",
+    );
+  }
+  const cborHex = normalizeHex(
+    nativeScript.cborHex,
+    "Contract deployment info.referenceScriptAuthPolicy.nativeScript.cborHex",
+  );
+  let derivedPolicyId: string;
+  try {
+    derivedPolicyId = mintingPolicyToId({
+      type: "Native",
+      script: cborHex,
+    });
+  } catch (cause) {
+    throw new Error(
+      `Contract deployment info.referenceScriptAuthPolicy.nativeScript.cborHex is invalid: ${formatUnknownError(cause)}`,
+    );
+  }
+  if (derivedPolicyId !== policyId) {
+    throw new Error(
+      `Contract deployment info.referenceScriptAuthPolicy.policyId mismatch: declared=${policyId}, derived=${derivedPolicyId}`,
+    );
+  }
+  const tokenNames = requireRecord(
+    policy.tokenNames,
+    "Contract deployment info.referenceScriptAuthPolicy.tokenNames",
+  );
+  const expectedTokenName = REFERENCE_SCRIPT_AUTH_TOKEN_NAMES[target];
+  if (tokenNames[target] !== expectedTokenName) {
+    throw new Error(
+      `Contract deployment info.referenceScriptAuthPolicy.tokenNames.${target} must equal ${expectedTokenName}`,
+    );
+  }
+  return policyId;
 };
 
 const requireDeploymentScriptHash = (

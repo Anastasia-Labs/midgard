@@ -47,6 +47,7 @@ import {
   assertFraudProofCatalogueCategoryReady,
   type ContractDeploymentInfo,
   parseContractDeploymentInfo,
+  parseContractDeploymentReferenceScriptAuthPolicyId,
 } from "./inspect-contracts.js";
 import { aikenSerialisedPlutusDataCbor } from "./plutus-data-cbor.js";
 
@@ -340,6 +341,7 @@ export type ResolvedTransitionTraceDeploymentContracts = {
 
 export type ResolvedValidationTraceDisputeDeploymentContracts = {
   readonly deploymentInfo: ContractDeploymentInfo;
+  readonly referenceScriptAuthPolicyId: string;
   readonly validationTraceDisputeCategory: FraudProofCatalogueCategoryDeploymentInfo;
   readonly stateQueuePolicyId: string | undefined;
   readonly fraudProofCataloguePolicyId: string;
@@ -650,12 +652,18 @@ export const resolveValidationTraceDisputeDeploymentContracts = async (params: {
   readonly requireStateQueueMint?: boolean;
   readonly requireFraudProofSpend?: boolean;
 }): Promise<ResolvedValidationTraceDisputeDeploymentContracts> => {
+  const referenceScriptAuthPolicyId =
+    parseContractDeploymentReferenceScriptAuthPolicyId(
+      params.deploymentInfo,
+      "V1 validation-trace dispute",
+    );
   const resolved = await resolveFaultProofDeploymentContracts({
     ...params,
     categoryName: "validationTraceDispute",
   });
   return {
     deploymentInfo: resolved.deploymentInfo,
+    referenceScriptAuthPolicyId,
     validationTraceDisputeCategory: resolved.category,
     stateQueuePolicyId: resolved.stateQueuePolicyId,
     fraudProofCataloguePolicyId: resolved.fraudProofCataloguePolicyId,
