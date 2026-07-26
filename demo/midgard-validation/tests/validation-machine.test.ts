@@ -106,6 +106,8 @@ const semanticResolverDefinitionsV1 = [
   "script_sources_stage_one_redeemer_semantic_v1",
   "script_sources_stage_eleven_finish_semantic_v1",
   "script_sources_stage_eleven_source_semantic_v1",
+  "script_sources_stage_twelve_finish_semantic_v1",
+  "script_sources_stage_twelve_redeemer_semantic_v1",
   "native_scripts_terminal_semantic_v1",
   "native_scripts_native_semantic_v1",
   "native_scripts_effectful_semantic_v1",
@@ -123,7 +125,7 @@ const semanticResolverDefinitionsV1 = [
   "ledger_delta_terminal_semantic_v1",
 ] as const;
 const semanticResolverOffsetsV1 = [
-  0, 2, 3, 4, 6, 10, 24, 26, 32, 50, 53, -1, -1, 57,
+  0, 2, 3, 4, 6, 10, 24, 26, 32, 52, 55, -1, -1, 59,
 ] as const;
 
 const validateBoundaryAbiAndCollectAuxiliaryKinds = (
@@ -372,7 +374,7 @@ describe("deterministic validation machine", () => {
       2, 2, 2, 2, 2, 2, 2,
       3,
       4,
-      0, 0, 0, 16, 0,
+      0, 0, 0, 16, 18,
     ]);
     expect(() =>
       validationSemanticResolverIndexV1({
@@ -547,6 +549,13 @@ describe("deterministic validation machine", () => {
         (witness) =>
           witness.auxiliary?.kind === "scriptSourceScan" &&
           validationSemanticResolverIndexV1(witness) === 17,
+      ),
+    ).toBe(true);
+    expect(
+      scriptSourceWitnesses.some(
+        (witness) =>
+          witness.auxiliary?.kind === "redeemerScan" &&
+          validationSemanticResolverIndexV1(witness) === 19,
       ),
     ).toBe(true);
     expect(cekWitnesses.map((witness) => witness.auxiliary?.kind)).toEqual(

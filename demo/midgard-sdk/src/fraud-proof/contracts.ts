@@ -191,6 +191,10 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
       "fraud_proofs/validation_trace/script_sources_stage_eleven_finish_semantic_v1.main.spend",
     scriptSourcesStageElevenSource:
       "fraud_proofs/validation_trace/script_sources_stage_eleven_source_semantic_v1.main.spend",
+    scriptSourcesStageTwelveFinish:
+      "fraud_proofs/validation_trace/script_sources_stage_twelve_finish_semantic_v1.main.spend",
+    scriptSourcesStageTwelveRedeemer:
+      "fraud_proofs/validation_trace/script_sources_stage_twelve_redeemer_semantic_v1.main.spend",
     nativeScriptsTerminal:
       "fraud_proofs/validation_trace/native_scripts_terminal_semantic_v1.main.spend",
     nativeScriptsNative:
@@ -329,6 +333,8 @@ export type ValidationTraceDisputeFaultProofContracts = {
       SpendingValidator,
     ];
     readonly semanticResolvers: readonly [
+      SpendingValidator,
+      SpendingValidator,
       SpendingValidator,
       SpendingValidator,
       SpendingValidator,
@@ -1005,7 +1011,7 @@ const buildValidationTraceDisputeChain = ({
         ),
       );
     }
-    if (builtSemanticResolvers.length !== 65) {
+    if (builtSemanticResolvers.length !== 67) {
       return yield* Effect.fail(
         new Error("Validation-trace semantic resolver set is incomplete"),
       );
@@ -1076,6 +1082,8 @@ const buildValidationTraceDisputeChain = ({
       builtSemanticResolvers[62]!,
       builtSemanticResolvers[63]!,
       builtSemanticResolvers[64]!,
+      builtSemanticResolvers[65]!,
+      builtSemanticResolvers[66]!,
     ] as const;
     const semanticResolverGroups = [
       [semanticResolvers[0], semanticResolvers[1]],
@@ -1132,27 +1140,29 @@ const buildValidationTraceDisputeChain = ({
         semanticResolvers[47],
         semanticResolvers[48],
         semanticResolvers[49],
-      ],
-      [
         semanticResolvers[50],
         semanticResolvers[51],
-        semanticResolvers[52],
       ],
       [
+        semanticResolvers[52],
         semanticResolvers[53],
         semanticResolvers[54],
-        semanticResolvers[55],
-        semanticResolvers[56],
       ],
       [
+        semanticResolvers[55],
+        semanticResolvers[56],
         semanticResolvers[57],
         semanticResolvers[58],
+      ],
+      [
         semanticResolvers[59],
         semanticResolvers[60],
         semanticResolvers[61],
         semanticResolvers[62],
         semanticResolvers[63],
         semanticResolvers[64],
+        semanticResolvers[65],
+        semanticResolvers[66],
       ],
     ] as const;
     const semanticResolverHashesSchema = Data.Array(Data.Bytes());

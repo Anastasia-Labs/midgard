@@ -241,6 +241,20 @@ describe("validation-dispute transaction validity", () => {
         auxiliary: new Constr(14, [...sourceFields]),
         module: "script_sources_stage_eleven_source_semantic_v1",
       },
+      {
+        index: 18,
+        auxiliary: new Constr(0, []),
+        module: "script_sources_stage_twelve_finish_semantic_v1",
+      },
+      {
+        index: 19,
+        auxiliary: new Constr(15, [
+          0n,
+          redeemerWitness,
+          [],
+        ]),
+        module: "script_sources_stage_twelve_redeemer_semantic_v1",
+      },
     ] as const) {
       const auxiliaryCbor = Buffer.from(
         Data.to(selected.auxiliary as never),

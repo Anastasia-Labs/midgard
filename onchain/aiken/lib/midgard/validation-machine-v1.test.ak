@@ -5739,7 +5739,7 @@ test script_sources_stage_eleven_audits_inline_sources_exactly() {
     },
     31,
   )
-  let Pair(after_finish, _) = script_discovery_step_fixture(
+  let Pair(after_finish, after_finish_work_witness_cbor) = script_discovery_step_fixture(
     empty_v1_transaction(),
     12,
     source_frontier,
@@ -5750,6 +5750,16 @@ test script_sources_stage_eleven_audits_inline_sources_exactly() {
       source_cursor: 1,
     },
     32,
+  )
+  let Pair(native_scripts, _) = native_scripts_step_fixture(
+    empty_v1_transaction(),
+    source_frontier,
+    empty_frontier,
+    purpose_frontier,
+    execution_frontier,
+    0,
+    0,
+    33,
   )
   and {
     validation_machine_v1.verify_script_sources_stage_eleven_source_semantics_v1(
@@ -5772,6 +5782,13 @@ test script_sources_stage_eleven_audits_inline_sources_exactly() {
       validation_machine_v1.ValidationOneStepWitnessV1 {
         work_witness_cbor: after_source_work_witness_cbor,
         claimed_successor: after_finish,
+      },
+    ),
+    validation_machine_v1.verify_script_sources_stage_twelve_finish_semantics_v1(
+      after_finish,
+      validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor: after_finish_work_witness_cbor,
+        claimed_successor: native_scripts,
       },
     ),
   }
@@ -5815,6 +5832,100 @@ test script_sources_stage_eleven_rejects_an_unused_inline_source_exactly() {
     script_item_commitment,
     [],
   )
+}
+
+test script_sources_stage_twelve_audits_redeemers_exactly() {
+  let redeemer = MidgardRedeemerWitness {
+    purpose: SpendRedeemer,
+    index: 0,
+    redeemer_cbor: #"d87980",
+    execution_units: MidgardExecutionUnits { memory: 3, steps: 4 },
+  }
+  let base = empty_v1_transaction()
+  let tx = MidgardTransaction {
+    ..base,
+    witness_set: MidgardTransactionWitnessSet {
+      ..base.witness_set,
+      redeemer_tx_wits: [redeemer],
+    },
+  }
+  let redeemer_leaf = script_proof_v1.redeemer_leaf_hash(0, redeemer)
+  let redeemer_frontier = validation_merkle_v1.build_frontier([redeemer_leaf])
+  let purpose_leaf = script_proof_v1.purpose_leaf_hash(0, 0, h_28_a, #"0102")
+  let purpose_frontier = validation_merkle_v1.build_frontier([purpose_leaf])
+  let execution_frontier = validation_merkle_v1.build_frontier(
+    [
+      script_proof_v1.execution_leaf_hash(
+        3,
+        purpose_leaf,
+        redeemer_leaf,
+        redeemer_leaf,
+      ),
+    ],
+  )
+  let used_discovery = validation_machine_v1.ScriptDiscoveryControlV1 {
+    ..validation_machine_v1.empty_script_discovery_control(),
+    purpose_cursor: 1,
+    used_redeemer_bitmap: 1,
+    execution_count: 1,
+    execution_peaks: execution_frontier.peaks,
+  }
+  let empty_frontier = validation_merkle_v1.build_frontier([])
+  let Pair(used_pre, used_work_witness_cbor) = script_discovery_step_fixture(
+    tx,
+    12,
+    empty_frontier,
+    redeemer_frontier,
+    purpose_frontier,
+    used_discovery,
+    40,
+  )
+  let Pair(used_post, _) = script_discovery_step_fixture(
+    tx,
+    12,
+    empty_frontier,
+    redeemer_frontier,
+    purpose_frontier,
+    validation_machine_v1.ScriptDiscoveryControlV1 {
+      ..used_discovery,
+      redeemer_cursor: 1,
+    },
+    41,
+  )
+  let Pair(unused_pre, unused_work_witness_cbor) = script_discovery_step_fixture(
+    tx,
+    12,
+    empty_frontier,
+    redeemer_frontier,
+    empty_frontier,
+    validation_machine_v1.empty_script_discovery_control(),
+    40,
+  )
+  and {
+    validation_machine_v1.verify_script_sources_stage_twelve_redeemer_semantics_v1(
+      used_pre,
+      validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor: used_work_witness_cbor,
+        claimed_successor: used_post,
+      },
+      0,
+      redeemer,
+      [],
+    ),
+    validation_machine_v1.verify_script_sources_stage_twelve_redeemer_semantics_v1(
+      unused_pre,
+      validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor: unused_work_witness_cbor,
+        claimed_successor: exact_rejection_post(
+          unused_pre,
+          #"455f494e56414c49445f4649454c445f54595045",
+        ),
+      },
+      0,
+      redeemer,
+      [],
+    ),
+  }
 }
 
 test script_sources_proves_a_missing_script_source_exactly() {
