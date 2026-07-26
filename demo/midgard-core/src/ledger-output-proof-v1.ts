@@ -39,8 +39,14 @@ import {
   prependMidgardCekDataListSummaryV1,
   summarizeMidgardCekSmallConstrDataV1,
 } from "./cek-semantic.js";
+import { decodeMidgardAddressBytes } from "./codec/address.js";
 import { encodeCbor, encodeCborArrayRaw } from "./codec/cbor.js";
 import { ensureHash32 } from "./codec/hash.js";
+import {
+  MIDGARD_LEDGER_OUTPUT_COMMITMENT_V1_VERSION,
+  type MidgardLedgerOutputCommitmentV1,
+  type MidgardLedgerOutputDataSummaryV1,
+} from "./ledger-output-commitment-v1.js";
 import {
   advanceMidgardLedgerOutputScanV1,
   buildMidgardLedgerOutputScanTraceV1,
@@ -52,6 +58,17 @@ import {
   type MidgardLedgerOutputScanControlV1,
   MidgardLedgerOutputScanStagesV1,
 } from "./ledger-output-scan-v1.js";
+import {
+  advanceMidgardLedgerOutputValueV1,
+  buildMidgardLedgerOutputValueTraceV1,
+  encodeMidgardLedgerOutputValueControlV1,
+  finalizeMidgardLedgerOutputValueV1,
+  initialMidgardLedgerOutputValueControlV1,
+  isWellFormedMidgardLedgerOutputValueControlV1,
+  type MidgardLedgerOutputValueControlV1,
+  MidgardLedgerOutputValueStagesV1,
+  type MidgardLedgerOutputValueWitnessV1,
+} from "./ledger-output-value-v1.js";
 import {
   advanceMidgardNativeScriptStructureFrameV1,
   advanceMidgardNativeScriptStructureTokenV1,
@@ -69,6 +86,7 @@ import {
 import { aikenSerialisedPlutusDataBytes } from "./plutus-data-cbor.js";
 import {
   appendMidgardValidationMerkleLeafV1,
+  commitMidgardValidationMerkleFrontierV1,
   emptyMidgardValidationMerkleFrontierV1,
   type MidgardValidationMerkleFrontierV1,
   validateMidgardValidationMerkleFrontierV1,
@@ -79,11 +97,12 @@ export const MIDGARD_LEDGER_OUTPUT_PROOF_FIELD_INDEX_V1 = 2 as const;
 
 export const MidgardLedgerOutputProofStagesV1 = Object.freeze({
   Structure: 0,
-  DatumTraversal: 1,
-  ReferenceScriptCommitment: 2,
-  ScriptHash: 3,
-  NativeScript: 4,
-  Terminal: 5,
+  ValueFold: 1,
+  DatumTraversal: 2,
+  ReferenceScriptCommitment: 3,
+  ScriptHash: 4,
+  NativeScript: 5,
+  Terminal: 6,
 } as const);
 
 export type MidgardLedgerOutputProofStageV1 =
@@ -104,6 +123,7 @@ export type MidgardLedgerOutputProofControlV1 = {
   readonly totalLength: number;
   readonly itemCommitment: Buffer;
   readonly outputScan: MidgardLedgerOutputScanControlV1;
+  readonly value: MidgardLedgerOutputValueControlV1 | null;
   readonly datum: MidgardCekDataTraverseControlV1 | null;
   readonly referenceScriptFrontier: MidgardValidationMerkleFrontierV1;
   readonly scriptHash: MidgardBlake2b224TraceControlV1 | null;
@@ -115,6 +135,13 @@ export type MidgardLedgerOutputProofWitnessV1 =
       readonly kind: "chunks";
       readonly chunkProof: MidgardBoundedItemChunkProofV1;
       readonly nextChunkProof: MidgardBoundedItemChunkProofV1 | null;
+    }
+  | {
+      readonly kind: "value";
+      readonly policyId: Buffer;
+      readonly assetName: Buffer;
+      readonly quantity: bigint;
+      readonly siblings: readonly Uint8Array[];
     }
   | {
       readonly kind: "datum";
@@ -194,6 +221,17 @@ const optionalDatumControlDataCbor = (
         Buffer.from([0xff]),
       ]);
 
+const optionalValueControlDataCbor = (
+  control: MidgardLedgerOutputValueControlV1 | null,
+): Buffer =>
+  control === null
+    ? Buffer.from("d87a80", "hex")
+    : Buffer.concat([
+        Buffer.from("d8799f", "hex"),
+        encodeMidgardLedgerOutputValueControlV1(control),
+        Buffer.from([0xff]),
+      ]);
+
 export const isWellFormedMidgardLedgerOutputProofControlV1 = (
   control: MidgardLedgerOutputProofControlV1,
 ): boolean => {
@@ -227,6 +265,14 @@ export const isWellFormedMidgardLedgerOutputProofControlV1 = (
       control: control.outputScan,
       totalLength: control.totalLength,
     });
+    const valueWellFormed =
+      control.value !== null &&
+      isWellFormedMidgardLedgerOutputValueControlV1(control.value) &&
+      control.value.assetRemaining <=
+        control.outputScan.assetFrontier.count;
+    const valueTerminal =
+      valueWellFormed &&
+      finalizeMidgardLedgerOutputValueV1(control.value!) !== null;
     const datumPresent = control.outputScan.datumOffset !== -1;
     const datumLength = control.outputScan.datumLength;
     const datumWellFormed =
@@ -282,6 +328,7 @@ export const isWellFormedMidgardLedgerOutputProofControlV1 = (
       );
     if (control.stage === MidgardLedgerOutputProofStagesV1.Structure) {
       return (
+        control.value === null &&
         control.datum === null &&
         control.referenceScriptFrontier.count === 0 &&
         control.scriptHash === null &&
@@ -289,6 +336,16 @@ export const isWellFormedMidgardLedgerOutputProofControlV1 = (
       );
     }
     if (!scanTerminal) return false;
+    if (control.stage === MidgardLedgerOutputProofStagesV1.ValueFold) {
+      return (
+        valueWellFormed &&
+        control.datum === null &&
+        control.referenceScriptFrontier.count === 0 &&
+        control.scriptHash === null &&
+        control.nativeScript === null
+      );
+    }
+    if (!valueTerminal) return false;
     if (!datumPresent && control.datum !== null) {
       return false;
     }
@@ -372,6 +429,7 @@ export const initialMidgardLedgerOutputProofControlV1 = ({
       "ledger_output_proof_v1.item_commitment",
     ),
     outputScan: initialMidgardLedgerOutputScanControlV1(),
+    value: null,
     datum: null,
     referenceScriptFrontier:
       emptyMidgardValidationMerkleFrontierV1(),
@@ -397,6 +455,7 @@ export const encodeMidgardLedgerOutputProofControlV1 = (
     encodeCbor(BigInt(control.totalLength)),
     aikenSerialisedPlutusDataBytes(control.itemCommitment),
     encodeMidgardLedgerOutputScanControlV1(control.outputScan),
+    optionalValueControlDataCbor(control.value),
     optionalDatumControlDataCbor(control.datum),
     encodeCbor(BigInt(control.referenceScriptFrontier.count)),
     encodeCbor(
@@ -652,26 +711,12 @@ export const advanceMidgardLedgerOutputProofV1 = ({
         })
       ) {
         if (witness !== null) return null;
-        if (control.outputScan.datumOffset !== -1) {
-          return advancedOutputProof({
-            ...control,
-            stage: MidgardLedgerOutputProofStagesV1.DatumTraversal,
-            datum: initialMidgardCekDataTraverseControlV1({
-              sourceStart: control.outputScan.datumOffset,
-              sourceLength: control.outputScan.datumLength,
-            }),
-          });
-        }
-        if (control.outputScan.referenceScriptLanguage === -1) {
-          return advancedOutputProof({
-            ...control,
-            stage: MidgardLedgerOutputProofStagesV1.Terminal,
-          });
-        }
         return advancedOutputProof({
           ...control,
-          stage:
-            MidgardLedgerOutputProofStagesV1.ReferenceScriptCommitment,
+          stage: MidgardLedgerOutputProofStagesV1.ValueFold,
+          value: initialMidgardLedgerOutputValueControlV1(
+            control.outputScan.assetFrontier.count,
+          ),
         });
       }
       const finished = finishMidgardLedgerOutputScanV1({
@@ -701,6 +746,53 @@ export const advanceMidgardLedgerOutputProofV1 = ({
       return nextScan === null
         ? { kind: MidgardLedgerOutputProofResultKindsV1.InvalidOutput }
         : advancedOutputProof({ ...control, outputScan: nextScan });
+    }
+    if (control.stage === MidgardLedgerOutputProofStagesV1.ValueFold) {
+      const value = control.value!;
+      if (
+        value.stage === MidgardLedgerOutputValueStagesV1.Terminal
+      ) {
+        if (witness !== null) return null;
+        if (control.outputScan.datumOffset !== -1) {
+          return advancedOutputProof({
+            ...control,
+            stage: MidgardLedgerOutputProofStagesV1.DatumTraversal,
+            datum: initialMidgardCekDataTraverseControlV1({
+              sourceStart: control.outputScan.datumOffset,
+              sourceLength: control.outputScan.datumLength,
+            }),
+          });
+        }
+        return advancedOutputProof({
+          ...control,
+          stage:
+            control.outputScan.referenceScriptLanguage === -1
+              ? MidgardLedgerOutputProofStagesV1.Terminal
+              : MidgardLedgerOutputProofStagesV1
+                  .ReferenceScriptCommitment,
+        });
+      }
+      const valueWitness: MidgardLedgerOutputValueWitnessV1 | null =
+        witness === null
+          ? null
+          : witness.kind === "value"
+            ? {
+                policyId: witness.policyId,
+                assetName: witness.assetName,
+                quantity: witness.quantity,
+                siblings: witness.siblings,
+              }
+            : null;
+      if (witness !== null && witness.kind !== "value") return null;
+      const nextValue = advanceMidgardLedgerOutputValueV1({
+        control: value,
+        assetFrontier: control.outputScan.assetFrontier,
+        lovelace: control.outputScan.lovelace,
+        witness: valueWitness,
+      });
+      return nextValue === null
+        ? null
+        : advancedOutputProof({ ...control, value: nextValue });
     }
     if (
       control.stage ===
@@ -1030,6 +1122,57 @@ export const buildMidgardLedgerOutputProofTraceV1 = ({
     }
   }
   append(null);
+  const valueAssets = outputScanTrace.steps.flatMap(({ asset }) =>
+    asset === null ? [] : [asset],
+  );
+  const valueTrace = buildMidgardLedgerOutputValueTraceV1({
+    assets: valueAssets,
+    lovelace: outputScanTrace.terminal.lovelace,
+  });
+  if (
+    valueTrace.frontier.count !==
+      outputScanTrace.terminal.assetFrontier.count ||
+    valueTrace.frontier.peaks.length !==
+      outputScanTrace.terminal.assetFrontier.peaks.length ||
+    valueTrace.frontier.peaks.some(
+      (peak, index) =>
+        peak.height !==
+          outputScanTrace.terminal.assetFrontier.peaks[index]?.height ||
+        !Buffer.from(peak.hash).equals(
+          Buffer.from(
+            outputScanTrace.terminal.assetFrontier.peaks[index]!.hash,
+          ),
+        ),
+    )
+  ) {
+    throw new Error(
+      "V1 output proof diverged from the asset frontier",
+    );
+  }
+  for (const valueStep of valueTrace.steps) {
+    append(
+      valueStep.witness === null
+        ? null
+        : {
+            kind: "value",
+            policyId: valueStep.witness.policyId,
+            assetName: valueStep.witness.assetName,
+            quantity: valueStep.witness.quantity,
+            siblings: valueStep.witness.siblings,
+          },
+    );
+    if (
+      control.value === null ||
+      !encodeMidgardLedgerOutputValueControlV1(
+        control.value,
+      ).equals(
+        encodeMidgardLedgerOutputValueControlV1(valueStep.next),
+      )
+    ) {
+      throw new Error("V1 output proof diverged from Value fold");
+    }
+  }
+  append(null);
   if (isExactMidgardLedgerOutputProofTerminalV1(control)) {
     return { item, initial, steps, terminal: control };
   }
@@ -1285,6 +1428,145 @@ export const summarizeMidgardLedgerOutputCardanoSpendDatumV1 = (
       );
 };
 
+export const summarizeMidgardLedgerOutputValueV1 = (
+  control: MidgardLedgerOutputProofControlV1,
+): MidgardCekDataSummaryV1 | null =>
+  isExactMidgardLedgerOutputProofTerminalV1(control)
+    ? finalizeMidgardLedgerOutputValueV1(control.value!)
+    : null;
+
+const summarizeDirectBytesData = (
+  bytes: Uint8Array,
+): MidgardCekDataSummaryV1 => {
+  const trace = buildMidgardCekDataTraverseTraceV1({
+    sourceStart: 0,
+    source: encodeCbor(Buffer.from(bytes)),
+  });
+  const summary = finalizeMidgardCekDataTraverseV1(trace.terminal);
+  if (summary === null) {
+    throw new Error("V1 direct bytes Data summary failed closed");
+  }
+  return summary;
+};
+
+const summarizeDataList = (
+  items: readonly MidgardCekDataSummaryV1[],
+) => {
+  let summary = emptyMidgardCekDataListSummaryV1();
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    summary = prependMidgardCekDataListSummaryV1(
+      items[index]!,
+      summary,
+    );
+  }
+  return summary;
+};
+
+const summarizeSmallConstr = (
+  constructor: bigint,
+  fields: readonly MidgardCekDataSummaryV1[],
+): MidgardCekDataSummaryV1 =>
+  summarizeMidgardCekSmallConstrDataV1(
+    constructor,
+    summarizeDataList(fields),
+  );
+
+const summarizeCredential = (
+  kind: "PubKey" | "Script",
+  hash: Uint8Array,
+): MidgardCekDataSummaryV1 =>
+  summarizeSmallConstr(kind === "PubKey" ? 0n : 1n, [
+    summarizeDirectBytesData(hash),
+  ]);
+
+const summarizeOutputAddress = (
+  control: MidgardLedgerOutputProofControlV1,
+  encoding: "cardano" | "midgard",
+): MidgardCekDataSummaryV1 => {
+  const address = decodeMidgardAddressBytes(control.outputScan.address);
+  const payment = summarizeCredential(
+    address.paymentCredential.kind,
+    address.paymentCredential.hash,
+  );
+  const stake =
+    address.stakeCredential === undefined
+      ? summarizeSmallConstr(1n, [])
+      : summarizeSmallConstr(0n, [
+          summarizeSmallConstr(0n, [
+            summarizeCredential(
+              address.stakeCredential.kind,
+              address.stakeCredential.hash,
+            ),
+          ]),
+        ]);
+  return summarizeSmallConstr(
+    encoding === "midgard" && address.protected ? 1n : 0n,
+    [payment, stake],
+  );
+};
+
+const summarizeOutputDatum = (
+  control: MidgardLedgerOutputProofControlV1,
+): MidgardCekDataSummaryV1 | null => {
+  if (control.outputScan.datumOffset === -1) {
+    return summarizeSmallConstr(0n, []);
+  }
+  const datum = finalizeMidgardCekDataTraverseV1(control.datum!);
+  return datum === null ? null : summarizeSmallConstr(2n, [datum]);
+};
+
+const summarizeOutputReferenceScript = (
+  control: MidgardLedgerOutputProofControlV1,
+): MidgardCekDataSummaryV1 | null => {
+  if (control.outputScan.referenceScriptLanguage === -1) {
+    return summarizeSmallConstr(1n, []);
+  }
+  const digest = digestMidgardLedgerOutputReferenceScriptV1(control);
+  return digest === null
+    ? null
+    : summarizeSmallConstr(0n, [
+        summarizeDirectBytesData(digest),
+      ]);
+};
+
+const summarizeOutputTxOut = (
+  control: MidgardLedgerOutputProofControlV1,
+  encoding: "cardano" | "midgard",
+): MidgardCekDataSummaryV1 | null => {
+  if (!isExactMidgardLedgerOutputProofTerminalV1(control)) {
+    return null;
+  }
+  const value = finalizeMidgardLedgerOutputValueV1(control.value!);
+  const datum = summarizeOutputDatum(control);
+  const referenceScript = summarizeOutputReferenceScript(control);
+  return value === null || datum === null || referenceScript === null
+    ? null
+    : summarizeSmallConstr(0n, [
+        summarizeOutputAddress(control, encoding),
+        value,
+        datum,
+        referenceScript,
+      ]);
+};
+
+export const summarizeMidgardLedgerOutputCardanoTxOutV1 = (
+  control: MidgardLedgerOutputProofControlV1,
+): MidgardCekDataSummaryV1 | null =>
+  summarizeOutputTxOut(control, "cardano");
+
+export const summarizeMidgardLedgerOutputMidgardTxOutV1 = (
+  control: MidgardLedgerOutputProofControlV1,
+): MidgardCekDataSummaryV1 | null =>
+  summarizeOutputTxOut(control, "midgard");
+
+const summariesEqual = (
+  left: MidgardCekDataSummaryV1,
+  right: MidgardLedgerOutputDataSummaryV1,
+): boolean =>
+  Buffer.from(left.root).equals(Buffer.from(right.root)) &&
+  left.cborLength === right.cborLength &&
+  left.memory === right.memory;
+
 export const commitMidgardLedgerOutputReferenceScriptItemV1 = (
   control: MidgardLedgerOutputProofControlV1,
 ): Buffer | null => {
@@ -1303,4 +1585,84 @@ export const commitMidgardLedgerOutputReferenceScriptItemV1 = (
     totalLength,
     frontier: control.referenceScriptFrontier,
   });
+};
+
+/**
+ * Verifies every compact ledger descriptor fact against one exact terminal
+ * output proof. No descriptor may enter the ledger MPF through this boundary
+ * unless the complete independently decoded descriptor is proven equal.
+ */
+export const verifyMidgardLedgerOutputDescriptorV1 = ({
+  control,
+  descriptor,
+}: {
+  readonly control: MidgardLedgerOutputProofControlV1;
+  readonly descriptor: MidgardLedgerOutputCommitmentV1;
+}): boolean => {
+  if (
+    !isExactMidgardLedgerOutputProofTerminalV1(control) ||
+    descriptor.version !==
+      MIDGARD_LEDGER_OUTPUT_COMMITMENT_V1_VERSION
+  ) {
+    return false;
+  }
+  const cardanoTxOut =
+    summarizeMidgardLedgerOutputCardanoTxOutV1(control);
+  const midgardTxOut =
+    summarizeMidgardLedgerOutputMidgardTxOutV1(control);
+  const cardanoSpendDatum =
+    summarizeMidgardLedgerOutputCardanoSpendDatumV1(control);
+  if (
+    cardanoTxOut === null ||
+    midgardTxOut === null ||
+    cardanoSpendDatum === null
+  ) {
+    return false;
+  }
+  const referenceLanguage =
+    control.outputScan.referenceScriptLanguage;
+  const referenceHash =
+    digestMidgardLedgerOutputReferenceScriptV1(control);
+  const referenceItemCommitment =
+    commitMidgardLedgerOutputReferenceScriptItemV1(control);
+  const referenceTotalLength =
+    referenceLanguage === -1
+      ? 0
+      : control.totalLength -
+        control.outputScan.referenceScriptItemOffset;
+  return (
+    descriptor.outputIndex === control.outputIndex &&
+    descriptor.totalLength === control.totalLength &&
+    Buffer.from(descriptor.itemCommitment).equals(
+      control.itemCommitment,
+    ) &&
+    Buffer.from(descriptor.address).equals(
+      control.outputScan.address,
+    ) &&
+    descriptor.lovelace === control.outputScan.lovelace &&
+    descriptor.assetCount ===
+      control.outputScan.assetFrontier.count &&
+    Buffer.from(descriptor.assetFrontierCommitment).equals(
+      commitMidgardValidationMerkleFrontierV1(
+        control.outputScan.assetFrontier,
+      ),
+    ) &&
+    descriptor.cardanoValueSize ===
+      control.outputScan.cardanoValueSize &&
+    descriptor.referenceScriptLanguage === referenceLanguage &&
+    Buffer.from(descriptor.referenceScriptHash).equals(
+      referenceHash ?? Buffer.alloc(0),
+    ) &&
+    descriptor.referenceScriptTotalLength ===
+      referenceTotalLength &&
+    Buffer.from(
+      descriptor.referenceScriptItemCommitment,
+    ).equals(referenceItemCommitment ?? Buffer.alloc(0)) &&
+    summariesEqual(cardanoTxOut, descriptor.cardanoTxOut) &&
+    summariesEqual(midgardTxOut, descriptor.midgardTxOut) &&
+    summariesEqual(
+      cardanoSpendDatum,
+      descriptor.cardanoSpendDatum,
+    )
+  );
 };

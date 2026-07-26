@@ -13,6 +13,7 @@ import {
 } from "./codec/cbor.js";
 import {
   hashMidgardLedgerOutputAssetLeafV1,
+  type MidgardLedgerOutputAssetV1,
 } from "./ledger-output-commitment-v1.js";
 import {
   appendMidgardValidationMerkleLeafV1,
@@ -68,6 +69,7 @@ export type MidgardLedgerOutputScanTraceStepV1 = {
   readonly next: MidgardLedgerOutputScanControlV1;
   readonly chunkIndex: number | null;
   readonly nextChunkIndex: number | null;
+  readonly asset: MidgardLedgerOutputAssetV1 | null;
 };
 
 export type MidgardLedgerOutputScanTraceV1 = {
@@ -814,6 +816,7 @@ export const buildMidgardLedgerOutputScanTraceV1 = (
         next: finished,
         chunkIndex: null,
         nextChunkIndex: null,
+        asset: null,
       });
       control = finished;
       continue;
@@ -839,22 +842,42 @@ export const buildMidgardLedgerOutputScanTraceV1 = (
             nextChunkStart + MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
           )
         : Buffer.alloc(0);
+    const window = Buffer.concat([currentChunk, nextChunk]);
     const next = advanceMidgardLedgerOutputScanV1({
       control,
       totalLength: bytes.length,
-      window: Buffer.concat([currentChunk, nextChunk]),
+      window,
       windowOffset: control.cursor - chunkStart,
     });
     if (next === null) {
       throw new Error("Canonical V1 ledger output scan failed closed");
+    }
+    let asset: MidgardLedgerOutputAssetV1 | null = null;
+    if (control.stage === MidgardLedgerOutputScanStagesV1.Asset) {
+      const assetName = readCborBytes(
+        window,
+        control.cursor - chunkStart,
+        "ledger_output.trace.asset_name",
+      );
+      const quantity = readCborUnsigned(
+        window,
+        assetName.nextOffset,
+        "ledger_output.trace.quantity",
+      );
+      asset = {
+        policyId: Buffer.from(control.currentPolicy),
+        assetName: assetName.value,
+        quantity: quantity.value,
+      };
     }
     steps.push({
       control,
       next,
       chunkIndex,
       nextChunkIndex: tokenStage && hasNextChunk
-        ? chunkIndex + 1
-        : null,
+          ? chunkIndex + 1
+          : null,
+      asset,
     });
     control = next;
   }

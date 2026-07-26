@@ -9,7 +9,10 @@ import {
   encodeMidgardLedgerOutputCommitmentV1,
   MIDGARD_LEDGER_OUTPUT_FIELD_INDEX_V1,
   summarizeMidgardLedgerOutputCardanoSpendDatumV1,
+  summarizeMidgardLedgerOutputCardanoTxOutV1,
+  summarizeMidgardLedgerOutputMidgardTxOutV1,
   verifyMidgardLedgerOutputChunkV1,
+  verifyMidgardLedgerOutputDescriptorV1,
   verifyMidgardLedgerOutputReferenceScriptChunkV1,
 } from "@al-ft/midgard-core";
 import {
@@ -169,6 +172,12 @@ describe("canonical ledger output descriptor V1", () => {
       material.descriptor.cardanoSpendDatum,
     );
     expect(
+      summarizeMidgardLedgerOutputCardanoTxOutV1(terminal),
+    ).toStrictEqual(material.descriptor.cardanoTxOut);
+    expect(
+      summarizeMidgardLedgerOutputMidgardTxOutV1(terminal),
+    ).toStrictEqual(material.descriptor.midgardTxOut);
+    expect(
       terminal.totalLength - scan.referenceScriptItemOffset,
     ).toBe(material.descriptor.referenceScriptTotalLength);
     expect(
@@ -179,6 +188,130 @@ describe("canonical ledger output descriptor V1", () => {
     ).toStrictEqual(
       material.descriptor.referenceScriptItemCommitment,
     );
+    expect(
+      verifyMidgardLedgerOutputDescriptorV1({
+        control: terminal,
+        descriptor: material.descriptor,
+      }),
+    ).toBe(true);
+
+    const changedBytes = (bytes: Uint8Array): Buffer => {
+      const changed = Buffer.from(bytes);
+      changed[0] = changed[0]! ^ 1;
+      return changed;
+    };
+    const descriptor = material.descriptor;
+    const substitutions = [
+      { ...descriptor, outputIndex: descriptor.outputIndex + 1 },
+      { ...descriptor, totalLength: descriptor.totalLength + 1 },
+      {
+        ...descriptor,
+        itemCommitment: changedBytes(descriptor.itemCommitment),
+      },
+      { ...descriptor, address: changedBytes(descriptor.address) },
+      { ...descriptor, lovelace: descriptor.lovelace + 1n },
+      { ...descriptor, assetCount: descriptor.assetCount + 1 },
+      {
+        ...descriptor,
+        assetFrontierCommitment: changedBytes(
+          descriptor.assetFrontierCommitment,
+        ),
+      },
+      {
+        ...descriptor,
+        cardanoValueSize: descriptor.cardanoValueSize + 1,
+      },
+      { ...descriptor, referenceScriptLanguage: 0 as const },
+      {
+        ...descriptor,
+        referenceScriptHash: changedBytes(
+          descriptor.referenceScriptHash,
+        ),
+      },
+      {
+        ...descriptor,
+        referenceScriptTotalLength:
+          descriptor.referenceScriptTotalLength + 1,
+      },
+      {
+        ...descriptor,
+        referenceScriptItemCommitment: changedBytes(
+          descriptor.referenceScriptItemCommitment,
+        ),
+      },
+      {
+        ...descriptor,
+        cardanoTxOut: {
+          ...descriptor.cardanoTxOut,
+          root: changedBytes(descriptor.cardanoTxOut.root),
+        },
+      },
+      {
+        ...descriptor,
+        cardanoTxOut: {
+          ...descriptor.cardanoTxOut,
+          cborLength: descriptor.cardanoTxOut.cborLength + 1n,
+        },
+      },
+      {
+        ...descriptor,
+        cardanoTxOut: {
+          ...descriptor.cardanoTxOut,
+          memory: descriptor.cardanoTxOut.memory + 1n,
+        },
+      },
+      {
+        ...descriptor,
+        midgardTxOut: {
+          ...descriptor.midgardTxOut,
+          root: changedBytes(descriptor.midgardTxOut.root),
+        },
+      },
+      {
+        ...descriptor,
+        midgardTxOut: {
+          ...descriptor.midgardTxOut,
+          cborLength: descriptor.midgardTxOut.cborLength + 1n,
+        },
+      },
+      {
+        ...descriptor,
+        midgardTxOut: {
+          ...descriptor.midgardTxOut,
+          memory: descriptor.midgardTxOut.memory + 1n,
+        },
+      },
+      {
+        ...descriptor,
+        cardanoSpendDatum: {
+          ...descriptor.cardanoSpendDatum,
+          root: changedBytes(descriptor.cardanoSpendDatum.root),
+        },
+      },
+      {
+        ...descriptor,
+        cardanoSpendDatum: {
+          ...descriptor.cardanoSpendDatum,
+          cborLength:
+            descriptor.cardanoSpendDatum.cborLength + 1n,
+        },
+      },
+      {
+        ...descriptor,
+        cardanoSpendDatum: {
+          ...descriptor.cardanoSpendDatum,
+          memory: descriptor.cardanoSpendDatum.memory + 1n,
+        },
+      },
+    ];
+    for (const substituted of substitutions) {
+      expect(
+        verifyMidgardLedgerOutputDescriptorV1({
+          control: terminal,
+          descriptor: substituted,
+        }),
+      ).toBe(false);
+    }
 
     const {
       datum: _datum,
@@ -203,5 +336,21 @@ describe("canonical ledger output descriptor V1", () => {
     ).toStrictEqual(
       withoutDatumMaterial.descriptor.cardanoSpendDatum,
     );
+    expect(
+      summarizeMidgardLedgerOutputCardanoTxOutV1(
+        withoutDatumTerminal,
+      ),
+    ).toStrictEqual(withoutDatumMaterial.descriptor.cardanoTxOut);
+    expect(
+      summarizeMidgardLedgerOutputMidgardTxOutV1(
+        withoutDatumTerminal,
+      ),
+    ).toStrictEqual(withoutDatumMaterial.descriptor.midgardTxOut);
+    expect(
+      verifyMidgardLedgerOutputDescriptorV1({
+        control: withoutDatumTerminal,
+        descriptor: withoutDatumMaterial.descriptor,
+      }),
+    ).toBe(true);
   });
 });
