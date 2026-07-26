@@ -569,9 +569,12 @@ const scanStage = (
   return exact;
 };
 
-const scriptSourcesStage = (
+const scriptSourcesControlStatus = (
   witness: ValidationMachineWorkWitness,
-): number => {
+): {
+  readonly stage: number;
+  readonly pendingHashStage: number | null;
+} => {
   const control = asArray(
     decodeSingleCbor(witness.cbor),
     "script_sources_control",
@@ -585,7 +588,57 @@ const scriptSourcesStage = (
   if (!Number.isSafeInteger(stage) || stage < 0) {
     throw new Error("script_sources_control stage is invalid");
   }
-  return stage;
+  if (stage !== 0 || control.length === 28) {
+    return { stage, pendingHashStage: null };
+  }
+  const pendingCbor = asBytes(
+    control[28],
+    "script_sources_control.pending_source",
+  );
+  if (pendingCbor.length === 0) {
+    throw new Error("script_sources_control pending source is empty");
+  }
+  const pending = asArray(
+    decodeSingleCbor(pendingCbor),
+    "script_sources_pending_source",
+  );
+  if (
+    pending.length !== 9 ||
+    asBigInt(pending[0], "script_sources_pending_source.version") !== 1n
+  ) {
+    throw new Error("script_sources_control pending source is invalid");
+  }
+  const hashControlCbor = asBytes(
+    pending[8],
+    "script_sources_pending_source.hash_control",
+  );
+  const hashControl = readCborArrayHeader(
+    hashControlCbor,
+    0,
+    "script_sources_pending_source.hash_control",
+  );
+  const hashVersion = readCborInteger(
+    hashControlCbor,
+    hashControl.nextOffset,
+    "script_sources_pending_source.hash_control.version",
+  );
+  const hashStage = readCborInteger(
+    hashControlCbor,
+    hashVersion.nextOffset,
+    "script_sources_pending_source.hash_control.stage",
+  );
+  if (hashControl.length !== 9 || hashVersion.value !== 1n) {
+    throw new Error("script_sources pending hash control is invalid");
+  }
+  const pendingHashStage = Number(hashStage.value);
+  if (
+    !Number.isSafeInteger(pendingHashStage) ||
+    pendingHashStage < 0 ||
+    pendingHashStage > 3
+  ) {
+    throw new Error("script_sources pending hash stage is invalid");
+  }
+  return { stage, pendingHashStage };
 };
 
 const scriptIntegrityStage = (
@@ -858,7 +911,30 @@ export const validationSemanticResolverIndexV1 = (
       if (auxiliary.kind === "ledgerOutputProofFinalize") return 4;
       break;
     case "scriptSources": {
-      if (scriptSourcesStage(witness) !== 5) return 0;
+      const { stage, pendingHashStage } =
+        scriptSourcesControlStatus(witness);
+      if (stage === 0) {
+        if (pendingHashStage === null) {
+          if (auxiliary?.kind === "transactionFieldChunk") return 5;
+          if (auxiliary === null) return 6;
+          break;
+        }
+        if (
+          pendingHashStage === 0 &&
+          auxiliary?.kind === "scriptSourceHashBlock"
+        ) {
+          return 7;
+        }
+        if (
+          (pendingHashStage === 1 || pendingHashStage === 2) &&
+          auxiliary === null
+        ) {
+          return 8;
+        }
+        if (pendingHashStage === 3 && auxiliary === null) return 9;
+        break;
+      }
+      if (stage !== 5) return 0;
       if (auxiliary?.kind === "ledgerOutputProofBegin") return 1;
       if (auxiliary?.kind === "ledgerOutputProofStep") return 2;
       if (auxiliary?.kind === "ledgerOutputProofFinalize") return 3;

@@ -19,7 +19,7 @@ validator main(
     prepare_selected(
       ScriptSources,
       semantic_resolver_script_hashes,
-      5,
+      10,
       computation_thread_policy_id,
       datum,
       redeemer,

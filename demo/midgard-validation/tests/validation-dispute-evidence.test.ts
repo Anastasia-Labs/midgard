@@ -187,7 +187,11 @@ const expectExactBundle = (
   expect(bundle.oneStepArgument.resolverIndex).toBeLessThan(14);
   expect(
     bundle.oneStepArgument.semanticResolverIndex === null,
-  ).toBe(bundle.oneStepArgument.resolverIndex >= 7);
+  ).toBe(
+    bundle.oneStepArgument.resolverIndex === 9 ||
+      bundle.oneStepArgument.resolverIndex === 11 ||
+      bundle.oneStepArgument.resolverIndex === 12,
+  );
 };
 
 describe("validation dispute evidence construction", () => {
@@ -209,7 +213,7 @@ describe("validation dispute evidence construction", () => {
     );
     expect(bundle.oneStepArgument).toMatchObject({
       resolverIndex: 13,
-      semanticResolverIndex: null,
+      semanticResolverIndex: 7,
     });
   });
 

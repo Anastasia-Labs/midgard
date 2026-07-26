@@ -8502,6 +8502,111 @@ fn stage_zero_script_sources_state(
   }
 }
 
+test script_sources_stage_zero_begin_initializes_an_authenticated_identity_trace() {
+  let base = empty_v1_transaction()
+  let payload = v1_program_envelope()
+  let script = MidgardVersionedScript {
+    language: PlutusV3Script,
+    script_bytes: payload,
+  }
+  let tx = MidgardTransaction {
+    ..base,
+    witness_set: MidgardTransactionWitnessSet {
+      ..base.witness_set,
+      script_tx_wits: [script],
+    },
+  }
+  let item_cbor = encode_midgard_versioned_script(script)
+  let Pair(collection_proof, chunk_proof) = singleton_field_item_proofs(
+    7,
+    item_cbor,
+  )
+  let pending = validation_machine_v1.InlineSourceHashControlV1 {
+    version: 1,
+    source_index: 0,
+    source_total_count: 1,
+    language_tag: 3,
+    payload_offset: bytearray.length(item_cbor) - bytearray.length(payload),
+    payload_length: bytearray.length(payload),
+    item_length: bytearray.length(item_cbor),
+    item_commitment: collection_proof.item_commitment,
+    hash_control: blake2b_224_trace_v1.initial_control_v1(
+      bytearray.length(payload) + 1,
+    ),
+  }
+  let control = stage_zero_script_sources_control(
+    tx,
+    validation_merkle_v1.build_frontier([]),
+    0,
+    #"",
+  )
+  let successor_control = validation_machine_v1.ScriptSourcesControlV1 {
+    ..control,
+    source_total_count: 1,
+    pending_source_cbor: validation_machine_v1.encode_inline_source_hash_control_v1(
+      pending,
+    ),
+  }
+  let pre = stage_zero_script_sources_state(tx, control, 59)
+  let post = stage_zero_script_sources_state(tx, successor_control, 60)
+  validation_machine_v1.verify_script_sources_stage_zero_begin_semantics_v1(
+    pre,
+    validation_machine_v1.ValidationOneStepWitnessV1 {
+      work_witness_cbor: stage_zero_script_sources_work_witness(control),
+      claimed_successor: post,
+    },
+    collection_proof,
+    chunk_proof,
+  )
+}
+
+test script_sources_stage_zero_finish_advances_a_complete_source_frontier() {
+  let base = empty_v1_transaction()
+  let payload = v1_program_envelope()
+  let script = MidgardVersionedScript {
+    language: PlutusV3Script,
+    script_bytes: payload,
+  }
+  let tx = MidgardTransaction {
+    ..base,
+    witness_set: MidgardTransactionWitnessSet {
+      ..base.witness_set,
+      script_tx_wits: [script],
+    },
+  }
+  let item_cbor = encode_midgard_versioned_script(script)
+  let item_commitment = bounded_item_v1.from_bytes(7, 0, item_cbor)
+  let source_frontier = validation_merkle_v1.build_frontier(
+    [
+      script_proof_v1.inline_source_leaf_hash(
+        0,
+        3,
+        #"03" |> bytearray.concat(payload) |> blake2b_224,
+        item_commitment,
+      ),
+    ],
+  )
+  let control = stage_zero_script_sources_control(
+    tx,
+    source_frontier,
+    1,
+    #"",
+  )
+  let successor_control = validation_machine_v1.ScriptSourcesControlV1 {
+    ..control,
+    stage: 1,
+  }
+  let pre = stage_zero_script_sources_state(tx, control, 62)
+  let post = stage_zero_script_sources_state(tx, successor_control, 63)
+  validation_machine_v1.verify_script_sources_stage_zero_finish_semantics_v1(
+    pre,
+    validation_machine_v1.ValidationOneStepWitnessV1 {
+      work_witness_cbor: stage_zero_script_sources_work_witness(control),
+      claimed_successor: post,
+    },
+  )
+}
+
 test script_sources_stage_zero_accepts_an_authenticated_hash_block() {
   let base = empty_v1_transaction()
   let payload = v1_program_envelope()
@@ -8561,15 +8666,96 @@ test script_sources_stage_zero_accepts_an_authenticated_hash_block() {
   }
   let pre = stage_zero_script_sources_state(tx, control, 60)
   let post = stage_zero_script_sources_state(tx, successor_control, 61)
-  validation_machine_v1.verify_script_sources_stage_zero_semantics_v1(
+  let transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+    work_witness_cbor: stage_zero_script_sources_work_witness(control),
+    claimed_successor: post,
+  }
+  and {
+    validation_machine_v1.verify_script_sources_stage_zero_semantics_v1(
+      pre,
+      transition,
+      validation_machine_v1.ScriptSourceHashBlockWitness {
+        chunk_proof,
+        next_chunk_proof: None,
+      },
+    ),
+    validation_machine_v1.verify_script_sources_stage_zero_hash_block_semantics_v1(
+      pre,
+      transition,
+      chunk_proof,
+      None,
+    ),
+    !validation_machine_v1.verify_script_sources_stage_zero_hash_block_semantics_v1(
+      validation_trace_v1.ValidationMachineStateV1 {
+        ..pre,
+        transaction_commitment: h_b,
+      },
+      transition,
+      chunk_proof,
+      None,
+    ),
+  }
+}
+
+test script_sources_stage_zero_advances_an_inline_hash_round() {
+  let base = empty_v1_transaction()
+  let payload = v1_program_envelope()
+  let script = MidgardVersionedScript {
+    language: PlutusV3Script,
+    script_bytes: payload,
+  }
+  let tx = MidgardTransaction {
+    ..base,
+    witness_set: MidgardTransactionWitnessSet {
+      ..base.witness_set,
+      script_tx_wits: [script],
+    },
+  }
+  let item_cbor = encode_midgard_versioned_script(script)
+  let hash_control = blake2b_224_trace_v1.initial_control_v1(
+    bytearray.length(payload) + 1,
+  )
+  expect Some(round_control) = blake2b_224_trace_v1.step_v1(
+    hash_control,
+    Some(#"03" |> bytearray.concat(payload)),
+  )
+  expect Some(next_hash_control) = blake2b_224_trace_v1.step_v1(
+    round_control,
+    None,
+  )
+  let pending = validation_machine_v1.InlineSourceHashControlV1 {
+    version: 1,
+    source_index: 0,
+    source_total_count: 1,
+    language_tag: 3,
+    payload_offset: bytearray.length(item_cbor) - bytearray.length(payload),
+    payload_length: bytearray.length(payload),
+    item_length: bytearray.length(item_cbor),
+    item_commitment: bounded_item_v1.from_bytes(7, 0, item_cbor),
+    hash_control: round_control,
+  }
+  let control = stage_zero_script_sources_control(
+    tx,
+    validation_merkle_v1.build_frontier([]),
+    1,
+    validation_machine_v1.encode_inline_source_hash_control_v1(pending),
+  )
+  let successor_control = validation_machine_v1.ScriptSourcesControlV1 {
+    ..control,
+    pending_source_cbor: validation_machine_v1.encode_inline_source_hash_control_v1(
+      validation_machine_v1.InlineSourceHashControlV1 {
+        ..pending,
+        hash_control: next_hash_control,
+      },
+    ),
+  }
+  let pre = stage_zero_script_sources_state(tx, control, 60)
+  let post = stage_zero_script_sources_state(tx, successor_control, 61)
+  validation_machine_v1.verify_script_sources_stage_zero_hash_advance_semantics_v1(
     pre,
     validation_machine_v1.ValidationOneStepWitnessV1 {
       work_witness_cbor: stage_zero_script_sources_work_witness(control),
       claimed_successor: post,
-    },
-    validation_machine_v1.ScriptSourceHashBlockWitness {
-      chunk_proof,
-      next_chunk_proof: None,
     },
   )
 }
@@ -8638,14 +8824,21 @@ test script_sources_stage_zero_commits_the_terminal_script_identity() {
   )
   let pre = stage_zero_script_sources_state(tx, control, 61)
   let post = stage_zero_script_sources_state(tx, successor_control, 62)
-  validation_machine_v1.verify_script_sources_stage_zero_semantics_v1(
-    pre,
-    validation_machine_v1.ValidationOneStepWitnessV1 {
-      work_witness_cbor: stage_zero_script_sources_work_witness(control),
-      claimed_successor: post,
-    },
-    validation_machine_v1.NoAuxiliaryWitness,
-  )
+  let transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+    work_witness_cbor: stage_zero_script_sources_work_witness(control),
+    claimed_successor: post,
+  }
+  and {
+    validation_machine_v1.verify_script_sources_stage_zero_semantics_v1(
+      pre,
+      transition,
+      validation_machine_v1.NoAuxiliaryWitness,
+    ),
+    validation_machine_v1.verify_script_sources_stage_zero_hash_terminal_semantics_v1(
+      pre,
+      transition,
+    ),
+  }
 }
 
 fn crossing_inline_source_hash_fixture() ->

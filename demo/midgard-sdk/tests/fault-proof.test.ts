@@ -438,7 +438,7 @@ describe("fault-proof contract builder", () => {
     expect(contracts.validationTraceDispute.firstStep).toBe(
       contracts.validationTraceDispute.steps[0],
     );
-    expect(contracts.validationTraceDispute.steps).toHaveLength(69);
+    expect(contracts.validationTraceDispute.steps).toHaveLength(74);
     expect(contracts.validationTraceDispute.resolvers).toHaveLength(
       VALIDATION_TRACE_RESOLVER_COUNT_V1,
     );
@@ -452,7 +452,7 @@ describe("fault-proof contract builder", () => {
           ...contracts.validationTraceDispute.steps,
         ].map((step) => step.spendingScriptHash),
       ).size,
-    ).toBe(88);
+    ).toBe(93);
   });
 
   it("builds invalid-range with the validator parameter order from the blueprint", async () => {
@@ -705,22 +705,27 @@ describe("fault-proof contract builder", () => {
         expectedSemanticResolvers[34]!,
         expectedSemanticResolvers[35]!,
         expectedSemanticResolvers[36]!,
-      ],
-      [
         expectedSemanticResolvers[37]!,
         expectedSemanticResolvers[38]!,
         expectedSemanticResolvers[39]!,
         expectedSemanticResolvers[40]!,
+        expectedSemanticResolvers[41]!,
       ],
       [
-        expectedSemanticResolvers[41]!,
         expectedSemanticResolvers[42]!,
         expectedSemanticResolvers[43]!,
         expectedSemanticResolvers[44]!,
         expectedSemanticResolvers[45]!,
+      ],
+      [
         expectedSemanticResolvers[46]!,
         expectedSemanticResolvers[47]!,
         expectedSemanticResolvers[48]!,
+        expectedSemanticResolvers[49]!,
+        expectedSemanticResolvers[50]!,
+        expectedSemanticResolvers[51]!,
+        expectedSemanticResolvers[52]!,
+        expectedSemanticResolvers[53]!,
       ],
     ] as const;
     const resolverHashesSchema = Data.Array(Data.Bytes());
@@ -842,7 +847,7 @@ describe("fault-proof contract builder", () => {
       ).toBeLessThan(14 * 1024);
     }
 
-    expect(contracts.validationTraceDispute.steps).toHaveLength(69);
+    expect(contracts.validationTraceDispute.steps).toHaveLength(74);
     expect(contracts.validationTraceDispute.award.spendingScriptCBOR).toBe(
       expectedAward,
     );

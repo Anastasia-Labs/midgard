@@ -273,10 +273,10 @@ export const validationOneStepEvidenceHashV1 = ({
   );
 
 const VALIDATION_SEMANTIC_RESOLVER_COUNTS_V1 = [
-  2, 1, 1, 2, 4, 14, 2, 6, 5, 0, 4, 0, 0, 8,
+  2, 1, 1, 2, 4, 14, 2, 6, 10, 0, 4, 0, 0, 8,
 ] as const;
 const VALIDATION_SEMANTIC_RESOLVER_OFFSETS_V1 = [
-  0, 2, 3, 4, 6, 10, 24, 26, 32, -1, 37, -1, -1, 41,
+  0, 2, 3, 4, 6, 10, 24, 26, 32, -1, 42, -1, -1, 46,
 ] as const;
 
 const auxiliaryShapeV1 = ({
@@ -337,7 +337,11 @@ const auxiliaryShapeV1 = ({
             ? [37, 1]
             : semanticResolverIndex === 3
               ? [38, 2]
-              : [0, 0];
+              : semanticResolverIndex === 5
+                ? [2, 2]
+                : semanticResolverIndex === 7
+                  ? [41, 2]
+                  : [0, 0];
     if (!(auxiliary instanceof Constr)) {
       throw new Error(
         "validation auxiliary witness must be a constructor",
@@ -2288,6 +2292,26 @@ const semanticActionFieldsV1 = ({
     }
     if (
       semanticResolverIndex === 4 &&
+      auxiliary.index === 0 &&
+      auxiliary.fields.length === 0
+    ) {
+      return base;
+    }
+    if (semanticResolverIndex === 5 && auxiliary.index === 2) {
+      return [...base, ...auxiliary.fields];
+    }
+    if (
+      semanticResolverIndex === 6 &&
+      auxiliary.index === 0 &&
+      auxiliary.fields.length === 0
+    ) {
+      return base;
+    }
+    if (semanticResolverIndex === 7 && auxiliary.index === 41) {
+      return [...base, ...auxiliary.fields];
+    }
+    if (
+      (semanticResolverIndex === 8 || semanticResolverIndex === 9) &&
       auxiliary.index === 0 &&
       auxiliary.fields.length === 0
     ) {

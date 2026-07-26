@@ -93,6 +93,11 @@ const semanticResolverDefinitionsV1 = [
   "script_sources_output_proof_step_semantic_v1",
   "script_sources_output_proof_finalize_semantic_v1",
   "script_sources_output_proof_finish_semantic_v1",
+  "script_sources_stage_zero_begin_semantic_v1",
+  "script_sources_stage_zero_finish_semantic_v1",
+  "script_sources_stage_zero_hash_block_semantic_v1",
+  "script_sources_stage_zero_hash_advance_semantic_v1",
+  "script_sources_stage_zero_hash_terminal_semantic_v1",
   "script_integrity_authentication_semantic_v1",
   "script_integrity_compact_semantic_v1",
   "script_integrity_witness_set_semantic_v1",
@@ -107,7 +112,7 @@ const semanticResolverDefinitionsV1 = [
   "ledger_delta_terminal_semantic_v1",
 ] as const;
 const semanticResolverOffsetsV1 = [
-  0, 2, 3, 4, 6, 10, 24, 26, 32, -1, 37, -1, -1, 41,
+  0, 2, 3, 4, 6, 10, 24, 26, 32, -1, 42, -1, -1, 46,
 ] as const;
 
 const validateBoundaryAbiAndCollectAuxiliaryKinds = (
@@ -353,7 +358,7 @@ describe("deterministic validation machine", () => {
     expect(
       scriptSourceWitnesses.map(validationSemanticResolverIndexV1),
     ).toEqual([
-      0, 0, 0, 0, 0, 0, 0,
+      6, 0, 0, 0, 0, 0, 0,
       1,
       2, 2, 2, 2, 2, 2, 2,
       3,

@@ -257,7 +257,7 @@ describe("inspect-contracts", () => {
       "boundary",
       "timeout",
       "award",
-      ...Array.from({ length: 49 }, (_, index) => `semantic-resolver-${index}`),
+      ...Array.from({ length: 54 }, (_, index) => `semantic-resolver-${index}`),
       ...Array.from({ length: 11 }, (_, index) => `prepare-resolver-${index}`),
       ...Array.from({ length: 3 }, (_, index) => `direct-resolver-${index}`),
     ]);

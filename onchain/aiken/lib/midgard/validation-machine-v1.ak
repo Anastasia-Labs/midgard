@@ -14,7 +14,8 @@ use midgard/cek_data_v1
 use midgard/cek_machine_v1
 use midgard/cek_proof_v1
 use midgard/fraud_proofs/native_tx/codec.{
-  decode_canonical_int_at, encode_definite_array_header, encode_definite_bytes,
+  decode_canonical_int_at, decode_definite_array_header_at,
+  encode_definite_array_header, encode_definite_bytes,
 }
 use midgard/fraud_proofs/native_tx/compact.{
   decode_native_tx_compact_v1, decode_native_tx_field_preimage_lengths_v1,
@@ -6980,6 +6981,334 @@ fn exact_script_sources_control(control: ScriptSourcesControlV1) -> ByteArray {
   }
 }
 
+fn script_sources_stage_zero_control_from_witness(
+  work_witness_cbor: ByteArray,
+) -> ScriptSourcesControlV1 {
+  expect Some(data) = cbor.deserialise(work_witness_cbor)
+  let items = builtin.un_list_data(data)
+  if list.length(items) == 28 {
+    script_sources_control_from_data_items(
+      items,
+      empty_script_discovery_control(),
+      None,
+    )
+  } else {
+    expect list.length(items) == 29
+    let Pair(base_items, extension_data) = split_last_data(items)
+    let base_control = script_sources_control_from_data_items(
+      base_items,
+      empty_script_discovery_control(),
+      None,
+    )
+    expect base_control.stage == 0
+    ScriptSourcesControlV1 {
+      ..base_control,
+      pending_source_cbor: builtin.un_b_data(extension_data),
+    }
+  }
+}
+
+fn script_sources_stage_zero_work_witness_has_canonical_shape(
+  work_witness_cbor: ByteArray,
+  pending_source_cbor: ByteArray,
+) -> Bool {
+  let Pair(offset, item_count) = decode_definite_array_header_at(
+    work_witness_cbor,
+    0,
+  )
+  let expected_item_count = if pending_source_cbor == #"" {
+    28
+  } else {
+    29
+  }
+  and {
+    offset == 2,
+    item_count == expected_item_count,
+    if pending_source_cbor == #"" {
+      True
+    } else {
+      let encoded_pending = encode_definite_bytes(pending_source_cbor)
+      let pending_offset = bytearray.length(work_witness_cbor) -
+        bytearray.length(encoded_pending)
+      and {
+        pending_offset >= offset,
+        builtin.slice_bytearray(
+          pending_offset,
+          bytearray.length(encoded_pending),
+          work_witness_cbor,
+        ) == encoded_pending,
+      }
+    },
+  }
+}
+
+fn script_sources_stage_zero_prefix_before_stage(
+  control: ScriptSourcesControlV1,
+  item_count: Int,
+) -> ByteArray {
+  encode_definite_array_header(item_count)
+    |> bytearray.concat(encode_definite_bytes(control.compact_cbor))
+    |> bytearray.concat(
+        encode_definite_bytes(control.witness_set_compact_cbor),
+      )
+    |> bytearray.concat(
+        encode_definite_bytes(control.field_preimage_lengths_cbor),
+      )
+    |> bytearray.concat(encode_definite_bytes(control.context_cbor))
+    |> bytearray.concat(cbor.serialise(control.resolved_input_count))
+    |> bytearray.concat(
+        encode_definite_bytes(control.resolved_inputs_accumulator),
+      )
+    |> bytearray.concat(cbor.serialise(control.signer_count))
+    |> bytearray.concat(
+        encode_definite_bytes(control.signer_frontier_commitment),
+      )
+    |> bytearray.concat(
+        validation_merkle_v1.encode_frontier(control.resolved_item_peaks),
+      )
+}
+
+fn script_sources_stage_zero_control_is_bound(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: ScriptSourcesControlV1,
+) -> Bool {
+  let pending_is_bound = if control.pending_source_cbor == #"" {
+    True
+  } else {
+    let pending = inline_source_hash_control_from_cbor(
+      control.pending_source_cbor,
+    )
+    and {
+      pending.source_index == control.source_count,
+      pending.source_total_count == control.source_total_count,
+    }
+  }
+  and {
+    control.stage == 0,
+    native_tx_proof_commitment_v1(
+      control.compact_cbor,
+      control.witness_set_compact_cbor,
+      control.field_preimage_lengths_cbor,
+    ) == pre.transaction_commitment,
+    validation_trace_v1.hash_validation_context(control.context_cbor) == pre.validation_context_hash,
+    control.resolved_input_count >= 0,
+    bytearray.length(control.resolved_inputs_accumulator) == 32,
+    control.signer_count >= 0,
+    bytearray.length(control.signer_frontier_commitment) == 32,
+    control.resolved_item_peaks == [],
+    control.replay_cursor == 0,
+    bytearray.length(control.replay_accumulator) == 32,
+    bytearray.length(control.replay_remaining_schedule_hash) == 32,
+    control.spend_index == 0,
+    validation_merkle_v1.frontier_is_well_formed(
+      control.source_count,
+      control.source_peaks,
+    ),
+    control.source_total_count >= control.source_count,
+    control.source_total_count <= max_tx_size_derived_collection_item_count,
+    control.redeemer_count == 0,
+    control.redeemer_peaks == [],
+    control.redeemer_total_count == 0,
+    control.purpose_count == 0,
+    control.purpose_peaks == [],
+    control.output_cursor == 0,
+    control.output_count == 0,
+    control.output_peaks == [],
+    control.output_total_count == 0,
+    control.receive_scan == empty_receive_purpose_scan_control(),
+    control.observer_scan == empty_observer_purpose_scan_control(),
+    control.discovery == empty_script_discovery_control(),
+    control.output_proof == None,
+    pending_is_bound,
+    script_sources_stage_zero_work_witness_has_canonical_shape(
+      witness.work_witness_cbor,
+      control.pending_source_cbor,
+    ),
+  }
+}
+
+fn script_sources_stage_zero_successor_work_is_exact(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  next_work_witness_cbor: ByteArray,
+) -> Bool {
+  and {
+    witness.claimed_successor.phase == validation_trace_v1.ScriptSources,
+    witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
+      validation_trace_v1.ScriptSources,
+      pre.program_counter + 1,
+      next_work_witness_cbor,
+    ),
+  }
+}
+
+fn script_sources_stage_zero_finish_successor_is_exact(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: ScriptSourcesControlV1,
+) -> Bool {
+  let prefix = script_sources_stage_zero_prefix_before_stage(control, 28)
+  let stage_offset = bytearray.length(prefix)
+  let work_length = bytearray.length(witness.work_witness_cbor)
+  expect
+    builtin.slice_bytearray(
+      0,
+      stage_offset,
+      witness.work_witness_cbor,
+    ) == prefix
+  expect
+    builtin.slice_bytearray(
+      stage_offset,
+      1,
+      witness.work_witness_cbor,
+    ) == #"00"
+  let next_work_witness_cbor =
+    prefix
+      |> bytearray.concat(#"01")
+      |> bytearray.concat(
+          builtin.slice_bytearray(
+            stage_offset + 1,
+            work_length - stage_offset - 1,
+            witness.work_witness_cbor,
+          ),
+        )
+  script_sources_stage_zero_successor_work_is_exact(
+    pre,
+    witness,
+    next_work_witness_cbor,
+  )
+}
+
+fn script_sources_stage_zero_begin_successor_is_exact(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: ScriptSourcesControlV1,
+  source_total_count: Int,
+  pending_source_cbor: ByteArray,
+) -> Bool {
+  let encoded_observer_scan = encode_observer_purpose_scan_control(
+    control.observer_scan,
+  )
+  let old_suffix =
+    cbor.serialise(control.source_total_count)
+      |> bytearray.concat(cbor.serialise(control.redeemer_total_count))
+      |> bytearray.concat(encoded_observer_scan)
+  let work_length = bytearray.length(witness.work_witness_cbor)
+  let suffix_offset = work_length - bytearray.length(old_suffix)
+  expect suffix_offset >= 2
+  expect
+    builtin.slice_bytearray(
+      suffix_offset,
+      bytearray.length(old_suffix),
+      witness.work_witness_cbor,
+    ) == old_suffix
+  let next_work_witness_cbor =
+    encode_definite_array_header(29)
+      |> bytearray.concat(
+          builtin.slice_bytearray(
+            2,
+            suffix_offset - 2,
+            witness.work_witness_cbor,
+          ),
+        )
+      |> bytearray.concat(cbor.serialise(source_total_count))
+      |> bytearray.concat(cbor.serialise(control.redeemer_total_count))
+      |> bytearray.concat(encoded_observer_scan)
+      |> bytearray.concat(encode_definite_bytes(pending_source_cbor))
+  script_sources_stage_zero_successor_work_is_exact(
+    pre,
+    witness,
+    next_work_witness_cbor,
+  )
+}
+
+fn script_sources_stage_zero_pending_successor_is_exact(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: ScriptSourcesControlV1,
+  pending_source_cbor: ByteArray,
+) -> Bool {
+  let old_pending = encode_definite_bytes(control.pending_source_cbor)
+  let work_length = bytearray.length(witness.work_witness_cbor)
+  let pending_offset = work_length - bytearray.length(old_pending)
+  expect pending_offset >= 2
+  expect
+    builtin.slice_bytearray(
+      pending_offset,
+      bytearray.length(old_pending),
+      witness.work_witness_cbor,
+    ) == old_pending
+  let next_work_witness_cbor =
+    builtin.slice_bytearray(0, pending_offset, witness.work_witness_cbor)
+      |> bytearray.concat(encode_definite_bytes(pending_source_cbor))
+  script_sources_stage_zero_successor_work_is_exact(
+    pre,
+    witness,
+    next_work_witness_cbor,
+  )
+}
+
+fn script_sources_stage_zero_terminal_successor_is_exact(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: ScriptSourcesControlV1,
+  source_count: Int,
+  source_peaks: List<validation_merkle_v1.FrontierPeak>,
+) -> Bool {
+  let prefix = script_sources_stage_zero_prefix_before_stage(control, 29)
+    |> bytearray.concat(#"00")
+  let source_offset = bytearray.length(prefix)
+  let old_source_fields =
+    cbor.serialise(control.source_count)
+      |> bytearray.concat(
+          validation_merkle_v1.encode_frontier(control.source_peaks),
+        )
+  let after_source_offset = source_offset +
+    bytearray.length(old_source_fields)
+  let old_pending = encode_definite_bytes(control.pending_source_cbor)
+  let work_length = bytearray.length(witness.work_witness_cbor)
+  let pending_offset = work_length - bytearray.length(old_pending)
+  expect pending_offset >= after_source_offset
+  expect
+    builtin.slice_bytearray(
+      0,
+      source_offset,
+      witness.work_witness_cbor,
+    ) == prefix
+  expect
+    builtin.slice_bytearray(
+      source_offset,
+      bytearray.length(old_source_fields),
+      witness.work_witness_cbor,
+    ) == old_source_fields
+  expect
+    builtin.slice_bytearray(
+      pending_offset,
+      bytearray.length(old_pending),
+      witness.work_witness_cbor,
+    ) == old_pending
+  let next_work_witness_cbor =
+    encode_definite_array_header(28)
+      |> bytearray.concat(
+          builtin.slice_bytearray(2, source_offset - 2, prefix),
+        )
+      |> bytearray.concat(cbor.serialise(source_count))
+      |> bytearray.concat(validation_merkle_v1.encode_frontier(source_peaks))
+      |> bytearray.concat(
+          builtin.slice_bytearray(
+            after_source_offset,
+            pending_offset - after_source_offset,
+            witness.work_witness_cbor,
+          ),
+        )
+  script_sources_stage_zero_successor_work_is_exact(
+    pre,
+    witness,
+    next_work_witness_cbor,
+  )
+}
+
 fn script_sources_control_successor_is_exact(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
@@ -7094,6 +7423,247 @@ pub fn inline_source_hash_block_v1(
         }
       }
     }
+  }
+}
+
+pub fn verify_script_sources_stage_zero_finish_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+) -> Bool {
+  let control = script_sources_stage_zero_control_from_witness(
+    witness.work_witness_cbor,
+  )
+  let witness_set = decode_native_tx_witness_set_compact(
+    control.witness_set_compact_cbor,
+  )
+  let script_commitment = witness_set.script_tx_wits_hash
+  let empty_script_commitment = bounded_collection_v1.from_items(7, [])
+  let source_scan_is_complete = if script_commitment == empty_script_commitment {
+    and {
+      control.source_count == 0,
+      control.source_total_count == 0,
+      control.source_peaks == [],
+    }
+  } else {
+    and {
+      control.source_total_count > 0,
+      control.source_count == control.source_total_count,
+    }
+  }
+  and {
+    script_sources_stage_zero_control_is_bound(
+      pre,
+      witness,
+      control,
+    ),
+    control.pending_source_cbor == #"",
+    source_scan_is_complete,
+    script_sources_stage_zero_finish_successor_is_exact(
+      pre,
+      witness,
+      control,
+    ),
+  }
+}
+
+pub fn verify_script_sources_stage_zero_begin_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  collection_proof: bounded_collection_v1.ItemProofV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+) -> Bool {
+  let control = script_sources_stage_zero_control_from_witness(
+    witness.work_witness_cbor,
+  )
+  let witness_set = decode_native_tx_witness_set_compact(
+    control.witness_set_compact_cbor,
+  )
+  let active_total_count = if control.source_total_count == 0 {
+    collection_proof.item_count
+  } else {
+    control.source_total_count
+  }
+  let header = native_script_scan_v1.versioned_script_header_v1(
+    chunk_proof.chunk,
+    collection_proof.item_length,
+  )
+  and {
+    script_sources_stage_zero_control_is_bound(
+      pre,
+      witness,
+      control,
+    ),
+    control.pending_source_cbor == #"",
+    active_total_count > 0,
+    active_total_count <= max_tx_size_derived_collection_item_count,
+    collection_proof.item_length > 0,
+    collection_proof.item_length <= max_aggregate_field_preimage_bytes,
+    collection_proof.field_index == 7,
+    collection_proof.item_count == active_total_count,
+    collection_proof.item_index == control.source_count,
+    chunk_proof.field_index == 7,
+    chunk_proof.item_index == collection_proof.item_index,
+    chunk_proof.total_length == collection_proof.item_length,
+    chunk_proof.chunk_index == 0,
+    bounded_collection_v1.verify_item(
+      witness_set.script_tx_wits_hash,
+      collection_proof,
+    ),
+    bounded_item_v1.verify_chunk(
+      collection_proof.item_commitment,
+      chunk_proof,
+    ),
+    when header is {
+      None ->
+        rejected_successor_is_exact(
+          pre,
+          witness.claimed_successor,
+          reject_invalid_field_type,
+        )
+      Some(item_header) -> {
+        let pending_source_cbor = encode_inline_source_hash_control_v1(
+          InlineSourceHashControlV1 {
+            version: 1,
+            source_index: control.source_count,
+            source_total_count: active_total_count,
+            language_tag: item_header.language_tag,
+            payload_offset: item_header.payload_offset,
+            payload_length: item_header.payload_length,
+            item_length: collection_proof.item_length,
+            item_commitment: collection_proof.item_commitment,
+            hash_control: blake2b_224_trace_v1.initial_control_v1(
+              item_header.payload_length + 1,
+            ),
+          },
+        )
+        script_sources_stage_zero_begin_successor_is_exact(
+          pre,
+          witness,
+          control,
+          active_total_count,
+          pending_source_cbor,
+        )
+      }
+    },
+  }
+}
+
+pub fn verify_script_sources_stage_zero_hash_block_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+) -> Bool {
+  let control = script_sources_stage_zero_control_from_witness(
+    witness.work_witness_cbor,
+  )
+  expect control.pending_source_cbor != #""
+  let pending = inline_source_hash_control_from_cbor(
+    control.pending_source_cbor,
+  )
+  when inline_source_hash_block_v1(
+    pending,
+    chunk_proof,
+    next_chunk_proof,
+  ) is {
+    None -> False
+    Some(block) -> {
+      expect Some(next_hash_control) =
+        blake2b_224_trace_v1.step_v1(pending.hash_control, Some(block))
+      and {
+        script_sources_stage_zero_control_is_bound(
+          pre,
+          witness,
+          control,
+        ),
+        script_sources_stage_zero_pending_successor_is_exact(
+          pre,
+          witness,
+          control,
+          encode_inline_source_hash_control_v1(
+            InlineSourceHashControlV1 {
+              ..pending,
+              hash_control: next_hash_control,
+            },
+          ),
+        ),
+      }
+    }
+  }
+}
+
+pub fn verify_script_sources_stage_zero_hash_advance_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+) -> Bool {
+  let control = script_sources_stage_zero_control_from_witness(
+    witness.work_witness_cbor,
+  )
+  expect control.pending_source_cbor != #""
+  let pending = inline_source_hash_control_from_cbor(
+    control.pending_source_cbor,
+  )
+  expect pending.hash_control.stage != blake2b_224_trace_v1.stage_ready
+  expect pending.hash_control.stage != blake2b_224_trace_v1.stage_terminal
+  expect Some(next_hash_control) =
+    blake2b_224_trace_v1.step_v1(pending.hash_control, None)
+  and {
+    script_sources_stage_zero_control_is_bound(
+      pre,
+      witness,
+      control,
+    ),
+    script_sources_stage_zero_pending_successor_is_exact(
+      pre,
+      witness,
+      control,
+      encode_inline_source_hash_control_v1(
+        InlineSourceHashControlV1 {
+          ..pending,
+          hash_control: next_hash_control,
+        },
+      ),
+    ),
+  }
+}
+
+pub fn verify_script_sources_stage_zero_hash_terminal_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+) -> Bool {
+  let control = script_sources_stage_zero_control_from_witness(
+    witness.work_witness_cbor,
+  )
+  expect control.pending_source_cbor != #""
+  let pending = inline_source_hash_control_from_cbor(
+    control.pending_source_cbor,
+  )
+  expect Some(script_hash) =
+    blake2b_224_trace_v1.digest_v1(pending.hash_control)
+  let next_source_count = control.source_count + 1
+  let next_source_peaks = validation_merkle_v1.append_leaf(
+    control.source_count,
+    control.source_peaks,
+    script_proof_v1.inline_source_leaf_hash(
+      control.source_count,
+      pending.language_tag,
+      script_hash,
+      pending.item_commitment,
+    ),
+  )
+  and {
+    script_sources_stage_zero_control_is_bound(
+      pre,
+      witness,
+      control,
+    ),
+    script_sources_stage_zero_terminal_successor_is_exact(
+      pre,
+      witness,
+      control,
+      next_source_count,
+      next_source_peaks,
+    ),
   }
 }
 
