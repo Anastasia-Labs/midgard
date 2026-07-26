@@ -452,10 +452,12 @@ export const buildMidgardLedgerOutputAssetFrontierV1 = (
     const previous = assets[index - 1]!;
     const current = assets[index]!;
     const policyOrder = Buffer.compare(previous.policyId, current.policyId);
+    const assetNameOrder =
+      previous.assetName.length - current.assetName.length ||
+      Buffer.compare(previous.assetName, current.assetName);
     if (
       policyOrder > 0 ||
-      (policyOrder === 0 &&
-        Buffer.compare(previous.assetName, current.assetName) >= 0)
+      (policyOrder === 0 && assetNameOrder >= 0)
     ) {
       throw new Error(
         "V1 ledger output assets must be in canonical policy/name order",

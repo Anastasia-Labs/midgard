@@ -175,6 +175,21 @@ export const readCborBytes = (
   };
 };
 
+export const readCborBytesHeader = (
+  bytes: Uint8Array,
+  offset: number,
+  fieldName = "bytes",
+): { readonly length: number; readonly nextOffset: number } => {
+  const header = readArgument(bytes, offset);
+  if (header.major !== 2) {
+    throw err(`${fieldName} must be a byte string`, `offset=${offset}`);
+  }
+  return {
+    length: ensureSafeLength(header.value, offset),
+    nextOffset: header.nextOffset,
+  };
+};
+
 export const readCborArrayHeader = (
   bytes: Uint8Array,
   offset: number,

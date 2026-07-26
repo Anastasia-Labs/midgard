@@ -14,6 +14,7 @@ import {
   decodeMidgardVersionedScript,
   encodeMidgardAddressText,
   encodeMidgardTxOutput,
+  encodeMidgardValue,
   encodeMidgardVersionedScript,
   MIDGARD_PROTECTED_ADDRESS_HEADER_MASK,
   midgardAddressFromText,
@@ -156,6 +157,47 @@ describe("Midgard output codec", () => {
 
     expect(() => decodeMidgardValue(nonCanonical)).toThrow(
       /Value policies must be sorted/,
+    );
+  });
+
+  it("orders asset names by canonical CBOR byte-string order", () => {
+    const policyId = "55".repeat(28);
+    const encoded = encodeMidgardValue({
+      lovelace: 0n,
+      assets: new Map([
+        [
+          policyId,
+          new Map([
+            ["0000", 2n],
+            ["ff", 1n],
+          ]),
+        ],
+      ]),
+    });
+    expect([
+      ...decodeMidgardValue(encoded).assets.get(policyId)!.keys(),
+    ]).toStrictEqual(["ff", "0000"]);
+
+    const nonCanonical = encodeCborArrayRaw([
+      encodeCborUnsigned(0n),
+      encodeCborMapRaw([
+        [
+          encodeCborBytes(Buffer.alloc(28, 0x55)),
+          encodeCborMapRaw([
+            [
+              encodeCborBytes(Buffer.from("0000", "hex")),
+              encodeCborUnsigned(2n),
+            ],
+            [
+              encodeCborBytes(Buffer.from("ff", "hex")),
+              encodeCborUnsigned(1n),
+            ],
+          ]),
+        ],
+      ]),
+    ]);
+    expect(() => decodeMidgardValue(nonCanonical)).toThrow(
+      /canonical CBOR byte-string order/,
     );
   });
 

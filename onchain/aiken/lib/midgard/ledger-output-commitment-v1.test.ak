@@ -70,22 +70,26 @@ test canonical_cross_language_descriptor_vector() {
 }
 
 test canonical_cross_language_asset_frontier_vector() {
-  let first = ledger_output_commitment_v1.asset_leaf_hash(
+  let longer_name = ledger_output_commitment_v1.asset_leaf_hash(
     builtin.replicate_byte(28, 85),
     #"0102",
     42,
   )
-  let second = ledger_output_commitment_v1.asset_leaf_hash(
+  let shorter_name = ledger_output_commitment_v1.asset_leaf_hash(
     builtin.replicate_byte(28, 85),
     #"03",
     7,
   )
-  let first_peaks = validation_merkle_v1.append_leaf(0, [], first)
-  let peaks = validation_merkle_v1.append_leaf(1, first_peaks, second)
+  let first_peaks = validation_merkle_v1.append_leaf(0, [], shorter_name)
+  let peaks = validation_merkle_v1.append_leaf(
+    1,
+    first_peaks,
+    longer_name,
+  )
   and {
-    first == #"9ed4bad2bc3c66d009d021f8fa57eb32d6035c71aa6f1c415e8f66bf35c6661c",
-    second == #"d4fab6956ed316d6c8094e2f8ba31c07f9b8e11d6b9ed1236541a102187a58ce",
-    validation_merkle_v1.frontier_commitment(2, peaks) == #"b9820bd310b105e406009dea4f93f9c5a54a922b3798c64e7129647c02408938",
+    longer_name == #"9ed4bad2bc3c66d009d021f8fa57eb32d6035c71aa6f1c415e8f66bf35c6661c",
+    shorter_name == #"d4fab6956ed316d6c8094e2f8ba31c07f9b8e11d6b9ed1236541a102187a58ce",
+    validation_merkle_v1.frontier_commitment(2, peaks) == #"1af1c3eeb6379f3bb3dac82d19faffa1318a2a64f739b38c5fc5640b58196cc5",
   }
 }
 
