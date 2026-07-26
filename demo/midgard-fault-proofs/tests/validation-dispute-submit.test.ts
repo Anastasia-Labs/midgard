@@ -7,6 +7,7 @@ import {
   ValidationAwardSpendRedeemerV1,
   ValidationDirectResolveSpendRedeemerV1,
   type ValidationMachineStateV1,
+  ValidationOneStepWitnessV1,
   ValidationPrepareSelectedSpendRedeemerV1,
 } from "@al-ft/midgard-sdk";
 import { Constr, Data } from "@lucid-evolution/lucid";
@@ -15,6 +16,7 @@ import { describe, expect, it } from "vitest";
 import { parseExactAikenDataCbor } from "../src/aiken-blueprint-data.js";
 import { readValidationDisputeCborFile } from "../src/validation-dispute/from-files.js";
 import {
+  encodeValidationSemanticResolutionRedeemerV1,
   validationDisputeTimeoutValidityRange,
   validationDisputeValidityRange,
   validationOneStepEvidenceHashV1,
@@ -159,6 +161,91 @@ describe("validation-dispute transaction validity", () => {
         }),
       ).toBeInstanceOf(Constr);
     }
+
+    const transitionCbor = Buffer.from(
+      Data.to(transition, ValidationOneStepWitnessV1),
+      "hex",
+    );
+    const sourceFields = [
+      0n,
+      0n,
+      "00",
+      3n,
+      "11".repeat(28),
+      100n,
+      "22".repeat(32),
+      [],
+    ] as const;
+    for (const selected of [
+      {
+        index: 10,
+        auxiliary: new Constr(14, [...sourceFields]),
+        module: "script_sources_stage_nine_mismatch_semantic_v1",
+      },
+      {
+        index: 11,
+        auxiliary: new Constr(14, [
+          ...sourceFields.slice(0, 3),
+          0n,
+          ...sourceFields.slice(4),
+        ]),
+        module: "script_sources_stage_nine_native_match_semantic_v1",
+      },
+      {
+        index: 12,
+        auxiliary: new Constr(14, [...sourceFields]),
+        module:
+          "script_sources_stage_nine_effectful_match_semantic_v1",
+      },
+      {
+        index: 13,
+        auxiliary: new Constr(0, []),
+        module: "script_sources_stage_nine_missing_semantic_v1",
+      },
+    ] as const) {
+      const auxiliaryCbor = Buffer.from(
+        Data.to(selected.auxiliary),
+        "hex",
+      );
+      const cbor = encodeValidationSemanticResolutionRedeemerV1({
+        oneStepArgument: {
+          resolverIndex: 8,
+          semanticResolverIndex: selected.index,
+          transitionCbor,
+          auxiliaryCbor,
+          evidenceCbor: Buffer.alloc(0),
+        },
+        inputIndex: 0n,
+        outputIndex: 0n,
+      });
+      expect(
+        parseExactAikenDataCbor({
+          blueprint,
+          definitionName:
+            `fraud_proofs/validation_trace/${selected.module}/SpendRedeemer`,
+          cbor: cbor.toString("hex"),
+          maxBytes: 16 * 1024 - 1,
+        }),
+      ).toBeInstanceOf(Constr);
+    }
+    expect(() =>
+      encodeValidationSemanticResolutionRedeemerV1({
+        oneStepArgument: {
+          resolverIndex: 8,
+          semanticResolverIndex: 13,
+          transitionCbor,
+          auxiliaryCbor: Buffer.from(
+            Data.to(new Constr(14, [...sourceFields])),
+            "hex",
+          ),
+          evidenceCbor: Buffer.alloc(0),
+        },
+        inputIndex: 0n,
+        outputIndex: 0n,
+      }),
+    ).toThrow(
+      "does not match the selected ScriptSources proof family",
+    );
   });
 
   it("reads exact lowercase CBOR files and rejects ambiguous wrappers", async () => {

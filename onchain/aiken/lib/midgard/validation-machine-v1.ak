@@ -9168,19 +9168,51 @@ fn script_discovery_successor_is_exact(
   stage: Int,
   discovery: ScriptDiscoveryControlV1,
 ) -> Bool {
-  let next_control = encode_script_sources_discovery_witness(
-    control,
-    stage,
-    discovery,
+  let prefix = script_sources_stage_zero_prefix_before_stage(control, 29)
+  let stage_offset = bytearray.length(prefix)
+  let old_stage = cbor.serialise(control.stage)
+  let old_discovery = encode_definite_bytes(
+    encode_script_discovery_control(control.discovery),
   )
-  and {
-    witness.claimed_successor.phase == validation_trace_v1.ScriptSources,
-    witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
-      validation_trace_v1.ScriptSources,
-      pre.program_counter + 1,
-      next_control,
-    ),
-  }
+  let work_length = bytearray.length(witness.work_witness_cbor)
+  let discovery_offset = work_length - bytearray.length(old_discovery)
+  expect discovery_offset >= stage_offset + bytearray.length(old_stage)
+  expect
+    builtin.slice_bytearray(
+      0,
+      stage_offset,
+      witness.work_witness_cbor,
+    ) == prefix
+  expect
+    builtin.slice_bytearray(
+      stage_offset,
+      bytearray.length(old_stage),
+      witness.work_witness_cbor,
+    ) == old_stage
+  expect
+    builtin.slice_bytearray(
+      discovery_offset,
+      bytearray.length(old_discovery),
+      witness.work_witness_cbor,
+    ) == old_discovery
+  let next_control =
+    builtin.slice_bytearray(0, stage_offset, witness.work_witness_cbor)
+      |> bytearray.concat(cbor.serialise(stage))
+      |> bytearray.concat(
+          builtin.slice_bytearray(
+            stage_offset + bytearray.length(old_stage),
+            discovery_offset - stage_offset - bytearray.length(old_stage),
+            witness.work_witness_cbor,
+          ),
+        )
+      |> bytearray.concat(
+          encode_definite_bytes(encode_script_discovery_control(discovery)),
+        )
+  script_sources_stage_zero_successor_work_is_exact(
+    pre,
+    witness,
+    next_control,
+  )
 }
 
 fn script_discovery_bit(index: Int) -> Int {
@@ -9430,6 +9462,331 @@ fn script_sources_stage_nine(
     } else {
       False
     }
+  }
+}
+
+fn script_sources_stage_nine_control_is_bound(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: ScriptSourcesControlV1,
+) -> Bool {
+  let discovery = control.discovery
+  let prefix = script_sources_stage_zero_prefix_before_stage(control, 29)
+  let stage_offset = bytearray.length(prefix)
+  let encoded_discovery = encode_definite_bytes(
+    encode_script_discovery_control(discovery),
+  )
+  let discovery_offset = bytearray.length(witness.work_witness_cbor) -
+    bytearray.length(encoded_discovery)
+  and {
+    control.stage == 9,
+    native_tx_proof_commitment_v1(
+      control.compact_cbor,
+      control.witness_set_compact_cbor,
+      control.field_preimage_lengths_cbor,
+    ) == pre.transaction_commitment,
+    validation_trace_v1.hash_validation_context(control.context_cbor) == pre.validation_context_hash,
+    control.source_total_count == control.source_count,
+    validation_merkle_v1.frontier_is_well_formed(
+      control.source_count,
+      control.source_peaks,
+    ),
+    control.redeemer_total_count == control.redeemer_count,
+    validation_merkle_v1.frontier_is_well_formed(
+      control.redeemer_count,
+      control.redeemer_peaks,
+    ),
+    control.purpose_count > discovery.purpose_cursor,
+    validation_merkle_v1.frontier_is_well_formed(
+      control.purpose_count,
+      control.purpose_peaks,
+    ),
+    discovery.source_cursor <= control.source_count,
+    discovery.redeemer_cursor <= control.redeemer_count,
+    discovery.execution_count == discovery.purpose_cursor,
+    validation_merkle_v1.frontier_is_well_formed(
+      discovery.execution_count,
+      discovery.execution_peaks,
+    ),
+    discovery.current_purpose_kind >= 0,
+    discovery.current_purpose_kind <= 3,
+    discovery.current_purpose_index >= 0,
+    bytearray.length(discovery.current_script_hash) == 28,
+    discovery.current_subject != #"",
+    discovery.matched_source_index == -1,
+    discovery.matched_language_tag == -1,
+    discovery.matched_source_leaf == #"",
+    control.pending_source_cbor == #"",
+    control.output_proof == None,
+    discovery_offset >= stage_offset + 1,
+    builtin.slice_bytearray(
+      0,
+      stage_offset,
+      witness.work_witness_cbor,
+    ) == prefix,
+    builtin.slice_bytearray(
+      stage_offset,
+      1,
+      witness.work_witness_cbor,
+    ) == #"09",
+    builtin.slice_bytearray(
+      discovery_offset,
+      bytearray.length(encoded_discovery),
+      witness.work_witness_cbor,
+    ) == encoded_discovery,
+  }
+}
+
+fn script_sources_stage_nine_source_is_authenticated(
+  control: ScriptSourcesControlV1,
+  source_index: Int,
+  origin_kind: Int,
+  source_key: ByteArray,
+  script_language_tag: Int,
+  script_hash: ByteArray,
+  script_total_length: Int,
+  script_item_commitment: ByteArray,
+  siblings: List<ByteArray>,
+) -> Bool {
+  let source_leaf = script_proof_v1.source_descriptor_leaf_hash(
+    origin_kind,
+    source_key,
+    script_language_tag,
+    script_hash,
+    script_total_length,
+    script_item_commitment,
+  )
+  and {
+    source_index == control.discovery.source_cursor,
+    validation_merkle_v1.verify_membership(
+      control.source_count,
+      control.source_peaks,
+      source_index,
+      source_leaf,
+      siblings,
+    ),
+  }
+}
+
+fn script_sources_stage_nine_control_from_witness(
+  work_witness_cbor: ByteArray,
+) -> ScriptSourcesControlV1 {
+  expect Some(data) = cbor.deserialise(work_witness_cbor)
+  let items = builtin.un_list_data(data)
+  expect list.length(items) == 29
+  let Pair(base_items, extension_data) = split_last_data(items)
+  let base_control = script_sources_control_from_data_items(
+    base_items,
+    empty_script_discovery_control(),
+    None,
+  )
+  expect base_control.stage == 9
+  ScriptSourcesControlV1 {
+    ..base_control,
+    discovery: extension_data
+      |> builtin.un_b_data
+      |> script_discovery_control_from_cbor,
+  }
+}
+
+pub fn verify_script_sources_stage_nine_mismatch_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  source_index: Int,
+  origin_kind: Int,
+  source_key: ByteArray,
+  script_language_tag: Int,
+  script_hash: ByteArray,
+  script_total_length: Int,
+  script_item_commitment: ByteArray,
+  siblings: List<ByteArray>,
+) -> Bool {
+  let control = script_sources_stage_nine_control_from_witness(
+    witness.work_witness_cbor,
+  )
+  let discovery = control.discovery
+  and {
+    script_sources_stage_nine_control_is_bound(pre, witness, control),
+    discovery.source_cursor < control.source_count,
+    script_sources_stage_nine_source_is_authenticated(
+      control,
+      source_index,
+      origin_kind,
+      source_key,
+      script_language_tag,
+      script_hash,
+      script_total_length,
+      script_item_commitment,
+      siblings,
+    ),
+    script_hash != discovery.current_script_hash,
+    script_discovery_successor_is_exact(
+      pre,
+      witness,
+      control,
+      9,
+      ScriptDiscoveryControlV1 {
+        ..discovery,
+        source_cursor: source_index + 1,
+      },
+    ),
+  }
+}
+
+pub fn verify_script_sources_stage_nine_native_match_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  source_index: Int,
+  origin_kind: Int,
+  source_key: ByteArray,
+  script_hash: ByteArray,
+  script_total_length: Int,
+  script_item_commitment: ByteArray,
+  siblings: List<ByteArray>,
+) -> Bool {
+  let control = script_sources_stage_nine_control_from_witness(
+    witness.work_witness_cbor,
+  )
+  let discovery = control.discovery
+  let source_leaf = script_proof_v1.source_descriptor_leaf_hash(
+    origin_kind,
+    source_key,
+    0,
+    script_hash,
+    script_total_length,
+    script_item_commitment,
+  )
+  let next_used_inline = if origin_kind == 0 {
+    script_discovery_bitmap_insert(
+      discovery.used_inline_bitmap,
+      source_index,
+    )
+  } else {
+    discovery.used_inline_bitmap
+  }
+  let next_execution = append_script_execution(
+    discovery,
+    current_script_purpose_leaf(discovery),
+    source_leaf,
+    0,
+    #"",
+  )
+  let completed = reset_script_discovery_current(
+    ScriptDiscoveryControlV1 {
+      ..discovery,
+      purpose_cursor: discovery.purpose_cursor + 1,
+      used_inline_bitmap: next_used_inline,
+      execution_count: next_execution.count,
+      execution_peaks: next_execution.peaks,
+    },
+  )
+  and {
+    script_sources_stage_nine_control_is_bound(pre, witness, control),
+    discovery.source_cursor < control.source_count,
+    script_sources_stage_nine_source_is_authenticated(
+      control,
+      source_index,
+      origin_kind,
+      source_key,
+      0,
+      script_hash,
+      script_total_length,
+      script_item_commitment,
+      siblings,
+    ),
+    script_hash == discovery.current_script_hash,
+    script_discovery_successor_is_exact(
+      pre,
+      witness,
+      control,
+      8,
+      completed,
+    ),
+  }
+}
+
+pub fn verify_script_sources_stage_nine_effectful_match_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  source_index: Int,
+  origin_kind: Int,
+  source_key: ByteArray,
+  script_language_tag: Int,
+  script_hash: ByteArray,
+  script_total_length: Int,
+  script_item_commitment: ByteArray,
+  siblings: List<ByteArray>,
+) -> Bool {
+  let control = script_sources_stage_nine_control_from_witness(
+    witness.work_witness_cbor,
+  )
+  let discovery = control.discovery
+  and {
+    or {
+      script_language_tag == 3,
+      script_language_tag == 128,
+    },
+    script_sources_stage_nine_control_is_bound(pre, witness, control),
+    discovery.source_cursor < control.source_count,
+    script_sources_stage_nine_source_is_authenticated(
+      control,
+      source_index,
+      origin_kind,
+      source_key,
+      script_language_tag,
+      script_hash,
+      script_total_length,
+      script_item_commitment,
+      siblings,
+    ),
+    script_hash == discovery.current_script_hash,
+    script_discovery_successor_is_exact(
+      pre,
+      witness,
+      control,
+      10,
+      ScriptDiscoveryControlV1 {
+        ..discovery,
+        source_cursor: source_index + 1,
+        redeemer_cursor: 0,
+        matched_source_index: source_index,
+        matched_language_tag: script_language_tag,
+        matched_source_leaf: script_proof_v1.source_descriptor_leaf_hash(
+          origin_kind,
+          source_key,
+          script_language_tag,
+          script_hash,
+          script_total_length,
+          script_item_commitment,
+        ),
+        used_inline_bitmap: if origin_kind == 0 {
+          script_discovery_bitmap_insert(
+            discovery.used_inline_bitmap,
+            source_index,
+          )
+        } else {
+          discovery.used_inline_bitmap
+        },
+      },
+    ),
+  }
+}
+
+pub fn verify_script_sources_stage_nine_missing_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+) -> Bool {
+  let control = script_sources_stage_nine_control_from_witness(
+    witness.work_witness_cbor,
+  )
+  and {
+    script_sources_stage_nine_control_is_bound(pre, witness, control),
+    control.discovery.source_cursor == control.source_count,
+    rejected_successor_is_exact(
+      pre,
+      witness.claimed_successor,
+      reject_missing_required_witness,
+    ),
   }
 }
 

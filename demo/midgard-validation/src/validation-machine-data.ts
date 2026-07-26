@@ -641,6 +641,45 @@ const scriptSourcesControlStatus = (
   return { stage, pendingHashStage };
 };
 
+const scriptSourcesDiscoveryCurrentScriptHash = (
+  witness: ValidationMachineWorkWitness,
+): Buffer => {
+  const control = asArray(
+    decodeSingleCbor(witness.cbor),
+    "script_sources_control",
+  );
+  if (
+    control.length !== 29 ||
+    asBigInt(control[9], "script_sources_control.stage") !== 9n
+  ) {
+    throw new Error("script_sources_control is not at discovery stage 9");
+  }
+  const discovery = asArray(
+    decodeSingleCbor(
+      asBytes(
+        control[28],
+        "script_sources_control.discovery",
+      ),
+    ),
+    "script_sources_discovery",
+  );
+  if (discovery.length !== 14) {
+    throw new Error("script_sources discovery has an invalid field count");
+  }
+  const scriptHash = Buffer.from(
+    asBytes(
+      discovery[5],
+      "script_sources_discovery.current_script_hash",
+    ),
+  );
+  if (scriptHash.length !== 28) {
+    throw new Error(
+      "script_sources discovery current script hash has an invalid length",
+    );
+  }
+  return scriptHash;
+};
+
 const scriptIntegrityStage = (
   witness: ValidationMachineWorkWitness,
 ): number => {
@@ -932,6 +971,23 @@ export const validationSemanticResolverIndexV1 = (
           return 8;
         }
         if (pendingHashStage === 3 && auxiliary === null) return 9;
+        break;
+      }
+      if (stage === 9) {
+        if (auxiliary?.kind === "scriptSourceScan") {
+          const currentScriptHash =
+            scriptSourcesDiscoveryCurrentScriptHash(witness);
+          if (!auxiliary.scriptHash.equals(currentScriptHash)) return 10;
+          if (auxiliary.scriptLanguageTag === 0) return 11;
+          if (
+            auxiliary.scriptLanguageTag === 3 ||
+            auxiliary.scriptLanguageTag === 128
+          ) {
+            return 12;
+          }
+          break;
+        }
+        if (auxiliary === null) return 13;
         break;
       }
       if (stage !== 5) return 0;

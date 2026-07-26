@@ -5168,6 +5168,265 @@ test script_sources_discovers_an_exact_non_native_execution() {
   }
 }
 
+test script_sources_stage_nine_accepts_an_exact_mismatch() {
+  let script = MidgardVersionedScript {
+    language: PlutusV3Script,
+    script_bytes: v1_program_envelope(),
+  }
+  let script_cbor = encode_midgard_versioned_script(script)
+  let script_hash = script_proof_v1.versioned_script_hash(script)
+  let script_item_commitment = bounded_item_v1.from_bytes(7, 0, script_cbor)
+  let source_leaf = script_proof_v1.source_leaf_hash(0, #"00", script)
+  let source_frontier = validation_merkle_v1.build_frontier([source_leaf])
+  let purpose_frontier = validation_merkle_v1.build_frontier(
+    [script_proof_v1.purpose_leaf_hash(0, 0, h_28_a, #"0102")],
+  )
+  let discovery = validation_machine_v1.ScriptDiscoveryControlV1 {
+    ..validation_machine_v1.empty_script_discovery_control(),
+    current_purpose_kind: 0,
+    current_purpose_index: 0,
+    current_script_hash: h_28_a,
+    current_subject: #"0102",
+  }
+  let Pair(pre, work_witness_cbor) = script_discovery_step_fixture(
+    empty_v1_transaction(),
+    9,
+    source_frontier,
+    validation_merkle_v1.build_frontier([]),
+    purpose_frontier,
+    discovery,
+    24,
+  )
+  let Pair(post, _) = script_discovery_step_fixture(
+    empty_v1_transaction(),
+    9,
+    source_frontier,
+    validation_merkle_v1.build_frontier([]),
+    purpose_frontier,
+    validation_machine_v1.ScriptDiscoveryControlV1 {
+      ..discovery,
+      source_cursor: 1,
+    },
+    25,
+  )
+  let transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+    work_witness_cbor,
+    claimed_successor: post,
+  }
+  and {
+    validation_machine_v1.verify_script_sources_stage_nine_mismatch_semantics_v1(
+      pre,
+      transition,
+      0,
+      0,
+      #"00",
+      3,
+      script_hash,
+      bytearray.length(script_cbor),
+      script_item_commitment,
+      [],
+    ),
+    !validation_machine_v1.verify_script_sources_stage_nine_effectful_match_semantics_v1(
+      pre,
+      transition,
+      0,
+      0,
+      #"00",
+      3,
+      script_hash,
+      bytearray.length(script_cbor),
+      script_item_commitment,
+      [],
+    ),
+    !validation_machine_v1.verify_script_sources_stage_nine_missing_semantics_v1(
+      pre,
+      transition,
+    ),
+  }
+}
+
+test script_sources_stage_nine_accepts_an_exact_effectful_match() {
+  let script = MidgardVersionedScript {
+    language: PlutusV3Script,
+    script_bytes: v1_program_envelope(),
+  }
+  let script_cbor = encode_midgard_versioned_script(script)
+  let script_hash = script_proof_v1.versioned_script_hash(script)
+  let script_item_commitment = bounded_item_v1.from_bytes(7, 0, script_cbor)
+  let source_leaf = script_proof_v1.source_leaf_hash(0, #"00", script)
+  let source_frontier = validation_merkle_v1.build_frontier([source_leaf])
+  let purpose_frontier = validation_merkle_v1.build_frontier(
+    [script_proof_v1.purpose_leaf_hash(0, 0, script_hash, #"0102")],
+  )
+  let discovery = validation_machine_v1.ScriptDiscoveryControlV1 {
+    ..validation_machine_v1.empty_script_discovery_control(),
+    current_purpose_kind: 0,
+    current_purpose_index: 0,
+    current_script_hash: script_hash,
+    current_subject: #"0102",
+  }
+  let Pair(pre, work_witness_cbor) = script_discovery_step_fixture(
+    empty_v1_transaction(),
+    9,
+    source_frontier,
+    validation_merkle_v1.build_frontier([]),
+    purpose_frontier,
+    discovery,
+    26,
+  )
+  let Pair(post, _) = script_discovery_step_fixture(
+    empty_v1_transaction(),
+    10,
+    source_frontier,
+    validation_merkle_v1.build_frontier([]),
+    purpose_frontier,
+    validation_machine_v1.ScriptDiscoveryControlV1 {
+      ..discovery,
+      source_cursor: 1,
+      matched_source_index: 0,
+      matched_language_tag: 3,
+      matched_source_leaf: source_leaf,
+      used_inline_bitmap: 1,
+    },
+    27,
+  )
+  let transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+    work_witness_cbor,
+    claimed_successor: post,
+  }
+  and {
+    validation_machine_v1.verify_script_sources_stage_nine_effectful_match_semantics_v1(
+      pre,
+      transition,
+      0,
+      0,
+      #"00",
+      3,
+      script_hash,
+      bytearray.length(script_cbor),
+      script_item_commitment,
+      [],
+    ),
+    !validation_machine_v1.verify_script_sources_stage_nine_mismatch_semantics_v1(
+      pre,
+      transition,
+      0,
+      0,
+      #"00",
+      3,
+      script_hash,
+      bytearray.length(script_cbor),
+      script_item_commitment,
+      [],
+    ),
+    !validation_machine_v1.verify_script_sources_stage_nine_native_match_semantics_v1(
+      pre,
+      transition,
+      0,
+      0,
+      #"00",
+      script_hash,
+      bytearray.length(script_cbor),
+      script_item_commitment,
+      [],
+    ),
+  }
+}
+
+test script_sources_stage_nine_accepts_an_exact_native_match() {
+  let script = MidgardVersionedScript {
+    language: NativeCardanoScript,
+    script_bytes: #"820400",
+  }
+  let script_cbor = encode_midgard_versioned_script(script)
+  let script_hash = script_proof_v1.versioned_script_hash(script)
+  let script_item_commitment = bounded_item_v1.from_bytes(7, 0, script_cbor)
+  let source_leaf = script_proof_v1.source_leaf_hash(0, #"00", script)
+  let source_frontier = validation_merkle_v1.build_frontier([source_leaf])
+  let purpose_leaf = script_proof_v1.purpose_leaf_hash(
+    0,
+    0,
+    script_hash,
+    #"0102",
+  )
+  let purpose_frontier = validation_merkle_v1.build_frontier([purpose_leaf])
+  let execution_frontier = validation_merkle_v1.build_frontier(
+    [script_proof_v1.execution_leaf_hash(0, purpose_leaf, source_leaf, #"")],
+  )
+  let discovery = validation_machine_v1.ScriptDiscoveryControlV1 {
+    ..validation_machine_v1.empty_script_discovery_control(),
+    current_purpose_kind: 0,
+    current_purpose_index: 0,
+    current_script_hash: script_hash,
+    current_subject: #"0102",
+  }
+  let Pair(pre, work_witness_cbor) = script_discovery_step_fixture(
+    empty_v1_transaction(),
+    9,
+    source_frontier,
+    validation_merkle_v1.build_frontier([]),
+    purpose_frontier,
+    discovery,
+    28,
+  )
+  let Pair(post, _) = script_discovery_step_fixture(
+    empty_v1_transaction(),
+    8,
+    source_frontier,
+    validation_merkle_v1.build_frontier([]),
+    purpose_frontier,
+    validation_machine_v1.ScriptDiscoveryControlV1 {
+      ..validation_machine_v1.empty_script_discovery_control(),
+      purpose_cursor: 1,
+      used_inline_bitmap: 1,
+      execution_count: execution_frontier.count,
+      execution_peaks: execution_frontier.peaks,
+    },
+    29,
+  )
+  let transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+    work_witness_cbor,
+    claimed_successor: post,
+  }
+  and {
+    validation_machine_v1.verify_script_sources_stage_nine_native_match_semantics_v1(
+      pre,
+      transition,
+      0,
+      0,
+      #"00",
+      script_hash,
+      bytearray.length(script_cbor),
+      script_item_commitment,
+      [],
+    ),
+    !validation_machine_v1.verify_script_sources_stage_nine_mismatch_semantics_v1(
+      pre,
+      transition,
+      0,
+      0,
+      #"00",
+      0,
+      script_hash,
+      bytearray.length(script_cbor),
+      script_item_commitment,
+      [],
+    ),
+    !validation_machine_v1.verify_script_sources_stage_nine_effectful_match_semantics_v1(
+      pre,
+      transition,
+      0,
+      0,
+      #"00",
+      0,
+      script_hash,
+      bytearray.length(script_cbor),
+      script_item_commitment,
+      [],
+    ),
+  }
+}
+
 test script_sources_proves_a_missing_script_source_exactly() {
   let tx = empty_v1_transaction()
   let empty_frontier = validation_merkle_v1.build_frontier([])
@@ -5206,15 +5465,13 @@ test script_sources_proves_a_missing_script_source_exactly() {
     ),
     verdict: validation_trace_v1.Rejected,
     rejection_code_hash: validation_trace_v1.hash_rejection_code(rejection_code),
+    ledger_delta_root: validation_merkle_v1.frontier_commitment(0, []),
   }
-  validation_machine_v1.verify_one_step_evidence(
+  validation_machine_v1.verify_script_sources_stage_nine_missing_semantics_v1(
     pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
-        work_witness_cbor,
-        claimed_successor: terminal,
-      },
-      auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+    validation_machine_v1.ValidationOneStepWitnessV1 {
+      work_witness_cbor,
+      claimed_successor: terminal,
     },
   )
 }

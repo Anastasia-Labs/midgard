@@ -173,6 +173,14 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
       "fraud_proofs/validation_trace/script_sources_stage_zero_hash_advance_semantic_v1.main.spend",
     scriptSourcesStageZeroHashTerminal:
       "fraud_proofs/validation_trace/script_sources_stage_zero_hash_terminal_semantic_v1.main.spend",
+    scriptSourcesStageNineMismatch:
+      "fraud_proofs/validation_trace/script_sources_stage_nine_mismatch_semantic_v1.main.spend",
+    scriptSourcesStageNineNativeMatch:
+      "fraud_proofs/validation_trace/script_sources_stage_nine_native_match_semantic_v1.main.spend",
+    scriptSourcesStageNineEffectfulMatch:
+      "fraud_proofs/validation_trace/script_sources_stage_nine_effectful_match_semantic_v1.main.spend",
+    scriptSourcesStageNineMissing:
+      "fraud_proofs/validation_trace/script_sources_stage_nine_missing_semantic_v1.main.spend",
     scriptIntegrityAuthentication:
       "fraud_proofs/validation_trace/script_integrity_authentication_semantic_v1.main.spend",
     scriptIntegrityCompact:
@@ -305,6 +313,10 @@ export type ValidationTraceDisputeFaultProofContracts = {
       SpendingValidator,
     ];
     readonly semanticResolvers: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
       SpendingValidator,
       SpendingValidator,
       SpendingValidator,
@@ -971,7 +983,7 @@ const buildValidationTraceDisputeChain = ({
         ),
       );
     }
-    if (builtSemanticResolvers.length !== 54) {
+    if (builtSemanticResolvers.length !== 58) {
       return yield* Effect.fail(
         new Error("Validation-trace semantic resolver set is incomplete"),
       );
@@ -1031,6 +1043,10 @@ const buildValidationTraceDisputeChain = ({
       builtSemanticResolvers[51]!,
       builtSemanticResolvers[52]!,
       builtSemanticResolvers[53]!,
+      builtSemanticResolvers[54]!,
+      builtSemanticResolvers[55]!,
+      builtSemanticResolvers[56]!,
+      builtSemanticResolvers[57]!,
     ] as const;
     const semanticResolverGroups = [
       [semanticResolvers[0], semanticResolvers[1]],
@@ -1079,8 +1095,6 @@ const buildValidationTraceDisputeChain = ({
         semanticResolvers[39],
         semanticResolvers[40],
         semanticResolvers[41],
-      ],
-      [
         semanticResolvers[42],
         semanticResolvers[43],
         semanticResolvers[44],
@@ -1091,10 +1105,16 @@ const buildValidationTraceDisputeChain = ({
         semanticResolvers[47],
         semanticResolvers[48],
         semanticResolvers[49],
+      ],
+      [
         semanticResolvers[50],
         semanticResolvers[51],
         semanticResolvers[52],
         semanticResolvers[53],
+        semanticResolvers[54],
+        semanticResolvers[55],
+        semanticResolvers[56],
+        semanticResolvers[57],
       ],
     ] as const;
     const semanticResolverHashesSchema = Data.Array(Data.Bytes());

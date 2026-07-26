@@ -98,6 +98,10 @@ const semanticResolverDefinitionsV1 = [
   "script_sources_stage_zero_hash_block_semantic_v1",
   "script_sources_stage_zero_hash_advance_semantic_v1",
   "script_sources_stage_zero_hash_terminal_semantic_v1",
+  "script_sources_stage_nine_mismatch_semantic_v1",
+  "script_sources_stage_nine_native_match_semantic_v1",
+  "script_sources_stage_nine_effectful_match_semantic_v1",
+  "script_sources_stage_nine_missing_semantic_v1",
   "script_integrity_authentication_semantic_v1",
   "script_integrity_compact_semantic_v1",
   "script_integrity_witness_set_semantic_v1",
@@ -112,7 +116,7 @@ const semanticResolverDefinitionsV1 = [
   "ledger_delta_terminal_semantic_v1",
 ] as const;
 const semanticResolverOffsetsV1 = [
-  0, 2, 3, 4, 6, 10, 24, 26, 32, -1, 42, -1, -1, 46,
+  0, 2, 3, 4, 6, 10, 24, 26, 32, -1, 46, -1, -1, 50,
 ] as const;
 
 const validateBoundaryAbiAndCollectAuxiliaryKinds = (
@@ -630,6 +634,7 @@ describe("deterministic validation machine", () => {
     expect(referenceSource.auxiliary.scriptTotalLength).toBeGreaterThan(0);
     expect(referenceSource.auxiliary.scriptItemCommitment).toHaveLength(32);
     expect("script" in referenceSource.auxiliary).toBe(false);
+    expect(validationSemanticResolverIndexV1(referenceSource)).toBe(12);
     expect(
       trace.witnesses
         .filter((witness) => witness.phase === "inputSets")
@@ -1062,6 +1067,13 @@ describe("deterministic validation machine", () => {
         .filter((witness) => witness.phase === "phaseANativeScripts")
         .map(validationSemanticResolverIndexV1),
     ).toEqual([1, 2, 3, 2, 8, 13, 0]);
+    const nativeSource = trace.witnesses.find(
+      (witness) =>
+        witness.auxiliary?.kind === "scriptSourceScan" &&
+        witness.auxiliary.scriptLanguageTag === 0,
+    );
+    expect(nativeSource).toBeDefined();
+    expect(validationSemanticResolverIndexV1(nativeSource!)).toBe(11);
     expect(trace.verdict).toBe("accepted");
     expect([
       ...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds,
