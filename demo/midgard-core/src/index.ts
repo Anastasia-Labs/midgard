@@ -8,6 +8,7 @@ export * from "./capability-parity-v1.js";
 export * from "./cek-blob-frontier-v1.js";
 export * from "./cek-proof.js";
 export * from "./cek-semantic.js";
+export * from "./cek-source-blob-v1.js";
 export * from "./codec/index.js";
 export * from "./consensus-profile-v1.js";
 export * from "./consensus-validation-v1.js";
