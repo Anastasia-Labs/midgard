@@ -10601,6 +10601,163 @@ fn script_sources_stage_eleven(
   }
 }
 
+fn script_sources_stage_eleven_control_from_witness(
+  work_witness_cbor: ByteArray,
+) -> ScriptSourcesControlV1 {
+  expect Some(data) = cbor.deserialise(work_witness_cbor)
+  let items = builtin.un_list_data(data)
+  expect list.length(items) == 30
+  let Pair(base_items, extension_data) = split_last_data(items)
+  let base_control = script_sources_control_from_data_items(
+    base_items,
+    empty_script_discovery_control(),
+    None,
+  )
+  expect base_control.stage == 11
+  ScriptSourcesControlV1 {
+    ..base_control,
+    discovery: extension_data
+      |> builtin.un_b_data
+      |> script_discovery_control_from_cbor,
+  }
+}
+
+fn script_sources_stage_eleven_control_is_bound(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: ScriptSourcesControlV1,
+) -> Bool {
+  expect Some(control_data) = cbor.deserialise(witness.work_witness_cbor)
+  let discovery = control.discovery
+  and {
+    cbor.serialise(control_data) == witness.work_witness_cbor,
+    control.stage == 11,
+    native_tx_proof_commitment_v1(
+      control.compact_cbor,
+      control.witness_set_compact_cbor,
+      control.field_preimage_lengths_cbor,
+    ) == pre.transaction_commitment,
+    validation_trace_v1.hash_validation_context(control.context_cbor) == pre.validation_context_hash,
+    control.source_total_count == control.source_count,
+    validation_merkle_v1.frontier_is_well_formed(
+      control.source_count,
+      control.source_peaks,
+    ),
+    control.redeemer_total_count == control.redeemer_count,
+    validation_merkle_v1.frontier_is_well_formed(
+      control.redeemer_count,
+      control.redeemer_peaks,
+    ),
+    control.purpose_count == discovery.purpose_cursor,
+    validation_merkle_v1.frontier_is_well_formed(
+      control.purpose_count,
+      control.purpose_peaks,
+    ),
+    discovery.source_cursor >= 0,
+    discovery.source_cursor <= control.source_count,
+    discovery.redeemer_cursor >= 0,
+    discovery.redeemer_cursor <= control.redeemer_count,
+    discovery.execution_count == discovery.purpose_cursor,
+    validation_merkle_v1.frontier_is_well_formed(
+      discovery.execution_count,
+      discovery.execution_peaks,
+    ),
+    discovery.current_purpose_kind == -1,
+    discovery.current_purpose_index == -1,
+    discovery.current_script_hash == #"",
+    discovery.current_subject == #"",
+    discovery.matched_source_index == -1,
+    discovery.matched_language_tag == -1,
+    discovery.matched_source_leaf == #"",
+    discovery.used_inline_bitmap >= 0,
+    discovery.used_inline_bitmap < script_discovery_bit(
+      control.source_count,
+    ),
+    discovery.used_redeemer_bitmap >= 0,
+    discovery.used_redeemer_bitmap < script_discovery_bit(
+      control.redeemer_count,
+    ),
+  }
+}
+
+pub fn verify_script_sources_stage_eleven_finish_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+) -> Bool {
+  let control = script_sources_stage_eleven_control_from_witness(
+    witness.work_witness_cbor,
+  )
+  let discovery = control.discovery
+  and {
+    script_sources_stage_eleven_control_is_bound(pre, witness, control),
+    discovery.source_cursor == control.source_count,
+    script_discovery_successor_is_exact(
+      pre,
+      witness,
+      control,
+      12,
+      ScriptDiscoveryControlV1 { ..discovery, redeemer_cursor: 0 },
+    ),
+  }
+}
+
+pub fn verify_script_sources_stage_eleven_source_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  source_index: Int,
+  origin_kind: Int,
+  source_key: ByteArray,
+  script_language_tag: Int,
+  script_hash: ByteArray,
+  script_total_length: Int,
+  script_item_commitment: ByteArray,
+  siblings: List<ByteArray>,
+) -> Bool {
+  let control = script_sources_stage_eleven_control_from_witness(
+    witness.work_witness_cbor,
+  )
+  let discovery = control.discovery
+  and {
+    script_sources_stage_eleven_control_is_bound(pre, witness, control),
+    discovery.source_cursor < control.source_count,
+    script_sources_stage_nine_source_is_authenticated(
+      control,
+      source_index,
+      origin_kind,
+      source_key,
+      script_language_tag,
+      script_hash,
+      script_total_length,
+      script_item_commitment,
+      siblings,
+    ),
+    if and {
+      origin_kind == 0,
+      !script_discovery_bitmap_has(
+        discovery.used_inline_bitmap,
+        source_index,
+      ),
+    } {
+      rejected_successor_is_exact(
+        pre,
+        witness.claimed_successor,
+        reject_invalid_field_type,
+      )
+    } else {
+      script_discovery_successor_is_exact(
+        pre,
+        witness,
+        control,
+        11,
+        ScriptDiscoveryControlV1 {
+          ..discovery,
+          source_cursor: source_index + 1,
+        },
+      )
+    },
+  }
+}
+
 fn script_sources_stage_twelve(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,

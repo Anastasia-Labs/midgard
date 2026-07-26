@@ -5696,6 +5696,127 @@ test script_sources_stage_nine_accepts_an_exact_native_match() {
   }
 }
 
+test script_sources_stage_eleven_audits_inline_sources_exactly() {
+  let script = MidgardVersionedScript {
+    language: PlutusV3Script,
+    script_bytes: v1_program_envelope(),
+  }
+  let script_cbor = encode_midgard_versioned_script(script)
+  let script_hash = script_proof_v1.versioned_script_hash(script)
+  let script_item_commitment = bounded_item_v1.from_bytes(7, 0, script_cbor)
+  let source_leaf = script_proof_v1.source_leaf_hash(0, #"00", script)
+  let source_frontier = validation_merkle_v1.build_frontier([source_leaf])
+  let purpose_frontier = validation_merkle_v1.build_frontier(
+    [script_proof_v1.purpose_leaf_hash(0, 0, script_hash, #"0102")],
+  )
+  let execution_frontier = validation_merkle_v1.build_frontier([source_leaf])
+  let discovery = validation_machine_v1.ScriptDiscoveryControlV1 {
+    ..validation_machine_v1.empty_script_discovery_control(),
+    purpose_cursor: 1,
+    used_inline_bitmap: 1,
+    execution_count: 1,
+    execution_peaks: execution_frontier.peaks,
+  }
+  let empty_frontier = validation_merkle_v1.build_frontier([])
+  let Pair(pre, work_witness_cbor) = script_discovery_step_fixture(
+    empty_v1_transaction(),
+    11,
+    source_frontier,
+    empty_frontier,
+    purpose_frontier,
+    discovery,
+    30,
+  )
+  let Pair(after_source, after_source_work_witness_cbor) = script_discovery_step_fixture(
+    empty_v1_transaction(),
+    11,
+    source_frontier,
+    empty_frontier,
+    purpose_frontier,
+    validation_machine_v1.ScriptDiscoveryControlV1 {
+      ..discovery,
+      source_cursor: 1,
+    },
+    31,
+  )
+  let Pair(after_finish, _) = script_discovery_step_fixture(
+    empty_v1_transaction(),
+    12,
+    source_frontier,
+    empty_frontier,
+    purpose_frontier,
+    validation_machine_v1.ScriptDiscoveryControlV1 {
+      ..discovery,
+      source_cursor: 1,
+    },
+    32,
+  )
+  and {
+    validation_machine_v1.verify_script_sources_stage_eleven_source_semantics_v1(
+      pre,
+      validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor,
+        claimed_successor: after_source,
+      },
+      0,
+      0,
+      #"00",
+      3,
+      script_hash,
+      bytearray.length(script_cbor),
+      script_item_commitment,
+      [],
+    ),
+    validation_machine_v1.verify_script_sources_stage_eleven_finish_semantics_v1(
+      after_source,
+      validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor: after_source_work_witness_cbor,
+        claimed_successor: after_finish,
+      },
+    ),
+  }
+}
+
+test script_sources_stage_eleven_rejects_an_unused_inline_source_exactly() {
+  let script = MidgardVersionedScript {
+    language: PlutusV3Script,
+    script_bytes: v1_program_envelope(),
+  }
+  let script_cbor = encode_midgard_versioned_script(script)
+  let script_hash = script_proof_v1.versioned_script_hash(script)
+  let script_item_commitment = bounded_item_v1.from_bytes(7, 0, script_cbor)
+  let source_leaf = script_proof_v1.source_leaf_hash(0, #"00", script)
+  let source_frontier = validation_merkle_v1.build_frontier([source_leaf])
+  let empty_frontier = validation_merkle_v1.build_frontier([])
+  let Pair(pre, work_witness_cbor) = script_discovery_step_fixture(
+    empty_v1_transaction(),
+    11,
+    source_frontier,
+    empty_frontier,
+    empty_frontier,
+    validation_machine_v1.empty_script_discovery_control(),
+    30,
+  )
+  validation_machine_v1.verify_script_sources_stage_eleven_source_semantics_v1(
+    pre,
+    validation_machine_v1.ValidationOneStepWitnessV1 {
+      work_witness_cbor,
+      claimed_successor: exact_rejection_post(
+        pre,
+        #"455f494e56414c49445f4649454c445f54595045",
+      ),
+    },
+    0,
+    0,
+    #"00",
+    3,
+    script_hash,
+    bytearray.length(script_cbor),
+    script_item_commitment,
+    [],
+  )
+}
+
 test script_sources_proves_a_missing_script_source_exactly() {
   let tx = empty_v1_transaction()
   let empty_frontier = validation_merkle_v1.build_frontier([])

@@ -967,6 +967,11 @@ export const validationSemanticResolverIndexV1 = (
         if (auxiliary.kind === "transactionRedeemerItem") return 15;
         break;
       }
+      if (stage === 11) {
+        if (auxiliary === null) return 16;
+        if (auxiliary.kind === "scriptSourceScan") return 17;
+        break;
+      }
       if (stage !== 5) return 0;
       if (auxiliary?.kind === "ledgerOutputProofBegin") return 1;
       if (auxiliary?.kind === "ledgerOutputProofStep") return 2;
