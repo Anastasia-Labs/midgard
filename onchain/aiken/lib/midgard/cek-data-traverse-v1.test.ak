@@ -9,6 +9,12 @@ use midgard/fraud_proofs/native_tx/codec.{slice_len}
 const typescript_terminal_control_cbor =
   #"8a010711111140d87a80d87a80d87a80d8799f835820844cdd8ac8dc97d87e4ed149da121054504365b523034a804a12c014d55c2c441109ff"
 
+const typescript_active_integer_control_cbor =
+  #"8a0101110b0040d87a80d8799f860100110b00d87a80ffd87a80d87a80"
+
+const typescript_active_bytes_control_cbor =
+  #"8a01021118460040d87a80d87a80d8799f86010011184600d87a80ffd87a80"
+
 fn source_for_control(
   control: cek_data_traverse_v1.DataTraverseControlV1,
   source: ByteArray,
@@ -243,6 +249,25 @@ test maximum_delegated_source_window_is_132_bytes() {
   and {
     span.length == 109,
     span.length <= cek_data_traverse_v1.max_source_span,
+  }
+}
+
+test decodes_active_typescript_nested_controls_canonically() {
+  let integer = cek_data_traverse_v1.decode_control_v1(
+    typescript_active_integer_control_cbor,
+  )
+  let bytes = cek_data_traverse_v1.decode_control_v1(
+    typescript_active_bytes_control_cbor,
+  )
+  and {
+    integer.stage == cek_data_traverse_v1.stage_integer,
+    integer.integer != None,
+    cek_data_traverse_v1.encode_control_v1(integer)
+      == typescript_active_integer_control_cbor,
+    bytes.stage == cek_data_traverse_v1.stage_bytes,
+    bytes.bytes != None,
+    cek_data_traverse_v1.encode_control_v1(bytes)
+      == typescript_active_bytes_control_cbor,
   }
 }
 

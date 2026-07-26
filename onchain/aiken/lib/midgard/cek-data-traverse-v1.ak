@@ -401,6 +401,100 @@ pub fn encode_control_v1(control: DataTraverseControlV1) -> ByteArray {
     |> bytearray.concat(encode_optional_summary(control.result))
 }
 
+fn optional_int_from_data(data: Data) -> Option<Int> {
+  let Pair(index, fields) = builtin.un_constr_data(data)
+  if index == 1 {
+    expect fields == []
+    None
+  } else {
+    expect index == 0
+    expect [value] = fields
+    Some(builtin.un_i_data(value))
+  }
+}
+
+fn optional_integer_from_data(
+  data: Data,
+) -> Option<cek_data_integer_v1.CekDataIntegerControlV1> {
+  let Pair(index, fields) = builtin.un_constr_data(data)
+  if index == 1 {
+    expect fields == []
+    None
+  } else {
+    expect index == 0
+    expect [value] = fields
+    Some(cek_data_integer_v1.control_from_data_v1(value))
+  }
+}
+
+fn optional_bytes_from_data(
+  data: Data,
+) -> Option<cek_data_bytes_v1.CekDataBytesControlV1> {
+  let Pair(index, fields) = builtin.un_constr_data(data)
+  if index == 1 {
+    expect fields == []
+    None
+  } else {
+    expect index == 0
+    expect [value] = fields
+    Some(cek_data_bytes_v1.control_from_data_v1(value))
+  }
+}
+
+fn optional_summary_from_data(
+  data: Data,
+) -> Option<cek_data_v1.DataSummaryV1> {
+  let Pair(index, fields) = builtin.un_constr_data(data)
+  if index == 1 {
+    expect fields == []
+    None
+  } else {
+    expect index == 0
+    expect [value] = fields
+    expect [root_data, cbor_length_data, memory_data] =
+      builtin.un_list_data(value)
+    Some(
+      cek_data_v1.DataSummaryV1 {
+        root: builtin.un_b_data(root_data),
+        cbor_length: builtin.un_i_data(cbor_length_data),
+        memory: builtin.un_i_data(memory_data),
+      },
+    )
+  }
+}
+
+pub fn control_from_data_v1(data: Data) -> DataTraverseControlV1 {
+  expect
+    [
+      version_data, stage_data, source_start_data, source_length_data,
+      offset_data, frame_root_data, pending_large_data, integer_data,
+      bytes_data, result_data,
+    ] = builtin.un_list_data(data)
+  let control = DataTraverseControlV1 {
+    version: builtin.un_i_data(version_data),
+    stage: builtin.un_i_data(stage_data),
+    source_start: builtin.un_i_data(source_start_data),
+    source_length: builtin.un_i_data(source_length_data),
+    offset: builtin.un_i_data(offset_data),
+    frame_root: builtin.un_b_data(frame_root_data),
+    pending_large_expected_children: optional_int_from_data(
+      pending_large_data,
+    ),
+    integer: optional_integer_from_data(integer_data),
+    bytes: optional_bytes_from_data(bytes_data),
+    result: optional_summary_from_data(result_data),
+  }
+  expect control_is_well_formed(control)
+  control
+}
+
+pub fn decode_control_v1(control_cbor: ByteArray) -> DataTraverseControlV1 {
+  expect Some(data) = cbor.deserialise(control_cbor)
+  let control = control_from_data_v1(data)
+  expect encode_control_v1(control) == control_cbor
+  control
+}
+
 pub fn hash_control_v1(control: DataTraverseControlV1) -> ByteArray {
   control_domain
     |> bytearray.concat(encode_control_v1(control))

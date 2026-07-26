@@ -1,6 +1,9 @@
 use aiken/builtin
 use aiken/primitive/bytearray
 use midgard/bounded_item_v1
+use midgard/cek_data_frame_v1
+use midgard/cek_data_traverse_v1
+use midgard/cek_data_v1
 use midgard/ledger_output_proof_v1
 use midgard/validation_merkle_v1
 
@@ -17,7 +20,7 @@ const malformed_nonminimal_output =
   #"b80200581d7811111111111111111111111111111111111111111111111111111111018200a0"
 
 const cross_language_long_terminal_control =
-  #"8c010500192bf15820a023c9459077b4fc906660cacfa81a46eea15b9ad1f21fb20fbd745d2678f9ec970107192bf10402581d78111111111111111111111111111111111111111111111111111111111a007a1200182e000000581c555555555555555555555555555555555555555555555555555555554040028182015820fdd05992e96e478560b718d45058402827072f35e5220f396e2569800a2b76fe1854191427000319147c1914811917700281820158208849db60de54cc79779154d18787e4382a58ea895b9133f12bdea300c72bfdc002818201582028f935b37d798dd5f68f23fa40e9d9dd02037d6b1e1fa7ad7edfdcb84b63a26cd8799f8901031917711917715840634e9ca63abb532a52c53389db12d1514358f8ff155e3d82c0622098dbdd88d3a54a6646cce0bede0423668a5079fb08595004db249d66dbc8e10681056a775c40004000ffd87a80"
+  #"8b010500192bf15820a023c9459077b4fc906660cacfa81a46eea15b9ad1f21fb20fbd745d2678f9ec970107192bf10402581d78111111111111111111111111111111111111111111111111111111111a007a1200182e000000581c555555555555555555555555555555555555555555555555555555554040028182015820fdd05992e96e478560b718d45058402827072f35e5220f396e2569800a2b76fe1854191427000319147c191481191770d8799f8a0107185419142719142740d87a80d87a80d87a80d8799f8358202aa2efa1446b0d53ad8a806d29396c82aca037037c095811d7948f5304d3896219142719138cffff02818201582028f935b37d798dd5f68f23fa40e9d9dd02037d6b1e1fa7ad7edfdcb84b63a26cd8799f8901031917711917715840634e9ca63abb532a52c53389db12d1514358f8ff155e3d82c0622098dbdd88d3a54a6646cce0bede0423668a5079fb08595004db249d66dbc8e10681056a775c40004000ffd87a80"
 
 fn one_chunk_material(
   output_index: Int,
@@ -53,6 +56,17 @@ fn chunks(
   proof: bounded_item_v1.ChunkProofV1,
 ) -> ledger_output_proof_v1.LedgerOutputProofWitnessV1 {
   ledger_output_proof_v1.LedgerOutputProofChunks {
+    chunk_proof: proof,
+    next_chunk_proof: None,
+  }
+}
+
+fn datum(
+  action: cek_data_traverse_v1.DataTraverseActionV1,
+  proof: Option<bounded_item_v1.ChunkProofV1>,
+) -> ledger_output_proof_v1.LedgerOutputProofWitnessV1 {
+  ledger_output_proof_v1.LedgerOutputProofDatum {
+    action,
     chunk_proof: proof,
     next_chunk_proof: None,
   }
@@ -159,7 +173,7 @@ test derives_the_first_script_hash_block_from_the_output_chunk() {
   }
 }
 
-test authenticates_an_independently_chunked_inline_datum() {
+test authenticates_the_inline_datum_semantics_from_output_chunks() {
   let Pair(commitment, proof) = one_chunk_material(0, small_datum_output)
   let initial = ledger_output_proof_v1.initial_control_v1(
     0,
@@ -190,20 +204,45 @@ test authenticates_an_independently_chunked_inline_datum() {
       ledger_output_proof_v1.LedgerOutputProofNoWitness,
     ),
   )
-  let datum_committed = advanced(
-    ledger_output_proof_v1.step_v1(datum_ready, chunks(proof)),
+  let datum_opened = advanced(
+    ledger_output_proof_v1.step_v1(
+      datum_ready,
+      datum(
+        cek_data_traverse_v1.HeadSequence { expected_children: 0 },
+        Some(proof),
+      ),
+    ),
+  )
+  let frame = cek_data_frame_v1.initial_small_constr_frame_v1(
+    0,
+    #"",
+    0,
+  )
+  let datum_authenticated = advanced(
+    ledger_output_proof_v1.step_v1(
+      datum_opened,
+      datum(
+        cek_data_traverse_v1.FinalizeFrame {
+          frame,
+          parent: None,
+        },
+        None,
+      ),
+    ),
   )
   let terminal = advanced(
     ledger_output_proof_v1.step_v1(
-      datum_committed,
+      datum_authenticated,
       ledger_output_proof_v1.LedgerOutputProofNoWitness,
     ),
   )
+  let expected_spend_datum =
+    builtin.constr_data(0, [builtin.constr_data(0, [])])
+      |> cek_data_v1.semantic_data_summary_v1
   and {
-    datum_ready.stage == ledger_output_proof_v1.stage_datum_commitment,
-    datum_committed.datum_count == 1,
-    ledger_output_proof_v1.datum_item_commitment_v1(terminal)
-      == Some(bounded_item_v1.from_bytes(2, 0, #"d87980")),
+    datum_ready.stage == ledger_output_proof_v1.stage_datum_traversal,
+    ledger_output_proof_v1.cardano_spend_datum_summary_v1(terminal)
+      == Some(expected_spend_datum),
     ledger_output_proof_v1.terminal_is_exact_v1(terminal),
   }
 }
@@ -317,7 +356,10 @@ test fails_closed_for_a_substituted_inline_datum_item_chunk() {
   }
   ledger_output_proof_v1.step_v1(
     datum_ready,
-    chunks(substituted),
+    datum(
+      cek_data_traverse_v1.HeadSequence { expected_children: 0 },
+      Some(substituted),
+    ),
   ) == None
 }
 
@@ -325,15 +367,14 @@ test decodes_the_long_typescript_terminal_control_canonically() {
   let control = ledger_output_proof_v1.decode_control_v1(
     cross_language_long_terminal_control,
   )
-  expect Some(datum_item_commitment) =
-    ledger_output_proof_v1.datum_item_commitment_v1(control)
+  expect Some(spend_datum_summary) =
+    ledger_output_proof_v1.cardano_spend_datum_summary_v1(control)
   expect Some(reference_item_commitment) =
     ledger_output_proof_v1.reference_script_item_commitment_v1(control)
   and {
     ledger_output_proof_v1.terminal_is_exact_v1(control),
-    control.datum_count == 2,
     control.reference_script_count == 2,
-    bytearray.length(datum_item_commitment) == 32,
+    bytearray.length(spend_datum_summary.root) == 32,
     bytearray.length(reference_item_commitment) == 32,
     ledger_output_proof_v1.reference_script_digest_v1(control)
       == Some(

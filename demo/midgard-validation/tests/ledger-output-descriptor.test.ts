@@ -2,13 +2,13 @@ import {
   buildMidgardBoundedItemChunkProofV1,
   buildMidgardBoundedItemV1,
   buildMidgardLedgerOutputProofTraceV1,
-  commitMidgardLedgerOutputDatumItemV1,
   commitMidgardLedgerOutputReferenceScriptItemV1,
   commitMidgardValidationMerkleFrontierV1,
   decodeMidgardLedgerOutputCommitmentV1,
   digestMidgardLedgerOutputReferenceScriptV1,
   encodeMidgardLedgerOutputCommitmentV1,
   MIDGARD_LEDGER_OUTPUT_FIELD_INDEX_V1,
+  summarizeMidgardLedgerOutputCardanoSpendDatumV1,
   verifyMidgardLedgerOutputChunkV1,
   verifyMidgardLedgerOutputReferenceScriptChunkV1,
 } from "@al-ft/midgard-core";
@@ -162,13 +162,11 @@ describe("canonical ledger output descriptor V1", () => {
       material.descriptor.referenceScriptLanguage,
     );
     expect(
-      commitMidgardLedgerOutputDatumItemV1(terminal),
+      summarizeMidgardLedgerOutputCardanoSpendDatumV1(
+        terminal,
+      ),
     ).toStrictEqual(
-      buildMidgardBoundedItemV1({
-        fieldIndex: MIDGARD_LEDGER_OUTPUT_FIELD_INDEX_V1,
-        itemIndex: 7,
-        bytes: fixture.output.datum!.cbor,
-      }).commitment,
+      material.descriptor.cardanoSpendDatum,
     );
     expect(
       terminal.totalLength - scan.referenceScriptItemOffset,
@@ -180,6 +178,30 @@ describe("canonical ledger output descriptor V1", () => {
       commitMidgardLedgerOutputReferenceScriptItemV1(terminal),
     ).toStrictEqual(
       material.descriptor.referenceScriptItemCommitment,
+    );
+
+    const {
+      datum: _datum,
+      script_ref: _scriptRef,
+      ...withoutDatum
+    } = fixture.output;
+    const withoutDatumCbor = encodeMidgardTxOutput(withoutDatum);
+    const withoutDatumMaterial =
+      buildCanonicalMidgardLedgerOutputMaterialV1({
+        outputIndex: 7,
+        outputCbor: withoutDatumCbor,
+      });
+    const withoutDatumTerminal =
+      buildMidgardLedgerOutputProofTraceV1({
+        outputIndex: 7,
+        outputCbor: withoutDatumCbor,
+      }).terminal;
+    expect(
+      summarizeMidgardLedgerOutputCardanoSpendDatumV1(
+        withoutDatumTerminal,
+      ),
+    ).toStrictEqual(
+      withoutDatumMaterial.descriptor.cardanoSpendDatum,
     );
   });
 });

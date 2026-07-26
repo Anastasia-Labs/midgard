@@ -343,6 +343,38 @@ describe("authenticated CEK Data traversal V1", () => {
     );
   });
 
+  it("pins active nested integer and byte controls for Aiken decoding", () => {
+    const integer = harness(
+      Buffer.from("c249010000000000000000", "hex"),
+    );
+    transition(integer, {
+      kind: "headScalar",
+      itemLength: integer.source.length,
+    });
+    expect(
+      encodeMidgardCekDataTraverseControlV1(
+        integer.control,
+      ).toString("hex"),
+    ).toBe(
+      "8a0101110b0040d87a80d8799f860100110b00d87a80ffd87a80d87a80",
+    );
+
+    const bytes = harness(
+      encodeCardanoDataBytes(Buffer.alloc(65, 0x6a)),
+    );
+    transition(bytes, {
+      kind: "headScalar",
+      itemLength: bytes.source.length,
+    });
+    expect(
+      encodeMidgardCekDataTraverseControlV1(
+        bytes.control,
+      ).toString("hex"),
+    ).toBe(
+      "8a01021118460040d87a80d87a80d8799f86010011184600d87a80ffd87a80",
+    );
+  });
+
   it("fails closed for wrong counts, trailing bytes, and small large constructors", () => {
     const wrongCount = harness(Buffer.from("9f01ff", "hex"));
     transition(wrongCount, {

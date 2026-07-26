@@ -3,6 +3,8 @@ use aiken/cbor
 use aiken/primitive/bytearray
 use midgard/blake2b_224_trace_v1
 use midgard/bounded_item_v1
+use midgard/cek_data_traverse_v1
+use midgard/cek_data_v1
 use midgard/fraud_proofs/native_tx/codec.{
   encode_definite_array_header,
 }
@@ -16,7 +18,7 @@ pub const output_field_index: Int = 2
 
 pub const stage_structure: Int = 0
 
-pub const stage_datum_commitment: Int = 1
+pub const stage_datum_traversal: Int = 1
 
 pub const stage_reference_script_commitment: Int = 2
 
@@ -33,8 +35,7 @@ pub type LedgerOutputProofControlV1 {
   total_length: Int,
   item_commitment: ByteArray,
   output_scan: ledger_output_scan_v1.LedgerOutputScanControlV1,
-  datum_count: Int,
-  datum_peaks: List<validation_merkle_v1.FrontierPeak>,
+  datum: Option<cek_data_traverse_v1.DataTraverseControlV1>,
   reference_script_count: Int,
   reference_script_peaks: List<validation_merkle_v1.FrontierPeak>,
   script_hash: Option<blake2b_224_trace_v1.Blake2b224TraceControlV1>,
@@ -45,6 +46,11 @@ pub type LedgerOutputProofWitnessV1 {
   LedgerOutputProofNoWitness
   LedgerOutputProofChunks {
     chunk_proof: bounded_item_v1.ChunkProofV1,
+    next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+  }
+  LedgerOutputProofDatum {
+    action: cek_data_traverse_v1.DataTraverseActionV1,
+    chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
     next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
   }
   LedgerOutputProofNativeFrame {
@@ -130,25 +136,28 @@ pub fn control_is_well_formed(
   )
   let datum_present = control.output_scan.datum_offset != -1
   let datum_length = control.output_scan.datum_length
-  let datum_chunk_count = if datum_present {
-    bounded_item_v1.chunk_count(datum_length)
-  } else {
-    0
+  let datum_is_well_formed = when control.datum is {
+    None -> False
+    Some(datum_control) ->
+      and {
+        cek_data_traverse_v1.control_is_well_formed(datum_control),
+        datum_control.source_start == control.output_scan.datum_offset,
+        datum_control.source_length == datum_length,
+      }
   }
-  let datum_frontier_is_complete = if datum_present {
-    and {
-      datum_length > 0,
-      control.datum_count == datum_chunk_count,
-      validation_merkle_v1.frontier_is_well_formed(
-        control.datum_count,
-        control.datum_peaks,
-      ),
-    }
+  let datum_is_terminal = when control.datum is {
+    None -> False
+    Some(datum_control) ->
+      and {
+        datum_is_well_formed,
+        datum_control.stage == cek_data_traverse_v1.stage_terminal,
+        cek_data_traverse_v1.finalize_v1(datum_control) != None,
+      }
+  }
+  let datum_is_complete = if datum_present {
+    datum_is_terminal
   } else {
-    and {
-      control.datum_count == 0,
-      control.datum_peaks == [],
-    }
+    control.datum == None
   }
   let reference_language = control.output_scan.reference_script_language
   let reference_item_length = control.total_length - control.output_scan.reference_script_item_offset
@@ -175,8 +184,7 @@ pub fn control_is_well_formed(
     control.output_scan.cursor <= control.total_length,
     if control.stage == stage_structure {
       and {
-        control.datum_count == 0,
-        control.datum_peaks == [],
+        control.datum == None,
         control.reference_script_count == 0,
         control.reference_script_peaks == [],
         control.script_hash == None,
@@ -184,31 +192,22 @@ pub fn control_is_well_formed(
       }
     } else if !scan_terminal {
       False
-    } else if or {
-      control.datum_count < 0,
-      !validation_merkle_v1.frontier_is_well_formed(
-        control.datum_count,
-        control.datum_peaks,
-      ),
-      if datum_present {
-        or {
-          datum_length <= 0,
-          control.datum_count > datum_chunk_count,
-        }
-      } else {
-        control.datum_count != 0
-      },
+    } else if and {
+      !datum_present,
+      control.datum != None,
     } {
       False
-    } else if control.stage == stage_datum_commitment {
+    } else if control.stage == stage_datum_traversal {
       and {
         datum_present,
+        datum_length > 0,
+        datum_is_well_formed,
         control.reference_script_count == 0,
         control.reference_script_peaks == [],
         control.script_hash == None,
         control.native_script == None,
       }
-    } else if !datum_frontier_is_complete {
+    } else if !datum_is_complete {
       False
     } else if reference_language == -1 {
       and {
@@ -274,8 +273,7 @@ pub fn initial_control_v1(
     total_length,
     item_commitment,
     output_scan: ledger_output_scan_v1.initial_control_v1(),
-    datum_count: 0,
-    datum_peaks: validation_merkle_v1.empty_frontier(),
+    datum: None,
     reference_script_count: 0,
     reference_script_peaks: validation_merkle_v1.empty_frontier(),
     script_hash: None,
@@ -291,6 +289,17 @@ fn encode_optional_script_hash(
   when control is {
     None -> #"d87a80"
     Some(value) -> blake2b_224_trace_v1.encode_control_v1(value)
+      |> bytearray.concat(#"ff")
+      |> bytearray.concat(#"d8799f", _)
+  }
+}
+
+fn encode_optional_datum(
+  control: Option<cek_data_traverse_v1.DataTraverseControlV1>,
+) -> ByteArray {
+  when control is {
+    None -> #"d87a80"
+    Some(value) -> cek_data_traverse_v1.encode_control_v1(value)
       |> bytearray.concat(#"ff")
       |> bytearray.concat(#"d8799f", _)
   }
@@ -319,6 +328,20 @@ fn optional_script_hash_from_data(
     expect index == 0
     expect [value] = fields
     Some(blake2b_224_trace_v1.control_from_data_v1(value))
+  }
+}
+
+fn optional_datum_from_data(
+  data: Data,
+) -> Option<cek_data_traverse_v1.DataTraverseControlV1> {
+  let Pair(index, fields) = builtin.un_constr_data(data)
+  if index == 1 {
+    expect fields == []
+    None
+  } else {
+    expect index == 0
+    expect [value] = fields
+    Some(cek_data_traverse_v1.control_from_data_v1(value))
   }
 }
 
@@ -358,17 +381,14 @@ pub fn encode_control_v1(
   control: LedgerOutputProofControlV1,
 ) -> ByteArray {
   expect control_is_well_formed(control)
-  encode_definite_array_header(12)
+  encode_definite_array_header(11)
     |> bytearray.concat(cbor.serialise(version))
     |> bytearray.concat(cbor.serialise(control.stage))
     |> bytearray.concat(cbor.serialise(control.output_index))
     |> bytearray.concat(cbor.serialise(control.total_length))
     |> bytearray.concat(cbor.serialise(builtin.b_data(control.item_commitment)))
     |> bytearray.concat(ledger_output_scan_v1.encode_control_v1(control.output_scan))
-    |> bytearray.concat(cbor.serialise(control.datum_count))
-    |> bytearray.concat(
-        validation_merkle_v1.encode_frontier(control.datum_peaks),
-      )
+    |> bytearray.concat(encode_optional_datum(control.datum))
     |> bytearray.concat(cbor.serialise(control.reference_script_count))
     |> bytearray.concat(
         validation_merkle_v1.encode_frontier(control.reference_script_peaks),
@@ -384,9 +404,9 @@ pub fn decode_control_v1(
   expect
     [
       version_data, stage_data, output_index_data, total_length_data,
-      item_commitment_data, output_scan_data, datum_count_data,
-      datum_peaks_data, reference_script_count_data,
-      reference_script_peaks_data, script_hash_data, native_script_data,
+      item_commitment_data, output_scan_data, datum_data,
+      reference_script_count_data, reference_script_peaks_data,
+      script_hash_data, native_script_data,
     ] = builtin.un_list_data(data)
   let control = LedgerOutputProofControlV1 {
     version: builtin.un_i_data(version_data),
@@ -397,10 +417,7 @@ pub fn decode_control_v1(
     output_scan: ledger_output_scan_v1.control_from_data_v1(
       output_scan_data,
     ),
-    datum_count: builtin.un_i_data(datum_count_data),
-    datum_peaks: datum_peaks_data
-      |> builtin.un_list_data
-      |> decode_peak_items,
+    datum: optional_datum_from_data(datum_data),
     reference_script_count: builtin.un_i_data(reference_script_count_data),
     reference_script_peaks: reference_script_peaks_data
       |> builtin.un_list_data
@@ -591,7 +608,13 @@ fn structure_step(
     } else if control.output_scan.datum_offset != -1 {
       advanced(LedgerOutputProofControlV1 {
         ..control,
-        stage: stage_datum_commitment,
+        stage: stage_datum_traversal,
+        datum: Some(
+          cek_data_traverse_v1.initial_control_v1(
+            control.output_scan.datum_offset,
+            control.output_scan.datum_length,
+          ),
+        ),
       })
     } else if control.output_scan.reference_script_language == -1 {
       advanced(LedgerOutputProofControlV1 {
@@ -652,15 +675,12 @@ fn structure_step(
   }
 }
 
-fn datum_commitment_step(
+fn datum_traversal_step(
   control: LedgerOutputProofControlV1,
   witness: LedgerOutputProofWitnessV1,
+  datum_control: cek_data_traverse_v1.DataTraverseControlV1,
 ) -> Option<LedgerOutputProofStepResultV1> {
-  let item_offset = control.output_scan.datum_offset
-  let item_length = control.output_scan.datum_length
-  let chunk_count = bounded_item_v1.chunk_count(item_length)
-  let chunk_index = control.datum_count
-  if chunk_index == chunk_count {
+  if datum_control.stage == cek_data_traverse_v1.stage_terminal {
     if witness == LedgerOutputProofNoWitness {
       advanced(LedgerOutputProofControlV1 {
         ..control,
@@ -674,36 +694,63 @@ fn datum_commitment_step(
       None
     }
   } else {
-    let chunk_length = bounded_item_v1.expected_chunk_length(
-      item_length,
-      chunk_index,
-    )
-    let absolute_start = item_offset
-      + chunk_index * bounded_item_v1.chunk_bytes
-    when
-      authenticated_output_span(
-        control,
-        absolute_start,
-        chunk_length,
-        witness,
-      )
-    is {
-      None -> None
-      Some(chunk) ->
-        advanced(LedgerOutputProofControlV1 {
-          ..control,
-          datum_count: chunk_index + 1,
-          datum_peaks: validation_merkle_v1.append_leaf(
-            chunk_index,
-            control.datum_peaks,
-            bounded_item_v1.hash_chunk(
-              output_field_index,
-              control.output_index,
-              chunk_index,
-              chunk,
-            ),
-          ),
-        })
+    when witness is {
+      LedgerOutputProofDatum {
+        action,
+        chunk_proof,
+        next_chunk_proof,
+      } -> {
+        let authenticated: Option<Option<ByteArray>> =
+          when cek_data_traverse_v1.next_source_span_v1(datum_control) is {
+            None ->
+              if and {
+                chunk_proof == None,
+                next_chunk_proof == None,
+              } {
+                Some(None)
+              } else {
+                None
+              }
+            Some(span) ->
+              when chunk_proof is {
+                None -> None
+                Some(first) ->
+                  when
+                    authenticated_output_span(
+                      control,
+                      span.absolute_start,
+                      span.length,
+                      LedgerOutputProofChunks {
+                        chunk_proof: first,
+                        next_chunk_proof,
+                      },
+                    )
+                  is {
+                    None -> None
+                    Some(bytes) -> Some(Some(bytes))
+                  }
+              }
+          }
+        when authenticated is {
+          None -> None
+          Some(source_bytes) ->
+            when
+              cek_data_traverse_v1.step_v1(
+                datum_control,
+                source_bytes,
+                action,
+              )
+            is {
+              None -> None
+              Some(next_datum) ->
+                advanced(LedgerOutputProofControlV1 {
+                  ..control,
+                  datum: Some(next_datum),
+                })
+            }
+        }
+      }
+      _ -> None
     }
   }
 }
@@ -933,8 +980,12 @@ pub fn step_v1(
       Some(hash_control) ->
         script_hash_step(control, witness, hash_control)
     }
-  } else if control.stage == stage_datum_commitment {
-    datum_commitment_step(control, witness)
+  } else if control.stage == stage_datum_traversal {
+    when control.datum is {
+      None -> None
+      Some(datum_control) ->
+        datum_traversal_step(control, witness, datum_control)
+    }
   } else if control.stage == stage_reference_script_commitment {
     reference_script_commitment_step(control, witness)
   } else if control.stage == stage_native_script {
@@ -948,23 +999,36 @@ pub fn step_v1(
   }
 }
 
-pub fn datum_item_commitment_v1(
+pub fn cardano_spend_datum_summary_v1(
   control: LedgerOutputProofControlV1,
-) -> Option<ByteArray> {
-  if or {
-    !terminal_is_exact_v1(control),
-    control.output_scan.datum_offset == -1,
-  } {
+) -> Option<cek_data_v1.DataSummaryV1> {
+  if !terminal_is_exact_v1(control) {
     None
-  } else {
+  } else if control.output_scan.datum_offset == -1 {
     Some(
-      bounded_item_v1.commitment(
-        output_field_index,
-        control.output_index,
-        control.output_scan.datum_length,
-        control.datum_peaks,
+      cek_data_v1.small_constr_data_summary_v1(
+        1,
+        cek_data_v1.empty_data_list_summary_v1(),
       ),
     )
+  } else {
+    when control.datum is {
+      None -> None
+      Some(datum_control) ->
+        when cek_data_traverse_v1.finalize_v1(datum_control) is {
+          None -> None
+          Some(datum) ->
+            Some(
+              cek_data_v1.small_constr_data_summary_v1(
+                0,
+                cek_data_v1.prepend_data_list_summary_v1(
+                  datum,
+                  cek_data_v1.empty_data_list_summary_v1(),
+                ),
+              ),
+            )
+        }
+    }
   }
 }
 
