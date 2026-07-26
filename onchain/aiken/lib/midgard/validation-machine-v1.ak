@@ -51,7 +51,6 @@ use midgard/ledger_output_v1
 use midgard/mpf_proof_fold_v1
 use midgard/mpf_proof_v1
 use midgard/native_script_scan_v1
-use midgard/native_script_v1
 use midgard/script_context_v1
 use midgard/script_language_views_v1
 use midgard/script_proof_v1
@@ -356,6 +355,25 @@ pub type ValidationAuxiliaryWitnessV1 {
     chunk_proof: bounded_item_v1.ChunkProofV1,
     next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
   }
+  NativeExecutionDescriptorWitness {
+    execution_index: Int,
+    language_tag: Int,
+    purpose_kind: Int,
+    purpose_index: Int,
+    script_hash: ByteArray,
+    subject: ByteArray,
+    purpose_siblings: List<ByteArray>,
+    source_index: Int,
+    origin_kind: Int,
+    source_key: ByteArray,
+    script_total_length: Int,
+    script_item_commitment: ByteArray,
+    source_siblings: List<ByteArray>,
+    redeemer_leaf: ByteArray,
+    execution_siblings: List<ByteArray>,
+    first_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+    signer_peaks: List<validation_merkle_v1.FrontierPeak>,
+  }
 }
 
 pub type SignerSetProofV1 {
@@ -618,6 +636,7 @@ pub fn encode_phase_a_native_scripts_scan_witness(
   result: Int,
   signer_count: Int,
   signer_peaks: List<validation_merkle_v1.FrontierPeak>,
+  continuation_cbor: ByteArray,
 ) -> ByteArray {
   expect bytearray.length(resolution_schedule_hash) == 32
   expect stage >= 0
@@ -635,25 +654,32 @@ pub fn encode_phase_a_native_scripts_scan_witness(
   expect result >= -1
   expect result <= 1
   expect signer_count >= 0
-  encode_definite_array_header(18)
-    |> bytearray.concat(encode_definite_bytes(compact_cbor))
-    |> bytearray.concat(encode_definite_bytes(witness_set_compact_cbor))
-    |> bytearray.concat(encode_definite_bytes(field_preimage_lengths_cbor))
-    |> bytearray.concat(encode_definite_bytes(context_cbor))
-    |> bytearray.concat(encode_definite_bytes(resolution_schedule_hash))
+  #"9f"
+    |> bytearray.concat(cbor.serialise(builtin.b_data(compact_cbor)))
+    |> bytearray.concat(cbor.serialise(builtin.b_data(witness_set_compact_cbor)))
+    |> bytearray.concat(
+        cbor.serialise(builtin.b_data(field_preimage_lengths_cbor)),
+      )
+    |> bytearray.concat(cbor.serialise(builtin.b_data(context_cbor)))
+    |> bytearray.concat(
+        cbor.serialise(builtin.b_data(resolution_schedule_hash)),
+      )
     |> bytearray.concat(cbor.serialise(stage))
     |> bytearray.concat(cbor.serialise(script_count))
     |> bytearray.concat(cbor.serialise(script_seen))
     |> bytearray.concat(cbor.serialise(contains_non_native_script))
     |> bytearray.concat(cbor.serialise(item_length))
-    |> bytearray.concat(encode_definite_bytes(item_commitment))
+    |> bytearray.concat(cbor.serialise(builtin.b_data(item_commitment)))
     |> bytearray.concat(cbor.serialise(cursor))
-    |> bytearray.concat(encode_definite_bytes(stack_root))
+    |> bytearray.concat(cbor.serialise(builtin.b_data(stack_root)))
     |> bytearray.concat(cbor.serialise(stack_depth))
     |> bytearray.concat(cbor.serialise(node_count))
     |> bytearray.concat(cbor.serialise(result))
     |> bytearray.concat(cbor.serialise(signer_count))
+    |> bytearray.concat(encode_definite_array_header(2))
     |> bytearray.concat(validation_merkle_v1.encode_frontier(signer_peaks))
+    |> bytearray.concat(cbor.serialise(builtin.b_data(continuation_cbor)))
+    |> bytearray.concat(#"ff")
 }
 
 pub fn encode_signatures_scan_witness(
@@ -2791,6 +2817,7 @@ fn verify_signatures_handoff(
         0,
         control.signer_count,
         control.signer_peaks,
+        #"",
       ),
     ),
   }
@@ -2911,6 +2938,7 @@ pub type PhaseANativeScriptsControlV1 {
   result: Int,
   signer_count: Int,
   signer_peaks: List<validation_merkle_v1.FrontierPeak>,
+  continuation_cbor: ByteArray,
 }
 
 type NativeChunkWindowV1 {
@@ -2929,9 +2957,12 @@ fn phase_a_native_control_from_witness(
         resolution_schedule_hash_data, stage_data, script_count_data,
         script_seen_data, contains_non_native_script_data, item_length_data,
         item_commitment_data, cursor_data, stack_root_data, stack_depth_data,
-        node_count_data, result_data, signer_count_data, signer_peaks_data,
+        node_count_data, result_data, signer_count_data,
+        signer_continuation_data,
       ]
     = builtin.un_list_data(data)
+  expect [signer_peaks_data, continuation_cbor_data] =
+    builtin.un_list_data(signer_continuation_data)
   PhaseANativeScriptsControlV1 {
     compact_cbor: builtin.un_b_data(compact_cbor_data),
     witness_set_compact_cbor: builtin.un_b_data(witness_set_compact_cbor_data),
@@ -2955,6 +2986,7 @@ fn phase_a_native_control_from_witness(
     result: builtin.un_i_data(result_data),
     signer_count: builtin.un_i_data(signer_count_data),
     signer_peaks: decode_frontier_peaks(signer_peaks_data),
+    continuation_cbor: builtin.un_b_data(continuation_cbor_data),
   }
 }
 
@@ -2969,6 +3001,7 @@ fn phase_a_native_control_is_bound(
     7,
     [],
   )
+  let is_late_continuation = control.continuation_cbor != #""
   and {
     verified.version == 1,
     native_tx_proof_commitment_v1(
@@ -2983,7 +3016,34 @@ fn phase_a_native_control_is_bound(
     control.script_count >= -1,
     control.script_count <= max_tx_size_derived_collection_item_count,
     control.script_seen >= 0,
-    if scripts_are_empty {
+    if is_late_continuation {
+      let native_control = native_scripts_control_from_witness(
+        control.continuation_cbor,
+      )
+      and {
+        control.resolution_schedule_hash == blake2b_256(
+          control.continuation_cbor,
+        ),
+        control.stage > 0,
+        control.script_count == 1,
+        control.script_seen == 0,
+        control.contains_non_native_script == 0,
+        native_scripts_control_is_well_formed(native_control),
+        control.continuation_cbor == encode_native_scripts_control_v1(
+          native_control,
+        ),
+        native_control.compact_cbor == control.compact_cbor,
+        native_control.witness_set_compact_cbor == control.witness_set_compact_cbor,
+        native_control.field_preimage_lengths_cbor == control.field_preimage_lengths_cbor,
+        native_control.context_cbor == control.context_cbor,
+        native_control.execution_cursor < native_control.execution_count,
+        native_control.signer_count == control.signer_count,
+        native_control.signer_frontier_commitment == validation_merkle_v1.frontier_commitment(
+          control.signer_count,
+          control.signer_peaks,
+        ),
+      }
+    } else if scripts_are_empty {
       control.script_count == 0 && control.script_seen == 0
     } else if control.script_count == -1 {
       control.script_seen == 0
@@ -3009,6 +3069,7 @@ fn phase_a_native_control_is_bound(
     control.result <= 1,
     if control.stage == 0 {
       and {
+        !is_late_continuation,
         control.item_length == 0,
         control.item_commitment == #"",
         control.cursor == 0,
@@ -3057,6 +3118,7 @@ fn phase_a_native_control_is_bound(
       control.result,
       control.signer_count,
       control.signer_peaks,
+      control.continuation_cbor,
     ),
   }
 }
@@ -3090,6 +3152,7 @@ fn phase_a_native_successor_is_exact(
         control.result,
         control.signer_count,
         control.signer_peaks,
+        control.continuation_cbor,
       ),
     ),
   }
@@ -3155,16 +3218,37 @@ fn phase_a_native_complete_script_is_exact(
   script_seen: Int,
   contains_non_native_script: Int,
 ) -> Bool {
-  let next_control = reset_phase_a_native_control(
-    control,
-    script_count,
-    script_seen,
-    contains_non_native_script,
-  )
-  if script_seen == script_count {
-    phase_a_native_to_preconditions_is_exact(pre, post, next_control)
+  if control.continuation_cbor != #"" {
+    let native_control = native_scripts_control_from_witness(
+      control.continuation_cbor,
+    )
+    let next_native_control = NativeScriptsControlV1 {
+      ..native_control,
+      execution_cursor: native_control.execution_cursor + 1,
+    }
+    and {
+      script_count == 1,
+      script_seen == 1,
+      contains_non_native_script == 0,
+      post.phase == validation_trace_v1.NativeScripts,
+      post.work_root == validation_trace_v1.hash_work_witness(
+        validation_trace_v1.NativeScripts,
+        pre.program_counter + 1,
+        encode_native_scripts_control_v1(next_native_control),
+      ),
+    }
   } else {
-    phase_a_native_successor_is_exact(pre, post, next_control)
+    let next_control = reset_phase_a_native_control(
+      control,
+      script_count,
+      script_seen,
+      contains_non_native_script,
+    )
+    if script_seen == script_count {
+      phase_a_native_to_preconditions_is_exact(pre, post, next_control)
+    } else {
+      phase_a_native_successor_is_exact(pre, post, next_control)
+    }
   }
 }
 
@@ -10918,6 +11002,47 @@ fn native_resolved_context_is_well_formed(
   }
 }
 
+fn native_scripts_control_is_well_formed(
+  control: NativeScriptsControlV1,
+) -> Bool {
+  and {
+    control.resolved_input_count >= 0,
+    bytearray.length(control.resolved_inputs_accumulator) == 32,
+    native_resolved_context_is_well_formed(control),
+    control.signer_count >= 0,
+    bytearray.length(control.signer_frontier_commitment) == 32,
+    validation_merkle_v1.frontier_is_well_formed(
+      control.source_count,
+      control.source_peaks,
+    ),
+    validation_merkle_v1.frontier_is_well_formed(
+      control.redeemer_count,
+      control.redeemer_peaks,
+    ),
+    validation_merkle_v1.frontier_is_well_formed(
+      control.purpose_count,
+      control.purpose_peaks,
+    ),
+    validation_merkle_v1.frontier_is_well_formed(
+      control.output_count,
+      control.output_peaks,
+    ),
+    validation_merkle_v1.frontier_is_well_formed(
+      control.output_count,
+      control.output_descriptor_peaks,
+    ),
+    validation_merkle_v1.frontier_is_well_formed(
+      control.execution_count,
+      control.execution_peaks,
+    ),
+    control.execution_count == control.purpose_count,
+    control.execution_cursor >= 0,
+    control.execution_cursor <= control.execution_count,
+    control.language_bitmap >= 0,
+    control.language_bitmap <= 3,
+  }
+}
+
 pub fn encode_script_integrity_witness_v1(
   control: NativeScriptsControlV1,
 ) -> ByteArray {
@@ -10985,36 +11110,6 @@ fn script_integrity_control_and_stage(
   )
 }
 
-fn native_signer_hashes_are_canonical(signer_hashes: List<ByteArray>) -> Bool {
-  and {
-    list.all(signer_hashes, fn(hash) { bytearray.length(hash) == 28 }),
-    signer_hashes == list.sort(signer_hashes, bytearray.compare),
-    signer_hashes == list.unique(signer_hashes),
-  }
-}
-
-fn native_signer_frontier_matches(
-  signer_hashes: List<ByteArray>,
-  signer_count: Int,
-  signer_frontier_commitment: ByteArray,
-) -> Bool {
-  let frontier = signer_hashes
-    |> list.map(script_proof_v1.signer_leaf_hash)
-    |> validation_merkle_v1.build_frontier
-  and {
-    native_signer_hashes_are_canonical(signer_hashes),
-    frontier.count == signer_count,
-    validation_merkle_v1.frontier_commitment(frontier.count, frontier.peaks) == signer_frontier_commitment,
-  }
-}
-
-fn native_language_tag_matches_script(
-  language_tag: Int,
-  script: MidgardScriptWitness,
-) -> Bool {
-  language_tag == script_proof_v1.language_tag(script.language)
-}
-
 fn native_scripts_successor_is_exact(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
@@ -11036,15 +11131,21 @@ fn native_scripts_successor_is_exact(
   }
 }
 
-fn verify_native_execution_step(
+fn native_language_tag_matches_script(
+  language_tag: Int,
+  script: MidgardScriptWitness,
+) -> Bool {
+  language_tag == script_proof_v1.language_tag(script.language)
+}
+
+fn verify_native_execution_descriptor_step(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
   control: NativeScriptsControlV1,
-  body: NativeTxBodyCompact,
 ) -> Bool {
   expect
-      NativeExecutionScanWitness {
+      NativeExecutionDescriptorWitness {
         execution_index,
         language_tag,
         purpose_kind,
@@ -11055,11 +11156,13 @@ fn verify_native_execution_step(
         source_index,
         origin_kind,
         source_key,
-        script,
+        script_total_length,
+        script_item_commitment,
         source_siblings,
         redeemer_leaf,
         execution_siblings,
-        signer_hashes,
+        first_chunk_proof,
+        signer_peaks,
       }
     = auxiliary
   let purpose_leaf = script_proof_v1.purpose_leaf_hash(
@@ -11068,10 +11171,13 @@ fn verify_native_execution_step(
     script_hash,
     subject,
   )
-  let source_leaf = script_proof_v1.source_leaf_hash(
+  let source_leaf = script_proof_v1.source_descriptor_leaf_hash(
     origin_kind,
     source_key,
-    script,
+    language_tag,
+    script_hash,
+    script_total_length,
+    script_item_commitment,
   )
   let execution_leaf = script_proof_v1.execution_leaf_hash(
     language_tag,
@@ -11082,8 +11188,9 @@ fn verify_native_execution_step(
   if and {
     execution_index == control.execution_cursor,
     control.execution_count == control.purpose_count,
-    script_proof_v1.versioned_script_hash(script) == script_hash,
-    native_language_tag_matches_script(language_tag, script),
+    script_total_length > 0,
+    script_total_length <= max_aggregate_field_preimage_bytes,
+    bytearray.length(script_item_commitment) == 32,
     validation_merkle_v1.verify_membership(
       control.purpose_count,
       control.purpose_peaks,
@@ -11107,41 +11214,55 @@ fn verify_native_execution_step(
     ),
   } {
     if language_tag == 0 {
-      if and {
+      expect Some(chunk_proof) = first_chunk_proof
+      expect Some(header) = native_script_scan_v1.versioned_script_header_v1(
+        chunk_proof.chunk,
+        script_total_length,
+      )
+      let continuation_cbor = encode_native_scripts_control_v1(control)
+      and {
         redeemer_leaf == #"",
-        native_signer_frontier_matches(
-          signer_hashes,
-          control.signer_count,
-          control.signer_frontier_commitment,
+        chunk_proof.chunk_index == 0,
+        chunk_proof.total_length == script_total_length,
+        bounded_item_v1.verify_chunk(
+          script_item_commitment,
+          chunk_proof,
         ),
-      } {
-        when
-          native_script_v1.check_native_script(
-            script.script_bytes,
-            body.validity_interval_start,
-            body.validity_interval_end,
-            signer_hashes,
-          )
-        is {
-          None -> False
-          Some(checked) ->
-            if checked.valid {
-              native_scripts_successor_is_exact(
-                pre,
-                witness,
-                control,
-                control.language_bitmap,
-              )
-            } else {
-              rejected_successor_is_exact(
-                pre,
-                witness.claimed_successor,
-                reject_native_script_invalid,
-              )
-            }
-        }
-      } else {
-        False
+        header.language_tag == 0,
+        validation_merkle_v1.frontier_is_well_formed(
+          control.signer_count,
+          signer_peaks,
+        ),
+        validation_merkle_v1.frontier_commitment(
+          control.signer_count,
+          signer_peaks,
+        ) == control.signer_frontier_commitment,
+        witness.claimed_successor.phase == validation_trace_v1.PhaseANativeScripts,
+        witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
+          validation_trace_v1.PhaseANativeScripts,
+          pre.program_counter + 1,
+          encode_phase_a_native_scripts_scan_witness(
+            control.compact_cbor,
+            control.witness_set_compact_cbor,
+            control.field_preimage_lengths_cbor,
+            control.context_cbor,
+            blake2b_256(continuation_cbor),
+            1,
+            1,
+            0,
+            0,
+            script_total_length,
+            script_item_commitment,
+            header.payload_offset,
+            #"",
+            0,
+            0,
+            -1,
+            control.signer_count,
+            signer_peaks,
+            continuation_cbor,
+          ),
+        ),
       }
     } else if and {
       or {
@@ -11149,7 +11270,8 @@ fn verify_native_execution_step(
         language_tag == 128,
       },
       bytearray.length(redeemer_leaf) == 32,
-      signer_hashes == [],
+      first_chunk_proof == None,
+      signer_peaks == [],
     } {
       native_scripts_successor_is_exact(
         pre,
@@ -11197,40 +11319,7 @@ fn verify_native_scripts(
       control.field_preimage_lengths_cbor,
     ) == pre.transaction_commitment,
     validation_trace_v1.hash_validation_context(control.context_cbor) == pre.validation_context_hash,
-    control.resolved_input_count >= 0,
-    bytearray.length(control.resolved_inputs_accumulator) == 32,
-    native_resolved_context_is_well_formed(control),
-    control.signer_count >= 0,
-    bytearray.length(control.signer_frontier_commitment) == 32,
-    validation_merkle_v1.frontier_is_well_formed(
-      control.source_count,
-      control.source_peaks,
-    ),
-    validation_merkle_v1.frontier_is_well_formed(
-      control.redeemer_count,
-      control.redeemer_peaks,
-    ),
-    validation_merkle_v1.frontier_is_well_formed(
-      control.purpose_count,
-      control.purpose_peaks,
-    ),
-    validation_merkle_v1.frontier_is_well_formed(
-      control.output_count,
-      control.output_peaks,
-    ),
-    validation_merkle_v1.frontier_is_well_formed(
-      control.output_count,
-      control.output_descriptor_peaks,
-    ),
-    validation_merkle_v1.frontier_is_well_formed(
-      control.execution_count,
-      control.execution_peaks,
-    ),
-    control.execution_count == control.purpose_count,
-    control.execution_cursor >= 0,
-    control.execution_cursor <= control.execution_count,
-    control.language_bitmap >= 0,
-    control.language_bitmap <= 3,
+    native_scripts_control_is_well_formed(control),
     witness.work_witness_cbor == encode_native_scripts_control_v1(control),
     if control.execution_cursor == control.execution_count {
       and {
@@ -11243,15 +11332,110 @@ fn verify_native_scripts(
         ),
       }
     } else {
-      verify_native_execution_step(
+      verify_native_execution_descriptor_step(
         pre,
         witness,
         auxiliary,
         control,
-        verified_source.tx_compact.body,
       )
     },
   }
+}
+
+pub fn verify_native_scripts_terminal_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+) -> Bool {
+  verify_native_scripts(pre, witness, NoAuxiliaryWitness)
+}
+
+pub fn verify_native_scripts_native_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  execution_index: Int,
+  purpose_kind: Int,
+  purpose_index: Int,
+  script_hash: ByteArray,
+  subject: ByteArray,
+  purpose_siblings: List<ByteArray>,
+  source_index: Int,
+  origin_kind: Int,
+  source_key: ByteArray,
+  script_total_length: Int,
+  script_item_commitment: ByteArray,
+  source_siblings: List<ByteArray>,
+  redeemer_leaf: ByteArray,
+  execution_siblings: List<ByteArray>,
+  first_chunk_proof: bounded_item_v1.ChunkProofV1,
+  signer_peaks: List<validation_merkle_v1.FrontierPeak>,
+) -> Bool {
+  verify_native_scripts(
+    pre,
+    witness,
+    NativeExecutionDescriptorWitness {
+      execution_index,
+      language_tag: 0,
+      purpose_kind,
+      purpose_index,
+      script_hash,
+      subject,
+      purpose_siblings,
+      source_index,
+      origin_kind,
+      source_key,
+      script_total_length,
+      script_item_commitment,
+      source_siblings,
+      redeemer_leaf,
+      execution_siblings,
+      first_chunk_proof: Some(first_chunk_proof),
+      signer_peaks,
+    },
+  )
+}
+
+pub fn verify_native_scripts_effectful_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  execution_index: Int,
+  language_tag: Int,
+  purpose_kind: Int,
+  purpose_index: Int,
+  script_hash: ByteArray,
+  subject: ByteArray,
+  purpose_siblings: List<ByteArray>,
+  source_index: Int,
+  origin_kind: Int,
+  source_key: ByteArray,
+  script_total_length: Int,
+  script_item_commitment: ByteArray,
+  source_siblings: List<ByteArray>,
+  redeemer_leaf: ByteArray,
+  execution_siblings: List<ByteArray>,
+) -> Bool {
+  verify_native_scripts(
+    pre,
+    witness,
+    NativeExecutionDescriptorWitness {
+      execution_index,
+      language_tag,
+      purpose_kind,
+      purpose_index,
+      script_hash,
+      subject,
+      purpose_siblings,
+      source_index,
+      origin_kind,
+      source_key,
+      script_total_length,
+      script_item_commitment,
+      source_siblings,
+      redeemer_leaf,
+      execution_siblings,
+      first_chunk_proof: None,
+      signer_peaks: [],
+    },
+  )
 }
 
 fn encode_data_sequence_summary_v1(

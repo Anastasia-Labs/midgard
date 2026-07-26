@@ -246,6 +246,101 @@ describe("validation-dispute transaction validity", () => {
     ).toThrow(
       "does not match the selected ScriptSources proof family",
     );
+
+    const nativeChunkProof = new Constr(0, [
+      1n,
+      7n,
+      0n,
+      3n,
+      0n,
+      "010203",
+      [],
+      [],
+    ]);
+    const nativeDescriptorFields = [
+      0n,
+      0n,
+      0n,
+      0n,
+      "33".repeat(28),
+      "44".repeat(32),
+      [],
+      0n,
+      0n,
+      "55".repeat(32),
+      3n,
+      "66".repeat(32),
+      [],
+      "",
+      [],
+      new Constr(0, [nativeChunkProof]),
+      [],
+    ] as const;
+    for (const selected of [
+      {
+        index: 0,
+        auxiliary: new Constr(0, []),
+        module: "native_scripts_terminal_semantic_v1",
+      },
+      {
+        index: 1,
+        auxiliary: new Constr(42, [...nativeDescriptorFields]),
+        module: "native_scripts_native_semantic_v1",
+      },
+      {
+        index: 2,
+        auxiliary: new Constr(42, [
+          nativeDescriptorFields[0],
+          3n,
+          ...nativeDescriptorFields.slice(2, 15),
+          new Constr(1, []),
+          [],
+        ]),
+        module: "native_scripts_effectful_semantic_v1",
+      },
+    ] as const) {
+      const cbor = encodeValidationSemanticResolutionRedeemerV1({
+        oneStepArgument: {
+          resolverIndex: 9,
+          semanticResolverIndex: selected.index,
+          transitionCbor,
+          auxiliaryCbor: Buffer.from(
+            Data.to(selected.auxiliary),
+            "hex",
+          ),
+          evidenceCbor: Buffer.alloc(0),
+        },
+        inputIndex: 0n,
+        outputIndex: 0n,
+      });
+      expect(
+        parseExactAikenDataCbor({
+          blueprint,
+          definitionName:
+            `fraud_proofs/validation_trace/${selected.module}/SpendRedeemer`,
+          cbor: cbor.toString("hex"),
+          maxBytes: 16 * 1024 - 1,
+        }),
+      ).toBeInstanceOf(Constr);
+    }
+    expect(() =>
+      encodeValidationSemanticResolutionRedeemerV1({
+        oneStepArgument: {
+          resolverIndex: 9,
+          semanticResolverIndex: 2,
+          transitionCbor,
+          auxiliaryCbor: Buffer.from(
+            Data.to(new Constr(42, [...nativeDescriptorFields])),
+            "hex",
+          ),
+          evidenceCbor: Buffer.alloc(0),
+        },
+        inputIndex: 0n,
+        outputIndex: 0n,
+      }),
+    ).toThrow(
+      "validation NativeScripts effectful first chunk must be constructor 1 with 0 fields",
+    );
   });
 
   it("reads exact lowercase CBOR files and rejects ambiguous wrappers", async () => {

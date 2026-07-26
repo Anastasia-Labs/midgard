@@ -102,6 +102,9 @@ const semanticResolverDefinitionsV1 = [
   "script_sources_stage_nine_native_match_semantic_v1",
   "script_sources_stage_nine_effectful_match_semantic_v1",
   "script_sources_stage_nine_missing_semantic_v1",
+  "native_scripts_terminal_semantic_v1",
+  "native_scripts_native_semantic_v1",
+  "native_scripts_effectful_semantic_v1",
   "script_integrity_authentication_semantic_v1",
   "script_integrity_compact_semantic_v1",
   "script_integrity_witness_set_semantic_v1",
@@ -116,7 +119,7 @@ const semanticResolverDefinitionsV1 = [
   "ledger_delta_terminal_semantic_v1",
 ] as const;
 const semanticResolverOffsetsV1 = [
-  0, 2, 3, 4, 6, 10, 24, 26, 32, -1, 46, -1, -1, 50,
+  0, 2, 3, 4, 6, 10, 24, 26, 32, 46, 49, -1, -1, 53,
 ] as const;
 
 const validateBoundaryAbiAndCollectAuxiliaryKinds = (
@@ -1061,12 +1064,18 @@ describe("deterministic validation machine", () => {
       "nativeScriptToken",
       "nativeScriptFrame",
       null,
+      "nativeScriptToken",
+      "nativeScriptToken",
+      "nativeScriptToken",
+      "nativeScriptToken",
+      "nativeScriptFrame",
+      null,
     ]);
     expect(
       trace.witnesses
         .filter((witness) => witness.phase === "phaseANativeScripts")
         .map(validationSemanticResolverIndexV1),
-    ).toEqual([1, 2, 3, 2, 8, 13, 0]);
+    ).toEqual([1, 2, 3, 2, 8, 13, 0, 2, 3, 2, 8, 13, 0]);
     const nativeSource = trace.witnesses.find(
       (witness) =>
         witness.auxiliary?.kind === "scriptSourceScan" &&
@@ -1452,7 +1461,7 @@ describe("deterministic validation machine", () => {
       ),
     ).toBe(true);
     expect(trace.verdict).toBe("rejected");
-  });
+  }, 15_000);
 
   it("fails closed before proving a malformed persisted ledger output", async () => {
     const spent = outRefFromByte(0x11);

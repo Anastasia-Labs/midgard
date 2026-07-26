@@ -777,47 +777,19 @@ const nativeScanCursor = (
   readonly stage: number;
   readonly cursor: number;
 } => {
-  const outer = readCborArrayHeader(
-    witness.cbor,
-    0,
+  const control = asArray(
+    Data.from(Buffer.from(witness.cbor).toString("hex")),
     "phase_a_native_control",
   );
-  if (outer.length !== 18) {
+  if (control.length !== 18) {
     throw new Error("phase-A native control has an invalid field count");
   }
-  let offset = outer.nextOffset;
-  for (let index = 0; index < 5; index += 1) {
-    offset = readCborBytes(
-      witness.cbor,
-      offset,
-      `phase_a_native_control.binding_${index.toString()}`,
-    ).nextOffset;
-  }
-  const stage = readCborInteger(
-    witness.cbor,
-    offset,
-    "phase_a_native_control.stage",
+  const exactStage = Number(
+    asBigInt(control[5], "phase_a_native_control.stage"),
   );
-  offset = stage.nextOffset;
-  for (let index = 0; index < 4; index += 1) {
-    offset = readCborInteger(
-      witness.cbor,
-      offset,
-      `phase_a_native_control.count_${index.toString()}`,
-    ).nextOffset;
-  }
-  offset = readCborBytes(
-    witness.cbor,
-    offset,
-    "phase_a_native_control.item_commitment",
-  ).nextOffset;
-  const cursor = readCborInteger(
-    witness.cbor,
-    offset,
-    "phase_a_native_control.cursor",
-  ).value;
-  const exactStage = Number(stage.value);
-  const exactCursor = Number(cursor);
+  const exactCursor = Number(
+    asBigInt(control[11], "phase_a_native_control.cursor"),
+  );
   if (
     !Number.isSafeInteger(exactStage) ||
     exactStage < 0 ||
@@ -1016,6 +988,11 @@ export const validationSemanticResolverIndexV1 = (
       if (auxiliary === null) return scriptIntegrityStage(witness);
       break;
     case "nativeScripts":
+      if (auxiliary === null) return 0;
+      if (auxiliary.kind === "nativeExecutionDescriptor") {
+        return auxiliary.languageTag === 0 ? 1 : 2;
+      }
+      break;
     case "cek":
     case "valueAndMint":
       return null;
@@ -1368,6 +1345,26 @@ export const validationAuxiliaryWitnessDataV1 = (
       return new Constr(41, [
         chunkProofData(auxiliary.chunkProof),
         option(auxiliary.nextChunkProof, chunkProofData),
+      ]);
+    case "nativeExecutionDescriptor":
+      return new Constr(42, [
+        int(auxiliary.executionIndex),
+        int(auxiliary.languageTag),
+        int(auxiliary.purpose.purposeKind),
+        auxiliary.purpose.purposeIndex,
+        bytes(auxiliary.purpose.scriptHash),
+        bytes(auxiliary.purpose.subject),
+        byteList(auxiliary.purpose.siblings),
+        int(auxiliary.source.sourceIndex),
+        originKind(auxiliary.source.originKind),
+        bytes(auxiliary.source.sourceKey),
+        int(auxiliary.source.scriptTotalLength),
+        bytes(auxiliary.source.scriptItemCommitment),
+        byteList(auxiliary.source.siblings),
+        bytes(auxiliary.redeemerLeaf),
+        byteList(auxiliary.executionSiblings),
+        option(auxiliary.firstChunkProof, chunkProofData),
+        frontierPeaksData(auxiliary.signerFrontier),
       ]);
   }
 };

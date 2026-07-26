@@ -438,7 +438,7 @@ describe("fault-proof contract builder", () => {
     expect(contracts.validationTraceDispute.firstStep).toBe(
       contracts.validationTraceDispute.steps[0],
     );
-    expect(contracts.validationTraceDispute.steps).toHaveLength(78);
+    expect(contracts.validationTraceDispute.steps).toHaveLength(81);
     expect(contracts.validationTraceDispute.resolvers).toHaveLength(
       VALIDATION_TRACE_RESOLVER_COUNT_V1,
     );
@@ -452,7 +452,7 @@ describe("fault-proof contract builder", () => {
           ...contracts.validationTraceDispute.steps,
         ].map((step) => step.spendingScriptHash),
       ).size,
-    ).toBe(97);
+    ).toBe(100);
   });
 
   it("builds invalid-range with the validator parameter order from the blueprint", async () => {
@@ -719,17 +719,22 @@ describe("fault-proof contract builder", () => {
         expectedSemanticResolvers[46]!,
         expectedSemanticResolvers[47]!,
         expectedSemanticResolvers[48]!,
-        expectedSemanticResolvers[49]!,
       ],
       [
+        expectedSemanticResolvers[49]!,
         expectedSemanticResolvers[50]!,
         expectedSemanticResolvers[51]!,
         expectedSemanticResolvers[52]!,
+      ],
+      [
         expectedSemanticResolvers[53]!,
         expectedSemanticResolvers[54]!,
         expectedSemanticResolvers[55]!,
         expectedSemanticResolvers[56]!,
         expectedSemanticResolvers[57]!,
+        expectedSemanticResolvers[58]!,
+        expectedSemanticResolvers[59]!,
+        expectedSemanticResolvers[60]!,
       ],
     ] as const;
     const resolverHashesSchema = Data.Array(Data.Bytes());
@@ -769,11 +774,11 @@ describe("fault-proof contract builder", () => {
       expectedPrepareResolvers[6]!,
       expectedPrepareResolvers[7]!,
       expectedPrepareResolvers[8]!,
-      expectedDirectResolvers[0]!,
       expectedPrepareResolvers[9]!,
-      expectedDirectResolvers[1]!,
-      expectedDirectResolvers[2]!,
       expectedPrepareResolvers[10]!,
+      expectedDirectResolvers[0]!,
+      expectedDirectResolvers[1]!,
+      expectedPrepareResolvers[11]!,
     ];
     expect(expectedResolvers).toHaveLength(VALIDATION_TRACE_RESOLVER_COUNT_V1);
     const resolverHashesData = Data.from(
@@ -851,7 +856,7 @@ describe("fault-proof contract builder", () => {
       ).toBeLessThan(14 * 1024);
     }
 
-    expect(contracts.validationTraceDispute.steps).toHaveLength(78);
+    expect(contracts.validationTraceDispute.steps).toHaveLength(81);
     expect(contracts.validationTraceDispute.award.spendingScriptCBOR).toBe(
       expectedAward,
     );

@@ -273,10 +273,10 @@ export const validationOneStepEvidenceHashV1 = ({
   );
 
 const VALIDATION_SEMANTIC_RESOLVER_COUNTS_V1 = [
-  2, 1, 1, 2, 4, 14, 2, 6, 14, 0, 4, 0, 0, 8,
+  2, 1, 1, 2, 4, 14, 2, 6, 14, 3, 4, 0, 0, 8,
 ] as const;
 const VALIDATION_SEMANTIC_RESOLVER_OFFSETS_V1 = [
-  0, 2, 3, 4, 6, 10, 24, 26, 32, -1, 46, -1, -1, 50,
+  0, 2, 3, 4, 6, 10, 24, 26, 32, 46, 49, -1, -1, 53,
 ] as const;
 
 const auxiliaryShapeV1 = ({
@@ -363,6 +363,16 @@ const auxiliaryShapeV1 = ({
       );
     }
     return outputAuxiliary;
+  }
+  if (resolverIndex === 9) {
+    const expected =
+      semanticResolverIndex === 0 ? [0, 0] : [42, 17];
+    return requireConstr({
+      value: auxiliary,
+      index: expected[0],
+      fields: expected[1],
+      label: "validation NativeScripts auxiliary witness",
+    });
   }
   const expected =
     resolverIndex === 0
@@ -485,12 +495,12 @@ const requireDirectOneStepArgumentV1 = (
 } => {
   if (
     !Number.isSafeInteger(argument.resolverIndex) ||
-    argument.resolverIndex < 9 ||
+    argument.resolverIndex < 11 ||
     argument.resolverIndex > 12 ||
     argument.semanticResolverIndex !== null
   ) {
     throw new Error(
-      "Direct validation one-step argument must select resolver 9 through 12",
+      "Direct validation one-step argument must select resolver 11 or 12",
     );
   }
   const transitionData = exactPlutusDataFromCbor(
@@ -1907,8 +1917,11 @@ const validationPrepareResolverDeploymentIndexV1 = (
   if (resolverIndex >= 0 && resolverIndex <= 8) {
     return resolverIndex;
   }
+  if (resolverIndex === 9 || resolverIndex === 10) {
+    return resolverIndex;
+  }
   if (resolverIndex === 13) {
-    return 9;
+    return 11;
   }
   throw new Error(
     `Validation resolver ${resolverIndex.toString()} is not staged`,
@@ -1918,8 +1931,8 @@ const validationPrepareResolverDeploymentIndexV1 = (
 const validationDirectResolverDeploymentIndexV1 = (
   resolverIndex: number,
 ): number => {
-  if (resolverIndex >= 9 && resolverIndex <= 12) {
-    return resolverIndex - 9;
+  if (resolverIndex >= 11 && resolverIndex <= 12) {
+    return resolverIndex - 11;
   }
   throw new Error(
     `Validation resolver ${resolverIndex.toString()} is not direct`,
@@ -2353,6 +2366,61 @@ const semanticActionFieldsV1 = ({
     }
     throw new Error(
       "ScriptSources auxiliary witness cannot construct the selected semantic redeemer",
+    );
+  }
+  if (resolverIndex === 9) {
+    if (
+      semanticResolverIndex === 0 &&
+      auxiliary.index === 0 &&
+      auxiliary.fields.length === 0
+    ) {
+      return base;
+    }
+    if (auxiliary.index === 42 && auxiliary.fields.length === 17) {
+      if (semanticResolverIndex === 1) {
+        const firstChunk = requireConstr({
+          value: auxiliary.fields[15]!,
+          index: 0,
+          fields: 1,
+          label: "validation NativeScripts native first chunk",
+        });
+        if (auxiliary.fields[1] !== 0n) {
+          throw new Error(
+            "NativeScripts native semantic route requires language tag 0",
+          );
+        }
+        return [
+          ...base,
+          auxiliary.fields[0]!,
+          ...auxiliary.fields.slice(2, 15),
+          firstChunk.fields[0]!,
+          auxiliary.fields[16]!,
+        ];
+      }
+      if (semanticResolverIndex === 2) {
+        const languageTag = auxiliary.fields[1];
+        const noFirstChunk = requireConstr({
+          value: auxiliary.fields[15]!,
+          index: 1,
+          fields: 0,
+          label: "validation NativeScripts effectful first chunk",
+        });
+        const signerPeaks = auxiliary.fields[16];
+        if (
+          (languageTag !== 3n && languageTag !== 128n) ||
+          noFirstChunk.fields.length !== 0 ||
+          !Array.isArray(signerPeaks) ||
+          signerPeaks.length !== 0
+        ) {
+          throw new Error(
+            "NativeScripts effectful semantic route has native-only evidence",
+          );
+        }
+        return [...base, ...auxiliary.fields.slice(0, 15)];
+      }
+    }
+    throw new Error(
+      "NativeScripts auxiliary witness cannot construct the selected semantic redeemer",
     );
   }
   if (
