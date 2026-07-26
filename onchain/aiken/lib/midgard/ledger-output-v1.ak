@@ -326,6 +326,14 @@ fn parse_address(data: Data) -> Option<MidgardAddress> {
   }
 }
 
+/// Canonical address decoder shared by the compact ledger-output descriptor.
+/// It is deliberately independent of the whole-output proof envelope.
+pub fn decode_canonical_address_bytes(
+  address_bytes: ByteArray,
+) -> Option<MidgardAddress> {
+  parse_address(builtin.b_data(address_bytes))
+}
+
 fn parse_script_ref(data: Data) -> Option<MidgardVersionedScript> {
   when list_data(data) is {
     Some([tag_data, script_bytes_data]) ->
