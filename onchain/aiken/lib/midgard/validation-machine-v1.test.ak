@@ -26,7 +26,6 @@ use midgard/fraud_proofs/native_tx/components.{
 }
 use midgard/fraud_proofs/native_tx/preimages.{
   decode_midgard_tx_mint_preimage_cbor, encode_input_preimage,
-  encode_mint_preimage,
 }
 use midgard/fraud_proofs/native_tx/transaction.{
   midgard_transaction_proof_commitment_v1, midgard_transaction_proof_source_v1,
@@ -64,12 +63,6 @@ const zero = #"0000000000000000000000000000000000000000000000000000000000000000"
 
 const maximum_mint_preimage_cbor =
   #"a1581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab88058200000000000000000000000000000000000000000000000000000000000000000015820000000000000000000000000000000000000000000000000000000000000000101582000000000000000000000000000000000000000000000000000000000000000020158200000000000000000000000000000000000000000000000000000000000000003015820000000000000000000000000000000000000000000000000000000000000000401582000000000000000000000000000000000000000000000000000000000000000050158200000000000000000000000000000000000000000000000000000000000000006015820000000000000000000000000000000000000000000000000000000000000000701582000000000000000000000000000000000000000000000000000000000000000080158200000000000000000000000000000000000000000000000000000000000000009015820000000000000000000000000000000000000000000000000000000000000000a015820000000000000000000000000000000000000000000000000000000000000000b015820000000000000000000000000000000000000000000000000000000000000000c015820000000000000000000000000000000000000000000000000000000000000000d015820000000000000000000000000000000000000000000000000000000000000000e015820000000000000000000000000000000000000000000000000000000000000000f0158200000000000000000000000000000000000000000000000000000000000000010015820000000000000000000000000000000000000000000000000000000000000001101582000000000000000000000000000000000000000000000000000000000000000120158200000000000000000000000000000000000000000000000000000000000000013015820000000000000000000000000000000000000000000000000000000000000001401582000000000000000000000000000000000000000000000000000000000000000150158200000000000000000000000000000000000000000000000000000000000000016015820000000000000000000000000000000000000000000000000000000000000001701582000000000000000000000000000000000000000000000000000000000000000180158200000000000000000000000000000000000000000000000000000000000000019015820000000000000000000000000000000000000000000000000000000000000001a015820000000000000000000000000000000000000000000000000000000000000001b015820000000000000000000000000000000000000000000000000000000000000001c015820000000000000000000000000000000000000000000000000000000000000001d015820000000000000000000000000000000000000000000000000000000000000001e015820000000000000000000000000000000000000000000000000000000000000001f0158200000000000000000000000000000000000000000000000000000000000000020015820000000000000000000000000000000000000000000000000000000000000002101582000000000000000000000000000000000000000000000000000000000000000220158200000000000000000000000000000000000000000000000000000000000000023015820000000000000000000000000000000000000000000000000000000000000002401582000000000000000000000000000000000000000000000000000000000000000250158200000000000000000000000000000000000000000000000000000000000000026015820000000000000000000000000000000000000000000000000000000000000002701582000000000000000000000000000000000000000000000000000000000000000280158200000000000000000000000000000000000000000000000000000000000000029015820000000000000000000000000000000000000000000000000000000000000002a015820000000000000000000000000000000000000000000000000000000000000002b015820000000000000000000000000000000000000000000000000000000000000002c015820000000000000000000000000000000000000000000000000000000000000002d015820000000000000000000000000000000000000000000000000000000000000002e015820000000000000000000000000000000000000000000000000000000000000002f0158200000000000000000000000000000000000000000000000000000000000000030015820000000000000000000000000000000000000000000000000000000000000003101582000000000000000000000000000000000000000000000000000000000000000320158200000000000000000000000000000000000000000000000000000000000000033015820000000000000000000000000000000000000000000000000000000000000003401582000000000000000000000000000000000000000000000000000000000000000350158200000000000000000000000000000000000000000000000000000000000000036015820000000000000000000000000000000000000000000000000000000000000003701582000000000000000000000000000000000000000000000000000000000000000380158200000000000000000000000000000000000000000000000000000000000000039015820000000000000000000000000000000000000000000000000000000000000003a015820000000000000000000000000000000000000000000000000000000000000003b015820000000000000000000000000000000000000000000000000000000000000003c015820000000000000000000000000000000000000000000000000000000000000003d015820000000000000000000000000000000000000000000000000000000000000003e015820000000000000000000000000000000000000000000000000000000000000003f0158200000000000000000000000000000000000000000000000000000000000000040015820000000000000000000000000000000000000000000000000000000000000004101582000000000000000000000000000000000000000000000000000000000000000420158200000000000000000000000000000000000000000000000000000000000000043015820000000000000000000000000000000000000000000000000000000000000004401582000000000000000000000000000000000000000000000000000000000000000450158200000000000000000000000000000000000000000000000000000000000000046015820000000000000000000000000000000000000000000000000000000000000004701582000000000000000000000000000000000000000000000000000000000000000480158200000000000000000000000000000000000000000000000000000000000000049015820000000000000000000000000000000000000000000000000000000000000004a015820000000000000000000000000000000000000000000000000000000000000004b015820000000000000000000000000000000000000000000000000000000000000004c015820000000000000000000000000000000000000000000000000000000000000004d015820000000000000000000000000000000000000000000000000000000000000004e015820000000000000000000000000000000000000000000000000000000000000004f0158200000000000000000000000000000000000000000000000000000000000000050015820000000000000000000000000000000000000000000000000000000000000005101582000000000000000000000000000000000000000000000000000000000000000520158200000000000000000000000000000000000000000000000000000000000000053015820000000000000000000000000000000000000000000000000000000000000005401582000000000000000000000000000000000000000000000000000000000000000550158200000000000000000000000000000000000000000000000000000000000000056015820000000000000000000000000000000000000000000000000000000000000005701582000000000000000000000000000000000000000000000000000000000000000580158200000000000000000000000000000000000000000000000000000000000000059015820000000000000000000000000000000000000000000000000000000000000005a015820000000000000000000000000000000000000000000000000000000000000005b015820000000000000000000000000000000000000000000000000000000000000005c015820000000000000000000000000000000000000000000000000000000000000005d015820000000000000000000000000000000000000000000000000000000000000005e015820000000000000000000000000000000000000000000000000000000000000005f0158200000000000000000000000000000000000000000000000000000000000000060015820000000000000000000000000000000000000000000000000000000000000006101582000000000000000000000000000000000000000000000000000000000000000620158200000000000000000000000000000000000000000000000000000000000000063015820000000000000000000000000000000000000000000000000000000000000006401582000000000000000000000000000000000000000000000000000000000000000650158200000000000000000000000000000000000000000000000000000000000000066015820000000000000000000000000000000000000000000000000000000000000006701582000000000000000000000000000000000000000000000000000000000000000680158200000000000000000000000000000000000000000000000000000000000000069015820000000000000000000000000000000000000000000000000000000000000006a015820000000000000000000000000000000000000000000000000000000000000006b015820000000000000000000000000000000000000000000000000000000000000006c015820000000000000000000000000000000000000000000000000000000000000006d015820000000000000000000000000000000000000000000000000000000000000006e015820000000000000000000000000000000000000000000000000000000000000006f0158200000000000000000000000000000000000000000000000000000000000000070015820000000000000000000000000000000000000000000000000000000000000007101582000000000000000000000000000000000000000000000000000000000000000720158200000000000000000000000000000000000000000000000000000000000000073015820000000000000000000000000000000000000000000000000000000000000007401582000000000000000000000000000000000000000000000000000000000000000750158200000000000000000000000000000000000000000000000000000000000000076015820000000000000000000000000000000000000000000000000000000000000007701582000000000000000000000000000000000000000000000000000000000000000780158200000000000000000000000000000000000000000000000000000000000000079015820000000000000000000000000000000000000000000000000000000000000007a015820000000000000000000000000000000000000000000000000000000000000007b015820000000000000000000000000000000000000000000000000000000000000007c015820000000000000000000000000000000000000000000000000000000000000007d015820000000000000000000000000000000000000000000000000000000000000007e015820000000000000000000000000000000000000000000000000000000000000007f01"
-
-const maximum_mint_transaction_id =
-  #"b69b7fdd5ec8fa6e66ff713db2dc03534fd8061f4a6dcace150ccd6c056df371"
-
-const maximum_mint_transaction_commitment =
-  #"6a55588e01211488fd676d8994674429bd8788fb3851c7326c7499952c2f8ecf"
 
 const validation_context_cbor =
   #"8701546d6964676172642d636f6e73656e7375732d763118640000001864"
@@ -1528,52 +1521,6 @@ fn cek_state_fixture(
   )
 }
 
-fn cek_state_fixture_from_commitments(
-  transaction_id: ByteArray,
-  transaction_commitment: ByteArray,
-  control: validation_machine_v1.NativeScriptsControlV1,
-  context_control_cbor: ByteArray,
-  execution_cursor: Int,
-  program_counter: Int,
-) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
-  let work_witness_cbor = validation_machine_v1.encode_cek_witness_v1(
-    control,
-    context_control_cbor,
-    execution_cursor,
-    0,
-    0,
-    #"",
-    0,
-    0,
-  )
-  Pair(
-    validation_trace_v1.ValidationMachineStateV1 {
-      machine_version: validation_trace_v1.machine_version,
-      event_key_hash: h_a,
-      transaction_id,
-      transaction_commitment,
-      validation_context_hash: validation_trace_v1.hash_validation_context(
-        validation_context_cbor,
-      ),
-      source_kind: validation_trace_v1.Forced,
-      prior_ledger_root: h_c,
-      phase: validation_trace_v1.Cek,
-      program_counter,
-      work_root: validation_trace_v1.hash_work_witness(
-        validation_trace_v1.Cek,
-        program_counter,
-        work_witness_cbor,
-      ),
-      execution_cpu: 0,
-      execution_memory: 0,
-      verdict: validation_trace_v1.Pending,
-      rejection_code_hash: zero,
-      ledger_delta_root: validation_trace_v1.hash_ledger_delta(#"80"),
-    },
-    work_witness_cbor,
-  )
-}
-
 fn empty_cek_context_control_fixture(
   stage: Int,
 ) -> validation_machine_v1.CekContextControlV1 {
@@ -1605,14 +1552,6 @@ fn empty_cek_context_control_fixture(
       cbor_length: 0,
       memory: 0,
     },
-    mint_preimage_hash: #"",
-    mint_preimage_length: 0,
-    mint_offset: 0,
-    mint_policy_remaining: 0,
-    mint_asset_remaining: 0,
-    previous_mint_asset: #"",
-    mint_count: 0,
-    mint_peaks: validation_merkle_v1.empty_frontier(),
     mint_cursor: 0,
     current_mint_policy: #"",
     current_mint_assets: cek_data_v1.empty_data_pair_summary_v1(),
@@ -1640,34 +1579,42 @@ fn cek_context_native_control_fixture(
   }
 }
 
-fn maximum_mint_native_control_fixture() -> validation_machine_v1.NativeScriptsControlV1 {
-  let singleton = validation_merkle_v1.build_frontier([h_a])
-  validation_machine_v1.NativeScriptsControlV1 {
-    compact_cbor: #"84028c582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0002020582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c058202c64b6e8463997fc126bfce01ba8c2bd55f29c81733d8b72147865335753be67582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff582052408b440567f475c3eee21c9a8be91ed05a31e81e175c69fcaec5ccd187258c00",
-    witness_set_compact_cbor: #"83582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0",
-    field_preimage_lengths_cbor: #"8901010101011911a1010101",
-    context_cbor: validation_context_cbor,
-    resolved_input_count: 0,
-    resolved_inputs_accumulator: validation_machine_v1.initial_resolution_accumulator(),
-    spend_input_count: 0,
-    resolved_item_peaks: validation_merkle_v1.empty_frontier(),
-    signer_count: 0,
-    signer_frontier_commitment: validation_merkle_v1.frontier_commitment(0, []),
-    source_count: 0,
-    source_peaks: validation_merkle_v1.empty_frontier(),
-    redeemer_count: 0,
-    redeemer_peaks: validation_merkle_v1.empty_frontier(),
-    purpose_count: 1,
-    purpose_peaks: singleton.peaks,
-    output_count: 0,
-    output_peaks: validation_merkle_v1.empty_frontier(),
-    output_descriptor_peaks: validation_merkle_v1.empty_frontier(),
-    mint_count: 0,
-    mint_peaks: validation_merkle_v1.empty_frontier(),
-    execution_count: 1,
-    execution_peaks: singleton.peaks,
-    execution_cursor: 1,
-    language_bitmap: 1,
+fn test_power_of_two(exponent: Int) -> Int {
+  if exponent == 0 {
+    1
+  } else {
+    2 * test_power_of_two(exponent - 1)
+  }
+}
+
+fn maximum_mint_subtree_root(start: Int, size: Int) -> ByteArray {
+  if size == 1 {
+    validation_machine_v1.mint_asset_leaf_hash(
+      h_28_a,
+      bytearray.from_int_big_endian(start, 32),
+      1,
+    )
+  } else {
+    let half = size / 2
+    validation_merkle_v1.hash_branch(
+      maximum_mint_subtree_root(start, half),
+      maximum_mint_subtree_root(start + half, half),
+    )
+  }
+}
+
+fn maximum_mint_last_asset_siblings(level: Int) -> List<ByteArray> {
+  if level == 7 {
+    []
+  } else {
+    let sibling_size = test_power_of_two(level)
+    [
+      maximum_mint_subtree_root(
+        128 - 2 * sibling_size,
+        sibling_size,
+      ),
+      ..maximum_mint_last_asset_siblings(level + 1)
+    ]
   }
 }
 
@@ -4802,7 +4749,6 @@ test script_sources_rejects_an_unsigned_protected_pubkey_output() {
     ..base,
     body: MidgardTransactionBody { ..base.body, outputs: [output] },
   }
-  let empty_frontier = validation_merkle_v1.build_frontier([])
   let output_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.output_leaf_hash(0, output_cbor)],
   )
@@ -6354,14 +6300,6 @@ test cek_execution_selection_authenticates_program_and_context_subject() {
       cbor_length: 0,
       memory: 0,
     },
-    mint_preimage_hash: #"",
-    mint_preimage_length: 0,
-    mint_offset: 0,
-    mint_policy_remaining: 0,
-    mint_asset_remaining: 0,
-    previous_mint_asset: #"",
-    mint_count: 0,
-    mint_peaks: validation_merkle_v1.empty_frontier(),
     mint_cursor: 0,
     current_mint_policy: #"",
     current_mint_assets: cek_data_v1.empty_data_pair_summary_v1(),
@@ -6430,14 +6368,6 @@ test cross_language_cek_context_control_vectors() {
       cbor_length: 0,
       memory: 0,
     },
-    mint_preimage_hash: #"",
-    mint_preimage_length: 0,
-    mint_offset: 0,
-    mint_policy_remaining: 0,
-    mint_asset_remaining: 0,
-    previous_mint_asset: #"",
-    mint_count: 0,
-    mint_peaks: validation_merkle_v1.empty_frontier(),
     mint_cursor: 0,
     current_mint_policy: #"",
     current_mint_assets: cek_data_v1.empty_data_pair_summary_v1(),
@@ -6449,7 +6379,7 @@ test cross_language_cek_context_control_vectors() {
     },
   }
   and {
-    validation_machine_v1.encode_cek_context_control_v1(context) == #"981d00035820aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0000581cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb41005820cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc4000008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa560000008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa560000008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa560000008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa560000008340000040000000004000800040845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba200000083400000",
+    validation_machine_v1.encode_cek_context_control_v1(context) == #"9500035820aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0000581cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb41005820cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc4000008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa560000008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa560000008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa560000008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa56000000834000000040845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba200000083400000",
     validation_machine_v1.hash_cek_redeemer_context_control_v1(
       validation_machine_v1.initial_cek_redeemer_context_control_v1(),
     ) == #"c56f80a85b46a479d9a766ce7050e825484f42da6453a3ec217afc6b03d5f938",
@@ -6670,14 +6600,6 @@ test cek_context_spend_item_uses_authenticated_resolved_frontier() {
       cbor_length: 0,
       memory: 0,
     },
-    mint_preimage_hash: #"",
-    mint_preimage_length: 0,
-    mint_offset: 0,
-    mint_policy_remaining: 0,
-    mint_asset_remaining: 0,
-    previous_mint_asset: #"",
-    mint_count: 0,
-    mint_peaks: validation_merkle_v1.empty_frontier(),
     mint_cursor: 0,
     current_mint_policy: #"",
     current_mint_assets: cek_data_v1.empty_data_pair_summary_v1(),
@@ -6855,7 +6777,13 @@ test cek_context_mint_is_authenticated_and_folded_incrementally() {
     ..base,
     body: MidgardTransactionBody { ..base.body, mint },
   }
-  let control = cek_context_native_control_fixture(tx)
+  let mint_leaf = validation_machine_v1.mint_asset_leaf_hash(h_28_a, #"01", -5)
+  let mint_frontier = validation_merkle_v1.build_frontier([mint_leaf])
+  let control = validation_machine_v1.NativeScriptsControlV1 {
+    ..cek_context_native_control_fixture(tx),
+    mint_count: mint_frontier.count,
+    mint_peaks: mint_frontier.peaks,
+  }
   expect Some(observer_summary) = script_context_v1.observer_collection_summary_v1(
     [],
     False,
@@ -6864,15 +6792,9 @@ test cek_context_mint_is_authenticated_and_folded_incrementally() {
     ..empty_cek_context_control_fixture(6),
     observer_summary,
   }
-  let mint_leaf = validation_machine_v1.mint_asset_leaf_hash(h_28_a, #"01", -5)
-  let mint_frontier = validation_merkle_v1.build_frontier([mint_leaf])
-  let scan_control = validation_machine_v1.CekContextControlV1 {
+  let semantic_control = validation_machine_v1.CekContextControlV1 {
     ..init_control,
-    stage: 7,
-    mint_preimage_hash: #"a6a34a174a22fa5cb2e8b3fd6b0c360f67601e0df8cdc5a101118958ac3afa65",
-    mint_preimage_length: 35,
-    mint_offset: 1,
-    mint_policy_remaining: 1,
+    stage: 8,
   }
   let Pair(init_pre, init_work_witness_cbor) = cek_state_fixture(
     tx,
@@ -6884,54 +6806,18 @@ test cek_context_mint_is_authenticated_and_folded_incrementally() {
   let Pair(init_post, _) = cek_state_fixture(
     tx,
     control,
-    validation_machine_v1.encode_cek_context_control_v1(scan_control),
+    validation_machine_v1.encode_cek_context_control_v1(semantic_control),
     0,
     48,
   )
-  let init_step = validation_machine_v1.verify_one_step_evidence(
+  let init_step = validation_machine_v1.verify_cek_one_step_v1(
     init_pre,
     validation_machine_v1.ValidationOneStepEvidenceV1 {
       transition: validation_machine_v1.ValidationOneStepWitnessV1 {
         work_witness_cbor: init_work_witness_cbor,
         claimed_successor: init_post,
       },
-      auxiliary: validation_machine_v1.TransactionFieldPreimageWitness {
-        preimage_cbor: encode_mint_preimage(tx.body.mint),
-      },
-    },
-  )
-  let semantic_control = validation_machine_v1.CekContextControlV1 {
-    ..scan_control,
-    stage: 8,
-    mint_offset: 35,
-    mint_policy_remaining: 0,
-    mint_count: 1,
-    mint_peaks: mint_frontier.peaks,
-  }
-  let Pair(scan_pre, scan_work_witness_cbor) = cek_state_fixture(
-    tx,
-    control,
-    validation_machine_v1.encode_cek_context_control_v1(scan_control),
-    0,
-    48,
-  )
-  let Pair(scan_post, _) = cek_state_fixture(
-    tx,
-    control,
-    validation_machine_v1.encode_cek_context_control_v1(semantic_control),
-    0,
-    49,
-  )
-  let scan_step = validation_machine_v1.verify_one_step_evidence(
-    scan_pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
-        work_witness_cbor: scan_work_witness_cbor,
-        claimed_successor: scan_post,
-      },
-      auxiliary: validation_machine_v1.TransactionFieldPreimageWitness {
-        preimage_cbor: encode_mint_preimage(tx.body.mint),
-      },
+      auxiliary: validation_machine_v1.NoAuxiliaryWitness,
     },
   )
   let asset_items = cek_data_v1.prepend_data_pair_summary_v1(
@@ -6950,16 +6836,16 @@ test cek_context_mint_is_authenticated_and_folded_incrementally() {
     control,
     validation_machine_v1.encode_cek_context_control_v1(semantic_control),
     0,
-    49,
+    48,
   )
   let Pair(item_post, _) = cek_state_fixture(
     tx,
     control,
     validation_machine_v1.encode_cek_context_control_v1(item_control),
     0,
-    50,
+    49,
   )
-  let item_step = validation_machine_v1.verify_one_step_evidence(
+  let item_step = validation_machine_v1.verify_cek_one_step_v1(
     item_pre,
     validation_machine_v1.ValidationOneStepEvidenceV1 {
       transition: validation_machine_v1.ValidationOneStepWitnessV1 {
@@ -6993,16 +6879,16 @@ test cek_context_mint_is_authenticated_and_folded_incrementally() {
     control,
     validation_machine_v1.encode_cek_context_control_v1(item_control),
     0,
-    50,
+    49,
   )
   let Pair(final_post, _) = cek_state_fixture(
     tx,
     control,
     validation_machine_v1.encode_cek_context_control_v1(final_control),
     0,
-    51,
+    50,
   )
-  let final_step = validation_machine_v1.verify_one_step_evidence(
+  let final_step = validation_machine_v1.verify_cek_one_step_v1(
     final_pre,
     validation_machine_v1.ValidationOneStepEvidenceV1 {
       transition: validation_machine_v1.ValidationOneStepWitnessV1 {
@@ -7014,7 +6900,6 @@ test cek_context_mint_is_authenticated_and_folded_incrementally() {
   )
   and {
     init_step,
-    scan_step,
     item_step,
     final_step,
   }
@@ -7083,9 +6968,6 @@ test cek_context_redeemer_scalar_scan_is_content_addressed() {
     subject,
     redeemer_leaf,
     observer_summary,
-    mint_preimage_hash: blake2b_256(#"80"),
-    mint_preimage_length: 1,
-    mint_offset: 1,
     mint_summary,
     redeemer_context_control_hash: validation_machine_v1.hash_cek_redeemer_context_control_v1(
       active_redeemers,
@@ -7199,9 +7081,6 @@ test cek_context_redeemer_map_selection_authenticates_purpose_and_redeemer() {
     subject,
     redeemer_leaf,
     observer_summary,
-    mint_preimage_hash: blake2b_256(#"80"),
-    mint_preimage_length: 1,
-    mint_offset: 1,
     mint_summary: cek_data_v1.map_data_summary_v1(
       cek_data_v1.empty_data_pair_summary_v1(),
     ),
@@ -7307,9 +7186,6 @@ test cek_context_finalize_seeds_the_exact_semantic_context_application() {
     subject: h_28_a,
     redeemer_leaf,
     observer_summary,
-    mint_preimage_hash: blake2b_256(#"80"),
-    mint_preimage_length: 1,
-    mint_offset: 1,
     mint_summary: cek_data_v1.map_data_summary_v1(
       cek_data_v1.empty_data_pair_summary_v1(),
     ),
@@ -7405,9 +7281,6 @@ test cek_context_seed_fits_one_step() {
     ..empty_cek_context_control_fixture(13),
     purpose_kind: 1,
     observer_summary,
-    mint_preimage_hash: blake2b_256(#"80"),
-    mint_preimage_length: 1,
-    mint_offset: 1,
     mint_summary: cek_data_v1.map_data_summary_v1(empty_pairs),
     redeemer_context_control_hash: validation_machine_v1.hash_cek_final_context_control_v1(
       final_context,
@@ -7499,9 +7372,6 @@ test cek_context_assemble_fits_one_step() {
     ..empty_cek_context_control_fixture(11),
     purpose_kind: 1,
     observer_summary,
-    mint_preimage_hash: blake2b_256(#"80"),
-    mint_preimage_length: 1,
-    mint_offset: 1,
     mint_summary: cek_data_v1.map_data_summary_v1(empty_pairs),
     redeemer_context_control_hash: validation_machine_v1.hash_cek_context_parts_control_v1(
       parts,
@@ -7593,9 +7463,6 @@ test cek_context_tx_info_finalize_fits_one_step() {
     ..empty_cek_context_control_fixture(12),
     purpose_kind: 1,
     observer_summary,
-    mint_preimage_hash: blake2b_256(#"80"),
-    mint_preimage_length: 1,
-    mint_offset: 1,
     mint_summary: mint,
     redeemer_context_control_hash: validation_machine_v1.hash_cek_tx_info_assembly_control_v1(
       assembly,
@@ -7652,8 +7519,21 @@ test cek_context_tx_info_finalize_fits_one_step() {
   )
 }
 
-test cek_context_maximum_mint_stream_initialization_fits_one_step() {
-  let control = maximum_mint_native_control_fixture()
+test cek_context_maximum_mint_initializes_from_authenticated_frontier() {
+  let mint = decode_midgard_tx_mint_preimage_cbor(maximum_mint_preimage_cbor)
+  let base = empty_v1_transaction()
+  let tx = MidgardTransaction {
+    ..base,
+    body: MidgardTransactionBody { ..base.body, mint },
+  }
+  let mint_frontier = validation_merkle_v1.build_frontier(
+    maximum_mint_asset_leaves(0, 128),
+  )
+  let control = validation_machine_v1.NativeScriptsControlV1 {
+    ..cek_context_native_control_fixture(tx),
+    mint_count: mint_frontier.count,
+    mint_peaks: mint_frontier.peaks,
+  }
   expect Some(observer_summary) = script_context_v1.observer_collection_summary_v1(
     [],
     False,
@@ -7662,101 +7542,98 @@ test cek_context_maximum_mint_stream_initialization_fits_one_step() {
     ..empty_cek_context_control_fixture(6),
     observer_summary,
   }
-  let scan_control = validation_machine_v1.CekContextControlV1 {
+  let semantic_control = validation_machine_v1.CekContextControlV1 {
     ..init_control,
-    stage: 7,
-    mint_preimage_hash: #"2c64b6e8463997fc126bfce01ba8c2bd55f29c81733d8b72147865335753be67",
-    mint_preimage_length: 4513,
-    mint_offset: 1,
-    mint_policy_remaining: 1,
+    stage: 8,
   }
-  let Pair(pre, work_witness_cbor) = cek_state_fixture_from_commitments(
-    maximum_mint_transaction_id,
-    maximum_mint_transaction_commitment,
+  let Pair(pre, work_witness_cbor) = cek_state_fixture(
+    tx,
     control,
     validation_machine_v1.encode_cek_context_control_v1(init_control),
     0,
     51,
   )
-  let Pair(post, _) = cek_state_fixture_from_commitments(
-    maximum_mint_transaction_id,
-    maximum_mint_transaction_commitment,
+  let Pair(post, _) = cek_state_fixture(
+    tx,
     control,
-    validation_machine_v1.encode_cek_context_control_v1(scan_control),
+    validation_machine_v1.encode_cek_context_control_v1(semantic_control),
     0,
     52,
   )
-  validation_machine_v1.verify_one_step_evidence(
+  validation_machine_v1.verify_cek_one_step_v1(
     pre,
     validation_machine_v1.ValidationOneStepEvidenceV1 {
       transition: validation_machine_v1.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: post,
       },
-      auxiliary: validation_machine_v1.TransactionFieldPreimageWitness {
-        preimage_cbor: maximum_mint_preimage_cbor,
-      },
+      auxiliary: validation_machine_v1.NoAuxiliaryWitness,
     },
   )
 }
 
-test cek_context_maximum_mint_stream_item_fits_one_step() {
-  let control = maximum_mint_native_control_fixture()
+test cek_context_maximum_mint_authenticates_last_asset_membership() {
+  let mint = decode_midgard_tx_mint_preimage_cbor(maximum_mint_preimage_cbor)
+  let base = empty_v1_transaction()
+  let tx = MidgardTransaction {
+    ..base,
+    body: MidgardTransactionBody { ..base.body, mint },
+  }
+  let mint_frontier = validation_merkle_v1.build_frontier(
+    maximum_mint_asset_leaves(0, 128),
+  )
+  let control = validation_machine_v1.NativeScriptsControlV1 {
+    ..cek_context_native_control_fixture(tx),
+    mint_count: mint_frontier.count,
+    mint_peaks: mint_frontier.peaks,
+  }
   expect Some(observer_summary) = script_context_v1.observer_collection_summary_v1(
     [],
     False,
   )
-  let scan_control = validation_machine_v1.CekContextControlV1 {
-    ..empty_cek_context_control_fixture(7),
+  let semantic_control = validation_machine_v1.CekContextControlV1 {
+    ..empty_cek_context_control_fixture(8),
     observer_summary,
-    mint_preimage_hash: #"2c64b6e8463997fc126bfce01ba8c2bd55f29c81733d8b72147865335753be67",
-    mint_preimage_length: 4513,
-    mint_offset: 1,
-    mint_policy_remaining: 1,
   }
-  let first_asset = bytearray.from_int_big_endian(0, 32)
-  let first_leaf = validation_machine_v1.mint_asset_leaf_hash(
-    h_28_a,
-    first_asset,
-    1,
+  let last_asset = bytearray.from_int_big_endian(127, 32)
+  let asset_items = cek_data_v1.prepend_data_pair_summary_v1(
+    builtin.b_data(last_asset) |> cek_data_v1.semantic_data_summary_v1,
+    builtin.i_data(1) |> cek_data_v1.semantic_data_summary_v1,
+    cek_data_v1.empty_data_pair_summary_v1(),
   )
   let next_control = validation_machine_v1.CekContextControlV1 {
-    ..scan_control,
-    mint_offset: 68,
-    mint_policy_remaining: 0,
-    mint_asset_remaining: 127,
-    previous_mint_asset: first_asset,
-    mint_count: 1,
-    mint_peaks: [
-      validation_merkle_v1.FrontierPeak { height: 0, hash: first_leaf },
-    ],
+    ..semantic_control,
+    mint_cursor: 1,
     current_mint_policy: h_28_a,
+    current_mint_assets: asset_items,
   }
-  let Pair(pre, work_witness_cbor) = cek_state_fixture_from_commitments(
-    maximum_mint_transaction_id,
-    maximum_mint_transaction_commitment,
+  let Pair(pre, work_witness_cbor) = cek_state_fixture(
+    tx,
     control,
-    validation_machine_v1.encode_cek_context_control_v1(scan_control),
+    validation_machine_v1.encode_cek_context_control_v1(semantic_control),
     0,
     53,
   )
-  let Pair(post, _) = cek_state_fixture_from_commitments(
-    maximum_mint_transaction_id,
-    maximum_mint_transaction_commitment,
+  let Pair(post, _) = cek_state_fixture(
+    tx,
     control,
     validation_machine_v1.encode_cek_context_control_v1(next_control),
     0,
     54,
   )
-  validation_machine_v1.verify_one_step_evidence(
+  validation_machine_v1.verify_cek_one_step_v1(
     pre,
     validation_machine_v1.ValidationOneStepEvidenceV1 {
       transition: validation_machine_v1.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: post,
       },
-      auxiliary: validation_machine_v1.TransactionFieldPreimageWitness {
-        preimage_cbor: maximum_mint_preimage_cbor,
+      auxiliary: validation_machine_v1.CekMintContextItemWitness {
+        mint_index: 127,
+        policy_id: h_28_a,
+        asset_name: last_asset,
+        quantity: 1,
+        siblings: maximum_mint_last_asset_siblings(0),
       },
     },
   )
@@ -8730,7 +8607,7 @@ test value_and_mint_uses_authenticated_native_mint_frontier() {
       ),
     ),
   }
-  validation_machine_v1.verify_value_and_mint_one_step_v1(
+  let valid_step = validation_machine_v1.verify_value_and_mint_one_step_v1(
     pre,
     validation_machine_v1.ValidationOneStepEvidenceV1 {
       transition: validation_machine_v1.ValidationOneStepWitnessV1 {
@@ -8740,6 +8617,51 @@ test value_and_mint_uses_authenticated_native_mint_frontier() {
       auxiliary: validation_machine_v1.NoAuxiliaryWitness,
     },
   )
+  let malformed_native_control = validation_machine_v1.NativeScriptsControlV1 {
+    ..native_control,
+    mint_count: 0,
+  }
+  let malformed_control = validation_machine_v1.ValueAndMintControlV1 {
+    ..control,
+    native_control: malformed_native_control,
+  }
+  let malformed_work_witness_cbor = validation_machine_v1.encode_value_and_mint_control_v1(
+    malformed_control,
+  )
+  let malformed_pre = validation_trace_v1.ValidationMachineStateV1 {
+    ..pre,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.ValueAndMint,
+      pre.program_counter,
+      malformed_work_witness_cbor,
+    ),
+  }
+  let malformed_post = validation_trace_v1.ValidationMachineStateV1 {
+    ..post,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.ValueAndMint,
+      post.program_counter,
+      validation_machine_v1.encode_value_and_mint_control_v1(
+        validation_machine_v1.ValueAndMintControlV1 {
+          ..malformed_control,
+          stage: 2,
+        },
+      ),
+    ),
+  }
+  and {
+    valid_step,
+    !validation_machine_v1.verify_value_and_mint_one_step_v1(
+      malformed_pre,
+      validation_machine_v1.ValidationOneStepEvidenceV1 {
+        transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+          work_witness_cbor: malformed_work_witness_cbor,
+          claimed_successor: malformed_post,
+        },
+        auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+      },
+    ),
+  }
 }
 
 test value_and_mint_replays_signed_burn_leaf_on_l1() {

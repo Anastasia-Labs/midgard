@@ -687,14 +687,15 @@ describe("deterministic validation machine", () => {
         quantity > 0n ? makeOutput(10n) : makeOutput(10n, undefined, assets);
       const output =
         quantity > 0n ? makeOutput(10n, undefined, assets) : makeOutput(10n);
+      const mintPreimageCbor = encodeCbor(
+        new Map([[policyId, new Map([[assetName, quantity]])]]),
+      );
       const transaction = makeNativeTx({
         version: 1n,
         spendInputs: [spent],
         outputs: [output],
         scriptWitnesses: [script],
-        mintPreimageCbor: encodeCbor(
-          new Map([[policyId, new Map([[assetName, quantity]])]]),
-        ),
+        mintPreimageCbor,
         redeemerTxWitsPreimageCbor: makeRedeemersCbor([
           {
             tag: MidgardRedeemerTag.Mint,
@@ -742,6 +743,14 @@ describe("deterministic validation machine", () => {
         kind: "cekMintContextItem",
         quantity,
       });
+      expect(
+        trace.witnesses.some(
+          (witness) =>
+            witness.phase === "cek" &&
+            witness.auxiliary?.kind === "transactionFieldPreimage" &&
+            witness.auxiliary.preimageCbor.equals(mintPreimageCbor),
+        ),
+      ).toBe(false);
       expect(
         trace.witnesses.some(
           (witness) => witness.auxiliary?.kind === "cekCoreStep",

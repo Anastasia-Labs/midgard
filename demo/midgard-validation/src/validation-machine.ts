@@ -5648,7 +5648,6 @@ export const buildDeterministicValidationMachineTrace = (
               observerSummary: contextParts.observer,
             };
 
-            const mintPreimage = fieldPreimages[5]!.preimageCbor;
             pushWitness(
               "cek",
               cekWitness({
@@ -5657,131 +5656,50 @@ export const buildDeterministicValidationMachineTrace = (
                 completedCpu,
                 completedMemory,
               }),
-              {
-                kind: "transactionFieldPreimage",
-                preimageCbor: mintPreimage,
-              },
             );
-            const mintPreimageHash = hash32(mintPreimage);
-            type ScannedMintAsset = {
-              readonly policyId: Buffer;
-              readonly assetName: Buffer;
-              readonly quantity: bigint;
-            };
-            const scannedMintAssets: ScannedMintAsset[] = [];
-            if (mintPreimage.equals(Buffer.from("80", "hex"))) {
+            const authenticatedMintAssets = [
+              ...phaseALedgerTx!.mint.assets,
+            ].map((asset) => ({
+              policyId: Buffer.from(asset.policyId),
+              assetName: Buffer.from(asset.assetName),
+              quantity: asset.quantity,
+            }));
+            const authenticatedMintLeaves = authenticatedMintAssets.map(
+              (asset) => hashMidgardMintAssetLeafV1(asset),
+            );
+            const authenticatedMintFrontier =
+              buildMidgardValidationMerkleFrontierV1(authenticatedMintLeaves);
+            if (
+              !commitMidgardValidationMerkleFrontierV1(
+                authenticatedMintFrontier,
+              ).equals(
+                commitMidgardValidationMerkleFrontierV1(
+                  mintFoldControl.assetFrontier,
+                ),
+              )
+            ) {
+              throw new Error(
+                "CEK mint context does not match the authenticated NativeScripts mint frontier",
+              );
+            }
+            if (authenticatedMintAssets.length === 0) {
               contextControl = {
                 ...contextControl,
                 stage: 9,
-                mintPreimageHash,
-                mintPreimageLength: mintPreimage.length,
-                mintOffset: mintPreimage.length,
                 mintSummary: contextParts.mint,
               };
             } else {
-              const header = readCborMapHeader(mintPreimage, 0, "v1.cek.mint");
               contextControl = {
                 ...contextControl,
-                stage: 7,
-                mintPreimageHash,
-                mintPreimageLength: mintPreimage.length,
-                mintOffset: header.nextOffset,
-                mintPolicyRemaining: header.length,
+                stage: 8,
               };
-              while (contextControl.stage === 7) {
-                pushWitness(
-                  "cek",
-                  cekWitness({
-                    contextControl,
-                    executionCursor: executionIndex,
-                    completedCpu,
-                    completedMemory,
-                  }),
-                  {
-                    kind: "transactionFieldPreimage",
-                    preimageCbor: mintPreimage,
-                  },
-                );
-                let policyId: Buffer;
-                let assetName: Buffer;
-                let quantity: bigint;
-                let nextOffset: number;
-                let nextPolicyRemaining = contextControl.mintPolicyRemaining;
-                let nextAssetRemaining = contextControl.mintAssetRemaining;
-                if (contextControl.mintAssetRemaining === 0) {
-                  const policy = readCborBytes(
-                    mintPreimage,
-                    contextControl.mintOffset,
-                    "v1.cek.mint.policy",
-                  );
-                  const assets = readCborMapHeader(
-                    mintPreimage,
-                    policy.nextOffset,
-                    "v1.cek.mint.assets",
-                  );
-                  const asset = readCborBytes(
-                    mintPreimage,
-                    assets.nextOffset,
-                    "v1.cek.mint.asset",
-                  );
-                  const amount = readCborInteger(
-                    mintPreimage,
-                    asset.nextOffset,
-                    "v1.cek.mint.quantity",
-                  );
-                  policyId = Buffer.from(policy.value);
-                  assetName = Buffer.from(asset.value);
-                  quantity = amount.value;
-                  nextOffset = amount.nextOffset;
-                  nextPolicyRemaining -= 1;
-                  nextAssetRemaining = assets.length - 1;
-                } else {
-                  const asset = readCborBytes(
-                    mintPreimage,
-                    contextControl.mintOffset,
-                    "v1.cek.mint.asset",
-                  );
-                  const amount = readCborInteger(
-                    mintPreimage,
-                    asset.nextOffset,
-                    "v1.cek.mint.quantity",
-                  );
-                  policyId = contextControl.currentMintPolicy;
-                  assetName = Buffer.from(asset.value);
-                  quantity = amount.value;
-                  nextOffset = amount.nextOffset;
-                  nextAssetRemaining -= 1;
-                }
-                scannedMintAssets.push({
-                  policyId,
-                  assetName,
-                  quantity,
-                });
-                const finished =
-                  nextPolicyRemaining === 0 && nextAssetRemaining === 0;
-                const nextMintLeaves = scannedMintAssets.map((asset) =>
-                  hashMidgardMintAssetLeafV1(asset),
-                );
-                contextControl = {
-                  ...contextControl,
-                  stage: finished ? 8 : 7,
-                  mintOffset: nextOffset,
-                  mintPolicyRemaining: nextPolicyRemaining,
-                  mintAssetRemaining: nextAssetRemaining,
-                  previousMintAsset: finished ? Buffer.alloc(0) : assetName,
-                  mintCount: scannedMintAssets.length,
-                  mintFrontier:
-                    buildMidgardValidationMerkleFrontierV1(nextMintLeaves),
-                  currentMintPolicy: finished ? Buffer.alloc(0) : policyId,
-                };
-              }
 
               for (
-                let mintIndex = scannedMintAssets.length - 1;
+                let mintIndex = authenticatedMintAssets.length - 1;
                 mintIndex >= 0;
                 mintIndex -= 1
               ) {
-                const asset = scannedMintAssets[mintIndex]!;
+                const asset = authenticatedMintAssets[mintIndex]!;
                 pushWitness(
                   "cek",
                   cekWitness({
@@ -5797,9 +5715,7 @@ export const buildDeterministicValidationMachineTrace = (
                     assetName: asset.assetName,
                     quantity: asset.quantity,
                     siblings: buildMidgardValidationMerkleMembershipV1(
-                      scannedMintAssets.map((item) =>
-                        hashMidgardMintAssetLeafV1(item),
-                      ),
+                      authenticatedMintLeaves,
                       mintIndex,
                     ).siblings,
                   },

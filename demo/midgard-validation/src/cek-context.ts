@@ -1,7 +1,4 @@
-import {
-  encodeCbor,
-  type MidgardValidationMerkleFrontierV1,
-} from "@al-ft/midgard-core";
+import { encodeCbor } from "@al-ft/midgard-core";
 import { dataFromCbor } from "@harmoniclabs/plutus-data";
 import {
   Constr,
@@ -248,14 +245,6 @@ export type MidgardCekContextControlV1 = {
   readonly outputItems: MidgardCekDataSequenceSummaryV1;
   readonly signerItems: MidgardCekDataSequenceSummaryV1;
   readonly observerSummary: MidgardCekDataSummaryV1;
-  readonly mintPreimageHash: Buffer;
-  readonly mintPreimageLength: number;
-  readonly mintOffset: number;
-  readonly mintPolicyRemaining: number;
-  readonly mintAssetRemaining: number;
-  readonly previousMintAsset: Buffer;
-  readonly mintCount: number;
-  readonly mintFrontier: MidgardValidationMerkleFrontierV1;
   readonly mintCursor: number;
   readonly currentMintPolicy: Buffer;
   readonly currentMintAssets: MidgardCekDataSequenceSummaryV1;
@@ -288,14 +277,6 @@ export const initialMidgardCekContextControlV1 = (input: {
   outputItems: emptyMidgardCekDataListSummaryV1(),
   signerItems: emptyMidgardCekDataListSummaryV1(),
   observerSummary: emptyMidgardCekDataSummaryV1(),
-  mintPreimageHash: Buffer.alloc(0),
-  mintPreimageLength: 0,
-  mintOffset: 0,
-  mintPolicyRemaining: 0,
-  mintAssetRemaining: 0,
-  previousMintAsset: Buffer.alloc(0),
-  mintCount: 0,
-  mintFrontier: { count: 0, peaks: [] },
   mintCursor: 0,
   currentMintPolicy: Buffer.alloc(0),
   currentMintAssets: emptyMidgardCekDataPairSummaryV1(),
@@ -323,17 +304,6 @@ export const encodeMidgardCekContextControlV1 = (
     encodeMidgardCekDataSequenceSummaryV1(control.outputItems),
     encodeMidgardCekDataSequenceSummaryV1(control.signerItems),
     encodeMidgardCekDataSummaryV1(control.observerSummary),
-    control.mintPreimageHash,
-    BigInt(control.mintPreimageLength),
-    BigInt(control.mintOffset),
-    BigInt(control.mintPolicyRemaining),
-    BigInt(control.mintAssetRemaining),
-    control.previousMintAsset,
-    BigInt(control.mintCount),
-    control.mintFrontier.peaks.map((peak) => [
-      BigInt(peak.height),
-      peak.hash,
-    ]),
     BigInt(control.mintCursor),
     control.currentMintPolicy,
     encodeMidgardCekDataSequenceSummaryV1(control.currentMintAssets),

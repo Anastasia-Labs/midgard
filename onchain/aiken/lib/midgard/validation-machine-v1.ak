@@ -30,11 +30,10 @@ use midgard/fraud_proofs/native_tx/components.{
 use midgard/fraud_proofs/native_tx/preimages.{
   canonical_bytes_key_precedes, decode_canonical_bytes_at,
   decode_canonical_map_header_at, decode_midgard_tx_byte_list_preimage_cbor,
-  decode_midgard_tx_inputs_preimage_cbor, decode_midgard_tx_mint_preimage_cbor,
+  decode_midgard_tx_inputs_preimage_cbor,
 }
 use midgard/fraud_proofs/native_tx/transaction.{
   verify_midgard_transaction_field_preimage_v1,
-  verify_midgard_transaction_mint_preimage_commitment_v1,
 }
 use midgard/fraud_proofs/native_tx/types.{
   CertRedeemer, MidgardAddress, MidgardCredential, MidgardRedeemerWitness,
@@ -11813,14 +11812,6 @@ pub type CekContextControlV1 {
   output_items: cek_data_v1.DataSequenceSummaryV1,
   signer_items: cek_data_v1.DataSequenceSummaryV1,
   observer_summary: cek_data_v1.DataSummaryV1,
-  mint_preimage_hash: ByteArray,
-  mint_preimage_length: Int,
-  mint_offset: Int,
-  mint_policy_remaining: Int,
-  mint_asset_remaining: Int,
-  previous_mint_asset: ByteArray,
-  mint_count: Int,
-  mint_peaks: List<validation_merkle_v1.FrontierPeak>,
   mint_cursor: Int,
   current_mint_policy: ByteArray,
   current_mint_assets: cek_data_v1.DataSequenceSummaryV1,
@@ -11829,7 +11820,7 @@ pub type CekContextControlV1 {
 }
 
 pub fn encode_cek_context_control_v1(control: CekContextControlV1) -> ByteArray {
-  encode_definite_array_header(29)
+  encode_definite_array_header(21)
     |> bytearray.concat(cbor.serialise(control.stage))
     |> bytearray.concat(cbor.serialise(control.language_tag))
     |> bytearray.concat(encode_definite_bytes(control.program_term_root))
@@ -11850,16 +11841,6 @@ pub fn encode_cek_context_control_v1(control: CekContextControlV1) -> ByteArray 
     |> bytearray.concat(encode_data_sequence_summary_v1(control.output_items))
     |> bytearray.concat(encode_data_sequence_summary_v1(control.signer_items))
     |> bytearray.concat(encode_data_summary_v1(control.observer_summary))
-    |> bytearray.concat(encode_definite_bytes(control.mint_preimage_hash))
-    |> bytearray.concat(cbor.serialise(control.mint_preimage_length))
-    |> bytearray.concat(cbor.serialise(control.mint_offset))
-    |> bytearray.concat(cbor.serialise(control.mint_policy_remaining))
-    |> bytearray.concat(cbor.serialise(control.mint_asset_remaining))
-    |> bytearray.concat(encode_definite_bytes(control.previous_mint_asset))
-    |> bytearray.concat(cbor.serialise(control.mint_count))
-    |> bytearray.concat(
-        validation_merkle_v1.encode_frontier(control.mint_peaks),
-      )
     |> bytearray.concat(cbor.serialise(control.mint_cursor))
     |> bytearray.concat(encode_definite_bytes(control.current_mint_policy))
     |> bytearray.concat(
@@ -11878,9 +11859,6 @@ fn cek_context_control_from_cbor(control_cbor: ByteArray) -> CekContextControlV1
         redeemer_context_control_hash_data, execution_memory_limit_data,
         execution_cpu_limit_data, reference_items_data, spend_items_data,
         output_items_data, signer_items_data, observer_summary_data,
-        mint_preimage_hash_data, mint_preimage_length_data, mint_offset_data,
-        mint_policy_remaining_data, mint_asset_remaining_data,
-        previous_mint_asset_data, mint_count_data, mint_peaks_data,
         mint_cursor_data, current_mint_policy_data, current_mint_assets_data,
         mint_policies_data, mint_summary_data,
       ]
@@ -11904,14 +11882,6 @@ fn cek_context_control_from_cbor(control_cbor: ByteArray) -> CekContextControlV1
     output_items: data_sequence_summary_from_data(output_items_data),
     signer_items: data_sequence_summary_from_data(signer_items_data),
     observer_summary: data_summary_from_data(observer_summary_data),
-    mint_preimage_hash: builtin.un_b_data(mint_preimage_hash_data),
-    mint_preimage_length: builtin.un_i_data(mint_preimage_length_data),
-    mint_offset: builtin.un_i_data(mint_offset_data),
-    mint_policy_remaining: builtin.un_i_data(mint_policy_remaining_data),
-    mint_asset_remaining: builtin.un_i_data(mint_asset_remaining_data),
-    previous_mint_asset: builtin.un_b_data(previous_mint_asset_data),
-    mint_count: builtin.un_i_data(mint_count_data),
-    mint_peaks: decode_frontier_peaks(mint_peaks_data),
     mint_cursor: builtin.un_i_data(mint_cursor_data),
     current_mint_policy: builtin.un_b_data(current_mint_policy_data),
     current_mint_assets: data_sequence_summary_from_data(
@@ -12090,14 +12060,6 @@ pub fn hash_cek_tx_info_assembly_control_v1(
 
 fn mint_context_is_pristine(control: CekContextControlV1) -> Bool {
   and {
-    control.mint_preimage_hash == #"",
-    control.mint_preimage_length == 0,
-    control.mint_offset == 0,
-    control.mint_policy_remaining == 0,
-    control.mint_asset_remaining == 0,
-    control.previous_mint_asset == #"",
-    control.mint_count == 0,
-    control.mint_peaks == [],
     control.mint_cursor == 0,
     control.current_mint_policy == #"",
     control.current_mint_assets == cek_data_v1.empty_data_pair_summary_v1(),
@@ -12118,15 +12080,13 @@ fn redeemer_data_scan_is_complete(control: CekContextControlV1) -> Bool {
   bytearray.length(control.redeemer_context_control_hash) == 32
 }
 
-fn mint_context_is_final(control: CekContextControlV1) -> Bool {
+fn mint_context_is_final(
+  native_control: NativeScriptsControlV1,
+  control: CekContextControlV1,
+) -> Bool {
   and {
     bytearray.length(control.observer_summary.root) == 32,
-    bytearray.length(control.mint_preimage_hash) == 32,
-    control.mint_offset == control.mint_preimage_length,
-    control.mint_policy_remaining == 0,
-    control.mint_asset_remaining == 0,
-    control.previous_mint_asset == #"",
-    control.mint_cursor == control.mint_count,
+    control.mint_cursor == native_control.mint_count,
     control.current_mint_policy == #"",
     control.current_mint_assets == cek_data_v1.empty_data_pair_summary_v1(),
     bytearray.length(control.mint_summary.root) == 32,
@@ -12162,26 +12122,8 @@ fn cek_context_control_is_well_formed(
     data_sequence_summary_is_well_formed(control.output_items),
     data_sequence_summary_is_well_formed(control.signer_items),
     optional_data_summary_is_well_formed(control.observer_summary),
-    or {
-      control.mint_preimage_hash == #"",
-      bytearray.length(control.mint_preimage_hash) == 32,
-    },
-    control.mint_preimage_length >= 0,
-    control.mint_preimage_length <= 9215,
-    control.mint_offset >= 0,
-    control.mint_offset <= control.mint_preimage_length,
-    control.mint_policy_remaining >= 0,
-    control.mint_policy_remaining <= ledger_output_v1.max_distinct_asset_count,
-    control.mint_asset_remaining >= 0,
-    control.mint_asset_remaining <= ledger_output_v1.max_distinct_asset_count,
-    bytearray.length(control.previous_mint_asset) <= 32,
-    validation_merkle_v1.frontier_is_well_formed(
-      control.mint_count,
-      control.mint_peaks,
-    ),
-    control.mint_count <= ledger_output_v1.max_distinct_asset_count,
     control.mint_cursor >= 0,
-    control.mint_cursor <= control.mint_count,
+    control.mint_cursor <= native_control.mint_count,
     or {
       control.current_mint_policy == #"",
       bytearray.length(control.current_mint_policy) == 28,
@@ -12253,54 +12195,37 @@ fn cek_context_control_is_well_formed(
         mint_context_is_pristine(control),
       }
     } else if control.stage == 7 {
-      and {
-        redeemer_data_scan_is_initial(control),
-        control.signer_items.length == native_control.signer_count,
-        bytearray.length(control.observer_summary.root) == 32,
-        bytearray.length(control.mint_preimage_hash) == 32,
-        control.mint_preimage_length > 1,
-        control.mint_offset > 0,
-        control.mint_offset < control.mint_preimage_length,
-        control.mint_policy_remaining + control.mint_asset_remaining > 0,
-        control.mint_cursor == 0,
-        if control.mint_count == 0 {
-          control.current_mint_policy == #""
-        } else {
-          bytearray.length(control.current_mint_policy) == 28
-        },
-        if control.mint_asset_remaining > 0 {
-          bytearray.length(control.current_mint_policy) == 28
-        } else {
-          True
-        },
-        control.current_mint_assets.length == 0,
-        control.mint_policies.length == 0,
-        control.mint_summary.root == #"",
-      }
+      False
     } else if control.stage == 8 {
       and {
         redeemer_data_scan_is_initial(control),
         control.signer_items.length == native_control.signer_count,
         bytearray.length(control.observer_summary.root) == 32,
-        bytearray.length(control.mint_preimage_hash) == 32,
-        control.mint_offset == control.mint_preimage_length,
-        control.mint_policy_remaining == 0,
-        control.mint_asset_remaining == 0,
-        control.previous_mint_asset == #"",
-        control.mint_count > 0,
-        control.mint_preimage_length > 1,
+        native_control.mint_count > 0,
+        if control.mint_cursor == 0 {
+          and {
+            control.current_mint_policy == #"",
+            control.current_mint_assets == cek_data_v1.empty_data_pair_summary_v1(),
+            control.mint_policies == cek_data_v1.empty_data_pair_summary_v1(),
+          }
+        } else {
+          and {
+            bytearray.length(control.current_mint_policy) == 28,
+            control.current_mint_assets.length > 0,
+          }
+        },
         control.mint_summary.root == #"",
       }
     } else if control.stage == 9 {
       and {
         control.signer_items.length == native_control.signer_count,
-        mint_context_is_final(control),
+        mint_context_is_final(native_control, control),
         redeemer_data_scan_is_initial(control),
       }
     } else {
       and {
         control.signer_items.length == native_control.signer_count,
-        mint_context_is_final(control),
+        mint_context_is_final(native_control, control),
         redeemer_data_scan_is_complete(control),
       }
     },
@@ -13293,14 +13218,6 @@ fn cek_selection_successor_is_exact(
             output_items: cek_data_v1.empty_data_list_summary_v1(),
             signer_items: cek_data_v1.empty_data_list_summary_v1(),
             observer_summary: empty_data_summary_v1(),
-            mint_preimage_hash: #"",
-            mint_preimage_length: 0,
-            mint_offset: 0,
-            mint_policy_remaining: 0,
-            mint_asset_remaining: 0,
-            previous_mint_asset: #"",
-            mint_count: 0,
-            mint_peaks: validation_merkle_v1.empty_frontier(),
             mint_cursor: 0,
             current_mint_policy: #"",
             current_mint_assets: cek_data_v1.empty_data_pair_summary_v1(),
@@ -13756,19 +13673,9 @@ fn verify_cek_mint_context_init(
   completed_cpu: Int,
   completed_memory: Int,
 ) -> Bool {
-  expect TransactionFieldPreimageWitness { preimage_cbor } = auxiliary
-  let field_verified = verify_midgard_transaction_mint_preimage_commitment_v1(
-    pre.transaction_id,
-    pre.transaction_commitment,
-    native_control.compact_cbor,
-    native_control.witness_set_compact_cbor,
-    native_control.field_preimage_lengths_cbor,
-    preimage_cbor,
-  )
-  let preimage_length = bytearray.length(preimage_cbor)
-  if preimage_cbor == #"80" {
-    and {
-      field_verified,
+  and {
+    auxiliary == NoAuxiliaryWitness,
+    if native_control.mint_count == 0 {
       cek_context_successor_is_exact(
         pre,
         witness,
@@ -13776,9 +13683,6 @@ fn verify_cek_mint_context_init(
         CekContextControlV1 {
           ..context_control,
           stage: 9,
-          mint_preimage_hash: blake2b_256(preimage_cbor),
-          mint_preimage_length: preimage_length,
-          mint_offset: preimage_length,
           mint_summary: cek_data_v1.map_data_summary_v1(
             cek_data_v1.empty_data_pair_summary_v1(),
           ),
@@ -13786,181 +13690,22 @@ fn verify_cek_mint_context_init(
         execution_cursor,
         completed_cpu,
         completed_memory,
-      ),
-    }
-  } else {
-    let Pair(offset, policy_count) = decode_canonical_map_header_at(
-      preimage_cbor,
-      0,
-    )
-    and {
-      field_verified,
-      policy_count > 0,
-      policy_count <= ledger_output_v1.max_distinct_asset_count,
-      offset < preimage_length,
+      )
+    } else {
       cek_context_successor_is_exact(
         pre,
         witness,
         native_control,
         CekContextControlV1 {
           ..context_control,
-          stage: 7,
-          mint_preimage_hash: blake2b_256(preimage_cbor),
-          mint_preimage_length: preimage_length,
-          mint_offset: offset,
-          mint_policy_remaining: policy_count,
+          stage: 8,
         },
         execution_cursor,
         completed_cpu,
         completed_memory,
-      ),
-    }
-  }
-}
-
-type MintScanDecodedV1 {
-  policy_id: ByteArray,
-  asset_name: ByteArray,
-  quantity: Int,
-  next_offset: Int,
-  next_policy_remaining: Int,
-  next_asset_remaining: Int,
-}
-
-fn mint_scan_successor(
-  preimage_cbor: ByteArray,
-  control: CekContextControlV1,
-) -> CekContextControlV1 {
-  expect bytearray.length(preimage_cbor) == control.mint_preimage_length
-  expect blake2b_256(preimage_cbor) == control.mint_preimage_hash
-  let
-      MintScanDecodedV1 {
-        policy_id,
-        asset_name,
-        quantity,
-        next_offset,
-        next_policy_remaining,
-        next_asset_remaining,
-      }
-    = if control.mint_asset_remaining == 0 {
-    expect control.mint_policy_remaining > 0
-    let Pair(policy_offset, policy_id) = decode_canonical_bytes_at(
-      preimage_cbor,
-      control.mint_offset,
-    )
-    expect bytearray.length(policy_id) == 28
-    expect or {
-        control.current_mint_policy == #"",
-        canonical_bytes_key_precedes(control.current_mint_policy, policy_id),
-      }
-    let Pair(asset_offset, asset_count) = decode_canonical_map_header_at(
-      preimage_cbor,
-      policy_offset,
-    )
-    expect asset_count > 0
-    let Pair(quantity_offset, asset_name) = decode_canonical_bytes_at(
-      preimage_cbor,
-      asset_offset,
-    )
-    expect bytearray.length(asset_name) <= 32
-    let Pair(next_offset, quantity) = decode_canonical_int_at(
-      preimage_cbor,
-      quantity_offset,
-    )
-    expect quantity != 0
-    MintScanDecodedV1 {
-      policy_id,
-      asset_name,
-      quantity,
-      next_offset,
-      next_policy_remaining: control.mint_policy_remaining - 1,
-      next_asset_remaining: asset_count - 1,
-    }
-  } else {
-    expect bytearray.length(control.current_mint_policy) == 28
-    let Pair(quantity_offset, asset_name) = decode_canonical_bytes_at(
-      preimage_cbor,
-      control.mint_offset,
-    )
-    expect bytearray.length(asset_name) <= 32
-    expect canonical_bytes_key_precedes(control.previous_mint_asset, asset_name)
-    let Pair(next_offset, quantity) = decode_canonical_int_at(
-      preimage_cbor,
-      quantity_offset,
-    )
-    expect quantity != 0
-    MintScanDecodedV1 {
-      policy_id: control.current_mint_policy,
-      asset_name,
-      quantity,
-      next_offset,
-      next_policy_remaining: control.mint_policy_remaining,
-      next_asset_remaining: control.mint_asset_remaining - 1,
-    }
-  }
-  let next_count = control.mint_count + 1
-  expect next_count <= ledger_output_v1.max_distinct_asset_count
-  let next_peaks = validation_merkle_v1.append_leaf(
-    control.mint_count,
-    control.mint_peaks,
-    mint_asset_leaf_hash(policy_id, asset_name, quantity),
-  )
-  let finished = and {
-    next_policy_remaining == 0,
-    next_asset_remaining == 0,
-  }
-  expect
-    if finished {
-      next_offset == control.mint_preimage_length
-    } else {
-      next_offset < control.mint_preimage_length
-    }
-  CekContextControlV1 {
-    ..control,
-    stage: if finished {
-      8
-    } else {
-      7
-    },
-    mint_offset: next_offset,
-    mint_policy_remaining: next_policy_remaining,
-    mint_asset_remaining: next_asset_remaining,
-    previous_mint_asset: if finished {
-      #""
-    } else {
-      asset_name
-    },
-    mint_count: next_count,
-    mint_peaks: next_peaks,
-    mint_cursor: 0,
-    current_mint_policy: if finished {
-      #""
-    } else {
-      policy_id
+      )
     },
   }
-}
-
-fn verify_cek_mint_preimage_scan_step(
-  pre: validation_trace_v1.ValidationMachineStateV1,
-  witness: ValidationOneStepWitnessV1,
-  auxiliary: ValidationAuxiliaryWitnessV1,
-  native_control: NativeScriptsControlV1,
-  context_control: CekContextControlV1,
-  execution_cursor: Int,
-  completed_cpu: Int,
-  completed_memory: Int,
-) -> Bool {
-  expect TransactionFieldPreimageWitness { preimage_cbor } = auxiliary
-  cek_context_successor_is_exact(
-    pre,
-    witness,
-    native_control,
-    mint_scan_successor(preimage_cbor, context_control),
-    execution_cursor,
-    completed_cpu,
-    completed_memory,
-  )
 }
 
 fn prepend_mint_asset_summary(
@@ -13997,7 +13742,7 @@ fn verify_cek_mint_context_item(
   completed_cpu: Int,
   completed_memory: Int,
 ) -> Bool {
-  if context_control.mint_cursor == context_control.mint_count {
+  if context_control.mint_cursor == native_control.mint_count {
     let final_policies = finalize_current_mint_policy(context_control)
     and {
       auxiliary == NoAuxiliaryWitness,
@@ -14028,12 +13773,12 @@ fn verify_cek_mint_context_item(
           siblings,
         }
       = auxiliary
-    let expected_index = context_control.mint_count - context_control.mint_cursor - 1
+    let expected_index = native_control.mint_count - context_control.mint_cursor - 1
     let membership_verified = and {
       mint_index == expected_index,
       validation_merkle_v1.verify_membership(
-        context_control.mint_count,
-        context_control.mint_peaks,
+        native_control.mint_count,
+        native_control.mint_peaks,
         mint_index,
         mint_asset_leaf_hash(policy_id, asset_name, quantity),
         siblings,
@@ -14786,16 +14531,7 @@ fn verify_cek_context_step(
       completed_memory,
     )
   } else if context_control.stage == 7 {
-    verify_cek_mint_preimage_scan_step(
-      pre,
-      witness,
-      auxiliary,
-      native_control,
-      context_control,
-      execution_cursor,
-      completed_cpu,
-      completed_memory,
-    )
+    False
   } else if context_control.stage == 8 {
     verify_cek_mint_context_item(
       pre,
@@ -14906,28 +14642,7 @@ fn verify_cek(
       control.field_preimage_lengths_cbor,
     ) == pre.transaction_commitment,
     validation_trace_v1.hash_validation_context(control.context_cbor) == pre.validation_context_hash,
-    native_resolved_context_is_well_formed(control),
-    validation_merkle_v1.frontier_is_well_formed(
-      control.source_count,
-      control.source_peaks,
-    ),
-    validation_merkle_v1.frontier_is_well_formed(
-      control.redeemer_count,
-      control.redeemer_peaks,
-    ),
-    validation_merkle_v1.frontier_is_well_formed(
-      control.purpose_count,
-      control.purpose_peaks,
-    ),
-    validation_merkle_v1.frontier_is_well_formed(
-      control.output_count,
-      control.output_peaks,
-    ),
-    validation_merkle_v1.frontier_is_well_formed(
-      control.execution_count,
-      control.execution_peaks,
-    ),
-    control.execution_count == control.purpose_count,
+    native_scripts_control_is_well_formed(control),
     control.execution_cursor == control.execution_count,
     execution_cursor >= 0,
     execution_cursor <= control.execution_count,
@@ -15550,7 +15265,7 @@ fn verify_value_and_mint(
       native_control.field_preimage_lengths_cbor,
     ) == pre.transaction_commitment,
     validation_trace_v1.hash_validation_context(native_control.context_cbor) == pre.validation_context_hash,
-    native_resolved_context_is_well_formed(native_control),
+    native_scripts_control_is_well_formed(native_control),
     native_control.execution_cursor == native_control.execution_count,
     bytearray.length(control.replay_schedule_hash) == 32,
     bytearray.length(control.replay_value_hash) == 32,
