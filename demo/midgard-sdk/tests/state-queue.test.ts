@@ -21,6 +21,7 @@ import {
   CML,
   credentialToAddress,
   Data,
+  type Data as LucidData,
   Emulator,
   generateEmulatorAccount,
   getAddressDetails,
@@ -189,6 +190,7 @@ describe("state-queue operator funding inputs", () => {
 type BlueprintValidator = {
   readonly title: string;
   readonly compiledCode: string;
+  readonly parameters?: readonly unknown[];
 };
 
 type Blueprint = {
@@ -197,6 +199,7 @@ type Blueprint = {
 
 type StateQueueTestContracts = {
   readonly hubOracle: AuthenticatedValidator;
+  readonly daAttestation: AuthenticatedValidator;
   readonly stateQueue: AuthenticatedValidator;
   readonly scheduler: AuthenticatedValidator;
   readonly activeOperators: AuthenticatedValidator;
@@ -218,6 +221,28 @@ const getCompiledScript = (blueprint: Blueprint, title: string): string => {
     throw new Error(`Validator with title "${title}" not found`);
   }
   return found.compiledCode;
+};
+
+const applyAllBlueprintParamsToScript = (
+  blueprint: Blueprint,
+  title: string,
+  params: LucidData[],
+): string => {
+  const validator = blueprint.validators.find(
+    (candidate) => candidate.title === title,
+  );
+  if (validator === undefined) {
+    throw new Error(`Validator with title "${title}" not found`);
+  }
+  if (validator.parameters === undefined) {
+    throw new Error(`Validator "${title}" does not declare parameters`);
+  }
+  if (params.length !== validator.parameters.length) {
+    throw new Error(
+      `Validator "${title}" requires exactly ${validator.parameters.length.toString()} parameters, received ${params.length.toString()}`,
+    );
+  }
+  return applyParamsToScript(validator.compiledCode, params);
 };
 
 const makeMintingValidator = (mintingScriptCBOR: string) => {
@@ -283,6 +308,7 @@ const buildTestContracts = async (
   const hubOracleScript = alwaysScript(alwaysBlueprint, "hub_oracle", "mint");
   const base = {
     hubOracle: makeAuthenticatedValidator(hubOracleScript, hubOracleScript),
+    daAttestation: alwaysAuthenticated(alwaysBlueprint, "state_queue"),
     scheduler: alwaysAuthenticated(alwaysBlueprint, "scheduler"),
     activeOperators: alwaysAuthenticated(alwaysBlueprint, "active_operators"),
     retiredOperators: alwaysAuthenticated(alwaysBlueprint, "retired_operators"),
@@ -294,8 +320,9 @@ const buildTestContracts = async (
       Effect.map((addressData) => Data.from(Data.to(addressData, AddressData))),
     ),
   );
-  const stateQueueMintingScriptCBOR = applyParamsToScript(
-    getCompiledScript(realBlueprint, "state_queue.mint.mint"),
+  const stateQueueMintingScriptCBOR = applyAllBlueprintParamsToScript(
+    realBlueprint,
+    "state_queue.mint.mint",
     [
       base.hubOracle.policyId,
       base.activeOperators.policyId,
@@ -304,12 +331,14 @@ const buildTestContracts = async (
       base.scheduler.policyId,
       base.fraudProof.policyId,
       base.settlement.policyId,
+      base.daAttestation.policyId,
     ],
   );
   const stateQueueMinting = makeMintingValidator(stateQueueMintingScriptCBOR);
-  const stateQueueSpendingScriptCBOR = applyParamsToScript(
-    getCompiledScript(realBlueprint, "state_queue.spend.spend"),
-    [stateQueueMinting.policyId],
+  const stateQueueSpendingScriptCBOR = applyAllBlueprintParamsToScript(
+    realBlueprint,
+    "state_queue.spend.spend",
+    [stateQueueMinting.policyId, base.daAttestation.policyId],
   );
 
   return {
@@ -389,6 +418,16 @@ const buildTransactionsRoot = async (): Promise<string> => {
 
   return trieRootHex(trie);
 };
+
+const TWO_TRANSACTION_HEADER_COMMITMENTS = {
+  transitionTraceRoot: h32("55"),
+  eventToStepRoot: h32("66"),
+  validationTracesRoot: h32("77"),
+  l2TransactionCount: 2n,
+  totalEventCount: 2n,
+  transitionStepCount: 2n,
+  validationTraceCount: 2n,
+} as const;
 
 const isOnlyLovelace = (utxo: UTxO): boolean =>
   Object.keys(utxo.assets).every((unit) => unit === "lovelace");
@@ -864,6 +903,7 @@ describe("state-queue emulator builders", () => {
       utxosRoot: EMPTY_MERKLE_TREE_ROOT,
       withdrawalsRoot: EMPTY_MERKLE_TREE_ROOT,
       ...EMPTY_HEADER_TRANSITION_COMMITMENTS_V1,
+      ...TWO_TRANSACTION_HEADER_COMMITMENTS,
       transactionsRoot,
       depositsRoot: EMPTY_MERKLE_TREE_ROOT,
       startTime: genesisTime,
@@ -1007,6 +1047,7 @@ describe("state-queue emulator builders", () => {
       utxosRoot: EMPTY_MERKLE_TREE_ROOT,
       withdrawalsRoot: EMPTY_MERKLE_TREE_ROOT,
       ...EMPTY_HEADER_TRANSITION_COMMITMENTS_V1,
+      ...TWO_TRANSACTION_HEADER_COMMITMENTS,
       transactionsRoot: await buildTransactionsRoot(),
       depositsRoot: EMPTY_MERKLE_TREE_ROOT,
       startTime: genesisTime,
