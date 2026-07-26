@@ -25,6 +25,7 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
+  buildCanonicalMidgardLedgerEntryOutputMaterialV1,
   buildCanonicalMidgardLedgerOutputMaterialV1,
 } from "../src/ledger-output-descriptor.js";
 
@@ -63,6 +64,53 @@ const outputFixture = (): {
 };
 
 describe("canonical ledger output descriptor V1", () => {
+  it("derives the consensus value from an exact canonical ledger out-ref", () => {
+    const fixture = outputFixture();
+    const outRef = Buffer.from(
+      "825820" + "42".repeat(32) + "07",
+      "hex",
+    );
+    const fromEntry =
+      buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+        outRef,
+        outputCbor: fixture.cbor,
+      });
+    const fromCreation = buildCanonicalMidgardLedgerOutputMaterialV1({
+      outputIndex: 7,
+      outputCbor: fixture.cbor,
+    });
+
+    expect(fromEntry.descriptorCbor).toStrictEqual(
+      fromCreation.descriptorCbor,
+    );
+    expect(fromEntry.descriptor.outputIndex).toBe(7);
+  });
+
+  it("fails closed for non-canonical or out-of-domain ledger out-refs", () => {
+    const fixture = outputFixture();
+    const indefiniteOutRef = Buffer.from(
+      "9f5820" + "42".repeat(32) + "07ff",
+      "hex",
+    );
+    const oversizedIndexOutRef = Buffer.from(
+      "825820" + "42".repeat(32) + "1a00010000",
+      "hex",
+    );
+
+    expect(() =>
+      buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+        outRef: indefiniteOutRef,
+        outputCbor: fixture.cbor,
+      }),
+    ).toThrow();
+    expect(() =>
+      buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+        outRef: oversizedIndexOutRef,
+        outputCbor: fixture.cbor,
+      }),
+    ).toThrow("ledger output index exceeds the V1 descriptor domain");
+  });
+
   it("derives every compact fact from a multi-chunk canonical output", () => {
     const fixture = outputFixture();
     const material = buildCanonicalMidgardLedgerOutputMaterialV1({

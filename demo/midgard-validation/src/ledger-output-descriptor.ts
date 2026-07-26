@@ -2,6 +2,7 @@ import {
   buildMidgardBoundedItemV1,
   buildMidgardLedgerOutputAssetFrontierV1,
   buildMidgardLedgerOutputMaterialV1,
+  encodeCbor,
   ensureHash32,
   MIDGARD_LEDGER_OUTPUT_FIELD_INDEX_V1,
   type MidgardLedgerOutputCommitmentV1,
@@ -22,9 +23,12 @@ import { Constr, Data } from "@lucid-evolution/lucid";
 import {
   summarizeMidgardCekLucidDataV1,
 } from "./cek-context.js";
+import { decodeMidgardOutRefBytes } from "./ledger-tx/codec.js";
 import {
   commitMidgardScriptContextTxOutV1,
 } from "./script-context-proof.js";
+
+const MAX_LEDGER_OUTPUT_INDEX_V1 = 65_535n;
 
 const exactSummary = ({
   root,
@@ -143,5 +147,34 @@ export const buildCanonicalMidgardLedgerOutputMaterialV1 = ({
       midgardTxOut: contextTxOutSummary(output, "midgard"),
       cardanoSpendDatum: cardanoSpendDatumSummary(output),
     },
+  });
+};
+
+/**
+ * Converts persisted full output material into its compact consensus-ledger
+ * value. The out-ref is checked for exact canonical Cardano encoding because
+ * its output index selects the bounded-item commitment domain.
+ */
+export const buildCanonicalMidgardLedgerEntryOutputMaterialV1 = ({
+  outRef,
+  outputCbor,
+}: {
+  readonly outRef: Uint8Array;
+  readonly outputCbor: Uint8Array;
+}): MidgardLedgerOutputMaterialV1 => {
+  const decoded = decodeMidgardOutRefBytes(outRef);
+  const canonicalOutRef = encodeCbor([decoded.txId, decoded.index]);
+  if (!canonicalOutRef.equals(Buffer.from(outRef))) {
+    throw new Error("ledger out-ref must use exact canonical Cardano CBOR");
+  }
+  if (
+    decoded.index < 0n ||
+    decoded.index > MAX_LEDGER_OUTPUT_INDEX_V1
+  ) {
+    throw new Error("ledger output index exceeds the V1 descriptor domain");
+  }
+  return buildCanonicalMidgardLedgerOutputMaterialV1({
+    outputIndex: Number(decoded.index),
+    outputCbor,
   });
 };
