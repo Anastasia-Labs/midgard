@@ -1,7 +1,10 @@
 # Rule-to-Proof Coverage Matrix
 
-> Audited 2026-07-10 against branch `tx-validation` (HEAD `269bf6b3`) plus its
-> contemporaneous working tree; reconstructed on clean base `55afdc54`. This is the completeness analysis for the invariant in
+> Refreshed 2026-07-25 against
+> `codex/tx-validation-capability-checkpoint` at `8e008639`, including the
+> lifecycle fixture in the contemporaneous working tree. Rows remain
+> fail-closed until their complete L1 path and release evidence pass. This is
+> the completeness analysis for the invariant in
 > `technical-spec/C-considerations/1-protocol-invariants.tex:28`:
 > _"Every invalid block can be invalidated by an L1-verified fault proof before its
 > maturity period elapses."_
@@ -13,6 +16,15 @@
 > protected outputs, observers, and effectful valid forced transactions are
 > required. They activate only after complete L1-disputable semantics and
 > concrete proof-fit evidence; unsupported or incomplete behavior fails closed.
+
+> **Hard-checkpoint result (2026-07-25):** P4 fails. The matrix still contains
+> missing or partial fund-safety paths for hash-field consistency, network id,
+> output well-formedness, withdrawn/double-withdrawal and duplicate-input
+> families, negative/minimum output value, signer/native-script authorization,
+> deposit/withdrawal fabrication and event mistagging, cross-block duplication,
+> DA withholding/retention, and correction/economics. The canonical V1
+> script/value/mint/burn/observer/forced representations do not turn those
+> incomplete paths into release-ready proofs.
 
 ## 0. Protocol invariants and scope
 

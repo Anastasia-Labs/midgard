@@ -4,10 +4,12 @@ import { fileURLToPath } from "node:url";
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
+  buildMidgardValidationTraceTree,
   compareOutRefs,
   computeMidgardNativeTxIdV1,
   computeMidgardNativeTxProofCommitmentV1,
   decodeMidgardNativeByteListPreimage,
+  decodeMidgardNativeTxFullV1FromCanonicalCbor,
   deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
@@ -15,11 +17,16 @@ import {
   encodeMidgardNativeTxCanonicalV1,
   encodeMidgardNativeTxCompactV1,
   findOutRefIndex,
+  hashMidgardValidationMachineStateV1,
+  hashMidgardValidationRejectionCodeV1,
   materializeMidgardNativeTxFromCanonicalV1,
+  MIDGARD_CONSENSUS_PROFILE_V1,
   MIDGARD_NATIVE_TX_V1_VERSION,
   MIDGARD_POSIX_TIME_NONE,
   MIDGARD_PROTOCOL_V1_VERSION,
+  MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
   type MidgardNativeTxFullV1,
+  type MidgardValidationVerdictName,
   outRefLabel,
 } from "@al-ft/midgard-core";
 import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
@@ -37,6 +44,7 @@ import {
   buildNonExistentInputFaultProofContracts,
   buildPhasMembershipRewardRegistrationTxProgram,
   buildTransitionTraceFaultProofContracts,
+  buildValidationTraceDisputeFaultProofContracts,
   commitCountedRootProgram,
   ConfirmedState,
   DA_PAYLOAD_V1_VERSION,
@@ -102,10 +110,20 @@ import {
   TransitionStepSchema,
   utxosToStateQueueUTxOs,
   utxoToStateQueueUTxO,
+  type ValidationClaimWitnessV1,
+  validationMachineStateDataFromCore,
+  validationTraceDescriptorDataFromCore,
   ValidationTraceDescriptorV1Schema,
+  validationTraceProofDataFromCore,
   type WithdrawalValidator as SdkWithdrawalValidator,
 } from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerEntryOutputMaterialV1 } from "@al-ft/midgard-validation";
+import {
+  buildCanonicalMidgardLedgerEntryOutputMaterialV1,
+  buildDeterministicValidationMachineTrace,
+  buildValidationDisputeEvidenceBundleV1,
+  type DeterministicValidationMachineTrace,
+  RejectCodes,
+} from "@al-ft/midgard-validation";
 import {
   applyDoubleCborEncoding,
   applyParamsToScript,
@@ -139,6 +157,7 @@ import {
   buildInvalidForcedTransactionNoOpWitness,
   buildTransitionFaultProof,
   encodeData,
+  keyValuePhasProof,
   keyValuePhasRootWithCount,
   nativeTxFromCoreCompact,
   neSubmitStep01,
@@ -159,6 +178,15 @@ import {
   submitStep03,
   submitStep04,
   submitTransitionTraceProof,
+  submitValidationDisputeAward,
+  submitValidationDisputeEnterResolution,
+  submitValidationDisputeOpen,
+  submitValidationDisputePrepareResolution,
+  submitValidationDisputePrepareSelected,
+  submitValidationDisputeReveal,
+  submitValidationDisputeSemanticResolution,
+  submitValidationDisputeVerifySource,
+  validationDisputeValidityRange,
 } from "../src/index.js";
 import { buildNonMembershipProof, type TrieEntry } from "../src/ne-proofs.js";
 import type { NeInputPreimageEntry } from "../src/ne-submit-step-02.js";
@@ -373,11 +401,13 @@ const buildMinimalFaultProofContracts = async (
     realNonExistentInput = false,
     realInvalidRange = false,
     realTransitionTrace = false,
+    realValidationTraceDispute = false,
     alwaysFraudProofCatalogue = false,
   }: {
     readonly realNonExistentInput?: boolean;
     readonly realInvalidRange?: boolean;
     readonly realTransitionTrace?: boolean;
+    readonly realValidationTraceDispute?: boolean;
     readonly alwaysFraudProofCatalogue?: boolean;
   } = {},
 ): Promise<MidgardValidators> => {
@@ -509,6 +539,21 @@ const buildMinimalFaultProofContracts = async (
       doubleSpendContracts.fraudProof.policyId,
     );
   }
+  const validationTraceDisputeContracts = realValidationTraceDispute
+    ? await Effect.runPromise(
+        buildValidationTraceDisputeFaultProofContracts({
+          blueprint: parseFaultProofBlueprint(cloneBlueprint(realBlueprint)),
+          network,
+          hubOraclePolicyId: hubOracle.policyId,
+          fraudProofCataloguePolicyId: fraudProofCatalogue.policyId,
+        }),
+      )
+    : undefined;
+  if (validationTraceDisputeContracts !== undefined) {
+    expect(validationTraceDisputeContracts.fraudProof.policyId).toBe(
+      doubleSpendContracts.fraudProof.policyId,
+    );
+  }
   const activeOperatorsAddressData = await Effect.runPromise(
     addressDataFromBech32(
       withActiveOperators.activeOperators.spendingScriptAddress,
@@ -586,6 +631,9 @@ const buildMinimalFaultProofContracts = async (
       transitionTrace:
         transitionTraceContracts?.transitionTrace.firstStep ??
         withActiveOperators.fraudProofs.transitionTrace,
+      validationTraceDispute:
+        validationTraceDisputeContracts?.validationTraceDispute.firstStep ??
+        withActiveOperators.fraudProofs.validationTraceDispute,
     },
   };
 };
@@ -794,9 +842,9 @@ const makeNativeTx = ({
 }: {
   readonly spendInputCbors: readonly Buffer[];
   readonly fee: bigint;
-  readonly referenceByte: string;
-  readonly outputByte: string;
-  readonly witnessByte: string;
+  readonly referenceByte?: string;
+  readonly outputByte?: string;
+  readonly witnessByte?: string;
   readonly validityIntervalStart?: bigint;
   readonly validityIntervalEnd?: bigint;
 }): MidgardNativeTxFullV1 =>
@@ -805,10 +853,14 @@ const makeNativeTx = ({
     validity: "TxIsValid",
     body: {
       spendInputsPreimageCbor: encodeCbor(spendInputCbors),
-      referenceInputsPreimageCbor: encodeCbor([
-        Buffer.from(h32(referenceByte), "hex"),
-      ]),
-      outputsPreimageCbor: encodeCbor([Buffer.from(h32(outputByte), "hex")]),
+      referenceInputsPreimageCbor:
+        referenceByte === undefined
+          ? EMPTY_CBOR_LIST
+          : encodeCbor([Buffer.from(h32(referenceByte), "hex")]),
+      outputsPreimageCbor:
+        outputByte === undefined
+          ? EMPTY_CBOR_LIST
+          : encodeCbor([Buffer.from(h32(outputByte), "hex")]),
       requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
       requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
       mintPreimageCbor: EMPTY_CBOR_LIST,
@@ -820,9 +872,10 @@ const makeNativeTx = ({
       networkId: 0n,
     },
     witnessSet: {
-      addrTxWitsPreimageCbor: encodeCbor([
-        Buffer.from(h32(witnessByte), "hex"),
-      ]),
+      addrTxWitsPreimageCbor:
+        witnessByte === undefined
+          ? EMPTY_CBOR_LIST
+          : encodeCbor([Buffer.from(h32(witnessByte), "hex")]),
       scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
       redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
     },
@@ -1432,6 +1485,298 @@ const buildInvalidForcedTransitionTraceFixture = async ({
   };
 };
 
+const falsifyValidationTerminalVerdict = (
+  trace: DeterministicValidationMachineTrace,
+  verdict: Exclude<MidgardValidationVerdictName, "pending">,
+): DeterministicValidationMachineTrace => {
+  const rejectionCode =
+    verdict === "accepted" ? null : RejectCodes.EmptyInputs;
+  const rejectionCodeHash =
+    rejectionCode === null
+      ? MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH
+      : hashMidgardValidationRejectionCodeV1(rejectionCode);
+  const states = trace.states.map((state, index) =>
+    index === trace.states.length - 1
+      ? {
+          ...state,
+          verdict,
+          rejectionCodeHash,
+        }
+      : state,
+  );
+  const tree = buildMidgardValidationTraceTree(
+    states.map(hashMidgardValidationMachineStateV1),
+    verdict,
+    rejectionCodeHash,
+  );
+  return {
+    ...trace,
+    states,
+    tree,
+    verdict,
+    rejectionCode,
+  };
+};
+
+const buildInvalidForcedValidationDisputeFixture = async ({
+  operatorVkey,
+  now,
+}: {
+  readonly operatorVkey: string;
+  readonly now: number;
+}) => {
+  const txOrderId = transitionTraceOutRef("e1");
+  const eventKey = { ForcedTransactionEventKey: { tx_order_id: txOrderId } };
+  const forcedNativeTx = makeNativeTx({
+    spendInputCbors: [],
+    fee: 0n,
+  });
+  const forcedCanonicalCbor =
+    encodeMidgardNativeTxCanonicalV1(forcedNativeTx);
+  const decodedForcedNativeTx =
+    decodeMidgardNativeTxFullV1FromCanonicalCbor(forcedCanonicalCbor);
+  if (
+    decodeMidgardNativeByteListPreimage(
+      decodedForcedNativeTx.witnessSet.addrTxWitsPreimageCbor,
+      "test.forced_native_tx.addr_tx_wits",
+    ).length !== 0
+  ) {
+    throw new Error(
+      "forced validation-dispute fixture unexpectedly contains vkey witnesses",
+    );
+  }
+  const forcedSource =
+    deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(
+      forcedCanonicalCbor,
+    );
+  const transactionId =
+    computeMidgardNativeTxIdV1(forcedNativeTx);
+  const forcedTransaction = {
+    tx_id: transactionId.toString("hex"),
+    transaction_commitment:
+      computeMidgardNativeTxProofCommitmentV1(forcedSource).toString("hex"),
+    source: {
+      compact_cbor: forcedSource.compactCbor.toString("hex"),
+      witness_set_compact_cbor:
+        forcedSource.witnessSetCompactCbor.toString("hex"),
+      field_preimage_lengths_cbor:
+        forcedSource.fieldPreimageLengthsCbor.toString("hex"),
+    },
+    operator_validity: "TxIsValid" as const,
+  };
+  const contextCbor = encodeCbor([
+    1n,
+    Buffer.from(MIDGARD_CONSENSUS_PROFILE_V1.profileId, "ascii"),
+    BigInt(now + 1_000),
+    0n,
+    0n,
+    0n,
+    0n,
+  ]);
+  const challengerTrace = await Effect.runPromise(
+    buildDeterministicValidationMachineTrace({
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+      eventKeyCbor: encodeData(eventKey, EventKeySchema),
+      sourceKind: "forced",
+      blockEndTimeMs: now + 1_000,
+      expectedNetworkId: 0n,
+      minFeeA: 0n,
+      minFeeB: 0n,
+      blockSlot: 0n,
+      transactionId,
+      canonicalTransactionCbor: forcedCanonicalCbor,
+      priorUtxosRoot: EMPTY_MERKLE_TREE_ROOT,
+      postUtxosRoot: EMPTY_MERKLE_TREE_ROOT,
+      ledgerWitnessEntries: [],
+      expectedLedgerOps: [],
+      ledgerMutationSteps: [],
+      expectedVerdict: "rejected",
+      expectedRejectionCode: RejectCodes.EmptyInputs,
+    }),
+  );
+  const operatorTrace = falsifyValidationTerminalVerdict(
+    challengerTrace,
+    "accepted",
+  );
+  const evidence = buildValidationDisputeEvidenceBundleV1({
+    operatorTrace,
+    challengerTrace,
+    currentTime: now + 2_000,
+  });
+  const step = {
+    schema_version: 1n,
+    step_index: 0n,
+    event_key: eventKey,
+    phase: "ForcedTransaction" as const,
+    pre_utxos_root: EMPTY_MERKLE_TREE_ROOT,
+    post_utxos_root: EMPTY_MERKLE_TREE_ROOT,
+  };
+  const eventToStepValue = {
+    step_index: 0n,
+    phase: "ForcedTransaction" as const,
+  };
+  const operatorDescriptor =
+    validationTraceDescriptorDataFromCore(
+      operatorTrace.tree.descriptor,
+    );
+  const challengerDescriptor =
+    validationTraceDescriptorDataFromCore(
+      challengerTrace.tree.descriptor,
+    );
+  const forcedEntry = transitionTraceDaEntry({
+    key: txOrderId,
+    keySchema: OutputReference as never,
+    value: forcedTransaction,
+    valueSchema: ForcedInclusionTxV1Schema,
+  });
+  const transitionEntry = transitionTraceDaEntry({
+    key: step.step_index,
+    keySchema: Data.Integer() as never,
+    value: step,
+    valueSchema: TransitionStepSchema,
+  });
+  const eventToStepEntry = transitionTraceDaEntry({
+    key: eventKey,
+    keySchema: EventKeySchema,
+    value: eventToStepValue,
+    valueSchema: EventToStepValueSchema,
+  });
+  const descriptorEntry = transitionTraceDaEntry({
+    key: eventKey,
+    keySchema: EventKeySchema,
+    value: operatorDescriptor,
+    valueSchema: ValidationTraceDescriptorV1Schema,
+  });
+  const forcedRoot = await buildCountedRoot(
+    ROOT_DOMAINS.forcedTransactionsV1,
+    [
+      {
+        key: Buffer.from(forcedEntry[0], "hex"),
+        value: Buffer.from(forcedEntry[1], "hex"),
+      },
+    ],
+  );
+  const transitionRoot = await buildCountedRoot(
+    ROOT_DOMAINS.transitionTrace,
+    [
+      {
+        key: Buffer.from(transitionEntry[0], "hex"),
+        value: Buffer.from(transitionEntry[1], "hex"),
+      },
+    ],
+  );
+  const eventToStepRoot = await buildCountedRoot(
+    ROOT_DOMAINS.eventToStep,
+    [
+      {
+        key: Buffer.from(eventToStepEntry[0], "hex"),
+        value: Buffer.from(eventToStepEntry[1], "hex"),
+      },
+    ],
+  );
+  const descriptorRoot = await buildCountedRoot(
+    ROOT_DOMAINS.validationTraces,
+    [
+      {
+        key: Buffer.from(descriptorEntry[0], "hex"),
+        value: Buffer.from(descriptorEntry[1], "hex"),
+      },
+    ],
+  );
+  const membership = async (
+    root: typeof forcedRoot,
+    entry: readonly [string, string],
+  ) => ({
+    domain: root.domain,
+    root: root.root,
+    phas_root: root.phasRoot,
+    count: root.count,
+    proof: await keyValuePhasProof(
+      {
+        root: root.phasRoot,
+        count: root.count,
+        entries: root.entries,
+      },
+      Buffer.from(entry[0], "hex"),
+      Buffer.from(entry[1], "hex"),
+    ),
+  });
+  const claim: ValidationClaimWitnessV1 = {
+    version: 1n,
+    descriptor_membership: {
+      ...(await membership(descriptorRoot, descriptorEntry)),
+      key: eventKey,
+      value: operatorDescriptor,
+    },
+    transition_step_membership: {
+      ...(await membership(transitionRoot, transitionEntry)),
+      key: 0n,
+      value: step,
+    },
+    event_to_step_membership: {
+      ...(await membership(eventToStepRoot, eventToStepEntry)),
+      key: eventKey,
+      value: eventToStepValue,
+    },
+    source_membership: {
+      ForcedValidationSource: {
+        membership: {
+          ...(await membership(forcedRoot, forcedEntry)),
+          key: txOrderId,
+          value: forcedTransaction,
+        },
+      },
+    },
+    validation_context_cbor: contextCbor.toString("hex"),
+    initial_state: validationMachineStateDataFromCore(
+      operatorTrace.states[0]!,
+    ),
+    terminal_state: validationMachineStateDataFromCore(
+      operatorTrace.states.at(-1)!,
+    ),
+    initial_state_proof: validationTraceProofDataFromCore(
+      operatorTrace.tree.proofs[0]!,
+    ),
+    terminal_state_proof: validationTraceProofDataFromCore(
+      operatorTrace.tree.proofs.at(-1)!,
+    ),
+  };
+  const header: HeaderV1 = {
+    ...makeHeader(operatorVkey, now),
+    forcedTransactionsRoot: forcedRoot.root,
+    transitionTraceRoot: transitionRoot.root,
+    eventToStepRoot: eventToStepRoot.root,
+    validationTracesRoot: descriptorRoot.root,
+    forcedTransactionCount: 1n,
+    totalEventCount: 1n,
+    transitionStepCount: 1n,
+    validationTraceCount: 1n,
+  };
+  return {
+    header,
+    claim,
+    operatorTrace,
+    challengerTrace,
+    challengerDescriptor,
+    evidence,
+  };
+};
+
+const runEmulatorLifecycleStage = async <T>(
+  stage: string,
+  operation: () => Promise<T>,
+): Promise<T> => {
+  try {
+    return await operation();
+  } catch (cause) {
+    const detail =
+      cause instanceof Error ? cause.message : String(cause);
+    throw new Error(
+      `emulator lifecycle stage ${stage} failed: ${detail}`,
+    );
+  }
+};
+
 const submitSetupTx = async ({
   lucid,
   contracts,
@@ -1622,7 +1967,10 @@ const submitSetupTx = async ({
     .attach.MintingPolicy(contracts.registeredOperators.mintingScript)
     .complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
-  await lucid.awaitTx(await signed.submit());
+  await runEmulatorLifecycleStage(
+    "setup.initial",
+    async () => lucid.awaitTx(await signed.submit()),
+  );
 
   const [initialActiveOperatorsRoot] = await lucid.utxosAtWithUnit(
     contracts.activeOperators.spendingScriptAddress,
@@ -1700,38 +2048,45 @@ const submitSetupTx = async ({
       RegisteredOperatorMintRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const activationUnsigned = await lucid
-    .newTx()
-    .collectFrom(
-      [initialActiveOperatorsRoot],
-      Data.to("ListStateTransition", ActiveOperatorSpendRedeemer),
-    )
-    .mintAssets(
-      { [activeOperatorNodeUnit]: 1n },
-      activeOperatorsActivateRedeemer,
-    )
-    .mintAssets(
-      { [registeredOperatorActivationUnit]: 1n },
-      registeredOperatorsActivateRedeemer,
-    )
-    .pay.ToContract(
-      contracts.activeOperators.spendingScriptAddress,
-      { kind: "inline", value: activeRootWithOperatorDatum },
-      initialActiveOperatorsRoot.assets,
-    )
-    .pay.ToContract(
-      contracts.activeOperators.spendingScriptAddress,
-      { kind: "inline", value: activeOperatorInitialDatum },
-      { lovelace: 20_000_000n, [activeOperatorNodeUnit]: 1n },
-    )
-    .attach.MintingPolicy(contracts.activeOperators.mintingScript)
-    .attach.Script(contracts.activeOperators.spendingScript)
-    .attach.MintingPolicy(contracts.registeredOperators.mintingScript)
-    .complete({ localUPLCEval: true });
+  const activationUnsigned = await runEmulatorLifecycleStage(
+    "setup.operator-activation.complete",
+    () =>
+      lucid
+        .newTx()
+        .collectFrom(
+          [initialActiveOperatorsRoot],
+          Data.to("ListStateTransition", ActiveOperatorSpendRedeemer),
+        )
+        .mintAssets(
+          { [activeOperatorNodeUnit]: 1n },
+          activeOperatorsActivateRedeemer,
+        )
+        .mintAssets(
+          { [registeredOperatorActivationUnit]: 1n },
+          registeredOperatorsActivateRedeemer,
+        )
+        .pay.ToContract(
+          contracts.activeOperators.spendingScriptAddress,
+          { kind: "inline", value: activeRootWithOperatorDatum },
+          initialActiveOperatorsRoot.assets,
+        )
+        .pay.ToContract(
+          contracts.activeOperators.spendingScriptAddress,
+          { kind: "inline", value: activeOperatorInitialDatum },
+          { lovelace: 20_000_000n, [activeOperatorNodeUnit]: 1n },
+        )
+        .attach.MintingPolicy(contracts.activeOperators.mintingScript)
+        .attach.Script(contracts.activeOperators.spendingScript)
+        .attach.MintingPolicy(contracts.registeredOperators.mintingScript)
+        .complete({ localUPLCEval: true }),
+  );
   const activationSigned = await activationUnsigned.sign
     .withWallet()
     .complete();
-  await lucid.awaitTx(await activationSigned.submit());
+  await runEmulatorLifecycleStage(
+    "setup.operator-activation",
+    async () => lucid.awaitTx(await activationSigned.submit()),
+  );
 
   const [hubOracleUtxo] = await lucid.utxosAtWithUnit(
     credentialToAddress(
@@ -1809,38 +2164,45 @@ const submitSetupTx = async ({
       },
     },
   };
-  const appointmentUnsigned = await lucid
-    .newTx()
-    .collectFrom([schedulerAppointmentFeeInput])
-    .collectFrom(
-      [schedulerUtxo],
-      Data.to(schedulerAppointmentRedeemer, SchedulerSpendRedeemer),
-    )
-    .readFrom(appointmentRefs)
-    .pay.ToContract(
-      contracts.scheduler.spendingScriptAddress,
-      {
-        kind: "inline",
-        value: Data.to(
+  const appointmentUnsigned = await runEmulatorLifecycleStage(
+    "setup.operator-appointment.complete",
+    () =>
+      lucid
+        .newTx()
+        .collectFrom([schedulerAppointmentFeeInput])
+        .collectFrom(
+          [schedulerUtxo],
+          Data.to(schedulerAppointmentRedeemer, SchedulerSpendRedeemer),
+        )
+        .readFrom(appointmentRefs)
+        .pay.ToContract(
+          contracts.scheduler.spendingScriptAddress,
           {
-            ActiveOperator: {
-              operator: header.operatorVkey,
-              start_time: header.startTime,
-            },
+            kind: "inline",
+            value: Data.to(
+              {
+                ActiveOperator: {
+                  operator: header.operatorVkey,
+                  start_time: header.startTime,
+                },
+              },
+              SchedulerDatum,
+            ),
           },
-          SchedulerDatum,
-        ),
-      },
-      schedulerUtxo.assets,
-    )
-    .attach.Script(contracts.scheduler.spendingScript)
-    .validFrom(Number(header.startTime - 120_000n))
-    .validTo(Number(header.startTime + 1n))
-    .complete({ localUPLCEval: true });
+          schedulerUtxo.assets,
+        )
+        .attach.Script(contracts.scheduler.spendingScript)
+        .validFrom(Number(header.startTime - 120_000n))
+        .validTo(Number(header.startTime + 1n))
+        .complete({ localUPLCEval: true }),
+  );
   const appointmentSigned = await appointmentUnsigned.sign
     .withWallet()
     .complete();
-  await lucid.awaitTx(await appointmentSigned.submit());
+  await runEmulatorLifecycleStage(
+    "setup.operator-appointment",
+    async () => lucid.awaitTx(await appointmentSigned.submit()),
+  );
 
   const [appointedSchedulerUtxo] = await lucid.utxosAtWithUnit(
     contracts.scheduler.spendingScriptAddress,
@@ -1932,9 +2294,15 @@ const submitSetupTx = async ({
       },
     ),
   );
-  const commitUnsigned = await commitTx.complete({ localUPLCEval: true });
+  const commitUnsigned = await runEmulatorLifecycleStage(
+    "setup.header-commit.complete",
+    () => commitTx.complete({ localUPLCEval: true }),
+  );
   const commitSigned = await commitUnsigned.sign.withWallet().complete();
-  await lucid.awaitTx(await commitSigned.submit());
+  await runEmulatorLifecycleStage(
+    "setup.header-commit",
+    async () => lucid.awaitTx(await commitSigned.submit()),
+  );
 
   const [fraudulentBlockUtxo] = await lucid.utxosAtWithUnit(
     contracts.stateQueue.spendingScriptAddress,
@@ -2179,6 +2547,10 @@ const buildRemovalDeploymentInfo = (
     },
     fraudProofTransitionTrace: {
       scriptHash: contracts.fraudProofs.transitionTrace.spendingScriptHash,
+    },
+    validationTraceDispute: {
+      scriptHash:
+        contracts.fraudProofs.validationTraceDispute.spendingScriptHash,
     },
     stateQueueMint: deploymentEntry(
       contracts.stateQueue.policyId,
@@ -3956,6 +4328,232 @@ describe("fault-proof emulator integration", () => {
     expect(outRefLabel(retainedFraudProof)).toBe(outRefLabel(fraudProofUtxo));
     expect(retainedFraudProof.assets[proofResult.fraudProofUnit]).toBe(1n);
   }, 180_000);
+
+  it("opens, bisects, resolves, and awards a validation dispute end to end", async () => {
+    const realBlueprint = readBlueprint(realBlueprintPath);
+    const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
+    const operator = generateEmulatorAccount({ lovelace: 40_000_000_000n });
+    const challenger = generateEmulatorAccount({ lovelace: 20_000_000_000n });
+    const emulator = new Emulator(
+      [operator, challenger],
+      EMULATOR_PROTOCOL_PARAMETERS,
+    );
+    const operatorLucid = await Lucid(emulator, "Custom");
+    const challengerLucid = await Lucid(emulator, "Custom");
+    operatorLucid.selectWallet.fromSeed(operator.seedPhrase);
+    challengerLucid.selectWallet.fromSeed(challenger.seedPhrase);
+    const operatorSigner = resolveProverSigner({
+      network,
+      walletSeedPhrase: operator.seedPhrase,
+    });
+    const challengerSigner = resolveProverSigner({
+      network,
+      walletSeedPhrase: challenger.seedPhrase,
+    });
+    const validityRange = () =>
+      validationDisputeValidityRange(emulator.now());
+
+    await registerPhasMembershipRewardAccount(operatorLucid, realBlueprint);
+    const nonceUtxo = (await operatorLucid.wallet().getUtxos())[0];
+    if (nonceUtxo === undefined) {
+      throw new Error("Expected operator wallet to expose a nonce UTxO");
+    }
+    const contracts = await buildMinimalFaultProofContracts(
+      realBlueprint,
+      alwaysBlueprint,
+      nonceUtxo,
+      {
+        realValidationTraceDispute: true,
+        alwaysFraudProofCatalogue: true,
+      },
+    );
+    const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
+    const operatorPaymentCredential = getAddressDetails(
+      await operatorLucid.wallet().address(),
+    ).paymentCredential;
+    if (
+      operatorPaymentCredential === undefined ||
+      operatorPaymentCredential.type !== "Key"
+    ) {
+      throw new Error("Expected operator wallet to expose a payment key hash");
+    }
+    const headerStartTime =
+      alignUnixTimeToEmulatorSlotBoundary(
+        operatorLucid,
+        emulator.now() + 120_000,
+      ) - 1;
+    const fixture = await buildInvalidForcedValidationDisputeFixture({
+      operatorVkey: operatorPaymentCredential.hash,
+      now: headerStartTime,
+    });
+    const setup = await runEmulatorLifecycleStage(
+      "setup",
+      () =>
+        submitSetupTx({
+          lucid: operatorLucid,
+          contracts,
+          nonceUtxo,
+          catalogue,
+          header: fixture.header,
+        }),
+    );
+    const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue);
+    const initResult = await runEmulatorLifecycleStage(
+      "init",
+      () =>
+        submitInit({
+          lucid: challengerLucid,
+          blueprint: realBlueprint,
+          deploymentInfo,
+          network,
+          signer: challengerSigner,
+          fraudCategory: "validationTraceDispute",
+          fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+          awaitConfirmation: true,
+        }),
+    );
+    const firstStepUtxo = await expectSingleUtxoWithUnit(
+      challengerLucid,
+      initResult.firstStepAddress,
+      initResult.computationThreadUnit,
+    );
+    const openResult = await runEmulatorLifecycleStage(
+      "open",
+      () =>
+        submitValidationDisputeOpen({
+          lucid: challengerLucid,
+          blueprint: realBlueprint,
+          deploymentInfo,
+          network,
+          signer: challengerSigner,
+          threadOutRef: outRefLabel(firstStepUtxo),
+          stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+          claim: fixture.claim,
+          challengerDescriptor: fixture.challengerDescriptor,
+          validityRange: validityRange(),
+          awaitConfirmation: true,
+        }),
+    );
+    const sourceResult = await submitValidationDisputeVerifySource({
+      lucid: challengerLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: challengerSigner,
+      threadOutRef: openResult.nextThreadOutRef,
+      validityRange: validityRange(),
+      awaitConfirmation: true,
+    });
+
+    let threadOutRef = sourceResult.nextThreadOutRef;
+    for (const move of fixture.evidence.moves) {
+      const revealResult = await submitValidationDisputeReveal({
+        lucid:
+          move.role === "operator" ? operatorLucid : challengerLucid,
+        blueprint: realBlueprint,
+        deploymentInfo,
+        network,
+        signer:
+          move.role === "operator" ? operatorSigner : challengerSigner,
+        threadOutRef,
+        role: move.role,
+        proof: move.proof,
+        validityRange: validityRange(),
+        awaitConfirmation: true,
+      });
+      threadOutRef = revealResult.nextThreadOutRef;
+    }
+
+    const resolutionResult = await submitValidationDisputeEnterResolution({
+      lucid: challengerLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: challengerSigner,
+      threadOutRef,
+      validityRange: validityRange(),
+      awaitConfirmation: true,
+    });
+    const { lowIndex, highIndex } = fixture.evidence.finalDispute;
+    const prepareResult = await submitValidationDisputePrepareResolution({
+      lucid: challengerLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: challengerSigner,
+      threadOutRef: resolutionResult.nextThreadOutRef,
+      preState: validationMachineStateDataFromCore(
+        fixture.operatorTrace.states[lowIndex]!,
+      ),
+      operatorPost: validationTraceProofDataFromCore(
+        fixture.operatorTrace.tree.proofs[highIndex]!,
+      ),
+      challengerPost: validationTraceProofDataFromCore(
+        fixture.challengerTrace.tree.proofs[highIndex]!,
+      ),
+      validityRange: validityRange(),
+      awaitConfirmation: true,
+    });
+    const selectedResult = await submitValidationDisputePrepareSelected({
+      lucid: challengerLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: challengerSigner,
+      threadOutRef: prepareResult.nextThreadOutRef,
+      oneStepArgument: fixture.evidence.oneStepArgument,
+      validityRange: validityRange(),
+      awaitConfirmation: true,
+    });
+    const semanticResult = await submitValidationDisputeSemanticResolution({
+      lucid: challengerLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: challengerSigner,
+      threadOutRef: selectedResult.nextThreadOutRef,
+      oneStepArgument: fixture.evidence.oneStepArgument,
+      validityRange: validityRange(),
+      awaitConfirmation: true,
+    });
+    const awardResult = await submitValidationDisputeAward({
+      lucid: challengerLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: challengerSigner,
+      threadOutRef: semanticResult.nextThreadOutRef,
+      validityRange: validityRange(),
+      awaitConfirmation: true,
+    });
+
+    expect(fixture.evidence.finalDispute.turn).toEqual({
+      type: "readyForOneStep",
+    });
+    expect(fixture.evidence.moves.length).toBeGreaterThan(0);
+    expect(prepareResult.resolverIndex).toBe(
+      fixture.evidence.oneStepArgument.resolverIndex,
+    );
+    expect(selectedResult.semanticResolverIndex).toBe(
+      fixture.evidence.oneStepArgument.semanticResolverIndex,
+    );
+    expect(semanticResult.nextThreadOutRef).toBe(
+      awardResult.threadOutRef,
+    );
+    expect(awardResult.txHash).toHaveLength(64);
+    expect(awardResult.fraudProofUnit).toBe(
+      toUnit(
+        contracts.fraudProof.policyId,
+        initResult.computationThreadAssetName,
+      ),
+    );
+    await expect(
+      challengerLucid.utxosAtWithUnit(
+        contracts.fraudProof.spendingScriptAddress,
+        awardResult.fraudProofUnit,
+      ),
+    ).resolves.toHaveLength(1);
+  }, 300_000);
 
   it("coordinates non-tail removal with lease acquire, refetch, renew, and release ordering", async () => {
     const fixture = await buildProvedDoubleSpendFixture({ successorCount: 1 });
