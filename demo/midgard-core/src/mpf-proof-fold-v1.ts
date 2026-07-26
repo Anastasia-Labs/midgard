@@ -566,6 +566,35 @@ export const buildMidgardMpfProofDescriptorV1 = (
   };
 };
 
+export const encodeMidgardMpfProofDescriptorV1 = (
+  descriptor: MidgardMpfProofDescriptorV1,
+): Buffer => {
+  if (
+    descriptor.version !== 1 ||
+    !Number.isSafeInteger(descriptor.frameCount) ||
+    descriptor.frameCount < 0 ||
+    descriptor.frameCount > PATH_NIBBLE_COUNT ||
+    !Number.isSafeInteger(descriptor.terminalCursor) ||
+    descriptor.terminalCursor < 0 ||
+    descriptor.terminalCursor > PATH_NIBBLE_COUNT ||
+    descriptor.frontier.count !== descriptor.frameCount ||
+    (descriptor.frameCount === 0
+      ? descriptor.terminalCursor !== 0
+      : descriptor.terminalCursor === 0)
+  ) {
+    throw new Error("MPF proof descriptor is outside its canonical envelope");
+  }
+  return encodeCbor([
+    1n,
+    BigInt(descriptor.frameCount),
+    BigInt(descriptor.terminalCursor),
+    descriptor.frontier.peaks.map((peak) => [
+      BigInt(peak.height),
+      ensureHash32(peak.hash, "mpf_proof_descriptor.peak"),
+    ]),
+  ]);
+};
+
 export const buildMidgardMpfProofFoldTraceV1 = ({
   key,
   value,

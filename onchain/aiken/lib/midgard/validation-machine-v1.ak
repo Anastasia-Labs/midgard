@@ -26,8 +26,7 @@ use midgard/fraud_proofs/native_tx/components.{
 }
 use midgard/fraud_proofs/native_tx/preimages.{
   canonical_bytes_key_precedes, decode_canonical_bytes_at,
-  decode_canonical_map_header_at,
-  decode_midgard_tx_byte_list_preimage_cbor,
+  decode_canonical_map_header_at, decode_midgard_tx_byte_list_preimage_cbor,
   decode_midgard_tx_inputs_preimage_cbor, decode_midgard_tx_mint_preimage_cbor,
   encode_mint_preimage,
 }
@@ -36,8 +35,8 @@ use midgard/fraud_proofs/native_tx/transaction.{
   verify_midgard_transaction_mint_preimage_commitment_v1,
 }
 use midgard/fraud_proofs/native_tx/types.{
-  CertRedeemer, MidgardCredential, MidgardRedeemerWitness,
-  MidgardAddress, MidgardScriptWitness, MidgardTxInput, MidgardTxOutput, MidgardValue,
+  CertRedeemer, MidgardAddress, MidgardCredential, MidgardRedeemerWitness,
+  MidgardScriptWitness, MidgardTxInput, MidgardTxOutput, MidgardValue,
   MintRedeemer, NativeCardanoScript, NativeTxBodyCompact, NativeTxCompact,
   NativeTxFieldPreimageLengthsV1, NativeTxWitnessSetCompact, ProposeRedeemer,
   PubKeyCredential, ReceiveRedeemer, RewardRedeemer, ScriptCredential,
@@ -46,9 +45,10 @@ use midgard/fraud_proofs/native_tx/types.{
 use midgard/ledger_output_commitment_v1
 use midgard/ledger_output_proof_v1
 use midgard/ledger_output_v1
+use midgard/mpf_proof_fold_v1
 use midgard/mpf_proof_v1
-use midgard/native_script_v1
 use midgard/native_script_scan_v1
+use midgard/native_script_v1
 use midgard/script_context_v1
 use midgard/script_language_views_v1
 use midgard/script_proof_v1
@@ -132,6 +132,14 @@ pub type CekTxInfoAssemblyControlV1 {
   script_info: cek_data_v1.DataSummaryV1,
 }
 
+pub type LedgerDeltaOperationProofV1 {
+  descriptor: mpf_proof_fold_v1.ProofDescriptorV1,
+  operation_count: Int,
+  operation_peaks: List<validation_merkle_v1.FrontierPeak>,
+  operation_index: Int,
+  operation_siblings: List<ByteArray>,
+}
+
 pub type ValidationAuxiliaryWitnessV1 {
   NoAuxiliaryWitness
   TransactionFieldPreimageWitness { preimage_cbor: ByteArray }
@@ -149,9 +157,7 @@ pub type ValidationAuxiliaryWitnessV1 {
     next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
     signer_proof: SignerSetProofV1,
   }
-  NativeScriptFrameWitness {
-    frame: native_script_scan_v1.NativeScriptFrameV1,
-  }
+  NativeScriptFrameWitness { frame: native_script_scan_v1.NativeScriptFrameV1 }
   TransactionFieldPairPreimageWitness {
     first_field_index: Int,
     first_preimage_cbor: ByteArray,
@@ -304,13 +310,11 @@ pub type ValidationAuxiliaryWitnessV1 {
     key: ByteArray,
     next_schedule_hash: ByteArray,
     value: ByteArray,
-    proof: Proof,
   }
   LedgerDeltaOutputWitness {
     output_index: Int,
     descriptor_cbor: ByteArray,
     siblings: List<ByteArray>,
-    proof: Proof,
   }
   TransactionRedeemerItemWitness {
     collection_proof: bounded_collection_v1.ItemProofV1,
@@ -331,6 +335,16 @@ pub type ValidationAuxiliaryWitnessV1 {
   LedgerOutputProofFinalizeWitness {
     descriptor_cbor: ByteArray,
     signer_proof: SignerSetProofV1,
+  }
+  LedgerDeltaProofFrameWitness {
+    frame: mpf_proof_fold_v1.ProofFrameV1,
+    siblings: List<ByteArray>,
+  }
+  LedgerDeltaOperationWitness {
+    operation_kind: Int,
+    key: ByteArray,
+    value: ByteArray,
+    operation_proof: LedgerDeltaOperationProofV1,
   }
 }
 
@@ -557,7 +571,8 @@ pub fn encode_input_sets_scan_witness(
   expect reference_count >= -1
   expect spend_seen >= 0
   expect reference_seen >= 0
-  expect bytearray.length(previous_key) == 0 || bytearray.length(previous_key) == 36
+  expect
+    bytearray.length(previous_key) == 0 || bytearray.length(previous_key) == 36
   expect bytearray.length(resolution_schedule_hash) == 32
   encode_definite_array_header(10)
     |> bytearray.concat(encode_definite_bytes(compact_cbor))
@@ -599,7 +614,8 @@ pub fn encode_phase_a_native_scripts_scan_witness(
   expect script_seen >= 0
   expect contains_non_native_script == 0 || contains_non_native_script == 1
   expect item_length >= 0
-  expect bytearray.length(item_commitment) == 0 || bytearray.length(item_commitment) == 32
+  expect
+    bytearray.length(item_commitment) == 0 || bytearray.length(item_commitment) == 32
   expect cursor >= 0
   expect bytearray.length(stack_root) == 0 || bytearray.length(stack_root) == 32
   expect stack_depth >= 0
@@ -652,9 +668,13 @@ pub fn encode_signatures_scan_witness(
   expect required_count >= -1
   expect address_seen >= 0
   expect required_seen >= 0
-  expect bytearray.length(previous_signer_hash) == 0 || bytearray.length(previous_signer_hash) == 28
+  expect
+    bytearray.length(previous_signer_hash) == 0 || bytearray.length(
+      previous_signer_hash,
+    ) == 28
   expect signer_count >= 0
-  expect validation_merkle_v1.frontier_is_well_formed(signer_count, signer_peaks)
+  expect
+    validation_merkle_v1.frontier_is_well_formed(signer_count, signer_peaks)
   expect invalid_signature_seen == 0 || invalid_signature_seen == 1
   encode_definite_array_header(15)
     |> bytearray.concat(encode_definite_bytes(compact_cbor))
@@ -692,7 +712,10 @@ pub fn encode_phase_a_script_preconditions_witness(
   expect bytearray.length(signer_frontier_commitment) == 32
   expect observer_count >= 0
   expect observer_seen >= 0
-  expect bytearray.length(previous_observer) == 0 || bytearray.length(previous_observer) == 28
+  expect
+    bytearray.length(previous_observer) == 0 || bytearray.length(
+      previous_observer,
+    ) == 28
   encode_definite_array_header(11)
     |> bytearray.concat(encode_definite_bytes(compact_cbor))
     |> bytearray.concat(encode_definite_bytes(witness_set_compact_cbor))
@@ -748,9 +771,7 @@ pub type ScheduledInputV1 {
   key: ByteArray,
 }
 
-fn scheduled_input_resolution_hash(
-  inputs: List<ScheduledInputV1>,
-) -> ByteArray {
+fn scheduled_input_resolution_hash(inputs: List<ScheduledInputV1>) -> ByteArray {
   when inputs is {
     [] -> empty_resolution_schedule_hash()
     [input, ..rest] ->
@@ -889,11 +910,7 @@ pub type ObserverPurposeScanControlV1 {
 }
 
 pub fn empty_observer_purpose_scan_control() -> ObserverPurposeScanControlV1 {
-  ObserverPurposeScanControlV1 {
-    total_count: 0,
-    seen: 0,
-    previous_hash: #"",
-  }
+  ObserverPurposeScanControlV1 { total_count: 0, seen: 0, previous_hash: #"" }
 }
 
 pub fn encode_observer_purpose_scan_control(
@@ -950,17 +967,13 @@ pub fn encode_receive_purpose_scan_control(
     } else {
       bytearray.length(control.previous_hash) == 28
     }
-  expect
-    or {
+  expect or {
       control.candidate_hash == #"",
       and {
         bytearray.length(control.candidate_hash) == 28,
         or {
           control.previous_hash == #"",
-          bytearray.compare(
-            control.previous_hash,
-            control.candidate_hash,
-          ) == Less,
+          bytearray.compare(control.previous_hash, control.candidate_hash) == Less,
         },
       },
     }
@@ -1292,9 +1305,7 @@ fn canonical_decode_control_from_witness(
     = builtin.un_list_data(data)
   CanonicalDecodeControlV1 {
     compact_cbor: builtin.un_b_data(compact_cbor_data),
-    witness_set_compact_cbor: builtin.un_b_data(
-      witness_set_compact_cbor_data,
-    ),
+    witness_set_compact_cbor: builtin.un_b_data(witness_set_compact_cbor_data),
     field_preimage_lengths_cbor: builtin.un_b_data(
       field_preimage_lengths_cbor_data,
     ),
@@ -1465,10 +1476,7 @@ fn verify_canonical_decode_chunk(
       expected_field_commitment,
       collection_proof,
     ),
-    bounded_item_v1.verify_chunk(
-      collection_proof.item_commitment,
-      chunk_proof,
-    ),
+    bounded_item_v1.verify_chunk(collection_proof.item_commitment, chunk_proof),
     if !item_finished {
       canonical_scan_successor_is_exact(
         pre,
@@ -1566,12 +1574,9 @@ fn verify_canonical_decode(
   witness: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
 ) -> Bool {
-  let control = canonical_decode_control_from_witness(
-    witness.work_witness_cbor,
-  )
+  let control = canonical_decode_control_from_witness(witness.work_witness_cbor)
   when auxiliary is {
-    NoAuxiliaryWitness ->
-      verify_canonical_decode_empty(pre, witness, control)
+    NoAuxiliaryWitness -> verify_canonical_decode_empty(pre, witness, control)
     TransactionFieldChunkWitness { collection_proof, chunk_proof } ->
       verify_canonical_decode_chunk(
         pre,
@@ -1700,16 +1705,13 @@ fn rejected_successor_is_exact(
   post: validation_trace_v1.ValidationMachineStateV1,
   rejection_code: ByteArray,
 ) -> Bool {
-  let empty_delta_cbor = #"80"
   and {
     post.phase == validation_trace_v1.Terminal,
     post.verdict == validation_trace_v1.Rejected,
     post.rejection_code_hash == validation_trace_v1.hash_rejection_code(
       rejection_code,
     ),
-    post.ledger_delta_root == validation_trace_v1.hash_ledger_delta(
-      empty_delta_cbor,
-    ),
+    post.ledger_delta_root == validation_merkle_v1.frontier_commitment(0, []),
     post.work_root == validation_trace_v1.hash_work_witness(
       validation_trace_v1.Terminal,
       pre.program_counter + 1,
@@ -1752,9 +1754,7 @@ fn input_sets_control_from_witness(
     = builtin.un_list_data(data)
   InputSetsControlV1 {
     compact_cbor: builtin.un_b_data(compact_cbor_data),
-    witness_set_compact_cbor: builtin.un_b_data(
-      witness_set_compact_cbor_data,
-    ),
+    witness_set_compact_cbor: builtin.un_b_data(witness_set_compact_cbor_data),
     field_preimage_lengths_cbor: builtin.un_b_data(
       field_preimage_lengths_cbor_data,
     ),
@@ -1764,9 +1764,7 @@ fn input_sets_control_from_witness(
     spend_seen: builtin.un_i_data(spend_seen_data),
     reference_seen: builtin.un_i_data(reference_seen_data),
     previous_key: builtin.un_b_data(previous_key_data),
-    resolution_schedule_hash: builtin.un_b_data(
-      resolution_schedule_hash_data,
-    ),
+    resolution_schedule_hash: builtin.un_b_data(resolution_schedule_hash_data),
   }
 }
 
@@ -2056,10 +2054,7 @@ fn verify_input_sets_item(
       expected_field_commitment,
       collection_proof,
     ),
-    bounded_item_v1.verify_chunk(
-      collection_proof.item_commitment,
-      chunk_proof,
-    ),
+    bounded_item_v1.verify_chunk(collection_proof.item_commitment, chunk_proof),
     if duplicate {
       rejected_successor_is_exact(
         pre,
@@ -2118,12 +2113,9 @@ fn verify_input_sets(
   witness: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
 ) -> Bool {
-  let control = input_sets_control_from_witness(
-    witness.work_witness_cbor,
-  )
+  let control = input_sets_control_from_witness(witness.work_witness_cbor)
   when auxiliary is {
-    NoAuxiliaryWitness ->
-      verify_input_sets_empty(pre, witness, control)
+    NoAuxiliaryWitness -> verify_input_sets_empty(pre, witness, control)
     TransactionFieldChunkWitness { collection_proof, chunk_proof } ->
       verify_input_sets_item(
         pre,
@@ -2289,16 +2281,12 @@ fn signatures_control_from_witness(
     = builtin.un_list_data(data)
   SignaturesControlV1 {
     compact_cbor: builtin.un_b_data(compact_cbor_data),
-    witness_set_compact_cbor: builtin.un_b_data(
-      witness_set_compact_cbor_data,
-    ),
+    witness_set_compact_cbor: builtin.un_b_data(witness_set_compact_cbor_data),
     field_preimage_lengths_cbor: builtin.un_b_data(
       field_preimage_lengths_cbor_data,
     ),
     context_cbor: builtin.un_b_data(context_cbor_data),
-    resolution_schedule_hash: builtin.un_b_data(
-      resolution_schedule_hash_data,
-    ),
+    resolution_schedule_hash: builtin.un_b_data(resolution_schedule_hash_data),
     stage: builtin.un_i_data(stage_data),
     address_count: builtin.un_i_data(address_count_data),
     required_count: builtin.un_i_data(required_count_data),
@@ -2576,19 +2564,12 @@ fn verify_signature_address_item(
       witness_set.addr_tx_wits_hash,
       collection_proof,
     ),
-    bounded_item_v1.verify_chunk(
-      collection_proof.item_commitment,
-      chunk_proof,
-    ),
+    bounded_item_v1.verify_chunk(collection_proof.item_commitment, chunk_proof),
     or {
       control.previous_order_key == #"",
       bytearray.compare(control.previous_order_key, order_key) == Less,
     },
-    signatures_successor_is_exact(
-      pre,
-      witness.claimed_successor,
-      next_control,
-    ),
+    signatures_successor_is_exact(pre, witness.claimed_successor, next_control),
   }
 }
 
@@ -2726,10 +2707,7 @@ fn verify_required_signer_item(
       verified.tx_compact.body.required_signers_hash,
       collection_proof,
     ),
-    bounded_item_v1.verify_chunk(
-      collection_proof.item_commitment,
-      chunk_proof,
-    ),
+    bounded_item_v1.verify_chunk(collection_proof.item_commitment, chunk_proof),
     if absent {
       rejected_successor_is_exact(
         pre,
@@ -2827,11 +2805,7 @@ fn verify_signatures(
         collection_proof,
         chunk_proof,
       )
-    RequiredSignerItemWitness {
-      collection_proof,
-      chunk_proof,
-      signer_proof,
-    } ->
+    RequiredSignerItemWitness { collection_proof, chunk_proof, signer_proof } ->
       verify_required_signer_item(
         pre,
         witness,
@@ -2948,16 +2922,12 @@ fn phase_a_native_control_from_witness(
     = builtin.un_list_data(data)
   PhaseANativeScriptsControlV1 {
     compact_cbor: builtin.un_b_data(compact_cbor_data),
-    witness_set_compact_cbor: builtin.un_b_data(
-      witness_set_compact_cbor_data,
-    ),
+    witness_set_compact_cbor: builtin.un_b_data(witness_set_compact_cbor_data),
     field_preimage_lengths_cbor: builtin.un_b_data(
       field_preimage_lengths_cbor_data,
     ),
     context_cbor: builtin.un_b_data(context_cbor_data),
-    resolution_schedule_hash: builtin.un_b_data(
-      resolution_schedule_hash_data,
-    ),
+    resolution_schedule_hash: builtin.un_b_data(resolution_schedule_hash_data),
     stage: builtin.un_i_data(stage_data),
     script_count: builtin.un_i_data(script_count_data),
     script_seen: builtin.un_i_data(script_seen_data),
@@ -3263,10 +3233,7 @@ fn verify_phase_a_native_item_scan(
       witness_set.script_tx_wits_hash,
       collection_proof,
     ),
-    bounded_item_v1.verify_chunk(
-      collection_proof.item_commitment,
-      chunk_proof,
-    ),
+    bounded_item_v1.verify_chunk(collection_proof.item_commitment, chunk_proof),
     when header is {
       None ->
         rejected_successor_is_exact(
@@ -3497,12 +3464,10 @@ fn verify_phase_a_native_token_scan(
                   token_mode != 1,
                   signer_proof == NoSignerSetProof,
                 } {
-                  Some(
-                    and {
+                  Some(and {
                       verified.tx_compact.body.validity_interval_start >= 0,
                       verified.tx_compact.body.validity_interval_start >= token.slot,
-                    },
-                  )
+                    })
                 } else {
                   None
                 }
@@ -3511,12 +3476,10 @@ fn verify_phase_a_native_token_scan(
                   token_mode != 1,
                   signer_proof == NoSignerSetProof,
                 } {
-                  Some(
-                    and {
+                  Some(and {
                       verified.tx_compact.body.validity_interval_end >= 0,
                       verified.tx_compact.body.validity_interval_end <= token.slot,
-                    },
-                  )
+                    })
                 } else {
                   None
                 }
@@ -3580,12 +3543,7 @@ fn verify_phase_a_native_frame_scan(
     bytearray.length(control.stack_root) == 32,
     control.stack_depth > 0,
     native_script_scan_v1.hash_frame_v1(frame) == control.stack_root,
-    when
-      native_script_scan_v1.apply_child_v1(
-        frame,
-        control.result == 1,
-      )
-    is {
+    when native_script_scan_v1.apply_child_v1(frame, control.result == 1) is {
       None -> False
       Some(native_script_scan_v1.NativeFramePending { frame: next_frame }) ->
         phase_a_native_successor_is_exact(
@@ -3598,12 +3556,7 @@ fn verify_phase_a_native_frame_scan(
             result: -1,
           },
         )
-      Some(
-        native_script_scan_v1.NativeFrameComplete {
-          tail,
-          valid,
-        },
-      ) ->
+      Some(native_script_scan_v1.NativeFrameComplete { tail, valid }) ->
         phase_a_native_successor_is_exact(
           pre,
           witness.claimed_successor,
@@ -3674,9 +3627,7 @@ fn verify_phase_a_native_scripts_scan(
   witness: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
 ) -> Bool {
-  let control = phase_a_native_control_from_witness(
-    witness.work_witness_cbor,
-  )
+  let control = phase_a_native_control_from_witness(witness.work_witness_cbor)
   when auxiliary is {
     NoAuxiliaryWitness ->
       if control.stage == 2 {
@@ -3692,11 +3643,7 @@ fn verify_phase_a_native_scripts_scan(
         collection_proof,
         chunk_proof,
       )
-    NativeScriptTokenWitness {
-      chunk_proof,
-      next_chunk_proof,
-      signer_proof,
-    } ->
+    NativeScriptTokenWitness { chunk_proof, next_chunk_proof, signer_proof } ->
       if control.stage == 1 {
         and {
           signer_proof == NoSignerSetProof,
@@ -3787,9 +3734,7 @@ pub fn verify_phase_a_native_advance_semantics_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
 ) -> Bool {
-  let control = phase_a_native_control_from_witness(
-    witness.work_witness_cbor,
-  )
+  let control = phase_a_native_control_from_witness(witness.work_witness_cbor)
   if control.stage == 2 {
     verify_phase_a_native_finalize_scan(pre, witness, control)
   } else {
@@ -3854,29 +3799,20 @@ fn authenticated_phase_a_native_window_v1(
     control.witness_set_compact_cbor,
     control.field_preimage_lengths_cbor,
   )
-  if
-    phase_a_native_control_is_bound(
-      pre,
-      witness,
-      control,
-      verified,
-      witness_set,
-    )
-  {
+  if phase_a_native_control_is_bound(
+    pre,
+    witness,
+    control,
+    verified,
+    witness_set,
+  ) {
     when
-      phase_a_native_chunk_window(
-        control,
-        chunk_proof,
-        next_chunk_proof,
-      )
+      phase_a_native_chunk_window(control, chunk_proof, next_chunk_proof)
     is {
       None -> None
       Some(authenticated) ->
         Some(
-          AuthenticatedNativeScriptWindowV1 {
-            verified,
-            window: authenticated,
-          },
+          AuthenticatedNativeScriptWindowV1 { verified, window: authenticated },
         )
     }
   } else {
@@ -3990,10 +3926,7 @@ fn phase_a_native_container_frame_payload_successor_is_exact_v1(
     False
   } else {
     when
-      native_script_scan_v1.frame_for_token_v1(
-        token,
-        control.stack_root,
-      )
+      native_script_scan_v1.frame_for_token_v1(token, control.stack_root)
     is {
       None -> False
       Some(frame) -> {
@@ -4274,10 +4207,7 @@ fn phase_a_native_container_frame_successor_is_exact_v1(
     False
   } else {
     when
-      native_script_scan_v1.frame_for_token_v1(
-        token,
-        control.stack_root,
-      )
+      native_script_scan_v1.frame_for_token_v1(token, control.stack_root)
     is {
       None -> False
       Some(frame) -> {
@@ -4764,10 +4694,7 @@ fn verify_phase_a_native_signature_payload_with_v1(
   control: PhaseANativeScriptsControlV1,
   chunk_proof: bounded_item_v1.ChunkProofV1,
   next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
-  signer_result: fn(
-    ByteArray,
-    PhaseANativeScriptsControlV1,
-  ) -> Option<Bool>,
+  signer_result: fn(ByteArray, PhaseANativeScriptsControlV1) -> Option<Bool>,
 ) -> Bool {
   when
     authenticated_phase_a_native_window_v1(
@@ -4797,12 +4724,7 @@ fn verify_phase_a_native_signature_payload_with_v1(
               reject_invalid_field_type,
             )
           Some(token) ->
-            when
-              signer_result(
-                token.key_hash,
-                control,
-              )
-            is {
+            when signer_result(token.key_hash, control) is {
               None -> False
               Some(valid) -> and {
                   token.next_offset <= control.item_length,
@@ -4842,11 +4764,7 @@ fn verify_phase_a_native_signature_payload_scan_v1(
     chunk_proof,
     next_chunk_proof,
     fn(key_hash, bound_control) {
-      phase_a_native_signature_result(
-        key_hash,
-        bound_control,
-        signer_proof,
-      )
+      phase_a_native_signature_result(key_hash, bound_control, signer_proof)
     },
   )
 }
@@ -4978,16 +4896,14 @@ pub fn verify_phase_a_native_signature_membership_payload_semantics_v1(
         control.signer_count,
         control.signer_peaks,
       )
-      if
-        signer_membership_is_valid(
-          key_hash,
-          control.signer_count,
-          frontier_commitment,
-          peaks,
-          signer_index,
-          siblings,
-        )
-      {
+      if signer_membership_is_valid(
+        key_hash,
+        control.signer_count,
+        frontier_commitment,
+        peaks,
+        signer_index,
+        siblings,
+      ) {
         Some(True)
       } else {
         None
@@ -5292,16 +5208,12 @@ fn phase_a_script_preconditions_control_from_witness(
     = builtin.un_list_data(data)
   PhaseAScriptPreconditionsControlV1 {
     compact_cbor: builtin.un_b_data(compact_cbor_data),
-    witness_set_compact_cbor: builtin.un_b_data(
-      witness_set_compact_cbor_data,
-    ),
+    witness_set_compact_cbor: builtin.un_b_data(witness_set_compact_cbor_data),
     field_preimage_lengths_cbor: builtin.un_b_data(
       field_preimage_lengths_cbor_data,
     ),
     context_cbor: builtin.un_b_data(context_cbor_data),
-    resolution_schedule_hash: builtin.un_b_data(
-      resolution_schedule_hash_data,
-    ),
+    resolution_schedule_hash: builtin.un_b_data(resolution_schedule_hash_data),
     signer_count: builtin.un_i_data(signer_count_data),
     signer_frontier_commitment: builtin.un_b_data(
       signer_frontier_commitment_data,
@@ -5502,8 +5414,7 @@ fn verify_phase_a_script_preconditions(
         ),
       }
     } else {
-      expect TransactionFieldChunkWitness { collection_proof, chunk_proof } =
-        auxiliary
+      expect TransactionFieldChunkWitness { collection_proof, chunk_proof } = auxiliary
       let active_count = if control.observer_count == 0 {
         collection_proof.item_count
       } else {
@@ -5522,10 +5433,7 @@ fn verify_phase_a_script_preconditions(
         chunk_proof.total_length == 28,
         chunk_proof.chunk_index == 0,
         bounded_item_v1.chunk_count(chunk_proof.total_length) == 1,
-        bounded_collection_v1.verify_item(
-          observer_commitment,
-          collection_proof,
-        ),
+        bounded_collection_v1.verify_item(observer_commitment, collection_proof),
         bounded_item_v1.verify_chunk(
           collection_proof.item_commitment,
           chunk_proof,
@@ -5767,39 +5675,39 @@ fn payment_credential_signer_authorization(
   signer_proof: SignerSetProofV1,
 ) -> InputSignerAuthorizationV1 {
   when payment_credential is {
-      ScriptCredential(_) ->
-        if signer_proof == NoSignerSetProof {
-          InputSignerAuthorized
-        } else {
-          InputSignerProofMalformed
-        }
-      PubKeyCredential(signer_hash) ->
-        when signer_proof is {
-          SignerMembershipProof { peaks, signer_index, siblings } ->
-            if signer_membership_is_valid(
-              signer_hash,
-              signer_count,
-              signer_frontier_commitment,
-              peaks,
-              signer_index,
-              siblings,
-            ) {
-              InputSignerAuthorized
-            } else {
-              InputSignerProofMalformed
-            }
-          _ ->
-            if signer_non_membership_is_valid(
-              signer_hash,
-              signer_count,
-              signer_frontier_commitment,
-              signer_proof,
-            ) {
-              InputSignerMissing
-            } else {
-              InputSignerProofMalformed
-            }
-        }
+    ScriptCredential(_) ->
+      if signer_proof == NoSignerSetProof {
+        InputSignerAuthorized
+      } else {
+        InputSignerProofMalformed
+      }
+    PubKeyCredential(signer_hash) ->
+      when signer_proof is {
+        SignerMembershipProof { peaks, signer_index, siblings } ->
+          if signer_membership_is_valid(
+            signer_hash,
+            signer_count,
+            signer_frontier_commitment,
+            peaks,
+            signer_index,
+            siblings,
+          ) {
+            InputSignerAuthorized
+          } else {
+            InputSignerProofMalformed
+          }
+        _ ->
+          if signer_non_membership_is_valid(
+            signer_hash,
+            signer_count,
+            signer_frontier_commitment,
+            signer_proof,
+          ) {
+            InputSignerMissing
+          } else {
+            InputSignerProofMalformed
+          }
+      }
   }
 }
 
@@ -5849,12 +5757,7 @@ fn resolve_membership_begin_step(
     resolution_schedule_node_hash(source_kind, key, next_schedule_hash) == control.remaining_schedule_hash,
     input.output_index == descriptor.output_index,
     descriptor.total_length > 0,
-    mpf_proof_v1.has(
-      pre.prior_ledger_root,
-      key,
-      descriptor_cbor,
-      proof,
-    ),
+    mpf_proof_v1.has(pre.prior_ledger_root, key, descriptor_cbor, proof),
     resolve_inputs_successor_is_exact(
       pre,
       witness,
@@ -5949,8 +5852,9 @@ fn resolve_membership_proof_finalize(
       descriptor,
     ),
   } {
-    expect Some(address) =
-      ledger_output_v1.decode_canonical_address_bytes(descriptor.address)
+    expect Some(address) = ledger_output_v1.decode_canonical_address_bytes(
+      descriptor.address,
+    )
     when
       input_signer_authorization(
         pending.source_kind,
@@ -6027,10 +5931,7 @@ fn resolve_lookup_step(
             pending,
             proof_witness,
           )
-        LedgerOutputProofFinalizeWitness {
-          descriptor_cbor,
-          signer_proof,
-        } ->
+        LedgerOutputProofFinalizeWitness { descriptor_cbor, signer_proof } ->
           resolve_membership_proof_finalize(
             pre,
             witness,
@@ -6103,9 +6004,7 @@ fn resolve_inputs_control_is_bound(
           pending.next_schedule_hash,
         ) == control.remaining_schedule_hash,
         input.output_index == descriptor.output_index,
-        ledger_output_proof_v1.control_is_well_formed(
-          pending.output_proof,
-        ),
+        ledger_output_proof_v1.control_is_well_formed(pending.output_proof),
         pending.output_proof.output_index == descriptor.output_index,
         pending.output_proof.total_length == descriptor.total_length,
         pending.output_proof.item_commitment == descriptor.item_commitment,
@@ -6376,8 +6275,7 @@ pub fn verify_resolve_inputs_membership_step_semantics_v1(
   let control = resolve_inputs_control_from_witness(witness.work_witness_cbor)
   when control.pending is {
     None -> False
-    Some(pending) ->
-      and {
+    Some(pending) -> and {
         resolve_inputs_control_is_bound(pre, witness, control),
         resolve_membership_proof_step(
           pre,
@@ -6399,8 +6297,7 @@ pub fn verify_resolve_inputs_membership_finalize_semantics_v1(
   let control = resolve_inputs_control_from_witness(witness.work_witness_cbor)
   when control.pending is {
     None -> False
-    Some(pending) ->
-      and {
+    Some(pending) -> and {
         resolve_inputs_control_is_bound(pre, witness, control),
         resolve_membership_proof_finalize(
           pre,
@@ -6613,8 +6510,7 @@ fn script_sources_control_from_data_items(
         replay_remaining_schedule_hash_data, spend_index_data,
         purpose_count_data, purpose_peaks_data, output_cursor_data,
         output_count_data, output_peaks_data, output_total_count_data,
-        receive_scan_data,
-        source_total_count_data, redeemer_total_count_data,
+        receive_scan_data, source_total_count_data, redeemer_total_count_data,
         observer_scan_data,
       ]
     = items
@@ -6626,9 +6522,9 @@ fn script_sources_control_from_data_items(
     = builtin.un_list_data(observer_scan_data)
   expect
       [
-        receive_source_count_data, receive_source_peaks_data,
-        receive_count_data, receive_previous_hash_data,
-        receive_candidate_hash_data, receive_descriptor_peaks_data,
+        receive_source_count_data, receive_source_peaks_data, receive_count_data,
+        receive_previous_hash_data, receive_candidate_hash_data,
+        receive_descriptor_peaks_data,
       ]
     = builtin.un_list_data(receive_scan_data)
   ScriptSourcesControlV1 {
@@ -7018,8 +6914,7 @@ fn script_sources_stage_zero(
       ),
     }
   } else {
-    expect TransactionFieldChunkWitness { collection_proof, chunk_proof } =
-      auxiliary
+    expect TransactionFieldChunkWitness { collection_proof, chunk_proof } = auxiliary
     let active_total_count = if control.source_total_count == 0 {
       collection_proof.item_count
     } else {
@@ -7036,10 +6931,7 @@ fn script_sources_stage_zero(
       chunk_proof.item_index == collection_proof.item_index,
       chunk_proof.total_length == collection_proof.item_length,
       chunk_proof.chunk_index == 0,
-      bounded_collection_v1.verify_item(
-        script_commitment,
-        collection_proof,
-      ),
+      bounded_collection_v1.verify_item(script_commitment, collection_proof),
       bounded_item_v1.verify_chunk(
         collection_proof.item_commitment,
         chunk_proof,
@@ -7116,9 +7008,7 @@ fn script_sources_stage_one(
       ),
     }
   } else {
-    expect
-        TransactionRedeemerItemWitness { collection_proof, redeemer }
-      = auxiliary
+    expect TransactionRedeemerItemWitness { collection_proof, redeemer } = auxiliary
     let active_total_count = if control.redeemer_total_count == 0 {
       collection_proof.item_count
     } else {
@@ -7137,10 +7027,7 @@ fn script_sources_stage_one(
       collection_proof.item_count == active_total_count,
       collection_proof.item_index == control.redeemer_count,
       collection_proof.item_commitment == item_commitment,
-      bounded_collection_v1.verify_item(
-        redeemer_commitment,
-        collection_proof,
-      ),
+      bounded_collection_v1.verify_item(redeemer_commitment, collection_proof),
       if !redeemer_is_well_formed(redeemer) {
         rejected_successor_is_exact(
           pre,
@@ -7301,8 +7188,9 @@ fn replay_purpose_frontier(
   key: ByteArray,
   descriptor: ledger_output_commitment_v1.LedgerOutputCommitmentV1,
 ) -> validation_merkle_v1.BuiltFrontier {
-  expect Some(address) =
-    ledger_output_v1.decode_canonical_address_bytes(descriptor.address)
+  expect Some(address) = ledger_output_v1.decode_canonical_address_bytes(
+    descriptor.address,
+  )
   if source_kind == 0 {
     when address.payment_credential is {
       ScriptCredential(script_hash) ->
@@ -7343,11 +7231,7 @@ fn script_sources_replay_item(
   value: ByteArray,
 ) -> Bool {
   let descriptor = ledger_output_commitment_v1.decode(value)
-  if resolution_schedule_node_hash(
-    source_kind,
-    key,
-    next_schedule_hash,
-  ) == control.replay_remaining_schedule_hash {
+  if resolution_schedule_node_hash(source_kind, key, next_schedule_hash) == control.replay_remaining_schedule_hash {
     let next_sources = replay_source_frontier(
       control,
       source_kind,
@@ -7545,10 +7429,7 @@ fn script_sources_stage_four(
       collection_proof.item_count == active_total_count,
       collection_proof.item_index == control.output_count,
       collection_proof.item_length <= max_serialized_output_preimage_bytes,
-      bounded_collection_v1.verify_item(
-        output_commitment,
-        collection_proof,
-      ),
+      bounded_collection_v1.verify_item(output_commitment, collection_proof),
       script_sources_control_successor_is_exact(
         pre,
         witness,
@@ -7636,10 +7517,7 @@ fn script_sources_output_proof_begin(
       control.output_count,
       control.output_peaks,
       output_index,
-      script_proof_v1.output_item_leaf_hash(
-        output_index,
-        item_commitment,
-      ),
+      script_proof_v1.output_item_leaf_hash(output_index, item_commitment),
       siblings,
     ),
     script_sources_control_successor_is_exact(
@@ -7718,16 +7596,12 @@ fn script_sources_output_proof_finalize(
   signer_proof: SignerSetProofV1,
 ) -> Bool {
   let descriptor = ledger_output_commitment_v1.decode(descriptor_cbor)
-  if
-    !ledger_output_proof_v1.descriptor_is_exact_v1(
-      output_proof,
-      descriptor,
-    )
-  {
+  if !ledger_output_proof_v1.descriptor_is_exact_v1(output_proof, descriptor) {
     False
   } else {
-    expect Some(address) =
-      ledger_output_v1.decode_canonical_address_bytes(descriptor.address)
+    expect Some(address) = ledger_output_v1.decode_canonical_address_bytes(
+      descriptor.address,
+    )
     when
       protected_output_authorization(
         address,
@@ -7737,11 +7611,11 @@ fn script_sources_output_proof_finalize(
       )
     is {
       InputSignerMissing ->
-      rejected_successor_is_exact(
-        pre,
-        witness.claimed_successor,
-        reject_missing_required_witness,
-      )
+        rejected_successor_is_exact(
+          pre,
+          witness.claimed_successor,
+          reject_missing_required_witness,
+        )
       InputSignerProofMalformed -> False
       InputSignerAuthorized ->
         script_sources_control_successor_is_exact(
@@ -7767,7 +7641,7 @@ fn script_sources_output_proof_finalize(
             output_proof: None,
           },
         )
-      }
+    }
   }
 }
 
@@ -7811,10 +7685,7 @@ fn script_sources_stage_five(
       Some(output_proof) ->
         if ledger_output_proof_v1.terminal_is_exact_v1(output_proof) {
           when auxiliary is {
-            LedgerOutputProofFinalizeWitness {
-              descriptor_cbor,
-              signer_proof,
-            } ->
+            LedgerOutputProofFinalizeWitness { descriptor_cbor, signer_proof } ->
               script_sources_output_proof_finalize(
                 pre,
                 witness,
@@ -8106,10 +7977,7 @@ fn receive_purpose_scan_is_well_formed(
         bytearray.length(scan.candidate_hash) == 28,
         or {
           scan.previous_hash == #"",
-          bytearray.compare(
-            scan.previous_hash,
-            scan.candidate_hash,
-          ) == Less,
+          bytearray.compare(scan.previous_hash, scan.candidate_hash) == Less,
         },
       },
     },
@@ -8285,8 +8153,7 @@ fn script_sources_stage_seven_with_observer_commitment(
       script_sources_receive_scan_item(pre, witness, auxiliary, control)
     }
   } else {
-    expect TransactionFieldChunkWitness { collection_proof, chunk_proof } =
-      auxiliary
+    expect TransactionFieldChunkWitness { collection_proof, chunk_proof } = auxiliary
     let active_count = if control.observer_scan.total_count == 0 {
       collection_proof.item_count
     } else {
@@ -8309,20 +8176,14 @@ fn script_sources_stage_seven_with_observer_commitment(
       chunk_proof.total_length == 28,
       chunk_proof.chunk_index == 0,
       bounded_item_v1.chunk_count(chunk_proof.total_length) == 1,
-      bounded_collection_v1.verify_item(
-        observer_commitment,
-        collection_proof,
-      ),
+      bounded_collection_v1.verify_item(observer_commitment, collection_proof),
       bounded_item_v1.verify_chunk(
         collection_proof.item_commitment,
         chunk_proof,
       ),
       if and {
         control.observer_scan.seen > 0,
-        bytearray.compare(
-          control.observer_scan.previous_hash,
-          observer_hash,
-        ) != Less,
+        bytearray.compare(control.observer_scan.previous_hash, observer_hash) != Less,
       } {
         rejected_successor_is_exact(
           pre,
@@ -8684,8 +8545,10 @@ fn script_sources_stage_ten(
     }
   } else {
     expect RedeemerScanWitness { redeemer_index, redeemer, siblings } = auxiliary
-    let redeemer_leaf =
-      script_proof_v1.redeemer_leaf_hash(redeemer_index, redeemer)
+    let redeemer_leaf = script_proof_v1.redeemer_leaf_hash(
+      redeemer_index,
+      redeemer,
+    )
     if and {
       redeemer_index == discovery.redeemer_cursor,
       validation_merkle_v1.verify_membership(
@@ -8882,8 +8745,10 @@ fn script_sources_stage_twelve(
     }
   } else {
     expect RedeemerScanWitness { redeemer_index, redeemer, siblings } = auxiliary
-    let redeemer_leaf =
-      script_proof_v1.redeemer_leaf_hash(redeemer_index, redeemer)
+    let redeemer_leaf = script_proof_v1.redeemer_leaf_hash(
+      redeemer_index,
+      redeemer,
+    )
     if and {
       redeemer_index == discovery.redeemer_cursor,
       validation_merkle_v1.verify_membership(
@@ -9042,8 +8907,7 @@ fn script_sources_control_is_bound(
     if control.stage == 5 {
       when control.output_proof is {
         None -> True
-        Some(output_proof) ->
-          and {
+        Some(output_proof) -> and {
             ledger_output_proof_v1.control_is_well_formed(output_proof),
             output_proof.output_index == control.output_cursor,
             output_proof.output_index < control.output_count,
@@ -9650,8 +9514,8 @@ fn native_scripts_control_from_witness(
         signer_frontier_commitment_data, source_count_data, source_peaks_data,
         redeemer_count_data, redeemer_peaks_data, purpose_count_data,
         purpose_peaks_data, output_count_data, output_peaks_data,
-        output_descriptor_peaks_data, execution_count_data,
-        execution_peaks_data, execution_cursor_data, language_bitmap_data,
+        output_descriptor_peaks_data, execution_count_data, execution_peaks_data,
+        execution_cursor_data, language_bitmap_data,
       ]
     = builtin.un_list_data(data)
   NativeScriptsControlV1 {
@@ -9679,9 +9543,7 @@ fn native_scripts_control_from_witness(
     purpose_peaks: decode_frontier_peaks(purpose_peaks_data),
     output_count: builtin.un_i_data(output_count_data),
     output_peaks: decode_frontier_peaks(output_peaks_data),
-    output_descriptor_peaks: decode_frontier_peaks(
-      output_descriptor_peaks_data,
-    ),
+    output_descriptor_peaks: decode_frontier_peaks(output_descriptor_peaks_data),
     execution_count: builtin.un_i_data(execution_count_data),
     execution_peaks: decode_frontier_peaks(execution_peaks_data),
     execution_cursor: builtin.un_i_data(execution_cursor_data),
@@ -10966,7 +10828,10 @@ pub fn encode_value_and_mint_witness_v1(
 }
 
 pub type LedgerDeltaControlV1 {
-  native_control: NativeScriptsControlV1,
+  resolved_input_count: Int,
+  resolved_inputs_accumulator: ByteArray,
+  output_count: Int,
+  output_descriptor_peaks: List<validation_merkle_v1.FrontierPeak>,
   stage: Int,
   replay_schedule_hash: ByteArray,
   replay_cursor: Int,
@@ -10976,6 +10841,16 @@ pub type LedgerDeltaControlV1 {
   output_cursor: Int,
   operation_count: Int,
   operation_peaks: List<validation_merkle_v1.FrontierPeak>,
+  pending_mutation_cbor: ByteArray,
+}
+
+pub type LedgerDeltaPendingMutationV1 {
+  authorization_stage: Int,
+  operation_kind: Int,
+  key: ByteArray,
+  value: ByteArray,
+  descriptor: mpf_proof_fold_v1.ProofDescriptorV1,
+  fold_control: mpf_proof_fold_v1.ProofFoldControlV1,
 }
 
 const ledger_delta_operation_domain =
@@ -10985,8 +10860,10 @@ pub fn ledger_delta_operation_leaf_hash(
   operation_kind: Int,
   key: ByteArray,
   value: ByteArray,
+  descriptor: mpf_proof_fold_v1.ProofDescriptorV1,
 ) -> ByteArray {
   expect operation_kind == 0 || operation_kind == 1
+  expect mpf_proof_fold_v1.descriptor_is_well_formed_v1(descriptor)
   expect
     if operation_kind == 0 {
       value == #""
@@ -10997,17 +10874,113 @@ pub fn ledger_delta_operation_leaf_hash(
     |> bytearray.concat(cbor.serialise(operation_kind))
     |> bytearray.concat(encode_definite_bytes(key))
     |> bytearray.concat(encode_definite_bytes(value))
+    |> bytearray.concat(
+        mpf_proof_fold_v1.encode_proof_descriptor_v1(descriptor),
+      )
     |> blake2b_256
+}
+
+fn ledger_delta_proof_descriptor_from_cbor(
+  descriptor_cbor: ByteArray,
+) -> mpf_proof_fold_v1.ProofDescriptorV1 {
+  expect Some(data) = cbor.deserialise(descriptor_cbor)
+  expect
+      [
+        version_data, frame_count_data, terminal_cursor_data,
+        operation_peaks_data,
+      ]
+    = builtin.un_list_data(data)
+  let descriptor = mpf_proof_fold_v1.ProofDescriptorV1 {
+    version: builtin.un_i_data(version_data),
+    frame_count: builtin.un_i_data(frame_count_data),
+    terminal_cursor: builtin.un_i_data(terminal_cursor_data),
+    peaks: decode_frontier_peaks(operation_peaks_data),
+  }
+  expect
+    descriptor_cbor == mpf_proof_fold_v1.encode_proof_descriptor_v1(descriptor)
+  descriptor
+}
+
+pub fn encode_ledger_delta_pending_mutation_v1(
+  pending: LedgerDeltaPendingMutationV1,
+) -> ByteArray {
+  encode_definite_array_header(10)
+    |> bytearray.concat(cbor.serialise(1))
+    |> bytearray.concat(cbor.serialise(pending.authorization_stage))
+    |> bytearray.concat(cbor.serialise(pending.operation_kind))
+    |> bytearray.concat(encode_definite_bytes(pending.key))
+    |> bytearray.concat(encode_definite_bytes(pending.value))
+    |> bytearray.concat(
+        encode_definite_bytes(
+          mpf_proof_fold_v1.encode_proof_descriptor_v1(pending.descriptor),
+        ),
+      )
+    |> bytearray.concat(cbor.serialise(pending.fold_control.next_frame_index))
+    |> bytearray.concat(
+        encode_definite_bytes(pending.fold_control.including_root),
+      )
+    |> bytearray.concat(
+        encode_definite_bytes(pending.fold_control.excluding_root),
+      )
+    |> bytearray.concat(
+        cbor.serialise(pending.fold_control.expected_next_cursor),
+      )
+}
+
+fn ledger_delta_pending_mutation_from_cbor(
+  pending_cbor: ByteArray,
+) -> LedgerDeltaPendingMutationV1 {
+  expect Some(data) = cbor.deserialise(pending_cbor)
+  expect
+      [
+        version_data, authorization_stage_data, operation_kind_data, key_data,
+        value_data, descriptor_cbor_data, next_frame_index_data,
+        including_root_data, excluding_root_data, expected_next_cursor_data,
+      ]
+    = builtin.un_list_data(data)
+  expect builtin.un_i_data(version_data) == 1
+  let pending = LedgerDeltaPendingMutationV1 {
+    authorization_stage: builtin.un_i_data(authorization_stage_data),
+    operation_kind: builtin.un_i_data(operation_kind_data),
+    key: builtin.un_b_data(key_data),
+    value: builtin.un_b_data(value_data),
+    descriptor: ledger_delta_proof_descriptor_from_cbor(
+      builtin.un_b_data(descriptor_cbor_data),
+    ),
+    fold_control: mpf_proof_fold_v1.ProofFoldControlV1 {
+      next_frame_index: builtin.un_i_data(next_frame_index_data),
+      expected_next_cursor: builtin.un_i_data(expected_next_cursor_data),
+      including_root: builtin.un_b_data(including_root_data),
+      excluding_root: builtin.un_b_data(excluding_root_data),
+    },
+  }
+  expect
+    if pending.authorization_stage == 0 {
+      and {
+        pending.fold_control.next_frame_index == -1,
+        pending.fold_control.expected_next_cursor == 0,
+        pending.fold_control.including_root == #"",
+        pending.fold_control.excluding_root == #"",
+      }
+    } else {
+      pending.authorization_stage == 1
+    }
+  expect pending.operation_kind == 0 || pending.operation_kind == 1
+  expect pending_cbor == encode_ledger_delta_pending_mutation_v1(pending)
+  pending
 }
 
 pub fn encode_ledger_delta_control_v1(
   control: LedgerDeltaControlV1,
 ) -> ByteArray {
-  encode_definite_array_header(10)
+  encode_definite_array_header(14)
+    |> bytearray.concat(cbor.serialise(control.resolved_input_count))
     |> bytearray.concat(
-        encode_definite_bytes(
-          encode_native_scripts_control_v1(control.native_control),
-        ),
+        encode_definite_bytes(control.resolved_inputs_accumulator),
+      )
+    |> bytearray.concat(cbor.serialise(control.output_count))
+    |> bytearray.concat(
+        validation_merkle_v1.encode_frontier(control.output_descriptor_peaks),
       )
     |> bytearray.concat(cbor.serialise(control.stage))
     |> bytearray.concat(encode_definite_bytes(control.replay_schedule_hash))
@@ -11019,6 +10992,7 @@ pub fn encode_ledger_delta_control_v1(
     |> bytearray.concat(encode_definite_bytes(control.current_ledger_root))
     |> bytearray.concat(cbor.serialise(control.output_cursor))
     |> bytearray.concat(cbor.serialise(control.operation_count))
+    |> bytearray.concat(encode_definite_bytes(control.pending_mutation_cbor))
     |> bytearray.concat(
         validation_merkle_v1.encode_frontier(control.operation_peaks),
       )
@@ -11030,16 +11004,21 @@ fn ledger_delta_control_from_witness(
   expect Some(data) = cbor.deserialise(work_witness_cbor)
   expect
       [
-        native_control_cbor_data, stage_data, replay_schedule_hash_data,
-        replay_cursor_data, replay_accumulator_data,
+        resolved_input_count_data, resolved_inputs_accumulator_data,
+        output_count_data, output_descriptor_peaks_data, stage_data,
+        replay_schedule_hash_data, replay_cursor_data, replay_accumulator_data,
         replay_remaining_schedule_hash_data, current_ledger_root_data,
-        output_cursor_data, operation_count_data, operation_peaks_data,
+        output_cursor_data, operation_count_data, pending_mutation_cbor_data,
+        operation_peaks_data,
       ]
     = builtin.un_list_data(data)
   LedgerDeltaControlV1 {
-    native_control: native_scripts_control_from_witness(
-      builtin.un_b_data(native_control_cbor_data),
+    resolved_input_count: builtin.un_i_data(resolved_input_count_data),
+    resolved_inputs_accumulator: builtin.un_b_data(
+      resolved_inputs_accumulator_data,
     ),
+    output_count: builtin.un_i_data(output_count_data),
+    output_descriptor_peaks: decode_frontier_peaks(output_descriptor_peaks_data),
     stage: builtin.un_i_data(stage_data),
     replay_schedule_hash: builtin.un_b_data(replay_schedule_hash_data),
     replay_cursor: builtin.un_i_data(replay_cursor_data),
@@ -11051,26 +11030,33 @@ fn ledger_delta_control_from_witness(
     output_cursor: builtin.un_i_data(output_cursor_data),
     operation_count: builtin.un_i_data(operation_count_data),
     operation_peaks: decode_frontier_peaks(operation_peaks_data),
+    pending_mutation_cbor: builtin.un_b_data(pending_mutation_cbor_data),
   }
 }
 
 pub fn encode_ledger_delta_witness_v1(
   native_control: NativeScriptsControlV1,
   prior_ledger_root: ByteArray,
+  replay_schedule_hash: ByteArray,
 ) -> ByteArray {
   expect bytearray.length(prior_ledger_root) == 32
+  expect bytearray.length(replay_schedule_hash) == 32
   encode_ledger_delta_control_v1(
     LedgerDeltaControlV1 {
-      native_control,
+      resolved_input_count: native_control.resolved_input_count,
+      resolved_inputs_accumulator: native_control.resolved_inputs_accumulator,
+      output_count: native_control.output_count,
+      output_descriptor_peaks: native_control.output_descriptor_peaks,
       stage: 0,
-      replay_schedule_hash: empty_resolution_schedule_hash(),
+      replay_schedule_hash,
       replay_cursor: 0,
       replay_accumulator: initial_resolution_accumulator(),
-      replay_remaining_schedule_hash: empty_resolution_schedule_hash(),
+      replay_remaining_schedule_hash: replay_schedule_hash,
       current_ledger_root: prior_ledger_root,
       output_cursor: 0,
       operation_count: 0,
       operation_peaks: [],
+      pending_mutation_cbor: #"",
     },
   )
 }
@@ -12349,8 +12335,10 @@ fn verify_cek_redeemer_data_step(
       subject,
       purpose_siblings,
     } -> {
-      let redeemer_leaf =
-        script_proof_v1.redeemer_leaf_hash(redeemer_index, redeemer)
+      let redeemer_leaf = script_proof_v1.redeemer_leaf_hash(
+        redeemer_index,
+        redeemer,
+      )
       let purpose_leaf = script_proof_v1.purpose_leaf_hash(
         purpose_kind,
         purpose_index,
@@ -13627,6 +13615,7 @@ fn value_and_mint_stage_five(
           encode_ledger_delta_witness_v1(
             control.native_control,
             pre.prior_ledger_root,
+            control.replay_schedule_hash,
           ),
         ),
       }
@@ -13721,67 +13710,189 @@ fn ledger_delta_successor_is_exact(
   }
 }
 
-fn ledger_delta_stage_zero(
+fn ledger_delta_operation_proof_is_valid(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  control: LedgerDeltaControlV1,
+  operation_kind: Int,
+  key: ByteArray,
+  value: ByteArray,
+  proof: LedgerDeltaOperationProofV1,
+) -> Bool {
+  and {
+    proof.operation_count >= 0,
+    proof.operation_count <= max_tx_size_derived_collection_item_count,
+    validation_merkle_v1.frontier_is_well_formed(
+      proof.operation_count,
+      proof.operation_peaks,
+    ),
+    validation_merkle_v1.frontier_commitment(
+      proof.operation_count,
+      proof.operation_peaks,
+    ) == pre.ledger_delta_root,
+    proof.operation_index == control.operation_count,
+    proof.operation_index >= 0,
+    proof.operation_index < proof.operation_count,
+    validation_merkle_v1.verify_membership(
+      proof.operation_count,
+      proof.operation_peaks,
+      proof.operation_index,
+      ledger_delta_operation_leaf_hash(
+        operation_kind,
+        key,
+        value,
+        proof.descriptor,
+      ),
+      proof.operation_siblings,
+    ),
+  }
+}
+
+fn ledger_delta_operation_step(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
   control: LedgerDeltaControlV1,
 ) -> Bool {
   expect
-      TransactionFieldPairPreimageWitness {
-        first_field_index,
-        first_preimage_cbor,
-        second_field_index,
-        second_preimage_cbor,
+      LedgerDeltaOperationWitness {
+        operation_kind,
+        key,
+        value,
+        operation_proof,
       }
     = auxiliary
-  expect first_field_index == 0
-  expect second_field_index == 1
-  let native_control = control.native_control
-  let fields_verified = and {
-    verify_midgard_transaction_field_preimage_v1(
-      pre.transaction_id,
-      pre.transaction_commitment,
-      native_control.compact_cbor,
-      native_control.witness_set_compact_cbor,
-      native_control.field_preimage_lengths_cbor,
-      first_field_index,
-      first_preimage_cbor,
-    ),
-    verify_midgard_transaction_field_preimage_v1(
-      pre.transaction_id,
-      pre.transaction_commitment,
-      native_control.compact_cbor,
-      native_control.witness_set_compact_cbor,
-      native_control.field_preimage_lengths_cbor,
-      second_field_index,
-      second_preimage_cbor,
-    ),
-  }
-  let schedule_hash = transaction_resolution_schedule_hash(
-    decode_midgard_tx_inputs_preimage_cbor(first_preimage_cbor),
-    decode_midgard_tx_inputs_preimage_cbor(second_preimage_cbor),
+  let expected_output_key = encode_midgard_tx_input(
+    MidgardTxInput {
+      tx_id: pre.transaction_id,
+      output_index: control.output_cursor,
+    },
   )
   and {
-    fields_verified,
-    control.replay_schedule_hash == empty_resolution_schedule_hash(),
-    control.replay_cursor == 0,
-    control.replay_accumulator == initial_resolution_accumulator(),
-    control.replay_remaining_schedule_hash == empty_resolution_schedule_hash(),
-    control.current_ledger_root == pre.prior_ledger_root,
-    control.output_cursor == 0,
-    control.operation_count == 0,
-    control.operation_peaks == [],
+    control.pending_mutation_cbor == #"",
+    if control.stage == 0 {
+      and {
+        operation_kind == 0,
+        value == #"",
+      }
+    } else {
+      and {
+        control.stage == 1,
+        operation_kind == 1,
+        key == expected_output_key,
+      }
+    },
+    ledger_delta_operation_proof_is_valid(
+      pre,
+      control,
+      operation_kind,
+      key,
+      value,
+      operation_proof,
+    ),
     ledger_delta_successor_is_exact(
       pre,
       witness,
       LedgerDeltaControlV1 {
         ..control,
-        stage: 1,
-        replay_schedule_hash: schedule_hash,
-        replay_remaining_schedule_hash: schedule_hash,
+        pending_mutation_cbor: encode_ledger_delta_pending_mutation_v1(
+          LedgerDeltaPendingMutationV1 {
+            authorization_stage: 0,
+            operation_kind,
+            key,
+            value,
+            descriptor: operation_proof.descriptor,
+            fold_control: mpf_proof_fold_v1.ProofFoldControlV1 {
+              next_frame_index: -1,
+              expected_next_cursor: 0,
+              including_root: #"",
+              excluding_root: #"",
+            },
+          },
+        ),
       },
     ),
+  }
+}
+
+fn ledger_delta_pending_step(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+  control: LedgerDeltaControlV1,
+) -> Bool {
+  let pending = ledger_delta_pending_mutation_from_cbor(
+    control.pending_mutation_cbor,
+  )
+  expect pending.authorization_stage == 1
+  if mpf_proof_fold_v1.fold_is_complete_v1(pending.fold_control) {
+    let Pair(expected_current_root, next_root) = if pending.operation_kind == 0 {
+      Pair(
+        pending.fold_control.including_root,
+        pending.fold_control.excluding_root,
+      )
+    } else {
+      Pair(
+        pending.fold_control.excluding_root,
+        pending.fold_control.including_root,
+      )
+    }
+    let operation_value = if pending.operation_kind == 0 {
+      #""
+    } else {
+      pending.value
+    }
+    let next_peaks = validation_merkle_v1.append_leaf(
+      control.operation_count,
+      control.operation_peaks,
+      ledger_delta_operation_leaf_hash(
+        pending.operation_kind,
+        pending.key,
+        operation_value,
+        pending.descriptor,
+      ),
+    )
+    and {
+      auxiliary == NoAuxiliaryWitness,
+      control.current_ledger_root == expected_current_root,
+      ledger_delta_successor_is_exact(
+        pre,
+        witness,
+        LedgerDeltaControlV1 {
+          ..control,
+          current_ledger_root: next_root,
+          operation_count: control.operation_count + 1,
+          operation_peaks: next_peaks,
+          pending_mutation_cbor: #"",
+        },
+      ),
+    }
+  } else {
+    expect LedgerDeltaProofFrameWitness { frame, siblings } = auxiliary
+    when
+      mpf_proof_fold_v1.fold_proof_frame_v1(
+        pending.key,
+        pending.descriptor,
+        pending.fold_control,
+        frame,
+        siblings,
+      )
+    is {
+      None -> False
+      Some(next_fold_control) ->
+        ledger_delta_successor_is_exact(
+          pre,
+          witness,
+          LedgerDeltaControlV1 {
+            ..control,
+            pending_mutation_cbor: encode_ledger_delta_pending_mutation_v1(
+              LedgerDeltaPendingMutationV1 {
+                ..pending,
+                fold_control: next_fold_control,
+              },
+            ),
+          },
+        )
+    }
   }
 }
 
@@ -13792,20 +13903,14 @@ fn ledger_delta_replay_step(
   control: LedgerDeltaControlV1,
 ) -> Bool {
   expect
-      LedgerDeltaReplayWitness {
-        source_kind,
-        key,
-        next_schedule_hash,
-        value,
-        proof,
-      }
+      LedgerDeltaReplayWitness { source_kind, key, next_schedule_hash, value }
     = auxiliary
   let descriptor = ledger_output_commitment_v1.decode(value)
   let input = decode_midgard_tx_input_cbor(key)
   if and {
     source_kind == 0 || source_kind == 1,
     resolution_schedule_node_hash(source_kind, key, next_schedule_hash) == control.replay_remaining_schedule_hash,
-    control.replay_cursor < control.native_control.resolved_input_count,
+    control.replay_cursor < control.resolved_input_count,
     input.output_index == descriptor.output_index,
   } {
     let next_accumulator = resolved_input_accumulator_successor(
@@ -13816,7 +13921,7 @@ fn ledger_delta_replay_step(
     )
     if source_kind == 1 {
       and {
-        proof == [],
+        control.pending_mutation_cbor == #"",
         ledger_delta_successor_is_exact(
           pre,
           witness,
@@ -13828,34 +13933,44 @@ fn ledger_delta_replay_step(
           },
         ),
       }
-    } else if mpf_proof_v1.proof_has_at_most_steps(proof, 16) {
+    } else {
+      expect control.pending_mutation_cbor != #""
+      let pending = ledger_delta_pending_mutation_from_cbor(
+        control.pending_mutation_cbor,
+      )
       when
-        mpf_proof_v1.delete_root(control.current_ledger_root, key, value, proof)
+        mpf_proof_fold_v1.initial_fold_control_v1(
+          key,
+          value,
+          pending.descriptor,
+        )
       is {
         None -> False
-        Some(next_root) -> {
-          let next_peaks = validation_merkle_v1.append_leaf(
-            control.operation_count,
-            control.operation_peaks,
-            ledger_delta_operation_leaf_hash(0, key, #""),
-          )
-          ledger_delta_successor_is_exact(
-            pre,
-            witness,
-            LedgerDeltaControlV1 {
-              ..control,
-              replay_cursor: control.replay_cursor + 1,
-              replay_accumulator: next_accumulator,
-              replay_remaining_schedule_hash: next_schedule_hash,
-              current_ledger_root: next_root,
-              operation_count: control.operation_count + 1,
-              operation_peaks: next_peaks,
-            },
-          )
-        }
+        Some(fold_control) -> and {
+            pending.authorization_stage == 0,
+            pending.operation_kind == 0,
+            pending.key == key,
+            pending.value == #"",
+            ledger_delta_successor_is_exact(
+              pre,
+              witness,
+              LedgerDeltaControlV1 {
+                ..control,
+                replay_cursor: control.replay_cursor + 1,
+                replay_accumulator: next_accumulator,
+                replay_remaining_schedule_hash: next_schedule_hash,
+                pending_mutation_cbor: encode_ledger_delta_pending_mutation_v1(
+                  LedgerDeltaPendingMutationV1 {
+                    ..pending,
+                    authorization_stage: 1,
+                    value,
+                    fold_control,
+                  },
+                ),
+              },
+            ),
+          }
       }
-    } else {
-      False
     }
   } else {
     False
@@ -13868,19 +13983,87 @@ fn ledger_delta_stage_one(
   auxiliary: ValidationAuxiliaryWitnessV1,
   control: LedgerDeltaControlV1,
 ) -> Bool {
-  if control.replay_remaining_schedule_hash == empty_resolution_schedule_hash() {
+  if control.pending_mutation_cbor != #"" {
+    let pending = ledger_delta_pending_mutation_from_cbor(
+      control.pending_mutation_cbor,
+    )
+    if pending.authorization_stage == 0 {
+      ledger_delta_replay_step(pre, witness, auxiliary, control)
+    } else {
+      ledger_delta_pending_step(pre, witness, auxiliary, control)
+    }
+  } else if control.replay_remaining_schedule_hash == empty_resolution_schedule_hash() {
     and {
       auxiliary == NoAuxiliaryWitness,
-      control.replay_cursor == control.native_control.resolved_input_count,
-      control.replay_accumulator == control.native_control.resolved_inputs_accumulator,
+      control.replay_cursor == control.resolved_input_count,
+      control.replay_accumulator == control.resolved_inputs_accumulator,
       ledger_delta_successor_is_exact(
         pre,
         witness,
-        LedgerDeltaControlV1 { ..control, stage: 2 },
+        LedgerDeltaControlV1 { ..control, stage: 1 },
       ),
     }
   } else {
     ledger_delta_replay_step(pre, witness, auxiliary, control)
+  }
+}
+
+fn ledger_delta_output_step(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+  control: LedgerDeltaControlV1,
+) -> Bool {
+  expect LedgerDeltaOutputWitness { output_index, descriptor_cbor, siblings } = auxiliary
+  let key = encode_midgard_tx_input(
+    MidgardTxInput { tx_id: pre.transaction_id, output_index },
+  )
+  let descriptor = ledger_output_commitment_v1.decode(descriptor_cbor)
+  expect control.pending_mutation_cbor != #""
+  let pending = ledger_delta_pending_mutation_from_cbor(
+    control.pending_mutation_cbor,
+  )
+  when
+    mpf_proof_fold_v1.initial_fold_control_v1(
+      key,
+      descriptor_cbor,
+      pending.descriptor,
+    )
+  is {
+    None -> False
+    Some(fold_control) -> and {
+        output_index == control.output_cursor,
+        descriptor.output_index == output_index,
+        pending.authorization_stage == 0,
+        pending.operation_kind == 1,
+        pending.key == key,
+        pending.value == descriptor_cbor,
+        validation_merkle_v1.verify_membership(
+          control.output_count,
+          control.output_descriptor_peaks,
+          output_index,
+          script_proof_v1.output_descriptor_leaf_hash(
+            output_index,
+            descriptor_cbor,
+          ),
+          siblings,
+        ),
+        ledger_delta_successor_is_exact(
+          pre,
+          witness,
+          LedgerDeltaControlV1 {
+            ..control,
+            output_cursor: control.output_cursor + 1,
+            pending_mutation_cbor: encode_ledger_delta_pending_mutation_v1(
+              LedgerDeltaPendingMutationV1 {
+                ..pending,
+                authorization_stage: 1,
+                fold_control,
+              },
+            ),
+          },
+        ),
+      }
   }
 }
 
@@ -13890,73 +14073,75 @@ fn ledger_delta_stage_two(
   auxiliary: ValidationAuxiliaryWitnessV1,
   control: LedgerDeltaControlV1,
 ) -> Bool {
-  if control.output_cursor == control.native_control.output_count {
+  if and {
+    control.pending_mutation_cbor != #"",
+    ledger_delta_pending_mutation_from_cbor(control.pending_mutation_cbor).authorization_stage == 1,
+  } {
+    ledger_delta_pending_step(pre, witness, auxiliary, control)
+  } else if and {
+    control.pending_mutation_cbor == #"",
+    control.output_cursor == control.output_count,
+  } {
     and {
       auxiliary == NoAuxiliaryWitness,
       ledger_delta_successor_is_exact(
         pre,
         witness,
-        LedgerDeltaControlV1 { ..control, stage: 3 },
+        LedgerDeltaControlV1 { ..control, stage: 2 },
       ),
     }
   } else {
-    expect
-        LedgerDeltaOutputWitness {
-          output_index,
-          descriptor_cbor,
-          siblings,
-          proof,
-        }
+    expect LedgerDeltaOutputWitness { output_index, descriptor_cbor, siblings }
       = auxiliary
     let key = encode_midgard_tx_input(
       MidgardTxInput { tx_id: pre.transaction_id, output_index },
     )
     let descriptor = ledger_output_commitment_v1.decode(descriptor_cbor)
-    if and {
-      output_index == control.output_cursor,
-      descriptor.output_index == output_index,
-      validation_merkle_v1.verify_membership(
-        control.native_control.output_count,
-        control.native_control.output_descriptor_peaks,
-        output_index,
-        script_proof_v1.output_descriptor_leaf_hash(
-          output_index,
-          descriptor_cbor,
-        ),
-        siblings,
-      ),
-      mpf_proof_v1.proof_has_at_most_steps(proof, 16),
-    } {
-      when
-        mpf_proof_v1.insert_root(
-          control.current_ledger_root,
-          key,
-          descriptor_cbor,
-          proof,
-        )
-      is {
-        None -> False
-        Some(next_root) -> {
-          let next_peaks = validation_merkle_v1.append_leaf(
-            control.operation_count,
-            control.operation_peaks,
-            ledger_delta_operation_leaf_hash(1, key, descriptor_cbor),
-          )
+    expect control.pending_mutation_cbor != #""
+    let pending = ledger_delta_pending_mutation_from_cbor(
+      control.pending_mutation_cbor,
+    )
+    when
+      mpf_proof_fold_v1.initial_fold_control_v1(
+        key,
+        descriptor_cbor,
+        pending.descriptor,
+      )
+    is {
+      None -> False
+      Some(fold_control) -> and {
+          output_index == control.output_cursor,
+          descriptor.output_index == output_index,
+          pending.authorization_stage == 0,
+          pending.operation_kind == 1,
+          pending.key == key,
+          pending.value == descriptor_cbor,
+          validation_merkle_v1.verify_membership(
+            control.output_count,
+            control.output_descriptor_peaks,
+            output_index,
+            script_proof_v1.output_descriptor_leaf_hash(
+              output_index,
+              descriptor_cbor,
+            ),
+            siblings,
+          ),
           ledger_delta_successor_is_exact(
             pre,
             witness,
             LedgerDeltaControlV1 {
               ..control,
-              current_ledger_root: next_root,
               output_cursor: control.output_cursor + 1,
-              operation_count: control.operation_count + 1,
-              operation_peaks: next_peaks,
+              pending_mutation_cbor: encode_ledger_delta_pending_mutation_v1(
+                LedgerDeltaPendingMutationV1 {
+                  ..pending,
+                  authorization_stage: 1,
+                  fold_control,
+                },
+              ),
             },
-          )
+          ),
         }
-      }
-    } else {
-      False
     }
   }
 }
@@ -13969,10 +14154,11 @@ fn ledger_delta_stage_three(
 ) -> Bool {
   and {
     auxiliary == NoAuxiliaryWitness,
-    control.replay_cursor == control.native_control.resolved_input_count,
-    control.replay_accumulator == control.native_control.resolved_inputs_accumulator,
+    control.replay_cursor == control.resolved_input_count,
+    control.replay_accumulator == control.resolved_inputs_accumulator,
     control.replay_remaining_schedule_hash == empty_resolution_schedule_hash(),
-    control.output_cursor == control.native_control.output_count,
+    control.output_cursor == control.output_count,
+    control.pending_mutation_cbor == #"",
     validation_merkle_v1.frontier_commitment(
       control.operation_count,
       control.operation_peaks,
@@ -13998,30 +14184,24 @@ fn verify_ledger_delta(
   auxiliary: ValidationAuxiliaryWitnessV1,
 ) -> Bool {
   let control = ledger_delta_control_from_witness(witness.work_witness_cbor)
-  let native_control = control.native_control
-  let Pair(_, _) = verify_native_tx_proof_source_v1(
-    pre.transaction_id,
-    native_control.compact_cbor,
-    native_control.witness_set_compact_cbor,
-    native_control.field_preimage_lengths_cbor,
-  )
   and {
-    native_tx_proof_commitment_v1(
-      native_control.compact_cbor,
-      native_control.witness_set_compact_cbor,
-      native_control.field_preimage_lengths_cbor,
-    ) == pre.transaction_commitment,
-    validation_trace_v1.hash_validation_context(native_control.context_cbor) == pre.validation_context_hash,
-    native_resolved_context_is_well_formed(native_control),
-    native_control.execution_cursor == native_control.execution_count,
+    control.resolved_input_count >= 0,
+    control.resolved_input_count <= max_tx_size_derived_collection_item_count,
+    bytearray.length(control.resolved_inputs_accumulator) == 32,
+    control.output_count >= 0,
+    control.output_count <= max_tx_size_derived_collection_item_count,
+    validation_merkle_v1.frontier_is_well_formed(
+      control.output_count,
+      control.output_descriptor_peaks,
+    ),
     bytearray.length(control.replay_schedule_hash) == 32,
     bytearray.length(control.replay_accumulator) == 32,
     bytearray.length(control.replay_remaining_schedule_hash) == 32,
     bytearray.length(control.current_ledger_root) == 32,
     control.replay_cursor >= 0,
-    control.replay_cursor <= native_control.resolved_input_count,
+    control.replay_cursor <= control.resolved_input_count,
     control.output_cursor >= 0,
-    control.output_cursor <= native_control.output_count,
+    control.output_cursor <= control.output_count,
     control.operation_count >= 0,
     control.operation_count <= max_tx_size_derived_collection_item_count,
     validation_merkle_v1.frontier_is_well_formed(
@@ -14029,17 +14209,224 @@ fn verify_ledger_delta(
       control.operation_peaks,
     ),
     control.stage >= 0,
-    control.stage <= 3,
+    control.stage <= 2,
     witness.work_witness_cbor == encode_ledger_delta_control_v1(control),
-    if control.stage == 0 {
-      ledger_delta_stage_zero(pre, witness, auxiliary, control)
-    } else if control.stage == 1 {
-      ledger_delta_stage_one(pre, witness, auxiliary, control)
-    } else if control.stage == 2 {
-      ledger_delta_stage_two(pre, witness, auxiliary, control)
-    } else {
-      ledger_delta_stage_three(pre, witness, auxiliary, control)
+    when auxiliary is {
+      LedgerDeltaOperationWitness { .. } ->
+        ledger_delta_operation_step(pre, witness, auxiliary, control)
+      _ ->
+        if control.stage == 0 {
+          ledger_delta_stage_one(pre, witness, auxiliary, control)
+        } else if control.stage == 1 {
+          ledger_delta_stage_two(pre, witness, auxiliary, control)
+        } else {
+          ledger_delta_stage_three(pre, witness, auxiliary, control)
+        }
     },
+  }
+}
+
+fn ledger_delta_control_is_well_formed(
+  witness: ValidationOneStepWitnessV1,
+  control: LedgerDeltaControlV1,
+) -> Bool {
+  and {
+    control.resolved_input_count >= 0,
+    control.resolved_input_count <= max_tx_size_derived_collection_item_count,
+    bytearray.length(control.resolved_inputs_accumulator) == 32,
+    control.output_count >= 0,
+    control.output_count <= max_tx_size_derived_collection_item_count,
+    validation_merkle_v1.frontier_is_well_formed(
+      control.output_count,
+      control.output_descriptor_peaks,
+    ),
+    bytearray.length(control.replay_schedule_hash) == 32,
+    bytearray.length(control.replay_accumulator) == 32,
+    bytearray.length(control.replay_remaining_schedule_hash) == 32,
+    bytearray.length(control.current_ledger_root) == 32,
+    control.replay_cursor >= 0,
+    control.replay_cursor <= control.resolved_input_count,
+    control.output_cursor >= 0,
+    control.output_cursor <= control.output_count,
+    control.operation_count >= 0,
+    control.operation_count <= max_tx_size_derived_collection_item_count,
+    validation_merkle_v1.frontier_is_well_formed(
+      control.operation_count,
+      control.operation_peaks,
+    ),
+    control.stage >= 0,
+    control.stage <= 2,
+    witness.work_witness_cbor == encode_ledger_delta_control_v1(control),
+  }
+}
+
+pub fn verify_ledger_delta_replay_finish_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+) -> Bool {
+  let control = ledger_delta_control_from_witness(witness.work_witness_cbor)
+  and {
+    ledger_delta_control_is_well_formed(witness, control),
+    control.pending_mutation_cbor == #"",
+    control.stage == 0,
+    control.replay_remaining_schedule_hash == empty_resolution_schedule_hash(),
+    control.replay_cursor == control.resolved_input_count,
+    control.replay_accumulator == control.resolved_inputs_accumulator,
+    ledger_delta_successor_is_exact(
+      pre,
+      witness,
+      LedgerDeltaControlV1 { ..control, stage: 1 },
+    ),
+  }
+}
+
+pub fn verify_ledger_delta_output_finish_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+) -> Bool {
+  let control = ledger_delta_control_from_witness(witness.work_witness_cbor)
+  and {
+    ledger_delta_control_is_well_formed(witness, control),
+    control.pending_mutation_cbor == #"",
+    control.stage == 1,
+    control.output_cursor == control.output_count,
+    ledger_delta_successor_is_exact(
+      pre,
+      witness,
+      LedgerDeltaControlV1 { ..control, stage: 2 },
+    ),
+  }
+}
+
+pub fn verify_ledger_delta_terminal_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+) -> Bool {
+  let control = ledger_delta_control_from_witness(witness.work_witness_cbor)
+  and {
+    ledger_delta_control_is_well_formed(witness, control),
+    control.pending_mutation_cbor == #"",
+    control.stage == 2,
+    ledger_delta_stage_three(pre, witness, NoAuxiliaryWitness, control),
+  }
+}
+
+pub fn verify_ledger_delta_operation_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  operation_kind: Int,
+  key: ByteArray,
+  value: ByteArray,
+  operation_proof: LedgerDeltaOperationProofV1,
+) -> Bool {
+  let control = ledger_delta_control_from_witness(witness.work_witness_cbor)
+  and {
+    ledger_delta_control_is_well_formed(witness, control),
+    control.pending_mutation_cbor == #"",
+    control.stage == 0 || control.stage == 1,
+    ledger_delta_operation_step(
+      pre,
+      witness,
+      LedgerDeltaOperationWitness {
+        operation_kind,
+        key,
+        value,
+        operation_proof,
+      },
+      control,
+    ),
+  }
+}
+
+pub fn verify_ledger_delta_replay_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  source_kind: Int,
+  key: ByteArray,
+  next_schedule_hash: ByteArray,
+  value: ByteArray,
+) -> Bool {
+  let control = ledger_delta_control_from_witness(witness.work_witness_cbor)
+  and {
+    ledger_delta_control_is_well_formed(witness, control),
+    control.stage == 0,
+    control.replay_remaining_schedule_hash != empty_resolution_schedule_hash(),
+    if source_kind == 0 {
+      control.pending_mutation_cbor != #""
+    } else {
+      control.pending_mutation_cbor == #""
+    },
+    ledger_delta_replay_step(
+      pre,
+      witness,
+      LedgerDeltaReplayWitness { source_kind, key, next_schedule_hash, value },
+      control,
+    ),
+  }
+}
+
+pub fn verify_ledger_delta_output_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  output_index: Int,
+  descriptor_cbor: ByteArray,
+  siblings: List<ByteArray>,
+) -> Bool {
+  let control = ledger_delta_control_from_witness(witness.work_witness_cbor)
+  and {
+    ledger_delta_control_is_well_formed(witness, control),
+    control.stage == 1,
+    control.pending_mutation_cbor != #"",
+    control.output_cursor < control.output_count,
+    ledger_delta_output_step(
+      pre,
+      witness,
+      LedgerDeltaOutputWitness { output_index, descriptor_cbor, siblings },
+      control,
+    ),
+  }
+}
+
+pub fn verify_ledger_delta_proof_frame_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  frame: mpf_proof_fold_v1.ProofFrameV1,
+  siblings: List<ByteArray>,
+) -> Bool {
+  let control = ledger_delta_control_from_witness(witness.work_witness_cbor)
+  expect control.pending_mutation_cbor != #""
+  let pending = ledger_delta_pending_mutation_from_cbor(
+    control.pending_mutation_cbor,
+  )
+  and {
+    ledger_delta_control_is_well_formed(witness, control),
+    control.stage == 0 || control.stage == 1,
+    pending.authorization_stage == 1,
+    !mpf_proof_fold_v1.fold_is_complete_v1(pending.fold_control),
+    ledger_delta_pending_step(
+      pre,
+      witness,
+      LedgerDeltaProofFrameWitness { frame, siblings },
+      control,
+    ),
+  }
+}
+
+pub fn verify_ledger_delta_finalize_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+) -> Bool {
+  let control = ledger_delta_control_from_witness(witness.work_witness_cbor)
+  expect control.pending_mutation_cbor != #""
+  let pending = ledger_delta_pending_mutation_from_cbor(
+    control.pending_mutation_cbor,
+  )
+  and {
+    ledger_delta_control_is_well_formed(witness, control),
+    control.stage == 0 || control.stage == 1,
+    pending.authorization_stage == 1,
+    mpf_proof_fold_v1.fold_is_complete_v1(pending.fold_control),
+    ledger_delta_pending_step(pre, witness, NoAuxiliaryWitness, control),
   }
 }
 

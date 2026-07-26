@@ -273,10 +273,10 @@ export const validationOneStepEvidenceHashV1 = ({
   );
 
 const VALIDATION_SEMANTIC_RESOLVER_COUNTS_V1 = [
-  2, 1, 1, 2, 4, 14, 2, 6, 5,
+  2, 1, 1, 2, 4, 14, 2, 6, 5, 0, 0, 0, 0, 8,
 ] as const;
 const VALIDATION_SEMANTIC_RESOLVER_OFFSETS_V1 = [
-  0, 2, 3, 4, 6, 10, 24, 26, 32,
+  0, 2, 3, 4, 6, 10, 24, 26, 32, -1, -1, -1, -1, 37,
 ] as const;
 
 const auxiliaryShapeV1 = ({
@@ -288,6 +288,27 @@ const auxiliaryShapeV1 = ({
   readonly semanticResolverIndex: number;
   readonly auxiliary: PlutusDataValue;
 }): Constr<PlutusDataValue> => {
+  if (resolverIndex === 13) {
+    const expected =
+      semanticResolverIndex === 2 ||
+      semanticResolverIndex === 4 ||
+      semanticResolverIndex === 6 ||
+      semanticResolverIndex === 7
+        ? [0, 0]
+        : semanticResolverIndex === 0
+          ? [40, 4]
+          : semanticResolverIndex === 1
+            ? [32, 4]
+            : semanticResolverIndex === 3
+              ? [33, 3]
+              : [39, 2];
+    return requireConstr({
+      value: auxiliary,
+      index: expected[0],
+      fields: expected[1],
+      label: "validation LedgerDelta auxiliary witness",
+    });
+  }
   if (resolverIndex === 7) {
     const expected =
       semanticResolverIndex === 0 || semanticResolverIndex === 1
@@ -456,11 +477,11 @@ const requireDirectOneStepArgumentV1 = (
   if (
     !Number.isSafeInteger(argument.resolverIndex) ||
     argument.resolverIndex < 9 ||
-    argument.resolverIndex >= 14 ||
+    argument.resolverIndex > 12 ||
     argument.semanticResolverIndex !== null
   ) {
     throw new Error(
-      "Direct validation one-step argument must select resolver 9 through 13",
+      "Direct validation one-step argument must select resolver 9 through 12",
     );
   }
   const transitionData = exactPlutusDataFromCbor(
@@ -1871,6 +1892,31 @@ export const validationResolverIndexV1 = (
   return resolverIndex;
 };
 
+const validationPrepareResolverDeploymentIndexV1 = (
+  resolverIndex: number,
+): number => {
+  if (resolverIndex >= 0 && resolverIndex <= 8) {
+    return resolverIndex;
+  }
+  if (resolverIndex === 13) {
+    return 9;
+  }
+  throw new Error(
+    `Validation resolver ${resolverIndex.toString()} is not staged`,
+  );
+};
+
+const validationDirectResolverDeploymentIndexV1 = (
+  resolverIndex: number,
+): number => {
+  if (resolverIndex >= 9 && resolverIndex <= 12) {
+    return resolverIndex - 9;
+  }
+  throw new Error(
+    `Validation resolver ${resolverIndex.toString()} is not direct`,
+  );
+};
+
 export type SubmitValidationDisputePrepareResolutionResult = {
   readonly txHash: string;
   readonly threadOutRef: string;
@@ -2182,6 +2228,29 @@ const semanticActionFieldsV1 = ({
     outputIndex,
     transition,
   ];
+  if (resolverIndex === 13) {
+    if (
+      (semanticResolverIndex === 2 ||
+        semanticResolverIndex === 4 ||
+        semanticResolverIndex === 6 ||
+        semanticResolverIndex === 7) &&
+      auxiliary.index === 0 &&
+      auxiliary.fields.length === 0
+    ) {
+      return base;
+    }
+    if (
+      (semanticResolverIndex === 0 && auxiliary.index === 40) ||
+      (semanticResolverIndex === 1 && auxiliary.index === 32) ||
+      (semanticResolverIndex === 3 && auxiliary.index === 33) ||
+      (semanticResolverIndex === 5 && auxiliary.index === 39)
+    ) {
+      return [...base, ...auxiliary.fields];
+    }
+    throw new Error(
+      "LedgerDelta auxiliary witness cannot construct the selected semantic redeemer",
+    );
+  }
   if (resolverIndex === 7) {
     if (
       (semanticResolverIndex === 0 || semanticResolverIndex === 1) &&
@@ -2644,7 +2713,7 @@ export const submitValidationDisputePrepareSelected = async ({
   const staged = requireStagedOneStepArgumentV1(oneStepArgument);
   const prepareContract =
     contracts.validationTraceDispute.prepareResolvers[
-      resolverIndex === 8 ? 7 : resolverIndex
+      validationPrepareResolverDeploymentIndexV1(resolverIndex)
     ];
   const semanticContract =
     contracts.validationTraceDispute.semanticResolvers[
@@ -3026,7 +3095,7 @@ export const submitValidationDisputeDirectResolution = async ({
   const direct = requireDirectOneStepArgumentV1(oneStepArgument);
   const directContract =
     contracts.validationTraceDispute.directResolvers[
-      resolverIndex === 7 ? 0 : resolverIndex - 8
+      validationDirectResolverDeploymentIndexV1(resolverIndex)
     ];
   if (directContract === undefined) {
     throw new Error(

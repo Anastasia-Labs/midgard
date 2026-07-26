@@ -65,31 +65,39 @@ describe("validation trace commitments", () => {
   });
 
   it("matches the L1 ledger-delta operation frontier vectors", () => {
+    const proofDescriptor = {
+      version: 1 as const,
+      frameCount: 0,
+      terminalCursor: 0,
+      frontier: { count: 0, peaks: [] },
+    };
     const deletion = {
       type: "delete" as const,
       key: Buffer.from("010203", "hex"),
+      proofDescriptor,
     };
     const insertion = {
       type: "insert" as const,
       key: Buffer.from("0405", "hex"),
       value: Buffer.from("060708", "hex"),
+      proofDescriptor,
     };
     expect(
       hashMidgardValidationLedgerDeltaOperationV1(deletion).toString("hex"),
     ).toBe(
-      "ec29850954b571d525f5aa50102eb7c52b3411c559ea671cfbc2b649772105ef",
+      "d70952a4347195627444cfbb1874f6857de1ad78f095460b76fc826cd267a589",
     );
     expect(
       hashMidgardValidationLedgerDeltaOperationV1(insertion).toString("hex"),
     ).toBe(
-      "d0db5df4d5d20483cae1bbfa97fc7dda0bd605684e9a0023211b822cb35cecc1",
+      "f8bc7029f5f58f0436ebdf6cbbb85bd9adac05d5f6dc1b9238c8166a517aa8db",
     );
     expect(
       hashMidgardValidationLedgerDeltaV1([deletion, insertion]).toString(
         "hex",
       ),
     ).toBe(
-      "f930a92b68f2c321c138796f4a73d3d3155f76c51617eba6212ca6d1d43f04c7",
+      "b6d017c71f3fc974f620b22764385bf9ad56ee5627009e57dbeb9418e486dcb2",
     );
   });
 

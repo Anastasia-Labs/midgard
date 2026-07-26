@@ -33,6 +33,7 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   applyUTxOStatePatch,
+  applyValidationMachineLedgerMutationStepV1,
   buildCanonicalMidgardLedgerEntryOutputMaterialV1,
   buildDeterministicValidationMachineTrace,
   type RejectCode,
@@ -2921,30 +2922,15 @@ export type ForcedProgramMaterialSidecarResolverV1<R> = (
   envelopes: readonly MidgardCekProgramEnvelopeV1[],
 ) => Effect.Effect<Buffer, DatabaseError, R>;
 
-const transientTrieRoot = (trie: Trie): Buffer =>
-  trie.hash == null ? Buffer.alloc(32) : Buffer.from(trie.hash);
-
 const applyValidationLedgerMutations = async (
   trie: Trie,
   operations: readonly MpfBatchOp[],
 ): Promise<readonly ValidationMachineLedgerMutationStep[]> => {
   const steps: ValidationMachineLedgerMutationStep[] = [];
   for (const operation of operations) {
-    const preRoot = transientTrieRoot(trie);
-    const proofCbor = Buffer.from(
-      (await trie.prove(operation.key, operation.type === "insert")).toCBOR(),
+    steps.push(
+      await applyValidationMachineLedgerMutationStepV1(trie, operation),
     );
-    if (operation.type === "delete") {
-      await trie.delete(operation.key);
-    } else {
-      await trie.insert(operation.key, operation.value);
-    }
-    steps.push({
-      operation,
-      preRoot,
-      postRoot: transientTrieRoot(trie),
-      proofCbor,
-    });
   }
   return steps;
 };

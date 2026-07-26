@@ -18,8 +18,8 @@ use midgard/fraud_proofs/native_tx/compact.{
   encode_native_tx_body_compact, native_tx_id_for_version,
 }
 use midgard/fraud_proofs/native_tx/components.{
-  encode_midgard_address_witness, encode_midgard_tx_input,
-  encode_midgard_redeemer_witness, encode_midgard_tx_output,
+  encode_midgard_address_witness, encode_midgard_redeemer_witness,
+  encode_midgard_tx_input, encode_midgard_tx_output,
   encode_midgard_versioned_script,
 }
 use midgard/fraud_proofs/native_tx/preimages.{
@@ -40,6 +40,7 @@ use midgard/fraud_proofs/native_tx/types.{
 }
 use midgard/ledger_output_commitment_v1
 use midgard/ledger_output_proof_v1
+use midgard/mpf_proof_fold_v1
 use midgard/native_script_scan_v1
 use midgard/script_context_v1
 use midgard/script_proof_v1
@@ -73,6 +74,15 @@ const validation_context_cbor =
 
 fn v1_program_envelope() -> ByteArray {
   cek_proof_v1.encode_program_envelope_v1(1, 1, 0, h_a, 3, 144)
+}
+
+fn empty_mpf_proof_descriptor() -> mpf_proof_fold_v1.ProofDescriptorV1 {
+  mpf_proof_fold_v1.ProofDescriptorV1 {
+    version: 1,
+    frame_count: 0,
+    terminal_cursor: 0,
+    peaks: [],
+  }
 }
 
 fn empty_v1_transaction() -> MidgardTransaction {
@@ -415,16 +425,8 @@ fn indexed_inline_source_leaves(
     []
   } else {
     [
-      script_proof_v1.source_leaf_hash(
-        0,
-        cbor.serialise(source_index),
-        script,
-      ),
-      ..indexed_inline_source_leaves(
-        script,
-        source_index + 1,
-        source_count,
-      )
+      script_proof_v1.source_leaf_hash(0, cbor.serialise(source_index), script),
+      ..indexed_inline_source_leaves(script, source_index + 1, source_count)
     ]
   }
 }
@@ -451,7 +453,8 @@ fn indexed_spend_purpose_leaves(
 fn merkle_parent_layer(leaves: List<ByteArray>) -> List<ByteArray> {
   when leaves is {
     [] -> []
-    [left, right, ..rest] -> [
+    [left, right, ..rest] ->
+      [
         validation_merkle_v1.hash_branch(left, right),
         ..merkle_parent_layer(rest)
       ]
@@ -459,15 +462,11 @@ fn merkle_parent_layer(leaves: List<ByteArray>) -> List<ByteArray> {
   }
 }
 
-fn first_leaf_power_of_two_siblings(
-  leaves: List<ByteArray>,
-) -> List<ByteArray> {
+fn first_leaf_power_of_two_siblings(leaves: List<ByteArray>) -> List<ByteArray> {
   when leaves is {
     [_leaf] -> []
-    [_leaf, sibling, .._] -> [
-        sibling,
-        ..first_leaf_power_of_two_siblings(merkle_parent_layer(leaves))
-      ]
+    [_leaf, sibling, ..] ->
+      [sibling, ..first_leaf_power_of_two_siblings(merkle_parent_layer(leaves))]
     _ -> fail @"membership tree must be a non-empty power of two"
   }
 }
@@ -598,10 +597,7 @@ fn phase_a_script_preconditions_fixture(
 
 test phase_a_script_preconditions_control_cbor_is_canonical() {
   let tx = empty_v1_transaction()
-  let Pair(_pre, witness_cbor) = phase_a_script_preconditions_fixture(
-    tx,
-    h_a,
-  )
+  let Pair(_pre, witness_cbor) = phase_a_script_preconditions_fixture(tx, h_a)
   when cbor.deserialise(witness_cbor) is {
     None -> False
     Some(data) -> list.length(builtin.un_list_data(data)) == 11
@@ -626,10 +622,9 @@ fn duplicate_observer_field_item_proofs(
     28,
     second_item_commitment,
   )
-  let collection_frontier = validation_merkle_v1.build_frontier([
-    first_leaf,
-    second_leaf,
-  ])
+  let collection_frontier = validation_merkle_v1.build_frontier(
+    [first_leaf, second_leaf],
+  )
   let item_commitment = if item_index == 0 {
     first_item_commitment
   } else {
@@ -640,9 +635,9 @@ fn duplicate_observer_field_item_proofs(
   } else {
     first_leaf
   }
-  let chunk_frontier = validation_merkle_v1.build_frontier([
-    bounded_item_v1.hash_chunk(3, item_index, 0, h_28_a),
-  ])
+  let chunk_frontier = validation_merkle_v1.build_frontier(
+    [bounded_item_v1.hash_chunk(3, item_index, 0, h_28_a)],
+  )
   Pair(
     bounded_collection_v1.ItemProofV1 {
       version: bounded_collection_v1.version,
@@ -693,12 +688,12 @@ fn resolve_inputs_step_fixture(
       tx.body.reference_inputs,
     ),
     signer_frontier.count,
-      validation_merkle_v1.frontier_commitment(
-        signer_frontier.count,
-        signer_frontier.peaks,
-      ),
-      None,
-    )
+    validation_merkle_v1.frontier_commitment(
+      signer_frontier.count,
+      signer_frontier.peaks,
+    ),
+    None,
+  )
   Pair(
     validation_trace_v1.ValidationMachineStateV1 {
       machine_version: validation_trace_v1.machine_version,
@@ -885,8 +880,7 @@ type AuthenticatedOutputMaterialV1 {
 fn advanced_output_proof(
   result: Option<ledger_output_proof_v1.LedgerOutputProofStepResultV1>,
 ) -> ledger_output_proof_v1.LedgerOutputProofControlV1 {
-  expect Some(ledger_output_proof_v1.LedgerOutputProofAdvanced { control }) =
-    result
+  expect Some(ledger_output_proof_v1.LedgerOutputProofAdvanced { control }) = result
   control
 }
 
@@ -948,12 +942,15 @@ fn authenticated_output_material(
       ledger_output_proof_v1.LedgerOutputProofNoWitness,
     ),
   )
-  expect Some(cardano_tx_out) =
-    ledger_output_proof_v1.cardano_tx_out_summary_v1(terminal)
-  expect Some(midgard_tx_out) =
-    ledger_output_proof_v1.midgard_tx_out_summary_v1(terminal)
-  expect Some(cardano_spend_datum) =
-    ledger_output_proof_v1.cardano_spend_datum_summary_v1(terminal)
+  expect Some(cardano_tx_out) = ledger_output_proof_v1.cardano_tx_out_summary_v1(
+    terminal,
+  )
+  expect Some(midgard_tx_out) = ledger_output_proof_v1.midgard_tx_out_summary_v1(
+    terminal,
+  )
+  expect Some(cardano_spend_datum) = ledger_output_proof_v1.cardano_spend_datum_summary_v1(
+    terminal,
+  )
   let descriptor = ledger_output_commitment_v1.LedgerOutputCommitmentV1 {
     version: ledger_output_commitment_v1.version,
     output_index: terminal.output_index,
@@ -1035,11 +1032,10 @@ fn script_sources_active_output_proof_fixture(
     discovery: validation_machine_v1.empty_script_discovery_control(),
     output_proof: Some(output_proof),
   }
-  let work_witness_cbor =
-    validation_machine_v1.encode_script_sources_output_proof_witness(
-      control,
-      output_proof,
-    )
+  let work_witness_cbor = validation_machine_v1.encode_script_sources_output_proof_witness(
+    control,
+    output_proof,
+  )
   Pair(
     validation_trace_v1.ValidationMachineStateV1 {
       machine_version: validation_trace_v1.machine_version,
@@ -2220,8 +2216,10 @@ test input_sets_accepts_bounded_disjoint_spend_and_reference_inputs() {
       second_witness_cbor,
     ),
   }
-  let Pair(reference_collection_proof, reference_chunk_proof) =
-    singleton_field_item_proofs(1, reference_key)
+  let Pair(reference_collection_proof, reference_chunk_proof) = singleton_field_item_proofs(
+    1,
+    reference_key,
+  )
   let first_is_valid = validation_machine_v1.verify_input_sets_item_semantics_v1(
     first_pre,
     validation_machine_v1.ValidationOneStepWitnessV1 {
@@ -2242,8 +2240,10 @@ test input_sets_accepts_bounded_disjoint_spend_and_reference_inputs() {
       signatures_witness_cbor,
     ),
   }
-  let Pair(spend_collection_proof, spend_chunk_proof) =
-    singleton_field_item_proofs(0, spend_key)
+  let Pair(spend_collection_proof, spend_chunk_proof) = singleton_field_item_proofs(
+    0,
+    spend_key,
+  )
   and {
     first_is_valid,
     validation_machine_v1.verify_input_sets_item_semantics_v1(
@@ -2308,10 +2308,14 @@ test input_sets_proves_spend_reference_overlap_unilaterally() {
       second_witness_cbor,
     ),
   }
-  let Pair(reference_collection_proof, reference_chunk_proof) =
-    singleton_field_item_proofs(1, key)
-  let Pair(spend_collection_proof, spend_chunk_proof) =
-    singleton_field_item_proofs(0, key)
+  let Pair(reference_collection_proof, reference_chunk_proof) = singleton_field_item_proofs(
+    1,
+    key,
+  )
+  let Pair(spend_collection_proof, spend_chunk_proof) = singleton_field_item_proofs(
+    0,
+    key,
+  )
   let first_is_valid = validation_machine_v1.verify_input_sets_item_semantics_v1(
     first_pre,
     validation_machine_v1.ValidationOneStepWitnessV1 {
@@ -2359,10 +2363,8 @@ test input_sets_proves_a_malformed_validity_interval_after_the_final_item() {
     validation_machine_v1.empty_resolution_schedule_hash(),
   )
   let pre = input_sets_pre(tx, 2, work_witness_cbor)
-  let Pair(collection_proof, chunk_proof) =
-    singleton_field_item_proofs(0, key)
-  let rejection_code =
-    #"455f494e56414c49445f56414c49444954595f494e54455256414c5f464f524d4154"
+  let Pair(collection_proof, chunk_proof) = singleton_field_item_proofs(0, key)
+  let rejection_code = #"455f494e56414c49445f56414c49444954595f494e54455256414c5f464f524d4154"
   validation_machine_v1.verify_input_sets_item_semantics_v1(
     pre,
     validation_machine_v1.ValidationOneStepWitnessV1 {
@@ -2523,8 +2525,10 @@ test signatures_proves_a_missing_required_signer_is_an_exact_no_op() {
     ),
   }
   let rejection_code = #"455f4d495353494e475f52455155495245445f5749544e455353"
-  let Pair(collection_proof, chunk_proof) =
-    singleton_field_item_proofs(4, h_28_a)
+  let Pair(collection_proof, chunk_proof) = singleton_field_item_proofs(
+    4,
+    h_28_a,
+  )
   and {
     validation_machine_v1.verify_signatures_advance_semantics_v1(
       pre,
@@ -2537,10 +2541,7 @@ test signatures_proves_a_missing_required_signer_is_an_exact_no_op() {
       required_pre,
       validation_machine_v1.ValidationOneStepWitnessV1 {
         work_witness_cbor: required_witness_cbor,
-        claimed_successor: exact_rejection_post(
-          required_pre,
-          rejection_code,
-        ),
+        claimed_successor: exact_rejection_post(required_pre, rejection_code),
       },
       collection_proof,
       chunk_proof,
@@ -2577,9 +2578,9 @@ test signatures_proves_an_invalid_address_signature_is_an_exact_no_op() {
   }
   let address_witness_cbor = encode_midgard_address_witness(address_witness)
   let signer_hash = blake2b_224(address_witness.verification_key)
-  let signer_frontier = validation_merkle_v1.build_frontier([
-    script_proof_v1.signer_leaf_hash(signer_hash),
-  ])
+  let signer_frontier = validation_merkle_v1.build_frontier(
+    [script_proof_v1.signer_leaf_hash(signer_hash)],
+  )
   let required_witness_cbor = signatures_scan_witness(
     tx,
     1,
@@ -2601,8 +2602,10 @@ test signatures_proves_an_invalid_address_signature_is_an_exact_no_op() {
       required_witness_cbor,
     ),
   }
-  let Pair(collection_proof, chunk_proof) =
-    singleton_field_item_proofs(6, address_witness_cbor)
+  let Pair(collection_proof, chunk_proof) = singleton_field_item_proofs(
+    6,
+    address_witness_cbor,
+  )
   let rejection_code = #"455f494e56414c49445f5349474e4154555245"
   and {
     validation_machine_v1.verify_signature_address_item_semantics_v1(
@@ -2618,10 +2621,7 @@ test signatures_proves_an_invalid_address_signature_is_an_exact_no_op() {
       required_pre,
       validation_machine_v1.ValidationOneStepWitnessV1 {
         work_witness_cbor: required_witness_cbor,
-        claimed_successor: exact_rejection_post(
-          required_pre,
-          rejection_code,
-        ),
+        claimed_successor: exact_rejection_post(required_pre, rejection_code),
       },
     ),
   }
@@ -2653,8 +2653,10 @@ test phase_a_native_scripts_evaluates_a_valid_timelock_on_l1() {
       script_bytes: #"82041864",
     },
   )
-  let Pair(collection_proof, chunk_proof) =
-    singleton_field_item_proofs(7, item_cbor)
+  let Pair(collection_proof, chunk_proof) = singleton_field_item_proofs(
+    7,
+    item_cbor,
+  )
   let token_work_witness_cbor = phase_a_native_scan_witness(
     tx,
     1,
@@ -2800,12 +2802,18 @@ test phase_a_native_scripts_resolves_a_nested_signature_one_step_at_a_time() {
       script_tx_wits: [script],
     },
   }
-  let Pair(pre, _initial_work_witness_cbor) =
-    phase_a_native_step_fixture(tx, h_a)
+  let Pair(pre, _initial_work_witness_cbor) = phase_a_native_step_fixture(
+    tx,
+    h_a,
+  )
   let item_cbor = encode_midgard_versioned_script(script)
-  let Pair(collection_proof, chunk_proof) =
-    singleton_field_item_proofs(7, item_cbor)
-  let payload_offset = bytearray.length(item_cbor) - bytearray.length(script_bytes)
+  let Pair(collection_proof, chunk_proof) = singleton_field_item_proofs(
+    7,
+    item_cbor,
+  )
+  let payload_offset = bytearray.length(item_cbor) - bytearray.length(
+    script_bytes,
+  )
   let child_offset = payload_offset + 3
   let item_length = bytearray.length(item_cbor)
   let item_commitment = collection_proof.item_commitment
@@ -3008,8 +3016,10 @@ test phase_a_native_scripts_proves_an_unsatisfied_script_is_an_exact_no_op() {
         |> bytearray.concat(h_28_a),
     },
   )
-  let Pair(collection_proof, chunk_proof) =
-    singleton_field_item_proofs(7, item_cbor)
+  let Pair(collection_proof, chunk_proof) = singleton_field_item_proofs(
+    7,
+    item_cbor,
+  )
   let token_work_witness_cbor = phase_a_native_scan_witness(
     tx,
     1,
@@ -3150,12 +3160,12 @@ test phase_a_script_preconditions_advances_an_empty_bundle_to_resolution() {
           tx.body.reference_inputs,
         ),
         signer_frontier.count,
-          validation_merkle_v1.frontier_commitment(
-            signer_frontier.count,
-            signer_frontier.peaks,
-          ),
-          None,
+        validation_merkle_v1.frontier_commitment(
+          signer_frontier.count,
+          signer_frontier.peaks,
         ),
+        None,
+      ),
     ),
   }
   validation_machine_v1.verify_one_step_evidence(
@@ -3217,10 +3227,12 @@ test phase_a_script_preconditions_proves_duplicate_observers_are_a_no_op() {
   }
   let rejection_code = #"455f494e56414c49445f4649454c445f54595045"
   let terminal = exact_rejection_post(next, rejection_code)
-  let Pair(first_collection_proof, first_chunk_proof) =
-    duplicate_observer_field_item_proofs(0)
-  let Pair(second_collection_proof, second_chunk_proof) =
-    duplicate_observer_field_item_proofs(1)
+  let Pair(first_collection_proof, first_chunk_proof) = duplicate_observer_field_item_proofs(
+    0,
+  )
+  let Pair(second_collection_proof, second_chunk_proof) = duplicate_observer_field_item_proofs(
+    1,
+  )
   let first_evidence = validation_machine_v1.ValidationOneStepEvidenceV1 {
     transition: validation_machine_v1.ValidationOneStepWitnessV1 {
       work_witness_cbor,
@@ -3242,14 +3254,8 @@ test phase_a_script_preconditions_proves_duplicate_observers_are_a_no_op() {
     },
   }
   and {
-    validation_machine_v1.verify_one_step_evidence(
-      pre,
-      first_evidence,
-    ),
-    validation_machine_v1.verify_one_step_evidence(
-      next,
-      second_evidence,
-    ),
+    validation_machine_v1.verify_one_step_evidence(pre, first_evidence),
+    validation_machine_v1.verify_one_step_evidence(next, second_evidence),
   }
 }
 
@@ -3365,8 +3371,7 @@ test resolve_inputs_checks_validity_before_ledger_lookups() {
 fn resolve_inputs_authenticated_membership_step(step_to_verify: Int) -> Bool {
   let input = MidgardTxInput { tx_id: h_a, output_index: 0 }
   let key = encode_midgard_tx_input(input)
-  let output_cbor =
-    #"a200581d70aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018200a0"
+  let output_cbor = #"a200581d70aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018200a0"
   let material = authenticated_output_material(output_cbor)
   let descriptor_cbor = material.descriptor_cbor
   let root = singleton_root(key, descriptor_cbor)
@@ -3759,8 +3764,10 @@ test script_sources_commits_inline_reference_script_candidates() {
     [script_proof_v1.source_leaf_hash(0, #"00", script)],
   )
   let item_cbor = encode_midgard_versioned_script(script)
-  let Pair(collection_proof, chunk_proof) =
-    singleton_field_item_proofs(7, item_cbor)
+  let Pair(collection_proof, chunk_proof) = singleton_field_item_proofs(
+    7,
+    item_cbor,
+  )
   let accumulator = validation_machine_v1.initial_resolution_accumulator()
   let Pair(pre, work_witness_cbor) = script_sources_step_fixture(
     tx,
@@ -3851,8 +3858,7 @@ test script_sources_commits_unique_supported_redeemers() {
     [script_proof_v1.redeemer_leaf_hash(0, redeemer)],
   )
   let redeemer_cbor = encode_midgard_redeemer_witness(redeemer)
-  let Pair(collection_proof, _) =
-    singleton_field_item_proofs(8, redeemer_cbor)
+  let Pair(collection_proof, _) = singleton_field_item_proofs(8, redeemer_cbor)
   let accumulator = validation_machine_v1.initial_resolution_accumulator()
   let Pair(pre, work_witness_cbor) = script_sources_step_fixture(
     tx,
@@ -4243,23 +4249,22 @@ fn canonical_output_commitment_step(step_to_verify: Int) -> Bool {
     empty_frontier,
     14,
   )
-  let Pair(after_item, after_item_work_witness_cbor) =
-    script_sources_output_step_fixture(
-      tx,
-      0,
-      accumulator,
-      4,
-      empty_frontier,
-      empty_frontier,
-      0,
-      accumulator,
-      validation_machine_v1.empty_resolution_schedule_hash(),
-      0,
-      empty_frontier,
-      0,
-      output_frontier,
-      15,
-    )
+  let Pair(after_item, after_item_work_witness_cbor) = script_sources_output_step_fixture(
+    tx,
+    0,
+    accumulator,
+    4,
+    empty_frontier,
+    empty_frontier,
+    0,
+    accumulator,
+    validation_machine_v1.empty_resolution_schedule_hash(),
+    0,
+    empty_frontier,
+    0,
+    output_frontier,
+    15,
+  )
   let Pair(post, _) = script_sources_output_step_fixture(
     tx,
     0,
@@ -4276,8 +4281,7 @@ fn canonical_output_commitment_step(step_to_verify: Int) -> Bool {
     output_frontier,
     16,
   )
-  let Pair(collection_proof, _) =
-    singleton_field_item_proofs(2, output_cbor)
+  let Pair(collection_proof, _) = singleton_field_item_proofs(2, output_cbor)
   if step_to_verify == 0 {
     validation_machine_v1.verify_one_step_evidence(
       pre,
@@ -4340,32 +4344,30 @@ fn authenticated_output_proof_step(step_to_verify: Int) -> Bool {
     [script_proof_v1.output_leaf_hash(0, output_cbor)],
   )
   let accumulator = validation_machine_v1.initial_resolution_accumulator()
-  let Pair(before_begin, before_begin_work_witness_cbor) =
-    script_sources_output_step_fixture(
-      tx,
-      0,
-      accumulator,
-      5,
-      empty_frontier,
-      empty_frontier,
-      0,
-      accumulator,
-      validation_machine_v1.empty_resolution_schedule_hash(),
-      0,
-      empty_frontier,
-      0,
-      output_frontier,
-      16,
-    )
-  let Pair(before_step, before_step_work_witness_cbor) =
-    script_sources_active_output_proof_fixture(
-      tx,
-      0,
-      output_frontier,
-      validation_machine_v1.empty_receive_purpose_scan_control(),
-      material.initial,
-      17,
-    )
+  let Pair(before_begin, before_begin_work_witness_cbor) = script_sources_output_step_fixture(
+    tx,
+    0,
+    accumulator,
+    5,
+    empty_frontier,
+    empty_frontier,
+    0,
+    accumulator,
+    validation_machine_v1.empty_resolution_schedule_hash(),
+    0,
+    empty_frontier,
+    0,
+    output_frontier,
+    16,
+  )
+  let Pair(before_step, before_step_work_witness_cbor) = script_sources_active_output_proof_fixture(
+    tx,
+    0,
+    output_frontier,
+    validation_machine_v1.empty_receive_purpose_scan_control(),
+    material.initial,
+    17,
+  )
   let Pair(after_step, _) = script_sources_active_output_proof_fixture(
     tx,
     0,
@@ -4458,51 +4460,44 @@ test script_sources_collects_protected_receive_source() {
     [script_proof_v1.purpose_leaf_hash(3, 0, h_28_a, h_28_a)],
   )
   let output_descriptor_frontier = validation_merkle_v1.build_frontier(
-    [
-      script_proof_v1.output_descriptor_leaf_hash(
-        0,
-        material.descriptor_cbor,
-      ),
-    ],
+    [script_proof_v1.output_descriptor_leaf_hash(0, material.descriptor_cbor)],
   )
   let accumulator = validation_machine_v1.initial_resolution_accumulator()
-  let Pair(pre, work_witness_cbor) =
-    script_sources_active_output_proof_fixture(
-      tx,
-      0,
-      output_frontier,
-      validation_machine_v1.empty_receive_purpose_scan_control(),
-      material.terminal,
-      22,
-    )
-  let Pair(post, _) =
-    script_sources_output_step_fixture_with_resolved_items(
-      tx,
-      0,
-      accumulator,
-      5,
-      empty_frontier,
-      empty_frontier,
-      0,
-      empty_frontier,
-      accumulator,
-      validation_machine_v1.empty_resolution_schedule_hash(),
-      0,
-      empty_frontier,
-      1,
-      output_frontier,
-      1,
-      validation_machine_v1.ReceivePurposeScanControlV1 {
-        source_count: receive_source_frontier.count,
-        source_peaks: receive_source_frontier.peaks,
-        receive_count: 0,
-        previous_hash: #"",
-        candidate_hash: #"",
-        descriptor_peaks: output_descriptor_frontier.peaks,
-      },
-      validation_machine_v1.empty_observer_purpose_scan_control(),
-      23,
-    )
+  let Pair(pre, work_witness_cbor) = script_sources_active_output_proof_fixture(
+    tx,
+    0,
+    output_frontier,
+    validation_machine_v1.empty_receive_purpose_scan_control(),
+    material.terminal,
+    22,
+  )
+  let Pair(post, _) = script_sources_output_step_fixture_with_resolved_items(
+    tx,
+    0,
+    accumulator,
+    5,
+    empty_frontier,
+    empty_frontier,
+    0,
+    empty_frontier,
+    accumulator,
+    validation_machine_v1.empty_resolution_schedule_hash(),
+    0,
+    empty_frontier,
+    1,
+    output_frontier,
+    1,
+    validation_machine_v1.ReceivePurposeScanControlV1 {
+      source_count: receive_source_frontier.count,
+      source_peaks: receive_source_frontier.peaks,
+      receive_count: 0,
+      previous_hash: #"",
+      candidate_hash: #"",
+      descriptor_peaks: output_descriptor_frontier.peaks,
+    },
+    validation_machine_v1.empty_observer_purpose_scan_control(),
+    23,
+  )
   validation_machine_v1.verify_script_sources_output_proof_finalize_semantics_v1(
     pre,
     validation_machine_v1.ValidationOneStepWitnessV1 {
@@ -4541,79 +4536,67 @@ fn protected_receive_purpose_step(step_to_verify: Int) -> Bool {
     [script_proof_v1.purpose_leaf_hash(3, 0, h_28_a, h_28_a)],
   )
   let output_descriptor_frontier = validation_merkle_v1.build_frontier(
-    [
-      script_proof_v1.output_descriptor_leaf_hash(
-        0,
-        material.descriptor_cbor,
-      ),
-    ],
+    [script_proof_v1.output_descriptor_leaf_hash(0, material.descriptor_cbor)],
   )
-  let empty_receive_scan =
-    validation_machine_v1.ReceivePurposeScanControlV1 {
-      source_count: receive_source_frontier.count,
-      source_peaks: receive_source_frontier.peaks,
-      receive_count: 0,
-      previous_hash: #"",
-      candidate_hash: #"",
-      descriptor_peaks: output_descriptor_frontier.peaks,
-    }
-  let selected_receive_scan =
-    validation_machine_v1.ReceivePurposeScanControlV1 {
-      source_count: receive_source_frontier.count,
-      source_peaks: receive_source_frontier.peaks,
-      receive_count: 0,
-      previous_hash: #"",
-      candidate_hash: h_28_a,
-      descriptor_peaks: output_descriptor_frontier.peaks,
-    }
-  let committed_receive_scan =
-    validation_machine_v1.ReceivePurposeScanControlV1 {
-      source_count: receive_source_frontier.count,
-      source_peaks: receive_source_frontier.peaks,
-      receive_count: 1,
-      previous_hash: h_28_a,
-      candidate_hash: #"",
-      descriptor_peaks: output_descriptor_frontier.peaks,
-    }
+  let empty_receive_scan = validation_machine_v1.ReceivePurposeScanControlV1 {
+    source_count: receive_source_frontier.count,
+    source_peaks: receive_source_frontier.peaks,
+    receive_count: 0,
+    previous_hash: #"",
+    candidate_hash: #"",
+    descriptor_peaks: output_descriptor_frontier.peaks,
+  }
+  let selected_receive_scan = validation_machine_v1.ReceivePurposeScanControlV1 {
+    source_count: receive_source_frontier.count,
+    source_peaks: receive_source_frontier.peaks,
+    receive_count: 0,
+    previous_hash: #"",
+    candidate_hash: h_28_a,
+    descriptor_peaks: output_descriptor_frontier.peaks,
+  }
+  let committed_receive_scan = validation_machine_v1.ReceivePurposeScanControlV1 {
+    source_count: receive_source_frontier.count,
+    source_peaks: receive_source_frontier.peaks,
+    receive_count: 1,
+    previous_hash: h_28_a,
+    candidate_hash: #"",
+    descriptor_peaks: output_descriptor_frontier.peaks,
+  }
   let receive_purpose_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.purpose_leaf_hash(3, 0, h_28_a, h_28_a)],
   )
-  let Pair(pre, work_witness_cbor) =
-    script_sources_receive_scan_step_fixture(
-      tx,
-      empty_frontier,
-      0,
-      output_frontier,
-      empty_receive_scan,
-      15,
-    )
-  let Pair(after_candidate, after_candidate_work_witness_cbor) =
-    script_sources_receive_scan_step_fixture(
-      tx,
-      empty_frontier,
-      1,
-      output_frontier,
-      selected_receive_scan,
-      16,
-    )
-  let Pair(after_append, after_append_work_witness_cbor) =
-    script_sources_receive_scan_step_fixture(
-      tx,
-      receive_purpose_frontier,
-      0,
-      output_frontier,
-      committed_receive_scan,
-      17,
-    )
-  let Pair(after_rescan, after_rescan_work_witness_cbor) =
-    script_sources_receive_scan_step_fixture(
-      tx,
-      receive_purpose_frontier,
-      1,
-      output_frontier,
-      committed_receive_scan,
-      18,
-    )
+  let Pair(pre, work_witness_cbor) = script_sources_receive_scan_step_fixture(
+    tx,
+    empty_frontier,
+    0,
+    output_frontier,
+    empty_receive_scan,
+    15,
+  )
+  let Pair(after_candidate, after_candidate_work_witness_cbor) = script_sources_receive_scan_step_fixture(
+    tx,
+    empty_frontier,
+    1,
+    output_frontier,
+    selected_receive_scan,
+    16,
+  )
+  let Pair(after_append, after_append_work_witness_cbor) = script_sources_receive_scan_step_fixture(
+    tx,
+    receive_purpose_frontier,
+    0,
+    output_frontier,
+    committed_receive_scan,
+    17,
+  )
+  let Pair(after_rescan, after_rescan_work_witness_cbor) = script_sources_receive_scan_step_fixture(
+    tx,
+    receive_purpose_frontier,
+    1,
+    output_frontier,
+    committed_receive_scan,
+    18,
+  )
   let Pair(post, _) = script_discovery_step_fixture_with_output_frontier(
     tx,
     8,
@@ -4727,8 +4710,7 @@ test script_sources_rejects_an_unsigned_protected_pubkey_output() {
   let output_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.output_leaf_hash(0, output_cbor)],
   )
-  let Pair(pre, work_witness_cbor) =
-    script_sources_active_output_proof_fixture(
+  let Pair(pre, work_witness_cbor) = script_sources_active_output_proof_fixture(
     tx,
     0,
     output_frontier,
@@ -4854,31 +4836,30 @@ fn canonical_observer_purpose_step(step_to_verify: Int) -> Bool {
     empty_frontier,
     18,
   )
-  let Pair(after_observer, after_observer_work_witness_cbor) =
-    script_sources_output_step_fixture_with_resolved_items(
-      tx,
-      0,
-      accumulator,
-      7,
-      empty_frontier,
-      empty_frontier,
-      0,
-      empty_frontier,
-      accumulator,
-      validation_machine_v1.empty_resolution_schedule_hash(),
-      0,
-      observer_purpose_frontier,
-      0,
-      empty_frontier,
-      0,
-      validation_machine_v1.empty_receive_purpose_scan_control(),
-      validation_machine_v1.ObserverPurposeScanControlV1 {
-        total_count: 1,
-        seen: 1,
-        previous_hash: h_28_a,
-      },
-      19,
-    )
+  let Pair(after_observer, after_observer_work_witness_cbor) = script_sources_output_step_fixture_with_resolved_items(
+    tx,
+    0,
+    accumulator,
+    7,
+    empty_frontier,
+    empty_frontier,
+    0,
+    empty_frontier,
+    accumulator,
+    validation_machine_v1.empty_resolution_schedule_hash(),
+    0,
+    observer_purpose_frontier,
+    0,
+    empty_frontier,
+    0,
+    validation_machine_v1.empty_receive_purpose_scan_control(),
+    validation_machine_v1.ObserverPurposeScanControlV1 {
+      total_count: 1,
+      seen: 1,
+      previous_hash: h_28_a,
+    },
+    19,
+  )
   let Pair(post, _) = script_discovery_step_fixture(
     tx,
     8,
@@ -4888,8 +4869,10 @@ fn canonical_observer_purpose_step(step_to_verify: Int) -> Bool {
     validation_machine_v1.empty_script_discovery_control(),
     20,
   )
-  let Pair(collection_proof, chunk_proof) =
-    singleton_field_item_proofs(3, h_28_a)
+  let Pair(collection_proof, chunk_proof) = singleton_field_item_proofs(
+    3,
+    h_28_a,
+  )
   if step_to_verify == 0 {
     validation_machine_v1.verify_one_step_evidence(
       pre,
@@ -4980,8 +4963,7 @@ test script_sources_discovers_more_than_sixteen_purposes() {
   let purpose_frontier = validation_merkle_v1.build_frontier(
     indexed_spend_purpose_leaves(0, 17),
   )
-  let empty_discovery =
-    validation_machine_v1.empty_script_discovery_control()
+  let empty_discovery = validation_machine_v1.empty_script_discovery_control()
   let selected_purpose = validation_machine_v1.ScriptDiscoveryControlV1 {
     ..empty_discovery,
     current_purpose_kind: 0,
@@ -5512,27 +5494,28 @@ test mint_asset_leaf_vector_is_stable() {
 }
 
 test ledger_delta_operation_frontier_vectors_are_stable() {
+  let proof_descriptor = empty_mpf_proof_descriptor()
   let deletion = validation_machine_v1.ledger_delta_operation_leaf_hash(
     0,
     #"010203",
     #"",
+    proof_descriptor,
   )
   let insertion = validation_machine_v1.ledger_delta_operation_leaf_hash(
     1,
     #"0405",
     #"060708",
+    proof_descriptor,
   )
   let frontier = validation_merkle_v1.build_frontier([deletion, insertion])
   and {
-    deletion == #"ec29850954b571d525f5aa50102eb7c52b3411c559ea671cfbc2b649772105ef",
-    insertion == #"d0db5df4d5d20483cae1bbfa97fc7dda0bd605684e9a0023211b822cb35cecc1",
-    validation_merkle_v1.frontier_commitment(frontier.count, frontier.peaks) == #"f930a92b68f2c321c138796f4a73d3d3155f76c51617eba6212ca6d1d43f04c7",
+    deletion == #"d70952a4347195627444cfbb1874f6857de1ad78f095460b76fc826cd267a589",
+    insertion == #"f8bc7029f5f58f0436ebdf6cbbb85bd9adac05d5f6dc1b9238c8166a517aa8db",
+    validation_merkle_v1.frontier_commitment(frontier.count, frontier.peaks) == #"b6d017c71f3fc974f620b22764385bf9ad56ee5627009e57dbeb9418e486dcb2",
   }
 }
 
 test ledger_delta_terminal_step_binds_more_than_128_operations() {
-  let tx = empty_v1_transaction()
-  let native_control = empty_native_control_fixture(tx)
   // This is the off-chain-built frontier for 129 identical authenticated
   // deletions. Supplying the compact peaks measures only the actual terminal
   // resolver; constructing 129 leaves inside the test would charge fixture
@@ -5542,17 +5525,20 @@ test ledger_delta_terminal_step_binds_more_than_128_operations() {
     peaks: [
       validation_merkle_v1.FrontierPeak {
         height: 0,
-        hash: #"ec29850954b571d525f5aa50102eb7c52b3411c559ea671cfbc2b649772105ef",
+        hash: #"d70952a4347195627444cfbb1874f6857de1ad78f095460b76fc826cd267a589",
       },
       validation_merkle_v1.FrontierPeak {
         height: 7,
-        hash: #"684fdf60c9a98dfe6a58909a327994e95a5f742775c4e5e85bccea387f2ea320",
+        hash: #"c4029f40ad899fb153acbf60401c4b0187fc7ce03060d3cbeae09ea32de11cc9",
       },
     ],
   }
   let control = validation_machine_v1.LedgerDeltaControlV1 {
-    native_control,
-    stage: 3,
+    resolved_input_count: 0,
+    resolved_inputs_accumulator: validation_machine_v1.initial_resolution_accumulator(),
+    output_count: 0,
+    output_descriptor_peaks: [],
+    stage: 2,
     replay_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
     replay_cursor: 0,
     replay_accumulator: validation_machine_v1.initial_resolution_accumulator(),
@@ -5561,23 +5547,17 @@ test ledger_delta_terminal_step_binds_more_than_128_operations() {
     output_cursor: 0,
     operation_count: operation_frontier.count,
     operation_peaks: operation_frontier.peaks,
+    pending_mutation_cbor: #"",
   }
   let work_witness_cbor = validation_machine_v1.encode_ledger_delta_control_v1(
     control,
   )
-  let compact = midgard_transaction_to_compact(tx)
-  let tx_id = native_tx_id_for_version(
-    native_tx_version_v1,
-    encode_native_tx_body_compact(compact.body),
-  )
   let pre = validation_trace_v1.ValidationMachineStateV1 {
     machine_version: validation_trace_v1.machine_version,
     event_key_hash: h_a,
-    transaction_id: tx_id,
-    transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
-    validation_context_hash: validation_trace_v1.hash_validation_context(
-      validation_context_cbor,
-    ),
+    transaction_id: h_a,
+    transaction_commitment: h_b,
+    validation_context_hash: h_c,
     source_kind: validation_trace_v1.Forced,
     prior_ledger_root: h_c,
     phase: validation_trace_v1.LedgerDelta,
@@ -5611,14 +5591,11 @@ test ledger_delta_terminal_step_binds_more_than_128_operations() {
     ),
     verdict: validation_trace_v1.Accepted,
   }
-  validation_machine_v1.verify_one_step_evidence(
+  validation_machine_v1.verify_ledger_delta_terminal_semantics_v1(
     pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
-        work_witness_cbor,
-        claimed_successor: post,
-      },
-      auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+    validation_machine_v1.ValidationOneStepWitnessV1 {
+      work_witness_cbor,
+      claimed_successor: post,
     },
   )
 }
@@ -7235,93 +7212,71 @@ test cek_active_core_step_replays_exact_machine_transition() {
   }
 }
 
-test ledger_delta_spend_step_deletes_authenticated_utxo_root() {
-  let input = MidgardTxInput { tx_id: h_a, output_index: 0 }
-  let base = empty_v1_transaction()
-  let tx = MidgardTransaction {
-    ..base,
-    body: MidgardTransactionBody { ..base.body, inputs: [input] },
+fn ledger_delta_operation_authentication_fixture(operation_kind: Int) -> Bool {
+  let descriptor = empty_mpf_proof_descriptor()
+  let output_cursor = 0
+  let key = if operation_kind == 0 {
+    #"0102"
+  } else {
+    encode_midgard_tx_input(
+      MidgardTxInput { tx_id: h_a, output_index: output_cursor },
+    )
   }
-  let key = encode_midgard_tx_input(input)
-  let output_cbor =
-    #"a200581d70aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018200a0"
-  let descriptor_cbor =
-    authenticated_output_material(output_cbor).descriptor_cbor
-  let initial_accumulator = validation_machine_v1.initial_resolution_accumulator()
-  let resolved_accumulator = validation_machine_v1.resolved_input_accumulator_successor(
-    initial_accumulator,
-    0,
-    key,
-    descriptor_cbor,
-  )
-  let native_control = validation_machine_v1.NativeScriptsControlV1 {
-    ..empty_native_control_fixture(tx),
-    resolved_input_count: 1,
-    resolved_inputs_accumulator: resolved_accumulator,
-    spend_input_count: 1,
-    resolved_item_peaks: validation_merkle_v1.build_frontier(
-      [
-        script_proof_v1.resolved_context_item_leaf_hash(
-          0,
-          0,
-          key,
-          descriptor_cbor,
-        ),
-      ],
-    ).peaks,
+  let value = if operation_kind == 0 {
+    #""
+  } else {
+    #"0304"
   }
-  let empty_schedule = validation_machine_v1.empty_resolution_schedule_hash()
-  let schedule = validation_machine_v1.resolution_schedule_node_hash(
-    0,
+  let operation_leaf = validation_machine_v1.ledger_delta_operation_leaf_hash(
+    operation_kind,
     key,
-    empty_schedule,
+    value,
+    descriptor,
   )
-  let current_root = singleton_root(key, descriptor_cbor)
+  let operation_frontier = validation_merkle_v1.build_frontier([operation_leaf])
+  let output_descriptor_frontier = validation_merkle_v1.build_frontier([h_b])
   let control = validation_machine_v1.LedgerDeltaControlV1 {
-    native_control,
-    stage: 1,
-    replay_schedule_hash: schedule,
+    resolved_input_count: 1,
+    resolved_inputs_accumulator: h_b,
+    output_count: 1,
+    output_descriptor_peaks: output_descriptor_frontier.peaks,
+    stage: operation_kind,
+    replay_schedule_hash: h_c,
     replay_cursor: 0,
-    replay_accumulator: initial_accumulator,
-    replay_remaining_schedule_hash: schedule,
-    current_ledger_root: current_root,
-    output_cursor: 0,
+    replay_accumulator: h_b,
+    replay_remaining_schedule_hash: h_c,
+    current_ledger_root: h_c,
+    output_cursor,
     operation_count: 0,
     operation_peaks: [],
+    pending_mutation_cbor: #"",
   }
   let work_witness_cbor = validation_machine_v1.encode_ledger_delta_control_v1(
     control,
   )
-  let operation_leaf = validation_machine_v1.ledger_delta_operation_leaf_hash(
-    0,
-    key,
-    #"",
-  )
-  let operation_frontier = validation_merkle_v1.build_frontier([operation_leaf])
-  let next_control = validation_machine_v1.LedgerDeltaControlV1 {
-    ..control,
-    replay_cursor: 1,
-    replay_accumulator: resolved_accumulator,
-    replay_remaining_schedule_hash: empty_schedule,
-    current_ledger_root: zero,
-    operation_count: 1,
-    operation_peaks: operation_frontier.peaks,
-  }
-  let compact = midgard_transaction_to_compact(tx)
-  let tx_id = native_tx_id_for_version(
-    native_tx_version_v1,
-    encode_native_tx_body_compact(compact.body),
+  let pending_mutation_cbor = validation_machine_v1.encode_ledger_delta_pending_mutation_v1(
+    validation_machine_v1.LedgerDeltaPendingMutationV1 {
+      authorization_stage: 0,
+      operation_kind,
+      key,
+      value,
+      descriptor,
+      fold_control: mpf_proof_fold_v1.ProofFoldControlV1 {
+        next_frame_index: -1,
+        expected_next_cursor: 0,
+        including_root: #"",
+        excluding_root: #"",
+      },
+    },
   )
   let pre = validation_trace_v1.ValidationMachineStateV1 {
     machine_version: validation_trace_v1.machine_version,
     event_key_hash: h_a,
-    transaction_id: tx_id,
-    transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
-    validation_context_hash: validation_trace_v1.hash_validation_context(
-      validation_context_cbor,
-    ),
+    transaction_id: h_a,
+    transaction_commitment: h_b,
+    validation_context_hash: h_c,
     source_kind: validation_trace_v1.Forced,
-    prior_ledger_root: current_root,
+    prior_ledger_root: h_c,
     phase: validation_trace_v1.LedgerDelta,
     program_counter: 48,
     work_root: validation_trace_v1.hash_work_witness(
@@ -7344,147 +7299,525 @@ test ledger_delta_spend_step_deletes_authenticated_utxo_root() {
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.LedgerDelta,
       49,
-      validation_machine_v1.encode_ledger_delta_control_v1(next_control),
+      validation_machine_v1.encode_ledger_delta_control_v1(
+        validation_machine_v1.LedgerDeltaControlV1 {
+          ..control,
+          pending_mutation_cbor,
+        },
+      ),
     ),
   }
-  validation_machine_v1.verify_one_step_evidence(
+  validation_machine_v1.verify_ledger_delta_operation_semantics_v1(
     pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
-        work_witness_cbor,
-        claimed_successor: post,
-      },
-      auxiliary: validation_machine_v1.LedgerDeltaReplayWitness {
-        source_kind: 0,
-        key,
-        next_schedule_hash: empty_schedule,
-        value: descriptor_cbor,
-        proof: [],
-      },
+    validation_machine_v1.ValidationOneStepWitnessV1 {
+      work_witness_cbor,
+      claimed_successor: post,
+    },
+    operation_kind,
+    key,
+    value,
+    validation_machine_v1.LedgerDeltaOperationProofV1 {
+      descriptor,
+      operation_count: operation_frontier.count,
+      operation_peaks: operation_frontier.peaks,
+      operation_index: 0,
+      operation_siblings: [],
     },
   )
 }
 
-test ledger_delta_output_step_inserts_authenticated_descriptor_root() {
-  let output = MidgardTxOutput {
-    address: MidgardAddress {
-      protected: False,
-      network_id: 0,
-      payment_credential: PubKeyCredential(h_28_a),
-      stake_credential: None,
+test ledger_delta_spend_step_authenticates_deletion_operation() {
+  ledger_delta_operation_authentication_fixture(0)
+}
+
+test ledger_delta_output_step_authenticates_insertion_operation() {
+  ledger_delta_operation_authentication_fixture(1)
+}
+
+fn compact_ledger_output_descriptor(output_index: Int) -> ByteArray {
+  let summary = cek_data_v1.DataSummaryV1 {
+    root: h_a,
+    cbor_length: 0,
+    memory: 0,
+  }
+  ledger_output_commitment_v1.encode(
+    ledger_output_commitment_v1.LedgerOutputCommitmentV1 {
+      version: ledger_output_commitment_v1.version,
+      output_index,
+      total_length: 0,
+      item_commitment: h_b,
+      address: #"70aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      lovelace: 0,
+      asset_count: 0,
+      asset_frontier_commitment: validation_merkle_v1.frontier_commitment(0, []),
+      cardano_value_size: 0,
+      reference_script_language: -1,
+      reference_script_hash: #"",
+      reference_script_total_length: 0,
+      reference_script_item_commitment: #"",
+      cardano_tx_out: summary,
+      midgard_tx_out: summary,
+      cardano_spend_datum: summary,
     },
-    value: MidgardValue { lovelace: 1, assets: [] },
-    datum_cbor: None,
-    script_ref: None,
-  }
-  let output_cbor = encode_midgard_tx_output(output)
-  let base = empty_v1_transaction()
-  let tx = MidgardTransaction {
-    ..base,
-    body: MidgardTransactionBody { ..base.body, outputs: [output] },
-  }
-  let compact = midgard_transaction_to_compact(tx)
-  let tx_id = native_tx_id_for_version(
-    native_tx_version_v1,
-    encode_native_tx_body_compact(compact.body),
   )
-  let descriptor_cbor =
-    authenticated_output_material(output_cbor).descriptor_cbor
-  let descriptor_leaf = script_proof_v1.output_descriptor_leaf_hash(
-    0,
-    descriptor_cbor,
-  )
-  let descriptor_frontier = validation_merkle_v1.build_frontier(
-    [descriptor_leaf],
-  )
-  let output_frontier = validation_merkle_v1.build_frontier(
-    [script_proof_v1.output_leaf_hash(0, output_cbor)],
-  )
-  let native_control = validation_machine_v1.NativeScriptsControlV1 {
-    ..empty_native_control_fixture(tx),
-    output_count: 1,
-    output_peaks: output_frontier.peaks,
-    output_descriptor_peaks: descriptor_frontier.peaks,
-  }
-  let key = encode_midgard_tx_input(
-    MidgardTxInput { tx_id, output_index: 0 },
-  )
-  let operation_leaf = validation_machine_v1.ledger_delta_operation_leaf_hash(
-    1,
-    key,
-    descriptor_cbor,
-  )
-  let operation_frontier = validation_merkle_v1.build_frontier([operation_leaf])
-  let control = validation_machine_v1.LedgerDeltaControlV1 {
-    native_control,
-    stage: 2,
+}
+
+fn compact_ledger_delta_control(
+  stage: Int,
+) -> validation_machine_v1.LedgerDeltaControlV1 {
+  validation_machine_v1.LedgerDeltaControlV1 {
+    resolved_input_count: 0,
+    resolved_inputs_accumulator: validation_machine_v1.initial_resolution_accumulator(),
+    output_count: 0,
+    output_descriptor_peaks: [],
+    stage,
     replay_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
     replay_cursor: 0,
     replay_accumulator: validation_machine_v1.initial_resolution_accumulator(),
     replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
-    current_ledger_root: zero,
+    current_ledger_root: h_c,
     output_cursor: 0,
     operation_count: 0,
     operation_peaks: [],
+    pending_mutation_cbor: #"",
   }
-  let next_control = validation_machine_v1.LedgerDeltaControlV1 {
-    ..control,
-    current_ledger_root: singleton_root(key, descriptor_cbor),
-    output_cursor: 1,
-    operation_count: 1,
-    operation_peaks: operation_frontier.peaks,
-  }
-  let work_witness_cbor = validation_machine_v1.encode_ledger_delta_control_v1(
-    control,
-  )
-  let pre = validation_trace_v1.ValidationMachineStateV1 {
+}
+
+fn compact_ledger_delta_state(
+  control: validation_machine_v1.LedgerDeltaControlV1,
+  program_counter: Int,
+  ledger_delta_root: ByteArray,
+) -> validation_trace_v1.ValidationMachineStateV1 {
+  validation_trace_v1.ValidationMachineStateV1 {
     machine_version: validation_trace_v1.machine_version,
     event_key_hash: h_a,
-    transaction_id: tx_id,
-    transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
-    validation_context_hash: validation_trace_v1.hash_validation_context(
-      validation_context_cbor,
-    ),
+    transaction_id: h_a,
+    transaction_commitment: h_b,
+    validation_context_hash: h_c,
     source_kind: validation_trace_v1.Forced,
-    prior_ledger_root: zero,
+    prior_ledger_root: h_c,
     phase: validation_trace_v1.LedgerDelta,
-    program_counter: 49,
+    program_counter,
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.LedgerDelta,
-      49,
-      work_witness_cbor,
+      program_counter,
+      validation_machine_v1.encode_ledger_delta_control_v1(control),
     ),
     execution_cpu: 0,
     execution_memory: 0,
     verdict: validation_trace_v1.Pending,
     rejection_code_hash: zero,
-    ledger_delta_root: validation_merkle_v1.frontier_commitment(
+    ledger_delta_root,
+  }
+}
+
+fn compact_ledger_delta_successor(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  control: validation_machine_v1.LedgerDeltaControlV1,
+) -> validation_trace_v1.ValidationMachineStateV1 {
+  validation_trace_v1.ValidationMachineStateV1 {
+    ..pre,
+    program_counter: pre.program_counter + 1,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.LedgerDelta,
+      pre.program_counter + 1,
+      validation_machine_v1.encode_ledger_delta_control_v1(control),
+    ),
+  }
+}
+
+test ledger_delta_reference_replay_authenticates_descriptor() {
+  let key = encode_midgard_tx_input(
+    MidgardTxInput { tx_id: h_a, output_index: 0 },
+  )
+  let value = compact_ledger_output_descriptor(0)
+  let next_schedule_hash = validation_machine_v1.empty_resolution_schedule_hash()
+  let schedule_hash = validation_machine_v1.resolution_schedule_node_hash(
+    1,
+    key,
+    next_schedule_hash,
+  )
+  let resolved_accumulator = validation_machine_v1.resolved_input_accumulator_successor(
+    validation_machine_v1.initial_resolution_accumulator(),
+    1,
+    key,
+    value,
+  )
+  let control = validation_machine_v1.LedgerDeltaControlV1 {
+    ..compact_ledger_delta_control(0),
+    resolved_input_count: 1,
+    resolved_inputs_accumulator: resolved_accumulator,
+    replay_schedule_hash: schedule_hash,
+    replay_remaining_schedule_hash: schedule_hash,
+  }
+  let pre = compact_ledger_delta_state(
+    control,
+    50,
+    validation_merkle_v1.frontier_commitment(0, []),
+  )
+  let post = compact_ledger_delta_successor(
+    pre,
+    validation_machine_v1.LedgerDeltaControlV1 {
+      ..control,
+      replay_cursor: 1,
+      replay_accumulator: resolved_accumulator,
+      replay_remaining_schedule_hash: next_schedule_hash,
+    },
+  )
+  validation_machine_v1.verify_ledger_delta_replay_semantics_v1(
+    pre,
+    validation_machine_v1.ValidationOneStepWitnessV1 {
+      work_witness_cbor: validation_machine_v1.encode_ledger_delta_control_v1(
+        control,
+      ),
+      claimed_successor: post,
+    },
+    1,
+    key,
+    next_schedule_hash,
+    value,
+  )
+}
+
+test ledger_delta_spend_replay_initializes_authenticated_fold() {
+  let key = encode_midgard_tx_input(
+    MidgardTxInput { tx_id: h_a, output_index: 0 },
+  )
+  let value = compact_ledger_output_descriptor(0)
+  let descriptor = empty_mpf_proof_descriptor()
+  let next_schedule_hash = validation_machine_v1.empty_resolution_schedule_hash()
+  let schedule_hash = validation_machine_v1.resolution_schedule_node_hash(
+    0,
+    key,
+    next_schedule_hash,
+  )
+  let resolved_accumulator = validation_machine_v1.resolved_input_accumulator_successor(
+    validation_machine_v1.initial_resolution_accumulator(),
+    0,
+    key,
+    value,
+  )
+  let authorized_pending = validation_machine_v1.encode_ledger_delta_pending_mutation_v1(
+    validation_machine_v1.LedgerDeltaPendingMutationV1 {
+      authorization_stage: 0,
+      operation_kind: 0,
+      key,
+      value: #"",
+      descriptor,
+      fold_control: mpf_proof_fold_v1.ProofFoldControlV1 {
+        next_frame_index: -1,
+        expected_next_cursor: 0,
+        including_root: #"",
+        excluding_root: #"",
+      },
+    },
+  )
+  let control = validation_machine_v1.LedgerDeltaControlV1 {
+    ..compact_ledger_delta_control(0),
+    resolved_input_count: 1,
+    resolved_inputs_accumulator: resolved_accumulator,
+    replay_schedule_hash: schedule_hash,
+    replay_remaining_schedule_hash: schedule_hash,
+    current_ledger_root: singleton_root(key, value),
+    pending_mutation_cbor: authorized_pending,
+  }
+  expect Some(fold_control) = mpf_proof_fold_v1.initial_fold_control_v1(
+    key,
+    value,
+    descriptor,
+  )
+  let post = compact_ledger_delta_successor(
+    compact_ledger_delta_state(
+      control,
+      51,
+      validation_merkle_v1.frontier_commitment(0, []),
+    ),
+    validation_machine_v1.LedgerDeltaControlV1 {
+      ..control,
+      replay_cursor: 1,
+      replay_accumulator: resolved_accumulator,
+      replay_remaining_schedule_hash: next_schedule_hash,
+      pending_mutation_cbor: validation_machine_v1.encode_ledger_delta_pending_mutation_v1(
+        validation_machine_v1.LedgerDeltaPendingMutationV1 {
+          authorization_stage: 1,
+          operation_kind: 0,
+          key,
+          value,
+          descriptor,
+          fold_control,
+        },
+      ),
+    },
+  )
+  let pre = compact_ledger_delta_state(
+    control,
+    51,
+    validation_merkle_v1.frontier_commitment(0, []),
+  )
+  validation_machine_v1.verify_ledger_delta_replay_semantics_v1(
+    pre,
+    validation_machine_v1.ValidationOneStepWitnessV1 {
+      work_witness_cbor: validation_machine_v1.encode_ledger_delta_control_v1(
+        control,
+      ),
+      claimed_successor: post,
+    },
+    0,
+    key,
+    next_schedule_hash,
+    value,
+  )
+}
+
+test ledger_delta_replay_finish_is_exact() {
+  let control = compact_ledger_delta_control(0)
+  let pre = compact_ledger_delta_state(
+    control,
+    52,
+    validation_merkle_v1.frontier_commitment(0, []),
+  )
+  validation_machine_v1.verify_ledger_delta_replay_finish_semantics_v1(
+    pre,
+    validation_machine_v1.ValidationOneStepWitnessV1 {
+      work_witness_cbor: validation_machine_v1.encode_ledger_delta_control_v1(
+        control,
+      ),
+      claimed_successor: compact_ledger_delta_successor(
+        pre,
+        validation_machine_v1.LedgerDeltaControlV1 { ..control, stage: 1 },
+      ),
+    },
+  )
+}
+
+test ledger_delta_output_authenticates_descriptor_and_initializes_fold() {
+  let output_index = 0
+  let key = encode_midgard_tx_input(MidgardTxInput { tx_id: h_a, output_index })
+  let value = compact_ledger_output_descriptor(output_index)
+  let descriptor = empty_mpf_proof_descriptor()
+  let descriptor_leaf = script_proof_v1.output_descriptor_leaf_hash(
+    output_index,
+    value,
+  )
+  let descriptor_frontier = validation_merkle_v1.build_frontier(
+    [descriptor_leaf],
+  )
+  let authorized_pending = validation_machine_v1.encode_ledger_delta_pending_mutation_v1(
+    validation_machine_v1.LedgerDeltaPendingMutationV1 {
+      authorization_stage: 0,
+      operation_kind: 1,
+      key,
+      value,
+      descriptor,
+      fold_control: mpf_proof_fold_v1.ProofFoldControlV1 {
+        next_frame_index: -1,
+        expected_next_cursor: 0,
+        including_root: #"",
+        excluding_root: #"",
+      },
+    },
+  )
+  let control = validation_machine_v1.LedgerDeltaControlV1 {
+    ..compact_ledger_delta_control(1),
+    output_count: 1,
+    output_descriptor_peaks: descriptor_frontier.peaks,
+    current_ledger_root: null_hash,
+    pending_mutation_cbor: authorized_pending,
+  }
+  expect Some(fold_control) = mpf_proof_fold_v1.initial_fold_control_v1(
+    key,
+    value,
+    descriptor,
+  )
+  let pre = compact_ledger_delta_state(
+    control,
+    53,
+    validation_merkle_v1.frontier_commitment(0, []),
+  )
+  validation_machine_v1.verify_ledger_delta_output_semantics_v1(
+    pre,
+    validation_machine_v1.ValidationOneStepWitnessV1 {
+      work_witness_cbor: validation_machine_v1.encode_ledger_delta_control_v1(
+        control,
+      ),
+      claimed_successor: compact_ledger_delta_successor(
+        pre,
+        validation_machine_v1.LedgerDeltaControlV1 {
+          ..control,
+          output_cursor: 1,
+          pending_mutation_cbor: validation_machine_v1.encode_ledger_delta_pending_mutation_v1(
+            validation_machine_v1.LedgerDeltaPendingMutationV1 {
+              authorization_stage: 1,
+              operation_kind: 1,
+              key,
+              value,
+              descriptor,
+              fold_control,
+            },
+          ),
+        },
+      ),
+    },
+    output_index,
+    value,
+    [],
+  )
+}
+
+test ledger_delta_output_finish_is_exact() {
+  let control = compact_ledger_delta_control(1)
+  let pre = compact_ledger_delta_state(
+    control,
+    54,
+    validation_merkle_v1.frontier_commitment(0, []),
+  )
+  validation_machine_v1.verify_ledger_delta_output_finish_semantics_v1(
+    pre,
+    validation_machine_v1.ValidationOneStepWitnessV1 {
+      work_witness_cbor: validation_machine_v1.encode_ledger_delta_control_v1(
+        control,
+      ),
+      claimed_successor: compact_ledger_delta_successor(
+        pre,
+        validation_machine_v1.LedgerDeltaControlV1 { ..control, stage: 2 },
+      ),
+    },
+  )
+}
+
+test ledger_delta_proof_frame_advances_only_authenticated_frame() {
+  let key = #"616273656e742d6b6579"
+  let value = #"696e7365727465642d76616c7565"
+  let neighbors = h_a
+    |> bytearray.concat(h_b)
+    |> bytearray.concat(h_c)
+    |> bytearray.concat(zero)
+  let frame = mpf_proof_fold_v1.ProofFrameV1 {
+    version: 1,
+    frame_index: 0,
+    cursor: 0,
+    next_cursor: 1,
+    step: mpf.Branch { skip: 0, neighbors },
+  }
+  let frame_frontier = validation_merkle_v1.build_frontier(
+    [mpf_proof_fold_v1.proof_frame_leaf_hash_v1(frame)],
+  )
+  let descriptor = mpf_proof_fold_v1.ProofDescriptorV1 {
+    version: 1,
+    frame_count: 1,
+    terminal_cursor: 1,
+    peaks: frame_frontier.peaks,
+  }
+  expect Some(fold_control) = mpf_proof_fold_v1.initial_fold_control_v1(
+    key,
+    value,
+    descriptor,
+  )
+  expect Some(next_fold_control) = mpf_proof_fold_v1.fold_proof_frame_v1(
+    key,
+    descriptor,
+    fold_control,
+    frame,
+    [],
+  )
+  let pending = validation_machine_v1.LedgerDeltaPendingMutationV1 {
+    authorization_stage: 1,
+    operation_kind: 1,
+    key,
+    value,
+    descriptor,
+    fold_control,
+  }
+  let control = validation_machine_v1.LedgerDeltaControlV1 {
+    ..compact_ledger_delta_control(1),
+    pending_mutation_cbor: validation_machine_v1.encode_ledger_delta_pending_mutation_v1(
+      pending,
+    ),
+  }
+  let pre = compact_ledger_delta_state(
+    control,
+    55,
+    validation_merkle_v1.frontier_commitment(0, []),
+  )
+  validation_machine_v1.verify_ledger_delta_proof_frame_semantics_v1(
+    pre,
+    validation_machine_v1.ValidationOneStepWitnessV1 {
+      work_witness_cbor: validation_machine_v1.encode_ledger_delta_control_v1(
+        control,
+      ),
+      claimed_successor: compact_ledger_delta_successor(
+        pre,
+        validation_machine_v1.LedgerDeltaControlV1 {
+          ..control,
+          pending_mutation_cbor: validation_machine_v1.encode_ledger_delta_pending_mutation_v1(
+            validation_machine_v1.LedgerDeltaPendingMutationV1 {
+              ..pending,
+              fold_control: next_fold_control,
+            },
+          ),
+        },
+      ),
+    },
+    frame,
+    [],
+  )
+}
+
+test ledger_delta_finalize_applies_only_authenticated_root_transition() {
+  let key = #"696e736572742d6b6579"
+  let value = #"696e736572742d76616c7565"
+  let descriptor = empty_mpf_proof_descriptor()
+  expect Some(fold_control) = mpf_proof_fold_v1.initial_fold_control_v1(
+    key,
+    value,
+    descriptor,
+  )
+  let pending = validation_machine_v1.LedgerDeltaPendingMutationV1 {
+    authorization_stage: 1,
+    operation_kind: 1,
+    key,
+    value,
+    descriptor,
+    fold_control,
+  }
+  let operation_leaf = validation_machine_v1.ledger_delta_operation_leaf_hash(
+    1,
+    key,
+    value,
+    descriptor,
+  )
+  let operation_frontier = validation_merkle_v1.build_frontier([operation_leaf])
+  let control = validation_machine_v1.LedgerDeltaControlV1 {
+    ..compact_ledger_delta_control(1),
+    current_ledger_root: fold_control.excluding_root,
+    pending_mutation_cbor: validation_machine_v1.encode_ledger_delta_pending_mutation_v1(
+      pending,
+    ),
+  }
+  let pre = compact_ledger_delta_state(
+    control,
+    56,
+    validation_merkle_v1.frontier_commitment(
       operation_frontier.count,
       operation_frontier.peaks,
     ),
-  }
-  let post = validation_trace_v1.ValidationMachineStateV1 {
-    ..pre,
-    program_counter: 50,
-    work_root: validation_trace_v1.hash_work_witness(
-      validation_trace_v1.LedgerDelta,
-      50,
-      validation_machine_v1.encode_ledger_delta_control_v1(next_control),
-    ),
-  }
-  validation_machine_v1.verify_one_step_evidence(
+  )
+  validation_machine_v1.verify_ledger_delta_finalize_semantics_v1(
     pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
-        work_witness_cbor,
-        claimed_successor: post,
-      },
-      auxiliary: validation_machine_v1.LedgerDeltaOutputWitness {
-        output_index: 0,
-        descriptor_cbor,
-        siblings: [],
-        proof: [],
-      },
+    validation_machine_v1.ValidationOneStepWitnessV1 {
+      work_witness_cbor: validation_machine_v1.encode_ledger_delta_control_v1(
+        control,
+      ),
+      claimed_successor: compact_ledger_delta_successor(
+        pre,
+        validation_machine_v1.LedgerDeltaControlV1 {
+          ..control,
+          current_ledger_root: fold_control.including_root,
+          operation_count: 1,
+          operation_peaks: operation_frontier.peaks,
+          pending_mutation_cbor: #"",
+        },
+      ),
     },
   )
 }
@@ -7554,6 +7887,7 @@ test value_and_mint_final_equation_is_enforced_on_l1() {
       validation_machine_v1.encode_ledger_delta_witness_v1(
         native_control,
         valid_pre.prior_ledger_root,
+        valid_control.replay_schedule_hash,
       ),
     ),
   }

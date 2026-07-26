@@ -18,6 +18,10 @@ import {
   MIDGARD_VALIDATION_MACHINE_V1_VERSION,
   MIDGARD_VALIDATION_TRACE_DESCRIPTOR_V1_VERSION,
 } from "./consensus-profile-v1.js";
+import {
+  encodeMidgardMpfProofDescriptorV1,
+  type MidgardMpfProofDescriptorV1,
+} from "./mpf-proof-fold-v1.js";
 import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "./plutus-data-cbor.js";
 import {
   buildMidgardValidationMerkleFrontierV1,
@@ -503,8 +507,13 @@ export type MidgardValidationLedgerDeltaOperationV1 =
       readonly value: Uint8Array;
     };
 
+export type MidgardValidationAuthenticatedLedgerDeltaOperationV1 =
+  MidgardValidationLedgerDeltaOperationV1 & {
+    readonly proofDescriptor: MidgardMpfProofDescriptorV1;
+  };
+
 export const hashMidgardValidationLedgerDeltaOperationV1 = (
-  operation: MidgardValidationLedgerDeltaOperationV1,
+  operation: MidgardValidationAuthenticatedLedgerDeltaOperationV1,
 ): Hash32 =>
   hashDomain(
     LEDGER_DELTA_OPERATION_DOMAIN,
@@ -516,18 +525,19 @@ export const hashMidgardValidationLedgerDeltaOperationV1 = (
           ? Buffer.alloc(0)
           : Buffer.from(operation.value),
       ),
+      encodeMidgardMpfProofDescriptorV1(operation.proofDescriptor),
     ]),
   );
 
 export const buildMidgardValidationLedgerDeltaFrontierV1 = (
-  operations: readonly MidgardValidationLedgerDeltaOperationV1[],
+  operations: readonly MidgardValidationAuthenticatedLedgerDeltaOperationV1[],
 ): MidgardValidationMerkleFrontierV1 =>
   buildMidgardValidationMerkleFrontierV1(
     operations.map(hashMidgardValidationLedgerDeltaOperationV1),
   );
 
 export const hashMidgardValidationLedgerDeltaV1 = (
-  operations: readonly MidgardValidationLedgerDeltaOperationV1[],
+  operations: readonly MidgardValidationAuthenticatedLedgerDeltaOperationV1[],
 ): Hash32 =>
   commitMidgardValidationMerkleFrontierV1(
     buildMidgardValidationLedgerDeltaFrontierV1(operations),

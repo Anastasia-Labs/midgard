@@ -3,8 +3,12 @@ import type {
   MidgardBoundedItemChunkProofV1,
   MidgardCekDataFrameV1,
   MidgardLedgerOutputProofWitnessV1,
+  MidgardMpfProofDescriptorV1,
+  MidgardMpfProofFrameV1,
+  MidgardMpfProofStepV1,
   MidgardValidationMachineStateV1,
   MidgardValidationMerkleFrontierV1,
+  MidgardValidationMerkleMembershipV1,
   MidgardValidationPhaseName,
 } from "@al-ft/midgard-core";
 import {
@@ -15,6 +19,7 @@ import type { MidgardVersionedScript } from "@al-ft/midgard-core/codec";
 import {
   asArray,
   asBigInt,
+  asBytes,
   decodeSingleCbor,
   readCborArrayHeader,
   readCborBytes,
@@ -71,6 +76,62 @@ const frontierPeaksData = (
   frontier: MidgardValidationMerkleFrontierV1,
 ): readonly ConstructorData[] =>
   frontier.peaks.map((peak) => record([int(peak.height), bytes(peak.hash)]));
+
+const mpfProofStepData = (
+  step: MidgardMpfProofStepV1,
+): ConstructorData => {
+  if (step.kind === "branch") {
+    return new Constr(0, [int(step.skip), bytes(step.neighbors)]);
+  }
+  if (step.kind === "fork") {
+    return new Constr(1, [
+      int(step.skip),
+      record([
+        int(step.neighbor.nibble),
+        bytes(step.neighbor.prefix),
+        bytes(step.neighbor.root),
+      ]),
+    ]);
+  }
+  return new Constr(2, [
+    int(step.skip),
+    bytes(step.key),
+    bytes(step.value),
+  ]);
+};
+
+const mpfProofFrameData = (
+  frame: MidgardMpfProofFrameV1,
+): ConstructorData =>
+  record([
+    int(frame.version),
+    int(frame.frameIndex),
+    int(frame.cursor),
+    int(frame.nextCursor),
+    mpfProofStepData(frame.step),
+  ]);
+
+const mpfProofDescriptorData = (
+  descriptor: MidgardMpfProofDescriptorV1,
+): ConstructorData =>
+  record([
+    int(descriptor.version),
+    int(descriptor.frameCount),
+    int(descriptor.terminalCursor),
+    frontierPeaksData(descriptor.frontier),
+  ]);
+
+const ledgerDeltaOperationProofData = (
+  descriptor: MidgardMpfProofDescriptorV1,
+  membership: MidgardValidationMerkleMembershipV1,
+): ConstructorData =>
+  record([
+    mpfProofDescriptorData(descriptor),
+    int(membership.frontier.count),
+    frontierPeaksData(membership.frontier),
+    int(membership.leafIndex),
+    byteList(membership.siblings),
+  ]);
 
 const collectionProofData = (
   proof: MidgardBoundedCollectionItemProofV1,
@@ -546,6 +607,53 @@ const resolveInputsCursor = (
   return cursor;
 };
 
+const ledgerDeltaControlStatus = (
+  witness: ValidationMachineWorkWitness,
+): {
+  readonly stage: number;
+  readonly pendingStage: number | null;
+} => {
+  const control = asArray(
+    decodeSingleCbor(witness.cbor),
+    "ledger_delta_control",
+  );
+  if (control.length !== 14) {
+    throw new Error("ledger_delta_control has an invalid field count");
+  }
+  const stage = Number(asBigInt(control[4], "ledger_delta_control.stage"));
+  if (
+    !Number.isSafeInteger(stage) ||
+    stage < 0 ||
+    stage > 2
+  ) {
+    throw new Error("ledger_delta_control stage is invalid");
+  }
+  const pendingCbor = asBytes(
+    control[12],
+    "ledger_delta_control.pending_mutation",
+  );
+  if (pendingCbor.length === 0) {
+    return { stage, pendingStage: null };
+  }
+  const pending = asArray(
+    decodeSingleCbor(pendingCbor),
+    "ledger_delta_pending_mutation",
+  );
+  if (
+    pending.length !== 10 ||
+    asBigInt(pending[0], "ledger_delta_pending_mutation.version") !== 1n
+  ) {
+    throw new Error("ledger_delta pending mutation is invalid");
+  }
+  const pendingStage = Number(
+    asBigInt(pending[1], "ledger_delta_pending_mutation.stage"),
+  );
+  if (pendingStage !== 0 && pendingStage !== 1) {
+    throw new Error("ledger_delta pending mutation stage is invalid");
+  }
+  return { stage, pendingStage };
+};
+
 const nativeScanCursor = (
   witness: ValidationMachineWorkWitness,
 ): {
@@ -732,11 +840,25 @@ export const validationSemanticResolverIndexV1 = (
       if (auxiliary === null) return 4;
       break;
     }
+    case "ledgerDelta": {
+      const control = ledgerDeltaControlStatus(witness);
+      if (auxiliary === null) {
+        if (control.pendingStage === 1) return 6;
+        if (control.pendingStage === 0) break;
+        if (control.stage === 0) return 2;
+        if (control.stage === 1) return 4;
+        return 7;
+      }
+      if (auxiliary.kind === "ledgerDeltaOperation") return 0;
+      if (auxiliary.kind === "ledgerDeltaReplay") return 1;
+      if (auxiliary.kind === "ledgerDeltaOutput") return 3;
+      if (auxiliary.kind === "ledgerDeltaProofFrame") return 5;
+      break;
+    }
     case "nativeScripts":
     case "scriptIntegrity":
     case "cek":
     case "valueAndMint":
-    case "ledgerDelta":
       return null;
     case "terminal":
       break;
@@ -1027,22 +1149,33 @@ export const validationAuxiliaryWitnessDataV1 = (
         byteList(auxiliary.siblings),
         valueMutationData(auxiliary.mutationStep),
       ]);
+    case "ledgerDeltaOperation":
+      return new Constr(40, [
+        int(auxiliary.operationKind === "delete" ? 0 : 1),
+        bytes(auxiliary.key),
+        bytes(auxiliary.value),
+        ledgerDeltaOperationProofData(
+          auxiliary.mutationStep.proofFoldTrace.descriptor,
+          auxiliary.operationMembership,
+        ),
+      ]);
     case "ledgerDeltaReplay":
       return new Constr(32, [
         sourceKind(auxiliary.sourceKind),
         bytes(auxiliary.key),
         bytes(auxiliary.nextScheduleHash),
         bytes(auxiliary.value),
-        auxiliary.mutationStep === null
-          ? []
-          : proofData(auxiliary.mutationStep.proofCbor),
       ]);
     case "ledgerDeltaOutput":
       return new Constr(33, [
         int(auxiliary.outputIndex),
         bytes(auxiliary.descriptorCbor),
         byteList(auxiliary.siblings),
-        proofData(auxiliary.mutationStep.proofCbor),
+      ]);
+    case "ledgerDeltaProofFrame":
+      return new Constr(39, [
+        mpfProofFrameData(auxiliary.frame),
+        byteList(auxiliary.siblings),
       ]);
     case "transactionRedeemerItem":
       return new Constr(34, [

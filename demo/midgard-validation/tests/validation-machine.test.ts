@@ -93,9 +93,17 @@ const semanticResolverDefinitionsV1 = [
   "script_sources_output_proof_step_semantic_v1",
   "script_sources_output_proof_finalize_semantic_v1",
   "script_sources_output_proof_finish_semantic_v1",
+  "ledger_delta_operation_semantic_v1",
+  "ledger_delta_replay_semantic_v1",
+  "ledger_delta_replay_finish_semantic_v1",
+  "ledger_delta_output_semantic_v1",
+  "ledger_delta_output_finish_semantic_v1",
+  "ledger_delta_proof_frame_semantic_v1",
+  "ledger_delta_finalize_semantic_v1",
+  "ledger_delta_terminal_semantic_v1",
 ] as const;
 const semanticResolverOffsetsV1 = [
-  0, 2, 3, 4, 6, 10, 24, 26, 32,
+  0, 2, 3, 4, 6, 10, 24, 26, 32, -1, -1, -1, -1, 37,
 ] as const;
 
 const validateBoundaryAbiAndCollectAuxiliaryKinds = (
@@ -281,7 +289,7 @@ describe("deterministic validation machine", () => {
       "scriptIntegrity",
       "cek",
       ...Array<string>(8).fill("valueAndMint"),
-      ...Array<string>(6).fill("ledgerDelta"),
+      ...Array<string>(9).fill("ledgerDelta"),
       "terminal",
     ]);
     const canonicalWitnesses = trace.witnesses.filter(
