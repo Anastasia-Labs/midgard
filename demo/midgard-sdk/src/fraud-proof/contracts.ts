@@ -205,6 +205,12 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
       "fraud_proofs/validation_trace/script_sources_stage_eight_finish_semantic_v1.main.spend",
     scriptSourcesStageEightPurpose:
       "fraud_proofs/validation_trace/script_sources_stage_eight_purpose_semantic_v1.main.spend",
+    scriptSourcesStageSevenObserver:
+      "fraud_proofs/validation_trace/script_sources_stage_seven_observer_semantic_v1.main.spend",
+    scriptSourcesStageSevenReceive:
+      "fraud_proofs/validation_trace/script_sources_stage_seven_receive_semantic_v1.main.spend",
+    scriptSourcesStageSevenFinish:
+      "fraud_proofs/validation_trace/script_sources_stage_seven_finish_semantic_v1.main.spend",
     nativeScriptsTerminal:
       "fraud_proofs/validation_trace/native_scripts_terminal_semantic_v1.main.spend",
     nativeScriptsNative:
@@ -343,6 +349,9 @@ export type ValidationTraceDisputeFaultProofContracts = {
       SpendingValidator,
     ];
     readonly semanticResolvers: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
       SpendingValidator,
       SpendingValidator,
       SpendingValidator,
@@ -1026,7 +1035,7 @@ const buildValidationTraceDisputeChain = ({
         ),
       );
     }
-    if (builtSemanticResolvers.length !== 72) {
+    if (builtSemanticResolvers.length !== 75) {
       return yield* Effect.fail(
         new Error("Validation-trace semantic resolver set is incomplete"),
       );
@@ -1104,6 +1113,9 @@ const buildValidationTraceDisputeChain = ({
       builtSemanticResolvers[69]!,
       builtSemanticResolvers[70]!,
       builtSemanticResolvers[71]!,
+      builtSemanticResolvers[72]!,
+      builtSemanticResolvers[73]!,
+      builtSemanticResolvers[74]!,
     ] as const;
     const semanticResolverGroups = [
       [semanticResolvers[0], semanticResolvers[1]],
@@ -1167,8 +1179,6 @@ const buildValidationTraceDisputeChain = ({
         semanticResolvers[54],
         semanticResolvers[55],
         semanticResolvers[56],
-      ],
-      [
         semanticResolvers[57],
         semanticResolvers[58],
         semanticResolvers[59],
@@ -1177,17 +1187,22 @@ const buildValidationTraceDisputeChain = ({
         semanticResolvers[60],
         semanticResolvers[61],
         semanticResolvers[62],
-        semanticResolvers[63],
       ],
       [
+        semanticResolvers[63],
         semanticResolvers[64],
         semanticResolvers[65],
         semanticResolvers[66],
+      ],
+      [
         semanticResolvers[67],
         semanticResolvers[68],
         semanticResolvers[69],
         semanticResolvers[70],
         semanticResolvers[71],
+        semanticResolvers[72],
+        semanticResolvers[73],
+        semanticResolvers[74],
       ],
     ] as const;
     const semanticResolverHashesSchema = Data.Array(Data.Bytes());

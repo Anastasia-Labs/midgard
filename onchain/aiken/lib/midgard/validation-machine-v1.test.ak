@@ -4671,61 +4671,97 @@ fn protected_receive_purpose_step(step_to_verify: Int) -> Bool {
     validation_machine_v1.empty_script_discovery_control(),
     19,
   )
+  let select_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+    work_witness_cbor,
+    claimed_successor: after_candidate,
+  }
+  let append_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+    work_witness_cbor: after_candidate_work_witness_cbor,
+    claimed_successor: after_append,
+  }
+  let rescan_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+    work_witness_cbor: after_append_work_witness_cbor,
+    claimed_successor: after_rescan,
+  }
+  let finish_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+    work_witness_cbor: after_rescan_work_witness_cbor,
+    claimed_successor: post,
+  }
   if step_to_verify == 0 {
-    validation_machine_v1.verify_one_step_evidence(
-      pre,
-      validation_machine_v1.ValidationOneStepEvidenceV1 {
-        transition: validation_machine_v1.ValidationOneStepWitnessV1 {
-          work_witness_cbor,
-          claimed_successor: after_candidate,
+    and {
+      validation_machine_v1.verify_script_sources_stage_seven_receive_semantics_v1(
+        pre,
+        select_transition,
+        3,
+        0,
+        h_28_a,
+        h_28_a,
+        [],
+      ),
+      validation_machine_v1.verify_one_step_evidence(
+        pre,
+        validation_machine_v1.ValidationOneStepEvidenceV1 {
+          transition: select_transition,
+          auxiliary: validation_machine_v1.ScriptPurposeScanWitness {
+            purpose_kind: 3,
+            purpose_index: 0,
+            script_hash: h_28_a,
+            subject: h_28_a,
+            siblings: [],
+          },
         },
-        auxiliary: validation_machine_v1.ScriptPurposeScanWitness {
-          purpose_kind: 3,
-          purpose_index: 0,
-          script_hash: h_28_a,
-          subject: h_28_a,
-          siblings: [],
-        },
-      },
-    )
+      ),
+    }
   } else if step_to_verify == 1 {
-    validation_machine_v1.verify_one_step_evidence(
-      after_candidate,
-      validation_machine_v1.ValidationOneStepEvidenceV1 {
-        transition: validation_machine_v1.ValidationOneStepWitnessV1 {
-          work_witness_cbor: after_candidate_work_witness_cbor,
-          claimed_successor: after_append,
+    and {
+      validation_machine_v1.verify_script_sources_stage_seven_finish_semantics_v1(
+        after_candidate,
+        append_transition,
+      ),
+      validation_machine_v1.verify_one_step_evidence(
+        after_candidate,
+        validation_machine_v1.ValidationOneStepEvidenceV1 {
+          transition: append_transition,
+          auxiliary: validation_machine_v1.NoAuxiliaryWitness,
         },
-        auxiliary: validation_machine_v1.NoAuxiliaryWitness,
-      },
-    )
+      ),
+    }
   } else if step_to_verify == 2 {
-    validation_machine_v1.verify_one_step_evidence(
-      after_append,
-      validation_machine_v1.ValidationOneStepEvidenceV1 {
-        transition: validation_machine_v1.ValidationOneStepWitnessV1 {
-          work_witness_cbor: after_append_work_witness_cbor,
-          claimed_successor: after_rescan,
+    and {
+      validation_machine_v1.verify_script_sources_stage_seven_receive_semantics_v1(
+        after_append,
+        rescan_transition,
+        3,
+        0,
+        h_28_a,
+        h_28_a,
+        [],
+      ),
+      validation_machine_v1.verify_one_step_evidence(
+        after_append,
+        validation_machine_v1.ValidationOneStepEvidenceV1 {
+          transition: rescan_transition,
+          auxiliary: validation_machine_v1.ScriptPurposeScanWitness {
+            purpose_kind: 3,
+            purpose_index: 0,
+            script_hash: h_28_a,
+            subject: h_28_a,
+            siblings: [],
+          },
         },
-        auxiliary: validation_machine_v1.ScriptPurposeScanWitness {
-          purpose_kind: 3,
-          purpose_index: 0,
-          script_hash: h_28_a,
-          subject: h_28_a,
-          siblings: [],
-        },
-      },
-    )
+      ),
+    }
   } else {
     and {
       step_to_verify == 3,
+      validation_machine_v1.verify_script_sources_stage_seven_finish_semantics_v1(
+        after_rescan,
+        finish_transition,
+      ),
       validation_machine_v1.verify_one_step_evidence(
         after_rescan,
         validation_machine_v1.ValidationOneStepEvidenceV1 {
-          transition: validation_machine_v1.ValidationOneStepWitnessV1 {
-            work_witness_cbor: after_rescan_work_witness_cbor,
-            claimed_successor: post,
-          },
+          transition: finish_transition,
           auxiliary: validation_machine_v1.NoAuxiliaryWitness,
         },
       ),
@@ -5146,30 +5182,44 @@ fn canonical_observer_purpose_step(step_to_verify: Int) -> Bool {
     3,
     h_28_a,
   )
+  let observer_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+    work_witness_cbor,
+    claimed_successor: after_observer,
+  }
+  let finish_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+    work_witness_cbor: after_observer_work_witness_cbor,
+    claimed_successor: post,
+  }
   if step_to_verify == 0 {
-    validation_machine_v1.verify_one_step_evidence(
-      pre,
-      validation_machine_v1.ValidationOneStepEvidenceV1 {
-        transition: validation_machine_v1.ValidationOneStepWitnessV1 {
-          work_witness_cbor,
-          claimed_successor: after_observer,
+    and {
+      validation_machine_v1.verify_script_sources_stage_seven_observer_semantics_v1(
+        pre,
+        observer_transition,
+        collection_proof,
+        chunk_proof,
+      ),
+      validation_machine_v1.verify_one_step_evidence(
+        pre,
+        validation_machine_v1.ValidationOneStepEvidenceV1 {
+          transition: observer_transition,
+          auxiliary: validation_machine_v1.TransactionFieldChunkWitness {
+            collection_proof,
+            chunk_proof,
+          },
         },
-        auxiliary: validation_machine_v1.TransactionFieldChunkWitness {
-          collection_proof,
-          chunk_proof,
-        },
-      },
-    )
+      ),
+    }
   } else {
     and {
       step_to_verify == 1,
+      validation_machine_v1.verify_script_sources_stage_seven_finish_semantics_v1(
+        after_observer,
+        finish_transition,
+      ),
       validation_machine_v1.verify_one_step_evidence(
         after_observer,
         validation_machine_v1.ValidationOneStepEvidenceV1 {
-          transition: validation_machine_v1.ValidationOneStepWitnessV1 {
-            work_witness_cbor: after_observer_work_witness_cbor,
-            claimed_successor: post,
-          },
+          transition: finish_transition,
           auxiliary: validation_machine_v1.NoAuxiliaryWitness,
         },
       ),

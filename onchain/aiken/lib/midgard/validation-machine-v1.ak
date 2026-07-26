@@ -9744,6 +9744,470 @@ fn script_sources_stage_seven(
   )
 }
 
+fn script_sources_stage_seven_control_from_witness(
+  work_witness_cbor: ByteArray,
+) -> ScriptSourcesControlV1 {
+  expect Some(data) = cbor.deserialise(work_witness_cbor)
+  let items = builtin.un_list_data(data)
+  expect list.length(items) == 29
+  let control = script_sources_control_from_data_items(
+    items,
+    empty_script_discovery_control(),
+    None,
+  )
+  expect control.stage == 7
+  control
+}
+
+fn script_sources_stage_seven_control_is_bound(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: ScriptSourcesControlV1,
+) -> Bool {
+  expect Some(control_data) = cbor.deserialise(witness.work_witness_cbor)
+  let receive_scan = control.receive_scan
+  let observer_scan = control.observer_scan
+  let mint_fold = control.mint_fold
+  and {
+    cbor.serialise(control_data) == witness.work_witness_cbor,
+    control.stage == 7,
+    native_tx_proof_commitment_v1(
+      control.compact_cbor,
+      control.witness_set_compact_cbor,
+      control.field_preimage_lengths_cbor,
+    ) == pre.transaction_commitment,
+    validation_trace_v1.hash_validation_context(control.context_cbor) == pre.validation_context_hash,
+    control.source_total_count == control.source_count,
+    validation_merkle_v1.frontier_is_well_formed(
+      control.source_count,
+      control.source_peaks,
+    ),
+    control.redeemer_total_count == control.redeemer_count,
+    validation_merkle_v1.frontier_is_well_formed(
+      control.redeemer_count,
+      control.redeemer_peaks,
+    ),
+    validation_merkle_v1.frontier_is_well_formed(
+      control.purpose_count,
+      control.purpose_peaks,
+    ),
+    control.output_total_count == control.output_count,
+    control.output_count <= max_tx_size_derived_collection_item_count,
+    control.output_cursor >= 0,
+    control.output_cursor <= receive_scan.source_count,
+    receive_scan.source_count >= 0,
+    receive_scan.source_count <= control.output_count,
+    validation_merkle_v1.frontier_is_well_formed(
+      control.output_count,
+      control.output_peaks,
+    ),
+    validation_merkle_v1.frontier_is_well_formed(
+      receive_scan.source_count,
+      receive_scan.source_peaks,
+    ),
+    validation_merkle_v1.frontier_is_well_formed(
+      control.output_count,
+      receive_scan.descriptor_peaks,
+    ),
+    receive_scan.receive_count >= 0,
+    receive_scan.receive_count <= receive_scan.source_count,
+    if receive_scan.receive_count == 0 {
+      receive_scan.previous_hash == #""
+    } else {
+      bytearray.length(receive_scan.previous_hash) == 28
+    },
+    or {
+      receive_scan.candidate_hash == #"",
+      and {
+        bytearray.length(receive_scan.candidate_hash) == 28,
+        or {
+          receive_scan.previous_hash == #"",
+          bytearray.compare(
+            receive_scan.previous_hash,
+            receive_scan.candidate_hash,
+          ) == Less,
+        },
+      },
+    },
+    observer_scan.total_count >= 0,
+    observer_scan.total_count <= max_tx_size_derived_collection_item_count,
+    observer_scan.seen >= 0,
+    observer_scan.seen <= observer_scan.total_count,
+    if observer_scan.seen == 0 {
+      observer_scan.previous_hash == #""
+    } else {
+      bytearray.length(observer_scan.previous_hash) == 28
+    },
+    mint_fold.policy_count >= 0,
+    mint_fold.policy_count <= max_tx_size_derived_collection_item_count,
+    mint_fold.policy_cursor == mint_fold.policy_count,
+    mint_fold_active_state_is_empty(mint_fold),
+    mint_fold.asset_count >= 0,
+    mint_fold.asset_count <= ledger_output_v1.max_distinct_asset_count,
+    validation_merkle_v1.frontier_is_well_formed(
+      mint_fold.asset_count,
+      mint_fold.asset_peaks,
+    ),
+    if mint_fold.policy_cursor == 0 {
+      mint_fold.previous_policy == #""
+    } else {
+      bytearray.length(mint_fold.previous_policy) == 28
+    },
+  }
+}
+
+fn script_sources_stage_seven_observer_scan_is_complete(
+  control: ScriptSourcesControlV1,
+  observer_commitment: ByteArray,
+) -> Bool {
+  if observer_commitment == bounded_collection_v1.from_items(3, []) {
+    control.observer_scan == empty_observer_purpose_scan_control()
+  } else {
+    and {
+      control.observer_scan.total_count > 0,
+      control.observer_scan.seen == control.observer_scan.total_count,
+    }
+  }
+}
+
+fn replace_script_sources_data_item(
+  items: List<Data>,
+  index: Int,
+  replacement: Data,
+) -> List<Data> {
+  expect index >= 0
+  when items is {
+    [] -> fail
+    [item, ..rest] ->
+      if index == 0 {
+        [replacement, ..rest]
+      } else {
+        [
+          item,
+          ..replace_script_sources_data_item(rest, index - 1, replacement)
+        ]
+      }
+  }
+}
+
+fn script_sources_stage_seven_successor_items_are_exact(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  next_items: List<Data>,
+) -> Bool {
+  script_sources_stage_zero_successor_work_is_exact(
+    pre,
+    witness,
+    next_items |> builtin.list_data |> cbor.serialise,
+  )
+}
+
+fn script_sources_stage_seven_observer_successor_is_exact(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: ScriptSourcesControlV1,
+  observer_hash: ByteArray,
+  active_count: Int,
+) -> Bool {
+  let next_purpose_peaks = validation_merkle_v1.append_leaf(
+    control.purpose_count,
+    control.purpose_peaks,
+    script_proof_v1.purpose_leaf_hash(
+      2,
+      control.observer_scan.seen,
+      observer_hash,
+      observer_hash,
+    ),
+  )
+  expect Some(next_purpose_peaks_data) = cbor.deserialise(
+    validation_merkle_v1.encode_frontier(next_purpose_peaks),
+  )
+  expect Some(next_observer_scan_data) = cbor.deserialise(
+    encode_observer_purpose_scan_control(
+      ObserverPurposeScanControlV1 {
+        total_count: active_count,
+        seen: control.observer_scan.seen + 1,
+        previous_hash: observer_hash,
+      },
+    ),
+  )
+  expect Some(control_data) = cbor.deserialise(witness.work_witness_cbor)
+  let items = builtin.un_list_data(control_data)
+  let next_items =
+    replace_script_sources_data_item(
+      items,
+      18,
+      builtin.i_data(control.purpose_count + 1),
+    )
+      |> replace_script_sources_data_item(19, next_purpose_peaks_data)
+      |> replace_script_sources_data_item(27, next_observer_scan_data)
+  script_sources_stage_seven_successor_items_are_exact(
+    pre,
+    witness,
+    next_items,
+  )
+}
+
+fn script_sources_stage_seven_receive_successor_is_exact(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: ScriptSourcesControlV1,
+  candidate_hash: ByteArray,
+) -> Bool {
+  let next_receive_scan = ReceivePurposeScanControlV1 {
+    ..control.receive_scan,
+    candidate_hash,
+  }
+  expect Some(next_receive_scan_data) = cbor.deserialise(
+    encode_receive_purpose_scan_control(next_receive_scan),
+  )
+  expect Some(control_data) = cbor.deserialise(witness.work_witness_cbor)
+  let next_items =
+    control_data
+      |> builtin.un_list_data
+      |> replace_script_sources_data_item(
+          20,
+          builtin.i_data(control.output_cursor + 1),
+        )
+      |> replace_script_sources_data_item(24, next_receive_scan_data)
+  script_sources_stage_seven_successor_items_are_exact(
+    pre,
+    witness,
+    next_items,
+  )
+}
+
+fn script_sources_stage_seven_finish_successor_is_exact(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: ScriptSourcesControlV1,
+) -> Bool {
+  let scan = control.receive_scan
+  expect Some(control_data) = cbor.deserialise(witness.work_witness_cbor)
+  let items = builtin.un_list_data(control_data)
+  if scan.candidate_hash == #"" {
+    let next_receive_scan = ReceivePurposeScanControlV1 {
+      ..empty_receive_purpose_scan_control(),
+      descriptor_peaks: scan.descriptor_peaks,
+    }
+    expect Some(next_receive_scan_data) = cbor.deserialise(
+      encode_receive_purpose_scan_control(next_receive_scan),
+    )
+    expect Some(next_observer_scan_data) = cbor.deserialise(
+      encode_observer_purpose_scan_control(
+        empty_observer_purpose_scan_control(),
+      ),
+    )
+    let next_base_items =
+      items
+        |> replace_script_sources_data_item(9, builtin.i_data(8))
+        |> replace_script_sources_data_item(
+            20,
+            builtin.i_data(control.output_count),
+          )
+        |> replace_script_sources_data_item(24, next_receive_scan_data)
+        |> replace_script_sources_data_item(27, next_observer_scan_data)
+    let next_items = list.concat(
+      next_base_items,
+      [
+        builtin.b_data(
+          encode_script_discovery_control(empty_script_discovery_control()),
+        ),
+      ],
+    )
+    script_sources_stage_seven_successor_items_are_exact(
+      pre,
+      witness,
+      next_items,
+    )
+  } else {
+    let script_hash = scan.candidate_hash
+    let next_purpose_peaks = validation_merkle_v1.append_leaf(
+      control.purpose_count,
+      control.purpose_peaks,
+      script_proof_v1.purpose_leaf_hash(
+        3,
+        scan.receive_count,
+        script_hash,
+        script_hash,
+      ),
+    )
+    let next_receive_scan = ReceivePurposeScanControlV1 {
+      source_count: scan.source_count,
+      source_peaks: scan.source_peaks,
+      receive_count: scan.receive_count + 1,
+      previous_hash: script_hash,
+      candidate_hash: #"",
+      descriptor_peaks: scan.descriptor_peaks,
+    }
+    expect Some(next_purpose_peaks_data) = cbor.deserialise(
+      validation_merkle_v1.encode_frontier(next_purpose_peaks),
+    )
+    expect Some(next_receive_scan_data) = cbor.deserialise(
+      encode_receive_purpose_scan_control(next_receive_scan),
+    )
+    let next_items =
+      items
+        |> replace_script_sources_data_item(
+            18,
+            builtin.i_data(control.purpose_count + 1),
+          )
+        |> replace_script_sources_data_item(19, next_purpose_peaks_data)
+        |> replace_script_sources_data_item(20, builtin.i_data(0))
+        |> replace_script_sources_data_item(24, next_receive_scan_data)
+    script_sources_stage_seven_successor_items_are_exact(
+      pre,
+      witness,
+      next_items,
+    )
+  }
+}
+
+pub fn verify_script_sources_stage_seven_observer_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  collection_proof: bounded_collection_v1.ItemProofV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+) -> Bool {
+  let control = script_sources_stage_seven_control_from_witness(
+    witness.work_witness_cbor,
+  )
+  let observer_commitment = decode_native_tx_compact_v1(
+    control.compact_cbor,
+  ).body.required_observers_hash
+  let observer_scan = control.observer_scan
+  let active_count = if observer_scan.total_count == 0 {
+    collection_proof.item_count
+  } else {
+    observer_scan.total_count
+  }
+  let observer_hash = chunk_proof.chunk
+  let common_is_valid = and {
+    script_sources_stage_seven_control_is_bound(pre, witness, control),
+    observer_commitment != bounded_collection_v1.from_items(3, []),
+    !script_sources_stage_seven_observer_scan_is_complete(
+      control,
+      observer_commitment,
+    ),
+    control.output_cursor == 0,
+    control.receive_scan.receive_count == 0,
+    control.receive_scan.previous_hash == #"",
+    control.receive_scan.candidate_hash == #"",
+    active_count > 0,
+    active_count <= max_tx_size_derived_collection_item_count,
+    collection_proof.field_index == 3,
+    collection_proof.item_count == active_count,
+    collection_proof.item_index == observer_scan.seen,
+    collection_proof.item_length == 28,
+    chunk_proof.field_index == 3,
+    chunk_proof.item_index == collection_proof.item_index,
+    chunk_proof.total_length == 28,
+    chunk_proof.chunk_index == 0,
+    bytearray.length(observer_hash) == 28,
+    bounded_item_v1.chunk_count(chunk_proof.total_length) == 1,
+    bounded_collection_v1.verify_item(observer_commitment, collection_proof),
+    bounded_item_v1.verify_chunk(
+      collection_proof.item_commitment,
+      chunk_proof,
+    ),
+  }
+  if and {
+    common_is_valid,
+    observer_scan.seen > 0,
+    bytearray.compare(observer_scan.previous_hash, observer_hash) != Less,
+  } {
+    rejected_successor_is_exact(
+      pre,
+      witness.claimed_successor,
+      reject_invalid_field_type,
+    )
+  } else {
+    and {
+      common_is_valid,
+      script_sources_stage_seven_observer_successor_is_exact(
+        pre,
+        witness,
+        control,
+        observer_hash,
+        active_count,
+      ),
+    }
+  }
+}
+
+pub fn verify_script_sources_stage_seven_receive_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  purpose_kind: Int,
+  purpose_index: Int,
+  script_hash: ByteArray,
+  subject: ByteArray,
+  siblings: List<ByteArray>,
+) -> Bool {
+  let control = script_sources_stage_seven_control_from_witness(
+    witness.work_witness_cbor,
+  )
+  let observer_commitment = decode_native_tx_compact_v1(
+    control.compact_cbor,
+  ).body.required_observers_hash
+  let purpose_leaf = script_proof_v1.purpose_leaf_hash(
+    purpose_kind,
+    purpose_index,
+    script_hash,
+    subject,
+  )
+  and {
+    script_sources_stage_seven_control_is_bound(pre, witness, control),
+    script_sources_stage_seven_observer_scan_is_complete(
+      control,
+      observer_commitment,
+    ),
+    control.output_cursor < control.receive_scan.source_count,
+    purpose_kind == 3,
+    purpose_index == control.output_cursor,
+    bytearray.length(script_hash) == 28,
+    subject == script_hash,
+    validation_merkle_v1.verify_membership(
+      control.receive_scan.source_count,
+      control.receive_scan.source_peaks,
+      purpose_index,
+      purpose_leaf,
+      siblings,
+    ),
+    script_sources_stage_seven_receive_successor_is_exact(
+      pre,
+      witness,
+      control,
+      next_receive_candidate(control.receive_scan, script_hash),
+    ),
+  }
+}
+
+pub fn verify_script_sources_stage_seven_finish_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+) -> Bool {
+  let control = script_sources_stage_seven_control_from_witness(
+    witness.work_witness_cbor,
+  )
+  let observer_commitment = decode_native_tx_compact_v1(
+    control.compact_cbor,
+  ).body.required_observers_hash
+  and {
+    script_sources_stage_seven_control_is_bound(pre, witness, control),
+    script_sources_stage_seven_observer_scan_is_complete(
+      control,
+      observer_commitment,
+    ),
+    control.output_cursor == control.receive_scan.source_count,
+    script_sources_stage_seven_finish_successor_is_exact(
+      pre,
+      witness,
+      control,
+    ),
+  }
+}
+
 fn script_discovery_successor_is_exact(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,

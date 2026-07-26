@@ -114,6 +114,9 @@ const semanticResolverDefinitionsV1 = [
   "script_sources_stage_ten_match_semantic_v1",
   "script_sources_stage_eight_finish_semantic_v1",
   "script_sources_stage_eight_purpose_semantic_v1",
+  "script_sources_stage_seven_observer_semantic_v1",
+  "script_sources_stage_seven_receive_semantic_v1",
+  "script_sources_stage_seven_finish_semantic_v1",
   "native_scripts_terminal_semantic_v1",
   "native_scripts_native_semantic_v1",
   "native_scripts_effectful_semantic_v1",
@@ -131,7 +134,7 @@ const semanticResolverDefinitionsV1 = [
   "ledger_delta_terminal_semantic_v1",
 ] as const;
 const semanticResolverOffsetsV1 = [
-  0, 2, 3, 4, 6, 10, 24, 26, 32, 57, 60, -1, -1, 64,
+  0, 2, 3, 4, 6, 10, 24, 26, 32, 60, 63, -1, -1, 67,
 ] as const;
 
 type MintFoldWitnessV1 = Extract<
@@ -400,7 +403,7 @@ describe("deterministic validation machine", () => {
       2, 2, 2, 2, 2, 2, 2,
       3,
       4,
-      0, 0, 23, 16, 18,
+      0, 27, 23, 16, 18,
     ]);
     expect(() =>
       validationSemanticResolverIndexV1({
@@ -910,6 +913,21 @@ describe("deterministic validation machine", () => {
         (witness) => witness.auxiliary?.kind === "cekContextFinalize",
       ),
     ).toBe(true);
+    expect(
+      trace.witnesses.some(
+        (witness) =>
+          witness.phase === "scriptSources" &&
+          witness.auxiliary?.kind === "scriptPurposeScan" &&
+          validationSemanticResolverIndexV1(witness) === 26,
+      ),
+    ).toBe(true);
+    expect(
+      trace.witnesses.some(
+        (witness) =>
+          witness.phase === "scriptSources" &&
+          validationSemanticResolverIndexV1(witness) === 27,
+      ),
+    ).toBe(true);
     expect(trace.verdict).toBe("accepted");
     expect([
       ...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds,
@@ -1007,7 +1025,15 @@ describe("deterministic validation machine", () => {
         (witness) =>
           witness.phase === "scriptSources" &&
           witness.auxiliary?.kind === "transactionFieldChunk" &&
-          witness.auxiliary.collectionProof.fieldIndex === 3,
+          witness.auxiliary.collectionProof.fieldIndex === 3 &&
+          validationSemanticResolverIndexV1(witness) === 25,
+      ),
+    ).toBe(true);
+    expect(
+      trace.witnesses.some(
+        (witness) =>
+          witness.phase === "scriptSources" &&
+          validationSemanticResolverIndexV1(witness) === 27,
       ),
     ).toBe(true);
     expect(trace.verdict).toBe("accepted");
